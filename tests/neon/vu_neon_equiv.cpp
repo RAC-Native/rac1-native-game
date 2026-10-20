@@ -8,19 +8,25 @@
 // the SIMD function bodies under test are the real ones from the headers.
 //
 // Why bit-exact (no tolerance): every ported op is a lane-wise single IEEE-754
-// operation (add/sub/mul, round-to-nearest, no FMA) or an integer bit op, so
-// the SIMD and scalar paths must agree bitwise. NaN payloads are excluded from
-// the *arithmetic* op inputs only (x86 SSE and ARM NEON may propagate different
-// NaN payloads through a binary op); cop/clamp/flag tests use the full pool
-// including Inf/NaN/denormals because those paths are pure bit logic.
+// operation (add/sub/mul, no FMA) or an integer bit op, and the SIMD and scalar
+// paths run in the same FP environment, so they must agree bitwise. NaN payloads
+// are excluded from the *arithmetic* op inputs only (x86 SSE and ARM NEON may
+// propagate different NaN payloads through a binary op); cop/clamp/flag tests
+// use the full pool including Inf/NaN/denormals because those paths are pure
+// bit logic.
 //
-// FP environment assumption: default (round-to-nearest, no flush-to-zero),
-// which the VU float rules require anyway (denormals are classified, not flushed).
+// FP environment: the test runs under the game's own mode, set by
+// rac1::ps2fpu::enter_ee_rounding() at the start of main: round toward zero,
+// with denormals flushed (FTZ/DAZ on x86, the FPCR FZ bit on AArch64) — exactly
+// as the game does, not the host's default round-to-nearest environment. Both
+// paths compute under that mode, so the bit-exact comparison above still holds.
 //
 // Build and run (x86_64: validates the untouched SSE path against scalar):
 //   g++ -std=c++17 -O2 -ffp-contract=off -I<repo> -I<repo>/src tests/neon/vu_neon_equiv.cpp -o /tmp/vu_equiv_x86 && /tmp/vu_equiv_x86
 // Build and run (aarch64: validates the NEON path against scalar):
-//   aarch64-linux-gnu-g++ -std=c++17 -O2 -ffp-contract=off -I<repo> -I<repo>/src tests/neon/vu_neon_equiv.cpp -o /tmp/vu_equiv_neon && qemu-aarch64 /tmp/vu_equiv_neon
+//   aarch64-linux-gnu-g++ -std=c++17 -O2 -ffp-contract=off -I<repo> -I<repo>/src tests/neon/vu_neon_equiv.cpp -o /tmp/vu_equiv_neon && qemu-aarch64 -L /usr/aarch64-linux-gnu /tmp/vu_equiv_neon
+// Build and run (through CMake, either architecture):
+//   cmake -S . -B build -DRAC1_NEON_TEST=ON -DRAC1_NO_GENERATED=ON -DRAC1_MOVIES=OFF -DRAC1_DEVTOOLS=OFF && cmake --build build --target vu_neon_equiv && ctest --test-dir build -R vu_neon_equiv
 //
 // Exit code 0: all functions bit-identical. Non-zero: count of failed checks.
 
@@ -110,6 +116,9 @@ inline float bits(uint32_t u) { return u2f(u); }
 inline float ftoi(float, float) { std::abort(); }
 inline void clipw(uint32_t&, const Vf&, float) { std::abort(); }
 }  // namespace rac1::vu0m
+
+// The game's FP mode (round toward zero, denormals flushed), set in main below.
+#include <runtime/ee/ps2_fpu.h>
 
 // The real SIMD function bodies under test.
 #include <runtime/vu/vu_native_fast.h>
@@ -579,6 +588,7 @@ static void test_vun_fin_one() {
 }
 
 int main() {
+    rac1::ps2fpu::enter_ee_rounding();
     test_vu0m_pure();
     test_vu0m_fin();
     test_vu0m_fmac();

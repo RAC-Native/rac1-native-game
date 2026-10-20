@@ -163,6 +163,20 @@ if(RAC1_ORACLE)
     add_subdirectory(tests/oracle)
 endif()
 
+# ---- tests/neon/ : the scalar-equivalence test for the VU fast paths' NEON twins (tests/neon/vu_neon_equiv.cpp) ----
+# Off by default: ./setup.sh never builds it. It needs no generated sources and no disc: the one test that proves
+# the NEON port of the VU SIMD helpers bit-identical to the scalar rules, on x86 (the SSE path) and on AArch64.
+option(RAC1_NEON_TEST "Build the NEON equivalence test (tests/neon: build/vu_neon_equiv)" OFF)
+if(RAC1_NEON_TEST)
+    enable_testing()
+    add_executable(vu_neon_equiv tests/neon/vu_neon_equiv.cpp)
+    target_include_directories(vu_neon_equiv PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src)
+    if(NOT MSVC)
+        target_compile_options(vu_neon_equiv PRIVATE -ffp-contract=off)
+    endif()
+    add_test(NAME vu_neon_equiv COMMAND vu_neon_equiv)
+endif()
+
 # ---- src/setup/ : setup & asset extraction ----
 add_library(rac1_setup STATIC
     src/setup/kick_trace.cpp

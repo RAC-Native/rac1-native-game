@@ -15,9 +15,11 @@
 // - `_mm_shuffle_epi32` has no single NEON equivalent; the few immediates used
 //   (the two opmula/opmsub swizzles and VUN_BC's lane broadcast) are handled by
 //   a scalar lane-index helper. Lane order matches _MM_SHUFFLE semantics.
-// - All float ops are single IEEE-754 lane ops (no FMA, no FTZ): results are
-//   bit-identical to the SSE2 path under the default FP environment, which the
-//   VU float rules require anyway (denormals are classified, never flushed).
+// - All float ops are single IEEE-754 lane ops (no FMA): results are
+//   bit-identical to the SSE2 path when both run in the same host FP
+//   environment. That environment is the one the game sets up in
+//   enter_ee_rounding (runtime/ee/ps2_fpu.h): round toward zero, with
+//   denormals flushed (FTZ/DAZ on x86, the FPCR FZ bit on AArch64).
 #ifndef RAC1_RUNTIME_VU_SIMD_SHIM_H
 #define RAC1_RUNTIME_VU_SIMD_SHIM_H
 
@@ -57,10 +59,11 @@ inline int32x4_t neon_shuffle_epi32(int32x4_t v, int imm) {
 #define _mm_set_ps(w, z, y, x) vreinterpretq_s32_f32(neon_set_ps_f((w), (z), (y), (x)))
 #define _mm_load_si128(p) vld1q_s32(reinterpret_cast<const int32_t*>(p))
 #define _mm_store_si128(p, x) vst1q_s32(reinterpret_cast<int32_t*>(p), (x))
+#define _mm_store_ps(p, x) vst1q_f32(reinterpret_cast<float*>(p), vreinterpretq_f32_s32((x)))
 #define _mm_and_si128(a, b) vandq_s32((a), (b))
 #define _mm_or_si128(a, b) vorrq_s32((a), (b))
 #define _mm_andnot_si128(a, b) vbicq_s32((b), (a))
-#define _mm_cmpeq_epi32(a, b) vceqq_s32((a), (b))
+#define _mm_cmpeq_epi32(a, b) vreinterpretq_s32_u32(vceqq_s32((a), (b)))
 #define _mm_castsi128_ps(a) vreinterpretq_f32_s32((a))
 #define _mm_castps_si128(a) vreinterpretq_s32_f32((a))
 #define _mm_add_ps(a, b) vaddq_f32((a), (b))
