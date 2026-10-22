@@ -25,6 +25,36 @@ changing how the game behaves.
 
 <!-- Screenshot: to be added. -->
 
+## How it works
+
+1. **Setup, from your disc.** `./setup.sh` (`setup.cmd` on Windows) reads your own ISO. It extracts
+   the assets (levels, textures, models, sounds) and, with the generators in `tools/codegen/`,
+   translates much of the game's MIPS and vector-unit (VU) code into C++, instruction by instruction:
+   about 2,150 of the 4,000 ported functions, most of the levels' own object code (the mobys'
+   updates), skinning, culling and the VU microprograms among them. Nothing from the disc is in this
+   repository; the generated code stays in `assets/generated/`.
+2. **The rest is ported by hand.** About 1,600 functions, among them the engine's systems, the hero,
+   the cameras, the menus and the code around the generated parts, are C++ written in this repository,
+   function by function; some 250 more pair a generated body with hand-written code. Each function
+   carries the address of the original it replaces (`// orig: 0x...`). The hand-written headers declare
+   the generated functions too, so both halves call each other directly.
+3. **Built together, run natively.** CMake compiles the hand-written and the generated code into one
+   program. While you play nothing is emulated or interpreted: the ISO is only read for data (a
+   level, streamed music and voices), and the PS2's hardware (DMA, GS, sound processor, memory card,
+   pads) is replaced by host code in `runtime/`.
+4. **A renderer of its own.** The 3D is not drawn by emulating the PS2's graphics chip: the renderer
+   (OpenGL, or Vulkan) reads what the game has decided to draw (its objects, world and effects) and
+   draws it natively. That is what makes widescreen, a wider HUD, high resolutions and the optional
+   modern lighting possible, while the game's own logic stays unchanged.
+5. **Proved against the original.** The oracle runs the original code in an R5900 interpreter beside
+   each port and compares the results bit for bit; the reference images and per-frame RAM hashes
+   catch any change in behaviour.
+
+The details are in [Architecture](docs/architecture.md) (the generated code, the region layer for
+the PAL disc), [Rendering](docs/rendering.md), [The oracle](docs/oracle.md) and the
+[Port inventory](docs/port-inventory.md), with every function listed in the
+[Port catalog](docs/catalog/README.md).
+
 ## Status
 
 **Every planet of the game is ported (0.3.0), and almost all of its code (0.4.0).** Every level's
