@@ -192,8 +192,9 @@ and knows nothing about Ratchet & Clank. It provides:
 - EE memory, the scratchpad and a **journal** (`runtime/kernel/ee_journal.h`) that records writes so
   a run of ported code can be undone; the renderer uses it to run passes a second time without
   changing the game's state (see [Rendering](rendering.md#level-of-detail));
-- the **coroutine** the game frame runs on (`runtime/ee/ee_thread.cpp`) and the EE's **timer 1**
-  (`ee_timer.cpp`);
+- the **coroutine** the game frame runs on (`runtime/ee/ee_thread.cpp`; its stack switch is the
+  platform's, by hand on x86-64 and AArch64: [Platforms](platforms.md#the-host-interface)) and the
+  EE's **timer 1** (`ee_timer.cpp`);
 - the **float rounding** of the EE (`runtime/ee/ps2_fpu.h`);
 - **VU0 and VU1** with the VIF and the GIF's output (`runtime/vu/`), running the translated programs
   or, for testing and fallbacks, the VU interpreter;

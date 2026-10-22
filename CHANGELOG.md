@@ -119,6 +119,8 @@ With Lighting on Original (the default) the picture is unchanged.
 
 ### Building
 - The CI also builds on Linux ARM64. It does not block yet: the ARM64 port is in progress (#78).
+- The game frame's coroutine switches stacks with a hand-written switch on x86-64 and ARM64 (from the R&C2
+  port), not `ucontext`, which macOS deprecates and Android lacks; `RAC1_COROUTINE=ucontext` compares.
 
 ## 0.4.0
 

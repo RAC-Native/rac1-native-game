@@ -38,6 +38,10 @@ These are stored in the repository, each with its licence next to it.
   `common/texture/texture_conversion.h` has them (ISC, © OpenGOAL Team).
 - `runtime/iop/snd989_stream.cpp`: the stream voices' volume formulas, after OpenGOAL's 989snd
   (`VoiceManager::MakeVolume` / `AdjustVolToGroup` in `vagvoice.cpp`; ISC, © OpenGOAL Team).
+- `src/platform/coroutine_x86_64.S`, `src/platform/coroutine_aarch64.S`, `src/platform/ctx_switch.h`: the
+  coroutine's hand-written context switch, adapted from the R&C2 port
+  [rac2-native-game](https://github.com/RAC-Native/rac2-native-game) (`src/platform/`, commit 2af0c6b; MIT,
+  © 2026 rac2-native contributors; that project's `src/platform/` derives from this one).
 - `src/formats/sound_bank.cpp`: the SPU pitch tables and the note-to-pitch conversion, the same as
   OpenGOAL's 989snd `util.cpp` (`NotePitchTable`, `sceSdNote2Pitch`; ISC, © OpenGOAL Team).
 

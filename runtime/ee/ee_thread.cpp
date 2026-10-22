@@ -12,7 +12,8 @@ namespace rac1 {
 namespace {
 // 64 MB of address space (committed as it is touched), a guard page below it: the game's frames
 // (the transliterations' register files, their callees) as deep as on the host's main stack.
-// The stack and the switches are the platform's (src/platform: ucontext on Linux, a fiber on Windows).
+// The stack and the switches are the platform's (src/platform: a hand-written switch on x86-64 and AArch64,
+// ucontext elsewhere, a fiber on Windows).
 constexpr size_t kStack = 64u << 20;
 
 struct Coroutine {
