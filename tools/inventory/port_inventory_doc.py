@@ -117,21 +117,16 @@ def describe(r, ev):
     return "; ".join(bits)
 
 
-def write(out, doc, a):
-    R, E, T, S = load(out)
-    notes = read_notes()
-    core = [r for r in R if r["image"] == "core"]
+def unique_functions(R, notes):
+    """The unique functions (every copy but the core's, grouped by body) and each one's state: (U, by_copy, ev)."""
     G = [r for r in R if r["image"] != "core"]
     by_uid = collections.defaultdict(list)
     for r in G:
         by_uid[r["uid"]].append(r)
-    fams = {r["family"] for r in G}
     ev = collections.defaultdict(set)
     for r in R:
         if r["runtime"]:
             ev[r["image"] + ":" + r["addr"]].update(x.strip() for x in r["runtime"].split(";"))
-
-    # each unique body: its state
     U = []
     for uid, rows in by_uid.items():
         rr = [r for r in rows if reached(r)]
@@ -151,6 +146,16 @@ def write(out, doc, a):
                       ported_somewhere=any(r["status"] == "ported" for r in rows),
                       runtime=sorted(set().union(*[ev.get(r["image"] + ":" + r["addr"], set()) for r in rows]))))
     by_copy = {r["image"] + ":" + r["addr"]: u for u in U for r in u["rows"]}
+    return U, by_copy, ev
+
+
+def write(out, doc, a):
+    R, E, T, S = load(out)
+    notes = read_notes()
+    core = [r for r in R if r["image"] == "core"]
+    G = [r for r in R if r["image"] != "core"]
+    fams = {r["family"] for r in G}
+    U, by_copy, ev = unique_functions(R, notes)
     st = collections.Counter(u["state"] for u in U)
     stb = collections.Counter()
     for u in U:
@@ -170,12 +175,15 @@ def write(out, doc, a):
       "both per copy and as **unique** functions (the same instructions, relocated fields compared through the overlay "
       "maps), the measure of the work.")
     w("")
+    w("Every function one by one (its port's file, its oracle batches, its status), every moby class, and the host code "
+      "that stands in for the original's hardware, libraries and kernel: the [Port catalog](catalog/README.md).")
+    w("")
     w("## How to regenerate")
     w("")
     w("```bash")
     w("tools/inventory/port_inventory.py tour            # headless runs of every level (RAC1_MOBY_LIST, TODO_PORT); ~1 h")
     w("tools/inventory/port_inventory.py scan --runtime assets/generated/inventory/tour")
-    w("tools/inventory/port_inventory.py doc             # this page")
+    w("tools/inventory/port_inventory.py doc             # this page and the catalog (docs/catalog/)")
     w("```")
     w("")
     w("The scan reads the disc through the generators' helpers (`tools/overlay_match`, `tools/codegen/ovlist.py`) and the "

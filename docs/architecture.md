@@ -117,6 +117,9 @@ almost all of them port one original function:
 | `// orig: (host) ...`, `// orig: (helper) ...` | host code standing in for something, or a helper split out of a ported function |
 | `// orig: (none) — enhancement ...` | PC-only code (the options pages and the enhancements) |
 
+The [Port catalog](catalog/README.md) lists every function of the game by these annotations: its port's
+file, or the host code that stands in for it.
+
 The rules a port follows are in [Overview](overview.md#the-porting-rules). In practice:
 
 - **Game state lives in EE memory, at its original address.** The port reads and writes it through
