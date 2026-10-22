@@ -4,12 +4,14 @@
 
 What is left to port, and what the game never runs. Every function of the boot executable's core, the boot module and the 19 level overlays is put in one of three groups: **ported** (the port runs it), **reached but not ported** (the game's code can get to it and the port has no port of it), **not connected** (nothing reaches it: cut content and dead code). Each level carries its own relinked copy of the engine, so the functions are counted both per copy and as **unique** functions (the same instructions, relocated fields compared through the overlay maps), the measure of the work.
 
+Every function one by one (its port's file, its oracle batches, its status), every moby class, and the host code that stands in for the original's hardware, libraries and kernel: the [Port catalog](catalog/README.md).
+
 ## How to regenerate
 
 ```bash
 tools/inventory/port_inventory.py tour            # headless runs of every level (RAC1_MOBY_LIST, TODO_PORT); ~1 h
 tools/inventory/port_inventory.py scan --runtime assets/generated/inventory/tour
-tools/inventory/port_inventory.py doc             # this page
+tools/inventory/port_inventory.py doc             # this page and the catalog (docs/catalog/)
 ```
 
 The scan reads the disc through the generators' helpers (`tools/overlay_match`, `tools/codegen/ovlist.py`) and the repository's ports; it writes `assets/generated/inventory/functions.csv` (one row per copy: status, reach, the Veldin counterpart, the unique body, callers, runtime evidence) and `edges.csv` (the call graph), both gitignored. `--census` adds the class placement counts of a census CSV (the development repository's `moby_class_census.csv`).

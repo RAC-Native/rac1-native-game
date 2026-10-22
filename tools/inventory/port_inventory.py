@@ -50,7 +50,8 @@ title's menus with RAC1_MOBY_LIST (the live mobys and the particle types with no
 Usage (repo root):
   tools/inventory/port_inventory.py scan [--runtime DIR] [--census CSV]   -> assets/generated/inventory/*.csv, summary.json
   tools/inventory/port_inventory.py tour [--out DIR] [--levels 0,1,...]   headless runs, one at a time (build/rac1-native)
-  tools/inventory/port_inventory.py doc                                   -> docs/port-inventory.md (from the scan)
+  tools/inventory/port_inventory.py doc                                   -> docs/port-inventory.md and docs/catalog/
+  tools/inventory/port_inventory.py catalog                               -> docs/catalog/ only (port_catalog.py)
 """
 import argparse
 import bisect
@@ -75,6 +76,7 @@ import region_view as rv  # noqa: E402
 ASSETS = Path(os.environ.get("RAC1_ASSETS") or ROOT / "assets")
 OUT = ASSETS / "generated/inventory"
 DOC = ROOT / "docs/port-inventory.md"
+CATALOG = ROOT / "docs/catalog"
 LEVELS = list(range(19))
 CORE, FRONT = "core", "front"
 CORE_END = 0x15EF00
@@ -314,6 +316,7 @@ def read_annotations():
                 if not got:
                     continue
                 partial = bool(PARTIAL.search(text))
+                desc = port_desc(text, lines, i)
                 name = None
                 head = line[:m.start()].strip()
                 if head:  # a trailing annotation: the declaration on its line
@@ -328,18 +331,53 @@ def read_annotations():
                         name = md.group(1)
                     break
                 # the functions a port covers inline: `(through 0x..., 0x...)`, `(inlined ... 0x...)`
+                gen = not str(p).startswith(str(ROOT / "src"))
                 for par in re.findall(r"\(([^)]*\b(?:through|inlined?|inline)\b[^)]*)\)", text):
                     for x in re.findall(r"0x([0-9a-fA-F]{6,8})", par):
                         e = ann.setdefault((got[0][0], int(x, 16)), {"files": set(), "name": None, "partial": True})
                         e["files"].add(rel)
                         e["inline"] = True
+                        e.setdefault("sites", []).append((rel, i + 1, int(gen), "", 1, "covered inline by %s (0x%x)" % (
+                            name or "its caller", got[0][1])))
                 for k in got:
                     e = ann.setdefault(k, {"files": set(), "name": None, "partial": True})
                     e["files"].add(rel)
+                    e.setdefault("sites", []).append((rel, i + 1, int(gen), name or "", int(partial), desc))
                     if name and (e["name"] is None or e["partial"] and not partial):
                         e["name"] = name  # (a whole function's name before a block's)
                     e["partial"] = e["partial"] and partial
     return ann
+
+
+QUOTED = re.compile(r'"[^"]*"')
+INSN = re.compile(r"\b(?:[ls][bhwdq]u?|l[wd]c1|s[wd]c1|lqc2|sqc2|lui|d?addiu?|d?addu|d?subu|dsll(?:32)?|dsrl(?:32)?|sll|srl|"
+                  r"sra|jalr?|jr|beql?|bnel?|or|ori|and|andi|xor|slti?u?|mfc1|mtc1|v[a-z]+\.[xyzw]+)\s+\$?[a-z][a-z0-9]?\b,")
+
+
+def port_desc(text, lines, i):
+    """Our own description of a port, for the catalog: the words after the addresses on its `// orig:` line, else the
+    comment block just above it (its first sentence; quoted text left out)."""
+    rest = re.sub(r"^(?:(?:L\d+|front):)?0x[0-9a-fA-F]{6,8}[,;.]?\s*", "", text.replace(" / ", " "))
+    while True:
+        r2 = re.sub(r"^(?:(?:L\d+|front):)?0x[0-9a-fA-F]{6,8}[,;.]?\s*", "", rest)
+        if r2 == rest:
+            break
+        rest = r2
+    rest = rest.lstrip("-\u2014: ").strip()
+    if not rest:
+        block = []
+        j = i - 1
+        while j >= 0 and lines[j].strip().startswith("//") and "orig:" not in lines[j] and len(block) < 4:
+            block.insert(0, lines[j].strip()[2:].strip())
+            j -= 1
+        rest = " ".join(block)
+    if len(INSN.findall(rest)) >= 2:  # (a comment that spells out the original's instructions: not for the catalog)
+        return ""
+    rest = QUOTED.sub("\u2026", rest)
+    m = re.search(r"\.(\s|$)", rest)
+    if m:
+        rest = rest[:m.start()]
+    return rest[:160].strip()
 
 
 REG_V = re.compile(r"(?:ovl_register_moby_fn|snd_register_callback)\(\s*(?:OVF\()?0x([0-9a-fA-F]+)")
@@ -392,21 +430,29 @@ def read_registrations():
         for m in CONST.finditer(p.read_text()):
             names[m.group(1)] = int(m.group(2))
     reg, cases, rows, todo = set(), set(), collections.defaultdict(list), collections.defaultdict(set)
+    where = collections.defaultdict(set)  # (scope, addr) -> the files that register it / handle it in a dispatch case
     for r in (ROOT / "src/game", ASSETS / "generated/src/game"):
         if not r.exists():
             continue
         for p in r.rglob("*.cpp"):
             t = p.read_text(errors="replace")
+            rel = str(p.relative_to(ROOT)) if str(p).startswith(str(ROOT / "src")) else \
+                "gen:" + str(p.relative_to(ASSETS / "generated"))
             for m in REG_V.finditer(t):
                 a = int(m.group(1), 16)
                 reg.add((CORE if a < CORE_END else 0, a))
+                where[(CORE if a < CORE_END else 0, a)].add(rel)
             for m in REG_L.finditer(t):
                 lv = names.get(m.group(1), int(m.group(1)) if m.group(1).isdigit() else None)
                 if lv is not None:
                     reg.add((lv, int(m.group(2), 16)))
+                    where[(lv, int(m.group(2), 16))].add(rel)
             for m in TODO.finditer(t):
                 todo[int(m.group(1), 16)].add(m.group(2))
-            cases |= dispatch_cases(p, t)
+            dc = dispatch_cases(p, t)
+            for k in dc:
+                where[k].add(rel)
+            cases |= dc
     for p in (ROOT / "src/game/ovl").glob("variants_l*.cpp"):
         lv = int(re.search(r"variants_l(\d+)", p.name).group(1))
         for line in p.read_text().split("\n"):
@@ -418,7 +464,7 @@ def read_registrations():
     if sp.exists():
         for m in SKYROW.finditer(sp.read_text()):
             sky.add((int(m.group(1)), int(m.group(2), 16)))
-    return reg, cases, rows, sky, todo
+    return reg, cases, rows, sky, todo, where
 
 
 class Maps:
@@ -995,11 +1041,13 @@ def cmd_scan(a):
         if s == 0 and x in fstarts and all(f.startswith("src/game/boot/") for f in e["files"]):
             d = ann.setdefault((FRONT, x), {"files": set(), "name": None, "partial": True})
             d["files"] |= e["files"]
+            d.setdefault("sites", []).extend(e.get("sites", ()))
             d["name"], d["partial"] = d["name"] or e["name"], d["partial"] and e["partial"]
             del ann[(s, x)]
-    reg, cases, rows, sky, todo = read_registrations()
+    reg, cases, rows, sky, todo, reg_where = read_registrations()
     vstarts = set(imgs[0].O.function_starts())
     reg = {(FRONT if s == 0 and x not in vstarts and x in fstarts else s, x) for s, x in reg}
+    reg_where = {(FRONT if s == 0 and x not in vstarts and x in fstarts else s, x): v for (s, x), v in reg_where.items()}
     M = Maps()
     # the extra starts: the ports' addresses, the maps' (both sides), the variants rows, the core's callers
     extra = collections.defaultdict(set)
@@ -1047,6 +1095,7 @@ def cmd_scan(a):
                 f.name = sorted(todo[v])[0]
     census = read_census(a.census) if a.census else None
     write_scan(imgs, allf, hints, todos, todo, census, other_region, ann, reg)
+    write_catalog_inputs(imgs, ann, reg_where, census)
 
 
 def read_census(path):
@@ -1099,6 +1148,42 @@ def write_scan(imgs, allf, hints, todos, todo_lits, census, other_region, ann, r
     (OUT / "summary.json").write_text(json.dumps(summary, indent=1))
 
 
+def write_catalog_inputs(imgs, ann, reg_where, census):
+    """The catalog's inputs (tools/inventory/port_catalog.py): ports.csv (every `// orig:` site and registration: the
+    function, the file, the line, our description) and classes.csv (each image's moby class table: class, update
+    function, the hook table's functions, the placements of the census)."""
+    with open(OUT / "ports.csv", "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["image", "addr", "file", "line", "generated", "kind", "name", "partial", "desc"])
+        out = set()
+        for (k, a), e in ann.items():
+            for rel, line, gen, name, partial, desc in e.get("sites", ()):
+                kind = "inline" if desc.startswith("covered inline by") else "orig"
+                out.add((img_name(k), "%08x" % a, rel, line, gen, kind, name, partial, desc))
+        for (k, a), files in reg_where.items():
+            if a not in imgs[k].funcs:
+                continue  # (a dispatch `case` that is a block of a function, not its start)
+            for rel in files:
+                gen = rel.startswith("gen:")
+                out.add((img_name(k), "%08x" % a, rel[4:] if gen else rel, 0, int(gen), "registered", "", 0, ""))
+        for row in sorted(out, key=lambda x: (x[0], x[1], x[2], x[3], x[5])):
+            w.writerow(row)
+    with open(OUT / "classes.csv", "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["image", "class", "update", "hooks", "placed"])
+        for k in [FRONT] + LEVELS:
+            img = imgs[k]
+            for c, fn, hooks in img.O.table_rows(3, 3):
+                hk = []
+                for i in range(6):  # (the hook table: six words, the next table 0x18 bytes on)
+                    x = img.O.data_word(hooks + 4 * i) if hooks else None
+                    if x is not None and x in img.funcs:
+                        hk.append("%08x" % x)
+                placed = census[k].get(c, 0) if census is not None and isinstance(k, int) else ""
+                w.writerow([img_name(k), c, "%08x" % fn if fn in img.funcs else "", ";".join(hk), placed])
+    print("[port_inventory] wrote %s, %s" % (OUT / "ports.csv", OUT / "classes.csv"))
+
+
 # ---- tour ---------------------------------------------------------------------------------------------------------
 
 TOUR = [  # (scenario, extra environment, frames): a walk forward, the wrench, the fire button, the pause menu's pages
@@ -1148,6 +1233,13 @@ def cmd_tour(a):
 def cmd_doc(a):
     import port_inventory_doc  # noqa: E402  (the document's text)
     port_inventory_doc.write(OUT, Path(a.out), a)
+    if a.catalog:
+        cmd_catalog(a)
+
+
+def cmd_catalog(a):
+    import port_catalog  # noqa: E402  (docs/catalog/)
+    port_catalog.write(OUT, Path(a.catalog_out))
 
 
 def main():
@@ -1166,8 +1258,12 @@ def main():
     t.add_argument("--no-boot", dest="boot", action="store_false", help="leave out the boot module's title run")
     d = sub.add_parser("doc")
     d.add_argument("--out", default=str(DOC))
+    d.add_argument("--catalog-out", default=str(CATALOG))
+    d.add_argument("--no-catalog", dest="catalog", action="store_false", help="this page only, not docs/catalog/")
+    c = sub.add_parser("catalog")
+    c.add_argument("--catalog-out", default=str(CATALOG))
     a = ap.parse_args()
-    {"scan": cmd_scan, "tour": cmd_tour, "doc": cmd_doc}[a.cmd](a)
+    {"scan": cmd_scan, "tour": cmd_tour, "doc": cmd_doc, "catalog": cmd_catalog}[a.cmd](a)
 
 
 if __name__ == "__main__":

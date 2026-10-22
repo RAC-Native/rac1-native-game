@@ -181,6 +181,9 @@ For contributors, and for reverse-engineering and decompilation people:
 - [Decisions](docs/decisions.md): the project's architectural decisions.
 - [Architecture](docs/architecture.md): the source tree, the layers, the `// orig:` annotations, the
   per-level overlays.
+- [Port inventory](docs/port-inventory.md): what is ported, what is left, what the game never runs.
+- [Port catalog](docs/catalog/README.md): every function and moby class of the game, one by one, with its
+  port and its oracle batches, and the host code that stands in for the PS2's hardware and libraries.
 - [Game logic](docs/game-logic.md): the main loop, levels, mobys, the hero, the camera, cutscenes.
 - [Rendering](docs/rendering.md): how a frame is drawn by the native renderer (the MRP).
 - [Vulkan](docs/vulkan.md): the experimental Vulkan backend of the same renderer.
