@@ -65,6 +65,10 @@ thread runs the FPU in a non-default rounding mode, see
   always built on the player's own machine, can afford. The float rules stay: `-ffp-contract=off`
   keeps `a * b + c` two roundings even on a CPU with FMA (the PS2 has none), and nothing like
   `-ffast-math`. See [Threads and the cores](#threads-and-the-cores).
+- `RAC1_GEN_DEBUG_INFO` (off by default) compiles the generated sources with debug info. Off, they are
+  built with `-g0`: the same machine code, about a third less time to compile them, less memory per
+  compile job and a far smaller program (about 140 MB instead of 335 MB). Turn it on to step into the
+  generated `*_tr.cpp` files in a debugger.
 
 GLFW, GLM, Dear ImGui, TinyGLTF and miniaudio are downloaded by CMake at configure time, each pinned
 to a release and checked against its SHA-256 (`cmake/dependencies.cmake`, `THIRD_PARTY_NOTICES.md`).

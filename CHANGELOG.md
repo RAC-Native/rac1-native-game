@@ -118,6 +118,9 @@ With Lighting on Original (the default) the picture is unchanged.
   help says (#61).
 
 ### Building
+- The generated code is compiled without debug info (the same machine code): a faster setup, less
+  memory per compile job and a program of about 140 MB instead of 335 MB. `RAC1_GEN_DEBUG_INFO=ON`
+  keeps it for debugging.
 - The CI also builds on Linux ARM64. It does not block yet: the ARM64 port is in progress (#78).
 
 ## 0.4.0
