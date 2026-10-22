@@ -21,6 +21,7 @@
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_world_scene.h>
 #include <game/render/render_toggles.h>
+#include <game/render/render_view.h>
 #include <game/ovl/pause_menu.h>
 #include <game/ovl/pause_menu_pages.h>
 #include <game/ovl/particles_draw.h>
@@ -36,6 +37,7 @@
 #include <runtime/kernel/bootstrap.h>
 #include <runtime/ee/ee_thread.h>
 #include <runtime/ee/ee_timer.h>
+#include <profiler/host_profiler.h>
 
 namespace rac1 {
 
@@ -311,6 +313,7 @@ void zones_update() {
 // the host's world renderers draw the world (and the VU1 world programs are not run). With the MRP world the chain is kept
 // and its range noted: the MRP decodes it (mrp_world_scene.h), the GS replica skips it. `kind`: 0 tfrag, 1 tie, 2 shrub, -1 the sky.
 void world_pass(void (*pass)(), int kind) {
+    RAC1_PROF_ZONE(kGameWorldPasses);
     static const bool keep_env = std::getenv("RAC1_WORLD_CHAIN") != nullptr;
     const bool keep = keep_env || g_world_faithful || g_world_mrp || g_world_chain_forced;  // (RAC1_WORLD_FAITHFUL / the debug menu: the chain is the world's drawing)
     const uint32_t cur = lwu(OV(0x001611c0));
@@ -427,6 +430,7 @@ static void draw_list_block_dc80() { draw_list_block(0); }
 static void draw_list_block_de80() { draw_list_block(1); }
 // (host) the block run as a shadow first in a widened view (the memory put back), then for real
 static void draw_list_block_run(int list) {
+    RAC1_PROF_ZONE(kGameEffects);
     const uint32_t cur = lwu(OV(0x001611c0));
     mrp_lod_list_shadow(list, list == 0 ? draw_list_block_dc80 : draw_list_block_de80, cur);
     draw_list_block(list);
@@ -438,12 +442,14 @@ static void draw_list_block_run(int list) {
 // here), then the profiler marks of the DMA waits and the fog for the next frame.
 // orig: 0x001f85b8
 void render_frame() {
+    RAC1_PROF_ZONE(kGameRender);  // (host: the profiler's sub-stages of the game code, nothing of the game's)
     auto flags = [] { return lwu(OV(0x0015f3f4)); };
     constexpr OvConst<0x00169ff0u> EN{};  // the render enables (render_enables_init)
     const uint32_t lv = lwu(OV(0x0016051c));
     if (lv == 0 || lh(lv + 4) != 0 || (flags() & 1) == 0 || lw(EN + 8) == 0 || lw(OV(0x0016c08c)) != 0) sub_00200fd8();
     mrp_lod_frame_begin();  // (host: testing only, RAC1_WIDEN_REF)
     mrp_fx_frame_begin();   // (host)
+    render_view_layers_begin();  // (host)
     render_view_setup();
     moby_anim_lerp_slots_validate();
     zones_update();
@@ -481,12 +487,14 @@ void render_frame() {
     if ((flags() & 0x10) != 0) {
         if (g_moby_vu1_pass) {
             mrp_lod_moby_shadow(moby_pass);  // (the MRP's LOD slider / widened view, the memory put back)
+            RAC1_PROF_ZONE(kGameMobyPass);
             moby_pass();
         }
         else TODO_PORT(0x00250038, "mobys (VU1): the host's model drawer instead")();
     }
     packet_mark(0x02080000);
     {  // (host: the widened view's 3D effects - particles, glows, the canopy shine, sparkles - run first as a shadow, the memory put back)
+        RAC1_PROF_ZONE(kGameEffects);
         const uint32_t ecur = lwu(OV(0x001611c0));
         mrp_lod_effects_shadow(render_frame_overlay, ecur);
         render_frame_overlay();
@@ -508,6 +516,7 @@ void render_frame() {
         }
         prof_mark_end(OV(0x0015f3c0), 10);
     }
+    const int prof_end = prof::begin(prof::kGameWorldEnd);
     vif0_send(0x00100ae0);  // the VU0 micro programs
     FlushCache(0);
     swc1(OV(0x0015f5d4), fpu_div(int_to_float(static_cast<int32_t>(host_rcnt1())), lw(0x0015ed80) != 0 ? 11520.0f : 9600.0f));
@@ -552,6 +561,7 @@ void render_frame() {
         }
         prof_mark(OV(0x0015f3e8), 3);
     }
+    prof::end(prof_end);
     fog_setup();
     sw(OV(0x0015f608), 0);
 }

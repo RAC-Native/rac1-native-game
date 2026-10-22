@@ -1,5 +1,7 @@
 #define VOLK_IMPLEMENTATION
 #include <runtime/vk/vk_context.h>
+#include <runtime/vk/vk_shaders.h>
+#include <profiler/host_profiler.h>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -7,7 +9,11 @@
 #include <backends/imgui_impl_vulkan.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
+#include <map>
+#include <mutex>
+#include <string>
 #include <cstdlib>
 #include <cstring>
 #include <tuple>
@@ -17,7 +23,7 @@ namespace rac1::vk {
 
 namespace {
 
-constexpr VkDeviceSize kRingBufferSize = 64ull * 1024ull * 1024ull;  // 64 MB per frame
+constexpr VkDeviceSize kRingBufferSize = 32ull * 1024ull * 1024ull;  // 32 MB per frame (a frame used about 6 at 3840x1080; more: a buffer of its own, freed with the frame)
 
 struct SamplerKey {
     VkFilter min_f;
@@ -113,7 +119,36 @@ struct Context {
     GpuImage dummy_dcube{};
 
     std::vector<void (*)()> shutdown_callbacks;
+
+    // the profiler's GPU timestamps (prof::GpuApi): one pool, `prof_per_slot` a frame slot; a timestamp asked for while no
+    // command buffer records (between a frame's present and the next one's start) is written at the next one's start
+    VkQueryPool prof_pool = VK_NULL_HANDLE;
+    int prof_per_slot = 0;
+    double ts_period_ns = 1.0;
+    uint64_t ts_mask = ~0ull;
+    std::vector<uint32_t> prof_pending;
+    std::vector<uint8_t> prof_deferred;  // (per query: written late, at the next frame's start)
+    bool has_memory_budget = false;
+    VkDeviceSize ring_peak = 0;  // (the most of a frame ring a frame used: the profiler's memory view)
+    bool has_host_query_reset = false;
 } g_ctx;
+
+// The renderer's allocations, by use (the profiler's memory view)
+struct AllocInfo {
+    const char* use;
+    bool image;
+    VkDeviceSize bytes;
+};
+std::mutex g_alloc_mutex;
+std::map<VkDeviceMemory, AllocInfo> g_allocs;
+void alloc_note(VkDeviceMemory m, const char* use, bool image, VkDeviceSize bytes) {
+    std::lock_guard<std::mutex> lk(g_alloc_mutex);
+    g_allocs[m] = AllocInfo{use, image, bytes};
+}
+void alloc_forget(VkDeviceMemory m) {
+    std::lock_guard<std::mutex> lk(g_alloc_mutex);
+    g_allocs.erase(m);
+}
 
 VkDescriptorPool create_transient_pool() {
     VkDescriptorPoolSize sizes[] = {
@@ -412,6 +447,115 @@ void create_fallback_textures() {
     destroy_buffer_now(stage);
 }
 
+// ---- the profiler's GPU side (prof::GpuApi) ----
+bool prof_alloc(int slots, int per_slot) {
+    if (g_ctx.device == VK_NULL_HANDLE || !g_ctx.has_host_query_reset || g_ctx.dev_props.limits.timestampComputeAndGraphics != VK_TRUE) return false;
+    if (g_ctx.prof_pool != VK_NULL_HANDLE) return true;
+    VkQueryPoolCreateInfo qci{};
+    qci.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+    qci.queryType = VK_QUERY_TYPE_TIMESTAMP;
+    qci.queryCount = static_cast<uint32_t>(slots * per_slot);
+    if (vkCreateQueryPool(g_ctx.device, &qci, nullptr, &g_ctx.prof_pool) != VK_SUCCESS) return false;
+    vkResetQueryPool(g_ctx.device, g_ctx.prof_pool, 0, qci.queryCount);
+    g_ctx.prof_per_slot = per_slot;
+    g_ctx.prof_deferred.assign(qci.queryCount, 0);
+    return true;
+}
+void prof_slot_reset(int slot) {
+    if (g_ctx.prof_pool == VK_NULL_HANDLE) return;
+    const uint32_t first = static_cast<uint32_t>(slot * g_ctx.prof_per_slot);
+    // (a timestamp of this slot still waiting for a command buffer: dropped with the slot)
+    std::erase_if(g_ctx.prof_pending, [&](uint32_t q) { return q >= first && q < first + static_cast<uint32_t>(g_ctx.prof_per_slot); });
+    vkResetQueryPool(g_ctx.device, g_ctx.prof_pool, first, static_cast<uint32_t>(g_ctx.prof_per_slot));
+}
+void prof_write(int slot, int q) {
+    if (g_ctx.prof_pool == VK_NULL_HANDLE) return;
+    const uint32_t id = static_cast<uint32_t>(slot * g_ctx.prof_per_slot + q);
+    const bool now = g_ctx.in_frame && g_ctx.cmd != VK_NULL_HANDLE;
+    if (now) vkCmdWriteTimestamp(g_ctx.cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, g_ctx.prof_pool, id);
+    else g_ctx.prof_pending.push_back(id);
+    g_ctx.prof_deferred[id] = now ? 0 : 1;
+}
+bool prof_read(int slot, int n, uint64_t* ns) {
+    if (g_ctx.prof_pool == VK_NULL_HANDLE || n <= 0) return false;
+    std::vector<uint64_t> v(static_cast<size_t>(n) * 2);
+    const uint32_t first = static_cast<uint32_t>(slot * g_ctx.prof_per_slot);
+    // (the last one first: the others were written before it)
+    uint64_t last[2] = {};
+    if (vkGetQueryPoolResults(g_ctx.device, g_ctx.prof_pool, first + static_cast<uint32_t>(n - 1), 1, sizeof last, last, sizeof last,
+                              VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT) != VK_SUCCESS || last[1] == 0)
+        return false;
+    vkGetQueryPoolResults(g_ctx.device, g_ctx.prof_pool, first, static_cast<uint32_t>(n), v.size() * 8, v.data(), 16,
+                          VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+    bool in_frame_seen = false;
+    for (int i = 0; i < n; ++i) {
+        // (one not written - its command buffer never submitted -: the one before's, an empty segment. One asked for after the
+        // frame's present, written at the next frame's start: the one before's too - the GPU's idle wait for the next frame is
+        // not a stage's, as with OpenGL, whose queries after the swap run when the GPU reaches them)
+        const bool there = v[static_cast<size_t>(i) * 2 + 1] != 0;
+        const bool late = g_ctx.prof_deferred[first + static_cast<uint32_t>(i)] != 0;
+        const uint64_t t = v[static_cast<size_t>(i) * 2] & g_ctx.ts_mask;
+        ns[i] = there && !(late && in_frame_seen) ? static_cast<uint64_t>(static_cast<double>(t) * g_ctx.ts_period_ns) : (i > 0 ? ns[i - 1] : 0);
+        if (!late) in_frame_seen = true;
+    }
+    return true;
+}
+double prof_now_ms() {
+    using namespace std::chrono;
+    return duration<double, std::milli>(steady_clock::now().time_since_epoch()).count();  // (no calibrated clock: the trace's GPU line approximate)
+}
+void prof_resources(prof::Resources* r) {
+    r->api = "Vulkan";
+    r->gl_renderer = g_ctx.dev_props.deviceName;
+    char drv[64];
+    std::snprintf(drv, sizeof drv, "Vulkan %u.%u, driver 0x%x", VK_API_VERSION_MAJOR(g_ctx.dev_props.apiVersion), VK_API_VERSION_MINOR(g_ctx.dev_props.apiVersion),
+                  g_ctx.dev_props.driverVersion);
+    r->gl_vendor = drv;
+    r->vk_budget = false;
+    if (!g_ctx.has_memory_budget || g_ctx.phys_dev == VK_NULL_HANDLE) return;
+    VkPhysicalDeviceMemoryBudgetPropertiesEXT budget{};
+    budget.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT;
+    VkPhysicalDeviceMemoryProperties2 mp{};
+    mp.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
+    mp.pNext = &budget;
+    vkGetPhysicalDeviceMemoryProperties2(g_ctx.phys_dev, &mp);
+    r->vk_heap_size = r->vk_heap_budget = r->vk_heap_usage = 0;
+    for (uint32_t i = 0; i < mp.memoryProperties.memoryHeapCount; ++i) {
+        if ((mp.memoryProperties.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) == 0) continue;
+        r->vk_heap_size += mp.memoryProperties.memoryHeaps[i].size;
+        r->vk_heap_budget += budget.heapBudget[i];
+        r->vk_heap_usage += budget.heapUsage[i];
+    }
+    r->vk_budget = true;
+}
+void prof_scan(std::vector<prof::GlOwnerRow>* out) {
+    std::map<std::string, prof::GlOwnerRow> rows;
+    {
+        std::lock_guard<std::mutex> lk(g_alloc_mutex);
+        for (const auto& [m, a] : g_allocs) {
+            prof::GlOwnerRow& r = rows[a.use];
+            r.owner = a.use;
+            if (a.image) {
+                ++r.textures;
+                r.tex_bytes += a.bytes;
+            } else {
+                ++r.buffers;
+                r.buf_bytes += a.bytes;
+            }
+        }
+    }
+    for (auto& [k, r] : rows) {
+        if (k.rfind("frame rings", 0) == 0) {
+            char b[96];
+            std::snprintf(b, sizeof b, "frame rings (vertices, uniforms, uploads; peak use %.1f MB a frame)", static_cast<double>(g_ctx.ring_peak) / (1024.0 * 1024.0));
+            r.owner = b;
+        }
+        out->push_back(std::move(r));
+    }
+    std::sort(out->begin(), out->end(), [](const prof::GlOwnerRow& a, const prof::GlOwnerRow& b) { return a.tex_bytes + a.buf_bytes > b.tex_bytes + b.buf_bytes; });
+}
+const prof::GpuApi kProfApi = {"Vulkan", prof_alloc, prof_slot_reset, prof_write, prof_read, prof_now_ms, prof_resources, prof_scan};
+
 }  // namespace
 
 bool init(GLFWwindow* window, bool vsync, bool headless) {
@@ -420,6 +564,10 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     g_ctx.window = window;
     g_ctx.vsync = vsync;
     g_ctx.headless = headless;
+    if (!shaders::kAvailable) {
+        std::fprintf(stderr, "[vk] this build has no Vulkan shaders (no glslc / glslangValidator when it was built)\n");
+        return false;
+    }
 
     if (volkInitialize() != VK_SUCCESS) {
         std::fprintf(stderr, "[vk] volkInitialize failed (no Vulkan loader found)\n");
@@ -570,6 +718,19 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
         enabled_dexts.push_back(VK_EXT_PROVOKING_VERTEX_EXTENSION_NAME);
         g_ctx.has_provoking_vertex = true;
     }
+    if (has_ext(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME)) {  // (the profiler's GPU memory)
+        enabled_dexts.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+        g_ctx.has_memory_budget = true;
+    }
+    {  // (the profiler's timestamps reset from the host: Vulkan 1.2's hostQueryReset)
+        VkPhysicalDeviceVulkan12Features f12{};
+        f12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+        VkPhysicalDeviceFeatures2 f2{};
+        f2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        f2.pNext = &f12;
+        vkGetPhysicalDeviceFeatures2(g_ctx.phys_dev, &f2);
+        g_ctx.has_host_query_reset = f12.hostQueryReset == VK_TRUE;
+    }
 
     VkPhysicalDeviceProvokingVertexFeaturesEXT prov_feat{};
     prov_feat.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROVOKING_VERTEX_FEATURES_EXT;
@@ -591,6 +752,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     v12_feat.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
     v12_feat.pNext = &v13_feat;
     v12_feat.scalarBlockLayout = VK_TRUE;
+    v12_feat.hostQueryReset = g_ctx.has_host_query_reset ? VK_TRUE : VK_FALSE;
 
     VkPhysicalDeviceFeatures2 feat2{};
     feat2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
@@ -722,6 +884,16 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     ensure_main_targets(init_w, init_h);
     create_fallback_textures();
 
+    g_ctx.ts_period_ns = static_cast<double>(g_ctx.dev_props.limits.timestampPeriod);
+    {
+        uint32_t qf_count = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(g_ctx.phys_dev, &qf_count, nullptr);
+        std::vector<VkQueueFamilyProperties> qfs(qf_count);
+        vkGetPhysicalDeviceQueueFamilyProperties(g_ctx.phys_dev, &qf_count, qfs.data());
+        const uint32_t bits = g_ctx.queue_family < qf_count ? qfs[g_ctx.queue_family].timestampValidBits : 64;
+        g_ctx.ts_mask = bits >= 64 ? ~0ull : ((1ull << bits) - 1);
+    }
+    prof::set_gpu_api(&kProfApi);
     g_ctx.active = true;
     std::printf("[vk] Vulkan 1.3 initialized on %s (%dx%d, depth=%d, clip_control=%d)\n",
                 g_ctx.dev_props.deviceName, init_w, init_h, static_cast<int>(g_ctx.depth_format),
@@ -754,6 +926,9 @@ void shutdown() {
         destroy_image_now(g_ctx.scaled_depth);
 
         destroy_swapchain();
+        if (g_ctx.prof_pool != VK_NULL_HANDLE) vkDestroyQueryPool(g_ctx.device, g_ctx.prof_pool, nullptr);
+        g_ctx.prof_pool = VK_NULL_HANDLE;
+        prof::set_gpu_api(nullptr);
 
         for (uint32_t i = 0; i < kFramesInFlight; ++i) {
             FrameData& f = g_ctx.frames[i];
@@ -811,7 +986,13 @@ void begin_frame(int win_w, int win_h, float clear_r, float clear_g, float clear
     win_h = std::max(1, win_h);
 
     FrameData& f = g_ctx.frames[g_ctx.frame_idx];
-    vkWaitForFences(g_ctx.device, 1, &f.in_flight, VK_TRUE, UINT64_MAX);
+    {
+        // (the frame slot's fence: the GPU still on the frame before last - the driver's queue full, as an OpenGL swap that
+        // blocks: the profiler's Present stage, a wait)
+        RAC1_PROF_ZONE(kPresent);
+        vkWaitForFences(g_ctx.device, 1, &f.in_flight, VK_TRUE, UINT64_MAX);
+    }
+    g_ctx.ring_peak = std::max(g_ctx.ring_peak, f.ring_offset);
 
     for (GpuBuffer& b : f.deferred_buffers) destroy_buffer_now(b);
     f.deferred_buffers.clear();
@@ -850,6 +1031,8 @@ void begin_frame(int win_w, int win_h, float clear_r, float clear_g, float clear
     cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(f.cmd, &cbbi);
+    for (uint32_t q : g_ctx.prof_pending) vkCmdWriteTimestamp(f.cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, g_ctx.prof_pool, q);
+    g_ctx.prof_pending.clear();
 
     g_ctx.cmd = f.cmd;
     g_ctx.in_frame = true;
@@ -1264,6 +1447,10 @@ bool create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryProperty
         return false;
     }
     vkBindBufferMemory(g_ctx.device, out.buffer, out.memory, 0);
+    alloc_note(out.memory, size == kRingBufferSize ? "frame rings (vertices, uniforms, uploads)"
+                           : usage == VK_BUFFER_USAGE_TRANSFER_SRC_BIT || usage == VK_BUFFER_USAGE_TRANSFER_DST_BIT ? "staging, readbacks"
+                           : (props & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) ? "buffers (meshes, tables)" : "buffers in system memory",
+               false, mr.size);
     out.size = size;
     out.mapped = nullptr;
     if (map && (props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) {
@@ -1281,7 +1468,10 @@ void destroy_buffer_now(GpuBuffer& buf) {
         vkUnmapMemory(g_ctx.device, buf.memory);
     }
     if (buf.buffer != VK_NULL_HANDLE) vkDestroyBuffer(g_ctx.device, buf.buffer, nullptr);
-    if (buf.memory != VK_NULL_HANDLE) vkFreeMemory(g_ctx.device, buf.memory, nullptr);
+    if (buf.memory != VK_NULL_HANDLE) {
+        alloc_forget(buf.memory);
+        vkFreeMemory(g_ctx.device, buf.memory, nullptr);
+    }
     buf = GpuBuffer{};
 }
 
@@ -1381,6 +1571,9 @@ bool create_image(uint32_t w, uint32_t h, VkFormat format, VkImageUsageFlags usa
         return false;
     }
     vkBindImageMemory(g_ctx.device, out.image, out.memory, 0);
+    alloc_note(out.memory, (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) ? "depth buffers, shadow maps"
+                           : (usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) ? "colour targets (frame, effects)" : "textures",
+               true, mr.size);
 
     VkImageViewCreateInfo vci{};
     vci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -1401,6 +1594,11 @@ bool create_image(uint32_t w, uint32_t h, VkFormat format, VkImageUsageFlags usa
         return false;
     }
 
+    if ((usage & VK_IMAGE_USAGE_SAMPLED_BIT) && (aspect & VK_IMAGE_ASPECT_DEPTH_BIT) && (aspect & VK_IMAGE_ASPECT_STENCIL_BIT) &&
+        vci.subresourceRange.aspectMask != VK_IMAGE_ASPECT_DEPTH_BIT) {
+        vci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        vkCreateImageView(g_ctx.device, &vci, nullptr, &out.depth_view);
+    }
     out.width = w;
     out.height = h;
     out.layers = layers;
@@ -1417,8 +1615,12 @@ void destroy_image_now(GpuImage& img) {
         return;
     }
     if (img.view != VK_NULL_HANDLE) vkDestroyImageView(g_ctx.device, img.view, nullptr);
+    if (img.depth_view != VK_NULL_HANDLE) vkDestroyImageView(g_ctx.device, img.depth_view, nullptr);
     if (img.image != VK_NULL_HANDLE) vkDestroyImage(g_ctx.device, img.image, nullptr);
-    if (img.memory != VK_NULL_HANDLE) vkFreeMemory(g_ctx.device, img.memory, nullptr);
+    if (img.memory != VK_NULL_HANDLE) {
+        alloc_forget(img.memory);
+        vkFreeMemory(g_ctx.device, img.memory, nullptr);
+    }
     img = GpuImage{};
 }
 
@@ -1520,6 +1722,30 @@ void blit_image(GpuImage& src, int sx0, int sy0, int sx1, int sy1, GpuImage& dst
         transition_image(cb, src,
                          src_old == VK_IMAGE_LAYOUT_UNDEFINED ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : src_old);
         transition_image(cb, dst, dst_final_layout);
+    };
+    if (g_ctx.in_frame && g_ctx.cmd != VK_NULL_HANDLE) {
+        end_rendering();
+        record(g_ctx.cmd);
+    } else {
+        submit_immediate(record);
+    }
+}
+
+void copy_image(GpuImage& src, int sx, int sy, GpuImage& dst, int dx, int dy, int w, int h, VkImageAspectFlags aspect,
+                VkImageLayout src_final, VkImageLayout dst_final) {
+    if (src.image == VK_NULL_HANDLE || dst.image == VK_NULL_HANDLE || w <= 0 || h <= 0) return;
+    auto record = [&](VkCommandBuffer cb) {
+        transition_image(cb, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        transition_image(cb, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        VkImageCopy c{};
+        c.srcSubresource = {aspect, 0, 0, 1};
+        c.srcOffset = {sx, sy, 0};
+        c.dstSubresource = {aspect, 0, 0, 1};
+        c.dstOffset = {dx, dy, 0};
+        c.extent = {static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1};
+        vkCmdCopyImage(cb, src.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c);
+        transition_image(cb, src, src_final);
+        transition_image(cb, dst, dst_final);
     };
     if (g_ctx.in_frame && g_ctx.cmd != VK_NULL_HANDLE) {
         end_rendering();

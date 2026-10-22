@@ -1,4 +1,5 @@
 #include <game/render/render_toggles.h>
+#include <profiler/host_profiler.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/render/sky_render.h>
 #include <game/render/render_view.h>
@@ -151,7 +152,9 @@ void sky_draw() {
         if (g_sky_vao == 0) {
             glGenVertexArrays(1, &g_sky_vao);
             glGenBuffers(1, &g_sky_vbo);
+            rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &g_sky_vbo, "Sky (legacy)");
             glGenBuffers(1, &g_sky_ebo);
+            rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &g_sky_ebo, "Sky (legacy)");
         }
 
         glBindVertexArray(g_sky_vao);
@@ -178,6 +181,7 @@ void sky_draw() {
         for (const auto& tex : g_decoded_sky.textures) {
             GLuint tex_id = 0;
             glGenTextures(1, &tex_id);
+            rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &tex_id, "Sky (legacy)");
             glBindTexture(GL_TEXTURE_2D, tex_id);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);

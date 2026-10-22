@@ -1,4 +1,5 @@
 #include <runtime/gs/static_geom_cache.h>
+#include <profiler/host_profiler.h>
 #include <glad/glad.h>
 
 namespace rac1 {
@@ -34,7 +35,9 @@ void StaticMergedGeom::upload() {
     if (vao == 0) {
         glGenVertexArrays(1, &vao);
         glGenBuffers(1, &vbo);
+        rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &vbo, "GS static geometry cache");
         glGenBuffers(1, &ebo);
+        rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &ebo, "GS static geometry cache");
     }
     glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);

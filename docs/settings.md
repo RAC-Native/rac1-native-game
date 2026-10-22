@@ -47,18 +47,41 @@ headless runs) the row is the game's own Mono / Stereo.
 | Render Resolution | x0.50 to x2.00 of the window's, in steps of 0.25 | x1.00 |
 | Aspect Ratio | 4:3 Original, 16:9, Fill Screen | 4:3 Original |
 | Fit to Screen | Black Bars, Stretch | Black Bars |
+| HUD | 4:3 Original, 16:9, 21:9, 32:9, Fit Screen | 4:3 Original |
 | Field of View | x0.75 to x1.50 of the original's | x1.00 |
 | Level of Detail | Original, Low, Medium, High, Maximum | Original |
 | Lighting | Original, Low, Medium, High | Original |
 | Shadow Strength | 50, 60, 70, 80, 90, 100 (%) | 70 |
-| Sun Rays | Off, Low, High | Off |
+| Sun Rays | Off, Low, Medium, High (more quality and cost each step; Medium is the Low of 0.4.x, High its High, finer) | Off |
 | Shadow Distance | Low, Medium, High, Maximum | Maximum |
 | Dynamic Shadows | Off, On | Off |
 | Secondary Lights | Off, Game's, All | All |
 | Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2 | Off |
+| AO Intensity | 25, 50, 75, 100, 125 (%) | 75 |
 | Texture Detail | Full, Original (PS2) | Full |
+| Renderer | OpenGL, Vulkan (experimental; from the next start, see [Vulkan](vulkan.md)) | OpenGL |
 
-- **The frame-rate cap** only paces the picture. The game itself always runs at 60 frames a second.
+- **The frame-rate cap** only paces the picture. The game itself always runs at 60 frames a second,
+  and the port draws one picture per game frame (there is no interpolation between them): a host
+  frame that comes before the next game frame shows nothing new and is not presented. So the picture
+  changes 60 times a second at most whatever the cap: 120, 144, 240 and Unlimited all present 60
+  pictures a second, on a precise 1/60 s slot (Unlimited too; up to 0.4.0 its presents came at
+  the end of each frame's work, unevenly). Only 30 lowers it. On a 120 / 240 Hz display each picture is
+  simply held for 2 / 4 refreshes; a counter that reads 60 (or a 240 Hz display that shows 60) is the
+  game's rate, not V-Sync. Above 60 the cap applies only while the debug menu holds the game.
+- **V-Sync** sets the swap interval: On waits for the display's refresh (no tearing), Off does not.
+  On Wayland (KDE Plasma, GNOME) the swap interval is always 0, because an interval of 1 stops the
+  game while its window is not shown; the compositor shows whole frames anyway, so Off never tears
+  there and the row changes nothing while the game runs (with Unlimited it paces the held game at the
+  display's refresh). Mesa's EGL has no tearing support on Wayland. On X11 and Windows, Off can tear;
+  the driver can override the game's choice (Mesa: `vblank_mode=0` forces it off, `vblank_mode=3` forces it
+  on; AMD / NVIDIA control panels). The log says what was set and what the swaps do:
+  `[display] start: V-Sync off, swap interval 0 on Wayland (EGL) ...` at the start and at each
+  change of the display settings, then `[display] presents: 60.0 a second; between them median
+  16.67 ms ...; the swap waited ... ms` four seconds later (a swap that waits about a refresh each
+  time means V-Sync is in effect, whatever was asked). The debug menu's stats overlay counts
+  presents too (up to 0.4.0 it counted the host loop's turns, about twice the pictures shown with the
+  cap Unlimited: 120 for 60).
 - **Monitor** chooses which screen the window is on: fullscreen goes to it at its own mode, and in
   window mode the window is centred on it. GLFW cannot place a window on Wayland, where the
   compositor decides, so the window mode half does nothing there. The choice is kept by the
@@ -68,6 +91,18 @@ headless runs) the row is the game's own Mono / Stereo.
 - **Aspect Ratio** Fill Screen widens the 3D to the window's shape without changing what the game
   sees; **Fit to Screen** applies when the chosen shape is not the window's. See
   [Rendering](rendering.md#widescreen-and-render-scale).
+- **HUD** spreads the HUD over a wider area when the 3D is widened (Aspect Ratio 16:9 or Fill Screen).
+  4:3 Original keeps it on the original's 4:3 frame in the middle; 16:9, 21:9 (64:27, an ultrawide
+  2560 x 1080's) and 32:9 spread it over a box of that shape centred in the view; Fit Screen over the
+  view's whole width. The box is never wider than the view (16:9 on a 16:9 view is Fit Screen). On a
+  32:9 screen, 16:9 or 21:9 keeps the HUD near the middle of the view; Fit Screen puts it at the far
+  edges. Only the elements the game anchors to a side move, each by the same amount, toward its
+  side: the ammo and the weapon, the quick select (and Gadgebot's commands), the bottom left slot on
+  the left; the bolts, the air meter, the Morph-o-Ray, the Metal Detector and the bottom right slot on
+  the right. The elements the game centres stay in the middle (health, the help panel, the help
+  messages, subtitles, the bosses' bars in the top middle slot). The game's own HUD layout decides:
+  each of its 13 slots is aligned left, right or centred (see [Rendering](rendering.md#the-hud-in-a-widened-view)).
+  Menus, the pause screen, the Vendor, cards, pictures, fades and the letterbox are not changed.
 - **The full frame** is always shown, everything the PS2 drew, edges included. Until 0.4 an Overscan
   row (TV, the default, or Full Frame) could hide a thin strip at the left, right and top edges, as a
   TV of the time did; the row was removed. The one thing the game itself draws there that a TV hid, a
@@ -180,7 +215,7 @@ To try the panel without a new release: `RAC1_UPDATE_FAKE=0.9.0` (or `dev:12`) w
 to other files.
 
 The window's own settings (display mode, window size, v-sync, frame-rate cap) belong to the machine
-and are kept only in the preferences. The picture settings (render resolution, aspect ratio, fit,
+and are kept only in the preferences. The picture settings (render resolution, aspect ratio, fit, HUD,
 field of view, level of detail, the lighting rows, texture detail) and the Advanced settings are also written into
 each save's `save<N>.pc`, so loading a save brings back the settings it was played with. A save
 without that file (an older one) keeps the current settings.

@@ -1,5 +1,7 @@
 // orig: (host) The MRP moby renderer (see mrp_moby_renderer.h).
 #include <game/render/mrp_moby_renderer.h>
+#include <profiler/host_profiler.h>
+#include <jobs/job_pool.h>
 
 #include <formats/moby_mrp.h>
 #include <game/boot/front_end.h>
@@ -603,6 +605,7 @@ void load_textures(Level& L) {
                              VK_IMAGE_ASPECT_COLOR_BIT, b.vk_tex, layers, 0, VK_IMAGE_VIEW_TYPE_2D_ARRAY, b.levels);
         } else {
             glGenTextures(1, &b.tex);
+            rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &b.tex, "MRP mobys: texture arrays");
             glBindTexture(GL_TEXTURE_2D_ARRAY, b.tex);
             for (uint32_t l = 0; l < b.levels; ++l)
                 glTexImage3D(GL_TEXTURE_2D_ARRAY, static_cast<GLint>(l), GL_RGBA8, static_cast<GLsizei>(std::max(1u, b.w >> l)), static_cast<GLsizei>(std::max(1u, b.h >> l)),
@@ -681,7 +684,9 @@ void load_level(int id) {
     } else {
         glGenVertexArrays(1, &L.vao);
         glGenBuffers(1, &L.vbo);
+        rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &L.vbo, "MRP mobys: meshes");
         glGenBuffers(1, &L.ibo);
+        rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &L.ibo, "MRP mobys: meshes");
         glBindVertexArray(L.vao);
         glBindBuffer(GL_ARRAY_BUFFER, L.vbo);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, L.ibo);
@@ -1144,8 +1149,11 @@ bool init_gl() {
     glDeleteShader(fs);
     glDeleteShader(vs2);
     glGenBuffers(4, g_ssbo);
+    rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 4, g_ssbo, "MRP mobys: frame buffers");
     glGenBuffers(1, &g_indirect);
+    rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &g_indirect, "MRP mobys: frame buffers");
     glGenBuffers(1, &g_tf_buf);
+    rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &g_tf_buf, "MRP mobys: frame buffers");
     float aniso = 1.0f;
     glGetFloatv(kGlMaxAnisotropy, &aniso);
     for (int mm = 0; mm < 2; ++mm)
@@ -1198,6 +1206,7 @@ struct MobyVkPipeKey {
     VkFormat color_fmt = VK_FORMAT_R8G8B8A8_UNORM;
     VkFormat depth_fmt = VK_FORMAT_D32_SFLOAT_S8_UINT;
     bool has_stencil = true;
+    bool ao_mark = false;  // (the pixels drawn set the stencil to 1: the ambient occlusion's mobys, mrp_lighting_ao_moby_mark)
     bool operator==(const MobyVkPipeKey&) const = default;
 };
 
@@ -1326,6 +1335,11 @@ VkPipeline get_moby_vk_pipeline(const MobyVkPipeKey& key) {
     desc.depth_format = key.depth_fmt;
     desc.has_depth_attachment = key.depth_fmt != VK_FORMAT_UNDEFINED;
     desc.has_stencil_attachment = key.has_stencil;
+    if (key.ao_mark && key.has_stencil) {
+        desc.stencil_test = true;
+        desc.stencil_front = {VK_STENCIL_OP_KEEP, VK_STENCIL_OP_REPLACE, VK_STENCIL_OP_KEEP, VK_COMPARE_OP_ALWAYS, 0xff, 0xff, 1};
+        desc.stencil_back = desc.stencil_front;
+    }
     if (key.caster) {
         desc.depth_bias_enable = true;
         desc.extra_dynamic_states.push_back(VK_DYNAMIC_STATE_DEPTH_BIAS);
@@ -1342,7 +1356,27 @@ VkPipeline get_moby_vk_pipeline(const MobyVkPipeKey& key) {
 }
 
 void bind_moby_vk_set0(VkCommandBuffer cb, int bucket, uint32_t sampler_bits, int mm) {
+    // (the frame's sets kept by what they bind - the texture array, the sampler, the frame's buffers -: a batch binding the same
+    // as one before, the casters' passes' too, reuses its set; the transient pools are reset at each frame's start, the cache with them)
+    static uint64_t cache_frame = ~0ull;
+    static std::map<std::array<uint64_t, 10>, VkDescriptorSet> cache;
+    if (cache_frame != vk::frame_number()) {
+        cache_frame = vk::frame_number();
+        cache.clear();
+    }
+    const vk::RingAlloc* rb[4] = {&g_vk_moby.joints_alloc, &g_vk_moby.parts_alloc, &g_vk_moby.cmds_alloc, &g_vk_moby.normals_alloc};
+    std::array<uint64_t, 10> key = {static_cast<uint64_t>(static_cast<int64_t>(bucket)), (sampler_bits & 15u) | (static_cast<uint64_t>(mm) << 8)};
+    for (int i = 0; i < 4; ++i) {
+        key[static_cast<size_t>(2 + i * 2)] = reinterpret_cast<uint64_t>(rb[i]->buffer);
+        key[static_cast<size_t>(3 + i * 2)] = rb[i]->offset;
+    }
+    VkDescriptorSet& cached = cache[key];
+    if (cached != VK_NULL_HANDLE) {
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_moby.pipe_layout, 0, 1, &cached, 0, nullptr);
+        return;
+    }
     VkDescriptorSet set = vk::alloc_descriptor_set(g_vk_moby.set_layout);
+    cached = set;
     VkDescriptorBufferInfo binfo[4] = {
         {g_vk_moby.joints_alloc.buffer, g_vk_moby.joints_alloc.offset, VK_WHOLE_SIZE},
         {g_vk_moby.parts_alloc.buffer, g_vk_moby.parts_alloc.offset, VK_WHOLE_SIZE},
@@ -1617,6 +1651,48 @@ void mrp_moby_begin_frame(bool title, bool menu_mode, bool title_menu) {
 namespace {
 
 // orig: (host) the frame's draw list from the scene (mrp_scene_draw(): the real pass's, or its shadow's): parts, draw records, batches
+// A drawn part's transforms, computed before build_frame's loop (on the job pool): the part's world matrix (from the rows the
+// draw loop sent, or the moby's own transform when the view is singular: rows_ok false), its clip matrix, its lights (the key
+// light turned with the level's sun), its position and radius
+struct PartPre {
+    glm::dmat4 W{1.0};
+    bool rows_ok = false;
+    float clip[16] = {}, light[32] = {};
+    glm::vec3 pos{0.0f};
+    float rad = 0.0f;
+};
+std::vector<PartPre> g_part_pre;            // (kept from frame to frame: their room reused)
+std::vector<uint32_t> g_part_pre_first;     // a moby's first slot in g_part_pre (one slot a part, drawn or not)
+std::vector<ClassGpu*> g_frame_classes;     // the frame's mobys' classes (class_of)
+
+// orig: (host) one part's PartPre (no state of its own: any thread)
+void part_pre(const MrpFrame& f, const MrpMoby& m, const ClassGpu* cg, const MrpPart& part, const ViewInverse& vinv, const glm::dmat4& vp, bool turned,
+              const glm::mat3& turn, PartPre& out) {
+    glm::dmat4 W(1.0);
+    out.rows_ok = world_of_rows(vinv, part.model_to_view, W);
+    if (!out.rows_ok) {  // (a singular view: the moby's own transform, 0x2559c0's inputs)
+        for (int i = 0; i < 3; ++i)
+            W[i] = glm::dvec4(m.rot[i].x * m.scale / 1024.0, m.rot[i].y * m.scale / 1024.0, m.rot[i].z * m.scale / 1024.0, 0.0);
+        W[3] = glm::dvec4(m.pos[0], m.pos[1], m.pos[2], 1.0);
+    }
+    out.W = W;
+    const glm::mat4 clip = glm::mat4(vp * W);
+    std::memcpy(out.clip, glm::value_ptr(clip), sizeof out.clip);
+    for (uint32_t q = 0; q < 8; ++q) std::memcpy(&out.light[q * 4], &f.records[m.record_first + 0x40 + q * 0x10], 16);
+    if (turned) {  // the level's own sun (the modern lighting): the record's key light (its first direction, in the part's frame) turned with it
+        glm::dmat3 L3(W);
+        for (int i = 0; i < 3; ++i) L3[i] = glm::normalize(L3[i]);
+        const glm::dvec3 kd(out.light[0], out.light[4], out.light[8]);
+        glm::dvec3 t = glm::inverse(L3) * (glm::dmat3(turn) * (L3 * kd));
+        if (glm::length(t) > 0.0) t *= glm::length(kd) / glm::length(t);
+        out.light[0] = static_cast<float>(t.x);
+        out.light[4] = static_cast<float>(t.y);
+        out.light[8] = static_cast<float>(t.z);
+    }
+    out.pos = glm::vec3(W[3]) / static_cast<float>(W[3].w != 0.0 ? W[3].w : 1.0);
+    out.rad = part_radius(cg, W);
+}
+
 void build_frame() {
     Frame& F = g_frame;
     F.built = true;
@@ -1667,20 +1743,58 @@ void build_frame() {
         g_mcache.clear();
         g_mcache_level = moby_level_id();
     }
+    // the mobys' classes (in the mobys' order, on this thread: a class's first use loads it to the GPU), then each drawn part's
+    // transforms (its world matrix, clip matrix, lights, position, radius: pure arithmetic on the scene) on the job pool, a
+    // chunk of mobys per job, each part into its own slot; the loop below takes them in order: the same lists as one moby
+    // after another (RAC1_JOBS=1), on any number of threads
+    static const int hide_class = std::getenv("RAC1_MRP_HIDE") != nullptr ? std::atoi(std::getenv("RAC1_MRP_HIDE")) : -9999;  // (testing: a class not drawn)
+    g_frame_classes.resize(f.mobys.size());
+    g_part_pre_first.resize(f.mobys.size() + 1);
+    {
+        uint32_t slots = 0;
+        for (uint32_t mi = 0; mi < f.mobys.size(); ++mi) {
+            const MrpMoby& m = f.mobys[mi];
+            g_frame_classes[mi] = class_of(m.class_ptr, m.class_id);
+            g_part_pre_first[mi] = slots;
+            if (g_frame_classes[mi] != nullptr && m.class_id != hide_class) slots += std::min(m.part_count, m.packet_count);
+        }
+        g_part_pre_first[f.mobys.size()] = slots;
+        if (g_part_pre.size() < slots) g_part_pre.resize(slots);
+    }
+    jobs::parallel_for(f.mobys.size(), 8, [&](size_t b, size_t e) {
+        for (size_t mi = b; mi < e; ++mi) {
+            const MrpMoby& m = f.mobys[mi];
+            const ClassGpu* cg = g_frame_classes[mi];
+            if (cg == nullptr || m.class_id == hide_class) continue;
+            const uint32_t nparts = std::min(m.part_count, m.packet_count);
+            for (uint32_t k = 0; k < nparts; ++k) {
+                const uint32_t pk = m.first_packet + k;
+                if (pk >= cg->packets.size() || cg->asset->packets[pk].lod == 2) continue;
+                part_pre(f, m, cg, f.parts[m.part_first + k], vinv, vp, turned, turn, g_part_pre[g_part_pre_first[mi] + k]);
+            }
+        }
+    });
     for (uint32_t mi = 0; mi < f.mobys.size(); ++mi) {
         const MrpMoby& m = f.mobys[mi];
         const bool own_view = F.title_menu && m.other_view && !m.rt;
         CachedMoby* cm = nullptr;
+        size_t cm_used = 0;  // (the moby's cached parts kept as they are, each one's room reused: no allocations frame after frame)
+        struct Trim {
+            CachedMoby*& cm;
+            size_t& used;
+            ~Trim() {
+                if (cm != nullptr) cm->parts.resize(used);
+            }
+        } trim{cm, cm_used};
         if (caching && !own_view) {
             cm = &g_mcache[m.moby];
             cm->class_id = m.class_id;
             std::memcpy(cm->pos, m.pos, sizeof cm->pos);
             cm->seen = g_mcache_frame;
             cm->joints.clear();
-            cm->parts.clear();
             for (uint32_t j = 0; j < m.joint_count && m.joint_first + j < f.joints.size(); ++j) cm->joints.push_back(f.joints[m.joint_first + j]);
         }
-        ClassGpu* cg = class_of(m.class_ptr, m.class_id);
+        ClassGpu* cg = g_frame_classes[mi];
         if (cg == nullptr) {
             ++g_st.no_asset_mobys;
             continue;
@@ -1712,7 +1826,6 @@ void build_frame() {
             }
             }
         }
-        static const int hide_class = std::getenv("RAC1_MRP_HIDE") != nullptr ? std::atoi(std::getenv("RAC1_MRP_HIDE")) : -9999;  // (testing: a class not drawn)
         if (m.class_id == hide_class) continue;
         ++g_st.mobys;
         const mrp::MobyClass& c = *cg->asset;
@@ -1775,12 +1888,9 @@ void build_frame() {
                 P.rows[r * 4 + 2] = part.model_to_view.r[r].z;
                 P.rows[r * 4 + 3] = part.model_to_view.r[r].w;
             }
-            glm::dmat4 W(1.0);
-            if (!world_of_rows(vinv, part.model_to_view, W)) {  // (a singular view: the moby's own transform, 0x2559c0's inputs)
-                for (int i = 0; i < 3; ++i)
-                    W[i] = glm::dvec4(m.rot[i].x * m.scale / 1024.0, m.rot[i].y * m.scale / 1024.0, m.rot[i].z * m.scale / 1024.0, 0.0);
-                W[3] = glm::dvec4(m.pos[0], m.pos[1], m.pos[2], 1.0);
-            } else if (g_env_debug) {  // the rows' world point against the moby's own transform
+            const PartPre& pre = g_part_pre[g_part_pre_first[mi] + k];
+            const glm::dmat4& W = pre.W;
+            if (pre.rows_ok && g_env_debug) {  // the rows' world point against the moby's own transform
                 const glm::dvec4 o = W[3];
                 const double e = glm::length(glm::dvec3(o) / o.w - glm::dvec3(m.pos[0], m.pos[1], m.pos[2]));
                 g_st.world_err_max = std::max(g_st.world_err_max, e);
@@ -1789,19 +1899,8 @@ void build_frame() {
                     std::printf("[mrp] world origin of class %d part %u: %.4f %.4f %.4f, the moby at %.4f %.4f %.4f (flags %04x, shadow mesh %d, deferred %d)\n", m.class_id, k,
                                 o.x / o.w, o.y / o.w, o.z / o.w, m.pos[0], m.pos[1], m.pos[2], m.flags, m.shadow_mesh ? 1 : 0, m.deferred ? 1 : 0);
             }
-            const glm::mat4 clip = glm::mat4(vp * W);
-            std::memcpy(P.clip, glm::value_ptr(clip), sizeof P.clip);
-            for (uint32_t q = 0; q < 8; ++q) std::memcpy(&P.light[q * 4], &f.records[m.record_first + 0x40 + q * 0x10], 16);
-            if (turned) {  // the level's own sun (the modern lighting): the record's key light (its first direction, in the part's frame) turned with it
-                glm::dmat3 L3(W);
-                for (int i = 0; i < 3; ++i) L3[i] = glm::normalize(L3[i]);
-                const glm::dvec3 kd(P.light[0], P.light[4], P.light[8]);
-                glm::dvec3 t = glm::inverse(L3) * (glm::dmat3(turn) * (L3 * kd));
-                if (glm::length(t) > 0.0) t *= glm::length(kd) / glm::length(t);
-                P.light[0] = static_cast<float>(t.x);
-                P.light[4] = static_cast<float>(t.y);
-                P.light[8] = static_cast<float>(t.z);
-            }
+            std::memcpy(P.clip, pre.clip, sizeof P.clip);
+            std::memcpy(P.light, pre.light, sizeof P.light);
             const bool tint = (m.flags & 0x10) != 0 && pg.tint_part;
             std::memcpy(P.sub, sub, sizeof sub);
             P.info[0] = static_cast<int32_t>(m.joint_first);
@@ -1810,14 +1909,19 @@ void build_frame() {
             P.info[3] = part.mscal == 0x00a ? 1 : 0;  // the clipping program: the fog per vertex
             const uint32_t part_index = static_cast<uint32_t>(F.parts.size());
             F.parts.push_back(P);
-            F.part_pos.push_back(glm::vec3(W[3]) / static_cast<float>(W[3].w != 0.0 ? W[3].w : 1.0));
-            F.part_rad.push_back(part_radius(cg, W));
+            F.part_pos.push_back(pre.pos);
+            F.part_rad.push_back(pre.rad);
             F.part_own.push_back(own_view ? 1 : 0);
             F.refs.push_back({mi, cg, pk, part_index, tint, test, alpha});
             CachedPart* cp = nullptr;
             if (cm != nullptr) {
-                cm->parts.emplace_back();
-                cp = &cm->parts.back();
+                if (cm_used < cm->parts.size()) {
+                    cp = &cm->parts[cm_used];
+                    cp->runs.clear();
+                } else {
+                    cp = &cm->parts.emplace_back();
+                }
+                ++cm_used;
                 cp->W = W;
                 cp->rad = F.part_rad.back();
                 std::memcpy(cp->rows, P.rows, sizeof P.rows);
@@ -2212,6 +2316,7 @@ void draw_batches(int win_w, int win_h, const gs::Viewport* vp, bool shadows = f
             pk.color_fmt = cfmt;
             pk.depth_fmt = dfmt;
             pk.has_stencil = has_stencil;
+            pk.ao_mark = has_stencil && mrp_lighting_vk_ao_marking();
 
             cur = k;
             have = true;
@@ -2458,6 +2563,7 @@ void draw_casters(const float* light_vp, const float* sphere, const float* withi
             std::memcpy(near_alloc.ptr, near.data(), near.size() * sizeof(DrawCmd));
         } else {
             if (g_indirect_near == 0) glGenBuffers(1, &g_indirect_near);
+            rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &g_indirect_near, "MRP mobys: frame buffers");
             glBindBuffer(kGlDrawIndirectBuffer, g_indirect_near);
             glBufferData(kGlDrawIndirectBuffer, static_cast<GLsizeiptr>(near.size() * sizeof(DrawCmd)), near.data(), GL_STREAM_DRAW);
         }
@@ -3122,7 +3228,9 @@ void mrp_moby_diff(int win_w, int win_h, const gs::Viewport* vp, const gs::Gs& g
             if (fbo[i] == 0) {
                 glGenFramebuffers(1, &fbo[i]);
                 glGenTextures(1, &tex[i]);
+                rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &tex[i], "MRP mobys: check targets (testing)");
                 glGenRenderbuffers(1, &rbo[i]);
+                rac1::prof::gl_track_n(rac1::prof::kGlRenderbuffer, 1, &rbo[i], "MRP mobys: check targets (testing)");
             }
             glBindTexture(GL_TEXTURE_2D, tex[i]);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, vw, vh, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);

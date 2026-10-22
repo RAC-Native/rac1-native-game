@@ -37,9 +37,16 @@ extern int g_auto_lights;
 // orig: (host) how far from the camera the mobys cast into the sun's shadows, units (0: as far as the cascades reach;
 // RAC1_SHADOW_MOBY_DIST; Options > Graphics > Shadow Distance)
 extern float g_shadow_moby_dist;
+// orig: (host) the ambient occlusion's intensity, percent of each mode's own strength (RAC1_AO_INTENSITY, default 75;
+// Options > Graphics > AO Intensity)
+extern int g_ao_intensity;
+// orig: (host) the mobys' pixels marked (stencil bit 0) while the MRP draws them, so that the ambient occlusion is gentler on the
+// characters and objects than on the world (RAC1_AO_MOBY): begin before the MRP's mobys, end after them. Nothing unless the modern
+// lighting draws this frame with the occlusion on and the framebuffer has a stencil
+void mrp_lighting_ao_moby_mark(bool begin);
 // orig: (host) ambient occlusion on the 3D (screen space, from the depth; 0 off, the default; RAC1_AO; Options > Graphics)
 extern int g_ao;
-// orig: (host) the sun's rays (light shafts, screen space): 0 off (default), 1 Low, 2 High (RAC1_SUN_RAYS; Options > Graphics > Sun Rays)
+// orig: (host) the sun's rays (light shafts, screen space): 0 off (default), 1 Low, 2 Medium, 3 High (RAC1_SUN_RAYS; Options > Graphics > Sun Rays)
 extern int g_sun_rays;
 // orig: (host) the ambient occlusion over this frame's 3D (after the MRP world and mobys, before the effects and the 2D;
 // the framebuffer they were drawn into bound): nothing unless the modern lighting drew this frame and g_ao is on
@@ -200,6 +207,8 @@ uint64_t mrp_lighting_vk_set_layout();
 void mrp_lighting_vk_bind_receiver(uint64_t pipe_layout, bool sky = false, bool lit_variant = true);
 void mrp_lighting_vk_bind_caster(uint64_t pipe_layout, const float* light_vp, bool opaque = false);
 void mrp_lighting_vk_bind_off(uint64_t pipe_layout);
+// orig: (host) Vulkan: whether the MRP mobys drawn now mark their pixels in the stencil (bit 0) for the ambient occlusion
+bool mrp_lighting_vk_ao_marking();
 
 // The draws the shadow pass asks of the renderers (mrp_world_renderer.cpp, mrp_moby_renderer.cpp): the frame's casters with the
 // light's view-projection `light_vp` into the bound depth buffer (depth only, alpha-tested cut-outs)

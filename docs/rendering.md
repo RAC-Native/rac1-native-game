@@ -7,7 +7,8 @@ PS2 graphics chip. A GS replica is kept for the 2D, and the PS2's way of drawing
 the reference that the MRP is proved against.
 
 The optional modern lighting (sun shadows, point lights, ambient occlusion) has its own page:
-[Lighting](lighting.md).
+[Lighting](lighting.md). The same renderer can also draw with Vulkan instead of OpenGL (experimental,
+Options > Graphics > Renderer): [Vulkan](vulkan.md).
 
 ## How the PS2 drew a frame
 
@@ -281,7 +282,14 @@ Many of those callbacks test their cells with the game's point test (0x2002e0), 
 copies of the projection's tangents (0x16cd00..0x16cd2f), and the quad drawer (0x1fd228) rejects a
 quad past about twice the 4:3 frame's half width: the shadow blocks widen those too (keeping the
 guard band the game clips at). Before this, at 32:9 Gaspar's lava was still cut in the outer part of
-each side, and the effect quads (Rilgar's water quads, glows) were rejected there. What is still cut: a surface a moby's update queues
+each side, and the effect quads (Rilgar's water quads, glows) were rejected there. The shadow-mesh
+program (VU1 program 7: the drop shadows, the prim lists of Aridia's sand sea and other surfaces)
+draws a triangle that crosses the guard band clipped, but first drops one lying wholly past a third
+of the guard band (4 / 3 of the 4:3 frame's half width), which a 32:9 view shows: in a widened view
+that test is scaled by the view's widening (the GS replica's walk hands it to the program,
+`gs::Gs::set_side_widen`), the clipping itself left at the game's guard band. Before this, the sand
+sea's cells near the camera at the far left of a 32:9 view (crossing the near plane, so clipped)
+were missing there, black. What is still cut: a surface a moby's update queues
 only when the moby pass drew that moby in the last frame (moby +0x31, the 4:3 view's decision, which
 the shadows cannot change without changing the game's state): one of Rilgar's water patches (class 79),
 the ships' cockpit glass.
@@ -292,14 +300,62 @@ game's next collision.
 Before this, the game's state diverged on most frames of the Veldin intro when the view was widened;
 after it, its state is identical at 4:3 and at 5120x1440.
 
-The HUD and the menus stay 4:3 in the middle of the screen; full-screen 2D such as fades reaches the
-edges. The whole frame is shown, as the PS2 drew it, with one exception: a HUD element hiding parks its
+The HUD (unless Options > Graphics > HUD spreads it, see below) and the menus stay 4:3 in the middle of the screen; full-screen 2D such as fades reaches the
+edges: a primitive covering the frame's whole width or height has its vertices on the frame's edges
+moved to the window's. A flat fill counts when it covers every pixel of the frame as the GS fills it,
+so the fills the game draws with the HUD's half-pixel offset (x -0.5 .. 511.5: the Visibomb's green
+screen and its scan lines, 0x1f9df8) reach the edges too; a textured one only when it reaches the
+edges themselves, so a picture (the level exit's card banners) keeps its shape. The Visibomb's
+out-of-range static (class 832's draw-list callback, a grid of 32 x 32 sprites over the frame, the
+same code on every level that has it) is a full-screen layer drawn in pieces: its chain range is
+noted when the callback runs and the GS replica stretches it horizontally about the frame's centre to
+the window's width (`gs::Primitive::layer`). The whole frame is shown, as the PS2 drew it, with one exception: a HUD element hiding parks its
 3 leftmost columns at the frame's right edge for 16 frames (the Suck Cannon's gauge and the air meter, the
 game's own `hud_plain_update` 0x235ea0), which a TV's overscan hid and which in widescreen sits inside the
 picture; the modern view does not draw such slivers (a textured 2D primitive with at most 4 frame pixels
 inside the frame, the rest past its left, right or top edge; `RAC1_EDGE_SLIVERS=1` draws them, the faithful
 reference always does). `RAC1_OVERSCAN` (testing) can still hide a 4-pixel strip of the 2D at the frame's
 left, right and top edges as a TV did; it never cuts the 3D, fades or the edge fills.
+
+### The HUD in a widened view
+
+Options > Graphics > HUD (4:3 Original, 16:9, 21:9, 32:9, Fit Screen; `RAC1_HUD` for tests) spreads the
+HUD over a box wider than the 4:3 frame: its width is the chosen shape (21:9 is 64:27) but never wider
+than the view's (`min(choice, the view's aspect)`; Fit Screen is the view's), centred. 4:3 Original
+changes nothing (the default: the same pictures and the same game state as before). The game's state
+is never touched: the HUD is moved when the GS replica draws it.
+
+The game lays its HUD out in 13 element slots (0x17dc50, 0x90 bytes each; each holds the draw function
+of the element requested into it, `hud_draw` 0x23af48 calls them). Each slot has its own place and
+layout flags (+0x50 x, +0x54 y, +0x60 flags), the same on every level: `hud_element_place` (0x235a70)
+aligns an element left of x with flag 4, right of x with 8, centres it on x otherwise, and
+`hud_element_offset` (0x235ad8) slides it out toward that same side. So the flags are the game's own
+anchor, and they decide what moves (`hud_element_side`, hud.cpp, read only):
+
+| Slot | Place (x, y) | Flags | Anchor | Elements (draw function) |
+|---|---|---|---|---|
+| 0 | 20, 15 | 5 (top, left) | left | the weapon's ammo (0x23a7a8), hero mode 2's bar (0x23a640), the races' (Rilgar, Kalebo III) |
+| 1 | 256, 32 | 1 (top) | centre | health (0x239810), Gemlik's boss element (request 0x11) |
+| 2 | 492, 15 | 9 (top, right) | right | bolts (0x239df8) |
+| 3 | 20, 208 | 4 (left) | left | the quick select (0x2382a0), Gadgebot's commands (0x238f88) |
+| 4 | 492, 208 | 8 (right) | right | the air meter (0x2365a8), the Morph-o-Ray (0x236e50) |
+| 5 | 20, 376 | 6 (bottom, left) | left | the races' (Rilgar's request 5), Skid's (Aridia) |
+| 6 | 256, 376 | 2 (bottom) | centre | |
+| 7 | 492, 376 | 0xa (bottom, right) | right | the Metal Detector (0x23a2d0 and the level copies of Batalia, Drek's fleet, the Veldin finale), the races' (request 7), Skid's |
+| 8..11 | 492, 208 | 9 | right | |
+| 12 | 142, 50 | 0 | centre | the help panel (0x237200) |
+
+`hud_draw` notes the chain range of each left or right element as it draws it (the packet cursor before
+and after its draw function, `render_view_hud_note`); the chain's stage hands the ranges to the GS replica
+(`Gs::set_chain_hud`), which marks their primitives (`gs::Primitive::hud`, 1 left, 2 right), and the
+drawing moves them by `Viewport::hud_shift` frame pixels, half the frame's width times the box's
+widening over 4:3 less one, toward their side, their scissor with them (what slides out is cut at the
+box's edge, as at the frame's before). Health, the help messages (0x23cf80), the help desk, subtitles,
+the cutscene letterbox, the menus, the pause screen, the Vendor, the planet cards, pictures, fades and
+the Visibomb's layer are not elements of a side and keep their places. The ship flight's planet banner
+and save icon (`flight_draw`) are not HUD slots and stay on the 4:3 frame; so does the 2D the space fights'
+levels draw from draw-list callbacks rather than HUD slots (Pokitaru 0x311d50, Gemlik 0x2b97f8, Drek's
+fleet 0x2eaae0 / 0x2eb9a8; not looked at in a fight yet).
 
 **Render scale** (Options > Graphics > Render Resolution, 50 % to 200 %): the world and the mobys are
 drawn into an off-screen buffer at that fraction of the window's resolution, then scaled to the
@@ -392,4 +448,4 @@ integrated GPU, while the CPU side was 25 to 40 ms before the work above.
 - Drop shadows of mobys drawn only because of a higher level of detail are missing.
 - A moby whose class logic reads its own "drawn" flag behaves as in 4:3 when it is only visible in
   the widened side bands: that flag is game state, and the port does not change it.
-- Linux and OpenGL 4.6 only. The MRP's interface would allow other backends later.
+- OpenGL 4.6 by default; a Vulkan 1.3 backend is experimental and opt-in ([Vulkan](vulkan.md)).

@@ -213,6 +213,7 @@ void capture(const Vu1& vu, uint32_t start, const char* dir) {
 
 bool g_force_interpreter = false;
 thread_local uint32_t g_last_start = 0;
+thread_local float g_side_widen[2] = {1.0f, 1.0f};
 KickSink g_kick_tap;
 StartHook g_start_hook;
 

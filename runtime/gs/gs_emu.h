@@ -68,6 +68,12 @@ struct Primitive {
     // (the producer, whose projection takes the vertices back to the world), fx_id the range's id
     uint8_t fx = 0;
     uint32_t fx_id = 0;
+    // (host) kicked inside a screen layer's range (Gs::set_chain_layers): a full-screen 2D layer the game draws over its
+    // 4:3 frame, stretched across a widened view (gs_draw.cpp)
+    bool layer = false;
+    // (host) kicked inside a HUD element's range (Gs::set_chain_hud): 1 an element at the frame's left, 2 at its right; moved
+    // toward the edges of a HUD wider than 4:3 (Viewport::hud_shift, gs_draw.cpp). 0: none (centred, or not the HUD)
+    uint8_t hud = 0;
 };
 
 class Gs {
@@ -95,6 +101,7 @@ public:
         size_t size = 0, cap = 0;
         std::vector<std::array<uint32_t, 3>> spans;  // (EE address, offset in bytes, length; 0xffffffff: a null pointer)
         std::vector<std::array<uint32_t, 3>> subs;  // the substitutes the capture was made with (add_chain_substitute): first, end, size
+        float side_widen[2] = {1.0f, 1.0f};         // set_side_widen's as the capture was made
     };
     void capture_chain(uint32_t tag, uint32_t end, ChainCapture& c) const;
     void vif1_chain(const ChainCapture& c);
@@ -128,6 +135,10 @@ public:
     // Cleared by the next chain.
     static constexpr int kMaxSubs = 4;
     void add_chain_substitute(uint32_t first, uint32_t end, std::vector<uint8_t> chain);
+    // Host (the widescreen's sides): the view the next chains' 3D is drawn into is `wx` x `wy` times as wide as the game's 4:3
+    // frustum (1 1: the game's own). While a chain is walked the VU1 programs see it (vu1::g_side_widen): a primitive past the
+    // 4:3 sides that the wider view shows is not dropped (the shadow program's side test, shadows_vu1.cpp). Kept until set again.
+    void set_side_widen(float wx, float wy) { side_widen_[0] = wx; side_widen_[1] = wy; }
     uint64_t skipped_tags() const { return skipped_tags_; }
     // Host (the MRP's particles): the next chain's tags at addresses in [first, last] (inclusive; `sub`: the substitute's
     // tags, add_chain_substitute, else the real chain's) are processed as usual - VIF codes, the VU1 programs, the GS registers -,
@@ -142,6 +153,19 @@ public:
         uint32_t id = 0;
     };
     void set_chain_fx(std::vector<FxRange> ranges, bool external);
+    // Host (a widened view): the next chain's tags at addresses in [first, last] (inclusive; the real chain's, not a
+    // substitute's) belong to a full-screen 2D layer the game draws over its whole 4:3 frame in pieces (the Visibomb's
+    // out-of-range static: a grid of 32 x 32 sprites); their primitives marked `layer`. Any order, not overlapping. Cleared by
+    // the next chain.
+    void set_chain_layers(std::vector<std::pair<uint32_t, uint32_t>> ranges);
+    // Host (a HUD wider than 4:3): the next chain's tags at addresses in [first, last] (inclusive; the real chain's) belong to a
+    // HUD element anchored at the frame's left (side 1) or right (side 2) edge; their primitives marked `hud`. Any order, not
+    // overlapping. Cleared by the next chain.
+    struct HudRange {
+        uint32_t first = 0, last = 0;
+        uint8_t side = 0;
+    };
+    void set_chain_hud(std::vector<HudRange> ranges);
     size_t fx_mark() const { return fx_mark_; }
     bool fx_external() const { return fx_external_; }
 
@@ -203,6 +227,7 @@ private:
         uint32_t replay_size = 0xffffffffu;  // (a capture's replay: the substitute's size it was made with)
     };
     std::vector<Sub> subs_;
+    float side_widen_[2] = {1.0f, 1.0f};  // set_side_widen
     bool sub_wide_ = false, sub_drop_ = false;
     static constexpr uint32_t kSubFlag = 0x80000000u;
     static constexpr int kSubShift = 26;
@@ -227,6 +252,10 @@ private:
     std::vector<FxRange> fx_ranges_;  // (sorted by sub then first)
     bool fx_external_ = false;
     uint8_t fx_now_ = 0;
+    std::vector<std::pair<uint32_t, uint32_t>> layer_ranges_;  // set_chain_layers (sorted by first)
+    bool layer_now_ = false;
+    std::vector<HudRange> hud_ranges_;  // set_chain_hud (sorted by first)
+    uint8_t hud_now_ = 0;
     uint32_t fx_id_ = 0;
     size_t fx_mark_ = SIZE_MAX;
     size_t moby_mark_ = SIZE_MAX;

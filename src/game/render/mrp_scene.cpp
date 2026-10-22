@@ -12,6 +12,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/vu/vu_interpreter.h>
+#include <jobs/job_pool.h>
 
 #include <algorithm>
 #include <chrono>
@@ -173,13 +174,13 @@ struct DecodeStats {
 } g_dec;
 
 // orig: (host) decodes one moby's chain parts [chain_begin, chain_end): DMA tags (CNT / NEXT / REF / REFS / END) and the VIF
-// codes in their VIF words and payloads
-void decode_chain(MrpFrame& f, uint32_t mi) {
-    MrpMoby& m = f.mobys[mi];
-    ++g_dec.chains;
-    m.part_first = static_cast<uint32_t>(f.parts.size());
+// codes in their VIF words and payloads; its parts and unpacks appended to `parts` / `unpacks` (the moby's part_first and its
+// parts' unpack_first index them: the frame's own, or a job's chunk's, merged into the frame after: decode_all)
+void decode_chain_to(MrpMoby& m, uint32_t mi, std::vector<MrpPart>& parts, std::vector<MrpUnpack>& unpacks, DecodeStats& dec) {
+    ++dec.chains;
+    m.part_first = static_cast<uint32_t>(parts.size());
     MrpPart cur;
-    cur.unpack_first = static_cast<uint32_t>(f.unpacks.size());
+    cur.unpack_first = static_cast<uint32_t>(unpacks.size());
     cur.moby_index = mi;
     uint32_t cl = 1, wl = 1;
     bool have_matrix = false;
@@ -189,12 +190,12 @@ void decode_chain(MrpFrame& f, uint32_t mi) {
     uint32_t a = m.chain_begin;
     for (int guard = 0; a < m.chain_end; ++guard) {
         if (guard > 4096) {
-            ++g_dec.guard;
+            ++dec.guard;
             break;
         }
-        ++g_dec.tags;
+        ++dec.tags;
         if (a > g_ram_end - 16 && (a < 0x70000000u || a > 0x70004000u - 16)) {  // (a NEXT's garbage address: see below)
-            ++g_dec.bad_tags;
+            ++dec.bad_tags;
             break;
         }
         const uint32_t w0 = lwu(a), w1 = lwu(a + 4);
@@ -213,7 +214,7 @@ void decode_chain(MrpFrame& f, uint32_t mi) {
         const uint64_t span = static_cast<uint64_t>(payload) + static_cast<uint64_t>(qwc) * 16;
         const bool ram = span <= g_ram_end, spr = payload >= 0x70000000u && span <= 0x70004000u;
         if (!ram && !spr) {
-            ++g_dec.bad_tags;
+            ++dec.bad_tags;
             break;
         }
         int64_t left = static_cast<int64_t>(qwc) * 16;
@@ -221,7 +222,7 @@ void decode_chain(MrpFrame& f, uint32_t mi) {
         auto take = [&](int64_t bytes) -> uint32_t {
             const uint32_t at = payload;
             if (bytes > left) {
-                ++g_dec.overruns;
+                ++dec.overruns;
                 bytes = left;
             }
             payload += static_cast<uint32_t>(bytes);
@@ -237,19 +238,19 @@ void decode_chain(MrpFrame& f, uint32_t mi) {
             } else if (cmd == 0x14 || cmd == 0x15 || cmd == 0x17) {  // MSCAL / MSCALF / MSCNT: the part ends
                 cur.mscal = static_cast<uint16_t>(imm);
                 {
-                    const uint32_t pi = static_cast<uint32_t>(f.parts.size()) - m.part_first;  // the part's index in the moby
+                    const uint32_t pi = static_cast<uint32_t>(parts.size()) - m.part_first;  // the part's index in the moby
                     if (own_dest != 0) cur.matrix_dest = own_dest;
-                    else if (pi >= 2) cur.matrix_dest = f.parts[f.parts.size() - 2].matrix_dest;
-                    else if (pi == 1) cur.matrix_dest = f.parts[f.parts.size() - 1].matrix_dest == 0x129 ? 0x28d : 0x129;
+                    else if (pi >= 2) cur.matrix_dest = parts[parts.size() - 2].matrix_dest;
+                    else if (pi == 1) cur.matrix_dest = parts[parts.size() - 1].matrix_dest == 0x129 ? 0x28d : 0x129;
                     else cur.matrix_dest = 0x129;
                     const int bi = cur.matrix_dest == 0x28d ? 1 : 0;
                     if (have_last[bi]) cur.model_to_view = last_mat[bi];
                     own_dest = 0;
                 }
-                cur.unpack_count = static_cast<uint32_t>(f.unpacks.size()) - cur.unpack_first;
-                f.parts.push_back(cur);
+                cur.unpack_count = static_cast<uint32_t>(unpacks.size()) - cur.unpack_first;
+                parts.push_back(cur);
                 cur = MrpPart();
-                cur.unpack_first = static_cast<uint32_t>(f.unpacks.size());
+                cur.unpack_first = static_cast<uint32_t>(unpacks.size());
                 cur.moby_index = mi;
             } else if (cmd == 0x50 || cmd == 0x51) {  // DIRECT / DIRECTHL: the GS state packet
                 const int64_t b = vif_bytes(c, cl, wl);
@@ -277,9 +278,9 @@ void decode_chain(MrpFrame& f, uint32_t mi) {
                     have_last[bi] = true;
                     own_dest = u.dest;
                 }
-                f.unpacks.push_back(u);
+                unpacks.push_back(u);
             } else if (cmd == 0x20 || cmd == 0x30 || cmd == 0x31 || cmd == 0x4a || cmd == 5 || cmd == 2 || cmd == 3 || cmd == 4) {
-                ++g_dec.unusual_vif;  // STMASK / STROW / STCOL / MPG / STMOD / OFFSET / BASE / ITOP: not in the moby chains
+                ++dec.unusual_vif;  // STMASK / STROW / STCOL / MPG / STMOD / OFFSET / BASE / ITOP: not in the moby chains
                 take(vif_bytes(c, cl, wl));
             }
         };
@@ -297,9 +298,11 @@ void decode_chain(MrpFrame& f, uint32_t mi) {
         if (end) break;
         a = next;
     }
-    if (cur.unpack_first != f.unpacks.size()) ++g_dec.open_parts;
-    m.part_count = static_cast<uint32_t>(f.parts.size()) - m.part_first;
+    if (cur.unpack_first != unpacks.size()) ++dec.open_parts;
+    m.part_count = static_cast<uint32_t>(parts.size()) - m.part_first;
 }
+
+void decode_chain(MrpFrame& f, uint32_t mi) { decode_chain_to(f.mobys[mi], mi, f.parts, f.unpacks, g_dec); }
 
 // ---- the record's fields ---------------------------------------------------------------------
 
@@ -331,6 +334,57 @@ void decode_record(MrpFrame& f, MrpMoby& m) {
     m.light_w[1] = rf(f, m, 0xa4);
     for (uint32_t i = 0; i < 4; ++i) m.tint[i] = static_cast<uint8_t>(ru(f, m, 0xb0 + 4 * i) & 0xff);
     m.first_packet = m.far_lod && m.class_ptr != 0 ? lbu(m.class_ptr + 4) : 0;
+}
+
+// The chunks of mobys decode_all gives a job: each chunk's parts and unpacks (its own indices) and its counts
+struct DecodeChunk {
+    std::vector<MrpPart> parts;
+    std::vector<MrpUnpack> unpacks;
+    DecodeStats st;
+};
+std::vector<DecodeChunk> g_decode_chunks;  // (kept: their vectors' room reused frame after frame)
+constexpr size_t kDecodeGrain = 16;
+
+// orig: (host) every moby's record and chain decoded into the frame (its parts and unpacks in the mobys' order). The chains
+// are only read (the game's memory, or the shadow run's), so the mobys are decoded on the job pool (src/jobs), a chunk of
+// them per job, each into its own vectors, then appended in the chunks' order: the same frame as one decode after another
+// (RAC1_JOBS=1), on any number of threads.
+void decode_all(MrpFrame& f) {
+    const size_t n = f.mobys.size();
+    const size_t nc = jobs::chunks(n, kDecodeGrain);
+    if (jobs::threads() <= 1 || nc <= 1) {
+        for (uint32_t i = 0; i < n; ++i) {
+            decode_record(f, f.mobys[i]);
+            decode_chain(f, i);
+        }
+        return;
+    }
+    if (g_decode_chunks.size() < nc) g_decode_chunks.resize(nc);
+    jobs::parallel_for(n, kDecodeGrain, [&f](size_t b, size_t e) {
+        DecodeChunk& c = g_decode_chunks[b / kDecodeGrain];
+        c.parts.clear();
+        c.unpacks.clear();
+        c.st = DecodeStats{};
+        for (size_t i = b; i < e; ++i) {
+            decode_record(f, f.mobys[i]);
+            decode_chain_to(f.mobys[i], static_cast<uint32_t>(i), c.parts, c.unpacks, c.st);
+        }
+    });
+    for (size_t k = 0; k < nc; ++k) {
+        DecodeChunk& c = g_decode_chunks[k];
+        const uint32_t pbase = static_cast<uint32_t>(f.parts.size()), ubase = static_cast<uint32_t>(f.unpacks.size());
+        for (size_t i = k * kDecodeGrain; i < std::min(n, (k + 1) * kDecodeGrain); ++i) f.mobys[i].part_first += pbase;
+        for (MrpPart& p : c.parts) p.unpack_first += ubase;
+        f.parts.insert(f.parts.end(), c.parts.begin(), c.parts.end());
+        f.unpacks.insert(f.unpacks.end(), c.unpacks.begin(), c.unpacks.end());
+        g_dec.chains += c.st.chains;
+        g_dec.tags += c.st.tags;
+        g_dec.overruns += c.st.overruns;
+        g_dec.open_parts += c.st.open_parts;
+        g_dec.unusual_vif += c.st.unusual_vif;
+        g_dec.guard += c.st.guard;
+        g_dec.bad_tags += c.st.bad_tags;
+    }
 }
 
 // ---- the differential check ------------------------------------------------------------------
@@ -429,10 +483,7 @@ void mrp_scene_shadow_begin() {
 void mrp_scene_shadow_end() {
     MrpFrame& f = g_frame;
     g_ram_end = 0x04000000u;
-    for (uint32_t i = 0; i < f.mobys.size(); ++i) {
-        decode_record(f, f.mobys[i]);
-        decode_chain(f, i);
-    }
+    decode_all(f);
     g_ram_end = 0x02000000u;
     for (MrpPart& p : f.parts) {  // the GS state packet (A+D, PACKED: the frame's TEST_1 0x47 / ALPHA_1 0x42)
         p.gs_resolved = true;
@@ -603,10 +654,7 @@ void mrp_scene_end_frame() {
     const double t0 = g_prof ? now_ms() : 0.0;
     MrpFrame& f = g_frame;
     ++g_frame_no;
-    for (uint32_t i = 0; i < f.mobys.size(); ++i) {
-        decode_record(f, f.mobys[i]);
-        decode_chain(f, i);
-    }
+    decode_all(f);
     if (g_check) {
         ++g_cs.frames;
         g_cs.scene_mobys += f.mobys.size();

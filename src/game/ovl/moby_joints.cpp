@@ -53,36 +53,36 @@ void mr32(Vf& d, const Vf& s) {
     d.v[3] = t.v[0];
 }
 // orig: (helper) the quaternion dot product into y (VADDAx.y / VMADDAz.y / VMADDw.y with vf4 = 1)
-void dot_y(Vf& d) {
+void dot_y(LocalFlags& fl, Vf& d) {
     Vf* const v = vf();
-    addabc(d, d.v[0], Y);
-    maddabc(v[4], d.v[2], Y);
-    maddbc(d, v[4], d.v[3], Y);
+    addabc(fl, d, d.v[0], Y);
+    maddabc(fl, v[4], d.v[2], Y);
+    maddbc(fl, d, v[4], d.v[3], Y);
 }
 // orig: (helper) the four lanes summed into x (VADDAy.x / VMADDAz.x / VMADDw.x with vf4 = 1)
-void sum_x(Vf& d) {
+void sum_x(LocalFlags& fl, Vf& d) {
     Vf* const v = vf();
-    addabc(d, d.v[1], X);
-    maddabc(v[4], d.v[2], X);
-    maddbc(d, v[4], d.v[3], X);
+    addabc(fl, d, d.v[1], X);
+    maddabc(fl, v[4], d.v[2], X);
+    maddbc(fl, d, v[4], d.v[3], X);
 }
 // orig: (helper) two weighted quaternions summed (or, of opposite sense, subtracted) and
 // normalised: vf16 the sum, vf17.x its squared length, vf18.y the dot
-void blend_quats(int a, int b) {
+void blend_quats(LocalFlags& fl, int a, int b) {
     Vf* const v = vf();
-    add(v[16], v[a], v[b], XYZW);
-    mul(v[18], v[a], v[b], XYZW);
+    add(fl, v[16], v[a], v[b], XYZW);
+    mul(fl, v[18], v[a], v[b], XYZW);
 }
 // orig: (helper) (the second half: the length, the shorter arc, Q = 1 / length)
-void blend_quats_norm(int a, int b) {
+void blend_quats_norm(LocalFlags& fl, int a, int b) {
     Vf* const v = vf();
-    mul(v[17], v[16], v[16], XYZW);
-    dot_y(v[18]);
-    sum_x(v[17]);
+    mul(fl, v[17], v[16], v[16], XYZW);
+    dot_y(fl, v[18]);
+    sum_x(fl, v[17]);
     if (neg(qlo(v[18]))) {
-        sub(v[16], v[a], v[b], XYZW);
-        mul(v[17], v[16], v[16], XYZW);
-        sum_x(v[17]);
+        sub(fl, v[16], v[a], v[b], XYZW);
+        mul(fl, v[17], v[16], v[16], XYZW);
+        sum_x(fl, v[17]);
     }
     q() = vrsqrt(v[0].v[3], v[17].v[0]);
 }
@@ -91,15 +91,16 @@ void blend_quats_norm(int a, int b) {
 
 // orig: 0x00250fe0
 void moby_joints_pose(uint32_t a0, uint32_t a1) {
+    LocalFlags fl(regs());  // (host: the ops' flags in locals, the VU0's written back at the return: the same values)
     Vf* const v = vf();
     qset_xy(v[28], sx(a1));  // (the caller's s0..s2 parked in vf29..vf31: no such registers here)
     const int32_t n = lh(a0 + 0x10);
     if (n == 0) {  // no joints: the identity
-        mulbc(v[1], v[0], v[0].v[0], XYZW);
-        mulbc(v[2], v[0], v[0].v[0], XYZW);
+        mulbc(fl, v[1], v[0], v[0].v[0], XYZW);
+        mulbc(fl, v[2], v[0], v[0].v[0], XYZW);
         mr32(v[3], v[0]);
-        addbc(v[1], v[1], v[0].v[3], X);
-        addbc(v[2], v[2], v[0].v[3], Y);
+        addbc(fl, v[1], v[1], v[0].v[3], X);
+        addbc(fl, v[2], v[2], v[0].v[3], Y);
         sqc2(SPR, v[1]);
         sqc2(SPR + 0x10, v[2]);
         sqc2(SPR + 0x20, v[3]);
@@ -117,28 +118,28 @@ void moby_joints_pose(uint32_t a0, uint32_t a1) {
     sw(chain + 0x10, (0x30000000u | lwu(t7 + 0x24)) & (key2 == 0 ? 0xffffu : 0xffffffffu));
     sw(chain + 0x14, lwu(t7 + 0x20));
     const int32_t flags = lh(t7 + 0x12);
-    mulbc(v[1], v[0], v[0].v[0], XYZW);
-    mulbc(v[2], v[0], v[0].v[0], XYZW);
+    mulbc(fl, v[1], v[0], v[0].v[0], XYZW);
+    mulbc(fl, v[2], v[0], v[0].v[0], XYZW);
     mr32(v[3], v[0]);
-    addbc(v[4], v[0], v[0].v[3], XYZ);
-    sub(v[4], v[0], v[0], W);
+    addbc(fl, v[4], v[0], v[0].v[3], XYZ);
+    sub(fl, v[4], v[0], v[0], W);
     sw(chain + 0x20, lwu(t7 + 0x34));
     sw(chain + 0x24, lwu(t7 + 0x30));
-    addbc(v[1], v[1], v[0].v[3], X);
-    addbc(v[2], v[2], v[0].v[3], Y);
+    addbc(fl, v[1], v[1], v[0].v[3], X);
+    addbc(fl, v[2], v[2], v[0].v[3], Y);
     v[7] = lqc2(t7);
     uint32_t at = (un << 4) + SPR + 0x2000;  // the first key: quaternions, then its lists
     uint32_t k2 = (lwu(t7 + 0x24) << 4) + at;  // the second key
     uint32_t v0 = lhu(t7 + 0x28) + at, v1 = lhu(t7 + 0x2c) + at;
     uint32_t l1 = lhu(t7 + 0x38) + k2, l2 = lhu(t7 + 0x3c) + k2;
-    subbc(v[6], v[4], v[7].v[1], X);  // 1 - t
+    subbc(fl, v[6], v[4], v[7].v[1], X);  // 1 - t
     mr32(v[7], v[7]);                 // t
     sw(at - 4, 0xffffffffu);
     sw(k2 - 4, 0xffffffffu);
     const uint32_t s1 = (lwu(t7 + 0x34) << 4) + k2;
     sw(s1 - 4, 0xffffffffu);
     const uint32_t t5 = static_cast<uint32_t>(qlo(v[28])) + 0x10;
-    subbc(v[5], v[0], v[0].v[3], X);
+    subbc(fl, v[5], v[0], v[0].v[3], X);
     sd(t5 - 0x10, 0);
     sd(t5 - 8, 0);
     spr_dma_to_chain(0x2000, chain, 0x104);
@@ -282,8 +283,8 @@ void moby_joints_pose(uint32_t a0, uint32_t a1) {
         for (uint32_t p = lwu(t5 - 0x10); p != 0;) {
             v[8] = lqc2(p);
             v[9] = lqc2(p + 0x10);
-            mulabc(v[8], v[6].v[0], XYZ);
-            maddbc(v[10], v[9], v[7].v[0], XYZ);
+            mulabc(fl, v[8], v[6].v[0], XYZ);
+            maddbc(fl, v[10], v[9], v[7].v[0], XYZ);
             const uint32_t nx = lwu(p + 0xc);
             sqc2(p + 0x10, v[10]);
             p = nx;
@@ -291,8 +292,8 @@ void moby_joints_pose(uint32_t a0, uint32_t a1) {
         for (uint32_t p = lwu(t5 - 0xc); p != 0;) {
             v[8] = lqc2(p + 0x20);
             v[9] = lqc2(p + 0x30);
-            mulabc(v[8], v[6].v[0], XYZ);
-            maddbc(v[10], v[9], v[7].v[0], XYZ);
+            mulabc(fl, v[8], v[6].v[0], XYZ);
+            maddbc(fl, v[10], v[9], v[7].v[0], XYZ);
             const uint32_t keep = lwu(p + 0x2c);
             sqc2(p + 0x20, v[10]);
             sw(p + 0x2c, keep);
@@ -316,43 +317,43 @@ void moby_joints_pose(uint32_t a0, uint32_t a1) {
             at += 0x10;
             k2 += 0x10;
             if (plain) {
-                mulabc(v[8], v[6].v[0], XYZW);
-                maddbc(v[8], v[9], v[7].v[0], XYZW);
-                mulabc(v[10], v[6].v[0], XYZW);
-                maddbc(v[10], v[11], v[7].v[0], XYZW);
+                mulabc(fl, v[8], v[6].v[0], XYZW);
+                maddbc(fl, v[8], v[9], v[7].v[0], XYZW);
+                mulabc(fl, v[10], v[6].v[0], XYZW);
+                maddbc(fl, v[10], v[11], v[7].v[0], XYZW);
             } else {
-                mul(v[12], v[8], v[9], XYZW);
-                mul(v[13], v[10], v[11], XYZW);
-                mulbc(v[14], v[9], v[5].v[0], XYZW);
-                mulbc(v[15], v[11], v[5].v[0], XYZW);
-                mulabc(v[8], v[6].v[0], XYZW);
-                maddbc(v[8], v[9], v[7].v[0], XYZW);
-                maddbc(v[9], v[14], v[7].v[0], XYZW);
-                dot_y(v[12]);
-                dot_y(v[13]);
-                mulabc(v[10], v[6].v[0], XYZW);
+                mul(fl, v[12], v[8], v[9], XYZW);
+                mul(fl, v[13], v[10], v[11], XYZW);
+                mulbc(fl, v[14], v[9], v[5].v[0], XYZW);
+                mulbc(fl, v[15], v[11], v[5].v[0], XYZW);
+                mulabc(fl, v[8], v[6].v[0], XYZW);
+                maddbc(fl, v[8], v[9], v[7].v[0], XYZW);
+                maddbc(fl, v[9], v[14], v[7].v[0], XYZW);
+                dot_y(fl, v[12]);
+                dot_y(fl, v[13]);
+                mulabc(fl, v[10], v[6].v[0], XYZW);
                 const uint64_t da = qlo(v[12]);
-                maddbc(v[10], v[11], v[7].v[0], XYZW);
-                maddbc(v[11], v[15], v[7].v[0], XYZW);
+                maddbc(fl, v[10], v[11], v[7].v[0], XYZW);
+                maddbc(fl, v[11], v[15], v[7].v[0], XYZW);
                 const uint64_t db = qlo(v[13]);
                 if (!neg(da)) {
-                    mul(v[9], v[8], v[8], XYZW);
+                    mul(fl, v[9], v[8], v[8], XYZW);
                 } else {
                     v[8] = v[9];
-                    mul(v[9], v[9], v[9], XYZW);
+                    mul(fl, v[9], v[9], v[9], XYZW);
                 }
                 if (!neg(db)) {
-                    mul(v[11], v[10], v[10], XYZW);
+                    mul(fl, v[11], v[10], v[10], XYZW);
                 } else {
                     v[10] = v[11];
-                    mul(v[11], v[11], v[11], XYZW);
+                    mul(fl, v[11], v[11], v[11], XYZW);
                 }
-                sum_x(v[9]);
-                sum_x(v[11]);
+                sum_x(fl, v[9]);
+                sum_x(fl, v[11]);
                 q() = vrsqrt(v[0].v[3], v[9].v[0]);
-                mulbc(v[8], v[8], q(), XYZW);
+                mulbc(fl, v[8], v[8], q(), XYZW);
                 q() = vrsqrt(v[0].v[3], v[11].v[0]);
-                mulbc(v[10], v[10], q(), XYZW);
+                mulbc(fl, v[10], v[10], q(), XYZW);
             }
             sqc2(p, v[8]);
             sqc2(p + 0x40, v[10]);
@@ -443,7 +444,7 @@ void moby_joints_pose(uint32_t a0, uint32_t a1) {
         const uint32_t end = (qwc << 4) + SPR + 0x2000;
         qset_xy(v[21], sx(lwu(t9 + 8)));
         t9 = lwu(t9 + 0x1c);
-        sub(v[20], v[4], v[21], X);
+        sub(fl, v[20], v[4], v[21], X);
         uint32_t r = SPR + 0x2000;
         do {
             const uint32_t j = lwu(r + 0x2c);
@@ -454,20 +455,20 @@ void moby_joints_pose(uint32_t a0, uint32_t a1) {
             v[10] = lqc2(j);
             v[11] = lqc2(j + 0x10);
             v[12] = lqc2(j + 0x20);
-            mulbc(v[10], v[10], v[20].v[0], XYZW);
-            mulbc(v[13], v[13], v[21].v[0], XYZW);
-            mulbc(v[11], v[11], v[20].v[0], XYZ);
-            mulbc(v[14], v[14], v[21].v[0], XYZ);
-            mulbc(v[12], v[12], v[20].v[0], XYZ);
-            mulbc(v[15], v[15], v[21].v[0], XYZ);
-            blend_quats(10, 13);
-            add(v[11], v[11], v[14], XYZ);
-            add(v[12], v[12], v[15], XYZ);
-            blend_quats_norm(10, 13);
+            mulbc(fl, v[10], v[10], v[20].v[0], XYZW);
+            mulbc(fl, v[13], v[13], v[21].v[0], XYZW);
+            mulbc(fl, v[11], v[11], v[20].v[0], XYZ);
+            mulbc(fl, v[14], v[14], v[21].v[0], XYZ);
+            mulbc(fl, v[12], v[12], v[20].v[0], XYZ);
+            mulbc(fl, v[15], v[15], v[21].v[0], XYZ);
+            blend_quats(fl, 10, 13);
+            add(fl, v[11], v[11], v[14], XYZ);
+            add(fl, v[12], v[12], v[15], XYZ);
+            blend_quats_norm(fl, 10, 13);
             sqc2(j + 0x10, v[11]);
             sqc2(j + 0x20, v[12]);
             if (lwu(j + 0x1c) == 0) sw(j + 0x1c, lwu(r - 0x14));
-            mulbc(v[10], v[16], q(), XYZW);
+            mulbc(fl, v[10], v[16], q(), XYZW);
             sqc2(j, v[10]);
         } while (r != end);
     }
@@ -485,33 +486,33 @@ void moby_joints_pose(uint32_t a0, uint32_t a1) {
         v[13] = lqc2(r + 0x30);
         t8 = lwu(r + 8);
         if (mode == 0) {
-            mul(v[14], v[9], v[8], W);
-            mul(v[15], v[9], v[8], XYZ);
-            mulbc(v[16], v[9], v[8].v[3], XYZ);
-            mulbc(v[17], v[8], v[9].v[3], XYZ);
-            opmula(v[8], v[9]);  // the cross product
-            opmsub(v[18], v[9], v[8]);
-            addabc(v[15], v[15].v[1], X);
-            maddbc(v[15], v[4], v[15].v[2], X);
-            add(v[8], v[16], v[17], XYZ);
-            add(v[8], v[8], v[18], XYZ);
-            subbc(v[8], v[14], v[15].v[0], W);
-            mul(v[19], v[10], v[11], XYZ);
-            add(v[12], v[12], v[13], XYZ);
+            mul(fl, v[14], v[9], v[8], W);
+            mul(fl, v[15], v[9], v[8], XYZ);
+            mulbc(fl, v[16], v[9], v[8].v[3], XYZ);
+            mulbc(fl, v[17], v[8], v[9].v[3], XYZ);
+            opmula(fl, v[8], v[9]);  // the cross product
+            opmsub(fl, v[18], v[9], v[8]);
+            addabc(fl, v[15], v[15].v[1], X);
+            maddbc(fl, v[15], v[4], v[15].v[2], X);
+            add(fl, v[8], v[16], v[17], XYZ);
+            add(fl, v[8], v[8], v[18], XYZ);
+            subbc(fl, v[8], v[14], v[15].v[0], W);
+            mul(fl, v[19], v[10], v[11], XYZ);
+            add(fl, v[12], v[12], v[13], XYZ);
         } else {
             qset_xy(v[20], sx(lwu(r + 0xc)));
-            subbc(v[20], v[0], v[20].v[0], W);
-            mulbc(v[8], v[8], v[20].v[3], XYZW);
-            mulbc(v[9], v[9], v[20].v[0], XYZW);
-            mulbc(v[10], v[10], v[20].v[3], XYZ);
-            mulbc(v[11], v[11], v[20].v[0], XYZ);
-            mulbc(v[12], v[12], v[20].v[3], XYZ);
-            mulbc(v[13], v[13], v[20].v[0], XYZ);
-            blend_quats(8, 9);
-            add(v[19], v[10], v[11], XYZ);
-            add(v[12], v[12], v[13], XYZ);
-            blend_quats_norm(8, 9);
-            mulbc(v[8], v[16], q(), XYZW);
+            subbc(fl, v[20], v[0], v[20].v[0], W);
+            mulbc(fl, v[8], v[8], v[20].v[3], XYZW);
+            mulbc(fl, v[9], v[9], v[20].v[0], XYZW);
+            mulbc(fl, v[10], v[10], v[20].v[3], XYZ);
+            mulbc(fl, v[11], v[11], v[20].v[0], XYZ);
+            mulbc(fl, v[12], v[12], v[20].v[3], XYZ);
+            mulbc(fl, v[13], v[13], v[20].v[0], XYZ);
+            blend_quats(fl, 8, 9);
+            add(fl, v[19], v[10], v[11], XYZ);
+            add(fl, v[12], v[12], v[13], XYZ);
+            blend_quats_norm(fl, 8, 9);
+            mulbc(fl, v[8], v[16], q(), XYZW);
         }
         sqc2(j, v[8]);
         sqc2(j + 0x10, v[19]);
@@ -525,38 +526,38 @@ void moby_joints_pose(uint32_t a0, uint32_t a1) {
     for (uint32_t a3 = SPR;;) {
         v[10] = lqc2(a3);
         v[16] = v[1];
-        add(v[11], v[10], v[10], XYZW);
+        add(fl, v[11], v[10], v[10], XYZW);
         v[17] = v[2];
         v[18] = v[3];
         v[19] = v[0];
-        mulbc(v[12], v[11], v[10].v[3], XYZ);
-        mulbc(v[13], v[11], v[10].v[0], XYZ);
-        mulbc(v[14], v[11], v[10].v[1], YZ);
-        mulbc(v[15], v[11], v[10].v[2], Z);
-        addbc(v[17], v[0], v[12].v[2], X);
-        subbc(v[18], v[0], v[12].v[1], X);
-        addbc(v[18], v[0], v[12].v[0], Y);
-        subbc(v[16], v[16], v[14].v[1], X);
-        subbc(v[17], v[17], v[13].v[0], Y);
-        subbc(v[18], v[18], v[13].v[0], Z);
-        subbc(v[16], v[13], v[12].v[2], Y);
-        addbc(v[16], v[13], v[12].v[1], Z);
-        subbc(v[17], v[14], v[12].v[0], Z);
-        addbc(v[17], v[17], v[13].v[1], X);
-        addbc(v[18], v[18], v[13].v[2], X);
-        addbc(v[18], v[18], v[14].v[2], Y);
+        mulbc(fl, v[12], v[11], v[10].v[3], XYZ);
+        mulbc(fl, v[13], v[11], v[10].v[0], XYZ);
+        mulbc(fl, v[14], v[11], v[10].v[1], YZ);
+        mulbc(fl, v[15], v[11], v[10].v[2], Z);
+        addbc(fl, v[17], v[0], v[12].v[2], X);
+        subbc(fl, v[18], v[0], v[12].v[1], X);
+        addbc(fl, v[18], v[0], v[12].v[0], Y);
+        subbc(fl, v[16], v[16], v[14].v[1], X);
+        subbc(fl, v[17], v[17], v[13].v[0], Y);
+        subbc(fl, v[18], v[18], v[13].v[0], Z);
+        subbc(fl, v[16], v[13], v[12].v[2], Y);
+        addbc(fl, v[16], v[13], v[12].v[1], Z);
+        subbc(fl, v[17], v[14], v[12].v[0], Z);
+        addbc(fl, v[17], v[17], v[13].v[1], X);
+        addbc(fl, v[18], v[18], v[13].v[2], X);
+        addbc(fl, v[18], v[18], v[14].v[2], Y);
         a3 += 0x40;
-        subbc(v[16], v[16], v[15].v[2], X);
+        subbc(fl, v[16], v[16], v[15].v[2], X);
         const uint32_t scaled = lwu(a3 - 0x24);
-        subbc(v[17], v[17], v[15].v[2], Y);
+        subbc(fl, v[17], v[17], v[15].v[2], Y);
         const uint32_t parent = lwu(a3 - 0x14);
-        subbc(v[18], v[18], v[14].v[1], Z);
+        subbc(fl, v[18], v[18], v[14].v[1], Z);
         v[8] = lqc2(a3 - 0x30);
         v[9] = lqc2(a3 - 0x20);
         if (scaled != 0) {
-            mulbc(v[16], v[16], v[8].v[0], XYZ);
-            mulbc(v[17], v[17], v[8].v[1], XYZ);
-            mulbc(v[18], v[18], v[8].v[2], XYZ);
+            mulbc(fl, v[16], v[16], v[8].v[0], XYZ);
+            mulbc(fl, v[17], v[17], v[8].v[1], XYZ);
+            mulbc(fl, v[18], v[18], v[8].v[2], XYZ);
         }
         v[12] = v[1];
         if (parent == 0) {
@@ -569,11 +570,11 @@ void moby_joints_pose(uint32_t a0, uint32_t a1) {
             v[14] = lqc2(parent + 0x20);
             v[15] = lqc2(parent + 0x30);
         }
-        add(v[19], v[19], v[9], XYZ);
-        rotate(v[20], 12, v[16], XYZW);
-        rotate(v[21], 12, v[17], XYZW);
-        rotate(v[22], 12, v[18], XYZW);
-        transform(v[23], 12, v[19], v[0].v[3]);
+        add(fl, v[19], v[19], v[9], XYZ);
+        rotate(fl, v[20], 12, v[16], XYZW);
+        rotate(fl, v[21], 12, v[17], XYZW);
+        rotate(fl, v[22], 12, v[18], XYZW);
+        transform(fl, v[23], 12, v[19], v[0].v[3]);
         sqc2(a3 - 0x40, v[20]);
         sqc2(a3 - 0x30, v[21]);
         sqc2(a3 - 0x20, v[22]);
@@ -586,16 +587,16 @@ void moby_joints_pose(uint32_t a0, uint32_t a1) {
         v[1] = lqc2(r);
         if (key2 != 0) {
             v[8] = lqc2(r + 0x10);
-            mulabc(v[1], v[6].v[0], XYZ);
-            maddbc(v[1], v[8], v[7].v[0], XYZ);
+            mulabc(fl, v[1], v[6].v[0], XYZ);
+            maddbc(fl, v[1], v[8], v[7].v[0], XYZ);
         }
         v[2] = lqc2(m);
         v[3] = lqc2(m + 0x10);
         v[4] = lqc2(m + 0x20);
-        mulbc(v[2], v[2], v[1].v[0], XYZ);
+        mulbc(fl, v[2], v[2], v[1].v[0], XYZ);
         r = lwu(r + 0xc);
-        mulbc(v[3], v[3], v[1].v[1], XYZ);
-        mulbc(v[4], v[4], v[1].v[2], XYZ);
+        mulbc(fl, v[3], v[3], v[1].v[1], XYZ);
+        mulbc(fl, v[4], v[4], v[1].v[2], XYZ);
         sqc2(m, v[2]);
         sqc2(m + 0x10, v[3]);
         sqc2(m + 0x20, v[4]);
@@ -611,10 +612,10 @@ void moby_joints_pose(uint32_t a0, uint32_t a1) {
         v[21] = lqc2(m + 0x10);
         v[22] = lqc2(m + 0x20);
         v[23] = lqc2(m + 0x30);
-        transform(v[19], 20, v[15], v[0].v[3]);
-        rotate(v[16], 20, v[12], XYZW);
-        rotate(v[17], 20, v[13], XYZW);
-        rotate(v[18], 20, v[14], XYZW);
+        transform(fl, v[19], 20, v[15], v[0].v[3]);
+        rotate(fl, v[16], 20, v[12], XYZW);
+        rotate(fl, v[17], 20, v[13], XYZW);
+        rotate(fl, v[18], 20, v[14], XYZW);
         sqc2(m, v[16]);
         sqc2(m + 0x10, v[17]);
         sqc2(m + 0x20, v[18]);

@@ -36,6 +36,7 @@ compiles one of them. `src/game/` and `runtime/` call the interface and stay sta
 | Files by path | the settings files | `fopen` | `_wfopen` (any characters) |
 | The local time | the memory card's dates, the CDVD clock | `localtime_r` | `localtime_s` |
 | Thread ids, CPU time | the audio threads, the frame profiler | `gettid`, `clock_gettime` | `GetCurrentThreadId`, `GetThreadTimes` |
+| The process's resources (`process_memory`, `process_cpu_ms`, `process_threads`, `gpu_client_info`) | the debug menu's profiler (`src/profiler/`) | `/proc/self/status`, `/proc/self/task/*/{comm,schedstat}`, `CLOCK_PROCESS_CPUTIME_ID`, the DRM's `/proc/self/fdinfo` and amdgpu's sysfs | `GetProcessMemoryInfo`, `GetProcessTimes`, a Toolhelp snapshot with `GetThreadTimes` / `GetThreadDescription`; no GPU account (the GL extensions instead) |
 | The setup's helper programs | `src/setup/setup_manager.cpp` | `posix_spawnp` | `CreateProcessW` |
 | The environment | the debug tools gate | `environ`, `unsetenv` | `_environ`, `_putenv_s` |
 | Backtraces (`EE_BT`) | `runtime/kernel/ee_memory.cpp` | glibc's `backtrace` | the return addresses (`CaptureStackBackTrace`), for `addr2line` |

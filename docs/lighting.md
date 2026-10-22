@@ -661,24 +661,38 @@ distance.
 
 ## Sun rays
 
-Options > Graphics > Sun Rays (Off, Low, High; Off by default), our choice, not the game's: shafts of
-light from the sun where the sky shows through the scene - a tunnel's mouth, the gaps between trees
-(Kerwan's first tunnel, with the level's sun in front, is the showcase). Screen space, at a quarter
-of the 3D's resolution (`sun_rays_pass` in `mrp_lighting.cpp`), after the mobys and the occlusion,
-before the effects, the particles and the 2D:
+Options > Graphics > Sun Rays (Off, Low, Medium, High; Off by default), our choice, not the game's:
+shafts of light from the sun where the sky shows through the scene - a tunnel's mouth, the gaps
+between trees, the sky around Aridia's planet (Kerwan's first tunnel, with the level's sun in front,
+is the showcase). Screen space, at a fraction of the 3D's resolution (`sun_rays_pass` in
+`mrp_lighting.cpp`), after the mobys and the occlusion, before the effects, the particles and the 2D:
 
 1. The mask: the sky's texels (depth 1) near the sun's place on the screen, their colour half tinted
    by the key light's; everything else black, so only openings toward the sky give rays.
-2. A radial blur of the mask toward the sun (40 taps, each weaker than the one before).
-3. Added to the picture with a soft limit (at most +0.28 Low, +0.45 High a texel), so a wide sky in
+2. A radial blur of the mask toward the sun (each tap weaker than the one before).
+3. Added to the picture with a soft limit (at most +0.28 a texel, High +0.45), so a wide sky in
    front of the sun does not burn the picture white.
 
-The rays fade out as the sun leaves the screen (gone 0.6 of the view beyond its edge) or goes behind
-the camera, and follow the sun's weight: none where the zone has no sun, in the level's
-[interiors](#interiors), with the Lighting on Original. The cascades are not used (the sky's
-openings are). Cost on the GPU about 1.5 ms at 5053 x 1371 (the copies of the colour and the depth
-included). `RAC1_SUN_RAYS` (0 / 1 / 2) overrides the option, `RAC1_SUN_RAYS_TRACE` prints the
-sun's place, the gain and the GPU time.
+The steps (`kRaysSteps`) are the look of 0.4.x's rays at a lower or higher quality and cost: the
+mask's and the blur's resolution and the blur's taps (their reach and fall-off the same: the decay a
+tap is 0.945 to the power 40 / taps, the weight 4 / taps). Low and Medium have the strength of
+0.4.x's Low, Medium its exact picture (to the pixel); High has the strength of 0.4.x's High (twice
+the gain, at most +0.45 a texel) at a finer resolution. Settings and saves from then read Low as
+Medium and High as High.
+
+| Step | Resolution | Taps | GPU at 5053 x 1371 (Radeon 890M; Kerwan's tunnel, Aridia's planet) |
+|---|---|---|---|
+| Low | an eighth | 24 | 0.57, 0.66 ms |
+| Medium | a quarter | 40 | 0.89, 1.04 ms (the 0.4.x Low: 0.96, 1.04) |
+| High | a third | 56 | 1.26, 1.45 ms |
+
+Most of each step's cost is the copies of the 3D's depth and colour at its size (reading the depth
+buffer costs a pass over all of it) and the add over the whole picture; the blur is the rest. The
+rays fade out as the sun leaves the screen (gone 0.6 of the view beyond its edge; nothing is drawn
+then) or goes behind the camera, and follow the sun's weight: none where the zone has no sun, in the
+level's [interiors](#interiors), with the Lighting on Original. The cascades are not used.
+`RAC1_SUN_RAYS` (0 to 3) overrides the option, `RAC1_SUN_RAYS_TRACE` prints the sun's place, the
+gain and the GPU time, `RAC1_SUN_RAYS_GAIN` scales the strength (testing).
 
 ## Ambient occlusion
 
@@ -701,6 +715,25 @@ screen: a surface close to the camera samples no further than 4 % of the view's 
 (most of the cost, for no visible change). `RAC1_AO_RADIUS` / `RAC1_AO_STRENGTH` (percent, testing)
 override every mode's reach and strength, `RAC1_AO_DUMP=1` writes the raw occlusion (`ao_<mode>.pgm`,
 the run's last frame) and prints its mean, `RAC1_AO_PROF=1` prints the pass's GPU time.
+
+**AO Intensity** (Options > Graphics, 25 to 125 %, default 75 %) scales the mode's strength (the table's
+strength column is the 100 % one): how dark the occlusion gets, the reach unchanged.
+`RAC1_AO_INTENSITY` (percent) overrides it.
+
+**Gentler on the mobys.** Screen-space occlusion only sees the depth buffer: a character's own arms,
+head and body overlapping on the screen look like deep creases to it, and it darkened faces and limbs
+far more than the world around them (Big Al in his shop on Kerwan, Ratchet's arms against his body).
+While the MRP draws the mobys, their pixels are marked in the stencil (bit 0, written as 1; the
+frame's clear clears the stencil with the depth, and the stencil is free while the modern lighting
+draws: the original's drop shadows, its only other user, are not drawn then). The occlusion pass's
+depth copy carries the stencil; the final blur reads it through a stencil view of that texture and
+keeps 40 % of the occlusion on the mobys' pixels (`RAC1_AO_MOBY`, percent; 100 the same as the world),
+all of it on the world's. The world's pixels around a moby keep their contact darkening (the ground
+under a crate, around Ratchet's feet); the mobys get a softer version of theirs, including where they
+meet the world. Without a stencil in the framebuffer (none known) every pixel gets all of it. The
+cost is within the noise: on Big Al's scene at 5053 x 1371 (GTAO 1/2, Radeon 890M) the mobys' and
+occlusion's GPU stage went from 4.17 to 3.85 ms (the stencil now cleared with the depth makes the
+depth copy cheaper, more than the marking costs), the whole frame 12.26 to 12.13 ms.
 
 **Why the modes looked the same until 0.4.x** (issue #75): every mode used a reach of 0.9 units and
 70 %, tiny at this game's scale (a crate is about 2 units): the raw occlusion averaged 250 to 254 of
@@ -776,18 +809,19 @@ does not turn the lighting on.
 |---|---|---|---|
 | Lighting | Original, Low, Medium, High | Original | the whole module; the sun shadow maps' resolution (1024, 2048, 4096) |
 | Shadow Strength | 50 to 100 % | 70 % | how much of the sun's light a shadow hides (`shadow_strength` in the preferences, item 45 of a save's block) |
-| Sun Rays | Off, Low, High | Off | light shafts from the sun through openings (`sun_rays`, item 46); see [Sun rays](#sun-rays) |
+| Sun Rays | Off, Low, Medium, High | Off | light shafts from the sun through openings, the steps the same look at more quality (`sun_rays_quality`, item 49; `sun_rays` and item 46 until 0.4.x read with Low as Medium); see [Sun rays](#sun-rays) |
 | Shadow Distance | Low, Medium, High, Maximum | Maximum | how far mobys cast sun shadows (40, 80, 140 units, or as far as the cascades reach) |
 | Dynamic Shadows | Off, On | Off | point-light cube shadows |
 | Secondary Lights | Off, Game's, All | All | Game's: the game's point lights per pixel; All: also automatic emitters and hand-placed lights |
 | Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2 | Off | SSAO |
+| AO Intensity | 25 to 125 % | 75 % | the occlusion's darkness: each mode's strength scaled (`ao_intensity` in the preferences, item 47 of a save's block); see [Ambient occlusion](#ambient-occlusion) |
 
 The other rows take effect only when Lighting is not Original.
 
 For testing, environment variables override each of these (they need `--debug-tools`):
 `RAC1_SHADOWS`, `RAC1_SHADOW_RES`, `RAC1_SHADOW_MOBY_DIST`, `RAC1_POINT_SHADOWS`, `RAC1_POINTS`,
 `RAC1_AUTO_LIGHTS`, `RAC1_AO`, and finer ones such as `RAC1_SHADOW_STRENGTH`, `RAC1_SHADOW_SPLITS`,
-`RAC1_SUN_DIR`, `RAC1_SHADOW_CACHE`, `RAC1_AO_RADIUS`, `RAC1_AO_STRENGTH`,
+`RAC1_SUN_DIR`, `RAC1_SHADOW_CACHE`, `RAC1_AO_RADIUS`, `RAC1_AO_STRENGTH`, `RAC1_AO_INTENSITY`, `RAC1_AO_MOBY`,
 `RAC1_POINT_TILES` and `RAC1_SHADOW_DEBUG` (1 shows the cascades, 2 the shadow visibility, 3 the
 point-light term alone).
 

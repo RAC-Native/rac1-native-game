@@ -84,6 +84,38 @@ double thread_cpu_ms();
 // `t` as the local time (localtime_r). False on an error.
 bool local_time(std::time_t t, std::tm* out);
 
+// ---- The process's resources (the debug menu's profiler, src/profiler/) ----
+
+// The process's memory in bytes: resident now, its peak, the address space (0 where unknown).
+// Linux: /proc/self/status (VmRSS, VmHWM, VmSize); Windows: GetProcessMemoryInfo (working set, its peak, the commit).
+struct ProcessMemory {
+    std::uint64_t resident = 0, resident_peak = 0, virtual_size = 0;
+};
+bool process_memory(ProcessMemory* out);
+// The CPU time of the whole process (every thread, user + system) in milliseconds; the logical processors.
+double process_cpu_ms();
+int cpu_count();
+// The process's threads: the system's id, its name where the system keeps one (Linux: comm; Windows: the
+// thread's description), its CPU time so far in milliseconds. False when they cannot be listed.
+struct ThreadTime {
+    std::uint64_t tid = 0;
+    std::string name;
+    double cpu_ms = 0.0;
+};
+bool process_threads(std::vector<ThreadTime>* out);
+// The GPU as the kernel's driver accounts it for this process (Linux DRM: /proc/self/fdinfo's drm-* keys, the
+// device's sysfs mem_info_*), in bytes / milliseconds; ok = false where there is no such accounting (Windows: the
+// profiler falls back on the GL driver's own extensions).
+struct GpuClientInfo {
+    bool ok = false;
+    std::string driver;                           // "amdgpu", "i915", "xe", ...
+    std::uint64_t vram = 0, gtt = 0;              // this process's buffers resident in VRAM / in system memory mapped for the GPU
+    double engine_ms = -1.0;                      // this process's GPU time so far on the gfx engine (cumulative; -1 when not given)
+    std::uint64_t vram_total = 0, vram_used = 0;  // the device's, every process (0 when unknown)
+    std::uint64_t gtt_total = 0, gtt_used = 0;
+};
+bool gpu_client_info(GpuClientInfo* out);
+
 // ---- The process's host settings ----
 
 // At the game's start: Windows: the console's QuickEdit mode turned off (with it, a click in the console's window

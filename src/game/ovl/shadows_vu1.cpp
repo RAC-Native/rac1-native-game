@@ -589,15 +589,24 @@ void shadows_vu1(VUState& s, uint32_t start, const std::function<void(uint32_t)>
         // 0x107: the triangle (vf28, vf27, vf26) saved and tested against the sides x 3
         put(vf[3], 3, one * opf(s.q));
         s.i = 3.0f;
+        // (host) the test drops a triangle wholly past one side of a third of the clip matrix's guard band: past 4 / 3 of the 4:3
+        // frame's half width (the guard band 0x166d40 is 4 times it). A wider window (16:9, 32:9) shows past that: in a widened view
+        // the factor divided by the view's widening (vu1::g_side_widen, the replica's walk), the sides of the view the window shows
+        // (Aridia's sand sea near the camera at the far left of a 32:9 view: its clipped cells' triangles there dropped). The
+        // clipping that follows stays at the game's guard band. The game's own view: 3 x 1, as the program.
+        const float kx = s.i / vu1::g_side_widen[0], ky = s.i / vu1::g_side_widen[1];
         vf[14].u[2] = vf[28].u[2];
         vf[14].u[3] = vf[28].u[3];
-        mulbc(vf[14], vf[28], s.i, XY);
+        mulbc(vf[14], vf[28], kx, X);
+        mulbc(vf[14], vf[28], ky, Y);
         vf[15].u[2] = vf[27].u[2];
         vf[15].u[3] = vf[27].u[3];
-        mulbc(vf[15], vf[27], s.i, XY);
+        mulbc(vf[15], vf[27], kx, X);
+        mulbc(vf[15], vf[27], ky, Y);
         vf[16].u[2] = vf[26].u[2];
         vf[16].u[3] = vf[26].u[3];
-        mulbc(vf[16], vf[26], s.i, XY);
+        mulbc(vf[16], vf[26], kx, X);
+        mulbc(vf[16], vf[26], ky, Y);
         isw(s, vi[6], 0x3b3, 0);
         isw(s, vi[7], 0x3b3, 1);
         clipw(s, vf[14]);

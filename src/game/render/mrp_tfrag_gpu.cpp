@@ -1,5 +1,6 @@
 // orig: (host) The MRP world's terrain on the GPU (see mrp_tfrag_gpu.h).
 #include <game/render/mrp_tfrag_gpu.h>
+#include <profiler/host_profiler.h>
 #include <game/render/mrp_world_static.h>
 
 #include <game/ovl/ovl_common.h>
@@ -1324,6 +1325,7 @@ bool tfrag_gpu_init() {
         return false;
     }
     glGenBuffers(10, g_gpu.buf);
+    rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 10, g_gpu.buf, "MRP world: tfrag GPU buffers");
     g_gpu.ok = true;
     return true;
 }

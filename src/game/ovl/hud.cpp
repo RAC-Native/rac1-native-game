@@ -10,6 +10,8 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
+#include <game/render/mrp_lod.h>
+#include <game/render/render_view.h>
 
 namespace rac1 {
 
@@ -28,6 +30,17 @@ void cnt_direct(uint32_t p, uint32_t qwc) {
     sw(p + 4, 0);
     sw(p + 8, 0);
     sw(p + 0xc, 0x50000000u | qwc);
+}
+// orig: (host) the side of the frame the HUD element in slot `e` is anchored to, for a HUD wider than 4:3 (render_view_hud_note):
+// its layout flags (+0x60, the slot's own: hud_element_place aligns it left of x with 4, right of x with 8, centres it on x
+// without; hud_element_offset slides it out toward the same side): 1 left, 2 right, 0 centred (not moved). Read only.
+// The slots (the same layout on every level): 0 x 20 top left (the weapon's ammo, hero mode 2's bar, a race's), 1 x 256 top
+// centre (health, Gemlik's boss), 2 x 492 top right (bolts), 3 x 20 middle left (the quick select, Gadgebot's commands),
+// 4 x 492 middle right (the air meter, the Morph-o-Ray), 5 x 20 bottom left, 6 x 256 bottom centre, 7 x 492 bottom right
+// (the Metal Detector; a race's, Skid's), 8..11 x 492 middle right, 12 x 142 flags 0 (the help panel: centred)
+uint8_t hud_element_side(uint32_t e) {
+    const uint32_t f = lwu(e + 0x60);
+    return (f & 4) != 0 ? 1 : (f & 8) != 0 ? 2 : 0;
 }
 }  // namespace
 
@@ -375,8 +388,17 @@ void hud_draw() {
         return;
     }
     sw(H + 0xc, 0xfffff0);
+    // (host: a HUD wider than 4:3, Options > Graphics > HUD: each side element's chain range noted, render_view_hud_note; in the
+    // real run, not in the widened view's effects shadow (mrp_lod_effects_shadow runs this pass first, its packets put back); not on
+    // the Vendor's screens, game mode 5, whose 4:3 layout the bolts element is a part of)
+    const bool wide = render_view_hud_wide() && mrp_lod_shadow_slot() < 0 && lw(OV(0x0015f5c4)) != 5;
     for (uint32_t e = OV(0x0017dc50), i = 0; i < 13; ++i, e += 0x90)
-        if (lwu(e + 0x18) != 0) ovl_call_moby_fn(lwu(e + 0x18), e);
+        if (lwu(e + 0x18) != 0) {
+            const uint8_t side = wide ? hud_element_side(e) : 0;
+            const uint32_t at = side != 0 ? lwu(CUR) : 0;
+            ovl_call_moby_fn(lwu(e + 0x18), e);
+            if (side != 0) render_view_hud_note(at, lwu(CUR), side);  // (host)
+        }
     const int32_t t = lw(OV(0x0015f640));
     if ((t == 0 && lw(OV(0x0015f644)) == 0) || lw(OV(0x0015f5c4)) != 0) {
         sw(OV(0x0015f648), 100);

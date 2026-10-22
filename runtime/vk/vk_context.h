@@ -24,6 +24,7 @@ struct GpuImage {
     VkImage image = VK_NULL_HANDLE;
     VkDeviceMemory memory = VK_NULL_HANDLE;
     VkImageView view = VK_NULL_HANDLE;
+    VkImageView depth_view = VK_NULL_HANDLE;  // (a sampled depth-and-stencil image: its depth alone, for sampling it)
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t layers = 1;
@@ -159,6 +160,9 @@ void blit_image(GpuImage& src, int sx0, int sy0, int sx1, int sy1, GpuImage& dst
                 VkFilter filter = VK_FILTER_NEAREST, VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT,
                 VkImageLayout dst_final_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 void read_image_rgba(GpuImage& src, int w, int h, void* out_rgba);
+// A same-size copy (vkCmdCopyImage: any format, the depth and the stencil too, unlike a blit), each image left in `final`
+void copy_image(GpuImage& src, int sx, int sy, GpuImage& dst, int dx, int dy, int w, int h, VkImageAspectFlags aspect,
+                VkImageLayout src_final, VkImageLayout dst_final);
 void save_ppm(const char* path, int w, int h);
 
 // Descriptors, samplers, pipelines & fallback textures

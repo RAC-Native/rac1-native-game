@@ -55,6 +55,10 @@ struct Viewport {
     // (the modern view; off for the faithful reference) a font's glyph samples only the texels of its own cell: its bilinear
     // filtering, scaled up, no longer blends in the texels beyond it, the neighbouring glyphs (issue #76; see draw())
     bool sprite_clamp = false;
+    // (a HUD wider than 4:3, Options > Graphics > HUD) the HUD's elements anchored at the frame's sides (Primitive::hud) moved by
+    // this many frame pixels toward their side: the left ones left, the right ones right, their scissor with them (past the
+    // frame's edges, never past the window's). 0: the HUD at the 4:3 frame's edges, as the original
+    float hud_shift = 0.0f;
 };
 // The primitives over the current frame, the game's fb_w x fb_h frame onto the viewport
 // (`vp`, else the whole win_w x win_h); with `depth`, the Z-tested ones against the host's

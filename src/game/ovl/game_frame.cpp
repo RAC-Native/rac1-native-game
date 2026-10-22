@@ -9,6 +9,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/pause_menu.h>
 #include <game/port_stubs.h>
+#include <profiler/host_profiler.h>
 
 namespace rac1 {
 
@@ -51,6 +52,7 @@ void level_stat(uint32_t s) {
 // the ship), the pad's single step, the level updates (tfrag, mobys, HUD bar, effects), the
 // hero, the camera, the HUD and the end-of-frame passes, each gated by its bit of C+8.
 void gameplay_frame() {
+    RAC1_PROF_ZONE(kGameLogic);  // (host: the profiler's sub-stages of the game code, nothing of the game's)
     advanced_frame();
     g_world_paused = false;
     if (lw(C + 0xec) != 0) {
@@ -146,6 +148,7 @@ void gameplay_frame() {
     }
     if (on(2)) draw_lists_reset();
     if (on(2)) {
+        RAC1_PROF_ZONE(kGameMobyUpdates);
         moby_free_slots_count();
         moby_updates();
         sound_emitters_update();
@@ -153,16 +156,21 @@ void gameplay_frame() {
     }
     prof_mark(OV(0x00160ff8), 3);
     advanced_aim_before_hero();  // enhancement: the modern controls' aim
-    if (on(1)) hero_frame_update();
+    if (on(1)) {
+        RAC1_PROF_ZONE(kGameHero);
+        hero_frame_update();
+    }
     if (on(1)) advanced_aim_after_hero();
     prof_mark(OV(0x00161008), 7);
     if (on(4)) {
+        RAC1_PROF_ZONE(kGameParticles);
         particles_update();
         spin_timers_update();
     }
     prof_mark(OV(0x00161018), 5);
     advanced_aim_before_camera();  // enhancement: the modern controls' aim
     if (on(8)) {
+        RAC1_PROF_ZONE(kGameCamera);
         camera_update();
     } else if (lw(C + 0x14) != 0 && !g_world_paused) {
         TODO_PORT(0x001f3aa0, "cutscene camera")();

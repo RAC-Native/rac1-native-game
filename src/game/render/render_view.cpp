@@ -127,6 +127,44 @@ bool gs_depth_live(double& a, double& b) {
 float g_view_widen = 1.0f;
 float g_view_fov_scale = 1.0f;
 
+float g_hud_aspect = 0.0f;
+
+namespace {
+std::vector<std::pair<uint32_t, uint32_t>> g_layers;  // render_view_layer_note's ranges (the tags' addresses, inclusive)
+std::vector<HudNote> g_hud_notes;                      // render_view_hud_note's ranges (inclusive)
+}  // namespace
+
+// orig: (host) see render_view.h
+bool render_view_hud_wide() { return g_hud_aspect > 4.0f / 3.0f && g_view_widen > 1.0f; }
+float render_view_hud_shift(float fb_w) {
+    if (!render_view_hud_wide()) return 0.0f;
+    const float widen = std::min(g_hud_aspect * 0.75f, g_view_widen);  // (the HUD's width over the 4:3 frame's)
+    return widen > 1.0f ? fb_w * 0.5f * (widen - 1.0f) : 0.0f;
+}
+void render_view_hud_note(uint32_t first, uint32_t end, uint8_t side) {
+    if (end <= first || side == 0) return;
+    if (!g_hud_notes.empty() && g_hud_notes.back().last + 1 == first && g_hud_notes.back().side == side) {
+        g_hud_notes.back().last = end - 1;
+        return;
+    }
+    g_hud_notes.push_back({first, end - 1, side});
+}
+std::vector<HudNote> render_view_hud_notes() { return g_hud_notes; }
+
+void render_view_layers_begin() {
+    g_layers.clear();
+    g_hud_notes.clear();
+}
+void render_view_layer_note(uint32_t first, uint32_t end) {
+    if (end <= first) return;
+    if (!g_layers.empty() && g_layers.back().second + 1 == first) {  // (one layer's pieces in a row: one range)
+        g_layers.back().second = end - 1;
+        return;
+    }
+    g_layers.emplace_back(first, end - 1);
+}
+std::vector<std::pair<uint32_t, uint32_t>> render_view_layers() { return g_layers; }
+
 namespace {
 constexpr float kAspect43 = 4.0f / 3.0f;
 // the frame's shape in the window: the window's own in widescreen (view mode 2), else

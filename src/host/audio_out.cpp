@@ -51,6 +51,7 @@
 #include <runtime/iop/snd989_iop.h>
 
 #include <platform/platform.h>
+#include <profiler/host_profiler.h>
 
 #include <algorithm>
 #include <atomic>
@@ -154,7 +155,10 @@ void pull_queue(ma_device*, void* out, const void*, ma_uint32 frames_u) {
     int16_t* o = static_cast<int16_t*>(out);
     const int frames = static_cast<int>(frames_u);
     Reader& rd = g_rd;
-    if (g_device_tid.load(std::memory_order_relaxed) == 0) g_device_tid.store(rac1::platform::thread_id(), std::memory_order_relaxed);
+    if (g_device_tid.load(std::memory_order_relaxed) == 0) {
+        g_device_tid.store(rac1::platform::thread_id(), std::memory_order_relaxed);
+        rac1::prof::thread_name("audio device");  // (the debug menu's profiler: the Threads list)
+    }
     const double t = now_ms();
     if (rd.last_cb_ms != 0) atomic_max(g_max_cb_gap_ms, t - rd.last_cb_ms);
     rd.last_cb_ms = t;
@@ -423,6 +427,7 @@ void iop_thread_start() {
     if (!rac1::snd989_mirror_enabled()) return;
     g_iop_run.store(true);
     g_iop = std::thread([] {
+        rac1::prof::thread_name("IOP mirror (audio)");
         if (rac1::host_priority_enabled()) {  // (the queue's producer now: real-time as the device's thread, one step under it)
             const uint64_t tid = rac1::platform::thread_id();
             std::fprintf(stderr, "[audio] the IOP thread %llu real-time: %s\n", static_cast<unsigned long long>(tid), rac1::host_priority_realtime(tid, 9) ? "yes" : "no (rtkit refused or absent)");

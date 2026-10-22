@@ -1,4 +1,5 @@
 #include <runtime/level/level_loader.h>
+#include <runtime/vk/vk_context.h>
 #include <runtime/level/host_layout.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/ee_memory.h>
@@ -269,7 +270,7 @@ void build_legacy(std::span<const std::byte> level_wad_span) {
     }
 
     prof.emplace("    static_geom_cache_init");
-    if (g_use_gpu_rendering) {
+    if (g_use_gpu_rendering && !vk::is_active()) {  // (the legacy renderers' OpenGL buffers: none with Vulkan, which draws no legacy renderer)
         static_geom_cache_init();
     }
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compiles all Vulkan 1.3 GLSL shaders for rac1-native into runtime/vk/vk_shaders.h using glslc."""
+"""The Vulkan renderer's GLSL shaders, compiled to SPIR-V at build time (CMakeLists.txt): see main()."""
 
 import os
 import subprocess
@@ -925,8 +925,11 @@ layout(location = 0) in vec2 vUv;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 0) uniform sampler2D uAo;
 layout(set = 0, binding = 1) uniform sampler2D uDepth;
+layout(set = 0, binding = 2) uniform usampler2D uStencil;  // (the depth's stencil: bit 0 the mobys' pixels, mrp_lighting_ao_moby_mark)
 layout(push_constant) uniform Push {
     vec2 uTexel;
+    float uMoby;  // (the share of the occlusion the mobys' pixels keep; 1: all, the stencil not read)
+    float _pad;
 };
 void main() {
     float d0 = texture(uDepth, vUv).r;
@@ -941,7 +944,9 @@ void main() {
             w += k;
         }
     float ao = w > 0.0 ? sum / w : 1.0;
-    FragColor = vec4(vec3(ao), 1.0);
+    float k = 1.0;
+    if (uMoby < 1.0 && (texture(uStencil, vUv).r & 1u) != 0u) k = uMoby;
+    FragColor = vec4(vec3(mix(1.0, ao, k)), 1.0);
 }
 """
 
@@ -950,8 +955,11 @@ layout(location = 0) in vec2 vUv;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 0) uniform sampler2D uAo;
 layout(set = 0, binding = 1) uniform sampler2D uDepth;
+layout(set = 0, binding = 2) uniform usampler2D uStencil;  // (the depth's stencil: bit 0 the mobys' pixels, mrp_lighting_ao_moby_mark)
 layout(push_constant) uniform Push {
     vec2 uTexel;
+    float uMoby;  // (the share of the occlusion the mobys' pixels keep; 1: all, the stencil not read)
+    float _pad;
 };
 void main() {
     float d0 = texture(uDepth, vUv).r;
@@ -968,7 +976,9 @@ void main() {
         w += k1 + k2;
     }
     float ao = w > 1e-5 ? sum / w : 1.0;
-    FragColor = vec4(vec3(ao), 1.0);
+    float k = 1.0;
+    if (uMoby < 1.0 && (texture(uStencil, vUv).r & 1u) != 0u) k = uMoby;
+    FragColor = vec4(vec3(mix(1.0, ao, k)), 1.0);
 }
 """
 
@@ -981,12 +991,14 @@ layout(push_constant) uniform Push {
     vec2 uSun;
     vec2 uAspect;
     vec4 uTint_Pad;
+    vec4 uSrc;  // (the view in the 3D's full buffers: offset xy, size zw, 0..1)
 };
 #define uTint (uTint_Pad.xyz)
 void main() {
-    float d = texture(uDepth, vUv).r;
+    vec2 suv = uSrc.xy + vUv * uSrc.zw;
+    float d = texture(uDepth, suv).r;
     if (d < 1.0) { FragColor = vec4(0.0); return; }
-    vec3 c = texture(uColor, vUv).rgb;
+    vec3 c = texture(uColor, suv).rgb;
     vec2 v = (vUv - uSun) * uAspect;
     float k = exp(-dot(v, v) * 6.0);
     float lum = dot(c, vec3(0.299, 0.587, 0.114));
@@ -1000,11 +1012,11 @@ layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 0) uniform sampler2D uMask;
 layout(push_constant) uniform Push {
     vec2 uSun;
-    vec2 _pad;
+    vec2 uTaps_pad;  // (x: the taps, the step's)
     vec4 uParam;
 };
 void main() {
-    const int N = 40;
+    int N = int(uTaps_pad.x + 0.5);
     vec2 delta = (vUv - uSun) * (uParam.x / float(N));
     float noise = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
     vec2 uv = vUv - delta * noise;
@@ -1258,6 +1270,7 @@ void main() {
     uint w = vCmd.y;
     if (uTme != 0) {
         vec2 st = vStq.xy / vStq.z;
+        vec2 st_dx = dFdx(st), st_dy = dFdy(st);  // (in uniform control flow: the texture level below)
         vec4 t;
         if ((w & 1u) != 0u) {
             t = vec4(128.0 / 255.0);
@@ -1274,7 +1287,11 @@ void main() {
                 if (level == 0 && (w & (1u << 25)) != 0u) { FragColor = vec4(1.0, 0.0, 1.0, 1.0); return; }
                 if (level == 1 && (w & (1u << 26)) != 0u) { FragColor = vec4(0.0, 1.0, 1.0, 1.0); return; }
             } else {
-                float lod = clamp(textureQueryLod(uTex, st).y, 0.0, float(mips - 1));
+                // (the isotropic level, as the OpenGL path's textureQueryLod gives it on radeonsi; Vulkan drivers may fold the sampler's
+                // anisotropy into it - RADV does -, which picked sharper levels than OpenGL: Aridia's and Hoven's Gadgetron signs)
+                vec2 tsz = vec2(textureSize(uTex, 0).xy);
+                vec2 ddx = st_dx * tsz, ddy = st_dy * tsz;
+                float lod = clamp(0.5 * log2(max(dot(ddx, ddx), dot(ddy, ddy))), 0.0, float(mips - 1));
                 t = textureLod(uTex, vec3(st, layer), lod);
             }
         }
@@ -1498,6 +1515,7 @@ void main() {
     float uLayer = float(vTex.y);
     if (uTme != 0) {
         vec2 st = vStq.xy / vStq.z;
+        vec2 st_dx = dFdx(st), st_dy = dFdy(st);  // (in uniform control flow: the texture level below)
         vec4 t;
         if ((w & 1u) != 0u) {
             t = vec4(128.0 / 255.0);
@@ -1514,7 +1532,9 @@ void main() {
                     level = min(level, mips - 1);
                     t = textureLod(uTexs[u], vec3(st, uLayer), float(level));
                 } else {
-                    float lod = clamp(textureQueryLod(uTexs[u], st).y, 0.0, float(mips - 1));
+                    vec2 tsz = vec2(textureSize(uTexs[u], 0).xy);  // (the isotropic level: see the mobys' shader)
+                    vec2 ddx = st_dx * tsz, ddy = st_dy * tsz;
+                    float lod = clamp(0.5 * log2(max(dot(ddx, ddx), dot(ddy, ddy))), 0.0, float(mips - 1));
                     t = textureLod(uTexs[u], vec3(st, uLayer), lod);
                 }
                 break;
@@ -1592,16 +1612,19 @@ SHADERS = [
 ]
 
 
-def compile_shader(name: str, stage: str, src: str) -> bytes:
+def compile_shader(compiler: str, name: str, stage: str, src: str) -> bytes:
     with tempfile.TemporaryDirectory() as td:
         in_path = os.path.join(td, f"{name}.{stage}")
         out_path = os.path.join(td, f"{name}.spv")
         with open(in_path, "w", encoding="utf-8") as f:
             f.write(src)
-        cmd = ["glslc", "--target-env=vulkan1.3", "-O", f"-fshader-stage={stage}", in_path, "-o", out_path]
+        if os.path.basename(compiler).lower().startswith("glslangvalidator"):
+            cmd = [compiler, "-V", "--target-env", "vulkan1.3", "-S", stage, in_path, "-o", out_path]
+        else:
+            cmd = [compiler, "--target-env=vulkan1.3", "-O", f"-fshader-stage={stage}", in_path, "-o", out_path]
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode != 0:
-            print(f"ERROR compiling {name} ({stage}):\n{res.stderr}", file=sys.stderr)
+            print(f"ERROR compiling {name} ({stage}):\n{res.stdout}{res.stderr}", file=sys.stderr)
             for idx, line in enumerate(src.splitlines(), 1):
                 print(f"{idx:4d}: {line}", file=sys.stderr)
             sys.exit(1)
@@ -1609,35 +1632,62 @@ def compile_shader(name: str, stage: str, src: str) -> bytes:
             return f.read()
 
 
+def write_if_changed(path: str, text: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            if f.read() == text:
+                return
+    except OSError:
+        pass
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+
+
 def main():
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    out_header = os.path.join(repo_root, "runtime", "vk", "vk_shaders.h")
-    lines = [
-        "// Auto-generated by tools/gen_vk_shaders.py — DO NOT EDIT MANUALLY",
+    # Usage: gen_vk_shaders.py <out_dir> [<glslc or glslangValidator>]
+    # Writes <out_dir>/runtime/vk/vk_shaders.h (the arrays' declarations, with their sizes) and <out_dir>/vk_shaders.cpp
+    # (their SPIR-V). Without a compiler the arrays are one word each and kAvailable is false: the renderer then does not
+    # start (vk::init fails, the game stays on OpenGL).
+    if len(sys.argv) < 2:
+        print("usage: gen_vk_shaders.py <out_dir> [glslc|glslangValidator]", file=sys.stderr)
+        sys.exit(2)
+    out_dir = sys.argv[1]
+    compiler = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] and not sys.argv[2].endswith("NOTFOUND") else ""
+    header = [
+        "// Generated by tools/gen_vk_shaders.py at build time - not in the repository",
         "#pragma once",
         "#include <cstdint>",
         "",
         "namespace rac1::vk::shaders {",
         "",
+        f"inline constexpr bool kAvailable = {'true' if compiler else 'false'};",
+        "",
+    ]
+    body = [
+        "// Generated by tools/gen_vk_shaders.py at build time - not in the repository",
+        "#include \"runtime/vk/vk_shaders.h\"",
+        "",
+        "namespace rac1::vk::shaders {",
+        "",
     ]
     for name, stage, src in SHADERS:
-        spv = compile_shader(name, stage, src)
-        assert len(spv) % 4 == 0
-        words = struct.unpack(f"<{len(spv) // 4}I", spv)
-        lines.append(f"// {name} ({stage}, {len(spv)} bytes)")
-        lines.append(f"inline constexpr uint32_t {name}[] = {{")
+        if compiler:
+            spv = compile_shader(compiler, name, stage, src)
+            assert len(spv) % 4 == 0
+            words = struct.unpack(f"<{len(spv) // 4}I", spv)
+        else:
+            words = (0,)
+        header.append(f"extern const uint32_t {name}[{len(words)}];  // {stage}")
+        body.append(f"const uint32_t {name}[{len(words)}] = {{")
         for i in range(0, len(words), 8):
-            chunk = ", ".join(f"0x{w:08x}u" for w in words[i:i + 8])
-            lines.append(f"    {chunk},")
-        lines.append("};")
-        lines.append("")
-        print(f"Compiled {name:22s} ({stage}): {len(spv):6d} bytes")
-
-    lines.append("}  // namespace rac1::vk::shaders")
-    lines.append("")
-    with open(out_header, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-    print(f"Wrote {out_header}")
+            body.append("    " + ", ".join(f"0x{w:08x}u" for w in words[i:i + 8]) + ",")
+        body.append("};")
+    header += ["", "}  // namespace rac1::vk::shaders", ""]
+    body += ["", "}  // namespace rac1::vk::shaders", ""]
+    write_if_changed(os.path.join(out_dir, "runtime", "vk", "vk_shaders.h"), "\n".join(header))
+    write_if_changed(os.path.join(out_dir, "vk_shaders.cpp"), "\n".join(body))
+    print(f"[vk] {len(SHADERS)} shaders {'compiled with ' + compiler if compiler else 'left out (no glslc / glslangValidator found): the Vulkan renderer will not start'}")
 
 
 if __name__ == "__main__":

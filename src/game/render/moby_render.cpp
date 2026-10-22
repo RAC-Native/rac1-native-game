@@ -2,6 +2,7 @@
 // until the mobys go through their ported VU1 pass, ADR 0007): the class models decoded at level
 // load, the skinned models exported from the ISO (setup.sh), the GL draw.
 #include <game/render/render_toggles.h>
+#include <profiler/host_profiler.h>
 #include <game/render/moby_render.h>
 #include <game/render/render_view.h>
 #include <game/render/shader_manager.h>
@@ -367,6 +368,7 @@ void moby_draw_class(int16_t cls, const glm::mat4& matrix, const std::vector<glm
         uint32_t shared_vbo = 0;
         if (!vertices.empty()) {
             glGenBuffers(1, &shared_vbo);
+            rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &shared_vbo, "Mobys (legacy drawer)");
             glBindBuffer(GL_ARRAY_BUFFER, shared_vbo);
             glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(MobyVertex), vertices.data(), GL_STATIC_DRAW);
         }
@@ -387,6 +389,7 @@ void moby_draw_class(int16_t cls, const glm::mat4& matrix, const std::vector<glm
             if (!indices.empty() && shared_vbo != 0) {
                 glGenVertexArrays(1, &vbo_data.vao);
                 glGenBuffers(1, &vbo_data.ebo);
+                rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &vbo_data.ebo, "Mobys (legacy drawer)");
 
                 glBindVertexArray(vbo_data.vao);
                 glBindBuffer(GL_ARRAY_BUFFER, shared_vbo);

@@ -20,6 +20,7 @@ using MobyFn = void (*)(uint32_t moby);
 void ovl_register_moby_fn(uint32_t addr, MobyFn fn);     // port table for `jalr` targets
 void ovl_call_moby_fn(uint32_t fn, uint32_t moby);       // `jalr fn` with a0 = moby
 bool ovl_moby_fn_ported(uint32_t addr);
+MobyFn ovl_moby_fn_resolve(uint32_t addr);               // (host) the port `jalr addr` calls (nullptr: none)
 
 // ---- 0x001exxxx -------------------------------------------------------------
 uint32_t moby_table_find_by_uid(int32_t uid);            // orig: 0x001eb1f8

@@ -1,9 +1,12 @@
 // See gs_draw.h.
 #include <runtime/gs/gs_draw.h>
+#include <profiler/host_profiler.h>
 #include <runtime/vk/vk_context.h>
 #include <runtime/vk/vk_shaders.h>
 
 #include <glad/glad.h>
+
+#include <array>
 
 #include <algorithm>
 #include <chrono>
@@ -144,6 +147,7 @@ struct RenderTarget {
 // the target's depth buffer, its size the target's (attached to its framebuffer; the framebuffer left bound)
 void render_target_depth(RenderTarget& r) {
     if (r.depth == 0) glGenRenderbuffers(1, &r.depth);
+    rac1::prof::gl_track_n(rac1::prof::kGlRenderbuffer, 1, &r.depth, "GS replica: render targets");
     glBindFramebuffer(GL_FRAMEBUFFER, r.fbo);
     if (r.depth_w != r.w || r.depth_h != r.h) {
         glBindRenderbuffer(GL_RENDERBUFFER, r.depth);
@@ -161,6 +165,7 @@ RenderTarget& render_target(uint32_t fbp, int w, int h) {
     if (r.fbo == 0) {
         glGenFramebuffers(1, &r.fbo);
         glGenTextures(1, &r.tex);
+        rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &r.tex, "GS replica: render targets");
     }
     r.w = w;
     r.h = h;
@@ -214,6 +219,7 @@ uint32_t texture_for(const Gs& gs, uint64_t tex0, uint64_t texa, const TexImage*
             for (int x = 0; x < tw; ++x) px[static_cast<size_t>(y) * tw + x] = gs.texel(tex0, texa, x, y);
     }
     if (e.id == 0) glGenTextures(1, &e.id);
+    rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &e.id, "GS replica: textures");
     glBindTexture(GL_TEXTURE_2D, e.id);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, tw, th, 0, GL_RGBA, GL_UNSIGNED_BYTE, img != nullptr ? img->px.data() : px.data());
     e.gen = ver;
@@ -658,7 +664,6 @@ void draw_vk(const Gs& gs, int win_w, int win_h, float FB_W, float FB_H, const D
         vk::RingAlloc vbuf = vk::alloc_ring(bytes, 16);
         std::memcpy(vbuf.ptr, batch.data(), bytes);
 
-        VkDescriptorSet ds = vk::alloc_descriptor_set(g_vk_set_layout);
         const VkFilter mag_f = applied.lin ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
         const VkFilter mip_f = applied.lin_min ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
         const VkSamplerAddressMode ws = applied.wrap_s ? VK_SAMPLER_ADDRESS_MODE_REPEAT : VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
@@ -676,6 +681,22 @@ void draw_vk(const Gs& gs, int win_w, int win_h, float FB_W, float FB_H, const D
             VkImageView mv = (applied.tme && m < applied.mip_n && applied.mip_id[m] != VK_NULL_HANDLE) ? applied.mip_id[m] : vk::white_texture().view;
             ii[2 + m] = {s_mip, mv, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
         }
+        // (the frame's sets kept by what they bind: a batch binding the same textures and samplers as one before reuses its set -
+        // the transient pools are reset at each frame's start, the cache with them)
+        static uint64_t ds_frame = ~0ull;
+        static std::map<std::array<uint64_t, 10>, VkDescriptorSet> ds_cache;
+        if (ds_frame != vk::frame_number()) {
+            ds_frame = vk::frame_number();
+            ds_cache.clear();
+        }
+        std::array<uint64_t, 10> ds_key{};
+        for (int i = 0; i < 5; ++i) {
+            ds_key[static_cast<size_t>(i) * 2] = reinterpret_cast<uint64_t>(ii[i].imageView);
+            ds_key[static_cast<size_t>(i) * 2 + 1] = reinterpret_cast<uint64_t>(ii[i].sampler);
+        }
+        VkDescriptorSet& ds = ds_cache[ds_key];
+        if (ds == VK_NULL_HANDLE) {
+        ds = vk::alloc_descriptor_set(g_vk_set_layout);
         VkWriteDescriptorSet writes[5]{};
         for (uint32_t i = 0; i < 5; ++i) {
             writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -686,6 +707,7 @@ void draw_vk(const Gs& gs, int win_w, int win_h, float FB_W, float FB_H, const D
             writes[i].pImageInfo = &ii[i];
         }
         vkUpdateDescriptorSets(vk::device(), 5, writes, 0, nullptr);
+        }
 
         GsDrawPush push{};
         if (applied.to_rt) {
@@ -950,7 +972,11 @@ void draw_vk(const Gs& gs, int win_w, int win_h, float FB_W, float FB_H, const D
         }
 
         bool to_left = false, to_right = false, full_span = false, edge_fill = false;
-        if (!to_rt && (sx < 1.0f || crop_on)) {
+        if (!to_rt && p.layer && !proj3d && !p.vu && sx < 1.0f) {
+            // (a full-screen 2D layer drawn in pieces: stretched across the window, as draw())
+            for (V& q : verts) q.x = FB_W * 0.5f + (q.x - FB_W * 0.5f) / sx;
+            to_left = to_right = full_span = true;
+        } else if (!to_rt && (sx < 1.0f || crop_on)) {
             float x0 = verts[0].x, x1 = x0, y0 = verts[0].y, y1 = y0;
             for (const V& q : verts) {
                 x0 = std::min(x0, q.x);
@@ -958,14 +984,15 @@ void draw_vk(const Gs& gs, int win_w, int win_h, float FB_W, float FB_H, const D
                 y0 = std::min(y0, q.y);
                 y1 = std::max(y1, q.y);
             }
-            full_span = (x0 <= 0.0f && x1 >= FB_W) || (y0 <= 0.0f && y1 >= FB_H);
+            const float far_x = tme ? FB_W : FB_W - 0.5f, far_y = tme ? FB_H : FB_H - 0.5f;  // (the far edge reached, as draw())
+            full_span = (x0 <= 0.0f && x1 >= far_x) || (y0 <= 0.0f && y1 >= far_y);
             if (crop_on && !tme && (x0 <= 0.0f || x1 >= FB_W || y0 <= 0.0f || y1 >= FB_H)) edge_fill = true;
             if (full_span && sx < 1.0f) {
                 to_left = x0 <= 0.0f;
-                to_right = x1 >= FB_W;
+                to_right = x1 >= far_x;
                 for (V& q : verts) {
                     if (q.x <= 0.0f) q.x = FB_W * 0.5f * (1.0f - 1.0f / sx);
-                    else if (q.x >= FB_W) q.x = FB_W * 0.5f * (1.0f + 1.0f / sx);
+                    else if (q.x >= far_x) q.x = FB_W * 0.5f * (1.0f + 1.0f / sx);
                 }
             }
         }
@@ -1035,7 +1062,7 @@ void draw_vk(const Gs& gs, int win_w, int win_h, float FB_W, float FB_H, const D
         k.zwrite = ztest && field(st.zbuf, 32, 1) == 0;
         int x0 = static_cast<int>(field(st.scissor, 0, 11)), x1 = static_cast<int>(field(st.scissor, 16, 11));
         int y0 = static_cast<int>(field(st.scissor, 32, 11)), y1 = static_cast<int>(field(st.scissor, 48, 11));
-        if (v.hide_edge_slivers && !to_rt && tme && !crop_3d && !p.vu && !p.wide) {
+        if (v.hide_edge_slivers && !to_rt && tme && !crop_3d && !p.vu && !p.wide && !(p.layer && full_span)) {
             float bx0 = verts[0].x, bx1 = bx0, by0 = verts[0].y, by1 = by0;
             for (const V& q : verts) {
                 bx0 = std::min(bx0, q.x);
@@ -1054,8 +1081,24 @@ void draw_vk(const Gs& gs, int win_w, int win_h, float FB_W, float FB_H, const D
             y1 = std::min(y1, ch - 1 - v.crop[3]);
             if (x1 < x0 || y1 < y0) continue;
         }
+        // (a HUD wider than 4:3, Viewport::hud_shift: as draw())
+        float hud_dx = 0.0f;
+        if (v.hud_shift != 0.0f && p.hud != 0 && !to_rt && !proj3d && !p.vu && !p.wide && !p.layer && !full_span) {
+            const float kx = sx * static_cast<float>(v.w) / FB_W;
+            hud_dx = std::round(v.hud_shift * kx) / kx * (p.hud == 1 ? -1.0f : 1.0f);
+            for (V& q : verts) q.x += hud_dx;
+        }
         if (to_rt) {
             k.sc[0] = x0; k.sc[1] = y0; k.sc[2] = x1 - x0 + 1; k.sc[3] = y1 - y0 + 1;
+        } else if (hud_dx != 0.0f) {
+            auto wxu = [&](float x) { return static_cast<float>(v.x) + ((x / FB_W * 2.0f - 1.0f) * sx + 1.0f) * 0.5f * static_cast<float>(v.w); };
+            const float sy = static_cast<float>(v.h) / FB_H;
+            const int sx0 = std::clamp(static_cast<int>(wxu(static_cast<float>(x0) + hud_dx)), v.x, v.x + v.w);
+            const int sx1 = std::clamp(static_cast<int>(wxu(static_cast<float>(x1 + 1) + hud_dx)), v.x, v.x + v.w);
+            k.sc[0] = sx0;
+            k.sc[1] = static_cast<int>(static_cast<float>(v.y) + static_cast<float>(v.h) - static_cast<float>(y1 + 1) * sy);
+            k.sc[2] = std::max(0, sx1 - sx0);
+            k.sc[3] = static_cast<int>(static_cast<float>(y1 - y0 + 1) * sy);
         } else {
             auto wx = [&](float x) { return static_cast<float>(v.x) + ((std::clamp(x, 0.0f, FB_W) / FB_W * 2.0f - 1.0f) * sx + 1.0f) * 0.5f * static_cast<float>(v.w); };
             const float sy = static_cast<float>(v.h) / FB_H;
@@ -1192,6 +1235,7 @@ void draw_init() {
     glUniform1i(glGetUniformLocation(g_prog, "uMip3"), 4);
     glGenVertexArrays(1, &g_vao);
     glGenBuffers(1, &g_vbo);
+    rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &g_vbo, "GS replica: buffers");
     glBindVertexArray(g_vao);
     glBindBuffer(GL_ARRAY_BUFFER, g_vbo);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(V), reinterpret_cast<void*>(0));
@@ -1564,9 +1608,19 @@ void draw(const Gs& gs, int win_w, int win_h, float FB_W, float FB_H, const Dept
             if (std::ceil(bx0) >= bx1 || std::ceil(by0) >= by1) continue;
         }
         // the 2D over the frame's whole width or height (a fade, a darkening in strips): its
-        // vertices at the frame's edges moved to the window's
+        // vertices at the frame's edges moved to the window's. A flat (untextured) fill is "whole" as the GS fills it: every
+        // column / row of the frame covered (pixel x drawn when x0 <= x < x1), so a fill drawn with the HUD's half-pixel offset
+        // (quad_fill 0x1fa0e0: x -0.5 .. 511.5; the Visibomb's green screen and scan lines 0x1f9df8) is one too; a textured
+        // one only when it reaches the edges themselves (a picture - the level exit's card banners at -0.5 .. 511.5, their text -
+        // keeps its 4:3 shape)
         bool to_left = false, to_right = false, full_span = false, edge_fill = false;
-        if (!to_rt && (sx < 1.0f || crop_on)) {
+        if (!to_rt && p.layer && !proj3d && !p.vu && sx < 1.0f) {
+            // a full-screen 2D layer the game draws in pieces over its 4:3 frame (Primitive::layer: the Visibomb's
+            // out-of-range static, a grid of sprites past the frame's edges): stretched about the frame's centre to the window's
+            // width, its pieces past the frame's sides drawn there (the scissor to the window's edges)
+            for (V& q : verts) q.x = FB_W * 0.5f + (q.x - FB_W * 0.5f) / sx;
+            to_left = to_right = full_span = true;
+        } else if (!to_rt && (sx < 1.0f || crop_on)) {
             float x0 = verts[0].x, x1 = x0, y0 = verts[0].y, y1 = y0;
             for (const V& q : verts) {
                 x0 = std::min(x0, q.x);
@@ -1574,16 +1628,17 @@ void draw(const Gs& gs, int win_w, int win_h, float FB_W, float FB_H, const Dept
                 y0 = std::min(y0, q.y);
                 y1 = std::max(y1, q.y);
             }
-            full_span = (x0 <= 0.0f && x1 >= FB_W) || (y0 <= 0.0f && y1 >= FB_H);
+            const float far_x = tme ? FB_W : FB_W - 0.5f, far_y = tme ? FB_H : FB_H - 0.5f;  // (the far edge reached)
+            full_span = (x0 <= 0.0f && x1 >= far_x) || (y0 <= 0.0f && y1 >= far_y);
             // a flat (untextured) fill reaching the frame's edge: a part of a fill covering the screen in pieces (a
             // transition's wipe, Kerwan's talks), never cut by the crop (the band would show through)
             if (crop_on && !tme && (x0 <= 0.0f || x1 >= FB_W || y0 <= 0.0f || y1 >= FB_H)) edge_fill = true;
             if (full_span && sx < 1.0f) {
                 to_left = x0 <= 0.0f;
-                to_right = x1 >= FB_W;
+                to_right = x1 >= far_x;
                 for (V& q : verts) {
                     if (q.x <= 0.0f) q.x = FB_W * 0.5f * (1.0f - 1.0f / sx);
-                    else if (q.x >= FB_W) q.x = FB_W * 0.5f * (1.0f + 1.0f / sx);
+                    else if (q.x >= far_x) q.x = FB_W * 0.5f * (1.0f + 1.0f / sx);
                 }
             }
         }
@@ -1653,7 +1708,7 @@ void draw(const Gs& gs, int win_w, int win_h, float FB_W, float FB_H, const Dept
         int x0 = static_cast<int>(field(st.scissor, 0, 11)), x1 = static_cast<int>(field(st.scissor, 16, 11));
         int y0 = static_cast<int>(field(st.scissor, 32, 11)), y1 = static_cast<int>(field(st.scissor, 48, 11));
         // the 2D slivers at the frame's edges (Viewport::hide_edge_slivers): at most 4 frame pixels inside, the rest outside
-        if (v.hide_edge_slivers && !to_rt && tme && !crop_3d && !p.vu && !p.wide) {
+        if (v.hide_edge_slivers && !to_rt && tme && !crop_3d && !p.vu && !p.wide && !(p.layer && full_span)) {
             float bx0 = verts[0].x, bx1 = bx0, by0 = verts[0].y, by1 = by0;
             for (const V& q : verts) {
                 bx0 = std::min(bx0, q.x);
@@ -1693,8 +1748,25 @@ void draw(const Gs& gs, int win_w, int win_h, float FB_W, float FB_H, const Dept
             y1 = std::min(y1, ch - 1 - v.crop[3]);
             if (x1 < x0 || y1 < y0) continue;
         }
+        // a HUD wider than 4:3 (Viewport::hud_shift): an element at the frame's left / right side moved toward the window's
+        // edges, its scissor with it (the frame's edges become the wider HUD's: what slides out past them is cut there)
+        float hud_dx = 0.0f;
+        if (v.hud_shift != 0.0f && p.hud != 0 && !to_rt && !proj3d && !p.vu && !p.wide && !p.layer && !full_span) {
+            const float k = sx * static_cast<float>(v.w) / FB_W;  // (window pixels a frame pixel: whole window pixels moved, the HUD as sharp)
+            hud_dx = std::round(v.hud_shift * k) / k * (p.hud == 1 ? -1.0f : 1.0f);
+            for (V& q : verts) q.x += hud_dx;
+        }
         if (to_rt) {
             k.sc[0] = x0; k.sc[1] = y0; k.sc[2] = x1 - x0 + 1; k.sc[3] = y1 - y0 + 1;
+        } else if (hud_dx != 0.0f) {
+            auto wxu = [&](float x) { return static_cast<float>(v.x) + ((x / FB_W * 2.0f - 1.0f) * sx + 1.0f) * 0.5f * static_cast<float>(v.w); };
+            const float sy = static_cast<float>(v.h) / FB_H;
+            const int sx0 = std::clamp(static_cast<int>(wxu(static_cast<float>(x0) + hud_dx)), v.x, v.x + v.w);
+            const int sx1 = std::clamp(static_cast<int>(wxu(static_cast<float>(x1 + 1) + hud_dx)), v.x, v.x + v.w);
+            k.sc[0] = sx0;
+            k.sc[1] = static_cast<int>(static_cast<float>(v.y) + static_cast<float>(v.h) - static_cast<float>(y1 + 1) * sy);
+            k.sc[2] = std::max(0, sx1 - sx0);
+            k.sc[3] = static_cast<int>(static_cast<float>(y1 - y0 + 1) * sy);
         } else {
             // the frame's edges cut what is beyond them (a 4:3 frame narrower than the window)
             auto wx = [&](float x) { return static_cast<float>(v.x) + ((std::clamp(x, 0.0f, FB_W) / FB_W * 2.0f - 1.0f) * sx + 1.0f) * 0.5f * static_cast<float>(v.w); };
@@ -1748,6 +1820,7 @@ void draw(const Gs& gs, int win_w, int win_h, float FB_W, float FB_H, const Dept
                 // window position its texture coordinates name (GS pixel -> window as the vertices)
                 if (g_screen_copy == 0 || g_screen_w != win_w || g_screen_h != win_h) {
                     if (g_screen_copy == 0) glGenTextures(1, &g_screen_copy);
+                    rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &g_screen_copy, "GS replica: screen copy");
                     g_screen_w = win_w;
                     g_screen_h = win_h;
                     glBindTexture(GL_TEXTURE_2D, g_screen_copy);

@@ -15,8 +15,12 @@ to a release and checked against its SHA-256. They are not stored in this reposi
 | [Dear ImGui](https://github.com/ocornut/imgui) | 1.91.4 (docking) | MIT | the menus' and the debug tools' widgets |
 | [TinyGLTF](https://github.com/syoyo/tinygltf) | 2.9.7 | MIT | glTF model loading; bundles [nlohmann/json](https://github.com/nlohmann/json) (MIT) and [stb_image](https://github.com/nothings/stb) (public domain / MIT) |
 | [miniaudio](https://github.com/mackron/miniaudio) | 0.11.25 | public domain / MIT-0 | audio output |
-| [Vulkan-Headers](https://github.com/KhronosGroup/Vulkan-Headers) | 1.3.296 | Apache-2.0 / MIT | Vulkan API headers |
-| [volk](https://github.com/zeux/volk) | 1.3.296.0 | MIT | Vulkan function loader |
+| [Vulkan-Headers](https://github.com/KhronosGroup/Vulkan-Headers) | 1.3.296 | Apache-2.0 / MIT | the experimental Vulkan renderer: the API's headers |
+| [volk](https://github.com/zeux/volk) | 1.3.296.0 | MIT | the experimental Vulkan renderer: its function loader (no Vulkan SDK needed to build) |
+
+The Vulkan renderer's shaders are compiled at build time by `glslc` ([shaderc](https://github.com/google/shaderc), Apache-2.0)
+or `glslangValidator` ([glslang](https://github.com/KhronosGroup/glslang), BSD-3-Clause / Apache-2.0) when one is installed:
+build tools only, nothing of them is linked or shipped.
 
 ## Included in `third_party/`
 

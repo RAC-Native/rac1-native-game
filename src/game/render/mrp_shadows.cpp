@@ -1,5 +1,6 @@
 // orig: (host) The MRP's drop shadows (see mrp_shadows.h).
 #include <game/render/mrp_shadows.h>
+#include <profiler/host_profiler.h>
 
 #include <game/ovl/moby_shadows.h>
 #include <game/ovl/ovl_common.h>
@@ -202,6 +203,7 @@ void main() { FragColor = uColor; }
     glGenVertexArrays(1, &g_vao);
     glGenVertexArrays(1, &g_dark_vao);
     glGenBuffers(1, &g_vbo);
+    rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &g_vbo, "MRP drop shadows");
     glBindVertexArray(g_vao);
     glBindBuffer(GL_ARRAY_BUFFER, g_vbo);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);

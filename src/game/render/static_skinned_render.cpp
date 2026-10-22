@@ -1,4 +1,5 @@
 #include "static_skinned_render.h"
+#include "profiler/host_profiler.h"
 #include "shader_manager.h"
 
 #define TINYGLTF_IMPLEMENTATION
@@ -29,6 +30,7 @@ bool load_static_skinned_model(const std::string& glb_path, StaticSkinnedModel& 
 
         GLuint tex_id;
         glGenTextures(1, &tex_id);
+        rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &tex_id, "Static skinned (legacy)");
         glBindTexture(GL_TEXTURE_2D, tex_id);
         
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -157,7 +159,9 @@ bool load_static_skinned_model(const std::string& glb_path, StaticSkinnedModel& 
 
     glGenVertexArrays(1, &out.vao);
     glGenBuffers(1, &out.vbo);
+    rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &out.vbo, "Static skinned (legacy)");
     glGenBuffers(1, &out.ebo);
+    rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &out.ebo, "Static skinned (legacy)");
 
     glBindVertexArray(out.vao);
     

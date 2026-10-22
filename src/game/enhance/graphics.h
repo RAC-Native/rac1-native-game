@@ -20,7 +20,7 @@ namespace rac1 {
 // --- the host's side (orig_main.cpp) ---
 // The window as the settings ask for it
 struct GraphicsDisplay {
-    bool vulkan = true;  // the Graphics page's Renderer row (true: Vulkan, false: OpenGL)
+    bool vulkan = false;  // the Graphics page's Renderer row (true: Vulkan, false: OpenGL, the default); read once, at the window's making
     bool fullscreen = false;
     int window_w = 960, window_h = 720;  // the size in window mode
     bool vsync = true;

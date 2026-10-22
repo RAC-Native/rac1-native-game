@@ -203,6 +203,11 @@ bool ovl_moby_fn_ported(uint32_t addr) {
     return resolve_moby_fn(addr) != nullptr;
 }
 
+// orig: (none) — the port the EE function at `addr` resolves to (nullptr: none).
+MobyFn ovl_moby_fn_resolve(uint32_t addr) {
+    return resolve_moby_fn(addr);
+}
+
 // orig: (none) — `jalr fn` with a0 = moby.
 void ovl_call_moby_fn(uint32_t fn, uint32_t moby) {
     if (const MobyFn resolved = resolve_moby_fn(fn); __builtin_expect(resolved != nullptr, 1)) {

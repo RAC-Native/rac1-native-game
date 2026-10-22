@@ -1,4 +1,5 @@
 #include <runtime/gs/gs_renderer.h>
+#include <profiler/host_profiler.h>
 #include <glad/glad.h>
 #include <iostream>
 #include <vector>
@@ -87,6 +88,7 @@ unsigned int get_or_upload_texture(uint32_t tbp0) {
             if (decoded) {
                 unsigned int tex_id = 0;
                 glGenTextures(1, &tex_id);
+                rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &tex_id, "GS renderer (legacy)");
                 glBindTexture(GL_TEXTURE_2D, tex_id);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -148,6 +150,7 @@ unsigned int get_or_upload_texture(uint32_t tbp0) {
     unsigned int tex_id = 0;
     if (tex && !tex->rgba_data.empty()) {
         glGenTextures(1, &tex_id);
+        rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &tex_id, "GS renderer (legacy)");
         glBindTexture(GL_TEXTURE_2D, tex_id);
 
         if (category == "sky") {
@@ -174,6 +177,7 @@ unsigned int get_or_upload_texture(uint32_t tbp0) {
                   << ") to OpenGL tex_id=" << tex_id << std::endl;
     } else {
         glGenTextures(1, &tex_id);
+        rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &tex_id, "GS renderer (legacy)");
         glBindTexture(GL_TEXTURE_2D, tex_id);
         uint32_t dummy_pixel = 0xffffffff; // fallback white
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, &dummy_pixel);
@@ -319,6 +323,7 @@ bool GsRenderer::init() {
     // 4. Create buffers
     glGenVertexArrays(1, &m_vao);
     glGenBuffers(1, &m_vbo);
+    rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &m_vbo, "GS renderer (legacy)");
 
     glBindVertexArray(m_vao);
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);

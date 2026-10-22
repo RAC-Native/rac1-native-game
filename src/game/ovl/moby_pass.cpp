@@ -11,6 +11,7 @@
 #include <game/ovl/pause_menu.h>
 #include <game/port_stubs.h>
 #include <runtime/vu/vu0.h>
+#include <profiler/host_profiler.h>
 
 #include <chrono>
 #include <cstdlib>
@@ -101,7 +102,10 @@ void moby_pass_end() {
     moby_textures_chain();
     prof_mark(OV(0x0015ffa0), 5);
     if (lw(OV(0x0016a018)) != 0) {
-        moby_joints();
+        {
+            RAC1_PROF_ZONE(kGameMobyJoints);  // (host: the profiler's sub-stage)
+            moby_joints();
+        }
         // orig: (host) the MRP skip: the sub-mesh colour fill writes the moby chain's vertex
         // colours, read by the GS path only (the MRP takes the colour from moby +0x90)
         if (lw(OV(0x0015fff8)) != 0 && !(g_moby_mrp_skip && (g_moby_mrp_skip_parts & 2))) {

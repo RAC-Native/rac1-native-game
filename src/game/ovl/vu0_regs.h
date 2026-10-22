@@ -6,6 +6,8 @@
 #include <game/ovl/vu0_macro.h>
 #include <emmintrin.h>
 
+#include <concepts>
+
 namespace rac1::vu0m {
 
 enum : int { X = 1, Y = 2, Z = 4, W = 8, XY = 3, XZ = 5, YZ = 6, XYZ = 7, XYZW = 15 };
@@ -37,41 +39,100 @@ inline __m128i bc4(float b) { return _mm_set1_epi32(static_cast<int>(f2u(vuc(b))
 inline __m128i vadd4(__m128i a, __m128i b) { return _mm_castps_si128(_mm_add_ps(_mm_castsi128_ps(a), _mm_castsi128_ps(b))); }
 inline __m128i vsub4(__m128i a, __m128i b) { return _mm_castps_si128(_mm_sub_ps(_mm_castsi128_ps(a), _mm_castsi128_ps(b))); }
 inline __m128i vmul4(__m128i a, __m128i b) { return _mm_castps_si128(_mm_mul_ps(_mm_castsi128_ps(a), _mm_castsi128_ps(b))); }
-inline __m128i fin_m(Regs& R, __m128i v, int m) {
+// orig: (helper) the status flag's four current bits (Z S U O: any lane's) from the MAC flags
+inline uint32_t status_bits(uint32_t mac) {
+    const uint32_t t = (mac | (mac >> 1) | (mac >> 2) | (mac >> 3)) & 0x1111u;
+    return ((t * 0x1248u) >> 12) & 15u;
+}
+
+// The FMAC flags of a routine's ops kept in locals (registers) and written back to the VU0 at the scope's end: the same
+// values the ops would have left in the registers one by one, without the store and reload of each op's flags through the
+// VU0's state. An op leaves its flag bytes (fin_m: zero, sign, underflow, overflow per lane, its written lanes only) as
+// `last` and ORs them into `sticky`; the MAC flags are the last op's, the status flag's current bits the last op's and its
+// sticky bits every op's (an op sets status = (status & 0xfc0) | st | st << 6: after ops 1..n, (S0 & 0xfc0) | (st1 | .. |
+// stn) << 6 | stn). sync() makes them words again (opmula, which keeps a lane's MAC flags, needs them). Only for a stretch of
+// macro ops that never reads the flags from the VU0 state, nor runs a VU0 micro program (vcallms, ctc2) or anything that
+// does (moby_joints_pose: its ops' flags are read by nobody before it returns).
+// orig: (host)
+struct LocalFlags {
+    Regs& R;
+    uint32_t macflag, statusflag;
+    __m128i last = _mm_setzero_si128(), sticky = _mm_setzero_si128();
+    bool pending = false;  // ops since the last sync
+    explicit LocalFlags(Regs& r) : R(r), macflag(r.macflag), statusflag(r.statusflag) {}
+    void sync() {
+        if (!pending) return;
+        macflag = static_cast<uint32_t>(_mm_movemask_epi8(last));
+        const uint32_t any = status_bits(static_cast<uint32_t>(_mm_movemask_epi8(sticky)));
+        statusflag = (statusflag & 0xfc0) | (any << 6) | status_bits(macflag);
+        sticky = _mm_setzero_si128();
+        pending = false;
+    }
+    ~LocalFlags() {
+        sync();
+        R.macflag = macflag;
+        R.statusflag = statusflag;
+    }
+    LocalFlags(const LocalFlags&) = delete;
+    LocalFlags& operator=(const LocalFlags&) = delete;
+};
+template <class F>
+concept FlagSink = std::same_as<F, Regs> || std::same_as<F, LocalFlags>;
+
+// orig: (helper) a lane mask's lanes in the flags' order (x the high bit of each nibble)
+constexpr uint32_t mask_rev(int m) {
+    return static_cast<uint32_t>(((m & 1) << 3) | ((m & 2) << 1) | ((m & 4) >> 1) | ((m & 8) >> 3));
+}
+// orig: (helper) an FMAC result clamped (a zero exponent: the signed zero; the largest: the signed largest float) and its
+// MAC / status flags for the written lanes `m` (zero, sign, underflow, overflow; the lanes not written clear); the
+// status flag's sticky bits kept. The flags are built on the lanes reversed (w first: the flag's bit order) and packed
+// into one mask with a single movemask.
+template <FlagSink F>
+[[gnu::always_inline]] inline __m128i fin_m(F& R, __m128i v, int m) {
+    const __m128i vr = _mm_shuffle_epi32(v, _MM_SHUFFLE(0, 1, 2, 3));  // (w z y x)
     const __m128i expm = _mm_set1_epi32(0x7f800000);
-    const __m128i e = _mm_and_si128(v, expm);
+    const __m128i e = _mm_and_si128(vr, expm);
     const __m128i isz = _mm_cmpeq_epi32(e, _mm_setzero_si128());
     const __m128i isi = _mm_cmpeq_epi32(e, expm);
-    const __m128i sgn = _mm_and_si128(v, _mm_set1_epi32(static_cast<int>(0x80000000u)));
-    __m128i r = _mm_andnot_si128(_mm_and_si128(isz, _mm_set1_epi32(0x7fffffff)), v);
-    r = _mm_or_si128(_mm_andnot_si128(isi, r), _mm_and_si128(isi, _mm_or_si128(sgn, _mm_set1_epi32(0x7f7fffff))));
-    const __m128i nz = _mm_cmpeq_epi32(_mm_and_si128(v, _mm_set1_epi32(0x007fffff)), _mm_setzero_si128());
-    const uint32_t mu = static_cast<uint32_t>(m);
-    const uint32_t zm = static_cast<uint32_t>(_mm_movemask_ps(_mm_castsi128_ps(isz))) & mu;
-    const uint32_t sm = static_cast<uint32_t>(_mm_movemask_ps(_mm_castsi128_ps(v))) & mu;
-    const uint32_t um = static_cast<uint32_t>(_mm_movemask_ps(_mm_castsi128_ps(_mm_andnot_si128(nz, isz)))) & mu;
-    const uint32_t om = static_cast<uint32_t>(_mm_movemask_ps(_mm_castsi128_ps(isi))) & mu;
-    const uint32_t x = zm | (sm << 4) | (um << 8) | (om << 12);
-    R.macflag = ((x & 0x1111u) << 3) | ((x & 0x2222u) << 1) | ((x & 0x4444u) >> 1) | ((x & 0x8888u) >> 3);
-    const uint32_t t = (x | (x >> 1) | (x >> 2) | (x >> 3)) & 0x1111u;
-    const uint32_t st = ((t * 0x1248u) >> 12) & 15u;
-    R.statusflag = (R.statusflag & 0xfc0) | st | (st << 6);
-    return r;
+    const __m128i sgn = _mm_srai_epi32(vr, 31);
+    // (a zero exponent: the signed zero; the largest: the mantissa all ones, the exponent one less, the sign kept)
+    __m128i r = _mm_or_si128(vr, _mm_and_si128(isi, _mm_set1_epi32(0x007fffff)));
+    r = _mm_add_epi32(r, _mm_slli_epi32(isi, 23));
+    r = _mm_andnot_si128(_mm_and_si128(isz, _mm_set1_epi32(0x7fffffff)), r);
+    const __m128i den = _mm_andnot_si128(_mm_cmpeq_epi32(_mm_and_si128(vr, _mm_set1_epi32(0x007fffff)), _mm_setzero_si128()), isz);  // (underflow)
+    // the four masks' lanes as bytes: zero (bits 0..3), sign (4..7), underflow (8..11), overflow (12..15), w..x in each
+    const __m128i b = _mm_packs_epi16(_mm_packs_epi32(isz, sgn), _mm_packs_epi32(den, isi));
+    if constexpr (std::same_as<F, LocalFlags>) {  // (the flag bytes of the written lanes kept: LocalFlags)
+        const __m128i k = _mm_set1_epi32(static_cast<int>(((m & 8) != 0 ? 0xffu : 0u) | ((m & 4) != 0 ? 0xff00u : 0u) |
+                                                          ((m & 2) != 0 ? 0xff0000u : 0u) | ((m & 1) != 0 ? 0xff000000u : 0u)));
+        const __m128i x = _mm_and_si128(b, k);
+        R.last = x;
+        R.sticky = _mm_or_si128(R.sticky, x);
+        R.pending = true;
+    } else {
+        const uint32_t x = static_cast<uint32_t>(_mm_movemask_epi8(b)) & (mask_rev(m) * 0x1111u);
+        R.macflag = x;
+        const uint32_t st = status_bits(x);
+        R.statusflag = (R.statusflag & 0xfc0) | st | (st << 6);
+    }
+    return _mm_shuffle_epi32(r, _MM_SHUFFLE(0, 1, 2, 3));
 }
-inline void fmac4(Vf& d, int m, __m128i raw) {
-    Regs& R = regs();
-    const __m128i r = fin_m(R, raw, m);
-    if (__builtin_expect(&d == R.vf.data(), 0)) {
+template <FlagSink F>
+[[gnu::always_inline]] inline void fmac4(F& fl, Vf& d, int m, __m128i raw) {
+    const __m128i r = fin_m(fl, raw, m);
+    if (__builtin_expect(&d == regs().vf.data(), 0)) {
         _mm_store_ps(d.v, _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f));
     } else {
         st4_m(d, r, m);
     }
 }
-inline void fmac4_acc(int m, __m128i raw) {
-    Regs& R = regs();
-    const __m128i r = fin_m(R, raw, m);
-    st4_m(R.acc, r, m);
+template <FlagSink F>
+[[gnu::always_inline]] inline void fmac4_acc(F& fl, int m, __m128i raw) {
+    const __m128i r = fin_m(fl, raw, m);
+    st4_m(regs().acc, r, m);
 }
+inline void fmac4(Vf& d, int m, __m128i raw) { fmac4(regs(), d, m, raw); }
+inline void fmac4_acc(int m, __m128i raw) { fmac4_acc(regs(), m, raw); }
 
 // orig: (helper) a lane-masked VU0 op: the lanes computed from the operands first, then written
 template <class F>
@@ -131,38 +192,51 @@ inline void fmac(Vf& d, int m, F raw) {
     R.macflag = mac;
     R.statusflag = status_of(mac, R.statusflag);
 }
-// orig: (helper) VADD / VSUB / VMUL (lane by lane) and their broadcast forms
-inline void add(Vf& d, const Vf& a, const Vf& b, int m) { fmac4(d, m, vadd4(cop4(ld4(a)), cop4(ld4(b)))); }
-inline void sub(Vf& d, const Vf& a, const Vf& b, int m) { fmac4(d, m, vsub4(cop4(ld4(a)), cop4(ld4(b)))); }
-inline void mul(Vf& d, const Vf& a, const Vf& b, int m) { fmac4(d, m, vmul4(cop4(ld4(a)), cop4(ld4(b)))); }
-inline void addbc(Vf& d, const Vf& a, float b, int m) { fmac4(d, m, vadd4(cop4(ld4(a)), bc4(b))); }
-inline void subbc(Vf& d, const Vf& a, float b, int m) { fmac4(d, m, vsub4(cop4(ld4(a)), bc4(b))); }
-inline void mulbc(Vf& d, const Vf& a, float b, int m) { fmac4(d, m, vmul4(cop4(ld4(a)), bc4(b))); }
+// orig: (helper) VADD / VSUB / VMUL (lane by lane) and their broadcast forms. Each op in two forms: on the VU0's flags,
+// and on a LocalFlags (`fl` first: the same op, its flags kept in the scope's locals)
+template <FlagSink F> [[gnu::always_inline]] inline void add(F& fl, Vf& d, const Vf& a, const Vf& b, int m) { fmac4(fl, d, m, vadd4(cop4(ld4(a)), cop4(ld4(b)))); }
+template <FlagSink F> [[gnu::always_inline]] inline void sub(F& fl, Vf& d, const Vf& a, const Vf& b, int m) { fmac4(fl, d, m, vsub4(cop4(ld4(a)), cop4(ld4(b)))); }
+template <FlagSink F> [[gnu::always_inline]] inline void mul(F& fl, Vf& d, const Vf& a, const Vf& b, int m) { fmac4(fl, d, m, vmul4(cop4(ld4(a)), cop4(ld4(b)))); }
+template <FlagSink F> [[gnu::always_inline]] inline void addbc(F& fl, Vf& d, const Vf& a, float b, int m) { fmac4(fl, d, m, vadd4(cop4(ld4(a)), bc4(b))); }
+template <FlagSink F> [[gnu::always_inline]] inline void subbc(F& fl, Vf& d, const Vf& a, float b, int m) { fmac4(fl, d, m, vsub4(cop4(ld4(a)), bc4(b))); }
+template <FlagSink F> [[gnu::always_inline]] inline void mulbc(F& fl, Vf& d, const Vf& a, float b, int m) { fmac4(fl, d, m, vmul4(cop4(ld4(a)), bc4(b))); }
+inline void add(Vf& d, const Vf& a, const Vf& b, int m) { add(regs(), d, a, b, m); }
+inline void sub(Vf& d, const Vf& a, const Vf& b, int m) { sub(regs(), d, a, b, m); }
+inline void mul(Vf& d, const Vf& a, const Vf& b, int m) { mul(regs(), d, a, b, m); }
+inline void addbc(Vf& d, const Vf& a, float b, int m) { addbc(regs(), d, a, b, m); }
+inline void subbc(Vf& d, const Vf& a, float b, int m) { subbc(regs(), d, a, b, m); }
+inline void mulbc(Vf& d, const Vf& a, float b, int m) { mulbc(regs(), d, a, b, m); }
 // orig: (helper) VADDA / VMULA / VMADDA (broadcast) into ACC, VMADD from ACC
-inline void addabc(const Vf& a, float b, int m) { fmac4_acc(m, vadd4(cop4(ld4(a)), bc4(b))); }
-inline void mulabc(const Vf& a, float b, int m) { fmac4_acc(m, vmul4(cop4(ld4(a)), bc4(b))); }
-inline void maddabc(const Vf& a, float b, int m) {
-    fmac4_acc(m, vadd4(cop4(ld4(acc())), vmul4(cop4(ld4(a)), bc4(b))));
+template <FlagSink F> [[gnu::always_inline]] inline void addabc(F& fl, const Vf& a, float b, int m) { fmac4_acc(fl, m, vadd4(cop4(ld4(a)), bc4(b))); }
+template <FlagSink F> [[gnu::always_inline]] inline void mulabc(F& fl, const Vf& a, float b, int m) { fmac4_acc(fl, m, vmul4(cop4(ld4(a)), bc4(b))); }
+template <FlagSink F> [[gnu::always_inline]] inline void maddabc(F& fl, const Vf& a, float b, int m) {
+    fmac4_acc(fl, m, vadd4(cop4(ld4(acc())), vmul4(cop4(ld4(a)), bc4(b))));
 }
+inline void addabc(const Vf& a, float b, int m) { addabc(regs(), a, b, m); }
+inline void mulabc(const Vf& a, float b, int m) { mulabc(regs(), a, b, m); }
+inline void maddabc(const Vf& a, float b, int m) { maddabc(regs(), a, b, m); }
 // orig: (helper) VMADD (broadcast): ACC + a b
-inline void maddbc(Vf& d, const Vf& a, float b, int m) {
-    fmac4(d, m, vadd4(cop4(ld4(acc())), vmul4(cop4(ld4(a)), bc4(b))));
+template <FlagSink F> [[gnu::always_inline]] inline void maddbc(F& fl, Vf& d, const Vf& a, float b, int m) {
+    fmac4(fl, d, m, vadd4(cop4(ld4(acc())), vmul4(cop4(ld4(a)), bc4(b))));
 }
+inline void maddbc(Vf& d, const Vf& a, float b, int m) { maddbc(regs(), d, a, b, m); }
 // orig: (helper) VMULAx / VMADDAy / VMADDz: d = r0 p.x + r1 p.y + r2 p.z on the masked lanes
-inline void rotate(Vf& d, int r0, const Vf& p, int m) {
+template <FlagSink F> [[gnu::always_inline]] inline void rotate(F& fl, Vf& d, int r0, const Vf& p, int m) {
     const Vf s = p;
-    mulabc(vf()[r0], s.v[0], m);
-    maddabc(vf()[r0 + 1], s.v[1], m);
-    maddbc(d, vf()[r0 + 2], s.v[2], m);
+    mulabc(fl, vf()[r0], s.v[0], m);
+    maddabc(fl, vf()[r0 + 1], s.v[1], m);
+    maddbc(fl, d, vf()[r0 + 2], s.v[2], m);
 }
+inline void rotate(Vf& d, int r0, const Vf& p, int m) { rotate(regs(), d, r0, p, m); }
 // orig: (helper) the same with VMADDAz / VMADDw: d = r0 p.x + r1 p.y + r2 p.z + r3 w
-inline void transform(Vf& d, int r0, const Vf& p, float w) {
+template <FlagSink F> [[gnu::always_inline]] inline void transform(F& fl, Vf& d, int r0, const Vf& p, float w) {
     const Vf s = p;
-    mulabc(vf()[r0], s.v[0], XYZW);
-    maddabc(vf()[r0 + 1], s.v[1], XYZW);
-    maddabc(vf()[r0 + 2], s.v[2], XYZW);
-    maddbc(d, vf()[r0 + 3], w, XYZW);
+    mulabc(fl, vf()[r0], s.v[0], XYZW);
+    maddabc(fl, vf()[r0 + 1], s.v[1], XYZW);
+    maddabc(fl, vf()[r0 + 2], s.v[2], XYZW);
+    maddbc(fl, d, vf()[r0 + 3], w, XYZW);
 }
+inline void transform(Vf& d, int r0, const Vf& p, float w) { transform(regs(), d, r0, p, w); }
 // orig: (helper) VMAX on float bits (both negative: the smaller word)
 inline float vmax(float a, float b) {
     const int32_t x = static_cast<int32_t>(f2u(a)), y = static_cast<int32_t>(f2u(b));
@@ -225,17 +299,20 @@ inline float vmini(float a, float b) {
     return u2f(static_cast<uint32_t>((x < 0 && y < 0) ? (x > y ? x : y) : (x < y ? x : y)));
 }
 // orig: (helper) VOPMULA / VOPMSUB (the cross product's two halves; w's flags cleared)
-inline void opmula(const Vf& a, const Vf& b) {  // (w's flags kept)
+template <FlagSink F> [[gnu::always_inline]] inline void opmula(F& fl, const Vf& a, const Vf& b) {  // (w's flags kept)
+    if constexpr (std::same_as<F, LocalFlags>) fl.sync();
     const Vf s = a, t = b;
-    for (int i = 0; i < 3; ++i) acc().v[i] = mac_lane(i, vuc(s.v[(i + 1) % 3]) * vuc(t.v[(i + 2) % 3]));
-    mac_status();
+    for (int i = 0; i < 3; ++i) acc().v[i] = mac_lane_in(fl.macflag, i, vuc(s.v[(i + 1) % 3]) * vuc(t.v[(i + 2) % 3]));
+    fl.statusflag = status_of(fl.macflag, fl.statusflag);
 }
-inline void opmsub(Vf& d, const Vf& a, const Vf& b) {
+template <FlagSink F> [[gnu::always_inline]] inline void opmsub(F& fl, Vf& d, const Vf& a, const Vf& b) {
     const __m128i sa = cop4(ld4(a)), sb = cop4(ld4(b)), c = cop4(ld4(acc()));
     const __m128i a_yzx = _mm_shuffle_epi32(sa, _MM_SHUFFLE(3, 0, 2, 1));
     const __m128i b_zxy = _mm_shuffle_epi32(sb, _MM_SHUFFLE(3, 1, 0, 2));
-    fmac4(d, XYZ, vsub4(c, vmul4(a_yzx, b_zxy)));
+    fmac4(fl, d, XYZ, vsub4(c, vmul4(a_yzx, b_zxy)));
 }
+inline void opmula(const Vf& a, const Vf& b) { opmula(regs(), a, b); }
+inline void opmsub(Vf& d, const Vf& a, const Vf& b) { opmsub(regs(), d, a, b); }
 // orig: (helper) VITOFn / VFTOIn on the masked lanes
 inline void itofv(Vf& d, const Vf& s, int m, float scale) {
     const Vf t = s;

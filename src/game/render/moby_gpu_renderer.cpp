@@ -1,6 +1,7 @@
 // The modern GPU renderer for mobys (ADR 0009).
 // orig: (host) GPU renderer consuming unpacked VU1 moby DMA chains and rendering in native depth space.
 #include <game/render/moby_gpu_renderer.h>
+#include <profiler/host_profiler.h>
 
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
@@ -214,7 +215,9 @@ void moby_gpu_init() {
 
     glGenVertexArrays(1, &s_vao);
     glGenBuffers(1, &s_vbo);
+    rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &s_vbo, "Mobys (GPU drawer, testing)");
     glGenBuffers(1, &s_ebo);
+    rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &s_ebo, "Mobys (GPU drawer, testing)");
 
     glBindVertexArray(s_vao);
     glBindBuffer(GL_ARRAY_BUFFER, s_vbo);
@@ -765,12 +768,14 @@ void moby_gpu_diff_compare_drawn(int w, int h, const gs::Viewport* vp, const gs:
         auto init_fbo = [](GLuint& fbo, GLuint& tex, GLuint& rbo, int fw, int fh) {
             glGenFramebuffers(1, &fbo);
             glGenTextures(1, &tex);
+            rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &tex, "Mobys (GPU drawer, testing)");
             glBindTexture(GL_TEXTURE_2D, tex);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, fw, fh, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
             glBindFramebuffer(GL_FRAMEBUFFER, fbo);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
 
             glGenRenderbuffers(1, &rbo);
+            rac1::prof::gl_track_n(rac1::prof::kGlRenderbuffer, 1, &rbo, "Mobys (GPU drawer, testing)");
             glBindRenderbuffer(GL_RENDERBUFFER, rbo);
             glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, fw, fh);
             glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo);

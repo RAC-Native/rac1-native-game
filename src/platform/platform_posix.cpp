@@ -13,6 +13,9 @@
 #include <execinfo.h>
 #endif
 
+#include <dirent.h>
+
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 
@@ -172,6 +175,153 @@ double thread_cpu_ms() {
 }
 
 bool local_time(std::time_t t, std::tm* out) { return localtime_r(&t, out) != nullptr; }
+
+// ---- The process's resources ----
+
+namespace {
+// the whole of a small /proc or /sys file (empty when it cannot be read)
+std::string read_small(const char* path) {
+    std::string s;
+    const int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return s;
+    char buf[4096];
+    for (;;) {
+        const ssize_t n = read(fd, buf, sizeof buf);
+        if (n <= 0) break;
+        s.append(buf, static_cast<std::size_t>(n));
+        if (s.size() > (1u << 20)) break;
+    }
+    close(fd);
+    return s;
+}
+// the number after `key` ("\nVmRSS:" -> "VmRSS:   1234 kB")
+std::uint64_t field_u64(const std::string& s, const char* key) {
+    const std::size_t at = s.find(key);
+    if (at == std::string::npos) return 0;
+    return std::strtoull(s.c_str() + at + std::strlen(key), nullptr, 10);
+}
+// the rest of the line after `key`, its leading blanks skipped
+std::string field_str(const std::string& s, const char* key) {
+    std::string v;
+    const std::size_t at = s.find(key);
+    if (at == std::string::npos) return v;
+    const char* p = s.c_str() + at + std::strlen(key);
+    while (*p == ' ' || *p == '\t') ++p;
+    while (*p != 0 && *p != '\n') v.push_back(*p++);
+    return v;
+}
+}  // namespace
+
+bool process_memory(ProcessMemory* out) {
+    const std::string s = read_small("/proc/self/status");
+    if (s.empty()) return false;
+    out->resident = field_u64(s, "\nVmRSS:") * 1024;
+    out->resident_peak = field_u64(s, "\nVmHWM:") * 1024;
+    out->virtual_size = field_u64(s, "\nVmSize:") * 1024;
+    return true;
+}
+
+double process_cpu_ms() {
+    timespec ts{};
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts);
+    return static_cast<double>(ts.tv_sec) * 1e3 + static_cast<double>(ts.tv_nsec) * 1e-6;
+}
+
+int cpu_count() {
+    const long n = sysconf(_SC_NPROCESSORS_ONLN);
+    return n > 0 ? static_cast<int>(n) : 1;
+}
+
+bool process_threads(std::vector<ThreadTime>* out) {
+    out->clear();
+    DIR* d = opendir("/proc/self/task");
+    if (d == nullptr) return false;
+    while (dirent* e = readdir(d)) {
+        if (e->d_name[0] < '0' || e->d_name[0] > '9') continue;
+        ThreadTime t;
+        t.tid = std::strtoull(e->d_name, nullptr, 10);
+        char path[320];
+        std::snprintf(path, sizeof path, "/proc/self/task/%s/comm", e->d_name);
+        t.name = read_small(path);
+        while (!t.name.empty() && (t.name.back() == '\n' || t.name.back() == ' ')) t.name.pop_back();
+        // (schedstat's first field: the time on a CPU in ns; stat's utime + stime are clock ticks only)
+        std::snprintf(path, sizeof path, "/proc/self/task/%s/schedstat", e->d_name);
+        const std::string ss = read_small(path);
+        if (!ss.empty()) {
+            t.cpu_ms = static_cast<double>(std::strtoull(ss.c_str(), nullptr, 10)) * 1e-6;
+        } else {
+            std::snprintf(path, sizeof path, "/proc/self/task/%s/stat", e->d_name);
+            const std::string st = read_small(path);
+            const std::size_t rp = st.rfind(')');
+            if (rp != std::string::npos && rp + 2 < st.size()) {  // (the fields after the name: the state is 3, utime 14, stime 15)
+                const char* p = st.c_str() + rp + 2;
+                unsigned long long ut = 0, sti = 0;
+                for (int field = 3; field <= 15 && *p != 0; ++field) {
+                    if (field == 14) ut = std::strtoull(p, nullptr, 10);
+                    if (field == 15) sti = std::strtoull(p, nullptr, 10);
+                    while (*p != 0 && *p != ' ') ++p;
+                    while (*p == ' ') ++p;
+                }
+                t.cpu_ms = static_cast<double>(ut + sti) * 1000.0 / static_cast<double>(sysconf(_SC_CLK_TCK));
+            }
+        }
+        out->push_back(std::move(t));
+    }
+    closedir(d);
+    return true;
+}
+
+bool gpu_client_info(GpuClientInfo* out) {
+    *out = GpuClientInfo{};
+    DIR* d = opendir("/proc/self/fdinfo");
+    if (d == nullptr) return false;
+    std::vector<unsigned long long> clients;  // (several descriptors may share one DRM client: counted once)
+    std::string pdev;
+    bool engine = false;
+    while (dirent* e = readdir(d)) {
+        if (e->d_name[0] < '0' || e->d_name[0] > '9') continue;
+        char path[320];
+        std::snprintf(path, sizeof path, "/proc/self/fdinfo/%s", e->d_name);
+        const std::string s = read_small(path);
+        if (s.find("drm-driver:") == std::string::npos) continue;
+        const std::size_t cid = s.find("drm-client-id:");
+        const unsigned long long id = cid != std::string::npos ? std::strtoull(s.c_str() + cid + 14, nullptr, 10) : 0;
+        if (std::find(clients.begin(), clients.end(), id) != clients.end()) continue;
+        clients.push_back(id);
+        out->ok = true;
+        if (out->driver.empty()) out->driver = field_str(s, "drm-driver:");
+        if (pdev.empty()) pdev = field_str(s, "drm-pdev:");
+        // (newer kernels: drm-resident-<region>, older: drm-memory-<region>; the unit after the number)
+        auto region = [&s](const char* a, const char* b) -> std::uint64_t {
+            std::size_t at = s.find(a), len = std::strlen(a);
+            if (at == std::string::npos) at = s.find(b), len = std::strlen(b);
+            if (at == std::string::npos) return 0;
+            char* end = nullptr;
+            const std::uint64_t v = std::strtoull(s.c_str() + at + len, &end, 10);
+            while (end != nullptr && (*end == ' ' || *end == '\t')) ++end;
+            if (end != nullptr && std::strncmp(end, "KiB", 3) == 0) return v * 1024;
+            if (end != nullptr && std::strncmp(end, "MiB", 3) == 0) return v * 1024 * 1024;
+            return v;
+        };
+        out->vram += region("drm-resident-vram:", "drm-memory-vram:");
+        out->gtt += region("drm-resident-gtt:", "drm-memory-gtt:");
+        const std::size_t eg = s.find("drm-engine-gfx:");
+        if (eg != std::string::npos) {
+            out->engine_ms = (engine ? out->engine_ms : 0.0) + static_cast<double>(std::strtoull(s.c_str() + eg + 15, nullptr, 10)) * 1e-6;
+            engine = true;
+        }
+    }
+    closedir(d);
+    if (!pdev.empty() && pdev.find('/') == std::string::npos) {  // the device's own totals (amdgpu's sysfs)
+        const std::string base = "/sys/bus/pci/devices/" + pdev + "/";
+        auto num = [&base](const char* f) { return static_cast<std::uint64_t>(std::strtoull(read_small((base + f).c_str()).c_str(), nullptr, 10)); };
+        out->vram_total = num("mem_info_vram_total");
+        out->vram_used = num("mem_info_vram_used");
+        out->gtt_total = num("mem_info_gtt_total");
+        out->gtt_used = num("mem_info_gtt_used");
+    }
+    return out->ok;
+}
 
 // ---- The process's host settings ----
 

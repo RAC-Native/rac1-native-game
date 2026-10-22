@@ -3,7 +3,9 @@
 // changed by it. The EE addresses are the ones the ported code uses (src/game/ovl).
 
 #include "dev_menu.h"
+#include "dev_unlocks.h"
 #include "item_give_quiet.h"
+#include "dev_profiler.h"
 
 #include <game/ovl/ovl_reloc.h>
 #include <game/debug_hooks.h>
@@ -702,9 +704,7 @@ void renderer_set(bool mrp) {
 void tab_rendering() {
     const bool is_vk = rac1::vk::is_active();
     ImGui::SeparatorText("Graphics API");
-    if (ImGui::RadioButton("Vulkan 1.3", is_vk)) rac1::graphics_set_vulkan(true);
-    ImGui::SameLine();
-    if (ImGui::RadioButton("OpenGL 4.6", !is_vk)) rac1::graphics_set_vulkan(false);
+    ImGui::Text("%s (Options > Graphics > Renderer, RAC1_RENDERER: from the next start)", is_vk ? "Vulkan 1.3" : "OpenGL 4.6");
     const bool mrp = g_world_mrp && g_moby_renderer == MobyRenderer::kMrp;
     const bool vu = g_world_faithful && !g_world_mrp && g_moby_renderer == MobyRenderer::kFaithful;
     ImGui::SeparatorText("Renderer");
@@ -1422,7 +1422,7 @@ void dev_menu_draw(double update_ms, double frame_ms) {
         float unused[3];
         mrp_lighting_screen_point(-1.0f, -1.0f, unused);
     }
-    if (!g_menu || (!g_settings.open && !g_settings.show_stats)) return;
+    if (!g_menu || (!g_settings.open && !g_settings.show_stats && !profiler_overlay_wanted())) return;
     if (g_imgui_vk) ImGui_ImplVulkan_NewFrame();
     else ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -1437,6 +1437,7 @@ void dev_menu_draw(double update_ms, double frame_ms) {
         ImGui::Text("nanotech %d/%d  bolts %d  sounds %d", r32(HEALTH), r32(HEALTH_MAX), r32(BOLTS), snd989_iop_active_sounds());
         ImGui::End();
     }
+    profiler_overlay();
     if (g_settings.open) {
         ImGui::SetNextWindowSize(ImVec2(720, 600), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowPos(ImVec2(40, 110), ImGuiCond_FirstUseEver);
@@ -1451,6 +1452,7 @@ void dev_menu_draw(double update_ms, double frame_ms) {
                 if (tab("Game")) { tab_game(); ImGui::EndTabItem(); }
                 if (tab("Player")) { tab_player(); ImGui::EndTabItem(); }
                 if (tab("Items")) { tab_items(); ImGui::EndTabItem(); }
+                if (tab("Unlocks")) { tab_unlocks(); ImGui::EndTabItem(); }  // (dev_unlocks.cpp)
                 if (tab("Mobys")) { tab_mobys(); ImGui::EndTabItem(); }
                 if (tab("Camera")) { tab_camera(); ImGui::EndTabItem(); }
                 if (tab("Rendering")) { tab_rendering(); ImGui::EndTabItem(); }
@@ -1460,6 +1462,7 @@ void dev_menu_draw(double update_ms, double frame_ms) {
                 if (tab("Audio")) { tab_audio(); ImGui::EndTabItem(); }
                 if (tab("Levels")) { tab_levels(); ImGui::EndTabItem(); }
                 if (tab("Engine")) { tab_engine(); ImGui::EndTabItem(); }
+                if (tab("Profiler")) { tab_profiler(); ImGui::EndTabItem(); }
                 ImGui::EndTabBar();
             }
         }

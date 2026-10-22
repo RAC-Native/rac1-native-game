@@ -26,6 +26,22 @@ add_compile_options(-frounding-math -ffp-contract=off)
 # alias analysis, which lets the optimizer reorder or drop those accesses (clang's -O2 did, in ovl_24_25.cpp: the moby
 # grid stayed empty, the mobys' state went wrong; GCC's happened not to)
 add_compile_options(-fno-strict-aliasing)
+# The game is always compiled on the player's own machine (./setup.sh): RAC1_NATIVE_ARCH=ON compiles it for that machine's
+# CPU (-march=native: AVX2 / AVX-512 where it has them), which the release build cannot assume. The float rules above stay:
+# -ffp-contract=off keeps a * b + c two roundings even where the CPU has FMA (the PS2 has none: a fused multiply-add
+# changes the last bit, and the game's state), and nothing like -ffast-math: the game's state stays bit for bit the same
+# (checked with RAC1_RAMHASH, the oracle and the reference images: docs/architecture.md). Off by default (a build for
+# this CPU runs on no older one); ./setup.sh --native-arch on.
+option(RAC1_NATIVE_ARCH "Compile for this machine's CPU (-march=native), the float rules kept" OFF)
+if(RAC1_NATIVE_ARCH)
+    add_compile_options(-march=native)
+    # (Windows with GCC: GCC aligns AVX spills to 32 bytes on a stack Windows aligns to 16 only, GCC bug 54412; the
+    # assembler makes its aligned vector moves unaligned ones, binutils 2.38 or newer. clang has no such problem)
+    if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        add_compile_options(-Wa,-muse-unaligned-vector-move)
+    endif()
+    message(STATUS "RAC1_NATIVE_ARCH: compiled for this machine's CPU (-march=native)")
+endif()
 
 # Windows (MinGW-w64, with clang or GCC): see docs/platforms.md
 if(WIN32)
@@ -50,7 +66,7 @@ include(cmake/dependencies.cmake)
 # ---- src/platform/ : the operating system's calls, behind one interface (Linux: POSIX; Windows: Win32) ----
 if(WIN32)
     add_library(rac1_platform STATIC src/platform/platform_win32.cpp)
-    target_link_libraries(rac1_platform PUBLIC winmm)  # (timeBeginPeriod: the system timer's period)
+    target_link_libraries(rac1_platform PUBLIC winmm psapi)  # (timeBeginPeriod: the system timer's period; GetProcessMemoryInfo)
 else()
     add_library(rac1_platform STATIC src/platform/platform_posix.cpp)
 endif()
@@ -86,7 +102,42 @@ target_link_libraries(rac1_formats PUBLIC rac1_io)
 target_include_directories(rac1_formats PUBLIC src)
 target_link_libraries(rac1_formats PUBLIC tinygltf_headers)
 
-# ---- runtime/ : the PS2 hardware layer only (EE / VU / GS / SIF / IOP / SPU2), no game logic ----
+# ---- src/profiler/ : the host's frame profiler (the debug menu's Profiler tab, RAC1_PROFILER_*; openly invented tooling) ----
+add_library(rac1_profiler STATIC src/profiler/host_profiler.cpp)
+target_include_directories(rac1_profiler PUBLIC src)
+target_link_libraries(rac1_profiler PUBLIC rac1_platform glad glfw)
+
+# ---- src/jobs/ : the host's job pool (the renderer's scene building spread over the cores; deterministic; openly invented tooling) ----
+add_library(rac1_jobs STATIC src/jobs/job_pool.cpp)
+target_include_directories(rac1_jobs PUBLIC src)
+target_link_libraries(rac1_jobs PUBLIC rac1_profiler)
+
+# ---- the Vulkan renderer's shaders (docs/vulkan.md): GLSL in tools/gen_vk_shaders.py, compiled to SPIR-V here, at build
+# time, by glslc (shaderc, the Vulkan SDK) or glslangValidator, with Python (as the setup); without a compiler they are left out and
+# the renderer does not start - the game stays on OpenGL, its default. Nothing of it is kept in the repository.
+find_program(RAC1_GLSLC NAMES glslc glslangValidator DOC "the GLSL to SPIR-V compiler for the Vulkan renderer")
+find_package(Python3 COMPONENTS Interpreter QUIET)
+set(RAC1_VK_SHADERS_DIR ${CMAKE_BINARY_DIR}/generated_vk)
+set(RAC1_VK_SHADERS_CPP ${RAC1_VK_SHADERS_DIR}/vk_shaders.cpp)
+if(Python3_Interpreter_FOUND)
+    set(_rac1_vk_compiler "")
+    if(RAC1_GLSLC)
+        set(_rac1_vk_compiler ${RAC1_GLSLC})
+    endif()
+    add_custom_command(
+        OUTPUT ${RAC1_VK_SHADERS_CPP} ${RAC1_VK_SHADERS_DIR}/runtime/vk/vk_shaders.h
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/gen_vk_shaders.py ${RAC1_VK_SHADERS_DIR} "${_rac1_vk_compiler}"
+        DEPENDS ${CMAKE_SOURCE_DIR}/tools/gen_vk_shaders.py
+        COMMENT "Vulkan shaders (tools/gen_vk_shaders.py)"
+        VERBATIM)
+    if(NOT RAC1_GLSLC)
+        message(STATUS "Vulkan renderer: no glslc / glslangValidator found - built without its shaders (OpenGL only)")
+    endif()
+    add_custom_target(rac1_vk_shaders DEPENDS ${RAC1_VK_SHADERS_CPP})
+else()
+    message(FATAL_ERROR "the Vulkan renderer's shaders need Python 3 (tools/gen_vk_shaders.py)")
+endif()
+
 add_library(rac1_runtime STATIC
     runtime/kernel/ee_memory.cpp
     runtime/kernel/disc.cpp
@@ -113,11 +164,12 @@ add_library(rac1_runtime STATIC
     runtime/iop/stash_iop.cpp
     runtime/ipu/movie_hw.cpp
     runtime/vk/vk_context.cpp
+    ${RAC1_VK_SHADERS_CPP}
     # file I/O (hardware-adjacent, no game decisions)
     runtime/level/level_loader.cpp
 )
-target_include_directories(rac1_runtime PUBLIC ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(rac1_runtime PUBLIC rac1_platform rac1_formats glad glfw glm_headers OpenGL::GL volk imgui opengoal_989snd)
+target_include_directories(rac1_runtime PUBLIC ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src ${RAC1_VK_SHADERS_DIR})
+target_link_libraries(rac1_runtime PUBLIC rac1_platform rac1_profiler rac1_jobs rac1_formats glad glfw glm_headers OpenGL::GL volk imgui opengoal_989snd)
 
 # The movies' MPEG-2 pictures (runtime/ipu/movie_hw.cpp, the IPU's stand-in): FFmpeg's libavcodec
 # when pkg-config finds it (optional). Without it the game runs and its movies are skipped (logged).
@@ -200,6 +252,11 @@ else()
     add_executable(rac1-native ${RAC1_HOST_SOURCES})
 endif()
 target_link_libraries(rac1-native PRIVATE rac1_runtime rac1_game rac1_setup miniaudio_headers)
+foreach(t rac1_runtime rac1_game rac1_devtools rac1-native)  # (their sources include the shaders' header, made at build time)
+    if(TARGET ${t})
+        add_dependencies(${t} rac1_vk_shaders)
+    endif()
+endforeach()
 # the installed version (the release's, and the git commit and branch of a clone), remade at each build:
 # rac1_version.h, rewritten only when it changes (cmake/version.cmake). With it, the Python the build was configured
 # with: the update check's helper (tools/update_check.py) is run with it when the environment names none (on Windows,

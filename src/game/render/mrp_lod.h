@@ -93,6 +93,11 @@ struct MrpLodSubstitute {
     std::vector<uint8_t> bytes;
 };
 void mrp_lod_substitutes(std::vector<MrpLodSubstitute>& out);
+// orig: (host) the widening of the view the GS replica's chain is drawn into, x / y (1 1: none; the shadow runs' fill_widen /
+// fill_widen_y): handed to the replica (gs::Gs::set_side_widen) for the VU1 programs' tests that drop a primitive wholly past the
+// game's 4:3 sides. VU1 program 7 (shadows_vu1.cpp: the drop shadows, the prim lists of the levels' water and sand sea) drops a
+// clipped triangle past 4 / 3 of the frame's half width, which a 32:9 view shows (Aridia's sand sea near the camera at the far left).
+void mrp_lod_side_widen(float out[2]);
 // orig: (host) the shadow block running now: -1 none, 0 / 1 the draw lists' (mrp_lod_list_shadow), 2 the effects'
 constexpr int kMrpLodSlotEffects = 2, kMrpLodSlots = 3;
 int mrp_lod_shadow_slot();

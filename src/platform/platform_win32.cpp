@@ -8,6 +8,8 @@
 #endif
 #include <windows.h>
 #include <mmsystem.h>
+#include <psapi.h>
+#include <tlhelp32.h>
 
 #include "platform.h"
 
@@ -265,6 +267,77 @@ double thread_cpu_ms() {
 }
 
 bool local_time(std::time_t t, std::tm* out) { return localtime_s(out, &t) == 0; }
+
+// ---- The process's resources ----
+
+namespace {
+std::uint64_t filetime_ticks(const FILETIME& f) { return (static_cast<std::uint64_t>(f.dwHighDateTime) << 32) | f.dwLowDateTime; }
+std::string narrow(const wchar_t* w) {
+    const int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+    if (n <= 1) return {};
+    std::string s(static_cast<std::size_t>(n - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, w, -1, s.data(), n, nullptr, nullptr);
+    return s;
+}
+}  // namespace
+
+bool process_memory(ProcessMemory* out) {
+    PROCESS_MEMORY_COUNTERS_EX pmc{};
+    pmc.cb = sizeof pmc;
+    if (!K32GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc), sizeof pmc)) return false;
+    out->resident = pmc.WorkingSetSize;
+    out->resident_peak = pmc.PeakWorkingSetSize;
+    out->virtual_size = pmc.PrivateUsage;
+    return true;
+}
+
+double process_cpu_ms() {
+    FILETIME created, exited, kernel, user;
+    if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user)) return 0.0;
+    return static_cast<double>(filetime_ticks(kernel) + filetime_ticks(user)) * 1e-4;  // (100 ns units)
+}
+
+int cpu_count() {
+    SYSTEM_INFO si{};
+    GetSystemInfo(&si);
+    return si.dwNumberOfProcessors > 0 ? static_cast<int>(si.dwNumberOfProcessors) : 1;
+}
+
+bool process_threads(std::vector<ThreadTime>* out) {
+    out->clear();
+    const HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snap == INVALID_HANDLE_VALUE) return false;
+    // (GetThreadDescription: Windows 10 1607 and later, looked up)
+    using GetDesc = HRESULT(WINAPI*)(HANDLE, PWSTR*);
+    static const GetDesc get_desc = reinterpret_cast<GetDesc>(reinterpret_cast<void*>(GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "GetThreadDescription")));
+    const DWORD pid = GetCurrentProcessId();
+    THREADENTRY32 te{};
+    te.dwSize = sizeof te;
+    for (BOOL ok = Thread32First(snap, &te); ok; ok = Thread32Next(snap, &te)) {
+        if (te.th32OwnerProcessID != pid) continue;
+        ThreadTime t;
+        t.tid = te.th32ThreadID;
+        const HANDLE h = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, te.th32ThreadID);
+        if (h != nullptr) {
+            FILETIME created, exited, kernel, user;
+            if (GetThreadTimes(h, &created, &exited, &kernel, &user)) t.cpu_ms = static_cast<double>(filetime_ticks(kernel) + filetime_ticks(user)) * 1e-4;
+            PWSTR desc = nullptr;
+            if (get_desc != nullptr && SUCCEEDED(get_desc(h, &desc)) && desc != nullptr) {
+                t.name = narrow(desc);
+                LocalFree(desc);
+            }
+            CloseHandle(h);
+        }
+        out->push_back(std::move(t));
+    }
+    CloseHandle(snap);
+    return true;
+}
+
+bool gpu_client_info(GpuClientInfo* out) {
+    *out = GpuClientInfo{};
+    return false;
+}
 
 // ---- The process's host settings ----
 

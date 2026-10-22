@@ -20,6 +20,8 @@ src/
   formats/         decoders for the game's file formats
   io/              memory-mapped files, byte readers
   platform/        the operating system's calls (Linux, Windows) behind one small interface
+  profiler/        the host's frame profiler (the debug menu's Profiler tab, RAC1_PROFILER_*)
+  jobs/            the host's job pool: the renderer's scene building spread over the cores
   host/            main, the frame loop, window and input, audio output, test scripting
   setup/           the setup mode: ISO checks, extraction, asset generation
   _devtools/       the debug menu (openly invented, never part of the port)
@@ -49,8 +51,8 @@ assets/generated/src/
 ```
 
 The build (`CMakeLists.txt`) produces one executable, `rac1-native`, from static libraries:
-`rac1_formats`, `rac1_runtime`, `rac1_game`, `rac1_setup`, `rac1_devtools`, and the third-party
-ones. It is C++20, built with `-Wall -Wextra -Wpedantic -frounding-math` (the last because the game's
+`rac1_formats`, `rac1_profiler`, `rac1_jobs`, `rac1_runtime`, `rac1_game`, `rac1_setup`, `rac1_devtools`,
+and the third-party ones. It is C++20, built with `-Wall -Wextra -Wpedantic -frounding-math` (the last because the game's
 thread runs the FPU in a non-default rounding mode, see
 [Decisions](decisions.md#11-the-ees-float-rounding)). Two CMake options:
 
@@ -58,6 +60,11 @@ thread runs the FPU in a non-default rounding mode, see
   `libavutil`) when it is found; without FFmpeg the game runs and skips the movies.
 - `RAC1_DEVTOOLS` (on by default) compiles the debug menu. Even when compiled, it only opens with
   `--debug-tools` (see [Settings](settings.md#debug-tools)).
+- `RAC1_NATIVE_ARCH` (off by default; `./setup.sh --native-arch on`) compiles the game for the
+  machine that builds it (`-march=native`: AVX2, AVX-512 where the CPU has them), which the game,
+  always built on the player's own machine, can afford. The float rules stay: `-ffp-contract=off`
+  keeps `a * b + c` two roundings even on a CPU with FMA (the PS2 has none), and nothing like
+  `-ffast-math`. See [Threads and the cores](#threads-and-the-cores).
 
 GLFW, GLM, Dear ImGui, TinyGLTF and miniaudio are downloaded by CMake at configure time, each pinned
 to a release and checked against its SHA-256 (`cmake/dependencies.cmake`, `THIRD_PARTY_NOTICES.md`).
@@ -191,6 +198,7 @@ and knows nothing about Ratchet & Clank. It provides:
 - **VU0 and VU1** with the VIF and the GIF's output (`runtime/vu/`), running the translated programs
   or, for testing and fallbacks, the VU interpreter;
 - the **GS replica** for the 2D (`runtime/gs/`);
+- the experimental **Vulkan** backend's device, frames and helpers (`runtime/vk/`, see [Vulkan](vulkan.md));
 - the **IOP side**: IOP memory, the SIF RPC servers the game calls, the 989snd sound driver and its
   streams (`runtime/iop/`, `runtime/sif/`);
 - the **disc**, read from the player's ISO (`runtime/kernel/disc.cpp`), and the **movie decoder**
@@ -203,6 +211,39 @@ and knows nothing about Ratchet & Clank. It provides:
 The debug menu (free camera, level select, spawning, rendering switches, the light editor) is
 invented code, useful for development and testing, and never presented as part of the port. Nothing
 in `src/game/` or `runtime/` includes it, and `RAC1_DEVTOOLS=OFF` compiles it out.
+
+## Threads and the cores
+
+The game's own code runs on one thread, in the game's own order: the EE's main thread is a coroutine
+of the host's main thread (`runtime/ee/ee_thread.cpp`), which also holds the GL context. Nothing of
+the game's update is moved to another thread or reordered, so the game's state is the same, word for
+word, however many cores the machine has. What runs elsewhere is the host's work on what the game
+left behind:
+
+- the **GS chain worker** (`runtime/gs/gs_emu.cpp`) runs the GS replica on a copy of the frame's chain;
+- the **MRP scene worker** (`src/game/render/mrp_world_renderer.cpp`) builds the world's scene from its
+  captured inputs; with the pipelined frame (on in a window) it does so during the next game update;
+- the **job pool** (`src/jobs/job_pool.h`) spreads the renderer's per-moby work over the cores: the moby
+  chains' decoding after the moby pass and its LOD / widened-view re-run (`mrp_scene.cpp`), and the
+  moby draw lists' transforms (`mrp_moby_renderer.cpp`). Each job writes its chunk's results apart and
+  the caller appends them in order, so the lists are the same as on one thread (`RAC1_JOBS=1`); the
+  workers run with the calling thread's float environment (the game's thread rounds toward zero);
+- the audio threads (the IOP's mirror, the device's callback).
+
+The rule for anything new on another thread: only work whose results the game never reads back (the
+renderer's input), or that is pure; it reads the game's memory only while the game's thread is not
+running (the main thread waits for the job), or from a copy. Ideas that would need the game's own
+code split over threads are not faithful and are not done: updating the mobys in parallel (their
+updates read and write each other's state and the shared scratchpad in the game's order), skinning
+the real pass's mobys in parallel (the pose routine's scratchpad, VU0 registers and flags carry from
+one moby to the next, and the game reads the joints it leaves), or running the moby pass's LOD re-run
+beside the game's update (it would need its own copy of the 32 MB, the VU0 and the host state its
+code touches). The game's update itself is made cheaper instead: the VU0 macro ops keep their flags
+in registers through the joints' pose (`vu0m::LocalFlags`, `src/game/ovl/vu0_regs.h`), and
+`RAC1_NATIVE_ARCH` compiles everything for the player's CPU. Every such change is checked to leave
+the game's state as it was: `RAC1_RAMHASH` (EE RAM and scratchpad, page by page, every game frame)
+against the unchanged build on long runs of several levels, the oracle's reference batches, and the
+reference images.
 
 ## Per-level overlays and the `OV` macros
 

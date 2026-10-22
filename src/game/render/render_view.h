@@ -7,6 +7,9 @@
 #include <glm/glm.hpp>
 
 #include <cstddef>
+#include <cstdint>
+#include <utility>
+#include <vector>
 
 namespace rac1 {
 
@@ -64,5 +67,35 @@ void render_view_note_write(float written, float base);
 // orig: (host) the view's game inputs (the view matrix, the projection tangents, the depth mapping, the camera) captured
 // now for a frame drawn later (render_toggles.h g_draw_from_snapshot)
 void render_view_snapshot();
+
+// orig: (host) the full-screen 2D layers the game draws in pieces over its whole 4:3 frame from a draw list's callback (the
+// Visibomb's out-of-range static, class 832's callback on every level that has it: a grid of 32 x 32 sprites): in a widened
+// view the GS replica stretches them across the window (gs::Primitive::layer). render_frame clears the notes
+// (render_view_layers_begin); the draw lists' runner notes each such callback's chain range [first, end) of the real block
+// (render_view_layer_note: the shadow runs' are not noted); the chain's stage takes them for the replica (the tag ranges,
+// inclusive). Nothing of the game's state is read or written but the packet cursor's values the caller passes.
+void render_view_layers_begin();
+void render_view_layer_note(uint32_t first, uint32_t end);
+std::vector<std::pair<uint32_t, uint32_t>> render_view_layers();
+
+// orig: (host) the HUD's width (Options > Graphics > HUD): 0 the original's 4:3 frame (the default), else the aspect ratio the HUD
+// spreads over (16:9, 21:9, 32:9; a very large value: the view's whole width), never wider than the view (the widened 3D's).
+extern float g_hud_aspect;
+// orig: (host) how far (in the game's frame pixels) the HUD's side elements move toward their edges in a frame `fb_w` pixels wide:
+// 0 at 4:3 (g_hud_aspect 0, or a view not wider than 4:3), else half the frame's width times the HUD's widening (min(g_hud_aspect,
+// the view's aspect) over 4:3) less one
+float render_view_hud_shift(float fb_w);
+// orig: (host) the HUD elements the frame drew at the frame's sides, for a HUD wider than 4:3 (gs::Primitive::hud): render_frame
+// clears the notes (render_view_layers_begin), the HUD's drawing (hud_draw, ...) notes each side element's chain range
+// [first, end) (side 1 left, 2 right; the packet cursor's values before and after its draw function); the chain's stage takes them
+// for the replica (the tag ranges, inclusive). Nothing of the game's state is read or written but the cursor values the caller passes.
+void render_view_hud_note(uint32_t first, uint32_t end, uint8_t side);
+struct HudNote {
+    uint32_t first, last;
+    uint8_t side;
+};
+std::vector<HudNote> render_view_hud_notes();
+// whether the HUD's notes are wanted now (a HUD wider than 4:3 over a widened view): the callers skip their bookkeeping otherwise
+bool render_view_hud_wide();
 
 }  // namespace rac1

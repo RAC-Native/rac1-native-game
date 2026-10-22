@@ -259,6 +259,8 @@ DEPENDENCIES = [
      "libwayland-dev libxkbcommon-dev", "wayland-devel libxkbcommon-devel", "wayland libxkbcommon"),
     ("FFmpeg's libavcodec (optional: plays the game's movies)", False,
      lambda: pkg_config("libavcodec", "libavutil") or pkg_config("libavcodec", "libavutil", extra_path=HOMEBREW_PKGCONFIG), "libavcodec-dev libavutil-dev", "ffmpeg-free-devel", "ffmpeg"),
+    ("glslc (optional: the experimental Vulkan renderer's shaders)", False,
+     lambda: shutil.which("glslc") is not None or shutil.which("glslangValidator") is not None, "glslc", "glslc", "shaderc"),
 ]
 INSTALL = {"debian": "sudo apt install", "fedora": "sudo dnf install", "arch": "sudo pacman -S --needed"}
 DISTRO_NAME = {"debian": "Debian / Ubuntu", "fedora": "Fedora", "arch": "Arch"}
@@ -273,6 +275,8 @@ WINDOWS_DEPENDENCIES = [
     ("pkg-config (finds FFmpeg)", False, lambda: shutil.which("pkg-config") is not None, "mingw-w64-clang-x86_64-pkgconf"),
     ("FFmpeg's libavcodec (optional: plays the game's movies)", False, lambda: pkg_config("libavcodec", "libavutil"),
      "mingw-w64-clang-x86_64-ffmpeg"),
+    ("glslc (optional: the experimental Vulkan renderer's shaders)", False,
+     lambda: shutil.which("glslc") is not None or shutil.which("glslangValidator") is not None, "mingw-w64-clang-x86_64-shaderc"),
 ]
 
 
@@ -684,12 +688,15 @@ def run_logged(cmd, log):
     return False
 
 
-def build(jobs):
+def build(jobs, native_arch=None):
     BUILD_DIR.mkdir(exist_ok=True)
     BUILD_LOG.write_text("")
+    # --native-arch on / off: the game compiled for this machine's CPU or not (CMakeLists.txt RAC1_NATIVE_ARCH), kept in the
+    # build's CMake cache for the next builds (a change rebuilds everything)
+    arch = [] if native_arch is None else [f"-DRAC1_NATIVE_ARCH={'ON' if native_arch == 'on' else 'OFF'}"]
     if not (BUILD_DIR / "CMakeCache.txt").exists() or not any((BUILD_DIR / f).exists() for f in ("Makefile", "build.ninja")):
         print("  Configuring (this downloads a few libraries the first time)...", flush=True)
-        cmd = ["cmake", "-S", str(ROOT), "-B", str(BUILD_DIR), "-DCMAKE_BUILD_TYPE=RelWithDebInfo"]
+        cmd = ["cmake", "-S", str(ROOT), "-B", str(BUILD_DIR), "-DCMAKE_BUILD_TYPE=RelWithDebInfo"] + arch
         if WINDOWS:  # (Ninja and clang, not Visual Studio's generator and compiler: docs/platforms.md)
             cmd += ["-G", "Ninja"]
             if shutil.which("clang++"):
@@ -698,6 +705,11 @@ def build(jobs):
                 cmd += ["-DCMAKE_C_COMPILER=gcc", "-DCMAKE_CXX_COMPILER=g++"]
         if not run_logged(cmd, BUILD_LOG):
             fail(f"CMake could not configure the build (see above). If a library is missing, install it and run {SETUP_CMD} again.")
+    elif arch:
+        target = "this machine's CPU" if native_arch == "on" else "any x86-64 CPU"
+        print(f"  Compiling for {target} (--native-arch {native_arch})...", flush=True)
+        if not run_logged(["cmake", "-S", str(ROOT), "-B", str(BUILD_DIR)] + arch, BUILD_LOG):
+            fail(f"CMake could not configure the build (see above).")
     print(f"  Compiling with {jobs} parallel jobs (the first build takes several minutes)...", flush=True)
     if not run_logged(["cmake", "--build", str(BUILD_DIR), "-j", str(jobs)], BUILD_LOG):
         fail("The build failed (see above).")
@@ -1315,6 +1327,10 @@ def main():
                     help="only build the game (and generate its code first if that is missing or out of date)")
     ap.add_argument("--play", action="store_true", help="start the game when the setup finishes without asking")
     ap.add_argument("--no-play", action="store_true", help="do not offer to start the game at the end")
+    ap.add_argument("--native-arch", choices=("on", "off"), default=None,
+                    help="compile the game for this machine's CPU (on: -march=native, AVX2 / AVX-512 where the CPU has them, "
+                         "the game's own update about 8 %% faster, its state bit for bit the same; the build then runs on this "
+                         "machine's CPU only) or for any x86-64 CPU (off, the default); kept for the next builds")
     args = ap.parse_args()
     if args.iso:
         args.iso = str(Path(args.iso).expanduser().resolve())  # (relative to where the user ran the setup)
@@ -1351,7 +1367,7 @@ def main():
             fail(f"--no-build, but {EXE.relative_to(ROOT)} does not exist yet.")
         ok("Skipped (--no-build)")
     else:
-        build(jobs)
+        build(jobs, args.native_arch)
     if args.build_only:
         return
 

@@ -7,6 +7,7 @@
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_view.h>
+#include <profiler/host_profiler.h>
 #include <runtime/vk/vk_context.h>
 #include <runtime/vk/vk_shaders.h>
 
@@ -46,6 +47,7 @@ int g_point_shadows = env_int("RAC1_POINT_SHADOWS", 0);
 int g_auto_lights = env_int("RAC1_AUTO_LIGHTS", 1);
 int g_shadow_cache = env_int("RAC1_SHADOW_CACHE", 1);
 int g_user_light_selected = -1;
+int g_ao_intensity = std::clamp(env_int("RAC1_AO_INTENSITY", 75), 0, 200);
 int g_ao = env_int("RAC1_AO", 0);
 int g_sun_rays = env_int("RAC1_SUN_RAYS", 0);
 float g_shadow_moby_dist = std::getenv("RAC1_SHADOW_MOBY_DIST") != nullptr ? static_cast<float>(std::atof(std::getenv("RAC1_SHADOW_MOBY_DIST"))) : 0.0f;
@@ -390,6 +392,7 @@ void read_splits() {
     }
 }
 
+bool g_vk_ao_marking = false;  // (Vulkan: the MRP mobys drawn now mark their pixels in the stencil, bit 0, for the occlusion)
 struct VkLighting {
     bool inited = false;
     VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
@@ -421,6 +424,8 @@ struct VkLighting {
     VkShaderModule rays_add_fs_mod = VK_NULL_HANDLE;
     VkDescriptorSetLayout samp1_layout = VK_NULL_HANDLE;
     VkDescriptorSetLayout samp2_layout = VK_NULL_HANDLE;
+    VkDescriptorSetLayout samp3_layout = VK_NULL_HANDLE;  // (the occlusion's blurs: the occlusion, the depth, its stencil)
+    VkImageView ao_stencil_view = VK_NULL_HANDLE;           // (ao_dtex's stencil: the mobys' pixels)
     VkPipelineLayout ao_layout = VK_NULL_HANDLE;
     VkPipelineLayout blur_layout = VK_NULL_HANDLE;
     VkPipelineLayout rays_mask_layout = VK_NULL_HANDLE;
@@ -436,7 +441,7 @@ struct VkLighting {
     vk::GpuImage ao_dtex{}, ao_atex{}, ao_btex{};
     int ao_w = 0, ao_h = 0, ao_aw = 0, ao_ah = 0;
     vk::GpuImage rays_dtex{}, rays_ctex{}, rays_mtex{}, rays_rtex{};
-    int rays_w = 0, rays_h = 0;
+    int rays_w = 0, rays_h = 0, rays_div = 0;
 } g_vk_sh;
 
 void vk_lighting_shutdown() {
@@ -456,7 +461,9 @@ void vk_lighting_shutdown() {
                                     g_vk_sh.rays_blur_layout, g_vk_sh.rays_add_layout}) {
             if (pl != VK_NULL_HANDLE) vkDestroyPipelineLayout(dev, pl, nullptr);
         }
-        for (VkDescriptorSetLayout dsl : {g_vk_sh.set_layout, g_vk_sh.samp1_layout, g_vk_sh.samp2_layout}) {
+        if (g_vk_sh.ao_stencil_view != VK_NULL_HANDLE) vkDestroyImageView(dev, g_vk_sh.ao_stencil_view, nullptr);
+        g_vk_sh.ao_stencil_view = VK_NULL_HANDLE;
+        for (VkDescriptorSetLayout dsl : {g_vk_sh.set_layout, g_vk_sh.samp1_layout, g_vk_sh.samp2_layout, g_vk_sh.samp3_layout}) {
             if (dsl != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(dev, dsl, nullptr);
         }
         for (VkShaderModule sm : {g_vk_sh.vs_mod, g_vk_sh.ao_fs_mod, g_vk_sh.blur_fs_mod, g_vk_sh.blur_sep_fs_mod,
@@ -527,6 +534,7 @@ bool ensure_resources() {
     if (g_sh.fbo == 0) {
         glGenFramebuffers(1, &g_sh.fbo);
         glGenTextures(1, &g_sh.tex);
+        rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &g_sh.tex, "Shadows: sun cascades");
     }
     glBindTexture(GL_TEXTURE_2D_ARRAY, g_sh.tex);
     glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT32F, want, want, kCascades, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
@@ -781,6 +789,7 @@ void point_tiles_update() {
     }
     if (g_sh.tiles == 0) {
         glGenTextures(1, &g_sh.tiles);
+        rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &g_sh.tiles, "Point lights: tiles");
         glBindTexture(GL_TEXTURE_2D, g_sh.tiles);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32UI, kTilesX, kTilesY, 0, GL_RGBA_INTEGER, GL_UNSIGNED_INT, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -822,6 +831,7 @@ void point_shadows_pass() {
         }
     } else if (g_sh.ptex == 0) {
         glGenTextures(1, &g_sh.ptex);
+        rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &g_sh.ptex, "Shadows: point cubes");
         glBindTexture(kGlCubeMapArray, g_sh.ptex);
         glTexImage3D(kGlCubeMapArray, 0, GL_DEPTH_COMPONENT32F, kPtRes, kPtRes, 6 * kPtShadows, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
         glTexParameteri(kGlCubeMapArray, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -1180,6 +1190,8 @@ const char* kAoBlurFs = R"(#version 460 core
 in vec2 vUv;
 uniform sampler2D uAo, uDepth;
 uniform vec2 uTexel;
+uniform usampler2D uStencil;  // (the depth's stencil: bit 0 the mobys' pixels, mrp_lighting_ao_moby_mark)
+uniform float uMoby;          // (the share of the occlusion the mobys' pixels keep; 1: all, the stencil not read)
 out vec4 FragColor;
 void main() {
     float d0 = texture(uDepth, vUv).r;
@@ -1194,13 +1206,17 @@ void main() {
             w += k;
         }
     float ao = w > 0.0 ? sum / w : 1.0;
-    FragColor = vec4(vec3(ao), 1.0);
+    float k = 1.0;
+    if (uMoby < 1.0 && (texture(uStencil, vUv).r & 1u) != 0u) k = uMoby;
+    FragColor = vec4(vec3(mix(1.0, ao, k)), 1.0);
 }
 )";
 const char* kAoBlurSepFs = R"(#version 460 core
 in vec2 vUv;
 uniform sampler2D uAo, uDepth;
 uniform vec2 uTexel;
+uniform usampler2D uStencil;  // (the depth's stencil: bit 0 the mobys' pixels, mrp_lighting_ao_moby_mark)
+uniform float uMoby;          // (the share of the occlusion the mobys' pixels keep; 1: all, the stencil not read)
 out vec4 FragColor;
 void main() {
     float d0 = texture(uDepth, vUv).r;
@@ -1217,7 +1233,9 @@ void main() {
         w += k1 + k2;
     }
     float ao = w > 1e-5 ? sum / w : 1.0;
-    FragColor = vec4(vec3(ao), 1.0);
+    float k = 1.0;
+    if (uMoby < 1.0 && (texture(uStencil, vUv).r & 1u) != 0u) k = uMoby;
+    FragColor = vec4(vec3(mix(1.0, ao, k)), 1.0);
 }
 )";
 GLuint ao_compile(GLenum type, const char* src) {
@@ -1249,22 +1267,44 @@ GLuint ao_link(const char* fs) {
 struct Ao {
     GLuint prog = 0, blur = 0, blur_sep = 0, vao = 0;
     GLuint dfbo = 0, dtex = 0, afbo = 0, atex = 0, bfbo = 0, btex = 0;
+    GLuint stex = 0;  // (a stencil view of dtex, when the depth has a stencil)
     int w = 0, h = 0, aw = 0, ah = 0;
     GLint last_fb = -1;
     GLenum dfmt = 0;
     GLint u_depth = -1, u_inv_vp = -1, u_vp = -1, u_cam = -1, u_param = -1;
-    GLint u_b_depth = -1, u_b_ao = -1, u_b_texel = -1;
-    GLint u_bs_depth = -1, u_bs_ao = -1, u_bs_texel = -1;
+    GLint u_b_depth = -1, u_b_ao = -1, u_b_texel = -1, u_b_st = -1, u_b_moby = -1;
+    GLint u_bs_depth = -1, u_bs_ao = -1, u_bs_texel = -1, u_bs_st = -1, u_bs_moby = -1;
 } g_ao_s;
+// The mobys' pixels (mrp_lighting_ao_moby_mark): stencil bit 0 set where the MRP drew a moby this frame. Screen-space occlusion
+// sees a character's own arms, head and body overlapping as creases (Big Al's face and arms in his shop): on those pixels only a
+// share of the occlusion is kept (RAC1_AO_MOBY, percent, default 40), the world's pixels around them keep all of it (the contact
+// darkening on the ground under a crate or a character). The stencil is free while the modern lighting draws (the original's drop
+// shadows, its only other user, are never drawn then)
+struct AoMark {
+    bool active = false;  // marking (between begin and end)
+    bool done = false;    // this frame's mobys marked, into `fb`
+    GLint fb = -1;
+    GLint stencil_fb = -1;  // (the framebuffer whose stencil was looked at, and whether it has one)
+    bool stencil = false;
+} g_ao_mark;
 
 // ---- the sun's rays (Options > Graphics > Sun Rays) ------------------------------------------------------------------------
 //
 // Our choice, not the game's: light shafts from the sun where the sky shows through the scene (a tunnel's mouth, the gaps between
-// trees). A quarter of the resolution, screen space: (1) the sky's texels (depth 1) near the sun's place on the screen, their colour tinted by
-// the key light, the rest black; (2) a radial blur of that toward the sun (40 taps, each further one weaker); (3) added to the
-// picture (Low / High: a little / more), faded when the sun leaves the screen or is behind the camera, and with the sun's weight
-// (no rays where the zone has no sun, in the level's interiors, in a zone fading), at most +0.28 / +0.45 a texel (a soft limit: a
-// wide sky in front of the sun does not burn the picture white). Before the effects, the particles and the 2D.
+// trees, the sky around a skybox planet). Screen space, at a fraction of the resolution: (1) the sky's texels (depth 1) near the
+// sun's place on the screen, their colour tinted by the key light, the rest black; (2) a radial blur of that toward the sun (each
+// tap further one weaker); (3) added to the picture, faded when the sun leaves the screen or is behind the camera, and with the
+// sun's weight (no rays where the zone has no sun, in the level's interiors, in a zone fading), at most +0.28 a texel, High +0.45 (a soft
+// limit: a wide sky in front of the sun does not burn the picture white). Before the effects, the particles and the 2D.
+// The three steps (kRaysSteps) give the 0.4.x look at their quality and cost: the resolution of the mask and the blur, the blur's
+// taps (its reach and its fall-off the same: the decay a tap is 0.945 to the 40 / taps). Low and Medium have 0.4.x Low's strength,
+// Medium its exact picture; High 0.4.x High's strength (twice the gain, at most +0.45 a texel) at a finer resolution.
+struct RaysStep {
+    int div;      // the resolution: the view's / div
+    int taps;     // the radial blur's
+    bool strong;  // the 0.4.x High's strength (twice the gain, at most +0.45 a texel), else its Low's
+};
+constexpr RaysStep kRaysSteps[3] = {{8, 24, false}, {4, 40, false}, {3, 56, true}};
 const char* kRaysMaskFs = R"(#version 460 core
 in vec2 vUv;
 uniform sampler2D uDepth, uColor;
@@ -1287,9 +1327,10 @@ in vec2 vUv;
 uniform sampler2D uMask;
 uniform vec2 uSun;
 uniform vec4 uParam;  // x density (how far toward the sun the taps reach), y decay, z weight, w exposure
+uniform int uTaps;
 out vec4 FragColor;
 void main() {
-    const int N = 40;
+    int N = uTaps;
     vec2 delta = (vUv - uSun) * (uParam.x / float(N));
     float noise = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
     vec2 uv = vUv - delta * noise;  // (dithered start: no rings)
@@ -1313,7 +1354,7 @@ void main() { FragColor = vec4(uCap * (1.0 - exp(-texture(uRays, vUv).rgb * uK /
 struct Rays {
     GLuint mask = 0, blur = 0, add = 0, vao = 0;
     GLuint dfbo = 0, dtex = 0, cfbo = 0, ctex = 0, mfbo = 0, mtex = 0, rfbo = 0, rtex = 0;
-    int w = 0, h = 0;
+    int w = 0, h = 0, div = 0;
     GLenum dfmt = 0;
     GLint last_fb = -1;
 } g_rays;
@@ -1343,7 +1384,8 @@ void sun_rays_pass(GLint fb, const int vp[4]) {
     const float fade = std::clamp(1.0f - out / 0.6f, 0.0f, 1.0f);
     if (!(fade > 0.0f)) return;
     Rays& R = g_rays;
-    const int w = vp[2], h = vp[3], hw = std::max(1, w / 4), hh = std::max(1, h / 4);  // (a quarter: the shafts are soft)
+    const RaysStep& step = kRaysSteps[std::clamp(g_sun_rays, 1, 3) - 1];
+    const int w = vp[2], h = vp[3], hw = std::max(1, w / step.div), hh = std::max(1, h / step.div);  // (a fraction: the shafts are soft)
     if (R.mask == 0) {
         R.mask = ao_link(kRaysMaskFs);
         R.blur = ao_link(kRaysBlurFs);
@@ -1352,6 +1394,7 @@ void sun_rays_pass(GLint fb, const int vp[4]) {
         GLuint f[4], t[4];
         glGenFramebuffers(4, f);
         glGenTextures(4, t);
+        rac1::prof::gl_track_n(rac1::prof::kGlTexture, 4, t, "Sun rays");
         R.dfbo = f[0], R.cfbo = f[1], R.mfbo = f[2], R.rfbo = f[3];
         R.dtex = t[0], R.ctex = t[1], R.mtex = t[2], R.rtex = t[3];
     }
@@ -1361,10 +1404,11 @@ void sun_rays_pass(GLint fb, const int vp[4]) {
         R.last_fb = fb;
     }
     const bool st = fmt == GL_DEPTH24_STENCIL8 || fmt == GL_DEPTH32F_STENCIL8;
-    if (R.w != w || R.h != h || R.dfmt != fmt) {
+    if (R.w != w || R.h != h || R.dfmt != fmt || R.div != step.div) {
         R.w = w;
         R.h = h;
         R.dfmt = fmt;
+        R.div = step.div;
         auto tex = [](GLuint t, GLint ifmt, int tw, int th, GLenum f2, GLenum ty, GLint filter) {
             glBindTexture(GL_TEXTURE_2D, t);
             glTexImage2D(GL_TEXTURE_2D, 0, ifmt, tw, th, 0, f2, ty, nullptr);
@@ -1389,7 +1433,7 @@ void sun_rays_pass(GLint fb, const int vp[4]) {
         glBindFramebuffer(GL_FRAMEBUFFER, R.rfbo);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, R.rtex, 0);
     }
-    // the 3D's depth (nearest) and colour (linear) at half size
+    // the 3D's depth (nearest) and colour (linear) at the step's size
     glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(fb));
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, R.dfbo);
     glBlitFramebuffer(vp[0], vp[1], vp[0] + w, vp[1] + h, 0, 0, hw, hh, GL_DEPTH_BUFFER_BIT | (st ? GL_STENCIL_BUFFER_BIT : 0), GL_NEAREST);
@@ -1421,11 +1465,14 @@ void sun_rays_pass(GLint fb, const int vp[4]) {
     glBindTexture(GL_TEXTURE_2D, R.mtex);
     glUniform1i(glGetUniformLocation(R.blur, "uMask"), 0);
     glUniform2f(glGetUniformLocation(R.blur, "uSun"), su.x, su.y);
-    glUniform4f(glGetUniformLocation(R.blur, "uParam"), 0.9f, 0.945f, 1.0f / 40.0f * 4.0f, 1.0f);
+    // (the taps' decay and weight for the step's count: the reach and the fall-off along it as with 40)
+    const float decay = step.taps == 40 ? 0.945f : static_cast<float>(std::pow(0.945, 40.0 / step.taps));
+    glUniform4f(glGetUniformLocation(R.blur, "uParam"), 0.9f, decay, 1.0f / static_cast<float>(step.taps) * 4.0f, 1.0f);
+    glUniform1i(glGetUniformLocation(R.blur, "uTaps"), step.taps);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     // (3) added to the picture
     static const float gain_env = std::getenv("RAC1_SUN_RAYS_GAIN") != nullptr ? static_cast<float>(std::atof(std::getenv("RAC1_SUN_RAYS_GAIN"))) : 1.0f;  // (testing)
-    const float k = (g_sun_rays >= 2 ? 7.0f : 3.5f) * gain_env * fade * std::min(g_sh.sun_k, 1.0f);
+    const float k = (step.strong ? 7.0f : 3.5f) * gain_env * fade * std::min(g_sh.sun_k, 1.0f);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(fb));
     glViewport(vp[0], vp[1], w, h);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
@@ -1435,7 +1482,7 @@ void sun_rays_pass(GLint fb, const int vp[4]) {
     glBindTexture(GL_TEXTURE_2D, R.rtex);
     glUniform1i(glGetUniformLocation(R.add, "uRays"), 0);
     glUniform1f(glGetUniformLocation(R.add, "uK"), k);
-    glUniform1f(glGetUniformLocation(R.add, "uCap"), (g_sun_rays >= 2 ? 0.45f : 0.28f) * std::max(fade * std::min(g_sh.sun_k, 1.0f), 1e-3f));
+    glUniform1f(glGetUniformLocation(R.add, "uCap"), (step.strong ? 0.45f : 0.28f) * std::max(fade * std::min(g_sh.sun_k, 1.0f), 1e-3f));
     glDrawArrays(GL_TRIANGLES, 0, 3);
     glDisable(GL_BLEND);
     if (std::getenv("RAC1_SUN_RAYS_TRACE") != nullptr) {
@@ -1549,8 +1596,11 @@ void cover_probe(GLint fb, const int vp[4]) {
         glGenFramebuffers(1, &P.dfbo);
         glGenFramebuffers(1, &P.ofbo);
         glGenTextures(1, &P.dtex);
+        rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &P.dtex, "Sun cover probe");
         glGenTextures(1, &P.otex);
+        rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &P.otex, "Sun cover probe");
         glGenBuffers(2, P.pbo);
+        rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 2, P.pbo, "Sun cover probe");
         for (int i = 0; i < 2; ++i) {
             glBindBuffer(GL_PIXEL_PACK_BUFFER, P.pbo[i]);
             glBufferData(GL_PIXEL_PACK_BUFFER, 4 * kProbeW * kProbeH, nullptr, GL_STREAM_READ);
@@ -1694,6 +1744,14 @@ void ensure_vk_ao_pipelines() {
     dsl2.pBindings = b2;
     vkCreateDescriptorSetLayout(dev, &dsl2, nullptr, &g_vk_sh.samp2_layout);
 
+    VkDescriptorSetLayoutBinding b3[3]{};
+    for (uint32_t i = 0; i < 3; ++i) b3[i] = {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+    VkDescriptorSetLayoutCreateInfo dsl3{};
+    dsl3.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    dsl3.bindingCount = 3;
+    dsl3.pBindings = b3;
+    vkCreateDescriptorSetLayout(dev, &dsl3, nullptr, &g_vk_sh.samp3_layout);
+
     auto make_layout = [&](VkDescriptorSetLayout dsl, uint32_t push_bytes) {
         VkPushConstantRange pcr{VK_SHADER_STAGE_FRAGMENT_BIT, 0, push_bytes};
         VkPipelineLayoutCreateInfo plci{};
@@ -1708,8 +1766,8 @@ void ensure_vk_ao_pipelines() {
     };
 
     g_vk_sh.ao_layout = make_layout(g_vk_sh.samp1_layout, 160);
-    g_vk_sh.blur_layout = make_layout(g_vk_sh.samp2_layout, 8);
-    g_vk_sh.rays_mask_layout = make_layout(g_vk_sh.samp2_layout, 32);
+    g_vk_sh.blur_layout = make_layout(g_vk_sh.samp3_layout, 16);
+    g_vk_sh.rays_mask_layout = make_layout(g_vk_sh.samp2_layout, 48);
     g_vk_sh.rays_blur_layout = make_layout(g_vk_sh.samp1_layout, 32);
     g_vk_sh.rays_add_layout = make_layout(g_vk_sh.samp1_layout, 8);
 
@@ -1838,6 +1896,26 @@ VkDescriptorSet alloc_samp1_ds(VkImageView view, VkSampler sampler) {
     return ds;
 }
 
+VkDescriptorSet alloc_samp3_ds(VkImageView v0, VkSampler s0, VkImageView v1, VkSampler s1, VkImageView v2, VkSampler s2) {
+    VkDescriptorSet ds = vk::alloc_descriptor_set(g_vk_sh.samp3_layout);
+    const VkDescriptorImageInfo dii[3] = {
+        {s0, v0, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+        {s1, v1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+        {s2, v2, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+    };
+    VkWriteDescriptorSet w[3]{};
+    for (uint32_t i = 0; i < 3; ++i) {
+        w[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        w[i].dstSet = ds;
+        w[i].dstBinding = i;
+        w[i].descriptorCount = 1;
+        w[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        w[i].pImageInfo = &dii[i];
+    }
+    vkUpdateDescriptorSets(vk::device(), 3, w, 0, nullptr);
+    return ds;
+}
+
 VkDescriptorSet alloc_samp2_ds(VkImageView v0, VkSampler s0, VkImageView v1, VkSampler s1) {
     VkDescriptorSet ds = vk::alloc_descriptor_set(g_vk_sh.samp2_layout);
     VkDescriptorImageInfo dii[2] = {
@@ -1868,6 +1946,7 @@ void vk_ao_and_rays_pass(const int vp[4]) {
     const VkSampler samp_linear = vk::get_sampler(VK_FILTER_LINEAR, VK_FILTER_LINEAR,
                                                   VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
+    int prof_zone = rac1::prof::begin(rac1::prof::kAo);  // (the debug menu's profiler: the occlusion, then the rays)
     if (g_ao != 0) {
         const int w = vp[2], h = vp[3];
         const bool half_res = (g_ao == 5);
@@ -1881,8 +1960,22 @@ void vk_ao_and_rays_pass(const int vp[4]) {
             g_vk_sh.ao_h = h;
             g_vk_sh.ao_aw = aw;
             g_vk_sh.ao_ah = ah;
+            if (g_vk_sh.ao_stencil_view != VK_NULL_HANDLE) {  // (a new size: rare; the old view waited for)
+                vk::wait_idle();
+                vkDestroyImageView(vk::device(), g_vk_sh.ao_stencil_view, nullptr);
+                g_vk_sh.ao_stencil_view = VK_NULL_HANDLE;
+            }
             vk::create_image(static_cast<uint32_t>(w), static_cast<uint32_t>(h), dfmt,
                              VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, daspect, g_vk_sh.ao_dtex);
+            if ((daspect & VK_IMAGE_ASPECT_STENCIL_BIT) != 0) {
+                VkImageViewCreateInfo vci{};
+                vci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+                vci.image = g_vk_sh.ao_dtex.image;
+                vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+                vci.format = dfmt;
+                vci.subresourceRange = {VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1, 0, 1};
+                vkCreateImageView(vk::device(), &vci, nullptr, &g_vk_sh.ao_stencil_view);
+            }
             vk::create_image(static_cast<uint32_t>(aw), static_cast<uint32_t>(ah), VK_FORMAT_R8_UNORM,
                              VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
                              VK_IMAGE_ASPECT_COLOR_BIT, g_vk_sh.ao_atex);
@@ -1890,10 +1983,8 @@ void vk_ao_and_rays_pass(const int vp[4]) {
                              VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                              VK_IMAGE_ASPECT_COLOR_BIT, g_vk_sh.ao_btex);
         }
-        vk::blit_image(vk::active_depth_image(), vp[0], vp[1], vp[0] + w, vp[1] + h,
-                       g_vk_sh.ao_dtex, 0, 0, w, h, VK_FILTER_NEAREST, daspect,
-                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        vk::transition_image(vk::cmd(), vk::active_depth_image(), VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        vk::copy_image(vk::active_depth_image(), vp[0], vp[1], g_vk_sh.ao_dtex, 0, 0, w, h, daspect,
+                       VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
         float vpf[16];
         mrp_world_view_proj(vpf);
@@ -1902,7 +1993,8 @@ void vk_ao_and_rays_pass(const int vp[4]) {
         static const float kRadius[6] = {0.0f, 1.5f, 1.5f, 3.0f, 3.0f, 3.0f}, kStrength[6] = {0.0f, 1.0f, 1.2f, 2.0f, 2.5f, 2.5f};
         const int mi = std::clamp(g_ao, 1, 5);
         const float radius = env_r >= 0 ? static_cast<float>(env_r) / 100.0f : kRadius[mi];
-        const float strength = env_s >= 0 ? static_cast<float>(env_s) / 100.0f : kStrength[mi];
+        // (Options > Graphics > AO Intensity, as mrp_lighting_ao_pass)
+        const float strength = (env_s >= 0 ? static_cast<float>(env_s) / 100.0f : kStrength[mi]) * static_cast<float>(g_ao_intensity) / 100.0f;
         const int shader_mode = (g_ao >= 5) ? 4 : g_ao;
 
         // Pass 1: raw AO into ao_atex
@@ -1932,12 +2024,16 @@ void vk_ao_and_rays_pass(const int vp[4]) {
         vk::pop_target();
         vk::transition_image(vk::cmd(), g_vk_sh.ao_atex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
+        // (the mobys' pixels, marked in the stencil, with their share of the occlusion: as mrp_lighting_ao_pass)
+        static const float moby_k = static_cast<float>(std::clamp(env_int("RAC1_AO_MOBY", 40), 0, 100)) / 100.0f;
+        const VkImageView stencil_view = g_vk_sh.ao_stencil_view != VK_NULL_HANDLE ? g_vk_sh.ao_stencil_view : vk::black_uint_texture().view;
+        const float moby = g_ao_mark.done && g_vk_sh.ao_stencil_view != VK_NULL_HANDLE ? moby_k : 1.0f;
         if (g_ao == 1) {
             vk::set_viewport(vp[0], vp[1], w, h);
             vk::ensure_rendering();
             VkCommandBuffer cb = vk::cmd();
-            VkDescriptorSet ds = alloc_samp2_ds(g_vk_sh.ao_atex.view, samp_nearest, g_vk_sh.ao_dtex.view, samp_nearest);
-            const float texel[2] = {1.0f / static_cast<float>(w), 1.0f / static_cast<float>(h)};
+            VkDescriptorSet ds = alloc_samp3_ds(g_vk_sh.ao_atex.view, samp_nearest, g_vk_sh.ao_dtex.view, samp_nearest, stencil_view, samp_nearest);
+            const float texel[4] = {1.0f / static_cast<float>(w), 1.0f / static_cast<float>(h), moby, 0.0f};
             vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_pipe);
             vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_layout, 0, 1, &ds, 0, nullptr);
             vkCmdPushConstants(cb, g_vk_sh.blur_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(texel), texel);
@@ -1954,9 +2050,9 @@ void vk_ao_and_rays_pass(const int vp[4]) {
             vk::ensure_rendering();
             {
                 VkCommandBuffer cb = vk::cmd();
-                VkDescriptorSet ds = alloc_samp2_ds(g_vk_sh.ao_atex.view, half_res ? samp_linear : samp_nearest,
-                                                    g_vk_sh.ao_dtex.view, samp_nearest);
-                const float texel_h[2] = {1.0f / static_cast<float>(aw), 0.0f};
+                VkDescriptorSet ds = alloc_samp3_ds(g_vk_sh.ao_atex.view, half_res ? samp_linear : samp_nearest,
+                                                    g_vk_sh.ao_dtex.view, samp_nearest, stencil_view, samp_nearest);
+                const float texel_h[4] = {1.0f / static_cast<float>(aw), 0.0f, 1.0f, 0.0f};  // (the share taken at the end, as mrp_lighting_ao_pass)
                 vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_sep_h_pipe);
                 vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_layout, 0, 1, &ds, 0, nullptr);
                 vkCmdPushConstants(cb, g_vk_sh.blur_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(texel_h), texel_h);
@@ -1969,8 +2065,8 @@ void vk_ao_and_rays_pass(const int vp[4]) {
             vk::ensure_rendering();
             {
                 VkCommandBuffer cb = vk::cmd();
-                VkDescriptorSet ds = alloc_samp2_ds(g_vk_sh.ao_btex.view, samp_nearest, g_vk_sh.ao_dtex.view, samp_nearest);
-                const float texel_v[2] = {0.0f, 1.0f / static_cast<float>(h)};
+                VkDescriptorSet ds = alloc_samp3_ds(g_vk_sh.ao_btex.view, samp_nearest, g_vk_sh.ao_dtex.view, samp_nearest, stencil_view, samp_nearest);
+                const float texel_v[4] = {0.0f, 1.0f / static_cast<float>(h), moby, 0.0f};
                 vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_sep_v_pipe);
                 vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_layout, 0, 1, &ds, 0, nullptr);
                 vkCmdPushConstants(cb, g_vk_sh.blur_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(texel_v), texel_v);
@@ -1979,6 +2075,8 @@ void vk_ao_and_rays_pass(const int vp[4]) {
         }
     }
 
+    rac1::prof::end(prof_zone);
+    prof_zone = g_sun_rays > 0 ? rac1::prof::begin(rac1::prof::kSunRays) : -1;
     if (g_sun_rays > 0 && g_sh.sun_k > 0.01f) {
         float vpf[16];
         mrp_world_view_proj(vpf);
@@ -1989,17 +2087,16 @@ void vk_ao_and_rays_pass(const int vp[4]) {
             const float out = std::max({-su.x, su.x - 1.0f, -su.y, su.y - 1.0f, 0.0f});
             const float fade = std::clamp(1.0f - out / 0.6f, 0.0f, 1.0f);
             if (fade > 0.0f) {
-                const int w = vp[2], h = vp[3], hw = std::max(1, w / 4), hh = std::max(1, h / 4);
+                const RaysStep& step = kRaysSteps[std::clamp(g_sun_rays, 1, 3) - 1];  // (the three steps, as sun_rays_pass)
+                const int w = vp[2], h = vp[3], hw = std::max(1, w / step.div), hh = std::max(1, h / step.div);
                 const VkFormat dfmt = vk::depth_stencil_format();
                 const VkImageAspectFlags daspect = vk::active_depth_image().aspect;
-                if (g_vk_sh.rays_w != w || g_vk_sh.rays_h != h || g_vk_sh.rays_dtex.image == VK_NULL_HANDLE) {
+                (void)dfmt;
+                (void)daspect;
+                if (g_vk_sh.rays_w != w || g_vk_sh.rays_h != h || g_vk_sh.rays_div != step.div || g_vk_sh.rays_mtex.image == VK_NULL_HANDLE) {
                     g_vk_sh.rays_w = w;
                     g_vk_sh.rays_h = h;
-                    vk::create_image(static_cast<uint32_t>(hw), static_cast<uint32_t>(hh), dfmt,
-                                     VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, daspect, g_vk_sh.rays_dtex);
-                    vk::create_image(static_cast<uint32_t>(hw), static_cast<uint32_t>(hh), VK_FORMAT_R8G8B8A8_UNORM,
-                                     VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-                                     VK_IMAGE_ASPECT_COLOR_BIT, g_vk_sh.rays_ctex);
+                    g_vk_sh.rays_div = step.div;
                     vk::create_image(static_cast<uint32_t>(hw), static_cast<uint32_t>(hh), VK_FORMAT_R16G16B16A16_SFLOAT,
                                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                                      VK_IMAGE_ASPECT_COLOR_BIT, g_vk_sh.rays_mtex);
@@ -2007,14 +2104,14 @@ void vk_ao_and_rays_pass(const int vp[4]) {
                                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                                      VK_IMAGE_ASPECT_COLOR_BIT, g_vk_sh.rays_rtex);
                 }
-                vk::blit_image(vk::active_depth_image(), vp[0], vp[1], vp[0] + w, vp[1] + h,
-                               g_vk_sh.rays_dtex, 0, 0, hw, hh, VK_FILTER_NEAREST, daspect,
-                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-                vk::blit_image(vk::active_color_image(), vp[0], vp[1], vp[0] + w, vp[1] + h,
-                               g_vk_sh.rays_ctex, 0, 0, hw, hh, VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT,
-                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-                vk::transition_image(vk::cmd(), vk::active_depth_image(), VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-                vk::transition_image(vk::cmd(), vk::active_color_image(), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+                // the 3D's depth (nearest) and colour (linear) sampled where the step's texels fall: what the GL path's blits to
+                // the step's size give, without the copies (a depth blit is not portable in Vulkan either)
+                vk::GpuImage& sdepth = vk::active_depth_image();
+                vk::GpuImage& scolor = vk::active_color_image();
+                vk::transition_image(vk::cmd(), sdepth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                vk::transition_image(vk::cmd(), scolor, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                const glm::vec4 src_map(static_cast<float>(vp[0]) / static_cast<float>(scolor.width), static_cast<float>(vp[1]) / static_cast<float>(scolor.height),
+                                        static_cast<float>(w) / static_cast<float>(scolor.width), static_cast<float>(h) / static_cast<float>(scolor.height));
 
                 const float tmax = std::max({g_sh.key.x, g_sh.key.y, g_sh.key.z, 1e-3f});
                 const glm::vec3 tint = g_sh.key.x + g_sh.key.y + g_sh.key.z > 0.0f ? glm::vec3(g_sh.key) / tmax : glm::vec3(1.0f, 0.95f, 0.85f);
@@ -2034,9 +2131,10 @@ void vk_ao_and_rays_pass(const int vp[4]) {
                         glm::vec2 uSun;
                         glm::vec2 uAspect;
                         glm::vec4 uTint;
-                    } pc{su, glm::vec2(static_cast<float>(w) / static_cast<float>(std::max(h, 1)), 1.0f), glm::vec4(tint, 1.0f)};
+                        glm::vec4 uSrc;  // (the view's place in the 3D's buffers: offset, size, 0..1)
+                    } pc{su, glm::vec2(static_cast<float>(w) / static_cast<float>(std::max(h, 1)), 1.0f), glm::vec4(tint, 1.0f), src_map};
                     VkCommandBuffer cb = vk::cmd();
-                    VkDescriptorSet ds = alloc_samp2_ds(g_vk_sh.rays_dtex.view, samp_nearest, g_vk_sh.rays_ctex.view, samp_linear);
+                    VkDescriptorSet ds = alloc_samp2_ds(sdepth.depth_view != VK_NULL_HANDLE ? sdepth.depth_view : sdepth.view, samp_nearest, scolor.view, samp_linear);
                     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.rays_mask_pipe);
                     vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.rays_mask_layout, 0, 1, &ds, 0, nullptr);
                     vkCmdPushConstants(cb, g_vk_sh.rays_mask_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
@@ -2044,6 +2142,8 @@ void vk_ao_and_rays_pass(const int vp[4]) {
                 }
                 vk::pop_target();
                 vk::transition_image(vk::cmd(), g_vk_sh.rays_mtex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                vk::transition_image(vk::cmd(), sdepth, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+                vk::transition_image(vk::cmd(), scolor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
                 // (2) radial blur
                 vk::transition_image(vk::cmd(), g_vk_sh.rays_rtex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
@@ -2058,9 +2158,11 @@ void vk_ao_and_rays_pass(const int vp[4]) {
                 {
                     struct BlurPush {
                         glm::vec2 uSun;
-                        glm::vec2 _pad;
+                        glm::vec2 uTaps;
                         glm::vec4 uParam;
-                    } pc{su, glm::vec2(0.0f), glm::vec4(0.9f, 0.945f, 1.0f / 40.0f * 4.0f, 1.0f)};
+                    };
+                    const float decay = step.taps == 40 ? 0.945f : static_cast<float>(std::pow(0.945, 40.0 / step.taps));
+                    const BlurPush pc{su, glm::vec2(static_cast<float>(step.taps), 0.0f), glm::vec4(0.9f, decay, 1.0f / static_cast<float>(step.taps) * 4.0f, 1.0f)};
                     VkCommandBuffer cb = vk::cmd();
                     VkDescriptorSet ds = alloc_samp1_ds(g_vk_sh.rays_mtex.view, samp_linear);
                     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.rays_blur_pipe);
@@ -2073,8 +2175,12 @@ void vk_ao_and_rays_pass(const int vp[4]) {
 
                 // (3) add to scene
                 static const float gain_env = std::getenv("RAC1_SUN_RAYS_GAIN") != nullptr ? static_cast<float>(std::atof(std::getenv("RAC1_SUN_RAYS_GAIN"))) : 1.0f;
-                const float k = (g_sun_rays >= 2 ? 7.0f : 3.5f) * gain_env * fade * std::min(g_sh.sun_k, 1.0f);
-                const float cap = (g_sun_rays >= 2 ? 0.45f : 0.28f) * std::max(fade * std::min(g_sh.sun_k, 1.0f), 1e-3f);
+                const float k = (step.strong ? 7.0f : 3.5f) * gain_env * fade * std::min(g_sh.sun_k, 1.0f);
+                const float cap = (step.strong ? 0.45f : 0.28f) * std::max(fade * std::min(g_sh.sun_k, 1.0f), 1e-3f);
+                if (std::getenv("RAC1_SUN_RAYS_TRACE") != nullptr) {
+                    static uint64_t n = 0;
+                    if (n++ % 60 == 0) std::printf("[rays] sun at %.2f %.2f of the view, fade %.2f, weight %.2f: %.2f\n", su.x, su.y, fade, g_sh.sun_k, k);
+                }
                 vk::set_viewport(vp[0], vp[1], w, h);
                 vk::ensure_rendering();
                 {
@@ -2090,9 +2196,57 @@ void vk_ao_and_rays_pass(const int vp[4]) {
         }
     }
 
+    rac1::prof::end(prof_zone);
     vk::set_viewport(prev_vp[0], prev_vp[1], prev_vp[2], prev_vp[3]);
 }
 }  // namespace
+
+// orig: (host) see mrp_lighting.h
+bool mrp_lighting_vk_ao_marking() { return g_vk_ao_marking; }
+
+// orig: (host) see mrp_lighting.h
+void mrp_lighting_ao_moby_mark(bool begin) {
+    AoMark& M = g_ao_mark;
+    if (vk::is_active()) {  // (Vulkan: the mobys' pipelines write the stencil while marking, mrp_lighting_vk_ao_marking)
+        g_vk_ao_marking = begin && g_sh.on && g_ao != 0 && env_int("RAC1_AO_MOBY", 40) < 100;
+        if (begin) {
+            M.done = g_vk_ao_marking;
+            M.active = false;
+        }
+        return;
+    }
+    if (!begin) {
+        if (!M.active) return;
+        M.active = false;
+        glDisable(GL_STENCIL_TEST);
+        glStencilMask(0xff);
+        return;
+    }
+    M.active = false;
+    M.done = false;
+    static const bool all = env_int("RAC1_AO_MOBY", 40) >= 100;  // (testing: the mobys with all of the occlusion, as the world)
+    if (!g_sh.on || g_ao == 0 || all) return;
+    GLint fb = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &fb);
+    if (fb != M.stencil_fb) {  // (has the framebuffer drawn into a stencil? the scaled scene's buffer has; the window's, as it was made)
+        GLint sbits = 0;
+        const GLenum satt = fb == 0 ? GL_STENCIL : GL_STENCIL_ATTACHMENT;
+        glGetFramebufferAttachmentParameteriv(GL_DRAW_FRAMEBUFFER, satt, GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &sbits);
+        while (glGetError() != GL_NO_ERROR) {}
+        M.stencil_fb = fb;
+        M.stencil = sbits > 0;
+    }
+    if (!M.stencil) return;
+    // (the stencil was cleared with the depth at the frame's start - orig_main -, nothing writes it before the mobys; written whole,
+    // 1: a partial write mask on a packed depth-stencil buffer is a read-modify-write)
+    glEnable(GL_STENCIL_TEST);
+    glStencilFunc(GL_ALWAYS, 1, 0xff);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+    glStencilMask(0xff);
+    M.active = true;
+    M.done = true;
+    M.fb = fb;
+}
 
 // orig: (host) see mrp_lighting.h
 void mrp_lighting_ao_pass() {
@@ -2100,11 +2254,13 @@ void mrp_lighting_ao_pass() {
     int vp[4];
     if (!mrp_world_last_viewport(vp)) return;
     if (vk::is_active()) {
+        screen_point_read(vp);  // (the debug menu's crosshair)
         vk_ao_and_rays_pass(vp);
         return;
     }
     screen_point_read(vp);
     lamp_scan(vp);
+    const int prof_ao = rac1::prof::begin(rac1::prof::kAo);  // (the debug menu's profiler: the cover probe and the occlusion)
     GLint fb = 0, rfb = 0, prev_prog = 0, prev_vao = 0, prev_vp[4] = {}, prev_active = 0, prev_t0 = 0, prev_t1 = 0, prev_rb = 0;
     glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &fb);
     glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &rfb);
@@ -2159,16 +2315,21 @@ void mrp_lighting_ao_pass() {
             A.u_b_depth = glGetUniformLocation(A.blur, "uDepth");
             A.u_b_ao = glGetUniformLocation(A.blur, "uAo");
             A.u_b_texel = glGetUniformLocation(A.blur, "uTexel");
+            A.u_b_st = glGetUniformLocation(A.blur, "uStencil");
+            A.u_b_moby = glGetUniformLocation(A.blur, "uMoby");
             A.u_bs_depth = glGetUniformLocation(A.blur_sep, "uDepth");
             A.u_bs_ao = glGetUniformLocation(A.blur_sep, "uAo");
             A.u_bs_texel = glGetUniformLocation(A.blur_sep, "uTexel");
+            A.u_bs_st = glGetUniformLocation(A.blur_sep, "uStencil");
+            A.u_bs_moby = glGetUniformLocation(A.blur_sep, "uMoby");
             glGenVertexArrays(1, &A.vao);
             glGenFramebuffers(1, &A.dfbo);
             glGenFramebuffers(1, &A.afbo);
             glGenFramebuffers(1, &A.bfbo);
-            glGenTextures(1, &A.dtex);
             glGenTextures(1, &A.atex);
+            rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &A.atex, "Ambient occlusion");
             glGenTextures(1, &A.btex);
+            rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &A.btex, "Ambient occlusion");
         }
         GLenum fmt = A.dfmt;
         if (fb != A.last_fb || fmt == 0) {
@@ -2190,10 +2351,37 @@ void mrp_lighting_ao_pass() {
             A.aw = aw;
             A.ah = ah;
             A.dfmt = fmt;
+            // (immutable storage, made again at each size: the stencil's view needs it; GL 4.2 / 4.3, not in the loader's header)
+            using PfnTexStorage2D = void(APIENTRYP)(GLenum, GLsizei, GLenum, GLsizei, GLsizei);
+            using PfnTextureView = void(APIENTRYP)(GLuint, GLenum, GLuint, GLenum, GLuint, GLuint, GLuint, GLuint);
+            static const PfnTexStorage2D tex_storage = reinterpret_cast<PfnTexStorage2D>(glfwGetProcAddress("glTexStorage2D"));
+            static const PfnTextureView texture_view = reinterpret_cast<PfnTextureView>(glfwGetProcAddress("glTextureView"));
+            constexpr GLenum kDepthStencilTextureMode = 0x90ea;  // (GL_DEPTH_STENCIL_TEXTURE_MODE, GL 4.3)
+            if (A.stex != 0) glDeleteTextures(1, &A.stex);
+            if (A.dtex != 0) glDeleteTextures(1, &A.dtex);
+            A.stex = 0;
+            glGenTextures(1, &A.dtex);
+            rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &A.dtex, "Ambient occlusion");
             glBindTexture(GL_TEXTURE_2D, A.dtex);
             const bool st = fmt == GL_DEPTH24_STENCIL8 || fmt == GL_DEPTH32F_STENCIL8;
-            glTexImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(fmt), w, h, 0, st ? GL_DEPTH_STENCIL : GL_DEPTH_COMPONENT,
-                         fmt == GL_DEPTH24_STENCIL8 ? GL_UNSIGNED_INT_24_8 : fmt == GL_DEPTH32F_STENCIL8 ? GL_FLOAT_32_UNSIGNED_INT_24_8_REV : GL_FLOAT, nullptr);
+            if (tex_storage != nullptr && texture_view != nullptr) {
+                tex_storage(GL_TEXTURE_2D, 1, fmt, w, h);
+            } else {  // (no view: the mobys get all of the occlusion)
+                glTexImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(fmt), w, h, 0, st ? GL_DEPTH_STENCIL : GL_DEPTH_COMPONENT,
+                             fmt == GL_DEPTH24_STENCIL8 ? GL_UNSIGNED_INT_24_8 : fmt == GL_DEPTH32F_STENCIL8 ? GL_FLOAT_32_UNSIGNED_INT_24_8_REV : GL_FLOAT, nullptr);
+            }
+            if (st && tex_storage != nullptr && texture_view != nullptr) {
+                glGenTextures(1, &A.stex);
+                rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &A.stex, "Ambient occlusion");
+                texture_view(A.stex, GL_TEXTURE_2D, A.dtex, fmt, 0, 1, 0, 1);
+                glBindTexture(GL_TEXTURE_2D, A.stex);
+                glTexParameteri(GL_TEXTURE_2D, kDepthStencilTextureMode, GL_STENCIL_INDEX);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                glBindTexture(GL_TEXTURE_2D, A.dtex);
+            }
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -2245,7 +2433,8 @@ void mrp_lighting_ao_pass() {
         static const float kRadius[6] = {0.0f, 1.5f, 1.5f, 3.0f, 3.0f, 3.0f}, kStrength[6] = {0.0f, 1.0f, 1.2f, 2.0f, 2.5f, 2.5f};
         const int mi = std::clamp(g_ao, 1, 5);
         const float radius = env_r >= 0 ? static_cast<float>(env_r) / 100.0f : kRadius[mi];
-        const float strength = env_s >= 0 ? static_cast<float>(env_s) / 100.0f : kStrength[mi];
+        // (Options > Graphics > AO Intensity: the mode's strength scaled, 75 % by default)
+        const float strength = (env_s >= 0 ? static_cast<float>(env_s) / 100.0f : kStrength[mi]) * static_cast<float>(g_ao_intensity) / 100.0f;
         const int shader_mode = (g_ao >= 5) ? 4 : g_ao;
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, A.afbo);
         glViewport(0, 0, aw, ah);
@@ -2289,6 +2478,15 @@ void mrp_lighting_ao_pass() {
         }
         glActiveTexture(GL_TEXTURE1);
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &prev_tex1);
+        // the multiply into the colour: the world's pixels with all of the occlusion, the mobys' (stencil bit 0, marked this
+        // frame into this framebuffer, read through dtex's stencil view) with their share
+        static const float moby_k = static_cast<float>(std::clamp(env_int("RAC1_AO_MOBY", 40), 0, 100)) / 100.0f;
+        const float moby = g_ao_mark.done && g_ao_mark.fb == fb && A.stex != 0 ? moby_k : 1.0f;
+        GLint prev_tex2 = 0;
+        glActiveTexture(GL_TEXTURE2);
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &prev_tex2);
+        glBindTexture(GL_TEXTURE_2D, A.stex);
+        glActiveTexture(GL_TEXTURE1);
         if (g_ao == 1) {
             // original SSAO: 5x5 box depth-threshold blur multiplied into the colour
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(fb));
@@ -2301,12 +2499,15 @@ void mrp_lighting_ao_pass() {
             glUniform1i(A.u_b_depth, 0);
             glUniform1i(A.u_b_ao, 1);
             glUniform2f(A.u_b_texel, 1.0f / static_cast<float>(w), 1.0f / static_cast<float>(h));
+            glUniform1i(A.u_b_st, 2);
+            glUniform1f(A.u_b_moby, moby);
             glDrawArrays(GL_TRIANGLES, 0, 3);
         } else {
             // SSAO+ / HBAO / GTAO / GTAO 1/2: 9-tap separable bilateral depth-weighted blur (horizontal -> btex, vertical -> fb)
             glUseProgram(A.blur_sep);
             glUniform1i(A.u_bs_depth, 0);
             glUniform1i(A.u_bs_ao, 1);
+            glUniform1i(A.u_bs_st, 2);
             // Pass 1: horizontal blur (also upsamples half-res atex to full-res btex via full-res depth guidance)
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, A.bfbo);
             glViewport(0, 0, w, h);
@@ -2314,6 +2515,7 @@ void mrp_lighting_ao_pass() {
             glDisable(GL_BLEND);
             glBindTexture(GL_TEXTURE_2D, A.atex);
             glUniform2f(A.u_bs_texel, 1.0f / static_cast<float>(aw), 0.0f);
+            glUniform1f(A.u_bs_moby, 1.0f);  // (the share taken at the end: the blur mixes the mobys' edges with the world's)
             glDrawArrays(GL_TRIANGLES, 0, 3);
             // Pass 2: vertical blur multiplied into the colour
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(fb));
@@ -2323,14 +2525,18 @@ void mrp_lighting_ao_pass() {
             glBlendFunc(GL_DST_COLOR, GL_ZERO);
             glBindTexture(GL_TEXTURE_2D, A.btex);
             glUniform2f(A.u_bs_texel, 0.0f, 1.0f / static_cast<float>(h));
+            glUniform1f(A.u_bs_moby, moby);
             glDrawArrays(GL_TRIANGLES, 0, 3);
         }
         glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prev_tex1));
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prev_tex2));
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prev_tex));
         glDepthMask(dmask);
         glBlendFuncSeparate(static_cast<GLenum>(bsrc), static_cast<GLenum>(bdst), static_cast<GLenum>(bsrca), static_cast<GLenum>(bdsta));
     }
+    g_ao_mark.done = false;
     if (ao_prof && g_ao != 0) {
         glEndQuery(GL_TIME_ELAPSED);
         GLuint64 ns = 0;
@@ -2342,7 +2548,9 @@ void mrp_lighting_ao_pass() {
             ao_n = 0;
         }
     }
+    rac1::prof::end(prof_ao);
     if (g_sun_rays > 0) {  // the sun's rays (their own textures; the blending and the bindings put back)
+        RAC1_PROF_ZONE(kSunRays);
         GLint bsrc = 0, bdst = 0, bsrca = 0, bdsta = 0, t0 = 0, t1 = 0;
         glGetIntegerv(GL_BLEND_SRC_RGB, &bsrc);
         glGetIntegerv(GL_BLEND_DST_RGB, &bdst);
@@ -2705,6 +2913,40 @@ void lamp_scan(const int vp[4]) {
             for (int k = 0; k < 3; ++k) a.at[k] = p[k];
         }
 }
+// orig: (host) Vulkan: the depth at (x, y) of the 3D's depth buffer, as the frame before last left it (no wait: a copy into
+// this frame slot's buffer, read when the slot comes back - the frame's fence waited by then)
+bool vk_depth_at(int x, int y, float* d) {
+    static vk::GpuBuffer buf[vk::kFramesInFlight];
+    static bool written[vk::kFramesInFlight] = {};
+    const uint32_t fi = vk::frame_index();
+    vk::GpuBuffer& b = buf[fi];
+    if (b.buffer == VK_NULL_HANDLE &&
+        !vk::create_buffer(16, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, b, true))
+        return false;
+    bool ok = false;
+    if (written[fi]) {
+        uint32_t raw = 0;
+        std::memcpy(&raw, b.mapped, 4);
+        if (vk::depth_stencil_format() == VK_FORMAT_D24_UNORM_S8_UINT) *d = static_cast<float>(raw & 0xffffffu) / 16777215.0f;
+        else std::memcpy(d, &raw, 4);
+        ok = true;
+    }
+    vk::GpuImage& depth = vk::active_depth_image();
+    if (x < 0 || y < 0 || x >= static_cast<int>(depth.width) || y >= static_cast<int>(depth.height)) return ok;
+    VkCommandBuffer cb = vk::cmd();
+    vk::end_rendering();
+    const VkImageLayout was = depth.layout;
+    vk::transition_image(cb, depth, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    VkBufferImageCopy c{};
+    c.imageSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1};
+    c.imageOffset = {x, y, 0};
+    c.imageExtent = {1, 1, 1};
+    vkCmdCopyImageToBuffer(cb, depth.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, b.buffer, 1, &c);
+    vk::transition_image(cb, depth, was);
+    written[fi] = true;
+    return ok;
+}
+
 void screen_point_read(const int vp[4]) {
     static float env_uv[2] = {-2.0f, -2.0f};
     if (env_uv[0] == -2.0f) {  // (testing: RAC1_PICK_SCREEN=u,v - the point printed with its objects every 60 frames)
@@ -2718,13 +2960,17 @@ void screen_point_read(const int vp[4]) {
     if (g_pick_uv[0] < 0.0f) return;
     const int x = vp[0] + static_cast<int>(g_pick_uv[0] * static_cast<float>(vp[2])), y = vp[1] + static_cast<int>(g_pick_uv[1] * static_cast<float>(vp[3]));
     float d = 1.0f;
-    GLint rfb = 0;
-    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &rfb);
-    GLint dfb = 0;
-    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &dfb);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(dfb));
-    glReadPixels(x, y, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &d);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(rfb));
+    if (vk::is_active()) {
+        if (!vk_depth_at(x, y, &d)) d = 1.0f;
+    } else {
+        GLint rfb = 0;
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &rfb);
+        GLint dfb = 0;
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &dfb);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(dfb));
+        glReadPixels(x, y, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &d);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(rfb));
+    }
     g_pick_ok = d < 1.0f;
     if (g_pick_ok) {
         float m[16];
@@ -2973,6 +3219,7 @@ void mrp_lighting_shadow_pass() {
     static int frames = 0, cubes_acc = 0;
     if (!vk::is_active() && prof && q[0] == 0) glGenQueries(2, q);
     if (!vk::is_active() && prof) glBeginQuery(GL_TIME_ELAPSED, q[0]);
+    int prof_cascades = rac1::prof::begin(rac1::prof::kShadowCascades);  // (the debug menu's profiler: the frame's shadow set-up and cascades)
     ensure_resources();
     fit_cascades();
     // the game's dynamic point lights in use (0x1804c0 + 0x10) with a colour and a radius: lit per pixel this frame
@@ -3196,6 +3443,7 @@ void mrp_lighting_shadow_pass() {
             State::Cache& ca = g_sh.cache[k];
             if (ca.stex == 0 || ca.stex_res != cres) {
                 if (ca.stex == 0) glGenTextures(1, &ca.stex);
+                rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &ca.stex, "Shadows: static cache");
                 glBindTexture(GL_TEXTURE_2D, ca.stex);
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, cres, cres, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -3299,6 +3547,7 @@ void mrp_lighting_shadow_pass() {
             constexpr int R = 1024;
             if (rtex == 0) {
                 glGenTextures(1, &rtex);
+                rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &rtex, "Shadows: reference (testing)");
                 glBindTexture(GL_TEXTURE_2D, rtex);
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, R, R, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
                 glGenFramebuffers(1, &rfbo);
@@ -3335,7 +3584,12 @@ void mrp_lighting_shadow_pass() {
         glEndQuery(GL_TIME_ELAPSED);
         glBeginQuery(GL_TIME_ELAPSED, q[1]);
     }
-    point_shadows_pass();
+    rac1::prof::end(prof_cascades);
+    prof_cascades = -1;
+    {
+        RAC1_PROF_ZONE(kPointCubes);
+        point_shadows_pass();
+    }
     if (prof) {
         glEndQuery(GL_TIME_ELAPSED);
         for (int k = 0; k < 2; ++k) {

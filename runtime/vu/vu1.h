@@ -38,6 +38,10 @@ Vu1& vu1_global();
 // Testing: run every program on the interpreter; see every kicked packet.
 extern bool g_force_interpreter;
 extern thread_local uint32_t g_last_start;  // the micro address of the program started last on this thread (testing)
+// (host) the widening of the view the chain being walked on this thread is drawn into (gs::Gs::set_side_widen: 1 = the game's own
+// 4:3 frustum): the ported programs' tests that drop a primitive lying wholly past the frustum's sides use it, so that what the wider
+// window shows is not dropped (their clipping, at the guard band, is unchanged). x, y.
+extern thread_local float g_side_widen[2];
 extern KickSink g_kick_tap;
 using StartHook = std::function<bool(Vu1& vu, uint32_t start, uint64_t hash, ProgramFn fn, const std::function<void(uint32_t)>& kick)>;
 extern StartHook g_start_hook;

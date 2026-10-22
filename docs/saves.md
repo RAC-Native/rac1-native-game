@@ -89,8 +89,9 @@ The format is small and forward compatible, all little-endian:
 | 6 | 2 | item count |
 | 8 | ... | items: a 2-byte id, a 2-byte size, then the data |
 
-Ids 1 to 4 are the Advanced page's rows (Quick Select, Aiming, Movement, Fades); ids 32 to 46 are the
-Graphics page's picture settings, the New Game mode, the lighting rows, Texture Detail, Shadow Strength (45) and Sun Rays (46)
-(`graphics_save_items` in `graphics.cpp`; id 44, the Overscan row removed after 0.4, is no longer written and is ignored when read). A reader skips ids it does not know and keeps its current value for ids that are
+Ids 1 to 4 are the Advanced page's rows (Quick Select, Aiming, Movement, Fades); ids 32 to 49 are the
+Graphics page's picture settings, the New Game mode, the lighting rows, Texture Detail, Shadow Strength (45), AO Intensity (47), HUD (48) and Sun Rays (49: Off, Low, Medium, High)
+(`graphics_save_items` in `graphics.cpp`; id 44, the Overscan row removed after 0.4, is no longer written and is ignored when read;
+id 46, Sun Rays until 0.4.x - Off, Low, High -, is no longer written and is read as Off, Medium, High). A reader skips ids it does not know and keeps its current value for ids that are
 missing, so older and newer versions read each other's files. A save without a `.pc` file keeps the
 settings as they are.

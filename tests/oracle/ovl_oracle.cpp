@@ -241,6 +241,7 @@ int main(int argc, char** argv) {
     batch_411();
     batch_440();
     batch_420();
+    batch_470();
 
     if (g_oracle_level != 0) std::printf("level %d: %d check(s) skipped (no equivalent function)\n", g_oracle_level, g_skipped);
     std::printf("%s: %d failing function(s)\n", g_fail ? "FAIL" : "PASS", g_fail);

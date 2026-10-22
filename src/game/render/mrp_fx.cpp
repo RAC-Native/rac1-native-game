@@ -1,5 +1,6 @@
 // orig: (host) The MRP's particles (see mrp_fx.h).
 #include <game/render/mrp_fx.h>
+#include <profiler/host_profiler.h>
 
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -406,6 +407,7 @@ bool init_gl() {
     g_loc_xyoff = glGetUniformLocation(g_prog, "uXyOff");
     glGenVertexArrays(1, &g_vao);
     glGenBuffers(1, &g_vbo);
+    rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &g_vbo, "MRP effects");
     glBindVertexArray(g_vao);
     glBindBuffer(GL_ARRAY_BUFFER, g_vbo);
     const GLsizei S = sizeof(FV);
@@ -467,6 +469,7 @@ bool atlas_grow(Atlas& A, int n) {
     }
     GLuint nt = 0;
     glGenTextures(1, &nt);
+    rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &nt, "MRP effects");
     glBindTexture(GL_TEXTURE_2D_ARRAY, nt);
     glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, kLayer, kLayer, n, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     if (glGetError() != GL_NO_ERROR) {

@@ -15,6 +15,7 @@
 #include <game/port_stubs.h>
 #include <game/render/mrp_fx.h>
 #include <game/render/render_toggles.h>
+#include <game/render/render_view.h>
 
 namespace rac1 {
 
@@ -124,6 +125,7 @@ void flight_banner(int32_t a) {
 // orig: 0x002900a0
 void flight_draw() {
     mrp_fx_frame_begin();  // (host: as render_frame)
+    render_view_layers_begin();  // (host: as render_frame)
     sub_00200fd8();
     render_view_setup();
     moby_anim_lerp_slots_validate();

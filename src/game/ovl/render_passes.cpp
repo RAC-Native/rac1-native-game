@@ -7,6 +7,23 @@
 #include <game/port_stubs.h>
 #include <game/render/mrp_fx.h>
 #include <game/render/mrp_lod.h>
+#include <game/render/render_view.h>
+#include <game/ovl/aridia_classes_tr.h>
+#include <game/ovl/batalia_part2.h>
+#include <game/ovl/blarg_part2.h>
+#include <game/ovl/eudora_mobys.h>
+#include <game/ovl/gaspar_mobys.h>
+#include <game/ovl/gemlik_mobys.h>
+#include <game/ovl/hoven_mobys.h>
+#include <game/ovl/kerwan_classes_tr.h>
+#include <game/ovl/novalis_draw_cbs.h>
+#include <game/ovl/oltanis_mobys.h>
+#include <game/ovl/orxon_mobys.h>
+#include <game/ovl/pokitaru_mobys.h>
+#include <game/ovl/quartu_mobys.h>
+#include <game/ovl/rilgar_mobys.h>
+#include <game/ovl/umbris_part2.h>
+#include <game/ovl/veldin_finale_mobys.h>
 
 #include <cstdlib>
 
@@ -156,15 +173,34 @@ void texture_block_end() {
 }
 
 namespace {
+// orig: (host) whether the draw-list callback `fn` draws a full-screen 2D layer over the whole 4:3 frame (render_view_layer_note):
+// class 832's, the Visibomb's out-of-range static (a grid of 32 x 32 sprites with random texels from effect texture 0x1e, from
+// x -16 past the frame's right edge, thicker as its counter grows), on every level that carries it (the same code in each overlay)
+bool screen_layer_fn(uint32_t fn) {
+    static constexpr MobyFn kLayers[] = {
+        nov_class832_draw_l1, class832_draw_l2,     kerwan_class832_draw_l3, eud_class832_draw_l4, ril_cb_30d8b8_l5, blg_class832_draw_l6,
+        umb_class832_draw_l7, bat_class832_draw_l8, gas_class832_draw_l9,    orx_cb_2ce868_l10,    pok_cb_302e60_l11, hov_cb_2fa028_l12,
+        gml_cb_2fcc08_l13,    olt_cb_2f6128_l14,    qua_cb_2de080_l15,       vf_cb_2e3f58_l18};
+    const MobyFn f = ovl_moby_fn_resolve(fn);
+    for (MobyFn l : kLayers)
+        if (f == l) return true;
+    return false;
+}
+
 // orig: (helper) repeated in 0x001f9430 / 0x001f94a8 / 0x001f9520 / 0x001f95e8
 void draw_list_run(uint32_t count, uint32_t fns, uint32_t args) {
     static const bool inventory = std::getenv("RAC1_MRP_FX_INVENTORY") != nullptr;  // (host: testing)
     mrp_lod_draw_list_widen(true);  // (host: in a widened view's shadow block, the callbacks' clip matrix widened, mrp_lod.h)
+    // (host: a widened view's full-screen 2D layers noted in the real block, not in a shadow run's)
+    const bool layers = g_view_widen > 1.0f && mrp_lod_shadow_slot() < 0;
     for (int32_t i = 0; i < lw(count); ++i) {
-        const uint32_t at = inventory ? lwu(CUR) : 0;
+        const uint32_t fn = lwu(fns + static_cast<uint32_t>(i) * 4);
+        const bool layer = layers && screen_layer_fn(fn);
+        const uint32_t at = inventory || layer ? lwu(CUR) : 0;
         if (inventory) mrp_fx_list_call(0, 0, 0);
-        ovl_call_moby_fn(lwu(fns + static_cast<uint32_t>(i) * 4), lwu(args + static_cast<uint32_t>(i) * 4));
-        if (inventory) mrp_fx_list_call(lwu(fns + static_cast<uint32_t>(i) * 4), at, lwu(CUR));
+        ovl_call_moby_fn(fn, lwu(args + static_cast<uint32_t>(i) * 4));
+        if (inventory) mrp_fx_list_call(fn, at, lwu(CUR));
+        if (layer) render_view_layer_note(at, lwu(CUR));  // (host)
     }
     mrp_lod_draw_list_widen(false);  // (host)
 }
