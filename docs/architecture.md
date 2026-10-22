@@ -56,7 +56,7 @@ The build (`CMakeLists.txt`) produces one executable, `rac1-native`, from static
 `rac1_formats`, `rac1_profiler`, `rac1_jobs`, `rac1_runtime`, `rac1_game`, `rac1_setup`, `rac1_devtools`,
 and the third-party ones. It is C++20, built with `-Wall -Wextra -Wpedantic -frounding-math` (the last because the game's
 thread runs the FPU in a non-default rounding mode, see
-[Decisions](decisions.md#11-the-ees-float-rounding)). Three CMake options:
+[Decisions](decisions.md#11-the-ees-float-rounding)). Four CMake options:
 
 - `RAC1_MOVIES` (on by default) decodes the movies with the system's FFmpeg (`libavcodec`,
   `libavutil`) when it is found; without FFmpeg the game runs and skips the movies.
