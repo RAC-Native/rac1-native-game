@@ -5,6 +5,10 @@
 
 #include <runtime/gs/gs_emu.h>
 
+namespace rac1::vk {
+struct GraphicsPipelineDesc;
+}
+
 namespace rac1::gs {
 
 void draw_init();
@@ -62,6 +66,8 @@ void draw(const Gs& gs, int win_w, int win_h, float fb_w, float fb_h, const Dept
 uint32_t field(uint64_t v, int lo, int n);
 uint32_t texture_for(const Gs& gs, uint64_t tex0, uint64_t texa, const TexImage* img);
 void blend_state(const DrawState& st, bool to_rt = false);
+void vk_blend_state(const DrawState& st, bool to_rt, vk::GraphicsPipelineDesc& desc, float& out_fix);
+void vk_draw_shutdown();
 
 }  // namespace rac1::gs
 

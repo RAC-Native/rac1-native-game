@@ -14,6 +14,8 @@
 #include <game/render/render_view.h>
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
+#include <runtime/vk/vk_context.h>
+#include <runtime/vk/vk_shaders.h>
 
 #include <glad/glad.h>
 #define GLFW_INCLUDE_NONE
@@ -134,12 +136,15 @@ struct ClassGpu {
 struct Bucket {
     uint32_t w = 0, h = 0, levels = 0;
     GLuint tex = 0;
+    vk::GpuImage vk_tex{};
     std::vector<int> textures;  // the level texture of each layer
 };
 
 struct Level {
     int id = -1;
     bool loaded = false;
+    bool gl_loaded = false;
+    bool vk_loaded = false;
     std::vector<mrp::Texture> textures;
     std::vector<int> tex_bucket, tex_layer;
     std::vector<Bucket> buckets;
@@ -157,9 +162,12 @@ struct Level {
     std::vector<GpuVertex> verts;
     std::vector<uint32_t> indices;
     bool dirty = false;
+    bool vk_dirty = false;
     uint64_t table_hash = 0;
     GLuint vao = 0, vbo = 0, ibo = 0;
     size_t vbo_cap = 0, ibo_cap = 0;
+    vk::GpuBuffer vk_vbo{};
+    vk::GpuBuffer vk_ibo{};
 };
 Level g_level;
 
@@ -519,6 +527,7 @@ std::unique_ptr<ClassGpu> build_class(std::unique_ptr<mrp::MobyClass> asset, uin
         }
     }
     g_level.dirty = true;
+    g_level.vk_dirty = true;
     ++g_st.classes;
     cg->asset = std::move(asset);
     return cg;
@@ -587,14 +596,20 @@ void load_textures(Level& L) {
         uint32_t maxl = 1;
         while ((b.w >> maxl) > 0 && (b.h >> maxl) > 0 && maxl < b.levels) ++maxl;
         b.levels = std::max(1u, std::min(b.levels, maxl));
-        glGenTextures(1, &b.tex);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, b.tex);
-        const GLsizei layers = static_cast<GLsizei>(b.textures.size());
-        for (uint32_t l = 0; l < b.levels; ++l)
-            glTexImage3D(GL_TEXTURE_2D_ARRAY, static_cast<GLint>(l), GL_RGBA8, static_cast<GLsizei>(std::max(1u, b.w >> l)), static_cast<GLsizei>(std::max(1u, b.h >> l)), layers, 0,
-                         GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BASE_LEVEL, 0);
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(b.levels) - 1);
+        const uint32_t layers = static_cast<uint32_t>(b.textures.size());
+        if (vk::is_active()) {
+            vk::create_image(b.w, b.h, VK_FORMAT_R8G8B8A8_UNORM,
+                             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                             VK_IMAGE_ASPECT_COLOR_BIT, b.vk_tex, layers, 0, VK_IMAGE_VIEW_TYPE_2D_ARRAY, b.levels);
+        } else {
+            glGenTextures(1, &b.tex);
+            glBindTexture(GL_TEXTURE_2D_ARRAY, b.tex);
+            for (uint32_t l = 0; l < b.levels; ++l)
+                glTexImage3D(GL_TEXTURE_2D_ARRAY, static_cast<GLint>(l), GL_RGBA8, static_cast<GLsizei>(std::max(1u, b.w >> l)), static_cast<GLsizei>(std::max(1u, b.h >> l)),
+                             static_cast<GLsizei>(layers), 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BASE_LEVEL, 0);
+            glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(b.levels) - 1);
+        }
         for (size_t layer = 0; layer < b.textures.size(); ++layer) {
             const mrp::Texture& t = L.textures[static_cast<size_t>(b.textures[layer])];
             uint32_t pal[256];
@@ -604,20 +619,31 @@ void load_textures(Level& L) {
                 px.assign(static_cast<size_t>(w) * h, 0u);
                 if (l < t.mips.size() && t.mips[l].size() >= static_cast<size_t>(w) * h)
                     for (size_t k = 0; k < px.size(); ++k) px[k] = pal[t.mips[l][k]];
-                glTexSubImage3D(GL_TEXTURE_2D_ARRAY, static_cast<GLint>(l), 0, 0, static_cast<GLint>(layer), static_cast<GLsizei>(w), static_cast<GLsizei>(h), 1, GL_RGBA,
-                                GL_UNSIGNED_BYTE, px.data());
+                if (vk::is_active()) {
+                    vk::upload_image_2d(b.vk_tex, px.data(), px.size() * 4, 0, 0, static_cast<int>(w), static_cast<int>(h), 0, static_cast<uint32_t>(layer), l);
+                } else {
+                    glTexSubImage3D(GL_TEXTURE_2D_ARRAY, static_cast<GLint>(l), 0, 0, static_cast<GLint>(layer), static_cast<GLsizei>(w), static_cast<GLsizei>(h), 1, GL_RGBA,
+                                    GL_UNSIGNED_BYTE, px.data());
+                }
             }
         }
     }
-    glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+    if (!vk::is_active()) glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 }
 
 void free_level(Level& L) {
-    for (Bucket& b : L.buckets)
-        if (b.tex != 0) glDeleteTextures(1, &b.tex);
-    if (L.vao != 0) glDeleteVertexArrays(1, &L.vao);
-    if (L.vbo != 0) glDeleteBuffers(1, &L.vbo);
-    if (L.ibo != 0) glDeleteBuffers(1, &L.ibo);
+    for (Bucket& b : L.buckets) {
+        if (!vk::is_active() && b.tex != 0) glDeleteTextures(1, &b.tex);
+        if (vk::is_active() && b.vk_tex.image != VK_NULL_HANDLE) vk::destroy_image(b.vk_tex);
+    }
+    if (!vk::is_active()) {
+        if (L.vao != 0) glDeleteVertexArrays(1, &L.vao);
+        if (L.vbo != 0) glDeleteBuffers(1, &L.vbo);
+        if (L.ibo != 0) glDeleteBuffers(1, &L.ibo);
+    } else {
+        if (L.vk_vbo.buffer != VK_NULL_HANDLE) vk::destroy_buffer(L.vk_vbo);
+        if (L.vk_ibo.buffer != VK_NULL_HANDLE) vk::destroy_buffer(L.vk_ibo);
+    }
     L = Level{};
 }
 
@@ -650,23 +676,28 @@ void load_level(int id) {
             }
         }
     load_textures(L);
-    glGenVertexArrays(1, &L.vao);
-    glGenBuffers(1, &L.vbo);
-    glGenBuffers(1, &L.ibo);
-    glBindVertexArray(L.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, L.vbo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, L.ibo);
-    const GLsizei S = sizeof(GpuVertex);
-    glVertexAttribIPointer(0, 4, GL_SHORT, S, reinterpret_cast<void*>(offsetof(GpuVertex, pos)));
-    glVertexAttribIPointer(1, 4, GL_UNSIGNED_BYTE, S, reinterpret_cast<void*>(offsetof(GpuVertex, joint)));
-    glVertexAttribIPointer(2, 4, GL_UNSIGNED_BYTE, S, reinterpret_cast<void*>(offsetof(GpuVertex, weight)));
-    glVertexAttribIPointer(3, 4, GL_UNSIGNED_BYTE, S, reinterpret_cast<void*>(offsetof(GpuVertex, rgba)));
-    glVertexAttribIPointer(4, 2, GL_SHORT, S, reinterpret_cast<void*>(offsetof(GpuVertex, uv)));
-    glVertexAttribIPointer(5, 4, GL_SHORT, S, reinterpret_cast<void*>(offsetof(GpuVertex, q2pos)));
-    glVertexAttribIPointer(6, 4, GL_UNSIGNED_BYTE, S, reinterpret_cast<void*>(offsetof(GpuVertex, q2joint)));
-    glVertexAttribIPointer(7, 4, GL_UNSIGNED_BYTE, S, reinterpret_cast<void*>(offsetof(GpuVertex, q2weight)));
-    for (GLuint a = 0; a < 8; ++a) glEnableVertexAttribArray(a);
-    glBindVertexArray(0);
+    if (vk::is_active()) {
+        L.vk_loaded = true;
+    } else {
+        glGenVertexArrays(1, &L.vao);
+        glGenBuffers(1, &L.vbo);
+        glGenBuffers(1, &L.ibo);
+        glBindVertexArray(L.vao);
+        glBindBuffer(GL_ARRAY_BUFFER, L.vbo);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, L.ibo);
+        const GLsizei S = sizeof(GpuVertex);
+        glVertexAttribIPointer(0, 4, GL_SHORT, S, reinterpret_cast<void*>(offsetof(GpuVertex, pos)));
+        glVertexAttribIPointer(1, 4, GL_UNSIGNED_BYTE, S, reinterpret_cast<void*>(offsetof(GpuVertex, joint)));
+        glVertexAttribIPointer(2, 4, GL_UNSIGNED_BYTE, S, reinterpret_cast<void*>(offsetof(GpuVertex, weight)));
+        glVertexAttribIPointer(3, 4, GL_UNSIGNED_BYTE, S, reinterpret_cast<void*>(offsetof(GpuVertex, rgba)));
+        glVertexAttribIPointer(4, 2, GL_SHORT, S, reinterpret_cast<void*>(offsetof(GpuVertex, uv)));
+        glVertexAttribIPointer(5, 4, GL_SHORT, S, reinterpret_cast<void*>(offsetof(GpuVertex, q2pos)));
+        glVertexAttribIPointer(6, 4, GL_UNSIGNED_BYTE, S, reinterpret_cast<void*>(offsetof(GpuVertex, q2joint)));
+        glVertexAttribIPointer(7, 4, GL_UNSIGNED_BYTE, S, reinterpret_cast<void*>(offsetof(GpuVertex, q2weight)));
+        for (GLuint a = 0; a < 8; ++a) glEnableVertexAttribArray(a);
+        glBindVertexArray(0);
+        L.gl_loaded = true;
+    }
     L.loaded = true;
     std::printf("[mrp] level %d: %zu moby classes, %zu armor classes, %zu textures in %zu arrays (%.0f ms)\n", id, L.files.size(), L.armor.size(), L.textures.size(),
                 L.buckets.size(), now_ms() - t0);
@@ -1134,6 +1165,226 @@ bool init_gl() {
     return true;
 }
 
+struct MobyVkPush {
+    float uOffset[4];
+    float uFrame[4];
+    float uXyOff[4];
+    float uFogCol_Min[4];
+    int32_t uMode;
+    float uProj;
+    int32_t uTme;
+    int32_t uAte;
+    int32_t uAtst;
+    int32_t uAref;
+    int32_t uAfail;
+    int32_t uMipMode;
+    int32_t uShade;
+    int32_t uFge;
+    int32_t uPass;
+    int32_t _pad = 0;
+};
+static_assert(sizeof(MobyVkPush) == 112);
+
+struct MobyVkPipeKey {
+    bool split_prog = false;
+    bool caster = false;
+    bool depth_clamp = false;
+    bool depth_test = false;
+    bool depth_write = false;
+    VkCompareOp depth_compare = VK_COMPARE_OP_LESS_OR_EQUAL;
+    VkColorComponentFlags color_mask = 0xF;
+    uint64_t prim = 0;
+    uint64_t alpha = 0;
+    VkFormat color_fmt = VK_FORMAT_R8G8B8A8_UNORM;
+    VkFormat depth_fmt = VK_FORMAT_D32_SFLOAT_S8_UINT;
+    bool has_stencil = true;
+    bool operator==(const MobyVkPipeKey&) const = default;
+};
+
+struct MobyVkState {
+    bool inited = false;
+    bool shutdown_reg = false;
+    VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
+    VkPipelineLayout pipe_layout = VK_NULL_HANDLE;
+    VkShaderModule vs = VK_NULL_HANDLE;
+    VkShaderModule fs = VK_NULL_HANDLE;
+    VkShaderModule split_vs = VK_NULL_HANDLE;
+    VkShaderModule split_fs = VK_NULL_HANDLE;
+    std::vector<std::pair<MobyVkPipeKey, VkPipeline>> pipes;
+    vk::RingAlloc joints_alloc{};
+    vk::RingAlloc parts_alloc{};
+    vk::RingAlloc cmds_alloc{};
+    vk::RingAlloc normals_alloc{};
+    vk::RingAlloc indirect_alloc{};
+} g_vk_moby;
+
+void moby_vk_shutdown() {
+    VkDevice dev = vk::device();
+    for (Bucket& b : g_level.buckets) {
+        if (b.vk_tex.image != VK_NULL_HANDLE) vk::destroy_image_now(b.vk_tex);
+    }
+    if (g_level.vk_vbo.buffer != VK_NULL_HANDLE) vk::destroy_buffer_now(g_level.vk_vbo);
+    if (g_level.vk_ibo.buffer != VK_NULL_HANDLE) vk::destroy_buffer_now(g_level.vk_ibo);
+    g_level.vk_loaded = false;
+    if (g_level.id >= 0 && !g_level.gl_loaded) g_level.id = -1;
+
+    for (auto& [k, p] : g_vk_moby.pipes) {
+        if (p != VK_NULL_HANDLE) vkDestroyPipeline(dev, p, nullptr);
+    }
+    g_vk_moby.pipes.clear();
+    if (g_vk_moby.vs != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g_vk_moby.vs, nullptr);
+    if (g_vk_moby.fs != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g_vk_moby.fs, nullptr);
+    if (g_vk_moby.split_vs != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g_vk_moby.split_vs, nullptr);
+    if (g_vk_moby.split_fs != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g_vk_moby.split_fs, nullptr);
+    if (g_vk_moby.pipe_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(dev, g_vk_moby.pipe_layout, nullptr);
+    if (g_vk_moby.set_layout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(dev, g_vk_moby.set_layout, nullptr);
+    const bool reg = g_vk_moby.shutdown_reg;
+    g_vk_moby = MobyVkState{};
+    g_vk_moby.shutdown_reg = reg;
+}
+
+bool init_vk() {
+    if (g_vk_moby.inited) return true;
+    VkDevice dev = vk::device();
+    if (dev == VK_NULL_HANDLE) return false;
+    if (!g_vk_moby.shutdown_reg) {
+        vk::register_shutdown_callback(moby_vk_shutdown);
+        g_vk_moby.shutdown_reg = true;
+    }
+
+    VkDescriptorSetLayoutBinding bindings[5]{};
+    for (uint32_t i = 0; i < 4; ++i) {
+        bindings[i].binding = i;
+        bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[i].descriptorCount = 1;
+        bindings[i].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    }
+    bindings[4].binding = 4;
+    bindings[4].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    bindings[4].descriptorCount = 1;
+    bindings[4].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutCreateInfo dslci{};
+    dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    dslci.bindingCount = 5;
+    dslci.pBindings = bindings;
+    vkCreateDescriptorSetLayout(dev, &dslci, nullptr, &g_vk_moby.set_layout);
+
+    VkDescriptorSetLayout set_layouts[2] = {
+        g_vk_moby.set_layout,
+        reinterpret_cast<VkDescriptorSetLayout>(mrp_lighting_vk_set_layout()),
+    };
+    VkPushConstantRange pcr{};
+    pcr.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    pcr.offset = 0;
+    pcr.size = sizeof(MobyVkPush);
+
+    VkPipelineLayoutCreateInfo plci{};
+    plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    plci.setLayoutCount = 2;
+    plci.pSetLayouts = set_layouts;
+    plci.pushConstantRangeCount = 1;
+    plci.pPushConstantRanges = &pcr;
+    vkCreatePipelineLayout(dev, &plci, nullptr, &g_vk_moby.pipe_layout);
+
+    g_vk_moby.vs = vk::create_shader_module(vk::shaders::kMrpMobyVs, sizeof(vk::shaders::kMrpMobyVs));
+    g_vk_moby.fs = vk::create_shader_module(vk::shaders::kMrpMobyFs, sizeof(vk::shaders::kMrpMobyFs));
+    g_vk_moby.split_vs = vk::create_shader_module(vk::shaders::kMrpMobySplitVs, sizeof(vk::shaders::kMrpMobySplitVs));
+    g_vk_moby.split_fs = vk::create_shader_module(vk::shaders::kMrpMobySplitFs, sizeof(vk::shaders::kMrpMobySplitFs));
+    g_vk_moby.inited = true;
+    return true;
+}
+
+VkPipeline get_moby_vk_pipeline(const MobyVkPipeKey& key) {
+    for (const auto& [k, p] : g_vk_moby.pipes) {
+        if (k == key) return p;
+    }
+    vk::GraphicsPipelineDesc desc{};
+    desc.layout = g_vk_moby.pipe_layout;
+    desc.vs = key.split_prog ? g_vk_moby.split_vs : g_vk_moby.vs;
+    desc.fs = key.split_prog ? g_vk_moby.split_fs : g_vk_moby.fs;
+    desc.vertex_bindings = {
+        {0, sizeof(GpuVertex), VK_VERTEX_INPUT_RATE_VERTEX},
+    };
+    desc.vertex_attribs = {
+        {0, 0, VK_FORMAT_R16G16B16A16_SINT, static_cast<uint32_t>(offsetof(GpuVertex, pos))},
+        {1, 0, VK_FORMAT_R8G8B8A8_UINT, static_cast<uint32_t>(offsetof(GpuVertex, joint))},
+        {2, 0, VK_FORMAT_R8G8B8A8_UINT, static_cast<uint32_t>(offsetof(GpuVertex, weight))},
+        {3, 0, VK_FORMAT_R8G8B8A8_UINT, static_cast<uint32_t>(offsetof(GpuVertex, rgba))},
+        {4, 0, VK_FORMAT_R16G16_SINT, static_cast<uint32_t>(offsetof(GpuVertex, uv))},
+        {5, 0, VK_FORMAT_R16G16B16A16_SINT, static_cast<uint32_t>(offsetof(GpuVertex, q2pos))},
+        {6, 0, VK_FORMAT_R8G8B8A8_UINT, static_cast<uint32_t>(offsetof(GpuVertex, q2joint))},
+        {7, 0, VK_FORMAT_R8G8B8A8_UINT, static_cast<uint32_t>(offsetof(GpuVertex, q2weight))},
+    };
+    desc.cull_mode = VK_CULL_MODE_NONE;
+    desc.depth_clamp = key.depth_clamp;
+    desc.depth_test = key.depth_test;
+    desc.depth_write = key.depth_write;
+    desc.depth_compare = key.depth_compare;
+    desc.color_write_mask = key.color_mask;
+    desc.color_format = key.color_fmt;
+    desc.depth_format = key.depth_fmt;
+    desc.has_depth_attachment = key.depth_fmt != VK_FORMAT_UNDEFINED;
+    desc.has_stencil_attachment = key.has_stencil;
+    if (key.caster) {
+        desc.depth_bias_enable = true;
+        desc.extra_dynamic_states.push_back(VK_DYNAMIC_STATE_DEPTH_BIAS);
+    } else {
+        gs::DrawState ds{};
+        ds.prim = key.prim;
+        ds.alpha = key.alpha;
+        float fix = 0.0f;
+        gs::vk_blend_state(ds, false, desc, fix);
+    }
+    VkPipeline pipe = vk::create_graphics_pipeline(desc);
+    g_vk_moby.pipes.emplace_back(key, pipe);
+    return pipe;
+}
+
+void bind_moby_vk_set0(VkCommandBuffer cb, int bucket, uint32_t sampler_bits, int mm) {
+    VkDescriptorSet set = vk::alloc_descriptor_set(g_vk_moby.set_layout);
+    VkDescriptorBufferInfo binfo[4] = {
+        {g_vk_moby.joints_alloc.buffer, g_vk_moby.joints_alloc.offset, VK_WHOLE_SIZE},
+        {g_vk_moby.parts_alloc.buffer, g_vk_moby.parts_alloc.offset, VK_WHOLE_SIZE},
+        {g_vk_moby.cmds_alloc.buffer, g_vk_moby.cmds_alloc.offset, VK_WHOLE_SIZE},
+        {g_vk_moby.normals_alloc.buffer, g_vk_moby.normals_alloc.offset, VK_WHOLE_SIZE},
+    };
+    const uint32_t s = sampler_bits & 15u;
+    const bool mag = (s & 1u) != 0, mn = (s & 2u) != 0;
+    const VkFilter mag_f = mag ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+    const VkFilter min_f = (mm == 0) ? (mn ? VK_FILTER_LINEAR : VK_FILTER_NEAREST) : VK_FILTER_LINEAR;
+    const VkSamplerMipmapMode mip_m = (mm == 0) ? VK_SAMPLER_MIPMAP_MODE_NEAREST : VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    const float aniso = (mm == 0) ? 1.0f : 16.0f;
+    const VkSamplerAddressMode ws = (s & 4u) != 0 ? VK_SAMPLER_ADDRESS_MODE_REPEAT : VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    const VkSamplerAddressMode wt = (s & 8u) != 0 ? VK_SAMPLER_ADDRESS_MODE_REPEAT : VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    VkDescriptorImageInfo iinfo{};
+    iinfo.sampler = vk::get_sampler(min_f, mag_f, ws, wt, false, VK_COMPARE_OP_ALWAYS, aniso, mip_m, 1000.0f);
+    if (bucket >= 0 && static_cast<size_t>(bucket) < g_level.buckets.size() && g_level.buckets[static_cast<size_t>(bucket)].vk_tex.view != VK_NULL_HANDLE) {
+        iinfo.imageView = g_level.buckets[static_cast<size_t>(bucket)].vk_tex.view;
+    } else {
+        iinfo.imageView = vk::white_texture_array().view;
+    }
+    iinfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    VkWriteDescriptorSet writes[5]{};
+    for (uint32_t i = 0; i < 4; ++i) {
+        writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[i].dstSet = set;
+        writes[i].dstBinding = i;
+        writes[i].descriptorCount = 1;
+        writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[i].pBufferInfo = &binfo[i];
+    }
+    writes[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[4].dstSet = set;
+    writes[4].dstBinding = 4;
+    writes[4].descriptorCount = 1;
+    writes[4].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    writes[4].pImageInfo = &iinfo;
+    vkUpdateDescriptorSets(vk::device(), 5, writes, 0, nullptr);
+    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_moby.pipe_layout, 0, 1, &set, 0, nullptr);
+}
+
 // ---- per-frame state ---------------------------------------------------------------------------
 
 struct PartGpu {
@@ -1189,7 +1440,10 @@ struct Frame {
     uint64_t prim = 0;
     uint64_t env_test = 0x5360b, env_alpha = 0x44, env_zbuf = 0, env_xyoff = 0;
     bool built = false;
+    bool uploaded = false;
     int mode = 0;
+    float normals[0x200] = {};
+    std::vector<MrpMat4> joints_all;
     std::vector<MrpMat4> joints_extra;  // the cached casters' joints, after the frame's (mrp_scene's)
     std::vector<glm::vec3> part_pos;    // each part's world origin (a point light's cube takes the parts near it)
     std::vector<float> part_rad;        // a radius around it holding the part (its class's bounding sphere, generous)
@@ -1317,7 +1571,9 @@ bool mrp_moby_active() { return g_frame.active; }
 void mrp_world_view_proj(float out[16]) { std::memcpy(out, glm::value_ptr(world_view_proj()), 16 * sizeof(float)); }
 
 // orig: (host) see mrp_moby_renderer.h
-bool mrp_moby_ready() { return g_moby_renderer == MobyRenderer::kMrp && g_prog != 0 && g_level.loaded && g_level.id == moby_level_id(); }
+bool mrp_moby_ready() {
+    return g_moby_renderer == MobyRenderer::kMrp && (vk::is_active() ? g_vk_moby.inited : g_prog != 0) && g_level.loaded && g_level.id == moby_level_id();
+}
 
 // orig: (host) see mrp_moby_renderer.h
 void mrp_moby_begin_frame(bool title, bool menu_mode, bool title_menu) {
@@ -1325,12 +1581,17 @@ void mrp_moby_begin_frame(bool title, bool menu_mode, bool title_menu) {
     g_frame.menu = menu_mode;
     g_frame.title_menu = title_menu && !menu_mode;
     g_frame.built = false;
+    g_frame.uploaded = false;
     g_frame.active = false;
     g_prog_marks.clear();
     if (g_moby_renderer != MobyRenderer::kMrp || title) return;
-    if (!init_gl()) return;
+    if (vk::is_active()) {
+        if (!init_vk()) return;
+    } else {
+        if (!init_gl()) return;
+    }
     const int id = moby_level_id();
-    if (g_level.id != id) load_level(id);
+    if (g_level.id != id || (vk::is_active() && !g_level.vk_loaded) || (!vk::is_active() && !g_level.gl_loaded)) load_level(id);
     // the level's loaded classes (0x197300 / 0x197a00, count 0x15ffc0): a new set (the level entered
     // again, a class loaded) forgets the classes resolved by header address
     uint64_t h = 1469598103934665603ull;
@@ -1348,6 +1609,7 @@ void mrp_moby_begin_frame(bool title, bool menu_mode, bool title_menu) {
         g_level.verts.clear();
         g_level.indices.clear();
         g_level.dirty = true;
+        g_level.vk_dirty = true;
     }
     g_frame.active = g_level.loaded;
 }
@@ -1368,6 +1630,8 @@ void build_frame() {
     F.refs.clear();
     F.rt_views.clear();
     const MrpFrame& f = mrp_scene_draw();
+    for (uint32_t i = 0; i < 0x200; ++i) F.normals[i] = lwc1(OV(0x00166080) + 4 * i);  // the normal table (the overlay's 0x166080: 256 x 2 floats)
+    F.joints_all.assign(f.joints.begin(), f.joints.end());
     F.mode = F.menu ? 1 : g_mrp_moby_projection;
     F.fog_min = f.proj[0].x;
     F.proj = f.proj[1].x;
@@ -1630,7 +1894,8 @@ void build_frame() {
         }
         ++it;
         if (glm::length(glm::dvec3(c.pos[0], c.pos[1], c.pos[2]) - cam) > 400.0) continue;
-        const uint32_t jbase = static_cast<uint32_t>(f.joints.size() + F.joints_extra.size());
+        const uint32_t jbase = static_cast<uint32_t>(F.joints_all.size());
+        F.joints_all.insert(F.joints_all.end(), c.joints.begin(), c.joints.end());
         F.joints_extra.insert(F.joints_extra.end(), c.joints.begin(), c.joints.end());
         for (const CachedPart& cp : c.parts) {
             PartGpu P{};
@@ -1664,7 +1929,37 @@ void build_frame() {
 
 // orig: (host) the level's vertex / index data and the frame's buffers to the GPU
 void upload_frame() {
+    if (g_frame.uploaded) return;
+    g_frame.uploaded = true;
     Level& L = g_level;
+
+    if (vk::is_active()) {
+        if (L.vk_dirty || L.vk_vbo.buffer == VK_NULL_HANDLE || L.vk_ibo.buffer == VK_NULL_HANDLE) {
+            GpuVertex dummy_v{};
+            uint32_t dummy_i = 0;
+            const void* v_ptr = L.verts.empty() ? static_cast<const void*>(&dummy_v) : L.verts.data();
+            const VkDeviceSize v_bytes = std::max<VkDeviceSize>(L.verts.size() * sizeof(GpuVertex), sizeof(GpuVertex));
+            const void* i_ptr = L.indices.empty() ? static_cast<const void*>(&dummy_i) : L.indices.data();
+            const VkDeviceSize i_bytes = std::max<VkDeviceSize>(L.indices.size() * sizeof(uint32_t), sizeof(uint32_t));
+            vk::upload_buffer(L.vk_vbo, v_ptr, v_bytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+            vk::upload_buffer(L.vk_ibo, i_ptr, i_bytes, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+            L.vk_dirty = false;
+        }
+        auto alloc_ssbo = [](const void* data, size_t bytes) {
+            const VkDeviceSize sz = std::max<VkDeviceSize>(bytes, 16);
+            vk::RingAlloc r = vk::alloc_ring(sz, 16);
+            if (bytes > 0 && data != nullptr) std::memcpy(r.ptr, data, bytes);
+            else std::memset(r.ptr, 0, sz);
+            return r;
+        };
+        g_vk_moby.joints_alloc = alloc_ssbo(g_frame.joints_all.data(), g_frame.joints_all.size() * sizeof(MrpMat4));
+        g_vk_moby.parts_alloc = alloc_ssbo(g_frame.parts.data(), g_frame.parts.size() * sizeof(PartGpu));
+        g_vk_moby.cmds_alloc = alloc_ssbo(g_frame.cmds.data(), g_frame.cmds.size() * 4);
+        g_vk_moby.normals_alloc = alloc_ssbo(g_frame.normals, sizeof(g_frame.normals));
+        g_vk_moby.indirect_alloc = alloc_ssbo(g_frame.draws.data(), g_frame.draws.size() * sizeof(DrawCmd));
+        return;
+    }
+
     if (L.dirty) {
         glBindVertexArray(L.vao);
         glBindBuffer(GL_ARRAY_BUFFER, L.vbo);
@@ -1674,25 +1969,16 @@ void upload_frame() {
         glBindVertexArray(0);
         L.dirty = false;
     }
-    const MrpFrame& f = mrp_scene_draw();
     auto ssbo = [](GLuint b, int binding, const void* data, size_t bytes) {
         glBindBuffer(kGlShaderStorageBuffer, b);
         glBufferData(kGlShaderStorageBuffer, static_cast<GLsizeiptr>(std::max<size_t>(bytes, 16)), nullptr, GL_STREAM_DRAW);
         if (bytes > 0) glBufferSubData(kGlShaderStorageBuffer, 0, static_cast<GLsizeiptr>(bytes), data);
         glBindBufferBase(kGlShaderStorageBuffer, static_cast<GLuint>(binding), b);
     };
-    if (g_frame.joints_extra.empty()) {
-        ssbo(g_ssbo[0], 0, f.joints.data(), f.joints.size() * sizeof(MrpMat4));
-    } else {  // the cached casters' joints after the frame's
-        std::vector<MrpMat4> all(f.joints.begin(), f.joints.end());
-        all.insert(all.end(), g_frame.joints_extra.begin(), g_frame.joints_extra.end());
-        ssbo(g_ssbo[0], 0, all.data(), all.size() * sizeof(MrpMat4));
-    }
+    ssbo(g_ssbo[0], 0, g_frame.joints_all.data(), g_frame.joints_all.size() * sizeof(MrpMat4));
     ssbo(g_ssbo[1], 1, g_frame.parts.data(), g_frame.parts.size() * sizeof(PartGpu));
     ssbo(g_ssbo[2], 2, g_frame.cmds.data(), g_frame.cmds.size() * 4);
-    float normals[0x200];
-    for (uint32_t i = 0; i < 0x200; ++i) normals[i] = lwc1(OV(0x00166080) + 4 * i);  // the normal table (the overlay's 0x166080: 256 x 2 floats)
-    ssbo(g_ssbo[3], 3, normals, sizeof normals);
+    ssbo(g_ssbo[3], 3, g_frame.normals, sizeof g_frame.normals);
     glBindBuffer(kGlShaderStorageBuffer, 0);
     glBindBuffer(kGlDrawIndirectBuffer, g_indirect);
     glBufferData(kGlDrawIndirectBuffer, static_cast<GLsizeiptr>(std::max<size_t>(g_frame.draws.size() * sizeof(DrawCmd), 16)), g_frame.draws.data(), GL_STREAM_DRAW);
@@ -1736,8 +2022,54 @@ void set_common_uniforms(const Loc& l, int win_w, int win_h, const gs::Viewport*
     (void)win_h;
 }
 
+void fill_common_vk_push(MobyVkPush& push, const gs::Viewport* vp) {
+    const Frame& F = g_frame;
+    push.uMode = F.mode;
+    push.uProj = F.proj;
+    std::memcpy(push.uOffset, F.offset, sizeof(push.uOffset));
+    float fb_w = static_cast<float>(lhu(0x001518d0)), fb_h = static_cast<float>(lhu(0x001518d2));
+    if (fb_w <= 0.0f) fb_w = 512.0f;
+    if (fb_h <= 0.0f) fb_h = 416.0f;
+    const float sx = vp != nullptr ? (F.menu ? vp->xscale : vp->xscale_3d) : 1.0f;
+    push.uFrame[0] = fb_w;
+    push.uFrame[1] = fb_h;
+    push.uFrame[2] = sx;
+    push.uFrame[3] = 0.0f;
+    double da = 0.0, db = 0.0;
+    const bool has = render_gs_depth(da, db);
+    float xo = static_cast<float>(F.env_xyoff & 0xffff), yo = static_cast<float>((F.env_xyoff >> 32) & 0xffff);
+    if (F.env_xyoff == 0) {
+        xo = (2048.0f - fb_w * 0.5f) * 16.0f;
+        yo = (2048.0f - fb_h * 0.5f) * 16.0f;
+    }
+    push.uXyOff[0] = xo;
+    push.uXyOff[1] = yo;
+    push.uXyOff[2] = has ? static_cast<float>(da) : 0.5f;
+    push.uXyOff[3] = has ? static_cast<float>(db) : 0.0f;
+    const uint64_t fc = gs::gs_global().reg(0x3d);
+    push.uFogCol_Min[0] = static_cast<float>(fc & 0xff) / 255.0f;
+    push.uFogCol_Min[1] = static_cast<float>((fc >> 8) & 0xff) / 255.0f;
+    push.uFogCol_Min[2] = static_cast<float>((fc >> 16) & 0xff) / 255.0f;
+    push.uFogCol_Min[3] = F.fog_min;
+    if (g_rt_draw != nullptr) {
+        const RtDraw& r = *g_rt_draw;
+        push.uMode = 1;
+        push.uProj = r.view->proj;
+        std::memcpy(push.uOffset, r.view->offset, sizeof(push.uOffset));
+        push.uFrame[0] = r.w;
+        push.uFrame[1] = r.h;
+        push.uFrame[2] = 1.0f;
+        push.uFrame[3] = 1.0f;
+        push.uXyOff[0] = r.xo;
+        push.uXyOff[1] = r.yo;
+        push.uXyOff[2] = r.da;
+        push.uXyOff[3] = r.db;
+        push.uFogCol_Min[3] = r.view->fog_min;
+    }
+}
+
 SplitScope::SplitScope() {
-    if (mrp_lighting_active() && g_prog_split != 0) {
+    if (!vk::is_active() && mrp_lighting_active() && g_prog_split != 0) {
         on = true;
         std::swap(g_prog, g_prog_split);
         std::swap(g_loc, g_loc_split);
@@ -1753,6 +2085,160 @@ SplitScope::~SplitScope() {
 // orig: (host) the draw itself (the bound framebuffer, the viewport set by the caller)
 // `rt`: only the batches of the moby at that address drawn into a render target (0: the frame's own, those never)
 void draw_batches(int win_w, int win_h, const gs::Viewport* vp, bool shadows = false, uint32_t rt = 0) {
+    if (vk::is_active()) {
+        if (!g_frame.uploaded) upload_frame();
+        Frame& F = g_frame;
+        MobyVkPush push{};
+        fill_common_vk_push(push, vp);
+        push.uMipMode = g_mrp_moby_mip;
+        push.uShade = g_render_shade;
+        push.uPass = 0;
+
+        if (!g_mrp_moby_keep_scissor) vk::set_scissor(false);
+        bool cur_depth_clamp = (F.mode == 1 || rt != 0);
+        const int mm = g_mrp_moby_mip != 0 ? 1 : 0;
+        const bool split_prog = mrp_lighting_active();
+        const uint64_t pl = reinterpret_cast<uint64_t>(g_vk_moby.pipe_layout);
+        bool light_off = !(F.mode == 0 && g_rt_draw == nullptr);
+        auto bind_light = [&] {
+            if (light_off) mrp_lighting_vk_bind_off(pl);
+            else mrp_lighting_vk_bind_receiver(pl, false, split_prog);
+        };
+
+        vk::ensure_rendering();
+        VkCommandBuffer cb = vk::cmd();
+        VkDeviceSize voff = 0;
+        vkCmdBindVertexBuffers(cb, 0, 1, &g_level.vk_vbo.buffer, &voff);
+        vkCmdBindIndexBuffer(cb, g_level.vk_ibo.buffer, 0, VK_INDEX_TYPE_UINT32);
+        bind_light();
+
+        Key cur;
+        bool have = false;
+        bool shadows_done = !shadows || F.mode != 0 || g_modern_shadows != 0;
+        auto draw_shadows = [&] {
+            shadows_done = true;
+            const glm::mat4 m = world_view_proj();
+            if (!mrp_shadows_draw(glm::value_ptr(m))) return;
+            vk::ensure_rendering();
+            VkDeviceSize vo = 0;
+            vkCmdBindVertexBuffers(cb, 0, 1, &g_level.vk_vbo.buffer, &vo);
+            vkCmdBindIndexBuffer(cb, g_level.vk_ibo.buffer, 0, VK_INDEX_TYPE_UINT32);
+            bind_light();
+            have = false;
+        };
+        bool own_on = false;
+        auto own_view = [&](bool on) {
+            if (on == own_on) return;
+            own_on = on;
+            push.uMode = on ? 1 : F.mode;
+            float fb_w = static_cast<float>(lhu(0x001518d0)), fb_h = static_cast<float>(lhu(0x001518d2));
+            if (fb_w <= 0.0f) fb_w = 512.0f;
+            if (fb_h <= 0.0f) fb_h = 416.0f;
+            const float xs = vp != nullptr ? vp->xscale : 1.0f;
+            push.uFrame[0] = fb_w;
+            push.uFrame[1] = fb_h;
+            push.uFrame[2] = on ? xs : (vp != nullptr ? vp->xscale_3d : 1.0f);
+            push.uFrame[3] = 0.0f;
+            if (on) light_off = true;
+            else if (F.mode == 0 && g_rt_draw == nullptr) light_off = false;
+            bind_light();
+            cur_depth_clamp = (on || F.mode == 1);
+            if (on && vp != nullptr && xs < 1.0f) {
+                const int cw = static_cast<int>(static_cast<float>(vp->w) * xs);
+                vk::set_scissor(true, vp->x + (vp->w - cw) / 2, vp->y, cw, vp->h);
+            } else if (!g_mrp_moby_keep_scissor) {
+                vk::set_scissor(false);
+            }
+        };
+
+        const auto& rt_info = vk::current_target();
+        const VkFormat cfmt = rt_info.color_view != VK_NULL_HANDLE ? rt_info.color_format : VK_FORMAT_UNDEFINED;
+        const VkFormat dfmt = rt_info.depth_view != VK_NULL_HANDLE ? rt_info.depth_format : VK_FORMAT_UNDEFINED;
+        const bool has_stencil = rt_info.stencil_view != VK_NULL_HANDLE;
+
+        for (const Batch& b : F.batches) {
+            const Key& k = b.key;
+            if (k.caster_only) continue;
+            if (k.rt != rt) continue;
+            if (rt == 0) own_view(k.own_view);
+            if (!shadows_done && k.deferred) draw_shadows();
+            {
+                const char* why = nullptr;
+                if (static_cast<uint64_t>(b.first) + b.count > F.draws.size()) why = "draw commands";
+                for (uint32_t i = b.first; why == nullptr && i < b.first + b.count; ++i) {
+                    const DrawCmd& c = F.draws[i];
+                    if (static_cast<uint64_t>(c.first_index) + c.count > g_level.indices.size()) why = "indices";
+                    else if (c.base_vertex != 0 || c.instances != 1 || (static_cast<uint64_t>(c.base_instance) + 1) * 4 > F.cmds.size()) why = "draw records";
+                }
+                if (why != nullptr) {
+                    static uint32_t shown = 0;
+                    if (shown++ < 8)
+                        std::fprintf(stderr, "[mrp] batch refused (%s): first %u count %u (%zu draw commands, %zu records, %zu indices)\n", why, b.first, b.count, F.draws.size(),
+                                     F.cmds.size(), g_level.indices.size());
+                    continue;
+                }
+            }
+            if (!have || k.bucket != cur.bucket || k.sampler != cur.sampler) {
+                bind_moby_vk_set0(cb, k.bucket, k.sampler, mm);
+            }
+            if (!have || k.prim != cur.prim || k.test != cur.test || k.alpha != cur.alpha || k.zbuf != cur.zbuf) {
+                push.uTme = gs::field(k.prim, 4, 1) != 0 ? 1 : 0;
+                push.uFge = g_mrp_moby_fog != 0 && gs::field(k.prim, 5, 1) != 0 ? 1 : 0;
+                push.uAte = static_cast<int32_t>(gs::field(k.test, 0, 1));
+                push.uAtst = static_cast<int32_t>(gs::field(k.test, 1, 3));
+                push.uAref = static_cast<int32_t>(gs::field(k.test, 4, 8));
+                push.uAfail = static_cast<int32_t>(gs::field(k.test, 12, 2));
+                gs::DrawState ds{};
+                ds.prim = k.prim;
+                ds.alpha = k.alpha;
+                gs::blend_state(ds);
+            }
+            const uint32_t kztst = gs::field(k.test, 17, 2);
+            const bool ztest = gs::field(k.test, 16, 1) != 0 && kztst != 1;
+            const bool zwrite = ztest && gs::field(k.zbuf, 32, 1) == 0;
+            static const bool no_split = std::getenv("RAC1_GS_AFAIL_SPLIT") != nullptr && std::atoi(std::getenv("RAC1_GS_AFAIL_SPLIT")) == 0;
+            const bool split = !no_split && zwrite && gs::field(k.test, 0, 1) != 0 && gs::field(k.test, 1, 3) != 1 && gs::field(k.test, 12, 2) != 0;
+
+            MobyVkPipeKey pk{};
+            pk.split_prog = split_prog;
+            pk.caster = false;
+            pk.depth_clamp = cur_depth_clamp;
+            pk.depth_test = ztest;
+            pk.depth_write = gs::field(k.zbuf, 32, 1) == 0;
+            pk.depth_compare = kztst == 0 ? VK_COMPARE_OP_NEVER : kztst == 2 ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_LESS;
+            pk.color_mask = 0xF;
+            pk.prim = k.prim & (1ull << 6);
+            pk.alpha = pk.prim ? k.alpha : 0;
+            pk.color_fmt = cfmt;
+            pk.depth_fmt = dfmt;
+            pk.has_stencil = has_stencil;
+
+            cur = k;
+            have = true;
+            if (split) {
+                MobyVkPipeKey pk_z = pk;
+                pk_z.color_mask = 0;
+                push.uPass = 1;
+                vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, get_moby_vk_pipeline(pk_z));
+                vkCmdPushConstants(cb, g_vk_moby.pipe_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
+                vkCmdDrawIndexedIndirect(cb, g_vk_moby.indirect_alloc.buffer, g_vk_moby.indirect_alloc.offset + static_cast<VkDeviceSize>(b.first) * sizeof(DrawCmd), b.count,
+                                         sizeof(DrawCmd));
+                ++g_st.gl_calls;
+                push.uPass = 0;
+                pk.depth_write = false;
+                if (kztst != 0) pk.depth_compare = VK_COMPARE_OP_LESS_OR_EQUAL;
+            }
+            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, get_moby_vk_pipeline(pk));
+            vkCmdPushConstants(cb, g_vk_moby.pipe_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
+            vkCmdDrawIndexedIndirect(cb, g_vk_moby.indirect_alloc.buffer, g_vk_moby.indirect_alloc.offset + static_cast<VkDeviceSize>(b.first) * sizeof(DrawCmd), b.count,
+                                     sizeof(DrawCmd));
+            ++g_st.gl_calls;
+        }
+        if (!shadows_done) draw_shadows();
+        own_view(false);
+        return;
+    }
+
     const SplitScope split_scope;
     Frame& F = g_frame;
     // (the frame's storage buffers bound again: uploaded at its prepare, the world's draw may have bound its own since)
@@ -1911,11 +2397,13 @@ GLuint g_indirect_near = 0;
 void draw_casters(const float* light_vp, const float* sphere, const float* within) {
     Frame& F = g_frame;
     if (F.mode != 0 || F.batches.empty()) return;
+    if (vk::is_active() && !F.uploaded) upload_frame();
     static std::vector<std::pair<uint32_t, uint32_t>> ranges;  // (per batch: first / count in the near buffer)
     static std::vector<DrawCmd> near;
     static std::vector<uint8_t> part_vis;
     ranges.clear();
     const bool filter = sphere != nullptr || within != nullptr;
+    vk::RingAlloc near_alloc{};
     if (filter) {
         const glm::vec3 c = sphere != nullptr ? glm::vec3(sphere[0], sphere[1], sphere[2]) : glm::vec3(0.0f);
         const float lim = sphere != nullptr ? sphere[3] + 6.0f : 1e30f;
@@ -1965,9 +2453,72 @@ void draw_casters(const float* light_vp, const float* sphere, const float* withi
             ranges.push_back({first, static_cast<uint32_t>(near.size()) - first});
         }
         if (near.empty()) return;
-        if (g_indirect_near == 0) glGenBuffers(1, &g_indirect_near);
-        glBindBuffer(kGlDrawIndirectBuffer, g_indirect_near);
-        glBufferData(kGlDrawIndirectBuffer, static_cast<GLsizeiptr>(near.size() * sizeof(DrawCmd)), near.data(), GL_STREAM_DRAW);
+        if (vk::is_active()) {
+            near_alloc = vk::alloc_ring(near.size() * sizeof(DrawCmd), 16);
+            std::memcpy(near_alloc.ptr, near.data(), near.size() * sizeof(DrawCmd));
+        } else {
+            if (g_indirect_near == 0) glGenBuffers(1, &g_indirect_near);
+            glBindBuffer(kGlDrawIndirectBuffer, g_indirect_near);
+            glBufferData(kGlDrawIndirectBuffer, static_cast<GLsizeiptr>(near.size() * sizeof(DrawCmd)), near.data(), GL_STREAM_DRAW);
+        }
+    }
+    if (vk::is_active()) {
+        vk::ensure_rendering();
+        VkCommandBuffer cb = vk::cmd();
+        VkDeviceSize voff = 0;
+        vkCmdBindVertexBuffers(cb, 0, 1, &g_level.vk_vbo.buffer, &voff);
+        vkCmdBindIndexBuffer(cb, g_level.vk_ibo.buffer, 0, VK_INDEX_TYPE_UINT32);
+        mrp_lighting_vk_bind_caster(reinterpret_cast<uint64_t>(g_vk_moby.pipe_layout), light_vp);
+
+        MobyVkPush push{};
+        fill_common_vk_push(push, nullptr);
+        push.uMipMode = g_mrp_moby_mip;
+        push.uShade = 0;
+        push.uPass = 0;
+        push.uFge = 0;
+
+        MobyVkPipeKey pk{};
+        pk.split_prog = false;
+        pk.caster = true;
+        pk.depth_clamp = false;
+        pk.depth_test = true;
+        pk.depth_write = true;
+        pk.depth_compare = VK_COMPARE_OP_LESS_OR_EQUAL;
+        pk.color_mask = 0;
+        pk.color_fmt = VK_FORMAT_UNDEFINED;
+        pk.depth_fmt = VK_FORMAT_D32_SFLOAT;
+        pk.has_stencil = false;
+        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, get_moby_vk_pipeline(pk));
+
+        const int mm = g_mrp_moby_mip != 0 ? 1 : 0;
+        const vk::RingAlloc& ind = filter ? near_alloc : g_vk_moby.indirect_alloc;
+        Key cur;
+        bool have = false;
+        for (size_t bi = 0; bi < F.batches.size(); ++bi) {
+            const Batch& b = F.batches[bi];
+            const Key& k = b.key;
+            const uint32_t kztst = gs::field(k.test, 17, 2);
+            const bool zwrite = gs::field(k.test, 16, 1) != 0 && kztst != 1 && gs::field(k.zbuf, 32, 1) == 0;
+            if (!zwrite || k.own_view) continue;
+            if (static_cast<uint64_t>(b.first) + b.count > F.draws.size()) continue;
+            const uint32_t dfirst = filter ? ranges[bi].first : b.first, dcount = filter ? ranges[bi].second : b.count;
+            if (dcount == 0) continue;
+            if (!have || k.bucket != cur.bucket || k.sampler != cur.sampler) {
+                bind_moby_vk_set0(cb, k.bucket, k.sampler, mm);
+            }
+            if (!have || k.prim != cur.prim || k.test != cur.test) {
+                push.uTme = gs::field(k.prim, 4, 1) != 0 ? 1 : 0;
+                push.uAte = static_cast<int32_t>(gs::field(k.test, 0, 1));
+                push.uAtst = static_cast<int32_t>(gs::field(k.test, 1, 3));
+                push.uAref = static_cast<int32_t>(gs::field(k.test, 4, 8));
+                push.uAfail = static_cast<int32_t>(gs::field(k.test, 12, 2));
+                vkCmdPushConstants(cb, g_vk_moby.pipe_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
+            }
+            cur = k;
+            have = true;
+            vkCmdDrawIndexedIndirect(cb, ind.buffer, ind.offset + static_cast<VkDeviceSize>(dfirst) * sizeof(DrawCmd), dcount, sizeof(DrawCmd));
+        }
+        return;
     }
     for (int i = 0; i < 4; ++i) glBindBufferBase(kGlShaderStorageBuffer, static_cast<GLuint>(i), g_ssbo[i]);
     glUseProgram(g_prog);
@@ -2207,8 +2758,10 @@ void prepare_frame(const gs::Viewport* vp) {
     if (g_frame.built) return;
     const double t0 = now_ms();
     build_frame();
-    upload_frame();
-    if (g_env_check) shader_check(vp);
+    if (!vk::is_active()) {
+        upload_frame();
+        if (g_env_check) shader_check(vp);
+    }
     ++g_st.frames;
     g_st.prof_build_ms += now_ms() - t0;
 }
@@ -2225,10 +2778,16 @@ void mrp_moby_draw(int win_w, int win_h, const gs::Viewport* vp) {
     if (!g_frame.active) return;
     prepare_frame(vp);
     const double t0 = now_ms();
-    if (vp != nullptr) glViewport(vp->x, vp->y, vp->w, vp->h);  // (the world's viewport: the frame's rectangle in the window)
+    if (vp != nullptr) {  // (the world's viewport: the frame's rectangle in the window)
+        if (vk::is_active()) vk::set_viewport(vp->x, vp->y, vp->w, vp->h);
+        else glViewport(vp->x, vp->y, vp->w, vp->h);
+    }
     draw_batches(win_w, win_h, vp, true);
     if (g_env_prof) {
-        if (g_env_prof_finish) glFinish();
+        if (g_env_prof_finish) {
+            if (vk::is_active()) vk::wait_idle();
+            else glFinish();
+        }
         g_st.prof_draw_ms += now_ms() - t0;
         if (++g_st.prof_frames >= 120) {
             std::printf("[prof] mrp_mobys ms/frame: build+upload %.3f draw %.3f (%llu draws in %llu GL calls so far)\n", g_st.prof_build_ms / g_st.prof_frames,

@@ -118,6 +118,7 @@
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
 #include <runtime/gs/static_geom_cache.h>
+#include <runtime/vk/vk_context.h>
 #include <runtime/iop/snd989_iop.h>
 #include <runtime/iop/snd989_stream.h>
 #include <runtime/iop/stash_iop.h>
@@ -171,7 +172,7 @@ bool g_debug_tools = false;   // the debug tools asked for
 bool g_test_switches = false; // the RAC1_* testing variables and --level honoured (headless, or the debug tools)
 constexpr const char* PLAYER_ENV[] = {
     "RAC1_DEBUG_TOOLS", "RAC1_HEADLESS", "RAC1_ISO", "RAC1_MEMCARD_DIR", "RAC1_ADVANCED_FILE", "RAC1_GRAPHICS_FILE", "RAC1_CONTROLS_FILE",
-    "RAC1_WINDOW", "RAC1_FULLSCREEN", "RAC1_VSYNC", "RAC1_FPS_CAP", "RAC1_NO_AUDIO", "RAC1_AUDIO_DEVICE",
+    "RAC1_RENDERER", "RAC1_WINDOW", "RAC1_FULLSCREEN", "RAC1_VSYNC", "RAC1_FPS_CAP", "RAC1_NO_AUDIO", "RAC1_AUDIO_DEVICE",
     "RAC1_AUDIO_PERIOD_MS", "RAC1_AUDIO_PERIODS", "RAC1_MOVIE_VOLUME", "RAC1_PRIORITY", "RAC1_IOP_MIRROR",
     "RAC1_PYTHON",  // (set by tools/setup.py for the setup mode: the Python it runs the overlay matcher with)
 };
@@ -470,7 +471,7 @@ struct FrameProf {
         t_begin = t;
         for (double& c : cur) c = 0;
         tc = thread_ms();
-        if (mode == 2 && !gpu_begun) {
+        if (mode == 2 && !gpu_begun && !rac1::vk::is_active()) {
             if (q[0][0] == 0) glGenQueries(R * (N + 1), &q[0][0]);
             glBeginQuery(GL_TIME_ELAPSED, q[ring][0]);
             gpu_begun = true;
@@ -510,8 +511,11 @@ struct FrameProf {
     }
     void mark(int i) {
         if (!on) return;
-        if (mode == 1) glFinish();
-        else if (gpu_begun) {  // (each stage's commands flushed with its query: the GPU's time on them, few idle gaps)
+        if (rac1::vk::is_active()) {
+            if (mode == 1) rac1::vk::flush_cmd();
+        } else if (mode == 1) {
+            glFinish();
+        } else if (gpu_begun) {  // (each stage's commands flushed with its query: the GPU's time on them, few idle gaps)
             glEndQuery(GL_TIME_ELAPSED);
             glFlush();
             if (i + 1 < N) glBeginQuery(GL_TIME_ELAPSED, q[ring][i + 1]);
@@ -544,7 +548,7 @@ struct FrameProf {
         ++host_frames;
         frame_t0 = now;
         have_frame_t0 = true;
-        if (mode == 2 && gpu_begun) {
+        if (mode == 2 && gpu_begun && !rac1::vk::is_active()) {
             gpu_begun = false;
             q_used[ring] = true;
             ring = (ring + 1) % R;
@@ -614,8 +618,25 @@ struct FrameProf {
 // orig: (host) the menu's captured frame
 struct FrozenFrame {
     GLuint fbo = 0, tex = 0;
+    rac1::vk::GpuImage vk_tex{};
     int w = 0, h = 0;
+    bool valid() const { return rac1::vk::is_active() ? (vk_tex.image != VK_NULL_HANDLE) : (fbo != 0); }
+    void vk_reset() {
+        if (vk_tex.image != VK_NULL_HANDLE) rac1::vk::destroy_image_now(vk_tex);
+        if (rac1::vk::is_active()) w = h = 0;
+    }
     void capture(int cw, int ch) {
+        if (rac1::vk::is_active()) {
+            if (vk_tex.image == VK_NULL_HANDLE || cw != w || ch != h) {
+                w = cw;
+                h = ch;
+                rac1::vk::create_image(static_cast<uint32_t>(w), static_cast<uint32_t>(h), VK_FORMAT_R8G8B8A8_UNORM,
+                                       VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                                       VK_IMAGE_ASPECT_COLOR_BIT, vk_tex);
+            }
+            rac1::vk::blit_image(rac1::vk::main_color_image(), 0, 0, w, h, vk_tex, 0, 0, w, h, VK_FILTER_NEAREST);
+            return;
+        }
         if (fbo == 0) {
             glGenFramebuffers(1, &fbo);
             glGenTextures(1, &tex);
@@ -634,6 +655,14 @@ struct FrozenFrame {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
     void blit_to_screen() const {
+        if (rac1::vk::is_active()) {
+            if (vk_tex.image != VK_NULL_HANDLE) {
+                auto& src = const_cast<rac1::vk::GpuImage&>(vk_tex);
+                rac1::vk::blit_image(src, 0, 0, w, h, rac1::vk::main_color_image(), 0, 0, w, h, VK_FILTER_NEAREST,
+                                     VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            }
+            return;
+        }
         glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
@@ -656,6 +685,13 @@ struct ScaledScene {
     void begin(int win_w, int win_h, float scale) {
         s = scale;
         const int bw = std::max(1, static_cast<int>(std::lround(win_w * scale))), bh = std::max(1, static_cast<int>(std::lround(win_h * scale)));
+        if (rac1::vk::is_active()) {
+            w = bw;
+            h = bh;
+            rac1::vk::scaled_scene_begin(win_w, win_h, bw, bh);
+            on = true;
+            return;
+        }
         if (fbo == 0) {
             glGenFramebuffers(1, &fbo);
             glGenTextures(1, &col);
@@ -690,6 +726,10 @@ struct ScaledScene {
     void end(int win_w, int win_h) {
         if (!on) return;
         on = false;
+        if (rac1::vk::is_active()) {
+            rac1::vk::scaled_scene_end(win_w, win_h);
+            return;
+        }
         if (!warned)
             while (glGetError() != GL_NO_ERROR) {
             }
@@ -729,6 +769,7 @@ struct ScenePicture {
     uint64_t hash = 0;                   // the frame's pixels as store() wrote them (0: none)
     uint64_t match_id = 0;               // last TexImage::id confirmed to match `hash`
     GLuint rb_fbo = 0, rb_tex = 0;       // the frame's resolution: the picture read back / the replica's frame drawn
+    rac1::vk::GpuImage vk_rb_tex{};
     int rb_w = 0, rb_h = 0;
     static uint64_t hash_of(const uint32_t* px, size_t n) {
         uint64_t h = 1469598103934665603ull;
@@ -736,6 +777,16 @@ struct ScenePicture {
         return h == 0 ? 1 : h;
     }
     void target(int w, int h) {  // the frame-sized texture and its framebuffer
+        if (rac1::vk::is_active()) {
+            if (vk_rb_tex.image == VK_NULL_HANDLE || rb_w != w || rb_h != h) {
+                rb_w = w;
+                rb_h = h;
+                rac1::vk::create_image(static_cast<uint32_t>(w), static_cast<uint32_t>(h), VK_FORMAT_R8G8B8A8_UNORM,
+                                       VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                                       VK_IMAGE_ASPECT_COLOR_BIT, vk_rb_tex);
+            }
+            return;
+        }
         if (rb_fbo == 0) {
             glGenFramebuffers(1, &rb_fbo);
             glGenTextures(1, &rb_tex);
@@ -767,12 +818,44 @@ struct ScenePicture {
     // the Scene frame (or on-demand when the pause menu stores the last frame shown), read back at the frame's resolution
     GLuint pf_fbo = 0, pf_tex = 0, pf_pbo = 0;
     GLsync pf_fence = nullptr;
+    rac1::vk::GpuImage vk_pf_tex{};
+    rac1::vk::GpuBuffer vk_pf_buf{};
     int pf_w = 0, pf_h = 0;
     bool pf_valid = false;
+    void vk_reset() {
+        pic.vk_reset();
+        if (vk_rb_tex.image != VK_NULL_HANDLE) rac1::vk::destroy_image_now(vk_rb_tex);
+        if (vk_pf_tex.image != VK_NULL_HANDLE) rac1::vk::destroy_image_now(vk_pf_tex);
+        rac1::vk::destroy_buffer_now(vk_pf_buf);
+        pf_valid = false;
+    }
     void prefetch(const FrozenFrame& src, int vx, int vy, int vw, int vh) {
         const uint32_t frame = lwu(0x0013cf20);
         const int w = static_cast<int>(((frame >> 16) & 0x3f) * 64), h = static_cast<int>(lhu(0x001518d2));
-        if (w == 0 || h == 0 || src.fbo == 0) return;
+        if (w == 0 || h == 0 || !src.valid()) return;
+        const int scw = static_cast<int>(static_cast<float>(vw) / g_view_widen), sx0 = vx + (vw - scw) / 2;
+        if (rac1::vk::is_active()) {
+            if (vk_pf_tex.image == VK_NULL_HANDLE || pf_w != w || pf_h != h) {
+                pf_w = w;
+                pf_h = h;
+                rac1::vk::create_image(static_cast<uint32_t>(w), static_cast<uint32_t>(h), VK_FORMAT_R8G8B8A8_UNORM,
+                                       VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                                       VK_IMAGE_ASPECT_COLOR_BIT, vk_pf_tex);
+                rac1::vk::create_buffer(static_cast<VkDeviceSize>(w) * h * 4, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, vk_pf_buf, true);
+            }
+            auto& src_img = const_cast<rac1::vk::GpuImage&>(src.vk_tex);
+            rac1::vk::blit_image(src_img, sx0, vy, sx0 + scw, vy + vh, vk_pf_tex, 0, h, w, 0, VK_FILTER_LINEAR,
+                                 VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+            rac1::vk::submit_immediate([&](VkCommandBuffer cb) {
+                VkBufferImageCopy copy{};
+                copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+                copy.imageExtent = {static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1};
+                vkCmdCopyImageToBuffer(cb, vk_pf_tex.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, vk_pf_buf.buffer, 1, &copy);
+            });
+            pf_valid = true;
+            return;
+        }
         if (pf_fbo == 0) {
             glGenFramebuffers(1, &pf_fbo);
             glGenTextures(1, &pf_tex);
@@ -789,7 +872,6 @@ struct ScenePicture {
             glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(w) * h * 4, nullptr, GL_STREAM_READ);
             glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
         }
-        const int scw = static_cast<int>(static_cast<float>(vw) / g_view_widen), sx0 = vx + (vw - scw) / 2;
         glBindFramebuffer(GL_READ_FRAMEBUFFER, src.fbo);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, pf_fbo);
         glBlitFramebuffer(sx0, vy, sx0 + scw, vy + vh, 0, h, w, 0, GL_COLOR_BUFFER_BIT, GL_LINEAR);  // (row 0 the frame's top)
@@ -804,12 +886,41 @@ struct ScenePicture {
         pf_valid = true;
     }
     void store(uint32_t bp, uint32_t psm) {
-        const bool from_shown = !pending && shown != nullptr && shown->fbo != 0;
+        const bool from_shown = !pending && shown != nullptr && shown->valid();
         if ((!pending && !from_shown) || psm != 0) return;
         const uint32_t frame = lwu(0x0013cf20);  // FRAME_1 of the frame's draw environment 0x13cf10 (render_passes.cpp)
         const uint32_t fbp = frame & 0x1ff, fbw = (frame >> 16) & 0x3f, fh = lhu(0x001518d2);
         if (fbw == 0 || fh == 0 || bp < fbp * 32 || bp >= fbp * 32 + fbw * 64 * fh * 4 / 256) return;
         const int w = static_cast<int>(fbw * 64), h = static_cast<int>(fh);
+        if (rac1::vk::is_active()) {
+            if (from_shown || !pf_valid) {
+                if (from_shown) {
+                    if (!pic.valid() || pic.w != shown->w || pic.h != shown->h) pic.capture(shown->w, shown->h);
+                    auto& src_img = const_cast<rac1::vk::GpuImage&>(shown->vk_tex);
+                    rac1::vk::blit_image(src_img, 0, 0, shown->w, shown->h, pic.vk_tex, 0, 0, shown->w, shown->h, VK_FILTER_NEAREST);
+                    for (int i = 0; i < 4; ++i) view[i] = shown_view[i];
+                    menu_pic = true;
+                } else {
+                    menu_pic = false;
+                }
+                if (!pf_valid) prefetch(from_shown ? *shown : pic, view[0], view[1], view[2], view[3]);
+                rac1::vk::flush_cmd();
+            } else {
+                menu_pic = false;
+            }
+            if (!pf_valid || w != pf_w || h != pf_h || vk_pf_buf.mapped == nullptr) return;
+            pending = false;
+            LoadProf prof_all("the stored picture (libgraph's store)");
+            std::vector<uint32_t> px(static_cast<size_t>(w) * h);
+            std::memcpy(px.data(), vk_pf_buf.mapped, px.size() * 4);
+            for (uint32_t& c : px) c = (c & 0x00ffffffu) | 0x80000000u;
+            rac1::gs::gs_global().write_ct32_rect(fbp * 32, fbw, static_cast<uint32_t>(w), static_cast<uint32_t>(h), px.data());
+            if (!from_shown) {
+                hash = hash_of(px.data(), px.size());
+                match_id = 0;
+            }
+            return;
+        }
         if (from_shown || !pf_valid) {
             GLint dfb = 0, rfb = 0;
             glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &dfb);
@@ -851,11 +962,28 @@ struct ScenePicture {
     }
     // the replica's frame after the game put a picture back (gs_draw's Viewport::screen_picture)
     void draw(const rac1::gs::TexImage& img, const rac1::gs::Viewport& vp) {
+        const bool same_view = view[0] == vp.x && view[1] == vp.y && view[2] == vp.w && view[3] == vp.h;
+        if (rac1::vk::is_active()) {
+            int win[4] = {0, 0, 0, 0};
+            rac1::vk::get_viewport(win);
+            if (hash != 0 && pic.valid() && same_view && (img.id == match_id || hash_of(img.px.data(), img.px.size()) == hash)) {
+                match_id = img.id;
+                rac1::vk::blit_image(pic.vk_tex, 0, 0, pic.w, pic.h, rac1::vk::active_color_image(), 0, 0, pic.w, pic.h,
+                                     VK_FILTER_NEAREST, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            } else {
+                target(img.w, img.h);
+                rac1::vk::upload_image_2d(vk_rb_tex, img.px.data(), img.px.size() * 4);
+                const int fw = static_cast<int>(static_cast<float>(vp.w) * vp.xscale), fx = vp.x + (vp.w - fw) / 2;
+                rac1::vk::blit_image(vk_rb_tex, 0, 0, img.w, img.h, rac1::vk::active_color_image(), fx, vp.y + vp.h, fx + fw, vp.y,
+                                     VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            }
+            rac1::vk::set_viewport(win[0], win[1], win[2], win[3]);
+            return;
+        }
         GLint screen = 0;
         glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &screen);
         int win[4] = {0, 0, 0, 0};
         glGetIntegerv(GL_VIEWPORT, win);
-        const bool same_view = view[0] == vp.x && view[1] == vp.y && view[2] == vp.w && view[3] == vp.h;
         if (hash != 0 && pic.fbo != 0 && same_view && (img.id == match_id || hash_of(img.px.data(), img.px.size()) == hash)) {  // the picture kept, at the window's resolution
             match_id = img.id;
             glBindFramebuffer(GL_READ_FRAMEBUFFER, pic.fbo);
@@ -882,8 +1010,28 @@ int32_t g_mode_at_update = 0;
 // orig: (host) the movie player's display
 struct MoviePicture {
     GLuint fbo = 0, tex = 0;
+    rac1::vk::GpuImage vk_tex{};
     int w = 0, h = 0;
+    void vk_reset() {
+        if (vk_tex.image != VK_NULL_HANDLE) rac1::vk::destroy_image_now(vk_tex);
+        if (rac1::vk::is_active()) w = h = 0;
+    }
     void draw(const std::vector<uint8_t>& rgba, int pw, int ph, int vx, int vy, int vw, int vh) {
+        const int cw = static_cast<int>(static_cast<float>(vw) / g_view_widen);  // (4:3 in widescreen)
+        const int x0 = vx + (vw - cw) / 2;
+        if (rac1::vk::is_active()) {
+            if (vk_tex.image == VK_NULL_HANDLE || pw != w || ph != h) {
+                w = pw;
+                h = ph;
+                rac1::vk::create_image(static_cast<uint32_t>(w), static_cast<uint32_t>(h), VK_FORMAT_R8G8B8A8_UNORM,
+                                       VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                                       VK_IMAGE_ASPECT_COLOR_BIT, vk_tex);
+            }
+            rac1::vk::upload_image_2d(vk_tex, rgba.data(), rgba.size());
+            rac1::vk::blit_image(vk_tex, 0, 0, w, h, rac1::vk::main_color_image(), x0, vy + vh, x0 + cw, vy,
+                                 VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            return;
+        }
         if (fbo == 0) {
             glGenFramebuffers(1, &fbo);
             glGenTextures(1, &tex);
@@ -897,8 +1045,6 @@ struct MoviePicture {
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
         }
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
-        const int cw = static_cast<int>(static_cast<float>(vw) / g_view_widen);  // (4:3 in widescreen)
-        const int x0 = vx + (vw - cw) / 2;
         glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glBlitFramebuffer(0, 0, w, h, x0, vy + vh, x0 + cw, vy, GL_COLOR_BUFFER_BIT, GL_LINEAR);
@@ -994,8 +1140,10 @@ bool level_host_load(int level) {
     }
     LoadProf prof_all("level_host_load");
     std::optional<LoadProf> prof("  gs_texture_cache_clear, moby_models_release");
-    gs_texture_cache_clear();
-    moby_models_release();
+    if (!rac1::vk::is_active() && glad_glDeleteTextures != nullptr) {
+        gs_texture_cache_clear();
+        moby_models_release();
+    }
     prof.reset();
     LevelLoader::load_level_wad(level);
     prof.emplace("  engine_image_load");
@@ -1065,6 +1213,10 @@ bool title_return() {
 }
 
 void save_ppm(const char* path, int w, int h) {
+    if (rac1::vk::is_active()) {
+        rac1::vk::save_ppm(path, w, h);
+        return;
+    }
     std::vector<unsigned char> px(static_cast<size_t>(w) * h * 3);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);  // rows packed (a window width * 3 not a multiple of 4 overran px)
     glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, px.data());
@@ -1742,10 +1894,6 @@ int main(int argc, char** argv) {
     g_legacy_host_writes = false;
 
     if (!glfwInit()) { std::fprintf(stderr, "rac1-native: GLFW init failed\n"); return 1; }
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    if (headless) glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
     // Options > Graphics: the window, the view, the level of detail as the player left them (not read in a
     // headless run: g_advanced_disabled); the testing switches below override them
     rac1::graphics_load();
@@ -1777,21 +1925,59 @@ int main(int argc, char** argv) {
             std::printf("[orig] RAC1_FULLSCREEN: %d x %d at %d Hz\n", mode->width, mode->height, mode->refreshRate);
         }
     }
-    GLFWwindow* window = glfwCreateWindow(win_w0, win_h0, "Ratchet & Clank - original runtime", fs_monitor, nullptr);
-    if (window == nullptr) { std::fprintf(stderr, "rac1-native: no OpenGL 4.6 window\n"); return 1; }
-    glfwMakeContextCurrent(window);
-    if (!headless && fs_monitor == nullptr) host_window_on_monitor(window, rac1::graphics_display().monitor);
-    glfwSwapInterval(headless ? 0 : host_swap_interval(rac1::graphics_display().vsync));
+    const int env_vsync = std::getenv("RAC1_VSYNC") != nullptr ? std::atoi(std::getenv("RAC1_VSYNC")) : -1;
+    const int env_fps_cap = std::getenv("RAC1_FPS_CAP") != nullptr ? std::atoi(std::getenv("RAC1_FPS_CAP")) : -1;
+    const bool want_vsync0 = env_vsync >= 0 ? (env_vsync != 0) : rac1::graphics_display().vsync;
+
+    GLFWwindow* gl_window = nullptr;
+    GLFWwindow* vk_window = nullptr;
+    GLFWwindow* window = nullptr;
+    bool gl_inited = false;
+
+    if (rac1::graphics_display().vulkan) {
+        glfwDefaultWindowHints();
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+        if (headless) glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+        if (fs_monitor != nullptr) {
+            if (const GLFWvidmode* mode = glfwGetVideoMode(fs_monitor)) glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
+        }
+        vk_window = glfwCreateWindow(win_w0, win_h0, "Ratchet & Clank - original runtime", fs_monitor, nullptr);
+        if (vk_window != nullptr && rac1::vk::init(vk_window, headless ? false : want_vsync0, headless)) {
+            window = vk_window;
+            if (!headless && fs_monitor == nullptr) host_window_on_monitor(window, rac1::graphics_display().monitor);
+        } else {
+            std::fprintf(stderr, "rac1-native: Vulkan 1.3 init failed, falling back to OpenGL 4.6\n");
+            if (vk_window != nullptr) {
+                glfwDestroyWindow(vk_window);
+                vk_window = nullptr;
+            }
+            rac1::graphics_set_vulkan(false);
+        }
+    }
+    if (window == nullptr) {
+        glfwDefaultWindowHints();
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        if (headless) glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+        if (fs_monitor != nullptr) {
+            if (const GLFWvidmode* mode = glfwGetVideoMode(fs_monitor)) glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
+        }
+        gl_window = glfwCreateWindow(win_w0, win_h0, "Ratchet & Clank - original runtime", fs_monitor, nullptr);
+        if (gl_window == nullptr) { std::fprintf(stderr, "rac1-native: no OpenGL 4.6 window\n"); return 1; }
+        window = gl_window;
+        glfwMakeContextCurrent(window);
+        if (!headless && fs_monitor == nullptr) host_window_on_monitor(window, rac1::graphics_display().monitor);
+        glfwSwapInterval(headless ? 0 : host_swap_interval(want_vsync0));
+        if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) { std::fprintf(stderr, "rac1-native: GL load failed\n"); return 1; }
+        if (!ShaderManager::get().init()) { std::fprintf(stderr, "rac1-native: shaders failed\n"); return 1; }
+        gl_inited = true;
+    }
     if (!headless) host_input_init(window);  // the controls: the controller database, the bindings
     // the Controls page's host side; its changes saved in a window, headless only to an explicit RAC1_CONTROLS_FILE
     g_controls_save = !headless || std::getenv("RAC1_CONTROLS_FILE") != nullptr;
     if (headless && g_controls_save) g_bindings = hi::load_or_create(hi::controls_path());
     rac1::controls_set_host(&g_host_controls);
-    const int env_vsync = std::getenv("RAC1_VSYNC") != nullptr ? std::atoi(std::getenv("RAC1_VSYNC")) : -1;
-    const int env_fps_cap = std::getenv("RAC1_FPS_CAP") != nullptr ? std::atoi(std::getenv("RAC1_FPS_CAP")) : -1;
-    if (env_vsync >= 0 && !headless) glfwSwapInterval(host_swap_interval(env_vsync != 0));
-    if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) { std::fprintf(stderr, "rac1-native: GL load failed\n"); return 1; }
-    if (!ShaderManager::get().init()) { std::fprintf(stderr, "rac1-native: shaders failed\n"); return 1; }
     sample_prof_start();  // (testing: RAC1_SAMPLE_PROF=<file>, see sample_prof.h)
     g_use_gpu_rendering = true;
     particles_vu1_register();
@@ -1822,7 +2008,7 @@ int main(int argc, char** argv) {
     if (const char* l = std::getenv("RAC1_MRP_WIDEN")) g_mrp_lod_widen_off = std::atoi(l) == 0;  // (testing: the widened culling off)
     if (const char* l = std::getenv("RAC1_WIDE_FILL")) g_mrp_wide_fill = std::atoi(l) != 0;  // (fill the widescreen sides, default on)
     world_vu1_register();  // the world's tfrag / tie / shrub programs
-    moby_gpu_init();
+    if (gl_inited) moby_gpu_init();
     mrp_scene_install();  // the MRP scene state's observers
     mrp_shadows_install();  // the MRP's drop shadows: the shadow pass's observer
     if (const char* g = std::getenv("RAC1_MOBY_GPU")) {
@@ -2094,7 +2280,10 @@ int main(int argc, char** argv) {
     const bool menu_shot = std::getenv("RAC1_DEVMENU_SHOT") != nullptr;  // testing: the menu open in a headless screenshot
     if (!headless || menu_shot) dt::dev_menu_init(window, g_debug_tools || menu_shot);  // (its saved settings always; the menu with the debug tools)
     if (g_debug_tools) std::printf("[orig] debug tools on: F1 / R3 the debug menu, F2 / L3 moves Ratchet by hand\n");
-    if (env_vsync >= 0 && !headless) glfwSwapInterval(host_swap_interval(env_vsync != 0));  // (testing: over Options > Graphics)
+    if (env_vsync >= 0 && !headless) {
+        if (rac1::vk::is_active()) rac1::vk::set_vsync(env_vsync != 0);
+        else glfwSwapInterval(host_swap_interval(env_vsync != 0));  // (testing: over Options > Graphics)
+    }
     if (const char* pe = std::getenv("RAC1_PIPELINE")) dt::dev_settings().pipeline = std::atoi(pe) != 0;  // (testing)
     if (menu_shot) {
         dt::dev_settings().open = true;
@@ -2170,11 +2359,92 @@ int main(int argc, char** argv) {
         ++run_host_frames;
         glfwPollEvents();
         if (!headless) {  // Options > Graphics: the window's settings changed there applied now; the window as it is reported
-            const bool is_fs = glfwGetWindowMonitor(window) != nullptr;
+            bool is_fs = glfwGetWindowMonitor(window) != nullptr;
             if (rac1::graphics_display_serial() != display_serial) {
                 display_serial = rac1::graphics_display_serial();
                 display_settle = 60;
                 const rac1::GraphicsDisplay& gd = rac1::graphics_display();
+                const bool want_vsync = env_vsync >= 0 ? (env_vsync != 0) : gd.vsync;
+                if (gd.vulkan != rac1::vk::is_active()) {
+                    if (!is_fs) glfwGetWindowPos(window, &windowed_pos[0], &windowed_pos[1]);
+#ifdef RAC1_DEVTOOLS
+                    dt::dev_menu_shutdown();
+#endif
+                    GLFWmonitor* target_mon = gd.fullscreen ? host_fullscreen_monitor() : nullptr;
+                    int target_w = gd.window_w, target_h = gd.window_h;
+                    if (target_mon != nullptr) {
+                        if (const GLFWvidmode* mode = glfwGetVideoMode(target_mon)) {
+                            target_w = mode->width;
+                            target_h = mode->height;
+                        }
+                    }
+                    if (gd.vulkan) {
+                        if (gl_window != nullptr) {
+                            glfwMakeContextCurrent(nullptr);
+                            glfwHideWindow(gl_window);
+                        }
+                        glfwDefaultWindowHints();
+                        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+                        if (target_mon != nullptr) {
+                            if (const GLFWvidmode* mode = glfwGetVideoMode(target_mon)) glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
+                        }
+                        vk_window = glfwCreateWindow(target_w, target_h, "Ratchet & Clank - original runtime", target_mon, nullptr);
+                        if (vk_window != nullptr && rac1::vk::init(vk_window, want_vsync, false)) {
+                            window = vk_window;
+                            if (target_mon == nullptr) glfwSetWindowPos(window, windowed_pos[0], windowed_pos[1]);
+                        } else {
+                            std::fprintf(stderr, "rac1-native: Vulkan 1.3 switch failed, staying on OpenGL 4.6\n");
+                            if (vk_window != nullptr) {
+                                glfwDestroyWindow(vk_window);
+                                vk_window = nullptr;
+                            }
+                            rac1::graphics_set_vulkan(false);
+                            if (gl_window != nullptr) {
+                                glfwShowWindow(gl_window);
+                                glfwMakeContextCurrent(gl_window);
+                                window = gl_window;
+                            }
+                        }
+                    } else {
+                        displayed.vk_reset();
+                        last_shown.vk_reset();
+                        g_scene_pic.vk_reset();
+                        movie_picture.vk_reset();
+                        g_scaled_scene.on = false;
+                        rac1::vk::shutdown();
+                        if (vk_window != nullptr) {
+                            glfwDestroyWindow(vk_window);
+                            vk_window = nullptr;
+                        }
+                        if (gl_window == nullptr) {
+                            glfwDefaultWindowHints();
+                            glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+                            glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+                            glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+                            if (target_mon != nullptr) {
+                                if (const GLFWvidmode* mode = glfwGetVideoMode(target_mon)) glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
+                            }
+                            gl_window = glfwCreateWindow(target_w, target_h, "Ratchet & Clank - original runtime", target_mon, nullptr);
+                            glfwMakeContextCurrent(gl_window);
+                            if (!gl_inited) {
+                                gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress));
+                                ShaderManager::get().init();
+                                moby_gpu_init();
+                                gl_inited = true;
+                            }
+                        } else {
+                            glfwShowWindow(gl_window);
+                            glfwMakeContextCurrent(gl_window);
+                        }
+                        window = gl_window;
+                        if (target_mon == nullptr) glfwSetWindowPos(window, windowed_pos[0], windowed_pos[1]);
+                    }
+                    is_fs = glfwGetWindowMonitor(window) != nullptr;
+                    host_input_init(window);
+#ifdef RAC1_DEVTOOLS
+                    dt::dev_menu_init(window, g_debug_tools || menu_shot);
+#endif
+                }
                 if (gd.fullscreen && is_fs) {  // (the Monitor row changed while fullscreen: the window goes to that screen)
                     if (GLFWmonitor* m = host_fullscreen_monitor(); m != nullptr && m != glfwGetWindowMonitor(window)) {
                         if (const GLFWvidmode* mode = glfwGetVideoMode(m); mode != nullptr) glfwSetWindowMonitor(window, m, 0, 0, mode->width, mode->height, mode->refreshRate);
@@ -2191,7 +2461,8 @@ int main(int argc, char** argv) {
                     if (cw != gd.window_w || ch != gd.window_h) glfwSetWindowSize(window, gd.window_w, gd.window_h);
                     host_window_on_monitor(window, gd.monitor);  // (the Monitor row: the window over on that screen)
                 }
-                glfwSwapInterval(host_swap_interval(env_vsync >= 0 ? env_vsync != 0 : gd.vsync));
+                if (rac1::vk::is_active()) rac1::vk::set_vsync(want_vsync);
+                else glfwSwapInterval(host_swap_interval(want_vsync));
             } else if (display_settle > 0) {
                 --display_settle;
             } else {
@@ -2921,18 +3192,23 @@ int main(int argc, char** argv) {
             const std::vector<uint8_t>* movie_pic = fd.movie_pic;
             const int mw = fd.mw, mh = fd.mh;
             if (menu_mode || fd.vendor_pic || title || movie_pic != nullptr || fd.exiting) rac1::gs::chain_join();  // (those draws may use the GS replica)
-            glViewport(0, 0, w, h);
-            glClearColor(0.02f, 0.02f, 0.04f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            glViewport(vx, vy, vw, vh);
-            if (g_render_wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            if (rac1::vk::is_active()) {
+                rac1::vk::begin_frame(w, h, 0.02f, 0.02f, 0.04f, 1.0f);
+                rac1::vk::set_viewport(vx, vy, vw, vh);
+            } else {
+                glViewport(0, 0, w, h);
+                glClearColor(0.02f, 0.02f, 0.04f, 1.0f);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                glViewport(vx, vy, vw, vh);
+                if (g_render_wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            }
             mrp_world_finish_frame();  // (the scene: waited for, its triangles and draw lists)
             mrp_lighting_frame_begin();  // (the modern lighting: off until this frame's shadow pass)
             if (movie_pic != nullptr) {  // a movie plays: its picture is the whole frame
                 movie_picture.draw(*movie_pic, mw, mh, vx, vy, vw, vh);
             } else if (fd.fade) {  // a frame of the screen fade (ADR 0012): the display buffer, the picture shown, its packets drawn over it
                 const FrozenFrame& disp = displayed_is_last_shown ? last_shown : displayed;
-                if (disp.fbo != 0 && disp.w == w && disp.h == h) disp.blit_to_screen();
+                if (disp.valid() && disp.w == w && disp.h == h) disp.blit_to_screen();
             } else if (title && !fd.flight) {  // the boot's title level (its menu over it): its sky, ties and shrubs (its mobys: the original pass)
                 if (mrp_world_active()) {  // its own passes' chain, drawn by the MRP world
                     rac1::gs::Viewport wv;
@@ -2940,16 +3216,16 @@ int main(int argc, char** argv) {
                     wv.xscale = 1.0f / g_view_widen;
                     wv.xscale_3d = 1.0f;
                     mrp_world_draw(w, h, &wv);
-                } else if (g_title_scene_host) {  // (RAC1_TITLE_HOST=1) the old host renderers
+                } else if (g_title_scene_host && !rac1::vk::is_active()) {  // (RAC1_TITLE_HOST=1) the old host renderers
                     title_scene_host_draw();
                 }  // (else the chain's: the ported VU1 programs and the GS replica)
             } else if (menu_mode && g_scene_pic.menu_pic && g_scene_pic.pic.w == w && g_scene_pic.pic.h == h) {
                 // the frame the menu's start stored (0x2a0f18), put back each frame by 0x2a0fc8: the picture shown then
                 g_scene_pic.pic.blit_to_screen();
-            } else if (menu_mode && last_shown.fbo != 0 && last_shown.w == w && last_shown.h == h) {
+            } else if (menu_mode && last_shown.valid() && last_shown.w == w && last_shown.h == h) {
                 last_shown.blit_to_screen();
             } else if (!menu_mode && !fd.vendor_pic && (!fd.exiting || (fd.flight && g_world_mrp))) {  // (the level exit: the level left is not drawn; its loading screen's flight is)
-                if (g_render_sky && !g_world_faithful && !g_world_mrp) sky_draw();  // (g_world_faithful: the sky comes from the frame's chain too, 0x23d968, g_world_mrp: the MRP draws it from that chain)
+                if (g_render_sky && !g_world_faithful && !g_world_mrp && !rac1::vk::is_active()) sky_draw();  // (g_world_faithful: the sky comes from the frame's chain too, 0x23d968, g_world_mrp: the MRP draws it from that chain)
                 if (g_world_mrp) {  // the MRP world: the frame's chain decoded (above), the world drawn from its assets
                     rac1::gs::Viewport wv;
                     wv.x = vx; wv.y = vy; wv.w = vw; wv.h = vh;
@@ -2959,12 +3235,13 @@ int main(int argc, char** argv) {
                     if (const float rs = rac1::graphics_render_scale(); rs != 1.0f && !g_render_wireframe) {
                         g_scaled_scene.begin(w, h, rs);
                         wv = g_scaled_scene.scaled(wv);
-                        glViewport(wv.x, wv.y, wv.w, wv.h);
+                        if (rac1::vk::is_active()) rac1::vk::set_viewport(wv.x, wv.y, wv.w, wv.h);
+                        else glViewport(wv.x, wv.y, wv.w, wv.h);
                     }
                     if (mrp_moby_active()) mrp_moby_prepare(&fd.gv);  // (the modern lighting: the mobys cast too)
                     mrp_lighting_shadow_pass();
                     mrp_world_draw(w, h, &wv);
-                } else if (!g_world_faithful) {
+                } else if (!g_world_faithful && !rac1::vk::is_active()) {
                     tfrag_render_update();  // (g_world_faithful: the world comes from the frame's VU1 chain)
                 }
             }
@@ -2974,17 +3251,24 @@ int main(int argc, char** argv) {
             const bool menu_cut = menu_mode && g_view_widen > 1.0f;
             if (menu_cut) {
                 const int cw = static_cast<int>(static_cast<float>(vw) / g_view_widen);
-                glEnable(GL_SCISSOR_TEST);
-                glScissor(vx + (vw - cw) / 2, vy, cw, vh);
+                if (rac1::vk::is_active()) {
+                    rac1::vk::set_scissor(true, vx + (vw - cw) / 2, vy, cw, vh);
+                } else {
+                    glEnable(GL_SCISSOR_TEST);
+                    glScissor(vx + (vw - cw) / 2, vy, cw, vh);
+                }
             }
             // the mobys: the host's model drawer, or the original pass (g_moby_vu1_pass: debug menu,
             // RAC1_MOBY_VU1; ADR 0007) drawing through the GS; the exit's cards and movies draw no 3D
             // (the moby list left is not drawn)
-            if (g_render_moby && !g_moby_vu1_pass && movie_pic == nullptr && !story && !title && !fd.fade && !fd.vendor_pic) orig_moby_draw();
+            if (g_render_moby && !g_moby_vu1_pass && !rac1::vk::is_active() && movie_pic == nullptr && !story && !title && !fd.fade && !fd.vendor_pic) orig_moby_draw();
             fprof.mark(2);
-            if (menu_cut) glDisable(GL_SCISSOR_TEST);
+            if (menu_cut) {
+                if (rac1::vk::is_active()) rac1::vk::set_scissor(false);
+                else glDisable(GL_SCISSOR_TEST);
+            }
             fprof.mark(3);
-            if (g_render_wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            if (g_render_wireframe && !rac1::vk::is_active()) glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             {
                 rac1::gs::chain_join();  // (the frame's chain run on the worker thread)
                 rac1::gs::Gs& gs = rac1::gs::gs_global();
@@ -2997,16 +3281,16 @@ int main(int argc, char** argv) {
                     mrp_world_view_proj(vpm);
                     mrp_shadows_check_gs(&gs.primitives(), w, h, fd.fb_w, fd.fb_h, vx, vy, vw, vh, has_dm ? dm.a : 0.0, has_dm ? dm.b : 0.0, vpm);
                 }
-                if (mrp_world_testing())  // (testing: the in-game check, the offscreen image diff of the faithful world against the MRP's)
+                if (mrp_world_testing() && !rac1::vk::is_active())  // (testing: the in-game check, the offscreen image diff of the faithful world against the MRP's)
                     mrp_world_after_chain(w, h, &gv, gs, fd.fb_w, fd.fb_h, fd.frame, has_dm ? &dm : nullptr);
-                if (s_moby_diff) {
+                if (s_moby_diff && !rac1::vk::is_active()) {
                     moby_gpu_diff_compare_drawn(w, h, &gv, gs, fd.fb_w, fd.fb_h, fd.frame, has_dm ? &dm : nullptr);
                 }
-                if (g_render_moby && (g_moby_renderer == MobyRenderer::kGpu || s_moby_diff) && movie_pic == nullptr && !story && !fd.fade && !(title && lw(OV(0x0015f5c4)) == 0)) {
+                if (g_render_moby && !rac1::vk::is_active() && (g_moby_renderer == MobyRenderer::kGpu || s_moby_diff) && movie_pic == nullptr && !story && !fd.fade && !(title && lw(OV(0x0015f5c4)) == 0)) {
                     moby_gpu_draw(w, h, &gv);
                 }
                 static const bool s_mrp_diff = std::getenv("RAC1_MRP_DIFF") != nullptr;
-                const int prim_filt = (g_moby_renderer == MobyRenderer::kGpu || s_moby_diff || mrp_moby_active() || (mrp_world_testing() && mrp_world_active())) ? 2 : 0;
+                const int prim_filt = (g_moby_renderer == MobyRenderer::kGpu || s_mrp_diff || mrp_moby_active() || (mrp_world_testing() && mrp_world_active())) ? 2 : 0;
                 // the GS replica's primitives the chain made before the moby pass (the draw lists 0x1f85b8 runs before it: Hoven's water,
                 // translucent and without Z): drawn under the MRP's mobys, in the original's order (drawn after them, they covered what a
                 // moby draws without Z - the faces of Ratchet's ice cube, which fail its alpha test and write their colour only, #48)
@@ -3026,7 +3310,7 @@ int main(int argc, char** argv) {
                     }
                 }
                 if (mrp_moby_active()) {  // the MRP's mobys (with RAC1_MRP_DIFF: first both renderers' offscreen, compared)
-                    if (s_mrp_diff) mrp_moby_diff(w, h, &gv, gs, fd.fb_w, fd.fb_h, fd.frame, has_dm ? &dm : nullptr);
+                    if (s_mrp_diff && !rac1::vk::is_active()) mrp_moby_diff(w, h, &gv, gs, fd.fb_w, fd.fb_h, fd.frame, has_dm ? &dm : nullptr);
                     if (g_render_moby) {
                         if (g_scaled_scene.on) {  // (the render scale's buffer, its viewport)
                             const rac1::gs::Viewport sgv = g_scaled_scene.scaled(gv);
@@ -3036,20 +3320,28 @@ int main(int argc, char** argv) {
                             const bool mrp_cut = menu_mode && g_view_widen > 1.0f;
                             if (mrp_cut) {
                                 const int cw = static_cast<int>(static_cast<float>(vw) / g_view_widen);
-                                glEnable(GL_SCISSOR_TEST);
-                                glScissor(vx + (vw - cw) / 2, vy, cw, vh);
+                                if (rac1::vk::is_active()) {
+                                    rac1::vk::set_scissor(true, vx + (vw - cw) / 2, vy, cw, vh);
+                                } else {
+                                    glEnable(GL_SCISSOR_TEST);
+                                    glScissor(vx + (vw - cw) / 2, vy, cw, vh);
+                                }
                             }
                             g_mrp_moby_keep_scissor = mrp_cut;
                             mrp_moby_draw(w, h, &gv);
                             g_mrp_moby_keep_scissor = false;
-                            if (mrp_cut) glDisable(GL_SCISSOR_TEST);
+                            if (mrp_cut) {
+                                if (rac1::vk::is_active()) rac1::vk::set_scissor(false);
+                                else glDisable(GL_SCISSOR_TEST);
+                            }
                         }
                     }
                 }
                 mrp_lighting_ao_pass();  // (the ambient occlusion over the 3D, before the effects and the 2D; nothing unless asked)
                 if (g_scaled_scene.on) {  // the scaled 3D on the window; the effects and the 2D drawn over it at the window's resolution
                     g_scaled_scene.end(w, h);
-                    glViewport(vx, vy, vw, vh);
+                    if (rac1::vk::is_active()) rac1::vk::set_viewport(vx, vy, vw, vh);
+                    else glViewport(vx, vy, vw, vh);
                 }
                 static const bool s_moby_new = std::getenv("RAC1_MOBY_NEW_TRACE") != nullptr;  // (testing: the mobys that appear, and how they draw)
                 if (s_moby_new) {
@@ -3092,7 +3384,8 @@ int main(int argc, char** argv) {
                 } else if (g_render_gs2d && movie_pic == nullptr && !fd.fade_held) {
                     rac1::gs::draw(gs, w, h, fd.fb_w, fd.fb_h, has_dm ? &dm : nullptr, &gv, prim_filt, pre_moby);
                 }
-                glViewport(0, 0, w, h);
+                if (rac1::vk::is_active()) rac1::vk::set_viewport(0, 0, w, h);
+                else glViewport(0, 0, w, h);
                 fprof.mark(6);
             }
             if (!menu_mode && !fd.fade && !fd.vendor_pic && !title && movie_pic == nullptr && !fd.exiting) {
@@ -3182,7 +3475,8 @@ int main(int argc, char** argv) {
         } else {
             if (presented) {  // (two pictures this host frame: the pipelined one shown first)
                 fprof.mark(7);
-                glfwSwapBuffers(window);
+                if (rac1::vk::is_active()) rac1::vk::end_frame();
+                else glfwSwapBuffers(window);
             }
             draw(cur);
             presented = true;
@@ -3203,6 +3497,7 @@ int main(int argc, char** argv) {
                             static_cast<unsigned long long>(rac1::gs::gs_global().skipped_tags()), static_cast<unsigned long long>(g_moby_mrp_skip_next_ok),
                             static_cast<unsigned long long>(g_moby_mrp_skip_next_bad));
             save_ppm("screenshot.ppm", w, h);
+            if (rac1::vk::is_active()) rac1::vk::end_frame();
             if (std::getenv("RAC1_MOBY_LIST") != nullptr)  // the live mobys near the hero at the end
                 for (uint32_t m = lwu(OV(0x0015ffd8)); lbu(m + 0x20) != 0xff && m < 0x01fe0000u; m += 0x100) {
                     const float dx = lwc1(m + 0x10) - lwc1(0x0013f3d0), dy = lwc1(m + 0x14) - lwc1(0x0013f3d4);
@@ -3242,7 +3537,8 @@ int main(int argc, char** argv) {
             if (cap <= 0 && vsync && wayland) pace_hz = host_refresh_hz(window);  // (no swap interval there: the display's rate)
         }
         if (!headless || env_fps_cap > 0) pacer.wait(pace_hz);  // (a headless run paced only when RAC1_FPS_CAP asks: testing the audio at 60 fps)
-        glfwSwapBuffers(window);
+        if (rac1::vk::is_active()) rac1::vk::end_frame();
+        else glfwSwapBuffers(window);
         fprof.mark(8);
         fprof.end_frame();
         if (!headless && pacer.legacy) {
@@ -3266,7 +3562,15 @@ int main(int argc, char** argv) {
 #ifdef RAC1_DEVTOOLS
     if (!headless || menu_shot) dt::dev_menu_shutdown();
 #endif
-    glfwDestroyWindow(window);
+    if (rac1::vk::is_active()) {
+        displayed.vk_reset();
+        last_shown.vk_reset();
+        g_scene_pic.vk_reset();
+        movie_picture.vk_reset();
+        rac1::vk::shutdown();
+    }
+    if (vk_window != nullptr) glfwDestroyWindow(vk_window);
+    if (gl_window != nullptr) glfwDestroyWindow(gl_window);
     if (g_audio_dump != nullptr) std::fclose(g_audio_dump);
     if (g_mirror_test) {  // (testing)
         snd989_mirror_report();

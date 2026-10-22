@@ -112,11 +112,12 @@ add_library(rac1_runtime STATIC
     runtime/iop/iop_ram.cpp
     runtime/iop/stash_iop.cpp
     runtime/ipu/movie_hw.cpp
+    runtime/vk/vk_context.cpp
     # file I/O (hardware-adjacent, no game decisions)
     runtime/level/level_loader.cpp
 )
 target_include_directories(rac1_runtime PUBLIC ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(rac1_runtime PUBLIC rac1_platform rac1_formats glad glfw glm_headers OpenGL::GL imgui opengoal_989snd)
+target_link_libraries(rac1_runtime PUBLIC rac1_platform rac1_formats glad glfw glm_headers OpenGL::GL volk imgui opengoal_989snd)
 
 # The movies' MPEG-2 pictures (runtime/ipu/movie_hw.cpp, the IPU's stand-in): FFmpeg's libavcodec
 # when pkg-config finds it (optional). Without it the game runs and its movies are skipped (logged).

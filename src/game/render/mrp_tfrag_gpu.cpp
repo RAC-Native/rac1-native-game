@@ -7,6 +7,8 @@
 #include <game/ovl/vu0_macro.h>
 #include <game/render/mrp_world_assets.h>
 #include <runtime/kernel/ee_memory.h>
+#include <runtime/vk/vk_context.h>
+#include <runtime/vk/vk_shaders.h>
 
 #include <glad/glad.h>
 #define GLFW_INCLUDE_NONE
@@ -1167,6 +1169,47 @@ struct Gpu {
     uint64_t refused = 0;
 } g_gpu;
 
+struct VkGpu {
+    bool tried = false, ok = false;
+    VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
+    VkPipelineLayout pipe_layout = VK_NULL_HANDLE;
+    VkShaderModule cs_mod = VK_NULL_HANDLE;
+    VkPipeline pipe = VK_NULL_HANDLE;
+    vk::GpuBuffer img_buf{};
+    vk::GpuBuffer plan_buf{};
+    vk::GpuBuffer col_buf{};
+    vk::GpuBuffer out_v[vk::kFramesInFlight]{};
+    vk::GpuBuffer out_i[vk::kFramesInFlight]{};
+    uint32_t active_fi = 0;
+    uint64_t level_gen = 0;
+    size_t colour_size = 0;
+    uint64_t colour_updates = 0;
+    const TfragLevel* colour_level = nullptr;
+    size_t image_q = 0;
+    std::vector<uint32_t> plan_words;
+    std::unordered_map<uint32_t, uint32_t> plan_runs;
+    size_t colour_words = 0;
+    uint64_t refused = 0;
+} g_vk_gpu;
+
+void vk_tfrag_shutdown() {
+    VkDevice dev = vk::device();
+    if (dev != VK_NULL_HANDLE) {
+        if (g_vk_gpu.pipe != VK_NULL_HANDLE) vkDestroyPipeline(dev, g_vk_gpu.pipe, nullptr);
+        if (g_vk_gpu.cs_mod != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g_vk_gpu.cs_mod, nullptr);
+        if (g_vk_gpu.pipe_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(dev, g_vk_gpu.pipe_layout, nullptr);
+        if (g_vk_gpu.set_layout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(dev, g_vk_gpu.set_layout, nullptr);
+    }
+    vk::destroy_buffer_now(g_vk_gpu.img_buf);
+    vk::destroy_buffer_now(g_vk_gpu.plan_buf);
+    vk::destroy_buffer_now(g_vk_gpu.col_buf);
+    for (uint32_t i = 0; i < vk::kFramesInFlight; ++i) {
+        vk::destroy_buffer_now(g_vk_gpu.out_v[i]);
+        vk::destroy_buffer_now(g_vk_gpu.out_i[i]);
+    }
+    g_vk_gpu = VkGpu{};
+}
+
 // the bounds the program's loops run to (a plan holds at most 3 steps, kMaxPlanVerts vertices; a step's count is one of
 // the image's lists, never more than the 0x148 qwords' four lanes): the program clamps to them too
 constexpr uint32_t kMaxSteps = 4, kMaxStepN = 4 * 0x148, kImageQ = 0x148;
@@ -1175,11 +1218,12 @@ constexpr uint32_t kMaxSteps = 4, kMaxStepN = 4 * 0x148, kImageQ = 0x148;
 // colours, view, constants, runs or output slots lie outside them, or whose plan's loop counts exceed the program's bounds, is
 // refused: the program's loops take their bounds from the plan, and a stale or wrong plan once hung the GPU - Veldin's plans read
 // with Novalis's draws). Null when it is fine, else why not.
-const char* draw_refused(const TfragGpuDraw& d, const TfragGpuFrame& f) {
-    if (d.nq == 0 || d.image > g_gpu.image_q || d.nq > g_gpu.image_q - d.image) return "image";
-    const auto pr = g_gpu.plan_runs.find(d.plan);
-    if (pr == g_gpu.plan_runs.end()) return "plan (not a plan's first word)";
-    const std::vector<uint32_t>& w = g_gpu.plan_words;
+const char* draw_refused_common(const TfragGpuDraw& d, const TfragGpuFrame& f, size_t image_q,
+                                const std::vector<uint32_t>& w, const std::unordered_map<uint32_t, uint32_t>& plan_runs,
+                                size_t colour_words) {
+    if (d.nq == 0 || d.image > image_q || d.nq > image_q - d.image) return "image";
+    const auto pr = plan_runs.find(d.plan);
+    if (pr == plan_runs.end()) return "plan (not a plan's first word)";
     const size_t P = d.plan;
     if (P + 3 > w.size()) return "plan header";
     const uint32_t nsteps = w[P] & 0xff, form = (w[P] >> 8) & 0xff, nv = w[P + 1], ntri = w[P + 2];
@@ -1192,9 +1236,16 @@ const char* draw_refused(const TfragGpuDraw& d, const TfragGpuFrame& f) {
     if ((static_cast<size_t>(d.view) + 1) * 16 > f.vu_views.size()) return "VU view";
     if ((static_cast<size_t>(d.wview) + 1) * 16 > f.views.size()) return "world view";
     if ((static_cast<size_t>(d.consts) + 1) * 56 > f.consts.size()) return "constants";
-    if (d.col_count > kImageQ || (d.colour != 0xffffffffu && static_cast<size_t>(d.colour) + d.col_count > g_gpu.colour_words)) return "colours";
+    if (d.col_count > kImageQ || (d.colour != 0xffffffffu && static_cast<size_t>(d.colour) + d.col_count > colour_words)) return "colours";
     if (static_cast<size_t>(d.rbase) + pr->second > f.runs.size() / 4) return "runs";
     return nullptr;
+}
+
+const char* draw_refused(const TfragGpuDraw& d, const TfragGpuFrame& f) {
+    if (vk::is_active()) {
+        return draw_refused_common(d, f, g_vk_gpu.image_q, g_vk_gpu.plan_words, g_vk_gpu.plan_runs, g_vk_gpu.colour_words);
+    }
+    return draw_refused_common(d, f, g_gpu.image_q, g_gpu.plan_words, g_gpu.plan_runs, g_gpu.colour_words);
 }
 
 // (a frame's buffer is specified anew each frame - the previous frame's storage orphaned, so that writing it never waits for the GPU
@@ -1211,6 +1262,39 @@ void upload(int i, const void* data, size_t bytes, GLenum usage) {
 
 // orig: (host) see mrp_tfrag_gpu.h
 bool tfrag_gpu_init() {
+    if (vk::is_active()) {
+        if (g_vk_gpu.tried) return g_vk_gpu.ok;
+        g_vk_gpu.tried = true;
+        VkDevice dev = vk::device();
+        if (dev == VK_NULL_HANDLE) return false;
+        VkDescriptorSetLayoutBinding bindings[10]{};
+        for (uint32_t i = 0; i < 10; ++i) {
+            bindings[i].binding = i;
+            bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            bindings[i].descriptorCount = 1;
+            bindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        }
+        VkDescriptorSetLayoutCreateInfo dslci{};
+        dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        dslci.bindingCount = 10;
+        dslci.pBindings = bindings;
+        if (vkCreateDescriptorSetLayout(dev, &dslci, nullptr, &g_vk_gpu.set_layout) != VK_SUCCESS) return false;
+
+        VkPipelineLayoutCreateInfo plci{};
+        plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        plci.setLayoutCount = 1;
+        plci.pSetLayouts = &g_vk_gpu.set_layout;
+        if (vkCreatePipelineLayout(dev, &plci, nullptr, &g_vk_gpu.pipe_layout) != VK_SUCCESS) return false;
+
+        g_vk_gpu.cs_mod = vk::create_shader_module(vk::shaders::kMrpTfragCs, sizeof(vk::shaders::kMrpTfragCs));
+        if (g_vk_gpu.cs_mod == VK_NULL_HANDLE) return false;
+        g_vk_gpu.pipe = vk::create_compute_pipeline(g_vk_gpu.pipe_layout, g_vk_gpu.cs_mod);
+        if (g_vk_gpu.pipe == VK_NULL_HANDLE) return false;
+
+        vk::register_shutdown_callback(vk_tfrag_shutdown);
+        g_vk_gpu.ok = true;
+        return true;
+    }
     if (g_gpu.tried) return g_gpu.ok;
     g_gpu.tried = true;
     p_dispatch = reinterpret_cast<PfnDispatchCompute>(glfwGetProcAddress("glDispatchCompute"));
@@ -1245,10 +1329,25 @@ bool tfrag_gpu_init() {
 }
 
 // orig: (host) see mrp_tfrag_gpu.h
-bool tfrag_gpu_ready() { return g_gpu.ok; }
+bool tfrag_gpu_ready() { return vk::is_active() ? g_vk_gpu.ok : g_gpu.ok; }
 
 // orig: (host) see mrp_tfrag_gpu.h
 void tfrag_gpu_level(const TfragLevel& L) {
+    if (vk::is_active()) {
+        if (!g_vk_gpu.ok || g_vk_gpu.level_gen == L.generation) return;
+        g_vk_gpu.level_gen = L.generation;
+        vk::upload_buffer(g_vk_gpu.img_buf, L.images.data(), std::max<size_t>(L.images.size() * 16, 16),
+                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        vk::upload_buffer(g_vk_gpu.plan_buf, L.plan_words.data(), std::max<size_t>(L.plan_words.size() * 4, 16),
+                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        g_vk_gpu.image_q = L.images.size();
+        g_vk_gpu.plan_words = L.plan_words;
+        g_vk_gpu.plan_runs.clear();
+        for (const TfragEntryGpu& e : L.entries)
+            for (const TfragPlan* p : {&e.far6, &e.mid8, &e.mida, &e.neare, &e.near10, &e.near14, &e.nearb})
+                if (p->ok) g_vk_gpu.plan_runs[p->gpu_first] = static_cast<uint32_t>(p->runs.size());
+        return;
+    }
     // (by the build's generation, not the object's address - the renderer rebuilds the same object at a level change: the
     // next level's draws once ran on the previous level's images and plans, and the GPU hung)
     if (!g_gpu.ok || g_gpu.level_gen == L.generation) return;
@@ -1266,6 +1365,43 @@ void tfrag_gpu_level(const TfragLevel& L) {
 
 // orig: (host) see mrp_tfrag_gpu.h
 void tfrag_gpu_colours(TfragColours& c) {
+    if (vk::is_active()) {
+        if (!g_vk_gpu.ok) return;
+        const size_t bytes = std::max<size_t>(c.mirror.size() * 4, 16);
+        const bool need_full = c.all_dirty || bytes != g_vk_gpu.colour_size || g_vk_gpu.col_buf.buffer == VK_NULL_HANDLE ||
+                               g_vk_gpu.colour_level != c.level ||
+                               (!c.dirty.empty() && g_vk_gpu.colour_updates + 1 != c.updates);
+        if (need_full) {
+            if (g_vk_gpu.col_buf.size < bytes) {
+                vk::destroy_buffer(g_vk_gpu.col_buf);
+                vk::create_buffer(bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                  g_vk_gpu.col_buf, true);
+            }
+            if (g_vk_gpu.col_buf.mapped != nullptr && !c.mirror.empty()) {
+                std::memcpy(g_vk_gpu.col_buf.mapped, c.mirror.data(), c.mirror.size() * 4);
+            }
+            g_vk_gpu.colour_size = bytes;
+            g_vk_gpu.colour_words = c.mirror.size();
+            c.words_uploaded += c.mirror.size();
+            c.all_dirty = false;
+        } else if (g_vk_gpu.col_buf.mapped != nullptr) {
+            size_t at = 0;
+            uint8_t* dst = static_cast<uint8_t*>(g_vk_gpu.col_buf.mapped);
+            for (const auto& [first, n] : c.dirty) {
+                if (static_cast<size_t>(first + n) * 4 <= g_vk_gpu.col_buf.size) {
+                    std::memcpy(dst + static_cast<size_t>(first) * 4, c.dirty_words.data() + at, static_cast<size_t>(n) * 4);
+                }
+                at += n;
+            }
+            c.words_uploaded += at;
+        }
+        g_vk_gpu.colour_level = c.level;
+        g_vk_gpu.colour_updates = c.updates;
+        c.dirty.clear();
+        c.dirty_words.clear();
+        return;
+    }
     if (!g_gpu.ok) return;
     glBindBuffer(kSsbo, g_gpu.buf[3]);
     const size_t bytes = std::max<size_t>(c.mirror.size() * 4, 16);
@@ -1293,9 +1429,118 @@ void tfrag_gpu_colours(TfragColours& c) {
 uint32_t tfrag_gpu_vbo() { return g_gpu.buf[8]; }
 // orig: (host) see mrp_tfrag_gpu.h
 uint32_t tfrag_gpu_ibo() { return g_gpu.buf[9]; }
+uint64_t tfrag_gpu_vk_vbo() {
+    return reinterpret_cast<uint64_t>(g_vk_gpu.out_v[g_vk_gpu.active_fi].buffer);
+}
+uint64_t tfrag_gpu_vk_ibo() {
+    return reinterpret_cast<uint64_t>(g_vk_gpu.out_i[g_vk_gpu.active_fi].buffer);
+}
 
 // orig: (host) see mrp_tfrag_gpu.h
 void tfrag_gpu_dispatch(const TfragGpuFrame& f, uint32_t vertex_bytes) {
+    if (vk::is_active()) {
+        if (!g_vk_gpu.ok || f.draws.empty()) return;
+        auto pw = [](size_t i) { return i < g_vk_gpu.plan_words.size() ? g_vk_gpu.plan_words[i] : 0u; };
+        static std::vector<TfragGpuDraw> kept;
+        kept.clear();
+        uint32_t refused = 0;
+        for (const TfragGpuDraw& d : f.draws) {
+            if (const char* why = draw_refused(d, f); why != nullptr) {
+                if (g_vk_gpu.refused++ < 8)
+                    std::fprintf(stderr, "[mrpw tfrag] VK GPU draw refused (%s): image %u nq %u plan %u view %u consts %u wview %u colour %u+%u runs %u vbase %u ibase %u (frame: %zu draws, %u vertices, %u indices; level: %zu qwords, %zu plan words; the plan's words %08x %08x %08x)\n",
+                                 why, d.image, d.nq, d.plan, d.view, d.consts, d.wview, d.colour, d.col_count, d.rbase, d.vbase, d.ibase, f.draws.size(), f.nverts, f.nidx,
+                                 g_vk_gpu.image_q, g_vk_gpu.plan_words.size(), pw(d.plan), pw(d.plan + 1), pw(d.plan + 2));
+                ++refused;
+                continue;
+            }
+            kept.push_back(d);
+        }
+        const uint32_t fi = vk::frame_index() % vk::kFramesInFlight;
+        g_vk_gpu.active_fi = fi;
+        const size_t want_v = std::max<size_t>(static_cast<size_t>(f.nverts) * vertex_bytes, 64);
+        const size_t want_i = std::max<size_t>(static_cast<size_t>(f.nidx) * 4, 64);
+        if (g_vk_gpu.out_v[fi].size < want_v) {
+            vk::destroy_buffer(g_vk_gpu.out_v[fi]);
+            vk::create_buffer(want_v,
+                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, g_vk_gpu.out_v[fi]);
+        }
+        if (g_vk_gpu.out_i[fi].size < want_i) {
+            vk::destroy_buffer(g_vk_gpu.out_i[fi]);
+            vk::create_buffer(want_i,
+                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+                                  VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, g_vk_gpu.out_i[fi]);
+        }
+        if (kept.empty()) return;
+
+        auto alloc_copy = [](const void* src, size_t bytes) -> vk::RingAlloc {
+            const size_t sz = std::max<size_t>(bytes, 16);
+            vk::RingAlloc r = vk::alloc_ring(sz, 16);
+            if (r.ptr != nullptr) {
+                if (bytes > 0 && src != nullptr) std::memcpy(r.ptr, src, bytes);
+                else std::memset(r.ptr, 0, sz);
+            }
+            return r;
+        };
+        const vk::RingAlloc r_draws = alloc_copy(kept.data(), kept.size() * sizeof(TfragGpuDraw));
+        const vk::RingAlloc r_views = alloc_copy(f.views.data(), f.views.size() * 8);
+        const vk::RingAlloc r_vuviews = alloc_copy(f.vu_views.data(), f.vu_views.size() * 4);
+        const vk::RingAlloc r_consts = alloc_copy(f.consts.data(), f.consts.size() * 4);
+        const vk::RingAlloc r_runs = alloc_copy(f.runs.data(), f.runs.size() * 4);
+
+        if (g_vk_gpu.col_buf.buffer == VK_NULL_HANDLE) {
+            vk::create_buffer(16, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                              g_vk_gpu.col_buf, true);
+        }
+
+        VkDescriptorSet ds = vk::alloc_descriptor_set(g_vk_gpu.set_layout);
+        VkDescriptorBufferInfo dbis[10]{};
+        dbis[0] = {r_draws.buffer, r_draws.offset, std::max<VkDeviceSize>(kept.size() * sizeof(TfragGpuDraw), 16)};
+        dbis[1] = {g_vk_gpu.img_buf.buffer, 0, VK_WHOLE_SIZE};
+        dbis[2] = {g_vk_gpu.plan_buf.buffer, 0, VK_WHOLE_SIZE};
+        dbis[3] = {g_vk_gpu.col_buf.buffer, 0, VK_WHOLE_SIZE};
+        dbis[4] = {r_views.buffer, r_views.offset, std::max<VkDeviceSize>(f.views.size() * 8, 16)};
+        dbis[5] = {r_vuviews.buffer, r_vuviews.offset, std::max<VkDeviceSize>(f.vu_views.size() * 4, 16)};
+        dbis[6] = {r_consts.buffer, r_consts.offset, std::max<VkDeviceSize>(f.consts.size() * 4, 16)};
+        dbis[7] = {r_runs.buffer, r_runs.offset, std::max<VkDeviceSize>(f.runs.size() * 4, 16)};
+        dbis[8] = {g_vk_gpu.out_v[fi].buffer, 0, VK_WHOLE_SIZE};
+        dbis[9] = {g_vk_gpu.out_i[fi].buffer, 0, VK_WHOLE_SIZE};
+
+        VkWriteDescriptorSet writes[10]{};
+        for (uint32_t i = 0; i < 10; ++i) {
+            writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[i].dstSet = ds;
+            writes[i].dstBinding = i;
+            writes[i].descriptorCount = 1;
+            writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            writes[i].pBufferInfo = &dbis[i];
+        }
+        vkUpdateDescriptorSets(vk::device(), 10, writes, 0, nullptr);
+
+        vk::end_rendering();
+        VkCommandBuffer cb = vk::cmd();
+        if (refused != 0 && f.nidx > 0) {
+            vkCmdFillBuffer(cb, g_vk_gpu.out_i[fi].buffer, 0, static_cast<VkDeviceSize>(f.nidx) * 4, 0);
+            VkMemoryBarrier fill_bar{};
+            fill_bar.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+            fill_bar.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            fill_bar.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+            vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &fill_bar, 0, nullptr, 0, nullptr);
+        }
+        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, g_vk_gpu.pipe);
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, g_vk_gpu.pipe_layout, 0, 1, &ds, 0, nullptr);
+        vkCmdDispatch(cb, static_cast<uint32_t>(kept.size()), 1, 1);
+
+        VkMemoryBarrier bar{};
+        bar.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        bar.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        bar.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
+        vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &bar, 0, nullptr, 0, nullptr);
+        return;
+    }
     if (!g_gpu.ok || f.draws.empty()) return;
     // every draw checked before the GPU runs it; the refused ones are left out, their triangle slots zeroed (degenerate)
     auto pw = [](size_t i) { return i < g_gpu.plan_words.size() ? g_gpu.plan_words[i] : 0u; };
@@ -1339,6 +1584,27 @@ void tfrag_gpu_dispatch(const TfragGpuFrame& f, uint32_t vertex_bytes) {
 void tfrag_gpu_readback(const TfragGpuFrame& f, uint32_t vertex_bytes, std::vector<uint8_t>& verts, std::vector<uint32_t>& idx) {
     verts.assign(static_cast<size_t>(f.nverts) * vertex_bytes, 0);
     idx.assign(f.nidx, 0);
+    if (vk::is_active()) {
+        if (!g_vk_gpu.ok) return;
+        const uint32_t fi = g_vk_gpu.active_fi;
+        vk::flush_cmd();
+        auto read_buf = [](const vk::GpuBuffer& src, void* dst, size_t bytes) {
+            if (bytes == 0 || src.buffer == VK_NULL_HANDLE) return;
+            vk::GpuBuffer stg{};
+            if (!vk::create_buffer(bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stg, true))
+                return;
+            vk::submit_immediate([&](VkCommandBuffer cb) {
+                VkBufferCopy region{0, 0, bytes};
+                vkCmdCopyBuffer(cb, src.buffer, stg.buffer, 1, &region);
+            });
+            if (stg.mapped != nullptr) std::memcpy(dst, stg.mapped, bytes);
+            vk::destroy_buffer_now(stg);
+        };
+        read_buf(g_vk_gpu.out_v[fi], verts.data(), verts.size());
+        read_buf(g_vk_gpu.out_i[fi], idx.data(), idx.size() * 4);
+        return;
+    }
     if (!g_gpu.ok) return;
     glBindBuffer(kSsbo, g_gpu.buf[8]);
     if (!verts.empty()) glGetBufferSubData(kSsbo, 0, static_cast<GLsizeiptr>(verts.size()), verts.data());

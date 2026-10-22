@@ -27,11 +27,13 @@
 #include <runtime/ipu/movie_hw.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/ee_memory.h>
+#include <runtime/vk/vk_context.h>
 
 #include <GLFW/glfw3.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
+#include <backends/imgui_impl_vulkan.h>
 #include <imgui.h>
 
 #include <algorithm>
@@ -698,6 +700,11 @@ void renderer_set(bool mrp) {
 }
 
 void tab_rendering() {
+    const bool is_vk = rac1::vk::is_active();
+    ImGui::SeparatorText("Graphics API");
+    if (ImGui::RadioButton("Vulkan 1.3", is_vk)) rac1::graphics_set_vulkan(true);
+    ImGui::SameLine();
+    if (ImGui::RadioButton("OpenGL 4.6", !is_vk)) rac1::graphics_set_vulkan(false);
     const bool mrp = g_world_mrp && g_moby_renderer == MobyRenderer::kMrp;
     const bool vu = g_world_faithful && !g_world_mrp && g_moby_renderer == MobyRenderer::kFaithful;
     ImGui::SeparatorText("Renderer");
@@ -742,7 +749,7 @@ void tab_rendering() {
     ImGui::SeparatorText("Debug views");
     ImGui::Checkbox("Wireframe", &g_render_wireframe);
     const char* shades[] = {"Normal", "Lighting only (vertex colours)", "Textures only (no lighting)", "Flat"};
-    if (ImGui::Combo("Shading", &g_render_shade, shades, 4)) ShaderManager::get().set_debug_shade(g_render_shade);
+    if (ImGui::Combo("Shading", &g_render_shade, shades, 4) && !is_vk) ShaderManager::get().set_debug_shade(g_render_shade);
 }
 
 void tab_display() {
@@ -1269,6 +1276,8 @@ void dev_language_boot() {
     if (v >= 0) w32(LANGUAGE, v);
 }
 
+static bool g_imgui_vk = false;
+
 void dev_menu_init(GLFWwindow* window, bool with_menu) {
     g_window = window;
     g_language_loaded = r32(LANGUAGE);  // the level (and its texts) is loaded by now
@@ -1292,8 +1301,33 @@ void dev_menu_init(GLFWwindow* window, bool with_menu) {
     ImGui::StyleColorsDark();
     ImGui::GetStyle().ScaleAllSizes(1.2f);
     io.FontGlobalScale = 1.2f;
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 330");
+    g_imgui_vk = rac1::vk::is_active();
+    if (g_imgui_vk) {
+        ImGui_ImplGlfw_InitForVulkan(window, true);
+        ImGui_ImplVulkan_LoadFunctions([](const char* name, void* inst) {
+            return vkGetInstanceProcAddr(static_cast<VkInstance>(inst), name);
+        }, rac1::vk::instance());
+        ImGui_ImplVulkan_InitInfo info{};
+        info.Instance = rac1::vk::instance();
+        info.PhysicalDevice = rac1::vk::physical_device();
+        info.Device = rac1::vk::device();
+        info.QueueFamily = rac1::vk::graphics_queue_family();
+        info.Queue = rac1::vk::graphics_queue();
+        info.DescriptorPool = rac1::vk::imgui_descriptor_pool();
+        info.MinImageCount = 2;
+        info.ImageCount = 2;
+        info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+        info.UseDynamicRendering = true;
+        VkFormat col_fmt = rac1::vk::color_format();
+        info.PipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+        info.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
+        info.PipelineRenderingCreateInfo.pColorAttachmentFormats = &col_fmt;
+        ImGui_ImplVulkan_Init(&info);
+        ImGui_ImplVulkan_CreateFontsTexture();
+    } else {
+        ImGui_ImplGlfw_InitForOpenGL(window, true);
+        ImGui_ImplOpenGL3_Init("#version 330");
+    }
 }
 
 void dev_menu_shutdown() {
@@ -1303,7 +1337,12 @@ void dev_menu_shutdown() {
     if (g_window == nullptr) return;
     if (!g_menu) { g_window = nullptr; return; }
     g_menu = false;
-    ImGui_ImplOpenGL3_Shutdown();
+    if (g_imgui_vk) {
+        rac1::vk::wait_idle();
+        ImGui_ImplVulkan_Shutdown();
+    } else {
+        ImGui_ImplOpenGL3_Shutdown();
+    }
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
     g_window = nullptr;
@@ -1384,7 +1423,8 @@ void dev_menu_draw(double update_ms, double frame_ms) {
         mrp_lighting_screen_point(-1.0f, -1.0f, unused);
     }
     if (!g_menu || (!g_settings.open && !g_settings.show_stats)) return;
-    ImGui_ImplOpenGL3_NewFrame();
+    if (g_imgui_vk) ImGui_ImplVulkan_NewFrame();
+    else ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
     if (g_settings.show_stats) {
@@ -1426,7 +1466,8 @@ void dev_menu_draw(double update_ms, double frame_ms) {
         ImGui::End();
     }
     ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    if (g_imgui_vk) rac1::vk::render_imgui(ImGui::GetDrawData());
+    else ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 }  // namespace rac1::devtools

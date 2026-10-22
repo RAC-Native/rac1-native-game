@@ -10,6 +10,8 @@
 #include <game/render/render_view.h>
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
+#include <runtime/vk/vk_context.h>
+#include <runtime/vk/vk_shaders.h>
 #include <runtime/vu/vu1.h>
 
 #include <glad/glad.h>
@@ -266,6 +268,22 @@ void main() {
 GLuint g_prog = 0, g_vao = 0, g_vbo = 0;
 GLint g_loc_vp = -1, g_loc_atlas = -1, g_loc_shade = -1, g_loc_mode = -1, g_loc_frame = -1, g_loc_xyoff = -1, g_loc_pass = -1;
 
+struct FxVkPush {
+    float uVP[16];
+    float uFrame[4];
+    float uXyOff[4];
+    int32_t uMode;
+    int32_t uShade;
+    int32_t uPass;
+    int32_t _pad = 0;
+};
+static_assert(sizeof(FxVkPush) == 112);
+
+VkShaderModule g_vk_vs = VK_NULL_HANDLE, g_vk_fs = VK_NULL_HANDLE;
+VkDescriptorSetLayout g_vk_set_layout = VK_NULL_HANDLE;
+VkPipelineLayout g_vk_pipe_layout = VK_NULL_HANDLE;
+VkSampler g_vk_sampler = VK_NULL_HANDLE;
+
 GLuint compile(GLenum type, const char* src) {
     const GLuint s = glCreateShader(type);
     glShaderSource(s, 1, &src, nullptr);
@@ -280,7 +298,87 @@ GLuint compile(GLenum type, const char* src) {
     return s;
 }
 
+// ---- the resident textures: an atlas of kLayer x kLayer layers, a texture in a layer's corner, by its pixels ------------------------
+
+constexpr int kLayer = 256;
+// The atlas is bounded: an effect whose texture the game writes anew every frame (Aridia's sand sea, L2:0x2a4818's texture upload: a
+// 64 x 64 texture of new pixels each frame) took a new layer every frame, the atlas doubled without end (2048 layers after ~34 s,
+// 4096 after ~68 s), and where the GL's GL_MAX_ARRAY_TEXTURE_LAYERS is 2048 (NVIDIA) the growth to 4096 failed: the array was left
+// without storage and every effect drew untextured or black from then on - the glows, trails and smoke, the bolts, the enemies'
+// shots, the sand sea itself (issue #19), until the game was restarted. Now the atlas grows up to kAtlasCap layers (or the GL's
+// maximum, if lower), then reuses the layer least recently drawn with (never one drawn with this frame: its batches are pending).
+constexpr int kAtlasCap = 1024;  // (256 MB at most)
+constexpr size_t kIdsPerLayer = 64;  // (the decodes remembered per layer; past it they are found by their pixels' hash again)
+struct Atlas {
+    GLuint tex = 0;
+    int layers = 0, used = 0, cap = 0;
+    std::unordered_map<uint64_t, int> by_hash;  // the pixels' hash (and size) -> layer
+    std::unordered_map<uint64_t, int> by_id;    // TexImage::id -> layer (the hash not taken again)
+    std::vector<uint64_t> hash;                 // per layer: its texture's hash
+    std::vector<std::vector<uint64_t>> ids;     // per layer: the decodes in by_id that point to it
+    std::vector<uint64_t> last;                 // per layer: the frame it was last drawn with (g_st.frames)
+    uint64_t reused = 0, full = 0, grow_failed = 0;
+} g_atlas, g_vk_atlas;
+vk::GpuImage g_vk_atlas_img;
+
+void shutdown_vk_fx() {
+    VkDevice dev = vk::device();
+    if (dev != VK_NULL_HANDLE) {
+        if (g_vk_pipe_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(dev, g_vk_pipe_layout, nullptr);
+        if (g_vk_set_layout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(dev, g_vk_set_layout, nullptr);
+        if (g_vk_vs != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g_vk_vs, nullptr);
+        if (g_vk_fs != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g_vk_fs, nullptr);
+    }
+    g_vk_pipe_layout = VK_NULL_HANDLE;
+    g_vk_set_layout = VK_NULL_HANDLE;
+    g_vk_vs = VK_NULL_HANDLE;
+    g_vk_fs = VK_NULL_HANDLE;
+    g_vk_sampler = VK_NULL_HANDLE;
+    vk::destroy_image_now(g_vk_atlas_img);
+    g_vk_atlas = Atlas{};
+}
+
+bool init_vk() {
+    if (g_vk_pipe_layout != VK_NULL_HANDLE) return true;
+    VkDevice dev = vk::device();
+    if (dev == VK_NULL_HANDLE) return false;
+    g_vk_vs = vk::create_shader_module(vk::shaders::kMrpFxVs, sizeof(vk::shaders::kMrpFxVs));
+    g_vk_fs = vk::create_shader_module(vk::shaders::kMrpFxFs, sizeof(vk::shaders::kMrpFxFs));
+    if (g_vk_vs == VK_NULL_HANDLE || g_vk_fs == VK_NULL_HANDLE) return false;
+
+    VkDescriptorSetLayoutBinding bind{};
+    bind.binding = 0;
+    bind.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    bind.descriptorCount = 1;
+    bind.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutCreateInfo slci{};
+    slci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    slci.bindingCount = 1;
+    slci.pBindings = &bind;
+    if (vkCreateDescriptorSetLayout(dev, &slci, nullptr, &g_vk_set_layout) != VK_SUCCESS) return false;
+
+    VkPushConstantRange pcr{};
+    pcr.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    pcr.offset = 0;
+    pcr.size = sizeof(FxVkPush);
+
+    VkPipelineLayoutCreateInfo plci{};
+    plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    plci.setLayoutCount = 1;
+    plci.pSetLayouts = &g_vk_set_layout;
+    plci.pushConstantRangeCount = 1;
+    plci.pPushConstantRanges = &pcr;
+    if (vkCreatePipelineLayout(dev, &plci, nullptr, &g_vk_pipe_layout) != VK_SUCCESS) return false;
+
+    g_vk_sampler = vk::get_sampler(VK_FILTER_NEAREST, VK_FILTER_NEAREST,
+                                   VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    vk::register_shutdown_callback(shutdown_vk_fx);
+    return true;
+}
+
 bool init_gl() {
+    if (vk::is_active()) return init_vk();
     if (g_prog != 0) return true;
     const GLuint vs = compile(GL_VERTEX_SHADER, kVs), fs = compile(GL_FRAGMENT_SHADER, kFs);
     g_prog = glCreateProgram();
@@ -323,28 +421,6 @@ bool init_gl() {
     return true;
 }
 
-// ---- the resident textures: an atlas of kLayer x kLayer layers, a texture in a layer's corner, by its pixels ------------------------
-
-constexpr int kLayer = 256;
-// The atlas is bounded: an effect whose texture the game writes anew every frame (Aridia's sand sea, L2:0x2a4818's texture upload: a
-// 64 x 64 texture of new pixels each frame) took a new layer every frame, the atlas doubled without end (2048 layers after ~34 s,
-// 4096 after ~68 s), and where the GL's GL_MAX_ARRAY_TEXTURE_LAYERS is 2048 (NVIDIA) the growth to 4096 failed: the array was left
-// without storage and every effect drew untextured or black from then on - the glows, trails and smoke, the bolts, the enemies'
-// shots, the sand sea itself (issue #19), until the game was restarted. Now the atlas grows up to kAtlasCap layers (or the GL's
-// maximum, if lower), then reuses the layer least recently drawn with (never one drawn with this frame: its batches are pending).
-constexpr int kAtlasCap = 1024;  // (256 MB at most)
-constexpr size_t kIdsPerLayer = 64;  // (the decodes remembered per layer; past it they are found by their pixels' hash again)
-struct Atlas {
-    GLuint tex = 0;
-    int layers = 0, used = 0, cap = 0;
-    std::unordered_map<uint64_t, int> by_hash;  // the pixels' hash (and size) -> layer
-    std::unordered_map<uint64_t, int> by_id;    // TexImage::id -> layer (the hash not taken again)
-    std::vector<uint64_t> hash;                 // per layer: its texture's hash
-    std::vector<std::vector<uint64_t>> ids;     // per layer: the decodes in by_id that point to it
-    std::vector<uint64_t> last;                 // per layer: the frame it was last drawn with (g_st.frames)
-    uint64_t reused = 0, full = 0, grow_failed = 0;
-} g_atlas;
-
 uint64_t tex_hash(const gs::TexImage& t) {
     uint64_t h = 1469598103934665603ull ^ (static_cast<uint64_t>(t.w) << 32 | static_cast<uint32_t>(t.h));
     for (uint32_t p : t.px) h = (h ^ p) * 1099511628211ull;
@@ -353,6 +429,40 @@ uint64_t tex_hash(const gs::TexImage& t) {
 
 // orig: (host) the array grown to `n` layers, the used ones copied; false: the GL refused it (the old array kept)
 bool atlas_grow(Atlas& A, int n) {
+    if (vk::is_active()) {
+        vk::GpuImage nt{};
+        if (!vk::create_image(kLayer, kLayer, VK_FORMAT_R8G8B8A8_UNORM,
+                              VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                              VK_IMAGE_ASPECT_COLOR_BIT, nt, static_cast<uint32_t>(n), 0, VK_IMAGE_VIEW_TYPE_2D_ARRAY, 1)) {
+            if (A.grow_failed++ == 0) std::fprintf(stderr, "[mrp-fx] the effects' texture atlas could not grow to %d layers: kept at %d\n", n, A.layers);
+            return false;
+        }
+        auto copy_layers = [&](VkCommandBuffer cb) {
+            vk::transition_image(cb, nt, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            if (g_vk_atlas_img.image != VK_NULL_HANDLE && A.used > 0) {
+                vk::transition_image(cb, g_vk_atlas_img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+                VkImageCopy region{};
+                region.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, static_cast<uint32_t>(A.used)};
+                region.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, static_cast<uint32_t>(A.used)};
+                region.extent = {static_cast<uint32_t>(kLayer), static_cast<uint32_t>(kLayer), 1};
+                vkCmdCopyImage(cb, g_vk_atlas_img.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                               nt.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+                vk::transition_image(cb, g_vk_atlas_img, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            }
+            vk::transition_image(cb, nt, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        };
+        if (vk::cmd() != VK_NULL_HANDLE) {
+            vk::end_rendering();
+            copy_layers(vk::cmd());
+        } else {
+            vk::submit_immediate(copy_layers);
+        }
+        vk::destroy_image(g_vk_atlas_img);
+        g_vk_atlas_img = nt;
+        A.tex = 1;
+        A.layers = n;
+        return true;
+    }
     while (glGetError() != GL_NO_ERROR) {
     }
     GLuint nt = 0;
@@ -411,7 +521,8 @@ void atlas_note_id(Atlas& A, int l, uint64_t id) {
 // orig: (host) the layer holding texture `t` (uploaded at its first use; the atlas grown, its layers copied, up to its cap; then the
 // least recently drawn layer reused); -1: too big, or every layer drawn with this frame
 int atlas_layer(const gs::TexImage& t) {
-    Atlas& A = g_atlas;
+    const bool use_vk = vk::is_active();
+    Atlas& A = use_vk ? g_vk_atlas : g_atlas;
     const uint64_t now = g_st.frames;
     if (auto it = A.by_id.find(t.id); it != A.by_id.end()) {
         A.last[static_cast<size_t>(it->second)] = now;
@@ -428,9 +539,13 @@ int atlas_layer(const gs::TexImage& t) {
         return it->second;
     }
     if (A.cap == 0) {
-        GLint max_layers = 0;
-        glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &max_layers);
-        A.cap = std::max(32, std::min(kAtlasCap, static_cast<int>(max_layers)));
+        if (use_vk) {
+            A.cap = kAtlasCap;
+        } else {
+            GLint max_layers = 0;
+            glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &max_layers);
+            A.cap = std::max(32, std::min(kAtlasCap, static_cast<int>(max_layers)));
+        }
         if (const char* e = std::getenv("RAC1_MRP_FX_ATLAS_CAP"); e != nullptr && std::atoi(e) > 0) A.cap = std::atoi(e);  // (testing: a smaller cap)
     }
     int layer = -1;
@@ -453,10 +568,15 @@ int atlas_layer(const gs::TexImage& t) {
         }
         atlas_evict(A, layer);
     }
-    glBindTexture(GL_TEXTURE_2D_ARRAY, A.tex);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, layer, t.w, t.h, 1, GL_RGBA, GL_UNSIGNED_BYTE, t.px.data());
-    glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+    if (use_vk) {
+        vk::upload_image_2d(g_vk_atlas_img, t.px.data(), static_cast<size_t>(t.w) * t.h * 4, 0, 0, t.w, t.h, 0,
+                            static_cast<uint32_t>(layer), 0);
+    } else {
+        glBindTexture(GL_TEXTURE_2D_ARRAY, A.tex);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, layer, t.w, t.h, 1, GL_RGBA, GL_UNSIGNED_BYTE, t.px.data());
+        glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+    }
     A.by_hash[h] = layer;
     A.hash[static_cast<size_t>(layer)] = h;
     atlas_note_id(A, layer, t.id);
@@ -1096,6 +1216,8 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
     g_st.verts += g_v.size();
     double ms_gs = 0.0;
     bool uploaded = false;
+    vk::RingAlloc vk_vbo_alloc{};
+    VkDescriptorSet vk_ds = VK_NULL_HANDLE;
     for (const Step& sp : g_steps) {
         if (!g_render_fx) break;  // (the debug menu's effects layer hidden)
         if (sp.gs) {  // the GS replica's run (its own GL state)
@@ -1108,6 +1230,130 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
             continue;
         }
         if (g_env_hide) continue;  // (testing)
+        if (vk::is_active()) {
+            if (!uploaded && !g_v.empty()) {
+                vk_vbo_alloc = vk::alloc_ring(g_v.size() * sizeof(FV), 16);
+                std::memcpy(vk_vbo_alloc.ptr, g_v.data(), g_v.size() * sizeof(FV));
+                if (g_vk_atlas_img.image == VK_NULL_HANDLE) atlas_grow(g_vk_atlas, 32);
+                vk_ds = vk::alloc_descriptor_set(g_vk_set_layout);
+                VkDescriptorImageInfo dii{};
+                dii.sampler = g_vk_sampler;
+                dii.imageView = g_vk_atlas_img.view != VK_NULL_HANDLE ? g_vk_atlas_img.view : vk::white_texture_array().view;
+                dii.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                VkWriteDescriptorSet wds{};
+                wds.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                wds.dstSet = vk_ds;
+                wds.dstBinding = 0;
+                wds.descriptorCount = 1;
+                wds.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                wds.pImageInfo = &dii;
+                vkUpdateDescriptorSets(vk::device(), 1, &wds, 0, nullptr);
+                uploaded = true;
+            }
+            if (g_v.empty()) continue;
+            vk::ensure_rendering();
+            if (vp != nullptr) vk::set_viewport(vp->x, vp->y, vp->w, vp->h);
+            else vk::set_viewport(0, 0, win_w, win_h);
+            vk::set_scissor(false);
+            VkCommandBuffer cb = vk::cmd();
+            vkCmdBindVertexBuffers(cb, 0, 1, &vk_vbo_alloc.buffer, &vk_vbo_alloc.offset);
+            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_pipe_layout, 0, 1, &vk_ds, 0, nullptr);
+
+            FxVkPush pc{};
+            std::memcpy(pc.uVP, vpm, sizeof(pc.uVP));
+            float fb_w = static_cast<float>(lhu(0x001518d0)), fb_h = static_cast<float>(lhu(0x001518d2));
+            if (fb_w <= 0.0f) fb_w = 512.0f;
+            if (fb_h <= 0.0f) fb_h = 416.0f;
+            pc.uFrame[0] = fb_w;
+            pc.uFrame[1] = fb_h;
+            pc.uFrame[2] = vp != nullptr ? vp->xscale_3d : 1.0f;
+            pc.uFrame[3] = 0.0f;
+            double da = 0.0, db = 0.0;
+            const bool has = render_gs_depth(da, db);
+            pc.uXyOff[0] = static_cast<float>(fld(env_xyoff, 0, 16)) / 16.0f + fb_w * 0.5f;
+            pc.uXyOff[1] = static_cast<float>(fld(env_xyoff, 32, 16)) / 16.0f + fb_h * 0.5f;
+            pc.uXyOff[2] = has ? static_cast<float>(da) : 0.5f;
+            pc.uXyOff[3] = has ? static_cast<float>(db) : 0.0f;
+            pc.uMode = vu_mode ? 1 : 0;
+            pc.uShade = g_render_shade;
+            pc.uPass = 0;
+
+            vk::GraphicsPipelineDesc base_desc{};
+            base_desc.layout = g_vk_pipe_layout;
+            base_desc.vs = g_vk_vs;
+            base_desc.fs = g_vk_fs;
+            base_desc.vertex_bindings = {{0, sizeof(FV), VK_VERTEX_INPUT_RATE_VERTEX}};
+            base_desc.vertex_attribs = {
+                {0, 0, VK_FORMAT_R32G32B32A32_SFLOAT, static_cast<uint32_t>(offsetof(FV, wp))},
+                {1, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(FV, stq))},
+                {2, 0, VK_FORMAT_R32_SFLOAT, static_cast<uint32_t>(offsetof(FV, fog))},
+                {3, 0, VK_FORMAT_R8G8B8A8_UINT, static_cast<uint32_t>(offsetof(FV, rgba))},
+                {4, 0, VK_FORMAT_R32G32B32A32_UINT, static_cast<uint32_t>(offsetof(FV, tex))},
+                {5, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(FV, vu))},
+            };
+            base_desc.cull_mode = VK_CULL_MODE_NONE;
+
+            for (size_t bi = sp.from; bi < sp.to; ++bi) {
+                const Batch& b = g_batches[bi];
+                if (b.count == 0) continue;
+                const BKey& k = b.key;
+                vk::GraphicsPipelineDesc desc = base_desc;
+                desc.topology = k.lines ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+                float fix = 0.0f;
+                if (k.dual) {
+                    desc.blend_enable = true;
+                    desc.src_color_blend = VK_BLEND_FACTOR_ONE;
+                    desc.dst_color_blend = VK_BLEND_FACTOR_SRC1_COLOR;
+                    desc.color_blend_op = VK_BLEND_OP_ADD;
+                    desc.src_alpha_blend = VK_BLEND_FACTOR_ONE;
+                    desc.dst_alpha_blend = VK_BLEND_FACTOR_ZERO;
+                    desc.alpha_blend_op = VK_BLEND_OP_ADD;
+                } else {
+                    gs::DrawState ds_blend{};
+                    ds_blend.prim = k.blend ? (1ull << 6) : 0;
+                    ds_blend.alpha = k.alpha;
+                    gs::vk_blend_state(ds_blend, false, desc, fix);
+                }
+                const float bc[4] = {0.0f, 0.0f, 0.0f, fix};
+                vkCmdSetBlendConstants(cb, bc);
+
+                desc.depth_test = k.ztest;
+                desc.depth_compare = k.ztst == 0 ? VK_COMPARE_OP_NEVER : k.ztst == 2 ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_LESS;
+
+                if (k.split) {
+                    desc.depth_write = true;
+                    desc.color_write_mask = 0;
+                    VkPipeline p1 = vk::create_graphics_pipeline(desc);
+                    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, p1);
+                    pc.uPass = 1;
+                    vkCmdPushConstants(cb, g_vk_pipe_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
+                    vkCmdDraw(cb, b.count, 1, b.first, 0);
+                    ++g_st.draws;
+
+                    desc.depth_write = false;
+                    desc.color_write_mask =
+                        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+                    if (k.ztst != 0) desc.depth_compare = VK_COMPARE_OP_LESS_OR_EQUAL;
+                    VkPipeline p2 = vk::create_graphics_pipeline(desc);
+                    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, p2);
+                    pc.uPass = 0;
+                    vkCmdPushConstants(cb, g_vk_pipe_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
+                    vkCmdDraw(cb, b.count, 1, b.first, 0);
+                } else {
+                    desc.depth_write = k.zwrite;
+                    desc.color_write_mask =
+                        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+                    VkPipeline pipe = vk::create_graphics_pipeline(desc);
+                    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
+                    pc.uPass = 0;
+                    vkCmdPushConstants(cb, g_vk_pipe_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
+                    vkCmdDraw(cb, b.count, 1, b.first, 0);
+                }
+                ++g_st.draws;
+                ++g_st.batches;
+            }
+            continue;
+        }
         // the GL state
         if (vp != nullptr) glViewport(vp->x, vp->y, vp->w, vp->h);
         else glViewport(0, 0, win_w, win_h);
@@ -1277,15 +1523,16 @@ void mrp_fx_report() {
     if (g_st.frames == 0 && g_inventory.empty()) return;
     if (g_st.frames == 0) g_st.frames = 1;
     const double f = static_cast<double>(g_st.frames);
+    const Atlas& A = vk::is_active() ? g_vk_atlas : g_atlas;
     std::printf("[mrp-fx] %llu frames: %llu primitives (%llu sprites, %llu triangles, %llu lines), %.1f vertices / %.2f batches / %.2f draws a frame; "
                 "atlas %d textures (%llu too big, %llu with mips, %llu region clamps, %llu UV, %llu fogged); build %.3f ms, GL %.3f ms a frame\n",
                 static_cast<unsigned long long>(g_st.frames), static_cast<unsigned long long>(g_st.prims), static_cast<unsigned long long>(g_st.sprites),
                 static_cast<unsigned long long>(g_st.tris), static_cast<unsigned long long>(g_st.lines), static_cast<double>(g_st.verts) / f,
-                static_cast<double>(g_st.batches) / f, static_cast<double>(g_st.draws) / f, g_atlas.used, static_cast<unsigned long long>(g_st.tex_big),
+                static_cast<double>(g_st.batches) / f, static_cast<double>(g_st.draws) / f, A.used, static_cast<unsigned long long>(g_st.tex_big),
                 static_cast<unsigned long long>(g_st.tex_mip), static_cast<unsigned long long>(g_st.region), static_cast<unsigned long long>(g_st.fst),
                 static_cast<unsigned long long>(g_st.fge), g_st.ms_build / f, g_st.ms_gl / f);
-    std::printf("[mrp-fx] atlas: %d of %d layers (cap %d), %llu reused, %llu textures not drawn (every layer in use)\n", g_atlas.used, g_atlas.layers, g_atlas.cap,
-                static_cast<unsigned long long>(g_atlas.reused), static_cast<unsigned long long>(g_atlas.full));
+    std::printf("[mrp-fx] atlas: %d of %d layers (cap %d), %llu reused, %llu textures not drawn (every layer in use)\n", A.used, A.layers, A.cap,
+                static_cast<unsigned long long>(A.reused), static_cast<unsigned long long>(A.full));
     if (g_st.kc_starts != 0)
         std::printf("[mrp-fx] kick check: %llu particle program starts, %llu kicks, %llu quadwords against the VU interpreter on the uploaded microcode: "
                     "%llu starts and %llu quadwords differ\n",

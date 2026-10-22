@@ -201,6 +201,8 @@ void tfrag_gpu_level(const TfragLevel& L);
 void tfrag_gpu_colours(TfragColours& c);
 uint32_t tfrag_gpu_vbo();
 uint32_t tfrag_gpu_ibo();
+uint64_t tfrag_gpu_vk_vbo();
+uint64_t tfrag_gpu_vk_ibo();
 void tfrag_gpu_dispatch(const TfragGpuFrame& f, uint32_t vertex_bytes);
 // orig: (host) testing: the vertices / indices the last dispatch wrote, read back
 void tfrag_gpu_readback(const TfragGpuFrame& f, uint32_t vertex_bytes, std::vector<uint8_t>& verts, std::vector<uint32_t>& idx);
