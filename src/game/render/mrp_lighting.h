@@ -202,6 +202,13 @@ void mrp_lighting_bind_receiver(const ShadowLocs& l, bool sky = false);
 void mrp_lighting_bind_caster(const ShadowLocs& l, const float* light_vp);
 // orig: (host) the uniforms back to "no lighting, no pass" (the program bound): the MRP's original image
 void mrp_lighting_bind_off(const ShadowLocs& l);
+// orig: (host) the Vulkan descriptor set layout (set = 1) and bindings for the modern lighting
+uint64_t mrp_lighting_vk_set_layout();
+void mrp_lighting_vk_bind_receiver(uint64_t pipe_layout, bool sky = false, bool lit_variant = true);
+void mrp_lighting_vk_bind_caster(uint64_t pipe_layout, const float* light_vp, bool opaque = false);
+void mrp_lighting_vk_bind_off(uint64_t pipe_layout);
+// orig: (host) Vulkan: whether the MRP mobys drawn now mark their pixels in the stencil (bit 0) for the ambient occlusion
+bool mrp_lighting_vk_ao_marking();
 
 // The draws the shadow pass asks of the renderers (mrp_world_renderer.cpp, mrp_moby_renderer.cpp): the frame's casters with the
 // light's view-projection `light_vp` into the bound depth buffer (depth only, alpha-tested cut-outs)

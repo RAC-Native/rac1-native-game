@@ -12,6 +12,13 @@ update check and the launcher use the new address. Windows is no longer experime
 played through the game on it, and the launcher installs and updates it with a double-click.
 
 ### Graphics
+- **Vulkan (experimental, opt-in):** a new Graphics row, Renderer (OpenGL, Vulkan), draws the game
+  with Vulkan 1.3 instead of OpenGL 4.6, from the next start; `RAC1_RENDERER=vulkan` for one run.
+  Everything the modern renderer draws is there (the world, the mobys, the effects, the modern
+  lighting with its shadows, occlusion and sun rays, the HUD and menus), the debug menu and its
+  Profiler too. OpenGL stays the default, and the game falls back to it when Vulkan cannot start.
+  Its shaders are compiled when the game is built, with `glslc` (an optional package the setup now
+  lists). See [Vulkan](docs/vulkan.md).
 - **The full frame, always:** the Overscan row is removed. The thin slivers the game itself leaves
   at the frame's edge as a HUD element slides away (the Suck Cannon's gauge, the air meter), which a
   TV hid, are not drawn. Older settings and saves with the row load fine.

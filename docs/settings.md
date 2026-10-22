@@ -39,6 +39,7 @@ headless runs) the row is the game's own Mono / Stereo.
 
 | Row | Values | Default |
 |---|---|---|
+| Renderer | OpenGL, Vulkan (experimental; from the next start, see [Vulkan](vulkan.md)) | OpenGL |
 | Display | Window, Fullscreen | Window |
 | Monitor | the connected monitors by name (DP-1, HDMI-A-1, ...) | the first one |
 | Window Size | 640x480 (the original's) to 3840x2160 (16 sizes, 4:3 and 16:9 among them) | 960x720 |

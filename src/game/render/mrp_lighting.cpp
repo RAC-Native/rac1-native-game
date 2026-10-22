@@ -8,6 +8,8 @@
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_view.h>
 #include <profiler/host_profiler.h>
+#include <runtime/vk/vk_context.h>
+#include <runtime/vk/vk_shaders.h>
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -390,9 +392,144 @@ void read_splits() {
     }
 }
 
+bool g_vk_ao_marking = false;  // (Vulkan: the MRP mobys drawn now mark their pixels in the stencil, bit 0, for the occlusion)
+struct VkLighting {
+    bool inited = false;
+    VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
+    vk::GpuImage tex{};
+    VkImageView tex_layers[kCascades] = {};
+    int res = 0;
+    vk::GpuImage stex[kCascades]{};
+    int stex_res[kCascades] = {};
+    vk::GpuImage ptex{};
+    VkImageView ptex_faces[6 * kPtShadows] = {};
+    vk::GpuImage tiles{};
+    uint64_t ubo_gen = 1;
+    uint64_t off_gen = 0;
+    VkDescriptorSet off_ds = VK_NULL_HANDLE;
+    uint64_t rec_gen[2][2] = {};
+    VkDescriptorSet rec_ds[2][2] = {};
+    uint64_t cast_gen = 0;
+    float cast_vp[16] = {};
+    bool cast_opaque = false;
+    VkDescriptorSet cast_ds = VK_NULL_HANDLE;
+
+    // AO & Sun Rays Vulkan state
+    VkShaderModule vs_mod = VK_NULL_HANDLE;
+    VkShaderModule ao_fs_mod = VK_NULL_HANDLE;
+    VkShaderModule blur_fs_mod = VK_NULL_HANDLE;
+    VkShaderModule blur_sep_fs_mod = VK_NULL_HANDLE;
+    VkShaderModule rays_mask_fs_mod = VK_NULL_HANDLE;
+    VkShaderModule rays_blur_fs_mod = VK_NULL_HANDLE;
+    VkShaderModule rays_add_fs_mod = VK_NULL_HANDLE;
+    VkDescriptorSetLayout samp1_layout = VK_NULL_HANDLE;
+    VkDescriptorSetLayout samp2_layout = VK_NULL_HANDLE;
+    VkDescriptorSetLayout samp3_layout = VK_NULL_HANDLE;  // (the occlusion's blurs: the occlusion, the depth, its stencil)
+    VkImageView ao_stencil_view = VK_NULL_HANDLE;           // (ao_dtex's stencil: the mobys' pixels)
+    VkPipelineLayout ao_layout = VK_NULL_HANDLE;
+    VkPipelineLayout blur_layout = VK_NULL_HANDLE;
+    VkPipelineLayout rays_mask_layout = VK_NULL_HANDLE;
+    VkPipelineLayout rays_blur_layout = VK_NULL_HANDLE;
+    VkPipelineLayout rays_add_layout = VK_NULL_HANDLE;
+    VkPipeline ao_pipe = VK_NULL_HANDLE;
+    VkPipeline blur_pipe = VK_NULL_HANDLE;
+    VkPipeline blur_sep_h_pipe = VK_NULL_HANDLE;
+    VkPipeline blur_sep_v_pipe = VK_NULL_HANDLE;
+    VkPipeline rays_mask_pipe = VK_NULL_HANDLE;
+    VkPipeline rays_blur_pipe = VK_NULL_HANDLE;
+    VkPipeline rays_add_pipe = VK_NULL_HANDLE;
+    vk::GpuImage ao_dtex{}, ao_atex{}, ao_btex{};
+    int ao_w = 0, ao_h = 0, ao_aw = 0, ao_ah = 0;
+    vk::GpuImage rays_dtex{}, rays_ctex{}, rays_mtex{}, rays_rtex{};
+    int rays_w = 0, rays_h = 0, rays_div = 0;
+} g_vk_sh;
+
+void vk_lighting_shutdown() {
+    VkDevice dev = vk::device();
+    if (dev != VK_NULL_HANDLE) {
+        for (int k = 0; k < kCascades; ++k) {
+            if (g_vk_sh.tex_layers[k] != VK_NULL_HANDLE) vkDestroyImageView(dev, g_vk_sh.tex_layers[k], nullptr);
+        }
+        for (int i = 0; i < 6 * kPtShadows; ++i) {
+            if (g_vk_sh.ptex_faces[i] != VK_NULL_HANDLE) vkDestroyImageView(dev, g_vk_sh.ptex_faces[i], nullptr);
+        }
+        for (VkPipeline p : {g_vk_sh.ao_pipe, g_vk_sh.blur_pipe, g_vk_sh.blur_sep_h_pipe, g_vk_sh.blur_sep_v_pipe,
+                             g_vk_sh.rays_mask_pipe, g_vk_sh.rays_blur_pipe, g_vk_sh.rays_add_pipe}) {
+            if (p != VK_NULL_HANDLE) vkDestroyPipeline(dev, p, nullptr);
+        }
+        for (VkPipelineLayout pl : {g_vk_sh.ao_layout, g_vk_sh.blur_layout, g_vk_sh.rays_mask_layout,
+                                    g_vk_sh.rays_blur_layout, g_vk_sh.rays_add_layout}) {
+            if (pl != VK_NULL_HANDLE) vkDestroyPipelineLayout(dev, pl, nullptr);
+        }
+        if (g_vk_sh.ao_stencil_view != VK_NULL_HANDLE) vkDestroyImageView(dev, g_vk_sh.ao_stencil_view, nullptr);
+        g_vk_sh.ao_stencil_view = VK_NULL_HANDLE;
+        for (VkDescriptorSetLayout dsl : {g_vk_sh.set_layout, g_vk_sh.samp1_layout, g_vk_sh.samp2_layout, g_vk_sh.samp3_layout}) {
+            if (dsl != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(dev, dsl, nullptr);
+        }
+        for (VkShaderModule sm : {g_vk_sh.vs_mod, g_vk_sh.ao_fs_mod, g_vk_sh.blur_fs_mod, g_vk_sh.blur_sep_fs_mod,
+                                  g_vk_sh.rays_mask_fs_mod, g_vk_sh.rays_blur_fs_mod, g_vk_sh.rays_add_fs_mod}) {
+            if (sm != VK_NULL_HANDLE) vkDestroyShaderModule(dev, sm, nullptr);
+        }
+    }
+    vk::destroy_image_now(g_vk_sh.tex);
+    for (int k = 0; k < kCascades; ++k) vk::destroy_image_now(g_vk_sh.stex[k]);
+    vk::destroy_image_now(g_vk_sh.ptex);
+    vk::destroy_image_now(g_vk_sh.tiles);
+    vk::destroy_image_now(g_vk_sh.ao_dtex);
+    vk::destroy_image_now(g_vk_sh.ao_atex);
+    vk::destroy_image_now(g_vk_sh.ao_btex);
+    vk::destroy_image_now(g_vk_sh.rays_dtex);
+    vk::destroy_image_now(g_vk_sh.rays_ctex);
+    vk::destroy_image_now(g_vk_sh.rays_mtex);
+    vk::destroy_image_now(g_vk_sh.rays_rtex);
+    g_vk_sh = VkLighting{};
+}
+
+void ensure_vk_lighting_init() {
+    if (g_vk_sh.inited || !vk::is_active()) return;
+    g_vk_sh.inited = true;
+    vk::register_shutdown_callback(vk_lighting_shutdown);
+}
+
 bool ensure_resources() {
     static const int sizes[3] = {1024, 2048, 4096};
     const int want = sizes[std::clamp(g_shadow_quality, 0, 2)];
+    if (vk::is_active()) {
+        ensure_vk_lighting_init();
+        if (g_vk_sh.tex.image != VK_NULL_HANDLE && g_vk_sh.res == want) {
+            g_sh.res = want;
+            return true;
+        }
+        VkDevice dev = vk::device();
+        for (int k = 0; k < kCascades; ++k) {
+            if (g_vk_sh.tex_layers[k] != VK_NULL_HANDLE) {
+                vkDestroyImageView(dev, g_vk_sh.tex_layers[k], nullptr);
+                g_vk_sh.tex_layers[k] = VK_NULL_HANDLE;
+            }
+        }
+        vk::destroy_image(g_vk_sh.tex);
+        vk::create_image(static_cast<uint32_t>(want), static_cast<uint32_t>(want), VK_FORMAT_D32_SFLOAT,
+                         VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+                             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                         VK_IMAGE_ASPECT_DEPTH_BIT, g_vk_sh.tex, kCascades, 0, VK_IMAGE_VIEW_TYPE_2D_ARRAY);
+        for (int k = 0; k < kCascades; ++k) {
+            VkImageViewCreateInfo vci{};
+            vci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            vci.image = g_vk_sh.tex.image;
+            vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            vci.format = VK_FORMAT_D32_SFLOAT;
+            vci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            vci.subresourceRange.baseMipLevel = 0;
+            vci.subresourceRange.levelCount = 1;
+            vci.subresourceRange.baseArrayLayer = static_cast<uint32_t>(k);
+            vci.subresourceRange.layerCount = 1;
+            vkCreateImageView(dev, &vci, nullptr, &g_vk_sh.tex_layers[k]);
+        }
+        vk::transition_image(vk::cmd(), g_vk_sh.tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        g_vk_sh.res = want;
+        g_sh.res = want;
+        return true;
+    }
     if (g_sh.fbo != 0 && g_sh.res == want) return true;
     if (g_sh.fbo == 0) {
         glGenFramebuffers(1, &g_sh.fbo);
@@ -641,6 +778,15 @@ void point_tiles_update() {
         for (int ty = ty0; ty <= ty1; ++ty)
             for (int tx = tx0; tx <= tx1; ++tx) m[static_cast<size_t>(ty * kTilesX + tx) * 4 + (i >> 5)] |= 1u << (i & 31);
     }
+    if (vk::is_active()) {
+        if (g_vk_sh.tiles.image == VK_NULL_HANDLE) {
+            vk::create_image(kTilesX, kTilesY, VK_FORMAT_R32G32B32A32_UINT,
+                             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                             VK_IMAGE_ASPECT_COLOR_BIT, g_vk_sh.tiles);
+        }
+        vk::upload_image_2d(g_vk_sh.tiles, m.data(), m.size() * 4);
+        return;
+    }
     if (g_sh.tiles == 0) {
         glGenTextures(1, &g_sh.tiles);
         rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &g_sh.tiles, "Point lights: tiles");
@@ -661,7 +807,29 @@ void point_tiles_update() {
 // the light's pt_col.w names its cube (the fragment shader's sh_points compares against it). The shadow pass's framebuffer bound.
 void point_shadows_pass() {
     if (g_point_shadows == 0 || g_modern_points == 0 || g_sh.npts == 0) return;
-    if (g_sh.ptex == 0) {
+    if (vk::is_active()) {
+        if (g_vk_sh.ptex.image == VK_NULL_HANDLE) {
+            vk::create_image(kPtRes, kPtRes, VK_FORMAT_D32_SFLOAT,
+                             VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                             VK_IMAGE_ASPECT_DEPTH_BIT, g_vk_sh.ptex, 6 * kPtShadows,
+                             VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT, VK_IMAGE_VIEW_TYPE_CUBE_ARRAY);
+            VkDevice dev = vk::device();
+            for (int l = 0; l < 6 * kPtShadows; ++l) {
+                VkImageViewCreateInfo vci{};
+                vci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+                vci.image = g_vk_sh.ptex.image;
+                vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+                vci.format = VK_FORMAT_D32_SFLOAT;
+                vci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+                vci.subresourceRange.baseMipLevel = 0;
+                vci.subresourceRange.levelCount = 1;
+                vci.subresourceRange.baseArrayLayer = static_cast<uint32_t>(l);
+                vci.subresourceRange.layerCount = 1;
+                vkCreateImageView(dev, &vci, nullptr, &g_vk_sh.ptex_faces[l]);
+            }
+            vk::transition_image(vk::cmd(), g_vk_sh.ptex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        }
+    } else if (g_sh.ptex == 0) {
         glGenTextures(1, &g_sh.ptex);
         rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &g_sh.ptex, "Shadows: point cubes");
         glBindTexture(kGlCubeMapArray, g_sh.ptex);
@@ -736,10 +904,14 @@ void point_shadows_pass() {
         nfade = 0;
     }
     int cube = 0;
-    glViewport(0, 0, kPtRes, kPtRes);
-    glDepthMask(GL_TRUE);
-    glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LESS);
+    if (!vk::is_active()) {
+        glViewport(0, 0, kPtRes, kPtRes);
+        glDepthMask(GL_TRUE);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+    } else {
+        vk::transition_image(vk::cmd(), g_vk_sh.ptex, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+    }
     for (int pi = 0; pi < npick; ++pi) {
         const int i = pick[pi];
         const glm::vec3 lp(g_sh.pt_pos[i]);
@@ -747,8 +919,19 @@ void point_shadows_pass() {
         if (glm::length(lp - g_sh.cam) - r > g_sh.splits[1]) continue;  // (beyond the middle cascade: not worth a cube)
         const glm::mat4 proj = glm::perspective(glm::radians(90.0f), 1.0f, kPtNear, r);
         for (int f = 0; f < 6; ++f) {
-            glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, g_sh.ptex, 0, 6 * cube + f);
-            glClear(GL_DEPTH_BUFFER_BIT);
+            if (vk::is_active()) {
+                vk::RenderTarget rt{};
+                rt.depth_view = g_vk_sh.ptex_faces[6 * cube + f];
+                rt.depth_format = VK_FORMAT_D32_SFLOAT;
+                rt.width = kPtRes;
+                rt.height = kPtRes;
+                vk::set_viewport(0, 0, kPtRes, kPtRes);
+                vk::set_scissor(false);
+                vk::push_target(rt, false, nullptr, true, 1.0f, false, 0);
+            } else {
+                glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, g_sh.ptex, 0, 6 * cube + f);
+                glClear(GL_DEPTH_BUFFER_BIT);
+            }
             // cull faces whose 90-degree pyramid (apex lp, base corners at distance r) lies outside a camera frustum plane
             const glm::vec3 right = glm::cross(dirs[f], ups[f]);
             glm::vec4 c[5];
@@ -766,16 +949,21 @@ void point_shadows_pass() {
                 out_n += c[v].z < -c[v].w ? 1 : 0;
                 out_f += c[v].z >  c[v].w ? 1 : 0;
             }
-            if (out_l == 5 || out_r == 5 || out_b == 5 || out_t == 5 || out_n == 5 || out_f == 5) continue;
-            const glm::mat4 vp = proj * glm::lookAt(lp, lp + dirs[f], ups[f]);
-            if (g_sh.pt_slot[i] >= 0) mrp_world_draw_casters(glm::value_ptr(vp), 3 + g_sh.pt_slot[i]);
-            mrp_moby_draw_casters(glm::value_ptr(vp), glm::value_ptr(g_sh.pt_pos[i]));
+            if (!(out_l == 5 || out_r == 5 || out_b == 5 || out_t == 5 || out_n == 5 || out_f == 5)) {
+                const glm::mat4 vp = proj * glm::lookAt(lp, lp + dirs[f], ups[f]);
+                if (g_sh.pt_slot[i] >= 0) mrp_world_draw_casters(glm::value_ptr(vp), 3 + g_sh.pt_slot[i]);
+                mrp_moby_draw_casters(glm::value_ptr(vp), glm::value_ptr(g_sh.pt_pos[i]));
+            }
+            if (vk::is_active()) vk::pop_target();
         }
         float k = 1.0f;  // (an emitter's shadow fading: its weight with the cube's index, pt_col.w = cube + 0.05 + 0.9 k)
         for (int j = 0; j < nfade; ++j)
             if (g_sh.pt_slot[i] < 0 && fade[j].pos == lp) k = fade[j].k;
         g_sh.pt_col[i].w = static_cast<float>(cube) + 0.05f + 0.9f * k;
         ++cube;
+    }
+    if (vk::is_active() && g_vk_sh.ptex.image != VK_NULL_HANDLE) {
+        vk::transition_image(vk::cmd(), g_vk_sh.ptex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
 }
 }  // namespace
@@ -1531,11 +1719,502 @@ void cover_probe(GLint fb, const int vp[4]) {
 // orig: (host) how much of the sun's weight the view keeps (a room lit by a key light from above that its roof stops: no sky,
 // nearly no sample sees the sun - the sun's shadows faded out there; our choice, see kProbeW)
 float view_open() { return g_probe.k; }
+void ensure_vk_ao_pipelines() {
+    if (g_vk_sh.ao_pipe != VK_NULL_HANDLE || !vk::is_active()) return;
+    ensure_vk_lighting_init();
+    VkDevice dev = vk::device();
+
+    VkDescriptorSetLayoutBinding b1{};
+    b1.binding = 0;
+    b1.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    b1.descriptorCount = 1;
+    b1.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    VkDescriptorSetLayoutCreateInfo dsl1{};
+    dsl1.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    dsl1.bindingCount = 1;
+    dsl1.pBindings = &b1;
+    vkCreateDescriptorSetLayout(dev, &dsl1, nullptr, &g_vk_sh.samp1_layout);
+
+    VkDescriptorSetLayoutBinding b2[2]{};
+    b2[0] = {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+    b2[1] = {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+    VkDescriptorSetLayoutCreateInfo dsl2{};
+    dsl2.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    dsl2.bindingCount = 2;
+    dsl2.pBindings = b2;
+    vkCreateDescriptorSetLayout(dev, &dsl2, nullptr, &g_vk_sh.samp2_layout);
+
+    VkDescriptorSetLayoutBinding b3[3]{};
+    for (uint32_t i = 0; i < 3; ++i) b3[i] = {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+    VkDescriptorSetLayoutCreateInfo dsl3{};
+    dsl3.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    dsl3.bindingCount = 3;
+    dsl3.pBindings = b3;
+    vkCreateDescriptorSetLayout(dev, &dsl3, nullptr, &g_vk_sh.samp3_layout);
+
+    auto make_layout = [&](VkDescriptorSetLayout dsl, uint32_t push_bytes) {
+        VkPushConstantRange pcr{VK_SHADER_STAGE_FRAGMENT_BIT, 0, push_bytes};
+        VkPipelineLayoutCreateInfo plci{};
+        plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        plci.setLayoutCount = 1;
+        plci.pSetLayouts = &dsl;
+        plci.pushConstantRangeCount = push_bytes > 0 ? 1u : 0u;
+        plci.pPushConstantRanges = push_bytes > 0 ? &pcr : nullptr;
+        VkPipelineLayout out = VK_NULL_HANDLE;
+        vkCreatePipelineLayout(dev, &plci, nullptr, &out);
+        return out;
+    };
+
+    g_vk_sh.ao_layout = make_layout(g_vk_sh.samp1_layout, 160);
+    g_vk_sh.blur_layout = make_layout(g_vk_sh.samp3_layout, 16);
+    g_vk_sh.rays_mask_layout = make_layout(g_vk_sh.samp2_layout, 48);
+    g_vk_sh.rays_blur_layout = make_layout(g_vk_sh.samp1_layout, 32);
+    g_vk_sh.rays_add_layout = make_layout(g_vk_sh.samp1_layout, 8);
+
+    g_vk_sh.vs_mod = vk::create_shader_module(vk::shaders::kMrpAoVs, sizeof(vk::shaders::kMrpAoVs));
+    g_vk_sh.ao_fs_mod = vk::create_shader_module(vk::shaders::kMrpAoFs, sizeof(vk::shaders::kMrpAoFs));
+    g_vk_sh.blur_fs_mod = vk::create_shader_module(vk::shaders::kMrpAoBlurFs, sizeof(vk::shaders::kMrpAoBlurFs));
+    g_vk_sh.blur_sep_fs_mod = vk::create_shader_module(vk::shaders::kMrpAoBlurSepFs, sizeof(vk::shaders::kMrpAoBlurSepFs));
+    g_vk_sh.rays_mask_fs_mod = vk::create_shader_module(vk::shaders::kMrpRaysMaskFs, sizeof(vk::shaders::kMrpRaysMaskFs));
+    g_vk_sh.rays_blur_fs_mod = vk::create_shader_module(vk::shaders::kMrpRaysBlurFs, sizeof(vk::shaders::kMrpRaysBlurFs));
+    g_vk_sh.rays_add_fs_mod = vk::create_shader_module(vk::shaders::kMrpRaysAddFs, sizeof(vk::shaders::kMrpRaysAddFs));
+
+    {
+        vk::GraphicsPipelineDesc d{};
+        d.layout = g_vk_sh.ao_layout;
+        d.vs = g_vk_sh.vs_mod;
+        d.fs = g_vk_sh.ao_fs_mod;
+        d.depth_test = false;
+        d.depth_write = false;
+        d.blend_enable = false;
+        d.color_format = VK_FORMAT_R8_UNORM;
+        d.has_depth_attachment = false;
+        d.has_stencil_attachment = false;
+        g_vk_sh.ao_pipe = vk::create_graphics_pipeline(d);
+    }
+    {
+        vk::GraphicsPipelineDesc d{};
+        d.layout = g_vk_sh.blur_layout;
+        d.vs = g_vk_sh.vs_mod;
+        d.fs = g_vk_sh.blur_fs_mod;
+        d.depth_test = false;
+        d.depth_write = false;
+        d.blend_enable = true;
+        d.src_color_blend = VK_BLEND_FACTOR_DST_COLOR;
+        d.dst_color_blend = VK_BLEND_FACTOR_ZERO;
+        d.color_write_mask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT;
+        d.color_format = VK_FORMAT_R8G8B8A8_UNORM;
+        d.has_depth_attachment = true;
+        d.has_stencil_attachment = true;
+        g_vk_sh.blur_pipe = vk::create_graphics_pipeline(d);
+    }
+    {
+        vk::GraphicsPipelineDesc d{};
+        d.layout = g_vk_sh.blur_layout;
+        d.vs = g_vk_sh.vs_mod;
+        d.fs = g_vk_sh.blur_sep_fs_mod;
+        d.depth_test = false;
+        d.depth_write = false;
+        d.blend_enable = false;
+        d.color_write_mask = VK_COLOR_COMPONENT_R_BIT;
+        d.color_format = VK_FORMAT_R8_UNORM;
+        d.has_depth_attachment = false;
+        d.has_stencil_attachment = false;
+        g_vk_sh.blur_sep_h_pipe = vk::create_graphics_pipeline(d);
+    }
+    {
+        vk::GraphicsPipelineDesc d{};
+        d.layout = g_vk_sh.blur_layout;
+        d.vs = g_vk_sh.vs_mod;
+        d.fs = g_vk_sh.blur_sep_fs_mod;
+        d.depth_test = false;
+        d.depth_write = false;
+        d.blend_enable = true;
+        d.src_color_blend = VK_BLEND_FACTOR_DST_COLOR;
+        d.dst_color_blend = VK_BLEND_FACTOR_ZERO;
+        d.color_write_mask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT;
+        d.color_format = VK_FORMAT_R8G8B8A8_UNORM;
+        d.has_depth_attachment = true;
+        d.has_stencil_attachment = true;
+        g_vk_sh.blur_sep_v_pipe = vk::create_graphics_pipeline(d);
+    }
+    {
+        vk::GraphicsPipelineDesc d{};
+        d.layout = g_vk_sh.rays_mask_layout;
+        d.vs = g_vk_sh.vs_mod;
+        d.fs = g_vk_sh.rays_mask_fs_mod;
+        d.depth_test = false;
+        d.depth_write = false;
+        d.blend_enable = false;
+        d.color_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+        d.has_depth_attachment = false;
+        d.has_stencil_attachment = false;
+        g_vk_sh.rays_mask_pipe = vk::create_graphics_pipeline(d);
+    }
+    {
+        vk::GraphicsPipelineDesc d{};
+        d.layout = g_vk_sh.rays_blur_layout;
+        d.vs = g_vk_sh.vs_mod;
+        d.fs = g_vk_sh.rays_blur_fs_mod;
+        d.depth_test = false;
+        d.depth_write = false;
+        d.blend_enable = false;
+        d.color_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+        d.has_depth_attachment = false;
+        d.has_stencil_attachment = false;
+        g_vk_sh.rays_blur_pipe = vk::create_graphics_pipeline(d);
+    }
+    {
+        vk::GraphicsPipelineDesc d{};
+        d.layout = g_vk_sh.rays_add_layout;
+        d.vs = g_vk_sh.vs_mod;
+        d.fs = g_vk_sh.rays_add_fs_mod;
+        d.depth_test = false;
+        d.depth_write = false;
+        d.blend_enable = true;
+        d.src_color_blend = VK_BLEND_FACTOR_ONE;
+        d.dst_color_blend = VK_BLEND_FACTOR_ONE;
+        d.color_write_mask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT;
+        d.color_format = VK_FORMAT_R8G8B8A8_UNORM;
+        d.has_depth_attachment = true;
+        d.has_stencil_attachment = true;
+        g_vk_sh.rays_add_pipe = vk::create_graphics_pipeline(d);
+    }
+}
+
+VkDescriptorSet alloc_samp1_ds(VkImageView view, VkSampler sampler) {
+    VkDescriptorSet ds = vk::alloc_descriptor_set(g_vk_sh.samp1_layout);
+    VkDescriptorImageInfo dii{sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+    VkWriteDescriptorSet w{};
+    w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    w.dstSet = ds;
+    w.dstBinding = 0;
+    w.descriptorCount = 1;
+    w.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    w.pImageInfo = &dii;
+    vkUpdateDescriptorSets(vk::device(), 1, &w, 0, nullptr);
+    return ds;
+}
+
+VkDescriptorSet alloc_samp3_ds(VkImageView v0, VkSampler s0, VkImageView v1, VkSampler s1, VkImageView v2, VkSampler s2) {
+    VkDescriptorSet ds = vk::alloc_descriptor_set(g_vk_sh.samp3_layout);
+    const VkDescriptorImageInfo dii[3] = {
+        {s0, v0, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+        {s1, v1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+        {s2, v2, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+    };
+    VkWriteDescriptorSet w[3]{};
+    for (uint32_t i = 0; i < 3; ++i) {
+        w[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        w[i].dstSet = ds;
+        w[i].dstBinding = i;
+        w[i].descriptorCount = 1;
+        w[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        w[i].pImageInfo = &dii[i];
+    }
+    vkUpdateDescriptorSets(vk::device(), 3, w, 0, nullptr);
+    return ds;
+}
+
+VkDescriptorSet alloc_samp2_ds(VkImageView v0, VkSampler s0, VkImageView v1, VkSampler s1) {
+    VkDescriptorSet ds = vk::alloc_descriptor_set(g_vk_sh.samp2_layout);
+    VkDescriptorImageInfo dii[2] = {
+        {s0, v0, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+        {s1, v1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+    };
+    VkWriteDescriptorSet w[2]{};
+    for (uint32_t i = 0; i < 2; ++i) {
+        w[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        w[i].dstSet = ds;
+        w[i].dstBinding = i;
+        w[i].descriptorCount = 1;
+        w[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        w[i].pImageInfo = &dii[i];
+    }
+    vkUpdateDescriptorSets(vk::device(), 2, w, 0, nullptr);
+    return ds;
+}
+
+void vk_ao_and_rays_pass(const int vp[4]) {
+    if (g_ao == 0 && g_sun_rays <= 0) return;
+    ensure_vk_ao_pipelines();
+    int prev_vp[4] = {};
+    vk::get_viewport(prev_vp);
+    vk::set_scissor(false);
+    const VkSampler samp_nearest = vk::get_sampler(VK_FILTER_NEAREST, VK_FILTER_NEAREST,
+                                                   VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    const VkSampler samp_linear = vk::get_sampler(VK_FILTER_LINEAR, VK_FILTER_LINEAR,
+                                                  VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+
+    int prof_zone = rac1::prof::begin(rac1::prof::kAo);  // (the debug menu's profiler: the occlusion, then the rays)
+    if (g_ao != 0) {
+        const int w = vp[2], h = vp[3];
+        const bool half_res = (g_ao == 5);
+        const int aw = half_res ? std::max(1, w / 2) : w;
+        const int ah = half_res ? std::max(1, h / 2) : h;
+        const VkFormat dfmt = vk::depth_stencil_format();
+        const VkImageAspectFlags daspect = vk::active_depth_image().aspect;
+        if (g_vk_sh.ao_w != w || g_vk_sh.ao_h != h || g_vk_sh.ao_aw != aw || g_vk_sh.ao_ah != ah ||
+            g_vk_sh.ao_dtex.image == VK_NULL_HANDLE) {
+            g_vk_sh.ao_w = w;
+            g_vk_sh.ao_h = h;
+            g_vk_sh.ao_aw = aw;
+            g_vk_sh.ao_ah = ah;
+            if (g_vk_sh.ao_stencil_view != VK_NULL_HANDLE) {  // (a new size: rare; the old view waited for)
+                vk::wait_idle();
+                vkDestroyImageView(vk::device(), g_vk_sh.ao_stencil_view, nullptr);
+                g_vk_sh.ao_stencil_view = VK_NULL_HANDLE;
+            }
+            vk::create_image(static_cast<uint32_t>(w), static_cast<uint32_t>(h), dfmt,
+                             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, daspect, g_vk_sh.ao_dtex);
+            if ((daspect & VK_IMAGE_ASPECT_STENCIL_BIT) != 0) {
+                VkImageViewCreateInfo vci{};
+                vci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+                vci.image = g_vk_sh.ao_dtex.image;
+                vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+                vci.format = dfmt;
+                vci.subresourceRange = {VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1, 0, 1};
+                vkCreateImageView(vk::device(), &vci, nullptr, &g_vk_sh.ao_stencil_view);
+            }
+            vk::create_image(static_cast<uint32_t>(aw), static_cast<uint32_t>(ah), VK_FORMAT_R8_UNORM,
+                             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                             VK_IMAGE_ASPECT_COLOR_BIT, g_vk_sh.ao_atex);
+            vk::create_image(static_cast<uint32_t>(w), static_cast<uint32_t>(h), VK_FORMAT_R8_UNORM,
+                             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                             VK_IMAGE_ASPECT_COLOR_BIT, g_vk_sh.ao_btex);
+        }
+        vk::copy_image(vk::active_depth_image(), vp[0], vp[1], g_vk_sh.ao_dtex, 0, 0, w, h, daspect,
+                       VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+        float vpf[16];
+        mrp_world_view_proj(vpf);
+        const glm::mat4 VP = glm::make_mat4(vpf), IVP = glm::inverse(VP);
+        static const int env_r = env_int("RAC1_AO_RADIUS", -1), env_s = env_int("RAC1_AO_STRENGTH", -1);
+        static const float kRadius[6] = {0.0f, 1.5f, 1.5f, 3.0f, 3.0f, 3.0f}, kStrength[6] = {0.0f, 1.0f, 1.2f, 2.0f, 2.5f, 2.5f};
+        const int mi = std::clamp(g_ao, 1, 5);
+        const float radius = env_r >= 0 ? static_cast<float>(env_r) / 100.0f : kRadius[mi];
+        // (Options > Graphics > AO Intensity, as mrp_lighting_ao_pass)
+        const float strength = (env_s >= 0 ? static_cast<float>(env_s) / 100.0f : kStrength[mi]) * static_cast<float>(g_ao_intensity) / 100.0f;
+        const int shader_mode = (g_ao >= 5) ? 4 : g_ao;
+
+        // Pass 1: raw AO into ao_atex
+        vk::transition_image(vk::cmd(), g_vk_sh.ao_atex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        vk::RenderTarget rt_a{};
+        rt_a.color_view = g_vk_sh.ao_atex.view;
+        rt_a.color_format = VK_FORMAT_R8_UNORM;
+        rt_a.width = static_cast<uint32_t>(aw);
+        rt_a.height = static_cast<uint32_t>(ah);
+        vk::set_viewport(0, 0, aw, ah);
+        vk::push_target(rt_a);
+        vk::ensure_rendering();
+        {
+            struct AoPush {
+                glm::mat4 uInvVP;
+                glm::mat4 uVP;
+                glm::vec4 uCam;
+                glm::vec4 uParam;
+            } pc{IVP, VP, glm::vec4(g_sh.cam, 0.0f), glm::vec4(radius, strength, 0.02f, static_cast<float>(shader_mode))};
+            VkCommandBuffer cb = vk::cmd();
+            VkDescriptorSet ds = alloc_samp1_ds(g_vk_sh.ao_dtex.view, samp_nearest);
+            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.ao_pipe);
+            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.ao_layout, 0, 1, &ds, 0, nullptr);
+            vkCmdPushConstants(cb, g_vk_sh.ao_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
+            vkCmdDraw(cb, 3, 1, 0, 0);
+        }
+        vk::pop_target();
+        vk::transition_image(vk::cmd(), g_vk_sh.ao_atex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+        // (the mobys' pixels, marked in the stencil, with their share of the occlusion: as mrp_lighting_ao_pass)
+        static const float moby_k = static_cast<float>(std::clamp(env_int("RAC1_AO_MOBY", 40), 0, 100)) / 100.0f;
+        const VkImageView stencil_view = g_vk_sh.ao_stencil_view != VK_NULL_HANDLE ? g_vk_sh.ao_stencil_view : vk::black_uint_texture().view;
+        const float moby = g_ao_mark.done && g_vk_sh.ao_stencil_view != VK_NULL_HANDLE ? moby_k : 1.0f;
+        if (g_ao == 1) {
+            vk::set_viewport(vp[0], vp[1], w, h);
+            vk::ensure_rendering();
+            VkCommandBuffer cb = vk::cmd();
+            VkDescriptorSet ds = alloc_samp3_ds(g_vk_sh.ao_atex.view, samp_nearest, g_vk_sh.ao_dtex.view, samp_nearest, stencil_view, samp_nearest);
+            const float texel[4] = {1.0f / static_cast<float>(w), 1.0f / static_cast<float>(h), moby, 0.0f};
+            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_pipe);
+            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_layout, 0, 1, &ds, 0, nullptr);
+            vkCmdPushConstants(cb, g_vk_sh.blur_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(texel), texel);
+            vkCmdDraw(cb, 3, 1, 0, 0);
+        } else {
+            vk::transition_image(vk::cmd(), g_vk_sh.ao_btex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            vk::RenderTarget rt_b{};
+            rt_b.color_view = g_vk_sh.ao_btex.view;
+            rt_b.color_format = VK_FORMAT_R8_UNORM;
+            rt_b.width = static_cast<uint32_t>(w);
+            rt_b.height = static_cast<uint32_t>(h);
+            vk::set_viewport(0, 0, w, h);
+            vk::push_target(rt_b);
+            vk::ensure_rendering();
+            {
+                VkCommandBuffer cb = vk::cmd();
+                VkDescriptorSet ds = alloc_samp3_ds(g_vk_sh.ao_atex.view, half_res ? samp_linear : samp_nearest,
+                                                    g_vk_sh.ao_dtex.view, samp_nearest, stencil_view, samp_nearest);
+                const float texel_h[4] = {1.0f / static_cast<float>(aw), 0.0f, 1.0f, 0.0f};  // (the share taken at the end, as mrp_lighting_ao_pass)
+                vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_sep_h_pipe);
+                vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_layout, 0, 1, &ds, 0, nullptr);
+                vkCmdPushConstants(cb, g_vk_sh.blur_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(texel_h), texel_h);
+                vkCmdDraw(cb, 3, 1, 0, 0);
+            }
+            vk::pop_target();
+            vk::transition_image(vk::cmd(), g_vk_sh.ao_btex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+            vk::set_viewport(vp[0], vp[1], w, h);
+            vk::ensure_rendering();
+            {
+                VkCommandBuffer cb = vk::cmd();
+                VkDescriptorSet ds = alloc_samp3_ds(g_vk_sh.ao_btex.view, samp_nearest, g_vk_sh.ao_dtex.view, samp_nearest, stencil_view, samp_nearest);
+                const float texel_v[4] = {0.0f, 1.0f / static_cast<float>(h), moby, 0.0f};
+                vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_sep_v_pipe);
+                vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_layout, 0, 1, &ds, 0, nullptr);
+                vkCmdPushConstants(cb, g_vk_sh.blur_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(texel_v), texel_v);
+                vkCmdDraw(cb, 3, 1, 0, 0);
+            }
+        }
+    }
+
+    rac1::prof::end(prof_zone);
+    prof_zone = g_sun_rays > 0 ? rac1::prof::begin(rac1::prof::kSunRays) : -1;
+    if (g_sun_rays > 0 && g_sh.sun_k > 0.01f) {
+        float vpf[16];
+        mrp_world_view_proj(vpf);
+        const glm::mat4 VP = glm::make_mat4(vpf);
+        const glm::vec4 c = VP * glm::vec4(g_sh.cam + g_sh.sun * 2000.0f, 1.0f);
+        if (c.w > 0.0f) {
+            const glm::vec2 su = glm::vec2(c.x, c.y) / c.w * 0.5f + 0.5f;
+            const float out = std::max({-su.x, su.x - 1.0f, -su.y, su.y - 1.0f, 0.0f});
+            const float fade = std::clamp(1.0f - out / 0.6f, 0.0f, 1.0f);
+            if (fade > 0.0f) {
+                const RaysStep& step = kRaysSteps[std::clamp(g_sun_rays, 1, 3) - 1];  // (the three steps, as sun_rays_pass)
+                const int w = vp[2], h = vp[3], hw = std::max(1, w / step.div), hh = std::max(1, h / step.div);
+                const VkFormat dfmt = vk::depth_stencil_format();
+                const VkImageAspectFlags daspect = vk::active_depth_image().aspect;
+                (void)dfmt;
+                (void)daspect;
+                if (g_vk_sh.rays_w != w || g_vk_sh.rays_h != h || g_vk_sh.rays_div != step.div || g_vk_sh.rays_mtex.image == VK_NULL_HANDLE) {
+                    g_vk_sh.rays_w = w;
+                    g_vk_sh.rays_h = h;
+                    g_vk_sh.rays_div = step.div;
+                    vk::create_image(static_cast<uint32_t>(hw), static_cast<uint32_t>(hh), VK_FORMAT_R16G16B16A16_SFLOAT,
+                                     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                                     VK_IMAGE_ASPECT_COLOR_BIT, g_vk_sh.rays_mtex);
+                    vk::create_image(static_cast<uint32_t>(hw), static_cast<uint32_t>(hh), VK_FORMAT_R16G16B16A16_SFLOAT,
+                                     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                                     VK_IMAGE_ASPECT_COLOR_BIT, g_vk_sh.rays_rtex);
+                }
+                // the 3D's depth (nearest) and colour (linear) sampled where the step's texels fall: what the GL path's blits to
+                // the step's size give, without the copies (a depth blit is not portable in Vulkan either)
+                vk::GpuImage& sdepth = vk::active_depth_image();
+                vk::GpuImage& scolor = vk::active_color_image();
+                vk::transition_image(vk::cmd(), sdepth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                vk::transition_image(vk::cmd(), scolor, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                const glm::vec4 src_map(static_cast<float>(vp[0]) / static_cast<float>(scolor.width), static_cast<float>(vp[1]) / static_cast<float>(scolor.height),
+                                        static_cast<float>(w) / static_cast<float>(scolor.width), static_cast<float>(h) / static_cast<float>(scolor.height));
+
+                const float tmax = std::max({g_sh.key.x, g_sh.key.y, g_sh.key.z, 1e-3f});
+                const glm::vec3 tint = g_sh.key.x + g_sh.key.y + g_sh.key.z > 0.0f ? glm::vec3(g_sh.key) / tmax : glm::vec3(1.0f, 0.95f, 0.85f);
+
+                // (1) mask
+                vk::transition_image(vk::cmd(), g_vk_sh.rays_mtex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+                vk::RenderTarget rt_m{};
+                rt_m.color_view = g_vk_sh.rays_mtex.view;
+                rt_m.color_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+                rt_m.width = static_cast<uint32_t>(hw);
+                rt_m.height = static_cast<uint32_t>(hh);
+                vk::set_viewport(0, 0, hw, hh);
+                vk::push_target(rt_m);
+                vk::ensure_rendering();
+                {
+                    struct MaskPush {
+                        glm::vec2 uSun;
+                        glm::vec2 uAspect;
+                        glm::vec4 uTint;
+                        glm::vec4 uSrc;  // (the view's place in the 3D's buffers: offset, size, 0..1)
+                    } pc{su, glm::vec2(static_cast<float>(w) / static_cast<float>(std::max(h, 1)), 1.0f), glm::vec4(tint, 1.0f), src_map};
+                    VkCommandBuffer cb = vk::cmd();
+                    VkDescriptorSet ds = alloc_samp2_ds(sdepth.depth_view != VK_NULL_HANDLE ? sdepth.depth_view : sdepth.view, samp_nearest, scolor.view, samp_linear);
+                    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.rays_mask_pipe);
+                    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.rays_mask_layout, 0, 1, &ds, 0, nullptr);
+                    vkCmdPushConstants(cb, g_vk_sh.rays_mask_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
+                    vkCmdDraw(cb, 3, 1, 0, 0);
+                }
+                vk::pop_target();
+                vk::transition_image(vk::cmd(), g_vk_sh.rays_mtex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                vk::transition_image(vk::cmd(), sdepth, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+                vk::transition_image(vk::cmd(), scolor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+                // (2) radial blur
+                vk::transition_image(vk::cmd(), g_vk_sh.rays_rtex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+                vk::RenderTarget rt_r{};
+                rt_r.color_view = g_vk_sh.rays_rtex.view;
+                rt_r.color_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+                rt_r.width = static_cast<uint32_t>(hw);
+                rt_r.height = static_cast<uint32_t>(hh);
+                vk::set_viewport(0, 0, hw, hh);
+                vk::push_target(rt_r);
+                vk::ensure_rendering();
+                {
+                    struct BlurPush {
+                        glm::vec2 uSun;
+                        glm::vec2 uTaps;
+                        glm::vec4 uParam;
+                    };
+                    const float decay = step.taps == 40 ? 0.945f : static_cast<float>(std::pow(0.945, 40.0 / step.taps));
+                    const BlurPush pc{su, glm::vec2(static_cast<float>(step.taps), 0.0f), glm::vec4(0.9f, decay, 1.0f / static_cast<float>(step.taps) * 4.0f, 1.0f)};
+                    VkCommandBuffer cb = vk::cmd();
+                    VkDescriptorSet ds = alloc_samp1_ds(g_vk_sh.rays_mtex.view, samp_linear);
+                    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.rays_blur_pipe);
+                    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.rays_blur_layout, 0, 1, &ds, 0, nullptr);
+                    vkCmdPushConstants(cb, g_vk_sh.rays_blur_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
+                    vkCmdDraw(cb, 3, 1, 0, 0);
+                }
+                vk::pop_target();
+                vk::transition_image(vk::cmd(), g_vk_sh.rays_rtex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+                // (3) add to scene
+                static const float gain_env = std::getenv("RAC1_SUN_RAYS_GAIN") != nullptr ? static_cast<float>(std::atof(std::getenv("RAC1_SUN_RAYS_GAIN"))) : 1.0f;
+                const float k = (step.strong ? 7.0f : 3.5f) * gain_env * fade * std::min(g_sh.sun_k, 1.0f);
+                const float cap = (step.strong ? 0.45f : 0.28f) * std::max(fade * std::min(g_sh.sun_k, 1.0f), 1e-3f);
+                if (std::getenv("RAC1_SUN_RAYS_TRACE") != nullptr) {
+                    static uint64_t n = 0;
+                    if (n++ % 60 == 0) std::printf("[rays] sun at %.2f %.2f of the view, fade %.2f, weight %.2f: %.2f\n", su.x, su.y, fade, g_sh.sun_k, k);
+                }
+                vk::set_viewport(vp[0], vp[1], w, h);
+                vk::ensure_rendering();
+                {
+                    const float pc[2] = {k, cap};
+                    VkCommandBuffer cb = vk::cmd();
+                    VkDescriptorSet ds = alloc_samp1_ds(g_vk_sh.rays_rtex.view, samp_linear);
+                    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.rays_add_pipe);
+                    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.rays_add_layout, 0, 1, &ds, 0, nullptr);
+                    vkCmdPushConstants(cb, g_vk_sh.rays_add_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), pc);
+                    vkCmdDraw(cb, 3, 1, 0, 0);
+                }
+            }
+        }
+    }
+
+    rac1::prof::end(prof_zone);
+    vk::set_viewport(prev_vp[0], prev_vp[1], prev_vp[2], prev_vp[3]);
+}
 }  // namespace
+
+// orig: (host) see mrp_lighting.h
+bool mrp_lighting_vk_ao_marking() { return g_vk_ao_marking; }
 
 // orig: (host) see mrp_lighting.h
 void mrp_lighting_ao_moby_mark(bool begin) {
     AoMark& M = g_ao_mark;
+    if (vk::is_active()) {  // (Vulkan: the mobys' pipelines write the stencil while marking, mrp_lighting_vk_ao_marking)
+        g_vk_ao_marking = begin && g_sh.on && g_ao != 0 && env_int("RAC1_AO_MOBY", 40) < 100;
+        if (begin) {
+            M.done = g_vk_ao_marking;
+            M.active = false;
+        }
+        return;
+    }
     if (!begin) {
         if (!M.active) return;
         M.active = false;
@@ -1574,6 +2253,11 @@ void mrp_lighting_ao_pass() {
     if (!g_sh.on) return;
     int vp[4];
     if (!mrp_world_last_viewport(vp)) return;
+    if (vk::is_active()) {
+        screen_point_read(vp);  // (the debug menu's crosshair)
+        vk_ao_and_rays_pass(vp);
+        return;
+    }
     screen_point_read(vp);
     lamp_scan(vp);
     const int prof_ao = rac1::prof::begin(rac1::prof::kAo);  // (the debug menu's profiler: the cover probe and the occlusion)
@@ -2229,6 +2913,40 @@ void lamp_scan(const int vp[4]) {
             for (int k = 0; k < 3; ++k) a.at[k] = p[k];
         }
 }
+// orig: (host) Vulkan: the depth at (x, y) of the 3D's depth buffer, as the frame before last left it (no wait: a copy into
+// this frame slot's buffer, read when the slot comes back - the frame's fence waited by then)
+bool vk_depth_at(int x, int y, float* d) {
+    static vk::GpuBuffer buf[vk::kFramesInFlight];
+    static bool written[vk::kFramesInFlight] = {};
+    const uint32_t fi = vk::frame_index();
+    vk::GpuBuffer& b = buf[fi];
+    if (b.buffer == VK_NULL_HANDLE &&
+        !vk::create_buffer(16, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, b, true))
+        return false;
+    bool ok = false;
+    if (written[fi]) {
+        uint32_t raw = 0;
+        std::memcpy(&raw, b.mapped, 4);
+        if (vk::depth_stencil_format() == VK_FORMAT_D24_UNORM_S8_UINT) *d = static_cast<float>(raw & 0xffffffu) / 16777215.0f;
+        else std::memcpy(d, &raw, 4);
+        ok = true;
+    }
+    vk::GpuImage& depth = vk::active_depth_image();
+    if (x < 0 || y < 0 || x >= static_cast<int>(depth.width) || y >= static_cast<int>(depth.height)) return ok;
+    VkCommandBuffer cb = vk::cmd();
+    vk::end_rendering();
+    const VkImageLayout was = depth.layout;
+    vk::transition_image(cb, depth, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    VkBufferImageCopy c{};
+    c.imageSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1};
+    c.imageOffset = {x, y, 0};
+    c.imageExtent = {1, 1, 1};
+    vkCmdCopyImageToBuffer(cb, depth.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, b.buffer, 1, &c);
+    vk::transition_image(cb, depth, was);
+    written[fi] = true;
+    return ok;
+}
+
 void screen_point_read(const int vp[4]) {
     static float env_uv[2] = {-2.0f, -2.0f};
     if (env_uv[0] == -2.0f) {  // (testing: RAC1_PICK_SCREEN=u,v - the point printed with its objects every 60 frames)
@@ -2242,13 +2960,17 @@ void screen_point_read(const int vp[4]) {
     if (g_pick_uv[0] < 0.0f) return;
     const int x = vp[0] + static_cast<int>(g_pick_uv[0] * static_cast<float>(vp[2])), y = vp[1] + static_cast<int>(g_pick_uv[1] * static_cast<float>(vp[3]));
     float d = 1.0f;
-    GLint rfb = 0;
-    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &rfb);
-    GLint dfb = 0;
-    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &dfb);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(dfb));
-    glReadPixels(x, y, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &d);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(rfb));
+    if (vk::is_active()) {
+        if (!vk_depth_at(x, y, &d)) d = 1.0f;
+    } else {
+        GLint rfb = 0;
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &rfb);
+        GLint dfb = 0;
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &dfb);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(dfb));
+        glReadPixels(x, y, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &d);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(rfb));
+    }
     g_pick_ok = d < 1.0f;
     if (g_pick_ok) {
         float m[16];
@@ -2495,8 +3217,8 @@ void mrp_lighting_shadow_pass() {
     static GLuint q[2] = {};
     static double acc[2] = {};
     static int frames = 0, cubes_acc = 0;
-    if (prof && q[0] == 0) glGenQueries(2, q);
-    if (prof) glBeginQuery(GL_TIME_ELAPSED, q[0]);
+    if (!vk::is_active() && prof && q[0] == 0) glGenQueries(2, q);
+    if (!vk::is_active() && prof) glBeginQuery(GL_TIME_ELAPSED, q[0]);
     int prof_cascades = rac1::prof::begin(rac1::prof::kShadowCascades);  // (the debug menu's profiler: the frame's shadow set-up and cascades)
     ensure_resources();
     fit_cascades();
@@ -2546,6 +3268,123 @@ void mrp_lighting_shadow_pass() {
             g_sh.pt_col[g_sh.npts] = glm::vec4(pc[4 * k], pc[4 * k + 1], pc[4 * k + 2], -1.0f);
             g_sh.pt_slot[g_sh.npts] = -1;
         }
+    }
+    if (vk::is_active()) {
+        int prev_vp[4] = {};
+        vk::get_viewport(prev_vp);
+        if (mrp_world_casters_built()) ++g_sh.built;
+        static const int skip = std::getenv("RAC1_SHADOW_SKIP") != nullptr ? std::atoi(std::getenv("RAC1_SHADOW_SKIP")) : 0;
+        const float within_v[4] = {g_sh.cam.x, g_sh.cam.y, g_sh.cam.z, g_shadow_moby_dist};
+        const float* within = g_shadow_moby_dist > 0.0f ? within_v : nullptr;
+        for (int k = 0; k < kCascades; ++k) {
+            if (!g_casc_on.load()) continue;
+            const int cres = g_sh.casc[k].res;
+            const int* moby_rect = nullptr;
+            if (g_shadow_cache != 0) {
+                State::Cache& ca = g_sh.cache[k];
+                if (g_vk_sh.stex[k].image == VK_NULL_HANDLE || g_vk_sh.stex_res[k] != cres) {
+                    vk::destroy_image(g_vk_sh.stex[k]);
+                    vk::create_image(static_cast<uint32_t>(cres), static_cast<uint32_t>(cres), VK_FORMAT_D32_SFLOAT,
+                                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                                         VK_IMAGE_USAGE_SAMPLED_BIT,
+                                     VK_IMAGE_ASPECT_DEPTH_BIT, g_vk_sh.stex[k]);
+                    g_vk_sh.stex_res[k] = cres;
+                    ca.stex_res = cres;
+                    g_sh.refresh[k] = true;
+                }
+                if (g_sh.refresh[k]) {
+                    ca.incomplete = !mrp_world_casters_built();
+                    if (ca.incomplete) g_sh.want = true;
+                    vk::transition_image(vk::cmd(), g_vk_sh.stex[k], VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+                    vk::RenderTarget rt_s{};
+                    rt_s.depth_view = g_vk_sh.stex[k].view;
+                    rt_s.depth_format = VK_FORMAT_D32_SFLOAT;
+                    rt_s.width = static_cast<uint32_t>(cres);
+                    rt_s.height = static_cast<uint32_t>(cres);
+                    vk::set_viewport(0, 0, cres, cres);
+                    vk::set_scissor(false);
+                    vk::push_target(rt_s, false, nullptr, true, 1.0f, false, 0);
+                    if ((skip & 1) == 0) mrp_world_draw_casters(glm::value_ptr(g_sh.casc[k].vp), k);
+                    vk::pop_target();
+                    ++g_sh.refreshes;
+                } else if (k == 2 && (g_sh.frame & 1u) != 0) {
+                    ++g_sh.frames_cached;
+                    continue;
+                }
+                ++g_sh.frames_cached;
+                static const bool whole = std::getenv("RAC1_SHADOW_COPY_WHOLE") != nullptr;
+                int cx = 0, cy = 0, cw = cres, ch = cres;
+                if (!g_sh.refresh[k] && !whole) {
+                    cx = ca.dirty[0];
+                    cy = ca.dirty[1];
+                    cw = ca.dirty[2] - ca.dirty[0];
+                    ch = ca.dirty[3] - ca.dirty[1];
+                }
+                int nr[4] = {0, 0, 0, 0};
+                float rect[4];
+                if ((skip & 2) == 0 && mrp_moby_caster_rect(glm::value_ptr(g_sh.casc[k].vp), rect, within)) {
+                    auto tx = [&](float v, bool up) {
+                        const float t = (v * 0.5f + 0.5f) * static_cast<float>(cres);
+                        return std::clamp(static_cast<int>(up ? std::ceil(t) : std::floor(t)) + (up ? 2 : -2), 0, cres);
+                    };
+                    nr[0] = tx(rect[0], false);
+                    nr[1] = tx(rect[1], false);
+                    nr[2] = tx(rect[2], true);
+                    nr[3] = tx(rect[3], true);
+                }
+                std::memcpy(ca.dirty, nr, sizeof nr);
+                if (!whole) moby_rect = ca.dirty;
+                if (cw > 0 && ch > 0) {
+                    vk::end_rendering();
+                    vk::transition_image(vk::cmd(), g_vk_sh.stex[k], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+                    vk::transition_image(vk::cmd(), g_vk_sh.tex, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                    VkImageCopy ic{};
+                    ic.srcSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1};
+                    ic.srcOffset = {cx, cy, 0};
+                    ic.dstSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, static_cast<uint32_t>(k), 1};
+                    ic.dstOffset = {cx, cy, 0};
+                    ic.extent = {static_cast<uint32_t>(cw), static_cast<uint32_t>(ch), 1};
+                    vkCmdCopyImage(vk::cmd(), g_vk_sh.stex[k].image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                   g_vk_sh.tex.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ic);
+                }
+                vk::transition_image(vk::cmd(), g_vk_sh.tex, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+                vk::RenderTarget rt_l{};
+                rt_l.depth_view = g_vk_sh.tex_layers[k];
+                rt_l.depth_format = VK_FORMAT_D32_SFLOAT;
+                rt_l.width = static_cast<uint32_t>(cres);
+                rt_l.height = static_cast<uint32_t>(cres);
+                vk::set_viewport(0, 0, cres, cres);
+                vk::set_scissor(false);
+                vk::push_target(rt_l, false, nullptr, false, 1.0f, false, 0);
+            } else {
+                vk::transition_image(vk::cmd(), g_vk_sh.tex, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+                vk::RenderTarget rt_l{};
+                rt_l.depth_view = g_vk_sh.tex_layers[k];
+                rt_l.depth_format = VK_FORMAT_D32_SFLOAT;
+                rt_l.width = static_cast<uint32_t>(cres);
+                rt_l.height = static_cast<uint32_t>(cres);
+                vk::set_viewport(0, 0, cres, cres);
+                vk::set_scissor(false);
+                vk::push_target(rt_l, false, nullptr, true, 1.0f, false, 0);
+                if ((skip & 1) == 0) mrp_world_draw_casters(glm::value_ptr(g_sh.casc[k].vp), k);
+            }
+            if (moby_rect != nullptr) {
+                vk::set_scissor(true, moby_rect[0], moby_rect[1], moby_rect[2] - moby_rect[0], moby_rect[3] - moby_rect[1]);
+            }
+            if ((skip & 2) == 0 && (moby_rect == nullptr || (moby_rect[2] > moby_rect[0] && moby_rect[3] > moby_rect[1]))) {
+                mrp_moby_draw_casters(glm::value_ptr(g_sh.casc[k].vp), nullptr, within);
+            }
+            vk::set_scissor(false);
+            vk::pop_target();
+        }
+        vk::transition_image(vk::cmd(), g_vk_sh.tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        point_shadows_pass();
+        point_tiles_update();
+        vk::set_viewport(prev_vp[0], prev_vp[1], prev_vp[2], prev_vp[3]);
+        vk::set_scissor(false);
+        ++g_vk_sh.ubo_gen;
+        g_sh.on = true;
+        return;
     }
     // (the read and draw framebuffers restored apart: the effects copy the screen from the read one - glCopyTexSubImage2D, gs_draw's
     // screen copies -; left at the draw one, an explosion's heat haze sampled a stale picture: a trail when the camera moved)
@@ -2930,6 +3769,176 @@ void mrp_lighting_bind_off(const ShadowLocs& l) {
     glUniform1i(l.on, 0);
     glUniform1i(l.pt_n, -1);
     bind_units(l);
+}
+
+namespace {
+struct ShadowVkUbo {
+    glm::mat4 uShInvView{1.0f};
+    glm::mat4 uShLight{1.0f};
+    glm::mat4 uShCasc[3]{glm::mat4(1.0f), glm::mat4(1.0f), glm::mat4(1.0f)};
+    glm::mat4 uPtVP{1.0f};
+    glm::vec4 uShCut{0.0f};
+    glm::vec4 uShCam_Pass{0.0f};
+    glm::vec4 uShSun_On{0.0f, 0.0f, 1.0f, 0.0f};
+    glm::vec4 uShParam{0.0f};
+    glm::vec4 uShTexel_SunK{0.0f, 0.0f, 0.0f, 1.0f};
+    glm::vec4 uShKey{0.0f, 0.0f, 0.0f, -1.0f};
+    glm::vec4 uShKeyDir_Str{0.0f, 0.0f, 1.0f, 0.0f};
+    glm::vec4 uShPart_Near{1.0f, 1.0f, 1.0f, kPtNear};
+    glm::vec2 uShProj{1.0f, 1.0f};
+    int32_t uShDebug = 0;
+    int32_t uPtN = -1;
+    int32_t uShOpaque = 0;
+    int32_t _shPad0 = 0, _shPad1 = 0, _shPad2 = 0;
+    glm::vec4 uPtPos[96]{};
+    glm::vec4 uPtCol[96]{};
+    glm::vec4 uPtDown[24]{};
+};
+static_assert(sizeof(ShadowVkUbo) == 4000, "ShadowVkUbo must match SHADOW_UBO_DECL in gen_vk_shaders.py");
+
+VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, bool is_caster) {
+    mrp_lighting_vk_set_layout();
+    vk::RingAlloc r = vk::alloc_ring(sizeof(ShadowVkUbo), 256);
+    if (r.ptr != nullptr) std::memcpy(r.ptr, &ubo, sizeof(ShadowVkUbo));
+
+    VkDescriptorSet ds = vk::alloc_descriptor_set(g_vk_sh.set_layout);
+    VkDescriptorBufferInfo dbi{r.buffer, r.offset, sizeof(ShadowVkUbo)};
+
+    const VkSampler cmp_sampler = vk::get_sampler(VK_FILTER_LINEAR, VK_FILTER_LINEAR,
+                                                  VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                                                  true, VK_COMPARE_OP_LESS_OR_EQUAL);
+    const VkSampler nearest_sampler = vk::get_sampler(VK_FILTER_NEAREST, VK_FILTER_NEAREST,
+                                                      VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+
+    const vk::GpuImage& sh_map = (!is_caster && g_vk_sh.tex.image != VK_NULL_HANDLE &&
+                                  g_vk_sh.tex.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+                                     ? g_vk_sh.tex
+                                     : vk::dummy_depth_array();
+    const vk::GpuImage& ao_tex = vk::white_texture();
+    const vk::GpuImage& pt_map = (!is_caster && g_vk_sh.ptex.image != VK_NULL_HANDLE &&
+                                  g_vk_sh.ptex.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+                                     ? g_vk_sh.ptex
+                                     : vk::dummy_depth_cube_array();
+    const vk::GpuImage& tiles_tex = (!is_caster && g_vk_sh.tiles.image != VK_NULL_HANDLE &&
+                                     g_vk_sh.tiles.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+                                        ? g_vk_sh.tiles
+                                        : vk::black_uint_texture();
+
+    VkDescriptorImageInfo diis[4] = {
+        {cmp_sampler, sh_map.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+        {nearest_sampler, ao_tex.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+        {cmp_sampler, pt_map.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+        {nearest_sampler, tiles_tex.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+    };
+
+    VkWriteDescriptorSet writes[5]{};
+    writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[0].dstSet = ds;
+    writes[0].dstBinding = 0;
+    writes[0].descriptorCount = 1;
+    writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writes[0].pBufferInfo = &dbi;
+    for (uint32_t i = 0; i < 4; ++i) {
+        writes[1 + i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[1 + i].dstSet = ds;
+        writes[1 + i].dstBinding = 1 + i;
+        writes[1 + i].descriptorCount = 1;
+        writes[1 + i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[1 + i].pImageInfo = &diis[i];
+    }
+    vkUpdateDescriptorSets(vk::device(), 5, writes, 0, nullptr);
+    return ds;
+}
+}  // namespace
+
+uint64_t mrp_lighting_vk_set_layout() {
+    ensure_vk_lighting_init();
+    if (g_vk_sh.set_layout == VK_NULL_HANDLE && vk::device() != VK_NULL_HANDLE) {
+        VkDescriptorSetLayoutBinding bindings[5]{};
+        bindings[0] = {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+        for (uint32_t i = 1; i <= 4; ++i) {
+            bindings[i] = {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+                           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+        }
+        VkDescriptorSetLayoutCreateInfo dslci{};
+        dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        dslci.bindingCount = 5;
+        dslci.pBindings = bindings;
+        vkCreateDescriptorSetLayout(vk::device(), &dslci, nullptr, &g_vk_sh.set_layout);
+    }
+    return reinterpret_cast<uint64_t>(g_vk_sh.set_layout);
+}
+
+void mrp_lighting_vk_bind_off(uint64_t pipe_layout) {
+    const uint64_t gen = (vk::frame_number() << 32) | (g_vk_sh.ubo_gen & 0xffffffffu);
+    if (g_vk_sh.off_gen != gen || g_vk_sh.off_ds == VK_NULL_HANDLE) {
+        ShadowVkUbo ubo{};
+        g_vk_sh.off_ds = build_lighting_vk_ds(ubo, false);
+        g_vk_sh.off_gen = gen;
+    }
+    vkCmdBindDescriptorSets(vk::cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            reinterpret_cast<VkPipelineLayout>(pipe_layout), 1, 1, &g_vk_sh.off_ds, 0, nullptr);
+}
+
+void mrp_lighting_vk_bind_receiver(uint64_t pipe_layout, bool sky, bool lit_variant) {
+    const bool on = mrp_lighting_active() && !sky;
+    if (!on) {
+        mrp_lighting_vk_bind_off(pipe_layout);
+        return;
+    }
+    const uint64_t gen = (vk::frame_number() << 32) | (g_vk_sh.ubo_gen & 0xffffffffu);
+    const int li = lit_variant ? 1 : 0;
+    if (g_vk_sh.rec_gen[1][li] != gen || g_vk_sh.rec_ds[1][li] == VK_NULL_HANDLE) {
+        ShadowVkUbo ubo{};
+        ubo.uShInvView = g_sh.inv_view;
+        ubo.uShProj = g_sh.proj;
+        for (int k = 0; k < kCascades; ++k) ubo.uShCasc[k] = g_sh.casc[k].tex;
+        ubo.uShCam_Pass = glm::vec4(g_sh.cam, 0.0f);
+        ubo.uShSun_On = glm::vec4(g_sh.sun, 1.0f);
+        ubo.uShParam = glm::vec4(lit_variant ? 1.0f : static_cast<float>(g_shadow_strength) / 100.0f,
+                                 g_has_sun.load() ? static_cast<float>(kCascades) : 0.0f, 0.08f, 1.0f);
+        ubo.uShTexel_SunK = glm::vec4(g_sh.casc[0].texel, g_sh.casc[1].texel, g_sh.casc[2].texel, g_sh.sun_k);
+        ubo.uShPart_Near = glm::vec4(g_sh.casc[0].part, g_sh.casc[1].part, g_sh.casc[2].part, kPtNear);
+        ubo.uShKeyDir_Str = glm::vec4(g_sh.key_dir, static_cast<float>(g_shadow_strength) / 100.0f);
+        static const bool share = std::getenv("RAC1_WORLD_SHADOW") != nullptr &&
+                                  std::strcmp(std::getenv("RAC1_WORLD_SHADOW"), "share") == 0;
+        const glm::vec4& k = g_sh.key;
+        if (share || !(k.x + k.y + k.z > 0.0f)) ubo.uShKey = glm::vec4(0.0f, 0.0f, 0.0f, -1.0f);
+        else ubo.uShKey = glm::vec4(k.x * (128.0f / 255.0f), k.y * (128.0f / 255.0f), k.z * (128.0f / 255.0f), k.w);
+        ubo.uShDebug = g_shadow_debug;
+        ubo.uPtN = g_modern_points != 0 ? g_sh.npts : -1;
+        ubo.uPtVP = g_sh.view_proj;
+        if (g_sh.npts > 0) {
+            std::memcpy(ubo.uPtPos, g_sh.pt_pos, static_cast<size_t>(g_sh.npts) * sizeof(glm::vec4));
+            std::memcpy(ubo.uPtCol, g_sh.pt_col, static_cast<size_t>(g_sh.npts) * sizeof(glm::vec4));
+            std::memcpy(ubo.uPtDown, g_sh.pt_down, static_cast<size_t>((g_sh.npts + 3) / 4) * sizeof(glm::vec4));
+        }
+        g_vk_sh.rec_ds[1][li] = build_lighting_vk_ds(ubo, false);
+        g_vk_sh.rec_gen[1][li] = gen;
+    }
+    vkCmdBindDescriptorSets(vk::cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            reinterpret_cast<VkPipelineLayout>(pipe_layout), 1, 1, &g_vk_sh.rec_ds[1][li], 0, nullptr);
+}
+
+void mrp_lighting_vk_bind_caster(uint64_t pipe_layout, const float* light_vp, bool opaque) {
+    const uint64_t gen = (vk::frame_number() << 32) | (g_vk_sh.ubo_gen & 0xffffffffu);
+    if (g_vk_sh.cast_gen != gen || g_vk_sh.cast_ds == VK_NULL_HANDLE || g_vk_sh.cast_opaque != opaque ||
+        std::memcmp(g_vk_sh.cast_vp, light_vp, 64) != 0) {
+        ShadowVkUbo ubo{};
+        ubo.uShInvView = g_sh.inv_view;
+        ubo.uShProj = g_sh.proj;
+        ubo.uShLight = glm::make_mat4(light_vp);
+        ubo.uShCut = glm::vec4(g_sh.sun, kBack + glm::dot(g_sh.cam, g_sh.sun));
+        ubo.uShCam_Pass = glm::vec4(g_sh.cam, 1.0f);
+        ubo.uShSun_On = glm::vec4(g_sh.sun, 0.0f);
+        ubo.uShOpaque = opaque ? 1 : 0;
+        g_vk_sh.cast_ds = build_lighting_vk_ds(ubo, true);
+        g_vk_sh.cast_gen = gen;
+        g_vk_sh.cast_opaque = opaque;
+        std::memcpy(g_vk_sh.cast_vp, light_vp, 64);
+    }
+    vkCmdBindDescriptorSets(vk::cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            reinterpret_cast<VkPipelineLayout>(pipe_layout), 1, 1, &g_vk_sh.cast_ds, 0, nullptr);
 }
 
 }  // namespace rac1

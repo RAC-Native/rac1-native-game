@@ -198,6 +198,7 @@ and knows nothing about Ratchet & Clank. It provides:
 - **VU0 and VU1** with the VIF and the GIF's output (`runtime/vu/`), running the translated programs
   or, for testing and fallbacks, the VU interpreter;
 - the **GS replica** for the 2D (`runtime/gs/`);
+- the experimental **Vulkan** backend's device, frames and helpers (`runtime/vk/`, see [Vulkan](vulkan.md));
 - the **IOP side**: IOP memory, the SIF RPC servers the game calls, the 989snd sound driver and its
   streams (`runtime/iop/`, `runtime/sif/`);
 - the **disc**, read from the player's ISO (`runtime/kernel/disc.cpp`), and the **movie decoder**

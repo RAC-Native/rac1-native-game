@@ -207,7 +207,11 @@ struct Resources {
     bool nvx = false, ati = false;
     uint64_t nvx_total = 0, nvx_dedicated = 0, nvx_available = 0, nvx_evicted = 0;
     uint64_t ati_tex_free = 0, ati_vbo_free = 0, ati_rb_free = 0;
-    std::string gl_renderer, gl_vendor;
+    std::string gl_renderer, gl_vendor;  // (the renderer's device and driver: OpenGL's strings, or Vulkan's - api)
+    std::string api = "OpenGL";
+    // Vulkan (VK_EXT_memory_budget): the device-local heaps' size, the driver's budget for this process and its use of them
+    bool vk_budget = false;
+    uint64_t vk_heap_size = 0, vk_heap_budget = 0, vk_heap_usage = 0;
 };
 const Resources& resources();
 
@@ -222,6 +226,21 @@ void gl_scan(std::vector<GlOwnerRow>* out);
 enum GlKind : int { kGlTexture, kGlBuffer, kGlRenderbuffer };
 void gl_track(GlKind kind, unsigned name, const char* owner);
 void gl_track_n(GlKind kind, int n, const unsigned* names, const char* owner);
+
+// The GPU side when the game draws with Vulkan (runtime/vk sets it when it starts, docs/vulkan.md); none: OpenGL's queries.
+// Its timestamps go in the frame's command buffer (a slot's `per_slot` of them a frame, kept until read); gl_scan then counts
+// the renderer's own allocations (images and buffers by use) instead of the GL objects.
+struct GpuApi {
+    const char* name;                                // ("Vulkan")
+    bool (*alloc)(int slots, int per_slot);          // the timestamps' pool (false: none, no GPU timings)
+    void (*slot_reset)(int slot);                    // the slot's timestamps made writable again (before its first write)
+    void (*write)(int slot, int q);                  // a timestamp at this point of the GPU's stream
+    bool (*read)(int slot, int n, uint64_t* ns);     // the slot's n timestamps (ns), false while the last is not there; never waits
+    double (*now_ms)();                              // the GPU's clock now, ms (the trace's calibration; may be null)
+    void (*resources)(Resources* r);                 // the device's names and memory figures
+    void (*scan)(std::vector<GlOwnerRow>* out);      // the allocations, by use
+};
+void set_gpu_api(const GpuApi* api);
 
 // ---- Exports ----
 // The last `frames` frames as CSV (a row a frame, the stages' CPU and GPU ms). False when the file cannot be written.

@@ -44,7 +44,19 @@ FetchContent_Declare(miniaudio
     URL_HASH SHA256=b900edcffe979816e2560a0580b9b1216d674b4f17fbadeca8f777a7f8ab0274
     SOURCE_SUBDIR _no_cmake)
 
-FetchContent_MakeAvailable(glfw glm imgui tinygltf miniaudio)
+# Vulkan-Headers 1.3.296 (Apache-2.0 / MIT): the Vulkan API headers
+FetchContent_Declare(vulkan_headers
+    URL      https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.3.296.tar.gz
+    URL_HASH SHA256=e204e0b3c19f622d197df945737f5db913d6621830999b8578d34e80a7c90585
+    SOURCE_SUBDIR _no_cmake)
+
+# volk 1.3.296.0 (MIT): the Vulkan runtime loader (dlopen / LoadLibrary, no SDK needed to build)
+FetchContent_Declare(volk
+    URL      https://github.com/zeux/volk/archive/refs/tags/vulkan-sdk-1.3.296.0.tar.gz
+    URL_HASH SHA256=8ffd0e81e29688f4abaa39e598937160b098228f37503903b10d481d4862ab85
+    SOURCE_SUBDIR _no_cmake)
+
+FetchContent_MakeAvailable(glfw glm imgui tinygltf miniaudio vulkan_headers volk)
 
 add_library(glm_headers INTERFACE)
 target_include_directories(glm_headers SYSTEM INTERFACE ${glm_SOURCE_DIR})
@@ -55,6 +67,13 @@ target_include_directories(tinygltf_headers SYSTEM INTERFACE ${tinygltf_SOURCE_D
 add_library(miniaudio_headers INTERFACE)
 target_include_directories(miniaudio_headers SYSTEM INTERFACE ${miniaudio_SOURCE_DIR})
 
+add_library(volk STATIC ${volk_SOURCE_DIR}/volk.c)
+target_include_directories(volk SYSTEM PUBLIC ${volk_SOURCE_DIR} ${vulkan_headers_SOURCE_DIR}/include)
+target_compile_definitions(volk PUBLIC VK_NO_PROTOTYPES)
+if(NOT WIN32)
+    target_link_libraries(volk PUBLIC ${CMAKE_DL_LIBS})
+endif()
+
 add_library(imgui STATIC
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_demo.cpp
@@ -64,7 +83,8 @@ add_library(imgui STATIC
     ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
 )
 target_include_directories(imgui SYSTEM PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
-target_link_libraries(imgui PUBLIC glad glfw)
-target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_LOADER_GLAD=1)
+target_link_libraries(imgui PUBLIC glad glfw volk)
+target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_LOADER_GLAD=1 IMGUI_IMPL_VULKAN_USE_VOLK=1)

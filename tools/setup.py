@@ -259,6 +259,8 @@ DEPENDENCIES = [
      "libwayland-dev libxkbcommon-dev", "wayland-devel libxkbcommon-devel", "wayland libxkbcommon"),
     ("FFmpeg's libavcodec (optional: plays the game's movies)", False,
      lambda: pkg_config("libavcodec", "libavutil") or pkg_config("libavcodec", "libavutil", extra_path=HOMEBREW_PKGCONFIG), "libavcodec-dev libavutil-dev", "ffmpeg-free-devel", "ffmpeg"),
+    ("glslc (optional: the experimental Vulkan renderer's shaders)", False,
+     lambda: shutil.which("glslc") is not None or shutil.which("glslangValidator") is not None, "glslc", "glslc", "shaderc"),
 ]
 INSTALL = {"debian": "sudo apt install", "fedora": "sudo dnf install", "arch": "sudo pacman -S --needed"}
 DISTRO_NAME = {"debian": "Debian / Ubuntu", "fedora": "Fedora", "arch": "Arch"}
@@ -273,6 +275,8 @@ WINDOWS_DEPENDENCIES = [
     ("pkg-config (finds FFmpeg)", False, lambda: shutil.which("pkg-config") is not None, "mingw-w64-clang-x86_64-pkgconf"),
     ("FFmpeg's libavcodec (optional: plays the game's movies)", False, lambda: pkg_config("libavcodec", "libavutil"),
      "mingw-w64-clang-x86_64-ffmpeg"),
+    ("glslc (optional: the experimental Vulkan renderer's shaders)", False,
+     lambda: shutil.which("glslc") is not None or shutil.which("glslangValidator") is not None, "mingw-w64-clang-x86_64-shaderc"),
 ]
 
 

@@ -11,6 +11,7 @@
 #include <game/render/mrp_lighting.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_moby_renderer.h>
+#include <game/render/mrp_tfrag_gpu.h>
 #include <game/render/mrp_world_assets.h>
 #include <game/render/mrp_world_check.h>
 #include <game/render/mrp_world_scene.h>
@@ -21,6 +22,8 @@
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
 #include <runtime/kernel/ee_memory.h>
+#include <runtime/vk/vk_context.h>
+#include <runtime/vk/vk_shaders.h>
 
 #include <glad/glad.h>
 #define GLFW_INCLUDE_NONE
@@ -81,6 +84,7 @@ int world_level_id() { return level_exit_loading_screen() ? kFlightLevel : boot_
 struct Bucket {
     uint32_t w = 0, h = 0, levels = 0;
     GLuint tex = 0;
+    vk::GpuImage vk_tex{};
     std::vector<std::pair<int, int>> textures;  // (table, index) per layer
 };
 struct TexRef {
@@ -124,6 +128,7 @@ struct Level {
     std::vector<TVert> tverts;
     std::vector<uint32_t> tidx;
     GLuint tvao = 0, tvbo = 0, tibo = 0;
+    vk::GpuBuffer vk_tvbo{}, vk_tibo{};
     // the sky's textures: decoded from the sky asset's data in EE memory at their first use (the image / palette the
     // texture uploads of the sky's chain send), each a bucket of its own; by (image, palette, TEX0's format and size fields)
     std::map<std::tuple<uint32_t, uint32_t, uint64_t>, TexRef> sky_tex;
@@ -308,15 +313,20 @@ void load_textures(Level& L) {
         uint32_t maxl = 1;
         while ((b.w >> maxl) > 0 && (b.h >> maxl) > 0 && maxl < b.levels) ++maxl;
         b.levels = std::max(1u, std::min(b.levels, maxl));
-        glGenTextures(1, &b.tex);
-        rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &b.tex, "MRP world: texture arrays");
-        glBindTexture(GL_TEXTURE_2D_ARRAY, b.tex);
-        const GLsizei layers = static_cast<GLsizei>(b.textures.size());
-        for (uint32_t l = 0; l < b.levels; ++l)
-            glTexImage3D(GL_TEXTURE_2D_ARRAY, static_cast<GLint>(l), GL_RGBA8, static_cast<GLsizei>(std::max(1u, b.w >> l)), static_cast<GLsizei>(std::max(1u, b.h >> l)), layers, 0,
-                         GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BASE_LEVEL, 0);
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(b.levels) - 1);
+        const uint32_t layers = static_cast<uint32_t>(b.textures.size());
+        if (vk::is_active()) {
+            vk::create_image(b.w, b.h, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                             VK_IMAGE_ASPECT_COLOR_BIT, b.vk_tex, layers, 0, VK_IMAGE_VIEW_TYPE_2D_ARRAY, b.levels);
+        } else {
+            glGenTextures(1, &b.tex);
+            rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &b.tex, "MRP world: texture arrays");
+            glBindTexture(GL_TEXTURE_2D_ARRAY, b.tex);
+            for (uint32_t l = 0; l < b.levels; ++l)
+                glTexImage3D(GL_TEXTURE_2D_ARRAY, static_cast<GLint>(l), GL_RGBA8, static_cast<GLsizei>(std::max(1u, b.w >> l)), static_cast<GLsizei>(std::max(1u, b.h >> l)),
+                             static_cast<GLsizei>(layers), 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BASE_LEVEL, 0);
+            glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(b.levels) - 1);
+        }
         for (size_t layer = 0; layer < b.textures.size(); ++layer) {
             const mrp::Texture& t = L.tex[b.textures[layer].first][static_cast<size_t>(b.textures[layer].second)];
             uint32_t pal[256];
@@ -326,23 +336,34 @@ void load_textures(Level& L) {
                 px.assign(static_cast<size_t>(w) * h, 0u);
                 if (l < t.mips.size() && t.mips[l].size() >= static_cast<size_t>(w) * h)
                     for (size_t q = 0; q < px.size(); ++q) px[q] = pal[t.mips[l][q]];
-                glTexSubImage3D(GL_TEXTURE_2D_ARRAY, static_cast<GLint>(l), 0, 0, static_cast<GLint>(layer), static_cast<GLsizei>(w), static_cast<GLsizei>(h), 1, GL_RGBA,
-                                GL_UNSIGNED_BYTE, px.data());
+                if (vk::is_active()) {
+                    vk::upload_image_2d(b.vk_tex, px.data(), px.size() * 4, 0, 0, static_cast<int>(w), static_cast<int>(h), 0,
+                                        static_cast<uint32_t>(layer), l);
+                } else {
+                    glTexSubImage3D(GL_TEXTURE_2D_ARRAY, static_cast<GLint>(l), 0, 0, static_cast<GLint>(layer), static_cast<GLsizei>(w), static_cast<GLsizei>(h), 1, GL_RGBA,
+                                    GL_UNSIGNED_BYTE, px.data());
+                }
             }
         }
     }
-    glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+    if (!vk::is_active()) glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 }
 
 void free_level(Level& L) {
-    for (Bucket& b : L.buckets)
-        if (b.tex != 0) glDeleteTextures(1, &b.tex);
-    if (L.vao != 0) glDeleteVertexArrays(1, &L.vao);
-    if (L.vbo != 0) glDeleteBuffers(1, &L.vbo);
-    if (L.ibo != 0) glDeleteBuffers(1, &L.ibo);
-    if (L.tvao != 0) glDeleteVertexArrays(1, &L.tvao);
-    if (L.tvbo != 0) glDeleteBuffers(1, &L.tvbo);
-    if (L.tibo != 0) glDeleteBuffers(1, &L.tibo);
+    if (vk::is_active()) {
+        for (Bucket& b : L.buckets) vk::destroy_image(b.vk_tex);
+        vk::destroy_buffer(L.vk_tvbo);
+        vk::destroy_buffer(L.vk_tibo);
+    } else {
+        for (Bucket& b : L.buckets)
+            if (b.tex != 0) glDeleteTextures(1, &b.tex);
+        if (L.vao != 0) glDeleteVertexArrays(1, &L.vao);
+        if (L.vbo != 0) glDeleteBuffers(1, &L.vbo);
+        if (L.ibo != 0) glDeleteBuffers(1, &L.ibo);
+        if (L.tvao != 0) glDeleteVertexArrays(1, &L.tvao);
+        if (L.tvbo != 0) glDeleteBuffers(1, &L.tvbo);
+        if (L.tibo != 0) glDeleteBuffers(1, &L.tibo);
+    }
     L = Level{};
 }
 
@@ -445,43 +466,52 @@ void load_level(int id) {
     L.idx = std::make_unique<WorldIndex>();
     L.idx->add(L.world.get());
     load_textures(L);
-    glGenVertexArrays(1, &L.vao);
-    glGenBuffers(1, &L.vbo);
-    rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &L.vbo, "MRP world: meshes");
-    glGenBuffers(1, &L.ibo);
-    rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &L.ibo, "MRP world: meshes");
-    glBindVertexArray(L.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, L.vbo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, L.ibo);
-    const GLsizei S = sizeof(GpuV);
-    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, S, reinterpret_cast<void*>(offsetof(GpuV, wp)));
-    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, S, reinterpret_cast<void*>(offsetof(GpuV, vu)));
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, S, reinterpret_cast<void*>(offsetof(GpuV, stq)));
-    glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, S, reinterpret_cast<void*>(offsetof(GpuV, lodq)));
-    glVertexAttribIPointer(4, 4, GL_UNSIGNED_BYTE, S, reinterpret_cast<void*>(offsetof(GpuV, rgba)));
-    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, S, reinterpret_cast<void*>(offsetof(GpuV, fog)));
-    glVertexAttribIPointer(6, 2, GL_UNSIGNED_INT, S, reinterpret_cast<void*>(offsetof(GpuV, word)));
-    glVertexAttribIPointer(7, 2, GL_UNSIGNED_INT, S, reinterpret_cast<void*>(offsetof(GpuV, state)));
-    for (GLuint a = 0; a < 8; ++a) glEnableVertexAttribArray(a);
     // the GPU path's templates (static)
     build_templates(L);
-    glGenVertexArrays(1, &L.tvao);
-    glGenBuffers(1, &L.tvbo);
-    rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &L.tvbo, "MRP world: meshes");
-    glGenBuffers(1, &L.tibo);
-    rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &L.tibo, "MRP world: meshes");
-    glBindVertexArray(L.tvao);
-    glBindBuffer(GL_ARRAY_BUFFER, L.tvbo);
-    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(L.tverts.size() * sizeof(TVert)), L.tverts.data(), GL_STATIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, L.tibo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(L.tidx.size() * sizeof(uint32_t)), L.tidx.data(), GL_STATIC_DRAW);
-    const GLsizei T = sizeof(TVert);
-    glVertexAttribIPointer(0, 4, GL_SHORT, T, reinterpret_cast<void*>(offsetof(TVert, pos)));
-    glVertexAttribIPointer(1, 4, GL_SHORT, T, reinterpret_cast<void*>(offsetof(TVert, delta)));
-    glVertexAttribIPointer(2, 4, GL_SHORT, T, reinterpret_cast<void*>(offsetof(TVert, uv)));
-    glVertexAttribIPointer(3, 4, GL_UNSIGNED_BYTE, T, reinterpret_cast<void*>(offsetof(TVert, col)));
-    for (GLuint a = 0; a < 4; ++a) glEnableVertexAttribArray(a);
-    glBindVertexArray(0);
+    if (vk::is_active()) {
+        const size_t vbytes = std::max<size_t>(L.tverts.size() * sizeof(TVert), sizeof(TVert));
+        TVert dummy_v{};
+        vk::upload_buffer(L.vk_tvbo, L.tverts.empty() ? &dummy_v : L.tverts.data(), vbytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        const size_t ibytes = std::max<size_t>(L.tidx.size() * sizeof(uint32_t), sizeof(uint32_t));
+        uint32_t dummy_i = 0;
+        vk::upload_buffer(L.vk_tibo, L.tidx.empty() ? &dummy_i : L.tidx.data(), ibytes, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+    } else {
+        glGenVertexArrays(1, &L.vao);
+        glGenBuffers(1, &L.vbo);
+        rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &L.vbo, "MRP world: meshes");
+        glGenBuffers(1, &L.ibo);
+        rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &L.ibo, "MRP world: meshes");
+        glBindVertexArray(L.vao);
+        glBindBuffer(GL_ARRAY_BUFFER, L.vbo);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, L.ibo);
+        const GLsizei S = sizeof(GpuV);
+        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, S, reinterpret_cast<void*>(offsetof(GpuV, wp)));
+        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, S, reinterpret_cast<void*>(offsetof(GpuV, vu)));
+        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, S, reinterpret_cast<void*>(offsetof(GpuV, stq)));
+        glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, S, reinterpret_cast<void*>(offsetof(GpuV, lodq)));
+        glVertexAttribIPointer(4, 4, GL_UNSIGNED_BYTE, S, reinterpret_cast<void*>(offsetof(GpuV, rgba)));
+        glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, S, reinterpret_cast<void*>(offsetof(GpuV, fog)));
+        glVertexAttribIPointer(6, 2, GL_UNSIGNED_INT, S, reinterpret_cast<void*>(offsetof(GpuV, word)));
+        glVertexAttribIPointer(7, 2, GL_UNSIGNED_INT, S, reinterpret_cast<void*>(offsetof(GpuV, state)));
+        for (GLuint a = 0; a < 8; ++a) glEnableVertexAttribArray(a);
+        glGenVertexArrays(1, &L.tvao);
+        glGenBuffers(1, &L.tvbo);
+        rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &L.tvbo, "MRP world: meshes");
+        glGenBuffers(1, &L.tibo);
+        rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &L.tibo, "MRP world: meshes");
+        glBindVertexArray(L.tvao);
+        glBindBuffer(GL_ARRAY_BUFFER, L.tvbo);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(L.tverts.size() * sizeof(TVert)), L.tverts.data(), GL_STATIC_DRAW);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, L.tibo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(L.tidx.size() * sizeof(uint32_t)), L.tidx.data(), GL_STATIC_DRAW);
+        const GLsizei T = sizeof(TVert);
+        glVertexAttribIPointer(0, 4, GL_SHORT, T, reinterpret_cast<void*>(offsetof(TVert, pos)));
+        glVertexAttribIPointer(1, 4, GL_SHORT, T, reinterpret_cast<void*>(offsetof(TVert, delta)));
+        glVertexAttribIPointer(2, 4, GL_SHORT, T, reinterpret_cast<void*>(offsetof(TVert, uv)));
+        glVertexAttribIPointer(3, 4, GL_UNSIGNED_BYTE, T, reinterpret_cast<void*>(offsetof(TVert, col)));
+        for (GLuint a = 0; a < 4; ++a) glEnableVertexAttribArray(a);
+        glBindVertexArray(0);
+    }
     L.loaded = true;
     static_level_build(g_slevel, *L.world);  // (the classes as the passes find them in EE memory)
     tfrag_level_build(g_tlevel, *L.world);   // (the tfrag images / plans from EE memory)
@@ -832,7 +862,257 @@ Loc locs(GLuint prog) {
     return l;
 }
 
+struct WorldVkPush {
+    float uVP[16];
+    float uFrame[4];
+    float uXyOff[4];
+    float uFogCol_Pad[4];
+    int32_t uMode;
+    int32_t uMipMode;
+    int32_t uShade;
+    int32_t uFge;
+    int32_t uAtPass;
+    int32_t uU8;
+    int32_t _pad0 = 0;
+    int32_t _pad1 = 0;
+};
+static_assert(sizeof(WorldVkPush) == 144);
+
+struct WorldVkPipeKey {
+    bool gpu = false;
+    bool lit = false;
+    bool early = false;
+    bool caster = false;
+    bool depth_clamp = false;
+    bool depth_test = false;
+    bool depth_write = false;
+    VkCompareOp depth_compare = VK_COMPARE_OP_ALWAYS;
+    uint8_t color_mask = 0xF;
+    uint64_t prim = 0;
+    uint64_t alpha = 0;
+    VkFormat color_fmt = VK_FORMAT_R8G8B8A8_UNORM;
+    VkFormat depth_fmt = VK_FORMAT_D32_SFLOAT_S8_UINT;
+    bool has_stencil = true;
+    bool operator==(const WorldVkPipeKey& o) const {
+        return gpu == o.gpu && lit == o.lit && early == o.early && caster == o.caster &&
+               depth_clamp == o.depth_clamp && depth_test == o.depth_test && depth_write == o.depth_write &&
+               depth_compare == o.depth_compare && color_mask == o.color_mask &&
+               prim == o.prim && alpha == o.alpha && color_fmt == o.color_fmt &&
+               depth_fmt == o.depth_fmt && has_stencil == o.has_stencil;
+    }
+};
+
+struct WorldVkPipeKeyHash {
+    size_t operator()(const WorldVkPipeKey& k) const {
+        size_t h = std::hash<uint64_t>{}(k.prim ^ (k.alpha * 0x9e3779b97f4a7c15ULL));
+        uint32_t flags = (k.gpu ? 1u : 0u) | (k.lit ? 2u : 0u) | (k.early ? 4u : 0u) |
+                         (k.caster ? 8u : 0u) | (k.depth_clamp ? 16u : 0u) |
+                         (k.depth_test ? 32u : 0u) | (k.depth_write ? 64u : 0u) |
+                         (static_cast<uint32_t>(k.depth_compare) << 7) |
+                         (static_cast<uint32_t>(k.color_mask) << 11) |
+                         (static_cast<uint32_t>(k.color_fmt) << 15) |
+                         (static_cast<uint32_t>(k.depth_fmt) << 23) |
+                         (k.has_stencil ? (1u << 31) : 0u);
+        return h ^ (std::hash<uint32_t>{}(flags) + 0x9e3779b9 + (h << 6) + (h >> 2));
+    }
+};
+
+struct VkWorldState {
+    bool inited = false;
+    VkDescriptorSetLayout set0_layout = VK_NULL_HANDLE;
+    VkPipelineLayout pipe_layout = VK_NULL_HANDLE;
+    VkShaderModule vs = VK_NULL_HANDLE;
+    VkShaderModule vs_gpu = VK_NULL_HANDLE;
+    VkShaderModule fs = VK_NULL_HANDLE;
+    VkShaderModule vs_lit = VK_NULL_HANDLE;
+    VkShaderModule vs_gpu_lit = VK_NULL_HANDLE;
+    VkShaderModule fs_lit = VK_NULL_HANDLE;
+    VkShaderModule fs_early = VK_NULL_HANDLE;
+    VkSampler samplers[2][16]{};
+    std::unordered_map<WorldVkPipeKey, VkPipeline, WorldVkPipeKeyHash> pipelines;
+    vk::RingAlloc cpu_vbo_alloc{};
+    vk::RingAlloc cpu_ibo_alloc{};
+    vk::RingAlloc insts_alloc{};
+    vk::RingAlloc cols_alloc{};
+    vk::RingAlloc cmds_alloc{};
+    vk::RingAlloc rcols_alloc{};
+    vk::RingAlloc indirect_alloc{};
+} g_vk_world;
+
+void shutdown_vk_world() {
+    VkDevice dev = vk::device();
+    if (dev != VK_NULL_HANDLE) {
+        for (auto& kv : g_vk_world.pipelines) {
+            if (kv.second != VK_NULL_HANDLE) vkDestroyPipeline(dev, kv.second, nullptr);
+        }
+        g_vk_world.pipelines.clear();
+        auto destroy_mod = [&](VkShaderModule& m) {
+            if (m != VK_NULL_HANDLE) {
+                vkDestroyShaderModule(dev, m, nullptr);
+                m = VK_NULL_HANDLE;
+            }
+        };
+        destroy_mod(g_vk_world.vs);
+        destroy_mod(g_vk_world.vs_gpu);
+        destroy_mod(g_vk_world.fs);
+        destroy_mod(g_vk_world.vs_lit);
+        destroy_mod(g_vk_world.vs_gpu_lit);
+        destroy_mod(g_vk_world.fs_lit);
+        destroy_mod(g_vk_world.fs_early);
+        if (g_vk_world.pipe_layout != VK_NULL_HANDLE) {
+            vkDestroyPipelineLayout(dev, g_vk_world.pipe_layout, nullptr);
+            g_vk_world.pipe_layout = VK_NULL_HANDLE;
+        }
+        if (g_vk_world.set0_layout != VK_NULL_HANDLE) {
+            vkDestroyDescriptorSetLayout(dev, g_vk_world.set0_layout, nullptr);
+            g_vk_world.set0_layout = VK_NULL_HANDLE;
+        }
+    }
+    free_level(g_level);
+    g_vk_world = VkWorldState{};
+}
+
+bool init_vk_world() {
+    if (g_vk_world.inited) return true;
+    VkDevice dev = vk::device();
+    if (dev == VK_NULL_HANDLE) return false;
+
+    VkDescriptorSetLayoutBinding b[5]{};
+    for (uint32_t i = 0; i < 4; ++i) {
+        b[i].binding = i;
+        b[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        b[i].descriptorCount = 1;
+        b[i].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    }
+    b[4].binding = 4;
+    b[4].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    b[4].descriptorCount = 16;
+    b[4].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutCreateInfo slci{};
+    slci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    slci.bindingCount = 5;
+    slci.pBindings = b;
+    if (vkCreateDescriptorSetLayout(dev, &slci, nullptr, &g_vk_world.set0_layout) != VK_SUCCESS) return false;
+
+    VkDescriptorSetLayout set_layouts[2] = {
+        g_vk_world.set0_layout,
+        reinterpret_cast<VkDescriptorSetLayout>(mrp_lighting_vk_set_layout()),
+    };
+    VkPushConstantRange pcr{};
+    pcr.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    pcr.offset = 0;
+    pcr.size = sizeof(WorldVkPush);
+
+    VkPipelineLayoutCreateInfo plci{};
+    plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    plci.setLayoutCount = 2;
+    plci.pSetLayouts = set_layouts;
+    plci.pushConstantRangeCount = 1;
+    plci.pPushConstantRanges = &pcr;
+    if (vkCreatePipelineLayout(dev, &plci, nullptr, &g_vk_world.pipe_layout) != VK_SUCCESS) return false;
+
+    g_vk_world.vs = vk::create_shader_module(vk::shaders::kMrpWorldVs, sizeof(vk::shaders::kMrpWorldVs));
+    g_vk_world.vs_gpu = vk::create_shader_module(vk::shaders::kMrpWorldGpuVs, sizeof(vk::shaders::kMrpWorldGpuVs));
+    g_vk_world.fs = vk::create_shader_module(vk::shaders::kMrpWorldFs, sizeof(vk::shaders::kMrpWorldFs));
+    g_vk_world.vs_lit = vk::create_shader_module(vk::shaders::kMrpWorldLitVs, sizeof(vk::shaders::kMrpWorldLitVs));
+    g_vk_world.vs_gpu_lit = vk::create_shader_module(vk::shaders::kMrpWorldGpuLitVs, sizeof(vk::shaders::kMrpWorldGpuLitVs));
+    g_vk_world.fs_lit = vk::create_shader_module(vk::shaders::kMrpWorldLitFs, sizeof(vk::shaders::kMrpWorldLitFs));
+    g_vk_world.fs_early = vk::create_shader_module(vk::shaders::kMrpWorldEarlyFs, sizeof(vk::shaders::kMrpWorldEarlyFs));
+
+    for (int mm = 0; mm < 2; ++mm) {
+        for (uint32_t s = 0; s < 16; ++s) {
+            const VkFilter mag = (s & 1) != 0 ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+            const VkFilter min = (mm != 0 || (s & 2) != 0) ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+            const VkSamplerMipmapMode mip = mm == 0 ? VK_SAMPLER_MIPMAP_MODE_NEAREST : VK_SAMPLER_MIPMAP_MODE_LINEAR;
+            const VkSamplerAddressMode ws = (s & 4) != 0 ? VK_SAMPLER_ADDRESS_MODE_REPEAT : VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+            const VkSamplerAddressMode wt = (s & 8) != 0 ? VK_SAMPLER_ADDRESS_MODE_REPEAT : VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+            g_vk_world.samplers[mm][s] = vk::get_sampler(min, mag, ws, wt, false, VK_COMPARE_OP_ALWAYS, mm != 0 ? 16.0f : 1.0f, mip, 16.0f);
+        }
+    }
+    vk::register_shutdown_callback(shutdown_vk_world);
+    g_vk_world.inited = true;
+    return true;
+}
+
+VkPipeline get_world_vk_pipeline(const WorldVkPipeKey& k) {
+    auto it = g_vk_world.pipelines.find(k);
+    if (it != g_vk_world.pipelines.end()) return it->second;
+
+    vk::GraphicsPipelineDesc ci{};
+    ci.layout = g_vk_world.pipe_layout;
+    if (k.early) {
+        ci.vs = k.gpu ? g_vk_world.vs_gpu_lit : g_vk_world.vs_lit;
+        ci.fs = g_vk_world.fs_early;
+    } else if (k.lit) {
+        ci.vs = k.gpu ? g_vk_world.vs_gpu_lit : g_vk_world.vs_lit;
+        ci.fs = g_vk_world.fs_lit;
+    } else {
+        ci.vs = k.gpu ? g_vk_world.vs_gpu : g_vk_world.vs;
+        ci.fs = g_vk_world.fs;
+    }
+
+    if (k.gpu) {
+        VkVertexInputBindingDescription bind{};
+        bind.binding = 0;
+        bind.stride = sizeof(TVert);
+        bind.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        ci.vertex_bindings = {bind};
+        ci.vertex_attribs = {
+            {0, 0, VK_FORMAT_R16G16B16A16_SINT, static_cast<uint32_t>(offsetof(TVert, pos))},
+            {1, 0, VK_FORMAT_R16G16B16A16_SINT, static_cast<uint32_t>(offsetof(TVert, delta))},
+            {2, 0, VK_FORMAT_R16G16B16A16_SINT, static_cast<uint32_t>(offsetof(TVert, uv))},
+            {3, 0, VK_FORMAT_R8G8B8A8_UINT, static_cast<uint32_t>(offsetof(TVert, col))},
+        };
+    } else {
+        VkVertexInputBindingDescription bind{};
+        bind.binding = 0;
+        bind.stride = sizeof(GpuV);
+        bind.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        ci.vertex_bindings = {bind};
+        ci.vertex_attribs = {
+            {0, 0, VK_FORMAT_R32G32B32A32_SFLOAT, static_cast<uint32_t>(offsetof(GpuV, wp))},
+            {1, 0, VK_FORMAT_R32G32B32A32_SFLOAT, static_cast<uint32_t>(offsetof(GpuV, vu))},
+            {2, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(GpuV, stq))},
+            {3, 0, VK_FORMAT_R32_SFLOAT, static_cast<uint32_t>(offsetof(GpuV, lodq))},
+            {4, 0, VK_FORMAT_R8G8B8A8_UINT, static_cast<uint32_t>(offsetof(GpuV, rgba))},
+            {5, 0, VK_FORMAT_R32_SFLOAT, static_cast<uint32_t>(offsetof(GpuV, fog))},
+            {6, 0, VK_FORMAT_R32G32_UINT, static_cast<uint32_t>(offsetof(GpuV, word))},
+            {7, 0, VK_FORMAT_R32G32_UINT, static_cast<uint32_t>(offsetof(GpuV, state))},
+        };
+    }
+
+    ci.cull_mode = VK_CULL_MODE_NONE;
+    ci.depth_clamp = k.depth_clamp;
+    ci.depth_test = k.depth_test;
+    ci.depth_write = k.depth_write;
+    ci.depth_compare = k.depth_compare;
+    if (k.caster) {
+        ci.depth_bias_enable = true;
+        ci.depth_bias_constant = 2.0f;
+        ci.depth_bias_slope = 1.5f;
+    }
+    ci.color_write_mask = k.color_mask;
+    ci.color_format = k.color_fmt;
+    ci.depth_format = k.depth_fmt;
+    ci.has_depth_attachment = (k.depth_fmt != VK_FORMAT_UNDEFINED);
+    ci.has_stencil_attachment = k.has_stencil;
+
+    if (!k.caster) {
+        gs::DrawState ds{};
+        ds.prim = k.prim;
+        ds.alpha = k.alpha;
+        float fix = 0.0f;
+        gs::vk_blend_state(ds, false, ci, fix);
+    }
+
+    VkPipeline p = vk::create_graphics_pipeline(ci);
+    g_vk_world.pipelines[k] = p;
+    return p;
+}
+
 bool init_gl() {
+    if (vk::is_active()) return init_vk_world();
     if (g_prog != 0) return true;
     p_multi_draw_elements_indirect = reinterpret_cast<PfnMultiDrawElementsIndirect>(glfwGetProcAddress("glMultiDrawElementsIndirect"));
     if (p_multi_draw_elements_indirect == nullptr) return false;
@@ -958,13 +1238,19 @@ const TexRef* sky_texture(Level& L, const SceneFrame& S, uint64_t tex0) {
     b.w = w;
     b.h = h;
     b.levels = 1;
-    glGenTextures(1, &b.tex);
-    rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &b.tex, "MRP world: texture arrays");
-    glBindTexture(GL_TEXTURE_2D_ARRAY, b.tex);
-    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, static_cast<GLsizei>(w), static_cast<GLsizei>(h), 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BASE_LEVEL, 0);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+    if (vk::is_active()) {
+        vk::create_image(w, h, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                         VK_IMAGE_ASPECT_COLOR_BIT, b.vk_tex, 1, 0, VK_IMAGE_VIEW_TYPE_2D_ARRAY, 1);
+        vk::upload_image_2d(b.vk_tex, px.data(), px.size() * 4, 0, 0, static_cast<int>(w), static_cast<int>(h), 0, 0, 0);
+    } else {
+        glGenTextures(1, &b.tex);
+        rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &b.tex, "MRP world: texture arrays");
+        glBindTexture(GL_TEXTURE_2D_ARRAY, b.tex);
+        glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, static_cast<GLsizei>(w), static_cast<GLsizei>(h), 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BASE_LEVEL, 0);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+    }
     r.bucket = static_cast<int>(L.buckets.size());
     r.layer = 0;
     r.mips = 1;
@@ -1005,9 +1291,14 @@ const TexRef* vram_texture(Level& L, uint64_t tex0, uint64_t tex1, uint64_t mip1
     b.w = w;
     b.h = h;
     b.levels = levels;
-    glGenTextures(1, &b.tex);
-    rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &b.tex, "MRP world: texture arrays");
-    glBindTexture(GL_TEXTURE_2D_ARRAY, b.tex);
+    if (vk::is_active()) {
+        vk::create_image(w, h, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                         VK_IMAGE_ASPECT_COLOR_BIT, b.vk_tex, 1, 0, VK_IMAGE_VIEW_TYPE_2D_ARRAY, levels);
+    } else {
+        glGenTextures(1, &b.tex);
+        rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &b.tex, "MRP world: texture arrays");
+        glBindTexture(GL_TEXTURE_2D_ARRAY, b.tex);
+    }
     for (uint32_t l = 0; l < levels; ++l) {
         const uint32_t tbp = l == 0 ? fld(tex0, 0, 14) : fld(mip1, 20 * (l - 1), 14);
         const uint32_t tbw = l == 0 ? fld(tex0, 14, 6) : fld(mip1, 20 * (l - 1) + 14, 6);
@@ -1015,11 +1306,17 @@ const TexRef* vram_texture(Level& L, uint64_t tex0, uint64_t tex1, uint64_t mip1
         std::vector<uint32_t> px(static_cast<size_t>(lw) * lh);
         for (uint32_t y = 0; y < lh; ++y)
             for (uint32_t x = 0; x < lw; ++x) px[y * lw + x] = clut[vram[gs::Gs::addr8(tbp, tbw, x, y)]];
-        glTexImage3D(GL_TEXTURE_2D_ARRAY, static_cast<GLint>(l), GL_RGBA8, static_cast<GLsizei>(lw), static_cast<GLsizei>(lh), 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+        if (vk::is_active()) {
+            vk::upload_image_2d(b.vk_tex, px.data(), px.size() * 4, 0, 0, static_cast<int>(lw), static_cast<int>(lh), 0, 0, l);
+        } else {
+            glTexImage3D(GL_TEXTURE_2D_ARRAY, static_cast<GLint>(l), GL_RGBA8, static_cast<GLsizei>(lw), static_cast<GLsizei>(lh), 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+        }
     }
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BASE_LEVEL, 0);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(levels - 1));
-    glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+    if (!vk::is_active()) {
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BASE_LEVEL, 0);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(levels - 1));
+        glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+    }
     r.bucket = static_cast<int>(L.buckets.size());
     r.layer = 0;
     r.mips = levels;
@@ -1750,10 +2047,26 @@ void set_frame_uniforms(const Loc& l, const gs::Viewport* vp, int mode) {
 // orig: (host) the resident colours' changes since the last draw sent (a new level: the whole table), the buffer bound
 void upload_resident_colours() {
     ResidentColours& rc = g_rcols;
+    const size_t bytes = std::max<size_t>(rc.mirror.size() * 4, 16);
+    if (vk::is_active()) {
+        if (rc.all_dirty || bytes != g_rcol_size) {
+            g_rcol_size = bytes;
+            rc.words_uploaded += rc.mirror.size();
+            rc.all_dirty = false;
+        } else {
+            size_t at = 0;
+            for (const auto& [first, n] : rc.dirty) at += n;
+            rc.words_uploaded += at;
+        }
+        rc.dirty.clear();
+        rc.dirty_words.clear();
+        g_vk_world.rcols_alloc = vk::alloc_ring(bytes, 16);
+        if (!rc.mirror.empty()) std::memcpy(g_vk_world.rcols_alloc.ptr, rc.mirror.data(), rc.mirror.size() * 4);
+        return;
+    }
     if (g_rcol_buf == 0) glGenBuffers(1, &g_rcol_buf);
     rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &g_rcol_buf, "MRP world: frame buffers");
     glBindBuffer(kGlShaderStorageBuffer, g_rcol_buf);
-    const size_t bytes = std::max<size_t>(rc.mirror.size() * 4, 16);
     if (rc.all_dirty || bytes != g_rcol_size) {
         glBufferData(kGlShaderStorageBuffer, static_cast<GLsizeiptr>(bytes), nullptr, GL_DYNAMIC_DRAW);
         if (!rc.mirror.empty()) glBufferSubData(kGlShaderStorageBuffer, 0, static_cast<GLsizeiptr>(rc.mirror.size() * 4), rc.mirror.data());
@@ -1873,10 +2186,314 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
     Level& L = g_level;
     if (F.batches.empty()) return;
     const bool caster = caster_vp != nullptr;
-    const VariantScope variant(caster || mrp_lighting_active());  // (the shadow pass too: its early exit)
-    // (the modern lighting draws the frame several times: its data uploaded once, by the first)
     const bool upload = !F.uploaded;
     F.uploaded = true;
+
+    if (vk::is_active()) {
+        if (upload) {
+            const size_t v_bytes = std::max<size_t>(F.v.size() * sizeof(GpuV), sizeof(GpuV));
+            g_vk_world.cpu_vbo_alloc = vk::alloc_ring(v_bytes, 16);
+            if (!F.v.empty()) std::memcpy(g_vk_world.cpu_vbo_alloc.ptr, F.v.data(), F.v.size() * sizeof(GpuV));
+
+            const size_t i_bytes = std::max<size_t>(F.idx.size() * sizeof(uint32_t), sizeof(uint32_t));
+            g_vk_world.cpu_ibo_alloc = vk::alloc_ring(i_bytes, 16);
+            if (!F.idx.empty()) std::memcpy(g_vk_world.cpu_ibo_alloc.ptr, F.idx.data(), F.idx.size() * sizeof(uint32_t));
+
+            if (!F.tf.draws.empty()) {
+                tfrag_gpu_level(g_tlevel);
+                tfrag_gpu_colours(g_tcols);
+                tfrag_gpu_dispatch(F.tf, sizeof(GpuV));
+                if (g_tfrag_verify) tfrag_verify(F);
+            }
+            upload_resident_colours();
+
+            const size_t inst_bytes = std::max<size_t>(F.insts.size() * sizeof(InstGpu), 16);
+            g_vk_world.insts_alloc = vk::alloc_ring(inst_bytes, 16);
+            if (!F.insts.empty()) std::memcpy(g_vk_world.insts_alloc.ptr, F.insts.data(), F.insts.size() * sizeof(InstGpu));
+
+            const size_t col_bytes = std::max<size_t>(F.scene.colours.size() * 16, 16);
+            g_vk_world.cols_alloc = vk::alloc_ring(col_bytes, 16);
+            if (!F.scene.colours.empty()) std::memcpy(g_vk_world.cols_alloc.ptr, F.scene.colours.data(), F.scene.colours.size() * 16);
+
+            const size_t cmd_bytes = std::max<size_t>(F.cmds.size() * 4, 16);
+            g_vk_world.cmds_alloc = vk::alloc_ring(cmd_bytes, 16);
+            if (!F.cmds.empty()) std::memcpy(g_vk_world.cmds_alloc.ptr, F.cmds.data(), F.cmds.size() * 4);
+
+            const size_t ind_bytes = std::max<size_t>(F.draws.size() * sizeof(DrawCmd), sizeof(DrawCmd));
+            g_vk_world.indirect_alloc = vk::alloc_ring(ind_bytes, 16);
+            if (!F.draws.empty()) std::memcpy(g_vk_world.indirect_alloc.ptr, F.draws.data(), F.draws.size() * sizeof(DrawCmd));
+        }
+
+        vk::ensure_rendering();
+        VkCommandBuffer cb = vk::cmd();
+        if (!caster) vk::set_scissor(false);
+
+        const int mode = g_mrp_world_projection != 0 ? 1 : 0;
+        const int mm = g_mrp_world_mip != 0 ? 1 : 0;
+        const bool lit_prog = caster || mrp_lighting_active();
+
+        WorldVkPush push{};
+        mrp_world_view_proj(push.uVP);
+        float fb_w = static_cast<float>(lhu(0x001518d0)), fb_h = static_cast<float>(lhu(0x001518d2));
+        if (fb_w <= 0.0f) fb_w = 512.0f;
+        if (fb_h <= 0.0f) fb_h = 416.0f;
+        push.uFrame[0] = fb_w;
+        push.uFrame[1] = fb_h;
+        push.uFrame[2] = vp != nullptr ? vp->xscale_3d : 1.0f;
+        push.uFrame[3] = 0.0f;
+        double da = 0.0, db = 0.0;
+        const bool has = render_gs_depth(da, db);
+        const uint64_t xo = g_frame.env_xyoff;
+        float x = static_cast<float>(xo & 0xffff), y = static_cast<float>((xo >> 32) & 0xffff);
+        if (xo == 0) {
+            x = (2048.0f - fb_w * 0.5f) * 16.0f;
+            y = (2048.0f - fb_h * 0.5f) * 16.0f;
+        }
+        push.uXyOff[0] = x;
+        push.uXyOff[1] = y;
+        push.uXyOff[2] = has ? static_cast<float>(da) : 0.5f;
+        push.uXyOff[3] = has ? static_cast<float>(db) : 0.0f;
+        push.uMode = mode;
+        push.uMipMode = g_mrp_world_mip;
+        push.uShade = g_render_shade;
+        push.uAtPass = 1;
+        push.uU8 = 0;
+
+        if (caster) {
+            mrp_lighting_vk_bind_caster(reinterpret_cast<uint64_t>(g_vk_world.pipe_layout), caster_vp);
+        }
+
+        VkDescriptorImageInfo tex_infos[16]{};
+        for (int u = 0; u < 16; ++u) {
+            tex_infos[u].sampler = g_vk_world.samplers[mm][0];
+            tex_infos[u].imageView = vk::white_texture_array().view;
+            tex_infos[u].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        }
+        auto set_unit_info = [&](uint32_t u, int bucket, uint32_t sampler) {
+            if (u >= 16) return;
+            tex_infos[u].sampler = g_vk_world.samplers[mm][sampler & 15];
+            tex_infos[u].imageView = (bucket >= 0 && static_cast<size_t>(bucket) < L.buckets.size() &&
+                                      L.buckets[static_cast<size_t>(bucket)].vk_tex.view != VK_NULL_HANDLE)
+                                         ? L.buckets[static_cast<size_t>(bucket)].vk_tex.view
+                                         : vk::white_texture_array().view;
+            tex_infos[u].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        };
+        auto bind_set0 = [&] {
+            VkDescriptorSet ds = vk::alloc_descriptor_set(g_vk_world.set0_layout);
+            const vk::RingAlloc* bufs[4] = {
+                &g_vk_world.insts_alloc,
+                &g_vk_world.cols_alloc,
+                &g_vk_world.cmds_alloc,
+                &g_vk_world.rcols_alloc,
+            };
+            VkDescriptorBufferInfo bi[4]{};
+            VkWriteDescriptorSet writes[5]{};
+            for (uint32_t i = 0; i < 4; ++i) {
+                bi[i].buffer = bufs[i]->buffer;
+                bi[i].offset = bufs[i]->offset;
+                bi[i].range = VK_WHOLE_SIZE;
+                writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writes[i].dstSet = ds;
+                writes[i].dstBinding = i;
+                writes[i].descriptorCount = 1;
+                writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                writes[i].pBufferInfo = &bi[i];
+            }
+            writes[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[4].dstSet = ds;
+            writes[4].dstBinding = 4;
+            writes[4].descriptorCount = 16;
+            writes[4].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            writes[4].pImageInfo = tex_infos;
+            vkUpdateDescriptorSets(vk::device(), 5, writes, 0, nullptr);
+            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_world.pipe_layout, 0, 1, &ds, 0, nullptr);
+        };
+
+        const auto& rt_info = vk::current_target();
+        const VkFormat cfmt = rt_info.color_view != VK_NULL_HANDLE ? rt_info.color_format : VK_FORMAT_UNDEFINED;
+        const VkFormat dfmt = rt_info.depth_view != VK_NULL_HANDLE ? rt_info.depth_format : VK_FORMAT_UNDEFINED;
+        const bool has_stencil = rt_info.stencil_view != VK_NULL_HANDLE;
+
+        RKey cur;
+        bool have = false;
+        int cur_vb = -1, bound_epoch = -2, bound0_bucket = -2, cur_sky = -1;
+        uint32_t bound0_sampler = 0xffffffffu;
+        bool set0_bound = false;
+
+        struct Pending {
+            bool on = false;
+            int kind = 0;  // 0 the CPU path, 1 the GPU path, 2 tfrag; + 3 the depth-only program
+            uint32_t first = 0, count = 0;
+            int epoch = -1, bucket = -2;
+            uint32_t sampler = 0;
+        } pend;
+        auto flush = [&] {
+            if (!pend.on) return;
+            if (pend.kind % 3 == 1) {
+                vkCmdDrawIndexedIndirect(cb, g_vk_world.indirect_alloc.buffer,
+                                         g_vk_world.indirect_alloc.offset + static_cast<VkDeviceSize>(pend.first) * sizeof(DrawCmd),
+                                         pend.count, sizeof(DrawCmd));
+            } else {
+                vkCmdDrawIndexed(cb, pend.count, 1, pend.first, 0, 0);
+            }
+            pend.on = false;
+        };
+
+        for (const Batch& b : F.batches) {
+            if (b.sky && !with_sky) continue;
+            if (caster && (b.sky || b.rk.zwrite == 0)) continue;
+            static const bool show_casters = std::getenv("RAC1_SHADOW_SHOW_CASTERS") != nullptr;
+            if (!caster && b.rk.shadow != show_casters && (b.gpu || b.rk.shadow)) continue;
+            if (caster && b.rk.view_only) continue;
+            if (caster && (b.rk.shadow ? ((b.rk.views >> view) & 1u) == 0 : view >= 3)) continue;
+            static const int part = std::getenv("RAC1_SHADOW_REF_PART") != nullptr ? std::atoi(std::getenv("RAC1_SHADOW_REF_PART")) : 0;
+            if (caster && part != 0 && (part == 1) == b.rk.shadow) continue;
+            if (const char* why = batch_refused(F, L, b); why != nullptr) {
+                static uint32_t shown = 0;
+                if (shown++ < 8)
+                    std::fprintf(stderr, "[mrpw] batch refused (%s): first %u count %u (frame: %zu indices, %u tfrag indices, %zu draw commands; level: %zu template indices)\n", why,
+                                 b.first, b.count, F.idx.size(), F.tf.nidx, F.draws.size(), L.tidx.size());
+                continue;
+            }
+            const Key& k = b.key;
+            const RKey& rk = b.rk;
+            static const bool no_early = std::getenv("RAC1_SHADOW_EARLYZ") != nullptr && std::atoi(std::getenv("RAC1_SHADOW_EARLYZ")) == 0;
+            const bool early = caster && !b.ate && g_vk_world.fs_early != VK_NULL_HANDLE && !no_early;
+
+            if (caster && pend.on) {
+                const int kind = (b.gpu ? 1 : b.tfrag ? 2 : 0) + (early ? 3 : 0);
+                const bool same = kind == pend.kind && b.first == pend.first + pend.count &&
+                                  (kind % 3 == 0 ? k.bucket == pend.bucket && k.sampler == pend.sampler : (b.epoch < 0 || b.epoch == pend.epoch));
+                if (same) {
+                    pend.count += b.count;
+                    continue;
+                }
+                flush();
+            }
+
+            if (!caster && cur_sky != (b.sky ? 1 : 0)) {
+                cur_sky = b.sky ? 1 : 0;
+                mrp_lighting_vk_bind_receiver(reinterpret_cast<uint64_t>(g_vk_world.pipe_layout), b.sky, lit_prog);
+            }
+
+            const int want_vb = b.gpu ? 1 : b.tfrag ? 2 : 0;
+            if (want_vb != cur_vb) {
+                if (want_vb == 1) {
+                    VkDeviceSize vo = 0;
+                    vkCmdBindVertexBuffers(cb, 0, 1, &L.vk_tvbo.buffer, &vo);
+                    vkCmdBindIndexBuffer(cb, L.vk_tibo.buffer, 0, VK_INDEX_TYPE_UINT32);
+                } else if (want_vb == 2) {
+                    VkBuffer vbo = reinterpret_cast<VkBuffer>(tfrag_gpu_vk_vbo());
+                    VkBuffer ibo = reinterpret_cast<VkBuffer>(tfrag_gpu_vk_ibo());
+                    VkDeviceSize vo = 0;
+                    vkCmdBindVertexBuffers(cb, 0, 1, &vbo, &vo);
+                    vkCmdBindIndexBuffer(cb, ibo, 0, VK_INDEX_TYPE_UINT32);
+                } else {
+                    VkDeviceSize vo = g_vk_world.cpu_vbo_alloc.offset;
+                    vkCmdBindVertexBuffers(cb, 0, 1, &g_vk_world.cpu_vbo_alloc.buffer, &vo);
+                    vkCmdBindIndexBuffer(cb, g_vk_world.cpu_ibo_alloc.buffer, g_vk_world.cpu_ibo_alloc.offset, VK_INDEX_TYPE_UINT32);
+                }
+                cur_vb = want_vb;
+            }
+
+            bool set0_dirty = !set0_bound;
+            if (b.gpu || b.tfrag) {
+                if (b.epoch >= 0 && b.epoch != bound_epoch) {
+                    const auto& ep = F.epochs[static_cast<size_t>(b.epoch)];
+                    for (size_t u = 0; u < ep.size(); ++u) set_unit_info(static_cast<uint32_t>(u) + 1, ep[u].first, ep[u].second);
+                    bound_epoch = b.epoch;
+                    set0_dirty = true;
+                }
+            } else if (k.bucket != bound0_bucket || k.sampler != bound0_sampler) {
+                set_unit_info(0, k.bucket, k.sampler);
+                bound0_bucket = k.bucket;
+                bound0_sampler = k.sampler;
+                set0_dirty = true;
+            }
+            if (set0_dirty) {
+                bind_set0();
+                set0_bound = true;
+            }
+
+            if (!caster && (!have || rk.abe != cur.abe || rk.alpha != cur.alpha)) {
+                gs::DrawState ds{};
+                ds.prim = k.prim;
+                ds.alpha = k.alpha;
+                gs::blend_state(ds);
+            }
+
+            push.uFogCol_Pad[0] = static_cast<float>(rk.fogcol & 0xff) / 255.0f;
+            push.uFogCol_Pad[1] = static_cast<float>((rk.fogcol >> 8) & 0xff) / 255.0f;
+            push.uFogCol_Pad[2] = static_cast<float>((rk.fogcol >> 16) & 0xff) / 255.0f;
+            push.uFge = (rk.fogcol >> 24) & 1 ? 1 : 0;
+
+            const uint32_t ztst = fld(k.test, 17, 2);
+            const bool ztest = caster ? true : (fld(k.test, 16, 1) != 0 && ztst != 1);
+            const VkCompareOp zcmp = caster ? VK_COMPARE_OP_LESS_OR_EQUAL
+                                            : (ztst == 0 ? VK_COMPARE_OP_NEVER : ztst == 2 ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_LESS);
+            const bool zwrite = rk.zwrite != 0;
+
+            WorldVkPipeKey pk{};
+            pk.gpu = b.gpu;
+            pk.lit = lit_prog;
+            pk.early = early;
+            pk.caster = caster;
+            pk.depth_clamp = caster ? false : (mode == 1 || b.sky);
+            pk.depth_test = ztest;
+            pk.depth_compare = zcmp;
+            pk.prim = k.prim & (1ull << 6);
+            pk.alpha = pk.prim ? k.alpha : 0;
+            pk.color_fmt = cfmt;
+            pk.depth_fmt = dfmt;
+            pk.has_stencil = has_stencil;
+
+            auto bind_pass = [&](int pass, bool dmask, int cmask) {
+                push.uAtPass = pass;
+                pk.depth_write = dmask;
+                pk.color_mask = cmask == 0 ? 0xF : cmask == 2 ? 0 : 0x7;
+                vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, get_world_vk_pipeline(pk));
+                vkCmdPushConstants(cb, g_vk_world.pipe_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
+            };
+            auto draw_vk = [&] {
+                if (b.gpu) {
+                    vkCmdDrawIndexedIndirect(cb, g_vk_world.indirect_alloc.buffer,
+                                             g_vk_world.indirect_alloc.offset + static_cast<VkDeviceSize>(b.first) * sizeof(DrawCmd),
+                                             b.count, sizeof(DrawCmd));
+                } else {
+                    vkCmdDrawIndexed(cb, b.count, 1, b.first, 0, 0);
+                }
+            };
+
+            if (caster) {
+                bind_pass(1, true, 2);
+                pend.on = true;
+                pend.kind = (b.gpu ? 1 : b.tfrag ? 2 : 0) + (early ? 3 : 0);
+                pend.first = b.first;
+                pend.count = b.count;
+                pend.epoch = b.epoch;
+                pend.bucket = k.bucket;
+                pend.sampler = k.sampler;
+                cur = rk;
+                have = true;
+                continue;
+            }
+            bind_pass(1, zwrite, 0);
+            draw_vk();
+            static const bool one_pass = std::getenv("RAC1_MRPW_ONEPASS") != nullptr;
+            if (rk.pass2 != 0 && !one_pass) {
+                const uint32_t afail = rk.pass2;
+                bind_pass(2, afail == 2 && zwrite, afail == 2 ? 2 : afail == 3 ? 3 : 0);
+                draw_vk();
+            }
+            cur = rk;
+            have = true;
+        }
+        flush();
+        return;
+    }
+
+    const VariantScope variant(caster || mrp_lighting_active());  // (the shadow pass too: its early exit)
+    // (the modern lighting draws the frame several times: its data uploaded once, by the first)
     if (upload && !F.idx.empty()) {
         glBindVertexArray(L.vao);
         glBindBuffer(GL_ARRAY_BUFFER, L.vbo);
@@ -2149,7 +2766,7 @@ int program_index(uint64_t hash) {
 }  // namespace
 
 // orig: (host) see mrp_world_renderer.h
-bool mrp_world_ready() { return g_world_mrp && g_prog != 0 && g_level.loaded && g_level.id == world_level_id(); }
+bool mrp_world_ready() { return g_world_mrp && (vk::is_active() ? g_vk_world.inited : g_prog != 0) && g_level.loaded && g_level.id == world_level_id(); }
 
 // orig: (host) see mrp_world_renderer.h
 bool mrp_world_active() { return g_frame.active; }
@@ -2702,7 +3319,10 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
     if (!g_world_mrp || !active) return;
     if (!init_gl()) return;
     const int id = world_level_id();
-    if (g_level.id != id || !g_level.tried) load_level(id);
+    if (g_level.id != id || !g_level.tried || (vk::is_active() ? g_level.vk_tvbo.buffer == VK_NULL_HANDLE : g_level.vao == 0)) {
+        load_level(id);
+        g_rcols.all_dirty = true;
+    }
     if (!g_level.loaded) return;
     g_t_begin = now_ms();
     {  // the frame's draw environment's XYOFFSET_1 (0x13cf10, 11 qwords)
@@ -2871,10 +3491,11 @@ void mrp_world_draw(int win_w, int win_h, const gs::Viewport* vp) {
     (void)win_w;
     (void)win_h;
     if (!g_frame.active) return;
-    if (g_env_prof_finish) glFinish();  // (the GPU work before it, e.g. the sky, not counted)
+    if (g_env_prof_finish && !vk::is_active()) glFinish();  // (the GPU work before it, e.g. the sky, not counted)
     const double t0 = now_ms();
     if (vp != nullptr) {
-        glViewport(vp->x, vp->y, vp->w, vp->h);
+        if (vk::is_active()) vk::set_viewport(vp->x, vp->y, vp->w, vp->h);
+        else glViewport(vp->x, vp->y, vp->w, vp->h);
         g_last_vp[0] = vp->x;
         g_last_vp[1] = vp->y;
         g_last_vp[2] = vp->w;
@@ -2883,7 +3504,7 @@ void mrp_world_draw(int win_w, int win_h, const gs::Viewport* vp) {
     draw_frame(vp);
     if (g_env_prof) {
         g_st.ms_submit += now_ms() - t0;
-        if (g_env_prof_finish) glFinish();
+        if (g_env_prof_finish && !vk::is_active()) glFinish();
         g_st.ms_draw += now_ms() - t0;
         if (++g_st.prof_frames >= 120) {
             const double n = static_cast<double>(g_st.prof_frames);
@@ -3081,7 +3702,7 @@ void mrp_world_program_kick(const uint8_t* data, uint32_t qwc) {
 void mrp_world_after_chain(int win_w, int win_h, const gs::Viewport* vp, const gs::Gs& gs, float fb_w, float fb_h, uint64_t frame, const gs::DepthMap* depth) {
     if (!g_frame.active) return;
     if (g_env_check) scene_check_frame(g_frame.scene, g_check);
-    if (!g_env_diff) return;
+    if (!g_env_diff || vk::is_active()) return;
     const int vw = vp != nullptr ? vp->w : win_w, vh = vp != nullptr ? vp->h : win_h;
     if (vw <= 0 || vh <= 0) return;
     static GLuint fbo[2] = {}, tex[2] = {}, rbo[2] = {};

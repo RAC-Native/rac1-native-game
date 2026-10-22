@@ -5,8 +5,8 @@ total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
-| [Player](#player-variables) | 18 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 229 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Player](#player-variables) | 19 | Settings a player may want to change: files, window, audio, the ISO |
+| [Debugging](#debugging-variables) | 230 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 60 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -48,6 +48,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_MOVIE_VOLUME` | floating-point gain; default 1.0 | Volume multiplier applied to the audio of the pre-rendered movies. |
 | `RAC1_NO_AUDIO` | any value = on; default audio on | Turns the sound output off entirely. |
 | `RAC1_PRIORITY` | 0 = off, any other integer = on; default on except when headless | Requests raised host thread priority through the system's real-time kit, if available. |
+| `RAC1_RENDERER` | `opengl` or `vulkan`; unset = the Options > Graphics Renderer setting (a headless run: OpenGL) | The graphics API for this run: `vulkan` the experimental Vulkan renderer, OpenGL when it cannot start. See [Vulkan](vulkan.md). |
 | `RAC1_VSYNC` | 0 = off, 1 = on; unset = the Options > Graphics setting | Forces vertical sync on or off for a windowed run, overriding the in-game display setting. |
 | `RAC1_WINDOW` | "WIDTHxHEIGHT", e.g. 1280x720; unset = the default window size | Sets the size of the game window at start. |
 
@@ -253,6 +254,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_VIEW_HERO_FRONT` | any value = on; default off | Debug camera that gives a close look at the hero's face, placed in front of the hero (see RAC1_VIEW_ANGLE and RAC1_VIEW_DIST). |
 | `RAC1_VIEW_MODE` | integer: 0 = widescreen, 1 = 4:3 with bars, 2 = fit to the window's aspect; default 0 until the Options > Graphics settings override it | Sets the host's view/aspect mode at start (as the aspect and fit options do). The exact meaning of 0 is inferred from the view code, treat as approximate. |
 | `RAC1_VIF_TRACE` | any value = on; default off | Prints every VIF1 code word (as [VIF1] lines on stderr) as the GS emulation processes the DMA chain. |
+| `RAC1_VK_VALIDATION` | 1 = on; default off | With the Vulkan renderer, turns the Khronos validation layer on when it is installed (its messages on the standard output). See [Vulkan](vulkan.md). |
 | `RAC1_VU0_CAPTURE` | directory path; default off | Writes captures (code image, registers, memory) of VU0 program runs, spread over the calls, into that directory; used as inputs to prove the ported VU0 programs against the original. |
 | `RAC1_VU0_CHAIN` | any value = on; default off | At exit, prints a hash of everything VU0 computed during the run, to compare two runs for identical VU0 results. |
 | `RAC1_VU0_DUMP_SETS` | directory path; default off | Writes each distinct microprogram the game uploads to VU0 as a file named by address, length and hash. |

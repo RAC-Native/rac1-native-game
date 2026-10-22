@@ -1,8 +1,12 @@
 // See gs_draw.h.
 #include <runtime/gs/gs_draw.h>
 #include <profiler/host_profiler.h>
+#include <runtime/vk/vk_context.h>
+#include <runtime/vk/vk_shaders.h>
 
 #include <glad/glad.h>
+
+#include <array>
 
 #include <algorithm>
 #include <chrono>
@@ -250,6 +254,14 @@ struct DrawLocs {
 }  // namespace
 
 void blend_state(const DrawState& st, bool to_rt) {
+    if (vk::is_active()) {
+        if (field(st.prim, 6, 1)) {
+            const float fix = std::min(static_cast<float>(field(st.alpha, 32, 8)) / 128.0f, 1.0f);
+            const float bc[4] = {0.0f, 0.0f, 0.0f, fix};
+            vkCmdSetBlendConstants(vk::cmd(), bc);
+        }
+        return;
+    }
     if (!field(st.prim, 6, 1)) {
         glDisable(GL_BLEND);
         return;
@@ -302,7 +314,891 @@ void blend_state(const DrawState& st, bool to_rt) {
     glBlendFuncSeparate(sf, df, GL_ONE, GL_ZERO);
 }
 
+void vk_blend_state(const DrawState& st, bool to_rt, vk::GraphicsPipelineDesc& desc, float& out_fix) {
+    out_fix = 0.0f;
+    desc.src_alpha_blend = VK_BLEND_FACTOR_ONE;
+    desc.dst_alpha_blend = VK_BLEND_FACTOR_ZERO;
+    desc.alpha_blend_op = VK_BLEND_OP_ADD;
+    if (!field(st.prim, 6, 1)) {
+        desc.blend_enable = false;
+        desc.src_color_blend = VK_BLEND_FACTOR_ONE;
+        desc.dst_color_blend = VK_BLEND_FACTOR_ZERO;
+        desc.color_blend_op = VK_BLEND_OP_ADD;
+        return;
+    }
+    desc.blend_enable = true;
+    const uint32_t A = field(st.alpha, 0, 2), B = field(st.alpha, 2, 2), C = field(st.alpha, 4, 2), D = field(st.alpha, 6, 2);
+    out_fix = std::min(static_cast<float>(field(st.alpha, 32, 8)) / 128.0f, 1.0f);
+    const VkBlendFactor cf = C == 2 ? VK_BLEND_FACTOR_CONSTANT_ALPHA : (C == 1 ? VK_BLEND_FACTOR_DST_ALPHA : VK_BLEND_FACTOR_SRC_ALPHA);
+    const VkBlendFactor cf1 = C == 2 ? VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA : (C == 1 ? VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA : VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA);
+    auto factor = [&](uint32_t who, VkBlendFactor& f) {
+        const int k0 = D == who ? 1 : 0, k1 = (A == who ? 1 : 0) - (B == who ? 1 : 0);
+        if (k1 == 0) {
+            f = k0 != 0 ? VK_BLEND_FACTOR_ONE : VK_BLEND_FACTOR_ZERO;
+            return 1;
+        }
+        if (k0 == 0) {
+            f = cf;
+            return k1;
+        }
+        f = k1 < 0 ? cf1 : VK_BLEND_FACTOR_ONE;
+        return 1;
+    };
+    VkBlendFactor sf = VK_BLEND_FACTOR_ZERO, df = VK_BLEND_FACTOR_ZERO;
+    const int ss = factor(0, sf), ds = factor(1, df);
+    if (ss >= 0 && ds >= 0) {
+        desc.color_blend_op = VK_BLEND_OP_ADD;
+    } else if (ss < 0 && ds >= 0) {
+        desc.color_blend_op = VK_BLEND_OP_REVERSE_SUBTRACT;
+    } else if (ss >= 0) {
+        desc.color_blend_op = VK_BLEND_OP_SUBTRACT;
+    } else {
+        desc.color_blend_op = VK_BLEND_OP_ADD;
+        sf = df = VK_BLEND_FACTOR_ZERO;
+    }
+    if (to_rt) {
+        auto as_gs = [](VkBlendFactor f) -> VkBlendFactor {
+            if (f == VK_BLEND_FACTOR_SRC_ALPHA) return VK_BLEND_FACTOR_SRC1_ALPHA;
+            if (f == VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA) return VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA;
+            return f;
+        };
+        sf = as_gs(sf);
+        df = as_gs(df);
+    }
+    desc.src_color_blend = sf;
+    desc.dst_color_blend = df;
+}
+
+namespace {
+
+struct GsDrawPush {
+    float uFb[2];
+    float uScaleX;
+    int32_t uRt;
+    float uFogCol[3];
+    int32_t uFge;
+    float uScrMap[4];
+    int32_t uTme;
+    int32_t uTfx;
+    int32_t uTcc;
+    int32_t uAte;
+    int32_t uAtst;
+    int32_t uAref;
+    int32_t uAfail;
+    int32_t uPass;
+    int32_t uScrTex;
+    int32_t uDate;
+    int32_t uDatm;
+    int32_t uMipN;
+    int32_t uMipLo;
+    int32_t uMipLcm;
+    int32_t uMipMxl;
+    float uMipK;
+    float uMipL;
+    float _pad[3];
+};
+static_assert(sizeof(GsDrawPush) == 128);
+
+struct VkRenderTarget {
+    vk::GpuImage color{};
+    vk::GpuImage depth{};
+    int w = 0, h = 0;
+    int depth_w = 0, depth_h = 0;
+};
+
+struct VkTexEntry {
+    vk::GpuImage img{};
+    uint64_t gen = ~0ull;
+};
+
+struct VkPipeKey {
+    VkPrimitiveTopology topology;
+    bool depth_test;
+    bool depth_write;
+    VkCompareOp depth_compare;
+    bool blend_enable;
+    VkBlendFactor src_color;
+    VkBlendFactor dst_color;
+    VkBlendOp color_op;
+    VkColorComponentFlags color_mask;
+    bool has_depth;
+    bool has_stencil;
+    bool operator<(const VkPipeKey& o) const {
+        return std::tie(topology, depth_test, depth_write, depth_compare, blend_enable, src_color, dst_color, color_op, color_mask, has_depth, has_stencil) <
+               std::tie(o.topology, o.depth_test, o.depth_write, o.depth_compare, o.blend_enable, o.src_color, o.dst_color, o.color_op, o.color_mask, o.has_depth, o.has_stencil);
+    }
+};
+
+VkShaderModule g_vk_vs = VK_NULL_HANDLE, g_vk_fs = VK_NULL_HANDLE;
+VkDescriptorSetLayout g_vk_set_layout = VK_NULL_HANDLE;
+VkPipelineLayout g_vk_pipe_layout = VK_NULL_HANDLE;
+std::map<VkPipeKey, VkPipeline> g_vk_pipes;
+std::map<uint32_t, VkRenderTarget> g_vk_rt;
+std::map<std::pair<uint64_t, uint64_t>, VkTexEntry> g_vk_tex;
+vk::GpuImage g_vk_screen_copy{};
+int g_vk_screen_w = 0, g_vk_screen_h = 0;
+
+void init_vk_draw() {
+    if (g_vk_pipe_layout != VK_NULL_HANDLE) return;
+    vk::register_shutdown_callback(vk_draw_shutdown);
+    g_vk_vs = vk::create_shader_module(vk::shaders::kGsDrawVs, sizeof(vk::shaders::kGsDrawVs));
+    g_vk_fs = vk::create_shader_module(vk::shaders::kGsDrawFs, sizeof(vk::shaders::kGsDrawFs));
+
+    VkDescriptorSetLayoutBinding bindings[5]{};
+    for (uint32_t i = 0; i < 5; ++i) {
+        bindings[i].binding = i;
+        bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        bindings[i].descriptorCount = 1;
+        bindings[i].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    }
+    VkDescriptorSetLayoutCreateInfo slci{};
+    slci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    slci.bindingCount = 5;
+    slci.pBindings = bindings;
+    vkCreateDescriptorSetLayout(vk::device(), &slci, nullptr, &g_vk_set_layout);
+
+    VkPushConstantRange pcr{};
+    pcr.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    pcr.offset = 0;
+    pcr.size = sizeof(GsDrawPush);
+
+    VkPipelineLayoutCreateInfo plci{};
+    plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    plci.setLayoutCount = 1;
+    plci.pSetLayouts = &g_vk_set_layout;
+    plci.pushConstantRangeCount = 1;
+    plci.pPushConstantRanges = &pcr;
+    vkCreatePipelineLayout(vk::device(), &plci, nullptr, &g_vk_pipe_layout);
+}
+
+VkPipeline get_vk_pipeline(const VkPipeKey& key) {
+    auto it = g_vk_pipes.find(key);
+    if (it != g_vk_pipes.end()) return it->second;
+
+    vk::GraphicsPipelineDesc desc{};
+    desc.layout = g_vk_pipe_layout;
+    desc.vs = g_vk_vs;
+    desc.fs = g_vk_fs;
+    desc.topology = key.topology;
+    desc.cull_mode = VK_CULL_MODE_NONE;
+    desc.depth_test = key.depth_test;
+    desc.depth_write = key.depth_write;
+    desc.depth_compare = key.depth_compare;
+    desc.blend_enable = key.blend_enable;
+    desc.src_color_blend = key.src_color;
+    desc.dst_color_blend = key.dst_color;
+    desc.color_blend_op = key.color_op;
+    desc.src_alpha_blend = VK_BLEND_FACTOR_ONE;
+    desc.dst_alpha_blend = VK_BLEND_FACTOR_ZERO;
+    desc.alpha_blend_op = VK_BLEND_OP_ADD;
+    desc.color_write_mask = key.color_mask;
+    desc.color_format = vk::color_format();
+    desc.has_depth_attachment = key.has_depth;
+    desc.has_stencil_attachment = key.has_stencil;
+    desc.vertex_bindings = {{0, sizeof(V), VK_VERTEX_INPUT_RATE_VERTEX}};
+    desc.vertex_attribs = {
+        {0, 0, VK_FORMAT_R32G32_SFLOAT, 0},
+        {1, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 2 * sizeof(float)},
+        {2, 0, VK_FORMAT_R32G32B32_SFLOAT, 6 * sizeof(float)},
+        {3, 0, VK_FORMAT_R32_SFLOAT, 9 * sizeof(float)},
+        {4, 0, VK_FORMAT_R32_SFLOAT, 10 * sizeof(float)},
+        {5, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 11 * sizeof(float)},
+    };
+    VkPipeline p = vk::create_graphics_pipeline(desc);
+    g_vk_pipes[key] = p;
+    return p;
+}
+
+bool vk_texture_stale(const Gs& gs, uint64_t tex0, uint64_t texa, const TexImage* img) {
+    const uint64_t key0 = tex0 & 0x1fffffffffffffffull;
+    const VkTexEntry& e = g_vk_tex[{key0, texa}];
+    const uint64_t ver = img != nullptr ? img->id : gs.generation() | (1ull << 63);
+    return !(e.img.view != VK_NULL_HANDLE && e.gen == ver);
+}
+
+VkImageView vk_texture_for(const Gs& gs, uint64_t tex0, uint64_t texa, const TexImage* img) {
+    const uint64_t key0 = tex0 & 0x1fffffffffffffffull;
+    VkTexEntry& e = g_vk_tex[{key0, texa}];
+    const uint64_t ver = img != nullptr ? img->id : gs.generation() | (1ull << 63);
+    if (e.img.view != VK_NULL_HANDLE && e.gen == ver) return e.img.view;
+    const int tw = 1 << std::min(10u, field(tex0, 26, 4)), th = 1 << std::min(10u, field(tex0, 30, 4));
+    std::vector<uint32_t> px;
+    if (img == nullptr) {
+        px.resize(static_cast<size_t>(tw) * th);
+        for (int y = 0; y < th; ++y)
+            for (int x = 0; x < tw; ++x) px[static_cast<size_t>(y) * tw + x] = gs.texel(tex0, texa, x, y);
+    }
+    if (e.img.image == VK_NULL_HANDLE || e.img.width != static_cast<uint32_t>(tw) || e.img.height != static_cast<uint32_t>(th)) {
+        vk::create_image(static_cast<uint32_t>(tw), static_cast<uint32_t>(th), VK_FORMAT_R8G8B8A8_UNORM,
+                         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, e.img);
+    }
+    const uint32_t* data = img != nullptr ? img->px.data() : px.data();
+    vk::upload_image_2d(e.img, data, static_cast<size_t>(tw) * th * 4, 0, 0, tw, th);
+    e.gen = ver;
+    return e.img.view;
+}
+
+VkRenderTarget& vk_render_target(uint32_t fbp, int w, int h) {
+    VkRenderTarget& r = g_vk_rt[fbp];
+    if (r.color.image != VK_NULL_HANDLE && r.w == w && r.h == h) return r;
+    r.w = w;
+    r.h = h;
+    vk::create_image(static_cast<uint32_t>(w), static_cast<uint32_t>(h), VK_FORMAT_R8G8B8A8_UNORM,
+                     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                     VK_IMAGE_ASPECT_COLOR_BIT, r.color);
+    vk::end_rendering();
+    vk::transition_image(vk::cmd(), r.color, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    VkClearColorValue cc = {{0.0f, 0.0f, 0.0f, 0.0f}};
+    VkImageSubresourceRange sr = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    vkCmdClearColorImage(vk::cmd(), r.color.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &cc, 1, &sr);
+    vk::transition_image(vk::cmd(), r.color, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    return r;
+}
+
+void vk_render_target_depth(VkRenderTarget& r) {
+    if (r.depth.image != VK_NULL_HANDLE && r.depth_w == r.w && r.depth_h == r.h) return;
+    r.depth_w = r.w;
+    r.depth_h = r.h;
+    vk::create_image(static_cast<uint32_t>(r.w), static_cast<uint32_t>(r.h), vk::depth_stencil_format(),
+                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                     VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, r.depth);
+    vk::end_rendering();
+    vk::transition_image(vk::cmd(), r.depth, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    VkClearDepthStencilValue dv = {1.0f, 0};
+    VkImageSubresourceRange sr = {VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1, 0, 1};
+    vkCmdClearDepthStencilImage(vk::cmd(), r.depth.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &dv, 1, &sr);
+    vk::transition_image(vk::cmd(), r.depth, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+}
+
+void draw_vk(const Gs& gs, int win_w, int win_h, float FB_W, float FB_H, const DepthMap* depth, const Viewport* vp, int prim_filter, size_t from, size_t to) {
+    init_vk_draw();
+    Viewport v;
+    if (vp != nullptr) v = *vp;
+    else { v.w = win_w; v.h = win_h; }
+
+    std::set<uint32_t> sampled;
+    for (const Primitive& p : gs.primitives())
+        if (field(p.st.prim, 4, 1) != 0 && field(p.st.tex0, 20, 6) == 0) sampled.insert(field(p.st.tex0, 0, 14));
+
+    int cur_rt = -1;
+    bool rt_pushed = false;
+    auto bind_target = [&](int want, bool need_depth) {
+        if (want == cur_rt && (!need_depth || want < 0 || g_vk_rt[static_cast<uint32_t>(want)].depth.image != VK_NULL_HANDLE)) return;
+        if (rt_pushed) {
+            vk::pop_target();
+            if (cur_rt >= 0) {
+                vk::transition_image(vk::cmd(), g_vk_rt[static_cast<uint32_t>(cur_rt)].color, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            }
+            rt_pushed = false;
+        }
+        if (want >= 0) {
+            VkRenderTarget& r = g_vk_rt[static_cast<uint32_t>(want)];
+            if (need_depth) vk_render_target_depth(r);
+            vk::transition_image(vk::cmd(), r.color, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            if (r.depth.image != VK_NULL_HANDLE) {
+                vk::transition_image(vk::cmd(), r.depth, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+            }
+            vk::RenderTarget rt{};
+            rt.color_view = r.color.view;
+            rt.color_format = r.color.format;
+            rt.depth_view = r.depth.view;
+            rt.depth_format = r.depth.format;
+            rt.stencil_view = r.depth.view;
+            rt.width = static_cast<uint32_t>(r.w);
+            rt.height = static_cast<uint32_t>(r.h);
+            vk::set_viewport(0, 0, r.w, r.h);
+            vk::push_target(rt);
+            rt_pushed = true;
+        } else {
+            vk::set_viewport(v.x, v.y, v.w, v.h);
+        }
+        cur_rt = want;
+    };
+
+    struct VkKey {
+        int want = -1;
+        bool to_rt = false;
+        float sx = 1.0f;
+        bool lines = false;
+        int fge = 0;
+        std::uint32_t fogcol = 0;
+        int tme = 0, tfx = 0, tcc = 0, ate = 0, atst = 0, aref = 0, afail = 0, datm = 0, scr = 0, dt = 0;
+        std::uint32_t fbmsk = 0;
+        VkImageView tex = VK_NULL_HANDLE;
+        int lin = 0, wrap_s = 0, wrap_t = 0;
+        int mip_n = 0, mip_lo = 0, lcm = 0, mxl = 0, lin_min = 0;
+        float mip_k = 0.0f, mip_l = 0.0f;
+        VkImageView mip_id[3] = {VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE};
+        bool blend = false;
+        std::uint64_t alpha = 0;
+        bool ztest = false, zwrite = false;
+        int ztst = 0;
+        int sc[4] = {0, 0, 0, 0};
+        float scr_map[4] = {0, 0, 0, 0};
+        bool operator==(const VkKey&) const = default;
+    };
+
+    std::vector<V> verts;
+    std::vector<V> batch;
+    VkKey cur{}, applied{};
+    bool have = false;
+    bool last_tex_valid = false;
+    const TexImage* last_tex_img = nullptr;
+    uint64_t last_tex0 = 0, last_texa = 0;
+    VkImageView last_tex_id = VK_NULL_HANDLE;
+
+    auto flush = [&] {
+        if (batch.empty()) return;
+        ++g_stat_draws;
+        bind_target(applied.want, applied.ztest);
+        vk::ensure_rendering();
+        if (applied.to_rt) {
+            const VkRenderTarget& r = g_vk_rt[static_cast<uint32_t>(applied.want)];
+            vk::set_viewport(0, 0, r.w, r.h);
+        } else {
+            vk::set_viewport(v.x, v.y, v.w, v.h);
+        }
+        vk::set_scissor(true, applied.sc[0], applied.sc[1], applied.sc[2], applied.sc[3]);
+
+        const size_t bytes = batch.size() * sizeof(V);
+        vk::RingAlloc vbuf = vk::alloc_ring(bytes, 16);
+        std::memcpy(vbuf.ptr, batch.data(), bytes);
+
+        const VkFilter mag_f = applied.lin ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+        const VkFilter mip_f = applied.lin_min ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+        const VkSamplerAddressMode ws = applied.wrap_s ? VK_SAMPLER_ADDRESS_MODE_REPEAT : VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        const VkSamplerAddressMode wt = applied.wrap_t ? VK_SAMPLER_ADDRESS_MODE_REPEAT : VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        VkSampler s_main = vk::get_sampler(mag_f, mag_f, ws, wt);
+        VkSampler s_mip = vk::get_sampler(mip_f, mip_f, ws, wt);
+        VkSampler s_near = vk::get_sampler(VK_FILTER_NEAREST, VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+
+        VkImageView v_main = (applied.tme && applied.tex != VK_NULL_HANDLE) ? applied.tex : vk::white_texture().view;
+        VkImageView v_scr = ( (applied.scr || applied.dt) && g_vk_screen_copy.view != VK_NULL_HANDLE ) ? g_vk_screen_copy.view : vk::white_texture().view;
+        VkDescriptorImageInfo ii[5]{};
+        ii[0] = {s_main, v_main, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        ii[1] = {s_near, v_scr, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        for (int m = 0; m < 3; ++m) {
+            VkImageView mv = (applied.tme && m < applied.mip_n && applied.mip_id[m] != VK_NULL_HANDLE) ? applied.mip_id[m] : vk::white_texture().view;
+            ii[2 + m] = {s_mip, mv, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        }
+        // (the frame's sets kept by what they bind: a batch binding the same textures and samplers as one before reuses its set -
+        // the transient pools are reset at each frame's start, the cache with them)
+        static uint64_t ds_frame = ~0ull;
+        static std::map<std::array<uint64_t, 10>, VkDescriptorSet> ds_cache;
+        if (ds_frame != vk::frame_number()) {
+            ds_frame = vk::frame_number();
+            ds_cache.clear();
+        }
+        std::array<uint64_t, 10> ds_key{};
+        for (int i = 0; i < 5; ++i) {
+            ds_key[static_cast<size_t>(i) * 2] = reinterpret_cast<uint64_t>(ii[i].imageView);
+            ds_key[static_cast<size_t>(i) * 2 + 1] = reinterpret_cast<uint64_t>(ii[i].sampler);
+        }
+        VkDescriptorSet& ds = ds_cache[ds_key];
+        if (ds == VK_NULL_HANDLE) {
+        ds = vk::alloc_descriptor_set(g_vk_set_layout);
+        VkWriteDescriptorSet writes[5]{};
+        for (uint32_t i = 0; i < 5; ++i) {
+            writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[i].dstSet = ds;
+            writes[i].dstBinding = i;
+            writes[i].descriptorCount = 1;
+            writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            writes[i].pImageInfo = &ii[i];
+        }
+        vkUpdateDescriptorSets(vk::device(), 5, writes, 0, nullptr);
+        }
+
+        GsDrawPush push{};
+        if (applied.to_rt) {
+            const VkRenderTarget& r = g_vk_rt[static_cast<uint32_t>(applied.want)];
+            push.uFb[0] = static_cast<float>(r.w);
+            push.uFb[1] = static_cast<float>(r.h);
+            push.uRt = 1;
+        } else {
+            push.uFb[0] = FB_W;
+            push.uFb[1] = FB_H;
+            push.uRt = 0;
+        }
+        push.uScaleX = applied.sx;
+        push.uFogCol[0] = static_cast<float>(applied.fogcol & 0xff) / 255.0f;
+        push.uFogCol[1] = static_cast<float>((applied.fogcol >> 8) & 0xff) / 255.0f;
+        push.uFogCol[2] = static_cast<float>((applied.fogcol >> 16) & 0xff) / 255.0f;
+        push.uFge = applied.fge;
+        std::memcpy(push.uScrMap, applied.scr_map, sizeof(push.uScrMap));
+        push.uTme = applied.tme;
+        push.uTfx = applied.tfx;
+        push.uTcc = applied.tcc;
+        push.uAte = applied.ate;
+        push.uAtst = applied.atst;
+        push.uAref = applied.aref;
+        push.uAfail = applied.afail;
+        push.uPass = 0;
+        push.uScrTex = applied.scr;
+        push.uDate = applied.dt;
+        push.uDatm = applied.datm;
+        push.uMipN = applied.mip_n;
+        push.uMipLo = applied.mip_lo;
+        push.uMipLcm = applied.lcm;
+        push.uMipMxl = applied.mxl;
+        push.uMipK = applied.mip_k;
+        push.uMipL = applied.mip_l;
+
+        DrawState dummy_st{};
+        dummy_st.prim = applied.blend ? (1ull << 6) : 0ull;
+        dummy_st.alpha = applied.alpha;
+        vk::GraphicsPipelineDesc bdesc{};
+        float fix = 0.0f;
+        vk_blend_state(dummy_st, applied.to_rt, bdesc, fix);
+
+        const uint32_t m = applied.fbmsk;
+        const VkColorComponentFlags cmask =
+            ((m & 0xffu) != 0xffu ? VK_COLOR_COMPONENT_R_BIT : 0) |
+            ((m & 0xff00u) != 0xff00u ? VK_COLOR_COMPONENT_G_BIT : 0) |
+            ((m & 0xff0000u) != 0xff0000u ? VK_COLOR_COMPONENT_B_BIT : 0) |
+            ((m & 0xff000000u) != 0xff000000u ? VK_COLOR_COMPONENT_A_BIT : 0);
+
+        const vk::RenderTarget& cur_target = vk::current_target();
+        VkPipeKey pk{};
+        pk.topology = applied.lines ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        pk.depth_test = applied.ztest;
+        pk.depth_write = applied.zwrite;
+        pk.depth_compare = applied.ztst == 0 ? VK_COMPARE_OP_NEVER : applied.ztst == 1 ? VK_COMPARE_OP_ALWAYS : applied.ztst == 2 ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_LESS;
+        pk.blend_enable = bdesc.blend_enable;
+        pk.src_color = bdesc.src_color_blend;
+        pk.dst_color = bdesc.dst_color_blend;
+        pk.color_op = bdesc.color_blend_op;
+        pk.color_mask = cmask;
+        pk.has_depth = cur_target.depth_view != VK_NULL_HANDLE;
+        pk.has_stencil = cur_target.stencil_view != VK_NULL_HANDLE;
+
+        VkCommandBuffer cb = vk::cmd();
+        const float bc[4] = {0.0f, 0.0f, 0.0f, fix};
+        vkCmdSetBlendConstants(cb, bc);
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_pipe_layout, 0, 1, &ds, 0, nullptr);
+        vkCmdBindVertexBuffers(cb, 0, 1, &vbuf.buffer, &vbuf.offset);
+
+        static const bool no_split = std::getenv("RAC1_GS_AFAIL_SPLIT") != nullptr && std::atoi(std::getenv("RAC1_GS_AFAIL_SPLIT")) == 0;
+        const bool split = !no_split && applied.ztest && applied.zwrite && applied.ate != 0 && applied.atst != 1 && applied.afail != 0;
+        if (split) {
+            VkPipeKey pk_z = pk;
+            pk_z.color_mask = 0;
+            push.uPass = 1;
+            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, get_vk_pipeline(pk_z));
+            vkCmdPushConstants(cb, g_vk_pipe_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
+            vkCmdDraw(cb, static_cast<uint32_t>(batch.size()), 1, 0, 0);
+
+            pk.depth_write = false;
+            if (applied.ztst != 0) pk.depth_compare = VK_COMPARE_OP_LESS_OR_EQUAL;
+            push.uPass = 0;
+        }
+        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, get_vk_pipeline(pk));
+        vkCmdPushConstants(cb, g_vk_pipe_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
+        vkCmdDraw(cb, static_cast<uint32_t>(batch.size()), 1, 0, 0);
+        batch.clear();
+    };
+
+    auto close_batch = [&] {
+        flush();
+        have = false;
+    };
+
+    const size_t prim_end = std::min(to, gs.primitives().size());
+    int host_run_fbp = -1;
+    for (size_t pi = from; pi < prim_end; ++pi) {
+        const Primitive& p = gs.primitives()[pi];
+        if (p.fx && gs.fx_external()) continue;
+        if (p.type == 7) {
+            if (prim_filter == 1 || v.screen_picture == nullptr || p.tex == nullptr) continue;
+            close_batch();
+            bind_target(-1, false);
+            vk::set_scissor(false);
+            v.screen_picture(*p.tex, v);
+            cur_rt = -2;
+            continue;
+        }
+        if (p.type == 8) {
+            const uint32_t tfbp = field(p.st.frame, 0, 9);
+            if (v.host_3d == nullptr || static_cast<int>(tfbp) == v.screen_fbp || sampled.count(tfbp * 32) == 0) {
+                host_run_fbp = -1;
+                continue;
+            }
+            close_batch();
+            const int rw = std::max(64, static_cast<int>(field(p.st.frame, 16, 6)) * 64), rh = std::max(rw, 512);
+            VkRenderTarget& r = vk_render_target(tfbp, rw, rh);
+            vk_render_target_depth(r);
+            bind_target(static_cast<int>(tfbp), true);
+            vk::set_viewport(0, 0, r.w, r.h);
+            vk::set_scissor(false);
+            const bool first = host_run_fbp != static_cast<int>(tfbp);
+            if (first) {
+                vk::clear_attachments(false, nullptr, true, 1.0f, false, 0);
+            }
+            v.host_3d(p, r.w, r.h, first);
+            host_run_fbp = static_cast<int>(tfbp);
+            last_tex_valid = false;
+            continue;
+        }
+        host_run_fbp = -1;
+        if (prim_filter == 1 && !p.moby) continue;
+        if (prim_filter == 2 && p.moby) continue;
+        const DrawState& st = p.st;
+        const bool tme = field(st.prim, 4, 1) != 0, fst = field(st.prim, 8, 1) != 0;
+        const uint32_t ztst = field(st.test, 17, 2);
+        const uint32_t fbp = field(st.frame, 0, 9);
+        if (v.skip_fbp >= 0 && static_cast<int>(fbp) == v.skip_fbp) continue;
+        const bool to_rt = static_cast<int>(fbp) != v.screen_fbp &&
+                           (sampled.count(fbp * 32) != 0 || (v.rt_min_fbp >= 0 && static_cast<int>(fbp) >= v.rt_min_fbp));
+        const bool scr_tex = tme && !to_rt && v.screen_fbp >= 0 && field(st.tex0, 0, 14) == static_cast<uint32_t>(v.screen_fbp) * 32 && field(st.tex0, 20, 6) == 0;
+        const bool date = !to_rt && field(st.test, 14, 1) != 0;
+        const bool rt_z = to_rt && field(st.test, 16, 1) != 0;
+        const double rt_zs = field(st.zbuf, 24, 4) == 0 ? 1.0 / 4294967296.0 : field(st.zbuf, 24, 4) == 1 ? 1.0 / 16777216.0 : 1.0 / 65536.0;
+        const bool ztest = rt_z || (depth != nullptr && !to_rt && field(st.test, 16, 1) != 0 && ztst != 1);
+        const float tw = static_cast<float>(1 << std::min(10u, field(st.tex0, 26, 4))), th = static_cast<float>(1 << std::min(10u, field(st.tex0, 30, 4)));
+        const auto src_rt = tme ? g_vk_rt.find(field(st.tex0, 0, 14) / 32) : g_vk_rt.end();
+        const bool from_rt = tme && !scr_tex && field(st.tex0, 0, 14) % 32 == 0 && src_rt != g_vk_rt.end() && sampled.count(field(st.tex0, 0, 14)) != 0;
+        const float sw = from_rt ? static_cast<float>(src_rt->second.w) : tw, sh = from_rt ? static_cast<float>(src_rt->second.h) : th;
+        auto mk = [&](const Vertex& vx) {
+            V o{vx.x, vx.y, vx.r / 255.0f, vx.g / 255.0f, vx.b / 255.0f, vx.a / 255.0f, 0, 0, 1, 0.5f, static_cast<float>(vx.fog)};
+            if (rt_z) o.d = static_cast<float>(std::clamp(1.0 - rt_zs * static_cast<double>(vx.z), 0.0, 1.0));
+            else if (ztest) o.d = static_cast<float>(std::clamp(depth->a + depth->b * static_cast<double>(vx.z), 0.0, 1.0));
+            if (fst) { o.s = vx.u / sw; o.t = vx.v / sh; o.q = 1.0f; }
+            else { o.s = vx.s * tw / sw; o.t = vx.t * th / sh; o.q = vx.q != 0.0f ? vx.q : 1.0f; }
+            return o;
+        };
+        const int want = to_rt ? static_cast<int>(fbp) : -1;
+        if (to_rt) {
+            const int rw = std::max(64, static_cast<int>(field(st.frame, 16, 6)) * 64);
+            const int rh = std::max(rw, 512);
+            const auto it = g_vk_rt.find(fbp);
+            if (it == g_vk_rt.end() || it->second.color.image == VK_NULL_HANDLE || it->second.w != rw || it->second.h != rh) {
+                close_batch();
+                bind_target(-1, false);
+            }
+            vk_render_target(fbp, rw, rh);
+            if (rt_z) {
+                VkRenderTarget& r = g_vk_rt[fbp];
+                if (r.depth.image == VK_NULL_HANDLE || r.depth_w != r.w || r.depth_h != r.h) {
+                    close_batch();
+                    bind_target(-1, false);
+                    vk_render_target_depth(r);
+                }
+            }
+        }
+        const bool crop_on = !to_rt && (v.crop[0] | v.crop[1] | v.crop[2] | v.crop[3]) != 0;
+        bool proj3d = false;
+        if (!to_rt && (v.xscale_3d != v.xscale || v.xscale < 1.0f || crop_on || v.hide_edge_slivers)) {
+            proj3d = p.vu;
+            if (!proj3d && depth != nullptr && field(st.test, 16, 1) != 0 && ztst >= 2)
+                for (const Vertex& q : p.v) {
+                    const double d = depth->a + depth->b * static_cast<double>(q.z);
+                    if (q.z != 0 && d > 0.0 && d < 1.0) proj3d = true;
+                }
+        }
+        const bool crop_3d = proj3d;
+        if (!(v.xscale_3d != v.xscale || v.xscale < 1.0f)) proj3d = false;
+        if (p.sub != 0) {
+            bool sub3d = p.vu;
+            if (!sub3d && !to_rt && field(st.test, 16, 1) != 0 && ztst >= 2)
+                for (const Vertex& q : p.v) sub3d = sub3d || (q.z != 0 && q.z < 0xff0000u);
+            if ((p.sub == 1) != sub3d) continue;
+        }
+        const float sx = to_rt ? 1.0f : proj3d ? v.xscale_3d : v.xscale;
+        verts.clear();
+        if (p.type == 6) {
+            const V a = mk(p.v[0]), b = mk(p.v[1]);
+            V c0 = b, c1 = b, c2 = b, c3 = b;
+            c0.x = a.x; c0.y = a.y; c0.s = a.s / a.q * b.q; c0.t = a.t / a.q * b.q;
+            c1.y = a.y; c1.t = c0.t;
+            c2.x = a.x; c2.s = c0.s;
+            verts = {c0, c1, c2, c1, c3, c2};
+        } else if (p.type == 3) {
+            verts = {mk(p.v[0]), mk(p.v[1]), mk(p.v[2])};
+        } else if (p.type == 1) {
+            verts = {mk(p.v[0]), mk(p.v[1])};
+        }
+        if (verts.empty()) continue;
+
+        if (v.sprite_clamp && tme && !scr_tex && p.mip_n == 0 && !p.vu && (p.type == 6 || (p.type == 3 && fst))) {
+            bool rect = p.type == 6;
+            if (!rect) {
+                const auto& q = p.v;
+                float bx0 = q[0].x, bx1 = bx0, by0 = q[0].y, by1 = by0;
+                for (int i = 1; i < 3; ++i) {
+                    bx0 = std::min(bx0, q[i].x);
+                    bx1 = std::max(bx1, q[i].x);
+                    by0 = std::min(by0, q[i].y);
+                    by1 = std::max(by1, q[i].y);
+                }
+                rect = bx1 > bx0 && by1 > by0;
+                for (int i = 0; i < 3 && rect; ++i) {
+                    rect = (q[i].x == bx0 || q[i].x == bx1) && (q[i].y == by0 || q[i].y == by1);
+                    for (int j = i + 1; j < 3 && rect; ++j) rect = (q[i].x == q[j].x) == (q[i].u == q[j].u) && (q[i].y == q[j].y) == (q[i].v == q[j].v);
+                }
+            }
+            float s0 = 1e30f, s1 = -1e30f, t0 = 1e30f, t1 = -1e30f;
+            for (const V& q : verts) {
+                s0 = std::min(s0, q.s / q.q * sw);
+                s1 = std::max(s1, q.s / q.q * sw);
+                t0 = std::min(t0, q.t / q.q * sh);
+                t1 = std::max(t1, q.t / q.q * sh);
+            }
+            auto whole = [](float x) { return std::abs(x - std::round(x)) < 1.0f / 32.0f; };
+            const float cw = s1 - s0, ch = t1 - t0;
+            rect = rect && whole(s0) && whole(t0) && std::abs(ch - 16.0f) < 1.0f / 32.0f &&
+                   (std::abs(cw - 16.0f) < 1.0f / 32.0f || std::abs(cw - 24.0f) < 1.0f / 32.0f);
+            if (rect) {
+                const float sl = (std::round(s0) + 0.5f) / sw, sr = (std::round(s1) - 0.5f) / sw;
+                const float tl = (std::round(t0) + 0.5f) / sh, tr = (std::round(t1) - 0.5f) / sh;
+                for (V& q : verts) {
+                    q.c0 = sl; q.c1 = tl; q.c2 = sr; q.c3 = tr;
+                }
+            }
+        }
+
+        if (!p.vu && !p.wide && !crop_3d && (p.type == 6 || p.type == 3)) {
+            float bx0 = p.v[0].x, bx1 = bx0, by0 = p.v[0].y, by1 = by0;
+            for (size_t i = 1; i < (p.type == 6 ? 2u : 3u); ++i) {
+                bx0 = std::min(bx0, p.v[i].x);
+                bx1 = std::max(bx1, p.v[i].x);
+                by0 = std::min(by0, p.v[i].y);
+                by1 = std::max(by1, p.v[i].y);
+            }
+            bx0 = std::max(bx0, static_cast<float>(field(st.scissor, 0, 11)));
+            bx1 = std::min(bx1, static_cast<float>(field(st.scissor, 16, 11) + 1));
+            by0 = std::max(by0, static_cast<float>(field(st.scissor, 32, 11)));
+            by1 = std::min(by1, static_cast<float>(field(st.scissor, 48, 11) + 1));
+            if (std::ceil(bx0) >= bx1 || std::ceil(by0) >= by1) continue;
+        }
+
+        bool to_left = false, to_right = false, full_span = false, edge_fill = false;
+        if (!to_rt && p.layer && !proj3d && !p.vu && sx < 1.0f) {
+            // (a full-screen 2D layer drawn in pieces: stretched across the window, as draw())
+            for (V& q : verts) q.x = FB_W * 0.5f + (q.x - FB_W * 0.5f) / sx;
+            to_left = to_right = full_span = true;
+        } else if (!to_rt && (sx < 1.0f || crop_on)) {
+            float x0 = verts[0].x, x1 = x0, y0 = verts[0].y, y1 = y0;
+            for (const V& q : verts) {
+                x0 = std::min(x0, q.x);
+                x1 = std::max(x1, q.x);
+                y0 = std::min(y0, q.y);
+                y1 = std::max(y1, q.y);
+            }
+            const float far_x = tme ? FB_W : FB_W - 0.5f, far_y = tme ? FB_H : FB_H - 0.5f;  // (the far edge reached, as draw())
+            full_span = (x0 <= 0.0f && x1 >= far_x) || (y0 <= 0.0f && y1 >= far_y);
+            if (crop_on && !tme && (x0 <= 0.0f || x1 >= FB_W || y0 <= 0.0f || y1 >= FB_H)) edge_fill = true;
+            if (full_span && sx < 1.0f) {
+                to_left = x0 <= 0.0f;
+                to_right = x1 >= far_x;
+                for (V& q : verts) {
+                    if (q.x <= 0.0f) q.x = FB_W * 0.5f * (1.0f - 1.0f / sx);
+                    else if (q.x >= far_x) q.x = FB_W * 0.5f * (1.0f + 1.0f / sx);
+                }
+            }
+        }
+
+        VkKey k{};
+        k.want = want;
+        k.to_rt = to_rt;
+        k.sx = sx;
+        k.lines = p.type == 1;
+        static const bool s_fog = std::getenv("RAC1_GS_FOG") != nullptr;
+        k.fge = s_fog && field(st.prim, 5, 1) != 0 ? 1 : 0;
+        k.fogcol = k.fge != 0 ? static_cast<std::uint32_t>(st.fogcol & 0xffffffu) : 0;
+        k.tme = tme ? 1 : 0;
+        k.tfx = static_cast<int>(field(st.tex0, 35, 2));
+        k.tcc = static_cast<int>(field(st.tex0, 34, 1));
+        k.ate = static_cast<int>(field(st.test, 0, 1));
+        k.atst = static_cast<int>(field(st.test, 1, 3));
+        k.aref = static_cast<int>(field(st.test, 4, 8));
+        k.afail = static_cast<int>(field(st.test, 12, 2));
+        k.datm = static_cast<int>(field(st.test, 15, 1));
+        k.scr = scr_tex ? 1 : 0;
+        k.dt = date ? 1 : 0;
+        k.fbmsk = field(st.frame, 32, 32);
+        if (tme) {
+            if (from_rt) {
+                if (cur_rt == static_cast<int>(src_rt->first)) {
+                    close_batch();
+                    bind_target(-1, false);
+                }
+                k.tex = src_rt->second.color.view;
+            } else if (last_tex_valid && p.tex.get() == last_tex_img && st.tex0 == last_tex0 && st.texa == last_texa) {
+                k.tex = last_tex_id;
+            } else {
+                if (vk_texture_stale(gs, st.tex0, st.texa, p.tex.get())) {
+                    ++g_stat_stale;
+                    close_batch();
+                }
+                k.tex = vk_texture_for(gs, st.tex0, st.texa, p.tex.get());
+                last_tex_valid = true;
+                last_tex_img = p.tex.get();
+                last_tex0 = st.tex0;
+                last_texa = st.texa;
+                last_tex_id = k.tex;
+            }
+            k.lin = field(st.tex1, 5, 1) != 0 ? 1 : 0;
+            k.wrap_s = field(st.clamp, 0, 2) == 0 ? 1 : 0;
+            k.wrap_t = field(st.clamp, 2, 2) == 0 ? 1 : 0;
+            k.lin_min = field(st.tex1, 6, 3) >= 4 ? 1 : 0;
+            k.mip_n = p.mip_n;
+            for (int m = 0; m < p.mip_n; ++m) {
+                if (vk_texture_stale(gs, p.mip_tex0[m], st.texa, p.mip_tex[m].get())) {
+                    close_batch();
+                }
+                k.mip_id[m] = vk_texture_for(gs, p.mip_tex0[m], st.texa, p.mip_tex[m].get());
+                last_tex_valid = false;
+            }
+        }
+        k.mip_lo = p.mip_lo;
+        k.lcm = static_cast<int>(field(st.tex1, 0, 1));
+        k.mxl = static_cast<int>(std::min(field(st.tex1, 2, 3), 3u));
+        k.mip_k = static_cast<float>(static_cast<int32_t>(field(st.tex1, 32, 12) << 20) >> 20) / 16.0f;
+        k.mip_l = static_cast<float>(1u << field(st.tex1, 19, 2));
+        k.blend = field(st.prim, 6, 1) != 0;
+        k.alpha = k.blend ? st.alpha : 0;
+        k.ztest = ztest;
+        k.ztst = static_cast<int>(ztst);
+        k.zwrite = ztest && field(st.zbuf, 32, 1) == 0;
+        int x0 = static_cast<int>(field(st.scissor, 0, 11)), x1 = static_cast<int>(field(st.scissor, 16, 11));
+        int y0 = static_cast<int>(field(st.scissor, 32, 11)), y1 = static_cast<int>(field(st.scissor, 48, 11));
+        if (v.hide_edge_slivers && !to_rt && tme && !crop_3d && !p.vu && !p.wide && !(p.layer && full_span)) {
+            float bx0 = verts[0].x, bx1 = bx0, by0 = verts[0].y, by1 = by0;
+            for (const V& q : verts) {
+                bx0 = std::min(bx0, q.x);
+                bx1 = std::max(bx1, q.x);
+                by0 = std::min(by0, q.y);
+                by1 = std::max(by1, q.y);
+            }
+            constexpr float kSliver = 4.0f;
+            if ((bx1 > FB_W + 0.5f && bx0 >= FB_W - kSliver) || (bx0 < -0.5f && bx1 <= kSliver) || (by0 < -0.5f && by1 <= kSliver)) continue;
+        }
+        if (crop_on && !crop_3d && !p.vu && !p.wide && !full_span && !edge_fill) {
+            const int cw = static_cast<int>(FB_W), ch = static_cast<int>(FB_H);
+            x0 = std::max(x0, v.crop[0]);
+            x1 = std::min(x1, cw - 1 - v.crop[1]);
+            y0 = std::max(y0, v.crop[2]);
+            y1 = std::min(y1, ch - 1 - v.crop[3]);
+            if (x1 < x0 || y1 < y0) continue;
+        }
+        // (a HUD wider than 4:3, Viewport::hud_shift: as draw())
+        float hud_dx = 0.0f;
+        if (v.hud_shift != 0.0f && p.hud != 0 && !to_rt && !proj3d && !p.vu && !p.wide && !p.layer && !full_span) {
+            const float kx = sx * static_cast<float>(v.w) / FB_W;
+            hud_dx = std::round(v.hud_shift * kx) / kx * (p.hud == 1 ? -1.0f : 1.0f);
+            for (V& q : verts) q.x += hud_dx;
+        }
+        if (to_rt) {
+            k.sc[0] = x0; k.sc[1] = y0; k.sc[2] = x1 - x0 + 1; k.sc[3] = y1 - y0 + 1;
+        } else if (hud_dx != 0.0f) {
+            auto wxu = [&](float x) { return static_cast<float>(v.x) + ((x / FB_W * 2.0f - 1.0f) * sx + 1.0f) * 0.5f * static_cast<float>(v.w); };
+            const float sy = static_cast<float>(v.h) / FB_H;
+            const int sx0 = std::clamp(static_cast<int>(wxu(static_cast<float>(x0) + hud_dx)), v.x, v.x + v.w);
+            const int sx1 = std::clamp(static_cast<int>(wxu(static_cast<float>(x1 + 1) + hud_dx)), v.x, v.x + v.w);
+            k.sc[0] = sx0;
+            k.sc[1] = static_cast<int>(static_cast<float>(v.y) + static_cast<float>(v.h) - static_cast<float>(y1 + 1) * sy);
+            k.sc[2] = std::max(0, sx1 - sx0);
+            k.sc[3] = static_cast<int>(static_cast<float>(y1 - y0 + 1) * sy);
+        } else {
+            auto wx = [&](float x) { return static_cast<float>(v.x) + ((std::clamp(x, 0.0f, FB_W) / FB_W * 2.0f - 1.0f) * sx + 1.0f) * 0.5f * static_cast<float>(v.w); };
+            const float sy = static_cast<float>(v.h) / FB_H;
+            const bool wide = (p.wide || proj3d) && sx < 1.0f && !v.cut_3d;
+            const int sx0 = (to_left || wide) && x0 <= 0 ? v.x : static_cast<int>(wx(static_cast<float>(x0)));
+            const int sx1 = (to_right || wide) && static_cast<float>(x1 + 1) >= FB_W ? v.x + v.w : static_cast<int>(wx(static_cast<float>(x1 + 1)));
+            k.sc[0] = sx0;
+            k.sc[1] = static_cast<int>(static_cast<float>(v.y) + static_cast<float>(v.h) - static_cast<float>(y1 + 1) * sy);
+            k.sc[2] = sx1 - sx0;
+            k.sc[3] = static_cast<int>(static_cast<float>(y1 - y0 + 1) * sy);
+        }
+
+        const bool alone = scr_tex || date;
+        if (alone || !have || !(k == cur)) {
+            close_batch();
+            if (scr_tex || date) {
+                bind_target(-1, false);
+                if (g_vk_screen_copy.image == VK_NULL_HANDLE || g_vk_screen_w != win_w || g_vk_screen_h != win_h) {
+                    g_vk_screen_w = win_w;
+                    g_vk_screen_h = win_h;
+                    vk::create_image(static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h), VK_FORMAT_R8G8B8A8_UNORM,
+                                     VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, g_vk_screen_copy);
+                    vk::end_rendering();
+                    vk::transition_image(vk::cmd(), g_vk_screen_copy, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                }
+                const float bx = static_cast<float>(v.w) * 0.5f * sx * 2.0f / FB_W, ax = static_cast<float>(v.x) + 0.5f * static_cast<float>(v.w) * (1.0f - sx);
+                const float by = -static_cast<float>(v.h) / FB_H, ay = static_cast<float>(v.y + v.h);
+                float bx0 = 1e9f, bx1 = -1e9f, by0 = 1e9f, by1 = -1e9f;
+                for (const V& q : verts) {
+                    bx0 = std::min(bx0, ax + bx * q.x);
+                    bx1 = std::max(bx1, ax + bx * q.x);
+                    by0 = std::min(by0, ay + by * q.y);
+                    by1 = std::max(by1, ay + by * q.y);
+                }
+                const int cx0 = std::clamp(static_cast<int>(bx0) - 1, 0, win_w), cx1 = std::clamp(static_cast<int>(bx1) + 2, 0, win_w);
+                const int cy0 = std::clamp(static_cast<int>(by0) - 1, 0, win_h), cy1 = std::clamp(static_cast<int>(by1) + 2, 0, win_h);
+                if (cx1 > cx0 && cy1 > cy0) {
+                    vk::blit_image(vk::active_color_image(), cx0, cy0, cx1, cy1, g_vk_screen_copy, cx0, cy0, cx1, cy1,
+                                   VK_FILTER_NEAREST, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                }
+                const float tw0 = static_cast<float>(1 << std::min(10u, field(st.tex0, 26, 4))), th0 = static_cast<float>(1 << std::min(10u, field(st.tex0, 30, 4)));
+                k.scr_map[0] = ax;
+                k.scr_map[1] = bx * tw0;
+                k.scr_map[2] = ay;
+                k.scr_map[3] = by * th0;
+            }
+            cur = k;
+            applied = k;
+            have = !alone;
+        }
+        batch.insert(batch.end(), verts.begin(), verts.end());
+        if (alone) close_batch();
+    }
+    close_batch();
+    bind_target(-1, false);
+    vk::set_viewport(v.x, v.y, v.w, v.h);
+    vk::set_scissor(false);
+}
+
+}  // namespace
+
+void vk_draw_shutdown() {
+    for (auto& [k, p] : g_vk_pipes) {
+        if (p != VK_NULL_HANDLE) vkDestroyPipeline(vk::device(), p, nullptr);
+    }
+    g_vk_pipes.clear();
+    if (g_vk_pipe_layout != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(vk::device(), g_vk_pipe_layout, nullptr);
+        g_vk_pipe_layout = VK_NULL_HANDLE;
+    }
+    if (g_vk_set_layout != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(vk::device(), g_vk_set_layout, nullptr);
+        g_vk_set_layout = VK_NULL_HANDLE;
+    }
+    if (g_vk_vs != VK_NULL_HANDLE) {
+        vkDestroyShaderModule(vk::device(), g_vk_vs, nullptr);
+        g_vk_vs = VK_NULL_HANDLE;
+    }
+    if (g_vk_fs != VK_NULL_HANDLE) {
+        vkDestroyShaderModule(vk::device(), g_vk_fs, nullptr);
+        g_vk_fs = VK_NULL_HANDLE;
+    }
+    for (auto& [k, rt] : g_vk_rt) {
+        vk::destroy_image(rt.color);
+        vk::destroy_image(rt.depth);
+    }
+    g_vk_rt.clear();
+    for (auto& [k, te] : g_vk_tex) {
+        vk::destroy_image(te.img);
+    }
+    g_vk_tex.clear();
+    vk::destroy_image(g_vk_screen_copy);
+    g_vk_screen_w = g_vk_screen_h = 0;
+}
+
 void draw_init() {
+    if (vk::is_active()) {
+        init_vk_draw();
+        return;
+    }
     if (g_prog != 0) return;
     g_prog = glCreateProgram();
     glAttachShader(g_prog, compile(GL_VERTEX_SHADER, VS));
@@ -359,6 +1255,10 @@ void draw_init() {
 
 void draw(const Gs& gs, int win_w, int win_h, float FB_W, float FB_H, const DepthMap* depth, const Viewport* vp, int prim_filter, size_t from, size_t to) {
     if (gs.primitives().empty() || from >= std::min(to, gs.primitives().size())) return;
+    if (vk::is_active()) {
+        draw_vk(gs, win_w, win_h, FB_W, FB_H, depth, vp, prim_filter, from, to);
+        return;
+    }
     const auto draw_t0 = std::chrono::steady_clock::now();
     draw_init();
     Viewport v;

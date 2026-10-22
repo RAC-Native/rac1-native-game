@@ -7,7 +7,8 @@ PS2 graphics chip. A GS replica is kept for the 2D, and the PS2's way of drawing
 the reference that the MRP is proved against.
 
 The optional modern lighting (sun shadows, point lights, ambient occlusion) has its own page:
-[Lighting](lighting.md).
+[Lighting](lighting.md). The same renderer can also draw with Vulkan instead of OpenGL (experimental,
+Options > Graphics > Renderer): [Vulkan](vulkan.md).
 
 ## How the PS2 drew a frame
 
@@ -447,4 +448,4 @@ integrated GPU, while the CPU side was 25 to 40 ms before the work above.
 - Drop shadows of mobys drawn only because of a higher level of detail are missing.
 - A moby whose class logic reads its own "drawn" flag behaves as in 4:3 when it is only visible in
   the widened side bands: that flag is game state, and the port does not change it.
-- Linux and OpenGL 4.6 only. The MRP's interface would allow other backends later.
+- OpenGL 4.6 by default; a Vulkan 1.3 backend is experimental and opt-in ([Vulkan](vulkan.md)).

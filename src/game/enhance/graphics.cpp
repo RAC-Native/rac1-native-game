@@ -92,7 +92,7 @@ constexpr uint32_t PICTURE_SECTOR = 0xadf00000u;
 enum : uint32_t { PIC_ORIGINAL = 2, PIC_MODERN = 3, PIC_EXPERIMENTAL = 5 };  // (advanced.cpp's PIC_ ids)
 
 // The settings
-enum Setting : uint32_t { S_DISPLAY, S_MONITOR, S_WINDOW, S_SCALE, S_ASPECT, S_FIT, S_LOD, S_FOV, S_VSYNC, S_CAP, S_LIGHTING, S_DYN_SHADOWS, S_SEC_LIGHTS, S_SHADOW_DIST, S_AO, S_MIPS, S_SHADOW_STR, S_SUN_RAYS, S_AO_STR, S_HUD, S_COUNT };
+enum Setting : uint32_t { S_DISPLAY, S_MONITOR, S_WINDOW, S_SCALE, S_ASPECT, S_FIT, S_LOD, S_FOV, S_VSYNC, S_CAP, S_LIGHTING, S_DYN_SHADOWS, S_SEC_LIGHTS, S_SHADOW_DIST, S_AO, S_MIPS, S_SHADOW_STR, S_SUN_RAYS, S_AO_STR, S_HUD, S_RENDERER, S_COUNT };
 constexpr float SHADOW_DISTS[] = {40.0f, 80.0f, 140.0f, 0.0f};  // Low, Medium, High, Maximum (0: as far as the cascades reach)
 constexpr int SHADOW_STRS[] = {50, 60, 70, 80, 90, 100};  // the sun's shadows' strength, percent of the key light they hide
 constexpr int SHADOW_STR_DEFAULT = 2;
@@ -116,8 +116,8 @@ constexpr uint32_t SIZE_COUNT = sizeof(SIZES) / sizeof(Size);
 constexpr int32_t TEXT_FIRST = 0x7f40;
 enum : int32_t {
     T_GRAPHICS, T_OPTIONS_HELP,
-    T_DISPLAY, T_MONITOR, T_WINDOW_SIZE, T_SCALE, T_ASPECT, T_FIT, T_LOD, T_FOV, T_VSYNC, T_CAP, T_LIGHTING, T_DYN_SHADOWS, T_SEC_LIGHTS, T_SHADOW_DIST, T_AO, T_MIPS, T_SHADOW_STR, T_SUN_RAYS, T_AO_STR, T_HUD,
-    H_DISPLAY, H_MONITOR, H_WINDOW_SIZE, H_SCALE, H_ASPECT, H_FIT, H_LOD, H_FOV, H_VSYNC, H_CAP, H_LIGHTING, H_DYN_SHADOWS, H_SEC_LIGHTS, H_SHADOW_DIST, H_AO, H_MIPS, H_SHADOW_STR, H_SUN_RAYS, H_AO_STR, H_HUD,
+    T_DISPLAY, T_MONITOR, T_WINDOW_SIZE, T_SCALE, T_ASPECT, T_FIT, T_LOD, T_FOV, T_VSYNC, T_CAP, T_LIGHTING, T_DYN_SHADOWS, T_SEC_LIGHTS, T_SHADOW_DIST, T_AO, T_MIPS, T_SHADOW_STR, T_SUN_RAYS, T_AO_STR, T_HUD, T_RENDERER,
+    H_DISPLAY, H_MONITOR, H_WINDOW_SIZE, H_SCALE, H_ASPECT, H_FIT, H_LOD, H_FOV, H_VSYNC, H_CAP, H_LIGHTING, H_DYN_SHADOWS, H_SEC_LIGHTS, H_SHADOW_DIST, H_AO, H_MIPS, H_SHADOW_STR, H_SUN_RAYS, H_AO_STR, H_HUD, H_RENDERER,
     T_WINDOW, T_FULLSCREEN, T_43, T_169, T_FILL, T_BARS, T_STRETCH, T_219, T_329, T_HUD_FIT,
     T_ORIGINAL, T_LOW, T_MEDIUM, T_HIGH, T_MAXIMUM, T_OFF, T_ON, T_UNLIMITED, T_SEC_GAME, T_SEC_ALL, T_FULL,
     T_MODE_ORIGINAL, T_MODE_MODERN, T_MODE_EXPERIMENTAL, H_MODE_ORIGINAL, H_MODE_MODERN, H_MODE_EXPERIMENTAL,
@@ -126,7 +126,7 @@ enum : int32_t {
 };
 constexpr const char* TEXTS[4][T_COUNT] = {
     {"Graphics", "Display, picture shape, detail and view of the PC version",
-     "Display", "Monitor", "Window Size", "Render Resolution", "Aspect Ratio", "Fit to Screen", "Level of Detail", "Field of View", "V-Sync", "Frame Rate Cap", "Lighting", "Dynamic Shadows", "Secondary Lights", "Shadow Distance", "Ambient Occlusion", "Texture Detail", "Shadow Strength", "Sun Rays", "AO Intensity", "HUD",
+     "Display", "Monitor", "Window Size", "Render Resolution", "Aspect Ratio", "Fit to Screen", "Level of Detail", "Field of View", "V-Sync", "Frame Rate Cap", "Lighting", "Dynamic Shadows", "Secondary Lights", "Shadow Distance", "Ambient Occlusion", "Texture Detail", "Shadow Strength", "Sun Rays", "AO Intensity", "HUD", "Renderer",
      "In a window or on the whole screen.", "Which screen the window is put on.", "The window's size (in window mode).", "The 3D's resolution, times the screen's. The HUD stays sharp.",
      "4:3 as the original, 16:9, or the view widened to fill the screen.", "When the picture's shape is not the screen's: black bars, or stretched.",
      "How far objects keep their detail and stay drawn.", "x1.00 is the original's view.", "Waits for the screen's refresh: no tearing.",
@@ -141,6 +141,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Shafts of sunlight through openings. Higher: finer, costs more.",
      "How dark the ambient occlusion is. Characters get less of it.",
      "How wide the HUD spreads in a widened view. 4:3: as the original.",
+     "The graphics API. Vulkan is experimental. Takes effect at the next start.",
      "Window", "Fullscreen", "4:3 Original", "16:9", "Fill Screen", "Black Bars", "Stretch", "21:9", "32:9", "Fit Screen",
      "Original", "Low", "Medium", "High", "Maximum", "Off", "On", "Unlimited", "Game's", "All", "Full",
      "Original", "Modern", "Experimental",
@@ -148,7 +149,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Widescreen, more detail, modern aiming and movement. All can be changed in Options.",
      "Modern plus all the new lighting: shadows, lights, occlusion. Experimental, heavy."},
     {"Grafik", "Anzeige, Bildformat, Details und Sicht der PC-Version",
-     "Anzeige", "Bildschirm", "Fenstergrosse", "Renderauflosung", "Seitenverhaltnis", "Bildanpassung", "Detailstufe", "Sichtfeld", "V-Sync", "Bildratenlimit", "Beleuchtung", "Dynamische Schatten", "Zusatzlichter", "Schattendistanz", "Umgebungsverdeckung", "Texturdetail", "Schattenstarke", "Sonnenstrahlen", "Verdeckungsstarke", "HUD",
+     "Anzeige", "Bildschirm", "Fenstergrosse", "Renderauflosung", "Seitenverhaltnis", "Bildanpassung", "Detailstufe", "Sichtfeld", "V-Sync", "Bildratenlimit", "Beleuchtung", "Dynamische Schatten", "Zusatzlichter", "Schattendistanz", "Umgebungsverdeckung", "Texturdetail", "Schattenstarke", "Sonnenstrahlen", "Verdeckungsstarke", "HUD", "Renderer",
      "Im Fenster oder im Vollbild.", "Auf welchem Bildschirm das Fenster liegt.", "Die Grosse des Fensters (im Fenstermodus).", "Die Auflosung der 3D-Grafik, mal die des Bildschirms. Das HUD bleibt scharf.",
      "4:3 wie im Original, 16:9 oder auf den Bildschirm erweitert.", "Wenn das Bildformat nicht passt: schwarze Balken oder gestreckt.",
      "Wie weit Objekte ihre Details behalten und gezeichnet werden.", "x1.00 ist die Sicht des Originals.", "Wartet auf den Bildaufbau: kein Tearing.",
@@ -163,6 +164,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Lichtstrahlen der Sonne durch Offnungen. Hoher: feiner, aufwendiger.",
      "Wie dunkel die Umgebungsverdeckung ist. Figuren bekommen weniger.",
      "Wie breit das HUD in einer erweiterten Sicht ist. 4:3: wie im Original.",
+     "Die Grafik-API. Vulkan ist experimentell. Gilt ab dem nachsten Start.",
      "Fenster", "Vollbild", "4:3 Original", "16:9", "Fullen", "Balken", "Strecken", "21:9", "32:9", "Ganze Breite",
      "Original", "Niedrig", "Mittel", "Hoch", "Maximum", "Aus", "An", "Unbegrenzt", "Des Spiels", "Alle", "Voll",
      "Original", "Modern", "Experimentell",
@@ -170,7 +172,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Breitbild, mehr Details, modernes Zielen und Bewegen. Alles in Optionen anderbar.",
      "Modern plus die neue Beleuchtung: Schatten, Lichter, Verdeckung. Experimentell, aufwendig."},
     {"Graficos", "Pantalla, formato, detalle y vista de la version PC",
-     "Pantalla", "Monitor", "Tamano de ventana", "Resolucion 3D", "Relacion de aspecto", "Ajuste", "Nivel de detalle", "Campo de vision", "V-Sync", "Limite de FPS", "Iluminacion", "Sombras dinamicas", "Luces secundarias", "Distancia de sombras", "Oclusion ambiental", "Detalle de texturas", "Intensidad de sombras", "Rayos de sol", "Intensidad de oclusion", "HUD",
+     "Pantalla", "Monitor", "Tamano de ventana", "Resolucion 3D", "Relacion de aspecto", "Ajuste", "Nivel de detalle", "Campo de vision", "V-Sync", "Limite de FPS", "Iluminacion", "Sombras dinamicas", "Luces secundarias", "Distancia de sombras", "Oclusion ambiental", "Detalle de texturas", "Intensidad de sombras", "Rayos de sol", "Intensidad de oclusion", "HUD", "Renderizador",
      "En una ventana o a pantalla completa.", "En que pantalla se abre la ventana.", "El tamano de la ventana (en modo ventana).", "La resolucion del 3D, por la de la pantalla. El HUD sigue nitido.",
      "4:3 como el original, 16:9 o la vista ampliada a la pantalla.", "Si el formato no es el de la pantalla: bandas negras o estirado.",
      "Hasta donde los objetos conservan su detalle y se dibujan.", "x1.00 es la vista del original.", "Espera al refresco de la pantalla: sin cortes.",
@@ -185,6 +187,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Haces de sol a traves de las aberturas. Mas alto: mas fino, mas pesado.",
      "Lo oscura que es la oclusion ambiental. Los personajes, menos.",
      "Lo ancho que se extiende el HUD en una vista ampliada. 4:3: como el original.",
+     "La API grafica. Vulkan es experimental. Se aplica al siguiente inicio.",
      "Ventana", "Completa", "4:3 Original", "16:9", "Llenar", "Bandas", "Estirar", "21:9", "32:9", "Todo el ancho",
      "Original", "Bajo", "Medio", "Alto", "Maximo", "No", "Si", "Sin limite", "Del juego", "Todas", "Completo",
      "Original", "Moderno", "Experimental",
@@ -192,7 +195,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Panoramico, mas detalle, apuntado y movimiento modernos. Todo cambia en Opciones.",
      "Moderno y la nueva iluminacion al maximo: sombras, luces, oclusion. Experimental, pesado."},
     {"Grafica", "Schermo, formato, dettaglio e visuale della versione PC",
-     "Schermo", "Monitor", "Finestra", "Risoluzione 3D", "Formato", "Adattamento", "Livello di dettaglio", "Campo visivo", "V-Sync", "Limite FPS", "Illuminazione", "Ombre dinamiche", "Luci secondarie", "Distanza ombre", "Occlusione ambientale", "Dettaglio texture", "Intensita ombre", "Raggi di sole", "Intensita occlusione", "HUD",
+     "Schermo", "Monitor", "Finestra", "Risoluzione 3D", "Formato", "Adattamento", "Livello di dettaglio", "Campo visivo", "V-Sync", "Limite FPS", "Illuminazione", "Ombre dinamiche", "Luci secondarie", "Distanza ombre", "Occlusione ambientale", "Dettaglio texture", "Intensita ombre", "Raggi di sole", "Intensita occlusione", "HUD", "Renderer",
      "In una finestra o a schermo intero.", "Su quale schermo va la finestra.", "La dimensione della finestra (in modalita finestra).", "La risoluzione del 3D, per quella dello schermo. L'HUD resta nitido.",
      "4:3 come l'originale, 16:9 o la visuale allargata allo schermo.", "Se il formato non e quello dello schermo: bande nere o stirato.",
      "Fin dove gli oggetti tengono il dettaglio e restano disegnati.", "x1.00 e la visuale dell'originale.", "Attende il refresh dello schermo: niente tearing.",
@@ -207,6 +210,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Fasci di luce del sole dalle aperture. Piu alto: piu fine, piu pesante.",
      "Quanto e scura l'occlusione ambientale. I personaggi ne hanno meno.",
      "Quanto si allarga l'HUD in una visuale allargata. 4:3: come l'originale.",
+     "L'API grafica. Vulkan e sperimentale. Vale dal prossimo avvio.",
      "Finestra", "Intero", "4:3 Originale", "16:9", "Riempi", "Bande nere", "Stira", "21:9", "32:9", "Tutta la larghezza",
      "Originale", "Basso", "Medio", "Alto", "Massimo", "No", "Si", "Illimitato", "Del gioco", "Tutte", "Pieno",
      "Originale", "Moderno", "Sperimentale",
@@ -220,8 +224,9 @@ struct Row {
     Setting s;
     int32_t name, help;
 };
-// (grouped: the window, the picture, the view, the light)
+// (grouped: the renderer, the window, the picture, the view, the light)
 constexpr Row ROWS_DEF[] = {
+    {S_RENDERER, T_RENDERER, H_RENDERER},
     {S_DISPLAY, T_DISPLAY, H_DISPLAY},       {S_MONITOR, T_MONITOR, H_MONITOR},                {S_WINDOW, T_WINDOW_SIZE, H_WINDOW_SIZE},          {S_VSYNC, T_VSYNC, H_VSYNC},
     {S_CAP, T_CAP, H_CAP},                   {S_SCALE, T_SCALE, H_SCALE},                       {S_ASPECT, T_ASPECT, H_ASPECT},
     {S_FIT, T_FIT, H_FIT},                   {S_HUD, T_HUD, H_HUD},                             {S_FOV, T_FOV, H_FOV},                             {S_LOD, T_LOD, H_LOD},
@@ -257,7 +262,7 @@ struct State {
 // orig: (none) — enhancement: the number of values of a setting
 uint32_t value_count(Setting s) {
     switch (s) {
-        case S_DISPLAY: case S_FIT: case S_VSYNC: case S_DYN_SHADOWS: case S_MIPS: return 2;
+        case S_DISPLAY: case S_FIT: case S_VSYNC: case S_DYN_SHADOWS: case S_MIPS: case S_RENDERER: return 2;
         case S_AO: return 6;  // Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2
         case S_SEC_LIGHTS: return 3;
         case S_SHADOW_DIST: return 4;  // Off, the game's (its point lights per pixel), all (the automatic emitters too)
@@ -320,6 +325,10 @@ void apply() {
         mips_apply();
     }
     GraphicsDisplay d;
+    // (the Renderer row: read by the host once, when it makes its window - a change takes effect at the next start;
+    // a headless run keeps OpenGL unless RAC1_RENDERER asks)
+    d.vulkan = !g_advanced_disabled && v[S_RENDERER] != 0;
+    if (const char* env = std::getenv("RAC1_RENDERER")) d.vulkan = std::strcmp(env, "vulkan") == 0 || std::strcmp(env, "vk") == 0;
     d.fullscreen = v[S_DISPLAY] != 0;
     d.window_w = gs_.win_w;
     d.window_h = gs_.win_h;
@@ -331,6 +340,7 @@ void apply() {
         gs_.display = d;
         ++gs_.serial;
     }
+    gs_.display.vulkan = d.vulkan;  // (no serial: the host reads it once, at its start)
 }
 
 // orig: (none) — enhancement: the real values written where the page shows them (EE)
@@ -362,6 +372,11 @@ bool prefs_read(const std::filesystem::path& path) {
     char key[64];
     while (std::fscanf(f, "%63s", key) == 1) {
         int a = 0, b = 0;
+        if (std::strcmp(key, "renderer") == 0) {  // (a name: opengl / vulkan)
+            char name[32] = {};
+            if (std::fscanf(f, "%31s", name) == 1) gs_.value[S_RENDERER] = std::strcmp(name, "vulkan") == 0 ? 1 : 0;
+            continue;
+        }
         if (std::strcmp(key, "monitor") == 0) {  // (the name, not the index: GLFW's order is not stable)
             // (the rest of the line: a monitor's name can hold spaces, and an empty one must not take the next line's key)
             char name[256] = {};
@@ -445,9 +460,9 @@ void prefs_write() {
     if (path.has_parent_path()) std::filesystem::create_directories(path.parent_path(), ec);
     if (FILE* f = platform::open_file(path, "w")) {
         const int* v = gs_.value;
-        std::fprintf(f, "display %d\nmonitor %s\nwindow %d %d\nrender_scale %d\naspect %d\nfit %d\nlod %d\nfov %d\nvsync %d\nfps_cap %d\nlighting %d\ndynamic_shadows %d\nsecondary_lights %d\nshadow_distance %d\nambient_occlusion %d\ntexture_detail %d\nshadow_strength %d\nsun_rays_quality %d\nao_intensity %d\nhud %d\nmode %u\n",
+        std::fprintf(f, "display %d\nmonitor %s\nwindow %d %d\nrender_scale %d\naspect %d\nfit %d\nlod %d\nfov %d\nvsync %d\nfps_cap %d\nlighting %d\ndynamic_shadows %d\nsecondary_lights %d\nshadow_distance %d\nambient_occlusion %d\ntexture_detail %d\nshadow_strength %d\nsun_rays_quality %d\nao_intensity %d\nhud %d\nrenderer %s\nmode %u\n",
                      v[S_DISPLAY], gs_.monitor_name.c_str(), gs_.win_w, gs_.win_h, SCALES[v[S_SCALE]], v[S_ASPECT], v[S_FIT], v[S_LOD], FOVS[v[S_FOV]], v[S_VSYNC], CAPS[v[S_CAP]], v[S_LIGHTING], v[S_DYN_SHADOWS],
-                     v[S_SEC_LIGHTS], v[S_SHADOW_DIST], v[S_AO], v[S_MIPS], SHADOW_STRS[v[S_SHADOW_STR]], v[S_SUN_RAYS], AO_STRS[v[S_AO_STR]], v[S_HUD], gs_.mode);
+                     v[S_SEC_LIGHTS], v[S_SHADOW_DIST], v[S_AO], v[S_MIPS], SHADOW_STRS[v[S_SHADOW_STR]], v[S_SUN_RAYS], AO_STRS[v[S_AO_STR]], v[S_HUD], v[S_RENDERER] != 0 ? "vulkan" : "opengl", gs_.mode);
         std::fclose(f);
     }
     gs_.dirty = false;
@@ -479,6 +494,7 @@ std::string value_text(Setting s) {
     const int v = gs_.value[s];
     char b[48];
     switch (s) {
+        case S_RENDERER: return v != 0 ? "Vulkan" : "OpenGL";
         case S_DISPLAY: return t[v != 0 ? T_FULLSCREEN : T_WINDOW];
         case S_MONITOR: return v >= 0 && static_cast<size_t>(v) < gs_.monitors.size() ? gs_.monitors[v] : std::string("?");
         case S_WINDOW: std::snprintf(b, sizeof b, "%d x %d", gs_.win_w, gs_.win_h); return b;
@@ -677,6 +693,9 @@ void graphics_set_monitors(std::vector<std::string> names) {
     gs_.value[S_MONITOR] = index;
     if (index >= 0) apply();  // (the host's window: the choice read from the preferences is in it)
 }
+
+// orig: (none) — enhancement (graphics.h)
+void graphics_set_vulkan(bool vulkan) { gs_.display.vulkan = vulkan; }
 
 // orig: (none) — enhancement (graphics.h)
 void graphics_menu_back(uint32_t cur, uint32_t to, uint32_t mobys) {

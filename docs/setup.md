@@ -34,6 +34,8 @@ source code, the files that are a mechanical translation of the game's own code 
 - **Python 3.8** or newer (the setup tool, the code generators and the overlay matcher are written
   in Python; no extra modules);
 - optionally **FFmpeg** development files (`libavcodec`, `libavutil`), to play the game's movies.
+- optionally **glslc** (shaderc), to build the experimental [Vulkan renderer](vulkan.md)'s shaders; without it the
+  game is built with OpenGL only.
   Without them the game runs and skips the movies;
 - an internet connection for the first build (CMake downloads GLFW, GLM, Dear ImGui, TinyGLTF and
   miniaudio);
@@ -47,13 +49,13 @@ asking. For reference, everything at once:
 
 ```bash
 # Debian / Ubuntu
-sudo apt install cmake build-essential pkg-config libgl-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libwayland-dev libxkbcommon-dev python3 libavcodec-dev libavutil-dev
+sudo apt install cmake build-essential pkg-config libgl-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libwayland-dev libxkbcommon-dev python3 libavcodec-dev libavutil-dev glslc
 
 # Fedora
-sudo dnf install cmake gcc-c++ pkgconf-pkg-config mesa-libGL-devel libX11-devel libXrandr-devel libXinerama-devel libXcursor-devel libXi-devel libXext-devel wayland-devel libxkbcommon-devel python3 ffmpeg-free-devel
+sudo dnf install cmake gcc-c++ pkgconf-pkg-config mesa-libGL-devel libX11-devel libXrandr-devel libXinerama-devel libXcursor-devel libXi-devel libXext-devel wayland-devel libxkbcommon-devel python3 ffmpeg-free-devel glslc
 
 # Arch
-sudo pacman -S --needed cmake base-devel pkgconf mesa libx11 libxrandr libxinerama libxcursor libxi libxext wayland libxkbcommon python ffmpeg
+sudo pacman -S --needed cmake base-devel pkgconf mesa libx11 libxrandr libxinerama libxcursor libxi libxext wayland libxkbcommon python ffmpeg shaderc
 ```
 
 ## Step by step

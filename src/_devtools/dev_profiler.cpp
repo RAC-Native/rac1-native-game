@@ -279,7 +279,11 @@ void memory_section() {
     const prof::Resources& R = prof::resources();
     ImGui::Text("Process: resident %.0f MB (peak %.0f MB), address space %.0f MB", mb(R.rss), mb(R.rss_peak), mb(R.virt));
     ImGui::TextDisabled("The EE's RAM (32 MB) and scratchpad, the IOP's RAM: fixed, inside the resident memory");
-    ImGui::Text("GPU: %s (%s)", R.gl_renderer.c_str(), R.gl_vendor.c_str());
+    const bool vk = R.api == "Vulkan";
+    ImGui::Text("GPU: %s (%s, %s)", R.gl_renderer.c_str(), R.gl_vendor.c_str(), R.api.c_str());
+    if (R.vk_budget)
+        ImGui::Text("Vulkan (VK_EXT_memory_budget): device-local heaps %.0f MB, this process uses %.0f MB of its %.0f MB budget", mb(R.vk_heap_size), mb(R.vk_heap_usage),
+                    mb(R.vk_heap_budget));
     if (R.drm) {
         ImGui::Text("Kernel (%s): this process %.0f MB in VRAM, %.0f MB in GTT (system memory the GPU maps)", R.drm_driver.c_str(), mb(R.drm_vram), mb(R.drm_gtt));
         if (R.dev_vram_total > 0)
@@ -289,21 +293,21 @@ void memory_section() {
     if (R.nvx)
         ImGui::Text("GL_NVX_gpu_memory_info: dedicated %.0f MB, available %.0f / %.0f MB, evicted %.0f MB", mb(R.nvx_dedicated), mb(R.nvx_available), mb(R.nvx_total), mb(R.nvx_evicted));
     if (R.ati) ImGui::Text("GL_ATI_meminfo, free: textures %.0f MB, buffers %.0f MB, renderbuffers %.0f MB", mb(R.ati_tex_free), mb(R.ati_vbo_free), mb(R.ati_rb_free));
-    if (!R.drm && !R.nvx && !R.ati) ImGui::TextDisabled("(the driver gives no GPU memory figures)");
+    if (!R.drm && !R.nvx && !R.ati && !R.vk_budget) ImGui::TextDisabled("(the driver gives no GPU memory figures)");
     ImGui::Separator();
     const double now = ImGui::GetTime();
-    if (ImGui::Button("Count GL objects") || (g_gl_auto && now - g_gl_scanned > 2.0)) {
+    if (ImGui::Button(vk ? "Count Vulkan allocations" : "Count GL objects") || (g_gl_auto && now - g_gl_scanned > 2.0)) {
         prof::gl_scan(&g_gl_rows);
         g_gl_scanned = now;
     }
     ImGui::SameLine();
     ImGui::Checkbox("every 2 s", &g_gl_auto);
     ImGui::SameLine();
-    ImGui::TextDisabled("(each texture's, buffer's and renderbuffer's size, per owner; a few ms)");
+    ImGui::TextDisabled(vk ? "(the renderer's images and buffers, by use)" : "(each texture's, buffer's and renderbuffer's size, per owner; a few ms)");
     if (g_gl_rows.empty()) return;
     uint64_t tot = 0;
     for (const prof::GlOwnerRow& r : g_gl_rows) tot += r.tex_bytes + r.buf_bytes + r.rb_bytes;
-    ImGui::Text("GL objects: %.1f MB in all (the window's own buffers not counted)", mb(tot));
+    ImGui::Text("%s: %.1f MB in all (the window's own buffers not counted)", vk ? "Vulkan allocations" : "GL objects", mb(tot));
     if (ImGui::BeginTable("gl", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY, ImVec2(0, 22.0f * 10))) {
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("Owner", ImGuiTableColumnFlags_WidthStretch, 3.0f);

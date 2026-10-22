@@ -20,6 +20,7 @@ namespace rac1 {
 // --- the host's side (orig_main.cpp) ---
 // The window as the settings ask for it
 struct GraphicsDisplay {
+    bool vulkan = false;  // the Graphics page's Renderer row (true: Vulkan, false: OpenGL, the default); read once, at the window's making
     bool fullscreen = false;
     int window_w = 960, window_h = 720;  // the size in window mode
     bool vsync = true;
@@ -29,6 +30,8 @@ struct GraphicsDisplay {
 // orig: (none) — enhancement: the host's monitors as GLFW names them, in its order, given once after GLFW is up
 // (the Monitor row's values; the list is not fixed, and its order is not stable between sessions)
 void graphics_set_monitors(std::vector<std::string> names);
+// orig: (none) — enhancement: the host's renderer when it falls back to OpenGL (no Vulkan driver)
+void graphics_set_vulkan(bool vulkan);
 // orig: (none) — enhancement: the preferences read and applied to the renderer (view mode, aspect,
 // field of view, level of detail), once; nothing read while every enhancement is off (headless
 // runs, the oracle): the defaults

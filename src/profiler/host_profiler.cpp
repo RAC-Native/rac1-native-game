@@ -152,6 +152,8 @@ thread_local bool t_main = false;
 
 std::mutex g_gl_mutex;
 std::map<std::pair<int, unsigned>, const char*> g_gl_owner;
+const GpuApi* g_api = nullptr;  // (set_gpu_api: Vulkan's timestamps and memory; none: OpenGL's)
+bool g_api_ok = false;
 
 // the CSV's first row (the stages' names quoted: some hold commas)
 void csv_header(std::FILE* f) {
@@ -207,7 +209,12 @@ void csv_row(std::FILE* f, const FrameRec& r) {
 bool slot_read(State& s, Slot& sl, bool drop_if_not_ready) {
     if (!sl.pending) return true;
     GLint avail = 0;
-    if (sl.nq > 0) glGetQueryObjectiv(sl.q[sl.nq - 1], GL_QUERY_RESULT_AVAILABLE, &avail);
+    std::vector<GLuint64> ts(static_cast<size_t>(sl.nq), 0);
+    if (g_api != nullptr) {  // (Vulkan: the slot's timestamps all at once, when the last is there)
+        if (sl.nq > 0 && g_api->read(static_cast<int>(&sl - s.slots), sl.nq, ts.data())) avail = 1;
+    } else if (sl.nq > 0) {
+        glGetQueryObjectiv(sl.q[sl.nq - 1], GL_QUERY_RESULT_AVAILABLE, &avail);
+    }
     if (avail == 0 && !drop_if_not_ready) return false;
     sl.pending = false;
     FrameRec* r = hist_find(s, sl.frame);
@@ -218,8 +225,8 @@ bool slot_read(State& s, Slot& sl, bool drop_if_not_ready) {
     }
     ++s.gpu_read;
     s.gpu_age_sum += s.frame_index - sl.frame;
-    std::vector<GLuint64> ts(static_cast<size_t>(sl.nq), 0);
-    for (int i = 0; i < sl.nq; ++i) glGetQueryObjectui64v(sl.q[i], GL_QUERY_RESULT, &ts[static_cast<size_t>(i)]);
+    if (g_api == nullptr)
+        for (int i = 0; i < sl.nq; ++i) glGetQueryObjectui64v(sl.q[i], GL_QUERY_RESULT, &ts[static_cast<size_t>(i)]);
     auto ms = [&ts](int a, int b) { return static_cast<double>(static_cast<int64_t>(ts[static_cast<size_t>(b)] - ts[static_cast<size_t>(a)])) * 1e-6; };
     double gpu[kStageCount] = {};
     double busy = 0;
@@ -286,6 +293,7 @@ void trace_write(State& s) {
 void gl_ext_check(State& s) {
     if (s.gl_ext_checked) return;
     s.gl_ext_checked = true;
+    if (g_api != nullptr) return;  // (Vulkan: its own names, GpuApi::resources)
     GLint n = 0;
     glGetIntegerv(GL_NUM_EXTENSIONS, &n);
     for (GLint i = 0; i < n; ++i) {
@@ -352,6 +360,7 @@ void resources_sample(State& s, bool force) {
         s.drm_t = t;
     }
     gl_ext_check(s);
+    if (g_api != nullptr && g_api->resources != nullptr) g_api->resources(&R);
     if (R.nvx) {
         GLint v = 0;
         glGetIntegerv(0x9047, &v);  // GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX (KiB)
@@ -388,7 +397,8 @@ void gpu_boundary(State& s, int stage) {
         return;
     }
     const int q = sl.nq++;
-    glQueryCounter(sl.q[q], GL_TIMESTAMP);
+    if (g_api != nullptr) g_api->write(s.cur, q);
+    else glQueryCounter(sl.q[q], GL_TIMESTAMP);
     if (!sl.segs.empty() && sl.segs.back().q1 < 0) sl.segs.back().q1 = q;
     if (stage == -2 || sl.nq + 2 >= kQueries) {  // (the frame's end, or no queries left: the rest not timed)
         sl.done = true;
@@ -560,7 +570,9 @@ void frame_mark() {
     }
     s.want_prev = true;
     if (!s.gl_ready) {
-        for (Slot& sl : s.slots) glGenQueries(kQueries, sl.q);
+        if (g_api != nullptr) g_api_ok = g_api->alloc(kSlots, kQueries);
+        else
+            for (Slot& sl : s.slots) glGenQueries(kQueries, sl.q);
         s.gl_ready = true;
     }
     s.rec = true;
@@ -584,12 +596,17 @@ void frame_mark() {
     if (sl.pending) slot_read(s, sl, true);  // (its results not back after kSlots frames: dropped, never waited for)
     sl.nq = 0;
     sl.segs.clear();
-    sl.done = false;
+    sl.done = g_api != nullptr && !g_api_ok;  // (no timestamps: no GPU timings)
+    if (g_api != nullptr && g_api_ok) g_api->slot_reset(s.cur);
     gpu_boundary(s, -1);  // (the frame's first segment: no stage yet)
     if (s.trace_frame) {  // (the GPU's clock against the CPU's: its timestamps placed on the trace's time line)
-        GLint64 g = 0;
-        glGetInteger64v(GL_TIMESTAMP, &g);
-        sl.calib = now_ms() - static_cast<double>(g) * 1e-6;
+        if (g_api != nullptr) {
+            sl.calib = g_api->now_ms != nullptr ? now_ms() - g_api->now_ms() : 0.0;
+        } else {
+            GLint64 g = 0;
+            glGetInteger64v(GL_TIMESTAMP, &g);
+            sl.calib = now_ms() - static_cast<double>(g) * 1e-6;
+        }
     }
     resources_sample(s, false);
     if (dump_due) dump(stdout, s.dump_every, true);
@@ -717,8 +734,14 @@ void gl_track_n(GlKind kind, int n, const unsigned* names, const char* owner) {
     for (int i = 0; i < n; ++i) gl_track(kind, names[i], owner);
 }
 
+void set_gpu_api(const GpuApi* api) { g_api = api; }
+
 void gl_scan(std::vector<GlOwnerRow>* out) {
     out->clear();
+    if (g_api != nullptr) {  // (Vulkan: the renderer's own account)
+        if (g_api->scan != nullptr) g_api->scan(out);
+        return;
+    }
     // (GL 4.5's direct-state queries: not in the 3.3 loader, looked up)
     using PfnTexParam = void(APIENTRYP)(GLuint, GLenum, GLint*);
     using PfnTexLevelParam = void(APIENTRYP)(GLuint, GLint, GLenum, GLint*);
@@ -891,7 +914,9 @@ void dump(std::FILE* f, int frames, bool with_gl_scan) {
     }
     std::fprintf(f, "\n");
     std::fprintf(f, "[profiler]   memory: resident %.0f MB (peak %.0f), address space %.0f MB; EE RAM 32 MB + scratchpad 16 KB (fixed)\n", mb(R.rss), mb(R.rss_peak), mb(R.virt));
-    std::fprintf(f, "[profiler]   GPU %s (%s)", R.gl_renderer.c_str(), R.gl_vendor.c_str());
+    std::fprintf(f, "[profiler]   GPU %s (%s, %s)", R.gl_renderer.c_str(), R.gl_vendor.c_str(), R.api.c_str());
+    if (R.vk_budget)
+        std::fprintf(f, "; Vulkan device-local heaps %.0f MB, this process uses %.0f MB of a %.0f MB budget", mb(R.vk_heap_size), mb(R.vk_heap_usage), mb(R.vk_heap_budget));
     if (R.drm)
         std::fprintf(f, "; %s: this process %.0f MB VRAM + %.0f MB GTT; the device's VRAM %.0f / %.0f MB, GTT %.0f / %.0f MB; GPU busy %.0f %%", R.drm_driver.c_str(), mb(R.drm_vram), mb(R.drm_gtt),
                      mb(R.dev_vram_used), mb(R.dev_vram_total), mb(R.dev_gtt_used), mb(R.dev_gtt_total), R.gpu_busy_pct);
@@ -903,7 +928,7 @@ void dump(std::FILE* f, int frames, bool with_gl_scan) {
         gl_scan(&rows);
         uint64_t tot = 0;
         for (const GlOwnerRow& r : rows) tot += r.tex_bytes + r.buf_bytes + r.rb_bytes;
-        std::fprintf(f, "[profiler]   GL objects: %.1f MB in all;", mb(tot));
+        std::fprintf(f, "[profiler]   %s: %.1f MB in all;", g_api != nullptr ? "Vulkan allocations" : "GL objects", mb(tot));
         for (const GlOwnerRow& r : rows)
             std::fprintf(f, " %s %.1f MB (%d tex %.1f, %d buf %.1f, %d rb %.1f);", r.owner.c_str(), mb(r.tex_bytes + r.buf_bytes + r.rb_bytes), r.textures, mb(r.tex_bytes), r.buffers,
                          mb(r.buf_bytes), r.renderbuffers, mb(r.rb_bytes));

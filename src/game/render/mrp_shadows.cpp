@@ -8,6 +8,8 @@
 #include <game/render/render_toggles.h>
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
+#include <runtime/vk/vk_context.h>
+#include <runtime/vk/vk_shaders.h>
 
 #include <glad/glad.h>
 
@@ -16,6 +18,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <map>
 #include <vector>
 
 namespace rac1 {
@@ -208,6 +212,92 @@ void main() { FragColor = uColor; }
     return !g_gl_failed;
 }
 
+// ---- VK ----------------------------------------------------------------------------------------
+
+VkPipelineLayout g_vk_face_layout = VK_NULL_HANDLE, g_vk_dark_layout = VK_NULL_HANDLE;
+VkShaderModule g_vk_face_vs = VK_NULL_HANDLE, g_vk_face_fs = VK_NULL_HANDLE, g_vk_dark_vs = VK_NULL_HANDLE, g_vk_dark_fs = VK_NULL_HANDLE;
+VkPipeline g_vk_mark_pipe = VK_NULL_HANDLE, g_vk_unmark_pipe = VK_NULL_HANDLE;
+std::map<uint64_t, VkPipeline> g_vk_dark_pipes;
+bool g_vk_inited = false;
+
+void shutdown_vk() {
+    VkDevice dev = vk::device();
+    if (dev != VK_NULL_HANDLE) {
+        for (auto& [_, p] : g_vk_dark_pipes)
+            if (p != VK_NULL_HANDLE) vkDestroyPipeline(dev, p, nullptr);
+        g_vk_dark_pipes.clear();
+        if (g_vk_mark_pipe != VK_NULL_HANDLE) vkDestroyPipeline(dev, g_vk_mark_pipe, nullptr);
+        if (g_vk_unmark_pipe != VK_NULL_HANDLE) vkDestroyPipeline(dev, g_vk_unmark_pipe, nullptr);
+        if (g_vk_face_vs != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g_vk_face_vs, nullptr);
+        if (g_vk_face_fs != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g_vk_face_fs, nullptr);
+        if (g_vk_dark_vs != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g_vk_dark_vs, nullptr);
+        if (g_vk_dark_fs != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g_vk_dark_fs, nullptr);
+        if (g_vk_face_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(dev, g_vk_face_layout, nullptr);
+        if (g_vk_dark_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(dev, g_vk_dark_layout, nullptr);
+    }
+    g_vk_mark_pipe = g_vk_unmark_pipe = VK_NULL_HANDLE;
+    g_vk_face_vs = g_vk_face_fs = g_vk_dark_vs = g_vk_dark_fs = VK_NULL_HANDLE;
+    g_vk_face_layout = g_vk_dark_layout = VK_NULL_HANDLE;
+    g_vk_inited = false;
+}
+
+bool init_vk() {
+    if (g_vk_inited) return g_vk_mark_pipe != VK_NULL_HANDLE;
+    VkDevice dev = vk::device();
+    if (dev == VK_NULL_HANDLE) return false;
+    g_vk_inited = true;
+    vk::register_shutdown_callback(shutdown_vk);
+    {
+        VkPushConstantRange pcr{VK_SHADER_STAGE_VERTEX_BIT, 0, 64};
+        VkPipelineLayoutCreateInfo plci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        plci.pushConstantRangeCount = 1;
+        plci.pPushConstantRanges = &pcr;
+        vkCreatePipelineLayout(dev, &plci, nullptr, &g_vk_face_layout);
+    }
+    {
+        VkPushConstantRange pcr{VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16};
+        VkPipelineLayoutCreateInfo plci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        plci.pushConstantRangeCount = 1;
+        plci.pPushConstantRanges = &pcr;
+        vkCreatePipelineLayout(dev, &plci, nullptr, &g_vk_dark_layout);
+    }
+    g_vk_face_vs = vk::create_shader_module(vk::shaders::kMrpShadowsFaceVs, sizeof(vk::shaders::kMrpShadowsFaceVs));
+    g_vk_face_fs = vk::create_shader_module(vk::shaders::kMrpShadowsFaceFs, sizeof(vk::shaders::kMrpShadowsFaceFs));
+    g_vk_dark_vs = vk::create_shader_module(vk::shaders::kMrpShadowsDarkVs, sizeof(vk::shaders::kMrpShadowsDarkVs));
+    g_vk_dark_fs = vk::create_shader_module(vk::shaders::kMrpShadowsDarkFs, sizeof(vk::shaders::kMrpShadowsDarkFs));
+
+    vk::GraphicsPipelineDesc desc{};
+    desc.layout = g_vk_face_layout;
+    desc.vs = g_vk_face_vs;
+    desc.fs = g_vk_face_fs;
+    desc.vertex_bindings = {{0, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX}};
+    desc.vertex_attribs = {{0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0}};
+    desc.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    desc.cull_mode = VK_CULL_MODE_NONE;
+    desc.depth_test = true;
+    desc.depth_write = false;
+    desc.depth_compare = VK_COMPARE_OP_LESS_OR_EQUAL;
+    desc.stencil_test = true;
+    desc.color_write_mask = 0;
+
+    VkStencilOpState st_mark{};
+    st_mark.failOp = VK_STENCIL_OP_KEEP;
+    st_mark.passOp = VK_STENCIL_OP_INCREMENT_AND_WRAP;
+    st_mark.depthFailOp = VK_STENCIL_OP_KEEP;
+    st_mark.compareOp = VK_COMPARE_OP_ALWAYS;
+    st_mark.compareMask = 0xff;
+    st_mark.writeMask = 0xff;
+    st_mark.reference = static_cast<uint32_t>(kStencilStart);
+    desc.stencil_front = desc.stencil_back = st_mark;
+    g_vk_mark_pipe = vk::create_graphics_pipeline(desc);
+
+    VkStencilOpState st_unmark = st_mark;
+    st_unmark.passOp = VK_STENCIL_OP_DECREMENT_AND_WRAP;
+    desc.stencil_front = desc.stencil_back = st_unmark;
+    g_vk_unmark_pipe = vk::create_graphics_pipeline(desc);
+    return g_vk_mark_pipe != VK_NULL_HANDLE && g_vk_unmark_pipe != VK_NULL_HANDLE;
+}
+
 // orig: (host) RAC1_MRP_SHADOW_CHECK: the stencil the faces left against the original's arithmetic run on the CPU: per pixel, the
 // faces in the original's order, each one that covers the pixel's centre and is not farther than the depth buffer multiplying the
 // frame's alpha by its alpha byte over 128 (the GS's texture function on the alpha it reads back, the result >> 7 clamped to 255),
@@ -354,6 +444,80 @@ bool mrp_shadows_draw(const float* view_proj) {
     const State& X = g_draw_from_snapshot ? D : S;
     if (!X.on || !X.captured || !X.have_apply) return false;
     if (X.mark.empty() && X.unmark.empty()) return false;
+    if (vk::is_active()) {
+        if (!init_vk()) return false;
+        if (vk::current_target().stencil_view == VK_NULL_HANDLE) {
+            if (!S.warned) std::fprintf(stderr, "[mrp-shadows] the framebuffer has no 8-bit stencil: the drop shadows are not drawn\n");
+            S.warned = true;
+            return false;
+        }
+        {
+            const uint32_t a0 = X.clear_rgba >> 24;
+            if (a0 != 0x7f && !S.warned) {
+                std::fprintf(stderr, "[mrp-shadows] unexpected clear alpha 0x%02x\n", a0);
+                S.warned = true;
+                ++S.odd_alpha;
+            }
+        }
+        vk::ensure_rendering();
+        VkCommandBuffer cmd = vk::cmd();
+        vk::clear_attachments(false, nullptr, false, 1.0f, true, static_cast<uint32_t>(kStencilStart));
+        VkRect2D sc{{0, 0}, {static_cast<uint32_t>(vk::current_target_width()), static_cast<uint32_t>(vk::current_target_height())}};
+        vkCmdSetScissor(cmd, 0, 1, &sc);
+        auto vk_faces = [&](const std::vector<float>& v, VkPipeline pipe) {
+            if (v.empty()) return;
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
+            vkCmdPushConstants(cmd, g_vk_face_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, 64, view_proj);
+            auto alloc = vk::alloc_ring(v.size() * sizeof(float), 16);
+            std::memcpy(alloc.ptr, v.data(), v.size() * sizeof(float));
+            VkDeviceSize off = alloc.offset;
+            vkCmdBindVertexBuffers(cmd, 0, 1, &alloc.buffer, &off);
+            vkCmdDraw(cmd, static_cast<uint32_t>(v.size() / 3), 1, 0, 0);
+        };
+        vk_faces(X.mark, g_vk_mark_pipe);
+        vk_faces(X.unmark, g_vk_unmark_pipe);
+
+        gs::DrawState ds{};
+        ds.prim = 1ull << 6;
+        ds.alpha = X.apply_alpha;
+        float fix = 0.0f;
+        VkPipeline& dark_pipe = g_vk_dark_pipes[X.apply_alpha];
+        if (dark_pipe == VK_NULL_HANDLE) {
+            vk::GraphicsPipelineDesc desc{};
+            desc.layout = g_vk_dark_layout;
+            desc.vs = g_vk_dark_vs;
+            desc.fs = g_vk_dark_fs;
+            desc.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+            desc.cull_mode = VK_CULL_MODE_NONE;
+            desc.depth_test = false;
+            desc.depth_write = false;
+            desc.stencil_test = true;
+            VkStencilOpState st_dark{};
+            st_dark.failOp = VK_STENCIL_OP_KEEP;
+            st_dark.passOp = VK_STENCIL_OP_KEEP;
+            st_dark.depthFailOp = VK_STENCIL_OP_KEEP;
+            st_dark.compareOp = VK_COMPARE_OP_LESS;
+            st_dark.compareMask = 0xff;
+            st_dark.writeMask = 0;
+            st_dark.reference = static_cast<uint32_t>(kStencilStart);
+            desc.stencil_front = desc.stencil_back = st_dark;
+            gs::vk_blend_state(ds, false, desc, fix);
+            desc.color_write_mask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT;
+            dark_pipe = vk::create_graphics_pipeline(desc);
+        }
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, dark_pipe);
+        gs::blend_state(ds, false);
+        const float col[4] = {
+            static_cast<float>(X.apply_rgba & 0xff) / 255.0f,
+            static_cast<float>((X.apply_rgba >> 8) & 0xff) / 255.0f,
+            static_cast<float>((X.apply_rgba >> 16) & 0xff) / 255.0f,
+            1.0f,
+        };
+        vkCmdPushConstants(cmd, g_vk_dark_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(col), col);
+        vkCmdDraw(cmd, 3, 1, 0, 0);
+        ++S.drawn_frames;
+        return true;
+    }
     if (!init_gl()) return false;
     GLint fbo = 0;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
