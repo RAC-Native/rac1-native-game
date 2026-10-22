@@ -224,14 +224,15 @@ struct Row {
     Setting s;
     int32_t name, help;
 };
-// (grouped: the window, the picture, the view, the light)
+// (grouped: the renderer, the window, the picture, the view, the light)
 constexpr Row ROWS_DEF[] = {
+    {S_RENDERER, T_RENDERER, H_RENDERER},
     {S_DISPLAY, T_DISPLAY, H_DISPLAY},       {S_MONITOR, T_MONITOR, H_MONITOR},                {S_WINDOW, T_WINDOW_SIZE, H_WINDOW_SIZE},          {S_VSYNC, T_VSYNC, H_VSYNC},
     {S_CAP, T_CAP, H_CAP},                   {S_SCALE, T_SCALE, H_SCALE},                       {S_ASPECT, T_ASPECT, H_ASPECT},
     {S_FIT, T_FIT, H_FIT},                   {S_HUD, T_HUD, H_HUD},                             {S_FOV, T_FOV, H_FOV},                             {S_LOD, T_LOD, H_LOD},
     {S_LIGHTING, T_LIGHTING, H_LIGHTING},    {S_SHADOW_STR, T_SHADOW_STR, H_SHADOW_STR},       {S_SHADOW_DIST, T_SHADOW_DIST, H_SHADOW_DIST},     {S_DYN_SHADOWS, T_DYN_SHADOWS, H_DYN_SHADOWS},
     {S_SEC_LIGHTS, T_SEC_LIGHTS, H_SEC_LIGHTS},   {S_AO, T_AO, H_AO},   {S_AO_STR, T_AO_STR, H_AO_STR},   {S_SUN_RAYS, T_SUN_RAYS, H_SUN_RAYS},
-    {S_MIPS, T_MIPS, H_MIPS},                {S_RENDERER, T_RENDERER, H_RENDERER},
+    {S_MIPS, T_MIPS, H_MIPS},
 };
 constexpr int ROW_COUNT = static_cast<int>(sizeof(ROWS_DEF) / sizeof(Row));
 static_assert(T_COUNT + VISIBLE <= 0x60, "the Graphics page's text ids end where the Controls page's begin (0x7fa0)");

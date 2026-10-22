@@ -39,6 +39,7 @@ headless runs) the row is the game's own Mono / Stereo.
 
 | Row | Values | Default |
 |---|---|---|
+| Renderer | OpenGL, Vulkan (experimental; from the next start, see [Vulkan](vulkan.md)) | OpenGL |
 | Display | Window, Fullscreen | Window |
 | Monitor | the connected monitors by name (DP-1, HDMI-A-1, ...) | the first one |
 | Window Size | 640x480 (the original's) to 3840x2160 (16 sizes, 4:3 and 16:9 among them) | 960x720 |
@@ -59,7 +60,6 @@ headless runs) the row is the game's own Mono / Stereo.
 | Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2 | Off |
 | AO Intensity | 25, 50, 75, 100, 125 (%) | 75 |
 | Texture Detail | Full, Original (PS2) | Full |
-| Renderer | OpenGL, Vulkan (experimental; from the next start, see [Vulkan](vulkan.md)) | OpenGL |
 
 - **The frame-rate cap** only paces the picture. The game itself always runs at 60 frames a second,
   and the port draws one picture per game frame (there is no interpolation between them): a host
