@@ -25,6 +25,33 @@ changing how the game behaves.
 
 <!-- Screenshot: to be added. -->
 
+## How it works
+
+1. **Setup, from your disc.** `./setup.sh` (`setup.cmd` on Windows) reads your own ISO. It extracts
+   the assets (levels, textures, models, sounds) and, with the generators in `tools/codegen/`,
+   translates part of the game's MIPS and vector-unit (VU) code into C++, instruction by instruction:
+   the levels' own object code, skinning, culling, the VU microprograms. Nothing from the disc is in
+   this repository; the generated code stays in `assets/generated/`.
+2. **The rest is ported by hand.** The engine, the menus, the game's systems and everything around
+   the generated code are C++ written in this repository, function by function. Each function carries
+   the address of the original it replaces (`// orig: 0x...`). The hand-written headers declare the
+   generated functions too, so both halves call each other directly.
+3. **Built together, run natively.** CMake compiles the hand-written and the generated code into one
+   program. While you play nothing is emulated or interpreted: the ISO is only read for data (a
+   level, streamed music and voices), and the PS2's hardware (DMA, GS, sound processor, memory card,
+   pads) is replaced by host code in `runtime/`.
+4. **A renderer of its own.** The 3D is not drawn by emulating the PS2's graphics chip: the renderer
+   (OpenGL, or Vulkan) reads what the game has decided to draw (its objects, world and effects) and
+   draws it natively. That is what makes widescreen, a wider HUD, high resolutions and the optional
+   modern lighting possible, while the game's own logic stays unchanged.
+5. **Proved against the original.** The oracle runs the original code in an R5900 interpreter beside
+   each port and compares the results bit for bit; the reference images and per-frame RAM hashes
+   catch any change in behaviour.
+
+The details are in [Architecture](docs/architecture.md) (the generated code, the region layer for
+the PAL disc), [Rendering](docs/rendering.md), [The oracle](docs/oracle.md) and the
+[Port inventory](docs/port-inventory.md).
+
 ## Status
 
 **Every planet of the game is ported (0.3.0), and almost all of its code (0.4.0).** Every level's
