@@ -82,6 +82,9 @@ played through the game on it, and the launcher installs and updates it with a d
 - **Sun Rays** (Options > Graphics: Off, Low, Medium, High): shafts of light from the sun where the
   sky shows through the scene. Medium is the earlier Low, High the earlier High at a finer
   resolution, Low a cheaper Medium (settings and saves with Low read as Medium, High as High).
+  Facing the sun under an open sky they no longer wash the whole picture out: the sky's broad glow
+  stays near the sun and the shafts through openings keep their light; what is bright gains less.
+  The steps differ in strength too (Low the earlier Low's, High the earlier High's, Medium between).
 - **Ambient Occlusion** has six values (Off, SSAO, SSAO+, HBAO, GTAO, GTAO at half resolution), and
   each mode is now visible and different (#75).
 - **AO Intensity** (Options > Graphics, 25 to 125 %, default 75 %): how dark the ambient occlusion

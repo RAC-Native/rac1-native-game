@@ -58,7 +58,7 @@ headless runs) the row is the game's own Mono / Stereo.
 | Secondary Lights | Off, Game's, All | All |
 | Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2 | Off |
 | AO Intensity | 25, 50, 75, 100, 125 (%) | 75 |
-| Sun Rays | Off, Low, Medium, High (more quality and cost each step; Medium is the Low of 0.4.x, High its High, finer) | Off |
+| Sun Rays | Off, Low, Medium, High (more quality, strength and cost each step; Low has the strength of 0.4.x's Low, High of its High) | Off |
 | Texture Detail | Full, Original (PS2) | Full |
 
 - **The frame-rate cap** only paces the picture. The game itself always runs at 60 frames a second,

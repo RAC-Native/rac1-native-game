@@ -674,30 +674,51 @@ is the showcase). Screen space, at a fraction of the 3D's resolution (`sun_rays_
 
 1. The mask: the sky's texels (depth 1) near the sun's place on the screen, their colour half tinted
    by the key light's; everything else black, so only openings toward the sky give rays.
-2. A radial blur of the mask toward the sun (each tap weaker than the one before).
-3. Added to the picture with a soft limit (at most +0.28 a texel, High +0.45), so a wide sky in
-   front of the sun does not burn the picture white.
+2. A radial blur of the mask toward the sun (each tap weaker than the one before). One texel also
+   measures how open the sky around the sun is (0 to 1: the mask's sky on a 6 x 6 grid around the
+   sun, weighted as the mask is; with the sun off the view, the sky at the view's edge nearest it).
+3. The rays taken apart, at the same size: what the rays across a texel (to its sides, square to the
+   way toward the sun, 0.05 and 0.11 of the view's height away) share is the sky's broad light, what
+   the texel has above them a shaft. Where the sky around the sun is open (from 0.2, all of it from
+   0.6) the broad light is a glare - until then it washed the whole picture out when the sun was in
+   front (Aridia's planet, Kerwan's plazas: the picture's mean up by 13 to 60 of 255) and the steps
+   all looked the same, burnt to their limit -: it is kept at 0.7 near the sun, falling to 0.12 far
+   from it (`kRaysOpenNear`, `kRaysOpenFar`, `kRaysOpenFall`). The shafts stay everywhere, and in a
+   covered view (Kerwan's first tunnel, a roof of leaves) the broad light stays too.
+4. Added to the picture with a soft limit (at most +0.28 a texel, Medium +0.36, High +0.45), blended
+   as a screen: what is bright already (the sky, a lit wall) gains less, so it does not burn white.
 
-The steps (`kRaysSteps`) are the look of 0.4.x's rays at a lower or higher quality and cost: the
-mask's and the blur's resolution and the blur's taps (their reach and fall-off the same: the decay a
-tap is 0.945 to the power 40 / taps, the weight 4 / taps). Low and Medium have the strength of
-0.4.x's Low, Medium its exact picture (to the pixel); High has the strength of 0.4.x's High (twice
-the gain, at most +0.45 a texel) at a finer resolution. Settings and saves from then read Low as
+The steps (`kRaysSteps`): the mask's and the blur's resolution and the blur's taps (their reach and
+fall-off the same: the decay a tap is 0.945 to the power 40 / taps, the weight 4 / taps), and the
+strength: Low has 0.4.x's Low's (gain 3.5, at most +0.28 a texel), High 0.4.x's High's (gain 7, at
+most +0.45), Medium between them (gain 5, at most +0.36). Settings and saves from 0.4.x read Low as
 Medium and High as High.
 
 | Step | Resolution | Taps | GPU at 5053 x 1371 (Radeon 890M; Kerwan's tunnel, Aridia's planet) |
 |---|---|---|---|
-| Low | an eighth | 24 | 0.57, 0.66 ms |
-| Medium | a quarter | 40 | 0.89, 1.04 ms (the 0.4.x Low: 0.96, 1.04) |
-| High | a third | 56 | 1.26, 1.45 ms |
+| Low | an eighth | 24 | 0.53, 0.69 ms |
+| Medium | a quarter | 40 | 0.92, 1.19 ms |
+| High | a third | 56 | 1.42, 1.71 ms |
+
+Added light, the picture's mean (of 255) over the rays off, at 1920 x 540 (Low / Medium / High):
+
+| View | Before | Now |
+|---|---|---|
+| Aridia, facing the planet (the sun above it) | +14 / +13 / +24 | +5 / +6 / +8 |
+| Aridia, the planet in front | +24 / +22 / +39 | +9 / +11 / +14 |
+| Kerwan, the plaza after the first tunnel | +38 / +35 / +60 | +9 / +12 / +15 |
+| Kerwan, the first tunnel (covered) | +4 / +4 / +7 | +3 / +4 / +6 |
 
 Most of each step's cost is the copies of the 3D's depth and colour at its size (reading the depth
-buffer costs a pass over all of it) and the add over the whole picture; the blur is the rest. The
+buffer costs a pass over all of it) and the add over the whole picture; the blur and the taking
+apart (a pass at the step's size, about 0.05 to 0.15 ms here) are the rest. The
 rays fade out as the sun leaves the screen (gone 0.6 of the view beyond its edge; nothing is drawn
 then) or goes behind the camera, and follow the sun's weight: none where the zone has no sun, in the
 level's [interiors](#interiors), with the Lighting on Original. The cascades are not used.
 `RAC1_SUN_RAYS` (0 to 3) overrides the option, `RAC1_SUN_RAYS_TRACE` prints the sun's place, the
-gain and the GPU time, `RAC1_SUN_RAYS_GAIN` scales the strength (testing).
+gain, the GPU time and how open the sky around the sun is (OpenGL), `RAC1_SUN_RAYS_GAIN` scales the
+strength and `RAC1_SUN_RAYS_SHAPE` ("near,far,fall") the glare's (testing). Vulkan draws the same
+passes with the same shaders (`tools/gen_vk_shaders.py`).
 
 ## Ambient occlusion
 
@@ -820,7 +841,7 @@ does not turn the lighting on.
 | Secondary Lights | Off, Game's, All | All | Game's: the game's point lights per pixel; All: also automatic emitters and hand-placed lights |
 | Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2 | Off | SSAO |
 | AO Intensity | 25 to 125 % | 75 % | the occlusion's darkness: each mode's strength scaled (`ao_intensity` in the preferences, item 47 of a save's block); see [Ambient occlusion](#ambient-occlusion) |
-| Sun Rays | Off, Low, Medium, High | Off | light shafts from the sun through openings, the steps the same look at more quality (`sun_rays_quality`, item 49; `sun_rays` and item 46 until 0.4.x read with Low as Medium); see [Sun rays](#sun-rays) |
+| Sun Rays | Off, Low, Medium, High | Off | light shafts from the sun through openings, each step more quality and strength (`sun_rays_quality`, item 49; `sun_rays` and item 46 until 0.4.x read with Low as Medium); see [Sun rays](#sun-rays) |
 
 The other rows take effect only when Lighting is not Original.
 
