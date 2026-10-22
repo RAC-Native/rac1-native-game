@@ -29,13 +29,15 @@ changing how the game behaves.
 
 1. **Setup, from your disc.** `./setup.sh` (`setup.cmd` on Windows) reads your own ISO. It extracts
    the assets (levels, textures, models, sounds) and, with the generators in `tools/codegen/`,
-   translates part of the game's MIPS and vector-unit (VU) code into C++, instruction by instruction:
-   the levels' own object code, skinning, culling, the VU microprograms. Nothing from the disc is in
-   this repository; the generated code stays in `assets/generated/`.
-2. **The rest is ported by hand.** The engine, the menus, the game's systems and everything around
-   the generated code are C++ written in this repository, function by function. Each function carries
-   the address of the original it replaces (`// orig: 0x...`). The hand-written headers declare the
-   generated functions too, so both halves call each other directly.
+   translates much of the game's MIPS and vector-unit (VU) code into C++, instruction by instruction:
+   about 2,150 of the 4,000 ported functions, most of the levels' own object code (the mobys'
+   updates), skinning, culling and the VU microprograms among them. Nothing from the disc is in this
+   repository; the generated code stays in `assets/generated/`.
+2. **The rest is ported by hand.** About 1,600 functions, among them the engine's systems, the hero,
+   the cameras, the menus and the code around the generated parts, are C++ written in this repository,
+   function by function; some 250 more pair a generated body with hand-written code. Each function
+   carries the address of the original it replaces (`// orig: 0x...`). The hand-written headers declare
+   the generated functions too, so both halves call each other directly.
 3. **Built together, run natively.** CMake compiles the hand-written and the generated code into one
    program. While you play nothing is emulated or interpreted: the ISO is only read for data (a
    level, streamed music and voices), and the PS2's hardware (DMA, GS, sound processor, memory card,
@@ -50,7 +52,8 @@ changing how the game behaves.
 
 The details are in [Architecture](docs/architecture.md) (the generated code, the region layer for
 the PAL disc), [Rendering](docs/rendering.md), [The oracle](docs/oracle.md) and the
-[Port inventory](docs/port-inventory.md).
+[Port inventory](docs/port-inventory.md), with every function listed in the
+[Port catalog](docs/catalog/README.md).
 
 ## Status
 
