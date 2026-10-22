@@ -34,14 +34,15 @@ source code, the files that are a mechanical translation of the game's own code 
 - **Python 3.8** or newer (the setup tool, the code generators and the overlay matcher are written
   in Python; no extra modules);
 - optionally **FFmpeg** development files (`libavcodec`, `libavutil`), to play the game's movies.
-- optionally **glslc** (shaderc), to build the experimental [Vulkan renderer](vulkan.md)'s shaders; without it the
-  game is built with OpenGL only.
   Without them the game runs and skips the movies;
-- an internet connection for the first build (CMake downloads GLFW, GLM, Dear ImGui, TinyGLTF and
-  miniaudio);
+- optionally **glslc** (shaderc), to build the experimental [Vulkan renderer](vulkan.md)'s shaders
+  (`glslangValidator` works too); without it the game is built with OpenGL only;
+- an internet connection for the first build (CMake downloads GLFW, GLM, Dear ImGui, TinyGLTF,
+  miniaudio, Vulkan-Headers and volk);
 - about 1 GB of free disk for the game's data and generated code, besides the disc image, plus about
   2 GB for the build;
-- a GPU and driver with **OpenGL 4.6**.
+- a GPU and driver with **OpenGL 4.6** (and **Vulkan 1.3** for the experimental Vulkan renderer,
+  which is optional: OpenGL is the default).
 
 The setup tool checks all of this and tells you what is missing, with the command to install it on
 Debian and Ubuntu (and their derivatives), Fedora, and Arch. It never installs anything without
@@ -261,6 +262,10 @@ hand.
 
    With your own MSYS2, the setup can also run from its **CLANG64** shell (`./setup.sh`, or
    `setup.cmd`): it then uses that shell's tools and tells you which packages to install.
+
+   The private MSYS2 does not include `glslc`, so a game built this way has OpenGL only (the
+   Renderer row's Vulkan falls back to OpenGL). The experimental [Vulkan renderer](vulkan.md) needs
+   `mingw-w64-clang-x86_64-shaderc` installed in the MSYS2 the game is built with.
 
 2. **Play**: double-click **`play.cmd`** in the repository's folder. (The game must start from the
    repository's folder, where it finds `assets\`: `build\rac1-native.exe` double-clicked on its own

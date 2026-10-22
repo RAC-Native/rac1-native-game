@@ -27,6 +27,8 @@ played through the game on it, and the launcher installs and updates it with a d
   still cut, listed in [Rendering](docs/rendering.md#widescreen-and-render-scale).
 - **Widescreen:** the Visibomb's camera view is green with scan lines across the whole screen, and
   its out-of-range static covers the whole screen too (both stopped at the 4:3 middle).
+- **Widescreen:** Aridia's sand sea near the camera is no longer dropped at the sides of a very wide
+  view (32:9).
 - **Widescreen HUD:** a new Graphics row, HUD (4:3 Original, 16:9, 21:9, 32:9, Fit Screen), spreads
   the HUD over a wider box when the 3D is widened: the ammo, the quick select and the other elements
   the game puts at the left move left, the bolts, the air meter and the others at the right move
@@ -38,6 +40,11 @@ played through the game on it, and the launcher installs and updates it with a d
   (#76).
 - Faster: the Gadgetron Vendor's screens and some of the GPU work; no more hitch when the pause
   menu opens.
+- **V-Sync and the frame-rate cap:** with the cap on Unlimited the pictures now come on the game's
+  60 a second, as with the caps of 60 and above (they came at the end of each frame's work, unevenly
+  on a 240 Hz display). The debug menu's stats overlay counts the pictures presented (it counted the
+  host loop's turns, about 120 for 60 pictures), and the log says what V-Sync was set to and what the
+  swaps do. See [Settings](docs/settings.md#graphics).
 
 ### Performance
 - **Less CPU time for the game's own update** (the EE code, on one thread as on the PS2), the game's
@@ -57,8 +64,9 @@ played through the game on it, and the launcher installs and updates it with a d
 - **Shadows without tiers:** a point is lit or in shadow, whatever blocks the sun, near or far;
   overlapping shadows no longer add up or cancel.
 - **The level's own sun:** a level's file can turn the sun where the game's direction leaves whole
-  areas in the shade (Novalis, Kerwan, Eudora, Oltanis, Quartu); the debug menu's Sun tab edits it
-  live. Kerwan's sun now comes low through the first tunnel's mouth, the city backlit.
+  areas in the shade (Novalis, Kerwan, Eudora, Oltanis, Quartu; on Aridia it comes from the big
+  planet in the sky); the debug menu's Sun tab edits it live. Kerwan's sun now comes low through the
+  first tunnel's mouth, the city backlit.
 - **The world lit by our sun:** the baked key light is taken off the world and the mobys and put
   back from the sun, times its shadow, so lit and shaded ground follow the same sun.
 - The original's drop shadows are no longer drawn with the lighting on.
@@ -88,6 +96,8 @@ With Lighting on Original (the default) the picture is unchanged.
 - The sound driver closer to the PS2's: an SPU2-style reverb, the original's autopan, the voices
   summed in 32 bits, fixes to the ADPCM decoding, and volume changes ramped so they do not click.
 - The reverb routed as on the PS2 (#86).
+- The reverb's pipe preset no longer fills the slide down Novalis's sewer pipe with static; two of
+  the studio presets corrected.
 - **5.1 and 7.1 output:** Options > Sound's last row steps Mono, Stereo, 5.1 and 7.1. The world's
   sounds come from their direction, the dialogue from the centre. See
   [Settings](docs/settings.md#sound-51-and-71).
@@ -116,6 +126,14 @@ With Lighting on Original (the default) the picture is unchanged.
 - Pre-rendered movies no longer add to the time played, as on the PS2 (#24).
 - The Controls page: a mouse movement no longer rebinds the D-pad, only the sticks, as the page's
   help says (#61).
+
+### Debug tools (`--debug-tools`)
+- **Profiler** tab and overlay: the frame time (a graph, min / avg / max / p99 / 1 % lows), every
+  stage of a frame on the CPU and on the GPU with the bottleneck, the threads' CPU, the memory and
+  the GPU's, exports to CSV and to a Chrome trace; `RAC1_PROFILER_DUMP` and the others for headless
+  runs. Off until opened: nothing is measured.
+- **Unlocks** tab: gives and takes back the items, the goodies, the gold bolts and the gold weapons,
+  writing what the game's own code writes.
 
 ### Building
 - The CI also builds on Linux ARM64. It does not block yet: the ARM64 port is in progress (#78).

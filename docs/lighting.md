@@ -215,8 +215,10 @@ where he stands**.
    horizon (z >= 0.2). Brightness is the largest of the colour's r, g, b. The shadow's weight is
    that light's brightness divided by the brightest light in the set, so a dim light gives faint
    shadows. If neither light comes from above, the set has **no sun**.
-3. **Blend.** If both sets have a sun, direction and weight are blended with the game's weight
-   (+0x3a / 256). If only one has, its weight is scaled by its share of the blend.
+3. **Blend.** The weight comes from the hero's sets: if both have a sun, blended with the game's
+   weight (+0x3a / 256); if only one has, its weight scaled by its share of the blend. The direction
+   is set 0's whenever set 0 has a sun (#3: a room's own set does not turn the shadows); only where
+   it has none is the direction blended from the hero's sets as well.
 4. **Transitions.** When the zone changes, the direction turns at most **1 degree a frame** and the
    weight changes at most **1/30 a frame**. In a zone without a sun the shadows fade out in about
    half a second instead of vanishing. At weight 0 the cascades are not drawn. The original's drop
@@ -226,8 +228,8 @@ where he stands**.
 6. **The level's own sun** (our choice): the level's file may give the sun a direction of its own,
    see [The level's own sun](#the-levels-own-sun).
 7. **Overrides for testing:** `RAC1_SUN_DIR=x,y,z` turns the sun as a level's file would (a sun
-   of weight 1 where the zone has none), `RAC1_SUN_LEVEL=1` always uses
-   light set 0 (the old way), `RAC1_SUN_TRACE=1` prints the hero's sets and a census of the
+   of weight 1 where the zone has none), `RAC1_SUN_ZONE=1` takes the
+   direction from the hero's sets everywhere (the way before #3), `RAC1_SUN_TRACE=1` prints the hero's sets and a census of the
    sets the level's mobys use, `RAC1_SUN_COVER=1` turns the covered views' probe back on (now off,
    see below) and `RAC1_SUN_COVER_TRACE=1` prints it.
 
@@ -439,7 +441,7 @@ game's lights first, then emitters that have a moby within reach); a 32 x 18 til
   new code is in separate variants. The image is identical pixel for pixel, checked at each change.
 - **The game's state never changes.** The modern lighting reads the game's memory and does not
   write it. The one exception is the debug light editor's "Ratchet to it" (see below).
-- **Test switches:** sun: `RAC1_SHADOWS`, `RAC1_SHADOW_RES`, `RAC1_SUN_DIR`, `RAC1_SUN_LEVEL`,
+- **Test switches:** sun: `RAC1_SHADOWS`, `RAC1_SHADOW_RES`, `RAC1_SUN_DIR`, `RAC1_SUN_ZONE`,
   `RAC1_SUN_TRACE`, `RAC1_SUN_COVER`, `RAC1_SUN_COVER_SKY`, `RAC1_WORLD_SHADOW`, `RAC1_TFRAG_LIGHT_TRACE`; lights: `RAC1_POINTS`, `RAC1_POINT_SHADOWS`, `RAC1_AUTO_LIGHTS`,
   `RAC1_LIGHTS_TRACE`, `RAC1_LIGHTS_DIR`; shadows: `RAC1_SHADOW_CACHE`,
   `RAC1_SHADOW_MOBY_DIST`; occlusion: `RAC1_AO`. The Graphics menu sets the same values; an
@@ -557,9 +559,9 @@ the share of the view facing the sun that sees it (the covered views' probe, `RA
 | Level | the key light (azimuth, elevation) | sees the sun | at 50 degrees | the level's own sun |
 |---|---|---|---|---|
 | Veldin | -65, 20 | 51 % | 77 % | |
-| Novalis | -22, 33 | 34 % | 73 % (55 degrees: about 75 %) | **-22, 55** |
-| Aridia | 20, 20 | 81 % | 90 % | |
-| Kerwan | -4, 35 | 30 % | 55 % | **-4, 50** |
+| Novalis | -22, 33 | 34 % | 73 % (55 degrees: about 75 %) | **0, 43** |
+| Aridia | 20, 20 | 81 % | 90 % | **33, 19.5** |
+| Kerwan | -4, 35 | 30 % | 55 % | **100, 28** |
 | Eudora | -141, 22 | 27 % | 47 % | **-141, 50** |
 | Rilgar | -159, 16 | 78 % | 86 % | |
 | Umbris | 179, 24 | 87 % | 85 % | |
@@ -577,8 +579,11 @@ the share of the view facing the sun that sees it (the covered views' probe, `RA
 
 (Headless, the same scripted walk from each level's start, the second half of 3000 frames; a rough
 measure of the places near the start only.) The levels under about a third keep their azimuth and
-get a higher sun; Novalis was checked at its start valley (below) and given 55. The others keep the
-game's key light; Veldin and Hoven are candidates if a playtest finds their shade too heavy. Blarg
+get a higher sun; Novalis was checked at its start valley (below) and given 55. Later, with the
+[sun editor](#the-sun-editor), Daino turned three of them: Novalis to 0, 43 (55 was the first
+try), Kerwan to 100, 28 (low, toward the city, through the first tunnel's mouth: the path inside lit,
+the city backlit) and Aridia to 33, 19.5 (from the big planet in its sky, so the light matches what
+the sky shows). The others keep the game's key light; Veldin and Hoven are candidates if a playtest finds their shade too heavy. Blarg
 has no sun in its main zones.
 
 ### The sun editor
@@ -800,6 +805,7 @@ light in each globe). The neons' first values (1.3, radius 11, every way alike) 
 the tube a little and the floor some 6 units below hardly at all against the game's painted light. `RAC1_LAMP_SCAN` (testing) surveys what
 glows on screen along a run, by class.
 
+## Settings
 
 All on Options > Graphics (`src/game/enhance/graphics.cpp`). They are kept in the graphics
 preferences and in each save's `save<N>.pc` (see [Settings](settings.md)). The New Game's Modern mode
@@ -809,12 +815,12 @@ does not turn the lighting on.
 |---|---|---|---|
 | Lighting | Original, Low, Medium, High | Original | the whole module; the sun shadow maps' resolution (1024, 2048, 4096) |
 | Shadow Strength | 50 to 100 % | 70 % | how much of the sun's light a shadow hides (`shadow_strength` in the preferences, item 45 of a save's block) |
-| Sun Rays | Off, Low, Medium, High | Off | light shafts from the sun through openings, the steps the same look at more quality (`sun_rays_quality`, item 49; `sun_rays` and item 46 until 0.4.x read with Low as Medium); see [Sun rays](#sun-rays) |
 | Shadow Distance | Low, Medium, High, Maximum | Maximum | how far mobys cast sun shadows (40, 80, 140 units, or as far as the cascades reach) |
 | Dynamic Shadows | Off, On | Off | point-light cube shadows |
 | Secondary Lights | Off, Game's, All | All | Game's: the game's point lights per pixel; All: also automatic emitters and hand-placed lights |
 | Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2 | Off | SSAO |
 | AO Intensity | 25 to 125 % | 75 % | the occlusion's darkness: each mode's strength scaled (`ao_intensity` in the preferences, item 47 of a save's block); see [Ambient occlusion](#ambient-occlusion) |
+| Sun Rays | Off, Low, Medium, High | Off | light shafts from the sun through openings, the steps the same look at more quality (`sun_rays_quality`, item 49; `sun_rays` and item 46 until 0.4.x read with Low as Medium); see [Sun rays](#sun-rays) |
 
 The other rows take effect only when Lighting is not Original.
 

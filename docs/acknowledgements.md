@@ -44,6 +44,10 @@ See [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) for versions and licen
   and [stb_image](https://github.com/nothings/stb): glTF loading for the older model renderer.
 - [miniaudio](https://github.com/mackron/miniaudio): audio output.
 - [glad](https://github.com/Dav1dde/glad): the generated OpenGL loader.
+- [volk](https://github.com/zeux/volk) and [Vulkan-Headers](https://github.com/KhronosGroup/Vulkan-Headers):
+  the experimental Vulkan renderer's function loader and the API's headers.
+- [shaderc](https://github.com/google/shaderc)'s `glslc`, or [glslang](https://github.com/KhronosGroup/glslang)'s
+  `glslangValidator`, optional, from the system: they compile the Vulkan renderer's shaders when the game is built.
 - [SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB): the community's database of
   controller mappings.
 - [FFmpeg](https://ffmpeg.org/) (`libavcodec`, `libavutil`), optional, from the system: the movies'

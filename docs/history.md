@@ -146,7 +146,15 @@ the port, and the start of a New Game+ checked.
 starts the game from one file; the modern lighting reworked around the level's own sun; the sound
 driver brought closer to the PS2's, with 5.1 and 7.1 output; an ARM64 job in the CI, not blocking
 yet. On 20 October the repository moved from Daino's own GitHub account to the
-[RAC-Native](https://github.com/RAC-Native) organization; the old address redirects.
+[RAC-Native](https://github.com/RAC-Native) organization; the old address redirects. Windows,
+played through by players, stopped being called experimental.
+
+**20 to 22 October: Vulkan, the wide view and the CPU.** A widescreen HUD (Options > Graphics > HUD),
+the Visibomb's view and Aridia's sand sea right across a wide view, the frame-rate cap paced evenly,
+the sun rays back to their first look in three steps, AO Intensity, Novalis's neons lighting their
+rooms. The game's own update became 12 to 15 % cheaper on the CPU (about 8 % more when built for the
+player's own CPU) with its state the same bit for bit, and the debug menu gained a Profiler. On 22
+October an experimental Vulkan renderer joined OpenGL, opt-in, drawing the same picture.
 
 ## What came of it
 

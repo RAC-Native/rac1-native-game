@@ -17,7 +17,8 @@ own start is not ported, and what it does is reproduced inline here.
 2. The FPU is put in the EE's rounding mode (`ps2fpu::enter_ee_rounding`, see
    [Decisions](decisions.md#11-the-ees-float-rounding)).
 3. A GLFW window with an OpenGL 4.6 core context is opened (an invisible one in a headless run),
-   the shaders are loaded, the translated VU programs are registered and the renderer is chosen.
+   or, with the Renderer setting on Vulkan, a window without a context for the
+   [Vulkan](vulkan.md) renderer (OpenGL's instead when Vulkan cannot start); the shaders are loaded, the translated VU programs are registered and the renderer is chosen.
 4. The game's globals that the base executable would have set are written (the level number, the
    video mode), the memory card is inserted, the sound driver's IOP side and the audio output are
    started, and the vsync hook for blocking loops is installed.

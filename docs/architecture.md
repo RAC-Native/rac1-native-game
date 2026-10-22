@@ -29,6 +29,7 @@ runtime/           the PS2 hardware layer, no game logic
   ee/              EE: the coroutine, timer 1, float rounding, the R5900 interpreter
   vu/              VU0 and VU1, the VIF, the VU interpreter, building blocks of translated programs
   gs/              the GS replica: GS memory, packets, 2D drawing
+  vk/              the experimental Vulkan backend: device, swapchain, frames, helpers
   iop/             IOP memory, the 989snd sound driver's IOP side, audio streams
   sif/             SIF RPC between the EE and the IOP's servers
   ipu/             the movie decoder
@@ -40,6 +41,7 @@ third_party/
   gamecontrollerdb/ the SDL game controller database
 tools/
   setup.py         the guided setup (run through setup.sh)
+  gen_vk_shaders.py the Vulkan renderer's shaders, compiled to SPIR-V at build time
   overlay_match/   generates the per-level address maps from the player's disc
   codegen/         the code generators and their inputs (see "The generated code" below)
   oracle/          headless runs that record the oracle's RAM dumps (see The oracle)
@@ -54,7 +56,7 @@ The build (`CMakeLists.txt`) produces one executable, `rac1-native`, from static
 `rac1_formats`, `rac1_profiler`, `rac1_jobs`, `rac1_runtime`, `rac1_game`, `rac1_setup`, `rac1_devtools`,
 and the third-party ones. It is C++20, built with `-Wall -Wextra -Wpedantic -frounding-math` (the last because the game's
 thread runs the FPU in a non-default rounding mode, see
-[Decisions](decisions.md#11-the-ees-float-rounding)). Two CMake options:
+[Decisions](decisions.md#11-the-ees-float-rounding)). Three CMake options:
 
 - `RAC1_MOVIES` (on by default) decodes the movies with the system's FFmpeg (`libavcodec`,
   `libavutil`) when it is found; without FFmpeg the game runs and skips the movies.
@@ -66,8 +68,11 @@ thread runs the FPU in a non-default rounding mode, see
   keeps `a * b + c` two roundings even on a CPU with FMA (the PS2 has none), and nothing like
   `-ffast-math`. See [Threads and the cores](#threads-and-the-cores).
 
-GLFW, GLM, Dear ImGui, TinyGLTF and miniaudio are downloaded by CMake at configure time, each pinned
-to a release and checked against its SHA-256 (`cmake/dependencies.cmake`, `THIRD_PARTY_NOTICES.md`).
+GLFW, GLM, Dear ImGui, TinyGLTF, miniaudio, Vulkan-Headers and volk are downloaded by CMake at
+configure time, each pinned to a release and checked against its SHA-256 (`cmake/dependencies.cmake`,
+`THIRD_PARTY_NOTICES.md`). The Vulkan renderer's shaders are compiled at build time by `glslc` or
+`glslangValidator` when one is installed; without either the game is built with OpenGL only (see
+[Vulkan](vulkan.md)).
 
 ## The layers
 
@@ -215,9 +220,9 @@ in `src/game/` or `runtime/` includes it, and `RAC1_DEVTOOLS=OFF` compiles it ou
 ## Threads and the cores
 
 The game's own code runs on one thread, in the game's own order: the EE's main thread is a coroutine
-of the host's main thread (`runtime/ee/ee_thread.cpp`), which also holds the GL context. Nothing of
-the game's update is moved to another thread or reordered, so the game's state is the same, word for
-word, however many cores the machine has. What runs elsewhere is the host's work on what the game
+of the host's main thread (`runtime/ee/ee_thread.cpp`), which also holds the GL context (or drives
+the Vulkan renderer). Nothing of the game's update is moved to another thread or reordered, so the
+game's state is the same, word for word, however many cores the machine has. What runs elsewhere is the host's work on what the game
 left behind:
 
 - the **GS chain worker** (`runtime/gs/gs_emu.cpp`) runs the GS replica on a copy of the frame's chain;

@@ -47,7 +47,9 @@ frame (`sound_frame`, 0x28cc08) sends command 0x50 (`snd_SetReverbEx`: core, typ
 or 0x10 (`snd_AutoReverb`: core, depth, time, channels), and 0x50 with type 0 to turn it off (Veldin).
 The synth runs the SPU2's reverb (the effect area's same-side / different-side reflections, four combs and
 two all-pass filters, at 24 kHz) with the SDK's presets (room, studio A / B / C, hall, space, echo, delay,
-pipe); its output, scaled by the depth (the SPU2's effect volume), is added to the mix.
+pipe); its output, scaled by the depth (the SPU2's effect volume), is added to the mix. The presets
+are the PS1's (as psx-spx lists them); pipe is its "half echo": an earlier table of our own fed back
+on itself, a static over the whole slide down Novalis's sewer pipe.
 
 **Which voices feed the reverb: the SPU2's two cores.** The PS2's SPU2 has two cores of 24 voices each; the
 game's reverb is core 1's (0x50 / 0x10 are sent with the core mask 2), core 0's is never turned on. At its start

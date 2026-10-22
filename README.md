@@ -7,8 +7,9 @@
 > game has been played through to the end** on 0.4.0, and the start of a New Game+ checked; the
 > second half has had one full playthrough so far, so expect some bugs and glitches. It runs on Linux and
 > on Windows.
-> Since 0.4.0, `main` has gained a launcher for Windows and Linux, a reworked modern lighting,
-> 5.1 / 7.1 sound and more fixes: see the [Changelog](CHANGELOG.md#unreleased).
+> Since 0.4.0, `main` has gained a launcher for Windows and Linux, an experimental Vulkan renderer
+> (opt-in), a widescreen HUD option, a reworked modern lighting, 5.1 / 7.1 sound, a faster game update
+> and more fixes: see the [Changelog](CHANGELOG.md#unreleased).
 > See [Status](docs/status.md).
 
 A native PC port of **Ratchet & Clank** (PlayStation 2, 2002), for Linux and Windows.
@@ -17,7 +18,8 @@ The game's own code is ported to C++, function by function, from the original No
 (`SCUS-97199`), and each port is proved against the original code. Support for the
 European PAL release (`SCES-50916`) is new and awaits testing: it goes through a table of where the PAL
 build put the same code (see [Setup](docs/setup.md#the-european-pal-disc)). It is not an emulator: all of the game's
-code, the PS2's vector-unit microcode included, runs as native C++ while you play. The 3D is drawn by a native OpenGL renderer from the game's own decisions, which
+code, the PS2's vector-unit microcode included, runs as native C++ while you play. The 3D is drawn by
+a native renderer (OpenGL, or Vulkan as an experimental option) from the game's own decisions, which
 makes widescreen, high resolutions, full-detail textures and longer draw distances possible without
 changing how the game behaves.
 
@@ -43,7 +45,7 @@ So far the port has been tested on one machine only:
 - **CPU:** AMD Ryzen AI 9 HX 470 (12 cores, 24 threads)
 - **GPU:** the integrated AMD Radeon 890M
 - **Memory:** 64 GB
-- **System:** Ubuntu 26.04 LTS, Linux 7.0, Mesa 26.0 (radeonsi, OpenGL 4.6)
+- **System:** Ubuntu 26.04 LTS, Linux 7.0, Mesa 26.0 (radeonsi for OpenGL 4.6, RADV for Vulkan)
 
 Windows is supported too: players have played through the game on it, and it is tested on a laptop (see [Windows](#windows)).
 
@@ -85,15 +87,17 @@ follows from that.
   decides to draw. The costly work is in that code, not in talking to the graphics card, and the
   static world already sits on the GPU. OpenGL 4.6 covers what the renderer needs, compute shaders
   included, and it runs on every desktop GPU and Linux driver in use. The renderer is kept apart
-  from the game code, so another graphics API can be added later if there is a reason for it.
-- **Other platforms and graphics APIs, later.** Vulkan and Direct3D renderers may come in the future,
-  next to OpenGL. The code is portable C++, but other devices need more than
-  a renderer:
+  from the game code, so another graphics API can be added beside it: a
+  [Vulkan](docs/vulkan.md) backend now is, experimental and opt-in (Options > Graphics > Renderer),
+  drawing the same picture. OpenGL stays the default.
+- **Other platforms and graphics APIs, later.** Direct3D or Metal renderers may come in the future.
+  The code is portable C++, but other devices need more than a renderer:
   - **Graphics API.** Phones and handhelds speak OpenGL ES or their own APIs, not desktop OpenGL 4.6.
   - **Processor.** The game's memory is little-endian, like the PS2 and the PC.
   - **Memory and speed.** The device must have enough of both.
 
-  Each port to another device is its own project. A port to ARM64 (Android) is in progress (#78).
+  Each port to another device is its own project. A port to ARM64 (Android) is in progress on the
+  `port/android` branch, not on `main` yet (#78).
 - **Every choice is written down.** The big decisions, and the ones we reversed, are explained in
   [Decisions](docs/decisions.md) and [History](docs/history.md).
 
@@ -115,8 +119,10 @@ follows from that.
 
 ## Quick start
 
-You need Linux or [Windows](#windows), a GPU with OpenGL 4.6,
-and your ISO of the game (the North American or the European PAL disc).
+You need Linux or [Windows](#windows) (x86-64), a GPU with OpenGL 4.6, and your ISO of the game
+(the North American or the European PAL disc). The experimental Vulkan renderer, optional, needs a
+Vulkan 1.3 driver, and `glslc` when the game is built (the setup lists it as optional): see
+[Vulkan](docs/vulkan.md).
 
 **The easiest way, on Windows and Linux, is the launcher**: download `rac1-launcher.exe` (Windows) or
 `rac1-launcher-linux-x64` (Linux, x86-64) from the
@@ -158,7 +164,7 @@ For players:
   the update check, where settings are kept, the debug tools.
 - [Input](docs/input.md): controllers, keyboard and mouse, rebinding.
 - [Saves](docs/saves.md): where your saves are. Saving and loading work, but the save files may still change: they have not been checked by hand yet.
-- [Platforms](docs/platforms.md): Windows, and macOS later.
+- [Platforms](docs/platforms.md): Windows, ARM64 and Android in progress, macOS later.
 - [Advanced options](docs/advanced.md): the optional gameplay changes, including Ratchet & Clank 3
   movement and modern aiming.
 - [Enhancements](docs/enhancements.md): the optional improvements, those available now and those
@@ -177,9 +183,12 @@ For contributors, and for reverse-engineering and decompilation people:
   per-level overlays.
 - [Game logic](docs/game-logic.md): the main loop, levels, mobys, the hero, the camera, cutscenes.
 - [Rendering](docs/rendering.md): how a frame is drawn by the native renderer (the MRP).
+- [Vulkan](docs/vulkan.md): the experimental Vulkan backend of the same renderer.
 - [Lighting](docs/lighting.md): the original lighting and the optional modern lighting.
 - [Audio](docs/audio.md): the 989snd sound driver, streams, movies.
 - [File formats](docs/formats/README.md): the game's formats and their decoders.
+- [Environment variables](docs/env-vars.md): every `RAC1_*` variable, for players, debugging and
+  automated tests.
 
 ## Licence
 
