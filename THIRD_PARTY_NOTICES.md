@@ -50,6 +50,8 @@ The project links these from the player's system and does not include them.
 - **FFmpeg** (libavcodec, libavutil), optional, found with pkg-config, decodes the game's movies. It
   is LGPL 2.1+ (or GPL, depending on how it was built). Without FFmpeg, the game runs and skips the
   movies.
+- **Vulkan**'s loader (`libvulkan.so.1`, `vulkan-1.dll`), optional, opened by volk when the game starts
+  with the experimental Vulkan renderer. Without it the game uses OpenGL.
 
 ## Not included
 

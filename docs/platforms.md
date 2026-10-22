@@ -1,7 +1,8 @@
 # Other platforms
 
-rac1-native runs on Linux x86-64, and on Windows x86-64. This page is the state of the
-Windows port, what remains, and a note on macOS.
+rac1-native runs on Linux x86-64, and on Windows x86-64; Windows is no longer experimental: players
+have played through the game on it. This page is the state of the Windows port, what remains, and
+notes on macOS and other devices (ARM64 and Android, in progress on a branch).
 
 The goal is one codebase that builds on Linux and Windows and behaves identically on both: same
 game state, same oracle results, same reference images.
@@ -11,13 +12,17 @@ game state, same oracle results, same reference images.
 - **The libraries.**
   - GLFW: window, input, gamepads.
   - glad and OpenGL 4.6.
+  - volk and Vulkan-Headers, for the experimental [Vulkan](vulkan.md) renderer: volk finds the
+    system's Vulkan loader when the game starts, so nothing of Vulkan is needed to build.
   - Dear ImGui, the menus' widgets.
   - miniaudio: audio output.
   - OpenGOAL's 989snd.
 
   All of them support Windows.
 - **The game's code** (`src/game/`) is standard C++20 with no operating-system calls.
-- **OpenGL 4.6**, compute shaders included, is supported on Windows by the NVIDIA, AMD and Intel drivers.
+- **OpenGL 4.6**, compute shaders included, is supported on Windows by the NVIDIA, AMD and Intel drivers,
+  and so is **Vulkan 1.3**. The Vulkan renderer's shaders need `glslc` at build time on both systems
+  (the CI installs it: `glslc` on Linux, `mingw-w64-clang-x86_64-shaderc` in MSYS2).
 
 ## The host interface
 
@@ -103,10 +108,11 @@ sources, which `./setup.sh` makes on Linux: they are the same on Windows.
    game also cross-compiles and links from Linux with clang and with GCC.
 3. Done: the setup (`setup.cmd`, or `./setup.sh` in MSYS2's shell; both run `tools/setup.py`), and
    the Windows instructions in [Setup](setup.md#on-windows).
-4. Done: the CI workflow (Linux, Windows, and the Windows cross-build). Run and played on one Windows
-   PC. To do: more Windows machines, the reference runs and the oracle on Windows, a longer
-   playtest.
-5. To do: a release with a Windows build. The player still runs the setup with their own disc.
+4. Done: the CI workflow (Linux, Windows, and the Windows cross-build). Played through by players on
+   Windows. To do: the reference runs and the oracle on Windows.
+5. Done on `main`: the launcher, `rac1-launcher.exe`, which downloads the game and runs the setup
+   with the player's own disc (see [The launcher](launcher.md)); it is attached to the releases from
+   the next one on. Releases stay source only: the player still builds the game from their disc.
 
 What has been tried least: everything that only a Windows machine shows, on more than one PC. The
 fiber and its FPU mode, the paths, the disc's reads, the setup's helper programs, the audio
@@ -116,9 +122,11 @@ Windows job compiles against.
 
 ## macOS
 
-macOS stops at OpenGL 4.1 (deprecated, no compute shaders), so the current renderer can't run
-there. macOS comes after a Vulkan renderer, through MoltenVK, or a Metal one (see
-[Roadmap](roadmap.md)). The host-interface work above would carry over.
+macOS stops at OpenGL 4.1 (deprecated, no compute shaders), so the OpenGL renderer can't run
+there. The way there is the [Vulkan](vulkan.md) renderer, through MoltenVK, or a Metal one (see
+[Roadmap](roadmap.md)). The Vulkan renderer has not been tried on macOS: it asks for Vulkan 1.3
+features that MoltenVK may not all offer (`shaderFloat64`, for the tfrag compute shader's EE
+rounding, among them). The host-interface work above would carry over.
 
 ## Other devices
 
@@ -128,5 +136,5 @@ The code is portable C++, but a device needs more than a renderer:
 - enough memory and speed.
 
 Each such port is its own project. The first, to ARM64 and Android, is in progress on the
-`port/android` branch (#78); the CI's Linux ARM64 build does not pass yet (parts of the PS2 layer
-still use x86 instructions), so it does not block.
+`port/android` branch, not on `main` (#78); the CI's Linux ARM64 build does not pass yet (parts of
+the PS2 layer still use x86 instructions), so it does not block.

@@ -46,12 +46,19 @@ See [Settings](settings.md#graphics) and [Rendering](rendering.md).
 
 - **Widescreen**: 16:9 or the window's own shape for the 3D, with black bars or stretched when the
   shape differs. The game itself still sees its own 4:3 view, so its state is unchanged.
+- **A widescreen HUD** (the HUD row: 4:3 Original, 16:9, 21:9, 32:9, Fit Screen): in a widened view
+  the HUD's side elements (ammo, the quick select, bolts, the air meter) move toward the sides of a
+  box of that shape; health and the centred messages stay. Only where they are drawn changes. The
+  menus, the pause screen and the Vendor stay 4:3.
 - **Render resolution** from half to double the window's, and a **field of view** scale.
 - **Level of detail** from Original to Maximum: objects keep their best model further away, without
   changing the game's own decisions.
 - **Full textures at every distance** (the default): every mip level of every texture is kept, so
   distant objects stay sharp. The PS2's own mip choice remains available.
-- **A frame-rate cap** for the picture (the game's logic always runs at 60 frames a second).
+- **A frame-rate cap** for the picture (the game's logic always runs at 60 frames a second), and
+  V-Sync.
+- **The renderer**: OpenGL, the default, or [Vulkan](vulkan.md) (experimental, from the next start),
+  the same picture.
 
 ### Modern lighting
 
@@ -62,8 +69,9 @@ See [Lighting](lighting.md). Off by default (Lighting: Original).
 - The game's own dynamic lights (explosions, weapons) lit per pixel, and light emitters found
   automatically in the levels' glowing textures (lamps, panels, floor strips), with their shadows;
   a level's file can also make every object of a class a light (street lamps, neon tubes).
-- Sun rays: shafts of light from the sun through openings.
-- Ambient occlusion, in five modes (SSAO, SSAO+, HBAO, GTAO, GTAO at half resolution).
+- Sun rays (Low, Medium, High): shafts of light from the sun where the sky shows through the scene.
+- Ambient occlusion, in five modes (SSAO, SSAO+, HBAO, GTAO, GTAO at half resolution), with an AO
+  Intensity setting.
 
 ### Sound: 5.1 and 7.1
 
@@ -83,10 +91,6 @@ In no fixed order. Each one is optional, and off by default if it changes the ga
 
 ### Picture
 
-- **A widescreen HUD.** Today the HUD and the menus stay 4:3 in the middle of a wide screen. The plan
-  is a HUD laid out to use the extra width: its elements (health, bolts, ammo, the weapon icon)
-  placed toward the screen's edges and corners, as games designed for widescreen do. Only where they
-  are drawn changes; what they show stays the game's own.
 - **The rest of widescreen**: a vertical field-of-view scale, and every effect culled against the
   wider view.
 - **Higher frame rates.** The game runs its logic at 60 Hz, and many of its timers count frames. The
@@ -108,6 +112,8 @@ In no fixed order. Each one is optional, and off by default if it changes the ga
 
 ### Platforms
 
-- **Windows and macOS builds**, and other graphics back ends behind the renderer.
-- **ARM64 and Android**: in progress (#78); the CI has a Linux ARM64 job, not blocking yet.
+- **macOS builds** (Windows is supported), and other graphics back ends behind the renderer, beside
+  OpenGL and the experimental Vulkan one.
+- **ARM64 and Android**: in progress on the `port/android` branch, not on `main` (#78); the CI has a
+  Linux ARM64 job, not blocking yet.
 - **Other releases of the game** (such as the European one) once the North American one is complete.

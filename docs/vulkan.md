@@ -35,7 +35,9 @@ choice is kept.
   (shaderc, part of the Vulkan SDK; the `glslc` package on Debian / Ubuntu / Fedora, `shaderc` on
   Arch, `mingw-w64-clang-x86_64-shaderc` in MSYS2) or `glslangValidator`, into the build directory
   (`build/generated_vk/`). Nothing generated is kept in the repository. Without either compiler the
-  build still succeeds, with the renderer left out (its shaders empty: it never starts).
+  build still succeeds, with the renderer left out (its shaders empty: it never starts). The setup
+  lists `glslc` as optional; the private MSYS2 that `setup.cmd` and the launcher download on Windows
+  does not include it (see [Setup](setup.md#on-windows) and [The launcher](launcher.md#what-it-runs)).
 - The debug menu (ImGui's Vulkan backend) and the Profiler work with it: the GPU's time per stage
   from Vulkan timestamps (a query pool, read back frames later, never waited for), the GPU's memory
   from `VK_EXT_memory_budget`, and "Count Vulkan allocations" (the renderer's images and buffers by
@@ -51,7 +53,7 @@ profiler's GPU times.
 ## Performance
 
 Measured headless and unpaced (each frame as fast as it goes) on the development machine (Ryzen AI 9
-HX 370, Radeon 890M integrated, Mesa 26: radeonsi for OpenGL, RADV for Vulkan), with Lighting High,
+HX 470, Radeon 890M integrated, Mesa 26: radeonsi for OpenGL, RADV for Vulkan), with Lighting High,
 Dynamic Shadows, Ambient Occlusion SSAO, Level of Detail High, Fill Screen; frames 1801 to 2400 of
 `RAC1_GOTO=<level>@60 RAC1_SIM_INPUT=forward`, `RAC1_PROFILER_DUMP=600`. Frame time in ms (fps),
 the main thread's own work, the GPU's busy time from the timestamps (the kernel's account in

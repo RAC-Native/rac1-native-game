@@ -53,12 +53,12 @@ headless runs) the row is the game's own Mono / Stereo.
 | Level of Detail | Original, Low, Medium, High, Maximum | Original |
 | Lighting | Original, Low, Medium, High | Original |
 | Shadow Strength | 50, 60, 70, 80, 90, 100 (%) | 70 |
-| Sun Rays | Off, Low, Medium, High (more quality and cost each step; Medium is the Low of 0.4.x, High its High, finer) | Off |
 | Shadow Distance | Low, Medium, High, Maximum | Maximum |
 | Dynamic Shadows | Off, On | Off |
 | Secondary Lights | Off, Game's, All | All |
 | Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2 | Off |
 | AO Intensity | 25, 50, 75, 100, 125 (%) | 75 |
+| Sun Rays | Off, Low, Medium, High (more quality and cost each step; Medium is the Low of 0.4.x, High its High, finer) | Off |
 | Texture Detail | Full, Original (PS2) | Full |
 
 - **The frame-rate cap** only paces the picture. The game itself always runs at 60 frames a second,
@@ -111,7 +111,7 @@ headless runs) the row is the game's own Mono / Stereo.
   older saves are read and ignored.
 - **Level of Detail** draws more detail further away, without changing the game's own decisions. See
   [Rendering](rendering.md#level-of-detail).
-- **Lighting and the six rows after it** are the optional modern lighting; the six only act
+- **Lighting and the seven rows after it** are the optional modern lighting; the seven only act
   when Lighting is not Original. See [Lighting](lighting.md).
 
 ### Controls
@@ -244,6 +244,8 @@ The debug tools are for development and testing. They are off unless asked for w
 | Moving Ratchet by hand (F2, or L3) | not available; L3 is the game's | on/off |
 | Renderer choice (MRP or the faithful VU path), layer toggles, textures' mip choice | the MRP, everything drawn | in the debug menu's Rendering tab |
 | The light editor | not available | the debug menu's Lights tab |
+| The Profiler (frame time, CPU and GPU per stage, threads, memory, exports) | not available | the debug menu's Profiler tab, and its overlay |
+| Giving and taking back items, goodies, gold bolts and gold weapons | not available | the debug menu's Unlocks tab |
 | `--level N` | ignored, with a message | starts on level N |
 | `RAC1_*` testing variables | removed from the environment at start, with a message | honoured |
 
@@ -252,7 +254,7 @@ The debug menu's code is in `src/_devtools/` and can be left out of the build en
 
 **Environment variables a player may use** (always honoured): `RAC1_ISO` (the disc image's path),
 `RAC1_MEMCARD_DIR` (the memory card's directory), `RAC1_GRAPHICS_FILE`, `RAC1_ADVANCED_FILE`,
-`RAC1_CONTROLS_FILE`, `RAC1_WINDOW`, `RAC1_FULLSCREEN`, `RAC1_VSYNC`, `RAC1_FPS_CAP`,
+`RAC1_CONTROLS_FILE`, `RAC1_RENDERER`, `RAC1_WINDOW`, `RAC1_FULLSCREEN`, `RAC1_VSYNC`, `RAC1_FPS_CAP`,
 `RAC1_NO_AUDIO`, `RAC1_AUDIO_DEVICE`, `RAC1_AUDIO_PERIOD_MS`, `RAC1_AUDIO_PERIODS`,
 `RAC1_MOVIE_VOLUME`, `RAC1_PRIORITY` and `RAC1_IOP_MIRROR`. `RAC1_HEADLESS` runs without a visible
 window for automated tests, and also allows the testing variables.

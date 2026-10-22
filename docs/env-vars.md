@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 307 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 313 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
-| [Player](#player-variables) | 19 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 230 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 60 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Player](#player-variables) | 20 | Settings a player may want to change: files, window, audio, the ISO |
+| [Debugging](#debugging-variables) | 231 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Automated testing](#automated-testing-variables) | 62 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -48,6 +48,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_MOVIE_VOLUME` | floating-point gain; default 1.0 | Volume multiplier applied to the audio of the pre-rendered movies. |
 | `RAC1_NO_AUDIO` | any value = on; default audio on | Turns the sound output off entirely. |
 | `RAC1_PRIORITY` | 0 = off, any other integer = on; default on except when headless | Requests raised host thread priority through the system's real-time kit, if available. |
+| `RAC1_PYTHON` | path to a Python interpreter; set by `tools/setup.py` | Windows: the Python the game's setup mode runs its helper scripts with (also the update check's, when the build's own Python is gone); the setup sets it to its own interpreter; unset = `python`. Elsewhere `python3` is used and the variable is not read. Kept in a windowed run. |
 | `RAC1_RENDERER` | `opengl` or `vulkan`; unset = the Options > Graphics Renderer setting (a headless run: OpenGL) | The graphics API for this run: `vulkan` the experimental Vulkan renderer, OpenGL when it cannot start. See [Vulkan](vulkan.md). |
 | `RAC1_VSYNC` | 0 = off, 1 = on; unset = the Options > Graphics setting | Forces vertical sync on or off for a windowed run, overriding the in-game display setting. |
 | `RAC1_WINDOW` | "WIDTHxHEIGHT", e.g. 1280x720; unset = the default window size | Sets the size of the game window at start. |
@@ -185,6 +186,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_PACE_GAME` | 0 = off; default on | While the game runs, the host frames are presented on a 1/60 s slot (60 Hz times the debug menu's speed factor) whatever the frame cap above it, Unlimited included: there is no new picture to show in between. Setting 0 paces at the cap as set (Unlimited: no slot, each present at the end of its frame's work); for timing comparisons. |
 | `RAC1_PACING` | 0 = the older pacing; default the current frame pacer | Switches the host frame pacer back to the older legacy mode, to compare. |
 | `RAC1_PAD_FALLBACK` | `force`, `0`; default: on for controllers with no mapping | On Linux, a controller with no mapping and the Xbox driver's layout gets the Xbox layout ([Input](input.md#how-the-host-builds-the-packet)). `force` gives it even to a mapped controller of that layout (to test the fallback with a known pad); `0` turns the fallback off. |
+| `RAC1_PAGE_POISON` | set (any value) = on; default off | A diagnostic for the oracle: the upper halves of level-only addresses that the generated code keeps apart from their lower halves (`lvl_page` in `src/game/ovl/ovl_reloc.h`) are moved 16 MB away, so a use the code generator left unfolded fails. |
 | `RAC1_PART_TRACE` | any value = on; default off | Every 30 frames prints the live particles counted by type. |
 | `RAC1_PICKUP_LOG` | integer period in frames; unset = off | Every given number of frames prints the live item pickups and crates within 15 units of the hero (class, state, item, amount, timer, velocity). |
 | `RAC1_PIPELINE` | 0 = off, any other integer = on; unset = the saved setting | Forces the host's pipelining setting on or off, for comparison. |
@@ -239,11 +241,11 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_SUN_COVER_SKY` | 0 = off; default on | The modern lighting's memory of the places where the sky was in view (outdoors: the sun is kept there whatever the view shows). 0 leaves the view's measure alone, as in 0.4.0, to compare. See [Lighting](lighting.md). |
 | `RAC1_SUN_COVER_TRACE` | set (any value) = on; default off | Every 60 frames prints how much of the view sees the sun, the sky's share, whether the camera is outdoors (near a place the sky was seen from) and the sun's weight scale that follows from them. |
 | `RAC1_SUN_DIR` | three comma-separated floats "x,y,z"; unset = the level's own sun direction | Turns the modern lighting's sun to that direction toward it (normalised; ignored if near zero length), as a level's `sun` line would: the world and the mobys lit from it, the key light's colour kept; where the zone has no sun, a sun of weight 1 with the shadows' share (`RAC1_SHADOW_STRENGTH`). |
-| `RAC1_SUN_LEVEL` | set (any value) = on; default off | The modern lighting's sun always uses the level's light set 0 (the old way) instead of the light set the hero is lit with. See [Lighting](lighting.md). |
 | `RAC1_SUN_RAYS` | 0 off, 1 Low, 2 Medium, 3 High; default the option (Off) | The modern lighting's sun rays, overriding Options > Graphics > Sun Rays (until 0.4.x 1 was Low - now Medium's picture - and 2 High). See [Lighting](lighting.md#sun-rays). |
 | `RAC1_SUN_RAYS_GAIN` | float; default 1 | Testing: multiplies the sun rays' strength. |
 | `RAC1_SUN_RAYS_TRACE` | set (any value) = on; default off | Every 60 frames prints the sun's place on the screen, the rays' gain and their GPU time. |
 | `RAC1_SUN_TRACE` | set (any value) = on; default off | Prints the light sets the hero is lit with, for the modern lighting's sun. See [Lighting](lighting.md). |
+| `RAC1_SUN_ZONE` | set (any value) = on; default off | The modern lighting's sun takes its direction from the light sets the hero is lit with, everywhere, as before #3; by default the direction is light set 0's wherever set 0 has a sun, and the hero's sets give only its weight. See [Lighting](lighting.md#the-sun). |
 | `RAC1_TFRAG_LIGHT_TRACE` | <every>[,x,y,z,r]; default off | Every <every> drawn frames with the modern lighting on, takes the terrain's (tfrag) lit vertex colours within r units (default 12) of the hero, or of x,y,z, apart as the game's relighting makes them: base colour, the light set's two directional terms, against the colour in EE memory; prints the means, the light sets used and the sun. See [Lighting](lighting.md). |
 | `RAC1_TF_HITS` | integer; default 2 | Testing threshold for the terrain shadow build: a candidate with fewer than this many hits is discarded. |
 | `RAC1_TIE_NEAR` | x,y,z[,r]; default off | With the modern lighting, prints once the tie instances and the mobys within r units (default 6) of that point, with their class. |
@@ -343,6 +345,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_SIM_INPUT` | script name: forward, jump, dive, turn, attack, throw, hud, quick, fire, shoot, hold, holdwalk, look, start, ship, shipskip, vendor, menu:<keys>, title:<keys> or seq:<script>; default unset = real input | Simulates the pad with a scripted input pattern. Also makes the run ignore physical gamepads so it is deterministic. |
 | `RAC1_STEPS` | integer >= 1; default 1 | In a headless run, the number of game frames run per host frame (exercises the catch-up path of a windowed run). Ignored in windowed runs. |
 | `RAC1_TEST_ZERO_FB` | <first>,<last>[,raw] game frames (last exclusive); unset = off | The host frames of those frames see a framebuffer of 0 x 0, as a minimised window's (on Windows a fullscreen window alt-tabbed out of): nothing is drawn or presented and the game goes on at 60 frames a second. With `raw` the renderers get the 0 x 0 size instead (the behaviour before the minimised window was skipped). |
+| `RAC1_TEXT_AUDIT` | set (any value) = on; default off | At the item-giving frame (RAC1_GIVE_FRAME), prints each item message the level's code asks for and whether the level's text table has it (`[textaudit]`, MISSING when it does not). |
+| `RAC1_TEXT_TRACE` | set (any value) = on; default off | Prints every text id the game asks for that the level's text table lacks, with the level and the frame (`[text] id ... missing`). |
 | `RAC1_TITLE_HOST` | 0 or 1; unset = the title scene is drawn through the normal chain (modern or faithful) | 1 draws the title screen's scene with the older host renderers instead; 0 forces the normal chain. |
 | `RAC1_TITLE_WAIT` | integer frames; default 60 | With a RAC1_SIM_INPUT title: script, how many frames after the title appears before Start is pressed. |
 | `RAC1_UNLOCKS` | <frame>:<op>[,<frame>:<op>...]; unset = off | At those game frames applies the debug menu's Unlocks tab "all" / "none" buttons (src/_devtools/dev_unlocks.cpp; builds with the dev tools only): `items+` / `items-` the non-weapon items and goodies, `bolts+` / `bolts-` the 40 gold bolts, `gold+` / `gold-` the ten gold weapons (`gold+` gives the weapons too), `all+` / `all-` the three. |
