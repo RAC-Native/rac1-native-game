@@ -1427,9 +1427,17 @@ GLenum depth_format(GLint fb) {
     return dtype == GL_FLOAT ? (sbits > 0 ? GL_DEPTH32F_STENCIL8 : GL_DEPTH_COMPONENT32F)
                              : (sbits > 0 ? GL_DEPTH24_STENCIL8 : (dbits >= 32 ? GL_DEPTH_COMPONENT32 : dbits >= 24 ? GL_DEPTH_COMPONENT24 : GL_DEPTH_COMPONENT16));
 }
+// orig: (host) the sun's rays drawn this frame: on, the zone with a sun, and not in the ship's flights (game mode 6 but its take-off
+// and landing scenes, steps 0 / 8 at 0x13e050: the flight away from the planet, 3, and the loading screen's flight between planets,
+// 4, level_exit.cpp / flight_draw.cpp), where the sun is still the level's left behind (GitHub issue #66)
+bool sun_rays_now() {
+    if (g_sun_rays <= 0 || !(g_sh.sun_k > 0.01f)) return false;
+    const int32_t step = lw(0x0013e050u);
+    return lw(OV(0x0015f5c4u)) != 6 || step == 0 || step == 8;
+}
 // orig: (host) the sun's rays added to the bound framebuffer's 3D (see kRaysMaskFs); the caller saves and restores the GL state
 void sun_rays_pass(GLint fb, const int vp[4]) {
-    if (g_sun_rays <= 0 || !(g_sh.sun_k > 0.01f)) return;
+    if (!sun_rays_now()) return;
     float vpf[16];
     mrp_world_view_proj(vpf);
     const glm::mat4 VP = glm::make_mat4(vpf);
@@ -2162,7 +2170,7 @@ void vk_ao_and_rays_pass(const int vp[4]) {
 
     rac1::prof::end(prof_zone);
     prof_zone = g_sun_rays > 0 ? rac1::prof::begin(rac1::prof::kSunRays) : -1;
-    if (g_sun_rays > 0 && g_sh.sun_k > 0.01f) {
+    if (sun_rays_now()) {
         float vpf[16];
         mrp_world_view_proj(vpf);
         const glm::mat4 VP = glm::make_mat4(vpf);

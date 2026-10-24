@@ -688,6 +688,9 @@ is the showcase). Screen space, at a fraction of the 3D's resolution (`sun_rays_
 4. Added to the picture with a soft limit (at most +0.28 a texel, Medium +0.36, High +0.45), blended
    as a screen: what is bright already (the sky, a lit wall) gains less, so it does not burn white.
 
+No rays in the ship's flights (game mode 6 but its take-off and landing scenes: leaving a planet, and
+the loading screen's flight between planets), where the sun is still the level's left behind (#66).
+
 The steps (`kRaysSteps`): the mask's and the blur's resolution and the blur's taps (their reach and
 fall-off the same: the decay a tap is 0.945 to the power 40 / taps, the weight 4 / taps), and the
 strength: Low has 0.4.x's Low's (gain 3.5, at most +0.28 a texel), High 0.4.x's High's (gain 7, at

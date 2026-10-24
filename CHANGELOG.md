@@ -85,6 +85,8 @@ played through the game on it, and the launcher installs and updates it with a d
   Facing the sun under an open sky they no longer wash the whole picture out: the sky's broad glow
   stays near the sun and the shafts through openings keep their light; what is bright gains less.
   The steps differ in strength too (Low the earlier Low's, High the earlier High's, Medium between).
+  No Sun Rays in the ship's flights (leaving a planet, and between planets on the loading screen),
+  where the sun was still the planet left behind (#66).
 - **Ambient Occlusion** has six values (Off, SSAO, SSAO+, HBAO, GTAO, GTAO at half resolution), and
   each mode is now visible and different (#75).
 - **AO Intensity** (Options > Graphics, 25 to 125 %, default 75 %): how dark the ambient occlusion
