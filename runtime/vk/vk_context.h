@@ -141,6 +141,9 @@ void clear_attachments(bool color, const float rgba[4], bool depth, float depth_
 
 // Memory & buffers
 uint32_t find_memory_type(uint32_t type_bits, VkMemoryPropertyFlags props);
+// the flags of a buffer the CPU reads back: host-visible, coherent and cached when the device has such memory (reads from
+// uncached, write-combined memory are slow: about 3.5 ms for a 640x448 picture on an APU, far more over PCIe)
+VkMemoryPropertyFlags readback_memory_flags();
 bool create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props, GpuBuffer& out, bool map = false);
 void destroy_buffer(GpuBuffer& buf);
 void destroy_buffer_now(GpuBuffer& buf);

@@ -922,7 +922,7 @@ struct ScenePicture {
                                        VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                                        VK_IMAGE_ASPECT_COLOR_BIT, vk_pf_tex);
                 rac1::vk::create_buffer(static_cast<VkDeviceSize>(w) * h * 4, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, vk_pf_buf, true);
+                                        rac1::vk::readback_memory_flags(), vk_pf_buf, true);  // (cached: the store reads it ~50 times)
             }
             auto& src_img = const_cast<rac1::vk::GpuImage&>(src.vk_tex);
             rac1::vk::blit_image(src_img, sx0, vy, sx0 + scw, vy + vh, vk_pf_tex, 0, h, w, 0, VK_FILTER_LINEAR,
@@ -975,7 +975,9 @@ struct ScenePicture {
         if (fbw == 0 || fh == 0 || bp < fbp * 32 || bp >= fbp * 32 + fbw * 64 * fh * 4 / 256) return;
         const int w = static_cast<int>(fbw * 64), h = static_cast<int>(fh);
         if (rac1::vk::is_active()) {
-            if (from_shown || !pf_valid) {
+            // (the copy of the last picture shown made once for the store's 16 KB blocks, 0x2a0f18's loop: `shown` changes only with
+            // a frame shown, which ends pf_valid; each copy outside a frame is a submit and a fence wait)
+            if ((from_shown && (!pf_valid || !menu_pic)) || !pf_valid) {
                 if (from_shown) {
                     if (!pic.valid() || pic.w != shown->w || pic.h != shown->h) pic.capture(shown->w, shown->h);
                     auto& src_img = const_cast<rac1::vk::GpuImage&>(shown->vk_tex);
@@ -987,7 +989,7 @@ struct ScenePicture {
                 }
                 if (!pf_valid) prefetch(from_shown ? *shown : pic, view[0], view[1], view[2], view[3]);
                 rac1::vk::flush_cmd();
-            } else {
+            } else if (!from_shown) {
                 menu_pic = false;
             }
             if (!pf_valid || w != pf_w || h != pf_h || vk_pf_buf.mapped == nullptr) return;
