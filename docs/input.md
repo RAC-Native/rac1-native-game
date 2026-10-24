@@ -69,10 +69,21 @@ code reading these fields.
 `src/host/host_input.cpp` holds the bindings and turns the inputs into the packet
 (`host_input::compute`, `to_packet`).
 
-- **Gamepads.** The first joystick GLFW recognises as a gamepad is used; gamepads are polled every
-  frame, so one can be connected after the game has started. A round stick's range is mapped onto the
-  DualShock 2's square one (`stick_to_square`). The host adds no dead zone of its own: the game's
-  applies. An analog trigger counts as pressed past 0.1.
+- **Gamepads.** Every joystick GLFW recognises as a gamepad is read, and their inputs are merged: the
+  buttons of all of them, each stick from the pad that deflects it furthest, each trigger from the
+  pad that presses it furthest. A virtual or silent device listed before the real pad (a virtual
+  controller's driver, a second view of the same pad) cannot hide it (#98). With more than one
+  gamepad, a pad counts only once it has moved from how it read when first seen (a button pressed, an
+  axis moved by 0.3), so a device stuck at a deflection does not hold an input. The Controls page
+  names the pad last used. Gamepads are polled every frame, so one can be connected after the game
+  has started. At start the log lists every joystick GLFW sees, which helps in a bug report:
+
+  ```
+  [controls] joysticks: 0: Xbox Controller (GUID 78696e70757401000000000000000000, gamepad yes); 1: ...
+  ```
+
+  A round stick's range is mapped onto the DualShock 2's square one (`stick_to_square`). The host
+  adds no dead zone of its own: the game's applies. An analog trigger counts as pressed past 0.1.
 - **The controller database.** GLFW recognises a gamepad from an SDL-format mapping. The game loads,
   in order: `third_party/gamecontrollerdb/gamecontrollerdb.txt` (the community
   [SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB), shipped with the source),

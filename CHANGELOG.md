@@ -129,6 +129,9 @@ With Lighting on Original (the default) the picture is unchanged.
 - Pre-rendered movies no longer add to the time played, as on the PS2 (#24).
 - The Controls page: a mouse movement no longer rebinds the D-pad, only the sticks, as the page's
   help says (#61).
+- Gamepads: every connected gamepad is read and their inputs merged, not only the first one listed,
+  so a virtual or silent device can no longer hide the real pad (#98). The Controls page names the
+  pad last used, and the log lists every joystick at start.
 
 ### Debug tools (`--debug-tools`)
 - **Profiler** tab and overlay: the frame time (a graph, min / avg / max / p99 / 1 % lows), every
