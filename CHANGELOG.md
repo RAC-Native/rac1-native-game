@@ -3,13 +3,17 @@
 What changed in each release. Releases are source only: you build the game with `./setup.sh`
 (`setup.cmd` on Windows) from your own disc. Issue numbers refer to this repository's issues.
 
-## Unreleased
+## 0.5.0
 
-What `main` has since 0.4.0, for the next release. The project moved to the
-[RAC-Native](https://github.com/RAC-Native) organization on GitHub:
-<https://github.com/RAC-Native/rac1-native-game> (the old address redirects). The updater, the
-update check and the launcher use the new address. Windows is no longer experimental: players have
-played through the game on it, and the launcher installs and updates it with a double-click.
+The first release from the [RAC-Native](https://github.com/RAC-Native) organization on GitHub: the
+project moved to <https://github.com/RAC-Native/rac1-native-game> (the old address redirects), and
+the updater, the update check and the launcher use the new address. Windows is no longer
+experimental: players have played through the game on it, and the new launcher, attached to the
+release, installs and updates the game with a double-click on Windows and Linux. Also new: an
+experimental Vulkan renderer (opt-in), a widescreen HUD, the modern lighting reworked (the level's
+own sun, sun rays, six ambient occlusion modes), 5.1 and 7.1 sound, less CPU time for the game's
+own update, and the fixes from the 0.4.0 reports. Playtested on Linux; the Vulkan renderer is
+experimental.
 
 ### Graphics
 - **Vulkan (experimental, opt-in):** a new Graphics row, Renderer (OpenGL, Vulkan), draws the game
@@ -67,7 +71,8 @@ played through the game on it, and the launcher installs and updates it with a d
   overlapping shadows no longer add up or cancel.
 - **The level's own sun:** a level's file can turn the sun where the game's direction leaves whole
   areas in the shade (Novalis, Kerwan, Eudora, Oltanis, Quartu; on Aridia it comes from the big
-  planet in the sky); the debug menu's Sun tab edits it live. Kerwan's sun now comes low through the
+  planet in the sky, on Gemlik Base from the sun in its skybox); the debug menu's Sun tab edits it
+  live. Kerwan's sun now comes low through the
   first tunnel's mouth, the city backlit.
 - **The world lit by our sun:** the baked key light is taken off the world and the mobys and put
   back from the sun, times its shadow, so lit and shaded ground follow the same sun.
@@ -135,7 +140,7 @@ With Lighting on Original (the default) the picture is unchanged.
 - Pre-rendered movies no longer add to the time played, as on the PS2 (#24).
 - The Controls page: a mouse movement no longer rebinds the D-pad, only the sticks, as the page's
   help says (#61).
-- Gamepads: every connected gamepad is read and their inputs merged, not only the first one listed,
+- Gamepads: every gamepad the game recognises is read and their inputs merged, not only the first one,
   so a virtual or silent device can no longer hide the real pad (#98). The Controls page names the
   pad last used, and the log lists every joystick at start.
 - With the Mirrored Levels cheat, strafing (Strafing, RAC 3) no longer draws the level unmirrored,

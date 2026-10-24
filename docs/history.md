@@ -156,6 +156,17 @@ rooms. The game's own update became 12 to 15 % cheaper on the CPU (about 8 % mor
 player's own CPU) with its state the same bit for bit, and the debug menu gained a Profiler. On 22
 October an experimental Vulkan renderer joined OpenGL, opt-in, drawing the same picture.
 
+**22 to 24 October: 0.5.0.** The generated code was compiled without its debug info (a program less
+than half the size), and the documentation gained a catalog of every function and moby class. Then
+the reports were worked through: the sun rays no longer lay a veil over the frame with the sun in
+view, and none shine in the ship's flights; every gamepad is read, so a virtual one can no longer
+hide the real pad; Mirrored Levels stays mirrored while strafing; the Windows setup checks the C
+compiler too; the Vulkan pause menu opens at once. Gemlik Base got its own sun, turned to the
+skybox's, like Aridia's; the game frame's coroutine got a hand-written context switch for x86-64
+and ARM64; the debug menu's Unlocks tab can unlock everything at once. After a playtest on Linux it
+was released as 0.5.0 on 24 October, the first release from the RAC-Native organization and the
+first with the launcher attached.
+
 ## What came of it
 
 - Five months of trying became one rule: nothing is invented, and every port is checked against the

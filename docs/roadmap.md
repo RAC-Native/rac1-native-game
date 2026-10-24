@@ -68,8 +68,7 @@ the end menu. **0.4.0** was a round of fixes for the bugs reported on 0.3.0, and
 [Port inventory](port-inventory.md): every function of the disc's code sorted into ported, left to
 port and never reached, and the code it found left to port, ported (one function remains).
 
-**Since 0.4.0** (on `main`, for the next release; see the [Changelog](../CHANGELOG.md#unreleased)):
-the launcher for Windows and Linux, which installs, updates and starts the game and manages the
+**0.5.0** (see the [Changelog](../CHANGELOG.md#050)): the launcher for Windows and Linux, which installs, updates and starts the game and manages the
 saves; the modern lighting reworked (the level's own sun, interiors, Shadow Strength, lights per
 object class, sun rays, six ambient occlusion modes); the sound driver closer to the PS2's, with 5.1
 and 7.1 output; the full frame always shown; fixes from the reports. The repository moved to the

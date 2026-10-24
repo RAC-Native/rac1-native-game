@@ -289,7 +289,7 @@ namespace Rac1Launcher
         }
 
         /// <summary>The certificates the build downloads with, for a release whose toolchain.ps1 does not make them
-        /// yet in a folder with a space in its path (GitHub issue #79; tools\windows\toolchain.ps1 does it since 0.4.1).</summary>
+        /// yet in a folder with a space in its path (GitHub issue #79; tools\windows\toolchain.ps1 does it since 0.5.0).</summary>
         void RepairCertificates(GameDir g)
         {
             string pem = g.P(".toolchain", "msys64", "clang64", "etc", "ssl", "cert.pem");
@@ -354,7 +354,7 @@ namespace Rac1Launcher
             }
             if (!sawStepMarks)
             {
-                // (a setup.py from before 0.4.1 prints no @step lines: its "[n/total] step" headings instead)
+                // (a setup.py from before 0.5.0 prints no @step lines: its "[n/total] step" headings instead)
                 var m = Regex.Match(line, @"^\[(\d+)/(\d+)\] (.+)$");
                 if (m.Success) view.Step($"Step {m.Groups[1].Value} of {m.Groups[2].Value}: {m.Groups[3].Value}");
             }

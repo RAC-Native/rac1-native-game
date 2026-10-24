@@ -69,7 +69,7 @@ seen, and every one of them still needs a playtest.
 | Orxon | Works outdoors (sun at 20 degrees). The base's rooms and corridors are covered from the sun: the original's look. The rooms' mint floor panels (tie class 1521) were taken for lamps and lit the floor with itself: turned off in `data/lights/level10.txt`. |
 | Pokitaru | Works (sun at 30 degrees): shadows on the boardwalks at the start. No automatic lights are found on this level. |
 | Hoven | Works outdoors on the snow (sun at 30 degrees). A few blue panels inside give 16 small lights. |
-| Gemlik Base | Works: a moon base in space, lit from the side (20 degrees), with long shadows. Ratchet in a shadow is almost black: the level's light without its key light is nearly nothing (the game's own formula, see [How a shadow darkens](#sun-shadows-cascaded-shadow-maps)). |
+| Gemlik Base | Works: a moon base in space, lit low from the side (11 degrees: the level's own sun, turned to the sun in its skybox), with long shadows. Ratchet in a shadow is almost black: the level's light without its key light is nearly nothing (the game's own formula, see [How a shadow darkens](#sun-shadows-cascaded-shadow-maps)). |
 | Oltanis | **Needs Daino's eye.** The key light is dim and grey, yet it is the brightest of its set, so its shadows are full; the streets between the tall buildings are mostly in shadow and Ratchet is dark there. Where almost the whole view is shaded the sun fades out (the view covered), so the shadows come and go as the camera turns toward or away from the lit plazas. The street lamps are mobys, which give no automatic lights (the level's 137 are beacons on top of the towers, high above the streets); the level's file makes them lights (moby class 1511). |
 | Quartu | **Needs Daino's eye.** The factory at night: the courtyards' walls shade most of the view, so the sun is often faded out (the original's look) and comes back, with dark courtyards, when the camera sees the lit ground or the sky. 7 small lights. |
 | Kalebo III | Works: the city on its platforms in the sun (30 degrees) with clean shadows. 85 automatic lights (cyan strips of tie class 2157), away from the start. |
@@ -570,7 +570,7 @@ the share of the view facing the sun that sees it (the covered views' probe, `RA
 | Orxon | -45, 20 | (the walk stays in the opening scene) | | |
 | Pokitaru | -48, 30 | 84 % | 85 % | |
 | Hoven | -135, 30 | 49 % | 74 % | |
-| Gemlik Base | 180, 20 | 82 % | 83 % | |
+| Gemlik Base | 180, 20 | 82 % | 83 % | **115, 11** |
 | Oltanis | -141, 29 | 22 % | 56 % | **-141, 50** |
 | Quartu | 0, 20 | 8 % | 43 % | **0, 50** |
 | Kalebo III | -33, 30 | 56 % | 62 % | |
@@ -580,10 +580,10 @@ the share of the view facing the sun that sees it (the covered views' probe, `RA
 (Headless, the same scripted walk from each level's start, the second half of 3000 frames; a rough
 measure of the places near the start only.) The levels under about a third keep their azimuth and
 get a higher sun; Novalis was checked at its start valley (below) and given 55. Later, with the
-[sun editor](#the-sun-editor), Daino turned three of them: Novalis to 0, 43 (55 was the first
+[sun editor](#the-sun-editor), Daino turned four of them: Novalis to 0, 43 (55 was the first
 try), Kerwan to 100, 28 (low, toward the city, through the first tunnel's mouth: the path inside lit,
-the city backlit) and Aridia to 33, 19.5 (from the big planet in its sky, so the light matches what
-the sky shows). The others keep the game's key light; Veldin and Hoven are candidates if a playtest finds their shade too heavy. Blarg
+the city backlit), Aridia to 33, 19.5 (from the big planet in its sky, so the light matches what
+the sky shows) and Gemlik Base to 115, 11 (from the sun in its skybox, likewise). The others keep the game's key light; Veldin and Hoven are candidates if a playtest finds their shade too heavy. Blarg
 has no sun in its main zones.
 
 ### The sun editor

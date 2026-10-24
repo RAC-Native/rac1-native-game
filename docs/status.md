@@ -10,11 +10,11 @@ Blarg / Nebula G34 and Umbris; see [Roadmap](roadmap.md)); Batalia, Gaspar and O
 the game runs, one function is left to port (see the [Port inventory](port-inventory.md)). The
 whole game has been played through to the end on 0.4.0 (Linux), and the start of a New Game+
 checked; the planets after Orxon have had one full playthrough so far, so expect some bugs and
-glitches there; the port as a whole still needs polishing. Since 0.4.0, `main` has gained the
-launcher for Windows and Linux, an experimental Vulkan renderer (opt-in), a widescreen HUD option, a
-reworked modern lighting, 5.1 / 7.1 sound, a faster game update and more fixes (see the
-[Changelog](../CHANGELOG.md#unreleased)). Windows is no longer experimental: players have played
-through the game on it.
+glitches there; the port as a whole still needs polishing. 0.5.0 adds the launcher for Windows and
+Linux, an experimental Vulkan renderer (opt-in), a widescreen HUD option, a reworked modern
+lighting, 5.1 / 7.1 sound and a faster game update, and fixes the bugs reported on 0.4.0 (see the
+[Changelog](../CHANGELOG.md#050)); it has been playtested on Linux. Windows is no longer
+experimental: players have played through the game on it.
 
 Every planet of the milestone has its own classes ported and proved against the original code, and
 runs on its own overlay. The gaps that remain on them are listed below as **known issues**; they are
@@ -120,7 +120,7 @@ nothing, so an object whose class is not ported stands still or does not appear.
 | Options > Graphics (including Texture Detail and the widescreen HUD), Controls, Advanced; the Original / Modern / Experimental choice at New Game | Implemented, known issues may remain; see [Settings](settings.md). |
 | Keyboard, mouse and controller mapping, remapping in Options > Controls | Implemented, known issues may remain; see [Input](input.md). |
 | Debug tools behind `--debug-tools` (with the Profiler and Unlocks tabs) | Implemented; see [Settings](settings.md#debug-tools). |
-| The launcher (Windows and Linux x86-64): install, update, play, saves | New since 0.4.0; see [The launcher](launcher.md). |
+| The launcher (Windows and Linux x86-64): install, update, play, saves | New in 0.5.0; see [The launcher](launcher.md). |
 
 ## Not done yet
 

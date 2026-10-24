@@ -1,15 +1,13 @@
 # rac1-native
 
-> **Current state (0.4.0):** every planet of the game is ported, from Veldin to the final fight with
+> **Current state (0.5.0):** every planet of the game is ported, from Veldin to the final fight with
 > Drek, the credits and the end menu, and of the game's code the game runs, one function is left to
-> port. This release fixes the bugs reported on 0.3.0 (the crashes on Quartu and Kalebo III, modern
-> aiming, several graphics glitches), and Quit Game now goes back to the title screen. **The whole
-> game has been played through to the end** on 0.4.0, and the start of a New Game+ checked; the
-> second half has had one full playthrough so far, so expect some bugs and glitches. It runs on Linux and
-> on Windows.
-> Since 0.4.0, `main` has gained a launcher for Windows and Linux, an experimental Vulkan renderer
-> (opt-in), a widescreen HUD option, a reworked modern lighting, 5.1 / 7.1 sound, a faster game update
-> and more fixes: see the [Changelog](CHANGELOG.md#unreleased).
+> port. **The whole game has been played through to the end** on 0.4.0. 0.5.0 brings a launcher for
+> Windows and Linux, an experimental Vulkan renderer (opt-in), a widescreen HUD option, a reworked
+> modern lighting (sun rays, ambient occlusion modes), 5.1 / 7.1 sound, a faster game update and
+> the fixes from the 0.4.0 reports: see the [Changelog](CHANGELOG.md#050). It has been playtested on
+> Linux; Windows is no longer experimental: players have played through the game on it. Expect some
+> bugs and glitches.
 > See [Status](docs/status.md).
 
 A native PC port of **Ratchet & Clank** (PlayStation 2, 2002), for Linux and Windows.
@@ -62,8 +60,10 @@ code is ported and proved against the original code, and **the whole game has be
 to the end** on 0.4.0, from Veldin to the final fight with Drek, the credits and the end menu, with
 the start of a New Game+ checked too. Veldin to Orxon have been played through many times; the
 planets after Orxon have had one full playthrough so far (on Linux), so more playtesting by players
-is welcome. 0.4.0 fixes the bugs reported on 0.3.0 (see the [Changelog](CHANGELOG.md)). Of
-the code the game runs, one function is left to port (see the [Port inventory](docs/port-inventory.md)).
+is welcome. 0.5.0 (see the [Changelog](CHANGELOG.md)) adds the launcher, the experimental Vulkan
+renderer, the widescreen HUD, a reworked modern lighting and 5.1 / 7.1 sound, and fixes the bugs
+reported on 0.4.0; it has been playtested on Linux, and players have played its development builds
+on Windows. Of the code the game runs, one function is left to port (see the [Port inventory](docs/port-inventory.md)).
 The port as a whole still needs polishing. See [Status](docs/status.md) (which also maps the names
 the code uses for the levels to the names in the game), the [Roadmap](docs/roadmap.md) and the
 [History](docs/history.md).
@@ -158,8 +158,8 @@ Vulkan 1.3 driver, and `glslc` when the game is built (the setup lists it as opt
 `rac1-launcher-linux-x64` (Linux, x86-64) from the
 [latest release](https://github.com/RAC-Native/rac1-native-game/releases/latest), open it, click
 **Install** and choose your disc image. It downloads the game, builds it from your disc, keeps it up
-to date and manages your saves: see [The launcher](docs/launcher.md). (The launcher is attached to the releases
-from the next one on; 0.4.0 does not have it yet: until then, use the steps below.)
+to date and manages your saves: see [The launcher](docs/launcher.md). (The launcher is attached to
+the releases from 0.5.0 on.)
 
 By hand, on Linux:
 

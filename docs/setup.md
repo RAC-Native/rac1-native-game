@@ -334,12 +334,12 @@ and run `./setup.sh`.
 
 **Windows: "error adding trust anchors" or "Problem with the SSL CA cert"** when the build downloads
 GLFW: MSYS2's certificate files are empty (#79, #69, #63). MSYS2's CLANG64 certificate tool breaks
-when the folder's path has a space in it, and leaves them empty. Since 0.4.1 `setup.cmd` (and the
+when the folder's path has a space in it, and leaves them empty. Since 0.5.0 `setup.cmd` (and the
 launcher) make them again with MSYS2's own tool whenever they are missing or empty: run `setup.cmd`
 again. No need to reinstall anything by hand.
 
 **Windows: "Fatal Python error" while generating the code** (#72): Python itself crashed in one of
-the parallel jobs, not the generator. Since 0.4.1 a unit that crashes is run once more on its own;
+the parallel jobs, not the generator. Since 0.5.0 a unit that crashes is run once more on its own;
 if it still fails, run `setup.cmd -j 1` (or, in the launcher, Settings > Parallel jobs > 1).
 
 **Windows: "... rac1-native.exe is missing after the build, although the build finished"**: an
