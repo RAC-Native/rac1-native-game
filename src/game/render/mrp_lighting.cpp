@@ -421,6 +421,7 @@ struct VkLighting {
     VkShaderModule blur_sep_fs_mod = VK_NULL_HANDLE;
     VkShaderModule rays_mask_fs_mod = VK_NULL_HANDLE;
     VkShaderModule rays_blur_fs_mod = VK_NULL_HANDLE;
+    VkShaderModule rays_split_fs_mod = VK_NULL_HANDLE;
     VkShaderModule rays_add_fs_mod = VK_NULL_HANDLE;
     VkDescriptorSetLayout samp1_layout = VK_NULL_HANDLE;
     VkDescriptorSetLayout samp2_layout = VK_NULL_HANDLE;
@@ -430,6 +431,7 @@ struct VkLighting {
     VkPipelineLayout blur_layout = VK_NULL_HANDLE;
     VkPipelineLayout rays_mask_layout = VK_NULL_HANDLE;
     VkPipelineLayout rays_blur_layout = VK_NULL_HANDLE;
+    VkPipelineLayout rays_split_layout = VK_NULL_HANDLE;
     VkPipelineLayout rays_add_layout = VK_NULL_HANDLE;
     VkPipeline ao_pipe = VK_NULL_HANDLE;
     VkPipeline blur_pipe = VK_NULL_HANDLE;
@@ -437,6 +439,7 @@ struct VkLighting {
     VkPipeline blur_sep_v_pipe = VK_NULL_HANDLE;
     VkPipeline rays_mask_pipe = VK_NULL_HANDLE;
     VkPipeline rays_blur_pipe = VK_NULL_HANDLE;
+    VkPipeline rays_split_pipe = VK_NULL_HANDLE;
     VkPipeline rays_add_pipe = VK_NULL_HANDLE;
     vk::GpuImage ao_dtex{}, ao_atex{}, ao_btex{};
     int ao_w = 0, ao_h = 0, ao_aw = 0, ao_ah = 0;
@@ -454,11 +457,11 @@ void vk_lighting_shutdown() {
             if (g_vk_sh.ptex_faces[i] != VK_NULL_HANDLE) vkDestroyImageView(dev, g_vk_sh.ptex_faces[i], nullptr);
         }
         for (VkPipeline p : {g_vk_sh.ao_pipe, g_vk_sh.blur_pipe, g_vk_sh.blur_sep_h_pipe, g_vk_sh.blur_sep_v_pipe,
-                             g_vk_sh.rays_mask_pipe, g_vk_sh.rays_blur_pipe, g_vk_sh.rays_add_pipe}) {
+                             g_vk_sh.rays_mask_pipe, g_vk_sh.rays_blur_pipe, g_vk_sh.rays_split_pipe, g_vk_sh.rays_add_pipe}) {
             if (p != VK_NULL_HANDLE) vkDestroyPipeline(dev, p, nullptr);
         }
         for (VkPipelineLayout pl : {g_vk_sh.ao_layout, g_vk_sh.blur_layout, g_vk_sh.rays_mask_layout,
-                                    g_vk_sh.rays_blur_layout, g_vk_sh.rays_add_layout}) {
+                                    g_vk_sh.rays_blur_layout, g_vk_sh.rays_split_layout, g_vk_sh.rays_add_layout}) {
             if (pl != VK_NULL_HANDLE) vkDestroyPipelineLayout(dev, pl, nullptr);
         }
         if (g_vk_sh.ao_stencil_view != VK_NULL_HANDLE) vkDestroyImageView(dev, g_vk_sh.ao_stencil_view, nullptr);
@@ -467,7 +470,7 @@ void vk_lighting_shutdown() {
             if (dsl != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(dev, dsl, nullptr);
         }
         for (VkShaderModule sm : {g_vk_sh.vs_mod, g_vk_sh.ao_fs_mod, g_vk_sh.blur_fs_mod, g_vk_sh.blur_sep_fs_mod,
-                                  g_vk_sh.rays_mask_fs_mod, g_vk_sh.rays_blur_fs_mod, g_vk_sh.rays_add_fs_mod}) {
+                                  g_vk_sh.rays_mask_fs_mod, g_vk_sh.rays_blur_fs_mod, g_vk_sh.rays_split_fs_mod, g_vk_sh.rays_add_fs_mod}) {
             if (sm != VK_NULL_HANDLE) vkDestroyShaderModule(dev, sm, nullptr);
         }
     }
@@ -1293,18 +1296,25 @@ struct AoMark {
 // Our choice, not the game's: light shafts from the sun where the sky shows through the scene (a tunnel's mouth, the gaps between
 // trees, the sky around a skybox planet). Screen space, at a fraction of the resolution: (1) the sky's texels (depth 1) near the
 // sun's place on the screen, their colour tinted by the key light, the rest black; (2) a radial blur of that toward the sun (each
-// tap further one weaker); (3) added to the picture, faded when the sun leaves the screen or is behind the camera, and with the
-// sun's weight (no rays where the zone has no sun, in the level's interiors, in a zone fading), at most +0.28 a texel, High +0.45 (a soft
-// limit: a wide sky in front of the sun does not burn the picture white). Before the effects, the particles and the 2D.
-// The three steps (kRaysSteps) give the 0.4.x look at their quality and cost: the resolution of the mask and the blur, the blur's
-// taps (its reach and its fall-off the same: the decay a tap is 0.945 to the 40 / taps). Low and Medium have 0.4.x Low's strength,
-// Medium its exact picture; High 0.4.x High's strength (twice the gain, at most +0.45 a texel) at a finer resolution.
+// tap further one weaker), and how open the sky around the sun is (0..1, the blur's texel (0, 0)); (3) the rays taken apart, at
+// the same size: what the rays across a texel (to its sides, square to the way toward the sun) share is the sky's broad light,
+// what the texel has above them a shaft; (4) added to the picture, faded when the sun leaves the screen or is behind the camera,
+// and with the sun's weight (no rays where the zone has no sun, in the level's interiors, in a zone fading), with a soft limit a
+// texel (kRaysSteps), blended as a screen (what is bright already gains less). In front of an open sky the broad light is a
+// glare (it washed the whole picture out): it is cut to kRaysOpenNear near the sun and kRaysOpenFar far from it; in a covered
+// view (a tunnel, a roof of leaves: the sky around the sun mostly hidden) it all stays, and the shafts stay everywhere.
+// The three steps (kRaysSteps): the resolution of the mask and the blur, the blur's taps (its reach and its fall-off the same: the
+// decay a tap is 0.945 to the 40 / taps) and the strength: Low 0.4.x Low's, High 0.4.x High's, Medium between them.
 struct RaysStep {
     int div;      // the resolution: the view's / div
     int taps;     // the radial blur's
-    bool strong;  // the 0.4.x High's strength (twice the gain, at most +0.45 a texel), else its Low's
+    float gain;   // the added light's gain
+    float cap;    // and the most a texel gets (a soft limit)
 };
-constexpr RaysStep kRaysSteps[3] = {{8, 24, false}, {4, 40, false}, {3, 56, true}};
+constexpr RaysStep kRaysSteps[3] = {{8, 24, 3.5f, 0.28f}, {4, 40, 5.0f, 0.36f}, {3, 56, 7.0f, 0.45f}};
+// the glare in front of an open sky (see kRaysAddFs): the added light where the sky around the sun is all open, near the sun and far
+// from it (of the shafts' own), and how fast it falls from the one to the other (exp(-d^2 x), d in the view's heights from the sun)
+constexpr float kRaysOpenNear = 0.7f, kRaysOpenFar = 0.12f, kRaysOpenFall = 5.0f;
 const char* kRaysMaskFs = R"(#version 460 core
 in vec2 vUv;
 uniform sampler2D uDepth, uColor;
@@ -1326,6 +1336,7 @@ const char* kRaysBlurFs = R"(#version 460 core
 in vec2 vUv;
 uniform sampler2D uMask;
 uniform vec2 uSun;
+uniform float uAspect;  // (the view's width / height)
 uniform vec4 uParam;  // x density (how far toward the sun the taps reach), y decay, z weight, w exposure
 uniform int uTaps;
 out vec4 FragColor;
@@ -1341,18 +1352,64 @@ void main() {
         sum += texture(uMask, uv).rgb * decay * uParam.z;
         decay *= uParam.y;
     }
-    FragColor = vec4(sum * uParam.w, 1.0);
+    // how open the sky around the sun is, 0..1: the mask's sky on a 6 x 6 grid around the sun's place (the view's heights), weighted
+    // as the mask weights the sky; in the texel (0, 0) alone, where the add reads it
+    float os = 0.0, ow = 1e-6;
+    if (gl_FragCoord.x < 1.0 && gl_FragCoord.y < 1.0) {
+        for (int j = 0; j < 6; ++j) {
+            for (int i = 0; i < 6; ++i) {
+                vec2 o = (vec2(float(i), float(j)) - 2.5) * 0.12;
+                vec2 q = clamp(uSun + vec2(o.x / uAspect, o.y), 0.0, 1.0);  // (a sun off the view: the sky at the view's edge)
+                float w = exp(-dot(o, o) * 6.0);
+                os += texture(uMask, q).a * w;
+                ow += w;
+            }
+        }
+    }
+    FragColor = vec4(sum * uParam.w, os / ow);
+}
+)";
+const char* kRaysSplitFs = R"(#version 460 core
+in vec2 vUv;
+uniform sampler2D uRays;
+uniform vec4 uA;  // xy the sun's place (0..1 of the view)
+uniform vec4 uB;  // x the view's width / height; the open sky's glare: y near the sun, z far from it, w its fall-off
+out vec4 FragColor;
+void main() {
+    // the rays here and across them (to the sides, square to the way toward the sun): what they share is the broad light of the
+    // sky, what this texel has above it a shaft
+    vec2 asp = vec2(uB.x, 1.0);
+    vec2 v = (vUv - uA.xy) * asp;
+    vec2 side = normalize(vec2(-v.y, v.x) + vec2(1e-6, 0.0)) / asp;
+    vec3 r = texture(uRays, vUv).rgb;
+    vec3 across = 0.25 * (texture(uRays, vUv + side * 0.05).rgb + texture(uRays, vUv - side * 0.05).rgb +
+                          texture(uRays, vUv + side * 0.11).rgb + texture(uRays, vUv - side * 0.11).rgb);
+    vec3 broad = min(r, across), shaft = r - broad;
+    // an open sky around the sun (the blur's texel (0, 0)'s alpha toward 1): its broad light is a glare, kept mostly near the sun; in
+    // a covered view (toward 0: a tunnel's mouth, the gaps in a roof of leaves) all of it stays
+    float glare = uB.y * mix(uB.z, 1.0, exp(-dot(v, v) * uB.w));
+    float open = smoothstep(0.2, 0.6, texelFetch(uRays, ivec2(0), 0).a);
+    FragColor = vec4(shaft + broad * mix(1.0, glare, open), 1.0);
 }
 )";
 const char* kRaysAddFs = R"(#version 460 core
 in vec2 vUv;
 uniform sampler2D uRays;
-uniform float uK, uCap;  // (the gain, and the most a texel gets: a wide sky in front of the sun does not burn the picture white)
+uniform float uK, uCap;  // (the gain, and the most a texel gets: a soft limit)
 out vec4 FragColor;
-void main() { FragColor = vec4(uCap * (1.0 - exp(-texture(uRays, vUv).rgb * uK / uCap)), 0.0); }
+void main() { FragColor = vec4(uCap * (1.0 - exp(-texture(uRays, vUv).rgb * uK / uCap)), 0.0); }  // (blended as a screen)
 )";
+// orig: (host) kRaysOpenNear / Far / Fall; RAC1_SUN_RAYS_SHAPE="near,far,fall" (testing) overrides them
+glm::vec3 rays_open_shape() {
+    static const glm::vec3 v = [] {
+        glm::vec3 r(kRaysOpenNear, kRaysOpenFar, kRaysOpenFall);
+        if (const char* e = std::getenv("RAC1_SUN_RAYS_SHAPE")) std::sscanf(e, "%f,%f,%f", &r.x, &r.y, &r.z);
+        return r;
+    }();
+    return v;
+}
 struct Rays {
-    GLuint mask = 0, blur = 0, add = 0, vao = 0;
+    GLuint mask = 0, blur = 0, split = 0, add = 0, vao = 0;
     GLuint dfbo = 0, dtex = 0, cfbo = 0, ctex = 0, mfbo = 0, mtex = 0, rfbo = 0, rtex = 0;
     int w = 0, h = 0, div = 0;
     GLenum dfmt = 0;
@@ -1389,6 +1446,7 @@ void sun_rays_pass(GLint fb, const int vp[4]) {
     if (R.mask == 0) {
         R.mask = ao_link(kRaysMaskFs);
         R.blur = ao_link(kRaysBlurFs);
+        R.split = ao_link(kRaysSplitFs);
         R.add = ao_link(kRaysAddFs);
         glGenVertexArrays(1, &R.vao);
         GLuint f[4], t[4];
@@ -1465,24 +1523,36 @@ void sun_rays_pass(GLint fb, const int vp[4]) {
     glBindTexture(GL_TEXTURE_2D, R.mtex);
     glUniform1i(glGetUniformLocation(R.blur, "uMask"), 0);
     glUniform2f(glGetUniformLocation(R.blur, "uSun"), su.x, su.y);
+    glUniform1f(glGetUniformLocation(R.blur, "uAspect"), static_cast<float>(w) / static_cast<float>(std::max(h, 1)));
     // (the taps' decay and weight for the step's count: the reach and the fall-off along it as with 40)
     const float decay = step.taps == 40 ? 0.945f : static_cast<float>(std::pow(0.945, 40.0 / step.taps));
     glUniform4f(glGetUniformLocation(R.blur, "uParam"), 0.9f, decay, 1.0f / static_cast<float>(step.taps) * 4.0f, 1.0f);
     glUniform1i(glGetUniformLocation(R.blur, "uTaps"), step.taps);
     glDrawArrays(GL_TRIANGLES, 0, 3);
-    // (3) added to the picture
+    // (3) the shafts and the broad light taken apart, into the mask's texture (done with)
+    const glm::vec3 shape = rays_open_shape();
+    const float aspect = static_cast<float>(w) / static_cast<float>(std::max(h, 1));
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, R.mfbo);
+    glUseProgram(R.split);
+    glBindTexture(GL_TEXTURE_2D, R.rtex);
+    glUniform1i(glGetUniformLocation(R.split, "uRays"), 0);
+    glUniform4f(glGetUniformLocation(R.split, "uA"), su.x, su.y, 0.0f, 0.0f);
+    glUniform4f(glGetUniformLocation(R.split, "uB"), aspect, shape.x, shape.y, shape.z);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    // (4) added to the picture
     static const float gain_env = std::getenv("RAC1_SUN_RAYS_GAIN") != nullptr ? static_cast<float>(std::atof(std::getenv("RAC1_SUN_RAYS_GAIN"))) : 1.0f;  // (testing)
-    const float k = (step.strong ? 7.0f : 3.5f) * gain_env * fade * std::min(g_sh.sun_k, 1.0f);
+    const float k = step.gain * gain_env * fade * std::min(g_sh.sun_k, 1.0f);
+    const float cap = step.cap * std::max(fade * std::min(g_sh.sun_k, 1.0f), 1e-3f);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(fb));
     glViewport(vp[0], vp[1], w, h);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
     glEnable(GL_BLEND);
-    glBlendFunc(GL_ONE, GL_ONE);
+    glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE);  // (a screen: what is bright already gains less)
     glUseProgram(R.add);
-    glBindTexture(GL_TEXTURE_2D, R.rtex);
+    glBindTexture(GL_TEXTURE_2D, R.mtex);
     glUniform1i(glGetUniformLocation(R.add, "uRays"), 0);
     glUniform1f(glGetUniformLocation(R.add, "uK"), k);
-    glUniform1f(glGetUniformLocation(R.add, "uCap"), (step.strong ? 0.45f : 0.28f) * std::max(fade * std::min(g_sh.sun_k, 1.0f), 1e-3f));
+    glUniform1f(glGetUniformLocation(R.add, "uCap"), cap);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     glDisable(GL_BLEND);
     if (std::getenv("RAC1_SUN_RAYS_TRACE") != nullptr) {
@@ -1769,6 +1839,7 @@ void ensure_vk_ao_pipelines() {
     g_vk_sh.blur_layout = make_layout(g_vk_sh.samp3_layout, 16);
     g_vk_sh.rays_mask_layout = make_layout(g_vk_sh.samp2_layout, 48);
     g_vk_sh.rays_blur_layout = make_layout(g_vk_sh.samp1_layout, 32);
+    g_vk_sh.rays_split_layout = make_layout(g_vk_sh.samp1_layout, 32);
     g_vk_sh.rays_add_layout = make_layout(g_vk_sh.samp1_layout, 8);
 
     g_vk_sh.vs_mod = vk::create_shader_module(vk::shaders::kMrpAoVs, sizeof(vk::shaders::kMrpAoVs));
@@ -1777,6 +1848,7 @@ void ensure_vk_ao_pipelines() {
     g_vk_sh.blur_sep_fs_mod = vk::create_shader_module(vk::shaders::kMrpAoBlurSepFs, sizeof(vk::shaders::kMrpAoBlurSepFs));
     g_vk_sh.rays_mask_fs_mod = vk::create_shader_module(vk::shaders::kMrpRaysMaskFs, sizeof(vk::shaders::kMrpRaysMaskFs));
     g_vk_sh.rays_blur_fs_mod = vk::create_shader_module(vk::shaders::kMrpRaysBlurFs, sizeof(vk::shaders::kMrpRaysBlurFs));
+    g_vk_sh.rays_split_fs_mod = vk::create_shader_module(vk::shaders::kMrpRaysSplitFs, sizeof(vk::shaders::kMrpRaysSplitFs));
     g_vk_sh.rays_add_fs_mod = vk::create_shader_module(vk::shaders::kMrpRaysAddFs, sizeof(vk::shaders::kMrpRaysAddFs));
 
     {
@@ -1866,13 +1938,26 @@ void ensure_vk_ao_pipelines() {
     }
     {
         vk::GraphicsPipelineDesc d{};
+        d.layout = g_vk_sh.rays_split_layout;
+        d.vs = g_vk_sh.vs_mod;
+        d.fs = g_vk_sh.rays_split_fs_mod;
+        d.depth_test = false;
+        d.depth_write = false;
+        d.blend_enable = false;
+        d.color_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+        d.has_depth_attachment = false;
+        d.has_stencil_attachment = false;
+        g_vk_sh.rays_split_pipe = vk::create_graphics_pipeline(d);
+    }
+    {
+        vk::GraphicsPipelineDesc d{};
         d.layout = g_vk_sh.rays_add_layout;
         d.vs = g_vk_sh.vs_mod;
         d.fs = g_vk_sh.rays_add_fs_mod;
         d.depth_test = false;
         d.depth_write = false;
         d.blend_enable = true;
-        d.src_color_blend = VK_BLEND_FACTOR_ONE;
+        d.src_color_blend = VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;  // (a screen, as sun_rays_pass)
         d.dst_color_blend = VK_BLEND_FACTOR_ONE;
         d.color_write_mask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT;
         d.color_format = VK_FORMAT_R8G8B8A8_UNORM;
@@ -2162,7 +2247,7 @@ void vk_ao_and_rays_pass(const int vp[4]) {
                         glm::vec4 uParam;
                     };
                     const float decay = step.taps == 40 ? 0.945f : static_cast<float>(std::pow(0.945, 40.0 / step.taps));
-                    const BlurPush pc{su, glm::vec2(static_cast<float>(step.taps), 0.0f), glm::vec4(0.9f, decay, 1.0f / static_cast<float>(step.taps) * 4.0f, 1.0f)};
+                    const BlurPush pc{su, glm::vec2(static_cast<float>(step.taps), static_cast<float>(w) / static_cast<float>(std::max(h, 1))), glm::vec4(0.9f, decay, 1.0f / static_cast<float>(step.taps) * 4.0f, 1.0f)};
                     VkCommandBuffer cb = vk::cmd();
                     VkDescriptorSet ds = alloc_samp1_ds(g_vk_sh.rays_mtex.view, samp_linear);
                     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.rays_blur_pipe);
@@ -2173,10 +2258,29 @@ void vk_ao_and_rays_pass(const int vp[4]) {
                 vk::pop_target();
                 vk::transition_image(vk::cmd(), g_vk_sh.rays_rtex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-                // (3) add to scene
+                // (3) the shafts and the broad light taken apart, into the mask's image (done with)
+                vk::transition_image(vk::cmd(), g_vk_sh.rays_mtex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+                vk::set_viewport(0, 0, hw, hh);
+                vk::push_target(rt_m);
+                vk::ensure_rendering();
+                {
+                    const glm::vec3 shape = rays_open_shape();
+                    const glm::vec4 pc[2] = {glm::vec4(su.x, su.y, 0.0f, 0.0f),
+                                             glm::vec4(static_cast<float>(w) / static_cast<float>(std::max(h, 1)), shape.x, shape.y, shape.z)};
+                    VkCommandBuffer cb = vk::cmd();
+                    VkDescriptorSet ds = alloc_samp1_ds(g_vk_sh.rays_rtex.view, samp_linear);
+                    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.rays_split_pipe);
+                    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.rays_split_layout, 0, 1, &ds, 0, nullptr);
+                    vkCmdPushConstants(cb, g_vk_sh.rays_split_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), pc);
+                    vkCmdDraw(cb, 3, 1, 0, 0);
+                }
+                vk::pop_target();
+                vk::transition_image(vk::cmd(), g_vk_sh.rays_mtex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+                // (4) add to scene
                 static const float gain_env = std::getenv("RAC1_SUN_RAYS_GAIN") != nullptr ? static_cast<float>(std::atof(std::getenv("RAC1_SUN_RAYS_GAIN"))) : 1.0f;
-                const float k = (step.strong ? 7.0f : 3.5f) * gain_env * fade * std::min(g_sh.sun_k, 1.0f);
-                const float cap = (step.strong ? 0.45f : 0.28f) * std::max(fade * std::min(g_sh.sun_k, 1.0f), 1e-3f);
+                const float k = step.gain * gain_env * fade * std::min(g_sh.sun_k, 1.0f);
+                const float cap = step.cap * std::max(fade * std::min(g_sh.sun_k, 1.0f), 1e-3f);
                 if (std::getenv("RAC1_SUN_RAYS_TRACE") != nullptr) {
                     static uint64_t n = 0;
                     if (n++ % 60 == 0) std::printf("[rays] sun at %.2f %.2f of the view, fade %.2f, weight %.2f: %.2f\n", su.x, su.y, fade, g_sh.sun_k, k);
@@ -2186,7 +2290,7 @@ void vk_ao_and_rays_pass(const int vp[4]) {
                 {
                     const float pc[2] = {k, cap};
                     VkCommandBuffer cb = vk::cmd();
-                    VkDescriptorSet ds = alloc_samp1_ds(g_vk_sh.rays_rtex.view, samp_linear);
+                    VkDescriptorSet ds = alloc_samp1_ds(g_vk_sh.rays_mtex.view, samp_linear);
                     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.rays_add_pipe);
                     vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.rays_add_layout, 0, 1, &ds, 0, nullptr);
                     vkCmdPushConstants(cb, g_vk_sh.rays_add_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), pc);
@@ -2578,7 +2682,15 @@ void mrp_lighting_ao_pass() {
             glGetQueryObjectui64v(q, GL_QUERY_RESULT, &ns);
             acc += static_cast<double>(ns) * 1e-6;
             if (++nq == 60) {
-                std::printf("[rays] GPU %.3f ms a frame (%dx%d)\n", acc / nq, vp[2], vp[3]);
+                float px[4] = {};  // (how open the sky around the sun is: the blur's texel (0, 0), read after the timing)
+                if (g_rays.rfbo != 0) {
+                    GLint rfb = 0;
+                    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &rfb);
+                    glBindFramebuffer(GL_READ_FRAMEBUFFER, g_rays.rfbo);
+                    glReadPixels(0, 0, 1, 1, GL_RGBA, GL_FLOAT, px);
+                    glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(rfb));
+                }
+                std::printf("[rays] GPU %.3f ms a frame (%dx%d), open sky %.2f\n", acc / nq, vp[2], vp[3], px[3]);
                 acc = 0.0;
                 nq = 0;
             }

@@ -1012,11 +1012,12 @@ layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 0) uniform sampler2D uMask;
 layout(push_constant) uniform Push {
     vec2 uSun;
-    vec2 uTaps_pad;  // (x: the taps, the step's)
+    vec2 uTaps_pad;  // (x: the taps, the step's; y: the view's width / height)
     vec4 uParam;
 };
 void main() {
     int N = int(uTaps_pad.x + 0.5);
+    float uAspect = uTaps_pad.y;
     vec2 delta = (vUv - uSun) * (uParam.x / float(N));
     float noise = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
     vec2 uv = vUv - delta * noise;
@@ -1027,7 +1028,46 @@ void main() {
         sum += texture(uMask, uv).rgb * decay * uParam.z;
         decay *= uParam.y;
     }
-    FragColor = vec4(sum * uParam.w, 1.0);
+    // how open the sky around the sun is (as the OpenGL kRaysBlurFs)
+    float os = 0.0, ow = 1e-6;
+    if (gl_FragCoord.x < 1.0 && gl_FragCoord.y < 1.0) {
+        for (int j = 0; j < 6; ++j) {
+            for (int i = 0; i < 6; ++i) {
+                vec2 o = (vec2(float(i), float(j)) - 2.5) * 0.12;
+                vec2 q = clamp(uSun + vec2(o.x / uAspect, o.y), 0.0, 1.0);  // (a sun off the view: the sky at the view's edge)
+                float w = exp(-dot(o, o) * 6.0);
+                os += texture(uMask, q).a * w;
+                ow += w;
+            }
+        }
+    }
+    FragColor = vec4(sum * uParam.w, os / ow);
+}
+"""
+
+MRP_RAYS_SPLIT_FS = """#version 450
+layout(location = 0) in vec2 vUv;
+layout(location = 0) out vec4 FragColor;
+layout(set = 0, binding = 0) uniform sampler2D uRays;
+layout(push_constant) uniform Push {
+    vec4 uA;  // xy the sun's place
+    vec4 uB;  // x the view's width / height; the open sky's glare: y near the sun, z far from it, w its fall-off
+};
+void main() {
+    // the rays here and across them (to the sides, square to the way toward the sun): what they share is the broad light of the
+    // sky, what this texel has above it a shaft
+    vec2 asp = vec2(uB.x, 1.0);
+    vec2 v = (vUv - uA.xy) * asp;
+    vec2 side = normalize(vec2(-v.y, v.x) + vec2(1e-6, 0.0)) / asp;
+    vec3 r = texture(uRays, vUv).rgb;
+    vec3 across = 0.25 * (texture(uRays, vUv + side * 0.05).rgb + texture(uRays, vUv - side * 0.05).rgb +
+                          texture(uRays, vUv + side * 0.11).rgb + texture(uRays, vUv - side * 0.11).rgb);
+    vec3 broad = min(r, across), shaft = r - broad;
+    // an open sky around the sun (the blur's texel (0, 0)'s alpha toward 1): its broad light is a glare, kept mostly near the sun; in
+    // a covered view (toward 0: a tunnel's mouth, the gaps in a roof of leaves) all of it stays
+    float glare = uB.y * mix(uB.z, 1.0, exp(-dot(v, v) * uB.w));
+    float open = smoothstep(0.2, 0.6, texelFetch(uRays, ivec2(0), 0).a);
+    FragColor = vec4(shaft + broad * mix(1.0, glare, open), 1.0);
 }
 """
 
@@ -1040,7 +1080,7 @@ layout(push_constant) uniform Push {
     float uCap;
 };
 void main() {
-    FragColor = vec4(uCap * (1.0 - exp(-texture(uRays, vUv).rgb * uK / uCap)), 0.0);
+    FragColor = vec4(uCap * (1.0 - exp(-texture(uRays, vUv).rgb * uK / uCap)), 0.0);  // (blended as a screen)
 }
 """
 
@@ -1596,6 +1636,7 @@ SHADERS = [
     ("kMrpAoBlurSepFs", "frag", MRP_AO_BLUR_SEP_FS),
     ("kMrpRaysMaskFs", "frag", MRP_RAYS_MASK_FS),
     ("kMrpRaysBlurFs", "frag", MRP_RAYS_BLUR_FS),
+    ("kMrpRaysSplitFs", "frag", MRP_RAYS_SPLIT_FS),
     ("kMrpRaysAddFs", "frag", MRP_RAYS_ADD_FS),
     ("kMrpProbeFs", "frag", MRP_PROBE_FS),
     ("kMrpMobyVs", "vert", MRP_MOBY_VS),
