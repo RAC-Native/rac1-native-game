@@ -688,6 +688,26 @@ def run_logged(cmd, log):
     return False
 
 
+def windows_compilers():
+    """CMake's C and C++ compilers on Windows, by their full paths: clang and clang++ (or gcc and g++), both checked.
+    (clang++ alone was checked: with clang.exe missing, removed by an antivirus or left out by an unpacking stopped
+    halfway, CMake found the C++ compiler but not the C one; GitHub issue #88)"""
+    for c, cxx in (("clang", "clang++"), ("gcc", "g++")):
+        c_path, cxx_path = shutil.which(c), shutil.which(cxx)
+        if c_path and cxx_path:
+            # (with /: a \ in a CMake cache entry can be read as an escape)
+            return [f"-DCMAKE_C_COMPILER={Path(c_path).as_posix()}", f"-DCMAKE_CXX_COMPILER={Path(cxx_path).as_posix()}"]
+        if cxx_path:
+            fail(f"{cxx} is installed but {c} (the C compiler, {c}.exe beside {cxx_path}) is missing.\n"
+                 "         An antivirus (Windows Security too) may have removed it, or the tools' unpacking stopped halfway:\n"
+                 "         look in the antivirus' protection history and allow the file, then run "
+                 f"{SETUP_CMD} again (it installs\n"
+                 "         the compiler again). With your own MSYS2, in its CLANG64 shell: "
+                 "pacman -S mingw-w64-clang-x86_64-clang")
+    fail("No C and C++ compiler found (clang and clang++, or gcc and g++). In MSYS2's CLANG64 shell: "
+         "pacman -S mingw-w64-clang-x86_64-clang")
+
+
 def build(jobs, native_arch=None):
     BUILD_DIR.mkdir(exist_ok=True)
     BUILD_LOG.write_text("")
@@ -698,11 +718,7 @@ def build(jobs, native_arch=None):
         print("  Configuring (this downloads a few libraries the first time)...", flush=True)
         cmd = ["cmake", "-S", str(ROOT), "-B", str(BUILD_DIR), "-DCMAKE_BUILD_TYPE=RelWithDebInfo"] + arch
         if WINDOWS:  # (Ninja and clang, not Visual Studio's generator and compiler: docs/platforms.md)
-            cmd += ["-G", "Ninja"]
-            if shutil.which("clang++"):
-                cmd += ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]
-            else:
-                cmd += ["-DCMAKE_C_COMPILER=gcc", "-DCMAKE_CXX_COMPILER=g++"]
+            cmd += ["-G", "Ninja"] + windows_compilers()
         if not run_logged(cmd, BUILD_LOG):
             fail(f"CMake could not configure the build (see above). If a library is missing, install it and run {SETUP_CMD} again.")
     elif arch:

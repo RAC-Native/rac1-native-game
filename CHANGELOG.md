@@ -124,6 +124,8 @@ With Lighting on Original (the default) the picture is unchanged.
   CLANG64 tool there, are made again by `tools\windows\toolchain.ps1` (also on a setup made before).
 - A code generation job whose Python crashes ("Fatal Python error", #72) is run once more on its own.
 - A clearer message when the program disappears after the build (an antivirus removing it, #69).
+- Windows: the setup checks the C compiler too (clang, beside clang++): when it is missing, `toolchain.ps1`
+  installs the compiler again and the setup says so, instead of CMake failing (#88).
 
 ### Fixes
 - Pre-rendered movies no longer add to the time played, as on the PS2 (#24).
