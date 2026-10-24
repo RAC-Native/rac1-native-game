@@ -131,6 +131,8 @@ With Lighting on Original (the default) the picture is unchanged.
 - Pre-rendered movies no longer add to the time played, as on the PS2 (#24).
 - The Controls page: a mouse movement no longer rebinds the D-pad, only the sticks, as the page's
   help says (#61).
+- With the Mirrored Levels cheat, strafing (Strafing, RAC 3) no longer draws the level unmirrored,
+  which reversed the controls, and the Modern aiming camera stays over the right shoulder (#95).
 
 ### Debug tools (`--debug-tools`)
 - **Profiler** tab and overlay: the frame time (a graph, min / avg / max / p99 / 1 % lows), every

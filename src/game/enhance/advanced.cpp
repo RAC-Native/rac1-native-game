@@ -752,10 +752,14 @@ void advanced_aim_before_camera() {
 
 namespace {
 constexpr float SHOULDER_DIST = 3.0f;    // the aiming camera: this far behind the pivot above the hero,
-constexpr float SHOULDER_SIDE = 0.75f;   // this far to the right,
+constexpr float SHOULDER_SIDE = 0.75f;   // this far to the right (on the screen: shoulder_side),
 constexpr float SHOULDER_UP = 0.1f;      // this far up
 constexpr float SHOULDER_RATE = 0.125f;  // eased in / out over 8 frames
 float g_shoulder = 0.0f;
+
+// orig: (none) — enhancement: SHOULDER_SIDE in the world: the mirrored levels (0x15edb4) draw the world's left on the screen's
+// right, so the view goes to the world's left to stay over the right shoulder (issue #95)
+float shoulder_side() { return lbu(0x0015edb4) != 0 ? -SHOULDER_SIDE : SHOULDER_SIDE; }
 
 // orig: (none) — enhancement: the aiming view over the right shoulder (eased in while aiming, out
 // after), and in any case kept out of the walls: when the view turned by the aim (or moved here)
@@ -769,10 +773,11 @@ void aim_shoulder(uint32_t cam, bool aiming) {
     const float w = g_shoulder * g_shoulder * (3.0f - 2.0f * g_shoulder);  // smoothstep
     const Vec4 pivot = Vec4{lwc1(0x0013f3d0), lwc1(0x0013f3d4), lwc1(0x0013f3d8) + AIM_PIVOT_HEIGHT, 0.0f};
     Vec4 pos = V(cam + 0x30);
+    const float side = shoulder_side();
     if (0.0f < w) {
         const Vec4 f = V(cam);  // the camera's forward row (already on the aim's heading and pitch)
         const float h = g_aim_yaw;
-        const Vec4 shoulder = Vec4{pivot.x - f.x * SHOULDER_DIST + sin_vu(h) * SHOULDER_SIDE, pivot.y - f.y * SHOULDER_DIST - cos_vu(h) * SHOULDER_SIDE,
+        const Vec4 shoulder = Vec4{pivot.x - f.x * SHOULDER_DIST + sin_vu(h) * side, pivot.y - f.y * SHOULDER_DIST - cos_vu(h) * side,
                       pivot.z - f.z * SHOULDER_DIST + SHOULDER_UP, pos.w};
         pos.x = pos.x + (shoulder.x - pos.x) * w;
         pos.y = pos.y + (shoulder.y - pos.y) * w;
@@ -783,7 +788,7 @@ void aim_shoulder(uint32_t cam, bool aiming) {
     // camera_follow.cpp: what blocks the camera, not every plant and pole); backed against a wall,
     // the view ends beside the head, not in it, and is raised when very close
     const float h = g_aim_yaw;
-    const Vec4 from = Vec4{pivot.x + sin_vu(h) * SHOULDER_SIDE * w, pivot.y - cos_vu(h) * SHOULDER_SIDE * w, pivot.z, 0.0f};
+    const Vec4 from = Vec4{pivot.x + sin_vu(h) * side * w, pivot.y - cos_vu(h) * side * w, pivot.z, 0.0f};
     if (segment_collide_v(from, pos, 0x94, lwu(HERO + 0x2080), nullptr) != 0) {
         const Vec4 hit = V(OV(0x00173e60));
         Vec4 d;
@@ -882,6 +887,9 @@ void advanced_aim_after_camera() {
     Mat4 m;
     mat3_copy_affine(m, M(OV(0x00166fd0)));
     mat_to_euler_r(m, V(OV(0x00166dd0)));
+    // the Mirrored Levels cheat (0x15edb4): the view's side row the cross product, as camera_update leaves it (copying the
+    // camera's rows undid the mirror while aiming: the level drawn unmirrored with the controls still swapped, issue #95)
+    if (lbu(0x0015edb4) != 0) vec3_cross_ba(V(OV(0x00166fe0)), V(OV(0x00166ff0)), V(OV(0x00166fd0)));
 }
 
 // orig: (none) — enhancement (advanced.h)
