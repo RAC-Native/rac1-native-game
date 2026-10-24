@@ -13,6 +13,20 @@
 // - the gold weapons 0x13e520[item] (Novalis's gold weapon cases 304, L1:0x2e1ac0, set the weapon's byte when it is bought):
 //   the menus' icons (+4 frame) and gold names, the quick select, the Vendor's models, the Help pages and the weapon in hand
 //   (its gold colouring every frame, 0x207330; the GS registers 0x245770 adds when it loads the class) read it.
+// - the weapons (the pause menu's Weapons page): the same item_give / take back as the items; their ammo 0x13d428[item]
+//   filled to the maximum the HUD shows and the ammo pickups stop at (the table 0x1c40b0, 0x18 a row: +8 takes ammo,
+//   +0xe the maximum);
+// - the skill points 0x13d408[0..29], one byte each set to 1, as the game's skill point tests and the pause menu's codes
+//   (0x2831c0) set them; the pause menu counts them (0x264640, at most 30): 15 open the Goodies' Sketchbook, 30 the
+//   Epilogue (0x284ca0);
+// - the cheats: unlocked 0x15edc0[n] and on 0x15edb0[n], the bytes the cheat moves (0x206e00) set; the Goodies' Cheats
+//   page (0x277e28) lists the unlocked ones (its table 0x1e91c8, their texts 0x1e91e8, read from the game) and switches
+//   0x15edb0[n];
+// - the challenge mode count 0x15ee20 (what the challenge mode's new game 0x284950 sets to count + 1 after the game is
+//   finished): non-zero shows the pause menu's Goodies (menu_open 0x276190), lets the cheat moves work (0x206e00), doubles
+//   the bolts dropped (0x260a88) and changes Novalis's gold weapon cases (0x15ee20 tested as the game does);
+// - the planets on the ship's map: the game's level_mark_visited (0x2607d0: 0x13dd40[l], the visit order 0x13d510), for
+//   the levels 1..18 the pause menu's codes give (0x2831c0), its arrival message taken back as the item give's.
 // The planets' gold bolt counts and the ten gold weapons are the game's (counted on every level: the gold bolt mobys'
 // pvar +0; Novalis's table L1:0x1deb10); the item ids are the pause menu pages' cells (Gadgets 0x1b28e8, Items 0x1b5cb8).
 
@@ -51,6 +65,18 @@ constexpr uint32_t WORN = 0x00141660;               // the item in each slot [4]
 constexpr uint32_t WORN_REQUEST = 0x00141408;       // the slot's request [4] (0x26: none)
 constexpr OvConst<0x00179ac0u> ITEM_ROWS{};         // items (0x4c): +8 kind (the slot)
 constexpr int WRENCH = 8;
+constexpr uint32_t AMMO = 0x0013d428;               // items' ammo [0x25]
+constexpr OvConst<0x001c40b0u> AMMO_ROWS{};         // items' ammo rows (0x18): +8 takes ammo, +0xe the maximum
+constexpr uint32_t SKILL = 0x0013d408;              // skill points earned [30] (0x20 bytes counted)
+constexpr int SKILL_POINTS = 30;
+constexpr uint32_t CHEAT_ON = 0x0015edb0;           // the cheats switched on [12]
+constexpr uint32_t CHEAT_UNLOCKED = 0x0015edc0;     // the cheats unlocked [12]
+constexpr OvConst<0x001e91c8u> CHEAT_IDS{};         // the Cheats page's cheat numbers [8] (-1 none)
+constexpr OvConst<0x001e91e8u> CHEAT_TEXTS{};       // ... and their texts [7]
+constexpr uint32_t CHALLENGE = 0x0015ee20;          // the challenge mode count
+constexpr uint32_t VISITED = 0x0013dd40;            // the planets visited [0x14]
+constexpr OvConst<0x00179118u> HUD_TEXT{};          // the HUD message's text (0x50)
+constexpr OvConst<0x0015f640u> HUD_TIMER{};         // ... and its frames
 
 struct Entry {
     int id;
@@ -66,6 +92,11 @@ constexpr Entry ITEMS[] = {{0x1e, "Hoverboard"}, {0x21, "Map-o-matic"}, {0x22, "
 // ... and its goodies of 0x13d388
 constexpr Entry GOODIE_LIST[] = {{0, "Zoomerator"}, {1, "Raritanium"}, {2, "CodeBot"}, {4, "Premium Nanotech"}, {5, "Ultra Nanotech"}};
 constexpr int PREMIUM = 4, ULTRA = 5;
+// the pause menu's Weapons page: the weapons (the community's R&C1 item ids, as the debug menu's Items tab)
+constexpr Entry WEAPONS[] = {{0x09, "Suck Cannon"},  {0x0a, "Bomb Glove"},   {0x0b, "Devastator"},    {0x0d, "Visibomb Gun"},
+                             {0x0e, "Taunter"},      {0x0f, "Blaster"},      {0x10, "Pyrocitor"},     {0x11, "Mine Glove"},
+                             {0x12, "Walloper"},     {0x13, "Tesla Claw"},   {0x14, "Glove of Doom"}, {0x15, "Morph-o-Ray"},
+                             {0x17, "R.Y.N.O."},     {0x18, "Drone Device"}, {0x19, "Decoy Glove"}};
 // Novalis's gold weapon cases, in their order (L1:0x1deb10)
 constexpr Entry GOLD_LIST[] = {{0x13, "Tesla Claw"},  {0x0a, "Bomb Glove"},  {0x0b, "Devastator"},    {0x10, "Pyrocitor"},
                                {0x11, "Mine Glove"},  {0x0f, "Blaster"},     {0x15, "Morph-o-ray"},   {0x14, "Glove of Doom"},
@@ -138,6 +169,102 @@ int gold_weapons_owned() {
 bool gold_owned(int id) { return rb(GOLD_WEAPONS + static_cast<uint32_t>(id)) != 0; }
 void gold_set(int id, bool on) { wb(GOLD_WEAPONS + static_cast<uint32_t>(id), on ? 1 : 0); }
 
+// --- weapons and ammo ---
+void weapons_all(bool on) {
+    for (const Entry& e : WEAPONS) on ? item_give(e.id) : item_take(e.id);
+}
+// the ammo maximum (0: the item takes none)
+int ammo_max(int id) {
+    const uint32_t row = AMMO_ROWS + static_cast<uint32_t>(id) * 0x18;
+    return ee_read<uint16_t>(row + 8) != 0 ? ee_read<uint16_t>(row + 0xe) : 0;
+}
+// the ammo of every item owned filled to its maximum
+void ammo_fill(bool) {
+    for (int id = 0; id < 0x25; ++id)
+        if (item_owned(id) && ammo_max(id) > 0) w32(AMMO + static_cast<uint32_t>(id) * 4, ammo_max(id));
+}
+
+// --- skill points ---
+bool skill_owned(int i) { return rb(SKILL + static_cast<uint32_t>(i)) != 0; }
+void skill_set(int i, bool on) { wb(SKILL + static_cast<uint32_t>(i), on ? 1 : 0); }
+int skill_count() {
+    int n = 0;
+    for (int i = 0; i < SKILL_POINTS; ++i) n += skill_owned(i) ? 1 : 0;
+    return n;
+}
+void skills_all(bool on) {
+    for (int i = 0; i < SKILL_POINTS; ++i) skill_set(i, on);
+}
+
+// --- cheats: the Cheats page's (its table 0x1e91c8: cheat numbers until -1, their texts 0x1e91e8) ---
+int cheat_list(int (&ids)[8], int32_t (&texts)[8]) {
+    int n = 0;
+    for (uint32_t k = 0; k < 7; ++k) {
+        const int32_t id = r32(CHEAT_IDS + 4 * k);
+        if (id < 0 || id >= 12) continue;
+        ids[n] = id;
+        texts[n] = r32(CHEAT_TEXTS + 4 * k);
+        ++n;
+    }
+    return n;
+}
+bool cheat_unlocked(int id) { return rb(CHEAT_UNLOCKED + static_cast<uint32_t>(id)) != 0; }
+bool cheat_on(int id) { return rb(CHEAT_ON + static_cast<uint32_t>(id)) != 0; }
+// unlocked: as the cheat's moves do (0x206e00: unlocked 1, the switch toggled); locked: switched off too
+void cheat_unlock(int id, bool on) {
+    wb(CHEAT_UNLOCKED + static_cast<uint32_t>(id), on ? 1 : 0);
+    if (!on) wb(CHEAT_ON + static_cast<uint32_t>(id), 0);
+}
+void cheat_switch(int id, bool on) {
+    if (on) wb(CHEAT_UNLOCKED + static_cast<uint32_t>(id), 1);
+    wb(CHEAT_ON + static_cast<uint32_t>(id), on ? 1 : 0);
+}
+void cheats_all(bool on) {
+    int ids[8];
+    int32_t texts[8];
+    for (int k = 0, n = cheat_list(ids, texts); k < n; ++k) cheat_unlock(ids[k], on);
+}
+void cheats_on_all(bool on) {
+    int ids[8];
+    int32_t texts[8];
+    for (int k = 0, n = cheat_list(ids, texts); k < n; ++k) cheat_switch(ids[k], on);
+}
+// a game text (the level's table) as printable ASCII, or `fallback`
+std::string game_text(int32_t id, const char* fallback) {
+    if (sub_00203a68(id) < 0) return fallback;
+    std::string s;
+    for (uint32_t a = sub_00203ad8(id), i = 0; i < 64; ++i) {
+        const uint8_t c = rb(a + i);
+        if (c == 0) break;
+        if (c >= 0x20 && c < 0x7f) s += static_cast<char>(c);
+    }
+    return s.empty() ? std::string(fallback) : s;
+}
+
+// --- the challenge mode (the Goodies) ---
+void challenge_set(bool on) {
+    if (on) {
+        if (r32(CHALLENGE) == 0) w32(CHALLENGE, 1);  // (the challenge mode's new game: count + 1)
+    } else {
+        w32(CHALLENGE, 0);
+    }
+}
+
+// --- the planets on the ship's map ---
+void planets_all(bool) {
+    uint8_t saved[0x50];
+    for (uint32_t i = 0; i < 0x50; ++i) saved[i] = rb(HUD_TEXT + i);
+    const int32_t saved_timer = r32(HUD_TIMER);
+    for (int32_t l = 1; l <= 18; ++l) level_mark_visited(l);  // (the pause menu codes' levels)
+    for (uint32_t i = 0; i < 0x50; ++i) wb(HUD_TEXT + i, saved[i]);
+    w32(HUD_TIMER, saved_timer);
+}
+int planets_visited() {
+    int n = 0;
+    for (uint32_t l = 0; l < 0x14; ++l) n += rb(VISITED + l) != 0 ? 1 : 0;
+    return n;
+}
+
 // the "all" / "none" of each group
 void items_all(bool on) {
     for (const Entry& e : GADGETS) on ? item_give(e.id) : item_take(e.id);
@@ -153,15 +280,38 @@ void gold_all(bool on) {
         gold_set(e.id, on);
     }
 }
+// everything (the planets and the ammo only given: "back" leaves them)
+void everything(bool on) {
+    items_all(on);
+    weapons_all(on);
+    bolts_all(on);
+    gold_all(on);
+    skills_all(on);
+    cheats_all(on);
+    challenge_set(on);
+    if (on) {
+        planets_all(true);
+        ammo_fill(true);
+    }
+}
 bool apply_op(const std::string& op) {
-    if (op == "items+" || op == "items-") items_all(op.back() == '+');
-    else if (op == "bolts+" || op == "bolts-") bolts_all(op.back() == '+');
-    else if (op == "gold+" || op == "gold-") gold_all(op.back() == '+');
-    else if (op == "all+" || op == "all-") {
-        items_all(op.back() == '+');
-        bolts_all(op.back() == '+');
-        gold_all(op.back() == '+');
-    } else return false;
+    if (op.empty()) return false;
+    const char sign = op.back();
+    if (sign != '+' && sign != '-') return false;
+    const bool on = sign == '+';
+    const std::string name = op.substr(0, op.size() - 1);
+    if (name == "items") items_all(on);
+    else if (name == "weapons") weapons_all(on);
+    else if (name == "bolts") bolts_all(on);
+    else if (name == "gold") gold_all(on);
+    else if (name == "skills") skills_all(on);
+    else if (name == "cheats") cheats_all(on);
+    else if (name == "cheatson") cheats_on_all(on);
+    else if (name == "challenge") challenge_set(on);
+    else if (name == "planets" && on) planets_all(true);
+    else if (name == "ammo" && on) ammo_fill(true);
+    else if (name == "all") everything(on);
+    else return false;
     return true;
 }
 
@@ -267,17 +417,113 @@ void section_gold_weapons() {
         ImGui::EndTable();
     }
 }
+void section_weapons() {
+    note("The pause menu's Weapons page: given by the game's item_give (its starting ammo), taken back as the items. Ammo: "
+         "every item owned filled to the maximum the HUD shows (0x1c40b0 +0xe).");
+    all_none("weapons", weapons_all);
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Max ammo")) ammo_fill(true);
+    if (ImGui::BeginTable("unlock_weapons", 3)) {
+        for (const Entry& e : WEAPONS) {
+            ImGui::TableNextColumn();
+            bool on = item_owned(e.id);
+            char label[64];
+            if (ammo_max(e.id) > 0 && on)
+                std::snprintf(label, sizeof label, "%s (%d / %d)##wp%d", e.name, r32(AMMO + static_cast<uint32_t>(e.id) * 4), ammo_max(e.id), e.id);
+            else
+                std::snprintf(label, sizeof label, "%s##wp%d", e.name, e.id);
+            if (ImGui::Checkbox(label, &on)) on ? item_give(e.id) : item_take(e.id);
+        }
+        ImGui::EndTable();
+    }
+}
+
+void section_skills() {
+    ImGui::Text("Earned %d / %d", skill_count(), SKILL_POINTS);
+    note("0x13d408[i] (the pause menu's Goodies > Skill Points); 15 open the Sketchbook, 30 the Epilogue (the Goodies "
+         "page's entries are set when the pause menu opens).");
+    all_none("skills", skills_all);
+    if (ImGui::BeginTable("unlock_skills", 10)) {
+        for (int i = 0; i < SKILL_POINTS; ++i) {
+            ImGui::TableNextColumn();
+            bool on = skill_owned(i);
+            char label[32];
+            std::snprintf(label, sizeof label, "%d##sp", i);
+            if (ImGui::Checkbox(label, &on)) skill_set(i, on);
+        }
+        ImGui::EndTable();
+    }
+}
+
+void section_cheats() {
+    note("Unlocked 0x15edc0[n] (the Goodies' Cheats page lists these and switches them), on 0x15edb0[n]: the bytes the "
+         "cheats' moves set. The names are the game's texts (of the level loaded).");
+    ImGui::PushID("cheats");
+    if (ImGui::SmallButton("Unlock all")) cheats_all(true);
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Lock all")) cheats_all(false);
+    ImGui::SameLine();
+    if (ImGui::SmallButton("All on")) cheats_on_all(true);
+    ImGui::SameLine();
+    if (ImGui::SmallButton("All off")) cheats_on_all(false);
+    ImGui::PopID();
+    int ids[8];
+    int32_t texts[8];
+    const int n = cheat_list(ids, texts);
+    if (ImGui::BeginTable("unlock_cheats", 3, ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Cheat", ImGuiTableColumnFlags_WidthFixed, 200);
+        ImGui::TableSetupColumn("Unlocked", ImGuiTableColumnFlags_WidthFixed, 80);
+        ImGui::TableSetupColumn("On");
+        for (int k = 0; k < n; ++k) {
+            ImGui::PushID(ids[k]);
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            char fb[24];
+            std::snprintf(fb, sizeof fb, "Cheat %d", ids[k]);
+            ImGui::Text("%d %s", ids[k], game_text(texts[k], fb).c_str());
+            ImGui::TableNextColumn();
+            bool u = cheat_unlocked(ids[k]);
+            if (ImGui::Checkbox("##u", &u)) cheat_unlock(ids[k], u);
+            ImGui::TableNextColumn();
+            bool o = cheat_on(ids[k]);
+            if (ImGui::Checkbox("##o", &o)) cheat_switch(ids[k], o);
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+}
+
+void section_progress() {
+    bool challenge = r32(CHALLENGE) != 0;
+    if (ImGui::Checkbox("Challenge Mode (the Goodies menu)", &challenge)) challenge_set(challenge);
+    ImGui::SameLine();
+    ImGui::TextDisabled("count %d", r32(CHALLENGE));
+    note("0x15ee20, the challenge mode count the game sets when a finished game starts again: the pause menu shows the "
+         "Goodies (when it opens), the cheats' moves work, the bolts dropped are doubled, Novalis's gold weapon cases as "
+         "in the challenge mode. Off: 0.");
+    ImGui::Text("Planets on the ship's map: %d visited", planets_visited());
+    ImGui::SameLine();
+    if (ImGui::SmallButton("All planets")) planets_all(true);
+    note("The game's level_mark_visited for the levels 1..18 (0x13dd40, the visit order 0x13d510), as the pause menu's "
+         "codes do; not taken back.");
+}
 }  // namespace
 
 void tab_unlocks() {
     ImGui::TextWrapped("What the game keeps of what was found and bought, set through its own state (the same bytes and "
                        "writes as the game's code). Saved with the game like the rest.");
-    if (ImGui::Button("Give everything")) apply_op("all+");
+    if (ImGui::Button("Unlock everything")) apply_op("all+");
     ImGui::SameLine();
     if (ImGui::Button("Take everything back")) apply_op("all-");
+    note("Everything: the items and goodies, the weapons, the gold bolts and weapons, the skill points, the cheats "
+         "(unlocked, not on), the challenge mode, the planets and the ammo (these two not taken back).");
     if (ImGui::CollapsingHeader("Items: gadgets, packs, helmets, boots, goodies", ImGuiTreeNodeFlags_DefaultOpen)) section_items();
+    if (ImGui::CollapsingHeader("Weapons and ammo", ImGuiTreeNodeFlags_DefaultOpen)) section_weapons();
     if (ImGui::CollapsingHeader("Gold bolts", ImGuiTreeNodeFlags_DefaultOpen)) section_gold_bolts();
     if (ImGui::CollapsingHeader("Gold weapons", ImGuiTreeNodeFlags_DefaultOpen)) section_gold_weapons();
+    if (ImGui::CollapsingHeader("Skill points", ImGuiTreeNodeFlags_DefaultOpen)) section_skills();
+    if (ImGui::CollapsingHeader("Cheats", ImGuiTreeNodeFlags_DefaultOpen)) section_cheats();
+    if (ImGui::CollapsingHeader("Challenge Mode and planets", ImGuiTreeNodeFlags_DefaultOpen)) section_progress();
 }
 
 void unlocks_testing(uint64_t frame) {
@@ -292,7 +538,16 @@ void unlocks_testing(uint64_t frame) {
         const std::string s(op, end != nullptr ? static_cast<size_t>(end - op) : std::strlen(op));
         if (f == frame) {
             const bool ok = apply_op(s);
-            std::fprintf(stderr, "[orig] RAC1_UNLOCKS: %s at frame %llu%s\n", s.c_str(), static_cast<unsigned long long>(frame), ok ? "" : " (unknown)");
+            int ids[8], cheats = 0, on = 0;
+            int32_t texts[8];
+            for (int k = 0, n = cheat_list(ids, texts); k < n; ++k) {
+                cheats += cheat_unlocked(ids[k]) ? 1 : 0;
+                on += cheat_on(ids[k]) ? 1 : 0;
+            }
+            std::fprintf(stderr, "[orig] RAC1_UNLOCKS: %s at frame %llu%s (gold bolts %d, gold weapons %d, skill points %d, cheats "
+                         "unlocked %d on %d, challenge %d, planets visited %d)\n", s.c_str(), static_cast<unsigned long long>(frame),
+                         ok ? "" : " (unknown)", gold_bolts_found(), gold_weapons_owned(), skill_count(), cheats, on, r32(CHALLENGE),
+                         planets_visited());
         }
         if (end == nullptr) break;
         q = end + 1;
