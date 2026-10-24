@@ -618,6 +618,27 @@ void reset_device(Bindings& b, Device d) {
     b.invert_look_y = def.invert_look_y;
 }
 
+void merge_pad(HostState& s, const bool (&buttons)[15], const float (&axes)[6]) {
+    s.pad_present = true;
+    for (int b = 0; b < 15; ++b) s.pad_buttons[b] = s.pad_buttons[b] || buttons[b];
+    for (const int x : {GLFW_GAMEPAD_AXIS_LEFT_X, GLFW_GAMEPAD_AXIS_RIGHT_X}) {  // (the stick's y axis follows its x)
+        const float had = s.pad_axes[x] * s.pad_axes[x] + s.pad_axes[x + 1] * s.pad_axes[x + 1];
+        if (axes[x] * axes[x] + axes[x + 1] * axes[x + 1] > had) {
+            s.pad_axes[x] = axes[x];
+            s.pad_axes[x + 1] = axes[x + 1];
+        }
+    }
+    for (const int t : {GLFW_GAMEPAD_AXIS_LEFT_TRIGGER, GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER}) s.pad_axes[t] = std::max(s.pad_axes[t], axes[t]);
+}
+
+bool pad_held(const bool (&buttons)[15], const float (&axes)[6]) {
+    for (const bool p : buttons)
+        if (p) return true;
+    for (int a = 0; a < 6; ++a)
+        if (is_trigger(a) ? axes[a] > -0.4f : std::fabs(axes[a]) > 0.3f) return true;
+    return false;
+}
+
 bool any_held(const HostState& s) {
     for (const bool k : s.keys)
         if (k) return true;

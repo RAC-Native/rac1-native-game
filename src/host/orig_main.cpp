@@ -1392,6 +1392,17 @@ void host_input_init(GLFWwindow* win) {
     load_controller_db();
     g_bindings = hi::load_or_create(hi::controls_path());
     for (int j = GLFW_JOYSTICK_1; j <= GLFW_JOYSTICK_LAST; ++j) joystick_check(j);
+    // every joystick GLFW sees, on one line (for bug reports: issue #98)
+    std::string list;
+    for (int j = GLFW_JOYSTICK_1; j <= GLFW_JOYSTICK_LAST; ++j) {
+        if (!glfwJoystickPresent(j)) continue;
+        const char* name = glfwGetJoystickName(j);
+        const char* guid = glfwGetJoystickGUID(j);
+        list += (list.empty() ? "" : "; ") + std::to_string(j) + ": " + (name != nullptr ? name : "?") + " (GUID " +
+                (guid != nullptr ? guid : "?") + ", gamepad " + (glfwJoystickIsGamepad(j) ? "yes" : "no") + ")";
+    }
+    std::printf("[controls] joysticks: %s\n", list.empty() ? "none" : list.c_str());
+    std::fflush(stdout);
     if (glfwRawMouseMotionSupported()) glfwSetInputMode(win, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
     g_input_ready = true;
 }
@@ -1430,9 +1441,21 @@ void host_input_poll(GLFWwindow* win, bool cursor_free) {
     }
 }
 
-// What the window's keyboard, mouse and first mapped gamepad hold now (host_input.h's HostState).
+// What the window's keyboard, mouse and mapped gamepads hold now (host_input.h's HostState).
 // `raw`: the mouse's buttons as they are (a rebinding on the Controls page takes any click)
-std::string g_pad_name;  // the first mapped gamepad's name ("" none), for the Controls page
+// Every mapped gamepad is read and merged (hi::merge_pad), not only the first (issue #98: on Windows a virtual or
+// silent device - a virtual pad's driver, a duplicate of the same pad - can come first and hide the real one). With
+// more than one, a pad counts only once it has moved from what it read when first seen (a button, an axis by 0.3),
+// so one stuck at a deflection (a wheel's pedal, a throttle) does not hold an input forever.
+std::string g_pad_name;  // the name of the mapped gamepad last used ("" none), for the Controls page
+struct PadSeen {
+    std::string guid;  // ("" none yet)
+    bool active = false;
+    float first[6]{};
+    uint64_t last_held = 0;  // (the poll it last held something at; 0 never)
+};
+std::array<PadSeen, GLFW_JOYSTICK_LAST + 1> g_pads_seen;
+uint64_t g_pad_polls = 0;
 hi::HostState host_state(GLFWwindow* win, bool raw = false) {
     hi::HostState st;
     for (int k = GLFW_KEY_SPACE; k <= GLFW_KEY_LAST; ++k) st.keys[k] = glfwGetKey(win, k) == GLFW_PRESS;
@@ -1444,17 +1467,44 @@ hi::HostState host_state(GLFWwindow* win, bool raw = false) {
     st.mouse_dx = g_mouse_dx;
     st.mouse_dy = g_mouse_dy;
     g_mouse_dx = g_mouse_dy = 0.0f;
-    GLFWgamepadstate s;
-    g_pad_name.clear();
+    ++g_pad_polls;
+    struct Pad {
+        int j;
+        bool buttons[15];
+        float axes[6];
+    };
+    std::array<Pad, GLFW_JOYSTICK_LAST + 1> pads;
+    int n = 0;
     for (int j = GLFW_JOYSTICK_1; j <= GLFW_JOYSTICK_LAST; ++j) {
         if (g_input_ready) joystick_check(j);  // (a pad connected while the game runs)
+        GLFWgamepadstate s;
         if (!glfwJoystickIsGamepad(j) || !glfwGetGamepadState(j, &s)) continue;
-        st.pad_present = true;
-        if (const char* n = glfwGetGamepadName(j)) g_pad_name = n;
-        for (int b = 0; b < static_cast<int>(st.pad_buttons.size()); ++b) st.pad_buttons[b] = s.buttons[b] == GLFW_PRESS;
-        for (int a = 0; a < static_cast<int>(st.pad_axes.size()); ++a) st.pad_axes[a] = s.axes[a];
-        break;
+        Pad& p = pads[n++];
+        p.j = j;
+        for (int b = 0; b < 15; ++b) p.buttons[b] = s.buttons[b] == GLFW_PRESS;
+        for (int a = 0; a < 6; ++a) p.axes[a] = s.axes[a];
+        PadSeen& seen = g_pads_seen[j];
+        const char* g = glfwGetJoystickGUID(j);
+        const std::string guid = g != nullptr && *g != 0 ? g : "?";
+        if (seen.guid != guid) {  // (a pad newly seen in this slot)
+            seen = PadSeen{};
+            seen.guid = guid;
+            std::copy(std::begin(p.axes), std::end(p.axes), seen.first);
+        }
+        for (int a = 0; a < 6 && !seen.active; ++a) seen.active = std::fabs(p.axes[a] - seen.first[a]) > 0.3f;
+        for (int b = 0; b < 15 && !seen.active; ++b) seen.active = p.buttons[b];
+        if (hi::pad_held(p.buttons, p.axes)) seen.last_held = g_pad_polls;
     }
+    int named = -1;  // (the pad last used; the first one when none has been)
+    for (int i = 0; i < n; ++i) {
+        const PadSeen& seen = g_pads_seen[pads[i].j];
+        if (n == 1 || seen.active) hi::merge_pad(st, pads[i].buttons, pads[i].axes);
+        if (named < 0 || seen.last_held > g_pads_seen[pads[named].j].last_held) named = i;
+    }
+    st.pad_present = n > 0;
+    g_pad_name.clear();
+    if (named >= 0)
+        if (const char* nm = glfwGetGamepadName(pads[named].j)) g_pad_name = nm;
     return st;
 }
 

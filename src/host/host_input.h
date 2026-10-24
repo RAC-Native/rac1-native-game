@@ -80,6 +80,13 @@ struct HostState {
     std::array<bool, 15> pad_buttons{};    // by GLFW_GAMEPAD_BUTTON_*
     std::array<float, 6> pad_axes{0, 0, 0, 0, -1.0f, -1.0f};  // by GLFW_GAMEPAD_AXIS_* (triggers rest at -1)
 };
+// One gamepad's buttons and axes (GLFW's GLFWgamepadstate) merged into s's pad (issue #98: every mapped gamepad is read,
+// so a silent or virtual one listed first does not hide the one played with): the buttons OR'ed, each stick the one
+// deflected furthest (both of its axes from the same pad), each trigger the one pressed furthest. Merged into the
+// HostState's resting pad (no button, sticks centred, triggers at -1), one pad gives exactly its own state.
+void merge_pad(HostState& s, const bool (&buttons)[15], const float (&axes)[6]);
+// Whether a pad holds anything: a button, a stick past 0.3, a trigger past -0.4 (any_held's thresholds)
+bool pad_held(const bool (&buttons)[15], const float (&axes)[6]);
 struct PadOutput {
     uint16_t held = 0;  // the host's held mask (ControlInfo::bit)
     float lx = 0, ly = 0, rx = 0, ry = 0;  // -1..1, up negative
