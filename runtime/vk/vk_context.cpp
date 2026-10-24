@@ -1417,10 +1417,20 @@ uint32_t find_memory_type(uint32_t type_bits, VkMemoryPropertyFlags props) {
             return i;
         }
     }
+    if (props & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)  // (a cached type this resource cannot use: an uncached one, still host-visible)
+        return find_memory_type(type_bits, props & ~VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
     for (uint32_t i = 0; i < g_ctx.mem_props.memoryTypeCount; ++i) {
         if (type_bits & (1u << i)) return i;
     }
     return 0;
+}
+
+VkMemoryPropertyFlags readback_memory_flags() {
+    constexpr VkMemoryPropertyFlags base = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    constexpr VkMemoryPropertyFlags cached = base | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+    for (uint32_t i = 0; i < g_ctx.mem_props.memoryTypeCount; ++i)
+        if ((g_ctx.mem_props.memoryTypes[i].propertyFlags & cached) == cached) return cached;
+    return base;
 }
 
 bool create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props, GpuBuffer& out, bool map) {

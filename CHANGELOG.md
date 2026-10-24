@@ -19,6 +19,8 @@ played through the game on it, and the launcher installs and updates it with a d
   Profiler too. OpenGL stays the default, and the game falls back to it when Vulkan cannot start.
   Its shaders are compiled when the game is built, with `glslc` (an optional package the setup now
   lists). See [Vulkan](docs/vulkan.md).
+- **Vulkan:** the pause menu opens at once, as with OpenGL (the game stopped for about a fifth of a
+  second first: the paused picture was read from slow memory about 50 times).
 - **The full frame, always:** the Overscan row is removed. The thin slivers the game itself leaves
   at the frame's edge as a HUD element slides away (the Suck Cannon's gauge, the air meter), which a
   TV hid, are not drawn. Older settings and saves with the row load fine.
