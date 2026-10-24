@@ -85,6 +85,8 @@ played through the game on it, and the launcher installs and updates it with a d
   Facing the sun under an open sky they no longer wash the whole picture out: the sky's broad glow
   stays near the sun and the shafts through openings keep their light; what is bright gains less.
   The steps differ in strength too (Low the earlier Low's, High the earlier High's, Medium between).
+  No Sun Rays in the ship's flights (leaving a planet, and between planets on the loading screen),
+  where the sun was still the planet left behind (#66).
 - **Ambient Occlusion** has six values (Off, SSAO, SSAO+, HBAO, GTAO, GTAO at half resolution), and
   each mode is now visible and different (#75).
 - **AO Intensity** (Options > Graphics, 25 to 125 %, default 75 %): how dark the ambient occlusion
@@ -124,6 +126,8 @@ With Lighting on Original (the default) the picture is unchanged.
   CLANG64 tool there, are made again by `tools\windows\toolchain.ps1` (also on a setup made before).
 - A code generation job whose Python crashes ("Fatal Python error", #72) is run once more on its own.
 - A clearer message when the program disappears after the build (an antivirus removing it, #69).
+- Windows: the setup checks the C compiler too (clang, beside clang++): when it is missing, `toolchain.ps1`
+  installs the compiler again and the setup says so, instead of CMake failing (#88).
 
 ### Fixes
 - Pre-rendered movies no longer add to the time played, as on the PS2 (#24).
@@ -132,6 +136,8 @@ With Lighting on Original (the default) the picture is unchanged.
 - Gamepads: every connected gamepad is read and their inputs merged, not only the first one listed,
   so a virtual or silent device can no longer hide the real pad (#98). The Controls page names the
   pad last used, and the log lists every joystick at start.
+- With the Mirrored Levels cheat, strafing (Strafing, RAC 3) no longer draws the level unmirrored,
+  which reversed the controls, and the Modern aiming camera stays over the right shoulder (#95).
 
 ### Debug tools (`--debug-tools`)
 - **Profiler** tab and overlay: the frame time (a graph, min / avg / max / p99 / 1 % lows), every

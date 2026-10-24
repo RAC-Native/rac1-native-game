@@ -105,6 +105,23 @@ if ($missing) {
     Update-Keyring
 }
 
+# The compilers themselves: the clang package can be installed with clang.exe missing (an antivirus that removed
+# it, an unpacking stopped halfway), and pacman -T then says nothing is missing; CMake finds clang++ but not the C
+# compiler (GitHub issue #88). The package is installed again (without --needed) when one of them is missing.
+$compilers = @('clang.exe', 'clang++.exe') | ForEach-Object { Join-Path $Msys "clang64\bin\$_" }
+if ($compilers | Where-Object { -not (Test-Path $_) }) {
+    Step 'Installing the compiler again (clang.exe or clang++.exe is missing)'
+    if ((Invoke-Msys 'pacman -S --noconfirm mingw-w64-clang-x86_64-clang') -ne 0) {
+        Fail 'Installing the compiler failed. Check the internet connection, then run the setup again.'
+    }
+    $lost = $compilers | Where-Object { -not (Test-Path $_) }
+    if ($lost) {
+        Fail ("$($lost -join ', ') is still missing after installing it again. An antivirus (Windows Security too) " +
+              "may be removing it: look in its protection history, allow the file (or exclude the folder $ToolDir), " +
+              'then run the setup again.')
+    }
+}
+
 # The certificates CLANG64's programs check HTTPS with (CMake downloading GLFW, Python's update check): its
 # ca-certificates package makes them with CLANG64's p11-kit, which breaks in a folder with a space in its path (it
 # runs its trust tool by a path cut at the space) and leaves the files empty: "error adding trust anchors" at the
