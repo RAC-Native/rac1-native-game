@@ -144,8 +144,10 @@ With Lighting on Original (the default) the picture is unchanged.
   stage of a frame on the CPU and on the GPU with the bottleneck, the threads' CPU, the memory and
   the GPU's, exports to CSV and to a Chrome trace; `RAC1_PROFILER_DUMP` and the others for headless
   runs. Off until opened: nothing is measured.
-- **Unlocks** tab: gives and takes back the items, the goodies, the gold bolts and the gold weapons,
-  writing what the game's own code writes.
+- **Unlocks** tab: gives and takes back the items, the goodies, the weapons and their ammo, the gold
+  bolts and the gold weapons, the skill points, the cheats (unlocked, and switched on one by one), the
+  Challenge Mode (which shows the pause menu's Goodies) and the planets on the ship's map, one by one
+  or all at once with "Unlock everything", writing what the game's own code writes.
 
 ### Building
 - The generated code is compiled without debug info (the same machine code): a faster setup, less

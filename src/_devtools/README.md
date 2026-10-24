@@ -97,7 +97,7 @@ A new stage is a `prof::Stage` (its name, colour, whether it is a wait and wheth
 
 What the game keeps of what was found and bought, given and taken back through the game's own state: the same bytes and
 writes as the game's code, so the pause menu, the Vendor, the cases and a save see them as the game's own (a save made
-after giving loads back with them). Only in the debug menu (`--debug-tools`); testing: `RAC1_UNLOCKS` (docs/env-vars.md).
+after giving loads back with them: every byte here is in the save: its game block, the gold bolts in the level blocks). Only in the debug menu (`--debug-tools`); testing: `RAC1_UNLOCKS` (docs/env-vars.md).
 
 - **Items** (the pause menu's Gadgets and Items pages): the gadgets (Swingshot, Hydrodisplacer, Trespasser, Metal
   Detector, Hologuise, PDA), the packs, the helmets (Sonic Summoner, O2 Mask, Pilot's Helmet), the boots, the
@@ -116,3 +116,22 @@ after giving loads back with them). Only in the debug menu (`--debug-tools`); te
   Devastator, Pyrocitor, Mine Glove, Blaster, Morph-o-ray, Glove of Doom, Decoy Glove, Suck Cannon (the cases' table). The
   menus' icons and names, the quick select, the Vendor's models and the weapon in hand turn gold at once. "All" also
   gives the weapons not owned (the cases sell a gold weapon only for one owned); "None" leaves the weapons.
+- **Weapons and ammo** (the pause menu's Weapons page): Suck Cannon, Bomb Glove, Devastator, Visibomb Gun, Taunter,
+  Blaster, Pyrocitor, Mine Glove, Walloper, Tesla Claw, Glove of Doom, Morph-o-Ray, R.Y.N.O., Drone Device, Decoy Glove,
+  given and taken back as the items. **Max ammo**: the ammo `0x13d428[item]` of every item owned set to the maximum the
+  HUD shows and the ammo pickups stop at (`0x1c40b0[item]` +0xe; the give amount +0x12 is smaller).
+- **Skill points**: `0x13d408[0..29]`, one byte each set to 1 as the game's skill point tests and the pause menu's codes
+  (0x2831c0) set them. The Goodies' Skill Points page ticks them; 15 open its Sketchbook, 30 its Epilogue (0x284ca0,
+  when the pause menu opens).
+- **Cheats**: unlocked `0x15edc0[n]` and switched on `0x15edb0[n]`, the bytes the cheats' moves set (0x206e00). The
+  Goodies' Cheats page lists the unlocked ones and switches them. The tab lists the page's own cheats (its table
+  0x1e91c8, read from the game; the names are the level's texts): unlock / lock (locking also switches off), on / off,
+  each or all.
+- **Challenge Mode**: the challenge mode count `0x15ee20`, set to 1 (when 0) as the challenge mode's new game (0x284950,
+  after the game is finished) sets it to count + 1; off writes 0. With it the pause menu shows the Goodies (menu_open
+  0x276190), the cheats' moves work, the bolts dropped are doubled, Novalis's gold weapon cases are the challenge mode's.
+  (0x15eea0, the other flag menu_open tests, is never written by the game's code: left alone.)
+- **Planets**: the game's `level_mark_visited` (0x2607d0: `0x13dd40[l]`, the visit order `0x13d510`) for levels 1..18,
+  as the pause menu's codes do, so the ship's map lists every planet; their arrival messages are taken back. Not undone.
+- **Unlock everything** / **Take everything back**: all of the above (the cheats unlocked, not switched on); taking back
+  leaves the planets and the ammo.

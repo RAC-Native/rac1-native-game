@@ -359,10 +359,11 @@ void hero_move_update(GLFWwindow* win) {
 std::vector<uint8_t> g_snap_ram, g_snap_spr;
 int g_snap_pending = 0;  // 1 save, 2 load (done between game frames)
 
+// the weapon's ammo maximum: the table's +0xe, where pickups stop and what the HUD shows (+0x12 is the amount a purchase gives)
 int ammo_max(int id) {
     const uint32_t row = AMMO_ROWS + static_cast<uint32_t>(id) * 0x18;
     if (ee_read<uint16_t>(row + 8) == 0) return 0;
-    return ee_read<uint16_t>(row + 0x12);
+    return ee_read<uint16_t>(row + 0xe);
 }
 
 // the group volumes from the options' sound / music (as the game's sound start does, 0x28ca88)
