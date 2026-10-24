@@ -240,7 +240,7 @@ machine resumed by the host would mean splitting every caller; the fade alone ha
 Veldin, some in machine-translated files that cannot be split.
 
 **Decision.** The game's frame runs on a coroutine of the host thread (`runtime/ee/ee_thread.cpp`:
-`ucontext` on Linux, a fiber on Windows, through `src/platform/`, with its own 64 MB stack). The
+a hand-written context switch on Linux (x86-64 and AArch64; `ucontext` on other architectures), a fiber on Windows, through `src/platform/`, with its own 64 MB stack). The
 host calls `ee_thread_run` for one game frame. A vsync wait inside a blocking loop calls
 `ee_thread_vsync`, which suspends the coroutine: the host frame ends there and presents what the PS2 would show after that vsync, and the next host frame resumes
 the game right after the wait. The port of a blocking loop is the loop as written. The FPU mode of

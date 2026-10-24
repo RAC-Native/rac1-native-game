@@ -19,7 +19,8 @@ namespace rac1::platform {
 
 // ---- The game frame's coroutine (docs/decisions.md, 12) ----
 // A second stack on the calling thread, switched to and from by hand. One per process, used by one
-// thread (runtime/ee/ee_thread.cpp). POSIX: ucontext. Windows: a fiber.
+// thread (runtime/ee/ee_thread.cpp). POSIX: a hand-written switch on x86-64 and
+// AArch64, ucontext elsewhere (src/platform/ctx_switch.h). Windows: a fiber.
 
 // Reserves the coroutine's stack, `bytes` (committed as it is touched, a guard below it). False when
 // it cannot be had.

@@ -7,7 +7,6 @@
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
-#include <ucontext.h>
 #include <unistd.h>
 #if defined(__GLIBC__)
 #include <execinfo.h>
@@ -15,7 +14,14 @@
 
 #include <dirent.h>
 
+#include "ctx_switch.h"
+#if defined(RAC1_CTX_UCONTEXT)
+#include <ucontext.h>
+#endif
+
 #include <algorithm>
+#include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -23,17 +29,47 @@ extern char** environ;
 
 namespace rac1::platform {
 
-// ---- The coroutine: ucontext ----
+// ---- The coroutine: a hand-written switch on x86-64 and AArch64, ucontext elsewhere (ctx_switch.h) ----
 namespace {
 constexpr std::size_t kGuard = 1u << 16;  // the guard page(s) below the stack
 
 struct Coroutine {
-    ucontext_t host{};
-    ucontext_t game{};
     void* stack = nullptr;
     std::size_t bytes = 0;
+#if defined(RAC1_CTX_ASM)
+    void* host_sp = nullptr;
+    void* game_sp = nullptr;
+    void (*entry)() = nullptr;
+#endif
+#if defined(RAC1_CTX_UCONTEXT)
+    ucontext_t host{};
+    ucontext_t game{};
+#endif
+#if defined(RAC1_CTX_ASM) && defined(RAC1_CTX_UCONTEXT)
+    bool ucontext = false;  // testing: RAC1_COROUTINE=ucontext, the switch before the hand-written one (to compare)
+#endif
 };
 Coroutine g_co;
+
+#if defined(RAC1_CTX_ASM)
+[[noreturn]] void co_main() {
+    g_co.entry();
+    void* dead = nullptr;
+    rac1_ctx_switch(&dead, g_co.host_sp);  // (entry returned: back to the host, as ucontext's uc_link)
+    __builtin_trap();
+}
+#endif
+
+// The hand-written switch, unless ucontext is the only one compiled or asked for
+bool use_asm() {
+#if defined(RAC1_CTX_ASM) && defined(RAC1_CTX_UCONTEXT)
+    return !g_co.ucontext;
+#elif defined(RAC1_CTX_ASM)
+    return true;
+#else
+    return false;
+#endif
+}
 }  // namespace
 
 bool coroutine_create(std::size_t bytes) {
@@ -43,20 +79,56 @@ bool coroutine_create(std::size_t bytes) {
     mprotect(p, kGuard, PROT_NONE);
     g_co.stack = p;
     g_co.bytes = bytes;
+#if defined(RAC1_CTX_ASM) && defined(RAC1_CTX_UCONTEXT)
+    const char* e = std::getenv("RAC1_COROUTINE");
+    g_co.ucontext = e != nullptr && std::strcmp(e, "ucontext") == 0;
+    if (g_co.ucontext) std::fprintf(stderr, "[platform] RAC1_COROUTINE=ucontext: the coroutine switches with swapcontext\n");
+#endif
     return true;
 }
 
 void coroutine_start(void (*entry)()) {
-    getcontext(&g_co.game);  // (the host thread's FPU modes, the rounding of decisions 11, carried into the coroutine)
+    // (the host thread's float modes, the rounding of decisions 11, carried into the coroutine)
+#if defined(RAC1_CTX_ASM)
+    if (use_asm()) {
+        g_co.entry = entry;
+        const auto top = (reinterpret_cast<std::uintptr_t>(g_co.stack) + kGuard + g_co.bytes) & ~static_cast<std::uintptr_t>(15);
+        g_co.game_sp = ctx_new_frame(top, &co_main);
+        return;
+    }
+#endif
+#if defined(RAC1_CTX_UCONTEXT)
+    getcontext(&g_co.game);
     g_co.game.uc_stack.ss_sp = static_cast<char*>(g_co.stack) + kGuard;
     g_co.game.uc_stack.ss_size = g_co.bytes;
     g_co.game.uc_link = &g_co.host;  // (entry returning resumes the host)
     makecontext(&g_co.game, entry, 0);
+#endif
 }
 
-void coroutine_resume() { swapcontext(&g_co.host, &g_co.game); }
+void coroutine_resume() {
+#if defined(RAC1_CTX_ASM)
+    if (use_asm()) {
+        rac1_ctx_switch(&g_co.host_sp, g_co.game_sp);
+        return;
+    }
+#endif
+#if defined(RAC1_CTX_UCONTEXT)
+    swapcontext(&g_co.host, &g_co.game);
+#endif
+}
 
-void coroutine_yield() { swapcontext(&g_co.game, &g_co.host); }
+void coroutine_yield() {
+#if defined(RAC1_CTX_ASM)
+    if (use_asm()) {
+        rac1_ctx_switch(&g_co.game_sp, g_co.host_sp);
+        return;
+    }
+#endif
+#if defined(RAC1_CTX_UCONTEXT)
+    swapcontext(&g_co.game, &g_co.host);
+#endif
+}
 
 // ---- Files ----
 

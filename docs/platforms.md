@@ -32,8 +32,8 @@ compiles one of them. `src/game/` and `runtime/` call the interface and stay sta
 
 | Area | Where it is used | Linux | Windows |
 |---|---|---|---|
-| The game frame's coroutine ([Decisions](decisions.md), 12) | `runtime/ee/ee_thread.cpp` | `ucontext`, a 64 MB `mmap` stack | a fiber (`CreateFiberEx`, 64 MB reserved) |
-| The FPU mode in the coroutine ([Decisions](decisions.md), 11) | the coroutine's start | `getcontext` copies it | the fiber copies the host thread's (`fegetenv` and MXCSR), and each fiber keeps its own (`FIBER_FLAG_FLOAT_SWITCH`) |
+| The game frame's coroutine ([Decisions](decisions.md), 12) | `runtime/ee/ee_thread.cpp` | a hand-written context switch on x86-64 and AArch64 (`src/platform/coroutine_*.S`, `ctx_switch.h`), `ucontext` on other architectures; a 64 MB `mmap` stack | a fiber (`CreateFiberEx`, 64 MB reserved) |
+| The FPU mode in the coroutine ([Decisions](decisions.md), 11) | the coroutine's start | the new context's frame copies the thread's (MXCSR and the x87 control word, or FPCR), and each switch saves and restores them, as `getcontext` / `swapcontext` do | the fiber copies the host thread's (`fegetenv` and MXCSR), and each fiber keeps its own (`FIBER_FLAG_FLOAT_SWITCH`) |
 | Float rounding toward zero ([Decisions](decisions.md), 11) | `runtime/ee/ps2_fpu.h` | `fesetround` and MXCSR | the same calls (MinGW-w64 has both) |
 | Memory-mapped files | `src/io/mapped_file.h` (the setup) | `mmap` | `CreateFileMapping` / `MapViewOfFile` |
 | Reads of the disc at an offset | `runtime/kernel/disc.cpp` | `pread`, `posix_fadvise` | `ReadFile` with an offset |
@@ -54,6 +54,16 @@ The Linux side behaves as before: the three reference images are unchanged.
 Left as they are, Linux only: the sampling profiler (`src/host/sample_prof.cpp`, `RAC1_SAMPLE_PROF`,
 a no-op elsewhere) and the overlay matcher's `--ported` count (it calls `grep`; the setup does not
 use it).
+
+The coroutine's switch on POSIX systems is written by hand for x86-64 and AArch64
+(`src/platform/coroutine_x86_64.S`, `coroutine_aarch64.S`, adapted from the R&C2 port,
+rac2-native-game, MIT): it saves the callee-saved registers and the float control registers (MXCSR
+and the x87 control word, or FPCR) on the context's own stack and swaps the stack pointers. It
+replaced `ucontext` for compatibility, not speed: `ucontext` is deprecated on macOS and Android's C
+library (bionic) does not have `getcontext` / `makecontext` / `swapcontext`. `ucontext` remains the
+switch on other architectures; on Linux `RAC1_COROUTINE=ucontext` picks it for one run, and CMake's
+`-DRAC1_UCONTEXT=ON` compiles only it, to compare (the game's state is the same with both: checked
+with `RAC1_RAMHASH`). Windows keeps its fiber.
 
 ## The compiler
 

@@ -64,7 +64,7 @@ for example the screen fade (`screen_fade`, 0x1f9838, in `src/game/ovl/screen_fa
 frame therefore runs on a coroutine of the host thread
 ([Decisions](decisions.md#12-the-games-frame-on-a-coroutine)):
 
-- `ee_thread_run(fn)` runs `fn` on a coroutine with its own stack (`ucontext` on Linux, a fiber on Windows).
+- `ee_thread_run(fn)` runs `fn` on a coroutine with its own stack (a hand-written context switch on Linux, `ucontext` on other architectures, a fiber on Windows: [Platforms](platforms.md#the-host-interface)).
 - `ee_thread_vsync(kind, shown)` is called where the original waits for a vsync inside such a loop.
   It always calls the vsync hook (so timer 1, the vsync callback and the sound advance exactly as on
   the PS2). If `shown` is true, it suspends the coroutine; the host shows the loop's frame and
