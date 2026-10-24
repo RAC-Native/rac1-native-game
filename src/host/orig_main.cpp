@@ -1761,14 +1761,16 @@ void pad_packet(GLFWwindow* win, uint64_t frame) {
                             std::hypot(lwc1(OV(0x00166dc0)) - lwc1(0x0013f3d0), lwc1(OV(0x00166dc4)) - lwc1(0x0013f3d4)),
                             lwc1(OV(0x00166dc8)) - lwc1(0x0013f3d8));
         }
-        if (std::strcmp(sim, "strafecam") == 0 || std::strcmp(sim, "strafecam0") == 0) {  // testing (RAC1_ADVANCED=1, Movement
-            // Strafing or RAC 3): Start at 120, L2 held 200..250 with the stick right, then the right stick right 255..340 (the
-            // camera turned just after the strafe; not for "strafecam0": the view's release alone); the camera's heading logged 240..380
+        if (std::strcmp(sim, "strafecam") == 0 || std::strcmp(sim, "strafecam0") == 0 || std::strcmp(sim, "strafecam1") == 0) {
+            // testing (RAC1_ADVANCED=1, Movement Strafing or RAC 3): Start at 120, L2 held 200..250 with the stick right, then the
+            // right stick right 255..340 (the camera turned just after the strafe; not for "strafecam0": the view's release alone;
+            // "strafecam1": the left stick kept right after L2, to 380); the camera's heading logged 240..380
             if (frame >= 120 && frame < 124) held |= 0x0800;
             if (frame >= 200 && frame < 250) { held |= 0x0001; lx = 1.0f; }
+            if (sim[9] == '1' && frame >= 250 && frame < 380) lx = 1.0f;
             if (sim[9] == 0 && frame >= 255 && frame < 340) rx = 1.0f;
             if (frame >= 240 && frame < 380)
-                std::printf("[strafecam] frame %llu state %d facing %.3f camera %.3f strafing %d\n", static_cast<unsigned long long>(frame), lw(0x001413d4),
+                std::printf("[strafecam] frame %llu state %d facing %.5f camera %.5f strafing %d\n", static_cast<unsigned long long>(frame), lw(0x001413d4),
                             lwc1(0x0013f350 + 0x98), lwc1(OV(0x00166dd8)), advanced_strafing() ? 1 : 0);
         }
         if (std::strcmp(sim, "qshold") == 0) {  // Start at 120 (the arrival scene skipped), the quick select held 200..360

@@ -827,9 +827,9 @@ void advanced_aim_after_camera() {
     swc1(PAD + 0x100, g_saved_rx);
     swc1(PAD + 0x104, g_saved_ry);
     // while aiming the camera is held on the aim. When the aim ends the follow camera's own state
-    // (its points and offset, which kept following the hero) is turned onto the aim once; its
-    // springs then reach the aim's heading in about 30 frames, while the view eases from the aim
-    // back to the camera's own heading (a cut back to it was a jolt)
+    // (its points and offsets, which kept following the hero) is turned onto the aim once, so the
+    // camera goes on from the aim's heading; where it still ends up elsewhere the view eases from
+    // the aim back to the camera's own heading (a cut back to it was a jolt)
     const bool aiming = g_aim_was && advanced_strafing();  // the heading held (strafe or aim)
     const bool modern = aiming && g_pitch_was;              // the pitch and the shoulder view too
     if (!aiming && g_release <= 0 && g_pitch_release <= 0 && g_shoulder <= 0.0f) return;
@@ -864,10 +864,14 @@ void advanced_aim_after_camera() {
             for (uint32_t r = 0; r < 0x30; r += 0x10) turn_vec(cam + r, c, sn);
             turn_point(cam + 0x30, px, py, c, sn);
             if (first) {
-                const uint32_t w = lwu(cam + 0x70);  // the points 0x2e46b8 carries with the hero, the offset +0x130
+                // the points 0x2e46b8 carries with the hero, the offset +0x130 and the camera's own
+                // offset +0x140 that springs toward it (0x2e9720; left behind, the camera swung back
+                // to the aim on its yaw spring while a run to the side swung it away: a jiggle)
+                const uint32_t w = lwu(cam + 0x70);
                 if (w != 0) {
                     for (const uint32_t o : {0x0u, 0x40u, 0xa0u, 0xd0u}) turn_point(w + o, px, py, c, sn);
                     turn_vec(w + 0x130, c, sn);
+                    turn_vec(w + 0x140, c, sn);
                 }
             }
         }
