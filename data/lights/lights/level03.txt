@@ -1,0 +1,11 @@
+# rac1-native: lights placed by hand for level 3 (the debug menu's Lights tab)
+# light x y z  r g b  intensity radius flicker on
+# Kerwan. The sun from the front of the first tunnel's view (Daino, 2026-10-20): toward +y, the city's side, low enough (28
+# degrees) to come in through the tunnel's mouth - the path inside lit with the leaves' and Ratchet's shadows toward the camera,
+# the city backlit. Along the first walk the view facing the sun sees it as much as at the key light's direction raised to 50
+# (55 %, the covered views' measure); the plaza's facades facing the camera are in their own shade (the backlight).
+# The street lamps (moby class 1827, the posts with the white globes; 39 on the level): a warm white light in each globe, 3 units
+# over the post's foot, half of it aimed down (a pool on the pavement around the post). No shadow cube (the globe's own mesh
+# would hide it).
+sun -108.5 45.0
+emit moby 1827  0.000 0.000 3.000  1.000 0.917 0.757  2.500 9.000 0.000  0.50

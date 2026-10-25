@@ -1,0 +1,11 @@
+# rac1-native: lights placed by hand for level 10 (the debug menu's Lights tab)
+# light x y z  r g b  intensity radius flicker on
+# Orxon. Tie class 1521 (the mint floor panels of the base's rooms, on an 8-unit grid): a floor colour, not a lamp (53 % of
+# the class, hue 181: a cool colour, so the heuristic kept it as a light and lit the floor with itself).
+# The base (Clank's part): its rooms are lit by the zone's key light, which comes from above, so the sun's shadow of the roof
+# would cover them: the sun off there, the original's look. The box holds the first rooms found headless (Clank's first room
+# around 216 154 58, the store room around 220 135 58); the outdoors around (the landing pad near 222 200 50, the rocks
+# near 220 172 50) stays out. Extend it with the debug menu's Sun tab while playing the rest of the base.
+sun -52.5 5.0
+interior 205.0 128.0 54.0  236.0 166.0 75.0
+noauto 1521

@@ -1,0 +1,15 @@
+# rac1-native: lights placed by hand for level 1 (the debug menu's Lights tab)
+# light x y z  r g b  intensity radius flicker on
+# Novalis. The sun raised from the key light's 33 degrees to 43 (Daino's choice in the sun editor; 55 was tried first), its azimuth
+# turned to 0 (toward +x). At 33 degrees the rock walls and the plateau beside the start valley keep it in shade all day: along the
+# first walk (the start, the landing pads, the river) a third of what faces the sun saw it; higher, most of it does and the walls'
+# shadows fall at their feet. Our choice (the sun editor, docs/lighting.md "The level's own sun"); the light set's colour is kept.
+# The neon tubes in the buildings by the river (shrub class 282, the white panel of the fixture shrub 167 - dark frame, cable -;
+# seven): not found by the automatic search (white texels, and shrubs are not searched). A cool white light just under each panel,
+# aimed down (0.85: a pool of light on the floor below, the wall under the fixture washed, the ceiling and the fixture left dark);
+# 5.0 and 13 units so the floor some 6 units below shows it against the painted light (1.3 and 11 every way alike barely did).
+# The hanging lamps under the round ceiling fixtures (shrub class 281, the white bulb of shrub 170; ten, in the halls toward the
+# Plumber). A cool white light at the bulb, mostly downward (0.6: the shade above it), on the walkways about 5 units below.
+sun 0.0 90.0
+emit shrub 282  2.481 -4.585 -17.643  0.795 0.925 1.000  5.000 13.000 0.000  0.80
+emit shrub 281  -0.922 -0.970 -25.646  0.875 0.955 1.000  3.500 12.000 0.000  0.55

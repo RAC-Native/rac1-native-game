@@ -1,0 +1,3 @@
+# rac1-native: lights placed by hand for level 11 (the debug menu's Lights tab)
+# light x y z  r g b  intensity radius flicker on
+sun -145.5 80.5

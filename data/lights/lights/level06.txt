@@ -1,0 +1,7 @@
+# rac1-native: lights placed by hand for level 6 (the debug menu's Lights tab)
+# light x y z  r g b  intensity radius flicker on
+# Blarg's station. Its closed rooms are lit by their zone's key light through the hull: the sun's shadow would cover them. The
+# zone lit with light set 6 is one (0.4.0's covered-view check found it closed: no sky, nothing in the sun); the sun is off
+# where the hero is lit with it. The lounges with windows on space keep their shadows. Other closed zones: to add with the
+# debug menu's Sun tab ("Add the hero's light set") while playing.
+interior_set 6

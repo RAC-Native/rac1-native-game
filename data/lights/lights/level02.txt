@@ -1,0 +1,5 @@
+# rac1-native: lights placed by hand for level 2 (the debug menu's Lights tab)
+# light x y z  r g b  intensity radius flicker on
+# Aridia. The sun turned to come from the big planet in the skybox (azimuth 33, elevation 19.5): the light now matches
+# what the sky shows. Chosen by Daino with the Sun tab.
+sun -131.0 5.0
