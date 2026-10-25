@@ -5,3 +5,5 @@
 # where the hero is lit with it. The lounges with windows on space keep their shadows. Other closed zones: to add with the
 # debug menu's Sun tab ("Add the hero's light set") while playing.
 interior_set 6
+# Blarg's station: no Sun Rays, from Anya-Thoughtmane's lighting pass (#101: off to go on with the level's sun).
+sun_rays off

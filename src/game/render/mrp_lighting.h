@@ -106,6 +106,10 @@ extern int g_class_light_selected;
 // leaves the places the player walks in the permanent shade of the level's walls (Novalis's start). True when set
 bool mrp_user_sun(float* az, float* el);
 void mrp_user_sun_set(bool on, float az, float el);
+// orig: (host) the level's Sun Rays off ("sun_rays off" in its file): the pass not drawn there, OpenGL and Vulkan, whatever the
+// Sun Rays option (our data: a tester's choice where the rays do not suit the level)
+bool mrp_user_sun_rays_off();
+void mrp_user_sun_rays_set_off(bool off);
 // orig: (host) the rotation (column-major 3x3) taking the game's key light's direction to the sun's, true when the modern lighting is
 // on and the level's file turns the sun (the mobys' light records are turned with it: mrp_moby_renderer.cpp)
 bool mrp_lighting_sun_turn(float r[9]);
