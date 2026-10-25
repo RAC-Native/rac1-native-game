@@ -688,6 +688,9 @@ void main() {
     if (uShPass != 0 && uAte == 0) return;  // (a caster without the alpha test: its depth alone, no texture read)
 #endif
     vec4 c = uIip != 0 ? vColor : vFlat;
+#ifdef SH_POINTS
+    vec3 c_game = c.rgb;  // (the game's colour: an emissive texel's, sh_emissive)
+#endif
     c.rgb = sh_apply(c.rgb);
 #ifdef SH_POINTS
     c.rgb = sh_points(c.rgb);  // (the game's point lights per pixel; the lighting's variant only)
@@ -726,6 +729,9 @@ void main() {
         else if (tfx == 1u) { o.rgb = t.rgb; o.a = tcc != 0u ? t.a : c.a; }
         else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
+#ifdef SH_POINTS
+        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 25) & 31u);  // (the word's bits 25..29)
+#endif
         if (uShade == 2) o.rgb = t.rgb;
     }
     if (uShade == 1) o.rgb = c.rgb;
@@ -1325,6 +1331,77 @@ const TexRef* vram_texture(Level& L, uint64_t tex0, uint64_t tex1, uint64_t mip1
     return &r;
 }
 
+// ---- the emissive surfaces (mrp_lighting.h EmissiveSurface; our data) ----------------------------------------------------------
+// per level texture (tfrag, tie, shrub tables) its shader slot (0 none), rebuilt on the scene's worker when the list, the preview or
+// the level changes; the slot goes into the texture word's bits 25..29 (key_now) while the modern lighting is on, the original's draws
+// untouched
+struct EmissiveTable {
+    uint32_t gen = 0;
+    int level = -1;
+    bool on = false;  // (this frame: the modern lighting and the option on, a surface marked)
+    std::vector<uint8_t> slot[3];
+} g_emis;
+
+// orig: (host) a class's texture (EmissiveSurface::tex) as the level's texture (-1 none), the class's count
+int class_texture(const Level& L, int kind, int o_class, int tex, int* ntex) {
+    if (ntex != nullptr) *ntex = 0;
+    if (!L.loaded || L.world == nullptr) return -1;
+    if (kind == 0) {
+        if (ntex != nullptr) *ntex = static_cast<int>(L.tex[0].size());
+        return tex >= 0 && static_cast<size_t>(tex) < L.tex[0].size() ? tex : -1;
+    }
+    if (kind == 1)
+        for (const TieClass& c : L.world->ties)
+            if (c.o_class == o_class) {
+                if (ntex != nullptr) *ntex = static_cast<int>(c.textures.size());
+                return tex >= 0 && static_cast<size_t>(tex) < c.textures.size() ? c.textures[static_cast<size_t>(tex)].texture : -1;
+            }
+    if (kind == 2)
+        for (const ShrubClass& c : L.world->shrubs)
+            if (c.o_class == o_class) {
+                int found = -1, n = 0;
+                for (const ShrubPacket& p : c.packets)
+                    for (const TexturePrim& t : p.textures) {
+                        n = std::max(n, t.local_texture + 1);
+                        if (t.local_texture == tex && t.texture >= 0) found = t.texture;
+                    }
+                if (ntex != nullptr) *ntex = n;
+                return found;
+            }
+    return -1;
+}
+
+// orig: (host) the table brought up to date (the frame's build, on the scene's worker)
+void emissive_refresh() {
+    const Level& L = g_level;
+    std::vector<EmissiveSurface> list;
+    EmissiveSurface pv;
+    bool has_pv = false;
+    const uint32_t gen = mrp_emissive_snapshot(list, &pv, &has_pv);
+    const int level = L.loaded ? L.id : -1;
+    if (gen != g_emis.gen || level != g_emis.level) {
+        g_emis.gen = gen;
+        g_emis.level = level;
+        bool any = false;
+        for (int k = 0; k < 3; ++k) g_emis.slot[k].assign(L.tex[k].size(), 0);
+        auto mark = [&](const EmissiveSurface& e, uint8_t slot) {
+            if (e.kind < 0 || e.kind > 2) return;
+            int n = 0;
+            const int t = class_texture(L, e.kind, e.o_class, e.tex, &n);
+            static const bool trace = std::getenv("RAC1_LIGHTS_TRACE") != nullptr;
+            if (trace && level >= 0)
+                std::printf("[lights] emissive %s %d tex %d (of %d): level texture %d, slot %u\n", mrp_emissive_kind_name(e.kind), e.o_class, e.tex, n, t, slot);
+            if (t < 0 || static_cast<size_t>(t) >= g_emis.slot[e.kind].size()) return;
+            g_emis.slot[e.kind][static_cast<size_t>(t)] = slot;
+            any = true;
+        };
+        for (size_t i = 0; i < list.size() && i < static_cast<size_t>(kEmissiveSlots); ++i) mark(list[i], static_cast<uint8_t>(i + 1));
+        if (has_pv) mark(pv, static_cast<uint8_t>(kEmissivePreviewSlot));
+        g_emis.on = any;
+    }
+}
+bool g_emis_frame = false;  // (this frame's batches carry the slots)
+
 // orig: (host) the GS's state along the world's packets (the registers as the replica keeps them, gs_emu.cpp) and the vertex
 // queue; the triangles the GS would draw become GPU triangles with the state of their closing vertex
 struct GsFront {
@@ -1418,6 +1495,7 @@ struct GsFront {
         k.bucket = r.bucket;
         k.layer = r.layer;
         k.word |= (std::min(std::min(r.mips, mxl + 1), 4u) - 1) << 22;  // (the GS samples levels 0..MXL only, as the mobys')
+        if (g_emis_frame && ti < g_emis.slot[table].size()) k.word |= static_cast<uint32_t>(g_emis.slot[table][ti]) << 25;  // (an emissive surface's slot)
         ++g_st.tex_ok;
         return k;
     }
@@ -1888,6 +1966,8 @@ void tfrag_expect(const GsFront& g, Frame& F, const ScenePacket& p, uint32_t vba
 
 // orig: (host) the frame's GPU vertices / triangles / batches from the scene
 void build_triangles(Frame& F) {
+    emissive_refresh();
+    g_emis_frame = g_emis.on && g_modern_shadows != 0 && g_emissive != 0;
     F.v.clear();
     F.idx.clear();
     F.batches.clear();
@@ -3542,6 +3622,239 @@ void mrp_world_draw_casters(const float* light_vp, int view) {
 std::vector<EmitterClass> mrp_world_emitter_classes() { return g_emitter_classes; }
 // orig: (host) see mrp_lighting.h
 void mrp_world_emitters_rebuild() { g_emitters_level = -2; }
+
+namespace {
+// orig: (host) the distance from p to the triangle (a, b, c) (the closest point's, Ericson's regions)
+float point_triangle_dist(const glm::vec3& p, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) {
+    const glm::vec3 ab = b - a, ac = c - a, ap = p - a;
+    const float d1 = glm::dot(ab, ap), d2 = glm::dot(ac, ap);
+    if (d1 <= 0.0f && d2 <= 0.0f) return glm::length(p - a);
+    const glm::vec3 bp = p - b;
+    const float d3 = glm::dot(ab, bp), d4 = glm::dot(ac, bp);
+    if (d3 >= 0.0f && d4 <= d3) return glm::length(p - b);
+    const float vc = d1 * d4 - d3 * d2;
+    if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f) return glm::length(p - (a + ab * (d1 / (d1 - d3))));
+    const glm::vec3 cp = p - c;
+    const float d5 = glm::dot(ab, cp), d6 = glm::dot(ac, cp);
+    if (d6 >= 0.0f && d5 <= d6) return glm::length(p - c);
+    const float vb = d5 * d2 - d1 * d6;
+    if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f) return glm::length(p - (a + ac * (d2 / (d2 - d6))));
+    const float va = d3 * d6 - d5 * d4;
+    if (va <= 0.0f && (d4 - d3) >= 0.0f && (d5 - d6) >= 0.0f) return glm::length(p - (b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6)))));
+    const float den = 1.0f / (va + vb + vc);
+    return glm::length(p - (a + ab * (vb * den) + ac * (vc * den)));
+}
+// the level's tfrag triangles in world units with their texture (the near image's plan run on the CPU, as the automatic emitters'),
+// made at the first pick of a level
+struct TfragTris {
+    int level = -2;
+    std::vector<glm::vec3> v;  // 3 per triangle
+    std::vector<int> tex;
+};
+TfragTris g_tf_tris;
+void tfrag_tris_build() {
+    const Level& L = g_level;
+    g_tf_tris.level = L.id;
+    g_tf_tris.v.clear();
+    g_tf_tris.tex.clear();
+    if (!g_tlevel.ok) return;
+    float view[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+    uint32_t consts[4 * 14] = {};
+    const float one = 1.0f;
+    uint32_t one_u;
+    std::memcpy(&one_u, &one, 4);
+    for (uint32_t c = 0; c < 14; ++c) consts[4 * c + 1] = one_u;
+    consts[0] = one_u;
+    std::vector<TfragCpuVertex> out;
+    for (const TfragEntryGpu& e : g_tlevel.entries) {
+        if (!e.ok) continue;
+        const TfragPlan* p = e.plan(2, 0x00e, false);
+        if (p == nullptr) p = e.plan(2, 0x010, false);
+        if (p == nullptr) p = e.plan(2, 0x014, false);
+        if (p == nullptr || !tfrag_exec_cpu(e, *p, 2, nullptr, view, consts, out)) continue;
+        const std::vector<uint8_t>& img = e.image[2];
+        std::vector<int> run_tex(p->runs.size(), -1);
+        size_t run = 0;
+        for (const TfragEvent& ev : p->events) {
+            if (ev.kind != 0) continue;
+            int cur = -1;
+            for (uint32_t r = 0; r < 5; ++r) {
+                const size_t o = 16u * (ev.at + r);
+                if (o + 16 > img.size()) break;
+                uint64_t data, reg;
+                std::memcpy(&data, img.data() + o, 8);
+                std::memcpy(&reg, img.data() + o + 8, 8);
+                if ((reg & 0xff) == 0x08) cur = static_cast<int>(data >> 24);  // (CLAMP_1's MINV: the texture's index)
+            }
+            if (run < run_tex.size()) run_tex[run] = cur;
+            ++run;
+        }
+        for (size_t j = 2; j < out.size() && j < p->verts.size(); ++j) {
+            if (p->verts[j].pos < 2) continue;
+            const int ti = p->verts[j].run < run_tex.size() ? run_tex[p->verts[j].run] : -1;
+            if (ti < 0) continue;
+            for (int k = 0; k < 3; ++k) {
+                const TfragCpuVertex& v = out[j - 2 + static_cast<size_t>(k)];
+                g_tf_tris.v.push_back(glm::vec3(v.hp[0], v.hp[1], v.hp[2]) / 1024.0f);
+            }
+            g_tf_tris.tex.push_back(ti);
+        }
+    }
+}
+// orig: (host) a tie / shrub instance's frame: world = pos + M x model point (the instance's rows x its scale / 1024)
+struct InstFrame {
+    glm::vec3 pos;
+    glm::mat3 m;
+    glm::vec4 sphere;
+};
+}  // namespace
+
+// orig: (host) see mrp_lighting.h
+int mrp_world_class_texture(int kind, int o_class, int tex, int* ntex) { return class_texture(g_level, kind, o_class, tex, ntex); }
+
+// orig: (host) see mrp_lighting.h
+SurfacePick mrp_world_surface_at(const float pp[3]) {
+    SurfacePick r;
+    const Level& L = g_level;
+    if (!L.loaded || L.world == nullptr || !g_slevel.ok) return r;
+    const glm::vec3 P(pp[0], pp[1], pp[2]);
+    float best = 0.5f;  // (units: a triangle farther than this is not the one under the crosshair)
+    auto consider = [&](int kind, int o_class, int tex, int texture, float d) {
+        if (d >= best) return;
+        best = d;
+        r.kind = kind;
+        r.o_class = o_class;
+        r.tex = tex;
+        r.texture = texture;
+        r.dist = d;
+    };
+    std::unordered_map<const TiePacket*, const TieClass*> cls_of;
+    for (const TieClass& c : L.world->ties)
+        for (const TiePacket& p : c.packets) cls_of[&p] = &c;
+    std::vector<InstFrame> near;
+    for (const StaticTieClass& sc : g_slevel.ties) {
+        if (sc.lod[0].empty() || sc.lod[0].front().tie == nullptr) continue;
+        const auto ci = cls_of.find(sc.lod[0].front().tie);
+        if (ci == cls_of.end()) continue;
+        const TieClass& tc = *ci->second;
+        near.clear();
+        const uint32_t bounds = lwu(sc.rec + 0x28), n = lhu(sc.rec + 0x26);
+        for (uint32_t i = 0; i < n; ++i) {
+            InstFrame f;
+            for (uint32_t l = 0; l < 4; ++l) f.sphere[static_cast<int>(l)] = lwc1(bounds + 0x20 * i + 4 * l);
+            if (glm::length(P - glm::vec3(f.sphere)) > f.sphere.w + 1.0f) continue;
+            const uint32_t data = lwu(bounds + 0x20 * i + 0x10);
+            const float w = lwc1(data + 0x3c);
+            f.pos = glm::vec3(lwc1(data + 0x30), lwc1(data + 0x34), lwc1(data + 0x38));
+            for (uint32_t c = 0; c < 3; ++c)
+                for (uint32_t l = 0; l < 3; ++l) f.m[static_cast<int>(c)][static_cast<int>(l)] = lwc1(data + 0x10 * c + 4 * l) * w / 1024.0f;
+            near.push_back(f);
+        }
+        if (near.empty()) continue;
+        for (const StaticPacket& sp : sc.lod[0]) {
+            const auto ti = L.tpl.find(sp.tie);
+            if (ti == L.tpl.end()) continue;
+            const Tpl& t = ti->second;
+            for (const TplRun& run : t.runs) {
+                if (run.slot < 0 || static_cast<size_t>(run.slot) >= sp.tie->prims.size()) continue;
+                const int prim = sp.tie->prims[static_cast<size_t>(run.slot)];
+                if (prim < 0 || static_cast<size_t>(prim) >= tc.textures.size()) continue;
+                for (uint32_t k = 0; k + 2 < run.count; k += 3) {
+                    glm::vec3 v[3];
+                    for (int j = 0; j < 3; ++j) {
+                        const TVert& tv = L.tverts[t.first_vertex + L.tidx[t.first_index + run.first + k + static_cast<uint32_t>(j)]];
+                        v[j] = glm::vec3(tv.pos[0], tv.pos[1], tv.pos[2]);
+                    }
+                    for (const InstFrame& f : near)
+                        consider(1, tc.o_class, prim, tc.textures[static_cast<size_t>(prim)].texture,
+                                 point_triangle_dist(P, f.pos + f.m * v[0], f.pos + f.m * v[1], f.pos + f.m * v[2]));
+                }
+            }
+        }
+    }
+    const uint32_t shrub_data = lwu(OV(0x0016049cu));
+    for (size_t c = 0; c < g_slevel.shrubs.size() && c < L.world->shrubs.size(); ++c) {
+        const StaticShrubClass& sc = g_slevel.shrubs[c];
+        const ShrubClass& cls = L.world->shrubs[c];
+        if (sc.packets.empty()) continue;
+        near.clear();
+        const uint32_t bounds = lwu(sc.rec + 0x18), n = lhu(sc.rec + 0x16);
+        for (uint32_t i = 0; i < n; ++i) {
+            const uint32_t b = bounds + 0x20 * i;
+            InstFrame f;
+            for (uint32_t l = 0; l < 4; ++l) f.sphere[static_cast<int>(l)] = lwc1(b + 4 * l);
+            if (glm::length(P - glm::vec3(f.sphere)) > f.sphere.w + 1.0f) continue;
+            const uint32_t data = shrub_data + 0x40 * lhu(b + 0x18);
+            const float w = lwc1(data + 0x3c);
+            f.pos = glm::vec3(lwc1(data + 0x30), lwc1(data + 0x34), lwc1(data + 0x38));
+            for (uint32_t cc = 0; cc < 3; ++cc)
+                for (uint32_t l = 0; l < 3; ++l) f.m[static_cast<int>(cc)][static_cast<int>(l)] = lwc1(data + 0x10 * cc + 4 * l) * w / 1024.0f;
+            near.push_back(f);
+        }
+        if (near.empty()) continue;
+        for (const StaticPacket& sp : sc.packets) {
+            if (sp.shrub == nullptr) continue;
+            const auto ti = L.tpl.find(sp.shrub);
+            if (ti == L.tpl.end()) continue;
+            const Tpl& t = ti->second;
+            for (const TplRun& run : t.runs) {
+                if (run.slot < 0 || static_cast<size_t>(run.slot) >= sp.shrub->textures.size()) continue;
+                const TexturePrim& tp = sp.shrub->textures[static_cast<size_t>(run.slot)];
+                for (uint32_t k = 0; k + 2 < run.count; k += 3) {
+                    glm::vec3 v[3];
+                    for (int j = 0; j < 3; ++j) {
+                        const TVert& tv = L.tverts[t.first_vertex + L.tidx[t.first_index + run.first + k + static_cast<uint32_t>(j)]];
+                        v[j] = glm::vec3(tv.pos[0], tv.pos[1], tv.pos[2]);
+                    }
+                    for (const InstFrame& f : near)
+                        consider(2, cls.o_class, tp.local_texture, tp.texture, point_triangle_dist(P, f.pos + f.m * v[0], f.pos + f.m * v[1], f.pos + f.m * v[2]));
+                }
+            }
+        }
+    }
+    if (g_tf_tris.level != L.id) tfrag_tris_build();
+    for (size_t i = 0; i < g_tf_tris.tex.size(); ++i) {
+        const glm::vec3* v = &g_tf_tris.v[3 * i];
+        const glm::vec3 lo = glm::min(glm::min(v[0], v[1]), v[2]) - best, hi = glm::max(glm::max(v[0], v[1]), v[2]) + best;
+        if (glm::any(glm::lessThan(P, lo)) || glm::any(glm::greaterThan(P, hi))) continue;
+        consider(0, 0, g_tf_tris.tex[i], g_tf_tris.tex[i], point_triangle_dist(P, v[0], v[1], v[2]));
+    }
+    if (r.kind >= 0) class_texture(L, r.kind, r.o_class, r.tex, &r.ntex);
+    return r;
+}
+
+// orig: (host) see mrp_lighting.h
+std::vector<EmissiveCandidate> mrp_world_emissive_candidates() {
+    std::vector<EmissiveCandidate> out;
+    const Level& L = g_level;
+    if (!L.loaded || L.world == nullptr) return out;
+    auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
+    std::map<std::pair<int, int>, bool> seen;  // (kind, level texture)
+    auto test = [&](int kind, int o_class, int tex, int texture) {
+        const int table = kind == 1 ? 1 : 2;
+        if (texture < 0 || static_cast<size_t>(texture) >= L.tex[table].size() || !seen.insert({{kind, texture}, true}).second) return;
+        const mrp::Texture& tx = L.tex[table][static_cast<size_t>(texture)];
+        if (tx.width == 0 || tx.mips.empty() || tx.mips[0].size() < static_cast<size_t>(tx.width) * tx.height) return;
+        size_t glow = 0, white = 0, n = static_cast<size_t>(tx.width) * tx.height;
+        for (size_t q = 0; q < n; ++q) {
+            const uint32_t c = tx.palette[csm1(tx.mips[0][q])];
+            if (emissive_rgba(c)) ++glow;
+            const int r8 = static_cast<int>(c & 0xff), g8 = static_cast<int>((c >> 8) & 0xff), b8 = static_cast<int>((c >> 16) & 0xff);
+            const int mx = std::max({r8, g8, b8}), mn = std::min({r8, g8, b8});
+            if (mn >= 0xb0 && mx - mn <= mx / 6) ++white;  // (near white: RAC1_LIGHTS_WHITE's test)
+        }
+        EmissiveCandidate c{kind, o_class, tex, texture, static_cast<float>(glow) / n, static_cast<float>(white) / n};
+        if ((c.glow >= 0.02f || c.white >= 0.02f) && c.glow + c.white <= 0.7f) out.push_back(c);
+    };
+    for (const TieClass& tc : L.world->ties)
+        for (size_t i = 0; i < tc.textures.size(); ++i) test(1, tc.o_class, static_cast<int>(i), tc.textures[i].texture);
+    for (const ShrubClass& sc : L.world->shrubs)
+        for (const ShrubPacket& p : sc.packets)
+            for (const TexturePrim& t : p.textures) test(2, sc.o_class, t.local_texture, t.texture);
+    std::sort(out.begin(), out.end(), [](const EmissiveCandidate& a, const EmissiveCandidate& b) { return a.glow + a.white > b.glow + b.white; });
+    if (out.size() > 80) out.resize(80);
+    return out;
+}
 
 // orig: (host) see mrp_lighting.h
 const std::vector<TieSpot>& mrp_world_tie_instances() {

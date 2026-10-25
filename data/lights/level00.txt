@@ -18,3 +18,8 @@ emit tie 2024  -21.500 0.000 5.300  0.400 0.900 0.950  0.450 3.200 0.000
 emit tie 2024  21.500 0.000 5.300  0.400 0.900 0.950  0.450 3.200 0.000
 emit tie 2024  0.000 -21.500 5.300  0.400 0.900 0.950  0.450 3.200 0.000
 emit tie 2024  0.000 21.500 5.300  0.400 0.900 0.950  0.450 3.200 0.000
+# Emissive surfaces (#102, our choice): textures that keep the original lighting's brightness (x the strength) where the modern
+# lighting darkens them. The domed building's round cyan lamps are shrub 569 (three stacked instances per column); tex 1 is their glass.
+emissive shrub 569 tex 1  1.30 0.00
+# Its cyan door panels are painted in the building's one texture (tie 2024, texture 7, shared by all its prims): only its brightest texels.
+emissive tie 2024 tex 0  1.20 0.80

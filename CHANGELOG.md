@@ -8,6 +8,10 @@ What changed in each release. Releases are source only: you build the game with 
 ### Graphics
 - Modern lighting: more lamps light the world on Veldin and Novalis (nanotech crates, fires, plasma beams, landing pad, eyes, bombs), and
   lights per object class follow the objects the game spawns later (thanks Anya-Thoughtmane, #102).
+- Modern lighting: emissive surfaces. A level's light file can mark a texture (`emissive <tfrag|tie|shrub|moby> <class> tex <n>
+  [strength] [threshold]`) that keeps the original lighting's brightness where the sun's shadows and the relighting would darken it
+  (lamps, screens, panels painted in textures), marked in the debug menu's Lights tab; Veldin's domed building lamps and Novalis's
+  landing pad lamps, neon tubes and bulbs are marked (#102).
 
 ### Fixes
 - When the computer falls behind (or with V-Sync on a 75 Hz display) and a frame runs two or more of the game's

@@ -137,6 +137,54 @@ struct EmitterClass {
     bool material = false;
 };
 std::vector<EmitterClass> mrp_world_emitter_classes();
+// orig: (host) the level's emissive surfaces ("emissive <tfrag|tie|shrub|moby> <class> tex <n> [strength] [threshold]" in its file; our
+// data): with the modern lighting, the texels of that texture (those whose brightest channel reaches the threshold, all of them at 0)
+// keep the colour the original lighting gives them - the game's vertex colour, no sun shadow - times the strength, unless the modern
+// lighting makes them brighter (lamps, screens, eyes painted in textures: not darkened in shade or at night). `tex` is the class's
+// texture (a tie's texture prim, a shrub's or a moby's local texture 0..15); a tfrag has no class (`tfrag 0 tex <n>`: the level's
+// tfrag texture n). A tie's or a shrub's texture is the level's: it glows wherever the level uses it, a moby's is its class's alone.
+// Shader slots 1..30 (uEmis), 31 the debug menu's preview (a pulsing magenta)
+struct EmissiveSurface {
+    int kind = 1;  // 0 tfrag, 1 tie, 2 shrub, 3 moby
+    int o_class = 0;
+    int tex = 0;
+    float strength = 1.0f;   // the original's colour x this (0..4)
+    float threshold = 0.0f;  // the texels' brightest channel from which they glow (0..1; 0: the whole texture)
+};
+constexpr int kEmissiveSlots = 30, kEmissivePreviewSlot = 31;
+// orig: (host) 1 (default) the emissive surfaces on with the modern lighting (RAC1_EMISSIVE=0: none - testing, the before images)
+extern int g_emissive;
+std::vector<EmissiveSurface>& mrp_user_emissive();
+// orig: (host) the list edited (the debug menu): the renderers take its new shape (slots) at their next frame
+void mrp_user_emissive_changed();
+// orig: (host) the debug menu's preview (kind -1: none): that texture pulses magenta
+void mrp_emissive_preview(int kind, int o_class, int tex);
+// orig: (host) the renderers' copy (any thread): the surfaces by slot (index i: slot i + 1; the preview, when on, in slot 31 -
+// `preview` set), and a generation that changes with the list or the level
+uint32_t mrp_emissive_snapshot(std::vector<EmissiveSurface>& out, EmissiveSurface* preview, bool* has_preview);
+const char* mrp_emissive_kind_name(int kind);
+// orig: (host) the surface (tfrag, tie, shrub) at a world point: the nearest triangle of the level's world within 0.5 units, its
+// class and texture (mrp_world_renderer.cpp; the debug menu's crosshair). kind -1: none
+struct SurfacePick {
+    int kind = -1;  // 0 tfrag, 1 tie, 2 shrub
+    int o_class = 0;
+    int tex = -1;      // the class's texture (as EmissiveSurface::tex)
+    int texture = -1;  // the level's texture (the kind's table)
+    int ntex = 0;      // the class's textures (tie: prims; shrub: local textures 0..15; tfrag: the level's)
+    float dist = 0.0f;
+};
+SurfacePick mrp_world_surface_at(const float p[3]);
+// orig: (host) the level texture of a class's texture (-1 none) and the class's texture count
+int mrp_world_class_texture(int kind, int o_class, int tex, int* ntex = nullptr);
+// orig: (host) the debug menu's "suggest": the level's tie / shrub textures with bright saturated or near-white texels (as
+// RAC1_LIGHTS_WHITE's test) over a small part of them - candidates for emissive, never applied by themselves
+struct EmissiveCandidate {
+    int kind = 1, o_class = 0, tex = 0, texture = -1;
+    float glow = 0.0f, white = 0.0f;  // the texture's share of glowing / near-white texels
+};
+std::vector<EmissiveCandidate> mrp_world_emissive_candidates();
+// orig: (host) a moby class's local textures in use (mrp_moby_renderer.cpp): bit n for local texture n
+uint32_t mrp_moby_class_local_textures(int o_class);
 // orig: (host) the level's tie instances (their class, position and rows - a model unit / 1024 is a world unit at scale 1), made
 // once per level from its tables (mrp_world_renderer.cpp)
 struct TieSpot {
@@ -197,6 +245,7 @@ struct ShadowLocs {
     int sun_k = -1;                          // (the sun's shadows' weight)
     int key = -1, key_dir = -1;              // (the key light's colour and back factor, its direction: the world's shadows)
     int strength = -1;                       // (the shadows' strength)
+    int emis = -1;                           // (the emissive surfaces' slots: strength, threshold, preview)
 };
 // orig: (host) the locations of a linked program
 ShadowLocs mrp_lighting_locs(unsigned prog);
@@ -266,6 +315,7 @@ bool mrp_moby_caster_rect(const float* light_vp, float rect[4], const float* wit
     "uniform vec3 uShKeyDir;\n"          /* toward the key light as the game lights with it (the sun may be turned) */ \
     "uniform float uShStrength;\n"       /* the shadows' strength: the share of the key light a shadow hides (Options) */ \
     "float sh_vis = 1.0;\n"              /* the sun's visibility (the strength applied), the zone's weight not applied */ \
+    "uniform vec4 uEmis[32];\n"          /* the emissive surfaces: [0].x on; per slot strength, threshold, -, preview (x the pulse) */ \
     "#endif\n"                                                                                          \
     "uniform int uShDebug;\n"                                                                           \
     "uniform int uPtN;\n"                                                                               \
@@ -384,6 +434,18 @@ bool mrp_moby_caster_rect(const float* light_vp, float rect[4], const float* wit
     "    if (uShDebug == 2) return vec3(sh_state.x);\n"                                                \
     "    return mix(nokey, full, sh_state.x);\n"                                                       \
     "}\n"                                                                                              \
+    "#if defined(SH_POINTS) || defined(SH_SPLIT)\n"                                                   \
+    /* an emissive surface's texel (its texture word's slot): the original's colour - the game's vertex colour, unshadowed - times */ \
+    /* the strength where the modern lighting made it darker; the texels under the threshold (the brightest channel) lit as before */ \
+    "vec3 sh_emissive(vec3 lit, vec3 orig, vec3 tex, uint s) {\n"                                      \
+    "    if (s == 0u || uShOn == 0 || uShPass != 0 || uEmis[0].x == 0.0) return lit;\n"                \
+    "    vec4 e = uEmis[s];\n"                                                                         \
+    "    if (e.w > 0.0) return mix(lit, vec3(1.0, 0.0, 1.0), e.x);\n" /* the debug menu's preview */    \
+    "    float v = max(tex.r, max(tex.g, tex.b));\n"                                                   \
+    "    float m = e.y > 0.0 ? smoothstep(e.y - 0.04, e.y + 0.04, v) : 1.0;\n"                         \
+    "    return mix(lit, max(lit, orig * e.x), m);\n"                                                  \
+    "}\n"                                                                                              \
+    "#endif\n"                                                                                         \
     "vec3 sh_apply(vec3 c) {\n"                                                                         \
     "    if (sh_state.w == 0.0) return c;\n"                                                            \
     "    if (uShDebug == 2) return vec3(sh_state.x * max(sh_state.y, 0.15));\n"                         \
