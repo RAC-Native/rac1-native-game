@@ -138,6 +138,7 @@
 #include "sim_autopilot.h"
 #include "sim_script.h"
 #include "update_check.h"
+#include "progress.h"
 #include <_devtools/item_give_quiet.h>  // (header only: also without the dev tools)
 #ifdef RAC1_DEVTOOLS
 #include <_devtools/dev_menu.h>
@@ -2018,6 +2019,7 @@ int main(int argc, char** argv) {
     // the update check (Updates > Update Check): started when the main menu opens on the title screen (or on demand
     // via Check Now), never in a headless run; what it finds is shown as the update notice
     rac1::update_check::start(headless);
+    rac1::progress::start(headless);  // (the launcher's progress.json: host/progress.h)
     if (const char* ck = std::getenv("RAC1_CLOCK")) g_host_clock_fixed = static_cast<std::time_t>(std::strtoll(ck, nullptr, 0));
     const uint64_t max_frames = std::getenv("RAC1_FRAMES") ? std::strtoull(std::getenv("RAC1_FRAMES"), nullptr, 10) : (headless ? 300 : 0);
 
@@ -2704,6 +2706,7 @@ int main(int argc, char** argv) {
                 vs0 = g_vsyncs;
             }
             ++frame;
+            rac1::progress::frame(lw(0x0015ed84), boot_active(), exiting);  // (the launcher's progress.json)
             if (std::getenv("RAC1_CARD_LOG") != nullptr) {  // testing: the memory card's machines and screens as they change
                 uint32_t owned = 0;  // the items owned (0x13d4c0, 0x25 bytes) as a bit mask
                 for (uint32_t i = 0; i < 0x20; ++i) owned |= ee_read<uint8_t>(0x0013d4c0 + i) != 0 ? 1u << i : 0u;
