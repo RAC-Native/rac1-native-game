@@ -3160,7 +3160,7 @@ int main(int argc, char** argv) {
                     // (class -1 = the offset is the position itself)
                     // (class -2 = the level's ship *(0x13e030), spawned by the level's load past the placed mobys; without
                     // an offset the hero is put at its hatch)
-                    for (uint32_t m = cls == -2 ? lwu(0x0013e030) : cls < 0 ? 0u : lwu(OV(0x0015ffd8)); cls < 0 || m < lwu(OV(0x0015ffdc)); m += 0x100) {
+                    for (uint32_t m = cls == -2 ? lwu(0x0013e030) : cls < 0 ? 0u : lwu(OV(0x0015ffd8)); cls < 0 || (m <= lwu(OV(0x0015ffe0)) && lbu(m + 0x20) != 0xff); m += 0x100) {  // (the spawned mobys too)
                         if (cls == -2) {
                             if (m == 0) break;
                             cls = lh(m + 0xa6);
