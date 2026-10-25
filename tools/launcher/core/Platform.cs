@@ -254,6 +254,121 @@ namespace Rac1Launcher
 #endif
         }
 
+        // --- Immutable systems (Linux): the build container --------------------------------------------------------
+        // SteamOS, Bazzite, Fedora Silverblue / Kinoite and the other atomic systems have read-only system folders: the
+        // build's packages cannot be installed there, so the game is built and run in a distrobox (or toolbox) container
+        // instead, which shares the home folder, the display, the GPU and the sound (docs/launcher.md, GitHub issue #108).
+        // The same as tools/setup.py's CONTAINER_NAME, CONTAINER_IMAGE and container_packages(), which the launcher asks
+        // for first (--container-info): these are for a setup.py from before them.
+
+        public const string ContainerName = "rac1-native";
+        public const string ContainerImage = "registry.fedoraproject.org/fedora-toolbox:44";
+        public const string ContainerPackages = "cmake gcc-c++ pkgconf-pkg-config mesa-libGL-devel libX11-devel libXrandr-devel "
+            + "libXinerama-devel libXcursor-devel libXi-devel libXext-devel wayland-devel libxkbcommon-devel ffmpeg-free-devel glslc "
+            + "python3 mesa-dri-drivers mesa-vulkan-drivers pulseaudio-libs alsa-lib";
+        /// <summary>tools/setup.py's exit status when the build's packages are missing on an immutable system.</summary>
+        public const int ExitUseContainer = 20;
+
+        static readonly Dictionary<string, string> ImmutableIds = new Dictionary<string, string>
+        {
+            ["steamos"] = "SteamOS", ["bazzite"] = "Bazzite", ["bluefin"] = "Bluefin", ["aurora"] = "Aurora",
+            ["silverblue"] = "Fedora Silverblue", ["kinoite"] = "Fedora Kinoite", ["sericea"] = "Fedora Sway Atomic",
+            ["onyx"] = "Fedora Budgie Atomic", ["cosmic-atomic"] = "Fedora COSMIC Atomic", ["endless"] = "Endless OS",
+            ["chimeraos"] = "ChimeraOS", ["opensuse-microos"] = "openSUSE MicroOS", ["opensuse-aeon"] = "openSUSE Aeon",
+            ["opensuse-kalpa"] = "openSUSE Kalpa", ["vanilla"] = "Vanilla OS",
+        };
+
+        /// <summary>True inside a container (distrobox, toolbox, podman, docker): there the packages install the usual way.</summary>
+        public static bool InContainer => !Windows && (File.Exists("/run/.containerenv") || File.Exists("/.dockerenv")
+                                                       || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CONTAINER_ID")));
+
+        /// <summary>The immutable system's name when this is one (and the launcher is not in a container), else null. The same
+        /// test as tools/setup.py's immutable_system: /etc/os-release, /run/ostree-booted, a read-only /usr.</summary>
+        public static string ImmutableSystem()
+        {
+            if (Windows || InContainer) return null;
+            var data = new Dictionary<string, string>();
+            try
+            {
+                foreach (var line in File.ReadAllLines("/etc/os-release"))
+                {
+                    int eq = line.IndexOf('=');
+                    if (eq > 0) data[line.Substring(0, eq).Trim()] = line.Substring(eq + 1).Trim().Trim('"', '\'');
+                }
+            }
+            catch (Exception) { }
+            string Get(string k) => data.TryGetValue(k, out var v) ? v : "";
+            var names = new List<string> { Get("ID").ToLowerInvariant(), Get("VARIANT_ID").ToLowerInvariant() };
+            names.AddRange(Get("ID_LIKE").ToLowerInvariant().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+            foreach (var n in names)
+                foreach (var kv in ImmutableIds)
+                    if (n == kv.Key || n.StartsWith(kv.Key + "-")) return kv.Value;  // (Bazzite's VARIANT_ID: "bazzite-deck"...)
+            string name = Get("NAME") != "" ? Get("NAME") : null;
+            if (File.Exists("/run/ostree-booted")) return name ?? "an ostree system";
+            if (UsrReadOnly()) return name ?? "a system with a read-only /usr";
+            return null;
+        }
+
+        /// <summary>The mount that holds /usr is read-only (/proc/self/mounts: the longest mount point that is a prefix).</summary>
+        static bool UsrReadOnly()
+        {
+            try
+            {
+                string best = null, opts = null;
+                foreach (var line in File.ReadAllLines("/proc/self/mounts"))
+                {
+                    var f = line.Split(' ');
+                    if (f.Length < 4) continue;
+                    string mp = f[1];
+                    bool holds = mp == "/" || mp == "/usr" || "/usr".StartsWith(mp + "/");
+                    if (holds && (best == null || mp.Length >= best.Length)) { best = mp; opts = f[3]; }
+                }
+                return opts != null && opts.Split(',').Contains("ro");
+            }
+            catch (Exception) { return false; }
+        }
+
+        /// <summary>distrobox (preferred) or toolbox, whichever is installed; null for neither.</summary>
+        public static string ContainerTool() =>
+            Windows ? null : Which("distrobox") != null ? "distrobox" : Which("toolbox") != null ? "toolbox" : null;
+
+        /// <summary>A command (its arguments, one per item) run in the build container with tool: the program and its
+        /// arguments, for Runner.Run or a ProcessStartInfo.</summary>
+        public static (string exe, string args) InContainerCommand(string tool, IEnumerable<string> argv)
+        {
+            string cmd = string.Join(" ", argv.Select(Quote));
+            return tool == "toolbox" ? ("toolbox", "run -c " + ContainerName + " " + cmd)
+                                     : ("distrobox", "enter " + ContainerName + " -- " + cmd);
+        }
+
+        /// <summary>The script that starts the game in the build container, from the game's folder: what Play runs, the
+        /// applications menu's "play" entry, and what to add to Steam as a non-Steam game (Gaming Mode).</summary>
+        public static string ContainerPlayScript(GameDir g) => g.P("play-in-container.sh");
+
+        /// <summary>The script (ContainerPlayScript) and its entry in the applications menu, made again each time
+        /// (the container's tool may have changed).</summary>
+        public static void WriteContainerPlayScript(GameDir g, string tool)
+        {
+#if !WINDOWS_LAUNCHER
+            string enter = tool == "toolbox" ? $"toolbox run -c {ContainerName}" : $"distrobox enter {ContainerName} --";
+            string script = g.P("play-in-container.sh");
+            File.WriteAllText(script,
+                "#!/bin/sh\n"
+                + "# Starts Ratchet & Clank (rac1-native) in its build container, from the game's folder. Written by the\n"
+                + "# launcher (docs/launcher.md); to play from Steam's Gaming Mode, add this file to Steam as a non-Steam game.\n"
+                + "cd \"$(dirname \"$(readlink -f \"$0\")\")\" || exit 1\n"
+                + $"exec {enter} sh -c 'cd \"$1\" && shift && exec ./build/rac1-native \"$@\"' sh \"$PWD\" \"$@\"\n");
+            File.SetUnixFileMode(script, (UnixFileMode)0b111_101_101);
+            string data = Xdg("XDG_DATA_HOME", ".local/share");
+            string apps = Path.Combine(data, "applications");
+            Directory.CreateDirectory(apps);
+            File.WriteAllText(Path.Combine(apps, "rac1-native-play.desktop"),
+                "[Desktop Entry]\nType=Application\nName=Ratchet & Clank (rac1-native, play)\n"
+                + "Comment=Starts the game in its build container, without the launcher\n"
+                + $"Exec=\"{script}\"\nPath={g.Dir}\nIcon=rac1-native\nTerminal=false\nCategories=Game;\n");
+#endif
+        }
+
         /// <summary>The system packages a Linux setup found missing, as tools/setup.py prints them ("    sudo apt install
         /// a b c", check_system), made into a command the launcher can run as root with pkexec; null for another line.</summary>
         public static string PackageInstallCommand(string setupLine)

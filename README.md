@@ -150,7 +150,9 @@ follows from that.
 ## Quick start
 
 You need Linux or [Windows](#windows) (x86-64), a GPU with OpenGL 4.6, and your ISO of the game
-(the North American or the European PAL disc). The experimental Vulkan renderer, optional, needs a
+(the North American or the European PAL disc). On the Steam Deck (SteamOS), Bazzite and other
+immutable Linux systems the game is built in a distrobox container, which the launcher sets up: see
+[Setup](docs/setup.md#steam-deck-bazzite-and-other-immutable-systems). The experimental Vulkan renderer, optional, needs a
 Vulkan 1.3 driver, and `glslc` when the game is built (the setup lists it as optional): see
 [Vulkan](docs/vulkan.md).
 

@@ -46,7 +46,8 @@ source code, the files that are a mechanical translation of the game's own code 
 
 The setup tool checks all of this and tells you what is missing, with the command to install it on
 Debian and Ubuntu (and their derivatives), Fedora, and Arch. It never installs anything without
-asking. For reference, everything at once:
+asking. On SteamOS (the Steam Deck), Bazzite and the other immutable systems the packages go into a
+container instead: see [Steam Deck, Bazzite and other immutable systems](#steam-deck-bazzite-and-other-immutable-systems). For reference, everything at once:
 
 ```bash
 # Debian / Ubuntu
@@ -212,6 +213,7 @@ not supported yet.
 | `--build-only` | only check the system and build (generating the code first if it is missing or out of date, which needs the disc) |
 | `--play` | start the game when the setup finishes without asking |
 | `--no-play` | do not offer to start the game at the end |
+| `--check-system` | only check the system (step 1): exit status 0 when everything is there, 1 when something is missing, 20 when it is missing on an immutable system (build in a container, see [below](#steam-deck-bazzite-and-other-immutable-systems)) |
 | `--native-arch on\|off` | compile the game for this machine's CPU (`on`: AVX2 / AVX-512 where it has them, the game's own update about 8 % faster, its state the same bit for bit; the build then runs on this CPU only) or for any x86-64 CPU (`off`, the default); kept for the next builds, a change rebuilds everything |
 
 `./build/rac1-native --setup` (the data generation on its own, run from the repository's root):
@@ -239,6 +241,63 @@ python3 tools/codegen/generate_all.py --out assets/generated --no-insn-comments
 
 `--list` shows its units, `--files` the files it writes, `--only <unit>` runs some of them. Without
 `--no-insn-comments`, each translated line keeps the original instruction as a comment.
+
+## Steam Deck, Bazzite and other immutable systems
+
+SteamOS (the Steam Deck's system), Bazzite, Fedora Silverblue and Kinoite, Bluefin, Aurora and the
+other "immutable" (atomic) systems have read-only system folders: the packages the build needs cannot
+be installed with `pacman` or `dnf` there (on SteamOS the package database is read-only; on Bazzite
+`dnf` clashes with Bazzite's own Mesa and FFmpeg). The game is built in a **container** instead, with
+[distrobox](https://distrobox.it) (SteamOS 3.5 and newer and Bazzite have it already) or toolbox. The
+container shares your home folder, the external drives (`/run/media`, `/media`, `/mnt`), the display,
+the graphics card and the sound, so the game builds and runs in it as on any Linux, and the system
+stays as it is. The container takes about 2 GB besides the game.
+
+The setup finds out by itself: on an immutable system (`/etc/os-release`, `/run/ostree-booted`, a
+read-only `/usr`) with packages missing, it prints the commands below instead of a package manager's,
+and exits with status 20. Inside a container (`/run/.containerenv`, `/.dockerenv` or `CONTAINER_ID`
+set) it works as usual: the packages install with the container's `dnf`.
+
+**The launcher does all of it** (see [The launcher](launcher.md#steam-deck-bazzite-and-other-immutable-systems)):
+it offers **Set up a build container** and then builds and starts the game in it.
+
+**By hand**, in a terminal (Konsole in the Steam Deck's Desktop Mode), from the game's folder:
+
+```bash
+distrobox create -n rac1-native -i registry.fedoraproject.org/fedora-toolbox:44 --yes
+distrobox enter rac1-native -- sudo dnf install -y cmake gcc-c++ pkgconf-pkg-config mesa-libGL-devel libX11-devel libXrandr-devel libXinerama-devel libXcursor-devel libXi-devel libXext-devel wayland-devel libxkbcommon-devel ffmpeg-free-devel glslc python3 mesa-dri-drivers mesa-vulkan-drivers pulseaudio-libs alsa-lib
+distrobox enter rac1-native -- ./setup.sh --iso /path/to/your/ratchet.iso
+```
+
+(`sudo` in a distrobox container asks for no password. With an NVIDIA card, add `--nvidia` to
+`distrobox create`.) With toolbox instead: `toolbox create -y -i registry.fedoraproject.org/fedora-toolbox:44 rac1-native`,
+then `toolbox run -c rac1-native` in place of `distrobox enter rac1-native --`. The package list is
+the Fedora one above, Python, and what the game needs to run in the container: Mesa's OpenGL and
+Vulkan drivers and the sound's client libraries (`tools/setup.py --container-info` prints it). Then
+play from the same folder:
+
+```bash
+distrobox enter rac1-native -- ./build/rac1-native
+```
+
+After a `git pull`, run the setup again in the container the same way.
+
+**In Gaming Mode** (the Steam Deck's, or Bazzite's), add the game to Steam as a non-Steam game: in
+Desktop Mode, make a small script in the game's folder, for example `play-in-container.sh` (the
+launcher writes this same file):
+
+```sh
+#!/bin/sh
+cd "$(dirname "$(readlink -f "$0")")" || exit 1
+exec distrobox enter rac1-native -- sh -c 'cd "$1" && shift && exec ./build/rac1-native "$@"' sh "$PWD" "$@"
+```
+
+make it executable (`chmod +x play-in-container.sh`), then in Steam: **Games > Add a Non-Steam Game
+to My Library**, **Browse...**, choose the script, and **Add Selected Programs**. Back in Gaming
+Mode it is in the library like any other game. (The launcher also adds an applications-menu entry,
+"Ratchet & Clank (rac1-native, play)", which Steam's list shows directly.) Steam presents the Deck's
+controls to the game as a gamepad (see [Input](input.md)). None of this has been tried on a Steam
+Deck or on Bazzite yet: reports are welcome.
 
 ## On Windows
 

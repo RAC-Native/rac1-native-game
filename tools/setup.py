@@ -19,7 +19,9 @@ The record of what was generated with what is assets/setup-state.json. docs/setu
 
 `tools/setup.py --code-inputs` (for CMake) prints the fingerprint of the generated code's sources, then
 those sources, one per line. `tools/setup.py --check` (for play.cmd) changes nothing: it prints what a setup would
-redo now, and exits with 10 when that is something (0 when the game is up to date).
+redo now, and exits with 10 when that is something (0 when the game is up to date). `tools/setup.py --check-system`
+does step 1 only (exit status 0, 1, or 20: build in a container), `--container-info` (for the launcher) prints the
+build container's name, image and packages, for immutable systems (SteamOS, Bazzite...; docs/setup.md).
 """
 
 import argparse
@@ -179,14 +181,25 @@ def ask(question, default):
 
 # --- 1. The system ------------------------------------------------------------------------------
 
-def detect_distro():
+OS_RELEASE = Path("/etc/os-release")
+
+
+def os_release():
+    """/etc/os-release's keys (their values in lower case), {} when it cannot be read."""
     data = {}
     try:
-        for line in Path("/etc/os-release").read_text().splitlines():
+        for line in OS_RELEASE.read_text().splitlines():
             if "=" in line:
                 k, v = line.split("=", 1)
-                data[k] = v.strip('"').lower()
+                data[k.strip()] = v.strip().strip('"\'').lower()
     except OSError:
+        pass
+    return data
+
+
+def detect_distro():
+    data = os_release()
+    if not data:
         return None
     ids = [data.get("ID", "")] + data.get("ID_LIKE", "").split()
     for family, names in (("debian", ("debian", "ubuntu")), ("fedora", ("fedora", "rhel", "centos")),
@@ -265,6 +278,107 @@ DEPENDENCIES = [
 INSTALL = {"debian": "sudo apt install", "fedora": "sudo dnf install", "arch": "sudo pacman -S --needed"}
 DISTRO_NAME = {"debian": "Debian / Ubuntu", "fedora": "Fedora", "arch": "Arch"}
 
+# Immutable ("atomic") systems: SteamOS, Bazzite, Fedora Silverblue / Kinoite and the other Fedora Atomic and Universal
+# Blue images (Bluefin, Aurora), openSUSE MicroOS / Aeon... Their system folders are read-only (or their packages come
+# as one image), so the build's packages cannot be installed with the package manager: the game is built in a
+# container instead, distrobox (or toolbox), which shares the home folder, the display, the GPU and the sound
+# (docs/setup.md, "Steam Deck, Bazzite and other immutable systems"). GitHub issue #108.
+IMMUTABLE_IDS = {"steamos": "SteamOS", "bazzite": "Bazzite", "bluefin": "Bluefin", "aurora": "Aurora",
+                 "silverblue": "Fedora Silverblue", "kinoite": "Fedora Kinoite", "sericea": "Fedora Sway Atomic",
+                 "onyx": "Fedora Budgie Atomic", "cosmic-atomic": "Fedora COSMIC Atomic", "endless": "Endless OS",
+                 "chimeraos": "ChimeraOS", "opensuse-microos": "openSUSE MicroOS", "opensuse-aeon": "openSUSE Aeon",
+                 "opensuse-kalpa": "openSUSE Kalpa", "vanilla": "Vanilla OS"}
+OSTREE_BOOTED = Path("/run/ostree-booted")
+CONTAINER_MARKS = [Path("/run/.containerenv"), Path("/.dockerenv")]  # (podman / toolbox / distrobox; docker)
+# The container: its name, and an image that has every package the game needs (Fedora's own Mesa and FFmpeg, whatever
+# the host's are). The packages: the Fedora column of DEPENDENCIES, Python, and what the game needs to run in the
+# container (Mesa's OpenGL and Vulkan drivers, the sound's client libraries).
+CONTAINER_NAME = "rac1-native"
+CONTAINER_IMAGE = "registry.fedoraproject.org/fedora-toolbox:44"
+CONTAINER_RUNTIME_PACKAGES = "python3 mesa-dri-drivers mesa-vulkan-drivers pulseaudio-libs alsa-lib"
+# setup.py's exit status when the build's packages are missing on an immutable system: build in a container (the
+# launcher offers to set one up)
+EXIT_USE_CONTAINER = 20
+
+
+def in_container():
+    """True inside a container (distrobox, toolbox, podman, docker): its packages are installed the usual way."""
+    return any(p.exists() for p in CONTAINER_MARKS) or bool(os.environ.get("CONTAINER_ID"))
+
+
+def usr_read_only():
+    try:
+        return bool(os.statvfs("/usr").f_flag & os.ST_RDONLY)
+    except (OSError, AttributeError):
+        return False
+
+
+def immutable_system():
+    """The immutable system's name when this is one (and not a container on it), else None."""
+    if WINDOWS or in_container():
+        return None
+    data = os_release()
+    names = [data.get("ID", ""), data.get("VARIANT_ID", "")] + data.get("ID_LIKE", "").split()
+    for n in names:  # (Bazzite's VARIANT_ID is "bazzite-deck", "bazzite-gnome-nvidia"...)
+        for key, name in IMMUTABLE_IDS.items():
+            if n == key or n.startswith(key + "-"):
+                return name
+    if OSTREE_BOOTED.exists():  # (Fedora Atomic and everything made from it, Endless OS)
+        return data.get("NAME", "").title() or "an ostree system"
+    if usr_read_only():
+        return data.get("NAME", "").title() or "a system with a read-only /usr"
+    return None
+
+
+def container_packages():
+    """Everything the container needs, in Fedora's names: the build's packages (required and optional) and the game's."""
+    pkgs = []
+    for dep in DEPENDENCIES:
+        pkgs += dep[4].split()
+    pkgs += CONTAINER_RUNTIME_PACKAGES.split()
+    return list(dict.fromkeys(pkgs))
+
+
+def container_tool():
+    """distrobox (preferred: any image, and it shares the external drives too) or toolbox, whichever is installed."""
+    for tool in ("distrobox", "toolbox"):
+        if shutil.which(tool):
+            return tool
+    return None
+
+
+def container_commands(tool, iso=None):
+    """The commands that make the container, install the packages in it, run this setup in it and start the game."""
+    import shlex
+    pkgs = " ".join(container_packages())
+    root = shlex.quote(str(ROOT))
+    iso_arg = f" --iso {shlex.quote(str(iso))}" if iso else " --iso /path/to/your/ratchet.iso"
+    if tool == "toolbox":
+        run = f"toolbox run -c {CONTAINER_NAME}"
+        create = f"toolbox create -y -i {CONTAINER_IMAGE} {CONTAINER_NAME}"
+    else:
+        run = f"distrobox enter {CONTAINER_NAME} --"
+        create = f"distrobox create -n {CONTAINER_NAME} -i {CONTAINER_IMAGE} --yes"
+    return [create, f"{run} sudo dnf install -y {pkgs}", f"cd {root}", f"{run} ./setup.sh{iso_arg}"], \
+        f"cd {root} && {run} ./build/rac1-native"
+
+
+def explain_container(system, iso=None):
+    tool = container_tool()
+    print(f"\n  This is {system}, an immutable system: its system folders are read-only, so the packages the build"
+          "\n  needs cannot be installed with its package manager. Build the game in a container instead: it shares"
+          "\n  your home folder, your display, your graphics card and your sound, and leaves the system as it is.")
+    if tool is None:
+        print("\n  Neither distrobox nor toolbox is installed. SteamOS (3.5 and newer) and Bazzite come with distrobox;"
+              "\n  elsewhere install it (https://distrobox.it), then run the setup again. The commands, with distrobox:")
+    else:
+        print(f"\n  With {tool}, in a terminal:")
+    setup_cmds, play = container_commands(tool or "distrobox", iso)
+    for c in setup_cmds:
+        print("    " + color("1", c))
+    print(f"\n  Then play with:\n    {color('1', play)}"
+          "\n  (The launcher does all of this by itself: docs/launcher.md.)")
+
 
 # Windows: the MSYS2 CLANG64 environment's packages (docs/setup.md); clang is the recommended compiler there
 # (the same float code as on Linux, docs/platforms.md). The OpenGL, window and audio libraries are Windows' own.
@@ -302,11 +416,14 @@ def check_system_windows():
         sys.exit(1)
 
 
-def check_system():
+def check_system(iso=None):
+    """Exits (1) when something required is missing, or (EXIT_USE_CONTAINER) when it is missing on an immutable system,
+    where it is installed in a container instead."""
     if WINDOWS:
         check_system_windows()
         return
     distro = detect_distro()
+    immutable = immutable_system()
     column = {"debian": 3, "fedora": 4, "arch": 5}.get(distro)
     missing_req, missing_opt = [], []
     for dep in DEPENDENCIES:
@@ -322,6 +439,14 @@ def check_system():
     wanted = missing_req + missing_opt
     if not wanted:
         return
+    if immutable is not None:
+        if not missing_req:  # (only optional ones: the game builds without them, as it is)
+            print(f"\n  ({immutable} is an immutable system: to have them, build the game in a container, docs/setup.md.)")
+            return
+        explain_container(immutable, iso)
+        if LAUNCHER:
+            print(f"@container {CONTAINER_NAME} {CONTAINER_IMAGE}", flush=True)
+        sys.exit(EXIT_USE_CONTAINER)
     if column is None:
         print(f"\n  Install them with your distribution's package manager, then run {SETUP_CMD} again.")
     else:
@@ -1324,6 +1449,14 @@ def main():
     if sys.argv[1:] == ["--code-inputs"]:
         print_code_inputs()
         return
+    if sys.argv[1:] == ["--container-info"]:  # (for the launcher: the build container's name, image and packages)
+        print(f"name {CONTAINER_NAME}\nimage {CONTAINER_IMAGE}\npackages {' '.join(container_packages())}")
+        print(f"immutable {immutable_system() or ''}".rstrip())
+        print(f"in_container {1 if in_container() else 0}")
+        return
+    if sys.argv[1:] == ["--check-system"]:  # step 1 only: exit status 0, 1 (missing), or 20 (build in a container)
+        check_system()
+        return
     if sys.argv[1:] == ["--check"]:  # exit status 10 when a setup is due (what it would redo, one per line)
         due = setup_due()
         print("\n".join(due) if due else "up to date")
@@ -1368,7 +1501,7 @@ def main():
         step(n, total, msg)
 
     next_step("Checking your system")
-    check_system()
+    check_system(args.iso)
 
     iso = None
     if need_disc:

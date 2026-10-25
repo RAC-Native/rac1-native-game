@@ -33,7 +33,9 @@ It is attached to each [release](https://github.com/RAC-Native/rac1-native-game/
    - On **Linux** the tools come from your distribution. When some are missing, the launcher says so
      and offers to install them (Debian, Ubuntu and their derivatives, Fedora, Arch): your desktop
      asks for your password, as for any other system change. Where that cannot be done, it shows the
-     command to run in a terminal.
+     command to run in a terminal. On the Steam Deck, Bazzite and the other immutable systems it
+     builds the game in a container instead (see
+     [below](#steam-deck-bazzite-and-other-immutable-systems)).
 4. Click **Play**. The launcher puts a copy of itself in the game's folder and a shortcut to it: in
    the Start menu (and, if you say yes, on the desktop) on Windows, in the applications menu on Linux.
    Next time, start the game from there.
@@ -86,7 +88,7 @@ The game's other settings (graphics, controls) are in the game's Options menu.
 | The launcher's settings (`launcher.txt`: game folder, disc image, parallel jobs) | `%APPDATA%\rac1-native\` | `~/.config/rac1-native/` |
 | The game's settings, with `advanced_options.txt` (the update channel) | `%APPDATA%\rac1-native\` | `~/.config/rac1-native/` |
 | The saves (`memcard\`) and the launcher's backups (`save-backups\`) | `%APPDATA%\rac1-native\` | `~/.local/share/rac1-native/` |
-| The shortcut | Start menu, desktop | `~/.local/share/applications/rac1-native.desktop` |
+| The shortcut | Start menu, desktop | `~/.local/share/applications/rac1-native.desktop` (and `rac1-native-play.desktop` with a build container) |
 
 (`XDG_CONFIG_HOME` and `XDG_DATA_HOME` move the Linux ones, as for the game.)
 
@@ -118,7 +120,8 @@ The launcher does what `setup.cmd` and `./setup.sh` do, without a console window
    `@progress` lines, which the launcher shows as its progress bar. On Linux it runs with the system's
    `python3`.
 
-On Linux, when the setup reports a required package missing, the launcher takes the command the
+On Linux, when the setup reports a required package missing (on a system that is not immutable: see
+[above](#steam-deck-bazzite-and-other-immutable-systems) for the others), the launcher takes the command the
 setup prints (`sudo apt install ...`, `sudo dnf install ...`, `sudo pacman -S --needed ...`), asks,
 and runs it as root with `pkexec` (the desktop's password window; without one, `pkexec` fails at
 once and the launcher shows the command to run in a terminal). Then it runs the setup again.
@@ -136,6 +139,44 @@ the launcher runs the setup once more with one job at a time.
 A first install unpacks the release's source zip into the game folder and records it as
 `tools/setup.py --update` would (`assets/update-version.txt`, and the files' hashes in
 `assets/setup-state.json`), so later updates work the same as for a zip set up by hand.
+
+## Steam Deck, Bazzite and other immutable systems
+
+SteamOS, Bazzite, Fedora Silverblue and Kinoite, Bluefin, Aurora and the other immutable (atomic)
+systems have read-only system folders, so the programs that build the game cannot be installed on
+them. There the launcher builds and runs the game in a **build container** instead (distrobox, or
+toolbox when that is the one installed), which shares your home folder, display, graphics card and
+sound. (By hand: [Setup](setup.md#steam-deck-bazzite-and-other-immutable-systems).)
+
+1. Open the launcher in the Desktop Mode (on the Steam Deck: Steam button, **Power**, **Switch to
+   Desktop**) and click **Install** (or **Set up**) as usual.
+2. The setup finds the system immutable and the build's programs missing (it exits with status 20),
+   and the launcher asks **Set up a build container**. Say yes. It then, with its progress in the
+   log (**Show the details**):
+   - makes the container: `distrobox create -n rac1-native -i registry.fedoraproject.org/fedora-toolbox:44 --yes`
+     (`--nvidia` too with an NVIDIA driver; with toolbox, `toolbox create -y -i ... rac1-native`).
+     The first time it downloads the image;
+   - installs the build's programs in it with Fedora's `dnf` (`sudo` asks for no password there);
+   - runs the setup in it: `distrobox enter rac1-native -- python3 tools/setup.py --no-play --iso ...`.
+3. **Play** starts the game in the container too, through `play-in-container.sh` in the game folder
+   (`distrobox enter rac1-native -- ./build/rac1-native`, from the game folder).
+
+The choice is kept in `launcher.txt` (a `container distrobox` or `container toolbox` line): Set up,
+Update and Set up again from scratch run in the container from then on. Removing the line (and the
+container: `distrobox rm rac1-native`) goes back to the system's own programs. Cancel ends the
+setup's programs in the container too.
+
+When neither distrobox nor toolbox is installed, the launcher says so. SteamOS 3.5 and newer and
+Bazzite come with distrobox; on other systems install it ([distrobox.it](https://distrobox.it)).
+
+**Gaming Mode**: once the game is set up, add it to Steam as a non-Steam game. In Desktop Mode, in
+Steam: **Games > Add a Non-Steam Game to My Library**, tick **Ratchet & Clank (rac1-native, play)**
+(the launcher's applications-menu entry for `play-in-container.sh`; if it is not listed, **Browse...**
+to `play-in-container.sh` in the game folder, by default `~/.local/share/rac1-native/game`), then
+**Add Selected Programs**. In Gaming Mode it is then in the library. The launcher itself needs the
+Desktop Mode (its window and its file picker).
+
+This route has not been tried on a Steam Deck or on Bazzite yet (GitHub issue #108): reports are welcome.
 
 ## Building it
 
