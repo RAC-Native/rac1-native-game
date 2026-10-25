@@ -3,6 +3,8 @@
 # Oltanis. The sun raised from the key light's 29 degrees to 50, its azimuth kept: in the streets between the tall buildings
 # 22 % of what faces the sun saw it, 56 % at 50 degrees. Our choice (docs/lighting.md, "The level's own sun").
 sun -140.5 50.0
+# Oltanis: no Sun Rays, from Anya-Thoughtmane's lighting pass (#101: off to go on with the level's sun).
+sun_rays off
 # The street lamps (moby class 1511, the posts with the cyan globes): a light in each globe, 2.9 units over the post's foot. No
 # shadow cube (the globe's own mesh would hide it).
 emit moby 1511  0.000 0.000 2.900  0.550 0.950 1.000  1.000 8.000 0.000

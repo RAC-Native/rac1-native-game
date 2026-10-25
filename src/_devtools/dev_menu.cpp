@@ -997,6 +997,12 @@ void tab_sun() {
         mrp_user_sun_set(own, az, el);
         g_sun_dirty = true;
     }
+    // the level's Sun Rays ("sun_rays off" in its file): off here whatever Options > Graphics > Sun Rays says
+    if (bool rays_off = mrp_user_sun_rays_off(); ImGui::Checkbox("Sun Rays off on this level", &rays_off)) {
+        mrp_user_sun_rays_set_off(rays_off);
+        g_sun_dirty = true;
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Saved as \"sun_rays off\" in the level's file (the Sun Rays option still sets the other levels')");
     if (ImGui::Button("Save")) g_sun_dirty = !mrp_user_lights_save();
     ImGui::SameLine();
     if (ImGui::Button("Reload")) {

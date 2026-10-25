@@ -426,7 +426,8 @@ taken from the disc. They are lit like the automatic ones and ahead of them.
 The project's level files place no light: `level09.txt` (Gaspar) and `level10.txt` (Orxon) each turn
 off one automatic class that was taken for a lamp, and `level01.txt` (Novalis, also its neons by class), `level03.txt`
 (Kerwan), `level04.txt` (Eudora), `level14.txt` (Oltanis) and `level15.txt` (Quartu) turn the sun,
-each with a comment saying why.
+each with a comment saying why. `level05.txt` (Rilgar), `level06.txt` (Blarg's station), `level08.txt`
+(Batalia) and `level14.txt` turn the [sun rays](#sun-rays) off (`sun_rays off`, #101).
 
 ### Point-light shadows, per-pixel cost and occlusion
 
@@ -593,8 +594,11 @@ Debug menu (F1, `--debug-tools`), tab **Sun**: the game's key light's direction 
 not eased a degree a frame after an edit). Everything that depends on the sun follows by itself: the
 shadow maps' static caches are keyed on its direction and drawn again, the casters outside the view
 are looked for along it (`g_cull_sun`, each frame), the mobys' key light is turned with it; the
-covered views' memory of the sky does not depend on it. Nothing needs a level reload. **Save** writes
-the level's file (its comment lines, its lights and its `noauto` lines kept; the Lights tab's unsaved
+covered views' memory of the sky does not depend on it. Nothing needs a level reload. **Sun Rays off
+on this level** turns the [sun rays](#sun-rays) off on the level whatever the Sun Rays option (saved
+as `sun_rays off`: where the rays do not suit the level, as Anya-Thoughtmane's lighting pass found
+on Blarg's station, Rilgar, Batalia and Oltanis, #101). **Save** writes the level's file (its comment
+lines, its lights and its `noauto` lines kept, each line in its place; the Lights tab's unsaved
 edits too), **Reload** reads it again.
 
 ### The static shadow cache
@@ -687,6 +691,10 @@ is the showcase). Screen space, at a fraction of the 3D's resolution (`sun_rays_
    covered view (Kerwan's first tunnel, a roof of leaves) the broad light stays too.
 4. Added to the picture with a soft limit (at most +0.28 a texel, Medium +0.36, High +0.45), blended
    as a screen: what is bright already (the sky, a lit wall) gains less, so it does not burn white.
+
+A level's file may turn them off there (`sun_rays off`, the [sun editor](#the-sun-editor)'s **Sun
+Rays off on this level**), whatever the option: Blarg's station, Rilgar, Batalia and Oltanis, from
+Anya-Thoughtmane's lighting pass (#101). OpenGL and Vulkan alike (`sun_rays_now`).
 
 No rays in the ship's flights (game mode 6 but its take-off and landing scenes: leaving a planet, and
 the loading screen's flight between planets), where the sun is still the level's left behind (#66).
@@ -790,7 +798,13 @@ part of the original. The editor is in the debug menu (Lights tab), so it needs 
 - Lights are saved per level in `data/lights/levelNN.txt` (relative to the working directory;
   `RAC1_LIGHTS_DIR` changes the directory), one light per line:
   `light x y z  r g b  intensity radius flicker on`, `noauto <class>` for an automatic class
-  turned off and `sun <azimuth> <elevation>` for the level's own sun, with `#` for comments. Saving from the editor keeps the file's own comment lines.
+  turned off, `sun <azimuth> <elevation>` for the level's own sun and `sun_rays off` for no
+  [sun rays](#sun-rays) on the level, with `#` for comments. Saving from the editor keeps the file's
+  own comment lines and its lines' order (an entry is written where its line was, the ones added
+  after the last line), and writes the numbers it read unchanged: the game's thread rounds toward
+  zero (the EE's mode), so the file is read and written rounding to nearest (`ps2fpu::NearestScope`);
+  until 0.5.0 each Save took one unit off the last digit of a number that is not exact in binary
+  (`0.800` read and written five times came back `0.795`).
 - A level's file is loaded when the level's first shadow pass runs, and hand-placed lights are only
   used with Secondary Lights set to All (the file's sun whatever that setting). The project ships the
   files listed in [Lights placed by hand](#lights-placed-by-hand-our-choice).

@@ -4,7 +4,8 @@
 # degrees) to come in through the tunnel's mouth - the path inside lit with the leaves' and Ratchet's shadows toward the camera,
 # the city backlit. Along the first walk the view facing the sun sees it as much as at the key light's direction raised to 50
 # (55 %, the covered views' measure); the plaza's facades facing the camera are in their own shade (the backlight).
-sun 100.0 28.0
+# Kerwan: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
+sun -108.5 45.0
 # The street lamps (moby class 1827, the posts with the white globes; 39 on the level): a warm white light in each globe, 3 units
 # over the post's foot, half of it aimed down (a pool on the pavement around the post). No shadow cube (the globe's own mesh
 # would hide it).

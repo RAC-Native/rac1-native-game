@@ -1,0 +1,4 @@
+# rac1-native: lights placed by hand for level 5 (the debug menu's Lights tab)
+# light x y z  r g b  intensity radius flicker on
+# Rilgar: no Sun Rays, from Anya-Thoughtmane's lighting pass (#101: off to go on with the level's sun).
+sun_rays off

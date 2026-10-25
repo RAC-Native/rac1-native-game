@@ -9,6 +9,14 @@ What changed in each release. Releases are source only: you build the game with 
 - When the computer falls behind (or with V-Sync on a 75 Hz display) and a frame runs two or more of the game's
   frames, the frame after no longer reuses the undrawn frame's drawing data without what it needs: the game no
   longer freezes at Aridia's arrival, and no stray graphics programs run on Kerwan, Rilgar and other levels (#104).
+- The debug menu's light editor no longer changes the numbers of a level's light file when it saves it: each Save took
+  one unit off the last digit of the `emit` lines' offsets, colours and aim (the game rounds toward zero, as the PS2
+  does, and the file was read and written so), and the file's comments and lines now stay where they were (#101).
+
+### Graphics
+- A level's light file can turn the Sun Rays off on that level (`sun_rays off`; the debug menu's Sun tab has a checkbox
+  for it, saved with the file). Off on Blarg's station, Rilgar, Batalia and Oltanis, from Anya-Thoughtmane's lighting
+  pass (#101). See [Sun rays](docs/lighting.md#sun-rays).
 
 ### Launcher and setup
 - The game writes `progress.json` in its data folder for the [RAC Native launcher](https://github.com/RAC-Native/rac-native-launcher):

@@ -75,6 +75,7 @@ struct SunFile {
     bool on = false;
     float az = 0.0f, el = 45.0f;
 } g_sun_file;
+bool g_sun_rays_off = false;  // (the level's file says "sun_rays off": the Sun Rays pass off on this level)
 bool g_sun_snap = false;  // (the editor changed it: the sun turned at once, not a degree a frame)
 // the level's interiors (our data: "interior x0 y0 z0 x1 y1 z1" boxes and "interior_set <n>" light sets in its file): where the
 // camera is in one (or the hero is lit with that set), the sun is off - the original's look -, faded over kInteriorFade frames
@@ -1431,7 +1432,7 @@ GLenum depth_format(GLint fb) {
 // and landing scenes, steps 0 / 8 at 0x13e050: the flight away from the planet, 3, and the loading screen's flight between planets,
 // 4, level_exit.cpp / flight_draw.cpp), where the sun is still the level's left behind (GitHub issue #66)
 bool sun_rays_now() {
-    if (g_sun_rays <= 0 || !(g_sh.sun_k > 0.01f)) return false;
+    if (g_sun_rays <= 0 || g_sun_rays_off || !(g_sh.sun_k > 0.01f)) return false;  // (or off on this level: "sun_rays off" in its file)
     const int32_t step = lw(0x0013e050u);
     return lw(OV(0x0015f5c4u)) != 6 || step == 0 || step == 8;
 }
@@ -2731,7 +2732,14 @@ namespace {
 std::vector<UserLight> g_user;
 std::vector<int> g_user_noauto;  // the tie classes whose automatic emitters are off
 std::vector<ClassLight> g_class_lights;  // the lights per object class ("emit")
-std::vector<std::string> g_user_notes;  // the file's own comment lines (why a class is off), kept when the editor saves it
+// the file's lines in their order, as the editor's Save writes them back: a comment (or a line not understood) by its text, an
+// entry by its kind ('s' sun, 'r' sun_rays, 'S' interior_set, 'e' emit, 'i' interior, 'o' noauto, 'l' light) - the next of
+// that kind's current list written in its place, the ones added since after the last line
+struct FileLine {
+    char kind = '#';
+    std::string text;
+};
+std::vector<FileLine> g_user_layout;
 int g_user_level = -1;
 std::string g_user_path;
 // orig: (host) the level's lights file
@@ -2750,30 +2758,41 @@ void user_load(int level) {
     g_interior_sets.clear();
     g_class_lights.clear();
     g_sun_snap = true;  // (a level's sun, or the file read again: at once)
-    g_user_notes.clear();
+    g_user_layout.clear();
+    g_sun_rays_off = false;
     g_user_level = level;
     g_user_path = user_path(level);
     g_user_light_selected = -1;
     FILE* f = std::fopen(g_user_path.c_str(), "r");
     if (f == nullptr) return;
+    const rac1::ps2fpu::NearestScope nearest;  // (the numbers read as written: this thread runs toward zero)
     char line[256];
     while (std::fgets(line, sizeof line, f) != nullptr) {
         UserLight l;
         int on = 1, cls = 0;
-        if (line[0] == '#' && std::strncmp(line, "# rac1-native: lights placed by hand", 36) != 0 && std::strncmp(line, "# light x y z", 13) != 0) {
-            std::string n(line);
-            while (!n.empty() && (n.back() == '\n' || n.back() == '\r')) n.pop_back();
-            g_user_notes.push_back(n);
+        std::string text(line);
+        while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) text.pop_back();
+        if (std::strncmp(line, "# rac1-native: lights placed by hand", 36) == 0 || std::strncmp(line, "# light x y z", 13) == 0) continue;  // (the header: Save's own)
+        auto entry = [&](char kind) { g_user_layout.push_back(FileLine{kind, {}}); };
+        if (line[0] == '#') {
+            g_user_layout.push_back(FileLine{'#', text});
+            continue;
+        }
+        if (char w[8] = {}; std::sscanf(line, "sun_rays %7s", w) == 1) {  // "sun_rays off": no Sun Rays on this level
+            g_sun_rays_off = std::strcmp(w, "off") == 0 || std::strcmp(w, "0") == 0;
+            entry('r');
             continue;
         }
         if (std::sscanf(line, "noauto %d", &cls) == 1) {
             g_user_noauto.push_back(cls);
+            entry('o');
             continue;
         }
         if (SunInterior b; std::sscanf(line, "interior %f %f %f %f %f %f", &b.lo[0], &b.lo[1], &b.lo[2], &b.hi[0], &b.hi[1], &b.hi[2]) == 6) {
             for (int i = 0; i < 3; ++i)
                 if (b.lo[i] > b.hi[i]) std::swap(b.lo[i], b.hi[i]);
             g_interiors.push_back(b);
+            entry('i');
             continue;
         }
         {  // "emit <tie|moby> <class> <ox oy oz> <r g b> <intensity> <radius> [flicker] [down]"
@@ -2786,14 +2805,17 @@ void user_load(int level) {
                 cl.moby = std::strcmp(kind, "moby") == 0;
                 cl.shrub = std::strcmp(kind, "shrub") == 0;
                 g_class_lights.push_back(cl);
+                entry('e');
                 continue;
             }
         }
         if (int n = 0; std::sscanf(line, "interior_set %d", &n) == 1) {
             g_interior_sets.push_back(n);
+            entry('S');
             continue;
         }
         if (float az = 0, el = 0; std::sscanf(line, "sun %f %f", &az, &el) == 2) {
+            if (!g_sun_file.on) entry('s');  // (a second sun line: the last one wins, written once)
             g_sun_file.on = true;
             g_sun_file.az = az;
             g_sun_file.el = std::clamp(el, 5.0f, 90.0f);
@@ -2803,7 +2825,10 @@ void user_load(int level) {
                         &l.flicker, &on) >= 9) {
             l.on = on != 0;
             g_user.push_back(l);
+            entry('l');
+            continue;
         }
+        g_user_layout.push_back(FileLine{'#', text});  // (a blank line, or one not understood: kept as it is)
     }
     std::fclose(f);
     std::printf("[lights] level %d: %zu lights placed by hand (%s)\n", level, g_user.size(), g_user_path.c_str());
@@ -2830,6 +2855,10 @@ void mrp_user_sun_set(bool on, float az, float el) {
     g_sun_file.az = az;
     g_sun_file.el = std::clamp(el, 5.0f, 90.0f);
 }
+// orig: (host) see mrp_lighting.h
+bool mrp_user_sun_rays_off() { return g_sun_rays_off; }
+// orig: (host) see mrp_lighting.h
+void mrp_user_sun_rays_set_off(bool off) { g_sun_rays_off = off; }
 // orig: (host) see mrp_lighting.h
 std::vector<ClassLight>& mrp_user_class_lights() { return g_class_lights; }
 int g_class_light_selected = -1;
@@ -2887,21 +2916,67 @@ bool mrp_user_lights_save() {
     if (p.has_parent_path()) std::filesystem::create_directories(p.parent_path(), ec);
     FILE* f = std::fopen(g_user_path.c_str(), "w");
     if (f == nullptr) return false;
+    const rac1::ps2fpu::NearestScope nearest;  // (the numbers written as they are: this thread runs toward zero)
     std::fprintf(f, "# rac1-native: lights placed by hand for level %d (the debug menu's Lights tab)\n", g_user_level);
     std::fprintf(f, "# light x y z  r g b  intensity radius flicker on\n");
-    for (const std::string& n : g_user_notes) std::fprintf(f, "%s\n", n.c_str());
-    if (g_sun_file.on) std::fprintf(f, "sun %.1f %.1f\n", g_sun_file.az, g_sun_file.el);
-    for (int n : g_interior_sets) std::fprintf(f, "interior_set %d\n", n);
-    for (const ClassLight& cl : g_class_lights)
-        if (cl.on)
-            std::fprintf(f, "emit %s %d  %.3f %.3f %.3f  %.3f %.3f %.3f  %.3f %.3f %.3f  %.2f\n", cl.moby ? "moby" : cl.shrub ? "shrub" : "tie", cl.o_class, cl.off[0], cl.off[1],
-                         cl.off[2], cl.col[0], cl.col[1], cl.col[2], cl.intensity, cl.radius, cl.flicker, cl.down);
-    for (const SunInterior& b : g_interiors)
-        std::fprintf(f, "interior %.1f %.1f %.1f  %.1f %.1f %.1f\n", b.lo[0], b.lo[1], b.lo[2], b.hi[0], b.hi[1], b.hi[2]);
-    for (int c : g_user_noauto) std::fprintf(f, "noauto %d\n", c);
-    for (const UserLight& l : g_user)
-        std::fprintf(f, "light %.3f %.3f %.3f  %.3f %.3f %.3f  %.3f %.3f %.3f %d\n", l.pos[0], l.pos[1], l.pos[2], l.col[0], l.col[1], l.col[2], l.intensity, l.radius,
-                     l.flicker, l.on ? 1 : 0);
+    // each entry written in the place of the file's line of its kind (the next one of the list), the rest after the last line
+    bool sun_done = false, rays_done = false;
+    const bool has_rays = std::any_of(g_user_layout.begin(), g_user_layout.end(), [](const FileLine& ln) { return ln.kind == 'r'; });
+    size_t n_set = 0, n_emit = 0, n_box = 0, n_off = 0, n_light = 0;
+    auto put = [&](char kind) {
+        switch (kind) {
+        case 's':
+            if (!sun_done && g_sun_file.on) std::fprintf(f, "sun %.1f %.1f\n", g_sun_file.az, g_sun_file.el);
+            sun_done = true;
+            if (!has_rays && !rays_done && g_sun_rays_off) std::fprintf(f, "sun_rays off\n");  // (new to the file: under the sun)
+            rays_done = rays_done || !has_rays;
+            break;
+        case 'r':
+            if (!rays_done && g_sun_rays_off) std::fprintf(f, "sun_rays off\n");
+            rays_done = true;
+            break;
+        case 'S':
+            if (n_set < g_interior_sets.size()) std::fprintf(f, "interior_set %d\n", g_interior_sets[n_set++]);
+            break;
+        case 'e':
+            while (n_emit < g_class_lights.size() && !g_class_lights[n_emit].on) ++n_emit;  // (one turned off: not written)
+            if (n_emit < g_class_lights.size()) {
+                const ClassLight& cl = g_class_lights[n_emit++];
+                std::fprintf(f, "emit %s %d  %.3f %.3f %.3f  %.3f %.3f %.3f  %.3f %.3f %.3f  %.2f\n", cl.moby ? "moby" : cl.shrub ? "shrub" : "tie", cl.o_class, cl.off[0],
+                             cl.off[1], cl.off[2], cl.col[0], cl.col[1], cl.col[2], cl.intensity, cl.radius, cl.flicker, cl.down);
+            }
+            break;
+        case 'i':
+            if (n_box < g_interiors.size()) {
+                const SunInterior& b = g_interiors[n_box++];
+                std::fprintf(f, "interior %.1f %.1f %.1f  %.1f %.1f %.1f\n", b.lo[0], b.lo[1], b.lo[2], b.hi[0], b.hi[1], b.hi[2]);
+            }
+            break;
+        case 'o':
+            if (n_off < g_user_noauto.size()) std::fprintf(f, "noauto %d\n", g_user_noauto[n_off++]);
+            break;
+        case 'l':
+            if (n_light < g_user.size()) {
+                const UserLight& l = g_user[n_light++];
+                std::fprintf(f, "light %.3f %.3f %.3f  %.3f %.3f %.3f  %.3f %.3f %.3f %d\n", l.pos[0], l.pos[1], l.pos[2], l.col[0], l.col[1], l.col[2], l.intensity,
+                             l.radius, l.flicker, l.on ? 1 : 0);
+            }
+            break;
+        default:
+            break;
+        }
+    };
+    for (const FileLine& ln : g_user_layout) {
+        if (ln.kind == '#') std::fprintf(f, "%s\n", ln.text.c_str());
+        else put(ln.kind);
+    }
+    put('s');
+    put('r');
+    while (n_set < g_interior_sets.size()) put('S');
+    while (n_emit < g_class_lights.size()) put('e');
+    while (n_box < g_interiors.size()) put('i');
+    while (n_off < g_user_noauto.size()) put('o');
+    while (n_light < g_user.size()) put('l');
     std::fclose(f);
     return true;
 }

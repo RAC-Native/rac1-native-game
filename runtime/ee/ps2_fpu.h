@@ -49,6 +49,25 @@ inline void enter_ee_rounding() {
     g_ee_chop = true;
 }
 
+// The calling thread rounds to nearest while this lives (the mode it had put back after): for the host's text <-> float
+// conversions on a thread that runs toward zero. strtof / sscanf and printf follow the rounding mode: chopped, "0.8" reads
+// 0.79999995 and "%.3f" prints it back "0.799" - a value read and written again lost one unit of its last digit (the light
+// files' "emit" lines drifted so through the debug menu's Save: 0.800 -> 0.795 after five saves).
+class NearestScope {
+public:
+    NearestScope() : prev_(std::fegetround()) {
+        if (prev_ != FE_TONEAREST) std::fesetround(FE_TONEAREST);
+    }
+    ~NearestScope() {
+        if (prev_ != FE_TONEAREST) std::fesetround(prev_);
+    }
+    NearestScope(const NearestScope&) = delete;
+    NearestScope& operator=(const NearestScope&) = delete;
+
+private:
+    int prev_;
+};
+
 // `q`, a quotient or root truncated toward zero, rounded to nearest instead: the next float away
 // from zero when the exact value is past their midpoint `m` (`past(m)`: exact in double, a
 // midpoint has 25 significant bits), the even one of the two on a tie.
