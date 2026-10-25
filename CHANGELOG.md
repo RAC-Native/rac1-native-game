@@ -5,6 +5,11 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+### Fixes
+- When the computer falls behind (or with V-Sync on a 75 Hz display) and a frame runs two or more of the game's
+  frames, the frame after no longer reuses the undrawn frame's drawing data without what it needs: the game no
+  longer freezes at Aridia's arrival, and no stray graphics programs run on Kerwan, Rilgar and other levels (#104).
+
 ### Launcher and setup
 - The game writes `progress.json` in its data folder for the [RAC Native launcher](https://github.com/RAC-Native/rac-native-launcher):
   the planet played, the planets reached, the share explored and the time played (thanks @mat-f96, #107).
