@@ -302,6 +302,68 @@ struct KickedChain {
     uint32_t start = 0, end = 0;
 };
 KickedChain g_loop_kicked;
+
+// The moby skip ranges of the last game frame whose chain the MRP's skinning skip left without vertex data (the mobys' tags, the
+// texture uploads 0x2555c0 built for the GS path), with the chain's bounds and the hash of its bytes. A frame that builds no chain
+// of its own (the chain stage's fallback: the previous buffer's chain, at 0x1611c4) has that chain walked by the GS replica, and
+// its mobys' NEXT parts hold the buffer's older bytes, which the VIF takes for codes (STMOD 1 with a stale ROW: the particles'
+// UNPACK broken, an endless VU1 loop, task 0358): their tags are skipped again. The ranges are noted for every game frame,
+// also those a host frame runs without drawing them (several game frames in one host frame when the host is slow): the previous
+// buffer's chain is then a frame never walked, and with no ranges for it the replica ran its garbage - VU1 programs that do not
+// exist ("no port for the microprogram"), the GS memory and the VU1 state written with garbage, or the game hung for good in the
+// particle program's endless loop on the chain worker (Aridia's arrival, with two or three game frames in its last host frames: #104).
+struct MobySkipsMemo {
+    uint32_t start = 0, end = 0;
+    uint64_t hash = 0;
+    std::vector<rac1::gs::Gs::SkipRange> ranges;
+};
+MobySkipsMemo g_moby_skips_memo;
+// orig: (host) the hash of a chain's bytes (a, e)
+static uint64_t chain_bytes_hash(uint32_t a, uint32_t e) {
+    uint64_t h = 1469598103934665603ull;
+    const uint8_t* p = static_cast<const uint8_t*>(ee_ram_ptr_read(a));
+    if (p == nullptr) return h;
+    for (uint32_t i = 0; i + 8 <= e - a; i += 8) {
+        uint64_t w;
+        std::memcpy(&w, p + i, 8);
+        h = (h ^ w) * 1099511628211ull;
+    }
+    return h;
+}
+// orig: (host) the moby ranges the replica skips in the chain (start, end) of the game frame just updated (its MRP scene),
+// noted in g_moby_skips_memo; appended to `out` when given
+static void moby_skips_note(uint32_t start, uint32_t end, std::vector<rac1::gs::Gs::SkipRange>* out) {
+    const MrpFrame& sf = mrp_scene();
+    std::vector<rac1::gs::Gs::SkipRange> ranges;
+    for (const MrpMoby& m : sf.mobys)
+        if (m.chain_end > m.chain_begin) {
+            rac1::gs::Gs::SkipRange r;
+            r.first = m.chain_begin;
+            r.last = m.chain_end - 1;
+            for (uint32_t k = 0; k < m.part_count; ++k) r.mscals.push_back(sf.parts[m.part_first + k].mscal);
+            if (m.rt) r.host_3d = m.moby;  // a moby drawn into a render target: the MRP draws it there, in the GS's order
+            r.moby = true;  // (Gs::moby_mark: where the MRP's mobys go in the primitives' order)
+            ranges.push_back(std::move(r));
+        }
+    if (g_moby_upload_chain_first != 0) {
+        rac1::gs::Gs::SkipRange r;
+        r.first = g_moby_upload_chain_first;
+        r.last = g_moby_upload_chain_last;
+        ranges.push_back(std::move(r));
+    }
+    g_moby_skips_memo.start = start;
+    g_moby_skips_memo.end = end;
+    g_moby_skips_memo.hash = chain_bytes_hash(start, end);
+    if (out != nullptr) out->insert(out->end(), ranges.begin(), ranges.end());
+    g_moby_skips_memo.ranges = std::move(ranges);
+}
+// orig: (host) a game frame a host frame ran without drawing it: its moby skip ranges noted (the next frame may walk its chain)
+static void moby_skips_note_undrawn() {
+    if (!g_moby_mrp_skip || (g_moby_mrp_skip_parts & 8) == 0 || g_moby_mrp_skip_verify) return;  // (the skinning not skipped)
+    const uint32_t idx = lwu(OV(0x001611d0));
+    const uint32_t start = lwu(OV(0x001611b8) + (idx & 1) * 4), end = lwu(OV(0x001611c0));
+    if (start != 0 && end > start) moby_skips_note(start, end, nullptr);
+}
 // orig: (host) a vsync wait inside a blocking loop (ee_thread_vsync): the chain a Kicked wait sent, then the vsync's work
 void blocking_loop_vsync(rac1::EeVsyncFrame kind) {
     if (kind == rac1::EeVsyncFrame::Kicked) {
@@ -2682,6 +2744,7 @@ int main(int argc, char** argv) {
 #endif
             mrp_scene_end_frame();
             const bool game_frame_ended = !ee_thread_suspended();
+            if (game_frame_ended && k + 1 < steps) moby_skips_note_undrawn();  // (a game frame not drawn: the next may walk its chain)
             if (game_frame_ended) {  // the main loop's own vsync (overlay_frame's wait 0x122298)
                 vsync_passed();
                 // (a game frame's RAM, also with "Original fades": the hashes of a run compare to another's game frame by game frame)
@@ -2884,23 +2947,6 @@ int main(int argc, char** argv) {
                 if (chain_log) std::printf("[chainlog] frame %llu chain %08x..%08x prev %d runs %d fade %d idx %u rings %08x %08x c4 %08x\n", static_cast<unsigned long long>(frame), start, end, prev_chain, chain_runs, fade, idx, lwu(OV(0x001611b8)), lwu(OV(0x001611bc)), lwu(OV(0x001611c4)));
                 if (chain_runs && std::getenv("RAC1_VU1_TRACE") != nullptr) std::fprintf(stderr, "[VU1] ==== frame %llu chain %08x..%08x\n", static_cast<unsigned long long>(frame), start, end);
                 std::vector<rac1::gs::Gs::SkipRange> skips;
-                // the mobys' skip ranges of the chain walked last with them, and its bytes' hash (the chain unchanged)
-                static struct {
-                    uint32_t start = 0, end = 0;
-                    uint64_t hash = 0;
-                    std::vector<rac1::gs::Gs::SkipRange> ranges;
-                } moby_skips_memo;
-                auto chain_hash = [](uint32_t a, uint32_t e) {
-                    uint64_t h = 1469598103934665603ull;
-                    const uint8_t* p = static_cast<const uint8_t*>(ee_ram_ptr_read(a));
-                    if (p == nullptr) return h;
-                    for (uint32_t i = 0; i + 8 <= e - a; i += 8) {
-                        uint64_t w;
-                        std::memcpy(&w, p + i, 8);
-                        h = (h ^ w) * 1099511628211ull;
-                    }
-                    return h;
-                };
                 if (chain_runs && !prev_chain && mrp_moby_active() && !menu_mode && g_mrp_moby_projection == 0) {
                     // the MRP draws the drop shadows (in the world's projection): the shadows' tags (the GS path's alpha counter and
                     // darkening) are walked but not processed
@@ -2910,36 +2956,15 @@ int main(int argc, char** argv) {
                 if (chain_runs && !prev_chain && mrp_moby_active() && g_moby_mrp_skip && (g_moby_mrp_skip_parts & 8) && g_moby_mrp_skip_verify == false) {
                     // the MRP draws the mobys: their chain tags (UNPACK vertex data, DIRECT fade state) and the texture uploads
                     // 0x2555c0 built for the GS path are walked but not processed (Gs::set_chain_skips); the VU1's double buffer flips as before
-                    const MrpFrame& sf = mrp_scene();
-                    const size_t first_moby = skips.size();
-                    for (const MrpMoby& m : sf.mobys)
-                        if (m.chain_end > m.chain_begin) {
-                            rac1::gs::Gs::SkipRange r;
-                            r.first = m.chain_begin;
-                            r.last = m.chain_end - 1;
-                            for (uint32_t k = 0; k < m.part_count; ++k) r.mscals.push_back(sf.parts[m.part_first + k].mscal);
-                            if (m.rt) r.host_3d = m.moby;  // a moby drawn into a render target: the MRP draws it there, in the GS's order
-                            r.moby = true;  // (Gs::moby_mark: where the MRP's mobys go in the primitives' order)
-                            skips.push_back(std::move(r));
-                        }
-                    if (g_moby_upload_chain_first != 0) {
-                        rac1::gs::Gs::SkipRange r;
-                        r.first = g_moby_upload_chain_first;
-                        r.last = g_moby_upload_chain_last;
-                        skips.push_back(std::move(r));
-                    }
+                    moby_skips_note(start, end, &skips);  // (noted for the next frame, which may walk this chain again)
                     if (std::getenv("RAC1_SKIP_DBG")) { std::fprintf(stderr, "[skipdbg] frame %llu chain %08x..%08x ranges:", static_cast<unsigned long long>(frame), start, end); for (auto& r : skips) { std::fprintf(stderr, " %08x-%08x(%zu:", r.first, r.last, r.mscals.size()); for (auto m : r.mscals) std::fprintf(stderr, "%x,", m); std::fprintf(stderr, ")"); } std::fprintf(stderr, "\n"); }
-                    moby_skips_memo.start = start;
-                    moby_skips_memo.end = end;
-                    moby_skips_memo.hash = chain_hash(start, end);
-                    moby_skips_memo.ranges.assign(skips.begin() + static_cast<std::ptrdiff_t>(first_moby), skips.end());
-                } else if (chain_runs && moby_skips_memo.start == start && moby_skips_memo.end == end && !moby_skips_memo.ranges.empty() &&
-                           moby_skips_memo.hash == chain_hash(start, end)) {
-                    // the same chain walked again (the frame before's, kept at 0x1611c4; a fade's frame): the mobys whose
+                } else if (chain_runs && g_moby_skips_memo.start == start && g_moby_skips_memo.end == end && !g_moby_skips_memo.ranges.empty() &&
+                           g_moby_skips_memo.hash == chain_bytes_hash(start, end)) {
+                    // the chain of the frame before walked (kept at 0x1611c4; a fade's frame; a frame not drawn): the mobys whose
                     // skinning the MRP skipped have no vertex data in it (their NEXT parts' inline quads are the buffer's older bytes,
                     // which the VIF would take for codes: STMOD 1 with a stale ROW broke the particles' UNPACK, an endless VU1 loop),
                     // so their tags are skipped again as at its first walk
-                    skips.insert(skips.end(), moby_skips_memo.ranges.begin(), moby_skips_memo.ranges.end());
+                    skips.insert(skips.end(), g_moby_skips_memo.ranges.begin(), g_moby_skips_memo.ranges.end());
                 }
                 if (chain_runs && !prev_chain && (!menu_mode || title) && !fade)  // the MRP world: the world passes' chain is not processed (its VU1 starts with it)
                     for (const auto& [first, last] : mrp_world_skip_ranges()) {
