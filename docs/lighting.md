@@ -150,6 +150,7 @@ adding even inactive code to them changed the rounding of a few pixels.
 | Shadow distance | How far mobys cast | sun shadows |
 | Ambient occlusion | Screen-space darkening where surfaces meet | the 3D |
 | Light editor | Lights placed by hand, saved per level | the world |
+| Emissive surfaces | Textures marked in a level's file keep the original's brightness, not darkened by shadows | the world and mobys |
 
 The whole module is active only when Lighting is not Original, the MRP draws both the world and the
 mobys, and the shared projection is in use: in practice during gameplay, not on the title screen, in
@@ -425,7 +426,7 @@ Made in the debug menu (F1, Lights tab) and saved in `data/lights/level<NN>.txt`
 taken from the disc. They are lit like the automatic ones and ahead of them.
 
 The project's level files place no light: `level09.txt` (Gaspar) and `level10.txt` (Orxon) each turn
-off one automatic class that was taken for a lamp, `level00.txt` (Veldin) makes lamps of classes, and `level01.txt` (Novalis, also its lamps by class), `level03.txt`
+off one automatic class that was taken for a lamp, `level00.txt` (Veldin) makes lamps of classes and marks [emissive surfaces](#emissive-surfaces), and `level01.txt` (Novalis, also its lamps by class and emissive surfaces), `level03.txt`
 (Kerwan), `level04.txt` (Eudora), `level14.txt` (Oltanis) and `level15.txt` (Quartu) turn the sun,
 each with a comment saying why. `level05.txt` (Rilgar), `level06.txt` (Blarg's station), `level08.txt`
 (Batalia) and `level14.txt` turn the [sun rays](#sun-rays) off (`sun_rays off`, #101).
@@ -445,7 +446,7 @@ game's lights first, then emitters that have a moby within reach); a 32 x 18 til
   write it. The one exception is the debug light editor's "Ratchet to it" (see below).
 - **Test switches:** sun: `RAC1_SHADOWS`, `RAC1_SHADOW_RES`, `RAC1_SUN_DIR`, `RAC1_SUN_ZONE`,
   `RAC1_SUN_TRACE`, `RAC1_SUN_COVER`, `RAC1_SUN_COVER_SKY`, `RAC1_WORLD_SHADOW`, `RAC1_TFRAG_LIGHT_TRACE`; lights: `RAC1_POINTS`, `RAC1_POINT_SHADOWS`, `RAC1_AUTO_LIGHTS`,
-  `RAC1_LIGHTS_TRACE`, `RAC1_LIGHTS_DIR`; shadows: `RAC1_SHADOW_CACHE`,
+  `RAC1_LIGHTS_TRACE`, `RAC1_LIGHTS_DIR`, `RAC1_EMISSIVE`; shadows: `RAC1_SHADOW_CACHE`,
   `RAC1_SHADOW_MOBY_DIST`; occlusion: `RAC1_AO`. The Graphics menu sets the same values; an
   environment variable, when present, wins.
 
@@ -799,7 +800,7 @@ part of the original. The editor is in the debug menu (Lights tab), so it needs 
 - Lights are saved per level in `data/lights/levelNN.txt` (relative to the working directory;
   `RAC1_LIGHTS_DIR` changes the directory), one light per line:
   `light x y z  r g b  intensity radius flicker on`, `noauto <class>` for an automatic class
-  turned off, `sun <azimuth> <elevation>` for the level's own sun and `sun_rays off` for no
+  turned off, `emissive ...` for an [emissive surface](#emissive-surfaces), `sun <azimuth> <elevation>` for the level's own sun and `sun_rays off` for no
   [sun rays](#sun-rays) on the level, with `#` for comments. Saving from the editor keeps the file's
   own comment lines and its lines' order (an entry is written where its line was, the ones added
   after the last line), and writes the numbers it read unchanged: the game's thread rounds toward
@@ -855,6 +856,54 @@ the class-1471 effect manager, not a moby of its own, so a class light cannot fo
 is on (state 0x161bf8[i] 2 to 4, its robot 0x161c88[i]), a violet-white light sits where the beam ends (0x1e6de0[i]: intensity
 2.4, radius 6) and a weaker one at its muzzle (the slot's matrix 0x1e6d20[i]: 1.2, radius 4); Veldin only, no shadow cube,
 Secondary Lights on All. `RAC1_BEAM_LIGHTS=0` leaves them out.
+
+### Emissive surfaces
+
+With the modern lighting every surface is the game's colour relit: in a sun shadow it loses the key light's term, and the point
+lights only add. A lamp, a screen or a robot's eye painted in a texture then goes as dark as the wall around it in shade (Veldin's
+domed building, issue #102). A level's file can mark a texture **emissive** (our choice, data only):
+
+```
+emissive <tfrag|tie|shrub|moby> <class> tex <n> [strength] [threshold]
+```
+
+- **Which texture.** `tex` is the class's own texture: a tie's texture prim (the class's list, as `TieClass::textures`), a shrub's
+  or a moby's local texture (0 to 15, the class's texture remap). A tfrag has no class: `tfrag 0 tex <n>` names the level's tfrag
+  texture `n`. The numbers come from the level's data, so they are the same at every load. A tie's or a shrub's texture is the
+  level's texture the class names, and it glows wherever the level uses it (other classes that share it too); a moby's is
+  marked for its class alone.
+- **What it does.** Each texel of that texture whose brightest channel (r, g or b) reaches `threshold` (0 to 1; default 0, the whole
+  texture; 0.04 of softening either side) is drawn with **the colour the original lighting gives it**, the game's own vertex
+  colour (no sun shadow, no relighting) times the texture, times `strength` (0 to 4; default 1), wherever the modern lighting
+  makes it darker: `max(lit, original x strength)`. In daylight a lamp in the sun looks as before; in shade or at night it keeps
+  its painted brightness. A threshold keeps a lamp's dark frame lit normally while its bright glass glows. Point lights still add,
+  and fog applies after it.
+- **How.** `emissive_refresh` (`mrp_world_renderer.cpp`) maps each marked tfrag, tie or shrub texture to a shader slot (1 to 30),
+  and the slot goes into the draw's texture word (bits 25 to 29) when the texture is looked up (`GsFront::key_now`); the mobys'
+  draws carry theirs in bits 27 to 31, by class and local texture (`moby_emissive_refresh`, `mrp_moby_renderer.cpp`). The
+  lighting's shader variants (`SH_POINTS`, `SH_SPLIT`, OpenGL and Vulkan) read the slot's strength and threshold from `uEmis[32]`
+  (a uniform array; in Vulkan part of the lighting's uniform buffer) in `sh_emissive`. Nothing changes with Lighting on Original:
+  the bits are not set and the original programs do not read them.
+- **Limits.** At most 30 surfaces per level. The ambient occlusion, drawn after the world, still darkens an emissive texel
+  where surfaces meet. There is no bloom (glow around the bright pixels).
+
+`RAC1_EMISSIVE=0` (testing) turns them all off.
+
+**In the editor** (Lights tab, "Emissive surfaces"): the crosshair's surface - the level's nearest tfrag, tie or shrub triangle within
+0.5 units of the point under it (`mrp_world_surface_at`) - shows its kind, class and texture; "Take the moby" takes the moby there
+instead (the nearest within 3 units; its local textures in use are stepped through). The arrows step through the class's textures,
+the texture in hand pulses magenta with **Preview** ticked, **Mark emissive** / **Unmark** add or remove the line, and **Strength** and
+**Threshold** act live; Save writes `emissive` lines with the rest of the file. **Suggest** lists the level's tie and shrub textures
+with some bright saturated texels (the automatic emitters' test) or near-white ones (`RAC1_LIGHTS_WHITE`'s test) over less than 70 %
+of the texture, as candidates to look at with the preview; nothing is marked by itself. `RAC1_PICK_SCREEN=u,v` (testing) prints the
+surface at that point of the screen with the objects there.
+
+Shipped (#102, strength 1.3 so that they read a little brighter than the original, and do not darken): on Veldin the domed
+building's round cyan lamps (shrub class 569, three stacked instances per column, `tex 1` their glass) and its cyan door panels (tie
+2024 `tex 0`, threshold 0.8: the building's one texture, texture 7, holds its walls too); on Novalis the landing pad's red lamps
+(shrub 231 `tex 0` and `tex 1`), the neon tubes' panel (shrub 282 `tex 0`) and the hanging bulbs (shrub 281 `tex 0`). Not marked:
+the yellow soldier bots' eyes (moby 459 has one texture, the eyes and the yellow body in it: a threshold on the brightest channel
+cannot tell them apart), the teleporters (moby 1135, six textures, not yet looked at) and Clank's eyes (moby 1204).
 
 ## Settings
 
@@ -922,6 +971,8 @@ Finding the automatic emitters costs 10 to 50 ms once per level (the survey of e
   unmarked one is in the roof's shadow (shade at the Shadow Strength).
 - No shadow replaces the original's drop shadows where there is no sun shadow (rooms, zones without
   a sun); the ambient occlusion, when on, is the only contact darkening there.
+- Emissive surfaces: at most 30 a level; a tie's or shrub's texture glows in every class that uses it; the ambient occlusion still
+  darkens them; no bloom.
 - The automatic lights are a heuristic: some lamps are missed (thin strips, white panels, lamps that
   are mobys: Batalia's towers), and a bright coloured material can be taken for a lamp or the
   reverse. Lamps it misses are given by class in the level's file (`emit`).

@@ -1069,6 +1069,154 @@ void tab_sun() {
     }
     if (g_interior_show) interior_boxes(B);
 }
+// orig: (host) the Lights tab's "Emissive surfaces": the surface under the crosshair (the world's nearest triangle - tfrag, tie, shrub -
+// or the moby there), its class's texture stepped through with a pulsing magenta preview, marked / unmarked, its strength and threshold
+// live; "Suggest" lists bright textures of the level as candidates (never applied by themselves). Saved with the lights (Save above)
+void tab_emissive() {
+    static EmissiveSurface cur{-1, 0, 0, 1.0f, 0.0f};  // (the surface in hand: kind -1 none)
+    static bool follow = true, preview = false;
+    static std::vector<EmissiveCandidate> cands;
+    static int cands_level = -1;
+    if (!ImGui::CollapsingHeader("Emissive surfaces (emissive)")) {
+        mrp_emissive_preview(-1, 0, 0);
+        return;
+    }
+    std::vector<EmissiveSurface>& E = mrp_user_emissive();
+    float wp[3] = {0.0f, 0.0f, 0.0f};
+    const bool hit = mrp_lighting_screen_point(0.5f, 0.5f, wp);
+    if (ImGuiViewport* v = ImGui::GetMainViewport()) {  // (the crosshair: the window's centre)
+        const ImVec2 c(v->Pos.x + v->Size.x * 0.5f, v->Pos.y + v->Size.y * 0.5f);
+        ImDrawList* dl = ImGui::GetForegroundDrawList();
+        dl->AddLine(ImVec2(c.x - 10.0f, c.y), ImVec2(c.x + 10.0f, c.y), IM_COL32(255, 120, 255, 220), 2.0f);
+        dl->AddLine(ImVec2(c.x, c.y - 10.0f), ImVec2(c.x, c.y + 10.0f), IM_COL32(255, 120, 255, 220), 2.0f);
+    }
+    if (g_modern_shadows == 0) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Shown only with Lighting not Original.");
+    static SurfacePick sp;
+    static LightPick mp;
+    static float last[3] = {1e30f, 0.0f, 0.0f};
+    if (hit && (std::fabs(wp[0] - last[0]) + std::fabs(wp[1] - last[1]) + std::fabs(wp[2] - last[2]) > 0.01f)) {  // (the search when the point moves)
+        for (int k = 0; k < 3; ++k) last[k] = wp[k];
+        sp = mrp_world_surface_at(wp);
+        mp = mrp_lighting_pick(wp);
+    }
+    const bool moby_near = hit && mp.moby && mp.moby_dist < 3.0f;
+    auto take_moby = [&] {
+        const uint32_t bits = mrp_moby_class_local_textures(mp.moby_class);
+        int first = 0;
+        while (first < 31 && bits != 0 && ((bits >> first) & 1u) == 0) ++first;
+        cur = EmissiveSurface{3, mp.moby_class, first, 1.0f, 0.0f};
+    };
+    if (!hit) {
+        ImGui::TextDisabled("Crosshair: nothing (the sky, or the lighting off)");
+    } else {
+        if (sp.kind >= 0)
+            ImGui::Text("Crosshair: %s %d tex %d (the level's %s texture %d), %.2f from the point", mrp_emissive_kind_name(sp.kind), sp.o_class, sp.tex,
+                        mrp_emissive_kind_name(sp.kind), sp.texture, sp.dist);
+        else
+            ImGui::TextDisabled("Crosshair: no tfrag, tie or shrub triangle within 0.5 units");
+        if (moby_near) {
+            ImGui::Text("moby class %d, %.1f units from its origin", mp.moby_class, mp.moby_dist);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Take the moby")) {
+                take_moby();
+                follow = false;
+            }
+        }
+        if (follow && sp.kind >= 0) cur = EmissiveSurface{sp.kind, sp.o_class, sp.tex, 1.0f, 0.0f};
+    }
+    ImGui::Checkbox("Follow the crosshair", &follow);
+    ImGui::SameLine();
+    ImGui::Checkbox("Preview (pulsing magenta)", &preview);
+    int idx = -1;
+    for (size_t i = 0; i < E.size(); ++i)
+        if (E[i].kind == cur.kind && E[i].o_class == cur.o_class && E[i].tex == cur.tex) idx = static_cast<int>(i);
+    if (cur.kind < 0) {
+        ImGui::TextDisabled("No surface in hand: aim at one, or pick one below.");
+        mrp_emissive_preview(-1, 0, 0);
+    } else {
+        // the class's textures, stepped (a moby's: its local textures in use; a tie's: its prims; a shrub's: 0..15; a tfrag's: the level's)
+        int ntex = 0;
+        uint32_t moby_bits = 0;
+        if (cur.kind == 3) moby_bits = mrp_moby_class_local_textures(cur.o_class);
+        else mrp_world_class_texture(cur.kind, cur.o_class, cur.tex, &ntex);
+        const int level_tex = cur.kind == 3 ? -1 : mrp_world_class_texture(cur.kind, cur.o_class, cur.tex);
+        auto step = [&](int d) {
+            follow = false;
+            for (int n = 0; n < 64; ++n) {
+                cur.tex += d;
+                if (cur.kind == 3) {
+                    cur.tex = (cur.tex + 32) % 32;
+                    if (moby_bits == 0 || ((moby_bits >> cur.tex) & 1u) != 0) break;
+                } else {
+                    cur.tex = ntex > 0 ? (cur.tex + ntex) % ntex : 0;
+                    if (mrp_world_class_texture(cur.kind, cur.o_class, cur.tex) >= 0) break;
+                }
+            }
+        };
+        if (ImGui::ArrowButton("##emis_prev", ImGuiDir_Left)) step(-1);
+        ImGui::SameLine();
+        if (ImGui::ArrowButton("##emis_next", ImGuiDir_Right)) step(1);
+        ImGui::SameLine();
+        if (cur.kind == 3) ImGui::Text("In hand: moby %d tex %d (its textures: mask %08x)%s", cur.o_class, cur.tex, moby_bits, idx >= 0 ? "  - emissive" : "");
+        else ImGui::Text("In hand: %s %d tex %d of %d (the level's texture %d)%s", mrp_emissive_kind_name(cur.kind), cur.o_class, cur.tex, ntex, level_tex, idx >= 0 ? "  - emissive" : "");
+        mrp_emissive_preview(preview ? cur.kind : -1, cur.o_class, cur.tex);
+        if (idx < 0) {
+            if (ImGui::Button("Mark emissive")) {
+                EmissiveSurface e = cur;
+                e.strength = 1.0f;
+                e.threshold = 0.0f;
+                E.push_back(e);
+                mrp_user_emissive_changed();
+                g_light_dirty = true;
+                preview = false;  // (the result itself shown)
+            }
+        } else {
+            if (ImGui::Button("Unmark")) {
+                E.erase(E.begin() + idx);
+                mrp_user_emissive_changed();
+                g_light_dirty = true;
+            } else {
+                EmissiveSurface& e = E[static_cast<size_t>(idx)];
+                bool ch = false;  // (live: the shaders' slots read the list every frame)
+                ch |= ImGui::SliderFloat("Strength##emis", &e.strength, 0.0f, 4.0f, "%.2f");
+                ch |= ImGui::SliderFloat("Threshold##emis", &e.threshold, 0.0f, 1.0f, "%.2f");
+                ImGui::TextDisabled("Strength: the original lighting's colour x this; threshold: the texels whose brightest channel is below it stay lit as before.");
+                if (ch) g_light_dirty = true;
+            }
+        }
+    }
+    ImGui::Text("Marked (%zu, at most %d):", E.size(), kEmissiveSlots);
+    for (size_t i = 0; i < E.size(); ++i) {
+        char t[96];
+        std::snprintf(t, sizeof t, "%s %d tex %d  x%.2f  threshold %.2f##em%zu", mrp_emissive_kind_name(E[i].kind), E[i].o_class, E[i].tex, E[i].strength, E[i].threshold, i);
+        if (ImGui::Selectable(t, static_cast<int>(i) == idx)) {
+            cur = E[i];
+            follow = false;
+        }
+    }
+    if (ImGui::Button("Suggest")) {
+        cands = mrp_world_emissive_candidates();
+        cands_level = mrp_user_lights_level();
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("tie / shrub textures with bright saturated or near-white texels: candidates only");
+    if (cands_level != mrp_user_lights_level()) cands.clear();
+    if (!cands.empty() && ImGui::BeginListBox("##emis_cands", ImVec2(-1.0f, 8.0f * ImGui::GetTextLineHeightWithSpacing()))) {
+        for (size_t i = 0; i < cands.size(); ++i) {
+            const EmissiveCandidate& c = cands[i];
+            char t[128];
+            std::snprintf(t, sizeof t, "%s %d tex %d (texture %d): %.0f %% glowing, %.0f %% near white##ec%zu", mrp_emissive_kind_name(c.kind), c.o_class, c.tex, c.texture,
+                          100.0f * c.glow, 100.0f * c.white, i);
+            if (ImGui::Selectable(t, cur.kind == c.kind && cur.o_class == c.o_class && cur.tex == c.tex)) {
+                cur = EmissiveSurface{c.kind, c.o_class, c.tex, 1.0f, 0.0f};
+                follow = false;
+                preview = true;
+            }
+        }
+        ImGui::EndListBox();
+    }
+}
+
 void tab_lights() {
     std::vector<UserLight>& L = mrp_user_lights();
     const int level = mrp_user_lights_level();
@@ -1233,6 +1381,7 @@ void tab_lights() {
         }
         ImGui::TextDisabled("Live; Save (above) writes them as \"emit\" lines. Secondary Lights: All.");
     }
+    tab_emissive();
     g_class_light_selected = g_class_sel;
     g_user_light_selected = g_light_sel;
     if (g_light_markers) lights_markers(L);

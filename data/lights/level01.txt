@@ -33,3 +33,9 @@ emit moby 459  0.000 0.000 1.300  1.000 0.600 0.250  0.800 3.000 0.400
 emit moby 121  0.000 0.000 0.000  1.000 0.450 0.150  0.800 3.000 0.300
 # The stationary drop ship over the gap (moby class 666): its orange lamps.
 emit moby 666  0.000 0.000 0.000  1.000 0.550 0.200  1.500 7.000 0.000
+# Emissive surfaces (#102, our choice): the landing pad's red lamps (shrub 231: tex 1 the red dome, tex 0 its highlight), the neon tubes'
+# panel (shrub 282 tex 0) and the hanging bulbs (shrub 281 tex 0) keep the original's brightness, a little more, in the halls' shade.
+emissive shrub 231 tex 1  1.30 0.00
+emissive shrub 231 tex 0  1.30 0.00
+emissive shrub 282 tex 0  1.30 0.00
+emissive shrub 281 tex 0  1.30 0.00

@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <vector>
 #include <cmath>
 #include <cstdio>
@@ -27,6 +28,7 @@
 #include <cstring>
 #include <filesystem>
 #include <map>
+#include <mutex>
 #include <string>
 
 namespace rac1 {
@@ -50,6 +52,7 @@ int g_user_light_selected = -1;
 int g_ao_intensity = std::clamp(env_int("RAC1_AO_INTENSITY", 75), 0, 200);
 int g_ao = env_int("RAC1_AO", 0);
 int g_sun_rays = env_int("RAC1_SUN_RAYS", 0);
+int g_emissive = env_int("RAC1_EMISSIVE", 1);
 float g_shadow_moby_dist = std::getenv("RAC1_SHADOW_MOBY_DIST") != nullptr ? static_cast<float>(std::atof(std::getenv("RAC1_SHADOW_MOBY_DIST"))) : 0.0f;
 
 namespace {
@@ -2732,8 +2735,9 @@ namespace {
 std::vector<UserLight> g_user;
 std::vector<int> g_user_noauto;  // the tie classes whose automatic emitters are off
 std::vector<ClassLight> g_class_lights;  // the lights per object class ("emit")
+std::vector<EmissiveSurface> g_emissive_list;  // the emissive surfaces ("emissive")
 // the file's lines in their order, as the editor's Save writes them back: a comment (or a line not understood) by its text, an
-// entry by its kind ('s' sun, 'r' sun_rays, 'S' interior_set, 'e' emit, 'i' interior, 'o' noauto, 'l' light) - the next of
+// entry by its kind ('s' sun, 'r' sun_rays, 'S' interior_set, 'e' emit, 'm' emissive, 'i' interior, 'o' noauto, 'l' light) - the next of
 // that kind's current list written in its place, the ones added since after the last line
 struct FileLine {
     char kind = '#';
@@ -2757,6 +2761,7 @@ void user_load(int level) {
     g_interiors.clear();
     g_interior_sets.clear();
     g_class_lights.clear();
+    g_emissive_list.clear();
     g_sun_snap = true;  // (a level's sun, or the file read again: at once)
     g_user_layout.clear();
     g_sun_rays_off = false;
@@ -2764,7 +2769,10 @@ void user_load(int level) {
     g_user_path = user_path(level);
     g_user_light_selected = -1;
     FILE* f = std::fopen(g_user_path.c_str(), "r");
-    if (f == nullptr) return;
+    if (f == nullptr) {
+        mrp_user_emissive_changed();
+        return;
+    }
     const rac1::ps2fpu::NearestScope nearest;  // (the numbers read as written: this thread runs toward zero)
     char line[256];
     while (std::fgets(line, sizeof line, f) != nullptr) {
@@ -2809,6 +2817,22 @@ void user_load(int level) {
                 continue;
             }
         }
+        {  // "emissive <tfrag|tie|shrub|moby> <class> tex <n> [strength] [threshold]"
+            EmissiveSurface es;
+            char kind[8] = {};
+            const int got = std::sscanf(line, "emissive %7s %d tex %d %f %f", kind, &es.o_class, &es.tex, &es.strength, &es.threshold);
+            int k = -1;
+            for (int i = 0; i < 4; ++i)
+                if (std::strcmp(kind, mrp_emissive_kind_name(i)) == 0) k = i;
+            if (got >= 3 && k >= 0 && es.tex >= 0) {
+                es.kind = k;
+                es.strength = std::clamp(es.strength, 0.0f, 4.0f);
+                es.threshold = std::clamp(es.threshold, 0.0f, 1.0f);
+                g_emissive_list.push_back(es);
+                entry('m');
+                continue;
+            }
+        }
         if (int n = 0; std::sscanf(line, "interior_set %d", &n) == 1) {
             g_interior_sets.push_back(n);
             entry('S');
@@ -2832,7 +2856,9 @@ void user_load(int level) {
     }
     std::fclose(f);
     std::printf("[lights] level %d: %zu lights placed by hand (%s)\n", level, g_user.size(), g_user_path.c_str());
+    if (!g_emissive_list.empty()) std::printf("[lights] level %d: %zu emissive surfaces\n", level, g_emissive_list.size());
     if (g_sun_file.on) std::printf("[lights] level %d: the sun turned to azimuth %.1f, elevation %.1f degrees\n", level, g_sun_file.az, g_sun_file.el);
+    mrp_user_emissive_changed();
 }
 // orig: (host) the current level's file read when the level changed (its sun is wanted at the shadow pass's start, whatever the
 // secondary lights' setting)
@@ -2861,6 +2887,68 @@ bool mrp_user_sun_rays_off() { return g_sun_rays_off; }
 void mrp_user_sun_rays_set_off(bool off) { g_sun_rays_off = off; }
 // orig: (host) see mrp_lighting.h
 std::vector<ClassLight>& mrp_user_class_lights() { return g_class_lights; }
+
+namespace {
+// the renderers' copy of the emissive surfaces (they read it on the scene's worker), its generation, the preview
+std::mutex g_emis_m;
+std::vector<EmissiveSurface> g_emis_copy;
+EmissiveSurface g_emis_preview;
+bool g_emis_preview_on = false;
+double g_emis_preview_t = 0.0;  // (when the debug menu last asked for it: a preview not asked for half a second ends - the menu closed)
+double emis_now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+std::atomic<uint32_t> g_emis_gen{1};
+}  // namespace
+// orig: (host) see mrp_lighting.h
+std::vector<EmissiveSurface>& mrp_user_emissive() { return g_emissive_list; }
+// orig: (host) see mrp_lighting.h
+const char* mrp_emissive_kind_name(int kind) {
+    static const char* names[4] = {"tfrag", "tie", "shrub", "moby"};
+    return kind >= 0 && kind < 4 ? names[kind] : "?";
+}
+// orig: (host) see mrp_lighting.h
+void mrp_user_emissive_changed() {
+    std::lock_guard<std::mutex> lg(g_emis_m);
+    g_emis_copy.assign(g_emissive_list.begin(), g_emissive_list.begin() + std::min<ptrdiff_t>(static_cast<ptrdiff_t>(g_emissive_list.size()), kEmissiveSlots));
+    if (g_emissive_list.size() > static_cast<size_t>(kEmissiveSlots))
+        std::printf("[lights] level %d: %zu emissive surfaces, the first %d used\n", g_user_level, g_emissive_list.size(), kEmissiveSlots);
+    ++g_emis_gen;
+}
+// orig: (host) see mrp_lighting.h
+void mrp_emissive_preview(int kind, int o_class, int tex) {
+    std::lock_guard<std::mutex> lg(g_emis_m);
+    const bool on = kind >= 0;
+    g_emis_preview_t = emis_now();
+    if (on == g_emis_preview_on && (!on || (g_emis_preview.kind == kind && g_emis_preview.o_class == o_class && g_emis_preview.tex == tex))) return;
+    g_emis_preview_on = on;
+    g_emis_preview.kind = kind;
+    g_emis_preview.o_class = o_class;
+    g_emis_preview.tex = tex;
+    ++g_emis_gen;
+}
+// orig: (host) see mrp_lighting.h
+uint32_t mrp_emissive_snapshot(std::vector<EmissiveSurface>& out, EmissiveSurface* preview, bool* has_preview) {
+    std::lock_guard<std::mutex> lg(g_emis_m);
+    if (g_emis_preview_on && emis_now() - g_emis_preview_t > 0.5) {
+        g_emis_preview_on = false;
+        ++g_emis_gen;
+    }
+    out = g_emis_copy;
+    *preview = g_emis_preview;
+    *has_preview = g_emis_preview_on;
+    return g_emis_gen.load();
+}
+namespace {
+// orig: (host) the shaders' emissive slots (uEmis): [0].x on (the option and the lighting's variant), slot i + 1 the list's surface
+// i (strength, threshold), slot 31 the preview (w 1, x its pulse)
+void emissive_uniforms(glm::vec4 out[32]) {
+    for (int i = 0; i < 32; ++i) out[i] = glm::vec4(0.0f);
+    out[0].x = g_emissive != 0 ? 1.0f : 0.0f;
+    const size_t n = std::min<size_t>(g_emissive_list.size(), kEmissiveSlots);
+    for (size_t i = 0; i < n; ++i) out[i + 1] = glm::vec4(g_emissive_list[i].strength, g_emissive_list[i].threshold, 0.0f, 0.0f);
+    const double t = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    out[kEmissivePreviewSlot] = glm::vec4(0.25f + 0.45f * static_cast<float>(0.5 + 0.5 * std::sin(t * 6.0)), 0.0f, 0.0f, 1.0f);
+}
+}  // namespace
 int g_class_light_selected = -1;
 // orig: (host) see mrp_lighting.h
 std::vector<SunInterior>& mrp_user_interiors() { return g_interiors; }
@@ -2922,7 +3010,7 @@ bool mrp_user_lights_save() {
     // each entry written in the place of the file's line of its kind (the next one of the list), the rest after the last line
     bool sun_done = false, rays_done = false;
     const bool has_rays = std::any_of(g_user_layout.begin(), g_user_layout.end(), [](const FileLine& ln) { return ln.kind == 'r'; });
-    size_t n_set = 0, n_emit = 0, n_box = 0, n_off = 0, n_light = 0;
+    size_t n_set = 0, n_emit = 0, n_emis = 0, n_box = 0, n_off = 0, n_light = 0;
     auto put = [&](char kind) {
         switch (kind) {
         case 's':
@@ -2944,6 +3032,12 @@ bool mrp_user_lights_save() {
                 const ClassLight& cl = g_class_lights[n_emit++];
                 std::fprintf(f, "emit %s %d  %.3f %.3f %.3f  %.3f %.3f %.3f  %.3f %.3f %.3f  %.2f\n", cl.moby ? "moby" : cl.shrub ? "shrub" : "tie", cl.o_class, cl.off[0],
                              cl.off[1], cl.off[2], cl.col[0], cl.col[1], cl.col[2], cl.intensity, cl.radius, cl.flicker, cl.down);
+            }
+            break;
+        case 'm':
+            if (n_emis < g_emissive_list.size()) {
+                const EmissiveSurface& es = g_emissive_list[n_emis++];
+                std::fprintf(f, "emissive %s %d tex %d  %.2f %.2f\n", mrp_emissive_kind_name(es.kind), es.o_class, es.tex, es.strength, es.threshold);
             }
             break;
         case 'i':
@@ -2974,6 +3068,7 @@ bool mrp_user_lights_save() {
     put('r');
     while (n_set < g_interior_sets.size()) put('S');
     while (n_emit < g_class_lights.size()) put('e');
+    while (n_emis < g_emissive_list.size()) put('m');
     while (n_box < g_interiors.size()) put('i');
     while (n_off < g_user_noauto.size()) put('o');
     while (n_light < g_user.size()) put('l');
@@ -3180,6 +3275,10 @@ void screen_point_read(const int vp[4]) {
             std::printf("[lights] screen %.2f %.2f: %.2f %.2f %.2f; tie %d class %d offset %.3f %.3f %.3f; shrub %d class %d offset %.3f %.3f %.3f; moby %d class %d (%.2f away)\n",
                         g_pick_uv[0], g_pick_uv[1], g_pick_world[0], g_pick_world[1], g_pick_world[2], pk.tie ? 1 : 0, pk.tie_class, pk.tie_off[0], pk.tie_off[1], pk.tie_off[2],
                         pk.shrub ? 1 : 0, pk.shrub_class, pk.shrub_off[0], pk.shrub_off[1], pk.shrub_off[2], pk.moby ? 1 : 0, pk.moby_class, pk.moby_dist);
+            const SurfacePick sp = mrp_world_surface_at(g_pick_world);  // (the surface there: an emissive line's kind, class, texture)
+            if (sp.kind >= 0)
+                std::printf("[lights] screen %.2f %.2f: surface %s %d tex %d (level texture %d, %.3f away)\n", g_pick_uv[0], g_pick_uv[1], mrp_emissive_kind_name(sp.kind), sp.o_class,
+                            sp.tex, sp.texture, sp.dist);
         }
     }
 }
@@ -3297,6 +3396,10 @@ void class_lights_add(double t) {
         const int level = static_cast<int>(lw(0x0015ed84));
         if (level != shown_level && g_user_level == level && g_sh.frame > 30) {
             shown_level = level;
+            if (std::getenv("RAC1_LIGHTS_TRACE") != nullptr)  // (testing: the debug menu's emissive candidates)
+                for (const EmissiveCandidate& c : mrp_world_emissive_candidates())
+                    std::printf("[lights] emissive candidate: %s %d tex %d (level texture %d): %.1f %% glowing, %.1f %% near white\n", mrp_emissive_kind_name(c.kind), c.o_class,
+                                c.tex, c.texture, 100.0f * c.glow, 100.0f * c.white);
             for (const ClassLight& cl : g_class_lights) {
                 int n = 0;
                 if (cl.moby) {
@@ -3923,6 +4026,7 @@ ShadowLocs mrp_lighting_locs(unsigned prog) {
     l.opaque = glGetUniformLocation(p, "uShOpaque");
     l.pt_tiles = glGetUniformLocation(p, "uPtTiles");
     l.pt_vp = glGetUniformLocation(p, "uPtVP");
+    l.emis = glGetUniformLocation(p, "uEmis");
     return l;
 }
 
@@ -3980,6 +4084,11 @@ void mrp_lighting_bind_receiver(const ShadowLocs& l, bool sky) {
         glUniform4fv(l.pt_col, g_sh.npts, glm::value_ptr(g_sh.pt_col[0]));
         glUniform4fv(l.pt_down, (g_sh.npts + 3) / 4, g_sh.pt_down);
     }
+    if (l.emis >= 0) {  // (the lighting's variants only)
+        glm::vec4 e[32];
+        emissive_uniforms(e);
+        glUniform4fv(l.emis, 32, glm::value_ptr(e[0]));
+    }
 }
 
 // orig: (host) see mrp_lighting.h
@@ -4022,8 +4131,9 @@ struct ShadowVkUbo {
     glm::vec4 uPtPos[96]{};
     glm::vec4 uPtCol[96]{};
     glm::vec4 uPtDown[24]{};
+    glm::vec4 uEmis[32]{};
 };
-static_assert(sizeof(ShadowVkUbo) == 4000, "ShadowVkUbo must match SHADOW_UBO_DECL in gen_vk_shaders.py");
+static_assert(sizeof(ShadowVkUbo) == 4512, "ShadowVkUbo must match SHADOW_UBO_DECL in gen_vk_shaders.py");
 
 VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, bool is_caster) {
     mrp_lighting_vk_set_layout();
@@ -4142,6 +4252,7 @@ void mrp_lighting_vk_bind_receiver(uint64_t pipe_layout, bool sky, bool lit_vari
             std::memcpy(ubo.uPtCol, g_sh.pt_col, static_cast<size_t>(g_sh.npts) * sizeof(glm::vec4));
             std::memcpy(ubo.uPtDown, g_sh.pt_down, static_cast<size_t>((g_sh.npts + 3) / 4) * sizeof(glm::vec4));
         }
+        emissive_uniforms(ubo.uEmis);
         g_vk_sh.rec_ds[1][li] = build_lighting_vk_ds(ubo, false);
         g_vk_sh.rec_gen[1][li] = gen;
     }

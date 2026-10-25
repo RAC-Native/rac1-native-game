@@ -109,6 +109,7 @@ struct PrimInfo {
     uint32_t word = 0;    // bit 0 white, 1..2 TFX, 3 TCC, 4..6 MXL, 7 LCM, 8..9 L, 10..21 K (raw 12 bits), 22..24 mips - 1
     uint32_t sampler = 0; // bit 0 MMAG linear, 1 MMIN linear, 2 wrap s repeat, 3 wrap t repeat
     int game_texture = -1;  // the texture's index in the game's moby texture tables (0x199a80 / 0x199e80)
+    int local = -1;         // the class's local texture (0..15; the emissive surfaces' key)
     uint64_t tex1 = 0, clamp = 0, tex0 = 0;  // the registers it came from (the checks)
 };
 
@@ -324,6 +325,7 @@ void resolve_lod(const mrp::MobyClass& c, int lod, std::vector<std::vector<SlotR
 // prims as the level load rebuilt them in EE memory when the asset could not build them)
 PrimInfo prim_info(const mrp::TexturePrim& t, uint32_t mem_prim, bool& from_memory) {
     PrimInfo pi;
+    pi.local = t.local_texture;
     uint64_t tex1 = 0, clamp = 0, tex0 = 0;
     int texture = -1;
     bool known = t.gs_known;
@@ -975,6 +977,7 @@ void main() {
     sh_prepare();
     vec4 c = vColor;
 #ifdef SH_SPLIT
+    vec3 c_game = c.rgb;  // (the game's colour: an emissive texel's, sh_emissive)
     c.rgb = sh_apply_split(c.rgb, vColorNoKey.rgb);  // the key light's term where the sun is hidden
     // (the mobys keep the game's point lights - the record's third direction, per vertex: small meshes, and the effects'
     // shells - explosions - are coloured by them; the world takes them per pixel, sh_points)
@@ -1010,6 +1013,9 @@ void main() {
         else if (tfx == 1u) { o.rgb = t.rgb; o.a = tcc != 0u ? t.a : c.a; }
         else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
+#ifdef SH_SPLIT
+        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 27) & 31u);  // (the word's bits 27..31)
+#endif
         if (uShade == 2) o.rgb = t.rgb;
     }
     if (uShade == 1) o.rgb = c.rgb;
@@ -1693,9 +1699,38 @@ void part_pre(const MrpFrame& f, const MrpMoby& m, const ClassGpu* cg, const Mrp
     out.rad = part_radius(cg, W);
 }
 
+// the emissive surfaces of the moby classes (mrp_lighting.h EmissiveSurface): (class, local texture) -> shader slot, made again when the
+// list or the preview changes; the slot goes into the draw's texture word, bits 27..31, while the modern lighting is on
+struct MobyEmissive {
+    uint32_t gen = 0;
+    std::unordered_map<uint32_t, uint8_t> slot;
+} g_memis;
+uint32_t emis_key(int o_class, int local) { return (static_cast<uint32_t>(static_cast<uint16_t>(o_class)) << 8) | (static_cast<uint32_t>(local) & 0xffu); }
+// orig: (host) the table brought up to date (the frame's build)
+void moby_emissive_refresh() {
+    std::vector<EmissiveSurface> list;
+    EmissiveSurface pv;
+    bool has_pv = false;
+    const uint32_t gen = mrp_emissive_snapshot(list, &pv, &has_pv);
+    if (gen == g_memis.gen) return;
+    g_memis.gen = gen;
+    g_memis.slot.clear();
+    for (size_t i = 0; i < list.size() && i < static_cast<size_t>(kEmissiveSlots); ++i)
+        if (list[i].kind == 3) {
+            g_memis.slot[emis_key(list[i].o_class, list[i].tex)] = static_cast<uint8_t>(i + 1);
+            static const bool trace = std::getenv("RAC1_LIGHTS_TRACE") != nullptr;
+            if (trace)
+                std::printf("[lights] emissive moby %d tex %d: slot %zu (the class's local textures in use: mask %08x)\n", list[i].o_class, list[i].tex, i + 1,
+                            mrp_moby_class_local_textures(list[i].o_class));
+        }
+    if (has_pv && pv.kind == 3) g_memis.slot[emis_key(pv.o_class, pv.tex)] = static_cast<uint8_t>(kEmissivePreviewSlot);
+}
+
 void build_frame() {
     Frame& F = g_frame;
     F.built = true;
+    moby_emissive_refresh();
+    const bool emis = !g_memis.slot.empty() && g_modern_shadows != 0 && g_emissive != 0;
     F.parts.clear();
     F.part_pos.clear();
     F.part_rad.clear();
@@ -1943,6 +1978,8 @@ void build_frame() {
                 static const bool mark_mip0 = std::getenv("RAC1_MRP_MIP0") != nullptr;
                 if (mark_mip0 && pi.game_texture >= 0 && lh(OV(0x00199e80) + 4 * static_cast<uint32_t>(pi.game_texture)) == 0) word |= 1u << 25;
                 if (mark_mip0 && pi.game_texture >= 0 && lh(OV(0x00199e80) + 4 * static_cast<uint32_t>(pi.game_texture) + 2) == 0) word |= 1u << 26;
+                if (emis && pi.local >= 0)  // (an emissive surface's slot)
+                    if (const auto es = g_memis.slot.find(emis_key(m.class_id, pi.local)); es != g_memis.slot.end()) word |= static_cast<uint32_t>(es->second) << 27;
                 F.cmds.insert(F.cmds.end(), {part_index, word, pi.layer, 0u});
                 Key key;
                 key.bucket = pi.bucket;
@@ -3399,6 +3436,20 @@ void mrp_moby_report() {
                     s.px_a ? 100.0 * static_cast<double>(s.px_only_a) / static_cast<double>(s.px_a) : 0.0, u(s.px_only_b),
                     s.px_b ? 100.0 * static_cast<double>(s.px_only_b) / static_cast<double>(s.px_b) : 0.0);
     std::fflush(stdout);
+}
+
+// orig: (host) see mrp_lighting.h
+uint32_t mrp_moby_class_local_textures(int o_class) {
+    uint32_t bits = 0;
+    auto add = [&](const mrp::MobyClass& c) {
+        for (const mrp::Packet& p : c.packets)
+            for (const mrp::TexturePrim& t : p.textures)
+                if (t.local_texture >= 0 && t.local_texture < 32) bits |= 1u << t.local_texture;
+    };
+    for (const auto& [ptr, cg] : g_level.by_ptr)
+        if (cg != nullptr && cg->asset != nullptr && cg->asset->o_class == o_class) add(*cg->asset);
+    if (const auto it = g_level.files.find(o_class); bits == 0 && it != g_level.files.end() && it->second != nullptr) add(*it->second);
+    return bits;
 }
 
 }  // namespace rac1
