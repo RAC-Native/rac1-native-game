@@ -90,6 +90,23 @@ The game's other settings (graphics, controls) are in the game's Options menu.
 
 (`XDG_CONFIG_HOME` and `XDG_DATA_HOME` move the Linux ones, as for the game.)
 
+### progress.json
+
+For the [RAC Native launcher](https://github.com/RAC-Native/rac-native-launcher), which shows each game of the
+trilogy as a planet on a galactic map, the game writes `progress.json` in its data folder, beside `memcard`
+(`%APPDATA%\rac1-native\` on Windows, `~/.local/share/rac1-native/` on Linux):
+
+```json
+{"planet": "novalis", "planet_name": "Novalis", "level": 1, "visited": ["veldin", "novalis"], "percent": 11, "playtime_s": 1234, "updated": "2026-10-25T10:00:00Z"}
+```
+
+The planet is the level being played (Veldin's two levels are one planet). The planets reached and the time
+played are counted by the game while it runs, not read from the memory card: they follow the last game played,
+and start again when the title goes to Veldin (a new game, or a save made on Veldin). The time counts the frames
+in a level, a quarter of a second at most per frame. The file is written when the game goes to another level,
+once a minute in a level and when it closes, to a temporary file renamed over the old one. `RAC1_PROGRESS` moves
+it, or turns it off with `0`; a headless run writes it only when that is set (src/host/progress.cpp).
+
 ## What it runs
 
 The launcher does what `setup.cmd` and `./setup.sh` do, without a console window:

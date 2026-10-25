@@ -3,6 +3,13 @@
 What changed in each release. Releases are source only: you build the game with `./setup.sh`
 (`setup.cmd` on Windows) from your own disc. Issue numbers refer to this repository's issues.
 
+## Unreleased
+
+### Launcher and setup
+- The game writes `progress.json` in its data folder for the [RAC Native launcher](https://github.com/RAC-Native/rac-native-launcher):
+  the planet played, the planets reached, the share explored and the time played (thanks @mat-f96, #107).
+  See [The launcher](docs/launcher.md#progressjson).
+
 ## 0.5.0
 
 The first release from the [RAC-Native](https://github.com/RAC-Native) organization on GitHub: the

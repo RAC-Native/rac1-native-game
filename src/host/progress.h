@@ -23,6 +23,10 @@ void start(bool headless);
 // module) runs, whether a level exit (its loading screen) runs
 void frame(int level, bool title, bool exiting);
 
+// orig: (none) — host: the time played since the last write, written when the game closes (main calls it before
+// std::_Exit, which runs no atexit handler)
+void finish();
+
 }  // namespace rac1::progress
 
 #endif

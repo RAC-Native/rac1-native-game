@@ -129,10 +129,10 @@ void start(bool headless) {
     g.on = true;
     g.path = path;
     load();
-    // the time played since the last write, when the game closes
-    std::atexit([] {
-        if (g.on && g.level >= 0 && g.unwritten > 0.0) write();
-    });
+}
+
+void finish() {
+    if (g.on && g.level >= 0 && g.unwritten > 0.0) write();
 }
 
 void frame(int level, bool title, bool exiting) {
