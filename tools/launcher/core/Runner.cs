@@ -16,6 +16,9 @@ namespace Rac1Launcher
     {
         volatile bool cancelled;
         public bool Cancelled => cancelled;
+        /// <summary>Linux: what else Cancel ends, besides the program's tree here (the programs it started in a build
+        /// container, which are not in that tree: Controller.RunInContainer).</summary>
+        public Action OnCancel;
 #if WINDOWS_LAUNCHER
         readonly IntPtr job;
 
@@ -96,6 +99,7 @@ namespace Rac1Launcher
 #else
             var p = running;
             if (p != null) Kill(p);
+            try { OnCancel?.Invoke(); } catch (Exception) { }
         }
 
         static void Kill(Process p)

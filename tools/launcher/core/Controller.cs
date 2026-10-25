@@ -38,7 +38,7 @@ namespace Rac1Launcher
         readonly List<string> errors = new List<string>();
         readonly object logLock = new object();
         StreamWriter logFile;
-        bool sawPythonCrash, sawStepMarks, sawMissing;
+        bool sawPythonCrash, sawStepMarks, sawMissing, sawContainer;
         string packagesCommand;  // (Linux: the command that installs what the setup found missing)
 
         public Controller(IView view, string runningExe)
@@ -232,20 +232,43 @@ namespace Rac1Launcher
             view.Step(extra.StartsWith("--update") ? "Downloading the update" : "Starting the setup");
 
             int jobs = Settings.Jobs;
-            bool installedPackages = false;
+            bool installedPackages = false, madeContainer = false;
             for (int attempt = 0; ; attempt++)
             {
                 sawPythonCrash = false;
                 sawStepMarks = false;
                 sawMissing = false;
+                sawContainer = false;
                 packagesCommand = null;
                 errors.Clear();
-                string args = Platform.Quote(g.P("tools", "setup.py")) + " --no-play --iso " + Platform.Quote(iso)
-                            + (jobs > 0 ? " -j " + jobs : "") + (extra != "" ? " " + extra : "");
-                Log("> python " + args);
-                int rc = r.Run(Platform.Python(g), args, g.Dir, Platform.PythonEnv(g), OnSetupLine, Encoding.UTF8);
+                int rc;
+                if (UsesContainer)
+                {
+                    // (Linux, an immutable system: the setup runs in the build container, its packages are there)
+                    var argv = new List<string> { "python3", g.P("tools", "setup.py"), "--no-play", "--iso", iso };
+                    if (jobs > 0) argv.AddRange(new[] { "-j", jobs.ToString() });
+                    if (extra != "") argv.AddRange(extra.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+                    rc = RunInContainer(r, argv, OnSetupLine);
+                }
+                else
+                {
+                    string args = Platform.Quote(g.P("tools", "setup.py")) + " --no-play --iso " + Platform.Quote(iso)
+                                + (jobs > 0 ? " -j " + jobs : "") + (extra != "" ? " " + extra : "");
+                    Log("> python " + args);
+                    rc = r.Run(Platform.Python(g), args, g.Dir, Platform.PythonEnv(g), OnSetupLine, Encoding.UTF8);
+                }
                 if (r.Cancelled) return false;
                 if (rc == 0) break;
+                // (Linux, an immutable system: the build's packages cannot be installed on it; in a container instead.
+                // An older setup.py does not say so (exit status 20, "@container"): its install command, on a system the
+                // launcher sees is immutable)
+                if (!Platform.Windows && !UsesContainer && !madeContainer
+                    && (rc == Platform.ExitUseContainer || sawContainer || packagesCommand != null && Platform.ImmutableSystem() != null))
+                {
+                    madeContainer = true;
+                    if (SetUpContainer(r)) { attempt--; continue; }
+                    return false;
+                }
                 // (Linux: system packages missing; the setup printed the command that installs them)
                 if (packagesCommand != null && !installedPackages)
                 {
@@ -263,9 +286,138 @@ namespace Rac1Launcher
                 Fail(LastError() ?? "The setup failed.");
                 return false;
             }
+            if (UsesContainer)
+            {
+                try { Platform.WriteContainerPlayScript(g, Settings.Container); }
+                catch (Exception e) { Log("The container's play script could not be written: " + e.Message); }
+            }
             view.Step("Done");
             view.Progress(100);
             Log("The game is ready.");
+            return true;
+        }
+
+        // --- Immutable systems (Linux): the build container ----------------------------------------------------
+
+        /// <summary>The game is built and run in the build container (Linux, an immutable system: the choice is kept in
+        /// launcher.txt, "container distrobox" or "container toolbox").</summary>
+        public bool UsesContainer => !Platform.Windows && !string.IsNullOrEmpty(Settings.Container);
+
+        /// <summary>A command run in the build container (Settings.Container), each line of its output to onLine. In its own
+        /// session, its number in build/container-setup.pid: Cancel ends that whole session in the container (ending the
+        /// container's tool here does not end what it started there).</summary>
+        int RunInContainer(Runner r, List<string> argv, Action<string> onLine)
+        {
+            string tool = Settings.Container;
+            string pidFile = Game.P("build", "container-setup.pid");
+            Directory.CreateDirectory(Game.P("build"));
+            var full = new List<string> { "setsid", "-w", "sh", "-c", "echo $$ > \"$0\"; exec \"$@\"", pidFile,
+                                          "env", "RAC1_LAUNCHER=1", "PYTHONUNBUFFERED=1", "PYTHONIOENCODING=utf-8", "PYTHONUTF8=1" };
+            full.AddRange(argv);
+            var (exe, args) = Platform.InContainerCommand(tool, full);
+            var (shownExe, shownArgs) = Platform.InContainerCommand(tool, argv);
+            Log("> " + shownExe + " " + shownArgs);
+            r.OnCancel = () =>
+            {
+                string pid = File.Exists(pidFile) ? File.ReadAllText(pidFile).Trim() : "";
+                if (!Regex.IsMatch(pid, @"^\d+$")) return;
+                var (kexe, kargs) = Platform.InContainerCommand(tool, new[] { "kill", "-TERM", "--", "-" + pid });
+                using (var k = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(kexe, kargs)
+                                                              { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Game.Dir }))
+                    k?.WaitForExit(15000);
+            };
+            try { return r.Run(exe, args, Game.Dir, null, onLine, Encoding.UTF8); }
+            finally
+            {
+                r.OnCancel = null;
+                try { File.Delete(pidFile); } catch (Exception) { }
+            }
+        }
+
+        /// <summary>The build container, once the player agrees: made with distrobox (or toolbox) from an image that has
+        /// every package the game needs, the packages installed in it (sudo needs no password in the container), and the
+        /// choice kept. Then the setup runs in it.</summary>
+        bool SetUpContainer(Runner r)
+        {
+            string system = Platform.ImmutableSystem() ?? "This system";
+            string tool = Platform.ContainerTool();
+            if (tool == null)
+            {
+                Fail(system + " is an immutable system: the programs the game needs cannot be installed on it, so the launcher "
+                     + "builds the game in a container, with distrobox (or toolbox). Neither is installed. SteamOS (3.5 and newer) "
+                     + "and Bazzite come with distrobox; elsewhere install it (https://distrobox.it), then click Set up.");
+                return false;
+            }
+            string image = Platform.ContainerImage, packages = Platform.ContainerPackages;
+            if (Platform.CanRunSetup(Game))
+            {
+                var info = new List<string>();
+                using (var q = new Runner())
+                    if (q.Run(Platform.Python(Game), Platform.Quote(Game.P("tools", "setup.py")) + " --container-info", Game.Dir,
+                              Platform.PythonEnv(Game), l => info.Add(l), Encoding.UTF8) == 0)
+                        foreach (var l in info)
+                        {
+                            if (l.StartsWith("image ") && l.Length > 6) image = l.Substring(6).Trim();
+                            else if (l.StartsWith("packages ") && l.Length > 9) packages = l.Substring(9).Trim();
+                        }
+            }
+            if (!Regex.IsMatch(packages, @"^[a-zA-Z0-9.+_ -]+$") || !Regex.IsMatch(image, @"^[a-zA-Z0-9./:_@-]+$"))
+            {
+                Fail("The setup's container information is not readable.");
+                return false;
+            }
+            string manual = $"{tool} " + (tool == "toolbox" ? $"create -y -i {image} {Platform.ContainerName}"
+                                                            : $"create -n {Platform.ContainerName} -i {image} --yes");
+            if (!view.Ask("Set up a build container",
+                          $"{system} is an immutable system: its system folders are read-only, so the programs that build the "
+                          + $"game cannot be installed on it. The launcher can build and run the game in a container instead "
+                          + $"({tool}, named \"{Platform.ContainerName}\"): it shares your home folder, display, graphics card and "
+                          + "sound, and leaves the system as it is. It downloads about 1 GB the first time.\n\nSet up a build container?"))
+            {
+                Fail("The programs the game needs are not installed. On an immutable system, build it in a container: "
+                     + "click Set up again and say yes, or see docs/setup.md (\"Steam Deck, Bazzite and other immutable systems\").");
+                return false;
+            }
+
+            view.Step("Setting up the build container");
+            view.StepDetail($"Setting up the build container ({tool}, {image}): the first time, it downloads the image");
+            var existing = new List<string>();
+            using (var q = new Runner())
+                q.Run(tool, tool == "toolbox" ? "list -c" : "list --no-color", Game.Dir, null, l => existing.Add(l));
+            bool exists = existing.Any(l => Regex.IsMatch(l, @"(^|[\s|])" + Regex.Escape(Platform.ContainerName) + @"($|[\s|])"));
+            if (exists) Log($"The container {Platform.ContainerName} is there already: using it.");
+            else
+            {
+                string args = tool == "toolbox" ? $"create -y -i {image} {Platform.ContainerName}"
+                                                : $"create -n {Platform.ContainerName} -i {image} --yes"
+                                                  + (File.Exists("/proc/driver/nvidia/version") ? " --nvidia" : "");
+                Log($"> {tool} {args}");
+                int rc = r.Run(tool, args, Game.Dir, null, Log);
+                if (r.Cancelled) return false;
+                if (rc != 0)
+                {
+                    Fail($"The build container could not be made (exit code {rc}; see Show the details). In a terminal: {manual}, "
+                         + "then click Set up.");
+                    return false;
+                }
+            }
+
+            view.Step("Installing the programs the game needs in the container");
+            view.StepDetail("Installing the programs the game needs in the container (the first time, several minutes)");
+            Settings.Container = tool;  // (for RunInContainer; kept below once it worked)
+            var install = new[] { "sudo", "dnf", "install", "-y" }.Concat(packages.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)).ToList();
+            int irc = RunInContainer(r, install, Log);
+            if (r.Cancelled || irc != 0)
+            {
+                Settings.Container = "";
+                var (iexe, iargs) = Platform.InContainerCommand(tool, install);
+                if (!r.Cancelled)
+                    Fail($"The programs could not be installed in the container (exit code {irc}). In a terminal: {iexe} {iargs}, "
+                         + "then click Set up.");
+                return false;
+            }
+            Settings.Save();
+            Log($"The build container is ready ({tool}, {Platform.ContainerName}); the setup runs in it from now on. Running the setup again.");
             return true;
         }
 
@@ -347,6 +499,11 @@ namespace Rac1Launcher
                 sawStepMarks = true;
                 return;
             }
+            if (line.StartsWith("@container "))
+            {
+                sawContainer = true;  // (tools/setup.py: the packages are missing on an immutable system)
+                return;
+            }
             if (line.StartsWith("@progress "))
             {
                 if (int.TryParse(line.Substring(10), out int p)) view.Progress(p);
@@ -425,11 +582,18 @@ namespace Rac1Launcher
         public System.Diagnostics.Process StartGame()
         {
             Directory.CreateDirectory(Game.P("build"));
+            // (built in the build container: the game runs in it too, through its script, ContainerPlayScript)
+            string exe = Game.Exe;
+            if (UsesContainer)
+            {
+                Platform.WriteContainerPlayScript(Game, Settings.Container);
+                exe = Platform.ContainerPlayScript(Game);
+            }
             var psi = Platform.Windows
                 ? new System.Diagnostics.ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "cmd.exe"),
                       "/d /s /c \"" + Platform.Quote(Game.Exe) + " > " + Platform.Quote(GameLog) + " 2>&1\"")
                 : new System.Diagnostics.ProcessStartInfo("/bin/sh",
-                      "-c " + Platform.Quote("exec \"$0\" > \"$1\" 2>&1") + " " + Platform.Quote(Game.Exe) + " " + Platform.Quote(GameLog));
+                      "-c " + Platform.Quote("exec \"$0\" > \"$1\" 2>&1") + " " + Platform.Quote(exe) + " " + Platform.Quote(GameLog));
             psi.WorkingDirectory = Game.Dir;
             psi.UseShellExecute = false;
             psi.CreateNoWindow = true;

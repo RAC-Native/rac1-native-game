@@ -26,6 +26,11 @@ What changed in each release. Releases are source only: you build the game with 
 - The game writes `progress.json` in its data folder for the [RAC Native launcher](https://github.com/RAC-Native/rac-native-launcher):
   the planet played, the planets reached, the share explored and the time played (thanks @mat-f96, #107).
   See [The launcher](docs/launcher.md#progressjson).
+- The Steam Deck (SteamOS), Bazzite and other immutable Linux systems: the setup sees that the build's packages cannot be
+  installed there and gives the commands that build the game in a distrobox (or toolbox) container instead (exit status
+  20; `--check-system` checks the system only), and the launcher offers to set up that container, builds the game in it
+  and starts it from it, with a script to add to Steam for the Gaming Mode (#108). See
+  [Setup](docs/setup.md#steam-deck-bazzite-and-other-immutable-systems).
 
 ## 0.5.0
 
