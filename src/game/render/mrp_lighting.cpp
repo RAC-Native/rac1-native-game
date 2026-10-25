@@ -3158,7 +3158,7 @@ LightPick mrp_lighting_pick(const float p[3]) {
             for (int k = 0; k < 3; ++k) r.tie_off[k] = l[k];
         }
     }
-    const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffdcu));
+    const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffe0u));
     r.moby_dist = 6.0f;  // (a moby whose origin is at its foot: a door frame, a lamp post)
     for (uint32_t m = first; m != 0 && m < 0x01fe0000u && (last == 0 || m <= last) && lbu(m + 0x20) != 0xff; m += 0x100) {
         if (static_cast<int8_t>(lbu(m + 0x20)) < 0) continue;
@@ -3184,8 +3184,8 @@ namespace {
 void class_lights_add(double t) {
     if (const char* e = std::getenv("RAC1_TIE_NEAR")) {  // (testing: the tie instances near a point, once: x,y,z,r)
         static bool shown = false;
-        float x = 0, y = 0, z = 0, r = 6;
-        if (!shown && g_sh.frame > 60 && std::sscanf(e, "%f,%f,%f,%f", &x, &y, &z, &r) >= 3) {
+        float x = 0, y = 0, z = 0, r = 6, at = 60;  // (at: the shadow pass's frame to print at, default 60)
+        if (!shown && std::sscanf(e, "%f,%f,%f,%f,%f", &x, &y, &z, &r, &at) >= 3 && static_cast<float>(g_sh.frame) > at) {
             shown = true;
             for (const TieSpot& ti : mrp_world_tie_instances()) {
                 const float d = glm::length(glm::vec3(ti.pos[0], ti.pos[1], ti.pos[2]) - glm::vec3(x, y, z));
@@ -3198,11 +3198,11 @@ void class_lights_add(double t) {
                                 ti.sphere[0], ti.sphere[1], ti.sphere[2], ti.sphere[3]);
                 }
             }
-            const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffdcu));
+            const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffe0u));
             for (uint32_t m = first; m != 0 && m < 0x01fe0000u && (last == 0 || m <= last) && lbu(m + 0x20) != 0xff; m += 0x100) {
                 const glm::vec3 mp(lwc1(m + 0x10), lwc1(m + 0x14), lwc1(m + 0x18));
                 const float d = glm::length(mp - glm::vec3(x, y, z));
-                if (d <= r) std::printf("[lights] moby class %d (state %d) at %.2f %.2f %.2f (%.1f away)\n", lh(m + 0xa6), lbu(m + 0x20), mp.x, mp.y, mp.z, d);
+                if (d <= r) std::printf("[lights] moby class %d (state %d) at %.2f %.2f %.2f (%.1f away) +0x30 %02x +0x32 %02x +0x34 %04x\n", lh(m + 0xa6), lbu(m + 0x20), mp.x, mp.y, mp.z, d, lbu(m + 0x30), lbu(m + 0x32), lhu(m + 0x34));
             }
         }
     }
@@ -3225,7 +3225,7 @@ void class_lights_add(double t) {
             for (const ClassLight& cl : g_class_lights) {
                 int n = 0;
                 if (cl.moby) {
-                    const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffdcu));
+                    const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffe0u));
                     for (uint32_t m = first; m != 0 && m < 0x01fe0000u && (last == 0 || m <= last) && lbu(m + 0x20) != 0xff; m += 0x100)
                         n += static_cast<int8_t>(lbu(m + 0x20)) >= 0 && lh(m + 0xa6) == cl.o_class ? 1 : 0;
                 } else {
@@ -3276,8 +3276,9 @@ void class_lights_add(double t) {
             add(i, p, static_cast<uint32_t>(k));
         }
     }
-    if (any_moby) {
-        const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffdcu));
+    if (any_moby) {  // (the whole moby array to its end *(0x15ffe0), not the level's placed ones alone (*(0x15ffdc)): the spawned mobys -
+                     // a nanotech crate's orbs, bombs, enemies from a spawner - light too)
+        const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffe0u));
         for (uint32_t m = first; m != 0 && m < 0x01fe0000u && (last == 0 || m <= last) && lbu(m + 0x20) != 0xff; m += 0x100) {
             if (static_cast<int8_t>(lbu(m + 0x20)) < 0) continue;  // (a dead slot)
             const int cls = lh(m + 0xa6);
@@ -3319,6 +3320,38 @@ void class_lights_add(double t) {
     if (std::getenv("RAC1_LIGHTS_TRACE") != nullptr) {
         static uint64_t calls = 0;
         if (calls++ % 60 == 0) std::printf("[lights] per class: %zu near, %d taken\n", cand.size(), n);
+    }
+}
+
+// orig: (host) our choice (#102): Veldin's plasma beams - the shooting robot's (class 1440) beam, drawn by the class-1471 effect
+// manager - light the world while they are on: a violet-white light where the beam ends (its impact, 0x1e6de0[i]) and a weaker
+// one at its muzzle (the matrix 0x1e6d20[i]'s position), for each of the manager's 3 slots (state 0x161bf8[i] 2 to 4, holding
+// the robot 0x161c88[i]). Veldin's overlay only (level 0; the robot's own pointer checked); no shadow cube.
+void beam_lights_add() {
+    static const bool off = std::getenv("RAC1_BEAM_LIGHTS") != nullptr && std::atoi(std::getenv("RAC1_BEAM_LIGHTS")) == 0;  // (testing: 0 none)
+    if (off || lw(0x0015ed84) != 0) return;
+    const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffe0u));
+    for (uint32_t i = 0; i < 3 && g_sh.npts + 2 <= kMaxPts; ++i) {
+        const int32_t st = lw(OV(0x00161bf8u) + i * 4);
+        const uint32_t who = lwu(OV(0x00161c88u) + i * 4);
+        if (st < 2 || st > 4 || who < first || who > last || ((who - first) & 0xffu) != 0 || lh(who + 0xa6) != 1440) continue;
+        const uint32_t e = OV(0x001e6de0u) + i * 0x10, s = OV(0x001e6d20u) + i * 0x40 + 0x30;
+        const glm::vec3 end(lwc1(e), lwc1(e + 4), lwc1(e + 8)), start(lwc1(s), lwc1(s + 4), lwc1(s + 8));
+        const glm::vec3 col(0.70f, 0.66f, 1.00f);
+        static const bool trace = std::getenv("RAC1_LIGHTS_TRACE") != nullptr;
+        if (trace) std::printf("[lights] beam %u (state %d): %.1f %.1f %.1f -> %.1f %.1f %.1f\n", i, st, start.x, start.y, start.z, end.x, end.y, end.z);
+        const struct {
+            glm::vec3 p;
+            float k, r;
+        } pts[2] = {{end, 2.4f, 6.0f}, {start, 1.2f, 4.0f}};
+        for (const auto& q : pts) {
+            if (glm::length(q.p - g_sh.cam) - q.r > g_sh.splits[1]) continue;
+            g_sh.pt_pos[g_sh.npts] = glm::vec4(q.p, q.r);
+            g_sh.pt_col[g_sh.npts] = glm::vec4(col * q.k, -1.0f);
+            g_sh.pt_slot[g_sh.npts] = -2;  // (no shadow cube)
+            g_sh.pt_down[g_sh.npts] = 0.0f;
+            ++g_sh.npts;
+        }
     }
 }
 }  // namespace
@@ -3378,6 +3411,7 @@ void mrp_lighting_shadow_pass() {
             ++g_sh.npts;
         }
         class_lights_add(t);
+        beam_lights_add();
     }
     if (g_modern_points != 0 && g_auto_lights != 0) {  // the automatic emitters near the camera, the nearest first
         float pr[4 * kMaxPts], pc[4 * kMaxPts];

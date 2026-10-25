@@ -43,7 +43,8 @@ differs a lot between planets. Where each part comes from is described in
   search can't find. The project ships no hand-placed lights; its level files only turn off an
   automatic class the search got wrong (Gaspar, Orxon), turn the sun (Novalis, Kerwan, Eudora,
   Oltanis, Quartu), mark interiors (Blarg, Orxon), or make every object of a class a light
-  (Novalis's neon tubes and hanging bulbs, Kerwan's street lamps, Oltanis's plaza lamps).
+  (Novalis's neon tubes and hanging bulbs, Kerwan's street lamps, Oltanis's plaza lamps; Veldin's and
+  Novalis's lamps, fires and eyes from a tester's survey, #102).
 - **Sun rays** (Options > Graphics, Off by default): shafts of light from the sun through openings
   ([Sun rays](#sun-rays)).
 
@@ -424,7 +425,7 @@ Made in the debug menu (F1, Lights tab) and saved in `data/lights/level<NN>.txt`
 taken from the disc. They are lit like the automatic ones and ahead of them.
 
 The project's level files place no light: `level09.txt` (Gaspar) and `level10.txt` (Orxon) each turn
-off one automatic class that was taken for a lamp, and `level01.txt` (Novalis, also its neons by class), `level03.txt`
+off one automatic class that was taken for a lamp, `level00.txt` (Veldin) makes lamps of classes, and `level01.txt` (Novalis, also its lamps by class), `level03.txt`
 (Kerwan), `level04.txt` (Eudora), `level14.txt` (Oltanis) and `level15.txt` (Quartu) turn the sun,
 each with a comment saying why.
 
@@ -803,7 +804,8 @@ Placing lamps one by one is slow; most lamps are one object class repeated. A le
 emit <tie|shrub|moby> <class> <ox oy oz> <r g b> <intensity> <radius> [flicker] [down]
 ```
 
-and every tie or shrub instance of that class, or every live moby of that class, lights as a point
+and every tie or shrub instance of that class, or every live moby of that class (those placed by the level and those the game
+spawns later - the walk goes to the moby array's end *(0x15ffe0), not to the placed ones' *(0x15ffdc) as before #102), lights as a point
 light at the offset in its own frame (a tie's or shrub's rows, model / 1024 at its scale; a moby's
 rotation, in world units), so a moby's lamp follows it. `down` (0 to 1, default 0) is the share of the
 light aimed straight down, as a ceiling fixture's: the squared falloff and the cosine below the light
@@ -825,9 +827,20 @@ Shipped: Novalis's neon tubes in the buildings by the river (shrub class 282, th
 fixture shrub 167; the automatic search does not see white texels, nor shrubs and mobys; aimed down
 0.85, intensity 5, radius 13) and hanging bulbs (shrub class 281; down 0.6, 3.5, 12), Kerwan's
 street lamps (moby class 1827; down 0.5, 2.5, 9), Oltanis's street lamps (moby class 1511, a cyan
-light in each globe). The neons' first values (1.3, radius 11, every way alike) lit the walls next to
+light in each globe), and from a tester's survey (#102, weak and small): on Veldin the nanotech crates' orbs (moby 806), the crash
+site's fires (moby 760, the smoke vents whose wisps are the flames; flickering), the domed building's round lamps and door panels (tie
+2024); on Novalis the teleporter pads (moby 1135), Clank's eyes (1204), the landing pad's red lamps (shrub 231), the Large
+Amoeboids' (572) and the yellow soldier bots' (459) eyes and thrusters, the bomb glove's bombs (121) and the stationary drop ship's
+lamps (666); the neons' light was raised to about 0.4 units under the tube (it sat 1.7 below: a pool low on the wall, and a hot spot
+on the tanks standing under some of them). The neons' first values (1.3, radius 11, every way alike) lit the walls next to
 the tube a little and the floor some 6 units below hardly at all against the game's painted light. `RAC1_LAMP_SCAN` (testing) surveys what
 glows on screen along a run, by class.
+
+**Veldin's plasma beams** (our choice, #102; `beam_lights_add`): the beam the shooting robot (moby class 1440) fires is drawn by
+the class-1471 effect manager, not a moby of its own, so a class light cannot follow it. While one of the manager's three slots
+is on (state 0x161bf8[i] 2 to 4, its robot 0x161c88[i]), a violet-white light sits where the beam ends (0x1e6de0[i]: intensity
+2.4, radius 6) and a weaker one at its muzzle (the slot's matrix 0x1e6d20[i]: 1.2, radius 4); Veldin only, no shadow cube,
+Secondary Lights on All. `RAC1_BEAM_LIGHTS=0` leaves them out.
 
 ## Settings
 
