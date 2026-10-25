@@ -20,6 +20,9 @@ What changed in each release. Releases are source only: you build the game with 
 - The debug menu's light editor no longer changes the numbers of a level's light file when it saves it: each Save took
   one unit off the last digit of the `emit` lines' offsets, colours and aim (the game rounds toward zero, as the PS2
   does, and the file was read and written so), and the file's comments and lines now stay where they were (#101).
+- Widescreen: Rilgar's water near the camera no longer loses a wedge (a dark band across the water, the sea bed showing
+  through) or shows a flat, stretched patch: the large water triangles that cross the whole 4:3 frame were stretched as if
+  they were full-screen 2D, their corners past the frame's sides moved to the window's edges.
 
 ### Graphics
 - A level's light file can turn the Sun Rays off on that level (`sun_rays off`; the debug menu's Sun tab has a checkbox

@@ -987,7 +987,7 @@ void draw_vk(const Gs& gs, int win_w, int win_h, float FB_W, float FB_H, const D
             const float far_x = tme ? FB_W : FB_W - 0.5f, far_y = tme ? FB_H : FB_H - 0.5f;  // (the far edge reached, as draw())
             full_span = (x0 <= 0.0f && x1 >= far_x) || (y0 <= 0.0f && y1 >= far_y);
             if (crop_on && !tme && (x0 <= 0.0f || x1 >= FB_W || y0 <= 0.0f || y1 >= FB_H)) edge_fill = true;
-            if (full_span && sx < 1.0f) {
+            if (full_span && sx < 1.0f && !proj3d) {  // (the 2D only, as draw())
                 to_left = x0 <= 0.0f;
                 to_right = x1 >= far_x;
                 for (V& q : verts) {
@@ -1633,7 +1633,10 @@ void draw(const Gs& gs, int win_w, int win_h, float FB_W, float FB_H, const Dept
             // a flat (untextured) fill reaching the frame's edge: a part of a fill covering the screen in pieces (a
             // transition's wipe, Kerwan's talks), never cut by the crop (the band would show through)
             if (crop_on && !tme && (x0 <= 0.0f || x1 >= FB_W || y0 <= 0.0f || y1 >= FB_H)) edge_fill = true;
-            if (full_span && sx < 1.0f) {
+            // (not the projected 3D: its vertices are where the projection put them, past the frame's sides as far as the guard band;
+            // moved to the window's edges, a clipped triangle crossing the whole frame lost a wedge - Rilgar's water near the camera,
+            // its fans clipped at the guard band: a dark wedge across the water in a widened view, the sea bed seen through it)
+            if (full_span && sx < 1.0f && !proj3d) {
                 to_left = x0 <= 0.0f;
                 to_right = x1 >= far_x;
                 for (V& q : verts) {
