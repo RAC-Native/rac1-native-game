@@ -2,4 +2,5 @@
 # light x y z  r g b  intensity radius flicker on
 # Eudora. The sun raised from the key light's 22 degrees to 50, its azimuth kept: in the forest at the start 27 % of what faces
 # the sun saw it, 47 % at 50 degrees. Our choice (docs/lighting.md, "The level's own sun").
-sun -141.1 50.0
+# Eudora: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
+sun 24.0 76.2

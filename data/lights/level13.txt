@@ -1,5 +1,4 @@
 # rac1-native: lights placed by hand for level 13 (the debug menu's Lights tab)
 # light x y z  r g b  intensity radius flicker on
-# Gemlik Base. The sun turned to come from the sun in the skybox (azimuth 115, elevation 11): the light now matches
-# what the sky shows. Chosen by Daino with the Sun tab.
-sun 115.0 11.0
+# Gemlik Base: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
+sun 114.5 12.0

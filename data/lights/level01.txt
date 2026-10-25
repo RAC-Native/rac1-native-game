@@ -4,7 +4,8 @@
 # turned to 0 (toward +x). At 33 degrees the rock walls and the plateau beside the start valley keep it in shade all day: along the
 # first walk (the start, the landing pads, the river) a third of what faces the sun saw it; higher, most of it does and the walls'
 # shadows fall at their feet. Our choice (the sun editor, docs/lighting.md "The level's own sun"); the light set's colour is kept.
-sun -0.0 43.0
+# Novalis: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
+sun 0.0 90.0
 # The neon tubes in the buildings by the river (shrub class 282, the white panel of the fixture shrub 167 - dark frame, cable -;
 # seven): not found by the automatic search (white texels, and shrubs are not searched). A cool white light just under each panel,
 # aimed down (0.85: a pool of light on the floor below, the wall under the fixture washed, the ceiling and the fixture left dark);

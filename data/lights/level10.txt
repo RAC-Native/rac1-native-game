@@ -2,6 +2,8 @@
 # light x y z  r g b  intensity radius flicker on
 # Orxon. Tie class 1521 (the mint floor panels of the base's rooms, on an 8-unit grid): a floor colour, not a lamp (53 % of
 # the class, hue 181: a cool colour, so the heuristic kept it as a light and lit the floor with itself).
+# Orxon: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
+sun -52.5 5.0
 noauto 1521
 # The base (Clank's part): its rooms are lit by the zone's key light, which comes from above, so the sun's shadow of the roof
 # would cover them: the sun off there, the original's look. The box holds the first rooms found headless (Clank's first room

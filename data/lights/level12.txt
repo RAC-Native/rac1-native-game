@@ -1,0 +1,4 @@
+# rac1-native: lights placed by hand for level 12 (the debug menu's Lights tab)
+# light x y z  r g b  intensity radius flicker on
+# Hoven: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
+sun -180.0 90.0

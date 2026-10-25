@@ -2,4 +2,6 @@
 # light x y z  r g b  intensity radius flicker on
 # Gaspar. Tie class 1558 (the hazard-striped tanks, 10 of them): its gold band is paint, not a lamp (5 % of the
 # class, hue 48: under the warm-material share, so the heuristic took it for a light and washed the tanks' corner in gold).
+# Gaspar: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
+sun -101.5 90.0
 noauto 1558

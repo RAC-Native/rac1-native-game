@@ -2,4 +2,5 @@
 # light x y z  r g b  intensity radius flicker on
 # Quartu. The sun raised from the key light's 20 degrees to 50, its azimuth kept: in the factory's courtyards 8 % of what
 # faces the sun saw it, 43 % at 50 degrees. Our choice (docs/lighting.md, "The level's own sun").
-sun 0.0 50.0
+# Quartu: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
+sun -0.0 5.0
