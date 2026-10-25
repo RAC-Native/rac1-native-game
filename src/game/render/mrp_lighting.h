@@ -16,6 +16,7 @@
 #define RAC1_GAME_RENDER_MRP_LIGHTING_H
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace rac1 {
@@ -125,6 +126,35 @@ std::vector<int>& mrp_user_interior_sets();
 float mrp_lighting_interior(int* hero_set);
 // orig: (host) the game's key light's direction as the shadows last used it (azimuth, elevation, degrees)
 void mrp_lighting_game_sun(float* az, float* el);
+// orig: (host) the level's ambient particles (its file: "particles <kind> <density> [r g b] [wind <x> <y>] [box x0 y0 z0 x1 y1 z1]
+// [keep]"; our data, mrp_particles.h): the kind (dust, ash, embers, fireflies, motes, rain, snow), the density (1 the kind's own
+// count, 0..4), the colour (else the kind's), the wind (units a second, world x / y; else none), a world box the particles stay in
+// (else everywhere: the camera's volume), and for rain / snow "keep": the game's own drawn as well (else ours replace it). Edited by
+// the debug menu's Sun tab, saved with the level's file; a line not edited is written back as it was read
+enum ParticleKind : int { kPartDust, kPartAsh, kPartEmbers, kPartFireflies, kPartMotes, kPartRain, kPartSnow, kPartKinds };
+const char* mrp_particle_kind_name(int kind);
+struct ParticleSpec {
+    int kind = kPartDust;
+    float density = 1.0f;
+    bool has_col = false;
+    float col[3] = {1.0f, 1.0f, 1.0f};
+    float wind[2] = {0.0f, 0.0f};
+    bool has_box = false;
+    float lo[3] = {0.0f, 0.0f, 0.0f}, hi[3] = {0.0f, 0.0f, 0.0f};
+    bool keep = false;  // (rain / snow: the game's own drawn too)
+    bool on = true;     // (the debug menu: off - not drawn, not written)
+    std::string text;   // (the line as read: written back when nothing changed)
+    bool same_as(const ParticleSpec& o) const;
+};
+std::vector<ParticleSpec>& mrp_user_particles();
+// orig: (host) the particle lines as the file was read (the debug menu's edits compared with them: a line not edited written as it was)
+const std::vector<ParticleSpec>& mrp_user_particles_read();
+// orig: (host) the current level's file read when the level changed (what the shadow pass does at its start; the particles call it
+// with the lighting off as well)
+void mrp_user_lights_ensure();
+// orig: (host) the light the zone gives (the hero's light sets, as game_sun reads them, blended): `rgb` the sum of the key and fill
+// lights' colours (0..~2: the scene's brightness; night levels are dim), `sun` toward the sun (the level's own when its file turns it)
+void mrp_lighting_zone_light(float rgb[3], float sun[3]);
 // orig: (host) the tie classes whose automatic emitters the level's file turns off ("noauto <class>"), and on again
 bool mrp_user_lights_class_off(int o_class);
 void mrp_user_lights_class_set_off(int o_class, bool off);

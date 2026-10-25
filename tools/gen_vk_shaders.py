@@ -1612,6 +1612,174 @@ void main() {
 }
 """
 
+# ---------------------------------------------------------------------------
+# The ambient particles (src/game/render/mrp_particles.cpp: the same bodies as its OpenGL shaders - keep them in step)
+MRP_PART_UBO = """layout(std140, set = 0, binding = 0) uniform PartUbo {
+    mat4 uVP; mat4 uInvVP; vec4 uCam; vec4 uBox; vec4 uVel; vec4 uCol; vec4 uSize; vec4 uCamVel; vec4 uSun;
+    vec4 uVp; vec4 uProj; vec4 uLimLo; vec4 uLimHi; vec4 uMisc; vec4 uMisc2; vec4 uIntLo[4]; vec4 uIntHi[4];
+};
+layout(set = 0, binding = 1) uniform sampler2D uDepth;
+"""
+
+MRP_PART_VS = "#version 450\n" + MRP_PART_UBO + """
+#define VID gl_VertexIndex
+layout(location = 0) out vec2 vQ;
+layout(location = 1) out float vA;
+layout(location = 2) out float vZ;
+uint pcg(uint v) {
+    uint s = v * 747796405u + 2891336453u;
+    uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+    return (w >> 22u) ^ w;
+}
+float rnd(inout uint s) {
+    s = pcg(s);
+    return float(s) * (1.0 / 4294967296.0);
+}
+void main() {
+    int id = VID;
+    int pi = id / 6, c = id - pi * 6;
+    vec2 q = vec2((c == 1 || c == 2 || c == 4) ? 1.0 : -1.0, (c == 2 || c == 4 || c == 5) ? 1.0 : -1.0);
+    vQ = q;
+    vA = 0.0;
+    vZ = 1.0;
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);  // (culled)
+    int kind = int(uVel.w + 0.5);
+    uint s = uint(pi) * 9781u + uint(uMisc.w);
+    vec3 r0 = vec3(rnd(s), rnd(s), rnd(s));
+    float r3 = rnd(s), r4 = rnd(s), r5 = rnd(s);
+    float t = uCam.w;
+    vec3 vel = uVel.xyz * (0.75 + 0.5 * r3);
+    float ph = r4 * 6.2832;
+    vec3 drift = uMisc.x * vec3(sin(t * (0.31 + 0.4 * r5) + ph), cos(t * (0.27 + 0.35 * r3) + ph * 1.7), 0.5 * sin(t * (0.23 + 0.3 * r4) + ph * 2.3));
+    // the particle's place in the world, wrapped into the volume around the camera
+    vec3 rel = r0 * uBox.xyz + vel * t + drift - uCam.xyz;
+    rel = (fract(rel / uBox.xyz) - 0.5) * uBox.xyz;
+    vec3 wp = uCam.xyz + rel;
+    vec3 e = abs(rel) / (0.5 * uBox.xyz);
+    float a = uCol.a * smoothstep(1.0, 0.75, max(max(e.x, e.y), e.z));  // (faded toward the volume's faces: no popping where it wraps)
+    if (uLimLo.w > 0.5) {  // the line's box
+        vec3 d = min(wp - uLimLo.xyz, uLimHi.xyz - wp);
+        a *= clamp(min(min(d.x, d.y), d.z), 0.0, 1.0);
+    }
+    if (uMisc2.y > 0.5)  // (from the sky: none inside the level's interiors)
+        for (int i = 0; i < int(uMisc2.x); ++i)
+            if (all(greaterThan(wp, uIntLo[i].xyz)) && all(lessThan(wp, uIntHi[i].xyz))) a = 0.0;
+    if (kind == 2) {  // embers: a life (rising, fading), flickering
+        float life = fract(t * (0.18 + 0.2 * r5) + r4);
+        a *= sin(life * 3.14159) * (0.6 + 0.4 * sin(t * (9.0 + 6.0 * r3) + ph));
+    } else if (kind == 3) {  // fireflies: blinking
+        a *= smoothstep(0.35, 1.0, 0.5 + 0.5 * sin(t * (1.1 + 1.4 * r5) + ph * 3.0));
+    } else if (kind == 4) {  // motes: bright looking toward the sun (forward scatter), twinkling
+        vec3 vd = normalize(rel);
+        float sc = pow(max(dot(vd, uSun.xyz), 0.0), 3.0);
+        a *= mix(1.0, 0.6 + 2.4 * sc, uSun.w) * (0.7 + 0.3 * sin(t * (2.0 + 3.0 * r5) + ph));
+    }
+    if (a <= 0.003) return;
+    vec4 c0 = uVP * vec4(wp, 1.0);
+    if (c0.w < 0.3) return;
+    a *= smoothstep(0.4, kind == 5 ? 1.0 : 2.0, c0.w);  // (none right at the lens: a speck there would be a blot)
+    float size = uSize.x * (1.0 + uSize.y * (r5 * 2.0 - 1.0));
+    float half_px = size * uProj.z * uVp.z * 0.5 / c0.w;  // (half the size in pixels)
+    float k = max(uMisc2.z * 0.5 / max(half_px, 1e-4), 1.0);  // (at least the smallest size: its alpha lowered instead)
+    if (kind == 5) {  // rain: a streak along its motion as the camera sees it (the camera's own taken off)
+        vec3 v = vel - uCamVel.xyz;
+        vec4 c1 = uVP * vec4(wp - v * uSize.z, 1.0);
+        if (c1.w < 0.3) return;
+        vec2 px = uVp.zw * 0.5;
+        vec2 dir = c1.xy / c1.w * px - c0.xy / c0.w * px;
+        float len = length(dir);
+        dir = len > 1e-3 ? dir / len : vec2(0.0, 1.0);
+        vec2 nrm = vec2(-dir.y, dir.x);
+        float along = q.y * 0.5 + 0.5;
+        vec4 cc = mix(c0, c1, along);
+        gl_Position = vec4(cc.xy + nrm * (q.x * half_px * k) / px * cc.w, cc.zw);
+        vZ = cc.w;
+        a /= k;
+        a *= clamp(len / 3.0, 0.25, 1.0) * 1.0;  // (a short streak - seen along its fall - lighter)
+    } else {
+        gl_Position = vec4(c0.xy + q * vec2(uProj.z, uProj.w) * size * k, c0.zw);
+        vZ = c0.w;
+        a /= k;  // (far: drawn at the smallest size, fainter - between the area's k * k and nothing, so that they still read)
+    }
+    vA = a;
+}
+"""
+
+MRP_PART_FS = "#version 450\n" + MRP_PART_UBO + """
+layout(location = 0) in vec2 vQ;
+layout(location = 1) in float vA;
+layout(location = 2) in float vZ;
+layout(location = 0) out vec4 FragColor;
+void main() {
+    int kind = int(uVel.w + 0.5);
+    float r2 = dot(vQ, vQ);
+    float shape;
+    if (kind == 5) {
+        shape = (1.0 - abs(vQ.x)) * smoothstep(-1.0, -0.4, vQ.y) * (0.45 + 0.55 * (vQ.y * 0.5 + 0.5));  // (a streak: its head brighter)
+    } else {
+        if (r2 >= 1.0) discard;
+        shape = (kind == 2 || kind == 3 || kind == 4) ? exp(-r2 * 3.5) : smoothstep(1.0, 0.25, r2);  // (glows; soft discs)
+    }
+    float a = vA * shape;
+    // soft against the scene: faded in front of the surface behind it, hidden behind it
+    float d = texelFetch(uDepth, ivec2(gl_FragCoord.xy - uMisc.yz), 0).r;
+    float zs = uProj.y / ((d * 2.0 - 1.0) + uProj.x);
+    a *= clamp((zs - vZ) / uSize.w, 0.0, 1.0);
+    if (a <= 0.002) discard;
+    FragColor = vec4(uCol.rgb, min(a, 1.0));
+}
+"""
+
+MRP_PART_SPLASH_VS = """#version 450
+void main() {
+    vec2 p = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
+    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}
+"""
+
+MRP_PART_SPLASH_FS = "#version 450\n" + MRP_PART_UBO + """
+layout(location = 0) out vec4 FragColor;
+uint pcg(uint v) {
+    uint s = v * 747796405u + 2891336453u;
+    uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+    return (w >> 22u) ^ w;
+}
+float rnd(inout uint s) {
+    s = pcg(s);
+    return float(s) * (1.0 / 4294967296.0);
+}
+void main() {
+    float d = texelFetch(uDepth, ivec2(gl_FragCoord.xy - uMisc.yz), 0).r;
+    vec2 ndc = (gl_FragCoord.xy - uVp.xy) / uVp.zw * 2.0 - 1.0;
+    vec4 w = uInvVP * vec4(ndc, d * 2.0 - 1.0, 1.0);
+    vec3 p = w.xyz / w.w;
+    vec3 n = cross(dFdx(p), dFdy(p));
+    float nl = length(n);
+    if (d >= 0.99999 || nl <= 0.0) discard;
+    if (dot(n, uCam.xyz - p) < 0.0) n = -n;  // (the side the camera sees: a roof's underside is no ground)
+    float up = n.z / nl;
+    float dist = length(p - uCam.xyz);
+    if (up < 0.85 || dist > uSize.w) discard;
+    if (uLimLo.w > 0.5 && (any(lessThan(p, uLimLo.xyz)) || any(greaterThan(p, uLimHi.xyz)))) discard;
+    for (int i = 0; i < int(uMisc2.x); ++i)
+        if (all(greaterThan(p, uIntLo[i].xyz - vec3(0.0, 0.0, 0.5))) && all(lessThan(p, uIntHi[i].xyz))) discard;
+    const float cell = 0.55;
+    vec2 gi = floor(p.xy / cell);
+    uint s = uint(int(gi.x) * 73856093) ^ uint(int(gi.y) * 19349663);
+    float rate = 1.4 + rnd(s) * 1.2;
+    float tt = uCam.w * rate + rnd(s);
+    float cyc = floor(tt), ph = fract(tt);
+    uint s2 = s ^ (uint(int(cyc)) * 83492791u);
+    if (rnd(s2) > uMisc2.w) discard;
+    vec2 ctr = (gi + 0.25 + 0.5 * vec2(rnd(s2), rnd(s2))) * cell;
+    float r = length(p.xy - ctr), rad = 0.02 + ph * 0.12;
+    float ring = smoothstep(0.014, 0.0, abs(r - rad)) * (1.0 - ph) + smoothstep(0.025, 0.0, r) * max(1.0 - ph * 5.0, 0.0);
+    float a = ring * uCol.a * smoothstep(uSize.w, uSize.w * 0.5, dist) * up;
+    if (a <= 0.003) discard;
+    FragColor = vec4(uCol.rgb, min(a, 1.0));
+}
+"""
+
 MRP_WORLD_VS = "#version 460\n" + MRP_WORLD_VS_BODY
 MRP_WORLD_GPU_VS = "#version 460\n" + MRP_WORLD_GPU_VS_BODY
 MRP_WORLD_FS = "#version 460\n" + MRP_WORLD_FS_HEADER + MRP_WORLD_FS_BODY
@@ -1639,6 +1807,10 @@ SHADERS = [
     ("kMrpRaysSplitFs", "frag", MRP_RAYS_SPLIT_FS),
     ("kMrpRaysAddFs", "frag", MRP_RAYS_ADD_FS),
     ("kMrpProbeFs", "frag", MRP_PROBE_FS),
+    ("kMrpPartVs", "vert", MRP_PART_VS),
+    ("kMrpPartFs", "frag", MRP_PART_FS),
+    ("kMrpPartSplashVs", "vert", MRP_PART_SPLASH_VS),
+    ("kMrpPartSplashFs", "frag", MRP_PART_SPLASH_FS),
     ("kMrpMobyVs", "vert", MRP_MOBY_VS),
     ("kMrpMobyFs", "frag", MRP_MOBY_FS),
     ("kMrpMobySplitVs", "vert", MRP_MOBY_SPLIT_VS),

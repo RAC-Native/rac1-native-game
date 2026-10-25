@@ -2,3 +2,8 @@
 # light x y z  r g b  intensity radius flicker on
 # Batalia: no Sun Rays, from Anya-Thoughtmane's lighting pass (#101: off to go on with the level's sun).
 sun_rays off
+# Batalia: our ambient particles (Options > Graphics > Ambient Particles, off by default): the rain, slanted by the wind, with
+# splashes on the ground, drawn in place of the game's own while the option is on (the game still makes its own: its state
+# is the same); a little ash from the battle in the air.
+particles rain 1  wind 2.5 1.5
+particles ash 0.3  wind 2.5 1.5

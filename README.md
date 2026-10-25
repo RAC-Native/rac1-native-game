@@ -218,6 +218,7 @@ For contributors, and for reverse-engineering and decompilation people:
 - [Rendering](docs/rendering.md): how a frame is drawn by the native renderer (the MRP).
 - [Vulkan](docs/vulkan.md): the experimental Vulkan backend of the same renderer.
 - [Lighting](docs/lighting.md): the original lighting and the optional modern lighting.
+- [Ambient particles](docs/particles.md): the optional dust, embers, rain and snow of our own.
 - [Audio](docs/audio.md): the 989snd sound driver, streams, movies.
 - [File formats](docs/formats/README.md): the game's formats and their decoders.
 - [Environment variables](docs/env-vars.md): every `RAC1_*` variable, for players, debugging and

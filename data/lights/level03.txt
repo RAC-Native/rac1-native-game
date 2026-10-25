@@ -10,3 +10,6 @@ sun -108.5 45.0
 # over the post's foot, half of it aimed down (a pool on the pavement around the post). No shadow cube (the globe's own mesh
 # would hide it).
 emit moby 1827  0.000 0.000 3.000  1.000 0.920 0.760  2.500 9.000 0.000  0.50
+# Kerwan: our ambient particles (Options > Graphics > Ambient Particles, off by default): light dust in the air, bright where
+# the view looks toward the sun (the sunbeams through the city's streets).
+particles motes 1

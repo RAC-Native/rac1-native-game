@@ -799,8 +799,9 @@ part of the original. The editor is in the debug menu (Lights tab), so it needs 
 - Lights are saved per level in `data/lights/levelNN.txt` (relative to the working directory;
   `RAC1_LIGHTS_DIR` changes the directory), one light per line:
   `light x y z  r g b  intensity radius flicker on`, `noauto <class>` for an automatic class
-  turned off, `sun <azimuth> <elevation>` for the level's own sun and `sun_rays off` for no
-  [sun rays](#sun-rays) on the level, with `#` for comments. Saving from the editor keeps the file's
+  turned off, `sun <azimuth> <elevation>` for the level's own sun, `sun_rays off` for no
+  [sun rays](#sun-rays) on the level and `particles <kind> <density> ...` for the level's
+  [ambient particles](particles.md#a-levels-lines), with `#` for comments. Saving from the editor keeps the file's
   own comment lines and its lines' order (an entry is written where its line was, the ones added
   after the last line), and writes the numbers it read unchanged: the game's thread rounds toward
   zero (the EE's mode), so the file is read and written rounding to nearest (`ps2fpu::NearestScope`);

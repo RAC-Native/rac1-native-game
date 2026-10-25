@@ -18,6 +18,7 @@
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_fx.h>
 #include <game/render/mrp_lighting.h>
+#include <game/render/mrp_particles.h>
 #include <game/enhance/graphics.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_world_renderer.h>
@@ -964,7 +965,94 @@ void interior_boxes(const std::vector<SunInterior>& B) {
             }
     }
 }
+// the level's ambient particles ("particles" lines of its file: mrp_particles.h), edited live, saved with the file
+void sun_particles() {
+    ImGui::Separator();
+    ImGui::Text("Ambient particles (ours; Options > Graphics > Ambient Particles)");
+    int q = g_ambient_particles;
+    bool ch = ImGui::RadioButton("Off", &q, 0);
+    ImGui::SameLine();
+    ch |= ImGui::RadioButton("Low", &q, 1);
+    ImGui::SameLine();
+    ch |= ImGui::RadioButton("High", &q, 2);
+    if (ch) g_ambient_particles = q;  // (this run only: the option sets the preferences)
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("For this run (Options > Graphics > Ambient Particles keeps the choice)");
+    bool game = g_particles_show_game != 0;
+    if (ImGui::Checkbox("Draw the game's own rain / snow as well", &game)) g_particles_show_game = game ? 1 : 0;
+    int count = 0;
+    float cpu = 0.0f, gpu = 0.0f;
+    mrp_particles_stats(&count, &cpu, &gpu);
+    ImGui::Text("%d particles drawn, %.3f ms CPU (the GPU's: the Profiler tab, \"Ambient particles\"); the game's rain / snow %s", count, cpu,
+                mrp_particles_hide_game() ? "replaced" : "drawn");
+    std::vector<ParticleSpec>& P = mrp_user_particles();
+    const glm::mat4 iv = glm::inverse(render_view_matrix());
+    const glm::vec3 cam(iv[3][0], iv[3][1], iv[3][2]);
+    const char* kinds[kPartKinds];
+    for (int k = 0; k < kPartKinds; ++k) kinds[k] = mrp_particle_kind_name(k);
+    for (size_t i = 0; i < P.size(); ++i) {
+        ParticleSpec& p = P[i];
+        ImGui::PushID(static_cast<int>(2000 + i));
+        bool c = ImGui::Checkbox("##on", &p.on);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(110.0f);
+        c |= ImGui::Combo("##kind", &p.kind, kinds, kPartKinds);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(160.0f);
+        c |= ImGui::SliderFloat("density", &p.density, 0.0f, 4.0f, "%.2f");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("remove")) {
+            P.erase(P.begin() + static_cast<std::ptrdiff_t>(i));
+            g_sun_dirty = true;
+            ImGui::PopID();
+            break;
+        }
+        ImGui::Indent();
+        c |= ImGui::Checkbox("own colour", &p.has_col);
+        if (p.has_col) {
+            ImGui::SameLine();
+            c |= ImGui::ColorEdit3("##col", p.col, ImGuiColorEditFlags_NoInputs);
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(160.0f);
+        c |= ImGui::DragFloat2("wind x y", p.wind, 0.05f, -20.0f, 20.0f, "%.2f");
+        if (p.kind == kPartRain || p.kind == kPartSnow) {
+            ImGui::SameLine();
+            c |= ImGui::Checkbox("keep the game's", &p.keep);
+        }
+        c |= ImGui::Checkbox("only in a box", &p.has_box);
+        if (p.has_box) {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("around the camera")) {
+                for (int k = 0; k < 3; ++k) {
+                    p.lo[k] = std::round((cam[k] - (k == 2 ? 6.0f : 20.0f)) * 10.0f) / 10.0f;
+                    p.hi[k] = std::round((cam[k] + (k == 2 ? 6.0f : 20.0f)) * 10.0f) / 10.0f;
+                }
+                c = true;
+            }
+            c |= ImGui::DragFloat3("min", p.lo, 0.1f);
+            c |= ImGui::DragFloat3("max", p.hi, 0.1f);
+        }
+        ImGui::Unindent();
+        if (c) g_sun_dirty = true;
+        ImGui::PopID();
+    }
+    static int add_kind = 0;
+    ImGui::SetNextItemWidth(110.0f);
+    ImGui::Combo("##addkind", &add_kind, kinds, kPartKinds);
+    ImGui::SameLine();
+    if (ImGui::Button("Add a particles line")) {
+        ParticleSpec p;
+        p.kind = add_kind;
+        P.push_back(p);
+        g_sun_dirty = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Save##particles")) g_sun_dirty = !mrp_user_lights_save();
+    ImGui::TextWrapped("Applied at once. Saved as \"particles <kind> <density> [r g b] [wind x y] [box x0 y0 z0 x1 y1 z1] [keep]\" lines in the "
+                       "level's file (a line not edited is written back as it was).");
+}
 void tab_sun() {
+    mrp_user_lights_ensure();  // (the level's file: also with the modern lighting off - the particles' lines)
     const int level = mrp_user_lights_level();
     if (level != g_sun_level) {
         g_sun_level = level;
@@ -1068,6 +1156,7 @@ void tab_sun() {
         if (ch) g_sun_dirty = true;
     }
     if (g_interior_show) interior_boxes(B);
+    sun_particles();
 }
 void tab_lights() {
     std::vector<UserLight>& L = mrp_user_lights();

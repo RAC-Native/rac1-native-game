@@ -6,6 +6,10 @@ What changed in each release. Releases are source only: you build the game with 
 ## Unreleased
 
 ### Graphics
+- Ambient particles (Options > Graphics > Ambient Particles: Off by default, Low, High): our own dust, ash, embers, fireflies,
+  light dust in the sunlight, rain with splashes and snow, per level from its light file (`particles` lines, editable in the
+  debug menu's Sun tab); Batalia's rain and Hoven's snow drawn in place of the game's own while it is on. OpenGL and Vulkan.
+  See [Ambient particles](docs/particles.md).
 - Modern lighting: more lamps light the world on Veldin and Novalis (nanotech crates, fires, plasma beams, landing pad, eyes, bombs), and
   lights per object class follow the objects the game spawns later (thanks Anya-Thoughtmane, #102).
 
