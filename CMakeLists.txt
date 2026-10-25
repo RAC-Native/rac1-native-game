@@ -247,6 +247,7 @@ set(RAC1_HOST_SOURCES
     src/host/sim_script.cpp
     src/host/sim_autopilot.cpp
     src/host/update_check.cpp
+    src/host/progress.cpp
 )
 if(WIN32)
     list(APPEND RAC1_HOST_SOURCES src/host/host_priority_win32.cpp src/host/gpu_preference_win32.cpp

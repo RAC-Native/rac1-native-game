@@ -1,11 +1,11 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 315 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 316 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
-| [Player](#player-variables) | 20 | Settings a player may want to change: files, window, audio, the ISO |
+| [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
 | [Debugging](#debugging-variables) | 233 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 62 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
@@ -45,6 +45,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_IOP_MIRROR` | 0 = use the game's own emulated IOP output; default on (the host's mirror of the IOP plays the sound) | Setting 0 turns off the host's low-latency mirror of the sound processor and plays the emulated IOP's output instead. |
 | `RAC1_ISO` | path to the NTSC-U ISO; default assets/iso/rac1-ntsc-u.iso | Path of the game disc image used by the game and by the setup tools. |
 | `RAC1_MEMCARD_DIR` | directory path; default $XDG_DATA_HOME/rac1-native/memcard, else ~/.local/share/rac1-native/memcard | Directory holding the virtual memory card's save files. Setting it also makes a headless run insert the card. |
+| `RAC1_PROGRESS` | file path, or 0 = off; default $XDG_DATA_HOME/rac1-native/progress.json, else ~/.local/share/rac1-native/progress.json (%APPDATA%\rac1-native\progress.json on Windows) in a windowed run, none in a headless run | Where the game writes `progress.json` for the RAC Native launcher (the planet played, the planets reached, the share explored, the time played: see [The launcher](launcher.md#progressjson)); a headless run writes it only when this is set. |
 | `RAC1_MOVIE_VOLUME` | floating-point gain; default 1.0 | Volume multiplier applied to the audio of the pre-rendered movies. |
 | `RAC1_NO_AUDIO` | any value = on; default audio on | Turns the sound output off entirely. |
 | `RAC1_PRIORITY` | 0 = off, any other integer = on; default on except when headless | Requests raised host thread priority through the system's real-time kit, if available. |

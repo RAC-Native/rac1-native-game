@@ -138,6 +138,7 @@
 #include "sim_autopilot.h"
 #include "sim_script.h"
 #include "update_check.h"
+#include "progress.h"
 #include <_devtools/item_give_quiet.h>  // (header only: also without the dev tools)
 #ifdef RAC1_DEVTOOLS
 #include <_devtools/dev_menu.h>
@@ -2018,6 +2019,7 @@ int main(int argc, char** argv) {
     // the update check (Updates > Update Check): started when the main menu opens on the title screen (or on demand
     // via Check Now), never in a headless run; what it finds is shown as the update notice
     rac1::update_check::start(headless);
+    rac1::progress::start(headless);  // (the launcher's progress.json: host/progress.h)
     if (const char* ck = std::getenv("RAC1_CLOCK")) g_host_clock_fixed = static_cast<std::time_t>(std::strtoll(ck, nullptr, 0));
     const uint64_t max_frames = std::getenv("RAC1_FRAMES") ? std::strtoull(std::getenv("RAC1_FRAMES"), nullptr, 10) : (headless ? 300 : 0);
 
@@ -2704,6 +2706,7 @@ int main(int argc, char** argv) {
                 vs0 = g_vsyncs;
             }
             ++frame;
+            rac1::progress::frame(lw(0x0015ed84), boot_active(), exiting);  // (the launcher's progress.json)
             if (std::getenv("RAC1_CARD_LOG") != nullptr) {  // testing: the memory card's machines and screens as they change
                 uint32_t owned = 0;  // the items owned (0x13d4c0, 0x25 bytes) as a bit mask
                 for (uint32_t i = 0; i < 0x20; ++i) owned |= ee_read<uint8_t>(0x0013d4c0 + i) != 0 ? 1u << i : 0u;
@@ -3709,6 +3712,7 @@ int main(int argc, char** argv) {
     rac1::vu0::fallback_report();  // (testing: RAC1_VU_FALLBACK)
     rac1::vu1::fallback_report();
     if (std::getenv("RAC1_VU0_CHAIN") != nullptr) std::fprintf(stderr, "[vu0-chain] %016llx\n", static_cast<unsigned long long>(rac1::vu0::chain_hash()));
+    rac1::progress::finish();  // (the launcher's progress.json: the time played since its last write)
     rac1::platform::process_end();  // (std::_Exit runs no atexit handler)
     rac1::update_check::run_update();
     std::_Exit(0);  // the renderers' static GL objects would be freed after the context is gone
