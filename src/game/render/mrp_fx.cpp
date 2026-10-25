@@ -1,5 +1,6 @@
 // orig: (host) The MRP's particles (see mrp_fx.h).
 #include <game/render/mrp_fx.h>
+#include <game/render/mrp_particles.h>
 #include <profiler/host_profiler.h>
 
 #include <game/ovl/ovl_common.h>
@@ -845,6 +846,7 @@ void mrp_fx_particles_patch(bool begin) {
 
 // orig: (host) see mrp_fx.h
 bool mrp_fx_chain_ranges(bool active, const std::vector<int>& subs, std::vector<gs::Gs::FxRange>& ranges) {
+    mrp_particles_fx_capture();  // (the game's rain / snow textures this frame, for the drawing: nothing unless the ambient particles are on)
     ranges.clear();
     Frame& F = g_frame;
     F.notes.clear();
@@ -1088,6 +1090,8 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
         const FrameNote& fn = g_frame.notes[p.fx_id];
         const View& V = g_frame.views[fn.view];
         const gs::DrawState& st = p.st;
+        // (the game's rain / snow, where our ambient particles replace it: not drawn - the game made it as ever)
+        if (g_ambient_particles > 0 && mrp_particles_hide_fx(fn.kind, st.tex0, p.type)) continue;
         const bool tme = fld(st.prim, 4, 1) != 0, fst = fld(st.prim, 8, 1) != 0;
         int layer = 0, tw = 1, th = 1;
         if (tme) {

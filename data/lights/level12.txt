@@ -2,3 +2,6 @@
 # light x y z  r g b  intensity radius flicker on
 # Hoven: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
 sun -180.0 90.0
+# Hoven: our ambient particles (Options > Graphics > Ambient Particles, off by default): drifting snow, in place of the game's
+# own while the option is on (the game still makes its own: its state is the same).
+particles snow 1  wind 1.2 0.4

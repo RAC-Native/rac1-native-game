@@ -59,6 +59,9 @@ See [Settings](settings.md#graphics) and [Rendering](rendering.md).
   V-Sync.
 - **The renderer**: OpenGL, the default, or [Vulkan](vulkan.md) (experimental, from the next start),
   the same picture.
+- **Ambient particles** (off by default): our own dust, ash, embers, fireflies, light dust in the sunlight, rain and snow
+  on some levels, purely visual; Batalia's rain and Hoven's snow drawn in place of the game's own while on. See
+  [Ambient particles](particles.md).
 
 ### Modern lighting
 

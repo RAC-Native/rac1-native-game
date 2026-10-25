@@ -2,3 +2,6 @@
 # light x y z  r g b  intensity radius flicker on
 # Pokitaru: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
 sun -145.5 80.5
+# Pokitaru: our ambient particles (Options > Graphics > Ambient Particles, off by default): fireflies, brighter in the shade
+# and at night.
+particles fireflies 1
