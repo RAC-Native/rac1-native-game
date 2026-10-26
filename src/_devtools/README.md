@@ -141,7 +141,8 @@ after giving loads back with them: every byte here is in the save: its game bloc
 
 ## Hoverboard anywhere (the Player tab)
 
-The hoverboard of the races ridden away from the race, on the two levels that have it: Rilgar (5) and Kalebo III (16).
+On Rilgar (5) and Kalebo III (16), the two levels that have it, the hoverboard of the races ridden away from the race; on every
+other level a free board of our own (below).
 The board is the class-439 moby (its update: Rilgar's L5:0x002f87a8, Kalebo's L16:0x002c7788). Standing (+0x20 = 0) it waits
 for the hero within 5.5, then hands itself to him (`PLAYER+0x86c`), puts him in his board state 0x6b (sub-state 0x16; the
 levels' own hero controllers ride it), keeps its spot (pvars +0x10) and goes to its riding state 1. Ticking the box does that
@@ -158,5 +159,55 @@ What the game's own board code still does, unchanged:
   the streets by the water, the vendor's dock, the taxi stand and the Hoverboard Girl's terrace: back on the track at once.
 - Kalebo III: no track check; anywhere above 76 (the walkways, the courtyards, the Gadgetron buildings' level) is ridden; below
   it the board falls (0x6e) and Ratchet comes back on a point of the track.
-- The other levels: not available (the box is greyed). Their hero controllers have no board state (0x6b does nothing there)
-  and their files no board moby; borrowing Rilgar's would mean running level 5's own code on another level's memory.
+
+### The free board (every other level: `dev_hoverboard.cpp`)
+
+The board's riding is level 5's and 16's own code: their transliterated hero controllers (`rilgar_hero_tr_*`, `kalebo_hero_tr_*`)
+read their state tables and globals at those levels' own data addresses, so they cannot run on another level's memory. What the
+other levels have instead, and what the free board uses:
+- **The state.** On every other level the hero controllers (Veldin's and the L1 family's ports, and the transliterated
+  controllers of 6, 8, 11, 12, 14, 15, 17 and 18: their jump tables checked) send 0x6b where they send state 5: nothing per
+  frame, no transitions of its own, the set_state's common tail only. The free board puts Ratchet in 0x6b with the game's
+  `hero_set_state(0x6b, 1)`; the game then leaves his position alone (his animation, moby, camera, hits, items, water and the
+  kill height still run as in any state), and the ride moves him between the game's frames (`dev_free_board_frame`, after
+  each frame the hero was updated in; none in the pause menu, a dialog or the level's exit).
+- **The riding** is ours: the stick turned through the camera as Ratchet's walk does (up: away from the camera; the board
+  turns towards it at 4.5 rad/s standing, 2.2 at full speed), speeding up to 20 units/s, cross jumps (also just off an
+  edge), gravity 30. The game's own segment query (`segment_collide`, 0x1efc70) finds the walls (two rays, at 0.35 and 1.1,
+  slid along) and the floor (steps of 0.7 climbed, slopes followed down 0.9, more is a fall; a ramp's top throws him up), on a
+  journal of EE memory with the contact registers kept (as `mrp_lod.cpp`'s shadow runs do), so the queries leave the game's
+  memory as it was.
+- **Off the level**: in the water (`PLAYER+0x12e4` / `+0x2f0`, from the game's surface check), below the level's kill height
+  (`0x15f638`), off the map, airborne for 4 s, or put in the fall to death 0x77 by a level's pit: back on foot (state 0) on
+  the last solid ground (where he rode a quarter second before, on flat ground). Never a race respawn.
+- **The animations** are level data. The hero's sequences come from the level's core (its 256-entry hero sequence table, the
+  level loader puts them in his class's slots); Kalebo III's core has the board's (58 falling, 82 standing, 85 riding, 98
+  jumping), Veldin's has every sequence, most levels have none of them (their slots are null). They are read once from Kalebo
+  III's core on the disc, put at `host_layout::DEV_BOARD_SEQS` (0x02300000, above the game's 32 MB) with their frame table and
+  trigger block made addresses as the game's load does (checked byte for byte against Kalebo III's own copies), and hooked into
+  the class's null slots while riding; the slots are emptied again once Ratchet plays none of them. Played with the game's
+  `hero_anim_set`.
+- **The board** is Kalebo III's class 439, drawn by the MRP only (`mrp_moby_renderer.cpp`, `append_guest`): its asset and the
+  textures it names are read from `assets/generated/mrp/moby/level16/` and added to the level's (the level's assets loaded again
+  once, at the first ride), and it is drawn after the frame's mobys on Ratchet as the frame drew him: his world matrix with the
+  board's scale, 0.215 up, the joints as the game poses the standing board, his lights. No moby in the game's memory.
+- **No sound.**
+- **Getting off**: unticking (the game's `hero_set_state(0, 1)` where he is), a hit, an attack (square, R1...), a hazard
+  floor, a cutscene, a pit, the water: the ride ends (the box unticks). A new level ends it too.
+
+Tried headless on every level (`RAC1_HOVERBOARD_AT` once Ratchet stands after the arrival, ten seconds of stick forward with
+turns and two jumps, then off; OpenGL, and Kerwan with Vulkan too): no crash, Ratchet on foot afterwards on every level.
+How the scripted drive ended (a player steers; these say what each level does to a board ridden straight ahead):
+
+| Level | The drive |
+|---|---|
+| Veldin, Blarg, Batalia, Oltanis, Quartu, Veldin finale | off an edge: back on foot on the ground before it |
+| Novalis, Drek's fleet | into the water: back on foot |
+| Kerwan | the whole drive on the board (walls slid along; the avenue north of the start, 214 194 47.5, rides well) |
+| Aridia (0x68), Umbris (0x7b) | the level's hazard floor took him off |
+| Eudora, Gaspar | an enemy's hit took him off |
+| Pokitaru | a cutscene's trigger took him off |
+| Hoven | killed on the way (on the board, as on foot) |
+| Gemlik | off the base into its pit (0x77 above the kill height): back on foot |
+| Orxon | not available while Clank is played (his class has no board sequences) |
+| Rilgar, Kalebo III | the race's board, as before |

@@ -71,6 +71,9 @@ What changed in each release. Releases are source only: you build the game with 
 ### Debug tools (`--debug-tools`)
 - Hoverboard anywhere (Player tab): on Rilgar and Kalebo III, gets Ratchet on the hoverboard race's board where he stands, as the board
   itself does when he walks up to it, and off again when unticked. Testing: `RAC1_HOVERBOARD_AT`.
+- Hoverboard anywhere on every other level: a free board (Kalebo III's board drawn on Ratchet's feet, his own board animations
+  read from Kalebo III's data, our own riding with the game's collision): the stick steers and speeds up, cross jumps; in the water,
+  below the level, in a pit or after a long fall he is back on foot on the last solid ground. No race rules. OpenGL and Vulkan.
 
 ### Fixes
 - Modern lighting: Ratchet and the other mobys are lit by the lights placed by hand, the lights per class and the automatic
