@@ -113,8 +113,11 @@ headless runs) the row is the game's own Mono / Stereo.
   older saves are read and ignored.
 - **Level of Detail** draws more detail further away, without changing the game's own decisions. See
   [Rendering](rendering.md#level-of-detail).
-- **Lighting and the seven rows after it** are the optional modern lighting; the seven only act
-  when Lighting is not Original. See [Lighting](lighting.md).
+- **Lighting and the eight rows after it** (Shadow Strength to Surface Detail) are the optional modern
+  lighting; the eight only act when Lighting is not Original. See [Lighting](lighting.md) and, for
+  Surface Detail, [Materials](materials.md).
+- **Ambient Particles** works with any Lighting: our own particles, drawn over the world in play, never
+  changing the game's state. See [Ambient particles](particles.md).
 
 ### Controls
 
@@ -155,7 +158,7 @@ New Game opens a choice between three modes before the game starts
 | Level of Detail | Original | High | High |
 | Texture Detail | Original (PS2) | Full | Full |
 | Quick Select, Aiming, Movement | Normal, Original, Original | Pause, Modern, RAC 3 | Pause, Modern, RAC 3 |
-| Modern lighting (Lighting, Dynamic Shadows, Secondary Lights, Shadow Distance, Ambient Occlusion) | off (the defaults) | off (the defaults) | Lighting High, Dynamic Shadows On, Secondary Lights All, Shadow Distance Maximum, Ambient Occlusion SSAO (Shadow Strength and Sun Rays left as they are) |
+| Modern lighting (Lighting, Dynamic Shadows, Secondary Lights, Shadow Distance, Ambient Occlusion) | off (the defaults) | off (the defaults) | Lighting High, Dynamic Shadows On, Secondary Lights All, Shadow Distance Maximum, Ambient Occlusion SSAO (Shadow Strength, Sun Rays, Surface Detail and Ambient Particles left as they are) |
 
 Experimental is Modern plus the [modern lighting](lighting.md), which is experimental. No mode changes
 the window settings or Fades. The mode chosen is kept with the save.

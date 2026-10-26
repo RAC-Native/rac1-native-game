@@ -67,12 +67,16 @@ See [Settings](settings.md#graphics) and [Rendering](rendering.md).
 
 See [Lighting](lighting.md). Off by default (Lighting: Original).
 
-- The sun's shadows, cast and received by the world and the objects, with a Shadow Strength
-  setting; the world lit by the sun, which a level's own file can turn.
+- The sun's shadows, cast and received by the world and the objects (the levels' water, lava and
+  sand seas too), with a Shadow Strength setting; the world lit by the sun, which a level's own file
+  can turn (most levels have their own).
 - The game's own dynamic lights (explosions, weapons) lit per pixel, and light emitters found
   automatically in the levels' glowing textures (lamps, panels, floor strips), with their shadows;
   a level's file can also make every object of a class a light (street lamps, neon tubes).
-- Sun rays (Low, Medium, High): shafts of light from the sun where the sky shows through the scene.
+- Sun rays (Low, Medium, High): shafts of light from the sun where the sky shows through the scene;
+  a level's file can turn them off there.
+- Emissive surfaces: textures a level's file marks (lamps, screens, panels) keep the original
+  lighting's brightness where the shadows would darken them.
 - Ambient occlusion, in five modes (SSAO, SSAO+, HBAO, GTAO, GTAO at half resolution), with an AO
   Intensity setting.
 - Surface Detail (Off, Low, High): materials for the textures a level's file tags - shiny metal, wet
@@ -97,8 +101,9 @@ In no fixed order. Each one is optional, and off by default if it changes the ga
 
 ### Picture
 
-- **The rest of widescreen**: a vertical field-of-view scale, and every effect culled against the
-  wider view.
+- **The rest of widescreen**: the level's baked shadow meshes, and the few surfaces the game queues
+  only for the objects it drew in its 4:3 view, across the wider view (see
+  [Rendering](rendering.md#limits)).
 - **Higher frame rates.** The game runs its logic at 60 Hz, and many of its timers count frames. The
   safe route is to draw extra frames *between* two logic frames, interpolating positions, the camera
   and the animation poses, with the logic untouched.
@@ -114,7 +119,9 @@ In no fixed order. Each one is optional, and off by default if it changes the ga
 
 - **Cut content, optionally brought back**: things the game carries on the disc but never shows.
 - **A language switch** offering every language on the disc, without the console's system setting.
-- **Quality of life**: a level select and similar conveniences for players, a mod loader later.
+- **Quality of life**: a level select and similar conveniences for players.
+- **Mods**: the setup extracting the game's files from the disc image, a mods folder, and a Mods menu
+  in the game (see [Roadmap](roadmap.md)).
 
 ### Platforms
 

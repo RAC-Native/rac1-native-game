@@ -386,6 +386,11 @@ then builds). If the code generation itself fails, its full output is in `build/
 **"the game's data is missing"** when starting the game: it was started from another directory, or
 the setup did not finish. Run it from the repository's root, and run `./setup.sh` again.
 
+**"the modern renderer's assets are missing"** when starting the game: files under
+`assets/generated/mrp/` were deleted since the setup (or all of `assets/generated`). The levels are then
+drawn wrong or without their objects. Run `./setup.sh` (`setup.cmd` on Windows): it sees which of its
+steps lost their files and makes them again.
+
 **The build stops with "Failed to find wayland-scanner"**, or about missing X11 or XKB headers: the
 Wayland or X11 development files are missing; install the packages above.
 

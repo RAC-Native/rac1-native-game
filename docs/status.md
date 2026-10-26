@@ -14,7 +14,12 @@ glitches there; the port as a whole still needs polishing. 0.5.0 adds the launch
 Linux, an experimental Vulkan renderer (opt-in), a widescreen HUD option, a reworked modern
 lighting, 5.1 / 7.1 sound and a faster game update, and fixes the bugs reported on 0.4.0 (see the
 [Changelog](../CHANGELOG.md#050)); it has been playtested on Linux. Windows is no longer
-experimental: players have played through the game on it.
+experimental: players have played through the game on it. Since 0.5.0, `main` has gained (see the
+[Changelog](../CHANGELOG.md#unreleased); not released yet): the levels' water, lava and sand seas drawn by
+the native renderer, which now draws all of the 3D in play; surface materials (Surface Detail) and
+emissive surfaces for the modern lighting, and new level suns to playtest; optional ambient particles; the
+game's update on a thread of its own beside the drawing; the setup on the Steam Deck, Bazzite and other
+immutable Linux systems; `progress.json` for the RAC Native launcher; and fixes (#104, #101).
 
 Every planet of the milestone has its own classes ported and proved against the original code, and
 runs on its own overlay. The gaps that remain on them are listed below as **known issues**; they are
@@ -114,13 +119,14 @@ nothing, so an object whose class is not ported stands still or does not appear.
 | Memory card, save and load, the save on planet change | Works, but may still change: the save files' format, location and size have not been checked by hand yet. See [Saves](saves.md). |
 | Pause menu (with its 3D models), HUD, Vendor, the ship's planet menu, the loading screen's flight | Ported. Known issue: the planet menu's information panels draw empty. |
 | Sound and music (989snd), dialogue streams, movies; 5.1 and 7.1 output | Working; see [Audio](audio.md). The sound mirror that keeps music playing through loads is still a proposal (see [Decisions](decisions.md#13-the-iops-sound-runs-twice)). |
-| 3D rendering (the MRP) | The default renderer; see [Rendering](rendering.md). |
+| 3D rendering (the MRP) | The default renderer; all of the 3D in play, the levels' water, lava and sand seas included; see [Rendering](rendering.md). |
 | The Vulkan renderer (Options > Graphics > Renderer) | Experimental, opt-in: the same picture as OpenGL, which stays the default and takes over when Vulkan cannot start; see [Vulkan](vulkan.md). |
-| Modern lighting (optional) | Working, off by default; see [Lighting](lighting.md). |
+| Modern lighting (optional) | Working, off by default, experimental; with surface materials (Surface Detail) and emissive surfaces; see [Lighting](lighting.md) and [Materials](materials.md). |
+| Ambient particles (optional) | Working, off by default, on seven levels; see [Ambient particles](particles.md). |
 | Options > Graphics (including Texture Detail and the widescreen HUD), Controls, Advanced; the Original / Modern / Experimental choice at New Game | Implemented, known issues may remain; see [Settings](settings.md). |
 | Keyboard, mouse and controller mapping, remapping in Options > Controls | Implemented, known issues may remain; see [Input](input.md). |
 | Debug tools behind `--debug-tools` (with the Profiler and Unlocks tabs) | Implemented; see [Settings](settings.md#debug-tools). |
-| The launcher (Windows and Linux x86-64): install, update, play, saves | New in 0.5.0; see [The launcher](launcher.md). |
+| The launcher (Windows and Linux x86-64): install, update, play, saves | New in 0.5.0; on the Steam Deck, Bazzite and other immutable Linux systems it builds the game in a container (after 0.5.0); see [The launcher](launcher.md). |
 
 ## Not done yet
 
@@ -134,9 +140,9 @@ nothing, so an object whose class is not ported stands still or does not appear.
   purpose (hardware, DMA, the movie library) or debug features (the one left is the boot module's
   copy of a help page's focus-in, to review). About 200 unique functions are not connected to anything
   (cut content and dead code), listed there too.
-- **Not everything is native in the renderer.** The HUD, menus and some effects are still drawn
-  through the GS replica, and the mobys' flattened shadow meshes are not drawn yet (see
-  [Rendering](rendering.md#limits)).
+- **Not everything is native in the renderer.** The HUD, menus and the rest of the 2D are still drawn
+  through the GS replica; the level's baked shadow meshes are still cut at the sides of a widened
+  view, and the mobys' flattened shadow meshes are not drawn yet (see [Rendering](rendering.md#limits)).
 - **Widescreen menus.** Options > Graphics > HUD spreads the HUD over a widened view; the menus, the
   pause screen and the Vendor stay 4:3 in the middle (see [Settings](settings.md#graphics)).
 - **Platforms.** Linux x86-64; Windows x86-64 (see [Platforms](platforms.md)). A port
