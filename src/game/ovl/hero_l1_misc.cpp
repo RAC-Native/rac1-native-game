@@ -17,7 +17,7 @@ constexpr uint32_t PAD = 0x0013c940;
 float fs6c() { return lwc1(0x0015ed6c); }
 uint32_t buttons() { return lwu(PAD + 0x1a0); }
 int32_t& i32_at(uint32_t a) { return *static_cast<int32_t*>(ee_ram_ptr(a)); }  // orig: (helper) EE word
-int16_t& i16_at(uint32_t a) { return *static_cast<int16_t*>(ee_ram_ptr(a)); }  // orig: (helper) EE halfword
+int16_t& i16_at(uint32_t a) { return ee_ref<int16_t>(a); }  // orig: (helper) EE halfword
 // the C remainder of a ring index by the 32-entry history length
 // orig: (helper) the (i < 0 ? i + 31 : i) >> 5 idiom
 int32_t ring32(int32_t i) { return i - ((i < 0 ? i + 31 : i) >> 5) * 32; }

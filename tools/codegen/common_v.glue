@@ -5,7 +5,7 @@
 0x001fef10: fr[0] = frame_scale_f(fr[12]);
 0x001fef20: set32(v0, static_cast<uint32_t>(frame_scale_i(static_cast<int32_t>(a0.w()))));
 0x001fef68: set32(v0, static_cast<uint32_t>(timer_tick_i32(*static_cast<int32_t*>(ee_ram_ptr(a0.w())))));
-0x001fef98: set32(v0, static_cast<uint32_t>(timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(a0.w())))));
+0x001fef98: set32(v0, static_cast<uint32_t>(timer_tick_i16(ee_ref<int16_t>(a0.w()))));
 0x001ff1e0: fr[0] = sqrt_f(fr[12]);
 0x001ff218: fr[0] = abs_f(fr[12]);
 0x001ff260: vec_clear(V(a0.w()));

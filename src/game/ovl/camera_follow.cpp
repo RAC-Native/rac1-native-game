@@ -640,8 +640,8 @@ void cam0_modes(uint32_t cam) {
     float r = sum * 5.0f;
     if (1.0f < r) r = 1.0f;
     r = 1.0f - r;
-    int16_t& slow = *static_cast<int16_t*>(ee_ram_ptr(w3 + 0x12));
-    int16_t& rest = *static_cast<int16_t*>(ee_ram_ptr(w3 + 0x14));
+    int16_t& slow = ee_ref<int16_t>(w3 + 0x12);
+    int16_t& rest = ee_ref<int16_t>(w3 + 0x14);
     if (r < lwc1(OV(0x00161d84))) sh(w3 + 0x12, static_cast<uint32_t>(frame_scale_i(0x20)));
     if (lh(w3 + 0x12) != 0) {
         if (timer_tick_i16(slow) != 0) sh(w3 + 0x14, static_cast<uint32_t>(frame_scale_i(0x2d)));
@@ -824,7 +824,7 @@ void cam0_target_kind(uint32_t cam) {
         return;
     }
     if (lbu(t + 0xc4) == 0xa) {
-        if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(t + 0xd4))) != 0) {
+        if (timer_tick_i16(ee_ref<int16_t>(t + 0xd4)) != 0) {
             set(lbu(t + 0xc4), 0);
             blend_fs(OV(0x00161d54));
             return;
@@ -921,7 +921,7 @@ void cam0_target_offset(uint32_t cam, Vec4& out) {
         out = V(t + 0x10);
         vec3_scale(a, f, vec3_dot(hero, f));
         vec3_sub(V(t), hero, a);
-        if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(t + 0xd4))) == 0) return;
+        if (timer_tick_i16(ee_ref<int16_t>(t + 0xd4)) == 0) return;
         const uint32_t k = lbu(t + 0xc4);
         if (k == 9) {
             sb(t + 0xc4, 0xa);
@@ -984,7 +984,7 @@ int32_t cam0_look_point(uint32_t cam, const Vec4& add, Vec4& out, uint32_t kind)
 // rates blended from the previous kind's (0x161d30 / 0x161d34) to the new (0x161d28 / 0x161d2c).
 void cam0_look_update(uint32_t cam, const Vec4& add) {
     const uint32_t t = work(cam) + 0x40;
-    if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(work(cam) + 0x106))) != 0) sb(t + 0xc5, lbu(t + 0xc4));
+    if (timer_tick_i16(ee_ref<int16_t>(work(cam) + 0x106)) != 0) sb(t + 0xc5, lbu(t + 0xc4));
     const float b = static_cast<float>(lh(t + 0xc6)) * lwc1(t + 0xc8);
     alignas(16) Vec4 p;
     cam0_look_point(cam, add, p, lbu(t + 0xc4));
@@ -1024,7 +1024,7 @@ void cam0_target_update(uint32_t cam) {
     vec3_add(V(t), V(t), V(w + 0x50));
     vec3_add(V(w + 0xa0), across, f);
     vec3_scale(up, V(OV(0x00166e30)), lwc1(t + 0xb0));
-    int16_t& n = *static_cast<int16_t*>(ee_ram_ptr(t + 0xd8));
+    int16_t& n = ee_ref<int16_t>(t + 0xd8);
     if (lbu(t + 0xd6) != 0) {
         const int16_t v = static_cast<int16_t>(lhu(t + 0xd8) + 1);
         sh(t + 0xd8, static_cast<uint16_t>(v));
@@ -1412,7 +1412,7 @@ void cam0_collide(uint32_t cam) {
         swc1(col + 0x30, len - lwc1(OV(0x00161cd0)));
         sh(col + 0x34, static_cast<uint32_t>(frame_scale_i(0x7d0)));
     }
-    int16_t& timer = *static_cast<int16_t*>(ee_ram_ptr(col + 0x34));
+    int16_t& timer = ee_ref<int16_t>(col + 0x34);
     bool ease = false;
     if (lh(col + 0x3a) != 0) {
         ease = true;
@@ -1707,7 +1707,7 @@ void cam0_aim(uint32_t cam) {
     if (lbu(t + 0xc4) == 0xb) {
         vec3_sub(V(cam), V(HERO_POS), V(cam + 0x30));
         vec3_set_length(V(cam), V(cam), 1.0f);
-        timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(tm)));
+        timer_tick_i16(ee_ref<int16_t>(tm));
     } else {
         alignas(16) Vec4 a, look, here, d, b, c;
         vec3_scale(a, up, vec3_dot(V(w + 0x80), up));
@@ -1753,7 +1753,7 @@ void cam0_aim(uint32_t cam) {
         }
     }
     if (lh(tm) != 0) {
-        timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(tm)));
+        timer_tick_i16(ee_ref<int16_t>(tm));
         const float f = fpu_div(int_to_float(lh(tm)), int_to_float(frame_scale_i(lw(OV(0x00161d24)))));
         vec3_lerp(V(cam), V(cam), V(cam + 0x40), f);
         vec3_set_length(V(cam), V(cam), 1.0f);

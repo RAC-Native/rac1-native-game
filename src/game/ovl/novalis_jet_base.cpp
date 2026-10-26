@@ -190,7 +190,7 @@ void jet_update_base_l1(uint32_t m) {
             if (tick) {
                 bool roll = true;
                 if (lh(pv + 0x138) != -1) {
-                    if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(pv + 0x138))) == 0) {
+                    if (timer_tick_i16(ee_ref<int16_t>(pv + 0x138)) == 0) {
                         roll = false;
                     } else if (vec3_distance(V(m + 0x10), V(OV(0x00166dc0))) < u2f(0x41f00000u)) {
                         moby_sound_start(1, 0, m);
@@ -204,7 +204,7 @@ void jet_update_base_l1(uint32_t m) {
             } else if (tick2) {
                 bool roll = true;
                 if (lh(pv + 0x138) != -1) {
-                    if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(pv + 0x138))) == 0) {
+                    if (timer_tick_i16(ee_ref<int16_t>(pv + 0x138)) == 0) {
                         roll = false;
                     } else {
                         const int32_t r = rand_mod(100);
@@ -355,7 +355,7 @@ void jet_update_base_l1(uint32_t m) {
         return;
     }
     if (st == 3) {
-        if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(pv + 0x11c))) == 0) {
+        if (timer_tick_i16(ee_ref<int16_t>(pv + 0x11c)) == 0) {
             done();
             return;
         }
@@ -528,7 +528,7 @@ void jet_update_base_l1(uint32_t m) {
         done();
         return;
     }
-    const int32_t tk = timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(pv + 0x13a)));
+    const int32_t tk = timer_tick_i16(ee_ref<int16_t>(pv + 0x13a));
     if (tk != 0 && off != 0) {
         const uint32_t v1 = lwu(m + 0x24);
         sh(m + 0x34, (lhu(m + 0x34) & 0xffbeu) | 0x1000u);

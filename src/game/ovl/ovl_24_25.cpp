@@ -3719,7 +3719,8 @@ int32_t moby_coll_flag8(uint32_t m) {
 }
 
 // orig: 0x00259a88 — record a hit on moby m in the 64-entry ring at 0x178100 (next slot
-// *(0x173e54)), unless the moby's current record is newer (+0x1c below its +0x2c).
+// *(0x173e54)), unless the moby's current record is newer (+0x1c below its +0x2c). `rec` is laid out as EE memory (words in
+// place; its bytes and halfword at their swizzled offsets: ee_byte_addr / ee_half_addr)
 void moby_hit_record_v(uint32_t m, const uint8_t* rec) {
     const int32_t slot = lw(OV(0x00173e54));
     const uint32_t cur = lbu(m + 0xa4);
@@ -3737,10 +3738,10 @@ void moby_hit_record_v(uint32_t m, const uint8_t* rec) {
     sw(e + 0x20, w);
     std::memcpy(&w, rec + 0x14, 4);
     sw(e + 0x24, w);
-    sb(e + 0x28, rec[0x18]);
-    sb(e + 0x29, rec[0x19]);
+    sb(e + 0x28, rec[ee_byte_addr(0x18)]);
+    sb(e + 0x29, rec[ee_byte_addr(0x19)]);
     uint16_t h;
-    std::memcpy(&h, rec + 0x1a, 2);
+    std::memcpy(&h, rec + ee_half_addr(0x1a), 2);
     sh(e + 0x2a, h);
     swc1(e + 0x2c, strength);
     std::memcpy(&w, rec + 0x20, 4);

@@ -138,6 +138,15 @@ inline constexpr u32 swizzle(u32 vaddr) {
 }
 }  // namespace ee_detail
 
+// A reference to a scalar of EE memory (a counter a ported routine updates in place): a byte's or a halfword's host place
+// is its swizzled address (above), a word's its own. Not for arrays: a pointer to bytes or halfwords cannot be indexed on a
+// big-endian host.
+template <typename T>
+inline T& ee_ref(u32 vaddr) {
+    static_assert(sizeof(T) <= 4, "a scalar of at most a word");
+    return *static_cast<T*>(ee_ram_ptr(ee_detail::swizzle<T>(vaddr)));
+}
+
 // Bytes in the PS2's order (a file's, a disc sector's, a DMA packet's) to / from EE memory at vaddr: a memcpy on a
 // little-endian host, each byte at its swizzled place on a big-endian one (whole words reversed at once).
 void ee_copy_in(u32 vaddr, const void* src, size_t n);

@@ -215,7 +215,7 @@ void jet_ship_update_l1(uint32_t m) {
         }
     }
     // ---- 0x2f4d28
-    timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(pv + 0x176)));
+    timer_tick_i16(ee_ref<int16_t>(pv + 0x176));
     if (lw(pv + 0x178) != 0 && lh(pv + 0x176) == 0 && lbu(m + 0x52) == 2) {
         // the cargo released, one at a time
         uint32_t s1 = pv + 0x150;
@@ -493,7 +493,7 @@ void jet_bomber_update_l1(uint32_t m) {
                 }
             }
             if (countdown) {
-                if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(pv + 0x186))) != 0) {
+                if (timer_tick_i16(ee_ref<int16_t>(pv + 0x186)) != 0) {
                     hydro_2eac18(0);  // jal L1:0x317070 (Veldin's 0x2eac18, the scripted camera's end)
                     hero_set_state_l1(0, 1);
                     level_bit_set_l1(m);

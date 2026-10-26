@@ -18,7 +18,7 @@
 namespace rac1 {
 
 namespace {
-int16_t& h16(uint32_t a) { return *static_cast<int16_t*>(ee_ram_ptr(a)); }
+int16_t& h16(uint32_t a) { return ee_ref<int16_t>(a); }
 }  // namespace
 
 // Every live particle's type function, in pool order. The walk's next record (0x160190) and its
@@ -873,7 +873,7 @@ void particle_2f_update(uint32_t p) {
 // orig: 0x00270710
 void particle_29_update(uint32_t p) {
     if (lh(p + 0xa) == -1) return;
-    if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(p + 0xa))) != 0) free_particle(p);
+    if (timer_tick_i16(ee_ref<int16_t>(p + 0xa)) != 0) free_particle(p);
 }
 
 // Type 0x3b: on the hero (mode +0x30 1: at the hero plus +0x20), for its frames.

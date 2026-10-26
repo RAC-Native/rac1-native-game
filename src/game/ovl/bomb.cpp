@@ -14,7 +14,7 @@ namespace rac1 {
 namespace {
 constexpr uint32_t P = 0x0013f350;
 constexpr OvConst<0x00173e40u> HIT{};  // the collision's result: +0x18 the moby hit, +0x1c the face, +0x20 the point, +0x40 the normal
-int16_t& h16(uint32_t a) { return *static_cast<int16_t*>(ee_ram_ptr(a)); }
+int16_t& h16(uint32_t a) { return ee_ref<int16_t>(a); }
 }  // namespace
 
 // Where the bomb `m` (pvars `pv`) lands: from the glove (in the hand) or where it is, the arc

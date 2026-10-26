@@ -2136,7 +2136,7 @@ void swim_update() {
         sound_slot_stop(0x222c);
     }
     if (lh(P + 0x90a) != 0) {  // the entry rumble
-        timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(P + 0x90a)));
+        timer_tick_i16(ee_ref<int16_t>(P + 0x90a));
         int32_t n = static_cast<int32_t>(static_cast<uint32_t>(lhu(P + 0x90a)) << 16) >> 18;
         if (!(n < 9)) n = 8;
         hero_smoke_puffs(n, 0);
@@ -2272,7 +2272,7 @@ void swim_update() {
         sw(P + 0x8f0, static_cast<uint32_t>(rand_range(lo, hi)));
     }
     if (lw(P + 0x2084) == 0x35) {  // the hydro-pack's nozzles
-        if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(P + 0x8f8))) != 0) {
+        if (timer_tick_i16(ee_ref<int16_t>(P + 0x8f8)) != 0) {
             const uint32_t pack = lwu(P + 0x1180);
             if (pack != 0 && lh(pack + 0xa6) == 0x261) {
                 for (int32_t i = 0; i < 4; ++i) {

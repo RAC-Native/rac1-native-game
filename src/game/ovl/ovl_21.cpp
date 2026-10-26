@@ -556,7 +556,7 @@ void sub_002163f0() {
 void hero_delayed_sounds() {
     uint32_t e = g::PLAYER + 0x21d8;
     for (int32_t k = 7; k >= 0; --k, e += 8) {
-        if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(e + 4))) != 2) continue;
+        if (timer_tick_i16(ee_ref<int16_t>(e + 4)) != 2) continue;
         const int32_t idx = lh(e + 2);
         const int32_t flags = lh(e + 6);
         sh(e + 0, 0);

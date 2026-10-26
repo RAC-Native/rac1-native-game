@@ -22,7 +22,7 @@ namespace {
 constexpr uint32_t P = 0x0013f350;
 constexpr uint32_t PAD = 0x0013c940;
 constexpr OvConst<0x00173e40u> HIT{};  // the collision's result: +0x18 the moby, +0x20 the point, +0x40 the normal
-int16_t& h16(uint32_t a) { return *static_cast<int16_t*>(ee_ram_ptr(a)); }
+int16_t& h16(uint32_t a) { return ee_ref<int16_t>(a); }
 int32_t& w32ref(uint32_t a) { return *static_cast<int32_t*>(ee_ram_ptr(a)); }
 // orig: (helper) repeated in 0x002b49a8 / 0x002b46a8 / 0x002caf70 — a moby's aim point: its
 // position raised by its pvar block's +0x10 (0x25c338), or by 0.5 without one

@@ -117,7 +117,7 @@ void peckbot_update_l1(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
     const uint32_t sp = ee_stack_alloc(0x160);
     const uint32_t pos0 = sp + 0x10, tgt = sp + 0x20, va = sp + 0x70, wp = sp + 0x80, diff = sp + 0x90;
-    auto t16 = [](uint32_t a) -> int32_t { return timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(a))); };
+    auto t16 = [](uint32_t a) -> int32_t { return timer_tick_i16(ee_ref<int16_t>(a)); };
     auto t32 = [](uint32_t a) -> int32_t { return timer_tick_i32(*static_cast<int32_t*>(ee_ram_ptr(a))); };
     joint_node_scale(m, 0, pv + 0x230, 1.5f);
     if (lw(OV(0x0015f5c4)) == 2) {

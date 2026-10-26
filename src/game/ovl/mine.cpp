@@ -503,7 +503,7 @@ L_ab794:
 L_ab7e4:
 L_ab7e8:
     if ((lbu(m + 0x20) & 2) == 0) {
-        if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(pv + 0x34))) != 0) {
+        if (timer_tick_i16(ee_ref<int16_t>(pv + 0x34)) != 0) {
             sb(m + 0x20, lbu(m + 0x20) | 2);
             sw(pv + 0x54, 0);
         }

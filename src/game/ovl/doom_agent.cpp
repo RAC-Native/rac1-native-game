@@ -484,7 +484,7 @@ void doom_agent_update(uint32_t m) {
             if (a1 != 0) (void)sub_00260400(m, a1, s0, m + 0x40, s0, m + 0x40);
         }
         int32_t v0;
-        if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(pv + 0x38))) != 0) {
+        if (timer_tick_i16(ee_ref<int16_t>(pv + 0x38)) != 0) {
             int32_t n = 0;
             for (uint32_t v = lwu(OV(0x0015ffe4)); v != 0; v = lwu(v + 0x28)) {
                 if (lh(v + 0xa6) == 0xba && (lbu(v + 0x20) & 0xf0u) != 0xf0u) ++n;

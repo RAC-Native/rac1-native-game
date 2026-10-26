@@ -43,7 +43,7 @@ void particle_16_spawn(uint32_t pos, uint32_t vel, uint32_t c_start, uint32_t c_
 // orig: 0x00271fc0
 void particle_20_update(uint32_t p) {
     const uint32_t q = p + 0x20;
-    if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(p + 0xa))) != 0) {
+    if (timer_tick_i16(ee_ref<int16_t>(p + 0xa)) != 0) {
         free_particle(p);
         return;
     }

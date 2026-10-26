@@ -457,7 +457,7 @@ int32_t moby_hit_react_r(uint32_t m, uint32_t hit, uint32_t hs, uint32_t mask, i
     }
     if (kind == 4) kind = static_cast<int32_t>(lbu(hs + 8));
     if (hit == 0) {
-        timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(hs + 0x1c)));
+        timer_tick_i16(ee_ref<int16_t>(hs + 0x1c));
         sh(hs + 0x16, 0xffff);
         state = 1;
         if (dmg != nullptr) *dmg = 0.0f;
@@ -536,7 +536,7 @@ int32_t moby_hit_react_r(uint32_t m, uint32_t hit, uint32_t hs, uint32_t mask, i
     const uint32_t r = static_cast<uint32_t>(react);
     int32_t anim = lbu(OV(0x001b0180) + lbu(hs + 8) + r * 4);
     if (lh(hs + 0x14) != static_cast<int32_t>(weap)) sh(hs + 0x1c, 0);
-    if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(hs + 0x1c))) != 0) {
+    if (timer_tick_i16(ee_ref<int16_t>(hs + 0x1c)) != 0) {
         int32_t t = 0x1e;
         switch (react) {
             case 0: t = 0x25; break;

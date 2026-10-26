@@ -36,7 +36,7 @@ int32_t light_add(uint32_t pos, float radius, float k, float r, float g, float b
 }
 
 namespace {
-int16_t& h16(uint32_t a) { return *static_cast<int16_t*>(ee_ram_ptr(a)); }
+int16_t& h16(uint32_t a) { return ee_ref<int16_t>(a); }
 int32_t& w32ref(uint32_t a) { return *static_cast<int32_t*>(ee_ram_ptr(a)); }
 float pct(uint32_t a) { return fpu_div(int_to_float(lbu(a)), 100.0f); }
 

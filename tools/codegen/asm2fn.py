@@ -173,7 +173,7 @@ def adapter(addr, entries):
         elif p.endswith('&') and base in ('Mat4',):
             args.append(f'M({r}.w())')
         elif p.endswith('&') and base in INT_TYPES:
-            args.append(f'*static_cast<{base}*>(ee_ram_ptr({r}.w()))')
+            args.append(f'ee_ref<{base}>({r}.w())')
         elif p.endswith('*') or '*' in p:
             if base in ('float', 'uint32_t', 'int32_t', 'uint8_t', 'uint16_t', 'int16_t', 'int8_t', 'uint64_t') or True:
                 args.append(f'static_cast<{p}>({r}.w() == 0 ? nullptr : ee_ram_ptr({r}.w()))')

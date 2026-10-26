@@ -15,7 +15,7 @@ constexpr uint32_t P = g::PLAYER;
 constexpr uint32_t PAD = 0x0013c940;
 
 int32_t& i32_at(uint32_t a) { return *static_cast<int32_t*>(ee_ram_ptr(a)); }  // orig: (helper) EE word
-int16_t& i16_at(uint32_t a) { return *static_cast<int16_t*>(ee_ram_ptr(a)); }  // orig: (helper) EE halfword
+int16_t& i16_at(uint32_t a) { return ee_ref<int16_t>(a); }  // orig: (helper) EE halfword
 
 // orig: (helper) enter a state, forced (mode 1)
 void set_state_forced(uint32_t st) { hero_set_state(st, 1); }

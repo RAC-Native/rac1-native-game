@@ -20,7 +20,7 @@ namespace rac1 {
 namespace {
 constexpr uint32_t P = 0x0013f350;
 constexpr uint32_t PAD = 0x0013c940;
-int16_t& h16(uint32_t a) { return *static_cast<int16_t*>(ee_ram_ptr(a)); }
+int16_t& h16(uint32_t a) { return ee_ref<int16_t>(a); }
 }  // namespace
 
 // The UV offsets of every packet of the moby class `cls` moved by (`du`, `dv`) (a scrolling

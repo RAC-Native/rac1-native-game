@@ -223,7 +223,7 @@ void mirror_mesh_draw(uint32_t m) {
 
 namespace {
 // orig: (helper) repeated in 0x002d73e8 — a timer halfword in EE memory as the timer helpers take it
-int16_t& h16ref(uint32_t a) { return *static_cast<int16_t*>(ee_ram_ptr(a)); }
+int16_t& h16ref(uint32_t a) { return ee_ref<int16_t>(a); }
 }  // namespace
 
 // The frame as the original lays it out: +0 the vent's position, +0x10 the z axis, +0x20.. the

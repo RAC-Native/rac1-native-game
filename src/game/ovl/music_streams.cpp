@@ -177,7 +177,7 @@ void stream_slot_update(uint32_t r) {
             snd_stream_pause(lwu(r));
             sh(r + 0xa, lhu(r + 0xa) | 0x8000u);
         }
-        if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(r + 0xe))) == 2) sh(r + 0xc, 4);
+        if (timer_tick_i16(ee_ref<int16_t>(r + 0xe)) == 2) sh(r + 0xc, 4);
     } else if ((lh(r + 0xa) & 0x8000) != 0) {
         snd_cmd_2e(lwu(r));  // continue
         sh(r + 0xa, lhu(r + 0xa) ^ 0x8000u);

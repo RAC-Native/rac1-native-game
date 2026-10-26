@@ -145,7 +145,7 @@ void taunter_rings(uint32_t m) {
     }
     for (uint32_t s0 = ring; s0 < ring + 0x78; s0 += 0xc) {
         if (lh(s0 + 8) == 0) continue;
-        if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(s0 + 4))) != 0) {
+        if (timer_tick_i16(ee_ref<int16_t>(s0 + 4)) != 0) {
             sh(s0 + 8, 0);
         } else {
             const float f0 = lwc1(OV(0x001614b8));

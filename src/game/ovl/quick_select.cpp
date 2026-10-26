@@ -95,7 +95,7 @@ void quick_select_update(uint32_t e) {
     const uint32_t b = e + 0x70;
     sw(e + 0x7c, static_cast<uint32_t>(frame_scale_i(0xb4)));
     sw(e + 0x6c, 0x18);
-    if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(0x00141622))) != 0) sw(PAD + 0x1cc, 2);
+    if (timer_tick_i16(ee_ref<int16_t>(0x00141622)) != 0) sw(PAD + 0x1cc, 2);
     float sx = lwc1(PAD + 0x148), sy = lwc1(PAD + 0x14c);
     const float len = sqrt_f(sx * sx + sy * sy);
     if (!(len == 0.0f)) {

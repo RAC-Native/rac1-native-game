@@ -1737,7 +1737,7 @@ void hero_rot_smooth(uint32_t obj, uint32_t src) {
 void hero_smoke_fx() {
     const uint32_t P = g::PLAYER;
     Vec4 vel{0.0f, 0.0f, 0.0f, 0.0f};  // one stack slot: part B's w lane is part A's (else uninitialised)
-    if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(P + 0x49e))) != 0) {
+    if (timer_tick_i16(ee_ref<int16_t>(P + 0x49e)) != 0) {
         const Vec4 pos = V(P + 0x80);
         const float yaw = angle_add(lwc1(P + 0x98), u2f(0x3fc90fdbu));
         const float vm = lwc1(0x0015ed6c);
@@ -1749,7 +1749,7 @@ void hero_smoke_fx() {
         spawn_particle_19_v(pos, vel, 0);
         sh(P + 0x49e, static_cast<uint32_t>(rand_range(2, 3)));
     }
-    if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(P + 0x49c))) == 0) return;
+    if (timer_tick_i16(ee_ref<int16_t>(P + 0x49c)) == 0) return;
     const int32_t t40 = frame_scale_i(0x28);
     const float span = static_cast<float>(frame_scale_i(0x28));
     float f = fpu_div(static_cast<float>(t40 - lw(P + 0x198)), span);
@@ -1978,7 +1978,7 @@ void clank_glow_blink() {
     }
     sw(m + 0x90, 0x80000000u | static_cast<uint32_t>(b) << 16 | static_cast<uint32_t>(g) << 8 | static_cast<uint32_t>(r));
     if (lbu(P + 0x20a4) != 0) return;
-    if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(P + 0xffc))) != 0 && lbu(m + 0x53) == 1) {
+    if (timer_tick_i16(ee_ref<int16_t>(P + 0xffc)) != 0 && lbu(m + 0x53) == 1) {
         const int32_t lo = frame_scale_i(0x32);
         const int32_t hi = frame_scale_i(0xc8);
         const int32_t t = rand_range(lo, hi);
@@ -2909,7 +2909,7 @@ void hero_slot_update(int32_t k, uint32_t prev) {
     const uint32_t b = lbu(q + 0x10ac);
     if (b == 2) changed = false;
     if (b == 1 && lh(q + 0x10a8) == 0) sh(q + 0x10a8, lbu(q + 0x10ad));
-    if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(q + 0x10a8))) == 0) changed = false;
+    if (timer_tick_i16(ee_ref<int16_t>(q + 0x10a8)) == 0) changed = false;
     if (!changed) return;
     sw(q + 0x10b0, 3);
     sub_0020a500();

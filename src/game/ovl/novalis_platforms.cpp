@@ -84,7 +84,7 @@ void lift_update_l1(uint32_t m) {
         }
     }
     const Vec4 start = V(m + 0x10);  // (the position before this frame)
-    timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(pv + 0xba)));
+    timer_tick_i16(ee_ref<int16_t>(pv + 0xba));
     if (lbu(m + 0x20) == 0) {
         sb(pv + 0x28, 4);
         sh(pv + 0x3e, 5);
@@ -318,7 +318,7 @@ void door_update_l1(uint32_t m) {
 void piston_platform_update_l1(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
     const Vec4 start = V(m + 0x10);
-    timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(pv + 0xa6)));
+    timer_tick_i16(ee_ref<int16_t>(pv + 0xa6));
     if (lbu(m + 0x20) == 0) {
         sb(pv + 0x28, 4);
         sh(pv + 0x3e, 0xd);

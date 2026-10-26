@@ -2521,8 +2521,8 @@ void hero_input_update() {
                 }
             }
         }
-        timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(P + 0x22d4)));
-        timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(P + 0x22d6)));
+        timer_tick_i16(ee_ref<int16_t>(P + 0x22d4));
+        timer_tick_i16(ee_ref<int16_t>(P + 0x22d6));
         if ((pressed() & 0x10) != 0) sh(P + 0x22d4, static_cast<uint32_t>(frame_scale_i(0x14)));
         if ((ld(P + 0x22d0) >> 32) != 0 && (lwu(PAD + 0x1b8) & 0x10) != 0) {  // select released in the window
             if (lh(P + 0x22d6) == 0) {

@@ -260,12 +260,12 @@ void moby_list_hit_v(uint32_t m, const Vec4& pos, uint32_t list, int32_t n, uint
         if (t == skip) continue;
         const uint16_t cls = lhu(m + 0xa6);
         std::memcpy(rec + 0x10, &m, 4);
-        std::memcpy(rec + 0x1a, &cls, 2);
+        std::memcpy(rec + ee_half_addr(0x1a), &cls, 2);  // (rec laid out as EE memory: moby_hit_record_v)
         std::memcpy(rec + 0x14, &b, 4);
         std::memcpy(rec + 0x1c, &f, 4);
         std::memcpy(rec + 0x20, &b, 4);
-        rec[0x18] = static_cast<uint8_t>(a);
-        rec[0x19] = static_cast<uint8_t>(c);
+        rec[ee_byte_addr(0x18)] = static_cast<uint8_t>(a);
+        rec[ee_byte_addr(0x19)] = static_cast<uint8_t>(c);
         const float ang = atan2_f(lwc1(t + 0x10) - p.x, lwc1(t + 0x14) - p.y);
         const float x = cos_vu(ang) * speed;
         const float y = sin_vu(ang) * speed;
@@ -503,7 +503,7 @@ void e749_hit_update(uint32_t m) {
         sw(pv + 0x1c0, lwu(0x0013f350 + 0x2080));
         lq_sq(pv + 0x180, 0x0013f350 + 0x80);
     }
-    timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(pv + 0x276)));
+    timer_tick_i16(ee_ref<int16_t>(pv + 0x276));
     if (lw(pv + 0x38) != 0) sh(pv + 0x276, static_cast<uint32_t>(float_to_int(frame_scale_f(rand_range_f(180.0f, 240.0f)))));
     sw(pv + 0x38, 0);
     const uint32_t st = lbu(m + 0x20);
