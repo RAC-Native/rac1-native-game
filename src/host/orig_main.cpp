@@ -201,6 +201,12 @@ void debug_tools_gate_args(int argc, char** argv) {
 }
 #if defined(_WIN32)
 __attribute__((constructor(101))) void debug_tools_gate() { debug_tools_gate_args(__argc, __argv); }
+#elif defined(__WIIU__)
+// (the Wii U: no arguments reach the constructors, and the settings come from a file read in main: ports/wiiu/game
+// runs the gate itself once it has set them)
+}  // namespace
+void rac1_wiiu_debug_tools_gate(int argc, char** argv) { debug_tools_gate_args(argc, argv); }
+namespace {
 #else
 __attribute__((constructor(101))) void debug_tools_gate(int argc, char** argv, char** /*envp*/) { debug_tools_gate_args(argc, argv); }
 #endif
