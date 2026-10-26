@@ -845,8 +845,9 @@ street lamps (moby class 1827; down 0.5, 2.5, 9), Oltanis's street lamps (moby c
 light in each globe), and from a tester's survey (#102, weak and small): on Veldin the nanotech crates' orbs (moby 806), the crash
 site's fires (moby 760, the smoke vents whose wisps are the flames; flickering), the domed building's round lamps and door panels (tie
 2024); on Novalis the teleporter pads (moby 1135), Clank's eyes (1204), the landing pad's red lamps (shrub 231), the Large
-Amoeboids' (572) and the yellow soldier bots' (459) eyes and thrusters, the bomb glove's bombs (121) and the stationary drop ship's
-lamps (666); the neons' light was raised to about 0.4 units under the tube (it sat 1.7 below: a pool low on the wall, and a hot spot
+Amoeboids' (572) and the yellow soldier bots' (459) eyes and thrusters, the Buzzers' eyes (577), the bomb glove's bombs (121) and the
+Blarg ship's orange and blue lamps (666 on Novalis, 1805 on Gemlik: the same ship; emissive too, its hull texture's brightest texels
+alone); the neons' light was raised to about 0.4 units under the tube (it sat 1.7 below: a pool low on the wall, and a hot spot
 on the tanks standing under some of them). The neons' first values (1.3, radius 11, every way alike) lit the walls next to
 the tube a little and the floor some 6 units below hardly at all against the game's painted light. `RAC1_LAMP_SCAN` (testing) surveys what
 glows on screen along a run, by class.

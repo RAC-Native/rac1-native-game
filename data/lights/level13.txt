@@ -2,3 +2,10 @@
 # light x y z  r g b  intensity radius flicker on
 # Gemlik Base: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
 sun 114.5 12.0
+# #102 (Anya's notes). The Blarg ships the skill point has you destroy (moby class 1805; the same ship as Novalis's moby 666): the
+# orange lamps in two columns of three on the back's two sides and the pair of blue ones at the nose, weak lights, small radius.
+emit moby 1805  -3.300 1.800 3.000  1.000 0.550 0.200  0.800 3.500 0.000
+emit moby 1805  -3.300 -1.800 3.000  1.000 0.550 0.200  0.800 3.500 0.000
+emit moby 1805  4.500 0.000 2.450  0.600 0.800 1.000  0.800 3.500 0.000
+# Their lamps glow (tex 0, the hull's texture: only its brightest texels, the lamps, reach 0.95).
+emissive moby 1805 tex 0  1.30 0.95

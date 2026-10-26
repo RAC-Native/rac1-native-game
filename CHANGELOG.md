@@ -12,6 +12,8 @@ What changed in each release. Releases are source only: you build the game with 
   [strength] [threshold]`) that keeps the original lighting's brightness where the sun's shadows and the relighting would darken it
   (lamps, screens, panels painted in textures), marked in the debug menu's Lights tab; Veldin's domed building lamps and Novalis's
   landing pad lamps, neon tubes and bulbs are marked (#102).
+- Modern lighting: Novalis's Buzzers light with their green eyes, and the Blarg ship (Novalis's drop ship, Gemlik's ships of the
+  skill point) lights from its orange and blue lamps, which glow, instead of from inside its hull (#102).
 
 ### Fixes
 - When the computer falls behind (or with V-Sync on a 75 Hz display) and a frame runs two or more of the game's
