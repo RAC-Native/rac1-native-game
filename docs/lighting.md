@@ -151,6 +151,7 @@ adding even inactive code to them changed the rounding of a few pixels.
 | Ambient occlusion | Screen-space darkening where surfaces meet | the 3D |
 | Light editor | Lights placed by hand, saved per level | the world |
 | Emissive surfaces | Textures marked in a level's file keep the original's brightness, not darkened by shadows | the world and mobys |
+| Materials | Textures tagged in a level's file shine, get wet, ripple, flow (Surface Detail; [Materials](materials.md)) | the world and mobys |
 
 The whole module is active only when Lighting is not Original, the MRP draws both the world and the
 mobys, and the shared projection is in use: in practice during gameplay, not on the title screen, in
@@ -891,7 +892,11 @@ emissive <tfrag|tie|shrub|moby> <class> tex <n> [strength] [threshold]
 
 `RAC1_EMISSIVE=0` (testing) turns them all off.
 
-**In the editor** (Lights tab, "Emissive surfaces"): the crosshair's surface - the level's nearest tfrag, tie or shrub triangle within
+The same mechanism gives a texture a **material** instead (a `material` line: metal, wet, puddle, lava, water, mud, quicksand), drawn
+with Options > Graphics > Surface Detail: see [Materials](materials.md). An `emissive` line is the same as `material ... emissive`; the
+two kinds share the 30 slots.
+
+**In the editor** (Lights tab, "Emissive surfaces and materials"): the crosshair's surface - the level's nearest tfrag, tie or shrub triangle within
 0.5 units of the point under it (`mrp_world_surface_at`) - shows its kind, class and texture; "Take the moby" takes the moby there
 instead (the nearest within 3 units; its local textures in use are stepped through). The arrows step through the class's textures,
 the texture in hand pulses magenta with **Preview** ticked, **Mark emissive** / **Unmark** add or remove the line, and **Strength** and
@@ -923,6 +928,7 @@ does not turn the lighting on.
 | Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2 | Off | SSAO |
 | AO Intensity | 25 to 125 % | 75 % | the occlusion's darkness: each mode's strength scaled (`ao_intensity` in the preferences, item 47 of a save's block); see [Ambient occlusion](#ambient-occlusion) |
 | Sun Rays | Off, Low, Medium, High | Off | light shafts from the sun through openings, each step more quality and strength (`sun_rays_quality`, item 49; `sun_rays` and item 46 until 0.4.x read with Low as Medium); see [Sun rays](#sun-rays) |
+| Surface Detail | Off, Low, High | Off | the surfaces' materials (metal, wet, puddle, lava, water, mud, quicksand) tagged in the level's file; High adds the reflections and the lava's heat shimmer (`surface_detail`, item 51); see [Materials](materials.md) |
 
 The other rows take effect only when Lighting is not Original.
 

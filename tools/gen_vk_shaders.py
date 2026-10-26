@@ -30,6 +30,10 @@ layout(std140, set = 1, binding = 0) uniform ShadowUbo {
     vec4 uPtCol[96];
     vec4 uPtDown[24];
     vec4 uEmis[32];
+    vec4 uMat[32];
+    mat4 uSsrVP;
+    vec4 uSsrZ;
+    vec4 uSsrSky;
 };
 #define uShCam (uShCam_Pass.xyz)
 #define uShPass (int(uShCam_Pass.w + 0.5))
@@ -59,10 +63,29 @@ vec4 sh_clip(vec4 clip) {
 }
 """
 
+
+
+def read_c_glsl(path):
+    """The GLSL of a C string macro (src/game/render/mrp_materials_glsl.inc): its string literals joined, unescaped - the OpenGL
+    and the Vulkan shaders share that one text."""
+    import ast
+    import re
+    out = []
+    for line in open(path, encoding="utf-8"):
+        for lit in re.findall(r'"(?:[^"\\]|\\.)*"', line):
+            out.append(ast.literal_eval(lit))
+    return "".join(out)
+
+
+# the surface materials (docs/materials.md), the end of the lighting's fragment code
+MATERIALS_GLSL = read_c_glsl(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "game", "render", "mrp_materials_glsl.inc"))
+
 RAC1_VK_SHADOW_FS = SHADOW_UBO_GLSL + """
 layout(set = 1, binding = 1) uniform sampler2DArrayShadow uShMap;
 layout(set = 1, binding = 3) uniform samplerCubeArrayShadow uPtMap;
 layout(set = 1, binding = 4) uniform usampler2D uPtTiles;
+layout(set = 1, binding = 2) uniform sampler2D uSsrCol;
+layout(set = 1, binding = 5) uniform sampler2D uSsrDepth;
 #if defined(SH_POINTS) || defined(SH_SPLIT)
 float sh_vis = 1.0;
 #endif
@@ -174,6 +197,7 @@ vec3 sh_emissive(vec3 lit, vec3 orig, vec3 tex, uint s) {
     if (s == 0u || uShOn == 0 || uShPass != 0 || uEmis[0].x == 0.0) return lit;
     vec4 e = uEmis[s];
     if (e.w > 0.0) return mix(lit, vec3(1.0, 0.0, 1.0), e.x);
+    if (e.z > 0.0) return lit;
     float v = max(tex.r, max(tex.g, tex.b));
     float m = e.y > 0.0 ? smoothstep(e.y - 0.04, e.y + 0.04, v) : 1.0;
     return mix(lit, max(lit, orig * e.x), m);
@@ -198,7 +222,7 @@ vec3 sh_apply(vec3 c) {
     }
     return o;
 }
-"""
+""" + MATERIALS_GLSL + """"""
 
 # ---------------------------------------------------------------------------
 # 1. gs_draw.cpp shaders
@@ -1323,6 +1347,9 @@ void main() {
     if (uTme != 0) {
         vec2 st = vStq.xy / vStq.z;
         vec2 st_dx = dFdx(st), st_dy = dFdy(st);  // (in uniform control flow: the texture level below)
+#ifdef SH_SPLIT
+        st = sh_mat_uv(st, (w >> 27) & 31u);
+#endif
         vec4 t;
         if ((w & 1u) != 0u) {
             t = vec4(128.0 / 255.0);
@@ -1354,6 +1381,7 @@ void main() {
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_SPLIT
         o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 27) & 31u);
+        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 27) & 31u);
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }
@@ -1574,6 +1602,9 @@ void main() {
     if (uTme != 0) {
         vec2 st = vStq.xy / vStq.z;
         vec2 st_dx = dFdx(st), st_dy = dFdy(st);  // (in uniform control flow: the texture level below)
+#ifdef SH_POINTS
+        st = sh_mat_uv(st, (w >> 25) & 31u);
+#endif
         vec4 t;
         if ((w & 1u) != 0u) {
             t = vec4(128.0 / 255.0);
@@ -1605,6 +1636,7 @@ void main() {
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_POINTS
         o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 25) & 31u);
+        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 25) & 31u);
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }

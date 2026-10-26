@@ -53,6 +53,7 @@ int g_ao_intensity = std::clamp(env_int("RAC1_AO_INTENSITY", 75), 0, 200);
 int g_ao = env_int("RAC1_AO", 0);
 int g_sun_rays = env_int("RAC1_SUN_RAYS", 0);
 int g_emissive = env_int("RAC1_EMISSIVE", 1);
+int g_surface_detail = std::clamp(env_int("RAC1_SURFACE_DETAIL", 0), 0, 2);
 float g_shadow_moby_dist = std::getenv("RAC1_SHADOW_MOBY_DIST") != nullptr ? static_cast<float>(std::atof(std::getenv("RAC1_SHADOW_MOBY_DIST"))) : 0.0f;
 
 namespace {
@@ -61,6 +62,7 @@ constexpr int kUnit = 24;  // the shadow map's texture unit (the world's sampler
 constexpr GLenum kGlCubeMapArray = 0x9009;  // (GL_TEXTURE_CUBE_MAP_ARRAY, GL 4.0: not in the loader's header)
 constexpr int kPtUnit = 25;  // the point lights' cube shadow maps' unit
 constexpr int kTileUnit = 26;
+constexpr int kSsrColUnit = 27, kSsrDepthUnit = 29;  // the materials' High step: the last frame's 3D (28: the cover probe's)
 constexpr int kTilesX = 32, kTilesY = 18;  // (the view's clip square cut into tiles: per tile the lights whose sphere reaches it)
 constexpr int kPtShadows = 4;  // the point lights with a shadow at most (the nearest)
 constexpr int kPtRes = 512;    // their cube faces' resolution
@@ -2364,6 +2366,119 @@ void mrp_lighting_ao_moby_mark(bool begin) {
     M.fb = fb;
 }
 
+namespace {
+// ---- the materials' High step: the last frame's 3D (colour, depth) for the reflections and the lava's shimmer -----------------
+struct MatSsr {
+    GLuint fbo_c = 0, fbo_d = 0, tex_c = 0, tex_d = 0;  // (OpenGL)
+    GLenum dfmt = 0;
+    GLint last_fb = -1;
+    vk::GpuImage vk_c{}, vk_d{};  // (Vulkan)
+    int w = 0, h = 0;
+    glm::mat4 vp{1.0f};    // the captured picture's view-projection
+    uint64_t frame = ~0ull;  // the frame it was captured at (g_mat_frames): used by the next one alone
+} g_mssr;
+uint64_t g_mat_frames = 0;  // (the materials' clock: frames drawn with the lighting, 60 a second)
+std::atomic<bool> g_mat_ssr_wanted{false};  // (this level has a water, puddle or lava surface: kept by the uniforms' fill)
+// orig: (host) the High step's picture wanted now
+bool mat_ssr_now() { return g_surface_detail >= 2 && g_mat_ssr_wanted.load() && g_sh.on; }
+// orig: (host) the picture usable by this frame's draws (captured the frame before, at the same size)
+bool mat_ssr_ready() { return mat_ssr_now() && g_mssr.frame + 1 == g_mat_frames && g_mssr.w > 0; }
+// orig: (host) the Vulkan copies freed with the device
+void vk_mat_shutdown() {
+    vk::destroy_image_now(g_mssr.vk_c);
+    vk::destroy_image_now(g_mssr.vk_d);
+}
+}  // namespace
+
+// orig: (host) see mrp_lighting.h
+void mrp_lighting_material_capture(const int vp[4]) {
+    if (!mat_ssr_now()) return;
+    const int w = vp[2], h = vp[3];
+    if (w <= 0 || h <= 0) return;
+    float vpf[16];
+    mrp_world_view_proj(vpf);
+    if (vk::is_active()) {
+        static bool reg = false;
+        if (!reg) {
+            reg = true;
+            vk::register_shutdown_callback(vk_mat_shutdown);
+        }
+        const VkFormat dfmt = vk::depth_stencil_format();
+        const VkImageAspectFlags daspect = vk::active_depth_image().aspect;
+        vk::GpuImage& scol = vk::active_color_image();
+        if (g_mssr.w != w || g_mssr.h != h || g_mssr.vk_c.image == VK_NULL_HANDLE || g_mssr.vk_c.format != scol.format) {
+            if (g_mssr.vk_c.image != VK_NULL_HANDLE) vk::wait_idle();
+            vk::destroy_image_now(g_mssr.vk_c);
+            vk::destroy_image_now(g_mssr.vk_d);
+            vk::create_image(static_cast<uint32_t>(w), static_cast<uint32_t>(h), scol.format, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                             VK_IMAGE_ASPECT_COLOR_BIT, g_mssr.vk_c);
+            vk::create_image(static_cast<uint32_t>(w), static_cast<uint32_t>(h), dfmt, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, daspect,
+                             g_mssr.vk_d);
+            g_mssr.w = w;
+            g_mssr.h = h;
+        }
+        vk::copy_image(scol, vp[0], vp[1], g_mssr.vk_c, 0, 0, w, h, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        vk::copy_image(vk::active_depth_image(), vp[0], vp[1], g_mssr.vk_d, 0, 0, w, h, daspect, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    } else {
+        GLint fb = 0, rfb = 0;
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &fb);
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &rfb);
+        const GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
+        glDisable(GL_SCISSOR_TEST);
+        GLenum fmt = g_mssr.dfmt;
+        if (fb != g_mssr.last_fb || fmt == 0) {
+            fmt = depth_format(fb);
+            g_mssr.last_fb = fb;
+        }
+        const bool st = fmt == GL_DEPTH24_STENCIL8 || fmt == GL_DEPTH32F_STENCIL8;
+        if (g_mssr.tex_c == 0) {
+            glGenFramebuffers(1, &g_mssr.fbo_c);
+            glGenFramebuffers(1, &g_mssr.fbo_d);
+            glGenTextures(1, &g_mssr.tex_c);
+            glGenTextures(1, &g_mssr.tex_d);
+            rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &g_mssr.tex_c, "Materials: the last frame's 3D");
+            rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &g_mssr.tex_d, "Materials: the last frame's 3D");
+        }
+        if (g_mssr.w != w || g_mssr.h != h || g_mssr.dfmt != fmt) {
+            GLint prev_t = 0;
+            glGetIntegerv(GL_TEXTURE_BINDING_2D, &prev_t);
+            auto tex = [](GLuint t, GLint ifmt, int tw, int th, GLenum f2, GLenum ty, GLint filter) {
+                glBindTexture(GL_TEXTURE_2D, t);
+                glTexImage2D(GL_TEXTURE_2D, 0, ifmt, tw, th, 0, f2, ty, nullptr);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            };
+            tex(g_mssr.tex_c, GL_RGBA8, w, h, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR);
+            tex(g_mssr.tex_d, static_cast<GLint>(fmt), w, h, st ? GL_DEPTH_STENCIL : GL_DEPTH_COMPONENT,
+                fmt == GL_DEPTH24_STENCIL8 ? GL_UNSIGNED_INT_24_8 : fmt == GL_DEPTH32F_STENCIL8 ? GL_FLOAT_32_UNSIGNED_INT_24_8_REV : GL_FLOAT, GL_NEAREST);
+            glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prev_t));
+            glBindFramebuffer(GL_FRAMEBUFFER, g_mssr.fbo_c);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_mssr.tex_c, 0);
+            glBindFramebuffer(GL_FRAMEBUFFER, g_mssr.fbo_d);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, st ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, g_mssr.tex_d, 0);
+            glDrawBuffer(GL_NONE);
+            glReadBuffer(GL_NONE);
+            g_mssr.w = w;
+            g_mssr.h = h;
+            g_mssr.dfmt = fmt;
+        }
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(fb));
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, g_mssr.fbo_c);
+        glBlitFramebuffer(vp[0], vp[1], vp[0] + w, vp[1] + h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, g_mssr.fbo_d);
+        glBlitFramebuffer(vp[0], vp[1], vp[0] + w, vp[1] + h, 0, 0, w, h, GL_DEPTH_BUFFER_BIT | (st ? GL_STENCIL_BUFFER_BIT : 0), GL_NEAREST);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(fb));
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(rfb));
+        if (scissor) glEnable(GL_SCISSOR_TEST);
+    }
+    g_mssr.vp = glm::make_mat4(vpf);
+    g_mssr.frame = g_mat_frames;
+}
+
 // orig: (host) see mrp_lighting.h
 void mrp_lighting_ao_pass() {
     if (!g_sh.on) return;
@@ -2372,6 +2487,7 @@ void mrp_lighting_ao_pass() {
     if (vk::is_active()) {
         screen_point_read(vp);  // (the debug menu's crosshair)
         vk_ao_and_rays_pass(vp);
+        mrp_lighting_material_capture(vp);  // (after the occlusion and the rays: the picture the reflections show)
         return;
     }
     screen_point_read(vp);
@@ -2715,6 +2831,8 @@ void mrp_lighting_ao_pass() {
         glBlendFuncSeparate(static_cast<GLenum>(bsrc), static_cast<GLenum>(bdst), static_cast<GLenum>(bsrca), static_cast<GLenum>(bdsta));
     }
 
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(fb));
+    mrp_lighting_material_capture(vp);  // (after the occlusion and the rays: the picture the reflections show)
     glColorMask(cmask[0], cmask[1], cmask[2], cmask[3]);
     if (blend) glEnable(GL_BLEND);
     else glDisable(GL_BLEND);
@@ -2735,10 +2853,14 @@ namespace {
 std::vector<UserLight> g_user;
 std::vector<int> g_user_noauto;  // the tie classes whose automatic emitters are off
 std::vector<ClassLight> g_class_lights;  // the lights per object class ("emit")
-std::vector<EmissiveSurface> g_emissive_list;  // the emissive surfaces ("emissive")
+std::vector<EmissiveSurface> g_emissive_list;  // the emissive surfaces and the materials ("emissive", "material")
+bool g_rain = false;                           // ("rain on": the puddles' and the water's rain ripples)
+bool g_sky_file = false;                       // ("sky r g b": the reflections' sky colour; else kSkyDefault)
+float g_sky[3] = {0.0f, 0.0f, 0.0f};
 std::vector<ParticleSpec> g_particles, g_particles_read;  // the ambient particles ("particles"): now, and as the file was read
 // the file's lines in their order, as the editor's Save writes them back: a comment (or a line not understood) by its text, an
-// entry by its kind ('s' sun, 'r' sun_rays, 'S' interior_set, 'e' emit, 'm' emissive, 'i' interior, 'o' noauto, 'l' light, 'p' particles) - the next of
+// entry by its kind ('s' sun, 'r' sun_rays, 'S' interior_set, 'e' emit, 'm' emissive / material, 'R' rain, 'k' sky, 'i' interior, 'o' noauto,
+// 'l' light, 'p' particles) - the next of
 // that kind's current list written in its place, the ones added since after the last line
 struct FileLine {
     char kind = '#';
@@ -2823,6 +2945,8 @@ void user_load(int level) {
     g_interior_sets.clear();
     g_class_lights.clear();
     g_emissive_list.clear();
+    g_rain = false;
+    g_sky_file = false;
     g_particles.clear();
     g_particles_read.clear();
     g_sun_snap = true;  // (a level's sun, or the file read again: at once)
@@ -2903,6 +3027,42 @@ void user_load(int level) {
                 continue;
             }
         }
+        {  // "material <tfrag|tie|shrub|moby> <class> tex <n> <type> [a] [b] [c]" (docs/materials.md)
+            EmissiveSurface es;
+            char kind[8] = {}, type[16] = {};
+            float a[3] = {0.0f, 0.0f, 0.0f};
+            const int got = std::sscanf(line, "material %7s %d tex %d %15s %f %f %f", kind, &es.o_class, &es.tex, type, &a[0], &a[1], &a[2]);
+            int k = -1;
+            for (int i = 0; i < 4; ++i)
+                if (std::strcmp(kind, mrp_emissive_kind_name(i)) == 0) k = i;
+            const int ty = got >= 4 ? mrp_material_type(type) : -1;
+            if (k >= 0 && es.tex >= 0 && ty >= 0) {
+                es.kind = k;
+                es.type = ty;
+                const MatParam* mp = mrp_material_params(ty);
+                for (int i = 0; i < 3; ++i) es.p[i] = mp[i].name == nullptr ? 0.0f : std::clamp(got >= 5 + i ? a[i] : mp[i].def, mp[i].lo, mp[i].hi);
+                if (ty == MAT_EMISSIVE) {  // ("material ... emissive [strength] [threshold]": the emissive line's numbers)
+                    es.strength = es.p[0];
+                    es.threshold = es.p[1];
+                }
+                g_emissive_list.push_back(es);
+                entry('m');
+                continue;
+            }
+        }
+        if (char w[8] = {}; std::sscanf(line, "rain %7s", w) == 1) {  // "rain on": the materials' rain ripples
+            g_rain = std::strcmp(w, "on") == 0 || std::strcmp(w, "1") == 0;
+            entry('R');
+            continue;
+        }
+        if (float r = 0, g = 0, b = 0; std::sscanf(line, "sky %f %f %f", &r, &g, &b) == 3) {  // the reflections' sky colour
+            g_sky_file = true;
+            g_sky[0] = std::clamp(r, 0.0f, 2.0f);
+            g_sky[1] = std::clamp(g, 0.0f, 2.0f);
+            g_sky[2] = std::clamp(b, 0.0f, 2.0f);
+            entry('k');
+            continue;
+        }
         if (int n = 0; std::sscanf(line, "interior_set %d", &n) == 1) {
             g_interior_sets.push_back(n);
             entry('S');
@@ -2926,7 +3086,10 @@ void user_load(int level) {
     }
     std::fclose(f);
     std::printf("[lights] level %d: %zu lights placed by hand (%s)\n", level, g_user.size(), g_user_path.c_str());
-    if (!g_emissive_list.empty()) std::printf("[lights] level %d: %zu emissive surfaces\n", level, g_emissive_list.size());
+    if (!g_emissive_list.empty()) {
+        const size_t nm = static_cast<size_t>(std::count_if(g_emissive_list.begin(), g_emissive_list.end(), [](const EmissiveSurface& e) { return e.type != MAT_EMISSIVE; }));
+        std::printf("[lights] level %d: %zu emissive surfaces, %zu materials%s\n", level, g_emissive_list.size() - nm, nm, g_rain ? " (rain)" : "");
+    }
     if (g_sun_file.on) std::printf("[lights] level %d: the sun turned to azimuth %.1f, elevation %.1f degrees\n", level, g_sun_file.az, g_sun_file.el);
     mrp_user_emissive_changed();
 }
@@ -3017,6 +3180,34 @@ const char* mrp_emissive_kind_name(int kind) {
     static const char* names[4] = {"tfrag", "tie", "shrub", "moby"};
     return kind >= 0 && kind < 4 ? names[kind] : "?";
 }
+namespace {
+constexpr const char* kMatNames[MAT_COUNT] = {"emissive", "metal", "wet", "puddle", "lava", "water", "mud", "quicksand"};
+// per type its parameters a, b, c: name, default, range (lava's c is the emissive threshold: the texels that glow)
+constexpr MatParam kMatParams[MAT_COUNT][3] = {
+    {{"strength", 1.0f, 0.0f, 4.0f}, {"threshold", 0.0f, 0.0f, 1.0f}, {nullptr, 0.0f, 0.0f, 0.0f}},
+    {{"roughness", 0.35f, 0.03f, 1.0f}, {"strength", 1.0f, 0.0f, 2.0f}, {nullptr, 0.0f, 0.0f, 0.0f}},
+    {{"wetness", 0.6f, 0.0f, 1.0f}, {"roughness", 0.45f, 0.05f, 1.0f}, {nullptr, 0.0f, 0.0f, 0.0f}},
+    {{"coverage", 0.4f, 0.0f, 1.0f}, {"scale", 0.3f, 0.02f, 4.0f}, {"wetness", 0.6f, 0.0f, 1.0f}},
+    {{"strength", 1.3f, 0.0f, 4.0f}, {"pulse", 0.15f, 0.0f, 1.0f}, {"threshold", 0.0f, 0.0f, 1.0f}},
+    {{"strength", 1.0f, 0.0f, 2.0f}, {"ripples", 1.0f, 0.0f, 3.0f}, {nullptr, 0.0f, 0.0f, 0.0f}},
+    {{"wetness", 0.5f, 0.0f, 1.0f}, {"drift", 1.0f, 0.0f, 3.0f}, {nullptr, 0.0f, 0.0f, 0.0f}},
+    {{"drift", 1.0f, 0.0f, 3.0f}, {"gloss", 0.3f, 0.0f, 1.0f}, {nullptr, 0.0f, 0.0f, 0.0f}},
+};
+}  // namespace
+// orig: (host) see mrp_lighting.h
+const char* mrp_material_name(int type) { return type >= 0 && type < MAT_COUNT ? kMatNames[type] : "?"; }
+// orig: (host) see mrp_lighting.h
+int mrp_material_type(const char* name) {
+    for (int i = 0; i < MAT_COUNT; ++i)
+        if (std::strcmp(name, kMatNames[i]) == 0) return i;
+    return -1;
+}
+// orig: (host) see mrp_lighting.h
+const MatParam* mrp_material_params(int type) { return kMatParams[std::clamp(type, 0, MAT_COUNT - 1)]; }
+// orig: (host) see mrp_lighting.h
+bool mrp_user_rain() { return g_rain; }
+// orig: (host) see mrp_lighting.h
+void mrp_user_rain_set(bool on) { g_rain = on; }
 // orig: (host) see mrp_lighting.h
 void mrp_user_emissive_changed() {
     std::lock_guard<std::mutex> lg(g_emis_m);
@@ -3044,7 +3235,16 @@ uint32_t mrp_emissive_snapshot(std::vector<EmissiveSurface>& out, EmissiveSurfac
         g_emis_preview_on = false;
         ++g_emis_gen;
     }
+    static int detail = -1;  // (Surface Detail changed: the slots made again)
+    const int d = g_surface_detail != 0 ? 1 : 0;
+    if (d != detail) {
+        detail = d;
+        ++g_emis_gen;
+    }
     out = g_emis_copy;
+    if (d == 0)
+        for (EmissiveSurface& e : out)
+            if (e.type != MAT_EMISSIVE) e.kind = -1;  // (a material while Surface Detail is Off: no slot, the original's draw)
     *preview = g_emis_preview;
     *has_preview = g_emis_preview_on;
     return g_emis_gen.load();
@@ -3056,9 +3256,49 @@ void emissive_uniforms(glm::vec4 out[32]) {
     for (int i = 0; i < 32; ++i) out[i] = glm::vec4(0.0f);
     out[0].x = g_emissive != 0 ? 1.0f : 0.0f;
     const size_t n = std::min<size_t>(g_emissive_list.size(), kEmissiveSlots);
-    for (size_t i = 0; i < n; ++i) out[i + 1] = glm::vec4(g_emissive_list[i].strength, g_emissive_list[i].threshold, 0.0f, 0.0f);
+    for (size_t i = 0; i < n; ++i) {
+        const EmissiveSurface& e = g_emissive_list[i];
+        out[i + 1] = e.type == MAT_EMISSIVE ? glm::vec4(e.strength, e.threshold, 0.0f, 0.0f)
+                                            : glm::vec4(0.0f, 0.0f, static_cast<float>(e.type), 0.0f);  // (a material: its type alone, uMat the rest)
+    }
     const double t = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     out[kEmissivePreviewSlot] = glm::vec4(0.25f + 0.45f * static_cast<float>(0.5 + 0.5 * std::sin(t * 6.0)), 0.0f, 0.0f, 1.0f);
+}
+// orig: (host) the materials' uniforms (uMat, mrp_lighting.h): [0] Surface Detail (0 with no material), the clock (seconds, wrapped),
+// the rain, the High step's picture ready; slot i + 1 the list's surface i's parameters. The reflections' view, depth and sky
+struct MatUniforms {
+    glm::vec4 mat[32];
+    glm::mat4 ssr_vp{1.0f};
+    glm::vec4 ssr_z{0.0f}, sky{0.0f};
+};
+constexpr float kSkyDefault[3] = {0.52f, 0.58f, 0.68f};  // (a level's file without "sky": a light, slightly blue grey)
+void material_uniforms(MatUniforms& u) {
+    for (int i = 0; i < 32; ++i) u.mat[i] = glm::vec4(0.0f);
+    const size_t n = std::min<size_t>(g_emissive_list.size(), kEmissiveSlots);
+    bool any = false, ssr = false;
+    for (size_t i = 0; i < n; ++i) {
+        const EmissiveSurface& e = g_emissive_list[i];
+        if (e.type == MAT_EMISSIVE) continue;
+        any = true;
+        ssr = ssr || e.type == MAT_PUDDLE || e.type == MAT_WATER || e.type == MAT_LAVA;
+        u.mat[i + 1] = glm::vec4(e.p[0], e.p[1], e.p[2], 0.0f);
+    }
+    g_mat_ssr_wanted = ssr;
+    const bool ready = mat_ssr_ready();
+    u.mat[0] = glm::vec4(any ? static_cast<float>(g_surface_detail) : 0.0f, static_cast<float>(g_mat_frames % 60000u) / 60.0f, g_rain ? 1.0f : 0.0f, ready ? 1.0f : 0.0f);
+    u.sky = g_sky_file ? glm::vec4(g_sky[0], g_sky[1], g_sky[2], 0.0f) : glm::vec4(kSkyDefault[0], kSkyDefault[1], kSkyDefault[2], 0.0f);
+    if (ready) {
+        // clip z = x clip w + y along any perspective view: two points of the captured view solve it
+        const glm::mat4& V = g_mssr.vp;
+        const glm::mat4 I = glm::inverse(V);
+        glm::vec4 a = I * glm::vec4(0.0f, 0.0f, -0.5f, 1.0f), b = I * glm::vec4(0.0f, 0.0f, 0.5f, 1.0f);
+        a /= a.w;
+        b /= b.w;
+        const glm::vec4 ca = V * a, cb = V * b;
+        const float x = std::fabs(ca.w - cb.w) > 1e-6f ? (ca.z - cb.z) / (ca.w - cb.w) : 1.0f;
+        u.ssr_vp = V;
+        u.ssr_z = glm::vec4(x, ca.z - x * ca.w, 0.0f, 0.0f);
+    }
 }
 }  // namespace
 int g_class_light_selected = -1;
@@ -3120,7 +3360,7 @@ bool mrp_user_lights_save() {
     std::fprintf(f, "# rac1-native: lights placed by hand for level %d (the debug menu's Lights tab)\n", g_user_level);
     std::fprintf(f, "# light x y z  r g b  intensity radius flicker on\n");
     // each entry written in the place of the file's line of its kind (the next one of the list), the rest after the last line
-    bool sun_done = false, rays_done = false;
+    bool sun_done = false, rays_done = false, rain_done = false, sky_done = false;
     const bool has_rays = std::any_of(g_user_layout.begin(), g_user_layout.end(), [](const FileLine& ln) { return ln.kind == 'r'; });
     size_t n_set = 0, n_emit = 0, n_emis = 0, n_box = 0, n_off = 0, n_light = 0, n_part = 0;
     auto put = [&](char kind) {
@@ -3149,8 +3389,24 @@ bool mrp_user_lights_save() {
         case 'm':
             if (n_emis < g_emissive_list.size()) {
                 const EmissiveSurface& es = g_emissive_list[n_emis++];
-                std::fprintf(f, "emissive %s %d tex %d  %.2f %.2f\n", mrp_emissive_kind_name(es.kind), es.o_class, es.tex, es.strength, es.threshold);
+                if (es.type == MAT_EMISSIVE) {
+                    std::fprintf(f, "emissive %s %d tex %d  %.2f %.2f\n", mrp_emissive_kind_name(es.kind), es.o_class, es.tex, es.strength, es.threshold);
+                } else {
+                    std::fprintf(f, "material %s %d tex %d %s", mrp_emissive_kind_name(es.kind), es.o_class, es.tex, mrp_material_name(es.type));
+                    const MatParam* mp = mrp_material_params(es.type);
+                    for (int i = 0; i < 3; ++i)
+                        if (mp[i].name != nullptr) std::fprintf(f, " %g", static_cast<double>(es.p[i]));
+                    std::fprintf(f, "\n");
+                }
             }
+            break;
+        case 'R':
+            if (!rain_done && g_rain) std::fprintf(f, "rain on\n");
+            rain_done = true;
+            break;
+        case 'k':
+            if (!sky_done && g_sky_file) std::fprintf(f, "sky %.2f %.2f %.2f\n", g_sky[0], g_sky[1], g_sky[2]);
+            sky_done = true;
             break;
         case 'i':
             if (n_box < g_interiors.size()) {
@@ -3191,6 +3447,8 @@ bool mrp_user_lights_save() {
     put('r');
     while (n_set < g_interior_sets.size()) put('S');
     while (n_emit < g_class_lights.size()) put('e');
+    put('R');
+    put('k');
     while (n_emis < g_emissive_list.size()) put('m');
     while (n_box < g_interiors.size()) put('i');
     while (n_off < g_user_noauto.size()) put('o');
@@ -3226,6 +3484,7 @@ void mrp_lighting_point_casters(float pts[8][4]) {
 // orig: (host) see mrp_lighting.h
 void mrp_lighting_frame_begin() {
     g_sh.on = false;
+    ++g_mat_frames;  // (the materials' clock, and the High step's picture: the last frame's)
     if (std::getenv("RAC1_POINT_TRACE") != nullptr) {  // (testing: the game's 8 dynamic point lights, 0x1802c0 / 0x1804c0, every 20 draws)
         static uint64_t n = 0;
         if (n++ % 20 == 0) {
@@ -3365,14 +3624,26 @@ bool vk_depth_at(int x, int y, float* d) {
 }
 
 void screen_point_read(const int vp[4]) {
-    static float env_uv[2] = {-2.0f, -2.0f};
-    if (env_uv[0] == -2.0f) {  // (testing: RAC1_PICK_SCREEN=u,v - the point printed with its objects every 60 frames)
-        env_uv[0] = -1.0f;
-        if (const char* e = std::getenv("RAC1_PICK_SCREEN")) std::sscanf(e, "%f,%f", &env_uv[0], &env_uv[1]);
+    // (testing: RAC1_PICK_SCREEN=u,v[;u,v...] - each point printed with its objects every 120 frames, one a frame)
+    static std::vector<std::pair<float, float>> env_uv;
+    static bool env_read = false;
+    static uint64_t n = 0;
+    if (!env_read) {
+        env_read = true;
+        if (const char* e = std::getenv("RAC1_PICK_SCREEN"))
+            for (const char* q = e; q != nullptr && *q != 0;) {
+                float u = 0, v = 0;
+                if (std::sscanf(q, "%f,%f", &u, &v) == 2 && env_uv.size() < 32) env_uv.emplace_back(u, v);
+                q = std::strchr(q, ';');
+                if (q != nullptr) ++q;
+            }
     }
-    if (env_uv[0] >= 0.0f) {
-        g_pick_uv[0] = env_uv[0];
-        g_pick_uv[1] = env_uv[1];
+    const size_t at = env_uv.empty() ? 0 : static_cast<size_t>(n % 120);
+    if (!env_uv.empty()) {
+        ++n;
+        if (at >= env_uv.size()) return;
+        g_pick_uv[0] = env_uv[at].first;
+        g_pick_uv[1] = env_uv[at].second;
     }
     if (g_pick_uv[0] < 0.0f) return;
     const int x = vp[0] + static_cast<int>(g_pick_uv[0] * static_cast<float>(vp[2])), y = vp[1] + static_cast<int>(g_pick_uv[1] * static_cast<float>(vp[3]));
@@ -3395,9 +3666,8 @@ void screen_point_read(const int vp[4]) {
         const glm::vec4 w = glm::inverse(glm::make_mat4(m)) * glm::vec4(g_pick_uv[0] * 2.0f - 1.0f, g_pick_uv[1] * 2.0f - 1.0f, d * 2.0f - 1.0f, 1.0f);
         for (int k = 0; k < 3; ++k) g_pick_world[k] = w[k] / w.w;
     }
-    if (env_uv[0] >= 0.0f) {
-        static uint64_t n = 0;
-        if (n++ % 60 == 30 && g_pick_ok) {
+    if (!env_uv.empty()) {
+        if (g_pick_ok) {
             const LightPick pk = mrp_lighting_pick(g_pick_world);
             std::printf("[lights] screen %.2f %.2f: %.2f %.2f %.2f; tie %d class %d offset %.3f %.3f %.3f; shrub %d class %d offset %.3f %.3f %.3f; moby %d class %d (%.2f away)\n",
                         g_pick_uv[0], g_pick_uv[1], g_pick_world[0], g_pick_world[1], g_pick_world[2], pk.tie ? 1 : 0, pk.tie_class, pk.tie_off[0], pk.tie_off[1], pk.tie_off[2],
@@ -4118,6 +4388,10 @@ void mrp_lighting_shadow_pass() {
     point_tiles_update();
     glActiveTexture(GL_TEXTURE0 + kTileUnit);
     glBindTexture(GL_TEXTURE_2D, g_sh.tiles);
+    glActiveTexture(GL_TEXTURE0 + kSsrColUnit);  // (the materials' last frame's 3D: read only when it is ready, uMat[0].w)
+    glBindTexture(GL_TEXTURE_2D, g_mssr.tex_c);
+    glActiveTexture(GL_TEXTURE0 + kSsrDepthUnit);
+    glBindTexture(GL_TEXTURE_2D, g_mssr.tex_d);
     glActiveTexture(GL_TEXTURE0);
     g_sh.on = true;
 }
@@ -4154,6 +4428,12 @@ ShadowLocs mrp_lighting_locs(unsigned prog) {
     l.pt_tiles = glGetUniformLocation(p, "uPtTiles");
     l.pt_vp = glGetUniformLocation(p, "uPtVP");
     l.emis = glGetUniformLocation(p, "uEmis");
+    l.mat = glGetUniformLocation(p, "uMat");
+    l.ssr_vp = glGetUniformLocation(p, "uSsrVP");
+    l.ssr_z = glGetUniformLocation(p, "uSsrZ");
+    l.ssr_sky = glGetUniformLocation(p, "uSsrSky");
+    l.ssr_col = glGetUniformLocation(p, "uSsrCol");
+    l.ssr_depth = glGetUniformLocation(p, "uSsrDepth");
     return l;
 }
 
@@ -4171,6 +4451,8 @@ void bind_units(const ShadowLocs& l) {
     glUniform1i(l.map, kUnit);
     glUniform1i(l.pt_map, kPtUnit);
     glUniform1i(l.pt_tiles, kTileUnit);
+    glUniform1i(l.ssr_col, kSsrColUnit);  // (the lighting's variants only: -1 elsewhere)
+    glUniform1i(l.ssr_depth, kSsrDepthUnit);
 }
 }  // namespace
 
@@ -4216,6 +4498,14 @@ void mrp_lighting_bind_receiver(const ShadowLocs& l, bool sky) {
         emissive_uniforms(e);
         glUniform4fv(l.emis, 32, glm::value_ptr(e[0]));
     }
+    if (l.mat >= 0) {
+        MatUniforms u;
+        material_uniforms(u);
+        glUniform4fv(l.mat, 32, glm::value_ptr(u.mat[0]));
+        glUniformMatrix4fv(l.ssr_vp, 1, GL_FALSE, glm::value_ptr(u.ssr_vp));
+        glUniform4fv(l.ssr_z, 1, glm::value_ptr(u.ssr_z));
+        glUniform4fv(l.ssr_sky, 1, glm::value_ptr(u.sky));
+    }
 }
 
 // orig: (host) see mrp_lighting.h
@@ -4259,8 +4549,12 @@ struct ShadowVkUbo {
     glm::vec4 uPtCol[96]{};
     glm::vec4 uPtDown[24]{};
     glm::vec4 uEmis[32]{};
+    glm::vec4 uMat[32]{};
+    glm::mat4 uSsrVP{1.0f};
+    glm::vec4 uSsrZ{0.0f};
+    glm::vec4 uSsrSky{0.0f};
 };
-static_assert(sizeof(ShadowVkUbo) == 4512, "ShadowVkUbo must match SHADOW_UBO_DECL in gen_vk_shaders.py");
+static_assert(sizeof(ShadowVkUbo) == 5120, "ShadowVkUbo must match SHADOW_UBO_DECL in gen_vk_shaders.py");
 
 VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, bool is_caster) {
     mrp_lighting_vk_set_layout();
@@ -4280,7 +4574,11 @@ VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, bool is_caster) {
                                   g_vk_sh.tex.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
                                      ? g_vk_sh.tex
                                      : vk::dummy_depth_array();
-    const vk::GpuImage& ao_tex = vk::white_texture();
+    const bool ssr = !is_caster && g_mssr.vk_c.image != VK_NULL_HANDLE && g_mssr.vk_c.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
+                     g_mssr.vk_d.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    const vk::GpuImage& ssr_col = ssr ? g_mssr.vk_c : vk::white_texture();  // (binding 2: the materials' last frame's 3D)
+    const vk::GpuImage& ssr_depth = ssr ? g_mssr.vk_d : vk::white_texture();
+    const VkSampler linear_sampler = vk::get_sampler(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
     const vk::GpuImage& pt_map = (!is_caster && g_vk_sh.ptex.image != VK_NULL_HANDLE &&
                                   g_vk_sh.ptex.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
                                      ? g_vk_sh.ptex
@@ -4290,21 +4588,22 @@ VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, bool is_caster) {
                                         ? g_vk_sh.tiles
                                         : vk::black_uint_texture();
 
-    VkDescriptorImageInfo diis[4] = {
+    VkDescriptorImageInfo diis[5] = {
         {cmp_sampler, sh_map.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
-        {nearest_sampler, ao_tex.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+        {linear_sampler, ssr_col.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
         {cmp_sampler, pt_map.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
         {nearest_sampler, tiles_tex.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+        {nearest_sampler, ssr_depth.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
     };
 
-    VkWriteDescriptorSet writes[5]{};
+    VkWriteDescriptorSet writes[6]{};
     writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     writes[0].dstSet = ds;
     writes[0].dstBinding = 0;
     writes[0].descriptorCount = 1;
     writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     writes[0].pBufferInfo = &dbi;
-    for (uint32_t i = 0; i < 4; ++i) {
+    for (uint32_t i = 0; i < 5; ++i) {
         writes[1 + i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[1 + i].dstSet = ds;
         writes[1 + i].dstBinding = 1 + i;
@@ -4312,7 +4611,7 @@ VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, bool is_caster) {
         writes[1 + i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         writes[1 + i].pImageInfo = &diis[i];
     }
-    vkUpdateDescriptorSets(vk::device(), 5, writes, 0, nullptr);
+    vkUpdateDescriptorSets(vk::device(), 6, writes, 0, nullptr);
     return ds;
 }
 }  // namespace
@@ -4320,15 +4619,15 @@ VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, bool is_caster) {
 uint64_t mrp_lighting_vk_set_layout() {
     ensure_vk_lighting_init();
     if (g_vk_sh.set_layout == VK_NULL_HANDLE && vk::device() != VK_NULL_HANDLE) {
-        VkDescriptorSetLayoutBinding bindings[5]{};
+        VkDescriptorSetLayoutBinding bindings[6]{};
         bindings[0] = {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
-        for (uint32_t i = 1; i <= 4; ++i) {
+        for (uint32_t i = 1; i <= 5; ++i) {  // (1 the sun's cascades, 2 the materials' last 3D, 3 the cubes, 4 the tiles, 5 its depth)
             bindings[i] = {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
                            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
         }
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        dslci.bindingCount = 5;
+        dslci.bindingCount = 6;
         dslci.pBindings = bindings;
         vkCreateDescriptorSetLayout(vk::device(), &dslci, nullptr, &g_vk_sh.set_layout);
     }
@@ -4380,6 +4679,12 @@ void mrp_lighting_vk_bind_receiver(uint64_t pipe_layout, bool sky, bool lit_vari
             std::memcpy(ubo.uPtDown, g_sh.pt_down, static_cast<size_t>((g_sh.npts + 3) / 4) * sizeof(glm::vec4));
         }
         emissive_uniforms(ubo.uEmis);
+        MatUniforms mu;
+        material_uniforms(mu);
+        std::memcpy(ubo.uMat, mu.mat, sizeof ubo.uMat);
+        ubo.uSsrVP = mu.ssr_vp;
+        ubo.uSsrZ = mu.ssr_z;
+        ubo.uSsrSky = mu.sky;
         g_vk_sh.rec_ds[1][li] = build_lighting_vk_ds(ubo, false);
         g_vk_sh.rec_gen[1][li] = gen;
     }

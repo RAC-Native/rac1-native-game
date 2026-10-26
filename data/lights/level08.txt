@@ -2,6 +2,17 @@
 # light x y z  r g b  intensity radius flicker on
 # Batalia: no Sun Rays, from Anya-Thoughtmane's lighting pass (#101: off to go on with the level's sun).
 sun_rays off
+# The materials' pilot (docs/materials.md; Options > Graphics > Surface Detail Low / High). Batalia rains: ripples in its puddles,
+# and the reflections' sky the storm's grey-blue.
+rain on
+sky 0.36 0.39 0.46
+# The landing platform's steel deck (tie 391, the level's texture 108: its other prims use it too), the railings' posts (tie 338)
+# and the military buildings' walls (tie 297): metal, the storm's sky in their sheen.
+material tie 391 tex 2 metal 0.3 1.5
+material tie 338 tex 2 metal 0.25 1.5
+material tie 297 tex 5 metal 0.4 1
+# The paved ground of the base below the platform (tfrag texture 11): soaked, with puddles.
+material tfrag 0 tex 11 puddle 0.45 0.3 0.6
 # Batalia: our ambient particles (Options > Graphics > Ambient Particles, off by default): the rain, slanted by the wind, with
 # splashes on the ground, drawn in place of the game's own while the option is on (the game still makes its own: its state
 # is the same); a little ash from the battle in the air.

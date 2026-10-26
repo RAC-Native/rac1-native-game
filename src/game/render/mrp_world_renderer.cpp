@@ -700,6 +700,9 @@ void main() {
     float uLayer = float(vTex.y);
     if (uTme != 0) {
         vec2 st = vStq.xy / vStq.z;
+#ifdef SH_POINTS
+        st = sh_mat_uv(st, (w >> 25) & 31u);  // (lava, mud, quicksand: the slow flow)
+#endif
         vec4 t;
         if ((w & 1u) != 0u) {
             t = vec4(128.0 / 255.0);
@@ -731,6 +734,7 @@ void main() {
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_POINTS
         o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 25) & 31u);  // (the word's bits 25..29)
+        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 25) & 31u);
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }
@@ -1335,6 +1339,9 @@ const TexRef* vram_texture(Level& L, uint64_t tex0, uint64_t tex1, uint64_t mip1
 // per level texture (tfrag, tie, shrub tables) its shader slot (0 none), rebuilt on the scene's worker when the list, the preview or
 // the level changes; the slot goes into the texture word's bits 25..29 (key_now) while the modern lighting is on, the original's draws
 // untouched
+}  // namespace
+void mrp_world_texture_survey();
+namespace {
 struct EmissiveTable {
     uint32_t gen = 0;
     int level = -1;
@@ -1380,6 +1387,8 @@ void emissive_refresh() {
     const uint32_t gen = mrp_emissive_snapshot(list, &pv, &has_pv);
     const int level = L.loaded ? L.id : -1;
     if (gen != g_emis.gen || level != g_emis.level) {
+        static const bool survey = std::getenv("RAC1_LIGHTS_TRACE") != nullptr;
+        if (survey && level >= 0 && level != g_emis.level) mrp_world_texture_survey();  // (testing: the materials' survey)
         g_emis.gen = gen;
         g_emis.level = level;
         bool any = false;
@@ -1967,7 +1976,7 @@ void tfrag_expect(const GsFront& g, Frame& F, const ScenePacket& p, uint32_t vba
 // orig: (host) the frame's GPU vertices / triangles / batches from the scene
 void build_triangles(Frame& F) {
     emissive_refresh();
-    g_emis_frame = g_emis.on && g_modern_shadows != 0 && g_emissive != 0;
+    g_emis_frame = g_emis.on && g_modern_shadows != 0;  // (RAC1_EMISSIVE=0: the shaders ignore the emissive slots, uEmis[0])
     F.v.clear();
     F.idx.clear();
     F.batches.clear();
@@ -3821,6 +3830,37 @@ SurfacePick mrp_world_surface_at(const float pp[3]) {
     }
     if (r.kind >= 0) class_texture(L, r.kind, r.o_class, r.tex, &r.ntex);
     return r;
+}
+
+// orig: (host) testing (RAC1_LIGHTS_TRACE, the materials' survey): each tfrag / tie / shrub texture of the level with its mean colour
+// and the classes that use it - lava, water, mud found by their colour, then looked at (docs/materials.md)
+void mrp_world_texture_survey() {
+    const Level& L = g_level;
+    if (!L.loaded || L.world == nullptr) return;
+    auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
+    std::map<int, std::string> users[3];
+    for (const TieClass& tc : L.world->ties)
+        for (size_t i = 0; i < tc.textures.size(); ++i)
+            if (tc.textures[i].texture >= 0) users[1][tc.textures[i].texture] += " tie " + std::to_string(tc.o_class) + " tex " + std::to_string(i) + ";";
+    for (const ShrubClass& sc : L.world->shrubs)
+        for (const ShrubPacket& p : sc.packets)
+            for (const TexturePrim& t : p.textures)
+                if (t.texture >= 0 && users[2][t.texture].find(" shrub " + std::to_string(sc.o_class) + " ") == std::string::npos)
+                    users[2][t.texture] += " shrub " + std::to_string(sc.o_class) + " tex " + std::to_string(t.local_texture) + ";";
+    for (int table = 0; table < 3; ++table)
+        for (size_t n = 0; n < L.tex[table].size(); ++n) {
+            const mrp::Texture& tx = L.tex[table][n];
+            if (tx.width == 0 || tx.mips.empty() || tx.mips[0].size() < static_cast<size_t>(tx.width) * tx.height) continue;
+            double c[3] = {0, 0, 0};
+            const size_t m = static_cast<size_t>(tx.width) * tx.height;
+            for (size_t q = 0; q < m; ++q) {
+                const uint32_t v = tx.palette[csm1(tx.mips[0][q])];
+                for (int k = 0; k < 3; ++k) c[k] += (v >> (8 * k)) & 0xff;
+            }
+            const std::string u = table == 0 ? std::string(" tfrag 0 tex ") + std::to_string(n) : users[table][static_cast<int>(n)].substr(0, 160);
+            std::printf("[lights] texture %s %zu (%dx%d): mean %.0f %.0f %.0f:%s\n", table == 0 ? "tfrag" : table == 1 ? "tie" : "shrub", n, tx.width, tx.height, c[0] / m, c[1] / m,
+                        c[2] / m, u.c_str());
+        }
 }
 
 // orig: (host) see mrp_lighting.h

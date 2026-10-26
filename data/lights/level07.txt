@@ -2,6 +2,9 @@
 # light x y z  r g b  intensity radius flicker on
 # Umbris: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
 sun -70.5 5.0
+# Umbris: its swampy ground (tfrag texture 9, the green-brown moss where the walk starts) as mud: a wet sheen, its texture drifting
+# very slowly (docs/materials.md; Surface Detail Low / High).
+material tfrag 0 tex 9 mud 0.5 0.5
 # Umbris: our ambient particles (Options > Graphics > Ambient Particles, off by default): embers rising from the lava
 # (Anya-Thoughtmane's suggestion for the Snagglebeast's arena).
 particles embers 0.8
