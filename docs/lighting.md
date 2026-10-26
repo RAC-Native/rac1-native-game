@@ -652,8 +652,13 @@ when a cascade is about to need them: when its slack is running out given the ca
 `colour * max(N · L, 0) * (1 - d / r) * 0.5 * shadow` to the pixel, with N the flat face normal from
 derivatives. A light per object class can be aimed down (`emit`'s last value, below): its falloff then
 becomes `(1 - d / r)^2` times the cosine of the angle below the light, mixed in by that share, so a
-ceiling fixture lights a pool on the floor under it and not the ceiling around it. This is the world only. Mobys keep the game's own 8 lights per vertex, as in the
-original, and are not lit by emitters or hand-placed lights.
+ceiling fixture lights a pool on the floor under it and not the ceiling around it.
+
+**Mobys** (#110: Ratchet, and every other moby, were not lit by our lights) keep the game's own 8 lights per vertex, as in the
+original (the skinning's record), and take ours per pixel: the lights placed by hand, per class, the plasma beams and the automatic
+emitters (`sh_points_moby` in `mrp_materials_glsl.inc`, the mobys' lighting variant, OpenGL and Vulkan). The list's first entries are
+the game's own lights; their count goes to the shader in `uEmis[0].y` and they are skipped there, so no light is added twice. The
+same falloff and aim as the world's, the flat face normal, no cube shadows (a moby casts into the cubes: it would shadow itself).
 
 While any of the game's short-lived lights is active, the world's per-vertex colours on the GPU are not
 refreshed (`mrp_lighting_points_freeze`), so the same light is not added twice: once baked by the
@@ -808,7 +813,15 @@ The modern point lights can be placed by hand, as art choices that are labelled 
 part of the original. The editor is in the debug menu (Lights tab), so it needs the debug tools (see
 [Settings](settings.md#debug-tools)).
 
-- Lights can be added at Ratchet's position or the camera's, moved, duplicated and deleted, and each
+- **The target.** The tab's tools work on a world point: the one under the crosshair at the centre of the
+  picture, or, with **Pick with the mouse** ticked (the default), the one clicked: with the menu open the
+  cursor is free, and a left click on the picture outside the menu's windows reads the depth there (over
+  the next four frames: the read comes a frame or two late) and keeps that point, marked with a green ring
+  and a short green line along the surface's normal, until the next click or **Back to the crosshair**.
+  The point's surface (`mrp_world_surface_at`) and objects (`mrp_lighting_pick`) feed the sections below.
+- Lights can be added at the target (**Add at the clicked point** / **Add at the crosshair**: 0.4 units
+  off the surface along its normal, the triangle's turned toward the camera; on a moby, toward the camera),
+  at Ratchet's position or the camera's, moved (**Move to the picked point**), duplicated and deleted, and each
   has a position, colour, intensity, radius, flicker amount and an on switch. On-screen markers show
   them, and the selected light pulses.
 - "Ratchet to it" moves Ratchet to the selected light. Unlike everything else on this page, this does
@@ -836,10 +849,15 @@ Placing lamps one by one is slow; most lamps are one object class repeated. A le
 emit <tie|shrub|moby> <class> <ox oy oz> <r g b> <intensity> <radius> [flicker] [down]
 ```
 
-and every tie or shrub instance of that class, or every live moby of that class (those placed by the level and those the game
+(and `joint <n>` at the end of a moby's line), and every tie or shrub instance of that class, or every live moby of that class (those placed by the level and those the game
 spawns later - the walk goes to the moby array's end *(0x15ffe0), not to the placed ones' *(0x15ffdc) as before #102), lights as a point
 light at the offset in its own frame (a tie's or shrub's rows, model / 1024 at its scale; a moby's
-rotation, in world units), so a moby's lamp follows it. `down` (0 to 1, default 0) is the share of the
+rotation, in world units), so a moby's lamp follows it. A moby whose model the animation moves away from
+its position (the Buzzers of Novalis, moby 577, fly with their body high above the point the game keeps:
+their light stayed in the sky) takes `joint <n>`: the offset is then in that joint's frame as the frame's
+pose has it (the joint's matrix the skinning used, through the moby's drawn model-to-world matrix; units
+and axes the world's, `mrp_moby_draw_frame`), so the light follows the animated part. A moby not drawn
+this frame falls back to its position and rotation. `down` (0 to 1, default 0) is the share of the
 light aimed straight down, as a ceiling fixture's: the squared falloff and the cosine below the light
 of [Point lights per pixel](#point-lights-per-pixel). At the level's start the log says how many
 instances each line found (`[lights] level 1: emit shrub 282: 7 instances`): none means a wrong
@@ -848,12 +866,30 @@ within 60 units of the camera, the nearest first and faded at the reach and at t
 all), with Secondary Lights on All. A moby's lamp gets no point-light shadow cube (the lamp's own
 mesh around the light would hide it); a tie's may (cast by mobys only, as the emitters').
 
-**In the editor** (Lights tab, "Lights per object class"): a crosshair at the centre of the
-picture; the world point under it (the depth read there) and the objects at it - the tie instance
-whose model's box holds it, the shrub whose sphere holds it, the nearest moby within 6 units - with
-their class and the point in their frame; **Emit for every tie / shrub / moby of this class** adds a light at that point of every
-instance, live, then the offset, colour, intensity, radius, flicker and the share aimed down are edited and Save writes
-the `emit` lines with the rest of the file.
+**In the editor** (Lights tab, "Lights per object class"): the target (the crosshair or the clicked point, above) and the
+objects at it - the tie instance whose model's box holds it, the shrub whose sphere holds it, the drawn moby whose parts' bounding
+spheres hold it (the smallest; a big moby whose origin is far away, a cannon or a train, is found this way) or else the nearest moby
+within 6 units - with their class and the point in their frame; for a drawn moby also the joint of its pose nearest the point and the
+point in that joint's frame. **Emit for every tie / shrub / moby of this class** adds a light at that point of every instance, live;
+**Emit on this joint (follows the animation)** the same in the joint's frame. The offset, colour, intensity, radius, flicker, the
+share aimed down and a moby's joint are then edited, and Save writes the `emit` lines with the rest of the file.
+
+### Lines for every level
+
+A moby class is the same on every level (a gold bolt, a vendor, a Versa-Target, Clank), so its lines can live in one file,
+`data/lights/classes.txt` (next to the levels' files; `RAC1_LIGHTS_DIR` moves both): `emit moby ...`, `emissive moby ...` and
+`material moby ...` lines, written as a level's file writes them. They are read with each level's file and added after the level's
+own entries, on every level where that class appears. A level's own line wins: a level's `emit moby` line for a class leaves out
+every line of that class in `classes.txt` on that level, a level's `emissive` / `material` line for a moby class and texture leaves
+out the one for the same class and texture. Other lines in the file (comments, tie or shrub lines: those classes differ per level)
+are kept as they are and not used.
+
+In the editor, a selected moby light ("Lights per object class") and a moby surface in hand ("Emissive surfaces and materials")
+have a **For every level** box: ticked, Save writes that entry to `classes.txt` instead of the level's file (and unticked, back to
+the level's file); a deleted one leaves `classes.txt` too. Save writes `classes.txt` only when one of its entries changed, each
+line in its place, and a line not edited exactly as it was read (as the levels' files are written: `ps2fpu::NearestScope`). The
+lists show "(every level)" after such an entry. Nothing is moved there by itself: the shipped levels' moby lines stay in their
+files.
 
 Shipped: Novalis's neon tubes in the buildings by the river (shrub class 282, the panel of the
 fixture shrub 167; the automatic search does not see white texels, nor shrubs and mobys; aimed down
@@ -915,14 +951,24 @@ The same mechanism gives a texture a **material** instead (a `material` line: me
 with Options > Graphics > Surface Detail: see [Materials](materials.md). An `emissive` line is the same as `material ... emissive`; the
 two kinds share the 30 slots.
 
-**In the editor** (Lights tab, "Emissive surfaces and materials"): the crosshair's surface - the level's nearest tfrag, tie or shrub triangle within
-0.5 units of the point under it (`mrp_world_surface_at`) - shows its kind, class and texture; "Take the moby" takes the moby there
-instead (the nearest within 3 units; its local textures in use are stepped through). The arrows step through the class's textures,
+**In the editor** (Lights tab, "Emissive surfaces and materials"): the target's surface (the crosshair's or the clicked point's) - the
+level's nearest tfrag, tie or shrub triangle within 0.5 units of the point (`mrp_world_surface_at`) - shows its kind, class and
+texture; "Take the moby" takes the moby there instead (the one whose drawn parts hold the point, or the nearest within 3 units; its
+local textures in use are stepped through). The arrows step through the class's textures,
 the texture in hand pulses magenta with **Preview** ticked, **Mark emissive** / **Unmark** add or remove the line, and **Strength** and
 **Threshold** act live; Save writes `emissive` lines with the rest of the file. **Suggest** lists the level's tie and shrub textures
 with some bright saturated texels (the automatic emitters' test) or near-white ones (`RAC1_LIGHTS_WHITE`'s test) over less than 70 %
 of the texture, as candidates to look at with the preview; nothing is marked by itself. `RAC1_PICK_SCREEN=u,v` (testing) prints the
 surface at that point of the screen with the objects there.
+
+**The Textures tab** (debug menu, a tester's request, #101) lists the level's loaded textures as a grid of thumbnails: the tfrag,
+tie and shrub textures the MRP's world draws (`mrp_world_texture_list`; a tie or shrub texture only when a class of the level uses
+it) and the level's moby textures (`mrp_moby_texture_list`), each with the classes that use it (a tie's texture prim, a shrub's or a
+moby's local texture: as an `emissive` line names it). They are filtered by kind, by a number (the level's texture or a class) and
+to the marked ones (a yellow frame: emissive; blue: a material). A click puts the texture in hand with the preview on, by its first
+user (the others are buttons above the grid): the same Mark / material controls as the Lights tab, the same lines. The thumbnails are
+one atlas of 64 x 64 pictures made on the CPU from the renderers' decoded textures when the tab is first shown on a level (or
+**Refresh**): an OpenGL texture or a Vulkan image ImGui draws; nothing of the game's drawing changes.
 
 Shipped (#102, strength 1.3 so that they read a little brighter than the original, and do not darken): on Veldin the domed
 building's round cyan lamps (shrub class 569, three stacked instances per column, `tex 1` their glass) and its cyan door panels (tie
@@ -982,7 +1028,7 @@ Finding the automatic emitters costs 10 to 50 ms once per level (the survey of e
 
 - At most 96 point lights in all, at most 4 with shadows, and hand-placed lights, emitters and cube
   shadows only within 60 units of the camera.
-- Mobys get no per-pixel point lights and are not lit by emitters or hand-placed lights.
+- Mobys take our point lights per pixel with flat face normals (faceted on a round character) and without their shadows.
 - Emitters' cube shadows are cast by mobys only.
 - The world's sun shading takes off the key light's term with the face normal (the game uses the
   vertex normal); the mobys' is exact.

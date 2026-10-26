@@ -1,0 +1,8 @@
+# rac1-native: moby lights, emissive surfaces and materials for every level (the debug menu's "For every level")
+# The same lines as a level's file (docs/lighting.md, "Lines for every level"), for moby classes only - a moby class is the same on
+# every level (a gold bolt, a vendor, a Versa-Target, Clank):
+#   emit moby <class> <ox oy oz> <r g b> <intensity> <radius> [flicker] [down] [joint <n>]
+#   emissive moby <class> tex <n> [strength] [threshold]
+#   material moby <class> tex <n> <type> [a] [b] [c]
+# Applied on every level where the class appears, after the level's own lines; a level's own line for the same class (emit) or
+# class and texture (emissive, material) wins there.
