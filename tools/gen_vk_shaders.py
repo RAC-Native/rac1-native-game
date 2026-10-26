@@ -465,6 +465,131 @@ void main() {
 }
 """
 
+# the program 7 surfaces (mrp_fx.cpp kV7Vs / kV7Fs): the effects' fragment shader with the program's fog and the modern lighting
+MRP_VU7_PUSH = """
+layout(push_constant) uniform Push {
+    mat4 uVP;
+    int uShade;
+    int uPass;
+    int _pad0;
+    int _pad1;
+};
+"""
+
+MRP_VU7_VS = "#version 450\n" + MRP_VU7_PUSH + RAC1_VK_SHADOW_VS + """
+layout(location = 0) in vec3 aWorld;
+layout(location = 1) in vec3 aStq;
+layout(location = 2) in float aFogW;
+layout(location = 3) in uvec4 aRgba;
+layout(location = 4) in uvec4 aTex;
+layout(location = 5) in vec2 aFogC;
+layout(location = 6) in uint aEmis;
+layout(location = 7) in float aDepth;
+layout(location = 0) smooth out vec3 vStq;
+layout(location = 1) noperspective out vec4 vColor;
+layout(location = 2) flat out vec4 vFlat;
+layout(location = 3) noperspective out float vFogW;
+layout(location = 4) flat out vec2 vFogC;
+layout(location = 5) flat out uvec4 vTex;
+layout(location = 6) flat out uint vEmis;
+void main() {
+    gl_Position = sh_clip(uVP * vec4(aWorld, 1.0));
+    if (aDepth < 1.5) gl_Position.z = aDepth * gl_Position.w;  // (the GS's depth, as the OpenGL shader)
+    vStq = aStq;
+    vColor = vec4(aRgba) / 255.0;
+    vFlat = vColor;
+    vFogW = aFogW;
+    vFogC = aFogC;
+    vTex = aTex;
+    vEmis = aEmis;
+}
+"""
+
+MRP_VU7_FS = "#version 450\n#define SH_SPLIT 1\n" + MRP_VU7_PUSH + RAC1_VK_SHADOW_FS + """
+layout(set = 0, binding = 0) uniform sampler2DArray uAtlas;
+layout(location = 0) smooth in vec3 vStq;
+layout(location = 1) noperspective in vec4 vColor;
+layout(location = 2) flat in vec4 vFlat;
+layout(location = 3) noperspective in float vFogW;
+layout(location = 4) flat in vec2 vFogC;
+layout(location = 5) flat in uvec4 vTex;
+layout(location = 6) flat in uint vEmis;
+layout(location = 0, index = 0) out vec4 FragColor;
+layout(location = 0, index = 1) out vec4 FragFactor;
+ivec2 wrapc(ivec2 c, ivec2 sz, bool rs, bool rt) {
+    c.x = rs ? ((c.x % sz.x) + sz.x) % sz.x : clamp(c.x, 0, sz.x - 1);
+    c.y = rt ? ((c.y % sz.y) + sz.y) % sz.y : clamp(c.y, 0, sz.y - 1);
+    return c;
+}
+void main() {
+    sh_prepare();
+    uint fl = vTex.z;
+    bool tme = (fl & 1u) != 0u, iip = ((fl >> 4) & 1u) != 0u, fge = ((fl >> 5) & 1u) != 0u, ate = ((fl >> 6) & 1u) != 0u;
+    uint tfx = (fl >> 1) & 3u, tcc = (fl >> 3) & 1u, atst = (fl >> 7) & 7u, aref = (fl >> 10) & 0xffu, afail = (fl >> 22) & 3u;
+    bool lin = ((fl >> 18) & 1u) != 0u, rs = ((fl >> 19) & 1u) != 0u, rt = ((fl >> 20) & 1u) != 0u;
+    vec4 c = iip ? vColor : vFlat;
+    vec3 c_game = c.rgb;
+    c.rgb = sh_points(sh_apply_split(c.rgb, c.rgb * 0.45));
+    vec4 o = c;
+    if (tme) {
+        ivec2 sz = ivec2(int(vTex.y & 0xffffu), int(vTex.y >> 16));
+        vec2 uv = sh_mat_uv(vStq.xy / vStq.z, vEmis) * vec2(sz);  // (lava, mud, quicksand: the materials' slow flow)
+        int layer = int(vTex.x);
+        vec4 t;
+        if (lin) {
+            vec2 p = uv - 0.5;
+            ivec2 i0 = ivec2(floor(p));
+            vec2 f = p - vec2(i0);
+            vec4 t00 = texelFetch(uAtlas, ivec3(wrapc(i0, sz, rs, rt), layer), 0);
+            vec4 t10 = texelFetch(uAtlas, ivec3(wrapc(i0 + ivec2(1, 0), sz, rs, rt), layer), 0);
+            vec4 t01 = texelFetch(uAtlas, ivec3(wrapc(i0 + ivec2(0, 1), sz, rs, rt), layer), 0);
+            vec4 t11 = texelFetch(uAtlas, ivec3(wrapc(i0 + ivec2(1, 1), sz, rs, rt), layer), 0);
+            t = mix(mix(t00, t10, f.x), mix(t01, t11, f.x), f.y);
+        } else {
+            t = texelFetch(uAtlas, ivec3(wrapc(ivec2(floor(uv)), sz, rs, rt), layer), 0);
+        }
+        if (tfx == 0u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0); o.a = tcc != 0u ? t.a * c.a * (255.0 / 128.0) : c.a; }
+        else if (tfx == 1u) { o.rgb = t.rgb; o.a = tcc != 0u ? t.a : c.a; }
+        else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
+        else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
+        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, vEmis);
+        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), vEmis);
+        if (uShade == 2) o.rgb = t.rgb;
+    }
+    if (uShade == 1) o.rgb = c.rgb;
+    o = clamp(o, 0.0, 1.0);
+    if (fge) {
+        uint fc = vTex.w;
+        vec3 fogcol = vec3(float(fc & 0xffu), float((fc >> 8) & 0xffu), float((fc >> 16) & 0xffu)) / 255.0;
+        float fw = min(max(vFogW, vFogC.x), vFogC.y);
+        float f = float(uint(max(fw, 0.0)) & 0xffu) / 255.0;
+        o.rgb = o.rgb * f + fogcol * (1.0 - f);
+    }
+    float a = o.a * 255.0;
+    if (ate) {
+        bool pass = true;
+        if (atst == 0u) pass = false;
+        else if (atst == 2u) pass = a < float(aref);
+        else if (atst == 3u) pass = a <= float(aref);
+        else if (atst == 4u) pass = abs(a - float(aref)) < 0.5;
+        else if (atst == 5u) pass = a >= float(aref);
+        else if (atst == 6u) pass = a > float(aref);
+        else if (atst == 7u) pass = abs(a - float(aref)) >= 0.5;
+        if (!pass && uPass == 0 && (afail == 0u || afail == 2u)) discard;
+        if (!pass && uPass == 1 && afail != 2u) discard;
+    }
+    float as = min(o.a * (255.0 / 128.0), 1.0);
+    uint bk = (fl >> 24) & 3u;
+    if (bk == 1u || bk == 2u) {
+        FragColor = vec4(o.rgb * as, as);
+        FragFactor = vec4(bk == 1u ? 1.0 : 1.0 - as);
+    } else {
+        FragColor = vec4(o.rgb, as);
+        FragFactor = vec4(0.0);
+    }
+}
+"""
+
 # ---------------------------------------------------------------------------
 # 3. mrp_shadows.cpp shaders
 # ---------------------------------------------------------------------------
@@ -1894,6 +2019,8 @@ SHADERS = [
     ("kGsDrawFs", "frag", GS_DRAW_FS),
     ("kMrpFxVs", "vert", MRP_FX_VS),
     ("kMrpFxFs", "frag", MRP_FX_FS),
+    ("kMrpVu7Vs", "vert", MRP_VU7_VS),
+    ("kMrpVu7Fs", "frag", MRP_VU7_FS),
     ("kMrpShadowsFaceVs", "vert", MRP_SHADOWS_FACE_VS),
     ("kMrpShadowsFaceFs", "frag", MRP_SHADOWS_FACE_FS),
     ("kMrpShadowsDarkVs", "vert", MRP_SHADOWS_DARK_VS),

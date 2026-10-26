@@ -6,6 +6,11 @@ What changed in each release. Releases are source only: you build the game with 
 ## Unreleased
 
 ### Graphics
+- The levels' water, lava and sand seas (VU1 program 7's surfaces: Rilgar's harbour, Gaspar's lava sea, Aridia's sand sea, Hoven,
+  Umbris, Novalis, Kalebo, Drek's fleet..., the levels' baked shadow meshes and the nanotech orbs) are drawn by the modern renderer
+  from the game's own geometry, in the world's projection: no side cut or wedge in a widened view, fogged as the GS fogs them, and
+  with Lighting not Original they take the sun's shadows, the point lights, and emissive / material lines (`surface`); the GS
+  replica now draws no 3D in play. `RAC1_MRP_SEAS=0` for the old path. OpenGL and Vulkan.
 - Ambient particles (Options > Graphics > Ambient Particles: Off by default, Low, High): our own dust, ash, embers, fireflies,
   light dust in the sunlight, rain with splashes and snow, per level from its light file (`particles` lines, editable in the
   debug menu's Sun tab); Batalia's rain and Hoven's snow drawn in place of the game's own while it is on. OpenGL and Vulkan.

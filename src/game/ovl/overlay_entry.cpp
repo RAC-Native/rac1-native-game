@@ -480,7 +480,12 @@ void render_frame() {
     if (lw(EN + 0x44) != 0 && lw(OV(0x0015f330)) != 0) TODO_PORT(0x001f9f78, "screen effects list")(OV(0x0015f330u));
     if ((flags() & 0x20) != 0) {
         texture_block_begin(1);
+        // (host: the level's shadow meshes are VU1 program 7's batches: noted for the MRP, which draws them from their input, mrp_fx.h)
+        const uint32_t scur = lwu(OV(0x001611c0u));
+        mrp_fx_window(true);
         shadows_draw(0x00150000);  // $s6 as the main loop holds it (0x245c88): read by 0x1fe6d8
+        mrp_fx_note_list(scur, lwu(OV(0x001611c0u)), 0);
+        mrp_fx_window(false);
         texture_block_end();
     }
     if (lw(EN + 0x34) != 0 && lw(OV(0x0015f430)) != 0) draw_list_block_run(1);

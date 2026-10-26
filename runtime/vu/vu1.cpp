@@ -214,6 +214,7 @@ void capture(const Vu1& vu, uint32_t start, const char* dir) {
 bool g_force_interpreter = false;
 thread_local uint32_t g_last_start = 0;
 thread_local float g_side_widen[2] = {1.0f, 1.0f};
+thread_local StartObserver* g_start_observer = nullptr;
 KickSink g_kick_tap;
 StartHook g_start_hook;
 
@@ -371,6 +372,16 @@ void start_program(Vu1& vu, uint32_t start, const KickSink& kick) {
             memo[next++ & 31] = Memo{start, g_micro_gen.load(std::memory_order_relaxed), found};
         }
         if (found != nullptr) {
+            struct Observed {  // (host: the walk's observer around the start, StartObserver)
+                StartObserver* o;
+                Vu1& vu;
+                uint32_t start;
+                uint64_t hash;
+                ~Observed() {
+                    if (o != nullptr) o->after(vu, start, hash);
+                }
+            } observed{g_start_observer, vu, start, found->hash};
+            if (observed.o != nullptr) observed.o->before(vu, start, found->hash);
             if (g_start_hook && g_start_hook(vu, start, found->hash, found->fn, kick_at)) return;
             found->fn(vu.st, start, kick_at);
             if (trace_on()) std::fprintf(stderr, "[VU1] ran %s start %03x: vi11 %d vi13 %d\n", found->name, start, vu.st.vi[11], vu.st.vi[13]);

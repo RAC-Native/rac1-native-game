@@ -30,7 +30,7 @@ It works only with Lighting not Original, like the rest of the modern lighting. 
 In the level's light file (`data/lights/level<N>.txt`):
 
 ```
-material <tfrag|tie|shrub|moby> <class> tex <n> <type> [a] [b] [c]
+material <tfrag|tie|shrub|moby|surface> <class> tex <n> <type> [a] [b] [c]
 rain on
 sky <r> <g> <b>
 ```
@@ -103,16 +103,19 @@ red ones for lava, and so on).
   `tex 5`) as metal; the paved ground of the base below the platform (tfrag texture 11) as puddles.
 - **Umbris (7)**: the swampy ground where the walk starts (tfrag texture 9) as mud.
 
-## What is not drawn by the world
+## The levels' seas and pools
 
-The materials apply to what the MRP's world (tfrag, tie, shrub) and mobys draw. The levels' large seas
-and pools are drawn otherwise: Novalis's water and Aridia's sand sea are the game's VU1 program 7 prim
-lists, drawn by the MRP's effects (`mrp_fx.h`); Gaspar's lava sea, Batalia's sea and its waterfall are
-not in the world's depth either (drawn after it, by the effects or the GS replica). A material line on
-their textures does nothing, as none of their textures is in the world's tables. The `lava` and `water`
-types work on any world or moby texture, but no level is tagged with them yet: Gaspar's lava, Novalis's
-and Rilgar's water need the effects' and the replica's 3D drawn with the lighting's variant first (a
-separate project).
+The levels' large water, lava and sand-sea surfaces are VU1 program 7's (Novalis's and Rilgar's water, Aridia's sand sea, Gaspar's
+lava sea, Hoven's water...), drawn by the MRP from the program's input ([Rendering](rendering.md#vu1-program-7s-surfaces)). They
+take a material as a `surface` line, named as an `emissive surface` line names them (see
+[Emissive surfaces](lighting.md#emissive-surfaces)): `RAC1_LIGHTS_TRACE=1` prints each one with its class and texture, e.g.
+
+```
+material surface 879 tex 13040 water    # Rilgar's harbour
+material surface 317 tex 12811 lava     # Gaspar's lava sea
+```
+
+Their normal is the face's (the seas are mostly flat: the ripples and the glint do the rest). No level ships such a line yet.
 
 ## Limits
 

@@ -227,6 +227,50 @@ layer least recently drawn with is reused. Some effects get new texture pixels e
 sand sea), so an atlas that only grew reached the GPU's limit after about half a minute there, and every
 effect then lost its texture ([issue #19](https://github.com/RAC-Native/rac1-native-game/issues/19)).
 
+### VU1 program 7's surfaces
+
+VU1 program 7 (`shadows_vu1.cpp`, uploaded by 0x1fc740) draws textured triangle strips: the level's baked shadow meshes
+(`shadows_draw` 0x1fca48), and from the draw lists' callbacks the levels' water, lava and sand seas (Novalis, Rilgar, Umbris, Hoven,
+Pokitaru, Aridia's sand sea, Gaspar's lava sea, Blarg, Batalia, Kalebo, Drek's fleet...) and the nanotech orbs. Its start at 0xc
+projects a batch and kicks it; its start at 0xe first clips at the guard band each triangle that crosses it or the near plane and
+kicks it as a fan. These were the last projected 3D the GS replica drew (see the inventory below).
+
+The MRP draws them itself (`RAC1_MRP_SEAS`, on by default; `mrp_fx.cpp`, "program 7 surfaces"):
+
+- **The input, before the program.** The draw lists' callbacks (`draw_list_run`) and the shadow meshes note their chain ranges
+  (`mrp_fx_note_list`); the GS replica, walking the chain, sees each start of program 7 in those ranges before it runs
+  (`vu1::StartObserver`, `Gs::vu1_before`) and keeps the batch as the program finds it in VU1 memory: per vertex S T Q, RGBA and the
+  point, the program's constants (the screen and clip matrices, the screen offset, the Q numerator, the fog's clamp) and the GS
+  state its kick would have (`Gs::set_chain_vu7`, `gs::Vu7Batch`). The program still runs (the VU1's state and the GS registers as
+  before); its kicks are marked and not drawn. A primitive of type 9 keeps the batch's place in the primitives' order.
+- **Drawn in the world.** The batch's screen matrix is compared with the frame's 0x1fc740 matrix (with its x, y, z rows times its Q
+  numerator: a callback that scales the w row and the numerator together, for its own fog, Kerwan's class 994, projects the same):
+  the points are world points, drawn with the MRP's view-projection into its depth buffer, so the GL clips them. Nothing past the
+  4:3 frame is lost: no side test, no guard band, no full-span rule (those stay for the replica's path).
+- **As the GS drew them.** Texture, texture function, alpha test, blending and the GS's fog as the effects' shader (the atlas shared);
+  the fog per vertex as the program computes it (`clamp(w + vf30.w)`, its integer part), interpolated over the screen; the depth is
+  the GS's Z through the replica's depth map (`render_gs_depth`), linear on the screen as the GS's, so a surface meets the world as
+  in the original. The program's own decisions are taken from its kick: a triangle it clipped is drawn with the fans' GS state (their
+  GIF tag's PRIM, context 1 - a second pass in context 2 draws its clipped triangles with context 1's texture and blending), one past
+  the guard band's sides is not drawn, and one it kicked whole with a point behind the camera or past the GS's 12.4 coordinate range
+  is not drawn (the PS2 drew it torn across or off the screen).
+- **The modern lighting** (Lighting not Original): the sun's shadows (the surface's colour taken as 55 % sun, our choice), the point
+  lights per pixel, the emissive surfaces and the materials (Surface Detail) by texture: an `emissive surface` or `material surface`
+  line names the callback's moby class and the texture's GS block ([Emissive surfaces](lighting.md#emissive-surfaces),
+  [Materials](materials.md#the-levels-seas-and-pools)). OpenGL and Vulkan.
+
+**Checked** (headless, 4:3, Lighting Original, every level started directly and walked forward 480 frames, against
+`RAC1_MRP_SEAS=0`): the three reference images unchanged byte for byte; the levels with no surface in view identical; Gaspar and
+Rilgar differ where the far lava and water are fogged: the GS replica never applied the GS's fog (`RAC1_GS_FOG`, off), the MRP does,
+as the world and the effects. Against the replica with its fog on the mean difference is 0.0035 (Gaspar), 0.0046 (Rilgar) and at
+most 0.015 (Kalebo) per channel, a few dozen edge pixels. The game's state is identical (`RAC1_RAMHASH`, widened 32:9, on and off).
+
+**The inventory.** Measured with a temporary count of the projected 3D the GS replica would draw, by the chain range that kicked it
+(the draw-list callback), the VU1 program and its start, over every level (500 frames each). Before: everything else was already
+the MRP's, and program 7 was the only source left, from 1 to 1 600 triangles a frame (Gaspar's lava sea 1 700, Blarg 1 090, Batalia
+1 170 a frame; the shadow meshes on Veldin, Novalis and Aridia). After: none (0 projected primitives drawn by the replica on any
+level). The ship's flight (`flight_draw`) and the Vendor's screens were not covered by that run.
+
 ## Level of detail
 
 The original decides levels of detail and draw distances for a 4:3 PS2. Options > Graphics > Level of
@@ -282,7 +326,9 @@ Many of those callbacks test their cells with the game's point test (0x2002e0), 
 copies of the projection's tangents (0x16cd00..0x16cd2f), and the quad drawer (0x1fd228) rejects a
 quad past about twice the 4:3 frame's half width: the shadow blocks widen those too (keeping the
 guard band the game clips at). Before this, at 32:9 Gaspar's lava was still cut in the outer part of
-each side, and the effect quads (Rilgar's water quads, glows) were rejected there. The shadow-mesh
+each side, and the effect quads (Rilgar's water quads, glows) were rejected there. With the MRP drawing VU1 program 7's
+surfaces from their input ([above](#vu1-program-7s-surfaces)), what follows matters only for the GS replica's path
+(`RAC1_MRP_SEAS=0`, or the MRP off). The shadow-mesh
 program (VU1 program 7: the drop shadows, the prim lists of Aridia's sand sea and other surfaces)
 draws a triangle that crosses the guard band clipped, but first drops one lying wholly past a third
 of the guard band (4 / 3 of the 4:3 frame's half width), which a 32:9 view shows: in a widened view
@@ -376,7 +422,9 @@ switches they need `--debug-tools`, and the debug menu has the same choice.
 the GS's 4 MB memory, run VU1 programs where the chain starts them (ported programs registered by the
 hash of their code, see [Decisions](decisions.md#5-a-vu-interpreter-for-the-microprograms-not-yet-ported)),
 and draw the result with OpenGL. They draw the HUD, the help text and fonts, the menus, screen tints
-and flashes, fades, and any effect the MRP does not take. The 2D maps cleanly to the screen, so
+and flashes, fades, and any effect the MRP does not take. In play they no longer draw any projected 3D (see
+[VU1 program 7's surfaces](#vu1-program-7s-surfaces)): they still run the 3D's VU1 programs where the game's state or the GS's
+registers need it, and keep their output aside. The 2D maps cleanly to the screen, so
 emulating it is simple and exact. What the game draws into its own memory to use as a texture (the
 menus' pictures, such as the ship's planet menu's planet, made of three blended layers) goes into a
 render target that keeps the GS's alpha (0x80 = 1.0); its blending reads that alpha at the GS's scale.
@@ -441,8 +489,9 @@ integrated GPU, while the CPU side was 25 to 40 ms before the work above.
 
 ## Limits
 
-- The HUD, menus, and effects other than particles, glows, decals and sparkles still go through the
-  GS replica.
+- The HUD, menus and the 2D still go through the GS replica; the 3D effects and VU1 program 7's surfaces are the MRP's.
+- The level's baked shadow meshes are culled by the game against its 4:3 view (no widened shadow run for that pass): their parts
+  past the sides of a widened view are missing.
 - The mobys' flattened shadow meshes (a second, flattened model some classes have) are not drawn by
   the MRP (`mrp_moby_renderer.cpp`).
 - Drop shadows of mobys drawn only because of a higher level of detail are missing.

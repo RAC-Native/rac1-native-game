@@ -196,10 +196,15 @@ void draw_list_run(uint32_t count, uint32_t fns, uint32_t args) {
     for (int32_t i = 0; i < lw(count); ++i) {
         const uint32_t fn = lwu(fns + static_cast<uint32_t>(i) * 4);
         const bool layer = layers && screen_layer_fn(fn);
-        const uint32_t at = inventory || layer ? lwu(CUR) : 0;
+        const uint32_t at = lwu(CUR);  // (host: the callback's chain range: the MRP's program 7 surfaces, the notes below)
         if (inventory) mrp_fx_list_call(0, 0, 0);
         ovl_call_moby_fn(fn, lwu(args + static_cast<uint32_t>(i) * 4));
         if (inventory) mrp_fx_list_call(fn, at, lwu(CUR));
+        {  // (host: its VU1 program 7 batches drawn by the MRP, mrp_fx.h; the argument's class when it is a moby, for the emissive surfaces)
+            const uint32_t arg = lwu(args + static_cast<uint32_t>(i) * 4), m0 = lwu(OV(0x0015ffd8u)), m1 = lwu(OV(0x0015ffdcu));
+            const uint32_t cls = arg >= m0 && arg < m1 && m0 != 0 && ((arg - m0) & 0xff) == 0 ? lhu(arg + 0xa6) : 0;
+            mrp_fx_note_list(at, lwu(CUR), cls);
+        }
         if (layer) render_view_layer_note(at, lwu(CUR));  // (host)
     }
     mrp_lod_draw_list_widen(false);  // (host)

@@ -2994,8 +2994,12 @@ int main(int argc, char** argv) {
                 }
                 {  // the MRP's 3D effects: their producers' ranges run by the replica as before, their primitives kept for the MRP
                     std::vector<rac1::gs::Gs::FxRange> fr;
+                    std::vector<rac1::gs::Gs::Vu7Range> v7;  // (VU1 program 7's surfaces: their batches drawn by the MRP from their input)
                     const bool fx_active = chain_runs && !prev_chain && !menu_mode && !fade && !fd.vendor_pic && movie_pic == nullptr && ((!title && !fd.exiting) || fd.flight);
-                    if (mrp_fx_chain_ranges(fx_active, substituted, fr)) gs.set_chain_fx(std::move(fr), true);
+                    if (mrp_fx_chain_ranges(fx_active, substituted, fr, v7)) {
+                        gs.set_chain_fx(std::move(fr), true);
+                        if (!v7.empty()) gs.set_chain_vu7(std::move(v7), kMrpVu7Hash, kMrpFxVu7);
+                    }
                 }
                 // the full-screen 2D layers the last update drew (render_view_layer_note: the Visibomb's static), stretched across a
                 // widened view; not on a chain walked again (a fade's: the frame before's) or the menu's

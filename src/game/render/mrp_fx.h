@@ -47,7 +47,15 @@ extern bool g_mrp_fx;
 //    corners offset on the screen at the centre's Z;
 //  - kMrpFxPrimList: the prim lists 0x1fde98 (the nanotech orbs' mesh) on VU1 program 7: the matrix the last 0x1fc740 put in the
 //    chain (0x166cc0 x the world-to-camera x 1024, its Z bias), its screen offset and Q numerator.
-enum : uint8_t { kMrpFxParticles = 1, kMrpFxQuad = 2, kMrpFxSparkles = 3, kMrpFxPrimList = 4, kMrpFxKinds = 5 };
+//  - kMrpFxVu7: VU1 program 7's batches inside the draw lists' callbacks (the levels' water, lava and sand-sea surfaces, the prim
+//    lists above): not their kicks - the GS replica keeps each batch as the program found it, before its transform and its clipping
+//    at the guard band (gs::Gs::set_chain_vu7) - but their input points, drawn in the world (g_mrp_seas).
+enum : uint8_t { kMrpFxParticles = 1, kMrpFxQuad = 2, kMrpFxSparkles = 3, kMrpFxPrimList = 4, kMrpFxVu7 = 5, kMrpFxKinds = 6 };
+// The switch (RAC1_MRP_SEAS=0/1, default on): VU1 program 7's surfaces drawn by the MRP from their input (kMrpFxVu7). Off: as before
+// (the replica runs them, the prim lists' kicks taken back to the world, the rest drawn by the replica)
+extern bool g_mrp_seas;
+// orig: (host) the hash of VU1 program 7's code (shadows_vu1.cpp's registration)
+constexpr uint64_t kMrpVu7Hash = 0x3dc739c28ad6ece5ull;
 
 // orig: (host) at render_frame's start: the last update's notes forgotten
 void mrp_fx_frame_begin();
@@ -76,6 +84,9 @@ private:
     bool on_;
     uint32_t pending_vin_ = 0, pending_vn_ = 0;  // (the vertex check's input)
 };
+// orig: (host) a draw list's callback wrote [first, end) of the chain in the update running now (the real block or a shadow's): its
+// VU1 program 7 batches are the MRP's (kMrpFxVu7); `cls` the moby class of its argument (0: not a moby), the emissive surfaces' key
+void mrp_fx_note_list(uint32_t first, uint32_t end, uint32_t cls);
 // orig: (host) testing (RAC1_MRP_FX_INVENTORY=1): a draw list's callback `fn` wrote [first, end) of the chain; what no producer's note
 // covers is counted per callback (the report: the effects still on the GS replica)
 void mrp_fx_list_call(uint32_t fn, uint32_t first, uint32_t end);
@@ -92,7 +103,8 @@ bool mrp_fx_particles_widen_needed(float widen);
 // chain about to be walked (`subs`: the shadow blocks whose chains are walked in place of the real blocks, mrp_lod_shadow_slot's slots,
 // in the order given to gs::Gs::add_chain_substitute) and the projections the producers used, kept for the drawing. `active`: a frame
 // whose world the MRP draws. Returns false when the replica draws the effects itself this frame.
-bool mrp_fx_chain_ranges(bool active, const std::vector<int>& subs, std::vector<gs::Gs::FxRange>& ranges);
+// `vu7`: the draw lists' ranges whose VU1 program 7 batches the MRP draws (gs::Gs::set_chain_vu7), in the same order.
+bool mrp_fx_chain_ranges(bool active, const std::vector<int>& subs, std::vector<gs::Gs::FxRange>& ranges, std::vector<gs::Gs::Vu7Range>& vu7);
 // orig: (host) the frame's primitives drawn in their order (the GS replica's chain joined): the runs of the MRP's (fx) by the MRP, the
 // runs between them by `gs_draw(from, to)` (the GS replica's gs::draw over those primitives); into the bound framebuffer, viewport `vp`
 // (`from` / `to`: only the primitives [from, to): the ones before the moby pass go under the MRP's mobys, Gs::moby_mark)
