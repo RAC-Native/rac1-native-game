@@ -4,3 +4,15 @@
 # the sun saw it, 47 % at 50 degrees. Our choice (docs/lighting.md, "The level's own sun").
 # Eudora: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
 sun 24.0 76.2
+# Anya-Thoughtmane's second lighting pass (#102): the vendor and the level's lamps glow.
+emissive moby 1134 tex 1  2.77 0.49
+emissive shrub 71 tex 0  3.00 0.00
+emissive shrub 71 tex 2  1.91 0.00
+emissive shrub 71 tex 3  1.91 0.00
+emissive tie 292 tex 0  1.74 0.00
+emissive tie 264 tex 2  2.41 0.00
+emissive shrub 108 tex 4  2.19 0.00
+emissive shrub 108 tex 3  2.53 0.00
+emissive shrub 75 tex 7  2.53 0.00
+emissive shrub 316 tex 9  2.29 0.00
+emissive shrub 316 tex 10  2.36 0.00

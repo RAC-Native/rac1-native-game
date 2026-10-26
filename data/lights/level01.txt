@@ -48,3 +48,11 @@ emissive shrub 282 tex 0  1.30 0.00
 emissive shrub 281 tex 0  1.30 0.00
 # The ship's lamps (moby 666 tex 0, the hull's texture: only its brightest texels, the round orange lamps and the blue pair, reach 0.95).
 emissive moby 666 tex 0  1.30 0.95
+# Anya-Thoughtmane's second lighting pass (#102): lamps placed by hand (orange, one red), the bolts and the vendor's glowing parts.
+light 96.359 235.602 60.469  1.000 0.544 0.148  3.000 8.923 0.000 1
+light 51.647 223.546 62.169  1.000 0.544 0.148  3.000 16.083 0.000 1
+light 54.197 178.927 77.493  1.000 0.000 0.000  3.000 8.923 0.000 1
+light 115.890 199.388 54.395  1.000 0.544 0.148  3.000 16.083 0.000 1
+emissive moby 11 tex 0  2.46 0.16
+emissive moby 1134 tex 0  3.02 0.44
+emissive moby 1134 tex 1  1.86 0.41
