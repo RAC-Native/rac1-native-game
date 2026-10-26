@@ -6,7 +6,8 @@ sun_rays off
 emit moby 1060  0.561 0.806 -0.162  1.000 0.225 0.225  1.967 10.456 0.000  0.00
 emit moby 803  0.497 1.289 0.155  1.000 0.954 0.346  1.630 10.193 0.000  0.00
 emit moby 758  0.000 0.000 0.000  0.182 1.000 0.299  1.000 8.000 0.000  0.00
-emit shrub 283  -5.702 -0.351 5.559  0.570 0.570 0.570  0.433 8.000 0.000  0.00
+# (shrub 283's point light, 382 instances, took the whole point-light budget near the flooded rooms: left out to try,
+# its emissive below keeps the glow. Anya-Thoughtmane's line was: emit shrub 283  -5.702 -0.351 5.559  0.570 0.570 0.570  0.433 8.000 0.000)
 emit moby 1134  0.049 -0.123 -0.090  1.000 0.966 0.230  1.000 8.000 0.000  0.00
 emit tie 907  0.000 0.000 -0.800  0.968 1.000 0.036  1.000 10.666 0.000  0.00
 emit moby 1511  -0.037 -0.067 1.793  0.127 0.824 1.000  1.000 8.000 0.000  0.00
