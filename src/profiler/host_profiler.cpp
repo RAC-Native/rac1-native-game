@@ -39,6 +39,8 @@ const StageInfo kStages[kStageCount] = {
     {"Host: LOD / wide view moby re-run", false, false, rgb(140, 100, 240), true},
     {"Host: LOD / wide view other re-runs", false, false, rgb(170, 140, 250), true},
     {"Audio step (IOP mirror)", false, false, rgb(150, 110, 220)},
+    {"Wait: game thread", true, false, rgb(120, 170, 230)},
+    {"Game thread: wait for the draw", true, false, rgb(100, 100, 160)},
     {"Prepare", false, false, rgb(70, 180, 190)},
     {"GS chain capture / scene start", false, true, rgb(40, 150, 160)},
     {"Wait: scene capture", true, false, rgb(200, 200, 90)},
@@ -64,7 +66,7 @@ const StageInfo kStages[kStageCount] = {
     {"Wait: frame cap", true, false, rgb(70, 70, 70)},
     {"Present (swap, v-sync)", true, true, rgb(230, 60, 60)},
 };
-const char* const kWorkerNames[kWorkerCount] = {"GS chain worker", "MRP scene worker", "Job workers (summed)"};
+const char* const kWorkerNames[kWorkerCount] = {"GS chain worker", "MRP scene worker", "Job workers (summed)", "Game thread"};
 constexpr int kJobTrack = 10;  // (a trace's track of the job pool's worker k: kJobTrack + k)
 
 double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
@@ -119,6 +121,11 @@ struct State {
     std::vector<ZoneRec> zones;
     int stack[64] = {};
     int depth = 0;
+    // the game thread's zones (game_thread_attach), their stages' self times; indices from kGameZone0
+    double gcpu[kStageCount] = {};
+    std::vector<ZoneRec> gzones;
+    int gstack[64] = {};
+    int gdepth = 0;
     bool gl_ready = false;
     Slot slots[kSlots];
     int cur = -1;
@@ -150,6 +157,8 @@ std::atomic<bool> g_trace_on{false};
 std::vector<TraceEv> g_worker_trace;
 std::unordered_map<uint64_t, std::string> g_thread_names;
 thread_local bool t_main = false;
+thread_local bool t_game = false;
+constexpr int kGameZone0 = 1 << 20;  // (a game thread zone's index: kGameZone0 + its place in State::gzones)
 
 std::mutex g_gl_mutex;
 std::map<std::pair<int, unsigned>, const char*> g_gl_owner;
@@ -427,6 +436,17 @@ uint32_t g_zone_gen = 0;
 
 int zone_begin(Stage st) {
     State& s = S();
+    if (t_game) {  // (the game thread's own stack; its stages are the CPU's only)
+        if (!s.rec || s.gdepth >= 64) return -1;
+        ZoneRec z;
+        z.stage = static_cast<int16_t>(st);
+        z.parent = static_cast<int16_t>(s.gdepth > 0 ? s.gstack[s.gdepth - 1] : -1);
+        z.t0 = now_ms();
+        const int idx = static_cast<int>(s.gzones.size());
+        s.gzones.push_back(z);
+        s.gstack[s.gdepth++] = idx;
+        return kGameZone0 + idx;
+    }
     if (!t_main || !s.rec || s.depth >= 64) return -1;
     ZoneRec z;
     z.stage = static_cast<int16_t>(st);
@@ -441,7 +461,26 @@ int zone_begin(Stage st) {
 
 void zone_end(int idx) {
     State& s = S();
-    if (idx >= static_cast<int>(s.zones.size())) return;  // (a frame_mark inside the zone: it belongs to no frame now)
+    if (idx >= kGameZone0) {
+        const int gi = idx - kGameZone0;
+        if (!t_game || gi >= static_cast<int>(s.gzones.size())) return;
+        ZoneRec& z = s.gzones[static_cast<size_t>(gi)];
+        z.t1 = now_ms();
+        const double incl = z.t1 - z.t0;
+        s.gcpu[z.stage] += incl;
+        if (z.parent >= 0) s.gcpu[s.gzones[static_cast<size_t>(z.parent)].stage] -= incl;
+        for (int d = s.gdepth - 1; d >= 0; --d)
+            if (s.gstack[d] == gi) {
+                s.gdepth = d;
+                break;
+            }
+        if (s.trace_frame) {
+            std::lock_guard<std::mutex> lk(g_jobs_mutex);
+            g_worker_trace.push_back({kStages[z.stage].name, 2 + kWorkerGame, z.t0, incl});
+        }
+        return;
+    }
+    if (!t_main || idx >= static_cast<int>(s.zones.size())) return;  // (a main thread's zone ended on the game thread: left)  // (a frame_mark inside the zone: it belongs to no frame now)
     ZoneRec& z = s.zones[static_cast<size_t>(idx)];
     z.t1 = now_ms();
     const double incl = z.t1 - z.t0;
@@ -478,6 +517,8 @@ void job_end(int w, double t0, double c0, int lane) {
 
 const StageInfo& stage_info(int s) { return kStages[std::clamp(s, 0, kStageCount - 1)]; }
 const char* worker_name(int w) { return kWorkerNames[std::clamp(w, 0, kWorkerCount - 1)]; }
+
+void game_thread_attach() { t_game = true; }
 
 void thread_name(const char* name) {
     std::lock_guard<std::mutex> lk(g_jobs_mutex);
@@ -517,6 +558,9 @@ void frame_mark() {
             sum += r.cpu[i];
         }
         r.cpu_other = std::max(0.0, r.period - sum);
+        // (the game thread's stages: its update beside the main thread's drawing - counted in the stages, not in the main
+        // thread's frame; its busy time in worker_busy[kWorkerGame])
+        for (int i = 0; i < kStageCount; ++i) r.cpu[i] += std::max(0.0, s.gcpu[i]);
         r.main_cpu = platform::thread_cpu_ms() - s.main_cpu0;
         for (int w = 0; w < kWorkerCount; ++w) {
             r.worker_busy[w] = static_cast<double>(g_wbusy_us[w].exchange(0)) * 1e-3;
@@ -533,6 +577,9 @@ void frame_mark() {
         if (s.cur < 0 && s.csv != nullptr) csv_row(s.csv, r);
         s.zones.clear();
         s.depth = 0;
+        s.gzones.clear();
+        s.gdepth = 0;
+        std::fill(std::begin(s.gcpu), std::end(s.gcpu), 0.0);
         s.rec = false;
         ++detail::g_zone_gen;
     }
@@ -582,6 +629,9 @@ void frame_mark() {
     std::fill(std::begin(s.cpu), std::end(s.cpu), 0.0);
     s.zones.clear();
     s.depth = 0;
+    std::fill(std::begin(s.gcpu), std::end(s.gcpu), 0.0);
+    s.gzones.clear();
+    s.gdepth = 0;
     ++detail::g_zone_gen;
     // the profiler's own work in a stage of its own: the GPU's results read back (with Mesa's GL thread, a query's
     // result is a sync with it: the driver's back-pressure, met there instead of at the next GL call that syncs), the
@@ -689,7 +739,8 @@ Summary summarize(int frames) {
     m.game_code = 0;
     for (int i = 0; i < kStageCount; ++i)
         if (kStages[i].game) m.game_code += m.cpu[i];
-    m.host_work = std::max(0.0, m.main_work - m.game_code);
+    // (the game thread's game code is not the main thread's work)
+    m.host_work = m.worker_busy[kWorkerGame] > 0.0 ? m.main_work : std::max(0.0, m.main_work - m.game_code);
     if (S().res.gpu_busy_pct >= 0) m.gpu_kernel = S().res.gpu_busy_pct * 0.01 * m.period_avg;
     // the bottleneck: what the frame waits on. The GPU's load: the kernel's account where there is one (the timestamps'
     // can hold the GPU's waits inside a stage: an upload, a sync)
@@ -708,6 +759,10 @@ Summary summarize(int frames) {
     } else if (chain_wait >= 0.15 * P) {
         m.bound = Bound::ChainWorker;
         std::snprintf(t, sizeof t, "Bound by the GS chain worker: the main thread waits %.2f ms a frame for it (%.2f ms busy)", chain_wait, m.worker_busy[kWorkerChain]);
+    } else if (m.cpu[kGameThreadWait] >= 0.15 * P) {
+        m.bound = Bound::GameThread;
+        std::snprintf(t, sizeof t, "Bound by the game thread: the main thread waits %.2f ms a frame for the game's update (%.2f ms busy)", m.cpu[kGameThreadWait],
+                      m.worker_busy[kWorkerGame]);
     } else if (m.main_work >= 0.85 * P) {
         m.bound = Bound::MainThread;
         std::snprintf(t, sizeof t, "CPU-bound on the main thread: %.2f of %.2f ms is its own work (game code %.2f, host %.2f)", m.main_work, P, m.game_code, m.host_work);

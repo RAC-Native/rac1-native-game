@@ -1,5 +1,6 @@
 #include <game/lib/libgraph.h>
 
+#include <runtime/ee/game_thread.h>
 #include <runtime/gs/gs_emu.h>
 #include <runtime/kernel/ee_memory.h>
 
@@ -45,6 +46,7 @@ int32_t gs_set_def_load_image(uint32_t lp, int32_t dbp, int32_t dbw, int32_t dps
 
 // orig: 0x00122658
 int32_t gs_exec_load_image(uint32_t lp, uint32_t src) {
+    game_thread::wait_draw();  // orig: (host) the GS replica's memory is the drawing's until it is over (the game thread)
     gs::chain_join();  // orig: (host) the GS replica's chain run on its worker thread ended first
     gs::Gs& g = gs::gs_global();
     g.gif(static_cast<const uint8_t*>(ee_ram_ptr(lp)), 6);
@@ -93,6 +95,7 @@ int32_t gs_set_def_store_image(uint32_t lp, int32_t dbp, int32_t dbw, int32_t dp
 
 // orig: (host) stands in for 0x001227d8
 int32_t gs_exec_store_image(uint32_t lp, uint32_t dst) {
+    game_thread::wait_draw();  // orig: (host) the GS replica's memory is the drawing's until it is over (the game thread)
     gs::chain_join();  // orig: (host) the GS replica's chain run on its worker thread ended first
     gs::Gs& g = gs::gs_global();
     const uint64_t bb = ee_read<uint64_t>(lp + 0x20), pos = ee_read<uint64_t>(lp + 0x30), rg = ee_read<uint64_t>(lp + 0x40);

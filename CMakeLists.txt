@@ -148,6 +148,7 @@ else()
 endif()
 
 add_library(rac1_runtime STATIC
+    runtime/kernel/ee_copy.cpp
     runtime/kernel/ee_memory.cpp
     runtime/kernel/disc.cpp
     runtime/kernel/bootstrap.cpp
@@ -155,6 +156,7 @@ add_library(rac1_runtime STATIC
     runtime/vu/vu_interpreter.cpp
     runtime/ee/ee_interpreter.cpp
     runtime/ee/ee_thread.cpp
+    runtime/ee/game_thread.cpp
     runtime/ee/ee_timer.cpp
     runtime/vu/vif_unpack.cpp
     runtime/vu/vu_xgkick.cpp

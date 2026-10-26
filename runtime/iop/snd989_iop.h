@@ -19,6 +19,9 @@
 namespace rac1 {
 
 void snd989_iop_start();  // the servers registered with the SIF RPC layer
+// The calling thread runs the game's IOP (the main thread; the game thread, runtime/ee/game_thread.h): its sound's random
+// numbers are the game's one sequence, whatever thread runs a game frame (the mirror's thread keeps its own).
+void snd989_rand_use_game();
 void snd989_iop_stop();   // every sound stopped and bank unloaded
 // The game's IOP's output (stereo, 48 kHz, 16 bit), `frames` frames; silence before the start. `multi` (host): also the
 // output on 5.1 / 7.1 speakers (`channels` 6 / 8 per frame, the WAVE order FL FR FC LFE, then SL SR / BL BR SL SR; the
