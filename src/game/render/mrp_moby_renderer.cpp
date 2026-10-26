@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -47,6 +48,14 @@ int g_mrp_moby_projection = 0;
 bool g_mrp_moby_keep_scissor = false;
 int g_mrp_moby_mip = 0;
 int g_mrp_moby_fog = 1;
+// The debug menu's free hoverboard (src/_devtools/dev_hoverboard.cpp; declared there, not in a header: the generated code is
+// fingerprinted with the headers of src/game, and a debug tool must not ask for ./setup.sh again): another level's class
+// drawn on the hero's feet. `g_mrp_guest_class`: level * 10000 + o_class to load beside the level's own (-1 none; loaded at
+// the next frame, with its textures added to the level's); `g_mrp_guest_on`: drawn this frame; `g_mrp_guest_lift`: its
+// origin above the hero's along his up axis.
+std::atomic<int> g_mrp_guest_class{-1};
+std::atomic<bool> g_mrp_guest_on{false};
+std::atomic<float> g_mrp_guest_lift{0.0f};
 
 namespace {
 
@@ -158,6 +167,11 @@ struct Level {
     int armor_file = -1;        // the armor file whose classes the hero has (the last matched)
     int build_armor_file = -1;  // the class being built's
     std::map<int, std::unique_ptr<mrp::MobyClass>> files;  // o_class -> asset (not yet on the GPU)
+    // the free hoverboard's class (g_mrp_guest_class): its asset, its textures renumbered into this level's (after the
+    // armors'), its GPU data built at its first draw (again after the level's vertex data is dropped)
+    std::unique_ptr<mrp::MobyClass> guest;
+    std::unique_ptr<ClassGpu> guest_gpu;
+    int guest_key = -1;  // the g_mrp_guest_class loaded (or tried)
     // the class header in EE memory and the moby's class id (+0xa6) -> GPU data (the weapons share one header, the class
     // table naming it under each weapon's id: the header alone named the last of them)
     std::unordered_map<uint64_t, std::unique_ptr<ClassGpu>> by_ptr;
@@ -539,6 +553,34 @@ std::unique_ptr<ClassGpu> build_class(std::unique_ptr<mrp::MobyClass> asset, uin
 
 // ---- level loading -----------------------------------------------------------------------------
 
+// orig: (host) the free hoverboard's class (Level::guest): the textures its prims name, read from its own level's
+// textures.mrpt, appended to this level's and the prims renumbered to them
+void guest_textures(Level& L) {
+    std::vector<mrp::Texture> theirs;
+    const int lvl = L.guest->level >= 0 ? L.guest->level : L.guest_key / 10000;
+    if (!mrp::read_textures(asset_root() + "/" + mrpw::level_dir_name(lvl) + "/textures.mrpt", theirs)) {
+        L.guest.reset();
+        return;
+    }
+    std::map<int, int> remap;
+    for (mrp::Packet& p : L.guest->packets)
+        for (mrp::TexturePrim& t : p.textures) {
+            if (t.texture < 0) continue;
+            auto it = remap.find(t.texture);
+            if (it == remap.end()) {
+                if (static_cast<size_t>(t.texture) >= theirs.size()) {
+                    t.gs_known = false;  // (none: drawn white)
+                    continue;
+                }
+                mrp::Texture c = theirs[static_cast<size_t>(t.texture)];
+                c.index = static_cast<uint32_t>(L.textures.size());
+                it = remap.emplace(t.texture, static_cast<int>(L.textures.size())).first;
+                L.textures.push_back(std::move(c));
+            }
+            t.texture = it->second;
+        }
+}
+
 // orig: (host) the level's moby textures (textures.mrpt) decoded to RGBA (palette[CSM1 index], the GS's
 // 0..0x80 alpha kept) into one texture array per size, every mip
 void load_textures(Level& L) {
@@ -575,6 +617,7 @@ void load_textures(Level& L) {
             L.textures.push_back(std::move(t));
         }
     }
+    if (L.guest != nullptr) guest_textures(L);
     L.tex_bucket.assign(L.textures.size(), -1);
     L.tex_layer.assign(L.textures.size(), 0);
     std::map<std::pair<uint32_t, uint32_t>, int> by_size;
@@ -680,6 +723,13 @@ void load_level(int id) {
                 L.armor_s.push_back(stem.find('_') != std::string::npos ? std::atoi(stem.c_str() + stem.find('_') + 1) : 0);
             }
         }
+    L.guest_key = g_mrp_guest_class.load();
+    if (L.guest_key >= 0 && L.guest_key / 10000 != id) {  // (the free hoverboard's class, from its own level's assets)
+        auto c = std::make_unique<mrp::MobyClass>();
+        const std::string path = asset_root() + "/" + mrpw::level_dir_name(L.guest_key / 10000) + "/" + std::to_string(L.guest_key % 10000) + ".mrpm";
+        if (mrp::read_class(path, *c) && !c->packets.empty()) L.guest = std::move(c);
+        else std::fprintf(stderr, "[mrp] no guest class %s\n", path.c_str());
+    }
     load_textures(L);
     if (vk::is_active()) {
         L.vk_loaded = true;
@@ -1618,6 +1668,17 @@ bool world_of_rows(const ViewInverse& v, const MrpMat4& r, glm::dmat4& out) {
     }
     return true;
 }
+// orig: (host) world_of_rows the other way: the rows the draw loop would send for a world matrix (the free hoverboard's)
+void rows_of_world(const MrpFrame& f, const glm::dmat4& W, MrpMat4& r) {
+    glm::dmat4 A;
+    const MrpVec4* vr[4] = {&f.view_rows[0], &f.view_rows[1], &f.view_rows[2], &f.view_trans};
+    for (int i = 0; i < 4; ++i) A[i] = glm::dvec4(vr[i]->x, vr[i]->y, vr[i]->z, vr[i]->w);
+    const glm::dvec3 cam(f.cam_pos.x, f.cam_pos.y, f.cam_pos.z);
+    for (int i = 0; i < 4; ++i) {
+        const glm::dvec4 p = A * glm::dvec4((glm::dvec3(W[i]) - cam * W[i].w) * 1024.0, W[i].w);
+        r.r[i] = MrpVec4{static_cast<float>(p.x), static_cast<float>(p.y), static_cast<float>(p.z), static_cast<float>(p.w)};
+    }
+}
 
 }  // namespace
 
@@ -1648,7 +1709,9 @@ void mrp_moby_begin_frame(bool title, bool menu_mode, bool title_menu) {
         if (!init_gl()) return;
     }
     const int id = moby_level_id();
-    if (g_level.id != id || (vk::is_active() && !g_level.vk_loaded) || (!vk::is_active() && !g_level.gl_loaded)) load_level(id);
+    const int guest = g_mrp_guest_class.load();  // (the free hoverboard's class asked for after the level's load: loaded again with it)
+    const bool guest_new = guest >= 0 && guest != g_level.guest_key && guest / 10000 != id;
+    if (g_level.id != id || (vk::is_active() && !g_level.vk_loaded) || (!vk::is_active() && !g_level.gl_loaded) || guest_new) load_level(id);
     // the level's loaded classes (0x197300 / 0x197a00, count 0x15ffc0): a new set (the level entered
     // again, a class loaded) forgets the classes resolved by header address
     uint64_t h = 1469598103934665603ull;
@@ -1663,6 +1726,7 @@ void mrp_moby_begin_frame(bool title, bool menu_mode, bool title_menu) {
         g_level.table_hash = h;
         g_level.by_ptr.clear();
         g_level.miss.clear();
+        g_level.guest_gpu.reset();
         g_level.verts.clear();
         g_level.indices.clear();
         g_level.dirty = true;
@@ -1741,6 +1805,94 @@ void moby_emissive_refresh() {
                             mrp_moby_class_local_textures(list[i].o_class));
         }
     if (has_pv && pv.kind == 3) g_memis.slot[emis_key(pv.o_class, pv.tex)] = static_cast<uint8_t>(kEmissivePreviewSlot);
+}
+
+// orig: (host) the free hoverboard (g_mrp_guest_on, dev_hoverboard.cpp): the guest class (Level::guest) drawn on the hero as the
+// frame drew him: his world matrix (his first part's rows) with the class's own scale, lifted g_mrp_guest_lift along his up
+// axis, its joints at rest (as the game posed Kalebo III's board standing still), lit by the hero's lights; its near mesh's
+// packets drawn after the frame's mobys as one more moby
+void append_guest(Frame& F, const MrpFrame& f, const ViewInverse& vinv, const glm::dmat4& vp, bool turned, const glm::mat3& turn) {
+    Level& L = g_level;
+    if (L.guest == nullptr || F.menu || F.title) return;
+    const uint32_t hero = lwu(0x0013f350u + 0x2080u);
+    const MrpMoby* h = nullptr;
+    for (const MrpMoby& m : f.mobys)
+        if (m.moby == hero && !m.rt && !m.other_view && m.part_count > 0 && m.scale > 0.0f) {
+            h = &m;
+            break;
+        }
+    if (h == nullptr) return;
+    glm::dmat4 Wh(1.0);
+    if (!world_of_rows(vinv, f.parts[h->part_first].model_to_view, Wh)) return;
+    if (L.guest_gpu == nullptr) L.guest_gpu = build_class(std::make_unique<mrp::MobyClass>(*L.guest), 0);
+    ClassGpu* cg = L.guest_gpu.get();
+    const mrp::MobyClass& c = *cg->asset;
+    const double k = static_cast<double>(c.scale) / static_cast<double>(h->scale);
+    glm::dmat4 W = Wh;
+    for (int i = 0; i < 3; ++i) W[i] *= k;
+    const glm::dvec3 up = glm::length(glm::dvec3(Wh[2])) > 0.0 ? glm::normalize(glm::dvec3(Wh[2])) : glm::dvec3(0.0, 0.0, 1.0);
+    W[3] += glm::dvec4(up * static_cast<double>(g_mrp_guest_lift.load()), 0.0);
+    MrpPart part = f.parts[h->part_first];
+    rows_of_world(f, W, part.model_to_view);
+    PartPre pre;
+    part_pre(f, *h, cg, part, vinv, vp, turned, turn, pre);
+    const uint32_t jbase = static_cast<uint32_t>(F.joints_all.size());
+    const uint32_t nj = std::max<uint32_t>(1, c.joint_count);
+    MrpMat4 rest;
+    rest.r[0] = {1, 0, 0, 0};
+    rest.r[1] = {0, 1, 0, 0};
+    rest.r[2] = {0, 0, 1, 0};
+    rest.r[3] = {0, 0, 0.333f, 1};  // (Kalebo III's board standing: every joint the identity, raised 0.333)
+    F.joints_all.insert(F.joints_all.end(), nj, rest);
+    PrimInfo cur_tex;
+    cur_tex.word = 1;
+    for (size_t pk = 0; pk < c.packets.size() && pk < cg->packets.size(); ++pk) {
+        if (c.packets[pk].lod != 0) continue;
+        const PacketGpu& pg = cg->packets[pk];
+        PartGpu P{};
+        for (int r = 0; r < 4; ++r) {
+            P.rows[r * 4 + 0] = part.model_to_view.r[r].x;
+            P.rows[r * 4 + 1] = part.model_to_view.r[r].y;
+            P.rows[r * 4 + 2] = part.model_to_view.r[r].z;
+            P.rows[r * 4 + 3] = part.model_to_view.r[r].w;
+        }
+        std::memcpy(P.clip, pre.clip, sizeof P.clip);
+        std::memcpy(P.light, pre.light, sizeof P.light);
+        P.info[0] = static_cast<int32_t>(jbase);
+        P.info[1] = static_cast<int32_t>(nj);
+        P.info[2] = 0;
+        P.info[3] = part.mscal == 0x00a ? 1 : 0;
+        const uint32_t part_index = static_cast<uint32_t>(F.parts.size());
+        F.parts.push_back(P);
+        F.part_pos.push_back(pre.pos);
+        F.part_rad.push_back(pre.rad);
+        F.part_own.push_back(0);
+        for (const Run& run : pg.runs) {
+            PrimInfo pi = cur_tex;
+            if (run.prim >= 0 && static_cast<size_t>(run.prim) < pg.prims.size()) pi = pg.prims[static_cast<size_t>(run.prim)];
+            const uint32_t ci = static_cast<uint32_t>(F.cmds.size() / 4);
+            F.cmds.insert(F.cmds.end(), {part_index, pi.word, pi.layer, 0u});
+            Key key;
+            key.bucket = pi.bucket;
+            key.sampler = pi.sampler;
+            key.prim = F.prim;
+            key.test = F.env_test;
+            key.alpha = F.env_alpha;
+            key.zbuf = F.env_zbuf;
+            Batch* b = F.batches.empty() ? nullptr : &F.batches.back();
+            if (b != nullptr && (pi.word & 1) != 0) {
+                key.bucket = b->key.bucket;
+                key.sampler = b->key.sampler;
+            }
+            if (b == nullptr || !(b->key == key)) {
+                F.batches.push_back(Batch{key, static_cast<uint32_t>(F.draws.size()), 0});
+                b = &F.batches.back();
+            }
+            F.draws.push_back(DrawCmd{run.count, 1, run.first_index, 0, ci});
+            ++b->count;
+        }
+        if (pg.last_prim >= 0 && static_cast<size_t>(pg.last_prim) < pg.prims.size()) cur_tex = pg.prims[static_cast<size_t>(pg.last_prim)];
+    }
 }
 
 void build_frame() {
@@ -2047,6 +2199,7 @@ void build_frame() {
                     if (sg.last_prim >= 0 && static_cast<size_t>(sg.last_prim) < sg.prims.size()) cur_tex = sg.prims[static_cast<size_t>(sg.last_prim)];
                 }
     }
+    if (g_mrp_guest_on.load()) append_guest(F, f, vinv, vp, turned, turn);
     if (!caching) return;
     // the cached mobys the frame did not draw: kept while the moby is alive, of its class and still (the moby's EE state now;
     // a slot reused or a moby moved drops its copy), drawn as casters within reach of the shadows

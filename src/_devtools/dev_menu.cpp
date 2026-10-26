@@ -3,6 +3,7 @@
 // changed by it. The EE addresses are the ones the ported code uses (src/game/ovl).
 
 #include "dev_menu.h"
+#include "dev_hoverboard.h"
 #include "dev_unlocks.h"
 #include "item_give_quiet.h"
 #include "dev_profiler.h"
@@ -501,21 +502,23 @@ void tab_player() {
         ImGui::TextDisabled("No hero moby yet.");
         return;
     }
-    {  // Hoverboard anywhere (dev_hoverboard_apply)
+    {  // Hoverboard anywhere (dev_hoverboard_apply; the other levels: dev_hoverboard.cpp)
         const bool level_ok = hoverboard_level();
-        const bool free_board = level_ok && hoverboard_find() != 0;
+        const bool race_board = level_ok && hoverboard_find() != 0;
         bool board = dev_hoverboard_on();
-        ImGui::BeginDisabled(!board && !free_board);
+        ImGui::BeginDisabled(!board && level_ok && !race_board);
         if (ImGui::Checkbox("Hoverboard anywhere", &board)) dev_hoverboard_set(board);
         ImGui::EndDisabled();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-            ImGui::SetTooltip("Gets on the hoverboard race's board where Ratchet stands, as the board itself does when he walks up\n"
-                              "to it, and off again when unticked. Only on Rilgar and Kalebo III: the other levels' hero code has no\n"
-                              "board state and their files no board. The race's own rules still hold: on Rilgar the board wipes out\n"
-                              "away from the race's track and puts him back on it; on Kalebo III anywhere above the water is fine.");
+            ImGui::SetTooltip("Gets Ratchet on a hoverboard where he stands, and off again when unticked.\n"
+                              "Rilgar and Kalebo III: the race's own board, as the board itself does when he walks up to it; the race's\n"
+                              "rules still hold (on Rilgar the board wipes out away from the track and puts him back on it).\n"
+                              "Every other level: a free board (Kalebo III's board and riding animations; the stick steers and speeds\n"
+                              "up, cross jumps). In the water, below the level or after a long fall he is put back on foot on the last\n"
+                              "solid ground; a hit, a cutscene or an attack also gets him off.");
         ImGui::SameLine();
-        if (!level_ok) ImGui::TextDisabled("(only on Rilgar and Kalebo III, the levels with the race's board)");
-        else if (!board && !free_board) ImGui::TextDisabled("(the level's board is in use)");
+        if (level_ok && !board && !race_board) ImGui::TextDisabled("(the level's board is in use)");
+        else if (!level_ok) ImGui::TextDisabled("(a free board: the stick steers, cross jumps)");
     }
     bool mv = g_move.on;
     if (ImGui::Checkbox("Move Ratchet (F2 / L3)", &mv)) hero_move_set(mv);
@@ -2182,12 +2185,19 @@ void dev_kill_apply() {
 // orig: (host)
 void dev_hoverboard_set(bool on) { g_board_pending = on ? 1 : 2; }
 // orig: (host)
-bool dev_hoverboard_on() { return g_board_on; }
+bool dev_hoverboard_on() { return g_board_on || dev_free_board_on(); }
 
 // orig: (host) the debug menu's Hoverboard anywhere, between game frames
 void dev_hoverboard_apply() {
     const int pending = g_board_pending;
     g_board_pending = 0;
+    dev_free_board_frame();  // (the other levels' free board, dev_hoverboard.cpp: its ride, or its end)
+    if (!hoverboard_level()) {
+        if (pending == 2) dev_free_board_stop();
+        if (pending == 1) dev_free_board_start();
+        g_board_on = false;
+        return;
+    }
     if (g_board_on && (r32(LEVEL) != g_board_level || !hoverboard_riding())) g_board_on = false;  // got off by itself / new level
     if (pending == 2) {
         if (g_board_on) hero_set_state(0, 1);

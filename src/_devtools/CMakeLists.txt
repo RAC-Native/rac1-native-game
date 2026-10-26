@@ -8,6 +8,7 @@ endif()
 
 add_library(rac1_devtools STATIC
     dev_menu.cpp
+    dev_hoverboard.cpp
     dev_profiler.cpp
     dev_unlocks.cpp
 )
