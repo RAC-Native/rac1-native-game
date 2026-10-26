@@ -248,6 +248,7 @@ The debug tools are for development and testing. They are off unless asked for w
 | The light editor | not available | the debug menu's Lights tab |
 | The Profiler (frame time, CPU and GPU per stage, threads, memory, exports) | not available | the debug menu's Profiler tab, and its overlay |
 | Giving and taking back items, goodies, weapons and ammo, gold bolts and gold weapons, skill points, cheats (unlocked and switched on), the Challenge Mode (the pause menu's Goodies), the planets on the ship's map; "Unlock everything" | not available | the debug menu's Unlocks tab |
+| Hoverboard anywhere (the race's hoverboard ridden away from the race; Rilgar and Kalebo III only) | not available | the debug menu's Player tab |
 | `--level N` | ignored, with a message | starts on level N |
 | `RAC1_*` testing variables | removed from the environment at start, with a message | honoured |
 

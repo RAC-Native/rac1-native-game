@@ -14,6 +14,8 @@
 #include <game/enhance/advanced.h>
 #include <game/ovl/level_change.h>
 #include <game/ovl/ovl.h>
+#include <game/ovl/variants_l16.h>
+#include <game/ovl/variants_l5.h>
 #include <game/port_stubs.h>
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_fx.h>
@@ -446,6 +448,33 @@ void tab_game() {
     ImGui::TextWrapped("Sounds playing and the renderer's caches are the host's, not in the snapshot.");
 }
 
+// --- Hoverboard anywhere (dev_hoverboard_apply: what it does) ---
+constexpr int BOARD_CLASS = 439;
+constexpr uint32_t BOARD_RIDDEN = P + 0x86c;  // the board the hero rides
+constexpr uint32_t LEVEL = 0x0015ed84;
+int g_board_pending = 0;     // 1 get on, 2 get off
+bool g_board_on = false;     // on the board because of the menu
+int32_t g_board_level = -1;  // the level it was asked on
+
+// orig: (host) the levels with the board (their own hero controllers ride it)
+bool hoverboard_level() { return on_rilgar() || on_kalebo(); }
+
+// orig: (host) the nearest standing board (class 439, state 0) of the level, 0 if none
+uint32_t hoverboard_find() {
+    uint32_t best = 0;
+    float best_d = 1e30f;
+    const Vec3 hp = rv(POS);
+    for_each_moby([&](uint32_t m) {
+        if (moby_class(m) != BOARD_CLASS || ee_read<uint8_t>(m + 0x20) != 0) return;
+        const float d = dist(rv(m + 0x10), hp);
+        if (d < best_d) best = m, best_d = d;
+    });
+    return best;
+}
+
+// orig: (host) whether the hero rides a board (his board sub-state)
+bool hoverboard_riding() { return ru(HERO_MOBY) != 0 && r32(P + 0x208c) == 0x16; }
+
 void tab_player() {
     DevSettings& s = g_settings;
     int hp = r32(HEALTH), hpmax = r32(HEALTH_MAX), bolts = r32(BOLTS);
@@ -469,6 +498,22 @@ void tab_player() {
     if (ru(HERO_MOBY) == 0) {
         ImGui::TextDisabled("No hero moby yet.");
         return;
+    }
+    {  // Hoverboard anywhere (dev_hoverboard_apply)
+        const bool level_ok = hoverboard_level();
+        const bool free_board = level_ok && hoverboard_find() != 0;
+        bool board = dev_hoverboard_on();
+        ImGui::BeginDisabled(!board && !free_board);
+        if (ImGui::Checkbox("Hoverboard anywhere", &board)) dev_hoverboard_set(board);
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("Gets on the hoverboard race's board where Ratchet stands, as the board itself does when he walks up\n"
+                              "to it, and off again when unticked. Only on Rilgar and Kalebo III: the other levels' hero code has no\n"
+                              "board state and their files no board. The race's own rules still hold: on Rilgar the board wipes out\n"
+                              "away from the race's track and puts him back on it; on Kalebo III anywhere above the water is fine.");
+        ImGui::SameLine();
+        if (!level_ok) ImGui::TextDisabled("(only on Rilgar and Kalebo III, the levels with the race's board)");
+        else if (!board && !free_board) ImGui::TextDisabled("(the level's board is in use)");
     }
     bool mv = g_move.on;
     if (ImGui::Checkbox("Move Ratchet (F2 / L3)", &mv)) hero_move_set(mv);
@@ -1733,9 +1778,63 @@ void dev_kill_apply() {
     hero_set_state(0x3d, 1);
 }
 
+// Hoverboard anywhere: the hoverboard of the races (Rilgar's, level 5, and Kalebo III's, 16) ridden anywhere on those levels.
+// The board is the class-439 moby (Rilgar's L5:0x002f87a8, Kalebo's L16:0x002c7788 update): standing, its state +0x20 is 0
+// and it waits for the hero within 5.5; then it hands itself to the hero (PLAYER+0x86c), puts him in his board state
+// 0x6b (sub-state 0x16, the levels' own hero controller rides it), keeps its spot (pvars +0x10, when pvars +0x50 is 0)
+// and goes to its riding state 1 (+0x30 0xff). Riding, it watches the hero: once his sub-state is not 0x16 any more it
+// goes back to its spot and to state 0. The menu does the same mount as the board's own update, with the nearest board
+// of the level, wherever the hero is: on Rilgar the board state's entry puts him on the race's start line (level 5's
+// own code), so his position and facing are put back afterwards. Leaving is the game's hero_set_state(0, 1), as the
+// race's own end does; the board then goes home by itself. Only those two levels: the other levels' hero controllers
+// have no board state (0x6b does nothing there) and their WADs no board.
+// Asked from the menu (or RAC1_HOVERBOARD_AT), done between game frames like the kill.
+
+// orig: (host)
+void dev_hoverboard_set(bool on) { g_board_pending = on ? 1 : 2; }
+// orig: (host)
+bool dev_hoverboard_on() { return g_board_on; }
+
+// orig: (host) the debug menu's Hoverboard anywhere, between game frames
+void dev_hoverboard_apply() {
+    const int pending = g_board_pending;
+    g_board_pending = 0;
+    if (g_board_on && (r32(LEVEL) != g_board_level || !hoverboard_riding())) g_board_on = false;  // got off by itself / new level
+    if (pending == 2) {
+        if (g_board_on) hero_set_state(0, 1);
+        g_board_on = false;
+        return;
+    }
+    if (pending != 1 || g_board_on) return;
+    if (!hoverboard_level() || ru(HERO_MOBY) == 0) return;
+    if (ee_read<uint8_t>(P + 0x20b1) != 0 || r32(HEALTH) <= 0) return;  // lost / dying
+    if (ee_read<uint8_t>(P + 0x20a4) != 0) return;                        // in another movement mode
+    const int32_t sub = r32(P + 0x208c);
+    if (sub == 0x14 || sub == 0x15 || sub == 0x16) return;  // dying / the board's own check (0x15, 0x16)
+    const uint32_t board = hoverboard_find();
+    if (board == 0) return;
+    const Vec3 pos = rv(POS);
+    const float yaw = rf(ROT + 8);
+    // the board's mount (its update's state 0 once the hero is near)
+    const uint32_t pv = ru(board + 0x78);
+    w32(BOARD_RIDDEN, static_cast<int32_t>(board));
+    hero_set_state(0x6b, 1);
+    if (ru(pv + 0x50) == 0)
+        for (uint32_t k = 0; k < 16; k += 4) w32(pv + 0x10 + k, r32(board + 0x10 + k));  // (its lq / sq)
+    ee_write<uint8_t>(board + 0x20, 1);
+    ee_write<uint8_t>(board + 0x30, 0xff);
+    if (dist(rv(POS), pos) > 0.01f) {  // (Rilgar's entry: the race's start line, facing along the track)
+        hero_teleport(pos, &yaw);
+        wf(P + 0x874, yaw);  // (the entry's heading the board's crash check compares with: +0x98 there)
+    }
+    g_board_on = hoverboard_riding();
+    g_board_level = r32(LEVEL);
+}
+
 void dev_menu_game_frame() {
     const DevSettings& s = g_settings;
     dev_kill_apply();
+    dev_hoverboard_apply();
     if (g_move.on) hero_teleport(g_move.pos, &g_move.yaw);
     if (s.god_mode && r32(HEALTH) > 0) w32(HEALTH, r32(HEALTH_MAX));
     if (s.infinite_bolts) w32(BOLTS, 9999999);

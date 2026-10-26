@@ -138,3 +138,25 @@ after giving loads back with them: every byte here is in the save: its game bloc
   as the pause menu's codes do, so the ship's map lists every planet; their arrival messages are taken back. Not undone.
 - **Unlock everything** / **Take everything back**: all of the above (the cheats unlocked, not switched on); taking back
   leaves the planets and the ammo.
+
+## Hoverboard anywhere (the Player tab)
+
+The hoverboard of the races ridden away from the race, on the two levels that have it: Rilgar (5) and Kalebo III (16).
+The board is the class-439 moby (its update: Rilgar's L5:0x002f87a8, Kalebo's L16:0x002c7788). Standing (+0x20 = 0) it waits
+for the hero within 5.5, then hands itself to him (`PLAYER+0x86c`), puts him in his board state 0x6b (sub-state 0x16; the
+levels' own hero controllers ride it), keeps its spot (pvars +0x10) and goes to its riding state 1. Ticking the box does that
+same mount with the level's nearest standing board, wherever Ratchet is; on Rilgar the board state's entry puts him on the
+race's start line, so his position and heading (+0x98, +0x874) are put back. Unticking is the game's `hero_set_state(0, 1)`,
+as the race's own end does; the board goes home by itself. Done between game frames (`dev_hoverboard_apply`); testing:
+`RAC1_HOVERBOARD_AT` (docs/env-vars.md).
+
+What the game's own board code still does, unchanged:
+- The race's HUD (lap, time, place) shows while riding.
+- Rilgar: the board is held to the race's track. Its crash checks (walls ahead, the heading against the track's, the height
+  under the nearest track point: level 5's own) wipe it out (state 0x6d) away from the track and put Ratchet back on it; below
+  61.4 (the water) it sinks (0x6e) and does the same. Tried: on the track anywhere along it (it starts where he stands), fine;
+  the streets by the water, the vendor's dock, the taxi stand and the Hoverboard Girl's terrace: back on the track at once.
+- Kalebo III: no track check; anywhere above 76 (the walkways, the courtyards, the Gadgetron buildings' level) is ridden; below
+  it the board falls (0x6e) and Ratchet comes back on a point of the track.
+- The other levels: not available (the box is greyed). Their hero controllers have no board state (0x6b does nothing there)
+  and their files no board moby; borrowing Rilgar's would mean running level 5's own code on another level's memory.

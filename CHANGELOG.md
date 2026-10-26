@@ -55,6 +55,10 @@ What changed in each release. Releases are source only: you build the game with 
 - A pipelined frame's modern lighting and ambient particles read the game's memory as it was when the frame was prepared (a
   copy), no longer the next update's.
 
+### Debug tools (`--debug-tools`)
+- Hoverboard anywhere (Player tab): on Rilgar and Kalebo III, gets Ratchet on the hoverboard race's board where he stands, as the board
+  itself does when he walks up to it, and off again when unticked. Testing: `RAC1_HOVERBOARD_AT`.
+
 ### Fixes
 - When the computer falls behind (or with V-Sync on a 75 Hz display) and a frame runs two or more of the game's
   frames, the frame after no longer reuses the undrawn frame's drawing data without what it needs: the game no
