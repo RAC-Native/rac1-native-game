@@ -1,19 +1,19 @@
-// Wii U smoke test: logs over UDP (Aroma, port 4405) and writes a file to the SD.
+// Wii U smoke test: logs over UDP (port 4405) and on the screen, and writes a file to the SD.
 // It returns to the Wii U Menu by itself after a few seconds (argv[1], default 5;
-// 0 = wait for HOME), so the console is always ready for the next wiiload.
+// 0 = wait for HOME), so the console is always ready for the next launch.
+//
+// The screen is WHB's log console: it keeps its buffers in MEM1 and gives the screen back
+// when ProcUI releases the foreground, which a hand-made OSScreen loop must also do or the
+// switch back to the menu never completes.
 #include <coreinit/core.h>
-#include <coreinit/time.h>
-#include <coreinit/memheap.h>
-#include <coreinit/memdefaultheap.h>
-#include <coreinit/screen.h>
-#include <coreinit/cache.h>
 #include <coreinit/thread.h>
+#include <coreinit/time.h>
 #include <sysapp/launch.h>
-#include <whb/proc.h>
 #include <whb/log.h>
-#include <whb/log_udp.h>
+#include <whb/log_console.h>
 #include <whb/log_module.h>
-#include <whb/log_cafe.h>
+#include <whb/log_udp.h>
+#include <whb/proc.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -27,21 +27,10 @@ int main(int argc, char **argv)
     // Aroma's LoggingModule may be missing: always broadcast on UDP 4405 too.
     WHBLogModuleInit();
     WHBLogUdpInit();
-    WHBLogCafeInit();
+    WHBLogConsoleInit();
 
     int autoExitSeconds = argc > 1 ? atoi(argv[1]) : 5;
     WHBLogPrintf("rac1-wiiu-hello: start, core %d, auto-exit %d s", OSGetCoreId(), autoExitSeconds);
-
-    // Draw something, otherwise the Wii U Menu's launch splash stays on screen.
-    OSScreenInit();
-    uint32_t tvSize = OSScreenGetBufferSizeEx(SCREEN_TV);
-    uint32_t drcSize = OSScreenGetBufferSizeEx(SCREEN_DRC);
-    void *tvBuf = MEMAllocFromDefaultHeapEx(tvSize, 0x100);
-    void *drcBuf = MEMAllocFromDefaultHeapEx(drcSize, 0x100);
-    OSScreenSetBufferEx(SCREEN_TV, tvBuf);
-    OSScreenSetBufferEx(SCREEN_DRC, drcBuf);
-    OSScreenEnableEx(SCREEN_TV, TRUE);
-    OSScreenEnableEx(SCREEN_DRC, TRUE);
 
     mkdir(OUT_DIR, 0777);
     FILE *f = fopen(OUT_FILE, "w");
@@ -56,51 +45,31 @@ int main(int argc, char **argv)
     } else {
         WHBLogPrintf("rac1-wiiu-hello: fopen failed for " OUT_FILE);
     }
-
     WHBLogPrintf("rac1-wiiu-hello: done");
+    if (autoExitSeconds > 0)
+        WHBLogPrintf("Back to the menu in %d s", autoExitSeconds);
+    else
+        WHBLogPrintf("Press HOME to exit");
+
     OSTime start = OSGetTime();
     int exitRequested = 0;
-    for (int frame = 0; WHBProcIsRunning(); frame++) {
-        if (exitRequested) {
-            // The foreground is being released: no more drawing, just let ProcUI finish.
-            OSSleepTicks(OSMillisecondsToTicks(16));
-            continue;
-        }
-        int elapsed = (int)OSTicksToSeconds(OSGetTime() - start);
-        if (autoExitSeconds > 0 && elapsed >= autoExitSeconds) {
+    int frame = 0;
+    while (WHBProcIsRunning()) {
+        if (!exitRequested && autoExitSeconds > 0 &&
+            OSTicksToSeconds(OSGetTime() - start) >= autoExitSeconds) {
             WHBLogPrintf("rac1-wiiu-hello: auto-exit after %d frames", frame);
             exitRequested = 1;
             SYSLaunchMenu();
-            continue;
         }
-        for (int s = 0; s < 2; s++) {
-            OSScreenID id = s ? SCREEN_DRC : SCREEN_TV;
-            OSScreenClearBufferEx(id, 0x10203000);
-            OSScreenPutFontEx(id, 0, 0, "rac1-native Wii U hello");
-            OSScreenPutFontEx(id, 0, 2, f ? "SD: wrote " OUT_FILE : "SD: fopen FAILED");
-            char line[64];
-            if (autoExitSeconds > 0)
-                snprintf(line, sizeof line, "Back to the menu in %d s", autoExitSeconds - elapsed);
-            else
-                snprintf(line, sizeof line, "Press HOME to exit");
-            OSScreenPutFontEx(id, 0, 4, line);
-            snprintf(line, sizeof line, "frame %d", frame);
-            OSScreenPutFontEx(id, 0, 6, line);
-        }
-        DCFlushRange(tvBuf, tvSize);
-        DCFlushRange(drcBuf, drcSize);
-        OSScreenFlipBuffersEx(SCREEN_TV);
-        OSScreenFlipBuffersEx(SCREEN_DRC);
+        WHBLogConsoleDraw();  // does nothing while the foreground is released
         OSSleepTicks(OSMillisecondsToTicks(16));
+        frame++;
     }
 
     WHBLogPrintf("rac1-wiiu-hello: exit");
-    OSScreenShutdown();
-    MEMFreeToDefaultHeap(tvBuf);
-    MEMFreeToDefaultHeap(drcBuf);
-    WHBLogCafeDeinit();
-    WHBLogModuleDeinit();
+    WHBLogConsoleFree();
     WHBLogUdpDeinit();
+    WHBLogModuleDeinit();
     WHBProcShutdown();
     return 0;
 }

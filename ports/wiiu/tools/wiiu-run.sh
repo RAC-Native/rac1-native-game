@@ -12,7 +12,7 @@
 #
 # Exit codes: 0 app ran and exited, 2 console not reachable, 3 upload failed,
 # 4 no exit line within the timeout (the console is probably hung: power-cycle it).
-# It never sends while it cannot reach wiiload, and never sends twice.
+# It never sends twice, and never opens a connection to wiiload's port other than the upload's.
 set -u
 
 app=${1:?usage: wiiu-run.sh app.rpx [args...]}
@@ -23,8 +23,10 @@ exit_re=${WIIU_EXIT_RE:-auto-exit|: exit}
 log=${WIIU_LOG:-${app%.*}.udp.log}
 wiiload=${DEVKITPRO:-/opt/devkitpro}/tools/bin/wiiload
 
-if ! nc -z -w3 "$ip" 4299 2>/dev/null; then
-    echo "wiiu-run: $ip:4299 not reachable (console off, or an app is in the way)" >&2
+# (no probe of port 4299: the plugin serves one connection at a time and would wait on the probe's for a file
+# that never comes, with the real upload queued behind it; FTP's port says whether the console is up)
+if ! timeout 5 bash -c "exec 3<>/dev/tcp/$ip/21" 2>/dev/null; then
+    echo "wiiu-run: $ip not reachable (console off?)" >&2
     exit 2
 fi
 

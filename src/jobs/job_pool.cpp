@@ -26,6 +26,14 @@ namespace {
 
 // The calling thread's float environment, carried to the workers: the rounding mode, and on x86 the whole MXCSR (its
 // flush-to-zero and denormals-are-zero bits are not in every C library's fenv_t)
+// (on 32-bit PowerPC, the whole FPSCR: its NI bit, the non-IEEE mode, is not in newlib's fenv)
+#if (defined(__PPC__) || defined(__powerpc__)) && !defined(__powerpc64__)
+struct FloatEnv {
+    double fpscr = 0.0;
+    void capture() { __asm__ volatile("mffs %0" : "=f"(fpscr)); }
+    void apply() const { __asm__ volatile("mtfsf 0xff, %0" : : "f"(fpscr)); }
+};
+#else
 struct FloatEnv {
     std::fenv_t env{};
 #ifdef RAC1_JOBS_MXCSR
@@ -44,6 +52,7 @@ struct FloatEnv {
 #endif
     }
 };
+#endif
 
 // A job's chunks are claimed through one 64-bit ticket: the job's number in the high half, the next chunk in the low. A
 // worker claims only chunks of the job it took (a compare-and-swap on the whole ticket), so a worker waking late, after its

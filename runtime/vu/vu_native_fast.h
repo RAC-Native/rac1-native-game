@@ -8,7 +8,11 @@
 
 #include <runtime/vu/vu_native.h>
 
+#if defined(__SSE2__) || defined(__x86_64__)
 #include <emmintrin.h>
+#else
+#include <runtime/vu/vu_simd_shim.h>  // (GCC vectors: the Wii U's PowerPC)
+#endif
 
 namespace rac1::vun {
 

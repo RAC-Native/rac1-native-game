@@ -4,7 +4,11 @@
 #define RAC1_GAME_OVL_VU0_REGS_H
 
 #include <game/ovl/vu0_macro.h>
+#if defined(__SSE2__) || defined(__x86_64__)
 #include <emmintrin.h>
+#else
+#include <runtime/vu/vu_simd_shim.h>  // (GCC vectors: the Wii U's PowerPC)
+#endif
 
 #include <concepts>
 

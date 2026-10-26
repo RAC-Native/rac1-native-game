@@ -68,12 +68,12 @@ if(WIN32)
     add_library(rac1_platform STATIC src/platform/platform_win32.cpp)
     target_link_libraries(rac1_platform PUBLIC winmm psapi)  # (timeBeginPeriod: the system timer's period; GetProcessMemoryInfo)
 else()
-    # The coroutine's context switch: by hand on x86-64 and AArch64 (each .S assembles to nothing on other
+    # The coroutine's context switch: by hand on x86-64, AArch64 and 32-bit PowerPC (each .S assembles to nothing on other
     # architectures), ucontext elsewhere (src/platform/ctx_switch.h). RAC1_UCONTEXT=ON compiles only the ucontext
     # switch (to compare; at run time RAC1_COROUTINE=ucontext picks it on Linux without a rebuild).
     enable_language(ASM)
     add_library(rac1_platform STATIC src/platform/platform_posix.cpp
-        src/platform/coroutine_x86_64.S src/platform/coroutine_aarch64.S)
+        src/platform/coroutine_x86_64.S src/platform/coroutine_aarch64.S src/platform/coroutine_ppc.S)
     option(RAC1_UCONTEXT "The coroutine switches with ucontext, not the hand-written switch (to compare)" OFF)
     if(RAC1_UCONTEXT)
         target_compile_definitions(rac1_platform PRIVATE RAC1_CTX_FORCE_UCONTEXT)
