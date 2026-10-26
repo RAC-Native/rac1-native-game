@@ -310,6 +310,7 @@ struct State {
     glm::vec4 key{0.0f};              // the key light's colour (as the set holds it) and back-face factor: what a shadow takes off the world's colours
     glm::vec3 key_dir{0.0f, 0.0f, 1.0f};  // toward the key light as the game lights with it (the sun's direction unless the level's file turns it)
     int npts = 0;                     // the frame's active point lights: position, radius; colour
+    int ngame = 0;                    // (the list's first ngame: the game's own lights - the mobys have them per vertex already, #110)
     glm::vec4 pt_pos[kMaxPts], pt_col[kMaxPts];  // (pt_col.w: the light's cube in the shadow array, -1 none)
     float pt_down[kMaxPts] = {};                 // (the share of each light aimed down - a lamp per class's -, 0 every way alike)
     int pt_slot[kMaxPts] = {};                   // (the game's slot of each: its casters' view, 3 + slot; -1 an automatic emitter; -2 a moby class's lamp: no shadow cube)
@@ -3204,6 +3205,249 @@ std::string particles_line(const ParticleSpec& p) {
     return s;
 }
 
+// orig: (host) an "emit <tie|shrub|moby> <class> <ox oy oz> <r g b> <intensity> <radius> [flicker] [down] [joint <n>]" line read (false:
+// not one; "joint" a moby's only)
+bool emit_parse(const char* line, ClassLight& cl) {
+    char kind[8] = {};
+    int at = 0;
+    const int got = std::sscanf(line, "emit %7s %d %f %f %f %f %f %f %f %f%n", kind, &cl.o_class, &cl.off[0], &cl.off[1], &cl.off[2], &cl.col[0], &cl.col[1],
+                                &cl.col[2], &cl.intensity, &cl.radius, &at);
+    if (got < 10 || !(std::strcmp(kind, "tie") == 0 || std::strcmp(kind, "moby") == 0 || std::strcmp(kind, "shrub") == 0)) return false;
+    cl.moby = std::strcmp(kind, "moby") == 0;
+    cl.shrub = std::strcmp(kind, "shrub") == 0;
+    const char* q = line + at;
+    int n = 0;
+    if (std::sscanf(q, " %f%n", &cl.flicker, &n) == 1) {
+        q += n;
+        if (std::sscanf(q, " %f%n", &cl.down, &n) == 1) q += n;
+    }
+    cl.down = std::clamp(cl.down, 0.0f, 1.0f);
+    if (int j = -1; cl.moby && std::sscanf(q, " joint %d", &j) == 1) cl.joint = std::max(j, -1);
+    return true;
+}
+// orig: (host) an "emit" line written (the numbers as Save always wrote them)
+std::string emit_line(const ClassLight& cl) {
+    char b[256];
+    std::snprintf(b, sizeof b, "emit %s %d  %.3f %.3f %.3f  %.3f %.3f %.3f  %.3f %.3f %.3f  %.2f", cl.moby ? "moby" : cl.shrub ? "shrub" : "tie", cl.o_class, cl.off[0],
+                  cl.off[1], cl.off[2], cl.col[0], cl.col[1], cl.col[2], cl.intensity, cl.radius, cl.flicker, cl.down);
+    std::string out(b);
+    if (cl.moby && cl.joint >= 0) out += "  joint " + std::to_string(cl.joint);
+    return out;
+}
+// orig: (host) an "emissive <tfrag|tie|shrub|moby|surface> <class> tex <n> [strength] [threshold]" or "material <kind> <class> tex <n>
+// <type> [a] [b] [c]" line read (false: neither)
+bool emis_parse(const char* line, EmissiveSurface& out) {
+    {
+        EmissiveSurface es;
+        char kind[8] = {};
+        const int got = std::sscanf(line, "emissive %7s %d tex %d %f %f", kind, &es.o_class, &es.tex, &es.strength, &es.threshold);
+        int k = -1;
+        for (int i = 0; i < 5; ++i)
+            if (std::strcmp(kind, mrp_emissive_kind_name(i)) == 0) k = i;
+        if (got >= 3 && k >= 0 && es.tex >= 0) {
+            es.kind = k;
+            es.strength = std::clamp(es.strength, 0.0f, 4.0f);
+            es.threshold = std::clamp(es.threshold, 0.0f, 1.0f);
+            out = es;
+            return true;
+        }
+    }
+    EmissiveSurface es;
+    char kind[8] = {}, type[16] = {};
+    float a[3] = {0.0f, 0.0f, 0.0f};
+    const int got = std::sscanf(line, "material %7s %d tex %d %15s %f %f %f", kind, &es.o_class, &es.tex, type, &a[0], &a[1], &a[2]);
+    int k = -1;
+    for (int i = 0; i < 5; ++i)
+        if (std::strcmp(kind, mrp_emissive_kind_name(i)) == 0) k = i;
+    const int ty = got >= 4 ? mrp_material_type(type) : -1;
+    if (k < 0 || es.tex < 0 || ty < 0) return false;
+    es.kind = k;
+    es.type = ty;
+    const MatParam* mp = mrp_material_params(ty);
+    for (int i = 0; i < 3; ++i) es.p[i] = mp[i].name == nullptr ? 0.0f : std::clamp(got >= 5 + i ? a[i] : mp[i].def, mp[i].lo, mp[i].hi);
+    if (ty == MAT_EMISSIVE) {  // ("material ... emissive [strength] [threshold]": the emissive line's numbers)
+        es.strength = es.p[0];
+        es.threshold = es.p[1];
+    }
+    out = es;
+    return true;
+}
+// orig: (host) an "emissive" / "material" line written
+std::string emis_line(const EmissiveSurface& es) {
+    char b[256];
+    if (es.type == MAT_EMISSIVE) {
+        std::snprintf(b, sizeof b, "emissive %s %d tex %d  %.2f %.2f", mrp_emissive_kind_name(es.kind), es.o_class, es.tex, es.strength, es.threshold);
+        return b;
+    }
+    std::snprintf(b, sizeof b, "material %s %d tex %d %s", mrp_emissive_kind_name(es.kind), es.o_class, es.tex, mrp_material_name(es.type));
+    std::string out(b);
+    const MatParam* mp = mrp_material_params(es.type);
+    for (int i = 0; i < 3; ++i)
+        if (mp[i].name != nullptr) {
+            std::snprintf(b, sizeof b, " %g", static_cast<double>(es.p[i]));
+            out += b;
+        }
+    return out;
+}
+bool same_emit(const ClassLight& a, const ClassLight& b) {
+    return a.moby == b.moby && a.shrub == b.shrub && a.o_class == b.o_class && std::memcmp(a.off, b.off, sizeof a.off) == 0 && std::memcmp(a.col, b.col, sizeof a.col) == 0 &&
+           a.intensity == b.intensity && a.radius == b.radius && a.flicker == b.flicker && a.down == b.down && a.on == b.on && a.joint == b.joint;
+}
+bool same_emis(const EmissiveSurface& a, const EmissiveSurface& b) {
+    return a.kind == b.kind && a.o_class == b.o_class && a.tex == b.tex && a.strength == b.strength && a.threshold == b.threshold && a.type == b.type &&
+           std::memcmp(a.p, b.p, sizeof a.p) == 0;
+}
+
+// ---- the lines for every level: data/lights/classes.txt (moby classes: the same on every level) ----
+struct GlobalLine {
+    char kind = '#';    // '#' a comment / a line kept as it is, 'e' an emit line, 'm' an emissive / material line
+    std::string text;   // (as read: written back while the entry is not edited)
+    ClassLight cl;      // ('e')
+    EmissiveSurface es; // ('m')
+    bool shown = false; // (added to the current level's lists: not overridden by its file)
+    bool gone = false;  // (deleted / moved to the level's file since: not written)
+};
+std::vector<GlobalLine> g_global;
+std::string g_global_path;
+// orig: (host) the file's path
+std::string classes_path() {
+    const char* dir = std::getenv("RAC1_LIGHTS_DIR");
+    return std::string(dir != nullptr ? dir : "data/lights") + "/classes.txt";
+}
+// orig: (host) the file read (its moby lines; anything else kept as a comment)
+void classes_load() {
+    g_global.clear();
+    g_global_path = classes_path();
+    FILE* f = std::fopen(g_global_path.c_str(), "r");
+    if (f == nullptr) return;
+    const rac1::ps2fpu::NearestScope nearest;
+    char line[256];
+    while (std::fgets(line, sizeof line, f) != nullptr) {
+        GlobalLine g;
+        g.text = line;
+        while (!g.text.empty() && (g.text.back() == '\n' || g.text.back() == '\r')) g.text.pop_back();
+        if (line[0] != '#') {
+            if (emit_parse(line, g.cl) && g.cl.moby) g.kind = 'e';
+            else if (emis_parse(line, g.es) && g.es.kind == 3) g.kind = 'm';
+        }
+        g.cl.global = g.es.global = g.kind != '#';
+        g_global.push_back(g);
+    }
+    std::fclose(f);
+}
+// orig: (host) the file's lines added to the level's lists (after its own), but where the level's file has its own line for that class
+// (emit) or class and texture (emissive, material)
+void classes_apply() {
+    size_t ne = 0, nm = 0;
+    for (size_t i = 0; i < g_global.size(); ++i) {
+        GlobalLine& g = g_global[i];
+        g.shown = false;
+        if (g.kind == 'e') {
+            const bool own = std::any_of(g_class_lights.begin(), g_class_lights.end(), [&](const ClassLight& c) { return !c.global && c.moby && c.o_class == g.cl.o_class; });
+            if (own) continue;
+            ClassLight c = g.cl;
+            c.global = true;
+            c.gidx = static_cast<int>(i);
+            g_class_lights.push_back(c);
+            g.shown = true;
+            ++ne;
+        } else if (g.kind == 'm') {
+            const bool own = std::any_of(g_emissive_list.begin(), g_emissive_list.end(),
+                                         [&](const EmissiveSurface& e) { return !e.global && e.kind == 3 && e.o_class == g.es.o_class && e.tex == g.es.tex; });
+            if (own) continue;
+            EmissiveSurface e = g.es;
+            e.global = true;
+            e.gidx = static_cast<int>(i);
+            g_emissive_list.push_back(e);
+            g.shown = true;
+            ++nm;
+        }
+    }
+    if (ne + nm > 0) std::printf("[lights] %s: %zu emit and %zu emissive / material lines for every level\n", g_global_path.c_str(), ne, nm);
+}
+// orig: (host) the file written when its lines changed: the level's global entries (edited, deleted, made global or made the level's
+// own) folded into the file's list, each line in its place, a line not edited as it was read; true when written or nothing to write
+bool classes_save() {
+    std::vector<int> found(g_global.size(), -1);  // (the global line's entry in the level's lists)
+    bool changed = false;
+    for (size_t i = 0; i < g_class_lights.size(); ++i) {
+        ClassLight& c = g_class_lights[i];
+        if (c.gidx >= 0 && static_cast<size_t>(c.gidx) < g_global.size()) {
+            GlobalLine& g = g_global[static_cast<size_t>(c.gidx)];
+            if (!c.global || !c.on) {  // (made the level's own, or turned off: out of the file)
+                if (!g.gone) changed = true;
+                g.gone = true;
+                if (!c.global) c.gidx = -1;
+                continue;
+            }
+            found[static_cast<size_t>(c.gidx)] = 1;
+            if (!same_emit(c, g.cl)) {
+                ClassLight k = c;
+                g.cl = k;
+                g.text = emit_line(k);
+                changed = true;
+            }
+        } else if (c.global && c.moby && c.on) {
+            GlobalLine g;
+            g.kind = 'e';
+            g.cl = c;
+            g.text = emit_line(c);
+            g.shown = true;
+            c.gidx = static_cast<int>(g_global.size());
+            g_global.push_back(g);
+            found.push_back(1);
+            changed = true;
+        }
+    }
+    for (size_t i = 0; i < g_emissive_list.size(); ++i) {
+        EmissiveSurface& e = g_emissive_list[i];
+        if (e.gidx >= 0 && static_cast<size_t>(e.gidx) < g_global.size()) {
+            GlobalLine& g = g_global[static_cast<size_t>(e.gidx)];
+            if (!e.global) {
+                if (!g.gone) changed = true;
+                g.gone = true;
+                e.gidx = -1;
+                continue;
+            }
+            found[static_cast<size_t>(e.gidx)] = 1;
+            if (!same_emis(e, g.es)) {
+                g.es = e;
+                g.text = emis_line(e);
+                changed = true;
+            }
+        } else if (e.global && e.kind == 3) {
+            GlobalLine g;
+            g.kind = 'm';
+            g.es = e;
+            g.text = emis_line(e);
+            g.shown = true;
+            e.gidx = static_cast<int>(g_global.size());
+            g_global.push_back(g);
+            found.push_back(1);
+            changed = true;
+        }
+    }
+    for (size_t i = 0; i < g_global.size(); ++i)  // (shown on this level and no longer in its lists: deleted)
+        if (g_global[i].kind != '#' && g_global[i].shown && found[i] < 0 && !g_global[i].gone) {
+            g_global[i].gone = true;
+            changed = true;
+        }
+    if (!changed) return true;
+    std::error_code ec;
+    const std::filesystem::path p(g_global_path);
+    if (p.has_parent_path()) std::filesystem::create_directories(p.parent_path(), ec);
+    FILE* f = std::fopen(g_global_path.c_str(), "w");
+    if (f == nullptr) return false;
+    const rac1::ps2fpu::NearestScope nearest;
+    if (g_global.empty() || g_global.front().kind != '#')
+        std::fprintf(f, "# rac1-native: moby lights, emissive surfaces and materials for every level (the debug menu's \"for every level\")\n");
+    for (const GlobalLine& g : g_global)
+        if (!g.gone) std::fprintf(f, "%s\n", g.text.c_str());
+    std::fclose(f);
+    std::printf("[lights] %s written\n", g_global_path.c_str());
+    return true;
+}
+
 // orig: (host) read: one light a line, "light x y z r g b intensity radius flicker on" ('#' comments)
 void user_load(int level) {
     g_user.clear();
@@ -3224,7 +3468,9 @@ void user_load(int level) {
     g_user_path = user_path(level);
     g_user_light_selected = -1;
     FILE* f = std::fopen(g_user_path.c_str(), "r");
+    classes_load();
     if (f == nullptr) {
+        classes_apply();
         mrp_user_emissive_changed();
         return;
     }
@@ -3265,58 +3511,15 @@ void user_load(int level) {
             entry('i');
             continue;
         }
-        {  // "emit <tie|moby> <class> <ox oy oz> <r g b> <intensity> <radius> [flicker] [down]"
-            ClassLight cl;
-            char kind[8] = {};
-            const int got = std::sscanf(line, "emit %7s %d %f %f %f %f %f %f %f %f %f %f", kind, &cl.o_class, &cl.off[0], &cl.off[1], &cl.off[2], &cl.col[0], &cl.col[1],
-                                        &cl.col[2], &cl.intensity, &cl.radius, &cl.flicker, &cl.down);
-            cl.down = std::clamp(cl.down, 0.0f, 1.0f);
-            if (got >= 10 && (std::strcmp(kind, "tie") == 0 || std::strcmp(kind, "moby") == 0 || std::strcmp(kind, "shrub") == 0)) {
-                cl.moby = std::strcmp(kind, "moby") == 0;
-                cl.shrub = std::strcmp(kind, "shrub") == 0;
-                g_class_lights.push_back(cl);
-                entry('e');
-                continue;
-            }
+        if (ClassLight cl; emit_parse(line, cl)) {  // "emit <tie|shrub|moby> <class> <ox oy oz> <r g b> <intensity> <radius> [flicker] [down] [joint n]"
+            g_class_lights.push_back(cl);
+            entry('e');
+            continue;
         }
-        {  // "emissive <tfrag|tie|shrub|moby> <class> tex <n> [strength] [threshold]"
-            EmissiveSurface es;
-            char kind[8] = {};
-            const int got = std::sscanf(line, "emissive %7s %d tex %d %f %f", kind, &es.o_class, &es.tex, &es.strength, &es.threshold);
-            int k = -1;
-            for (int i = 0; i < 5; ++i)
-                if (std::strcmp(kind, mrp_emissive_kind_name(i)) == 0) k = i;
-            if (got >= 3 && k >= 0 && es.tex >= 0) {
-                es.kind = k;
-                es.strength = std::clamp(es.strength, 0.0f, 4.0f);
-                es.threshold = std::clamp(es.threshold, 0.0f, 1.0f);
-                g_emissive_list.push_back(es);
-                entry('m');
-                continue;
-            }
-        }
-        {  // "material <tfrag|tie|shrub|moby> <class> tex <n> <type> [a] [b] [c]" (docs/materials.md)
-            EmissiveSurface es;
-            char kind[8] = {}, type[16] = {};
-            float a[3] = {0.0f, 0.0f, 0.0f};
-            const int got = std::sscanf(line, "material %7s %d tex %d %15s %f %f %f", kind, &es.o_class, &es.tex, type, &a[0], &a[1], &a[2]);
-            int k = -1;
-            for (int i = 0; i < 5; ++i)
-                if (std::strcmp(kind, mrp_emissive_kind_name(i)) == 0) k = i;
-            const int ty = got >= 4 ? mrp_material_type(type) : -1;
-            if (k >= 0 && es.tex >= 0 && ty >= 0) {
-                es.kind = k;
-                es.type = ty;
-                const MatParam* mp = mrp_material_params(ty);
-                for (int i = 0; i < 3; ++i) es.p[i] = mp[i].name == nullptr ? 0.0f : std::clamp(got >= 5 + i ? a[i] : mp[i].def, mp[i].lo, mp[i].hi);
-                if (ty == MAT_EMISSIVE) {  // ("material ... emissive [strength] [threshold]": the emissive line's numbers)
-                    es.strength = es.p[0];
-                    es.threshold = es.p[1];
-                }
-                g_emissive_list.push_back(es);
-                entry('m');
-                continue;
-            }
+        if (EmissiveSurface es; emis_parse(line, es)) {  // "emissive ..." / "material ..."
+            g_emissive_list.push_back(es);
+            entry('m');
+            continue;
         }
         if (char w[8] = {}; std::sscanf(line, "rain %7s", w) == 1) {  // "rain on": the materials' rain ripples
             g_rain = std::strcmp(w, "on") == 0 || std::strcmp(w, "1") == 0;
@@ -3359,6 +3562,7 @@ void user_load(int level) {
         std::printf("[lights] level %d: %zu emissive surfaces, %zu materials%s\n", level, g_emissive_list.size() - nm, nm, g_rain ? " (rain)" : "");
     }
     if (g_sun_file.on) std::printf("[lights] level %d: the sun turned to azimuth %.1f, elevation %.1f degrees\n", level, g_sun_file.az, g_sun_file.el);
+    classes_apply();
     mrp_user_emissive_changed();
 }
 // orig: (host) the current level's file read when the level changed (its sun is wanted at the shadow pass's start, whatever the
@@ -3523,6 +3727,7 @@ namespace {
 void emissive_uniforms(glm::vec4 out[32]) {
     for (int i = 0; i < 32; ++i) out[i] = glm::vec4(0.0f);
     out[0].x = g_emissive != 0 ? 1.0f : 0.0f;
+    out[0].y = static_cast<float>(g_sh.ngame);  // (the mobys' point lights per pixel start after the game's own: sh_points_moby)
     const size_t n = std::min<size_t>(g_emissive_list.size(), kEmissiveSlots);
     for (size_t i = 0; i < n; ++i) {
         const EmissiveSurface& e = g_emissive_list[i];
@@ -3548,7 +3753,7 @@ void material_uniforms(MatUniforms& u) {
         const EmissiveSurface& e = g_emissive_list[i];
         if (e.type == MAT_EMISSIVE) continue;
         any = true;
-        ssr = ssr || e.type == MAT_PUDDLE || e.type == MAT_WATER || e.type == MAT_LAVA;
+        ssr = ssr || e.type == MAT_PUDDLE || e.type == MAT_WATER || e.type == MAT_LAVA || (e.type == MAT_METAL && e.p[0] < 0.6f);  // (a polished metal mirrors too)
         u.mat[i + 1] = glm::vec4(e.p[0], e.p[1], e.p[2], 0.0f);
     }
     g_mat_ssr_wanted = ssr;
@@ -3647,26 +3852,13 @@ bool mrp_user_lights_save() {
             if (n_set < g_interior_sets.size()) std::fprintf(f, "interior_set %d\n", g_interior_sets[n_set++]);
             break;
         case 'e':
-            while (n_emit < g_class_lights.size() && !g_class_lights[n_emit].on) ++n_emit;  // (one turned off: not written)
-            if (n_emit < g_class_lights.size()) {
-                const ClassLight& cl = g_class_lights[n_emit++];
-                std::fprintf(f, "emit %s %d  %.3f %.3f %.3f  %.3f %.3f %.3f  %.3f %.3f %.3f  %.2f\n", cl.moby ? "moby" : cl.shrub ? "shrub" : "tie", cl.o_class, cl.off[0],
-                             cl.off[1], cl.off[2], cl.col[0], cl.col[1], cl.col[2], cl.intensity, cl.radius, cl.flicker, cl.down);
-            }
+            // (one turned off: not written; one for every level: classes.txt's)
+            while (n_emit < g_class_lights.size() && (!g_class_lights[n_emit].on || g_class_lights[n_emit].global)) ++n_emit;
+            if (n_emit < g_class_lights.size()) std::fprintf(f, "%s\n", emit_line(g_class_lights[n_emit++]).c_str());
             break;
         case 'm':
-            if (n_emis < g_emissive_list.size()) {
-                const EmissiveSurface& es = g_emissive_list[n_emis++];
-                if (es.type == MAT_EMISSIVE) {
-                    std::fprintf(f, "emissive %s %d tex %d  %.2f %.2f\n", mrp_emissive_kind_name(es.kind), es.o_class, es.tex, es.strength, es.threshold);
-                } else {
-                    std::fprintf(f, "material %s %d tex %d %s", mrp_emissive_kind_name(es.kind), es.o_class, es.tex, mrp_material_name(es.type));
-                    const MatParam* mp = mrp_material_params(es.type);
-                    for (int i = 0; i < 3; ++i)
-                        if (mp[i].name != nullptr) std::fprintf(f, " %g", static_cast<double>(es.p[i]));
-                    std::fprintf(f, "\n");
-                }
-            }
+            while (n_emis < g_emissive_list.size() && g_emissive_list[n_emis].global) ++n_emis;  // (one for every level: classes.txt's)
+            if (n_emis < g_emissive_list.size()) std::fprintf(f, "%s\n", emis_line(g_emissive_list[n_emis++]).c_str());
             break;
         case 'R':
             if (!rain_done && g_rain) std::fprintf(f, "rain on\n");
@@ -3726,7 +3918,12 @@ bool mrp_user_lights_save() {
     g_particles_read.clear();  // (the lines written are the file's now: a later Save keeps them as they are)
     for (const ParticleSpec& p : g_particles)
         if (p.on) g_particles_read.push_back(p);
-    return true;
+    return classes_save();  // (the lines for every level: their own file)
+}
+// orig: (host) see mrp_lighting.h
+const char* mrp_user_classes_path() {
+    if (g_global_path.empty()) g_global_path = classes_path();
+    return g_global_path.c_str();
 }
 
 // orig: (host) see mrp_lighting.h
@@ -3940,6 +4137,9 @@ void screen_point_read(const int vp[4]) {
             std::printf("[lights] screen %.2f %.2f: %.2f %.2f %.2f; tie %d class %d offset %.3f %.3f %.3f; shrub %d class %d offset %.3f %.3f %.3f; moby %d class %d (%.2f away)\n",
                         g_pick_uv[0], g_pick_uv[1], g_pick_world[0], g_pick_world[1], g_pick_world[2], pk.tie ? 1 : 0, pk.tie_class, pk.tie_off[0], pk.tie_off[1], pk.tie_off[2],
                         pk.shrub ? 1 : 0, pk.shrub_class, pk.shrub_off[0], pk.shrub_off[1], pk.shrub_off[2], pk.moby ? 1 : 0, pk.moby_class, pk.moby_dist);
+            if (pk.moby)
+                std::printf("[lights] screen %.2f %.2f: moby %08x (%s), joint %d at %.3f %.3f %.3f in its frame\n", g_pick_uv[0], g_pick_uv[1], pk.moby_addr,
+                            pk.moby_part ? "its parts hold the point" : "the nearest origin", pk.moby_joint, pk.moby_joint_off[0], pk.moby_joint_off[1], pk.moby_joint_off[2]);
             const SurfacePick sp = mrp_world_surface_at(g_pick_world);  // (the surface there: an emissive line's kind, class, texture)
             if (sp.kind >= 0)
                 std::printf("[lights] screen %.2f %.2f: surface %s %d tex %d (level texture %d, %.3f away)\n", g_pick_uv[0], g_pick_uv[1], mrp_emissive_kind_name(sp.kind), sp.o_class,
@@ -3998,20 +4198,47 @@ LightPick mrp_lighting_pick(const float p[3]) {
         }
     }
     const uint32_t first = draw_lwu(OV(0x0015ffd8u)), last = draw_lwu(OV(0x0015ffe0u));
-    r.moby_dist = 6.0f;  // (a moby whose origin is at its foot: a door frame, a lamp post)
-    for (uint32_t m = first; m != 0 && m < 0x01fe0000u && (last == 0 || m <= last) && draw_lbu(m + 0x20) != 0xff; m += 0x100) {
-        if (static_cast<int8_t>(draw_lbu(m + 0x20)) < 0) continue;
+    auto frame_off = [&](uint32_t m) {  // (the point in the moby's frame: its position, its rows normalised)
         const glm::vec3 mp(draw_lwc1(m + 0x10), draw_lwc1(m + 0x14), draw_lwc1(m + 0x18));
-        const float d = glm::length(P - mp);
-        if (d >= r.moby_dist) continue;
-        r.moby = true;
-        r.moby_dist = d;
-        r.moby_class = draw_lh(m + 0xa6);
-        for (uint32_t k = 0; k < 3; ++k) {  // (the point in the moby's frame: its rows normalised)
+        for (uint32_t k = 0; k < 3; ++k) {
             glm::vec3 row(draw_lwc1(m + 0xc0 + 0x10 * k), draw_lwc1(m + 0xc4 + 0x10 * k), draw_lwc1(m + 0xc8 + 0x10 * k));
             const float len = glm::length(row);
             r.moby_off[k] = len > 0.0f ? glm::dot(P - mp, row / len) : 0.0f;
         }
+    };
+    // the drawn moby whose parts hold the point (a big one - a cannon, a train - whose origin is far from the part clicked), else
+    // the live moby whose origin is nearest within 6 units (a moby whose origin is at its foot: a door frame, a lamp post)
+    if (uint32_t ma = 0; mrp_moby_at(p, &ma, &r.moby_class, &r.moby_dist)) {
+        r.moby = true;
+        r.moby_part = true;
+        r.moby_addr = ma;
+        frame_off(ma);
+    } else {
+        r.moby_dist = 6.0f;
+        for (uint32_t m = first; m != 0 && m < 0x01fe0000u && (last == 0 || m <= last) && draw_lbu(m + 0x20) != 0xff; m += 0x100) {
+            if (static_cast<int8_t>(draw_lbu(m + 0x20)) < 0) continue;
+            const glm::vec3 mp(draw_lwc1(m + 0x10), draw_lwc1(m + 0x14), draw_lwc1(m + 0x18));
+            const float d = glm::length(P - mp);
+            if (d >= r.moby_dist) continue;
+            r.moby = true;
+            r.moby_dist = d;
+            r.moby_class = draw_lh(m + 0xa6);
+            r.moby_addr = m;
+            frame_off(m);
+        }
+    }
+    if (r.moby) {  // its pose this frame: the joint nearest the point, the point in that joint's frame
+        float jp[3], ax[9], best = 1e30f;
+        int n = 0;
+        if (mrp_moby_draw_frame(r.moby_addr, -1, jp, ax, &n))
+            for (int j = 0; j < n && j < 128; ++j) {
+                if (!mrp_moby_draw_frame(r.moby_addr, j, jp, ax)) continue;
+                const glm::vec3 d = P - glm::vec3(jp[0], jp[1], jp[2]);
+                if (glm::length(d) >= best) continue;
+                best = glm::length(d);
+                r.moby_joint = j;
+                for (int k = 0; k < 3; ++k) r.moby_joint_off[k] = glm::dot(d, glm::vec3(ax[3 * k], ax[3 * k + 1], ax[3 * k + 2]));
+            }
     }
     return r;
 }
@@ -4128,6 +4355,28 @@ void class_lights_add(double t) {
             for (size_t i = 0; i < g_class_lights.size(); ++i) {
                 const ClassLight& cl = g_class_lights[i];
                 if (!cl.on || !cl.moby || cl.o_class != cls) continue;
+                static const bool jtrace = std::getenv("RAC1_LIGHTS_TRACE") != nullptr;
+                if (jtrace && g_sh.frame % 120 == 0) {  // (testing: the moby's position against its drawn model's origin and its first joints')
+                    float o[3] = {0.0f, 0.0f, 0.0f}, a9[9];
+                    int nj = 0;
+                    std::string js;
+                    const bool drawn = mrp_moby_draw_frame(m, -1, o, a9, &nj);
+                    if (drawn)
+                        for (int j = 0; j < nj; ++j)  // (each joint's height over the origin, its distance)
+                            if (float q[3]; mrp_moby_draw_frame(m, j, q, a9)) {
+                                char b[48];
+                                std::snprintf(b, sizeof b, " j%d %.2f/%.2f", j, q[2] - o[2], std::sqrt((q[0] - o[0]) * (q[0] - o[0]) + (q[1] - o[1]) * (q[1] - o[1]) + (q[2] - o[2]) * (q[2] - o[2])));
+                                js += b;
+                            }
+                    std::printf("[lights] moby %08x class %d at %.2f %.2f %.2f: %s %.2f %.2f %.2f (%d joints)%s\n", m, cls, draw_lwc1(m + 0x10), draw_lwc1(m + 0x14), draw_lwc1(m + 0x18),
+                                drawn ? "drawn at" : "not drawn", o[0], o[1], o[2], nj, js.c_str());
+                }
+                if (float jp[3], ax[9]; cl.joint >= 0 && mrp_moby_draw_frame(m, cl.joint, jp, ax)) {  // ("joint <n>": that joint's frame as the pose has it)
+                    glm::vec3 p(jp[0], jp[1], jp[2]);
+                    for (int r = 0; r < 3; ++r) p += glm::vec3(ax[3 * r], ax[3 * r + 1], ax[3 * r + 2]) * cl.off[r];
+                    add(i, p, m);
+                    continue;
+                }
                 glm::vec3 p(draw_lwc1(m + 0x10), draw_lwc1(m + 0x14), draw_lwc1(m + 0x18));
                 for (uint32_t r = 0; r < 3; ++r) {  // (the moby's rows, normalised: the offset in world units, turned with it)
                     glm::vec3 row(draw_lwc1(m + 0xc0 + 0x10 * r), draw_lwc1(m + 0xc4 + 0x10 * r), draw_lwc1(m + 0xc8 + 0x10 * r));
@@ -4233,6 +4482,7 @@ void mrp_lighting_shadow_pass() {
         g_sh.pt_slot[g_sh.npts] = static_cast<int>(i);
         ++g_sh.npts;
     }
+    g_sh.ngame = g_sh.npts;
     if (g_modern_points != 0 && g_auto_lights != 0) {  // (step 3) the lights placed by hand, before the emitters
         const int level = static_cast<int>(draw_lw(0x0015ed84));
         if (level != g_user_level) user_load(level);
