@@ -87,8 +87,7 @@ inline float vuc(float f) {
 inline Vec4& V(uint32_t a) { return *static_cast<Vec4*>(ee_ram_ptr(a)); }
 inline Mat4& M(uint32_t a) { return *static_cast<Mat4*>(ee_ram_ptr(a)); }
 inline void lq_sq(uint32_t dst, uint32_t src) {  // 128-bit aligned copy
-    struct Qw { uint64_t lo, hi; };
-    ee_write<Qw>(dst & ~15u, ee_read<Qw>(src & ~15u));
+    ee_write<EeQuad>(dst & ~15u, ee_read<EeQuad>(src & ~15u));
 }
 // orig: (helper) scratchpad DMA, normal mode, done synchronously: toSPR (ch9, 0x1000d400) copies
 // qwc quadwords from RAM madr to the scratchpad at sadr (wrapping in 16 KB); fromSPR (ch8) back.

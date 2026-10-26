@@ -9,7 +9,10 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <span>
+
+#include "io/host_endian.h"
 
 namespace rac1 {
 
@@ -160,6 +163,45 @@ struct EffectTextureRecord {
 static_assert(sizeof(EffectTextureRecord) == 16);
 
 #pragma pack(pop)
+
+// The records in the host's byte order (they are read as the PS2's bytes, from the file or from EE memory: io/host_endian.h)
+inline void le_fix(TableRef& r) { le_fix_words32(r); }
+inline void le_fix(AssetIndexHeader& r) { le_fix_words32(r); }
+inline void le_fix(ParticleTextureRecord& r) { le_fix_words32(r); }
+inline void le_fix(EffectTextureRecord& r) { le_fix_words32(r); }
+inline void le_fix(TextureRecord& r) {
+    RAC1_LE_FIX(r, texels);
+    RAC1_LE_FIX(r, width);
+    RAC1_LE_FIX(r, height);
+    RAC1_LE_FIX(r, mip_count);
+    RAC1_LE_FIX(r, palette);
+    RAC1_LE_FIX(r, mip1_page);
+    RAC1_LE_FIX(r, mip2_page);
+}
+inline void le_fix(ClassRecord& r) {  // (texture_remap: bytes)
+    RAC1_LE_FIX(r, data);
+    RAC1_LE_FIX(r, class_id);
+    RAC1_LE_FIX(r, word_8);
+    RAC1_LE_FIX(r, word_c);
+}
+inline void le_fix(BillboardRecord& r) {
+    RAC1_LE_FIX(r, width);
+    RAC1_LE_FIX(r, height);
+    RAC1_LE_FIX(r, top_mip);
+    RAC1_LE_FIX(r, palette);
+    RAC1_LE_FIX(r, texels);
+    RAC1_LE_FIX(r, mip_texels);
+}
+inline void le_fix(ShrubClassRecord& r) {
+    RAC1_LE_FIX(r, data);
+    RAC1_LE_FIX(r, class_id);
+    RAC1_LE_FIX(r, word_8);
+    RAC1_LE_FIX(r, word_c);
+    BillboardRecord b;
+    std::memcpy(&b, reinterpret_cast<unsigned char*>(&r) + offsetof(ShrubClassRecord, billboard), sizeof b);
+    le_fix(b);
+    std::memcpy(reinterpret_cast<unsigned char*>(&r) + offsetof(ShrubClassRecord, billboard), &b, sizeof b);
+}
 
 // The level data file inside `file`: `file` itself, or, when `file` starts with the 48-byte
 // header of the extracted level files (assets/extracted/level_wads: first word 48, the level

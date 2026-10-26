@@ -253,4 +253,53 @@ void ee_debug_backtrace() {
     if (std::getenv("EE_BT") != nullptr) platform::print_backtrace(32);
 }
 
+void ee_bytes_to_words(u8* base, size_t off, const void* src, size_t n) {
+#if defined(RAC1_EE_WORDS_BE)
+    const u8* s = static_cast<const u8*>(src);
+    size_t i = 0;
+    for (; i < n && ((off + i) & 3) != 0; i++) base[(off + i) ^ 3] = s[i];
+    for (; i + 4 <= n; i += 4) {
+        const u32 w = static_cast<u32>(s[i]) | static_cast<u32>(s[i + 1]) << 8 | static_cast<u32>(s[i + 2]) << 16 |
+                      static_cast<u32>(s[i + 3]) << 24;
+        std::memcpy(base + off + i, &w, 4);
+    }
+    for (; i < n; i++) base[(off + i) ^ 3] = s[i];
+#else
+    std::memcpy(base + off, src, n);
+#endif
+}
+
+void ee_words_to_bytes(void* dst, const u8* base, size_t off, size_t n) {
+#if defined(RAC1_EE_WORDS_BE)
+    u8* d = static_cast<u8*>(dst);
+    size_t i = 0;
+    for (; i < n && ((off + i) & 3) != 0; i++) d[i] = base[(off + i) ^ 3];
+    for (; i + 4 <= n; i += 4) {
+        u32 w;
+        std::memcpy(&w, base + off + i, 4);
+        d[i] = static_cast<u8>(w);
+        d[i + 1] = static_cast<u8>(w >> 8);
+        d[i + 2] = static_cast<u8>(w >> 16);
+        d[i + 3] = static_cast<u8>(w >> 24);
+    }
+    for (; i < n; i++) d[i] = base[(off + i) ^ 3];
+#else
+    std::memcpy(dst, base + off, n);
+#endif
+}
+
+void ee_copy_in(u32 vaddr, const void* src, size_t n) {
+    if (n == 0) return;
+    u8* p = static_cast<u8*>(ee_ram_ptr_write(vaddr, static_cast<u32>(n)));
+    if (p == nullptr) throw std::runtime_error("Attempted write to null pointer");
+    ee_bytes_to_words(p - (vaddr & 3u), vaddr & 3u, src, n);
+}
+
+void ee_copy_out(void* dst, u32 vaddr, size_t n) {
+    if (n == 0) return;
+    const u8* p = static_cast<const u8*>(ee_ram_ptr_read(vaddr));
+    if (p == nullptr) throw std::runtime_error("Attempted read from null pointer");
+    ee_words_to_bytes(dst, p - (vaddr & 3u), vaddr & 3u, n);
+}
+
 } // namespace rac1

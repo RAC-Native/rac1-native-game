@@ -7,6 +7,8 @@
 
 #include <span>
 
+#include "io/host_endian.h"
+
 namespace rac1 {
 
 // The legacy host writes its own state into the game's memory while it loads a level (asset
@@ -44,6 +46,13 @@ struct TextureHeader {
 };
 #pragma pack(pop)
 static_assert(sizeof(TextureHeader) == 12);
+inline void le_fix(TextureHeader& h) {
+    RAC1_LE_FIX(h, palette_addr);
+    RAC1_LE_FIX(h, width);
+    RAC1_LE_FIX(h, height);
+    RAC1_LE_FIX(h, type);
+    RAC1_LE_FIX(h, pad);
+}
 
 class LevelLoader {
 public:

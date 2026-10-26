@@ -93,16 +93,83 @@ void ee_debug_backtrace();
 // Check if a virtual address range is valid.
 bool ee_is_valid_addr(u32 vaddr, u32 size);
 
+// The byte order of the emulated memories (EE RAM, the scratchpad; the VUs' memories are the same already): host-native
+// 32-bit words. On a little-endian host (every PC) that is the PS2's own layout, byte for byte. On a big-endian host (the
+// Wii U) a word, a float, a Vec4 / Mat4 (four-word groups) read and written in place are right as they are; a byte of
+// the PS2's address a lives at a ^ 3, a halfword at a ^ 2, and a doubleword's low word comes first (at a) as on the PS2.
+// Code that reaches EE memory through bytes (a byte or halfword pointer, a memcpy of a size not a multiple of four, a
+// copy from a file) goes through the helpers below; ee_read / ee_write do it themselves.
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#define RAC1_EE_WORDS_BE 1
+inline constexpr u32 EE_BYTE_SWIZZLE = 3u;  // a byte's host offset: a ^ 3
+inline constexpr u32 EE_HALF_SWIZZLE = 2u;  // a halfword's: a ^ 2
+#else
+inline constexpr u32 EE_BYTE_SWIZZLE = 0u;
+inline constexpr u32 EE_HALF_SWIZZLE = 0u;
+#endif
+inline constexpr u32 ee_byte_addr(u32 a) { return a ^ EE_BYTE_SWIZZLE; }
+inline constexpr u32 ee_half_addr(u32 a) { return a ^ EE_HALF_SWIZZLE; }
+
+// A record read or written whole with ee_read / ee_write (more than eight bytes). On a big-endian host:
+// - made of 32-bit fields alone (u32, s32, float: a quadword of floats, a VU vector), it is laid out like EE memory: declare
+//   it RAC1_EE_WORDS_ONLY and it is copied as it is;
+// - any other record is copied as the PS2's bytes and its fields put in the host's order by an le_fix(T&) found by ADL
+//   (src/io/host_endian.h), the one a file's parser uses too. A record with neither does not compile there.
+// On a little-endian host both are a plain copy.
+template <typename T>
+struct ee_words_only : std::false_type {};
+#define RAC1_EE_WORDS_ONLY(T) \
+    template <>               \
+    struct ee_words_only<T> : std::true_type {}
+
+// A quadword copied between two places of EE memory as it is (the same layout at both ends)
+struct alignas(8) EeQuad {
+    u32 w[4];
+};
+RAC1_EE_WORDS_ONLY(EeQuad);
+
+namespace ee_detail {
+// the host address of the access: a byte's or a halfword's moved within its word
+template <typename T>
+inline constexpr u32 swizzle(u32 vaddr) {
+    if constexpr (sizeof(T) == 1) return ee_byte_addr(vaddr);
+    else if constexpr (sizeof(T) == 2) return ee_half_addr(vaddr);
+    else return vaddr;
+}
+}  // namespace ee_detail
+
+// Bytes in the PS2's order (a file's, a disc sector's, a DMA packet's) to / from EE memory at vaddr: a memcpy on a
+// little-endian host, each byte at its swizzled place on a big-endian one (whole words reversed at once).
+void ee_copy_in(u32 vaddr, const void* src, size_t n);
+void ee_copy_out(void* dst, u32 vaddr, size_t n);
+// The same on a host buffer laid out as EE memory (the RAM or scratchpad block, a copy of it): `base` is address 0 of
+// that layout's words (4-byte aligned on a big-endian host).
+void ee_bytes_to_words(u8* base, size_t off, const void* src, size_t n);
+void ee_words_to_bytes(void* dst, const u8* base, size_t off, size_t n);
+
 // Safe templated memory read.
 template <typename T>
 T ee_read(u32 vaddr) {
     static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
-    const void* ptr = ee_ram_ptr_read(vaddr);
+    const void* ptr = ee_ram_ptr_read(ee_detail::swizzle<T>(vaddr));
     if (!ptr) {
         ee_debug_backtrace();
         throw std::runtime_error("Attempted read from null pointer");
     }
     T val;
+#if defined(RAC1_EE_WORDS_BE)
+    if constexpr (sizeof(T) == 8) {  // (the low word at the lower address)
+        u32 w[2];
+        std::memcpy(w, ptr, 8);
+        const uint64_t v = (static_cast<uint64_t>(w[1]) << 32) | w[0];
+        std::memcpy(&val, &v, 8);
+        return val;
+    } else if constexpr (sizeof(T) > 4 && !ee_words_only<T>::value) {
+        ee_copy_out(&val, vaddr, sizeof(T));
+        le_fix(val);
+        return val;
+    }
+#endif
     std::memcpy(&val, ptr, sizeof(T));
     return val;
 }
@@ -111,12 +178,28 @@ T ee_read(u32 vaddr) {
 template <typename T>
 void ee_write(u32 vaddr, const T& val) {
     static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
-    void* ptr = ee_ram_ptr_write(vaddr, static_cast<u32>(sizeof(T)));
+    void* ptr = ee_ram_ptr_write(ee_detail::swizzle<T>(vaddr), static_cast<u32>(sizeof(T)));
     if (!ptr) {
         throw std::runtime_error("Attempted write to null pointer");
     }
+#if defined(RAC1_EE_WORDS_BE)
+    if constexpr (sizeof(T) == 8) {
+        uint64_t v;
+        std::memcpy(&v, &val, 8);
+        const u32 w[2] = {static_cast<u32>(v), static_cast<u32>(v >> 32)};
+        std::memcpy(ptr, w, 8);
+        return;
+    } else if constexpr (sizeof(T) > 4 && !ee_words_only<T>::value) {
+        T le = val;
+        le_fix(le);  // (the same swap both ways)
+        ee_copy_in(vaddr, &le, sizeof(T));
+        return;
+    }
+#endif
     std::memcpy(ptr, &val, sizeof(T));
 }
+
+
 
 // Get the base pointer of the 32MB RAM block (useful for debug inspectors/tools).
 u8* ee_get_ram_base();

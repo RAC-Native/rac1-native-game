@@ -11,6 +11,10 @@
 #include <cmath>
 #include <cstdint>
 
+namespace rac1 {
+RAC1_EE_WORDS_ONLY(VUVector);  // (four 32-bit lanes: laid out as EE memory)
+}  // namespace rac1
+
 namespace rac1::vu0m {
 
 // orig: (helper) a VF register's four lanes (the hardware register's type)
