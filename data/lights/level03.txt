@@ -9,7 +9,17 @@ sun -108.5 45.0
 # The street lamps (moby class 1827, the posts with the white globes; 39 on the level): a warm white light in each globe, 3 units
 # over the post's foot, half of it aimed down (a pool on the pavement around the post). No shadow cube (the globe's own mesh
 # would hide it).
-emit moby 1827  0.000 0.000 3.000  1.000 0.920 0.760  2.500 9.000 0.000  0.50
+emit moby 1827  0.000 0.000 3.000  1.000 0.920 0.760  2.500 13.227 0.000  0.50
+# Anya-Thoughtmane's second lighting pass (#102): the street lamps' light reaches 13.2 units (9 before), and the lamps' globes,
+# the buildings' windows (in part), the Qwark-bot and the train's head glow.
+emissive tfrag 0 tex 51  4.00 0.00
+emissive moby 1827 tex 2  4.00 0.24
+emissive moby 914 tex 0  2.24 0.93
+emissive moby 825 tex 3  2.31 0.00
+emissive moby 1012 tex 2  1.63 0.37
+emissive moby 822 tex 4  2.59 0.27
+emissive moby 822 tex 1  2.54 0.26
+emissive moby 627 tex 0  2.26 0.75
 # Kerwan: our ambient particles (Options > Graphics > Ambient Particles, off by default): light dust in the air, bright where
 # the view looks toward the sun (the sunbeams through the city's streets).
 particles motes 1

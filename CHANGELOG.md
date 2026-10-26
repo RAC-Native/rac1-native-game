@@ -6,6 +6,7 @@ What changed in each release. Releases are source only: you build the game with 
 ## Unreleased
 
 ### Graphics
+- Lights: Anya-Thoughtmane's second lighting pass (#102) on Veldin to Rilgar: emissive surfaces, lamps by class and by hand, merged with ours.
 - Surface materials: the puddles, ripples, rain rings and lava pulse are placed by an exact integer noise, the same on every
   GPU and driver: on Vulkan Batalia's puddles (the covered hall's, the courtyard's) were in other places than on OpenGL, or
   missing, because the old floating-point hash rounded differently per driver. The puddles' layout changes once on both.

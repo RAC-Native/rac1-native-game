@@ -2,3 +2,23 @@
 # light x y z  r g b  intensity radius flicker on
 # Rilgar: no Sun Rays, from Anya-Thoughtmane's lighting pass (#101: off to go on with the level's sun).
 sun_rays off
+# Anya-Thoughtmane's second lighting pass (#102): most of the level's lights.
+emit moby 1060  0.561 0.806 -0.162  1.000 0.225 0.225  1.967 10.456 0.000  0.00
+emit moby 803  0.497 1.289 0.155  1.000 0.954 0.346  1.630 10.193 0.000  0.00
+emit moby 758  0.000 0.000 0.000  0.182 1.000 0.299  1.000 8.000 0.000  0.00
+emit shrub 283  -5.702 -0.351 5.559  0.570 0.570 0.570  0.433 8.000 0.000  0.00
+emit moby 1134  0.049 -0.123 -0.090  1.000 0.966 0.230  1.000 8.000 0.000  0.00
+emit tie 907  0.000 0.000 -0.800  0.968 1.000 0.036  1.000 10.666 0.000  0.00
+emit moby 1511  -0.037 -0.067 1.793  0.127 0.824 1.000  1.000 8.000 0.000  0.00
+emissive tfrag 0 tex 69  1.57 0.00
+emissive shrub 283 tex 0  2.65 0.00
+emissive tie 797 tex 0  2.51 0.00
+emissive shrub 232 tex 0  2.34 0.00
+emissive moby 877 tex 7  3.00 0.00
+emissive moby 877 tex 8  3.00 0.00
+emissive moby 877 tex 2  2.60 0.00
+emissive moby 866 tex 0  2.70 0.83
+emissive moby 1134 tex 1  2.50 0.36
+emissive tie 907 tex 1  2.50 0.00
+emissive moby 998 tex 2  2.71 0.00
+emissive moby 1511 tex 1  2.05 0.00

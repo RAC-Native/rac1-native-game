@@ -426,11 +426,18 @@ Made in the debug menu (F1, Lights tab) and saved in `data/lights/level<NN>.txt`
 [The light editor](#the-light-editor). They are positions and colours chosen by us, with nothing
 taken from the disc. They are lit like the automatic ones and ahead of them.
 
-The project's level files place no light: `level09.txt` (Gaspar) and `level10.txt` (Orxon) each turn
+Before Anya-Thoughtmane's second pass (below) the project's level files placed no light: `level09.txt` (Gaspar) and `level10.txt` (Orxon) each turn
 off one automatic class that was taken for a lamp, `level00.txt` (Veldin) makes lamps of classes and marks [emissive surfaces](#emissive-surfaces), and `level01.txt` (Novalis, also its lamps by class and emissive surfaces), `level03.txt`
 (Kerwan), `level04.txt` (Eudora), `level14.txt` (Oltanis) and `level15.txt` (Quartu) turn the sun,
 each with a comment saying why. `level05.txt` (Rilgar), `level06.txt` (Blarg's station), `level08.txt`
 (Batalia) and `level14.txt` turn the [sun rays](#sun-rays) off (`sun_rays off`, #101).
+
+Anya-Thoughtmane's second lighting pass (#102) added her own lines to the files of Veldin to Rilgar (`level00.txt` to
+`level05.txt`), merged line by line with ours (our comments, particles and suns kept; Aridia keeps Daino's sun): emissive surfaces
+on every one of them (the vendors' blue parts, the gold bolts, Ratchet's garage on Veldin, Aridia's red bulbs, Skid's crashed
+ship, the anti-vehicle cannon and the fortress's swing room, Kerwan's lamps, buildings, Qwark-bot and the train's head, most of
+Rilgar's lamps), lamps by class on Aridia and Rilgar (the Swingshot's versa-targets, the floating lifts' thrusters), lights placed
+by hand on Novalis and Aridia, and Kerwan's street lamps reaching further.
 
 ### Point-light shadows, per-pixel cost and occlusion
 
