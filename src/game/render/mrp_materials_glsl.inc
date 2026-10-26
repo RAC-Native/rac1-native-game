@@ -3,10 +3,14 @@
 #define RAC1_MATERIALS_FS \
     "#if defined(SH_POINTS) || defined(SH_SPLIT)\n"                                                                                                     \
     "/* the surface materials (docs/materials.md): a slot's type in uEmis[s].z, its parameters (the defaults filled in) in uMat[s].xyz */\n"            \
+    "/* a cell's random value in [0, 1): integer arithmetic on the point (16ths of a unit: the callers' points are whole cells and their\n"             \
+    "   offsets), exact on every GPU - the floating-point hash it replaces lost its low bits differently per driver (radeonsi's OpenGL\n"               \
+    "   and RADV's Vulkan put the puddles in different places) */\n"                                                                                    \
     "float sm_hash(vec2 p) {\n"                                                                                                                         \
-    "    vec3 q = fract(vec3(p.xyx) * 0.1031);\n"                                                                                                       \
-    "    q += dot(q, q.yzx + 33.33);\n"                                                                                                                 \
-    "    return fract((q.x + q.y) * q.z);\n"                                                                                                            \
+    "    uvec2 c = uvec2(ivec2(floor(p * 16.0)));\n"                                                                                                    \
+    "    uint h = c.x * 0x8da6b343u ^ c.y * 0xd8163841u;\n"                                                                                             \
+    "    h ^= h >> 16; h *= 0x7feb352du; h ^= h >> 15; h *= 0x846ca68bu; h ^= h >> 16;\n"                                                               \
+    "    return float(h >> 8) * (1.0 / 16777216.0);\n"                                                                                                  \
     "}\n"                                                                                                                                               \
     "float sm_noise(vec2 p) {\n"                                                                                                                        \
     "    vec2 i = floor(p), f = fract(p);\n"                                                                                                            \
