@@ -370,6 +370,10 @@ std::shared_ptr<const TexImage> Gs::texture_at_kick(uint64_t tex0, uint64_t texa
 }
 
 void Gs::vertex_kick(const Vertex& vin, bool draw) {
+    if (vu7_drop_ && vu_kick_ && !vu7_batches_.empty()) {  // (host: a kept batch's strip as the program kicked it, its ADC flags)
+        const uint32_t t = bits(regs_[0x00], 0, 3);
+        if (t == 3 || t == 4) vu7_batches_.back().kicked.push_back(draw ? 1 : 0);
+    }
     const uint64_t prim = bits(regs_[0x1a], 0, 1) ? regs_[0x00] : (regs_[0x1b] & ~7ull) | (regs_[0x00] & 7);
     const int ctx = bits(prim, 9, 1);
     const uint64_t off = regs_[0x18 + ctx];
@@ -466,8 +470,6 @@ void Gs::vertex_kick(const Vertex& vin, bool draw) {
         p.fx_id = fx_id_;
         p.layer = layer_now_;
         p.hud = hud_now_;
-        p.vu_hash = vu_kick_ ? vu1::g_last_hash : 0;
-        p.src = label_now_;
         if (vu_kick_ && vu7_drop_) {  // (a batch the MRP draws itself: set_chain_vu7)
             p.fx = vu7_kind_;
             p.fx_id = kVu7Kicked;
@@ -686,12 +688,6 @@ void Gs::set_chain_layers(std::vector<std::pair<uint32_t, uint32_t>> ranges) {
 }
 
 // (host) see gs_emu.h
-void Gs::set_chain_labels(std::vector<LabelRange> ranges) {
-    std::sort(ranges.begin(), ranges.end(), [](const LabelRange& a, const LabelRange& b) { return a.first < b.first; });
-    label_ranges_ = std::move(ranges);
-}
-
-// (host) see gs_emu.h
 void Gs::set_chain_vu7(std::vector<Vu7Range> ranges, uint64_t hash, uint8_t kind) {
     std::sort(ranges.begin(), ranges.end(), [](const Vu7Range& a, const Vu7Range& b) { return a.sub != b.sub ? a.sub < b.sub : a.first < b.first; });
     vu7_ranges_ = std::move(ranges);
@@ -705,7 +701,6 @@ void Gs::set_chain_vu7(std::vector<Vu7Range> ranges, uint64_t hash, uint8_t kind
 // GS state its kick would have, and its place in the primitives' order
 void Gs::vu1_before(void* vu_p, uint32_t start, uint64_t hash) {
     vu1::Vu1& vu = *static_cast<vu1::Vu1*>(vu_p);
-    if (inventory_) prog_t0_ = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
     if (!vu7_now_ || hash != vu7_hash_ || vu7_kind_ == 0 || (start != 0xc && start != 0xe)) return;
     const VUState& st = vu.st;
     auto q = [&st](uint32_t a) { return &st.mem[(a & 0x3ffu) << 4]; };
@@ -715,33 +710,44 @@ void Gs::vu1_before(void* vu_p, uint32_t start, uint64_t hash) {
     const uint32_t n = static_cast<uint32_t>(tag & 0x7fff);
     if (n < 3 || n > 0x150) return;  // (a batch holds at most (0x1d2 - 1) / 3 vertices)
     Vu7Batch b;
-    const uint64_t prim0 = bits(tag, 46, 1) != 0 ? bits(tag, 47, 11) : regs_[0x00];
-    const uint64_t prim = bits(regs_[0x1a], 0, 1) ? prim0 : (regs_[0x1b] & ~7ull) | (prim0 & 7);
-    const int ctx = bits(prim, 9, 1);
-    DrawState& s = b.st;
-    s.prim = prim;
-    s.tex0 = regs_[0x06 + ctx];
-    s.clamp = regs_[0x08 + ctx];
-    s.tex1 = regs_[0x14 + ctx];
-    s.miptbp1 = regs_[0x34 + ctx];
-    s.alpha = regs_[0x42 + ctx];
-    s.test = regs_[0x47 + ctx];
-    s.scissor = regs_[0x40 + ctx];
-    s.fba = regs_[0x4a + ctx];
-    s.frame = regs_[0x4c + ctx];
-    s.zbuf = regs_[0x4e + ctx];
-    s.texa = regs_[0x3b];
-    s.colclamp = regs_[0x46];
-    s.pabe = regs_[0x49];
-    s.fogcol = regs_[0x3d];
-    s.dthe = regs_[0x45];
-    s.xyoffset = regs_[0x18 + ctx];
-    if (bits(prim, 4, 1) != 0) {
-        b.tex = texture_at_kick(s.tex0, s.texa);
-        b.mip = std::min(bits(s.tex1, 2, 3), 3u) != 0 && bits(s.tex1, 6, 3) >= 2;
+    // the GS state a kick under a GIF tag `t` would have now (its PRIM when PRE, the context's registers)
+    auto state_of = [this](uint64_t t, DrawState& s, std::shared_ptr<const TexImage>& tex, bool* mip) {
+        const uint64_t prim0 = bits(t, 46, 1) != 0 ? bits(t, 47, 11) : regs_[0x00];
+        const uint64_t prim = bits(regs_[0x1a], 0, 1) ? prim0 : (regs_[0x1b] & ~7ull) | (prim0 & 7);
+        const int ctx = bits(prim, 9, 1);
+        s.prim = prim;
+        s.tex0 = regs_[0x06 + ctx];
+        s.clamp = regs_[0x08 + ctx];
+        s.tex1 = regs_[0x14 + ctx];
+        s.miptbp1 = regs_[0x34 + ctx];
+        s.alpha = regs_[0x42 + ctx];
+        s.test = regs_[0x47 + ctx];
+        s.scissor = regs_[0x40 + ctx];
+        s.fba = regs_[0x4a + ctx];
+        s.frame = regs_[0x4c + ctx];
+        s.zbuf = regs_[0x4e + ctx];
+        s.texa = regs_[0x3b];
+        s.colclamp = regs_[0x46];
+        s.pabe = regs_[0x49];
+        s.fogcol = regs_[0x3d];
+        s.dthe = regs_[0x45];
+        s.xyoffset = regs_[0x18 + ctx];
+        if (bits(prim, 4, 1) != 0) {
+            tex = texture_at_kick(s.tex0, s.texa);
+            if (mip != nullptr) *mip = std::min(bits(s.tex1, 2, 3), 3u) != 0 && bits(s.tex1, 6, 3) >= 2;
+        }
+    };
+    state_of(tag, b.st, b.tex, &b.mip);
+    if (start == 0xe) {
+        uint64_t ft;
+        std::memcpy(&ft, &st.vf[31].u[0], 8);
+        state_of(ft, b.st_fan, b.tex_fan, nullptr);
     }
+    const DrawState& s = b.st;
     for (int c = 0; c < 4; ++c)
         for (int l = 0; l < 4; ++l) b.m[4 * c + l] = st.vf[static_cast<size_t>(18 + c)].f[l];
+    for (int c = 0; c < 4; ++c)
+        for (int l = 0; l < 4; ++l) b.clip[4 * c + l] = st.vf[static_cast<size_t>(22 + c)].f[l];
     for (int l = 0; l < 4; ++l) b.off[l] = st.vf[30].f[l];
     b.k = st.vf[31].f[3];
     b.fog[0] = st.vf[7].f[0];
@@ -749,7 +755,6 @@ void Gs::vu1_before(void* vu_p, uint32_t start, uint64_t hash) {
     b.first = static_cast<uint32_t>(vu7_verts_.size());
     b.n = n;
     b.start = start;
-    b.src = label_now_;
     b.tag = vu7_tag_;
     b.sub = sub_wide_ ? 1 : sub_drop_ ? 2 : 0;
     for (uint32_t i = 0; i < n; ++i) {
@@ -778,22 +783,13 @@ void Gs::vu1_before(void* vu_p, uint32_t start, uint64_t hash) {
     p.wide = sub_wide_;
     p.vu = true;
     p.vu_start = start;
-    p.vu_hash = hash;
-    p.src = label_now_;
     prims_.push_back(std::move(p));
     vu7_batches_.push_back(std::move(b));
     vu7_drop_ = true;
 }
 
 // (host) see gs_emu.h
-void Gs::vu1_after(void*, uint32_t start, uint64_t hash) {
-    vu7_drop_ = false;
-    if (!inventory_) return;
-    const uint64_t t1 = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
-    ProgTime& t = prog_times_[std::make_tuple(label_now_, hash, start)];
-    ++t.runs;
-    t.ns += t1 - prog_t0_;
-}
+void Gs::vu1_after(void*, uint32_t, uint64_t) { vu7_drop_ = false; }
 
 // (host) see gs_emu.h
 void Gs::set_chain_hud(std::vector<HudRange> ranges) {
@@ -835,8 +831,6 @@ void Gs::chain_walk(uint32_t tag, uint32_t end, Mem&& mem) {
             g.layer_now_ = false;
             g.hud_ranges_.clear();
             g.hud_now_ = 0;
-            g.label_ranges_.clear();
-            g.label_now_ = 0;
             g.vu7_ranges_.clear();
             g.vu7_now_ = false;
             g.vu7_drop_ = false;
@@ -984,11 +978,6 @@ void Gs::chain_walk(uint32_t tag, uint32_t end, Mem&& mem) {
             auto it = std::upper_bound(layer_ranges_.begin(), layer_ranges_.end(), addr,
                                        [](uint32_t a, const std::pair<uint32_t, uint32_t>& r) { return a < r.first; });
             layer_now_ = it != layer_ranges_.begin() && addr <= std::prev(it)->second;
-        }
-        label_now_ = 0;
-        if (!label_ranges_.empty()) {  // (testing: the inventory's labels; a substitute's tags at the real range's addresses)
-            auto it = std::upper_bound(label_ranges_.begin(), label_ranges_.end(), addr, [](uint32_t a, const LabelRange& r) { return a < r.first; });
-            if (it != label_ranges_.begin() && addr <= std::prev(it)->last) label_now_ = std::prev(it)->label;
         }
         vu7_now_ = false;
         if (!vu7_ranges_.empty()) {  // (the MRP's program-7 surfaces)

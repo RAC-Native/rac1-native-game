@@ -3046,7 +3046,7 @@ void user_load(int level) {
             float a[3] = {0.0f, 0.0f, 0.0f};
             const int got = std::sscanf(line, "material %7s %d tex %d %15s %f %f %f", kind, &es.o_class, &es.tex, type, &a[0], &a[1], &a[2]);
             int k = -1;
-            for (int i = 0; i < 4; ++i)
+            for (int i = 0; i < 5; ++i)
                 if (std::strcmp(kind, mrp_emissive_kind_name(i)) == 0) k = i;
             const int ty = got >= 4 ? mrp_material_type(type) : -1;
             if (k >= 0 && es.tex >= 0 && ty >= 0) {

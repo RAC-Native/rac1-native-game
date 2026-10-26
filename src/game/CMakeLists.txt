@@ -251,7 +251,6 @@ add_library(rac1_game STATIC
     render/mrp_lod.cpp
     render/mrp_title_view.cpp
     render/mrp_fx.cpp
-    render/replica_inventory.cpp
     render/mrp_shadows.cpp
     render/mrp_lighting.cpp
     render/mrp_particles.cpp

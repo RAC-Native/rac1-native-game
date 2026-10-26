@@ -99,7 +99,6 @@
 #include <game/render/mrp_particles.h>
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_shadows.h>
-#include <game/render/replica_inventory.h>
 #include <game/render/mrp_fx.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_world_renderer.h>
@@ -3014,7 +3013,6 @@ int main(int argc, char** argv) {
                         for (const HudNote& n : notes) hr.push_back({n.first, n.last, n.side});
                         gs.set_chain_hud(std::move(hr));
                     }
-                if (chain_runs) replica_inventory_chain(gs);  // (testing: RAC1_REPLICA_INVENTORY)
                 if (chain_runs) {
                     // (the chain's tags and data captured here, its run on a worker thread: joined before the drawing, the
                     // next chain and the game's own GS transfers (libgraph); RAC1_GS_THREAD=0 or the testing modes: here)
@@ -3426,9 +3424,6 @@ int main(int argc, char** argv) {
                 }
                 static const bool s_mrp_diff = std::getenv("RAC1_MRP_DIFF") != nullptr;
                 const int prim_filt = (g_moby_renderer == MobyRenderer::kGpu || s_moby_diff || mrp_moby_active() || (mrp_world_testing() && mrp_world_active())) ? 2 : 0;
-                if (replica_inventory_on() && movie_pic == nullptr && !fd.fade_held)  // (testing: what the replica draws, by source)
-                    replica_inventory_count(gs, prim_filt, has_dm ? &dm : nullptr, fd.fb_w, fd.fb_h, fd.level,
-                                            fd.flight ? "flight" : fd.vendor_pic ? "vendor" : menu_mode ? "menu" : title ? "title" : "play");
                 // the GS replica's primitives the chain made before the moby pass (the draw lists 0x1f85b8 runs before it: Hoven's water,
                 // translucent and without Z): drawn under the MRP's mobys, in the original's order (drawn after them, they covered what a
                 // moby draws without Z - the faces of Ratchet's ice cube, which fail its alpha test and write their colour only, #48)
@@ -3647,7 +3642,6 @@ int main(int argc, char** argv) {
             mrp_world_report();
             mrp_lod_report();
             mrp_fx_report();
-            replica_inventory_report();
             if (s_mrp_skip_mode != 0)
                 std::printf("[mrp-skip] mode %d: chain tags walked dry %llu; verify: skipped skinning's next record equal %llu, different %llu\n", s_mrp_skip_mode,
                             static_cast<unsigned long long>(rac1::gs::gs_global().skipped_tags()), static_cast<unsigned long long>(g_moby_mrp_skip_next_ok),

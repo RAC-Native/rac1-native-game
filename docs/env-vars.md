@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 323 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 324 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 240 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 241 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 62 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -172,6 +172,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_MRP_MIP` | faithful = the game's own mip selection; any other value or unset = modern mip selection; default modern | Chooses how the modern moby renderer picks texture mip levels, to compare against the original GS behaviour. Only read when the modern moby renderer is in use. |
 | `RAC1_MRP_MIP0` | any value = on; default off | Marks in magenta the moby textures whose largest mip level the frame did not upload, where the faithful path would sample stale GS memory. |
 | `RAC1_MRP_PROJ` | vu = project mobys with the VU1 programs' own path; anything else or unset = the modern projection; default modern | Selects how the modern moby renderer projects vertices, for comparison. Only read when the modern moby renderer is in use. |
+| `RAC1_MRP_SEAS` | 0 = off; default on (with the MRP world and effects) | VU1 program 7's surfaces - the levels' water, lava and sand seas, the level's baked shadow meshes, the nanotech orbs - drawn by the MRP from the program's input, in the world's projection and depth, with the modern lighting and the materials when they are on. 0: the GS replica runs and draws them as before (the prim lists' kicks taken back to the world by the effects path), to compare. See [Rendering](rendering.md#vu1-program-7s-surfaces). |
 | `RAC1_MRP_SHADOWS` | 0 = off, any other integer = on; unset = the built-in default | Switches the modern renderer's handling of the game's drop shadows on or off, to compare against the original path. |
 | `RAC1_MRP_SHADOW_LOG` | any value = on; default off | Prints per frame how many marking and unmarking shadow triangles and tubes the modern shadow capture collected. |
 | `RAC1_MRP_SHADOW_SETUP` | 0 = off; default on | Setting 0 turns off giving the game's own projection back to its projection and view setup calls inside a shadow run (the fix for effects drifting in widescreen), to compare with before. |

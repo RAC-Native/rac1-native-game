@@ -131,6 +131,7 @@ struct Frame {
     // (kMrpFxVu7) the world -> screen matrix 0x1fc740 builds from the frame's view (0x166cc0 x 1024 on the point less the camera,
     // without its Z bias) and its inverse: a batch whose screen matrix is this one takes world points
     glm::dmat4 vu7_g{1.0}, vu7_ginv{1.0};
+    glm::dmat4 vu7_ge{1.0}, vu7_geinv{1.0};  // (its x, y, z rows times its Q numerator 0x16cc50: the screen's (X, Y, Z) less the offset, times w)
     bool vu7 = false;
 } g_frame;
 std::array<glm::dvec4, 16> g_slots_real{}, g_slots_shadow{};
@@ -899,6 +900,11 @@ bool mrp_fx_chain_ranges(bool active, const std::vector<int>& subs, std::vector<
         const glm::dvec3 cam(lwc1(OV(0x00166dc0u)), lwc1(OV(0x00166dc4u)), lwc1(OV(0x00166dc8u)));
         F.vu7_g = rows_matrix(1024.0) * glm::translate(glm::dmat4(1.0), -cam);
         F.vu7_ginv = glm::inverse(F.vu7_g);
+        F.vu7_ge = F.vu7_g;
+        const double kf = lwc1(OV(0x0016cc50u));
+        for (int c = 0; c < 4; ++c)
+            for (int r = 0; r < 3; ++r) F.vu7_ge[c][r] *= kf;
+        F.vu7_geinv = glm::inverse(F.vu7_ge);
         F.vu7 = !vu7.empty();
     }
     // the frame's projections
@@ -1131,7 +1137,7 @@ struct V7 {
     uint32_t tex[4];
     float fogc[2];
     uint32_t emis;
-    float pad;
+    float depth;  // the GS's Z as the replica maps it to the depth buffer, in NDC (x the clip w in the vertex shader)
 };
 static_assert(sizeof(V7) == 64);
 std::vector<V7> g_v7;
@@ -1139,7 +1145,6 @@ std::vector<Batch> g_b7;
 
 struct Vu7Stats {
     uint64_t batches = 0, tris = 0, world = 0, general = 0, no_tex = 0, mip = 0, bad_type = 0, clip_path = 0;
-    double bias_max = 0;
 } g_s7;
 
 // the emissive surfaces of kind 4 ("surface", mrp_lighting.h): (the callback's moby class, TEX0's TBP) -> the shader's slot
@@ -1170,126 +1175,188 @@ void vu7_emissive_refresh() {
 // themselves - in the world when M is the frame's 0x1fc740 matrix (less its Z bias), else taken there through it - with the world's
 // projection: the GL clips what the program clipped at the guard band (and the triangles its side test dropped).
 // orig: (host) the batch of type-9 primitive `p` into g_v7 / g_b7 (false: not drawn)
+// the replica's depth map of the frame (render_gs_depth: window depth = a + b Z), for the surfaces' depth
+bool g_v7_depth = false;
+double g_v7_da = 0.0, g_v7_db = 0.0;
 bool build_vu7(const gs::Gs& gs, const gs::Primitive& p) {
     const auto& bs = gs.vu7_batches();
     if (p.fx_id >= bs.size()) return false;
     const gs::Vu7Batch& b = bs[p.fx_id];
-    const gs::DrawState& st = b.st;
-    const int type = static_cast<int>(fld(st.prim, 0, 3));
+    const int type = static_cast<int>(fld(b.st.prim, 0, 3));
     if (type != 3 && type != 4 && type != 5) {
         ++g_s7.bad_type;
         return false;
     }
-    const bool tme = fld(st.prim, 4, 1) != 0, fst = fld(st.prim, 8, 1) != 0;
-    int layer = 0, tw = 1, th = 1;
-    if (tme) {
-        if (b.tex == nullptr) {
-            ++g_s7.no_tex;
-            return false;
+    // the two GS states a batch draws with: its own (the strip), and on the clipping path the fans' (the triangles it clips)
+    struct State {
+        const gs::DrawState* st = nullptr;
+        bool ok = false, fst = false;
+        int layer = 0, tw = 1, th = 1;
+        BKey k;
+        uint32_t flags = 0, emis = 0;
+    };
+    auto state = [&](const gs::DrawState& st, const std::shared_ptr<const gs::TexImage>& tex) {
+        State S;
+        S.st = &st;
+        const bool tme = fld(st.prim, 4, 1) != 0;
+        S.fst = fld(st.prim, 8, 1) != 0;
+        if (tme) {
+            if (tex == nullptr) {
+                ++g_s7.no_tex;
+                return S;
+            }
+            S.layer = atlas_layer(*tex);
+            if (S.layer < 0) return S;
+            S.tw = tex->w;
+            S.th = tex->h;
+            // (an emissive surface or a material: the callback's class, the texture's block)
+            const uint64_t key = e7_key(b.tag, fld(st.tex0, 0, 14));
+            if (g_e7.on)
+                if (auto it = g_e7.slot.find(key); it != g_e7.slot.end()) S.emis = it->second;
+            static const bool trace = std::getenv("RAC1_LIGHTS_TRACE") != nullptr;
+            if (trace && g_e7.seen.insert(key).second)
+                std::printf("[lights] program 7 surface: class %u tex %u (TEX0 %016llx, %d x %d): \"emissive surface %u tex %u\"\n", b.tag, fld(st.tex0, 0, 14),
+                            static_cast<unsigned long long>(st.tex0), S.tw, S.th, b.tag, fld(st.tex0, 0, 14));
         }
-        layer = atlas_layer(*b.tex);
-        if (layer < 0) return false;
-        tw = b.tex->w;
-        th = b.tex->h;
-        if (b.mip) ++g_s7.mip;
+        key_and_flags(st, false, S.k, S.flags);
+        S.ok = true;
+        return S;
+    };
+    const State strip = state(b.st, b.tex);
+    const bool clip_path = b.start == 0xe;
+    const State fan = clip_path ? state(b.st_fan, b.tex_fan) : State{};
+    if (b.mip) ++g_s7.mip;
+    glm::dmat4 M, C;
+    for (int c = 0; c < 4; ++c) {
+        M[c] = glm::dvec4(b.m[4 * c], b.m[4 * c + 1], b.m[4 * c + 2], b.m[4 * c + 3]);
+        C[c] = glm::dvec4(b.clip[4 * c], b.clip[4 * c + 1], b.clip[4 * c + 2], b.clip[4 * c + 3]);
     }
-    BKey k;
-    uint32_t flags = 0;
-    key_and_flags(st, false, k, flags);
-    glm::dmat4 M;
-    for (int c = 0; c < 4; ++c) M[c] = glm::dvec4(b.m[4 * c], b.m[4 * c + 1], b.m[4 * c + 2], b.m[4 * c + 3]);
-    // the frame's matrix? (its Z bias, 0x15f308 added to the translation's z, left out: the point drawn where it is)
-    const glm::dmat4& G = g_frame.vu7_g;
-    bool same = true;
-    for (int c = 0; c < 4 && same; ++c)
-        for (int r = 0; r < 4 && same; ++r) {
-            if (c == 3 && r == 2) continue;
-            const double scale = std::max({std::fabs(G[c][0]), std::fabs(G[c][1]), std::fabs(G[c][2]), std::fabs(G[c][3]), 1.0});
-            if (std::fabs(M[c][r] - G[c][r]) > 1e-4 * scale) same = false;
-        }
-    if (same) {
-        ++g_s7.world;
-        g_s7.bias_max = std::max(g_s7.bias_max, std::fabs(M[3][2] - G[3][2]));
-    } else {
-        ++g_s7.general;
+    // The point's place on the screen is the matrix's x, y, z times Q = k / w: a matrix and its k scaled together (the w row and k: a
+    // callback's own fog density, Kerwan's class 994) draw the same. So the matrices are compared with their x, y, z rows times their k,
+    // each scaled by its w row's size: the frame's 0x1fc740 matrix (element by element to the float's precision of its row: its
+    // translation's z is ~1e11 on Gaspar, where the Z bias the level's shadow meshes add, 0x15f308 = -0.04, is below a float's step: no
+    // bias reaches the GS there either) takes world points; any other is taken back to the world through the frame's.
+    glm::dmat4 Me = M;
+    for (int c = 0; c < 4; ++c)
+        for (int r = 0; r < 3; ++r) Me[c][r] *= static_cast<double>(b.k);
+    const glm::dmat4& Ge = g_frame.vu7_ge;
+    auto wsize = [](const glm::dmat4& A) { return std::max({std::fabs(A[0][3]), std::fabs(A[1][3]), std::fabs(A[2][3]), std::fabs(A[3][3]), 1e-30}); };
+    const double sm = wsize(Me), sg = wsize(Ge);
+    bool same = std::isfinite(sm) && b.k != 0.0f;
+    for (int r = 0; r < 4 && same; ++r) {
+        const double row = std::max({std::fabs(Ge[0][r]), std::fabs(Ge[1][r]), std::fabs(Ge[2][r]), std::fabs(Ge[3][r])}) / sg;
+        for (int c = 0; c < 4 && same; ++c)
+            if (std::fabs(Me[c][r] / sm - Ge[c][r] / sg) > 1e-5 * std::max(row, 1e-12)) same = false;
     }
+    ++(same ? g_s7.world : g_s7.general);
     ++g_s7.batches;
-    if (b.start == 0xe) ++g_s7.clip_path;
-    uint32_t emis = 0;
-    if (tme) {  // (an emissive surface: the callback's class, the texture's block)
-        const uint64_t key = e7_key(b.tag, fld(st.tex0, 0, 14));
-        if (g_e7.on)
-            if (auto it = g_e7.slot.find(key); it != g_e7.slot.end()) emis = it->second;
-        static const bool trace = std::getenv("RAC1_LIGHTS_TRACE") != nullptr;
-        if (trace && g_e7.seen.insert(key).second)
-            std::printf("[lights] program 7 surface: class %u tex %u (TEX0 %016llx, %d x %d): \"emissive surface %u tex %u\"\n", b.tag, fld(st.tex0, 0, 14),
-                        static_cast<unsigned long long>(st.tex0), tw, th, b.tag, fld(st.tex0, 0, 14));
+    ++g_st.by_kind[kMrpFxVu7];  // (the report's "by producer": batches)
+    if (std::getenv("RAC1_VU7_WHERE") != nullptr && g_st.frames % 120 == 1 && b.n > 0) {  // (temporary)
+        const auto& v0 = gs.vu7_vertices()[b.first];
+        std::printf("[vu7where] class %u at %.1f %.1f %.1f cam %.1f %.1f %.1f\n", b.tag, v0.xyz[0], v0.xyz[1], v0.xyz[2], g_frame.cam.x, g_frame.cam.y, g_frame.cam.z);
     }
+    if (clip_path) ++g_s7.clip_path;
     const auto& vin = gs.vu7_vertices();
-    const size_t at = g_v7.size();
-    auto vert = [&](uint32_t i) {
+    auto vert = [&](uint32_t i, const State& S) {
         const gs::Vu7Vertex& s = vin[b.first + i];
         const glm::dvec4 pt(s.xyz[0], s.xyz[1], s.xyz[2], 1.0);
         const glm::dvec4 clip = M * pt;
         glm::dvec3 w(pt);
         if (!same) {
-            const glm::dvec4 h = g_frame.vu7_ginv * clip;
+            const glm::dvec4 h = g_frame.vu7_geinv * (Me * pt);
             w = std::fabs(h.w) > 1e-30 ? glm::dvec3(h) / h.w : glm::dvec3(pt);
         }
         V7 v{};
         v.wp[0] = static_cast<float>(w.x);
         v.wp[1] = static_cast<float>(w.y);
         v.wp[2] = static_cast<float>(w.z);
-        if (fst) {  // (UV in texels: the program's STQ are the batch's ST x Q; with FST the GS reads the UV register - not kicked here)
-            v.stq[0] = s.st[0] / static_cast<float>(tw);
-            v.stq[1] = s.st[1] / static_cast<float>(th);
+        if (S.fst) {  // (UV in texels: with FST the GS reads the UV register, not kicked here)
+            v.stq[0] = s.st[0] / static_cast<float>(S.tw);
+            v.stq[1] = s.st[1] / static_cast<float>(S.th);
             v.stq[2] = 1.0f;
         } else {
             v.stq[0] = s.st[0];
             v.stq[1] = s.st[1];
             v.stq[2] = s.st[2] != 0.0f ? s.st[2] : 1.0f;
         }
-        v.fogw = static_cast<float>(clip.w) + b.off[3];
+        // (the fog per vertex as the program makes it - clamped, its integer part - and interpolated over the screen as the GS does)
+        const float fw = std::min(std::max(static_cast<float>(clip.w) + b.off[3], b.fog[0]), b.fog[1]);
+        v.fogw = std::isfinite(fw) ? std::floor(fw) : 0.0f;
         for (int l = 0; l < 4; ++l) v.rgba[l] = s.rgba[l];
-        v.tex[0] = static_cast<uint32_t>(layer);
-        v.tex[1] = static_cast<uint32_t>(tw) | static_cast<uint32_t>(th) << 16;
-        v.tex[2] = flags;
-        v.tex[3] = static_cast<uint32_t>(st.fogcol & 0xffffff);
+        v.tex[0] = static_cast<uint32_t>(S.layer);
+        v.tex[1] = static_cast<uint32_t>(S.tw) | static_cast<uint32_t>(S.th) << 16;
+        v.tex[2] = S.flags;
+        v.tex[3] = static_cast<uint32_t>(S.st->fogcol & 0xffffff);
         v.fogc[0] = b.fog[0];
         v.fogc[1] = b.fog[1];
-        v.emis = emis;
+        v.emis = S.emis;
+        {  // the depth: the program's Z (its integer part, FTOI4) through the replica's map (render_gs_depth)
+            const double q = static_cast<double>(b.k) / clip.w;
+            const double Z = std::floor(clip.z * q + static_cast<double>(b.off[2]));
+            v.depth = g_v7_depth ? static_cast<float>(2.0 * (g_v7_da + g_v7_db * Z) - 1.0) : 2.0f;
+        }
         g_v7.push_back(v);
     };
+    std::vector<std::array<uint32_t, 3>> tris;
     if (type == 3) {
-        for (uint32_t i = 0; i + 2 < b.n; i += 3) {
-            vert(i);
-            vert(i + 1);
-            vert(i + 2);
-        }
+        for (uint32_t i = 0; i + 2 < b.n; i += 3) tris.push_back({i, i + 1, i + 2});
     } else {
-        for (uint32_t i = 0; i + 2 < b.n; ++i) {
-            if (type == 4) {
-                vert(i);
-                vert(i + 1);
-                vert(i + 2);
-            } else {
-                vert(0);
-                vert(i + 1);
-                vert(i + 2);
-            }
+        for (uint32_t i = 0; i + 2 < b.n; ++i) tris.push_back(type == 4 ? std::array<uint32_t, 3>{i, i + 1, i + 2} : std::array<uint32_t, 3>{0, i + 1, i + 2});
+    }
+    // Which triangles the GS drew, and how. The program's own decision is taken from its kick (the strip's ADC flags): a triangle it
+    // kicked whole is the strip's - unless a point of it lies behind the camera (Q = k / w not of k's sign): the program's near test
+    // (z < -w of the clip matrix, whose z row is its w row but for a hair) lets such points through by its rounding, and the GS
+    // draws the triangle mirrored through the eye, off the screen - so the MRP leaves it out too (drawn rightly, Gaspar's lava glow
+    // covered the lava far away where the PS2 shows none). A triangle it did not kick whole was clipped - drawn as a fan of the fans'
+    // state - unless all three points lie past one plane of the guard band (not drawn).
+    enum : uint8_t { kNone = 0, kStrip = 1, kFan = 2 };
+    std::vector<uint8_t> how(tris.size(), kStrip);
+    {
+        std::vector<uint8_t> flags(b.n), behind(b.n);
+        for (uint32_t i = 0; i < b.n; ++i) {
+            const gs::Vu7Vertex& s = vin[b.first + i];
+            const glm::dvec4 pt(s.xyz[0], s.xyz[1], s.xyz[2], 1.0);
+            const glm::dvec4 c = C * pt;
+            const double aw = std::fabs(c.w);
+            flags[i] = static_cast<uint8_t>((c.x > aw ? 1 : 0) | (c.x < -aw ? 2 : 0) | (c.y > aw ? 4 : 0) | (c.y < -aw ? 8 : 0) | (c.z < -aw ? 16 : 0));
+            // (behind the camera, or past the GS's coordinate range: X, Y are 12.4 fixed point in 16 bits, the program's FTOI4 keeps
+            // their low bits, so a point beyond 0..4096 pixels lands elsewhere - a whole triangle of the unclipped path reaching that far,
+            // a big one near the camera, is drawn torn across the screen or off it: Gaspar's lava glow near the camera)
+            const glm::dvec4 h = M * pt;
+            const double q = static_cast<double>(b.k) / h.w;
+            const double X = h.x * q + b.off[0], Y = h.y * q + b.off[1], Z = h.z * q + b.off[2];
+            behind[i] = !(q > 0.0) || !(X >= 0.0 && X < 4096.0 && Y >= 0.0 && Y < 4096.0) || !(Z >= 0.0 && Z < 16777216.0) ? 1 : 0;
+        }
+        const bool have = b.kicked.size() == b.n && type == 4;
+        for (size_t t = 0; t < tris.size(); ++t) {
+            const auto& T = tris[t];
+            const bool any_out = (flags[T[0]] | flags[T[1]] | flags[T[2]]) != 0;
+            const bool all_one = (flags[T[0]] & flags[T[1]] & flags[T[2]]) != 0;
+            const bool whole = have ? b.kicked[T[2]] != 0 : !(clip_path && any_out);
+            if (whole) how[t] = (behind[T[0]] | behind[T[1]] | behind[T[2]]) != 0 ? kNone : kStrip;
+            else how[t] = all_one || !clip_path ? kNone : kFan;
         }
     }
-    const uint32_t n = static_cast<uint32_t>(g_v7.size() - at);
-    g_s7.tris += n / 3;
-    if (n == 0) return true;
-    if (g_b7.empty() || g_b7.back().count == 0) {
-        if (g_b7.empty()) g_b7.push_back(Batch{});
-        g_b7.back().key = k;
-        g_b7.back().first = static_cast<uint32_t>(at);
-    } else if (!(g_b7.back().key == k)) {
-        g_b7.push_back(Batch{k, static_cast<uint32_t>(at), 0});
-    }
-    g_b7.back().count += n;
+    auto emit = [&](const State& S, uint8_t want) {  // (the program kicks the clipped fans as it goes, the strip at its end)
+        if (!S.ok) return;
+        const size_t at = g_v7.size();
+        for (size_t t = 0; t < tris.size(); ++t)
+            if (how[t] == want)
+                for (uint32_t i : tris[t]) vert(i, S);
+        const uint32_t n = static_cast<uint32_t>(g_v7.size() - at);
+        g_s7.tris += n / 3;
+        if (n == 0) return;
+        if (g_b7.empty() || g_b7.back().count == 0) {
+            if (g_b7.empty()) g_b7.push_back(Batch{});
+            g_b7.back().key = S.k;
+            g_b7.back().first = static_cast<uint32_t>(at);
+        } else if (!(g_b7.back().key == S.k)) {
+            g_b7.push_back(Batch{S.k, static_cast<uint32_t>(at), 0});
+        }
+        g_b7.back().count += n;
+    };
+    if (clip_path) emit(fan, kFan);
+    emit(strip, kStrip);
     return true;
 }
 
@@ -1301,6 +1368,7 @@ layout(location = 3) in uvec4 aRgba;
 layout(location = 4) in uvec4 aTex;
 layout(location = 5) in vec2 aFogC;
 layout(location = 6) in uint aEmis;
+layout(location = 7) in float aDepth;
 uniform mat4 uVP;
 )" RAC1_SHADOW_VS R"(
 smooth out vec3 vStq;
@@ -1312,6 +1380,9 @@ flat out uvec4 vTex;
 flat out uint vEmis;
 void main() {
     gl_Position = sh_clip(uVP * vec4(aWorld, 1.0));
+    // the depth the GS gave it (its Z through the replica's map, linear on the screen as the GS's): the surfaces meet the world as
+    // in the original (a lava glow lying on the ground hidden by it far away, as the GS's Z steps decided)
+    if (aDepth < 1.5) gl_Position.z = aDepth * gl_Position.w;
     vStq = aStq;
     vColor = vec4(aRgba) / 255.0;
     vFlat = vColor;
@@ -1358,7 +1429,7 @@ void main() {
     vec4 o = c;
     if (tme) {
         ivec2 sz = ivec2(int(vTex.y & 0xffffu), int(vTex.y >> 16));
-        vec2 uv = vStq.xy / vStq.z * vec2(sz);
+        vec2 uv = sh_mat_uv(vStq.xy / vStq.z, vEmis) * vec2(sz);  // (lava, mud, quicksand: the materials' slow flow)
         int layer = int(vTex.x);
         vec4 t;
         if (lin) {
@@ -1378,6 +1449,7 @@ void main() {
         else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
         o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, vEmis);
+        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), vEmis);
         if (uShade == 2) o.rgb = t.rgb;
     }
     if (uShade == 1) o.rgb = c.rgb;
@@ -1459,7 +1531,8 @@ bool init_gl_vu7() {
     glVertexAttribIPointer(4, 4, GL_UNSIGNED_INT, S, reinterpret_cast<void*>(offsetof(V7, tex)));
     glVertexAttribPointer(5, 2, GL_FLOAT, GL_FALSE, S, reinterpret_cast<void*>(offsetof(V7, fogc)));
     glVertexAttribIPointer(6, 1, GL_UNSIGNED_INT, S, reinterpret_cast<void*>(offsetof(V7, emis)));
-    for (GLuint a = 0; a < 7; ++a) glEnableVertexAttribArray(a);
+    glVertexAttribPointer(7, 1, GL_FLOAT, GL_FALSE, S, reinterpret_cast<void*>(offsetof(V7, depth)));
+    for (GLuint a = 0; a < 8; ++a) glEnableVertexAttribArray(a);
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     return true;
@@ -1648,6 +1721,7 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
     for (int c = 0; c < 4; ++c)
         for (int r = 0; r < 4; ++r) VP[c][r] = vpm[c * 4 + r];
     const bool vu_mode = g_mrp_world_projection != 0;
+    g_v7_depth = render_gs_depth(g_v7_da, g_v7_db);
     uint64_t env_xyoff = 0;
     // the run in progress: kStepGs from gs_from, or an MRP step (its batches from g_steps.back().from)
     int run = kStepGs;
@@ -1872,8 +1946,10 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
                     {4, 0, VK_FORMAT_R32G32B32A32_UINT, static_cast<uint32_t>(offsetof(V7, tex))},
                     {5, 0, VK_FORMAT_R32G32_SFLOAT, static_cast<uint32_t>(offsetof(V7, fogc))},
                     {6, 0, VK_FORMAT_R32_UINT, static_cast<uint32_t>(offsetof(V7, emis))},
+                    {7, 0, VK_FORMAT_R32_SFLOAT, static_cast<uint32_t>(offsetof(V7, depth))},
                 };
                 base.cull_mode = VK_CULL_MODE_NONE;
+                base.depth_clamp = true;  // (as the OpenGL path)
                 vk_draw_batches(g_b7, sp.from, sp.to, base, g7_vk_layout, &pc, sizeof(pc), offsetof(V7VkPush, uPass));
                 continue;
             }
@@ -1898,7 +1974,9 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
             }
             glDisable(GL_CULL_FACE);
             glDisable(GL_SCISSOR_TEST);
+            glEnable(GL_DEPTH_CLAMP);  // (the replica clamps the mapped depth to the buffer's range)
             gl_draw_batches(g_b7, sp.from, sp.to, g7_loc_pass);
+            glDisable(GL_DEPTH_CLAMP);
             mrp_lighting_bind_off(g7_sh);
             glBindVertexArray(0);
             glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -2091,10 +2169,10 @@ void mrp_fx_report() {
     std::printf("[mrp-fx] atlas: %d of %d layers (cap %d), %llu reused, %llu textures not drawn (every layer in use)\n", A.used, A.layers, A.cap,
                 static_cast<unsigned long long>(A.reused), static_cast<unsigned long long>(A.full));
     if (g_s7.batches != 0)
-        std::printf("[mrp-fx] program 7 surfaces: %llu batches (%llu on the clipping path), %llu triangles drawn from their input; %llu in the world as they are "
-                    "(largest Z bias left out %.1f), %llu through their own matrix; %llu without a texture, %llu with mip levels (the base drawn), %llu not triangles\n",
+        std::printf("[mrp-fx] program 7 surfaces: %llu batches (%llu on the clipping path), %llu triangles drawn from their input; %llu in the world as they are, "
+                    "%llu through their own matrix; %llu without a texture, %llu with mip levels (the base drawn), %llu not triangles\n",
                     static_cast<unsigned long long>(g_s7.batches), static_cast<unsigned long long>(g_s7.clip_path), static_cast<unsigned long long>(g_s7.tris),
-                    static_cast<unsigned long long>(g_s7.world), g_s7.bias_max, static_cast<unsigned long long>(g_s7.general), static_cast<unsigned long long>(g_s7.no_tex),
+                    static_cast<unsigned long long>(g_s7.world), static_cast<unsigned long long>(g_s7.general), static_cast<unsigned long long>(g_s7.no_tex),
                     static_cast<unsigned long long>(g_s7.mip), static_cast<unsigned long long>(g_s7.bad_type));
     if (g_st.kc_starts != 0)
         std::printf("[mrp-fx] kick check: %llu particle program starts, %llu kicks, %llu quadwords against the VU interpreter on the uploaded microcode: "

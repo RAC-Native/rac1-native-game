@@ -214,7 +214,6 @@ void capture(const Vu1& vu, uint32_t start, const char* dir) {
 bool g_force_interpreter = false;
 thread_local uint32_t g_last_start = 0;
 thread_local float g_side_widen[2] = {1.0f, 1.0f};
-thread_local uint64_t g_last_hash = 0;
 thread_local StartObserver* g_start_observer = nullptr;
 KickSink g_kick_tap;
 StartHook g_start_hook;
@@ -263,12 +262,6 @@ uint64_t code_hash(const uint64_t* words, uint32_t n) {
             h *= 0x100000001b3ull;
         }
     return h;
-}
-
-const char* program_name(uint64_t hash) {
-    for (const Registered& r : registry())
-        if (r.hash == hash) return r.name;
-    return nullptr;
 }
 
 void register_program(uint32_t addr, uint32_t n, uint64_t hash, ProgramFn fn, const char* name) {
@@ -320,7 +313,6 @@ void run_interpreter(Vu1& vu, uint32_t start, const std::function<void(uint32_t)
 
 void start_program(Vu1& vu, uint32_t start, const KickSink& kick) {
     g_last_start = start;
-    g_last_hash = 0;
     vu.top = vu.tops;
     vu.itop = vu.itops;
     vu.dbf = !vu.dbf;
@@ -380,7 +372,6 @@ void start_program(Vu1& vu, uint32_t start, const KickSink& kick) {
             memo[next++ & 31] = Memo{start, g_micro_gen.load(std::memory_order_relaxed), found};
         }
         if (found != nullptr) {
-            g_last_hash = found->hash;
             struct Observed {  // (host: the walk's observer around the start, StartObserver)
                 StartObserver* o;
                 Vu1& vu;

@@ -484,6 +484,7 @@ layout(location = 3) in uvec4 aRgba;
 layout(location = 4) in uvec4 aTex;
 layout(location = 5) in vec2 aFogC;
 layout(location = 6) in uint aEmis;
+layout(location = 7) in float aDepth;
 layout(location = 0) smooth out vec3 vStq;
 layout(location = 1) noperspective out vec4 vColor;
 layout(location = 2) flat out vec4 vFlat;
@@ -493,6 +494,7 @@ layout(location = 5) flat out uvec4 vTex;
 layout(location = 6) flat out uint vEmis;
 void main() {
     gl_Position = sh_clip(uVP * vec4(aWorld, 1.0));
+    if (aDepth < 1.5) gl_Position.z = aDepth * gl_Position.w;  // (the GS's depth, as the OpenGL shader)
     vStq = aStq;
     vColor = vec4(aRgba) / 255.0;
     vFlat = vColor;
@@ -531,7 +533,7 @@ void main() {
     vec4 o = c;
     if (tme) {
         ivec2 sz = ivec2(int(vTex.y & 0xffffu), int(vTex.y >> 16));
-        vec2 uv = vStq.xy / vStq.z * vec2(sz);
+        vec2 uv = sh_mat_uv(vStq.xy / vStq.z, vEmis) * vec2(sz);  // (lava, mud, quicksand: the materials' slow flow)
         int layer = int(vTex.x);
         vec4 t;
         if (lin) {
@@ -551,6 +553,7 @@ void main() {
         else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
         o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, vEmis);
+        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), vEmis);
         if (uShade == 2) o.rgb = t.rgb;
     }
     if (uShade == 1) o.rgb = c.rgb;

@@ -867,14 +867,18 @@ lights only add. A lamp, a screen or a robot's eye painted in a texture then goe
 domed building, issue #102). A level's file can mark a texture **emissive** (our choice, data only):
 
 ```
-emissive <tfrag|tie|shrub|moby> <class> tex <n> [strength] [threshold]
+emissive <tfrag|tie|shrub|moby|surface> <class> tex <n> [strength] [threshold]
 ```
 
 - **Which texture.** `tex` is the class's own texture: a tie's texture prim (the class's list, as `TieClass::textures`), a shrub's
   or a moby's local texture (0 to 15, the class's texture remap). A tfrag has no class: `tfrag 0 tex <n>` names the level's tfrag
   texture `n`. The numbers come from the level's data, so they are the same at every load. A tie's or a shrub's texture is the
   level's texture the class names, and it glows wherever the level uses it (other classes that share it too); a moby's is
-  marked for its class alone.
+  marked for its class alone. A `surface` is one of VU1 program 7's surfaces the MRP draws (the levels' water, lava and sand seas,
+  [Rendering](rendering.md#vu1-program-7s-surfaces)): its class is the moby class whose draw-list callback draws it (0 when the
+  callback's argument is not a moby), its `tex` the GS memory block its texture is read from (TEX0's TBP). `RAC1_LIGHTS_TRACE=1`
+  prints each one as it is first drawn, with the line to write (Gaspar's lava: `surface 317 tex 12811`, Rilgar's harbour water:
+  `surface 879 tex 13040`).
 - **What it does.** Each texel of that texture whose brightest channel (r, g or b) reaches `threshold` (0 to 1; default 0, the whole
   texture; 0.04 of softening either side) is drawn with **the colour the original lighting gives it**, the game's own vertex
   colour (no sun shadow, no relighting) times the texture, times `strength` (0 to 4; default 1), wherever the modern lighting
