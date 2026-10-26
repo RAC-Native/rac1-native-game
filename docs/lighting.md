@@ -801,8 +801,9 @@ part of the original. The editor is in the debug menu (Lights tab), so it needs 
 - Lights are saved per level in `data/lights/levelNN.txt` (relative to the working directory;
   `RAC1_LIGHTS_DIR` changes the directory), one light per line:
   `light x y z  r g b  intensity radius flicker on`, `noauto <class>` for an automatic class
-  turned off, `emissive ...` for an [emissive surface](#emissive-surfaces), `sun <azimuth> <elevation>` for the level's own sun and `sun_rays off` for no
-  [sun rays](#sun-rays) on the level, with `#` for comments. Saving from the editor keeps the file's
+  turned off, `emissive ...` for an [emissive surface](#emissive-surfaces), `sun <azimuth> <elevation>` for the level's own sun,
+  `sun_rays off` for no [sun rays](#sun-rays) on the level and `particles <kind> <density> ...` for the level's
+  [ambient particles](particles.md#a-levels-lines), with `#` for comments. Saving from the editor keeps the file's
   own comment lines and its lines' order (an entry is written where its line was, the ones added
   after the last line), and writes the numbers it read unchanged: the game's thread rounds toward
   zero (the EE's mode), so the file is read and written rounding to nearest (`ps2fpu::NearestScope`);
@@ -846,8 +847,9 @@ street lamps (moby class 1827; down 0.5, 2.5, 9), Oltanis's street lamps (moby c
 light in each globe), and from a tester's survey (#102, weak and small): on Veldin the nanotech crates' orbs (moby 806), the crash
 site's fires (moby 760, the smoke vents whose wisps are the flames; flickering), the domed building's round lamps and door panels (tie
 2024); on Novalis the teleporter pads (moby 1135), Clank's eyes (1204), the landing pad's red lamps (shrub 231), the Large
-Amoeboids' (572) and the yellow soldier bots' (459) eyes and thrusters, the bomb glove's bombs (121) and the stationary drop ship's
-lamps (666); the neons' light was raised to about 0.4 units under the tube (it sat 1.7 below: a pool low on the wall, and a hot spot
+Amoeboids' (572) and the yellow soldier bots' (459) eyes and thrusters, the Buzzers' eyes (577), the bomb glove's bombs (121) and the
+Blarg ship's orange and blue lamps (666 on Novalis, 1805 on Gemlik: the same ship; emissive too, its hull texture's brightest texels
+alone); the neons' light was raised to about 0.4 units under the tube (it sat 1.7 below: a pool low on the wall, and a hot spot
 on the tanks standing under some of them). The neons' first values (1.3, radius 11, every way alike) lit the walls next to
 the tube a little and the floor some 6 units below hardly at all against the game's painted light. `RAC1_LAMP_SCAN` (testing) surveys what
 glows on screen along a run, by class.
@@ -926,7 +928,7 @@ does not turn the lighting on.
 | Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2 | Off | SSAO |
 | AO Intensity | 25 to 125 % | 75 % | the occlusion's darkness: each mode's strength scaled (`ao_intensity` in the preferences, item 47 of a save's block); see [Ambient occlusion](#ambient-occlusion) |
 | Sun Rays | Off, Low, Medium, High | Off | light shafts from the sun through openings, each step more quality and strength (`sun_rays_quality`, item 49; `sun_rays` and item 46 until 0.4.x read with Low as Medium); see [Sun rays](#sun-rays) |
-| Surface Detail | Off, Low, High | Off | the surfaces' materials (metal, wet, puddle, lava, water, mud, quicksand) tagged in the level's file; High adds the reflections and the lava's heat shimmer (`surface_detail`, item 50); see [Materials](materials.md) |
+| Surface Detail | Off, Low, High | Off | the surfaces' materials (metal, wet, puddle, lava, water, mud, quicksand) tagged in the level's file; High adds the reflections and the lava's heat shimmer (`surface_detail`, item 51); see [Materials](materials.md) |
 
 The other rows take effect only when Lighting is not Original.
 

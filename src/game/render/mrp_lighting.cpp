@@ -2857,9 +2857,10 @@ std::vector<EmissiveSurface> g_emissive_list;  // the emissive surfaces and the 
 bool g_rain = false;                           // ("rain on": the puddles' and the water's rain ripples)
 bool g_sky_file = false;                       // ("sky r g b": the reflections' sky colour; else kSkyDefault)
 float g_sky[3] = {0.0f, 0.0f, 0.0f};
+std::vector<ParticleSpec> g_particles, g_particles_read;  // the ambient particles ("particles"): now, and as the file was read
 // the file's lines in their order, as the editor's Save writes them back: a comment (or a line not understood) by its text, an
 // entry by its kind ('s' sun, 'r' sun_rays, 'S' interior_set, 'e' emit, 'm' emissive / material, 'R' rain, 'k' sky, 'i' interior, 'o' noauto,
-// 'l' light) - the next of
+// 'l' light, 'p' particles) - the next of
 // that kind's current list written in its place, the ones added since after the last line
 struct FileLine {
     char kind = '#';
@@ -2875,6 +2876,66 @@ std::string user_path(int level) {
     std::snprintf(name, sizeof name, "level%02d.txt", level);
     return std::string(dir != nullptr ? dir : "data/lights") + "/" + name;
 }
+constexpr const char* kParticleKindNames[kPartKinds] = {"dust", "ash", "embers", "fireflies", "motes", "rain", "snow"};
+// orig: (host) a "particles <kind> <density> [r g b] [wind <x> <y>] [box x0 y0 z0 x1 y1 z1] [keep]" line read (false: not one)
+bool particles_parse(const char* line, ParticleSpec& p) {
+    char kind[16] = {};
+    int at = 0;
+    if (std::sscanf(line, "particles %15s %f%n", kind, &p.density, &at) != 2) return false;
+    p.kind = -1;
+    for (int k = 0; k < kPartKinds; ++k)
+        if (std::strcmp(kind, kParticleKindNames[k]) == 0) p.kind = k;
+    if (p.kind < 0) return false;
+    p.density = std::clamp(p.density, 0.0f, 4.0f);
+    const char* q = line + at;
+    int n = 0;
+    float c[3];
+    if (std::sscanf(q, " %f %f %f%n", &c[0], &c[1], &c[2], &n) == 3) {
+        p.has_col = true;
+        for (int i = 0; i < 3; ++i) p.col[i] = c[i];
+        q += n;
+    }
+    char word[16];
+    while (std::sscanf(q, " %15s%n", word, &n) == 1) {
+        q += n;
+        if (std::strcmp(word, "wind") == 0 && std::sscanf(q, " %f %f%n", &p.wind[0], &p.wind[1], &n) == 2) {
+            q += n;
+        } else if (std::strcmp(word, "box") == 0 && std::sscanf(q, " %f %f %f %f %f %f%n", &p.lo[0], &p.lo[1], &p.lo[2], &p.hi[0], &p.hi[1], &p.hi[2], &n) == 6) {
+            q += n;
+            p.has_box = true;
+            for (int i = 0; i < 3; ++i)
+                if (p.lo[i] > p.hi[i]) std::swap(p.lo[i], p.hi[i]);
+        } else if (std::strcmp(word, "keep") == 0) {
+            p.keep = true;
+        } else if (word[0] == '#') {
+            break;  // (a comment after the line's values)
+        }
+    }
+    return true;
+}
+// orig: (host) a number as short as it reads back the same (%.3f's, its trailing zeros dropped)
+std::string particles_num(float v) {
+    char b[32];
+    std::snprintf(b, sizeof b, "%.3f", v);
+    std::string s(b);
+    while (!s.empty() && s.back() == '0') s.pop_back();
+    if (!s.empty() && s.back() == '.') s.pop_back();
+    if (s == "-0") s = "0";
+    return s;
+}
+// orig: (host) a particles line written from its values
+std::string particles_line(const ParticleSpec& p) {
+    std::string s = std::string("particles ") + kParticleKindNames[std::clamp(p.kind, 0, kPartKinds - 1)] + " " + particles_num(p.density);
+    if (p.has_col) s += "  " + particles_num(p.col[0]) + " " + particles_num(p.col[1]) + " " + particles_num(p.col[2]);
+    if (p.wind[0] != 0.0f || p.wind[1] != 0.0f) s += "  wind " + particles_num(p.wind[0]) + " " + particles_num(p.wind[1]);
+    if (p.has_box) {
+        s += "  box";
+        for (float v : {p.lo[0], p.lo[1], p.lo[2], p.hi[0], p.hi[1], p.hi[2]}) s += " " + particles_num(v);
+    }
+    if (p.keep) s += "  keep";
+    return s;
+}
+
 // orig: (host) read: one light a line, "light x y z r g b intensity radius flicker on" ('#' comments)
 void user_load(int level) {
     g_user.clear();
@@ -2886,6 +2947,8 @@ void user_load(int level) {
     g_emissive_list.clear();
     g_rain = false;
     g_sky_file = false;
+    g_particles.clear();
+    g_particles_read.clear();
     g_sun_snap = true;  // (a level's sun, or the file read again: at once)
     g_user_layout.clear();
     g_sun_rays_off = false;
@@ -2918,6 +2981,13 @@ void user_load(int level) {
         if (std::sscanf(line, "noauto %d", &cls) == 1) {
             g_user_noauto.push_back(cls);
             entry('o');
+            continue;
+        }
+        if (ParticleSpec ps; particles_parse(line, ps)) {
+            ps.text = text;
+            g_particles.push_back(ps);
+            g_particles_read.push_back(ps);
+            entry('p');
             continue;
         }
         if (SunInterior b; std::sscanf(line, "interior %f %f %f %f %f %f", &b.lo[0], &b.lo[1], &b.lo[2], &b.hi[0], &b.hi[1], &b.hi[2]) == 6) {
@@ -3048,6 +3118,48 @@ void mrp_user_sun_set(bool on, float az, float el) {
 bool mrp_user_sun_rays_off() { return g_sun_rays_off; }
 // orig: (host) see mrp_lighting.h
 void mrp_user_sun_rays_set_off(bool off) { g_sun_rays_off = off; }
+// orig: (host) see mrp_lighting.h
+const char* mrp_particle_kind_name(int kind) { return kind >= 0 && kind < kPartKinds ? kParticleKindNames[kind] : "?"; }
+// orig: (host) see mrp_lighting.h
+bool ParticleSpec::same_as(const ParticleSpec& o) const {
+    auto eq3 = [](const float* a, const float* b) { return a[0] == b[0] && a[1] == b[1] && a[2] == b[2]; };
+    return kind == o.kind && density == o.density && has_col == o.has_col && (!has_col || eq3(col, o.col)) && wind[0] == o.wind[0] && wind[1] == o.wind[1] &&
+           has_box == o.has_box && (!has_box || (eq3(lo, o.lo) && eq3(hi, o.hi))) && keep == o.keep;
+}
+// orig: (host) see mrp_lighting.h
+std::vector<ParticleSpec>& mrp_user_particles() { return g_particles; }
+// orig: (host) see mrp_lighting.h
+const std::vector<ParticleSpec>& mrp_user_particles_read() { return g_particles_read; }
+// orig: (host) see mrp_lighting.h
+void mrp_user_lights_ensure() { user_ensure(); }
+// orig: (host) see mrp_lighting.h
+void mrp_lighting_zone_light(float rgb[3], float sun[3]) {
+    float w = 0.0f;
+    glm::vec4 key(0.0f);
+    glm::vec3 key_dir(0.0f, 0.0f, 1.0f);
+    const glm::vec3 s = sun_direction(&w, &key, &key_dir);
+    for (int i = 0; i < 3; ++i) sun[i] = s[i];
+    // the hero's light sets (as game_sun picks them), both lights' colours summed, blended by the hero's weight
+    uint32_t a = 0, b = 0;
+    float t = 0.0f;
+    if (const uint32_t hero = lwu(OV(0x0015ffd8u)); hero != 0) {
+        a = lbu(hero + 0x38);
+        b = lbu(hero + 0x39);
+        t = static_cast<float>(lbu(hero + 0x3a)) / 256.0f;
+        if (a > 15) a = 0;
+        if (b > 15) b = a;
+        if (a == 15) a = b = 0;
+    }
+    auto set_sum = [](uint32_t set) {
+        const uint32_t base = OV(0x0017fec0u) + 0x40 * set;
+        glm::vec3 c(0.0f);
+        for (uint32_t l = 0; l < 2; ++l)
+            for (uint32_t i = 0; i < 3; ++i) c[i] += std::max(lwc1(base + 0x20 * l + 4 * i), 0.0f);
+        return c;
+    };
+    const glm::vec3 c = glm::mix(set_sum(a), set_sum(b), t);
+    for (int i = 0; i < 3; ++i) rgb[i] = std::isfinite(c[i]) ? std::min(c[i], 4.0f) : 0.0f;
+}
 // orig: (host) see mrp_lighting.h
 std::vector<ClassLight>& mrp_user_class_lights() { return g_class_lights; }
 
@@ -3250,7 +3362,7 @@ bool mrp_user_lights_save() {
     // each entry written in the place of the file's line of its kind (the next one of the list), the rest after the last line
     bool sun_done = false, rays_done = false, rain_done = false, sky_done = false;
     const bool has_rays = std::any_of(g_user_layout.begin(), g_user_layout.end(), [](const FileLine& ln) { return ln.kind == 'r'; });
-    size_t n_set = 0, n_emit = 0, n_emis = 0, n_box = 0, n_off = 0, n_light = 0;
+    size_t n_set = 0, n_emit = 0, n_emis = 0, n_box = 0, n_off = 0, n_light = 0, n_part = 0;
     auto put = [&](char kind) {
         switch (kind) {
         case 's':
@@ -3305,6 +3417,17 @@ bool mrp_user_lights_save() {
         case 'o':
             if (n_off < g_user_noauto.size()) std::fprintf(f, "noauto %d\n", g_user_noauto[n_off++]);
             break;
+        case 'p':
+            while (n_part < g_particles.size() && !g_particles[n_part].on) ++n_part;  // (one turned off: not written)
+            if (n_part < g_particles.size()) {
+                ParticleSpec& p = g_particles[n_part];
+                // (a line not edited: as it was read, its numbers and spacing kept)
+                const bool same = !p.text.empty() && std::any_of(g_particles_read.begin(), g_particles_read.end(), [&](const ParticleSpec& r) { return r.text == p.text && p.same_as(r); });
+                if (!same) p.text = particles_line(p);
+                std::fprintf(f, "%s\n", p.text.c_str());
+                ++n_part;
+            }
+            break;
         case 'l':
             if (n_light < g_user.size()) {
                 const UserLight& l = g_user[n_light++];
@@ -3330,7 +3453,11 @@ bool mrp_user_lights_save() {
     while (n_box < g_interiors.size()) put('i');
     while (n_off < g_user_noauto.size()) put('o');
     while (n_light < g_user.size()) put('l');
+    while (n_part < g_particles.size()) put('p');
     std::fclose(f);
+    g_particles_read.clear();  // (the lines written are the file's now: a later Save keeps them as they are)
+    for (const ParticleSpec& p : g_particles)
+        if (p.on) g_particles_read.push_back(p);
     return true;
 }
 

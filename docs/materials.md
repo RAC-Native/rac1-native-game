@@ -14,7 +14,7 @@ GLSL in `src/game/render/mrp_materials_glsl.inc` (one text for OpenGL and, read 
 
 ## Surface Detail
 
-Options > Graphics > Surface Detail (`surface_detail` in the preferences, item 50 of a save's block):
+Options > Graphics > Surface Detail (`surface_detail` in the preferences, item 51 of a save's block):
 
 | Value | What is drawn |
 |---|---|

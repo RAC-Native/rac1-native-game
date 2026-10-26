@@ -13,6 +13,7 @@
 
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
+#include <game/render/mrp_particles.h>
 
 namespace rac1 {
 
@@ -131,6 +132,7 @@ void particle_texture_alloc(uint64_t& t0, uint64_t& t0_hi, uint32_t t1, uint32_t
 
 // orig: 0x00267c98
 void particles_draw() {
+    mrp_particles_note_begin();
     uint32_t t8 = lwu(OV(0x0016016c));
     int32_t t9 = lw(OV(0x00160174));
     const int32_t s3 = lw(OV(0x0016017c));
@@ -330,6 +332,7 @@ void particles_draw() {
             uint64_t t0 = ld(t1 + 0x3000);
             hi = 0;
             if (static_cast<int64_t>(t0) >= 0) particle_texture_alloc(t0, hi, t1, s0, s1, s2, vf20_lo, vf20_hi);
+            mrp_particles_note_tex(tex, t0);  // (host: the texture's GS address this frame, for the ambient particles; no state)
             return t0;
         };
         uint32_t step = 0x40, nverts = 4;

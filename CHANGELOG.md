@@ -6,6 +6,10 @@ What changed in each release. Releases are source only: you build the game with 
 ## Unreleased
 
 ### Graphics
+- Ambient particles (Options > Graphics > Ambient Particles: Off by default, Low, High): our own dust, ash, embers, fireflies,
+  light dust in the sunlight, rain with splashes and snow, per level from its light file (`particles` lines, editable in the
+  debug menu's Sun tab); Batalia's rain and Hoven's snow drawn in place of the game's own while it is on. OpenGL and Vulkan.
+  See [Ambient particles](docs/particles.md).
 - Modern lighting: more lamps light the world on Veldin and Novalis (nanotech crates, fires, plasma beams, landing pad, eyes, bombs), and
   lights per object class follow the objects the game spawns later (thanks Anya-Thoughtmane, #102).
 - Modern lighting: emissive surfaces. A level's light file can mark a texture (`emissive <tfrag|tie|shrub|moby> <class> tex <n>
@@ -18,6 +22,8 @@ What changed in each release. Releases are source only: you build the game with 
   High adds reflections from the last frame's picture and the lava's heat shimmer. `rain on` and `sky r g b` per level. Tagged in
   the debug menu's Lights tab. Batalia's platform, railings and buildings (metal) and its paved ground (puddles, rain) and Umbris's
   swampy ground (mud). See [Materials](docs/materials.md).
+- Modern lighting: Novalis's Buzzers light with their green eyes, and the Blarg ship (Novalis's drop ship, Gemlik's ships of the
+  skill point) lights from its orange and blue lamps, which glow, instead of from inside its hull (#102).
 
 ### Fixes
 - When the computer falls behind (or with V-Sync on a 75 Hz display) and a frame runs two or more of the game's
@@ -26,6 +32,9 @@ What changed in each release. Releases are source only: you build the game with 
 - The debug menu's light editor no longer changes the numbers of a level's light file when it saves it: each Save took
   one unit off the last digit of the `emit` lines' offsets, colours and aim (the game rounds toward zero, as the PS2
   does, and the file was read and written so), and the file's comments and lines now stay where they were (#101).
+- Widescreen: Rilgar's water near the camera no longer loses a wedge (a dark band across the water, the sea bed showing
+  through) or shows a flat, stretched patch: the large water triangles that cross the whole 4:3 frame were stretched as if
+  they were full-screen 2D, their corners past the frame's sides moved to the window's edges.
 
 ### Graphics
 - A level's light file can turn the Sun Rays off on that level (`sun_rays off`; the debug menu's Sun tab has a checkbox

@@ -34,6 +34,7 @@
 #include <game/render/mrp_lighting.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_moby_renderer.h>
+#include <game/render/mrp_particles.h>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
@@ -92,7 +93,7 @@ constexpr uint32_t PICTURE_SECTOR = 0xadf00000u;
 enum : uint32_t { PIC_ORIGINAL = 2, PIC_MODERN = 3, PIC_EXPERIMENTAL = 5 };  // (advanced.cpp's PIC_ ids)
 
 // The settings
-enum Setting : uint32_t { S_DISPLAY, S_MONITOR, S_WINDOW, S_SCALE, S_ASPECT, S_FIT, S_LOD, S_FOV, S_VSYNC, S_CAP, S_LIGHTING, S_DYN_SHADOWS, S_SEC_LIGHTS, S_SHADOW_DIST, S_AO, S_MIPS, S_SHADOW_STR, S_SUN_RAYS, S_AO_STR, S_HUD, S_RENDERER, S_SURFACE, S_COUNT };
+enum Setting : uint32_t { S_DISPLAY, S_MONITOR, S_WINDOW, S_SCALE, S_ASPECT, S_FIT, S_LOD, S_FOV, S_VSYNC, S_CAP, S_LIGHTING, S_DYN_SHADOWS, S_SEC_LIGHTS, S_SHADOW_DIST, S_AO, S_MIPS, S_SHADOW_STR, S_SUN_RAYS, S_AO_STR, S_HUD, S_RENDERER, S_SURFACE, S_PARTICLES, S_COUNT };
 constexpr float SHADOW_DISTS[] = {40.0f, 80.0f, 140.0f, 0.0f};  // Low, Medium, High, Maximum (0: as far as the cascades reach)
 constexpr int SHADOW_STRS[] = {50, 60, 70, 80, 90, 100};  // the sun's shadows' strength, percent of the key light they hide
 constexpr int SHADOW_STR_DEFAULT = 2;
@@ -116,8 +117,8 @@ constexpr uint32_t SIZE_COUNT = sizeof(SIZES) / sizeof(Size);
 constexpr int32_t TEXT_FIRST = 0x7f40;
 enum : int32_t {
     T_GRAPHICS, T_OPTIONS_HELP,
-    T_DISPLAY, T_MONITOR, T_WINDOW_SIZE, T_SCALE, T_ASPECT, T_FIT, T_LOD, T_FOV, T_VSYNC, T_CAP, T_LIGHTING, T_DYN_SHADOWS, T_SEC_LIGHTS, T_SHADOW_DIST, T_AO, T_MIPS, T_SHADOW_STR, T_SUN_RAYS, T_AO_STR, T_HUD, T_RENDERER, T_SURFACE,
-    H_DISPLAY, H_MONITOR, H_WINDOW_SIZE, H_SCALE, H_ASPECT, H_FIT, H_LOD, H_FOV, H_VSYNC, H_CAP, H_LIGHTING, H_DYN_SHADOWS, H_SEC_LIGHTS, H_SHADOW_DIST, H_AO, H_MIPS, H_SHADOW_STR, H_SUN_RAYS, H_AO_STR, H_HUD, H_RENDERER, H_SURFACE,
+    T_DISPLAY, T_MONITOR, T_WINDOW_SIZE, T_SCALE, T_ASPECT, T_FIT, T_LOD, T_FOV, T_VSYNC, T_CAP, T_LIGHTING, T_DYN_SHADOWS, T_SEC_LIGHTS, T_SHADOW_DIST, T_AO, T_MIPS, T_SHADOW_STR, T_SUN_RAYS, T_AO_STR, T_HUD, T_RENDERER, T_SURFACE, T_PARTICLES,
+    H_DISPLAY, H_MONITOR, H_WINDOW_SIZE, H_SCALE, H_ASPECT, H_FIT, H_LOD, H_FOV, H_VSYNC, H_CAP, H_LIGHTING, H_DYN_SHADOWS, H_SEC_LIGHTS, H_SHADOW_DIST, H_AO, H_MIPS, H_SHADOW_STR, H_SUN_RAYS, H_AO_STR, H_HUD, H_RENDERER, H_SURFACE, H_PARTICLES,
     T_WINDOW, T_FULLSCREEN, T_43, T_169, T_FILL, T_BARS, T_STRETCH, T_219, T_329, T_HUD_FIT,
     T_ORIGINAL, T_LOW, T_MEDIUM, T_HIGH, T_MAXIMUM, T_OFF, T_ON, T_UNLIMITED, T_SEC_GAME, T_SEC_ALL, T_FULL,
     T_MODE_ORIGINAL, T_MODE_MODERN, T_MODE_EXPERIMENTAL, H_MODE_ORIGINAL, H_MODE_MODERN, H_MODE_EXPERIMENTAL,
@@ -126,7 +127,7 @@ enum : int32_t {
 };
 constexpr const char* TEXTS[4][T_COUNT] = {
     {"Graphics", "Display, picture shape, detail and view of the PC version",
-     "Display", "Monitor", "Window Size", "Render Resolution", "Aspect Ratio", "Fit to Screen", "Level of Detail", "Field of View", "V-Sync", "Frame Rate Cap", "Lighting", "Dynamic Shadows", "Secondary Lights", "Shadow Distance", "Ambient Occlusion", "Texture Detail", "Shadow Strength", "Sun Rays", "AO Intensity", "HUD", "Renderer", "Surface Detail",
+     "Display", "Monitor", "Window Size", "Render Resolution", "Aspect Ratio", "Fit to Screen", "Level of Detail", "Field of View", "V-Sync", "Frame Rate Cap", "Lighting", "Dynamic Shadows", "Secondary Lights", "Shadow Distance", "Ambient Occlusion", "Texture Detail", "Shadow Strength", "Sun Rays", "AO Intensity", "HUD", "Renderer", "Surface Detail", "Ambient Particles",
      "In a window or on the whole screen.", "Which screen the window is put on.", "The window's size (in window mode).", "The 3D's resolution, times the screen's. The HUD stays sharp.",
      "4:3 as the original, 16:9, or the view widened to fill the screen.", "When the picture's shape is not the screen's: black bars, or stretched.",
      "How far objects keep their detail and stay drawn.", "x1.00 is the original's view.", "Waits for the screen's refresh: no tearing.",
@@ -143,6 +144,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "How wide the HUD spreads in a widened view. 4:3: as the original.",
      "The graphics API. Vulkan is experimental. Takes effect at the next start.",
      "Shiny metal, wet ground, water and lava with the new lighting. High: reflections.",
+     "Dust, embers, fireflies, rain and snow of our own. Not in the PS2 game.",
      "Window", "Fullscreen", "4:3 Original", "16:9", "Fill Screen", "Black Bars", "Stretch", "21:9", "32:9", "Fit Screen",
      "Original", "Low", "Medium", "High", "Maximum", "Off", "On", "Unlimited", "Game's", "All", "Full",
      "Original", "Modern", "Experimental",
@@ -150,7 +152,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Widescreen, more detail, modern aiming and movement. All can be changed in Options.",
      "Modern plus all the new lighting: shadows, lights, occlusion. Experimental, heavy."},
     {"Grafik", "Anzeige, Bildformat, Details und Sicht der PC-Version",
-     "Anzeige", "Bildschirm", "Fenstergrosse", "Renderauflosung", "Seitenverhaltnis", "Bildanpassung", "Detailstufe", "Sichtfeld", "V-Sync", "Bildratenlimit", "Beleuchtung", "Dynamische Schatten", "Zusatzlichter", "Schattendistanz", "Umgebungsverdeckung", "Texturdetail", "Schattenstarke", "Sonnenstrahlen", "Verdeckungsstarke", "HUD", "Renderer", "Oberflachendetail",
+     "Anzeige", "Bildschirm", "Fenstergrosse", "Renderauflosung", "Seitenverhaltnis", "Bildanpassung", "Detailstufe", "Sichtfeld", "V-Sync", "Bildratenlimit", "Beleuchtung", "Dynamische Schatten", "Zusatzlichter", "Schattendistanz", "Umgebungsverdeckung", "Texturdetail", "Schattenstarke", "Sonnenstrahlen", "Verdeckungsstarke", "HUD", "Renderer", "Oberflachendetail", "Umgebungspartikel",
      "Im Fenster oder im Vollbild.", "Auf welchem Bildschirm das Fenster liegt.", "Die Grosse des Fensters (im Fenstermodus).", "Die Auflosung der 3D-Grafik, mal die des Bildschirms. Das HUD bleibt scharf.",
      "4:3 wie im Original, 16:9 oder auf den Bildschirm erweitert.", "Wenn das Bildformat nicht passt: schwarze Balken oder gestreckt.",
      "Wie weit Objekte ihre Details behalten und gezeichnet werden.", "x1.00 ist die Sicht des Originals.", "Wartet auf den Bildaufbau: kein Tearing.",
@@ -167,6 +169,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Wie breit das HUD in einer erweiterten Sicht ist. 4:3: wie im Original.",
      "Die Grafik-API. Vulkan ist experimentell. Gilt ab dem nachsten Start.",
      "Glanzendes Metall, nasser Boden, Wasser und Lava mit der neuen Beleuchtung. Hoch: Spiegelungen.",
+     "Eigener Staub, Glut, Gluhwurmchen, Regen und Schnee. Nicht im PS2-Spiel.",
      "Fenster", "Vollbild", "4:3 Original", "16:9", "Fullen", "Balken", "Strecken", "21:9", "32:9", "Ganze Breite",
      "Original", "Niedrig", "Mittel", "Hoch", "Maximum", "Aus", "An", "Unbegrenzt", "Des Spiels", "Alle", "Voll",
      "Original", "Modern", "Experimentell",
@@ -174,7 +177,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Breitbild, mehr Details, modernes Zielen und Bewegen. Alles in Optionen anderbar.",
      "Modern plus die neue Beleuchtung: Schatten, Lichter, Verdeckung. Experimentell, aufwendig."},
     {"Graficos", "Pantalla, formato, detalle y vista de la version PC",
-     "Pantalla", "Monitor", "Tamano de ventana", "Resolucion 3D", "Relacion de aspecto", "Ajuste", "Nivel de detalle", "Campo de vision", "V-Sync", "Limite de FPS", "Iluminacion", "Sombras dinamicas", "Luces secundarias", "Distancia de sombras", "Oclusion ambiental", "Detalle de texturas", "Intensidad de sombras", "Rayos de sol", "Intensidad de oclusion", "HUD", "Renderizador", "Detalle de superficies",
+     "Pantalla", "Monitor", "Tamano de ventana", "Resolucion 3D", "Relacion de aspecto", "Ajuste", "Nivel de detalle", "Campo de vision", "V-Sync", "Limite de FPS", "Iluminacion", "Sombras dinamicas", "Luces secundarias", "Distancia de sombras", "Oclusion ambiental", "Detalle de texturas", "Intensidad de sombras", "Rayos de sol", "Intensidad de oclusion", "HUD", "Renderizador", "Detalle de superficies", "Particulas ambientales",
      "En una ventana o a pantalla completa.", "En que pantalla se abre la ventana.", "El tamano de la ventana (en modo ventana).", "La resolucion del 3D, por la de la pantalla. El HUD sigue nitido.",
      "4:3 como el original, 16:9 o la vista ampliada a la pantalla.", "Si el formato no es el de la pantalla: bandas negras o estirado.",
      "Hasta donde los objetos conservan su detalle y se dibujan.", "x1.00 es la vista del original.", "Espera al refresco de la pantalla: sin cortes.",
@@ -191,6 +194,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Lo ancho que se extiende el HUD en una vista ampliada. 4:3: como el original.",
      "La API grafica. Vulkan es experimental. Se aplica al siguiente inicio.",
      "Metal brillante, suelo mojado, agua y lava con la nueva iluminacion. Alto: reflejos.",
+     "Polvo, brasas, luciernagas, lluvia y nieve propios. No en el juego de PS2.",
      "Ventana", "Completa", "4:3 Original", "16:9", "Llenar", "Bandas", "Estirar", "21:9", "32:9", "Todo el ancho",
      "Original", "Bajo", "Medio", "Alto", "Maximo", "No", "Si", "Sin limite", "Del juego", "Todas", "Completo",
      "Original", "Moderno", "Experimental",
@@ -198,7 +202,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Panoramico, mas detalle, apuntado y movimiento modernos. Todo cambia en Opciones.",
      "Moderno y la nueva iluminacion al maximo: sombras, luces, oclusion. Experimental, pesado."},
     {"Grafica", "Schermo, formato, dettaglio e visuale della versione PC",
-     "Schermo", "Monitor", "Finestra", "Risoluzione 3D", "Formato", "Adattamento", "Livello di dettaglio", "Campo visivo", "V-Sync", "Limite FPS", "Illuminazione", "Ombre dinamiche", "Luci secondarie", "Distanza ombre", "Occlusione ambientale", "Dettaglio texture", "Intensita ombre", "Raggi di sole", "Intensita occlusione", "HUD", "Renderer", "Dettaglio superfici",
+     "Schermo", "Monitor", "Finestra", "Risoluzione 3D", "Formato", "Adattamento", "Livello di dettaglio", "Campo visivo", "V-Sync", "Limite FPS", "Illuminazione", "Ombre dinamiche", "Luci secondarie", "Distanza ombre", "Occlusione ambientale", "Dettaglio texture", "Intensita ombre", "Raggi di sole", "Intensita occlusione", "HUD", "Renderer", "Dettaglio superfici", "Particelle ambientali",
      "In una finestra o a schermo intero.", "Su quale schermo va la finestra.", "La dimensione della finestra (in modalita finestra).", "La risoluzione del 3D, per quella dello schermo. L'HUD resta nitido.",
      "4:3 come l'originale, 16:9 o la visuale allargata allo schermo.", "Se il formato non e quello dello schermo: bande nere o stirato.",
      "Fin dove gli oggetti tengono il dettaglio e restano disegnati.", "x1.00 e la visuale dell'originale.", "Attende il refresh dello schermo: niente tearing.",
@@ -215,6 +219,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Quanto si allarga l'HUD in una visuale allargata. 4:3: come l'originale.",
      "L'API grafica. Vulkan e sperimentale. Vale dal prossimo avvio.",
      "Metallo lucido, terreno bagnato, acqua e lava con la nuova illuminazione. Alto: riflessi.",
+     "Polvere, braci, lucciole, pioggia e neve nostre. Non nel gioco PS2.",
      "Finestra", "Intero", "4:3 Originale", "16:9", "Riempi", "Bande nere", "Stira", "21:9", "32:9", "Tutta la larghezza",
      "Originale", "Basso", "Medio", "Alto", "Massimo", "No", "Si", "Illimitato", "Del gioco", "Tutte", "Pieno",
      "Originale", "Moderno", "Sperimentale",
@@ -236,7 +241,9 @@ constexpr Row ROWS_DEF[] = {
     {S_FIT, T_FIT, H_FIT},                   {S_HUD, T_HUD, H_HUD},                             {S_FOV, T_FOV, H_FOV},                             {S_LOD, T_LOD, H_LOD},
     {S_LIGHTING, T_LIGHTING, H_LIGHTING},    {S_SHADOW_STR, T_SHADOW_STR, H_SHADOW_STR},       {S_SHADOW_DIST, T_SHADOW_DIST, H_SHADOW_DIST},     {S_DYN_SHADOWS, T_DYN_SHADOWS, H_DYN_SHADOWS},
     {S_SEC_LIGHTS, T_SEC_LIGHTS, H_SEC_LIGHTS},   {S_AO, T_AO, H_AO},   {S_AO_STR, T_AO_STR, H_AO_STR},   {S_SUN_RAYS, T_SUN_RAYS, H_SUN_RAYS},
-    {S_SURFACE, T_SURFACE, H_SURFACE},        {S_MIPS, T_MIPS, H_MIPS},
+    {S_SURFACE, T_SURFACE, H_SURFACE},
+    {S_PARTICLES, T_PARTICLES, H_PARTICLES},
+    {S_MIPS, T_MIPS, H_MIPS},
 };
 constexpr int ROW_COUNT = static_cast<int>(sizeof(ROWS_DEF) / sizeof(Row));
 static_assert(T_COUNT + VISIBLE <= 0x60, "the Graphics page's text ids end where the Controls page's begin (0x7fa0)");
@@ -278,6 +285,7 @@ uint32_t value_count(Setting s) {
         case S_SHADOW_STR: return sizeof(SHADOW_STRS) / sizeof(int);
         case S_SUN_RAYS: return 4;  // Off, Low, Medium, High (quality; the same look)
         case S_SURFACE: return 3;   // Off, Low, High (the materials, mrp_lighting.h g_surface_detail)
+        case S_PARTICLES: return 3;  // Off, Low, High (mrp_particles.h)
         case S_AO_STR: return sizeof(AO_STRS) / sizeof(int);
         case S_LIGHTING: return 4;  // Original, Low, Medium, High (mrp_lighting.h: off, the maps at 1024 / 2048 / 4096)
         case S_FOV: return sizeof(FOVS) / sizeof(int);
@@ -326,6 +334,7 @@ void apply() {
         if (std::getenv("RAC1_AO") == nullptr) g_ao = v[S_AO];
         if (std::getenv("RAC1_SUN_RAYS") == nullptr) g_sun_rays = v[S_SUN_RAYS];
         if (std::getenv("RAC1_SURFACE_DETAIL") == nullptr) g_surface_detail = v[S_SURFACE];
+        if (std::getenv("RAC1_PARTICLES") == nullptr) g_ambient_particles = v[S_PARTICLES];
         if (std::getenv("RAC1_SHADOW_STRENGTH") == nullptr) g_shadow_strength = SHADOW_STRS[v[S_SHADOW_STR]];
         if (std::getenv("RAC1_AO_INTENSITY") == nullptr) g_ao_intensity = AO_STRS[v[S_AO_STR]];
         mips_apply();
@@ -422,6 +431,7 @@ bool prefs_read(const std::filesystem::path& path) {
         else if (std::strcmp(key, "surface_detail") == 0 && a >= 0 && a < 3) gs_.value[S_SURFACE] = a;
         else if (std::strcmp(key, "shadow_strength") == 0) gs_.value[S_SHADOW_STR] = nearest(SHADOW_STRS, a);
         else if (std::strcmp(key, "ao_intensity") == 0) gs_.value[S_AO_STR] = nearest(AO_STRS, a);
+        else if (std::strcmp(key, "ambient_particles") == 0 && a >= 0 && a < 3) gs_.value[S_PARTICLES] = a;
         // ("overscan", the Overscan row's until 0.4: read like any other key and ignored, the full frame always shown)
         else if (std::strcmp(key, "mode") == 0 && a >= 0 && a <= 3) gs_.mode = static_cast<uint32_t>(a);
     }
@@ -467,9 +477,9 @@ void prefs_write() {
     if (path.has_parent_path()) std::filesystem::create_directories(path.parent_path(), ec);
     if (FILE* f = platform::open_file(path, "w")) {
         const int* v = gs_.value;
-        std::fprintf(f, "display %d\nmonitor %s\nwindow %d %d\nrender_scale %d\naspect %d\nfit %d\nlod %d\nfov %d\nvsync %d\nfps_cap %d\nlighting %d\ndynamic_shadows %d\nsecondary_lights %d\nshadow_distance %d\nambient_occlusion %d\ntexture_detail %d\nshadow_strength %d\nsun_rays_quality %d\nao_intensity %d\nhud %d\nrenderer %s\nsurface_detail %d\nmode %u\n",
+        std::fprintf(f, "display %d\nmonitor %s\nwindow %d %d\nrender_scale %d\naspect %d\nfit %d\nlod %d\nfov %d\nvsync %d\nfps_cap %d\nlighting %d\ndynamic_shadows %d\nsecondary_lights %d\nshadow_distance %d\nambient_occlusion %d\ntexture_detail %d\nshadow_strength %d\nsun_rays_quality %d\nao_intensity %d\nambient_particles %d\nhud %d\nrenderer %s\nsurface_detail %d\nmode %u\n",
                      v[S_DISPLAY], gs_.monitor_name.c_str(), gs_.win_w, gs_.win_h, SCALES[v[S_SCALE]], v[S_ASPECT], v[S_FIT], v[S_LOD], FOVS[v[S_FOV]], v[S_VSYNC], CAPS[v[S_CAP]], v[S_LIGHTING], v[S_DYN_SHADOWS],
-                     v[S_SEC_LIGHTS], v[S_SHADOW_DIST], v[S_AO], v[S_MIPS], SHADOW_STRS[v[S_SHADOW_STR]], v[S_SUN_RAYS], AO_STRS[v[S_AO_STR]], v[S_HUD], v[S_RENDERER] != 0 ? "vulkan" : "opengl", v[S_SURFACE], gs_.mode);
+                     v[S_SEC_LIGHTS], v[S_SHADOW_DIST], v[S_AO], v[S_MIPS], SHADOW_STRS[v[S_SHADOW_STR]], v[S_SUN_RAYS], AO_STRS[v[S_AO_STR]], v[S_PARTICLES], v[S_HUD], v[S_RENDERER] != 0 ? "vulkan" : "opengl", v[S_SURFACE], gs_.mode);
         std::fclose(f);
     }
     gs_.dirty = false;
@@ -516,6 +526,7 @@ std::string value_text(Setting s) {
         case S_SHADOW_DIST: return t[T_LOW + v];
         case S_SUN_RAYS: return t[v == 0 ? T_OFF : T_LOW + v - 1];
         case S_SURFACE: return t[v == 0 ? T_OFF : v == 1 ? T_LOW : T_HIGH];
+        case S_PARTICLES: return t[v == 0 ? T_OFF : v == 1 ? T_LOW : T_HIGH];
         case S_SHADOW_STR: std::snprintf(b, sizeof b, "%d", SHADOW_STRS[v]); return b;  // (the font's '%' is a button)
         case S_AO_STR: std::snprintf(b, sizeof b, "%d", AO_STRS[v]); return b;
         case S_AO: {
@@ -795,7 +806,8 @@ void graphics_save_items(std::vector<uint8_t>& d, uint32_t& count) {
     const struct { uint16_t id; int value; } items[] = {
         {32, gs_.value[S_SCALE]}, {33, gs_.value[S_ASPECT]}, {34, gs_.value[S_FIT]}, {35, gs_.value[S_LOD]}, {36, gs_.value[S_FOV]}, {37, static_cast<int>(gs_.mode)},
         {38, gs_.value[S_LIGHTING]}, {39, gs_.value[S_DYN_SHADOWS]}, {40, gs_.value[S_SEC_LIGHTS]},
-        {41, gs_.value[S_SHADOW_DIST]}, {42, gs_.value[S_AO]}, {43, gs_.value[S_MIPS]}, {45, gs_.value[S_SHADOW_STR]}, {47, gs_.value[S_AO_STR]}, {48, gs_.value[S_HUD]}, {49, gs_.value[S_SUN_RAYS]}, {50, gs_.value[S_SURFACE]},
+        {41, gs_.value[S_SHADOW_DIST]}, {42, gs_.value[S_AO]}, {43, gs_.value[S_MIPS]}, {45, gs_.value[S_SHADOW_STR]}, {47, gs_.value[S_AO_STR]}, {48, gs_.value[S_HUD]}, {49, gs_.value[S_SUN_RAYS]},
+        {50, gs_.value[S_PARTICLES]}, {51, gs_.value[S_SURFACE]},
     };
     for (const auto& it : items) {
         d.push_back(static_cast<uint8_t>(it.id));
@@ -809,7 +821,7 @@ void graphics_save_items(std::vector<uint8_t>& d, uint32_t& count) {
 
 // orig: (none) — enhancement (graphics.h)
 bool graphics_save_item(uint32_t id, const uint8_t* data, uint32_t size) {
-    if (id < 32 || id > 50) return false;
+    if (id < 32 || id > 51) return false;
     if (size < 1) return true;
     const int v = data[0];
     switch (id) {
@@ -831,7 +843,8 @@ bool graphics_save_item(uint32_t id, const uint8_t* data, uint32_t size) {
         case 45: if (v < static_cast<int>(value_count(S_SHADOW_STR))) gs_.value[S_SHADOW_STR] = v; break;
         case 47: if (v < static_cast<int>(value_count(S_AO_STR))) gs_.value[S_AO_STR] = v; break;
         case 48: if (v < 5) gs_.value[S_HUD] = v; break;
-        case 50: if (v < 3) gs_.value[S_SURFACE] = v; break;
+        case 50: if (v < 3) gs_.value[S_PARTICLES] = v; break;
+        case 51: if (v < 3) gs_.value[S_SURFACE] = v; break;
         default: break;
     }
     changed();
