@@ -19,6 +19,7 @@ struct DevSettings {
     float speed = 1.0f;     // game frames per 1/60 s
     // (the frame cap and v-sync are in Options > Graphics, src/game/enhance/graphics.h)
     bool pipeline = true;   // a frame drawn after the next game frame's update: its world built meanwhile (one frame of latency)
+    bool game_thread = true;  // with the pipelined frames: the game's update on its own thread while that frame is drawn (runtime/ee/game_thread.h)
     bool god_mode = false;
     bool infinite_ammo = false;
     bool infinite_bolts = false;

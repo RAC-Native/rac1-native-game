@@ -389,6 +389,7 @@ void apply_volumes() {
 void display_save() {
     if (FILE* f = std::fopen(DISPLAY_FILE, "w")) {
         std::fprintf(f, "pipeline %d\n", g_settings.pipeline ? 1 : 0);
+        std::fprintf(f, "game_thread %d\n", g_settings.game_thread ? 1 : 0);
         if (g_language >= 0) std::fprintf(f, "language %d\n", g_language);
         std::fprintf(f, "boot %d\n", g_boot);
         std::fclose(f);
@@ -769,6 +770,9 @@ void tab_display() {
     ImGui::TextDisabled("Display mode, window size, render resolution, aspect ratio, level of detail, field of view,\n"
                         "v-sync and frame cap: the game's Options > Graphics.");
     if (ImGui::Checkbox("Pipelined frames (faster, one frame of latency)", &s.pipeline)) display_save();
+    ImGui::BeginDisabled(!s.pipeline);
+    if (ImGui::Checkbox("Game update on its own thread (beside the pipelined frame's drawing)", &s.game_thread)) display_save();
+    ImGui::EndDisabled();
     ImGui::TextDisabled("The world of a frame is built while the next game frame runs, then drawn (RAC1_PIPELINE=0 / 1).");
     const float tx = rf(OV(0x0016caf0)), ty = rf(OV(0x0016caf4));
     if (tx > 0.0f && ty > 0.0f)  // the x tangent with the widening in it (render_view_projection)
@@ -1610,6 +1614,7 @@ void dev_menu_init(GLFWwindow* window, bool with_menu) {
         char key[32];
         while (std::fscanf(f, "%31s", key) == 1) {
             if (std::strcmp(key, "pipeline") == 0) { int v = 1; (void)std::fscanf(f, "%d", &v); g_settings.pipeline = v != 0; }
+            else if (std::strcmp(key, "game_thread") == 0) { int v = 1; (void)std::fscanf(f, "%d", &v); g_settings.game_thread = v != 0; }
             else if (std::strcmp(key, "language") == 0) { int v = -1; (void)std::fscanf(f, "%d", &v); g_language = language_valid(v) ? v : -1; }
             else if (std::strcmp(key, "boot") == 0) { int v = 1; (void)std::fscanf(f, "%d", &v); g_boot = v != 0 ? 1 : 0; }
         }

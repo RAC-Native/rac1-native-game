@@ -38,6 +38,20 @@ What changed in each release. Releases are source only: you build the game with 
 - Modern lighting: Novalis's Buzzers light with their green eyes, and the Blarg ship (Novalis's drop ship, Gemlik's ships of the
   skill point) lights from its orange and blue lamps, which glow, instead of from inside its hull (#102).
 
+### Performance
+- The game's update runs on a thread of its own while the main thread draws the pipelined frame (a window's default): the host
+  frame costs the update plus the frame's preparation, its drawing beside them; the game's state the same, word for word. With
+  the two changes below, a game frame costs about a fifth less (Rilgar 12.2 to 9.7 ms, Kerwan 13.8 to 12.0 ms, headless at a
+  2528 x 686 window with LOD 3 and the modern lighting), the main thread's own work about half.
+  The debug menu's Display tab (Game update on its own thread), `RAC1_GAME_THREAD`. See [Performance](docs/performance.md).
+- The MRP world's triangles and batches are built on the scene's worker, no longer on the main thread when the frame is drawn
+  (`RAC1_MRPW_BUILD_THREAD=0` for the old way).
+- The moby joints' pose (0x250fe0) keeps the VU0's registers in SIMD registers through its hot loops, two matrix chains at once
+  on a CPU with AVX2: about a quarter less time for the joints and skinning, the same results bit for bit (`RAC1_VU0_SIMD=0` for
+  the old way; oracle batch 470).
+- A pipelined frame's modern lighting and ambient particles read the game's memory as it was when the frame was prepared (a
+  copy), no longer the next update's.
+
 ### Fixes
 - When the computer falls behind (or with V-Sync on a 75 Hz display) and a frame runs two or more of the game's
   frames, the frame after no longer reuses the undrawn frame's drawing data without what it needs: the game no

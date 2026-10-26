@@ -9,6 +9,7 @@
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_view.h>
 #include <profiler/host_profiler.h>
+#include <runtime/kernel/ee_copy.h>
 #include <runtime/vk/vk_context.h>
 #include <runtime/vk/vk_shaders.h>
 
@@ -554,37 +555,37 @@ template <class Face, class Tri>
 bool coll_faces(uint32_t tree, Face&& face, Tri&& fn) {
     auto ok = [](uint32_t a, uint32_t n) { return a >= 0x100000u && a + n < 0x2000000u; };
     if (!ok(tree, 8)) return false;
-    const uint32_t z0 = lhu(tree), zn = lhu(tree + 2);
+    const uint32_t z0 = draw_lhu(tree), zn = draw_lhu(tree + 2);
     for (uint32_t zi = 0; zi < zn && zi < 256; ++zi) {
-        const uint32_t zrel = static_cast<uint32_t>(lhu(tree + 4 + zi * 2)) << 2;
+        const uint32_t zrel = static_cast<uint32_t>(draw_lhu(tree + 4 + zi * 2)) << 2;
         if (zrel == 0 || !ok(tree + zrel, 4)) continue;
-        const uint32_t yrow = tree + zrel, y0 = lhu(yrow), yn = lhu(yrow + 2);
+        const uint32_t yrow = tree + zrel, y0 = draw_lhu(yrow), yn = draw_lhu(yrow + 2);
         for (uint32_t yi = 0; yi < yn && yi < 256; ++yi) {
-            const uint32_t yrel = lwu(yrow + 4 + yi * 4);
+            const uint32_t yrel = draw_lwu(yrow + 4 + yi * 4);
             if (yrel == 0 || !ok(tree + yrel, 4)) continue;
-            const uint32_t xrow = tree + yrel, x0 = lhu(xrow), xn = lhu(xrow + 2);
+            const uint32_t xrow = tree + yrel, x0 = draw_lhu(xrow), xn = draw_lhu(xrow + 2);
             for (uint32_t xi = 0; xi < xn && xi < 256; ++xi) {
-                const uint32_t cell = lwu(xrow + 4 + xi * 4) >> 8;
+                const uint32_t cell = draw_lwu(xrow + 4 + xi * 4) >> 8;
                 if (cell == 0 || !ok(tree + cell, 4)) continue;
                 const uint32_t c = tree + cell;
-                const uint32_t nf = lbu(c), np = lbu(c + 2), nq = lbu(c + 3);  // (the faces a byte, as the game reads them)
+                const uint32_t nf = draw_lbu(c), np = draw_lbu(c + 2), nq = draw_lbu(c + 3);  // (the faces a byte, as the game reads them)
                 if (!ok(c, 4 + np * 4 + nf * 4 + nq)) continue;
                 const glm::ivec3 ci(static_cast<int>(x0 + xi), static_cast<int>(y0 + yi), static_cast<int>(z0 + zi));
                 const glm::vec3 org(glm::vec3(ci) * 4.0f + 2.0f);
                 auto vtx = [&](uint32_t i) {
-                    const uint32_t w = lwu(c + 4 + i * 4);
+                    const uint32_t w = draw_lwu(c + 4 + i * 4);
                     return org + glm::vec3(static_cast<float>(static_cast<int32_t>(w << 22) >> 22) / 16.0f, static_cast<float>(static_cast<int32_t>(w << 12) >> 22) / 16.0f,
                                            static_cast<float>(static_cast<int32_t>(w) >> 20) / 64.0f);
                 };
                 const uint32_t fb = c + 4 + np * 4;
                 for (uint32_t f = 0; f < nf; ++f) {
-                    const int kind = static_cast<int>(lbu(fb + f * 4 + 3) & 0x1f);
+                    const int kind = static_cast<int>(draw_lbu(fb + f * 4 + 3) & 0x1f);
                     face(kind);
-                    const uint32_t i0 = lbu(fb + f * 4), i1 = lbu(fb + f * 4 + 1), i2 = lbu(fb + f * 4 + 2);
+                    const uint32_t i0 = draw_lbu(fb + f * 4), i1 = draw_lbu(fb + f * 4 + 1), i2 = draw_lbu(fb + f * 4 + 2);
                     if (i0 >= np || i1 >= np || i2 >= np) continue;
                     fn(vtx(i0), vtx(i1), vtx(i2), kind, ci, false);
                     if (f < nq) {
-                        const uint32_t i3 = lbu(fb + nf * 4 + f);
+                        const uint32_t i3 = draw_lbu(fb + nf * 4 + f);
                         if (i3 < np) fn(vtx(i0), vtx(i2), vtx(i3), kind, ci, true);
                     }
                 }
@@ -1324,12 +1325,12 @@ void mrp_particles_fx_capture() {
     // (the materials' rain rings - Surface Detail, a level with "rain on" - want the sky grid too: none under a roof)
     const bool mat_rain = g_surface_detail > 0 && g_modern_shadows != 0 && mrp_user_rain();
     if (g_ambient_particles > 0 || mat_rain) {  // the level's lava ("source lava") and sky, once per level: its collision read here, on the game's thread
-        const int level = lw(0x0015ed84);
-        const uint32_t tree = lwu(OV(0x00173e40));
+        const int level = draw_lw(0x0015ed84);
+        const uint32_t tree = draw_lwu(OV(0x00173e40));
         // (read when the level, the tree's place or its index changed and then stayed so for 30 frames: not while a level loads)
         uint32_t fp = level * 2654435761u ^ tree;
         if (tree >= 0x100000u && tree + 0x100u < 0x2000000u)
-            for (uint32_t i = 0; i < 0x100u; i += 4) fp = (fp ^ lwu(tree + i)) * 16777619u;
+            for (uint32_t i = 0; i < 0x100u; i += 4) fp = (fp ^ draw_lwu(tree + i)) * 16777619u;
         static uint32_t last_fp = 0;
         static int stable = 0;
         stable = fp == last_fp ? stable + 1 : 0;
@@ -1398,16 +1399,16 @@ void mrp_particles_fx_capture() {
     g_snow_tbp_cap.clear();
     if (g_ambient_particles <= 0 || !g_tex_any) return;
     bool seen[256] = {};
-    const bool rain_lvl = lw(0x0015ed84) != 12;  // (Hoven's type 1 particles are not rain: its snow alone there)
-    const uint32_t pool = lwu(OV(0x0016016c));
-    const int32_t hi = lw(OV(0x00160174));
+    const bool rain_lvl = draw_lw(0x0015ed84) != 12;  // (Hoven's type 1 particles are not rain: its snow alone there)
+    const uint32_t pool = draw_lwu(OV(0x0016016c));
+    const int32_t hi = draw_lw(OV(0x00160174));
     for (int32_t i = 0; pool != 0 && i <= hi && i < 4096; ++i) {
         const uint32_t r = pool + 0x40u * static_cast<uint32_t>(i);
-        if (static_cast<int8_t>(lbu(r + 1)) < 0) continue;
-        const uint32_t type = lbu(r);
+        if (static_cast<int8_t>(draw_lbu(r + 1)) < 0) continue;
+        const uint32_t type = draw_lbu(r);
         const bool rain = rain_lvl && (type == 0 || type == 1), snow = type == 0x49;
         if (!rain && !snow) continue;
-        const uint32_t tex = lbu(r + 2);
+        const uint32_t tex = draw_lbu(r + 2);
         if (seen[tex] || g_tex_tbp[tex] < 0) continue;
         seen[tex] = true;
         (rain ? g_rain_tbp_cap : g_snow_tbp_cap).push_back(static_cast<uint32_t>(g_tex_tbp[tex]));
@@ -1428,17 +1429,17 @@ bool mrp_particles_hide_fx(uint8_t kind, uint64_t tex0, int prim_type) {
                             static_cast<unsigned>((k >> 20) & 0x3f), static_cast<int>((k >> 26) & 0xf), static_cast<int>((k >> 30) & 0xf), n);
             std::printf("\n");
             std::map<int, int> types;  // the particle pool's live records by type
-            const uint32_t pool = lwu(OV(0x0016016c));
-            const int32_t hi = lw(OV(0x00160174));
+            const uint32_t pool = draw_lwu(OV(0x0016016c));
+            const int32_t hi = draw_lw(OV(0x00160174));
             for (int32_t i = 0; pool != 0 && i <= hi && i < 4096; ++i) {
                 const uint32_t r = pool + 0x40u * static_cast<uint32_t>(i);
-                if (static_cast<int8_t>(lbu(r + 1)) < 0) continue;
-                types[lbu(r) | (lbu(r + 2) << 8) | ((lbu(r + 1) & 3) << 16)]++;
+                if (static_cast<int8_t>(draw_lbu(r + 1)) < 0) continue;
+                types[draw_lbu(r) | (draw_lbu(r + 2) << 8) | ((draw_lbu(r + 1) & 3) << 16)]++;
             }
             std::printf("[particles-fx] SPR TEX0 tbp by texture:");
-            for (uint32_t t = 0; t < 16; ++t) std::printf(" %u:%04x", t, lwu(0x70003000u + t * 8) & 0x3fff);
+            for (uint32_t t = 0; t < 16; ++t) std::printf(" %u:%04x", t, draw_lwu(0x70003000u + t * 8) & 0x3fff);
             std::printf(" | table:");
-            for (uint32_t t = 0; t < 16; ++t) std::printf(" %u:%08x", t, lwu(OV(0x001b1a80u) + t * 8));
+            for (uint32_t t = 0; t < 16; ++t) std::printf(" %u:%08x", t, draw_lwu(OV(0x001b1a80u) + t * 8));
             std::printf("\n");
             std::printf("[particles-fx] pool (type / texture / shape):");
             for (const auto& [k, n] : types) std::printf(" %02x/%02x/%d: %d;", k & 0xff, (k >> 8) & 0xff, k >> 16, n);

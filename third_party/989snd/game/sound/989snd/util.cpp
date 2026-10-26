@@ -140,12 +140,12 @@ std::pair<s16, s16> PitchBend(Tone& tone,
   return {v7 / 128, v7 % 128};
 }
 
-// rac1: glibc's random() (TYPE_3: degree 31, separation 3) from srand(1), per thread
-int Rand() {
-  struct State {
+// rac1: glibc's random() (TYPE_3: degree 31, separation 3) from srand(1), per thread (the game's: one, RandUseGame)
+namespace {
+struct RandState {
     u32 r[34];
     int i = 0;
-    State() {
+    RandState() {
       s32 w[34];
       w[0] = 1;
       for (int k = 1; k < 31; k++) {  // (16807 * w[k - 1]) % 2147483647, as glibc computes it
@@ -164,9 +164,17 @@ int Rand() {
       i = (i + 1) % 34;
       return v;
     }
-  };
-  thread_local State st;
+};
+RandState g_game_rand;                       // (the game's 989snd: the main thread's, the game thread's)
+thread_local RandState* t_rand = nullptr;    // (null: the thread's own, t_own_rand)
+}  // namespace
+
+int Rand() {
+  thread_local RandState t_own_rand;
+  RandState& st = t_rand != nullptr ? *t_rand : t_own_rand;
   return static_cast<int>(st.Next() >> 1);
 }
+
+void RandUseGame() { t_rand = &g_game_rand; }
 
 }  // namespace snd

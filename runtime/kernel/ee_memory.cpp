@@ -30,12 +30,17 @@ u32 g_read_last = 0;
 const u8* g_jseen = nullptr;
 }  // namespace ee_detail
 namespace {
-// the inline path's view of the buffers, after each change of them
+// the inline path's view of the buffers, after each change of them. (Each word written only when it changes: a journal's begin and
+// end change g_fast_last alone, on the game's thread, while the host's other threads - the drawing beside the game thread, the
+// scene's worker - read memory through the others; ee_copy.h)
 void fast_path_update(bool journal_on) {
-    ee_detail::g_ram = g_ram_buffer.empty() ? nullptr : g_ram_buffer.data();
-    ee_detail::g_spr = g_scratchpad_buffer.empty() ? nullptr : g_scratchpad_buffer.data();
-    ee_detail::g_fast_last = g_ram_buffer.empty() || journal_on ? 0u : RAM_SIZE - 1u;
-    ee_detail::g_read_last = g_ram_buffer.empty() ? 0u : RAM_SIZE - 1u;
+    auto set = [](auto& word, auto value) {
+        if (word != value) word = value;
+    };
+    set(ee_detail::g_ram, g_ram_buffer.empty() ? nullptr : g_ram_buffer.data());
+    set(ee_detail::g_spr, g_scratchpad_buffer.empty() ? nullptr : g_scratchpad_buffer.data());
+    set(ee_detail::g_fast_last, g_ram_buffer.empty() || journal_on ? 0u : RAM_SIZE - 1u);
+    set(ee_detail::g_read_last, g_ram_buffer.empty() ? 0u : RAM_SIZE - 1u);
 }
 }  // namespace
 

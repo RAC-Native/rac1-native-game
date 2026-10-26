@@ -70,11 +70,14 @@ longer (the dumps' GL object counts included). `RAC1_PROFILER_DUMP`, `RAC1_PROFI
   sub-stage, the world passes, the moby pass's draw loop, the mobys' joints and skinning on the VU0, the effects and
   draw lists, the world lighting and the passes' ends), and the host's re-runs of game passes for the LOD slider and
   the widened view (the moby pass's, and the others': world, effects, draw lists). A zone left open when the coroutine
-  waits for a vsync inside a blocking loop is closed with the game code's own zone.
+  waits for a vsync inside a blocking loop is closed with the game code's own zone. With the game thread (the game's update
+  beside the pipelined frame's drawing, `runtime/ee/game_thread.h`) those zones are the game thread's, on a stack of their
+  own, counted in the stages but not in the main thread's frame; the main thread's wait for it is "Wait: game thread", the
+  game thread's for the drawing (the GS replica's memory, a GL call asked of the main thread) "Game thread: wait for the draw".
 - **Bottleneck**: GPU-bound (the GPU busy for 85 % of the frame or more), bound by a worker (the main thread waits
   15 % of the frame or more for the MRP scene build or the GS chain), CPU-bound on the main thread (its own work 85 %
   of the frame or more), or held by the frame cap / v-sync.
-- **Threads**: the GS chain worker's and the MRP scene worker's busy and CPU time per frame (their jobs timed), the job
+- **Threads**: the GS chain worker's, the MRP scene worker's and the game thread's busy and CPU time per frame (their jobs timed), the job
   pool's workers' (`src/jobs`, summed over its workers; a track each in the Chrome trace), and
   every thread of the process with its CPU % (Linux: `/proc/self/task/*/schedstat`; Windows: the threads' times;
   the driver's threads included), and the process's CPU %.

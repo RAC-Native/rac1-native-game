@@ -219,6 +219,8 @@ For contributors, and for reverse-engineering and decompilation people:
 - [Game logic](docs/game-logic.md): the main loop, levels, mobys, the hero, the camera, cutscenes.
 - [Rendering](docs/rendering.md): how a frame is drawn by the native renderer (the MRP).
 - [Vulkan](docs/vulkan.md): the experimental Vulkan backend of the same renderer.
+- [Performance](docs/performance.md): where a frame's CPU time goes, the threads beside the game's, the switches to compare,
+  how to measure and how a speed-up is proved to leave the game as it was.
 - [Lighting](docs/lighting.md): the original lighting and the optional modern lighting.
 - [Materials](docs/materials.md): the modern lighting's surface materials (Surface Detail) and how to tag them.
 - [Ambient particles](docs/particles.md): the optional dust, embers, rain and snow of our own.

@@ -146,7 +146,7 @@ void summary_lines(const prof::Summary& m) {
     ImVec4 col(0.6f, 0.9f, 0.6f, 1.0f);
     if (m.bound == prof::Bound::Gpu) col = ImVec4(1.0f, 0.6f, 0.25f, 1.0f);
     else if (m.bound == prof::Bound::MainThread) col = ImVec4(0.4f, 0.7f, 1.0f, 1.0f);
-    else if (m.bound == prof::Bound::SceneWorker || m.bound == prof::Bound::ChainWorker) col = ImVec4(1.0f, 0.85f, 0.3f, 1.0f);
+    else if (m.bound == prof::Bound::SceneWorker || m.bound == prof::Bound::ChainWorker || m.bound == prof::Bound::GameThread) col = ImVec4(1.0f, 0.85f, 0.3f, 1.0f);
     ImGui::TextColored(col, "%s", m.bound_text.c_str());
 }
 
@@ -417,6 +417,7 @@ void profiler_overlay() {
                 case prof::Bound::MainThread: b = "CPU-bound (main thread)"; break;
                 case prof::Bound::SceneWorker: b = "scene worker-bound"; break;
                 case prof::Bound::ChainWorker: b = "GS chain worker-bound"; break;
+                case prof::Bound::GameThread: b = "game thread-bound"; break;
                 case prof::Bound::Cap: b = "held by the cap / v-sync"; break;
                 default: b = "no single bottleneck"; break;
             }

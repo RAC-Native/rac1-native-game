@@ -26,6 +26,7 @@
 #include <runtime/sif/sif_rpc.h>
 
 #include "game/sound/989snd/player.h"
+#include "game/sound/989snd/util.h"
 
 #include <algorithm>
 #include <atomic>
@@ -374,6 +375,9 @@ void make(Iop& io) {
     if (io.streams == nullptr) io.streams = snd989_streams(io.mirror);
 }
 }  // namespace
+
+// orig: (host) see snd989_iop.h
+void snd989_rand_use_game() { snd::RandUseGame(); }
 
 void snd989_iop_start() {
     make(game());

@@ -277,6 +277,17 @@ struct Frame {
         std::vector<uint32_t> tri;
     };
     std::vector<TfragExpect> tf_expect;
+    // what build_triangles reads of the host's state, taken when the frame's scene starts (mrp_world_begin_frame_async, the host
+    // thread): the same values as the host thread had at its end, the build may run on the scene's worker (RAC1_MRPW_BUILD_THREAD)
+    struct BuildInputs {
+        float vp[16] = {};    // mrp_world_view_proj
+        float widen = 1.0f;   // mrp_lod_frame_widen
+        int projection = 0;   // g_mrp_world_projection
+        int modern_shadows = 0;
+        bool sky = true, tfrag = true, tie = true, shrub = true;  // g_render_sky / tfrag / tie / shrub
+    } in;
+    bool built_on_worker = false;  // (build_triangles ran on the worker after the scene)
+    double ms_build = 0;           // (its time)
 };
 Frame g_frame;
 
@@ -1208,6 +1219,63 @@ RKey batch_key(const Key& k, bool gpu, bool sky) {
     return r;
 }
 
+// A texture the frame's build found first (the sky's, a world GIF stream's): made with the GL / Vulkan image at once on the
+// host thread; on the scene's worker (the build there, RAC1_MRPW_BUILD_THREAD) its texels kept and the image made by the host
+// thread when it takes the frame (mrp_world_finish_frame), its bucket's index reserved now (only the worker adds buckets meanwhile)
+struct NewBucket {
+    uint32_t w = 0, h = 0;
+    std::vector<std::vector<uint32_t>> levels;  // RGBA, level 0 first
+};
+bool g_tex_defer = false;              // (the build runs on the scene's worker)
+std::vector<NewBucket> g_new_buckets;  // (made by the host thread: create_new_buckets)
+// orig: (host) the GPU image of a bucket of one layer, `levels` mip levels
+void create_bucket_image(Bucket& b, const std::vector<std::vector<uint32_t>>& levels) {
+    const uint32_t n = static_cast<uint32_t>(levels.size());
+    if (vk::is_active()) {
+        vk::create_image(b.w, b.h, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                         VK_IMAGE_ASPECT_COLOR_BIT, b.vk_tex, 1, 0, VK_IMAGE_VIEW_TYPE_2D_ARRAY, n);
+        for (uint32_t l = 0; l < n; ++l)
+            vk::upload_image_2d(b.vk_tex, levels[l].data(), levels[l].size() * 4, 0, 0, static_cast<int>(b.w >> l), static_cast<int>(b.h >> l), 0, 0, l);
+    } else {
+        glGenTextures(1, &b.tex);
+        rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &b.tex, "MRP world: texture arrays");
+        glBindTexture(GL_TEXTURE_2D_ARRAY, b.tex);
+        for (uint32_t l = 0; l < n; ++l)
+            glTexImage3D(GL_TEXTURE_2D_ARRAY, static_cast<GLint>(l), GL_RGBA8, static_cast<GLsizei>(b.w >> l), static_cast<GLsizei>(b.h >> l), 1, 0, GL_RGBA,
+                         GL_UNSIGNED_BYTE, levels[l].data());
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BASE_LEVEL, 0);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(n - 1));
+        glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+    }
+}
+// orig: (host) a new bucket for a texture of the frame's build: its index (see NewBucket)
+int add_bucket(Level& L, uint32_t w, uint32_t h, std::vector<std::vector<uint32_t>>&& levels) {
+    const int index = static_cast<int>(L.buckets.size() + g_new_buckets.size());
+    if (g_tex_defer) {
+        g_new_buckets.push_back(NewBucket{w, h, std::move(levels)});
+        return index;
+    }
+    Bucket b;
+    b.w = w;
+    b.h = h;
+    b.levels = static_cast<uint32_t>(levels.size());
+    create_bucket_image(b, levels);
+    L.buckets.push_back(b);
+    return index;
+}
+// orig: (host) the buckets the worker's build asked for, made on the host thread (in their reserved order)
+void create_new_buckets(Level& L) {
+    for (const NewBucket& nb : g_new_buckets) {
+        Bucket b;
+        b.w = nb.w;
+        b.h = nb.h;
+        b.levels = static_cast<uint32_t>(nb.levels.size());
+        create_bucket_image(b, nb.levels);
+        L.buckets.push_back(b);
+    }
+    g_new_buckets.clear();
+}
+
 // orig: (host) the sky's texture whose TEX0 the frame's sky packets set: the sky asset's entry caching that TEX0 this
 // frame (the per-frame cache at its +0, 0x28b680 / 0x28c3c0 / 0x28c07c), its texels (+8: offset / 16 in the
 // asset's texture data *(asset + 0x14)) and palette (+0xa) as the sky's texture uploads send them (texture_uploads 0x24d760: the
@@ -1233,10 +1301,11 @@ const TexRef* sky_texture(Level& L, const SceneFrame& S, uint64_t tex0) {
         std::fprintf(stderr, "[mrpw] sky texture TEX0 %016llx: format not decoded (psm %x cpsm %x)\n", static_cast<unsigned long long>(tex0), psm, cpsm);
         return nullptr;
     }
-    const uint8_t* pix = static_cast<const uint8_t*>(ee_ram_ptr(img));
-    const uint8_t* clut = static_cast<const uint8_t*>(ee_ram_ptr(pal));
+    // (reads only: never a journal's page, the build may run on the scene's worker while the game's thread re-runs a pass, mrp_lod.h)
+    const uint8_t* pix = static_cast<const uint8_t*>(ee_ram_ptr_read(img));
+    const uint8_t* clut = static_cast<const uint8_t*>(ee_ram_ptr_read(pal));
     const uint32_t bytes = psm == 0x13 ? w * h : w * h / 2;
-    if (pix == nullptr || clut == nullptr || ee_ram_ptr(img + bytes - 1) == nullptr) return nullptr;
+    if (pix == nullptr || clut == nullptr || ee_ram_ptr_read(img + bytes - 1) == nullptr) return nullptr;
     auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
     std::vector<uint32_t> px(static_cast<size_t>(w) * h);
     for (uint32_t i = 0; i < w * h; ++i) {
@@ -1244,27 +1313,11 @@ const TexRef* sky_texture(Level& L, const SceneFrame& S, uint64_t tex0) {
         const uint32_t ci = psm == 0x13 && csm == 0 ? csm1(idx) : idx;
         std::memcpy(&px[i], clut + 4 * ci, 4);
     }
-    Bucket b;
-    b.w = w;
-    b.h = h;
-    b.levels = 1;
-    if (vk::is_active()) {
-        vk::create_image(w, h, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-                         VK_IMAGE_ASPECT_COLOR_BIT, b.vk_tex, 1, 0, VK_IMAGE_VIEW_TYPE_2D_ARRAY, 1);
-        vk::upload_image_2d(b.vk_tex, px.data(), px.size() * 4, 0, 0, static_cast<int>(w), static_cast<int>(h), 0, 0, 0);
-    } else {
-        glGenTextures(1, &b.tex);
-        rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &b.tex, "MRP world: texture arrays");
-        glBindTexture(GL_TEXTURE_2D_ARRAY, b.tex);
-        glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, static_cast<GLsizei>(w), static_cast<GLsizei>(h), 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BASE_LEVEL, 0);
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
-    }
-    r.bucket = static_cast<int>(L.buckets.size());
+    std::vector<std::vector<uint32_t>> lv;
+    lv.push_back(std::move(px));
+    r.bucket = add_bucket(L, w, h, std::move(lv));
     r.layer = 0;
     r.mips = 1;
-    L.buckets.push_back(b);
     ++g_st.sky_textures;
     return &r;
 }
@@ -1297,40 +1350,19 @@ const TexRef* vram_texture(Level& L, uint64_t tex0, uint64_t tex1, uint64_t mip1
     }
     uint32_t levels = 1;
     while (levels <= mxl && (w >> levels) >= 1 && (h >> levels) >= 1) ++levels;
-    Bucket b;
-    b.w = w;
-    b.h = h;
-    b.levels = levels;
-    if (vk::is_active()) {
-        vk::create_image(w, h, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-                         VK_IMAGE_ASPECT_COLOR_BIT, b.vk_tex, 1, 0, VK_IMAGE_VIEW_TYPE_2D_ARRAY, levels);
-    } else {
-        glGenTextures(1, &b.tex);
-        rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &b.tex, "MRP world: texture arrays");
-        glBindTexture(GL_TEXTURE_2D_ARRAY, b.tex);
-    }
+    std::vector<std::vector<uint32_t>> lv(levels);
     for (uint32_t l = 0; l < levels; ++l) {
         const uint32_t tbp = l == 0 ? fld(tex0, 0, 14) : fld(mip1, 20 * (l - 1), 14);
         const uint32_t tbw = l == 0 ? fld(tex0, 14, 6) : fld(mip1, 20 * (l - 1) + 14, 6);
         const uint32_t lw = w >> l, lh = h >> l;
-        std::vector<uint32_t> px(static_cast<size_t>(lw) * lh);
+        std::vector<uint32_t>& px = lv[l];
+        px.resize(static_cast<size_t>(lw) * lh);
         for (uint32_t y = 0; y < lh; ++y)
             for (uint32_t x = 0; x < lw; ++x) px[y * lw + x] = clut[vram[gs::Gs::addr8(tbp, tbw, x, y)]];
-        if (vk::is_active()) {
-            vk::upload_image_2d(b.vk_tex, px.data(), px.size() * 4, 0, 0, static_cast<int>(lw), static_cast<int>(lh), 0, 0, l);
-        } else {
-            glTexImage3D(GL_TEXTURE_2D_ARRAY, static_cast<GLint>(l), GL_RGBA8, static_cast<GLsizei>(lw), static_cast<GLsizei>(lh), 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
-        }
     }
-    if (!vk::is_active()) {
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BASE_LEVEL, 0);
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(levels - 1));
-        glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
-    }
-    r.bucket = static_cast<int>(L.buckets.size());
+    r.bucket = add_bucket(L, w, h, std::move(lv));
     r.layer = 0;
     r.mips = levels;
-    L.buckets.push_back(b);
     ++g_st.gif_textures;
     return &r;
 }
@@ -1743,7 +1775,7 @@ struct GsFront {
         const QV& b = queue[queue.size() - 2];
         const QV& c = queue.back();
         if (adc) ++g_st.adc;
-        else if (p.prog == Program::TieB && (a.flagged || b.flagged || c.flagged) && !(g_mrp_world_projection == 0 && mrp_lod_frame_widen() > 1.0f))
+        else if (p.prog == Program::TieB && (a.flagged || b.flagged || c.flagged) && !(F.in.projection == 0 && F.in.widen > 1.0f))
             ++g_st.clip_dropped;  // (tie B drops them; in a widened view the flags are the 4:3 frame's: drawn whole, the GPU clips)
         else triangle(a.index, b.index, c.index, p.table);
         if (type == 3) queue.clear();
@@ -1975,8 +2007,9 @@ void tfrag_expect(const GsFront& g, Frame& F, const ScenePacket& p, uint32_t vba
 
 // orig: (host) the frame's GPU vertices / triangles / batches from the scene
 void build_triangles(Frame& F) {
+    const Frame::BuildInputs& in = F.in;
     emissive_refresh();
-    g_emis_frame = g_emis.on && g_modern_shadows != 0;  // (RAC1_EMISSIVE=0: the shaders ignore the emissive slots, uEmis[0])
+    g_emis_frame = g_emis.on && in.modern_shadows != 0;  // (RAC1_EMISSIVE=0: the shaders ignore the emissive slots, uEmis[0])
     F.v.clear();
     F.idx.clear();
     F.batches.clear();
@@ -1999,16 +2032,14 @@ void build_triangles(Frame& F) {
     // the GS's registers as the replica has them before this frame's chain (the frame packets set them again: the scene's
     // DIRECT writes from the chain's start)
     for (uint32_t r = 0; r < 128; ++r) g.regs[r] = F.gs_regs[r];  // (taken before the frame's chain: mrp_world_begin_frame_async)
-    float vpf[16];
-    mrp_world_view_proj(vpf);
     glm::mat4 vpm;
-    std::memcpy(&vpm[0][0], vpf, sizeof vpf);
+    std::memcpy(&vpm[0][0], in.vp, sizeof in.vp);
     const glm::dmat4 vp(vpm);
     size_t ri = 0;
     const auto& regs = F.scene.regs;
     static const int only = std::getenv("RAC1_MRPW_ONLY") != nullptr ? std::atoi(std::getenv("RAC1_MRPW_ONLY")) : -1;  // (testing: one program's packets)
     static const bool no_gpu = std::getenv("RAC1_MRPW_CPU") != nullptr;  // (testing: every packet by the CPU reference's kicks)
-    g.sky_mode = g_mrp_world_projection != 0 ? 1 : 0;
+    g.sky_mode = in.projection != 0 ? 1 : 0;
     g.sky_vp = vp;
     std::memcpy(&g.sky_a[0][0], F.scene.sky_a.data(), sizeof(double) * 16);
     F.shadow_casters = false;
@@ -2029,14 +2060,14 @@ void build_triangles(Frame& F) {
         g_view_only_emit = g_shframe.on[1] && !p.sky && !p.shadow &&
                            (p.table == 2 || p.prog == Program::TieB || p.prog == Program::TfragB || (!keep_tfrag && p.tfrag >= 0 && g_tfrag_shadow_on));
         if (p.sky) {  // the sky
-            if (g_render_sky) g.sky_packet(p);
+            if (in.sky) g.sky_packet(p);
             continue;
         }
         if (p.gif) {  // a world pass's GIF vertices (the shrub far variants)
-            if (p.table == 0 ? g_render_tfrag : p.table == 1 ? g_render_tie : g_render_shrub) g.gif_packet(p);
+            if (p.table == 0 ? in.tfrag : p.table == 1 ? in.tie : in.shrub) g.gif_packet(p);
             continue;
         }
-        const bool shown = p.table == 0 ? g_render_tfrag : p.table == 1 ? g_render_tie : g_render_shrub;
+        const bool shown = p.table == 0 ? in.tfrag : p.table == 1 ? in.tie : in.shrub;
         if (!shown && !p.state) continue;
         if (only >= 0 && static_cast<int>(p.prog) != only) continue;
         if (p.tfrag >= 0 && p.shadow) {  // (a caster outside the view, its GS state replay not left to the next packets)
@@ -3304,6 +3335,7 @@ struct SceneWorker {
     ColourSource colours;
     uint32_t chain_start = 0, chain_end = 0;
     bool reset = false, kicks = false, built = false;
+    bool build = false;  // (the job runs build_triangles after the scene)
     std::exception_ptr error;
     double ms = 0;
     void run() {
@@ -3334,7 +3366,17 @@ struct SceneWorker {
                     cv.notify_all();
                 }
                 built = scene_build(*g_level.idx, g_input, g_frame.scene, reset, kicks);
+                g_frame.built_on_worker = false;
+                if (built && build) {  // the frame's triangles too, its new textures' images left to the host thread
+                    const double tb = now_ms();
+                    g_tex_defer = true;
+                    build_triangles(g_frame);
+                    g_tex_defer = false;
+                    g_frame.ms_build = now_ms() - tb;
+                    g_frame.built_on_worker = true;
+                }
             } catch (...) {
+                g_tex_defer = false;
                 error = std::current_exception();
                 built = false;
             }
@@ -3346,9 +3388,10 @@ struct SceneWorker {
             cv.notify_all();
         }
     }
-    void start(uint32_t cs, uint32_t ce, bool rs, bool ks, bool cap = false, const SceneAddrs& ad = {}, const ColourSource& col = {}) {
+    void start(uint32_t cs, uint32_t ce, bool rs, bool ks, bool cap, const SceneAddrs& ad, const ColourSource& col, bool bt) {
         {
-            std::lock_guard<std::mutex> lk(m);
+            std::unique_lock<std::mutex> lk(m);
+            cv.wait(lk, [this] { return !job; });  // (a job not waited for: its frame's outputs are about to be written again)
             if (!th.joinable()) th = std::thread([this] {
                 rac1::prof::thread_name("MRP scene worker");
                 run();
@@ -3361,6 +3404,7 @@ struct SceneWorker {
             chain_end = ce;
             reset = rs;
             kicks = ks;
+            build = bt;
             done = false;
             error = nullptr;
             job = true;
@@ -3395,6 +3439,15 @@ bool scene_threaded() {
     }();
     return on;
 }
+// (RAC1_MRPW_BUILD_THREAD=0: the frame's triangles built on the host thread when it takes the frame, as before; the testing
+// modes too - their checks compare the build with the faithful path's on the host thread)
+bool build_threaded() {
+    static const bool on = [] {
+        const char* e = std::getenv("RAC1_MRPW_BUILD_THREAD");
+        return scene_threaded() && (e == nullptr || std::atoi(e) != 0) && !g_tfrag_verify && std::getenv("RAC1_MRPW_CPU") == nullptr;
+    }();
+    return on;
+}
 double g_t_begin = 0;
 }  // namespace
 
@@ -3414,6 +3467,16 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
     }
     if (!g_level.loaded) return;
     g_t_begin = now_ms();
+    {  // build_triangles' inputs from the host's state (Frame::BuildInputs)
+        mrp_world_view_proj(F.in.vp);
+        F.in.widen = mrp_lod_frame_widen();
+        F.in.projection = g_mrp_world_projection;
+        F.in.modern_shadows = g_modern_shadows;
+        F.in.sky = g_render_sky;
+        F.in.tfrag = g_render_tfrag;
+        F.in.tie = g_render_tie;
+        F.in.shrub = g_render_shrub;
+    }
     {  // the frame's draw environment's XYOFFSET_1 (0x13cf10, 11 qwords)
         F.env_xyoff = 0;
         for (uint32_t q = 0; q < 0xb; ++q) {
@@ -3451,7 +3514,7 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
         g_input.tfrag_shadow_views = &g_tshadow_views;
     }
     if (scene_threaded()) {  // (the capture on the worker too: the host must call mrp_world_wait_captured before the game's state changes)
-        g_worker.start(chain_start, chain_end, g_level.reset_walker, kicks, true, scene_addrs(), colour_source());
+        g_worker.start(chain_start, chain_end, g_level.reset_walker, kicks, true, scene_addrs(), colour_source(), build_threaded());
     } else {
         const bool freeze = mrp_lighting_points_freeze() && g_colours_level == g_level.id;
         if (g_static_on) {  // (the colours alone kept while a light is in use: the instances are this frame's)
@@ -3489,6 +3552,7 @@ void mrp_world_drop_frame() {
         } catch (...) {
         }
     }
+    create_new_buckets(g_level);  // (the textures its build found: their buckets' indices are taken)
     F.skips.clear();
     F.skips_ready = false;
     F.active = false;
@@ -3501,8 +3565,15 @@ void mrp_world_finish_frame() {
     F.pending = false;
     F.uploaded = false;
     const int prof_wait = rac1::prof::begin(rac1::prof::kSceneWait);
-    const bool built = scene_threaded() ? g_worker.wait() : g_worker.built;
+    bool built = false;
+    try {
+        built = scene_threaded() ? g_worker.wait() : g_worker.built;
+    } catch (...) {
+        create_new_buckets(g_level);
+        throw;
+    }
     rac1::prof::end(prof_wait);
+    create_new_buckets(g_level);  // (the textures the worker's build found, their images made here)
     const double t1 = now_ms();
     if (!built) {
         F.skips.clear();
@@ -3554,11 +3625,13 @@ void mrp_world_finish_frame() {
     for (const std::string& n : F.scene.chk_notes)
         if (g_st.chk_notes.size() < 30) g_st.chk_notes.push_back(n);
     ++g_st.scene_frames;
-    build_triangles(F);
-    const double t2 = now_ms();
-    g_st.ms_scene += g_worker.ms;  // (the scene's own time, on the worker or not)
+    if (!F.built_on_worker) {
+        build_triangles(F);
+        F.ms_build = now_ms() - t1;
+    }
+    g_st.ms_scene += g_worker.ms - (F.built_on_worker ? F.ms_build : 0.0);  // (the scene's own time, on the worker or not)
     g_st.ms_wait += t1 - g_t_begin;
-    g_st.ms_build += t2 - t1;
+    g_st.ms_build += F.ms_build;
     F.active = true;
 }
 
