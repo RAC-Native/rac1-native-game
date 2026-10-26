@@ -1,3 +1,4 @@
+#include "io/host_endian.h"
 #include <formats/level_gameplay.h>
 #include <formats/scene_wad.h>
 
@@ -13,6 +14,7 @@ template <class T>
 T get(std::span<const std::byte> b, std::size_t at) {
     T v;
     std::memcpy(&v, b.data() + at, sizeof(T));
+    le_fix_value(v);  // (numbers and records of 4-byte fields)
     return v;
 }
 

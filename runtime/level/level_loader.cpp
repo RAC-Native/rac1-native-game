@@ -147,8 +147,8 @@ void finish_level_wad_load(std::span<const std::byte> level_wad_span,
         throw std::runtime_error("LevelLoader: failed to map virtual RAM at address host_layout::CORE");
     }
 
-    std::memcpy(dest, core_index.data(), core_index.size());
-    std::memcpy(static_cast<char*>(dest) + core_index.size(), core_data_decompressed.data(), core_data_decompressed.size());
+    ee_copy_in(core_base_addr, core_index.data(), core_index.size());
+    ee_copy_in(core_base_addr + static_cast<u32>(core_index.size()), core_data_decompressed.data(), core_data_decompressed.size());
 
     prof.emplace("  the core copied, the overlay");
     // 5. Load level overlay
@@ -306,10 +306,10 @@ void LevelLoader::register_level_textures(std::span<const std::byte> file_data) 
     // 2. Locate the inner WAD block (level_data)
     std::span<const std::byte> level_data(file_data.data(), file_data.size());
     if (file_data.size() >= 48) {
-        std::int32_t header_size = *reinterpret_cast<const std::int32_t*>(file_data.data());
+        std::int32_t header_size = le32s(file_data.data());
         if (header_size == 48) {
-            std::int32_t data_sector_offset = *reinterpret_cast<const std::int32_t*>(file_data.data() + 0x10);
-            std::int32_t data_sector_size = *reinterpret_cast<const std::int32_t*>(file_data.data() + 0x14);
+            std::int32_t data_sector_offset = le32s(file_data.data() + 0x10);
+            std::int32_t data_sector_size = le32s(file_data.data() + 0x14);
             std::size_t byte_offset = static_cast<std::size_t>(data_sector_offset) * 2048;
             std::size_t byte_size = static_cast<std::size_t>(data_sector_size) * 2048;
             if (byte_offset + byte_size <= file_data.size()) {
@@ -325,6 +325,7 @@ void LevelLoader::register_level_textures(std::span<const std::byte> file_data) 
     // 3. Parse LevelFileHeader
     LevelFileHeader wad_header;
     std::memcpy(&wad_header, level_data.data(), sizeof(LevelFileHeader));
+    le_fix(wad_header);
 
     // Check bounds for gs_ram segment
     if (wad_header.vram_image.offset < 0 || wad_header.vram_image.size < 0 ||
@@ -368,19 +369,18 @@ void LevelLoader::register_level_textures(std::span<const std::byte> file_data) 
         ee_write<TextureHeader>(header_vaddr, tex_hdr);
 
         // Copy palette (1024 bytes)
-        void* dest_palette = ee_ram_ptr(palette_vaddr);
+        // (the sources: the PS2's bytes, from the level file or ee_bytes_view)
         if (palette_src) {
-            std::memcpy(dest_palette, palette_src, 1024);
+            ee_copy_in(palette_vaddr, palette_src, 1024);
         } else {
-            std::memset(dest_palette, 0, 1024);
+            ee_zero(palette_vaddr, 1024);
         }
 
         // Copy pixels
-        void* dest_pixels = ee_ram_ptr(pixel_vaddr);
         if (pixel_src) {
-            std::memcpy(dest_pixels, pixel_src, num_pixels);
+            ee_copy_in(pixel_vaddr, pixel_src, num_pixels);
         } else {
-            std::memset(dest_pixels, 0, num_pixels);
+            ee_zero(pixel_vaddr, num_pixels);
         }
 
         // Advance heap_ptr
@@ -410,10 +410,12 @@ void LevelLoader::register_level_textures(std::span<const std::byte> file_data) 
         for (int i = 0; i < core_header.tfrag_textures.count; ++i) {
             TextureRecord entry = ee_read<TextureRecord>(array_vaddr + i * sizeof(TextureRecord));
             std::uint32_t pixel_src_vaddr = core_data_vaddr + core_header.texel_block + entry.texels;
+            std::vector<std::uint8_t> pixel_src_bytes;
             const std::uint8_t* pixel_src = nullptr;
             if (ee_is_valid_addr(pixel_src_vaddr, entry.width * entry.height)) {
-                pixel_src = reinterpret_cast<const std::uint8_t*>(ee_ram_ptr(pixel_src_vaddr));
+                pixel_src = ee_bytes_view(pixel_src_vaddr, static_cast<std::size_t>(entry.width * entry.height), pixel_src_bytes);
             }
+            std::vector<std::uint8_t> palette_src_bytes;
             const std::uint8_t* palette_src = nullptr;
             std::size_t pal_offset = static_cast<std::size_t>(entry.palette) * 256;
             if (pal_offset + 1024 <= static_cast<std::size_t>(wad_header.vram_image.size)) {
@@ -429,10 +431,12 @@ void LevelLoader::register_level_textures(std::span<const std::byte> file_data) 
         for (int i = 0; i < core_header.moby_textures.count; ++i) {
             TextureRecord entry = ee_read<TextureRecord>(array_vaddr + i * sizeof(TextureRecord));
             std::uint32_t pixel_src_vaddr = core_data_vaddr + core_header.texel_block + entry.texels;
+            std::vector<std::uint8_t> pixel_src_bytes;
             const std::uint8_t* pixel_src = nullptr;
             if (ee_is_valid_addr(pixel_src_vaddr, entry.width * entry.height)) {
-                pixel_src = reinterpret_cast<const std::uint8_t*>(ee_ram_ptr(pixel_src_vaddr));
+                pixel_src = ee_bytes_view(pixel_src_vaddr, static_cast<std::size_t>(entry.width * entry.height), pixel_src_bytes);
             }
+            std::vector<std::uint8_t> palette_src_bytes;
             const std::uint8_t* palette_src = nullptr;
             std::size_t pal_offset = static_cast<std::size_t>(entry.palette) * 256;
             if (pal_offset + 1024 <= static_cast<std::size_t>(wad_header.vram_image.size)) {
@@ -448,10 +452,12 @@ void LevelLoader::register_level_textures(std::span<const std::byte> file_data) 
         for (int i = 0; i < core_header.tie_textures.count; ++i) {
             TextureRecord entry = ee_read<TextureRecord>(array_vaddr + i * sizeof(TextureRecord));
             std::uint32_t pixel_src_vaddr = core_data_vaddr + core_header.texel_block + entry.texels;
+            std::vector<std::uint8_t> pixel_src_bytes;
             const std::uint8_t* pixel_src = nullptr;
             if (ee_is_valid_addr(pixel_src_vaddr, entry.width * entry.height)) {
-                pixel_src = reinterpret_cast<const std::uint8_t*>(ee_ram_ptr(pixel_src_vaddr));
+                pixel_src = ee_bytes_view(pixel_src_vaddr, static_cast<std::size_t>(entry.width * entry.height), pixel_src_bytes);
             }
+            std::vector<std::uint8_t> palette_src_bytes;
             const std::uint8_t* palette_src = nullptr;
             std::size_t pal_offset = static_cast<std::size_t>(entry.palette) * 256;
             if (pal_offset + 1024 <= static_cast<std::size_t>(wad_header.vram_image.size)) {
@@ -467,10 +473,12 @@ void LevelLoader::register_level_textures(std::span<const std::byte> file_data) 
         for (int i = 0; i < core_header.shrub_textures.count; ++i) {
             TextureRecord entry = ee_read<TextureRecord>(array_vaddr + i * sizeof(TextureRecord));
             std::uint32_t pixel_src_vaddr = core_data_vaddr + core_header.texel_block + entry.texels;
+            std::vector<std::uint8_t> pixel_src_bytes;
             const std::uint8_t* pixel_src = nullptr;
             if (ee_is_valid_addr(pixel_src_vaddr, entry.width * entry.height)) {
-                pixel_src = reinterpret_cast<const std::uint8_t*>(ee_ram_ptr(pixel_src_vaddr));
+                pixel_src = ee_bytes_view(pixel_src_vaddr, static_cast<std::size_t>(entry.width * entry.height), pixel_src_bytes);
             }
+            std::vector<std::uint8_t> palette_src_bytes;
             const std::uint8_t* palette_src = nullptr;
             std::size_t pal_offset = static_cast<std::size_t>(entry.palette) * 256;
             if (pal_offset + 1024 <= static_cast<std::size_t>(wad_header.vram_image.size)) {
@@ -486,14 +494,16 @@ void LevelLoader::register_level_textures(std::span<const std::byte> file_data) 
         for (int i = 0; i < core_header.particle_textures.count; ++i) {
             ParticleTextureRecord entry = ee_read<ParticleTextureRecord>(array_vaddr + i * sizeof(ParticleTextureRecord));
             std::uint32_t pixel_src_vaddr = core_data_vaddr + core_header.particle_block + entry.texels;
+            std::vector<std::uint8_t> pixel_src_bytes;
             const std::uint8_t* pixel_src = nullptr;
             if (ee_is_valid_addr(pixel_src_vaddr, entry.side * entry.side)) {
-                pixel_src = reinterpret_cast<const std::uint8_t*>(ee_ram_ptr(pixel_src_vaddr));
+                pixel_src = ee_bytes_view(pixel_src_vaddr, static_cast<std::size_t>(entry.side * entry.side), pixel_src_bytes);
             }
             std::uint32_t palette_src_vaddr = core_data_vaddr + core_header.particle_block + entry.palette;
+            std::vector<std::uint8_t> palette_src_bytes;
             const std::uint8_t* palette_src = nullptr;
             if (ee_is_valid_addr(palette_src_vaddr, 1024)) {
-                palette_src = reinterpret_cast<const std::uint8_t*>(ee_ram_ptr(palette_src_vaddr));
+                palette_src = ee_bytes_view(palette_src_vaddr, static_cast<std::size_t>(1024), palette_src_bytes);
             }
             register_texture("particle", i, entry.side, entry.side, 0, 0, pixel_src, palette_src, 0);
         }
@@ -505,14 +515,16 @@ void LevelLoader::register_level_textures(std::span<const std::byte> file_data) 
         for (int i = 0; i < core_header.effect_textures.count; ++i) {
             EffectTextureRecord entry = ee_read<EffectTextureRecord>(array_vaddr + i * sizeof(EffectTextureRecord));
             std::uint32_t pixel_src_vaddr = core_data_vaddr + core_header.effect_block + entry.texels;
+            std::vector<std::uint8_t> pixel_src_bytes;
             const std::uint8_t* pixel_src = nullptr;
             if (ee_is_valid_addr(pixel_src_vaddr, entry.width * entry.height)) {
-                pixel_src = reinterpret_cast<const std::uint8_t*>(ee_ram_ptr(pixel_src_vaddr));
+                pixel_src = ee_bytes_view(pixel_src_vaddr, static_cast<std::size_t>(entry.width * entry.height), pixel_src_bytes);
             }
             std::uint32_t palette_src_vaddr = core_data_vaddr + core_header.effect_block + entry.palette;
+            std::vector<std::uint8_t> palette_src_bytes;
             const std::uint8_t* palette_src = nullptr;
             if (ee_is_valid_addr(palette_src_vaddr, 1024)) {
-                palette_src = reinterpret_cast<const std::uint8_t*>(ee_ram_ptr(palette_src_vaddr));
+                palette_src = ee_bytes_view(palette_src_vaddr, static_cast<std::size_t>(1024), palette_src_bytes);
             }
             register_texture("fx", i, entry.width, entry.height, 0, 0, pixel_src, palette_src, 0);
         }
@@ -539,10 +551,10 @@ std::uint32_t LevelLoader::load_level_overlay(std::span<const std::byte> file_da
     // 2. Locate the inner WAD block (level_data)
     std::span<const std::byte> level_data(file_data.data(), file_data.size());
     if (file_data.size() >= 48) {
-        std::int32_t header_size = *reinterpret_cast<const std::int32_t*>(file_data.data());
+        std::int32_t header_size = le32s(file_data.data());
         if (header_size == 48) {
-            std::int32_t data_sector_offset = *reinterpret_cast<const std::int32_t*>(file_data.data() + 0x10);
-            std::int32_t data_sector_size = *reinterpret_cast<const std::int32_t*>(file_data.data() + 0x14);
+            std::int32_t data_sector_offset = le32s(file_data.data() + 0x10);
+            std::int32_t data_sector_size = le32s(file_data.data() + 0x14);
             std::size_t byte_offset = static_cast<std::size_t>(data_sector_offset) * 2048;
             std::size_t byte_size = static_cast<std::size_t>(data_sector_size) * 2048;
             if (byte_offset + byte_size <= file_data.size()) {
@@ -558,6 +570,7 @@ std::uint32_t LevelLoader::load_level_overlay(std::span<const std::byte> file_da
     // 3. Parse LevelFileHeader
     LevelFileHeader wad_header;
     std::memcpy(&wad_header, level_data.data(), sizeof(LevelFileHeader));
+    le_fix(wad_header);
 
     // Check bounds for overlay segment
     if (wad_header.overlay.offset < 0 || wad_header.overlay.size <= 0 ||
@@ -594,9 +607,9 @@ std::uint32_t LevelLoader::load_level_overlay(std::span<const std::byte> file_da
         }
 
         if (section.header.elf_type == 8) { // SHT_NOBITS
-            std::memset(dest_ptr, 0, copy_size);
+            ee_zero(dest_addr, copy_size);
         } else {
-            std::memcpy(dest_ptr, section.data.data(), copy_size);
+            ee_copy_in(dest_addr, section.data.data(), copy_size);
         }
     }
 

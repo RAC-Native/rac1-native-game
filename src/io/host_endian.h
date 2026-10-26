@@ -41,6 +41,24 @@ inline void le_fix_fields(T&... v) {
     (le_fix_field(v), ...);
 }
 
+// A little-endian field read from bytes (a file's, a sector's): the host's value
+template <typename T>
+inline T le_load(const void* p) {
+    T v;
+    std::memcpy(&v, p, sizeof(T));
+    le_fix_field(v);
+    return v;
+}
+inline std::uint32_t le32(const void* p) { return le_load<std::uint32_t>(p); }
+inline std::int32_t le32s(const void* p) { return le_load<std::int32_t>(p); }
+inline std::uint16_t le16(const void* p) { return le_load<std::uint16_t>(p); }
+// ... and written as the PS2's bytes
+template <typename T>
+inline void le_store(void* p, T v) {
+    le_fix_field(v);
+    std::memcpy(p, &v, sizeof(T));
+}
+
 // One field of a record by its offset (a packed record's fields cannot be bound to references): RAC1_LE_FIX(r, field)
 template <typename F>
 inline void le_fix_member(void* rec, std::size_t off) {
@@ -67,6 +85,16 @@ inline void le_fix_words32(T& r) {
             b[i + 2] = t1;
             b[i + 3] = t0;
         }
+    }
+}
+
+// A value read whole from the PS2's bytes: a number, or a record of 4-byte fields alone
+template <typename T>
+inline void le_fix_value(T& v) {
+    if constexpr (std::is_arithmetic_v<T> || std::is_enum_v<T>) {
+        le_fix_field(v);
+    } else {
+        le_fix_words32(v);
     }
 }
 

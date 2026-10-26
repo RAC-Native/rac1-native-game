@@ -121,3 +121,26 @@ RAMHASH frame by frame against the PC. Slow, but it proves 1a-1f before touching
   connection at a time and waits on the probe's), and the app must give the screen back on ProcUI's release
   (WHBLogConsole does) or the return to the menu stalls.
 - PC reference images unchanged (shot_600 6faa80a7..., MRP=0 b0b9aa45..., boot 3c83c728...).
+- 1a (started): the EE memory as host-native words (`ee_memory.h`: swizzled bytes / halfwords, doublewords' low word
+  first, records as words or through `le_fix`); `ee_ref` for scalar references (the hand-written ports and the code
+  generator); `ee_copy_in` / `ee_copy_out` / `ee_zero` / `ee_bytes_view`; the disc, the base ELF, the boot module, the
+  level loader and the level / TOC parsers read the PS2's bytes as little-endian (`src/io/host_endian.h`). Still to do:
+  the GS replica and VIF edges (packets read from EE memory as 64-bit tags), 989snd and the IOP side, the renderers'
+  byte reads (not needed without graphics), and whatever the RAMHASH comparison on the console finds.
+- `RAC1_NO_GRAPHICS=1` (orig_main): the game's update alone, no window or GL / Vulkan context, the renderers at the
+  faithful path. On the PC its RAMHASH equals `RAC1_MRP=0 RAC1_WORLD_FAITHFUL=1`'s frame by frame (600 frames of
+  `RAC1_GOTO=0@60 RAC1_SIM_INPUT=forward`). The Wii U build runs this mode.
+
+## Feasibility, first numbers (2026-10-26)
+
+`RAC1_NO_GRAPHICS=1` on the PC (Ryzen AI 9 HX 470, one core at up to 5.3 GHz), Veldin, `forward`: the game's steps
+take **10-14 ms per frame** (the 60-frame averages after the level's start: 11.5, 13.6, 12.6, 14.4, 12.5, 10.7,
+10.3), audio (989snd's tick) included. The sampling profiler (main thread): `moby_skin_all` ~66% (the joints'
+pose on the VU0 macro ops, `moby_vu0_skin_fast` 26% of it), the world passes ~12% (tie / shrub culling), VU0 runs
+~7%, the rest the game's logic. One Espresso core is very roughly 10-15x slower than this core, so the game's code
+as it is would need on the order of 100-200 ms per frame there: far from the ~12-13 ms target.
+
+What would have to change for the port to be realistic: the skinning (two thirds of the time) rewritten for the
+750's paired singles and without the per-access EE memory checks, the world culling likewise; even then a 60 fps
+game on one Espresso core looks out of reach, 30 fps hard. The console's own measurement (step 2) will give the
+real factor; this is the number to decide on.

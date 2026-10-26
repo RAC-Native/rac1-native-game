@@ -3,6 +3,7 @@
 
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/ee_memory.h>
+#include <io/host_endian.h>
 
 #include <cstring>
 #include <fstream>
@@ -17,8 +18,8 @@ bool front_image_load() {
     std::ifstream f(disc_boot_elf_path(), std::ios::binary);  // (the disc's own, SCES_509.16 on the PAL disc)
     if (!f) return false;
     std::vector<uint8_t> elf((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-    auto u16 = [&elf](size_t o) { uint16_t v; std::memcpy(&v, &elf[o], 2); return v; };
-    auto u32 = [&elf](size_t o) { uint32_t v; std::memcpy(&v, &elf[o], 4); return v; };
+    auto u16 = [&elf](size_t o) { return le16(&elf[o]); };
+    auto u32 = [&elf](size_t o) { return le32(&elf[o]); };
     if (elf.size() < 0x34) return false;
     const uint32_t shoff = u32(0x20), shnum = u16(0x30), shstrndx = u16(0x32);
     if (shoff + shnum * 40u > elf.size() || shstrndx >= shnum) return false;
@@ -33,12 +34,11 @@ bool front_image_load() {
         if (!wanted) continue;
         const uint32_t type = u32(h + 4), addr = u32(h + 12), off = u32(h + 16), size = u32(h + 20);
         if (!ee_is_valid_addr(addr, size)) return false;
-        auto* dst = static_cast<uint8_t*>(ee_ram_ptr(addr));
         if (type == 8) {
-            std::memset(dst, 0, size);
+            ee_zero(addr, size);
         } else {
             if (static_cast<size_t>(off) + size > elf.size()) return false;
-            std::memcpy(dst, &elf[off], size);
+            ee_copy_in(addr, &elf[off], size);
         }
         ++found;
     }

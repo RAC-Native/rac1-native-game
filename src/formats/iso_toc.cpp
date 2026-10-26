@@ -1,3 +1,4 @@
+#include "io/host_endian.h"
 #include <formats/iso_toc.h>
 
 #include <cstring>
@@ -25,6 +26,7 @@ template <class T>
 bool fetch(std::span<const std::byte> image, std::size_t at, T& out) {
     if (at > image.size() || image.size() - at < sizeof(T)) return false;
     std::memcpy(&out, image.data() + at, sizeof(T));
+    le_fix_value(out);  // (numbers and records of 4-byte fields)
     return true;
 }
 

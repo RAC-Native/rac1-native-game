@@ -175,7 +175,7 @@ namespace {
 bool g_debug_tools = false;   // the debug tools asked for
 bool g_test_switches = false; // the RAC1_* testing variables and --level honoured (headless, or the debug tools)
 constexpr const char* PLAYER_ENV[] = {
-    "RAC1_DEBUG_TOOLS", "RAC1_HEADLESS", "RAC1_ISO", "RAC1_MEMCARD_DIR", "RAC1_ADVANCED_FILE", "RAC1_GRAPHICS_FILE", "RAC1_CONTROLS_FILE",
+    "RAC1_DEBUG_TOOLS", "RAC1_HEADLESS", "RAC1_NO_GRAPHICS", "RAC1_ISO", "RAC1_MEMCARD_DIR", "RAC1_ADVANCED_FILE", "RAC1_GRAPHICS_FILE", "RAC1_CONTROLS_FILE",
     "RAC1_RENDERER", "RAC1_WINDOW", "RAC1_FULLSCREEN", "RAC1_VSYNC", "RAC1_FPS_CAP", "RAC1_NO_AUDIO", "RAC1_AUDIO_DEVICE",
     "RAC1_AUDIO_PERIOD_MS", "RAC1_AUDIO_PERIODS", "RAC1_MOVIE_VOLUME", "RAC1_PRIORITY", "RAC1_IOP_MIRROR",
     "RAC1_PYTHON",  // (set by tools/setup.py for the setup mode: the Python it runs the overlay matcher with)
@@ -188,7 +188,8 @@ void debug_tools_gate_args(int argc, char** argv) {
     g_debug_tools = env != nullptr && std::atoi(env) != 0;
     for (int i = 1; argv != nullptr && i < argc; ++i)
         if (argv[i] != nullptr && std::strcmp(argv[i], "--debug-tools") == 0) g_debug_tools = true;
-    g_test_switches = g_debug_tools || std::getenv("RAC1_HEADLESS") != nullptr;
+    // (RAC1_NO_GRAPHICS is a headless run: kept whatever the gate decides, never a window instead)
+    g_test_switches = g_debug_tools || std::getenv("RAC1_HEADLESS") != nullptr || std::getenv("RAC1_NO_GRAPHICS") != nullptr;
     if (g_test_switches) return;
     std::vector<std::string> drop;
     for (const std::string& name : rac1::platform::environment_names("RAC1_"))
@@ -2061,7 +2062,13 @@ int main(int argc, char** argv) {
                                : "your disc image was not found (assets/iso/rac1-ntsc-u.iso or rac1-pal.iso, or $RAC1_ISO).");
         return 1;
     }
-    const bool headless = std::getenv("RAC1_HEADLESS") != nullptr;
+    // RAC1_NO_GRAPHICS=1: the game's update alone, no window, no GL / Vulkan context and nothing prepared or drawn, the
+    // renderers' switches at the faithful path (the game's state is then that of RAC1_MRP=0 RAC1_WORLD_FAITHFUL=1); a
+    // headless run. For machines with no renderer yet (the Wii U port, ports/wiiu) and to check such a build on the PC
+    // (RAC1_RAMHASH against that run). The GS's stores of a drawn picture (the pause menu's, a Vendor's) and the movies'
+    // reads of the GS memory have no picture to read: their frames differ there.
+    const bool no_graphics = std::getenv("RAC1_NO_GRAPHICS") != nullptr && std::atoi(std::getenv("RAC1_NO_GRAPHICS")) != 0;
+    const bool headless = no_graphics || std::getenv("RAC1_HEADLESS") != nullptr;
     // the game's own start (the boot module): by default in a window when no level is
     // asked for; RAC1_BOOT=0 / 1 decides
     bool boot = !headless && !level_asked;
@@ -2093,7 +2100,13 @@ int main(int argc, char** argv) {
     g_view_from_game = true;
     g_legacy_host_writes = false;
 
-    if (!glfwInit()) { std::fprintf(stderr, "rac1-native: GLFW init failed\n"); return 1; }
+    if (!no_graphics && !glfwInit()) { std::fprintf(stderr, "rac1-native: GLFW init failed\n"); return 1; }
+    if (no_graphics) {  // (the frame profiler with no GPU to time: its timestamps' pool none, its stages the CPU's alone)
+        static const rac1::prof::GpuApi k_no_gpu = {
+            "none", [](int, int) { return false; }, [](int) {}, [](int, int) {}, [](int, int, uint64_t*) { return false; },
+            nullptr, [](rac1::prof::Resources*) {}, [](std::vector<rac1::prof::GlOwnerRow>*) {}};
+        rac1::prof::set_gpu_api(&k_no_gpu);
+    }
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -2139,7 +2152,7 @@ int main(int argc, char** argv) {
     GLFWwindow* window = nullptr;
     // Options > Graphics > Renderer (RAC1_RENDERER=vulkan): the Vulkan renderer (docs/vulkan.md), read once, here; OpenGL when
     // Vulkan cannot start (no driver, no Vulkan 1.3, the build without its shaders)
-    if (rac1::graphics_display().vulkan) {
+    if (!no_graphics && rac1::graphics_display().vulkan) {
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         window = glfwCreateWindow(win_w0, win_h0, "Ratchet & Clank - original runtime", fs_monitor, nullptr);
         const bool vsync0 = !headless && (env_vsync >= 0 ? env_vsync != 0 : rac1::graphics_display().vsync);
@@ -2153,7 +2166,7 @@ int main(int argc, char** argv) {
             glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
         }
     }
-    const bool gl_host = window == nullptr;  // (the OpenGL renderer: the default)
+    const bool gl_host = !no_graphics && window == nullptr;  // (the OpenGL renderer: the default)
     if (gl_host) {
         window = glfwCreateWindow(win_w0, win_h0, "Ratchet & Clank - original runtime", fs_monitor, nullptr);
         if (window == nullptr) { std::fprintf(stderr, "rac1-native: no OpenGL 4.6 window\n"); return 1; }
@@ -2172,18 +2185,19 @@ int main(int argc, char** argv) {
         if (!ShaderManager::get().init()) { std::fprintf(stderr, "rac1-native: shaders failed\n"); return 1; }
     }
     sample_prof_start();  // (testing: RAC1_SAMPLE_PROF=<file>, see sample_prof.h)
-    g_use_gpu_rendering = true;
+    g_use_gpu_rendering = !no_graphics;
     particles_vu1_register();
     moby_vu0_register();  // the ported VU0 / VU1 programs, run when the game uploads their code
     moby_vu1_register();
     world_light_vu0_register();  // the world's static lighting VU0 set
     if (const char* wf = std::getenv("RAC1_WORLD_FAITHFUL"); wf != nullptr && std::atoi(wf) != 0) g_world_faithful = true;
+    if (no_graphics) g_world_faithful = true;
     // the whole Modern Rendering Pipeline, the default: the MRP mobys, world and sky with every
     // mip ("full texture"). RAC1_MRP=0 the faithful path (the reference); RAC1_WORLD_MRP / RAC1_MOBY_MRP, when set, decide for their part
     // (e.g. RAC1_MOBY_MRP=0: the MRP world and sky with the faithful mobys); RAC1_WORLD_FAITHFUL=1 / RAC1_MOBY_VU1 / RAC1_MOBY_GPU, when
     // set, turn their part's MRP off unless its own switch says otherwise
     const char* mrp_env = std::getenv("RAC1_MRP");
-    const bool mrp_all = mrp_env == nullptr || std::atoi(mrp_env) != 0;
+    const bool mrp_all = !no_graphics && (mrp_env == nullptr || std::atoi(mrp_env) != 0);
     auto mrp_part = [mrp_all](const char* name, bool other_chosen) {
         const char* v = std::getenv(name);
         return v != nullptr ? std::atoi(v) != 0 : (mrp_all && !other_chosen);
@@ -2426,7 +2440,7 @@ int main(int argc, char** argv) {
     g_audio_dump = std::getenv("RAC1_AUDIO_DUMP") ? std::fopen(std::getenv("RAC1_AUDIO_DUMP"), "wb") : nullptr;
     g_audio_dump_ch = advanced_audio_channels();
     ee_thread_set_vsync_hook(blocking_loop_vsync);  // (the vsync waits inside the game's code: the start's, a blocking loop's)
-    rac1::gs::set_store_image_hook([](uint32_t bp, uint32_t, uint32_t psm) { g_scene_pic.store(bp, psm); });
+    if (!no_graphics) rac1::gs::set_store_image_hook([](uint32_t bp, uint32_t, uint32_t psm) { g_scene_pic.store(bp, psm); });
     if (boot) {  // the boot module: its own image, the ports relocated onto it
         if (!front_image_load()) {
             std::fprintf(stderr, "rac1-native: cannot read the boot module from %s\n", disc_boot_elf_path().c_str());
@@ -2551,11 +2565,11 @@ int main(int argc, char** argv) {
                     static_cast<unsigned long long>(frame), static_cast<unsigned long long>(run_host_frames), secs, static_cast<double>(frame) / secs,
                     static_cast<double>(run_host_frames) / secs);
     };
-    while (running && !glfwWindowShouldClose(window)) {
+    while (running && (window == nullptr || !glfwWindowShouldClose(window))) {
         ++run_host_frames;
         rac1::prof::frame_mark();  // (the debug menu's profiler: the frame before ends, this one starts)
         int prof_events = rac1::prof::begin(rac1::prof::kEvents);
-        glfwPollEvents();
+        if (window != nullptr) glfwPollEvents();
         if (!headless) {  // Options > Graphics: the window's settings changed there applied now; the window as it is reported
             const bool is_fs = glfwGetWindowMonitor(window) != nullptr;
             if (rac1::graphics_display_serial() != display_serial) {
@@ -2803,6 +2817,11 @@ int main(int argc, char** argv) {
             if (ee_thread_suspended()) break;  // (a blocking loop's frame: shown before the game goes on, ADR 0012)
         }
         rac1::prof::end(prof_game);
+        if (no_graphics) {  // (nothing prepared nor drawn: the next game frame)
+            fprof.end_frame();
+            if (max_frames != 0 && frame >= max_frames) break;
+            continue;
+        }
         // a host frame that ran no game frame (it came sooner than 1/60 s: a jitter in the host's timing, a faster display)
         // shows nothing new: not prepared nor drawn again (the picture on the screen stays), the host waits for the next game
         // frame instead. A frame prepared twice without the game's update between went wrong: the projection's widening
@@ -3731,7 +3750,7 @@ int main(int argc, char** argv) {
         movie_picture.vk_reset();
         rac1::vk::shutdown();
     }
-    glfwDestroyWindow(window);
+    if (window != nullptr) glfwDestroyWindow(window);
     if (g_audio_dump != nullptr) std::fclose(g_audio_dump);
     if (g_mirror_test) {  // (testing)
         snd989_mirror_report();
@@ -3739,7 +3758,7 @@ int main(int argc, char** argv) {
     }
     audio_out_stop();
     snd989_iop_stop();
-    glfwTerminate();
+    if (!no_graphics) glfwTerminate();
     std::fflush(stdout);
     if (rac1::vuprof::enabled()) rac1::vuprof::report();  // (testing: RAC1_VU_PROF)
     rac1::vu0::fallback_report();  // (testing: RAC1_VU_FALLBACK)

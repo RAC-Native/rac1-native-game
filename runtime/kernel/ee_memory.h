@@ -5,6 +5,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <type_traits>
+#include <vector>
 
 namespace rac1 {
 
@@ -155,6 +156,11 @@ void ee_copy_out(void* dst, u32 vaddr, size_t n);
 // that layout's words (4-byte aligned on a big-endian host).
 void ee_bytes_to_words(u8* base, size_t off, const void* src, size_t n);
 void ee_words_to_bytes(void* dst, const u8* base, size_t off, size_t n);
+// n bytes of EE memory set to zero (whole words in place, the edges' bytes at their swizzled places)
+void ee_zero(u32 vaddr, size_t n);
+// n bytes of EE memory at vaddr in the PS2's order, for code that reads them as bytes: the memory itself on a little-endian
+// host; on a big-endian one a copy, in `tmp` (valid while `tmp` lives and is not changed)
+const u8* ee_bytes_view(u32 vaddr, size_t n, std::vector<u8>& tmp);
 
 // Safe templated memory read.
 template <typename T>

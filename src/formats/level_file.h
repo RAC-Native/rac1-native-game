@@ -166,6 +166,8 @@ static_assert(sizeof(EffectTextureRecord) == 16);
 
 // The records in the host's byte order (they are read as the PS2's bytes, from the file or from EE memory: io/host_endian.h)
 inline void le_fix(TableRef& r) { le_fix_words32(r); }
+inline void le_fix(FileSpan& r) { le_fix_words32(r); }
+inline void le_fix(LevelFileHeader& r) { le_fix_words32(r); }
 inline void le_fix(AssetIndexHeader& r) { le_fix_words32(r); }
 inline void le_fix(ParticleTextureRecord& r) { le_fix_words32(r); }
 inline void le_fix(EffectTextureRecord& r) { le_fix_words32(r); }

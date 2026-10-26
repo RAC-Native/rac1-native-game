@@ -1,6 +1,7 @@
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/kernel/ee_journal.h>
 #include <runtime/kernel/disc.h>
+#include <io/host_endian.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -53,13 +54,21 @@ void init_memory() {
             u32 phoff = 0;
             file.seekg(0x1c, std::ios::beg);
             file.read(reinterpret_cast<char*>(&phoff), 4);
+            le_fix_field(phoff);
             file.seekg(phoff, std::ios::beg);
             file.read(reinterpret_cast<char*>(ph), sizeof ph);
+            le_fix_field(ph);
             file.seekg(ph[1], std::ios::beg);
             const u32 segment_vaddr = ph[2];
             const u32 segment_size = ph[4];
             if (segment_vaddr + segment_size <= RAM_SIZE) {
+#if defined(RAC1_EE_WORDS_BE)
+                std::vector<char> seg(segment_size);
+                file.read(seg.data(), segment_size);
+                ee_bytes_to_words(g_ram_buffer.data(), segment_vaddr, seg.data(), segment_size);
+#else
                 file.read(reinterpret_cast<char*>(g_ram_buffer.data() + segment_vaddr), segment_size);
+#endif
                 std::cout << "[EE Memory] Loaded base ELF segment (size: " << segment_size << " bytes) to 0x" << std::hex << segment_vaddr << std::dec << std::endl;
             }
         } else {
@@ -293,6 +302,35 @@ void ee_copy_in(u32 vaddr, const void* src, size_t n) {
     u8* p = static_cast<u8*>(ee_ram_ptr_write(vaddr, static_cast<u32>(n)));
     if (p == nullptr) throw std::runtime_error("Attempted write to null pointer");
     ee_bytes_to_words(p - (vaddr & 3u), vaddr & 3u, src, n);
+}
+
+void ee_zero(u32 vaddr, size_t n) {
+    if (n == 0) return;
+    u8* p = static_cast<u8*>(ee_ram_ptr_write(vaddr, static_cast<u32>(n)));
+    if (p == nullptr) throw std::runtime_error("Attempted write to null pointer");
+#if defined(RAC1_EE_WORDS_BE)
+    u8* base = p - (vaddr & 3u);
+    size_t i = 0;
+    const size_t off = vaddr & 3u;
+    for (; i < n && ((off + i) & 3) != 0; i++) base[(off + i) ^ 3] = 0;
+    const size_t whole = (n - i) & ~size_t{3};
+    std::memset(base + off + i, 0, whole);
+    for (i += whole; i < n; i++) base[(off + i) ^ 3] = 0;
+#else
+    std::memset(p, 0, n);
+#endif
+}
+
+const u8* ee_bytes_view(u32 vaddr, size_t n, std::vector<u8>& tmp) {
+#if defined(RAC1_EE_WORDS_BE)
+    tmp.resize(n);
+    ee_copy_out(tmp.data(), vaddr, n);
+    return tmp.data();
+#else
+    (void)n;
+    (void)tmp;
+    return static_cast<const u8*>(ee_ram_ptr(vaddr));
+#endif
 }
 
 void ee_copy_out(void* dst, u32 vaddr, size_t n) {

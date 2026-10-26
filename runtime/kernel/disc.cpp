@@ -3,6 +3,7 @@
 #include "ee_memory.h"
 
 #include <platform/platform.h>
+#include "io/host_endian.h"
 
 #include <algorithm>
 #include <array>
@@ -32,13 +33,13 @@ bool parse_level_header(uint32_t lsn, int want_level, DiscLevel& out) {
     uint8_t h[2048];
     if (!disc_read(lsn, 1, h)) return false;
     int32_t lid = 0, hsize = 0;
-    std::memcpy(&lid, h, 4);
-    std::memcpy(&hsize, h + 4, 4);
+    lid = le32s(h);
+    hsize = le32s(h + 4);
     if (lid != want_level || hsize != 0x2434) return false;
     for (int k = 0; k < 4; ++k) {
         uint32_t o = 0, n = 0;
-        std::memcpy(&o, h + 8 + 8 * k, 4);
-        std::memcpy(&n, h + 12 + 8 * k, 4);
+        o = le32(h + 8 + 8 * k);
+        n = le32(h + 12 + 8 * k);
         out.ranges[k] = {o, n};
     }
     out.state = 1;
@@ -57,8 +58,8 @@ const DiscLevel* get_disc_level(int level) {
             g_toc.clear();
             return nullptr;
         }
-        std::memcpy(&magic, g_toc.data(), 4);
-        std::memcpy(&toc_size, g_toc.data() + 4, 4);
+        magic = le32s(g_toc.data());
+        toc_size = le32s(g_toc.data() + 4);
         if (magic != 1 || toc_size < 8 || static_cast<size_t>(toc_size) > g_toc.size()) {
             g_toc.clear();
             dl.state = -1;
@@ -70,12 +71,12 @@ const DiscLevel* get_disc_level(int level) {
     const size_t std_ofs = 0x28c8 + static_cast<size_t>(level) * 8;
     if (std_ofs + 4 <= g_toc.size()) {
         uint32_t lsn = 0;
-        std::memcpy(&lsn, g_toc.data() + std_ofs, 4);
+        lsn = le32(g_toc.data() + std_ofs);
         if (parse_level_header(lsn, level, dl)) return &dl;
     }
     for (size_t ofs = 8; ofs + 8 <= g_toc.size(); ofs += 8) {
         uint32_t lsn = 0;
-        std::memcpy(&lsn, g_toc.data() + ofs, 4);
+        lsn = le32(g_toc.data() + ofs);
         if (parse_level_header(lsn, level, dl)) return &dl;
     }
     dl.state = -1;
@@ -118,8 +119,8 @@ std::string read_boot2() {
     const std::vector<uint8_t> pvd = rd(16 * 2048, 2048);
     if (pvd.size() == 2048 && std::memcmp(&pvd[1], "CD001", 5) == 0) {
         uint32_t lba = 0, size = 0;
-        std::memcpy(&lba, &pvd[156 + 2], 4);
-        std::memcpy(&size, &pvd[156 + 10], 4);
+        lba = le32(&pvd[156 + 2]);  // (ISO 9660: both byte orders; the little-endian half)
+        size = le32(&pvd[156 + 10]);
         const std::vector<uint8_t> dir = size < 0x10000 ? rd(lba * 2048, size) : std::vector<uint8_t>{};
         for (size_t o = 0; o < dir.size();) {
             const uint8_t len = dir[o];
@@ -131,8 +132,8 @@ std::string read_boot2() {
             const std::string name(reinterpret_cast<const char*>(&dir[o + 33]), dir[o + 32]);
             if (name.rfind("SYSTEM.CNF", 0) == 0) {
                 uint32_t flba = 0, fsize = 0;
-                std::memcpy(&flba, &dir[o + 2], 4);
-                std::memcpy(&fsize, &dir[o + 10], 4);
+                flba = le32(&dir[o + 2]);
+                fsize = le32(&dir[o + 10]);
                 const std::vector<uint8_t> cnf = fsize < 2048 ? rd(flba * 2048, fsize) : std::vector<uint8_t>{};
                 const std::string txt(cnf.begin(), cnf.end());
                 const size_t b = txt.find("cdrom0:\\");
@@ -220,12 +221,12 @@ bool disc_read_level_wad(int level, std::vector<std::byte>& out) {
         return false;
     }
     const int32_t hdr_prefix[4] = {0x30, 0, level, 0};
-    std::memcpy(out.data(), hdr_prefix, 16);
+    for (int k = 0; k < 4; ++k) le_store(out.data() + 4 * k, hdr_prefix[k]);
     for (int k = 0; k < 4; ++k) {
         const uint32_t rel_o = lv->ranges[k].second != 0 ? lv->ranges[k].first - adjust : 0;
         const uint32_t rel_n = lv->ranges[k].second;
-        std::memcpy(out.data() + 16 + 8 * k, &rel_o, 4);
-        std::memcpy(out.data() + 20 + 8 * k, &rel_n, 4);
+        le_store(out.data() + 16 + 8 * k, rel_o);
+        le_store(out.data() + 20 + 8 * k, rel_n);
     }
     return true;
 }
@@ -237,8 +238,8 @@ bool disc_read_level_overlay(int level, std::vector<std::byte>& out) {
     std::byte head[2048];
     if (!disc_read(data_lba, 1, head)) return false;
     int32_t ovl_off = 0, ovl_size = 0;
-    std::memcpy(&ovl_off, head, 4);
-    std::memcpy(&ovl_size, head + 4, 4);
+    ovl_off = le32s(head);
+    ovl_size = le32s(head + 4);
     if (ovl_off < 0 || ovl_size <= 0) return false;
     const uint64_t end = static_cast<uint64_t>(ovl_off) + static_cast<uint64_t>(ovl_size);
     const uint64_t need_sectors = (end + 2047) / 2048;
