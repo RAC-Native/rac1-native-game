@@ -63,6 +63,10 @@ What changed in each release. Releases are source only: you build the game with 
   20; `--check-system` checks the system only), and the launcher offers to set up that container, builds the game in it
   and starts it from it, with a script to add to Steam for the Gaming Mode (#108). See
   [Setup](docs/setup.md#steam-deck-bazzite-and-other-immutable-systems).
+- The setup no longer trusts its record of a step whose files were deleted since (`assets/generated`, or part of it: the
+  moby or world assets, the generated code, the overlay maps, the boot executable): it says which is missing and makes it
+  again, instead of leaving the game without the modern renderer's assets until `--force`. The game says so at start too
+  when those assets are missing, and points to `./setup.sh`.
 
 ## 0.5.0
 
