@@ -14,8 +14,8 @@ src/
                    libvu0, soft-float, the movie player, the 989snd EE client
     math/          the overlay's vector and matrix routines
     input/         the pad packet into the game's pad state
-    render/        the host's renderer: the MRP, its lighting, level of detail and effects,
-                   plus older renderers kept for comparison
+    render/        the host's renderer: the MRP, its lighting, materials, level of detail, effects
+                   and ambient particles, plus older renderers kept for comparison
     enhance/       the PC options: Graphics, Controls and Advanced pages
   formats/         decoders for the game's file formats
   io/              memory-mapped files, byte readers
@@ -26,14 +26,15 @@ src/
   setup/           the setup mode: ISO checks, extraction, asset generation
   _devtools/       the debug menu (openly invented, never part of the port)
 runtime/           the PS2 hardware layer, no game logic
-  ee/              EE: the coroutine, timer 1, float rounding, the R5900 interpreter
+  ee/              EE: the coroutine, the game thread, timer 1, float rounding, the R5900 interpreter
   vu/              VU0 and VU1, the VIF, the VU interpreter, building blocks of translated programs
   gs/              the GS replica: GS memory, packets, 2D drawing
   vk/              the experimental Vulkan backend: device, swapchain, frames, helpers
   iop/             IOP memory, the 989snd sound driver's IOP side, audio streams
   sif/             SIF RPC between the EE and the IOP's servers
   ipu/             the movie decoder
-  kernel/          EE memory and scratchpad, the memory journal, the disc, a few kernel calls
+  kernel/          EE memory and scratchpad, the memory journal, the drawing's copy of memory, the disc,
+                   a few kernel calls
   level/           loading a level's overlay sections into EE memory
 third_party/
   989snd/          OpenGOAL's reimplementation of the 989snd sound driver (ISC)
@@ -42,11 +43,16 @@ third_party/
 tools/
   setup.py         the guided setup (run through setup.sh)
   gen_vk_shaders.py the Vulkan renderer's shaders, compiled to SPIR-V at build time
+  launcher/        the launcher for Windows and Linux (C#, see The launcher)
   overlay_match/   generates the per-level address maps from the player's disc
   codegen/         the code generators and their inputs (see "The generated code" below)
   oracle/          headless runs that record the oracle's RAM dumps (see The oracle)
 tests/
   oracle/          the oracle: each port checked against the original code (see The oracle)
+data/
+  lights/          each level's light file: its sun, lights, interiors, emissive surfaces, materials,
+                   ambient particles (our own art choices, no game data)
+  regions/         the PAL disc's region table (addresses only)
 cmake/             dependencies downloaded at configure time
 assets/generated/src/
                    the generated code, written by the setup from the player's disc (not in the repository)
@@ -205,12 +211,16 @@ and knows nothing about Ratchet & Clank. It provides:
   a run of ported code can be undone; the renderer uses it to run passes a second time without
   changing the game's state (see [Rendering](rendering.md#level-of-detail));
 - the **coroutine** the game frame runs on (`runtime/ee/ee_thread.cpp`; its stack switch is the
-  platform's, by hand on x86-64 and AArch64: [Platforms](platforms.md#the-host-interface)) and the
-  EE's **timer 1** (`ee_timer.cpp`);
+  platform's, by hand on x86-64 and AArch64: [Platforms](platforms.md#the-host-interface)), the
+  **game thread** that runs it beside the drawing (`game_thread.cpp`, see
+  [Threads and the cores](#threads-and-the-cores)) and the EE's **timer 1** (`ee_timer.cpp`);
+- the **copy of the game's memory** a pipelined frame's drawing reads (`runtime/kernel/ee_copy.h`:
+  taken at the frame's preparation, read through `draw_lw` and its kin);
 - the **float rounding** of the EE (`runtime/ee/ps2_fpu.h`);
 - **VU0 and VU1** with the VIF and the GIF's output (`runtime/vu/`), running the translated programs
   or, for testing and fallbacks, the VU interpreter;
-- the **GS replica** for the 2D (`runtime/gs/`);
+- the **GS replica** for the 2D (`runtime/gs/`), which also hands the MRP the effects' primitives and
+  VU1 program 7's batches ([Rendering](rendering.md#how-the-mrp-gets-the-frame));
 - the experimental **Vulkan** backend's device, frames and helpers (`runtime/vk/`, see [Vulkan](vulkan.md));
 - the **IOP side**: IOP memory, the SIF RPC servers the game calls, the 989snd sound driver and its
   streams (`runtime/iop/`, `runtime/sif/`);

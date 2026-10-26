@@ -78,6 +78,15 @@ Then: an experimental [Vulkan](vulkan.md) renderer, opt-in beside OpenGL; a wide
 cap's pacing; the game's own update 12 to 15 % cheaper on the CPU, the same state bit for bit (about
 8 % more with `./setup.sh --native-arch on`); the debug menu's Profiler and Unlocks tabs.
 
+**Since 0.5.0**, on `main` and not released yet (see the [Changelog](../CHANGELOG.md#unreleased)): the
+levels' water, lava and sand seas drawn by the MRP, so the GS replica draws no 3D in play any more; the
+modern lighting's emissive surfaces and surface materials (Surface Detail), the levels' suns from a
+tester's lighting pass and more lamps (#90, #101, #102); our own ambient particles (dust, embers, rain,
+snow); the game's update on a thread of its own beside the drawing, the world's triangles on the scene's
+worker and the joints in SIMD registers, about a fifth less per game frame; the setup on the Steam Deck,
+Bazzite and other immutable Linux systems (#108); `progress.json` for the RAC Native launcher (#107);
+the fix for a host frame that runs several game frames (#104).
+
 What comes next, in no fixed order:
 
 - **Playtesting and polishing** the planets after Orxon, and the fixes that come from it.
@@ -85,9 +94,13 @@ What comes next, in no fixed order:
   (#78); the CI has a Linux ARM64 job, not blocking yet.
 - **The last items of the inventory:** the one function left, and, as optional enhancements, the
   cut content and development features it lists (see [Port inventory](port-inventory.md)).
-- **The renderer:** the HUD, menus and remaining effects drawn natively, the mobys' shadow meshes.
-- **Testing on more machines:** the European PAL disc, Windows (now also through the launcher), and
-  the Vulkan renderer (measured on one machine so far).
+- **The renderer:** the 2D (HUD, menus) drawn natively, the level's baked shadow meshes across a widened
+  view, the mobys' flattened shadow meshes.
+- **Mods (planned):** the setup extracting the game's files from the disc image, a mods folder, and a
+  Mods menu in the game.
+- **Testing on more machines:** the European PAL disc, Windows (now also through the launcher), the
+  Steam Deck and the other immutable Linux systems, and the Vulkan renderer (measured on one machine
+  so far).
 
 Ideas for later, from the project's list of [enhancements](enhancements.md) (each one optional and
 off by default when it changes the game):

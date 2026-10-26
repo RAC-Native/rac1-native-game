@@ -6,9 +6,6 @@ What changed in each release. Releases are source only: you build the game with 
 ## Unreleased
 
 ### Graphics
-- Surface materials: the puddles, ripples, rain rings and lava pulse are placed by an exact integer noise, the same on every
-  GPU and driver: on Vulkan Batalia's puddles (the covered hall's, the courtyard's) were in other places than on OpenGL, or
-  missing, because the old floating-point hash rounded differently per driver. The puddles' layout changes once on both.
 - The levels' water, lava and sand seas (VU1 program 7's surfaces: Rilgar's harbour, Gaspar's lava sea, Aridia's sand sea, Hoven,
   Umbris, Novalis, Kalebo, Drek's fleet..., the levels' baked shadow meshes and the nanotech orbs) are drawn by the modern renderer
   from the game's own geometry, in the world's projection: no side cut or wedge in a widened view, fogged as the GS fogs them, and
@@ -18,7 +15,7 @@ What changed in each release. Releases are source only: you build the game with 
   light dust in the sunlight, rain with splashes and snow, per level from its light file (`particles` lines, editable in the
   debug menu's Sun tab); Batalia's rain and Hoven's snow drawn in place of the game's own while it is on. OpenGL and Vulkan.
   See [Ambient particles](docs/particles.md).
-- Ambient particles after the first playtest: embers and ash can rise from the level's lava itself (`source lava`, `rise`: points
+- Ambient particles, after the first playtest: embers and ash can rise from the level's lava itself (`source lava`, `rise`: points
   on the open lava faces of the level's collision near the camera, drifting slowly in the air's currents), as Umbris's (the
   Snagglebeast's cave) and Gaspar's now do, none away from the lava or indoors; the wind is steady unless a line asks for gusts
   (`gust`); Hoven's snow is a calm, light snowfall; Batalia has rain only.
@@ -26,19 +23,29 @@ What changed in each release. Releases are source only: you build the game with 
   splashes or materials' rain rings there: the level's collision seen from above (the height of its topmost face, read once per level
   on a thread of its own) keeps them out, softly at the openings; no box to place by hand. See
   [Ambient particles](docs/particles.md#under-a-roof).
-- Modern lighting: more lamps light the world on Veldin and Novalis (nanotech crates, fires, plasma beams, landing pad, eyes, bombs), and
-  lights per object class follow the objects the game spawns later (thanks Anya-Thoughtmane, #102).
-- Modern lighting: emissive surfaces. A level's light file can mark a texture (`emissive <tfrag|tie|shrub|moby> <class> tex <n>
+
+### Lighting (the optional modern lighting, still experimental)
+- The levels' own suns from Anya-Thoughtmane's lighting pass (#90, #101), set with the debug menu's Sun tab: Veldin, Novalis,
+  Kerwan, Eudora, Umbris, Gaspar, Orxon, Pokitaru, Hoven, Gemlik Base, Quartu, Kalebo III, Drek's fleet and the Veldin finale
+  get a sun of their own or a new one (to playtest); Aridia keeps its sun from the skybox's planet. See
+  [The level's own sun](docs/lighting.md#the-levels-own-sun).
+- Sun Rays off per level: a level's light file can turn them off there (`sun_rays off`; the debug menu's Sun tab has a checkbox
+  for it, saved with the file). Off on Blarg's station, Rilgar, Batalia and Oltanis, from Anya-Thoughtmane's lighting
+  pass (#101). See [Sun rays](docs/lighting.md#sun-rays).
+- Emissive surfaces: a level's light file can mark a texture (`emissive <tfrag|tie|shrub|moby> <class> tex <n>
   [strength] [threshold]`) that keeps the original lighting's brightness where the sun's shadows and the relighting would darken it
   (lamps, screens, panels painted in textures), marked in the debug menu's Lights tab; Veldin's domed building lamps and Novalis's
   landing pad lamps, neon tubes and bulbs are marked (#102).
-- Modern lighting: surface materials, a new Options > Graphics row Surface Detail (Off, the default; Low; High). A level's light file
+- Surface materials, a new Options > Graphics row Surface Detail (Off, the default; Low; High). A level's light file
   tags a texture `material <tfrag|tie|shrub|moby> <class> tex <n> <type> [a] [b] [c]` - metal, wet, puddle, lava, water, mud,
   quicksand - lit and animated over the PS2 texture (specular with Fresnel, wet ground with puddles and rain ripples, a slow flow);
   High adds reflections from the last frame's picture and the lava's heat shimmer. `rain on` and `sky r g b` per level. Tagged in
   the debug menu's Lights tab. Batalia's platform, railings and buildings (metal) and its paved ground (puddles, rain) and Umbris's
-  swampy ground (mud). See [Materials](docs/materials.md).
-- Modern lighting: Novalis's Buzzers light with their green eyes, and the Blarg ship (Novalis's drop ship, Gemlik's ships of the
+  swampy ground (mud). The puddles, ripples, rain rings and the lava's pulse are placed by an exact integer noise, the same on
+  every GPU and driver. See [Materials](docs/materials.md).
+- More lamps light the world on Veldin and Novalis (nanotech crates, fires, plasma beams, landing pad, eyes, bombs), and
+  lights per object class follow the objects the game spawns later (thanks Anya-Thoughtmane, #102).
+- Novalis's Buzzers light with their green eyes, and the Blarg ship (Novalis's drop ship, Gemlik's ships of the
   skill point) lights from its orange and blue lamps, which glow, instead of from inside its hull (#102).
 
 ### Performance
@@ -65,11 +72,6 @@ What changed in each release. Releases are source only: you build the game with 
 - Widescreen: Rilgar's water near the camera no longer loses a wedge (a dark band across the water, the sea bed showing
   through) or shows a flat, stretched patch: the large water triangles that cross the whole 4:3 frame were stretched as if
   they were full-screen 2D, their corners past the frame's sides moved to the window's edges.
-
-### Graphics
-- A level's light file can turn the Sun Rays off on that level (`sun_rays off`; the debug menu's Sun tab has a checkbox
-  for it, saved with the file). Off on Blarg's station, Rilgar, Batalia and Oltanis, from Anya-Thoughtmane's lighting
-  pass (#101). See [Sun rays](docs/lighting.md#sun-rays).
 
 ### Launcher and setup
 - The game writes `progress.json` in its data folder for the [RAC Native launcher](https://github.com/RAC-Native/rac-native-launcher):

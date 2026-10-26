@@ -41,8 +41,10 @@ differs a lot between planets. Where each part comes from is described in
   our own heuristic, not game data, and it can be wrong (see the table below).
 - **Lights placed by hand** with the [light editor](#the-light-editor) cover what the automatic
   search can't find. The project ships no hand-placed lights; its level files only turn off an
-  automatic class the search got wrong (Gaspar, Orxon), turn the sun (Novalis, Kerwan, Eudora,
-  Oltanis, Quartu), mark interiors (Blarg, Orxon), or make every object of a class a light
+  automatic class the search got wrong (Gaspar, Orxon), turn the sun (every level but Rilgar, Blarg
+  and Batalia, most of them from Anya-Thoughtmane's lighting pass, #90), turn the sun rays off (Blarg,
+  Rilgar, Batalia, Oltanis), mark interiors (Blarg, Orxon), mark emissive surfaces and
+  [materials](materials.md), list [ambient particles](particles.md), or make every object of a class a light
   (Novalis's neon tubes and hanging bulbs, Kerwan's street lamps, Oltanis's plaza lamps; Veldin's and
   Novalis's lamps, fires and eyes from a tester's survey, #102).
 - **Sun rays** (Options > Graphics, Off by default): shafts of light from the sun through openings
@@ -173,8 +175,9 @@ flowchart TD
     E --> E1
     E4 --> F["World and sky: SH_POINTS variant<br/>(sun shadow, point lights, fade)"]
     F --> G["Mobys: SH_SPLIT variant<br/>(sun shadow on the key light)"]
-    G --> H["mrp_lighting_ao_pass<br/>(the covered view's test, SSAO)"]
-    H --> I["GS replica: effects, particles, 2D"]
+    G --> H["mrp_lighting_ao_pass<br/>(ambient occlusion, sun rays,<br/>the picture kept for the materials)"]
+    H --> P["ambient particles"]
+    P --> I["the MRP's effects and program 7's surfaces,<br/>the GS replica's 2D between them"]
 ```
 
 There is no depth prepass and no compute-shader light culling; the order above is the `draw` step in
@@ -560,26 +563,26 @@ direction wherever the game has a sun; the weight, the colour and what is taken 
 direction) are the game's. The value was chosen by measuring, along a walk from each level's start,
 the share of the view facing the sun that sees it (the covered views' probe, `RAC1_SUN_COVER_TRACE`):
 
-| Level | the key light (azimuth, elevation) | sees the sun | at 50 degrees | the level's own sun |
-|---|---|---|---|---|
-| Veldin | -65, 20 | 51 % | 77 % | |
-| Novalis | -22, 33 | 34 % | 73 % (55 degrees: about 75 %) | **0, 43** |
-| Aridia | 20, 20 | 81 % | 90 % | **33, 19.5** |
-| Kerwan | -4, 35 | 30 % | 55 % | **100, 28** |
-| Eudora | -141, 22 | 27 % | 47 % | **-141, 50** |
-| Rilgar | -159, 16 | 78 % | 86 % | |
-| Umbris | 179, 24 | 87 % | 85 % | |
-| Batalia | -135, 15 | 71 % | 88 % | |
-| Gaspar | 165, 40 | 79 % | 82 % | |
-| Orxon | -45, 20 | (the walk stays in the opening scene) | | |
-| Pokitaru | -48, 30 | 84 % | 85 % | |
-| Hoven | -135, 30 | 49 % | 74 % | |
-| Gemlik Base | 180, 20 | 82 % | 83 % | **115, 11** |
-| Oltanis | -141, 29 | 22 % | 56 % | **-141, 50** |
-| Quartu | 0, 20 | 8 % | 43 % | **0, 50** |
-| Kalebo III | -33, 30 | 56 % | 62 % | |
-| Drek's fleet | 28, 29 | 76 % | 74 % | |
-| Veldin finale | -175, 40 | 85 % | 86 % | |
+| Level | the key light (azimuth, elevation) | sees the sun | at 50 degrees | the level's own sun | in its file now |
+|---|---|---|---|---|---|
+| Veldin | -65, 20 | 51 % | 77 % | | 1.1, 17.7 |
+| Novalis | -22, 33 | 34 % | 73 % (55 degrees: about 75 %) | **0, 43** | 0, 90 |
+| Aridia | 20, 20 | 81 % | 90 % | **33, 19.5** | 33, 19.5 |
+| Kerwan | -4, 35 | 30 % | 55 % | **100, 28** | -108.5, 45 |
+| Eudora | -141, 22 | 27 % | 47 % | **-141, 50** | 24, 76.2 |
+| Rilgar | -159, 16 | 78 % | 86 % | | |
+| Umbris | 179, 24 | 87 % | 85 % | | -70.5, 5 |
+| Batalia | -135, 15 | 71 % | 88 % | | |
+| Gaspar | 165, 40 | 79 % | 82 % | | -101.5, 90 |
+| Orxon | -45, 20 | (the walk stays in the opening scene) | | | -52.5, 5 |
+| Pokitaru | -48, 30 | 84 % | 85 % | | -145.5, 80.5 |
+| Hoven | -135, 30 | 49 % | 74 % | | -180, 90 |
+| Gemlik Base | 180, 20 | 82 % | 83 % | **115, 11** | 114.5, 12 |
+| Oltanis | -141, 29 | 22 % | 56 % | **-141, 50** | -140.5, 50 |
+| Quartu | 0, 20 | 8 % | 43 % | **0, 50** | 0, 5 |
+| Kalebo III | -33, 30 | 56 % | 62 % | | -14, 85 |
+| Drek's fleet | 28, 29 | 76 % | 74 % | | -91, 5 |
+| Veldin finale | -175, 40 | 85 % | 86 % | | -6, 23 |
 
 (Headless, the same scripted walk from each level's start, the second half of 3000 frames; a rough
 measure of the places near the start only.) The levels under about a third keep their azimuth and
@@ -587,8 +590,13 @@ get a higher sun; Novalis was checked at its start valley (below) and given 55. 
 [sun editor](#the-sun-editor), Daino turned four of them: Novalis to 0, 43 (55 was the first
 try), Kerwan to 100, 28 (low, toward the city, through the first tunnel's mouth: the path inside lit,
 the city backlit), Aridia to 33, 19.5 (from the big planet in its sky, so the light matches what
-the sky shows) and Gemlik Base to 115, 11 (from the sun in its skybox, likewise). The others keep the game's key light; Veldin and Hoven are candidates if a playtest finds their shade too heavy. Blarg
-has no sun in its main zones.
+the sky shows) and Gemlik Base to 115, 11 (from the sun in its skybox, likewise). Blarg has no sun in
+its main zones.
+
+On 25 October the suns of Anya-Thoughtmane's lighting pass (#90, #101), set with the sun editor, went
+into the files of fifteen levels, Novalis, Kerwan and Gemlik Base among them in place of the choices
+above (the last column; still to playtest). After a playtest Aridia went back to its skybox's planet,
+33, 19.5. Rilgar and Batalia keep the game's key light.
 
 ### The sun editor
 
@@ -737,7 +745,7 @@ passes with the same shaders (`tools/gen_vk_shaders.py`).
 ## Ambient occlusion
 
 Options > Graphics > Ambient Occlusion (`mrp_lighting_ao_pass`): a screen-space ambient occlusion
-pass after the mobys and before the GS replica's effects, particles and 2D (so those get none). The
+pass after the mobys and before the effects, the ambient particles and the 2D (so those get none). The
 depth buffer is copied to a texture; per pixel the world position comes from the inverse
 view-projection; the result (8 bits) is blurred within the surface and multiplied into the colour
 (the sky untouched). Five modes:

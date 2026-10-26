@@ -8,6 +8,11 @@
 > the fixes from the 0.4.0 reports: see the [Changelog](CHANGELOG.md#050). It has been playtested on
 > Linux; Windows is no longer experimental: players have played through the game on it. Expect some
 > bugs and glitches.
+> Since 0.5.0, `main` has gained (not released yet, see the [Changelog](CHANGELOG.md#unreleased)): the levels'
+> water, lava and sand seas drawn by the native renderer too (so it draws all the 3D in play), surface materials
+> and emissive surfaces for the modern lighting, optional ambient particles (dust, embers, rain, snow), new level
+> suns, a faster frame (the game's update on its own thread), the setup on the Steam Deck and other immutable
+> Linux systems, and fixes.
 > See [Status](docs/status.md).
 
 A native PC port of **Ratchet & Clank** (PlayStation 2, 2002), for Linux and Windows.
@@ -41,8 +46,9 @@ changing how the game behaves.
    level, streamed music and voices), and the PS2's hardware (DMA, GS, sound processor, memory card,
    pads) is replaced by host code in `runtime/`.
 4. **A renderer of its own.** The 3D is not drawn by emulating the PS2's graphics chip: the renderer
-   (OpenGL, or Vulkan) reads what the game has decided to draw (its objects, world and effects) and
-   draws it natively. That is what makes widescreen, a wider HUD, high resolutions and the optional
+   (OpenGL, or Vulkan) reads what the game has decided to draw (its objects, world, effects, water and
+   lava) and draws it natively; only the 2D (HUD, menus, text) still goes through a replica of the
+   PS2's graphics chip. That is what makes widescreen, a wider HUD, high resolutions and the optional
    modern lighting possible, while the game's own logic stays unchanged.
 5. **Proved against the original.** The oracle runs the original code in an R5900 interpreter beside
    each port and compares the results bit for bit; the reference images and per-frame RAM hashes
@@ -63,7 +69,7 @@ planets after Orxon have had one full playthrough so far (on Linux), so more pla
 is welcome. 0.5.0 (see the [Changelog](CHANGELOG.md)) adds the launcher, the experimental Vulkan
 renderer, the widescreen HUD, a reworked modern lighting and 5.1 / 7.1 sound, and fixes the bugs
 reported on 0.4.0; it has been playtested on Linux, and players have played its development builds
-on Windows. Of the code the game runs, one function is left to port (see the [Port inventory](docs/port-inventory.md)).
+on Windows. What `main` has gained since is in the [Changelog](CHANGELOG.md#unreleased). Of the code the game runs, one function is left to port (see the [Port inventory](docs/port-inventory.md)).
 The port as a whole still needs polishing. See [Status](docs/status.md) (which also maps the names
 the code uses for the levels to the names in the game), the [Roadmap](docs/roadmap.md) and the
 [History](docs/history.md).
@@ -91,7 +97,8 @@ so a bug that only Windows shows is still possible: reports are welcome. See
 
 ### Modern lighting is experimental
 
-The optional modern lighting (sun shadows, per-pixel lights, ambient occlusion) is **EXPERIMENTAL**.
+The optional modern lighting (sun shadows, per-pixel lights, ambient occlusion, sun rays, emissive
+surfaces and surface materials) is **EXPERIMENTAL**.
 It is off by default, and with it off the picture is the original's lighting, unchanged. It is not
 yet fully usable on some planets: Nebula G34 (Blarg's station) is still a mess, with some zones
 pitch dark. That is not a porting priority and will be dealt with later. Every level runs with it,
