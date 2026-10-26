@@ -1071,13 +1071,16 @@ void tab_sun() {
 }
 // orig: (host) the Lights tab's "Emissive surfaces": the surface under the crosshair (the world's nearest triangle - tfrag, tie, shrub -
 // or the moby there), its class's texture stepped through with a pulsing magenta preview, marked / unmarked, its strength and threshold
-// live; "Suggest" lists bright textures of the level as candidates (never applied by themselves). Saved with the lights (Save above)
+// live; "Suggest" lists bright textures of the level as candidates (never applied by themselves). Saved with the lights (Save above).
+// The same surface can be given a material instead (docs/materials.md: metal, wet, puddle, lava, water, mud, quicksand) with its
+// parameters, live; the level's rain and the reflections' sky colour beside them
 void tab_emissive() {
     static EmissiveSurface cur{-1, 0, 0, 1.0f, 0.0f};  // (the surface in hand: kind -1 none)
     static bool follow = true, preview = false;
     static std::vector<EmissiveCandidate> cands;
     static int cands_level = -1;
-    if (!ImGui::CollapsingHeader("Emissive surfaces (emissive)")) {
+    static int new_type = MAT_EMISSIVE;  // (what "Mark" gives the surface in hand)
+    if (!ImGui::CollapsingHeader("Emissive surfaces and materials (emissive, material)")) {
         mrp_emissive_preview(-1, 0, 0);
         return;
     }
@@ -1091,6 +1094,17 @@ void tab_emissive() {
         dl->AddLine(ImVec2(c.x, c.y - 10.0f), ImVec2(c.x, c.y + 10.0f), IM_COL32(255, 120, 255, 220), 2.0f);
     }
     if (g_modern_shadows == 0) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Shown only with Lighting not Original.");
+    {  // (Options > Graphics > Surface Detail, here too: the materials are drawn only when it is not Off)
+        static const char* steps[] = {"Off", "Low", "High"};
+        ImGui::SetNextItemWidth(120.0f);
+        ImGui::Combo("Surface Detail (materials)", &g_surface_detail, steps, 3);
+        ImGui::SameLine();
+        if (bool rain = mrp_user_rain(); ImGui::Checkbox("Rain on this level", &rain)) {
+            mrp_user_rain_set(rain);
+            g_light_dirty = true;
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Saved as \"rain on\": the puddles' and the water's rain ripples");
+    }
     static SurfacePick sp;
     static LightPick mp;
     static float last[3] = {1e30f, 0.0f, 0.0f};
@@ -1130,6 +1144,27 @@ void tab_emissive() {
     int idx = -1;
     for (size_t i = 0; i < E.size(); ++i)
         if (E[i].kind == cur.kind && E[i].o_class == cur.o_class && E[i].tex == cur.tex) idx = static_cast<int>(i);
+    auto type_combo = [](const char* label, int* type) {
+        bool ch = false;
+        ImGui::SetNextItemWidth(140.0f);
+        if (ImGui::BeginCombo(label, mrp_material_name(*type))) {
+            for (int t = 0; t < MAT_COUNT; ++t)
+                if (ImGui::Selectable(mrp_material_name(t), t == *type)) {
+                    *type = t;
+                    ch = true;
+                }
+            ImGui::EndCombo();
+        }
+        return ch;
+    };
+    auto set_defaults = [](EmissiveSurface& e) {
+        const MatParam* mp = mrp_material_params(e.type);
+        for (int i = 0; i < 3; ++i) e.p[i] = mp[i].name != nullptr ? mp[i].def : 0.0f;
+        if (e.type == MAT_EMISSIVE) {
+            e.strength = 1.0f;
+            e.threshold = 0.0f;
+        }
+    };
     if (cur.kind < 0) {
         ImGui::TextDisabled("No surface in hand: aim at one, or pick one below.");
         mrp_emissive_preview(-1, 0, 0);
@@ -1157,14 +1192,17 @@ void tab_emissive() {
         ImGui::SameLine();
         if (ImGui::ArrowButton("##emis_next", ImGuiDir_Right)) step(1);
         ImGui::SameLine();
-        if (cur.kind == 3) ImGui::Text("In hand: moby %d tex %d (its textures: mask %08x)%s", cur.o_class, cur.tex, moby_bits, idx >= 0 ? "  - emissive" : "");
-        else ImGui::Text("In hand: %s %d tex %d of %d (the level's texture %d)%s", mrp_emissive_kind_name(cur.kind), cur.o_class, cur.tex, ntex, level_tex, idx >= 0 ? "  - emissive" : "");
+        const char* marked = idx >= 0 ? mrp_material_name(E[static_cast<size_t>(idx)].type) : nullptr;
+        if (cur.kind == 3) ImGui::Text("In hand: moby %d tex %d (its textures: mask %08x)%s%s", cur.o_class, cur.tex, moby_bits, marked ? "  - " : "", marked ? marked : "");
+        else ImGui::Text("In hand: %s %d tex %d of %d (the level's texture %d)%s%s", mrp_emissive_kind_name(cur.kind), cur.o_class, cur.tex, ntex, level_tex, marked ? "  - " : "", marked ? marked : "");
         mrp_emissive_preview(preview ? cur.kind : -1, cur.o_class, cur.tex);
         if (idx < 0) {
-            if (ImGui::Button("Mark emissive")) {
+            type_combo("##mat_new", &new_type);
+            ImGui::SameLine();
+            if (ImGui::Button(new_type == MAT_EMISSIVE ? "Mark emissive" : "Give the material")) {
                 EmissiveSurface e = cur;
-                e.strength = 1.0f;
-                e.threshold = 0.0f;
+                e.type = new_type;
+                set_defaults(e);
                 E.push_back(e);
                 mrp_user_emissive_changed();
                 g_light_dirty = true;
@@ -1178,9 +1216,27 @@ void tab_emissive() {
             } else {
                 EmissiveSurface& e = E[static_cast<size_t>(idx)];
                 bool ch = false;  // (live: the shaders' slots read the list every frame)
-                ch |= ImGui::SliderFloat("Strength##emis", &e.strength, 0.0f, 4.0f, "%.2f");
-                ch |= ImGui::SliderFloat("Threshold##emis", &e.threshold, 0.0f, 1.0f, "%.2f");
-                ImGui::TextDisabled("Strength: the original lighting's colour x this; threshold: the texels whose brightest channel is below it stay lit as before.");
+                ImGui::SameLine();
+                if (int ty = e.type; type_combo("Type##mat", &ty) && ty != e.type) {
+                    e.type = ty;
+                    set_defaults(e);
+                    mrp_user_emissive_changed();  // (the slots' copy: a material hides while Surface Detail is Off)
+                    ch = true;
+                }
+                if (e.type == MAT_EMISSIVE) {
+                    ch |= ImGui::SliderFloat("Strength##emis", &e.strength, 0.0f, 4.0f, "%.2f");
+                    ch |= ImGui::SliderFloat("Threshold##emis", &e.threshold, 0.0f, 1.0f, "%.2f");
+                    ImGui::TextDisabled("Strength: the original lighting's colour x this; threshold: the texels whose brightest channel is below it stay lit as before.");
+                } else {
+                    const MatParam* mp = mrp_material_params(e.type);
+                    for (int i = 0; i < 3; ++i)
+                        if (mp[i].name != nullptr) {
+                            char lab[48];
+                            std::snprintf(lab, sizeof lab, "%s##matp%d", mp[i].name, i);
+                            ch |= ImGui::SliderFloat(lab, &e.p[i], mp[i].lo, mp[i].hi, "%.2f");
+                        }
+                    if (g_surface_detail == 0) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Surface Detail is Off: the material is not drawn.");
+                }
                 if (ch) g_light_dirty = true;
             }
         }
@@ -1188,7 +1244,11 @@ void tab_emissive() {
     ImGui::Text("Marked (%zu, at most %d):", E.size(), kEmissiveSlots);
     for (size_t i = 0; i < E.size(); ++i) {
         char t[96];
-        std::snprintf(t, sizeof t, "%s %d tex %d  x%.2f  threshold %.2f##em%zu", mrp_emissive_kind_name(E[i].kind), E[i].o_class, E[i].tex, E[i].strength, E[i].threshold, i);
+        if (E[i].type == MAT_EMISSIVE)
+            std::snprintf(t, sizeof t, "%s %d tex %d  x%.2f  threshold %.2f##em%zu", mrp_emissive_kind_name(E[i].kind), E[i].o_class, E[i].tex, E[i].strength, E[i].threshold, i);
+        else
+            std::snprintf(t, sizeof t, "%s %d tex %d  %s %.2f %.2f %.2f##em%zu", mrp_emissive_kind_name(E[i].kind), E[i].o_class, E[i].tex, mrp_material_name(E[i].type), E[i].p[0],
+                          E[i].p[1], E[i].p[2], i);
         if (ImGui::Selectable(t, static_cast<int>(i) == idx)) {
             cur = E[i];
             follow = false;

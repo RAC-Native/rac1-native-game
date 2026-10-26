@@ -59,6 +59,7 @@ headless runs) the row is the game's own Mono / Stereo.
 | Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2 | Off |
 | AO Intensity | 25, 50, 75, 100, 125 (%) | 75 |
 | Sun Rays | Off, Low, Medium, High (more quality, strength and cost each step; Low has the strength of 0.4.x's Low, High of its High) | Off |
+| Surface Detail | Off, Low, High (materials: shiny metal, wet ground and puddles, water, lava, mud; High adds reflections and the lava's heat shimmer; with Lighting not Original, see [Materials](materials.md)) | Off |
 | Texture Detail | Full, Original (PS2) | Full |
 
 - **The frame-rate cap** only paces the picture. The game itself always runs at 60 frames a second,

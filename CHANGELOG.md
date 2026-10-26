@@ -12,6 +12,12 @@ What changed in each release. Releases are source only: you build the game with 
   [strength] [threshold]`) that keeps the original lighting's brightness where the sun's shadows and the relighting would darken it
   (lamps, screens, panels painted in textures), marked in the debug menu's Lights tab; Veldin's domed building lamps and Novalis's
   landing pad lamps, neon tubes and bulbs are marked (#102).
+- Modern lighting: surface materials, a new Options > Graphics row Surface Detail (Off, the default; Low; High). A level's light file
+  tags a texture `material <tfrag|tie|shrub|moby> <class> tex <n> <type> [a] [b] [c]` - metal, wet, puddle, lava, water, mud,
+  quicksand - lit and animated over the PS2 texture (specular with Fresnel, wet ground with puddles and rain ripples, a slow flow);
+  High adds reflections from the last frame's picture and the lava's heat shimmer. `rain on` and `sky r g b` per level. Tagged in
+  the debug menu's Lights tab. Batalia's platform, railings and buildings (metal) and its paved ground (puddles, rain) and Umbris's
+  swampy ground (mud). See [Materials](docs/materials.md).
 
 ### Fixes
 - When the computer falls behind (or with V-Sync on a 75 Hz display) and a frame runs two or more of the game's

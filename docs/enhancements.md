@@ -72,6 +72,9 @@ See [Lighting](lighting.md). Off by default (Lighting: Original).
 - Sun rays (Low, Medium, High): shafts of light from the sun where the sky shows through the scene.
 - Ambient occlusion, in five modes (SSAO, SSAO+, HBAO, GTAO, GTAO at half resolution), with an AO
   Intensity setting.
+- Surface Detail (Off, Low, High): materials for the textures a level's file tags - shiny metal, wet
+  ground with puddles and rain ripples, water, lava, mud - the PS2 textures kept, lit and animated;
+  High adds reflections. See [Materials](materials.md).
 
 ### Sound: 5.1 and 7.1
 
