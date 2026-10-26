@@ -988,6 +988,9 @@ void main() {
     uint w = vCmd.y;
     if (uTme != 0) {
         vec2 st = vStq.xy / vStq.z;
+#ifdef SH_SPLIT
+        st = sh_mat_uv(st, (w >> 27) & 31u);  // (lava, mud, quicksand: the slow flow)
+#endif
         vec4 t;
         if ((w & 1u) != 0u) {
             t = vec4(128.0 / 255.0);
@@ -1015,6 +1018,7 @@ void main() {
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_SPLIT
         o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 27) & 31u);  // (the word's bits 27..31)
+        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 27) & 31u);
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }
@@ -1730,7 +1734,7 @@ void build_frame() {
     Frame& F = g_frame;
     F.built = true;
     moby_emissive_refresh();
-    const bool emis = !g_memis.slot.empty() && g_modern_shadows != 0 && g_emissive != 0;
+    const bool emis = !g_memis.slot.empty() && g_modern_shadows != 0;  // (RAC1_EMISSIVE=0: the shaders ignore the emissive slots, uEmis[0])
     F.parts.clear();
     F.part_pos.clear();
     F.part_rad.clear();

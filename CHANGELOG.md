@@ -6,12 +6,28 @@ What changed in each release. Releases are source only: you build the game with 
 ## Unreleased
 
 ### Graphics
+- Ambient particles (Options > Graphics > Ambient Particles: Off by default, Low, High): our own dust, ash, embers, fireflies,
+  light dust in the sunlight, rain with splashes and snow, per level from its light file (`particles` lines, editable in the
+  debug menu's Sun tab); Batalia's rain and Hoven's snow drawn in place of the game's own while it is on. OpenGL and Vulkan.
+  See [Ambient particles](docs/particles.md).
+- Ambient particles after the first playtest: embers and ash can rise from the level's lava itself (`source lava`, `rise`: points
+  on the open lava faces of the level's collision near the camera, drifting slowly in the air's currents), as Umbris's (the
+  Snagglebeast's cave) and Gaspar's now do, none away from the lava or indoors; the wind is steady unless a line asks for gusts
+  (`gust`); Hoven's snow is a calm, light snowfall; Batalia has rain only.
 - Modern lighting: more lamps light the world on Veldin and Novalis (nanotech crates, fires, plasma beams, landing pad, eyes, bombs), and
   lights per object class follow the objects the game spawns later (thanks Anya-Thoughtmane, #102).
 - Modern lighting: emissive surfaces. A level's light file can mark a texture (`emissive <tfrag|tie|shrub|moby> <class> tex <n>
   [strength] [threshold]`) that keeps the original lighting's brightness where the sun's shadows and the relighting would darken it
   (lamps, screens, panels painted in textures), marked in the debug menu's Lights tab; Veldin's domed building lamps and Novalis's
   landing pad lamps, neon tubes and bulbs are marked (#102).
+- Modern lighting: surface materials, a new Options > Graphics row Surface Detail (Off, the default; Low; High). A level's light file
+  tags a texture `material <tfrag|tie|shrub|moby> <class> tex <n> <type> [a] [b] [c]` - metal, wet, puddle, lava, water, mud,
+  quicksand - lit and animated over the PS2 texture (specular with Fresnel, wet ground with puddles and rain ripples, a slow flow);
+  High adds reflections from the last frame's picture and the lava's heat shimmer. `rain on` and `sky r g b` per level. Tagged in
+  the debug menu's Lights tab. Batalia's platform, railings and buildings (metal) and its paved ground (puddles, rain) and Umbris's
+  swampy ground (mud). See [Materials](docs/materials.md).
+- Modern lighting: Novalis's Buzzers light with their green eyes, and the Blarg ship (Novalis's drop ship, Gemlik's ships of the
+  skill point) lights from its orange and blue lamps, which glow, instead of from inside its hull (#102).
 
 ### Fixes
 - When the computer falls behind (or with V-Sync on a 75 Hz display) and a frame runs two or more of the game's

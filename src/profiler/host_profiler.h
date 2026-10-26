@@ -54,6 +54,7 @@ enum Stage : int {
     kMobys,             // the MRP mobys
     kAo,                // the ambient occlusion (and the sun's cover probe)
     kSunRays,           // the sun's rays
+    kParticles,         // the ambient particles (our own: dust, embers, rain, snow ...)
     kScaleResolve,      // the render scale's buffer put on the window
     kEffects,           // the MRP's 3D effects (particles ...), before and after the mobys
     kGs2d,              // the GS replica's primitives: the 2D, the HUD, the game's own GS effects (water and the like under the mobys)

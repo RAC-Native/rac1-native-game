@@ -18,6 +18,7 @@
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_fx.h>
 #include <game/render/mrp_lighting.h>
+#include <game/render/mrp_particles.h>
 #include <game/enhance/graphics.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_world_renderer.h>
@@ -964,7 +965,105 @@ void interior_boxes(const std::vector<SunInterior>& B) {
             }
     }
 }
+// the level's ambient particles ("particles" lines of its file: mrp_particles.h), edited live, saved with the file
+void sun_particles() {
+    ImGui::Separator();
+    ImGui::Text("Ambient particles (ours; Options > Graphics > Ambient Particles)");
+    int q = g_ambient_particles;
+    bool ch = ImGui::RadioButton("Off", &q, 0);
+    ImGui::SameLine();
+    ch |= ImGui::RadioButton("Low", &q, 1);
+    ImGui::SameLine();
+    ch |= ImGui::RadioButton("High", &q, 2);
+    if (ch) g_ambient_particles = q;  // (this run only: the option sets the preferences)
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("For this run (Options > Graphics > Ambient Particles keeps the choice)");
+    bool game = g_particles_show_game != 0;
+    if (ImGui::Checkbox("Draw the game's own rain / snow as well", &game)) g_particles_show_game = game ? 1 : 0;
+    int count = 0;
+    float cpu = 0.0f, gpu = 0.0f;
+    mrp_particles_stats(&count, &cpu, &gpu);
+    ImGui::Text("%d particles drawn, %.3f ms CPU (the GPU's: the Profiler tab, \"Ambient particles\"); the game's rain / snow %s", count, cpu,
+                mrp_particles_hide_game() ? "replaced" : "drawn");
+    std::vector<ParticleSpec>& P = mrp_user_particles();
+    const glm::mat4 iv = glm::inverse(render_view_matrix());
+    const glm::vec3 cam(iv[3][0], iv[3][1], iv[3][2]);
+    const char* kinds[kPartKinds];
+    for (int k = 0; k < kPartKinds; ++k) kinds[k] = mrp_particle_kind_name(k);
+    for (size_t i = 0; i < P.size(); ++i) {
+        ParticleSpec& p = P[i];
+        ImGui::PushID(static_cast<int>(2000 + i));
+        bool c = ImGui::Checkbox("##on", &p.on);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(110.0f);
+        c |= ImGui::Combo("##kind", &p.kind, kinds, kPartKinds);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(160.0f);
+        c |= ImGui::SliderFloat("density", &p.density, 0.0f, 4.0f, "%.2f");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("remove")) {
+            P.erase(P.begin() + static_cast<std::ptrdiff_t>(i));
+            g_sun_dirty = true;
+            ImGui::PopID();
+            break;
+        }
+        ImGui::Indent();
+        c |= ImGui::Checkbox("own colour", &p.has_col);
+        if (p.has_col) {
+            ImGui::SameLine();
+            c |= ImGui::ColorEdit3("##col", p.col, ImGuiColorEditFlags_NoInputs);
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(160.0f);
+        c |= ImGui::DragFloat2("wind x y", p.wind, 0.05f, -20.0f, 20.0f, "%.2f");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(80.0f);
+        c |= ImGui::SliderFloat("gusts", &p.gust, 0.0f, 4.0f, "%.2f");
+        ImGui::SameLine();
+        c |= ImGui::Checkbox("from the lava", &p.src_lava);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Rising from the level's lava (its collision's lava faces near the camera) instead of filling the air around the camera");
+        if (p.src_lava) {
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(80.0f);
+            c |= ImGui::SliderFloat("rise", &p.rise, 0.0f, 4.0f, p.rise == 0.0f ? "the kind's" : "%.2f");
+        }
+        if (p.kind == kPartRain || p.kind == kPartSnow) {
+            ImGui::SameLine();
+            c |= ImGui::Checkbox("keep the game's", &p.keep);
+        }
+        c |= ImGui::Checkbox("only in a box", &p.has_box);
+        if (p.has_box) {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("around the camera")) {
+                for (int k = 0; k < 3; ++k) {
+                    p.lo[k] = std::round((cam[k] - (k == 2 ? 6.0f : 20.0f)) * 10.0f) / 10.0f;
+                    p.hi[k] = std::round((cam[k] + (k == 2 ? 6.0f : 20.0f)) * 10.0f) / 10.0f;
+                }
+                c = true;
+            }
+            c |= ImGui::DragFloat3("min", p.lo, 0.1f);
+            c |= ImGui::DragFloat3("max", p.hi, 0.1f);
+        }
+        ImGui::Unindent();
+        if (c) g_sun_dirty = true;
+        ImGui::PopID();
+    }
+    static int add_kind = 0;
+    ImGui::SetNextItemWidth(110.0f);
+    ImGui::Combo("##addkind", &add_kind, kinds, kPartKinds);
+    ImGui::SameLine();
+    if (ImGui::Button("Add a particles line")) {
+        ParticleSpec p;
+        p.kind = add_kind;
+        P.push_back(p);
+        g_sun_dirty = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Save##particles")) g_sun_dirty = !mrp_user_lights_save();
+    ImGui::TextWrapped("Applied at once. Saved as \"particles <kind> <density> [r g b] [wind x y] [gust g] [box x0 y0 z0 x1 y1 z1] [source lava] [rise r] [keep]\" lines in the "
+                       "level's file (a line not edited is written back as it was).");
+}
 void tab_sun() {
+    mrp_user_lights_ensure();  // (the level's file: also with the modern lighting off - the particles' lines)
     const int level = mrp_user_lights_level();
     if (level != g_sun_level) {
         g_sun_level = level;
@@ -1068,16 +1167,20 @@ void tab_sun() {
         if (ch) g_sun_dirty = true;
     }
     if (g_interior_show) interior_boxes(B);
+    sun_particles();
 }
 // orig: (host) the Lights tab's "Emissive surfaces": the surface under the crosshair (the world's nearest triangle - tfrag, tie, shrub -
 // or the moby there), its class's texture stepped through with a pulsing magenta preview, marked / unmarked, its strength and threshold
-// live; "Suggest" lists bright textures of the level as candidates (never applied by themselves). Saved with the lights (Save above)
+// live; "Suggest" lists bright textures of the level as candidates (never applied by themselves). Saved with the lights (Save above).
+// The same surface can be given a material instead (docs/materials.md: metal, wet, puddle, lava, water, mud, quicksand) with its
+// parameters, live; the level's rain and the reflections' sky colour beside them
 void tab_emissive() {
     static EmissiveSurface cur{-1, 0, 0, 1.0f, 0.0f};  // (the surface in hand: kind -1 none)
     static bool follow = true, preview = false;
     static std::vector<EmissiveCandidate> cands;
     static int cands_level = -1;
-    if (!ImGui::CollapsingHeader("Emissive surfaces (emissive)")) {
+    static int new_type = MAT_EMISSIVE;  // (what "Mark" gives the surface in hand)
+    if (!ImGui::CollapsingHeader("Emissive surfaces and materials (emissive, material)")) {
         mrp_emissive_preview(-1, 0, 0);
         return;
     }
@@ -1091,6 +1194,17 @@ void tab_emissive() {
         dl->AddLine(ImVec2(c.x, c.y - 10.0f), ImVec2(c.x, c.y + 10.0f), IM_COL32(255, 120, 255, 220), 2.0f);
     }
     if (g_modern_shadows == 0) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Shown only with Lighting not Original.");
+    {  // (Options > Graphics > Surface Detail, here too: the materials are drawn only when it is not Off)
+        static const char* steps[] = {"Off", "Low", "High"};
+        ImGui::SetNextItemWidth(120.0f);
+        ImGui::Combo("Surface Detail (materials)", &g_surface_detail, steps, 3);
+        ImGui::SameLine();
+        if (bool rain = mrp_user_rain(); ImGui::Checkbox("Rain on this level", &rain)) {
+            mrp_user_rain_set(rain);
+            g_light_dirty = true;
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Saved as \"rain on\": the puddles' and the water's rain ripples");
+    }
     static SurfacePick sp;
     static LightPick mp;
     static float last[3] = {1e30f, 0.0f, 0.0f};
@@ -1130,6 +1244,27 @@ void tab_emissive() {
     int idx = -1;
     for (size_t i = 0; i < E.size(); ++i)
         if (E[i].kind == cur.kind && E[i].o_class == cur.o_class && E[i].tex == cur.tex) idx = static_cast<int>(i);
+    auto type_combo = [](const char* label, int* type) {
+        bool ch = false;
+        ImGui::SetNextItemWidth(140.0f);
+        if (ImGui::BeginCombo(label, mrp_material_name(*type))) {
+            for (int t = 0; t < MAT_COUNT; ++t)
+                if (ImGui::Selectable(mrp_material_name(t), t == *type)) {
+                    *type = t;
+                    ch = true;
+                }
+            ImGui::EndCombo();
+        }
+        return ch;
+    };
+    auto set_defaults = [](EmissiveSurface& e) {
+        const MatParam* mp = mrp_material_params(e.type);
+        for (int i = 0; i < 3; ++i) e.p[i] = mp[i].name != nullptr ? mp[i].def : 0.0f;
+        if (e.type == MAT_EMISSIVE) {
+            e.strength = 1.0f;
+            e.threshold = 0.0f;
+        }
+    };
     if (cur.kind < 0) {
         ImGui::TextDisabled("No surface in hand: aim at one, or pick one below.");
         mrp_emissive_preview(-1, 0, 0);
@@ -1157,14 +1292,17 @@ void tab_emissive() {
         ImGui::SameLine();
         if (ImGui::ArrowButton("##emis_next", ImGuiDir_Right)) step(1);
         ImGui::SameLine();
-        if (cur.kind == 3) ImGui::Text("In hand: moby %d tex %d (its textures: mask %08x)%s", cur.o_class, cur.tex, moby_bits, idx >= 0 ? "  - emissive" : "");
-        else ImGui::Text("In hand: %s %d tex %d of %d (the level's texture %d)%s", mrp_emissive_kind_name(cur.kind), cur.o_class, cur.tex, ntex, level_tex, idx >= 0 ? "  - emissive" : "");
+        const char* marked = idx >= 0 ? mrp_material_name(E[static_cast<size_t>(idx)].type) : nullptr;
+        if (cur.kind == 3) ImGui::Text("In hand: moby %d tex %d (its textures: mask %08x)%s%s", cur.o_class, cur.tex, moby_bits, marked ? "  - " : "", marked ? marked : "");
+        else ImGui::Text("In hand: %s %d tex %d of %d (the level's texture %d)%s%s", mrp_emissive_kind_name(cur.kind), cur.o_class, cur.tex, ntex, level_tex, marked ? "  - " : "", marked ? marked : "");
         mrp_emissive_preview(preview ? cur.kind : -1, cur.o_class, cur.tex);
         if (idx < 0) {
-            if (ImGui::Button("Mark emissive")) {
+            type_combo("##mat_new", &new_type);
+            ImGui::SameLine();
+            if (ImGui::Button(new_type == MAT_EMISSIVE ? "Mark emissive" : "Give the material")) {
                 EmissiveSurface e = cur;
-                e.strength = 1.0f;
-                e.threshold = 0.0f;
+                e.type = new_type;
+                set_defaults(e);
                 E.push_back(e);
                 mrp_user_emissive_changed();
                 g_light_dirty = true;
@@ -1178,9 +1316,27 @@ void tab_emissive() {
             } else {
                 EmissiveSurface& e = E[static_cast<size_t>(idx)];
                 bool ch = false;  // (live: the shaders' slots read the list every frame)
-                ch |= ImGui::SliderFloat("Strength##emis", &e.strength, 0.0f, 4.0f, "%.2f");
-                ch |= ImGui::SliderFloat("Threshold##emis", &e.threshold, 0.0f, 1.0f, "%.2f");
-                ImGui::TextDisabled("Strength: the original lighting's colour x this; threshold: the texels whose brightest channel is below it stay lit as before.");
+                ImGui::SameLine();
+                if (int ty = e.type; type_combo("Type##mat", &ty) && ty != e.type) {
+                    e.type = ty;
+                    set_defaults(e);
+                    mrp_user_emissive_changed();  // (the slots' copy: a material hides while Surface Detail is Off)
+                    ch = true;
+                }
+                if (e.type == MAT_EMISSIVE) {
+                    ch |= ImGui::SliderFloat("Strength##emis", &e.strength, 0.0f, 4.0f, "%.2f");
+                    ch |= ImGui::SliderFloat("Threshold##emis", &e.threshold, 0.0f, 1.0f, "%.2f");
+                    ImGui::TextDisabled("Strength: the original lighting's colour x this; threshold: the texels whose brightest channel is below it stay lit as before.");
+                } else {
+                    const MatParam* mp = mrp_material_params(e.type);
+                    for (int i = 0; i < 3; ++i)
+                        if (mp[i].name != nullptr) {
+                            char lab[48];
+                            std::snprintf(lab, sizeof lab, "%s##matp%d", mp[i].name, i);
+                            ch |= ImGui::SliderFloat(lab, &e.p[i], mp[i].lo, mp[i].hi, "%.2f");
+                        }
+                    if (g_surface_detail == 0) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Surface Detail is Off: the material is not drawn.");
+                }
                 if (ch) g_light_dirty = true;
             }
         }
@@ -1188,7 +1344,11 @@ void tab_emissive() {
     ImGui::Text("Marked (%zu, at most %d):", E.size(), kEmissiveSlots);
     for (size_t i = 0; i < E.size(); ++i) {
         char t[96];
-        std::snprintf(t, sizeof t, "%s %d tex %d  x%.2f  threshold %.2f##em%zu", mrp_emissive_kind_name(E[i].kind), E[i].o_class, E[i].tex, E[i].strength, E[i].threshold, i);
+        if (E[i].type == MAT_EMISSIVE)
+            std::snprintf(t, sizeof t, "%s %d tex %d  x%.2f  threshold %.2f##em%zu", mrp_emissive_kind_name(E[i].kind), E[i].o_class, E[i].tex, E[i].strength, E[i].threshold, i);
+        else
+            std::snprintf(t, sizeof t, "%s %d tex %d  %s %.2f %.2f %.2f##em%zu", mrp_emissive_kind_name(E[i].kind), E[i].o_class, E[i].tex, mrp_material_name(E[i].type), E[i].p[0],
+                          E[i].p[1], E[i].p[2], i);
         if (ImGui::Selectable(t, static_cast<int>(i) == idx)) {
             cur = E[i];
             follow = false;

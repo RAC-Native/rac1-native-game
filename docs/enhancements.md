@@ -59,6 +59,9 @@ See [Settings](settings.md#graphics) and [Rendering](rendering.md).
   V-Sync.
 - **The renderer**: OpenGL, the default, or [Vulkan](vulkan.md) (experimental, from the next start),
   the same picture.
+- **Ambient particles** (off by default): our own dust, ash, embers, fireflies, light dust in the sunlight, rain and snow
+  on some levels, purely visual; Batalia's rain and Hoven's snow drawn in place of the game's own while on. See
+  [Ambient particles](particles.md).
 
 ### Modern lighting
 
@@ -72,6 +75,9 @@ See [Lighting](lighting.md). Off by default (Lighting: Original).
 - Sun rays (Low, Medium, High): shafts of light from the sun where the sky shows through the scene.
 - Ambient occlusion, in five modes (SSAO, SSAO+, HBAO, GTAO, GTAO at half resolution), with an AO
   Intensity setting.
+- Surface Detail (Off, Low, High): materials for the textures a level's file tags - shiny metal, wet
+  ground with puddles and rain ripples, water, lava, mud - the PS2 textures kept, lit and animated;
+  High adds reflections. See [Materials](materials.md).
 
 ### Sound: 5.1 and 7.1
 

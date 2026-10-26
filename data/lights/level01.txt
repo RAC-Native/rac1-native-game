@@ -31,11 +31,20 @@ emit moby 459  0.000 0.000 2.000  0.400 1.000 0.400  0.600 3.000 0.000
 emit moby 459  0.000 0.000 1.300  1.000 0.600 0.250  0.800 3.000 0.400
 # The bomb glove's bombs (moby class 121): a warm, flickering glow.
 emit moby 121  0.000 0.000 0.000  1.000 0.450 0.150  0.800 3.000 0.300
+# The Buzzers (moby class 577, the yellow and black wasp robots in groups; #102): their green eyes, at the head's front.
+emit moby 577  0.500 0.000 0.880  0.400 1.000 0.300  0.400 2.000 0.000
 # The stationary drop ship over the gap (moby class 666): its orange lamps.
-emit moby 666  0.000 0.000 0.000  1.000 0.550 0.200  1.500 7.000 0.000
+# #102: moby 666 is the same ship as Gemlik's Blarg ships (moby 1805 on level 13, the ones destroyed for the skill point; the same
+# mesh and textures): Anya's "Sitting Duck" ship. Its lights moved from the hull's centre (inside it, 1.5 and 7) to its lamps: the
+# orange ones in two columns of three on the back's two sides and the pair of blue ones at the nose.
+emit moby 666  -3.300 1.800 3.000  1.000 0.550 0.200  0.800 3.500 0.000
+emit moby 666  -3.300 -1.800 3.000  1.000 0.550 0.200  0.800 3.500 0.000
+emit moby 666  4.500 0.000 2.450  0.600 0.800 1.000  0.800 3.500 0.000
 # Emissive surfaces (#102, our choice): the landing pad's red lamps (shrub 231: tex 1 the red dome, tex 0 its highlight), the neon tubes'
 # panel (shrub 282 tex 0) and the hanging bulbs (shrub 281 tex 0) keep the original's brightness, a little more, in the halls' shade.
 emissive shrub 231 tex 1  1.30 0.00
 emissive shrub 231 tex 0  1.30 0.00
 emissive shrub 282 tex 0  1.30 0.00
 emissive shrub 281 tex 0  1.30 0.00
+# The ship's lamps (moby 666 tex 0, the hull's texture: only its brightest texels, the round orange lamps and the blue pair, reach 0.95).
+emissive moby 666 tex 0  1.30 0.95

@@ -30,6 +30,10 @@ layout(std140, set = 1, binding = 0) uniform ShadowUbo {
     vec4 uPtCol[96];
     vec4 uPtDown[24];
     vec4 uEmis[32];
+    vec4 uMat[32];
+    mat4 uSsrVP;
+    vec4 uSsrZ;
+    vec4 uSsrSky;
 };
 #define uShCam (uShCam_Pass.xyz)
 #define uShPass (int(uShCam_Pass.w + 0.5))
@@ -59,10 +63,29 @@ vec4 sh_clip(vec4 clip) {
 }
 """
 
+
+
+def read_c_glsl(path):
+    """The GLSL of a C string macro (src/game/render/mrp_materials_glsl.inc): its string literals joined, unescaped - the OpenGL
+    and the Vulkan shaders share that one text."""
+    import ast
+    import re
+    out = []
+    for line in open(path, encoding="utf-8"):
+        for lit in re.findall(r'"(?:[^"\\]|\\.)*"', line):
+            out.append(ast.literal_eval(lit))
+    return "".join(out)
+
+
+# the surface materials (docs/materials.md), the end of the lighting's fragment code
+MATERIALS_GLSL = read_c_glsl(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "game", "render", "mrp_materials_glsl.inc"))
+
 RAC1_VK_SHADOW_FS = SHADOW_UBO_GLSL + """
 layout(set = 1, binding = 1) uniform sampler2DArrayShadow uShMap;
 layout(set = 1, binding = 3) uniform samplerCubeArrayShadow uPtMap;
 layout(set = 1, binding = 4) uniform usampler2D uPtTiles;
+layout(set = 1, binding = 2) uniform sampler2D uSsrCol;
+layout(set = 1, binding = 5) uniform sampler2D uSsrDepth;
 #if defined(SH_POINTS) || defined(SH_SPLIT)
 float sh_vis = 1.0;
 #endif
@@ -174,6 +197,7 @@ vec3 sh_emissive(vec3 lit, vec3 orig, vec3 tex, uint s) {
     if (s == 0u || uShOn == 0 || uShPass != 0 || uEmis[0].x == 0.0) return lit;
     vec4 e = uEmis[s];
     if (e.w > 0.0) return mix(lit, vec3(1.0, 0.0, 1.0), e.x);
+    if (e.z > 0.0) return lit;
     float v = max(tex.r, max(tex.g, tex.b));
     float m = e.y > 0.0 ? smoothstep(e.y - 0.04, e.y + 0.04, v) : 1.0;
     return mix(lit, max(lit, orig * e.x), m);
@@ -198,7 +222,7 @@ vec3 sh_apply(vec3 c) {
     }
     return o;
 }
-"""
+""" + MATERIALS_GLSL + """"""
 
 # ---------------------------------------------------------------------------
 # 1. gs_draw.cpp shaders
@@ -1445,6 +1469,9 @@ void main() {
     if (uTme != 0) {
         vec2 st = vStq.xy / vStq.z;
         vec2 st_dx = dFdx(st), st_dy = dFdy(st);  // (in uniform control flow: the texture level below)
+#ifdef SH_SPLIT
+        st = sh_mat_uv(st, (w >> 27) & 31u);
+#endif
         vec4 t;
         if ((w & 1u) != 0u) {
             t = vec4(128.0 / 255.0);
@@ -1476,6 +1503,7 @@ void main() {
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_SPLIT
         o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 27) & 31u);
+        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 27) & 31u);
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }
@@ -1696,6 +1724,9 @@ void main() {
     if (uTme != 0) {
         vec2 st = vStq.xy / vStq.z;
         vec2 st_dx = dFdx(st), st_dy = dFdy(st);  // (in uniform control flow: the texture level below)
+#ifdef SH_POINTS
+        st = sh_mat_uv(st, (w >> 25) & 31u);
+#endif
         vec4 t;
         if ((w & 1u) != 0u) {
             t = vec4(128.0 / 255.0);
@@ -1727,6 +1758,7 @@ void main() {
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_POINTS
         o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 25) & 31u);
+        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 25) & 31u);
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }
@@ -1752,6 +1784,201 @@ void main() {
         if (uAtPass == 2 && pass) discard;
     }
     FragColor = vec4(o.rgb, min(o.a * (255.0 / 128.0), 1.0));
+}
+"""
+
+# ---------------------------------------------------------------------------
+# The ambient particles (src/game/render/mrp_particles.cpp: the same bodies as its OpenGL shaders - keep them in step)
+MRP_PART_UBO = """layout(std140, set = 0, binding = 0) uniform PartUbo {
+    mat4 uVP; mat4 uInvVP; vec4 uCam; vec4 uBox; vec4 uVel; vec4 uCol; vec4 uSize; vec4 uCamVel; vec4 uSun;
+    vec4 uVp; vec4 uProj; vec4 uLimLo; vec4 uLimHi; vec4 uMisc; vec4 uMisc2; vec4 uIntLo[4]; vec4 uIntHi[4];
+    vec4 uSrc; vec4 uMove; vec4 uEmit[512];
+};
+layout(set = 0, binding = 1) uniform sampler2D uDepth;
+"""
+
+MRP_PART_VS = "#version 450\n" + MRP_PART_UBO + """
+#define VID gl_VertexIndex
+layout(location = 0) out vec2 vQ;
+layout(location = 1) out float vA;
+layout(location = 2) out float vZ;
+uint pcg(uint v) {
+    uint s = v * 747796405u + 2891336453u;
+    uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+    return (w >> 22u) ^ w;
+}
+float rnd(inout uint s) {
+    s = pcg(s);
+    return float(s) * (1.0 / 4294967296.0);
+}
+void main() {
+    int id = VID;
+    int pi = id / 6, c = id - pi * 6;
+    vec2 q = vec2((c == 1 || c == 2 || c == 4) ? 1.0 : -1.0, (c == 2 || c == 4 || c == 5) ? 1.0 : -1.0);
+    vQ = q;
+    vA = 0.0;
+    vZ = 1.0;
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);  // (culled)
+    int kind = int(uVel.w + 0.5);
+    uint s = uint(pi) * 9781u + uint(uMisc.w);
+    vec3 r0 = vec3(rnd(s), rnd(s), rnd(s));
+    float r3 = rnd(s), r4 = rnd(s), r5 = rnd(s);
+    float t = uCam.w;
+    vec3 vel = uVel.xyz * (0.75 + 0.5 * r3);
+    float ph = r4 * 6.2832;
+    float tw = t * uMove.x;  // (the drift's pace: slower for a calm kind)
+    vec3 drift = uMisc.x * vec3(sin(tw * (0.31 + 0.4 * r5) + ph), cos(tw * (0.27 + 0.35 * r3) + ph * 1.7), 0.5 * sin(tw * (0.23 + 0.3 * r4) + ph * 2.3));
+    vec3 rel, wp;
+    float a;
+    bool src = uSrc.x > 0.5;
+    if (src) {
+        // from the lava: each life starts at one of the lava's points near the camera (uEmit: xyz the point, w the time its slot got
+        // it, < 0 none) and rises slowly, carried by the air's slow currents, fading as it goes
+        float rate = 0.07 + 0.06 * r5;  // (a life of 8 to 14 s)
+        float lt = t * rate + r4;
+        float life = fract(lt);
+        uint s2 = pcg(uint(pi) * 2654435761u + uint(int(floor(lt))) * 40503u + uint(uMisc.w));
+        vec4 em = uEmit[min(int(rnd(s2) * 512.0), 511)];
+        if (em.w > -1.5 && em.w < 0.0) return;  // (an empty slot)
+        float ang = rnd(s2) * 6.2832, rad = sqrt(rnd(s2)) * uSrc.w;
+        float age = life / rate;  // (seconds since it left the lava)
+        vec2 cur = uMove.y * vec2(sin(em.y * 0.07 + t * 0.031 + 1.3) + 0.6 * sin(em.x * 0.05 - t * 0.021),
+                                  cos(em.x * 0.06 - t * 0.026) + 0.6 * cos(em.y * 0.045 + t * 0.017));
+        vec3 wander = uMisc.x * min(age * 0.25, 1.0) * vec3(sin(age * (0.35 + 0.3 * r5) + ph), cos(age * (0.3 + 0.3 * r3) + ph * 1.7), 0.0);
+        wp = em.xyz + vec3(cos(ang) * rad, sin(ang) * rad, 0.05) + vec3((cur + uVel.xy) * age, uVel.z * (0.7 + 0.6 * r3) * age) + wander;
+        rel = wp - uCam.xyz;
+        float since = t - (em.w >= 0.0 ? em.w : -2.0 - em.w);  // (the slot's point taken - or let go - this long ago)
+        float slot_a = since < 0.0 ? 1.0 : (em.w >= 0.0 ? clamp(since / 1.5, 0.0, 1.0) : clamp(1.0 - since / 1.5, 0.0, 1.0));
+        a = uCol.a * smoothstep(0.0, 0.06, life) * (1.0 - smoothstep(0.5, 1.0, life)) * smoothstep(uSrc.z, uSrc.z * 0.75, length(rel)) *
+            slot_a;  // (born bright, fading as it rises; faded far off, and as its slot takes or lets go of its point)
+    } else {
+        // the particle's place in the world, wrapped into the volume around the camera
+        rel = r0 * uBox.xyz + vel * t + drift - uCam.xyz;
+        rel = (fract(rel / uBox.xyz) - 0.5) * uBox.xyz;
+        wp = uCam.xyz + rel;
+        vec3 e = abs(rel) / (0.5 * uBox.xyz);
+        a = uCol.a * smoothstep(1.0, 0.75, max(max(e.x, e.y), e.z));  // (faded toward the volume's faces: no popping where it wraps)
+    }
+    if (uLimLo.w > 0.5) {  // the line's box
+        vec3 d = min(wp - uLimLo.xyz, uLimHi.xyz - wp);
+        a *= clamp(min(min(d.x, d.y), d.z), 0.0, 1.0);
+    }
+    if (uMisc2.y > 0.5)  // (from the sky: none inside the level's interiors)
+        for (int i = 0; i < int(uMisc2.x); ++i)
+            if (all(greaterThan(wp, uIntLo[i].xyz)) && all(lessThan(wp, uIntHi[i].xyz))) a = 0.0;
+    if (kind == 2) {  // embers: a life (rising, fading), flickering
+        float life = fract(t * (0.18 + 0.2 * r5) + r4);
+        a *= (src ? 1.0 : sin(life * 3.14159)) * (0.6 + 0.4 * sin(t * (9.0 + 6.0 * r3) + ph));  // (from the lava: its own life above)
+    } else if (kind == 3) {  // fireflies: blinking
+        a *= smoothstep(0.35, 1.0, 0.5 + 0.5 * sin(t * (1.1 + 1.4 * r5) + ph * 3.0));
+    } else if (kind == 4) {  // motes: bright looking toward the sun (forward scatter), twinkling
+        vec3 vd = normalize(rel);
+        float sc = pow(max(dot(vd, uSun.xyz), 0.0), 3.0);
+        a *= mix(1.0, 0.6 + 2.4 * sc, uSun.w) * (0.7 + 0.3 * sin(t * (2.0 + 3.0 * r5) + ph));
+    }
+    if (a <= 0.003) return;
+    vec4 c0 = uVP * vec4(wp, 1.0);
+    if (c0.w < 0.3) return;
+    a *= smoothstep(0.4, kind == 5 ? 1.0 : 2.0, c0.w);  // (none right at the lens: a speck there would be a blot)
+    float size = uSize.x * (1.0 + uSize.y * (r5 * 2.0 - 1.0));
+    float half_px = size * uProj.z * uVp.z * 0.5 / c0.w;  // (half the size in pixels)
+    float k = max(uMisc2.z * 0.5 / max(half_px, 1e-4), 1.0);  // (at least the smallest size: its alpha lowered instead)
+    if (kind == 5) {  // rain: a streak along its motion as the camera sees it (the camera's own taken off)
+        vec3 v = vel - uCamVel.xyz;
+        vec4 c1 = uVP * vec4(wp - v * uSize.z, 1.0);
+        if (c1.w < 0.3) return;
+        vec2 px = uVp.zw * 0.5;
+        vec2 dir = c1.xy / c1.w * px - c0.xy / c0.w * px;
+        float len = length(dir);
+        dir = len > 1e-3 ? dir / len : vec2(0.0, 1.0);
+        vec2 nrm = vec2(-dir.y, dir.x);
+        float along = q.y * 0.5 + 0.5;
+        vec4 cc = mix(c0, c1, along);
+        gl_Position = vec4(cc.xy + nrm * (q.x * half_px * k) / px * cc.w, cc.zw);
+        vZ = cc.w;
+        a /= k;
+        a *= clamp(len / 3.0, 0.25, 1.0) * 1.0;  // (a short streak - seen along its fall - lighter)
+    } else {
+        gl_Position = vec4(c0.xy + q * vec2(uProj.z, uProj.w) * size * k, c0.zw);
+        vZ = c0.w;
+        a /= k;  // (far: drawn at the smallest size, fainter - between the area's k * k and nothing, so that they still read)
+    }
+    vA = a;
+}
+"""
+
+MRP_PART_FS = "#version 450\n" + MRP_PART_UBO + """
+layout(location = 0) in vec2 vQ;
+layout(location = 1) in float vA;
+layout(location = 2) in float vZ;
+layout(location = 0) out vec4 FragColor;
+void main() {
+    int kind = int(uVel.w + 0.5);
+    float r2 = dot(vQ, vQ);
+    float shape;
+    if (kind == 5) {
+        shape = (1.0 - abs(vQ.x)) * smoothstep(-1.0, -0.4, vQ.y) * (0.45 + 0.55 * (vQ.y * 0.5 + 0.5));  // (a streak: its head brighter)
+    } else {
+        if (r2 >= 1.0) discard;
+        shape = (kind == 2 || kind == 3 || kind == 4) ? exp(-r2 * 3.5) : smoothstep(1.0, 0.25, r2);  // (glows; soft discs)
+    }
+    float a = vA * shape;
+    // soft against the scene: faded in front of the surface behind it, hidden behind it
+    float d = texelFetch(uDepth, ivec2(gl_FragCoord.xy - uMisc.yz), 0).r;
+    float zs = uProj.y / ((d * 2.0 - 1.0) + uProj.x);
+    a *= clamp((zs - vZ) / uSize.w, 0.0, 1.0);
+    if (a <= 0.002) discard;
+    FragColor = vec4(uCol.rgb, min(a, 1.0));
+}
+"""
+
+MRP_PART_SPLASH_VS = """#version 450
+void main() {
+    vec2 p = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
+    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}
+"""
+
+MRP_PART_SPLASH_FS = "#version 450\n" + MRP_PART_UBO + """
+layout(location = 0) out vec4 FragColor;
+uint pcg(uint v) {
+    uint s = v * 747796405u + 2891336453u;
+    uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+    return (w >> 22u) ^ w;
+}
+float rnd(inout uint s) {
+    s = pcg(s);
+    return float(s) * (1.0 / 4294967296.0);
+}
+void main() {
+    float d = texelFetch(uDepth, ivec2(gl_FragCoord.xy - uMisc.yz), 0).r;
+    vec2 ndc = (gl_FragCoord.xy - uVp.xy) / uVp.zw * 2.0 - 1.0;
+    vec4 w = uInvVP * vec4(ndc, d * 2.0 - 1.0, 1.0);
+    vec3 p = w.xyz / w.w;
+    vec3 n = cross(dFdx(p), dFdy(p));
+    float nl = length(n);
+    if (d >= 0.99999 || nl <= 0.0) discard;
+    if (dot(n, uCam.xyz - p) < 0.0) n = -n;  // (the side the camera sees: a roof's underside is no ground)
+    float up = n.z / nl;
+    float dist = length(p - uCam.xyz);
+    if (up < 0.85 || dist > uSize.w) discard;
+    if (uLimLo.w > 0.5 && (any(lessThan(p, uLimLo.xyz)) || any(greaterThan(p, uLimHi.xyz)))) discard;
+    for (int i = 0; i < int(uMisc2.x); ++i)
+        if (all(greaterThan(p, uIntLo[i].xyz - vec3(0.0, 0.0, 0.5))) && all(lessThan(p, uIntHi[i].xyz))) discard;
+    const float cell = 0.55;
+    vec2 gi = floor(p.xy / cell);
+    uint s = uint(int(gi.x) * 73856093) ^ uint(int(gi.y) * 19349663);
+    float rate = 1.4 + rnd(s) * 1.2;
+    float tt = uCam.w * rate + rnd(s);
+    float cyc = floor(tt), ph = fract(tt);
+    uint s2 = s ^ (uint(int(cyc)) * 83492791u);
+    if (rnd(s2) > uMisc2.w) discard;
+    vec2 ctr = (gi + 0.25 + 0.5 * vec2(rnd(s2), rnd(s2))) * cell;
+    float r = length(p.xy - ctr), rad = 0.02 + ph * 0.12;
+    float ring = smoothstep(0.014, 0.0, abs(r - rad)) * (1.0 - ph) + smoothstep(0.025, 0.0, r) * max(1.0 - ph * 5.0, 0.0);
+    float a = ring * uCol.a * smoothstep(uSize.w, uSize.w * 0.5, dist) * up;
+    if (a <= 0.003) discard;
+    FragColor = vec4(uCol.rgb, min(a, 1.0));
 }
 """
 
@@ -1784,6 +2011,10 @@ SHADERS = [
     ("kMrpRaysSplitFs", "frag", MRP_RAYS_SPLIT_FS),
     ("kMrpRaysAddFs", "frag", MRP_RAYS_ADD_FS),
     ("kMrpProbeFs", "frag", MRP_PROBE_FS),
+    ("kMrpPartVs", "vert", MRP_PART_VS),
+    ("kMrpPartFs", "frag", MRP_PART_FS),
+    ("kMrpPartSplashVs", "vert", MRP_PART_SPLASH_VS),
+    ("kMrpPartSplashFs", "frag", MRP_PART_SPLASH_FS),
     ("kMrpMobyVs", "vert", MRP_MOBY_VS),
     ("kMrpMobyFs", "frag", MRP_MOBY_FS),
     ("kMrpMobySplitVs", "vert", MRP_MOBY_SPLIT_VS),

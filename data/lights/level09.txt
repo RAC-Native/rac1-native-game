@@ -5,3 +5,9 @@
 # Gaspar: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
 sun -101.5 90.0
 noauto 1558
+# Gaspar: our ambient particles (Options > Graphics > Ambient Particles, off by default): embers and ash rising
+# from the volcano's lava itself (its collision's lava faces near the camera; none indoors or away from the lava), drifting
+# slowly in the air's currents (calmer, after Daino's playtest); rising faster than Umbris's: the lava sea lies deep below the
+# platforms.
+particles embers 1.5  source lava  rise 1.6
+particles ash 0.6  source lava  rise 1

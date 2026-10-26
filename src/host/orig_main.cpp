@@ -96,6 +96,7 @@
 #include <game/render/moby_gpu_renderer.h>
 #include <game/render/mrp_scene.h>
 #include <game/render/mrp_lighting.h>
+#include <game/render/mrp_particles.h>
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_shadows.h>
 #include <game/render/replica_inventory.h>
@@ -3328,6 +3329,7 @@ int main(int argc, char** argv) {
             }
             mrp_world_finish_frame();  // (the scene: waited for, its triangles and draw lists)
             mrp_lighting_frame_begin();  // (the modern lighting: off until this frame's shadow pass)
+            bool world_3d = false;       // (the MRP drew the level's world this frame: the ambient particles over it)
             if (movie_pic != nullptr) {  // a movie plays: its picture is the whole frame
                 movie_picture.draw(*movie_pic, mw, mh, vx, vy, vw, vh);
             } else if (fd.fade) {  // a frame of the screen fade (ADR 0012): the display buffer, the picture shown, its packets drawn over it
@@ -3370,6 +3372,7 @@ int main(int argc, char** argv) {
                     mrp_lighting_shadow_pass();
                     RAC1_PROF_ZONE(kWorld);
                     mrp_world_draw(w, h, &wv);
+                    world_3d = !fd.exiting && !story;
                 } else if (!g_world_faithful && !rac1::vk::is_active()) {
                     tfrag_render_update();  // (g_world_faithful: the world comes from the frame's VU1 chain)
                 }
@@ -3479,6 +3482,7 @@ int main(int argc, char** argv) {
                     }
                 }
                 mrp_lighting_ao_pass();  // (the ambient occlusion over the 3D, before the effects and the 2D; nothing unless asked)
+                if (world_3d && g_ambient_particles > 0) mrp_particles_draw(fd.frame);  // (our ambient particles: nothing unless asked)
                 if (g_scaled_scene.on) {  // the scaled 3D on the window; the effects and the 2D drawn over it at the window's resolution
                     RAC1_PROF_ZONE(kScaleResolve);
                     g_scaled_scene.end(w, h);

@@ -136,7 +136,7 @@ if(Python3_Interpreter_FOUND)
     add_custom_command(
         OUTPUT ${RAC1_VK_SHADERS_CPP} ${RAC1_VK_SHADERS_DIR}/runtime/vk/vk_shaders.h
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/gen_vk_shaders.py ${RAC1_VK_SHADERS_DIR} "${_rac1_vk_compiler}"
-        DEPENDS ${CMAKE_SOURCE_DIR}/tools/gen_vk_shaders.py
+        DEPENDS ${CMAKE_SOURCE_DIR}/tools/gen_vk_shaders.py ${CMAKE_SOURCE_DIR}/src/game/render/mrp_materials_glsl.inc
         COMMENT "Vulkan shaders (tools/gen_vk_shaders.py)"
         VERBATIM)
     if(NOT RAC1_GLSLC)
