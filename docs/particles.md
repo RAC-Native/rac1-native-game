@@ -14,12 +14,12 @@ comes from the disc: the kinds, their looks and where they are are our art choic
 | Level | Particles | Notes |
 |---|---|---|
 | Kerwan | motes (light dust) | brighter where the view looks toward the sun: the sunbeams through the streets |
-| Umbris | embers | rising from the lava (Anya-Thoughtmane's suggestion for the Snagglebeast's arena) |
-| Batalia | rain, a little ash | the rain slanted by the wind, splashes on the ground; it replaces the game's own rain (below) |
-| Gaspar | embers, ash | the volcano's |
+| Umbris | embers | rising from the lava itself, only near it: the Snagglebeast's lava cave (Anya-Thoughtmane's suggestion) |
+| Batalia | rain | slanted by the wind (with its gusts), splashes on the ground; it replaces the game's own rain (below) |
+| Gaspar | embers, ash | rising from the lava sea itself, higher than Umbris's (it lies deep below the platforms); none indoors or away from the lava |
 | Orxon | dust | the toxic air's, a little green |
 | Pokitaru | fireflies | brighter in the shade and at night |
-| Hoven | snow | drifting flakes; it replaces the game's own snow (below) |
+| Hoven | snow | a calm, light snowfall, a gentle steady drift; it replaces the game's own snow (below) |
 
 The other levels have none: a line in their file adds some (the [editor](#the-editor)).
 
@@ -40,9 +40,9 @@ Low draws half the particles of High. A line's density scales the count again.
 ## How they are drawn
 
 Each line of a level's file is a volume around the camera (a box some 30 to 40 units across). Its particles have fixed places
-in the world and move with their kind's motion (the fall or the rise, the line's wind with a slow gust, a drift); a particle
-that leaves the box on one side comes back on the other, so the box always holds the same count however the camera moves, and
-the particles do not move with the camera. Toward the box's faces they fade out, so the wrap is not seen.
+in the world and move with their kind's motion (the fall or the rise, the line's steady wind - gusts only if the line asks -, a
+drift); a particle that leaves the box on one side comes back on the other, so the box always holds the same count however the
+camera moves, and the particles do not move with the camera. Toward the box's faces they fade out, so the wrap is not seen.
 
 The GPU makes every particle from its number alone (no buffers, nothing on the CPU per particle): one draw per line, after
 the MRP's world, mobys and ambient occlusion, before the game's effects and the 2D. OpenGL and Vulkan draw them the same
@@ -58,8 +58,33 @@ the MRP's world, mobys and ambient occlusion, before the game's effects and the 
 - **Rain**: each drop a streak along its motion as the camera sees it (the camera's own motion taken off), thin (at least a
   pixel wide, lighter instead of thinner). Its splashes are a pass over the scene's upward surfaces within 18 units of the
   camera: in each cell of a grid on the ground (0.55 units) a ring now and then.
-- **Snow**: round soft flakes, drifting in the wind.
+- **Snow**: round soft flakes, falling slowly, drifting gently in the wind.
+- **From the lava** (`source lava`): see [below](#from-the-lava).
 - **Time**: the game frame shown, so they stand still while the game does, and are the same in every run of a test.
+
+## From the lava
+
+A line with `source lava` does not fill the camera's volume: its particles rise from the level's lava itself, so a level's lava
+fields and arenas have them and its other places (indoors, away from the lava) none.
+
+- **Where the lava is**: the level's collision, the faces the game kills the hero in (surface kind 1, its deadly liquid,
+  `hero_surface_update`'s +0x12e5): their tops, and only where no floor is above them (on Gaspar the lava is one plane under the
+  whole level, its hills and platforms included; under a cave's roof, as Umbris's arena, it stays). Once a level has run 30
+  frames with its collision unchanged, the collision tree the game loaded (`*(0x173e40)`, read only) is read on a thread of its
+  own (Umbris about 20 ms, Gaspar about 60 ms) and its lava gets a point every 1.5 square units, spread by area with a fixed seed:
+  the same points in every run. Only levels whose file has a `source lava` line are read.
+- **Which lava**: the levels' kind 1 faces, in the NTSC game: Umbris (the Snagglebeast's arena and its cave, 10 700 square units),
+  Gaspar (the lava sea under the level, 168 000), and the green liquids of Blarg, Orxon and Drek's fleet, which are not lava and
+  have no line. The other levels have none (Aridia's quicksand is kind 3).
+- **Near the camera**: each frame up to 512 of the points within 60 units are the draw's slots, the nearer the more (a point is
+  taken with a chance falling with the square of its distance, about as many on screen near as far; behind the camera a point
+  counts as twice as far). A slot keeps its point while it stays taken; a point no longer taken lets its particles fade out over
+  1.5 seconds before the slot takes another, whose particles fade in: nothing jumps or pops.
+- **The motion**: each particle's life (8 to 14 seconds) starts at one of the slots' points, a little around it, and rises slowly
+  (embers 0.9 units a second, ash 0.5, or the line's `rise`), carried by the air's slow currents (a calm field that changes over
+  the level and over minutes, the same for the particles of one place: they drift together, like wisps) and the line's wind,
+  wandering a little; born bright, it fades in the second half of its life, and toward 60 units from the camera.
+- The particles drawn follow the slots in use: with little lava near, few of the line's count are drawn.
 
 ## Rain and snow in place of the game's
 
@@ -74,14 +99,17 @@ game's as well (for comparing). With the MRP's effects off (`RAC1_MRP_FX=0`: the
 In the level's light file, `data/lights/levelNN.txt` (see [The light editor](lighting.md#the-light-editor)), one line a volume:
 
 ```
-particles <kind> <density> [r g b] [wind <x> <y>] [box x0 y0 z0 x1 y1 z1] [keep]
+particles <kind> <density> [r g b] [wind <x> <y>] [gust <g>] [box x0 y0 z0 x1 y1 z1] [source lava] [rise <r>] [keep]
 ```
 
 - `kind`: `dust`, `ash`, `embers`, `fireflies`, `motes`, `rain`, `snow`.
 - `density`: 1 the kind's own count, 0 to 4.
 - `r g b`: a colour of its own (0 to 1), else the kind's.
-- `wind x y`: units a second along the world's x and y.
+- `wind x y`: units a second along the world's x and y, steady.
+- `gust g`: the wind's gusts, its speed varying slowly by a quarter times `g` (0, the default: none; Batalia's rain has 1).
 - `box`: the particles only inside this world box (a lava field, an arena), faded over a unit at its faces.
+- `source lava`: rising from the level's lava ([above](#from-the-lava)), instead of filling the camera's volume.
+- `rise r`: from the lava, the rise in units a second (else the kind's: embers 0.9, ash 0.5).
 - `keep`: for rain and snow, the game's own drawn as well.
 
 The file is read when the level starts (also with the modern lighting off). Saving keeps the lines where they were, and a
@@ -90,8 +118,8 @@ line not edited is written back exactly as it was read.
 ## The editor
 
 The debug menu's Sun tab (F1, with the debug tools) has the level's particle lines under the interiors: each line's kind,
-density, colour, wind, box ("around the camera" makes one 40 x 40 x 12 units), `keep`, an on switch and remove; "Add a particles
-line"; Save (the whole level file, as the Sun tab's other Save). Every change shows at once. The tab also sets the option for
+density, colour, wind, gusts, "from the lava" and its rise, box ("around the camera" makes one 40 x 40 x 12 units), `keep`, an
+on switch and remove; "Add a particles line"; Save (the whole level file, as the Sun tab's other Save). Every change shows at once. The tab also sets the option for
 the run (Off, Low, High), draws the game's rain and snow as well, and shows the particles drawn and the CPU time; the GPU's is
 the Profiler tab's "Ambient particles" stage.
 
@@ -99,7 +127,8 @@ the Profiler tab's "Ambient particles" stage.
 
 - `RAC1_PARTICLES=0|1|2`: the option (Off, Low, High) whatever the preferences.
 - `RAC1_PARTICLES_GAME=1`: the game's own rain and snow drawn as well.
-- `RAC1_PARTICLES_TRACE=1`: every 120 frames what is drawn (draws, particles, the light, the game's rain or snow hidden).
+- `RAC1_PARTICLES_TRACE=1`: every 120 frames what is drawn (draws, particles, the light, the game's rain or snow hidden); and
+  each level's lava as read (faces, square units, points, the time; the collision's faces by surface kind; the lava's heights).
 - `RAC1_PARTICLES_FXTRACE=1`: the game's effect primitives by texture, and its particle pool by type (how the game's rain was
   found).
 - The cost: `RAC1_PROFILER_DUMP` (the "Ambient particles" stage's CPU and GPU time).
@@ -112,14 +141,16 @@ of a walk from each level's start; `RAC1_PROFILER_DUMP`):
 | Level | OpenGL CPU | OpenGL GPU | Vulkan CPU | Vulkan GPU |
 |---|---|---|---|---|
 | Kerwan (motes) | 0.03 ms | 0.13 ms | 0.01 ms | 0.03 ms |
-| Umbris (embers) | 0.03 ms | 0.15 ms | 0.01 ms | 0.03 ms |
-| Batalia (rain, splashes, ash) | 0.04 ms | 0.37 ms | 0.01 ms | 0.20 ms |
-| Gaspar (embers, ash) | 0.04 ms | 0.16 ms | 0.01 ms | 0.04 ms |
+| Umbris (embers from the lava, in the Snagglebeast's arena) | 0.04 ms | 0.14 ms | 0.02 ms | 0.02 ms |
+| Batalia (rain, splashes) | 0.02 ms | 0.22 ms | 0.01 ms | 0.15 ms |
+| Gaspar (embers, ash from the lava) | 0.07 ms | 0.12 ms | 0.04 ms | 0.03 ms |
 | Orxon (dust) | 0.07 ms | 0.14 ms | 0.01 ms | 0.03 ms |
 | Pokitaru (fireflies) | 0.04 ms | 0.14 ms | 0.01 ms | 0.02 ms |
-| Hoven (snow) | 0.05 ms | 0.16 ms | 0.01 ms | 0.03 ms |
+| Hoven (snow) | 0.02 ms | 0.12 ms | 0.01 ms | 0.02 ms |
 
-OpenGL's GPU time includes the copy of the depth buffer (about 0.1 ms); Batalia's the splashes' screen pass.
+OpenGL's GPU time includes the copy of the depth buffer (about 0.1 ms); Batalia's the splashes' screen pass. The lava's CPU time
+is mostly the choice of its slots (Gaspar: some thousand points within 60 units); Umbris, Batalia, Gaspar and Hoven measured
+after the playtest's changes, from the level's start (Umbris: placed in the arena).
 
 ## Limits
 
@@ -128,5 +159,6 @@ OpenGL's GPU time includes the copy of the depth buffer (about 0.1 ms); Batalia'
 - The game's rain and snow are told from its other particles by their particle types (0 and 1 on every level but Hoven,
   0x49 on Hoven) and the textures those had this frame: another particle sharing one of their textures in the same frame
   would be hidden too.
-- Umbris's embers fill the whole level; a `box` around the Snagglebeast's arena would keep them there (its coordinates were
-  not reached in the headless runs).
+- From the lava: lava the game draws but its collision does not mark as kind 1 (a lava fall, lava out of reach) has none, and the
+  particles rise from the collision's surface, which may lie a little off the lava drawn. They are not hidden by what stands
+  between them and the camera beyond the scene's depth (a platform's edge hides those below it, as it should).

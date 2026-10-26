@@ -2877,7 +2877,8 @@ std::string user_path(int level) {
     return std::string(dir != nullptr ? dir : "data/lights") + "/" + name;
 }
 constexpr const char* kParticleKindNames[kPartKinds] = {"dust", "ash", "embers", "fireflies", "motes", "rain", "snow"};
-// orig: (host) a "particles <kind> <density> [r g b] [wind <x> <y>] [box x0 y0 z0 x1 y1 z1] [keep]" line read (false: not one)
+// orig: (host) a "particles <kind> <density> [r g b] [wind <x> <y>] [gust <g>] [box x0 y0 z0 x1 y1 z1] [source lava] [rise <r>] [keep]" line
+// read (false: not one)
 bool particles_parse(const char* line, ParticleSpec& p) {
     char kind[16] = {};
     int at = 0;
@@ -2905,6 +2906,15 @@ bool particles_parse(const char* line, ParticleSpec& p) {
             p.has_box = true;
             for (int i = 0; i < 3; ++i)
                 if (p.lo[i] > p.hi[i]) std::swap(p.lo[i], p.hi[i]);
+        } else if (std::strcmp(word, "gust") == 0 && std::sscanf(q, " %f%n", &p.gust, &n) == 1) {
+            q += n;
+            p.gust = std::clamp(p.gust, 0.0f, 4.0f);
+        } else if (std::strcmp(word, "source") == 0 && std::sscanf(q, " %15s%n", word, &n) == 1) {
+            q += n;
+            p.src_lava = std::strcmp(word, "lava") == 0;
+        } else if (std::strcmp(word, "rise") == 0 && std::sscanf(q, " %f%n", &p.rise, &n) == 1) {
+            q += n;
+            p.rise = std::clamp(p.rise, 0.0f, 10.0f);
         } else if (std::strcmp(word, "keep") == 0) {
             p.keep = true;
         } else if (word[0] == '#') {
@@ -2928,10 +2938,13 @@ std::string particles_line(const ParticleSpec& p) {
     std::string s = std::string("particles ") + kParticleKindNames[std::clamp(p.kind, 0, kPartKinds - 1)] + " " + particles_num(p.density);
     if (p.has_col) s += "  " + particles_num(p.col[0]) + " " + particles_num(p.col[1]) + " " + particles_num(p.col[2]);
     if (p.wind[0] != 0.0f || p.wind[1] != 0.0f) s += "  wind " + particles_num(p.wind[0]) + " " + particles_num(p.wind[1]);
+    if (p.gust != 0.0f) s += "  gust " + particles_num(p.gust);
     if (p.has_box) {
         s += "  box";
         for (float v : {p.lo[0], p.lo[1], p.lo[2], p.hi[0], p.hi[1], p.hi[2]}) s += " " + particles_num(v);
     }
+    if (p.src_lava) s += "  source lava";
+    if (p.rise != 0.0f) s += "  rise " + particles_num(p.rise);
     if (p.keep) s += "  keep";
     return s;
 }
@@ -3124,7 +3137,7 @@ const char* mrp_particle_kind_name(int kind) { return kind >= 0 && kind < kPartK
 bool ParticleSpec::same_as(const ParticleSpec& o) const {
     auto eq3 = [](const float* a, const float* b) { return a[0] == b[0] && a[1] == b[1] && a[2] == b[2]; };
     return kind == o.kind && density == o.density && has_col == o.has_col && (!has_col || eq3(col, o.col)) && wind[0] == o.wind[0] && wind[1] == o.wind[1] &&
-           has_box == o.has_box && (!has_box || (eq3(lo, o.lo) && eq3(hi, o.hi))) && keep == o.keep;
+           gust == o.gust && src_lava == o.src_lava && rise == o.rise && has_box == o.has_box && (!has_box || (eq3(lo, o.lo) && eq3(hi, o.hi))) && keep == o.keep;
 }
 // orig: (host) see mrp_lighting.h
 std::vector<ParticleSpec>& mrp_user_particles() { return g_particles; }

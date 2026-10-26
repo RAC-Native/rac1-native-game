@@ -1015,6 +1015,17 @@ void sun_particles() {
         ImGui::SameLine();
         ImGui::SetNextItemWidth(160.0f);
         c |= ImGui::DragFloat2("wind x y", p.wind, 0.05f, -20.0f, 20.0f, "%.2f");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(80.0f);
+        c |= ImGui::SliderFloat("gusts", &p.gust, 0.0f, 4.0f, "%.2f");
+        ImGui::SameLine();
+        c |= ImGui::Checkbox("from the lava", &p.src_lava);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Rising from the level's lava (its collision's lava faces near the camera) instead of filling the air around the camera");
+        if (p.src_lava) {
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(80.0f);
+            c |= ImGui::SliderFloat("rise", &p.rise, 0.0f, 4.0f, p.rise == 0.0f ? "the kind's" : "%.2f");
+        }
         if (p.kind == kPartRain || p.kind == kPartSnow) {
             ImGui::SameLine();
             c |= ImGui::Checkbox("keep the game's", &p.keep);
@@ -1048,7 +1059,7 @@ void sun_particles() {
     }
     ImGui::SameLine();
     if (ImGui::Button("Save##particles")) g_sun_dirty = !mrp_user_lights_save();
-    ImGui::TextWrapped("Applied at once. Saved as \"particles <kind> <density> [r g b] [wind x y] [box x0 y0 z0 x1 y1 z1] [keep]\" lines in the "
+    ImGui::TextWrapped("Applied at once. Saved as \"particles <kind> <density> [r g b] [wind x y] [gust g] [box x0 y0 z0 x1 y1 z1] [source lava] [rise r] [keep]\" lines in the "
                        "level's file (a line not edited is written back as it was).");
 }
 void tab_sun() {

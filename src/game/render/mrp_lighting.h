@@ -126,11 +126,14 @@ std::vector<int>& mrp_user_interior_sets();
 float mrp_lighting_interior(int* hero_set);
 // orig: (host) the game's key light's direction as the shadows last used it (azimuth, elevation, degrees)
 void mrp_lighting_game_sun(float* az, float* el);
-// orig: (host) the level's ambient particles (its file: "particles <kind> <density> [r g b] [wind <x> <y>] [box x0 y0 z0 x1 y1 z1]
-// [keep]"; our data, mrp_particles.h): the kind (dust, ash, embers, fireflies, motes, rain, snow), the density (1 the kind's own
-// count, 0..4), the colour (else the kind's), the wind (units a second, world x / y; else none), a world box the particles stay in
-// (else everywhere: the camera's volume), and for rain / snow "keep": the game's own drawn as well (else ours replace it). Edited by
-// the debug menu's Sun tab, saved with the level's file; a line not edited is written back as it was read
+// orig: (host) the level's ambient particles (its file: "particles <kind> <density> [r g b] [wind <x> <y>] [gust <g>] [box x0 y0 z0
+// x1 y1 z1] [source lava [rise <r>]] [keep]"; our data, mrp_particles.h): the kind (dust, ash, embers, fireflies, motes, rain,
+// snow), the density (1 the kind's own count, 0..4), the colour (else the kind's), the wind (units a second, world x / y, steady;
+// else none), its gusts (0 none, the default; 1 the wind's speed varying by a quarter), a world box the particles stay in (else
+// everywhere: the camera's volume), "source lava": the particles rise from the level's lava (its collision's lava faces near the
+// camera) instead of filling the camera's volume, "rise" their rise (units a second; else the kind's), and for rain / snow "keep":
+// the game's own drawn as well (else ours replace it). Edited by the debug menu's Sun tab, saved with the level's file; a line not
+// edited is written back as it was read
 enum ParticleKind : int { kPartDust, kPartAsh, kPartEmbers, kPartFireflies, kPartMotes, kPartRain, kPartSnow, kPartKinds };
 const char* mrp_particle_kind_name(int kind);
 struct ParticleSpec {
@@ -139,6 +142,9 @@ struct ParticleSpec {
     bool has_col = false;
     float col[3] = {1.0f, 1.0f, 1.0f};
     float wind[2] = {0.0f, 0.0f};
+    float gust = 0.0f;       // (the wind's gusts: 0 none)
+    bool src_lava = false;   // ("source lava": rising from the level's lava)
+    float rise = 0.0f;       // ("rise <r>": from the lava, the rise in units a second; 0 the kind's)
     bool has_box = false;
     float lo[3] = {0.0f, 0.0f, 0.0f}, hi[3] = {0.0f, 0.0f, 0.0f};
     bool keep = false;  // (rain / snow: the game's own drawn too)

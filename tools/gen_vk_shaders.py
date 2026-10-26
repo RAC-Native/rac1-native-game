@@ -1670,6 +1670,7 @@ void main() {
 MRP_PART_UBO = """layout(std140, set = 0, binding = 0) uniform PartUbo {
     mat4 uVP; mat4 uInvVP; vec4 uCam; vec4 uBox; vec4 uVel; vec4 uCol; vec4 uSize; vec4 uCamVel; vec4 uSun;
     vec4 uVp; vec4 uProj; vec4 uLimLo; vec4 uLimHi; vec4 uMisc; vec4 uMisc2; vec4 uIntLo[4]; vec4 uIntHi[4];
+    vec4 uSrc; vec4 uMove; vec4 uEmit[512];
 };
 layout(set = 0, binding = 1) uniform sampler2D uDepth;
 """
@@ -1703,13 +1704,39 @@ void main() {
     float t = uCam.w;
     vec3 vel = uVel.xyz * (0.75 + 0.5 * r3);
     float ph = r4 * 6.2832;
-    vec3 drift = uMisc.x * vec3(sin(t * (0.31 + 0.4 * r5) + ph), cos(t * (0.27 + 0.35 * r3) + ph * 1.7), 0.5 * sin(t * (0.23 + 0.3 * r4) + ph * 2.3));
-    // the particle's place in the world, wrapped into the volume around the camera
-    vec3 rel = r0 * uBox.xyz + vel * t + drift - uCam.xyz;
-    rel = (fract(rel / uBox.xyz) - 0.5) * uBox.xyz;
-    vec3 wp = uCam.xyz + rel;
-    vec3 e = abs(rel) / (0.5 * uBox.xyz);
-    float a = uCol.a * smoothstep(1.0, 0.75, max(max(e.x, e.y), e.z));  // (faded toward the volume's faces: no popping where it wraps)
+    float tw = t * uMove.x;  // (the drift's pace: slower for a calm kind)
+    vec3 drift = uMisc.x * vec3(sin(tw * (0.31 + 0.4 * r5) + ph), cos(tw * (0.27 + 0.35 * r3) + ph * 1.7), 0.5 * sin(tw * (0.23 + 0.3 * r4) + ph * 2.3));
+    vec3 rel, wp;
+    float a;
+    bool src = uSrc.x > 0.5;
+    if (src) {
+        // from the lava: each life starts at one of the lava's points near the camera (uEmit: xyz the point, w the time its slot got
+        // it, < 0 none) and rises slowly, carried by the air's slow currents, fading as it goes
+        float rate = 0.07 + 0.06 * r5;  // (a life of 8 to 14 s)
+        float lt = t * rate + r4;
+        float life = fract(lt);
+        uint s2 = pcg(uint(pi) * 2654435761u + uint(int(floor(lt))) * 40503u + uint(uMisc.w));
+        vec4 em = uEmit[min(int(rnd(s2) * 512.0), 511)];
+        if (em.w > -1.5 && em.w < 0.0) return;  // (an empty slot)
+        float ang = rnd(s2) * 6.2832, rad = sqrt(rnd(s2)) * uSrc.w;
+        float age = life / rate;  // (seconds since it left the lava)
+        vec2 cur = uMove.y * vec2(sin(em.y * 0.07 + t * 0.031 + 1.3) + 0.6 * sin(em.x * 0.05 - t * 0.021),
+                                  cos(em.x * 0.06 - t * 0.026) + 0.6 * cos(em.y * 0.045 + t * 0.017));
+        vec3 wander = uMisc.x * min(age * 0.25, 1.0) * vec3(sin(age * (0.35 + 0.3 * r5) + ph), cos(age * (0.3 + 0.3 * r3) + ph * 1.7), 0.0);
+        wp = em.xyz + vec3(cos(ang) * rad, sin(ang) * rad, 0.05) + vec3((cur + uVel.xy) * age, uVel.z * (0.7 + 0.6 * r3) * age) + wander;
+        rel = wp - uCam.xyz;
+        float since = t - (em.w >= 0.0 ? em.w : -2.0 - em.w);  // (the slot's point taken - or let go - this long ago)
+        float slot_a = since < 0.0 ? 1.0 : (em.w >= 0.0 ? clamp(since / 1.5, 0.0, 1.0) : clamp(1.0 - since / 1.5, 0.0, 1.0));
+        a = uCol.a * smoothstep(0.0, 0.06, life) * (1.0 - smoothstep(0.5, 1.0, life)) * smoothstep(uSrc.z, uSrc.z * 0.75, length(rel)) *
+            slot_a;  // (born bright, fading as it rises; faded far off, and as its slot takes or lets go of its point)
+    } else {
+        // the particle's place in the world, wrapped into the volume around the camera
+        rel = r0 * uBox.xyz + vel * t + drift - uCam.xyz;
+        rel = (fract(rel / uBox.xyz) - 0.5) * uBox.xyz;
+        wp = uCam.xyz + rel;
+        vec3 e = abs(rel) / (0.5 * uBox.xyz);
+        a = uCol.a * smoothstep(1.0, 0.75, max(max(e.x, e.y), e.z));  // (faded toward the volume's faces: no popping where it wraps)
+    }
     if (uLimLo.w > 0.5) {  // the line's box
         vec3 d = min(wp - uLimLo.xyz, uLimHi.xyz - wp);
         a *= clamp(min(min(d.x, d.y), d.z), 0.0, 1.0);
@@ -1719,7 +1746,7 @@ void main() {
             if (all(greaterThan(wp, uIntLo[i].xyz)) && all(lessThan(wp, uIntHi[i].xyz))) a = 0.0;
     if (kind == 2) {  // embers: a life (rising, fading), flickering
         float life = fract(t * (0.18 + 0.2 * r5) + r4);
-        a *= sin(life * 3.14159) * (0.6 + 0.4 * sin(t * (9.0 + 6.0 * r3) + ph));
+        a *= (src ? 1.0 : sin(life * 3.14159)) * (0.6 + 0.4 * sin(t * (9.0 + 6.0 * r3) + ph));  // (from the lava: its own life above)
     } else if (kind == 3) {  // fireflies: blinking
         a *= smoothstep(0.35, 1.0, 0.5 + 0.5 * sin(t * (1.1 + 1.4 * r5) + ph * 3.0));
     } else if (kind == 4) {  // motes: bright looking toward the sun (forward scatter), twinkling
