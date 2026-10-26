@@ -40,6 +40,36 @@ thread's rounding (toward zero, no denormals). On a CPU with AVX2 (chosen when t
 chains share nothing but ACC, which each one's first op overwrites, and the flags, whose sticky bits are an OR. About a
 quarter less time for the joints and skinning stage (Rilgar 1.9 to 1.4 ms a game frame, Kerwan 1.5 to 1.1).
 
+## The GPU
+
+With a wide window and the modern lighting the frame is bound by the GPU, not the CPU (a 5053 x 1371 window, about 7 million
+pixels, LOD 3, Vulkan, the lighting at High with GTAO, shadows and sun rays, on a Radeon 890M: 16 ms of GPU a frame). The
+profiler's GPU stages split it: the world (ties, tfrags, shrubs, the sky) about 5 ms, the ambient occlusion 5, the sun's cascades
+2.2, the mobys 1.6. What was done, each step measured alone (headless, Rilgar, `RAC1_SIM_INPUT=forward`, the median of frames
+300 to 900; base and new runs taken in turn, twice):
+
+| Stage | What changed | 5053 x 1371 | 2528 x 686 |
+|---|---|---|---|
+| Ambient occlusion (Vulkan) | the passes read the 3D's depth where it is, no copy ([Lighting](lighting.md#ambient-occlusion)) | Rilgar 4.09 to 3.13 ms, Kerwan 5.04 to 3.87, Veldin 4.52 to 3.74 (GTAO 1/2: 2.8 to 1.7) | Rilgar 1.18 to 0.88, Kerwan 1.55 to 1.26, Veldin 1.25 to 1.05 |
+| Sun cascades | the mobys over a cascade's static cache in up to four rectangles; the far cascades' mobys every other frame, in turn ([Lighting](lighting.md#the-static-shadow-cache)) | Rilgar 2.09 to 1.28, Kerwan 2.36 to 0.63, Veldin 1.94 to 1.23 | the same (the maps do not depend on the window); OpenGL: Rilgar 3.0 to 2.0, Kerwan 2.6 to 1.2, Veldin 2.3 to 1.6 |
+
+The whole GPU frame at 5053 x 1371: Rilgar 14.1 to 13.0 ms, Kerwan 15.6 to 12.3, Veldin 16.1 to 14.3. Both leave the picture as it
+was (byte for byte, but where a far cascade's moby shadow is a frame late: at most 0.03 % of the pixels on the frames compared) and
+the game's state as it was (`RAC1_RAMHASH`, 2000 frames on Rilgar, Kerwan and Veldin).
+
+**The world: no depth pre-pass.** Every world batch blends ((Cs - Cd) As + Cd, the GS's ABE) and writes depth, so a pre-pass
+that keeps the picture exact needs three steps (the depth of the fragments whose alpha is whole, then a stencil mark where a
+fragment that does blend lies in front of it, then the depth put back there): built for Vulkan, it gave the same picture byte
+for byte, and cost more than it saved (5053 x 1371: 6.3 to 8.8 ms). Its upper bound - a depth-only pre-pass of every world
+fragment, the cheapest possible, the shading then run once per pixel - saved nothing measurable (6.3 to 6.2 ms): the world's
+fragments are not drawn over each other much, its cost is about 2.2 ms that does not depend on the pixels (the vertices, the
+tfrags' compute pass, the sky) and 0.6 ms per million pixels of shading. Front-to-back order cannot do better than that bound and
+changes the blending's order. Not done.
+
+**What else was tried.** A temporal GTAO (one of the three slices a frame, the others reprojected from the last frame): about
+5 % less, the passes being bound by their memory traffic, not their taps. The occlusion's depth as a float copy made by a pass
+of its own: no faster than reading it in place.
+
 ## Switches to compare
 
 | Variable | Off gives |
@@ -47,9 +77,13 @@ quarter less time for the joints and skinning stage (Rilgar 1.9 to 1.4 ms a game
 | `RAC1_GAME_THREAD=0` | the game frames on the main thread before the drawing |
 | `RAC1_MRPW_BUILD_THREAD=0` | the MRP world's triangles built on the main thread at the drawing |
 | `RAC1_VU0_SIMD=0` | the pose's loops op by op on the VU0's state |
+| `RAC1_AO_DEPTH_COPY=1` | the ambient occlusion reading a copy of the depth (Vulkan) |
+| `RAC1_SHADOW_CLUSTERS=1` | one rectangle around every moby over a cascade's static cache |
+| `RAC1_SHADOW_FAR_EVERY=0` | the far cascades' mobys as before (the farthest every other frame, the middle one every frame) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the GS chain, the job pool on the main thread |
 
-Each gives the same picture and the same game state: only the time changes.
+Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
+moby shadows are drawn).
 
 ## Measuring
 
@@ -63,6 +97,10 @@ headless (the window's size and the Options as a player has them: a copy of `gra
   game frame per host frame as fast as it goes: the period is the cost of a game frame, the same game frames in every run.
 - **As a player**: `RAC1_REALTIME=1 RAC1_FPS_CAP=0 RAC1_AUDIO_DEVICE=null RAC1_PIPELINE=1` steps the game by the wall clock
   and paces as a window does: the `steps` column's distribution is how often a host frame ran two game frames.
+
+The GPU's stages (`gpu: ...` columns) are best compared as medians of a deterministic run's frames (a hitch in one frame
+does not move them), and between runs taken in turn: the GPU is shared with every other program drawing on the machine, and a
+stage's time moved by a third between two runs an hour apart.
 
 `taskset -c 0-3,12-15` keeps a run on the fast cores of a CPU with two kinds (the Ryzen AI 9 HX 470's four 5.3 GHz cores and
 their second threads); another program's load on the same cores shows in every number.

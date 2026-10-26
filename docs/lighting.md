@@ -629,9 +629,23 @@ a box 1.25 times larger than the cascade needs. They are redrawn only when:
 - the level, the level of detail, the resolution or the sun direction changes;
 - the cache was drawn before the off-view casters had been built.
 
-Each frame, `glCopyImageSubData` copies back only the rectangle last frame's mobys covered (or the
-whole map after a refresh), and the mobys are drawn scissored to this frame's rectangle. If the
-driver lacks `glCopyImageSubData`, the cache turns itself off. The off-view casters are only built
+Each frame the cache is copied back into the cascade's layer (`glCopyImageSubData`, `vkCmdCopyImage`)
+where last frame's mobys were drawn (the whole map after a refresh), and this frame's mobys are drawn
+over it, each group inside its own rectangle (the scissor), which the next frame copies back: nothing a
+moby drew stays. The mobys' parts are grouped by their rectangles in the light's view (`moby_rects`:
+each part's bounding sphere projected; the parts whose rectangles touch, on a 64 x 64 grid of the map,
+together; at most four groups, the closest merged; `RAC1_SHADOW_CLUSTERS`), and a group is drawn with
+only the parts near it (`mrp_moby_draw_casters`' sphere). One rectangle around every moby, as before
+(`RAC1_SHADOW_CLUSTERS=1`), covered 40 to 100 % of the near cascade's 4096-texel map on Rilgar's path
+as soon as two mobys stood apart: that copy, every frame, was most of the cascades' cost. The shadows
+are the same. If the driver lacks `glCopyImageSubData`, the cache turns itself off.
+
+The two far cascades' mobys are drawn every other frame, in turn: cascade 1 on odd frames, cascade 2
+on even ones (`RAC1_SHADOW_FAR_EVERY`, default 2; 0 as before: the farthest every other frame, the
+middle one every frame). A frame that skips a cascade keeps its layer as last drawn - its box has not
+moved, so its static part is right -, and a moby's shadow there is one frame late; a cascade whose cache
+is drawn again (the camera's move out of its box, the sun's turn, a new level) is drawn whole that frame.
+The near cascade is drawn every frame. The off-view casters are only built
 when a cascade is about to need them: when its slack is running out given the camera's speed.
 
 ## Point lights per pixel
@@ -765,11 +779,24 @@ view-projection; the result (8 bits) is blurred within the surface and multiplie
 | GTAO | as SSAO+ | 3 slices x 2 sides x 3 steps, the cosine-weighted visible arc over the horizons, a multi-bounce tint | 3 units, 250 % | separable | 6.9 ms |
 | GTAO 1/2 | as SSAO+ | GTAO at half resolution, upsampled by the blur | as GTAO | separable | 4.4 ms |
 
-(Measured on Kerwan's plaza with a Radeon 890M; noisy by a few tenths.) The reach is capped on the
+(Measured on Kerwan's plaza with a Radeon 890M; noisy by a few tenths; before the change below.) The reach is capped on the
 screen: a surface close to the camera samples no further than 4 % of the view's height around it
 (most of the cost, for no visible change). `RAC1_AO_RADIUS` / `RAC1_AO_STRENGTH` (percent, testing)
 override every mode's reach and strength, `RAC1_AO_DUMP=1` writes the raw occlusion (`ao_<mode>.pgm`,
 the run's last frame) and prints its mean, `RAC1_AO_PROF=1` prints the pass's GPU time.
+
+**The depth read where it is (Vulkan).** The passes read the 3D's own depth and stencil, its view's
+rectangle (`uDMap`), instead of a copy: the depth image is made readable for the occlusion's passes, the
+last blur draws into the colour alone (a target without the depth), and the depth is an attachment again
+after it. The copy of the depth-and-stencil image cost about 1.1 ms of GTAO's 4.0 at 5053 x 1371
+(Rilgar, Radeon 890M): GTAO now about 3.1 ms there (Kerwan 5.0 to 3.9), GTAO 1/2 1.7 (2.8 before). The same picture
+(byte for byte at the window's size; with a render scale and a letterboxed view a few pixels in 10 000 by
+a level or a few, a tap's texel rounding through the rectangle). `RAC1_AO_DEPTH_COPY=1` copies, as
+before. OpenGL still copies (a blit: the window's own framebuffer's depth cannot be read as a texture).
+The rest of the cost is the depth's own reading (made readable: its compression undone) and the three
+full-screen passes' memory traffic, not the taps: a temporal GTAO (one of the three slices a frame, the
+two others from the last frame at the point's place in its view, recomputed where the last frame saw
+another surface) was tried and gave about 5 % (kept out).
 
 **AO Intensity** (Options > Graphics, 25 to 125 %, default 75 %) scales the mode's strength (the table's
 strength column is the 100 % one): how dark the occlusion gets, the reach unchanged.

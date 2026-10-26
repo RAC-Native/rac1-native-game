@@ -2996,6 +2996,24 @@ bool mrp_moby_caster_rect(const float* light_vp, float rect[4], const float* wit
     return any;
 }
 
+// orig: (host) see mrp_lighting.cpp (its declaration)
+int mrp_moby_caster_parts(const float* light_vp, std::vector<float>& out, const float* within) {
+    if (!g_frame.active || !g_frame.built || g_frame.mode != 0 || g_frame.part_pos.empty()) return 0;
+    const glm::mat4 vp = glm::make_mat4(light_vp);
+    const float sx = glm::length(glm::vec3(vp[0][0], vp[1][0], vp[2][0])), sy = glm::length(glm::vec3(vp[0][1], vp[1][1], vp[2][1]));
+    int n = 0;
+    for (size_t i = 0; i < g_frame.part_pos.size(); ++i) {  // (the parts mrp_moby_caster_rect takes)
+        if (i < g_frame.part_own.size() && g_frame.part_own[i] != 0) continue;
+        const glm::vec3 p = g_frame.part_pos[i];
+        if (within != nullptr && glm::length(p - glm::vec3(within[0], within[1], within[2])) > within[3]) continue;
+        const glm::vec4 q = vp * glm::vec4(p, 1.0f);
+        const float r = i < g_frame.part_rad.size() ? g_frame.part_rad[i] : 4.0f;
+        out.insert(out.end(), {q.x - r * sx, q.y - r * sy, q.x + r * sx, q.y + r * sy, p.x, p.y, p.z, r});
+        ++n;
+    }
+    return n;
+}
+
 // orig: (host) see mrp_lighting.h
 float mrp_moby_nearest_part(const float p[3]) {
     float best = 1e30f;

@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 331 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 334 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 247 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 250 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 63 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -66,6 +66,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_AO_STRENGTH` | integer percent; default per mode (100 SSAO, 120 SSAO+, 200 HBAO, 250 GTAO) | Overrides the ambient occlusion's strength in every mode, for tuning. |
 | `RAC1_AO_INTENSITY` | integer percent 0-200; default 75 (Options > Graphics > AO Intensity) | Overrides the ambient occlusion's intensity: every mode's strength scaled by it. |
 | `RAC1_AO_MOBY` | integer percent 0-100; default 40 | The share of the ambient occlusion the mobys' pixels keep (the world's keep all of it); 100: the mobys as the world. See [Lighting](lighting.md#ambient-occlusion). |
+| `RAC1_AO_DEPTH_COPY` | 1 = on; default 0 | Vulkan: the ambient occlusion's passes read a copy of the 3D's depth (and its stencil), as before, instead of the depth itself; the same picture, for comparison (the copy cost about 1.1 ms at 5053 x 1371). See [Lighting](lighting.md#ambient-occlusion). |
 | `RAC1_AO_DUMP` | set (any value) = on; default off | Writes the raw ambient occlusion of each frame to ao_<mode>.pgm (the last frame stays) and prints its mean every 60 frames. |
 | `RAC1_AO_PROF` | set (any value) = on; default off | Prints the ambient occlusion pass's GPU time every 60 frames. |
 | `RAC1_AUDIO_CHANNELS` | 2, 6 or 8 (or 5.1 / 7.1); default unset = the Options > Sound choice (stereo in headless runs) | Overrides the output's channels: the audio device's, and RAC1_AUDIO_DUMP's (6 / 8 channels interleaved, FL FR FC LFE then SL SR / BL BR SL SR), to test 5.1 / 7.1 without the menu. |
@@ -223,10 +224,12 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_SHADOW_CACHE` | 0 = off, 1 = on; default 1 | Switches the static shadow cache off or on, to compare speed and look. |
 | `RAC1_SHADOW_CAST_KINDS` | bit mask: 1 ties, 2 shrubs, 4 tfrags; default 7 in the world renderer and 3 in the static caster code | Chooses which kinds of world geometry cast shadows, to find which one causes a problem. |
 | `RAC1_SHADOW_CAST_TRACE` | any value = on; default off | Prints which tie classes are chosen as shadow casters. |
+| `RAC1_SHADOW_CLUSTERS` | integer 1-4; default 4 | The moving objects over a sun cascade's static cache in at most that many rectangles, each put back and drawn on its own (1: one rectangle around them all, as before); the same shadows, for comparison. See [Lighting](lighting.md#the-static-shadow-cache). |
 | `RAC1_SHADOW_COPY_WHOLE` | any value = on; default off | Copies the whole shadow cache every frame instead of only the parts the moving objects changed, to compare. |
 | `RAC1_SHADOW_DEBUG` | integer; 0 = off, 2 and 3 select shadow debug views; default 0 | Selects a debug visualisation in the lighting shader (2 shows shadow state, 3 shows only the added point light term). |
 | `RAC1_SHADOW_DUMP` | integer n; unset = off | Every n-th draw writes the shadow cascades' depth to shadow_casc<k>.pgm images in the current directory. |
 | `RAC1_SHADOW_EARLYZ` | 0 = off; default on | Switches off the depth-only program used for opaque shadow casters, to compare. |
+| `RAC1_SHADOW_FAR_EVERY` | integer 0-8; default 2 | The moving objects in the two far sun cascades drawn every that many frames, in turn (the near one every frame; a cascade whose cache is drawn again is drawn that frame); 1 every frame, 0 as before (the farthest every other frame, the middle one every frame). See [Lighting](lighting.md#the-static-shadow-cache). |
 | `RAC1_SHADOW_FBO_TRACE` | any value = on; default off | Prints (up to 5 times) when the read framebuffer differs from the draw framebuffer during the shadow pass. |
 | `RAC1_SHADOW_LIGHTS` | any value = on; default off | Prints the level's light sets once, when the lighting first reads them. |
 | `RAC1_SHADOW_MCACHE` | 0 = off; default on | Switches off the cache of moving shadow casters, to compare. |

@@ -120,6 +120,186 @@ struct Cascade {
     float range = 1.0f;   // its depth range, units (the box's near to far)
 };
 
+}  // namespace
+// (mrp_moby_renderer.cpp: declared here, not in mrp_lighting.h - a game header is an input of the generated code's fingerprint, and
+// changing one asks for ./setup.sh again) the light's clip-space rectangle of each moby part a caster pass draws, 8 floats each
+// appended to `out` (x0, y0, x1, y1, its world centre, radius: the parts mrp_moby_caster_rect takes); the parts' count
+int mrp_moby_caster_parts(const float* light_vp, std::vector<float>& out, const float* within = nullptr);
+namespace {
+// ---- the mobys over a cascade's static cache: their rectangles (RAC1_SHADOW_CLUSTERS) ---------------------------------------------
+// Each frame a cached cascade's layer gets back the cache where last frame's mobys were drawn, then this frame's mobys are drawn,
+// each inside a rectangle (the scissor) that the next frame puts back: nothing the mobys drew stays. One rectangle around every
+// moby part was most of the near cascade's map once two mobys stood apart (Ratchet and a moby across the box: its 4096-texel map
+// copied whole, 64 MB, every frame). The parts are grouped instead into at most kMaxClusters rectangles, each drawn with its own
+// scissor and only the parts near its group (mrp_moby_draw_casters' sphere): the same depths, much less copied.
+constexpr int kMaxClusters = 4;
+struct MobyRects {
+    int n = 0;
+    int r[kMaxClusters][4] = {};    // texel rectangles (x0, y0, x1, y1; padded 2 texels)
+    float s[kMaxClusters][4] = {};  // the world sphere around each rectangle's parts (x, y, z, r)
+};
+const int g_shadow_clusters = std::clamp(env_int("RAC1_SHADOW_CLUSTERS", kMaxClusters), 1, kMaxClusters);
+// the far cascades' mobys redrawn every g_shadow_far_every frames (in turn: cascade 1 and 2 not on the same frame), the near one every
+// frame; a cascade whose box moved (its cache drawn again: the camera's move, the sun's turn, a new level) is drawn whole that frame.
+// 0: as before (cascade 2 every other frame, cascade 1 every frame)
+const int g_shadow_far_every = std::clamp(env_int("RAC1_SHADOW_FAR_EVERY", 2), 0, 8);
+// orig: (host) a cascade's moby casters as at most g_shadow_clusters rectangles of texels (false: none)
+bool moby_rects(const float* light_vp, int cres, const float* within, MobyRects& out) {
+    out.n = 0;
+    static std::vector<float> parts;
+    parts.clear();
+    if (mrp_moby_caster_parts(light_vp, parts, within) == 0) return false;
+    auto tx = [&](float v, bool up) {  // (as the one rectangle was: the texel's edge out, 2 texels more)
+        const float t = (v * 0.5f + 0.5f) * static_cast<float>(cres);
+        return std::clamp(static_cast<int>(up ? std::ceil(t) : std::floor(t)) + (up ? 2 : -2), 0, cres);
+    };
+    struct C {
+        int r[4];
+        glm::vec3 c;
+        float rad;
+    };
+    auto merge = [](C& a, const C& b) {
+        a.r[0] = std::min(a.r[0], b.r[0]);
+        a.r[1] = std::min(a.r[1], b.r[1]);
+        a.r[2] = std::max(a.r[2], b.r[2]);
+        a.r[3] = std::max(a.r[3], b.r[3]);
+        const float d = glm::length(b.c - a.c);  // (the sphere around both)
+        if (d + b.rad <= a.rad) return;
+        if (d + a.rad <= b.rad) {
+            a.c = b.c;
+            a.rad = b.rad;
+            return;
+        }
+        const float r = 0.5f * (d + a.rad + b.rad);
+        a.c += (b.c - a.c) * ((r - a.rad) / d);
+        a.rad = r;
+    };
+    auto area = [](const int* r) { return static_cast<int64_t>(r[2] - r[0]) * (r[3] - r[1]); };
+    // the parts' rectangles marked on a grid of kG x kG cells; the groups of touching cells, each with its parts' rectangle and sphere
+    constexpr int kG = 64;
+    static std::vector<int> cell, rects;
+    cell.assign(static_cast<size_t>(kG) * kG, -1);  // (-1 empty, -2 a part's, then its group)
+    const size_t np = parts.size() / 8;
+    rects.resize(np * 4);
+    const float cs = static_cast<float>(cres) / static_cast<float>(kG);
+    auto cells = [&](const int* r, int c[4]) {
+        c[0] = std::clamp(static_cast<int>(static_cast<float>(r[0]) / cs), 0, kG - 1);
+        c[1] = std::clamp(static_cast<int>(static_cast<float>(r[1]) / cs), 0, kG - 1);
+        c[2] = std::clamp(static_cast<int>(static_cast<float>(r[2] - 1) / cs), 0, kG - 1);
+        c[3] = std::clamp(static_cast<int>(static_cast<float>(r[3] - 1) / cs), 0, kG - 1);
+    };
+    int all[4] = {cres, cres, 0, 0};
+    size_t used = 0;
+    for (size_t i = 0; i < np; ++i) {
+        int* t = &rects[4 * i];
+        t[0] = tx(parts[8 * i], false);
+        t[1] = tx(parts[8 * i + 1], false);
+        t[2] = tx(parts[8 * i + 2], true);
+        t[3] = tx(parts[8 * i + 3], true);
+        all[0] = std::min(all[0], t[0]);
+        all[1] = std::min(all[1], t[1]);
+        all[2] = std::max(all[2], t[2]);
+        all[3] = std::max(all[3], t[3]);
+        if (t[2] <= t[0] || t[3] <= t[1]) continue;
+        ++used;
+        int c[4];
+        cells(t, c);
+        for (int y = c[1]; y <= c[3]; ++y)
+            for (int x = c[0]; x <= c[2]; ++x) cell[static_cast<size_t>(y) * kG + x] = -2;
+    }
+    if (used == 0 || g_shadow_clusters == 1) {  // (one rectangle: as before, the parts unfiltered)
+        out.n = 1;
+        std::memcpy(out.r[0], all, sizeof all);
+        out.s[0][3] = -1.0f;
+        return true;
+    }
+    int groups = 0;
+    static std::vector<int> stack;
+    for (int i0 = 0; i0 < kG * kG; ++i0) {  // (the groups: cells touching, corners too)
+        if (cell[static_cast<size_t>(i0)] != -2) continue;
+        stack.assign(1, i0);
+        cell[static_cast<size_t>(i0)] = groups;
+        while (!stack.empty()) {
+            const int c = stack.back();
+            stack.pop_back();
+            const int cx = c % kG, cy = c / kG;
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx) {
+                    const int x = cx + dx, y = cy + dy;
+                    if (x < 0 || y < 0 || x >= kG || y >= kG) continue;
+                    int& v = cell[static_cast<size_t>(y) * kG + x];
+                    if (v == -2) {
+                        v = groups;
+                        stack.push_back(y * kG + x);
+                    }
+                }
+        }
+        ++groups;
+    }
+    static std::vector<C> cl;
+    cl.assign(static_cast<size_t>(groups), C{{cres, cres, 0, 0}, glm::vec3(0.0f), -1.0f});
+    for (size_t i = 0; i < np; ++i) {
+        const int* r = &rects[4 * i];
+        if (r[2] <= r[0] || r[3] <= r[1]) continue;
+        int c[4];
+        cells(r, c);
+        C& g = cl[static_cast<size_t>(cell[static_cast<size_t>(c[1]) * kG + c[0]])];
+        const C p{{r[0], r[1], r[2], r[3]}, glm::vec3(parts[8 * i + 4], parts[8 * i + 5], parts[8 * i + 6]), parts[8 * i + 7]};
+        if (g.rad < 0.0f) g = p;
+        else merge(g, p);
+    }
+    if (cl.size() > 48) {  // (a crowd of groups: one rectangle, as before)
+        out.n = 1;
+        std::memcpy(out.r[0], all, sizeof all);
+        out.s[0][3] = -1.0f;
+        return true;
+    }
+    for (;;) {
+        for (bool merged = true; merged;) {  // the rectangles that overlap: one (a copy's regions may not overlap)
+            merged = false;
+            for (size_t i = 0; i < cl.size(); ++i)
+                for (size_t j = i + 1; j < cl.size();) {
+                    const int* a = cl[i].r;
+                    const int* b = cl[j].r;
+                    if (a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]) {
+                        merge(cl[i], cl[j]);
+                        cl[j] = cl.back();
+                        cl.pop_back();
+                        merged = true;
+                    } else {
+                        ++j;
+                    }
+                }
+        }
+        if (cl.size() <= static_cast<size_t>(g_shadow_clusters)) break;
+        size_t bi = 0, bj = 1;  // too many: the pair whose union adds the least
+        int64_t best = INT64_MAX;
+        for (size_t i = 0; i < cl.size(); ++i)
+            for (size_t j = i + 1; j < cl.size(); ++j) {
+                const int u[4] = {std::min(cl[i].r[0], cl[j].r[0]), std::min(cl[i].r[1], cl[j].r[1]), std::max(cl[i].r[2], cl[j].r[2]), std::max(cl[i].r[3], cl[j].r[3])};
+                const int64_t add = area(u) - area(cl[i].r) - area(cl[j].r);
+                if (add < best) {
+                    best = add;
+                    bi = i;
+                    bj = j;
+                }
+            }
+        merge(cl[bi], cl[bj]);
+        cl[bj] = cl.back();
+        cl.pop_back();
+    }
+    out.n = static_cast<int>(cl.size());
+    for (int i = 0; i < out.n; ++i) {
+        std::memcpy(out.r[i], cl[static_cast<size_t>(i)].r, sizeof out.r[i]);
+        const C& c = cl[static_cast<size_t>(i)];
+        out.s[i][0] = c.c.x;
+        out.s[i][1] = c.c.y;
+        out.s[i][2] = c.c.z;
+        out.s[i][3] = out.n > 1 ? c.rad : -1.0f;  // (one rectangle: every part, unfiltered, as before)
+    }
+    return true;
+}
+
 struct State {
     GLuint fbo = 0, tex = 0;
     int res = 0;
@@ -146,7 +326,7 @@ struct State {
         int stex_res = 0;
         bool incomplete = false;  // drawn without the casters outside the view: drawn again as soon as they are made
         glm::vec3 prev{0.0f};     // the slice's centre the frame before (its speed: when the box's edge is near)
-        int dirty[4] = {0, 0, 0, 0};  // the layer's rectangle the mobys were drawn over last frame (x0, y0, x1, y1 texels; empty x1 <= x0)
+        MobyRects dirty;  // the layer's rectangles the mobys were drawn into last frame (moby_rects)
     } cache[kCascades];
     std::atomic<bool> want{true};  // the next frame's casters outside the view wanted (the scene's worker reads it)
     bool refresh[kCascades] = {};
@@ -161,6 +341,12 @@ struct State {
     float splits[kCascades] = {18.0f, 60.0f, 220.0f};
     bool logged = false;
 } g_sh;
+// orig: (host) a far cascade's layer kept as it is this frame (g_shadow_far_every; its box not moved: the caller checks)
+bool far_skip(int k) {
+    if (k == 0) return false;
+    if (g_shadow_far_every == 0) return k == 2 && (g_sh.frame & 1u) != 0;
+    return (g_sh.frame + static_cast<uint64_t>(k)) % static_cast<uint64_t>(g_shadow_far_every) != 0;
+}
 
 // orig: (host) a cascade's resolution - at the High setting (4096) the near cascade alone at full size, the others at half
 // (drawn into a corner of their layer: the far ones' texels are coarse anyway, the cost of 4096 x 4096 three times is not)
@@ -455,6 +641,11 @@ struct VkLighting {
     VkPipeline rays_add_pipe = VK_NULL_HANDLE;
     vk::GpuImage ao_dtex{}, ao_atex{}, ao_btex{};
     int ao_w = 0, ao_h = 0, ao_aw = 0, ao_ah = 0;
+    // (the 3D's own depth sampled, no copy: RAC1_AO_DEPTH_COPY=0; the stencil's view of that image, made when it changes, and the
+    // final blur's programs without a depth attachment)
+    VkImage ao_sdepth_img = VK_NULL_HANDLE;
+    VkImageView ao_sdepth_stencil = VK_NULL_HANDLE;
+    VkPipeline blur_nd_pipe = VK_NULL_HANDLE, blur_sep_v_nd_pipe = VK_NULL_HANDLE;
     vk::GpuImage rays_dtex{}, rays_ctex{}, rays_mtex{}, rays_rtex{};
     int rays_w = 0, rays_h = 0, rays_div = 0;
 } g_vk_sh;
@@ -468,7 +659,7 @@ void vk_lighting_shutdown() {
         for (int i = 0; i < 6 * kPtShadows; ++i) {
             if (g_vk_sh.ptex_faces[i] != VK_NULL_HANDLE) vkDestroyImageView(dev, g_vk_sh.ptex_faces[i], nullptr);
         }
-        for (VkPipeline p : {g_vk_sh.ao_pipe, g_vk_sh.blur_pipe, g_vk_sh.blur_sep_h_pipe, g_vk_sh.blur_sep_v_pipe,
+        for (VkPipeline p : {g_vk_sh.ao_pipe, g_vk_sh.blur_pipe, g_vk_sh.blur_sep_h_pipe, g_vk_sh.blur_sep_v_pipe, g_vk_sh.blur_nd_pipe, g_vk_sh.blur_sep_v_nd_pipe,
                              g_vk_sh.rays_mask_pipe, g_vk_sh.rays_blur_pipe, g_vk_sh.rays_split_pipe, g_vk_sh.rays_add_pipe}) {
             if (p != VK_NULL_HANDLE) vkDestroyPipeline(dev, p, nullptr);
         }
@@ -478,6 +669,8 @@ void vk_lighting_shutdown() {
         }
         if (g_vk_sh.ao_stencil_view != VK_NULL_HANDLE) vkDestroyImageView(dev, g_vk_sh.ao_stencil_view, nullptr);
         g_vk_sh.ao_stencil_view = VK_NULL_HANDLE;
+        if (g_vk_sh.ao_sdepth_stencil != VK_NULL_HANDLE) vkDestroyImageView(dev, g_vk_sh.ao_sdepth_stencil, nullptr);
+        g_vk_sh.ao_sdepth_stencil = VK_NULL_HANDLE;
         for (VkDescriptorSetLayout dsl : {g_vk_sh.set_layout, g_vk_sh.samp1_layout, g_vk_sh.samp2_layout, g_vk_sh.samp3_layout}) {
             if (dsl != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(dev, dsl, nullptr);
         }
@@ -1855,8 +2048,8 @@ void ensure_vk_ao_pipelines() {
         return out;
     };
 
-    g_vk_sh.ao_layout = make_layout(g_vk_sh.samp1_layout, 160);
-    g_vk_sh.blur_layout = make_layout(g_vk_sh.samp3_layout, 16);
+    g_vk_sh.ao_layout = make_layout(g_vk_sh.samp1_layout, 176);
+    g_vk_sh.blur_layout = make_layout(g_vk_sh.samp3_layout, 48);
     g_vk_sh.rays_mask_layout = make_layout(g_vk_sh.samp2_layout, 48);
     g_vk_sh.rays_blur_layout = make_layout(g_vk_sh.samp1_layout, 32);
     g_vk_sh.rays_split_layout = make_layout(g_vk_sh.samp1_layout, 32);
@@ -1899,6 +2092,9 @@ void ensure_vk_ao_pipelines() {
         d.has_depth_attachment = true;
         d.has_stencil_attachment = true;
         g_vk_sh.blur_pipe = vk::create_graphics_pipeline(d);
+        d.has_depth_attachment = false;  // (into the colour alone: the depth sampled meanwhile)
+        d.has_stencil_attachment = false;
+        g_vk_sh.blur_nd_pipe = vk::create_graphics_pipeline(d);
     }
     {
         vk::GraphicsPipelineDesc d{};
@@ -1929,6 +2125,9 @@ void ensure_vk_ao_pipelines() {
         d.has_depth_attachment = true;
         d.has_stencil_attachment = true;
         g_vk_sh.blur_sep_v_pipe = vk::create_graphics_pipeline(d);
+        d.has_depth_attachment = false;
+        d.has_stencil_attachment = false;
+        g_vk_sh.blur_sep_v_nd_pipe = vk::create_graphics_pipeline(d);
     }
     {
         vk::GraphicsPipelineDesc d{};
@@ -2058,9 +2257,35 @@ void vk_ao_and_rays_pass(const int vp[4]) {
         const int aw = half_res ? std::max(1, w / 2) : w;
         const int ah = half_res ? std::max(1, h / 2) : h;
         const VkFormat dfmt = vk::depth_stencil_format();
-        const VkImageAspectFlags daspect = vk::active_depth_image().aspect;
-        if (g_vk_sh.ao_w != w || g_vk_sh.ao_h != h || g_vk_sh.ao_aw != aw || g_vk_sh.ao_ah != ah ||
-            g_vk_sh.ao_dtex.image == VK_NULL_HANDLE) {
+        vk::GpuImage& sdepth = vk::active_depth_image();
+        const VkImageAspectFlags daspect = sdepth.aspect;
+        // the depth the passes read: the 3D's own (its view's rectangle, uDMap), or a copy of that rectangle. The copy of a
+        // depth-and-stencil image cost about 1.1 of the occlusion's 4.0 ms (5053 x 1371, Radeon 890M)
+        static const bool want_direct = env_int("RAC1_AO_DEPTH_COPY", 0) == 0;
+        bool direct = want_direct && sdepth.depth_view != VK_NULL_HANDLE && sdepth.width > 0 && sdepth.height > 0 &&
+                      vp[0] >= 0 && vp[1] >= 0 && vp[0] + w <= static_cast<int>(sdepth.width) && vp[1] + h <= static_cast<int>(sdepth.height);
+        if (direct && (daspect & VK_IMAGE_ASPECT_STENCIL_BIT) != 0 && g_vk_sh.ao_sdepth_img != sdepth.image) {  // (its stencil's view)
+            if (g_vk_sh.ao_sdepth_stencil != VK_NULL_HANDLE) {
+                vk::wait_idle();
+                vkDestroyImageView(vk::device(), g_vk_sh.ao_sdepth_stencil, nullptr);
+                g_vk_sh.ao_sdepth_stencil = VK_NULL_HANDLE;
+            }
+            VkImageViewCreateInfo vci{};
+            vci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            vci.image = sdepth.image;
+            vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            vci.format = sdepth.format;
+            vci.subresourceRange = {VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1, 0, 1};
+            if (vkCreateImageView(vk::device(), &vci, nullptr, &g_vk_sh.ao_sdepth_stencil) != VK_SUCCESS) g_vk_sh.ao_sdepth_stencil = VK_NULL_HANDLE;
+            g_vk_sh.ao_sdepth_img = sdepth.image;
+        }
+        if ((daspect & VK_IMAGE_ASPECT_STENCIL_BIT) != 0 && g_vk_sh.ao_sdepth_stencil == VK_NULL_HANDLE) direct = false;
+        const glm::vec4 smap = direct ? glm::vec4(static_cast<float>(vp[0]) / static_cast<float>(sdepth.width), static_cast<float>(vp[1]) / static_cast<float>(sdepth.height),
+                                                  static_cast<float>(w) / static_cast<float>(sdepth.width), static_cast<float>(h) / static_cast<float>(sdepth.height))
+                                      : glm::vec4(0.0f, 0.0f, 1.0f, 1.0f);
+        const glm::vec4 dmap = smap;  // (the depth and its stencil: the same image)
+        if (g_vk_sh.ao_w != w || g_vk_sh.ao_h != h || g_vk_sh.ao_aw != aw || g_vk_sh.ao_ah != ah || g_vk_sh.ao_atex.image == VK_NULL_HANDLE ||
+            (!direct && g_vk_sh.ao_dtex.image == VK_NULL_HANDLE)) {
             g_vk_sh.ao_w = w;
             g_vk_sh.ao_h = h;
             g_vk_sh.ao_aw = aw;
@@ -2070,9 +2295,10 @@ void vk_ao_and_rays_pass(const int vp[4]) {
                 vkDestroyImageView(vk::device(), g_vk_sh.ao_stencil_view, nullptr);
                 g_vk_sh.ao_stencil_view = VK_NULL_HANDLE;
             }
-            vk::create_image(static_cast<uint32_t>(w), static_cast<uint32_t>(h), dfmt,
-                             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, daspect, g_vk_sh.ao_dtex);
-            if ((daspect & VK_IMAGE_ASPECT_STENCIL_BIT) != 0) {
+            if (direct) vk::destroy_image(g_vk_sh.ao_dtex);  // (no copy kept)
+            else vk::create_image(static_cast<uint32_t>(w), static_cast<uint32_t>(h), dfmt,
+                                  VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, daspect, g_vk_sh.ao_dtex);
+            if (!direct && (daspect & VK_IMAGE_ASPECT_STENCIL_BIT) != 0) {
                 VkImageViewCreateInfo vci{};
                 vci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
                 vci.image = g_vk_sh.ao_dtex.image;
@@ -2088,8 +2314,10 @@ void vk_ao_and_rays_pass(const int vp[4]) {
                              VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                              VK_IMAGE_ASPECT_COLOR_BIT, g_vk_sh.ao_btex);
         }
-        vk::copy_image(vk::active_depth_image(), vp[0], vp[1], g_vk_sh.ao_dtex, 0, 0, w, h, daspect,
-                       VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        if (direct) vk::transition_image(vk::cmd(), sdepth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        else vk::copy_image(sdepth, vp[0], vp[1], g_vk_sh.ao_dtex, 0, 0, w, h, daspect,
+                            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        const VkImageView dview = direct ? sdepth.depth_view : g_vk_sh.ao_dtex.view;
 
         float vpf[16];
         mrp_world_view_proj(vpf);
@@ -2118,9 +2346,11 @@ void vk_ao_and_rays_pass(const int vp[4]) {
                 glm::mat4 uVP;
                 glm::vec4 uCam;
                 glm::vec4 uParam;
-            } pc{IVP, VP, glm::vec4(g_sh.cam, 0.0f), glm::vec4(radius, strength, 0.02f, static_cast<float>(shader_mode))};
+                glm::vec4 uDMap;
+            } pc{IVP, VP, glm::vec4(g_sh.cam, 0.0f), glm::vec4(radius, strength, 0.02f, static_cast<float>(shader_mode)), dmap};
+            static_assert(sizeof(AoPush) == 176);
             VkCommandBuffer cb = vk::cmd();
-            VkDescriptorSet ds = alloc_samp1_ds(g_vk_sh.ao_dtex.view, samp_nearest);
+            VkDescriptorSet ds = alloc_samp1_ds(dview, samp_nearest);
             vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.ao_pipe);
             vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.ao_layout, 0, 1, &ds, 0, nullptr);
             vkCmdPushConstants(cb, g_vk_sh.ao_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
@@ -2131,15 +2361,29 @@ void vk_ao_and_rays_pass(const int vp[4]) {
 
         // (the mobys' pixels, marked in the stencil, with their share of the occlusion: as mrp_lighting_ao_pass)
         static const float moby_k = static_cast<float>(std::clamp(env_int("RAC1_AO_MOBY", 40), 0, 100)) / 100.0f;
-        const VkImageView stencil_view = g_vk_sh.ao_stencil_view != VK_NULL_HANDLE ? g_vk_sh.ao_stencil_view : vk::black_uint_texture().view;
-        const float moby = g_ao_mark.done && g_vk_sh.ao_stencil_view != VK_NULL_HANDLE ? moby_k : 1.0f;
+        const VkImageView sview = direct ? g_vk_sh.ao_sdepth_stencil : g_vk_sh.ao_stencil_view;
+        const VkImageView stencil_view = sview != VK_NULL_HANDLE ? sview : vk::black_uint_texture().view;
+        const float moby = g_ao_mark.done && sview != VK_NULL_HANDLE ? moby_k : 1.0f;
+        // (the final pass into the 3D's colour: with the depth sampled, a target of that colour alone)
+        auto final_target = [&] {
+            if (!direct) return;
+            vk::GpuImage& scolor = vk::active_color_image();
+            vk::transition_image(vk::cmd(), scolor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            vk::RenderTarget rt_c{};
+            rt_c.color_view = scolor.view;
+            rt_c.color_format = scolor.format;
+            rt_c.width = scolor.width;
+            rt_c.height = scolor.height;
+            vk::push_target(rt_c);
+        };
         if (g_ao == 1) {
+            final_target();
             vk::set_viewport(vp[0], vp[1], w, h);
             vk::ensure_rendering();
             VkCommandBuffer cb = vk::cmd();
-            VkDescriptorSet ds = alloc_samp3_ds(g_vk_sh.ao_atex.view, samp_nearest, g_vk_sh.ao_dtex.view, samp_nearest, stencil_view, samp_nearest);
-            const float texel[4] = {1.0f / static_cast<float>(w), 1.0f / static_cast<float>(h), moby, 0.0f};
-            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_pipe);
+            VkDescriptorSet ds = alloc_samp3_ds(g_vk_sh.ao_atex.view, samp_nearest, dview, samp_nearest, stencil_view, samp_nearest);
+            const float texel[12] = {1.0f / static_cast<float>(w), 1.0f / static_cast<float>(h), moby, 0.0f, dmap.x, dmap.y, dmap.z, dmap.w, smap.x, smap.y, smap.z, smap.w};
+            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, direct ? g_vk_sh.blur_nd_pipe : g_vk_sh.blur_pipe);
             vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_layout, 0, 1, &ds, 0, nullptr);
             vkCmdPushConstants(cb, g_vk_sh.blur_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(texel), texel);
             vkCmdDraw(cb, 3, 1, 0, 0);
@@ -2156,8 +2400,8 @@ void vk_ao_and_rays_pass(const int vp[4]) {
             {
                 VkCommandBuffer cb = vk::cmd();
                 VkDescriptorSet ds = alloc_samp3_ds(g_vk_sh.ao_atex.view, half_res ? samp_linear : samp_nearest,
-                                                    g_vk_sh.ao_dtex.view, samp_nearest, stencil_view, samp_nearest);
-                const float texel_h[4] = {1.0f / static_cast<float>(aw), 0.0f, 1.0f, 0.0f};  // (the share taken at the end, as mrp_lighting_ao_pass)
+                                                    dview, samp_nearest, stencil_view, samp_nearest);
+                const float texel_h[12] = {1.0f / static_cast<float>(aw), 0.0f, 1.0f, 0.0f, dmap.x, dmap.y, dmap.z, dmap.w, smap.x, smap.y, smap.z, smap.w};  // (the share taken at the end, as mrp_lighting_ao_pass)
                 vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_sep_h_pipe);
                 vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_layout, 0, 1, &ds, 0, nullptr);
                 vkCmdPushConstants(cb, g_vk_sh.blur_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(texel_h), texel_h);
@@ -2166,17 +2410,22 @@ void vk_ao_and_rays_pass(const int vp[4]) {
             vk::pop_target();
             vk::transition_image(vk::cmd(), g_vk_sh.ao_btex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
+            final_target();
             vk::set_viewport(vp[0], vp[1], w, h);
             vk::ensure_rendering();
             {
                 VkCommandBuffer cb = vk::cmd();
-                VkDescriptorSet ds = alloc_samp3_ds(g_vk_sh.ao_btex.view, samp_nearest, g_vk_sh.ao_dtex.view, samp_nearest, stencil_view, samp_nearest);
-                const float texel_v[4] = {0.0f, 1.0f / static_cast<float>(h), moby, 0.0f};
-                vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_sep_v_pipe);
+                VkDescriptorSet ds = alloc_samp3_ds(g_vk_sh.ao_btex.view, samp_nearest, dview, samp_nearest, stencil_view, samp_nearest);
+                const float texel_v[12] = {0.0f, 1.0f / static_cast<float>(h), moby, 0.0f, dmap.x, dmap.y, dmap.z, dmap.w, smap.x, smap.y, smap.z, smap.w};
+                vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, direct ? g_vk_sh.blur_sep_v_nd_pipe : g_vk_sh.blur_sep_v_pipe);
                 vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_layout, 0, 1, &ds, 0, nullptr);
                 vkCmdPushConstants(cb, g_vk_sh.blur_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(texel_v), texel_v);
                 vkCmdDraw(cb, 3, 1, 0, 0);
             }
+        }
+        if (direct) {  // (the 3D's target again, its depth an attachment again)
+            vk::pop_target();
+            vk::transition_image(vk::cmd(), sdepth, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
         }
     }
 
@@ -4028,7 +4277,7 @@ void mrp_lighting_shadow_pass() {
         for (int k = 0; k < kCascades; ++k) {
             if (!g_casc_on.load()) continue;
             const int cres = g_sh.casc[k].res;
-            const int* moby_rect = nullptr;
+            const MobyRects* moby_rects_now = nullptr;
             if (g_shadow_cache != 0) {
                 State::Cache& ca = g_sh.cache[k];
                 if (g_vk_sh.stex[k].image == VK_NULL_HANDLE || g_vk_sh.stex_res[k] != cres) {
@@ -4056,45 +4305,38 @@ void mrp_lighting_shadow_pass() {
                     if ((skip & 1) == 0) mrp_world_draw_casters(glm::value_ptr(g_sh.casc[k].vp), k);
                     vk::pop_target();
                     ++g_sh.refreshes;
-                } else if (k == 2 && (g_sh.frame & 1u) != 0) {
+                } else if (far_skip(k)) {
                     ++g_sh.frames_cached;
                     continue;
                 }
                 ++g_sh.frames_cached;
                 static const bool whole = std::getenv("RAC1_SHADOW_COPY_WHOLE") != nullptr;
-                int cx = 0, cy = 0, cw = cres, ch = cres;
-                if (!g_sh.refresh[k] && !whole) {
-                    cx = ca.dirty[0];
-                    cy = ca.dirty[1];
-                    cw = ca.dirty[2] - ca.dirty[0];
-                    ch = ca.dirty[3] - ca.dirty[1];
-                }
-                int nr[4] = {0, 0, 0, 0};
-                float rect[4];
-                if ((skip & 2) == 0 && mrp_moby_caster_rect(glm::value_ptr(g_sh.casc[k].vp), rect, within)) {
-                    auto tx = [&](float v, bool up) {
-                        const float t = (v * 0.5f + 0.5f) * static_cast<float>(cres);
-                        return std::clamp(static_cast<int>(up ? std::ceil(t) : std::floor(t)) + (up ? 2 : -2), 0, cres);
-                    };
-                    nr[0] = tx(rect[0], false);
-                    nr[1] = tx(rect[1], false);
-                    nr[2] = tx(rect[2], true);
-                    nr[3] = tx(rect[3], true);
-                }
-                std::memcpy(ca.dirty, nr, sizeof nr);
-                if (!whole) moby_rect = ca.dirty;
-                if (cw > 0 && ch > 0) {
+                // the cache put back where last frame's mobys were (the whole map after a refresh), this frame's rectangles kept
+                VkImageCopy ics[kMaxClusters];
+                uint32_t nics = 0;
+                auto region = [&](int x0, int y0, int x1, int y1) {
+                    if (x1 <= x0 || y1 <= y0) return;
+                    VkImageCopy& ic = ics[nics++];
+                    ic = VkImageCopy{};
+                    ic.srcSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1};
+                    ic.srcOffset = {x0, y0, 0};
+                    ic.dstSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, static_cast<uint32_t>(k), 1};
+                    ic.dstOffset = {x0, y0, 0};
+                    ic.extent = {static_cast<uint32_t>(x1 - x0), static_cast<uint32_t>(y1 - y0), 1};
+                };
+                if (g_sh.refresh[k] || whole) region(0, 0, cres, cres);
+                else
+                    for (int i = 0; i < ca.dirty.n; ++i) region(ca.dirty.r[i][0], ca.dirty.r[i][1], ca.dirty.r[i][2], ca.dirty.r[i][3]);
+                MobyRects now;
+                if ((skip & 2) != 0 || !moby_rects(glm::value_ptr(g_sh.casc[k].vp), cres, within, now)) now.n = 0;
+                ca.dirty = now;
+                if (!whole) moby_rects_now = &ca.dirty;
+                if (nics > 0) {
                     vk::end_rendering();
                     vk::transition_image(vk::cmd(), g_vk_sh.stex[k], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
                     vk::transition_image(vk::cmd(), g_vk_sh.tex, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-                    VkImageCopy ic{};
-                    ic.srcSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1};
-                    ic.srcOffset = {cx, cy, 0};
-                    ic.dstSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, static_cast<uint32_t>(k), 1};
-                    ic.dstOffset = {cx, cy, 0};
-                    ic.extent = {static_cast<uint32_t>(cw), static_cast<uint32_t>(ch), 1};
                     vkCmdCopyImage(vk::cmd(), g_vk_sh.stex[k].image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                                   g_vk_sh.tex.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ic);
+                                   g_vk_sh.tex.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, nics, ics);
                 }
                 vk::transition_image(vk::cmd(), g_vk_sh.tex, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
                 vk::RenderTarget rt_l{};
@@ -4117,17 +4359,28 @@ void mrp_lighting_shadow_pass() {
                 vk::push_target(rt_l, false, nullptr, true, 1.0f, false, 0);
                 if ((skip & 1) == 0) mrp_world_draw_casters(glm::value_ptr(g_sh.casc[k].vp), k);
             }
-            if (moby_rect != nullptr) {
-                vk::set_scissor(true, moby_rect[0], moby_rect[1], moby_rect[2] - moby_rect[0], moby_rect[3] - moby_rect[1]);
-            }
-            if ((skip & 2) == 0 && (moby_rect == nullptr || (moby_rect[2] > moby_rect[0] && moby_rect[3] > moby_rect[1]))) {
+            if (moby_rects_now != nullptr) {  // (each rectangle's parts inside it: what the next frame puts back)
+                for (int i = 0; i < moby_rects_now->n; ++i) {
+                    const int* r = moby_rects_now->r[i];
+                    if (r[2] <= r[0] || r[3] <= r[1]) continue;
+                    vk::set_scissor(true, r[0], r[1], r[2] - r[0], r[3] - r[1]);
+                    mrp_moby_draw_casters(glm::value_ptr(g_sh.casc[k].vp), moby_rects_now->s[i][3] >= 0.0f ? moby_rects_now->s[i] : nullptr, within);
+                }
+            } else if ((skip & 2) == 0) {
                 mrp_moby_draw_casters(glm::value_ptr(g_sh.casc[k].vp), nullptr, within);
             }
             vk::set_scissor(false);
             vk::pop_target();
         }
         vk::transition_image(vk::cmd(), g_vk_sh.tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        point_shadows_pass();
+        // (the profiler's stages as the OpenGL path's: the cascades' zone closed here - left open, the GPU's work after the world's
+        // draw, outside a stage of its own, was counted as the cascades' -, the point lights' cubes their own)
+        rac1::prof::end(prof_cascades);
+        prof_cascades = -1;
+        {
+            RAC1_PROF_ZONE(kPointCubes);
+            point_shadows_pass();
+        }
         point_tiles_update();
         vk::set_viewport(prev_vp[0], prev_vp[1], prev_vp[2], prev_vp[3]);
         vk::set_scissor(false);
@@ -4170,7 +4423,7 @@ void mrp_lighting_shadow_pass() {
             continue;
         }
         const int cres = g_sh.casc[k].res;
-        const int* moby_rect = nullptr;
+        const MobyRects* moby_rects_now = nullptr;
         const float within_v[4] = {g_sh.cam.x, g_sh.cam.y, g_sh.cam.z, g_shadow_moby_dist};  // (the shadows' distance)
         const float* within = g_shadow_moby_dist > 0.0f ? within_v : nullptr;
         static const int skip = std::getenv("RAC1_SHADOW_SKIP") != nullptr ? std::atoi(std::getenv("RAC1_SHADOW_SKIP")) : 0;  // (testing: 1 no world, 2 no mobys)
@@ -4208,8 +4461,8 @@ void mrp_lighting_shadow_pass() {
                 if ((skip & 1) == 0) mrp_world_draw_casters(glm::value_ptr(g_sh.casc[k].vp), k);
                 glDisable(GL_DEPTH_CLAMP);
                 ++g_sh.refreshes;
-            } else if (k == 2 && (g_sh.frame & 1u) != 0) {
-                // Far cascade (75..260 m): reuse last frame's moby shadows on odd frames when the static cache did not move
+            } else if (far_skip(k)) {
+                // a far cascade: its layer (the cache and its mobys as last drawn) kept this frame - the box did not move
                 ++g_sh.frames_cached;
                 if (prof) glEndQuery(GL_TIME_ELAPSED);
                 continue;
@@ -4219,31 +4472,26 @@ void mrp_lighting_shadow_pass() {
             // the layer: the cache copied whole when drawn, else only where last frame's mobys were (the rest is the cache still); the
             // mobys then drawn inside their own rectangle (their parts' spheres), which the next frame puts back
             static const bool whole = std::getenv("RAC1_SHADOW_COPY_WHOLE") != nullptr;  // (testing: the whole cache copied every frame)
-            int cx = 0, cy = 0, cw = cres, ch = cres;
-            if (!g_sh.refresh[k] && !whole) {
-                cx = ca.dirty[0];
-                cy = ca.dirty[1];
-                cw = ca.dirty[2] - ca.dirty[0];
-                ch = ca.dirty[3] - ca.dirty[1];
+            // (the regions put back: last frame's rectangles, or the whole map after a refresh)
+            int regs[kMaxClusters][4] = {};
+            int nregs = 0;
+            if (g_sh.refresh[k] || whole) {
+                regs[0][2] = regs[0][3] = cres;
+                nregs = 1;
+            } else {
+                for (int i = 0; i < ca.dirty.n; ++i) std::memcpy(regs[nregs++], ca.dirty.r[i], sizeof regs[0]);
             }
-            int nr[4] = {0, 0, 0, 0};
-            float rect[4];
-            if ((skip & 2) == 0 && mrp_moby_caster_rect(glm::value_ptr(g_sh.casc[k].vp), rect, within)) {
-                auto tx = [&](float v, bool up) {
-                    const float t = (v * 0.5f + 0.5f) * static_cast<float>(cres);
-                    return std::clamp(static_cast<int>(up ? std::ceil(t) : std::floor(t)) + (up ? 2 : -2), 0, cres);
-                };
-                nr[0] = tx(rect[0], false);
-                nr[1] = tx(rect[1], false);
-                nr[2] = tx(rect[2], true);
-                nr[3] = tx(rect[3], true);
-            }
-            std::memcpy(ca.dirty, nr, sizeof nr);
-            if (!whole) moby_rect = ca.dirty;
+            MobyRects now;
+            if ((skip & 2) != 0 || !moby_rects(glm::value_ptr(g_sh.casc[k].vp), cres, within, now)) now.n = 0;
+            ca.dirty = now;
+            if (!whole) moby_rects_now = &ca.dirty;
             using PfnCopy = void(APIENTRYP)(GLuint, GLenum, GLint, GLint, GLint, GLint, GLuint, GLenum, GLint, GLint, GLint, GLint, GLsizei, GLsizei, GLsizei);
             static const PfnCopy copy = reinterpret_cast<PfnCopy>(glfwGetProcAddress("glCopyImageSubData"));  // (GL 4.3: not in the loader's header)
             if (copy != nullptr) {
-                if (cw > 0 && ch > 0) copy(ca.stex, GL_TEXTURE_2D, 0, cx, cy, 0, g_sh.tex, GL_TEXTURE_2D_ARRAY, 0, cx, cy, k, cw, ch, 1);
+                for (int i = 0; i < nregs; ++i) {
+                    const int* r = regs[i];
+                    if (r[2] > r[0] && r[3] > r[1]) copy(ca.stex, GL_TEXTURE_2D, 0, r[0], r[1], 0, g_sh.tex, GL_TEXTURE_2D_ARRAY, 0, r[0], r[1], k, r[2] - r[0], r[3] - r[1], 1);
+                }
             } else {  // (no copy: the cache off from now on, this frame's world drawn as before)
                 g_shadow_cache = 0;
                 begin_map(true);
@@ -4260,12 +4508,17 @@ void mrp_lighting_shadow_pass() {
             if ((skip & 1) == 0) mrp_world_draw_casters(glm::value_ptr(g_sh.casc[k].vp), k);
             glDisable(GL_DEPTH_CLAMP);
         }
-        if (moby_rect != nullptr) {  // (inside the rectangle the next frame puts back)
+        if (moby_rects_now != nullptr) {  // (each rectangle's parts inside it: what the next frame puts back)
             glEnable(GL_SCISSOR_TEST);
-            glScissor(moby_rect[0], moby_rect[1], moby_rect[2] - moby_rect[0], moby_rect[3] - moby_rect[1]);
-        }
-        if ((skip & 2) == 0 && (moby_rect == nullptr || (moby_rect[2] > moby_rect[0] && moby_rect[3] > moby_rect[1])))
+            for (int i = 0; i < moby_rects_now->n; ++i) {
+                const int* r = moby_rects_now->r[i];
+                if (r[2] <= r[0] || r[3] <= r[1]) continue;
+                glScissor(r[0], r[1], r[2] - r[0], r[3] - r[1]);
+                mrp_moby_draw_casters(glm::value_ptr(g_sh.casc[k].vp), moby_rects_now->s[i][3] >= 0.0f ? moby_rects_now->s[i] : nullptr, within);
+            }
+        } else if ((skip & 2) == 0) {
             mrp_moby_draw_casters(glm::value_ptr(g_sh.casc[k].vp), nullptr, within);
+        }
         glDisable(GL_DEPTH_CLAMP);
         glDisable(GL_SCISSOR_TEST);
         if (prof) glEndQuery(GL_TIME_ELAPSED);
