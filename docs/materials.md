@@ -52,7 +52,8 @@ sky <r> <g> <b>
 | `mud` | wetness 0.5 (0..1) | drift 1 (0..3) | | a wet glossy sheen and a very slow, viscous drift of the texture |
 | `quicksand` | drift 1 (0..3) | gloss 0.3 (0..1) | | the drift, a dull sheen |
 
-- `rain on` (default off): the puddles' and the water's rain rings on this level. Batalia's is on.
+- `rain on` (default off): the puddles' and the water's rain rings on this level, only under the open sky (none under a roof:
+  the ambient particles' sky grid, [Under a roof](particles.md#under-a-roof)). Batalia's is on.
 - `sky r g b` (0..2; default 0.52 0.58 0.68): the colour a reflection shows where it finds nothing, and the
   metals' sheen. The ground's side of it is the same colour at 30 %.
 
@@ -79,7 +80,8 @@ red ones for lava, and so on).
   defaults filled in); `uMat[0]` holds Surface Detail, the clock (frames / 60, so a headless run is
   deterministic), the rain and whether the last frame's picture is ready. OpenGL: uniforms of the lighting's
   programs; Vulkan: the lighting's uniform buffer (5120 bytes) and its descriptor set's bindings 2 (the
-  picture) and 5 (its depth).
+  picture) and 5 (its depth). The rain rings' sky (`sm_sky`): the ambient particles' sky grid window, an R32F
+  texture whose last row holds its place (OpenGL unit 30, Vulkan binding 6; none: open sky everywhere).
 - **The shading** (`sh_material`, after `sh_emissive`, in the world's `SH_POINTS` and the mobys' `SH_SPLIT`
   variants). The normal is the face normal the lighting already has (flat on each triangle); ripples and rain
   bend it. The texel (x 255 / 128) is the albedo; the lit vertex colour is how much light the place has, and

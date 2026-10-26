@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 323 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 324 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 240 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 241 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 62 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -195,7 +195,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_PARTICLES` | 0 off, 1 Low, 2 High; default the option (Off) | Our ambient particles (dust, embers, rain, snow ...), overriding Options > Graphics > Ambient Particles. See [Ambient particles](particles.md). |
 | `RAC1_PARTICLES_FXTRACE` | any value = on; default off | Every 20000 effect primitives, prints them by producer, primitive type and texture, and the game's particle pool by type, texture and shape (how the game's rain was found). See [Ambient particles](particles.md#testing). |
 | `RAC1_PARTICLES_GAME` | 1 = on; default off | With the ambient particles on, the game's own rain and snow are drawn as well where ours replace them (for comparing). See [Ambient particles](particles.md#rain-and-snow-in-place-of-the-games). |
-| `RAC1_PARTICLES_TRACE` | any value = on; default off | Every 120 game frames, prints the ambient particles' draws, count, light and whether the game's rain or snow is hidden. |
+| `RAC1_PARTICLES_SKY` | 0 = off; default 1 | 0: rain, snow and ash are kept out only by the level's interior boxes, not by the roofs of its collision, and the materials' rain rings fall under roofs too (the behaviour before; for comparing). See [Ambient particles](particles.md#under-a-roof). |
+| `RAC1_PARTICLES_TRACE` | any value = on; default off | Every 120 game frames, prints the ambient particles' draws, count, light and whether the game's rain or snow is hidden, and whether the camera is under a roof; once per level, its lava and its sky grid as read. |
 | `RAC1_PART_TRACE` | any value = on; default off | Every 30 frames prints the live particles counted by type. |
 | `RAC1_PICKUP_LOG` | integer period in frames; unset = off | Every given number of frames prints the live item pickups and crates within 15 units of the hero (class, state, item, amount, timer, velocity). |
 | `RAC1_PIPELINE` | 0 = off, any other integer = on; unset = the saved setting | Forces the host's pipelining setting on or off, for comparison. |

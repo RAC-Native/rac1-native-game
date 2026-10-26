@@ -36,6 +36,31 @@
     "    g += vec2(sm_noise(P.xy * 2.3 + t * 0.6) - 0.5, sm_noise(P.xy * 2.3 - t * 0.5 + 9.1) - 0.5) * 0.12;\n"                                         \
     "    return normalize(n - vec3(g, 0.0) * (amt * smoothstep(0.3, 0.7, n.z)));\n"                                                                     \
     "}\n"                                                                                                                                               \
+    "/* the sky (the ambient particles' sky grid, docs/particles.md, Under a roof): 1 under the open sky, 0 under a roof - the rain's rings\n"       \
+    "   only where it rains. Its window's heights, then a row: x, y its corner, the squares' size, 1 when on (no texture: 1) */\n"                      \
+    "#ifdef VULKAN\n"                                                                                                                                   \
+    "layout(set = 1, binding = 6) uniform sampler2D uMatSky;\n"                                                                                         \
+    "#else\n"                                                                                                                                           \
+    "layout(binding = 30) uniform sampler2D uMatSky;\n"                                                                                                 \
+    "#endif\n"                                                                                                                                          \
+    "float sm_sky(vec3 p) {\n"                                                                                                                          \
+    "    ivec2 n = textureSize(uMatSky, 0);\n"                                                                                                          \
+    "    if (n.y < 2) return 1.0;\n"                                                                                                                    \
+    "    n.y -= 1;\n"                                                                                                                                   \
+    "    vec4 w = vec4(texelFetch(uMatSky, ivec2(0, n.y), 0).r, texelFetch(uMatSky, ivec2(1, n.y), 0).r, texelFetch(uMatSky, ivec2(2, n.y), 0).r,\n"    \
+    "                  texelFetch(uMatSky, ivec2(3, n.y), 0).r);\n"                                                                                     \
+    "    if (w.w < 0.5 || w.z <= 0.0) return 1.0;\n"                                                                                                    \
+    "    vec2 g = (p.xy - w.xy) / w.z - 0.5;\n"                                                                                                         \
+    "    ivec2 i0 = ivec2(floor(g));\n"                                                                                                                 \
+    "    vec2 f = g - vec2(i0);\n"                                                                                                                      \
+    "    vec4 o;\n"                                                                                                                                     \
+    "    for (int k = 0; k < 4; ++k) {\n"                                                                                                               \
+    "        ivec2 c = i0 + ivec2(k & 1, k >> 1);\n"                                                                                                    \
+    "        float h = (any(lessThan(c, ivec2(0))) || any(greaterThanEqual(c, n))) ? -1.0e6 : texelFetch(uMatSky, c, 0).r;\n"                           \
+    "        o[k] = smoothstep(h - 0.25, h + 0.25, p.z + 0.75);\n"                                                                                      \
+    "    }\n"                                                                                                                                           \
+    "    return mix(mix(o.x, o.y, f.x), mix(o.z, o.w, f.x), f.y);\n"                                                                                    \
+    "}\n"                                                                                                                                               \
     "/* rain: rings spreading from random points, two layers of cells */\n"                                                                             \
     "vec3 sm_rain(vec3 n, vec3 P, float t, float k) {\n"                                                                                                \
     "    vec2 g = vec2(0.0);\n"                                                                                                                         \
@@ -165,7 +190,7 @@
     "        float mask = smoothstep(1.0 - m.x - 0.04, 1.0 - m.x + 0.04, n) * smoothstep(0.85, 0.97, N.z);\n"                                           \
     "        if (mask <= 0.0) return base;\n"                                                                                                           \
     "        vec3 Np = sm_waves(N, P, 0.05, t);\n"                                                                                                      \
-    "        if (rain > 0.0) Np = sm_rain(Np, P, t, rain * 0.6);\n"                                                                                     \
+    "        if (rain > 0.0) Np = sm_rain(Np, P, t, rain * 0.6 * sm_sky(P));\n"                                                                         \
     "        vec3 Rp = reflect(-V, Np);\n"                                                                                                              \
     "        float F = mix(0.15, 0.9, pow(1.0 - max(dot(Np, V), 0.0), 4.0));\n"                                                                         \
     "        vec3 refl = sm_ssr(P + N * 0.03, Rp, sm_env(Rp, 0.05) * L);\n"                                                                             \
@@ -181,7 +206,7 @@
     "    }\n"                                                                                                                                           \
     "    if (ty == 5) {  /* water: a strength, b ripples; on top of the game's own water (its scrolling and colours kept) */\n"                         \
     "        vec3 Nw = sm_waves(N, P, m.y, t);\n"                                                                                                       \
-    "        if (rain > 0.0) Nw = sm_rain(Nw, P, t, rain * 0.5);\n"                                                                                     \
+    "        if (rain > 0.0) Nw = sm_rain(Nw, P, t, rain * 0.5 * sm_sky(P));\n"                                                                         \
     "        vec3 Rw = reflect(-V, Nw);\n"                                                                                                              \
     "        float F = 0.02 + 0.98 * pow(1.0 - max(dot(Nw, V), 0.0), 5.0);\n"                                                                           \
     "        F = mix(0.15, 1.0, F);\n"                                                                                                                  \

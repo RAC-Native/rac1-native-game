@@ -28,12 +28,12 @@ The other levels have none: a line in their file adds some (the [editor](#the-ed
 | Kind | Looks | Moves | Light |
 |---|---|---|---|
 | `dust` | small soft specks | drifting slowly, sinking a little | the zone's light |
-| `ash` | grey flakes | falling slowly, drifting | the zone's light; none inside interiors |
+| `ash` | grey flakes | falling slowly, drifting | the zone's light; none under a roof |
 | `embers` | orange glows, flickering, each with a short life | rising, wandering | their own (added to the picture) |
 | `fireflies` | yellow-green glows, blinking | wandering | their own, brighter where the zone is dark |
 | `motes` | tiny bright specks | almost still | the zone's light, brighter toward the sun |
-| `rain` | thin streaks along their fall, splashes on the ground near the camera | falling fast | the zone's light; none inside interiors |
-| `snow` | white flakes | falling slowly, drifting | the zone's light; none inside interiors |
+| `rain` | thin streaks along their fall, splashes on the ground near the camera | falling fast | the zone's light; none under a roof |
+| `snow` | white flakes | falling slowly, drifting | the zone's light; none under a roof |
 
 Low draws half the particles of High. A line's density scales the count again.
 
@@ -53,14 +53,38 @@ the MRP's world, mobys and ambient occlusion, before the game's effects and the 
   where a flake meets the ground).
 - **Light**: the zone's own (the two lights of the light sets the game lights Ratchet with, as the [modern lighting's sun](lighting.md#the-sun)
   reads them), so they are dim in a dark zone and at night. Embers and fireflies are their own light.
-- **Interiors**: the level's interior boxes (`interior` lines, [Interiors](lighting.md#interiors)) hold no rain, snow or ash:
-  the particles inside the boxes nearest the camera (four at most) are not drawn, and the rain's splashes stop there.
+- **Under a roof**: rain, snow and ash fall only from the open sky ([below](#under-a-roof)). The level's interior boxes
+  (`interior` lines, [Interiors](lighting.md#interiors)) keep them out as well: the particles inside the boxes nearest the
+  camera (four at most) are not drawn, and the rain's splashes stop there.
 - **Rain**: each drop a streak along its motion as the camera sees it (the camera's own motion taken off), thin (at least a
   pixel wide, lighter instead of thinner). Its splashes are a pass over the scene's upward surfaces within 18 units of the
   camera: in each cell of a grid on the ground (0.55 units) a ring now and then.
 - **Snow**: round soft flakes, falling slowly, drifting gently in the wind.
 - **From the lava** (`source lava`): see [below](#from-the-lava).
 - **Time**: the game frame shown, so they stand still while the game does, and are the same in every run of a test.
+
+## Under a roof
+
+Rain, snow and ash (not ash rising from the lava) are not drawn under a roof, a tunnel's ceiling, a room's, a bridge or a
+ledge, and the rain's splashes only where the ground itself is under the sky; with Surface Detail on, the
+[materials'](materials.md) rain rings in puddles and water stop there too. No box needs placing: the "roof" is the level's
+collision seen from above. (Before, Batalia's covered hall by the tracked robot had rain and splashes inside, and Hoven's rooms
+snow.)
+
+- **The sky grid**: once a level has run 30 frames with its collision unchanged (as for the lava), the collision tree the game
+  loaded (`*(0x173e40)`, read only) is read on a thread of its own: every face that is not a wall (its normal at least a tenth
+  up or down) is drawn into a grid of 0.5-unit squares over the whole level, each square keeping the height of the topmost face
+  over it (Batalia about 35 ms, Hoven about 75 ms, 1.5 MB). Only levels whose file has a rain, snow or ash line are read
+  (Batalia, Hoven), or `rain on` while Surface Detail and the modern lighting are on (Batalia); a grid read from another level's
+  collision (while a level loads) is never used.
+- **The test**: a window of the grid around the camera (256 squares a side, 128 units) is a texture the particles read, taken
+  again when the camera has moved 24 units. A particle below the topmost face at its place (blended over the grid's four
+  nearest squares, softened half a unit up and down) is under cover and not drawn, so flakes fade out at a roof's edge, a door
+  or a hole in a ceiling rather than stopping on a line. A splash is drawn where its ground is the topmost face (within 0.75
+  units). The materials read the same window (the shadow pass takes it again when needed): their rain rings fade out where a
+  splash would.
+- Open ground is not changed: there the topmost face is the ground itself, below every particle.
+- `RAC1_PARTICLES_SKY=0` (or the Sun tab's "Keep rain / snow / ash out from under roofs") turns the test off, for comparing.
 
 ## From the lava
 
@@ -127,8 +151,10 @@ the Profiler tab's "Ambient particles" stage.
 
 - `RAC1_PARTICLES=0|1|2`: the option (Off, Low, High) whatever the preferences.
 - `RAC1_PARTICLES_GAME=1`: the game's own rain and snow drawn as well.
-- `RAC1_PARTICLES_TRACE=1`: every 120 frames what is drawn (draws, particles, the light, the game's rain or snow hidden); and
-  each level's lava as read (faces, square units, points, the time; the collision's faces by surface kind; the lava's heights).
+- `RAC1_PARTICLES_TRACE=1`: every 120 frames what is drawn (draws, particles, the light, the game's rain or snow hidden, the
+  camera under a roof or the sky); each level's lava as read (faces, square units, points, the time; the collision's faces by
+  surface kind; the lava's heights) and its sky grid (squares, faces, the time).
+- `RAC1_PARTICLES_SKY=0`: no test against the roofs ([Under a roof](#under-a-roof)), as before.
 - `RAC1_PARTICLES_FXTRACE=1`: the game's effect primitives by texture, and its particle pool by type (how the game's rain was
   found).
 - The cost: `RAC1_PROFILER_DUMP` (the "Ambient particles" stage's CPU and GPU time).
@@ -148,14 +174,20 @@ of a walk from each level's start; `RAC1_PROFILER_DUMP`):
 | Pokitaru (fireflies) | 0.04 ms | 0.14 ms | 0.01 ms | 0.02 ms |
 | Hoven (snow) | 0.02 ms | 0.12 ms | 0.01 ms | 0.02 ms |
 
-OpenGL's GPU time includes the copy of the depth buffer (about 0.1 ms); Batalia's the splashes' screen pass. The lava's CPU time
+OpenGL's GPU time includes the copy of the depth buffer (about 0.1 ms); Batalia's the splashes' screen pass.
+
+The test against the roofs costs nothing measurable (300 frames in Batalia's covered hall and Hoven's room, test off / on):
+OpenGL CPU 0.06 / 0.05 ms and 0.05 / 0.06 ms, GPU 0.25 / 0.25 ms and 0.17 / 0.15 ms; Vulkan CPU 0.02 / 0.04 ms and 0.01 / 0.03 ms,
+GPU 0.09 / 0.07 ms and 0.02 / 0.02 ms. The grid is read once per level on its own thread; the window (256 KB) is uploaded again
+every 24 units the camera moves. The lava's CPU time
 is mostly the choice of its slots (Gaspar: some thousand points within 60 units); Umbris, Batalia, Gaspar and Hoven measured
 after the playtest's changes, from the level's start (Umbris: placed in the arena).
 
 ## Limits
 
-- Rain and snow fall through roofs that are not in an interior box (under a ship's hull, a balcony): only the level's
-  interior boxes keep them out. A box per covered place can be added in the Sun tab.
+- Under a roof is what the collision says: a roof the game gives no collision (out of reach, a tree's leaves) lets rain
+  through, and an invisible ceiling of collision would keep it out (none seen on Batalia or Hoven). Mobys (a ship, a moving
+  platform) are not in it. An `interior` box can still keep the particles out of a place the collision misses.
 - The game's rain and snow are told from its other particles by their particle types (0 and 1 on every level but Hoven,
   0x49 on Hoven) and the textures those had this frame: another particle sharing one of their textures in the same frame
   would be hidden too.

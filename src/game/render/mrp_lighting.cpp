@@ -33,6 +33,11 @@
 
 namespace rac1 {
 
+// (mrp_particles.cpp: the ambient particles' sky grid - docs/particles.md, "Under a roof" - which the materials' rain rings read too;
+// declared here, not in mrp_particles.h: the headers of src/game are the generated code's fingerprint)
+void mrp_particles_sky_frame();
+const vk::GpuImage* mrp_particles_sky_vk();
+
 namespace {
 int env_int(const char* name, int def) {
     const char* e = std::getenv(name);
@@ -3949,6 +3954,7 @@ void mrp_lighting_shadow_pass() {
     g_sh.on = false;
     if (g_modern_shadows == 0 || !mrp_world_active() || !mrp_moby_active() || g_mrp_world_projection != 0) return;
     ++g_sh.frame;
+    if (g_surface_detail > 0 && g_rain) mrp_particles_sky_frame();  // (the materials' rain rings: none under a roof)
     static bool splits_read = false;
     if (!splits_read) {
         read_splits();
@@ -4601,22 +4607,26 @@ VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, bool is_caster) {
                                         ? g_vk_sh.tiles
                                         : vk::black_uint_texture();
 
-    VkDescriptorImageInfo diis[5] = {
+    const vk::GpuImage* sky = is_caster ? nullptr : mrp_particles_sky_vk();  // (binding 6: the sky grid's window, the rain rings')
+    const vk::GpuImage& sky_tex = sky != nullptr ? *sky : vk::white_texture();
+
+    VkDescriptorImageInfo diis[6] = {
         {cmp_sampler, sh_map.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
         {linear_sampler, ssr_col.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
         {cmp_sampler, pt_map.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
         {nearest_sampler, tiles_tex.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
         {nearest_sampler, ssr_depth.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+        {nearest_sampler, sky_tex.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
     };
 
-    VkWriteDescriptorSet writes[6]{};
+    VkWriteDescriptorSet writes[7]{};
     writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     writes[0].dstSet = ds;
     writes[0].dstBinding = 0;
     writes[0].descriptorCount = 1;
     writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     writes[0].pBufferInfo = &dbi;
-    for (uint32_t i = 0; i < 5; ++i) {
+    for (uint32_t i = 0; i < 6; ++i) {
         writes[1 + i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[1 + i].dstSet = ds;
         writes[1 + i].dstBinding = 1 + i;
@@ -4624,7 +4634,7 @@ VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, bool is_caster) {
         writes[1 + i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         writes[1 + i].pImageInfo = &diis[i];
     }
-    vkUpdateDescriptorSets(vk::device(), 6, writes, 0, nullptr);
+    vkUpdateDescriptorSets(vk::device(), 7, writes, 0, nullptr);
     return ds;
 }
 }  // namespace
@@ -4632,15 +4642,15 @@ VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, bool is_caster) {
 uint64_t mrp_lighting_vk_set_layout() {
     ensure_vk_lighting_init();
     if (g_vk_sh.set_layout == VK_NULL_HANDLE && vk::device() != VK_NULL_HANDLE) {
-        VkDescriptorSetLayoutBinding bindings[6]{};
+        VkDescriptorSetLayoutBinding bindings[7]{};
         bindings[0] = {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
-        for (uint32_t i = 1; i <= 5; ++i) {  // (1 the sun's cascades, 2 the materials' last 3D, 3 the cubes, 4 the tiles, 5 its depth)
+        for (uint32_t i = 1; i <= 6; ++i) {  // (1 the sun's cascades, 2 the materials' last 3D, 3 the cubes, 4 the tiles, 5 its depth, 6 the sky grid)
             bindings[i] = {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
                            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
         }
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        dslci.bindingCount = 6;
+        dslci.bindingCount = 7;
         dslci.pBindings = bindings;
         vkCreateDescriptorSetLayout(vk::device(), &dslci, nullptr, &g_vk_sh.set_layout);
     }

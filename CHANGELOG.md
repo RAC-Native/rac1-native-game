@@ -14,6 +14,10 @@ What changed in each release. Releases are source only: you build the game with 
   on the open lava faces of the level's collision near the camera, drifting slowly in the air's currents), as Umbris's (the
   Snagglebeast's cave) and Gaspar's now do, none away from the lava or indoors; the wind is steady unless a line asks for gusts
   (`gust`); Hoven's snow is a calm, light snowfall; Batalia has rain only.
+- Ambient particles: no rain, snow or ash under a roof - Batalia's covered hall, Hoven's rooms, any tunnel or ledge -, and no
+  splashes or materials' rain rings there: the level's collision seen from above (the height of its topmost face, read once per level
+  on a thread of its own) keeps them out, softly at the openings; no box to place by hand. See
+  [Ambient particles](docs/particles.md#under-a-roof).
 - Modern lighting: more lamps light the world on Veldin and Novalis (nanotech crates, fires, plasma beams, landing pad, eyes, bombs), and
   lights per object class follow the objects the game spawns later (thanks Anya-Thoughtmane, #102).
 - Modern lighting: emissive surfaces. A level's light file can mark a texture (`emissive <tfrag|tie|shrub|moby> <class> tex <n>
