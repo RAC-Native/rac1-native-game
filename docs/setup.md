@@ -177,7 +177,9 @@ not supported yet.
 - **Run `./setup.sh` again at any time**, for example after a `git pull`. It rebuilds only what
   changed (CMake recompiles only what needs it), generates the code again only when the generators
   (`tools/codegen/`), the overlay matcher, the region table or the headers they read changed, and redoes a data step
-  only when the code that makes it changed, or when that step did not finish. A step added by an update (such as the
+  only when the code that makes it changed, or when that step did not finish. A step whose files were deleted since
+  (all of `assets/generated`, or part of it) is redone too: the setup says which files are missing, and the game says
+  at start when the modern renderer's assets are missing. A step added by an update (such as the
   flight between planets) runs on its own, without redoing the others. It remembers the disc image's path.
   What was generated, and from which code, is recorded in `assets/setup-state.json`.
 - **`./setup.sh --update`** (`setup.cmd --update` on Windows) fetches the latest release (or `main` when

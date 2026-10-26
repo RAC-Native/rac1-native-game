@@ -6,6 +6,9 @@ What changed in each release. Releases are source only: you build the game with 
 ## Unreleased
 
 ### Graphics
+- Surface materials: the puddles, ripples, rain rings and lava pulse are placed by an exact integer noise, the same on every
+  GPU and driver: on Vulkan Batalia's puddles (the covered hall's, the courtyard's) were in other places than on OpenGL, or
+  missing, because the old floating-point hash rounded differently per driver. The puddles' layout changes once on both.
 - The levels' water, lava and sand seas (VU1 program 7's surfaces: Rilgar's harbour, Gaspar's lava sea, Aridia's sand sea, Hoven,
   Umbris, Novalis, Kalebo, Drek's fleet..., the levels' baked shadow meshes and the nanotech orbs) are drawn by the modern renderer
   from the game's own geometry, in the world's projection: no side cut or wedge in a widened view, fogged as the GS fogs them, and
@@ -77,6 +80,10 @@ What changed in each release. Releases are source only: you build the game with 
   20; `--check-system` checks the system only), and the launcher offers to set up that container, builds the game in it
   and starts it from it, with a script to add to Steam for the Gaming Mode (#108). See
   [Setup](docs/setup.md#steam-deck-bazzite-and-other-immutable-systems).
+- The setup no longer trusts its record of a step whose files were deleted since (`assets/generated`, or part of it: the
+  moby or world assets, the generated code, the overlay maps, the boot executable): it says which is missing and makes it
+  again, instead of leaving the game without the modern renderer's assets until `--force`. The game says so at start too
+  when those assets are missing, and points to `./setup.sh`.
 
 ## 0.5.0
 
