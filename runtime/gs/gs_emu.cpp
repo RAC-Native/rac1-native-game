@@ -466,6 +466,12 @@ void Gs::vertex_kick(const Vertex& vin, bool draw) {
         p.fx_id = fx_id_;
         p.layer = layer_now_;
         p.hud = hud_now_;
+        p.vu_hash = vu_kick_ ? vu1::g_last_hash : 0;
+        p.src = label_now_;
+        if (vu_kick_ && vu7_drop_) {  // (a batch the MRP draws itself: set_chain_vu7)
+            p.fx = vu7_kind_;
+            p.fx_id = kVu7Kicked;
+        }
         prims_.push_back(std::move(p));
     }
     switch (type) {
@@ -680,6 +686,116 @@ void Gs::set_chain_layers(std::vector<std::pair<uint32_t, uint32_t>> ranges) {
 }
 
 // (host) see gs_emu.h
+void Gs::set_chain_labels(std::vector<LabelRange> ranges) {
+    std::sort(ranges.begin(), ranges.end(), [](const LabelRange& a, const LabelRange& b) { return a.first < b.first; });
+    label_ranges_ = std::move(ranges);
+}
+
+// (host) see gs_emu.h
+void Gs::set_chain_vu7(std::vector<Vu7Range> ranges, uint64_t hash, uint8_t kind) {
+    std::sort(ranges.begin(), ranges.end(), [](const Vu7Range& a, const Vu7Range& b) { return a.sub != b.sub ? a.sub < b.sub : a.first < b.first; });
+    vu7_ranges_ = std::move(ranges);
+    vu7_hash_ = hash;
+    vu7_kind_ = kind;
+    if (!vu7_ranges_.empty() && kind != 0) fx_external_ = true;
+}
+
+// (host) see gs_emu.h: before a program start on the walk's VU1 - a batch of program 7 in a vu7 range kept as the program finds it
+// (its GIF tag, then per vertex ST, RGBA, XYZ at XTOP; the constants the start-up loaded: vf18..vf21, vf30, vf31.w, vf7), with the
+// GS state its kick would have, and its place in the primitives' order
+void Gs::vu1_before(void* vu_p, uint32_t start, uint64_t hash) {
+    vu1::Vu1& vu = *static_cast<vu1::Vu1*>(vu_p);
+    if (inventory_) prog_t0_ = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+    if (!vu7_now_ || hash != vu7_hash_ || vu7_kind_ == 0 || (start != 0xc && start != 0xe)) return;
+    const VUState& st = vu.st;
+    auto q = [&st](uint32_t a) { return &st.mem[(a & 0x3ffu) << 4]; };
+    const uint32_t x = st.xtop;
+    uint64_t tag;
+    std::memcpy(&tag, q(x), 8);
+    const uint32_t n = static_cast<uint32_t>(tag & 0x7fff);
+    if (n < 3 || n > 0x150) return;  // (a batch holds at most (0x1d2 - 1) / 3 vertices)
+    Vu7Batch b;
+    const uint64_t prim0 = bits(tag, 46, 1) != 0 ? bits(tag, 47, 11) : regs_[0x00];
+    const uint64_t prim = bits(regs_[0x1a], 0, 1) ? prim0 : (regs_[0x1b] & ~7ull) | (prim0 & 7);
+    const int ctx = bits(prim, 9, 1);
+    DrawState& s = b.st;
+    s.prim = prim;
+    s.tex0 = regs_[0x06 + ctx];
+    s.clamp = regs_[0x08 + ctx];
+    s.tex1 = regs_[0x14 + ctx];
+    s.miptbp1 = regs_[0x34 + ctx];
+    s.alpha = regs_[0x42 + ctx];
+    s.test = regs_[0x47 + ctx];
+    s.scissor = regs_[0x40 + ctx];
+    s.fba = regs_[0x4a + ctx];
+    s.frame = regs_[0x4c + ctx];
+    s.zbuf = regs_[0x4e + ctx];
+    s.texa = regs_[0x3b];
+    s.colclamp = regs_[0x46];
+    s.pabe = regs_[0x49];
+    s.fogcol = regs_[0x3d];
+    s.dthe = regs_[0x45];
+    s.xyoffset = regs_[0x18 + ctx];
+    if (bits(prim, 4, 1) != 0) {
+        b.tex = texture_at_kick(s.tex0, s.texa);
+        b.mip = std::min(bits(s.tex1, 2, 3), 3u) != 0 && bits(s.tex1, 6, 3) >= 2;
+    }
+    for (int c = 0; c < 4; ++c)
+        for (int l = 0; l < 4; ++l) b.m[4 * c + l] = st.vf[static_cast<size_t>(18 + c)].f[l];
+    for (int l = 0; l < 4; ++l) b.off[l] = st.vf[30].f[l];
+    b.k = st.vf[31].f[3];
+    b.fog[0] = st.vf[7].f[0];
+    b.fog[1] = st.vf[7].f[1];
+    b.first = static_cast<uint32_t>(vu7_verts_.size());
+    b.n = n;
+    b.start = start;
+    b.src = label_now_;
+    b.tag = vu7_tag_;
+    b.sub = sub_wide_ ? 1 : sub_drop_ ? 2 : 0;
+    for (uint32_t i = 0; i < n; ++i) {
+        Vu7Vertex v;
+        float f[4];
+        uint32_t u[4];
+        std::memcpy(f, q(x + 1 + 3 * i), 16);
+        v.st[0] = f[0];
+        v.st[1] = f[1];
+        v.st[2] = f[2];
+        std::memcpy(u, q(x + 2 + 3 * i), 16);
+        for (int l = 0; l < 4; ++l) v.rgba[l] = static_cast<uint8_t>(u[l]);
+        std::memcpy(f, q(x + 3 + 3 * i), 16);
+        v.xyz[0] = f[0];
+        v.xyz[1] = f[1];
+        v.xyz[2] = f[2];
+        vu7_verts_.push_back(v);
+    }
+    if (scr_prim_ >= 0) screen_picture();
+    Primitive p;  // (its place in the primitives' order)
+    p.type = 9;
+    p.st = s;
+    p.fx = vu7_kind_;
+    p.fx_id = static_cast<uint32_t>(vu7_batches_.size());
+    p.sub = b.sub;
+    p.wide = sub_wide_;
+    p.vu = true;
+    p.vu_start = start;
+    p.vu_hash = hash;
+    p.src = label_now_;
+    prims_.push_back(std::move(p));
+    vu7_batches_.push_back(std::move(b));
+    vu7_drop_ = true;
+}
+
+// (host) see gs_emu.h
+void Gs::vu1_after(void*, uint32_t start, uint64_t hash) {
+    vu7_drop_ = false;
+    if (!inventory_) return;
+    const uint64_t t1 = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+    ProgTime& t = prog_times_[std::make_tuple(label_now_, hash, start)];
+    ++t.runs;
+    t.ns += t1 - prog_t0_;
+}
+
+// (host) see gs_emu.h
 void Gs::set_chain_hud(std::vector<HudRange> ranges) {
     std::sort(ranges.begin(), ranges.end(), [](const HudRange& a, const HudRange& b) { return a.first < b.first; });
     hud_ranges_ = std::move(ranges);
@@ -719,8 +835,21 @@ void Gs::chain_walk(uint32_t tag, uint32_t end, Mem&& mem) {
             g.layer_now_ = false;
             g.hud_ranges_.clear();
             g.hud_now_ = 0;
+            g.label_ranges_.clear();
+            g.label_now_ = 0;
+            g.vu7_ranges_.clear();
+            g.vu7_now_ = false;
+            g.vu7_drop_ = false;
         }
     } clear_skips{*this};
+    struct Observe : vu1::StartObserver {  // (host) the program starts of this walk (vu1_before / vu1_after), on this thread
+        Gs& g;
+        vu1::StartObserver* before_obs;
+        explicit Observe(Gs& gs) : g(gs), before_obs(vu1::g_start_observer) { vu1::g_start_observer = this; }
+        ~Observe() override { vu1::g_start_observer = before_obs; }
+        void before(vu1::Vu1& vu, uint32_t start, uint64_t hash) override { g.vu1_before(&vu, start, hash); }
+        void after(vu1::Vu1& vu, uint32_t start, uint64_t hash) override { g.vu1_after(&vu, start, hash); }
+    } observe{*this};
     struct ClearSub {  // (host) the substitutes last for one chain
         Gs& g;
         ~ClearSub() {
@@ -855,6 +984,23 @@ void Gs::chain_walk(uint32_t tag, uint32_t end, Mem&& mem) {
             auto it = std::upper_bound(layer_ranges_.begin(), layer_ranges_.end(), addr,
                                        [](uint32_t a, const std::pair<uint32_t, uint32_t>& r) { return a < r.first; });
             layer_now_ = it != layer_ranges_.begin() && addr <= std::prev(it)->second;
+        }
+        label_now_ = 0;
+        if (!label_ranges_.empty()) {  // (testing: the inventory's labels; a substitute's tags at the real range's addresses)
+            auto it = std::upper_bound(label_ranges_.begin(), label_ranges_.end(), addr, [](uint32_t a, const LabelRange& r) { return a < r.first; });
+            if (it != label_ranges_.begin() && addr <= std::prev(it)->last) label_now_ = std::prev(it)->label;
+        }
+        vu7_now_ = false;
+        if (!vu7_ranges_.empty()) {  // (the MRP's program-7 surfaces)
+            const uint8_t sb = in_sub ? static_cast<uint8_t>(cur + 1) : 0;
+            auto it = std::upper_bound(vu7_ranges_.begin(), vu7_ranges_.end(), std::make_pair(sb, addr), [](const std::pair<uint8_t, uint32_t>& k, const Vu7Range& r) {
+                return k.first != r.sub ? k.first < r.sub : k.second < r.first;
+            });
+            if (it != vu7_ranges_.begin()) {
+                --it;
+                vu7_now_ = it->sub == sb && addr >= it->first && addr <= it->last;
+                vu7_tag_ = it->tag;
+            }
         }
         hud_now_ = 0;
         if (!hud_ranges_.empty() && !in_sub) {  // (a HUD element's: the real chain's tags)

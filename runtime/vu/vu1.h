@@ -42,6 +42,19 @@ extern thread_local uint32_t g_last_start;  // the micro address of the program 
 // 4:3 frustum): the ported programs' tests that drop a primitive lying wholly past the frustum's sides use it, so that what the wider
 // window shows is not dropped (their clipping, at the guard band, is unchanged). x, y.
 extern thread_local float g_side_widen[2];
+// (host) the hash of the port started last on this thread (0: none, or a program with no port)
+extern thread_local uint64_t g_last_hash;
+// (host) an observer of the ported programs' starts on this thread (the GS replica's walk sets one while it walks a chain:
+// the MRP's native drawing of VU1 program 7's surfaces takes their input before the program transforms it in place, and the
+// inventory times the programs). `before` runs before the program (its hook included), `after` once it has ended.
+struct StartObserver {
+    virtual ~StartObserver() = default;
+    virtual void before(Vu1& vu, uint32_t start, uint64_t hash) = 0;
+    virtual void after(Vu1& vu, uint32_t start, uint64_t hash) = 0;
+};
+extern thread_local StartObserver* g_start_observer;
+// (host) the name a port was registered with (nullptr: none)
+const char* program_name(uint64_t hash);
 extern KickSink g_kick_tap;
 using StartHook = std::function<bool(Vu1& vu, uint32_t start, uint64_t hash, ProgramFn fn, const std::function<void(uint32_t)>& kick)>;
 extern StartHook g_start_hook;

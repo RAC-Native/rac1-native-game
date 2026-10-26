@@ -137,15 +137,18 @@ struct EmitterClass {
     bool material = false;
 };
 std::vector<EmitterClass> mrp_world_emitter_classes();
-// orig: (host) the level's emissive surfaces ("emissive <tfrag|tie|shrub|moby> <class> tex <n> [strength] [threshold]" in its file; our
+// orig: (host) the level's emissive surfaces ("emissive <tfrag|tie|shrub|moby|surface> <class> tex <n> [strength] [threshold]" in its file; our
 // data): with the modern lighting, the texels of that texture (those whose brightest channel reaches the threshold, all of them at 0)
 // keep the colour the original lighting gives them - the game's vertex colour, no sun shadow - times the strength, unless the modern
 // lighting makes them brighter (lamps, screens, eyes painted in textures: not darkened in shade or at night). `tex` is the class's
 // texture (a tie's texture prim, a shrub's or a moby's local texture 0..15); a tfrag has no class (`tfrag 0 tex <n>`: the level's
 // tfrag texture n). A tie's or a shrub's texture is the level's: it glows wherever the level uses it, a moby's is its class's alone.
+// A `surface` is one of VU1 program 7's surfaces the MRP draws (the levels' water, lava and sand sea, mrp_fx.h kMrpFxVu7): its class
+// the moby class whose draw-list callback draws it (0: a callback without a moby), its texture the GS memory block it is read from
+// (TEX0's TBP, as the RAC1_LIGHTS_TRACE report lists them).
 // Shader slots 1..30 (uEmis), 31 the debug menu's preview (a pulsing magenta)
 struct EmissiveSurface {
-    int kind = 1;  // 0 tfrag, 1 tie, 2 shrub, 3 moby
+    int kind = 1;  // 0 tfrag, 1 tie, 2 shrub, 3 moby, 4 surface (VU1 program 7's)
     int o_class = 0;
     int tex = 0;
     float strength = 1.0f;   // the original's colour x this (0..4)

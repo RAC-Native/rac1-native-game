@@ -2822,7 +2822,7 @@ void user_load(int level) {
             char kind[8] = {};
             const int got = std::sscanf(line, "emissive %7s %d tex %d %f %f", kind, &es.o_class, &es.tex, &es.strength, &es.threshold);
             int k = -1;
-            for (int i = 0; i < 4; ++i)
+            for (int i = 0; i < 5; ++i)
                 if (std::strcmp(kind, mrp_emissive_kind_name(i)) == 0) k = i;
             if (got >= 3 && k >= 0 && es.tex >= 0) {
                 es.kind = k;
@@ -2902,8 +2902,8 @@ std::atomic<uint32_t> g_emis_gen{1};
 std::vector<EmissiveSurface>& mrp_user_emissive() { return g_emissive_list; }
 // orig: (host) see mrp_lighting.h
 const char* mrp_emissive_kind_name(int kind) {
-    static const char* names[4] = {"tfrag", "tie", "shrub", "moby"};
-    return kind >= 0 && kind < 4 ? names[kind] : "?";
+    static const char* names[5] = {"tfrag", "tie", "shrub", "moby", "surface"};
+    return kind >= 0 && kind < 5 ? names[kind] : "?";
 }
 // orig: (host) see mrp_lighting.h
 void mrp_user_emissive_changed() {

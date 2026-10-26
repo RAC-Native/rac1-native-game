@@ -4,6 +4,7 @@
 
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/render/mrp_lighting.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_world_renderer.h>
@@ -20,10 +21,12 @@
 #include <GLFW/glfw3.h>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
 #include <array>
 #include <map>
+#include <set>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -36,6 +39,11 @@ namespace rac1 {
 
 bool g_mrp_fx = [] {
     const char* e = std::getenv("RAC1_MRP_FX");
+    return e == nullptr || std::atoi(e) != 0;
+}();
+
+bool g_mrp_seas = [] {
+    const char* e = std::getenv("RAC1_MRP_SEAS");
     return e == nullptr || std::atoi(e) != 0;
 }();
 
@@ -78,11 +86,13 @@ struct Notes {
     std::vector<Note> list;
     std::vector<Vu7> vu7;
     std::vector<glm::dvec3> vin;
+    std::vector<std::array<uint32_t, 3>> lists;  // the draw lists' callbacks' ranges [first, end) and their moby class (kMrpFxVu7)
     int32_t vu7_cur = -1;
     void clear() {
         list.clear();
         vu7.clear();
         vin.clear();
+        lists.clear();
         vu7_cur = -1;
     }
 };
@@ -117,6 +127,10 @@ struct Frame {
     std::vector<glm::dvec3> vin;
     std::array<glm::dvec4, 16> slots{};  // (the sparkles' check: the live slots' points, w 1; w 0 none)
     glm::dvec3 cam{0.0};                 // (the check: the camera 0x166dc0)
+    // (kMrpFxVu7) the world -> screen matrix 0x1fc740 builds from the frame's view (0x166cc0 x 1024 on the point less the camera,
+    // without its Z bias) and its inverse: a batch whose screen matrix is this one takes world points
+    glm::dmat4 vu7_g{1.0}, vu7_ginv{1.0};
+    bool vu7 = false;
 } g_frame;
 std::array<glm::dvec4, 16> g_slots_real{}, g_slots_shadow{};
 
@@ -701,6 +715,14 @@ void mrp_fx_note(uint8_t kind, uint32_t first, uint32_t end) {
 }
 
 // orig: (host) see mrp_fx.h
+void mrp_fx_note_list(uint32_t first, uint32_t end, uint32_t cls) {
+    if (!g_window || end <= first || !g_mrp_seas) return;
+    Notes& N = notes_now();
+    if (!N.lists.empty() && N.lists.back()[1] == first && N.lists.back()[2] == cls) N.lists.back()[1] = end;
+    else N.lists.push_back({first, end, cls});
+}
+
+// orig: (host) see mrp_fx.h
 void mrp_fx_note_vu7(uint32_t qw) {
     if (!g_window) return;
     Notes& N = notes_now();
@@ -844,14 +866,39 @@ void mrp_fx_particles_patch(bool begin) {
 }
 
 // orig: (host) see mrp_fx.h
-bool mrp_fx_chain_ranges(bool active, const std::vector<int>& subs, std::vector<gs::Gs::FxRange>& ranges) {
+bool mrp_fx_chain_ranges(bool active, const std::vector<int>& subs, std::vector<gs::Gs::FxRange>& ranges, std::vector<gs::Gs::Vu7Range>& vu7) {
     ranges.clear();
+    vu7.clear();
     Frame& F = g_frame;
     F.notes.clear();
     F.vin.clear();
-    bool any = !g_real.list.empty();
-    for (int k : subs) any = any || (k >= 0 && k < kMrpLodSlots && !g_shadow[k].list.empty());
+    F.vu7 = false;
+    bool any = !g_real.list.empty() || !g_real.lists.empty();
+    for (int k : subs) any = any || (k >= 0 && k < kMrpLodSlots && (!g_shadow[k].list.empty() || !g_shadow[k].lists.empty()));
     if (!g_mrp_fx || !g_world_mrp || !active || !any) return false;
+    if (g_mrp_seas && (g_kinds_mask >> kMrpFxVu7 & 1u) != 0) {  // (VU1 program 7's batches in the draw lists' callbacks)
+        auto add_lists = [&](const Notes& N, uint8_t sub) {
+            for (const auto& l : N.lists) vu7.push_back(gs::Gs::Vu7Range{l[0], l[1] - 1, sub, l[2]});
+        };
+        add_lists(g_real, 0);
+        for (size_t i = 0; i < subs.size(); ++i)
+            if (subs[i] >= 0 && subs[i] < kMrpLodSlots) add_lists(g_shadow[subs[i]], static_cast<uint8_t>(i + 1));
+        // (the ranges must not overlap: a substitute's are its own, sub k)
+        std::sort(vu7.begin(), vu7.end(), [](const gs::Gs::Vu7Range& a, const gs::Gs::Vu7Range& b) { return a.sub != b.sub ? a.sub < b.sub : a.first < b.first; });
+        std::vector<gs::Gs::Vu7Range> merged;
+        for (const auto& r : vu7) {
+            if (!merged.empty() && merged.back().sub == r.sub && r.first <= merged.back().last + 1 && r.tag == merged.back().tag)
+                merged.back().last = std::max(merged.back().last, r.last);
+            else if (!merged.empty() && merged.back().sub == r.sub && r.first <= merged.back().last)  // (overlapping: never seen; the first kept)
+                continue;
+            else merged.push_back(r);
+        }
+        vu7.swap(merged);
+        const glm::dvec3 cam(lwc1(OV(0x00166dc0u)), lwc1(OV(0x00166dc4u)), lwc1(OV(0x00166dc8u)));
+        F.vu7_g = rows_matrix(1024.0) * glm::translate(glm::dmat4(1.0), -cam);
+        F.vu7_ginv = glm::inverse(F.vu7_g);
+        F.vu7 = !vu7.empty();
+    }
     // the frame's projections
     F.views.assign(kMrpFxKinds, View{});
     const glm::dvec3 cam(lwc1(OV(0x00166dc0u)), lwc1(OV(0x00166dc4u)), lwc1(OV(0x00166dc8u)));
@@ -896,7 +943,7 @@ bool mrp_fx_chain_ranges(bool active, const std::vector<int>& subs, std::vector<
     }
     F.slots = fx_sub ? g_slots_shadow : g_slots_real;
     F.cam = cam;
-    return !ranges.empty();
+    return !ranges.empty() || !vu7.empty();
 }
 
 namespace {
@@ -1034,12 +1081,543 @@ void verify_vertex(const FrameNote& fn, const View& V, double X, double Y, doubl
     }
 }
 
-// the frame's work in the primitives' order: a run of the GS replica's (gs_draw from..to) or of the MRP's batches
+// the frame's work in the primitives' order: a run of the GS replica's (gs_draw from..to), of the MRP's effects' batches, or of
+// VU1 program 7's surfaces' batches (kMrpFxVu7)
+enum : int { kStepGs = 0, kStepFx = 1, kStepVu7 = 2 };
 struct Step {
-    bool gs = false;
+    int kind = kStepGs;
     size_t from = 0, to = 0;  // primitives (gs) or batches (MRP)
 };
 std::vector<Step> g_steps;
+
+// orig: (host) the GL state of a primitive's GS state (BKey) and its fragment shader's flags word
+void key_and_flags(const gs::DrawState& st, bool lines, BKey& k, uint32_t& flags) {
+    const bool tme = fld(st.prim, 4, 1) != 0, fge = fld(st.prim, 5, 1) != 0;
+    const uint32_t ztst = fld(st.test, 17, 2);
+    k = BKey{};
+    k.lines = lines;
+    k.blend = fld(st.prim, 6, 1) != 0;
+    k.alpha = k.blend ? st.alpha : 0;
+    // the GS's Cv = (A - B) C + D as dual-source factors: none (0), additive 0x48 (1), alpha 0x44 (2); else the batch's own state (3)
+    uint32_t bkind = 3;
+    if (!k.blend) bkind = 0;
+    else if ((st.alpha & 0xff) == 0x48) bkind = 1;
+    else if ((st.alpha & 0xff) == 0x44) bkind = 2;
+    if (bkind != 3) {
+        k.dual = true;
+        k.blend = false;
+        k.alpha = 0;
+    }
+    k.ztest = fld(st.test, 16, 1) != 0 && ztst != 1;
+    k.ztst = ztst;
+    k.zwrite = k.ztest && fld(st.zbuf, 32, 1) == 0;
+    k.split = k.zwrite && fld(st.test, 0, 1) != 0 && fld(st.test, 1, 3) != 1 && fld(st.test, 12, 2) != 0;
+    flags = (tme ? 1u : 0u) | (fld(st.tex0, 35, 2) << 1) | (fld(st.tex0, 34, 1) << 3) | (fld(st.prim, 3, 1) << 4) | ((fge ? 1u : 0u) << 5) |
+            (fld(st.test, 0, 1) << 6) | (fld(st.test, 1, 3) << 7) | (fld(st.test, 4, 8) << 10) | (fld(st.tex1, 5, 1) << 18) |
+            ((fld(st.clamp, 0, 2) == 0 ? 1u : 0u) << 19) | ((fld(st.clamp, 2, 2) == 0 ? 1u : 0u) << 20) | (fld(st.test, 12, 2) << 22) | (bkind << 24);
+}
+
+// ---- VU1 program 7's surfaces (kMrpFxVu7) ----------------------------------------------------------------------------
+
+// One vertex of a batch: its world point, S T Q as the batch holds them, the fog's term before its clamp (the screen matrix's w plus
+// vf30.w), RGBA; flat: the atlas layer, the texture's size, the flags word, FOGCOL; the fog's clamp
+struct V7 {
+    float wp[3];
+    float stq[3];
+    float fogw;
+    uint8_t rgba[4];
+    uint32_t tex[4];
+    float fogc[2];
+    uint32_t emis;
+    float pad;
+};
+static_assert(sizeof(V7) == 64);
+std::vector<V7> g_v7;
+std::vector<Batch> g_b7;
+
+struct Vu7Stats {
+    uint64_t batches = 0, tris = 0, world = 0, general = 0, no_tex = 0, mip = 0, bad_type = 0, clip_path = 0;
+    double bias_max = 0;
+} g_s7;
+
+// the emissive surfaces of kind 4 ("surface", mrp_lighting.h): (the callback's moby class, TEX0's TBP) -> the shader's slot
+struct Vu7Emissive {
+    uint32_t gen = 0;
+    std::unordered_map<uint64_t, uint32_t> slot;
+    std::set<uint64_t> seen;  // (RAC1_LIGHTS_TRACE: the surfaces drawn, listed once)
+    bool on = false;
+} g_e7;
+uint64_t e7_key(uint32_t cls, uint32_t tbp) { return static_cast<uint64_t>(cls) << 32 | tbp; }
+// orig: (host) the table brought up to date (once a frame)
+void vu7_emissive_refresh() {
+    std::vector<EmissiveSurface> list;
+    EmissiveSurface pv;
+    bool has_pv = false;
+    const uint32_t gen = mrp_emissive_snapshot(list, &pv, &has_pv);
+    g_e7.on = mrp_lighting_active() && g_emissive != 0;
+    if (gen == g_e7.gen) return;
+    g_e7.gen = gen;
+    g_e7.slot.clear();
+    for (size_t i = 0; i < list.size() && i < static_cast<size_t>(kEmissiveSlots); ++i)
+        if (list[i].kind == 4) g_e7.slot[e7_key(static_cast<uint32_t>(list[i].o_class), static_cast<uint32_t>(list[i].tex))] = static_cast<uint32_t>(i + 1);
+    if (has_pv && pv.kind == 4) g_e7.slot[e7_key(static_cast<uint32_t>(pv.o_class), static_cast<uint32_t>(pv.tex))] = static_cast<uint32_t>(kEmissivePreviewSlot);
+}
+
+// The program's own vertex (shadows_vu1.cpp, 0x010..): X Y Z = (M p).xyz x Q + vf30.xyz, Q = vf31.w / w, F = clamp(w + vf30.w,
+// vf7.x, vf7.y) (FTOI4: its integer part), STQ = (S, T, Q') x Q, the colour as it is. The MRP draws the same strip from the points p
+// themselves - in the world when M is the frame's 0x1fc740 matrix (less its Z bias), else taken there through it - with the world's
+// projection: the GL clips what the program clipped at the guard band (and the triangles its side test dropped).
+// orig: (host) the batch of type-9 primitive `p` into g_v7 / g_b7 (false: not drawn)
+bool build_vu7(const gs::Gs& gs, const gs::Primitive& p) {
+    const auto& bs = gs.vu7_batches();
+    if (p.fx_id >= bs.size()) return false;
+    const gs::Vu7Batch& b = bs[p.fx_id];
+    const gs::DrawState& st = b.st;
+    const int type = static_cast<int>(fld(st.prim, 0, 3));
+    if (type != 3 && type != 4 && type != 5) {
+        ++g_s7.bad_type;
+        return false;
+    }
+    const bool tme = fld(st.prim, 4, 1) != 0, fst = fld(st.prim, 8, 1) != 0;
+    int layer = 0, tw = 1, th = 1;
+    if (tme) {
+        if (b.tex == nullptr) {
+            ++g_s7.no_tex;
+            return false;
+        }
+        layer = atlas_layer(*b.tex);
+        if (layer < 0) return false;
+        tw = b.tex->w;
+        th = b.tex->h;
+        if (b.mip) ++g_s7.mip;
+    }
+    BKey k;
+    uint32_t flags = 0;
+    key_and_flags(st, false, k, flags);
+    glm::dmat4 M;
+    for (int c = 0; c < 4; ++c) M[c] = glm::dvec4(b.m[4 * c], b.m[4 * c + 1], b.m[4 * c + 2], b.m[4 * c + 3]);
+    // the frame's matrix? (its Z bias, 0x15f308 added to the translation's z, left out: the point drawn where it is)
+    const glm::dmat4& G = g_frame.vu7_g;
+    bool same = true;
+    for (int c = 0; c < 4 && same; ++c)
+        for (int r = 0; r < 4 && same; ++r) {
+            if (c == 3 && r == 2) continue;
+            const double scale = std::max({std::fabs(G[c][0]), std::fabs(G[c][1]), std::fabs(G[c][2]), std::fabs(G[c][3]), 1.0});
+            if (std::fabs(M[c][r] - G[c][r]) > 1e-4 * scale) same = false;
+        }
+    if (same) {
+        ++g_s7.world;
+        g_s7.bias_max = std::max(g_s7.bias_max, std::fabs(M[3][2] - G[3][2]));
+    } else {
+        ++g_s7.general;
+    }
+    ++g_s7.batches;
+    if (b.start == 0xe) ++g_s7.clip_path;
+    uint32_t emis = 0;
+    if (tme) {  // (an emissive surface: the callback's class, the texture's block)
+        const uint64_t key = e7_key(b.tag, fld(st.tex0, 0, 14));
+        if (g_e7.on)
+            if (auto it = g_e7.slot.find(key); it != g_e7.slot.end()) emis = it->second;
+        static const bool trace = std::getenv("RAC1_LIGHTS_TRACE") != nullptr;
+        if (trace && g_e7.seen.insert(key).second)
+            std::printf("[lights] program 7 surface: class %u tex %u (TEX0 %016llx, %d x %d): \"emissive surface %u tex %u\"\n", b.tag, fld(st.tex0, 0, 14),
+                        static_cast<unsigned long long>(st.tex0), tw, th, b.tag, fld(st.tex0, 0, 14));
+    }
+    const auto& vin = gs.vu7_vertices();
+    const size_t at = g_v7.size();
+    auto vert = [&](uint32_t i) {
+        const gs::Vu7Vertex& s = vin[b.first + i];
+        const glm::dvec4 pt(s.xyz[0], s.xyz[1], s.xyz[2], 1.0);
+        const glm::dvec4 clip = M * pt;
+        glm::dvec3 w(pt);
+        if (!same) {
+            const glm::dvec4 h = g_frame.vu7_ginv * clip;
+            w = std::fabs(h.w) > 1e-30 ? glm::dvec3(h) / h.w : glm::dvec3(pt);
+        }
+        V7 v{};
+        v.wp[0] = static_cast<float>(w.x);
+        v.wp[1] = static_cast<float>(w.y);
+        v.wp[2] = static_cast<float>(w.z);
+        if (fst) {  // (UV in texels: the program's STQ are the batch's ST x Q; with FST the GS reads the UV register - not kicked here)
+            v.stq[0] = s.st[0] / static_cast<float>(tw);
+            v.stq[1] = s.st[1] / static_cast<float>(th);
+            v.stq[2] = 1.0f;
+        } else {
+            v.stq[0] = s.st[0];
+            v.stq[1] = s.st[1];
+            v.stq[2] = s.st[2] != 0.0f ? s.st[2] : 1.0f;
+        }
+        v.fogw = static_cast<float>(clip.w) + b.off[3];
+        for (int l = 0; l < 4; ++l) v.rgba[l] = s.rgba[l];
+        v.tex[0] = static_cast<uint32_t>(layer);
+        v.tex[1] = static_cast<uint32_t>(tw) | static_cast<uint32_t>(th) << 16;
+        v.tex[2] = flags;
+        v.tex[3] = static_cast<uint32_t>(st.fogcol & 0xffffff);
+        v.fogc[0] = b.fog[0];
+        v.fogc[1] = b.fog[1];
+        v.emis = emis;
+        g_v7.push_back(v);
+    };
+    if (type == 3) {
+        for (uint32_t i = 0; i + 2 < b.n; i += 3) {
+            vert(i);
+            vert(i + 1);
+            vert(i + 2);
+        }
+    } else {
+        for (uint32_t i = 0; i + 2 < b.n; ++i) {
+            if (type == 4) {
+                vert(i);
+                vert(i + 1);
+                vert(i + 2);
+            } else {
+                vert(0);
+                vert(i + 1);
+                vert(i + 2);
+            }
+        }
+    }
+    const uint32_t n = static_cast<uint32_t>(g_v7.size() - at);
+    g_s7.tris += n / 3;
+    if (n == 0) return true;
+    if (g_b7.empty() || g_b7.back().count == 0) {
+        if (g_b7.empty()) g_b7.push_back(Batch{});
+        g_b7.back().key = k;
+        g_b7.back().first = static_cast<uint32_t>(at);
+    } else if (!(g_b7.back().key == k)) {
+        g_b7.push_back(Batch{k, static_cast<uint32_t>(at), 0});
+    }
+    g_b7.back().count += n;
+    return true;
+}
+
+const char* kV7Vs = R"(#version 460 core
+layout(location = 0) in vec3 aWorld;
+layout(location = 1) in vec3 aStq;
+layout(location = 2) in float aFogW;
+layout(location = 3) in uvec4 aRgba;
+layout(location = 4) in uvec4 aTex;
+layout(location = 5) in vec2 aFogC;
+layout(location = 6) in uint aEmis;
+uniform mat4 uVP;
+)" RAC1_SHADOW_VS R"(
+smooth out vec3 vStq;
+noperspective out vec4 vColor;
+flat out vec4 vFlat;
+noperspective out float vFogW;
+flat out vec2 vFogC;
+flat out uvec4 vTex;
+flat out uint vEmis;
+void main() {
+    gl_Position = sh_clip(uVP * vec4(aWorld, 1.0));
+    vStq = aStq;
+    vColor = vec4(aRgba) / 255.0;
+    vFlat = vColor;
+    vFogW = aFogW;
+    vFogC = aFogC;
+    vTex = aTex;
+    vEmis = aEmis;
+}
+)";
+
+// the effects' fragment shader (the GS's texture lookup, texture function, fog, alpha test, blending) with the program's fog - its
+// clamp per pixel - and, with the modern lighting, the sun's shadows, the point lights and the emissive surfaces
+const char* kV7Fs = R"(#version 460 core
+#define SH_SPLIT 1
+smooth in vec3 vStq;
+noperspective in vec4 vColor;
+flat in vec4 vFlat;
+noperspective in float vFogW;
+flat in vec2 vFogC;
+flat in uvec4 vTex;
+flat in uint vEmis;
+uniform sampler2DArray uAtlas;
+uniform int uShade;
+uniform int uPass;
+)" RAC1_SHADOW_FS R"(
+layout(location = 0, index = 0) out vec4 FragColor;
+layout(location = 0, index = 1) out vec4 FragFactor;
+ivec2 wrapc(ivec2 c, ivec2 sz, bool rs, bool rt) {
+    c.x = rs ? ((c.x % sz.x) + sz.x) % sz.x : clamp(c.x, 0, sz.x - 1);
+    c.y = rt ? ((c.y % sz.y) + sz.y) % sz.y : clamp(c.y, 0, sz.y - 1);
+    return c;
+}
+void main() {
+    sh_prepare();
+    uint fl = vTex.z;
+    bool tme = (fl & 1u) != 0u, iip = ((fl >> 4) & 1u) != 0u, fge = ((fl >> 5) & 1u) != 0u, ate = ((fl >> 6) & 1u) != 0u;
+    uint tfx = (fl >> 1) & 3u, tcc = (fl >> 3) & 1u, atst = (fl >> 7) & 7u, aref = (fl >> 10) & 0xffu, afail = (fl >> 22) & 3u;
+    bool lin = ((fl >> 18) & 1u) != 0u, rs = ((fl >> 19) & 1u) != 0u, rt = ((fl >> 20) & 1u) != 0u;
+    vec4 c = iip ? vColor : vFlat;
+    vec3 c_game = c.rgb;
+    // (the modern lighting: the sun's share of the surface's colour - taken as 55 %, our choice: the game's colour holds no light term
+    // to take apart - hidden where the shadow maps say so, and the point lights added; nothing with the original lighting)
+    c.rgb = sh_points(sh_apply_split(c.rgb, c.rgb * 0.45));
+    vec4 o = c;
+    if (tme) {
+        ivec2 sz = ivec2(int(vTex.y & 0xffffu), int(vTex.y >> 16));
+        vec2 uv = vStq.xy / vStq.z * vec2(sz);
+        int layer = int(vTex.x);
+        vec4 t;
+        if (lin) {
+            vec2 p = uv - 0.5;
+            ivec2 i0 = ivec2(floor(p));
+            vec2 f = p - vec2(i0);
+            vec4 t00 = texelFetch(uAtlas, ivec3(wrapc(i0, sz, rs, rt), layer), 0);
+            vec4 t10 = texelFetch(uAtlas, ivec3(wrapc(i0 + ivec2(1, 0), sz, rs, rt), layer), 0);
+            vec4 t01 = texelFetch(uAtlas, ivec3(wrapc(i0 + ivec2(0, 1), sz, rs, rt), layer), 0);
+            vec4 t11 = texelFetch(uAtlas, ivec3(wrapc(i0 + ivec2(1, 1), sz, rs, rt), layer), 0);
+            t = mix(mix(t00, t10, f.x), mix(t01, t11, f.x), f.y);
+        } else {
+            t = texelFetch(uAtlas, ivec3(wrapc(ivec2(floor(uv)), sz, rs, rt), layer), 0);
+        }
+        if (tfx == 0u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0); o.a = tcc != 0u ? t.a * c.a * (255.0 / 128.0) : c.a; }
+        else if (tfx == 1u) { o.rgb = t.rgb; o.a = tcc != 0u ? t.a : c.a; }
+        else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
+        else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
+        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, vEmis);
+        if (uShade == 2) o.rgb = t.rgb;
+    }
+    if (uShade == 1) o.rgb = c.rgb;
+    o = clamp(o, 0.0, 1.0);
+    if (fge) {  // F: the integer part of clamp(w + vf30.w, vf7.x, vf7.y), its low byte (FTOI4, XYZF2's F)
+        uint fc = vTex.w;
+        vec3 fogcol = vec3(float(fc & 0xffu), float((fc >> 8) & 0xffu), float((fc >> 16) & 0xffu)) / 255.0;
+        float fw = min(max(vFogW, vFogC.x), vFogC.y);
+        float f = float(uint(max(fw, 0.0)) & 0xffu) / 255.0;
+        o.rgb = o.rgb * f + fogcol * (1.0 - f);
+    }
+    float a = o.a * 255.0;
+    if (ate) {
+        bool pass = true;
+        if (atst == 0u) pass = false;
+        else if (atst == 2u) pass = a < float(aref);
+        else if (atst == 3u) pass = a <= float(aref);
+        else if (atst == 4u) pass = abs(a - float(aref)) < 0.5;
+        else if (atst == 5u) pass = a >= float(aref);
+        else if (atst == 6u) pass = a > float(aref);
+        else if (atst == 7u) pass = abs(a - float(aref)) >= 0.5;
+        if (!pass && uPass == 0 && (afail == 0u || afail == 2u)) discard;
+        if (!pass && uPass == 1 && afail != 2u) discard;
+    }
+    float as = min(o.a * (255.0 / 128.0), 1.0);
+    uint bk = (fl >> 24) & 3u;
+    if (bk == 1u || bk == 2u) {
+        FragColor = vec4(o.rgb * as, as);
+        FragFactor = vec4(bk == 1u ? 1.0 : 1.0 - as);
+    } else {
+        FragColor = vec4(o.rgb, as);
+        FragFactor = vec4(0.0);
+    }
+}
+)";
+
+GLuint g7_prog = 0, g7_vao = 0, g7_vbo = 0;
+GLint g7_loc_vp = -1, g7_loc_atlas = -1, g7_loc_shade = -1, g7_loc_pass = -1;
+ShadowLocs g7_sh;
+bool g7_failed = false;
+
+// orig: (host) the surfaces' GL program and vertex array (false: not made)
+bool init_gl_vu7() {
+    if (g7_prog != 0) return true;
+    if (g7_failed) return false;
+    const GLuint vs = compile(GL_VERTEX_SHADER, kV7Vs), fs = compile(GL_FRAGMENT_SHADER, kV7Fs);
+    g7_prog = glCreateProgram();
+    glAttachShader(g7_prog, vs);
+    glAttachShader(g7_prog, fs);
+    glLinkProgram(g7_prog);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+    GLint ok = 0;
+    glGetProgramiv(g7_prog, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        char log[2048];
+        glGetProgramInfoLog(g7_prog, sizeof log, nullptr, log);
+        std::fprintf(stderr, "[mrp-fx] program 7 surfaces: link: %s\n", log);
+        glDeleteProgram(g7_prog);
+        g7_prog = 0;
+        g7_failed = true;
+        return false;
+    }
+    g7_loc_vp = glGetUniformLocation(g7_prog, "uVP");
+    g7_loc_atlas = glGetUniformLocation(g7_prog, "uAtlas");
+    g7_loc_shade = glGetUniformLocation(g7_prog, "uShade");
+    g7_loc_pass = glGetUniformLocation(g7_prog, "uPass");
+    g7_sh = mrp_lighting_locs(g7_prog);
+    glGenVertexArrays(1, &g7_vao);
+    glGenBuffers(1, &g7_vbo);
+    rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &g7_vbo, "MRP program 7 surfaces");
+    glBindVertexArray(g7_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, g7_vbo);
+    const GLsizei S = sizeof(V7);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, S, reinterpret_cast<void*>(offsetof(V7, wp)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, S, reinterpret_cast<void*>(offsetof(V7, stq)));
+    glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, S, reinterpret_cast<void*>(offsetof(V7, fogw)));
+    glVertexAttribIPointer(3, 4, GL_UNSIGNED_BYTE, S, reinterpret_cast<void*>(offsetof(V7, rgba)));
+    glVertexAttribIPointer(4, 4, GL_UNSIGNED_INT, S, reinterpret_cast<void*>(offsetof(V7, tex)));
+    glVertexAttribPointer(5, 2, GL_FLOAT, GL_FALSE, S, reinterpret_cast<void*>(offsetof(V7, fogc)));
+    glVertexAttribIPointer(6, 1, GL_UNSIGNED_INT, S, reinterpret_cast<void*>(offsetof(V7, emis)));
+    for (GLuint a = 0; a < 7; ++a) glEnableVertexAttribArray(a);
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    return true;
+}
+
+struct V7VkPush {
+    float uVP[16];
+    int32_t uShade;
+    int32_t uPass;
+    int32_t _pad[2];
+};
+static_assert(sizeof(V7VkPush) == 80);
+VkShaderModule g7_vk_vs = VK_NULL_HANDLE, g7_vk_fs = VK_NULL_HANDLE;
+VkPipelineLayout g7_vk_layout = VK_NULL_HANDLE;
+
+void shutdown_vk_vu7() {
+    VkDevice dev = vk::device();
+    if (dev != VK_NULL_HANDLE) {
+        if (g7_vk_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(dev, g7_vk_layout, nullptr);
+        if (g7_vk_vs != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g7_vk_vs, nullptr);
+        if (g7_vk_fs != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g7_vk_fs, nullptr);
+    }
+    g7_vk_layout = VK_NULL_HANDLE;
+    g7_vk_vs = g7_vk_fs = VK_NULL_HANDLE;
+}
+
+// orig: (host) the surfaces' Vulkan shaders and pipeline layout (set 0 the effects' atlas, set 1 the lighting's)
+bool init_vk_vu7() {
+    if (g7_vk_layout != VK_NULL_HANDLE) return true;
+    if (!init_vk()) return false;
+    VkDevice dev = vk::device();
+    g7_vk_vs = vk::create_shader_module(vk::shaders::kMrpVu7Vs, sizeof(vk::shaders::kMrpVu7Vs));
+    g7_vk_fs = vk::create_shader_module(vk::shaders::kMrpVu7Fs, sizeof(vk::shaders::kMrpVu7Fs));
+    if (g7_vk_vs == VK_NULL_HANDLE || g7_vk_fs == VK_NULL_HANDLE) return false;
+    VkDescriptorSetLayout sets[2] = {g_vk_set_layout, reinterpret_cast<VkDescriptorSetLayout>(mrp_lighting_vk_set_layout())};
+    VkPushConstantRange pcr{};
+    pcr.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    pcr.offset = 0;
+    pcr.size = sizeof(V7VkPush);
+    VkPipelineLayoutCreateInfo plci{};
+    plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    plci.setLayoutCount = 2;
+    plci.pSetLayouts = sets;
+    plci.pushConstantRangeCount = 1;
+    plci.pPushConstantRanges = &pcr;
+    if (vkCreatePipelineLayout(dev, &plci, nullptr, &g7_vk_layout) != VK_SUCCESS) return false;
+    vk::register_shutdown_callback(shutdown_vk_vu7);
+    return true;
+}
+
+// orig: (host) the batches [from, to) of `bs` drawn with the bound GL program and vertex array (the GS state as GL state: blending,
+// the depth test and writes, the alpha test's split passes; `loc_pass` the program's uPass)
+void gl_draw_batches(const std::vector<Batch>& bs, size_t from, size_t to, GLint loc_pass) {
+    bool have = false;
+    BKey cur;
+    for (size_t bi = from; bi < to; ++bi) {
+        const Batch& b = bs[bi];
+        if (b.count == 0) continue;
+        const BKey& k = b.key;
+        if (!have || k.blend != cur.blend || k.alpha != cur.alpha || k.dual != cur.dual) {
+            if (k.dual) {
+                glEnable(GL_BLEND);
+                glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
+                glBlendFuncSeparate(GL_ONE, GL_SRC1_COLOR, GL_ONE, GL_ZERO);  // (the alpha written is the source's, as gs::blend_state)
+            } else {
+                gs::DrawState ds{};
+                ds.prim = k.blend ? (1ull << 6) : 0;
+                ds.alpha = k.alpha;
+                gs::blend_state(ds);
+            }
+        }
+        if (!have || k.ztest != cur.ztest || k.ztst != cur.ztst) {
+            if (k.ztest) {  // the GS's GEQUAL / GREATER on the host's depth: LEQUAL / LESS
+                glEnable(GL_DEPTH_TEST);
+                glDepthFunc(k.ztst == 0 ? GL_NEVER : k.ztst == 2 ? GL_LEQUAL : GL_LESS);
+            } else {
+                glDisable(GL_DEPTH_TEST);
+            }
+        }
+        glDepthMask(k.zwrite ? GL_TRUE : GL_FALSE);
+        if (k.split) {  // the Z of the pixels the GS writes it for first, then the colour against it with LEQUAL
+            glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+            glUniform1i(loc_pass, 1);
+            glDrawArrays(k.lines ? GL_LINES : GL_TRIANGLES, static_cast<GLint>(b.first), static_cast<GLsizei>(b.count));
+            glUniform1i(loc_pass, 0);
+            glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+            glDepthMask(GL_FALSE);
+            if (k.ztst != 0) glDepthFunc(GL_LEQUAL);
+            ++g_st.draws;
+        }
+        glDrawArrays(k.lines ? GL_LINES : GL_TRIANGLES, static_cast<GLint>(b.first), static_cast<GLsizei>(b.count));
+        if (k.split) {
+            glDepthMask(GL_TRUE);
+            glDepthFunc(k.ztst == 0 ? GL_NEVER : k.ztst == 2 ? GL_LEQUAL : GL_LESS);
+        }
+        ++g_st.draws;
+        ++g_st.batches;
+        cur = k;
+        have = true;
+    }
+}
+
+// orig: (host) the batches [from, to) of `bs` drawn on Vulkan: `base` the pipeline (shaders, layout, vertex input), `push` the push
+// constants of `push_size` bytes whose int at `pass_at` is uPass
+void vk_draw_batches(const std::vector<Batch>& bs, size_t from, size_t to, const vk::GraphicsPipelineDesc& base, VkPipelineLayout layout, void* push,
+                     uint32_t push_size, size_t pass_at) {
+    VkCommandBuffer cb = vk::cmd();
+    auto set_pass = [&](int32_t v) {
+        std::memcpy(static_cast<uint8_t*>(push) + pass_at, &v, 4);
+        vkCmdPushConstants(cb, layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, push_size, push);
+    };
+    for (size_t bi = from; bi < to; ++bi) {
+        const Batch& b = bs[bi];
+        if (b.count == 0) continue;
+        const BKey& k = b.key;
+        vk::GraphicsPipelineDesc desc = base;
+        desc.topology = k.lines ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        float fix = 0.0f;
+        if (k.dual) {
+            desc.blend_enable = true;
+            desc.src_color_blend = VK_BLEND_FACTOR_ONE;
+            desc.dst_color_blend = VK_BLEND_FACTOR_SRC1_COLOR;
+            desc.color_blend_op = VK_BLEND_OP_ADD;
+            desc.src_alpha_blend = VK_BLEND_FACTOR_ONE;
+            desc.dst_alpha_blend = VK_BLEND_FACTOR_ZERO;
+            desc.alpha_blend_op = VK_BLEND_OP_ADD;
+        } else {
+            gs::DrawState ds_blend{};
+            ds_blend.prim = k.blend ? (1ull << 6) : 0;
+            ds_blend.alpha = k.alpha;
+            gs::vk_blend_state(ds_blend, false, desc, fix);
+        }
+        const float bc[4] = {0.0f, 0.0f, 0.0f, fix};
+        vkCmdSetBlendConstants(cb, bc);
+        desc.depth_test = k.ztest;
+        desc.depth_compare = k.ztst == 0 ? VK_COMPARE_OP_NEVER : k.ztst == 2 ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_LESS;
+        if (k.split) {
+            desc.depth_write = true;
+            desc.color_write_mask = 0;
+            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, vk::create_graphics_pipeline(desc));
+            set_pass(1);
+            vkCmdDraw(cb, b.count, 1, b.first, 0);
+            ++g_st.draws;
+            desc.depth_write = false;
+            desc.color_write_mask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+            if (k.ztst != 0) desc.depth_compare = VK_COMPARE_OP_LESS_OR_EQUAL;
+            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, vk::create_graphics_pipeline(desc));
+            set_pass(0);
+            vkCmdDraw(cb, b.count, 1, b.first, 0);
+        } else {
+            desc.depth_write = k.zwrite;
+            desc.color_write_mask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, vk::create_graphics_pipeline(desc));
+            set_pass(0);
+            vkCmdDraw(cb, b.count, 1, b.first, 0);
+        }
+        ++g_st.draws;
+        ++g_st.batches;
+    }
+}
 
 }  // namespace
 
@@ -1049,7 +1627,7 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
     const std::vector<gs::Primitive>& prims = gs.primitives();
     to = std::min(to, prims.size());
     if (from >= to) return;
-    if (!gs.fx_external() || g_frame.notes.empty() || !init_gl()) {
+    if (!gs.fx_external() || (g_frame.notes.empty() && gs.vu7_batches().empty()) || !init_gl()) {
         if (gs_draw) gs_draw(from, to);
         return;
     }
@@ -1059,6 +1637,9 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
     g_v.clear();
     g_batches.clear();
     g_steps.clear();
+    g_v7.clear();
+    g_b7.clear();
+    if (from == 0 || g_e7.gen == 0) vu7_emissive_refresh();
     float vpm[16];
     mrp_world_view_proj(vpm);
     glm::dmat4 VP;
@@ -1066,23 +1647,47 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
         for (int r = 0; r < 4; ++r) VP[c][r] = vpm[c * 4 + r];
     const bool vu_mode = g_mrp_world_projection != 0;
     uint64_t env_xyoff = 0;
-    size_t gs_from = from;  // the start of the GS replica's run in progress
-    bool in_mrp = false;  // the MRP's run in progress (its batches from g_steps.back().from)
-    auto close_gs = [&](size_t at) {
-        if (at > gs_from) g_steps.push_back(Step{true, gs_from, at});
+    // the run in progress: kStepGs from gs_from, or an MRP step (its batches from g_steps.back().from)
+    int run = kStepGs;
+    size_t gs_from = from;
+    auto switch_to = [&](int kind, size_t pi) {
+        if (kind == run) return;
+        if (run == kStepGs) {
+            if (pi > gs_from) g_steps.push_back(Step{kStepGs, gs_from, pi});
+        } else {
+            g_steps.back().to = run == kStepFx ? g_batches.size() : g_b7.size();
+        }
+        run = kind;
+        if (kind == kStepGs) {
+            gs_from = pi;
+        } else if (kind == kStepFx) {
+            g_steps.push_back(Step{kStepFx, g_batches.size(), g_batches.size()});
+            g_batches.push_back(Batch{});  // (a new step starts a new batch)
+            g_batches.back().first = static_cast<uint32_t>(g_v.size());
+            g_batches.back().count = 0;
+        } else {
+            g_steps.push_back(Step{kStepVu7, g_b7.size(), g_b7.size()});
+            g_b7.push_back(Batch{});
+            g_b7.back().first = static_cast<uint32_t>(g_v7.size());
+            g_b7.back().count = 0;
+        }
     };
     for (size_t pi = from; pi < to; ++pi) {
         const gs::Primitive& p = prims[pi];
         // the MRP's: fx, not the real block's while the effects shadow's stands in for it (as gs::draw: those are dropped)
         if (p.fx == 0) {
-            if (in_mrp) {
-                g_steps.back().to = g_batches.size();
-                in_mrp = false;
-                gs_from = pi;
-            }
+            switch_to(kStepGs, pi);
             continue;
         }
         if (p.sub == 2) continue;
+        if (p.fx == kMrpFxVu7) {  // (program 7's batches: drawn from their input; their kicks are not drawn)
+            if (p.type != 9) continue;
+            if (g_render_fx) {
+                switch_to(kStepVu7, pi);
+                build_vu7(gs, p);
+            }
+            continue;
+        }
         if (p.type != 3 && p.type != 6 && p.type != 1) continue;
         if (p.fx_id >= g_frame.notes.size()) continue;
         const FrameNote& fn = g_frame.notes[p.fx_id];
@@ -1098,19 +1703,11 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
             th = p.tex->h;
             if (p.mip_n > 0) ++g_st.tex_mip;  // (the base level only: the effects' TEX1 have none)
         }
-        if (!in_mrp) {
-            close_gs(pi);
-            g_steps.push_back(Step{false, g_batches.size(), g_batches.size()});
-            in_mrp = true;
-            g_batches.push_back(Batch{});  // (a new step starts a new batch)
-            g_batches.back().first = static_cast<uint32_t>(g_v.size());
-            g_batches.back().count = 0;
-        }
+        switch_to(kStepFx, pi);
         if (fld(st.clamp, 0, 2) >= 2 || fld(st.clamp, 2, 2) >= 2) ++g_st.region;
         if (fst) ++g_st.fst;
         const bool fge = fld(st.prim, 5, 1) != 0;
         if (fge) ++g_st.fge;
-        const uint32_t ztst = fld(st.test, 17, 2);
         if (g_env_states) {  // (testing: the GS states the effects are drawn with)
             const uint64_t key = (static_cast<uint64_t>(fn.kind) << 60) ^ (st.test & 0xffffff) ^ (static_cast<uint64_t>(fld(st.zbuf, 32, 1)) << 24) ^
                                  (static_cast<uint64_t>(fld(st.frame, 0, 9)) << 25) ^ ((st.alpha & 0xff) << 34) ^ (static_cast<uint64_t>(fld(st.prim, 6, 1)) << 42) ^
@@ -1118,26 +1715,8 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
             ++g_states[key];
         }
         BKey k;
-        k.lines = p.type == 1;
-        k.blend = fld(st.prim, 6, 1) != 0;
-        k.alpha = k.blend ? st.alpha : 0;
-        // the GS's Cv = (A - B) C + D as dual-source factors: none (0), additive 0x48 (1), alpha 0x44 (2); else the batch's own state (3)
-        uint32_t bkind = 3;
-        if (!k.blend) bkind = 0;
-        else if ((st.alpha & 0xff) == 0x48) bkind = 1;
-        else if ((st.alpha & 0xff) == 0x44) bkind = 2;
-        if (bkind != 3) {
-            k.dual = true;
-            k.blend = false;
-            k.alpha = 0;
-        }
-        k.ztest = fld(st.test, 16, 1) != 0 && ztst != 1;
-        k.ztst = ztst;
-        k.zwrite = k.ztest && fld(st.zbuf, 32, 1) == 0;
-        k.split = k.zwrite && fld(st.test, 0, 1) != 0 && fld(st.test, 1, 3) != 1 && fld(st.test, 12, 2) != 0;
-        const uint32_t flags = (tme ? 1u : 0u) | (fld(st.tex0, 35, 2) << 1) | (fld(st.tex0, 34, 1) << 3) | (fld(st.prim, 3, 1) << 4) | ((fge ? 1u : 0u) << 5) |
-                               (fld(st.test, 0, 1) << 6) | (fld(st.test, 1, 3) << 7) | (fld(st.test, 4, 8) << 10) | (fld(st.tex1, 5, 1) << 18) |
-                               ((fld(st.clamp, 0, 2) == 0 ? 1u : 0u) << 19) | ((fld(st.clamp, 2, 2) == 0 ? 1u : 0u) << 20) | (fld(st.test, 12, 2) << 22) | (bkind << 24);
+        uint32_t flags = 0;
+        key_and_flags(st, p.type == 1, k, flags);
         const double ox = static_cast<double>(fld(st.xyoffset, 0, 16)) / 16.0, oy = static_cast<double>(fld(st.xyoffset, 32, 16)) / 16.0;
         env_xyoff = st.xyoffset;
         // a vertex of the GS's (its pixel x / y, Z, S, T, Q, colour, F) as the MRP's
@@ -1209,21 +1788,41 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
         else if (last.count == 0) last.key = k;
         g_batches.back().count += n;
     }
-    if (in_mrp) g_steps.back().to = g_batches.size();
-    else close_gs(to);
+    switch_to(kStepGs, to);  // (the run in progress closed)
+    if (gs_from < to) g_steps.push_back(Step{kStepGs, gs_from, to});
     const auto t1 = clock::now();
     g_st.ms_build += std::chrono::duration<double, std::milli>(t1 - t0).count();
     if (g_env_debug && g_st.frames % 60 == 1)
-        std::printf("[mrp-fx] frame %llu: %zu vertices, %zu batches, %zu steps, atlas %d layers\n", static_cast<unsigned long long>(g_st.frames), g_v.size(), g_batches.size(),
-                    g_steps.size(), g_atlas.used);
+        std::printf("[mrp-fx] frame %llu: %zu vertices, %zu batches, %zu steps, atlas %d layers, %zu program 7 vertices\n", static_cast<unsigned long long>(g_st.frames),
+                    g_v.size(), g_batches.size(), g_steps.size(), g_atlas.used, g_v7.size());
     g_st.verts += g_v.size();
     double ms_gs = 0.0;
-    bool uploaded = false;
-    vk::RingAlloc vk_vbo_alloc{};
+    bool uploaded = false, uploaded7 = false;
+    vk::RingAlloc vk_vbo_alloc{}, vk_vbo7_alloc{};
     VkDescriptorSet vk_ds = VK_NULL_HANDLE;
+    float fb_w = static_cast<float>(lhu(0x001518d0)), fb_h = static_cast<float>(lhu(0x001518d2));
+    if (fb_w <= 0.0f) fb_w = 512.0f;
+    if (fb_h <= 0.0f) fb_h = 416.0f;
+    auto vk_atlas_set = [&] {  // (the atlas's descriptor set, once a frame)
+        if (vk_ds != VK_NULL_HANDLE) return;
+        if (g_vk_atlas_img.image == VK_NULL_HANDLE) atlas_grow(g_vk_atlas, 32);
+        vk_ds = vk::alloc_descriptor_set(g_vk_set_layout);
+        VkDescriptorImageInfo dii{};
+        dii.sampler = g_vk_sampler;
+        dii.imageView = g_vk_atlas_img.view != VK_NULL_HANDLE ? g_vk_atlas_img.view : vk::white_texture_array().view;
+        dii.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        VkWriteDescriptorSet wds{};
+        wds.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        wds.dstSet = vk_ds;
+        wds.dstBinding = 0;
+        wds.descriptorCount = 1;
+        wds.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        wds.pImageInfo = &dii;
+        vkUpdateDescriptorSets(vk::device(), 1, &wds, 0, nullptr);
+    };
     for (const Step& sp : g_steps) {
         if (!g_render_fx) break;  // (the debug menu's effects layer hidden)
-        if (sp.gs) {  // the GS replica's run (its own GL state)
+        if (sp.kind == kStepGs) {  // the GS replica's run (its own GL state)
             if (gs_draw) {
                 const auto g0 = clock::now();
                 gs_draw(sp.from, sp.to);
@@ -1233,27 +1832,89 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
             continue;
         }
         if (g_env_hide) continue;  // (testing)
+        if (sp.kind == kStepVu7) {  // program 7's surfaces
+            if (g_v7.empty() || sp.from >= sp.to) continue;
+            if (vk::is_active()) {
+                if (!init_vk_vu7()) continue;
+                if (!uploaded7) {
+                    vk_vbo7_alloc = vk::alloc_ring(g_v7.size() * sizeof(V7), 16);
+                    std::memcpy(vk_vbo7_alloc.ptr, g_v7.data(), g_v7.size() * sizeof(V7));
+                    uploaded7 = true;
+                }
+                vk_atlas_set();
+                vk::ensure_rendering();
+                if (vp != nullptr) vk::set_viewport(vp->x, vp->y, vp->w, vp->h);
+                else vk::set_viewport(0, 0, win_w, win_h);
+                vk::set_scissor(false);
+                VkCommandBuffer cb = vk::cmd();
+                vkCmdBindVertexBuffers(cb, 0, 1, &vk_vbo7_alloc.buffer, &vk_vbo7_alloc.offset);
+                vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g7_vk_layout, 0, 1, &vk_ds, 0, nullptr);
+                const uint64_t pl = reinterpret_cast<uint64_t>(g7_vk_layout);
+                if (mrp_lighting_active()) mrp_lighting_vk_bind_receiver(pl, false, true);
+                else mrp_lighting_vk_bind_off(pl);
+                V7VkPush pc{};
+                std::memcpy(pc.uVP, vpm, sizeof(pc.uVP));
+                pc.uShade = g_render_shade;
+                vk::GraphicsPipelineDesc base{};
+                base.layout = g7_vk_layout;
+                base.vs = g7_vk_vs;
+                base.fs = g7_vk_fs;
+                base.vertex_bindings = {{0, sizeof(V7), VK_VERTEX_INPUT_RATE_VERTEX}};
+                base.vertex_attribs = {
+                    {0, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(V7, wp))},
+                    {1, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(V7, stq))},
+                    {2, 0, VK_FORMAT_R32_SFLOAT, static_cast<uint32_t>(offsetof(V7, fogw))},
+                    {3, 0, VK_FORMAT_R8G8B8A8_UINT, static_cast<uint32_t>(offsetof(V7, rgba))},
+                    {4, 0, VK_FORMAT_R32G32B32A32_UINT, static_cast<uint32_t>(offsetof(V7, tex))},
+                    {5, 0, VK_FORMAT_R32G32_SFLOAT, static_cast<uint32_t>(offsetof(V7, fogc))},
+                    {6, 0, VK_FORMAT_R32_UINT, static_cast<uint32_t>(offsetof(V7, emis))},
+                };
+                base.cull_mode = VK_CULL_MODE_NONE;
+                vk_draw_batches(g_b7, sp.from, sp.to, base, g7_vk_layout, &pc, sizeof(pc), offsetof(V7VkPush, uPass));
+                continue;
+            }
+            if (!init_gl_vu7()) continue;
+            if (vp != nullptr) glViewport(vp->x, vp->y, vp->w, vp->h);
+            else glViewport(0, 0, win_w, win_h);
+            glUseProgram(g7_prog);
+            glUniformMatrix4fv(g7_loc_vp, 1, GL_FALSE, vpm);
+            glUniform1i(g7_loc_atlas, 0);
+            glUniform1i(g7_loc_shade, g_render_shade);
+            glUniform1i(g7_loc_pass, 0);
+            if (mrp_lighting_active()) mrp_lighting_bind_receiver(g7_sh);
+            else mrp_lighting_bind_off(g7_sh);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D_ARRAY, g_atlas.tex);
+            glBindSampler(0, 0);
+            glBindVertexArray(g7_vao);
+            glBindBuffer(GL_ARRAY_BUFFER, g7_vbo);
+            if (!uploaded7) {
+                glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(g_v7.size() * sizeof(V7)), g_v7.data(), GL_STREAM_DRAW);
+                uploaded7 = true;
+            }
+            glDisable(GL_CULL_FACE);
+            glDisable(GL_SCISSOR_TEST);
+            gl_draw_batches(g_b7, sp.from, sp.to, g7_loc_pass);
+            mrp_lighting_bind_off(g7_sh);
+            glBindVertexArray(0);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+            glUseProgram(0);
+            glDisable(GL_BLEND);
+            glDepthMask(GL_TRUE);
+            glDepthFunc(GL_LEQUAL);
+            glDisable(GL_DEPTH_TEST);
+            continue;
+        }
         if (vk::is_active()) {
             if (!uploaded && !g_v.empty()) {
                 vk_vbo_alloc = vk::alloc_ring(g_v.size() * sizeof(FV), 16);
                 std::memcpy(vk_vbo_alloc.ptr, g_v.data(), g_v.size() * sizeof(FV));
-                if (g_vk_atlas_img.image == VK_NULL_HANDLE) atlas_grow(g_vk_atlas, 32);
-                vk_ds = vk::alloc_descriptor_set(g_vk_set_layout);
-                VkDescriptorImageInfo dii{};
-                dii.sampler = g_vk_sampler;
-                dii.imageView = g_vk_atlas_img.view != VK_NULL_HANDLE ? g_vk_atlas_img.view : vk::white_texture_array().view;
-                dii.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                VkWriteDescriptorSet wds{};
-                wds.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                wds.dstSet = vk_ds;
-                wds.dstBinding = 0;
-                wds.descriptorCount = 1;
-                wds.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                wds.pImageInfo = &dii;
-                vkUpdateDescriptorSets(vk::device(), 1, &wds, 0, nullptr);
                 uploaded = true;
             }
             if (g_v.empty()) continue;
+            vk_atlas_set();
             vk::ensure_rendering();
             if (vp != nullptr) vk::set_viewport(vp->x, vp->y, vp->w, vp->h);
             else vk::set_viewport(0, 0, win_w, win_h);
@@ -1264,9 +1925,6 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
 
             FxVkPush pc{};
             std::memcpy(pc.uVP, vpm, sizeof(pc.uVP));
-            float fb_w = static_cast<float>(lhu(0x001518d0)), fb_h = static_cast<float>(lhu(0x001518d2));
-            if (fb_w <= 0.0f) fb_w = 512.0f;
-            if (fb_h <= 0.0f) fb_h = 416.0f;
             pc.uFrame[0] = fb_w;
             pc.uFrame[1] = fb_h;
             pc.uFrame[2] = vp != nullptr ? vp->xscale_3d : 1.0f;
@@ -1295,66 +1953,7 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
                 {5, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(FV, vu))},
             };
             base_desc.cull_mode = VK_CULL_MODE_NONE;
-
-            for (size_t bi = sp.from; bi < sp.to; ++bi) {
-                const Batch& b = g_batches[bi];
-                if (b.count == 0) continue;
-                const BKey& k = b.key;
-                vk::GraphicsPipelineDesc desc = base_desc;
-                desc.topology = k.lines ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-                float fix = 0.0f;
-                if (k.dual) {
-                    desc.blend_enable = true;
-                    desc.src_color_blend = VK_BLEND_FACTOR_ONE;
-                    desc.dst_color_blend = VK_BLEND_FACTOR_SRC1_COLOR;
-                    desc.color_blend_op = VK_BLEND_OP_ADD;
-                    desc.src_alpha_blend = VK_BLEND_FACTOR_ONE;
-                    desc.dst_alpha_blend = VK_BLEND_FACTOR_ZERO;
-                    desc.alpha_blend_op = VK_BLEND_OP_ADD;
-                } else {
-                    gs::DrawState ds_blend{};
-                    ds_blend.prim = k.blend ? (1ull << 6) : 0;
-                    ds_blend.alpha = k.alpha;
-                    gs::vk_blend_state(ds_blend, false, desc, fix);
-                }
-                const float bc[4] = {0.0f, 0.0f, 0.0f, fix};
-                vkCmdSetBlendConstants(cb, bc);
-
-                desc.depth_test = k.ztest;
-                desc.depth_compare = k.ztst == 0 ? VK_COMPARE_OP_NEVER : k.ztst == 2 ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_LESS;
-
-                if (k.split) {
-                    desc.depth_write = true;
-                    desc.color_write_mask = 0;
-                    VkPipeline p1 = vk::create_graphics_pipeline(desc);
-                    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, p1);
-                    pc.uPass = 1;
-                    vkCmdPushConstants(cb, g_vk_pipe_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
-                    vkCmdDraw(cb, b.count, 1, b.first, 0);
-                    ++g_st.draws;
-
-                    desc.depth_write = false;
-                    desc.color_write_mask =
-                        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-                    if (k.ztst != 0) desc.depth_compare = VK_COMPARE_OP_LESS_OR_EQUAL;
-                    VkPipeline p2 = vk::create_graphics_pipeline(desc);
-                    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, p2);
-                    pc.uPass = 0;
-                    vkCmdPushConstants(cb, g_vk_pipe_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
-                    vkCmdDraw(cb, b.count, 1, b.first, 0);
-                } else {
-                    desc.depth_write = k.zwrite;
-                    desc.color_write_mask =
-                        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-                    VkPipeline pipe = vk::create_graphics_pipeline(desc);
-                    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
-                    pc.uPass = 0;
-                    vkCmdPushConstants(cb, g_vk_pipe_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
-                    vkCmdDraw(cb, b.count, 1, b.first, 0);
-                }
-                ++g_st.draws;
-                ++g_st.batches;
-            }
+            vk_draw_batches(g_batches, sp.from, sp.to, base_desc, g_vk_pipe_layout, &pc, sizeof(pc), offsetof(FxVkPush, uPass));
             continue;
         }
         // the GL state
@@ -1367,9 +1966,6 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
         glUniform1i(g_loc_mode, vu_mode ? 1 : 0);
         glUniform1i(g_loc_pass, 0);
         {  // (the VU projection: the frame's centre in GS pixels - XYOFFSET plus half the frame -, the depth map of the replica)
-            float fb_w = static_cast<float>(lhu(0x001518d0)), fb_h = static_cast<float>(lhu(0x001518d2));
-            if (fb_w <= 0.0f) fb_w = 512.0f;
-            if (fb_h <= 0.0f) fb_h = 416.0f;
             glUniform4f(g_loc_frame, fb_w, fb_h, vp != nullptr ? vp->xscale_3d : 1.0f, 0.0f);
             double da = 0.0, db = 0.0;
             const bool has = render_gs_depth(da, db);
@@ -1387,53 +1983,7 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
         }
         glDisable(GL_CULL_FACE);
         glDisable(GL_SCISSOR_TEST);
-        bool have = false;
-        BKey cur;
-        for (size_t bi = sp.from; bi < sp.to; ++bi) {
-            const Batch& b = g_batches[bi];
-            if (b.count == 0) continue;
-            const BKey& k = b.key;
-            if (!have || k.blend != cur.blend || k.alpha != cur.alpha || k.dual != cur.dual) {
-                if (k.dual) {
-                    glEnable(GL_BLEND);
-                    glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
-                    glBlendFuncSeparate(GL_ONE, GL_SRC1_COLOR, GL_ONE, GL_ZERO);  // (the alpha written is the source's, as gs::blend_state)
-                } else {
-                    gs::DrawState ds{};
-                    ds.prim = k.blend ? (1ull << 6) : 0;
-                    ds.alpha = k.alpha;
-                    gs::blend_state(ds);
-                }
-            }
-            if (!have || k.ztest != cur.ztest || k.ztst != cur.ztst) {
-                if (k.ztest) {  // the GS's GEQUAL / GREATER on the host's depth: LEQUAL / LESS
-                    glEnable(GL_DEPTH_TEST);
-                    glDepthFunc(k.ztst == 0 ? GL_NEVER : k.ztst == 2 ? GL_LEQUAL : GL_LESS);
-                } else {
-                    glDisable(GL_DEPTH_TEST);
-                }
-            }
-            glDepthMask(k.zwrite ? GL_TRUE : GL_FALSE);
-            if (k.split) {  // the Z of the pixels the GS writes it for first, then the colour against it with LEQUAL
-                glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-                glUniform1i(g_loc_pass, 1);
-                glDrawArrays(k.lines ? GL_LINES : GL_TRIANGLES, static_cast<GLint>(b.first), static_cast<GLsizei>(b.count));
-                glUniform1i(g_loc_pass, 0);
-                glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-                glDepthMask(GL_FALSE);
-                if (k.ztst != 0) glDepthFunc(GL_LEQUAL);
-                ++g_st.draws;
-            }
-            glDrawArrays(k.lines ? GL_LINES : GL_TRIANGLES, static_cast<GLint>(b.first), static_cast<GLsizei>(b.count));
-            if (k.split) {
-                glDepthMask(GL_TRUE);
-                glDepthFunc(k.ztst == 0 ? GL_NEVER : k.ztst == 2 ? GL_LEQUAL : GL_LESS);
-            }
-            ++g_st.draws;
-            ++g_st.batches;
-            cur = k;
-            have = true;
-        }
+        gl_draw_batches(g_batches, sp.from, sp.to, g_loc_pass);
         glBindVertexArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
@@ -1536,6 +2086,12 @@ void mrp_fx_report() {
                 static_cast<unsigned long long>(g_st.fge), g_st.ms_build / f, g_st.ms_gl / f);
     std::printf("[mrp-fx] atlas: %d of %d layers (cap %d), %llu reused, %llu textures not drawn (every layer in use)\n", A.used, A.layers, A.cap,
                 static_cast<unsigned long long>(A.reused), static_cast<unsigned long long>(A.full));
+    if (g_s7.batches != 0)
+        std::printf("[mrp-fx] program 7 surfaces: %llu batches (%llu on the clipping path), %llu triangles drawn from their input; %llu in the world as they are "
+                    "(largest Z bias left out %.1f), %llu through their own matrix; %llu without a texture, %llu with mip levels (the base drawn), %llu not triangles\n",
+                    static_cast<unsigned long long>(g_s7.batches), static_cast<unsigned long long>(g_s7.clip_path), static_cast<unsigned long long>(g_s7.tris),
+                    static_cast<unsigned long long>(g_s7.world), g_s7.bias_max, static_cast<unsigned long long>(g_s7.general), static_cast<unsigned long long>(g_s7.no_tex),
+                    static_cast<unsigned long long>(g_s7.mip), static_cast<unsigned long long>(g_s7.bad_type));
     if (g_st.kc_starts != 0)
         std::printf("[mrp-fx] kick check: %llu particle program starts, %llu kicks, %llu quadwords against the VU interpreter on the uploaded microcode: "
                     "%llu starts and %llu quadwords differ\n",
@@ -1546,7 +2102,7 @@ void mrp_fx_report() {
                     static_cast<unsigned long long>(g_st.ver_verts), static_cast<unsigned long long>(g_st.ver_xy_bad), g_st.ver_max_xy,
                     static_cast<unsigned long long>(g_st.ver_z_bad), g_st.ver_max_z);
     {  // by producer
-        static const char* names[kMrpFxKinds] = {"", "particles", "quads", "sparkles", "prim lists"};
+        static const char* names[kMrpFxKinds] = {"", "particles", "quads", "sparkles", "prim lists", "program 7 surfaces"};
         std::printf("[mrp-fx] by producer (ranges / primitives drawn):");
         for (int k = 1; k < kMrpFxKinds; ++k)
             std::printf(" %s %llu / %llu", names[k], static_cast<unsigned long long>(g_st.notes[k]), static_cast<unsigned long long>(g_st.by_kind[k]));

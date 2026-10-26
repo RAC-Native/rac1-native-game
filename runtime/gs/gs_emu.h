@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -74,12 +75,47 @@ struct Primitive {
     // (host) kicked inside a HUD element's range (Gs::set_chain_hud): 1 an element at the frame's left, 2 at its right; moved
     // toward the edges of a HUD wider than 4:3 (Viewport::hud_shift, gs_draw.cpp). 0: none (centred, or not the HUD)
     uint8_t hud = 0;
+    // (host) the hash of the ported VU1 program that kicked it (vu1::g_last_hash; 0: none), and the label of the chain range its tag
+    // was in (Gs::set_chain_labels; 0: none): the replica's inventory (testing)
+    uint64_t vu_hash = 0;
+    uint32_t src = 0;
+};
+
+// (host) one batch of VU1 program 7 (the shadow-mesh program, shadows_vu1.cpp) as the program found it in VU1 memory, before it
+// transformed it in place and clipped it at the guard band (Gs::set_chain_vu7): the MRP draws these itself, in the world.
+struct Vu7Vertex {
+    float xyz[3];    // the input point (w 1), the space the program's screen matrix takes
+    float st[3];     // S, T, Q as the batch holds them (Q 1)
+    uint8_t rgba[4];
+};
+struct Vu7Batch {
+    DrawState st;                          // the GS state its kick would have (PRIM from the batch's GIF tag)
+    std::shared_ptr<const TexImage> tex;   // textured: its texture (base level) at the start
+    bool mip = false;                      // (TEX1 asked for mip levels: only the base level is kept)
+    float m[16] = {};                      // the screen matrix vf18..vf21 (column c = vf[18 + c])
+    float off[4] = {};                     // vf30: the screen offset (w: the fog's offset)
+    float k = 0;                           // vf31.w: the Q numerator
+    float fog[2] = {};                     // vf7.x / .y: the fog's clamp
+    uint32_t first = 0, n = 0;             // its vertices in Gs::vu7_vertices()
+    uint32_t start = 0;                    // 0xc (no clipping) or 0xe (the clipping path)
+    uint32_t src = 0;                      // the label of its range (set_chain_labels)
+    uint32_t tag = 0;                      // its vu7 range's (Gs::Vu7Range::tag)
+    uint8_t sub = 0;                       // as Primitive::sub
 };
 
 class Gs {
 public:
     Gs();
-    void reset_frame() { prims_.clear(); tag_left_ = 0; fx_mark_ = SIZE_MAX; moby_mark_ = SIZE_MAX; fx_external_ = false; scr_prim_ = -1; }
+    void reset_frame() {
+        prims_.clear();
+        tag_left_ = 0;
+        fx_mark_ = SIZE_MAX;
+        moby_mark_ = SIZE_MAX;
+        fx_external_ = false;
+        scr_prim_ = -1;
+        vu7_batches_.clear();
+        vu7_verts_.clear();
+    }
     // Host: the frame the game draws into (block `bp`, `bw` x 64 pixels wide, `h` rows, CT32; bw 0: none). The GS
     // replica draws no pixels into its memory (the host draws its primitives), so an IMAGE transfer into the frame - the game
     // putting a stored picture back as the frame, the Vendor's screens (0x2a0fc8) - is kept as a primitive of type 7 in the
@@ -166,6 +202,37 @@ public:
         uint8_t side = 0;
     };
     void set_chain_hud(std::vector<HudRange> ranges);
+    // Host (testing: the replica's inventory): the next chain's tags at addresses in [first, last] (inclusive; the real chain's)
+    // carry `label` into their primitives (Primitive::src) and into the programs' times. Any order, not overlapping. Cleared by the
+    // next chain.
+    struct LabelRange {
+        uint32_t first = 0, last = 0;
+        uint32_t label = 0;
+    };
+    void set_chain_labels(std::vector<LabelRange> ranges);
+    // Host (testing): the VU1 programs' run times per (label, hash, start) kept from now on
+    struct ProgTime {
+        uint64_t runs = 0, ns = 0;
+    };
+    void set_inventory(bool on) { inventory_ = on; }
+    const std::map<std::tuple<uint32_t, uint64_t, uint32_t>, ProgTime>& prog_times() const { return prog_times_; }
+    // Host (the MRP's VU1 program 7 surfaces): the next chain's tags at addresses in [first, last] (inclusive; `sub` as FxRange's):
+    // each start of the program whose code hashes to `hash` at 0xc / 0xe there has its batch kept (vu7_batches) as the program
+    // found it, and a primitive of type 9 (fx `kind`, fx_id the batch's index) put in the primitives' order where it starts; the
+    // primitives it kicks are marked fx `kind`, fx_id kVu7Kicked (the MRP draws the batch instead: draw() leaves them). Sets
+    // fx_external(). Any order, not overlapping. Cleared by the next chain (the batches by reset_frame).
+    struct Vu7Range {
+        uint32_t first = 0, last = 0;
+        uint8_t sub = 0;
+        uint32_t tag = 0;  // copied to the batches (Vu7Batch::tag: the MRP's emissive surfaces' class)
+    };
+    static constexpr uint32_t kVu7Kicked = 0xffffffffu;
+    void set_chain_vu7(std::vector<Vu7Range> ranges, uint64_t hash, uint8_t kind);
+    const std::vector<Vu7Batch>& vu7_batches() const { return vu7_batches_; }
+    const std::vector<Vu7Vertex>& vu7_vertices() const { return vu7_verts_; }
+    // (host) the program starts on the walk's VU1 (vu1::StartObserver)
+    void vu1_before(void* vu, uint32_t start, uint64_t hash);
+    void vu1_after(void* vu, uint32_t start, uint64_t hash);
     size_t fx_mark() const { return fx_mark_; }
     bool fx_external() const { return fx_external_; }
 
@@ -257,6 +324,19 @@ private:
     std::vector<HudRange> hud_ranges_;  // set_chain_hud (sorted by first)
     uint8_t hud_now_ = 0;
     uint32_t fx_id_ = 0;
+    std::vector<LabelRange> label_ranges_;  // set_chain_labels (sorted by first)
+    uint32_t label_now_ = 0;
+    bool inventory_ = false;
+    std::map<std::tuple<uint32_t, uint64_t, uint32_t>, ProgTime> prog_times_;
+    uint64_t prog_t0_ = 0;
+    std::vector<Vu7Range> vu7_ranges_;  // set_chain_vu7 (sorted by sub then first)
+    uint64_t vu7_hash_ = 0;
+    uint8_t vu7_kind_ = 0;
+    bool vu7_now_ = false;   // the tag in hand is in a vu7 range
+    uint32_t vu7_tag_ = 0;   // (its Vu7Range::tag)
+    bool vu7_drop_ = false;  // a kept batch's program runs: its kicks marked
+    std::vector<Vu7Batch> vu7_batches_;
+    std::vector<Vu7Vertex> vu7_verts_;
     size_t fx_mark_ = SIZE_MAX;
     size_t moby_mark_ = SIZE_MAX;
     const FxRange* fx_tag(uint32_t addr, uint8_t sub) const;

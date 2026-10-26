@@ -98,6 +98,7 @@
 #include <game/render/mrp_lighting.h>
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_shadows.h>
+#include <game/render/replica_inventory.h>
 #include <game/render/mrp_fx.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_world_renderer.h>
@@ -2993,8 +2994,12 @@ int main(int argc, char** argv) {
                 }
                 {  // the MRP's 3D effects: their producers' ranges run by the replica as before, their primitives kept for the MRP
                     std::vector<rac1::gs::Gs::FxRange> fr;
+                    std::vector<rac1::gs::Gs::Vu7Range> v7;  // (VU1 program 7's surfaces: their batches drawn by the MRP from their input)
                     const bool fx_active = chain_runs && !prev_chain && !menu_mode && !fade && !fd.vendor_pic && movie_pic == nullptr && ((!title && !fd.exiting) || fd.flight);
-                    if (mrp_fx_chain_ranges(fx_active, substituted, fr)) gs.set_chain_fx(std::move(fr), true);
+                    if (mrp_fx_chain_ranges(fx_active, substituted, fr, v7)) {
+                        gs.set_chain_fx(std::move(fr), true);
+                        if (!v7.empty()) gs.set_chain_vu7(std::move(v7), kMrpVu7Hash, kMrpFxVu7);
+                    }
                 }
                 // the full-screen 2D layers the last update drew (render_view_layer_note: the Visibomb's static), stretched across a
                 // widened view; not on a chain walked again (a fade's: the frame before's) or the menu's
@@ -3008,6 +3013,7 @@ int main(int argc, char** argv) {
                         for (const HudNote& n : notes) hr.push_back({n.first, n.last, n.side});
                         gs.set_chain_hud(std::move(hr));
                     }
+                if (chain_runs) replica_inventory_chain(gs);  // (testing: RAC1_REPLICA_INVENTORY)
                 if (chain_runs) {
                     // (the chain's tags and data captured here, its run on a worker thread: joined before the drawing, the
                     // next chain and the game's own GS transfers (libgraph); RAC1_GS_THREAD=0 or the testing modes: here)
@@ -3417,6 +3423,9 @@ int main(int argc, char** argv) {
                 }
                 static const bool s_mrp_diff = std::getenv("RAC1_MRP_DIFF") != nullptr;
                 const int prim_filt = (g_moby_renderer == MobyRenderer::kGpu || s_moby_diff || mrp_moby_active() || (mrp_world_testing() && mrp_world_active())) ? 2 : 0;
+                if (replica_inventory_on() && movie_pic == nullptr && !fd.fade_held)  // (testing: what the replica draws, by source)
+                    replica_inventory_count(gs, prim_filt, has_dm ? &dm : nullptr, fd.fb_w, fd.fb_h, fd.level,
+                                            fd.flight ? "flight" : fd.vendor_pic ? "vendor" : menu_mode ? "menu" : title ? "title" : "play");
                 // the GS replica's primitives the chain made before the moby pass (the draw lists 0x1f85b8 runs before it: Hoven's water,
                 // translucent and without Z): drawn under the MRP's mobys, in the original's order (drawn after them, they covered what a
                 // moby draws without Z - the faces of Ratchet's ice cube, which fail its alpha test and write their colour only, #48)
@@ -3634,6 +3643,7 @@ int main(int argc, char** argv) {
             mrp_world_report();
             mrp_lod_report();
             mrp_fx_report();
+            replica_inventory_report();
             if (s_mrp_skip_mode != 0)
                 std::printf("[mrp-skip] mode %d: chain tags walked dry %llu; verify: skipped skinning's next record equal %llu, different %llu\n", s_mrp_skip_mode,
                             static_cast<unsigned long long>(rac1::gs::gs_global().skipped_tags()), static_cast<unsigned long long>(g_moby_mrp_skip_next_ok),
