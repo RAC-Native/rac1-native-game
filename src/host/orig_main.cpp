@@ -2586,6 +2586,17 @@ int main(int argc, char** argv) {
     // testing: RAC1_DIE_AT=<frame>: at that game frame Ratchet is killed through the game's own death state
     // (the debug menu's Kill Ratchet)
     const long long die_at = std::getenv("RAC1_DIE_AT") != nullptr ? std::atoll(std::getenv("RAC1_DIE_AT")) : -1;
+    // testing: RAC1_HOVERBOARD_AT=<on frame>[,<off frame>,<on frame>...]: the debug menu's Hoverboard anywhere ticked /
+    // unticked at those frames, in turn (at most 8)
+    std::vector<long long> board_at;
+    if (const char* b = std::getenv("RAC1_HOVERBOARD_AT"))
+        for (const char* q = b; *q != 0 && board_at.size() < 8;) {
+            char* e = nullptr;
+            const long long v = std::strtoll(q, &e, 10);
+            if (e == q) break;
+            board_at.push_back(v);
+            q = *e == ',' ? e + 1 : e;
+        }
     if (const char* z = std::getenv("RAC1_TEST_ZERO_FB"); z != nullptr && g_test_switches) {
         unsigned long long a = 0, b = 0;
         char raw[8] = {};
@@ -2827,6 +2838,11 @@ int main(int argc, char** argv) {
                     dt::dev_kill_hero();
                     std::printf("[orig] RAC1_DIE_AT: Ratchet killed at frame %llu\n", static_cast<unsigned long long>(game_frame));
                 }
+                for (size_t k = 0; k < board_at.size(); ++k)
+                    if (static_cast<long long>(game_frame) == board_at[k] && !exiting && !ee_thread_suspended()) {
+                        dt::dev_hoverboard_set(k % 2 == 0);
+                        std::printf("[orig] RAC1_HOVERBOARD_AT: %s at frame %llu\n", k % 2 == 0 ? "on" : "off", static_cast<unsigned long long>(game_frame));
+                    }
     #endif
                 mrp_scene_begin_frame();
                 rac1::mrpw::scene_begin_update();  // (the MRP world: the world passes' chain ranges of this update)
@@ -2878,8 +2894,12 @@ int main(int argc, char** argv) {
                 rac1::prof::end(prof_code);
                 if (rac1::update_check::update_requested()) running = false;
     #ifdef RAC1_DEVTOOLS
-                if (!headless) dt::dev_menu_game_frame();
-                else dt::dev_kill_apply();
+                if (!headless) {
+                    dt::dev_menu_game_frame();
+                } else {
+                    dt::dev_kill_apply();
+                    dt::dev_hoverboard_apply();
+                }
     #endif
                 mrp_scene_end_frame();
                 const bool game_frame_ended = !ee_thread_suspended();

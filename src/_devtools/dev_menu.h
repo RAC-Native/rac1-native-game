@@ -53,6 +53,12 @@ void dev_menu_game_frame();
 // Kills Ratchet through the game's own death state (done at the next game frame's end). Also RAC1_DIE_AT=<game frame> (testing).
 void dev_kill_hero();
 void dev_kill_apply();  // the pending kill, between game frames (dev_menu_game_frame calls it; the headless loop too)
+// Hoverboard anywhere: puts Ratchet on the race's hoverboard where he stands (on: the board's own mount) or takes him off
+// (off: the game's hero_set_state(0, 1)); only on Rilgar (5) and Kalebo III (16), the levels with the board. Done at the next
+// game frame's end. Also RAC1_HOVERBOARD_AT=<on frame>[,<off frame>,<on frame>...] (testing).
+void dev_hoverboard_set(bool on);
+bool dev_hoverboard_on();
+void dev_hoverboard_apply();  // the pending change, between game frames (dev_menu_game_frame calls it; the headless loop too)
 // Draws the menu (and the stats overlay) over the frame. update_ms: the game's update time.
 void dev_menu_draw(double update_ms, double frame_ms);
 

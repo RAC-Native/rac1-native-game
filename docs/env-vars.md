@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 330 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 331 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
 | [Debugging](#debugging-variables) | 247 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 62 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Automated testing](#automated-testing-variables) | 63 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -329,6 +329,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_GOTO` | N@F (level number, frame; frame defaults to 60 if only N given); unset = off | At game frame F triggers the game's own level change to level N, as the debug menu's Levels tab does. |
 | `RAC1_HERO_AT` | <class>@<frame>[,dx,dy,dz[,yaw]] (several separated by /); unset = off | At that game frame places Ratchet through the game's own placement next to the first live moby of that class (placed by the level or spawned since) (default offset 3 0 1, class -1 = the offset is an absolute position), without changing story flags. |
 | `RAC1_HOST_DELAY_MS` | integer milliseconds; default 0 | Makes each host frame this much longer by sleeping, to check that a slow host does not change the game's state. |
+| `RAC1_HOVERBOARD_AT` | <frame>[,<frame>,...] (at most 8); unset = off | At those game frames the debug menu's Hoverboard anywhere is ticked, unticked, ticked... in turn (Ratchet gets on the race's board where he stands, then off); only does something on Rilgar and Kalebo III. |
 | `RAC1_IOP_MIRROR_TEST` | `<vsync>:<n>,...` or 1; default off | Headless, without audio: drives the host's mirror of the IOP on the game's thread, rendering n frames by the mirror alone at the vsyncs listed (as during a load), and prints each change of the live streams of the game's IOP and of the mirror. |
 | `RAC1_IOP_VERIFY` | set (any value) = on; default off | Keeps the IOP mirror from ever playing alone so each of its vsync mixes can be compared with the emulated IOP's mix; the counts are reported at exit. |
 | `RAC1_KILL_AT` | game frame number; default off | At that game frame sets Ratchet's health to zero. |
