@@ -14,7 +14,8 @@ SCES-50916) to the game:
   6. offers to start the game.
 
 Re-runnable: the build only recompiles what changed, and each step is redone only when the sources
-that make its output (or the disc) changed since it last ran, or when it is forced (--force).
+that make its output (or the disc) changed since it last ran, when its output is missing (deleted since: a quick
+look at its files, step_missing), or when it is forced (--force).
 The record of what was generated with what is assets/setup-state.json. docs/setup.md is the guide.
 
 `tools/setup.py --code-inputs` (for CMake) prints the fingerprint of the generated code's sources, then
@@ -698,12 +699,25 @@ def generate_code(iso, jobs):
 
 
 def code_current():
-    """True when the generated code is there and was made from the current sources (what CMake checks)."""
+    """True when the generated code is there and was made from the current sources (what CMake checks), every file
+    its list names there too (CMake would stop at the first one missing)."""
     try:
-        m = re.search(r'RAC1_CODEGEN_FINGERPRINT "(\w+)"', GEN_LIST.read_text())
+        text = GEN_LIST.read_text()
     except OSError:
         return False
-    return bool(m) and m.group(1) == code_sources_fingerprint()
+    m = re.search(r'RAC1_CODEGEN_FINGERPRINT "(\w+)"', text)
+    return bool(m) and m.group(1) == code_sources_fingerprint() and code_files_missing(text) is None
+
+
+def code_files_missing(text):
+    """The first file generated_sources.cmake lists that is not there, or None."""
+    m = re.search(r"set\(RAC1_GENERATED_SOURCES\n(.*?)\)", text, re.S)
+    if not m:
+        return GEN_LIST
+    for line in m.group(1).split():
+        if not (GEN_SRC / line).is_file():
+            return GEN_SRC / line
+    return None
 
 
 def code_step_fingerprint(name, patterns, disc, state):
@@ -713,15 +727,63 @@ def code_step_fingerprint(name, patterns, disc, state):
     return fingerprint
 
 
-def code_step_present(name, iso):
+# What each step leaves, looked at before its record is trusted: a step whose output was deleted since (all of
+# assets/generated, or part of it) runs again. Existence (and a non-empty file) only, so that a re-run stays quick.
+# The data steps: the file each of the game's exporters writes last in a directory, and skips the directory on when it
+# is there (src/setup/mrp_export.cpp, scene_export.cpp), and a class file at least in each level's mobys.
+MRP = ASSETS_DIR / "generated/mrp"
+MRP_LEVELS = [f"level{lv}" for lv in range(19)] + ["title"]
+
+
+def first_missing(paths):
+    for p in paths:
+        try:
+            if p.stat().st_size > 0:
+                continue
+        except OSError:
+            pass
+        return p
+    return None
+
+
+def step_missing(name, iso):
+    """Why a step's output is not all there ("<path> is missing"), or None when it is."""
     if name == "elf":
-        return boot_elf(iso).is_file()
-    if name == "overlay":
-        other = region_table(iso) is not None
-        return ((OVERLAY_MAPS / "front_reloc.txt").is_file()
-                and all((OVERLAY_MAPS / f"level{lv}.txt").is_file() for lv in range(1, 19))
-                and (not other or all((OVERLAY_MAPS / f"codegen/level{lv}.txt").is_file() for lv in range(1, 19))))
-    return code_current()
+        files = [boot_elf(iso)]
+    elif name == "overlay":
+        files = [OVERLAY_MAPS / "front_reloc.txt"] + [OVERLAY_MAPS / f"level{lv}.txt" for lv in range(1, 19)]
+        if region_table(iso) is not None:
+            files += [OVERLAY_MAPS / f"codegen/level{lv}.txt" for lv in range(1, 19)]
+    elif name == "code":
+        try:
+            text = GEN_LIST.read_text()
+        except OSError:
+            return f"{GEN_LIST.relative_to(ROOT)} is missing"
+        gone = code_files_missing(text)
+        if gone is not None:
+            return f"{gone.relative_to(ROOT)} is missing"
+        return None if code_current() else f"{GEN_LIST.relative_to(ROOT)} is out of date"
+    elif name == "moby":
+        files = ([MRP / f"moby/{d}/textures.mrpt" for d in MRP_LEVELS] + [MRP / f"moby/armor/{k}.mrpt" for k in range(4)])
+        if first_missing(files) is None:
+            for d in MRP_LEVELS[:-1]:
+                if not any(MRP.joinpath("moby", d).glob("*.mrpm")):
+                    return f"{(MRP / 'moby' / d).relative_to(ROOT)} has no models"
+    elif name == "world":
+        files = [MRP / f"world/{d}/{f}" for d in MRP_LEVELS
+                 for f in ("world.mrpw", "textures_tfrag.mrpt", "textures_tie.mrpt", "textures_shrub.mrpt")]
+    elif name == "flight":
+        files = [MRP / "moby/flight/textures.mrpt", MRP / "world/flight/world.mrpw"]
+    else:
+        return None
+    gone = first_missing(files)
+    if gone is None:
+        return None
+    # the highest directory that is gone, the clearest to read ("assets/generated/mrp/world is missing")
+    top = gone
+    while not top.parent.exists() and top.parent != ASSETS_DIR:
+        top = top.parent
+    return f"{top.relative_to(ROOT)} is missing"
 
 
 def prepare_code(iso, forced, jobs):
@@ -730,9 +792,12 @@ def prepare_code(iso, forced, jobs):
     disc = disc_fingerprint(iso)
     for name, what, patterns in CODE_STEPS:
         fingerprint = code_step_fingerprint(name, patterns, disc, state)
-        if name not in forced and state.get(name) == fingerprint and code_step_present(name, iso):
+        missing = step_missing(name, iso) if state.get(name) == fingerprint else None
+        if name not in forced and state.get(name) == fingerprint and missing is None:
             ok(f"{what[0].upper() + what[1:]}: up to date")
             continue
+        if missing and name not in forced:
+            warn(f"{missing}: generating {what} again")
         print(f"  {what[0].upper() + what[1:]}...", flush=True)
         state.pop(name, None)
         if name == "elf":
@@ -901,13 +966,26 @@ def generate(iso, forced):
     disc = disc_fingerprint(iso)
     for name, what, patterns in STEPS:
         fingerprint = f"{disc}:{sources_fingerprint(patterns)}"
-        if name not in forced and state.get(name) == fingerprint:
+        current = name not in forced and state.get(name) == fingerprint
+        missing = step_missing(name, iso) if current else None
+        if current and missing is None:
             ok(f"{what[0].upper() + what[1:]}: up to date")
             continue
+        cmd = [str(EXE), "--setup", "--iso", str(iso), "--step", name]
+        if current:
+            # up to date but part of it deleted: the step makes again only what is not there (its exporters skip a level
+            # that is), and from scratch if that was not enough
+            warn(f"{missing}: generating {what} again")
+            if subprocess.run(cmd, cwd=ROOT, env=game_env()).returncode:
+                fail(f"Generating {what} failed (see the messages above). Run {SETUP_CMD} again to retry.")
+            if step_missing(name, iso) is None:
+                continue
         # a step that is forced, whose sources changed, or that never finished, is redone from scratch
-        cmd = [str(EXE), "--setup", "--iso", str(iso), "--step", name, "--force"]
-        if subprocess.run(cmd, cwd=ROOT, env=game_env()).returncode:
+        if subprocess.run(cmd + ["--force"], cwd=ROOT, env=game_env()).returncode:
             fail(f"Generating {what} failed (see the messages above). Run {SETUP_CMD} again to retry.")
+        gone = step_missing(name, iso)
+        if gone is not None:  # (reported, not fatal: the game draws without what is missing, and says so)
+            warn(f"Generating {what} left out files ({gone}).")
         state[name] = fingerprint
         save_state(state)
 
@@ -944,12 +1022,12 @@ def setup_due():
     state = load_state()
     disc = disc_fingerprint(iso)
     for name, what, patterns in CODE_STEPS:
-        if state.get(name) != code_step_fingerprint(name, patterns, disc, state) or not code_step_present(name, iso):
+        if state.get(name) != code_step_fingerprint(name, patterns, disc, state) or step_missing(name, iso):
             due.append(what)
     if newest_mtime(BUILD_INPUTS) > EXE.stat().st_mtime:
         due.append("the game's program (its sources are newer)")
     for name, what, patterns in STEPS:
-        if state.get(name) != f"{disc}:{sources_fingerprint(patterns)}":
+        if state.get(name) != f"{disc}:{sources_fingerprint(patterns)}" or step_missing(name, iso):
             due.append(what)
     return due
 

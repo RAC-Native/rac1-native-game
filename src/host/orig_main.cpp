@@ -2020,6 +2020,47 @@ void pad_packet(GLFWwindow* win, uint64_t frame) {
     hi::to_packet(hi::PadOutput{held, lx, ly, rx, ry}, g_host_pad_packet);
 }
 
+// orig: (host) at start, with the modern renderer on: its assets for every level, the title and the flight are there (the
+// file each of the setup's exporters writes last in a level's directory, src/setup/mrp_export.cpp), else one clear error
+// naming the first one missing and the setup that makes them (assets/generated deleted, or part of it: without them the
+// game draws its levels wrong or without their mobys). The same files tools/setup.py looks at (step_missing).
+void check_mrp_assets(bool moby, bool world) {
+    std::vector<std::string> dirs;
+    for (int lv = 0; lv < 19; ++lv) dirs.push_back("level" + std::to_string(lv));
+    dirs.push_back("title");
+    dirs.push_back("flight");
+    std::vector<std::filesystem::path> want;
+    if (moby) {
+        const char* r = std::getenv("RAC1_MRP_DIR");  // (mrp_moby_renderer.cpp's asset_root)
+        const std::filesystem::path root = r != nullptr ? r : "assets/generated/mrp/moby";
+        for (const std::string& d : dirs) want.push_back(root / d / "textures.mrpt");
+        for (int k = 0; k < 4; ++k) want.push_back(root / "armor" / (std::to_string(k) + ".mrpt"));
+    }
+    if (world) {
+        const char* r = std::getenv("RAC1_MRPW_DIR");  // (mrp_world_renderer.cpp's asset_root)
+        const std::filesystem::path root = r != nullptr ? r : "assets/generated/mrp/world";
+        for (const std::string& d : dirs) want.push_back(root / d / "world.mrpw");
+    }
+    size_t missing = 0;
+    std::string first;
+    std::error_code ec;
+    for (const std::filesystem::path& p : want)
+        if (!std::filesystem::is_regular_file(p, ec)) {
+            if (missing++ == 0) first = p.string();
+        }
+    if (missing == 0) return;
+#if defined(_WIN32)
+    const char* setup = "setup.cmd";
+#else
+    const char* setup = "./setup.sh";
+#endif
+    std::fprintf(stderr,
+                 "rac1-native: Error: the modern renderer's assets are missing (%zu of %zu files, e.g. %s).\n"
+                 "             The levels will be drawn without them (wrong, or without their objects).\n"
+                 "             Run %s to generate them again.\n",
+                 missing, want.size(), first.c_str(), setup);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -2230,6 +2271,7 @@ int main(int argc, char** argv) {
         }
     }
 
+    check_mrp_assets(g_moby_renderer == MobyRenderer::kMrp, g_world_mrp);
     // the legacy host renderers' copy of a level, built only while one of them is in use (level_loader.h)
     g_legacy_level_needed = [] { return (!g_world_mrp && !g_world_faithful) || !g_moby_vu1_pass || g_moby_renderer == MobyRenderer::kGlb || g_title_scene_host; };
     static const bool s_moby_diff = std::getenv("RAC1_MOBY_DIFF") != nullptr;
