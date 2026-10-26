@@ -980,7 +980,9 @@ void main() {
     vec3 c_game = c.rgb;  // (the game's colour: an emissive texel's, sh_emissive)
     c.rgb = sh_apply_split(c.rgb, vColorNoKey.rgb);  // the key light's term where the sun is hidden
     // (the mobys keep the game's point lights - the record's third direction, per vertex: small meshes, and the effects'
-    // shells - explosions - are coloured by them; the world takes them per pixel, sh_points)
+    // shells - explosions - are coloured by them; the world takes them per pixel, sh_points). Ours (placed by hand, per
+    // class, the emitters) per pixel as the world's: sh_points_moby leaves the game's out (#110)
+    c.rgb = sh_points_moby(c.rgb);
 #else
     c.rgb = sh_apply(c.rgb);
 #endif
@@ -1497,6 +1499,17 @@ struct Frame {
         float proj = 0, offset[4] = {}, fog_min = 0;
     };
     std::unordered_map<uint32_t, RtView> rt_views;
+    // per moby drawn in the world's view (the light editor's: its pose for "emit moby ... joint <n>", the moby under the mouse):
+    // its model -> world matrix (its first part's), its pose's joints in joints_all, its class's bounding sphere in the world
+    struct MobyXf {
+        uint32_t moby = 0;
+        int16_t class_id = 0;
+        glm::mat4 W{1.0f};
+        uint32_t joint_first = 0, joint_count = 0;
+        glm::vec3 centre{0.0f};
+        float radius = 0.0f;
+    };
+    std::vector<MobyXf> xf;
 };
 Frame g_frame;
 // set while mrp_moby_draw_target draws: the target's uniforms in place of the frame's
@@ -1743,6 +1756,7 @@ void build_frame() {
     F.draws.clear();
     F.batches.clear();
     F.refs.clear();
+    F.xf.clear();
     F.rt_views.clear();
     const MrpFrame& f = mrp_scene_draw();
     for (uint32_t i = 0; i < 0x200; ++i) F.normals[i] = lwc1(OV(0x00166080) + 4 * i);  // the normal table (the overlay's 0x166080: 256 x 2 floats)
@@ -1952,6 +1966,20 @@ void build_frame() {
             F.part_rad.push_back(pre.rad);
             F.part_own.push_back(own_view ? 1 : 0);
             F.refs.push_back({mi, cg, pk, part_index, tint, test, alpha});
+            if (!own_view && !m.rt && (F.xf.empty() || F.xf.back().moby != m.moby)) {  // (the moby's first part: its frame for the light editor)
+                Frame::MobyXf x;
+                x.moby = m.moby;
+                x.class_id = m.class_id;
+                x.W = glm::mat4(W);
+                x.joint_first = m.joint_first;
+                x.joint_count = m.joint_count;
+                const auto& b = c.bsphere;
+                const glm::dvec4 cw = W * glm::dvec4(b[0], b[1], b[2], 1.0);
+                x.centre = glm::vec3(cw) / static_cast<float>(cw.w != 0.0 ? cw.w : 1.0);
+                const float sc = static_cast<float>(std::max({glm::length(glm::dvec3(W[0])), glm::length(glm::dvec3(W[1])), glm::length(glm::dvec3(W[2]))}));
+                x.radius = std::isfinite(sc * std::fabs(b[3])) ? sc * std::fabs(b[3]) : 0.0f;
+                F.xf.push_back(x);
+            }
             CachedPart* cp = nullptr;
             if (cm != nullptr) {
                 if (cm_used < cm->parts.size()) {
@@ -3004,6 +3032,93 @@ float mrp_moby_nearest_part(const float p[3]) {
     for (size_t i = 0; i < g_frame.part_pos.size(); ++i)
         if (i >= g_frame.part_own.size() || g_frame.part_own[i] == 0) best = std::min(best, glm::length(g_frame.part_pos[i] - c));
     return best;
+}
+
+// orig: (host) see mrp_lighting.h
+bool mrp_moby_draw_frame(uint32_t moby, int joint, float pos[3], float axes[9], int* joints) {
+    if (!g_frame.active || !g_frame.built || g_frame.mode != 0) return false;
+    for (const Frame::MobyXf& x : g_frame.xf) {
+        if (x.moby != moby) continue;
+        if (joints != nullptr) *joints = static_cast<int>(x.joint_count);
+        glm::mat4 M = x.W;  // (model -> world; a joint: model -> model, its rows the shader's m[0..3] - q = m0 x + m1 y + m2 z + m3)
+        if (joint >= 0) {
+            if (static_cast<uint32_t>(joint) >= x.joint_count || x.joint_first + static_cast<uint32_t>(joint) >= g_frame.joints_all.size()) return false;
+            const MrpMat4& J = g_frame.joints_all[x.joint_first + static_cast<uint32_t>(joint)];
+            glm::mat4 Jm(1.0f);
+            for (int r = 0; r < 4; ++r) Jm[r] = glm::vec4(J.r[r].x, J.r[r].y, J.r[r].z, r == 3 ? 1.0f : 0.0f);
+            M = x.W * Jm;
+        }
+        const glm::vec4 o = M[3];
+        const float w = o.w != 0.0f ? o.w : 1.0f;
+        for (int k = 0; k < 3; ++k) {
+            pos[k] = o[k] / w;
+            glm::vec3 a(M[k]);
+            const float l = glm::length(a);
+            a = l > 0.0f ? a / l : glm::vec3(k == 0, k == 1, k == 2);
+            for (int c = 0; c < 3; ++c) axes[k * 3 + c] = a[c];
+        }
+        return std::isfinite(pos[0]) && std::isfinite(pos[1]) && std::isfinite(pos[2]);
+    }
+    return false;
+}
+
+// orig: (host) see mrp_lighting.h
+bool mrp_moby_at(const float p[3], uint32_t* moby, int* o_class, float* dist) {
+    if (!g_frame.active || !g_frame.built || g_frame.mode != 0) return false;
+    const glm::vec3 P(p[0], p[1], p[2]);
+    float best = 1e30f;
+    bool any = false;
+    for (const Frame::MobyXf& x : g_frame.xf) {
+        const float d = glm::length(P - x.centre);
+        if (!(x.radius > 0.0f) || d > x.radius + 0.25f || x.radius >= best) continue;
+        best = x.radius;
+        any = true;
+        *moby = x.moby;
+        *o_class = x.class_id;
+        *dist = glm::length(P - glm::vec3(x.W[3]) / (x.W[3].w != 0.0f ? x.W[3].w : 1.0f));
+    }
+    return any;
+}
+
+// orig: (host) see mrp_lighting.h
+std::vector<TextureEntry> mrp_moby_texture_list(int thumb) {
+    std::vector<TextureEntry> out;
+    const Level& L = g_level;
+    if (!L.loaded) return out;
+    std::map<int, std::vector<std::pair<int, int>>> users;  // (level texture -> class, local texture)
+    auto add = [&](const mrp::MobyClass& c) {
+        for (const mrp::Packet& pk : c.packets)
+            for (const mrp::TexturePrim& t : pk.textures)
+                if (t.texture >= 0 && t.local_texture >= 0) {
+                    auto& u = users[t.texture];
+                    const std::pair<int, int> e{c.o_class, t.local_texture};
+                    if (std::find(u.begin(), u.end(), e) == u.end()) u.push_back(e);
+                }
+    };
+    for (const auto& [cls, a] : L.files)
+        if (a != nullptr) add(*a);
+    for (const auto& [ptr, cg] : L.by_ptr)
+        if (cg != nullptr && cg->asset != nullptr && cg->asset->o_class >= 0) add(*cg->asset);
+    auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
+    for (size_t i = 0; i < L.level_textures && i < L.textures.size(); ++i) {
+        const mrp::Texture& t = L.textures[i];
+        if (t.width == 0 || t.height == 0 || t.mips.empty() || t.mips[0].size() < static_cast<size_t>(t.width) * t.height) continue;
+        TextureEntry e;
+        e.kind = 3;
+        e.texture = static_cast<int>(i);
+        e.w = static_cast<int>(t.width);
+        e.h = static_cast<int>(t.height);
+        if (const auto it = users.find(static_cast<int>(i)); it != users.end()) e.users = it->second;
+        std::sort(e.users.begin(), e.users.end());
+        e.thumb.resize(static_cast<size_t>(thumb) * thumb);
+        for (int y = 0; y < thumb; ++y)
+            for (int x = 0; x < thumb; ++x) {
+                const uint32_t sx = static_cast<uint32_t>(x) * t.width / static_cast<uint32_t>(thumb), sy = static_cast<uint32_t>(y) * t.height / static_cast<uint32_t>(thumb);
+                e.thumb[static_cast<size_t>(y) * thumb + x] = t.palette[csm1(t.mips[0][sy * t.width + sx])] | 0xff000000u;
+            }
+        out.push_back(std::move(e));
+    }
+    return out;
 }
 
 // orig: (host) see mrp_moby_renderer.h

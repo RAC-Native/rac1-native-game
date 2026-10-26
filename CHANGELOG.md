@@ -40,6 +40,11 @@ What changed in each release. Releases are source only: you build the game with 
   swampy ground (mud). See [Materials](docs/materials.md).
 - Modern lighting: Novalis's Buzzers light with their green eyes, and the Blarg ship (Novalis's drop ship, Gemlik's ships of the
   skill point) lights from its orange and blue lamps, which glow, instead of from inside its hull (#102).
+- Light editor (debug menu, #101): click on the picture to pick a surface or an object part (the crosshair stays), a light added
+  at the clicked surface (just off it along its normal), lines for a moby class on every level (`data/lights/classes.txt`, a "For
+  every level" box; a level's own line wins), a moby light on a joint of its pose (`emit moby ... joint <n>`, for the Buzzers' flight),
+  and a Textures tab: the level's tfrag, tie, shrub and moby textures as thumbnails with their classes, a click to mark one emissive
+  or give it a material. See [Lighting](docs/lighting.md#the-light-editor).
 
 ### Performance
 - The game's update runs on a thread of its own while the main thread draws the pipelined frame (a window's default): the host
@@ -56,6 +61,10 @@ What changed in each release. Releases are source only: you build the game with 
   copy), no longer the next update's.
 
 ### Fixes
+- Modern lighting: Ratchet and the other mobys are lit by the lights placed by hand, the lights per class and the automatic
+  emitters, per pixel as the world (they had only the game's own lights; #110). OpenGL and Vulkan.
+- Surface materials: a metal's roughness works as it reads - low is polished, a sharp highlight and a clear mirror of the sky (and
+  on High of the picture), high is brushed - instead of looking duller when polished (#101).
 - When the computer falls behind (or with V-Sync on a 75 Hz display) and a frame runs two or more of the game's
   frames, the frame after no longer reuses the undrawn frame's drawing data without what it needs: the game no
   longer freezes at Aridia's arrival, and no stray graphics programs run on Kerwan, Rilgar and other levels (#104).

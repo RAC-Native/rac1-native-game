@@ -1464,6 +1464,7 @@ void main() {
 #ifdef SH_SPLIT
     vec3 c_game = c.rgb;
     c.rgb = sh_apply_split(c.rgb, vColorNoKey.rgb);
+    c.rgb = sh_points_moby(c.rgb);  // (ours per pixel, the game's left to the record: #110)
 #else
     c.rgb = sh_apply(c.rgb);
 #endif

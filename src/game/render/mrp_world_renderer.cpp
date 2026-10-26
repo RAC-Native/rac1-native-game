@@ -3801,7 +3801,8 @@ SurfacePick mrp_world_surface_at(const float pp[3]) {
     if (!L.loaded || L.world == nullptr || !g_slevel.ok) return r;
     const glm::vec3 P(pp[0], pp[1], pp[2]);
     float best = 0.5f;  // (units: a triangle farther than this is not the one under the crosshair)
-    auto consider = [&](int kind, int o_class, int tex, int texture, float d) {
+    auto consider = [&](int kind, int o_class, int tex, int texture, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) {
+        const float d = point_triangle_dist(P, a, b, c);
         if (d >= best) return;
         best = d;
         r.kind = kind;
@@ -3809,6 +3810,10 @@ SurfacePick mrp_world_surface_at(const float pp[3]) {
         r.tex = tex;
         r.texture = texture;
         r.dist = d;
+        const glm::vec3 n = glm::cross(b - a, c - a);
+        const float l = glm::length(n);
+        if (l > 1e-12f)
+            for (int k = 0; k < 3; ++k) r.normal[k] = n[k] / l;
     };
     std::unordered_map<const TiePacket*, const TieClass*> cls_of;
     for (const TieClass& c : L.world->ties)
@@ -3848,8 +3853,7 @@ SurfacePick mrp_world_surface_at(const float pp[3]) {
                         v[j] = glm::vec3(tv.pos[0], tv.pos[1], tv.pos[2]);
                     }
                     for (const InstFrame& f : near)
-                        consider(1, tc.o_class, prim, tc.textures[static_cast<size_t>(prim)].texture,
-                                 point_triangle_dist(P, f.pos + f.m * v[0], f.pos + f.m * v[1], f.pos + f.m * v[2]));
+                        consider(1, tc.o_class, prim, tc.textures[static_cast<size_t>(prim)].texture, f.pos + f.m * v[0], f.pos + f.m * v[1], f.pos + f.m * v[2]);
                 }
             }
         }
@@ -3889,7 +3893,7 @@ SurfacePick mrp_world_surface_at(const float pp[3]) {
                         v[j] = glm::vec3(tv.pos[0], tv.pos[1], tv.pos[2]);
                     }
                     for (const InstFrame& f : near)
-                        consider(2, cls.o_class, tp.local_texture, tp.texture, point_triangle_dist(P, f.pos + f.m * v[0], f.pos + f.m * v[1], f.pos + f.m * v[2]));
+                        consider(2, cls.o_class, tp.local_texture, tp.texture, f.pos + f.m * v[0], f.pos + f.m * v[1], f.pos + f.m * v[2]);
                 }
             }
         }
@@ -3899,7 +3903,7 @@ SurfacePick mrp_world_surface_at(const float pp[3]) {
         const glm::vec3* v = &g_tf_tris.v[3 * i];
         const glm::vec3 lo = glm::min(glm::min(v[0], v[1]), v[2]) - best, hi = glm::max(glm::max(v[0], v[1]), v[2]) + best;
         if (glm::any(glm::lessThan(P, lo)) || glm::any(glm::greaterThan(P, hi))) continue;
-        consider(0, 0, g_tf_tris.tex[i], g_tf_tris.tex[i], point_triangle_dist(P, v[0], v[1], v[2]));
+        consider(0, 0, g_tf_tris.tex[i], g_tf_tris.tex[i], v[0], v[1], v[2]);
     }
     if (r.kind >= 0) class_texture(L, r.kind, r.o_class, r.tex, &r.ntex);
     return r;
@@ -3934,6 +3938,47 @@ void mrp_world_texture_survey() {
             std::printf("[lights] texture %s %zu (%dx%d): mean %.0f %.0f %.0f:%s\n", table == 0 ? "tfrag" : table == 1 ? "tie" : "shrub", n, tx.width, tx.height, c[0] / m, c[1] / m,
                         c[2] / m, u.c_str());
         }
+}
+
+// orig: (host) see mrp_lighting.h
+std::vector<TextureEntry> mrp_world_texture_list(int thumb) {
+    std::vector<TextureEntry> out;
+    const Level& L = g_level;
+    if (!L.loaded || L.world == nullptr) return out;
+    auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
+    std::map<int, std::vector<std::pair<int, int>>> users[3];
+    for (const TieClass& tc : L.world->ties)
+        for (size_t i = 0; i < tc.textures.size(); ++i)
+            if (tc.textures[i].texture >= 0) users[1][tc.textures[i].texture].push_back({tc.o_class, static_cast<int>(i)});
+    for (const ShrubClass& sc : L.world->shrubs)
+        for (const ShrubPacket& p : sc.packets)
+            for (const TexturePrim& t : p.textures)
+                if (t.texture >= 0) {
+                    auto& u = users[2][t.texture];
+                    const std::pair<int, int> e{sc.o_class, t.local_texture};
+                    if (std::find(u.begin(), u.end(), e) == u.end()) u.push_back(e);
+                }
+    for (int table = 0; table < 3; ++table)
+        for (size_t n = 0; n < L.tex[table].size(); ++n) {
+            const mrp::Texture& tx = L.tex[table][n];
+            if (tx.width == 0 || tx.mips.empty() || tx.mips[0].size() < static_cast<size_t>(tx.width) * tx.height) continue;
+            TextureEntry e;
+            e.kind = table;
+            e.texture = static_cast<int>(n);
+            e.w = static_cast<int>(tx.width);
+            e.h = static_cast<int>(tx.height);
+            if (table == 0) e.users.push_back({0, static_cast<int>(n)});  // (a tfrag texture: "tfrag 0 tex <n>")
+            else if (const auto it = users[table].find(static_cast<int>(n)); it != users[table].end()) e.users = it->second;
+            if (table != 0 && e.users.empty()) continue;  // (no class of the level uses it)
+            e.thumb.resize(static_cast<size_t>(thumb) * thumb);
+            for (int y = 0; y < thumb; ++y)
+                for (int x = 0; x < thumb; ++x) {
+                    const uint32_t sx = static_cast<uint32_t>(x) * tx.width / static_cast<uint32_t>(thumb), sy = static_cast<uint32_t>(y) * tx.height / static_cast<uint32_t>(thumb);
+                    e.thumb[static_cast<size_t>(y) * thumb + x] = tx.palette[csm1(tx.mips[0][sy * tx.width + sx])] | 0xff000000u;
+                }
+            out.push_back(std::move(e));
+        }
+    return out;
 }
 
 // orig: (host) see mrp_lighting.h

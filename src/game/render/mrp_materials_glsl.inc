@@ -168,6 +168,37 @@
     "    vec2 o = vec2(sm_noise(P.xy * 1.7 + vec2(0.0, -t * 1.9)) - 0.5, sm_noise(P.xy * 1.3 + vec2(t * 1.3, 5.0)) - 0.5) * 0.014;\n"                   \
     "    return mix(c, textureLod(uSsrCol, clamp(uv + o, vec2(0.0), vec2(1.0)), 0.0).rgb, 0.35);\n"                                                     \
     "}\n"                                                                                                                                               \
+    "/* the mobys (SH_SPLIT, #110): the modern point lights per pixel - the lights placed by hand, per class, the beams, the automatic\n" \
+    "   emitters. The game's own (the list's first uEmis[0].y) light the mobys already, per vertex in the skinning's record: left out.\n" \
+    "   No cube shadows (a moby casts into them: it would shadow itself); the face normal as the world's (sh_n) */\n" \
+    "vec3 sh_points_moby(vec3 c) {\n" \
+    "    if (uShOn == 0 || uShPass != 0 || uPtN <= 0) return c;\n" \
+    "    int first = int(uEmis[0].y + 0.5);\n" \
+    "    if (first >= uPtN) return c;\n" \
+    "    vec3 add = vec3(0.0);\n" \
+    "    vec4 cp = uPtVP * vec4(vShWorld, 1.0);\n" \
+    "    ivec2 ts = textureSize(uPtTiles, 0);\n" \
+    "    vec2 t01 = cp.w > 0.0 ? cp.xy / cp.w * 0.5 + 0.5 : vec2(0.5);\n" \
+    "    uvec4 m = texelFetch(uPtTiles, clamp(ivec2(floor(t01 * vec2(ts))), ivec2(0), ts - 1), 0);\n" \
+    "    while ((m.x | m.y | m.z) != 0u) {\n" \
+    "        int i;\n" \
+    "        if (m.x != 0u) { i = findLSB(m.x); m.x &= m.x - 1u; }\n" \
+    "        else if (m.y != 0u) { i = 32 + findLSB(m.y); m.y &= m.y - 1u; }\n" \
+    "        else { i = 64 + findLSB(m.z); m.z &= m.z - 1u; }\n" \
+    "        if (i >= uPtN) break;\n" \
+    "        if (i < first) continue;\n" \
+    "        vec3 L = uPtPos[i].xyz - vShWorld;\n" \
+    "        float r = uPtPos[i].w, d2 = dot(L, L);\n" \
+    "        if (d2 >= r * r || d2 <= 0.0) continue;\n" \
+    "        float inv_d = inversesqrt(d2), d = d2 * inv_d;\n" \
+    "        float ndl_p = dot(sh_n, L) * inv_d;\n" \
+    "        if (ndl_p <= 0.0) continue;\n" \
+    "        float att = 1.0 - d / r;\n" \
+    "        att = mix(att, att * att * max(L.z * inv_d, 0.0), uPtDown[i >> 2][i & 3]);\n" \
+    "        add += uPtCol[i].rgb * (ndl_p * att * 0.5);\n" \
+    "    }\n" \
+    "    return c + add;\n" \
+    "}\n" \
     "/* a material's texel: lit the texel as lit (after the emissive), orig as the original lighting shows it (the game's vertex colour,\n"             \
     "   unshadowed), tex the texel, light the lit vertex colour (x 255 / 128: 1 the texture as painted) */\n"                                           \
     "vec3 sh_material(vec3 lit, vec3 orig, vec3 tex, vec3 light, uint s) {\n"                                                                           \
@@ -180,11 +211,19 @@
     "    vec3 L = clamp(light, 0.0, 1.5);\n"                                                                                                            \
     "    float ndv = max(dot(N, V), 0.0);\n"                                                                                                            \
     "    vec3 R = reflect(-V, N);\n"                                                                                                                    \
-    "    if (ty == 1) {  /* metal: a roughness, b strength */\n"                                                                                        \
-    "        vec3 F0 = mix(vec3(0.04), A, 0.85);\n"                                                                                                     \
-    "        vec3 Fv = F0 + (1.0 - F0) * pow(1.0 - ndv, 5.0);\n"                                                                                        \
-    "        return lit * (1.0 - 0.25 * m.y) + m.y * (sm_spec(N, V, m.x, F0) + sm_env(R, m.x) * L * Fv);\n"                                             \
-    "    }\n"                                                                                                                                           \
+    "    if (ty == 1) {  /* metal: a roughness (0 a mirror .. 1 brushed), b strength */\n" \
+    "        float r = clamp(m.x, 0.03, 1.0), gloss = 1.0 - r;\n" \
+    "        vec3 F0 = mix(vec3(0.04), A, 0.85);\n" \
+    "        vec3 Fv = F0 + (1.0 - F0) * pow(1.0 - ndv, 5.0);\n" \
+    "        /* what it mirrors: the sky above and the ground's shade below, its horizon sharper the more polished it is; on High the last\n" \
+    "           frame's picture along the reflected ray (polished: roughness under 0.6) */\n" \
+    "        float up = clamp(R.z * mix(1.0, 6.0, gloss * gloss) + 0.5, 0.0, 1.0);\n" \
+    "        vec3 env = uSsrSky.rgb * mix(0.25, 1.15, up * up * (3.0 - 2.0 * up)) * L;\n" \
+    "        if (gloss > 0.4) env = mix(env, sm_ssr(P + N * 0.03, R, env), smoothstep(0.4, 0.75, gloss));\n" \
+    "        /* polished: less of the painted (diffuse) colour, more mirror */\n" \
+    "        vec3 mirror = env * Fv * mix(0.35, 1.5, gloss * gloss);\n" \
+    "        return lit * (1.0 - m.y * mix(0.25, 0.55, gloss)) + m.y * (sm_spec(N, V, r, F0) + mirror);\n" \
+    "    }\n" \
     "    if (ty == 2 || ty == 3) {  /* wet: a wetness, b roughness; puddle: a coverage, b the noise's scale, c wetness */\n"                            \
     "        float wet = ty == 2 ? m.x : m.z, rough = ty == 2 ? m.y : 0.4;\n"                                                                           \
     "        float Fw = 0.04 + 0.96 * pow(1.0 - ndv, 5.0);\n"                                                                                           \
