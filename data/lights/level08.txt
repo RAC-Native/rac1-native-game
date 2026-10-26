@@ -15,6 +15,5 @@ material tie 297 tex 5 metal 0.4 1
 material tfrag 0 tex 11 puddle 0.45 0.3 0.6
 # Batalia: our ambient particles (Options > Graphics > Ambient Particles, off by default): the rain, slanted by the wind, with
 # splashes on the ground, drawn in place of the game's own while the option is on (the game still makes its own: its state
-# is the same); a little ash from the battle in the air.
-particles rain 1  wind 2.5 1.5
-particles ash 0.3  wind 2.5 1.5
+# is the same). Rain only (the ash line removed after Daino's playtest); the wind with its gusts, as before.
+particles rain 1  wind 2.5 1.5  gust 1

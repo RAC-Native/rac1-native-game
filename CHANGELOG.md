@@ -10,6 +10,10 @@ What changed in each release. Releases are source only: you build the game with 
   light dust in the sunlight, rain with splashes and snow, per level from its light file (`particles` lines, editable in the
   debug menu's Sun tab); Batalia's rain and Hoven's snow drawn in place of the game's own while it is on. OpenGL and Vulkan.
   See [Ambient particles](docs/particles.md).
+- Ambient particles after the first playtest: embers and ash can rise from the level's lava itself (`source lava`, `rise`: points
+  on the open lava faces of the level's collision near the camera, drifting slowly in the air's currents), as Umbris's (the
+  Snagglebeast's cave) and Gaspar's now do, none away from the lava or indoors; the wind is steady unless a line asks for gusts
+  (`gust`); Hoven's snow is a calm, light snowfall; Batalia has rain only.
 - Modern lighting: more lamps light the world on Veldin and Novalis (nanotech crates, fires, plasma beams, landing pad, eyes, bombs), and
   lights per object class follow the objects the game spawns later (thanks Anya-Thoughtmane, #102).
 - Modern lighting: emissive surfaces. A level's light file can mark a texture (`emissive <tfrag|tie|shrub|moby> <class> tex <n>

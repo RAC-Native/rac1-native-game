@@ -17,12 +17,17 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <memory>
+#include <mutex>
+#include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace rac1 {
@@ -56,18 +61,25 @@ struct Kind {
     float streak;         // rain: the streak's length in seconds of its motion
     float min_px;         // the smallest drawn size, pixels (smaller: the alpha lowered instead)
     float soft;           // the distance over which a particle fades into the surface behind it (units)
+    float wander;         // the drift's pace (1 the usual; less: a calmer drift)
+    float lava_rise;      // from the lava ("source lava"): the rise, units a second
 };
 constexpr int kMaxCount = 24000;
 const Kind kKinds[kPartKinds] = {
-    // count  box                      fall    drift size   spread colour                      alpha add    emit   out    streak  min_px soft
-    {2600, {30.0f, 30.0f, 16.0f}, -0.04f, 0.70f, 0.022f, 0.50f, {0.86f, 0.80f, 0.68f}, 0.70f, false, false, false, 0.0f, 1.8f, 0.5f},   // dust
-    {2400, {32.0f, 32.0f, 20.0f}, -0.45f, 0.90f, 0.030f, 0.50f, {0.58f, 0.56f, 0.54f}, 0.80f, false, false, true, 0.0f, 1.6f, 0.5f},    // ash
-    {2000, {30.0f, 30.0f, 16.0f}, 1.60f, 0.80f, 0.040f, 0.40f, {1.00f, 0.42f, 0.10f}, 1.00f, true, true, false, 0.0f, 2.0f, 0.4f},      // embers
-    {400, {32.0f, 32.0f, 8.0f}, 0.00f, 1.60f, 0.060f, 0.30f, {0.72f, 1.00f, 0.32f}, 1.00f, true, true, false, 0.0f, 2.5f, 0.4f},        // fireflies
-    {3000, {24.0f, 24.0f, 12.0f}, -0.02f, 0.45f, 0.020f, 0.50f, {1.00f, 0.95f, 0.82f}, 0.90f, true, false, false, 0.0f, 2.0f, 0.4f},    // motes
-    {9000, {32.0f, 32.0f, 22.0f}, -22.0f, 0.00f, 0.010f, 0.30f, {0.72f, 0.77f, 0.86f}, 0.30f, false, false, true, 0.028f, 1.1f, 0.6f},  // rain
-    {9000, {30.0f, 30.0f, 20.0f}, -1.30f, 0.70f, 0.028f, 0.45f, {1.00f, 1.00f, 1.00f}, 0.85f, false, false, true, 0.0f, 1.2f, 0.5f},    // snow
+    // count  box                      fall    drift size   spread colour                      alpha add    emit   out    streak  min_px soft  wander rise
+    {2600, {30.0f, 30.0f, 16.0f}, -0.04f, 0.70f, 0.022f, 0.50f, {0.86f, 0.80f, 0.68f}, 0.70f, false, false, false, 0.0f, 1.8f, 0.5f, 1.0f, 0.15f},   // dust
+    {2400, {32.0f, 32.0f, 20.0f}, -0.45f, 0.90f, 0.030f, 0.50f, {0.58f, 0.56f, 0.54f}, 0.80f, false, false, true, 0.0f, 1.6f, 0.5f, 1.0f, 0.50f},    // ash
+    {2000, {30.0f, 30.0f, 16.0f}, 1.60f, 0.80f, 0.040f, 0.40f, {1.00f, 0.42f, 0.10f}, 1.00f, true, true, false, 0.0f, 2.0f, 0.4f, 1.0f, 0.90f},      // embers
+    {400, {32.0f, 32.0f, 8.0f}, 0.00f, 1.60f, 0.060f, 0.30f, {0.72f, 1.00f, 0.32f}, 1.00f, true, true, false, 0.0f, 2.5f, 0.4f, 1.0f, 0.10f},        // fireflies
+    {3000, {24.0f, 24.0f, 12.0f}, -0.02f, 0.45f, 0.020f, 0.50f, {1.00f, 0.95f, 0.82f}, 0.90f, true, false, false, 0.0f, 2.0f, 0.4f, 1.0f, 0.10f},    // motes
+    {9000, {32.0f, 32.0f, 22.0f}, -22.0f, 0.00f, 0.010f, 0.30f, {0.72f, 0.77f, 0.86f}, 0.30f, false, false, true, 0.028f, 1.1f, 0.6f, 1.0f, 0.0f},  // rain
+    {9000, {30.0f, 30.0f, 20.0f}, -0.75f, 0.30f, 0.026f, 0.45f, {1.00f, 1.00f, 1.00f}, 0.85f, false, false, true, 0.0f, 1.2f, 0.5f, 0.45f, 0.0f},   // snow
 };
+// from the lava ("source lava"): the emitter slots the shaders read (uEmit), the air's currents (units a second), the slots' range
+constexpr int kLavaSlots = 512;
+constexpr float kLavaCurrent = 0.16f;
+constexpr float kLavaRange = 60.0f;
+constexpr float kLavaSpacing = 1.5f;  // (square units of lava an emitter point stands for)
 constexpr double kTimePeriod = 1200.0;  // (the particles' time wraps every 20 minutes: the floats stay exact)
 constexpr float kSplashRange = 18.0f;    // (rain's splashes: up to this far from the camera)
 
@@ -90,14 +102,18 @@ struct Ubo {
     float misc2[4];    // x interiors, y outdoors only, z the smallest size (pixels), w the splashes' share
     float int_lo[4][4];
     float int_hi[4][4];
+    float src[4];      // x 1 from the lava, z the distance it fades out at, w the spread around a point (units)
+    float move[4];     // x the drift's pace, y the air currents' speed (from the lava)
+    float emit[kLavaSlots][4];  // from the lava: xyz a point, w the time its slot got it (< 0: none)
 };
-static_assert(sizeof(Ubo) == 2 * 64 + 13 * 16 + 8 * 16, "PartUbo's std140 layout");
+static_assert(sizeof(Ubo) == 2 * 64 + 15 * 16 + 8 * 16 + kLavaSlots * 16, "PartUbo's std140 layout");
 
 // ---- the shaders (OpenGL; the Vulkan ones are the same bodies in tools/gen_vk_shaders.py, MRP_PART_*: keep them in step) ----
 #define RAC1_PART_UBO                                                                                                       \
     "layout(std140, binding = 7) uniform PartUbo {\n"                                                                      \
     "    mat4 uVP; mat4 uInvVP; vec4 uCam; vec4 uBox; vec4 uVel; vec4 uCol; vec4 uSize; vec4 uCamVel; vec4 uSun;\n"        \
     "    vec4 uVp; vec4 uProj; vec4 uLimLo; vec4 uLimHi; vec4 uMisc; vec4 uMisc2; vec4 uIntLo[4]; vec4 uIntHi[4];\n"         \
+    "    vec4 uSrc; vec4 uMove; vec4 uEmit[512];\n"                                                                        \
     "};\n"                                                                                                                 \
     "layout(binding = 29) uniform sampler2D uDepth;\n"
 const char* kPartVs = "#version 460 core\n" RAC1_PART_UBO R"(
@@ -129,13 +145,39 @@ void main() {
     float t = uCam.w;
     vec3 vel = uVel.xyz * (0.75 + 0.5 * r3);
     float ph = r4 * 6.2832;
-    vec3 drift = uMisc.x * vec3(sin(t * (0.31 + 0.4 * r5) + ph), cos(t * (0.27 + 0.35 * r3) + ph * 1.7), 0.5 * sin(t * (0.23 + 0.3 * r4) + ph * 2.3));
-    // the particle's place in the world, wrapped into the volume around the camera
-    vec3 rel = r0 * uBox.xyz + vel * t + drift - uCam.xyz;
-    rel = (fract(rel / uBox.xyz) - 0.5) * uBox.xyz;
-    vec3 wp = uCam.xyz + rel;
-    vec3 e = abs(rel) / (0.5 * uBox.xyz);
-    float a = uCol.a * smoothstep(1.0, 0.75, max(max(e.x, e.y), e.z));  // (faded toward the volume's faces: no popping where it wraps)
+    float tw = t * uMove.x;  // (the drift's pace: slower for a calm kind)
+    vec3 drift = uMisc.x * vec3(sin(tw * (0.31 + 0.4 * r5) + ph), cos(tw * (0.27 + 0.35 * r3) + ph * 1.7), 0.5 * sin(tw * (0.23 + 0.3 * r4) + ph * 2.3));
+    vec3 rel, wp;
+    float a;
+    bool src = uSrc.x > 0.5;
+    if (src) {
+        // from the lava: each life starts at one of the lava's points near the camera (uEmit: xyz the point, w the time its slot got
+        // it, < 0 none) and rises slowly, carried by the air's slow currents, fading as it goes
+        float rate = 0.07 + 0.06 * r5;  // (a life of 8 to 14 s)
+        float lt = t * rate + r4;
+        float life = fract(lt);
+        uint s2 = pcg(uint(pi) * 2654435761u + uint(int(floor(lt))) * 40503u + uint(uMisc.w));
+        vec4 em = uEmit[min(int(rnd(s2) * 512.0), 511)];
+        if (em.w > -1.5 && em.w < 0.0) return;  // (an empty slot)
+        float ang = rnd(s2) * 6.2832, rad = sqrt(rnd(s2)) * uSrc.w;
+        float age = life / rate;  // (seconds since it left the lava)
+        vec2 cur = uMove.y * vec2(sin(em.y * 0.07 + t * 0.031 + 1.3) + 0.6 * sin(em.x * 0.05 - t * 0.021),
+                                  cos(em.x * 0.06 - t * 0.026) + 0.6 * cos(em.y * 0.045 + t * 0.017));
+        vec3 wander = uMisc.x * min(age * 0.25, 1.0) * vec3(sin(age * (0.35 + 0.3 * r5) + ph), cos(age * (0.3 + 0.3 * r3) + ph * 1.7), 0.0);
+        wp = em.xyz + vec3(cos(ang) * rad, sin(ang) * rad, 0.05) + vec3((cur + uVel.xy) * age, uVel.z * (0.7 + 0.6 * r3) * age) + wander;
+        rel = wp - uCam.xyz;
+        float since = t - (em.w >= 0.0 ? em.w : -2.0 - em.w);  // (the slot's point taken - or let go - this long ago)
+        float slot_a = since < 0.0 ? 1.0 : (em.w >= 0.0 ? clamp(since / 1.5, 0.0, 1.0) : clamp(1.0 - since / 1.5, 0.0, 1.0));
+        a = uCol.a * smoothstep(0.0, 0.06, life) * (1.0 - smoothstep(0.5, 1.0, life)) * smoothstep(uSrc.z, uSrc.z * 0.75, length(rel)) *
+            slot_a;  // (born bright, fading as it rises; faded far off, and as its slot takes or lets go of its point)
+    } else {
+        // the particle's place in the world, wrapped into the volume around the camera
+        rel = r0 * uBox.xyz + vel * t + drift - uCam.xyz;
+        rel = (fract(rel / uBox.xyz) - 0.5) * uBox.xyz;
+        wp = uCam.xyz + rel;
+        vec3 e = abs(rel) / (0.5 * uBox.xyz);
+        a = uCol.a * smoothstep(1.0, 0.75, max(max(e.x, e.y), e.z));  // (faded toward the volume's faces: no popping where it wraps)
+    }
     if (uLimLo.w > 0.5) {  // the line's box
         vec3 d = min(wp - uLimLo.xyz, uLimHi.xyz - wp);
         a *= clamp(min(min(d.x, d.y), d.z), 0.0, 1.0);
@@ -145,7 +187,7 @@ void main() {
             if (all(greaterThan(wp, uIntLo[i].xyz)) && all(lessThan(wp, uIntHi[i].xyz))) a = 0.0;
     if (kind == 2) {  // embers: a life (rising, fading), flickering
         float life = fract(t * (0.18 + 0.2 * r5) + r4);
-        a *= sin(life * 3.14159) * (0.6 + 0.4 * sin(t * (9.0 + 6.0 * r3) + ph));
+        a *= (src ? 1.0 : sin(life * 3.14159)) * (0.6 + 0.4 * sin(t * (9.0 + 6.0 * r3) + ph));  // (from the lava: its own life above)
     } else if (kind == 3) {  // fireflies: blinking
         a *= smoothstep(0.35, 1.0, 0.5 + 0.5 * sin(t * (1.1 + 1.4 * r5) + ph * 3.0));
     } else if (kind == 4) {  // motes: bright looking toward the sun (forward scatter), twinkling
@@ -446,6 +488,250 @@ bool vk_init() {
     return g_vk.ok;
 }
 
+// ---- the lava ("source lava") -------------------------------------------------------------------------------------------------
+// The level's lava: points on the faces of its collision the game kills the hero in (surface kind 1, the deadly liquid: the lava
+// of Umbris and Gaspar; hero_surface_update's +0x12e5), their tops, where no floor is above them (the lava's kill plane runs under
+// a level's hills and platforms), area-weighted, one per kLavaSpacing square units, with a fixed seed. Read once per level from
+// the collision tree in EE memory (*(0x173e40): the game's own, read only), on the game's thread (mrp_particles_fx_capture); the
+// drawing takes points near the camera into its slots.
+struct LavaSet {
+    int level = -1;
+    uint32_t tree = 0;
+    std::vector<glm::vec3> pts;   // (in the order of the columns below)
+    std::vector<uint32_t> col;    // the points of each 16-unit column of the world (64 x 64, x + 64 y): [col[c], col[c + 1])
+    int faces = 0;
+    float area = 0.0f, spacing = kLavaSpacing;
+};
+std::mutex g_lava_mu;
+std::shared_ptr<const LavaSet> g_lava;  // (the game's thread makes it, the drawing reads it)
+std::atomic<uint32_t> g_lava_fp{0};  // (the collision index's fingerprint last read)
+std::atomic<bool> g_lava_busy{false};  // (a reading under way)
+struct LavaSlots {
+    std::shared_ptr<const LavaSet> set;  // (the points the slots index)
+    int idx[kLavaSlots];
+    float since[kLavaSlots], gone[kLavaSlots];  // (the time the slot got its point; let it go, -1 not)
+    float a = 40.0f;  // (the chance's scale: a / d^2)
+} g_slots;
+
+int g_kind_hist[32];  // (testing, RAC1_PARTICLES_TRACE: the faces by surface kind)
+// orig: (host) the level's lava points from the collision tree at `tree` (the grid of 4-unit cells: src/formats/level_collision.cpp)
+std::shared_ptr<LavaSet> lava_scan(int level, uint32_t tree) {
+    std::fill(std::begin(g_kind_hist), std::end(g_kind_hist), 0);
+    auto out = std::make_shared<LavaSet>();
+    out->level = level;
+    out->tree = tree;
+    auto ok = [](uint32_t a, uint32_t n) { return a >= 0x100000u && a + n < 0x2000000u; };
+    if (!ok(tree, 8)) return out;
+    struct Tri {
+        glm::vec3 a, b, c;
+        float area;
+        glm::vec2 lo;  // (its cell's corner: a face crossing several cells is in each, its points kept in this cell's 4 x 4 only)
+    };
+    std::vector<Tri> tris;
+    int up_votes = 0;  // (the lava's faces' winding: which way a floor's normal points, to tell a floor from a ceiling)
+    // the other faces by cell (x, y, z packed): what covers the lava (a platform, a walkway over it)
+    std::unordered_map<uint32_t, std::vector<glm::vec3>> roofs;
+    auto cell_key = [](int x, int y, int z) { return static_cast<uint32_t>(x & 0x3ff) | static_cast<uint32_t>(y & 0x3ff) << 10 | static_cast<uint32_t>(z & 0x3ff) << 20; };
+    const uint32_t z0 = lhu(tree), zn = lhu(tree + 2);
+    for (uint32_t zi = 0; zi < zn && zi < 256; ++zi) {
+        const uint32_t zrel = static_cast<uint32_t>(lhu(tree + 4 + zi * 2)) << 2;
+        if (zrel == 0 || !ok(tree + zrel, 4)) continue;
+        const uint32_t yrow = tree + zrel, y0 = lhu(yrow), yn = lhu(yrow + 2);
+        for (uint32_t yi = 0; yi < yn && yi < 256; ++yi) {
+            const uint32_t yrel = lwu(yrow + 4 + yi * 4);
+            if (yrel == 0 || !ok(tree + yrel, 4)) continue;
+            const uint32_t xrow = tree + yrel, x0 = lhu(xrow), xn = lhu(xrow + 2);
+            for (uint32_t xi = 0; xi < xn && xi < 256; ++xi) {
+                const uint32_t cell = lwu(xrow + 4 + xi * 4) >> 8;
+                if (cell == 0 || !ok(tree + cell, 4)) continue;
+                const uint32_t c = tree + cell;
+                const uint32_t nf = lbu(c), np = lbu(c + 2), nq = lbu(c + 3);  // (the faces a byte, as the game reads them)
+                if (!ok(c, 4 + np * 4 + nf * 4 + nq)) continue;
+                const glm::vec3 org(static_cast<float>(x0 + xi) * 4.0f + 2.0f, static_cast<float>(y0 + yi) * 4.0f + 2.0f, static_cast<float>(z0 + zi) * 4.0f + 2.0f);
+                auto vtx = [&](uint32_t i) {
+                    const uint32_t w = lwu(c + 4 + i * 4);
+                    return org + glm::vec3(static_cast<float>(static_cast<int32_t>(w << 22) >> 22) / 16.0f, static_cast<float>(static_cast<int32_t>(w << 12) >> 22) / 16.0f,
+                                           static_cast<float>(static_cast<int32_t>(w) >> 20) / 64.0f);
+                };
+                const uint32_t fb = c + 4 + np * 4;
+                for (uint32_t f = 0; f < nf; ++f) {
+                    ++g_kind_hist[lbu(fb + f * 4 + 3) & 0x1f];
+                    const uint32_t i0 = lbu(fb + f * 4), i1 = lbu(fb + f * 4 + 1), i2 = lbu(fb + f * 4 + 2);
+                    if (i0 >= np || i1 >= np || i2 >= np) continue;
+                    if ((lbu(fb + f * 4 + 3) & 0x1f) != 1) {  // (surface kind 1: the deadly liquid - the lava; the others may cover it)
+                        std::vector<glm::vec3>& r = roofs[cell_key(static_cast<int>(x0 + xi), static_cast<int>(y0 + yi), static_cast<int>(z0 + zi))];
+                        for (const glm::vec3& v : {vtx(i0), vtx(i1), vtx(i2)}) r.push_back(v);
+                        if (f < nq && lbu(fb + nf * 4 + f) < np)
+                            for (const glm::vec3& v : {vtx(i0), vtx(i2), vtx(lbu(fb + nf * 4 + f))}) r.push_back(v);
+                        continue;
+                    }
+                    ++out->faces;
+                    auto add = [&](const glm::vec3& a, const glm::vec3& b, const glm::vec3& cc) {
+                        const glm::vec3 n = glm::cross(b - a, cc - a);
+                        const float ar = 0.5f * glm::length(n);
+                        if (ar <= 1e-4f || std::abs(n.z) < 0.5f * glm::length(n)) return;  // (lava's top: not its sides)
+                        up_votes += n.z > 0.0f ? 1 : -1;
+                        tris.push_back({a, b, cc, ar, glm::vec2(org.x - 2.0f, org.y - 2.0f)});
+                    };
+                    add(vtx(i0), vtx(i1), vtx(i2));
+                    if (f < nq) {
+                        const uint32_t i3 = lbu(fb + nf * 4 + f);
+                        if (i3 < np) add(vtx(i0), vtx(i2), vtx(i3));
+                    }
+                }
+            }
+        }
+    }
+    if (tris.empty()) return out;
+    uint32_t rs = 0x9e3779b9u ^ static_cast<uint32_t>(level);
+    auto rnd = [&rs]() {
+        rs = rs * 1664525u + 1013904223u;
+        return static_cast<float>(rs >> 8) * (1.0f / 16777216.0f);
+    };
+    // the lava hidden under the ground: the nearest face above a point is a floor (the ground, a platform: the lava's kill plane
+    // runs under the level's hills) - no particles there; open lava has nothing above it, or a ceiling (a cave's roof)
+    const float up_sign = up_votes >= 0 ? 1.0f : -1.0f;
+    auto covered = [&](const glm::vec3& p) {
+        const int cx = static_cast<int>(std::floor(p.x / 4.0f)), cy = static_cast<int>(std::floor(p.y / 4.0f));
+        for (int cz = static_cast<int>(std::floor(p.z / 4.0f)); cz <= static_cast<int>(z0 + zn); ++cz) {
+            const auto it = roofs.find(cell_key(cx, cy, cz));
+            if (it == roofs.end()) continue;
+            const std::vector<glm::vec3>& r = it->second;
+            float best = 1e9f;
+            bool floor = false;
+            for (size_t i = 0; i + 2 < r.size(); i += 3) {
+                const glm::vec3 &a = r[i], &b = r[i + 1], &c = r[i + 2];
+                const float d = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
+                if (std::abs(d) < 1e-6f) continue;  // (a wall: seen edge-on from above)
+                const float l0 = ((b.y - c.y) * (p.x - c.x) + (c.x - b.x) * (p.y - c.y)) / d;
+                const float l1 = ((c.y - a.y) * (p.x - c.x) + (a.x - c.x) * (p.y - c.y)) / d;
+                const float l2 = 1.0f - l0 - l1;
+                if (l0 < 0.0f || l1 < 0.0f || l2 < 0.0f) continue;
+                const float z = l0 * a.z + l1 * b.z + l2 * c.z;
+                if (z > p.z + 0.5f && z < best) {
+                    best = z;
+                    floor = glm::cross(b - a, c - a).z * up_sign > 0.0f;
+                }
+            }
+            if (best < 1e9f) return floor;  // (the nearest above found in this cell)
+        }
+        return false;
+    };
+    float carry = rnd();  // (the area left over from the triangles before: every kLavaSpacing a point)
+    for (const Tri& t : tris) {
+        carry += t.area / kLavaSpacing;
+        for (; carry >= 1.0f; carry -= 1.0f) {
+            float u = rnd(), v = rnd();
+            if (u + v > 1.0f) {
+                u = 1.0f - u;
+                v = 1.0f - v;
+            }
+            const glm::vec3 p = t.a + u * (t.b - t.a) + v * (t.c - t.a);
+            if (p.x >= t.lo.x && p.x < t.lo.x + 4.0f && p.y >= t.lo.y && p.y < t.lo.y + 4.0f && !covered(p)) out->pts.push_back(p);
+        }
+    }
+    out->area = static_cast<float>(out->pts.size()) * kLavaSpacing;  // (the lava's own area, each place once)
+    out->spacing = kLavaSpacing;
+    if (out->pts.size() > 262144) {  // (at most 262144 points: wider apart on a lava sea)
+        const size_t step = (out->pts.size() + 262143) / 262144;
+        size_t n = 0;
+        for (size_t i = 0; i < out->pts.size(); i += step) out->pts[n++] = out->pts[i];
+        out->pts.resize(n);
+        out->spacing = kLavaSpacing * static_cast<float>(step);
+    }
+    auto column = [](const glm::vec3& p) { return std::clamp(static_cast<int>(p.x / 16.0f), 0, 63) + 64 * std::clamp(static_cast<int>(p.y / 16.0f), 0, 63); };
+    std::stable_sort(out->pts.begin(), out->pts.end(), [&](const glm::vec3& a, const glm::vec3& b) { return column(a) < column(b); });
+    out->col.assign(64 * 64 + 1, 0);
+    for (const glm::vec3& p : out->pts) ++out->col[static_cast<size_t>(column(p)) + 1];
+    for (size_t c = 1; c < out->col.size(); ++c) out->col[c] += out->col[c - 1];
+    return out;
+}
+
+// orig: (host) the slots the frame's "source lava" draws read (uEmit): some of the level's lava points within kLavaRange of the
+// camera, the nearer the more (a point taken with the chance a / d^2, by its own fixed number: about as many on screen near as
+// far; `a` follows the count so that some 460 of the 512 slots are used; points behind the camera count as twice as far). A slot
+// keeps its point while that stays taken (a margin: no flicker at the edge); a point no longer taken lets its particles fade out
+// over 1.5 s before the slot takes another, whose particles fade in: nothing jumps. uEmit's w: the time the slot got its point
+// (>= 0), -2 - the time it was let go (fading out), -1 none
+constexpr float kLavaFade = 1.5f;
+void lava_slots_update(const glm::vec3& cam, const glm::vec3& fwd, float t, float out[kLavaSlots][4], float* spread) {
+    std::shared_ptr<const LavaSet> set;
+    {
+        std::lock_guard<std::mutex> lk(g_lava_mu);
+        set = g_lava;
+    }
+    if (set != nullptr && set->level != mrp_user_lights_level()) set = nullptr;
+    if (set == nullptr || g_slots.set != set) {
+        std::fill(std::begin(g_slots.idx), std::end(g_slots.idx), -1);
+        std::fill(std::begin(g_slots.gone), std::end(g_slots.gone), -1.0f);
+        g_slots.set = set;
+        g_slots.a = 40.0f;
+    }
+    for (int i = 0; i < kLavaSlots; ++i) out[i][3] = -1.0f;
+    if (set == nullptr || set->pts.empty()) return;
+    *spread = 0.65f * std::sqrt(set->spacing);  // (around a point: about the lava it stands for)
+    auto chance = [](uint32_t i) { return static_cast<float>((i * 2654435761u) >> 8) * (1.0f / 16777216.0f); };  // (the point's own number)
+    static std::vector<std::pair<float, int>> near;  // (the points taken: their distance squared)
+    near.clear();
+    const float r2 = kLavaRange * kLavaRange, a = g_slots.a;
+    float expect = 0.0f;  // (the count `a` gives: steered toward the slots' share)
+    const int cx0 = std::clamp(static_cast<int>((cam.x - kLavaRange) / 16.0f), 0, 63), cx1 = std::clamp(static_cast<int>((cam.x + kLavaRange) / 16.0f), 0, 63);
+    const int cy0 = std::clamp(static_cast<int>((cam.y - kLavaRange) / 16.0f), 0, 63), cy1 = std::clamp(static_cast<int>((cam.y + kLavaRange) / 16.0f), 0, 63);
+    static std::vector<uint8_t> state;  // (by point: 1 taken now, 2 taken with the margin; cleared again below)
+    if (state.size() != set->pts.size()) state.assign(set->pts.size(), 0);
+    static std::vector<int> touched;
+    touched.clear();
+    for (int cy = cy0; cy <= cy1; ++cy)
+        for (int cx = cx0; cx <= cx1; ++cx)
+            for (uint32_t i = set->col[static_cast<size_t>(cx + 64 * cy)]; i < set->col[static_cast<size_t>(cx + 64 * cy) + 1]; ++i) {
+                const glm::vec3 d = set->pts[i] - cam;
+                float q = glm::dot(d, d);
+                if (glm::dot(d, fwd) < -0.3f * std::sqrt(q)) q *= 4.0f;  // (behind the camera: as if twice as far)
+                if (q >= r2) continue;
+                const float k = a / std::max(q, 9.0f);
+                expect += std::min(k, 1.0f);
+                const float c = chance(i);
+                if (c < k * 1.3f) {
+                    state[i] = c < k ? 1 : 2;
+                    touched.push_back(static_cast<int>(i));
+                    if (c < k) near.emplace_back(q, static_cast<int>(i));
+                }
+            }
+    g_slots.a = std::clamp(a * std::pow(460.0f / std::max(expect, 1.0f), 0.1f), 0.5f, 1e5f);
+    // the slots: kept while taken (with the margin), else let go; let go long enough, free
+    for (int k = 0; k < kLavaSlots; ++k) {
+        const int i = g_slots.idx[k];
+        if (i < 0) continue;
+        if (g_slots.gone[k] >= 0.0f) {
+            if (t - g_slots.gone[k] > kLavaFade || t < g_slots.gone[k]) g_slots.idx[k] = -1;
+        } else if (state[static_cast<size_t>(i)] == 0) {
+            g_slots.gone[k] = t;
+        } else {
+            state[static_cast<size_t>(i)] = 3;  // (in a slot already)
+        }
+    }
+    std::sort(near.begin(), near.end());  // (the nearest first into the free slots)
+    int k = 0;
+    for (const auto& [q, i] : near) {
+        if (state[static_cast<size_t>(i)] != 1) continue;
+        while (k < kLavaSlots && g_slots.idx[k] >= 0) ++k;
+        if (k >= kLavaSlots) break;
+        g_slots.idx[k] = i;
+        g_slots.since[k] = t;
+        g_slots.gone[k] = -1.0f;
+    }
+    for (int i : touched) state[static_cast<size_t>(i)] = 0;
+    for (int s = 0; s < kLavaSlots; ++s) {
+        const int i = g_slots.idx[s];
+        if (i < 0) continue;
+        const glm::vec3& p = set->pts[static_cast<size_t>(i)];
+        out[s][0] = p.x;
+        out[s][1] = p.y;
+        out[s][2] = p.z;
+        out[s][3] = g_slots.gone[s] >= 0.0f ? -2.0f - g_slots.gone[s] : g_slots.since[s];
+    }
+}
+
 // One draw of the frame: its uniforms, its pipeline, its vertex count
 struct Draw {
     Ubo u;
@@ -490,6 +776,9 @@ bool make_draws(std::vector<Draw>& out, const int vp[4], uint64_t game_frame) {
     const int n_int = static_cast<int>(std::min<size_t>(near.size(), 4));
     const float q = g_ambient_particles >= 2 ? 1.0f : 0.5f;
     int seed = 0;
+    bool lava_done = false;  // (the lava's slots: once a frame, for every "source lava" line)
+    static float lava_emit[kLavaSlots][4];
+    float lava_spread = 1.1f;
     for (const ParticleSpec& ps : lines) {
         ++seed;
         if (!ps.on || ps.kind < 0 || ps.kind >= kPartKinds || !(ps.density > 0.0f)) continue;
@@ -508,11 +797,11 @@ bool make_draws(std::vector<Draw>& out, const int vp[4], uint64_t game_frame) {
         u.box[1] = K.box.y;
         u.box[2] = K.box.z;
         u.box[3] = static_cast<float>(count);
-        // the wind: the line's (a gust now and then); the fall not blown, the wind's share carries the rest
-        const float gust = 1.0f + 0.25f * std::sin(t * 0.37f) * std::sin(t * 0.13f + 1.0f);
+        // the wind: the line's, steady (gusts only if the line asks); the fall not blown, the wind's share carries the rest
+        const float gust = 1.0f + 0.25f * ps.gust * std::sin(t * 0.37f) * std::sin(t * 0.13f + 1.0f);
         u.vel[0] = ps.wind[0] * gust;
         u.vel[1] = ps.wind[1] * gust;
-        u.vel[2] = K.fall;
+        u.vel[2] = ps.src_lava ? (ps.rise > 0.0f ? ps.rise : K.lava_rise) : K.fall;
         u.vel[3] = static_cast<float>(ps.kind);
         const glm::vec3 base = ps.has_col ? glm::vec3(ps.col[0], ps.col[1], ps.col[2]) : K.col;
         glm::vec3 c = K.emissive ? base : base * lit;
@@ -554,6 +843,18 @@ bool make_draws(std::vector<Draw>& out, const int vp[4], uint64_t game_frame) {
         u.misc2[1] = K.outdoors ? 1.0f : 0.0f;
         u.misc2[2] = K.min_px;
         u.misc2[3] = 0.0f;
+        u.move[0] = K.wander;
+        u.move[1] = kLavaCurrent;
+        if (ps.src_lava) {  // from the lava near the camera
+            if (!lava_done) {
+                lava_slots_update(cam, -glm::vec3(iv[2]), t, lava_emit, &lava_spread);
+                lava_done = true;
+            }
+            u.src[0] = 1.0f;
+            u.src[2] = kLavaRange;
+            u.src[3] = lava_spread;
+            std::memcpy(u.emit, lava_emit, sizeof u.emit);
+        }
         for (int i = 0; i < n_int; ++i)
             for (int k = 0; k < 3; ++k) {
                 u.int_lo[i][k] = near[static_cast<size_t>(i)].second->lo[k];
@@ -592,9 +893,9 @@ void mrp_particles_draw(uint64_t game_frame) {
     mrp_user_lights_ensure();
     for (const ParticleSpec& ps : mrp_user_particles())
         if (ps.on && !ps.keep && (ps.kind == kPartRain || ps.kind == kPartSnow) && ps.density > 0.0f) g_hide_game = g_particles_show_game == 0;
+    RAC1_PROF_ZONE(kParticles);  // (the lava's slots, made with the draws, included)
     std::vector<Draw> draws;
     if (!make_draws(draws, vp, game_frame)) return;
-    RAC1_PROF_ZONE(kParticles);
     int total = 0;
     if (vk::is_active()) {
         if (!vk_init()) return;
@@ -712,10 +1013,13 @@ void mrp_particles_draw(uint64_t game_frame) {
     }
     g_st.count = total;
     static const bool trace = std::getenv("RAC1_PARTICLES_TRACE") != nullptr;  // (testing: what is drawn, every 120 frames)
-    if (trace && game_frame % 120 == 0)
-        std::printf("[particles] frame %llu level %d: %zu draws, %d particles, light %.2f %.2f %.2f, the game's rain / snow %s\n",
+    if (trace && game_frame % 120 == 0) {
+        int used = 0;
+        for (int i : g_slots.idx) used += i >= 0 && g_slots.set != nullptr ? 1 : 0;
+        std::printf("[particles] frame %llu level %d: %zu draws, %d particles, light %.2f %.2f %.2f, the game's rain / snow %s; the lava's slots %d (a %.1f)\n",
                     static_cast<unsigned long long>(game_frame), mrp_user_lights_level(), draws.size(), total, draws[0].u.col[0], draws[0].u.col[1], draws[0].u.col[2],
-                    g_hide_game ? "hidden" : "drawn");
+                    g_hide_game ? "hidden" : "drawn", used, static_cast<double>(g_slots.a));
+    }
 }
 
 namespace {
@@ -757,6 +1061,53 @@ void mrp_particles_note_tex(uint32_t tex, uint64_t tex0) {
 // game's rain (types 0 and 1: the drops and their splashes, Batalia) and of its snow (type 0x49, Hoven) as the frame's particle
 // draw placed them
 void mrp_particles_fx_capture() {
+    if (g_ambient_particles > 0) {  // the level's lava ("source lava"), once per level: its collision read here, on the game's thread
+        const int level = lw(0x0015ed84);
+        const uint32_t tree = lwu(OV(0x00173e40));
+        // (read when the level, the tree's place or its index changed and then stayed so for 30 frames: not while a level loads)
+        uint32_t fp = level * 2654435761u ^ tree;
+        if (tree >= 0x100000u && tree + 0x100u < 0x2000000u)
+            for (uint32_t i = 0; i < 0x100u; i += 4) fp = (fp ^ lwu(tree + i)) * 16777619u;
+        static uint32_t last_fp = 0;
+        static int stable = 0;
+        stable = fp == last_fp ? stable + 1 : 0;
+        last_fp = fp;
+        bool lava_line = false;  // (only for a level whose file has a "source lava" line)
+        for (const ParticleSpec& ps : mrp_user_particles()) lava_line = lava_line || (ps.on && ps.src_lava);
+        if (stable >= 30 && fp != g_lava_fp && lava_line && !g_lava_busy.exchange(true)) {
+            g_lava_fp = fp;
+            // (read on a thread of its own: tens of ms on a lava sea; the collision stays as it is while the level runs, and a
+            // reading that ends after the level changed is dropped)
+            std::thread([level, tree, fp] {
+                const auto t0 = std::chrono::steady_clock::now();
+                std::shared_ptr<const LavaSet> set = lava_scan(level, tree);
+                const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+                static const bool trace = std::getenv("RAC1_PARTICLES_TRACE") != nullptr;
+                if (trace) {
+                    std::printf("[particles] level %d: lava %d faces, %.0f square units, %zu points (read in %.1f ms); the collision's surface kinds:", level,
+                                set->faces, static_cast<double>(set->area), set->pts.size(), ms);
+                    for (int k = 0; k < 32; ++k)
+                        if (g_kind_hist[k] != 0) std::printf(" %d: %d", k, g_kind_hist[k]);
+                    std::printf("\n");
+                    std::map<int, std::pair<glm::vec3, glm::vec3>> by_z;  // (the lava's heights: each with its extent and its points)
+                    std::map<int, int> nz;
+                    for (const glm::vec3& p : set->pts) {
+                        const int z = static_cast<int>(std::floor(p.z / 2.0f));
+                        auto it = by_z.find(z);
+                        if (it == by_z.end()) by_z[z] = {p, p};
+                        else it->second = {glm::min(it->second.first, p), glm::max(it->second.second, p)};
+                        ++nz[z];
+                    }
+                    for (const auto& [z, b] : by_z)
+                        std::printf("[particles]   lava at z %d..%d: %d points, x %.0f..%.0f y %.0f..%.0f\n", z * 2, z * 2 + 2, nz[z], static_cast<double>(b.first.x), static_cast<double>(b.second.x),
+                                    static_cast<double>(b.first.y), static_cast<double>(b.second.y));
+                }
+                std::lock_guard<std::mutex> lk(g_lava_mu);
+                if (fp == g_lava_fp) g_lava = std::move(set);
+                g_lava_busy = false;
+            }).detach();
+        }
+    }
     g_rain_tbp_cap.clear();
     g_snow_tbp_cap.clear();
     if (g_ambient_particles <= 0 || !g_tex_any) return;

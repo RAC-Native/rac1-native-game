@@ -3,5 +3,6 @@
 # Hoven: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
 sun -180.0 90.0
 # Hoven: our ambient particles (Options > Graphics > Ambient Particles, off by default): drifting snow, in place of the game's
-# own while the option is on (the game still makes its own: its state is the same).
-particles snow 1  wind 1.2 0.4
+# own while the option is on (the game still makes its own: its state is the same). A calm, light snowfall (after Daino's
+# playtest): fewer flakes, slow, a gentle steady drift, no gusts.
+particles snow 0.55  wind 0.3 0.1
