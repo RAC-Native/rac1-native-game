@@ -42,6 +42,7 @@ int env_int(const char* name, int def) {
 
 int g_ambient_particles = std::clamp(env_int("RAC1_PARTICLES", 0), 0, 2);
 int g_particles_show_game = env_int("RAC1_PARTICLES_GAME", 0) != 0 ? 1 : 0;
+int g_particles_sky = env_int("RAC1_PARTICLES_SKY", 1) != 0 ? 1 : 0;
 
 namespace {
 
@@ -57,7 +58,7 @@ struct Kind {
     float alpha;
     bool additive;        // glows: added to the picture (embers, fireflies, motes)
     bool emissive;        // their own light: not dimmed by the zone's (embers, fireflies)
-    bool outdoors;        // not drawn inside the level's interior boxes (what falls from the sky)
+    bool outdoors;        // what falls from the sky: not drawn under a roof (the sky grid) nor inside the level's interior boxes
     float streak;         // rain: the streak's length in seconds of its motion
     float min_px;         // the smallest drawn size, pixels (smaller: the alpha lowered instead)
     float soft;           // the distance over which a particle fades into the surface behind it (units)
@@ -82,6 +83,13 @@ constexpr float kLavaRange = 60.0f;
 constexpr float kLavaSpacing = 1.5f;  // (square units of lava an emitter point stands for)
 constexpr double kTimePeriod = 1200.0;  // (the particles' time wraps every 20 minutes: the floats stay exact)
 constexpr float kSplashRange = 18.0f;    // (rain's splashes: up to this far from the camera)
+// the sky grid (below, "the sky"): its squares (units), its window's squares a side (128 units: the particles' volumes and the
+// splashes well inside), how far the camera goes before the window is taken again, the height of "no face there"
+constexpr float kSkyCell = 0.5f;
+constexpr int kSkyWin = 256;         // (128 units at kSkyCell: the particles' volumes and the splashes well inside)
+constexpr float kSkyMove = 24.0f;    // (the window taken again when the camera is this far from its centre)
+constexpr float kSkyNone = -1.0e6f;  // (no face over that square: the open sky)
+constexpr int kSkyUnit = 30;         // (OpenGL: its texture unit, the particles' and the materials' - mrp_materials_glsl.inc)
 
 // The uniforms of one draw (std140: vec4s and mat4s; the shaders' PartUbo)
 struct Ubo {
@@ -104,19 +112,38 @@ struct Ubo {
     float int_hi[4][4];
     float src[4];      // x 1 from the lava, z the distance it fades out at, w the spread around a point (units)
     float move[4];     // x the drift's pace, y the air currents' speed (from the lava)
+    float sky[4];      // the sky grid's window: xy its corner, z its squares' size, w 1 when tested (what falls from the sky)
     float emit[kLavaSlots][4];  // from the lava: xyz a point, w the time its slot got it (< 0: none)
 };
-static_assert(sizeof(Ubo) == 2 * 64 + 15 * 16 + 8 * 16 + kLavaSlots * 16, "PartUbo's std140 layout");
+static_assert(sizeof(Ubo) == 2 * 64 + 16 * 16 + 8 * 16 + kLavaSlots * 16, "PartUbo's std140 layout");
 
 // ---- the shaders (OpenGL; the Vulkan ones are the same bodies in tools/gen_vk_shaders.py, MRP_PART_*: keep them in step) ----
 #define RAC1_PART_UBO                                                                                                       \
     "layout(std140, binding = 7) uniform PartUbo {\n"                                                                      \
     "    mat4 uVP; mat4 uInvVP; vec4 uCam; vec4 uBox; vec4 uVel; vec4 uCol; vec4 uSize; vec4 uCamVel; vec4 uSun;\n"        \
     "    vec4 uVp; vec4 uProj; vec4 uLimLo; vec4 uLimHi; vec4 uMisc; vec4 uMisc2; vec4 uIntLo[4]; vec4 uIntHi[4];\n"         \
-    "    vec4 uSrc; vec4 uMove; vec4 uEmit[512];\n"                                                                        \
+    "    vec4 uSrc; vec4 uMove; vec4 uSky; vec4 uEmit[512];\n"                                                             \
     "};\n"                                                                                                                 \
-    "layout(binding = 29) uniform sampler2D uDepth;\n"
-const char* kPartVs = "#version 460 core\n" RAC1_PART_UBO R"(
+    "layout(binding = 29) uniform sampler2D uDepth;\n"                                                                    \
+    "layout(binding = 30) uniform sampler2D uSkyMap;\n"
+// (the sky: 1 under the open sky, 0 under the topmost face of the level's collision at the place - a roof -, blended over the
+// grid's squares; the same in tools/gen_vk_shaders.py)
+#define RAC1_PART_SKY                                                                                                      \
+    "float sky_open(vec3 p) {\n"                                                                                           \
+    "    if (uSky.w < 0.5) return 1.0;\n"                                                                                  \
+    "    vec2 g = (p.xy - uSky.xy) / uSky.z - 0.5;\n"                                                                      \
+    "    ivec2 i0 = ivec2(floor(g));\n"                                                                                    \
+    "    vec2 f = g - vec2(i0);\n"                                                                                         \
+    "    ivec2 n = textureSize(uSkyMap, 0) - ivec2(0, 1);\n" /* (the last row: the window's place, for the materials) */      \
+    "    vec4 o;\n"                                                                                                        \
+    "    for (int k = 0; k < 4; ++k) {\n"                                                                                  \
+    "        ivec2 c = i0 + ivec2(k & 1, k >> 1);\n"                                                                       \
+    "        float h = (any(lessThan(c, ivec2(0))) || any(greaterThanEqual(c, n))) ? -1.0e6 : texelFetch(uSkyMap, c, 0).r;\n" \
+    "        o[k] = smoothstep(h - 0.25, h + 0.25, p.z);\n"                                                                \
+    "    }\n"                                                                                                              \
+    "    return mix(mix(o.x, o.y, f.x), mix(o.z, o.w, f.x), f.y);\n"                                                       \
+    "}\n"
+const char* kPartVs = "#version 460 core\n" RAC1_PART_UBO RAC1_PART_SKY R"(
 #define VID gl_VertexID
 out vec2 vQ;
 out float vA;
@@ -182,9 +209,11 @@ void main() {
         vec3 d = min(wp - uLimLo.xyz, uLimHi.xyz - wp);
         a *= clamp(min(min(d.x, d.y), d.z), 0.0, 1.0);
     }
-    if (uMisc2.y > 0.5)  // (from the sky: none inside the level's interiors)
+    if (uMisc2.y > 0.5) {  // (from the sky: none under a roof, none inside the level's interiors)
+        a *= sky_open(wp);
         for (int i = 0; i < int(uMisc2.x); ++i)
             if (all(greaterThan(wp, uIntLo[i].xyz)) && all(lessThan(wp, uIntHi[i].xyz))) a = 0.0;
+    }
     if (kind == 2) {  // embers: a life (rising, fading), flickering
         float life = fract(t * (0.18 + 0.2 * r5) + r4);
         a *= (src ? 1.0 : sin(life * 3.14159)) * (0.6 + 0.4 * sin(t * (9.0 + 6.0 * r3) + ph));  // (from the lava: its own life above)
@@ -256,7 +285,7 @@ void main() {
     gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }
 )";
-const char* kSplashFs = "#version 460 core\n" RAC1_PART_UBO R"(
+const char* kSplashFs = "#version 460 core\n" RAC1_PART_UBO RAC1_PART_SKY R"(
 out vec4 FragColor;
 uint pcg(uint v) {
     uint s = v * 747796405u + 2891336453u;
@@ -282,6 +311,8 @@ void main() {
     if (uLimLo.w > 0.5 && (any(lessThan(p, uLimLo.xyz)) || any(greaterThan(p, uLimHi.xyz)))) discard;
     for (int i = 0; i < int(uMisc2.x); ++i)
         if (all(greaterThan(p, uIntLo[i].xyz - vec3(0.0, 0.0, 0.5))) && all(lessThan(p, uIntHi[i].xyz))) discard;
+    float open = sky_open(p + vec3(0.0, 0.0, 0.75));  // (the ground the topmost face there: under the sky)
+    if (open <= 0.0) discard;
     const float cell = 0.55;
     vec2 gi = floor(p.xy / cell);
     uint s = uint(int(gi.x) * 73856093) ^ uint(int(gi.y) * 19349663);
@@ -293,7 +324,7 @@ void main() {
     vec2 ctr = (gi + 0.25 + 0.5 * vec2(rnd(s2), rnd(s2))) * cell;
     float r = length(p.xy - ctr), rad = 0.02 + ph * 0.12;
     float ring = smoothstep(0.014, 0.0, abs(r - rad)) * (1.0 - ph) + smoothstep(0.025, 0.0, r) * max(1.0 - ph * 5.0, 0.0);
-    float a = ring * uCol.a * smoothstep(uSize.w, uSize.w * 0.5, dist) * up;
+    float a = ring * uCol.a * smoothstep(uSize.w, uSize.w * 0.5, dist) * up * open;
     if (a <= 0.003) discard;
     FragColor = vec4(uCol.rgb, min(a, 1.0));
 }
@@ -438,12 +469,13 @@ bool vk_init() {
     if (!g_vk.tried) {
         g_vk.tried = true;
         if (!vk::shaders::kAvailable) return false;
-        VkDescriptorSetLayoutBinding b[2]{};
+        VkDescriptorSetLayoutBinding b[3]{};
         b[0] = {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
         b[1] = {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+        b[2] = {2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
         VkDescriptorSetLayoutCreateInfo dci{};
         dci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        dci.bindingCount = 2;
+        dci.bindingCount = 3;
         dci.pBindings = b;
         vkCreateDescriptorSetLayout(dev, &dci, nullptr, &g_vk.dsl);
         VkPipelineLayoutCreateInfo plci{};
@@ -514,24 +546,14 @@ struct LavaSlots {
 } g_slots;
 
 int g_kind_hist[32];  // (testing, RAC1_PARTICLES_TRACE: the faces by surface kind)
-// orig: (host) the level's lava points from the collision tree at `tree` (the grid of 4-unit cells: src/formats/level_collision.cpp)
-std::shared_ptr<LavaSet> lava_scan(int level, uint32_t tree) {
-    std::fill(std::begin(g_kind_hist), std::end(g_kind_hist), 0);
-    auto out = std::make_shared<LavaSet>();
-    out->level = level;
-    out->tree = tree;
+
+// orig: (host) every face of the collision tree at `tree` in EE memory (the grid of 4-unit cells: src/formats/level_collision.cpp),
+// read only: fn(a, b, c, the surface kind, the cell (x, y, z), a quad's second triangle) for each triangle, a quad's two in turn
+// (a, c and its fourth point); `face` once per face before its triangles (its kind). False: no tree there
+template <class Face, class Tri>
+bool coll_faces(uint32_t tree, Face&& face, Tri&& fn) {
     auto ok = [](uint32_t a, uint32_t n) { return a >= 0x100000u && a + n < 0x2000000u; };
-    if (!ok(tree, 8)) return out;
-    struct Tri {
-        glm::vec3 a, b, c;
-        float area;
-        glm::vec2 lo;  // (its cell's corner: a face crossing several cells is in each, its points kept in this cell's 4 x 4 only)
-    };
-    std::vector<Tri> tris;
-    int up_votes = 0;  // (the lava's faces' winding: which way a floor's normal points, to tell a floor from a ceiling)
-    // the other faces by cell (x, y, z packed): what covers the lava (a platform, a walkway over it)
-    std::unordered_map<uint32_t, std::vector<glm::vec3>> roofs;
-    auto cell_key = [](int x, int y, int z) { return static_cast<uint32_t>(x & 0x3ff) | static_cast<uint32_t>(y & 0x3ff) << 10 | static_cast<uint32_t>(z & 0x3ff) << 20; };
+    if (!ok(tree, 8)) return false;
     const uint32_t z0 = lhu(tree), zn = lhu(tree + 2);
     for (uint32_t zi = 0; zi < zn && zi < 256; ++zi) {
         const uint32_t zrel = static_cast<uint32_t>(lhu(tree + 4 + zi * 2)) << 2;
@@ -547,7 +569,8 @@ std::shared_ptr<LavaSet> lava_scan(int level, uint32_t tree) {
                 const uint32_t c = tree + cell;
                 const uint32_t nf = lbu(c), np = lbu(c + 2), nq = lbu(c + 3);  // (the faces a byte, as the game reads them)
                 if (!ok(c, 4 + np * 4 + nf * 4 + nq)) continue;
-                const glm::vec3 org(static_cast<float>(x0 + xi) * 4.0f + 2.0f, static_cast<float>(y0 + yi) * 4.0f + 2.0f, static_cast<float>(z0 + zi) * 4.0f + 2.0f);
+                const glm::ivec3 ci(static_cast<int>(x0 + xi), static_cast<int>(y0 + yi), static_cast<int>(z0 + zi));
+                const glm::vec3 org(glm::vec3(ci) * 4.0f + 2.0f);
                 auto vtx = [&](uint32_t i) {
                     const uint32_t w = lwu(c + 4 + i * 4);
                     return org + glm::vec3(static_cast<float>(static_cast<int32_t>(w << 22) >> 22) / 16.0f, static_cast<float>(static_cast<int32_t>(w << 12) >> 22) / 16.0f,
@@ -555,34 +578,57 @@ std::shared_ptr<LavaSet> lava_scan(int level, uint32_t tree) {
                 };
                 const uint32_t fb = c + 4 + np * 4;
                 for (uint32_t f = 0; f < nf; ++f) {
-                    ++g_kind_hist[lbu(fb + f * 4 + 3) & 0x1f];
+                    const int kind = static_cast<int>(lbu(fb + f * 4 + 3) & 0x1f);
+                    face(kind);
                     const uint32_t i0 = lbu(fb + f * 4), i1 = lbu(fb + f * 4 + 1), i2 = lbu(fb + f * 4 + 2);
                     if (i0 >= np || i1 >= np || i2 >= np) continue;
-                    if ((lbu(fb + f * 4 + 3) & 0x1f) != 1) {  // (surface kind 1: the deadly liquid - the lava; the others may cover it)
-                        std::vector<glm::vec3>& r = roofs[cell_key(static_cast<int>(x0 + xi), static_cast<int>(y0 + yi), static_cast<int>(z0 + zi))];
-                        for (const glm::vec3& v : {vtx(i0), vtx(i1), vtx(i2)}) r.push_back(v);
-                        if (f < nq && lbu(fb + nf * 4 + f) < np)
-                            for (const glm::vec3& v : {vtx(i0), vtx(i2), vtx(lbu(fb + nf * 4 + f))}) r.push_back(v);
-                        continue;
-                    }
-                    ++out->faces;
-                    auto add = [&](const glm::vec3& a, const glm::vec3& b, const glm::vec3& cc) {
-                        const glm::vec3 n = glm::cross(b - a, cc - a);
-                        const float ar = 0.5f * glm::length(n);
-                        if (ar <= 1e-4f || std::abs(n.z) < 0.5f * glm::length(n)) return;  // (lava's top: not its sides)
-                        up_votes += n.z > 0.0f ? 1 : -1;
-                        tris.push_back({a, b, cc, ar, glm::vec2(org.x - 2.0f, org.y - 2.0f)});
-                    };
-                    add(vtx(i0), vtx(i1), vtx(i2));
+                    fn(vtx(i0), vtx(i1), vtx(i2), kind, ci, false);
                     if (f < nq) {
                         const uint32_t i3 = lbu(fb + nf * 4 + f);
-                        if (i3 < np) add(vtx(i0), vtx(i2), vtx(i3));
+                        if (i3 < np) fn(vtx(i0), vtx(i2), vtx(i3), kind, ci, true);
                     }
                 }
             }
         }
     }
-    if (tris.empty()) return out;
+    return true;
+}
+
+// orig: (host) the level's lava points from the collision tree at `tree`
+std::shared_ptr<LavaSet> lava_scan(int level, uint32_t tree) {
+    std::fill(std::begin(g_kind_hist), std::end(g_kind_hist), 0);
+    auto out = std::make_shared<LavaSet>();
+    out->level = level;
+    out->tree = tree;
+    struct Tri {
+        glm::vec3 a, b, c;
+        float area;
+        glm::vec2 lo;  // (its cell's corner: a face crossing several cells is in each, its points kept in this cell's 4 x 4 only)
+    };
+    std::vector<Tri> tris;
+    int up_votes = 0;  // (the lava's faces' winding: which way a floor's normal points, to tell a floor from a ceiling)
+    // the other faces by cell (x, y, z packed): what covers the lava (a platform, a walkway over it)
+    std::unordered_map<uint32_t, std::vector<glm::vec3>> roofs;
+    auto cell_key = [](int x, int y, int z) { return static_cast<uint32_t>(x & 0x3ff) | static_cast<uint32_t>(y & 0x3ff) << 10 | static_cast<uint32_t>(z & 0x3ff) << 20; };
+    int zmax = 0;  // (the tree's top cell)
+    const bool any = coll_faces(
+        tree,
+        [&](int kind) { ++g_kind_hist[kind]; },
+        [&](const glm::vec3& a, const glm::vec3& b, const glm::vec3& cc, int kind, const glm::ivec3& ci, bool second) {
+            zmax = std::max(zmax, ci.z + 1);
+            if (kind == 1 && !second) ++out->faces;
+            if (kind != 1) {  // (surface kind 1: the deadly liquid - the lava; the others may cover it)
+                std::vector<glm::vec3>& r = roofs[cell_key(ci.x, ci.y, ci.z)];
+                for (const glm::vec3& v : {a, b, cc}) r.push_back(v);
+                return;
+            }
+            const glm::vec3 n = glm::cross(b - a, cc - a);
+            const float ar = 0.5f * glm::length(n);
+            if (ar <= 1e-4f || std::abs(n.z) < 0.5f * glm::length(n)) return;  // (lava's top: not its sides)
+            up_votes += n.z > 0.0f ? 1 : -1;
+            tris.push_back({a, b, cc, ar, glm::vec2(static_cast<float>(ci.x) * 4.0f, static_cast<float>(ci.y) * 4.0f)});
+        });
+    if (!any || tris.empty()) return out;
     uint32_t rs = 0x9e3779b9u ^ static_cast<uint32_t>(level);
     auto rnd = [&rs]() {
         rs = rs * 1664525u + 1013904223u;
@@ -593,7 +639,7 @@ std::shared_ptr<LavaSet> lava_scan(int level, uint32_t tree) {
     const float up_sign = up_votes >= 0 ? 1.0f : -1.0f;
     auto covered = [&](const glm::vec3& p) {
         const int cx = static_cast<int>(std::floor(p.x / 4.0f)), cy = static_cast<int>(std::floor(p.y / 4.0f));
-        for (int cz = static_cast<int>(std::floor(p.z / 4.0f)); cz <= static_cast<int>(z0 + zn); ++cz) {
+        for (int cz = static_cast<int>(std::floor(p.z / 4.0f)); cz <= zmax; ++cz) {
             const auto it = roofs.find(cell_key(cx, cy, cz));
             if (it == roofs.end()) continue;
             const std::vector<glm::vec3>& r = it->second;
@@ -645,6 +691,191 @@ std::shared_ptr<LavaSet> lava_scan(int level, uint32_t tree) {
     for (const glm::vec3& p : out->pts) ++out->col[static_cast<size_t>(column(p)) + 1];
     for (size_t c = 1; c < out->col.size(); ++c) out->col[c] += out->col[c - 1];
     return out;
+}
+
+// ---- the sky ("rain shadow") ------------------------------------------------------------------------------------------------
+// What falls from the sky (rain, snow, ash) stays out from under roofs: the level's collision seen from above, the height of its
+// topmost face over each square of a grid (kSkyCell units) - a roof, a tunnel's ceiling, a room's, a ledge above -, read once per
+// level on a thread of its own as the lava is (the same tree). A particle below that height at its place is under cover: not
+// drawn (faded over the grid's square at the edges); a splash only where the ground itself is the topmost face. The drawing
+// uploads a window of the grid around the camera (kSkyWin squares a side) as a texture, again when the camera nears its edge.
+struct SkySet {
+    int level = -1;
+    uint32_t fp = 0;  // (the collision's fingerprint it was read from: used only while the game's is the same)
+    float x0 = 0.0f, y0 = 0.0f, cell = kSkyCell;  // (the grid's corner and its squares' size)
+    int w = 0, h = 0;
+    std::vector<float> top;  // (w x h: the topmost face's height, kSkyNone none)
+    int faces = 0;
+};
+std::shared_ptr<const SkySet> g_sky;  // (under g_lava_mu: the game's thread makes it, the drawing reads it)
+std::atomic<uint32_t> g_sky_fp{0};
+std::atomic<uint32_t> g_coll_fp{0};  // (the collision's fingerprint this frame: a grid of another - a level loading - is not used)
+std::atomic<bool> g_sky_busy{false};
+
+// orig: (host) the level's sky grid from the collision tree at `tree`: every face not a wall (seen from above: its normal at
+// least 0.1 up or down) drawn into the grid at the squares' centres (and its corners' squares: a thin beam still counts), the
+// highest height kept
+std::shared_ptr<SkySet> sky_scan(int level, uint32_t tree) {
+    auto out = std::make_shared<SkySet>();
+    out->level = level;
+    std::vector<glm::vec3> tris;
+    glm::vec2 lo(1e9f), hi(-1e9f);
+    coll_faces(
+        tree, [](int) {},
+        [&](const glm::vec3& a, const glm::vec3& b, const glm::vec3& c, int, const glm::ivec3&, bool) {
+            const glm::vec3 n = glm::cross(b - a, c - a);
+            const float nl = glm::length(n);
+            if (nl <= 1e-6f || std::abs(n.z) < 0.1f * nl) return;  // (a wall, or nothing)
+            for (const glm::vec3& v : {a, b, c}) {
+                tris.push_back(v);
+                lo = glm::min(lo, glm::vec2(v));
+                hi = glm::max(hi, glm::vec2(v));
+            }
+        });
+    out->faces = static_cast<int>(tris.size() / 3);
+    if (tris.empty()) return out;
+    float cell = kSkyCell;
+    while ((hi.x - lo.x) / cell > 2047.0f || (hi.y - lo.y) / cell > 2047.0f) cell *= 2.0f;  // (at most 2048 squares a side: 16 MB)
+    out->cell = cell;
+    out->x0 = std::floor(lo.x / cell) * cell;
+    out->y0 = std::floor(lo.y / cell) * cell;
+    out->w = static_cast<int>(std::ceil((hi.x - out->x0) / cell)) + 1;
+    out->h = static_cast<int>(std::ceil((hi.y - out->y0) / cell)) + 1;
+    out->top.assign(static_cast<size_t>(out->w) * static_cast<size_t>(out->h), kSkyNone);
+    const float inv = 1.0f / cell;
+    auto put = [&](int x, int y, float z) {
+        if (x < 0 || y < 0 || x >= out->w || y >= out->h) return;
+        float& t = out->top[static_cast<size_t>(x) + static_cast<size_t>(y) * static_cast<size_t>(out->w)];
+        t = std::max(t, z);
+    };
+    for (size_t i = 0; i + 2 < tris.size(); i += 3) {
+        const glm::vec3 &a = tris[i], &b = tris[i + 1], &c = tris[i + 2];
+        for (const glm::vec3& v : {a, b, c}) put(static_cast<int>((v.x - out->x0) * inv), static_cast<int>((v.y - out->y0) * inv), v.z);
+        const float d = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
+        if (std::abs(d) < 1e-8f) continue;
+        const float zlo = std::min({a.z, b.z, c.z}), zhi = std::max({a.z, b.z, c.z});
+        const int gx0 = static_cast<int>(std::floor((std::min({a.x, b.x, c.x}) - out->x0) * inv)), gx1 = static_cast<int>(std::floor((std::max({a.x, b.x, c.x}) - out->x0) * inv));
+        const int gy0 = static_cast<int>(std::floor((std::min({a.y, b.y, c.y}) - out->y0) * inv)), gy1 = static_cast<int>(std::floor((std::max({a.y, b.y, c.y}) - out->y0) * inv));
+        for (int gy = gy0; gy <= gy1; ++gy)
+            for (int gx = gx0; gx <= gx1; ++gx) {
+                const float px = out->x0 + (static_cast<float>(gx) + 0.5f) * cell, py = out->y0 + (static_cast<float>(gy) + 0.5f) * cell;
+                const float l0 = ((b.y - c.y) * (px - c.x) + (c.x - b.x) * (py - c.y)) / d;
+                const float l1 = ((c.y - a.y) * (px - c.x) + (a.x - c.x) * (py - c.y)) / d;
+                const float l2 = 1.0f - l0 - l1;
+                if (l0 < -1e-4f || l1 < -1e-4f || l2 < -1e-4f) continue;
+                put(gx, gy, std::clamp(l0 * a.z + l1 * b.z + l2 * c.z, zlo, zhi));
+            }
+    }
+    return out;
+}
+
+// The window of the sky grid the frame's draws read: the texture's contents (kSkyWin x kSkyWin heights, then a row whose first
+// four texels are the corner's x and y, the squares' size and 1 when on - the materials read the window from it), its corner
+struct SkyWin {
+    std::shared_ptr<const SkySet> set;  // (the grid it was taken from)
+    glm::vec2 centre{0.0f}, corner{0.0f};
+    float cell = kSkyCell;
+    bool fresh = false;  // (taken again: to upload)
+    std::vector<float> texels;
+    GLuint gl_tex = 0;
+    vk::GpuImage vk_img;
+} g_skywin;
+
+// orig: (host) the window around the camera, taken again from the level's grid when that changed or the camera moved far enough;
+// false: no grid for this level, or the test off (RAC1_PARTICLES_SKY=0: the texture's row then says off)
+bool sky_window_update(const glm::vec3& cam) {
+    std::shared_ptr<const SkySet> set;
+    if (g_particles_sky != 0) {
+        std::lock_guard<std::mutex> lk(g_lava_mu);
+        set = g_sky;
+    }
+    const size_t row = static_cast<size_t>(kSkyWin) * kSkyWin;
+    if (set == nullptr || set->level != mrp_user_lights_level() || set->fp != g_coll_fp.load() || set->top.empty()) {
+        if (g_skywin.set != nullptr) {  // (the level's window let go: off)
+            g_skywin.set = nullptr;
+            g_skywin.texels.assign(row + kSkyWin, kSkyNone);
+            g_skywin.texels[row + 3] = 0.0f;
+            g_skywin.fresh = true;
+        }
+        return false;
+    }
+    if (g_skywin.set == set && glm::length(glm::vec2(cam) - g_skywin.centre) < kSkyMove) return true;
+    g_skywin.set = set;
+    g_skywin.centre = glm::vec2(cam);
+    g_skywin.cell = set->cell;
+    const int ix0 = static_cast<int>(std::floor((cam.x - set->x0) / set->cell)) - kSkyWin / 2;
+    const int iy0 = static_cast<int>(std::floor((cam.y - set->y0) / set->cell)) - kSkyWin / 2;
+    g_skywin.corner = glm::vec2(set->x0 + static_cast<float>(ix0) * set->cell, set->y0 + static_cast<float>(iy0) * set->cell);
+    g_skywin.texels.assign(row + kSkyWin, kSkyNone);
+    for (int y = 0; y < kSkyWin; ++y) {
+        const int gy = iy0 + y;
+        if (gy < 0 || gy >= set->h) continue;
+        for (int x = 0; x < kSkyWin; ++x) {
+            const int gx = ix0 + x;
+            if (gx >= 0 && gx < set->w)
+                g_skywin.texels[static_cast<size_t>(x) + static_cast<size_t>(y) * kSkyWin] = set->top[static_cast<size_t>(gx) + static_cast<size_t>(gy) * static_cast<size_t>(set->w)];
+        }
+    }
+    g_skywin.texels[row] = g_skywin.corner.x;
+    g_skywin.texels[row + 1] = g_skywin.corner.y;
+    g_skywin.texels[row + 2] = g_skywin.cell;
+    g_skywin.texels[row + 3] = 1.0f;
+    g_skywin.fresh = true;
+    return true;
+}
+
+// orig: (host) OpenGL: the window's texture (R32F, kSkyWin x kSkyWin + 1), made the first time and uploaded when taken again (it
+// stays bound on the active unit)
+GLuint sky_gl_texture() {
+    if (g_skywin.gl_tex == 0) {
+        glGenTextures(1, &g_skywin.gl_tex);
+        rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &g_skywin.gl_tex, "Ambient particles: sky");
+        glBindTexture(GL_TEXTURE_2D, g_skywin.gl_tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, kSkyWin, kSkyWin + 1, 0, GL_RED, GL_FLOAT, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        if (g_skywin.texels.empty()) {  // (off until a window is taken)
+            g_skywin.texels.assign(static_cast<size_t>(kSkyWin) * (kSkyWin + 1), kSkyNone);
+            g_skywin.texels[static_cast<size_t>(kSkyWin) * kSkyWin + 3] = 0.0f;
+        }
+        g_skywin.fresh = true;
+    }
+    glBindTexture(GL_TEXTURE_2D, g_skywin.gl_tex);
+    if (g_skywin.fresh) {
+        GLint prev_unpack = 0, prev_pbo = 0, prev_row = 0;
+        glGetIntegerv(GL_UNPACK_ALIGNMENT, &prev_unpack);
+        glGetIntegerv(GL_UNPACK_ROW_LENGTH, &prev_row);
+        glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &prev_pbo);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, kSkyWin, kSkyWin + 1, GL_RED, GL_FLOAT, g_skywin.texels.data());
+        glPixelStorei(GL_UNPACK_ALIGNMENT, prev_unpack);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, prev_row);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, static_cast<GLuint>(prev_pbo));
+        g_skywin.fresh = false;
+    }
+    return g_skywin.gl_tex;
+}
+
+// orig: (host) Vulkan: the window's image, made the first time and uploaded when taken again (outside a pass: the upload ends the
+// one under way); null when it cannot be made
+vk::GpuImage* sky_vk_image() {
+    if (g_skywin.vk_img.image == VK_NULL_HANDLE) {
+        if (!vk::create_image(kSkyWin, kSkyWin + 1, VK_FORMAT_R32_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT,
+                              g_skywin.vk_img))
+            return nullptr;
+        if (g_skywin.texels.empty()) {
+            g_skywin.texels.assign(static_cast<size_t>(kSkyWin) * (kSkyWin + 1), kSkyNone);
+            g_skywin.texels[static_cast<size_t>(kSkyWin) * kSkyWin + 3] = 0.0f;
+        }
+        g_skywin.fresh = true;
+    }
+    if (g_skywin.fresh) {
+        vk::upload_image_2d(g_skywin.vk_img, g_skywin.texels.data(), g_skywin.texels.size() * sizeof(float));
+        g_skywin.fresh = false;
+    }
+    return &g_skywin.vk_img;
 }
 
 // orig: (host) the slots the frame's "source lava" draws read (uEmit): some of the level's lava points within kLavaRange of the
@@ -775,6 +1006,7 @@ bool make_draws(std::vector<Draw>& out, const int vp[4], uint64_t game_frame) {
     std::sort(near.begin(), near.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
     const int n_int = static_cast<int>(std::min<size_t>(near.size(), 4));
     const float q = g_ambient_particles >= 2 ? 1.0f : 0.5f;
+    const bool sky = sky_window_update(cam);  // (what falls from the sky: not under a roof)
     int seed = 0;
     bool lava_done = false;  // (the lava's slots: once a frame, for every "source lava" line)
     static float lava_emit[kLavaSlots][4];
@@ -845,6 +1077,12 @@ bool make_draws(std::vector<Draw>& out, const int vp[4], uint64_t game_frame) {
         u.misc2[3] = 0.0f;
         u.move[0] = K.wander;
         u.move[1] = kLavaCurrent;
+        if (sky && K.outdoors && !ps.src_lava) {
+            u.sky[0] = g_skywin.corner.x;
+            u.sky[1] = g_skywin.corner.y;
+            u.sky[2] = g_skywin.cell;
+            u.sky[3] = 1.0f;
+        }
         if (ps.src_lava) {  // from the lava near the camera
             if (!lava_done) {
                 lava_slots_update(cam, -glm::vec3(iv[2]), t, lava_emit, &lava_spread);
@@ -904,6 +1142,8 @@ void mrp_particles_draw(uint64_t game_frame) {
         vk::GpuImage& depth = vk::active_depth_image();
         vk::GpuImage& color = vk::active_color_image();
         if (depth.image == VK_NULL_HANDLE || color.image == VK_NULL_HANDLE) return;
+        const vk::GpuImage* sky = sky_vk_image();  // (the sky grid's window: off until a level's is read)
+        if (sky == nullptr) return;
         vk::transition_image(vk::cmd(), depth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         vk::RenderTarget rt{};
         rt.color_view = color.view;
@@ -922,9 +1162,10 @@ void mrp_particles_draw(uint64_t game_frame) {
             VkDescriptorSet ds = vk::alloc_descriptor_set(g_vk.dsl);
             VkDescriptorBufferInfo dbi{ra.buffer, ra.offset, sizeof(Ubo)};
             VkDescriptorImageInfo dii{samp, depth.depth_view != VK_NULL_HANDLE ? depth.depth_view : depth.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-            VkWriteDescriptorSet w[2]{};
-            w[0].sType = w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            w[0].dstSet = w[1].dstSet = ds;
+            VkDescriptorImageInfo sii{samp, sky->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+            VkWriteDescriptorSet w[3]{};
+            w[0].sType = w[1].sType = w[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            w[0].dstSet = w[1].dstSet = w[2].dstSet = ds;
             w[0].dstBinding = 0;
             w[0].descriptorCount = 1;
             w[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -933,7 +1174,11 @@ void mrp_particles_draw(uint64_t game_frame) {
             w[1].descriptorCount = 1;
             w[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             w[1].pImageInfo = &dii;
-            vkUpdateDescriptorSets(vk::device(), 2, w, 0, nullptr);
+            w[2].dstBinding = 2;
+            w[2].descriptorCount = 1;
+            w[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            w[2].pImageInfo = &sii;
+            vkUpdateDescriptorSets(vk::device(), 3, w, 0, nullptr);
             vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, d.splash ? g_vk.splash : d.additive ? g_vk.add : g_vk.blend);
             vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk.layout, 0, 1, &ds, 0, nullptr);
             vkCmdDraw(cb, static_cast<uint32_t>(d.verts), 1, 0, 0);
@@ -956,6 +1201,9 @@ void mrp_particles_draw(uint64_t game_frame) {
         glGetIntegerv(GL_BLEND_DST_RGB, &bdst);
         glGetIntegerv(GL_BLEND_SRC_ALPHA, &bsrca);
         glGetIntegerv(GL_BLEND_DST_ALPHA, &bdsta);
+        GLint prev_sky = 0;
+        glActiveTexture(GL_TEXTURE0 + kSkyUnit);
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &prev_sky);
         glActiveTexture(GL_TEXTURE0 + 29);
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &prev_tex);
         const GLboolean blend = glIsEnabled(GL_BLEND), depth = glIsEnabled(GL_DEPTH_TEST), scissor = glIsEnabled(GL_SCISSOR_TEST), cull = glIsEnabled(GL_CULL_FACE);
@@ -973,6 +1221,8 @@ void mrp_particles_draw(uint64_t game_frame) {
             glDisable(GL_CULL_FACE);
             glEnable(GL_BLEND);
             glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
+            glActiveTexture(GL_TEXTURE0 + kSkyUnit);
+            sky_gl_texture();  // (the sky grid's window, uploaded when taken again)
             glActiveTexture(GL_TEXTURE0 + 29);
             glBindTexture(GL_TEXTURE_2D, g_gl.dtex);
             glBindVertexArray(g_gl.vao);
@@ -989,6 +1239,8 @@ void mrp_particles_draw(uint64_t game_frame) {
         }
         glBindBuffer(GL_UNIFORM_BUFFER, static_cast<GLuint>(prev_ubo));
         glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prev_tex));
+        glActiveTexture(GL_TEXTURE0 + kSkyUnit);
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prev_sky));
         glActiveTexture(static_cast<GLenum>(prev_active));
         glBlendFuncSeparate(static_cast<GLenum>(bsrc), static_cast<GLenum>(bdst), static_cast<GLenum>(bsrca), static_cast<GLenum>(bdsta));
         if (blend) glEnable(GL_BLEND);
@@ -1019,6 +1271,14 @@ void mrp_particles_draw(uint64_t game_frame) {
         std::printf("[particles] frame %llu level %d: %zu draws, %d particles, light %.2f %.2f %.2f, the game's rain / snow %s; the lava's slots %d (a %.1f)\n",
                     static_cast<unsigned long long>(game_frame), mrp_user_lights_level(), draws.size(), total, draws[0].u.col[0], draws[0].u.col[1], draws[0].u.col[2],
                     g_hide_game ? "hidden" : "drawn", used, static_cast<double>(g_slots.a));
+        if (g_skywin.set != nullptr) {  // the sky grid at the camera: the topmost face above it (a roof: rain and snow kept out)
+            const glm::vec3 c = g_fr.cam;
+            const SkySet& k = *g_skywin.set;
+            const int gx = static_cast<int>(std::floor((c.x - k.x0) / k.cell)), gy = static_cast<int>(std::floor((c.y - k.y0) / k.cell));
+            const float top = gx >= 0 && gy >= 0 && gx < k.w && gy < k.h ? k.top[static_cast<size_t>(gx) + static_cast<size_t>(gy) * static_cast<size_t>(k.w)] : kSkyNone;
+            std::printf("[particles]   the camera at %.1f %.1f %.1f, the topmost face there at %.1f: %s\n", static_cast<double>(c.x), static_cast<double>(c.y),
+                        static_cast<double>(c.z), static_cast<double>(top), top > c.z ? "under a roof" : "under the sky");
+        }
     }
 }
 
@@ -1061,7 +1321,9 @@ void mrp_particles_note_tex(uint32_t tex, uint64_t tex0) {
 // game's rain (types 0 and 1: the drops and their splashes, Batalia) and of its snow (type 0x49, Hoven) as the frame's particle
 // draw placed them
 void mrp_particles_fx_capture() {
-    if (g_ambient_particles > 0) {  // the level's lava ("source lava"), once per level: its collision read here, on the game's thread
+    // (the materials' rain rings - Surface Detail, a level with "rain on" - want the sky grid too: none under a roof)
+    const bool mat_rain = g_surface_detail > 0 && g_modern_shadows != 0 && mrp_user_rain();
+    if (g_ambient_particles > 0 || mat_rain) {  // the level's lava ("source lava") and sky, once per level: its collision read here, on the game's thread
         const int level = lw(0x0015ed84);
         const uint32_t tree = lwu(OV(0x00173e40));
         // (read when the level, the tree's place or its index changed and then stayed so for 30 frames: not while a level loads)
@@ -1072,8 +1334,32 @@ void mrp_particles_fx_capture() {
         static int stable = 0;
         stable = fp == last_fp ? stable + 1 : 0;
         last_fp = fp;
-        bool lava_line = false;  // (only for a level whose file has a "source lava" line)
-        for (const ParticleSpec& ps : mrp_user_particles()) lava_line = lava_line || (ps.on && ps.src_lava);
+        g_coll_fp = fp;
+        bool lava_line = false, sky_line = false;  // (only for a level whose file has a "source lava" line; one falling from the sky)
+        for (const ParticleSpec& ps : mrp_user_particles()) {
+            lava_line = lava_line || (g_ambient_particles > 0 && ps.on && ps.src_lava);
+            sky_line = sky_line || (g_ambient_particles > 0 && ps.on && !ps.src_lava && ps.kind >= 0 && ps.kind < kPartKinds && kKinds[ps.kind].outdoors);
+        }
+        sky_line = sky_line || mat_rain;
+        if (stable >= 30 && fp != g_sky_fp && sky_line && !g_sky_busy.exchange(true)) {
+            g_sky_fp = fp;
+            std::thread([level, tree, fp] {  // (the sky grid: on a thread of its own, as the lava)
+                const auto t0 = std::chrono::steady_clock::now();
+                std::shared_ptr<SkySet> set = sky_scan(level, tree);
+                set->fp = fp;
+                const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+                static const bool trace = std::getenv("RAC1_PARTICLES_TRACE") != nullptr;
+                if (trace) {
+                    int covered = 0;
+                    for (float z : set->top) covered += z > kSkyNone ? 1 : 0;
+                    std::printf("[particles] level %d: the sky grid %d x %d squares of %.2f units from (%.0f, %.0f), %d faces, %d squares with a face (read in %.1f ms)\n",
+                                level, set->w, set->h, static_cast<double>(set->cell), static_cast<double>(set->x0), static_cast<double>(set->y0), set->faces, covered, ms);
+                }
+                std::lock_guard<std::mutex> lk(g_lava_mu);
+                if (fp == g_sky_fp) g_sky = std::move(set);
+                g_sky_busy = false;
+            }).detach();
+        }
         if (stable >= 30 && fp != g_lava_fp && lava_line && !g_lava_busy.exchange(true)) {
             g_lava_fp = fp;
             // (read on a thread of its own: tens of ms on a lava sea; the collision stays as it is while the level runs, and a
@@ -1165,6 +1451,29 @@ bool mrp_particles_hide_fx(uint8_t kind, uint64_t tex0, int prim_type) {
     const uint32_t tbp = static_cast<uint32_t>(tex0 & 0x3fff);
     auto in = [tbp](const std::vector<uint32_t>& v) { return std::find(v.begin(), v.end(), tbp) != v.end(); };
     return (in(g_rain_tbp_cap) && mrp_particles_hide_game_kind(kPartRain)) || (in(g_snow_tbp_cap) && mrp_particles_hide_game_kind(kPartSnow));
+}
+
+// orig: (host) mrp_lighting.cpp (declared there, not in mrp_particles.h: the headers of src/game are the generated code's
+// fingerprint), its shadow pass on a level whose materials rain: the sky grid's window around the camera for the materials' rain
+// rings (none under a roof) - taken again when needed, uploaded (Vulkan) or bound on kSkyUnit (OpenGL). Before the level's grid is
+// read nothing is made, and the materials read no window (no texture: off)
+void mrp_particles_sky_frame() {
+    const glm::vec3 cam(glm::inverse(render_view_matrix())[3]);
+    const bool on = sky_window_update(cam);
+    if (!on && g_skywin.gl_tex == 0 && g_skywin.vk_img.image == VK_NULL_HANDLE) return;
+    if (vk::is_active()) {
+        sky_vk_image();
+    } else {
+        GLint prev = 0;
+        glGetIntegerv(GL_ACTIVE_TEXTURE, &prev);
+        glActiveTexture(GL_TEXTURE0 + kSkyUnit);
+        sky_gl_texture();
+        glActiveTexture(static_cast<GLenum>(prev));
+    }
+}
+// orig: (host) mrp_lighting.cpp (declared there): Vulkan, the sky grid's window for the lighting's set (binding 6); null: none yet
+const vk::GpuImage* mrp_particles_sky_vk() {
+    return g_skywin.vk_img.image != VK_NULL_HANDLE && g_skywin.vk_img.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ? &g_skywin.vk_img : nullptr;
 }
 
 // orig: (host) see mrp_particles.h

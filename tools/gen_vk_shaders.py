@@ -1670,9 +1670,26 @@ void main() {
 MRP_PART_UBO = """layout(std140, set = 0, binding = 0) uniform PartUbo {
     mat4 uVP; mat4 uInvVP; vec4 uCam; vec4 uBox; vec4 uVel; vec4 uCol; vec4 uSize; vec4 uCamVel; vec4 uSun;
     vec4 uVp; vec4 uProj; vec4 uLimLo; vec4 uLimHi; vec4 uMisc; vec4 uMisc2; vec4 uIntLo[4]; vec4 uIntHi[4];
-    vec4 uSrc; vec4 uMove; vec4 uEmit[512];
+    vec4 uSrc; vec4 uMove; vec4 uSky; vec4 uEmit[512];
 };
 layout(set = 0, binding = 1) uniform sampler2D uDepth;
+layout(set = 0, binding = 2) uniform sampler2D uSkyMap;
+// (the sky: 1 under the open sky, 0 under the topmost face of the level's collision at the place - a roof -, blended over the
+// grid's squares)
+float sky_open(vec3 p) {
+    if (uSky.w < 0.5) return 1.0;
+    vec2 g = (p.xy - uSky.xy) / uSky.z - 0.5;
+    ivec2 i0 = ivec2(floor(g));
+    vec2 f = g - vec2(i0);
+    ivec2 n = textureSize(uSkyMap, 0) - ivec2(0, 1);  // (the last row: the window's place, for the materials)
+    vec4 o;
+    for (int k = 0; k < 4; ++k) {
+        ivec2 c = i0 + ivec2(k & 1, k >> 1);
+        float h = (any(lessThan(c, ivec2(0))) || any(greaterThanEqual(c, n))) ? -1.0e6 : texelFetch(uSkyMap, c, 0).r;
+        o[k] = smoothstep(h - 0.25, h + 0.25, p.z);
+    }
+    return mix(mix(o.x, o.y, f.x), mix(o.z, o.w, f.x), f.y);
+}
 """
 
 MRP_PART_VS = "#version 450\n" + MRP_PART_UBO + """
@@ -1741,9 +1758,11 @@ void main() {
         vec3 d = min(wp - uLimLo.xyz, uLimHi.xyz - wp);
         a *= clamp(min(min(d.x, d.y), d.z), 0.0, 1.0);
     }
-    if (uMisc2.y > 0.5)  // (from the sky: none inside the level's interiors)
+    if (uMisc2.y > 0.5) {  // (from the sky: none under a roof, none inside the level's interiors)
+        a *= sky_open(wp);
         for (int i = 0; i < int(uMisc2.x); ++i)
             if (all(greaterThan(wp, uIntLo[i].xyz)) && all(lessThan(wp, uIntHi[i].xyz))) a = 0.0;
+    }
     if (kind == 2) {  // embers: a life (rising, fading), flickering
         float life = fract(t * (0.18 + 0.2 * r5) + r4);
         a *= (src ? 1.0 : sin(life * 3.14159)) * (0.6 + 0.4 * sin(t * (9.0 + 6.0 * r3) + ph));  // (from the lava: its own life above)
@@ -1843,6 +1862,8 @@ void main() {
     if (uLimLo.w > 0.5 && (any(lessThan(p, uLimLo.xyz)) || any(greaterThan(p, uLimHi.xyz)))) discard;
     for (int i = 0; i < int(uMisc2.x); ++i)
         if (all(greaterThan(p, uIntLo[i].xyz - vec3(0.0, 0.0, 0.5))) && all(lessThan(p, uIntHi[i].xyz))) discard;
+    float open = sky_open(p + vec3(0.0, 0.0, 0.75));  // (the ground the topmost face there: under the sky)
+    if (open <= 0.0) discard;
     const float cell = 0.55;
     vec2 gi = floor(p.xy / cell);
     uint s = uint(int(gi.x) * 73856093) ^ uint(int(gi.y) * 19349663);
@@ -1854,7 +1875,7 @@ void main() {
     vec2 ctr = (gi + 0.25 + 0.5 * vec2(rnd(s2), rnd(s2))) * cell;
     float r = length(p.xy - ctr), rad = 0.02 + ph * 0.12;
     float ring = smoothstep(0.014, 0.0, abs(r - rad)) * (1.0 - ph) + smoothstep(0.025, 0.0, r) * max(1.0 - ph * 5.0, 0.0);
-    float a = ring * uCol.a * smoothstep(uSize.w, uSize.w * 0.5, dist) * up;
+    float a = ring * uCol.a * smoothstep(uSize.w, uSize.w * 0.5, dist) * up * open;
     if (a <= 0.003) discard;
     FragColor = vec4(uCol.rgb, min(a, 1.0));
 }

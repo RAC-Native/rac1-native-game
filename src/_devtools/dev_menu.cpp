@@ -51,6 +51,12 @@
 #include <string>
 #include <vector>
 
+namespace rac1 {
+// (mrp_particles.cpp: 1 rain, snow and ash kept out from under roofs, RAC1_PARTICLES_SKY; declared here, not in mrp_particles.h - the
+// game's generated code is fingerprinted with the headers of src/game, and a debug switch must not ask for ./setup.sh again)
+extern int g_particles_sky;
+}  // namespace rac1
+
 namespace rac1::devtools {
 
 namespace {
@@ -979,6 +985,8 @@ void sun_particles() {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("For this run (Options > Graphics > Ambient Particles keeps the choice)");
     bool game = g_particles_show_game != 0;
     if (ImGui::Checkbox("Draw the game's own rain / snow as well", &game)) g_particles_show_game = game ? 1 : 0;
+    bool sky = g_particles_sky != 0;
+    if (ImGui::Checkbox("Keep rain / snow / ash out from under roofs", &sky)) g_particles_sky = sky ? 1 : 0;
     int count = 0;
     float cpu = 0.0f, gpu = 0.0f;
     mrp_particles_stats(&count, &cpu, &gpu);
