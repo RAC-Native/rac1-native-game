@@ -1,4 +1,5 @@
 #include <formats/sky_model.h>
+#include "io/host_endian.h"
 
 #include <algorithm>
 #include <array>
@@ -11,10 +12,8 @@ namespace rac1 {
 namespace {
 
 template <class T>
-T get(std::span<const std::byte> b, std::size_t at) {
-    T v;
-    std::memcpy(&v, b.data() + at, sizeof(T));
-    return v;
+T get(std::span<const std::byte> b, std::size_t at) {  // (the file's numbers are little-endian)
+    return le_load<T>(b.data() + at);
 }
 
 // The sky file's head: byte offsets of the fields this decoder reads.
@@ -44,7 +43,7 @@ std::vector<std::uint8_t> sky_rgba(std::span<const std::byte> sky, std::size_t t
     for (std::size_t i = 0; i < count; ++i) {
         std::uint8_t k = static_cast<std::uint8_t>(sky[texels + i]);
         if (((k >> 3) & 1) != ((k >> 4) & 1)) k ^= 0x18;
-        const std::uint32_t c = clut[k];
+        const std::uint32_t c = le32(&clut[k]);
         const std::uint32_t a = c >> 24;
         rgba[i * 4 + 0] = static_cast<std::uint8_t>(c);
         rgba[i * 4 + 1] = static_cast<std::uint8_t>(c >> 8);

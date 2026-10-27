@@ -177,3 +177,28 @@ frame 60, 600 frames, EE rounding (`mtfsfi`), no RAMHASH.
 - Hero and camera at frames 60, 300, 600 equal the PC's to 0.01 (some print one hundredth higher: to check with a
   RAMHASH run whether it is only the printing).
 - So step 2's target (12-13 ms on one core) is off by ~20x: the next thing is a profile of where the time goes.
+
+### The profile (RAC1_PROFILER_DUMP=60) and the RAMHASH on the console (same day)
+
+Game code per frame in play, console vs PC (`[profiler]` sub-stages, averages over 60 frames):
+
+| sub-stage | Wii U | PC |
+|---|---|---|
+| moby joints / skinning (VU0) | 175-225 ms | 3.3 ms |
+| world passes (tfrag, tie, shrub) | 48-56 ms | 0.6 ms |
+| moby pass (draw loop) | 14-21 ms | 0.15 ms |
+| the game logic (moby updates, hero, camera, the rest) | 5-7 ms | 0.25 ms |
+
+The game itself fits the budget; over 95% is the rendering preparation done by the VU0 replica (generic vectors: no
+SIMD GCC can use on Espresso). Step 3 should move the skinning to the GPU (GX2 vertex shader from the joint matrices)
+and the world / moby passes into the MRP-lite preparation, after checking the game never reads their output back.
+
+RAMHASH: the console's 300 frames (the level change at 60 included) are identical page for page to the PC's run with
+`TZ=UTC`, after two fixes:
+- a function-local `thread_local` became an automatic variable under `-Dthread_local=` (989snd's Rand() restarted
+  each call: sounds ended early, the game's channel records differed from frame 33). Written `static thread_local` now.
+- the sky decoder read EE memory as raw bytes and its numbers in the host's order: "invalid sky" on the console, and
+  sky_init skipped its writes into the game's state (page 0x15e000 from frame 60).
+The one difference left was the headless fixed clock (1700000000) read as local time: CET on the PC, UTC under newlib
+(0x15ee98's hour byte). Compare with a PC run under `TZ=UTC`. The skinning differences seen in Cemu do not happen on the
+console: they were Cemu's.

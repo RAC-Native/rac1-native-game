@@ -48,7 +48,8 @@ static bool sky_decode_at(std::uint32_t sky_addr, const std::byte*& ram_ptr, std
         max_size = host_layout::EE_END - sky_addr;
     }
 
-    ram_ptr = reinterpret_cast<const std::byte*>(ee_ram_ptr(sky_addr));
+    static std::vector<u8> bytes;  // (a big-endian host: the sky's bytes in the PS2's order, copied)
+    ram_ptr = ee_ram_ptr(sky_addr) != nullptr ? reinterpret_cast<const std::byte*>(ee_bytes_view(sky_addr, max_size, bytes)) : nullptr;
     if (!ram_ptr) {
         std::cerr << "[sky_init] ee_ram_ptr returned nullptr for sky_addr=0x" << std::hex << sky_addr << std::dec << std::endl;
         return false;
@@ -87,7 +88,7 @@ void sky_init(std::uint32_t sky_offset, std::uint32_t tfrag_textures_offset) {
     ee_write<uint32_t>(OV(0x00160d60), NOT_ADDR(0x002043b0));
 
     if (size >= 0x40) {
-        const int32_t texture_defs = *reinterpret_cast<const int32_t*>(ram_ptr + 0x10);
+        const int32_t texture_defs = ee_read<int32_t>(sky_addr + 0x10);
         ee_write<uint32_t>(OV(0x00160510), sky_addr + texture_defs);
         ee_write<uint32_t>(OV(0x00160d50), sky_addr + texture_defs);
     }
