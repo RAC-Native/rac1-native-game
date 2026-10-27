@@ -338,6 +338,7 @@ private:
         uint32_t rd_lo[2] = {0, 0}, rd_hi[2] = {0, 0};  // the texture's bytes, and its CLUT's
     };
     std::map<std::pair<uint64_t, uint64_t>, TexSnap> tex_snaps_;
+    size_t tex_snap_bytes_ = 0;  // (the bytes of the images decoded into tex_snaps_ since it was last emptied)
     uint64_t tex_ids_ = 0;
     // the writes that changed the local memory's bytes: [lo, hi) per run of changes, numbered
     struct WrRange {

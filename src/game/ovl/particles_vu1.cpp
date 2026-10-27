@@ -13,6 +13,7 @@
 // width across, +3 / +4 the ends' colours, +5 TEX0 and the GS register word. Output from vi15 +
 // 0x80: per particle a GIF tag (vf16 sprite, vf17 line, vf18 streak) and its data, the last tag
 // made EOP, kicked from vi15 + 0x80.
+#include <cstdio>
 #include <game/ovl/particles_vu1.h>
 
 #include <game/ovl/ovl_common.h>
@@ -136,7 +137,17 @@ void particles_vu1(VUState& s, uint32_t start, const std::function<void(uint32_t
     vi[11] = static_cast<int16_t>(vi[15] + 0x80);
     vi[13] = static_cast<int16_t>(vi[15] + 0x80);
     vi[12] = static_cast<int16_t>(vi[12] + vi[10]);
+    // (host) a bound on the particles of one start: the buffer's 0x200 quadwords hold fewer than 0x80 of them. Valid data never
+    // reaches it; a start on stale data (a chain walked with bytes the game did not write this frame) ran on for good, the
+    // count's end never met on the 16-bit address: ended, nothing kicked, said once
+    int guard = 0;
     for (;;) {
+        if (++guard > 1024) {
+            static bool said = false;
+            if (!said) std::fprintf(stderr, "[VU1] particles: no end after 1024 particles (stale data): the start ended\n");
+            said = true;
+            return;
+        }
         // 0x01d ibne vi9, vi0 -> 0x03f; its delay slot 0x01e
         const bool not_sprite = vi[9] != 0;
         mula(s, vf[31], op(vf[0], 3));

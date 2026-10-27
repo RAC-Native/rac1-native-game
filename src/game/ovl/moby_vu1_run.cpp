@@ -68,6 +68,8 @@ static uint64_t moby_vu1_run_checked(VUState& vu, uint32_t start, const std::fun
 
 // orig: (none) a started program run to its end (E bit) on the port, its XGKICKs to the backend
 static void moby_vu1(VUState& vu, uint32_t start, const std::function<void(uint32_t)>& kick) {
+    static const bool like_wiiu = std::getenv("RAC1_VU1_LIKE_WIIU") != nullptr;  // testing: as the Wii U's build, which has no such program
+    if (like_wiiu) return;
     static const bool exact = std::getenv("RAC1_VU_EXACT") != nullptr || std::getenv("RAC1_VU1_EXACT") != nullptr;  // testing: the exact step-by-step port
     static const bool check = std::getenv("RAC1_VU_SELFCHECK") != nullptr;
     vuprof::Scope prof(1);

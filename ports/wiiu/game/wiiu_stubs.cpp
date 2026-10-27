@@ -134,16 +134,21 @@ const unsigned char* glfwGetJoystickHats(int, int* count) {
 #include <coreinit/debug.h>
 #include <coreinit/memdefaultheap.h>
 #include <coreinit/memexpheap.h>
+#include <cstdio>
 #include <cstdlib>
 #include <new>
+#include <whb/log.h>
 
 void* operator new(std::size_t n) {
     if (void* p = std::malloc(n == 0 ? 1 : n)) return p;
-    OSReport("rac1-wiiu: operator new(%u) failed; caller %p; MEM2 default heap free %u, largest %u\n",
-             static_cast<unsigned>(n), __builtin_return_address(0),
-             static_cast<unsigned>(MEMGetTotalFreeSizeForExpHeap(MEMGetBaseHeapHandle(MEM_BASE_HEAP_MEM2))),
-             static_cast<unsigned>(MEMGetAllocatableSizeForExpHeapEx(MEMGetBaseHeapHandle(MEM_BASE_HEAP_MEM2), 4)));
-    OSFatal("rac1-wiiu: out of memory (operator new)");
+    // (on the system's log, the UDP log and the error screen: OSReport alone does not reach the UDP log)
+    char msg[200];
+    std::snprintf(msg, sizeof msg, "rac1-wiiu: operator new(%u) failed; caller %p; MEM2 default heap free %u, largest %u", static_cast<unsigned>(n),
+                  __builtin_return_address(0), static_cast<unsigned>(MEMGetTotalFreeSizeForExpHeap(MEMGetBaseHeapHandle(MEM_BASE_HEAP_MEM2))),
+                  static_cast<unsigned>(MEMGetAllocatableSizeForExpHeapEx(MEMGetBaseHeapHandle(MEM_BASE_HEAP_MEM2), 4)));
+    OSReport("%s\n", msg);
+    WHBLogPrintf("%s", msg);
+    OSFatal(msg);
     return nullptr;
 }
 void* operator new[](std::size_t n) { return operator new(n); }

@@ -80,6 +80,8 @@ uint64_t world_vu1_run_checked(const WorldVu1Program& prog, VUState& vu, uint32_
 // orig: (none) a started program run to its end (E bit) on the port, its XGKICKs to the backend
 template <int K>
 void world_vu1_start(VUState& vu, uint32_t start, const std::function<void(uint32_t)>& kick) {
+    static const bool like_wiiu = std::getenv("RAC1_VU1_LIKE_WIIU") != nullptr;  // testing: as the Wii U's build, which has no such program
+    if (like_wiiu) return;
     static const bool exact = std::getenv("RAC1_VU_EXACT") != nullptr || std::getenv("RAC1_VU1_EXACT") != nullptr;  // testing: the exact step-by-step port
     static const bool check = std::getenv("RAC1_VU_SELFCHECK") != nullptr;
     const WorldVu1Program& prog = k_programs[K];

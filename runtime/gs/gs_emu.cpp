@@ -353,6 +353,14 @@ uint32_t Gs::texel(uint64_t tex0, uint64_t texa, int x, int y) const {
 }
 
 std::shared_ptr<const TexImage> Gs::texture_at_kick(uint64_t tex0, uint64_t texa) {
+    // (the snapshots' images bounded: the game uploads textures at addresses that keep changing, so the keys keep growing - over
+    // minutes of play hundreds of MB, the Wii U's memory gone. Past the budget they are dropped, all at once: the images this
+    // frame's primitives hold stay alive with them, the others are decoded again when met - the same pixels)
+    constexpr size_t kSnapBudget = size_t{64} << 20;
+    if (tex_snap_bytes_ > kSnapBudget) {
+        tex_snaps_.clear();
+        tex_snap_bytes_ = 0;
+    }
     TexSnap& s = tex_snaps_[{tex0 & 0x1fffffffffffffffull, texa}];  // CLD not part of the image
     if (s.img != nullptr) {
         if (s.gen == gen_) return s.img;
@@ -368,6 +376,7 @@ std::shared_ptr<const TexImage> Gs::texture_at_kick(uint64_t tex0, uint64_t texa
     img->w = 1 << std::min(10u, bits(tex0, 26, 4));
     img->h = 1 << std::min(10u, bits(tex0, 30, 4));
     img->px.resize(static_cast<size_t>(img->w) * img->h);
+    tex_snap_bytes_ += img->px.size() * 4;
     rd_track_ = true;
     for (int k = 0; k < 2; ++k) {
         rd_lo_[k] = 0xffffffffu;

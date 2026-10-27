@@ -626,6 +626,13 @@ void draw_gx2(const Gs& gs, const GX2ColorBuffer* screen, float FB_W, float FB_H
         const bool scr_tex = tme && !to_rt && v.screen_fbp >= 0 && tbp == static_cast<uint32_t>(v.screen_fbp) * 32 && fld(st.tex0, 20, 6) == 0;
         const bool date = !to_rt && fld(st.test, 14, 1) != 0;
         if (scr_tex || date) { skip(kSkScreenRead); continue; }  // TODO: the primitives reading the screen (a copy of it around them)
+        // (gs_draw.cpp's rule for a substituted range, which needs no host depth) the game's projected 3D the GIF path draws
+        // itself, Z-tested at a depth inside the view (effects, glass): not the 2D, which it draws Z-tested at Z 0xfffff0
+        if (!to_rt && fld(st.test, 16, 1) != 0 && ztst >= 2) {
+            bool p3d = false;
+            for (const Vertex& q : p.v) p3d = p3d || (q.z != 0 && q.z < 0xff0000u);
+            if (p3d) { skip(kSkVu); continue; }  // (counted with the VU's 3D)
+        }
         if (p.type != 6 && p.type != 3 && p.type != 1) { skip(kSkType); continue; }
         if (p.v.size() < (p.type == 3 ? 3u : 2u)) { skip(kSkType); continue; }
         int rw = 0, rh = 0;

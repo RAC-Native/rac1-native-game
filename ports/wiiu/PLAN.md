@@ -377,3 +377,13 @@ moved the game's.
   console, the menu identical to the PC's (shots at frames 500 / 600). RAC1_GX2_SKIPLOG=1 counts what the backend leaves
   out and why. The HelpDesk box (PC frame 400) still missing: on the Wii U the first frame drawn past 400 had 12
   primitives (the PC's 300) - to look at.
+- Hangs in gameplay with the picture (the console frozen, the music playing on: the IOP's mirror alone): reproduced on the
+  PC with RAC1_NO_GRAPHICS_WALK=1 (the Wii U's chain walk on any host) and RAC1_VU1_LIKE_WIIU=1 (the moby / world VU1
+  programs end at once, as in the Wii U's build): the particle program (particles_vu1.cpp) ran on for good on stale
+  data (its count's end never met on the 16-bit address). Bounded at 1024 particles a start (valid data has fewer than
+  0x80); where the stale data comes from is still to find. The PC's walk then runs 3000 frames with its heap flat.
+- Then the console ran out of memory (operator new) during play: the PC's heap is flat, so it is the Wii U's side (the
+  GX2 backend's caches look bounded). operator new's report (size, caller, the heap's free / largest) now reaches the
+  UDP log and the error screen. The free-memory line of wiiu_gfx.cpp means nothing (newlib takes MEM2 whole at start).
+- Ristretto (wiiu-smarthome, an HTTP server plugin, port 8572: POST /power/reboot = OSForceFullRelaunch) copied to the
+  SD's plugins, to reboot the console from the PC when the game hangs (untried yet).

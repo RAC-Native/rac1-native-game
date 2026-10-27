@@ -7,6 +7,8 @@
 #include "gs_draw_gx2.h"
 
 #include <coreinit/cache.h>
+#include <coreinit/memexpheap.h>
+#include <coreinit/memheap.h>
 #include <gx2/draw.h>
 #include <gx2/surface.h>
 #include <gx2/mem.h>
@@ -144,6 +146,10 @@ bool wiiu_gfx_start() {
 namespace {
 // the game's frame (4:3) centred on a colour buffer and its 2D drawn (the test triangle until the game's first frame)
 void draw_frame(const GX2ColorBuffer* cb, bool targets) {
+    // (testing, RAC1_WIIU_2D: 0 the frame's chain walked but nothing of it drawn, 1 the screen's primitives only: no target)
+    static const int s_2d = std::getenv("RAC1_WIIU_2D") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_2D")) : 2;
+    if (s_2d == 0) return;
+    if (s_2d == 1) targets = false;
     if (g_2d.gs == nullptr || !g_2d_ready) {
         if (!g_2d_ready) draw_test();
         return;
@@ -221,6 +227,9 @@ void shot(const GX2ColorBuffer* cb, uint64_t n) {
 void wiiu_gfx_frame() {
     if (!g_on) return;
     ++g_frames;
+    if (g_frames % 300 == 0)  // (the memory left, on the log: a leak shows)
+        std::printf("[wiiu] host frame %llu: %u KB free in the default heap\n", static_cast<unsigned long long>(g_frames),
+                    static_cast<unsigned>(MEMGetTotalFreeSizeForExpHeap(MEMGetBaseHeapHandle(MEM_BASE_HEAP_MEM2)) / 1024));
     WHBGfxBeginRender();
     WHBGfxBeginRenderTV();
     WHBGfxClearColor(0.0f, 0.0f, 0.0f, 1.0f);

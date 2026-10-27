@@ -147,8 +147,13 @@ int watchdog_main(int seconds, const char**) {
             fp = f[0];
         }
         OSResumeThread(g_game_thread);
+        // (the UDP log too: OSReport alone did not reach it)
         OSReport("rac1-wiiu: watchdog %d s: pc %08x lr %08x sp %08x\n", tick * seconds, pc, lr, sp);
-        for (int i = 0; i < 16 && chain[i] != 0; ++i) OSReport("rac1-wiiu:   ^%d %08x\n", i, chain[i]);
+        WHBLogPrintf("rac1-wiiu: watchdog %d s: pc %08x lr %08x sp %08x", tick * seconds, pc, lr, sp);
+        for (int i = 0; i < 16 && chain[i] != 0; ++i) {
+            OSReport("rac1-wiiu:   ^%d %08x\n", i, chain[i]);
+            WHBLogPrintf("rac1-wiiu:   ^%d %08x", i, chain[i]);
+        }
     }
     return 0;
 }

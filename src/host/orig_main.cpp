@@ -59,6 +59,7 @@
 #include <string>
 #include <map>
 #include <thread>
+#include <malloc.h>
 #include <set>
 #include <sstream>
 #include <optional>
@@ -140,11 +141,11 @@ bool rac1_wiiu_frame();                             // (ProcUI each host frame: 
 bool rac1_wiiu_picture();                           // ports/wiiu/game/wiiu_gfx.cpp: the picture is up (RAC1_WIIU_GFX)
 // (the frame's 2D for the picture: the replica's primitives, the game's frame size, its page, the page not drawn in a fade)
 void rac1_wiiu_picture_frame(const rac1::gs::Gs& gs, float fb_w, float fb_h, int screen_fbp, int skip_fbp, uint64_t game_frame);
+#endif
 namespace rac1 {
 extern bool g_world_pass_ranges_on;  // src/game/ovl/overlay_entry.cpp: the world passes' chain ranges noted
 extern std::vector<std::pair<uint32_t, uint32_t>> g_world_pass_ranges;
 }  // namespace rac1
-#endif
 #include "sample_prof.h"
 #include "profiler/host_profiler.h"
 #include "sim_autopilot.h"
@@ -2908,8 +2909,14 @@ int main(int argc, char** argv) {
         if (no_graphics) {  // (nothing prepared nor drawn: the next game frame)
             fprof.end_frame();
             if (max_frames != 0 && frame >= max_frames) break;
+            // (testing, RAC1_NO_GRAPHICS_WALK=1: the walk below on any host, to try the Wii U's path on the PC)
+            static const bool walk_test = std::getenv("RAC1_NO_GRAPHICS_WALK") != nullptr && std::atoi(std::getenv("RAC1_NO_GRAPHICS_WALK")) != 0;
 #if defined(__WIIU__)
-            if (rac1_wiiu_picture()) {  // (the Wii U's picture: the frame's chain on the GS replica, its 2D drawn by the port)
+            const bool walk = walk_test || rac1_wiiu_picture();
+#else
+            const bool walk = walk_test;
+#endif
+            if (walk) {  // (the Wii U's picture: the frame's chain on the GS replica, its 2D drawn by the port)
                 // (chain_stage's choice of the chain below, without the MRP's parts: the frame's own, else the one a loop kicked
                 // before it flipped the buffers, never one already sent, nothing on a held fade frame)
                 rac1::g_world_pass_ranges_on = true;  // (the next updates' world passes noted: their ranges skipped below)
@@ -2950,10 +2957,17 @@ int main(int argc, char** argv) {
                     gs.vif1_chain(start, end);
                 }
                 gs_prims_dump(gs, game_frame);  // (testing)
+                if (walk_test && game_frame % 300 < 2) {  // (testing: the heap in use, a leak shows)
+                    const struct mallinfo mi = mallinfo();
+                    std::printf("[heap] game frame %llu: %d KB in use, %d KB in mapped blocks\n", static_cast<unsigned long long>(game_frame), mi.uordblks / 1024, mi.hblkhd / 1024);
+                }
                 rac1::g_world_pass_ranges.clear();
+#if defined(__WIIU__)
                 const int screen_fbp = static_cast<int>(lwu(0x0013cf20) & 0x1ff);
                 rac1_wiiu_picture_frame(gs, static_cast<float>(lhu(0x001518d0)), static_cast<float>(lhu(0x001518d2)), screen_fbp, fade ? screen_fbp : -1, game_frame);
+#endif
             }
+#if defined(__WIIU__)
             if (!rac1_wiiu_frame()) break;  // (the HOME menu's closing)
 #endif
             if (realtime_test && steps == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));  // (ahead of the clock: no busy loop)
