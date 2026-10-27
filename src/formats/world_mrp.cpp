@@ -2,6 +2,8 @@
 
 #include <formats/world_mrp.h>
 
+#include "io/host_endian.h"
+
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -12,12 +14,16 @@ namespace rac1::mrpw {
 
 namespace {
 
-// One function per type serves both directions (W writes, R reads).
+// One function per type serves both directions (W writes, R reads). The file is little-endian: every number in it (an
+// array's one by one) put in the host's order (le_fix_elements); a byte blob (std::vector<uint8_t>) stays the PS2's bytes.
 struct W {
     std::vector<uint8_t> b;
     bool ok = true;
-    template <typename T> void raw(T& v) {
+    template <typename T> void raw(T& v0) {
         static_assert(std::is_trivially_copyable_v<T>);
+        T v;  // (a C array too)
+        std::memcpy(&v, &v0, sizeof(T));
+        le_fix_elements(v);
         const auto* p = reinterpret_cast<const uint8_t*>(&v);
         b.insert(b.end(), p, p + sizeof(T));
     }
@@ -38,6 +44,7 @@ struct R {
             return;
         }
         std::memcpy(&v, b.data() + at, sizeof(T));
+        le_fix_elements(v);
         at += sizeof(T);
     }
     void size(size_t& n) {
@@ -194,6 +201,10 @@ bool read_world(const std::string& path, World& w) {
 // ---- the CPU reference ----
 
 namespace {
+// an Op's qword as the GS reads it: four 32-bit words, each 64-bit half's low word first (on any host)
+std::array<uint32_t, 4> tag_words(const Op& o) {
+    return {static_cast<uint32_t>(o.tag[0]), static_cast<uint32_t>(o.tag[0] >> 32), static_cast<uint32_t>(o.tag[1]), static_cast<uint32_t>(o.tag[1] >> 32)};
+}
 // FTOI4: x 16 to an integer, saturated as the VU does
 int32_t ftoi4(float f) {
     const float v = f * 16.0f;
@@ -237,8 +248,7 @@ void shrub_kick(const ShrubPacket& p, const ShrubInstance& in, const ShrubConsts
     }
     for (const Op& o : p.ops) {
         if (o.kind == OpKind::Tag || o.kind == OpKind::Other) {
-            std::array<uint32_t, 4> w;
-            std::memcpy(w.data(), o.tag, 16);
+            const std::array<uint32_t, 4> w = tag_words(o);
             out.q.push_back(w);
             out.part.push_back(0);
         } else if (o.kind == OpKind::Texture) {
@@ -331,8 +341,7 @@ void tie_kick(const TiePacket& p, const TieInstance& in, std::span<const std::ar
     out.part.reserve(p.ops.size() * 3);
     for (const Op& o : p.ops) {
         if (o.kind == OpKind::Tag || o.kind == OpKind::Other) {
-            std::array<uint32_t, 4> w;
-            std::memcpy(w.data(), o.tag, 16);
+            const std::array<uint32_t, 4> w = tag_words(o);
             out.q.push_back(w);
             out.part.push_back(o.kind == OpKind::Other ? 1 : 0);
         } else if (o.kind == OpKind::Texture) {

@@ -3,6 +3,8 @@
 
 #include <runtime/vu/vu1.h>
 
+#include "io/host_endian.h"
+
 #include <algorithm>
 #include <cstring>
 
@@ -10,19 +12,34 @@ namespace rac1::mrpw {
 
 namespace {
 
+// The asset's blobs (ShrubPacket::vif, TiePacket::data, TfragEntry::data) hold the PS2's bytes (little-endian, as the file and
+// rb() of EE memory give them); vif1_command reads its data as EE memory holds it: host-order 32-bit words. On a big-endian
+// host a copy of the data has each word swapped first (on a little-endian one the two are the same bytes).
+void ps2_words_to_host(uint8_t* p, size_t n) {
+    if constexpr (k_host_big_endian)
+        for (size_t i = 0; i + 4 <= n; i += 4) {
+            const uint8_t t0 = p[i], t1 = p[i + 1];
+            p[i] = p[i + 3];
+            p[i + 1] = p[i + 2];
+            p[i + 2] = t1;
+            p[i + 3] = t0;
+        }
+}
+
 // One VIF code and its data into the image (the data zero-padded to the code's size).
 void vif_code(vu1::Vu1& vu, uint32_t code, const uint8_t* data, size_t avail) {
     const uint32_t nb = vu1::vif_data_bytes(vu, code);
     std::vector<uint8_t> buf(nb, 0);
     if (data != nullptr) std::memcpy(buf.data(), data, std::min<size_t>(nb, avail));
+    ps2_words_to_host(buf.data(), buf.size());
     vu1::vif1_command(vu, code, buf.data(), nullptr);
 }
 
 // A VIF list (codes and their data) into the image; program starts in it are not run.
 void vif_list(vu1::Vu1& vu, const uint8_t* p, size_t n) {
+    std::vector<uint8_t> buf;  // (big-endian host: a code's data with its words swapped)
     for (size_t i = 0; i + 4 <= n;) {
-        uint32_t code;
-        std::memcpy(&code, p + i, 4);
+        const uint32_t code = le32(p + i);
         i += 4;
         const uint32_t nb = vu1::vif_data_bytes(vu, code);
         const uint32_t cmd = (code >> 24) & 0x7f;
@@ -31,14 +48,20 @@ void vif_list(vu1::Vu1& vu, const uint8_t* p, size_t n) {
             continue;
         }
         if (i + nb > n) break;
-        vu1::vif1_command(vu, code & 0x7fffffffu, p + i, nullptr);
+        if constexpr (k_host_big_endian) {
+            buf.assign(p + i, p + i + nb);
+            ps2_words_to_host(buf.data(), buf.size());
+            vu1::vif1_command(vu, code & 0x7fffffffu, buf.data(), nullptr);
+        } else {
+            vu1::vif1_command(vu, code & 0x7fffffffu, p + i, nullptr);
+        }
         i += nb;
     }
 }
 
 uint32_t rd32(const std::vector<uint8_t>& b, size_t at) {
     uint32_t v = 0;
-    if (at + 4 <= b.size()) std::memcpy(&v, b.data() + at, 4);
+    if (at + 4 <= b.size()) v = le32(b.data() + at);
     return v;
 }
 
@@ -68,7 +91,8 @@ std::vector<uint8_t> tie_image(const TieClass& c, const TiePacket& p) {
         uint8_t prim[0x50] = {};
         const int32_t t = p.prims[k];
         if (t >= 0 && static_cast<size_t>(t) < c.textures.size())
-            for (uint32_t r = 0; r < 5; ++r) std::memcpy(prim + 0x10 * r, c.textures[static_cast<size_t>(t)].ad[r].data(), 16);
+            for (uint32_t r = 0; r < 5; ++r)  // (as the PS2's bytes, as vif_code takes its data)
+                for (uint32_t h = 0; h < 2; ++h) le_store(prim + 0x10 * r + 8 * h, c.textures[static_cast<size_t>(t)].ad[r][h]);
         vif_code(vu, 0x6c050000u | (1 + 5 * k), prim, sizeof prim);
     }
     vif_code(vu, 0x6e004000u | ((4 * csize) << 16) | (1 + 5 * nprim), d + std::min<size_t>(0x20, n), avail(0x20));

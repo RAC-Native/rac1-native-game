@@ -6,6 +6,7 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/render/mrp_world_assets.h>
 #include <runtime/kernel/ee_memory.h>
+#include "io/host_endian.h"
 
 #include <algorithm>
 #include <cmath>
@@ -174,8 +175,7 @@ bool tie_matches(uint32_t rec, const TieClass& c) {
     // (the LOD distances +0x10..+0x18, the packet / prim counts +0x20, the bytes +0x30..+0x43; +0x1c, +0x24.. and the lists are the
     // pass's / the level load's at run time)
     for (uint32_t o : {0x10u, 0x14u, 0x18u, 0x20u, 0x30u, 0x34u, 0x38u, 0x3cu, 0x40u}) {
-        uint32_t h;
-        std::memcpy(&h, c.header.data() + o, 4);
+        const uint32_t h = le32(c.header.data() + o);  // (the file's bytes: little-endian)
         if (ru(rec + o) != h) return false;
     }
     return true;

@@ -108,6 +108,7 @@
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/mrp_world_scene.h>
 #include <setup/setup_manager.h>
+#include <formats/mrp_asset_check.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
 #include <game/render/shader_manager.h>
@@ -2399,6 +2400,13 @@ int main(int argc, char** argv) {
     }
 
     check_mrp_assets(g_moby_renderer == MobyRenderer::kMrp, g_world_mrp);
+    // (testing) RAC1_MRP_ASSET_CHECK=<level>: that level's MRP asset files read by the format readers (no GPU: also with
+    // RAC1_NO_GRAPHICS=1, and on the Wii U), one hashed line per file: the same on either byte order (mrp_asset_check.h)
+    if (const char* lv = std::getenv("RAC1_MRP_ASSET_CHECK")) {
+        const char* mr = std::getenv("RAC1_MRP_DIR");  // (the renderers' asset_root)
+        const char* wr = std::getenv("RAC1_MRPW_DIR");
+        mrp::asset_check(std::atoi(lv), mr != nullptr ? mr : "assets/generated/mrp/moby", wr != nullptr ? wr : "assets/generated/mrp/world");
+    }
     // the legacy host renderers' copy of a level, built only while one of them is in use (level_loader.h)
     g_legacy_level_needed = [] { return (!g_world_mrp && !g_world_faithful) || !g_moby_vu1_pass || g_moby_renderer == MobyRenderer::kGlb || g_title_scene_host; };
     static const bool s_moby_diff = std::getenv("RAC1_MOBY_DIFF") != nullptr;

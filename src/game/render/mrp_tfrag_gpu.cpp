@@ -8,6 +8,7 @@
 #include <game/ovl/vu0_macro.h>
 #include <game/render/mrp_world_assets.h>
 #include <runtime/kernel/ee_memory.h>
+#include "io/host_endian.h"
 #include <runtime/vk/vk_context.h>
 #include <runtime/vk/vk_shaders.h>
 
@@ -252,8 +253,7 @@ bool tfrag_level_build(TfragLevel& L, const World& w) {
         bool same = true;
         for (uint32_t o = 0; o < 0x40 && same; o += 4) {
             if (o == 0x10 || o == 0x30 || o == 0x34) continue;  // (the data pointer; the lighting's dirty byte / point-light nibbles)
-            uint32_t h;
-            std::memcpy(&h, te.header.data() + o, 4);
+            const uint32_t h = le32(te.header.data() + o);  // (the file's bytes: little-endian)
             const uint32_t mask = o == 0x38 ? 0xffffu : 0xffffffffu;  // (+0x3a / +0x3b: the zone's mask and cell, set at the load)
             same = (ru(e.ee + o) & mask) == (h & mask);
         }
@@ -261,8 +261,7 @@ bool tfrag_level_build(TfragLevel& L, const World& w) {
         if (!same && L.mismatched < 3) {
             std::printf("[mrpw tfrag] entry %u at %08x differs from the asset's:", te.index, e.ee);
             for (uint32_t o = 0; o < 0x40; o += 4) {
-                uint32_t h;
-                std::memcpy(&h, te.header.data() + o, 4);
+                const uint32_t h = le32(te.header.data() + o);
                 if (o != 0x10 && ru(e.ee + o) != h) std::printf(" +%02x %08x/%08x", o, ru(e.ee + o), h);
             }
             std::printf("\n");

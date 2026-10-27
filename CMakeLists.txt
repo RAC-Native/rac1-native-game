@@ -98,6 +98,7 @@ add_library(rac1_formats STATIC
     src/formats/moby_model.cpp
     src/formats/moby_mrp.cpp
     src/formats/world_mrp.cpp
+    src/formats/mrp_asset_check.cpp
     src/formats/tie_model.cpp
     src/formats/shrub_model.cpp
     src/formats/sky_model.cpp

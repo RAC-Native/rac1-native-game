@@ -74,6 +74,13 @@ std::string asset_root() {
     return r != nullptr ? r : "assets/generated/mrp/world";
 }
 
+// a doubleword of a VU1 memory image (host-order 32-bit words, as vif1_command writes them): its low word first on any host
+uint64_t img_r64(const uint8_t* p) {
+    uint32_t w[2];
+    std::memcpy(w, p, 8);
+    return (static_cast<uint64_t>(w[1]) << 32) | w[0];
+}
+
 // the assets' level: the level 0x15ed84 names, or the boot module's title level while the boot runs (the title loop
 // sets 0x15ed84 to 0, its scene is its own level)
 // (while the loading screen shows, its own scene: the flight's assets)
@@ -3146,9 +3153,7 @@ void build_emitters() {
                     for (uint32_t r = 0; r < 5; ++r) {
                         const size_t o = 16u * (ev.at + r);
                         if (o + 16 > img.size()) break;
-                        uint64_t data, reg;
-                        std::memcpy(&data, img.data() + o, 8);
-                        std::memcpy(&reg, img.data() + o + 8, 8);
+                        const uint64_t data = img_r64(img.data() + o), reg = img_r64(img.data() + o + 8);
                         if ((reg & 0xff) == 0x08) cur = static_cast<int>(data >> 24);  // (CLAMP_1's MINV: the texture's index)
                     }
                     if (run < run_tex.size()) run_tex[run] = cur;
@@ -3765,9 +3770,7 @@ void tfrag_tris_build() {
             for (uint32_t r = 0; r < 5; ++r) {
                 const size_t o = 16u * (ev.at + r);
                 if (o + 16 > img.size()) break;
-                uint64_t data, reg;
-                std::memcpy(&data, img.data() + o, 8);
-                std::memcpy(&reg, img.data() + o + 8, 8);
+                const uint64_t data = img_r64(img.data() + o), reg = img_r64(img.data() + o + 8);
                 if ((reg & 0xff) == 0x08) cur = static_cast<int>(data >> 24);  // (CLAMP_1's MINV: the texture's index)
             }
             if (run < run_tex.size()) run_tex[run] = cur;

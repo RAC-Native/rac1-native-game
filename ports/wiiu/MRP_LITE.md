@@ -115,3 +115,12 @@ Each phase ends with shots of the console's TV (RAC1_WIIU_SHOT) compared with th
 - Uniform-block limits (64 KB a block and ~16 blocks a stage are R700's usual figures: unverified).
 - Memory: the MRP's assets and the game's 32 MB, the GX2 surfaces, the texture arrays (MEM2; the out-of-memory seen once in
   play is not explained yet).
+
+## Progress
+
+- Phase 1 done (2026-10-27): the MRP asset readers (.mrpm / .mrpt / .mrpw, the VIF blobs at vif1_command's boundary, the
+  walker's 64-bit reads, the moby record's byte at +0xbc) big-endian safe, the PC unchanged (the three references, RAMHASH as
+  main's). RAC1_MRP_ASSET_CHECK=<level> hashes every parsed field of a level's MRP assets: Veldin's 122 files hash
+  cb0304afbdf1e532 on the PC and on the console. Veldin's assets (moby/level0, moby/armor, world/level0: 28 MB) are on the SD.
+  Left: the code that does arithmetic on palette entries as numbers (lighting analysis, debug thumbnails) and the GPU vertex
+  packing, to look at in phases 2-3.

@@ -16,6 +16,8 @@
 #include <game/render/render_view.h>
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
+#include <runtime/kernel/ee_memory.h>
+#include "io/host_endian.h"
 #include <runtime/vk/vk_context.h>
 #include <runtime/vk/vk_shaders.h>
 
@@ -603,9 +605,9 @@ void load_textures(Level& L) {
             t.index = static_cast<uint32_t>(L.textures.size());
             if (s < raw.size() && !raw[s].mips.empty() && raw[s].mips[0].size() >= 0x430) {
                 const std::vector<uint8_t>& b = raw[s].mips[0];
-                std::memcpy(&t.width, &b[0x18], 4);
-                std::memcpy(&t.height, &b[0x1c], 4);
-                std::memcpy(t.palette.data(), &b[0x30], 0x400);
+                t.width = le32(&b[0x18]);  // (the armor file's bytes: little-endian)
+                t.height = le32(&b[0x1c]);
+                std::memcpy(t.palette.data(), &b[0x30], 0x400);  // (RGBA bytes, as Texture::palette holds them on any host)
                 size_t at = 0x430;
                 uint32_t w = t.width, h = t.height;
                 while (w > 0 && h > 0 && w <= 1024 && h <= 1024 && at + static_cast<size_t>(w) * h <= b.size()) {
@@ -2058,7 +2060,7 @@ void build_frame() {
         }
         // the sub-mesh colour (0x255870 over the chain, the record's +0xbc alpha: mrp_scene_asset)
         float sub[4] = {static_cast<float>(lbu(m.moby + 0x90)), static_cast<float>(lbu(m.moby + 0x91)), static_cast<float>(lbu(m.moby + 0x92)),
-                        static_cast<float>(f.records[m.record_first + 0xbc])};
+                        static_cast<float>(f.records[m.record_first + ee_byte_addr(0xbc)])};  // (the record holds host-order words: its PS2 byte +0xbc)
         const uint32_t nparts = std::min(m.part_count, m.packet_count);
         static const uint32_t trace_moby = std::getenv("RAC1_MRP_TRACE_MOBY") != nullptr ? static_cast<uint32_t>(std::strtoul(std::getenv("RAC1_MRP_TRACE_MOBY"), nullptr, 0)) : 0;  // (testing)
         if (trace_moby == 1 && m.part_count > 0 && f.parts[m.part_first].has_gs_state) {  // (testing: every moby's own GS registers)

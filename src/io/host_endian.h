@@ -4,6 +4,7 @@
 #ifndef RAC1_IO_HOST_ENDIAN_H
 #define RAC1_IO_HOST_ENDIAN_H
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -39,6 +40,22 @@ inline void le_fix_field(T (&a)[N]) {
 template <typename... T>
 inline void le_fix_fields(T&... v) {
     (le_fix_field(v), ...);
+}
+
+// A value of numbers, or of (std:: or C) arrays of them, in the PS2's byte order put in the host's (or back): each number
+// swapped on its own (a byte stays as it is)
+template <typename T>
+struct is_std_array : std::false_type {};
+template <typename T, std::size_t N>
+struct is_std_array<std::array<T, N>> : std::true_type {};
+template <typename T>
+inline void le_fix_elements(T& v) {
+    if constexpr (std::is_array_v<T> || is_std_array<T>::value) {
+        for (auto& e : v) le_fix_elements(e);
+    } else {
+        static_assert(std::is_arithmetic_v<T> || std::is_enum_v<T>, "le_fix_elements: numbers or arrays of them");
+        le_fix_field(v);
+    }
 }
 
 // A little-endian field read from bytes (a file's, a sector's): the host's value

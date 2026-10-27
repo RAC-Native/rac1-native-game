@@ -46,10 +46,11 @@ std::array<uint32_t, 4> q128(const uint8_t* mem, uint32_t qw) {
     std::memcpy(r.data(), mem + ((qw & 0x3ff) << 4), 16);
     return r;
 }
+// a doubleword of EE / VU memory (host-order 32-bit words): its low word first on any host (gs_emu.cpp's r64)
 uint64_t r64(const uint8_t* p) {
-    uint64_t v;
-    std::memcpy(&v, p, 8);
-    return v;
+    uint32_t w[2];
+    std::memcpy(w, p, 8);
+    return (static_cast<uint64_t>(w[1]) << 32) | w[0];
 }
 // FTOI4 as the VU does (saturated)
 int32_t ftoi4(float f) {
@@ -952,7 +953,7 @@ void packed_write(uint32_t d, const uint8_t* q, std::vector<SkyWrite>& out) {
                                static_cast<uint8_t>(adc ? 3 : 0)});
         break;
     case 0xa: out.push_back(SkyWrite{static_cast<uint64_t>((w3 >> 4) & 0xff) << 56, 0, 0x0a, 0}); break;
-    case 0xe: out.push_back(SkyWrite{r64(q), 0, q[8], 0}); break;
+    case 0xe: out.push_back(SkyWrite{r64(q), 0, q[ee_byte_addr(8)], 0}); break;
     case 0xf: break;
     default: out.push_back(SkyWrite{r64(q), 0, static_cast<uint8_t>(d), 0}); break;
     }
@@ -1012,7 +1013,7 @@ struct GifPath {
             }
             if (flg == 0) {
                 const uint32_t d = static_cast<uint32_t>(regs >> (4 * reg)) & 0xf;
-                if (d == 0xe) reg_write(f, q[8], r64(q));
+                if (d == 0xe) reg_write(f, q[ee_byte_addr(8)], r64(q));
                 else if (d == 0x0) reg_write(f, 0x00, r64(q) & 0x7ff);
                 else if (draw && d != 0xf) {
                     if (open == 0xffffffffu) open = static_cast<uint32_t>(f.sky.size());
@@ -1223,11 +1224,11 @@ void scene_capture(uint32_t chain_start, uint32_t chain_end, SceneInput& in, con
         }
         uint64_t lo = 0;
         if (in_sh(addr)) {
-            std::memcpy(&lo, sh->bytes.data() + (addr - sh->base), 8);
+            lo = r64(sh->bytes.data() + (addr - sh->base));
         } else {
             const uint8_t* t = take(addr, 16);
             if (t == nullptr) break;
-            std::memcpy(&lo, t, 8);
+            lo = r64(t);
         }
         const uint32_t qwc = lo & 0xffff, id = (lo >> 28) & 7;
         const uint32_t a = static_cast<uint32_t>(lo >> 32) & 0x01fffff0u;

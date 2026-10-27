@@ -2,6 +2,8 @@
 // skinning (see moby_mrp.h).
 #include <formats/moby_mrp.h>
 
+#include "io/host_endian.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -12,9 +14,10 @@ namespace rac1::mrp {
 
 namespace {
 
+// (the class's bytes are the PS2's: little-endian)
 template <typename T> T rd(std::span<const uint8_t> b, size_t at) {
     T v{};
-    if (at + sizeof(T) <= b.size()) std::memcpy(&v, b.data() + at, sizeof(T));
+    if (at + sizeof(T) <= b.size()) v = le_load<T>(b.data() + at);
     return v;
 }
 
@@ -131,8 +134,8 @@ bool decode_class(std::span<const uint8_t> cls, uint32_t base, MobyClass& c, std
         const uint32_t vsize = cls[e + 0xc] * 16u;
         // the entry as offsets
         const uint32_t ov = vif, od = vd;
-        std::memcpy(p.entry, &ov, 4);
-        std::memcpy(p.entry + 8, &od, 4);
+        le_store(p.entry, ov);
+        le_store(p.entry + 8, od);
         if (k < c.lod_count[0]) {
             p.lod = 0;
             p.index_in_lod = static_cast<uint8_t>(k);
@@ -176,8 +179,7 @@ bool decode_class(std::span<const uint8_t> cls, uint32_t base, MobyClass& c, std
                     for (int r = 0; r < 4; ++r) {
                         const size_t q = u.data + (t + static_cast<uint32_t>(r)) * 16;
                         tp.file[r] = rd<uint64_t>(vs, q);
-                        float a;
-                        std::memcpy(&a, vs.data() + q + 8, 4);
+                        const float a = rd<float>(vs, q + 8);
                         tp.reg[r] = static_cast<uint8_t>(static_cast<int32_t>(a));  // (stored as a float: the VU1 program's FTOI)
                     }
                     tp.next_secret = rd<int8_t>(vs, u.data + t * 16 + 0xc);
@@ -398,9 +400,16 @@ void build_prim_gs(TexturePrim& t, std::span<const uint8_t> tex_table) {
 
 namespace {
 
+// (every number little-endian, an array's one by one: le_fix_elements; the palette's words are bytes: raw)
 struct Out {
     std::vector<uint8_t> b;
-    template <typename T> void put(const T& v) {
+    template <typename T> void put(const T& v0) {
+        T v;  // (a C array too)
+        std::memcpy(&v, &v0, sizeof(T));
+        le_fix_elements(v);
+        put_raw(v);
+    }
+    template <typename T> void put_raw(const T& v) {
         const auto* p = reinterpret_cast<const uint8_t*>(&v);
         b.insert(b.end(), p, p + sizeof(T));
     }
@@ -414,6 +423,11 @@ struct In {
     size_t at = 0;
     bool ok = true;
     template <typename T> T get() {
+        T v = get_raw<T>();
+        le_fix_elements(v);
+        return v;
+    }
+    template <typename T> T get_raw() {
         T v{};
         if (at + sizeof(T) > b.size()) {
             ok = false;
@@ -691,7 +705,7 @@ bool write_textures(const std::string& path, const std::vector<Texture>& t) {
         o.put(x.index);
         o.put(x.width);
         o.put(x.height);
-        o.put(x.palette);
+        o.put_raw(x.palette);  // (the palette's RGBA bytes as stored: their order in memory, not words)
         o.put(static_cast<uint32_t>(x.mips.size()));
         for (const auto& m : x.mips) o.bytes(m);
     }
@@ -707,7 +721,7 @@ bool read_textures(const std::string& path, std::vector<Texture>& t) {
         x.index = in.get<uint32_t>();
         x.width = in.get<uint32_t>();
         x.height = in.get<uint32_t>();
-        x.palette = in.get<std::array<uint32_t, 256>>();
+        x.palette = in.get_raw<std::array<uint32_t, 256>>();  // (RGBA bytes: kept in their file order, as the texture uploads read them)
         x.mips.resize(in.get<uint32_t>());
         for (auto& m : x.mips) m = in.bytes();
     }
