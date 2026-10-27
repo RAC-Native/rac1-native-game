@@ -67,6 +67,15 @@ What changed in each release. Releases are source only: you build the game with 
   the old way; oracle batch 470).
 - A pipelined frame's modern lighting and ambient particles read the game's memory as it was when the frame was prepared (a
   copy), no longer the next update's.
+- Vulkan: the ambient occlusion reads the 3D's depth where it is instead of copying it every frame: GTAO at 5053 x 1371 about a
+  quarter less (Rilgar 4.1 to 3.1 ms of GPU, Kerwan 5.0 to 3.9; GTAO 1/2 2.8 to 1.7), the same picture
+  (`RAC1_AO_DEPTH_COPY=1` for the old way). See [Lighting](docs/lighting.md#ambient-occlusion).
+- The sun's shadows: the mobys over a cascade's static cache are put back and drawn in up to four rectangles instead of one
+  around them all, and the two far cascades' mobys are drawn every other frame in turn: the cascades' GPU time 2.1 to 1.3 ms on Rilgar, 2.4 to 0.6 on Kerwan, the same shadows (a far cascade's moby
+  shadow a frame late every other frame)
+  (`RAC1_SHADOW_CLUSTERS=1`, `RAC1_SHADOW_FAR_EVERY=0` for the old way). OpenGL and Vulkan.
+- The profiler with Vulkan: the sun cascades' stage is closed where OpenGL closes it (left open, the GPU's work after the world's
+  draw without a stage of its own counted as the cascades'), and the point lights' cube shadows have their own stage.
 
 ### Debug tools (`--debug-tools`)
 - Hoverboard anywhere (Player tab): on Rilgar and Kalebo III, gets Ratchet on the hoverboard race's board where he stands, as the board
