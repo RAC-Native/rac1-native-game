@@ -2363,6 +2363,12 @@ int main(int argc, char** argv) {
         static const bool s_mrp_diff = std::getenv("RAC1_MRP_DIFF") != nullptr;
         rac1::gs::Gs& gs = rac1::gs::gs_global();
         if (mrp_moby_active() && !s_mrp_diff && (start == 0x008 || start == 0x00a || start == 0x00c || start == 0x00e)) {
+            // the MRP's reader in the Vendor's moby ranges (mrp_chain_reading_moby_state): the programs run for the GS registers their
+            // kicks set (the reader drops their primitives), as the GS path ran them before the reader
+            if (mrp_chain_reading_moby_state()) {
+                fn(vu.st, start, kick);
+                return true;
+            }
             if (!boot_active()) return true;
             // the boot's title: the programs run for the GS state their kicks leave (the boot module's logo after the mobys
             // draws on it), their primitives flagged as the mobys' (the replica does not draw them: the MRP does)

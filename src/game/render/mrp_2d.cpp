@@ -206,8 +206,24 @@ struct Built {
     std::vector<Item> items;
 };
 
-// The render targets' sizes as the backend holds them (the builder follows the frame's draws into them in order)
+// The render targets' sizes as the backend holds them (the builder follows the frame's draws into them in order), in GS pixels
 std::map<uint32_t, std::pair<int, int>> g_rt_size;
+// The render targets' resolution: GPU pixels per GS pixel (1: the GS's own; RAC1_2D_RT_SCALE). A target is a texture the game draws a
+// menu panel into at the PS2's resolution (the Vendor's monitors, the pause menu's screens, their item models), then shows it scaled
+// up; at the window's scale its text and pictures are as sharp as the 2D drawn on the screen. Its vertices, scissors and texture
+// coordinates stay in GS pixels: only its viewport and its texture are larger.
+int g_rt_s = 1;
+
+// orig: (host) the scale for this call: RAC1_2D_RT_SCALE unset or 1 the GS's, N (2..8) that many times, 0 the window's (its height
+// over the frame's, rounded up)
+int rt_scale_for(const Viewport& v, float fb_h) {
+    static const int s_env = [] {
+        const char* e = std::getenv("RAC1_2D_RT_SCALE");
+        return e == nullptr ? 1 : std::clamp(std::atoi(e), 0, 8);
+    }();
+    if (s_env != 0) return s_env;
+    return std::clamp(static_cast<int>(std::ceil(static_cast<float>(v.h) / std::max(fb_h, 1.0f) - 1.0f / 64.0f)), 1, 8);
+}
 
 // orig: (host)
 void build(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H, const DepthMap* depth, const Viewport& v, size_t from, size_t to, Built& out) {
@@ -564,7 +580,8 @@ struct GlLocs {
 } g_loc;
 struct GlRt {
     GLuint fbo = 0, tex = 0, depth = 0;
-    int w = 0, h = 0, depth_w = 0, depth_h = 0;
+    int w = 0, h = 0, depth_w = 0, depth_h = 0;  // (GS pixels; the depth buffer's: GPU pixels)
+    int s = 1;                                     // GPU pixels per GS pixel (g_rt_s)
 };
 std::map<uint32_t, GlRt> g_gl_rt;
 struct GlTex {
@@ -684,7 +701,7 @@ GLuint gl_texture(const TexImage* img) {
 // orig: (host)
 GlRt& gl_rt(uint32_t fbp, int w, int h) {
     GlRt& r = g_gl_rt[fbp];
-    if (r.fbo != 0 && r.w == w && r.h == h) return r;
+    if (r.fbo != 0 && r.w == w && r.h == h && r.s == g_rt_s) return r;
     if (r.fbo == 0) {
         glGenFramebuffers(1, &r.fbo);
         glGenTextures(1, &r.tex);
@@ -692,8 +709,9 @@ GlRt& gl_rt(uint32_t fbp, int w, int h) {
     }
     r.w = w;
     r.h = h;
+    r.s = g_rt_s;
     glBindTexture(GL_TEXTURE_2D, r.tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w * r.s, h * r.s, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     glBindFramebuffer(GL_FRAMEBUFFER, r.fbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, r.tex, 0);
     if (r.depth != 0) r.depth_w = r.depth_h = 0;  // (resized with it below, when asked)
@@ -710,13 +728,13 @@ void gl_rt_depth(GlRt& r) {
         rac1::prof::gl_track_n(rac1::prof::kGlRenderbuffer, 1, &r.depth, "MRP 2D: render targets");
     }
     glBindFramebuffer(GL_FRAMEBUFFER, r.fbo);
-    if (r.depth_w != r.w || r.depth_h != r.h) {
+    if (r.depth_w != r.w * r.s || r.depth_h != r.h * r.s) {
         glBindRenderbuffer(GL_RENDERBUFFER, r.depth);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, r.w, r.h);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, r.w * r.s, r.h * r.s);
         glBindRenderbuffer(GL_RENDERBUFFER, 0);
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, r.depth);
-        r.depth_w = r.w;
-        r.depth_h = r.h;
+        r.depth_w = r.w * r.s;
+        r.depth_h = r.h * r.s;
     }
 }
 
@@ -750,7 +768,7 @@ void gl_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
         if (want >= 0) {
             const GlRt& r = g_gl_rt[static_cast<uint32_t>(want)];
             glBindFramebuffer(GL_FRAMEBUFFER, r.fbo);
-            glViewport(0, 0, r.w, r.h);
+            glViewport(0, 0, r.w * r.s, r.h * r.s);
             glUniform2f(g_loc.fb, static_cast<float>(r.w), static_cast<float>(r.h));
             glUniform1i(g_loc.rt, 1);
         } else {
@@ -787,7 +805,7 @@ void gl_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
         if (it.kind == Item::kHost3d) {
             GlRt& r = gl_rt(static_cast<uint32_t>(it.key.want), it.rt_w, it.rt_h);
             gl_rt_depth(r);
-            glViewport(0, 0, r.w, r.h);
+            glViewport(0, 0, r.w * r.s, r.h * r.s);
             glDisable(GL_SCISSOR_TEST);
             glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
             if (it.host_first) {
@@ -802,14 +820,14 @@ void gl_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
         const Key& k = it.key;
         if (k.to_rt) {
             const auto ex = g_gl_rt.find(static_cast<uint32_t>(k.want));
-            if (ex == g_gl_rt.end() || ex->second.fbo == 0 || ex->second.w != it.rt_w || ex->second.h != it.rt_h) {
+            if (ex == g_gl_rt.end() || ex->second.fbo == 0 || ex->second.w != it.rt_w || ex->second.h != it.rt_h || ex->second.s != g_rt_s) {
                 gl_rt(static_cast<uint32_t>(k.want), it.rt_w, it.rt_h);  // (created or resized: it binds and clears it)
                 cur_rt = -2;
                 dirty = true;
             }
             if (it.rt_depth) {
                 GlRt& r = g_gl_rt[static_cast<uint32_t>(k.want)];
-                if (r.depth == 0 || r.depth_w != r.w || r.depth_h != r.h) {
+                if (r.depth == 0 || r.depth_w != r.w * r.s || r.depth_h != r.h * r.s) {
                     gl_rt_depth(r);
                     cur_rt = -2;
                     dirty = true;
@@ -898,7 +916,12 @@ void gl_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
                 glDepthMask(GL_FALSE);
             }
         }
-        if (dirty || std::memcmp(k.sc, applied.sc, sizeof k.sc) != 0) glScissor(k.sc[0], k.sc[1], k.sc[2], k.sc[3]);
+        if (k.to_rt) {  // (a render target's scissor in GS pixels: its GPU pixels)
+            const int rs = g_gl_rt[static_cast<uint32_t>(k.want)].s;
+            glScissor(k.sc[0] * rs, k.sc[1] * rs, k.sc[2] * rs, k.sc[3] * rs);
+        } else if (dirty || applied.to_rt || std::memcmp(k.sc, applied.sc, sizeof k.sc) != 0) {
+            glScissor(k.sc[0], k.sc[1], k.sc[2], k.sc[3]);
+        }
         applied = k;
         dirty = false;
         const GLenum mode = k.lines ? GL_LINES : GL_TRIANGLES;
@@ -970,8 +993,9 @@ static_assert(sizeof(Push) == 128);
 struct VkRt {
     vk::GpuImage color{};
     vk::GpuImage depth{};
-    int w = 0, h = 0;
+    int w = 0, h = 0;  // (GS pixels; the depth buffer's: GPU pixels)
     int depth_w = 0, depth_h = 0;
+    int s = 1;  // GPU pixels per GS pixel (g_rt_s)
 };
 struct VkTex {
     vk::GpuImage img{};
@@ -1108,10 +1132,11 @@ VkImageView vk_texture(const TexImage* img) {
 // orig: (host)
 VkRt& vk_rt(uint32_t fbp, int w, int h) {
     VkRt& r = g_vk_rt[fbp];
-    if (r.color.image != VK_NULL_HANDLE && r.w == w && r.h == h) return r;
+    if (r.color.image != VK_NULL_HANDLE && r.w == w && r.h == h && r.s == g_rt_s) return r;
     r.w = w;
     r.h = h;
-    vk::create_image(static_cast<uint32_t>(w), static_cast<uint32_t>(h), VK_FORMAT_R8G8B8A8_UNORM,
+    r.s = g_rt_s;
+    vk::create_image(static_cast<uint32_t>(w * r.s), static_cast<uint32_t>(h * r.s), VK_FORMAT_R8G8B8A8_UNORM,
                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
                      VK_IMAGE_ASPECT_COLOR_BIT, r.color);
     vk::end_rendering();
@@ -1126,10 +1151,10 @@ VkRt& vk_rt(uint32_t fbp, int w, int h) {
 
 // orig: (host)
 void vk_rt_depth(VkRt& r) {
-    if (r.depth.image != VK_NULL_HANDLE && r.depth_w == r.w && r.depth_h == r.h) return;
-    r.depth_w = r.w;
-    r.depth_h = r.h;
-    vk::create_image(static_cast<uint32_t>(r.w), static_cast<uint32_t>(r.h), vk::depth_stencil_format(),
+    if (r.depth.image != VK_NULL_HANDLE && r.depth_w == r.w * r.s && r.depth_h == r.h * r.s) return;
+    r.depth_w = r.w * r.s;
+    r.depth_h = r.h * r.s;
+    vk::create_image(static_cast<uint32_t>(r.depth_w), static_cast<uint32_t>(r.depth_h), vk::depth_stencil_format(),
                      VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                      VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, r.depth);
     vk::end_rendering();
@@ -1163,9 +1188,9 @@ void vk_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
             rt.depth_view = r.depth.view;
             rt.depth_format = r.depth.format;
             rt.stencil_view = r.depth.view;
-            rt.width = static_cast<uint32_t>(r.w);
-            rt.height = static_cast<uint32_t>(r.h);
-            vk::set_viewport(0, 0, r.w, r.h);
+            rt.width = static_cast<uint32_t>(r.w * r.s);
+            rt.height = static_cast<uint32_t>(r.h * r.s);
+            vk::set_viewport(0, 0, r.w * r.s, r.h * r.s);
             vk::push_target(rt);
             rt_pushed = true;
         } else {
@@ -1192,7 +1217,7 @@ void vk_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
             VkRt& r = vk_rt(static_cast<uint32_t>(it.key.want), it.rt_w, it.rt_h);
             vk_rt_depth(r);
             bind_target(it.key.want, true);
-            vk::set_viewport(0, 0, r.w, r.h);
+            vk::set_viewport(0, 0, r.w * r.s, r.h * r.s);
             vk::set_scissor(false);
             if (it.host_first) vk::clear_attachments(false, nullptr, true, 1.0f, false, 0);
             v.host_3d(*it.p, r.w, r.h, it.host_first);
@@ -1201,13 +1226,13 @@ void vk_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
         const Key& k = it.key;
         if (k.to_rt) {
             const auto ex = g_vk_rt.find(static_cast<uint32_t>(k.want));
-            if (ex == g_vk_rt.end() || ex->second.color.image == VK_NULL_HANDLE || ex->second.w != it.rt_w || ex->second.h != it.rt_h) {
+            if (ex == g_vk_rt.end() || ex->second.color.image == VK_NULL_HANDLE || ex->second.w != it.rt_w || ex->second.h != it.rt_h || ex->second.s != g_rt_s) {
                 bind_target(-1, false);
                 vk_rt(static_cast<uint32_t>(k.want), it.rt_w, it.rt_h);
             }
             if (it.rt_depth) {
                 VkRt& r = g_vk_rt[static_cast<uint32_t>(k.want)];
-                if (r.depth.image == VK_NULL_HANDLE || r.depth_w != r.w || r.depth_h != r.h) {
+                if (r.depth.image == VK_NULL_HANDLE || r.depth_w != r.w * r.s || r.depth_h != r.h * r.s) {
                     bind_target(-1, false);
                     vk_rt_depth(r);
                 }
@@ -1242,13 +1267,14 @@ void vk_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
         }
         bind_target(k.want, k.ztest);
         vk::ensure_rendering();
-        if (k.to_rt) {
+        if (k.to_rt) {  // (its viewport and scissor in its GPU pixels)
             const VkRt& r = g_vk_rt[static_cast<uint32_t>(k.want)];
-            vk::set_viewport(0, 0, r.w, r.h);
+            vk::set_viewport(0, 0, r.w * r.s, r.h * r.s);
+            vk::set_scissor(true, k.sc[0] * r.s, k.sc[1] * r.s, k.sc[2] * r.s, k.sc[3] * r.s);
         } else {
             vk::set_viewport(v.x, v.y, v.w, v.h);
+            vk::set_scissor(true, k.sc[0], k.sc[1], k.sc[2], k.sc[3]);
         }
-        vk::set_scissor(true, k.sc[0], k.sc[1], k.sc[2], k.sc[3]);
         const VkFilter mag_f = k.lin ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
         const VkFilter mip_f = k.lin_min ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
         const VkSamplerAddressMode ws = k.wrap_s ? VK_SAMPLER_ADDRESS_MODE_REPEAT : VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
@@ -1404,6 +1430,7 @@ void mrp_2d_draw(const MrpChainFrame& f, int win_w, int win_h, float fb_w, float
     if (vp != nullptr) v = *vp;
     else { v.w = win_w; v.h = win_h; }
     ++g_frame_no;
+    g_rt_s = rt_scale_for(v, fb_h);
     build(f, win_w, win_h, fb_w, fb_h, depth, v, from, to, g_built);
     if (g_built.items.empty()) return;
     if (vk::is_active()) vk_submit(g_built, win_w, win_h, fb_w, fb_h, v);
