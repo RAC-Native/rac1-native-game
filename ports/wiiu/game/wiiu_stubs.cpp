@@ -158,12 +158,18 @@ void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
 
 namespace rac1 {
 struct VuPipe;
-[[noreturn]] static void vu1_program_missing(const char* name) {
-    OSReport("rac1-wiiu: the VU1 program %s ran, but this build has none (RAC1_NO_GRAPHICS)\n", name);
-    std::abort();
+// (a start of one of them, the picture's chain walk reaching the world's or a moby's VU1 part: the program ends at once,
+// nothing kicked; that 3D is the renderer's own. Said once per program)
+static bool vu1_program_missing(const char* name, bool& said) {
+    if (!said) OSReport("rac1-wiiu: the VU1 program %s started: not in this build, ended at once\n", name);
+    said = true;
+    return false;
 }
 #define RAC1_VU1_MISSING(fn) \
-    bool fn(VUState&, VuPipe&) { vu1_program_missing(#fn); }
+    bool fn(VUState&, VuPipe&) {        \
+        static bool said = false;       \
+        return vu1_program_missing(#fn, said); \
+    }
 RAC1_VU1_MISSING(moby_vu1_step)
 RAC1_VU1_MISSING(moby_vu1_fast)
 RAC1_VU1_MISSING(world_tfrag_a_step)

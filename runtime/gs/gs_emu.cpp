@@ -69,9 +69,17 @@ const uint16_t PIX4[16][32] = {
     {385, 393, 417, 425, 449, 457, 481, 489, 387, 395, 419, 427, 451, 459, 483, 491, 389, 397, 421, 429, 453, 461, 485, 493, 391, 399, 423, 431, 455, 463, 487, 495},
     {401, 409, 433, 441, 465, 473, 497, 505, 403, 411, 435, 443, 467, 475, 499, 507, 405, 413, 437, 445, 469, 477, 501, 509, 407, 415, 439, 447, 471, 479, 503, 511}};
 
+// (EE memory and the VUs' are host-native 32-bit words, ee_memory.h: a doubleword's low word first, the PS2's byte i of
+// a word-aligned block at i ^ EE_BYTE_SWIZZLE, its halfword at i ^ EE_HALF_SWIZZLE; the same on a little-endian host)
 uint64_t r64(const uint8_t* p) {
-    uint64_t v;
-    std::memcpy(&v, p, 8);
+    uint32_t w[2];
+    std::memcpy(w, p, 8);
+    return (static_cast<uint64_t>(w[1]) << 32) | w[0];
+}
+uint8_t byte_at(const uint8_t* p, uint32_t i) { return p[i ^ EE_BYTE_SWIZZLE]; }
+uint16_t half_at(const uint8_t* p, uint32_t i) {
+    uint16_t v;
+    std::memcpy(&v, p + (i ^ EE_HALF_SWIZZLE), 2);
     return v;
 }
 uint32_t r32(const uint8_t* p) {
@@ -532,11 +540,11 @@ void Gs::image_data(const uint8_t* p, uint32_t n) {
         if (++xx_ == w) { xx_ = 0; ++xy_; }
     };
     if (dpsm == CT32) { for (uint32_t i = 0; i + 4 <= n; i += 4) put(r32(p + i)); }
-    else if (dpsm == CT16 || dpsm == CT16S) { for (uint32_t i = 0; i + 2 <= n; i += 2) put(p[i] | (p[i + 1] << 8)); }
-    else if (dpsm == T8 || dpsm == T8H) { for (uint32_t i = 0; i < n; ++i) put(p[i]); }
-    else if (dpsm == T4 || dpsm == T4HL || dpsm == T4HH) { for (uint32_t i = 0; i < n; ++i) { put(p[i] & 0xf); put(p[i] >> 4); } }
+    else if (dpsm == CT16 || dpsm == CT16S) { for (uint32_t i = 0; i + 2 <= n; i += 2) put(half_at(p, i)); }
+    else if (dpsm == T8 || dpsm == T8H) { for (uint32_t i = 0; i < n; ++i) put(byte_at(p, i)); }
+    else if (dpsm == T4 || dpsm == T4HL || dpsm == T4HH) { for (uint32_t i = 0; i < n; ++i) { put(byte_at(p, i) & 0xf); put(byte_at(p, i) >> 4); } }
     else if (dpsm == CT24) {
-        xpend_.insert(xpend_.end(), p, p + n);
+        for (uint32_t i = 0; i < n; ++i) xpend_.push_back(byte_at(p, i));
         size_t i = 0;
         for (; i + 3 <= xpend_.size(); i += 3) put(xpend_[i] | (xpend_[i + 1] << 8) | (xpend_[i + 2] << 16));
         xpend_.erase(xpend_.begin(), xpend_.begin() + static_cast<long>(i));
@@ -567,7 +575,7 @@ void Gs::packed(const uint8_t* q, uint32_t d) {
         break;
     }
     case 0xa: cur_.fog = (w3 >> 4) & 0xff; break;
-    case 0xe: write_reg(q[8], r64(q)); break;
+    case 0xe: write_reg(byte_at(q, 8), r64(q)); break;
     case 0xf: break;
     default: write_reg(d, r64(q)); break;  // TEX0 / CLAMP: the register's own layout
     }
@@ -705,8 +713,7 @@ void Gs::vu1_before(void* vu_p, uint32_t start, uint64_t hash) {
     const VUState& st = vu.st;
     auto q = [&st](uint32_t a) { return &st.mem[(a & 0x3ffu) << 4]; };
     const uint32_t x = st.xtop;
-    uint64_t tag;
-    std::memcpy(&tag, q(x), 8);
+    const uint64_t tag = r64(q(x));
     const uint32_t n = static_cast<uint32_t>(tag & 0x7fff);
     if (n < 3 || n > 0x150) return;  // (a batch holds at most (0x1d2 - 1) / 3 vertices)
     Vu7Batch b;
@@ -739,8 +746,7 @@ void Gs::vu1_before(void* vu_p, uint32_t start, uint64_t hash) {
     };
     state_of(tag, b.st, b.tex, &b.mip);
     if (start == 0xe) {
-        uint64_t ft;
-        std::memcpy(&ft, &st.vf[31].u[0], 8);
+        const uint64_t ft = r64(reinterpret_cast<const uint8_t*>(&st.vf[31].u[0]));
         state_of(ft, b.st_fan, b.tex_fan, nullptr);
     }
     const DrawState& s = b.st;
