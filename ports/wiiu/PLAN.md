@@ -223,3 +223,30 @@ joint matrices a GPU skinning reads) unless they get faster.
 ### Ideas for later (Daino)
 
 The GamePad as a second screen once the game draws: a real-time map, the quick select of the weapons.
+
+### The world passes (same day)
+
+Each pass's own time on the console (RAC1_WORLD_PASS_TIME, in play): tfrag 5 ms, tie 17, shrub 23, sky 7 (PC: 0.05 /
+0.2 / 0.27 / 0.1). The culling leaves are EE / VU0 code transliterated on 128-bit registers: ~80x the PC, against
+~25x for the game logic.
+
+RAC1_WORLD_PASS_SKIP=6 runs the tie and shrub passes with the game's own render enable off (their culling not run)
+and skips their relighting (it would read the stale lists). PC, 600 frames: hero and camera identical; what differs is
+the lighting lists, the DMA rings, the passes' variables and the instances' colours in the level data (now those of
+the level's load: a GX2 renderer culls and relights them itself). The tfrag's culling cannot be turned off this way
+(its packets read the culling's lists in the scratchpad).
+
+Console, in play, with RAC1_NO_GRAPHICS=2 RAC1_WORLD_PASS_SKIP=6: **frame 55-58 ms (~18 fps)**, from 250-300 at the
+start of the day:
+
+| sub-stage | ms |
+|---|---|
+| moby joints (the poses) | 18 |
+| moby pass (draw loop) | 13-17 |
+| world passes (tfrag 5, sky 7) | 12 |
+| game logic (moby updates, hero, camera, the rest) | ~6 |
+| a spike in "logic (other)" once per 60 frames | ~98 |
+
+Next: the hot primitives on Espresso (the Q128 / VU0 macro registers on generic vectors, the emulated memory's
+accesses), which every one of these runs on - a sampling profile on the console would show which; the sky pass (with
+the host decoding the sky, does the GX2 renderer need it?); the spike.

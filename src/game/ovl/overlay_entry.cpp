@@ -2,6 +2,7 @@
 // loop), the per-frame helpers it calls and the render view setup 0x1f6e48.
 // Callees not ported (or not yet proven with the oracle) are TODO_PORT. The hardware the loop
 // waits on (the RCNT1 counter, vsync, DMA kicks) is the host's: see host_rcnt1().
+#include <chrono>
 #include <game/ovl/credits_tr.h>
 #include <game/ovl/screen_flash.h>
 #include <game/ovl/memory_card.h>
@@ -312,13 +313,42 @@ void zones_update() {
 // lists): the VU1 chain it builds in the frame packet (the world's REF tags, the textures' uploads) is taken back unless RAC1_WORLD_CHAIN=1,
 // the host's world renderers draw the world (and the VU1 world programs are not run). With the MRP world the chain is kept
 // and its range noted: the MRP decodes it (mrp_world_scene.h), the GS replica skips it. `kind`: 0 tfrag, 1 tie, 2 shrub, -1 the sky.
+// orig: (host) testing (the Wii U port): RAC1_WORLD_PASS_SKIP, a mask of the kinds whose culling, and then relighting, is not run (2 tie,
+// 4 shrub: the game's own render enable off while they run; not the tfrag, whose packets read the culling's lists). The game state stays
+// (600 Veldin frames: hero and camera identical); the instances keep the colours of the level's load (a renderer relights them itself)
+static bool world_pass_skipped(int kind) {
+    static const char* wp_skip = std::getenv("RAC1_WORLD_PASS_SKIP");
+    return wp_skip != nullptr && kind >= 0 && ((std::strtoul(wp_skip, nullptr, 16) >> kind) & 1) != 0;
+}
+
 void world_pass(void (*pass)(), int kind) {
     RAC1_PROF_ZONE(kGameWorldPasses);
     static const bool keep_env = std::getenv("RAC1_WORLD_CHAIN") != nullptr;
     const bool keep = keep_env || g_world_faithful || g_world_mrp || g_world_chain_forced;  // (RAC1_WORLD_FAITHFUL / the debug menu: the chain is the world's drawing)
     const uint32_t cur = lwu(OV(0x001611c0));
     if (g_world_mrp) mrp_lod_world_shadow(kind >= 0 ? kind : 3, pass, cur);  // (the LOD slider's shadow run first, the memory put back)
-    pass();
+    // (testing, the Wii U port: RAC1_WORLD_PASS_TIME, each world pass's own time every 60 frames)
+    static const bool wp_time = std::getenv("RAC1_WORLD_PASS_TIME") != nullptr;
+    static double wp_ms[4] = {};
+    static int wp_n = 0;
+    const auto wp_t0 = wp_time ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+    if (world_pass_skipped(kind)) {
+        // the pass with its culling off (its render enable 0 while it runs: EN + 0x10 / 0x18 / 0x20), then put back
+        const uint32_t en = OV(0x00169ff0u) + 0x10 + 8 * static_cast<uint32_t>(kind), was = lwu(en);
+        sw(en, 0);
+        pass();
+        sw(en, was);
+    } else {
+        pass();
+    }
+    if (wp_time) {
+        wp_ms[kind >= 0 ? kind : 3] += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - wp_t0).count();
+        if (kind == 0 && ++wp_n == 60) {
+            std::printf("[world-pass] ms/frame: tfrag %.2f tie %.2f shrub %.2f sky %.2f\n", wp_ms[0] / 60, wp_ms[1] / 60, wp_ms[2] / 60, wp_ms[3] / 60);
+            wp_n = 0;
+            for (double& v : wp_ms) v = 0;
+        }
+    }
     static const bool sky_only = std::getenv("RAC1_SKY_ONLY") != nullptr;  // (testing: the world's chain taken back: the sky alone)
     if (sky_only && kind >= 0) {
         sw(OV(0x001611c0), cur);
@@ -537,7 +567,7 @@ void render_frame() {
     dma_wait(4);
     prof_mark(OV(0x0015f3d0), 0x11);
     if ((flags() & 4) != 0) {
-        if (lw(EN + 0x18) != 0) {
+        if (lw(EN + 0x18) != 0 && !world_pass_skipped(1)) {
             if (lw(0x0015ed80) != 0) {
                 TODO_PORT(0x00295c50, "tie lighting, PAL")();
                 TODO_PORT(0x00295bf8, "tie end, PAL")();
@@ -551,7 +581,7 @@ void render_frame() {
     dma_wait(8);
     prof_mark(OV(0x0015f3d0), 0x11);
     if ((flags() & 8) != 0) {
-        if (lw(EN + 0x20) != 0) {
+        if (lw(EN + 0x20) != 0 && !world_pass_skipped(2)) {
             world_shrub_lighting(OV(0x001bcfb0u));
             world_shrub_end();
         }
