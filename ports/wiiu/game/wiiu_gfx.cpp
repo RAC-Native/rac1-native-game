@@ -81,6 +81,9 @@ struct Frame2d {
     float fb_w = 0, fb_h = 0;
     int screen_fbp = -1, skip_fbp = -1;
     uint64_t game_frame = 0;
+    // the frame's render targets still to draw (gs_draw_gx2: once per frame of the GS replica, by the first picture drawn
+    // of it; a picture of the same frame again only samples them)
+    bool targets_due = false;
 };
 Frame2d g_2d;
 bool g_2d_ready = false;  // (the GS replica's GX2 backend up)
@@ -94,6 +97,7 @@ void rac1_wiiu_picture_frame(const rac1::gs::Gs& gs, float fb_w, float fb_h, int
     g_2d.fb_h = fb_h;
     g_2d.screen_fbp = screen_fbp;
     g_2d.skip_fbp = skip_fbp;
+    g_2d.targets_due = true;
 }
 
 // the game over (its main returned): its 2D no longer drawn, the frames on the way back to the menu the test's
@@ -139,7 +143,7 @@ bool wiiu_gfx_start() {
 
 namespace {
 // the game's frame (4:3) centred on a colour buffer and its 2D drawn (the test triangle until the game's first frame)
-void draw_frame(const GX2ColorBuffer* cb) {
+void draw_frame(const GX2ColorBuffer* cb, bool targets) {
     if (g_2d.gs == nullptr || !g_2d_ready) {
         if (!g_2d_ready) draw_test();
         return;
@@ -154,7 +158,7 @@ void draw_frame(const GX2ColorBuffer* cb) {
     vp.skip_fbp = g_2d.skip_fbp;
     vp.sprite_clamp = true;
     vp.hide_edge_slivers = true;
-    rac1::gs::draw_gx2(*g_2d.gs, w, h, g_2d.fb_w, g_2d.fb_h, &vp);
+    rac1::gs::draw_gx2(*g_2d.gs, cb, g_2d.fb_w, g_2d.fb_h, &vp, targets);  // (the render targets: by the TV's first call per frame)
 }
 }  // namespace
 
@@ -220,12 +224,13 @@ void wiiu_gfx_frame() {
     WHBGfxBeginRender();
     WHBGfxBeginRenderTV();
     WHBGfxClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    draw_frame(WHBGfxGetTVColourBuffer());
+    draw_frame(WHBGfxGetTVColourBuffer(), g_2d.targets_due);
+    g_2d.targets_due = false;
     WHBGfxFinishRenderTV();
     if (const uint64_t due = shot_wanted(g_2d.game_frame)) shot(WHBGfxGetTVColourBuffer(), due);
     WHBGfxBeginRenderDRC();
     WHBGfxClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    draw_frame(WHBGfxGetDRCColourBuffer());
+    draw_frame(WHBGfxGetDRCColourBuffer(), false);
     WHBGfxFinishRenderDRC();
     WHBGfxFinishRender();
 }

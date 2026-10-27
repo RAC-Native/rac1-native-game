@@ -372,3 +372,8 @@ moved the game's.
 - The exit with the picture: the 2D backend shut down before SYSLaunchMenu, frames presented until ProcUI lets go.
 - Speed with the picture: ~30 game steps a second, 6 host frames a second (the vsync wait of each present + the walk +
   the 2D): to measure again with the world's ranges skipped, then the present made not to hold the game.
+- Render targets (gs_draw_gx2.cpp, as the GL path: a colour buffer per sampled page, drawn by the TV's call, sampled by
+  both; the raw GS alpha kept in targets, the dual-source blend done as two passes): the pause menu's text shows on the
+  console, the menu identical to the PC's (shots at frames 500 / 600). RAC1_GX2_SKIPLOG=1 counts what the backend leaves
+  out and why. The HelpDesk box (PC frame 400) still missing: on the Wii U the first frame drawn past 400 had 12
+  primitives (the PC's 300) - to look at.

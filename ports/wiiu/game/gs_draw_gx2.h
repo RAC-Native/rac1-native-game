@@ -5,6 +5,8 @@
 
 #include <runtime/gs/gs_draw.h>
 
+#include <gx2/surface.h>
+
 #include <cstddef>
 #include <cstdint>
 
@@ -15,11 +17,13 @@ namespace rac1::gs {
 bool draw_gx2_init();
 // Everything it made freed (its textures, its buffers, the shaders): before WHBGfxShutdown. It waits for the GPU.
 void draw_gx2_shutdown();
-// The primitives [from, to) of the frame (as rac1::gs::draw, gs_draw.h) into the GX2 colour buffer bound now, `win_w` x
-// `win_h` pixels (the TV's or the GamePad's), the game's fb_w x fb_h frame onto the viewport `vp` (else the whole buffer;
-// its x / y from the bottom left, as the GL backend's). No depth: the projected 3D (Primitive::vu) is not drawn.
-void draw_gx2(const Gs& gs, int win_w, int win_h, float fb_w, float fb_h, const Viewport* vp = nullptr, int prim_filter = 0,
-              size_t from = 0, size_t to = SIZE_MAX);
+// The primitives [from, to) of the frame (as rac1::gs::draw, gs_draw.h) into `screen`, the colour buffer bound now (the TV's
+// or the GamePad's: bound again after the render targets), the game's fb_w x fb_h frame onto the viewport `vp` (else the whole
+// buffer; its x / y from the bottom left, as the GL backend's). `targets`: the GS's drawing into its render targets done by
+// this call (the first of a frame's); false: skipped, the targets sampled as an earlier call left them (a second picture of
+// the same frame). No depth: the projected 3D (Primitive::vu) is not drawn.
+void draw_gx2(const Gs& gs, const GX2ColorBuffer* screen, float fb_w, float fb_h, const Viewport* vp = nullptr, bool targets = true,
+              int prim_filter = 0, size_t from = 0, size_t to = SIZE_MAX);
 
 }  // namespace rac1::gs
 
