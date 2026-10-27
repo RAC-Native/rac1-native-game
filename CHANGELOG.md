@@ -5,6 +5,11 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+### Gameplay
+- Buy All Ammo (Options > Advanced, Off by default): an All Ammo entry before the first item of the Vendor's list, as in Up Your
+  Arsenal: one purchase fills every weapon's ammo through the game's own purchase steps, or with too few bolts as much as they pay
+  for, weapon by weapon in the list's order. See [Advanced options](docs/advanced.md#buy-all-ammo).
+
 ### Graphics
 - Lights: Anya-Thoughtmane's second lighting pass (#102) on Veldin to Rilgar: emissive surfaces, lamps by class and by hand, merged with ours.
 - The levels' water, lava and sand seas (VU1 program 7's surfaces: Rilgar's harbour, Gaspar's lava sea, Aridia's sand sea, Hoven,

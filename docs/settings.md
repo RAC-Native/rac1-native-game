@@ -133,6 +133,7 @@ line of `controls.txt`). See
 | Aiming | Original, Modern |
 | Movement | Original, Strafing, RAC 3 |
 | Fades | Fast, Original |
+| Buy All Ammo | Off, On |
 
 See [Advanced options](advanced.md) for what each one does and how it is built.
 
