@@ -65,6 +65,9 @@
 #include <vector>
 
 #include <platform/platform.h>
+#if defined(__SANITIZE_ADDRESS__)
+#include <sanitizer/lsan_interface.h>
+#endif
 
 #include "host_language.h"
 
@@ -182,6 +185,7 @@ constexpr const char* PLAYER_ENV[] = {
     "RAC1_DEBUG_TOOLS", "RAC1_HEADLESS", "RAC1_ISO", "RAC1_MEMCARD_DIR", "RAC1_ADVANCED_FILE", "RAC1_GRAPHICS_FILE", "RAC1_CONTROLS_FILE",
     "RAC1_RENDERER", "RAC1_WINDOW", "RAC1_FULLSCREEN", "RAC1_VSYNC", "RAC1_FPS_CAP", "RAC1_NO_AUDIO", "RAC1_AUDIO_DEVICE",
     "RAC1_AUDIO_PERIOD_MS", "RAC1_AUDIO_PERIODS", "RAC1_MOVIE_VOLUME", "RAC1_PRIORITY", "RAC1_IOP_MIRROR",
+    "RAC1_PROGRESS",  // (where progress.json goes for the launcher, or 0: docs/launcher.md)
     "RAC1_PYTHON",  // (set by tools/setup.py for the setup mode: the Python it runs the overlay matcher with)
 };
 
@@ -815,6 +819,25 @@ struct FrozenFrame {
     }
 };
 
+// orig: (host) Vulkan: the last frame of the game shown kept where it was drawn (the 3D's colour image, untouched until the next
+// frame's start clears it) instead of copied into `last_shown` every frame (a full-window copy: 0.6 ms of GPU at 5120 x 1440); the
+// copy made only when something reads it - a frame that draws over it (a fade, the pause menu, a blocking loop), the pause menu's
+// store - before that clear. Not with the debug menu or its overlays drawn over the frame after the capture (they would be in it).
+// RAC1_LAZY_CAPTURE=0: copied every frame, as before
+struct LazyShown {
+    bool pending = false;  // `dst`'s picture is still the main colour image's (w x h)
+    int w = 0, h = 0;
+    FrozenFrame* dst = nullptr;
+    void resolve() {
+        if (!pending) return;
+        pending = false;
+        if (dst != nullptr && rac1::vk::is_active() && rac1::vk::main_color_image().width == static_cast<uint32_t>(w) &&
+            rac1::vk::main_color_image().height == static_cast<uint32_t>(h))
+            dst->capture(w, h);
+    }
+};
+LazyShown g_lazy_shown;
+
 // Options > Graphics > Render Resolution: the MRP's 3D (world, sky, mobys) drawn into a buffer of its own at a
 // fraction of the window's resolution (0.5 .. 2), then put on the window - its colour scaled (linear), its depth (nearest: the
 // GS replica's 3D effects are tested against it) - before the effects and the 2D (HUD, text, menus) are drawn at the window's
@@ -1036,6 +1059,7 @@ struct ScenePicture {
         pf_valid = true;
     }
     void store(uint32_t bp, uint32_t psm) {
+        g_lazy_shown.resolve();  // (the last picture shown, still in the 3D's colour image: copied now)
         const bool from_shown = !pending && shown != nullptr && shown->valid();
         if ((!pending && !from_shown) || psm != 0) return;
         const uint32_t frame = lwu(0x0013cf20);  // FRAME_1 of the frame's draw environment 0x13cf10 (render_passes.cpp)
@@ -2118,14 +2142,14 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "rac1-native: level %d has no host assets yet\n", level);
         return 1;
     }
-    const bool have_disc = std::filesystem::exists(disc_path());
+    std::string disc_why;
+    const bool have_disc = disc_ready(disc_why);
     if (!have_disc || !std::filesystem::exists(disc_boot_elf_path()) || !disc_has_level(level)) {
         std::fprintf(stderr, "\nrac1-native: %s\n"
-                             "Run the setup from the repository's root, with your disc image:\n"
-                             "  ./setup.sh --iso <path-to-your-iso>\n"
+                             "Run the setup again from the repository's root, with your disc image:\n"
+                             "  ./setup.sh --iso <path-to-your-iso>   (setup.cmd on Windows)\n"
                              "and start the game from the repository's root.\n\n",
-                     have_disc ? "the game's data is missing (assets/)."
-                               : "your disc image was not found (assets/iso/rac1-ntsc-u.iso or rac1-pal.iso, or $RAC1_ISO).");
+                     have_disc ? "the game's data is missing (assets/)." : disc_why.c_str());
         return 1;
     }
     const bool headless = std::getenv("RAC1_HEADLESS") != nullptr;
@@ -2482,7 +2506,8 @@ int main(int argc, char** argv) {
                 }
                 return true;
             })) {
-            std::fprintf(stderr, "rac1-native: cannot read the level from the ISO (%s)\n", disc_path().c_str());
+            std::fprintf(stderr, "rac1-native: cannot read the level from the disc (%s)\n",
+                         disc_source() == DiscSource::Image ? disc_path().c_str() : disc_files_dir());
             return 1;
         }
         std::printf("[orig] sound bank %08x\n", lwu(0x0015ed5c));
@@ -3462,11 +3487,11 @@ int main(int argc, char** argv) {
                     const uint32_t r = base + static_cast<uint32_t>(i) * 0x40;
                     if (static_cast<int8_t>(ee_read<uint8_t>(r + 1)) >= 0) ++hist[ee_read<uint8_t>(r)];
                 }
-                std::printf("[part] frame %d:", frame);
+                std::printf("[part] frame %llu:", static_cast<unsigned long long>(frame));
                 for (int t = 0; t < 256; ++t) if (hist[t] != 0) std::printf(" %d:%d(fn %08x)", t, hist[t], lwu(OV(0x001b1e80u) + 4u * static_cast<uint32_t>(t)));
                 std::printf("\n");
             }
-            if (std::getenv("RAC1_GS_TRACE") != nullptr && lwu(0x0013c940 + 0x1a4) != 0) std::printf("[gs] pad pressed %x frame %d\n", lwu(0x0013c940 + 0x1a4), frame);
+            if (std::getenv("RAC1_GS_TRACE") != nullptr && lwu(0x0013c940 + 0x1a4) != 0) std::printf("[gs] pad pressed %x frame %llu\n", lwu(0x0013c940 + 0x1a4), static_cast<unsigned long long>(frame));
             if (const char* zt = std::getenv("RAC1_GS_ZTRACE"); zt != nullptr && frame == std::strtoull(zt, nullptr, 0))  // testing: the primitives' depth state
                 for (const auto& pr : gs.primitives())
                     std::printf("[gsz] prim %d vu %d frame %llx scissor %llx test %llx zbuf %llx alpha %llx z %u %u %u xy %.1f %.1f rgba %02x%02x%02x%02x tex0 %llx tex1 %llx miptbp1 %llx q %f %f %f\n", pr.type, pr.vu ? 1 : 0, (unsigned long long)pr.st.frame, (unsigned long long)pr.st.scissor, (unsigned long long)pr.st.test, (unsigned long long)pr.st.zbuf,
@@ -3524,6 +3549,9 @@ int main(int argc, char** argv) {
                     mrp_moby_begin_frame(true, false, false);
                 }
             }
+            // (a frame that is not the game's own may show the last one: kept in the 3D's colour image until now, copied before the clear)
+            if (menu_mode || fd.fade || fd.vendor_pic || title || movie_pic != nullptr || fd.exiting) g_lazy_shown.resolve();
+            else g_lazy_shown.pending = false;  // (a frame of the game: it will be the last shown)
             if (rac1::vk::is_active()) {
                 rac1::vk::begin_frame(w, h, 0.02f, 0.02f, 0.04f, 1.0f);  // (colour, depth and stencil cleared)
                 rac1::vk::set_viewport(vx, vy, vw, vh);
@@ -3771,7 +3799,19 @@ int main(int argc, char** argv) {
             if (!menu_mode && !fd.fade && !fd.vendor_pic && !title && movie_pic == nullptr && !fd.exiting) {
                 // the last frame of the game shown: what the frame buffer holds when the pause menu's start stores it (the
                 // frame drawn when the menu opens is the gameplay chain drawn as a menu frame here: not that one)
-                last_shown.capture(w, h);
+                static const bool lazy_on = std::getenv("RAC1_LAZY_CAPTURE") == nullptr || std::atoi(std::getenv("RAC1_LAZY_CAPTURE")) != 0;
+                bool lazy = lazy_on && rac1::vk::is_active() && last_shown.valid() && last_shown.w == w && last_shown.h == h;
+#ifdef RAC1_DEVTOOLS
+                lazy = lazy && !((!headless || menu_shot) && dt::dev_menu_drawing());  // (drawn over the frame after this point)
+#endif
+                if (lazy) {
+                    g_lazy_shown.pending = true;
+                    g_lazy_shown.w = w;
+                    g_lazy_shown.h = h;
+                    g_lazy_shown.dst = &last_shown;
+                } else {
+                    last_shown.capture(w, h);
+                }
                 displayed_is_last_shown = true;
                 g_scene_pic.pf_valid = false;
                 g_scene_pic.shown = &last_shown;
@@ -3780,6 +3820,7 @@ int main(int argc, char** argv) {
                 g_scene_pic.shown_view[2] = vw;
                 g_scene_pic.shown_view[3] = vh;
             } else {
+                g_lazy_shown.resolve();  // (not expected: resolved at the frame's start)
                 displayed.capture(w, h);  // (the picture shown: what a screen fade darkens)
                 displayed_is_last_shown = false;
             }
@@ -3985,6 +4026,7 @@ int main(int argc, char** argv) {
     if (!headless || menu_shot) dt::dev_menu_shutdown();
 #endif
     if (rac1::vk::is_active()) {
+        g_lazy_shown.pending = false;
         displayed.vk_reset();
         last_shown.vk_reset();
         g_scene_pic.vk_reset();
@@ -4008,5 +4050,8 @@ int main(int argc, char** argv) {
     rac1::progress::finish();  // (the launcher's progress.json: the time played since its last write)
     rac1::platform::process_end();  // (std::_Exit runs no atexit handler)
     rac1::update_check::run_update();
+#if defined(__SANITIZE_ADDRESS__)
+    __lsan_do_leak_check();  // (an AddressSanitizer build: std::_Exit skips LeakSanitizer's own check at exit)
+#endif
     std::_Exit(0);  // the renderers' static GL objects would be freed after the context is gone
 }

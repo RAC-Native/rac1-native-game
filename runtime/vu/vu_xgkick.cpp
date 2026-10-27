@@ -15,7 +15,6 @@ void vu_execute_xgkick(VUState& state, uint32_t addr, std::vector<GsPrimitive>& 
     byte_addr += 16;
 
     uint32_t nloop = tag_low & 0x7FFF;
-    bool eop = (tag_low >> 15) & 1;
     bool pre = (tag_low >> 46) & 1;
     uint32_t prim_field = (tag_low >> 47) & 0x7FF;
     uint32_t flg = (tag_low >> 58) & 3;

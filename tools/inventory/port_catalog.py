@@ -87,7 +87,7 @@ HOST_AREAS = [
      "`RAC1_MRP_CHECK`, `RAC1_WORLD_MRP_CHECK`, `RAC1_RAMHASH` with and without the MRP (docs/rendering.md)"),
     ("VU0",
      "the VU0 macro and micro mode the game uses (skinning, lighting), libvu0's routines",
-     ["runtime/vu/vu0.cpp", "runtime/kernel/vu0.cpp", "src/game/lib/libvu0.cpp", "src/game/ovl/vu0_macro.h"],
+     ["runtime/vu/vu0.cpp", "src/game/lib/libvu0.cpp", "src/game/ovl/vu0_macro.h"],
      "a model of the VU0's registers and flags the ported code calls into; the micro programs translated",
      "the oracle (batch 125 and the callers' batches)"),
     ("SIF and the IOP",

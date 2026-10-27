@@ -1,13 +1,13 @@
 #include "iso_extract.h"
 
 #include <io/mapped_file.h>
+#include <platform/platform.h>
 
 #include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <map>
 #include <vector>
@@ -50,6 +50,10 @@ bool iso9660_find_file(std::span<const std::byte> iso, const std::string& name, 
             continue;
         }
         if (off + ln > root_size) break;
+        if (ln < 34) {  // (shorter than a record with a name: its name length byte, rec[32], not in it)
+            off += ln;
+            continue;
+        }
         const uint8_t* rec = data + off;
         uint32_t ext = 0, sz = 0;
         std::memcpy(&ext, rec + 2, 4);
@@ -92,6 +96,10 @@ std::vector<std::string> iso9660_list_root(std::span<const std::byte> iso) {
             continue;
         }
         if (off + ln > root_size) break;
+        if (ln < 34) {  // (shorter than a record with a name: its name length byte, rec[32], not in it)
+            off += ln;
+            continue;
+        }
         const uint8_t* rec = data + off;
         uint8_t name_len = rec[32];
         if (33 + name_len <= ln) {
@@ -133,7 +141,7 @@ std::vector<LevelRange> read_level_headers(std::span<const std::byte> iso) {
     for (size_t ofs = 8; ofs + 8 <= static_cast<size_t>(toc_size); ofs += 8) {
         uint32_t lsn = 0;
         std::memcpy(&lsn, toc_ptr + ofs, 4);
-        if (!lsn || static_cast<size_t>(lsn + 1) * SECTOR > iso.size()) continue;
+        if (!lsn || (static_cast<size_t>(lsn) + 1) * SECTOR > iso.size()) continue;
 
         const uint8_t* h = reinterpret_cast<const uint8_t*>(iso.data() + static_cast<size_t>(lsn) * SECTOR);
         int32_t lid = 0, hsize = 0;
@@ -210,7 +218,7 @@ IsoValidation validate_iso(const std::string& iso_path) {
         if (LEVEL_DIRS.count(lv.id) == 0) continue;
         bool in = true;
         for (const auto& r : lv.ranges)
-            if (static_cast<size_t>(r.first + r.second) * SECTOR > iso.size()) in = false;
+            if ((static_cast<size_t>(r.first) + r.second) * SECTOR > iso.size()) in = false;
         if (in) ++levels_ok;
     }
     if (!iso9660_find_file(iso, res.serial, lba, size) || static_cast<size_t>(lba) * SECTOR + size > iso.size() ||
@@ -242,11 +250,10 @@ bool extract_boot_elf(std::span<const std::byte> iso, const std::string& out_pat
         return false;
     }
     std::filesystem::path out(out_path);
-    std::filesystem::create_directories(out.parent_path());
-    std::ofstream f(out, std::ios::binary);
-    if (!f) return false;
-    f.write(reinterpret_cast<const char*>(iso.data() + static_cast<size_t>(lba) * SECTOR), size);
-    return f.good();
+    std::error_code ec;
+    std::filesystem::create_directories(out.parent_path(), ec);
+    // (a temporary file renamed over it: an interrupted setup never leaves a cut executable behind)
+    return platform::write_file_replace(out, iso.data() + static_cast<size_t>(lba) * SECTOR, size);
 }
 
 } // namespace rac1::setup

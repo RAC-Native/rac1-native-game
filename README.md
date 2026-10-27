@@ -42,8 +42,8 @@ changing how the game behaves.
    carries the address of the original it replaces (`// orig: 0x...`). The hand-written headers declare
    the generated functions too, so both halves call each other directly.
 3. **Built together, run natively.** CMake compiles the hand-written and the generated code into one
-   program. While you play nothing is emulated or interpreted: the ISO is only read for data (a
-   level, streamed music and voices), and the PS2's hardware (DMA, GS, sound processor, memory card,
+   program. While you play nothing is emulated or interpreted: the disc's files, which the setup
+   extracts from your image, are only read for data (a level, streamed music and voices), and the PS2's hardware (DMA, GS, sound processor, memory card,
    pads) is replaced by host code in `runtime/`.
 4. **A renderer of its own.** The 3D is not drawn by emulating the PS2's graphics chip: the renderer
    (OpenGL, or Vulkan) reads what the game has decided to draw (its objects, world, effects, water and
@@ -76,7 +76,7 @@ the code uses for the levels to the names in the game), the [Roadmap](docs/roadm
 
 ### Tested on
 
-So far the port has been tested on one machine only:
+The port is developed and tested mainly on one machine:
 
 - **CPU:** AMD Ryzen AI 9 HX 470 (12 cores, 24 threads)
 - **GPU:** the integrated AMD Radeon 890M
@@ -189,9 +189,9 @@ The full guide, with requirements and troubleshooting: [Setup](docs/setup.md). O
 the launcher, run `setup.cmd` from the repository's folder, then play with `play.cmd`: see
 [Setup](docs/setup.md#on-windows).
 
-At start the game checks, in the background, whether a newer version is out, and says so at the main menu
-(it downloads nothing; this is new and still a work in progress). That is one anonymous request to GitHub's API, no telemetry; Options > Advanced >
-Update Check turns it off. See [The update check](docs/settings.md#the-update-check).
+When the main menu opens on the title screen, the game checks in the background whether a newer version is out, and
+says so there (it downloads nothing; this is new and still a work in progress). That is one anonymous request to GitHub's
+API, no telemetry; Main menu > Updates > Update Check turns it off. See [The update check](docs/settings.md#the-update-check).
 
 ## Documentation
 

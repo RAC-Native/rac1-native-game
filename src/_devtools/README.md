@@ -3,11 +3,11 @@
 Per [ADR 0003](../../docs/decisions.md), this directory holds code that is **openly invented** to
 support development:
 
-- A dev menu inspired by R&C1's hidden Insomniac debug menu
-- Spawn / kill / teleport helpers
-- Render-state toggles (wireframe, no-cull, depth-test off)
-- Force-state controls (skip cutscene, give gadget, set checkpoint)
-- Visual-debug overlays (collision wireframes, bounding boxes, etc.)
+- The debug menu (R3 / F1, `dev_menu.cpp`), inspired by R&C1's hidden Insomniac debug menu. Its tabs: Game,
+  Player (teleport, the checkpoint, Kill Ratchet), Items and Unlocks (`dev_unlocks.cpp`), Mobys (freeze or
+  retire them), Camera (free camera), Rendering (wireframe and shading views, the renderers' switches), Lights,
+  Sun and Textures (the editors below), Display, Audio, Levels (level select), Engine and Profiler
+- The free hoverboard on every level (`dev_hoverboard.cpp`, the Player tab's Hoverboard anywhere)
 
 ## Policy
 
@@ -34,6 +34,10 @@ support development:
 - **Sun** (tab), interiors: the level's `interior` boxes (the camera inside: the sun off, the original's look) drawn over the
   picture, added around the camera, edited, deleted; `interior_set` light sets (the hero lit with one); saved with the level file
   (see [Lighting: interiors](../../docs/lighting.md#interiors)).
+- **Sun** (tab), ambient particles: the level's particle lines (see [Ambient particles: the editor](../../docs/particles.md#the-editor)).
+- **Lights** (tab), "Emissive surfaces and materials", and the **Textures** tab (the level's textures as thumbnails, a
+  click puts one in hand): mark a texture emissive or give it a material (see
+  [Lighting: emissive surfaces](../../docs/lighting.md#emissive-surfaces) and [Materials](../../docs/materials.md)).
 
 ## The profiler
 
@@ -50,7 +54,7 @@ longer (the dumps' GL object counts included). `RAC1_PROFILER_DUMP`, `RAC1_PROFI
 - **Stages**, CPU and GPU side by side: a stacked bar each and a sortable table (the busiest stage on each side in
   yellow, the waits greyed). Each stage's time is its *self* time: a zone inside another (the GS 2D inside the
   effects) counts in its own stage only, so the stages add up to the frame. The CPU side is the main thread's wall
-  time. The GPU side: one `glQueryCounter(GL_TIMESTAMP)` at each boundary of a GPU-timed zone, the time between two
+  time. The GPU side (on Vulkan: the renderer's own timestamp queries, the same way): one `glQueryCounter(GL_TIMESTAMP)` at each boundary of a GPU-timed zone, the time between two
   given to the innermost zone open there; read back up to 32 frames later and only when ready (never a stall: a
   frame whose results did not come is left out of the GPU's averages; in uncapped headless runs they came back 4 to 17
   frames later). No flush between them (a flush per boundary made a run 50 % slower), so a stage's GPU

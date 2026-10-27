@@ -226,42 +226,6 @@ void register_tie_class(std::int32_t o_class, std::span<const std::byte> tie_cla
     }
 }
 
-// orig: 0x0020d330 — helper for culling against camera view-projection matrix
-static bool is_sphere_culled(const std::array<float, 4>& bsphere, const glm::mat4& view_proj) {
-    float cx_w = bsphere[0];
-    float cy_w = bsphere[1];
-    float cz_w = bsphere[2];
-    float r = bsphere[3];
-
-    struct Plane {
-        float a, b, c, d;
-    };
-    
-    Plane planes[6] = {
-        { view_proj[0][3] + view_proj[0][0], view_proj[1][3] + view_proj[1][0], view_proj[2][3] + view_proj[2][0], view_proj[3][3] + view_proj[3][0] },
-        { view_proj[0][3] - view_proj[0][0], view_proj[1][3] - view_proj[1][0], view_proj[2][3] - view_proj[2][0], view_proj[3][3] - view_proj[3][0] },
-        { view_proj[0][3] + view_proj[0][1], view_proj[1][3] + view_proj[1][1], view_proj[2][3] + view_proj[2][1], view_proj[3][3] + view_proj[3][1] },
-        { view_proj[0][3] - view_proj[0][1], view_proj[1][3] - view_proj[1][1], view_proj[2][3] - view_proj[2][1], view_proj[3][3] - view_proj[3][1] },
-        { view_proj[0][3] + view_proj[0][2], view_proj[1][3] + view_proj[1][2], view_proj[2][3] + view_proj[2][2], view_proj[3][3] + view_proj[3][2] },
-        { view_proj[0][3] - view_proj[0][2], view_proj[1][3] - view_proj[1][2], view_proj[2][3] - view_proj[2][2], view_proj[3][3] - view_proj[3][2] }
-    };
-
-    for (int i = 0; i < 6; ++i) {
-        float len = std::sqrt(planes[i].a * planes[i].a + planes[i].b * planes[i].b + planes[i].c * planes[i].c);
-        if (len > 0.0f) {
-            planes[i].a /= len;
-            planes[i].b /= len;
-            planes[i].c /= len;
-            planes[i].d /= len;
-        }
-        float dist = planes[i].a * cx_w + planes[i].b * cy_w + planes[i].c * cz_w + planes[i].d;
-        if (dist < -r) {
-            return true;
-        }
-    }
-    return false;
-}
-
 // orig: 0x00203338
 void tie_render_update() {
     if (!g_tie_initialized) {
@@ -283,7 +247,6 @@ void tie_render_update() {
 
     glm::mat4 view_proj = custom_proj * view;
 
-    glm::vec3 cam_pos_for_cull = render_camera_position();
 
     // (host) the draw calls whose box is entirely outside a side plane of the view are not drawn: the
     // GPU would clip all their triangles away (the near / far planes are clamped, not culled)
@@ -386,10 +349,6 @@ void tie_build_static_cache() {
         }
         if (!model) continue;
 
-        // Disable culling for TIE to verify geometry
-        // if (is_sphere_culled(inst.bsphere, view_proj)) {
-        //     continue;
-        // }
         glm::vec4 local_center(model->bounding_sphere[0], model->bounding_sphere[1], model->bounding_sphere[2], 1.0f);
         glm::vec4 world_center = inst.matrix * local_center;
         float radius = model->bounding_sphere[3] * model->scale;

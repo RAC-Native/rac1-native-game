@@ -158,6 +158,7 @@ struct Level {
     bool loaded = false;
     bool gl_loaded = false;
     bool vk_loaded = false;
+    bool missing = false;  // (the level's assets not there: not looked for again every frame)
     std::vector<mrp::Texture> textures;
     std::vector<int> tex_bucket, tex_layer;
     std::vector<Bucket> buckets;
@@ -704,6 +705,7 @@ void load_level(int id) {
     const std::string dir = asset_root() + "/" + mrpw::level_dir_name(id);
     if (!std::filesystem::is_directory(dir)) {
         std::fprintf(stderr, "[mrp] no MRP moby assets for level %d (%s): run setup.sh\n", id, dir.c_str());
+        L.missing = true;
         return;
     }
     const double t0 = now_ms();
@@ -1712,7 +1714,7 @@ void mrp_moby_begin_frame(bool title, bool menu_mode, bool title_menu) {
     const int id = moby_level_id();
     const int guest = g_mrp_guest_class.load();  // (the free hoverboard's class asked for after the level's load: loaded again with it)
     const bool guest_new = guest >= 0 && guest != g_level.guest_key && guest / 10000 != id;
-    if (g_level.id != id || (vk::is_active() && !g_level.vk_loaded) || (!vk::is_active() && !g_level.gl_loaded) || guest_new) load_level(id);
+    if (g_level.id != id || (!g_level.missing && ((vk::is_active() && !g_level.vk_loaded) || (!vk::is_active() && !g_level.gl_loaded))) || guest_new) load_level(id);
     // the level's loaded classes (0x197300 / 0x197a00, count 0x15ffc0): a new set (the level entered
     // again, a class loaded) forgets the classes resolved by header address
     uint64_t h = 1469598103934665603ull;
@@ -1945,7 +1947,7 @@ void build_frame() {
     static const bool cache_off = std::getenv("RAC1_SHADOW_MCACHE") != nullptr && std::atoi(std::getenv("RAC1_SHADOW_MCACHE")) == 0;  // (testing)
     const bool caching = g_modern_shadows != 0 && F.mode == 0 && !F.menu && !F.title && !cache_off;
     ++g_mcache_frame;
-    if (!caching || g_mcache_level != moby_level_id()) {
+    if (!caching || g_mcache_level != static_cast<uint32_t>(moby_level_id())) {
         g_mcache.clear();
         g_mcache_level = moby_level_id();
     }
@@ -2730,7 +2732,12 @@ void draw_casters(const float* light_vp, const float* sphere, const float* withi
     static std::vector<DrawCmd> near;
     static std::vector<uint8_t> part_vis;
     ranges.clear();
-    const bool filter = sphere != nullptr || within != nullptr;
+    // a sun cascade's (an orthographic light_vp: w 1): the parts whose bounding sphere lies outside its square left out - nothing of
+    // theirs reaches the map, the near cascade (18 units across at High) no longer drawing every moby within the shadows' distance
+    // (RAC1_SHADOW_PART_CULL=0: every part, as before)
+    static const bool ortho_cull_on = std::getenv("RAC1_SHADOW_PART_CULL") == nullptr || std::atoi(std::getenv("RAC1_SHADOW_PART_CULL")) != 0;
+    const bool ortho = ortho_cull_on && light_vp != nullptr && light_vp[3] == 0.0f && light_vp[7] == 0.0f && light_vp[11] == 0.0f && light_vp[15] == 1.0f;
+    const bool filter = sphere != nullptr || within != nullptr || ortho;
     vk::RingAlloc near_alloc{};
     if (filter) {
         const glm::vec3 c = sphere != nullptr ? glm::vec3(sphere[0], sphere[1], sphere[2]) : glm::vec3(0.0f);
@@ -2740,13 +2747,19 @@ void draw_casters(const float* light_vp, const float* sphere, const float* withi
         const glm::vec3 wc = within != nullptr ? glm::vec3(within[0], within[1], within[2]) : glm::vec3(0.0f);
         const float wd = within != nullptr ? within[3] : 1e30f;
         const float wd2 = within != nullptr ? wd * wd : 1e30f;
-        const glm::mat4 vp = (sphere != nullptr && light_vp != nullptr) ? glm::make_mat4(light_vp) : glm::mat4(1.0f);
+        const glm::mat4 vp = ((sphere != nullptr || ortho) && light_vp != nullptr) ? glm::make_mat4(light_vp) : glm::mat4(1.0f);
+        const float osx = glm::length(glm::vec3(vp[0][0], vp[1][0], vp[2][0])), osy = glm::length(glm::vec3(vp[0][1], vp[1][1], vp[2][1]));
         const size_t nparts = F.part_pos.size();
         part_vis.assign(nparts, 0);
         uint32_t any_vis = 0;
         for (size_t p = 0; p < nparts; ++p) {
             if (p < F.part_own.size() && F.part_own[p] != 0) continue;
             const glm::vec3 pos = F.part_pos[p];
+            if (ortho) {  // (the part's sphere - as mrp_moby_caster_rect takes it - against the cascade's square)
+                const glm::vec4 q = vp * glm::vec4(pos, 1.0f);
+                const float r = p < F.part_rad.size() ? F.part_rad[p] : 4.0f;
+                if (std::abs(q.x) - r * osx > 1.0f || std::abs(q.y) - r * osy > 1.0f) continue;
+            }
             if (sphere != nullptr) {
                 const glm::vec3 d = pos - c;
                 if (glm::dot(d, d) > lim2) continue;

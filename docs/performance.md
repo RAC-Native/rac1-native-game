@@ -82,7 +82,56 @@ changes the blending's order. Not done.
 5 % less, the passes being bound by their memory traffic, not their taps. The occlusion's depth as a float copy made by a pass
 of its own: no faster than reading it in place.
 
+### GPU, round 3
+
+Daino's profile from Rilgar (5120 x 1440, Vulkan, every effect on: Lighting High, Dynamic Shadows, Secondary Lights All, GTAO 1/2,
+Surface Detail High, Ambient Particles, LOD 3) put the GPU at 16.7 ms: the world 9.4, the occlusion 2.0, the sun's cascades 1.9, the
+debug overlay 1.1, the mobys 0.8, the frame capture 0.6. Measured again headless with his options at 5120 x 1440 (Rilgar and Kerwan,
+`RAC1_SIM_INPUT=forward`, the median of frames 1500 to 2400, each stage also compared frame by frame against the base run's with
+another stage as the clock's reference: the GPU's clock moved the stages by up to a fifth from run to run).
+
+**Where the world's time goes.** Not in the lighting: with the lighting Original the world costs about as much per pixel (0.6 ms per
+million pixels both ways at 2560 x 720 and 5120 x 1440); the point lights off, or every light walked on every pixel, or the emissive
+surfaces and materials off moved it by 0 to 10 %. With a fragment shader that only writes a constant the world still cost 3.3 of its
+5.2 ms (the vertices, the raster, the blending of two passes), and the ties and shrubs drawn by the GPU path are about 3.9 of it (about
+1.1 of that whatever the window's size: their roughly 5 500 draw commands, each drawn twice). The alpha-tested batches (nearly every
+tie and shrub: the GS's AFAIL RGB_ONLY) are drawn in two passes, the passing pixels then the failing ones.
+
+| Change | Vulkan | OpenGL |
+|---|---|---|
+| The lighting's second pass of an alpha-tested batch tested LESS instead of LEQUAL (it writes no depth): the pixels the first pass drew are no longer shaded again (`RAC1_MRPW_P2_LESS=0` for the old way) | world Rilgar 5.3 to 4.7-5.0 ms, Kerwan 12.5 to 10.7-11.1 | world Rilgar 5.4 to 4.9-5.0 |
+| The frame capture (the last frame shown, for the pause menu and the fades) copied only when read (`RAC1_LAZY_CAPTURE=0`) | 0.6 ms to none | (still every frame) 0.5 |
+| The mobys' parts outside a sun cascade's square not drawn into it (`RAC1_SHADOW_PART_CULL=0`) | cascades Rilgar 1.7 to 1.5, Kerwan 2.2 to 2.0 | cascades Rilgar 2.2 to 1.9-2.0 |
+
+The whole GPU frame on Vulkan: Rilgar 11.9 / 12.6 to 10.8 / 11.5 ms (two pairs of runs), Kerwan 18.9 / 18.7 to 16.9 / 16.3. The
+second change and the third leave every picture as it was (byte for byte: Rilgar, Kerwan, Veldin, Batalia at 2560 x 1440 and 5120 x
+1440, OpenGL and Vulkan, the pause menu's frames, the Vendor's screens) and the game's state as it was (`RAC1_RAMHASH`). The first is
+not exact: a failing pixel lying exactly on the depth another surface wrote (coplanar faces) is no longer drawn over it: 0 to 51 pixels
+of the 7.4 million in those shots, by at most 26 levels of 255, single scattered pixels on foliage; the original lighting keeps
+LEQUAL. The stored picture of the pause menu (in EE memory) carries those pixels too.
+
+**Kept on purpose, to review.** Daino chose to keep the strict pass on by default for its gain (27 October 2026),
+knowing it is not exact. If it ever shows more than scattered pixels (holes in foliage, flicker on decals or on coplanar
+faces, a visible difference in the pause menu's picture), it becomes an option or is reviewed: `RAC1_MRPW_P2_LESS=0`
+gives the exact picture to compare.
+
+The ambient occlusion's half resolution is now offered for every mode (SSAO 1/2, SSAO+ 1/2, HBAO 1/2 beside GTAO 1/2: about 45 %
+less on Vulkan, 10 to 35 % on OpenGL, whose depth copy does not shrink), the full resolution staying the default
+([Lighting](lighting.md#ambient-occlusion)).
+
+**Tried and dropped.** The alpha test decided before the lighting in the world's shader (a fragment the pass discards then costs its
+texel, not its lights): the same picture, no gain beyond the noise (0 to 5 %). The early fragment tests for the second pass: no gain
+(the driver already tests early where nothing is written). Strict tests without the early fragment test gave the same gain as with it.
+Light culling per tile or cluster beyond the existing 32 x 18 tiles: the lights cost too little per pixel to pay. The half
+resolution's occlusion blurred at its own size with a depth-aware upsample of its own: 6 % less than GTAO 1/2's on Vulkan, more on
+OpenGL, a slightly different look. The debug menu's Vulkan ImGui pass copies the whole window twice to flip it; copying only the
+windows' rectangles cost more with the menu open (a copy and its barriers per window): left as it was. The depth pre-pass was
+measured before (above).
+
 ## Switches to compare
+
+These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
+(see [Environment variables](env-vars.md#when-a-variable-is-honoured)).
 
 | Variable | Off gives |
 |---|---|
@@ -92,10 +141,13 @@ of its own: no faster than reading it in place.
 | `RAC1_AO_DEPTH_COPY=1` | the ambient occlusion reading a copy of the depth (Vulkan) |
 | `RAC1_SHADOW_CLUSTERS=1` | one rectangle around every moby over a cascade's static cache |
 | `RAC1_SHADOW_FAR_EVERY=0` | the far cascades' mobys as before (the farthest every other frame, the middle one every frame) |
-| `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading, the job pool on the main thread |
+| `RAC1_SHADOW_PART_CULL=0` | every moby part within the shadow distance drawn into every sun cascade |
+| `RAC1_LAZY_CAPTURE=0` | Vulkan: the last frame shown copied every frame |
+| `RAC1_MRPW_P2_LESS=0` | the lighting's second pass of an alpha-tested batch tested LEQUAL (the original's picture: see above) |
+| `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
-moby shadows are drawn).
+moby shadows are drawn; `RAC1_MRPW_P2_LESS` a few pixels).
 
 ## Measuring
 
@@ -142,3 +194,11 @@ TSAN_OPTIONS=log_path=tsan RAC1_GAME_THREAD=2 RAC1_PIPELINE=1 RAC1_HEADLESS=1 RA
 The coroutine's stack switches are told to ThreadSanitizer as fibers (`src/platform/platform_posix.cpp`). Its reports from the
 GL driver's and GLib's own threads are not ours. `RAC1_DRAW_MEM_CHECK=1` names any read of the game's memory a pipelined
 frame's drawing makes outside the copy taken at its preparation.
+
+Memory errors and leaks are checked the same way with an AddressSanitizer + UndefinedBehaviorSanitizer build
+(`-fsanitize=address,undefined -fno-omit-frame-pointer`, `-O1`). The game ends with `std::_Exit`, which skips
+LeakSanitizer's check at exit, so such a build runs it just before (`__lsan_do_leak_check` in `main`). The generated
+sources compiled with the sanitizers take more than half an hour each and over 10 GB with three jobs; a compiler launcher
+that leaves `-fsanitize` out for the files under `assets/generated/` keeps the build to a few minutes (they are not
+ours to fix). On 2026-10-27 a run through five levels, the three reference runs and the options-on runs on OpenGL and
+Vulkan reported no memory error and only the drivers' and Wayland's own allocations (under 1.5 KB) as leaks.

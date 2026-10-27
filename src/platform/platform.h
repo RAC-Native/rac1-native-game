@@ -13,13 +13,15 @@
 #include <ctime>
 #include <filesystem>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace rac1::platform {
 
 // ---- The game frame's coroutine (docs/decisions.md, 12) ----
 // A second stack on the calling thread, switched to and from by hand. One per process, used by one
-// thread (runtime/ee/ee_thread.cpp). POSIX: a hand-written switch on x86-64 and
+// thread at a time (runtime/ee/ee_thread.cpp: the main thread, or the game thread when the game's update runs beside the
+// drawing; the coroutine goes back to whichever thread resumed it). POSIX: a hand-written switch on x86-64 and
 // AArch64, ucontext elsewhere (src/platform/ctx_switch.h). Windows: a fiber.
 
 // Reserves the coroutine's stack, `bytes` (committed as it is touched, a guard below it). False when
@@ -37,6 +39,28 @@ void coroutine_yield();
 
 // std::fopen on a path (on Windows a wide path, so any name works).
 std::FILE* open_file(const std::filesystem::path& path, const char* mode);
+// The file written whole: `n` bytes into `path`.tmp, then renamed over `path` (a crash, a full disk or a failed write
+// never leaves half a file: the old one stays). False on any failure. (Standard C++ on both systems: here.)
+inline bool write_file_replace(const std::filesystem::path& path, const void* data, std::size_t n) {
+    std::filesystem::path tmp = path;
+    tmp += ".tmp";
+    std::FILE* f = open_file(tmp, "wb");
+    if (f == nullptr) return false;
+    const bool wrote = n == 0 || std::fwrite(data, 1, n, f) == n;
+    std::error_code ec;
+    if (std::fclose(f) != 0 || !wrote) {
+        std::filesystem::remove(tmp, ec);
+        return false;
+    }
+    std::filesystem::rename(tmp, path, ec);
+    if (ec) {
+        std::error_code ec2;
+        std::filesystem::remove(tmp, ec2);
+        return false;
+    }
+    return true;
+}
+inline bool write_file_replace(const std::filesystem::path& path, const std::string& text) { return write_file_replace(path, text.data(), text.size()); }
 // Reads up to `n` bytes at `offset` without moving a shared position (several threads read the same
 // file at once). Returns the bytes read, 0 at the end, -1 on an error.
 std::int64_t read_at(std::FILE* f, std::uint64_t offset, void* dst, std::size_t n);

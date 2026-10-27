@@ -14,7 +14,8 @@ host stand-in, `src/game/lib/libmc.cpp`: `mc_init`, `mc_get_info`, `mc_open`, `m
 `mc_close`, `mc_seek`, `mc_mkdir`, `mc_get_dir`, `mc_chdir`, `mc_delete`, `mc_format`, `mc_sync` and
 the rest, each standing in for the library function at its original address. To the game it is a
 formatted 8 MB card in port 0, slot 0. Its files are kept in memory and written through to a
-directory on the PC; when the card is inserted, the files already there are read in.
+directory on the PC, each through a temporary file renamed over the old one (a crash or a full disk never leaves a save
+cut short); when the card is inserted, the files already there are read in (a leftover `.tmp` is ignored).
 
 ```mermaid
 flowchart LR

@@ -59,6 +59,9 @@ What changed in each release. Releases are source only: you build the game with 
   every level" box; a level's own line wins), a moby light on a joint of its pose (`emit moby ... joint <n>`, for the Buzzers' flight),
   and a Textures tab: the level's tfrag, tie, shrub and moby textures as thumbnails with their classes, a click to mark one emissive
   or give it a material. See [Lighting](docs/lighting.md#the-light-editor).
+- Ambient Occlusion: every mode at half resolution too (SSAO 1/2, SSAO+ 1/2, HBAO 1/2 beside GTAO 1/2), upsampled by the blur with
+  the full resolution's depth: about 45 % less on Vulkan at 5120 x 1440, a little softer; the full resolution stays each mode's
+  default. See [Lighting](docs/lighting.md#ambient-occlusion).
 
 ### Performance
 - The chain worker's time with the modern renderer: Rilgar at 5120 x 1440 3.8 to 2.4 ms a frame, Gaspar 6.2 to 5.3 (program 7's
@@ -85,6 +88,14 @@ What changed in each release. Releases are source only: you build the game with 
   around them all, and the two far cascades' mobys are drawn every other frame in turn: the cascades' GPU time 2.1 to 1.3 ms on Rilgar, 2.4 to 0.6 on Kerwan, the same shadows (a far cascade's moby
   shadow a frame late every other frame)
   (`RAC1_SHADOW_CLUSTERS=1`, `RAC1_SHADOW_FAR_EVERY=0` for the old way). OpenGL and Vulkan.
+- The modern lighting's world at 5120 x 1440: the second pass of an alpha-tested batch (its failing pixels, no depth written) is
+  tested LESS, so the pixels the first pass drew are not shaded again: the world's GPU time 10 to 15 % less (Rilgar 5.3 to 4.8 ms,
+  Kerwan 12.5 to 10.9); a few pixels in a million (a failing pixel exactly on another surface's depth) are no longer drawn
+  (`RAC1_MRPW_P2_LESS=0` for the old way). OpenGL and Vulkan. See [Performance](docs/performance.md#gpu-round-3).
+- Vulkan: the last frame shown (the pause menu's and the fades' picture) is copied only when something reads it, not every frame:
+  0.6 ms of GPU at 5120 x 1440, the same pictures (`RAC1_LAZY_CAPTURE=0` for the old way).
+- The sun's cascades draw only the moby parts that reach them: the cascades about a tenth less (Rilgar 1.7 to 1.5 ms, Kerwan 2.2 to
+  2.0), the same shadows (`RAC1_SHADOW_PART_CULL=0` for the old way). OpenGL and Vulkan.
 - The profiler with Vulkan: the sun cascades' stage is closed where OpenGL closes it (left open, the GPU's work after the world's
   draw without a stage of its own counted as the cascades'), and the point lights' cube shadows have their own stage.
 
@@ -98,6 +109,8 @@ What changed in each release. Releases are source only: you build the game with 
   below the level, in a pit or after a long fall he is back on foot on the last solid ground. No race rules. OpenGL and Vulkan.
 
 ### Fixes
+- Vulkan: the tfrags' resident colours are a buffer per frame in flight: a frame's colours were written while the frame before's
+  compute shader could still read them (a one-frame colour glitch was possible).
 - Windows: the build failed with MSYS2's current Clang ("'gnu::noinline' attribute cannot be applied to types" in
   moby_joints.cpp, #112).
 - Modern lighting: Ratchet and the other mobys are lit by the lights placed by hand, the lights per class and the automatic
@@ -113,6 +126,32 @@ What changed in each release. Releases are source only: you build the game with 
 - Widescreen: Rilgar's water near the camera no longer loses a wedge (a dark band across the water, the sea bed showing
   through) or shows a flat, stretched patch: the large water triangles that cross the whole 4:3 frame were stretched as if
   they were full-screen 2D, their corners past the frame's sides moved to the window's edges.
+- Vulkan: the effects (glows, trails, smoke, the levels' seas) no longer make a new graphics pipeline for every batch of every
+  frame, never freed: the game's memory no longer grows the longer it runs (Kerwan, 2400 frames: 403 to 370 MB), and the
+  effects' draw costs a quarter of what it did.
+- Vulkan: a few frame-timing fixes: objects freed between two frames (a level's load) wait for the frame that may still use
+  them, the shadow maps' views are no longer freed while a frame draws into them (a Shadow Quality change), each swapchain
+  image has its own "rendering finished" semaphore, the per-frame buffers are aligned as the GPU asks (Intel and other GPUs
+  that need more than 16 bytes), and the debug menu's overlay no longer recreates the render scale's images every frame.
+- Windows: with the game's update on its own thread (the default since the last change), the game's coroutine is no longer
+  resumed from a thread that is not a fiber (undefined in Windows' fiber API, most likely a crash; found by reading the
+  code, not yet tried on Windows).
+- The settings files (graphics, Advanced, controls, the console's language), the memory card's saves and the setup's copy of
+  the boot executable are written to a temporary file and renamed over the old one: a crash or a full disk while writing
+  no longer leaves a file cut short (a save lost, or the settings back to their defaults).
+- Options > Sound's 5.1 / 7.1: the reopened audio device's thread gets real-time priority again, as at start.
+- The game no longer reads its Advanced settings file every frame while the title's logos and intro play.
+- `RAC1_PROGRESS` is honoured in a normal (windowed) run too, as the launcher's page says; it was dropped without
+  `--debug-tools`.
+
+### Code clean-up
+- Removed code nothing used any more: the first GS renderer (`GsRenderer`, `gs_state`: its `GsPrimitive` also clashed with the
+  VU interpreter's), the old VIF unpacker, the first VU0 helpers (`runtime/kernel/vu0.cpp`), the level loader's file-path
+  variants, unused helpers in the movie, sound, memory and format code, the temporary `RAC1_VU7_WHERE` trace.
+- Bounds checks that could overflow (the level files', the disc's directory records, `ByteReader`), the job pool safe
+  if two threads ask it at once, the VU profiler's clock on ARM64, compiler warnings.
+- Docs checked against the code: env-vars.md's defaults, the update settings' place (Main menu > Updates), the setup's PAL
+  disc, the launcher's buttons, and other out-of-date statements.
 
 ### Launcher and setup
 - The game writes `progress.json` in its data folder for the [RAC Native launcher](https://github.com/RAC-Native/rac-native-launcher):
@@ -127,6 +166,18 @@ What changed in each release. Releases are source only: you build the game with 
   moby or world assets, the generated code, the overlay maps, the boot executable): it says which is missing and makes it
   again, instead of leaving the game without the modern renderer's assets until `--force`. The game says so at start too
   when those assets are missing, and points to `./setup.sh`.
+- `./setup.sh --update` on the development channel no longer resets a local `main` that has commits of its own (after a
+  stable update had checked out a release); `--update --native-arch` is kept for the rebuild; Ninja builds show their
+  progress on Linux too.
+- The launcher: Cancel right after a task starts stops it on Windows too; restoring a saves backup only writes inside the
+  memory card's folder; the status of a running task is no longer replaced by a late refresh.
+- The update check on the development channel offers main's latest commit even when it is more than 250 commits ahead.
+- The setup extracts the whole disc into `assets/disc/` (about 6,800 files, 3.9 GB: the levels' data, the scenes, the
+  dialogue, the music and the movies, cut along the disc's own tables), each file checked against the image, and the game
+  reads those files instead of the disc image: it no longer needs the image once the setup has run (keep it for the
+  updates that regenerate from it). Done again only when the disc image changes (`--force disc` to redo it); a game
+  started without the files says to run the setup again. `RAC1_READ_ISO=1` reads the image itself, to compare, and
+  `rac1-native --setup --compare-disc` reads every sector both ways. See [Setup](docs/setup.md#the-discs-files).
 
 ## 0.5.0
 

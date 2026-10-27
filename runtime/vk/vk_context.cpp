@@ -76,6 +76,9 @@ struct Context {
     VkFormat depth_format = VK_FORMAT_D32_SFLOAT_S8_UINT;
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
     std::vector<VkImage> swap_images;
+    // the submit's "rendering finished" semaphore, one per swapchain image: the present of an image may still wait on its
+    // semaphore when the frame slot comes round again, so a semaphore per frame slot could be signalled again too early
+    std::vector<VkSemaphore> swap_render_finished;
     std::vector<VkImageView> swap_views;
     int swap_w = 0;
     int swap_h = 0;
@@ -86,6 +89,7 @@ struct Context {
     GpuImage main_color{};
     GpuImage main_depth{};
     GpuImage scaled_color{};
+    GpuImage imgui_color{};  // (render_imgui's flipped copy of the frame: its own, not the render scale's scaled_color)
     GpuImage scaled_depth{};
     bool scaled_active = false;
 
@@ -168,7 +172,14 @@ VkDescriptorPool create_transient_pool() {
     return pool;
 }
 
+void destroy_swap_semaphores() {
+    for (VkSemaphore sem : g_ctx.swap_render_finished)
+        if (sem != VK_NULL_HANDLE) vkDestroySemaphore(g_ctx.device, sem, nullptr);
+    g_ctx.swap_render_finished.clear();
+}
+
 void destroy_swapchain() {
+    destroy_swap_semaphores();
     for (VkImageView v : g_ctx.swap_views) {
         if (v != VK_NULL_HANDLE) vkDestroyImageView(g_ctx.device, v, nullptr);
     }
@@ -286,6 +297,11 @@ bool recreate_swapchain(int w, int h) {
         vci.subresourceRange.layerCount = 1;
         vkCreateImageView(g_ctx.device, &vci, nullptr, &g_ctx.swap_views[i]);
     }
+    destroy_swap_semaphores();  // (the device is idle: waited for above)
+    g_ctx.swap_render_finished.assign(sc_count, VK_NULL_HANDLE);
+    VkSemaphoreCreateInfo semci{};
+    semci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    for (uint32_t i = 0; i < sc_count; ++i) vkCreateSemaphore(g_ctx.device, &semci, nullptr, &g_ctx.swap_render_finished[i]);
     return true;
 }
 
@@ -923,6 +939,7 @@ void shutdown() {
         destroy_image_now(g_ctx.main_color);
         destroy_image_now(g_ctx.main_depth);
         destroy_image_now(g_ctx.scaled_color);
+        destroy_image_now(g_ctx.imgui_color);
         destroy_image_now(g_ctx.scaled_depth);
 
         destroy_swapchain();
@@ -1074,23 +1091,23 @@ void render_imgui(ImDrawData* draw_data) {
     if (w <= 0 || h <= 0) return;
 
     end_rendering();
-    if (g_ctx.scaled_color.image == VK_NULL_HANDLE ||
-        g_ctx.scaled_color.width != static_cast<uint32_t>(w) ||
-        g_ctx.scaled_color.height != static_cast<uint32_t>(h)) {
-        destroy_image(g_ctx.scaled_color);
+    if (g_ctx.imgui_color.image == VK_NULL_HANDLE ||
+        g_ctx.imgui_color.width != static_cast<uint32_t>(w) ||
+        g_ctx.imgui_color.height != static_cast<uint32_t>(h)) {
+        destroy_image(g_ctx.imgui_color);
         create_image(static_cast<uint32_t>(w), static_cast<uint32_t>(h), VK_FORMAT_R8G8B8A8_UNORM,
                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
                          VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-                     VK_IMAGE_ASPECT_COLOR_BIT, g_ctx.scaled_color);
+                     VK_IMAGE_ASPECT_COLOR_BIT, g_ctx.imgui_color);
     }
 
-    // Flip main_color (bottom-up) into scaled_color (top-down for ImGui), render ImGui, then flip back
-    blit_image(g_ctx.main_color, 0, h, w, 0, g_ctx.scaled_color, 0, 0, w, h, VK_FILTER_NEAREST,
+    // Flip main_color (bottom-up) into imgui_color (top-down for ImGui), render ImGui, then flip back
+    blit_image(g_ctx.main_color, 0, h, w, 0, g_ctx.imgui_color, 0, 0, w, h, VK_FILTER_NEAREST,
                VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
     VkRenderingAttachmentInfo col_att{};
     col_att.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    col_att.imageView = g_ctx.scaled_color.view;
+    col_att.imageView = g_ctx.imgui_color.view;
     col_att.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     col_att.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     col_att.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -1106,7 +1123,7 @@ void render_imgui(ImDrawData* draw_data) {
     ImGui_ImplVulkan_RenderDrawData(draw_data, g_ctx.cmd);
     vkCmdEndRendering(g_ctx.cmd);
 
-    blit_image(g_ctx.scaled_color, 0, h, w, 0, g_ctx.main_color, 0, 0, w, h, VK_FILTER_NEAREST,
+    blit_image(g_ctx.imgui_color, 0, h, w, 0, g_ctx.main_color, 0, 0, w, h, VK_FILTER_NEAREST,
                VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 }
 
@@ -1170,12 +1187,15 @@ void end_frame() {
     si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     si.commandBufferCount = 1;
     si.pCommandBuffers = &g_ctx.cmd;
+    VkSemaphore finished = f.render_finished;
+    if (g_ctx.swap_img_idx < g_ctx.swap_render_finished.size() && g_ctx.swap_render_finished[g_ctx.swap_img_idx] != VK_NULL_HANDLE)
+        finished = g_ctx.swap_render_finished[g_ctx.swap_img_idx];
     if (g_ctx.swap_image_acquired) {
         si.waitSemaphoreCount = 1;
         si.pWaitSemaphores = &f.image_available;
         si.pWaitDstStageMask = &wait_stage;
         si.signalSemaphoreCount = 1;
-        si.pSignalSemaphores = &f.render_finished;
+        si.pSignalSemaphores = &finished;
     }
     vkQueueSubmit(g_ctx.queue, 1, &si, f.in_flight);
 
@@ -1183,7 +1203,7 @@ void end_frame() {
         VkPresentInfoKHR pi{};
         pi.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         pi.waitSemaphoreCount = 1;
-        pi.pWaitSemaphores = &f.render_finished;
+        pi.pWaitSemaphores = &finished;
         pi.swapchainCount = 1;
         pi.pSwapchains = &g_ctx.swapchain;
         pi.pImageIndices = &g_ctx.swap_img_idx;
@@ -1485,10 +1505,16 @@ void destroy_buffer_now(GpuBuffer& buf) {
     buf = GpuBuffer{};
 }
 
+// The frame slot whose fence a deferred destroy waits for. Inside a frame: the frame being recorded. Between end_frame (which
+// has already moved frame_idx on) and the next begin_frame (a level loaded after the swap): the frame just submitted, whose
+// slot comes back only after its fence - not frame_idx's slot, which begin_frame frees after waiting for the frame before it,
+// while the frame just submitted may still use the object.
+// orig: (host)
+static uint32_t deferred_slot() { return g_ctx.in_frame ? g_ctx.frame_idx : (g_ctx.frame_idx + kFramesInFlight - 1) % kFramesInFlight; }
 void destroy_buffer(GpuBuffer& buf) {
     if (buf.buffer == VK_NULL_HANDLE && buf.memory == VK_NULL_HANDLE) return;
     if (g_ctx.active && g_ctx.device != VK_NULL_HANDLE) {
-        g_ctx.frames[g_ctx.frame_idx].deferred_buffers.push_back(buf);
+        g_ctx.frames[deferred_slot()].deferred_buffers.push_back(buf);
         buf = GpuBuffer{};
     } else {
         destroy_buffer_now(buf);
@@ -1528,7 +1554,9 @@ bool upload_buffer(GpuBuffer& dst, const void* data, VkDeviceSize size, VkBuffer
 
 RingAlloc alloc_ring(VkDeviceSize size, VkDeviceSize alignment) {
     size = std::max<VkDeviceSize>(size, 16);
-    alignment = std::max<VkDeviceSize>(alignment, 16);
+    // (16 at least; and the device's storage buffer offset alignment, since callers bind ring ranges as storage buffers with
+    // 16: 4 on AMD, up to 64 elsewhere - both powers of two, as the spec has them)
+    alignment = std::max<VkDeviceSize>({alignment, 16, g_ctx.dev_props.limits.minStorageBufferOffsetAlignment});
     FrameData& f = g_ctx.frames[g_ctx.frame_idx];
     const VkDeviceSize aligned = (f.ring_offset + alignment - 1) & ~(alignment - 1);
     if (aligned + size <= f.ring_buf.size) {
@@ -1593,7 +1621,7 @@ bool create_image(uint32_t w, uint32_t h, VkFormat format, VkImageUsageFlags usa
     // Sampled-only views of depth+stencil images must specify only the depth aspect in the view
     vci.subresourceRange.aspectMask =
         (!(usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) && (aspect & VK_IMAGE_ASPECT_DEPTH_BIT))
-            ? VK_IMAGE_ASPECT_DEPTH_BIT
+            ? static_cast<VkImageAspectFlags>(VK_IMAGE_ASPECT_DEPTH_BIT)
             : aspect;
     vci.subresourceRange.baseMipLevel = 0;
     vci.subresourceRange.levelCount = mip_levels;
@@ -1637,7 +1665,7 @@ void destroy_image_now(GpuImage& img) {
 void destroy_image(GpuImage& img) {
     if (img.image == VK_NULL_HANDLE && img.view == VK_NULL_HANDLE && img.memory == VK_NULL_HANDLE) return;
     if (g_ctx.active && g_ctx.device != VK_NULL_HANDLE) {
-        g_ctx.frames[g_ctx.frame_idx].deferred_images.push_back(img);
+        g_ctx.frames[deferred_slot()].deferred_images.push_back(img);
         img = GpuImage{};
     } else {
         destroy_image_now(img);

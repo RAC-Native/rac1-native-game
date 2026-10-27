@@ -43,16 +43,12 @@ bool movie_hw_video_ended();
 // the debug menu's Audio tab, RAC1_MOVIE_VOLUME). The PSS soundtracks are mastered louder than the game's own sounds.
 extern float g_movie_volume;
 
-// The sound: interleaved 48 kHz stereo s16 mixed into `out` (added, clamped). Safe from the host's
-// audio thread. The samples are scaled by the SPU2 voices' volumes (`gain_left` / `gain_right`: the left and right
-// channels' voices, snd989_movie_gain), as the IRX sets them.
-void movie_hw_audio_mix(int16_t* out, int frames, float gain_left = 1.0f, float gain_right = 1.0f);
-// (ADR 0013) The mix in two halves, for the host's IOP mirror: the next `frames` raw samples of the track taken (the
-// frames there were, 0 when no movie), then added to `out` as movie_hw_audio_mix does (the gains times g_movie_volume).
+// The sound, interleaved 48 kHz stereo s16, in two halves (ADR 0013: also for the host's IOP mirror): the next `frames`
+// raw samples of the track taken (the frames there were, 0 when no movie), then added to `out` (added, clamped), scaled
+// by the SPU2 voices' volumes (`gain_left` / `gain_right`: the left and right channels' voices, snd989_movie_gain, as the
+// IRX sets them) times g_movie_volume.
 int movie_hw_audio_take(int16_t* dst, int frames);
 void movie_hw_audio_add(int16_t* out, const int16_t* src, int frames, float gain_left, float gain_right);
-// The sound decoded and not yet played (sample frames).
-int movie_hw_audio_queued();
 
 void movie_hw_close();
 

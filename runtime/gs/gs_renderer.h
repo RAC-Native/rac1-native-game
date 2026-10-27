@@ -1,38 +1,9 @@
 #ifndef RAC1_RUNTIME_GS_RENDERER_H
 #define RAC1_RUNTIME_GS_RENDERER_H
 
-#include <runtime/gs/gs_state.h>
+#include <cstdint>
 
 namespace rac1 {
-
-struct GLVertex {
-    float x, y, z;
-    float r, g, b, a;
-    float u, v;
-};
-
-class GsRenderer {
-public:
-    GsRenderer();
-    ~GsRenderer();
-
-    // Compile shaders, setup VAO, VBO, etc.
-    bool init();
-
-    // Render the primitives logged in the GsState
-    void render(const GsState& state, int screen_width, int screen_height);
-
-    // Free OpenGL resources
-    void shutdown();
-
-private:
-    unsigned int m_vao = 0;
-    unsigned int m_vbo = 0;
-    unsigned int m_shader_program = 0;
-};
-
-// Clear the frame and depth buffers with a given color
-void gs_clear_buffers(float r, float g, float b, float a);
 
 // Associate a fake TBP0 with a real EE RAM pixel virtual address
 void gs_bind_texture_vaddr(uint32_t tbp0, uint32_t pixel_vaddr);

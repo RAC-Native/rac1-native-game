@@ -588,7 +588,7 @@ any of the 19 levels at 4:3 and at 32:9 but the new level's first frame above.
 ## The original rendering, kept as the reference
 
 The PS2's way of drawing the 3D is kept, ported: the VU microprograms the game uploads were
-translated to C++ instruction by instruction (`src/game/ovl/moby_vu1.cpp` and `moby_vu1_fast.cpp`
+translated to C++ instruction by instruction (`moby_vu1.cpp` and `moby_vu1_fast.cpp`, generated: see [The generated code](architecture.md#the-generated-code),
 for the mobys, `world_vu1_{tfrag,tie,shrub}_{a,b}.cpp` and their `_fast` forms for the world,
 `particles_vu1.cpp`), and the GS replica (`runtime/gs/gs_emu.cpp`, which walks the chain into its own
 model of the GS's registers, and `gs_draw.cpp`, which draws its primitives) draws their output. It is

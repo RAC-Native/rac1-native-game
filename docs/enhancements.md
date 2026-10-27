@@ -35,7 +35,8 @@ See [Advanced options](advanced.md).
 - **Movement: RAC 3.** Ratchet moves as in *Ratchet & Clank: Up Your Arsenal*: the run follows the
   stick's tilt, he turns and stops quicker, and L2 or R2 held makes him strafe.
 - **Aiming: Modern.** A modern shooter's aim built on the strafe: L2 aims, R2 fires, the right stick
-  turns the aim. It needs Movement: RAC 3.
+  turns the aim. It needs a strafe (Movement: Strafing or RAC 3); turning it on with Movement on
+  Original sets Strafing.
 
 All three work on every level. The page also has **Fades** (Fast by default, Original as an option),
 which is a removed compromise rather than an enhancement.
@@ -77,7 +78,7 @@ See [Lighting](lighting.md). Off by default (Lighting: Original).
   a level's file can turn them off there.
 - Emissive surfaces: textures a level's file marks (lamps, screens, panels) keep the original
   lighting's brightness where the shadows would darken them.
-- Ambient occlusion, in five modes (SSAO, SSAO+, HBAO, GTAO, GTAO at half resolution), with an AO
+- Ambient occlusion, in four modes, each at full or half resolution (SSAO, SSAO+, HBAO, GTAO; "1/2"), with an AO
   Intensity setting.
 - Surface Detail (Off, Low, High): materials for the textures a level's file tags - shiny metal, wet
   ground with puddles and rain ripples, water, lava, mud - the PS2 textures kept, lit and animated;
@@ -93,7 +94,7 @@ direction, the dialogue from the centre. The game itself still plays in Stereo. 
 
 At New Game the game asks which set of defaults to start with: Original (the PS2's picture and
 controls), Modern (widescreen, higher level of detail, the Advanced options on) or Experimental
-(Modern plus the modern lighting at its highest). Everything can be changed later. See [Settings](settings.md#original-modern-or-experimental-mode).
+(Modern plus the modern lighting: Lighting High, Dynamic Shadows On, Ambient Occlusion SSAO). Everything can be changed later. See [Settings](settings.md#original-modern-or-experimental-mode).
 
 ## Planned
 
@@ -112,16 +113,16 @@ In no fixed order. Each one is optional, and off by default if it changes the ga
   texture's fingerprint and fall back to the original.
 - **Antialiasing and post-processing**: bloom, colour grading, depth of field, motion blur, each a
   separate toggle.
-- **More modern lighting**: lights placed by hand where the automatic ones fall short, labelled as
-  our own art choices.
+- **More modern lighting**: more lights placed by hand where the automatic ones fall short (so far
+  only Novalis and Aridia have some), labelled as our own art choices.
 
 ### Game
 
 - **Cut content, optionally brought back**: things the game carries on the disc but never shows.
 - **A language switch** offering every language on the disc, without the console's system setting.
 - **Quality of life**: a level select and similar conveniences for players.
-- **Mods**: the setup extracting the game's files from the disc image, a mods folder, and a Mods menu
-  in the game (see [Roadmap](roadmap.md)).
+- **Mods**: a mods folder in front of the disc's files the setup now extracts (`assets/disc/`, see
+  [Setup](setup.md#the-discs-files)), and a Mods menu in the game (see [Roadmap](roadmap.md)).
 
 ### Platforms
 
