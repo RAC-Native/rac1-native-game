@@ -160,6 +160,7 @@ add_library(rac1_game STATIC
     enhance/graphics.cpp
     enhance/controls.cpp
     enhance/update_notice.cpp
+    enhance/vendor_buy_all.cpp
     ovl/bomb_glove.cpp
     ovl/pyrocitor.cpp
     ovl/blaster.cpp

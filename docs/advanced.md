@@ -10,7 +10,7 @@ from the PS2 compromises the port removes (see [Overview](overview.md#faithful-t
   whether the world pauses. Enhancements are **optional, off by default, and labelled as changes to
   the game**. With all of them off, the game plays as the original.
 
-The Advanced page has four rows:
+The Advanced page has five rows:
 
 | Row | Values (default first) | Kind |
 |---|---|---|
@@ -18,9 +18,11 @@ The Advanced page has four rows:
 | Aiming | Original, Modern | enhancement |
 | Movement | Original, Strafing, RAC 3 | enhancement |
 | Fades | Fast, Original | a removed compromise: Fast is the port's default, Original the PS2's |
+| Buy All Ammo | Off, On | enhancement |
 
-All of it is in `src/game/enhance/advanced.{h,cpp}`. None of it is a port: every function there is
-annotated `// orig: (none) — enhancement`.
+All of it is in `src/game/enhance/advanced.{h,cpp}` (Buy All Ammo's Vendor entry in
+`src/game/enhance/vendor_buy_all.{h,cpp}`). None of it is a port: every function there is annotated
+`// orig: (none) — enhancement`.
 
 ## How the page is built
 
@@ -65,6 +67,43 @@ Pause, it holds still.
 element is the one open (its update function is 0x237ba0, or 0x238b80 for the variant the hero opens
 in his other mode). `gameplay_frame` (0x297f78, `src/game/ovl/game_frame.cpp`) then skips the hero,
 the mobys, the particles and the camera for that frame, and the play-time statistic does not count it.
+
+## Buy All Ammo
+
+*Ratchet & Clank: Up Your Arsenal*'s Vendor can fill every weapon's ammo in one purchase. With **Buy All
+Ammo = On**, R&C1's Vendor has the same: an **All Ammo** entry before the first item of its list, on the
+Vendor's screens and on the PDA's.
+
+- **Choosing it.** Left on the list's first item selects the entry; Right goes back to the list. The entry
+  is a tile like the list's own (its word "ALL" over "AMMO"): left of the strip when the list is short (7
+  items or fewer: the strip does not move), or the place before the first item on the turning wheel of a
+  longer list. Selected, it has the list's highlight, the item monitor shows "All Ammo" and the price of
+  filling every weapon of the list that is not full, and the sign over the Vendor says "ALL AMMO".
+- **The price** is the game's own: for each weapon, its missing rounds times its price a round (the item
+  table's, or the PDA's dearer one when the PDA opened the screens), written as the game writes prices
+  (the thousands separator of the language). It is red when the bolts do not cover it, grey (and the tile
+  greyed) when every weapon is full.
+- **Cross buys**, weapon by weapon in the list's order, with the steps of the game's own ammo purchase
+  (0x29ba78): the rounds added by the game's ammo function (0x233e40), the ammo bought counted
+  (0x13dd70), the bolts taken. Then, once, what the game does after a purchase: the Vendor's thanks,
+  the list rebuilt, the sign's "thank you" and the purchase sound.
+- **Too few bolts:** each weapon in the list's order gets as many rounds as the bolts left pay for (a
+  weapon whose round costs more than what is left is passed over, and the next ones still get theirs),
+  so the bolts end as near 0 as the prices allow. With not enough bolts for a single round of any
+  weapon, the game's own "not enough bolts" message and error sound; with every weapon full, the
+  game's "full" sound. (UYA's own rule here was not checked; this is the likely expectation.)
+- **Off, the game's Vendor is untouched:** nothing of the entry runs, and the game's state is the
+  original's (checked with RAC1_RAMHASH on a Vendor run with purchases).
+
+How it is built: the entry is the port's, beside the game's list, so the list (0x1ca4c0), its count
+and its cursor are left as the game has them. Before the Vendor's update (`overlay_entry.cpp`, game
+mode 5), `vendor_buy_all_input` selects the entry on Left from the first item, and while it is
+selected takes Left, Right and Cross out of the pad's state the game reads (held and pressed; the
+previous-held word the next frame's presses are made from is kept, so no press is invented). The
+drawing is the HUD's pass of the Vendor's draw (`hud_draw`): the tile, the highlight (the game's own
+on the first item covered with the strip's black), the monitor's title and price, in the game's own
+fonts and its 2D units, so it follows the Vendor's 2D in a widened view. `RAC1_VENDOR_TRACE=<n>`
+prints the Vendor's state, the bolts and each weapon's ammo every n frames (testing).
 
 ## Fades: Fast or Original
 
@@ -245,3 +284,5 @@ it in 12 frames (46), a stop in 8 frames (29), lift-off 3 frames after the press
   (the flip uses R&C1's own quadrants).
 - When backing into a wall while aiming, the camera can come very close.
 - The page's French texts are shown in English.
+- Buy All Ammo: the item hologram on the Vendor's stand still shows the list's first item while the
+  entry is selected, and a thin line of the game's pulsing highlight can show under that item.

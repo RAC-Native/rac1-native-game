@@ -73,6 +73,10 @@ void advanced_frame();
 // camera): "pause in the quick select" is on and the quick select is open, triangle held
 bool advanced_world_paused();
 
+// orig: (none) — enhancement: Options > Advanced > Buy All Ammo is On: the Vendor's ammo list has the "All Ammo" entry
+// first (vendor_buy_all.h)
+bool advanced_vendor_buy_all();
+
 // --- Fast fades ---
 // orig: (none) — a console compromise removed (faithful to the game's code, not to the PS2's limits): the screen fade
 // 0x1f9838 (it hid the PS2's disc loading) runs its loop whole - the same RAM writes, the frame
