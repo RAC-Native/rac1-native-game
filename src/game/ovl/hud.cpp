@@ -4,7 +4,6 @@
 // the textures, +0x28 the palettes) comes from the level; its textures go into the GS memory on
 // demand (the upload queue 0x16cd80). Sprites and text are GS packets (REGLIST) in the frame
 // packet; positions in 1/16 pixels from the screen area origin 0x13e510 / 0x13e514.
-#include <game/enhance/vendor_buy_all.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/lib/libgraph.h>
@@ -389,7 +388,6 @@ void hud_draw() {
         return;
     }
     sw(H + 0xc, 0xfffff0);
-    if (lw(OV(0x0015f5c4)) == 5) vendor_buy_all_draw();  // (enhancement: the Vendor's "All Ammo" entry, vendor_buy_all.h)
     // (host: a HUD wider than 4:3, Options > Graphics > HUD: each side element's chain range noted, render_view_hud_note; in the
     // real run, not in the widened view's effects shadow (mrp_lod_effects_shadow runs this pass first, its packets put back); not on
     // the Vendor's screens, game mode 5, whose 4:3 layout the bolts element is a part of)

@@ -74,15 +74,22 @@ the mobys, the particles and the camera for that frame, and the play-time statis
 Ammo = On**, R&C1's Vendor has the same: an **All Ammo** entry before the first item of its list, on the
 Vendor's screens and on the PDA's.
 
-- **Choosing it.** Left on the list's first item selects the entry; Right goes back to the list. The entry
-  is a tile like the list's own (its word "ALL" over "AMMO"): left of the strip when the list is short (7
-  items or fewer: the strip does not move), or the place before the first item on the turning wheel of a
-  longer list. Selected, it has the list's highlight, the item monitor shows "All Ammo" and the price of
-  filling every weapon of the list that is not full, and the sign over the Vendor says "ALL AMMO".
+- **An entry of the list.** The entry is a tile of the Vendor's strip like the others, the first one:
+  the strip, its highlight and its scrolling are the game's own, so it moves, scrolls and wraps exactly
+  as the weapons do. Its tile shows four of the list's weapons, a quarter each. Selected, the item
+  monitor shows "All Ammo" and the price of filling every weapon of the list that is not full, and the
+  sign over the Vendor says "ALL AMMO".
+- **Opened on it.** With the option on, the Vendor's screens (and the PDA's) open with the entry
+  selected; the game opens them in the middle of the list.
+- **Moving and wrapping are the game's.** The game's Vendor has one list: the weapons for sale and the
+  ammo of the weapons Ratchet owns, in one strip (there is no separate weapons screen). With fewer than 8
+  items the strip is fixed and does not wrap: Left stops at the first item, Right at the last. With 8 or
+  more it is a turning wheel that wraps both ways. The entry is the list's first item, so it counts
+  towards the 8 (a list of 7 weapons becomes a wheel) and, on a wheel, Left from the entry goes to the
+  last weapon and Right from the last weapon comes back to the entry.
 - **The price** is the game's own: for each weapon, its missing rounds times its price a round (the item
-  table's, or the PDA's dearer one when the PDA opened the screens), written as the game writes prices
-  (the thousands separator of the language). It is red when the bolts do not cover it, grey (and the tile
-  greyed) when every weapon is full.
+  table's), written as the game writes prices. On the PDA, the monitor shows the PDA's dearer total and,
+  struck through, the Vendor's, as the game does for one weapon.
 - **Cross buys**, weapon by weapon in the list's order, with the steps of the game's own ammo purchase
   (0x29ba78): the rounds added by the game's ammo function (0x233e40), the ammo bought counted
   (0x13dd70), the bolts taken. Then, once, what the game does after a purchase: the Vendor's thanks,
@@ -91,19 +98,26 @@ Vendor's screens and on the PDA's.
   weapon whose round costs more than what is left is passed over, and the next ones still get theirs),
   so the bolts end as near 0 as the prices allow. With not enough bolts for a single round of any
   weapon, the game's own "not enough bolts" message and error sound; with every weapon full, the
-  game's "full" sound. (UYA's own rule here was not checked; this is the likely expectation.)
+  game's "full" sound and a price of 0. (UYA's own rule here was not checked; this is the likely
+  expectation.)
 - **Off, the game's Vendor is untouched:** nothing of the entry runs, and the game's state is the
-  original's (checked with RAC1_RAMHASH on a Vendor run with purchases).
+  original's (checked with RAC1_RAMHASH on Vendor runs with moves, a purchase and the PDA).
 
-How it is built: the entry is the port's, beside the game's list, so the list (0x1ca4c0), its count
-and its cursor are left as the game has them. Before the Vendor's update (`overlay_entry.cpp`, game
-mode 5), `vendor_buy_all_input` selects the entry on Left from the first item, and while it is
-selected takes Left, Right and Cross out of the pad's state the game reads (held and pressed; the
-previous-held word the next frame's presses are made from is kept, so no press is invented). The
-drawing is the HUD's pass of the Vendor's draw (`hud_draw`): the tile, the highlight (the game's own
-on the first item covered with the strip's black), the monitor's title and price, in the game's own
-fonts and its 2D units, so it follows the Vendor's 2D in a widened view. `RAC1_VENDOR_TRACE=<n>`
-prints the Vendor's state, the bolts and each weapon's ammo every n frames (testing).
+How it is built: the entry is put into the game's own item list (0x1ca4c0) by `item_list_build`
+(0x29a400), first, as an ammo entry of one of the list's weapons (the one not full with the cheapest
+round, else the first), marked by its third word, which the game leaves 0 and tests before it starts a
+purchase: Cross on the entry starts none, `vendor_buy_all_input` (before the Vendor's update in
+`overlay_entry.cpp`) buys instead. Everything else (the cursor, the strip, the wheel, the highlight,
+the sounds) is the game's code walking its list. The port steps in only at a few calls of the Vendor's
+transliteration (`tools/codegen/gen/mkall/veldin_vendor.glue`, each told its call site): the tile's
+sprites (four weapon tiles at a quarter size, with the game's `hud_frame` / `hud_sprite`), the monitor's
+two title lines and its price, the sign's text when the cursor arrives on the entry, and the cursor put
+on the entry when the screens open. The hologram on the stand, the monitor's picture and the ammo counter
+at the top left are the game's own for the entry's weapon. The list is not saved (the save's block lists,
+0x1845c0 and 0x1848c0, do not include it). The list holds 16 entries at most: a list that is already
+full gets no entry (no Vendor list reaches it in normal play). Every planet runs the same Vendor code,
+relocated (the overlay maps have no variant of it). `RAC1_VENDOR_TRACE=<n>` prints the Vendor's state,
+the bolts and each entry of the list every n frames (testing).
 
 ## Fades: Fast or Original
 
@@ -284,5 +298,6 @@ it in 12 frames (46), a stop in 8 frames (29), lift-off 3 frames after the press
   (the flip uses R&C1's own quadrants).
 - When backing into a wall while aiming, the camera can come very close.
 - The page's French texts are shown in English.
-- Buy All Ammo: the item hologram on the Vendor's stand still shows the list's first item while the
-  entry is selected, and a thin line of the game's pulsing highlight can show under that item.
+- Buy All Ammo: the entry's hologram, the monitor's picture and the ammo counter at the top left show
+  one weapon of the list (the one not full with the cheapest round), and after a purchase the counter
+  can keep showing the weapon whose ammo was added last until the cursor moves.

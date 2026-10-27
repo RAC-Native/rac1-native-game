@@ -38,7 +38,8 @@ See [Advanced options](advanced.md).
   turns the aim. It needs a strafe (Movement: Strafing or RAC 3); turning it on with Movement on
   Original sets Strafing.
 - **Buy All Ammo: On.** The Vendor's list has an **All Ammo** entry first, as in *Up Your Arsenal*:
-  one purchase fills every weapon's ammo, or as much as the bolts pay for, in the list's order.
+  one purchase fills every weapon's ammo, or as much as the bolts pay for, in the list's order. The
+  entry is an item of the list itself, selected when the Vendor opens.
 
 All four work on every level. The page also has **Fades** (Fast by default, Original as an option),
 which is a removed compromise rather than an enhancement.

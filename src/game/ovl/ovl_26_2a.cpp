@@ -1,5 +1,6 @@
 // Ported overlay code 0x00260000..0x002affff.
 #include <algorithm>
+#include <game/enhance/vendor_buy_all.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_common.h>
@@ -1290,6 +1291,7 @@ void item_list_build(int32_t flagged_only) {
         if (listed) continue;
         item_list_push(i, 1, lw(OV(0x001c2108) + i * 0x14));
     }
+    vendor_buy_all_list_built();  // (enhancement: the Vendor's "All Ammo" entry first, vendor_buy_all.h; nothing when off)
 }
 
 // orig: 0x002a4530 — sample the height grid of the region under (x, y) (region_find): bilinear
