@@ -536,8 +536,12 @@ It skips what the MRP draws from its own decoding (the world's and the mobys' ra
 starts only flip the VU1's double buffer) and runs the VU1 programs everywhere else as the PS2 would: in
 the effects' ranges for their output, elsewhere (the moby program's set-up) for the VU1's state the next
 programs read - its clip flags reach program 7's first triangle - their kicks read for the GS registers
-only. On the boot's title those registers matter: the logo after the mobys draws with the state their
-last kick left.
+only. Those registers matter in two places, so there the moby programs run too, for them alone: on the
+boot's title the logo after the mobys draws with the state their last kick left, and on the Vendor's
+screens the panels are drawn from a render target with the texture filter (TEX1's MMAG) the last moby's
+kick set. Without it the panels took the nearest filter a font draw had left: the Vendor's text, icons
+and item pictures came out blocky at any window size larger than the PS2's (the first version of the
+reader, fixed since).
 
 **The GS's local memory** (`runtime/gs/gs_memory.cpp`) is kept, as game state: the game stores parts of
 it back into its own memory (`gs_exec_store_image`: the pause menu's picture, `movie_mode_end` 0x2997c8),
@@ -557,7 +561,16 @@ picture the Vendor's screens put back as the frame.
 
 What the game draws into its own memory to use as a texture goes into a render target that keeps the GS's
 alpha (0x80 = 1.0; the ship's planet menu's planet is three blended layers drawn into one); its blending
-reads that alpha at the GS's scale. A font's glyph (a 16 x 16 or 24 x 16 texel cell, a quad whose texture
+reads that alpha at the GS's scale. A render target has the PS2's resolution: the game draws a whole menu
+panel into one at 512 x 512 (the Vendor draws each of its monitors' contents into the same target, then
+that target onto the screen, bilinear; the pause menu's weapon and gadget screens draw their item models
+the same way), so on a 1440-line window that panel is the PS2's picture scaled 3.5 times, softer than the
+2D drawn on the screen itself. `RAC1_2D_RT_SCALE` (testing) makes the targets larger: 0 at the window's
+scale (its height over the frame's, rounded up: 4 at 1440 lines), N that many times. The game's
+coordinates, scissors and texture coordinates in a target stay in GS pixels; only its viewport, texture
+and depth buffer grow, and the models drawn into it are the MRP's at that size. The text and models are
+then as sharp as on the screen, but the look changes (the monitors' static and scan lines are finer), so
+it is off by default. A font's glyph (a 16 x 16 or 24 x 16 texel cell, a quad whose texture
 coordinates follow x and y apart) is sampled only inside its own cell: scaled up from the PS2's
 resolution, the bilinear filtering of a glyph's outer half texel blended in the neighbouring glyphs'
 edges in the font's texture, thin lines under, over and through the letters (issue #76; the GS drew the
@@ -581,7 +594,8 @@ Two kinds of frame the GS replica used to draw some 3D for:
 views at 16:9 and 32:9 (the HUD spread, the effects' substitutes) on five levels, in both renderers,
 identical to the replica's pictures; the game's state identical (`RAC1_RAMHASH`: level chains at 4:3 and
 32:9, the boot with its movies, the Vendor, the pause menu, the pipelined frames with the game thread).
-`RAC1_MRP_CHAIN_CHECK=1` reads each chain both ways - the reader and the replica, from the same local
+The Vendor's screens (Novalis, OpenGL and Vulkan, 4:3 and 32:9 at 5120 x 1440): their 2D as the replica's, the
+mobys aside. `RAC1_MRP_CHAIN_CHECK=1` reads each chain both ways - the reader and the replica, from the same local
 memory - and compares their primitives, marks and program 7's batches field by field: no difference on
 any of the 19 levels at 4:3 and at 32:9 but the new level's first frame above.
 
@@ -646,6 +660,9 @@ thread): see [Performance](performance.md).
   widened view's substitute stands in for a range (the substitute's for its 3D, the real range's for the VU1
   state it leaves): about 5 ms a frame of the chain worker on Gaspar at 32:9, beside the main thread.
 - A new level's first frame shows the loading screen's last picture ([The 2D](#the-2d)).
+- The menus' render targets (the Vendor's monitors, the pause menu's item models) are drawn at the PS2's
+  resolution and scaled up: soft at large window sizes, as in the original. Larger targets exist for
+  testing (`RAC1_2D_RT_SCALE`), not as a setting yet ([The 2D](#the-2d)).
 - The level's baked shadow meshes are culled by the game against its 4:3 view (no widened shadow run
   for that pass): their parts past the sides of a widened view are missing. So are the surfaces a
   moby's update queues only when the moby was drawn in the 4:3 view (one of Rilgar's water patches,

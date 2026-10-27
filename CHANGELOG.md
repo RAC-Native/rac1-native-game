@@ -17,6 +17,10 @@ What changed in each release. Releases are source only: you build the game with 
   now; a new level's first frame keeps the loading screen's picture. The replica stays the faithful reference (`RAC1_MRP=0`,
   "VU emulation"; `RAC1_MRP_CHAIN=0` to compare).
 - Ambient particles: Batalia's rain shows over the sea behind it (the seas that write depth are drawn before the particles).
+- The Vendor's screens: their text, icons and item pictures are smooth again, as before the chain reader (they were blocky at any
+  window larger than the PS2's: the panels took the nearest filter, the moby programs' last texture state was missing).
+- `RAC1_2D_RT_SCALE` (testing): the menus' render targets (the Vendor's monitors, the pause menu's item models) at the window's
+  scale or N times the PS2's, for sharper menu text and models; off by default (it changes the look).
 - Lights: Anya-Thoughtmane's second lighting pass (#102) on Veldin to Rilgar: emissive surfaces, lamps by class and by hand, merged with ours.
 - The levels' water, lava and sand seas (VU1 program 7's surfaces: Rilgar's harbour, Gaspar's lava sea, Aridia's sand sea, Hoven,
   Umbris, Novalis, Kalebo, Drek's fleet..., the levels' baked shadow meshes and the nanotech orbs) are drawn by the modern renderer
