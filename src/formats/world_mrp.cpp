@@ -322,8 +322,8 @@ void tie_kick(const TiePacket& p, const TieInstance& in, std::span<const std::ar
         const int16_t v = k < nd ? p.dinky[k][static_cast<size_t>(4 + l)] : p.fat[k - nd][static_cast<size_t>(8 + l)];
         return static_cast<float>(v) * (1.0f / 4096.0f);
     };
-    thread_local std::vector<std::array<float, 4>> tp;
-    thread_local std::vector<uint8_t> done;
+    static thread_local std::vector<std::array<float, 4>> tp;  // (static: the Wii U build defines thread_local away)
+    static thread_local std::vector<uint8_t> done;
     const size_t nv = static_cast<size_t>(nd) + p.n_fat;
     tp.resize(nv);
     done.assign(nv, 0);

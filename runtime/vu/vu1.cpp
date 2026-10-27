@@ -355,8 +355,8 @@ void start_program(Vu1& vu, uint32_t start, const KickSink& kick) {
             uint64_t gen = 0;
             const Registered* port = nullptr;
         };
-        thread_local Memo memo[32];
-        thread_local unsigned next = 0;
+        static thread_local Memo memo[32];  // (static: the Wii U build defines thread_local away)
+        static thread_local unsigned next = 0;
         const Registered* found = nullptr;
         bool hit = false;
         for (const Memo& e : memo)

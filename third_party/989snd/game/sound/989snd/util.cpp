@@ -165,7 +165,7 @@ int Rand() {
       return v;
     }
   };
-  thread_local State st;
+  static thread_local State st;  // (static: the Wii U build defines thread_local away)
   return static_cast<int>(st.Next() >> 1);
 }
 

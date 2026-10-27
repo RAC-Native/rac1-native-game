@@ -87,7 +87,8 @@ target_compile_features(rac1_wiiu PRIVATE cxx_std_20)
 target_compile_options(rac1_wiiu PRIVATE -O2 -frounding-math -ffp-contract=off -fno-strict-aliasing -w)
 # elf2rpl takes no thread-local storage (its TPREL relocations): the few thread_local variables become ordinary ones.
 # Right while the game's work stays on one thread, as without graphics (the renderers' workers, the users of most of
-# them, never start); a build with workers needs them made per thread another way.
+# them, never start); a build with workers needs them made per thread another way. One inside a function must be written
+# `static thread_local` (the same in C++): a bare one would become a local of each call (989snd's Rand once did).
 target_compile_definitions(rac1_wiiu PRIVATE thread_local=)
 set_source_files_properties(${ROOT}/src/host/orig_main.cpp PROPERTIES COMPILE_DEFINITIONS "main=rac1_orig_main")
 set_source_files_properties(${GEN_SRC} PROPERTIES COMPILE_OPTIONS "-g0")
