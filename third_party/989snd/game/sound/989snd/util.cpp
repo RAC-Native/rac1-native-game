@@ -1,3 +1,6 @@
+#if defined(__WIIU__)
+#include "platform/per_thread.h"
+#endif
 #include "util.h"
 
 namespace snd {
@@ -165,7 +168,12 @@ int Rand() {
       return v;
     }
   };
-  static thread_local State st;  // (static: the Wii U build defines thread_local away)
+#if defined(__WIIU__)  // (no thread-local storage there: one sequence per OS thread all the same, platform/per_thread.h)
+  static rac1::platform::PerThread<State> per;
+  State& st = per.get();
+#else
+  thread_local State st;
+#endif
   return static_cast<int>(st.Next() >> 1);
 }
 

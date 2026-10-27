@@ -321,3 +321,33 @@ Step 3's phases from here:
 3. the world (Veldin: 11 MB): the MRP walks the world passes' chains (the tie / shrub culling then back on, or a
    visibility of the renderer's own), no compute shader for tfrag (Latte has none in GX2);
 4. effects, particles, sky, drop shadows.
+
+### Phase 1's map (the GS replica, for the HUD / menus / text / fades)
+
+- runtime/gs/gs_emu.* is CPU-side and backend-neutral (chain walk vif1_chain -> chain_walk -> vif_stream -> gif;
+  primitives kept in prims_, never rasterized; texture decode at kick, cached; 4 MB swizzled local memory).
+  gs_state.* and the GsRenderer class are not used by it.
+- The OpenGL backend is one block of gs_draw.cpp (one program: VS / FS GLSL 330 with TFX, fog, alpha test + AFAIL,
+  DATE, screen sampling, per-pixel mips, dual-source blending; a 15-float vertex streamed into one buffer; textures
+  per TexImage; one render target per frame page; a screen copy per DATE primitive). draw_vk (its Vulkan twin, one
+  128-byte GsDrawPush, a pipeline cache) is the better template for GX2: the push block becomes one uniform block.
+- In a run without graphics the whole prepare / draw is skipped: no chain walk. Phase 1 needs the chain stage
+  (orig_main's chain_join, reset_frame, the chain's start / end with the 0x1611c4 fallback, set_screen_area,
+  vif1_chain) and draw(...) with screen_fbp / fb_w / fb_h / skip_fbp, synchronous (RAC1_GS_THREAD=0: the worker
+  would share the VU1's namespace-scope thread_locals).
+- The 2D needs no VU1 program (DIRECT / GIF packets). But the walk reaches the world's and the mobys' VU1 starts,
+  whose programs are left out of the Wii U build (RAC1_VU1_MISSING stubs abort): a start hook that skips them, or
+  not registering them, first. The pause menu's item panels draw mobys into render targets: empty without them.
+- Big-endian to fix in gs_emu.cpp before anything shows right: r64 / r32 read EE memory with memcpy, image_data
+  reads bytes (p[i]); TexImage packs RGBA as r | g << 8 ... in a uint32 (uploaded as bytes: swapped on BE).
+- CPU: the texture decode is per texel with a swizzle and the CLUT read each time (only when the memory changed).
+
+Thread-local values left as globals under -Dthread_local= (one thread uses them today; recheck when a worker
+starts): vu1.cpp g_last_start / g_side_widen / g_start_observer, host_profiler.cpp t_main. The 989snd's random
+sequence and the stream instance (snd989_stream.cpp t_cur), which the game's thread and the IOP's mirror share,
+use platform/per_thread.h's PerThread on the Wii U: shared, the mirror's alone frames during a fall's reload
+crashed the console (the game's thread freed its streams on the mirror's instance) and the mirror's random calls
+moved the game's.
+- After the fix: the picture + mirror run past three falls (frames 720, 1560, 2340) to its end; before it, two of
+  three such runs died at the first fall's reload. With the picture on, WHBGfxFinishRender waits for the vsync each
+  host frame: 15.9 host frames a second carrying ~3 game steps each; the backend's present must not hold the game.

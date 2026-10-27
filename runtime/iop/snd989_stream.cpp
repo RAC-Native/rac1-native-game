@@ -16,6 +16,9 @@
 // The host model: the disc read at once (the ISO), the SPU buffer of each stream a host array
 // played by an SPU voice of OpenGOAL's synth (its ADPCM decoder, interpolation, envelope), the
 // halves refilled when the voice has left them (the IRX's SPU interrupt), on the EE's thread.
+#if defined(__WIIU__)
+#include "platform/per_thread.h"
+#endif
 #include <runtime/iop/snd989_stream.h>
 
 #include <runtime/kernel/disc.h>
@@ -85,12 +88,18 @@ Snd989Streams& game_streams() {
     static Snd989Streams s;
     return s;
 }
+#if defined(__WIIU__)  // (no thread-local storage there: per OS thread all the same, platform/per_thread.h)
+rac1::platform::PerThread<Snd989Streams*> g_cur;
+Snd989Streams*& cur() { return g_cur.get(); }
+#else
 thread_local Snd989Streams* t_cur = nullptr;
-Snd989Streams& st() { return t_cur != nullptr ? *t_cur : game_streams(); }
+Snd989Streams*& cur() { return t_cur; }
+#endif
+Snd989Streams& st() { return cur() != nullptr ? *cur() : game_streams(); }
 struct Use {
     Snd989Streams* prev;
-    explicit Use(Snd989Streams* s) : prev(t_cur) { t_cur = s; }
-    ~Use() { t_cur = prev; }
+    explicit Use(Snd989Streams* s) : prev(cur()) { cur() = s; }
+    ~Use() { cur() = prev; }
 };
 bool quiet() { return st().mirror; }
 
