@@ -74,5 +74,9 @@ hi::HostState rac1_wiiu_pad_state() {
     return st;
 }
 
-// a host frame's ProcUI (the HOME menu handled meanwhile): false when the application is to close
-bool rac1_wiiu_frame() { return WHBProcIsRunning(); }
+// a host frame's picture (wiiu_gfx.cpp) and ProcUI (the HOME menu handled meanwhile): false when the application is to close
+void wiiu_gfx_frame();  // wiiu_gfx.cpp (nothing without the picture)
+bool rac1_wiiu_frame() {
+    wiiu_gfx_frame();
+    return WHBProcIsRunning();
+}

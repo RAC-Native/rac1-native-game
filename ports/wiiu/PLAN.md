@@ -297,3 +297,27 @@ voices (1199 resyncs in 3 minutes).
 
 Next for the sound: the IOP's mirror on a core of its own (as on the PC, ADR 0013: audio_out.cpp's iop_loop), which
 plays on alone when the game is late and takes 989snd's synthesis (~4%) off the game's thread.
+
+### The sound's mirror, and the first picture (same day)
+
+- wiiu_audio.cpp now runs the IOP's mirror (ADR 0013) on an OSThread of its own on core 2: it replays the game's
+  recorded IOP vsync by vsync into the AX voices' buffers and plays on alone while the game's thread is late. Veldin
+  with explore in real time, 81 s: 75 resyncs (1199 in 3 minutes before), 1026 frames played alone, 44.3 game frames a
+  second. One earlier run stopped logging after a fall's reload (frame ~720) and the console was found back in its
+  menu, with no exit line: not reproduced since (with RAC1_WIIU_WATCHDOG=10); keep the watchdog on.
+- Step 3, phase 0: wiiu_gfx.cpp (RAC1_WIIU_GFX=1) brings GX2 up through the WHB helpers on the TV and the GamePad and
+  draws a frame after each host frame of the game (for now a test triangle). Seen on the console by Daino: the game
+  plays (its sound) under the picture.
+- Shaders: CafeGLSL v1.0.0-rc1 (Exzap, MIT, Mesa-based). Its Wii U release is a 21.7 MB static library (the compiler
+  linked into the RPX: too big next to our 25.5 MB of .text under the 32 MB a bl reaches), so the shaders are compiled
+  offline on the PC by its Linux CLI (-DRAC1_WIIU_GLSLC=<bin/glslcompiler>) into .gsh files under build-wiiu/shaders,
+  copied to rac1-native/shaders on the SD. To evaluate later (Daino): shaders written in Latte's assembly with
+  decaf-emu's latte-assembler, no Mesa in the chain.
+
+Step 3's phases from here:
+1. the GS replica's drawing (gs_draw.cpp, OpenGL) on GX2: the HUD, menus, text, fades;
+2. the mobys: the MRP scene state on the CPU, the skinning in the vertex shader (no storage buffers: uniform blocks /
+   textures for the joints), the MRP assets from the SD (Veldin: 13 MB);
+3. the world (Veldin: 11 MB): the MRP walks the world passes' chains (the tie / shrub culling then back on, or a
+   visibility of the renderer's own), no compute shader for tfrag (Latte has none in GX2);
+4. effects, particles, sky, drop shadows.

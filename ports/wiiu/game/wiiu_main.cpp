@@ -26,6 +26,9 @@
 int rac1_orig_main(int argc, char** argv);
 void wiiu_sampler_start();  // wiiu_sampler.cpp
 void wiiu_sampler_stop();
+bool wiiu_gfx_wanted();  // wiiu_gfx.cpp: the picture (RAC1_WIIU_GFX=1)
+bool wiiu_gfx_start();
+void wiiu_gfx_stop();
 void rac1_wiiu_debug_tools_gate(int argc, char** argv);  // (src/host/orig_main.cpp)
 
 // ---- What goes wrong before main or outside it, on the UDP log (port 4405) ----
@@ -160,10 +163,11 @@ void watchdog_start(int seconds) {
 namespace {
 constexpr const char* kDir = "fs:/vol/external01/rac1-native";
 
+bool g_console = false;  // (the log's screen: not with the picture, RAC1_WIIU_GFX)
 void say(const char* s) {
     OSReport("rac1-wiiu: %s\n", s);
     WHBLogPrintf("rac1-wiiu: %s", s);
-    WHBLogConsoleDraw();
+    if (g_console) WHBLogConsoleDraw();
 }
 
 // (RAC1_WIIU_ISO_CHECK=1) the disc image's blocks of 1 MB at these offsets hashed (FNV-1a), to compare with the PC's
@@ -192,7 +196,6 @@ void iso_check() {
 int read_settings() {
     setenv("RAC1_HEADLESS", "1", 1);
     setenv("RAC1_NO_GRAPHICS", "1", 1);
-    setenv("RAC1_IOP_MIRROR", "0", 1);    // (the game's thread pushes its IOP's output: wiiu_audio.cpp; run.cfg may say otherwise)
     setenv("RAC1_AUDIO_DEVICE", "ax", 1); // (a headless run plays its sound only with a device named; RAC1_NO_AUDIO=1 turns it off)
     std::FILE* f = std::fopen("run.cfg", "r");
     if (f == nullptr) return 0;
@@ -218,11 +221,16 @@ int main(int, char**) {
     g_proc_up = true;
     OSReport("rac1-wiiu: ProcUI up\n");
     WHBLogUdpInit();
-    WHBLogConsoleInit();
+    if (chdir(kDir) != 0) OSReport("rac1-wiiu: cannot enter fs:/vol/external01/rac1-native\n");
+    const int settings = read_settings();
+    const bool gfx = wiiu_gfx_wanted();
+    if (!gfx) {
+        WHBLogConsoleInit();
+        g_console = true;
+    }
     say("start");
-    if (chdir(kDir) != 0) say("cannot enter fs:/vol/external01/rac1-native");
     char msg[160];
-    std::snprintf(msg, sizeof msg, "%d settings from run.cfg; the game's output goes to the system console", read_settings());
+    std::snprintf(msg, sizeof msg, "%d settings from run.cfg; the game's output goes to the system console", settings);
     say(msg);
 
     // the game's output: the system console and the UDP log, or with RAC1_WIIU_LOG_FILE=1 run.log / run.err.log
@@ -241,6 +249,7 @@ int main(int, char**) {
     say("the game's main");
     const OSTime t0 = OSGetTime();
     int rc = -1;
+    const bool gfx_up = gfx && wiiu_gfx_start();  // (the picture: GX2 on the TV and the GamePad)
     wiiu_sampler_start();  // (RAC1_WIIU_SAMPLE)
     try {
         rc = rac1_orig_main(1, argv);
@@ -258,13 +267,14 @@ int main(int, char**) {
     say(msg);
 
     // back to the menu (ProcUI's messages handled meanwhile; the screen given back on its release)
+    if (gfx_up) wiiu_gfx_stop();
     SYSLaunchMenu();
     while (WHBProcIsRunning()) {
-        WHBLogConsoleDraw();
+        if (g_console) WHBLogConsoleDraw();
         OSSleepTicks(OSMillisecondsToTicks(16));
     }
     say("exit");
-    WHBLogConsoleFree();
+    if (g_console) WHBLogConsoleFree();
     WHBLogUdpDeinit();
     WHBProcShutdown();
     return 0;

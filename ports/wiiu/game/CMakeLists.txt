@@ -73,6 +73,7 @@ set(HOST_SRC
     wiiu_sampler.cpp
     wiiu_input.cpp
     wiiu_audio.cpp
+    wiiu_gfx.cpp
 )
 
 add_executable(rac1_wiiu ${HOST_SRC} ${RUNTIME_SRC} ${FORMATS_SRC} ${SETUP_SRC} ${GAME_SRC} ${GEN_SRC} ${SND989_SRC})
@@ -108,3 +109,24 @@ if(RAC1_WIIU_EXACT_SQRT)
     target_link_options(rac1_wiiu PRIVATE -Wl,--wrap=sqrtf)
 endif()
 wut_create_rpx(rac1_wiiu)
+
+# The picture's shaders (ports/wiiu/shaders): GLSL compiled on the PC into .gsh files with CafeGLSL's compiler
+# (-DRAC1_WIIU_GLSLC=<its bin/glslcompiler>), written to shaders/ in the build (copied beside the game's data on the SD;
+# generated: never in the repository). Each <name>.vert / <name>.frag pair is one file.
+set(RAC1_WIIU_GLSLC "" CACHE FILEPATH "CafeGLSL's glslcompiler, for ports/wiiu/shaders")
+set(RAC1_WIIU_SHADERS test)
+if(RAC1_WIIU_GLSLC)
+    set(_gsh)
+    foreach(sh ${RAC1_WIIU_SHADERS})
+        set(_src ${CMAKE_CURRENT_SOURCE_DIR}/../shaders)
+        add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/shaders/${sh}.gsh
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/shaders
+            COMMAND ${RAC1_WIIU_GLSLC} -vs ${_src}/${sh}.vert -ps ${_src}/${sh}.frag -o ${CMAKE_CURRENT_BINARY_DIR}/shaders/${sh}.gsh
+            DEPENDS ${_src}/${sh}.vert ${_src}/${sh}.frag
+            COMMENT "CafeGLSL: ${sh}.gsh")
+        list(APPEND _gsh ${CMAKE_CURRENT_BINARY_DIR}/shaders/${sh}.gsh)
+    endforeach()
+    add_custom_target(rac1_wiiu_shaders ALL DEPENDS ${_gsh})
+else()
+    message(STATUS "RAC1_WIIU_GLSLC not set: the picture's shaders are not built")
+endif()
