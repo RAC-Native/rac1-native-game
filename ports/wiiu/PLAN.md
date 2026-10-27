@@ -202,3 +202,24 @@ RAMHASH: the console's 300 frames (the level change at 60 included) are identica
 The one difference left was the headless fixed clock (1700000000) read as local time: CET on the PC, UTC under newlib
 (0x15ee98's hour byte). Compare with a PC run under `TZ=UTC`. The skinning differences seen in Cemu do not happen on the
 console: they were Cemu's.
+
+### Without the GS path's work (RAC1_NO_GRAPHICS=2, same day)
+
+On the PC the skip changes no game state (600 frames: hero and camera identical, the skip's next record right 11893 /
+11893; only the DMA rings, the work area and the class packets differ). On the console, in play:
+
+| sub-stage | before | with the skip |
+|---|---|---|
+| world passes | 48-56 ms | 48-52 ms |
+| moby pass (draw loop) | 14-21 ms | 17-21 ms |
+| moby joints (now the poses only) | 175-225 ms | 14-18 ms |
+| game logic | 5-7 ms | 5-6 ms |
+| frame | 250-300 ms | 91-98 ms (~10.5 fps) |
+
+Next: the world passes (visibility, LOD and the VU1 chains for tfrag / tie / shrub, ~50 ms) and the moby draw loop
+(~20 ms, which the MRP scene needs) - what a GX2 renderer can take instead; the poses (~15 ms) stay on the CPU (the
+joint matrices a GPU skinning reads) unless they get faster.
+
+### Ideas for later (Daino)
+
+The GamePad as a second screen once the game draws: a real-time map, the quick select of the weapons.
