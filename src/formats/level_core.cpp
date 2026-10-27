@@ -12,6 +12,7 @@ std::span<const std::byte> level_file_body(std::span<const std::byte> file, bool
     if (file.size() < 48) return file;
     std::int32_t head[6];
     std::memcpy(head, file.data(), sizeof head);
+    le_fix_field(head);
     if (head[0] != 48) return file;
     const std::size_t at = static_cast<std::size_t>(head[4]) * 0x800;
     const std::size_t n = static_cast<std::size_t>(head[5]) * 0x800;
@@ -36,6 +37,7 @@ std::vector<T> rows_of(std::span<const std::byte> index, TableRef ref) {
     if (first + static_cast<std::size_t>(ref.count) * sizeof(T) > index.size()) return {};
     std::vector<T> rows(static_cast<std::size_t>(ref.count));
     std::memcpy(rows.data(), index.data() + first, rows.size() * sizeof(T));
+    for (T& r : rows) le_fix(r);
     return rows;
 }
 
@@ -50,6 +52,7 @@ bool extract_core_from_level_wad(
     if (file.size() < sizeof(LevelFileHeader)) return false;
     LevelFileHeader fh;
     std::memcpy(&fh, file.data(), sizeof fh);
+    le_fix(fh);
     if (!part_fits(fh.asset_index, file.size()) || !part_fits(fh.asset_data, file.size())) return false;
 
     const auto* index = reinterpret_cast<const std::uint8_t*>(file.data() + fh.asset_index.offset);
@@ -68,6 +71,7 @@ DecodedLevelCoreIndex decode_level_core_index(
     }
     DecodedLevelCoreIndex out;
     std::memcpy(&out.header, index.data(), sizeof(AssetIndexHeader));
+    le_fix(out.header);
     const AssetIndexHeader& h = out.header;
 
     const std::vector<ClassRecord> mobys = rows_of<ClassRecord>(index, h.moby_classes);
@@ -79,12 +83,14 @@ DecodedLevelCoreIndex decode_level_core_index(
     if (h.hero_sequences > 0 && h.hero_sequences + 256 * 4 <= static_cast<std::int32_t>(index.size())) {
         sequences.resize(256);
         std::memcpy(sequences.data(), index.data() + h.hero_sequences, 256 * 4);
+        for (std::int32_t& q : sequences) le_fix_field(q);
     }
     std::vector<GadgetRecord> gadgets;
     if (h.gadget_table > 0 && h.gadget_count > 0 &&
         h.gadget_table + h.gadget_count * static_cast<std::int32_t>(sizeof(GadgetRecord)) <= static_cast<std::int32_t>(index.size())) {
         gadgets.resize(static_cast<std::size_t>(h.gadget_count));
         std::memcpy(gadgets.data(), index.data() + h.gadget_table, gadgets.size() * sizeof(GadgetRecord));
+        for (GadgetRecord& g : gadgets) le_fix_words32(g);
     }
 
     // A part's size is the distance to the next part start the index names (the particle and

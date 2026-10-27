@@ -42,6 +42,10 @@ set(GEN_SRC "")
 foreach(f IN LISTS RAC1_GENERATED_SOURCES)
     list(APPEND GEN_SRC ${RAC1_GENERATED_SRC}/${f})
 endforeach()
+# The VU1's translated programs (the world's tfrag / tie / shrub, the mobys'): VU1 draws, and without graphics its
+# programs never run (they run from the frame's display chain, never from the game's update). Left out, they also keep
+# the code under the 32 MB a PowerPC bl reaches (see the link options below); wiiu_stubs.cpp registers none.
+list(FILTER GEN_SRC EXCLUDE REGEX "/world_vu1_(tfrag|tie|shrub)_[ab](_fast)?\\.cpp$|/moby_vu1(_fast)?\\.cpp$")
 file(GLOB SND989_SRC ${ROOT}/third_party/989snd/game/sound/989snd/*.cpp ${ROOT}/third_party/989snd/game/sound/common/*.cpp)
 
 set(HOST_SRC
@@ -88,4 +92,9 @@ target_compile_definitions(rac1_wiiu PRIVATE thread_local=)
 set_source_files_properties(${ROOT}/src/host/orig_main.cpp PROPERTIES COMPILE_DEFINITIONS "main=rac1_orig_main")
 set_source_files_properties(${GEN_SRC} PROPERTIES COMPILE_OPTIONS "-g0")
 target_link_libraries(rac1_wiiu PRIVATE stdc++fs)
+target_link_options(rac1_wiiu PRIVATE -Wl,--wrap=abort -Wl,--wrap=__cxa_throw)  # (wiiu_main.cpp: the stack on the log first)
+# The code must stay under 32 MB: a PowerPC bl reaches +-32 MB, and past it the linker puts a branch island right
+# after the call in the .init section, which __do_global_ctors_aux then returns into and runs again (the static
+# constructors forever). Unused functions dropped (-ffunction-sections is wut's default).
+target_link_options(rac1_wiiu PRIVATE -Wl,--gc-sections)
 wut_create_rpx(rac1_wiiu)

@@ -33,6 +33,21 @@ void FileAttributes::Read(BinaryReader& data) {
   }
 }
 
+// rac1 (the Wii U port): the ADPCM samples are read by the voices as 16-bit words (voice.cpp): on a big-endian host each
+// little-endian pair of the file is swapped once, here
+static void snd_samples_to_host(u8* p, size_t n) {
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  for (size_t i = 0; i + 1 < n; i += 2) {
+    const u8 t = p[i];
+    p[i] = p[i + 1];
+    p[i + 1] = t;
+  }
+#else
+  (void)p;
+  (void)n;
+#endif
+}
+
 static Tone ReadTone(BinaryReader& data, u8* samples) {
   Tone tone{};
 
@@ -152,7 +167,9 @@ static Grain ReadGrainV2(BinaryReader& data, BinaryReader grainData, u8* samples
   grain.Type = static_cast<GrainType>(op.type);
   grain.Delay = data.read<s32>();
 
-  u32 value = op.Opcode & 0xFFFFFF;
+  // rac1: the low 24 bits as the file's bytes give them (the union's u32 is the host's order)
+  u32 value = static_cast<u8>(op.arg[0]) | static_cast<u32>(static_cast<u8>(op.arg[1])) << 8 |
+              static_cast<u32>(static_cast<u8>(op.arg[2])) << 16;
 
   switch (grain.Type) {
     case GrainType::TONE:
@@ -202,6 +219,7 @@ SFXBlock* SFXBlock::ReadBlock(std::span<u8> bank_data, std::span<u8> samples) {
 
   block->SampleData = std::make_unique<u8[]>(samples.size());
   std::copy(samples.begin(), samples.end(), block->SampleData.get());
+  snd_samples_to_host(block->SampleData.get(), samples.size());  // rac1: the voices read 16-bit words
 
   block->Version = data.read<u32>();
   block->Flags.flags = data.read<u32>();
@@ -276,6 +294,13 @@ SFXBlock* SFXBlock::ReadBlock(std::span<u8> bank_data, std::span<u8> samples) {
 
     data.set_seek(BlockNames);
     auto names = data.read<SFXBlockNames>();
+    // rac1: the offsets in the host's order (the names are characters)
+    bin_le_swap(names.SFXNameTableOffset);
+    bin_le_swap(names.VAGNameTableOffset);
+    bin_le_swap(names.VAGImportsTableOffset);
+    bin_le_swap(names.VAGExportsTableOffset);
+    bin_le_swap(names.SFXHashOffsets);
+    bin_le_swap(names.VAGHashOffsets);
 
     char buf[17];
     buf[16] = 0;
@@ -292,7 +317,9 @@ SFXBlock* SFXBlock::ReadBlock(std::span<u8> bank_data, std::span<u8> samples) {
 
         std::string str(buf);
         if (block->Names.find(str) == block->Names.end()) {
-          block->Names[str] = name->Index;
+          s16 index = name->Index;
+          bin_le_swap(index);  // rac1
+          block->Names[str] = index;
         }
 
         name++;
@@ -327,6 +354,7 @@ MusicBank* MusicBank::ReadBank(std::span<u8> bank_data,
 
   bank->SampleData = std::make_unique<u8[]>(samples.size_bytes());
   std::copy(samples.begin(), samples.end(), bank->SampleData.get());
+  snd_samples_to_host(bank->SampleData.get(), samples.size());  // rac1: the voices read 16-bit words
 
   bank->SeqData = std::make_unique<u8[]>(midi_data.size_bytes());
   std::copy(midi_data.begin(), midi_data.end(), bank->SeqData.get());

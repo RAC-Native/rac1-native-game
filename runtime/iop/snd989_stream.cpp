@@ -231,7 +231,7 @@ void fill_half(Stream& s, int h) {
             if (h == 0 && w == 0) blk[1] |= 4;
             if (h == 1 && w + 8 >= words) blk[1] |= 3;
         }
-        std::memcpy(dst + w, blk, 16);
+        for (int k = 0; k < 8; ++k) dst[w + k] = static_cast<uint16_t>(blk[2 * k] | blk[2 * k + 1] << 8);  // (16-bit words, the host's order)
     }
 }
 

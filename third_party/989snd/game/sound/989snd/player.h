@@ -8,6 +8,10 @@
 #include <span>
 #include <vector>
 
+#if defined(__WIIU__)
+#include <coreinit/mutex.h>
+#endif
+
 #include "ame_handler.h"
 #include "handle_allocator.h"
 #include "loader.h"
@@ -91,7 +95,20 @@ class Player {
   void Tick(s16Output* stream, int samples, s16* multi = nullptr, int channels = 2);
 
  private:
+#if defined(__WIIU__)
+  // rac1 (the Wii U port): wut's std::recursive_mutex locks again as a plain mutex (a deadlock); Cafe OS's own
+  // mutex is recursive
+  struct RecursiveMutex {
+    OSMutex m;
+    RecursiveMutex() { OSInitMutex(&m); }
+    void lock() { OSLockMutex(&m); }
+    void unlock() { OSUnlockMutex(&m); }
+    bool try_lock() { return OSTryLockMutex(&m) != 0; }
+  };
+  RecursiveMutex mTickLock;
+#else
   std::recursive_mutex mTickLock;  // TODO does not need to recursive with some light restructuring
+#endif
   IdAllocator mHandleAllocator;
   std::map<u32, std::unique_ptr<SoundHandler>> mHandlers;
 

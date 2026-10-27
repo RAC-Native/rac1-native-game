@@ -2029,7 +2029,13 @@ void pad_packet(GLFWwindow* win, uint64_t frame) {
 
 }  // namespace
 
+#if defined(__WIIU__)
+#define RAC1_WIIU_TRACE(s) std::fprintf(stderr, "[wiiu-trace] %s\n", s)  // (the Wii U's bring-up: where the start stops)
+#else
+#define RAC1_WIIU_TRACE(s) ((void)0)
+#endif
 int main(int argc, char** argv) {
+    RAC1_WIIU_TRACE("main");
     // (Windows: the console's QuickEdit off - a click in the console window froze the game - and the timer at 1 ms;
     // put back at the exit: platform.h)
     rac1::platform::process_begin();
@@ -2040,6 +2046,7 @@ int main(int argc, char** argv) {
         }
     }
     rac1::ps2fpu::enter_ee_rounding();  // the EE's float rounding (toward zero) for everything the ports run
+    RAC1_WIIU_TRACE("rounding");
     std::setvbuf(stdout, nullptr, _IOLBF, 0);
     int level = std::getenv("RAC1_LEVEL") != nullptr ? std::atoi(std::getenv("RAC1_LEVEL")) : 0;  // testing: the level to start on
     bool level_asked = std::getenv("RAC1_LEVEL") != nullptr || std::getenv("RAC1_GOTO") != nullptr || std::getenv("RAC1_ARRIVE") != nullptr;
@@ -2058,7 +2065,12 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "rac1-native: level %d has no host assets yet\n", level);
         return 1;
     }
+    RAC1_WIIU_TRACE(disc_path().c_str());
     const bool have_disc = std::filesystem::exists(disc_path());
+    RAC1_WIIU_TRACE(have_disc ? "disc found" : "no disc");
+    RAC1_WIIU_TRACE(disc_boot_elf_path().c_str());
+    RAC1_WIIU_TRACE(std::filesystem::exists(disc_boot_elf_path()) ? "elf found" : "no elf");
+    RAC1_WIIU_TRACE(disc_has_level(level) ? "level found" : "no level");
     if (!have_disc || !std::filesystem::exists(disc_boot_elf_path()) || !disc_has_level(level)) {
         std::fprintf(stderr, "\nrac1-native: %s\n"
                              "Run the setup from the repository's root, with your disc image:\n"
@@ -2101,7 +2113,9 @@ int main(int argc, char** argv) {
 
     // EE memory with the base ELF image; the level overlay's image (what the base ELF's loader
     // reads from the disc).
+    RAC1_WIIU_TRACE("init_memory");
     init_memory();
+    RAC1_WIIU_TRACE("memory");
     g_ee_null_is_ram = true;
     g_view_from_game = true;
     g_legacy_host_writes = false;
@@ -3773,5 +3787,9 @@ int main(int argc, char** argv) {
     rac1::progress::finish();  // (the launcher's progress.json: the time played since its last write)
     rac1::platform::process_end();  // (std::_Exit runs no atexit handler)
     rac1::update_check::run_update();
+#if defined(__WIIU__)
+    return 0;  // (the Wii U: back to ports/wiiu/game's main, which goes back to the menu; no GL objects there)
+#else
     std::_Exit(0);  // the renderers' static GL objects would be freed after the context is gone
+#endif
 }

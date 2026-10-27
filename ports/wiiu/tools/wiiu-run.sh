@@ -7,6 +7,7 @@
 # Environment:
 #   WIIU_IP        the console's address (required)
 #   WIIU_TIMEOUT   seconds to wait for the exit line (default 60)
+#   WIIU_UPLOAD_TIMEOUT  seconds the upload may take (default 300: about 1 MB/s)
 #   WIIU_EXIT_RE   extended regex marking the app's exit (default "auto-exit|: exit")
 #   WIIU_LOG       where to write the UDP log (default: next to the app, .udp.log)
 #
@@ -19,6 +20,7 @@ app=${1:?usage: wiiu-run.sh app.rpx [args...]}
 shift
 ip=${WIIU_IP:?set WIIU_IP to the console address}
 timeout_s=${WIIU_TIMEOUT:-60}
+upload_s=${WIIU_UPLOAD_TIMEOUT:-300}
 exit_re=${WIIU_EXIT_RE:-auto-exit|: exit}
 log=${WIIU_LOG:-${app%.*}.udp.log}
 wiiload=${DEVKITPRO:-/opt/devkitpro}/tools/bin/wiiload
@@ -36,7 +38,7 @@ listener=$!
 trap 'kill $listener 2>/dev/null' EXIT
 sleep 0.5
 
-if ! WIILOAD=tcp:$ip timeout 30 "$wiiload" "$app" "$@" > /dev/null 2>&1; then
+if ! WIILOAD=tcp:$ip timeout "$upload_s" "$wiiload" "$app" "$@" > /dev/null 2>&1; then
     echo "wiiu-run: upload failed or timed out" >&2
     exit 3
 fi

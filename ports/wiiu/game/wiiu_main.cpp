@@ -1,15 +1,15 @@
 // The Wii U's entry: the game's host (src/host/orig_main.cpp, its main renamed rac1_orig_main) run with the settings of
 // rac1-native/run.cfg on the SD card (KEY=VALUE lines, the RAC1_* variables of docs/env-vars.md; RAC1_HEADLESS and
-// RAC1_NO_GRAPHICS always on), its output in rac1-native/run.log, the game's data beside it (rac1-native/assets/: the
+// RAC1_NO_GRAPHICS always on), its output in rac1-native/run.log (stderr in run.err.log), the game's data beside it (rac1-native/assets/: the
 // disc image, the boot executable and the level maps the setup made on the PC from the player's own disc). Then back
 // to the Wii U Menu.
+#include <coreinit/debug.h>
 #include <coreinit/foreground.h>
 #include <coreinit/thread.h>
 #include <coreinit/time.h>
 #include <sysapp/launch.h>
 #include <whb/log.h>
 #include <whb/log_console.h>
-#include <whb/log_module.h>
 #include <whb/log_udp.h>
 #include <whb/proc.h>
 
@@ -20,13 +20,146 @@
 #include <string>
 #include <unistd.h>
 
+#include <exception>
+#include <typeinfo>
+
 int rac1_orig_main(int argc, char** argv);
 void rac1_wiiu_debug_tools_gate(int argc, char** argv);  // (src/host/orig_main.cpp)
+
+// ---- What goes wrong before main or outside it, on the UDP log (port 4405) ----
+// The return addresses up the stack (the PowerPC back chain: r1 points at the caller's frame, its LR saved at +4), with
+// this function's own address beside them: the loader moves the code, `addr - here + here's ELF address` finds it in
+// the ELF.
+static void log_backtrace(const char* why) {
+    OSReport("rac1-wiiu: %s; log_backtrace at %p\n", why, reinterpret_cast<void*>(&log_backtrace));
+    uintptr_t* fp = static_cast<uintptr_t*>(__builtin_frame_address(0));
+    for (int i = 0; i < 24 && fp != nullptr && (reinterpret_cast<uintptr_t>(fp) & 3) == 0; ++i) {
+        const uintptr_t lr = fp[1];
+        OSReport("rac1-wiiu:   #%d %08x\n", i, static_cast<unsigned>(lr));
+        fp = reinterpret_cast<uintptr_t*>(fp[0]);
+    }
+}
+// After a failure we can catch (an exception, an abort of our own code): back to the Wii U Menu instead of a stopped
+// console. (A crash of the processor itself, a DSI or an OS error, still shows Aroma's screen: power-cycle then.)
+static bool g_proc_up = false;  // (WHBProcInit done: the menu reachable)
+[[noreturn]] static void back_to_menu(const char* why) {
+    OSReport("rac1-wiiu: %s: back to the menu\n", why);
+    std::fflush(stdout);
+    static bool once = false;
+    if (!once && g_proc_up) {
+        once = true;
+        SYSLaunchMenu();
+        while (WHBProcIsRunning()) OSSleepTicks(OSMillisecondsToTicks(16));
+        WHBProcShutdown();
+    }
+    std::_Exit(1);
+}
+static void on_terminate() {
+    if (std::exception_ptr e = std::current_exception()) {
+        try {
+            std::rethrow_exception(e);
+        } catch (const std::exception& x) {
+            OSReport("rac1-wiiu: uncaught exception %s: %s\n", typeid(x).name(), x.what());
+        } catch (...) {
+            OSReport("rac1-wiiu: uncaught exception (not a std::exception)\n");
+        }
+    }
+    log_backtrace("terminate");
+    back_to_menu("terminate");
+}
+extern "C" void __real_abort();
+extern "C" void __wrap_abort() {  // (-Wl,--wrap=abort)
+    log_backtrace("abort");
+    back_to_menu("abort");
+}
+// Every C++ throw, with where it came from, on the log (-Wl,--wrap=__cxa_throw): the game's errors are exceptions, and
+// most of the Wii U's are a field read in the wrong byte order somewhere
+extern "C" [[noreturn]] void __real___cxa_throw(void*, void*, void (*)(void*));
+extern "C" [[noreturn]] void __wrap___cxa_throw(void* obj, void* tinfo, void (*dest)(void*)) {
+    log_backtrace("throw");
+    __real___cxa_throw(obj, tinfo, dest);
+}
+
+// (before every other static constructor: the terminate handler. The static constructors run before wut sets up newlib,
+// the files and the sockets, so these first lines go through OSReport, the system's log: Aroma's LoggingModule sends it
+// on UDP 4405 with its own socket)
+__attribute__((constructor(101))) static void early_init() {
+    OSReport("rac1-wiiu: static initialisation\n");
+    std::set_terminate(on_terminate);
+}
+__attribute__((constructor(65535))) static void late_init() { OSReport("rac1-wiiu: static initialisation done\n"); }
+
+// stdout / stderr: a newlib device that writes each line to the system console (OSConsoleWrite: Cemu's log.txt) and to
+// the UDP log (WHBLogWrite, port 4405: the console's own); wut's default stdout reaches neither
+#include <sys/iosupport.h>
+namespace {
+char g_line[1024];
+size_t g_line_n = 0;
+void line_out() {
+    g_line[g_line_n] = 0;
+    OSConsoleWrite(g_line, static_cast<uint32_t>(g_line_n));
+    WHBLogWrite(g_line);
+    g_line_n = 0;
+}
+ssize_t console_write(struct _reent*, void*, const char* p, size_t n) {
+    for (size_t i = 0; i < n; ++i) {
+        g_line[g_line_n++] = p[i];
+        if (p[i] == '\n' || g_line_n == sizeof g_line - 1) line_out();
+    }
+    return static_cast<ssize_t>(n);
+}
+devoptab_t g_console_dot = {};
+void console_stdio() {
+    g_console_dot.name = "console";
+    g_console_dot.write_r = &console_write;
+    devoptab_list[STD_OUT] = &g_console_dot;
+    devoptab_list[STD_ERR] = &g_console_dot;
+}
+}  // namespace
+
+// (RAC1_WIIU_WATCHDOG=<seconds>) a thread on core 2 that every so often stops the game's thread for an instant and logs
+// where it is: its pc, lr and the return addresses up its stack (copied while it is stopped, printed after it runs again,
+// so a lock it holds cannot stop the watchdog too). For a game that hangs without a crash.
+namespace {
+OSThread* g_game_thread = nullptr;
+OSThread g_watchdog;
+alignas(16) unsigned char g_watchdog_stack[16 * 1024];
+int watchdog_main(int seconds, const char**) {
+    for (int tick = 1;; ++tick) {
+        OSSleepTicks(OSSecondsToTicks(seconds));
+        uint32_t pc = 0, lr = 0, sp = 0, chain[16] = {};
+        OSSuspendThread(g_game_thread);
+        while (!OSIsThreadSuspended(g_game_thread)) OSSleepTicks(OSMillisecondsToTicks(1));
+        pc = g_game_thread->context.srr0;
+        lr = g_game_thread->context.lr;
+        sp = g_game_thread->context.gpr[1];
+        uintptr_t fp = sp;
+        for (int i = 0; i < 16 && fp != 0 && (fp & 3) == 0 && fp >= 0x01000000u; ++i) {
+            const uint32_t* f = reinterpret_cast<const uint32_t*>(fp);
+            chain[i] = f[1];
+            fp = f[0];
+        }
+        OSResumeThread(g_game_thread);
+        OSReport("rac1-wiiu: watchdog %d s: pc %08x lr %08x sp %08x\n", tick * seconds, pc, lr, sp);
+        for (int i = 0; i < 16 && chain[i] != 0; ++i) OSReport("rac1-wiiu:   ^%d %08x\n", i, chain[i]);
+    }
+    return 0;
+}
+void watchdog_start(int seconds) {
+    g_game_thread = OSGetCurrentThread();
+    if (!OSCreateThread(&g_watchdog, watchdog_main, seconds, nullptr, g_watchdog_stack + sizeof g_watchdog_stack,
+                        sizeof g_watchdog_stack, 10, OS_THREAD_ATTRIB_AFFINITY_CPU2))
+        return;
+    OSSetThreadName(&g_watchdog, "rac1 watchdog");
+    OSResumeThread(&g_watchdog);
+}
+}  // namespace
 
 namespace {
 constexpr const char* kDir = "fs:/vol/external01/rac1-native";
 
 void say(const char* s) {
+    OSReport("rac1-wiiu: %s\n", s);
     WHBLogPrintf("rac1-wiiu: %s", s);
     WHBLogConsoleDraw();
 }
@@ -76,25 +209,42 @@ int read_settings() {
 }  // namespace
 
 int main(int, char**) {
+    OSReport("rac1-wiiu: main\n");
     WHBProcInit();
-    WHBLogModuleInit();
+    g_proc_up = true;
+    OSReport("rac1-wiiu: ProcUI up\n");
     WHBLogUdpInit();
     WHBLogConsoleInit();
     say("start");
     if (chdir(kDir) != 0) say("cannot enter fs:/vol/external01/rac1-native");
     char msg[160];
-    std::snprintf(msg, sizeof msg, "%d settings from run.cfg; the game's output goes to run.log", read_settings());
+    std::snprintf(msg, sizeof msg, "%d settings from run.cfg; the game's output goes to the system console", read_settings());
     say(msg);
 
-    std::freopen("run.log", "w", stdout);
-    std::freopen("run.log", "a", stderr);
+    // the game's output: the system console and the UDP log, or with RAC1_WIIU_LOG_FILE=1 run.log / run.err.log
+    console_stdio();
+    if (const char* lf = std::getenv("RAC1_WIIU_LOG_FILE"); lf != nullptr && lf[0] == '1') {
+        std::freopen("run.log", "w", stdout);
+        std::freopen("run.err.log", "w", stderr);  // (not the same file twice: the filesystem keeps one writer)
+    }
+    std::setvbuf(stdout, nullptr, _IOLBF, 1024);  // (a line at a time: the log is there whatever happens next)
     std::setvbuf(stderr, nullptr, _IONBF, 0);
     char arg0[] = "rac1-native";
     char* argv[] = {arg0, nullptr};
     if (const char* c = std::getenv("RAC1_WIIU_ISO_CHECK"); c != nullptr && c[0] == '1') iso_check();
+    if (const char* w = std::getenv("RAC1_WIIU_WATCHDOG"); w != nullptr && std::atoi(w) > 0) watchdog_start(std::atoi(w));
     rac1_wiiu_debug_tools_gate(1, argv);
+    say("the game's main");
     const OSTime t0 = OSGetTime();
-    const int rc = rac1_orig_main(1, argv);
+    int rc = -1;
+    try {
+        rc = rac1_orig_main(1, argv);
+    } catch (const std::exception& x) {
+        std::printf("[wiiu] exception %s: %s\n", typeid(x).name(), x.what());
+        std::fflush(stdout);
+        WHBLogPrintf("rac1-wiiu: exception %s: %s", typeid(x).name(), x.what());
+        back_to_menu("exception");
+    }
     const unsigned ms = static_cast<unsigned>(OSTicksToMilliseconds(OSGetTime() - t0));
     std::printf("[wiiu] the game's main returned %d after %u ms\n", rc, ms);
     std::fflush(stdout);
@@ -110,7 +260,6 @@ int main(int, char**) {
     say("exit");
     WHBLogConsoleFree();
     WHBLogUdpDeinit();
-    WHBLogModuleDeinit();
     WHBProcShutdown();
     return 0;
 }

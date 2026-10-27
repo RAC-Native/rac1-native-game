@@ -1,4 +1,5 @@
 #pragma once
+#include "common/util/BinaryReader.h"  // rac1: bin_le_swap
 #include <map>
 
 #include "common/common_types.h"
@@ -50,6 +51,26 @@ struct PluginParams {
   /*   4 */ u32 index;
   /*   8 */ u8 data[24];
 };
+
+// rac1 (the Wii U port): the records' fields in the host's order (BinaryReader.h)
+inline void bin_le_record(RandDelayParams& r) { bin_le_swap(r.Amount); }
+inline void bin_le_record(ControlParams& r) { bin_le_swap(r.param); }
+inline void bin_le_record(LFOParams& r) {
+  bin_le_swap(r.duty_cycle);
+  bin_le_swap(r.depth);
+  bin_le_swap(r.flags);
+  bin_le_swap(r.start_offset);
+  bin_le_swap(r.step_size);
+}
+inline void bin_le_record(PlaySoundParams& r) {
+  bin_le_swap(r.vol);
+  bin_le_swap(r.pan);
+  bin_le_swap(r.sound_id);
+}
+inline void bin_le_record(PluginParams& r) {
+  bin_le_swap(r.id);
+  bin_le_swap(r.index);
+}
 
 enum class GrainType : u32 {
   NULL_GRAIN = 0,

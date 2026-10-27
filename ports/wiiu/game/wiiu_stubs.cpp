@@ -138,3 +138,54 @@ const unsigned char* glfwGetJoystickHats(int, int* count) {
     return nullptr;
 }
 }
+
+// (diagnostics) operator new that says why an allocation failed: the size asked, the default heap's free memory, the
+// caller, before the bad_alloc (which itself needs memory)
+#include <coreinit/debug.h>
+#include <coreinit/memdefaultheap.h>
+#include <coreinit/memexpheap.h>
+#include <cstdlib>
+#include <new>
+
+void* operator new(std::size_t n) {
+    if (void* p = std::malloc(n == 0 ? 1 : n)) return p;
+    OSReport("rac1-wiiu: operator new(%u) failed; caller %p; MEM2 default heap free %u, largest %u\n",
+             static_cast<unsigned>(n), __builtin_return_address(0),
+             static_cast<unsigned>(MEMGetTotalFreeSizeForExpHeap(MEMGetBaseHeapHandle(MEM_BASE_HEAP_MEM2))),
+             static_cast<unsigned>(MEMGetAllocatableSizeForExpHeapEx(MEMGetBaseHeapHandle(MEM_BASE_HEAP_MEM2), 4)));
+    OSFatal("rac1-wiiu: out of memory (operator new)");
+    return nullptr;
+}
+void* operator new[](std::size_t n) { return operator new(n); }
+void operator delete(void* p) noexcept { std::free(p); }
+void operator delete[](void* p) noexcept { std::free(p); }
+void operator delete(void* p, std::size_t) noexcept { std::free(p); }
+void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
+
+// The VU1's translated programs, left out of this build (CMakeLists.txt): without graphics none runs. Should one run,
+// it says so and the game stops (its result would be wrong, not just missing).
+#include "runtime/vu/vu_interpreter.h"
+
+namespace rac1 {
+struct VuPipe;
+[[noreturn]] static void vu1_program_missing(const char* name) {
+    OSReport("rac1-wiiu: the VU1 program %s ran, but this build has none (RAC1_NO_GRAPHICS)\n", name);
+    std::abort();
+}
+#define RAC1_VU1_MISSING(fn) \
+    bool fn(VUState&, VuPipe&) { vu1_program_missing(#fn); }
+RAC1_VU1_MISSING(moby_vu1_step)
+RAC1_VU1_MISSING(moby_vu1_fast)
+RAC1_VU1_MISSING(world_tfrag_a_step)
+RAC1_VU1_MISSING(world_tfrag_a_fast)
+RAC1_VU1_MISSING(world_tfrag_b_step)
+RAC1_VU1_MISSING(world_tfrag_b_fast)
+RAC1_VU1_MISSING(world_tie_a_step)
+RAC1_VU1_MISSING(world_tie_a_fast)
+RAC1_VU1_MISSING(world_tie_b_step)
+RAC1_VU1_MISSING(world_tie_b_fast)
+RAC1_VU1_MISSING(world_shrub_a_step)
+RAC1_VU1_MISSING(world_shrub_a_fast)
+RAC1_VU1_MISSING(world_shrub_b_step)
+RAC1_VU1_MISSING(world_shrub_b_fast)
+}  // namespace rac1

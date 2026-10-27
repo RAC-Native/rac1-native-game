@@ -1,3 +1,4 @@
+#include "io/host_endian.h"
 #include <formats/scene_wad.h>
 #include <array>
 #include <io/byte_reader.h>
@@ -67,8 +68,7 @@ bool decompress_wad(std::span<const std::byte> src, std::vector<std::uint8_t>& d
     if (src.size() < 16) return false;
     const auto* bytes = reinterpret_cast<const std::uint8_t*>(src.data());
     if (bytes[0] != 'W' || bytes[1] != 'A' || bytes[2] != 'D') return false;
-    std::uint32_t total;
-    std::memcpy(&total, bytes + 3, 4);
+    const std::uint32_t total = le32(bytes + 3);
     if (total > src.size()) return false;
 
     LzInput in(bytes + 16, bytes + total);
@@ -237,7 +237,7 @@ std::vector<SubAsset> parse_scene_wad(std::span<const std::byte> data) {
             if (magic_ptr[0] == 'W' && magic_ptr[1] == 'A' && magic_ptr[2] == 'D') {
                 asset.type = SubAssetType::Wad;
                 asset.is_compressed = true;
-                std::uint32_t comp_size = *reinterpret_cast<const std::uint32_t*>(data.data() + byte_offset + 3);
+                std::uint32_t comp_size = le32(data.data() + byte_offset + 3);
                 if (comp_size > 16 && byte_offset + comp_size <= data.size()) {
                     asset.size_bytes = comp_size;
                 }

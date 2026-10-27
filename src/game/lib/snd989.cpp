@@ -268,8 +268,10 @@ void snd_set_sound(uint32_t handle, uint32_t flags, int32_t vol, int32_t pan, in
 
 // A command answered at once (the batch flushed first): its single result.
 // orig: 0x0012e548
+// (`data` is the command's record laid out as EE memory: the ports build it as 32-bit words, so its byte i is at
+// ee_byte_addr(i) on a big-endian host)
 int32_t snd_command_sync_bytes(uint32_t cmd, int32_t size, const uint8_t* data) {
-    for (int32_t i = 0; i < size; ++i) sb(SYNC_SEND + static_cast<uint32_t>(i), data[i]);
+    for (int32_t i = 0; i < size; ++i) sb(SYNC_SEND + static_cast<uint32_t>(i), data[ee_byte_addr(static_cast<uint32_t>(i))]);
     while (lw(PEND) != 0) {
         snd_flush();
         FlushCache(0);
@@ -293,8 +295,8 @@ int32_t snd_command_sync_bytes(uint32_t cmd, int32_t size, const uint8_t* data) 
 }
 // orig: 0x0012e548 (the data read from EE memory)
 int32_t snd_command_sync(uint32_t cmd, int32_t size, uint32_t data) {
-    std::vector<uint8_t> b(static_cast<size_t>(size > 0 ? size : 0));
-    for (int32_t i = 0; i < size; ++i) b[static_cast<size_t>(i)] = lbu(data + static_cast<uint32_t>(i));
+    std::vector<uint8_t> b((static_cast<size_t>(size > 0 ? size : 0) + 3) & ~size_t{3});  // (laid out as EE memory: whole words)
+    for (int32_t i = 0; i < size; ++i) b[ee_byte_addr(static_cast<uint32_t>(i))] = lbu(data + static_cast<uint32_t>(i));
     return snd_command_sync_bytes(cmd, size, b.data());
 }
 
@@ -332,7 +334,7 @@ void snd_command_bytes(uint32_t cmd, int32_t size, const uint8_t* data, uint32_t
     sh(p, static_cast<uint16_t>(cmd));
     sh(p + 2, static_cast<uint16_t>(size));
     p += 4;
-    for (int32_t i = 0; i < size; ++i) sb(p + static_cast<uint32_t>(i), data[i]);
+    for (int32_t i = 0; i < size; ++i) sb(p + static_cast<uint32_t>(i), data[ee_byte_addr(static_cast<uint32_t>(i))]);  // (laid out as EE memory)
     sw(LEFT + cur * 4, static_cast<uint32_t>(lw(LEFT + cur * 4) - s));
     const uint32_t e = lwu(CBS + cur * 4) + lwu(lwu(BUFS + cur * 4)) * 0x10;
     sw(e, cb);
@@ -341,8 +343,8 @@ void snd_command_bytes(uint32_t cmd, int32_t size, const uint8_t* data, uint32_t
 }
 // orig: 0x0012e6e0 (the data read from EE memory)
 void snd_command(uint32_t cmd, int32_t size, uint32_t data, uint32_t cb, uint64_t cbdata) {
-    std::vector<uint8_t> b(static_cast<size_t>(size > 0 ? size : 0));
-    for (int32_t i = 0; i < size; ++i) b[static_cast<size_t>(i)] = lbu(data + static_cast<uint32_t>(i));
+    std::vector<uint8_t> b((static_cast<size_t>(size > 0 ? size : 0) + 3) & ~size_t{3});  // (laid out as EE memory: whole words)
+    for (int32_t i = 0; i < size; ++i) b[ee_byte_addr(static_cast<uint32_t>(i))] = lbu(data + static_cast<uint32_t>(i));
     snd_command_bytes(cmd, size, b.data(), cb, cbdata);
 }
 

@@ -1,5 +1,7 @@
 #include <formats/ratchet_executable.h>
 
+#include "io/host_endian.h"
+
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
@@ -56,6 +58,7 @@ RatchetExecutable parse_ratchet_executable(std::span<const std::byte> data) {
         const int index = static_cast<int>(exe.sections.size());
         OverlayBlockHeader hdr;
         std::memcpy(&hdr, data.data() + pos, sizeof(hdr));
+        le_fix_words32(hdr);  // (the PS2's bytes: io/host_endian.h)
 
         if (index == 0) {
             exe.entry_point = hdr.entry;
