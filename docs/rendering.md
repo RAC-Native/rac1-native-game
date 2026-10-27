@@ -548,7 +548,26 @@ it back into its own memory (`gs_exec_store_image`: the pause menu's picture, `m
 so the uploads - libgraph's and the chain's - are written into its 4 MB with the GS's layouts. Nothing is
 drawn into it. The textures the 2D and the effects sample are decoded from it at their first use and
 kept while the bytes they read are unchanged (a texture the game uploads again unchanged is the same
-image); the GPU textures are made once per decoded image. These caches are emptied at each level change.
+image). The cache's key is what the decode reads: TEX0's base, width, format and size, its CLUT fields only for an
+indexed format, TEXA only for a 16 or 24-bit texture or a 16-bit CLUT (not the texture function, TCC or CLD: a texture
+drawn with another function is the same image). The bytes a texture reads are followed as a range, so a change inside
+that range decodes it again even when its texels end up as they were (written back, or bytes between them that it does
+not read): when the pixels come out the same, the image is kept, with its id. The title's menus' textures are decoded
+again so every frame; before this check each frame made a new image of each of them, and a new GPU texture of each image: about 8 a frame, 1835 held at the first level change of a boot to
+Kerwan (2293 in a windowed run with the title shown longer), 92 MB. Now 9.
+
+The 2D's GPU textures are made once per decoded image, by its id. When the image is gone (the cache replaced it, a texture
+the game changed, and no frame holds it any more) or after 600 calls unused, its GPU texture goes back to a pool by size;
+the next image of that size takes it and is uploaded into it (`glTexSubImage2D`; in Vulkan a copy in the frame's command
+buffer, whose barriers order it after the draws, this frame's and the earlier frames' still on the queue, that sampled it
+before), so an image that changes every frame keeps the same few textures, and no texture is made or destroyed in a steady
+state. The pool's textures unused for 600 calls are destroyed. These caches are emptied at each level change.
+A render target is the game's frame page, and the game may draw into one page at two widths in a frame (the pause menu
+does, every frame); the target was then made again at each change of size, twice a frame. Its buffers of the other size are
+kept instead, by page and size, and taken back (the colour cleared as a new one is, Vulkan's depth too); they are dropped
+at a level change.
+`RAC1_2D_TEX_STATS=N` prints the counts every N calls (made, reused, destroyed, held, pooled, their memory, by source).
+The movies do not go through it: their picture is one streaming texture of the host's, filled each frame.
 
 **Drawing it** (`src/game/render/mrp_2d.cpp`). A call builds the vertices and the draw runs on the CPU
 first, the same for OpenGL and Vulkan - the widened view's rules ([The 2D in a widened view](#the-2d-in-a-widened-view)),

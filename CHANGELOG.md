@@ -22,6 +22,10 @@ What changed in each release. Releases are source only: you build the game with 
   window larger than the PS2's: the panels took the nearest filter, the moby programs' last texture state was missing).
 - The menus' render targets (the Vendor's monitors, the pause menu's item models) are drawn at the window's scale: their text
   and models as sharp as the rest of the 2D (`RAC1_2D_RT_SCALE=1` for the PS2's size, the original's softer look).
+- The 2D's textures are kept and reused: a texture decoded again with the same pixels (the title's menus', every frame) stays
+  the same image, and a changed image refills a free GPU texture of its size; the boot to Kerwan held 1835 GPU
+  textures (2293 in a windowed run) where it now holds 9, the pause menu made a texture and remade a render target every frame
+  and now makes none. The same pictures. `RAC1_2D_TEX_STATS` counts them.
 - New Game: Experimental turns on every graphics enhancement at its top (GTAO, Sun Rays High, Surface Detail High, Ambient
   Particles High; Original and Modern turn them off); Modern and Experimental turn on Buy All Ammo, Original off.
 - Lights: Anya-Thoughtmane's second lighting pass (#102) on Veldin to Rilgar: emissive surfaces, lamps by class and by hand, merged with ours.

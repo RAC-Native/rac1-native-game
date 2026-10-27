@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 342 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 343 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 257 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 258 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 64 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -61,6 +61,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 |---|---|---|
 | `RAC1_2D_EDGES` | integer pixels; default off | Prints the 2D drawn within that many pixels of the frame's edges that the overscan crop applies to, with its box (how the crop's margins were chosen). |
 | `RAC1_2D_RT_SCALE` | integer: 1 = the PS2's resolution, 2-8 = that many times, 0 = the window's scale (its height over the frame's, rounded up); default 0 | The MRP's 2D: the size of the render targets the menus draw panels into (the Vendor's monitors, the pause menu's item models), for sharper text and models at large window sizes (the look changes: the monitors' static and scan lines are finer). See [Rendering](rendering.md#the-2d). |
+| `RAC1_2D_TEX_STATS` | integer N calls; unset = off | The MRP's 2D: prints a `[2d-tex]` line every N calls of its drawing (a few per frame) with its GPU textures' churn since the start: the textures made, taken back from the pool of free ones, destroyed, the render targets made or resized, the textures held and pooled and their memory (now and the peak), then the textures made and reused since the last line by source (the sampled TEX0's format, size and base). See [Rendering](rendering.md#the-2d). |
 | `RAC1_ANIM_FIRST` | integer; default 0 | Only in the "animsheet" simulated-input script: the number of the first hero animation set to play (each set runs 16 frames), used to make animation contact sheets. |
 | `RAC1_ANIM_FREEZE` | set (any value) = on; default off | Only in the "animsheet" script: at frame 200 switches off the hero's own update so the forced animations play without the game moving him. |
 | `RAC1_AO` | integer: 0 off, 1 SSAO, 2 SSAO+, 3 HBAO, 4 GTAO, 5 GTAO at half resolution, 6 SSAO, 7 SSAO+, 8 HBAO at half resolution; default 0 (the Options > Graphics Ambient Occlusion setting is used unless this is set) | Forces the ambient occlusion mode, overriding the menu setting, for comparison and testing. |

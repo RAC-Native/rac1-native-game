@@ -319,8 +319,20 @@ uint32_t LocalMemory::texel(uint64_t tex0, uint64_t texa, int x, int y) const {
     return entry;
 }
 
+// (the image's key: the TEX0 / TEXA bits the decode reads. TFX, TCC and CLD never; the CLUT's fields only for an indexed format;
+// TEXA only for a 16 / 24-bit texture or a 16-bit CLUT. A texture drawn with another texture function is the same image.)
+// orig: (host)
+std::pair<uint64_t, uint64_t> LocalMemory::texture_key(uint64_t tex0, uint64_t texa) {
+    const uint32_t psm = bits(tex0, 20, 6), cpsm = bits(tex0, 51, 4);
+    const bool indexed = psm == T8 || psm == T8H || psm == T4 || psm == T4HL || psm == T4HH;
+    uint64_t k = tex0 & 0x3ffffffffull;  // TBP0, TBW, PSM, TW, TH
+    if (indexed) k |= tex0 & (0x1ffffffull << 37);  // CBP, CPSM, CSM, CSA
+    const bool uses_texa = psm == CT24 || psm == CT16 || psm == CT16S || (indexed && cpsm != CT32);
+    return {k, uses_texa ? texa : 0};
+}
+
 std::shared_ptr<const TexImage> LocalMemory::texture_at_kick(uint64_t tex0, uint64_t texa) {
-    TexSnap& s = tex_snaps_[{tex0 & 0x1fffffffffffffffull, texa}];  // CLD not part of the image
+    TexSnap& s = tex_snaps_[texture_key(tex0, texa)];
     if (s.img != nullptr) {
         if (s.gen == gen_) return s.img;
         if (!snap_stale(s)) {  // the memory it read is as it was: the same image
@@ -330,18 +342,15 @@ std::shared_ptr<const TexImage> LocalMemory::texture_at_kick(uint64_t tex0, uint
             return s.img;
         }
     }
-    auto img = std::make_shared<TexImage>();
-    img->id = ++tex_ids_;
-    img->w = 1 << std::min(10u, bits(tex0, 26, 4));
-    img->h = 1 << std::min(10u, bits(tex0, 30, 4));
-    img->px.resize(static_cast<size_t>(img->w) * img->h);
+    const int w = 1 << std::min(10u, bits(tex0, 26, 4)), h = 1 << std::min(10u, bits(tex0, 30, 4));
+    dec_.resize(static_cast<size_t>(w) * h);
     rd_track_ = true;
     for (int k = 0; k < 2; ++k) {
         rd_lo_[k] = 0xffffffffu;
         rd_hi_[k] = 0;
     }
-    for (int y = 0; y < img->h; ++y)
-        for (int x = 0; x < img->w; ++x) img->px[static_cast<size_t>(y) * img->w + x] = texel(tex0, texa, x, y);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) dec_[static_cast<size_t>(y) * w + x] = texel(tex0, texa, x, y);
     rd_track_ = false;
     for (int k = 0; k < 2; ++k) {
         s.rd_lo[k] = rd_lo_[k];
@@ -350,6 +359,15 @@ std::shared_ptr<const TexImage> LocalMemory::texture_at_kick(uint64_t tex0, uint
     s.gen = gen_;
     wr_open_ = false;
     s.seq = wr_seq_;
+    // (the memory changed within the range of bytes it reads - its texels written back as they were, or bytes between them that it
+    // does not read: the title's menus' textures, every frame - and the same pixels decoded: the image kept, its id with it, so that
+    // the drawers' GPU textures made from it are kept too)
+    if (s.img != nullptr && s.img->w == w && s.img->h == h && s.img->px == dec_) return s.img;
+    auto img = std::make_shared<TexImage>();
+    img->id = ++tex_ids_;
+    img->w = w;
+    img->h = h;
+    img->px = dec_;
     s.img = img;
     return img;
 }
