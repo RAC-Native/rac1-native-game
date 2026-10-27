@@ -71,6 +71,8 @@ set(HOST_SRC
     wiiu_stubs.cpp
     wiiu_main.cpp
     wiiu_sampler.cpp
+    wiiu_input.cpp
+    wiiu_audio.cpp
 )
 
 add_executable(rac1_wiiu ${HOST_SRC} ${RUNTIME_SRC} ${FORMATS_SRC} ${SETUP_SRC} ${GAME_SRC} ${GEN_SRC} ${SND989_SRC})

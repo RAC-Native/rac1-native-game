@@ -134,6 +134,10 @@
 #include <runtime/level/level_loader.h>
 #include "host_priority.h"
 #include "host_input.h"
+#if defined(__WIIU__)
+rac1::host_input::HostState rac1_wiiu_pad_state();  // ports/wiiu/game/wiiu_input.cpp: the GamePad and the Pro / Classic controllers
+bool rac1_wiiu_frame();                             // (ProcUI each host frame: false when the application closes)
+#endif
 #include "sample_prof.h"
 #include "profiler/host_profiler.h"
 #include "sim_autopilot.h"
@@ -1719,6 +1723,18 @@ void pad_packet(GLFWwindow* win, uint64_t frame) {
         rx = o.rx;
         ry = o.ry;
     }
+#if defined(__WIIU__)
+    else if (!simulated) {  // (the Wii U: no window, its pads read through the port)
+        devices = rac1_wiiu_pad_state();
+        have_devices = true;
+        const hi::PadOutput o = hi::compute(g_bindings, devices);
+        held = o.held;
+        lx = o.lx;
+        ly = o.ly;
+        rx = o.rx;
+        ry = o.ry;
+    }
+#endif
     // (testing) RAC1_SIM_DELAY=N: the RAC1_SIM_INPUT script starts N frames late (after a level's arrival scene)
     static const uint64_t sim_delay = std::getenv("RAC1_SIM_DELAY") != nullptr ? std::strtoull(std::getenv("RAC1_SIM_DELAY"), nullptr, 0) : 0;
     if (const char* sim = frame >= sim_delay ? std::getenv("RAC1_SIM_INPUT") : nullptr) {
@@ -2862,6 +2878,10 @@ int main(int argc, char** argv) {
         if (no_graphics) {  // (nothing prepared nor drawn: the next game frame)
             fprof.end_frame();
             if (max_frames != 0 && frame >= max_frames) break;
+#if defined(__WIIU__)
+            if (!rac1_wiiu_frame()) break;  // (the HOME menu's closing)
+#endif
+            if (realtime_test && steps == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));  // (ahead of the clock: no busy loop)
             continue;
         }
         // a host frame that ran no game frame (it came sooner than 1/60 s: a jitter in the host's timing, a faster display)

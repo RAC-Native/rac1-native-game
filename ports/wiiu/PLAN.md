@@ -284,3 +284,16 @@ this morning).
   line, ee_read / ee_write / fin_lanes always inlined (.text 25.5 -> 28 MB). Espresso's 32 KB instruction cache: code
   size costs; every change is measured on the console before it stays.
 - Left: a music stream's start still costs one ~100 ms read (handles parked along the image would cut it).
+
+### First played run (same day)
+
+ports/wiiu/game/wiiu_input.cpp: the GamePad (VPAD) and the Pro / Classic controllers (KPAD) as one gamepad in GLFW's layout
+for the host's bindings (pad_packet's Wii U branch), and ProcUI each host frame (HOME closes the game). wiiu_audio.cpp:
+the game's IOP's output (RAC1_IOP_MIRROR=0, pushed every vsync) into two looping LPCM16 buffers played by two AX voices on
+the TV and the GamePad. With RAC1_REALTIME=1 RAC1_FRAMES=7200, Daino played Veldin on the console (no picture: the log's
+screen): the controls answer, the sound plays (the music, the enemies), HOME closes. It stutters: near the start of
+Veldin a frame costs ~25 ms (~40 fps), so the game runs slower than real time and the sound's writer falls behind the
+voices (1199 resyncs in 3 minutes).
+
+Next for the sound: the IOP's mirror on a core of its own (as on the PC, ADR 0013: audio_out.cpp's iop_loop), which
+plays on alone when the game is late and takes 989snd's synthesis (~4%) off the game's thread.

@@ -192,6 +192,8 @@ void iso_check() {
 int read_settings() {
     setenv("RAC1_HEADLESS", "1", 1);
     setenv("RAC1_NO_GRAPHICS", "1", 1);
+    setenv("RAC1_IOP_MIRROR", "0", 1);    // (the game's thread pushes its IOP's output: wiiu_audio.cpp; run.cfg may say otherwise)
+    setenv("RAC1_AUDIO_DEVICE", "ax", 1); // (a headless run plays its sound only with a device named; RAC1_NO_AUDIO=1 turns it off)
     std::FILE* f = std::fopen("run.cfg", "r");
     if (f == nullptr) return 0;
     int n = 0;

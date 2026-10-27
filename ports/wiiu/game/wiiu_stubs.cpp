@@ -1,15 +1,5 @@
-// What the Wii U build leaves out, as functions that do nothing: the audio device (miniaudio; the game's sound is
-// still made by 989snd every vsync, the IOP's state the game reads back included, only not played yet). Host code.
+// What the Wii U build leaves out, as functions that do nothing (the audio device is wiiu_audio.cpp's). Host code.
 #include <cstdint>
-
-bool audio_out_start(int) { return false; }
-void audio_out_push(const int16_t*, const int16_t*, int) {}
-void audio_out_set_channels(int) {}
-void audio_out_set_alone(bool) {}
-void audio_out_step(bool) {}
-void audio_out_stop() {}
-int audio_out_channels() { return 2; }
-uint64_t audio_out_alone_total() { return 0; }
 
 // The threads' priorities (rtkit on Linux): the console's scheduler as it is
 namespace rac1 {
