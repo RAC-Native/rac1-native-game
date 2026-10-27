@@ -20,6 +20,7 @@
 #include <game/ovl/hydro.h>
 #include <game/ovl/screen_fade.h>
 #include <game/ovl/vendor_frame.h>
+#include <game/enhance/vendor_buy_all.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/checkpoint.h>

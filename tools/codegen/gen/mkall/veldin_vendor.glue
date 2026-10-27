@@ -1,0 +1,8 @@
+// The vendor's screens only (src/game/ovl/vendor_tr.cpp; read after tools/codegen/vendor_v.glue, whose lines these replace):
+// the calls the Vendor's "All Ammo" entry steps in at (src/game/enhance/vendor_buy_all.h), each given the call site's return
+// address. With Options > Advanced > Buy All Ammo off each calls the game's function with the same arguments.
+0x00116248: { const std::vector<uint64_t> va = {a2.lo, a3.lo, t0.lo, t1.lo, t2.lo, t3.lo}; set32(v0, static_cast<uint32_t>(vendor_buy_all_sprintf(ra.w(), a0.w(), a1.w(), va))); }
+0x00203ad8: set32(v0, static_cast<uint32_t>(vendor_buy_all_text(ra.w(), static_cast<int32_t>(a0.w()))));
+0x0023aef8: vendor_buy_all_camera_reset(ra.w());
+0x0023b208: set32(v0, static_cast<uint32_t>(vendor_buy_all_hud_frame(ra.w(), a0.w(), static_cast<int32_t>(a1.w()), s0.w(), s1.w())));
+0x0023b4d8: vendor_buy_all_hud_sprite(ra.w(), static_cast<int32_t>(a0.w()), static_cast<int32_t>(a1.w()), static_cast<int32_t>(a2.w()), static_cast<int32_t>(a3.w()), static_cast<int32_t>(t0.w()), t1.lo);

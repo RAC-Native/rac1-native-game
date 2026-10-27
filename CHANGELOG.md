@@ -6,9 +6,10 @@ What changed in each release. Releases are source only: you build the game with 
 ## Unreleased
 
 ### Gameplay
-- Buy All Ammo (Options > Advanced, Off by default): an All Ammo entry before the first item of the Vendor's list, as in Up Your
-  Arsenal: one purchase fills every weapon's ammo through the game's own purchase steps, or with too few bolts as much as they pay
-  for, weapon by weapon in the list's order. See [Advanced options](docs/advanced.md#buy-all-ammo).
+- Buy All Ammo (Options > Advanced, Off by default): an All Ammo entry first in the Vendor's list, as in Up Your Arsenal: one
+  purchase fills every weapon's ammo through the game's own purchase steps, or with too few bolts as much as they pay for, weapon
+  by weapon in the list's order. The entry is an item of the game's own list, so it scrolls, highlights and wraps as the weapons
+  do, and the Vendor's and the PDA's screens open on it. See [Advanced options](docs/advanced.md#buy-all-ammo).
 
 ### Graphics
 - The modern renderer no longer runs the GS replica: it reads the frame's chain itself (`mrp_chain`, on a worker of its own) and
