@@ -813,6 +813,25 @@ struct FrozenFrame {
     }
 };
 
+// orig: (host) Vulkan: the last frame of the game shown kept where it was drawn (the 3D's colour image, untouched until the next
+// frame's start clears it) instead of copied into `last_shown` every frame (a full-window copy: 0.6 ms of GPU at 5120 x 1440); the
+// copy made only when something reads it - a frame that draws over it (a fade, the pause menu, a blocking loop), the pause menu's
+// store - before that clear. Not with the debug menu or its overlays drawn over the frame after the capture (they would be in it).
+// RAC1_LAZY_CAPTURE=0: copied every frame, as before
+struct LazyShown {
+    bool pending = false;  // `dst`'s picture is still the main colour image's (w x h)
+    int w = 0, h = 0;
+    FrozenFrame* dst = nullptr;
+    void resolve() {
+        if (!pending) return;
+        pending = false;
+        if (dst != nullptr && rac1::vk::is_active() && rac1::vk::main_color_image().width == static_cast<uint32_t>(w) &&
+            rac1::vk::main_color_image().height == static_cast<uint32_t>(h))
+            dst->capture(w, h);
+    }
+};
+LazyShown g_lazy_shown;
+
 // Options > Graphics > Render Resolution: the MRP's 3D (world, sky, mobys) drawn into a buffer of its own at a
 // fraction of the window's resolution (0.5 .. 2), then put on the window - its colour scaled (linear), its depth (nearest: the
 // GS replica's 3D effects are tested against it) - before the effects and the 2D (HUD, text, menus) are drawn at the window's
@@ -1034,6 +1053,7 @@ struct ScenePicture {
         pf_valid = true;
     }
     void store(uint32_t bp, uint32_t psm) {
+        g_lazy_shown.resolve();  // (the last picture shown, still in the 3D's colour image: copied now)
         const bool from_shown = !pending && shown != nullptr && shown->valid();
         if ((!pending && !from_shown) || psm != 0) return;
         const uint32_t frame = lwu(0x0013cf20);  // FRAME_1 of the frame's draw environment 0x13cf10 (render_passes.cpp)
@@ -3429,6 +3449,9 @@ int main(int argc, char** argv) {
             const bool menu_mode = fd.menu_mode, title = fd.title, story = fd.story;
             const std::vector<uint8_t>* movie_pic = fd.movie_pic;
             const int mw = fd.mw, mh = fd.mh;
+            // (a frame that is not the game's own may show the last one: kept in the 3D's colour image until now, copied before the clear)
+            if (menu_mode || fd.fade || fd.vendor_pic || title || movie_pic != nullptr || fd.exiting) g_lazy_shown.resolve();
+            else g_lazy_shown.pending = false;  // (a frame of the game: it will be the last shown)
             if (menu_mode || fd.vendor_pic || title || movie_pic != nullptr || fd.exiting) rac1::gs::chain_join();  // (those draws may use the GS replica)
             if (rac1::vk::is_active()) {
                 rac1::vk::begin_frame(w, h, 0.02f, 0.02f, 0.04f, 1.0f);  // (colour, depth and stencil cleared)
@@ -3652,7 +3675,19 @@ int main(int argc, char** argv) {
             if (!menu_mode && !fd.fade && !fd.vendor_pic && !title && movie_pic == nullptr && !fd.exiting) {
                 // the last frame of the game shown: what the frame buffer holds when the pause menu's start stores it (the
                 // frame drawn when the menu opens is the gameplay chain drawn as a menu frame here: not that one)
-                last_shown.capture(w, h);
+                static const bool lazy_on = std::getenv("RAC1_LAZY_CAPTURE") == nullptr || std::atoi(std::getenv("RAC1_LAZY_CAPTURE")) != 0;
+                bool lazy = lazy_on && rac1::vk::is_active() && last_shown.valid() && last_shown.w == w && last_shown.h == h;
+#ifdef RAC1_DEVTOOLS
+                lazy = lazy && !((!headless || menu_shot) && dt::dev_menu_drawing());  // (drawn over the frame after this point)
+#endif
+                if (lazy) {
+                    g_lazy_shown.pending = true;
+                    g_lazy_shown.w = w;
+                    g_lazy_shown.h = h;
+                    g_lazy_shown.dst = &last_shown;
+                } else {
+                    last_shown.capture(w, h);
+                }
                 displayed_is_last_shown = true;
                 g_scene_pic.pf_valid = false;
                 g_scene_pic.shown = &last_shown;
@@ -3661,6 +3696,7 @@ int main(int argc, char** argv) {
                 g_scene_pic.shown_view[2] = vw;
                 g_scene_pic.shown_view[3] = vh;
             } else {
+                g_lazy_shown.resolve();  // (not expected: resolved at the frame's start)
                 displayed.capture(w, h);  // (the picture shown: what a screen fade darkens)
                 displayed_is_last_shown = false;
             }
@@ -3866,6 +3902,7 @@ int main(int argc, char** argv) {
     if (!headless || menu_shot) dt::dev_menu_shutdown();
 #endif
     if (rac1::vk::is_active()) {
+        g_lazy_shown.pending = false;
         displayed.vk_reset();
         last_shown.vk_reset();
         g_scene_pic.vk_reset();

@@ -774,6 +774,15 @@ void main() {
 }
 )";
 
+// orig: (host) the modern lighting's second pass of an alpha-tested batch (AFAIL RGB_ONLY: its failing pixels, no depth written)
+// tested LESS where the GS's test is GEQUAL (the host's LEQUAL): the pixels where the batch's first pass wrote its own depth -
+// those the second pass discards (their alpha passes) - not shaded again, the driver's early depth test leaving them out. Only a
+// failing pixel lying exactly on another surface's depth is lost (a few pixels in a million: docs/performance.md). 0: LEQUAL, as
+// the original lighting keeps it (RAC1_MRPW_P2_LESS)
+const bool g_p2_less = [] {
+    const char* e = std::getenv("RAC1_MRPW_P2_LESS");
+    return e == nullptr || std::atoi(e) != 0;
+}();
 GLuint g_prog = 0, g_prog_gpu = 0;
 GLuint g_prog_l = 0, g_prog_gpu_l = 0;  // the modern lighting's variants (SH_POINTS)
 GLuint g_prog_e = 0, g_prog_gpu_e = 0;  // the shadow pass's depth-only variants (early fragment tests: the opaque batches)
@@ -2570,6 +2579,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
             auto bind_pass = [&](int pass, bool dmask, int cmask) {
                 push.uAtPass = pass;
                 pk.depth_write = dmask;
+                pk.depth_compare = (g_p2_less && lit_prog && pass == 2 && !dmask && zcmp == VK_COMPARE_OP_LESS_OR_EQUAL) ? VK_COMPARE_OP_LESS : zcmp;
                 pk.color_mask = cmask == 0 ? 0xF : cmask == 2 ? 0 : 0x7;
                 vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, get_world_vk_pipeline(pk));
                 vkCmdPushConstants(cb, g_vk_world.pipe_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
@@ -2845,8 +2855,11 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         static const bool one_pass = std::getenv("RAC1_MRPW_ONEPASS") != nullptr;  // (testing: the failing pixels not drawn)
         if (rk.pass2 != 0 && !one_pass) {
             const uint32_t afail = rk.pass2;
+            const bool less = g_p2_less && variant.on && !(afail == 2 && zwrite) && fld(k.test, 16, 1) != 0 && fld(k.test, 17, 2) == 2;  // (as the Vulkan path: g_p2_less)
+            if (less) glDepthFunc(GL_LESS);
             set_pass(2, afail == 2 && zwrite, afail == 2 ? 2 : afail == 3 ? 3 : 0);
             draw();
+            if (less) glDepthFunc(GL_LEQUAL);
         }
         cur = rk;
         have = true;

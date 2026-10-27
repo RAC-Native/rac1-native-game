@@ -2242,6 +2242,9 @@ void dev_menu_game_frame() {
             if (ammo_max(id) > 0 && ee_read<uint8_t>(OWNED + static_cast<uint32_t>(id)) != 0) w32(AMMO + static_cast<uint32_t>(id) * 4, ammo_max(id));
 }
 
+// orig: (host) see dev_menu.h
+bool dev_menu_drawing() { return g_menu && (g_settings.open || g_settings.show_stats || profiler_overlay_wanted()); }
+
 void dev_menu_draw(double update_ms, double frame_ms) {
     g_user_light_selected = -1;  // (the Lights tab's selection pulses while the tab is shown)
     g_class_light_selected = -1;

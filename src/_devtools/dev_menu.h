@@ -61,5 +61,7 @@ bool dev_hoverboard_on();
 void dev_hoverboard_apply();  // the pending change, between game frames (dev_menu_game_frame calls it; the headless loop too)
 // Draws the menu (and the stats overlay) over the frame. update_ms: the game's update time.
 void dev_menu_draw(double update_ms, double frame_ms);
+// Whether dev_menu_draw draws anything now (the menu, the stats or the profiler's overlay): the frame capture's choice (orig_main.cpp)
+bool dev_menu_drawing();
 
 }  // namespace rac1::devtools

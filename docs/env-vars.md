@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 334 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 337 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 250 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 253 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 63 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -61,7 +61,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_2D_EDGES` | integer pixels; default off | Prints the 2D drawn within that many pixels of the frame's edges that the overscan crop applies to, with its box (how the crop's margins were chosen). |
 | `RAC1_ANIM_FIRST` | integer; default 0 | Only in the "animsheet" simulated-input script: the number of the first hero animation set to play (each set runs 16 frames), used to make animation contact sheets. |
 | `RAC1_ANIM_FREEZE` | set (any value) = on; default off | Only in the "animsheet" script: at frame 200 switches off the hero's own update so the forced animations play without the game moving him. |
-| `RAC1_AO` | integer: 0 off, 1 SSAO, 2 SSAO+, 3 HBAO, 4 GTAO, 5 GTAO at half resolution; default 0 (the Options > Graphics Ambient Occlusion setting is used unless this is set) | Forces the ambient occlusion mode, overriding the menu setting, for comparison and testing. |
+| `RAC1_AO` | integer: 0 off, 1 SSAO, 2 SSAO+, 3 HBAO, 4 GTAO, 5 GTAO at half resolution, 6 SSAO, 7 SSAO+, 8 HBAO at half resolution; default 0 (the Options > Graphics Ambient Occlusion setting is used unless this is set) | Forces the ambient occlusion mode, overriding the menu setting, for comparison and testing. |
 | `RAC1_AO_RADIUS` | integer in hundredths of a unit; default per mode (150 SSAO / SSAO+, 300 HBAO / GTAO) | Overrides the ambient occlusion's reach in every mode, for tuning. |
 | `RAC1_AO_STRENGTH` | integer percent; default per mode (100 SSAO, 120 SSAO+, 200 HBAO, 250 GTAO) | Overrides the ambient occlusion's strength in every mode, for tuning. |
 | `RAC1_AO_INTENSITY` | integer percent 0-200; default 75 (Options > Graphics > AO Intensity) | Overrides the ambient occlusion's intensity: every mode's strength scaled by it. |
@@ -107,6 +107,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_HERO_TRACE` | set (any value) = on; default off | Prints the hero's state in the drawn scene each frame. |
 | `RAC1_HUD` | 4:3, 16:9, 21:9, 32:9 or fit; unset = Options > Graphics > HUD (4:3 in a headless run) | The HUD's width in a widened view (Options > Graphics > HUD): its left and right elements moved toward the edges of a box of that shape, never wider than the view. Needs a widened view (RAC1_VIEW_MODE=2, or the 16:9 frame). |
 | `RAC1_JOBS` | integer N (1 .. 64); default about half the logical CPUs less two, at most 8 | The threads the host's job pool spreads the renderer's scene building over (the moby chains' decoding, the moby draw lists' transforms: `src/jobs`), the main thread included; 1 runs it all on the main thread, for comparison (the output is the same on any number of threads). |
+| `RAC1_LAZY_CAPTURE` | 0 = off; default 1 | Vulkan: the last frame of the game is copied for the pause menu, the screen fades and the stores only when one of them reads it (it stays in the 3D's colour image until the next frame clears it). 0 copies it every frame, as before (0.6 ms of GPU at 5120 x 1440). See [Performance](performance.md#gpu-round-3). |
 | `RAC1_LIGHTS_DIR` | directory; default data/lights | Directory of the per-level user light files (levelNN.txt) loaded and saved by the in-game light editor. |
 | `RAC1_LIGHTS_JUMPS` | set (any value) = on; default off | Prints a line whenever a point light's weight changes abruptly between two frames, to find lights popping on and off. |
 | `RAC1_LIGHTS_WHITE` | set (any value) = on; default off | With the modern lighting, prints the tie classes partly textured near white (neon panels the automatic emitters do not take), their share and instance count. |
@@ -132,6 +133,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_MRPW_MIP` | "faithful" = the GS's mip level choice; anything else = full texture; default full texture | Chooses how the modern world renderer selects texture mip levels. |
 | `RAC1_MRPW_ONEPASS` | any value = on; default off | Skips the second (alpha-test failing pixels) pass in the modern world renderer, so those pixels are not drawn. |
 | `RAC1_MRPW_ONLY` | integer program index; default -1 = all | Draws only the packets of one VU1 world program, to isolate it. |
+| `RAC1_MRPW_P2_LESS` | 0 = off; default 1 | With the modern lighting, the second pass of an alpha-tested world batch (its failing pixels, no depth written) is depth-tested LESS instead of LEQUAL, so the pixels its first pass already drew are not shaded again. 0 keeps LEQUAL (a failing pixel lying exactly on another surface's depth drawn, as the original lighting does). See [Performance](performance.md#gpu-round-3). |
 | `RAC1_MRPW_PROJ` | "vu" = projection as the VU1 program does; anything else = the host's projection; default host projection | Chooses which projection the modern world renderer and sky use. |
 | `RAC1_MRPW_SKY_DUMP` | any value = on; default off | Prints the sky's GS register writes (excluding vertices), a few times per run. |
 | `RAC1_MRPW_SKY_NOSKIP` | any value = on; default off | Makes the replica run the sky's range as well, so the sky is drawn twice, for testing. |
@@ -234,6 +236,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_SHADOW_LIGHTS` | any value = on; default off | Prints the level's light sets once, when the lighting first reads them. |
 | `RAC1_SHADOW_MCACHE` | 0 = off; default on | Switches off the cache of moving shadow casters, to compare. |
 | `RAC1_SHADOW_MOBY_DIST` | number of world units; default 0 (the Options Shadow Distance setting applies) | Sets the distance up to which mobys cast shadows, overriding the Options setting. |
+| `RAC1_SHADOW_PART_CULL` | 0 = off; default 1 | The mobys' parts whose bounding sphere lies outside a sun cascade's square are not drawn into it. 0 draws every part within the shadow distance into every cascade, as before (the same maps). |
 | `RAC1_SHADOW_PROF` | any value = on; default off | Measures and prints the GPU time of the shadow pass (cascades and point cubes). |
 | `RAC1_SHADOW_REF` | x,y,z[,radius[,every]]; unset = off | Renders a depth image of a world-fixed box seen from the sun every frame (or every given number of frames) to shadow_ref_<n>.pgm, to check whether the set of shadow casters changes with the camera. Radius default 25. |
 | `RAC1_SHADOW_REF_NOMOBY` | any value = on; default off | With RAC1_SHADOW_REF, leaves the mobys out of the reference image. |

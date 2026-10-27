@@ -274,7 +274,7 @@ struct State {
 uint32_t value_count(Setting s) {
     switch (s) {
         case S_DISPLAY: case S_FIT: case S_VSYNC: case S_DYN_SHADOWS: case S_MIPS: case S_RENDERER: return 2;
-        case S_AO: return 6;  // Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2
+        case S_AO: return 9;  // Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2, SSAO 1/2, SSAO+ 1/2, HBAO 1/2 (the half resolution's after the full's: the saves' values kept)
         case S_SEC_LIGHTS: return 3;
         case S_SHADOW_DIST: return 4;  // Off, the game's (its point lights per pixel), all (the automatic emitters too)
         case S_WINDOW: return SIZE_COUNT + 1;  // (the last: the current size, when not in the list)
@@ -424,7 +424,7 @@ bool prefs_read(const std::filesystem::path& path) {
         else if (std::strcmp(key, "dynamic_shadows") == 0) gs_.value[S_DYN_SHADOWS] = a != 0;
         else if (std::strcmp(key, "secondary_lights") == 0 && a >= 0 && a < 3) gs_.value[S_SEC_LIGHTS] = a;
         else if (std::strcmp(key, "shadow_distance") == 0 && a >= 0 && a < 4) gs_.value[S_SHADOW_DIST] = a;
-        else if (std::strcmp(key, "ambient_occlusion") == 0 && a >= 0 && a < 6) gs_.value[S_AO] = a;
+        else if (std::strcmp(key, "ambient_occlusion") == 0 && a >= 0 && a < 9) gs_.value[S_AO] = a;
         else if (std::strcmp(key, "texture_detail") == 0) gs_.value[S_MIPS] = a != 0;  // (0 full, 1 original)
         else if (std::strcmp(key, "sun_rays") == 0 && a >= 0 && a < 3) gs_.value[S_SUN_RAYS] = a == 0 ? 0 : a + 1;  // (until 0.4.x: Off, Low, High - Low is Medium now)
         else if (std::strcmp(key, "sun_rays_quality") == 0 && a >= 0 && a < 4) gs_.value[S_SUN_RAYS] = a;
@@ -530,8 +530,8 @@ std::string value_text(Setting s) {
         case S_SHADOW_STR: std::snprintf(b, sizeof b, "%d", SHADOW_STRS[v]); return b;  // (the font's '%' is a button)
         case S_AO_STR: std::snprintf(b, sizeof b, "%d", AO_STRS[v]); return b;
         case S_AO: {
-            static constexpr const char* AO_NAMES[] = {"SSAO", "SSAO+", "HBAO", "GTAO", "GTAO 1/2"};
-            return v <= 0 ? t[T_OFF] : AO_NAMES[std::min(v, 5) - 1];
+            static constexpr const char* AO_NAMES[] = {"SSAO", "SSAO+", "HBAO", "GTAO", "GTAO 1/2", "SSAO 1/2", "SSAO+ 1/2", "HBAO 1/2"};
+            return v <= 0 ? t[T_OFF] : AO_NAMES[std::min(v, 8) - 1];
         }
         case S_MIPS: return v != 0 ? std::string(t[T_ORIGINAL]) + " (PS2)" : std::string(t[T_FULL]);
         case S_FOV: std::snprintf(b, sizeof b, "x%d.%02d", FOVS[v] / 100, FOVS[v] % 100); return b;
@@ -835,7 +835,7 @@ bool graphics_save_item(uint32_t id, const uint8_t* data, uint32_t size) {
         case 39: if (v < 2) gs_.value[S_DYN_SHADOWS] = v; break;
         case 40: if (v < 3) gs_.value[S_SEC_LIGHTS] = v; break;
         case 41: if (v < 4) gs_.value[S_SHADOW_DIST] = v; break;
-        case 42: if (v < 6) gs_.value[S_AO] = v; break;
+        case 42: if (v < 9) gs_.value[S_AO] = v; break;
         case 43: if (v < 2) gs_.value[S_MIPS] = v; break;
         case 44: return true;  // (the Overscan row's until 0.4: ignored, the full frame always shown)
         case 46: if (v < 3) gs_.value[S_SUN_RAYS] = v == 0 ? 0 : v + 1; break;  // (until 0.4.x: Off, Low, High - Low is Medium now)

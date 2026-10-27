@@ -774,7 +774,7 @@ Options > Graphics > Ambient Occlusion (`mrp_lighting_ao_pass`): a screen-space 
 pass after the mobys and before the effects, the ambient particles and the 2D (so those get none). The
 depth buffer is copied to a texture; per pixel the world position comes from the inverse
 view-projection; the result (8 bits) is blurred within the surface and multiplied into the colour
-(the sky untouched). Five modes:
+(the sky untouched). Four modes, each also at half resolution:
 
 | Mode | Normal | Sampling | Reach, strength | Blur | GPU at 5053 x 1371 |
 |---|---|---|---|---|---|
@@ -783,6 +783,7 @@ view-projection; the result (8 bits) is blurred within the surface and multiplie
 | HBAO | as SSAO+ | 4 directions x 3 steps, the horizon's rise over the surface | 3 units, 200 % | separable | 7.3 ms |
 | GTAO | as SSAO+ | 3 slices x 2 sides x 3 steps, the cosine-weighted visible arc over the horizons, a multi-bounce tint | 3 units, 250 % | separable | 6.9 ms |
 | GTAO 1/2 | as SSAO+ | GTAO at half resolution, upsampled by the blur | as GTAO | separable | 4.4 ms |
+| SSAO 1/2, SSAO+ 1/2, HBAO 1/2 | as their mode | their mode at half resolution, upsampled by the blur as GTAO 1/2 | as their mode | separable (SSAO 1/2 too) | see below |
 
 (Measured on Kerwan's plaza with a Radeon 890M; noisy by a few tenths; before the change below.) The reach is capped on the
 screen: a surface close to the camera samples no further than 4 % of the view's height around it
@@ -802,6 +803,15 @@ The rest of the cost is the depth's own reading (made readable: its compression 
 full-screen passes' memory traffic, not the taps: a temporal GTAO (one of the three slices a frame, the
 two others from the last frame at the point's place in its view, recomputed where the last frame saw
 another surface) was tried and gave about 5 % (kept out).
+
+**The half resolution** (the "1/2" values, Options > Graphics > Ambient Occlusion): the occlusion computed at half the view's width
+and height (a quarter of the pixels), then put on the 3D's pixels by the separable blur's first pass, whose taps are weighted by the
+full resolution's depth (no halo over a silhouette). SSAO 1/2 uses that blur too, not SSAO's 5 x 5 box. The occlusion is a little
+softer; its contact lines a little wider. Rilgar at 5120 x 1440, Vulkan, Radeon 890M (each half mode against its full one, the frame's
+other stages as the clock's reference): SSAO 3.95 to about 2.5 ms, SSAO+ 4.2 to 2.4, HBAO 4.4 to 2.6, GTAO 4.4 to 2.4; OpenGL (its depth
+copied: a fixed cost the half resolution does not reduce) SSAO 4.1 to 3.8, SSAO+ 4.5 to 3.7, HBAO 4.7 to 3.7, GTAO 5.2 to 3.3. The full
+resolution stays the default of every mode. A blur at the half size followed by a depth-aware upsample of its own (one pass at the full
+size instead of two) was tried: on Vulkan about 6 % less than GTAO 1/2's, on OpenGL more, for a slightly different look: not kept.
 
 **AO Intensity** (Options > Graphics, 25 to 125 %, default 75 %) scales the mode's strength (the table's
 strength column is the 100 % one): how dark the occlusion gets, the reach unchanged.
@@ -1017,7 +1027,7 @@ does not turn the lighting on.
 | Shadow Distance | Low, Medium, High, Maximum | Maximum | how far mobys cast sun shadows (40, 80, 140 units, or as far as the cascades reach) |
 | Dynamic Shadows | Off, On | Off | point-light cube shadows |
 | Secondary Lights | Off, Game's, All | All | Game's: the game's point lights per pixel; All: also automatic emitters and hand-placed lights |
-| Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2 | Off | SSAO |
+| Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2, SSAO 1/2, SSAO+ 1/2, HBAO 1/2 | Off | SSAO |
 | AO Intensity | 25 to 125 % | 75 % | the occlusion's darkness: each mode's strength scaled (`ao_intensity` in the preferences, item 47 of a save's block); see [Ambient occlusion](#ambient-occlusion) |
 | Sun Rays | Off, Low, Medium, High | Off | light shafts from the sun through openings, each step more quality and strength (`sun_rays_quality`, item 49; `sun_rays` and item 46 until 0.4.x read with Low as Medium); see [Sun rays](#sun-rays) |
 | Surface Detail | Off, Low, High | Off | the surfaces' materials (metal, wet, puddle, lava, water, mud, quicksand) tagged in the level's file; High adds the reflections and the lava's heat shimmer (`surface_detail`, item 51); see [Materials](materials.md) |
@@ -1050,6 +1060,13 @@ From the project's measurements at 1920x1080 on a shared machine with an integra
 | Ambient occlusion (GPU) | | about 2 ms |
 
 Finding the automatic emitters costs 10 to 50 ms once per level (the survey of every level).
+
+At 5120 x 1440 (Rilgar, Kerwan; [Performance](performance.md#gpu-round-3)) the per-pixel lights, shadows and materials are a small
+part of the world's cost: the world costs about as much per pixel with the lighting Original. With the lighting on, the second pass of
+an alpha-tested batch (its failing pixels, no depth written) is tested LESS rather than LEQUAL, so the pixels its first pass drew are
+not shaded twice (the world 10 to 15 % less; a failing pixel exactly on another surface's depth - a few pixels in a million - no longer
+drawn, `RAC1_MRPW_P2_LESS=0` for LEQUAL). A sun cascade draws only the moby parts whose bounding sphere reaches its square
+(`RAC1_SHADOW_PART_CULL=0` for every part; the same maps).
 
 ## Limits
 
