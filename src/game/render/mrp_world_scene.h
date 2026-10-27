@@ -229,6 +229,12 @@ struct SceneAddrs {
 SceneAddrs scene_addrs();
 void scene_capture(uint32_t chain_start, uint32_t chain_end, SceneInput& in, const SceneAddrs& ad);
 bool scene_build(const WorldIndex& idx, const SceneInput& in, SceneFrame& out, bool reset, bool kicks);
+// orig: (host) the frame's scene without the walker (the Wii U's MRP-lite: the world VU1 programs are not in its build): the host's
+// ties / shrubs of `sf` as the GPU path's packets (as the walk emits them at its passes' ends, emit_static), in the view of the
+// projection A `a` (0x166d00) and the camera; the walker's VU state those packets take - the tie A alpha-test state packet, the shrub
+// A fog constants - read from the overlay's copies the passes' constants UNPACK (game thread: EE memory). The frame's GS registers
+// before the world passes (SceneFrame::regs) are not made (none). No tfrag, sky, far variants, casters. false: no level
+bool scene_from_static(const StaticFrame& sf, const StaticLevel& sl, const std::array<float, 16>& a, const std::array<float, 3>& camera, SceneFrame& out);
 // orig: (host) the build's EE reads the capture did not have (0: the walk and the capture agree)
 uint64_t scene_capture_misses();
 

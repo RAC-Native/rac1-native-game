@@ -578,40 +578,38 @@ void draw_tie(Build& b, VUState& st, Program prog) {
 
 void emit_variants(Build& b);
 
-// orig: (host) the host's ties (kind 0) / shrubs (1) of the frame drawn where the pass's range ends, as the GPU path's
-// packets (the instance's rows, morph, F, alpha; its resident colours; the class's texture prims as VU1 memory would hold them);
-// a tie A alpha-test state packet first when the program's state (0x3cb y) is not the host instances' 0; after the shrubs their
-// far variants' quads (emit_variants)
-void emit_static(Build& b, VUState& st, int kind) {
-    const StaticFrame* sf = b.in.stat;
-    const StaticLevel* sl = b.in.stat_level;
-    if (sf == nullptr || sl == nullptr || b.in.stat_check || !sf->on[kind] || b.emitted[kind]) return;
-    b.emitted[kind] = true;
-    uint8_t* mem = st.mem.data();
-    if (kind == 0 && (w32(mem, 0x3cb, 1) & 0xffff) != 0 && !sf->draws[0].empty()) {
-        Kicked s;
-        s.q.push_back(q128(mem, 0x3cc));
-        s.q.push_back(q128(mem, 0x3cd));
-        s.part = {0, 1};
-        s.clip = {0, 0};
-        s.want_hp = true;
-        s.hp.assign(2, std::array<float, 4>{});
-        b.push(std::move(s), Program::TieA, 0x000, -1, 1, true);
-    }
-    if (kind == 1 && !b.shrub_fog_ok) {  // (no shrub draw this frame: the registers the pass's constants start left)
-        b.shrub_fog[0] = st.vf[30].f[2];
-        b.shrub_fog[1] = st.vf[30].f[3];
-        b.shrub_fog[2] = st.vf[29].f[0];
-        b.shrub_fog[3] = st.vf[29].f[1];
-    }
-    const uint32_t tex_base = static_cast<uint32_t>(b.f.tex.size());
-    b.f.tex.insert(b.f.tex.end(), sl->tex.begin(), sl->tex.end());
-    std::vector<int32_t> map(sf->insts.size(), -1);
-    const int view = b.view(false);
-    for (const StaticDraw& d : sf->draws[kind]) {
-        const StaticInst& si = sf->insts[d.inst];
+// orig: (host) a tie A alpha-test state packet (A+D only: its GIF tag `tag`, the TEST_1 A+D qword `test`), as the walker pushes it
+// (emit_static's; scene_from_static's from the overlay's copy of those qwords)
+void state_packet(SceneFrame& f, const std::array<uint32_t, 4>& tag, const std::array<uint32_t, 4>& test) {
+    Kicked s;
+    s.q.push_back(tag);
+    s.q.push_back(test);
+    s.part = {0, 1};
+    s.clip = {0, 0};
+    s.want_hp = true;
+    s.hp.assign(2, std::array<float, 4>{});
+    ScenePacket p;
+    p.k = std::move(s);
+    p.prog = Program::TieA;
+    p.start = 0x000;
+    p.seq = f.draw_starts;
+    p.view = -1;
+    p.table = 1;
+    p.state = true;
+    f.packets.push_back(std::move(p));
+}
+
+// orig: (host) the host's ties (kind 0) / shrubs (1) of a static frame appended to `f` as the GPU path's packets (the instance's rows,
+// morph, F, alpha; its resident colours; the class's texture prims as VU1 memory would hold them), in `view`; the shrubs' F from the
+// shrub A fog constants `shrub_fog` (vf30 z / w, vf29 x / y)
+void static_draws(SceneFrame& f, const StaticFrame& sf, const StaticLevel& sl, int kind, int view, const float shrub_fog[4]) {
+    const uint32_t tex_base = static_cast<uint32_t>(f.tex.size());
+    f.tex.insert(f.tex.end(), sl.tex.begin(), sl.tex.end());
+    std::vector<int32_t> map(sf.insts.size(), -1);
+    for (const StaticDraw& d : sf.draws[kind]) {
+        const StaticInst& si = sf.insts[d.inst];
         if (map[d.inst] < 0) {
-            map[d.inst] = static_cast<int32_t>(b.f.insts.size());
+            map[d.inst] = static_cast<int32_t>(f.insts.size());
             SceneInst x;
             std::memcpy(x.rows, si.rows, sizeof x.rows);
             std::memcpy(x.morph, si.morph, sizeof x.morph);
@@ -621,23 +619,47 @@ void emit_static(Build& b, VUState& st, int kind) {
             if (kind == 0) {
                 x.fog = si.fog;
             } else {  // (shrub_kick's F: clamp(T.w x scale + offset, floor, ceiling), FTOI4)
-                float fog = si.rows[3][3] * b.shrub_fog[0];
-                fog = fog + b.shrub_fog[1];
-                fog = std::max(fog, b.shrub_fog[2]);
-                fog = std::min(fog, b.shrub_fog[3]);
+                float fog = si.rows[3][3] * shrub_fog[0];
+                fog = fog + shrub_fog[1];
+                fog = std::max(fog, shrub_fog[2]);
+                fog = std::min(fog, shrub_fog[3]);
                 x.fog = (static_cast<uint32_t>(ftoi4(fog)) >> 4) & 0xff;
             }
-            b.f.insts.push_back(x);
+            f.insts.push_back(x);
         }
-        b.push(Kicked{}, kind == 0 ? Program::TieA : Program::ShrubA, kind == 0 ? 0x000 : 0x063, view, kind == 0 ? 1 : 2);
-        ScenePacket& sp = b.f.packets.back();
+        ScenePacket sp;
+        sp.prog = kind == 0 ? Program::TieA : Program::ShrubA;
+        sp.start = static_cast<uint16_t>(kind == 0 ? 0x000 : 0x063);
+        sp.seq = f.draw_starts;
+        sp.view = view;
+        sp.table = kind == 0 ? 1 : 2;
         sp.tie = d.pk->tie;
         sp.shrub = d.pk->shrub;
         sp.tex = tex_base + d.pk->tex_first;
         sp.ntex = d.pk->ntex;
         sp.inst = static_cast<uint32_t>(map[d.inst]);
-        ++b.f.stat_draws[kind];
+        f.packets.push_back(std::move(sp));
+        ++f.stat_draws[kind];
     }
+}
+
+// orig: (host) the host's ties (kind 0) / shrubs (1) of the frame drawn where the pass's range ends, as the GPU path's
+// packets (static_draws); a tie A alpha-test state packet first when the program's state (0x3cb y) is not the host instances' 0;
+// after the shrubs their far variants' quads (emit_variants)
+void emit_static(Build& b, VUState& st, int kind) {
+    const StaticFrame* sf = b.in.stat;
+    const StaticLevel* sl = b.in.stat_level;
+    if (sf == nullptr || sl == nullptr || b.in.stat_check || !sf->on[kind] || b.emitted[kind]) return;
+    b.emitted[kind] = true;
+    uint8_t* mem = st.mem.data();
+    if (kind == 0 && (w32(mem, 0x3cb, 1) & 0xffff) != 0 && !sf->draws[0].empty()) state_packet(b.f, q128(mem, 0x3cc), q128(mem, 0x3cd));
+    if (kind == 1 && !b.shrub_fog_ok) {  // (no shrub draw this frame: the registers the pass's constants start left)
+        b.shrub_fog[0] = st.vf[30].f[2];
+        b.shrub_fog[1] = st.vf[30].f[3];
+        b.shrub_fog[2] = st.vf[29].f[0];
+        b.shrub_fog[3] = st.vf[29].f[1];
+    }
+    static_draws(b.f, *sf, *sl, kind, b.view(false), b.shrub_fog);
     if (kind == 1) emit_variants(b);
 }
 
@@ -1296,18 +1318,9 @@ void scene_capture(uint32_t chain_start, uint32_t chain_end, SceneInput& in, con
 // orig: (host) see mrp_world_scene.h
 uint64_t scene_capture_misses() { return g_capture_misses; }
 
-// orig: (host) see mrp_world_scene.h: the capture and the build at once (the testing modes)
-bool scene_build(const WorldIndex& idx, uint32_t chain_start, uint32_t chain_end, SceneFrame& f, bool reset, bool kicks) {
-    static SceneInput in;
-    scene_capture(chain_start, chain_end, in);
-    return scene_build(idx, in, f, reset, kicks);
-}
-
-// orig: (host) see mrp_world_scene.h
-bool scene_build(const WorldIndex& idx, const SceneInput& in, SceneFrame& f, bool reset, bool kicks) {
-    const uint32_t chain_start = in.chain_start, chain_end = in.chain_end;
-    static const bool prof = std::getenv("RAC1_FRAME_PROF") != nullptr;  // (the per-program timers only when profiling)
-    using clock = std::chrono::steady_clock;
+namespace {
+// orig: (host) a frame's scene emptied (its run-long counters, setup_starts, kept)
+void scene_reset(SceneFrame& f) {
     f.packets.clear();
     f.insts.clear();
     f.colours.clear();
@@ -1336,6 +1349,22 @@ bool scene_build(const WorldIndex& idx, const SceneInput& in, SceneFrame& f, boo
     f.tfrag_host = f.tfrag_cpu = 0;
     f.tchk_walker = f.tchk_found = f.tchk_missing = f.tchk_extra = f.tchk_code = 0;
     f.ok = false;
+}
+}  // namespace
+
+// orig: (host) see mrp_world_scene.h: the capture and the build at once (the testing modes)
+bool scene_build(const WorldIndex& idx, uint32_t chain_start, uint32_t chain_end, SceneFrame& f, bool reset, bool kicks) {
+    static SceneInput in;
+    scene_capture(chain_start, chain_end, in);
+    return scene_build(idx, in, f, reset, kicks);
+}
+
+// orig: (host) see mrp_world_scene.h
+bool scene_build(const WorldIndex& idx, const SceneInput& in, SceneFrame& f, bool reset, bool kicks) {
+    const uint32_t chain_start = in.chain_start, chain_end = in.chain_end;
+    static const bool prof = std::getenv("RAC1_FRAME_PROF") != nullptr;  // (the per-program timers only when profiling)
+    using clock = std::chrono::steady_clock;
+    scene_reset(f);
     if (!in.ok) return false;
     if (g_walker == nullptr || reset) {
         delete g_walker;
@@ -1595,6 +1624,33 @@ bool scene_build(const WorldIndex& idx, const SceneInput& in, SceneFrame& f, boo
         f.sky_tex = in.sky_tex;
         for (size_t k = 0; k < 16; ++k) f.sky_a[k] = in.sky_a[k];
     }
+    f.ok = true;
+    return true;
+}
+
+// orig: (host) see mrp_world_scene.h
+bool scene_from_static(const StaticFrame& sf, const StaticLevel& sl, const std::array<float, 16>& a, const std::array<float, 3>& camera, SceneFrame& f) {
+    scene_reset(f);
+    if (!sl.ok) return false;
+    const int view = static_cast<int>(f.views.size());
+    f.views.push_back(view_of_ee(a.data(), camera.data()));
+    // the tie A alpha-test state packet the walker emits before the host's ties when the program's state (VU1 0x3cb y) is not their 0:
+    // its qwords 0x3cc (the GIF tag) / 0x3cd (TEST_1, no state) as the tie pass's constants UNPACK them from the overlay (0x1c2a30,
+    // 0x1c2a40; on Veldin the tag 00008001 10000000 0000000e 0, TEST_1 0005340b 0 47 0). The state the chain's draws leave is not known
+    // without the walker: on the PC it was not 0 (0xffffffff) at the host's ties, so the packet is always sent
+    if (sf.on[0] && !sf.draws[0].empty()) {
+        const uint32_t tag = OV(0x001c2a30u), test = OV(0x001c2a40u);
+        state_packet(f, {lwu(tag), lwu(tag + 4), lwu(tag + 8), lwu(tag + 12)}, {lwu(test), lwu(test + 4), lwu(test + 8), lwu(test + 12)});
+    }
+    if (sf.on[0]) static_draws(f, sf, sl, 0, view, nullptr);
+    if (sf.on[1]) {
+        // the shrub A fog constants (vf30 z / w, vf29 x / y): the floats the shrub pass's constants UNPACK (0x6c030000: the overlay's
+        // 0x1c2ac0.. to VU1 qwords 0..2) leave there (Veldin: -0.0267885, 254.999, 53.5499, 255)
+        const uint32_t fc = OV(0x001c2ad8u);
+        const float fog[4] = {lwc1(fc), lwc1(fc + 4), lwc1(fc + 8), lwc1(fc + 12)};
+        static_draws(f, sf, sl, 1, view, fog);
+    }
+    // (not made here: the shrub far variants' quads - phase 5 with the sky - and the tfrags, MRP_LITE.md phase 4)
     f.ok = true;
     return true;
 }

@@ -138,3 +138,39 @@ Each phase ends with shots of the console's TV (RAC1_WIIU_SHOT) compared with th
   the render targets' mobys (the menus' item models), the modern lighting; performance not measured yet. The debug
   switches (mrp_moby_gx2.h: RAC1_WIIU_MRP_STAGE / _DEBUG / _GSH) found it: careful with a "screen triangle per draw" mode
   - thousands of full-screen triangles a frame stall the GPU for seconds a frame (it looks like a hang: one draw a call).
+- Phase 3 (2026-10-27): Veldin's ties and shrubs drawn with GX2 from the host-made static path (mrp_world_gx2.cpp,
+  shaders/mrp_world.gsh, the CPU preparation shared through mrp_world_backend.inc). On the console (explore, game frame 200)
+  the towers, the rocks, the crates, the plants, Ratchet and Clank at the PC's places, textured, lit and coloured as the PC's;
+  missing: the ground (tfrag), the sky. The world and the mobys both in the world's projection (g_mrp_world_projection /
+  g_mrp_moby_projection 0, the PC's default: the clip matrices), the depth shared (wiiu_gfx.cpp clears it once, then the world,
+  then the mobys). What it took:
+  - no walker (the world VU1 programs are not in the build): overlay_entry.cpp's world_pass takes the static snapshot before
+    the tie / shrub passes with `handle` always on (mrp_world_ready(): the GX2 backend up, the level loaded);
+    mrp_world_wiiu_prepare (orig_main's walk branch, next to the mobys' prepare) runs static_frame_build ->
+    mrpw::scene_from_static -> build_triangles on the game's thread. scene_from_static shares emit_static's code
+    (static_draws, state_packet: the PC unchanged) and takes the walker's VU state from the overlay's copies the passes'
+    constants UNPACK: the tie A alpha-test state packet (0x1c2a30 / 0x1c2a40, always sent: its state was 0xffffffff on the
+    PC), the shrub A fog constants (0x1c2ad8..0x1c2ae4). The frame environment's GS registers before the world passes
+    (the chain's DIRECT packets the walker would read) are the values found on Veldin (TEST_1, ALPHA_1, ZBUF_1, PRMODECONT,
+    TEXA, FBA_1), FOGCOL the replica's (gs_global().reg(0x3d), as the mobys');
+  - per draw command a uniform block (the instance, 160 B, and its 8-word record), one GX2DrawIndexedEx with the template's
+    first vertex as its offset (base vertex), the draw's texture array bound per draw (its unit in the frame's epoch: no
+    texture units on GX2); the alpha test's two passes and the GS state per batch as the GL backend's;
+  - the resident lit colours an R32UI texture (1024 texels a row, linear) read by texelFetch in the vertex shader; the whole
+    table sent at a new level, then the changed ranges (none while the relighting is off, RAC1_WORLD_PASS_SKIP=6). Its words
+    are written byte-swapped: GX2 reads the R32UI texels as little-endian words, as the uniform blocks (the PPC's order gave
+    the colours' bytes reversed on the console; RAC1_WIIU_WORLD_RCSWAP=0 the PPC's order, debug bit 1024 flips it);
+  - the game's own VU1 projection (mode 1, RAC1_WIIU_WORLD_PROJ=vu / RAC1_WIIU_MRP_PROJ=vu) repeats the GS's 16-bit screen
+    coordinates: an instance crossing the camera's plane wraps into planes over the screen (the VU's clipping programs keep
+    those from the PS2's GS; the static path draws whole instances) - seen on the console: hence the world's projection;
+  - debug switches as the mobys' (mrp_world_gx2.h: RAC1_WIIU_WORLD_STAGE / _DEBUG / _DEBUG_AT (default 0) / _GSH), the world
+    off with RAC1_WIIU_WORLD=0; the depth's clear left the moby backend (its debug bit 512 is RAC1_WIIU_ZCLEAR=0 now).
+  Left: the tfrags (phase 4); the sky, the shrub far variants (phase 5); the drop shadows, the modern lighting; the relighting
+  (the instances keep the level's load colours). Seen right on the console: the colours' byte order, GX2DrawIndexedEx's offset
+  as the base vertex (debug bit 256 sets it by the attribute buffer's address instead). Unverified: the snapshot's inputs with the
+  passes' culling off (the fog, tangents, zones static_note_pass reads before the passes: to compare with the PC's), the flat
+  colour's provoking vertex (the non-IIP draws), CafeGLSL's MULADD_IEEE in the tie fat colour's float steps (`precise` on the
+  PC), the level's templates' memory in MEM2 (their size on the log).
+  With the 2D on (the GS replica's backend, gs_draw_gx2.cpp) the distant 3D comes out lighter, veiled, than on the PC; with
+  RAC1_WIIU_2D=1 (no render targets) or 3 (no 2D) it does not. Not found in the frame's own primitives (all drawn onto the screen
+  page 0x70; those reading it are skipped): left for main's mrp_2d on the Wii U, which replaces this backend.

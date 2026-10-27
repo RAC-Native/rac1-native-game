@@ -3171,6 +3171,9 @@ int main(int argc, char** argv) {
                                          title && mrp_title_menu_drawn());
                     rac1::gs::Viewport mgv;
                     if (mrp_moby_active()) mrp_moby_prepare(&mgv);
+                    // the MRP world's ties / shrubs (ports/wiiu/game/mrp_world_gx2.h): the host-made static path's frame, on a frame
+                    // whose world is drawn (mrp_world_begin_frame_async's condition on the PC)
+                    mrp_world_wiiu_prepare(!movie && (flight || ((title ? boot_in_title() : !menu_mode) && !exiting)) && !fade && !vendor_pic);
                 }
                 const int screen_fbp = static_cast<int>(lwu(0x0013cf20) & 0x1ff);
                 rac1_wiiu_picture_frame(gs, static_cast<float>(lhu(0x001518d0)), static_cast<float>(lhu(0x001518d2)), screen_fbp, fade ? screen_fbp : -1, game_frame);

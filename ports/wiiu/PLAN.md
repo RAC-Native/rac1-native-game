@@ -224,6 +224,9 @@ joint matrices a GPU skinning reads) unless they get faster.
 
 The GamePad as a second screen once the game draws: a real-time map, the quick select of the weapons.
 
+After the port: the performance plan in [PERFORMANCE.md](PERFORMANCE.md) (the machine; measure, three cores, no emulation on
+the hot path, GX2 display lists, a resolution option 1080p / 720p, micro-optimisation last).
+
 ### The world passes (same day)
 
 Each pass's own time on the console (RAC1_WORLD_PASS_TIME, in play): tfrag 5 ms, tie 17, shrub 23, sky 7 (PC: 0.05 /

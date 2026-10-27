@@ -23,6 +23,9 @@
 #include <game/render/mrp_fx.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_world_scene.h>
+#if defined(__WIIU__)
+#include <game/render/mrp_world_renderer.h>
+#endif
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
 #include <game/ovl/pause_menu.h>
@@ -336,6 +339,11 @@ void world_pass(void (*pass)(), int kind) {
     const bool keep = keep_env || g_world_faithful || g_world_mrp || g_world_chain_forced;  // (RAC1_WORLD_FAITHFUL / the debug menu: the chain is the world's drawing)
     const uint32_t cur = lwu(OV(0x001611c0));
     if (g_world_mrp) mrp_lod_world_shadow(kind >= 0 ? kind : 3, pass, cur);  // (the LOD slider's shadow run first, the memory put back)
+#if defined(__WIIU__)
+    // (the Wii U's MRP-lite: its ties / shrubs always made by the host from the pass's inputs - mrp_world_static.h, MRP_LITE.md phase 3 -,
+    // whose snapshot is taken here, as mrp_lod_world_shadow does on the PC: no LOD slider, no widening)
+    if (kind == 1 || kind == 2) mrpw::static_note_pass(kind, mrp_world_ready(), 1.0f, 1.0f, 1.0f);
+#endif
     // (testing, the Wii U port: RAC1_WORLD_PASS_TIME, each world pass's own time every 60 frames)
     static const bool wp_time = std::getenv("RAC1_WORLD_PASS_TIME") != nullptr;
     static double wp_ms[4] = {};

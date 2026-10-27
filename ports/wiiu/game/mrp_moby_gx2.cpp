@@ -14,9 +14,9 @@
 //   GS's blending (gs::set_blend_gx2, as the 2D's), the depth test (the GS's GEQUAL / GREATER as LEQUAL / LESS on the host's
 //   depth, Z written unless ZMSK; no test: no writes, as GL), the alpha test's fail modes with the GL backend's split (a Z pass,
 //   colour masked, then the colour with LEQUAL and no Z writes);
-// - the game's own VU1 projection onto its 4:3 frame (g_mrp_moby_projection 1, set by mrp_moby_gx2_init: no world drawn on the
-//   Wii U yet, so the mobys keep the game's depth a + b Z the host's GS depth mapping gives), the depth clamp of the GL
-//   backend as the z clipping off (GX2SetRasterizerClipControl).
+// - the world's projection (g_mrp_moby_projection 0, the PC's default: the parts' clip matrices), the world's ties / shrubs' too
+//   (mrp_world_gx2.cpp, drawn before into the same depth). (testing: RAC1_WIIU_MRP_PROJ=vu the game's own VU1 projection onto its
+//   4:3 frame, the depth a + b Z the host's GS depth mapping gives, the GL backend's depth clamp as the z clipping off)
 //
 // Not drawn (phase 2): the drop shadows, the modern lighting (none of its hooks), the mobys drawn into render targets (the menus'
 // item models: Key::rt), the casters' cache; the deferred mobys are drawn in the frame's order (after the others, no shadows
@@ -494,10 +494,10 @@ bool mrp_moby_gx2_init() {
             GX2InitSamplerLOD(&smp, 0.0f, 13.0f, 0.0f);
         }
     g_ring_off = 0;
-    // the game's own VU1 projection onto its 4:3 frame (no world drawn here yet: the world's projection would have nothing to share
-    // its depth with). (testing: RAC1_WIIU_MRP_PROJ=world keeps the world's projection, the parts' clip matrices)
+    // the world's projection (the world's ties / shrubs are drawn in it too, mrp_world_gx2.cpp). (testing: RAC1_WIIU_MRP_PROJ=vu the
+    // game's own VU1 projection onto its 4:3 frame)
     const char* pj = std::getenv("RAC1_WIIU_MRP_PROJ");
-    if (pj == nullptr || std::strcmp(pj, "world") != 0) g_mrp_moby_projection = 1;
+    g_mrp_moby_projection = pj != nullptr && std::strcmp(pj, "vu") == 0 ? 1 : 0;
     g_ready = true;
     std::printf("[wiiu] mrp_moby_gx2: up (blocks: frame %u normals %u joints %u draw %u pixel %u bytes)\n", g_frame_loc.size, g_normals_loc.size,
                 g_joints_loc.size, g_draw_loc.size, g_pixel_loc.size);
@@ -520,8 +520,8 @@ void mrp_moby_gx2_shutdown() {
 
 void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp) {
     if (!g_ready || cb == nullptr) return;
-    // (testing, RAC1_WIIU_MRP_STAGE=<n>: how far a call goes - 0 nothing, 1 the depth's clear, 2 the level's textures made,
-    // 3 its geometry copied and the state set, no draws, 4 (the default) everything)
+    // (testing, RAC1_WIIU_MRP_STAGE=<n>: how far a call goes - 0 / 1 nothing (the depth's clear is wiiu_gfx.cpp's now, before the
+    // world), 2 the level's textures made, 3 its geometry copied and the state set, no draws, 4 (the default) everything)
     static const int stage = std::getenv("RAC1_WIIU_MRP_STAGE") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_MRP_STAGE")) : 4;
     if (stage <= 0) return;
     const auto t0 = std::chrono::steady_clock::now();
@@ -530,7 +530,7 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
     mrpm::FrameView F;
     mrpm::LevelView L;
     const bool have = mrpm::frame_view(F) && mrpm::level_view(L);
-    // the level's textures (GX2CopySurface) and the depth's clear change the GPU's state: the context set again after them
+    // the level's textures (GX2CopySurface) change the GPU's state: the context set again after them
     static uint64_t logged = 0;
     if (logged < 3 && have && !F.batches->empty()) {  // (the first frames' size, on the log)
         ++logged;
@@ -546,10 +546,6 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
         tex_sync(L);
         restore = true;
     }
-    if (db != nullptr && (g_debug & 512) == 0) {  // (WHBGfxClearColor clears it too, when called before: this call does not depend on it)
-        GX2ClearDepthStencilEx(db, 1.0f, 0, GX2_CLEAR_FLAGS_DEPTH);
-        restore = true;
-    }
     static bool ctx_logged = false;
     if (!ctx_logged) {
         ctx_logged = true;
@@ -557,7 +553,7 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
                     static_cast<void*>(WHBGfxGetDRCContextState()));
     }
     if (restore && ctx != nullptr) GX2SetContextState(ctx);
-    if (!have || F.batches->empty() || stage < 2) return;
+    if (!have || F.batches->empty() || stage < 2) return;  // (stage 1: as 0 since the depth's clear left this call)
     geo_sync(L);
     if (g_geo.vb == nullptr || g_geo.ib == nullptr) return;
     static bool geo_logged = false;

@@ -49,6 +49,13 @@ bool mrp_world_tfrag_lod();
 // scene built from the chain [chain_start, chain_end) (`active`: a frame whose world is drawn: not the title, a level exit,
 // a movie, the full-screen menu)
 void mrp_world_begin_frame(bool active, uint32_t chain_start, uint32_t chain_end);
+#if defined(__WIIU__)
+// orig: (host) the Wii U's frame (ports/wiiu/MRP_LITE.md phase 3; the walker's VU1 programs are not in its build): per host frame,
+// after the game's frames ran and before the next update, on the game's thread: the level's assets (re)loaded when the level
+// changed, the frame's ties / shrubs made by the host (mrp_world_static.h) into the scene (mrpw::scene_from_static) and its draw
+// lists built, for ports/wiiu/game/mrp_world_gx2.cpp (`active`: as mrp_world_begin_frame's). No tfrag, sky, shadows yet.
+void mrp_world_wiiu_prepare(bool active);
+#endif
 // orig: (host) the same in two halves: _async starts the scene's build (on a worker thread, RAC1_MRPW_THREAD=0 not),
 // after it mrp_world_skip_ranges() is known; the host may then read the frame's chain (it only reads EE memory) and must
 // call mrp_world_finish_frame() before anything else reads or writes EE memory, the scene, or the chain reader's GS registers'

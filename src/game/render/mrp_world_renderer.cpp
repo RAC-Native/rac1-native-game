@@ -1,6 +1,7 @@
 // orig: (host) The MRP world renderer (see mrp_world_renderer.h).
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/mrp_chain.h>
+#include "mrp_world_backend.inc"
 
 #include <formats/moby_mrp.h>
 #include <formats/world_mrp.h>
@@ -99,15 +100,13 @@ struct TexRef {
     int bucket = -1;
     uint32_t layer = 0, mips = 1;
 };
-// The GPU path's static data of a tie / shrub packet (its kick program evaluated once, by the GS's rules): one GPU vertex per
-// kicked vertex (its sources), the triangles as runs of one texture slot and PRIM.
-struct TVert {
-    int16_t pos[4];    // the position (tie fat: the base), flags (1: a tie fat vertex)
-    int16_t delta[4];  // tie fat: the delta the morph factor scales
-    int16_t uv[4];     // s, t, q (shrub h), x 4096
-    uint8_t col[4];    // the colour indices (tie fat: c0, c1, c2)
-};
-static_assert(sizeof(TVert) == 28);
+// the GPU path's template vertex, the frame's instances, draw commands and batches: mrp_world_backend.inc (the backends' boundary)
+using mrpwb::Batch;
+using mrpwb::DrawCmd;
+using mrpwb::InstGpu;
+using mrpwb::Key;
+using mrpwb::RKey;
+using mrpwb::TVert;
 struct TplRun {
     uint32_t first = 0, count = 0;  // indices, relative to the template's
     int slot = -1;                  // the texture slot / prim in force (-1: the GS's before the packet)
@@ -145,6 +144,7 @@ struct Level {
     std::map<std::tuple<uint64_t, uint64_t, uint32_t>, TexRef> vram_tex;
 };
 Level g_level;
+uint64_t g_level_loads = 0;  // (a new number for each level loaded: mrpwb::LevelView::loads)
 // (stage 2) the level's classes as the passes find them, the frame's host-made ties / shrubs, the check switch
 StaticLevel g_slevel;
 // the level's tfrags for the GPU path (mrp_tfrag_gpu.h), their resident lit colours, the VAO over the vertices / indices the
@@ -178,50 +178,6 @@ struct GpuV {
     uint32_t state[2];     // its GS state as data (draw_flags, FOGCOL), flat as the texture
 };
 static_assert(sizeof(GpuV) == 72);
-
-// the GL state of a run of triangles
-struct Key {
-    int bucket = -1;
-    uint32_t layer = 0, word = 1, sampler = 0;
-    uint64_t prim = 0, test = 0, alpha = 0, zbuf = 0;
-    uint32_t fogcol = 0;
-    bool operator==(const Key&) const = default;
-};
-// what a batch's draws share: the GL state the GS state maps to (blending: PRIM ABE + ALPHA; the depth test; the depth
-// write; the alpha test's second pass, AFAIL), and for the CPU path its texture (bucket, sampler); the rest of the GS state (TME, IIP,
-// FGE, the alpha test itself, FOGCOL; the GPU path's texture unit) is per draw data (draw_flags), so runs that differ only in it are
-// one multi-draw
-struct RKey {
-    bool gpu = false, sky = false;
-    bool shadow = false;  // the modern lighting's casters outside the view: drawn into the shadow maps only
-    uint16_t views = 0;   // a caster's shadow views (bits 0..2 the cascades, 3 + i point light slot i)
-    bool view_only = false;  // the frame's shrubs while the lighting casts its own (full models): not drawn into the shadow maps
-    uint32_t abe = 0, ztest = 0, zwrite = 0, pass2 = 0, sampler = 0, fogcol = 0;
-    uint64_t alpha = 0;
-    int bucket = -1;
-    bool operator==(const RKey&) const = default;
-};
-struct Batch {
-    Key key;
-    bool gpu = false;               // the GPU path's draws (word / layer in its draw records)
-    bool sky = false;               // the sky's (in the world projection, directions: the depth clamped to the far plane)
-    uint32_t first = 0, count = 0;  // indices (CPU path) / draw commands (GPU path)
-    RKey rk;
-    int epoch = -1;                 // the GPU path's texture units (Frame::epochs)
-    bool tfrag = false;             // the GPU path's tfrag triangles (first / count: in the compute program's indices)
-    bool ate = false;               // one of its draws has the alpha test on (the shadow pass's depth-only program not for it)
-};
-struct InstGpu {
-    float clip[16];  // model -> GL clip (the world's projection)
-    float rows[16];  // R0, R1, R2, T
-    float morph[4];
-    uint32_t info[4];  // colour first, F, alpha, kind (0 tie, 1 shrub)
-};
-struct DrawCmd {  // DrawElementsIndirectCommand
-    uint32_t count, instances, first_index;
-    int32_t base_vertex;
-    uint32_t base_instance;
-};
 
 struct Stats {
     uint64_t gpu_packets = 0;
@@ -299,6 +255,19 @@ struct Frame {
 };
 Frame g_frame;
 
+// orig: (host) the texels of one layer's mip level of a texture array (level l: max(1, w >> l) x max(1, h >> l)): the palette (its
+// CSM1 order) applied, RGBA bytes in memory order on any host (Texture::palette's); a level the texture lacks: transparent black
+void bucket_texels(const Level& L, const Bucket& b, size_t layer, uint32_t l, std::vector<uint32_t>& px) {
+    auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
+    const mrp::Texture& t = L.tex[b.textures[layer].first][static_cast<size_t>(b.textures[layer].second)];
+    uint32_t pal[256];
+    for (uint32_t i = 0; i < 256; ++i) pal[i] = t.palette[csm1(i)];
+    const uint32_t w = std::max(1u, b.w >> l), h = std::max(1u, b.h >> l);
+    px.assign(static_cast<size_t>(w) * h, 0u);
+    if (l < t.mips.size() && t.mips[l].size() >= static_cast<size_t>(w) * h)
+        for (size_t q = 0; q < px.size(); ++q) px[q] = pal[t.mips[l][q]];
+}
+
 // orig: (host) the level's tfrag / tie / shrub textures (textures_<kind>.mrpt) to RGBA (palette[CSM1 index], the GS's 0..0x80
 // alpha kept) in one texture array per size, every mip
 void load_textures(Level& L) {
@@ -326,13 +295,15 @@ void load_textures(Level& L) {
             b.levels = std::max<uint32_t>(b.levels, L.ref[k][i].mips);
         }
     }
-    auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
     std::vector<uint32_t> px;
     for (Bucket& b : L.buckets) {
         uint32_t maxl = 1;
         while ((b.w >> maxl) > 0 && (b.h >> maxl) > 0 && maxl < b.levels) ++maxl;
         b.levels = std::max(1u, std::min(b.levels, maxl));
         const uint32_t layers = static_cast<uint32_t>(b.textures.size());
+#if defined(__WIIU__)
+        continue;  // (the Wii U: the GX2 backend makes its texture arrays from the level's data, mrpwb::bucket_texels)
+#endif
         if (vk::is_active()) {
             vk::create_image(b.w, b.h, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                              VK_IMAGE_ASPECT_COLOR_BIT, b.vk_tex, layers, 0, VK_IMAGE_VIEW_TYPE_2D_ARRAY, b.levels);
@@ -347,14 +318,9 @@ void load_textures(Level& L) {
             glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(b.levels) - 1);
         }
         for (size_t layer = 0; layer < b.textures.size(); ++layer) {
-            const mrp::Texture& t = L.tex[b.textures[layer].first][static_cast<size_t>(b.textures[layer].second)];
-            uint32_t pal[256];
-            for (uint32_t i = 0; i < 256; ++i) pal[i] = t.palette[csm1(i)];
             for (uint32_t l = 0; l < b.levels; ++l) {
                 const uint32_t w = std::max(1u, b.w >> l), h = std::max(1u, b.h >> l);
-                px.assign(static_cast<size_t>(w) * h, 0u);
-                if (l < t.mips.size() && t.mips[l].size() >= static_cast<size_t>(w) * h)
-                    for (size_t q = 0; q < px.size(); ++q) px[q] = pal[t.mips[l][q]];
+                bucket_texels(L, b, layer, l, px);
                 if (vk::is_active()) {
                     vk::upload_image_2d(b.vk_tex, px.data(), px.size() * 4, 0, 0, static_cast<int>(w), static_cast<int>(h), 0,
                                         static_cast<uint32_t>(layer), l);
@@ -365,10 +331,16 @@ void load_textures(Level& L) {
             }
         }
     }
+#if !defined(__WIIU__)  // (the Wii U: no GL - glad's functions never loaded, a call jumps to 0)
     if (!vk::is_active()) glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+#endif
 }
 
 void free_level(Level& L) {
+#if defined(__WIIU__)
+    L = Level{};  // (the Wii U: no GL / Vulkan objects - the GX2 backend frees its own when the level's `loads` changes)
+    return;
+#endif
     if (vk::is_active()) {
         for (Bucket& b : L.buckets) vk::destroy_image(b.vk_tex);
         vk::destroy_buffer(L.vk_tvbo);
@@ -487,6 +459,8 @@ void load_level(int id) {
     load_textures(L);
     // the GPU path's templates (static)
     build_templates(L);
+    ++g_level_loads;
+#if !defined(__WIIU__)  // (the Wii U: no GL / Vulkan; the GX2 backend makes its buffers from the level's data, mrpwb::level_view)
     if (vk::is_active()) {
         const size_t vbytes = std::max<size_t>(L.tverts.size() * sizeof(TVert), sizeof(TVert));
         TVert dummy_v{};
@@ -531,6 +505,7 @@ void load_level(int id) {
         for (GLuint a = 0; a < 4; ++a) glEnableVertexAttribArray(a);
         glBindVertexArray(0);
     }
+#endif
     L.loaded = true;
     static_level_build(g_slevel, *L.world);  // (the classes as the passes find them in EE memory)
     tfrag_level_build(g_tlevel, *L.world);   // (the tfrag images / plans from EE memory)
@@ -1248,6 +1223,11 @@ std::vector<NewBucket> g_new_buckets;  // (made by the host thread: create_new_b
 // orig: (host) the GPU image of a bucket of one layer, `levels` mip levels
 void create_bucket_image(Bucket& b, const std::vector<std::vector<uint32_t>>& levels) {
     const uint32_t n = static_cast<uint32_t>(levels.size());
+#if defined(__WIIU__)
+    (void)b;  // (the Wii U: no GL / Vulkan images; such buckets - the sky's, a GIF stream's - are not drawn there yet)
+    (void)n;
+    return;
+#endif
     if (vk::is_active()) {
         vk::create_image(b.w, b.h, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                          VK_IMAGE_ASPECT_COLOR_BIT, b.vk_tex, 1, 0, VK_IMAGE_VIEW_TYPE_2D_ARRAY, n);
@@ -2908,7 +2888,13 @@ int program_index(uint64_t hash) {
 }  // namespace
 
 // orig: (host) see mrp_world_renderer.h
-bool mrp_world_ready() { return g_world_mrp && (vk::is_active() ? g_vk_world.inited : g_prog != 0) && g_level.loaded && g_level.id == world_level_id(); }
+bool mrp_world_ready() {
+#if defined(__WIIU__)
+    return mrp_world_gx2_ready() && g_level.loaded && g_level.id == world_level_id();  // (the Wii U: the GX2 backend's shaders, no g_world_mrp)
+#else
+    return g_world_mrp && (vk::is_active() ? g_vk_world.inited : g_prog != 0) && g_level.loaded && g_level.id == world_level_id();
+#endif
+}
 
 // orig: (host) see mrp_world_renderer.h
 bool mrp_world_active() { return g_frame.active; }
@@ -3661,6 +3647,79 @@ void mrp_world_begin_frame(bool active, uint32_t chain_start, uint32_t chain_end
     mrp_world_finish_frame();
 }
 
+#if defined(__WIIU__)
+namespace {
+uint64_t g_wiiu_serial = 0;  // (mrpwb::FrameView::serial)
+}  // namespace
+
+// orig: (host) see mrp_world_renderer.h
+void mrp_world_wiiu_prepare(bool active) {
+    Frame& F = g_frame;
+    F.active = false;
+    F.pending = false;
+    F.skips.clear();
+    F.skips_ready = false;
+    if (!active || !mrp_world_gx2_ready()) return;
+    const int id = world_level_id();
+    // (a level without its asset is not read again every frame: tried, and no world)
+    if (g_level.id != id || !g_level.tried) {
+        load_level(id);
+        g_rcols.all_dirty = true;
+    }
+    if (!g_level.loaded || !g_slevel.ok) return;
+    const double t0 = now_ms();
+    {  // build_triangles' inputs (Frame::BuildInputs): the game's own projection (g_mrp_world_projection 1, mrp_world_gx2_init), no
+       // widening, no modern lighting
+        mrp_world_view_proj(F.in.vp);
+        F.in.widen = 1.0f;
+        F.in.projection = g_mrp_world_projection;
+        F.in.modern_shadows = 0;
+        F.in.sky = g_render_sky;
+        F.in.tfrag = g_render_tfrag;
+        F.in.tie = g_render_tie;
+        F.in.shrub = g_render_shrub;
+    }
+    {  // the frame's draw environment's XYOFFSET_1 (0x13cf10, 11 qwords)
+        F.env_xyoff = 0;
+        for (uint32_t q = 0; q < 0xb; ++q) {
+            const uint32_t a = 0x0013cf10 + q * 16;
+            if (lbu(a + 8) == 0x18) F.env_xyoff = static_cast<uint64_t>(lwu(a)) | (static_cast<uint64_t>(lwu(a + 4)) << 32);
+        }
+    }
+    {  // the GS registers before the world's packets: without the walker the chain's DIRECT packets before the world passes (the
+       // frame environment, SceneFrame::regs on the PC) are not read, so their values are set here - those the frame environment had
+       // on Veldin (the PC's walker: TEST_1 0x5360b, ALPHA_1 0x8000000044, ZBUF_1 0x10000d8, PRMODECONT 1, TEXA 0x8000000000, FBA_1 0;
+       // FOGCOL per level: the value the GS replica's walk of the frame's chain left, as the mobys' backend reads it). The others as
+       // the replica's walk left them (the texture registers are set by each packet's texture prims anyway)
+        const gs::Gs& gs = gs::gs_global();
+        for (uint32_t r = 0; r < 128; ++r) F.gs_regs[r] = gs.reg(r);
+        F.gs_regs[0x47] = 0x5360bull;
+        F.gs_regs[0x42] = 0x8000000044ull;
+        F.gs_regs[0x4e] = 0x10000d8ull;
+        F.gs_regs[0x1a] = 1;
+        F.gs_regs[0x3b] = 0x8000000000ull;
+        F.gs_regs[0x4a] = 0;
+        F.gs_regs[0x3d] = gs.reg(0x3d);
+    }
+    // the ties / shrubs made by the host (mrp_world_static.h: the snapshot static_note_pass took before the passes, handle on - the
+    // world passes' culling is off on the Wii U, RAC1_WORLD_PASS_SKIP=6, and so is the relighting: the colours stay the level's load's)
+    resident_colours_update(g_rcols, colour_source());
+    static_frame_build(g_slevel, g_rcols, g_sframe, false);
+    const SceneAddrs ad = scene_addrs();
+    std::array<float, 16> a{};
+    std::array<float, 3> cam{};
+    for (uint32_t k = 0; k < 16; ++k) a[k] = lwc1(ad.a + 4 * k);
+    for (uint32_t k = 0; k < 3; ++k) cam[k] = lwc1(ad.camera + 4 * k);
+    if (!scene_from_static(g_sframe, g_slevel, a, cam, F.scene)) return;
+    build_triangles(F);
+    for (int k = 0; k < 2; ++k) g_st.stat_draws[k] += F.scene.stat_draws[k];
+    ++g_st.scene_frames;
+    g_st.ms_build += now_ms() - t0;
+    ++g_wiiu_serial;
+    F.active = true;
+}
+#endif
+
 int g_last_vp[4] = {};  // (mrp_world_last_viewport)
 // orig: (host) see mrp_world_renderer.h
 bool mrp_world_last_viewport(int out[4]) {
@@ -4369,5 +4428,81 @@ void mrp_world_report() {
                     static_cast<double>(g_st.px_only_a) / n, static_cast<double>(g_st.px_only_b) / n);
     }
 }
+
+// ---- the backends' accessors (mrp_world_backend.inc) --------------------------------------------------------------------
+
+namespace mrpwb {
+
+// orig: (host) see mrp_world_backend.inc
+bool frame_view(FrameView& out) {
+    const Frame& F = g_frame;
+    if (!F.active) return false;
+#if defined(__WIIU__)
+    out.serial = g_wiiu_serial;
+#else
+    out.serial = g_st.scene_frames;
+#endif
+    out.mode = g_mrp_world_projection != 0 ? 1 : 0;
+    out.insts = &F.insts;
+    out.cmds = &F.cmds;
+    out.draws = &F.draws;
+    out.batches = &F.batches;
+    out.epochs = &F.epochs;
+    out.env_xyoff = F.env_xyoff;
+    return true;
+}
+
+// orig: (host) see mrp_world_backend.inc
+bool level_view(LevelView& out) {
+    const Level& L = g_level;
+    if (!L.loaded) return false;
+    out.id = L.id;
+    out.loads = g_level_loads;
+    out.tverts = &L.tverts;
+    out.tidx = &L.tidx;
+    out.buckets = L.buckets.size();
+    return true;
+}
+
+// orig: (host) see mrp_world_backend.inc
+BucketInfo bucket_info(size_t bucket) {
+    BucketInfo r;
+    if (bucket >= g_level.buckets.size()) return r;
+    const Bucket& b = g_level.buckets[bucket];
+    r.w = b.w;
+    r.h = b.h;
+    r.levels = b.levels;
+    r.layers = static_cast<uint32_t>(b.textures.size());
+    return r;
+}
+
+// orig: (host) see mrp_world_backend.inc
+void bucket_texels(size_t bucket, uint32_t layer, uint32_t level, std::vector<uint32_t>& px) {
+    px.clear();
+    if (bucket >= g_level.buckets.size() || layer >= g_level.buckets[bucket].textures.size()) return;
+    rac1::bucket_texels(g_level, g_level.buckets[bucket], layer, level, px);
+}
+
+// orig: (host) see mrp_world_backend.inc
+void colours_view(ColoursView& out) {
+    out.words = &g_rcols.mirror;
+    out.all = g_rcols.all_dirty;
+    out.dirty = &g_rcols.dirty;
+}
+
+// orig: (host) see mrp_world_backend.inc
+void colours_taken() {
+    ResidentColours& rc = g_rcols;
+    if (rc.all_dirty) {
+        rc.words_uploaded += rc.mirror.size();
+    } else {
+        for (const auto& [first, n] : rc.dirty) rc.words_uploaded += n;
+    }
+    rc.all_dirty = false;
+    rc.dirty.clear();
+    rc.dirty_words.clear();
+}
+
+}  // namespace mrpwb
 
 }  // namespace rac1

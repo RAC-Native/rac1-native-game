@@ -6,10 +6,13 @@
 #include <runtime/gs/gs_emu.h>
 #include "gs_draw_gx2.h"
 #include "mrp_moby_gx2.h"
+#include "mrp_world_gx2.h"
 
 #include <coreinit/cache.h>
 #include <coreinit/memexpheap.h>
 #include <coreinit/memheap.h>
+#include <gx2/clear.h>
+#include <gx2/context.h>
 #include <gx2/draw.h>
 #include <gx2/surface.h>
 #include <gx2/mem.h>
@@ -91,6 +94,7 @@ struct Frame2d {
 Frame2d g_2d;
 bool g_2d_ready = false;  // (the GS replica's GX2 backend up)
 bool g_mobys_ready = false;  // (the MRP's mobys' GX2 backend up)
+bool g_world_ready = false;  // (the MRP world's ties / shrubs' GX2 backend up)
 }  // namespace
 
 bool rac1_wiiu_picture() { return g_on; }
@@ -112,6 +116,8 @@ void wiiu_gfx_game_ended() {
     g_2d_ready = false;
     if (g_mobys_ready) rac1::mrp_moby_gx2_shutdown();
     g_mobys_ready = false;
+    if (g_world_ready) rac1::mrp_world_gx2_shutdown();
+    g_world_ready = false;
 }
 
 bool wiiu_gfx_wanted() {
@@ -144,6 +150,10 @@ bool wiiu_gfx_start() {
     g_2d_ready = rac1::gs::draw_gx2_init();
     g_mobys_ready = rac1::mrp_moby_gx2_init();
     std::printf("[wiiu] gfx: the MRP's mobys %s\n", g_mobys_ready ? "drawn (shaders/mrp_moby.gsh)" : "not drawn (no shaders/mrp_moby.gsh)");
+    // the MRP world's ties / shrubs (RAC1_WIIU_WORLD=0: not drawn, the static path's snapshot not taken)
+    const char* world = std::getenv("RAC1_WIIU_WORLD");
+    g_world_ready = (world == nullptr || std::atoi(world) != 0) && rac1::mrp_world_gx2_init();
+    std::printf("[wiiu] gfx: the MRP world's ties / shrubs %s\n", g_world_ready ? "drawn (shaders/mrp_world.gsh)" : "not drawn (RAC1_WIIU_WORLD=0 or no shaders/mrp_world.gsh)");
     g_on = true;
     std::printf("[wiiu] gfx: GX2 up; the game's 2D %s\n", g_2d_ready ? "drawn (shaders/gs_draw.gsh)" : "not drawn (no shaders/gs_draw.gsh): the test triangle");
     return true;
@@ -153,7 +163,7 @@ namespace {
 // the game's frame (4:3) centred on a colour buffer and its 2D drawn (the test triangle until the game's first frame)
 void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
     // (testing, RAC1_WIIU_2D: 0 the frame's chain walked but nothing of it drawn, 1 the screen's primitives only: no target,
-    // 3 the MRP's mobys alone: no 2D)
+    // 3 the MRP's 3D alone - the world's ties / shrubs and the mobys -: no 2D)
     static const int s_2d = std::getenv("RAC1_WIIU_2D") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_2D")) : 2;
     if (s_2d == 0) return;
     if (s_2d == 1) targets = false;
@@ -171,7 +181,20 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
     vp.skip_fbp = g_2d.skip_fbp;
     vp.sprite_clamp = true;
     vp.hide_edge_slivers = true;
-    if (g_mobys_ready) {  // (the 3D under the 2D)
+    // the 3D under the 2D: the depth cleared once (the world and the mobys share it), the world's ties / shrubs, then the mobys.
+    // (testing, RAC1_WIIU_ZCLEAR=0: the depth not cleared here - WHBGfxClearColor clears it too, when called before)
+    static const bool zclear = std::getenv("RAC1_WIIU_ZCLEAR") == nullptr || std::atoi(std::getenv("RAC1_WIIU_ZCLEAR")) != 0;
+    if (db != nullptr && zclear && (g_mobys_ready || g_world_ready)) {
+        GX2ClearDepthStencilEx(db, 1.0f, 0, GX2_CLEAR_FLAGS_DEPTH);
+        // (the clear changes the GPU's state: the context of `cb` set again, the TV's or the GamePad's)
+        GX2ContextState* ctx = cb == WHBGfxGetTVColourBuffer() ? WHBGfxGetTVContextState() : WHBGfxGetDRCContextState();
+        if (ctx != nullptr) GX2SetContextState(ctx);
+    }
+    if (g_world_ready) {
+        rac1::mrp_world_gx2_debug_frame(g_2d.game_frame);
+        rac1::mrp_world_gx2_draw(cb, db, vp);
+    }
+    if (g_mobys_ready) {
         rac1::mrp_moby_gx2_debug_frame(g_2d.game_frame);
         rac1::mrp_moby_gx2_draw(cb, db, vp);
     }
@@ -264,6 +287,7 @@ void wiiu_gfx_stop() {
     if (!g_on) return;
     if (g_2d_ready) rac1::gs::draw_gx2_shutdown();
     if (g_mobys_ready) rac1::mrp_moby_gx2_shutdown();
+    if (g_world_ready) rac1::mrp_world_gx2_shutdown();
     GX2RDestroyBufferEx(&g_pos, GX2R_RESOURCE_BIND_NONE);
     GX2RDestroyBufferEx(&g_col, GX2R_RESOURCE_BIND_NONE);
     WHBGfxFreeShaderGroup(&g_test);
