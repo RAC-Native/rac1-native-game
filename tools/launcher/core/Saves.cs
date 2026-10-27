@@ -76,7 +76,8 @@ namespace Rac1Launcher
                     Backup(before);
                 }
                 Directory.CreateDirectory(CardDir);
-                string root = Path.GetFullPath(CardDir);
+                // (with its separator: an entry "../memcard2/x" must not pass as inside ".../memcard")
+                string root = Path.GetFullPath(CardDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
                 foreach (var e in za.Entries)
                 {
                     if (e.FullName.EndsWith("/") || e.FullName.EndsWith("\\")) continue;

@@ -640,7 +640,7 @@ namespace Rac1Launcher
                 if (Platform.Windows) return new DriveInfo(Path.GetPathRoot(Path.GetFullPath(Game.Dir))).AvailableFreeSpace >> 30;
                 // (Linux: the mount point that holds the folder, the longest one that is a prefix of its path)
                 string full = Path.GetFullPath(Game.Dir);
-                var drive = DriveInfo.GetDrives().Where(d => d.IsReady && full.StartsWith(d.Name))
+                var drive = DriveInfo.GetDrives().Where(d => d.IsReady && (full == d.Name || full.StartsWith(d.Name.TrimEnd('/') + "/")))
                                      .OrderByDescending(d => d.Name.Length).FirstOrDefault();
                 return drive == null ? -1 : drive.AvailableFreeSpace >> 30;
             }

@@ -95,7 +95,6 @@ bool g_imgui_vk = false;  // (ImGui drawn by Vulkan)
 bool g_menu = false;  // the menu and the debug tools: only with --debug-tools / RAC1_DEBUG_TOOLS=1
 bool g_prev_toggle = false;
 constexpr const char* DISPLAY_FILE = "devmenu_display.txt";
-int g_ammo_max_cache[ITEMS] = {};
 
 // The game's language 0x15ed88: 0 English, 2 French, 3 German,
 // 4 Spanish, 5 Italian (1 has no texts on the NTSC-U disc). The game's own language page (the
@@ -370,6 +369,7 @@ void hero_move_update(GLFWwindow* win) {
 // the original addresses); the host's (sound voices, render caches) is not in it ---
 std::vector<uint8_t> g_snap_ram, g_snap_spr;
 int g_snap_pending = 0;  // 1 save, 2 load (done between game frames)
+int32_t g_snap_level = -1;  // the level the snapshot was taken on (0x15ed84): loaded on that level only
 
 // the weapon's ammo maximum: the table's +0xe, where pickups stop and what the HUD shows (+0x12 is the amount a purchase gives)
 int ammo_max(int id) {
@@ -443,11 +443,13 @@ void tab_game() {
     ImGui::TextUnformatted("State snapshot (experimental: the EE RAM + scratchpad, in memory)");
     if (ImGui::Button("Save state")) g_snap_pending = 1;
     ImGui::SameLine();
-    ImGui::BeginDisabled(g_snap_ram.empty());
+    // (on another level the snapshot's memory would sit under this level's overlay code and the host's level data: refused)
+    const bool other_level = !g_snap_ram.empty() && g_snap_level != r32(0x0015ed84);
+    ImGui::BeginDisabled(g_snap_ram.empty() || other_level);
     if (ImGui::Button("Load state")) g_snap_pending = 2;
     ImGui::EndDisabled();
     ImGui::SameLine();
-    ImGui::TextDisabled(g_snap_ram.empty() ? "(none saved)" : "(one saved)");
+    ImGui::TextDisabled(g_snap_ram.empty() ? "(none saved)" : other_level ? "(one saved, on another level)" : "(one saved)");
     ImGui::TextWrapped("Sounds playing and the renderer's caches are the host's, not in the snapshot.");
 }
 
@@ -980,7 +982,7 @@ void lights_markers(const std::vector<UserLight>& L) {
         const ImU32 col = IM_COL32(static_cast<int>(L[i].col[0] * 255.0f), static_cast<int>(L[i].col[1] * 255.0f), static_cast<int>(L[i].col[2] * 255.0f), 255);
         dl->AddCircleFilled(p, sel ? 7.0f : 5.0f, col);
         dl->AddCircle(p, sel ? 11.0f : 7.0f, sel ? IM_COL32(255, 255, 255, 255) : IM_COL32(0, 0, 0, 200), 0, 2.0f);
-        char t[8];
+        char t[24];
         std::snprintf(t, sizeof t, "%zu", i);
         dl->AddText(ImVec2(p.x + 9.0f, p.y - 8.0f), IM_COL32(255, 255, 255, 230), t);
     }
@@ -2048,10 +2050,10 @@ void dev_menu_init(GLFWwindow* window, bool with_menu) {
     if (FILE* f = std::fopen(DISPLAY_FILE, "r")) {  // the display settings of the last session
         char key[32];
         while (std::fscanf(f, "%31s", key) == 1) {
-            if (std::strcmp(key, "pipeline") == 0) { int v = 1; (void)std::fscanf(f, "%d", &v); g_settings.pipeline = v != 0; }
-            else if (std::strcmp(key, "game_thread") == 0) { int v = 1; (void)std::fscanf(f, "%d", &v); g_settings.game_thread = v != 0; }
-            else if (std::strcmp(key, "language") == 0) { int v = -1; (void)std::fscanf(f, "%d", &v); g_language = language_valid(v) ? v : -1; }
-            else if (std::strcmp(key, "boot") == 0) { int v = 1; (void)std::fscanf(f, "%d", &v); g_boot = v != 0 ? 1 : 0; }
+            if (std::strcmp(key, "pipeline") == 0) { int v = 1; if (std::fscanf(f, "%d", &v) != 1) v = 1; g_settings.pipeline = v != 0; }
+            else if (std::strcmp(key, "game_thread") == 0) { int v = 1; if (std::fscanf(f, "%d", &v) != 1) v = 1; g_settings.game_thread = v != 0; }
+            else if (std::strcmp(key, "language") == 0) { int v = -1; if (std::fscanf(f, "%d", &v) != 1) v = -1; g_language = language_valid(v) ? v : -1; }
+            else if (std::strcmp(key, "boot") == 0) { int v = 1; if (std::fscanf(f, "%d", &v) != 1) v = 1; g_boot = v != 0 ? 1 : 0; }
         }
         std::fclose(f);
     }
@@ -2129,12 +2131,24 @@ void dev_menu_poll(GLFWwindow* window) {
     g_move.prev_key = mk;
     if (g_move.on) hero_move_update(window);
     if (g_cam.on) freecam_update(window);
+    {  // the mobys frozen one by one are addresses of this level's mobys: forgotten when the level changes
+        static int32_t level = -1;
+        const int32_t now = r32(0x0015ed84);
+        if (now != level) {
+            level = now;
+            if (!g_freeze.mobys.empty()) {
+                g_freeze.mobys.clear();
+                update_freeze_hook();
+            }
+        }
+    }
     if (g_snap_pending != 0) {  // between game frames
         constexpr size_t RAM = 64u * 1024u * 1024u;
         if (g_snap_pending == 1) {
             g_snap_ram.assign(ee_get_ram_base(), ee_get_ram_base() + RAM);
             g_snap_spr.assign(ee_get_scratchpad_base(), ee_get_scratchpad_base() + SPR_SIZE);
-        } else if (!g_snap_ram.empty()) {
+            g_snap_level = r32(0x0015ed84);
+        } else if (!g_snap_ram.empty() && g_snap_level == r32(0x0015ed84)) {
             std::memcpy(ee_get_ram_base(), g_snap_ram.data(), RAM);
             std::memcpy(ee_get_scratchpad_base(), g_snap_spr.data(), SPR_SIZE);
             g_freeze.mobys.clear();  // the spawned mobys may not be the same any more

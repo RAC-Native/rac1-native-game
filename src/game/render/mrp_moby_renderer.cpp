@@ -157,6 +157,7 @@ struct Level {
     bool loaded = false;
     bool gl_loaded = false;
     bool vk_loaded = false;
+    bool missing = false;  // (the level's assets not there: not looked for again every frame)
     std::vector<mrp::Texture> textures;
     std::vector<int> tex_bucket, tex_layer;
     std::vector<Bucket> buckets;
@@ -703,6 +704,7 @@ void load_level(int id) {
     const std::string dir = asset_root() + "/" + mrpw::level_dir_name(id);
     if (!std::filesystem::is_directory(dir)) {
         std::fprintf(stderr, "[mrp] no MRP moby assets for level %d (%s): run setup.sh\n", id, dir.c_str());
+        L.missing = true;
         return;
     }
     const double t0 = now_ms();
@@ -1711,7 +1713,7 @@ void mrp_moby_begin_frame(bool title, bool menu_mode, bool title_menu) {
     const int id = moby_level_id();
     const int guest = g_mrp_guest_class.load();  // (the free hoverboard's class asked for after the level's load: loaded again with it)
     const bool guest_new = guest >= 0 && guest != g_level.guest_key && guest / 10000 != id;
-    if (g_level.id != id || (vk::is_active() && !g_level.vk_loaded) || (!vk::is_active() && !g_level.gl_loaded) || guest_new) load_level(id);
+    if (g_level.id != id || (!g_level.missing && ((vk::is_active() && !g_level.vk_loaded) || (!vk::is_active() && !g_level.gl_loaded))) || guest_new) load_level(id);
     // the level's loaded classes (0x197300 / 0x197a00, count 0x15ffc0): a new set (the level entered
     // again, a class loaded) forgets the classes resolved by header address
     uint64_t h = 1469598103934665603ull;
@@ -1944,7 +1946,7 @@ void build_frame() {
     static const bool cache_off = std::getenv("RAC1_SHADOW_MCACHE") != nullptr && std::atoi(std::getenv("RAC1_SHADOW_MCACHE")) == 0;  // (testing)
     const bool caching = g_modern_shadows != 0 && F.mode == 0 && !F.menu && !F.title && !cache_off;
     ++g_mcache_frame;
-    if (!caching || g_mcache_level != moby_level_id()) {
+    if (!caching || g_mcache_level != static_cast<uint32_t>(moby_level_id())) {
         g_mcache.clear();
         g_mcache_level = moby_level_id();
     }

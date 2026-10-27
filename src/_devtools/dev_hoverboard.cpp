@@ -38,6 +38,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <exception>
 #include <cstdlib>
 #include <cstring>
 #include <vector>
@@ -166,8 +167,12 @@ void seqs_read() {
         std::printf("[hoverboard] level %d's core not read: no board animations\n", SOURCE_LEVEL);
         return;
     }
-    const DecodedLevelCoreIndex ix = decode_level_core_index(std::as_bytes(std::span(index)), std::as_bytes(std::span(data)));
-    for (size_t i = 0; i < std::size(SEQS); ++i) g_seqs.bytes[i] = core_hero_sequence(ix, data, SEQS[i]);
+    try {
+        const DecodedLevelCoreIndex ix = decode_level_core_index(std::as_bytes(std::span(index)), std::as_bytes(std::span(data)));
+        for (size_t i = 0; i < std::size(SEQS); ++i) g_seqs.bytes[i] = core_hero_sequence(ix, data, SEQS[i]);
+    } catch (const std::exception& e) {  // (a damaged core: the board without its animations, not the game stopped)
+        std::printf("[hoverboard] level %d's core not decoded (%s): no board animations\n", SOURCE_LEVEL, e.what());
+    }
 }
 
 // --- the ride ---

@@ -37,7 +37,7 @@ public:
     }
 
     void skip(std::size_t bytes) {
-        if (offset_ + bytes > data_.size()) {
+        if (bytes > data_.size() - offset_) {  // (not offset_ + bytes: a huge count would wrap)
             throw std::out_of_range("ByteReader::skip: skipping " + std::to_string(bytes) + 
                                     " bytes from offset " + std::to_string(offset_) + 
                                     " exceeds size " + std::to_string(data_.size()));
@@ -46,7 +46,7 @@ public:
     }
 
     [[nodiscard]] std::span<const std::byte> slice(std::size_t len) {
-        if (offset_ + len > data_.size()) {
+        if (len > data_.size() - offset_) {
             throw std::out_of_range("ByteReader::slice: requested " + std::to_string(len) + 
                                     " bytes from offset " + std::to_string(offset_) + 
                                     " exceeds size " + std::to_string(data_.size()));

@@ -710,6 +710,8 @@ bool ensure_resources() {
             return true;
         }
         VkDevice dev = vk::device();
+        // (a quality change: the frames in flight may still draw into the old cascades' views, destroyed at once below)
+        if (g_vk_sh.tex_layers[0] != VK_NULL_HANDLE) vk::wait_idle();
         for (int k = 0; k < kCascades; ++k) {
             if (g_vk_sh.tex_layers[k] != VK_NULL_HANDLE) {
                 vkDestroyImageView(dev, g_vk_sh.tex_layers[k], nullptr);

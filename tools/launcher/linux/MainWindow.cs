@@ -246,7 +246,7 @@ namespace Rac1Launcher
             cmbChannel.SelectedIndex = Channel.Development ? 1 : 0;
             cmbChannel.HorizontalAlignment = HorizontalAlignment.Stretch;
             cmbChannel.SelectionChanged += (s, e) => ChangeChannel(cmbChannel.SelectedIndex == 1);
-            AddRow(t, "Update channel", cmbChannel, Note("(the same setting as the game's Options > Advanced > Update Channel)"));
+            AddRow(t, "Update channel", cmbChannel, Note("(the same setting as the game's Main menu > Updates > Update Channel)"));
 
             var jobValues = new[] { 0, 1, 2, 4, 8, 16 };
             cmbJobs.ItemsSource = new[] { "Automatic", "1 (slowest, the safest)", "2", "4", "8", "16" };
@@ -319,7 +319,8 @@ namespace Rac1Launcher
             Task.Run(() =>
             {
                 var st = ctl.ComputeState(out string due);
-                Dispatcher.UIThread.Post(() => { if (g == Game) ShowState(st, due); });
+                // (a task started meanwhile keeps its own status)
+                Dispatcher.UIThread.Post(() => { if (g == Game && runner == null) ShowState(st, due); });
             });
         }
 

@@ -16,6 +16,14 @@
 namespace rac1::vu0 {
 
 namespace {
+// orig: (host) the profiler's clock (RAC1_VU_PROF): the TSC on x86-64, nanoseconds elsewhere (ARM64 has no rdtsc)
+inline uint64_t prof_ticks() {
+#if defined(__x86_64__) || defined(_M_X64)
+    return __builtin_ia32_rdtsc();
+#else
+    return static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+#endif
+}
 // Testing (RAC1_VU0_CHAIN=1): a hash of the VU0 state where each run stops (it waits on the EE, or ends), every 16th stop -- the
 // same for two runs of the game that did the same, whichever way the program ran (the exact ports or the fast ones)
 uint64_t g_chain = 0xcbf29ce484222325ull;
@@ -296,9 +304,9 @@ void run_until_blocked() {
         const uint32_t before = v.run.pc();
         const bool stepped = [&] {
             if (!vuprof::enabled()) return v.run.step();
-            const uint64_t t0 = __builtin_ia32_rdtsc(), i0 = v.run.pipe().issued;
+            const uint64_t t0 = prof_ticks(), i0 = v.run.pipe().issued;
             const bool r = v.run.step();
-            vuprof::counter(3).ns += __builtin_ia32_rdtsc() - t0;  // (TSC ticks here)
+            vuprof::counter(3).ns += prof_ticks() - t0;  // (TSC ticks here, on x86-64)
             ++vuprof::counter(3).runs;
             if (v.run.pipe().issued - i0 == 1) ++vuprof::counter(5).runs;  // (a call that ran one instruction: the exact step function)
             return r;
@@ -315,7 +323,7 @@ void run_until_blocked() {
                 std::memcmp(&seen[k].acc, &v.st.acc, sizeof(VUVector)) == 0)
                 return;
             if (k == nseen) {
-                if (nseen == 8) k = 0;  // (more loops than slots: the oldest reused)
+                if (nseen == 8) k = 0;  // (more loops than slots: slot 0 reused)
                 else ++nseen;
             }
             seen[k].target = after;
@@ -330,10 +338,10 @@ void call(uint32_t addr) {
     Vu0& v = global();
     drain();
     if (vuprof::enabled()) ++vuprof::starts()[addr];
-    const uint64_t t0 = vuprof::enabled() ? __builtin_ia32_rdtsc() : 0;
+    const uint64_t t0 = vuprof::enabled() ? prof_ticks() : 0;
     const VuNativeStep port = port_for(addr);
     if (vuprof::enabled()) {
-        vuprof::counter(4).ns += __builtin_ia32_rdtsc() - t0;
+        vuprof::counter(4).ns += prof_ticks() - t0;
         ++vuprof::counter(4).runs;
     }
     capture(v, addr);

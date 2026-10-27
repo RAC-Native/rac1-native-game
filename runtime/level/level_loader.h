@@ -61,7 +61,6 @@ public:
     static constexpr std::uint32_t VIRT_ADDR_DECOMPRESSED  = host_layout::CORE;
 
     static void load_level_wad(int level);
-    static void load_level_wad(const std::filesystem::path& level_wad_path);
     // The legacy host renderers' copy of the level (the textures for the GS renderer, the host world's tfrag /
     // tie / shrub meshes and their GL caches, the GLB mobys' models): ~150..250 ms of a level's start, used only by the host
     // world draw (tfrag_render_update: RAC1_MRP=0 / RAC1_WORLD_MRP=0), the GLB moby drawer (RAC1_MOBY_VU1=0) and the title's
@@ -72,12 +71,9 @@ public:
     // next level is known): load_level_wad of that level then takes them instead of reading and decompressing (~40..70 ms,
     // and a cold disk's read, ~300 ms) on the game's thread. Only the host's copy: nothing of the game's state.
     static void prefetch(int level);
-    static void prefetch(const std::filesystem::path& level_wad_path);
     static void register_level_textures(std::span<const std::byte> level_wad_data);
-    static void register_level_textures(const std::filesystem::path& level_wad_path);
     static std::uint32_t load_level_overlay(int level);
     static std::uint32_t load_level_overlay(std::span<const std::byte> level_wad_data);
-    static std::uint32_t load_level_overlay(const std::filesystem::path& level_wad_path);
 };
 
 } // namespace rac1

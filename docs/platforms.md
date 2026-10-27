@@ -14,7 +14,7 @@ game state, same oracle results, same reference images.
   - glad and OpenGL 4.6.
   - volk and Vulkan-Headers, for the experimental [Vulkan](vulkan.md) renderer: volk finds the
     system's Vulkan loader when the game starts, so nothing of Vulkan is needed to build.
-  - Dear ImGui, the menus' widgets.
+  - Dear ImGui, the debug menu's widgets.
   - miniaudio: audio output.
   - OpenGOAL's 989snd.
 
@@ -118,11 +118,11 @@ sources, which `./setup.sh` makes on Linux: they are the same on Windows.
    game also cross-compiles and links from Linux with clang and with GCC.
 3. Done: the setup (`setup.cmd`, or `./setup.sh` in MSYS2's shell; both run `tools/setup.py`), and
    the Windows instructions in [Setup](setup.md#on-windows).
-4. Done: the CI workflow (Linux, Windows, and the Windows cross-build). Played through by players on
+4. Done: the CI workflow (Linux, Windows, and the Windows cross-build; a Linux ARM64 build that does not block yet). Played through by players on
    Windows. To do: the reference runs and the oracle on Windows.
-5. Done on `main`: the launcher, `rac1-launcher.exe`, which downloads the game and runs the setup
-   with the player's own disc (see [The launcher](launcher.md)); it is attached to the releases from
-   the next one on. Releases stay source only: the player still builds the game from their disc.
+5. Done: the launcher (`rac1-launcher.exe` on Windows, `rac1-launcher-linux-x64` on Linux), which
+   downloads the game and runs the setup with the player's own disc (see [The launcher](launcher.md));
+   it is attached to the releases since 0.5.0. Releases stay source only: the player still builds the game from their disc.
 
 What has been tried least: everything that only a Windows machine shows, on more than one PC. The
 fiber and its FPU mode, the paths, the disc's reads, the setup's helper programs, the audio

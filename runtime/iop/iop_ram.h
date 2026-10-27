@@ -9,7 +9,6 @@ namespace rac1 {
 
 constexpr uint32_t kIopRamSize = 0x200000;
 uint8_t* iop_ram();  // kIopRamSize bytes, zeroed at start
-void iop_ram_reset();
 
 }  // namespace rac1
 
