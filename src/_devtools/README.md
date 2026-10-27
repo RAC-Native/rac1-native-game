@@ -62,9 +62,9 @@ longer (the dumps' GL object counts included). `RAC1_PROFILER_DUMP`, `RAC1_PROFI
   queue never empty), too high when the CPU is. The kernel's own account of the GPU's time (Linux DRM
   `drm-engine-gfx`) is shown beside it as the check, and decides "GPU-bound" where it exists.
   The stages: events and input, the game frames (the game's code on the EE coroutine, the audio step), the prepare
-  (the GS chain's capture and the scene's start, the wait for the scene's capture, the moby lists), the draw (the
-  wait for the MRP scene worker, the sun cascades, the point cubes, the world, the mobys, the wait for the GS chain
-  worker, the ambient occlusion, the sun rays, the render scale's resolve, the effects, the GS replica's 2D / HUD,
+  (the frame's chain's capture and the scene's start, the wait for the scene's capture, the moby lists), the draw (the
+  wait for the MRP scene worker, the sun cascades, the point cubes, the world, the mobys, the wait for the chain
+  worker, the ambient occlusion, the sun rays, the render scale's resolve, the effects, the 2D / HUD,
   the frame captures, the debug menu itself), the profiler's own readback and sampling (with Mesa's GL thread a
   query's result is a sync: the driver's back-pressure can show there), the frame cap's wait and the present (the
   swap: the v-sync, or the driver's queue full when the GPU is behind).
@@ -77,11 +77,11 @@ longer (the dumps' GL object counts included). `RAC1_PROFILER_DUMP`, `RAC1_PROFI
   waits for a vsync inside a blocking loop is closed with the game code's own zone. With the game thread (the game's update
   beside the pipelined frame's drawing, `runtime/ee/game_thread.h`) those zones are the game thread's, on a stack of their
   own, counted in the stages but not in the main thread's frame; the main thread's wait for it is "Wait: game thread", the
-  game thread's for the drawing (the GS replica's memory, a GL call asked of the main thread) "Game thread: wait for the draw".
+  game thread's for the drawing (the GS's local memory, a GL call asked of the main thread) "Game thread: wait for the draw".
 - **Bottleneck**: GPU-bound (the GPU busy for 85 % of the frame or more), bound by a worker (the main thread waits
-  15 % of the frame or more for the MRP scene build or the GS chain), CPU-bound on the main thread (its own work 85 %
+  15 % of the frame or more for the MRP scene build or the frame's chain), CPU-bound on the main thread (its own work 85 %
   of the frame or more), or held by the frame cap / v-sync.
-- **Threads**: the GS chain worker's, the MRP scene worker's and the game thread's busy and CPU time per frame (their jobs timed), the job
+- **Threads**: the chain worker's (the MRP's chain reader; the GS replica on the faithful path), the MRP scene worker's and the game thread's busy and CPU time per frame (their jobs timed), the job
   pool's workers' (`src/jobs`, summed over its workers; a track each in the Chrome trace), and
   every thread of the process with its CPU % (Linux: `/proc/self/task/*/schedstat`; Windows: the threads' times;
   the driver's threads included), and the process's CPU %.

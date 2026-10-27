@@ -6,6 +6,12 @@ What changed in each release. Releases are source only: you build the game with 
 ## Unreleased
 
 ### Graphics
+- The modern renderer no longer runs the GS replica: it reads the frame's chain itself (`mrp_chain`, on a worker of its own) and
+  draws the HUD, text, menus, fades and the menus' pictures with OpenGL or Vulkan (`mrp_2d`), the same pictures as before (the
+  reference images unchanged, the game's state the same); the Vendor's screens' item and monitors are the modern renderer's mobys
+  now; a new level's first frame keeps the loading screen's picture. The replica stays the faithful reference (`RAC1_MRP=0`,
+  "VU emulation"; `RAC1_MRP_CHAIN=0` to compare).
+- Ambient particles: Batalia's rain shows over the sea behind it (the seas that write depth are drawn before the particles).
 - Lights: Anya-Thoughtmane's second lighting pass (#102) on Veldin to Rilgar: emissive surfaces, lamps by class and by hand, merged with ours.
 - The levels' water, lava and sand seas (VU1 program 7's surfaces: Rilgar's harbour, Gaspar's lava sea, Aridia's sand sea, Hoven,
   Umbris, Novalis, Kalebo, Drek's fleet..., the levels' baked shadow meshes and the nanotech orbs) are drawn by the modern renderer
@@ -58,6 +64,11 @@ What changed in each release. Releases are source only: you build the game with 
   default. See [Lighting](docs/lighting.md#ambient-occlusion).
 
 ### Performance
+- The chain worker's time with the modern renderer: Rilgar at 5120 x 1440 3.8 to 2.4 ms a frame, Gaspar 6.2 to 5.3 (program 7's
+  kicks no longer assembled, the effects of a widened view's real ranges no longer kept, the texture uploads written a transfer at
+  a time).
+- The texture caches (the decoded textures, the 2D's, the effects' atlas, the GS replica's) are emptied at each level change:
+  they no longer grow from level to level (about 40 MB less resident memory after a 10-level chain).
 - The game's update runs on a thread of its own while the main thread draws the pipelined frame (a window's default): the host
   frame costs the update plus the frame's preparation, its drawing beside them; the game's state the same, word for word. With
   the two changes below, a game frame costs about a fifth less (Rilgar 12.2 to 9.7 ms, Kerwan 13.8 to 12.0 ms, headless at a
@@ -89,6 +100,8 @@ What changed in each release. Releases are source only: you build the game with 
   draw without a stage of its own counted as the cascades'), and the point lights' cube shadows have their own stage.
 
 ### Debug tools (`--debug-tools`)
+- `RAC1_MRP_CHAIN_CHECK=1` compares the modern renderer's reading of each frame's chain with the GS replica's, field by field.
+- The Profiler's chain stages and worker are named for whichever reader runs ("Chain worker", "2D, HUD").
 - Hoverboard anywhere (Player tab): on Rilgar and Kalebo III, gets Ratchet on the hoverboard race's board where he stands, as the board
   itself does when he walks up to it, and off again when unticked. Testing: `RAC1_HOVERBOARD_AT`.
 - Hoverboard anywhere on every other level: a free board (Kalebo III's board drawn on Ratchet's feet, his own board animations

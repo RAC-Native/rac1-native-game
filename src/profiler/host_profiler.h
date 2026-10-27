@@ -42,9 +42,9 @@ enum Stage : int {
     kGameLodOther,      // host: the world passes', effects' and draw lists' re-runs for the LOD slider / the widened view
     kAudioStep,         // the IOP's mirror and the audio queue stepped (main thread)
     kGameThreadWait,    // the main thread waiting for the game thread's update (its drawing done first, runtime/ee/game_thread.h)
-    kGameDrawWait,      // the game thread waiting for the main thread's drawing (the GS replica's memory, a GL call asked)
+    kGameDrawWait,      // the game thread waiting for the main thread's drawing (the GS's local memory, a GL call asked)
     kPrepare,           // the frame's preparation: the view, what the draw reads of the game's state
-    kChainCapture,      // the GS chain captured (its run started on the GS chain worker), the MRP world's scene started
+    kChainCapture,      // the frame's chain captured (its reading started on the chain worker), the MRP world's scene started
     kSceneCaptureWait,  // waiting for the MRP world's worker to capture the scene's inputs
     kMobyLists,         // the MRP mobys' draw lists
     kDraw,              // the draw's own work: the clears, the state, what is not in a stage below
@@ -53,14 +53,14 @@ enum Stage : int {
     kPointCubes,        // the point lights' shadow cubes
     kWorld,             // the MRP world: ties, tfrags, shrubs, sky
     kMobysLegacy,       // the legacy / GLB moby drawer
-    kChainJoinWait,     // waiting for the GS chain worker (the GS replica's run of the frame's chain)
+    kChainJoinWait,     // waiting for the chain worker (the MRP's reading of the frame's chain, mrp_chain.h; the GS replica's run of it on the faithful path)
     kMobys,             // the MRP mobys
     kAo,                // the ambient occlusion (and the sun's cover probe)
     kSunRays,           // the sun's rays
     kParticles,         // the ambient particles (our own: dust, embers, rain, snow ...)
     kScaleResolve,      // the render scale's buffer put on the window
     kEffects,           // the MRP's 3D effects (particles ...), before and after the mobys
-    kGs2d,              // the GS replica's primitives: the 2D, the HUD, the game's own GS effects (water and the like under the mobys)
+    kGs2d,              // the 2D: the HUD, text, menus, fades (mrp_2d.h; the GS replica's drawing on the faithful path)
     kFrameCapture,      // the frame kept (the pause menu's background, the screen fades')
     kDebugMenu,         // the debug menu (ImGui) and this profiler's own view
     kProfiler,          // the profiler's own work: the GPU's results read back, the threads and memory sampled
@@ -81,6 +81,7 @@ const StageInfo& stage_info(int s);
 
 // The worker threads whose jobs are timed (their busy wall time and their CPU time, per frame).
 // (kWorkerJobs: the job pool's workers, src/jobs, their times summed; kWorkerGame: the game thread's jobs, the update beside the drawing)
+// (kWorkerChain: the thread reading the frame's chain, the MRP's chain reader or, on the faithful path, the GS replica's)
 enum Worker : int { kWorkerChain, kWorkerScene, kWorkerJobs, kWorkerGame, kWorkerCount };
 const char* worker_name(int w);
 
@@ -197,7 +198,7 @@ Summary summarize(int frames);
 // The threads, sampled about twice a second while the profiler is on: CPU % of one core (100 = one core busy).
 struct ThreadRow {
     uint64_t tid = 0;
-    std::string name;  // ours ("main", "GS chain worker" ...) or the system's
+    std::string name;  // ours ("main", "MRP chain worker" ...) or the system's
     bool ours = false;
     double cpu_pct = 0;
 };

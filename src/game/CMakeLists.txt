@@ -250,6 +250,8 @@ add_library(rac1_game STATIC
     render/mrp_tfrag_gpu.cpp
     render/mrp_lod.cpp
     render/mrp_title_view.cpp
+    render/mrp_2d.cpp
+    render/mrp_chain.cpp
     render/mrp_fx.cpp
     render/mrp_shadows.cpp
     render/mrp_lighting.cpp

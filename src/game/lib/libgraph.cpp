@@ -1,7 +1,7 @@
 #include <game/lib/libgraph.h>
 
 #include <runtime/ee/game_thread.h>
-#include <runtime/gs/gs_emu.h>
+#include <runtime/gs/gs_memory.h>
 #include <runtime/kernel/ee_memory.h>
 
 #include <cstdio>
@@ -46,14 +46,18 @@ int32_t gs_set_def_load_image(uint32_t lp, int32_t dbp, int32_t dbw, int32_t dps
 
 // orig: 0x00122658
 int32_t gs_exec_load_image(uint32_t lp, uint32_t src) {
-    game_thread::wait_draw();  // orig: (host) the GS replica's memory is the drawing's until it is over (the game thread)
-    gs::chain_join();  // orig: (host) the GS replica's chain run on its worker thread ended first
-    gs::Gs& g = gs::gs_global();
-    g.gif(static_cast<const uint8_t*>(ee_ram_ptr(lp)), 6);
+    game_thread::wait_draw();  // orig: (host) the GS's local memory is the drawing's until it is over (the game thread)
+    gs::memory_join();  // orig: (host) a chain's walk into the local memory on its worker thread ended first
+    // (host) the packet gs_set_def_load_image wrote - its A+D writes of BITBLTBUF, TRXPOS, TRXREG and TRXDIR, then the IMAGE
+    // tag - and the pixels, straight into the GS's local memory (gs_memory.h)
+    gs::LocalMemory& g = gs::local_memory();
+    const uint64_t bb = ee_read<uint64_t>(lp + 0x10), pos = ee_read<uint64_t>(lp + 0x20), rg = ee_read<uint64_t>(lp + 0x30);
+    if ((ee_read<uint64_t>(lp + 0x40) & 3) == 0) g.transfer_start();
+    else g.transfer_stop();
     const uint32_t qwc = static_cast<uint32_t>(ee_read<uint64_t>(lp + 0x50) & 0x7fff);
     // (host: a source outside the 32 MB of EE RAM, as a level setup run without its files in a test reads from, is not sent)
     if (src >= 0x02000000u || qwc * 16u > 0x02000000u - src) return 0;
-    g.gif(static_cast<const uint8_t*>(ee_ram_ptr(src)), qwc);
+    g.transfer_data(bb, pos, rg, static_cast<const uint8_t*>(ee_ram_ptr(src)), qwc * 16);
     return 0;
 }
 
@@ -95,14 +99,14 @@ int32_t gs_set_def_store_image(uint32_t lp, int32_t dbp, int32_t dbw, int32_t dp
 
 // orig: (host) stands in for 0x001227d8
 int32_t gs_exec_store_image(uint32_t lp, uint32_t dst) {
-    game_thread::wait_draw();  // orig: (host) the GS replica's memory is the drawing's until it is over (the game thread)
-    gs::chain_join();  // orig: (host) the GS replica's chain run on its worker thread ended first
-    gs::Gs& g = gs::gs_global();
+    game_thread::wait_draw();  // orig: (host) the GS's local memory is the drawing's until it is over (the game thread)
+    gs::memory_join();  // orig: (host) a chain's walk into the local memory on its worker thread ended first
+    const gs::LocalMemory& g = gs::local_memory();
     const uint64_t bb = ee_read<uint64_t>(lp + 0x20), pos = ee_read<uint64_t>(lp + 0x30), rg = ee_read<uint64_t>(lp + 0x40);
     const uint32_t sbp = bb & 0x3fff, sbw = (bb >> 16) & 0x3f, spsm = (bb >> 24) & 0x3f;
     const uint32_t sx = pos & 0x7ff, sy = (pos >> 16) & 0x7ff;
     const uint32_t w = rg & 0xfff, h = (rg >> 32) & 0xfff;
-    // (host) the host puts in the local memory what the GS would hold there (the frame it drew: the replica draws none)
+    // (host) the host puts in the local memory what the GS would hold there (the frame it drew: nothing draws into it)
     if (gs::StoreImageHook hook = gs::store_image_hook(); hook != nullptr) hook(sbp, sbw, spsm);
     // (host) the 32-bit frame copied whole, as the loop below would; not under a journal (its pages would not be saved: the
     // shadow runs, mrp_lod.h) nor for a null destination
@@ -112,7 +116,7 @@ int32_t gs_exec_store_image(uint32_t lp, uint32_t dst) {
         for (uint32_t y = 0; y < h; ++y) {
             const uint32_t py = (sy + y) & 2047;
             for (uint32_t x = 0; x < w; ++x) {
-                const uint32_t a = gs::Gs::addr32(sbp, sbw, (sx + x) & 2047, py);
+                const uint32_t a = gs::LocalMemory::addr32(sbp, sbw, (sx + x) & 2047, py);
                 std::memcpy(out, &vram[a], 4);
                 out += 4;
             }

@@ -367,12 +367,12 @@ static void finalize_submesh(MobySubmeshDraw& sub) {
                 int m = l - lo - 1;
                 if (m >= 0 && m < 3) {
                     sub.mip_tex0[m] = level_tex0(l);
-                    sub.mip_tex[m] = gs.texture_at_kick(sub.mip_tex0[m], st.texa);
+                    sub.mip_tex[m] = gs.memory().texture_at_kick(sub.mip_tex0[m], st.texa);
                 }
             }
             st.tex0 = level_tex0(lo);
         }
-        sub.tex = gs.texture_at_kick(st.tex0, st.texa);
+        sub.tex = gs.memory().texture_at_kick(st.tex0, st.texa);
     }
 
     s_frame_submeshes.push_back(sub);

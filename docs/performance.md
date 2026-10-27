@@ -17,7 +17,7 @@ the end of one host frame is drawn in the next, one frame of latency:
 | 1 | the window's events and the pads; the game frames' count | |
 | 2 | the pipelined frame of the last host frame drawn (from what its preparation took) | the game frames, on the game thread (`RAC1_GAME_THREAD`) |
 | 3 | waits for the game thread; runs what the update asked of it (the pause menu's picture store) | |
-| 4 | this frame prepared: the view, the GS chain captured, the world's scene started, the moby draw lists | the GS chain worker; the MRP scene worker (the scene, then its triangles: `RAC1_MRPW_BUILD_THREAD`) |
+| 4 | this frame prepared: the view, the frame's chain captured, the world's scene started, the moby draw lists | the MRP chain worker; the MRP scene worker (the scene, then its triangles: `RAC1_MRPW_BUILD_THREAD`) |
 | 5 | the frame cap, the present | the workers go on |
 
 Without the game thread (`RAC1_GAME_THREAD=0`), row 2 runs the game frames first and then the drawing, both on the main
@@ -39,6 +39,18 @@ thread's rounding (toward zero, no denormals). On a CPU with AVX2 (chosen when t
 `RAC1_VU0_SIMD=1` keeps the 128-bit form) two of a joint's four matrix chains run side by side in a 256-bit register: the
 chains share nothing but ACC, which each one's first op overwrites, and the flags, whose sticky bits are an OR. About a
 quarter less time for the joints and skinning stage (Rilgar 1.9 to 1.4 ms a game frame, Kerwan 1.5 to 1.1).
+
+## The frame's chain
+
+The MRP chain worker reads each frame's chain beside the main thread (`mrp_chain.cpp`: the 2D, the effects' VU1 programs, the
+texture uploads). It took the GS replica's place in the default renderer, which walked the same chain and also assembled the
+kicks of VU1 program 7 that nobody drew and the effects of the real ranges a widened view's substitute stood in for; the uploads
+are now written a transfer at a time (`gs_memory.cpp`). The chain worker's busy time a host frame, headless at 5120 x 1440 with
+the lighting at High, the HUD spread and the effects' substitutes (32:9), pipelined with the game thread
+(`RAC1_REALTIME=1`), the last 400 frames of a forward walk: Rilgar 3.8 to 2.4 ms (and 4.2 to 3.0), Gaspar 6.2 to 5.3 (5.6 to 4.7);
+the main thread's wait for it Rilgar 0.44 to 0.22 ms, Gaspar 0.95 to 0.12. What is left is VU1 program 7 and the particle program,
+in the substitute (its 3D) and in the real range (the VU1 state it leaves, which the next program reads): on Gaspar 3.3 and 1.6 ms
+of the 7.5 a chain took. At 4:3 there is no substitute: a chain takes 1 to 2.5 ms.
 
 ## The GPU
 
@@ -132,7 +144,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_SHADOW_PART_CULL=0` | every moby part within the shadow distance drawn into every sun cascade |
 | `RAC1_LAZY_CAPTURE=0` | Vulkan: the last frame shown copied every frame |
 | `RAC1_MRPW_P2_LESS=0` | the lighting's second pass of an alpha-tested batch tested LEQUAL (the original's picture: see above) |
-| `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the GS chain, the job pool on the main thread |
+| `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
 moby shadows are drawn; `RAC1_MRPW_P2_LESS` a few pixels).

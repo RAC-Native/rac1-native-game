@@ -70,6 +70,9 @@ uint32_t vif_data_bytes(const Vu1& vu, uint32_t code);
 
 // Starts the program at instruction `start` (MSCAL's address / 8) with the double buffer swap.
 void start_program(Vu1& vu, uint32_t start, const KickSink& kick);
+// (host) only the double buffer's swap a start makes (TOP / ITOP / TOPS, XTOP), the program not run (a reader that does not need
+// its output: the MRP's chain reader, mrp_chain.h)
+void flip_buffers(Vu1& vu, uint32_t start);
 // Runs the program at `start` with the VU interpreter on the uploaded micro memory (the
 // reference the ports are proved against).
 void run_interpreter(Vu1& vu, uint32_t start, const std::function<void(uint32_t)>& kick);

@@ -8,6 +8,7 @@
 #include <game/ovl/level_change.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/render/mrp_chain.h>
 #include <game/render/mrp_lighting.h>
 #include <game/render/mrp_scene.h>
 #include <game/render/mrp_shadows.h>
@@ -2343,7 +2344,7 @@ void set_common_uniforms(const Loc& l, int win_w, int win_h, const gs::Viewport*
     if (F.mode == 0 && g_rt_draw == nullptr) mrp_lighting_bind_receiver(l.sh);
     else mrp_lighting_bind_off(l.sh);
     {  // FOGCOL (the GS register the game's packets set: R, G, B in the low 24 bits)
-        const uint64_t fc = gs::gs_global().reg(0x3d);
+        const uint64_t fc = mrp_chain_gs_reg(0x3d);
         glUniform3f(l.fogcol, static_cast<float>(fc & 0xff) / 255.0f, static_cast<float>((fc >> 8) & 0xff) / 255.0f, static_cast<float>((fc >> 16) & 0xff) / 255.0f);
     }
     (void)win_w;
@@ -2374,7 +2375,7 @@ void fill_common_vk_push(MobyVkPush& push, const gs::Viewport* vp) {
     push.uXyOff[1] = yo;
     push.uXyOff[2] = has ? static_cast<float>(da) : 0.5f;
     push.uXyOff[3] = has ? static_cast<float>(db) : 0.0f;
-    const uint64_t fc = gs::gs_global().reg(0x3d);
+    const uint64_t fc = mrp_chain_gs_reg(0x3d);
     push.uFogCol_Min[0] = static_cast<float>(fc & 0xff) / 255.0f;
     push.uFogCol_Min[1] = static_cast<float>((fc >> 8) & 0xff) / 255.0f;
     push.uFogCol_Min[2] = static_cast<float>((fc >> 16) & 0xff) / 255.0f;
@@ -3448,7 +3449,7 @@ void compare_gs_triangles(const gs::Gs& gs) {
             const gs::DrawState& st = prims[i].st;
             ++g_st.state_tris;
             ++g_st.gs_fogcol_tris;
-            if ((st.fogcol & 0xffffffull) != (gs::gs_global().reg(0x3d) & 0xffffffull)) ++g_st.gs_fogcol_bad;
+            if ((st.fogcol & 0xffffffull) != (mrp_chain_gs_reg(0x3d) & 0xffffffull)) ++g_st.gs_fogcol_bad;
             // (ALPHA's FIX matters only with C = 2: the frame environment's 0x44 and the moby pass's 0x80 << 32 | 0x44 blend alike)
             const uint64_t amask = gs::field(st.alpha, 4, 2) == 2 ? ~0ull : 0xffull;
             const bool same = (st.prim & 0x7ff) == F.prim && st.test == r.test && (gs::field(st.prim, 6, 1) == 0 || (st.alpha & amask) == (r.alpha & amask));
