@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 334 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 335 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 250 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 251 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 63 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -43,7 +43,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_GRAPHICS_FILE` | path; default $XDG_CONFIG_HOME/rac1-native/graphics_options.txt, else ~/.config/rac1-native/graphics_options.txt | Overrides the location of the file where the Options > Graphics settings are loaded from and saved to. |
 | `RAC1_HEADLESS` | 1 = on; default off (a window opens) | Runs without a window or audio device (default 300 frames, writes screenshot.ppm at the end); other RAC1_* test variables are honoured in this mode. |
 | `RAC1_IOP_MIRROR` | 0 = use the game's own emulated IOP output; default on (the host's mirror of the IOP plays the sound) | Setting 0 turns off the host's low-latency mirror of the sound processor and plays the emulated IOP's output instead. |
-| `RAC1_ISO` | path to the NTSC-U ISO; default assets/iso/rac1-ntsc-u.iso | Path of the game disc image used by the game and by the setup tools. |
+| `RAC1_ISO` | path to the disc image; default assets/iso/rac1-ntsc-u.iso (rac1-pal.iso for the PAL disc), else the path in assets/iso/disc-path.txt | Path of the disc image the setup tools read. The game reads the disc's files the setup extracted (assets/disc/), and this image only with `RAC1_READ_ISO=1`. |
 | `RAC1_MEMCARD_DIR` | directory path; default $XDG_DATA_HOME/rac1-native/memcard, else ~/.local/share/rac1-native/memcard | Directory holding the virtual memory card's save files. Setting it also makes a headless run insert the card. |
 | `RAC1_PROGRESS` | file path, or 0 = off; default $XDG_DATA_HOME/rac1-native/progress.json, else ~/.local/share/rac1-native/progress.json (%APPDATA%\rac1-native\progress.json on Windows) in a windowed run, none in a headless run | Where the game writes `progress.json` for the RAC Native launcher (the planet played, the planets reached, the share explored, the time played: see [The launcher](launcher.md#progressjson)); a headless run writes it only when this is set. |
 | `RAC1_MOVIE_VOLUME` | floating-point gain; default 1.0 | Volume multiplier applied to the audio of the pre-rendered movies. |
@@ -216,6 +216,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_PROFILER_DUMP` | integer N frames (any non-positive value = 120); unset = off | Turns the host's frame profiler on and prints a `[profiler]` summary of the last N host frames every N frames: fps, frame time min / avg / max / p99 / 1 % low, the main thread's work (game code and host) and waits, the GPU's busy time, the bottleneck, each stage's CPU and GPU time, the workers, every thread's CPU %, the process's memory, the GPU's memory (Linux DRM fdinfo, GL_NVX_gpu_memory_info / GL_ATI_meminfo) and the GL objects per owner. Works headless; what the Profiler tab shows, in the log. |
 | `RAC1_PROFILER_OVERLAY` | 1 = on; default off | With the debug tools (or RAC1_DEVMENU_SHOT), the debug menu's profiler overlay is on from the start (fps, CPU / GPU, the bottleneck, a small graph and the stages' bars), as its Overlay box does. |
 | `RAC1_PROFILER_TRACE` | `file[,from[,frames]]`, from a host frame number (default 120), frames (default 300); unset = off | Records a Chrome trace (chrome://tracing, ui.perfetto.dev) of that many host frames: the main thread's stages (the game code's sub-stages among them), the GPU's (its timestamps on the CPU's time line), the GS chain and MRP scene workers' jobs, the job pool's workers' jobs (a track each), the host frames; written when done (and at exit). |
+| `RAC1_READ_ISO` | 1 = on; default off | The game reads the disc image itself (`RAC1_ISO`, else the setup's link in assets/iso/) instead of the disc's files the setup extracted into assets/disc/, to compare the two (they give the same bytes for every sector: `rac1-native --setup --compare-disc`). Also a way to play with the image while assets/disc/ is missing. |
 | `RAC1_RENDER_SCALE` | integer percent; unset = the Options setting | Overrides the 3D render scale, as a percentage of the window. |
 | `RAC1_RENDER_SHADE` | integer; 1 = vertex colours alone; default 0 | Debug view that shades with the vertex colours alone. |
 | `RAC1_SAMPLE_FROM` | frame number; default 0 (sample from the start) | Used with RAC1_SAMPLE_PROF: sampling starts at this frame. |

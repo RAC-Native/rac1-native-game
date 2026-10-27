@@ -112,6 +112,12 @@ What changed in each release. Releases are source only: you build the game with 
   moby or world assets, the generated code, the overlay maps, the boot executable): it says which is missing and makes it
   again, instead of leaving the game without the modern renderer's assets until `--force`. The game says so at start too
   when those assets are missing, and points to `./setup.sh`.
+- The setup extracts the whole disc into `assets/disc/` (about 6,800 files, 3.9 GB: the levels' data, the scenes, the
+  dialogue, the music and the movies, cut along the disc's own tables), each file checked against the image, and the game
+  reads those files instead of the disc image: it no longer needs the image once the setup has run (keep it for the
+  updates that regenerate from it). Done again only when the disc image changes (`--force disc` to redo it); a game
+  started without the files says to run the setup again. `RAC1_READ_ISO=1` reads the image itself, to compare, and
+  `rac1-native --setup --compare-disc` reads every sector both ways. See [Setup](docs/setup.md#the-discs-files).
 
 ## 0.5.0
 

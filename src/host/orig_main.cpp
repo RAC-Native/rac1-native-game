@@ -2116,14 +2116,14 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "rac1-native: level %d has no host assets yet\n", level);
         return 1;
     }
-    const bool have_disc = std::filesystem::exists(disc_path());
+    std::string disc_why;
+    const bool have_disc = disc_ready(disc_why);
     if (!have_disc || !std::filesystem::exists(disc_boot_elf_path()) || !disc_has_level(level)) {
         std::fprintf(stderr, "\nrac1-native: %s\n"
-                             "Run the setup from the repository's root, with your disc image:\n"
-                             "  ./setup.sh --iso <path-to-your-iso>\n"
+                             "Run the setup again from the repository's root, with your disc image:\n"
+                             "  ./setup.sh --iso <path-to-your-iso>   (setup.cmd on Windows)\n"
                              "and start the game from the repository's root.\n\n",
-                     have_disc ? "the game's data is missing (assets/)."
-                               : "your disc image was not found (assets/iso/rac1-ntsc-u.iso or rac1-pal.iso, or $RAC1_ISO).");
+                     have_disc ? "the game's data is missing (assets/)." : disc_why.c_str());
         return 1;
     }
     const bool headless = std::getenv("RAC1_HEADLESS") != nullptr;
@@ -2480,7 +2480,8 @@ int main(int argc, char** argv) {
                 }
                 return true;
             })) {
-            std::fprintf(stderr, "rac1-native: cannot read the level from the ISO (%s)\n", disc_path().c_str());
+            std::fprintf(stderr, "rac1-native: cannot read the level from the disc (%s)\n",
+                         disc_source() == DiscSource::Image ? disc_path().c_str() : disc_files_dir());
             return 1;
         }
         std::printf("[orig] sound bank %08x\n", lwu(0x0015ed5c));

@@ -11,6 +11,7 @@
 #include <runtime/kernel/disc.h>
 
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -23,7 +24,8 @@ namespace {
 
 namespace fs = std::filesystem;
 
-// where the game reads the disc while it runs (runtime/kernel/disc.cpp), relative to assets/: one link per region
+// where the setup finds the disc image again (runtime/kernel/disc.cpp; the game reads the disc's files, assets/disc/, and
+// the image only with RAC1_READ_ISO=1), relative to assets/: one link per region
 constexpr const char* GAME_ISO = "iso/rac1-ntsc-u.iso";
 constexpr const char* GAME_ISO_PAL = "iso/rac1-pal.iso";
 
@@ -42,6 +44,8 @@ void print_usage(const char* prog) {
               << "  --force            regenerate files that already exist\n"
               << "  --step <step>      run one step only: elf, moby, world, flight, overlay (default: all)\n"
               << "  --check-iso        only check the disc image, and make the game find it\n"
+              << "  --compare-disc     read every sector through the image and through the disc's files (assets/disc/),\n"
+              << "                     and compare\n"
               << "  --status           show which parts of the data are present\n"
               << "  --help, -h         show this help\n";
 }
@@ -65,6 +69,7 @@ void print_status(const fs::path& root) {
     const bool pal = !fs::exists(root / GAME_ISO) && fs::exists(root / GAME_ISO_PAL);
     const fs::path link = root / (pal ? GAME_ISO_PAL : GAME_ISO);
     check_file("Disc image", fs::exists(link) || !fs::exists(root / "iso/disc-path.txt") ? link : fs::path(disc_path()));
+    check_file("The disc's files", root / "disc/layout.txt");
     check_file("Boot executable", root / (pal ? "dumps/SCES_509.16" : "dumps/SCUS_971.99"));
     count_dir("Moby models and textures", root / "generated/mrp/moby", 20);
     count_dir("World geometry and textures", root / "generated/mrp/world", 20);
@@ -73,11 +78,11 @@ void print_status(const fs::path& root) {
     std::cout << "\n";
 }
 
-// Makes the game find the disc while it runs: assets/iso/rac1-ntsc-u.iso (rac1-pal.iso for the PAL disc), a
-// link to the image when it is elsewhere. A file the player put there is never replaced. The other region's
-// link is removed: assets/ holds one disc's data. Where a link cannot be made (Windows, without Developer
-// Mode or the administrator's right), the image's path goes into assets/iso/disc-path.txt instead, which the
-// game reads (runtime/kernel/disc.cpp).
+// Makes the setup find the disc again: assets/iso/rac1-ntsc-u.iso (rac1-pal.iso for the PAL disc), a link to the
+// image when it is elsewhere (the game reads the disc's files; the image only with RAC1_READ_ISO=1). A file the
+// player put there is never replaced. The other region's link is removed: assets/ holds one disc's data. Where a
+// link cannot be made (Windows, without Developer Mode or the administrator's right), the image's path goes into
+// assets/iso/disc-path.txt instead, which the setup and RAC1_READ_ISO read (runtime/kernel/disc.cpp).
 bool link_iso(const fs::path& assets, const fs::path& iso, const KnownDisc* disc) {
     const fs::path dest = assets / game_iso(disc);
     std::error_code ec;
@@ -101,7 +106,7 @@ bool link_iso(const fs::path& assets, const fs::path& iso, const KnownDisc* disc
         std::ofstream f(path_file, std::ios::binary | std::ios::trunc);
         f << target.string() << "\n";
         if (f.flush()) {
-            std::cout << "[setup] The game will read your disc image from " << target.string() << " (" << path_file.string() << ")\n";
+            std::cout << "[setup] Your disc image: " << target.string() << " (noted in " << path_file.string() << ")\n";
             return true;
         }
 #endif
@@ -109,7 +114,7 @@ bool link_iso(const fs::path& assets, const fs::path& iso, const KnownDisc* disc
         return false;
     }
     fs::remove(path_file, ec);  // (an older note of the path: the link is used now)
-    std::cout << "[setup] The game will read your disc image through " << dest.string() << "\n";
+    std::cout << "[setup] Your disc image: " << dest.string() << "\n";
     return true;
 }
 
@@ -166,6 +171,47 @@ bool overlay_maps(const fs::path& assets, const std::string& iso_path, const Kno
     return true;
 }
 
+// Every sector of the disc read through the image and through the extracted files (assets/disc/, tools/disc_extract.py),
+// the two compared: reads of 1 to 67 sectors one after the other, so that they start and end everywhere (across two
+// files, inside one, where no file is), then reads past the end, which both refuse. 0 when all are the same.
+int compare_disc() {
+    const uint64_t bytes = disc_size(DiscSource::Image), files_bytes = disc_size(DiscSource::Files);
+    if (files_bytes == 0) {
+        std::cerr << "[setup] Error: cannot read the disc's files (" << disc_files_dir() << "): run the setup to extract them\n";
+        return 1;
+    }
+    if (bytes == 0 || bytes != files_bytes || bytes % 2048 != 0) {
+        std::cerr << "[setup] Error: the image is " << bytes << " bytes, the disc's files " << files_bytes << ": extract them again\n";
+        return 1;
+    }
+    const uint32_t sectors = static_cast<uint32_t>(bytes / 2048);
+    std::vector<char> a(67 * 2048), b(67 * 2048);
+    uint32_t lba = 0, reads = 0, step = 0, last_pct = 0;
+    std::cout << "[setup] Comparing the disc's " << sectors << " sectors: 0%" << std::flush;
+    while (lba < sectors) {
+        const uint32_t n = std::min<uint32_t>(1 + (step++ * 37) % 67, sectors - lba);
+        const bool ra = disc_read_from(DiscSource::Image, lba, n, a.data()), rb = disc_read_from(DiscSource::Files, lba, n, b.data());
+        if (!ra || !rb || std::memcmp(a.data(), b.data(), size_t{n} * 2048) != 0) {
+            std::cerr << "\n[setup] Error: sectors " << lba << " to " << lba + n - 1 << " differ (" << (ra ? "" : "the image cannot be read, ")
+                      << (rb ? "" : "the files cannot be read, ") << "extract the disc again)\n";
+            return 1;
+        }
+        lba += n;
+        ++reads;
+        const uint32_t pct = static_cast<uint32_t>(uint64_t{lba} * 100 / sectors);
+        if (pct / 10 != last_pct / 10) std::cout << " " << pct << "%" << std::flush;
+        last_pct = pct;
+    }
+    for (const uint32_t at : {sectors - 1, sectors, sectors + 1}) {  // (past the end: refused by both)
+        if (disc_read_from(DiscSource::Image, at, 2, a.data()) || disc_read_from(DiscSource::Files, at, 2, b.data())) {
+            std::cerr << "\n[setup] Error: a read past the disc's end (sector " << at << ") was not refused\n";
+            return 1;
+        }
+    }
+    std::cout << "\n[setup] The disc's files read the same as the image: " << sectors << " sectors in " << reads << " reads\n";
+    return 0;
+}
+
 } // namespace
 
 int run_setup(int argc, char** argv) {
@@ -175,6 +221,7 @@ int run_setup(int argc, char** argv) {
     bool force = false;
     bool status_only = false;
     bool check_only = false;
+    bool compare = false;
 
     if (const char* env_iso = std::getenv("RAC1_ISO")) iso_path = env_iso;
 
@@ -194,6 +241,8 @@ int run_setup(int argc, char** argv) {
             status_only = true;
         } else if (a == "--check-iso") {
             check_only = true;
+        } else if (a == "--compare-disc") {
+            compare = true;
         } else if (a == "--help" || a == "-h") {
             print_usage(argv[0]);
             return 0;
@@ -233,6 +282,12 @@ int run_setup(int argc, char** argv) {
         std::cerr << "[setup] Error: " << iso_path << "\n  " << val.message << "\n";
         return 2;  // (tools/setup.py: a disc that cannot be used)
     }
+    // (the setup's steps read the image they were given, not the disc's files)
+    if (!disc_open(iso_path)) {
+        std::cerr << "[setup] Error: cannot read " << iso_path << "\n";
+        return 1;
+    }
+    if (compare) return compare_disc();
     const bool verbose = step == "all" || check_only;  // (tools/setup.py checks the disc once, then runs the steps one by one)
     if (verbose) {
         std::cout << "[setup] Disc image: Ratchet & Clank, " << val.disc->region << " (" << val.disc->serial << ")\n";

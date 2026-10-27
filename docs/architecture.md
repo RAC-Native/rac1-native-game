@@ -224,8 +224,10 @@ and knows nothing about Ratchet & Clank. It provides:
 - the experimental **Vulkan** backend's device, frames and helpers (`runtime/vk/`, see [Vulkan](vulkan.md));
 - the **IOP side**: IOP memory, the SIF RPC servers the game calls, the 989snd sound driver and its
   streams (`runtime/iop/`, `runtime/sif/`);
-- the **disc**, read from the player's ISO (`runtime/kernel/disc.cpp`), and the **movie decoder**
-  (`runtime/ipu/`);
+- the **disc** (`runtime/kernel/disc.cpp`), read by sector from the files the setup extracted from the
+  player's disc (`assets/disc/`: `layout.txt` maps every byte of the image to a file or to zero, so a
+  read gives the image's bytes wherever it falls; `RAC1_READ_ISO=1` reads the image itself, to
+  compare), and the **movie decoder** (`runtime/ipu/`);
 - the **R5900 interpreter** used to prove ports (`runtime/ee/ee_interpreter.cpp`), compiled but not
   used while playing.
 
@@ -375,7 +377,8 @@ The game runs from the repository's root: every path is relative to the working 
 
 | Path | What | Read by |
 |---|---|---|
-| `assets/iso/rac1-ntsc-u.iso` or `rac1-pal.iso` (or `$RAC1_ISO`) | the player's disc image (including each level's data WAD) | `runtime/kernel/disc.cpp`, `runtime/level/level_loader.cpp` |
+| `assets/disc/` (`layout.txt` and the files it lists) | the player's disc, extracted by the setup (`tools/disc_extract.py`): every sector the game reads, each level's data WAD included | `runtime/kernel/disc.cpp`, `runtime/level/level_loader.cpp` |
+| `assets/iso/rac1-ntsc-u.iso` or `rac1-pal.iso` (or `$RAC1_ISO`) | the player's disc image, read only with `RAC1_READ_ISO=1` (to compare) and by the setup | `runtime/kernel/disc.cpp` |
 | `assets/dumps/SCUS_971.99` (`SCES_509.16` from the PAL disc) | the game's executable, extracted from the disc | `runtime/kernel/ee_memory.cpp`, `src/game/boot/front_image.cpp` |
 | `assets/generated/overlay_map/` | the per-level address maps | `src/game/ovl/ovl_reloc.cpp` |
 | `assets/generated/mrp/moby/`, `assets/generated/mrp/world/` | the MRP's assets | `mrp_moby_renderer.cpp`, `mrp_world_renderer.cpp` |

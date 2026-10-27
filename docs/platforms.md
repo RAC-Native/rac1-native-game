@@ -36,7 +36,7 @@ compiles one of them. `src/game/` and `runtime/` call the interface and stay sta
 | The FPU mode in the coroutine ([Decisions](decisions.md), 11) | the coroutine's start | the new context's frame copies the thread's (MXCSR and the x87 control word, or FPCR), and each switch saves and restores them, as `getcontext` / `swapcontext` do | the fiber copies the host thread's (`fegetenv` and MXCSR), and each fiber keeps its own (`FIBER_FLAG_FLOAT_SWITCH`) |
 | Float rounding toward zero ([Decisions](decisions.md), 11) | `runtime/ee/ps2_fpu.h` | `fesetround` and MXCSR | the same calls (MinGW-w64 has both) |
 | Memory-mapped files | `src/io/mapped_file.h` (the setup) | `mmap` | `CreateFileMapping` / `MapViewOfFile` |
-| Reads of the disc at an offset | `runtime/kernel/disc.cpp` | `pread`, `posix_fadvise` | `ReadFile` with an offset |
+| Reads of the disc at an offset | `runtime/kernel/disc.cpp` (the disc's files in `assets/disc/`, or the image with `RAC1_READ_ISO=1`) | `pread`, `posix_fadvise` | `ReadFile` with an offset; a file past 240 characters opened with the `\\?\` prefix |
 | Settings and saves folders | the options pages, the controls, the memory card | `~/.config/rac1-native/`, `~/.local/share/rac1-native/` (or `XDG_*`) | `%APPDATA%\rac1-native\` |
 | Files by path | the settings files | `fopen` | `_wfopen` (any characters) |
 | The local time | the memory card's dates, the CDVD clock | `localtime_r` | `localtime_s` |
@@ -47,7 +47,8 @@ compiles one of them. `src/game/` and `runtime/` call the interface and stay sta
 | Backtraces (`EE_BT`) | `runtime/kernel/ee_memory.cpp` | glibc's `backtrace` | the return addresses (`CaptureStackBackTrace`), for `addr2line` |
 | The console and the timer at start (`process_begin` / `process_end`) | `src/host/orig_main.cpp`'s `main` | nothing | the console's QuickEdit mode off (a click in the console window paused the game) and `timeBeginPeriod(1)` (a sleep wakes up within ~1 ms, not 15.6 ms), both put back at the exit |
 | Thread priority | `src/host/host_priority_{posix,win32}.cpp` | rtkit over D-Bus | `SetThreadPriority` |
-| The disc image's link | the setup, `runtime/kernel/disc.cpp` | a symbolic link | a link if allowed, else the path in `assets/iso/disc-path.txt` |
+| The disc image's link | the setup, `runtime/kernel/disc.cpp` (`RAC1_READ_ISO=1`) | a symbolic link | a link if allowed, else the path in `assets/iso/disc-path.txt` |
+| The disc's extraction | `tools/disc_extract.py` (the setup) | plain files | plain files (no links); a path past 240 characters with the `\\?\` prefix |
 
 The Linux side behaves as before: the three reference images are unchanged.
 
