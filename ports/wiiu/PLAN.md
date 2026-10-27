@@ -166,3 +166,14 @@ real factor; this is the number to decide on.
 
 Next: the console run (timings: `/home/daino/progetti/rac1-scratch/wiiu/console_run.cfg`), then RAMHASH on the console
 against the PC (EE rounding on both), then the remaining edges (GS replica packets, the sky decoder).
+
+## First console run (2026-10-27, morning)
+
+The unpatched build on the console (Aroma, wiiload), `console_run.cfg`: Veldin, the forward walk, a level change at
+frame 60, 600 frames, EE rounding (`mtfsfi`), no RAMHASH.
+- The six ISO blocks hash as on the PC; the game's main returned 0 after 127 s, back to the menu by itself.
+- Game code ("update" of a single frame every 60): 195 ms (frame 60), 172-304 ms in play (240-600), 8-45 ms on the
+  loading screen. About 212 ms/frame over the whole run; the PC does the same frames in about 6 ms.
+- Hero and camera at frames 60, 300, 600 equal the PC's to 0.01 (some print one hundredth higher: to check with a
+  RAMHASH run whether it is only the printing).
+- So step 2's target (12-13 ms on one core) is off by ~20x: the next thing is a profile of where the time goes.
