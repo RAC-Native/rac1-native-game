@@ -97,4 +97,10 @@ target_link_options(rac1_wiiu PRIVATE -Wl,--wrap=abort -Wl,--wrap=__cxa_throw)  
 # after the call in the .init section, which __do_global_ctors_aux then returns into and runs again (the static
 # constructors forever). Unused functions dropped (-ffunction-sections is wut's default).
 target_link_options(rac1_wiiu PRIVATE -Wl,--gc-sections)
+# (experiment) sqrtf on integers, correctly rounded to nearest, in place of newlib's: exact_sqrt.cpp
+option(RAC1_WIIU_EXACT_SQRT "sqrtf on integers (round to nearest only: an emulator experiment)" OFF)
+if(RAC1_WIIU_EXACT_SQRT)
+    target_sources(rac1_wiiu PRIVATE exact_sqrt.cpp)
+    target_link_options(rac1_wiiu PRIVATE -Wl,--wrap=sqrtf)
+endif()
 wut_create_rpx(rac1_wiiu)
