@@ -18,11 +18,12 @@ namespace {
 constexpr uint32_t kMax = 1u << 19;  // (512 Ki samples: ~100 s at 200 us)
 uint32_t g_pc[kMax], g_lr[kMax];
 volatile uint32_t g_n = 0, g_lost = 0;
+OSTime g_from = 0;  // (RAC1_WIIU_SAMPLE_AFTER=<seconds>: no sample before then, the loading's left out)
 OSAlarm g_alarm;
 bool g_on = false;
 
 void tick(OSAlarm*, OSContext* ctx) {
-    if (ctx == nullptr) return;
+    if (ctx == nullptr || OSGetTime() < g_from) return;
     const uint32_t n = g_n;
     if (n >= kMax) {
         g_lost = g_lost + 1;
@@ -41,6 +42,8 @@ void wiiu_sampler_start() {
     if (us <= 0) return;
     OSCreateAlarm(&g_alarm);
     const OSTime period = static_cast<OSTime>(OSMicrosecondsToTicks(us));
+    const char* after = std::getenv("RAC1_WIIU_SAMPLE_AFTER");
+    g_from = OSGetTime() + (after != nullptr ? static_cast<OSTime>(OSSecondsToTicks(std::atoi(after))) : 0);
     OSSetPeriodicAlarm(&g_alarm, OSGetTime() + period, period, tick);
     g_on = true;
     std::printf("[wiiu] sampling every %d us, anchor %08x\n", us, static_cast<unsigned>(reinterpret_cast<uintptr_t>(&wiiu_sampler_anchor)));

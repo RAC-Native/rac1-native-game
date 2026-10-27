@@ -269,3 +269,18 @@ The sky's pass cannot be skipped like the tie / shrub culling: without it the mo
 
 Console now, in play (Veldin, NO_GRAPHICS=2, WORLD_PASS_SKIP=6): **18-24 ms per frame**; 600 frames in 20 s (127 s
 this morning).
+
+### Beyond Veldin (same day)
+
+- PC, every level (0-18), 2000 frames of RAC1_SIM_INPUT=explore (a new testing input: out of gameplay Start as
+  "shipskip", in gameplay forward with turns, jumps and attacks): with RAC1_NO_GRAPHICS=2 and with RAC1_WORLD_PASS_SKIP=6
+  the hero / camera / bolts / hp lines are identical and no page of the mobys' area ever differs. 17 levels reach
+  gameplay (7-33 of the lines); Umbris (7) and Batalia (8) stay in their arrival with this input.
+- Console: Novalis, Kerwan, Gaspar (300 frames from RAC1_LEVEL, the arrival only): RAMHASH identical to the PC's (TZ=UTC).
+- Console, Veldin with explore, a sampled gameplay-only profile (RAC1_WIIU_SAMPLE_AFTER=6): 13-15 ms per frame in the open,
+  22-25 ms near the start (more mobys). The spread: the poses ~10%, the VU0 ops ~15%, the memory accesses ~9%, the drop
+  shadows ~5%, the tfrag culling and the moby draw loop ~4% each, 989snd's synth ~4%.
+- Tried and reverted (slower on the console, 5-10%): a fast path in fin_lanes, the failures of ee_read / ee_write out of
+  line, ee_read / ee_write / fin_lanes always inlined (.text 25.5 -> 28 MB). Espresso's 32 KB instruction cache: code
+  size costs; every change is measured on the console before it stays.
+- Left: a music stream's start still costs one ~100 ms read (handles parked along the image would cut it).

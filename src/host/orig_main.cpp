@@ -1761,6 +1761,18 @@ void pad_packet(GLFWwindow* win, uint64_t frame) {
                 held |= 0x0800;
             }
         }
+        if (std::strcmp(sim, "explore") == 0) {  // testing (the levels' checks): out of gameplay Start every 20 frames as "shipskip";
+            // in gameplay forward, a turn of 40 frames every 240, a jump every 90, an attack every 150
+            const int32_t md = lw(OV(0x0015f5c4));
+            if (md != 0 && md != 3) {
+                if (frame % 20 == 0) held |= 0x0800;
+            } else if (md == 0) {
+                ly = -1.0f;
+                if (frame % 240 < 40) lx = 1.0f;
+                if (frame % 90 < 4) held |= 0x0040;
+                if (frame % 150 < 3) held |= 0x0080;
+            }
+        }
         if (std::strcmp(sim, "animsheet") == 0) {  // testing: Start at 120; from 200 the hero's update off (the frame's
             // enable bit 1) and his animation set n (RAC1_ANIM_FIRST.., 16 frames each) started at frame 0; shots via RAC1_SHOTS
             if (frame >= 120 && frame < 124) held |= 0x0800;
