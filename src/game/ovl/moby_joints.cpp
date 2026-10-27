@@ -263,7 +263,7 @@ RAC1_T_AVX2 inline J rotate2(Fl& fl, J& a, J r0, J r1, J r2, J p, bool last_hi) 
     return fin2(fl, add(a, mul(r2, bc<2>(p))), last_hi);
 }
 // orig: (helper) compose_joint with AVX2: rotates 0 and 1 together, rotate 2 with the transform's first three ops, its last alone
-RAC1_T_AVX2 [[gnu::noinline]] Fl compose_joint(I& a, const I r[4], const I p[4], I w, I o[4]) {
+RAC1_T_AVX2 __attribute__((noinline)) Fl compose_joint(I& a, const I r[4], const I p[4], I w, I o[4]) {
     Fl fl;
     const J r0 = two(r[0], r[0]), r1 = two(r[1], r[1]), r2 = two(r[2], r[2]);
     J acc2;
@@ -277,7 +277,7 @@ RAC1_T_AVX2 [[gnu::noinline]] Fl compose_joint(I& a, const I r[4], const I p[4],
     return fl;
 }
 // orig: (helper) compose_bind with AVX2: the transform's first three ops with rotate 0, its last, then rotates 1 and 2 together
-RAC1_T_AVX2 [[gnu::noinline]] Fl compose_bind(I& a, const I r[4], const I p[4], I w, I o[4]) {
+RAC1_T_AVX2 __attribute__((noinline)) Fl compose_bind(I& a, const I r[4], const I p[4], I w, I o[4]) {
     Fl fl;
     const J r0 = two(r[0], r[0]), r1 = two(r[1], r[1]), r2 = two(r[2], r[2]);
     J acc2;

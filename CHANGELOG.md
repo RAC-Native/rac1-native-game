@@ -85,6 +85,8 @@ What changed in each release. Releases are source only: you build the game with 
   below the level, in a pit or after a long fall he is back on foot on the last solid ground. No race rules. OpenGL and Vulkan.
 
 ### Fixes
+- Windows: the build failed with MSYS2's current Clang ("'gnu::noinline' attribute cannot be applied to types" in
+  moby_joints.cpp, #112).
 - Modern lighting: Ratchet and the other mobys are lit by the lights placed by hand, the lights per class and the automatic
   emitters, per pixel as the world (they had only the game's own lights; #110). OpenGL and Vulkan.
 - Surface materials: a metal's roughness works as it reads - low is polished, a sharp highlight and a clear mirror of the sky (and
