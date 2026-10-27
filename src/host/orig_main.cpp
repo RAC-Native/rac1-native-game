@@ -391,6 +391,9 @@ static void ram_hash_frame(FILE* f, uint64_t frame) {
         for (int i = 0; i < 4096; i += 8) {
             uint64_t w;
             std::memcpy(&w, p + i, 8);
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+            w = w << 32 | w >> 32;  // (EE memory as host words: the doubleword's low word first, as the PS2 reads it)
+#endif
             a = (a ^ w) * 0x100000001b3ull;
             a ^= a >> 29;
         }
@@ -400,6 +403,9 @@ static void ram_hash_frame(FILE* f, uint64_t frame) {
     for (uint32_t pg = 0; pg < 8192; ++pg) h[pg] = hash_page(ram + static_cast<size_t>(pg) * 4096);
     const uint8_t* spr = static_cast<const uint8_t*>(ee_ram_ptr(0x70000000u));
     for (uint32_t pg = 0; pg < 4; ++pg) h[8192 + pg] = hash_page(spr + pg * 4096);
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    for (uint64_t& v : h) v = __builtin_bswap64(v);  // (the file little-endian, as the PC writes it: the runs compare)
+#endif
     std::fwrite(h.data(), 8, h.size(), f);
     static const char* dump = std::getenv("RAC1_RAMDUMP");
     if (dump != nullptr) {
@@ -3788,6 +3794,7 @@ int main(int argc, char** argv) {
     rac1::platform::process_end();  // (std::_Exit runs no atexit handler)
     rac1::update_check::run_update();
 #if defined(__WIIU__)
+    if (ramhash != nullptr) std::fclose(ramhash);  // (no _Exit here: the file's last frame written)
     return 0;  // (the Wii U: back to ports/wiiu/game's main, which goes back to the menu; no GL objects there)
 #else
     std::_Exit(0);  // the renderers' static GL objects would be freed after the context is gone

@@ -1,6 +1,7 @@
 // VU1 behind VIF1 (see vu1.h). Hardware layer: no game logic; the programs are the game's own
 // (uploaded by MPG from its packets) or their registered ports.
 #include <runtime/vu/vu1.h>
+#include <runtime/kernel/ee_memory.h>
 
 #include <algorithm>
 #include <atomic>
@@ -49,17 +50,18 @@ void unpack_plain_t(Vu1& vu, uint32_t addr, uint32_t num, uint32_t wl, uint32_t 
             row += cl;
         }
         uint8_t* out = &vu.st.mem[(dest & 0x3ff) << 4];
-        const uint8_t* p = d + static_cast<size_t>(n) * (VN + 1) * EBYTES;
+        const size_t at = static_cast<size_t>(n) * (VN + 1) * EBYTES;  // (from d: d is EE memory, word-aligned)
         uint32_t e[4];
         for (uint32_t k = 0; k <= VN; ++k) {
             if constexpr (EBYTES == 4) {
-                std::memcpy(&e[k], p + 4 * k, 4);
+                std::memcpy(&e[k], d + at + 4 * k, 4);
             } else if constexpr (EBYTES == 2) {
                 uint16_t h;
-                std::memcpy(&h, p + 2 * k, 2);
+                std::memcpy(&h, d + ee_half_addr(static_cast<uint32_t>(at + 2 * k)), 2);
                 e[k] = USN ? h : static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(h)));
             } else {
-                e[k] = USN ? p[k] : static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(p[k])));
+                const uint8_t b = d[ee_byte_addr(static_cast<uint32_t>(at + k))];
+                e[k] = USN ? b : static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(b)));
             }
         }
         uint32_t val[4];
@@ -109,10 +111,10 @@ void unpack(Vu1& vu, uint32_t code, const uint8_t* d) {
         if (ebits == 32) v = r32(d + byte);
         else if (ebits == 16) {
             uint16_t h;
-            std::memcpy(&h, d + byte, 2);
+            std::memcpy(&h, d + ee_half_addr(byte), 2);  // (d is EE memory: a halfword's, a byte's place in its word)
             v = usn ? h : static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(h)));
         } else {
-            const uint8_t b = d[byte];
+            const uint8_t b = d[ee_byte_addr(byte)];
             v = usn ? b : static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(b)));
         }
         bitpos += ebits;
@@ -133,7 +135,7 @@ void unpack(Vu1& vu, uint32_t code, const uint8_t* d) {
         if (has_data) {
             if (v45) {
                 uint16_t h;
-                std::memcpy(&h, d + (bitpos >> 3), 2);
+                std::memcpy(&h, d + ee_half_addr(static_cast<uint32_t>(bitpos >> 3)), 2);
                 bitpos += 16;
                 val[0] = (h & 0x1fu) << 3;
                 val[1] = ((h >> 5) & 0x1fu) << 3;
@@ -456,7 +458,8 @@ bool vif1_command(Vu1& vu, uint32_t code, const uint8_t* data, const KickSink& k
             }
         }
         if (trace_on()) std::fprintf(stderr, "[VU1] MPG at %03x n %u hash %016llx\n", imm, n, static_cast<unsigned long long>(code_hash(reinterpret_cast<const uint64_t*>(data), n)));
-        for (uint32_t i = 0; i < n; ++i) std::memcpy(&vu.micro[(imm + i) & 0x7ff], data + 8 * i, 8);
+        for (uint32_t i = 0; i < n; ++i)  // (an instruction's low word first, as EE memory holds it on any host)
+            vu.micro[(imm + i) & 0x7ff] = r32(data + 8 * i) | static_cast<uint64_t>(r32(data + 8 * i + 4)) << 32;
         ++g_micro_gen;
         return true;
     }

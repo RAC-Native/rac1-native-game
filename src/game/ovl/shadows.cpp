@@ -77,9 +77,15 @@ int32_t cvt_w(float s) {
 int32_t mult(int32_t a, int32_t b) { return static_cast<int32_t>(static_cast<uint32_t>(static_cast<int64_t>(a) * b)); }
 // orig: (helper) a doubleword at any address (LDR / LDL)
 uint64_t ld_unaligned(uint32_t a) {
+#if defined(RAC1_EE_WORDS_BE)
+    uint64_t v = 0;  // (EE memory as host words: byte by byte, each at its place)
+    for (uint32_t i = 0; i < 8; ++i) v |= static_cast<uint64_t>(lbu(a + i)) << (8 * i);
+    return v;
+#else
     uint64_t v;
     std::memcpy(&v, ee_ram_ptr(a), 8);
     return v;
+#endif
 }
 // orig: (helper) the pad to the next quadword: a zero word at the cursor, then one per word to it
 uint32_t pad_zero(uint32_t at) {

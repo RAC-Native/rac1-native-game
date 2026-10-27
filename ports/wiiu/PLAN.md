@@ -144,3 +144,24 @@ What would have to change for the port to be realistic: the skinning (two thirds
 750's paired singles and without the per-access EE memory checks, the world culling likewise; even then a 60 fps
 game on one Espresso core looks out of reach, 30 fps hard. The console's own measurement (step 2) will give the
 real factor; this is the number to decide on.
+
+## Status, 2026-10-27 (night)
+
+- **The game runs on Wii U code (in Cemu):** `ports/wiiu/game` builds the whole engine in `RAC1_NO_GRAPHICS` mode as
+  a .rpx (19.5 MB). In Cemu it starts, loads Veldin, runs 120 frames with `RAC1_SIM_INPUT=forward` and a
+  `RAC1_GOTO=0@60` level change, loads the sound bank, plays the music streams' commands, and returns.
+- **Game state:** the hero's and the camera's positions at frames 60 and 120 equal the PC's (both rounding to
+  nearest: Cemu cannot run the EE rounding mode). RAMHASH: frames 0 and 1 identical page for page; from frame 2 a
+  few pages differ in the mobys' skinning output (vertex colours a few units off), most likely Cemu's float
+  emulation (newlib's sqrtf on the 750 starts from frsqrte, whose table Cemu does not reproduce bit for bit; on the
+  console fputest's sqrt hash equals the PC's). The exact comparison is for the console.
+- **Cemu workflow** (debugging only): `ports/wiiu/tools/cemu_rpx.py` (conditional traps made nops), RAC1_FPU_NEAREST=1,
+  `--enable-gdbstub` + `powerpc-eabi-gdb` for backtraces.
+- **Found and fixed on the way:** code over 32 MB loops the static constructors (VU1 programs left out); wut's
+  recursive_mutex is not recursive (989snd); elf2rpl takes no TLS; freopen(stdout) writes nothing (own devoptab);
+  the sound commands' records, 989snd's reader / samples / opcodes / names, the stream's ADPCM words, the WAD /
+  level core / overlay parsers, VIF halfword and byte elements, VU1 MPG words, the drop shadows' unaligned
+  doubleword, RAMHASH on big-endian.
+
+Next: the console run (timings: `/home/daino/progetti/rac1-scratch/wiiu/console_run.cfg`), then RAMHASH on the console
+against the PC (EE rounding on both), then the remaining edges (GS replica packets, the sky decoder).
