@@ -98,6 +98,11 @@ not exact: a failing pixel lying exactly on the depth another surface wrote (cop
 of the 7.4 million in those shots, by at most 26 levels of 255, single scattered pixels on foliage; the original lighting keeps
 LEQUAL. The stored picture of the pause menu (in EE memory) carries those pixels too.
 
+**Kept on purpose, to review.** Daino chose to keep the strict pass on by default for its gain (27 October 2026),
+knowing it is not exact. If it ever shows more than scattered pixels (holes in foliage, flicker on decals or on coplanar
+faces, a visible difference in the pause menu's picture), it becomes an option or is reviewed: `RAC1_MRPW_P2_LESS=0`
+gives the exact picture to compare.
+
 The ambient occlusion's half resolution is now offered for every mode (SSAO 1/2, SSAO+ 1/2, HBAO 1/2 beside GTAO 1/2: about 45 %
 less on Vulkan, 10 to 35 % on OpenGL, whose depth copy does not shrink), the full resolution staying the default
 ([Lighting](lighting.md#ambient-occlusion)).
