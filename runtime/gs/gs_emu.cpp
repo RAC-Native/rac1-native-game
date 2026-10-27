@@ -77,6 +77,15 @@ uint64_t r64(const uint8_t* p) {
     return (static_cast<uint64_t>(w[1]) << 32) | w[0];
 }
 uint8_t byte_at(const uint8_t* p, uint32_t i) { return p[i ^ EE_BYTE_SWIZZLE]; }
+// (the GS's local memory, vram_, holds the PS2's bytes - its 16-bit, 8-bit and 4-bit pixels are read and written as bytes -:
+// a 32-bit pixel is its four bytes little-endian, whatever the host's order)
+uint32_t vram_r32(const uint8_t* p) { return p[0] | (p[1] << 8) | (p[2] << 16) | (static_cast<uint32_t>(p[3]) << 24); }
+void vram_w32(uint8_t* p, uint32_t v) {
+    p[0] = static_cast<uint8_t>(v);
+    p[1] = static_cast<uint8_t>(v >> 8);
+    p[2] = static_cast<uint8_t>(v >> 16);
+    p[3] = static_cast<uint8_t>(v >> 24);
+}
 uint16_t half_at(const uint8_t* p, uint32_t i) {
     uint16_t v;
     std::memcpy(&v, p + (i ^ EE_HALF_SWIZZLE), 2);
@@ -155,8 +164,8 @@ uint32_t Gs::read_pixel(uint32_t psm, uint32_t bp, uint32_t bw, uint32_t x, uint
         }
     };
     switch (psm) {
-    case CT32: { const uint32_t a = addr32(bp, bw, x, y); note(a, 4); return r32(&vram_[a]); }
-    case CT24: { const uint32_t a = addr32(bp, bw, x, y); note(a, 4); return r32(&vram_[a]) & 0xffffff; }
+    case CT32: { const uint32_t a = addr32(bp, bw, x, y); note(a, 4); return vram_r32(&vram_[a]); }
+    case CT24: { const uint32_t a = addr32(bp, bw, x, y); note(a, 4); return vram_r32(&vram_[a]) & 0xffffff; }
     case CT16:
     case CT16S: {
         const uint32_t a = addr16(bp, bw, x, y, psm == CT16S);
@@ -172,7 +181,7 @@ uint32_t Gs::read_pixel(uint32_t psm, uint32_t bp, uint32_t bw, uint32_t x, uint
     case T8H: { const uint32_t a = addr32(bp, bw, x, y) + 3; note(a, 1); return vram_[a]; }
     case T4HL: { const uint32_t a = addr32(bp, bw, x, y) + 3; note(a, 1); return vram_[a] & 0xf; }
     case T4HH: { const uint32_t a = addr32(bp, bw, x, y) + 3; note(a, 1); return vram_[a] >> 4; }
-    default: { const uint32_t a = addr32(bp, bw, x, y); note(a, 4); return r32(&vram_[a]); }
+    default: { const uint32_t a = addr32(bp, bw, x, y); note(a, 4); return vram_r32(&vram_[a]); }
     }
 }
 
@@ -210,11 +219,12 @@ void Gs::write_pixel(uint32_t psm, uint32_t bp, uint32_t bw, uint32_t x, uint32_
     // there is no change (the snapshots of textures stay valid)
     if (psm == CT32) {
         const uint32_t a0 = addr32(bp, bw, x, y);
-        const uint32_t old = r32(&vram_[a0]);
-        if (old != v) {
-            std::memcpy(&vram_[a0], &v, 4);
+        if (vram_r32(&vram_[a0]) != v) {
+            uint32_t raw;  // (the bytes as they were, for the undo's put-back)
+            std::memcpy(&raw, &vram_[a0], 4);
+            vram_w32(&vram_[a0], v);
             note_change(a0, 4);
-            if (vundo_on_) vundo_.push_back({a0, 4, old});
+            if (vundo_on_) vundo_.push_back({a0, 4, raw});
         }
         return;
     }
@@ -246,8 +256,8 @@ void Gs::write_ct32_rect(uint32_t bp, uint32_t bw, uint32_t w, uint32_t h, const
         const uint32_t* row = px + static_cast<size_t>(y) * w;
         for (uint32_t x = 0; x < w; ++x) {
             const uint32_t a = addr32(bp, bw, x, y);
-            if (r32(&vram_[a]) != row[x]) {
-                std::memcpy(&vram_[a], &row[x], 4);
+            if (vram_r32(&vram_[a]) != row[x]) {
+                vram_w32(&vram_[a], row[x]);
                 if (a < lo) lo = a;
                 if (a + 4 > hi) hi = a + 4;
             }
@@ -264,7 +274,7 @@ void Gs::write_pixel_raw(uint32_t psm, uint32_t bp, uint32_t bw, uint32_t x, uin
     switch (psm) {
     case CT32: {
         const uint32_t a = addr32(bp, bw, x, y);
-        std::memcpy(&vram_[a], &v, 4);
+        vram_w32(&vram_[a], v);
         break;
     }
     case CT24: {
@@ -1088,7 +1098,7 @@ void Gs::screen_picture() {
     img->px.resize(static_cast<size_t>(w) * h);
     for (uint32_t y = 0; y < h; ++y) {
         uint32_t* row = img->px.data() + static_cast<size_t>(y) * w;
-        for (uint32_t x = 0; x < w; ++x) row[x] = r32(&vram_[addr32(scr_bp_, scr_bw_, x, y)]);
+        for (uint32_t x = 0; x < w; ++x) row[x] = vram_r32(&vram_[addr32(scr_bp_, scr_bw_, x, y)]);
     }
     wr_open_ = false;
     scr_seq_ = wr_seq_;

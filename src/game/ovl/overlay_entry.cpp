@@ -3,6 +3,8 @@
 // Callees not ported (or not yet proven with the oracle) are TODO_PORT. The hardware the loop
 // waits on (the RCNT1 counter, vsync, DMA kicks) is the host's: see host_rcnt1().
 #include <chrono>
+#include <utility>
+#include <vector>
 #include <game/ovl/credits_tr.h>
 #include <game/ovl/screen_flash.h>
 #include <game/ovl/memory_card.h>
@@ -321,6 +323,12 @@ static bool world_pass_skipped(int kind) {
     return wp_skip != nullptr && kind >= 0 && ((std::strtoul(wp_skip, nullptr, 16) >> kind) & 1) != 0;
 }
 
+// orig: (host) the world passes' chain ranges of the frame (first tag, end), noted while on: for a renderer that draws the
+// world itself and has the GS replica skip them (the Wii U's 2D path; the MRP has its own, mrp_world_skip_ranges). The
+// taker clears them.
+bool g_world_pass_ranges_on = false;
+std::vector<std::pair<uint32_t, uint32_t>> g_world_pass_ranges;
+
 void world_pass(void (*pass)(), int kind) {
     RAC1_PROF_ZONE(kGameWorldPasses);
     static const bool keep_env = std::getenv("RAC1_WORLD_CHAIN") != nullptr;
@@ -355,6 +363,7 @@ void world_pass(void (*pass)(), int kind) {
         return;
     }
     if (g_world_mrp) mrpw::scene_note_pass(kind >= 0 ? kind : 3, cur, lwu(OV(0x001611c0)));  // (the sky: 3)
+    if (g_world_pass_ranges_on && lwu(OV(0x001611c0)) > cur) g_world_pass_ranges.emplace_back(cur, lwu(OV(0x001611c0)));
     if (g_world_mrp) mrp_lod_world_after(kind >= 0 ? kind : 3, cur, lwu(OV(0x001611c0)));  // (the shadow chain in place of this range)
     static const bool trace = std::getenv("RAC1_VU1_TRACE") != nullptr;  // (testing)
     if (trace) std::fprintf(stderr, "[VU1] world pass chain %08x..%08x\n", cur, lwu(OV(0x001611c0)));

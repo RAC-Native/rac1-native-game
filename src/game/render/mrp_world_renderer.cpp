@@ -1293,7 +1293,8 @@ const TexRef* vram_texture(Level& L, uint64_t tex0, uint64_t tex1, uint64_t mip1
     uint32_t clut[256];
     for (uint32_t i = 0; i < 256; ++i) {
         const uint32_t j = (i & 0xe7) | ((i & 0x08) << 1) | ((i & 0x10) >> 1);  // (CSM1)
-        std::memcpy(&clut[i], vram + gs::Gs::addr32(cbp, 1, j & 0xf, j >> 4), 4);
+        const uint8_t* c = vram + gs::Gs::addr32(cbp, 1, j & 0xf, j >> 4);  // (the local memory's pixel little-endian)
+        clut[i] = c[0] | (c[1] << 8) | (c[2] << 16) | (static_cast<uint32_t>(c[3]) << 24);
     }
     uint32_t levels = 1;
     while (levels <= mxl && (w >> levels) >= 1 && (h >> levels) >= 1) ++levels;

@@ -137,6 +137,13 @@
 #if defined(__WIIU__)
 rac1::host_input::HostState rac1_wiiu_pad_state();  // ports/wiiu/game/wiiu_input.cpp: the GamePad and the Pro / Classic controllers
 bool rac1_wiiu_frame();                             // (ProcUI each host frame: false when the application closes)
+bool rac1_wiiu_picture();                           // ports/wiiu/game/wiiu_gfx.cpp: the picture is up (RAC1_WIIU_GFX)
+// (the frame's 2D for the picture: the replica's primitives, the game's frame size, its page, the page not drawn in a fade)
+void rac1_wiiu_picture_frame(const rac1::gs::Gs& gs, float fb_w, float fb_h, int screen_fbp, int skip_fbp, uint64_t game_frame);
+namespace rac1 {
+extern bool g_world_pass_ranges_on;  // src/game/ovl/overlay_entry.cpp: the world passes' chain ranges noted
+extern std::vector<std::pair<uint32_t, uint32_t>> g_world_pass_ranges;
+}  // namespace rac1
 #endif
 #include "sample_prof.h"
 #include "profiler/host_profiler.h"
@@ -369,6 +376,29 @@ static void moby_skips_note(uint32_t start, uint32_t end, std::vector<rac1::gs::
     g_moby_skips_memo.hash = chain_bytes_hash(start, end);
     if (out != nullptr) out->insert(out->end(), ranges.begin(), ranges.end());
     g_moby_skips_memo.ranges = std::move(ranges);
+}
+// orig: (host) testing (RAC1_GS_PRIMDUMP=<game frame>): the GS replica's primitives of that frame but the projected 3D, one line
+// each (the type, the registers, the vertices, a hash of the texture's pixels), to compare a host's 2D with another's (the
+// Wii U's with the PC's)
+static void gs_prims_dump(const rac1::gs::Gs& gs, uint64_t game_frame) {
+    static const char* e = std::getenv("RAC1_GS_PRIMDUMP");
+    static bool done = false;  // (once, at the first frame drawn at or past it: a slow host runs several game frames in one)
+    if (e == nullptr || done || game_frame < std::strtoull(e, nullptr, 10)) return;
+    done = true;
+    std::printf("[prim] game frame %llu: %zu primitives\n", static_cast<unsigned long long>(game_frame), gs.primitives().size());
+    size_t i = 0;
+    for (const rac1::gs::Primitive& p : gs.primitives()) {
+        ++i;
+        if (p.vu || p.fx != 0) continue;
+        uint64_t th = 1469598103934665603ull;
+        if (p.tex)
+            for (uint32_t px : p.tex->px) th = (th ^ px) * 1099511628211ull;
+        std::printf("[prim] %zu t%d prim %llx tex0 %llx alpha %llx test %llx frame %llx tex %dx%d %016llx", i, p.type, static_cast<unsigned long long>(p.st.prim),
+                    static_cast<unsigned long long>(p.st.tex0), static_cast<unsigned long long>(p.st.alpha), static_cast<unsigned long long>(p.st.test),
+                    static_cast<unsigned long long>(p.st.frame), p.tex ? p.tex->w : 0, p.tex ? p.tex->h : 0, static_cast<unsigned long long>(p.tex ? th : 0));
+        for (const rac1::gs::Vertex& v : p.v) std::printf(" (%.1f %.1f rgba %02x%02x%02x%02x uv %.1f %.1f)", v.x, v.y, v.r, v.g, v.b, v.a, v.u, v.v);
+        std::printf("\n");
+    }
 }
 // orig: (host) a game frame a host frame ran without drawing it: its moby skip ranges noted (the next frame may walk its chain)
 static void moby_skips_note_undrawn() {
@@ -2879,6 +2909,51 @@ int main(int argc, char** argv) {
             fprof.end_frame();
             if (max_frames != 0 && frame >= max_frames) break;
 #if defined(__WIIU__)
+            if (rac1_wiiu_picture()) {  // (the Wii U's picture: the frame's chain on the GS replica, its 2D drawn by the port)
+                // (chain_stage's choice of the chain below, without the MRP's parts: the frame's own, else the one a loop kicked
+                // before it flipped the buffers, never one already sent, nothing on a held fade frame)
+                rac1::g_world_pass_ranges_on = true;  // (the next updates' world passes noted: their ranges skipped below)
+                rac1::gs::Gs& gs = rac1::gs::gs_global();
+                gs.reset_frame();
+                const bool fade = ee_thread_suspended() && ee_thread_frame() != rac1::EeVsyncFrame::Scene;
+                const bool fade_held = fade && ee_thread_frame() == rac1::EeVsyncFrame::Held;
+                const uint32_t idx = lwu(OV(0x001611d0));
+                uint32_t start = lwu(OV(0x001611b8) + (idx & 1) * 4), end = lwu(OV(0x001611c0));
+                bool prev_chain = false;
+                if (end <= start) {
+                    prev_chain = true;
+                    start = lwu(OV(0x001611b8) + ((idx & 1) ^ 1) * 4);
+                    end = lwu(OV(0x001611c4));
+                }
+                const bool already_kicked = prev_chain && start == g_loop_kicked.start && end == g_loop_kicked.end;
+                if (!prev_chain && !fade) g_loop_kicked = KickedChain{};
+                if (!fade_held && !already_kicked && start != 0 && end > start) {
+                    // (as chain_stage: the mobys whose skinning was skipped have no vertex data in the chain, their parts' bytes
+                    // are older ones the VIF would take for codes - this frame's ranges, or the ones noted when the chain is walked again)
+                    std::vector<rac1::gs::Gs::SkipRange> skips;
+                    if (!prev_chain && g_moby_mrp_skip && (g_moby_mrp_skip_parts & 8) && !g_moby_mrp_skip_verify) {
+                        moby_skips_note(start, end, &skips);
+                    } else if (g_moby_skips_memo.start == start && g_moby_skips_memo.end == end && !g_moby_skips_memo.ranges.empty() &&
+                               g_moby_skips_memo.hash == chain_bytes_hash(start, end)) {
+                        skips.insert(skips.end(), g_moby_skips_memo.ranges.begin(), g_moby_skips_memo.ranges.end());
+                    }
+                    // (the world: the passes' ranges skipped, their 3D and their textures' uploads, as with the MRP's world)
+                    if (!prev_chain && !fade)
+                        for (const auto& [first, last] : rac1::g_world_pass_ranges) {
+                            rac1::gs::Gs::SkipRange r;
+                            r.first = first;
+                            r.last = last - 16;
+                            skips.push_back(std::move(r));
+                        }
+                    if (!skips.empty()) gs.set_chain_skips(std::move(skips));
+                    gs.set_screen_area(0, 0, 0);
+                    gs.vif1_chain(start, end);
+                }
+                gs_prims_dump(gs, game_frame);  // (testing)
+                rac1::g_world_pass_ranges.clear();
+                const int screen_fbp = static_cast<int>(lwu(0x0013cf20) & 0x1ff);
+                rac1_wiiu_picture_frame(gs, static_cast<float>(lhu(0x001518d0)), static_cast<float>(lhu(0x001518d2)), screen_fbp, fade ? screen_fbp : -1, game_frame);
+            }
             if (!rac1_wiiu_frame()) break;  // (the HOME menu's closing)
 #endif
             if (realtime_test && steps == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));  // (ahead of the clock: no busy loop)
@@ -3486,6 +3561,7 @@ int main(int argc, char** argv) {
             {
                 rac1::gs::chain_join();  // (the frame's chain run on the worker thread)
                 rac1::gs::Gs& gs = rac1::gs::gs_global();
+                gs_prims_dump(gs, game_frame);  // (testing)
                 fprof.mark(4);
                 rac1::gs::Viewport& gv = fd.gv;
                 const bool has_dm = fd.has_dm;

@@ -110,7 +110,9 @@ int32_t gs_exec_store_image(uint32_t lp, uint32_t dst) {
             const uint32_t py = (sy + y) & 2047;
             for (uint32_t x = 0; x < w; ++x) {
                 const uint32_t a = gs::Gs::addr32(sbp, sbw, (sx + x) & 2047, py);
-                std::memcpy(out, &vram[a], 4);
+                // (the local memory's pixel little-endian, as the PS2's; EE memory a host word: the same bytes on the PC)
+                const uint32_t v = vram[a] | (vram[a + 1] << 8) | (vram[a + 2] << 16) | (static_cast<uint32_t>(vram[a + 3]) << 24);
+                std::memcpy(out, &v, 4);
                 out += 4;
             }
         }

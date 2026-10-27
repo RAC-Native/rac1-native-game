@@ -351,3 +351,24 @@ moved the game's.
 - After the fix: the picture + mirror run past three falls (frames 720, 1560, 2340) to its end; before it, two of
   three such runs died at the first fall's reload. With the picture on, WHBGfxFinishRender waits for the vsync each
   host frame: 15.9 host frames a second carrying ~3 game steps each; the backend's present must not hold the game.
+
+### Phase 1 in progress: the 2D on GX2
+
+- ports/wiiu/game/gs_draw_gx2.cpp (the GS replica's GX2 backend, ported from gs_draw.cpp's GL / Vulkan paths: batching,
+  the frame -> window mapping, TFX / TCC / alpha test / AFAIL / fog, blending with FIX; one uniform block, a MEM2 ring,
+  textures per TexImage with LRU) and shaders/gs_draw.gsh; wiiu_gfx.cpp draws the frame's 2D in a centred 4:3 area.
+- orig_main's no-graphics branch on the Wii U (RAC1_WIIU_GFX): chain_stage's choice of the chain, the mobys' skip ranges
+  (moby_skips_note: their chain parts have no vertex data with the skinning skipped - the VIF took old bytes for codes,
+  "no port for the microprogram" at 0x957b ...), the world passes' ranges (overlay_entry.cpp g_world_pass_ranges: their
+  3D and their texture uploads, ~30% of the frame in write_pixel before), then the walk and the 2D handed to the port.
+- Big-endian fixes on the way: the GS local memory (vram_) holds the PS2's bytes: its 32-bit pixels now read / written
+  little-endian (gs_emu.cpp, libgraph.cpp's store image, mrp_world_renderer.cpp's CLUT read); EE / VU reads as before.
+- Tools: RAC1_WIIU_SHOT=<game frames> writes the TV's picture to shot_<n>.ppm on the SD; RAC1_GS_PRIMDUMP=<game frame>
+  lists the frame's 2D primitives (type, registers, vertices, the texture's pixels' hash) on any host, to diff the Wii U's
+  with the PC's.
+- State (pause menu, RAC1_SIM_INPUT=start, frame 500): the first 103 primitives identical to the PC's, textures included.
+  The menu's boxes show at the right places; its text is drawn by the game into a render target (FRAME 0x400d8, page 0xd8)
+  and composited: not drawn yet (render targets are the backend's next piece). The HelpDesk box (frame 400) is missing.
+- The exit with the picture: the 2D backend shut down before SYSLaunchMenu, frames presented until ProcUI lets go.
+- Speed with the picture: ~30 game steps a second, 6 host frames a second (the vsync wait of each present + the walk +
+  the 2D): to measure again with the world's ranges skipped, then the present made not to hold the game.

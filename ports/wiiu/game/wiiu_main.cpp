@@ -30,6 +30,7 @@ bool wiiu_gfx_wanted();  // wiiu_gfx.cpp: the picture (RAC1_WIIU_GFX=1)
 bool wiiu_gfx_start();
 void wiiu_gfx_stop();
 void wiiu_gfx_frame();
+void wiiu_gfx_game_ended();
 void rac1_wiiu_debug_tools_gate(int argc, char** argv);  // (src/host/orig_main.cpp)
 
 // ---- What goes wrong before main or outside it, on the UDP log (port 4405) ----
@@ -270,6 +271,7 @@ int main(int, char**) {
     // back to the menu (ProcUI's messages handled meanwhile; the screen given back on its release)
     // (with the picture, GX2 stays up until ProcUI lets go: the WHB helpers' foreground callbacks still use it while the
     // menu takes over; shut down before, the console hung on its way back)
+    if (gfx_up) wiiu_gfx_game_ended();
     SYSLaunchMenu();
     while (WHBProcIsRunning()) {
         if (gfx_up) wiiu_gfx_frame();
