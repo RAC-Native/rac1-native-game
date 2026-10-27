@@ -118,7 +118,7 @@ nothing, so an object whose class is not ported stands still or does not appear.
 | Quit Game (the pause menu's Options): back to the title screen and its main menu, as the original (the boot module read back from the disc, without the intro movie) | Ported; playtested. |
 | Memory card, save and load, the save on planet change | Works, but may still change: the save files' format, location and size have not been checked by hand yet. See [Saves](saves.md). |
 | Pause menu (with its 3D models), HUD, Vendor, the ship's planet menu, the loading screen's flight | Ported. Known issue: the planet menu's information panels draw empty. |
-| Sound and music (989snd), dialogue streams, movies; 5.1 and 7.1 output | Working; see [Audio](audio.md). The sound mirror that keeps music playing through loads is still a proposal (see [Decisions](decisions.md#13-the-iops-sound-runs-twice)). |
+| Sound and music (989snd), dialogue streams, movies; 5.1 and 7.1 output | Working; see [Audio](audio.md). The sound mirror keeps music and sounds playing through loads, on by default (`RAC1_IOP_MIRROR=0` turns it off; see [Decisions](decisions.md#13-the-iops-sound-runs-twice)). |
 | 3D rendering (the MRP) | The default renderer; all of the 3D in play, the levels' water, lava and sand seas included; see [Rendering](rendering.md). |
 | The Vulkan renderer (Options > Graphics > Renderer) | Experimental, opt-in: the same picture as OpenGL, which stays the default and takes over when Vulkan cannot start; see [Vulkan](vulkan.md). |
 | Modern lighting (optional) | Working, off by default, experimental; with surface materials (Surface Detail) and emissive surfaces; see [Lighting](lighting.md) and [Materials](materials.md). |

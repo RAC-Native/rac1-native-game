@@ -541,7 +541,7 @@ before, black.
 ## The original rendering, kept as the reference
 
 The PS2's way of drawing the 3D is kept, ported: the VU microprograms the game uploads were
-translated to C++ instruction by instruction (`src/game/ovl/moby_vu1.cpp` and `moby_vu1_fast.cpp`
+translated to C++ instruction by instruction (`moby_vu1.cpp` and `moby_vu1_fast.cpp`, generated: see [The generated code](architecture.md#the-generated-code),
 for the mobys, `world_vu1_{tfrag,tie,shrub}_{a,b}.cpp` and their `_fast` forms for the world,
 `particles_vu1.cpp`), and the GS replica draws their output. It is exact but slow: the faithful world
 alone cost 56 to 58 ms a frame on Veldin.

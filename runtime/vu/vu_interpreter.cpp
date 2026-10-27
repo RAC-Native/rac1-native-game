@@ -1209,7 +1209,6 @@ void execute_cop2_instruction(VUState& state, uint32_t opcode, u128* ee_gprs, bo
 
 static void execute_lower2_instruction(VUState& state, uint32_t instr, uint32_t current_pc, uint32_t& branch_target, bool& branch_taken) {
     uint32_t op = (instr >> 25) & 0x7F;
-    uint32_t dest = (instr >> 6) & 0x1f;
     uint32_t Is = (instr >> 11) & 0xf;
     uint32_t It = (instr >> 16) & 0xf;
     uint32_t fs = (instr >> 11) & 0x1f;

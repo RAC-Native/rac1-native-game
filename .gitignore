@@ -30,6 +30,8 @@ devmenu_display.txt
 devmenu_positions.txt
 advanced_options.txt
 graphics_options.txt
+rac1_profile_*.csv
+rac1_profile_*.json
 
 # Python
 __pycache__/

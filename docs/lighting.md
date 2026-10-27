@@ -40,8 +40,8 @@ differs a lot between planets. Where each part comes from is described in
   When a level loads they are found automatically and turned into small point lights. This is
   our own heuristic, not game data, and it can be wrong (see the table below).
 - **Lights placed by hand** with the [light editor](#the-light-editor) cover what the automatic
-  search can't find. The project ships no hand-placed lights; its level files only turn off an
-  automatic class the search got wrong (Gaspar, Orxon), turn the sun (every level but Rilgar, Blarg
+  search can't find. The project ships a few hand-placed lights (Novalis and Aridia); otherwise its
+  level files turn off an automatic class the search got wrong (Gaspar, Orxon), turn the sun (every level but Rilgar, Blarg
   and Batalia, most of them from Anya-Thoughtmane's lighting pass, #90), turn the sun rays off (Blarg,
   Rilgar, Batalia, Oltanis), mark interiors (Blarg, Orxon), mark emissive surfaces and
   [materials](materials.md), list [ambient particles](particles.md), or make every object of a class a light
@@ -115,7 +115,8 @@ followed by the EE's fixed-point colour step.
 
 **The world.** tfrag, tie and shrub colours are lit on the EE and VU0 into the level's data
 (`world_tfrag_lighting` 0x295350, `world_tie_lighting` 0x297728, `world_shrub_lighting` 0x288908 in
-`src/game/ovl/world_lighting.cpp`, with the VU0 program in `world_light_vu0.cpp`): a base colour, a
+`world_lighting.cpp`, with the VU0 program in `world_light_vu0.cpp`: both generated, see
+[The generated code](architecture.md#the-generated-code)): a base colour, a
 normal from two angle bytes, a blend of light sets, and the point lights named in the piece's
 nibbles. This runs at level load and again, per frame, for the visible pieces, so a nearby explosion
 lights the ground through the vertex colours.
@@ -864,7 +865,8 @@ part of the original. The editor is in the debug menu (Lights tab), so it needs 
   zero (the EE's mode), so the file is read and written rounding to nearest (`ps2fpu::NearestScope`);
   until 0.5.0 each Save took one unit off the last digit of a number that is not exact in binary
   (`0.800` read and written five times came back `0.795`).
-- A level's file is loaded when the level's first shadow pass runs, and hand-placed lights are only
+- A level's file is loaded the first time the lighting, the ambient particles or the debug menu need it (also with
+  the modern lighting off), and hand-placed lights are only
   used with Secondary Lights set to All (the file's sun whatever that setting). The project ships the
   files listed in [Lights placed by hand](#lights-placed-by-hand-our-choice).
 
@@ -1008,7 +1010,7 @@ cannot tell them apart), the teleporters (moby 1135, six textures, not yet looke
 
 All on Options > Graphics (`src/game/enhance/graphics.cpp`). They are kept in the graphics
 preferences and in each save's `save<N>.pc` (see [Settings](settings.md)). The New Game's Modern mode
-does not turn the lighting on.
+does not turn the lighting on; Experimental does (Lighting High, Dynamic Shadows On, Ambient Occlusion SSAO).
 
 | Row | Values | Default | Controls |
 |---|---|---|---|

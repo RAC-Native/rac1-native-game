@@ -461,11 +461,6 @@ bool movie_hw_next_picture(std::vector<uint8_t>& rgba) {
 
 float g_movie_volume = std::getenv("RAC1_MOVIE_VOLUME") != nullptr ? static_cast<float>(std::atof(std::getenv("RAC1_MOVIE_VOLUME"))) : 1.0f;
 
-void movie_hw_audio_mix(int16_t* out, int frames, float gain_left, float gain_right) {
-    std::vector<int16_t> src(static_cast<size_t>(frames) * 2);
-    movie_hw_audio_add(out, src.data(), movie_hw_audio_take(src.data(), frames), gain_left, gain_right);
-}
-
 int movie_hw_audio_take(int16_t* dst, int frames) {
     std::unique_lock lock(g_audio_lock);
     Movie& m = g_movie;
@@ -489,12 +484,6 @@ void movie_hw_audio_add(int16_t* out, const int16_t* src, int frames, float gain
             out[i * 2 + c] = static_cast<int16_t>(std::clamp(v, -32768, 32767));
         }
     }
-}
-
-int movie_hw_audio_queued() {
-    std::scoped_lock lock(g_audio_lock);
-    const Movie& m = g_movie;
-    return m.open ? static_cast<int>(m.audio.size() / 2 - std::min(m.audio.size() / 2, m.audio_pos)) : 0;
 }
 
 void movie_hw_close() {

@@ -245,7 +245,7 @@ namespace Rac1Launcher
             cmbChannel.SelectedIndexChanged += (s, e) => ChangeChannel(cmbChannel.SelectedIndex == 1);
             AddRow(t, "Update channel", cmbChannel, new Label
             {
-                Text = "(the same setting as the game's Options > Advanced > Update Channel)", AutoSize = true, Anchor = AnchorStyles.Left,
+                Text = "(the same setting as the game's Main menu > Updates > Update Channel)", AutoSize = true, Anchor = AnchorStyles.Left,
                 ForeColor = SystemColors.GrayText,
             });
 
@@ -338,7 +338,8 @@ namespace Rac1Launcher
             Task.Run(() =>
             {
                 var st = ctl.ComputeState(out string due);
-                BeginInvoke((Action)(() => { if (g == Game) ShowState(st, due); }));
+                // (a task started meanwhile keeps its own status)
+                BeginInvoke((Action)(() => { if (g == Game && runner == null) ShowState(st, due); }));
             });
         }
 

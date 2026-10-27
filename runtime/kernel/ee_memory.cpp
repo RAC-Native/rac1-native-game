@@ -226,21 +226,17 @@ void* ee_ram_ptr_slow(u32 vaddr, bool journal, u32 size) {
     throw std::out_of_range(std::string("Pointer resolution out of bounds: 0x") + hex);
 }
 
-const void* ee_ram_ptr_const(u32 vaddr) {
-    return ee_ram_ptr(vaddr);
-}
-
 bool ee_is_valid_addr(u32 vaddr, u32 size) {
     if (vaddr == 0) {
         return false;
     }
     
     if (vaddr < RAM_SIZE) {
-        return (vaddr + size <= RAM_SIZE);
+        return size <= RAM_SIZE - vaddr;  // (not vaddr + size: it wraps in 32 bits)
     }
     
     if (vaddr >= SCRATCHPAD_START && vaddr < SCRATCHPAD_END) {
-        return (vaddr - SCRATCHPAD_START + size <= SCRATCHPAD_SIZE);
+        return size <= SCRATCHPAD_SIZE - (vaddr - SCRATCHPAD_START);
     }
     
     return false;

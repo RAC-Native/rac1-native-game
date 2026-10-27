@@ -15,7 +15,7 @@ choice is kept.
 
 ## How it is built
 
-- `runtime/vk/vk_context.{h,cpp}`: the device, the swapchain, the frames in flight (2), a 64 MB
+- `runtime/vk/vk_context.{h,cpp}`: the device, the swapchain, the frames in flight (2), a 32 MB
   ring per frame for the per-frame data (vertices, uniforms, uploads), transient descriptor pools
   reset each frame, a sampler cache, render targets with dynamic rendering, and helpers that mirror
   the GL calls the renderer used (viewport, scissor, a stack of targets, blits, copies, uploads,

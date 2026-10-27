@@ -144,12 +144,9 @@ fs::path host_path(const std::string& p) { return fs::path(g_card.host) / p; }
 void host_write(const std::string& p) {
     if (g_card.host.empty()) return;
     const Entry& e = g_card.entries[p];
-    std::ofstream f(host_path(p), std::ios::binary | std::ios::trunc);
-    if (!f) {
+    // (through a temporary file renamed over the old one: a crash or a full disk during a save never leaves half a file)
+    if (!platform::write_file_replace(host_path(p), e.data.data(), e.data.size()))
         std::fprintf(stderr, "[memcard] cannot write %s\n", host_path(p).string().c_str());
-        return;
-    }
-    f.write(reinterpret_cast<const char*>(e.data.data()), static_cast<std::streamsize>(e.data.size()));
 }
 
 // orig: (host)
@@ -175,6 +172,7 @@ void host_load(const fs::path& root) {
         if (ec || rel.empty()) continue;
         Entry e;
         e.dir = it->is_directory(ec);
+        if (!e.dir && it->path().extension() == ".tmp") continue;  // (a write that never finished: host_write's temporary file)
         if (!e.dir) {
             std::ifstream f(it->path(), std::ios::binary);
             e.data.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());

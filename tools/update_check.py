@@ -153,6 +153,8 @@ def main():
             ahead = int(cmp.get("ahead_by", 0))  # (main's commits the installed build lacks)
             commits = cmp.get("commits") or []
             head = str(commits[-1].get("sha", "")) if commits else installed
+            if len(commits) < ahead:  # (the compare lists main's first 250 new commits only: its tip asked for itself)
+                head = str(get_json(args.api, f"/repos/{REPO}/commits/main").get("sha", "")) or head
             lines += [f"newer {int(ahead > 0)}", f"id {head[:40]}", f"commits {ahead}"]
     except Exception:  # (no network, an HTTP error, the rate limit, an unexpected answer: silent)
         return 1

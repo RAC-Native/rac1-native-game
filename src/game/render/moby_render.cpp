@@ -434,7 +434,6 @@ void moby_draw_class(int16_t cls, const glm::mat4& matrix, const std::vector<glm
     }
     glm::mat4 view_proj = custom_proj * view;
 
-    glm::vec3 cam_pos_for_cull = render_camera_position();
 
     uint32_t shader = ShaderManager::get().get_moby_shader();
     glUseProgram(shader);

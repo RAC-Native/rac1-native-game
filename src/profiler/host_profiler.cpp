@@ -282,6 +282,7 @@ void trace_write(State& s) {
     const char* tracks[] = {"main thread (CPU)", "GPU", "GS chain worker", "MRP scene worker"};
     for (int t = 0; t < 4; ++t) std::fprintf(f, "{\"ph\":\"M\",\"pid\":1,\"tid\":%d,\"name\":\"thread_name\",\"args\":{\"name\":\"%s\"}},\n", t, tracks[t]);
     std::fprintf(f, "{\"ph\":\"M\",\"pid\":1,\"tid\":9,\"name\":\"thread_name\",\"args\":{\"name\":\"host frames\"}},\n");
+    std::fprintf(f, "{\"ph\":\"M\",\"pid\":1,\"tid\":%d,\"name\":\"thread_name\",\"args\":{\"name\":\"game thread\"}},\n", 2 + kWorkerGame);
     for (int k = 0; k < 16; ++k)
         std::fprintf(f, "{\"ph\":\"M\",\"pid\":1,\"tid\":%d,\"name\":\"thread_name\",\"args\":{\"name\":\"job worker %d\"}},\n", kJobTrack + k, k + 1);
     bool first = true;

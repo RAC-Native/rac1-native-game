@@ -62,7 +62,8 @@ The build (`CMakeLists.txt`) produces one executable, `rac1-native`, from static
 `rac1_formats`, `rac1_profiler`, `rac1_jobs`, `rac1_runtime`, `rac1_game`, `rac1_setup`, `rac1_devtools`,
 and the third-party ones. It is C++20, built with `-Wall -Wextra -Wpedantic -frounding-math` (the last because the game's
 thread runs the FPU in a non-default rounding mode, see
-[Decisions](decisions.md#11-the-ees-float-rounding)). Four CMake options:
+[Decisions](decisions.md#11-the-ees-float-rounding)). The CMake options that change the game (the others,
+`RAC1_NO_GENERATED`, `RAC1_ORACLE` and `RAC1_UCONTEXT`, are for development: see their comments in `CMakeLists.txt`):
 
 - `RAC1_MOVIES` (on by default) decodes the movies with the system's FFmpeg (`libavcodec`,
   `libavutil`) when it is found; without FFmpeg the game runs and skips the movies.
@@ -155,7 +156,7 @@ and data. Neither changes the game's behaviour unless an enhancement is turned o
 
 ### The generated code
 
-About 140 source files of the port (some 30 MB of C++) are translated instruction by instruction
+About 230 source files of the port (some 48 MB of C++) are translated instruction by instruction
 from the game's own MIPS and VU code, by the generators in `tools/codegen/`. They are proved against
 the original like any port, and never edited by hand. Because they are a mechanical rewrite of the
 game's code, they are not in the repository: the setup generates them from the player's own disc,
@@ -163,7 +164,7 @@ as other static-recompilation projects do.
 
 | Kind | Files | Generator | From |
 |---|---|---|---|
-| `*_tr.cpp`, `*_tr_N.cpp` and a few others (`sky_ee.cpp`, `novalis_birdbot.cpp`, `title_sky.cpp`...) | 86 | `gen_mkall.py`: `mkall.py` (`mkall_l8.py` .. `mkall_l11.py` for levels 8 to 11) and `mips2cpp.py`, whole functions and their callees | each level's overlay; the boot module |
+| `*_tr.cpp`, `*_tr_N.cpp` and a few others (`sky_ee.cpp`, `novalis_birdbot.cpp`, `title_sky.cpp`...) | 171 | `gen_mkall.py`: `mkall.py` (`mkall_l8.py` .. `mkall_l18.py` for levels 8 to 18) and `mips2cpp.py`, whole functions and their callees | each level's overlay; the boot module |
 | `*_asm.cpp` | 34 | `gen_asm.py`: `asm2fn_batch.py` and `asm2fn.py` | the levels' overlays |
 | `moby_skin.cpp`, `moby_shadows_asm.cpp`, `world_cull.cpp`, `world_lighting.cpp` | 4 | `gen_asm2cpp.py`: `asm2cpp.py`, plus the reviewed changes kept as patches | Veldin's overlay |
 | `moby_vu0*.cpp`, `moby_vu1*.cpp`, `world_vu1_*.cpp`, `world_light_vu0*.cpp` | 18 | `gen_moby_vu_fast.py`, `gen_world_vu.py`, `gen_light_vu0.py`: `vu2cpp.py` and `vu2cpp_fast.py` | the VU microcode in the boot executable |
@@ -231,7 +232,8 @@ and knows nothing about Ratchet & Clank. It provides:
 
 ### `src/_devtools/`: openly invented
 
-The debug menu (free camera, level select, spawning, rendering switches, the light editor) is
+The debug menu (free camera, level select, teleport, items and unlocks, freezing mobys, rendering switches, the light
+editor, the profiler) is
 invented code, useful for development and testing, and never presented as part of the port. Nothing
 in `src/game/` or `runtime/` includes it, and `RAC1_DEVTOOLS=OFF` compiles it out.
 
@@ -252,7 +254,8 @@ has and whichever thread ran a frame. What runs elsewhere is the host's work on 
 - the **job pool** (`src/jobs/job_pool.h`) spreads the renderer's per-moby work over the cores: the moby chains' decoding after the
   moby pass and its LOD / widened-view re-run (`mrp_scene.cpp`), and the moby draw lists' transforms (`mrp_moby_renderer.cpp`).
   Each job writes its chunk's results apart and the caller appends them in order, so the lists are the same as on one thread
-  (`RAC1_JOBS=1`); the workers run with the calling thread's float environment (the game's thread rounds toward zero);
+  (`RAC1_JOBS=1`); the workers run with the calling thread's float environment (the game's thread rounds toward zero). The
+  pool runs one job at a time: two callers at once (the game thread's decoding beside the main thread's drawing) take turns;
 - the **game thread** (`runtime/ee/game_thread.h`) runs a host frame's game frames while the main thread draws the pipelined
   frame prepared at the end of the host frame before; the main thread joins it before it prepares the next frame. The same game
   frames in the same order, with the main thread's float environment; the game's sound's random numbers are one sequence for

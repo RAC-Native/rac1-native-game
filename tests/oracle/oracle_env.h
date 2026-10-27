@@ -6,7 +6,7 @@
 //
 // Inputs come only from the user's ISO (./setup.sh): the boot ELF
 // (assets/dumps/SCUS_971.99) and the level overlays read straight from the
-// disc image. When they are missing the test exits with SKIP_CODE (CTest SKIP_RETURN_CODE).
+// disc image. When they are missing the test exits with SKIP_CODE (77, the usual "skipped" code; the oracle is run by hand, not by CTest).
 
 #include <runtime/ee/ee_interpreter.h>
 #include <runtime/kernel/ee_memory.h>

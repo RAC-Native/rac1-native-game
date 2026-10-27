@@ -66,18 +66,21 @@ the Recycle Bin, or to the trash on Linux.
 - **Disc image**: the `.iso` the setup uses.
 - **Update channel**: **Stable** gets the releases; **Development** gets the newest changes on
   `main`, before they are released (new fixes sooner, and new bugs too). It is the same setting as
-  the game's Options > Advanced > Update Channel (the `update_channel` line of
+  the game's Main menu > Updates > Update Channel (the `update_channel` line of
   `advanced_options.txt`, see [Settings](settings.md)): changing it in one changes it in the other.
   Install and Update follow it: on Development, Install downloads `main` as it is now, the **Play**
   page says when `main` has moved since, and Update gets it (`tools/setup.py --update --channel
   development`). Back on Stable, the next Update goes to the latest release.
 - **Parallel jobs**: how many jobs the setup runs at once. Automatic is fine; 1 is the slowest and
   uses the least memory.
+- **Check for updates** and **Update now**: the same as the Play page's check and Update, at once.
 - **Set up again from scratch**: generates everything again from the disc and rebuilds (the setup's
   `--force`).
+- **Create the shortcuts** (Windows): puts the shortcuts on the desktop and in the Start menu again.
 - **Open the setup's logs**: the game folder's `build` folder, with `launcher.log` (everything the
   launcher ran and what it printed), `setup-build.log`, `setup-codegen.log` and `game.log`. Attach
   them to a bug report.
+- **Report a problem**: opens the project's GitHub issues page.
 
 The game's other settings (graphics, controls) are in the game's Options menu.
 
@@ -190,6 +193,6 @@ dotnet build tools/launcher/windows/Launcher.csproj -c Release -p:LauncherVersio
 dotnet publish tools/launcher/linux/Launcher.Linux.csproj -c Release -p:LauncherVersion=0.5.0 -o out
 ```
 
-The [launcher workflow](../.github/workflows/launcher.yml) builds both at each push and attaches them
-to each published release, with the release's version (`project(... VERSION)` in `CMakeLists.txt`).
+The [launcher workflow](../.github/workflows/launcher.yml) builds both whenever the launcher's code changes, and attaches
+them to each published release, with the release's version (`project(... VERSION)` in `CMakeLists.txt`).
 A launcher built without a version (0.0.0) never updates itself.

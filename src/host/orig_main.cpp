@@ -65,6 +65,9 @@
 #include <vector>
 
 #include <platform/platform.h>
+#if defined(__SANITIZE_ADDRESS__)
+#include <sanitizer/lsan_interface.h>
+#endif
 
 #include "host_language.h"
 
@@ -180,6 +183,7 @@ constexpr const char* PLAYER_ENV[] = {
     "RAC1_DEBUG_TOOLS", "RAC1_HEADLESS", "RAC1_ISO", "RAC1_MEMCARD_DIR", "RAC1_ADVANCED_FILE", "RAC1_GRAPHICS_FILE", "RAC1_CONTROLS_FILE",
     "RAC1_RENDERER", "RAC1_WINDOW", "RAC1_FULLSCREEN", "RAC1_VSYNC", "RAC1_FPS_CAP", "RAC1_NO_AUDIO", "RAC1_AUDIO_DEVICE",
     "RAC1_AUDIO_PERIOD_MS", "RAC1_AUDIO_PERIODS", "RAC1_MOVIE_VOLUME", "RAC1_PRIORITY", "RAC1_IOP_MIRROR",
+    "RAC1_PROGRESS",  // (where progress.json goes for the launcher, or 0: docs/launcher.md)
     "RAC1_PYTHON",  // (set by tools/setup.py for the setup mode: the Python it runs the overlay matcher with)
 };
 
@@ -3378,11 +3382,11 @@ int main(int argc, char** argv) {
                     const uint32_t r = base + static_cast<uint32_t>(i) * 0x40;
                     if (static_cast<int8_t>(ee_read<uint8_t>(r + 1)) >= 0) ++hist[ee_read<uint8_t>(r)];
                 }
-                std::printf("[part] frame %d:", frame);
+                std::printf("[part] frame %llu:", static_cast<unsigned long long>(frame));
                 for (int t = 0; t < 256; ++t) if (hist[t] != 0) std::printf(" %d:%d(fn %08x)", t, hist[t], lwu(OV(0x001b1e80u) + 4u * static_cast<uint32_t>(t)));
                 std::printf("\n");
             }
-            if (std::getenv("RAC1_GS_TRACE") != nullptr && lwu(0x0013c940 + 0x1a4) != 0) std::printf("[gs] pad pressed %x frame %d\n", lwu(0x0013c940 + 0x1a4), frame);
+            if (std::getenv("RAC1_GS_TRACE") != nullptr && lwu(0x0013c940 + 0x1a4) != 0) std::printf("[gs] pad pressed %x frame %llu\n", lwu(0x0013c940 + 0x1a4), static_cast<unsigned long long>(frame));
             if (const char* zt = std::getenv("RAC1_GS_ZTRACE"); zt != nullptr && frame == std::strtoull(zt, nullptr, 0))  // testing: the primitives' depth state
                 for (const auto& pr : gs.primitives())
                     std::printf("[gsz] prim %d vu %d frame %llx scissor %llx test %llx zbuf %llx alpha %llx z %u %u %u xy %.1f %.1f rgba %02x%02x%02x%02x tex0 %llx tex1 %llx miptbp1 %llx q %f %f %f\n", pr.type, pr.vu ? 1 : 0, (unsigned long long)pr.st.frame, (unsigned long long)pr.st.scissor, (unsigned long long)pr.st.test, (unsigned long long)pr.st.zbuf,
@@ -3889,5 +3893,8 @@ int main(int argc, char** argv) {
     rac1::progress::finish();  // (the launcher's progress.json: the time played since its last write)
     rac1::platform::process_end();  // (std::_Exit runs no atexit handler)
     rac1::update_check::run_update();
+#if defined(__SANITIZE_ADDRESS__)
+    __lsan_do_leak_check();  // (an AddressSanitizer build: std::_Exit skips LeakSanitizer's own check at exit)
+#endif
     std::_Exit(0);  // the renderers' static GL objects would be freed after the context is gone
 }

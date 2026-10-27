@@ -38,7 +38,6 @@ void snd989_movie_gain(float& left, float& right);
 // Called after each command batch (every frame), with the render lock held.
 void snd989_stream_update(Snd989Streams* io);
 void snd989_stream_reset(Snd989Streams* io);
-int snd989_stream_active(Snd989Streams* io);  // a debug count
 // (testing) the live streams as text, "group:sector" each ("p" when paused), in slot order
 std::string snd989_stream_describe(Snd989Streams* io);
 

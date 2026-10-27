@@ -33,6 +33,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -338,7 +339,51 @@ struct Atlas {
 } g_atlas, g_vk_atlas;
 vk::GpuImage g_vk_atlas_img;
 
+// The Vulkan pipelines of the batches (vk_draw_batches), made once per state and target: before, one was made for every batch
+// of every frame and never destroyed (the driver's memory grew all the time, and each cost a pipeline compile)
+struct VkFxPipeKey {
+    VkPipelineLayout layout;  // (the program: the effects' or program 7's)
+    VkPrimitiveTopology topology;
+    bool blend, depth_test, depth_write;
+    VkBlendFactor src_c, dst_c, src_a, dst_a;
+    VkBlendOp op_c, op_a;
+    VkCompareOp depth_compare;
+    VkColorComponentFlags mask;
+    VkFormat color_format, depth_format;  // (the target's: create_graphics_pipeline takes them from it)
+    bool stencil;
+    bool operator<(const VkFxPipeKey& o) const {
+        return std::tie(layout, topology, blend, depth_test, depth_write, src_c, dst_c, src_a, dst_a, op_c, op_a, depth_compare, mask, color_format,
+                        depth_format, stencil) < std::tie(o.layout, o.topology, o.blend, o.depth_test, o.depth_write, o.src_c, o.dst_c, o.src_a, o.dst_a,
+                                                          o.op_c, o.op_a, o.depth_compare, o.mask, o.color_format, o.depth_format, o.stencil);
+    }
+};
+std::map<VkFxPipeKey, VkPipeline> g_vk_fx_pipes;
+
+// orig: (host) the cached pipelines destroyed (at the Vulkan shutdown)
+void vk_fx_pipes_destroy() {
+    VkDevice dev = vk::device();
+    if (dev != VK_NULL_HANDLE)
+        for (auto& kv : g_vk_fx_pipes)
+            if (kv.second != VK_NULL_HANDLE) vkDestroyPipeline(dev, kv.second, nullptr);
+    g_vk_fx_pipes.clear();
+}
+
+// orig: (host) the pipeline of `desc` on the current target, made the first time
+VkPipeline vk_fx_pipeline(const vk::GraphicsPipelineDesc& desc) {
+    const vk::RenderTarget& rt = vk::current_target();
+    const VkFxPipeKey key{desc.layout, desc.topology, desc.blend_enable, desc.depth_test, desc.depth_write, desc.src_color_blend, desc.dst_color_blend,
+                          desc.src_alpha_blend, desc.dst_alpha_blend, desc.color_blend_op, desc.alpha_blend_op, desc.depth_compare, desc.color_write_mask,
+                          rt.color_view != VK_NULL_HANDLE ? rt.color_format : VK_FORMAT_UNDEFINED,
+                          rt.depth_view != VK_NULL_HANDLE ? rt.depth_format : VK_FORMAT_UNDEFINED, rt.stencil_view != VK_NULL_HANDLE};
+    auto it = g_vk_fx_pipes.find(key);
+    if (it != g_vk_fx_pipes.end()) return it->second;
+    const VkPipeline p = vk::create_graphics_pipeline(desc);
+    g_vk_fx_pipes.emplace(key, p);
+    return p;
+}
+
 void shutdown_vk_fx() {
+    vk_fx_pipes_destroy();
     VkDevice dev = vk::device();
     if (dev != VK_NULL_HANDLE) {
         if (g_vk_pipe_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(dev, g_vk_pipe_layout, nullptr);
@@ -1251,10 +1296,6 @@ bool build_vu7(const gs::Gs& gs, const gs::Primitive& p) {
     ++(same ? g_s7.world : g_s7.general);
     ++g_s7.batches;
     ++g_st.by_kind[kMrpFxVu7];  // (the report's "by producer": batches)
-    if (std::getenv("RAC1_VU7_WHERE") != nullptr && g_st.frames % 120 == 1 && b.n > 0) {  // (temporary)
-        const auto& v0 = gs.vu7_vertices()[b.first];
-        std::printf("[vu7where] class %u at %.1f %.1f %.1f cam %.1f %.1f %.1f\n", b.tag, v0.xyz[0], v0.xyz[1], v0.xyz[2], g_frame.cam.x, g_frame.cam.y, g_frame.cam.z);
-    }
     if (clip_path) ++g_s7.clip_path;
     const auto& vin = gs.vu7_vertices();
     auto vert = [&](uint32_t i, const State& S) {
@@ -1549,6 +1590,7 @@ VkShaderModule g7_vk_vs = VK_NULL_HANDLE, g7_vk_fs = VK_NULL_HANDLE;
 VkPipelineLayout g7_vk_layout = VK_NULL_HANDLE;
 
 void shutdown_vk_vu7() {
+    vk_fx_pipes_destroy();
     VkDevice dev = vk::device();
     if (dev != VK_NULL_HANDLE) {
         if (g7_vk_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(dev, g7_vk_layout, nullptr);
@@ -1672,20 +1714,20 @@ void vk_draw_batches(const std::vector<Batch>& bs, size_t from, size_t to, const
         if (k.split) {
             desc.depth_write = true;
             desc.color_write_mask = 0;
-            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, vk::create_graphics_pipeline(desc));
+            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, vk_fx_pipeline(desc));
             set_pass(1);
             vkCmdDraw(cb, b.count, 1, b.first, 0);
             ++g_st.draws;
             desc.depth_write = false;
             desc.color_write_mask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
             if (k.ztst != 0) desc.depth_compare = VK_COMPARE_OP_LESS_OR_EQUAL;
-            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, vk::create_graphics_pipeline(desc));
+            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, vk_fx_pipeline(desc));
             set_pass(0);
             vkCmdDraw(cb, b.count, 1, b.first, 0);
         } else {
             desc.depth_write = k.zwrite;
             desc.color_write_mask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, vk::create_graphics_pipeline(desc));
+            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, vk_fx_pipeline(desc));
             set_pass(0);
             vkCmdDraw(cb, b.count, 1, b.first, 0);
         }

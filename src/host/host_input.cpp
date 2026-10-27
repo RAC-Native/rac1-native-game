@@ -293,10 +293,7 @@ bool save(const Bindings& b, const std::string& path) {
     std::error_code ec;
     const std::filesystem::path p(path);
     if (p.has_parent_path()) std::filesystem::create_directories(p.parent_path(), ec);
-    std::ofstream f(path);
-    if (!f) return false;
-    f << bindings_to_text(b);
-    return static_cast<bool>(f);
+    return rac1::platform::write_file_replace(p, bindings_to_text(b));  // (through a temporary file: never half written)
 }
 
 Bindings load_or_create(const std::string& path) {

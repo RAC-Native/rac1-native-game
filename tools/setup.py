@@ -666,7 +666,7 @@ def generate_code(iso, jobs):
     env = dict(os.environ, RAC1_ASSETS=str(ASSETS_DIR), RAC1_ISO=str(iso))
     cmd = [sys.executable, str(GENERATE_ALL), "--out", str(CODE_ROOT), "--no-insn-comments", "--jobs", str(jobs)]
     done = 0
-    with open(CODE_LOG, "w") as log:
+    with open(CODE_LOG, "w", encoding="utf-8", errors="replace") as log:
         log.write("$ " + " ".join(cmd) + "\n")
         proc = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                 errors="replace")
@@ -852,14 +852,14 @@ BUILD_LOG = BUILD_DIR / "setup-build.log"
 
 def run_logged(cmd, log):
     """Runs a build command with its output in `log`, showing only its progress; on failure, the errors."""
-    with open(log, "a") as f:
+    with open(log, "a", encoding="utf-8", errors="replace") as f:
         f.write("$ " + " ".join(cmd) + "\n")
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
         shown = ""
         for line in proc.stdout:
             f.write(line)
             m = re.match(r"\[\s*(\d+)%\]", line)
-            if not m and WINDOWS:  # (Ninja's progress: [done/total])
+            if not m:  # (Ninja's progress: [done/total]; a build directory configured with Ninja on any system)
                 n = re.match(r"\[(\d+)/(\d+)\]", line)
                 if n:
                     m = re.match(r"(\d+)", str(int(n.group(1)) * 100 // max(1, int(n.group(2)))))
@@ -1062,7 +1062,7 @@ def config_dir():
 
 
 def configured_channel(override):
-    """The update channel: --channel when given, else Options > Advanced > Update Channel (stable by default)."""
+    """The update channel: --channel when given, else Main menu > Updates > Update Channel (stable by default)."""
     if override:
         return override
     adv = Path(os.environ.get("RAC1_ADVANCED_FILE") or (config_dir() / "advanced_options.txt"))
@@ -1180,6 +1180,13 @@ def update_git(channel):
         fail("This clone has local commits not on origin/main. They are never overwritten.")
     new_head = subprocess.run(["git", "rev-parse", "origin/main"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
     if branch != "main":
+        # (checkout -B resets the local main: never when it has commits origin/main lacks - a detached HEAD, a release
+        # tag checked out by the stable channel, says nothing about them)
+        has_main = subprocess.run(["git", "rev-parse", "-q", "--verify", "refs/heads/main"], cwd=ROOT,
+                                  capture_output=True).returncode == 0
+        if has_main and subprocess.run(["git", "merge-base", "--is-ancestor", "refs/heads/main", "origin/main"],
+                                       cwd=ROOT).returncode != 0:
+            fail("The local branch main has commits not on origin/main. They are never overwritten.")
         if subprocess.run(["git", "checkout", "-B", "main", "origin/main"], cwd=ROOT).returncode != 0:
             restore()
             fail("Could not switch to main. Your current build was not changed.")
@@ -1460,6 +1467,8 @@ def finish_update(args, restore_sources, exe_bak, state_bak, gen_bak, had_state)
         child_cmd += ["-j", str(args.jobs)]
     if args.force:
         child_cmd += ["--force", ",".join(sorted(args.force))]
+    if args.native_arch:
+        child_cmd += ["--native-arch", args.native_arch]
     rc = subprocess.run(child_cmd, cwd=ROOT).returncode
     if rc != 0:
         warn("The update failed: restoring the previous build and sources...")
@@ -1545,7 +1554,7 @@ def main():
     ap.add_argument("--update", action="store_true",
                     help="update to the latest release (or main on the development channel), then rebuild what changed")
     ap.add_argument("--channel", choices=("stable", "development"), default=None,
-                    help="with --update: the channel to update to (default: Options > Advanced > Update Channel)")
+                    help="with --update: the channel to update to (default: Main menu > Updates > Update Channel)")
     ap.add_argument("--force", nargs="?", const="all", default=set(), type=parse_force, metavar="STEPS",
                     help=f"regenerate even if up to date: everything, or some steps ({','.join(STEP_NAMES)})")
     ap.add_argument("-j", "--jobs", type=int, default=None, help="parallel jobs (the code generation and the build)")

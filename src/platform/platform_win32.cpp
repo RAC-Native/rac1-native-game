@@ -18,6 +18,7 @@
 #include <xmmintrin.h>
 
 #include <cfenv>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <cwchar>
@@ -80,7 +81,17 @@ void coroutine_start(void (*entry)()) {
     g_co.mxcsr = _mm_getcsr();
 }
 
-void coroutine_resume() { SwitchToFiber(g_co.game); }
+// (the host is whichever thread resumes: the main thread, or the game thread when the game's update runs beside the drawing
+// - runtime/ee/game_thread.h. A thread must be a fiber to switch to one, and the coroutine's yield and end go back to the
+// fiber that resumed it: each resume makes its thread a fiber once and notes it as the host)
+void coroutine_resume() {
+    if (!IsThreadAFiber() && ConvertThreadToFiberEx(nullptr, FIBER_FLAG_FLOAT_SWITCH) == nullptr) {
+        std::fprintf(stderr, "[platform] ConvertThreadToFiberEx failed (%lu)\n", GetLastError());
+        std::abort();
+    }
+    g_co.host = GetCurrentFiber();
+    SwitchToFiber(g_co.game);
+}
 
 void coroutine_yield() { SwitchToFiber(g_co.host); }
 

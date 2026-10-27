@@ -19,7 +19,8 @@ source code, the files that are a mechanical translation of the game's own code 
   release (PAL), serial **`SCES-50916`**. Either disc alone is enough. PAL support is new and still
   being tested: see [The European PAL disc](#the-european-pal-disc).
 - An unmodified ISO image of the disc. A good dump is 4,214,095,872 bytes for the North American
-  disc and 4,213,997,568 bytes for the PAL one; a different size is accepted with a warning.
+  disc and 4,213,997,568 bytes for the PAL one; a smaller image is accepted with a warning (it is
+  checked fully later).
 - Other releases (the Japanese one, `SCPS-15055`) are not supported.
 
 ### A Linux system with
@@ -80,12 +81,12 @@ sudo pacman -S --needed cmake base-devel pkgconf mesa libx11 libxrandr libxinera
    1. **Checks your system** and lists anything missing, with the install command for your
       distribution. It offers to run that command for you (it asks for your password); say no to
       run it yourself.
-   2. **Checks your disc image**: that it is Ratchet & Clank's North American disc and the right
-      size.
+   2. **Checks your disc image**: that it is Ratchet & Clank's North American or European (PAL)
+      disc, and not smaller than a good dump.
    3. **Generates the game's code** from your disc, with Python only: it copies the game's boot
       executable from the disc, matches each level's code against the first level's (the overlay
       address maps), then translates the parts of the game's code the port takes over mechanically
-      into C++ under `assets/generated/src/` (about 140 files). This takes one to two minutes and
+      into C++ under `assets/generated/src/` (about 230 files). This takes one to two minutes and
       uses the same number of parallel jobs as the build.
    4. **Builds the game** with CMake, in RelWithDebInfo, from the repository's sources and the
       generated ones. The result is `build/rac1-native`. It uses one job per CPU core, fewer when
@@ -93,7 +94,7 @@ sudo pacman -S --needed cmake base-devel pkgconf mesa libx11 libxrandr libxinera
    5. **Generates the game's data** into `assets/` from your disc, step by step, showing each level
       as it goes. This takes a few minutes. First it checks the disc image fully (that every level
       is inside it), and, because the game reads the disc while it runs, makes
-      `assets/iso/rac1-ntsc-u.iso` point to your image (a link: nothing is copied). Keep the image
+      `assets/iso/rac1-ntsc-u.iso` (`assets/iso/rac1-pal.iso` for the PAL disc) point to your image (a link: nothing is copied). Keep the image
       where it is; if you move it, run the setup again with its new path.
 
    At the end it offers to start the game.
@@ -183,7 +184,7 @@ not supported yet.
   flight between planets) runs on its own, without redoing the others. It remembers the disc image's path.
   What was generated, and from which code, is recorded in `assets/setup-state.json`.
 - **`./setup.sh --update`** (`setup.cmd --update` on Windows) fetches the latest release (or `main` when
-  Options > Advanced > Update Channel is Development), then rebuilds and regenerates only what changed;
+  Main menu > Updates > Update Channel is Development), then rebuilds and regenerates only what changed;
   the in-game update notice's **Update Now** button runs it and restarts the game when it finishes.
   A git clone is updated with git; a zip download, or a clone where git is not installed (or cannot read
   the clone), from the release's (or `main`'s) source zip, which replaces the source files and leaves
@@ -208,7 +209,7 @@ not supported yet.
 |---|---|
 | `--iso <path>` | your disc image (otherwise `$RAC1_ISO`, then `assets/iso/rac1-ntsc-u.iso` or `rac1-pal.iso`, then it asks) |
 | `--update` | fetch the latest release (or `main` on the Development channel), then rebuild what changed; on failure the previous build is kept |
-| `--channel stable\|development` | with `--update`: override Options > Advanced > Update Channel |
+| `--channel stable\|development` | with `--update`: override Main menu > Updates > Update Channel |
 | `--force [steps]` | regenerate even if up to date: everything, or the steps given (`elf,overlay,code,moby,world,flight`) |
 | `-j <n>`, `--jobs <n>` | parallel jobs, for the code generation and the build |
 | `--no-build` | skip the build |
@@ -373,7 +374,8 @@ plain ISO. Use an unmodified `.iso` dump, not a compressed format (`.chd`, `.cso
 **"The disc image is damaged or incomplete"**: the image is cut short (an interrupted copy or
 dump). Dump the disc again.
 
-**A size warning**: the image is not the expected 4,214,095,872 bytes but looks complete. It may
+**A size warning**: the image is smaller than a good dump (4,214,095,872 bytes for the North American
+disc, 4,213,997,568 for the PAL one) but looks complete. It may
 still work; if the game misbehaves, check your dump against the Redump record.
 
 **"your disc image was not found"** when starting the game: the image was moved or deleted since the

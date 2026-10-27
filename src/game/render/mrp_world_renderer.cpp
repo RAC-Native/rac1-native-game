@@ -3461,7 +3461,8 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
     if (!g_world_mrp || !active) return;
     if (!init_gl()) return;
     const int id = world_level_id();
-    if (g_level.id != id || !g_level.tried || (vk::is_active() ? g_level.vk_tvbo.buffer == VK_NULL_HANDLE : g_level.vao == 0)) {
+    // (a level without its asset is not read again every frame: tried, and no world)
+    if (g_level.id != id || !g_level.tried || (g_level.world != nullptr && (vk::is_active() ? g_level.vk_tvbo.buffer == VK_NULL_HANDLE : g_level.vao == 0))) {
         load_level(id);
         g_rcols.all_dirty = true;
     }

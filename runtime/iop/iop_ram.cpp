@@ -9,9 +9,4 @@ uint8_t* iop_ram() {
     return ram.data();
 }
 
-void iop_ram_reset() {
-    uint8_t* r = iop_ram();
-    for (uint32_t i = 0; i < kIopRamSize; ++i) r[i] = 0;
-}
-
 }  // namespace rac1

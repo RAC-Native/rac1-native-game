@@ -214,14 +214,14 @@ void settings_save() {
     const std::filesystem::path path = prefs_path();
     std::error_code ec;
     if (path.has_parent_path()) std::filesystem::create_directories(path.parent_path(), ec);
-    if (FILE* f = platform::open_file(path, "w")) {
-        for (const Row& r : SETTINGS_ROWS) std::fprintf(f, "%s %u\n", r.key, lbu(r.byte));
-        std::fprintf(f, "update_check_off %u\n", lbu(UPDATE_OFF));
-        std::fprintf(f, "update_channel %u\n", lbu(UPDATE_DEV));
-        if (!g_update_skip.empty()) std::fprintf(f, "update_skip %s\n", g_update_skip.c_str());
-        if (g_audio_channels > 2) std::fprintf(f, "audio_channels %d\n", g_audio_channels);
-        std::fclose(f);
-    }
+    std::string text;
+    for (const Row& r : SETTINGS_ROWS) text += std::string(r.key) + " " + std::to_string(lbu(r.byte)) + "\n";
+    text += "update_check_off " + std::to_string(lbu(UPDATE_OFF)) + "\n";
+    text += "update_channel " + std::to_string(lbu(UPDATE_DEV)) + "\n";
+    if (!g_update_skip.empty()) text += "update_skip " + g_update_skip + "\n";
+    if (g_audio_channels > 2) text += "audio_channels " + std::to_string(g_audio_channels) + "\n";
+    // (through a temporary file: a crash or a full disk never leaves the settings half written)
+    if (!platform::write_file_replace(path, text)) std::fprintf(stderr, "[advanced] cannot write %s\n", path.string().c_str());
     settings_mark_saved();
 }
 
@@ -1326,15 +1326,21 @@ AdvancedUpdatePrefs advanced_update_prefs() {
         p.skipped = g_update_skip;
         return p;
     }
-    // (at start, before the game's memory holds the settings: the file read for these alone)
-    std::string skip;
-    prefs_lines(prefs_path(), [&p, &skip](const char* name, const char* value) {
-        if (std::strcmp(name, "update_check_off") == 0) p.check = std::strcmp(value, "0") == 0;
-        else if (std::strcmp(name, "update_channel") == 0) p.development = std::strcmp(value, "1") == 0;
-        else if (std::strcmp(name, "update_skip") == 0) skip = value;
-    });
-    p.skipped = skip;
-    return p;
+    // (at start, before the game's memory holds the settings: the file read for these alone - once: the update check asks
+    // every host frame, and nothing writes the file before the settings are loaded)
+    static bool read = false;
+    static AdvancedUpdatePrefs from_file;
+    if (!read) {
+        read = true;
+        std::string skip;
+        prefs_lines(prefs_path(), [&skip](const char* name, const char* value) {
+            if (std::strcmp(name, "update_check_off") == 0) from_file.check = std::strcmp(value, "0") == 0;
+            else if (std::strcmp(name, "update_channel") == 0) from_file.development = std::strcmp(value, "1") == 0;
+            else if (std::strcmp(name, "update_skip") == 0) skip = value;
+        });
+        from_file.skipped = skip;
+    }
+    return from_file;
 }
 
 // orig: (none) — enhancement (advanced.h)

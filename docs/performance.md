@@ -72,6 +72,9 @@ of its own: no faster than reading it in place.
 
 ## Switches to compare
 
+These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
+(see [Environment variables](env-vars.md#when-a-variable-is-honoured)).
+
 | Variable | Off gives |
 |---|---|
 | `RAC1_GAME_THREAD=0` | the game frames on the main thread before the drawing |
@@ -130,3 +133,11 @@ TSAN_OPTIONS=log_path=tsan RAC1_GAME_THREAD=2 RAC1_PIPELINE=1 RAC1_HEADLESS=1 RA
 The coroutine's stack switches are told to ThreadSanitizer as fibers (`src/platform/platform_posix.cpp`). Its reports from the
 GL driver's and GLib's own threads are not ours. `RAC1_DRAW_MEM_CHECK=1` names any read of the game's memory a pipelined
 frame's drawing makes outside the copy taken at its preparation.
+
+Memory errors and leaks are checked the same way with an AddressSanitizer + UndefinedBehaviorSanitizer build
+(`-fsanitize=address,undefined -fno-omit-frame-pointer`, `-O1`). The game ends with `std::_Exit`, which skips
+LeakSanitizer's check at exit, so such a build runs it just before (`__lsan_do_leak_check` in `main`). The generated
+sources compiled with the sanitizers take more than half an hour each and over 10 GB with three jobs; a compiler launcher
+that leaves `-fsanitize` out for the files under `assets/generated/` keeps the build to a few minutes (they are not
+ours to fix). On 2026-10-27 a run through five levels, the three reference runs and the options-on runs on OpenGL and
+Vulkan reported no memory error and only the drivers' and Wayland's own allocations (under 1.5 KB) as leaks.
