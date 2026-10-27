@@ -121,8 +121,8 @@ In no fixed order. Each one is optional, and off by default if it changes the ga
 - **Cut content, optionally brought back**: things the game carries on the disc but never shows.
 - **A language switch** offering every language on the disc, without the console's system setting.
 - **Quality of life**: a level select and similar conveniences for players.
-- **Mods**: the setup extracting the game's files from the disc image, a mods folder, and a Mods menu
-  in the game (see [Roadmap](roadmap.md)).
+- **Mods**: a mods folder in front of the disc's files the setup now extracts (`assets/disc/`, see
+  [Setup](setup.md#the-discs-files)), and a Mods menu in the game (see [Roadmap](roadmap.md)).
 
 ### Platforms
 

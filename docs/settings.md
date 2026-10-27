@@ -259,7 +259,7 @@ The debug tools are for development and testing. They are off unless asked for w
 The debug menu's code is in `src/_devtools/` and can be left out of the build entirely with
 `-DRAC1_DEVTOOLS=OFF`.
 
-**Environment variables a player may use** (always honoured): `RAC1_ISO` (the disc image's path),
+**Environment variables a player may use** (always honoured): `RAC1_ISO` (the disc image's path, for the setup),
 `RAC1_MEMCARD_DIR` (the memory card's directory), `RAC1_GRAPHICS_FILE`, `RAC1_ADVANCED_FILE`,
 `RAC1_CONTROLS_FILE`, `RAC1_RENDERER`, `RAC1_WINDOW`, `RAC1_FULLSCREEN`, `RAC1_VSYNC`, `RAC1_FPS_CAP`,
 `RAC1_NO_AUDIO`, `RAC1_AUDIO_DEVICE`, `RAC1_AUDIO_PERIOD_MS`, `RAC1_AUDIO_PERIODS`,

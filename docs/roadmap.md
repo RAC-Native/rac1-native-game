@@ -96,8 +96,8 @@ What comes next, in no fixed order:
   cut content and development features it lists (see [Port inventory](port-inventory.md)).
 - **The renderer:** the 2D (HUD, menus) drawn natively, the level's baked shadow meshes across a widened
   view, the mobys' flattened shadow meshes.
-- **Mods (planned):** the setup extracting the game's files from the disc image, a mods folder, and a
-  Mods menu in the game.
+- **Mods (planned):** the setup already extracts the disc's files, which the game reads
+  ([Setup](setup.md#the-discs-files)); next, a mods folder in front of them, and a Mods menu in the game.
 - **Testing on more machines:** the European PAL disc, Windows (now also through the launcher), the
   Steam Deck and the other immutable Linux systems, and the Vulkan renderer (measured on one machine
   so far).

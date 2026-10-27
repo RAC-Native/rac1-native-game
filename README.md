@@ -42,8 +42,8 @@ changing how the game behaves.
    carries the address of the original it replaces (`// orig: 0x...`). The hand-written headers declare
    the generated functions too, so both halves call each other directly.
 3. **Built together, run natively.** CMake compiles the hand-written and the generated code into one
-   program. While you play nothing is emulated or interpreted: the ISO is only read for data (a
-   level, streamed music and voices), and the PS2's hardware (DMA, GS, sound processor, memory card,
+   program. While you play nothing is emulated or interpreted: the disc's files, which the setup
+   extracts from your image, are only read for data (a level, streamed music and voices), and the PS2's hardware (DMA, GS, sound processor, memory card,
    pads) is replaced by host code in `runtime/`.
 4. **A renderer of its own.** The 3D is not drawn by emulating the PS2's graphics chip: the renderer
    (OpenGL, or Vulkan) reads what the game has decided to draw (its objects, world, effects, water and

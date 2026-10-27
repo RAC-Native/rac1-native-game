@@ -40,8 +40,8 @@ source code, the files that are a mechanical translation of the game's own code 
   (`glslangValidator` works too); without it the game is built with OpenGL only;
 - an internet connection for the first build (CMake downloads GLFW, GLM, Dear ImGui, TinyGLTF,
   miniaudio, Vulkan-Headers and volk);
-- about 1 GB of free disk for the game's data and generated code, besides the disc image, plus about
-  2 GB for the build;
+- about 5 GB of free disk for the game's data and generated code (4 GB of it the disc's files, which the
+  game reads instead of the image), besides the disc image, plus about 2 GB for the build;
 - a GPU and driver with **OpenGL 4.6** (and **Vulkan 1.3** for the experimental Vulkan renderer,
   which is optional: OpenGL is the default).
 
@@ -76,28 +76,37 @@ sudo pacman -S --needed cmake base-devel pkgconf mesa libx11 libxrandr libxinera
    ./setup.sh --iso /path/to/your/ratchet.iso
    ```
 
-   (Without `--iso` it asks for the path.) It goes through five steps:
+   (Without `--iso` it asks for the path.) It goes through six steps:
 
    1. **Checks your system** and lists anything missing, with the install command for your
       distribution. It offers to run that command for you (it asks for your password); say no to
       run it yourself.
    2. **Checks your disc image**: that it is Ratchet & Clank's North American or European (PAL)
       disc, and not smaller than a good dump.
-   3. **Generates the game's code** from your disc, with Python only: it copies the game's boot
+   3. **Extracts your disc** into `assets/disc/`: every file on it, about 4 GB (see
+      [The disc's files](#the-discs-files)). The game reads these files while it runs, not the image.
+      Each file is checked after it is written: its size, and its bytes against the image. This takes
+      about a minute on an SSD; it is done again only when the disc image changes.
+   4. **Generates the game's code** from your disc, with Python only: it copies the game's boot
       executable from the disc, matches each level's code against the first level's (the overlay
       address maps), then translates the parts of the game's code the port takes over mechanically
       into C++ under `assets/generated/src/` (about 230 files). This takes one to two minutes and
       uses the same number of parallel jobs as the build.
-   4. **Builds the game** with CMake, in RelWithDebInfo, from the repository's sources and the
+   5. **Builds the game** with CMake, in RelWithDebInfo, from the repository's sources and the
       generated ones. The result is `build/rac1-native`. It uses one job per CPU core, fewer when
       memory is short (`-j` changes that).
-   5. **Generates the game's data** into `assets/` from your disc, step by step, showing each level
+   6. **Generates the game's data** into `assets/` from your disc, step by step, showing each level
       as it goes. This takes a few minutes. First it checks the disc image fully (that every level
-      is inside it), and, because the game reads the disc while it runs, makes
-      `assets/iso/rac1-ntsc-u.iso` (`assets/iso/rac1-pal.iso` for the PAL disc) point to your image (a link: nothing is copied). Keep the image
-      where it is; if you move it, run the setup again with its new path.
+      is inside it), and makes `assets/iso/rac1-ntsc-u.iso` (`assets/iso/rac1-pal.iso` for the PAL disc) point to your image (a link: nothing is
+      copied), so that a later setup finds it. The first time after an extraction, it also has the game
+      read every sector of the disc through its files and through the image, and compare the two.
 
    At the end it offers to start the game.
+
+   **After the setup the game no longer needs your disc image**: it reads `assets/disc/`. Keep the
+   image anyway (the setup never deletes it): an update that changes what is made from the disc
+   (the generated code or data) needs it again, and the setup then asks for it. An update that only
+   changes the game's own sources builds without it.
 
 3. **Play.** From the repository's root:
 
@@ -114,8 +123,9 @@ All of it goes into `assets/`, which git ignores:
 
 | Path | What |
 |---|---|
-| `assets/iso/rac1-ntsc-u.iso` (`rac1-pal.iso` for the PAL disc) | a link to your disc image, which the game reads while it runs |
-| `assets/iso/disc-path.txt` | on Windows, when the link cannot be made: your disc image's path, which the game reads instead |
+| `assets/disc/` | the disc's files, which the game reads while it runs (about 4 GB): see [The disc's files](#the-discs-files) |
+| `assets/iso/rac1-ntsc-u.iso` (`rac1-pal.iso` for the PAL disc) | a link to your disc image, for the setup's next runs (the game reads it only with `RAC1_READ_ISO=1`) |
+| `assets/iso/disc-path.txt` | on Windows, when the link cannot be made: your disc image's path, which the setup reads instead |
 | `assets/dumps/SCUS_971.99` (`SCES_509.16` for the PAL disc) | the game's executable, copied from the disc |
 | `assets/generated/src/` | the generated part of the game's source code, and `generated_sources.cmake`, its list for the build (only the build reads it) |
 | `assets/generated/mrp/moby/` | the moby models and textures for the renderer, per level |
@@ -126,6 +136,27 @@ All of it goes into `assets/`, which git ignores:
 
 How these are made is described in [Rendering](rendering.md) and
 [Architecture](architecture.md#per-level-overlays-and-the-ov-macros).
+
+## The disc's files
+
+The game reads its disc by sector, at the sector numbers its own tables give: Insomniac's table of
+contents at sector 1500, and each level's header. The disc's ISO 9660 file system names only three
+files (`SYSTEM.CNF`, the boot executable and the IOP's modules); everything else lies in sectors only
+those tables name. The setup (`tools/disc_extract.py`) cuts the whole image into files along them:
+
+| Path in `assets/disc/` | What |
+|---|---|
+| `files/` | the ISO 9660 file system's files (`SYSTEM.CNF`, `SCUS_971.99` or `SCES_509.16`, `IOPRP243.IMG`) |
+| `toc.bin` | the table of contents |
+| `levels/levelNN/` | each level's `header.bin`, `data.wad` (its code and core data), `gameplay_ntsc.bin`, `gameplay_pal.bin`, `occlusion.bin`, and `hdr_XXXX.vag` / `.bin` / `.pss`: the sounds, music and scene data the level's header names (`XXXX`: where in the header, in hex) |
+| `toc/row_XXXX.*` | what the table of contents names (`XXXX`: where in it): the movies (`.pss`), the dialogue and sounds (`.vag`), the front end's data (`.bin`) |
+| `other/` | the few bytes no table names that are not zero (the ISO 9660 volume's own sectors) |
+| `layout.txt` | where each file lies on the disc: the game maps every sector it reads to a file with it |
+
+About 6,800 files, 3.9 GB. The bytes no file holds are zero, so a read of any sector gives exactly
+what the image gives, across two files or outside every one. The extraction is checked twice: each
+file against the image as it is written (its size and sha1), and then, once, the game's own reads
+of every sector through both (`./build/rac1-native --setup --compare-disc`).
 
 ## The European PAL disc
 
@@ -182,6 +213,8 @@ not supported yet.
   (all of `assets/generated`, or part of it) is redone too: the setup says which files are missing, and the game says
   at start when the modern renderer's assets are missing. A step added by an update (such as the
   flight between planets) runs on its own, without redoing the others. It remembers the disc image's path.
+  It extracts the disc again only when the disc image changes (another disc, or another size), or when
+  `assets/disc/` is incomplete; a new extraction first removes the old one.
   What was generated, and from which code, is recorded in `assets/setup-state.json`.
 - **`./setup.sh --update`** (`setup.cmd --update` on Windows) fetches the latest release (or `main` when
   Main menu > Updates > Update Channel is Development), then rebuilds and regenerates only what changed;
@@ -210,7 +243,7 @@ not supported yet.
 | `--iso <path>` | your disc image (otherwise `$RAC1_ISO`, then `assets/iso/rac1-ntsc-u.iso` or `rac1-pal.iso`, then it asks) |
 | `--update` | fetch the latest release (or `main` on the Development channel), then rebuild what changed; on failure the previous build is kept |
 | `--channel stable\|development` | with `--update`: override Main menu > Updates > Update Channel |
-| `--force [steps]` | regenerate even if up to date: everything, or the steps given (`elf,overlay,code,moby,world,flight`) |
+| `--force [steps]` | regenerate even if up to date: everything, or the steps given (`disc,elf,overlay,code,moby,world,flight`; `disc` extracts the disc again) |
 | `-j <n>`, `--jobs <n>` | parallel jobs, for the code generation and the build |
 | `--no-build` | skip the build |
 | `--build-only` | only check the system and build (generating the code first if it is missing or out of date, which needs the disc) |
@@ -227,7 +260,8 @@ not supported yet.
 | `--assets <dir>` | where to write the data (default `assets`; the game itself only reads `assets/`) |
 | `--force` | regenerate even if present |
 | `--step elf\|moby\|world\|flight\|overlay\|all` | run one step only |
-| `--check-iso` | only check the disc image, and make the game find it |
+| `--check-iso` | only check the disc image, and make the setup find it |
+| `--compare-disc` | read every sector through the disc image and through the disc's files (`assets/disc/`), and compare |
 | `--status` | show what is present |
 
 On its own, `--setup` skips a file that exists without checking whether it is up to date; that is
@@ -342,7 +376,8 @@ What differs from Linux:
 
 - **The disc image.** Windows only lets programs make links with Developer Mode on (or as an
   administrator). Without it, the setup writes your image's path into `assets/iso/disc-path.txt`
-  instead, and the game reads it from there. Keep the image where it is, as on Linux.
+  instead, and its next runs read it from there. The game reads the disc's files (`assets\disc\`), as
+  on Linux; no links are needed for them, and a long path to the game's folder works.
 - **The settings and saves** are in `%APPDATA%\rac1-native\` (the settings files, `controls.txt`,
   and the memory card in `memcard\`), instead of `~/.config/rac1-native/` and
   `~/.local/share/rac1-native/`.
@@ -378,8 +413,18 @@ dump). Dump the disc again.
 disc, 4,213,997,568 for the PAL one) but looks complete. It may
 still work; if the game misbehaves, check your dump against the Redump record.
 
-**"your disc image was not found"** when starting the game: the image was moved or deleted since the
-setup. Run `./setup.sh --iso <new path>`.
+**"the disc's files are missing (assets/disc/layout.txt)"** when starting the game: the game reads the
+files the setup extracts from your disc, and they are not there: the setup was last run by an older
+version (which let the game read the image itself), or `assets/disc/` was deleted. Run `./setup.sh`
+(`setup.cmd` on Windows) again, with your disc image. **"[disc] ... is missing"** or **"damaged"**
+while playing: a file in `assets/disc/` was deleted or changed since; run `./setup.sh --force disc`.
+
+**"Something made from your disc must be made again"** during a setup: after an update that changes
+the generated code or data, the setup needs your disc image again, even when the game itself no
+longer reads it. Give it with `--iso <path>`.
+
+**"Extracting the disc failed: not enough free disk space"**: the disc's files take about 4 GB in the
+repository's folder; free some space, or move the repository to a larger disk, and run the setup again.
 
 **"The game's generated sources are missing"** or **"... are out of date"** when building: the build
 needs the code that `./setup.sh` generates from your disc. Run `./setup.sh` (it generates the code,
