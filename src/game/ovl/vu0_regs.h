@@ -58,18 +58,32 @@ inline uint32_t status_bits(uint32_t mac) {
 // macro ops that never reads the flags from the VU0 state, nor runs a VU0 micro program (vcallms, ctc2) or anything that
 // does (moby_joints_pose: its ops' flags are read by nobody before it returns).
 // orig: (host)
+// (no SSE2, the Wii U: the flags as MAC words at once, fin_lanes; their bytes' vectors cost more there than the words)
+#if defined(__SSE2__) || defined(__x86_64__)
+#define RAC1_VU0_FLAG_BYTES 1
+#endif
 struct LocalFlags {
     Regs& R;
     uint32_t macflag, statusflag;
+#ifdef RAC1_VU0_FLAG_BYTES
     __m128i last = _mm_setzero_si128(), sticky = _mm_setzero_si128();
+#else
+    uint32_t last = 0, sticky = 0;  // (the MAC words of the last op and of every op)
+#endif
     bool pending = false;  // ops since the last sync
     explicit LocalFlags(Regs& r) : R(r), macflag(r.macflag), statusflag(r.statusflag) {}
     void sync() {
         if (!pending) return;
+#ifdef RAC1_VU0_FLAG_BYTES
         macflag = static_cast<uint32_t>(_mm_movemask_epi8(last));
         const uint32_t any = status_bits(static_cast<uint32_t>(_mm_movemask_epi8(sticky)));
-        statusflag = (statusflag & 0xfc0) | (any << 6) | status_bits(macflag);
         sticky = _mm_setzero_si128();
+#else
+        macflag = last;
+        const uint32_t any = status_bits(sticky);
+        sticky = 0;
+#endif
+        statusflag = (statusflag & 0xfc0) | (any << 6) | status_bits(macflag);
         pending = false;
     }
     ~LocalFlags() {
@@ -91,8 +105,43 @@ constexpr uint32_t mask_rev(int m) {
 // MAC / status flags for the written lanes `m` (zero, sign, underflow, overflow; the lanes not written clear); the
 // status flag's sticky bits kept. The flags are built on the lanes reversed (w first: the flag's bit order) and packed
 // into one mask with a single movemask.
+// fin_m's work lane by lane: `in`'s lanes clamped into `out`, the MAC flag word of the written lanes returned (the same
+// bits as fin_m's movemask: lane i's zero / sign / underflow / overflow at bits 3 - i, 7 - i, 11 - i, 15 - i)
+inline uint32_t fin_lanes(const uint32_t in[4], uint32_t out[4], int m) {
+    uint32_t x = 0;
+    for (int i = 0; i < 4; ++i) {
+        const uint32_t v = in[i], e = (v >> 23) & 0xffu, j = 3u - static_cast<uint32_t>(i);
+        uint32_t r = v;
+        if (e == 0xffu) {
+            r = (v & 0x80000000u) | 0x7f7fffffu;
+            x |= 1u << (12 + j);
+        } else if (e == 0) {
+            r = v & 0x80000000u;
+            x |= 1u << j;
+            if ((v & 0x7fffffu) != 0) x |= 1u << (8 + j);
+        }
+        x |= (v >> 31) << (4 + j);
+        out[i] = r;
+    }
+    return x & (mask_rev(m) * 0x1111u);
+}
 template <FlagSink F>
 [[gnu::always_inline]] inline __m128i fin_m(F& R, __m128i v, int m) {
+#ifndef RAC1_VU0_FLAG_BYTES
+    const uint32_t in[4] = {static_cast<uint32_t>(v[0]), static_cast<uint32_t>(v[1]), static_cast<uint32_t>(v[2]), static_cast<uint32_t>(v[3])};
+    uint32_t out[4];
+    const uint32_t x = fin_lanes(in, out, m);
+    if constexpr (std::same_as<F, LocalFlags>) {
+        R.last = x;
+        R.sticky |= x;
+        R.pending = true;
+    } else {
+        R.macflag = x;
+        const uint32_t st = status_bits(x);
+        R.statusflag = (R.statusflag & 0xfc0) | st | (st << 6);
+    }
+    return __m128i{static_cast<int32_t>(out[0]), static_cast<int32_t>(out[1]), static_cast<int32_t>(out[2]), static_cast<int32_t>(out[3])};
+#else
     const __m128i vr = _mm_shuffle_epi32(v, _MM_SHUFFLE(0, 1, 2, 3));  // (w z y x)
     const __m128i expm = _mm_set1_epi32(0x7f800000);
     const __m128i e = _mm_and_si128(vr, expm);
@@ -120,6 +169,7 @@ template <FlagSink F>
         R.statusflag = (R.statusflag & 0xfc0) | st | (st << 6);
     }
     return _mm_shuffle_epi32(r, _MM_SHUFFLE(0, 1, 2, 3));
+#endif
 }
 template <FlagSink F>
 [[gnu::always_inline]] inline void fmac4(F& fl, Vf& d, int m, __m128i raw) {

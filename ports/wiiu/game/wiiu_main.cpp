@@ -24,6 +24,8 @@
 #include <typeinfo>
 
 int rac1_orig_main(int argc, char** argv);
+void wiiu_sampler_start();  // wiiu_sampler.cpp
+void wiiu_sampler_stop();
 void rac1_wiiu_debug_tools_gate(int argc, char** argv);  // (src/host/orig_main.cpp)
 
 // ---- What goes wrong before main or outside it, on the UDP log (port 4405) ----
@@ -237,6 +239,7 @@ int main(int, char**) {
     say("the game's main");
     const OSTime t0 = OSGetTime();
     int rc = -1;
+    wiiu_sampler_start();  // (RAC1_WIIU_SAMPLE)
     try {
         rc = rac1_orig_main(1, argv);
     } catch (const std::exception& x) {
@@ -245,6 +248,7 @@ int main(int, char**) {
         WHBLogPrintf("rac1-wiiu: exception %s: %s", typeid(x).name(), x.what());
         back_to_menu("exception");
     }
+    wiiu_sampler_stop();
     const unsigned ms = static_cast<unsigned>(OSTicksToMilliseconds(OSGetTime() - t0));
     std::printf("[wiiu] the game's main returned %d after %u ms\n", rc, ms);
     std::fflush(stdout);
