@@ -5,6 +5,7 @@
 // from shaders/ beside the game's data. Host code.
 #include <runtime/gs/gs_emu.h>
 #include "gs_draw_gx2.h"
+#include "mrp_moby_gx2.h"
 
 #include <coreinit/cache.h>
 #include <coreinit/memexpheap.h>
@@ -89,6 +90,7 @@ struct Frame2d {
 };
 Frame2d g_2d;
 bool g_2d_ready = false;  // (the GS replica's GX2 backend up)
+bool g_mobys_ready = false;  // (the MRP's mobys' GX2 backend up)
 }  // namespace
 
 bool rac1_wiiu_picture() { return g_on; }
@@ -108,6 +110,8 @@ void wiiu_gfx_game_ended() {
     // (the 2D's backend let go before the menu takes over: with it up, the console hung on its way back)
     if (g_2d_ready) rac1::gs::draw_gx2_shutdown();
     g_2d_ready = false;
+    if (g_mobys_ready) rac1::mrp_moby_gx2_shutdown();
+    g_mobys_ready = false;
 }
 
 bool wiiu_gfx_wanted() {
@@ -138,6 +142,8 @@ bool wiiu_gfx_start() {
         return false;
     }
     g_2d_ready = rac1::gs::draw_gx2_init();
+    g_mobys_ready = rac1::mrp_moby_gx2_init();
+    std::printf("[wiiu] gfx: the MRP's mobys %s\n", g_mobys_ready ? "drawn (shaders/mrp_moby.gsh)" : "not drawn (no shaders/mrp_moby.gsh)");
     g_on = true;
     std::printf("[wiiu] gfx: GX2 up; the game's 2D %s\n", g_2d_ready ? "drawn (shaders/gs_draw.gsh)" : "not drawn (no shaders/gs_draw.gsh): the test triangle");
     return true;
@@ -145,8 +151,9 @@ bool wiiu_gfx_start() {
 
 namespace {
 // the game's frame (4:3) centred on a colour buffer and its 2D drawn (the test triangle until the game's first frame)
-void draw_frame(const GX2ColorBuffer* cb, bool targets) {
-    // (testing, RAC1_WIIU_2D: 0 the frame's chain walked but nothing of it drawn, 1 the screen's primitives only: no target)
+void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
+    // (testing, RAC1_WIIU_2D: 0 the frame's chain walked but nothing of it drawn, 1 the screen's primitives only: no target,
+    // 3 the MRP's mobys alone: no 2D)
     static const int s_2d = std::getenv("RAC1_WIIU_2D") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_2D")) : 2;
     if (s_2d == 0) return;
     if (s_2d == 1) targets = false;
@@ -164,6 +171,15 @@ void draw_frame(const GX2ColorBuffer* cb, bool targets) {
     vp.skip_fbp = g_2d.skip_fbp;
     vp.sprite_clamp = true;
     vp.hide_edge_slivers = true;
+    if (g_mobys_ready) {  // (the 3D under the 2D)
+        rac1::mrp_moby_gx2_debug_frame(g_2d.game_frame);
+        rac1::mrp_moby_gx2_draw(cb, db, vp);
+    }
+    if (s_2d == 3) {  // (testing, RAC1_WIIU_TEST_AFTER=1: the test triangle drawn over the mobys, the target checked)
+        static const bool test_after = std::getenv("RAC1_WIIU_TEST_AFTER") != nullptr && std::atoi(std::getenv("RAC1_WIIU_TEST_AFTER")) != 0;
+        if (test_after) draw_test();
+        return;
+    }
     rac1::gs::draw_gx2(*g_2d.gs, cb, g_2d.fb_w, g_2d.fb_h, &vp, targets);  // (the render targets: by the TV's first call per frame)
 }
 }  // namespace
@@ -233,13 +249,13 @@ void wiiu_gfx_frame() {
     WHBGfxBeginRender();
     WHBGfxBeginRenderTV();
     WHBGfxClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    draw_frame(WHBGfxGetTVColourBuffer(), g_2d.targets_due);
+    draw_frame(WHBGfxGetTVColourBuffer(), WHBGfxGetTVDepthBuffer(), g_2d.targets_due);
     g_2d.targets_due = false;
     WHBGfxFinishRenderTV();
     if (const uint64_t due = shot_wanted(g_2d.game_frame)) shot(WHBGfxGetTVColourBuffer(), due);
     WHBGfxBeginRenderDRC();
     WHBGfxClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    draw_frame(WHBGfxGetDRCColourBuffer(), false);
+    draw_frame(WHBGfxGetDRCColourBuffer(), WHBGfxGetDRCDepthBuffer(), false);
     WHBGfxFinishRenderDRC();
     WHBGfxFinishRender();
 }
@@ -247,6 +263,7 @@ void wiiu_gfx_frame() {
 void wiiu_gfx_stop() {
     if (!g_on) return;
     if (g_2d_ready) rac1::gs::draw_gx2_shutdown();
+    if (g_mobys_ready) rac1::mrp_moby_gx2_shutdown();
     GX2RDestroyBufferEx(&g_pos, GX2R_RESOURCE_BIND_NONE);
     GX2RDestroyBufferEx(&g_col, GX2R_RESOURCE_BIND_NONE);
     WHBGfxFreeShaderGroup(&g_test);

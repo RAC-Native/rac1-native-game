@@ -75,6 +75,7 @@ set(HOST_SRC
     wiiu_audio.cpp
     wiiu_gfx.cpp
     gs_draw_gx2.cpp
+    mrp_moby_gx2.cpp
 )
 
 add_executable(rac1_wiiu ${HOST_SRC} ${RUNTIME_SRC} ${FORMATS_SRC} ${SETUP_SRC} ${GAME_SRC} ${GEN_SRC} ${SND989_SRC})
@@ -115,7 +116,7 @@ wut_create_rpx(rac1_wiiu)
 # (-DRAC1_WIIU_GLSLC=<its bin/glslcompiler>), written to shaders/ in the build (copied beside the game's data on the SD;
 # generated: never in the repository). Each <name>.vert / <name>.frag pair is one file.
 set(RAC1_WIIU_GLSLC "" CACHE FILEPATH "CafeGLSL's glslcompiler, for ports/wiiu/shaders")
-set(RAC1_WIIU_SHADERS test gs_draw)
+set(RAC1_WIIU_SHADERS test gs_draw mrp_moby)
 if(RAC1_WIIU_GLSLC)
     set(_gsh)
     foreach(sh ${RAC1_WIIU_SHADERS})

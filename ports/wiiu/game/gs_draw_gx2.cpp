@@ -447,6 +447,13 @@ void draw_gx2_shutdown() {
     g_ready = false;
 }
 
+void set_blend_gx2(uint64_t prim, uint64_t alpha) {
+    DrawState st;
+    st.prim = prim;
+    st.alpha = alpha;
+    set_blend(blend_of(st));
+}
+
 void draw_gx2(const Gs& gs, const GX2ColorBuffer* screen, float FB_W, float FB_H, const Viewport* vp, bool targets, int prim_filter, size_t from,
               size_t to) {
     if (!g_ready || screen == nullptr) return;
@@ -531,8 +538,13 @@ void draw_gx2(const Gs& gs, const GX2ColorBuffer* screen, float FB_W, float FB_H
         if (last_blk == nullptr || last_blk_wraps != g_ring_wraps || !(last_blk_val == blk)) {
             void* ub = ring_alloc(g_block_size, GX2_UNIFORM_BLOCK_ALIGNMENT);
             if (ub == nullptr) return false;
+            // (the shaders' blocks are read by the GPU as little-endian words: each 32-bit word swapped - mrp_moby_gx2.cpp's
+            // block_of; testing: RAC1_WIIU_2D_BSWAP=0 the words as the PPC writes them)
+            static const bool bswap = std::getenv("RAC1_WIIU_2D_BSWAP") == nullptr || std::atoi(std::getenv("RAC1_WIIU_2D_BSWAP")) != 0;
             std::memset(ub, 0, g_block_size);
             std::memcpy(ub, &blk, sizeof(Block));
+            if (bswap)
+                for (uint32_t i = 0; i < sizeof(Block) / 4; ++i) static_cast<uint32_t*>(ub)[i] = __builtin_bswap32(static_cast<uint32_t*>(ub)[i]);
             GX2Invalidate(static_cast<GX2InvalidateMode>(GX2_INVALIDATE_MODE_CPU | GX2_INVALIDATE_MODE_UNIFORM_BLOCK), ub, g_block_size);
             last_blk = ub;
             last_blk_wraps = g_ring_wraps;

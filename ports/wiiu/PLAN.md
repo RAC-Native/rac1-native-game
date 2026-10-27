@@ -386,4 +386,9 @@ moved the game's.
   GX2 backend's caches look bounded). operator new's report (size, caller, the heap's free / largest) now reaches the
   UDP log and the error screen. The free-memory line of wiiu_gfx.cpp means nothing (newlib takes MEM2 whole at start).
 - Ristretto (wiiu-smarthome, an HTTP server plugin, port 8572: POST /power/reboot = OSForceFullRelaunch) copied to the
-  SD's plugins, to reboot the console from the PC when the game hangs (untried yet).
+  SD's plugins, to reboot the console from the PC when the game hangs: tried on a hang (2026-10-27), port 8572 refused the
+  connection - not loaded, or down with the console.
+- GX2's uniform blocks are read as little-endian words: gs_draw_gx2.cpp's block is now written byte-swapped
+  (RAC1_WIIU_2D_BSWAP=0 the old order); found with the MRP's mobys (MRP_LITE.md, phase 2). The pause menu's boxes now
+  have their golden frames, as on the PC (they were missing before, unnoticed). Under the pause menu the PC shows the
+  frozen scene, the Wii U black: to do with the world.

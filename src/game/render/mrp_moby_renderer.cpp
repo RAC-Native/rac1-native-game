@@ -1,5 +1,6 @@
 // orig: (host) The MRP moby renderer (see mrp_moby_renderer.h).
 #include <game/render/mrp_moby_renderer.h>
+#include "mrp_moby_backend.inc"
 #include <profiler/host_profiler.h>
 #include <jobs/job_pool.h>
 
@@ -80,28 +81,12 @@ double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::
 
 // ---- the GPU data of a class -----------------------------------------------------------------
 
-// One GPU vertex: a VU1 slot of a packet as the kick program sends it (its position, colour, UV are
-// the slot's: the asset's kick ops never mix slots but for STQ's second Q factor, kept as q2).
-// The slot's skinning record: bind position, normal angles, vertex colour, the VU0 matrix it is
-// skinned with as <= 3 weighted joints (n 1: the joint's matrix itself; 2 / 3: the VU0 blend
-// M[j0] w0 + M[j1] w1 (+ M[j2] w2), in that order).
-struct GpuVertex {
-    int16_t pos[3];
-    uint16_t normal;  // the angle bytes n0 | n1 << 8
-    uint8_t joint[3];
-    uint8_t n;
-    uint8_t weight[3];
-    uint8_t flags;  // 1: STQ x the Q of the q2 slot
-    uint8_t rgba[4];
-    int16_t uv[2];
-    int16_t q2pos[3];
-    int16_t pad0;
-    uint8_t q2joint[3];
-    uint8_t q2n;
-    uint8_t q2weight[3];
-    uint8_t pad1;
-};
-static_assert(sizeof(GpuVertex) == 40);
+// the GPU vertex, the frame's parts, draw commands and batches: mrp_moby_backend.inc (the backends' boundary)
+using mrpm::Batch;
+using mrpm::DrawCmd;
+using mrpm::GpuVertex;
+using mrpm::Key;
+using mrpm::PartGpu;
 
 // a slot's skinning record resolved through the VU0 matrix memory
 struct SlotRec {
@@ -190,6 +175,7 @@ struct Level {
     vk::GpuBuffer vk_ibo{};
 };
 Level g_level;
+uint64_t g_level_loads = 0;  // (load_level's count: the backends' LevelView::loads)
 
 // ---- statistics (reported at the end) ----
 struct Stats {
@@ -584,6 +570,19 @@ void guest_textures(Level& L) {
         }
 }
 
+// orig: (host) the texels of one layer's mip level of a texture array (level l: max(1, w >> l) x max(1, h >> l)): the palette (its
+// CSM1 order) applied, RGBA bytes in memory order on any host (Texture::palette's); a level the texture lacks: transparent black
+void bucket_texels(const Level& L, const Bucket& b, size_t layer, uint32_t l, std::vector<uint32_t>& px) {
+    auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
+    const mrp::Texture& t = L.textures[static_cast<size_t>(b.textures[layer])];
+    uint32_t pal[256];
+    for (uint32_t i = 0; i < 256; ++i) pal[i] = t.palette[csm1(i)];
+    const uint32_t w = std::max(1u, b.w >> l), h = std::max(1u, b.h >> l);
+    px.assign(static_cast<size_t>(w) * h, 0u);
+    if (l < t.mips.size() && t.mips[l].size() >= static_cast<size_t>(w) * h)
+        for (size_t k = 0; k < px.size(); ++k) px[k] = pal[t.mips[l][k]];
+}
+
 // orig: (host) the level's moby textures (textures.mrpt) decoded to RGBA (palette[CSM1 index], the GS's
 // 0..0x80 alpha kept) into one texture array per size, every mip
 void load_textures(Level& L) {
@@ -640,13 +639,15 @@ void load_textures(Level& L) {
         b.textures.push_back(static_cast<int>(i));
         b.levels = std::max<uint32_t>(b.levels, static_cast<uint32_t>(std::min<size_t>(t.mips.size(), 4)));
     }
-    auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
     std::vector<uint32_t> px;
     for (Bucket& b : L.buckets) {
         uint32_t maxl = 1;
         while ((b.w >> maxl) > 0 && (b.h >> maxl) > 0 && maxl < b.levels) ++maxl;
         b.levels = std::max(1u, std::min(b.levels, maxl));
         const uint32_t layers = static_cast<uint32_t>(b.textures.size());
+#if defined(__WIIU__)
+        continue;  // (the Wii U: the GX2 backend makes its texture arrays from the level's data, mrpm::bucket_texels)
+#endif
         if (vk::is_active()) {
             vk::create_image(b.w, b.h, VK_FORMAT_R8G8B8A8_UNORM,
                              VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
@@ -662,14 +663,9 @@ void load_textures(Level& L) {
             glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(b.levels) - 1);
         }
         for (size_t layer = 0; layer < b.textures.size(); ++layer) {
-            const mrp::Texture& t = L.textures[static_cast<size_t>(b.textures[layer])];
-            uint32_t pal[256];
-            for (uint32_t i = 0; i < 256; ++i) pal[i] = t.palette[csm1(i)];
             for (uint32_t l = 0; l < b.levels; ++l) {
                 const uint32_t w = std::max(1u, b.w >> l), h = std::max(1u, b.h >> l);
-                px.assign(static_cast<size_t>(w) * h, 0u);
-                if (l < t.mips.size() && t.mips[l].size() >= static_cast<size_t>(w) * h)
-                    for (size_t k = 0; k < px.size(); ++k) px[k] = pal[t.mips[l][k]];
+                bucket_texels(L, b, layer, l, px);
                 if (vk::is_active()) {
                     vk::upload_image_2d(b.vk_tex, px.data(), px.size() * 4, 0, 0, static_cast<int>(w), static_cast<int>(h), 0, static_cast<uint32_t>(layer), l);
                 } else {
@@ -679,7 +675,9 @@ void load_textures(Level& L) {
             }
         }
     }
+#if !defined(__WIIU__)  // (the Wii U: no GL - glad's functions never loaded, a call jumps to 0)
     if (!vk::is_active()) glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+#endif
 }
 
 void free_level(Level& L) {
@@ -699,25 +697,43 @@ void free_level(Level& L) {
 }
 
 // orig: (host) the level's assets: every class file (by o_class), the armor, the textures
+// (the Wii U's bring-up: each step's first time on the log, flushed - where a first frame stops)
+#if defined(__WIIU__)
+#define MRP_WIIU_ONCE(s)                                              \
+    do {                                                              \
+        static bool done_ = false;                                    \
+        if (!done_) {                                                 \
+            done_ = true;                                             \
+            std::fprintf(stderr, "[wiiu-trace] mrp mobys: %s\n", s); \
+            std::fflush(stderr);                                      \
+        }                                                             \
+    } while (0)
+#else
+#define MRP_WIIU_ONCE(s) (void)0
+#endif
+
 void load_level(int id) {
     free_level(g_level);
     Level& L = g_level;
     L.id = id;
     const std::string dir = asset_root() + "/" + mrpw::level_dir_name(id);
-    if (!std::filesystem::is_directory(dir)) {
+    std::error_code ec;  // (no exceptions: the Wii U's file system answers some calls with errors)
+    if (!std::filesystem::is_directory(dir, ec)) {
         std::fprintf(stderr, "[mrp] no MRP moby assets for level %d (%s): run setup.sh\n", id, dir.c_str());
         L.missing = true;
         return;
     }
     const double t0 = now_ms();
-    for (const auto& de : std::filesystem::directory_iterator(dir)) {
+    for (std::filesystem::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+        const std::filesystem::directory_entry& de = *it;
         if (de.path().extension() != ".mrpm") continue;
         auto c = std::make_unique<mrp::MobyClass>();
         if (mrp::read_class(de.path().string(), *c)) L.files[c->o_class] = std::move(c);
     }
     const std::string ad = asset_root() + "/armor";
-    if (std::filesystem::is_directory(ad))
-        for (const auto& de : std::filesystem::directory_iterator(ad)) {
+    if (std::filesystem::is_directory(ad, ec))
+        for (std::filesystem::directory_iterator it(ad, ec), end; !ec && it != end; it.increment(ec)) {
+            const std::filesystem::directory_entry& de = *it;
             if (de.path().extension() != ".mrpm") continue;
             auto c = std::make_unique<mrp::MobyClass>();
             if (mrp::read_class(de.path().string(), *c) && !c->packets.empty()) {
@@ -734,10 +750,16 @@ void load_level(int id) {
         if (mrp::read_class(path, *c) && !c->packets.empty()) L.guest = std::move(c);
         else std::fprintf(stderr, "[mrp] no guest class %s\n", path.c_str());
     }
+    MRP_WIIU_ONCE("classes read");
     load_textures(L);
+    MRP_WIIU_ONCE("textures read");
+    ++g_level_loads;
     if (vk::is_active()) {
         L.vk_loaded = true;
     } else {
+#if defined(__WIIU__)
+        L.gl_loaded = true;  // (the Wii U: no GL; the GX2 backend makes its buffers and textures from the level's data)
+#else
         glGenVertexArrays(1, &L.vao);
         glGenBuffers(1, &L.vbo);
         rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &L.vbo, "MRP mobys: meshes");
@@ -758,6 +780,7 @@ void load_level(int id) {
         for (GLuint a = 0; a < 8; ++a) glEnableVertexAttribArray(a);
         glBindVertexArray(0);
         L.gl_loaded = true;
+#endif
     }
     L.loaded = true;
     std::printf("[mrp] level %d: %zu moby classes, %zu armor classes, %zu textures in %zu arrays (%.0f ms)\n", id, L.files.size(), L.armor.size(), L.textures.size(),
@@ -1487,39 +1510,6 @@ void bind_moby_vk_set0(VkCommandBuffer cb, int bucket, uint32_t sampler_bits, in
 
 // ---- per-frame state ---------------------------------------------------------------------------
 
-struct PartGpu {
-    float clip[16];
-    float rows[16];
-    float light[32];
-    float sub[4];
-    int32_t info[4];
-};
-static_assert(sizeof(PartGpu) == 4 * (16 + 16 + 32 + 4 + 4));
-
-struct DrawCmd {  // DrawElementsIndirectCommand
-    uint32_t count, instances, first_index;
-    int32_t base_vertex;
-    uint32_t base_instance;
-};
-
-// the GL state of a run of draws
-struct Key {
-    int bucket = -1;
-    uint32_t sampler = 0;
-    uint64_t prim = 0, test = 0, alpha = 0, zbuf = 0;
-    bool deferred = false;  // the draw loop's second pass (the mobys whose drop shadow is seen): drawn after the shadows
-    bool caster_only = false;  // a moby outside the view (the casters' cache): drawn into the shadow maps only
-    uint32_t rt = 0;  // a moby drawn into a render target (MrpMoby::rt): its address; drawn there by mrp_moby_draw_target only
-    // the boot's title main menu's boxes (MrpMoby::other_view, Frame::title_menu): drawn in the game's own 4:3 projection (mode 1)
-    // over the scene's mobys in the world's, cut at the 4:3 frame; never casters
-    bool own_view = false;
-    bool operator==(const Key&) const = default;
-};
-struct Batch {
-    Key key;
-    uint32_t first = 0, count = 0;  // into the frame's draw commands
-};
-
 struct Frame {
     bool active = false;
     bool title = false, menu = false, title_menu = false;
@@ -1694,7 +1684,11 @@ void mrp_world_view_proj(float out[16]) { std::memcpy(out, glm::value_ptr(world_
 
 // orig: (host) see mrp_moby_renderer.h
 bool mrp_moby_ready() {
+#if defined(__WIIU__)
+    return g_moby_renderer == MobyRenderer::kMrp && mrp_moby_gx2_ready() && g_level.loaded && g_level.id == moby_level_id();
+#else
     return g_moby_renderer == MobyRenderer::kMrp && (vk::is_active() ? g_vk_moby.inited : g_prog != 0) && g_level.loaded && g_level.id == moby_level_id();
+#endif
 }
 
 // orig: (host) see mrp_moby_renderer.h
@@ -1707,12 +1701,17 @@ void mrp_moby_begin_frame(bool title, bool menu_mode, bool title_menu) {
     g_frame.active = false;
     g_prog_marks.clear();
     if (g_moby_renderer != MobyRenderer::kMrp || title) return;
+#if defined(__WIIU__)
+    if (!mrp_moby_gx2_ready()) return;  // (the Wii U: the GX2 backend's shaders, ports/wiiu/game/mrp_moby_gx2.cpp)
+#else
     if (vk::is_active()) {
         if (!init_vk()) return;
     } else {
         if (!init_gl()) return;
     }
+#endif
     const int id = moby_level_id();
+    MRP_WIIU_ONCE("begin_frame");
     const int guest = g_mrp_guest_class.load();  // (the free hoverboard's class asked for after the level's load: loaded again with it)
     const bool guest_new = guest >= 0 && guest != g_level.guest_key && guest / 10000 != id;
     if (g_level.id != id || (!g_level.missing && ((vk::is_active() && !g_level.vk_loaded) || (!vk::is_active() && !g_level.gl_loaded))) || guest_new) load_level(id);
@@ -3090,10 +3089,12 @@ void prepare_frame(const gs::Viewport* vp) {
     if (g_frame.built) return;
     const double t0 = now_ms();
     build_frame();
+#if !defined(__WIIU__)  // (the Wii U: the GX2 backend reads the frame at its draw, mrpm::frame_view)
     if (!vk::is_active()) {
         upload_frame();
         if (g_env_check) shader_check(vp);
     }
+#endif
     ++g_st.frames;
     g_st.prof_build_ms += now_ms() - t0;
 }
@@ -3102,11 +3103,17 @@ void prepare_frame(const gs::Viewport* vp) {
 
 // orig: (host) see mrp_moby_renderer.h
 void mrp_moby_prepare(const gs::Viewport* vp) {
-    if (g_frame.active) prepare_frame(vp);
+    if (!g_frame.active) return;
+    MRP_WIIU_ONCE("prepare");
+    prepare_frame(vp);
+    MRP_WIIU_ONCE("prepared");
 }
 
 // orig: (host) see mrp_moby_renderer.h
 void mrp_moby_draw(int win_w, int win_h, const gs::Viewport* vp) {
+#if defined(__WIIU__)
+    return;  // (the Wii U: mrp_moby_gx2_draw, ports/wiiu/game/mrp_moby_gx2.h)
+#endif
     if (!g_frame.active) return;
     prepare_frame(vp);
     const double t0 = now_ms();
@@ -3132,6 +3139,9 @@ void mrp_moby_draw(int win_w, int win_h, const gs::Viewport* vp) {
 
 // orig: (host) see mrp_moby_renderer.h
 void mrp_moby_draw_target(uint32_t moby, uint64_t xyoffset, uint64_t zbuf, int w, int h) {
+#if defined(__WIIU__)
+    return;  // (the Wii U: the render targets' mobys not drawn yet)
+#endif
     if (!g_frame.active || moby == 0) return;
     prepare_frame(nullptr);
     const auto it = g_frame.rt_views.find(moby);
@@ -3155,6 +3165,9 @@ void mrp_moby_draw_target(uint32_t moby, uint64_t xyoffset, uint64_t zbuf, int w
 
 // orig: (host) see mrp_lighting.h
 void mrp_moby_draw_casters(const float* light_vp, const float* sphere, const float* within) {
+#if defined(__WIIU__)
+    return;  // (the Wii U: no modern lighting)
+#endif
     if (!g_frame.active || !g_frame.built) return;
     draw_casters(light_vp, sphere, within);
 }
@@ -3745,5 +3758,64 @@ uint32_t mrp_moby_class_local_textures(int o_class) {
     if (const auto it = g_level.files.find(o_class); bits == 0 && it != g_level.files.end() && it->second != nullptr) add(*it->second);
     return bits;
 }
+
+// ---- the backends' accessors (mrp_moby_backend.inc) ---------------------------------------------------------------------
+
+namespace mrpm {
+
+// orig: (host) see mrp_moby_backend.inc
+bool frame_view(FrameView& out) {
+    const Frame& F = g_frame;
+    if (!F.active || !F.built) return false;
+    out.serial = g_st.frames;
+    out.mode = F.mode;
+    out.menu = F.menu;
+    out.title_menu = F.title_menu;
+    out.parts = &F.parts;
+    out.cmds = &F.cmds;
+    out.draws = &F.draws;
+    out.batches = &F.batches;
+    out.joints = &F.joints_all;
+    out.normals = F.normals;
+    out.proj = F.proj;
+    std::memcpy(out.offset, F.offset, sizeof out.offset);
+    out.fog_min = F.fog_min;
+    out.env_xyoff = F.env_xyoff;
+    return true;
+}
+
+// orig: (host) see mrp_moby_backend.inc
+bool level_view(LevelView& out) {
+    const Level& L = g_level;
+    if (!L.loaded) return false;
+    out.id = L.id;
+    out.loads = g_level_loads;
+    out.table_hash = L.table_hash;
+    out.verts = &L.verts;
+    out.indices = &L.indices;
+    out.buckets = L.buckets.size();
+    return true;
+}
+
+// orig: (host) see mrp_moby_backend.inc
+BucketInfo bucket_info(size_t bucket) {
+    BucketInfo r;
+    if (bucket >= g_level.buckets.size()) return r;
+    const Bucket& b = g_level.buckets[bucket];
+    r.w = b.w;
+    r.h = b.h;
+    r.levels = b.levels;
+    r.layers = static_cast<uint32_t>(b.textures.size());
+    return r;
+}
+
+// orig: (host) see mrp_moby_backend.inc
+void bucket_texels(size_t bucket, uint32_t layer, uint32_t level, std::vector<uint32_t>& px) {
+    px.clear();
+    if (bucket >= g_level.buckets.size() || layer >= g_level.buckets[bucket].textures.size()) return;
+    rac1::bucket_texels(g_level, g_level.buckets[bucket], layer, level, px);
+}
+
+}  // namespace mrpm
 
 }  // namespace rac1

@@ -124,3 +124,17 @@ Each phase ends with shots of the console's TV (RAC1_WIIU_SHOT) compared with th
   cb0304afbdf1e532 on the PC and on the console. Veldin's assets (moby/level0, moby/armor, world/level0: 28 MB) are on the SD.
   Left: the code that does arithmetic on palette entries as numbers (lighting analysis, debug thumbnails) and the GPU vertex
   packing, to look at in phases 2-3.
+- Phase 2 (2026-10-27): the mobys drawn on the console (mrp_moby_gx2.cpp, shaders/mrp_moby.gsh, the CPU preparation shared
+  through mrp_moby_backend.inc). Veldin with explore, the mobys alone (RAC1_WIIU_2D=3): Ratchet, the crates, the plants and
+  the creatures at the PC's places and poses, textured and lit (game frames 150 / 200). What it took:
+  - the MRP mobys turned on: RAC1_NO_GRAPHICS (always on here) turns the whole MRP off - RAC1_MOBY_MRP=1 in run.cfg;
+  - no GL on the Wii U: glad is built but never loaded, a GL call jumps to 0 and takes the console down (white screen,
+  static) - load_textures still bound a texture at its end. The Wii U build's other GL users are in functions its path
+  never calls (checked on the binary: the glad_gl* relocations per function);
+  - **the shaders' uniform blocks are read as little-endian words** (the vertex shader's and the pixel shader's): each
+  32-bit word byte-swapped when written (block_of; gs_draw_gx2.cpp's block too - its ints were read wrong, unseen so far
+  since its tests are mostly != 0). The fetch shader's attributes are right as they are (INTEGER, 16-bit ones 8_IN_16).
+  Left: the drop shadows (their chain range skipped on the walk; a faint square of their last pass stays under the hero),
+  the render targets' mobys (the menus' item models), the modern lighting; performance not measured yet. The debug
+  switches (mrp_moby_gx2.h: RAC1_WIIU_MRP_STAGE / _DEBUG / _GSH) found it: careful with a "screen triangle per draw" mode
+  - thousands of full-screen triangles a frame stall the GPU for seconds a frame (it looks like a hang: one draw a call).

@@ -24,6 +24,10 @@ void draw_gx2_shutdown();
 // the same frame). No depth: the projected 3D (Primitive::vu) is not drawn.
 void draw_gx2(const Gs& gs, const GX2ColorBuffer* screen, float fb_w, float fb_h, const Viewport* vp = nullptr, bool targets = true,
               int prim_filter = 0, size_t from = 0, size_t to = SIZE_MAX);
+// The GS's blending of a primitive (PRIM's ABE, ALPHA: Cv = (A - B) C + D, FIX as the constant colour) set as GX2's on render
+// target 0, as draw_gx2 sets it for the screen (the alpha written the source's); ABE off: blending off. (The MRP's mobys,
+// mrp_moby_gx2.cpp.)
+void set_blend_gx2(uint64_t prim, uint64_t alpha);
 
 }  // namespace rac1::gs
 

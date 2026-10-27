@@ -3105,6 +3105,12 @@ int main(int argc, char** argv) {
                     // (as chain_stage: the mobys whose skinning was skipped have no vertex data in the chain, their parts' bytes
                     // are older ones the VIF would take for codes - this frame's ranges, or the ones noted when the chain is walked again)
                     std::vector<rac1::gs::Gs::SkipRange> skips;
+                    if (!prev_chain && !fade && mrp_moby_ready() && !(lw(OV(0x0015f5c4)) == 3 && g_mode_at_update == 3)) {
+                        // (the MRP's mobys: the drop shadows' tags walked but not processed, as chain_stage does - the MRP-lite
+                        // draws no drop shadows yet, MRP_LITE.md phase 5)
+                        rac1::gs::Gs::SkipRange r;
+                        if (mrp_shadows_chain(r.first, r.last)) skips.push_back(std::move(r));
+                    }
                     if (!prev_chain && g_moby_mrp_skip && (g_moby_mrp_skip_parts & 8) && !g_moby_mrp_skip_verify) {
                         moby_skips_note(start, end, &skips);
                     } else if (g_moby_skips_memo.start == start && g_moby_skips_memo.end == end && !g_moby_skips_memo.ranges.empty() &&
@@ -3130,6 +3136,19 @@ int main(int argc, char** argv) {
                 }
                 rac1::g_world_pass_ranges.clear();
 #if defined(__WIIU__)
+                {  // the MRP's mobys (ports/wiiu/game/mrp_moby_gx2.h): chain_stage's begin_frame, then the frame prepared for the picture
+                    const bool title = boot_active();
+                    const bool flight = exiting && level_exit_loading_screen();
+                    const bool scene = ee_thread_suspended() && ee_thread_frame() == rac1::EeVsyncFrame::Scene;
+                    int mw = 0, mh = 0;
+                    const bool movie = movie_hw_shown(mw, mh) != nullptr;
+                    const bool vendor_pic = !title && !scene && vendor_picture_frame();
+                    const bool menu_mode = lw(OV(0x0015f5c4)) == 3 && g_mode_at_update == 3;
+                    mrp_moby_begin_frame((title && !boot_in_title() && !flight) || (exiting && !flight) || movie || fade || vendor_pic, menu_mode,
+                                         title && mrp_title_menu_drawn());
+                    rac1::gs::Viewport mgv;
+                    if (mrp_moby_active()) mrp_moby_prepare(&mgv);
+                }
                 const int screen_fbp = static_cast<int>(lwu(0x0013cf20) & 0x1ff);
                 rac1_wiiu_picture_frame(gs, static_cast<float>(lhu(0x001518d0)), static_cast<float>(lhu(0x001518d2)), screen_fbp, fade ? screen_fbp : -1, game_frame);
 #endif
