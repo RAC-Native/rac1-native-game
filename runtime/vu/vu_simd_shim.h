@@ -86,6 +86,37 @@ inline __m128i _mm_packs_epi16(__m128i a, __m128i b) {
 }
 
 // out lane i = in lane (imm >> 2i) & 3
+// (moby_joints.cpp's poses) a 64-bit value into lanes 0 (its low word) and 1, the others zero; lane 0 out
+inline __m128i _mm_cvtsi64_si128(long long x) {
+    const uint64_t u = static_cast<uint64_t>(x);
+    return __m128i{static_cast<int32_t>(u), static_cast<int32_t>(u >> 32), 0, 0};
+}
+inline int _mm_cvtsi128_si32(__m128i a) { return a[0]; }
+// the low four 16-bit halves of a and b interleaved: lane j holds a's half j (low) and b's half j (high)
+inline __m128i _mm_unpacklo_epi16(__m128i a, __m128i b) {
+    __m128i r;
+    for (int j = 0; j < 4; j++) {
+        const uint32_t ha = (static_cast<uint32_t>(a[j >> 1]) >> (16 * (j & 1))) & 0xffffu;
+        const uint32_t hb = (static_cast<uint32_t>(b[j >> 1]) >> (16 * (j & 1))) & 0xffffu;
+        r[j] = static_cast<int32_t>(ha | (hb << 16));
+    }
+    return r;
+}
+// the lanes' integers as floats (rounded in the float environment, as cvtdq2ps by MXCSR)
+inline __m128 _mm_cvtepi32_ps(__m128i a) {
+    return __m128{static_cast<float>(a[0]), static_cast<float>(a[1]), static_cast<float>(a[2]), static_cast<float>(a[3])};
+}
+inline __m128 _mm_set1_ps(float x) { return __m128{x, x, x, x}; }
+// the vector shifted right by n bytes (byte k of the result: byte k + n of a, zero past the 16th)
+inline __m128i _mm_srli_si128(__m128i a, int n) {
+    __m128i r = {0, 0, 0, 0};
+    for (int k = 0; k + n < 16; k++) {
+        const uint32_t b = (static_cast<uint32_t>(a[(k + n) >> 2]) >> (8 * ((k + n) & 3))) & 0xffu;
+        r[k >> 2] = static_cast<int32_t>(static_cast<uint32_t>(r[k >> 2]) | (b << (8 * (k & 3))));
+    }
+    return r;
+}
+
 #define _mm_shuffle_epi32(v, imm) \
     (__m128i{(v)[(imm) & 3], (v)[((imm) >> 2) & 3], (v)[((imm) >> 4) & 3], (v)[((imm) >> 6) & 3]})
 #define _MM_SHUFFLE(z, y, x, w) ((((z) << 6) | ((y) << 4) | ((x) << 2) | (w)))
