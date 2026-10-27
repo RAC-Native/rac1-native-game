@@ -2092,6 +2092,10 @@ int main(int argc, char** argv) {
     // (RAC1_RAMHASH against that run). The GS's stores of a drawn picture (the pause menu's, a Vendor's) and the movies'
     // reads of the GS memory have no picture to read: their frames differ there.
     const bool no_graphics = std::getenv("RAC1_NO_GRAPHICS") != nullptr && std::atoi(std::getenv("RAC1_NO_GRAPHICS")) != 0;
+    // RAC1_NO_GRAPHICS=2: also the work only the GS / VU1 path reads skipped, as the MRP skips it when it draws (ADR 0010
+    // step 3: the VU0 skinning, the sub-mesh colour fill, the texture slots; RAC1_MRP_SKIP / _PARTS apply): a renderer that
+    // takes the mobys from the MRP scene state, as the Wii U's will (its game state is then that of a run with the MRP)
+    const bool no_graphics_skip = no_graphics && std::atoi(std::getenv("RAC1_NO_GRAPHICS")) == 2;
     const bool headless = no_graphics || std::getenv("RAC1_HEADLESS") != nullptr;
     // the game's own start (the boot module): by default in a window when no level is
     // asked for; RAC1_BOOT=0 / 1 decides
@@ -2720,7 +2724,7 @@ int main(int argc, char** argv) {
                // before the update, for a frame the MRP will draw (not the title, the level exit, a movie, the debug diffs)
                 int mw0 = 0, mh0 = 0;
                 // (not on the Vendor's screens, game mode 5 once the picture is stored: their frames over it are drawn by the GS path)
-                g_moby_mrp_skip = s_mrp_skip_mode != 0 && mrp_moby_ready() && !boot_active() && !exiting && movie_hw_shown(mw0, mh0) == nullptr &&
+                g_moby_mrp_skip = s_mrp_skip_mode != 0 && (mrp_moby_ready() || no_graphics_skip) && !boot_active() && !exiting && movie_hw_shown(mw0, mh0) == nullptr &&
                                   (lw(OV(0x0015f5c4)) != 5 || (lw(OV(0x001ca4c8)) == 0 && !ee_thread_suspended()));
                 g_moby_mrp_skip_verify = g_moby_mrp_skip && s_mrp_skip_mode == 2;
                 // the MRP's drop shadows: the shadow pass's data captured on a frame the MRP draws (whatever the skipping; the boot's title loop too)
@@ -3789,6 +3793,9 @@ int main(int argc, char** argv) {
     if (rac1::vuprof::enabled()) rac1::vuprof::report();  // (testing: RAC1_VU_PROF)
     rac1::vu0::fallback_report();  // (testing: RAC1_VU_FALLBACK)
     rac1::vu1::fallback_report();
+    if (no_graphics_skip && s_mrp_skip_mode == 2)  // (the graphics path's own report is at its last frame)
+        std::printf("[mrp-skip] verify: skipped skinning's next record equal %llu, different %llu\n", static_cast<unsigned long long>(g_moby_mrp_skip_next_ok),
+                    static_cast<unsigned long long>(g_moby_mrp_skip_next_bad));
     if (std::getenv("RAC1_VU0_CHAIN") != nullptr) std::fprintf(stderr, "[vu0-chain] %016llx\n", static_cast<unsigned long long>(rac1::vu0::chain_hash()));
     rac1::progress::finish();  // (the launcher's progress.json: the time played since its last write)
     rac1::platform::process_end();  // (std::_Exit runs no atexit handler)
