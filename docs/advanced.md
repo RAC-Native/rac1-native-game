@@ -50,8 +50,8 @@ port's fast fades). Left and right on a row step the value (`advanced_settings_d
   check's two rows are not: they belong to the machine (in the file, `update_check_off` and
   `update_channel`, and `update_skip`, the version the update notice's Skip Version chose).
 
-**The New Game choice.** Picking "Modern mode" at New Game turns Quick Select, Aiming and Movement
-(RAC 3) on; "Original mode" turns them off (`advanced_apply_mode`). Fades is left as it is. Every
+**The New Game choice.** Picking "Modern mode" or "Experimental" at New Game turns Quick Select, Aiming,
+Movement (RAC 3) and Buy All Ammo on; "Original mode" turns them off (`advanced_apply_mode`). Fades is left as it is. Every
 setting can be changed at any time afterwards.
 
 **Linked settings.** Modern aiming is built on the strafe, so turning Aiming to Modern when Movement

@@ -1420,6 +1420,7 @@ void advanced_apply_mode(uint32_t mode) {
     sb(QS_PAUSE, v);
     sb(CONTROLS, v);
     sb(MOVEMENT, v != 0 ? 2u : 0u);
+    sb(VENDOR_ALL, v);
     settings_save();
 }
 

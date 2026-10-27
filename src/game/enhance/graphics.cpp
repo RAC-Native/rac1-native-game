@@ -946,14 +946,18 @@ void graphics_new_game_choice(uint32_t w) {
     const int32_t sel = lw(w + 0x40);
     const uint32_t mode = sel <= 0 ? GAME_MODE_ORIGINAL : sel == 1 ? GAME_MODE_MODERN : GAME_MODE_EXPERIMENTAL;
     gs_.mode = mode;
-    // the modern lighting: off in Original and Modern (its defaults: State), every option at its top in Experimental
-    // (lighting High, dynamic shadows on, secondary lights All, shadow distance Maximum, ambient occlusion on)
+    // the modern lighting and the graphics enhancements: off in Original and Modern (their defaults: State), every one
+    // at its top in Experimental (lighting High, dynamic shadows on, secondary lights All, shadow distance Maximum,
+    // ambient occlusion GTAO, sun rays High, surface detail High, ambient particles High)
     const bool experimental = mode == GAME_MODE_EXPERIMENTAL;
     gs_.value[S_LIGHTING] = experimental ? static_cast<int>(value_count(S_LIGHTING)) - 1 : 0;
     gs_.value[S_DYN_SHADOWS] = experimental ? 1 : 0;
     gs_.value[S_SEC_LIGHTS] = static_cast<int>(value_count(S_SEC_LIGHTS)) - 1;  // (All: the default, also the top)
     gs_.value[S_SHADOW_DIST] = static_cast<int>(value_count(S_SHADOW_DIST)) - 1;  // (Maximum: the default, also the top)
-    gs_.value[S_AO] = experimental ? 1 : 0;
+    gs_.value[S_AO] = experimental ? 4 : 0;  // (GTAO: the best of the full resolution's)
+    gs_.value[S_SUN_RAYS] = experimental ? static_cast<int>(value_count(S_SUN_RAYS)) - 1 : 0;
+    gs_.value[S_SURFACE] = experimental ? static_cast<int>(value_count(S_SURFACE)) - 1 : 0;
+    gs_.value[S_PARTICLES] = experimental ? static_cast<int>(value_count(S_PARTICLES)) - 1 : 0;
     if (mode == GAME_MODE_ORIGINAL) {
         gs_.value[S_ASPECT] = 0;
         gs_.value[S_LOD] = 0;

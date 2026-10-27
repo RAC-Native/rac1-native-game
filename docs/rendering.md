@@ -561,16 +561,15 @@ picture the Vendor's screens put back as the frame.
 
 What the game draws into its own memory to use as a texture goes into a render target that keeps the GS's
 alpha (0x80 = 1.0; the ship's planet menu's planet is three blended layers drawn into one); its blending
-reads that alpha at the GS's scale. A render target has the PS2's resolution: the game draws a whole menu
-panel into one at 512 x 512 (the Vendor draws each of its monitors' contents into the same target, then
+reads that alpha at the GS's scale. The game draws a whole menu
+panel into a render target at 512 x 512 (the Vendor draws each of its monitors' contents into the same target, then
 that target onto the screen, bilinear; the pause menu's weapon and gadget screens draw their item models
-the same way), so on a 1440-line window that panel is the PS2's picture scaled 3.5 times, softer than the
-2D drawn on the screen itself. `RAC1_2D_RT_SCALE` (testing) makes the targets larger: 0 at the window's
-scale (its height over the frame's, rounded up: 4 at 1440 lines), N that many times. The game's
+the same way); at the PS2's resolution, on a 1440-line window, that panel would be the PS2's picture scaled 3.5 times,
+softer than the 2D drawn on the screen itself. So the targets are drawn at the window's scale (its height over the
+frame's, rounded up: 4 at 1440 lines); `RAC1_2D_RT_SCALE=1` keeps the PS2's size (the original's look), N draws them N times. The game's
 coordinates, scissors and texture coordinates in a target stay in GS pixels; only its viewport, texture
 and depth buffer grow, and the models drawn into it are the MRP's at that size. The text and models are
-then as sharp as on the screen, but the look changes (the monitors' static and scan lines are finer), so
-it is off by default. A font's glyph (a 16 x 16 or 24 x 16 texel cell, a quad whose texture
+then as sharp as on the screen; the look changes a little (the monitors' static and scan lines are finer). A font's glyph (a 16 x 16 or 24 x 16 texel cell, a quad whose texture
 coordinates follow x and y apart) is sampled only inside its own cell: scaled up from the PS2's
 resolution, the bilinear filtering of a glyph's outer half texel blended in the neighbouring glyphs'
 edges in the font's texture, thin lines under, over and through the letters (issue #76; the GS drew the
@@ -660,9 +659,9 @@ thread): see [Performance](performance.md).
   widened view's substitute stands in for a range (the substitute's for its 3D, the real range's for the VU1
   state it leaves): about 5 ms a frame of the chain worker on Gaspar at 32:9, beside the main thread.
 - A new level's first frame shows the loading screen's last picture ([The 2D](#the-2d)).
-- The menus' render targets (the Vendor's monitors, the pause menu's item models) are drawn at the PS2's
-  resolution and scaled up: soft at large window sizes, as in the original. Larger targets exist for
-  testing (`RAC1_2D_RT_SCALE`), not as a setting yet ([The 2D](#the-2d)).
+- The menus' render targets (the Vendor's monitors, the pause menu's item models) are drawn at the window's
+  scale, sharper than the original: the monitors' static and scan lines are finer. `RAC1_2D_RT_SCALE=1` gives
+  the PS2's size ([The 2D](#the-2d)).
 - The level's baked shadow meshes are culled by the game against its 4:3 view (no widened shadow run
   for that pass): their parts past the sides of a widened view are missing. So are the surfaces a
   moby's update queues only when the moby was drawn in the 4:3 view (one of Rilgar's water patches,

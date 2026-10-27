@@ -208,18 +208,18 @@ struct Built {
 
 // The render targets' sizes as the backend holds them (the builder follows the frame's draws into them in order), in GS pixels
 std::map<uint32_t, std::pair<int, int>> g_rt_size;
-// The render targets' resolution: GPU pixels per GS pixel (1: the GS's own; RAC1_2D_RT_SCALE). A target is a texture the game draws a
+// The render targets' resolution: GPU pixels per GS pixel (the window's scale by default; RAC1_2D_RT_SCALE). A target is a texture the game draws a
 // menu panel into at the PS2's resolution (the Vendor's monitors, the pause menu's screens, their item models), then shows it scaled
 // up; at the window's scale its text and pictures are as sharp as the 2D drawn on the screen. Its vertices, scissors and texture
 // coordinates stay in GS pixels: only its viewport and its texture are larger.
 int g_rt_s = 1;
 
-// orig: (host) the scale for this call: RAC1_2D_RT_SCALE unset or 1 the GS's, N (2..8) that many times, 0 the window's (its height
-// over the frame's, rounded up)
+// orig: (host) the scale for this call: the window's (its height over the frame's, rounded up), or with RAC1_2D_RT_SCALE 1 the GS's,
+// N (2..8) that many times (0: the window's)
 int rt_scale_for(const Viewport& v, float fb_h) {
     static const int s_env = [] {
         const char* e = std::getenv("RAC1_2D_RT_SCALE");
-        return e == nullptr ? 1 : std::clamp(std::atoi(e), 0, 8);
+        return e == nullptr ? 0 : std::clamp(std::atoi(e), 0, 8);
     }();
     if (s_env != 0) return s_env;
     return std::clamp(static_cast<int>(std::ceil(static_cast<float>(v.h) / std::max(fb_h, 1.0f) - 1.0f / 64.0f)), 1, 8);

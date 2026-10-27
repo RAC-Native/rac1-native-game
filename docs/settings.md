@@ -160,9 +160,10 @@ New Game opens a choice between three modes before the game starts
 | Level of Detail | Original | High | High |
 | Texture Detail | Original (PS2) | Full | Full |
 | Quick Select, Aiming, Movement | Normal, Original, Original | Pause, Modern, RAC 3 | Pause, Modern, RAC 3 |
-| Modern lighting (Lighting, Dynamic Shadows, Secondary Lights, Shadow Distance, Ambient Occlusion) | off (the defaults) | off (the defaults) | Lighting High, Dynamic Shadows On, Secondary Lights All, Shadow Distance Maximum, Ambient Occlusion SSAO (Shadow Strength, Sun Rays, Surface Detail and Ambient Particles left as they are) |
+| Modern lighting and graphics enhancements (Lighting, Dynamic Shadows, Secondary Lights, Shadow Distance, Ambient Occlusion, Sun Rays, Surface Detail, Ambient Particles) | off (the defaults) | off (the defaults) | Lighting High, Dynamic Shadows On, Secondary Lights All, Shadow Distance Maximum, Ambient Occlusion GTAO, Sun Rays High, Surface Detail High, Ambient Particles High (Shadow Strength and AO Strength left as they are) |
+| Buy All Ammo (the Vendor) | Off | On | On |
 
-Experimental is Modern plus the [modern lighting](lighting.md), which is experimental. No mode changes
+Experimental is Modern plus the [modern lighting](lighting.md) and every graphics enhancement, which are experimental. No mode changes
 the window settings or Fades. The mode chosen is kept with the save.
 
 ## The update check
