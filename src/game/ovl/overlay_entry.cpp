@@ -341,8 +341,10 @@ void world_pass(void (*pass)(), int kind) {
     if (g_world_mrp) mrp_lod_world_shadow(kind >= 0 ? kind : 3, pass, cur);  // (the LOD slider's shadow run first, the memory put back)
 #if defined(__WIIU__)
     // (the Wii U's MRP-lite: its ties / shrubs always made by the host from the pass's inputs - mrp_world_static.h, MRP_LITE.md phase 3 -,
-    // whose snapshot is taken here, as mrp_lod_world_shadow does on the PC: no LOD slider, no widening)
+    // whose snapshot is taken here, as mrp_lod_world_shadow does on the PC: no LOD slider, no widening; its tfrags' decisions too -
+    // mrp_tfrag_gpu.h tfrag_decide, phase 4 -: the game's tfrag pass still runs, its packets read the culling's lists)
     if (kind == 1 || kind == 2) mrpw::static_note_pass(kind, mrp_world_ready(), 1.0f, 1.0f, 1.0f);
+    if (kind == 0) mrpw::tfrag_note_pass(mrp_world_ready(), 1.0f, 1.0f);
 #endif
     // (testing, the Wii U port: RAC1_WORLD_PASS_TIME, each world pass's own time every 60 frames)
     static const bool wp_time = std::getenv("RAC1_WORLD_PASS_TIME") != nullptr;

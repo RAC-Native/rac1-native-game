@@ -165,24 +165,18 @@ StaticFrame g_sframe;
 StaticFrame g_shframe;
 const bool g_static_check = std::getenv("RAC1_MRPW_STATIC_CHECK") != nullptr;
 
-// One GPU vertex (an XYZF2 the programs kick): its world point (homogeneous), its point on the GS's frame (x w), the STQ
-// undivided ((S, T, Q) x w: S / Q is the texture coordinate), the GS's Q (the mip level), RGBA, F.
-struct GpuV {
-    float wp[4];
-    float vu[4];
-    float stq[3];
-    float lodq;
-    uint8_t rgba[4];
-    float fog;
-    uint32_t word, layer;  // the texture (the triangle this vertex closes: flat, the last vertex provokes)
-    uint32_t state[2];     // its GS state as data (draw_flags, FOGCOL), flat as the texture
-};
-static_assert(sizeof(GpuV) == 72);
+// One GPU vertex: mrp_world_backend.inc (the backends' boundary)
+using mrpwb::GpuV;
 
 struct Stats {
     uint64_t gpu_packets = 0;
     uint64_t tfrag_gpu_draws = 0, tfrag_cpu_draws = 0, tfrag_checked = 0, tfrag_bad = 0, tfrag_host = 0;
     uint64_t tv_frames = 0, tv_verts = 0, tv_vbad = 0, tv_tris = 0, tv_tbad = 0, tv_field[8] = {};
+    // the tfrag CPU route (tfrag_frame_cpu): frames, draws, vertices, triangle slots, degenerate (ADC) ones, its time (ms: the sum, the
+    // most); RAC1_MRPW_TFRAG_CPU=2: its output against the compute program's read back (frames, vertices / indices compared, differing)
+    uint64_t tc_frames = 0, tc_draws = 0, tc_verts = 0, tc_tris = 0, tc_adc = 0, tc_ranges = 0, tc_batches = 0;
+    double tc_ms = 0, tc_max = 0;
+    uint64_t tcmp_frames = 0, tcmp_verts = 0, tcmp_vbad = 0, tcmp_idx = 0, tcmp_ibad = 0;
     uint64_t tchk_walker = 0, tchk_found = 0, tchk_missing = 0, tchk_extra = 0, tchk_code = 0;
     uint64_t col_resident = 0, col_copied = 0, col_verified = 0, col_bad = 0;
     uint64_t stat_draws[2] = {}, chk_walker[2] = {}, chk_found[2] = {}, chk_missing[2] = {}, chk_extra[2] = {};
@@ -241,6 +235,18 @@ struct Frame {
         std::vector<uint32_t> tri;
     };
     std::vector<TfragExpect> tf_expect;
+    // the tfrag draws' host side (per TfragGpuFrame draw: its entry, plan, image), the CPU route's output (tfrag_frame_cpu: the
+    // compute program's vertices / indices), the batches' ranges by texture unit (mrpwb::TfragRange)
+    struct TfragCpuDraw {
+        uint32_t entry = 0;
+        const TfragPlan* plan = nullptr;
+        int lod = 0;
+    };
+    std::vector<TfragCpuDraw> tf_cpu;
+    std::vector<GpuV> tf_v;
+    std::vector<uint32_t> tf_idx;
+    std::vector<mrpwb::TfragRange> tf_ranges;
+    double tf_ms = 0;  // (the CPU route's time)
     // what build_triangles reads of the host's state, taken when the frame's scene starts (mrp_world_begin_frame_async, the host
     // thread): the same values as the host thread had at its end, the build may run on the scene's worker (RAC1_MRPW_BUILD_THREAD)
     struct BuildInputs {
@@ -1978,9 +1984,14 @@ void tfrag_packet(GsFront& g, Frame& F, const ScenePacket& p) {
         if (fld(k.test, 0, 1) != 0 && fld(k.test, 1, 3) != 1) F.batches.back().ate = true;  // (ATST ALWAYS: no test)
         F.batches.back().count += 3 * ntri;
         g_st.triangles += ntri;
+        const uint32_t first = gd.ibase + 3 * pl->runs[r].first_tri, batch = static_cast<uint32_t>(F.batches.size() - 1);
+        auto& tr = F.tf_ranges;
+        if (!tr.empty() && tr.back().batch == batch && tr.back().unit == unit && tr.back().first + tr.back().count == first) tr.back().count += 3 * ntri;
+        else tr.push_back({batch, first, 3 * ntri, unit});
     }
     g.queue.clear();
     T.draws.push_back(gd);
+    F.tf_cpu.push_back({d.entry, pl, d.lod});
     ++g_st.tfrag_gpu_draws;
 }
 
@@ -2018,6 +2029,11 @@ void build_triangles(Frame& F) {
     F.inst_of.assign(F.scene.insts.size(), 0xffffffffu);
     F.tf = TfragGpuFrame{};
     F.tf_expect.clear();
+    F.tf_cpu.clear();
+    F.tf_ranges.clear();
+    F.tf_v.clear();
+    F.tf_idx.clear();
+    F.tf_ms = 0;
     for (const auto& v : F.scene.tfrag.views) F.tf.vu_views.insert(F.tf.vu_views.end(), v.begin(), v.end());
     for (const auto& c : F.scene.tfrag.consts) F.tf.consts.insert(F.tf.consts.end(), c.begin(), c.end());
     if (!F.scene.tfrag.draws.empty())
@@ -2132,6 +2148,232 @@ void build_triangles(Frame& F) {
     }
     g_st.batches += F.batches.size();
 }
+
+// ---- the tfrag CPU route ---------------------------------------------------------------------------
+
+// The EE's float rules on the calling thread while this lives - the tfrag compute program's: add / sub / mul / the division toward
+// zero, denormals flushed; the world point's doubles toward zero, as GsFront::vertex makes them on the game's thread -, the thread's own
+// mode put back after (the CPU route runs where the GL backend's dispatch is, the host's thread, or later on a worker)
+class EeFloatScope {
+public:
+#if (defined(__PPC__) || defined(__powerpc__)) && !defined(__powerpc64__)
+    // (the Wii U: the game's thread has them already, nothing done; RAC1_FPU_NEAREST, ps2fpu::g_ee_chop off: left as it is - Cemu
+    // hangs on mtfsfi)
+    EeFloatScope() {
+        if (!ps2fpu::g_ee_chop || (ps2fpu::ppc_fpscr() & 7u) == 5u) return;
+        __asm__ volatile("mffs %0" : "=f"(prev_));
+        __asm__ volatile("mtfsfi 7, 5");  // XE = 0, NI = 1 (denormals to zero), RN = 01 (toward zero)
+        set_ = true;
+    }
+    ~EeFloatScope() {
+        if (set_) __asm__ volatile("mtfsf 0xff, %0" : : "f"(prev_));
+    }
+
+private:
+    double prev_ = 0.0;
+    bool set_ = false;
+#else
+    EeFloatScope() : round_(std::fegetround()) {
+#if defined(__SSE__) || defined(__x86_64__)
+        csr_ = _mm_getcsr();
+#endif
+        std::fesetround(FE_TOWARDZERO);
+#if defined(__SSE__) || defined(__x86_64__)
+        _mm_setcsr(_mm_getcsr() | 0x8040u);  // MXCSR FTZ (bit 15) | DAZ (bit 6)
+#endif
+    }
+    ~EeFloatScope() {
+#if defined(__SSE__) || defined(__x86_64__)
+        _mm_setcsr(csr_);
+#endif
+        std::fesetround(round_);
+    }
+
+private:
+    int round_;
+    unsigned csr_ = 0;
+#endif
+public:
+    EeFloatScope(const EeFloatScope&) = delete;
+    EeFloatScope& operator=(const EeFloatScope&) = delete;
+};
+
+// a double narrowed to a float toward zero, by its bits (the compute program's d2fz: the mantissa's top 23 bits kept; below the float
+// range a signed zero, above it the largest float)
+float d2fz(double d) {
+    uint64_t u;
+    std::memcpy(&u, &d, 8);
+    const uint32_t hi = static_cast<uint32_t>(u >> 32), lo = static_cast<uint32_t>(u);
+    const uint32_t sign = hi & 0x80000000u;
+    const int e = static_cast<int>((hi >> 20) & 0x7ffu) - 1023 + 127;
+    uint32_t r;
+    if (e <= 0) r = sign;
+    else if (e >= 255) r = sign | 0x7f7fffffu;
+    else r = sign | static_cast<uint32_t>(e) << 23 | (hi & 0xfffffu) << 3 | lo >> 29;
+    float f;
+    std::memcpy(&f, &r, 4);
+    return f;
+}
+// (the VU's FTOI0, saturated: the program's ftoi)
+int32_t ftoi_sat(float v) {
+    if (std::isnan(v)) return 0x7fffffff;
+    if (!(v < 2147483648.0f)) return 0x7fffffff;
+    if (!(v > -2147483648.0f)) return static_cast<int32_t>(0x80000000u);
+    return static_cast<int32_t>(v);
+}
+
+// orig: (host) the frame's tfrag vertices / triangles made on the CPU, as the compute program (mrp_tfrag_gpu.cpp kCs) writes them for the
+// renderer: per draw its plan run by the program's CPU form (tfrag_exec_cpu: the same operations in the same order), then per sent vertex
+// the GpuV of the program's last phase - the world point through the draw's world view in doubles, narrowed toward zero; STQ x the
+// positive w; the GS's Q; RGBA; F; its run's texture and GS state - and per strip triangle its three vertices, or its closing vertex
+// thrice when that one's ADC is set (degenerate); a caster draw (flags bit 31) keeps every triangle, its F without the guard band's
+// C0.w. A draw the dispatch would refuse (its data outside the frame's) is left out: its triangles stay (0, 0, 0). Reads only the frame
+// (`T`, `cd`: inputs frozen after the game's update), the level and the colours' mirror, writes `v` / `idx` alone (a worker can run
+// it); under the EE's float rules whatever the thread's (EeFloatScope). The Wii U's tfrags (no compute shader); on the PC
+// RAC1_MRPW_TFRAG_CPU (testing)
+void tfrag_frame_cpu(const TfragGpuFrame& T, const std::vector<Frame::TfragCpuDraw>& cd, const TfragLevel& L, const TfragColours& C, std::vector<GpuV>& v,
+                     std::vector<uint32_t>& idx) {
+    const EeFloatScope fenv;
+    v.assign(T.nverts, GpuV{});
+    idx.assign(T.nidx, 0u);
+    static std::vector<TfragCpuVertex> out;  // (the game's thread only for now: per thread when it moves to a worker)
+    static std::vector<uint8_t> adc;
+    for (size_t di = 0; di < T.draws.size() && di < cd.size(); ++di) {
+        const TfragGpuDraw& d = T.draws[di];
+        const Frame::TfragCpuDraw& h = cd[di];
+        if (h.plan == nullptr || h.entry >= L.entries.size()) continue;
+        const TfragEntryGpu& e = L.entries[h.entry];
+        const TfragPlan& pl = *h.plan;
+        const uint32_t nv = static_cast<uint32_t>(pl.verts.size());
+        if (d.vbase > T.nverts || nv > T.nverts - d.vbase || d.ibase > T.nidx || 3 * pl.ntris > T.nidx - d.ibase || (static_cast<size_t>(d.view) + 1) * 16 > T.vu_views.size() ||
+            (static_cast<size_t>(d.consts) + 1) * 56 > T.consts.size() || (static_cast<size_t>(d.wview) + 1) * 16 > T.views.size() ||
+            static_cast<size_t>(d.rbase) + pl.runs.size() > T.runs.size() / 4 || (d.colour != 0xffffffffu && static_cast<size_t>(d.colour) + d.col_count > C.mirror.size()))
+            continue;
+        const uint32_t* K = T.consts.data() + 56 * static_cast<size_t>(d.consts);
+        const uint32_t* col = d.colour != 0xffffffffu ? C.mirror.data() + d.colour : nullptr;
+        if (!tfrag_exec_cpu(e, pl, h.lod, col, T.vu_views.data() + 16 * static_cast<size_t>(d.view), K, out, &adc) || out.size() != nv) continue;
+        const bool caster = (d.flags & 0x80000000u) != 0;
+        const int form = pl.form == 4 ? 3 : pl.form;
+        float c0[4], c5w;
+        std::memcpy(c0, K, 16);
+        std::memcpy(&c5w, K + 4 * 5 + 3, 4);
+        const double* M = T.views.data() + 16 * static_cast<size_t>(d.wview);
+        uint32_t tri = 0;
+        for (uint32_t j = 0; j < nv; ++j) {
+            const TfragCpuVertex& o = out[j];
+            const TfragPlanVertex& pv = pl.verts[j];
+            bool a = adc[j] != 0;
+            uint32_t xyzf3 = o.xyzf[3];
+            if (caster && a) {  // (F as the vertex's without the guard band: P.w + C5.w clamped to C0.y..C0.z, no C0.w)
+                a = false;
+                float fw = o.hp[3] + c5w;
+                if (form == 3) {
+                    fw = c0[2] < fw ? c0[2] : fw;
+                    fw = fw < c0[1] ? c0[1] : fw;
+                } else {
+                    fw = fw < c0[1] ? c0[1] : fw;
+                    fw = c0[2] < fw ? c0[2] : fw;
+                }
+                xyzf3 = static_cast<uint32_t>(ftoi_sat(fw * 16.0f));
+            }
+            GpuV& g = v[d.vbase + j];
+            const double h0 = o.hp[0], h1 = o.hp[1], h2 = o.hp[2], h3 = o.hp[3];
+            for (int r = 0; r < 4; ++r) g.wp[r] = d2fz(M[r] * h0 + M[4 + r] * h1 + M[8 + r] * h2 + M[12 + r] * h3);
+            float ss, tt, qq;
+            std::memcpy(&ss, &o.stq[0], 4);
+            std::memcpy(&tt, &o.stq[1], 4);
+            std::memcpy(&qq, &o.stq[2], 4);
+            const float kk = qq * o.hp[3];
+            const float sgn = kk < 0.0f ? -1.0f : 1.0f;
+            const float Wg = o.hp[3] * sgn;
+            const float ws = Wg != 0.0f ? Wg : 1.0f;
+            g.stq[0] = ss * ws;
+            g.stq[1] = tt * ws;
+            g.stq[2] = qq * ws;
+            g.lodq = qq;
+            for (int l = 0; l < 4; ++l) g.rgba[l] = static_cast<uint8_t>(o.rgba[static_cast<size_t>(l)] & 0xffu);
+            g.fog = static_cast<float>((xyzf3 >> 4) & 0xffu);
+            const uint32_t* run = T.runs.data() + 4 * (static_cast<size_t>(d.rbase) + pv.run);
+            g.word = run[0];
+            g.layer = run[1];
+            g.state[0] = run[2];
+            g.state[1] = run[3];
+            if (pv.pos >= 2) {
+                uint32_t* t = idx.data() + d.ibase + 3 * tri++;
+                const uint32_t c = d.vbase + j;
+                t[0] = a ? c : c - 2;
+                t[1] = a ? c : c - 1;
+                t[2] = c;
+            }
+        }
+    }
+}
+
+// orig: (host) the frame's CPU route run (tfrag_frame_cpu into F.tf_v / F.tf_idx), timed, its counts in the stats
+void tfrag_cpu_run(Frame& F) {
+    const double t0 = now_ms();
+    tfrag_frame_cpu(F.tf, F.tf_cpu, g_tlevel, g_tcols, F.tf_v, F.tf_idx);
+    const double ms = now_ms() - t0;
+    F.tf_ms = ms;
+    ++g_st.tc_frames;
+    g_st.tc_draws += F.tf.draws.size();
+    g_st.tc_verts += F.tf.nverts;
+    g_st.tc_tris += F.tf.nidx / 3;
+    g_st.tc_ranges += F.tf_ranges.size();
+    for (const Batch& b : F.batches) g_st.tc_batches += b.tfrag ? 1 : 0;
+    for (size_t t = 0; t + 2 < F.tf_idx.size(); t += 3)
+        if (F.tf_idx[t] == F.tf_idx[t + 2] && F.tf_idx[t + 1] == F.tf_idx[t + 2]) ++g_st.tc_adc;
+    g_st.tc_ms += ms;
+    g_st.tc_max = std::max(g_st.tc_max, ms);
+}
+
+#if !defined(__WIIU__)
+// (testing, RAC1_MRPW_TFRAG_CPU=1: the frame's tfrag vertices / indices made by the CPU route and sent to the buffers the tfrag VAO
+// reads, instead of the compute program's dispatch - the GL backend; 2: the dispatch as always, its output read back and compared with
+// the CPU route's, byte for byte)
+int tfrag_cpu_mode() {
+    static const int m = std::getenv("RAC1_MRPW_TFRAG_CPU") != nullptr ? std::atoi(std::getenv("RAC1_MRPW_TFRAG_CPU")) : 0;
+    return m;
+}
+// orig: (host) testing: the CPU route's vertices / indices into the compute program's output buffers (GL_ARRAY_BUFFER for the upload:
+// not the VAOs' element binding)
+void tfrag_cpu_upload(Frame& F) {
+    tfrag_cpu_run(F);
+    glBindBuffer(GL_ARRAY_BUFFER, tfrag_gpu_vbo());
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(std::max<size_t>(F.tf_v.size() * sizeof(GpuV), 16)), F.tf_v.empty() ? nullptr : F.tf_v.data(), GL_STREAM_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, tfrag_gpu_ibo());
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(std::max<size_t>(F.tf_idx.size() * 4, 16)), F.tf_idx.empty() ? nullptr : F.tf_idx.data(), GL_STREAM_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+// orig: (host) testing: the compute program's output read back against the CPU route's (vertices byte for byte, indices)
+void tfrag_cpu_compare(Frame& F) {
+    tfrag_cpu_run(F);
+    std::vector<uint8_t> vb;
+    std::vector<uint32_t> ib;
+    tfrag_gpu_readback(F.tf, sizeof(GpuV), vb, ib);
+    ++g_st.tcmp_frames;
+    for (size_t i = 0; i < F.tf_v.size() && (i + 1) * sizeof(GpuV) <= vb.size(); ++i) {
+        ++g_st.tcmp_verts;
+        if (std::memcmp(&F.tf_v[i], vb.data() + i * sizeof(GpuV), sizeof(GpuV)) == 0) continue;
+        static int shown = 0;
+        if (shown++ < 10) {
+            GpuV gv;
+            std::memcpy(&gv, vb.data() + i * sizeof(GpuV), sizeof gv);
+            const GpuV& c = F.tf_v[i];
+            std::printf("[mrpw tfrag] CPU route vertex %zu: wp %.9g %.9g %.9g %.9g / %.9g %.9g %.9g %.9g stq %.9g %.9g %.9g / %.9g %.9g %.9g lodq %.9g / %.9g rgba %02x%02x%02x%02x / "
+                        "%02x%02x%02x%02x fog %g / %g word %x / %x layer %u / %u state %x %x / %x %x\n",
+                        i, c.wp[0], c.wp[1], c.wp[2], c.wp[3], gv.wp[0], gv.wp[1], gv.wp[2], gv.wp[3], c.stq[0], c.stq[1], c.stq[2], gv.stq[0], gv.stq[1], gv.stq[2], c.lodq, gv.lodq,
+                        c.rgba[0], c.rgba[1], c.rgba[2], c.rgba[3], gv.rgba[0], gv.rgba[1], gv.rgba[2], gv.rgba[3], c.fog, gv.fog, c.word, gv.word, c.layer, gv.layer, c.state[0],
+                        c.state[1], gv.state[0], gv.state[1]);
+        }
+        ++g_st.tcmp_vbad;
+    }
+    for (size_t i = 0; i < F.tf_idx.size() && i < ib.size(); ++i) {
+        ++g_st.tcmp_idx;
+        if (F.tf_idx[i] != ib[i]) ++g_st.tcmp_ibad;
+    }
+}
+#endif
 
 // ---- drawing -----------------------------------------------------------------------------------
 
@@ -2629,7 +2871,13 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
     if (upload && !F.tf.draws.empty()) {  // the compute program writes the frame's tfrag vertices / triangles (first: it binds the storage buffers of its own)
         tfrag_gpu_level(g_tlevel);
         tfrag_gpu_colours(g_tcols);
+#if !defined(__WIIU__)
+        if (tfrag_cpu_mode() == 1) tfrag_cpu_upload(F);  // (testing: the CPU route's instead, RAC1_MRPW_TFRAG_CPU)
+        else tfrag_gpu_dispatch(F.tf, sizeof(GpuV));
+        if (tfrag_cpu_mode() == 2) tfrag_cpu_compare(F);
+#else
         tfrag_gpu_dispatch(F.tf, sizeof(GpuV));
+#endif
         if (g_tfrag_vao == 0) {
             glGenVertexArrays(1, &g_tfrag_vao);
             glBindVertexArray(g_tfrag_vao);
@@ -3705,13 +3953,29 @@ void mrp_world_wiiu_prepare(bool active) {
     // world passes' culling is off on the Wii U, RAC1_WORLD_PASS_SKIP=6, and so is the relighting: the colours stay the level's load's)
     resident_colours_update(g_rcols, colour_source());
     static_frame_build(g_slevel, g_rcols, g_sframe, false);
+    // the tfrags (MRP_LITE.md phase 4): the host's decisions (tfrag_decide) from the snapshot tfrag_note_pass took before the real tfrag
+    // pass (handle on: overlay_entry.cpp world_pass; the game's tfrag pass runs, its culling too), drawn in the view and constants its chain
+    // gives VU1 (scene_from_static: tfrag_pass_vu); their lit colours' mirror brought up to date (as the PC's capture step)
+    const TfragSnapshot& ts = tfrag_snapshot();
+    const bool tfrag = g_render_tfrag && mrp_world_gx2_tfrag_ready() && g_tlevel.ok && ts.valid && ts.handle;
+    if (tfrag) {
+        tfrag_colours_update(g_tcols, g_tlevel);
+        tfrag_decide(g_tlevel, ts, false, g_tdecide);
+    }
     const SceneAddrs ad = scene_addrs();
     std::array<float, 16> a{};
     std::array<float, 3> cam{};
     for (uint32_t k = 0; k < 16; ++k) a[k] = lwc1(ad.a + 4 * k);
     for (uint32_t k = 0; k < 3; ++k) cam[k] = lwc1(ad.camera + 4 * k);
-    if (!scene_from_static(g_sframe, g_slevel, a, cam, F.scene)) return;
+    if (!scene_from_static(g_sframe, g_slevel, a, cam, tfrag ? &g_tlevel : nullptr, tfrag ? &g_tdecide : nullptr, F.scene)) return;
     build_triangles(F);
+    // the compute program's vertices / triangles made by the CPU route (tfrag_frame_cpu: on the game's thread for now; its inputs - the
+    // frame, the level, the colours' mirror - stay as they are until the next prepare, its output is the frame's: a worker core can take
+    // it), the colours' changes taken (no GPU copy of them here: the route reads the mirror)
+    if (!F.tf.draws.empty()) tfrag_cpu_run(F);
+    g_tcols.dirty.clear();
+    g_tcols.dirty_words.clear();
+    g_tcols.all_dirty = false;
     for (int k = 0; k < 2; ++k) g_st.stat_draws[k] += F.scene.stat_draws[k];
     ++g_st.scene_frames;
     g_st.ms_build += now_ms() - t0;
@@ -4401,6 +4665,17 @@ void mrp_world_report() {
                     static_cast<unsigned long long>(g_st.tv_field[0]), static_cast<unsigned long long>(g_st.tv_field[1]), static_cast<unsigned long long>(g_st.tv_field[2]),
                     static_cast<unsigned long long>(g_st.tv_field[3]), static_cast<unsigned long long>(g_st.tv_field[4]), static_cast<unsigned long long>(g_st.tv_tris),
                     static_cast<unsigned long long>(g_st.tv_tbad), static_cast<unsigned long long>(g_st.tv_field[5]));
+    if (g_st.tc_frames != 0)
+        std::printf("[mrpw] tfrag CPU route: %llu frames, a frame %.1f draws, %.0f vertices, %.0f triangles (%.0f degenerate: ADC), %.1f batches in %.1f runs of one "
+                    "texture unit, %.3f ms (the most %.3f ms)\n",
+                    static_cast<unsigned long long>(g_st.tc_frames), static_cast<double>(g_st.tc_draws) / static_cast<double>(g_st.tc_frames),
+                    static_cast<double>(g_st.tc_verts) / static_cast<double>(g_st.tc_frames), static_cast<double>(g_st.tc_tris) / static_cast<double>(g_st.tc_frames),
+                    static_cast<double>(g_st.tc_adc) / static_cast<double>(g_st.tc_frames), static_cast<double>(g_st.tc_batches) / static_cast<double>(g_st.tc_frames),
+                    static_cast<double>(g_st.tc_ranges) / static_cast<double>(g_st.tc_frames), g_st.tc_ms / static_cast<double>(g_st.tc_frames), g_st.tc_max);
+    if (g_st.tcmp_frames != 0)
+        std::printf("[mrpw] tfrag CPU route against the compute program: %llu frames, %llu vertices (%llu differ), %llu indices (%llu differ)\n",
+                    static_cast<unsigned long long>(g_st.tcmp_frames), static_cast<unsigned long long>(g_st.tcmp_verts), static_cast<unsigned long long>(g_st.tcmp_vbad),
+                    static_cast<unsigned long long>(g_st.tcmp_idx), static_cast<unsigned long long>(g_st.tcmp_ibad));
     if (g_st.tchk_walker + g_st.tchk_extra != 0)
         std::printf("[mrpw] tfrag check (host decisions against the walker's): walker draws %llu, found %llu (code differing %llu), missing %llu, host extra %llu\n",
                     static_cast<unsigned long long>(g_st.tchk_walker), static_cast<unsigned long long>(g_st.tchk_found), static_cast<unsigned long long>(g_st.tchk_code),
@@ -4449,6 +4724,11 @@ bool frame_view(FrameView& out) {
     out.batches = &F.batches;
     out.epochs = &F.epochs;
     out.env_xyoff = F.env_xyoff;
+    out.tf_verts = &F.tf_v;
+    out.tf_idx = &F.tf_idx;
+    out.tf_ranges = &F.tf_ranges;
+    out.tf_draws = static_cast<uint32_t>(F.tf.draws.size());
+    out.tf_ms = F.tf_ms;
     return true;
 }
 

@@ -108,17 +108,22 @@ std::array<double, 16> view_of_ee(const float a[16], const float cam_in[3]) {
     std::memcpy(r.data(), &M[0][0], sizeof r);
     return r;
 }
-// the tfrag view (VU1 base + 5..8: R0, R1, R2, T on the records' world x 1024 integer positions)
-std::array<double, 16> view_of_tfrag(const uint8_t* mem, uint32_t base) {
+// the tfrag view (VU1 base + 5..8: R0, R1, R2, T on the records' world x 1024 integer positions; `v` their 16 floats, qword by qword)
+std::array<double, 16> view_of_tfrag(const float v[16]) {
     glm::dmat4 V;
-    for (int c = 0; c < 4; ++c) V[c] = glm::dvec4(f32(mem, base + 5 + static_cast<uint32_t>(c), 0), f32(mem, base + 5 + static_cast<uint32_t>(c), 1), f32(mem, base + 5 + static_cast<uint32_t>(c), 2),
-                                                  f32(mem, base + 5 + static_cast<uint32_t>(c), 3));
+    for (int c = 0; c < 4; ++c) V[c] = glm::dvec4(v[4 * c], v[4 * c + 1], v[4 * c + 2], v[4 * c + 3]);
     glm::dmat4 S(1.0 / 1024.0);
     S[3][3] = 1.0;
     const glm::dmat4 M = std::fabs(glm::determinant(V)) > 1e-30 ? S * glm::inverse(V) : glm::dmat4(0.0);
     std::array<double, 16> r;
     std::memcpy(r.data(), &M[0][0], sizeof r);
     return r;
+}
+std::array<double, 16> view_of_tfrag(const uint8_t* mem, uint32_t base) {
+    float v[16];
+    for (uint32_t c = 0; c < 4; ++c)
+        for (int l = 0; l < 4; ++l) v[4 * c + static_cast<uint32_t>(l)] = f32(mem, base + 5 + c, l);
+    return view_of_tfrag(v);
 }
 
 int tfrag_lod(Program prog, uint32_t start) {
@@ -763,6 +768,46 @@ void static_check(Build& b) {
     }
 }
 
+// orig: (host) the GIF tags the plans assume (the renderer's replay): the constants' 0x292 the strips' (PACKED, PRE: PRIM, ST / RGBAQ /
+// XYZF2), 0x294 the texture's (5 A+D)
+bool tfrag_tags_ok(const std::array<uint32_t, 4 * 14>& consts) {
+    const uint64_t s0 = static_cast<uint64_t>(consts[8]) | static_cast<uint64_t>(consts[9]) << 32, s1 = static_cast<uint64_t>(consts[10]);
+    const uint64_t t0 = static_cast<uint64_t>(consts[16]) | static_cast<uint64_t>(consts[17]) << 32, t1 = static_cast<uint64_t>(consts[18]);
+    const bool strip_ok = ((s0 >> 58) & 3) == 0 && ((s0 >> 46) & 1) == 1 && ((s0 >> 60) & 0xf) == 3 && (s1 & 0xfff) == 0x412;
+    const bool tex_ok = ((t0 >> 58) & 3) == 0 && ((t0 >> 46) & 1) == 0 && ((t0 >> 60) & 0xf) == 1 && (t1 & 0xf) == 0xe && (t0 & 0x7fff) == 5;
+    return strip_ok && tex_ok;
+}
+
+// orig: (host) a GPU path tfrag draw added to the frame: entry `cls`'s image `lod` / start (`isb`: tfrag B's 0x002) in the view (VU1
+// 5..8) and the pass's constants (0x290..0x29d) given, its packet `p` (the kicks the verification asked for, if any) in world view `wview`
+void tfrag_add(SceneFrame& f, int cls, int lod, uint32_t start, bool isb, const std::array<float, 16>& view, const std::array<uint32_t, 4 * 14>& consts, int wview,
+               ScenePacket&& p) {
+    TfragFrame& T = f.tfrag;
+    if (T.views.empty() || T.views.back() != view) T.views.push_back(view);
+    if (T.consts.empty() || T.consts.back() != consts) T.consts.push_back(consts);
+    TfragDraw d;
+    d.entry = static_cast<uint32_t>(cls);
+    d.lod = static_cast<uint8_t>(lod);
+    d.code = static_cast<uint8_t>(start);
+    d.b = isb;
+    d.view = static_cast<uint32_t>(T.views.size() - 1);
+    d.consts = static_cast<uint32_t>(T.consts.size() - 1);
+    p.prog = isb ? Program::TfragB : Program::TfragA;
+    p.start = static_cast<uint16_t>(start);
+    p.seq = f.draw_starts;
+    p.view = wview;
+    p.table = 0;
+    for (int l = 0; l < 3; ++l) {  // (the screen formula, as draw_tfrag's packets: X = P.x C0.x / P.w + C5.x)
+        p.scr_scale[l] = 1.0f;
+        uint32_t u = consts[4 * 5 + static_cast<uint32_t>(l)];
+        std::memcpy(&p.scr_off[l], &u, 4);
+    }
+    p.scr_k = 1;
+    p.tfrag = static_cast<int32_t>(T.draws.size());
+    T.draws.push_back(d);
+    f.packets.push_back(std::move(p));
+}
+
 // orig: (host) a tfrag draw for the GPU path (mrp_tfrag_gpu.h): the entry, its image / start, the view (VU1 base + 5..8)
 // and the pass's constants (0x290..0x29d) as VU1 memory holds them; false when the entry has no plan for it (the CPU reference then)
 bool tfrag_gpu_draw(Build& b, const uint8_t* mem, uint32_t base, Program prog, uint32_t start, int cls, int lod) {
@@ -778,29 +823,13 @@ bool tfrag_gpu_draw(Build& b, const uint8_t* mem, uint32_t base, Program prog, u
     const bool isb = prog == Program::TfragB;
     const TfragPlan* pl = e.ok ? e.plan(lod, start, isb) : nullptr;
     if (pl == nullptr) return false;
-    TfragFrame& T = b.f.tfrag;
     std::array<float, 16> view;
     for (uint32_t r = 0; r < 4; ++r)
         for (int l = 0; l < 4; ++l) view[4 * r + static_cast<uint32_t>(l)] = f32(mem, base + 5 + r, l);
     std::array<uint32_t, 4 * 14> consts;
     for (uint32_t c = 0; c < 14; ++c)
         for (int l = 0; l < 4; ++l) consts[4 * c + static_cast<uint32_t>(l)] = w32(mem, 0x290 + c, l);
-    {  // the GIF tags the plans assume (the renderer's replay): 0x292 the strips' (PACKED, PRE: PRIM, ST / RGBAQ / XYZF2), 0x294 the texture's (5 A+D)
-        const uint64_t s0 = static_cast<uint64_t>(consts[8]) | static_cast<uint64_t>(consts[9]) << 32, s1 = static_cast<uint64_t>(consts[10]);
-        const uint64_t t0 = static_cast<uint64_t>(consts[16]) | static_cast<uint64_t>(consts[17]) << 32, t1 = static_cast<uint64_t>(consts[18]);
-        const bool strip_ok = ((s0 >> 58) & 3) == 0 && ((s0 >> 46) & 1) == 1 && ((s0 >> 60) & 0xf) == 3 && (s1 & 0xfff) == 0x412;
-        const bool tex_ok = ((t0 >> 58) & 3) == 0 && ((t0 >> 46) & 1) == 0 && ((t0 >> 60) & 0xf) == 1 && (t1 & 0xf) == 0xe && (t0 & 0x7fff) == 5;
-        if (!strip_ok || !tex_ok) return false;
-    }
-    if (T.views.empty() || T.views.back() != view) T.views.push_back(view);
-    if (T.consts.empty() || T.consts.back() != consts) T.consts.push_back(consts);
-    TfragDraw d;
-    d.entry = static_cast<uint32_t>(cls);
-    d.lod = static_cast<uint8_t>(lod);
-    d.code = static_cast<uint8_t>(start);
-    d.b = isb;
-    d.view = static_cast<uint32_t>(T.views.size() - 1);
-    d.consts = static_cast<uint32_t>(T.consts.size() - 1);
+    if (!tfrag_tags_ok(consts)) return false;
     static const bool selfcheck = std::getenv("RAC1_MRPW_TFRAG_SELFCHECK") != nullptr;
     if (selfcheck && b.in.tfrag_colours != nullptr && !b.tfrag_emitted) {
         const TfragColours& C = *b.in.tfrag_colours;
@@ -820,19 +849,7 @@ bool tfrag_gpu_draw(Build& b, const uint8_t* mem, uint32_t base, Program prog, u
             p.k.hp.insert(p.k.hp.end(), k.hp.begin(), k.hp.end());
         }
     }
-    p.prog = prog;
-    p.start = static_cast<uint16_t>(start);
-    p.seq = b.f.draw_starts;
-    p.view = b.last_tfrag_view;
-    p.table = 0;
-    for (int l = 0; l < 3; ++l) {  // (the screen formula, as draw_tfrag's packets: X = P.x C0.x / P.w + C5.x)
-        p.scr_scale[l] = 1.0f;
-        p.scr_off[l] = f32(mem, 0x295, l);
-    }
-    p.scr_k = 1;
-    p.tfrag = static_cast<int32_t>(T.draws.size());
-    T.draws.push_back(d);
-    b.f.packets.push_back(std::move(p));
+    tfrag_add(b.f, cls, lod, start, isb, view, consts, b.last_tfrag_view, std::move(p));
     return true;
 }
 
@@ -1628,10 +1645,59 @@ bool scene_build(const WorldIndex& idx, const SceneInput& in, SceneFrame& f, boo
     return true;
 }
 
+// orig: (host) see mrp_world_scene.h. The view: 0x294240 computes it on its stack (the camera's translation x -1024 into the view
+// matrix 0x166cc0) and UNPACKs it (packet_vif_unpack 0x2a0ab0: a CNT tag, STCYCL, UNPACK V4-32 4 qwords) to VU1 5 and 0x14d right after
+// the range's first tag, whose address it keeps at 0x160f7c: the data at that tag + 0x20. The constants: the culling 0x294368's
+// prologue copies the overlay's 17 qwords at 0x1c2840 into its chain - a CNT tag of 16 qwords with STCYCL 4, 4 and UNPACK V4-32 15
+// qwords to 0x290, then 0x290..0x29e's data (Veldin: C0 bcdb73b0 42563333 437f0000 45400000; the strips' GIF tag at 0x292, the
+// texture's at 0x294; the bands 0x29a / 0x29b) -: 0x1c2850 + 16 k. (Found by the walker's VU1 memory against EE memory: the
+// UNPACKs' sources it notes, Walker::unpack_src; compared over frames on the PC: ports/wiiu/MRP_LITE.md phase 4.)
+bool tfrag_pass_vu(std::array<float, 16>& view, std::array<uint32_t, 4 * 14>& consts) {
+    const uint32_t tag = lwu(OV(0x00160f7cu));
+    if (tag == 0 || tag >= 0x02000000u) return false;
+    // (the pass's first CNT: 4 qwords, UNPACK V4-32 to VU1 5 - 0x6c040005 -, else not this pass's packet)
+    if ((lwu(tag + 0x10) & 0x7000ffffu) != 0x10000004u || lwu(tag + 0x1c) != 0x6c040005u) return false;
+    for (uint32_t k = 0; k < 16; ++k) view[k] = lwc1(tag + 0x20 + 4 * k);
+    const uint32_t o = OV(0x001c2840u);
+    if (lwu(o + 0xc) != 0x6c0f0290u) return false;  // (the UNPACK to 0x290: the overlay's block as found)
+    for (uint32_t k = 0; k < 4 * 14; ++k) consts[k] = lwu(o + 0x10 + 4 * k);
+    return true;
+}
+
+namespace {
+// orig: (host) the host's tfrag draws (tfrag_decide's (entry, code), in its order) in the view / constants given, as emit_tfrag_host
+// emits them at the tfrag range's end
+void tfrag_host_draws(SceneFrame& f, const TfragLevel& L, const std::vector<std::pair<uint32_t, uint8_t>>& host, const std::array<float, 16>& view,
+                      const std::array<uint32_t, 4 * 14>& consts) {
+    if (!L.ok || host.empty() || !tfrag_tags_ok(consts)) return;
+    const int wview = static_cast<int>(f.views.size());
+    f.views.push_back(view_of_tfrag(view.data()));
+    for (const auto& [k, code] : host) {
+        if (k >= L.by_ee.size() || L.by_ee[k] < 0) continue;
+        const int cls = L.by_ee[k];
+        const bool isb = code == 2;
+        const int lod = isb || code >= 0x0e ? 2 : code >= 0x08 ? 1 : 0;
+        const uint32_t start = isb ? 0x002 : code;
+        const TfragEntryGpu& e = L.entries[static_cast<size_t>(cls)];
+        if (!e.ok || e.plan(lod, start, isb) == nullptr) continue;
+        tfrag_add(f, cls, lod, start, isb, view, consts, wview, ScenePacket{});
+        ++f.tfrag_host;
+    }
+}
+}  // namespace
+
 // orig: (host) see mrp_world_scene.h
-bool scene_from_static(const StaticFrame& sf, const StaticLevel& sl, const std::array<float, 16>& a, const std::array<float, 3>& camera, SceneFrame& f) {
+bool scene_from_static(const StaticFrame& sf, const StaticLevel& sl, const std::array<float, 16>& a, const std::array<float, 3>& camera, const TfragLevel* tl,
+                       const std::vector<std::pair<uint32_t, uint8_t>>* tdraws, SceneFrame& f) {
     scene_reset(f);
     if (!sl.ok) return false;
+    // the tfrags first (the tfrag pass's range comes before the tie and shrub passes' in the chain: the walk emits the host's tfrag
+    // draws at its end, before the host's ties / shrubs)
+    if (tl != nullptr && tdraws != nullptr) {
+        std::array<float, 16> tv;
+        std::array<uint32_t, 4 * 14> tc;
+        if (tfrag_pass_vu(tv, tc)) tfrag_host_draws(f, *tl, *tdraws, tv, tc);
+    }
     const int view = static_cast<int>(f.views.size());
     f.views.push_back(view_of_ee(a.data(), camera.data()));
     // the tie A alpha-test state packet the walker emits before the host's ties when the program's state (VU1 0x3cb y) is not their 0:
@@ -1650,7 +1716,7 @@ bool scene_from_static(const StaticFrame& sf, const StaticLevel& sl, const std::
         const float fog[4] = {lwc1(fc), lwc1(fc + 4), lwc1(fc + 8), lwc1(fc + 12)};
         static_draws(f, sf, sl, 1, view, fog);
     }
-    // (not made here: the shrub far variants' quads - phase 5 with the sky - and the tfrags, MRP_LITE.md phase 4)
+    // (not made here: the shrub far variants' quads - phase 5 with the sky)
     f.ok = true;
     return true;
 }

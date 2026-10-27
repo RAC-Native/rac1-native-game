@@ -232,9 +232,16 @@ bool scene_build(const WorldIndex& idx, const SceneInput& in, SceneFrame& out, b
 // orig: (host) the frame's scene without the walker (the Wii U's MRP-lite: the world VU1 programs are not in its build): the host's
 // ties / shrubs of `sf` as the GPU path's packets (as the walk emits them at its passes' ends, emit_static), in the view of the
 // projection A `a` (0x166d00) and the camera; the walker's VU state those packets take - the tie A alpha-test state packet, the shrub
-// A fog constants - read from the overlay's copies the passes' constants UNPACK (game thread: EE memory). The frame's GS registers
-// before the world passes (SceneFrame::regs) are not made (none). No tfrag, sky, far variants, casters. false: no level
-bool scene_from_static(const StaticFrame& sf, const StaticLevel& sl, const std::array<float, 16>& a, const std::array<float, 3>& camera, SceneFrame& out);
+// A fog constants - read from the overlay's copies the passes' constants UNPACK (game thread: EE memory). Before them the host's tfrag
+// draws `tdraws` (tfrag_decide's (entry, code) of level `tl`; null: none), as the walk emits them at the tfrag range's end
+// (emit_tfrag_host), in the view and constants tfrag_pass_vu reads. The frame's GS registers before the world passes
+// (SceneFrame::regs) are not made (none). No sky, far variants, casters. false: no level
+bool scene_from_static(const StaticFrame& sf, const StaticLevel& sl, const std::array<float, 16>& a, const std::array<float, 3>& camera, const TfragLevel* tl,
+                       const std::vector<std::pair<uint32_t, uint8_t>>* tdraws, SceneFrame& out);
+// orig: (host) the view and the constants the frame's tfrag pass gives VU1 through its chain - what the walker's VU1 memory holds at
+// the end of the tfrag range: 5..8 (R0, R1, R2, T) and 0x290..0x29d -, read from where the chain takes them (game thread, after the
+// update: EE memory). false: not found (no tfrag pass this frame)
+bool tfrag_pass_vu(std::array<float, 16>& view, std::array<uint32_t, 4 * 14>& consts);
 // orig: (host) the build's EE reads the capture did not have (0: the walk and the capture agree)
 uint64_t scene_capture_misses();
 

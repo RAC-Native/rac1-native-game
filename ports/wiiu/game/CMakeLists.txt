@@ -115,17 +115,23 @@ wut_create_rpx(rac1_wiiu)
 
 # The picture's shaders (ports/wiiu/shaders): GLSL compiled on the PC into .gsh files with CafeGLSL's compiler
 # (-DRAC1_WIIU_GLSLC=<its bin/glslcompiler>), written to shaders/ in the build (copied beside the game's data on the SD;
-# generated: never in the repository). Each <name>.vert / <name>.frag pair is one file.
+# generated: never in the repository). Each <name>.vert / <name>.frag pair is one file; a pair whose pixel shader is another's names it
+# in RAC1_WIIU_FRAG_<name> (mrp_tfrag: mrp_world.frag).
 set(RAC1_WIIU_GLSLC "" CACHE FILEPATH "CafeGLSL's glslcompiler, for ports/wiiu/shaders")
-set(RAC1_WIIU_SHADERS test gs_draw mrp_moby mrp_world)
+set(RAC1_WIIU_SHADERS test gs_draw mrp_moby mrp_world mrp_tfrag)
+set(RAC1_WIIU_FRAG_mrp_tfrag mrp_world)
 if(RAC1_WIIU_GLSLC)
     set(_gsh)
     foreach(sh ${RAC1_WIIU_SHADERS})
         set(_src ${CMAKE_CURRENT_SOURCE_DIR}/../shaders)
+        set(_frag ${sh})
+        if(DEFINED RAC1_WIIU_FRAG_${sh})
+            set(_frag ${RAC1_WIIU_FRAG_${sh}})
+        endif()
         add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/shaders/${sh}.gsh
             COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/shaders
-            COMMAND ${RAC1_WIIU_GLSLC} -vs ${_src}/${sh}.vert -ps ${_src}/${sh}.frag -o ${CMAKE_CURRENT_BINARY_DIR}/shaders/${sh}.gsh
-            DEPENDS ${_src}/${sh}.vert ${_src}/${sh}.frag
+            COMMAND ${RAC1_WIIU_GLSLC} -vs ${_src}/${sh}.vert -ps ${_src}/${_frag}.frag -o ${CMAKE_CURRENT_BINARY_DIR}/shaders/${sh}.gsh
+            DEPENDS ${_src}/${sh}.vert ${_src}/${_frag}.frag
             COMMENT "CafeGLSL: ${sh}.gsh")
         list(APPEND _gsh ${CMAKE_CURRENT_BINARY_DIR}/shaders/${sh}.gsh)
     endforeach()

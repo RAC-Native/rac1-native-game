@@ -1,6 +1,7 @@
-// The MRP world's ties and shrubs drawn with GX2 on the Wii U (MRP_LITE.md phase 3): the frame mrp_world_renderer.cpp prepares on
-// the CPU from the host-made static path (mrp_world_wiiu_prepare: static_frame_build -> mrpw::scene_from_static -> build_triangles,
-// no walker) drawn by mrp_world_gx2.cpp instead of its GL backend. Host code.
+// The MRP world's ties, shrubs (MRP_LITE.md phase 3) and tfrags (phase 4) drawn with GX2 on the Wii U: the frame mrp_world_renderer.cpp
+// prepares on the CPU from the host-made paths (mrp_world_wiiu_prepare: static_frame_build and tfrag_decide -> mrpw::scene_from_static ->
+// build_triangles, then the tfrags' vertices / triangles by the CPU route tfrag_frame_cpu; no walker, no compute shader) drawn by
+// mrp_world_gx2.cpp instead of its GL backend. Host code.
 //
 // What the caller does on the Wii U (orig_main's no-graphics branch, the picture on: rac1_wiiu_picture()):
 //
@@ -9,7 +10,9 @@
 //
 //   every game update, before the real tie / shrub passes (overlay_entry.cpp world_pass): the static path's snapshot
 //   (mrpw::static_note_pass, its `handle` mrp_world_ready()) - the passes' own culling and relighting are off on the Wii U
-//   (RAC1_WORLD_PASS_SKIP=6): the ties / shrubs are the host's, their lit colours the level's load's;
+//   (RAC1_WORLD_PASS_SKIP=6): the ties / shrubs are the host's, their lit colours the level's load's; before the real tfrag pass the
+//   tfrag decisions' snapshot (mrpw::tfrag_note_pass, `handle` mrp_world_ready()) - the tfrag pass itself runs (its packets read the
+//   culling's lists): the frame's view and constants are read from its chain (mrpw::tfrag_pass_vu);
 //
 //   each host frame, after the game's frames ran and before the next update, in the walk branch next to the mobys' prepare:
 //       mrp_world_wiiu_prepare(active);  // (mrp_world_renderer.h) `active` as the PC's mrp_world_begin_frame's
@@ -21,11 +24,12 @@
 //   at the end, before WHBGfxShutdown:
 //       rac1::mrp_world_gx2_shutdown();
 //
-// Drawn: the GPU path's batches (tie A / shrub A templates, one GX2DrawIndexedEx per draw command with the draw's instance and record
-// as a uniform block, its texture array bound per draw), in the game's own VU1 projection onto its 4:3 frame (mode 1: the mobys'
-// depth a + b Z, the z clipping off as the GL backend's depth clamp), the resident lit colours an R32UI texture the vertex shader
-// reads with texelFetch. Not drawn: the CPU path's triangles (none from the static path), the tfrags (phase 4), the sky and the shrub
-// far variants (phase 5), the drop shadows, the modern lighting.
+// Drawn, in the frame's batch order: the tfrags' GPU path batches (shaders/mrp_tfrag.gsh: the compute program's vertices as the CPU
+// makes them, one GX2DrawIndexedEx per run of one texture unit, its texture array bound before it), then the ties' / shrubs' (tie A /
+// shrub A templates, one GX2DrawIndexedEx per draw command with the draw's instance and record as a uniform block, its texture array
+// bound per draw, the resident lit colours an R32UI texture the vertex shader reads with texelFetch), in the world's projection (mode 0:
+// the clip matrices, the tfrags' world points through the view-projection). Not drawn: the CPU path's triangles (none from the host's
+// paths), the sky and the shrub far variants (phase 5), the drop shadows, the modern lighting.
 //
 // State left by mrp_world_gx2_draw: as mrp_moby_gx2_draw's (mrp_moby_gx2.h). It may call GX2SetContextState (the context of `cb`)
 // after the level's texture uploads (GX2CopySurface), which change the GPU's state.
@@ -40,12 +44,12 @@
 
 namespace rac1 {
 
-// its shaders loaded (shaders/mrp_world.gsh, relative to the working directory) and its memory made: after WHBGfxInit.
-// false: not loaded (mrp_world_ready() stays false: no world drawn)
+// its shaders loaded (shaders/mrp_world.gsh, and the tfrags' shaders/mrp_tfrag.gsh, relative to the working directory) and its memory
+// made: after WHBGfxInit. false: not loaded (mrp_world_ready() stays false: no world drawn; the tfrags' alone missing: no tfrags)
 bool mrp_world_gx2_init();
 // true once mrp_world_gx2_init succeeded
 bool mrp_world_gx2_ready();
-// the prepared frame's ties / shrubs into `cb` / `db` (bound by this call, `db` not cleared), the game's frame mapped onto `vp` (x / y
+// the prepared frame's tfrags / ties / shrubs into `cb` / `db` (bound by this call, `db` not cleared), the game's frame mapped onto `vp` (x / y
 // from the bottom left, as gs::draw_gx2's); nullptr db: no depth test
 void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp);
 
@@ -60,6 +64,12 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
 // RAC1_WIIU_WORLD_RCSWAP=0 the resident colours' words as the PPC holds them (byte-swapped by default); RAC1_WIIU_WORLD_PROJ=vu
 // the game's VU1 projection (mode 1); RAC1_WIIU_ZCLEAR=0 (wiiu_gfx.cpp) the depth not
 // cleared before the world)
+// (the tfrags', testing: RAC1_WIIU_TFRAG=0 none made nor drawn; RAC1_WIIU_TFRAG_DEBUG=<m>[,<m>...] / RAC1_WIIU_TFRAG_DEBUG_AT the
+// tfrag batches' modes as RAC1_WIIU_WORLD_DEBUG's - bits 1 no depth test, 2 a plain grey (no texture, blending or alpha test), 4 a
+// batch in one draw (its first run's texture: no split by texture unit), 8 the tfrags alone (the ties / shrubs not drawn), 1024 the
+// 32-bit attributes not swapped (the other byte order), 2048 one tfrag draw a call, 4096 the vertices' colours alone, 8192 the textures
+// alone; RAC1_WIIU_TFRAG_STAGE=<n> 1 the CPU route alone (nothing sent), 2 its data sent and the state set, no draws, 3 (the default)
+// everything; RAC1_WIIU_TFRAG_GSH=<file> another build of the tfrag shaders)
 void mrp_world_gx2_debug_frame(uint64_t game_frame);
 // everything it made freed (the level's textures and buffers, the colours' texture, the ring, the shaders): before WHBGfxShutdown;
 // it waits for the GPU

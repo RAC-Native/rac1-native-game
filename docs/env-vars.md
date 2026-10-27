@@ -144,6 +144,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_MRPW_STATIC_VERIFY` | any value = on; default off | Compares the resident colours with VU1 memory's at every GPU path instance and reports differences. |
 | `RAC1_MRPW_STATIC_WALK` | any value = on; default off | Walks all of the static world packets as if they were really drawn, instead of skipping those that are discarded. |
 | `RAC1_MRPW_TFRAG_CHECK` | any value = on; default off | Computes the host's tfrag decisions at the game's own distances and frustum and compares them with the game's draws, replacing nothing. |
+| `RAC1_MRPW_TFRAG_CPU` | 1 = the CPU route's output drawn, 2 = compared; default off | The GPU tfrag path's vertices and triangles made on the CPU (the Wii U's route, which has no compute shader) and drawn instead of the compute shader's (OpenGL); 2 runs both and compares them byte for byte, reported at the exit. |
 | `RAC1_MRPW_TFRAG_GPU` | 0 = off, anything else = on; default on | Switches the GPU tfrag (terrain fragment) path of the modern world renderer on or off. |
 | `RAC1_MRPW_TFRAG_HOST` | 0 = off, anything else = on; default on | Switches the host-side tfrag decision path on or off (for comparison with the game's own). |
 | `RAC1_MRPW_TFRAG_SELFCHECK` | any value = on; default off | Checks the tfrag colours against the values built for each draw while the scene is built. |

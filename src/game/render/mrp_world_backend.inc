@@ -6,7 +6,8 @@
 // template run (DrawCmd: the record's index in `base_instance`, the template's first vertex in `base_vertex`), the runs of draws
 // sharing one GPU state (Batch / RKey, the GS state of its first draw in Key), in the chain's order. Its GL and Vulkan backends
 // are inline in that file; the Wii U's GX2 one (ports/wiiu/game/mrp_world_gx2.cpp) reads the same data through the accessors
-// below (the tie / shrub GPU path only: the CPU path's vertices, the tfrag compute program and the sky are not in it yet).
+// below (the tie / shrub GPU path, the tfrag GPU path's triangles as the CPU makes them - tfrag_frame_cpu -: the CPU path's vertices
+// and the sky are not in it yet).
 //
 // (A .inc, not a .h: the generated code is fingerprinted with every header of src/game - tools/setup.py's CODE_SOURCES - and a
 // renderer's change must not ask for ./setup.sh again; as mrp_moby_backend.inc.)
@@ -29,6 +30,21 @@ struct TVert {
     uint8_t col[4];    // the colour indices (tie fat: c0, c1, c2)
 };
 static_assert(sizeof(TVert) == 28);
+
+// One GPU vertex (an XYZF2 the programs kick; the CPU path's, the tfrag compute program's): its world point (homogeneous), its point on
+// the GS's frame (x w), the STQ undivided ((S, T, Q) x w: S / Q is the texture coordinate), the GS's Q (the mip level), RGBA, F. (Host
+// byte order but `rgba`: its bytes R, G, B, A in memory on any host.)
+struct GpuV {
+    float wp[4];
+    float vu[4];
+    float stq[3];
+    float lodq;
+    uint8_t rgba[4];
+    float fog;
+    uint32_t word, layer;  // the texture (the triangle this vertex closes: flat, the last vertex provokes)
+    uint32_t state[2];     // its GS state as data (draw_flags, FOGCOL), flat as the texture
+};
+static_assert(sizeof(GpuV) == 72);
 
 // the GL state of a run of triangles
 struct Key {
@@ -75,6 +91,13 @@ struct DrawCmd {  // DrawElementsIndirectCommand
     uint32_t base_instance;  // the draw's record: the frame's cmds[8 * base_instance ..]
 };
 
+// A tfrag batch's triangles of one texture unit (the GPU path's tfrag draws sample by unit, the unit in each vertex's draw_flags; a
+// backend without texture units binds the unit's texture per range): `batch` the frame's batch (Batch::tfrag), [first, first + count)
+// in the frame's tfrag indices, `unit` 1.. in the batch's epoch (0: none)
+struct TfragRange {
+    uint32_t batch = 0, first = 0, count = 0, unit = 0;
+};
+
 // The frame the renderer built (valid until the next frame is prepared)
 struct FrameView {
     uint64_t serial = 0;  // a new number for each frame built
@@ -88,6 +111,14 @@ struct FrameView {
     // the GPU path's texture units: per epoch (Batch::epoch) the (bucket, sampler) of units 1.. (a draw's unit in its draw_flags; 0: none)
     const std::vector<std::vector<std::pair<int, uint32_t>>>* epochs = nullptr;
     uint64_t env_xyoff = 0;  // the frame's XYOFFSET_1 (0: none found)
+    // the GPU path's tfrag triangles made on the CPU (the compute program's output: mrp_world_renderer.cpp tfrag_frame_cpu): the
+    // vertices, the indices (absolute: base vertex 0; a triangle closed by an ADC vertex degenerate, (c, c, c)), the batches' ranges
+    // by texture unit in batch order; empty: none
+    const std::vector<GpuV>* tf_verts = nullptr;
+    const std::vector<uint32_t>* tf_idx = nullptr;
+    const std::vector<TfragRange>* tf_ranges = nullptr;
+    uint32_t tf_draws = 0;  // (the frame's tfrag draws; the CPU route's time, ms)
+    double tf_ms = 0;
 };
 // false: no frame built (the world not drawn this frame)
 bool frame_view(FrameView& out);
@@ -128,6 +159,8 @@ namespace rac1 {
 // ports/wiiu/game/mrp_world_gx2.cpp: its shaders loaded (mrp_world_gx2_init); what mrp_world_ready asks on the Wii U in place of
 // the GL program
 bool mrp_world_gx2_ready();
+// ... and its tfrag shaders (shaders/mrp_tfrag.gsh) loaded, the tfrags not turned off (RAC1_WIIU_TFRAG=0): the frame's tfrags made
+bool mrp_world_gx2_tfrag_ready();
 }  // namespace rac1
 #endif
 

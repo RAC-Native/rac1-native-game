@@ -61,7 +61,8 @@ in `tools/gen_vk_shaders.py`) brought to GLSL 330 for CafeGLSL, kept in `ports/w
   relighting of our own, or the game's relighting on a worker core).
 - tfrag: first the static form (each entry's near image, no morph: a T-only mesh the vertex shader transforms; one LOD
   everywhere, no cracks), then `tfrag_exec_cpu` on a worker core if the LOD morph is wanted. The game's tfrag pass keeps running
-  (its packets read the culling's lists).
+  (its packets read the culling's lists). (Phase 4 went to the exact form at once: `tfrag_exec_cpu` on the game's thread, cheap
+  enough - see Progress.)
 - the walker (for the sky and anything left on the chain): needs the world VU1 set-up programs. Either their fast ports put
   back into the build if the .text stays under 32 MB (to measure: the exact ports alone could stay out), or the set-up starts'
   effect computed without them. The sky's own path (the particle program, already in the build) is separate.
@@ -174,3 +175,42 @@ Each phase ends with shots of the console's TV (RAC1_WIIU_SHOT) compared with th
   With the 2D on (the GS replica's backend, gs_draw_gx2.cpp) the distant 3D comes out lighter, veiled, than on the PC; with
   RAC1_WIIU_2D=1 (no render targets) or 3 (no 2D) it does not. Not found in the frame's own primitives (all drawn onto the screen
   page 0x70; those reading it are skipped): left for main's mrp_2d on the Wii U, which replaces this backend.
+- Phase 4 (2026-10-27): Veldin's tfrags made for GX2 exactly as the PC draws them, without the walker and without the compute
+  shader (not run on the console yet). What it is:
+  - the decisions: overlay_entry.cpp's world_pass takes the tfrag snapshot before the real tfrag pass (`tfrag_note_pass`, `handle`
+    mrp_world_ready()), mrp_world_wiiu_prepare runs `tfrag_decide` on it (as the PC's LOD > 0 path), the resident colours' mirror
+    `tfrag_colours_update`; the game's tfrag pass still runs (RAC1_WORLD_PASS_SKIP=6 leaves it on);
+  - the walker's inputs from EE memory (`mrpw::tfrag_pass_vu`): the view (VU1 5..8) is the pass's own UNPACK at the range's first tag
+    (`*(0x160f7c)` + 0x20: 0x294240 computes it on its stack and UNPACKs it to 5 and 0x14d), the 14 constants (0x290..0x29d) the
+    overlay's 0x1c2850.. (the culling's prologue copies 0x1c2840's 17 qwords into its chain: a CNT, UNPACK 15 qwords to 0x290). Found
+    with the walker's UNPACK sources (Walker::unpack_src) and compared on the PC with the walker's VU1 memory at the tfrag range's end
+    (RAC1_MRP_LOD=50, a temporary print): explore 800 frames, view and constants identical in all; GOTO=0@60 forward 654 frames,
+    identical but 2 (frames 59 / 60, the level change: the walker's reset VU1 still zero, so the PC draws no tfrag there - its tags
+    check fails -, the Wii U would draw the host's decisions). The whole tfrag scene `scene_from_static` makes (the draws, the VU views
+    and constants, the world views) compared the same way with the walker's: 800 frames each scenario, no difference;
+  - the CPU route (`tfrag_frame_cpu`, mrp_world_renderer.cpp, both hosts): per draw `tfrag_exec_cpu`, then the compute program's last
+    phase on the CPU (the world point in doubles narrowed toward zero, STQ x the positive w, F, the run's texture / state, the strips'
+    triangles with the ADC rule), under the EE's float rules whatever the thread's (EeFloatScope). The PC's switch
+    RAC1_MRPW_TFRAG_CPU=1 draws its output instead of the dispatch (OpenGL), =2 compares it with the dispatch's read back: byte for
+    byte identical on every vertex and index (Veldin explore / forward, LOD 0 / 50 / 100, Kerwan: 0 of 0.9-1.4 M vertices and 2-3.5 M
+    indices per run), and the shots identical with and without it (Veldin explore and GOTO=0@60 forward, frames 300 / 600, LOD 0 and 50).
+    No ADC vertex came up in any of these runs (the degenerate rule is the shader's, unexercised);
+  - its cost on the PC (Veldin explore, 600 frames): 21 draws, ~1500 vertices, ~1200 triangles a frame, 0.16 ms (the most 0.75 ms);
+    forward: 30 draws, ~2000 vertices, 0.22 ms (0.6 ms). At 5-10x on Espresso: ~1-2.5 ms a frame (4-7 ms the most) on the game's
+    thread. Its inputs are frozen after the update and its output is the frame's: it can move to core 0 / 2. The GX2 draws it makes:
+    one per run of one texture unit, ~54 a frame (explore) / ~76 (forward), in 1-1.3 batches (the host's ties / shrubs merge the
+    AFAIL passes, as the PC's LOD > 0 does), a batch with an AFAIL pass drawn twice;
+  - GX2 (mrp_world_gx2.cpp, shaders/mrp_tfrag.gsh = mrp_tfrag.vert + mrp_world.frag): the tfrag batches before the ties / shrubs (the
+    frame's batch order: the tfrag range is first in the chain), the CPU route's vertices / indices per frame in a MEM2 ring of their
+    own (8 MB, GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER), one GX2DrawIndexedEx per run of one texture unit (the PC samples by unit in
+    the shader; GX2 binds one texture: mrpwb::TfragRange), the floats and u32 attributes 8_IN_32, the RGBA bytes as they are; the GS
+    registers at the tfrags those of phase 3 (on the PC the tfrags see ALPHA_1 0x2000000044, the sky's leftover - the same blend, C =
+    As -, and FOGCOL 0xf1a2f from the frame environment's DIRECT; the Wii U takes the replica's FOGCOL, as the ties do). Switches: RAC1_WIIU_TFRAG=0,
+    RAC1_WIIU_TFRAG_STAGE, RAC1_WIIU_TFRAG_DEBUG / _DEBUG_AT (mrp_world_gx2.h), the GX2 log line every 120 calls (draws, triangles, the
+    CPU route's time), the first tfrag draw dumped once.
+  On the console (explore, game frame 200): the ground under the ties, shrubs and mobys, as on the PC (the 32-bit attributes'
+  byte order as written is right). Unverified: the route's real time on Espresso and the draws' cost, CafeGLSL's MULADD_IEEE in the view-projection (fused: the positions may differ from the PC's in the last bit), the
+  tfrags' FOGCOL (the replica's: 0xf1a2f expected on Veldin), the extra MEM2 (the level's tfrag images and plans are kept twice, the
+  GPU copies unused here: to drop later). Left: the
+  tfrag relighting is the game's (its colours read every frame: the mirror's compare), the route's allocations per draw (Mem's
+  vector), a worker core.
