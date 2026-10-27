@@ -44,9 +44,9 @@ sky <r> <g> <b>
 | Type | a | b | c | What it does |
 |---|---|---|---|---|
 | `emissive` | strength 1 (0..4) | threshold 0 (0..1) | | the same as an `emissive` line (Save writes it as one) |
-| `metal` | roughness 0.35 (0.03..1) | strength 1 (0..2) | | Blinn-Phong specular of the sun (where it is not in shadow) and of the point lights, energy-normalised, with an exponent from a GGX-like roughness; Schlick Fresnel with the texture as the metal's colour; the level's sky in the sheen at grazing angles, as bright as the place is lit |
+| `metal` | roughness 0.35 (0.03..1) | strength 1 (0..2) | | roughness 0 is a polished mirror, 1 brushed. Blinn-Phong specular of the sun (where it is not in shadow) and of the point lights, energy-normalised, with an exponent from a GGX-like roughness (a small, very bright highlight when polished, a broad dull one when rough); Schlick Fresnel with the texture as the metal's colour; a mirror of the level's sky over the ground's shade, its horizon sharper and its share larger the lower the roughness (up to 1.5 times the Fresnel), as bright as the place is lit, and on High below roughness 0.6 the last frame's picture along the reflected ray; the painted colour dimmed by 25 % (rough) to 55 % (polished) |
 | `wet` | wetness 0.6 (0..1) | roughness 0.45 (0.05..1) | | darker (up to 40 %), a broad glossy specular, a little sky |
-| `puddle` | coverage 0.4 (0..1) | scale 0.3 (0.02..4) | wetness 0.6 (0..1) | `wet`, and on the flat ground facing up (normal within some 15 degrees of up) puddles where a world-space noise (its frequency `scale` per unit) is above 1 - coverage: they stay in place whatever the camera does. In a puddle: dark, a near mirror (Fresnel from 15 % looking down to 90 % at grazing), small waves; rain rings when the level rains |
+| `puddle` | coverage 0.4 (0..1) | scale 0.3 (0.02..4) | wetness 0.6 (0..1) | `wet`, and on the flat ground facing up (normal within some 15 degrees of up) puddles where a world-space noise (its frequency `scale` per unit) is above 1 - coverage: they stay in place whatever the camera does, the same with OpenGL and Vulkan on any GPU (an integer noise). In a puddle: dark, a near mirror (Fresnel from 15 % looking down to 90 % at grazing), small waves; rain rings when the level rains |
 | `lava` | strength 1.3 (0..4) | pulse 0.15 (0..1) | threshold 0 (0..1) | emissive (the original's colour x strength, as an emissive surface; texels whose brightest channel is under the threshold lit as before), a slow brightness pulse whose phase changes across the world, the texture pushed slowly to and fro; High: the heat shimmer |
 | `water` | strength 1 (0..2) | ripples 1 (0..3) | | a sharp sun / lamp glint, Fresnel, procedural ripples (three crossing wave trains and a fine noise, animated) and, when it rains, rain rings; the reflection is the sky (Low) or the last frame's picture (High). Added on top of the game's water: its scrolling, its waves and its tints are its own |
 | `mud` | wetness 0.5 (0..1) | drift 1 (0..3) | | a wet glossy sheen and a very slow, viscous drift of the texture |
@@ -91,10 +91,18 @@ red ones for lava, and so on).
 - **High: the last frame's picture.** After the world, the mobys, the ambient occlusion and the sun rays
   (`mrp_lighting_material_capture`, at the end of `mrp_lighting_ao_pass`), the 3D's colour and depth are copied
   (OpenGL: a blit; Vulkan: an image copy), with the view they were drawn with, only when the level has a
-  puddle, water or lava and Surface Detail is High. The next frame's puddles and water march their
+  puddle, water, lava or a polished metal (roughness under 0.6) and Surface Detail is High. The next frame's puddles and water march their
   reflected ray through that depth in world space (20 steps, growing), reprojected with the old view; a hit
   shows the old picture there (faded near its edges), a miss the sky colour. The lava's shimmer reads the old
   picture around the pixel, displaced by a rising noise. The copy is used only the frame right after it.
+
+### Metal's roughness
+
+Until 0.5.2 a metal's roughness seemed reversed (#101): low values gave a highlight so narrow that, on the flat faces of the PS2's
+models, it was hardly ever seen, and the sky's sheen was the same whatever the roughness, so a "polished" metal looked no shinier
+than a rough one (Veldin's start with its ground as metal at 0.05, 0.5 and 0.9: three nearly equal pictures, 0.9 a little brighter).
+The sheen is now a mirror whose sharpness and strength follow the roughness: at 0.05 the ground mirrors the sky and, on High, the
+cliffs and the ship; at 0.5 a soft sheen; at 0.9 a dull, brushed look.
 
 ## Shipped
 

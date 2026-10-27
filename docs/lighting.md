@@ -40,9 +40,11 @@ differs a lot between planets. Where each part comes from is described in
   When a level loads they are found automatically and turned into small point lights. This is
   our own heuristic, not game data, and it can be wrong (see the table below).
 - **Lights placed by hand** with the [light editor](#the-light-editor) cover what the automatic
-  search can't find. The project ships no hand-placed lights; its level files only turn off an
-  automatic class the search got wrong (Gaspar, Orxon), turn the sun (Novalis, Kerwan, Eudora,
-  Oltanis, Quartu), mark interiors (Blarg, Orxon), or make every object of a class a light
+  search can't find. The project ships a few hand-placed lights (Novalis and Aridia); otherwise its
+  level files turn off an automatic class the search got wrong (Gaspar, Orxon), turn the sun (every level but Rilgar, Blarg
+  and Batalia, most of them from Anya-Thoughtmane's lighting pass, #90), turn the sun rays off (Blarg,
+  Rilgar, Batalia, Oltanis), mark interiors (Blarg, Orxon), mark emissive surfaces and
+  [materials](materials.md), list [ambient particles](particles.md), or make every object of a class a light
   (Novalis's neon tubes and hanging bulbs, Kerwan's street lamps, Oltanis's plaza lamps; Veldin's and
   Novalis's lamps, fires and eyes from a tester's survey, #102).
 - **Sun rays** (Options > Graphics, Off by default): shafts of light from the sun through openings
@@ -113,7 +115,8 @@ followed by the EE's fixed-point colour step.
 
 **The world.** tfrag, tie and shrub colours are lit on the EE and VU0 into the level's data
 (`world_tfrag_lighting` 0x295350, `world_tie_lighting` 0x297728, `world_shrub_lighting` 0x288908 in
-`src/game/ovl/world_lighting.cpp`, with the VU0 program in `world_light_vu0.cpp`): a base colour, a
+`world_lighting.cpp`, with the VU0 program in `world_light_vu0.cpp`: both generated, see
+[The generated code](architecture.md#the-generated-code)): a base colour, a
 normal from two angle bytes, a blend of light sets, and the point lights named in the piece's
 nibbles. This runs at level load and again, per frame, for the visible pieces, so a nearby explosion
 lights the ground through the vertex colours.
@@ -173,8 +176,9 @@ flowchart TD
     E --> E1
     E4 --> F["World and sky: SH_POINTS variant<br/>(sun shadow, point lights, fade)"]
     F --> G["Mobys: SH_SPLIT variant<br/>(sun shadow on the key light)"]
-    G --> H["mrp_lighting_ao_pass<br/>(the covered view's test, SSAO)"]
-    H --> I["GS replica: effects, particles, 2D"]
+    G --> H["mrp_lighting_ao_pass<br/>(ambient occlusion, sun rays,<br/>the picture kept for the materials)"]
+    H --> P["ambient particles"]
+    P --> I["the MRP's effects and program 7's surfaces,<br/>the GS replica's 2D between them"]
 ```
 
 There is no depth prepass and no compute-shader light culling; the order above is the `draw` step in
@@ -426,11 +430,18 @@ Made in the debug menu (F1, Lights tab) and saved in `data/lights/level<NN>.txt`
 [The light editor](#the-light-editor). They are positions and colours chosen by us, with nothing
 taken from the disc. They are lit like the automatic ones and ahead of them.
 
-The project's level files place no light: `level09.txt` (Gaspar) and `level10.txt` (Orxon) each turn
+Before Anya-Thoughtmane's second pass (below) the project's level files placed no light: `level09.txt` (Gaspar) and `level10.txt` (Orxon) each turn
 off one automatic class that was taken for a lamp, `level00.txt` (Veldin) makes lamps of classes and marks [emissive surfaces](#emissive-surfaces), and `level01.txt` (Novalis, also its lamps by class and emissive surfaces), `level03.txt`
 (Kerwan), `level04.txt` (Eudora), `level14.txt` (Oltanis) and `level15.txt` (Quartu) turn the sun,
 each with a comment saying why. `level05.txt` (Rilgar), `level06.txt` (Blarg's station), `level08.txt`
 (Batalia) and `level14.txt` turn the [sun rays](#sun-rays) off (`sun_rays off`, #101).
+
+Anya-Thoughtmane's second lighting pass (#102) added her own lines to the files of Veldin to Rilgar (`level00.txt` to
+`level05.txt`), merged line by line with ours (our comments, particles and suns kept; Aridia keeps Daino's sun): emissive surfaces
+on every one of them (the vendors' blue parts, the gold bolts, Ratchet's garage on Veldin, Aridia's red bulbs, Skid's crashed
+ship, the anti-vehicle cannon and the fortress's swing room, Kerwan's lamps, buildings, Qwark-bot and the train's head, most of
+Rilgar's lamps), lamps by class on Aridia and Rilgar (the Swingshot's versa-targets, the floating lifts' thrusters), lights placed
+by hand on Novalis and Aridia, and Kerwan's street lamps reaching further.
 
 ### Point-light shadows, per-pixel cost and occlusion
 
@@ -560,26 +571,26 @@ direction wherever the game has a sun; the weight, the colour and what is taken 
 direction) are the game's. The value was chosen by measuring, along a walk from each level's start,
 the share of the view facing the sun that sees it (the covered views' probe, `RAC1_SUN_COVER_TRACE`):
 
-| Level | the key light (azimuth, elevation) | sees the sun | at 50 degrees | the level's own sun |
-|---|---|---|---|---|
-| Veldin | -65, 20 | 51 % | 77 % | |
-| Novalis | -22, 33 | 34 % | 73 % (55 degrees: about 75 %) | **0, 43** |
-| Aridia | 20, 20 | 81 % | 90 % | **33, 19.5** |
-| Kerwan | -4, 35 | 30 % | 55 % | **100, 28** |
-| Eudora | -141, 22 | 27 % | 47 % | **-141, 50** |
-| Rilgar | -159, 16 | 78 % | 86 % | |
-| Umbris | 179, 24 | 87 % | 85 % | |
-| Batalia | -135, 15 | 71 % | 88 % | |
-| Gaspar | 165, 40 | 79 % | 82 % | |
-| Orxon | -45, 20 | (the walk stays in the opening scene) | | |
-| Pokitaru | -48, 30 | 84 % | 85 % | |
-| Hoven | -135, 30 | 49 % | 74 % | |
-| Gemlik Base | 180, 20 | 82 % | 83 % | **115, 11** |
-| Oltanis | -141, 29 | 22 % | 56 % | **-141, 50** |
-| Quartu | 0, 20 | 8 % | 43 % | **0, 50** |
-| Kalebo III | -33, 30 | 56 % | 62 % | |
-| Drek's fleet | 28, 29 | 76 % | 74 % | |
-| Veldin finale | -175, 40 | 85 % | 86 % | |
+| Level | the key light (azimuth, elevation) | sees the sun | at 50 degrees | the level's own sun | in its file now |
+|---|---|---|---|---|---|
+| Veldin | -65, 20 | 51 % | 77 % | | 1.1, 17.7 |
+| Novalis | -22, 33 | 34 % | 73 % (55 degrees: about 75 %) | **0, 43** | 0, 90 |
+| Aridia | 20, 20 | 81 % | 90 % | **33, 19.5** | 33, 19.5 |
+| Kerwan | -4, 35 | 30 % | 55 % | **100, 28** | -108.5, 45 |
+| Eudora | -141, 22 | 27 % | 47 % | **-141, 50** | 24, 76.2 |
+| Rilgar | -159, 16 | 78 % | 86 % | | |
+| Umbris | 179, 24 | 87 % | 85 % | | -70.5, 5 |
+| Batalia | -135, 15 | 71 % | 88 % | | |
+| Gaspar | 165, 40 | 79 % | 82 % | | -101.5, 90 |
+| Orxon | -45, 20 | (the walk stays in the opening scene) | | | -52.5, 5 |
+| Pokitaru | -48, 30 | 84 % | 85 % | | -145.5, 80.5 |
+| Hoven | -135, 30 | 49 % | 74 % | | -180, 90 |
+| Gemlik Base | 180, 20 | 82 % | 83 % | **115, 11** | 114.5, 12 |
+| Oltanis | -141, 29 | 22 % | 56 % | **-141, 50** | -140.5, 50 |
+| Quartu | 0, 20 | 8 % | 43 % | **0, 50** | 0, 5 |
+| Kalebo III | -33, 30 | 56 % | 62 % | | -14, 85 |
+| Drek's fleet | 28, 29 | 76 % | 74 % | | -91, 5 |
+| Veldin finale | -175, 40 | 85 % | 86 % | | -6, 23 |
 
 (Headless, the same scripted walk from each level's start, the second half of 3000 frames; a rough
 measure of the places near the start only.) The levels under about a third keep their azimuth and
@@ -587,8 +598,13 @@ get a higher sun; Novalis was checked at its start valley (below) and given 55. 
 [sun editor](#the-sun-editor), Daino turned four of them: Novalis to 0, 43 (55 was the first
 try), Kerwan to 100, 28 (low, toward the city, through the first tunnel's mouth: the path inside lit,
 the city backlit), Aridia to 33, 19.5 (from the big planet in its sky, so the light matches what
-the sky shows) and Gemlik Base to 115, 11 (from the sun in its skybox, likewise). The others keep the game's key light; Veldin and Hoven are candidates if a playtest finds their shade too heavy. Blarg
-has no sun in its main zones.
+the sky shows) and Gemlik Base to 115, 11 (from the sun in its skybox, likewise). Blarg has no sun in
+its main zones.
+
+On 25 October the suns of Anya-Thoughtmane's lighting pass (#90, #101), set with the sun editor, went
+into the files of fifteen levels, Novalis, Kerwan and Gemlik Base among them in place of the choices
+above (the last column; still to playtest). After a playtest Aridia went back to its skybox's planet,
+33, 19.5. Rilgar and Batalia keep the game's key light.
 
 ### The sun editor
 
@@ -614,9 +630,23 @@ a box 1.25 times larger than the cascade needs. They are redrawn only when:
 - the level, the level of detail, the resolution or the sun direction changes;
 - the cache was drawn before the off-view casters had been built.
 
-Each frame, `glCopyImageSubData` copies back only the rectangle last frame's mobys covered (or the
-whole map after a refresh), and the mobys are drawn scissored to this frame's rectangle. If the
-driver lacks `glCopyImageSubData`, the cache turns itself off. The off-view casters are only built
+Each frame the cache is copied back into the cascade's layer (`glCopyImageSubData`, `vkCmdCopyImage`)
+where last frame's mobys were drawn (the whole map after a refresh), and this frame's mobys are drawn
+over it, each group inside its own rectangle (the scissor), which the next frame copies back: nothing a
+moby drew stays. The mobys' parts are grouped by their rectangles in the light's view (`moby_rects`:
+each part's bounding sphere projected; the parts whose rectangles touch, on a 64 x 64 grid of the map,
+together; at most four groups, the closest merged; `RAC1_SHADOW_CLUSTERS`), and a group is drawn with
+only the parts near it (`mrp_moby_draw_casters`' sphere). One rectangle around every moby, as before
+(`RAC1_SHADOW_CLUSTERS=1`), covered 40 to 100 % of the near cascade's 4096-texel map on Rilgar's path
+as soon as two mobys stood apart: that copy, every frame, was most of the cascades' cost. The shadows
+are the same. If the driver lacks `glCopyImageSubData`, the cache turns itself off.
+
+The two far cascades' mobys are drawn every other frame, in turn: cascade 1 on odd frames, cascade 2
+on even ones (`RAC1_SHADOW_FAR_EVERY`, default 2; 0 as before: the farthest every other frame, the
+middle one every frame). A frame that skips a cascade keeps its layer as last drawn - its box has not
+moved, so its static part is right -, and a moby's shadow there is one frame late; a cascade whose cache
+is drawn again (the camera's move out of its box, the sun's turn, a new level) is drawn whole that frame.
+The near cascade is drawn every frame. The off-view casters are only built
 when a cascade is about to need them: when its slack is running out given the camera's speed.
 
 ## Point lights per pixel
@@ -637,8 +667,13 @@ when a cascade is about to need them: when its slack is running out given the ca
 `colour * max(N · L, 0) * (1 - d / r) * 0.5 * shadow` to the pixel, with N the flat face normal from
 derivatives. A light per object class can be aimed down (`emit`'s last value, below): its falloff then
 becomes `(1 - d / r)^2` times the cosine of the angle below the light, mixed in by that share, so a
-ceiling fixture lights a pool on the floor under it and not the ceiling around it. This is the world only. Mobys keep the game's own 8 lights per vertex, as in the
-original, and are not lit by emitters or hand-placed lights.
+ceiling fixture lights a pool on the floor under it and not the ceiling around it.
+
+**Mobys** (#110: Ratchet, and every other moby, were not lit by our lights) keep the game's own 8 lights per vertex, as in the
+original (the skinning's record), and take ours per pixel: the lights placed by hand, per class, the plasma beams and the automatic
+emitters (`sh_points_moby` in `mrp_materials_glsl.inc`, the mobys' lighting variant, OpenGL and Vulkan). The list's first entries are
+the game's own lights; their count goes to the shader in `uEmis[0].y` and they are skipped there, so no light is added twice. The
+same falloff and aim as the world's, the flat face normal, no cube shadows (a moby casts into the cubes: it would shadow itself).
 
 While any of the game's short-lived lights is active, the world's per-vertex colours on the GPU are not
 refreshed (`mrp_lighting_points_freeze`), so the same light is not added twice: once baked by the
@@ -737,7 +772,7 @@ passes with the same shaders (`tools/gen_vk_shaders.py`).
 ## Ambient occlusion
 
 Options > Graphics > Ambient Occlusion (`mrp_lighting_ao_pass`): a screen-space ambient occlusion
-pass after the mobys and before the GS replica's effects, particles and 2D (so those get none). The
+pass after the mobys and before the effects, the ambient particles and the 2D (so those get none). The
 depth buffer is copied to a texture; per pixel the world position comes from the inverse
 view-projection; the result (8 bits) is blurred within the surface and multiplied into the colour
 (the sky untouched). Five modes:
@@ -750,11 +785,24 @@ view-projection; the result (8 bits) is blurred within the surface and multiplie
 | GTAO | as SSAO+ | 3 slices x 2 sides x 3 steps, the cosine-weighted visible arc over the horizons, a multi-bounce tint | 3 units, 250 % | separable | 6.9 ms |
 | GTAO 1/2 | as SSAO+ | GTAO at half resolution, upsampled by the blur | as GTAO | separable | 4.4 ms |
 
-(Measured on Kerwan's plaza with a Radeon 890M; noisy by a few tenths.) The reach is capped on the
+(Measured on Kerwan's plaza with a Radeon 890M; noisy by a few tenths; before the change below.) The reach is capped on the
 screen: a surface close to the camera samples no further than 4 % of the view's height around it
 (most of the cost, for no visible change). `RAC1_AO_RADIUS` / `RAC1_AO_STRENGTH` (percent, testing)
 override every mode's reach and strength, `RAC1_AO_DUMP=1` writes the raw occlusion (`ao_<mode>.pgm`,
 the run's last frame) and prints its mean, `RAC1_AO_PROF=1` prints the pass's GPU time.
+
+**The depth read where it is (Vulkan).** The passes read the 3D's own depth and stencil, its view's
+rectangle (`uDMap`), instead of a copy: the depth image is made readable for the occlusion's passes, the
+last blur draws into the colour alone (a target without the depth), and the depth is an attachment again
+after it. The copy of the depth-and-stencil image cost about 1.1 ms of GTAO's 4.0 at 5053 x 1371
+(Rilgar, Radeon 890M): GTAO now about 3.1 ms there (Kerwan 5.0 to 3.9), GTAO 1/2 1.7 (2.8 before). The same picture
+(byte for byte at the window's size; with a render scale and a letterboxed view a few pixels in 10 000 by
+a level or a few, a tap's texel rounding through the rectangle). `RAC1_AO_DEPTH_COPY=1` copies, as
+before. OpenGL still copies (a blit: the window's own framebuffer's depth cannot be read as a texture).
+The rest of the cost is the depth's own reading (made readable: its compression undone) and the three
+full-screen passes' memory traffic, not the taps: a temporal GTAO (one of the three slices a frame, the
+two others from the last frame at the point's place in its view, recomputed where the last frame saw
+another surface) was tried and gave about 5 % (kept out).
 
 **AO Intensity** (Options > Graphics, 25 to 125 %, default 75 %) scales the mode's strength (the table's
 strength column is the 100 % one): how dark the occlusion gets, the reach unchanged.
@@ -793,7 +841,15 @@ The modern point lights can be placed by hand, as art choices that are labelled 
 part of the original. The editor is in the debug menu (Lights tab), so it needs the debug tools (see
 [Settings](settings.md#debug-tools)).
 
-- Lights can be added at Ratchet's position or the camera's, moved, duplicated and deleted, and each
+- **The target.** The tab's tools work on a world point: the one under the crosshair at the centre of the
+  picture, or, with **Pick with the mouse** ticked (the default), the one clicked: with the menu open the
+  cursor is free, and a left click on the picture outside the menu's windows reads the depth there (over
+  the next four frames: the read comes a frame or two late) and keeps that point, marked with a green ring
+  and a short green line along the surface's normal, until the next click or **Back to the crosshair**.
+  The point's surface (`mrp_world_surface_at`) and objects (`mrp_lighting_pick`) feed the sections below.
+- Lights can be added at the target (**Add at the clicked point** / **Add at the crosshair**: 0.4 units
+  off the surface along its normal, the triangle's turned toward the camera; on a moby, toward the camera),
+  at Ratchet's position or the camera's, moved (**Move to the picked point**), duplicated and deleted, and each
   has a position, colour, intensity, radius, flicker amount and an on switch. On-screen markers show
   them, and the selected light pulses.
 - "Ratchet to it" moves Ratchet to the selected light. Unlike everything else on this page, this does
@@ -809,7 +865,8 @@ part of the original. The editor is in the debug menu (Lights tab), so it needs 
   zero (the EE's mode), so the file is read and written rounding to nearest (`ps2fpu::NearestScope`);
   until 0.5.0 each Save took one unit off the last digit of a number that is not exact in binary
   (`0.800` read and written five times came back `0.795`).
-- A level's file is loaded when the level's first shadow pass runs, and hand-placed lights are only
+- A level's file is loaded the first time the lighting, the ambient particles or the debug menu need it (also with
+  the modern lighting off), and hand-placed lights are only
   used with Secondary Lights set to All (the file's sun whatever that setting). The project ships the
   files listed in [Lights placed by hand](#lights-placed-by-hand-our-choice).
 
@@ -821,10 +878,15 @@ Placing lamps one by one is slow; most lamps are one object class repeated. A le
 emit <tie|shrub|moby> <class> <ox oy oz> <r g b> <intensity> <radius> [flicker] [down]
 ```
 
-and every tie or shrub instance of that class, or every live moby of that class (those placed by the level and those the game
+(and `joint <n>` at the end of a moby's line), and every tie or shrub instance of that class, or every live moby of that class (those placed by the level and those the game
 spawns later - the walk goes to the moby array's end *(0x15ffe0), not to the placed ones' *(0x15ffdc) as before #102), lights as a point
 light at the offset in its own frame (a tie's or shrub's rows, model / 1024 at its scale; a moby's
-rotation, in world units), so a moby's lamp follows it. `down` (0 to 1, default 0) is the share of the
+rotation, in world units), so a moby's lamp follows it. A moby whose model the animation moves away from
+its position (the Buzzers of Novalis, moby 577, fly with their body high above the point the game keeps:
+their light stayed in the sky) takes `joint <n>`: the offset is then in that joint's frame as the frame's
+pose has it (the joint's matrix the skinning used, through the moby's drawn model-to-world matrix; units
+and axes the world's, `mrp_moby_draw_frame`), so the light follows the animated part. A moby not drawn
+this frame falls back to its position and rotation. `down` (0 to 1, default 0) is the share of the
 light aimed straight down, as a ceiling fixture's: the squared falloff and the cosine below the light
 of [Point lights per pixel](#point-lights-per-pixel). At the level's start the log says how many
 instances each line found (`[lights] level 1: emit shrub 282: 7 instances`): none means a wrong
@@ -833,12 +895,30 @@ within 60 units of the camera, the nearest first and faded at the reach and at t
 all), with Secondary Lights on All. A moby's lamp gets no point-light shadow cube (the lamp's own
 mesh around the light would hide it); a tie's may (cast by mobys only, as the emitters').
 
-**In the editor** (Lights tab, "Lights per object class"): a crosshair at the centre of the
-picture; the world point under it (the depth read there) and the objects at it - the tie instance
-whose model's box holds it, the shrub whose sphere holds it, the nearest moby within 6 units - with
-their class and the point in their frame; **Emit for every tie / shrub / moby of this class** adds a light at that point of every
-instance, live, then the offset, colour, intensity, radius, flicker and the share aimed down are edited and Save writes
-the `emit` lines with the rest of the file.
+**In the editor** (Lights tab, "Lights per object class"): the target (the crosshair or the clicked point, above) and the
+objects at it - the tie instance whose model's box holds it, the shrub whose sphere holds it, the drawn moby whose parts' bounding
+spheres hold it (the smallest; a big moby whose origin is far away, a cannon or a train, is found this way) or else the nearest moby
+within 6 units - with their class and the point in their frame; for a drawn moby also the joint of its pose nearest the point and the
+point in that joint's frame. **Emit for every tie / shrub / moby of this class** adds a light at that point of every instance, live;
+**Emit on this joint (follows the animation)** the same in the joint's frame. The offset, colour, intensity, radius, flicker, the
+share aimed down and a moby's joint are then edited, and Save writes the `emit` lines with the rest of the file.
+
+### Lines for every level
+
+A moby class is the same on every level (a gold bolt, a vendor, a Versa-Target, Clank), so its lines can live in one file,
+`data/lights/classes.txt` (next to the levels' files; `RAC1_LIGHTS_DIR` moves both): `emit moby ...`, `emissive moby ...` and
+`material moby ...` lines, written as a level's file writes them. They are read with each level's file and added after the level's
+own entries, on every level where that class appears. A level's own line wins: a level's `emit moby` line for a class leaves out
+every line of that class in `classes.txt` on that level, a level's `emissive` / `material` line for a moby class and texture leaves
+out the one for the same class and texture. Other lines in the file (comments, tie or shrub lines: those classes differ per level)
+are kept as they are and not used.
+
+In the editor, a selected moby light ("Lights per object class") and a moby surface in hand ("Emissive surfaces and materials")
+have a **For every level** box: ticked, Save writes that entry to `classes.txt` instead of the level's file (and unticked, back to
+the level's file); a deleted one leaves `classes.txt` too. Save writes `classes.txt` only when one of its entries changed, each
+line in its place, and a line not edited exactly as it was read (as the levels' files are written: `ps2fpu::NearestScope`). The
+lists show "(every level)" after such an entry. Nothing is moved there by itself: the shipped levels' moby lines stay in their
+files.
 
 Shipped: Novalis's neon tubes in the buildings by the river (shrub class 282, the panel of the
 fixture shrub 167; the automatic search does not see white texels, nor shrubs and mobys; aimed down
@@ -900,14 +980,24 @@ The same mechanism gives a texture a **material** instead (a `material` line: me
 with Options > Graphics > Surface Detail: see [Materials](materials.md). An `emissive` line is the same as `material ... emissive`; the
 two kinds share the 30 slots.
 
-**In the editor** (Lights tab, "Emissive surfaces and materials"): the crosshair's surface - the level's nearest tfrag, tie or shrub triangle within
-0.5 units of the point under it (`mrp_world_surface_at`) - shows its kind, class and texture; "Take the moby" takes the moby there
-instead (the nearest within 3 units; its local textures in use are stepped through). The arrows step through the class's textures,
+**In the editor** (Lights tab, "Emissive surfaces and materials"): the target's surface (the crosshair's or the clicked point's) - the
+level's nearest tfrag, tie or shrub triangle within 0.5 units of the point (`mrp_world_surface_at`) - shows its kind, class and
+texture; "Take the moby" takes the moby there instead (the one whose drawn parts hold the point, or the nearest within 3 units; its
+local textures in use are stepped through). The arrows step through the class's textures,
 the texture in hand pulses magenta with **Preview** ticked, **Mark emissive** / **Unmark** add or remove the line, and **Strength** and
 **Threshold** act live; Save writes `emissive` lines with the rest of the file. **Suggest** lists the level's tie and shrub textures
 with some bright saturated texels (the automatic emitters' test) or near-white ones (`RAC1_LIGHTS_WHITE`'s test) over less than 70 %
 of the texture, as candidates to look at with the preview; nothing is marked by itself. `RAC1_PICK_SCREEN=u,v` (testing) prints the
 surface at that point of the screen with the objects there.
+
+**The Textures tab** (debug menu, a tester's request, #101) lists the level's loaded textures as a grid of thumbnails: the tfrag,
+tie and shrub textures the MRP's world draws (`mrp_world_texture_list`; a tie or shrub texture only when a class of the level uses
+it) and the level's moby textures (`mrp_moby_texture_list`), each with the classes that use it (a tie's texture prim, a shrub's or a
+moby's local texture: as an `emissive` line names it). They are filtered by kind, by a number (the level's texture or a class) and
+to the marked ones (a yellow frame: emissive; blue: a material). A click puts the texture in hand with the preview on, by its first
+user (the others are buttons above the grid): the same Mark / material controls as the Lights tab, the same lines. The thumbnails are
+one atlas of 64 x 64 pictures made on the CPU from the renderers' decoded textures when the tab is first shown on a level (or
+**Refresh**): an OpenGL texture or a Vulkan image ImGui draws; nothing of the game's drawing changes.
 
 Shipped (#102, strength 1.3 so that they read a little brighter than the original, and do not darken): on Veldin the domed
 building's round cyan lamps (shrub class 569, three stacked instances per column, `tex 1` their glass) and its cyan door panels (tie
@@ -920,7 +1010,7 @@ cannot tell them apart), the teleporters (moby 1135, six textures, not yet looke
 
 All on Options > Graphics (`src/game/enhance/graphics.cpp`). They are kept in the graphics
 preferences and in each save's `save<N>.pc` (see [Settings](settings.md)). The New Game's Modern mode
-does not turn the lighting on.
+does not turn the lighting on; Experimental does (Lighting High, Dynamic Shadows On, Ambient Occlusion SSAO).
 
 | Row | Values | Default | Controls |
 |---|---|---|---|
@@ -967,7 +1057,7 @@ Finding the automatic emitters costs 10 to 50 ms once per level (the survey of e
 
 - At most 96 point lights in all, at most 4 with shadows, and hand-placed lights, emitters and cube
   shadows only within 60 units of the camera.
-- Mobys get no per-pixel point lights and are not lit by emitters or hand-placed lights.
+- Mobys take our point lights per pixel with flat face normals (faceted on a round character) and without their shadows.
 - Emitters' cube shadows are cast by mobys only.
 - The world's sun shading takes off the key light's term with the face normal (the game uses the
   vertex normal); the mobys' is exact.

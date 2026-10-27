@@ -22,8 +22,8 @@ int threads();
 
 // Runs fn(begin, end) over [0, n) cut in chunks of `grain` items (the last one shorter), chunk c = [c * grain, ...), on the
 // pool's workers and the calling thread, and returns when all are done. A chunk's index is begin / grain. An exception
-// thrown by a chunk is rethrown here (the first one). From one thread at a time (the main thread); a chunk must not call
-// parallel_for itself. With n <= grain, or one thread, fn runs on the caller alone.
+// thrown by a chunk is rethrown here (the first one). Two threads calling it at once run one after the other; a chunk
+// must not call parallel_for itself. With n <= grain, or one thread, fn runs on the caller alone.
 void parallel_for(size_t n, size_t grain, const std::function<void(size_t, size_t)>& fn);
 
 // The number of chunks parallel_for cuts [0, n) into.

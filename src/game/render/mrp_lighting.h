@@ -85,8 +85,21 @@ struct ClassLight {
     float intensity = 1.0f, radius = 8.0f, flicker = 0.0f;
     float down = 0.0f;  // (the share of the light aimed straight down, as a ceiling fixture's: 0 every way alike, 1 a downward Lambert lobe)
     bool on = true;
+    // a moby's: "joint <n>" - the offset in that joint's frame as the frame's pose moves it (its animated part: a flying Buzzer's body),
+    // -1 the moby's own position and rotation
+    int joint = -1;
+    // (every level's: a line of data/lights/classes.txt, not of the level's file - mrp_user_lights_save writes it there; gidx its
+    // place in that file's list, -1 one made global since the files were read)
+    bool global = false;
+    int gidx = -1;
 };
 std::vector<ClassLight>& mrp_user_class_lights();
+// orig: (host) the lines for every level (data/lights/classes.txt, RAC1_LIGHTS_DIR; our data): "emit moby ...", "emissive moby ...",
+// "material moby ..." as a level's file writes them - a moby class is the same on every planet (a gold bolt, a vendor, Clank). Read with
+// each level's file and added to its lists after the level's own (ClassLight::global / EmissiveSurface::global set), except where the
+// level's file has a line for the same moby class (emit) or the same class and texture (emissive, material): the level's wins there.
+// Saved by mrp_user_lights_save with the level's file (only when its lines changed: a line not edited is written back as it was read)
+const char* mrp_user_classes_path();
 // orig: (host) the objects at a world point (the debug menu's crosshair: the depth there): the tie instance whose model's box holds
 // it (the smallest), the nearest live moby within 6 units; each with its class and the point in its own frame (an "emit" offset)
 struct LightPick {
@@ -94,6 +107,12 @@ struct LightPick {
     int tie_class = 0, moby_class = 0, shrub_class = 0;
     float tie_off[3] = {0.0f, 0.0f, 0.0f}, moby_off[3] = {0.0f, 0.0f, 0.0f}, shrub_off[3] = {0.0f, 0.0f, 0.0f};
     float moby_dist = 0.0f;
+    // the moby: its address; drawn this frame with its pose, the joint whose origin is nearest the point and the point in that
+    // joint's frame (an "emit moby ... joint <n>" offset; -1 no pose)
+    uint32_t moby_addr = 0;
+    bool moby_part = false;  // (found by its drawn parts' spheres, not by its origin)
+    int moby_joint = -1;
+    float moby_joint_off[3] = {0.0f, 0.0f, 0.0f};
 };
 LightPick mrp_lighting_pick(const float p[3]);
 // orig: (host) the world point under a point of the 3D's view (u, v: 0..1 from the bottom left; the debug menu's crosshair): asked
@@ -196,6 +215,8 @@ struct EmissiveSurface {
     float threshold = 0.0f;  // the texels' brightest channel from which they glow (0..1; 0: the whole texture)
     int type = MAT_EMISSIVE;
     float p[3] = {0.0f, 0.0f, 0.0f};  // a material's parameters (as in its line; MatParam names them)
+    bool global = false;  // (a moby's line of data/lights/classes.txt, every level's: as ClassLight::global)
+    int gidx = -1;
 };
 constexpr int kEmissiveSlots = 30, kEmissivePreviewSlot = 31;
 // orig: (host) the material types' names as the level's file writes them ("emissive" for type 0), their parameters' names and defaults
@@ -236,6 +257,7 @@ struct SurfacePick {
     int texture = -1;  // the level's texture (the kind's table)
     int ntex = 0;      // the class's textures (tie: prims; shrub: local textures 0..15; tfrag: the level's)
     float dist = 0.0f;
+    float normal[3] = {0.0f, 0.0f, 1.0f};  // (the triangle's, either side: the caller turns it toward the camera)
 };
 SurfacePick mrp_world_surface_at(const float p[3]);
 // orig: (host) the level texture of a class's texture (-1 none) and the class's texture count
@@ -249,6 +271,23 @@ struct EmissiveCandidate {
 std::vector<EmissiveCandidate> mrp_world_emissive_candidates();
 // orig: (host) a moby class's local textures in use (mrp_moby_renderer.cpp): bit n for local texture n
 uint32_t mrp_moby_class_local_textures(int o_class);
+// orig: (host) the debug menu's texture page: the level's loaded textures of one kind (0 tfrag, 1 tie, 2 shrub: mrp_world_renderer.cpp;
+// 3 moby: mrp_moby_renderer.cpp) - the level's texture, its size, the classes using it (class, the class's texture as an emissive line
+// names it) and a thumb x thumb RGBA picture of it (the GS's alpha made opaque)
+struct TextureEntry {
+    int kind = 0;
+    int texture = -1;
+    int w = 0, h = 0;
+    std::vector<std::pair<int, int>> users;
+    std::vector<uint32_t> thumb;
+};
+std::vector<TextureEntry> mrp_world_texture_list(int thumb);
+std::vector<TextureEntry> mrp_moby_texture_list(int thumb);
+// orig: (host) a moby the frame draws (mrp_moby_renderer.cpp): the world point of one of its joints (-1: its model's origin) and that
+// frame's axes (columns, unit length) as its pose has them this frame, false when the moby is not drawn; `joints` its pose's count
+bool mrp_moby_draw_frame(uint32_t moby, int joint, float pos[3], float axes[9], int* joints = nullptr);
+// orig: (host) the drawn moby whose parts' bounding spheres hold a world point (the smallest sphere), false none
+bool mrp_moby_at(const float p[3], uint32_t* moby, int* o_class, float* dist);
 // orig: (host) the level's tie instances (their class, position and rows - a model unit / 1024 is a world unit at scale 1), made
 // once per level from its tables (mrp_world_renderer.cpp)
 struct TieSpot {

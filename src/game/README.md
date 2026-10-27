@@ -1,7 +1,8 @@
 # `src/game/` — faithful function-by-function port of R&C1
 
 Per [ADR 0002](../../docs/decisions.md), every source file under this tree is a port of specific
-original functions from the R&C1 ELF (`SCUS_971.99`) or a level overlay (`<level>.rax`).
+original functions from the R&C1 ELF (`SCUS_971.99`) or a level overlay (`<level>.rax`), except
+`render/` and `enhance/`: host code, whose functions are marked `// orig: (host)` or `// orig: (none)`.
 
 ## The contract
 
@@ -16,7 +17,7 @@ Every C++ function in `src/game/` must:
    behaviour is.
 4. Be proved against the original: the original function is run in an EE interpreter and the port
    must produce the same memory writes and return value ([ADR 0006](../../docs/decisions.md)). The
-   differential tests that do this are not part of this repository.
+   differential tests that do this are the oracle, in `tests/oracle/` (see [The oracle](../../docs/oracle.md)).
 
 ## What to do when the function calls something not yet ported
 
@@ -35,9 +36,10 @@ src/game/
   math/          # base-ELF vector math
   boot/          # the boot module and its disc reads
   input/         # the controller packet
-  render/        # the host's GL renderer: tfrag / tie / shrub / sky (ADR 0004), the moby
-                 # draw (ADR 0007), shaders, view
-  enhance/       # optional enhancements, off by default
+  render/        # the host's renderer: the Modern Rendering Pipeline (OpenGL and Vulkan) with its
+                 # lighting, materials, LOD, effects and particles, plus the older tfrag / tie /
+                 # shrub / sky renderers (ADR 0004) and moby draw (ADR 0007) kept for comparison
+  enhance/       # the PC options pages (Graphics, Controls, Advanced) and the update notice
   port_stubs.h   # the TODO_PORT macro
   debug_hooks.h  # hooks for the host debug menu (src/_devtools)
 ```

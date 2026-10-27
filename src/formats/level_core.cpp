@@ -16,7 +16,7 @@ std::span<const std::byte> level_file_body(std::span<const std::byte> file, bool
     if (head[0] != 48) return file;
     const std::size_t at = static_cast<std::size_t>(head[4]) * 0x800;
     const std::size_t n = static_cast<std::size_t>(head[5]) * 0x800;
-    if (at + n > file.size()) {
+    if (head[4] < 0 || head[5] < 0 || n > file.size() || at > file.size() - n) {
         if (out_of_range) *out_of_range = true;
         return file;
     }
@@ -26,7 +26,7 @@ std::span<const std::byte> level_file_body(std::span<const std::byte> file, bool
 namespace {
 
 bool part_fits(FileSpan s, std::size_t total) {
-    return s.offset >= 0 && s.size > 0 && static_cast<std::size_t>(s.offset + s.size) <= total;
+    return s.offset >= 0 && s.size > 0 && static_cast<std::size_t>(s.offset) + static_cast<std::size_t>(s.size) <= total;  // (no int32 sum: it can overflow)
 }
 
 // The `ref.count` rows of type T at `ref.offset` of the index; none when they do not fit.

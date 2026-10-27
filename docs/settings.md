@@ -60,7 +60,7 @@ headless runs) the row is the game's own Mono / Stereo.
 | AO Intensity | 25, 50, 75, 100, 125 (%) | 75 |
 | Sun Rays | Off, Low, Medium, High (more quality, strength and cost each step; Low has the strength of 0.4.x's Low, High of its High) | Off |
 | Surface Detail | Off, Low, High (materials: shiny metal, wet ground and puddles, water, lava, mud; High adds reflections and the lava's heat shimmer; with Lighting not Original, see [Materials](materials.md)) | Off |
-| Ambient Particles | Off, Low, High: our own dust, embers, fireflies, rain and snow on some levels, not in the original (see [Ambient particles](particles.md); `ambient_particles` in the preferences, item 50 of a save's block) | Off |
+| Ambient Particles | Off, Low, High: our own dust, embers, fireflies, rain and snow on some levels, not in the original (see [Ambient particles](particles.md); `ambient_particles` in the preferences, id 50 in `save<N>.pc`) | Off |
 | Texture Detail | Full, Original (PS2) | Full |
 
 - **The frame-rate cap** only paces the picture. The game itself always runs at 60 frames a second,
@@ -113,12 +113,16 @@ headless runs) the row is the game's own Mono / Stereo.
   older saves are read and ignored.
 - **Level of Detail** draws more detail further away, without changing the game's own decisions. See
   [Rendering](rendering.md#level-of-detail).
-- **Lighting and the seven rows after it** are the optional modern lighting; the seven only act
-  when Lighting is not Original. See [Lighting](lighting.md).
+- **Lighting and the eight rows after it** (Shadow Strength to Surface Detail) are the optional modern
+  lighting; the eight only act when Lighting is not Original. See [Lighting](lighting.md) and, for
+  Surface Detail, [Materials](materials.md).
+- **Ambient Particles** works with any Lighting: our own particles, drawn over the world in play, never
+  changing the game's state. See [Ambient particles](particles.md).
 
 ### Controls
 
-The controller and keyboard bindings, mouse look, look inversion and mouse sensitivity. See
+The controller and keyboard bindings, look inversion and mouse sensitivity (mouse look itself is the `mouse_look`
+line of `controls.txt`). See
 [Input](input.md#the-controls-page).
 
 ### Advanced
@@ -155,7 +159,7 @@ New Game opens a choice between three modes before the game starts
 | Level of Detail | Original | High | High |
 | Texture Detail | Original (PS2) | Full | Full |
 | Quick Select, Aiming, Movement | Normal, Original, Original | Pause, Modern, RAC 3 | Pause, Modern, RAC 3 |
-| Modern lighting (Lighting, Dynamic Shadows, Secondary Lights, Shadow Distance, Ambient Occlusion) | off (the defaults) | off (the defaults) | Lighting High, Dynamic Shadows On, Secondary Lights All, Shadow Distance Maximum, Ambient Occlusion SSAO (Shadow Strength and Sun Rays left as they are) |
+| Modern lighting (Lighting, Dynamic Shadows, Secondary Lights, Shadow Distance, Ambient Occlusion) | off (the defaults) | off (the defaults) | Lighting High, Dynamic Shadows On, Secondary Lights All, Shadow Distance Maximum, Ambient Occlusion SSAO (Shadow Strength, Sun Rays, Surface Detail and Ambient Particles left as they are) |
 
 Experimental is Modern plus the [modern lighting](lighting.md), which is experimental. No mode changes
 the window settings or Fades. The mode chosen is kept with the save.
@@ -191,7 +195,7 @@ Details:
 - **The channel:** Main menu > Updates > Update Channel. Players can switch between **Stable** (the
   latest release) and **Development** (`main`) at any time. A developer clone on a branch other than
   `main` stays on its branch.
-- **The installed version** is printed at start (`[orig] rac1-native 0.1.0 (v0.1.0-10-g7dee3d1, main)`):
+- **The installed version** is printed at start (`[orig] rac1-native 0.5.0 (v0.5.0-56-g0b232f5, main)`):
   the release's version and, for a git clone, `git describe` and the branch, recorded by the build
   (`cmake/version.cmake`).
 - **Skip Version** is kept in `advanced_options.txt` (`update_skip <tag or commit>`); remove the
@@ -248,13 +252,14 @@ The debug tools are for development and testing. They are off unless asked for w
 | The light editor | not available | the debug menu's Lights tab |
 | The Profiler (frame time, CPU and GPU per stage, threads, memory, exports) | not available | the debug menu's Profiler tab, and its overlay |
 | Giving and taking back items, goodies, weapons and ammo, gold bolts and gold weapons, skill points, cheats (unlocked and switched on), the Challenge Mode (the pause menu's Goodies), the planets on the ship's map; "Unlock everything" | not available | the debug menu's Unlocks tab |
+| Hoverboard anywhere (the race's hoverboard ridden away from the race on Rilgar and Kalebo III; a free board on every other level) | not available | the debug menu's Player tab |
 | `--level N` | ignored, with a message | starts on level N |
 | `RAC1_*` testing variables | removed from the environment at start, with a message | honoured |
 
 The debug menu's code is in `src/_devtools/` and can be left out of the build entirely with
 `-DRAC1_DEVTOOLS=OFF`.
 
-**Environment variables a player may use** (always honoured): `RAC1_ISO` (the disc image's path),
+**Environment variables a player may use** (always honoured): `RAC1_ISO` (the disc image's path, for the setup),
 `RAC1_MEMCARD_DIR` (the memory card's directory), `RAC1_GRAPHICS_FILE`, `RAC1_ADVANCED_FILE`,
 `RAC1_CONTROLS_FILE`, `RAC1_RENDERER`, `RAC1_WINDOW`, `RAC1_FULLSCREEN`, `RAC1_VSYNC`, `RAC1_FPS_CAP`,
 `RAC1_NO_AUDIO`, `RAC1_AUDIO_DEVICE`, `RAC1_AUDIO_PERIOD_MS`, `RAC1_AUDIO_PERIODS`,

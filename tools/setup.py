@@ -5,16 +5,18 @@ From a fresh clone and your own disc image (Ratchet & Clank: the North American 
 SCES-50916) to the game:
   1. checks the system and says what to install;
   2. checks your disc image;
-  3. generates the part of the game's code that is made from the game's own code on the disc
+  3. extracts the whole disc into assets/disc/ (tools/disc_extract.py): the game reads those files, not the image;
+  4. generates the part of the game's code that is made from the game's own code on the disc
      (Python only, before the build): the boot executable and the overlay maps it needs, then
      tools/codegen/generate_all.py into assets/generated/src/;
-  4. builds the game (build/rac1-native);
-  5. generates the game's data into assets/ (`rac1-native --setup`, one step at a time), and makes the
-     game find the disc (assets/iso/rac1-ntsc-u.iso, or assets/iso/rac1-pal.iso for the PAL disc);
-  6. offers to start the game.
+  5. builds the game (build/rac1-native);
+  6. generates the game's data into assets/ (`rac1-native --setup`, one step at a time), and makes the
+     setup find the disc again (assets/iso/rac1-ntsc-u.iso, or assets/iso/rac1-pal.iso for the PAL disc);
+  7. offers to start the game.
 
 Re-runnable: the build only recompiles what changed, and each step is redone only when the sources
-that make its output (or the disc) changed since it last ran, or when it is forced (--force).
+that make its output (or the disc) changed since it last ran, when its output is missing (deleted since: a quick
+look at its files, step_missing), or when it is forced (--force).
 The record of what was generated with what is assets/setup-state.json. docs/setup.md is the guide.
 
 `tools/setup.py --code-inputs` (for CMake) prints the fingerprint of the generated code's sources, then
@@ -38,17 +40,23 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import disc_extract  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 WINDOWS = os.name == "nt"  # (a native Windows Python: MSYS2's CLANG64 / UCRT64 one, or python.org's)
 SETUP_CMD = "setup.cmd" if WINDOWS else "./setup.sh"  # (what the messages tell the player to run)
 BUILD_DIR = ROOT / "build"
 EXE = BUILD_DIR / ("rac1-native.exe" if WINDOWS else "rac1-native")
 ASSETS_DIR = ROOT / "assets"
-# where the game reads the disc (runtime/kernel/disc.cpp): a link, one name per region
+# where the setup finds the disc again (runtime/kernel/disc.cpp: the game too, with RAC1_READ_ISO=1): a link, one name
+# per region
 GAME_ISOS = {"NTSC-U": ASSETS_DIR / "iso/rac1-ntsc-u.iso", "PAL": ASSETS_DIR / "iso/rac1-pal.iso"}
 # where links cannot be made (Windows without the privilege), the disc image's path instead (runtime/kernel/disc.cpp)
 GAME_ISO_PATH_FILE = ASSETS_DIR / "iso/disc-path.txt"
 STATE_FILE = ASSETS_DIR / "setup-state.json"
+# the disc, extracted (tools/disc_extract.py): what the game reads while it runs (runtime/kernel/disc.cpp)
+DISC_DIR = ASSETS_DIR / "disc"
 SECTOR = 2048
 
 # The generated code: tools/codegen/generate_all.py writes CODE_ROOT/src/... (the same tree as src/), and
@@ -72,6 +80,8 @@ CODE_SOURCES = ["tools/codegen/**/*", "tools/overlay_match/overlay_match.py", "t
 # What the generated VU programs come from, for the data steps that run them
 VU_CODEGEN = ["tools/codegen/vu2cpp*.py", "tools/codegen/vu_micro.py"]
 
+# The disc's files: every byte of the image, extracted once (redone when the disc or the extractor changes).
+DISC_STEP = ("disc", "the disc's files", ["tools/disc_extract.py"])
 # The steps before the build, done by this tool (Python only), with the sources that make each one's output.
 CODE_STEPS = [
     ("elf", "the boot executable", []),
@@ -91,7 +101,7 @@ STEPS = [
      ["src/setup/scene_export.*", "src/setup/kick_trace.*", "src/formats/**/*", "src/game/ovl/moby_vu1*",
       "tools/codegen/gen_moby_vu_fast.py", *VU_CODEGEN, "src/game/render/mrp_world_assets.*", "runtime/vu/**/*"]),
 ]
-STEP_NAMES = [s[0] for s in CODE_STEPS] + [s[0] for s in STEPS]
+STEP_NAMES = [DISC_STEP[0]] + [s[0] for s in CODE_STEPS] + [s[0] for s in STEPS]
 
 def enable_windows_colors():
     """The console's escape sequences (Windows 10 and newer); False when they cannot be turned on."""
@@ -544,6 +554,14 @@ def disc_fingerprint(iso):
     return f"{looks_like_ps2_disc(iso)}:{st.st_size}"
 
 
+def disc_boot(iso):
+    """The disc's boot executable's name ("SCUS_971.99"): read from the image, or, when the image is gone (the game
+    does not need it once its files are extracted), from the record of the disc that was extracted."""
+    if iso is not None and Path(iso).is_file():
+        return looks_like_ps2_disc(iso)
+    return load_state().get("disc_image", "").split(":")[0] or None
+
+
 def iso_root_file(path, name):
     """(start, size) in bytes of a file in the disc image's root directory, or None."""
     with open(path, "rb") as f:
@@ -565,6 +583,55 @@ def iso_root_file(path, name):
     return None
 
 
+# --- 2b. The disc's files -----------------------------------------------------------------------
+# The game reads its disc while it runs: the files tools/disc_extract.py cuts the image into, in assets/disc/ (every byte
+# of the image, in the files its tables name). Extracted once, again when the disc or the extractor changes.
+
+def disc_step_fingerprint(disc):
+    return f"{disc}:{sources_fingerprint(DISC_STEP[2])}"
+
+
+def extract_disc(iso, forced):
+    state = load_state()
+    disc = disc_fingerprint(iso)
+    fingerprint = disc_step_fingerprint(disc)
+    current = "disc" not in forced and state.get("disc") == fingerprint
+    missing = disc_extract.layout_missing(DISC_DIR) if current else None
+    if current and missing is None:
+        ok("The disc's files: up to date")
+        return
+    if missing:
+        warn(f"{missing}: extracting the disc again")
+    for key in ("disc", "disc_image", "disc_check"):
+        state.pop(key, None)
+    save_state(state)
+    print(f"  Extracting your disc into {DISC_DIR.relative_to(ROOT)}{os.sep} (about 4 GB; the old files there first removed)...",
+          flush=True)
+    t = time.time()
+    shown = [-1]
+
+    def show(done, total):
+        progress(done, total)
+        pct = done * 100 // total
+        if sys.stdout.isatty() and not LAUNCHER and pct != shown[0]:
+            shown[0] = pct
+            print(f"\r  {pct:3d}% (written, then read back and checked)", end="", flush=True)
+
+    try:
+        plan = disc_extract.extract(iso, DISC_DIR, show)
+    except (disc_extract.DiscError, OSError) as e:
+        if sys.stdout.isatty() and not LAUNCHER:
+            print()
+        fail(f"Extracting the disc failed: {e}")
+    if sys.stdout.isatty() and not LAUNCHER:
+        print("\r" + " " * 48 + "\r", end="")
+    ok(f"Extracted {len(plan.files)} files ({plan.total / 2**30:.2f} GB) into {DISC_DIR.relative_to(ROOT)}{os.sep} "
+       f"in {time.time() - t:.0f} s, each checked against the image")
+    state["disc"] = fingerprint
+    state["disc_image"] = disc
+    save_state(state)
+
+
 # --- 3. The generated code ----------------------------------------------------------------------
 # Part of the game's code is generated from the game's own MIPS and VU code on the disc, by tools/codegen/
 # (docs/architecture.md, "The generated code"). It needs the boot executable and the overlay address maps, and
@@ -580,12 +647,12 @@ def code_sources_fingerprint():
 
 def boot_elf(iso):
     """Where the disc's boot executable goes: assets/dumps/SCUS_971.99, or SCES_509.16 for the PAL disc."""
-    return DUMPS / looks_like_ps2_disc(iso)
+    return DUMPS / disc_boot(iso)
 
 
 def region_table(iso):
     """The region table of another region's disc (data/regions/<serial>.txt), None for the NTSC-U disc."""
-    serial, region = KNOWN_DISCS[looks_like_ps2_disc(iso)][:2]
+    serial, region = KNOWN_DISCS[disc_boot(iso)][:2]
     if region == "NTSC-U":
         return None
     table = REGIONS / f"{serial}.txt"
@@ -665,7 +732,7 @@ def generate_code(iso, jobs):
     env = dict(os.environ, RAC1_ASSETS=str(ASSETS_DIR), RAC1_ISO=str(iso))
     cmd = [sys.executable, str(GENERATE_ALL), "--out", str(CODE_ROOT), "--no-insn-comments", "--jobs", str(jobs)]
     done = 0
-    with open(CODE_LOG, "w") as log:
+    with open(CODE_LOG, "w", encoding="utf-8", errors="replace") as log:
         log.write("$ " + " ".join(cmd) + "\n")
         proc = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                 errors="replace")
@@ -698,12 +765,25 @@ def generate_code(iso, jobs):
 
 
 def code_current():
-    """True when the generated code is there and was made from the current sources (what CMake checks)."""
+    """True when the generated code is there and was made from the current sources (what CMake checks), every file
+    its list names there too (CMake would stop at the first one missing)."""
     try:
-        m = re.search(r'RAC1_CODEGEN_FINGERPRINT "(\w+)"', GEN_LIST.read_text())
+        text = GEN_LIST.read_text()
     except OSError:
         return False
-    return bool(m) and m.group(1) == code_sources_fingerprint()
+    m = re.search(r'RAC1_CODEGEN_FINGERPRINT "(\w+)"', text)
+    return bool(m) and m.group(1) == code_sources_fingerprint() and code_files_missing(text) is None
+
+
+def code_files_missing(text):
+    """The first file generated_sources.cmake lists that is not there, or None."""
+    m = re.search(r"set\(RAC1_GENERATED_SOURCES\n(.*?)\)", text, re.S)
+    if not m:
+        return GEN_LIST
+    for line in m.group(1).split():
+        if not (GEN_SRC / line).is_file():
+            return GEN_SRC / line
+    return None
 
 
 def code_step_fingerprint(name, patterns, disc, state):
@@ -713,15 +793,63 @@ def code_step_fingerprint(name, patterns, disc, state):
     return fingerprint
 
 
-def code_step_present(name, iso):
+# What each step leaves, looked at before its record is trusted: a step whose output was deleted since (all of
+# assets/generated, or part of it) runs again. Existence (and a non-empty file) only, so that a re-run stays quick.
+# The data steps: the file each of the game's exporters writes last in a directory, and skips the directory on when it
+# is there (src/setup/mrp_export.cpp, scene_export.cpp), and a class file at least in each level's mobys.
+MRP = ASSETS_DIR / "generated/mrp"
+MRP_LEVELS = [f"level{lv}" for lv in range(19)] + ["title"]
+
+
+def first_missing(paths):
+    for p in paths:
+        try:
+            if p.stat().st_size > 0:
+                continue
+        except OSError:
+            pass
+        return p
+    return None
+
+
+def step_missing(name, iso):
+    """Why a step's output is not all there ("<path> is missing"), or None when it is."""
     if name == "elf":
-        return boot_elf(iso).is_file()
-    if name == "overlay":
-        other = region_table(iso) is not None
-        return ((OVERLAY_MAPS / "front_reloc.txt").is_file()
-                and all((OVERLAY_MAPS / f"level{lv}.txt").is_file() for lv in range(1, 19))
-                and (not other or all((OVERLAY_MAPS / f"codegen/level{lv}.txt").is_file() for lv in range(1, 19))))
-    return code_current()
+        files = [boot_elf(iso)]
+    elif name == "overlay":
+        files = [OVERLAY_MAPS / "front_reloc.txt"] + [OVERLAY_MAPS / f"level{lv}.txt" for lv in range(1, 19)]
+        if region_table(iso) is not None:
+            files += [OVERLAY_MAPS / f"codegen/level{lv}.txt" for lv in range(1, 19)]
+    elif name == "code":
+        try:
+            text = GEN_LIST.read_text()
+        except OSError:
+            return f"{GEN_LIST.relative_to(ROOT)} is missing"
+        gone = code_files_missing(text)
+        if gone is not None:
+            return f"{gone.relative_to(ROOT)} is missing"
+        return None if code_current() else f"{GEN_LIST.relative_to(ROOT)} is out of date"
+    elif name == "moby":
+        files = ([MRP / f"moby/{d}/textures.mrpt" for d in MRP_LEVELS] + [MRP / f"moby/armor/{k}.mrpt" for k in range(4)])
+        if first_missing(files) is None:
+            for d in MRP_LEVELS[:-1]:
+                if not any(MRP.joinpath("moby", d).glob("*.mrpm")):
+                    return f"{(MRP / 'moby' / d).relative_to(ROOT)} has no models"
+    elif name == "world":
+        files = [MRP / f"world/{d}/{f}" for d in MRP_LEVELS
+                 for f in ("world.mrpw", "textures_tfrag.mrpt", "textures_tie.mrpt", "textures_shrub.mrpt")]
+    elif name == "flight":
+        files = [MRP / "moby/flight/textures.mrpt", MRP / "world/flight/world.mrpw"]
+    else:
+        return None
+    gone = first_missing(files)
+    if gone is None:
+        return None
+    # the highest directory that is gone, the clearest to read ("assets/generated/mrp/world is missing")
+    top = gone
+    while not top.parent.exists() and top.parent != ASSETS_DIR:
+        top = top.parent
+    return f"{top.relative_to(ROOT)} is missing"
 
 
 def prepare_code(iso, forced, jobs):
@@ -730,9 +858,12 @@ def prepare_code(iso, forced, jobs):
     disc = disc_fingerprint(iso)
     for name, what, patterns in CODE_STEPS:
         fingerprint = code_step_fingerprint(name, patterns, disc, state)
-        if name not in forced and state.get(name) == fingerprint and code_step_present(name, iso):
+        missing = step_missing(name, iso) if state.get(name) == fingerprint else None
+        if name not in forced and state.get(name) == fingerprint and missing is None:
             ok(f"{what[0].upper() + what[1:]}: up to date")
             continue
+        if missing and name not in forced:
+            warn(f"{missing}: generating {what} again")
         print(f"  {what[0].upper() + what[1:]}...", flush=True)
         state.pop(name, None)
         if name == "elf":
@@ -745,6 +876,20 @@ def prepare_code(iso, forced, jobs):
             generate_code(iso, jobs)
         state[name] = fingerprint
         save_state(state)
+
+
+def check_disc_files(iso):
+    """Once after each extraction: the game itself reads every sector of the disc through its files and through the
+    image, and compares (rac1-native --setup --compare-disc)."""
+    state = load_state()
+    if state.get("disc_check") == state.get("disc"):
+        return
+    print("  Checking the disc's files against your disc image (every sector, read the way the game reads them)...",
+          flush=True)
+    if subprocess.run([str(EXE), "--setup", "--iso", str(iso), "--compare-disc"], cwd=ROOT, env=game_env()).returncode:
+        fail(f"The disc's files do not read the same as your disc image. Run {SETUP_CMD} --force disc to extract them again.")
+    state["disc_check"] = state.get("disc")
+    save_state(state)
 
 
 # --- 4. The build -------------------------------------------------------------------------------
@@ -787,14 +932,14 @@ BUILD_LOG = BUILD_DIR / "setup-build.log"
 
 def run_logged(cmd, log):
     """Runs a build command with its output in `log`, showing only its progress; on failure, the errors."""
-    with open(log, "a") as f:
+    with open(log, "a", encoding="utf-8", errors="replace") as f:
         f.write("$ " + " ".join(cmd) + "\n")
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
         shown = ""
         for line in proc.stdout:
             f.write(line)
             m = re.match(r"\[\s*(\d+)%\]", line)
-            if not m and WINDOWS:  # (Ninja's progress: [done/total])
+            if not m:  # (Ninja's progress: [done/total]; a build directory configured with Ninja on any system)
                 n = re.match(r"\[(\d+)/(\d+)\]", line)
                 if n:
                     m = re.match(r"(\d+)", str(int(n.group(1)) * 100 // max(1, int(n.group(2)))))
@@ -901,13 +1046,26 @@ def generate(iso, forced):
     disc = disc_fingerprint(iso)
     for name, what, patterns in STEPS:
         fingerprint = f"{disc}:{sources_fingerprint(patterns)}"
-        if name not in forced and state.get(name) == fingerprint:
+        current = name not in forced and state.get(name) == fingerprint
+        missing = step_missing(name, iso) if current else None
+        if current and missing is None:
             ok(f"{what[0].upper() + what[1:]}: up to date")
             continue
+        cmd = [str(EXE), "--setup", "--iso", str(iso), "--step", name]
+        if current:
+            # up to date but part of it deleted: the step makes again only what is not there (its exporters skip a level
+            # that is), and from scratch if that was not enough
+            warn(f"{missing}: generating {what} again")
+            if subprocess.run(cmd, cwd=ROOT, env=game_env()).returncode:
+                fail(f"Generating {what} failed (see the messages above). Run {SETUP_CMD} again to retry.")
+            if step_missing(name, iso) is None:
+                continue
         # a step that is forced, whose sources changed, or that never finished, is redone from scratch
-        cmd = [str(EXE), "--setup", "--iso", str(iso), "--step", name, "--force"]
-        if subprocess.run(cmd, cwd=ROOT, env=game_env()).returncode:
+        if subprocess.run(cmd + ["--force"], cwd=ROOT, env=game_env()).returncode:
             fail(f"Generating {what} failed (see the messages above). Run {SETUP_CMD} again to retry.")
+        gone = step_missing(name, iso)
+        if gone is not None:  # (reported, not fatal: the game draws without what is missing, and says so)
+            warn(f"Generating {what} left out files ({gone}).")
         state[name] = fingerprint
         save_state(state)
 
@@ -932,25 +1090,44 @@ def newest_mtime(paths):
     return newest
 
 
+def current_disc():
+    """(the image, its fingerprint): the image the setup knows; once the disc is extracted the image may be gone
+    (the game does not read it), and the fingerprint is then the extracted disc's. (None, None): no disc set up."""
+    iso = known_iso()
+    if iso is not None and iso.is_file():
+        return iso, disc_fingerprint(iso)
+    disc = load_state().get("disc_image")
+    if disc and disc_extract.layout_missing(DISC_DIR) is None:
+        return None, disc
+    return None, None
+
+
+def disc_steps_due(iso, disc):
+    """What is made from the disc and is due again (everything but the build), for that disc."""
+    due = []
+    state = load_state()
+    if state.get("disc") != disc_step_fingerprint(disc) or disc_extract.layout_missing(DISC_DIR):
+        due.append(DISC_STEP[1])
+    for name, what, patterns in CODE_STEPS:
+        if state.get(name) != code_step_fingerprint(name, patterns, disc, state) or step_missing(name, iso):
+            due.append(what)
+    for name, what, patterns in STEPS:
+        if state.get(name) != f"{disc}:{sources_fingerprint(patterns)}" or step_missing(name, iso):
+            due.append(what)
+    return due
+
+
 def setup_due():
     """What a setup would redo now, without doing it ([] when the game is up to date): for play.cmd and
     ./setup.sh --check. Each step is judged as the setup itself judges it."""
     if not EXE.exists():
         return ["the game is not built yet"]
-    iso = known_iso()
-    if iso is None or not iso.is_file():
+    iso, disc = current_disc()
+    if disc is None:
         return ["the disc image is not set up"]
-    due = []
-    state = load_state()
-    disc = disc_fingerprint(iso)
-    for name, what, patterns in CODE_STEPS:
-        if state.get(name) != code_step_fingerprint(name, patterns, disc, state) or not code_step_present(name, iso):
-            due.append(what)
+    due = disc_steps_due(iso, disc)
     if newest_mtime(BUILD_INPUTS) > EXE.stat().st_mtime:
         due.append("the game's program (its sources are newer)")
-    for name, what, patterns in STEPS:
-        if state.get(name) != f"{disc}:{sources_fingerprint(patterns)}":
-            due.append(what)
     return due
 
 
@@ -984,7 +1161,7 @@ def config_dir():
 
 
 def configured_channel(override):
-    """The update channel: --channel when given, else Options > Advanced > Update Channel (stable by default)."""
+    """The update channel: --channel when given, else Main menu > Updates > Update Channel (stable by default)."""
     if override:
         return override
     adv = Path(os.environ.get("RAC1_ADVANCED_FILE") or (config_dir() / "advanced_options.txt"))
@@ -1102,6 +1279,13 @@ def update_git(channel):
         fail("This clone has local commits not on origin/main. They are never overwritten.")
     new_head = subprocess.run(["git", "rev-parse", "origin/main"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
     if branch != "main":
+        # (checkout -B resets the local main: never when it has commits origin/main lacks - a detached HEAD, a release
+        # tag checked out by the stable channel, says nothing about them)
+        has_main = subprocess.run(["git", "rev-parse", "-q", "--verify", "refs/heads/main"], cwd=ROOT,
+                                  capture_output=True).returncode == 0
+        if has_main and subprocess.run(["git", "merge-base", "--is-ancestor", "refs/heads/main", "origin/main"],
+                                       cwd=ROOT).returncode != 0:
+            fail("The local branch main has commits not on origin/main. They are never overwritten.")
         if subprocess.run(["git", "checkout", "-B", "main", "origin/main"], cwd=ROOT).returncode != 0:
             restore()
             fail("Could not switch to main. Your current build was not changed.")
@@ -1382,6 +1566,8 @@ def finish_update(args, restore_sources, exe_bak, state_bak, gen_bak, had_state)
         child_cmd += ["-j", str(args.jobs)]
     if args.force:
         child_cmd += ["--force", ",".join(sorted(args.force))]
+    if args.native_arch:
+        child_cmd += ["--native-arch", args.native_arch]
     rc = subprocess.run(child_cmd, cwd=ROOT).returncode
     if rc != 0:
         warn("The update failed: restoring the previous build and sources...")
@@ -1467,7 +1653,7 @@ def main():
     ap.add_argument("--update", action="store_true",
                     help="update to the latest release (or main on the development channel), then rebuild what changed")
     ap.add_argument("--channel", choices=("stable", "development"), default=None,
-                    help="with --update: the channel to update to (default: Options > Advanced > Update Channel)")
+                    help="with --update: the channel to update to (default: Main menu > Updates > Update Channel)")
     ap.add_argument("--force", nargs="?", const="all", default=set(), type=parse_force, metavar="STEPS",
                     help=f"regenerate even if up to date: everything, or some steps ({','.join(STEP_NAMES)})")
     ap.add_argument("-j", "--jobs", type=int, default=None, help="parallel jobs (the code generation and the build)")
@@ -1492,7 +1678,14 @@ def main():
     print(color("1", "\nRatchet & Clank (rac1-native) setup"))
     # --build-only needs the disc only when the generated code must be made again
     need_disc = not args.build_only or not code_current() or bool(args.force & {"elf", "overlay", "code"})
-    total = 5 if not args.build_only else (4 if need_disc else 2)
+    # the image gone once the disc was extracted (the game does not read it): a setup with nothing to make from the disc
+    # (only the build, after an update) goes on without it
+    known, disc = current_disc()
+    no_image = (need_disc and not args.build_only and not args.iso and not args.force and known is None and disc is not None
+                and not disc_steps_due(None, disc))
+    if no_image:
+        need_disc = False
+    total = 2 if no_image else 6 if not args.build_only else (4 if need_disc else 2)
     n = 0
 
     def next_step(msg):
@@ -1506,9 +1699,17 @@ def main():
     iso = None
     if need_disc:
         next_step("Checking your disc image")
+        if not args.iso and known is None and disc is not None:
+            warn("Something made from your disc must be made again (after an update): the setup needs your disc image.")
         iso = check_disc(args.iso)
+        if not args.build_only:
+            next_step("Extracting your disc's files")
+            extract_disc(iso, args.force)
         next_step("Generating the game's code from your disc")
         prepare_code(iso, args.force, jobs)
+    elif no_image:
+        ok(f"Your disc image is not needed: everything made from it is up to date ({DISC_DIR.relative_to(ROOT)}{os.sep} "
+           "and the rest).")
 
     next_step("Building the game")
     if args.no_build:
@@ -1520,13 +1721,17 @@ def main():
     if args.build_only:
         return
 
-    next_step("Generating the game's data from your disc")
-    r = subprocess.run([str(EXE), "--setup", "--iso", str(iso), "--check-iso"], cwd=ROOT, env=game_env())
-    if r.returncode:
-        sys.exit(1)
-    generate(iso, args.force)
+    if not no_image:
+        next_step("Generating the game's data from your disc")
+        r = subprocess.run([str(EXE), "--setup", "--iso", str(iso), "--check-iso"], cwd=ROOT, env=game_env())
+        if r.returncode:
+            sys.exit(1)
+        generate(iso, args.force)
+        check_disc_files(iso)
 
     print(color("1;32", "\nAll done: Ratchet & Clank is ready."))
+    print(f"The game reads your disc's files in {DISC_DIR.relative_to(ROOT)}{os.sep}, not your disc image: it no longer "
+          "needs the image.\nKeep the image anyway: an update that changes what is made from the disc asks for it again.")
     play = "build\\rac1-native.exe" if WINDOWS else "./build/rac1-native"
     print(f"To play, run this from {ROOT}:\n    {play}\n")
     if args.play or (not args.no_play and ask("Start the game now?", True)):

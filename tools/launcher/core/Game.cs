@@ -57,7 +57,7 @@ namespace Rac1Launcher
         }
     }
 
-    /// <summary>The update channel, the game's own setting (Options > Advanced > Update Channel): the line
+    /// <summary>The update channel, the game's own setting (Main menu > Updates > Update Channel): the line
     /// "update_channel 0|1" of advanced_options.txt (src/game/enhance/advanced.cpp), which tools\setup.py --update also
     /// reads. The launcher reads and writes that same line, so the two never disagree.</summary>
     static class Channel
@@ -302,7 +302,8 @@ namespace Rac1Launcher
                     string top = rel.Split('/')[0];
                     if (top == ".git" || top == ".toolchain" || top == "assets" || top == "build") continue;
                     string dst = Path.GetFullPath(Path.Combine(dir, rel.Replace('/', Path.DirectorySeparatorChar)));
-                    if (!dst.StartsWith(Path.GetFullPath(dir), StringComparison.OrdinalIgnoreCase)) continue;
+                    string inside = Path.GetFullPath(dir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                    if (!dst.StartsWith(inside, StringComparison.OrdinalIgnoreCase)) continue;
                     Directory.CreateDirectory(Path.GetDirectoryName(dst));
                     e.ExtractToFile(dst, true);
 #if !WINDOWS_LAUNCHER

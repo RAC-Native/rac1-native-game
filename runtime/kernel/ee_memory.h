@@ -13,20 +13,6 @@ namespace rac1 {
 inline constexpr u32 SPR_BASE = 0x70000000u;
 inline constexpr size_t SPR_SIZE = 0x4000;
 
-// SPR frame layout used by moby_build_visible_queue (orig: 0x00250768).
-//
-// Layout:
-//   [0x0000 .. 0x01FF]  uint16_t class_heads[256]   per-class visible list head slot indices
-//   [0x0200 .. 0x027D]  (unused in native port; next_visible lives in Moby+0xb4)
-//   [0x027E .. 0x3FFF]  free
-struct ScratchpadFrame {
-    // class_heads[class_byte] = first slot index visible for that class.
-    // MOBY_CHAIN_END (0xFFFF) means no visible Moby of that class.
-    uint16_t class_heads[256];  // 512 bytes
-    uint8_t  _pad[SPR_SIZE - 512];
-};
-static_assert(sizeof(ScratchpadFrame) == SPR_SIZE);
-
 // Initialize the virtual memory buffers (RAM and scratchpad).
 void init_memory();
 
@@ -72,7 +58,6 @@ inline const void* ee_ram_ptr_read(u32 vaddr) {
     if (vaddr - SPR_BASE < static_cast<u32>(SPR_SIZE) && ee_detail::g_spr != nullptr) return ee_detail::g_spr + (vaddr - SPR_BASE);
     return ee_ram_ptr_slow(vaddr, false);
 }
-const void* ee_ram_ptr_const(u32 vaddr);
 
 // On the EE address 0 is ordinary (kernel) memory: the original code reads it through null class
 // slots and the like. The host treats 0 as a null pointer unless this is set (RAC1_REAL_HERO).
@@ -214,18 +199,11 @@ void ee_write(u32 vaddr, const T& val) {
     std::memcpy(ptr, &val, sizeof(T));
 }
 
-
-
-// Get the base pointer of the 32MB RAM block (useful for debug inspectors/tools).
+// Get the base pointer of the RAM block (64 MB: the 32 MB of the PS2 and the host area above it) (useful for debug inspectors/tools).
 u8* ee_get_ram_base();
 
 // Get the base pointer of the 16KB Scratchpad block.
 u8* ee_get_scratchpad_base();
-
-// Return pointer to the ScratchpadFrame overlay on the scratchpad.
-inline ScratchpadFrame* spr_frame() {
-    return reinterpret_cast<ScratchpadFrame*>(ee_get_scratchpad_base());
-}
 
 } // namespace rac1
 

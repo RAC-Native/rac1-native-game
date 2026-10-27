@@ -75,6 +75,7 @@ namespace Rac1Launcher
                 catch (Win32Exception e) { onLine($"ERROR  Could not start {exe}: {e.Message}"); return -2; }
 #if WINDOWS_LAUNCHER
                 AssignProcessToJobObject(job, proc.Handle);
+                if (cancelled) TerminateJobObject(job, 1);  // (a Cancel between the start and the job: the job was empty then)
 #else
                 running = proc;
                 if (cancelled) Kill(proc);

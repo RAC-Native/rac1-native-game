@@ -217,11 +217,6 @@ struct GsTriangle {
 // no-clip program takes the moby's (T.w + offset.w).
 void kick_triangles(const Packet& p, const Vu1Consts& k, const std::vector<std::array<int32_t, 3>>& pos, const std::vector<std::array<int32_t, 4>>& rgba,
                     std::vector<GsTriangle>& out, bool clip = false);
-// The triangles of a packet's kick program as slot triples (the position slots; the winding
-// alternated along each strip as a GL strip would), each with the texture prim in effect.
-void kick_slot_triangles(const Packet& p, std::vector<std::array<uint8_t, 3>>& tris, std::vector<int16_t>& prims);
-void vu1_triangles(const Packet& p, const Vu1Consts& k, const std::vector<std::array<int32_t, 3>>& pos, const std::vector<std::array<int32_t, 4>>& rgba,
-                   std::vector<GsTriangle>& out);
 
 }  // namespace rac1::mrp
 

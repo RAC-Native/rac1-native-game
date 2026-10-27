@@ -8,6 +8,7 @@
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_view.h>
 #include <profiler/host_profiler.h>
+#include <runtime/kernel/ee_copy.h>
 #include <runtime/vk/vk_context.h>
 #include <runtime/vk/vk_shaders.h>
 
@@ -119,6 +120,186 @@ struct Cascade {
     float range = 1.0f;   // its depth range, units (the box's near to far)
 };
 
+}  // namespace
+// (mrp_moby_renderer.cpp: declared here, not in mrp_lighting.h - a game header is an input of the generated code's fingerprint, and
+// changing one asks for ./setup.sh again) the light's clip-space rectangle of each moby part a caster pass draws, 8 floats each
+// appended to `out` (x0, y0, x1, y1, its world centre, radius: the parts mrp_moby_caster_rect takes); the parts' count
+int mrp_moby_caster_parts(const float* light_vp, std::vector<float>& out, const float* within = nullptr);
+namespace {
+// ---- the mobys over a cascade's static cache: their rectangles (RAC1_SHADOW_CLUSTERS) ---------------------------------------------
+// Each frame a cached cascade's layer gets back the cache where last frame's mobys were drawn, then this frame's mobys are drawn,
+// each inside a rectangle (the scissor) that the next frame puts back: nothing the mobys drew stays. One rectangle around every
+// moby part was most of the near cascade's map once two mobys stood apart (Ratchet and a moby across the box: its 4096-texel map
+// copied whole, 64 MB, every frame). The parts are grouped instead into at most kMaxClusters rectangles, each drawn with its own
+// scissor and only the parts near its group (mrp_moby_draw_casters' sphere): the same depths, much less copied.
+constexpr int kMaxClusters = 4;
+struct MobyRects {
+    int n = 0;
+    int r[kMaxClusters][4] = {};    // texel rectangles (x0, y0, x1, y1; padded 2 texels)
+    float s[kMaxClusters][4] = {};  // the world sphere around each rectangle's parts (x, y, z, r)
+};
+const int g_shadow_clusters = std::clamp(env_int("RAC1_SHADOW_CLUSTERS", kMaxClusters), 1, kMaxClusters);
+// the far cascades' mobys redrawn every g_shadow_far_every frames (in turn: cascade 1 and 2 not on the same frame), the near one every
+// frame; a cascade whose box moved (its cache drawn again: the camera's move, the sun's turn, a new level) is drawn whole that frame.
+// 0: as before (cascade 2 every other frame, cascade 1 every frame)
+const int g_shadow_far_every = std::clamp(env_int("RAC1_SHADOW_FAR_EVERY", 2), 0, 8);
+// orig: (host) a cascade's moby casters as at most g_shadow_clusters rectangles of texels (false: none)
+bool moby_rects(const float* light_vp, int cres, const float* within, MobyRects& out) {
+    out.n = 0;
+    static std::vector<float> parts;
+    parts.clear();
+    if (mrp_moby_caster_parts(light_vp, parts, within) == 0) return false;
+    auto tx = [&](float v, bool up) {  // (as the one rectangle was: the texel's edge out, 2 texels more)
+        const float t = (v * 0.5f + 0.5f) * static_cast<float>(cres);
+        return std::clamp(static_cast<int>(up ? std::ceil(t) : std::floor(t)) + (up ? 2 : -2), 0, cres);
+    };
+    struct C {
+        int r[4];
+        glm::vec3 c;
+        float rad;
+    };
+    auto merge = [](C& a, const C& b) {
+        a.r[0] = std::min(a.r[0], b.r[0]);
+        a.r[1] = std::min(a.r[1], b.r[1]);
+        a.r[2] = std::max(a.r[2], b.r[2]);
+        a.r[3] = std::max(a.r[3], b.r[3]);
+        const float d = glm::length(b.c - a.c);  // (the sphere around both)
+        if (d + b.rad <= a.rad) return;
+        if (d + a.rad <= b.rad) {
+            a.c = b.c;
+            a.rad = b.rad;
+            return;
+        }
+        const float r = 0.5f * (d + a.rad + b.rad);
+        a.c += (b.c - a.c) * ((r - a.rad) / d);
+        a.rad = r;
+    };
+    auto area = [](const int* r) { return static_cast<int64_t>(r[2] - r[0]) * (r[3] - r[1]); };
+    // the parts' rectangles marked on a grid of kG x kG cells; the groups of touching cells, each with its parts' rectangle and sphere
+    constexpr int kG = 64;
+    static std::vector<int> cell, rects;
+    cell.assign(static_cast<size_t>(kG) * kG, -1);  // (-1 empty, -2 a part's, then its group)
+    const size_t np = parts.size() / 8;
+    rects.resize(np * 4);
+    const float cs = static_cast<float>(cres) / static_cast<float>(kG);
+    auto cells = [&](const int* r, int c[4]) {
+        c[0] = std::clamp(static_cast<int>(static_cast<float>(r[0]) / cs), 0, kG - 1);
+        c[1] = std::clamp(static_cast<int>(static_cast<float>(r[1]) / cs), 0, kG - 1);
+        c[2] = std::clamp(static_cast<int>(static_cast<float>(r[2] - 1) / cs), 0, kG - 1);
+        c[3] = std::clamp(static_cast<int>(static_cast<float>(r[3] - 1) / cs), 0, kG - 1);
+    };
+    int all[4] = {cres, cres, 0, 0};
+    size_t used = 0;
+    for (size_t i = 0; i < np; ++i) {
+        int* t = &rects[4 * i];
+        t[0] = tx(parts[8 * i], false);
+        t[1] = tx(parts[8 * i + 1], false);
+        t[2] = tx(parts[8 * i + 2], true);
+        t[3] = tx(parts[8 * i + 3], true);
+        all[0] = std::min(all[0], t[0]);
+        all[1] = std::min(all[1], t[1]);
+        all[2] = std::max(all[2], t[2]);
+        all[3] = std::max(all[3], t[3]);
+        if (t[2] <= t[0] || t[3] <= t[1]) continue;
+        ++used;
+        int c[4];
+        cells(t, c);
+        for (int y = c[1]; y <= c[3]; ++y)
+            for (int x = c[0]; x <= c[2]; ++x) cell[static_cast<size_t>(y) * kG + x] = -2;
+    }
+    if (used == 0 || g_shadow_clusters == 1) {  // (one rectangle: as before, the parts unfiltered)
+        out.n = 1;
+        std::memcpy(out.r[0], all, sizeof all);
+        out.s[0][3] = -1.0f;
+        return true;
+    }
+    int groups = 0;
+    static std::vector<int> stack;
+    for (int i0 = 0; i0 < kG * kG; ++i0) {  // (the groups: cells touching, corners too)
+        if (cell[static_cast<size_t>(i0)] != -2) continue;
+        stack.assign(1, i0);
+        cell[static_cast<size_t>(i0)] = groups;
+        while (!stack.empty()) {
+            const int c = stack.back();
+            stack.pop_back();
+            const int cx = c % kG, cy = c / kG;
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx) {
+                    const int x = cx + dx, y = cy + dy;
+                    if (x < 0 || y < 0 || x >= kG || y >= kG) continue;
+                    int& v = cell[static_cast<size_t>(y) * kG + x];
+                    if (v == -2) {
+                        v = groups;
+                        stack.push_back(y * kG + x);
+                    }
+                }
+        }
+        ++groups;
+    }
+    static std::vector<C> cl;
+    cl.assign(static_cast<size_t>(groups), C{{cres, cres, 0, 0}, glm::vec3(0.0f), -1.0f});
+    for (size_t i = 0; i < np; ++i) {
+        const int* r = &rects[4 * i];
+        if (r[2] <= r[0] || r[3] <= r[1]) continue;
+        int c[4];
+        cells(r, c);
+        C& g = cl[static_cast<size_t>(cell[static_cast<size_t>(c[1]) * kG + c[0]])];
+        const C p{{r[0], r[1], r[2], r[3]}, glm::vec3(parts[8 * i + 4], parts[8 * i + 5], parts[8 * i + 6]), parts[8 * i + 7]};
+        if (g.rad < 0.0f) g = p;
+        else merge(g, p);
+    }
+    if (cl.size() > 48) {  // (a crowd of groups: one rectangle, as before)
+        out.n = 1;
+        std::memcpy(out.r[0], all, sizeof all);
+        out.s[0][3] = -1.0f;
+        return true;
+    }
+    for (;;) {
+        for (bool merged = true; merged;) {  // the rectangles that overlap: one (a copy's regions may not overlap)
+            merged = false;
+            for (size_t i = 0; i < cl.size(); ++i)
+                for (size_t j = i + 1; j < cl.size();) {
+                    const int* a = cl[i].r;
+                    const int* b = cl[j].r;
+                    if (a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]) {
+                        merge(cl[i], cl[j]);
+                        cl[j] = cl.back();
+                        cl.pop_back();
+                        merged = true;
+                    } else {
+                        ++j;
+                    }
+                }
+        }
+        if (cl.size() <= static_cast<size_t>(g_shadow_clusters)) break;
+        size_t bi = 0, bj = 1;  // too many: the pair whose union adds the least
+        int64_t best = INT64_MAX;
+        for (size_t i = 0; i < cl.size(); ++i)
+            for (size_t j = i + 1; j < cl.size(); ++j) {
+                const int u[4] = {std::min(cl[i].r[0], cl[j].r[0]), std::min(cl[i].r[1], cl[j].r[1]), std::max(cl[i].r[2], cl[j].r[2]), std::max(cl[i].r[3], cl[j].r[3])};
+                const int64_t add = area(u) - area(cl[i].r) - area(cl[j].r);
+                if (add < best) {
+                    best = add;
+                    bi = i;
+                    bj = j;
+                }
+            }
+        merge(cl[bi], cl[bj]);
+        cl[bj] = cl.back();
+        cl.pop_back();
+    }
+    out.n = static_cast<int>(cl.size());
+    for (int i = 0; i < out.n; ++i) {
+        std::memcpy(out.r[i], cl[static_cast<size_t>(i)].r, sizeof out.r[i]);
+        const C& c = cl[static_cast<size_t>(i)];
+        out.s[i][0] = c.c.x;
+        out.s[i][1] = c.c.y;
+        out.s[i][2] = c.c.z;
+        out.s[i][3] = out.n > 1 ? c.rad : -1.0f;  // (one rectangle: every part, unfiltered, as before)
+    }
+    return true;
+}
+
 struct State {
     GLuint fbo = 0, tex = 0;
     int res = 0;
@@ -129,6 +310,7 @@ struct State {
     glm::vec4 key{0.0f};              // the key light's colour (as the set holds it) and back-face factor: what a shadow takes off the world's colours
     glm::vec3 key_dir{0.0f, 0.0f, 1.0f};  // toward the key light as the game lights with it (the sun's direction unless the level's file turns it)
     int npts = 0;                     // the frame's active point lights: position, radius; colour
+    int ngame = 0;                    // (the list's first ngame: the game's own lights - the mobys have them per vertex already, #110)
     glm::vec4 pt_pos[kMaxPts], pt_col[kMaxPts];  // (pt_col.w: the light's cube in the shadow array, -1 none)
     float pt_down[kMaxPts] = {};                 // (the share of each light aimed down - a lamp per class's -, 0 every way alike)
     int pt_slot[kMaxPts] = {};                   // (the game's slot of each: its casters' view, 3 + slot; -1 an automatic emitter; -2 a moby class's lamp: no shadow cube)
@@ -145,7 +327,7 @@ struct State {
         int stex_res = 0;
         bool incomplete = false;  // drawn without the casters outside the view: drawn again as soon as they are made
         glm::vec3 prev{0.0f};     // the slice's centre the frame before (its speed: when the box's edge is near)
-        int dirty[4] = {0, 0, 0, 0};  // the layer's rectangle the mobys were drawn over last frame (x0, y0, x1, y1 texels; empty x1 <= x0)
+        MobyRects dirty;  // the layer's rectangles the mobys were drawn into last frame (moby_rects)
     } cache[kCascades];
     std::atomic<bool> want{true};  // the next frame's casters outside the view wanted (the scene's worker reads it)
     bool refresh[kCascades] = {};
@@ -160,6 +342,12 @@ struct State {
     float splits[kCascades] = {18.0f, 60.0f, 220.0f};
     bool logged = false;
 } g_sh;
+// orig: (host) a far cascade's layer kept as it is this frame (g_shadow_far_every; its box not moved: the caller checks)
+bool far_skip(int k) {
+    if (k == 0) return false;
+    if (g_shadow_far_every == 0) return k == 2 && (g_sh.frame & 1u) != 0;
+    return (g_sh.frame + static_cast<uint64_t>(k)) % static_cast<uint64_t>(g_shadow_far_every) != 0;
+}
 
 // orig: (host) a cascade's resolution - at the High setting (4096) the near cascade alone at full size, the others at half
 // (drawn into a corner of their layer: the far ones' texels are coarse anyway, the cost of 4096 x 4096 three times is not)
@@ -183,8 +371,8 @@ SetSun set_sun(uint32_t set) {
     glm::vec3 dir[2];
     for (uint32_t l = 0; l < 2; ++l) {
         const uint32_t c = base + 0x20 * l, d = c + 0x10;
-        lum[l] = std::max({lwc1(c), lwc1(c + 4), lwc1(c + 8), 0.0f});
-        dir[l] = glm::vec3(-lwc1(d), -lwc1(d + 4), -lwc1(d + 8));
+        lum[l] = std::max({draw_lwc1(c), draw_lwc1(c + 4), draw_lwc1(c + 8), 0.0f});
+        dir[l] = glm::vec3(-draw_lwc1(d), -draw_lwc1(d + 4), -draw_lwc1(d + 8));
         best = std::max(best, lum[l]);
     }
     int pick = -1;
@@ -198,7 +386,7 @@ SetSun set_sun(uint32_t set) {
     r.weight = lum[pick] / best;
     r.ok = true;
     const uint32_t c = base + 0x20 * static_cast<uint32_t>(pick);
-    r.key = glm::vec4(std::max(lwc1(c), 0.0f), std::max(lwc1(c + 4), 0.0f), std::max(lwc1(c + 8), 0.0f), std::clamp(lwc1(c + 0xc), 0.0f, 1.0f));
+    r.key = glm::vec4(std::max(draw_lwc1(c), 0.0f), std::max(draw_lwc1(c + 4), 0.0f), std::max(draw_lwc1(c + 8), 0.0f), std::clamp(draw_lwc1(c + 0xc), 0.0f, 1.0f));
     return r;
 }
 
@@ -217,7 +405,7 @@ glm::vec3 game_sun(float* weight, glm::vec4* key) {
                 float v[16];
                 bool any = false;
                 for (uint32_t k = 0; k < 16; ++k) {
-                    v[k] = lwc1(b + 4 * k);
+                    v[k] = draw_lwc1(b + 4 * k);
                     any = any || v[k] != 0.0f;
                 }
                 if (any)
@@ -228,40 +416,40 @@ glm::vec3 game_sun(float* weight, glm::vec4* key) {
     }
     if (std::getenv("RAC1_SUN_TRACE") != nullptr) {  // (testing: the light sets the hero is lit with)
         static uint32_t last = 0xffffffffu;
-        const uint32_t hero = lwu(OV(0x0015ffd8u));
+        const uint32_t hero = draw_lwu(OV(0x0015ffd8u));
         static int census = 0;
         if (hero != 0 && ++census == 400) {  // (the light sets the level's mobys use, once: count, an example position, the key light)
             std::map<uint32_t, std::pair<int, uint32_t>> sets;
-            for (uint32_t m = hero; m < 0x01fe0000u && lbu(m + 0x20) != 0xff; m += 0x100) {
-                if (static_cast<int8_t>(lbu(m + 0x20)) < 0) continue;
-                const uint32_t k = lbu(m + 0x38) | (lbu(m + 0x39) << 8);
+            for (uint32_t m = hero; m < 0x01fe0000u && draw_lbu(m + 0x20) != 0xff; m += 0x100) {
+                if (static_cast<int8_t>(draw_lbu(m + 0x20)) < 0) continue;
+                const uint32_t k = draw_lbu(m + 0x38) | (draw_lbu(m + 0x39) << 8);
                 auto& e = sets[k];
                 if (e.first++ == 0) e.second = m;
             }
             for (const auto& [k, e] : sets) {
                 const uint32_t da = OV(0x0017fec0u) + 0x40 * (k & 15) + 0x10;
                 std::printf("[sun] sets %u / %u: %d mobys, e.g. at %.0f %.0f %.0f; set a's d1 (%.2f %.2f %.2f) colour %.2f %.2f %.2f\n", k & 0xff, k >> 8, e.first,
-                            lwc1(e.second + 0x10), lwc1(e.second + 0x14), lwc1(e.second + 0x18), lwc1(da), lwc1(da + 4), lwc1(da + 8), lwc1(da - 0x10), lwc1(da - 0xc),
-                            lwc1(da - 8));
+                            draw_lwc1(e.second + 0x10), draw_lwc1(e.second + 0x14), draw_lwc1(e.second + 0x18), draw_lwc1(da), draw_lwc1(da + 4), draw_lwc1(da + 8), draw_lwc1(da - 0x10), draw_lwc1(da - 0xc),
+                            draw_lwc1(da - 8));
             }
         }
         if (hero != 0) {
-            const uint32_t a = lbu(hero + 0x38), b = lbu(hero + 0x39), w = lbu(hero + 0x3a), key = a | (b << 8) | (w << 16);
+            const uint32_t a = draw_lbu(hero + 0x38), b = draw_lbu(hero + 0x39), w = draw_lbu(hero + 0x3a), key = a | (b << 8) | (w << 16);
             if (key != last) {
                 last = key;
                 const uint32_t da = OV(0x0017fec0u) + 0x40 * (a & 15) + 0x10, db = OV(0x0017fec0u) + 0x40 * (b & 15) + 0x10;
-                std::printf("[sun] hero %.1f %.1f %.1f: sets %u / %u blend %u: d1 a (%.2f %.2f %.2f) b (%.2f %.2f %.2f)\n", lwc1(hero + 0x10), lwc1(hero + 0x14), lwc1(hero + 0x18), a, b, w,
-                            lwc1(da), lwc1(da + 4), lwc1(da + 8), lwc1(db), lwc1(db + 4), lwc1(db + 8));
+                std::printf("[sun] hero %.1f %.1f %.1f: sets %u / %u blend %u: d1 a (%.2f %.2f %.2f) b (%.2f %.2f %.2f)\n", draw_lwc1(hero + 0x10), draw_lwc1(hero + 0x14), draw_lwc1(hero + 0x18), a, b, w,
+                            draw_lwc1(da), draw_lwc1(da + 4), draw_lwc1(da + 8), draw_lwc1(db), draw_lwc1(db + 4), draw_lwc1(db + 8));
             }
         }
     }
     uint32_t a = 0, b = 0;
     float w = 0.0f;
     static const bool zone_dir = std::getenv("RAC1_SUN_ZONE") != nullptr;  // (testing: turn the sun to each zone's light set)
-    if (const uint32_t hero = lwu(OV(0x0015ffd8u)); hero != 0) {
-        a = lbu(hero + 0x38);
-        b = lbu(hero + 0x39);
-        w = static_cast<float>(lbu(hero + 0x3a)) / 256.0f;
+    if (const uint32_t hero = draw_lwu(OV(0x0015ffd8u)); hero != 0) {
+        a = draw_lbu(hero + 0x38);
+        b = draw_lbu(hero + 0x39);
+        w = static_cast<float>(draw_lbu(hero + 0x3a)) / 256.0f;
         if (a > 15) a = 0;  // (15 / 15 or none: the level's own)
         if (b > 15) b = a;
         if (a == 15) a = b = 0;
@@ -327,50 +515,50 @@ void tfrag_light_trace() {
     const int got = std::sscanf(e, "%d,%f,%f,%f,%f", &every, &px, &py, &pz, &pr);
     if (n++ % static_cast<uint64_t>(std::max(1, every)) != 0) return;
     if (got < 4) {
-        const uint32_t hero = lwu(OV(0x0015ffd8u));
+        const uint32_t hero = draw_lwu(OV(0x0015ffd8u));
         if (hero == 0) return;
-        px = lwc1(hero + 0x10);
-        py = lwc1(hero + 0x14);
-        pz = lwc1(hero + 0x18);
+        px = draw_lwc1(hero + 0x10);
+        py = draw_lwc1(hero + 0x14);
+        pz = draw_lwc1(hero + 0x18);
     }
-    const uint32_t table = lwu(OV(0x00160f4cu));
-    const int32_t count = lw(OV(0x00160f50u));
+    const uint32_t table = draw_lwu(OV(0x00160f4cu));
+    const int32_t count = draw_lw(OV(0x00160f50u));
     if (table == 0 || count <= 0 || count > 0x10000) return;
     const uint32_t sets = OV(0x0017fec0u), norms = OV(0x00166080u);
     auto set_term = [&](uint32_t set, const glm::vec3& nrm, int l) {  // (one light's term, 0..255 units: the routine's colours are 65536 + byte / 128)
         const uint32_t c = sets + 0x40 * (set & 15) + 0x20 * static_cast<uint32_t>(l), d = c + 0x10;
-        const float k = lwc1(c + 0xc);
-        const float nd = -glm::dot(nrm, glm::vec3(lwc1(d), lwc1(d + 4), lwc1(d + 8)));  // (toward the light)
-        return glm::vec3(lwc1(c), lwc1(c + 4), lwc1(c + 8)) * (128.0f * std::max(nd, k * nd));
+        const float k = draw_lwc1(c + 0xc);
+        const float nd = -glm::dot(nrm, glm::vec3(draw_lwc1(d), draw_lwc1(d + 4), draw_lwc1(d + 8)));  // (toward the light)
+        return glm::vec3(draw_lwc1(c), draw_lwc1(c + 4), draw_lwc1(c + 8)) * (128.0f * std::max(nd, k * nd));
     };
     double sum_base = 0, sum_t[2] = {0, 0}, sum_lit = 0, sum_err = 0;
     int verts = 0, back = 0, neg_key = 0;
     std::map<uint32_t, int> set_use;
     for (int32_t i = 0; i < count; ++i) {
         const uint32_t ent = table + 0x40 * static_cast<uint32_t>(i);
-        const uint32_t data = lwu(ent + 0x10);
+        const uint32_t data = draw_lwu(ent + 0x10);
         if (data == 0 || data >= 0x02000000u) continue;
-        const int8_t single = static_cast<int8_t>(lbu(ent + 0x34));  // (>= 0: one set for the whole entry, its count +0x29 pairs)
-        const uint32_t va = data + static_cast<uint32_t>(static_cast<int32_t>(lh(ent + 0x30))) + 0x10;
-        const uint32_t nv = single >= 0 ? 2u * lbu(ent + 0x29) : lbu(ent + 0x3c);
-        const uint32_t lit = data + lhu(ent + 0x1e);
-        const glm::vec3 base_pos(static_cast<float>(lw(va - 0x10)) / 1024.0f, static_cast<float>(lw(va - 0xc)) / 1024.0f, static_cast<float>(lw(va - 8)) / 1024.0f);
+        const int8_t single = static_cast<int8_t>(draw_lbu(ent + 0x34));  // (>= 0: one set for the whole entry, its count +0x29 pairs)
+        const uint32_t va = data + static_cast<uint32_t>(static_cast<int32_t>(draw_lh(ent + 0x30))) + 0x10;
+        const uint32_t nv = single >= 0 ? 2u * draw_lbu(ent + 0x29) : draw_lbu(ent + 0x3c);
+        const uint32_t lit = data + draw_lhu(ent + 0x1e);
+        const glm::vec3 base_pos(static_cast<float>(draw_lw(va - 0x10)) / 1024.0f, static_cast<float>(draw_lw(va - 0xc)) / 1024.0f, static_cast<float>(draw_lw(va - 8)) / 1024.0f);
         for (uint32_t v = 0; v < nv; ++v) {
             const uint32_t vx = va + 8 * v;
-            const uint32_t po = data + lhu(vx);
-            const glm::vec3 p = base_pos + glm::vec3(lh(po), lh(po + 2), lh(po + 4)) / 1024.0f;
+            const uint32_t po = data + draw_lhu(vx);
+            const glm::vec3 p = base_pos + glm::vec3(draw_lh(po), draw_lh(po + 2), draw_lh(po + 4)) / 1024.0f;
             if (glm::length(p - glm::vec3(px, py, pz)) > pr) continue;
-            const uint32_t az = lbu(vx + 2), el = lbu(vx + 3);
-            const float ca = lwc1(norms + 8 * az), sa = lwc1(norms + 8 * az + 4), ce = lwc1(norms + 8 * el), se = lwc1(norms + 8 * el + 4);
+            const uint32_t az = draw_lbu(vx + 2), el = draw_lbu(vx + 3);
+            const float ca = draw_lwc1(norms + 8 * az), sa = draw_lwc1(norms + 8 * az + 4), ce = draw_lwc1(norms + 8 * el), se = draw_lwc1(norms + 8 * el + 4);
             const glm::vec3 nrm(ca * ce, sa * ce, se);
-            const uint16_t b5 = lhu(vx + 4), sh = lhu(vx + 6);
+            const uint16_t b5 = draw_lhu(vx + 4), sh = draw_lhu(vx + 6);
             const glm::vec3 base(static_cast<float>((b5 & 31) << 3), static_cast<float>(((b5 >> 5) & 31) << 3), static_cast<float>(((b5 >> 10) & 31) << 3));
             const uint32_t sa_ = single >= 0 ? static_cast<uint32_t>(single) : (sh & 15u), sb_ = single >= 0 ? sa_ : ((sh >> 4) & 15u);
             const float wb = single >= 0 ? 0.0f : static_cast<float>(sh >> 8) / 256.0f;
             glm::vec3 t[2];
             for (int l = 0; l < 2; ++l) t[l] = set_term(sa_, nrm, l) * (1.0f - wb) + set_term(sb_, nrm, l) * wb;  // (approximate: the game blends the rows)
             const glm::vec3 sum = glm::min(base + t[0] + t[1], glm::vec3(255.0f));
-            const uint32_t lc = lwu(lit + 4 * v);
+            const uint32_t lc = draw_lwu(lit + 4 * v);
             const glm::vec3 got_c(static_cast<float>(lc & 0xff), static_cast<float>((lc >> 8) & 0xff), static_cast<float>((lc >> 16) & 0xff));
             auto lum = [](const glm::vec3& x) { return (x.r + x.g + x.b) / 3.0; };
             sum_base += lum(base);
@@ -454,6 +642,11 @@ struct VkLighting {
     VkPipeline rays_add_pipe = VK_NULL_HANDLE;
     vk::GpuImage ao_dtex{}, ao_atex{}, ao_btex{};
     int ao_w = 0, ao_h = 0, ao_aw = 0, ao_ah = 0;
+    // (the 3D's own depth sampled, no copy: RAC1_AO_DEPTH_COPY=0; the stencil's view of that image, made when it changes, and the
+    // final blur's programs without a depth attachment)
+    VkImage ao_sdepth_img = VK_NULL_HANDLE;
+    VkImageView ao_sdepth_stencil = VK_NULL_HANDLE;
+    VkPipeline blur_nd_pipe = VK_NULL_HANDLE, blur_sep_v_nd_pipe = VK_NULL_HANDLE;
     vk::GpuImage rays_dtex{}, rays_ctex{}, rays_mtex{}, rays_rtex{};
     int rays_w = 0, rays_h = 0, rays_div = 0;
 } g_vk_sh;
@@ -467,7 +660,7 @@ void vk_lighting_shutdown() {
         for (int i = 0; i < 6 * kPtShadows; ++i) {
             if (g_vk_sh.ptex_faces[i] != VK_NULL_HANDLE) vkDestroyImageView(dev, g_vk_sh.ptex_faces[i], nullptr);
         }
-        for (VkPipeline p : {g_vk_sh.ao_pipe, g_vk_sh.blur_pipe, g_vk_sh.blur_sep_h_pipe, g_vk_sh.blur_sep_v_pipe,
+        for (VkPipeline p : {g_vk_sh.ao_pipe, g_vk_sh.blur_pipe, g_vk_sh.blur_sep_h_pipe, g_vk_sh.blur_sep_v_pipe, g_vk_sh.blur_nd_pipe, g_vk_sh.blur_sep_v_nd_pipe,
                              g_vk_sh.rays_mask_pipe, g_vk_sh.rays_blur_pipe, g_vk_sh.rays_split_pipe, g_vk_sh.rays_add_pipe}) {
             if (p != VK_NULL_HANDLE) vkDestroyPipeline(dev, p, nullptr);
         }
@@ -477,6 +670,8 @@ void vk_lighting_shutdown() {
         }
         if (g_vk_sh.ao_stencil_view != VK_NULL_HANDLE) vkDestroyImageView(dev, g_vk_sh.ao_stencil_view, nullptr);
         g_vk_sh.ao_stencil_view = VK_NULL_HANDLE;
+        if (g_vk_sh.ao_sdepth_stencil != VK_NULL_HANDLE) vkDestroyImageView(dev, g_vk_sh.ao_sdepth_stencil, nullptr);
+        g_vk_sh.ao_sdepth_stencil = VK_NULL_HANDLE;
         for (VkDescriptorSetLayout dsl : {g_vk_sh.set_layout, g_vk_sh.samp1_layout, g_vk_sh.samp2_layout, g_vk_sh.samp3_layout}) {
             if (dsl != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(dev, dsl, nullptr);
         }
@@ -515,6 +710,8 @@ bool ensure_resources() {
             return true;
         }
         VkDevice dev = vk::device();
+        // (a quality change: the frames in flight may still draw into the old cascades' views, destroyed at once below)
+        if (g_vk_sh.tex_layers[0] != VK_NULL_HANDLE) vk::wait_idle();
         for (int k = 0; k < kCascades; ++k) {
             if (g_vk_sh.tex_layers[k] != VK_NULL_HANDLE) {
                 vkDestroyImageView(dev, g_vk_sh.tex_layers[k], nullptr);
@@ -590,12 +787,12 @@ void fit_cascades() {
                 inside = inside || (g_sh.cam.x >= b.lo[0] && g_sh.cam.y >= b.lo[1] && g_sh.cam.z >= b.lo[2] && g_sh.cam.x <= b.hi[0] && g_sh.cam.y <= b.hi[1] &&
                                     g_sh.cam.z <= b.hi[2]);
             g_interior_hero_set = -1;
-            if (const uint32_t hero = lwu(OV(0x0015ffd8u)); hero != 0) g_interior_hero_set = lbu(hero + 0x38);
+            if (const uint32_t hero = draw_lwu(OV(0x0015ffd8u)); hero != 0) g_interior_hero_set = draw_lbu(hero + 0x38);
             for (int n : g_interior_sets) inside = inside || n == g_interior_hero_set;
             static int32_t ilvl = -1;
             const float want = inside ? 1.0f : 0.0f;
-            if (lw(0x0015ed84) != ilvl) {
-                ilvl = lw(0x0015ed84);
+            if (draw_lw(0x0015ed84) != ilvl) {
+                ilvl = draw_lw(0x0015ed84);
                 g_interior_k = want;
             } else {
                 g_interior_k += std::clamp(want - g_interior_k, -1.0f / kInteriorFade, 1.0f / kInteriorFade);
@@ -604,7 +801,7 @@ void fit_cascades() {
         static glm::vec3 cur{0.0f, 0.0f, 1.0f};
         static float curw = 0.0f;
         static int32_t lvl = -1;
-        const int32_t level = lw(0x0015ed84);
+        const int32_t level = draw_lw(0x0015ed84);
         static glm::vec4 curkey{0.0f};
         static glm::vec3 curkey_dir{0.0f, 0.0f, 1.0f};
         if (level != lvl) {
@@ -646,7 +843,7 @@ void fit_cascades() {
     const float tx = 1.0f / g_sh.proj.x, ty = 1.0f / g_sh.proj.y;
     float near_d = 0.1f;
     // the caches emptied when what they hold may have changed
-    uint64_t key = static_cast<uint64_t>(lw(0x0015ed84)) * 1000003u + static_cast<uint64_t>(g_mrp_lod) * 7919u + static_cast<uint64_t>(g_sh.res);
+    uint64_t key = static_cast<uint64_t>(draw_lw(0x0015ed84)) * 1000003u + static_cast<uint64_t>(g_mrp_lod) * 7919u + static_cast<uint64_t>(g_sh.res);
     for (int i = 0; i < 3; ++i) {
         uint32_t u;
         std::memcpy(&u, &g_sh.sun[i], 4);
@@ -1002,7 +1199,7 @@ bool mrp_lighting_points_freeze() {
     bool young = false;
     uint32_t old = 0;
     for (uint32_t i = 0; i < 8; ++i) {
-        const uint32_t id = lwu(OV(0x001804c0u) + i * 0x30 + 0x10);
+        const uint32_t id = draw_lwu(OV(0x001804c0u) + i * 0x30 + 0x10);
         if (id == 0) {
             g_slot_id[i] = 0;
             continue;
@@ -1443,8 +1640,8 @@ GLenum depth_format(GLint fb) {
 // 4, level_exit.cpp / flight_draw.cpp), where the sun is still the level's left behind (GitHub issue #66)
 bool sun_rays_now() {
     if (g_sun_rays <= 0 || g_sun_rays_off || !(g_sh.sun_k > 0.01f)) return false;  // (or off on this level: "sun_rays off" in its file)
-    const int32_t step = lw(0x0013e050u);
-    return lw(OV(0x0015f5c4u)) != 6 || step == 0 || step == 8;
+    const int32_t step = draw_lw(0x0013e050u);
+    return draw_lw(OV(0x0015f5c4u)) != 6 || step == 0 || step == 8;
 }
 // orig: (host) the sun's rays added to the bound framebuffer's 3D (see kRaysMaskFs); the caller saves and restores the GL state
 void sun_rays_pass(GLint fb, const int vp[4]) {
@@ -1658,7 +1855,7 @@ void cover_probe(GLint fb, const int vp[4]) {
     const bool on = cover_probe_on();
     static const bool trace = std::getenv("RAC1_SUN_COVER_TRACE") != nullptr;
     Probe& P = g_probe;
-    const int32_t level = lw(0x0015ed84);
+    const int32_t level = draw_lw(0x0015ed84);
     if (level != P.level) {  // (a new level: nothing measured yet)
         P.level = level;
         P.k = 1.0f;
@@ -1854,8 +2051,8 @@ void ensure_vk_ao_pipelines() {
         return out;
     };
 
-    g_vk_sh.ao_layout = make_layout(g_vk_sh.samp1_layout, 160);
-    g_vk_sh.blur_layout = make_layout(g_vk_sh.samp3_layout, 16);
+    g_vk_sh.ao_layout = make_layout(g_vk_sh.samp1_layout, 176);
+    g_vk_sh.blur_layout = make_layout(g_vk_sh.samp3_layout, 48);
     g_vk_sh.rays_mask_layout = make_layout(g_vk_sh.samp2_layout, 48);
     g_vk_sh.rays_blur_layout = make_layout(g_vk_sh.samp1_layout, 32);
     g_vk_sh.rays_split_layout = make_layout(g_vk_sh.samp1_layout, 32);
@@ -1898,6 +2095,9 @@ void ensure_vk_ao_pipelines() {
         d.has_depth_attachment = true;
         d.has_stencil_attachment = true;
         g_vk_sh.blur_pipe = vk::create_graphics_pipeline(d);
+        d.has_depth_attachment = false;  // (into the colour alone: the depth sampled meanwhile)
+        d.has_stencil_attachment = false;
+        g_vk_sh.blur_nd_pipe = vk::create_graphics_pipeline(d);
     }
     {
         vk::GraphicsPipelineDesc d{};
@@ -1928,6 +2128,9 @@ void ensure_vk_ao_pipelines() {
         d.has_depth_attachment = true;
         d.has_stencil_attachment = true;
         g_vk_sh.blur_sep_v_pipe = vk::create_graphics_pipeline(d);
+        d.has_depth_attachment = false;
+        d.has_stencil_attachment = false;
+        g_vk_sh.blur_sep_v_nd_pipe = vk::create_graphics_pipeline(d);
     }
     {
         vk::GraphicsPipelineDesc d{};
@@ -2057,9 +2260,35 @@ void vk_ao_and_rays_pass(const int vp[4]) {
         const int aw = half_res ? std::max(1, w / 2) : w;
         const int ah = half_res ? std::max(1, h / 2) : h;
         const VkFormat dfmt = vk::depth_stencil_format();
-        const VkImageAspectFlags daspect = vk::active_depth_image().aspect;
-        if (g_vk_sh.ao_w != w || g_vk_sh.ao_h != h || g_vk_sh.ao_aw != aw || g_vk_sh.ao_ah != ah ||
-            g_vk_sh.ao_dtex.image == VK_NULL_HANDLE) {
+        vk::GpuImage& sdepth = vk::active_depth_image();
+        const VkImageAspectFlags daspect = sdepth.aspect;
+        // the depth the passes read: the 3D's own (its view's rectangle, uDMap), or a copy of that rectangle. The copy of a
+        // depth-and-stencil image cost about 1.1 of the occlusion's 4.0 ms (5053 x 1371, Radeon 890M)
+        static const bool want_direct = env_int("RAC1_AO_DEPTH_COPY", 0) == 0;
+        bool direct = want_direct && sdepth.depth_view != VK_NULL_HANDLE && sdepth.width > 0 && sdepth.height > 0 &&
+                      vp[0] >= 0 && vp[1] >= 0 && vp[0] + w <= static_cast<int>(sdepth.width) && vp[1] + h <= static_cast<int>(sdepth.height);
+        if (direct && (daspect & VK_IMAGE_ASPECT_STENCIL_BIT) != 0 && g_vk_sh.ao_sdepth_img != sdepth.image) {  // (its stencil's view)
+            if (g_vk_sh.ao_sdepth_stencil != VK_NULL_HANDLE) {
+                vk::wait_idle();
+                vkDestroyImageView(vk::device(), g_vk_sh.ao_sdepth_stencil, nullptr);
+                g_vk_sh.ao_sdepth_stencil = VK_NULL_HANDLE;
+            }
+            VkImageViewCreateInfo vci{};
+            vci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            vci.image = sdepth.image;
+            vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            vci.format = sdepth.format;
+            vci.subresourceRange = {VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1, 0, 1};
+            if (vkCreateImageView(vk::device(), &vci, nullptr, &g_vk_sh.ao_sdepth_stencil) != VK_SUCCESS) g_vk_sh.ao_sdepth_stencil = VK_NULL_HANDLE;
+            g_vk_sh.ao_sdepth_img = sdepth.image;
+        }
+        if ((daspect & VK_IMAGE_ASPECT_STENCIL_BIT) != 0 && g_vk_sh.ao_sdepth_stencil == VK_NULL_HANDLE) direct = false;
+        const glm::vec4 smap = direct ? glm::vec4(static_cast<float>(vp[0]) / static_cast<float>(sdepth.width), static_cast<float>(vp[1]) / static_cast<float>(sdepth.height),
+                                                  static_cast<float>(w) / static_cast<float>(sdepth.width), static_cast<float>(h) / static_cast<float>(sdepth.height))
+                                      : glm::vec4(0.0f, 0.0f, 1.0f, 1.0f);
+        const glm::vec4 dmap = smap;  // (the depth and its stencil: the same image)
+        if (g_vk_sh.ao_w != w || g_vk_sh.ao_h != h || g_vk_sh.ao_aw != aw || g_vk_sh.ao_ah != ah || g_vk_sh.ao_atex.image == VK_NULL_HANDLE ||
+            (!direct && g_vk_sh.ao_dtex.image == VK_NULL_HANDLE)) {
             g_vk_sh.ao_w = w;
             g_vk_sh.ao_h = h;
             g_vk_sh.ao_aw = aw;
@@ -2069,9 +2298,10 @@ void vk_ao_and_rays_pass(const int vp[4]) {
                 vkDestroyImageView(vk::device(), g_vk_sh.ao_stencil_view, nullptr);
                 g_vk_sh.ao_stencil_view = VK_NULL_HANDLE;
             }
-            vk::create_image(static_cast<uint32_t>(w), static_cast<uint32_t>(h), dfmt,
-                             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, daspect, g_vk_sh.ao_dtex);
-            if ((daspect & VK_IMAGE_ASPECT_STENCIL_BIT) != 0) {
+            if (direct) vk::destroy_image(g_vk_sh.ao_dtex);  // (no copy kept)
+            else vk::create_image(static_cast<uint32_t>(w), static_cast<uint32_t>(h), dfmt,
+                                  VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, daspect, g_vk_sh.ao_dtex);
+            if (!direct && (daspect & VK_IMAGE_ASPECT_STENCIL_BIT) != 0) {
                 VkImageViewCreateInfo vci{};
                 vci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
                 vci.image = g_vk_sh.ao_dtex.image;
@@ -2087,8 +2317,10 @@ void vk_ao_and_rays_pass(const int vp[4]) {
                              VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                              VK_IMAGE_ASPECT_COLOR_BIT, g_vk_sh.ao_btex);
         }
-        vk::copy_image(vk::active_depth_image(), vp[0], vp[1], g_vk_sh.ao_dtex, 0, 0, w, h, daspect,
-                       VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        if (direct) vk::transition_image(vk::cmd(), sdepth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        else vk::copy_image(sdepth, vp[0], vp[1], g_vk_sh.ao_dtex, 0, 0, w, h, daspect,
+                            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        const VkImageView dview = direct ? sdepth.depth_view : g_vk_sh.ao_dtex.view;
 
         float vpf[16];
         mrp_world_view_proj(vpf);
@@ -2117,9 +2349,11 @@ void vk_ao_and_rays_pass(const int vp[4]) {
                 glm::mat4 uVP;
                 glm::vec4 uCam;
                 glm::vec4 uParam;
-            } pc{IVP, VP, glm::vec4(g_sh.cam, 0.0f), glm::vec4(radius, strength, 0.02f, static_cast<float>(shader_mode))};
+                glm::vec4 uDMap;
+            } pc{IVP, VP, glm::vec4(g_sh.cam, 0.0f), glm::vec4(radius, strength, 0.02f, static_cast<float>(shader_mode)), dmap};
+            static_assert(sizeof(AoPush) == 176);
             VkCommandBuffer cb = vk::cmd();
-            VkDescriptorSet ds = alloc_samp1_ds(g_vk_sh.ao_dtex.view, samp_nearest);
+            VkDescriptorSet ds = alloc_samp1_ds(dview, samp_nearest);
             vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.ao_pipe);
             vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.ao_layout, 0, 1, &ds, 0, nullptr);
             vkCmdPushConstants(cb, g_vk_sh.ao_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
@@ -2130,15 +2364,29 @@ void vk_ao_and_rays_pass(const int vp[4]) {
 
         // (the mobys' pixels, marked in the stencil, with their share of the occlusion: as mrp_lighting_ao_pass)
         static const float moby_k = static_cast<float>(std::clamp(env_int("RAC1_AO_MOBY", 40), 0, 100)) / 100.0f;
-        const VkImageView stencil_view = g_vk_sh.ao_stencil_view != VK_NULL_HANDLE ? g_vk_sh.ao_stencil_view : vk::black_uint_texture().view;
-        const float moby = g_ao_mark.done && g_vk_sh.ao_stencil_view != VK_NULL_HANDLE ? moby_k : 1.0f;
+        const VkImageView sview = direct ? g_vk_sh.ao_sdepth_stencil : g_vk_sh.ao_stencil_view;
+        const VkImageView stencil_view = sview != VK_NULL_HANDLE ? sview : vk::black_uint_texture().view;
+        const float moby = g_ao_mark.done && sview != VK_NULL_HANDLE ? moby_k : 1.0f;
+        // (the final pass into the 3D's colour: with the depth sampled, a target of that colour alone)
+        auto final_target = [&] {
+            if (!direct) return;
+            vk::GpuImage& scolor = vk::active_color_image();
+            vk::transition_image(vk::cmd(), scolor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            vk::RenderTarget rt_c{};
+            rt_c.color_view = scolor.view;
+            rt_c.color_format = scolor.format;
+            rt_c.width = scolor.width;
+            rt_c.height = scolor.height;
+            vk::push_target(rt_c);
+        };
         if (g_ao == 1) {
+            final_target();
             vk::set_viewport(vp[0], vp[1], w, h);
             vk::ensure_rendering();
             VkCommandBuffer cb = vk::cmd();
-            VkDescriptorSet ds = alloc_samp3_ds(g_vk_sh.ao_atex.view, samp_nearest, g_vk_sh.ao_dtex.view, samp_nearest, stencil_view, samp_nearest);
-            const float texel[4] = {1.0f / static_cast<float>(w), 1.0f / static_cast<float>(h), moby, 0.0f};
-            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_pipe);
+            VkDescriptorSet ds = alloc_samp3_ds(g_vk_sh.ao_atex.view, samp_nearest, dview, samp_nearest, stencil_view, samp_nearest);
+            const float texel[12] = {1.0f / static_cast<float>(w), 1.0f / static_cast<float>(h), moby, 0.0f, dmap.x, dmap.y, dmap.z, dmap.w, smap.x, smap.y, smap.z, smap.w};
+            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, direct ? g_vk_sh.blur_nd_pipe : g_vk_sh.blur_pipe);
             vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_layout, 0, 1, &ds, 0, nullptr);
             vkCmdPushConstants(cb, g_vk_sh.blur_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(texel), texel);
             vkCmdDraw(cb, 3, 1, 0, 0);
@@ -2155,8 +2403,8 @@ void vk_ao_and_rays_pass(const int vp[4]) {
             {
                 VkCommandBuffer cb = vk::cmd();
                 VkDescriptorSet ds = alloc_samp3_ds(g_vk_sh.ao_atex.view, half_res ? samp_linear : samp_nearest,
-                                                    g_vk_sh.ao_dtex.view, samp_nearest, stencil_view, samp_nearest);
-                const float texel_h[4] = {1.0f / static_cast<float>(aw), 0.0f, 1.0f, 0.0f};  // (the share taken at the end, as mrp_lighting_ao_pass)
+                                                    dview, samp_nearest, stencil_view, samp_nearest);
+                const float texel_h[12] = {1.0f / static_cast<float>(aw), 0.0f, 1.0f, 0.0f, dmap.x, dmap.y, dmap.z, dmap.w, smap.x, smap.y, smap.z, smap.w};  // (the share taken at the end, as mrp_lighting_ao_pass)
                 vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_sep_h_pipe);
                 vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_layout, 0, 1, &ds, 0, nullptr);
                 vkCmdPushConstants(cb, g_vk_sh.blur_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(texel_h), texel_h);
@@ -2165,17 +2413,22 @@ void vk_ao_and_rays_pass(const int vp[4]) {
             vk::pop_target();
             vk::transition_image(vk::cmd(), g_vk_sh.ao_btex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
+            final_target();
             vk::set_viewport(vp[0], vp[1], w, h);
             vk::ensure_rendering();
             {
                 VkCommandBuffer cb = vk::cmd();
-                VkDescriptorSet ds = alloc_samp3_ds(g_vk_sh.ao_btex.view, samp_nearest, g_vk_sh.ao_dtex.view, samp_nearest, stencil_view, samp_nearest);
-                const float texel_v[4] = {0.0f, 1.0f / static_cast<float>(h), moby, 0.0f};
-                vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_sep_v_pipe);
+                VkDescriptorSet ds = alloc_samp3_ds(g_vk_sh.ao_btex.view, samp_nearest, dview, samp_nearest, stencil_view, samp_nearest);
+                const float texel_v[12] = {0.0f, 1.0f / static_cast<float>(h), moby, 0.0f, dmap.x, dmap.y, dmap.z, dmap.w, smap.x, smap.y, smap.z, smap.w};
+                vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, direct ? g_vk_sh.blur_sep_v_nd_pipe : g_vk_sh.blur_sep_v_pipe);
                 vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.blur_layout, 0, 1, &ds, 0, nullptr);
                 vkCmdPushConstants(cb, g_vk_sh.blur_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(texel_v), texel_v);
                 vkCmdDraw(cb, 3, 1, 0, 0);
             }
+        }
+        if (direct) {  // (the 3D's target again, its depth an attachment again)
+            vk::pop_target();
+            vk::transition_image(vk::cmd(), sdepth, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
         }
     }
 
@@ -2954,6 +3207,249 @@ std::string particles_line(const ParticleSpec& p) {
     return s;
 }
 
+// orig: (host) an "emit <tie|shrub|moby> <class> <ox oy oz> <r g b> <intensity> <radius> [flicker] [down] [joint <n>]" line read (false:
+// not one; "joint" a moby's only)
+bool emit_parse(const char* line, ClassLight& cl) {
+    char kind[8] = {};
+    int at = 0;
+    const int got = std::sscanf(line, "emit %7s %d %f %f %f %f %f %f %f %f%n", kind, &cl.o_class, &cl.off[0], &cl.off[1], &cl.off[2], &cl.col[0], &cl.col[1],
+                                &cl.col[2], &cl.intensity, &cl.radius, &at);
+    if (got < 10 || !(std::strcmp(kind, "tie") == 0 || std::strcmp(kind, "moby") == 0 || std::strcmp(kind, "shrub") == 0)) return false;
+    cl.moby = std::strcmp(kind, "moby") == 0;
+    cl.shrub = std::strcmp(kind, "shrub") == 0;
+    const char* q = line + at;
+    int n = 0;
+    if (std::sscanf(q, " %f%n", &cl.flicker, &n) == 1) {
+        q += n;
+        if (std::sscanf(q, " %f%n", &cl.down, &n) == 1) q += n;
+    }
+    cl.down = std::clamp(cl.down, 0.0f, 1.0f);
+    if (int j = -1; cl.moby && std::sscanf(q, " joint %d", &j) == 1) cl.joint = std::max(j, -1);
+    return true;
+}
+// orig: (host) an "emit" line written (the numbers as Save always wrote them)
+std::string emit_line(const ClassLight& cl) {
+    char b[256];
+    std::snprintf(b, sizeof b, "emit %s %d  %.3f %.3f %.3f  %.3f %.3f %.3f  %.3f %.3f %.3f  %.2f", cl.moby ? "moby" : cl.shrub ? "shrub" : "tie", cl.o_class, cl.off[0],
+                  cl.off[1], cl.off[2], cl.col[0], cl.col[1], cl.col[2], cl.intensity, cl.radius, cl.flicker, cl.down);
+    std::string out(b);
+    if (cl.moby && cl.joint >= 0) out += "  joint " + std::to_string(cl.joint);
+    return out;
+}
+// orig: (host) an "emissive <tfrag|tie|shrub|moby|surface> <class> tex <n> [strength] [threshold]" or "material <kind> <class> tex <n>
+// <type> [a] [b] [c]" line read (false: neither)
+bool emis_parse(const char* line, EmissiveSurface& out) {
+    {
+        EmissiveSurface es;
+        char kind[8] = {};
+        const int got = std::sscanf(line, "emissive %7s %d tex %d %f %f", kind, &es.o_class, &es.tex, &es.strength, &es.threshold);
+        int k = -1;
+        for (int i = 0; i < 5; ++i)
+            if (std::strcmp(kind, mrp_emissive_kind_name(i)) == 0) k = i;
+        if (got >= 3 && k >= 0 && es.tex >= 0) {
+            es.kind = k;
+            es.strength = std::clamp(es.strength, 0.0f, 4.0f);
+            es.threshold = std::clamp(es.threshold, 0.0f, 1.0f);
+            out = es;
+            return true;
+        }
+    }
+    EmissiveSurface es;
+    char kind[8] = {}, type[16] = {};
+    float a[3] = {0.0f, 0.0f, 0.0f};
+    const int got = std::sscanf(line, "material %7s %d tex %d %15s %f %f %f", kind, &es.o_class, &es.tex, type, &a[0], &a[1], &a[2]);
+    int k = -1;
+    for (int i = 0; i < 5; ++i)
+        if (std::strcmp(kind, mrp_emissive_kind_name(i)) == 0) k = i;
+    const int ty = got >= 4 ? mrp_material_type(type) : -1;
+    if (k < 0 || es.tex < 0 || ty < 0) return false;
+    es.kind = k;
+    es.type = ty;
+    const MatParam* mp = mrp_material_params(ty);
+    for (int i = 0; i < 3; ++i) es.p[i] = mp[i].name == nullptr ? 0.0f : std::clamp(got >= 5 + i ? a[i] : mp[i].def, mp[i].lo, mp[i].hi);
+    if (ty == MAT_EMISSIVE) {  // ("material ... emissive [strength] [threshold]": the emissive line's numbers)
+        es.strength = es.p[0];
+        es.threshold = es.p[1];
+    }
+    out = es;
+    return true;
+}
+// orig: (host) an "emissive" / "material" line written
+std::string emis_line(const EmissiveSurface& es) {
+    char b[256];
+    if (es.type == MAT_EMISSIVE) {
+        std::snprintf(b, sizeof b, "emissive %s %d tex %d  %.2f %.2f", mrp_emissive_kind_name(es.kind), es.o_class, es.tex, es.strength, es.threshold);
+        return b;
+    }
+    std::snprintf(b, sizeof b, "material %s %d tex %d %s", mrp_emissive_kind_name(es.kind), es.o_class, es.tex, mrp_material_name(es.type));
+    std::string out(b);
+    const MatParam* mp = mrp_material_params(es.type);
+    for (int i = 0; i < 3; ++i)
+        if (mp[i].name != nullptr) {
+            std::snprintf(b, sizeof b, " %g", static_cast<double>(es.p[i]));
+            out += b;
+        }
+    return out;
+}
+bool same_emit(const ClassLight& a, const ClassLight& b) {
+    return a.moby == b.moby && a.shrub == b.shrub && a.o_class == b.o_class && std::memcmp(a.off, b.off, sizeof a.off) == 0 && std::memcmp(a.col, b.col, sizeof a.col) == 0 &&
+           a.intensity == b.intensity && a.radius == b.radius && a.flicker == b.flicker && a.down == b.down && a.on == b.on && a.joint == b.joint;
+}
+bool same_emis(const EmissiveSurface& a, const EmissiveSurface& b) {
+    return a.kind == b.kind && a.o_class == b.o_class && a.tex == b.tex && a.strength == b.strength && a.threshold == b.threshold && a.type == b.type &&
+           std::memcmp(a.p, b.p, sizeof a.p) == 0;
+}
+
+// ---- the lines for every level: data/lights/classes.txt (moby classes: the same on every level) ----
+struct GlobalLine {
+    char kind = '#';    // '#' a comment / a line kept as it is, 'e' an emit line, 'm' an emissive / material line
+    std::string text;   // (as read: written back while the entry is not edited)
+    ClassLight cl;      // ('e')
+    EmissiveSurface es; // ('m')
+    bool shown = false; // (added to the current level's lists: not overridden by its file)
+    bool gone = false;  // (deleted / moved to the level's file since: not written)
+};
+std::vector<GlobalLine> g_global;
+std::string g_global_path;
+// orig: (host) the file's path
+std::string classes_path() {
+    const char* dir = std::getenv("RAC1_LIGHTS_DIR");
+    return std::string(dir != nullptr ? dir : "data/lights") + "/classes.txt";
+}
+// orig: (host) the file read (its moby lines; anything else kept as a comment)
+void classes_load() {
+    g_global.clear();
+    g_global_path = classes_path();
+    FILE* f = std::fopen(g_global_path.c_str(), "r");
+    if (f == nullptr) return;
+    const rac1::ps2fpu::NearestScope nearest;
+    char line[256];
+    while (std::fgets(line, sizeof line, f) != nullptr) {
+        GlobalLine g;
+        g.text = line;
+        while (!g.text.empty() && (g.text.back() == '\n' || g.text.back() == '\r')) g.text.pop_back();
+        if (line[0] != '#') {
+            if (emit_parse(line, g.cl) && g.cl.moby) g.kind = 'e';
+            else if (emis_parse(line, g.es) && g.es.kind == 3) g.kind = 'm';
+        }
+        g.cl.global = g.es.global = g.kind != '#';
+        g_global.push_back(g);
+    }
+    std::fclose(f);
+}
+// orig: (host) the file's lines added to the level's lists (after its own), but where the level's file has its own line for that class
+// (emit) or class and texture (emissive, material)
+void classes_apply() {
+    size_t ne = 0, nm = 0;
+    for (size_t i = 0; i < g_global.size(); ++i) {
+        GlobalLine& g = g_global[i];
+        g.shown = false;
+        if (g.kind == 'e') {
+            const bool own = std::any_of(g_class_lights.begin(), g_class_lights.end(), [&](const ClassLight& c) { return !c.global && c.moby && c.o_class == g.cl.o_class; });
+            if (own) continue;
+            ClassLight c = g.cl;
+            c.global = true;
+            c.gidx = static_cast<int>(i);
+            g_class_lights.push_back(c);
+            g.shown = true;
+            ++ne;
+        } else if (g.kind == 'm') {
+            const bool own = std::any_of(g_emissive_list.begin(), g_emissive_list.end(),
+                                         [&](const EmissiveSurface& e) { return !e.global && e.kind == 3 && e.o_class == g.es.o_class && e.tex == g.es.tex; });
+            if (own) continue;
+            EmissiveSurface e = g.es;
+            e.global = true;
+            e.gidx = static_cast<int>(i);
+            g_emissive_list.push_back(e);
+            g.shown = true;
+            ++nm;
+        }
+    }
+    if (ne + nm > 0) std::printf("[lights] %s: %zu emit and %zu emissive / material lines for every level\n", g_global_path.c_str(), ne, nm);
+}
+// orig: (host) the file written when its lines changed: the level's global entries (edited, deleted, made global or made the level's
+// own) folded into the file's list, each line in its place, a line not edited as it was read; true when written or nothing to write
+bool classes_save() {
+    std::vector<int> found(g_global.size(), -1);  // (the global line's entry in the level's lists)
+    bool changed = false;
+    for (size_t i = 0; i < g_class_lights.size(); ++i) {
+        ClassLight& c = g_class_lights[i];
+        if (c.gidx >= 0 && static_cast<size_t>(c.gidx) < g_global.size()) {
+            GlobalLine& g = g_global[static_cast<size_t>(c.gidx)];
+            if (!c.global || !c.on) {  // (made the level's own, or turned off: out of the file)
+                if (!g.gone) changed = true;
+                g.gone = true;
+                if (!c.global) c.gidx = -1;
+                continue;
+            }
+            found[static_cast<size_t>(c.gidx)] = 1;
+            if (!same_emit(c, g.cl)) {
+                ClassLight k = c;
+                g.cl = k;
+                g.text = emit_line(k);
+                changed = true;
+            }
+        } else if (c.global && c.moby && c.on) {
+            GlobalLine g;
+            g.kind = 'e';
+            g.cl = c;
+            g.text = emit_line(c);
+            g.shown = true;
+            c.gidx = static_cast<int>(g_global.size());
+            g_global.push_back(g);
+            found.push_back(1);
+            changed = true;
+        }
+    }
+    for (size_t i = 0; i < g_emissive_list.size(); ++i) {
+        EmissiveSurface& e = g_emissive_list[i];
+        if (e.gidx >= 0 && static_cast<size_t>(e.gidx) < g_global.size()) {
+            GlobalLine& g = g_global[static_cast<size_t>(e.gidx)];
+            if (!e.global) {
+                if (!g.gone) changed = true;
+                g.gone = true;
+                e.gidx = -1;
+                continue;
+            }
+            found[static_cast<size_t>(e.gidx)] = 1;
+            if (!same_emis(e, g.es)) {
+                g.es = e;
+                g.text = emis_line(e);
+                changed = true;
+            }
+        } else if (e.global && e.kind == 3) {
+            GlobalLine g;
+            g.kind = 'm';
+            g.es = e;
+            g.text = emis_line(e);
+            g.shown = true;
+            e.gidx = static_cast<int>(g_global.size());
+            g_global.push_back(g);
+            found.push_back(1);
+            changed = true;
+        }
+    }
+    for (size_t i = 0; i < g_global.size(); ++i)  // (shown on this level and no longer in its lists: deleted)
+        if (g_global[i].kind != '#' && g_global[i].shown && found[i] < 0 && !g_global[i].gone) {
+            g_global[i].gone = true;
+            changed = true;
+        }
+    if (!changed) return true;
+    std::error_code ec;
+    const std::filesystem::path p(g_global_path);
+    if (p.has_parent_path()) std::filesystem::create_directories(p.parent_path(), ec);
+    FILE* f = std::fopen(g_global_path.c_str(), "w");
+    if (f == nullptr) return false;
+    const rac1::ps2fpu::NearestScope nearest;
+    if (g_global.empty() || g_global.front().kind != '#')
+        std::fprintf(f, "# rac1-native: moby lights, emissive surfaces and materials for every level (the debug menu's \"for every level\")\n");
+    for (const GlobalLine& g : g_global)
+        if (!g.gone) std::fprintf(f, "%s\n", g.text.c_str());
+    std::fclose(f);
+    std::printf("[lights] %s written\n", g_global_path.c_str());
+    return true;
+}
+
 // orig: (host) read: one light a line, "light x y z r g b intensity radius flicker on" ('#' comments)
 void user_load(int level) {
     g_user.clear();
@@ -2974,7 +3470,9 @@ void user_load(int level) {
     g_user_path = user_path(level);
     g_user_light_selected = -1;
     FILE* f = std::fopen(g_user_path.c_str(), "r");
+    classes_load();
     if (f == nullptr) {
+        classes_apply();
         mrp_user_emissive_changed();
         return;
     }
@@ -3015,58 +3513,15 @@ void user_load(int level) {
             entry('i');
             continue;
         }
-        {  // "emit <tie|moby> <class> <ox oy oz> <r g b> <intensity> <radius> [flicker] [down]"
-            ClassLight cl;
-            char kind[8] = {};
-            const int got = std::sscanf(line, "emit %7s %d %f %f %f %f %f %f %f %f %f %f", kind, &cl.o_class, &cl.off[0], &cl.off[1], &cl.off[2], &cl.col[0], &cl.col[1],
-                                        &cl.col[2], &cl.intensity, &cl.radius, &cl.flicker, &cl.down);
-            cl.down = std::clamp(cl.down, 0.0f, 1.0f);
-            if (got >= 10 && (std::strcmp(kind, "tie") == 0 || std::strcmp(kind, "moby") == 0 || std::strcmp(kind, "shrub") == 0)) {
-                cl.moby = std::strcmp(kind, "moby") == 0;
-                cl.shrub = std::strcmp(kind, "shrub") == 0;
-                g_class_lights.push_back(cl);
-                entry('e');
-                continue;
-            }
+        if (ClassLight cl; emit_parse(line, cl)) {  // "emit <tie|shrub|moby> <class> <ox oy oz> <r g b> <intensity> <radius> [flicker] [down] [joint n]"
+            g_class_lights.push_back(cl);
+            entry('e');
+            continue;
         }
-        {  // "emissive <tfrag|tie|shrub|moby> <class> tex <n> [strength] [threshold]"
-            EmissiveSurface es;
-            char kind[8] = {};
-            const int got = std::sscanf(line, "emissive %7s %d tex %d %f %f", kind, &es.o_class, &es.tex, &es.strength, &es.threshold);
-            int k = -1;
-            for (int i = 0; i < 5; ++i)
-                if (std::strcmp(kind, mrp_emissive_kind_name(i)) == 0) k = i;
-            if (got >= 3 && k >= 0 && es.tex >= 0) {
-                es.kind = k;
-                es.strength = std::clamp(es.strength, 0.0f, 4.0f);
-                es.threshold = std::clamp(es.threshold, 0.0f, 1.0f);
-                g_emissive_list.push_back(es);
-                entry('m');
-                continue;
-            }
-        }
-        {  // "material <tfrag|tie|shrub|moby> <class> tex <n> <type> [a] [b] [c]" (docs/materials.md)
-            EmissiveSurface es;
-            char kind[8] = {}, type[16] = {};
-            float a[3] = {0.0f, 0.0f, 0.0f};
-            const int got = std::sscanf(line, "material %7s %d tex %d %15s %f %f %f", kind, &es.o_class, &es.tex, type, &a[0], &a[1], &a[2]);
-            int k = -1;
-            for (int i = 0; i < 5; ++i)
-                if (std::strcmp(kind, mrp_emissive_kind_name(i)) == 0) k = i;
-            const int ty = got >= 4 ? mrp_material_type(type) : -1;
-            if (k >= 0 && es.tex >= 0 && ty >= 0) {
-                es.kind = k;
-                es.type = ty;
-                const MatParam* mp = mrp_material_params(ty);
-                for (int i = 0; i < 3; ++i) es.p[i] = mp[i].name == nullptr ? 0.0f : std::clamp(got >= 5 + i ? a[i] : mp[i].def, mp[i].lo, mp[i].hi);
-                if (ty == MAT_EMISSIVE) {  // ("material ... emissive [strength] [threshold]": the emissive line's numbers)
-                    es.strength = es.p[0];
-                    es.threshold = es.p[1];
-                }
-                g_emissive_list.push_back(es);
-                entry('m');
-                continue;
-            }
+        if (EmissiveSurface es; emis_parse(line, es)) {  // "emissive ..." / "material ..."
+            g_emissive_list.push_back(es);
+            entry('m');
+            continue;
         }
         if (char w[8] = {}; std::sscanf(line, "rain %7s", w) == 1) {  // "rain on": the materials' rain ripples
             g_rain = std::strcmp(w, "on") == 0 || std::strcmp(w, "1") == 0;
@@ -3109,12 +3564,13 @@ void user_load(int level) {
         std::printf("[lights] level %d: %zu emissive surfaces, %zu materials%s\n", level, g_emissive_list.size() - nm, nm, g_rain ? " (rain)" : "");
     }
     if (g_sun_file.on) std::printf("[lights] level %d: the sun turned to azimuth %.1f, elevation %.1f degrees\n", level, g_sun_file.az, g_sun_file.el);
+    classes_apply();
     mrp_user_emissive_changed();
 }
 // orig: (host) the current level's file read when the level changed (its sun is wanted at the shadow pass's start, whatever the
 // secondary lights' setting)
 void user_ensure() {
-    const int level = static_cast<int>(lw(0x0015ed84));
+    const int level = static_cast<int>(draw_lw(0x0015ed84));
     if (level != g_user_level) user_load(level);
 }
 }  // namespace
@@ -3160,10 +3616,10 @@ void mrp_lighting_zone_light(float rgb[3], float sun[3]) {
     // the hero's light sets (as game_sun picks them), both lights' colours summed, blended by the hero's weight
     uint32_t a = 0, b = 0;
     float t = 0.0f;
-    if (const uint32_t hero = lwu(OV(0x0015ffd8u)); hero != 0) {
-        a = lbu(hero + 0x38);
-        b = lbu(hero + 0x39);
-        t = static_cast<float>(lbu(hero + 0x3a)) / 256.0f;
+    if (const uint32_t hero = draw_lwu(OV(0x0015ffd8u)); hero != 0) {
+        a = draw_lbu(hero + 0x38);
+        b = draw_lbu(hero + 0x39);
+        t = static_cast<float>(draw_lbu(hero + 0x3a)) / 256.0f;
         if (a > 15) a = 0;
         if (b > 15) b = a;
         if (a == 15) a = b = 0;
@@ -3172,7 +3628,7 @@ void mrp_lighting_zone_light(float rgb[3], float sun[3]) {
         const uint32_t base = OV(0x0017fec0u) + 0x40 * set;
         glm::vec3 c(0.0f);
         for (uint32_t l = 0; l < 2; ++l)
-            for (uint32_t i = 0; i < 3; ++i) c[i] += std::max(lwc1(base + 0x20 * l + 4 * i), 0.0f);
+            for (uint32_t i = 0; i < 3; ++i) c[i] += std::max(draw_lwc1(base + 0x20 * l + 4 * i), 0.0f);
         return c;
     };
     const glm::vec3 c = glm::mix(set_sum(a), set_sum(b), t);
@@ -3273,6 +3729,7 @@ namespace {
 void emissive_uniforms(glm::vec4 out[32]) {
     for (int i = 0; i < 32; ++i) out[i] = glm::vec4(0.0f);
     out[0].x = g_emissive != 0 ? 1.0f : 0.0f;
+    out[0].y = static_cast<float>(g_sh.ngame);  // (the mobys' point lights per pixel start after the game's own: sh_points_moby)
     const size_t n = std::min<size_t>(g_emissive_list.size(), kEmissiveSlots);
     for (size_t i = 0; i < n; ++i) {
         const EmissiveSurface& e = g_emissive_list[i];
@@ -3298,7 +3755,7 @@ void material_uniforms(MatUniforms& u) {
         const EmissiveSurface& e = g_emissive_list[i];
         if (e.type == MAT_EMISSIVE) continue;
         any = true;
-        ssr = ssr || e.type == MAT_PUDDLE || e.type == MAT_WATER || e.type == MAT_LAVA;
+        ssr = ssr || e.type == MAT_PUDDLE || e.type == MAT_WATER || e.type == MAT_LAVA || (e.type == MAT_METAL && e.p[0] < 0.6f);  // (a polished metal mirrors too)
         u.mat[i + 1] = glm::vec4(e.p[0], e.p[1], e.p[2], 0.0f);
     }
     g_mat_ssr_wanted = ssr;
@@ -3397,26 +3854,13 @@ bool mrp_user_lights_save() {
             if (n_set < g_interior_sets.size()) std::fprintf(f, "interior_set %d\n", g_interior_sets[n_set++]);
             break;
         case 'e':
-            while (n_emit < g_class_lights.size() && !g_class_lights[n_emit].on) ++n_emit;  // (one turned off: not written)
-            if (n_emit < g_class_lights.size()) {
-                const ClassLight& cl = g_class_lights[n_emit++];
-                std::fprintf(f, "emit %s %d  %.3f %.3f %.3f  %.3f %.3f %.3f  %.3f %.3f %.3f  %.2f\n", cl.moby ? "moby" : cl.shrub ? "shrub" : "tie", cl.o_class, cl.off[0],
-                             cl.off[1], cl.off[2], cl.col[0], cl.col[1], cl.col[2], cl.intensity, cl.radius, cl.flicker, cl.down);
-            }
+            // (one turned off: not written; one for every level: classes.txt's)
+            while (n_emit < g_class_lights.size() && (!g_class_lights[n_emit].on || g_class_lights[n_emit].global)) ++n_emit;
+            if (n_emit < g_class_lights.size()) std::fprintf(f, "%s\n", emit_line(g_class_lights[n_emit++]).c_str());
             break;
         case 'm':
-            if (n_emis < g_emissive_list.size()) {
-                const EmissiveSurface& es = g_emissive_list[n_emis++];
-                if (es.type == MAT_EMISSIVE) {
-                    std::fprintf(f, "emissive %s %d tex %d  %.2f %.2f\n", mrp_emissive_kind_name(es.kind), es.o_class, es.tex, es.strength, es.threshold);
-                } else {
-                    std::fprintf(f, "material %s %d tex %d %s", mrp_emissive_kind_name(es.kind), es.o_class, es.tex, mrp_material_name(es.type));
-                    const MatParam* mp = mrp_material_params(es.type);
-                    for (int i = 0; i < 3; ++i)
-                        if (mp[i].name != nullptr) std::fprintf(f, " %g", static_cast<double>(es.p[i]));
-                    std::fprintf(f, "\n");
-                }
-            }
+            while (n_emis < g_emissive_list.size() && g_emissive_list[n_emis].global) ++n_emis;  // (one for every level: classes.txt's)
+            if (n_emis < g_emissive_list.size()) std::fprintf(f, "%s\n", emis_line(g_emissive_list[n_emis++]).c_str());
             break;
         case 'R':
             if (!rain_done && g_rain) std::fprintf(f, "rain on\n");
@@ -3476,7 +3920,12 @@ bool mrp_user_lights_save() {
     g_particles_read.clear();  // (the lines written are the file's now: a later Save keeps them as they are)
     for (const ParticleSpec& p : g_particles)
         if (p.on) g_particles_read.push_back(p);
-    return true;
+    return classes_save();  // (the lines for every level: their own file)
+}
+// orig: (host) see mrp_lighting.h
+const char* mrp_user_classes_path() {
+    if (g_global_path.empty()) g_global_path = classes_path();
+    return g_global_path.c_str();
 }
 
 // orig: (host) see mrp_lighting.h
@@ -3491,11 +3940,11 @@ void mrp_lighting_point_casters(float pts[8][4]) {
         pts[i][0] = pts[i][1] = pts[i][2] = pts[i][3] = 0.0f;
         if (g_modern_shadows == 0 || g_modern_points == 0 || g_point_shadows == 0) continue;
         const uint32_t rec = OV(0x001802c0u) + i * 0x20, use = OV(0x001804c0u) + i * 0x30;
-        if (lw(use + 0x10) == 0 || !(lwc1(rec + 0x1c) > 0.0f) || ((g_slot_old.load() >> i) & 1u) != 0) continue;
-        pts[i][0] = lwc1(rec + 0x10);
-        pts[i][1] = lwc1(rec + 0x14);
-        pts[i][2] = lwc1(rec + 0x18);
-        pts[i][3] = lwc1(rec + 0x1c);
+        if (draw_lw(use + 0x10) == 0 || !(draw_lwc1(rec + 0x1c) > 0.0f) || ((g_slot_old.load() >> i) & 1u) != 0) continue;
+        pts[i][0] = draw_lwc1(rec + 0x10);
+        pts[i][1] = draw_lwc1(rec + 0x14);
+        pts[i][2] = draw_lwc1(rec + 0x18);
+        pts[i][3] = draw_lwc1(rec + 0x1c);
     }
 }
 
@@ -3508,9 +3957,9 @@ void mrp_lighting_frame_begin() {
         if (n++ % 20 == 0) {
             for (uint32_t i = 0; i < 8; ++i) {
                 const uint32_t rec = OV(0x001802c0u) + i * 0x20, use = OV(0x001804c0u) + i * 0x30;
-                if (lw(use + 0x10) == 0) continue;
-                std::printf("[point] draw %llu slot %u colour %.2f %.2f %.2f k %.2f pos %.1f %.1f %.1f r %.1f\n", static_cast<unsigned long long>(n), i, lwc1(rec), lwc1(rec + 4),
-                            lwc1(rec + 8), lwc1(rec + 0xc), lwc1(rec + 0x10), lwc1(rec + 0x14), lwc1(rec + 0x18), lwc1(rec + 0x1c));
+                if (draw_lw(use + 0x10) == 0) continue;
+                std::printf("[point] draw %llu slot %u colour %.2f %.2f %.2f k %.2f pos %.1f %.1f %.1f r %.1f\n", static_cast<unsigned long long>(n), i, draw_lwc1(rec), draw_lwc1(rec + 4),
+                            draw_lwc1(rec + 8), draw_lwc1(rec + 0xc), draw_lwc1(rec + 0x10), draw_lwc1(rec + 0x14), draw_lwc1(rec + 0x18), draw_lwc1(rec + 0x1c));
             }
         }
     }
@@ -3564,7 +4013,7 @@ void lamp_scan(const int vp[4]) {
     };
     static std::map<std::pair<int, int>, Acc> acc;  // (kind 0 tie, 1 shrub, 2 moby, 3 none; class)
     if (n % 600 == 0 && !acc.empty()) {
-        std::printf("[lamps] level %d, %llu frames:\n", static_cast<int>(lw(0x0015ed84)), static_cast<unsigned long long>(n));
+        std::printf("[lamps] level %d, %llu frames:\n", static_cast<int>(draw_lw(0x0015ed84)), static_cast<unsigned long long>(n));
         for (const auto& [k, a] : acc)
             if (a.hits >= 3)
                 std::printf("[lamps]   %s %d: %d hits, colour %.2f %.2f %.2f, e.g. at %.1f %.1f %.1f\n", k.first == 0 ? "tie" : k.first == 1 ? "shrub" : k.first == 2 ? "moby" : "world",
@@ -3690,6 +4139,9 @@ void screen_point_read(const int vp[4]) {
             std::printf("[lights] screen %.2f %.2f: %.2f %.2f %.2f; tie %d class %d offset %.3f %.3f %.3f; shrub %d class %d offset %.3f %.3f %.3f; moby %d class %d (%.2f away)\n",
                         g_pick_uv[0], g_pick_uv[1], g_pick_world[0], g_pick_world[1], g_pick_world[2], pk.tie ? 1 : 0, pk.tie_class, pk.tie_off[0], pk.tie_off[1], pk.tie_off[2],
                         pk.shrub ? 1 : 0, pk.shrub_class, pk.shrub_off[0], pk.shrub_off[1], pk.shrub_off[2], pk.moby ? 1 : 0, pk.moby_class, pk.moby_dist);
+            if (pk.moby)
+                std::printf("[lights] screen %.2f %.2f: moby %08x (%s), joint %d at %.3f %.3f %.3f in its frame\n", g_pick_uv[0], g_pick_uv[1], pk.moby_addr,
+                            pk.moby_part ? "its parts hold the point" : "the nearest origin", pk.moby_joint, pk.moby_joint_off[0], pk.moby_joint_off[1], pk.moby_joint_off[2]);
             const SurfacePick sp = mrp_world_surface_at(g_pick_world);  // (the surface there: an emissive line's kind, class, texture)
             if (sp.kind >= 0)
                 std::printf("[lights] screen %.2f %.2f: surface %s %d tex %d (level texture %d, %.3f away)\n", g_pick_uv[0], g_pick_uv[1], mrp_emissive_kind_name(sp.kind), sp.o_class,
@@ -3747,21 +4199,48 @@ LightPick mrp_lighting_pick(const float p[3]) {
             for (int k = 0; k < 3; ++k) r.tie_off[k] = l[k];
         }
     }
-    const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffe0u));
-    r.moby_dist = 6.0f;  // (a moby whose origin is at its foot: a door frame, a lamp post)
-    for (uint32_t m = first; m != 0 && m < 0x01fe0000u && (last == 0 || m <= last) && lbu(m + 0x20) != 0xff; m += 0x100) {
-        if (static_cast<int8_t>(lbu(m + 0x20)) < 0) continue;
-        const glm::vec3 mp(lwc1(m + 0x10), lwc1(m + 0x14), lwc1(m + 0x18));
-        const float d = glm::length(P - mp);
-        if (d >= r.moby_dist) continue;
-        r.moby = true;
-        r.moby_dist = d;
-        r.moby_class = lh(m + 0xa6);
-        for (uint32_t k = 0; k < 3; ++k) {  // (the point in the moby's frame: its rows normalised)
-            glm::vec3 row(lwc1(m + 0xc0 + 0x10 * k), lwc1(m + 0xc4 + 0x10 * k), lwc1(m + 0xc8 + 0x10 * k));
+    const uint32_t first = draw_lwu(OV(0x0015ffd8u)), last = draw_lwu(OV(0x0015ffe0u));
+    auto frame_off = [&](uint32_t m) {  // (the point in the moby's frame: its position, its rows normalised)
+        const glm::vec3 mp(draw_lwc1(m + 0x10), draw_lwc1(m + 0x14), draw_lwc1(m + 0x18));
+        for (uint32_t k = 0; k < 3; ++k) {
+            glm::vec3 row(draw_lwc1(m + 0xc0 + 0x10 * k), draw_lwc1(m + 0xc4 + 0x10 * k), draw_lwc1(m + 0xc8 + 0x10 * k));
             const float len = glm::length(row);
             r.moby_off[k] = len > 0.0f ? glm::dot(P - mp, row / len) : 0.0f;
         }
+    };
+    // the drawn moby whose parts hold the point (a big one - a cannon, a train - whose origin is far from the part clicked), else
+    // the live moby whose origin is nearest within 6 units (a moby whose origin is at its foot: a door frame, a lamp post)
+    if (uint32_t ma = 0; mrp_moby_at(p, &ma, &r.moby_class, &r.moby_dist)) {
+        r.moby = true;
+        r.moby_part = true;
+        r.moby_addr = ma;
+        frame_off(ma);
+    } else {
+        r.moby_dist = 6.0f;
+        for (uint32_t m = first; m != 0 && m < 0x01fe0000u && (last == 0 || m <= last) && draw_lbu(m + 0x20) != 0xff; m += 0x100) {
+            if (static_cast<int8_t>(draw_lbu(m + 0x20)) < 0) continue;
+            const glm::vec3 mp(draw_lwc1(m + 0x10), draw_lwc1(m + 0x14), draw_lwc1(m + 0x18));
+            const float d = glm::length(P - mp);
+            if (d >= r.moby_dist) continue;
+            r.moby = true;
+            r.moby_dist = d;
+            r.moby_class = draw_lh(m + 0xa6);
+            r.moby_addr = m;
+            frame_off(m);
+        }
+    }
+    if (r.moby) {  // its pose this frame: the joint nearest the point, the point in that joint's frame
+        float jp[3], ax[9], best = 1e30f;
+        int n = 0;
+        if (mrp_moby_draw_frame(r.moby_addr, -1, jp, ax, &n))
+            for (int j = 0; j < n && j < 128; ++j) {
+                if (!mrp_moby_draw_frame(r.moby_addr, j, jp, ax)) continue;
+                const glm::vec3 d = P - glm::vec3(jp[0], jp[1], jp[2]);
+                if (glm::length(d) >= best) continue;
+                best = glm::length(d);
+                r.moby_joint = j;
+                for (int k = 0; k < 3; ++k) r.moby_joint_off[k] = glm::dot(d, glm::vec3(ax[3 * k], ax[3 * k + 1], ax[3 * k + 2]));
+            }
     }
     return r;
 }
@@ -3787,11 +4266,11 @@ void class_lights_add(double t) {
                                 ti.sphere[0], ti.sphere[1], ti.sphere[2], ti.sphere[3]);
                 }
             }
-            const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffe0u));
-            for (uint32_t m = first; m != 0 && m < 0x01fe0000u && (last == 0 || m <= last) && lbu(m + 0x20) != 0xff; m += 0x100) {
-                const glm::vec3 mp(lwc1(m + 0x10), lwc1(m + 0x14), lwc1(m + 0x18));
+            const uint32_t first = draw_lwu(OV(0x0015ffd8u)), last = draw_lwu(OV(0x0015ffe0u));
+            for (uint32_t m = first; m != 0 && m < 0x01fe0000u && (last == 0 || m <= last) && draw_lbu(m + 0x20) != 0xff; m += 0x100) {
+                const glm::vec3 mp(draw_lwc1(m + 0x10), draw_lwc1(m + 0x14), draw_lwc1(m + 0x18));
                 const float d = glm::length(mp - glm::vec3(x, y, z));
-                if (d <= r) std::printf("[lights] moby class %d (state %d) at %.2f %.2f %.2f (%.1f away) +0x30 %02x +0x32 %02x +0x34 %04x\n", lh(m + 0xa6), lbu(m + 0x20), mp.x, mp.y, mp.z, d, lbu(m + 0x30), lbu(m + 0x32), lhu(m + 0x34));
+                if (d <= r) std::printf("[lights] moby class %d (state %d) at %.2f %.2f %.2f (%.1f away) +0x30 %02x +0x32 %02x +0x34 %04x\n", draw_lh(m + 0xa6), draw_lbu(m + 0x20), mp.x, mp.y, mp.z, d, draw_lbu(m + 0x30), draw_lbu(m + 0x32), draw_lhu(m + 0x34));
             }
         }
     }
@@ -3808,7 +4287,7 @@ void class_lights_add(double t) {
     }
     {  // the level's lights per class, once per level: how many instances each finds (a class with none: a wrong class or kind)
         static int shown_level = -1;
-        const int level = static_cast<int>(lw(0x0015ed84));
+        const int level = static_cast<int>(draw_lw(0x0015ed84));
         if (level != shown_level && g_user_level == level && g_sh.frame > 30) {
             shown_level = level;
             if (std::getenv("RAC1_LIGHTS_TRACE") != nullptr)  // (testing: the debug menu's emissive candidates)
@@ -3818,9 +4297,9 @@ void class_lights_add(double t) {
             for (const ClassLight& cl : g_class_lights) {
                 int n = 0;
                 if (cl.moby) {
-                    const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffe0u));
-                    for (uint32_t m = first; m != 0 && m < 0x01fe0000u && (last == 0 || m <= last) && lbu(m + 0x20) != 0xff; m += 0x100)
-                        n += static_cast<int8_t>(lbu(m + 0x20)) >= 0 && lh(m + 0xa6) == cl.o_class ? 1 : 0;
+                    const uint32_t first = draw_lwu(OV(0x0015ffd8u)), last = draw_lwu(OV(0x0015ffe0u));
+                    for (uint32_t m = first; m != 0 && m < 0x01fe0000u && (last == 0 || m <= last) && draw_lbu(m + 0x20) != 0xff; m += 0x100)
+                        n += static_cast<int8_t>(draw_lbu(m + 0x20)) >= 0 && draw_lh(m + 0xa6) == cl.o_class ? 1 : 0;
                 } else {
                     static const bool trace = std::getenv("RAC1_LIGHTS_TRACE") != nullptr;
                     for (const TieSpot& t : mrp_world_tie_instances()) {
@@ -3871,16 +4350,38 @@ void class_lights_add(double t) {
     }
     if (any_moby) {  // (the whole moby array to its end *(0x15ffe0), not the level's placed ones alone (*(0x15ffdc)): the spawned mobys -
                      // a nanotech crate's orbs, bombs, enemies from a spawner - light too)
-        const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffe0u));
-        for (uint32_t m = first; m != 0 && m < 0x01fe0000u && (last == 0 || m <= last) && lbu(m + 0x20) != 0xff; m += 0x100) {
-            if (static_cast<int8_t>(lbu(m + 0x20)) < 0) continue;  // (a dead slot)
-            const int cls = lh(m + 0xa6);
+        const uint32_t first = draw_lwu(OV(0x0015ffd8u)), last = draw_lwu(OV(0x0015ffe0u));
+        for (uint32_t m = first; m != 0 && m < 0x01fe0000u && (last == 0 || m <= last) && draw_lbu(m + 0x20) != 0xff; m += 0x100) {
+            if (static_cast<int8_t>(draw_lbu(m + 0x20)) < 0) continue;  // (a dead slot)
+            const int cls = draw_lh(m + 0xa6);
             for (size_t i = 0; i < g_class_lights.size(); ++i) {
                 const ClassLight& cl = g_class_lights[i];
                 if (!cl.on || !cl.moby || cl.o_class != cls) continue;
-                glm::vec3 p(lwc1(m + 0x10), lwc1(m + 0x14), lwc1(m + 0x18));
+                static const bool jtrace = std::getenv("RAC1_LIGHTS_TRACE") != nullptr;
+                if (jtrace && g_sh.frame % 120 == 0) {  // (testing: the moby's position against its drawn model's origin and its first joints')
+                    float o[3] = {0.0f, 0.0f, 0.0f}, a9[9];
+                    int nj = 0;
+                    std::string js;
+                    const bool drawn = mrp_moby_draw_frame(m, -1, o, a9, &nj);
+                    if (drawn)
+                        for (int j = 0; j < nj; ++j)  // (each joint's height over the origin, its distance)
+                            if (float q[3]; mrp_moby_draw_frame(m, j, q, a9)) {
+                                char b[48];
+                                std::snprintf(b, sizeof b, " j%d %.2f/%.2f", j, q[2] - o[2], std::sqrt((q[0] - o[0]) * (q[0] - o[0]) + (q[1] - o[1]) * (q[1] - o[1]) + (q[2] - o[2]) * (q[2] - o[2])));
+                                js += b;
+                            }
+                    std::printf("[lights] moby %08x class %d at %.2f %.2f %.2f: %s %.2f %.2f %.2f (%d joints)%s\n", m, cls, draw_lwc1(m + 0x10), draw_lwc1(m + 0x14), draw_lwc1(m + 0x18),
+                                drawn ? "drawn at" : "not drawn", o[0], o[1], o[2], nj, js.c_str());
+                }
+                if (float jp[3], ax[9]; cl.joint >= 0 && mrp_moby_draw_frame(m, cl.joint, jp, ax)) {  // ("joint <n>": that joint's frame as the pose has it)
+                    glm::vec3 p(jp[0], jp[1], jp[2]);
+                    for (int r = 0; r < 3; ++r) p += glm::vec3(ax[3 * r], ax[3 * r + 1], ax[3 * r + 2]) * cl.off[r];
+                    add(i, p, m);
+                    continue;
+                }
+                glm::vec3 p(draw_lwc1(m + 0x10), draw_lwc1(m + 0x14), draw_lwc1(m + 0x18));
                 for (uint32_t r = 0; r < 3; ++r) {  // (the moby's rows, normalised: the offset in world units, turned with it)
-                    glm::vec3 row(lwc1(m + 0xc0 + 0x10 * r), lwc1(m + 0xc4 + 0x10 * r), lwc1(m + 0xc8 + 0x10 * r));
+                    glm::vec3 row(draw_lwc1(m + 0xc0 + 0x10 * r), draw_lwc1(m + 0xc4 + 0x10 * r), draw_lwc1(m + 0xc8 + 0x10 * r));
                     const float len = glm::length(row);
                     if (len > 0.0f) row /= len;
                     p += row * cl.off[r];
@@ -3922,14 +4423,14 @@ void class_lights_add(double t) {
 // the robot 0x161c88[i]). Veldin's overlay only (level 0; the robot's own pointer checked); no shadow cube.
 void beam_lights_add() {
     static const bool off = std::getenv("RAC1_BEAM_LIGHTS") != nullptr && std::atoi(std::getenv("RAC1_BEAM_LIGHTS")) == 0;  // (testing: 0 none)
-    if (off || lw(0x0015ed84) != 0) return;
-    const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffe0u));
+    if (off || draw_lw(0x0015ed84) != 0) return;
+    const uint32_t first = draw_lwu(OV(0x0015ffd8u)), last = draw_lwu(OV(0x0015ffe0u));
     for (uint32_t i = 0; i < 3 && g_sh.npts + 2 <= kMaxPts; ++i) {
-        const int32_t st = lw(OV(0x00161bf8u) + i * 4);
-        const uint32_t who = lwu(OV(0x00161c88u) + i * 4);
-        if (st < 2 || st > 4 || who < first || who > last || ((who - first) & 0xffu) != 0 || lh(who + 0xa6) != 1440) continue;
+        const int32_t st = draw_lw(OV(0x00161bf8u) + i * 4);
+        const uint32_t who = draw_lwu(OV(0x00161c88u) + i * 4);
+        if (st < 2 || st > 4 || who < first || who > last || ((who - first) & 0xffu) != 0 || draw_lh(who + 0xa6) != 1440) continue;
         const uint32_t e = OV(0x001e6de0u) + i * 0x10, s = OV(0x001e6d20u) + i * 0x40 + 0x30;
-        const glm::vec3 end(lwc1(e), lwc1(e + 4), lwc1(e + 8)), start(lwc1(s), lwc1(s + 4), lwc1(s + 8));
+        const glm::vec3 end(draw_lwc1(e), draw_lwc1(e + 4), draw_lwc1(e + 8)), start(draw_lwc1(s), draw_lwc1(s + 4), draw_lwc1(s + 8));
         const glm::vec3 col(0.70f, 0.66f, 1.00f);
         static const bool trace = std::getenv("RAC1_LIGHTS_TRACE") != nullptr;
         if (trace) std::printf("[lights] beam %u (state %d): %.1f %.1f %.1f -> %.1f %.1f %.1f\n", i, st, start.x, start.y, start.z, end.x, end.y, end.z);
@@ -3974,17 +4475,18 @@ void mrp_lighting_shadow_pass() {
     std::fill(std::begin(g_sh.pt_down), std::end(g_sh.pt_down), 0.0f);  // (every way alike but a lamp per class aimed down)
     for (uint32_t i = 0; i < 8 && g_modern_points != 0; ++i) {
         const uint32_t rec = OV(0x001802c0u) + i * 0x20, use = OV(0x001804c0u) + i * 0x30;
-        if (lw(use + 0x10) == 0 || ((g_slot_old.load() >> i) & 1u) != 0) continue;  // (the level's own lights: the game's)
-        const glm::vec3 col(lwc1(rec), lwc1(rec + 4), lwc1(rec + 8));
-        const float r = lwc1(rec + 0x1c);
+        if (draw_lw(use + 0x10) == 0 || ((g_slot_old.load() >> i) & 1u) != 0) continue;  // (the level's own lights: the game's)
+        const glm::vec3 col(draw_lwc1(rec), draw_lwc1(rec + 4), draw_lwc1(rec + 8));
+        const float r = draw_lwc1(rec + 0x1c);
         if (!(r > 0.0f) || col.x + col.y + col.z <= 0.0f) continue;
-        g_sh.pt_pos[g_sh.npts] = glm::vec4(lwc1(rec + 0x10), lwc1(rec + 0x14), lwc1(rec + 0x18), r);
+        g_sh.pt_pos[g_sh.npts] = glm::vec4(draw_lwc1(rec + 0x10), draw_lwc1(rec + 0x14), draw_lwc1(rec + 0x18), r);
         g_sh.pt_col[g_sh.npts] = glm::vec4(col, -1.0f);
         g_sh.pt_slot[g_sh.npts] = static_cast<int>(i);
         ++g_sh.npts;
     }
+    g_sh.ngame = g_sh.npts;
     if (g_modern_points != 0 && g_auto_lights != 0) {  // (step 3) the lights placed by hand, before the emitters
-        const int level = static_cast<int>(lw(0x0015ed84));
+        const int level = static_cast<int>(draw_lw(0x0015ed84));
         if (level != g_user_level) user_load(level);
         const double t = static_cast<double>(g_sh.frame) / 60.0;
         for (size_t i = 0; i < g_user.size() && g_sh.npts < kMaxPts; ++i) {
@@ -4027,7 +4529,7 @@ void mrp_lighting_shadow_pass() {
         for (int k = 0; k < kCascades; ++k) {
             if (!g_casc_on.load()) continue;
             const int cres = g_sh.casc[k].res;
-            const int* moby_rect = nullptr;
+            const MobyRects* moby_rects_now = nullptr;
             if (g_shadow_cache != 0) {
                 State::Cache& ca = g_sh.cache[k];
                 if (g_vk_sh.stex[k].image == VK_NULL_HANDLE || g_vk_sh.stex_res[k] != cres) {
@@ -4055,45 +4557,38 @@ void mrp_lighting_shadow_pass() {
                     if ((skip & 1) == 0) mrp_world_draw_casters(glm::value_ptr(g_sh.casc[k].vp), k);
                     vk::pop_target();
                     ++g_sh.refreshes;
-                } else if (k == 2 && (g_sh.frame & 1u) != 0) {
+                } else if (far_skip(k)) {
                     ++g_sh.frames_cached;
                     continue;
                 }
                 ++g_sh.frames_cached;
                 static const bool whole = std::getenv("RAC1_SHADOW_COPY_WHOLE") != nullptr;
-                int cx = 0, cy = 0, cw = cres, ch = cres;
-                if (!g_sh.refresh[k] && !whole) {
-                    cx = ca.dirty[0];
-                    cy = ca.dirty[1];
-                    cw = ca.dirty[2] - ca.dirty[0];
-                    ch = ca.dirty[3] - ca.dirty[1];
-                }
-                int nr[4] = {0, 0, 0, 0};
-                float rect[4];
-                if ((skip & 2) == 0 && mrp_moby_caster_rect(glm::value_ptr(g_sh.casc[k].vp), rect, within)) {
-                    auto tx = [&](float v, bool up) {
-                        const float t = (v * 0.5f + 0.5f) * static_cast<float>(cres);
-                        return std::clamp(static_cast<int>(up ? std::ceil(t) : std::floor(t)) + (up ? 2 : -2), 0, cres);
-                    };
-                    nr[0] = tx(rect[0], false);
-                    nr[1] = tx(rect[1], false);
-                    nr[2] = tx(rect[2], true);
-                    nr[3] = tx(rect[3], true);
-                }
-                std::memcpy(ca.dirty, nr, sizeof nr);
-                if (!whole) moby_rect = ca.dirty;
-                if (cw > 0 && ch > 0) {
+                // the cache put back where last frame's mobys were (the whole map after a refresh), this frame's rectangles kept
+                VkImageCopy ics[kMaxClusters];
+                uint32_t nics = 0;
+                auto region = [&](int x0, int y0, int x1, int y1) {
+                    if (x1 <= x0 || y1 <= y0) return;
+                    VkImageCopy& ic = ics[nics++];
+                    ic = VkImageCopy{};
+                    ic.srcSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1};
+                    ic.srcOffset = {x0, y0, 0};
+                    ic.dstSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, static_cast<uint32_t>(k), 1};
+                    ic.dstOffset = {x0, y0, 0};
+                    ic.extent = {static_cast<uint32_t>(x1 - x0), static_cast<uint32_t>(y1 - y0), 1};
+                };
+                if (g_sh.refresh[k] || whole) region(0, 0, cres, cres);
+                else
+                    for (int i = 0; i < ca.dirty.n; ++i) region(ca.dirty.r[i][0], ca.dirty.r[i][1], ca.dirty.r[i][2], ca.dirty.r[i][3]);
+                MobyRects now;
+                if ((skip & 2) != 0 || !moby_rects(glm::value_ptr(g_sh.casc[k].vp), cres, within, now)) now.n = 0;
+                ca.dirty = now;
+                if (!whole) moby_rects_now = &ca.dirty;
+                if (nics > 0) {
                     vk::end_rendering();
                     vk::transition_image(vk::cmd(), g_vk_sh.stex[k], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
                     vk::transition_image(vk::cmd(), g_vk_sh.tex, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-                    VkImageCopy ic{};
-                    ic.srcSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1};
-                    ic.srcOffset = {cx, cy, 0};
-                    ic.dstSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, static_cast<uint32_t>(k), 1};
-                    ic.dstOffset = {cx, cy, 0};
-                    ic.extent = {static_cast<uint32_t>(cw), static_cast<uint32_t>(ch), 1};
                     vkCmdCopyImage(vk::cmd(), g_vk_sh.stex[k].image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                                   g_vk_sh.tex.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ic);
+                                   g_vk_sh.tex.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, nics, ics);
                 }
                 vk::transition_image(vk::cmd(), g_vk_sh.tex, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
                 vk::RenderTarget rt_l{};
@@ -4116,17 +4611,28 @@ void mrp_lighting_shadow_pass() {
                 vk::push_target(rt_l, false, nullptr, true, 1.0f, false, 0);
                 if ((skip & 1) == 0) mrp_world_draw_casters(glm::value_ptr(g_sh.casc[k].vp), k);
             }
-            if (moby_rect != nullptr) {
-                vk::set_scissor(true, moby_rect[0], moby_rect[1], moby_rect[2] - moby_rect[0], moby_rect[3] - moby_rect[1]);
-            }
-            if ((skip & 2) == 0 && (moby_rect == nullptr || (moby_rect[2] > moby_rect[0] && moby_rect[3] > moby_rect[1]))) {
+            if (moby_rects_now != nullptr) {  // (each rectangle's parts inside it: what the next frame puts back)
+                for (int i = 0; i < moby_rects_now->n; ++i) {
+                    const int* r = moby_rects_now->r[i];
+                    if (r[2] <= r[0] || r[3] <= r[1]) continue;
+                    vk::set_scissor(true, r[0], r[1], r[2] - r[0], r[3] - r[1]);
+                    mrp_moby_draw_casters(glm::value_ptr(g_sh.casc[k].vp), moby_rects_now->s[i][3] >= 0.0f ? moby_rects_now->s[i] : nullptr, within);
+                }
+            } else if ((skip & 2) == 0) {
                 mrp_moby_draw_casters(glm::value_ptr(g_sh.casc[k].vp), nullptr, within);
             }
             vk::set_scissor(false);
             vk::pop_target();
         }
         vk::transition_image(vk::cmd(), g_vk_sh.tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        point_shadows_pass();
+        // (the profiler's stages as the OpenGL path's: the cascades' zone closed here - left open, the GPU's work after the world's
+        // draw, outside a stage of its own, was counted as the cascades' -, the point lights' cubes their own)
+        rac1::prof::end(prof_cascades);
+        prof_cascades = -1;
+        {
+            RAC1_PROF_ZONE(kPointCubes);
+            point_shadows_pass();
+        }
         point_tiles_update();
         vk::set_viewport(prev_vp[0], prev_vp[1], prev_vp[2], prev_vp[3]);
         vk::set_scissor(false);
@@ -4169,7 +4675,7 @@ void mrp_lighting_shadow_pass() {
             continue;
         }
         const int cres = g_sh.casc[k].res;
-        const int* moby_rect = nullptr;
+        const MobyRects* moby_rects_now = nullptr;
         const float within_v[4] = {g_sh.cam.x, g_sh.cam.y, g_sh.cam.z, g_shadow_moby_dist};  // (the shadows' distance)
         const float* within = g_shadow_moby_dist > 0.0f ? within_v : nullptr;
         static const int skip = std::getenv("RAC1_SHADOW_SKIP") != nullptr ? std::atoi(std::getenv("RAC1_SHADOW_SKIP")) : 0;  // (testing: 1 no world, 2 no mobys)
@@ -4207,8 +4713,8 @@ void mrp_lighting_shadow_pass() {
                 if ((skip & 1) == 0) mrp_world_draw_casters(glm::value_ptr(g_sh.casc[k].vp), k);
                 glDisable(GL_DEPTH_CLAMP);
                 ++g_sh.refreshes;
-            } else if (k == 2 && (g_sh.frame & 1u) != 0) {
-                // Far cascade (75..260 m): reuse last frame's moby shadows on odd frames when the static cache did not move
+            } else if (far_skip(k)) {
+                // a far cascade: its layer (the cache and its mobys as last drawn) kept this frame - the box did not move
                 ++g_sh.frames_cached;
                 if (prof) glEndQuery(GL_TIME_ELAPSED);
                 continue;
@@ -4218,31 +4724,26 @@ void mrp_lighting_shadow_pass() {
             // the layer: the cache copied whole when drawn, else only where last frame's mobys were (the rest is the cache still); the
             // mobys then drawn inside their own rectangle (their parts' spheres), which the next frame puts back
             static const bool whole = std::getenv("RAC1_SHADOW_COPY_WHOLE") != nullptr;  // (testing: the whole cache copied every frame)
-            int cx = 0, cy = 0, cw = cres, ch = cres;
-            if (!g_sh.refresh[k] && !whole) {
-                cx = ca.dirty[0];
-                cy = ca.dirty[1];
-                cw = ca.dirty[2] - ca.dirty[0];
-                ch = ca.dirty[3] - ca.dirty[1];
+            // (the regions put back: last frame's rectangles, or the whole map after a refresh)
+            int regs[kMaxClusters][4] = {};
+            int nregs = 0;
+            if (g_sh.refresh[k] || whole) {
+                regs[0][2] = regs[0][3] = cres;
+                nregs = 1;
+            } else {
+                for (int i = 0; i < ca.dirty.n; ++i) std::memcpy(regs[nregs++], ca.dirty.r[i], sizeof regs[0]);
             }
-            int nr[4] = {0, 0, 0, 0};
-            float rect[4];
-            if ((skip & 2) == 0 && mrp_moby_caster_rect(glm::value_ptr(g_sh.casc[k].vp), rect, within)) {
-                auto tx = [&](float v, bool up) {
-                    const float t = (v * 0.5f + 0.5f) * static_cast<float>(cres);
-                    return std::clamp(static_cast<int>(up ? std::ceil(t) : std::floor(t)) + (up ? 2 : -2), 0, cres);
-                };
-                nr[0] = tx(rect[0], false);
-                nr[1] = tx(rect[1], false);
-                nr[2] = tx(rect[2], true);
-                nr[3] = tx(rect[3], true);
-            }
-            std::memcpy(ca.dirty, nr, sizeof nr);
-            if (!whole) moby_rect = ca.dirty;
+            MobyRects now;
+            if ((skip & 2) != 0 || !moby_rects(glm::value_ptr(g_sh.casc[k].vp), cres, within, now)) now.n = 0;
+            ca.dirty = now;
+            if (!whole) moby_rects_now = &ca.dirty;
             using PfnCopy = void(APIENTRYP)(GLuint, GLenum, GLint, GLint, GLint, GLint, GLuint, GLenum, GLint, GLint, GLint, GLint, GLsizei, GLsizei, GLsizei);
             static const PfnCopy copy = reinterpret_cast<PfnCopy>(glfwGetProcAddress("glCopyImageSubData"));  // (GL 4.3: not in the loader's header)
             if (copy != nullptr) {
-                if (cw > 0 && ch > 0) copy(ca.stex, GL_TEXTURE_2D, 0, cx, cy, 0, g_sh.tex, GL_TEXTURE_2D_ARRAY, 0, cx, cy, k, cw, ch, 1);
+                for (int i = 0; i < nregs; ++i) {
+                    const int* r = regs[i];
+                    if (r[2] > r[0] && r[3] > r[1]) copy(ca.stex, GL_TEXTURE_2D, 0, r[0], r[1], 0, g_sh.tex, GL_TEXTURE_2D_ARRAY, 0, r[0], r[1], k, r[2] - r[0], r[3] - r[1], 1);
+                }
             } else {  // (no copy: the cache off from now on, this frame's world drawn as before)
                 g_shadow_cache = 0;
                 begin_map(true);
@@ -4259,12 +4760,17 @@ void mrp_lighting_shadow_pass() {
             if ((skip & 1) == 0) mrp_world_draw_casters(glm::value_ptr(g_sh.casc[k].vp), k);
             glDisable(GL_DEPTH_CLAMP);
         }
-        if (moby_rect != nullptr) {  // (inside the rectangle the next frame puts back)
+        if (moby_rects_now != nullptr) {  // (each rectangle's parts inside it: what the next frame puts back)
             glEnable(GL_SCISSOR_TEST);
-            glScissor(moby_rect[0], moby_rect[1], moby_rect[2] - moby_rect[0], moby_rect[3] - moby_rect[1]);
-        }
-        if ((skip & 2) == 0 && (moby_rect == nullptr || (moby_rect[2] > moby_rect[0] && moby_rect[3] > moby_rect[1])))
+            for (int i = 0; i < moby_rects_now->n; ++i) {
+                const int* r = moby_rects_now->r[i];
+                if (r[2] <= r[0] || r[3] <= r[1]) continue;
+                glScissor(r[0], r[1], r[2] - r[0], r[3] - r[1]);
+                mrp_moby_draw_casters(glm::value_ptr(g_sh.casc[k].vp), moby_rects_now->s[i][3] >= 0.0f ? moby_rects_now->s[i] : nullptr, within);
+            }
+        } else if ((skip & 2) == 0) {
             mrp_moby_draw_casters(glm::value_ptr(g_sh.casc[k].vp), nullptr, within);
+        }
         glDisable(GL_DEPTH_CLAMP);
         glDisable(GL_SCISSOR_TEST);
         if (prof) glEndQuery(GL_TIME_ELAPSED);

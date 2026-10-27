@@ -3,11 +3,11 @@
 Per [ADR 0003](../../docs/decisions.md), this directory holds code that is **openly invented** to
 support development:
 
-- A dev menu inspired by R&C1's hidden Insomniac debug menu
-- Spawn / kill / teleport helpers
-- Render-state toggles (wireframe, no-cull, depth-test off)
-- Force-state controls (skip cutscene, give gadget, set checkpoint)
-- Visual-debug overlays (collision wireframes, bounding boxes, etc.)
+- The debug menu (R3 / F1, `dev_menu.cpp`), inspired by R&C1's hidden Insomniac debug menu. Its tabs: Game,
+  Player (teleport, the checkpoint, Kill Ratchet), Items and Unlocks (`dev_unlocks.cpp`), Mobys (freeze or
+  retire them), Camera (free camera), Rendering (wireframe and shading views, the renderers' switches), Lights,
+  Sun and Textures (the editors below), Display, Audio, Levels (level select), Engine and Profiler
+- The free hoverboard on every level (`dev_hoverboard.cpp`, the Player tab's Hoverboard anywhere)
 
 ## Policy
 
@@ -34,6 +34,10 @@ support development:
 - **Sun** (tab), interiors: the level's `interior` boxes (the camera inside: the sun off, the original's look) drawn over the
   picture, added around the camera, edited, deleted; `interior_set` light sets (the hero lit with one); saved with the level file
   (see [Lighting: interiors](../../docs/lighting.md#interiors)).
+- **Sun** (tab), ambient particles: the level's particle lines (see [Ambient particles: the editor](../../docs/particles.md#the-editor)).
+- **Lights** (tab), "Emissive surfaces and materials", and the **Textures** tab (the level's textures as thumbnails, a
+  click puts one in hand): mark a texture emissive or give it a material (see
+  [Lighting: emissive surfaces](../../docs/lighting.md#emissive-surfaces) and [Materials](../../docs/materials.md)).
 
 ## The profiler
 
@@ -50,7 +54,7 @@ longer (the dumps' GL object counts included). `RAC1_PROFILER_DUMP`, `RAC1_PROFI
 - **Stages**, CPU and GPU side by side: a stacked bar each and a sortable table (the busiest stage on each side in
   yellow, the waits greyed). Each stage's time is its *self* time: a zone inside another (the GS 2D inside the
   effects) counts in its own stage only, so the stages add up to the frame. The CPU side is the main thread's wall
-  time. The GPU side: one `glQueryCounter(GL_TIMESTAMP)` at each boundary of a GPU-timed zone, the time between two
+  time. The GPU side (on Vulkan: the renderer's own timestamp queries, the same way): one `glQueryCounter(GL_TIMESTAMP)` at each boundary of a GPU-timed zone, the time between two
   given to the innermost zone open there; read back up to 32 frames later and only when ready (never a stall: a
   frame whose results did not come is left out of the GPU's averages; in uncapped headless runs they came back 4 to 17
   frames later). No flush between them (a flush per boundary made a run 50 % slower), so a stage's GPU
@@ -70,11 +74,14 @@ longer (the dumps' GL object counts included). `RAC1_PROFILER_DUMP`, `RAC1_PROFI
   sub-stage, the world passes, the moby pass's draw loop, the mobys' joints and skinning on the VU0, the effects and
   draw lists, the world lighting and the passes' ends), and the host's re-runs of game passes for the LOD slider and
   the widened view (the moby pass's, and the others': world, effects, draw lists). A zone left open when the coroutine
-  waits for a vsync inside a blocking loop is closed with the game code's own zone.
+  waits for a vsync inside a blocking loop is closed with the game code's own zone. With the game thread (the game's update
+  beside the pipelined frame's drawing, `runtime/ee/game_thread.h`) those zones are the game thread's, on a stack of their
+  own, counted in the stages but not in the main thread's frame; the main thread's wait for it is "Wait: game thread", the
+  game thread's for the drawing (the GS replica's memory, a GL call asked of the main thread) "Game thread: wait for the draw".
 - **Bottleneck**: GPU-bound (the GPU busy for 85 % of the frame or more), bound by a worker (the main thread waits
   15 % of the frame or more for the MRP scene build or the GS chain), CPU-bound on the main thread (its own work 85 %
   of the frame or more), or held by the frame cap / v-sync.
-- **Threads**: the GS chain worker's and the MRP scene worker's busy and CPU time per frame (their jobs timed), the job
+- **Threads**: the GS chain worker's, the MRP scene worker's and the game thread's busy and CPU time per frame (their jobs timed), the job
   pool's workers' (`src/jobs`, summed over its workers; a track each in the Chrome trace), and
   every thread of the process with its CPU % (Linux: `/proc/self/task/*/schedstat`; Windows: the threads' times;
   the driver's threads included), and the process's CPU %.
@@ -135,3 +142,76 @@ after giving loads back with them: every byte here is in the save: its game bloc
   as the pause menu's codes do, so the ship's map lists every planet; their arrival messages are taken back. Not undone.
 - **Unlock everything** / **Take everything back**: all of the above (the cheats unlocked, not switched on); taking back
   leaves the planets and the ammo.
+
+## Hoverboard anywhere (the Player tab)
+
+On Rilgar (5) and Kalebo III (16), the two levels that have it, the hoverboard of the races ridden away from the race; on every
+other level a free board of our own (below).
+The board is the class-439 moby (its update: Rilgar's L5:0x002f87a8, Kalebo's L16:0x002c7788). Standing (+0x20 = 0) it waits
+for the hero within 5.5, then hands itself to him (`PLAYER+0x86c`), puts him in his board state 0x6b (sub-state 0x16; the
+levels' own hero controllers ride it), keeps its spot (pvars +0x10) and goes to its riding state 1. Ticking the box does that
+same mount with the level's nearest standing board, wherever Ratchet is; on Rilgar the board state's entry puts him on the
+race's start line, so his position and heading (+0x98, +0x874) are put back. Unticking is the game's `hero_set_state(0, 1)`,
+as the race's own end does; the board goes home by itself. Done between game frames (`dev_hoverboard_apply`); testing:
+`RAC1_HOVERBOARD_AT` (docs/env-vars.md).
+
+What the game's own board code still does, unchanged:
+- The race's HUD (lap, time, place) shows while riding.
+- Rilgar: the board is held to the race's track. Its crash checks (walls ahead, the heading against the track's, the height
+  under the nearest track point: level 5's own) wipe it out (state 0x6d) away from the track and put Ratchet back on it; below
+  61.4 (the water) it sinks (0x6e) and does the same. Tried: on the track anywhere along it (it starts where he stands), fine;
+  the streets by the water, the vendor's dock, the taxi stand and the Hoverboard Girl's terrace: back on the track at once.
+- Kalebo III: no track check; anywhere above 76 (the walkways, the courtyards, the Gadgetron buildings' level) is ridden; below
+  it the board falls (0x6e) and Ratchet comes back on a point of the track.
+
+### The free board (every other level: `dev_hoverboard.cpp`)
+
+The board's riding is level 5's and 16's own code: their transliterated hero controllers (`rilgar_hero_tr_*`, `kalebo_hero_tr_*`)
+read their state tables and globals at those levels' own data addresses, so they cannot run on another level's memory. What the
+other levels have instead, and what the free board uses:
+- **The state.** On every other level the hero controllers (Veldin's and the L1 family's ports, and the transliterated
+  controllers of 6, 8, 11, 12, 14, 15, 17 and 18: their jump tables checked) send 0x6b where they send state 5: nothing per
+  frame, no transitions of its own, the set_state's common tail only. The free board puts Ratchet in 0x6b with the game's
+  `hero_set_state(0x6b, 1)`; the game then leaves his position alone (his animation, moby, camera, hits, items, water and the
+  kill height still run as in any state), and the ride moves him between the game's frames (`dev_free_board_frame`, after
+  each frame the hero was updated in; none in the pause menu, a dialog or the level's exit).
+- **The riding** is ours: the stick turned through the camera as Ratchet's walk does (up: away from the camera; the board
+  turns towards it at 4.5 rad/s standing, 2.2 at full speed), speeding up to 20 units/s, cross jumps (also just off an
+  edge), gravity 30. The game's own segment query (`segment_collide`, 0x1efc70) finds the walls (two rays, at 0.35 and 1.1,
+  slid along) and the floor (steps of 0.7 climbed, slopes followed down 0.9, more is a fall; a ramp's top throws him up), on a
+  journal of EE memory with the contact registers kept (as `mrp_lod.cpp`'s shadow runs do), so the queries leave the game's
+  memory as it was.
+- **Off the level**: in the water (`PLAYER+0x12e4` / `+0x2f0`, from the game's surface check), below the level's kill height
+  (`0x15f638`), off the map, airborne for 4 s, or put in the fall to death 0x77 by a level's pit: back on foot (state 0) on
+  the last solid ground (where he rode a quarter second before, on flat ground). Never a race respawn.
+- **The animations** are level data. The hero's sequences come from the level's core (its 256-entry hero sequence table, the
+  level loader puts them in his class's slots); Kalebo III's core has the board's (58 falling, 82 standing, 85 riding, 98
+  jumping), Veldin's has every sequence, most levels have none of them (their slots are null). They are read once from Kalebo
+  III's core on the disc, put at `host_layout::DEV_BOARD_SEQS` (0x02300000, above the game's 32 MB) with their frame table and
+  trigger block made addresses as the game's load does (checked byte for byte against Kalebo III's own copies), and hooked into
+  the class's null slots while riding; the slots are emptied again once Ratchet plays none of them. Played with the game's
+  `hero_anim_set`.
+- **The board** is Kalebo III's class 439, drawn by the MRP only (`mrp_moby_renderer.cpp`, `append_guest`): its asset and the
+  textures it names are read from `assets/generated/mrp/moby/level16/` and added to the level's (the level's assets loaded again
+  once, at the first ride), and it is drawn after the frame's mobys on Ratchet as the frame drew him: his world matrix with the
+  board's scale, 0.215 up, the joints as the game poses the standing board, his lights. No moby in the game's memory.
+- **No sound.**
+- **Getting off**: unticking (the game's `hero_set_state(0, 1)` where he is), a hit, an attack (square, R1...), a hazard
+  floor, a cutscene, a pit, the water: the ride ends (the box unticks). A new level ends it too.
+
+Tried headless on every level (`RAC1_HOVERBOARD_AT` once Ratchet stands after the arrival, ten seconds of stick forward with
+turns and two jumps, then off; OpenGL, and Kerwan with Vulkan too): no crash, Ratchet on foot afterwards on every level.
+How the scripted drive ended (a player steers; these say what each level does to a board ridden straight ahead):
+
+| Level | The drive |
+|---|---|
+| Veldin, Blarg, Batalia, Oltanis, Quartu, Veldin finale | off an edge: back on foot on the ground before it |
+| Novalis, Drek's fleet | into the water: back on foot |
+| Kerwan | the whole drive on the board (walls slid along; the avenue north of the start, 214 194 47.5, rides well) |
+| Aridia (0x68), Umbris (0x7b) | the level's hazard floor took him off |
+| Eudora, Gaspar | an enemy's hit took him off |
+| Pokitaru | a cutscene's trigger took him off |
+| Hoven | killed on the way (on the board, as on foot) |
+| Gemlik | off the base into its pit (0x77 above the kill height): back on foot |
+| Orxon | not available while Clank is played (his class has no board sequences) |
+| Rilgar, Kalebo III | the race's board, as before |

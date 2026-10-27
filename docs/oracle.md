@@ -9,9 +9,11 @@ that is never in this repository.
 
 ## What it is
 
-The oracle is one program, `ovl_oracle`, made of many **batches**. A batch is one file,
+The oracle is one program, `ovl_oracle`, made of many **batches** (a second, small one,
+`vecmath_oracle`, checks the vector math library the same way). A batch is one file,
 `tests/oracle/batch_<N>.cpp`, that checks the ports of one piece of work: a level's classes, a
-menu, a family of particles. Each check in a batch names an original function by its address and
+menu, a family of particles; the first ones (1 to 58, 60, 62 and 64, among them the hero batches
+44 to 55) are together in `tests/oracle/ovl_oracle_unit.cpp`. Each check in a batch names an original function by its address and
 the C++ function that ports it, and runs both many times:
 
 1. The EE's memory is set up as the game has it at some moment (see below: from the disc, or from
@@ -102,7 +104,7 @@ ORACLE_LEVEL=8 build/tests/ovl_oracle --batch 120  # a batch on level 8's own ov
 
 It prints one line per check (`ok (40 cases)`, or the differences), then `PASS` or `FAIL` with the
 number of failing functions. The exit code is 0 for a pass, 1 for a failure, and 77 when the disc's
-files are missing. Each batch's header says which levels it runs on and what it needs.
+files, or the level's address map, are missing. Each batch's header says which levels it runs on and what it needs.
 
 Useful variables:
 

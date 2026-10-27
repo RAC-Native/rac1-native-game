@@ -115,10 +115,11 @@ The port therefore runs **two copies** of the driver
 `RAC1_IOP_MIRROR=0` turns the mirror off and plays the game's IOP directly.
 
 **The audio device** (`audio_out_start`): miniaudio, 16-bit stereo (or 5.1 / 7.1, below) at 48 kHz, three periods of 10 ms
-by default (`RAC1_AUDIO_PERIOD_MS`, `RAC1_AUDIO_PERIODS`, `RAC1_AUDIO_DEVICE` to choose another).
+by default (`RAC1_AUDIO_PERIOD_MS`, `RAC1_AUDIO_PERIODS`). It always opens the system's default output device;
+`RAC1_AUDIO_DEVICE=null` uses miniaudio's null device instead (nothing is heard, for testing).
 The queue between the threads absorbs small differences in pace with a slight rate adjustment, and
 ramps the sound in and out over 2.5 ms when it has to skip or runs dry. The device's thread and the
-IOP thread ask the system for real-time priority through rtkit (`src/host/host_priority.cpp`;
+IOP thread ask the system for real-time priority through rtkit (`src/host/host_priority_posix.cpp`, `host_priority_win32.cpp`;
 `RAC1_PRIORITY=0` to not ask). `RAC1_NO_AUDIO` runs without sound.
 
 ## Surround: 5.1 and 7.1

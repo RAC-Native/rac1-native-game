@@ -511,14 +511,6 @@ void snd989_stream_reset(Snd989Streams* io) {
     st().up = false;
 }
 
-// orig: (host)
-int snd989_stream_active(Snd989Streams* io) {
-    Use use(io);
-    int n = 0;
-    for (const Stream& s : st().streams) n += s.handle != 0 ? 1 : 0;
-    return n;
-}
-
 // (testing) the streams playing, as text: "group:sector[p]" per live stream (p: paused), in slot order
 std::string snd989_stream_describe(Snd989Streams* io) {
     Use use(io);

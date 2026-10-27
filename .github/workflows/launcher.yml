@@ -1,4 +1,4 @@
-# The launchers (tools/launcher/, docs/launcher.md): built at each push, and attached to each release, the one file
+# The launchers (tools/launcher/, docs/launcher.md): built at each push that changes them, and attached to each release, the one file
 # players download (and which updates itself from the latest release's):
 #   rac1-launcher.exe         Windows (.NET Framework 4.8, tools/launcher/windows/)
 #   rac1-launcher-linux-x64   Linux (.NET 8 and Avalonia in the file, tools/launcher/linux/)

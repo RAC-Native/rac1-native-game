@@ -27,6 +27,22 @@
 
 extern char** environ;
 
+// ThreadSanitizer (a -fsanitize=thread build, testing): the coroutine's stack switches told to it as a fiber's
+#if defined(__SANITIZE_THREAD__)
+#define RAC1_TSAN_FIBERS 1
+#elif defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+#define RAC1_TSAN_FIBERS 1
+#endif
+#endif
+#if defined(RAC1_TSAN_FIBERS)
+extern "C" {
+void* __tsan_get_current_fiber(void);
+void* __tsan_create_fiber(unsigned flags);
+void __tsan_switch_to_fiber(void* fiber, unsigned flags);
+}
+#endif
+
 namespace rac1::platform {
 
 // ---- The coroutine: a hand-written switch on x86-64 and AArch64, ucontext elsewhere (ctx_switch.h) ----
@@ -48,12 +64,19 @@ struct Coroutine {
 #if defined(RAC1_CTX_ASM) && defined(RAC1_CTX_UCONTEXT)
     bool ucontext = false;  // testing: RAC1_COROUTINE=ucontext, the switch before the hand-written one (to compare)
 #endif
+#if defined(RAC1_TSAN_FIBERS)
+    void* tsan_game = nullptr;  // (the coroutine's fiber; the host's: the resuming thread's at each resume)
+    void* tsan_host = nullptr;
+#endif
 };
 Coroutine g_co;
 
 #if defined(RAC1_CTX_ASM)
 [[noreturn]] void co_main() {
     g_co.entry();
+#if defined(RAC1_TSAN_FIBERS)
+    __tsan_switch_to_fiber(g_co.tsan_host, 0);
+#endif
     void* dead = nullptr;
     rac1_ctx_switch(&dead, g_co.host_sp);  // (entry returned: back to the host, as ucontext's uc_link)
     __builtin_trap();
@@ -107,6 +130,11 @@ void coroutine_start(void (*entry)()) {
 }
 
 void coroutine_resume() {
+#if defined(RAC1_TSAN_FIBERS)
+    if (g_co.tsan_game == nullptr) g_co.tsan_game = __tsan_create_fiber(0);
+    g_co.tsan_host = __tsan_get_current_fiber();
+    __tsan_switch_to_fiber(g_co.tsan_game, 0);
+#endif
 #if defined(RAC1_CTX_ASM)
     if (use_asm()) {
         rac1_ctx_switch(&g_co.host_sp, g_co.game_sp);
@@ -119,6 +147,9 @@ void coroutine_resume() {
 }
 
 void coroutine_yield() {
+#if defined(RAC1_TSAN_FIBERS)
+    __tsan_switch_to_fiber(g_co.tsan_host, 0);
+#endif
 #if defined(RAC1_CTX_ASM)
     if (use_asm()) {
         rac1_ctx_switch(&g_co.game_sp, g_co.host_sp);

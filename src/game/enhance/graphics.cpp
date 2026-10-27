@@ -410,7 +410,11 @@ bool prefs_read(const std::filesystem::path& path) {
             }
             continue;
         }
-        if (std::fscanf(f, "%d", &a) != 1) break;
+        if (std::fscanf(f, "%d", &a) != 1) {  // (a value that is not a number - a later version's, a hand edit: that line skipped)
+            char rest[256];
+            if (std::fgets(rest, sizeof rest, f) == nullptr) break;
+            continue;
+        }
         if (std::strcmp(key, "display") == 0) gs_.value[S_DISPLAY] = a != 0;
         else if (std::strcmp(key, "render_scale") == 0) gs_.value[S_SCALE] = nearest(SCALES, a);
         else if (std::strcmp(key, "aspect") == 0 && a >= 0 && a < 3) gs_.value[S_ASPECT] = a;
@@ -475,12 +479,20 @@ void prefs_write() {
     const std::filesystem::path path = prefs_path();
     std::error_code ec;
     if (path.has_parent_path()) std::filesystem::create_directories(path.parent_path(), ec);
-    if (FILE* f = platform::open_file(path, "w")) {
+    {
         const int* v = gs_.value;
-        std::fprintf(f, "display %d\nmonitor %s\nwindow %d %d\nrender_scale %d\naspect %d\nfit %d\nlod %d\nfov %d\nvsync %d\nfps_cap %d\nlighting %d\ndynamic_shadows %d\nsecondary_lights %d\nshadow_distance %d\nambient_occlusion %d\ntexture_detail %d\nshadow_strength %d\nsun_rays_quality %d\nao_intensity %d\nambient_particles %d\nhud %d\nrenderer %s\nsurface_detail %d\nmode %u\n",
-                     v[S_DISPLAY], gs_.monitor_name.c_str(), gs_.win_w, gs_.win_h, SCALES[v[S_SCALE]], v[S_ASPECT], v[S_FIT], v[S_LOD], FOVS[v[S_FOV]], v[S_VSYNC], CAPS[v[S_CAP]], v[S_LIGHTING], v[S_DYN_SHADOWS],
+        static constexpr const char* kFormat =
+            "display %d\nmonitor %s\nwindow %d %d\nrender_scale %d\naspect %d\nfit %d\nlod %d\nfov %d\nvsync %d\nfps_cap %d\nlighting %d\ndynamic_shadows %d\nsecondary_lights %d\nshadow_distance %d\nambient_occlusion %d\ntexture_detail %d\nshadow_strength %d\nsun_rays_quality %d\nao_intensity %d\nambient_particles %d\nhud %d\nrenderer %s\nsurface_detail %d\nmode %u\n";
+        auto format = [&](char* out, size_t n) {
+            return std::snprintf(out, n, kFormat, v[S_DISPLAY], gs_.monitor_name.c_str(), gs_.win_w, gs_.win_h, SCALES[v[S_SCALE]], v[S_ASPECT], v[S_FIT], v[S_LOD], FOVS[v[S_FOV]], v[S_VSYNC], CAPS[v[S_CAP]], v[S_LIGHTING], v[S_DYN_SHADOWS],
                      v[S_SEC_LIGHTS], v[S_SHADOW_DIST], v[S_AO], v[S_MIPS], SHADOW_STRS[v[S_SHADOW_STR]], v[S_SUN_RAYS], AO_STRS[v[S_AO_STR]], v[S_PARTICLES], v[S_HUD], v[S_RENDERER] != 0 ? "vulkan" : "opengl", v[S_SURFACE], gs_.mode);
-        std::fclose(f);
+        };
+        // (through a temporary file: a crash or a full disk never leaves the preferences half written)
+        const int len = format(nullptr, 0);
+        std::string text(static_cast<size_t>(std::max(len, 0)) + 1, '\0');
+        format(text.data(), text.size());
+        text.resize(static_cast<size_t>(std::max(len, 0)));
+        if (!platform::write_file_replace(path, text)) std::fprintf(stderr, "[graphics] cannot write %s\n", path.string().c_str());
     }
     gs_.dirty = false;
 }

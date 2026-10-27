@@ -66,6 +66,9 @@
 #include <vector>
 
 #include <platform/platform.h>
+#if defined(__SANITIZE_ADDRESS__)
+#include <sanitizer/lsan_interface.h>
+#endif
 
 #include "host_language.h"
 
@@ -127,6 +130,8 @@
 #include <runtime/ipu/movie_hw.h>
 #include <runtime/kernel/load_prof.h>
 #include <runtime/ee/ee_thread.h>
+#include <runtime/ee/game_thread.h>
+#include <runtime/kernel/ee_copy.h>
 #include <runtime/ee/ee_timer.h>
 #include <game/ovl/vsync_callback.h>
 #include <game/ovl/vendor_frame.h>
@@ -190,6 +195,7 @@ constexpr const char* PLAYER_ENV[] = {
     "RAC1_DEBUG_TOOLS", "RAC1_HEADLESS", "RAC1_NO_GRAPHICS", "RAC1_ISO", "RAC1_MEMCARD_DIR", "RAC1_ADVANCED_FILE", "RAC1_GRAPHICS_FILE", "RAC1_CONTROLS_FILE",
     "RAC1_RENDERER", "RAC1_WINDOW", "RAC1_FULLSCREEN", "RAC1_VSYNC", "RAC1_FPS_CAP", "RAC1_NO_AUDIO", "RAC1_AUDIO_DEVICE",
     "RAC1_AUDIO_PERIOD_MS", "RAC1_AUDIO_PERIODS", "RAC1_MOVIE_VOLUME", "RAC1_PRIORITY", "RAC1_IOP_MIRROR",
+    "RAC1_PROGRESS",  // (where progress.json goes for the launcher, or 0: docs/launcher.md)
     "RAC1_PYTHON",  // (set by tools/setup.py for the setup mode: the Python it runs the overlay matcher with)
 };
 
@@ -1734,7 +1740,29 @@ void sim_host_press(const char* keys, size_t pos) {
 // The controller packet the pad returns (see g_host_pad_packet): 2 button bytes active low
 // (high byte select L3 R3 start up right down left, low byte L2 R2 L1 R1 triangle circle cross
 // square), then the right and left sticks (0..255, 0x7f centred, up = 0).
-void pad_packet(GLFWwindow* win, uint64_t frame) {
+// orig: (host) the game's memory a pipelined frame's drawing reads (runtime/kernel/ee_copy.h), copied at its prepare: the base
+// executable's data and every level overlay's data sections (the overlays' code starts at 0x1dd300 .. 0x21c200, their data
+// below it: tools/overlay_match's maps) - the lights, the light sets, the hero, the camera, the level's state -, and the moby
+// array (0x15ffd8 .. 0x15ffe0, a moby 0x100 bytes, the end's sentinel with it)
+void draw_memory_take() {
+    rac1::EeCopyRange r[2];
+    r[0] = {0x00130000u, 0x00220000u};
+    const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffe0u));
+    if (first >= 0x00100000u && last >= first && last - first < (4u << 20) && last + 0x200u <= 0x02000000u) r[1] = {first, last + 0x200u};
+    rac1::ee_copy_take(r, 2);
+}
+uint64_t g_overlapped = 0;  // (the host frames whose game frames ran on the game thread: reported at the end)
+// The devices read for the game frames the game thread runs (pad_presample): GLFW's input is the main thread's. One state per
+// game frame, read as pad_packet would have read them one after the other (the mouse's motion in the first).
+std::vector<hi::HostState> g_pad_pre;
+// orig: (host) the devices' states for the host frame's `steps` game frames, read now (main thread)
+void pad_presample(GLFWwindow* win, int steps) {
+    g_pad_pre.clear();
+    if (!g_input_ready || std::getenv("RAC1_SIM_INPUT") != nullptr) return;
+    for (int k = 0; k < steps; ++k) g_pad_pre.push_back(host_state(win, g_remap.active()));
+}
+// orig: (host) the pad packet of a game frame (`pre` >= 0: the devices read for it by pad_presample)
+void pad_packet(GLFWwindow* win, uint64_t frame, int pre = -1) {
     uint16_t held = 0;
     float lx = 0, ly = 0, rx = 0, ry = 0;
     // (a headless run (win == nullptr) ignores the physical gamepads: tests are deterministic; so does
@@ -1745,7 +1773,7 @@ void pad_packet(GLFWwindow* win, uint64_t frame) {
     hi::HostState devices;  // (what the Controls page's rebinding reads)
     bool have_devices = false;
     if (win != nullptr && !simulated && g_input_ready) {
-        devices = host_state(win, g_remap.active());
+        devices = pre >= 0 && static_cast<size_t>(pre) < g_pad_pre.size() ? g_pad_pre[static_cast<size_t>(pre)] : host_state(win, g_remap.active());
         have_devices = true;
         const hi::PadOutput o = hi::compute(g_bindings, devices);
         held = o.held;
@@ -2092,6 +2120,47 @@ void pad_packet(GLFWwindow* win, uint64_t frame) {
     hi::to_packet(hi::PadOutput{held, lx, ly, rx, ry}, g_host_pad_packet);
 }
 
+// orig: (host) at start, with the modern renderer on: its assets for every level, the title and the flight are there (the
+// file each of the setup's exporters writes last in a level's directory, src/setup/mrp_export.cpp), else one clear error
+// naming the first one missing and the setup that makes them (assets/generated deleted, or part of it: without them the
+// game draws its levels wrong or without their mobys). The same files tools/setup.py looks at (step_missing).
+void check_mrp_assets(bool moby, bool world) {
+    std::vector<std::string> dirs;
+    for (int lv = 0; lv < 19; ++lv) dirs.push_back("level" + std::to_string(lv));
+    dirs.push_back("title");
+    dirs.push_back("flight");
+    std::vector<std::filesystem::path> want;
+    if (moby) {
+        const char* r = std::getenv("RAC1_MRP_DIR");  // (mrp_moby_renderer.cpp's asset_root)
+        const std::filesystem::path root = r != nullptr ? r : "assets/generated/mrp/moby";
+        for (const std::string& d : dirs) want.push_back(root / d / "textures.mrpt");
+        for (int k = 0; k < 4; ++k) want.push_back(root / "armor" / (std::to_string(k) + ".mrpt"));
+    }
+    if (world) {
+        const char* r = std::getenv("RAC1_MRPW_DIR");  // (mrp_world_renderer.cpp's asset_root)
+        const std::filesystem::path root = r != nullptr ? r : "assets/generated/mrp/world";
+        for (const std::string& d : dirs) want.push_back(root / d / "world.mrpw");
+    }
+    size_t missing = 0;
+    std::string first;
+    std::error_code ec;
+    for (const std::filesystem::path& p : want)
+        if (!std::filesystem::is_regular_file(p, ec)) {
+            if (missing++ == 0) first = p.string();
+        }
+    if (missing == 0) return;
+#if defined(_WIN32)
+    const char* setup = "setup.cmd";
+#else
+    const char* setup = "./setup.sh";
+#endif
+    std::fprintf(stderr,
+                 "rac1-native: Error: the modern renderer's assets are missing (%zu of %zu files, e.g. %s).\n"
+                 "             The levels will be drawn without them (wrong, or without their objects).\n"
+                 "             Run %s to generate them again.\n",
+                 missing, want.size(), first.c_str(), setup);
+}
+
 }  // namespace
 
 #if defined(__WIIU__)
@@ -2130,19 +2199,15 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "rac1-native: level %d has no host assets yet\n", level);
         return 1;
     }
-    RAC1_WIIU_TRACE(disc_path().c_str());
-    const bool have_disc = std::filesystem::exists(disc_path());
-    RAC1_WIIU_TRACE(have_disc ? "disc found" : "no disc");
-    RAC1_WIIU_TRACE(disc_boot_elf_path().c_str());
-    RAC1_WIIU_TRACE(std::filesystem::exists(disc_boot_elf_path()) ? "elf found" : "no elf");
-    RAC1_WIIU_TRACE(disc_has_level(level) ? "level found" : "no level");
+    std::string disc_why;
+    const bool have_disc = disc_ready(disc_why);
+    RAC1_WIIU_TRACE(have_disc ? "disc found" : disc_why.c_str());
     if (!have_disc || !std::filesystem::exists(disc_boot_elf_path()) || !disc_has_level(level)) {
         std::fprintf(stderr, "\nrac1-native: %s\n"
-                             "Run the setup from the repository's root, with your disc image:\n"
-                             "  ./setup.sh --iso <path-to-your-iso>\n"
+                             "Run the setup again from the repository's root, with your disc image:\n"
+                             "  ./setup.sh --iso <path-to-your-iso>   (setup.cmd on Windows)\n"
                              "and start the game from the repository's root.\n\n",
-                     have_disc ? "the game's data is missing (assets/)."
-                               : "your disc image was not found (assets/iso/rac1-ntsc-u.iso or rac1-pal.iso, or $RAC1_ISO).");
+                     have_disc ? "the game's data is missing (assets/)." : disc_why.c_str());
         return 1;
     }
     // RAC1_NO_GRAPHICS=1: the game's update alone, no window, no GL / Vulkan context and nothing prepared or drawn, the
@@ -2333,6 +2398,7 @@ int main(int argc, char** argv) {
         }
     }
 
+    check_mrp_assets(g_moby_renderer == MobyRenderer::kMrp, g_world_mrp);
     // the legacy host renderers' copy of a level, built only while one of them is in use (level_loader.h)
     g_legacy_level_needed = [] { return (!g_world_mrp && !g_world_faithful) || !g_moby_vu1_pass || g_moby_renderer == MobyRenderer::kGlb || g_title_scene_host; };
     static const bool s_moby_diff = std::getenv("RAC1_MOBY_DIFF") != nullptr;
@@ -2486,6 +2552,7 @@ int main(int argc, char** argv) {
     // The VU0 programs the overlay's main (0x23d598, not ported) sends at its start (0x23d6dc): the
     // set at 0x190 the drop shadows (0x2860a8 / 0x2861f8) call. (The boot module's start does both.)
     if (!boot) vif0_send(0x0010e4c0);
+    snd989_rand_use_game();  // (this thread runs the game's IOP; so will the game thread)
     snd989_iop_start();
     // (ADR 0013) the host's mirror of the IOP records from the first command when a device will play it
     const bool want_audio = (!headless || std::getenv("RAC1_AUDIO_DEVICE") != nullptr) && std::getenv("RAC1_NO_AUDIO") == nullptr;
@@ -2516,7 +2583,8 @@ int main(int argc, char** argv) {
                 }
                 return true;
             })) {
-            std::fprintf(stderr, "rac1-native: cannot read the level from the ISO (%s)\n", disc_path().c_str());
+            std::fprintf(stderr, "rac1-native: cannot read the level from the disc (%s)\n",
+                         disc_source() == DiscSource::Image ? disc_path().c_str() : disc_files_dir());
             return 1;
         }
         std::printf("[orig] sound bank %08x\n", lwu(0x0015ed5c));
@@ -2529,7 +2597,8 @@ int main(int argc, char** argv) {
     g_audio_dump = std::getenv("RAC1_AUDIO_DUMP") ? std::fopen(std::getenv("RAC1_AUDIO_DUMP"), "wb") : nullptr;
     g_audio_dump_ch = advanced_audio_channels();
     ee_thread_set_vsync_hook(blocking_loop_vsync);  // (the vsync waits inside the game's code: the start's, a blocking loop's)
-    if (!no_graphics) rac1::gs::set_store_image_hook([](uint32_t bp, uint32_t, uint32_t psm) { g_scene_pic.store(bp, psm); });
+    // (on the game thread: by the main thread once its drawing is over - the frame's picture is in its GL / Vulkan context)
+    if (!no_graphics) rac1::gs::set_store_image_hook([](uint32_t bp, uint32_t, uint32_t psm) { rac1::game_thread::on_main([&] { g_scene_pic.store(bp, psm); }); });
     if (boot) {  // the boot module: its own image, the ports relocated onto it
         if (!front_image_load()) {
             std::fprintf(stderr, "rac1-native: cannot read the boot module from %s\n", disc_boot_elf_path().c_str());
@@ -2597,7 +2666,7 @@ int main(int argc, char** argv) {
     double game_time = 0.0;  // game frames owed (60 a second at speed 1)
     uint64_t frame = 0;       // game frame passes run (a blocking loop's frame shown with "Original fades" is one)
     uint64_t game_frame = 0;  // game frames ended: what the testing scripts (RAC1_SIM_INPUT, RAC1_GOTO, RAC1_RAMHASH) count
-    double update_ms = 0.0, update_shown = 0.0;
+    double update_ms = 0.0, update_shown = 0.0, update_shown_draw = 0.0;
     bool running = true;
     bool exiting = false;  // the level exit (0x292e08) running its loops: one pass a game frame
     // testing: RAC1_GOTO=N@F: at frame F the game's level change to level N (as the debug menu's
@@ -2621,6 +2690,17 @@ int main(int argc, char** argv) {
     // testing: RAC1_DIE_AT=<frame>: at that game frame Ratchet is killed through the game's own death state
     // (the debug menu's Kill Ratchet)
     const long long die_at = std::getenv("RAC1_DIE_AT") != nullptr ? std::atoll(std::getenv("RAC1_DIE_AT")) : -1;
+    // testing: RAC1_HOVERBOARD_AT=<on frame>[,<off frame>,<on frame>...]: the debug menu's Hoverboard anywhere ticked /
+    // unticked at those frames, in turn (at most 8)
+    std::vector<long long> board_at;
+    if (const char* b = std::getenv("RAC1_HOVERBOARD_AT"))
+        for (const char* q = b; *q != 0 && board_at.size() < 8;) {
+            char* e = nullptr;
+            const long long v = std::strtoll(q, &e, 10);
+            if (e == q) break;
+            board_at.push_back(v);
+            q = *e == ',' ? e + 1 : e;
+        }
     if (const char* z = std::getenv("RAC1_TEST_ZERO_FB"); z != nullptr && g_test_switches) {
         unsigned long long a = 0, b = 0;
         char raw[8] = {};
@@ -2763,149 +2843,228 @@ int main(int argc, char** argv) {
         sample_prof_frame(frame);
         rac1::prof::end(prof_events);
         rac1::prof::frame_steps(steps);
-        int prof_game = rac1::prof::begin(rac1::prof::kGameFrames);
-        for (int k = 0; k < steps && running; ++k) {
-            g_mrp_lod_frame_drawn = k == steps - 1;  // (only the last game frame of the host frame is drawn)
-            pad_packet(headless ? nullptr : window, game_frame);
+        // The host's frame (in two halves). prepare: what reads the game's state after its update - the view, the GS replica's
+        // run of the frame's chain, the MRP world's scene capture (its build started on the worker thread), the MRP mobys' draw lists;
+        // draw: the GL drawing and the present. Pipelined (RAC1_PIPELINE, the debug menu; on by default in a window): a prepared frame is
+        // drawn after the next game frame's update, the scene built while that update runs (one frame of latency); the draw-time
+        // functions then use the state captured at its prepare (render_toggles.h g_draw_from_snapshot). Else (and for the frames not
+        // pipelined: a movie, the boot's title, the full-screen menu, the level exit, the testing modes) prepare and draw in a row.
+        struct FrameDraw {
+            int w = 0, h = 0, vx = 0, vy = 0, vw = 0, vh = 0;
+            bool menu_mode = false, title = false, story = false, exiting = false;
+            // the boot's title with its main menu (game mode 3, mrp_title_view.h): the menu's boxes (its mobys seen from the menu's
+            // camera) drawn by the MRP as the full-screen menu's mobys are - the game's own 4:3 projection, cut at its 4:3 frame -, the
+            // title scene's own mobys under them in the scene's widened view (mrp_moby_begin_frame)
+            bool title_menu = false;
+            // the level exit's loading screen (game mode 6 step 4: the ship's flight, 0x2900a0): its 3D drawn by the MRP
+            // from the flight's own assets (assets/generated/mrp/{moby,world}/flight/), as a level's
+            bool flight = false;
+            // a frame of a blocking loop the game waits in (the screen fade, ADR 0012): the picture shown kept and its packets
+            // drawn over it (they darken the display buffer); `held`: no packets sent that frame (the picture unchanged)
+            bool fade = false, fade_held = false;
+            // a frame of the game a blocking loop renders and shows (EeVsyncFrame::Scene: the Vendor's screens before they
+            // store its picture): drawn as a main loop's frame, its picture kept (g_scene_pic); `vendor_pic`: the screens draw over
+            // the picture they stored (the GS's type-7 primitive drawn by g_scene_pic, the MRP's mobys left to the GS path)
+            bool scene = false, vendor_pic = false;
+            const std::vector<uint8_t>* movie_pic = nullptr;
+            int mw = 0, mh = 0;
+            uint64_t frame = 0;
+            int32_t level = 0;
+            uint32_t chain_start = 0, chain_end = 0;
+            bool has_dm = false;
+            rac1::gs::DepthMap dm;
+            rac1::gs::Viewport gv;
+            float fb_w = 0, fb_h = 0;
+        };
+        static FrameDraw pend;
+        static bool have_pend = false;
+        static const bool pipe_testing = s_moby_diff || std::getenv("RAC1_MRP_DIFF") != nullptr || mrp_world_testing() || mrp_scene_check_enabled() ||
+                                         mrp_shadows_check_enabled() || g_moby_renderer == MobyRenderer::kGpu;
+        bool pipeline = !headless;
+        if (const char* pe = std::getenv("RAC1_PIPELINE")) pipeline = std::atoi(pe) != 0;
 #ifdef RAC1_DEVTOOLS
-            if (!headless && dt::dev_menu_owns_input()) {
-                static const uint8_t idle[6] = {0xff, 0xff, 0x7f, 0x7f, 0x7f, 0x7f};
-                std::memcpy(g_host_pad_packet, idle, 6);
-            }
+        if (!headless) pipeline = dt::dev_settings().pipeline;
 #endif
-            const auto t0 = std::chrono::steady_clock::now();
-            {
-                RAC1_PROF_ZONE(kAudioStep);
-                audio_out_step(true);  // (the IOP's mirror plays alone only while the game's thread is stuck inside a step: a stall)
-            }
-            render_view_projection_undo();  // (the game's own projection back before its update: its state is a 4:3 run's)
-            {  // the MRP skips what only the GS / VU1 path needs: asked
-               // before the update, for a frame the MRP will draw (not the title, the level exit, a movie, the debug diffs)
-                int mw0 = 0, mh0 = 0;
-                // (not on the Vendor's screens, game mode 5 once the picture is stored: their frames over it are drawn by the GS path)
-                g_moby_mrp_skip = s_mrp_skip_mode != 0 && (mrp_moby_ready() || no_graphics_skip) && !boot_active() && !exiting && movie_hw_shown(mw0, mh0) == nullptr &&
-                                  (lw(OV(0x0015f5c4)) != 5 || (lw(OV(0x001ca4c8)) == 0 && !ee_thread_suspended()));
-                g_moby_mrp_skip_verify = g_moby_mrp_skip && s_mrp_skip_mode == 2;
-                // the MRP's drop shadows: the shadow pass's data captured on a frame the MRP draws (whatever the skipping; the boot's title loop too)
-                mrp_shadows_begin_frame(mrp_moby_ready() && (!boot_active() || boot_in_title()) && !exiting && movie_hw_shown(mw0, mh0) == nullptr);
-            }
+        pipeline = pipeline && !pipe_testing;
+        // The game thread (runtime/ee/game_thread.h; RAC1_GAME_THREAD, the debug menu; on by default with the pipelined frames,
+        // a window's default): a host frame that draws a pipelined frame runs its game frames on the game thread while this thread draws
+        // that frame (its drawing reads only what its prepare took: render_toggles.h g_draw_from_snapshot, runtime/kernel/ee_copy.h), then
+        // joins it before the next prepare. The same game frames, in the same order, with the same float environment: the game's
+        // state is the same word for word. Never in a deterministic headless run (no pipelined frame there), nor for a frame the
+        // game runs in a blocking loop, a level's exit or load, the boot, the debug menu open (its tabs write the game's memory)
+        bool overlap = false;
+        {
+            static const int gt_env = std::getenv("RAC1_GAME_THREAD") != nullptr ? std::atoi(std::getenv("RAC1_GAME_THREAD")) : -1;
+            bool gt = gt_env != 0;
+            bool menu_open = false;
 #ifdef RAC1_DEVTOOLS
-            if (die_at >= 0 && static_cast<long long>(game_frame) == die_at && !exiting && !ee_thread_suspended()) {
-                dt::dev_kill_hero();
-                std::printf("[orig] RAC1_DIE_AT: Ratchet killed at frame %llu\n", static_cast<unsigned long long>(game_frame));
-            }
+            if (!headless && gt_env < 0) gt = dt::dev_settings().game_thread;
+            menu_open = !headless && (dt::dev_settings().open || dt::dev_menu_owns_input());
 #endif
-            mrp_scene_begin_frame();
-            rac1::mrpw::scene_begin_update();  // (the MRP world: the world passes' chain ranges of this update)
-            g_world_chain_forced = boot_active() && !g_title_scene_host;  // (the title's passes keep their chain)
-            for (const auto& [gl, gf] : goto_chain)  // (the chain's next change)
-                if (game_frame == gf) goto_level = gl, goto_frame = gf;
-            if (goto_level >= 0 && game_frame == goto_frame && !exiting && !ee_thread_suspended()) {
-                if (boot_active()) {  // the boot's title left for the level (the debug menu's skip)
-                    boot_skip_to(goto_level);
-                } else {
-                    level_change_request(0, goto_level);
-                    level_exit_to(goto_level);
-                }
-                std::printf("[orig] RAC1_GOTO: the level change to %d asked for at frame %llu\n", goto_level, static_cast<unsigned long long>(frame));
-            }
-            // the game's frame on the EE thread's coroutine (ADR 0012): a vsync wait inside a blocking loop (the screen fade
-            // 0x1f9838) suspends it, this host frame shows that frame and the next one resumes it (the lambda not called again)
-            if (!ee_thread_suspended()) g_mode_at_update = boot_active() ? -100 : lw(OV(0x0015f5c4));
-            rac1::host_language::note(lwu(0x0015ed88));  // (a language chosen in the game: kept as the console's)
-            const int prof_code = rac1::prof::begin(rac1::prof::kGameCode);
-            ee_thread_run([&] {
-                if (exiting) {  // the level exit's loops (the loading screen, the load), then the new level
-                    static uint64_t flight_frames = 0, flight_first = 0;  // (the frames the loading screen's flight was drawn)
-                    if (level_exit_loading_screen() && lw(OV(0x0015f5d8)) == 0 && flight_frames++ == 0) flight_first = frame;
-                    if (level_exit_frame()) {
-                        if (flight_frames != 0)
-                            std::printf("[orig] the loading screen's flight: %llu frames (from frame %llu)\n", static_cast<unsigned long long>(flight_frames),
-                                        static_cast<unsigned long long>(flight_first));
-                        flight_frames = 0;
-                        exiting = false;
-                        running = level_enter(level_exit_files_read());
-                    }
-                } else if (boot_active() ? !boot_frame() : !overlay_frame()) {  // the main loop (or the boot's title loop) left (0x15f570): the level exit
-                    switch (level_exit_start()) {
-                        case LevelExit::Load:
-                            exiting = true;
-                            std::printf("[orig] level exit to %d: the loading screen\n", lw(0x0015ed84));
-                            level_prefetch(lw(0x0015ed84));
-                            break;
-                        case LevelExit::Movie:
-                            exiting = true;
-                            std::printf("[orig] level exit to %d: the story's cards and movies\n", lw(OV(0x0015f5c0)));
-                            level_prefetch(lw(OV(0x0015f5c0)));
-                            break;
-                        case LevelExit::Quit: running = title_return(); break;
-                    }
-                }
-            });
-            rac1::prof::end(prof_code);
-            if (rac1::update_check::update_requested()) running = false;
-#ifdef RAC1_DEVTOOLS
-            if (!headless) dt::dev_menu_game_frame();
-            else dt::dev_kill_apply();
-#endif
-            mrp_scene_end_frame();
-            const bool game_frame_ended = !ee_thread_suspended();
-            if (game_frame_ended && k + 1 < steps) moby_skips_note_undrawn();  // (a game frame not drawn: the next may walk its chain)
-            if (game_frame_ended) {  // the main loop's own vsync (overlay_frame's wait 0x122298)
-                vsync_passed();
-                // (a game frame's RAM, also with "Original fades": the hashes of a run compare to another's game frame by game frame)
-                if (ramhash != nullptr) ram_hash_frame(ramhash, game_frame);
-                ++game_frame;
-            }
-            {
-                RAC1_PROF_ZONE(kAudioStep);
-                audio_out_step(false);
-            }
-            const double step_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
-            update_ms += step_ms;
-            g_last_steps_ms = std::max(g_last_steps_ms, step_ms);
-            {  // testing: RAC1_STALL_LOG=ms: the steps (a game frame, or a blocking loop's frame) longer than that, and the vsyncs they passed
-                static const double stall_ms = std::getenv("RAC1_STALL_LOG") != nullptr ? std::atof(std::getenv("RAC1_STALL_LOG")) : -1.0;
-                static uint64_t vs0 = 0;
-                if (stall_ms >= 0.0 && step_ms > stall_ms)
-                    std::printf("[stall] frame %llu game frame %llu step %.1f ms, %llu vsyncs, mode %d\n", static_cast<unsigned long long>(frame),
-                                static_cast<unsigned long long>(game_frame), step_ms, static_cast<unsigned long long>(g_vsyncs - vs0), lw(OV(0x0015f5c4)));
-                vs0 = g_vsyncs;
-            }
-            ++frame;
-            rac1::progress::frame(lw(0x0015ed84), boot_active(), exiting);  // (the launcher's progress.json)
-            if (std::getenv("RAC1_CARD_LOG") != nullptr) {  // testing: the memory card's machines and screens as they change
-                uint32_t owned = 0;  // the items owned (0x13d4c0, 0x25 bytes) as a bit mask
-                for (uint32_t i = 0; i < 0x20; ++i) owned |= ee_read<uint8_t>(0x0013d4c0 + i) != 0 ? 1u << i : 0u;
-                static uint32_t last[7] = {~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u};
-                const uint32_t now[7] = {lwu(0x0015eeb0), lwu(0x0015eeb4), lwu(0x0013d290 + 0xd4), lwu(0x0013d290 + 0xe4), lwu(OV(0x0015f5c4)),
-                                         lwu(OV(0x001b9cf0) + 4), owned};
-                if (std::memcmp(now, last, sizeof now) != 0) {
-                    std::printf("[card] frame %llu ui %u flags %x machine %u error %x mode %u page %08x level %d slot %d items %08x bolts %d\n",
-                                static_cast<unsigned long long>(frame), now[0], now[1], now[2], now[3], now[4], now[5], lw(0x0015ed84), lw(0x0013d290 + 0x14), owned,
-                                lw(0x0015ed98));
-                    std::memcpy(last, now, sizeof now);
-                }
-            }
-            if (frame % 60 == 0) {
-                const uint32_t hero = lwu(OV(0x0015ffd8));
-                std::printf("[orig] frame %llu mode %d update %.2f ms hero %.2f %.2f %.2f camera %.2f %.2f %.2f state %d bolts %d hp %d\n",
-                            static_cast<unsigned long long>(frame), lw(OV(0x0015f5c4)), update_ms / 60.0, hero ? lwc1(hero + 0x10) : 0.0f,
-                            hero ? lwc1(hero + 0x14) : 0.0f, hero ? lwc1(hero + 0x18) : 0.0f, lwc1(OV(0x00166dc0)), lwc1(OV(0x00166dc4)), lwc1(OV(0x00166dc8)),
-                            lw(0x001413d4), lw(0x0015ed98), lw(0x001415f8));
-                update_shown = update_ms / 60.0;
-                update_ms = 0.0;
-            }
-            static const bool fade_log = std::getenv("RAC1_FADE_LOG") != nullptr;  // testing: the frames of the blocking loops
-            static bool was_suspended = false;
-            if (fade_log && (ee_thread_suspended() || was_suspended))
-                std::printf("[fade] frame %llu %s frame counter 0x15f3f8 %u mode %d\n", static_cast<unsigned long long>(frame - 1),
-                            !ee_thread_suspended() ? "resumed: the caller went on, the game frame ended" : ee_thread_frame() == rac1::EeVsyncFrame::Held ? "suspended (held)" : "suspended (kicked)",
-                            lwu(OV(0x0015f3f8)), lw(OV(0x0015f5c4)));
-            was_suspended = ee_thread_suspended();
-            if (ee_thread_suspended()) break;  // (a blocking loop's frame: shown before the game goes on, ADR 0012)
+            int fb_w = 1, fb_h = 1;
+            if (!headless) glfwGetFramebufferSize(window, &fb_w, &fb_h);
+            // (testing: RAC1_GAME_THREAD=2 also in a deterministic headless run with RAC1_PIPELINE=1 - its RAM hashes against =0's)
+            overlap = gt && pipeline && have_pend && steps > 0 && running && (!headless || realtime_test || gt_env >= 2) && !host_paused && !menu_open && !exiting &&
+                      !boot_active() && !ee_thread_suspended() && fb_w > 0 && fb_h > 0 && !(headless && test_zero_fb(frame)) && pend.level == lw(0x0015ed84);
         }
-        rac1::prof::end(prof_game);
+        // (the pads' devices read here, on the main thread, for each game frame the game thread runs: GLFW's input is the main thread's)
+        if (overlap && !headless) pad_presample(window, steps);
+        auto game_frames = [&]() {
+            rac1::snd989_rand_use_game();  // (the game's sound's random numbers: the game's sequence on whatever thread runs it)
+            int prof_game = rac1::prof::begin(rac1::prof::kGameFrames);
+            for (int k = 0; k < steps && running; ++k) {
+                g_mrp_lod_frame_drawn = k == steps - 1;  // (only the last game frame of the host frame is drawn)
+                pad_packet(headless ? nullptr : window, game_frame, overlap ? k : -1);
+    #ifdef RAC1_DEVTOOLS
+                if (!headless && dt::dev_menu_owns_input()) {
+                    static const uint8_t idle[6] = {0xff, 0xff, 0x7f, 0x7f, 0x7f, 0x7f};
+                    std::memcpy(g_host_pad_packet, idle, 6);
+                }
+    #endif
+                const auto t0 = std::chrono::steady_clock::now();
+                {
+                    RAC1_PROF_ZONE(kAudioStep);
+                    audio_out_step(true);  // (the IOP's mirror plays alone only while the game's thread is stuck inside a step: a stall)
+                }
+                render_view_projection_undo();  // (the game's own projection back before its update: its state is a 4:3 run's)
+                {  // the MRP skips what only the GS / VU1 path needs: asked
+                   // before the update, for a frame the MRP will draw (not the title, the level exit, a movie, the debug diffs)
+                    int mw0 = 0, mh0 = 0;
+                    // (not on the Vendor's screens, game mode 5 once the picture is stored: their frames over it are drawn by the GS path)
+                    g_moby_mrp_skip = s_mrp_skip_mode != 0 && (mrp_moby_ready() || no_graphics_skip) && !boot_active() && !exiting && movie_hw_shown(mw0, mh0) == nullptr &&
+                                      (lw(OV(0x0015f5c4)) != 5 || (lw(OV(0x001ca4c8)) == 0 && !ee_thread_suspended()));
+                    g_moby_mrp_skip_verify = g_moby_mrp_skip && s_mrp_skip_mode == 2;
+                    // the MRP's drop shadows: the shadow pass's data captured on a frame the MRP draws (whatever the skipping; the boot's title loop too)
+                    mrp_shadows_begin_frame(mrp_moby_ready() && (!boot_active() || boot_in_title()) && !exiting && movie_hw_shown(mw0, mh0) == nullptr);
+                }
+    #ifdef RAC1_DEVTOOLS
+                if (die_at >= 0 && static_cast<long long>(game_frame) == die_at && !exiting && !ee_thread_suspended()) {
+                    dt::dev_kill_hero();
+                    std::printf("[orig] RAC1_DIE_AT: Ratchet killed at frame %llu\n", static_cast<unsigned long long>(game_frame));
+                }
+                for (size_t k = 0; k < board_at.size(); ++k)
+                    if (static_cast<long long>(game_frame) == board_at[k] && !exiting && !ee_thread_suspended()) {
+                        dt::dev_hoverboard_set(k % 2 == 0);
+                        std::printf("[orig] RAC1_HOVERBOARD_AT: %s at frame %llu\n", k % 2 == 0 ? "on" : "off", static_cast<unsigned long long>(game_frame));
+                    }
+    #endif
+                mrp_scene_begin_frame();
+                rac1::mrpw::scene_begin_update();  // (the MRP world: the world passes' chain ranges of this update)
+                g_world_chain_forced = boot_active() && !g_title_scene_host;  // (the title's passes keep their chain)
+                for (const auto& [gl, gf] : goto_chain)  // (the chain's next change)
+                    if (game_frame == gf) goto_level = gl, goto_frame = gf;
+                if (goto_level >= 0 && game_frame == goto_frame && !exiting && !ee_thread_suspended()) {
+                    if (boot_active()) {  // the boot's title left for the level (the debug menu's skip)
+                        boot_skip_to(goto_level);
+                    } else {
+                        level_change_request(0, goto_level);
+                        level_exit_to(goto_level);
+                    }
+                    std::printf("[orig] RAC1_GOTO: the level change to %d asked for at frame %llu\n", goto_level, static_cast<unsigned long long>(frame));
+                }
+                // the game's frame on the EE thread's coroutine (ADR 0012): a vsync wait inside a blocking loop (the screen fade
+                // 0x1f9838) suspends it, this host frame shows that frame and the next one resumes it (the lambda not called again)
+                if (!ee_thread_suspended()) g_mode_at_update = boot_active() ? -100 : lw(OV(0x0015f5c4));
+                rac1::host_language::note(lwu(0x0015ed88));  // (a language chosen in the game: kept as the console's)
+                const int prof_code = rac1::prof::begin(rac1::prof::kGameCode);
+                ee_thread_run([&] {
+                    if (exiting) {  // the level exit's loops (the loading screen, the load), then the new level
+                        static uint64_t flight_frames = 0, flight_first = 0;  // (the frames the loading screen's flight was drawn)
+                        if (level_exit_loading_screen() && lw(OV(0x0015f5d8)) == 0 && flight_frames++ == 0) flight_first = frame;
+                        if (level_exit_frame()) {
+                            if (flight_frames != 0)
+                                std::printf("[orig] the loading screen's flight: %llu frames (from frame %llu)\n", static_cast<unsigned long long>(flight_frames),
+                                            static_cast<unsigned long long>(flight_first));
+                            flight_frames = 0;
+                            exiting = false;
+                            running = level_enter(level_exit_files_read());
+                        }
+                    } else if (boot_active() ? !boot_frame() : !overlay_frame()) {  // the main loop (or the boot's title loop) left (0x15f570): the level exit
+                        switch (level_exit_start()) {
+                            case LevelExit::Load:
+                                exiting = true;
+                                std::printf("[orig] level exit to %d: the loading screen\n", lw(0x0015ed84));
+                                level_prefetch(lw(0x0015ed84));
+                                break;
+                            case LevelExit::Movie:
+                                exiting = true;
+                                std::printf("[orig] level exit to %d: the story's cards and movies\n", lw(OV(0x0015f5c0)));
+                                level_prefetch(lw(OV(0x0015f5c0)));
+                                break;
+                            case LevelExit::Quit: running = title_return(); break;
+                        }
+                    }
+                });
+                rac1::prof::end(prof_code);
+                if (rac1::update_check::update_requested()) running = false;
+    #ifdef RAC1_DEVTOOLS
+                if (!headless) {
+                    dt::dev_menu_game_frame();
+                } else {
+                    dt::dev_kill_apply();
+                    dt::dev_hoverboard_apply();
+                }
+    #endif
+                mrp_scene_end_frame();
+                const bool game_frame_ended = !ee_thread_suspended();
+                if (game_frame_ended && k + 1 < steps) moby_skips_note_undrawn();  // (a game frame not drawn: the next may walk its chain)
+                if (game_frame_ended) {  // the main loop's own vsync (overlay_frame's wait 0x122298)
+                    vsync_passed();
+                    // (a game frame's RAM, also with "Original fades": the hashes of a run compare to another's game frame by game frame)
+                    if (ramhash != nullptr) ram_hash_frame(ramhash, game_frame);
+                    ++game_frame;
+                }
+                {
+                    RAC1_PROF_ZONE(kAudioStep);
+                    audio_out_step(false);
+                }
+                const double step_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+                update_ms += step_ms;
+                g_last_steps_ms = std::max(g_last_steps_ms, step_ms);
+                {  // testing: RAC1_STALL_LOG=ms: the steps (a game frame, or a blocking loop's frame) longer than that, and the vsyncs they passed
+                    static const double stall_ms = std::getenv("RAC1_STALL_LOG") != nullptr ? std::atof(std::getenv("RAC1_STALL_LOG")) : -1.0;
+                    static uint64_t vs0 = 0;
+                    if (stall_ms >= 0.0 && step_ms > stall_ms)
+                        std::printf("[stall] frame %llu game frame %llu step %.1f ms, %llu vsyncs, mode %d\n", static_cast<unsigned long long>(frame),
+                                    static_cast<unsigned long long>(game_frame), step_ms, static_cast<unsigned long long>(g_vsyncs - vs0), lw(OV(0x0015f5c4)));
+                    vs0 = g_vsyncs;
+                }
+                ++frame;
+                rac1::progress::frame(lw(0x0015ed84), boot_active(), exiting);  // (the launcher's progress.json)
+                if (std::getenv("RAC1_CARD_LOG") != nullptr) {  // testing: the memory card's machines and screens as they change
+                    uint32_t owned = 0;  // the items owned (0x13d4c0, 0x25 bytes) as a bit mask
+                    for (uint32_t i = 0; i < 0x20; ++i) owned |= ee_read<uint8_t>(0x0013d4c0 + i) != 0 ? 1u << i : 0u;
+                    static uint32_t last[7] = {~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u};
+                    const uint32_t now[7] = {lwu(0x0015eeb0), lwu(0x0015eeb4), lwu(0x0013d290 + 0xd4), lwu(0x0013d290 + 0xe4), lwu(OV(0x0015f5c4)),
+                                             lwu(OV(0x001b9cf0) + 4), owned};
+                    if (std::memcmp(now, last, sizeof now) != 0) {
+                        std::printf("[card] frame %llu ui %u flags %x machine %u error %x mode %u page %08x level %d slot %d items %08x bolts %d\n",
+                                    static_cast<unsigned long long>(frame), now[0], now[1], now[2], now[3], now[4], now[5], lw(0x0015ed84), lw(0x0013d290 + 0x14), owned,
+                                    lw(0x0015ed98));
+                        std::memcpy(last, now, sizeof now);
+                    }
+                }
+                if (frame % 60 == 0) {
+                    const uint32_t hero = lwu(OV(0x0015ffd8));
+                    std::printf("[orig] frame %llu mode %d update %.2f ms hero %.2f %.2f %.2f camera %.2f %.2f %.2f state %d bolts %d hp %d\n",
+                                static_cast<unsigned long long>(frame), lw(OV(0x0015f5c4)), update_ms / 60.0, hero ? lwc1(hero + 0x10) : 0.0f,
+                                hero ? lwc1(hero + 0x14) : 0.0f, hero ? lwc1(hero + 0x18) : 0.0f, lwc1(OV(0x00166dc0)), lwc1(OV(0x00166dc4)), lwc1(OV(0x00166dc8)),
+                                lw(0x001413d4), lw(0x0015ed98), lw(0x001415f8));
+                    update_shown = update_ms / 60.0;
+                    update_ms = 0.0;
+                }
+                static const bool fade_log = std::getenv("RAC1_FADE_LOG") != nullptr;  // testing: the frames of the blocking loops
+                static bool was_suspended = false;
+                if (fade_log && (ee_thread_suspended() || was_suspended))
+                    std::printf("[fade] frame %llu %s frame counter 0x15f3f8 %u mode %d\n", static_cast<unsigned long long>(frame - 1),
+                                !ee_thread_suspended() ? "resumed: the caller went on, the game frame ended" : ee_thread_frame() == rac1::EeVsyncFrame::Held ? "suspended (held)" : "suspended (kicked)",
+                                lwu(OV(0x0015f3f8)), lw(OV(0x0015f5c4)));
+                was_suspended = ee_thread_suspended();
+                if (ee_thread_suspended()) break;  // (a blocking loop's frame: shown before the game goes on, ADR 0012)
+            }
+            rac1::prof::end(prof_game);
+        };
+        if (!overlap) game_frames();
         if (no_graphics) {  // (nothing prepared nor drawn: the next game frame)
             fprof.end_frame();
             if (max_frames != 0 && frame >= max_frames) break;
@@ -3011,49 +3170,6 @@ int main(int argc, char** argv) {
                 g_view_debug_at = glm::vec3(e[3], e[4], e[5]);
             }
         }
-        // The host's frame (in two halves). prepare: what reads the game's state after its update - the view, the GS replica's
-        // run of the frame's chain, the MRP world's scene capture (its build started on the worker thread), the MRP mobys' draw lists;
-        // draw: the GL drawing and the present. Pipelined (RAC1_PIPELINE, the debug menu; on by default in a window): a prepared frame is
-        // drawn after the next game frame's update, the scene built while that update runs (one frame of latency); the draw-time
-        // functions then use the state captured at its prepare (render_toggles.h g_draw_from_snapshot). Else (and for the frames not
-        // pipelined: a movie, the boot's title, the full-screen menu, the level exit, the testing modes) prepare and draw in a row.
-        struct FrameDraw {
-            int w = 0, h = 0, vx = 0, vy = 0, vw = 0, vh = 0;
-            bool menu_mode = false, title = false, story = false, exiting = false;
-            // the boot's title with its main menu (game mode 3, mrp_title_view.h): the menu's boxes (its mobys seen from the menu's
-            // camera) drawn by the MRP as the full-screen menu's mobys are - the game's own 4:3 projection, cut at its 4:3 frame -, the
-            // title scene's own mobys under them in the scene's widened view (mrp_moby_begin_frame)
-            bool title_menu = false;
-            // the level exit's loading screen (game mode 6 step 4: the ship's flight, 0x2900a0): its 3D drawn by the MRP
-            // from the flight's own assets (assets/generated/mrp/{moby,world}/flight/), as a level's
-            bool flight = false;
-            // a frame of a blocking loop the game waits in (the screen fade, ADR 0012): the picture shown kept and its packets
-            // drawn over it (they darken the display buffer); `held`: no packets sent that frame (the picture unchanged)
-            bool fade = false, fade_held = false;
-            // a frame of the game a blocking loop renders and shows (EeVsyncFrame::Scene: the Vendor's screens before they
-            // store its picture): drawn as a main loop's frame, its picture kept (g_scene_pic); `vendor_pic`: the screens draw over
-            // the picture they stored (the GS's type-7 primitive drawn by g_scene_pic, the MRP's mobys left to the GS path)
-            bool scene = false, vendor_pic = false;
-            const std::vector<uint8_t>* movie_pic = nullptr;
-            int mw = 0, mh = 0;
-            uint64_t frame = 0;
-            int32_t level = 0;
-            uint32_t chain_start = 0, chain_end = 0;
-            bool has_dm = false;
-            rac1::gs::DepthMap dm;
-            rac1::gs::Viewport gv;
-            float fb_w = 0, fb_h = 0;
-        };
-        static FrameDraw pend;
-        static bool have_pend = false;
-        static const bool pipe_testing = s_moby_diff || std::getenv("RAC1_MRP_DIFF") != nullptr || mrp_world_testing() || mrp_scene_check_enabled() ||
-                                         mrp_shadows_check_enabled() || g_moby_renderer == MobyRenderer::kGpu;
-        bool pipeline = !headless;
-        if (const char* pe = std::getenv("RAC1_PIPELINE")) pipeline = std::atoi(pe) != 0;
-#ifdef RAC1_DEVTOOLS
-        if (!headless) pipeline = dt::dev_settings().pipeline;
-#endif
-        pipeline = pipeline && !pipe_testing;
         int w, h;
         fprof.mark(0);
         auto prepare = [&](FrameDraw& fd, bool snapshot) {
@@ -3262,6 +3378,7 @@ int main(int argc, char** argv) {
             fd.gv.xscale_3d = menu_mode ? fd.gv.xscale : 1.0f / mrp_lod_frame_widen();
             if (snapshot) {  // (a pipelined frame: what its drawing reads of the game's state, captured now; the mobys' lists built now)
                 render_view_snapshot();
+                draw_memory_take();  // (the game's memory its drawing reads: the lighting's, the particles')
                 mrp_lod_snapshot();
                 mrp_shadows_snapshot();
                 RAC1_PROF_ZONE(kMobyLists);
@@ -3432,11 +3549,11 @@ int main(int argc, char** argv) {
                     const uint32_t r = base + static_cast<uint32_t>(i) * 0x40;
                     if (static_cast<int8_t>(ee_read<uint8_t>(r + 1)) >= 0) ++hist[ee_read<uint8_t>(r)];
                 }
-                std::printf("[part] frame %d:", frame);
+                std::printf("[part] frame %llu:", static_cast<unsigned long long>(frame));
                 for (int t = 0; t < 256; ++t) if (hist[t] != 0) std::printf(" %d:%d(fn %08x)", t, hist[t], lwu(OV(0x001b1e80u) + 4u * static_cast<uint32_t>(t)));
                 std::printf("\n");
             }
-            if (std::getenv("RAC1_GS_TRACE") != nullptr && lwu(0x0013c940 + 0x1a4) != 0) std::printf("[gs] pad pressed %x frame %d\n", lwu(0x0013c940 + 0x1a4), frame);
+            if (std::getenv("RAC1_GS_TRACE") != nullptr && lwu(0x0013c940 + 0x1a4) != 0) std::printf("[gs] pad pressed %x frame %llu\n", lwu(0x0013c940 + 0x1a4), static_cast<unsigned long long>(frame));
             if (const char* zt = std::getenv("RAC1_GS_ZTRACE"); zt != nullptr && frame == std::strtoull(zt, nullptr, 0))  // testing: the primitives' depth state
                 for (const auto& pr : gs.primitives())
                     std::printf("[gsz] prim %d vu %d frame %llx scissor %llx test %llx zbuf %llx alpha %llx z %u %u %u xy %.1f %.1f rgba %02x%02x%02x%02x tex0 %llx tex1 %llx miptbp1 %llx q %f %f %f\n", pr.type, pr.vu ? 1 : 0, (unsigned long long)pr.st.frame, (unsigned long long)pr.st.scissor, (unsigned long long)pr.st.test, (unsigned long long)pr.st.zbuf,
@@ -3727,7 +3844,7 @@ int main(int argc, char** argv) {
 #ifdef RAC1_DEVTOOLS
             if (!headless || menu_shot) {
                 RAC1_PROF_ZONE(kDebugMenu);
-                dt::dev_menu_draw(update_shown, presents.ema_ms);
+                dt::dev_menu_draw(update_shown_draw, presents.ema_ms);
             }
 #endif
             const uint64_t shown = fd.frame;  // (the game frame this picture is)
@@ -3759,6 +3876,10 @@ int main(int argc, char** argv) {
             const bool zero = (!headless && (fb_w <= 0 || fb_h <= 0 || glfwGetWindowAttrib(window, GLFW_ICONIFIED) != 0)) ||
                               (test_zero_fb(frame) && !g_test_zero_fb_raw);
             if (zero && !(max_frames != 0 && frame >= max_frames)) {
+                if (overlap) {  // (minimised meanwhile: the game frames on this thread, the pipelined frame dropped)
+                    overlap = false;
+                    game_frames();
+                }
                 if (have_pend) {
                     have_pend = false;
                     mrp_world_drop_frame();
@@ -3772,13 +3893,32 @@ int main(int argc, char** argv) {
         }
         // the pipelined frame of the last host frame: drawn now, after this host frame's game frames (its scene built meanwhile)
         bool presented = false;
-        if (have_pend) {
+        update_shown_draw = update_shown;  // (the debug menu's figure: the game thread may write update_shown meanwhile)
+        if (overlap) {  // the game frames on the game thread, the pipelined frame drawn meanwhile (from what its prepare took)
+            ++g_overlapped;
+            have_pend = false;
+            rac1::game_thread::run_async(game_frames);
+            static const bool gt_serial = std::getenv("RAC1_GT_SERIAL") != nullptr;  // (debug: the game thread joined before the draw)
+            if (gt_serial) rac1::game_thread::finish();
+            g_draw_from_snapshot = true;
+            rac1::ee_copy_use(true);
+            draw(pend);
+            rac1::ee_copy_use(false);
+            g_draw_from_snapshot = false;
+            presented = true;
+            {
+                RAC1_PROF_ZONE(kGameThreadWait);
+                rac1::game_thread::finish();  // (the game thread's GL / GS requests run here, after the drawing)
+            }
+        } else if (have_pend) {
             have_pend = false;
             if (pend.level != lw(0x0015ed84) || (exiting && !pend.exiting)) {  // (the level changed or left meanwhile: its picture dropped)
                 mrp_world_drop_frame();
             } else {
                 g_draw_from_snapshot = true;
+                rac1::ee_copy_use(true);
                 draw(pend);
+                rac1::ee_copy_use(false);
                 g_draw_from_snapshot = false;
                 presented = true;
             }
@@ -3805,6 +3945,8 @@ int main(int argc, char** argv) {
         if (title_view) mrp_world_drop_frame();  // (a pending scene's capture done before the bytes go back: none when drawn)
         mrp_title_view_swap_out();
         if (max_frames != 0 && frame >= max_frames) {
+            if (g_overlapped != 0) std::printf("[game-thread] %llu host frames ran their game frames on the game thread beside the drawing\n", static_cast<unsigned long long>(g_overlapped));
+            rac1::game_thread::report();
             pace_report();
             sample_prof_stop();
             mrp_scene_report();
@@ -3926,6 +4068,9 @@ int main(int argc, char** argv) {
     if (ramhash != nullptr) std::fclose(ramhash);  // (no _Exit here: the file's last frame written)
     return 0;  // (the Wii U: back to ports/wiiu/game's main, which goes back to the menu; no GL objects there)
 #else
+#if defined(__SANITIZE_ADDRESS__)
+    __lsan_do_leak_check();  // (an AddressSanitizer build: std::_Exit skips LeakSanitizer's own check at exit)
+#endif
     std::_Exit(0);  // the renderers' static GL objects would be freed after the context is gone
 #endif
 }

@@ -2,9 +2,10 @@
 
 An opt-in second backend for the same renderer: Options > Graphics > **Renderer** (OpenGL, the
 default, or Vulkan), or `RAC1_RENDERER=vulkan` for one run. It draws exactly what the OpenGL path
-draws - the [MRP](rendering.md) world, sky, mobys, particles and drop shadows, the
-[modern lighting](lighting.md) (sun cascades, point lights and their shadow cubes, ambient
-occlusion, sun rays) and the GS replica's 2D - from the same scene the game's own render code
+draws - the [MRP](rendering.md) world, sky, mobys, particles, effects, VU1 program 7's water and
+lava surfaces and drop shadows, the [modern lighting](lighting.md) (sun cascades, point lights and
+their shadow cubes, ambient occlusion, sun rays, emissive surfaces, [materials](materials.md)), the
+[ambient particles](particles.md) and the GS replica's 2D - from the same scene the game's own render code
 decides; only the API calls differ. Nothing of the game's state depends on it.
 
 The renderer is read once, when the window is made: a change on the Graphics page takes effect at
@@ -14,7 +15,7 @@ choice is kept.
 
 ## How it is built
 
-- `runtime/vk/vk_context.{h,cpp}`: the device, the swapchain, the frames in flight (2), a 64 MB
+- `runtime/vk/vk_context.{h,cpp}`: the device, the swapchain, the frames in flight (2), a 32 MB
   ring per frame for the per-frame data (vertices, uniforms, uploads), transient descriptor pools
   reset each frame, a sampler cache, render targets with dynamic rendering, and helpers that mirror
   the GL calls the renderer used (viewport, scissor, a stack of targets, blits, copies, uploads,

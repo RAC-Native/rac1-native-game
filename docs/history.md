@@ -167,6 +167,21 @@ and ARM64; the debug menu's Unlocks tab can unlock everything at once. After a p
 was released as 0.5.0 on 24 October, the first release from the RAC-Native organization and the
 first with the launcher attached.
 
+**24 to 26 October: after 0.5.0.** The game began writing a `progress.json` for the RAC Native
+launcher, a contributor's (#107). A slow frame that runs two game frames no longer leaves the next one
+walking a chain without its moby ranges, which had frozen the game at Aridia's arrival (#104). A
+tester's lighting pass gave most levels a sun of their own and turned the sun rays off on four; the
+light editor's Save now writes back the same numbers; more lamps were lit from her survey (#90, #101,
+#102). The modern lighting gained emissive surfaces and surface materials (Surface Detail: metal,
+puddles and rain on Batalia, mud on Umbris), and Graphics gained our own ambient particles: dust,
+embers rising from the lava, rain and snow, kept out from under roofs by the level's own collision.
+The levels' water, lava and sand seas, the last 3D the GS replica still drew, moved to the native
+renderer, which now draws all of the 3D in play. The Steam Deck, Bazzite and the other immutable Linux
+systems build the game in a container (#108); the setup makes again the files deleted since it ran. On
+26 October the game's update moved to a thread of its own beside the drawing, the world's triangles to
+the scene's worker and the joints into SIMD registers: about a fifth less time per game frame, the
+game's state the same word for word.
+
 ## What came of it
 
 - Five months of trying became one rule: nothing is invented, and every port is checked against the

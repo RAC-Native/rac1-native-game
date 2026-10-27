@@ -24,7 +24,7 @@ public:
     bool fill(std::size_t at, std::vector<T>& out) const {
         const std::size_t n = out.size() * sizeof(T);
         if (at + n > b_.size()) return false;
-        std::memcpy(out.data(), b_.data() + at, n);
+        if (n != 0) std::memcpy(out.data(), b_.data() + at, n);  // (an empty `out`: data() may be null)
         return true;
     }
     template <class T>

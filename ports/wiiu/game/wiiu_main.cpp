@@ -204,6 +204,7 @@ int read_settings() {
     setenv("RAC1_HEADLESS", "1", 1);
     setenv("RAC1_NO_GRAPHICS", "1", 1);
     setenv("RAC1_AUDIO_DEVICE", "ax", 1); // (a headless run plays its sound only with a device named; RAC1_NO_AUDIO=1 turns it off)
+    setenv("RAC1_READ_ISO", "1", 1);      // (the disc image, not assets/disc's extracted files: not on the SD card yet; run.cfg may say 0)
     std::FILE* f = std::fopen("run.cfg", "r");
     if (f == nullptr) return 0;
     int n = 0;

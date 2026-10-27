@@ -5,7 +5,8 @@
 // RAC1_PROFILER_CSV and RAC1_PROFILER_TRACE (docs/env-vars.md) use it without the menu.
 //
 // Off (the tab closed, no overlay, no RAC1_PROFILER_*): every zone is one relaxed atomic load, nothing is queried.
-// The zones and frame_mark are for the main (GL) thread only; Job is for the worker threads.
+// The zones and frame_mark are for the main (GL) thread, the zones also for the game thread (game_thread_attach: its own stack,
+// its stages' times added to the frame's while the main thread waits for it); Job is for the worker threads.
 #pragma once
 
 #include <atomic>
@@ -40,6 +41,8 @@ enum Stage : int {
     kGameLodMobys,      // host: the moby pass re-run for the LOD slider / the widened view (journaled, the memory put back)
     kGameLodOther,      // host: the world passes', effects' and draw lists' re-runs for the LOD slider / the widened view
     kAudioStep,         // the IOP's mirror and the audio queue stepped (main thread)
+    kGameThreadWait,    // the main thread waiting for the game thread's update (its drawing done first, runtime/ee/game_thread.h)
+    kGameDrawWait,      // the game thread waiting for the main thread's drawing (the GS replica's memory, a GL call asked)
     kPrepare,           // the frame's preparation: the view, what the draw reads of the game's state
     kChainCapture,      // the GS chain captured (its run started on the GS chain worker), the MRP world's scene started
     kSceneCaptureWait,  // waiting for the MRP world's worker to capture the scene's inputs
@@ -77,7 +80,8 @@ struct StageInfo {
 const StageInfo& stage_info(int s);
 
 // The worker threads whose jobs are timed (their busy wall time and their CPU time, per frame).
-enum Worker : int { kWorkerChain, kWorkerScene, kWorkerJobs, kWorkerCount };  // (kWorkerJobs: the job pool's workers, src/jobs, their times summed)
+// (kWorkerJobs: the job pool's workers, src/jobs, their times summed; kWorkerGame: the game thread's jobs, the update beside the drawing)
+enum Worker : int { kWorkerChain, kWorkerScene, kWorkerJobs, kWorkerGame, kWorkerCount };
 const char* worker_name(int w);
 
 namespace detail {
@@ -129,6 +133,9 @@ inline void end(int z) {
 
 // The calling thread's name in the Threads list (the main thread, the workers, the audio's): once per thread, any time.
 void thread_name(const char* name);
+// The calling thread is the game thread (runtime/ee/game_thread.h): its zones recorded on a stack of their own. Its jobs run
+// only between the main thread's frame_mark calls (the main thread waits for each before the next frame).
+void game_thread_attach();
 
 // The host frame's start (the main loop's top): the frame before ends there. Reads back the GPU's results of the frames
 // before (when ready), samples the threads and the memory now and then, and decides whether this frame is recorded.
@@ -166,7 +173,7 @@ int history_size();
 int history_capacity();
 const FrameRec& history_at(int i);  // 0 = the oldest kept
 
-enum class Bound { None, Gpu, MainThread, SceneWorker, ChainWorker, Cap };
+enum class Bound { None, Gpu, MainThread, SceneWorker, ChainWorker, GameThread, Cap };
 struct Summary {
     int frames = 0;
     double fps = 0, period_avg = 0, period_min = 0, period_max = 0, period_p99 = 0, low1_fps = 0;  // low1: the worst 1 % of the frames' mean, as fps

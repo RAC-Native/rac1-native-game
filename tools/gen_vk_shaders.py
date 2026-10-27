@@ -923,6 +923,7 @@ layout(push_constant) uniform Push {
     mat4 uVP;
     vec4 uCam_Pad;
     vec4 uParam;
+    vec4 uDMap;  // the view's place in uDepth: uv * zw + xy (the 3D's own depth sampled where it is, mrp_lighting.cpp)
 };
 #define uCam (uCam_Pad.xyz)
 vec3 world(vec2 uv, float d) {
@@ -1090,6 +1091,8 @@ layout(push_constant) uniform Push {
     vec2 uTexel;
     float uMoby;  // (the share of the occlusion the mobys' pixels keep; 1: all, the stencil not read)
     float _pad;
+    vec4 uDMap;   // the view's place in uDepth: uv * zw + xy (mrp_lighting.cpp)
+    vec4 uSMap;   // the same in uStencil
 };
 void main() {
     float d0 = texture(uDepth, vUv).r;
@@ -1105,7 +1108,7 @@ void main() {
         }
     float ao = w > 0.0 ? sum / w : 1.0;
     float k = 1.0;
-    if (uMoby < 1.0 && (texture(uStencil, vUv).r & 1u) != 0u) k = uMoby;
+    if (uMoby < 1.0 && (texture(uStencil, vUv * uSMap.zw + uSMap.xy).r & 1u) != 0u) k = uMoby;
     FragColor = vec4(vec3(mix(1.0, ao, k)), 1.0);
 }
 """
@@ -1120,6 +1123,8 @@ layout(push_constant) uniform Push {
     vec2 uTexel;
     float uMoby;  // (the share of the occlusion the mobys' pixels keep; 1: all, the stencil not read)
     float _pad;
+    vec4 uDMap;   // the view's place in uDepth: uv * zw + xy (mrp_lighting.cpp)
+    vec4 uSMap;   // the same in uStencil
 };
 void main() {
     float d0 = texture(uDepth, vUv).r;
@@ -1137,10 +1142,32 @@ void main() {
     }
     float ao = w > 1e-5 ? sum / w : 1.0;
     float k = 1.0;
-    if (uMoby < 1.0 && (texture(uStencil, vUv).r & 1u) != 0u) k = uMoby;
+    if (uMoby < 1.0 && (texture(uStencil, vUv * uSMap.zw + uSMap.xy).r & 1u) != 0u) k = uMoby;
     FragColor = vec4(vec3(mix(1.0, ao, k)), 1.0);
 }
 """
+
+def map_depth_taps(src):
+    """the AO shaders' depth taps through uDMap (the view's place in the sampled depth): texture(uDepth, X) -> at X * zw + xy"""
+    out, k = [], 0
+    key = "texture(uDepth, "
+    while True:
+        i = src.find(key, k)
+        if i < 0:
+            out.append(src[k:])
+            return "".join(out)
+        j, depth = i + len(key), 1
+        while depth > 0:
+            depth += {"(": 1, ")": -1}.get(src[j], 0)
+            j += 1
+        out.append(src[k:i] + key + "(" + src[i + len(key):j - 1] + ") * uDMap.zw + uDMap.xy)")
+        k = j
+
+
+MRP_AO_FS = map_depth_taps(MRP_AO_FS).replace("vec2 texel = 1.0 / vec2(textureSize(uDepth, 0));",
+                                              "vec2 texel = 1.0 / (vec2(textureSize(uDepth, 0)) * uDMap.zw);")
+MRP_AO_BLUR_FS = map_depth_taps(MRP_AO_BLUR_FS)
+MRP_AO_BLUR_SEP_FS = map_depth_taps(MRP_AO_BLUR_SEP_FS)
 
 MRP_RAYS_MASK_FS = """#version 450
 layout(location = 0) in vec2 vUv;
@@ -1464,6 +1491,7 @@ void main() {
 #ifdef SH_SPLIT
     vec3 c_game = c.rgb;
     c.rgb = sh_apply_split(c.rgb, vColorNoKey.rgb);
+    c.rgb = sh_points_moby(c.rgb);  // (ours per pixel, the game's left to the record: #110)
 #else
     c.rgb = sh_apply(c.rgb);
 #endif

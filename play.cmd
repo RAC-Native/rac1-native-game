@@ -29,5 +29,6 @@ if "%CHOICE%"=="0" (
 if "%CHOICE%"=="2" exit /b 0
 
 :play
+del "%DUE%" >nul 2>nul
 "build\rac1-native.exe" %*
 exit /b %errorlevel%

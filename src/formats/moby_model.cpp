@@ -494,7 +494,7 @@ DecodedMobyModel decode_moby_class_model(
         }
 
         std::vector<std::uint16_t> duplicate_vertices;
-        if (duplicates_at + head.duplicates * 2 <= moby_class_data.size()) {
+        if (head.duplicates != 0 && duplicates_at + head.duplicates * 2 <= moby_class_data.size()) {  // (none: no memcpy from a null data())
             duplicate_vertices.resize(head.duplicates);
             std::memcpy(duplicate_vertices.data(), moby_class_data.data() + duplicates_at, head.duplicates * 2);
         }

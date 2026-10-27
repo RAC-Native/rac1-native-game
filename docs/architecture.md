@@ -14,8 +14,8 @@ src/
                    libvu0, soft-float, the movie player, the 989snd EE client
     math/          the overlay's vector and matrix routines
     input/         the pad packet into the game's pad state
-    render/        the host's renderer: the MRP, its lighting, level of detail and effects,
-                   plus older renderers kept for comparison
+    render/        the host's renderer: the MRP, its lighting, materials, level of detail, effects
+                   and ambient particles, plus older renderers kept for comparison
     enhance/       the PC options: Graphics, Controls and Advanced pages
   formats/         decoders for the game's file formats
   io/              memory-mapped files, byte readers
@@ -26,14 +26,15 @@ src/
   setup/           the setup mode: ISO checks, extraction, asset generation
   _devtools/       the debug menu (openly invented, never part of the port)
 runtime/           the PS2 hardware layer, no game logic
-  ee/              EE: the coroutine, timer 1, float rounding, the R5900 interpreter
+  ee/              EE: the coroutine, the game thread, timer 1, float rounding, the R5900 interpreter
   vu/              VU0 and VU1, the VIF, the VU interpreter, building blocks of translated programs
   gs/              the GS replica: GS memory, packets, 2D drawing
   vk/              the experimental Vulkan backend: device, swapchain, frames, helpers
   iop/             IOP memory, the 989snd sound driver's IOP side, audio streams
   sif/             SIF RPC between the EE and the IOP's servers
   ipu/             the movie decoder
-  kernel/          EE memory and scratchpad, the memory journal, the disc, a few kernel calls
+  kernel/          EE memory and scratchpad, the memory journal, the drawing's copy of memory, the disc,
+                   a few kernel calls
   level/           loading a level's overlay sections into EE memory
 third_party/
   989snd/          OpenGOAL's reimplementation of the 989snd sound driver (ISC)
@@ -42,11 +43,16 @@ third_party/
 tools/
   setup.py         the guided setup (run through setup.sh)
   gen_vk_shaders.py the Vulkan renderer's shaders, compiled to SPIR-V at build time
+  launcher/        the launcher for Windows and Linux (C#, see The launcher)
   overlay_match/   generates the per-level address maps from the player's disc
   codegen/         the code generators and their inputs (see "The generated code" below)
   oracle/          headless runs that record the oracle's RAM dumps (see The oracle)
 tests/
   oracle/          the oracle: each port checked against the original code (see The oracle)
+data/
+  lights/          each level's light file: its sun, lights, interiors, emissive surfaces, materials,
+                   ambient particles (our own art choices, no game data)
+  regions/         the PAL disc's region table (addresses only)
 cmake/             dependencies downloaded at configure time
 assets/generated/src/
                    the generated code, written by the setup from the player's disc (not in the repository)
@@ -56,7 +62,8 @@ The build (`CMakeLists.txt`) produces one executable, `rac1-native`, from static
 `rac1_formats`, `rac1_profiler`, `rac1_jobs`, `rac1_runtime`, `rac1_game`, `rac1_setup`, `rac1_devtools`,
 and the third-party ones. It is C++20, built with `-Wall -Wextra -Wpedantic -frounding-math` (the last because the game's
 thread runs the FPU in a non-default rounding mode, see
-[Decisions](decisions.md#11-the-ees-float-rounding)). Four CMake options:
+[Decisions](decisions.md#11-the-ees-float-rounding)). The CMake options that change the game (the others,
+`RAC1_NO_GENERATED`, `RAC1_ORACLE` and `RAC1_UCONTEXT`, are for development: see their comments in `CMakeLists.txt`):
 
 - `RAC1_MOVIES` (on by default) decodes the movies with the system's FFmpeg (`libavcodec`,
   `libavutil`) when it is found; without FFmpeg the game runs and skips the movies.
@@ -149,7 +156,7 @@ and data. Neither changes the game's behaviour unless an enhancement is turned o
 
 ### The generated code
 
-About 140 source files of the port (some 30 MB of C++) are translated instruction by instruction
+About 230 source files of the port (some 48 MB of C++) are translated instruction by instruction
 from the game's own MIPS and VU code, by the generators in `tools/codegen/`. They are proved against
 the original like any port, and never edited by hand. Because they are a mechanical rewrite of the
 game's code, they are not in the repository: the setup generates them from the player's own disc,
@@ -157,7 +164,7 @@ as other static-recompilation projects do.
 
 | Kind | Files | Generator | From |
 |---|---|---|---|
-| `*_tr.cpp`, `*_tr_N.cpp` and a few others (`sky_ee.cpp`, `novalis_birdbot.cpp`, `title_sky.cpp`...) | 86 | `gen_mkall.py`: `mkall.py` (`mkall_l8.py` .. `mkall_l11.py` for levels 8 to 11) and `mips2cpp.py`, whole functions and their callees | each level's overlay; the boot module |
+| `*_tr.cpp`, `*_tr_N.cpp` and a few others (`sky_ee.cpp`, `novalis_birdbot.cpp`, `title_sky.cpp`...) | 171 | `gen_mkall.py`: `mkall.py` (`mkall_l8.py` .. `mkall_l18.py` for levels 8 to 18) and `mips2cpp.py`, whole functions and their callees | each level's overlay; the boot module |
 | `*_asm.cpp` | 34 | `gen_asm.py`: `asm2fn_batch.py` and `asm2fn.py` | the levels' overlays |
 | `moby_skin.cpp`, `moby_shadows_asm.cpp`, `world_cull.cpp`, `world_lighting.cpp` | 4 | `gen_asm2cpp.py`: `asm2cpp.py`, plus the reviewed changes kept as patches | Veldin's overlay |
 | `moby_vu0*.cpp`, `moby_vu1*.cpp`, `world_vu1_*.cpp`, `world_light_vu0*.cpp` | 18 | `gen_moby_vu_fast.py`, `gen_world_vu.py`, `gen_light_vu0.py`: `vu2cpp.py` and `vu2cpp_fast.py` | the VU microcode in the boot executable |
@@ -205,58 +212,84 @@ and knows nothing about Ratchet & Clank. It provides:
   a run of ported code can be undone; the renderer uses it to run passes a second time without
   changing the game's state (see [Rendering](rendering.md#level-of-detail));
 - the **coroutine** the game frame runs on (`runtime/ee/ee_thread.cpp`; its stack switch is the
-  platform's, by hand on x86-64 and AArch64: [Platforms](platforms.md#the-host-interface)) and the
-  EE's **timer 1** (`ee_timer.cpp`);
+  platform's, by hand on x86-64 and AArch64: [Platforms](platforms.md#the-host-interface)), the
+  **game thread** that runs it beside the drawing (`game_thread.cpp`, see
+  [Threads and the cores](#threads-and-the-cores)) and the EE's **timer 1** (`ee_timer.cpp`);
+- the **copy of the game's memory** a pipelined frame's drawing reads (`runtime/kernel/ee_copy.h`:
+  taken at the frame's preparation, read through `draw_lw` and its kin);
 - the **float rounding** of the EE (`runtime/ee/ps2_fpu.h`);
 - **VU0 and VU1** with the VIF and the GIF's output (`runtime/vu/`), running the translated programs
   or, for testing and fallbacks, the VU interpreter;
-- the **GS replica** for the 2D (`runtime/gs/`);
+- the **GS replica** for the 2D (`runtime/gs/`), which also hands the MRP the effects' primitives and
+  VU1 program 7's batches ([Rendering](rendering.md#how-the-mrp-gets-the-frame));
 - the experimental **Vulkan** backend's device, frames and helpers (`runtime/vk/`, see [Vulkan](vulkan.md));
 - the **IOP side**: IOP memory, the SIF RPC servers the game calls, the 989snd sound driver and its
   streams (`runtime/iop/`, `runtime/sif/`);
-- the **disc**, read from the player's ISO (`runtime/kernel/disc.cpp`), and the **movie decoder**
-  (`runtime/ipu/`);
+- the **disc** (`runtime/kernel/disc.cpp`), read by sector from the files the setup extracted from the
+  player's disc (`assets/disc/`: `layout.txt` maps every byte of the image to a file or to zero, so a
+  read gives the image's bytes wherever it falls; `RAC1_READ_ISO=1` reads the image itself, to
+  compare), and the **movie decoder** (`runtime/ipu/`);
 - the **R5900 interpreter** used to prove ports (`runtime/ee/ee_interpreter.cpp`), compiled but not
   used while playing.
 
 ### `src/_devtools/`: openly invented
 
-The debug menu (free camera, level select, spawning, rendering switches, the light editor) is
+The debug menu (free camera, level select, teleport, items and unlocks, freezing mobys, rendering switches, the light
+editor, the profiler) is
 invented code, useful for development and testing, and never presented as part of the port. Nothing
 in `src/game/` or `runtime/` includes it, and `RAC1_DEVTOOLS=OFF` compiles it out.
 
 ## Threads and the cores
 
-The game's own code runs on one thread, in the game's own order: the EE's main thread is a coroutine
-of the host's main thread (`runtime/ee/ee_thread.cpp`), which also holds the GL context (or drives
-the Vulkan renderer). Nothing of the game's update is moved to another thread or reordered, so the
-game's state is the same, word for word, however many cores the machine has. What runs elsewhere is the host's work on what the game
-left behind:
+The game's own code runs on one thread at a time, in the game's own order: the EE's main thread is a coroutine
+(`runtime/ee/ee_thread.cpp`) of the thread that runs the game frames. That is the host's main thread (which also holds the GL
+context, or drives the Vulkan renderer), or, beside the drawing of a pipelined frame, the **game thread** (below). Nothing of the
+game's update is split over threads or reordered, so the game's state is the same, word for word, however many cores the machine
+has and whichever thread ran a frame. What runs elsewhere is the host's work on what the game left behind:
 
 - the **GS chain worker** (`runtime/gs/gs_emu.cpp`) runs the GS replica on a copy of the frame's chain;
-- the **MRP scene worker** (`src/game/render/mrp_world_renderer.cpp`) builds the world's scene from its
-  captured inputs; with the pipelined frame (on in a window) it does so during the next game update;
-- the **job pool** (`src/jobs/job_pool.h`) spreads the renderer's per-moby work over the cores: the moby
-  chains' decoding after the moby pass and its LOD / widened-view re-run (`mrp_scene.cpp`), and the
-  moby draw lists' transforms (`mrp_moby_renderer.cpp`). Each job writes its chunk's results apart and
-  the caller appends them in order, so the lists are the same as on one thread (`RAC1_JOBS=1`); the
-  workers run with the calling thread's float environment (the game's thread rounds toward zero);
+- the **MRP scene worker** (`src/game/render/mrp_world_renderer.cpp`) captures the world's scene inputs, builds the scene, then
+  the frame's triangles, draw commands and batches (`build_triangles`; a texture the build meets first is decoded there, its GL /
+  Vulkan image made by the main thread when it takes the frame). With the pipelined frame (on in a window) it does so during the
+  next game update. One frame's outputs: the next build starts only after the frame was drawn (`RAC1_MRPW_BUILD_THREAD=0`: the
+  triangles on the main thread at the drawing, as before);
+- the **job pool** (`src/jobs/job_pool.h`) spreads the renderer's per-moby work over the cores: the moby chains' decoding after the
+  moby pass and its LOD / widened-view re-run (`mrp_scene.cpp`), and the moby draw lists' transforms (`mrp_moby_renderer.cpp`).
+  Each job writes its chunk's results apart and the caller appends them in order, so the lists are the same as on one thread
+  (`RAC1_JOBS=1`); the workers run with the calling thread's float environment (the game's thread rounds toward zero). The
+  pool runs one job at a time: two callers at once (the game thread's decoding beside the main thread's drawing) take turns;
+- the **game thread** (`runtime/ee/game_thread.h`) runs a host frame's game frames while the main thread draws the pipelined
+  frame prepared at the end of the host frame before; the main thread joins it before it prepares the next frame. The same game
+  frames in the same order, with the main thread's float environment; the game's sound's random numbers are one sequence for
+  both threads (989snd `RandUseGame`). The drawing reads only what that frame's preparation took: the view, the LOD widening, the
+  drop shadows (`g_draw_from_snapshot`), the moby draw lists, the world's scene, the GS replica's run of its chain, and a copy of
+  the game's memory the modern lighting and the ambient particles read (`runtime/kernel/ee_copy.h`: the base executable's and the
+  overlay's data, the moby array; `RAC1_DRAW_MEM_CHECK=1` names any read outside it). What the update may not do beside the
+  drawing waits for its end: the game's own GS transfers (`gs_exec_load_image` / `gs_exec_store_image`: the replica's memory) and
+  the pause menu's picture store (a GL / Vulkan copy, run by the main thread: `game_thread::on_main`). Not for a frame of a
+  blocking loop, a level's exit or load, the boot, a movie, the full-screen menu, nor with the debug menu open (its tabs write the
+  game's memory); never in a deterministic headless run (`RAC1_GAME_THREAD=2` forces it there for testing: the RAM hashes are
+  those of `=0`). Pads: GLFW's input is read on the main thread for each of the host frame's game frames before the game thread
+  starts (`pad_presample`);
 - the audio threads (the IOP's mirror, the device's callback).
 
 The rule for anything new on another thread: only work whose results the game never reads back (the
 renderer's input), or that is pure; it reads the game's memory only while the game's thread is not
-running (the main thread waits for the job), or from a copy. Ideas that would need the game's own
+running (the main thread waits for the job), or from a copy. A draw-time reader of the game's memory reads it through
+`draw_lw` .. `draw_lwc1` (`ee_copy.h`), or from a capture taken at the frame's preparation. Ideas that would need the game's own
 code split over threads are not faithful and are not done: updating the mobys in parallel (their
 updates read and write each other's state and the shared scratchpad in the game's order), skinning
 the real pass's mobys in parallel (the pose routine's scratchpad, VU0 registers and flags carry from
 one moby to the next, and the game reads the joints it leaves), or running the moby pass's LOD re-run
 beside the game's update (it would need its own copy of the 32 MB, the VU0 and the host state its
 code touches). The game's update itself is made cheaper instead: the VU0 macro ops keep their flags
-in registers through the joints' pose (`vu0m::LocalFlags`, `src/game/ovl/vu0_regs.h`), and
+in registers through the joints' pose (`vu0m::LocalFlags`, `src/game/ovl/vu0_regs.h`), the pose's hot loops keep the VU0's
+registers themselves in SIMD registers (`moby_joints.cpp`, `RAC1_VU0_SIMD`: the same ops, the same roundings, no FMA; two
+independent matrix chains at once with AVX2 on a CPU that has it), and
 `RAC1_NATIVE_ARCH` compiles everything for the player's CPU. Every such change is checked to leave
 the game's state as it was: `RAC1_RAMHASH` (EE RAM and scratchpad, page by page, every game frame)
 against the unchanged build on long runs of several levels, the oracle's reference batches, and the
-reference images.
+reference images. Thread safety is checked with a ThreadSanitizer build (see [Performance](performance.md)).
 
 ## Per-level overlays and the `OV` macros
 
@@ -347,7 +380,8 @@ The game runs from the repository's root: every path is relative to the working 
 
 | Path | What | Read by |
 |---|---|---|
-| `assets/iso/rac1-ntsc-u.iso` or `rac1-pal.iso` (or `$RAC1_ISO`) | the player's disc image (including each level's data WAD) | `runtime/kernel/disc.cpp`, `runtime/level/level_loader.cpp` |
+| `assets/disc/` (`layout.txt` and the files it lists) | the player's disc, extracted by the setup (`tools/disc_extract.py`): every sector the game reads, each level's data WAD included | `runtime/kernel/disc.cpp`, `runtime/level/level_loader.cpp` |
+| `assets/iso/rac1-ntsc-u.iso` or `rac1-pal.iso` (or `$RAC1_ISO`) | the player's disc image, read only with `RAC1_READ_ISO=1` (to compare) and by the setup | `runtime/kernel/disc.cpp` |
 | `assets/dumps/SCUS_971.99` (`SCES_509.16` from the PAL disc) | the game's executable, extracted from the disc | `runtime/kernel/ee_memory.cpp`, `src/game/boot/front_image.cpp` |
 | `assets/generated/overlay_map/` | the per-level address maps | `src/game/ovl/ovl_reloc.cpp` |
 | `assets/generated/mrp/moby/`, `assets/generated/mrp/world/` | the MRP's assets | `mrp_moby_renderer.cpp`, `mrp_world_renderer.cpp` |

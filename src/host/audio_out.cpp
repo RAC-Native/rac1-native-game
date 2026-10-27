@@ -422,6 +422,18 @@ bool device_open(int channels) {
     return true;
 }
 
+// orig: (host) the device's thread made real-time once its first callback named it (the D-Bus call off the game's thread);
+// again for the new thread when the device is opened again (Options > Sound's 5.1 / 7.1)
+void device_thread_realtime() {
+    if (!rac1::host_priority_enabled()) return;
+    std::thread([] {
+        for (int i = 0; i < 200 && g_device_tid.load() == 0; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        const uint64_t tid = g_device_tid.load();
+        if (tid != 0)
+            std::fprintf(stderr, "[audio] the device's thread %llu real-time: %s\n", static_cast<unsigned long long>(tid), rac1::host_priority_realtime(tid, 10) ? "yes" : "no (rtkit refused or absent)");
+    }).detach();
+}
+
 // orig: (host) the IOP thread started (the mirror's frames queued)
 void iop_thread_start() {
     if (!rac1::snd989_mirror_enabled()) return;
@@ -462,13 +474,7 @@ bool audio_out_start(int channels) {
     g_started = true;
     g_alone_fill = std::max<int>(2 * kFrame, static_cast<int>(g_device.playback.internalPeriodSizeInFrames) + kFrame / 2);
     iop_thread_start();
-    if (rac1::host_priority_enabled())
-        std::thread([] {  // (the device's thread real-time once its first callback named it; the D-Bus call off the game's thread)
-            for (int i = 0; i < 200 && g_device_tid.load() == 0; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            const uint64_t tid = g_device_tid.load();
-            if (tid != 0)
-                std::fprintf(stderr, "[audio] the device's thread %llu real-time: %s\n", static_cast<unsigned long long>(tid), rac1::host_priority_realtime(tid, 10) ? "yes" : "no (rtkit refused or absent)");
-        }).detach();
+    device_thread_realtime();
     return true;
 }
 
@@ -496,6 +502,7 @@ void audio_out_set_channels(int channels) {
     const int target = g_rd.target;
     g_rd = Reader{};
     g_rd.target = target;
+    g_device_tid.store(0);  // (the new device's thread: named and made real-time again by its first callback)
     if (!device_open(channels)) {
         std::fprintf(stderr, "rac1-native: no audio device\n");
         ma_context_uninit(&g_context);
@@ -505,6 +512,7 @@ void audio_out_set_channels(int channels) {
     }
     g_alone_fill = std::max<int>(2 * kFrame, static_cast<int>(g_device.playback.internalPeriodSizeInFrames) + kFrame / 2);
     if (iop) iop_thread_start();
+    device_thread_realtime();
 }
 
 // orig: (host) the host lets the IOP run alone while the game's thread stalls (not while it holds the game: a pause, a slow speed)

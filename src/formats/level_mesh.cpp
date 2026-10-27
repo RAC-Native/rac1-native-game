@@ -278,7 +278,7 @@ std::vector<DecodedMesh> decode_tfrags(std::span<const std::byte> block) {
         const std::size_t at = table + t.data;
         if (at >= block.size()) continue;
         const std::span<const std::byte> data = block.subspan(at);
-        if (t.colours > data.size()) continue;
+        if (t.colours > data.size() || static_cast<std::size_t>(t.normals) + 0x10 > data.size()) continue;
         out.push_back(decode_tfrag(data, t, static_cast<std::size_t>(i)));
     }
     return out;
@@ -343,6 +343,11 @@ LevelStaticGeometry decode_level_meshes(std::span<const std::byte> level_wad_dat
     }
     LevelFileHeader fh;
     std::memcpy(&fh, file.data(), sizeof fh);
+    auto fits = [&file](FileSpan s) { return s.offset >= 0 && s.size >= 0 && static_cast<std::size_t>(s.offset) + static_cast<std::size_t>(s.size) <= file.size(); };
+    if (!fits(fh.asset_index) || !fits(fh.asset_data)) {
+        std::cerr << "Error: the level WAD's index or data is outside the file." << std::endl;
+        return {};
+    }
     const std::span<const std::byte> index(file.data() + fh.asset_index.offset, static_cast<std::size_t>(fh.asset_index.size));
     std::vector<std::uint8_t> unpacked;
     if (!decompress_wad(std::span<const std::byte>(file.data() + fh.asset_data.offset, static_cast<std::size_t>(fh.asset_data.size)),

@@ -6,6 +6,7 @@ What changed in each release. Releases are source only: you build the game with 
 ## Unreleased
 
 ### Graphics
+- Lights: Anya-Thoughtmane's second lighting pass (#102) on Veldin to Rilgar: emissive surfaces, lamps by class and by hand, merged with ours.
 - The levels' water, lava and sand seas (VU1 program 7's surfaces: Rilgar's harbour, Gaspar's lava sea, Aridia's sand sea, Hoven,
   Umbris, Novalis, Kalebo, Drek's fleet..., the levels' baked shadow meshes and the nanotech orbs) are drawn by the modern renderer
   from the game's own geometry, in the world's projection: no side cut or wedge in a widened view, fogged as the GS fogs them, and
@@ -15,7 +16,7 @@ What changed in each release. Releases are source only: you build the game with 
   light dust in the sunlight, rain with splashes and snow, per level from its light file (`particles` lines, editable in the
   debug menu's Sun tab); Batalia's rain and Hoven's snow drawn in place of the game's own while it is on. OpenGL and Vulkan.
   See [Ambient particles](docs/particles.md).
-- Ambient particles after the first playtest: embers and ash can rise from the level's lava itself (`source lava`, `rise`: points
+- Ambient particles, after the first playtest: embers and ash can rise from the level's lava itself (`source lava`, `rise`: points
   on the open lava faces of the level's collision near the camera, drifting slowly in the air's currents), as Umbris's (the
   Snagglebeast's cave) and Gaspar's now do, none away from the lava or indoors; the wind is steady unless a line asks for gusts
   (`gust`); Hoven's snow is a calm, light snowfall; Batalia has rain only.
@@ -23,22 +24,73 @@ What changed in each release. Releases are source only: you build the game with 
   splashes or materials' rain rings there: the level's collision seen from above (the height of its topmost face, read once per level
   on a thread of its own) keeps them out, softly at the openings; no box to place by hand. See
   [Ambient particles](docs/particles.md#under-a-roof).
-- Modern lighting: more lamps light the world on Veldin and Novalis (nanotech crates, fires, plasma beams, landing pad, eyes, bombs), and
-  lights per object class follow the objects the game spawns later (thanks Anya-Thoughtmane, #102).
-- Modern lighting: emissive surfaces. A level's light file can mark a texture (`emissive <tfrag|tie|shrub|moby> <class> tex <n>
+
+### Lighting (the optional modern lighting, still experimental)
+- The levels' own suns from Anya-Thoughtmane's lighting pass (#90, #101), set with the debug menu's Sun tab: Veldin, Novalis,
+  Kerwan, Eudora, Umbris, Gaspar, Orxon, Pokitaru, Hoven, Gemlik Base, Quartu, Kalebo III, Drek's fleet and the Veldin finale
+  get a sun of their own or a new one (to playtest); Aridia keeps its sun from the skybox's planet. See
+  [The level's own sun](docs/lighting.md#the-levels-own-sun).
+- Sun Rays off per level: a level's light file can turn them off there (`sun_rays off`; the debug menu's Sun tab has a checkbox
+  for it, saved with the file). Off on Blarg's station, Rilgar, Batalia and Oltanis, from Anya-Thoughtmane's lighting
+  pass (#101). See [Sun rays](docs/lighting.md#sun-rays).
+- Emissive surfaces: a level's light file can mark a texture (`emissive <tfrag|tie|shrub|moby> <class> tex <n>
   [strength] [threshold]`) that keeps the original lighting's brightness where the sun's shadows and the relighting would darken it
   (lamps, screens, panels painted in textures), marked in the debug menu's Lights tab; Veldin's domed building lamps and Novalis's
   landing pad lamps, neon tubes and bulbs are marked (#102).
-- Modern lighting: surface materials, a new Options > Graphics row Surface Detail (Off, the default; Low; High). A level's light file
+- Surface materials, a new Options > Graphics row Surface Detail (Off, the default; Low; High). A level's light file
   tags a texture `material <tfrag|tie|shrub|moby> <class> tex <n> <type> [a] [b] [c]` - metal, wet, puddle, lava, water, mud,
   quicksand - lit and animated over the PS2 texture (specular with Fresnel, wet ground with puddles and rain ripples, a slow flow);
   High adds reflections from the last frame's picture and the lava's heat shimmer. `rain on` and `sky r g b` per level. Tagged in
   the debug menu's Lights tab. Batalia's platform, railings and buildings (metal) and its paved ground (puddles, rain) and Umbris's
-  swampy ground (mud). See [Materials](docs/materials.md).
-- Modern lighting: Novalis's Buzzers light with their green eyes, and the Blarg ship (Novalis's drop ship, Gemlik's ships of the
+  swampy ground (mud). The puddles, ripples, rain rings and the lava's pulse are placed by an exact integer noise, the same on
+  every GPU and driver. See [Materials](docs/materials.md).
+- More lamps light the world on Veldin and Novalis (nanotech crates, fires, plasma beams, landing pad, eyes, bombs), and
+  lights per object class follow the objects the game spawns later (thanks Anya-Thoughtmane, #102).
+- Novalis's Buzzers light with their green eyes, and the Blarg ship (Novalis's drop ship, Gemlik's ships of the
   skill point) lights from its orange and blue lamps, which glow, instead of from inside its hull (#102).
+- Light editor (debug menu, #101): click on the picture to pick a surface or an object part (the crosshair stays), a light added
+  at the clicked surface (just off it along its normal), lines for a moby class on every level (`data/lights/classes.txt`, a "For
+  every level" box; a level's own line wins), a moby light on a joint of its pose (`emit moby ... joint <n>`, for the Buzzers' flight),
+  and a Textures tab: the level's tfrag, tie, shrub and moby textures as thumbnails with their classes, a click to mark one emissive
+  or give it a material. See [Lighting](docs/lighting.md#the-light-editor).
+
+### Performance
+- The game's update runs on a thread of its own while the main thread draws the pipelined frame (a window's default): the host
+  frame costs the update plus the frame's preparation, its drawing beside them; the game's state the same, word for word. With
+  the two changes below, a game frame costs about a fifth less (Rilgar 12.2 to 9.7 ms, Kerwan 13.8 to 12.0 ms, headless at a
+  2528 x 686 window with LOD 3 and the modern lighting), the main thread's own work about half.
+  The debug menu's Display tab (Game update on its own thread), `RAC1_GAME_THREAD`. See [Performance](docs/performance.md).
+- The MRP world's triangles and batches are built on the scene's worker, no longer on the main thread when the frame is drawn
+  (`RAC1_MRPW_BUILD_THREAD=0` for the old way).
+- The moby joints' pose (0x250fe0) keeps the VU0's registers in SIMD registers through its hot loops, two matrix chains at once
+  on a CPU with AVX2: about a quarter less time for the joints and skinning, the same results bit for bit (`RAC1_VU0_SIMD=0` for
+  the old way; oracle batch 470).
+- A pipelined frame's modern lighting and ambient particles read the game's memory as it was when the frame was prepared (a
+  copy), no longer the next update's.
+- Vulkan: the ambient occlusion reads the 3D's depth where it is instead of copying it every frame: GTAO at 5053 x 1371 about a
+  quarter less (Rilgar 4.1 to 3.1 ms of GPU, Kerwan 5.0 to 3.9; GTAO 1/2 2.8 to 1.7), the same picture
+  (`RAC1_AO_DEPTH_COPY=1` for the old way). See [Lighting](docs/lighting.md#ambient-occlusion).
+- The sun's shadows: the mobys over a cascade's static cache are put back and drawn in up to four rectangles instead of one
+  around them all, and the two far cascades' mobys are drawn every other frame in turn: the cascades' GPU time 2.1 to 1.3 ms on Rilgar, 2.4 to 0.6 on Kerwan, the same shadows (a far cascade's moby
+  shadow a frame late every other frame)
+  (`RAC1_SHADOW_CLUSTERS=1`, `RAC1_SHADOW_FAR_EVERY=0` for the old way). OpenGL and Vulkan.
+- The profiler with Vulkan: the sun cascades' stage is closed where OpenGL closes it (left open, the GPU's work after the world's
+  draw without a stage of its own counted as the cascades'), and the point lights' cube shadows have their own stage.
+
+### Debug tools (`--debug-tools`)
+- Hoverboard anywhere (Player tab): on Rilgar and Kalebo III, gets Ratchet on the hoverboard race's board where he stands, as the board
+  itself does when he walks up to it, and off again when unticked. Testing: `RAC1_HOVERBOARD_AT`.
+- Hoverboard anywhere on every other level: a free board (Kalebo III's board drawn on Ratchet's feet, his own board animations
+  read from Kalebo III's data, our own riding with the game's collision): the stick steers and speeds up, cross jumps; in the water,
+  below the level, in a pit or after a long fall he is back on foot on the last solid ground. No race rules. OpenGL and Vulkan.
 
 ### Fixes
+- Windows: the build failed with MSYS2's current Clang ("'gnu::noinline' attribute cannot be applied to types" in
+  moby_joints.cpp, #112).
+- Modern lighting: Ratchet and the other mobys are lit by the lights placed by hand, the lights per class and the automatic
+  emitters, per pixel as the world (they had only the game's own lights; #110). OpenGL and Vulkan.
+- Surface materials: a metal's roughness works as it reads - low is polished, a sharp highlight and a clear mirror of the sky (and
+  on High of the picture), high is brushed - instead of looking duller when polished (#101).
 - When the computer falls behind (or with V-Sync on a 75 Hz display) and a frame runs two or more of the game's
   frames, the frame after no longer reuses the undrawn frame's drawing data without what it needs: the game no
   longer freezes at Aridia's arrival, and no stray graphics programs run on Kerwan, Rilgar and other levels (#104).
@@ -48,11 +100,32 @@ What changed in each release. Releases are source only: you build the game with 
 - Widescreen: Rilgar's water near the camera no longer loses a wedge (a dark band across the water, the sea bed showing
   through) or shows a flat, stretched patch: the large water triangles that cross the whole 4:3 frame were stretched as if
   they were full-screen 2D, their corners past the frame's sides moved to the window's edges.
+- Vulkan: the effects (glows, trails, smoke, the levels' seas) no longer make a new graphics pipeline for every batch of every
+  frame, never freed: the game's memory no longer grows the longer it runs (Kerwan, 2400 frames: 403 to 370 MB), and the
+  effects' draw costs a quarter of what it did.
+- Vulkan: a few frame-timing fixes: objects freed between two frames (a level's load) wait for the frame that may still use
+  them, the shadow maps' views are no longer freed while a frame draws into them (a Shadow Quality change), each swapchain
+  image has its own "rendering finished" semaphore, the per-frame buffers are aligned as the GPU asks (Intel and other GPUs
+  that need more than 16 bytes), and the debug menu's overlay no longer recreates the render scale's images every frame.
+- Windows: with the game's update on its own thread (the default since the last change), the game's coroutine is no longer
+  resumed from a thread that is not a fiber (undefined in Windows' fiber API, most likely a crash; found by reading the
+  code, not yet tried on Windows).
+- The settings files (graphics, Advanced, controls, the console's language), the memory card's saves and the setup's copy of
+  the boot executable are written to a temporary file and renamed over the old one: a crash or a full disk while writing
+  no longer leaves a file cut short (a save lost, or the settings back to their defaults).
+- Options > Sound's 5.1 / 7.1: the reopened audio device's thread gets real-time priority again, as at start.
+- The game no longer reads its Advanced settings file every frame while the title's logos and intro play.
+- `RAC1_PROGRESS` is honoured in a normal (windowed) run too, as the launcher's page says; it was dropped without
+  `--debug-tools`.
 
-### Graphics
-- A level's light file can turn the Sun Rays off on that level (`sun_rays off`; the debug menu's Sun tab has a checkbox
-  for it, saved with the file). Off on Blarg's station, Rilgar, Batalia and Oltanis, from Anya-Thoughtmane's lighting
-  pass (#101). See [Sun rays](docs/lighting.md#sun-rays).
+### Code clean-up
+- Removed code nothing used any more: the first GS renderer (`GsRenderer`, `gs_state`: its `GsPrimitive` also clashed with the
+  VU interpreter's), the old VIF unpacker, the first VU0 helpers (`runtime/kernel/vu0.cpp`), the level loader's file-path
+  variants, unused helpers in the movie, sound, memory and format code, the temporary `RAC1_VU7_WHERE` trace.
+- Bounds checks that could overflow (the level files', the disc's directory records, `ByteReader`), the job pool safe
+  if two threads ask it at once, the VU profiler's clock on ARM64, compiler warnings.
+- Docs checked against the code: env-vars.md's defaults, the update settings' place (Main menu > Updates), the setup's PAL
+  disc, the launcher's buttons, and other out-of-date statements.
 
 ### Launcher and setup
 - The game writes `progress.json` in its data folder for the [RAC Native launcher](https://github.com/RAC-Native/rac-native-launcher):
@@ -63,6 +136,22 @@ What changed in each release. Releases are source only: you build the game with 
   20; `--check-system` checks the system only), and the launcher offers to set up that container, builds the game in it
   and starts it from it, with a script to add to Steam for the Gaming Mode (#108). See
   [Setup](docs/setup.md#steam-deck-bazzite-and-other-immutable-systems).
+- The setup no longer trusts its record of a step whose files were deleted since (`assets/generated`, or part of it: the
+  moby or world assets, the generated code, the overlay maps, the boot executable): it says which is missing and makes it
+  again, instead of leaving the game without the modern renderer's assets until `--force`. The game says so at start too
+  when those assets are missing, and points to `./setup.sh`.
+- `./setup.sh --update` on the development channel no longer resets a local `main` that has commits of its own (after a
+  stable update had checked out a release); `--update --native-arch` is kept for the rebuild; Ninja builds show their
+  progress on Linux too.
+- The launcher: Cancel right after a task starts stops it on Windows too; restoring a saves backup only writes inside the
+  memory card's folder; the status of a running task is no longer replaced by a late refresh.
+- The update check on the development channel offers main's latest commit even when it is more than 250 commits ahead.
+- The setup extracts the whole disc into `assets/disc/` (about 6,800 files, 3.9 GB: the levels' data, the scenes, the
+  dialogue, the music and the movies, cut along the disc's own tables), each file checked against the image, and the game
+  reads those files instead of the disc image: it no longer needs the image once the setup has run (keep it for the
+  updates that regenerate from it). Done again only when the disc image changes (`--force disc` to redo it); a game
+  started without the files says to run the setup again. `RAC1_READ_ISO=1` reads the image itself, to compare, and
+  `rac1-native --setup --compare-disc` reads every sector both ways. See [Setup](docs/setup.md#the-discs-files).
 
 ## 0.5.0
 

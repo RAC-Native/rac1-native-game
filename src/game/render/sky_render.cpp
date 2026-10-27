@@ -26,7 +26,6 @@ extern void (*g_sky_init_callback)(std::uint32_t, std::uint32_t);
 extern DecodedSky g_decoded_sky;
 static bool g_sky_initialized = false;
 static bool g_sky_gl_initialized = false;
-extern bool g_parsing_sky;
 
 struct SkyDrawCommand {
     int index_count;
@@ -108,8 +107,6 @@ void sky_draw() {
         glClear(GL_COLOR_BUFFER_BIT);
         return;
     }
-
-    g_parsing_sky = true;
 
     if (g_decoded_sky.clear_screen) {
         glClearColor(g_decoded_sky.color_r / 255.f, g_decoded_sky.color_g / 255.f, g_decoded_sky.color_b / 255.f, 1.0f);
@@ -263,7 +260,6 @@ void sky_draw() {
     glEnable(GL_CULL_FACE); // Restore global state
     glDisable(GL_BLEND);
 
-    g_parsing_sky = false;
 }
 
 struct SkyRenderInitializer {

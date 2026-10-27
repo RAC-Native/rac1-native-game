@@ -99,7 +99,7 @@ std::vector<T> table_rows(std::span<const std::byte> index, TableRef ref) {
 }
 
 bool span_fits(FileSpan s, std::size_t total) {
-    return s.offset >= 0 && s.size >= 0 && static_cast<std::size_t>(s.offset + s.size) <= total;
+    return s.offset >= 0 && s.size >= 0 && static_cast<std::size_t>(s.offset) + static_cast<std::size_t>(s.size) <= total;  // (no int32 sum: it can overflow)
 }
 
 } // namespace
@@ -149,7 +149,7 @@ std::vector<DecodedTexture> decode_level_textures(std::span<const std::byte> lev
     auto vram_palette = [&](std::int16_t unit) {
         const std::size_t at = static_cast<std::size_t>(unit) * 256;
         std::vector<std::uint32_t> p(256, 0xff000000u);
-        if (at + 1024 <= vram.size()) std::memcpy(p.data(), vram.data() + at, 1024);
+        if (unit >= 0 && at + 1024 <= vram.size()) std::memcpy(p.data(), vram.data() + at, 1024);
         return p;
     };
     // A palette of the asset data (1 KB at `at`).

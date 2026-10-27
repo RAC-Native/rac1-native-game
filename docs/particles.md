@@ -136,7 +136,7 @@ particles <kind> <density> [r g b] [wind <x> <y>] [gust <g>] [box x0 y0 z0 x1 y1
 - `rise r`: from the lava, the rise in units a second (else the kind's: embers 0.9, ash 0.5).
 - `keep`: for rain and snow, the game's own drawn as well.
 
-The file is read when the level starts (also with the modern lighting off). Saving keeps the lines where they were, and a
+The file is read the first time the level's particles, lighting or the debug menu need it (also with the modern lighting off). Saving keeps the lines where they were, and a
 line not edited is written back exactly as it was read.
 
 ## The editor

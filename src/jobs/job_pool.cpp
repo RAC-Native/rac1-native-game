@@ -161,6 +161,10 @@ void parallel_for(size_t n, size_t grain, const std::function<void(size_t, size_
         for (size_t b = 0; b < n; b += grain) fn(b, std::min(n, b + grain));
         return;
     }
+    // (one job at a time: the pool has one job slot. The game thread's scene decoding and the main thread's moby draw lists
+    // both use the pool, and with the game's update beside the drawing they could ask at once; the second waits)
+    static std::mutex one_caller;
+    std::lock_guard<std::mutex> caller(one_caller);
     Pool& P = pool();
     Job j;
     {

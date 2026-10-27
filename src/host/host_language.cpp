@@ -59,9 +59,7 @@ void note(uint32_t game_language) {
     const std::filesystem::path p = file();
     std::error_code ec;
     if (p.has_parent_path()) std::filesystem::create_directories(p.parent_path(), ec);
-    if (std::FILE* f = platform::open_file(p, "w")) {
-        std::fprintf(f, "language %u\n", game_language);
-        std::fclose(f);
+    if (platform::write_file_replace(p, "language " + std::to_string(game_language) + "\n")) {
         std::printf("[language] the console's language kept: %u (%s)\n", game_language, p.string().c_str());
     }
 }

@@ -1,24 +1,188 @@
+#include "io/host_endian.h"
 #include "disc.h"
 
 #include "ee_memory.h"
 
 #include <platform/platform.h>
-#include "io/host_endian.h"
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <mutex>
+#include <sstream>
+#include <unordered_map>
 #include <vector>
 
 namespace rac1 {
 
 namespace {
+constexpr uint64_t kSector = 2048;
 std::FILE* g_iso = nullptr;
+std::string g_iso_path;
+std::mutex g_iso_lock;  // (its opening)
+std::atomic<int> g_source{-1};  // -1: not decided yet, 0: the files, 1: the image
+
+// ---- The disc's files (assets/disc/, tools/disc_extract.py) ----
+// layout.txt: "<first byte (hex)> <size> <offset in the file> <sha1> <path>" per piece, sorted by the first byte, not
+// overlapping; the bytes no piece holds are zero. One place maps the disc's bytes to the host's files (files_find):
+// a mods folder in front of assets/disc/ would change only which path a piece's file opens (files_load).
+constexpr const char* kLayoutMagic = "rac1-native disc layout 1";
+constexpr size_t kOpenFiles = 64;  // the files kept open at once (the oldest closed past that)
+
+struct DiscPiece {
+    uint64_t first = 0, size = 0, file_offset = 0;
+    uint32_t file = 0;
+};
+
+struct DiscFiles {
+    bool ok = false;
+    std::string error;
+    uint64_t image_bytes = 0;
+    std::vector<std::filesystem::path> paths;  // per file: where it is on the host
+    std::vector<uint64_t> sizes;               // per file: its size in the layout
+    std::vector<DiscPiece> pieces;             // by their first byte
+    std::mutex lock;                           // (the handles: the game's thread and the audio thread read at once)
+    std::vector<std::shared_ptr<std::FILE>> handles;
+    std::deque<uint32_t> opened;               // the files open, oldest first
+};
+
+// a file of the layout on the host: assets/disc/<path>; on Windows a long one (past the old 260 characters) through
+// the \\?\ prefix, which takes it whatever the system's long path setting
+std::filesystem::path files_host_path(const std::string& rel) {
+    std::filesystem::path p = std::filesystem::path(disc_files_dir()) / std::filesystem::path(rel);
+#if defined(_WIN32)
+    std::error_code ec;
+    std::filesystem::path a = std::filesystem::absolute(p, ec);
+    if (!ec && a.native().size() >= 240) {
+        a.make_preferred();
+        return std::filesystem::path(L"\\\\?\\" + a.native());
+    }
+#endif
+    return p;
+}
+
+void files_load(DiscFiles& d) {
+    const std::string layout = std::string(disc_files_dir()) + "/layout.txt";
+    std::ifstream f(layout);
+    std::string line;
+    if (!f || !std::getline(f, line) || line != kLayoutMagic) {
+        d.error = "the disc's files are missing (" + layout + "): the game reads the files the setup extracts from your disc image";
+        return;
+    }
+    std::string word;
+    if (!std::getline(f, line) || !(std::istringstream(line) >> word >> d.image_bytes) || word != "image") {
+        d.error = layout + " is damaged";
+        return;
+    }
+    std::vector<std::string> names;
+    std::unordered_map<std::string, uint32_t> index;
+    while (std::getline(f, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        std::istringstream in(line);
+        DiscPiece p;
+        std::string sha, path;
+        if (!(in >> std::hex >> p.first >> std::dec >> p.size >> p.file_offset >> sha) || !std::getline(in >> std::ws, path) || path.empty()) {
+            d.error = layout + " is damaged";
+            return;
+        }
+        const auto [it, added] = index.try_emplace(path, static_cast<uint32_t>(names.size()));  // (a multi-extent file: pieces)
+        p.file = it->second;
+        if (added) {
+            names.push_back(path);
+            d.sizes.push_back(0);
+        }
+        d.sizes[p.file] = std::max(d.sizes[p.file], p.file_offset + p.size);
+        if ((!d.pieces.empty() && p.first < d.pieces.back().first + d.pieces.back().size) || p.first + p.size > d.image_bytes) {
+            d.error = layout + " is damaged";
+            return;
+        }
+        d.pieces.push_back(p);
+    }
+    for (const std::string& n : names) d.paths.push_back(files_host_path(n));
+    d.handles.resize(d.paths.size());
+    d.ok = true;
+}
+
+DiscFiles& files() {
+    static DiscFiles d;
+    static std::once_flag once;
+    std::call_once(once, [] { files_load(d); });
+    return d;
+}
+
+// file `i` of the layout, opened (kept open, up to kOpenFiles); null when it is missing or not the layout's size
+std::shared_ptr<std::FILE> files_handle(DiscFiles& d, uint32_t i) {
+    std::scoped_lock lock(d.lock);
+    if (d.handles[i]) return d.handles[i];
+    std::FILE* raw = platform::open_file(d.paths[i], "rb");
+    std::error_code ec;
+    if (raw == nullptr || std::filesystem::file_size(d.paths[i], ec) != d.sizes[i]) {
+        if (raw != nullptr) std::fclose(raw);
+        static std::vector<bool> said;
+        said.resize(d.paths.size());
+        if (!said[i]) {
+            said[i] = true;
+            std::fprintf(stderr, "[disc] %s is %s: run the setup again (./setup.sh, setup.cmd on Windows)\n", d.paths[i].string().c_str(),
+                         raw == nullptr ? "missing" : "damaged (not its size)");
+        }
+        return nullptr;
+    }
+    d.handles[i] = std::shared_ptr<std::FILE>(raw, [](std::FILE* h) { std::fclose(h); });
+    d.opened.push_back(i);
+    if (d.opened.size() > kOpenFiles) {
+        d.handles[d.opened.front()].reset();  // (closed once no read still holds it)
+        d.opened.pop_front();
+    }
+    return d.handles[i];
+}
+
+// the pieces holding any of the bytes [offset, offset + n): `fn(piece, first byte, last byte + 1)` for each, in order
+template <class Fn>
+bool files_find(const DiscFiles& d, uint64_t offset, uint64_t n, Fn&& fn) {
+    auto it = std::upper_bound(d.pieces.begin(), d.pieces.end(), offset, [](uint64_t v, const DiscPiece& p) { return v < p.first; });
+    if (it != d.pieces.begin()) --it;
+    for (; it != d.pieces.end() && it->first < offset + n; ++it) {
+        const uint64_t a = std::max(offset, it->first), b = std::min(offset + n, it->first + it->size);
+        if (a < b && !fn(*it, a, b)) return false;
+    }
+    return true;
+}
+
+bool read_full(std::FILE* f, uint64_t at, char* dst, size_t n) {
+    size_t got = 0;
+    while (got < n) {
+        const int64_t r = platform::read_at(f, at + got, dst + got, n - got);
+        if (r <= 0) return false;
+        got += static_cast<size_t>(r);
+    }
+    return true;
+}
+
+bool files_read(uint64_t offset, size_t n, char* dst) {
+    DiscFiles& d = files();
+    if (!d.ok || offset + n > d.image_bytes) return false;
+    std::memset(dst, 0, n);  // (what no piece holds)
+    return files_find(d, offset, n, [&](const DiscPiece& p, uint64_t a, uint64_t b) {
+        const std::shared_ptr<std::FILE> f = files_handle(d, p.file);
+        return f && read_full(f.get(), p.file_offset + (a - p.first), dst + (a - offset), static_cast<size_t>(b - a));
+    });
+}
+
+// ---- The image ----
+bool image_open(const std::string& path) {
+    std::scoped_lock lock(g_iso_lock);
+    if (g_iso != nullptr) return true;
+    g_iso_path = path.empty() ? disc_path() : path;
+    g_iso = platform::open_file(g_iso_path, "rb");  // (the Wii U reads it through several handles: platform_wiiu.cpp)
+    return g_iso != nullptr;
+}
 
 struct DiscLevel {
     int state = 0;  // 0: unknown, 1: valid, -1: missing
@@ -108,20 +272,19 @@ const char* disc_path_file() { return "assets/iso/disc-path.txt"; }
 namespace {
 // SYSTEM.CNF's BOOT2 file name, read through the ISO9660 root directory ("" when it cannot be read)
 std::string read_boot2() {
-    std::FILE* f = std::fopen(disc_path().c_str(), "rb");
-    if (f == nullptr) return "";
-    auto rd = [f](uint32_t off, uint32_t n) {
-        std::vector<uint8_t> b(n);
-        if (std::fseek(f, static_cast<long>(off), SEEK_SET) != 0 || std::fread(b.data(), 1, n, f) != n) b.clear();
+    auto rd = [](uint32_t lba, uint32_t n) {
+        std::vector<uint8_t> b(static_cast<size_t>((n + kSector - 1) / kSector) * kSector);
+        if (!disc_read(lba, static_cast<uint32_t>(b.size() / kSector), b.data())) b.clear();
+        b.resize(std::min<size_t>(b.size(), n));
         return b;
     };
     std::string out;
-    const std::vector<uint8_t> pvd = rd(16 * 2048, 2048);
+    const std::vector<uint8_t> pvd = rd(16, 2048);
     if (pvd.size() == 2048 && std::memcmp(&pvd[1], "CD001", 5) == 0) {
         uint32_t lba = 0, size = 0;
         lba = le32(&pvd[156 + 2]);  // (ISO 9660: both byte orders; the little-endian half)
         size = le32(&pvd[156 + 10]);
-        const std::vector<uint8_t> dir = size < 0x10000 ? rd(lba * 2048, size) : std::vector<uint8_t>{};
+        const std::vector<uint8_t> dir = size < 0x10000 ? rd(lba, size) : std::vector<uint8_t>{};
         for (size_t o = 0; o < dir.size();) {
             const uint8_t len = dir[o];
             if (len == 0) {
@@ -134,7 +297,7 @@ std::string read_boot2() {
                 uint32_t flba = 0, fsize = 0;
                 flba = le32(&dir[o + 2]);
                 fsize = le32(&dir[o + 10]);
-                const std::vector<uint8_t> cnf = fsize < 2048 ? rd(flba * 2048, fsize) : std::vector<uint8_t>{};
+                const std::vector<uint8_t> cnf = fsize < 2048 ? rd(flba, fsize) : std::vector<uint8_t>{};
                 const std::string txt(cnf.begin(), cnf.end());
                 const size_t b = txt.find("cdrom0:\\");
                 if (b != std::string::npos) {
@@ -146,7 +309,6 @@ std::string read_boot2() {
             o += len;
         }
     }
-    std::fclose(f);
     return out;
 }
 }  // namespace
@@ -155,7 +317,7 @@ const std::string& disc_boot_elf() {
     static const std::string name = [] {
         const std::string b = read_boot2();
         if (b.empty()) return std::string("SCUS_971.99");
-        if (b != "SCUS_971.99") std::fprintf(stderr, "[disc] %s boots %s: another region's build\n", disc_path().c_str(), b.c_str());
+        if (b != "SCUS_971.99") std::fprintf(stderr, "[disc] the disc boots %s: another region's build\n", b.c_str());
         return b;
     }();
     return name;
@@ -165,33 +327,74 @@ std::string disc_boot_elf_path() { return "assets/dumps/" + disc_boot_elf(); }
 
 bool disc_other_region() { return disc_boot_elf() != "SCUS_971.99"; }
 
-bool disc_open(const std::string& path) {
-    if (g_iso != nullptr) return true;
-    std::string p = path;
-    if (p.empty()) p = disc_path();
-    g_iso = platform::open_file(p, "rb");  // (the Wii U reads it through several handles: platform_wiiu.cpp)
-    return g_iso != nullptr;
+const char* disc_files_dir() { return "assets/disc"; }
+
+DiscSource disc_source() {
+    int s = g_source.load();
+    if (s < 0) {
+        // debugging: RAC1_READ_ISO=1 reads the image itself (disc_path()), to compare with the extracted files
+        const char* e = std::getenv("RAC1_READ_ISO");
+        s = e != nullptr && std::atoi(e) != 0 ? 1 : 0;
+        int unset = -1;
+        if (!g_source.compare_exchange_strong(unset, s)) s = unset;
+    }
+    return s != 0 ? DiscSource::Image : DiscSource::Files;
 }
 
-bool disc_is_open() { return g_iso != nullptr; }
+bool disc_ready(std::string& why) {
+    if (disc_source() == DiscSource::Image) {
+        if (image_open("")) return true;
+        why = "your disc image was not found (" + disc_path() + "; RAC1_READ_ISO=1 reads the image, not the disc's files).";
+        return false;
+    }
+    const DiscFiles& d = files();
+    if (!d.ok) why = d.error + ".";
+    return d.ok;
+}
+
+bool disc_open(const std::string& path) {
+    const bool ok = image_open(path);
+    if (ok) g_source.store(1);
+    return ok;
+}
+
+bool disc_is_open() {
+    if (disc_source() == DiscSource::Image) return g_iso != nullptr;
+    return files().ok;
+}
+
+uint64_t disc_size(DiscSource src) {
+    if (src == DiscSource::Files) return files().ok ? files().image_bytes : 0;
+    if (!image_open("")) return 0;
+    std::error_code ec;
+    const uint64_t n = std::filesystem::file_size(g_iso_path, ec);
+    return ec ? 0 : n;
+}
 
 // a positional read (pread; ReadFile at an offset on Windows), no shared position: the game's thread and the host's
 // audio thread (the IOP mirror's stream reader, ADR 0013) read at the same time
-bool disc_read(uint32_t lba, uint32_t sectors, void* dst) {
-    if (g_iso == nullptr && !disc_open()) return false;
-    const size_t n = static_cast<size_t>(sectors) * 2048;
-    size_t got = 0;
-    while (got < n) {
-        const int64_t r = platform::read_at(g_iso, static_cast<uint64_t>(lba) * 2048 + got, static_cast<char*>(dst) + got, n - got);
-        if (r <= 0) return false;
-        got += static_cast<size_t>(r);
-    }
-    return true;
+bool disc_read_from(DiscSource src, uint32_t lba, uint32_t sectors, void* dst) {
+    const size_t n = static_cast<size_t>(sectors) * kSector;
+    if (src == DiscSource::Files) return files_read(uint64_t{lba} * kSector, n, static_cast<char*>(dst));
+    if (g_iso == nullptr && !image_open("")) return false;
+    return read_full(g_iso, uint64_t{lba} * kSector, static_cast<char*>(dst), n);
 }
 
+bool disc_read(uint32_t lba, uint32_t sectors, void* dst) { return disc_read_from(disc_source(), lba, sectors, dst); }
+
 void disc_will_need(uint32_t lba, uint32_t sectors) {
-    if (g_iso == nullptr && !disc_open()) return;
-    platform::will_need(g_iso, static_cast<uint64_t>(lba) * 2048, static_cast<uint64_t>(sectors) * 2048);
+    const uint64_t offset = uint64_t{lba} * kSector, n = uint64_t{sectors} * kSector;
+    if (disc_source() == DiscSource::Image) {
+        if (g_iso == nullptr && !image_open("")) return;
+        platform::will_need(g_iso, offset, n);
+        return;
+    }
+    DiscFiles& d = files();
+    if (!d.ok) return;
+    files_find(d, offset, n, [&](const DiscPiece& p, uint64_t a, uint64_t b) {
+        if (const std::shared_ptr<std::FILE> f = files_handle(d, p.file)) platform::will_need(f.get(), p.file_offset + (a - p.first), b - a);
+        return true;
+    });
 }
 
 bool disc_read_ee(uint32_t ee_dst, uint32_t lba, uint32_t sectors) {

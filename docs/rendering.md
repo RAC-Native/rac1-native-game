@@ -2,13 +2,16 @@
 
 How a frame is drawn. In short: the game's own render code still runs, ported, and decides what is
 drawn, where, with which level of detail and which lighting. The **MRP** (Modern Rendering Pipeline)
-then draws those decisions natively with OpenGL 4.6, instead of sending them through an emulated
-PS2 graphics chip. A GS replica is kept for the 2D, and the PS2's way of drawing the 3D is kept as
-the reference that the MRP is proved against.
+then draws those decisions natively, with OpenGL 4.6 or Vulkan 1.3, instead of sending them through an
+emulated PS2 graphics chip. In play the MRP draws all of the 3D: the world, the sky, the mobys, the
+particles and effects, and the water, lava and sand seas of VU1 program 7. A GS replica draws the 2D
+(the HUD, text, menus, fades), and the PS2's way of drawing the 3D is kept as the reference that the
+MRP is proved against.
 
-The optional modern lighting (sun shadows, point lights, ambient occlusion) has its own page:
-[Lighting](lighting.md). The same renderer can also draw with Vulkan instead of OpenGL (experimental,
-Options > Graphics > Renderer): [Vulkan](vulkan.md).
+The specialised pages: [Lighting](lighting.md) (the original lighting and the optional modern
+lighting), [Materials](materials.md) (Surface Detail), [Ambient particles](particles.md),
+[Performance](performance.md) (where a frame's CPU time goes, the threads) and [Vulkan](vulkan.md)
+(the second backend).
 
 ## How the PS2 drew a frame
 
@@ -53,46 +56,58 @@ All of their decisions are the game's own: which objects are visible, which leve
 uses, the animation pose and its bone matrices, the lights chosen for each moby, tints and fades.
 The MRP does not re-derive any of them.
 
+## Two backends
+
+The renderer has two backends, chosen at Options > Graphics > Renderer and read when the window is
+made: **OpenGL 4.6**, the default, and **Vulkan 1.3**, experimental and opt-in (`RAC1_RENDERER=vulkan`
+for one run). Each rendering module keeps its OpenGL code and has a Vulkan branch beside it
+(`vk::is_active()`); the shaders are the same GLSL, made Vulkan's by `tools/gen_vk_shaders.py` and
+compiled at build time. Both draw the same picture from the same scene, the modern lighting, the
+materials and the ambient particles included; when Vulkan cannot start the game opens with OpenGL.
+The reference images are OpenGL's. See [Vulkan](vulkan.md).
+
 ## How the MRP gets the frame
 
 ```mermaid
 flowchart TD
-    subgraph EE["Game thread (the coroutine): ported code"]
+    subgraph EE["The game's update (the coroutine; on the game thread beside the drawing)"]
         RF["render_frame (0x1f85b8)"] --> SKY["sky pass"]
         RF --> WP["world passes: tfrag, tie, shrub"]
         RF --> MP["moby pass (0x250038)"]
-        RF --> FX["particles, effects"]
+        RF --> FX["particles, effects,<br/>draw lists (program 7)"]
         RF --> HUD["HUD, menus, 2D"]
     end
-    WP -->|"chain ranges<br/>(scene_note_pass)"| WS["mrp_world_scene:<br/>walks the world chain on a private VU1<br/>(worker thread)"]
+    WP -->|"chain ranges<br/>(scene_note_pass)"| WS["mrp_world_scene: the world chain<br/>walked on a private VU1<br/>(the scene worker)"]
     SKY -->|"chain ranges"| WS
-    MP -->|"draw and pose observers"| MS["mrp_scene:<br/>class, LOD, rows, joints, lights, tint"]
-    FX -->|"primitives kept aside"| GSF["GS replica"]
-    HUD --> GS2["GS replica"]
-    subgraph GPU["OpenGL 4.6"]
+    MP -->|"draw and pose observers"| MS["mrp_scene: class, LOD, rows,<br/>joints, lights, tint (job pool)"]
+    FX --> GSR["GS replica walks the chain<br/>(the GS chain worker)"]
+    HUD --> GSR
+    subgraph GPU["OpenGL 4.6 or Vulkan 1.3"]
+        LS["modern lighting: sun cascades,<br/>point-light cubes and tiles"]
         TC["tfrag compute shader"]
-        SKYD["sky at the far plane"]
-        WD["world: multi-draw-indirect"]
-        MD["mobys: multi-draw-indirect"]
-        DS["drop shadows (stencil)"]
-        FXD["particles and effects<br/>in the 3D's projection"]
-        TWO["2D on top"]
+        WD["sky and world:<br/>multi-draw-indirect"]
+        MD["mobys: multi-draw-indirect,<br/>drop shadows (stencil)"]
+        PP["ambient occlusion, sun rays,<br/>ambient particles"]
+        FXD["effects and program 7's surfaces<br/>in the 3D's projection"]
+        TWO["2D on top (GS replica),<br/>between the effects in the chain's order"]
     end
+    GSR -->|"3D primitives and<br/>program 7 batches kept aside"| FXD
+    GSR -->|"the 2D"| TWO
     WS --> TC --> WD
-    WS --> SKYD
-    MS --> MD --> DS
-    GSF --> FXD
-    GS2 --> TWO
+    MS --> MD
+    LS --> WD
+    WD --> MD --> PP --> FXD
 ```
 
-The MRP takes the frame from two places.
+The MRP takes the frame from three places.
 
 **Mobys: observers on the ported moby pass.** `mrp_scene_install` (`src/game/render/mrp_scene.cpp`)
 installs two hooks in the ported code: `g_moby_draw_observer` in the moby draw loop and
 `g_moby_pose_observer` in the skinning (`moby_skin.cpp`). For each moby drawn, the scene records its
 class and level of detail, its model-to-view rows, its joint matrices, its three light directions and
 colours, its tint and alpha, its fade and whether it must be drawn after the drop shadows. The frame
-adds the camera and the projection block.
+adds the camera and the projection block. The chains' decoding and the draw lists' transforms are
+spread over the cores by the job pool (`src/jobs`), their results put together in a fixed order.
 
 **World and sky: the pass's own VU1 chain.** The world passes still build their DMA chain, and
 `world_pass` notes each pass's range of it (`mrpw::scene_note_pass`). `mrp_world_scene.cpp` then
@@ -100,7 +115,18 @@ walks that chain on a **private VU1**: the same VIF unpacking, with the set-up p
 game would run them. At each place where the game would start a drawing program, it matches the
 VU1 memory against the level's assets and evaluates the program's math (`src/formats/world_mrp.cpp`
 holds the CPU reference). So the culling, the level of detail and the lit vertex colours are exactly
-the original's. The walk runs on a worker thread (`mrp_world_renderer.cpp`).
+the original's. The walk, and then the frame's triangles, draw commands and batches
+(`build_triangles`), run on the scene worker thread (`mrp_world_renderer.cpp`).
+
+**Effects and VU1 program 7: the GS replica's walk.** The GS replica still walks the frame's chain (on
+the GS chain worker) and runs the ported VU1 programs it starts, but it keeps their projected 3D aside
+instead of drawing it: the particles and quad effects as primitives, program 7's surfaces as the
+program's input batches. `mrp_fx.cpp` draws both in the world's projection
+([Particles and effects](#particles-and-effects), [VU1 program 7's surfaces](#vu1-program-7s-surfaces)).
+What the replica draws itself in play is the 2D.
+
+The loading screen's flight between planets is a level of its own for the MRP: its 3D comes from the
+flight's own assets (`assets/generated/mrp/{moby,world}/flight/`).
 
 **What is skipped.** Some of the EE's work only feeds the PS2's way of drawing. With the MRP drawing
 the mobys, it is skipped (`g_moby_mrp_skip`, `src/game/ovl/moby_pass.h`): the VU0 skinning, the
@@ -108,12 +134,45 @@ sub-mesh colour fill, the texture-slot patching, and the GS replica's processing
 The skip is decided per frame before the update (in `src/host/orig_main.cpp`) and is off on the boot,
 the level exit, movies and the Vendor. Before it was enabled, the whole of EE memory was hashed after
 every frame with and without it, and every difference was traced to one of those GS-only outputs.
+The ranges of the moby chain the replica skips are recorded for every game frame, also those a slow
+host frame runs without drawing them: a frame that builds no chain of its own walks the one before it,
+and before #104 an undrawn frame's chain was walked without its ranges (stray VU1 programs; at Aridia's
+arrival the game froze).
 
-**The frame on the host** (`orig_main.cpp`): after the update, a `prepare` step captures the view,
-the world chain, the moby lists and the shadow data; a `draw` step then issues, in order, the tfrag
-compute dispatch, the sky, the world batches, the mobys, the drop shadows and the mobys deferred
-after them, and finally the GS replica's effects and 2D on top. With pipelining on, a frame is drawn
-while the next game frame is already being updated.
+## The host frame: prepare and draw
+
+The host draws a frame in two halves (`src/host/orig_main.cpp`):
+
+- **prepare**, right after the game's update, takes what the drawing needs from the game's state: the
+  view and the projection, the GS replica's run of the frame's chain (started on its worker), the
+  world scene's inputs (captured, then built on the scene worker), the moby draw lists, the drop
+  shadows' data, the level of detail's widening, and a copy of the game's memory that the modern
+  lighting and the ambient particles read (`runtime/kernel/ee_copy.h`);
+- **draw** issues the GPU work from that, then the frame is presented, paced to the frame-rate cap.
+
+**Pipelined frames** (on by default in a window; the debug menu's Display tab, `RAC1_PIPELINE`): the
+frame prepared at the end of one host frame is drawn in the next, its world scene built on the worker
+meanwhile (one frame of latency). With the **game thread** (`RAC1_GAME_THREAD`, on with the pipelined
+frames) the next game frames run on a thread of their own while the main thread draws the prepared
+frame; the drawing reads only what its preparation took. The game's code still runs on one thread at a
+time, in its order, so its state is the same word for word. Movies, fades, the full-screen menu, a
+level's exit and load, the boot and every deterministic headless run prepare and draw in a row. The
+details and the measurements: [Performance](performance.md#a-host-frame) and
+[Architecture](architecture.md#threads-and-the-cores).
+
+The draw step, in order, during play:
+
+1. the modern lighting's shadow pass, when Lighting is not Original (the sun's cascades, the
+   point-light cubes, the lights per screen tile);
+2. the sky and the world's batches (the tfrag compute shader dispatched with the frame's first world
+   draw);
+3. the effects the chain draws before the moby pass (Hoven's water), with the replica's 2D between them;
+4. the mobys, with the drop shadows (stencil) and the mobys deferred after them;
+5. the ambient occlusion, the sun rays, the copy of the picture kept for the next frame's reflections
+   (Surface Detail High), then the ambient particles;
+6. with a render scale other than 100 %, the 3D put on the window ([Render scale](#render-scale));
+7. the rest of the chain in its order: the MRP's effects and program 7's surfaces, and the GS
+   replica's 2D between them.
 
 ## The world on the GPU
 
@@ -122,9 +181,10 @@ tie and shrub of every level (`assets/generated/mrp/world/level<N>/world.mrpw` a
 `textures_{tfrag,tie,shrub}.mrpt`; written by `export_mrp_world` in `src/setup/mrp_export.cpp`).
 Each asset keeps the geometry **as the VU program assembles it**: the exporter traces the ported VU
 programs' output, every level of detail and every mip included. The format and its CPU reference are
-in `src/formats/world_mrp.{h,cpp}`.
+in `src/formats/world_mrp.{h,cpp}`. When these assets (or the mobys') are missing, deleted since the
+setup, the game says so at start, and `./setup.sh` makes them again.
 
-**Level load** (`mrp_world_renderer.cpp`): textures go into one `GL_TEXTURE_2D_ARRAY` per size, with
+**Level load** (`mrp_world_renderer.cpp`): textures go into one 2D array texture per size, with
 their mips; geometry templates into vertex buffers; the tfrag "plans" (below) and the resident lit
 colours are built.
 
@@ -134,11 +194,10 @@ colours are built.
   gets a record (its rows, morph factor, fog and alpha) and its lit colours. The colours are kept
   resident on the GPU: a copy is compared with EE memory after each update, and only the instances
   whose colours changed are uploaded (`ResidentColours`, `src/game/render/mrp_world_static.h`).
-  The vertex shader evaluates the templates from storage buffers indexed by `gl_BaseInstance`.
+  The vertex shader evaluates the templates from storage buffers indexed by the draw's base instance.
 - **tfrag** runs on a compute shader (next section).
-- **Draws are merged**: consecutive draws with the same GL state become one
-  `glMultiDrawElementsIndirect`. A Veldin frame at the highest level of detail went from 157 world
-  batches to 15.
+- **Draws are merged**: consecutive draws with the same state become one multi-draw-indirect call.
+  A Veldin frame at the highest level of detail went from 157 world batches to 15.
 
 **The fragment shader is the GS**: its texture function, the alpha test including its "fail" modes
 (drawn in two passes where needed), its mip-level formula, and fog with the fog colour.
@@ -204,7 +263,8 @@ transforms, and parts of Ratchet showed through the ground; that is gone.
 as shadow volumes counted in the frame's alpha channel. The MRP draws the same shadow volumes from the
 game's own data with a stencil counter instead, then darkens the counted pixels with the original's
 blend. The mobys that must appear on top of their shadow are drawn after it. Compared with a CPU run
-of the original's integer alpha arithmetic, 0 of 203.6 million pixels differed.
+of the original's integer alpha arithmetic, 0 of 203.6 million pixels differed. With the modern
+lighting on they are not drawn (see [Lighting](lighting.md)).
 
 **Batching**: draws are merged into multi-draw-indirect calls, with one upload of joints, parts and
 draw records per frame.
@@ -245,7 +305,7 @@ The MRP draws them itself (`RAC1_MRP_SEAS`, on by default; `mrp_fx.cpp`, "progra
   before); its kicks are marked and not drawn. A primitive of type 9 keeps the batch's place in the primitives' order.
 - **Drawn in the world.** The batch's screen matrix is compared with the frame's 0x1fc740 matrix (with its x, y, z rows times its Q
   numerator: a callback that scales the w row and the numerator together, for its own fog, Kerwan's class 994, projects the same):
-  the points are world points, drawn with the MRP's view-projection into its depth buffer, so the GL clips them. Nothing past the
+  the points are world points, drawn with the MRP's view-projection into its depth buffer, so the GPU clips them. Nothing past the
   4:3 frame is lost: no side test, no guard band, no full-span rule (those stay for the replica's path).
 - **As the GS drew them.** Texture, texture function, alpha test, blending and the GS's fog as the effects' shader (the atlas shared);
   the fog per vertex as the program computes it (`clamp(w + vf30.w)`, its integer part), interpolated over the screen; the depth is
@@ -270,6 +330,37 @@ most 0.015 (Kalebo) per channel, a few dozen edge pixels. The game's state is id
 the MRP's, and program 7 was the only source left, from 1 to 1 600 triangles a frame (Gaspar's lava sea 1 700, Blarg 1 090, Batalia
 1 170 a frame; the shadow meshes on Veldin, Novalis and Aridia). After: none (0 projected primitives drawn by the replica on any
 level). The ship's flight (`flight_draw`) and the Vendor's screens were not covered by that run.
+
+## The modern lighting, in the frame
+
+Optional, off by default (Options > Graphics > Lighting: Original), and only in play, with the MRP
+drawing both the world and the mobys. It changes the picture, never the game's state. Its parts, in
+the order a frame meets them (each one's page has the details):
+
+1. **The sun's shadows**: three cascades from the zone's own key light, or from the level's own sun
+   in its light file, the world's casters cached between frames; the world and the mobys lit by that
+   sun times its shadow, Shadow Strength setting how much a shadow hides
+   ([Sun shadows](lighting.md#sun-shadows-cascaded-shadow-maps)). Interiors marked in the level's file
+   turn the sun off.
+2. **Point lights per pixel**: the game's own dynamic lights, the automatic emitters, the lights per
+   object class and those placed by hand, walked per screen tile, with cube shadows for up to four of
+   them (Dynamic Shadows) ([Point lights per pixel](lighting.md#point-lights-per-pixel)).
+3. **Emissive surfaces**: marked textures keep the original lighting's brightness where the modern
+   lighting would darken them ([Emissive surfaces](lighting.md#emissive-surfaces)).
+4. **Materials** (Surface Detail): metal, wet ground, puddles, water, lava, mud, shaded after the
+   emissive step in the same world and moby shaders ([Materials](materials.md)).
+5. **Ambient occlusion**, over the 3D after the mobys, gentler on the mobys (AO Intensity)
+   ([Ambient occlusion](lighting.md#ambient-occlusion)).
+6. **Sun rays**, after the occlusion; off on a level whose file says so, and in the ship's flights
+   ([Sun rays](lighting.md#sun-rays)). Then, with Surface Detail High, the picture and its depth are
+   copied for the next frame's reflections.
+7. **Ambient particles** (Options > Graphics > Ambient Particles): our own dust, embers, rain and snow,
+   drawn over the world after the occlusion and the rays, before the game's effects. They do not need
+   the modern lighting ([Ambient particles](particles.md)).
+8. **Fog** stays the game's: computed per vertex as the VU programs compute it and applied last in each
+   fragment shader, after the lighting, the emissive surfaces and the materials.
+
+The game's effects and the 2D are drawn after all of it, as the game drew them.
 
 ## Level of detail
 
@@ -304,64 +395,66 @@ at Maximum on Veldin, Novalis and Kerwan.
 - **Fit to Screen**: when the picture's shape is not the window's, black bars or stretched.
 - **Field of View**: a scale of the original's field of view (both its horizontal and vertical angles).
 
+### The 3D in a widened view
+
 To widen the 3D, the host writes a wider projection into the game's projection block and runs the
 game's own projection set-up (0x1f7980) inside a journal. `render_view_projection_undo` restores the
 bytes before every game update, so **the game only ever sees its own 4:3 projection**. Objects in the
 side bands are culled by the same shadow-run mechanism as the level of detail, with the view widened:
 horizontally by the widescreen and the field of view, vertically by the field of view (the sky too).
-Before the vertical part, a Field of View above x1.00 lost the sky and the objects in bands at the
-top and bottom of the screen.
+
+The draw lists' callbacks that draw the levels' water, lava and sand seas cull their tiles against the
+game's 4:3 clip matrix. They run as shadow blocks too, with that matrix widened, and the GS replica
+walks each shadow's chain in place of the real block's. Many of them also test their cells with the
+game's point test (0x2002e0), which reads its own copies of the projection's tangents
+(0x16cd00..0x16cd2f), and the quad drawer (0x1fd228) rejects a quad past about twice the 4:3 frame's
+half width: the shadow blocks widen those too, keeping the guard band the game clips at. The shadow
+runs also put back the collision routines' contact registers (vf25..vf29, which the port keeps
+outside the VU0 state), which the ship's shadow callback (0x28e670) changes as it probes the ground.
+The game's state is identical at 4:3 and at 5120x1440.
+
+What the callbacks then emit is drawn by the MRP in the world's own projection
+([VU1 program 7's surfaces](#vu1-program-7s-surfaces), [Particles and effects](#particles-and-effects)),
+so no 3D needs a rule for the frame's sides any more: the GPU clips it. The old rules stay only for the
+GS replica's own 3D path (`RAC1_MRP_SEAS=0`, or the MRP off): program 7's side test scaled by the
+view's widening (`gs::Gs::set_side_widen`); and the full-span rule of the 2D (below) leaves projected
+3D alone (Rilgar's large water triangles near the camera lost a wedge to it before).
+
 The 3D that sits under the game's 2D keeps the game's own projection, so the two stay together at any
 field of view and shape (issue #68): the full-screen menus' mobys are drawn in the game's 4:3
 projection on the centred 4:3 frame; on the title's main menu only the menu's boxes are (the mobys the
 game draws from the menu's camera), the title scene and its own mobys keep the widened view; on the
 Vendor's screens (game mode 5), whose monitors are the scene's own mobys, the field of view is the
 game's (x1.00) while the widescreen still widens the 3D around the 4:3 frame.
-The levels' water, lava and sand-sea surfaces (Novalis's pond, Aridia's sand sea, Gaspar's lava, the
-water grids of Rilgar, Umbris and other levels) are drawn by draw-list callbacks that cull their tiles
-against the game's 4:3 clip matrix; those draw lists run as shadow blocks too, with that matrix
-widened, and the GS replica walks each shadow's chain in place of the real block's (several
-substitutes a frame). Before this, tiles at the sides of a widened view were missing.
-Many of those callbacks test their cells with the game's point test (0x2002e0), which reads its own
-copies of the projection's tangents (0x16cd00..0x16cd2f), and the quad drawer (0x1fd228) rejects a
-quad past about twice the 4:3 frame's half width: the shadow blocks widen those too (keeping the
-guard band the game clips at). Before this, at 32:9 Gaspar's lava was still cut in the outer part of
-each side, and the effect quads (Rilgar's water quads, glows) were rejected there. With the MRP drawing VU1 program 7's
-surfaces from their input ([above](#vu1-program-7s-surfaces)), what follows matters only for the GS replica's path
-(`RAC1_MRP_SEAS=0`, or the MRP off). The shadow-mesh
-program (VU1 program 7: the drop shadows, the prim lists of Aridia's sand sea and other surfaces)
-draws a triangle that crosses the guard band clipped, but first drops one lying wholly past a third
-of the guard band (4 / 3 of the 4:3 frame's half width), which a 32:9 view shows: in a widened view
-that test is scaled by the view's widening (the GS replica's walk hands it to the program,
-`gs::Gs::set_side_widen`), the clipping itself left at the game's guard band. Before this, the sand
-sea's cells near the camera at the far left of a 32:9 view (crossing the near plane, so clipped)
-were missing there, black. What is still cut: a surface a moby's update queues
-only when the moby pass drew that moby in the last frame (moby +0x31, the 4:3 view's decision, which
-the shadows cannot change without changing the game's state): one of Rilgar's water patches (class 79),
-the ships' cockpit glass.
-The shadow runs also put back the collision routines' contact registers (vf25..vf29, which the port
-keeps outside the VU0 state): the ship's shadow callback (0x28e670, queued near the parked ship)
-probes the ground, and a shadow that probed where the real block did not left them changed for the
-game's next collision.
-Before this, the game's state diverged on most frames of the Veldin intro when the view was widened;
-after it, its state is identical at 4:3 and at 5120x1440.
 
-The HUD (unless Options > Graphics > HUD spreads it, see below) and the menus stay 4:3 in the middle of the screen; full-screen 2D such as fades reaches the
-edges: a primitive covering the frame's whole width or height has its vertices on the frame's edges
-moved to the window's. A flat fill counts when it covers every pixel of the frame as the GS fills it,
-so the fills the game draws with the HUD's half-pixel offset (x -0.5 .. 511.5: the Visibomb's green
-screen and its scan lines, 0x1f9df8) reach the edges too; a textured one only when it reaches the
-edges themselves, so a picture (the level exit's card banners) keeps its shape. The Visibomb's
-out-of-range static (class 832's draw-list callback, a grid of 32 x 32 sprites over the frame, the
-same code on every level that has it) is a full-screen layer drawn in pieces: its chain range is
-noted when the callback runs and the GS replica stretches it horizontally about the frame's centre to
-the window's width (`gs::Primitive::layer`). The whole frame is shown, as the PS2 drew it, with one exception: a HUD element hiding parks its
-3 leftmost columns at the frame's right edge for 16 frames (the Suck Cannon's gauge and the air meter, the
-game's own `hud_plain_update` 0x235ea0), which a TV's overscan hid and which in widescreen sits inside the
-picture; the modern view does not draw such slivers (a textured 2D primitive with at most 4 frame pixels
-inside the frame, the rest past its left, right or top edge; `RAC1_EDGE_SLIVERS=1` draws them, the faithful
-reference always does). `RAC1_OVERSCAN` (testing) can still hide a 4-pixel strip of the 2D at the frame's
-left, right and top edges as a TV did; it never cuts the 3D, fades or the edge fills.
+What is still cut at the sides: the level's baked shadow meshes (their pass has no widened shadow run),
+and a surface a moby's update queues only when the moby pass drew that moby in the last frame (moby
++0x31, the 4:3 view's decision, which the shadow runs cannot change without changing the game's
+state): one of Rilgar's water patches (class 79), the ships' cockpit glass.
+
+### The 2D in a widened view
+
+The HUD (unless Options > Graphics > HUD spreads it, below) and the menus stay 4:3 in the middle of the
+screen. Full-screen 2D reaches the edges:
+
+- **Full-span primitives**: a 2D primitive covering the frame's whole width or height has its vertices
+  on the frame's edges moved to the window's (fades, darkening strips). A flat fill counts when it
+  covers every pixel of the frame as the GS fills it, so the fills the game draws with the HUD's
+  half-pixel offset (x -0.5 .. 511.5: the Visibomb's green screen and its scan lines, 0x1f9df8) reach
+  the edges too; a textured one only when it reaches the edges themselves, so a picture (the level
+  exit's card banners) keeps its shape.
+- **Screen layers**: a full-screen layer the game draws in pieces is stretched as a whole. The
+  Visibomb's out-of-range static (class 832's draw-list callback, a grid of 32 x 32 sprites over the
+  frame) has its chain range noted when the callback runs, and the GS replica stretches it horizontally
+  about the frame's centre to the window's width (`gs::Primitive::layer`).
+- **Edge slivers**: the whole frame is shown, as the PS2 drew it, with one exception. A HUD element
+  hiding parks its 3 leftmost columns at the frame's right edge for 16 frames (the Suck Cannon's gauge
+  and the air meter, the game's own `hud_plain_update` 0x235ea0), which a TV's overscan hid and which in
+  widescreen sits inside the picture; the modern view does not draw such slivers (a textured 2D
+  primitive with at most 4 frame pixels inside the frame, the rest past its left, right or top edge;
+  `RAC1_EDGE_SLIVERS=1` draws them, the faithful reference always does). `RAC1_OVERSCAN` (testing) can
+  still hide a 4-pixel strip of the 2D at the frame's left, right and top edges as a TV did; it never
+  cuts the 3D, fades or the edge fills.
 
 ### The HUD in a widened view
 
@@ -403,44 +496,52 @@ and save icon (`flight_draw`) are not HUD slots and stay on the 4:3 frame; so do
 levels draw from draw-list callbacks rather than HUD slots (Pokitaru 0x311d50, Gemlik 0x2b97f8, Drek's
 fleet 0x2eaae0 / 0x2eb9a8; not looked at in a fight yet).
 
-**Render scale** (Options > Graphics > Render Resolution, 50 % to 200 %): the world and the mobys are
-drawn into an off-screen buffer at that fraction of the window's resolution, then scaled to the
-window; effects and the 2D are drawn after, at the window's resolution.
+### Render scale
+
+Options > Graphics > Render Resolution, 50 % to 200 %: the MRP's 3D (the world, the sky, the mobys, the
+drop shadows, the ambient occlusion, the sun rays and the ambient particles) is drawn into an off-screen
+buffer at that fraction of the window's resolution, then put on the window, its colour scaled
+(linear) and its depth copied (nearest); the effects and the 2D are then drawn at the window's
+resolution, tested against that depth.
 
 ## Textures
 
 The PS2 kept only what fitted in 4 MB, so distant objects were drawn from their small mip. The MRP
 keeps every mip of every texture resident and chooses the mip from the screen as a modern GPU does,
-so objects stay sharp at any distance ("full texture"). This is the default. `RAC1_MRP_MIP=faithful`
-(mobys) and `RAC1_MRPW_MIP=faithful` (world) bring back the GS's own mip choice; like other testing
-switches they need `--debug-tools`, and the debug menu has the same choice.
+so objects stay sharp at any distance ("full texture"). This is the default. Options > Graphics >
+Texture Detail: Original (PS2) brings back the GS's own mip choice (`RAC1_MRP_MIP=faithful` for the
+mobys and `RAC1_MRPW_MIP=faithful` for the world do the same with `--debug-tools`).
 
 ## The 2D: the GS replica
 
 `runtime/gs/gs_emu.cpp` and `gs_draw.cpp` are a replica of the parts of the PS2's graphics path the
-2D needs. They walk the frame's DMA chain, take the GIF packets and texture uploads into a model of
-the GS's 4 MB memory, run VU1 programs where the chain starts them (ported programs registered by the
-hash of their code, see [Decisions](decisions.md#5-a-vu-interpreter-for-the-microprograms-not-yet-ported)),
-and draw the result with OpenGL. They draw the HUD, the help text and fonts, the menus, screen tints
-and flashes, fades, and any effect the MRP does not take. In play they no longer draw any projected 3D (see
-[VU1 program 7's surfaces](#vu1-program-7s-surfaces)): they still run the 3D's VU1 programs where the game's state or the GS's
-registers need it, and keep their output aside. The 2D maps cleanly to the screen, so
-emulating it is simple and exact. What the game draws into its own memory to use as a texture (the
-menus' pictures, such as the ship's planet menu's planet, made of three blended layers) goes into a
-render target that keeps the GS's alpha (0x80 = 1.0); its blending reads that alpha at the GS's scale.
-With the modern renderer a font's glyph (a 16 x 16 or 24 x 16 texel cell, a quad whose texture coordinates follow x and y apart)
-is sampled only inside its own cell: scaled up from the PS2's resolution, the bilinear filtering of a glyph's outer half texel
-blended in the neighbouring glyphs' edges in the font's texture, thin lines under, over and through the letters (issue #76; the
-GS drew the glyphs 1:1, at its texels' centres). The faithful reference (`RAC1_MRP=0`) samples as the GS.
-Every ALPHA register's `(A - B) C + D` maps to the GL's blending (add, subtract or reverse subtract; the two
-combinations with a factor `1 + C` use 1), for the replica, the MRP's mobys, world and effects alike: the
-subtractive second pass of the force fields, Orxon's O2 barriers and Quartu's gates (`(Cd - Cs) FIX`) was drawn
-as an opaque copy of the source before, black.
+2D needs. They walk the frame's DMA chain (on the GS chain worker), take the GIF packets and texture
+uploads into a model of the GS's 4 MB memory, run VU1 programs where the chain starts them (ported
+programs registered by the hash of their code, see
+[Decisions](decisions.md#5-a-vu-interpreter-for-the-microprograms-not-yet-ported)), and draw the result
+with OpenGL or Vulkan (`draw`, `draw_vk`). In play they draw the HUD, the help text and fonts, the
+menus, screen tints and flashes and fades, and no projected 3D: they still run the 3D's VU1 programs
+where the game's state or the GS's registers need it, and hand their output to the MRP (above). The 2D
+maps cleanly to the screen, so emulating it is simple and exact. The HUD's shift, the full-span
+primitives and the screen layers are applied as it draws ([The 2D in a widened view](#the-2d-in-a-widened-view)).
+
+What the game draws into its own memory to use as a texture (the menus' pictures, such as the ship's
+planet menu's planet, made of three blended layers) goes into a render target that keeps the GS's alpha
+(0x80 = 1.0); its blending reads that alpha at the GS's scale. With the modern renderer a font's glyph
+(a 16 x 16 or 24 x 16 texel cell, a quad whose texture coordinates follow x and y apart) is sampled
+only inside its own cell: scaled up from the PS2's resolution, the bilinear filtering of a glyph's outer
+half texel blended in the neighbouring glyphs' edges in the font's texture, thin lines under, over and
+through the letters (issue #76; the GS drew the glyphs 1:1, at its texels' centres). The faithful
+reference (`RAC1_MRP=0`) samples as the GS. Every ALPHA register's `(A - B) C + D` maps to the GPU's
+blending (add, subtract or reverse subtract; the two combinations with a factor `1 + C` use 1), for the
+replica, the MRP's mobys, world and effects alike: the subtractive second pass of the force fields,
+Orxon's O2 barriers and Quartu's gates (`(Cd - Cs) FIX`) was drawn as an opaque copy of the source
+before, black.
 
 ## The original rendering, kept as the reference
 
 The PS2's way of drawing the 3D is kept, ported: the VU microprograms the game uploads were
-translated to C++ instruction by instruction (`src/game/ovl/moby_vu1.cpp` and `moby_vu1_fast.cpp`
+translated to C++ instruction by instruction (`moby_vu1.cpp` and `moby_vu1_fast.cpp`, generated: see [The generated code](architecture.md#the-generated-code),
 for the mobys, `world_vu1_{tfrag,tie,shrub}_{a,b}.cpp` and their `_fast` forms for the world,
 `particles_vu1.cpp`), and the GS replica draws their output. It is exact but slow: the faithful world
 alone cost 56 to 58 ms a frame on Veldin.
@@ -449,7 +550,7 @@ It can be selected with `RAC1_MRP=0` (mobys) plus `RAC1_WORLD_FAITHFUL=1` (world
 menu (Rendering > Renderer > "VU emulation (faithful reference)"). Both need the debug tools (see
 [Settings](settings.md#debug-tools)). `RAC1_MRP=0` alone draws the mobys the faithful way and the
 world with older host renderers (`tfrag_render.cpp`, `tie_render.cpp`, `shrub_render.cpp`,
-`sky_render.cpp`), which are kept for comparison.
+`sky_render.cpp`), which are kept for comparison (OpenGL only, see [Vulkan](vulkan.md#what-it-does-not-do)).
 
 ## How the MRP is checked
 
@@ -466,16 +567,16 @@ All of these come from the project's own measurements during development:
 - **Image differences** against the faithful path, small and each explained (clipped pieces'
   texture interpolation, sub-pixel edges).
 - **Game state.** `RAC1_RAMHASH` hashes every 4 KB page of EE memory after every update. It came out
-  identical with and without the MRP, at every level of detail, at 4:3 and widened, and with fast and
-  original fades.
+  identical with and without the MRP, at every level of detail, at 4:3 and widened, with fast and
+  original fades, and with the game thread on and off.
 
 Not bit-exact by design: GPU rasterisation, perspective-correct interpolation on clipped pieces and
 sub-pixel edges differ from the GS.
 
 ## Performance
 
-From the project's measurements, on a shared development machine with an integrated Radeon 890M GPU
-(compare within a row, not across rows):
+From the project's measurements while the MRP was built, on a shared development machine with an
+integrated Radeon 890M GPU (compare within a row, not across rows):
 
 | Scenario | Before | After |
 |---|---|---|
@@ -485,16 +586,24 @@ From the project's measurements, on a shared development machine with an integra
 | 5120x1440, highest level of detail, windowed play | about 15 fps | 40 to 60 fps |
 
 The GPU was never the limit: about 3 to 4 ms at 1080p and 8 to 11 ms at 5120x1440 on that
-integrated GPU, while the CPU side was 25 to 40 ms before the work above.
+integrated GPU, while the CPU side was 25 to 40 ms before the work above. Since then the CPU's part
+has kept shrinking (the job pool, the scene's triangles on its worker, the game's update on its own
+thread): see [Performance](performance.md).
 
 ## Limits
 
-- The HUD, menus and the 2D still go through the GS replica; the 3D effects and VU1 program 7's surfaces are the MRP's.
-- The level's baked shadow meshes are culled by the game against its 4:3 view (no widened shadow run for that pass): their parts
-  past the sides of a widened view are missing.
+- The HUD, menus and the rest of the 2D still go through the GS replica (exact, but emulated); all of
+  the 3D in play is the MRP's.
+- The level's baked shadow meshes are culled by the game against its 4:3 view (no widened shadow run
+  for that pass): their parts past the sides of a widened view are missing. So are the surfaces a
+  moby's update queues only when the moby was drawn in the 4:3 view (one of Rilgar's water patches,
+  the ships' cockpit glass).
+- The inventory of the replica's projected 3D did not cover the ship's flight (`flight_draw`) and the
+  Vendor's screens: some 3D may still be drawn by the replica there.
 - The mobys' flattened shadow meshes (a second, flattened model some classes have) are not drawn by
   the MRP (`mrp_moby_renderer.cpp`).
 - Drop shadows of mobys drawn only because of a higher level of detail are missing.
 - A moby whose class logic reads its own "drawn" flag behaves as in 4:3 when it is only visible in
   the widened side bands: that flag is game state, and the port does not change it.
-- OpenGL 4.6 by default; a Vulkan 1.3 backend is experimental and opt-in ([Vulkan](vulkan.md)).
+- With the HUD spread, the 2D the space fights draw from draw-list callbacks stays on the 4:3 frame.
+- OpenGL 4.6 by default; the Vulkan 1.3 backend is experimental and opt-in ([Vulkan](vulkan.md)).
