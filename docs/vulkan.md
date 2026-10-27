@@ -5,7 +5,7 @@ default, or Vulkan), or `RAC1_RENDERER=vulkan` for one run. It draws exactly wha
 draws - the [MRP](rendering.md) world, sky, mobys, particles, effects, VU1 program 7's water and
 lava surfaces and drop shadows, the [modern lighting](lighting.md) (sun cascades, point lights and
 their shadow cubes, ambient occlusion, sun rays, emissive surfaces, [materials](materials.md)), the
-[ambient particles](particles.md) and the GS replica's 2D - from the same scene the game's own render code
+[ambient particles](particles.md) and the 2D - from the same scene the game's own render code
 decides; only the API calls differ. Nothing of the game's state depends on it.
 
 The renderer is read once, when the window is made: a change on the Graphics page takes effect at
@@ -26,8 +26,9 @@ choice is kept.
   depth uses OpenGL's -1..1 range (`VK_EXT_depth_clip_control`) and the last vertex provokes
   (`VK_EXT_provoking_vertex`), so the shaders' arithmetic is OpenGL's.
 - Each rendering module keeps its OpenGL code and gains a Vulkan branch (`vk::is_active()`):
-  `runtime/gs/gs_draw.cpp` (the GS replica: `draw_vk`, the same primitive loop as `draw`, its batches
-  drawn with Vulkan pipelines keyed by their blend, depth and colour-mask state),
+  `mrp_2d.cpp` (the 2D: the same vertices and runs as OpenGL's, built once, drawn with Vulkan pipelines
+  keyed by their blend, depth and colour-mask state), `runtime/gs/gs_draw.cpp` (the GS replica, the
+  faithful path: `draw_vk`),
   `mrp_world_renderer.cpp`, `mrp_tfrag_gpu.cpp` (the tfrag compute shader), `mrp_moby_renderer.cpp`,
   `mrp_fx.cpp`, `mrp_shadows.cpp`, `mrp_lighting.cpp`; `orig_main.cpp`'s frame (the clears, the
   render scale's buffer, the frozen frames of the menus and fades, the movies, the screenshots).

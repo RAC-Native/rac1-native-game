@@ -99,6 +99,8 @@
 #include <game/render/mrp_particles.h>
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_shadows.h>
+#include <game/render/mrp_2d.h>
+#include <game/render/mrp_chain.h>
 #include <game/render/mrp_fx.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_world_renderer.h>
@@ -2762,6 +2764,7 @@ int main(int argc, char** argv) {
             // store its picture): drawn as a main loop's frame, its picture kept (g_scene_pic); `vendor_pic`: the screens draw over
             // the picture they stored (the GS's type-7 primitive drawn by g_scene_pic, the MRP's mobys left to the GS path)
             bool scene = false, vendor_pic = false;
+            bool prev_chain = false;  // the chain walked is the frame before's (a frame that built none of its own)
             const std::vector<uint8_t>* movie_pic = nullptr;
             int mw = 0, mh = 0;
             uint64_t frame = 0;
@@ -3003,6 +3006,26 @@ int main(int argc, char** argv) {
         fprof.mark(0);
         auto prepare = [&](FrameDraw& fd, bool snapshot) {
             RAC1_PROF_ZONE(kPrepare);
+            {  // a level change: the textures decoded for the old level forgotten (the chain's walk and the drawing idle here)
+                static int32_t s_cache_level = INT32_MIN;
+                const int32_t lv = lw(0x0015ed84);
+                if (lv != s_cache_level) {
+                    if (s_cache_level != INT32_MIN) {
+                        rac1::gs::memory_join();
+                        const size_t decoded = rac1::gs::local_memory().clear_caches();
+                        const size_t two_d = mrp_2d_clear_caches(), atlas = mrp_fx_clear_caches(), replica = rac1::gs::draw_clear_caches();
+                        long rss_kb = 0;
+                        if (FILE* st = std::fopen("/proc/self/statm", "r")) {
+                            long pages = 0, res = 0;
+                            if (std::fscanf(st, "%ld %ld", &pages, &res) == 2) rss_kb = res * 4;
+                            std::fclose(st);
+                        }
+                        std::printf("[caches] level %d -> %d: dropped %zu decoded textures, %zu 2D textures, %zu effects atlas layers, %zu GS replica textures (RSS %ld MB)\n",
+                                    s_cache_level, lv, decoded, two_d, atlas, replica, rss_kb / 1024);
+                    }
+                    s_cache_level = lv;
+                }
+            }
             glfwGetFramebufferSize(window, &fd.w, &fd.h);
             if (test_zero_fb(frame)) fd.w = fd.h = 0;  // (testing: RAC1_TEST_ZERO_FB with raw)
             w = fd.w;
@@ -3038,13 +3061,13 @@ int main(int argc, char** argv) {
             // drawn over the 3D
             auto chain_stage = [&]() {
                 RAC1_PROF_ZONE(kChainCapture);
-                rac1::gs::chain_join();  // (the previous chain's run ended)
+                rac1::gs::memory_join();  // (the previous chain's run ended)
                 rac1::gs::Gs& gs = rac1::gs::gs_global();
                 gs.reset_frame();
                 moby_gpu_begin_frame();
                 // the MRP: the level's assets, whether it draws this frame's mobys (not the boot's
                 // title before its loop (its scene's mobys are the MRP's), the level exit's loops, a movie: those keep the faithful pass)
-                mrp_moby_begin_frame((title && !boot_in_title() && !fd.flight) || (exiting && !fd.flight) || movie_pic != nullptr || fade || fd.vendor_pic, menu_mode, fd.title_menu);
+                mrp_moby_begin_frame((title && !boot_in_title() && !fd.flight) || (exiting && !fd.flight) || movie_pic != nullptr || fade || (fd.vendor_pic && !mrp_chain_wanted()), menu_mode, fd.title_menu);
                 const uint32_t idx = lwu(OV(0x001611d0));
                 uint32_t start = lwu(OV(0x001611b8) + (idx & 1) * 4), end = lwu(OV(0x001611c0));
                 // a loop that kicks its frame's chain (0x2a08c8, not ported) before it flips the buffers
@@ -3061,10 +3084,21 @@ int main(int argc, char** argv) {
                 if (!prev_chain && !fade) g_loop_kicked = KickedChain{};  // (a frame of the game's own: the loop's chain is behind it)
                 // (a held fade frame: the packets so far are the caller's frame, never sent - the fade resets the buffers)
                 const bool chain_runs = !fd.fade_held && !already_kicked && start != 0 && end > start;
+                fd.prev_chain = chain_runs && prev_chain;
                 if (mrp_scene_check_enabled()) mrp_scene_check_begin_chain(chain_runs, prev_chain);
                 static const bool chain_log = std::getenv("RAC1_CHAIN_LOG") != nullptr;  // testing: the chain each host frame walks
                 if (chain_log) std::printf("[chainlog] frame %llu chain %08x..%08x prev %d runs %d fade %d idx %u rings %08x %08x c4 %08x\n", static_cast<unsigned long long>(frame), start, end, prev_chain, chain_runs, fade, idx, lwu(OV(0x001611b8)), lwu(OV(0x001611bc)), lwu(OV(0x001611c4)));
                 if (chain_runs && std::getenv("RAC1_VU1_TRACE") != nullptr) std::fprintf(stderr, "[VU1] ==== frame %llu chain %08x..%08x\n", static_cast<unsigned long long>(frame), start, end);
+                // the MRP's own reader of the chain (mrp_chain.h: the 2D, the effects, the uploads; no GS emulation) with the MRP drawing
+                // the world, the mobys and the effects; else the GS replica (the faithful reference: RAC1_MRP=0, the debug menu's
+                // "VU emulation"). (testing: RAC1_MRP_CHAIN=0 the replica for the MRP too; RAC1_MRP_CHAIN_CHECK=1 both, compared, the
+                // replica's drawn)
+                static const bool s_chain_check = std::getenv("RAC1_MRP_CHAIN_CHECK") != nullptr;
+                const bool use_reader = mrp_chain_wanted();
+                const bool use_replica = !use_reader || s_chain_check;
+                MrpChainInput ci;
+                ci.start = start;
+                ci.end = end;
                 std::vector<rac1::gs::Gs::SkipRange> skips;
                 if (chain_runs && !prev_chain && mrp_moby_active() && !menu_mode && g_mrp_moby_projection == 0) {
                     // the MRP draws the drop shadows (in the world's projection): the shadows' tags (the GS path's alpha counter and
@@ -3074,7 +3108,7 @@ int main(int argc, char** argv) {
                 }
                 if (chain_runs && !prev_chain && mrp_moby_active() && g_moby_mrp_skip && (g_moby_mrp_skip_parts & 8) && g_moby_mrp_skip_verify == false) {
                     // the MRP draws the mobys: their chain tags (UNPACK vertex data, DIRECT fade state) and the texture uploads
-                    // 0x2555c0 built for the GS path are walked but not processed (Gs::set_chain_skips); the VU1's double buffer flips as before
+                    // 0x2555c0 built for the GS path are walked but not processed; the VU1's double buffer flips as before
                     moby_skips_note(start, end, &skips);  // (noted for the next frame, which may walk this chain again)
                     if (std::getenv("RAC1_SKIP_DBG")) { std::fprintf(stderr, "[skipdbg] frame %llu chain %08x..%08x ranges:", static_cast<unsigned long long>(frame), start, end); for (auto& r : skips) { std::fprintf(stderr, " %08x-%08x(%zu:", r.first, r.last, r.mscals.size()); for (auto m : r.mscals) std::fprintf(stderr, "%x,", m); std::fprintf(stderr, ")"); } std::fprintf(stderr, "\n"); }
                 } else if (chain_runs && g_moby_skips_memo.start == start && g_moby_skips_memo.end == end && !g_moby_skips_memo.ranges.empty() &&
@@ -3092,43 +3126,89 @@ int main(int argc, char** argv) {
                         r.last = last;
                         skips.push_back(std::move(r));
                     }
-                if (!skips.empty()) gs.set_chain_skips(std::move(skips));
-                std::vector<int> substituted;  // (the shadow blocks' slots, in the order given to the replica)
+                for (const rac1::gs::Gs::SkipRange& r : skips)
+                    ci.skips.push_back(MrpChainInput::Skip{r.first, r.last, static_cast<uint32_t>(r.mscals.size()), r.host_3d, r.moby, true});
+                if (use_reader && chain_runs && !prev_chain && mrp_moby_active() && !g_moby_mrp_skip && fd.vendor_pic) {
+                    // the Vendor's screens over their stored picture: the game builds the mobys' GS work (no skip), the MRP draws them; their
+                    // ranges only mark where they go in the chain's order (after the picture) and the render targets' models
+                    const MrpFrame& sf = mrp_scene();
+                    for (const MrpMoby& m : sf.mobys)
+                        if (m.chain_end > m.chain_begin) ci.skips.push_back(MrpChainInput::Skip{m.chain_begin, m.chain_end - 1, 0, m.rt ? m.moby : 0u, true, false});
+                }
+                if (use_replica && !skips.empty()) gs.set_chain_skips(std::move(skips));
+                std::vector<int> substituted;  // (the shadow blocks' slots, in the order given to the reader / the replica)
                 {  // the widened view's draw lists and 3D effects: the shadows' chains walked in place of the real blocks'
                     std::vector<MrpLodSubstitute> subs;
                     mrp_lod_substitutes(subs);
                     if (chain_runs && !prev_chain && !menu_mode && !fade)
                         for (MrpLodSubstitute& u : subs) {
-                            gs.add_chain_substitute(u.first, u.end, std::move(u.bytes));
+                            if (ci.subs.size() >= 4) break;  // (Gs::kMaxSubs)
+                            if (use_replica) gs.add_chain_substitute(u.first, u.end, use_reader ? u.bytes : std::move(u.bytes));
+                            if (use_reader) ci.subs.push_back(MrpChainInput::Sub{u.first, u.end, std::move(u.bytes)});
+                            else ci.subs.push_back(MrpChainInput::Sub{u.first, u.end, {}});
                             substituted.push_back(u.slot);
                         }
                     // (the VU1 programs' side tests over the widened view's sides: the shadow program's clipped triangles, mrp_lod.h)
                     float sw[2] = {1.0f, 1.0f};
                     if (chain_runs && !prev_chain && !menu_mode && !fade) mrp_lod_side_widen(sw);
-                    gs.set_side_widen(sw[0], sw[1]);
+                    if (use_replica) gs.set_side_widen(sw[0], sw[1]);
+                    ci.side_widen[0] = sw[0];
+                    ci.side_widen[1] = sw[1];
                 }
-                {  // the MRP's 3D effects: their producers' ranges run by the replica as before, their primitives kept for the MRP
-                    std::vector<rac1::gs::Gs::FxRange> fr;
-                    std::vector<rac1::gs::Gs::Vu7Range> v7;  // (VU1 program 7's surfaces: their batches drawn by the MRP from their input)
+                {  // the MRP's 3D effects: their producers' ranges, their primitives kept for the MRP
                     const bool fx_active = chain_runs && !prev_chain && !menu_mode && !fade && !fd.vendor_pic && movie_pic == nullptr && ((!title && !fd.exiting) || fd.flight);
-                    if (mrp_fx_chain_ranges(fx_active, substituted, fr, v7)) {
-                        gs.set_chain_fx(std::move(fr), true);
-                        if (!v7.empty()) gs.set_chain_vu7(std::move(v7), kMrpVu7Hash, kMrpFxVu7);
+                    if (mrp_fx_chain_ranges(fx_active, substituted, ci.fx, ci.vu7)) {
+                        ci.vu7_hash = kMrpVu7Hash;
+                        ci.vu7_kind = kMrpFxVu7;
+                        if (use_replica) {
+                            std::vector<rac1::gs::Gs::FxRange> fr;
+                            std::vector<rac1::gs::Gs::Vu7Range> v7;
+                            for (const auto& r : ci.fx) fr.push_back(rac1::gs::Gs::FxRange{r.first, r.last, r.sub, r.kind, r.id});
+                            for (const auto& r : ci.vu7) v7.push_back(rac1::gs::Gs::Vu7Range{r.first, r.last, r.sub, r.tag});
+                            gs.set_chain_fx(std::move(fr), true);
+                            if (!v7.empty()) gs.set_chain_vu7(std::move(v7), kMrpVu7Hash, kMrpFxVu7);
+                        }
                     }
                 }
                 // the full-screen 2D layers the last update drew (render_view_layer_note: the Visibomb's static), stretched across a
                 // widened view; not on a chain walked again (a fade's: the frame before's) or the menu's
                 if (chain_runs && !prev_chain && !menu_mode)
-                    if (auto layers = render_view_layers(); !layers.empty()) gs.set_chain_layers(std::move(layers));
+                    if (auto layers = render_view_layers(); !layers.empty()) {
+                        ci.layers = layers;
+                        if (use_replica) gs.set_chain_layers(std::move(layers));
+                    }
                 // the HUD's side elements the last update drew (render_view_hud_note), for a HUD wider than 4:3; the same frames
                 if (chain_runs && !prev_chain && !menu_mode)
                     if (const auto notes = render_view_hud_notes(); !notes.empty()) {
                         std::vector<rac1::gs::Gs::HudRange> hr;
                         hr.reserve(notes.size());
-                        for (const HudNote& n : notes) hr.push_back({n.first, n.last, n.side});
-                        gs.set_chain_hud(std::move(hr));
+                        for (const HudNote& n : notes) {
+                            hr.push_back({n.first, n.last, n.side});
+                            ci.hud.push_back({n.first, n.last, n.side});
+                        }
+                        if (use_replica) gs.set_chain_hud(std::move(hr));
                     }
-                if (chain_runs) {
+                {  // the frame: an IMAGE transfer into it a type-7 primitive, on the Vendor's screens' frames
+                    const uint32_t fr = lwu(0x0013cf20);
+                    if (fd.vendor_pic) {
+                        ci.scr_bp = (fr & 0x1ff) * 32;
+                        ci.scr_bw = (fr >> 16) & 0x3f;
+                        ci.scr_h = lhu(0x001518d2);
+                    }
+                    if (use_replica) gs.set_screen_area(ci.scr_bp, ci.scr_bw, ci.scr_h);
+                }
+                mrp_chain_set_used(use_reader && !s_chain_check);
+                if (!chain_runs) {
+                    if (use_reader) mrp_chain_clear();
+                } else if (use_reader && !s_chain_check) {
+                    // (the chain's tags and data captured here, read on the MRP chain worker: joined before the drawing, the next chain
+                    // and the game's own GS transfers; RAC1_GS_THREAD=0 or the testing modes: here)
+                    static const bool chain_thread = [] {
+                        const char* e = std::getenv("RAC1_GS_THREAD");
+                        return e == nullptr || std::atoi(e) != 0;
+                    }();
+                    mrp_chain_start(std::move(ci), chain_thread && !pipe_testing);
+                } else {
                     // (the chain's tags and data captured here, its run on a worker thread: joined before the drawing, the
                     // next chain and the game's own GS transfers (libgraph); RAC1_GS_THREAD=0 or the testing modes: here)
                     static const bool chain_thread = [] {
@@ -3136,12 +3216,16 @@ int main(int argc, char** argv) {
                         return e == nullptr || std::atoi(e) != 0;
                     }();
                     static rac1::gs::Gs::ChainCapture chain_cap;
-                    {  // the frame: an IMAGE transfer into it a type-7 primitive, on the Vendor's screens' frames
-                        const uint32_t fr = lwu(0x0013cf20);
-                        if (fd.vendor_pic) gs.set_screen_area((fr & 0x1ff) * 32, (fr >> 16) & 0x3f, lhu(0x001518d2));
-                        else gs.set_screen_area(0, 0, 0);
-                    }
-                    if (chain_thread && !pipe_testing && std::getenv("RAC1_GS_TRACE") == nullptr && std::getenv("RAC1_GS_ZTRACE") == nullptr) {
+                    if (s_chain_check) {
+                        // (testing: the replica's walk and the reader's from the same local memory, their primitives compared)
+                        const rac1::gs::LocalMemory before = rac1::gs::local_memory();
+                        gs.vif1_chain(start, end);
+                        const rac1::gs::LocalMemory after = rac1::gs::local_memory();
+                        rac1::gs::local_memory() = before;
+                        mrp_chain_start(std::move(ci), false);
+                        mrp_chain_check(frame, gs.primitives(), gs.vu7_batches(), gs.vu7_vertices(), gs.fx_mark(), gs.moby_mark());
+                        rac1::gs::local_memory() = after;
+                    } else if (chain_thread && !pipe_testing && std::getenv("RAC1_GS_TRACE") == nullptr && std::getenv("RAC1_GS_ZTRACE") == nullptr) {
                         gs.capture_chain(start, end, chain_cap);
                         rac1::gs::chain_start_async(chain_cap);
                     } else {
@@ -3429,7 +3513,17 @@ int main(int argc, char** argv) {
             const bool menu_mode = fd.menu_mode, title = fd.title, story = fd.story;
             const std::vector<uint8_t>* movie_pic = fd.movie_pic;
             const int mw = fd.mw, mh = fd.mh;
-            if (menu_mode || fd.vendor_pic || title || movie_pic != nullptr || fd.exiting) rac1::gs::chain_join();  // (those draws may use the GS replica)
+            if (menu_mode || fd.vendor_pic || title || movie_pic != nullptr || fd.exiting) rac1::gs::memory_join();  // (those draws may use the GS's local memory)
+            if (fd.prev_chain && !fd.fade && mrp_chain_used()) {
+                // the frame before's chain walked again (a frame that built none of its own: the new level's first): its world and
+                // mobys are not the MRP's scene (it has none of that chain) - the GS replica drew them as the VU1 programs kicked them;
+                // the picture shown is kept instead, as on a held fade's frame (one frame, the loading screen's last)
+                rac1::gs::memory_join();
+                if (mrp_chain_frame().dropped_3d > 0) {
+                    fd.fade = fd.fade_held = true;
+                    mrp_moby_begin_frame(true, false, false);
+                }
+            }
             if (rac1::vk::is_active()) {
                 rac1::vk::begin_frame(w, h, 0.02f, 0.02f, 0.04f, 1.0f);  // (colour, depth and stencil cleared)
                 rac1::vk::set_viewport(vx, vy, vw, vh);
@@ -3519,7 +3613,7 @@ int main(int argc, char** argv) {
             fprof.mark(3);
             if (g_render_wireframe && !rac1::vk::is_active()) glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             {
-                rac1::gs::chain_join();  // (the frame's chain run on the worker thread)
+                rac1::gs::memory_join();  // (the frame's chain run on the worker thread)
                 rac1::gs::Gs& gs = rac1::gs::gs_global();
                 fprof.mark(4);
                 rac1::gs::Viewport& gv = fd.gv;
@@ -3543,20 +3637,37 @@ int main(int argc, char** argv) {
                 // the GS replica's primitives the chain made before the moby pass (the draw lists 0x1f85b8 runs before it: Hoven's water,
                 // translucent and without Z): drawn under the MRP's mobys, in the original's order (drawn after them, they covered what a
                 // moby draws without Z - the faces of Ratchet's ice cube, which fail its alpha test and write their colour only, #48)
+                // the frame's primitives in their order: the reader's (mrp_chain.h; its 2D drawn by mrp_2d.h), or the GS replica's (the
+                // faithful reference; with the MRP's effects, testing: RAC1_MRP_CHAIN=0 / _CHECK, a copy of its primitives for mrp_fx)
+                const bool reader = mrp_chain_used();
+                static MrpChainFrame s_replica_frame;
+                if (!reader && gs.fx_external()) {
+                    s_replica_frame.prims = gs.primitives();
+                    s_replica_frame.vu7_batches = gs.vu7_batches();
+                    s_replica_frame.vu7_verts = gs.vu7_vertices();
+                    s_replica_frame.fx_mark = gs.fx_mark();
+                    s_replica_frame.moby_mark = gs.moby_mark();
+                    s_replica_frame.fx_external = true;
+                }
+                const MrpChainFrame& cf = reader ? mrp_chain_frame() : s_replica_frame;
+                const bool fx_external = reader ? cf.fx_external : gs.fx_external();
+                const size_t moby_mark = reader ? cf.moby_mark : gs.moby_mark();
+                // the 2D of [from, to) in viewport `v`: the MRP's 2D drawer, or the replica's
+                auto draw_2d = [&](const rac1::gs::Viewport& v, size_t from, size_t to) {
+                    RAC1_PROF_ZONE(kGs2d);
+                    if (reader) mrp_2d_draw(cf, w, h, fd.fb_w, fd.fb_h, has_dm ? &dm : nullptr, &v, from, to);
+                    else rac1::gs::draw(gs, w, h, fd.fb_w, fd.fb_h, has_dm ? &dm : nullptr, &v, prim_filt, from, to);
+                };
                 size_t pre_moby = 0;
                 if (mrp_moby_active() && g_render_moby && g_render_gs2d && movie_pic == nullptr && !fd.fade_held && !menu_mode && !title) {
-                    const size_t mark = gs.moby_mark();
+                    const size_t mark = moby_mark;
                     if (mark != SIZE_MAX && mark > 0) {
                         const rac1::gs::Viewport pv = g_scaled_scene.on ? g_scaled_scene.scaled(gv) : gv;
-                        if (gs.fx_external()) {
+                        if (fx_external) {
                             RAC1_PROF_ZONE(kEffects);
-                            mrp_fx_draw(gs, w, h, &pv, [&](size_t from, size_t to) {
-                                RAC1_PROF_ZONE(kGs2d);
-                                rac1::gs::draw(gs, w, h, fd.fb_w, fd.fb_h, has_dm ? &dm : nullptr, &pv, prim_filt, from, to);
-                            }, 0, mark);
+                            mrp_fx_draw(cf, w, h, &pv, [&](size_t from, size_t to) { draw_2d(pv, from, to); }, 0, mark);
                         } else {
-                            RAC1_PROF_ZONE(kGs2d);
-                            rac1::gs::draw(gs, w, h, fd.fb_w, fd.fb_h, has_dm ? &dm : nullptr, &pv, prim_filt, 0, mark);
+                            draw_2d(pv, 0, mark);
                         }
                         pre_moby = mark;
                     }
@@ -3593,6 +3704,16 @@ int main(int argc, char** argv) {
                     }
                 }
                 mrp_lighting_ao_pass();  // (the ambient occlusion over the 3D, before the effects and the 2D; nothing unless asked)
+                // program 7's surfaces that write Z (the seas, lava, sand) before our ambient particles, which write none: drawn after them,
+                // the seas covered the rain, snow and embers in front of them (Batalia's rain). Only with the particles on (the order
+                // otherwise the chain's, the translucent effects and the 2D in it still)
+                bool surfaces_early = false;
+                if (world_3d && g_ambient_particles > 0 && reader && fx_external && movie_pic == nullptr && !fd.fade_held) {
+                    RAC1_PROF_ZONE(kEffects);
+                    const rac1::gs::Viewport sv = g_scaled_scene.on ? g_scaled_scene.scaled(gv) : gv;
+                    mrp_fx_draw_surfaces(cf, w, h, &sv, pre_moby);
+                    surfaces_early = true;
+                }
                 if (world_3d && g_ambient_particles > 0) mrp_particles_draw(fd.frame);  // (our ambient particles: nothing unless asked)
                 if (g_scaled_scene.on) {  // the scaled 3D on the window; the effects and the 2D drawn over it at the window's resolution
                     RAC1_PROF_ZONE(kScaleResolve);
@@ -3634,15 +3755,13 @@ int main(int argc, char** argv) {
                 }
                 fprof.mark(5);
                 // (the MRP's 3D effects in the primitives' order, the GS replica's runs between them; those before the moby pass drawn above)
-                if (gs.fx_external() && movie_pic == nullptr && !fd.fade_held) {
+                if (fx_external && movie_pic == nullptr && !fd.fade_held) {
                     RAC1_PROF_ZONE(kEffects);
-                    mrp_fx_draw(gs, w, h, &gv, [&](size_t from, size_t to) {
-                        RAC1_PROF_ZONE(kGs2d);
-                        if (g_render_gs2d) rac1::gs::draw(gs, w, h, fd.fb_w, fd.fb_h, has_dm ? &dm : nullptr, &gv, prim_filt, from, to);
-                    }, pre_moby);
+                    mrp_fx_draw(cf, w, h, &gv, [&](size_t from, size_t to) {
+                        if (g_render_gs2d) draw_2d(gv, from, to);
+                    }, pre_moby, SIZE_MAX, surfaces_early);
                 } else if (g_render_gs2d && movie_pic == nullptr && !fd.fade_held) {
-                    RAC1_PROF_ZONE(kGs2d);
-                    rac1::gs::draw(gs, w, h, fd.fb_w, fd.fb_h, has_dm ? &dm : nullptr, &gv, prim_filt, pre_moby);
+                    draw_2d(gv, pre_moby, SIZE_MAX);
                 }
                 if (rac1::vk::is_active()) rac1::vk::set_viewport(0, 0, w, h);
                 else glViewport(0, 0, w, h);

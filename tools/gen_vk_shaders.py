@@ -2042,9 +2042,16 @@ MRP_WORLD_GPU_LIT_VS = "#version 460\n#define SH_POINTS 1\n" + MRP_WORLD_GPU_VS_
 MRP_WORLD_LIT_FS = "#version 460\n#define SH_POINTS 1\n" + MRP_WORLD_FS_HEADER + MRP_WORLD_FS_BODY
 MRP_WORLD_EARLY_FS = "#version 460\n#define SH_POINTS 1\n" + MRP_WORLD_FS_HEADER + "\nlayout(early_fragment_tests) in;\n" + MRP_WORLD_FS_BODY
 
+# the MRP's 2D (src/game/render/mrp_2d.cpp): the same pixel arithmetic as the GS replica's drawing (the GS's texture functions,
+# alpha test, fogging, the render targets' alpha), the same push block
+MRP_2D_VS = GS_DRAW_VS
+MRP_2D_FS = GS_DRAW_FS
+
 SHADERS = [
     ("kGsDrawVs", "vert", GS_DRAW_VS),
     ("kGsDrawFs", "frag", GS_DRAW_FS),
+    ("kMrp2dVs", "vert", MRP_2D_VS),
+    ("kMrp2dFs", "frag", MRP_2D_FS),
     ("kMrpFxVs", "vert", MRP_FX_VS),
     ("kMrpFxFs", "frag", MRP_FX_FS),
     ("kMrpVu7Vs", "vert", MRP_VU7_VS),

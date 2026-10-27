@@ -1,5 +1,6 @@
 // orig: (host) The MRP world renderer (see mrp_world_renderer.h).
 #include <game/render/mrp_world_renderer.h>
+#include <game/render/mrp_chain.h>
 
 #include <formats/moby_mrp.h>
 #include <formats/world_mrp.h>
@@ -1342,11 +1343,11 @@ const TexRef* vram_texture(Level& L, uint64_t tex0, uint64_t tex1, uint64_t mip1
         std::fprintf(stderr, "[mrpw] world GIF texture TEX0 %016llx: format not decoded (psm %x cpsm %x csa %x)\n", static_cast<unsigned long long>(tex0), psm, cpsm, csa);
         return nullptr;
     }
-    const uint8_t* vram = gs::gs_global().vram();
+    const uint8_t* vram = gs::local_memory().vram();
     uint32_t clut[256];
     for (uint32_t i = 0; i < 256; ++i) {
         const uint32_t j = (i & 0xe7) | ((i & 0x08) << 1) | ((i & 0x10) >> 1);  // (CSM1)
-        std::memcpy(&clut[i], vram + gs::Gs::addr32(cbp, 1, j & 0xf, j >> 4), 4);
+        std::memcpy(&clut[i], vram + gs::LocalMemory::addr32(cbp, 1, j & 0xf, j >> 4), 4);
     }
     uint32_t levels = 1;
     while (levels <= mxl && (w >> levels) >= 1 && (h >> levels) >= 1) ++levels;
@@ -1358,7 +1359,7 @@ const TexRef* vram_texture(Level& L, uint64_t tex0, uint64_t tex1, uint64_t mip1
         std::vector<uint32_t>& px = lv[l];
         px.resize(static_cast<size_t>(lw) * lh);
         for (uint32_t y = 0; y < lh; ++y)
-            for (uint32_t x = 0; x < lw; ++x) px[y * lw + x] = clut[vram[gs::Gs::addr8(tbp, tbw, x, y)]];
+            for (uint32_t x = 0; x < lw; ++x) px[y * lw + x] = clut[vram[gs::LocalMemory::addr8(tbp, tbw, x, y)]];
     }
     r.bucket = add_bucket(L, w, h, std::move(lv));
     r.layer = 0;
@@ -3484,9 +3485,8 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
             if (lbu(a + 8) == 0x18) F.env_xyoff = static_cast<uint64_t>(lwu(a)) | (static_cast<uint64_t>(lwu(a + 4)) << 32);
         }
     }
-    {  // the GS registers before the frame's chain (build_triangles)
-        const gs::Gs& gs = gs::gs_global();
-        for (uint32_t r = 0; r < 128; ++r) F.gs_regs[r] = gs.reg(r);
+    {  // the GS registers before the frame's chain (build_triangles): as the last chain read left them
+        for (uint32_t r = 0; r < 128; ++r) F.gs_regs[r] = mrp_chain_gs_reg(r);
     }
     // the passes' ranges the replica skips: scene_build builds a scene exactly when there are passes and a chain
     static const bool sky_noskip = std::getenv("RAC1_MRPW_SKY_NOSKIP") != nullptr;  // (testing: the replica runs the sky's range too, drawn twice)

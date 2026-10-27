@@ -311,13 +311,17 @@ void run_interpreter(Vu1& vu, uint32_t start, const std::function<void(uint32_t)
     vu.st.xgkick_hook = nullptr;
 }
 
-void start_program(Vu1& vu, uint32_t start, const KickSink& kick) {
+void flip_buffers(Vu1& vu, uint32_t start) {
     g_last_start = start;
     vu.top = vu.tops;
     vu.itop = vu.itops;
     vu.dbf = !vu.dbf;
     vu.tops = (vu.base + (vu.dbf ? vu.ofst : 0)) & 0x3ff;
     vu.st.xtop = vu.top;
+}
+
+void start_program(Vu1& vu, uint32_t start, const KickSink& kick) {
+    flip_buffers(vu, start);
     auto kick_at = [&vu, &kick, start](uint32_t addr) {
         const uint32_t qwc = gif_packet_qwc(vu.st, addr);
         if (trace_on()) std::fprintf(stderr, "[VU1] kick %03x qwc %u\n", addr, qwc);

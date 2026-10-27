@@ -2,23 +2,24 @@
 // the EE-built effects (the quad drawer's glows / canopy / decals / effect quads, the sparkles, the nanotech orbs' prim lists),
 // drawn natively, in the world's projection, batched. Host code: none of it is the game's.
 //
-// The particle pass builds a VU1 chain (the particle program, its constants, 0x800-byte chunks of particle records); the GS replica
-// walks the frame's chain anyway (the 2D, the texture uploads), so it runs that range too - the ported particle program
-// (particles_vu1.cpp) on its VU1, its kicks through the GS's registers and primitive assembly, each primitive's texture read from the
-// GS memory at its kick - but keeps the primitives aside (gs::Primitive::fx, Gs::set_chain_fx). The MRP then draws them:
+// The particle pass builds a VU1 chain (the particle program, its constants, 0x800-byte chunks of particle records); the MRP's chain
+// reader (mrp_chain.h) runs that range - the ported particle program (particles_vu1.cpp) on its own VU1, its kicks read as GIF
+// packets, each primitive's texture decoded from the GS's local memory at its kick - and keeps the primitives (gs::Primitive::fx,
+// MrpChainInput::fx). The MRP then draws them:
 //  - each kicked vertex (X, Y, Z as the program computed them from the particle's camera-relative position) taken back to the world
 //    through the program's own projection (the view rows 0x166cc0 x 1024, the screen offset 0x16cbe0, Q = 0x16cc50.x / w) and drawn
 //    in the world's GL projection (the same depth buffer as the world and the mobys; in a widened view the side bands get it);
 //  - its texture resident (decoded once, an atlas of 256 x 256 layers), the GS state (texture function, alpha test, blending, the
 //    GS's fog, the Z test / mask) in the fragment shader / GL state;
 //  - all of the frame's particles in a handful of draws (a batch breaks only on the GL blend / depth state);
-//  - in the GS replica's primitive order (gs::draw before / after: Gs::fx_mark).
+//  - in the chain's primitive order, the 2D between them (mrp_2d.h; MrpChainFrame::fx_mark).
 // In a widened view the particles come from the effects' shadow run (its widened sphere test; the streaks' frustum test widened
-// too, mrp_fx_particles_patch), the replica's substitute walk.
+// too, mrp_fx_particles_patch), the chain reader's substitute (MrpChainInput::subs).
 #ifndef RAC1_GAME_RENDER_MRP_FX_H
 #define RAC1_GAME_RENDER_MRP_FX_H
 
-#include <runtime/gs/gs_emu.h>
+#include <game/render/mrp_chain.h>
+#include <runtime/gs/gs_types.h>
 #include <runtime/vu/vu_interpreter.h>
 
 #include <cstdint>
@@ -27,12 +28,8 @@
 
 namespace rac1 {
 
-namespace gs {
-struct Viewport;
-}  // namespace gs
-
 // The switch (RAC1_MRP_FX=0/1, the debug menu's Rendering tab): the 3D effects drawn by the MRP (default on with the MRP world). Off:
-// the GS replica draws them as before (the faithful path). RAC1_MRP_FX_KINDS=<mask> (testing): only the producers whose bit
+// the GS replica reads the frame's chain and draws them (the faithful path, mrp_chain_wanted). RAC1_MRP_FX_KINDS=<mask> (testing): only the producers whose bit
 // (1 << kind) is set (2 = the particles alone).
 extern bool g_mrp_fx;
 
@@ -48,11 +45,11 @@ extern bool g_mrp_fx;
 //  - kMrpFxPrimList: the prim lists 0x1fde98 (the nanotech orbs' mesh) on VU1 program 7: the matrix the last 0x1fc740 put in the
 //    chain (0x166cc0 x the world-to-camera x 1024, its Z bias), its screen offset and Q numerator.
 //  - kMrpFxVu7: VU1 program 7's batches inside the draw lists' callbacks (the levels' water, lava and sand-sea surfaces, the prim
-//    lists above): not their kicks - the GS replica keeps each batch as the program found it, before its transform and its clipping
-//    at the guard band (gs::Gs::set_chain_vu7) - but their input points, drawn in the world (g_mrp_seas).
+//    lists above): not their kicks - the chain reader keeps each batch as the program found it, before its transform and its clipping
+//    at the guard band (MrpChainInput::vu7) - but their input points, drawn in the world (g_mrp_seas).
 enum : uint8_t { kMrpFxParticles = 1, kMrpFxQuad = 2, kMrpFxSparkles = 3, kMrpFxPrimList = 4, kMrpFxVu7 = 5, kMrpFxKinds = 6 };
 // The switch (RAC1_MRP_SEAS=0/1, default on): VU1 program 7's surfaces drawn by the MRP from their input (kMrpFxVu7). Off: as before
-// (the replica runs them, the prim lists' kicks taken back to the world, the rest drawn by the replica)
+// (the GS replica reads the chain and draws them, the faithful path)
 extern bool g_mrp_seas;
 // orig: (host) the hash of VU1 program 7's code (shadows_vu1.cpp's registration)
 constexpr uint64_t kMrpVu7Hash = 0x3dc739c28ad6ece5ull;
@@ -88,7 +85,7 @@ private:
 // VU1 program 7 batches are the MRP's (kMrpFxVu7); `cls` the moby class of its argument (0: not a moby), the emissive surfaces' key
 void mrp_fx_note_list(uint32_t first, uint32_t end, uint32_t cls);
 // orig: (host) testing (RAC1_MRP_FX_INVENTORY=1): a draw list's callback `fn` wrote [first, end) of the chain; what no producer's note
-// covers is counted per callback (the report: the effects still on the GS replica)
+// covers is counted per callback (the report: the effects no producer notes)
 void mrp_fx_list_call(uint32_t fn, uint32_t first, uint32_t end);
 // orig: (host) around the particle pass inside the effects shadow (`begin` true before it, false after): the streaks' frustum test
 // widened as the sphere test is (the journal puts it back)
@@ -99,22 +96,29 @@ void mrp_fx_particles_patch(bool begin);
 // whenever a particle is near the 4:3 frustum's sides and inside the widened one; the depth range left out, which only says true more)
 bool mrp_fx_particles_widen_needed(float widen);
 
-// orig: (host) per host frame, in the chain's stage (the game's thread, after the update): the GS replica's effects ranges for the
-// chain about to be walked (`subs`: the shadow blocks whose chains are walked in place of the real blocks, mrp_lod_shadow_slot's slots,
-// in the order given to gs::Gs::add_chain_substitute) and the projections the producers used, kept for the drawing. `active`: a frame
-// whose world the MRP draws. Returns false when the replica draws the effects itself this frame.
-// `vu7`: the draw lists' ranges whose VU1 program 7 batches the MRP draws (gs::Gs::set_chain_vu7), in the same order.
-bool mrp_fx_chain_ranges(bool active, const std::vector<int>& subs, std::vector<gs::Gs::FxRange>& ranges, std::vector<gs::Gs::Vu7Range>& vu7);
-// orig: (host) the frame's primitives drawn in their order (the GS replica's chain joined): the runs of the MRP's (fx) by the MRP, the
-// runs between them by `gs_draw(from, to)` (the GS replica's gs::draw over those primitives); into the bound framebuffer, viewport `vp`
-// (`from` / `to`: only the primitives [from, to): the ones before the moby pass go under the MRP's mobys, Gs::moby_mark)
-void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp, const std::function<void(size_t, size_t)>& gs_draw, size_t from = 0,
-                 size_t to = SIZE_MAX);
-// orig: (host) testing (RAC1_MRP_FX_KICKCHECK=1): a start of the particle program (`hash`) on the GS replica's VU1 (`vu`: a vu1::Vu1)
+// orig: (host) per host frame, in the chain's stage (the game's thread, after the update): the effects ranges for the chain about to be
+// read (`subs`: the shadow blocks whose chains are read in place of the real blocks, mrp_lod_shadow_slot's slots, in the order given
+// to MrpChainInput::subs) and the projections the producers used, kept for the drawing. `active`: a frame whose world the MRP draws.
+// Returns false when no effect of this frame is the MRP's.
+// `vu7`: the draw lists' ranges whose VU1 program 7 batches the MRP draws (MrpChainInput::vu7), in the same order.
+bool mrp_fx_chain_ranges(bool active, const std::vector<int>& subs, std::vector<MrpChainInput::Fx>& ranges, std::vector<MrpChainInput::Vu7>& vu7);
+// orig: (host) the frame's primitives drawn in their order (the chain's reading joined): the runs of the MRP's (fx) by the MRP, the
+// runs between them by `gs_draw(from, to)` (the 2D: mrp_2d_draw over those primitives); into the bound framebuffer, viewport `vp`
+// (`from` / `to`: only the primitives [from, to): the ones before the moby pass go under the MRP's mobys, MrpChainFrame::moby_mark)
+// `skip_surfaces`: program 7's surfaces that write Z left out (mrp_fx_draw_surfaces drew them)
+void mrp_fx_draw(const MrpChainFrame& gs, int win_w, int win_h, const gs::Viewport* vp, const std::function<void(size_t, size_t)>& gs_draw, size_t from = 0,
+                 size_t to = SIZE_MAX, bool skip_surfaces = false);
+// orig: (host) program 7's surfaces that write Z (the levels' seas, lava and sand) among the primitives from `from`, drawn alone: before
+// the ambient particles, which write no Z (drawn after them, the seas covered the rain, the snow and the embers in front of them);
+// mrp_fx_draw then leaves them out (skip_surfaces). The translucent effects and the 2D keep their place in the chain's order.
+void mrp_fx_draw_surfaces(const MrpChainFrame& f, int win_w, int win_h, const gs::Viewport* vp, size_t from);
+// orig: (host) testing (RAC1_MRP_FX_KICKCHECK=1): a start of the particle program (`hash`) on the chain reader's VU1 (`vu`: a vu1::Vu1)
 // run on the VU interpreter from a copy of the same state as well, its kicks and data memory compared with the port's; true when it ran
 // the program (the port, its kicks to `kick`)
 bool mrp_fx_vu1_check(void* vu, uint32_t start, uint64_t hash, void (*fn)(VUState&, uint32_t, const std::function<void(uint32_t)>&),
                       const std::function<void(uint32_t)>& kick);
+// orig: (host) the effects' texture atlas emptied (a level change, between frames): its layers' count before
+size_t mrp_fx_clear_caches();
 // orig: (host) the totals at the run's end
 void mrp_fx_report();
 
