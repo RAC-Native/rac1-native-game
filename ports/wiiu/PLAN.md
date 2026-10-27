@@ -152,9 +152,10 @@ real factor; this is the number to decide on.
   `RAC1_GOTO=0@60` level change, loads the sound bank, plays the music streams' commands, and returns.
 - **Game state:** the hero's and the camera's positions at frames 60 and 120 equal the PC's (both rounding to
   nearest: Cemu cannot run the EE rounding mode). RAMHASH: frames 0 and 1 identical page for page; from frame 2 a
-  few pages differ in the mobys' skinning output (vertex colours a few units off), most likely Cemu's float
-  emulation (newlib's sqrtf on the 750 starts from frsqrte, whose table Cemu does not reproduce bit for bit; on the
-  console fputest's sqrt hash equals the PC's). The exact comparison is for the console.
+  few pages differ in the mobys' skinning output (vertex colours a few units off, written by `moby_skin` through the
+  scratchpad). Not newlib's sqrtf: an exact integer sqrtf (`RAC1_WIIU_EXACT_SQRT`) leaves them as they are. Still
+  open: Cemu's float emulation, or a real difference (a float-to-integer conversion out of range, which x86 and
+  PowerPC answer differently; a sub-word read missed). The console's RAMHASH tells which.
 - **Cemu workflow** (debugging only): `ports/wiiu/tools/cemu_rpx.py` (conditional traps made nops), RAC1_FPU_NEAREST=1,
   `--enable-gdbstub` + `powerpc-eabi-gdb` for backtraces.
 - **Found and fixed on the way:** code over 32 MB loops the static constructors (VU1 programs left out); wut's
