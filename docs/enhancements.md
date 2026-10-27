@@ -78,7 +78,7 @@ See [Lighting](lighting.md). Off by default (Lighting: Original).
   a level's file can turn them off there.
 - Emissive surfaces: textures a level's file marks (lamps, screens, panels) keep the original
   lighting's brightness where the shadows would darken them.
-- Ambient occlusion, in five modes (SSAO, SSAO+, HBAO, GTAO, GTAO at half resolution), with an AO
+- Ambient occlusion, in four modes, each at full or half resolution (SSAO, SSAO+, HBAO, GTAO; "1/2"), with an AO
   Intensity setting.
 - Surface Detail (Off, Low, High): materials for the textures a level's file tags - shiny metal, wet
   ground with puddles and rain ripples, water, lava, mud - the PS2 textures kept, lit and animated;

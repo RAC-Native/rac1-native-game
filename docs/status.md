@@ -143,6 +143,9 @@ nothing, so an object whose class is not ported stands still or does not appear.
 - **Not everything is native in the renderer.** The HUD, menus and the rest of the 2D are still drawn
   through the GS replica; the level's baked shadow meshes are still cut at the sides of a widened
   view, and the mobys' flattened shadow meshes are not drawn yet (see [Rendering](rendering.md#limits)).
+- **One approximation kept on purpose.** With the modern lighting, the world's second alpha-tested pass skips the
+  pixels its first pass drew, for about 0.5 to 1.5 ms of GPU a frame; a few single pixels on foliage differ. It stays on
+  until it shows worse effects (see [Performance](performance.md#gpu-round-3)).
 - **Widescreen menus.** Options > Graphics > HUD spreads the HUD over a widened view; the menus, the
   pause screen and the Vendor stay 4:3 in the middle (see [Settings](settings.md#graphics)).
 - **Platforms.** Linux x86-64; Windows x86-64 (see [Platforms](platforms.md)). A port

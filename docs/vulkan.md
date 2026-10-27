@@ -31,6 +31,10 @@ choice is kept.
   `mrp_world_renderer.cpp`, `mrp_tfrag_gpu.cpp` (the tfrag compute shader), `mrp_moby_renderer.cpp`,
   `mrp_fx.cpp`, `mrp_shadows.cpp`, `mrp_lighting.cpp`; `orig_main.cpp`'s frame (the clears, the
   render scale's buffer, the frozen frames of the menus and fades, the movies, the screenshots).
+  The last frame of the game shown is kept in the 3D's colour image (cleared only at the next frame's start) and copied for the
+  pause menu, a fade or a store only when one of them reads it (OpenGL draws into the window's own framebuffer, gone at the swap:
+  it copies every frame). The tfrag compute shader's resident colours are a buffer per frame in flight, each brought up to date
+  when its frame comes (the changes of the uploads it missed), so the frame before's compute never reads colours being written.
 - The shaders are GLSL in `tools/gen_vk_shaders.py` (the OpenGL ones, made Vulkan's: push
   constants and descriptor sets instead of uniforms), compiled to SPIR-V **at build time** by `glslc`
   (shaderc, part of the Vulkan SDK; the `glslc` package on Debian / Ubuntu / Fedora, `shaderc` on
