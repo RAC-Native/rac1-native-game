@@ -8,9 +8,12 @@
 #include <coreinit/thread.h>
 #include <coreinit/time.h>
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <mutex>
+#include <string>
 
 extern char** environ;
 
@@ -53,14 +56,77 @@ void coroutine_resume() { rac1_ctx_switch(&g_co.host_sp, g_co.game_sp); }
 void coroutine_yield() { rac1_ctx_switch(&g_co.game_sp, g_co.host_sp); }
 
 // ---- Files ----
-std::FILE* open_file(const std::filesystem::path& path, const char* mode) { return std::fopen(path.c_str(), mode); }
+// A file read at far apart places (the disc image: the level's data, two music streams) is read through up to four handles
+// of its own: each read takes the handle that is already just before it. The SD card's file system walks a file's cluster
+// chain from its start to seek back: a 2 KB read of a stream behind another, 3 GB into the image, took ~96 ms; ahead, ~10.
+namespace {
+struct Handle {
+    std::FILE* f = nullptr;
+    std::uint64_t pos = ~0ull;  // (where its next read starts; ~0: unknown)
+    std::uint64_t used = 0;
+};
+struct Handles {
+    std::string path;
+    Handle h[4];
+    int n = 0;
+};
+std::mutex g_files_m;
+std::map<std::FILE*, Handles> g_files;  // (the files opened for reading, by their first handle)
+std::uint64_t g_reads = 0;
+}  // namespace
+
+std::FILE* open_file(const std::filesystem::path& path, const char* mode) {
+    std::FILE* f = std::fopen(path.c_str(), mode);
+    if (f != nullptr && std::strcmp(mode, "rb") == 0) {
+        std::scoped_lock lock(g_files_m);
+        Handles& hs = g_files[f];  // (a handle of a file closed since: its entry and other handles replaced)
+        for (int i = 1; i < hs.n; ++i) std::fclose(hs.h[i].f);
+        hs = Handles{};
+        hs.path = path.string();
+        hs.h[0].f = f;
+        hs.n = 1;
+    }
+    return f;
+}
 
 // (no pread here: a seek and a read under one lock, the game's thread and the audio's may read at once)
 std::int64_t read_at(std::FILE* f, std::uint64_t offset, void* dst, std::size_t n) {
-    static std::mutex m;
-    std::scoped_lock lock(m);
-    if (fseeko(f, static_cast<off_t>(offset), SEEK_SET) != 0) return -1;
-    return static_cast<std::int64_t>(std::fread(dst, 1, n, f));
+    std::scoped_lock lock(g_files_m);
+    static const double slow_ms = std::getenv("RAC1_WIIU_SLOW_READ") != nullptr ? std::atof(std::getenv("RAC1_WIIU_SLOW_READ")) : -1.0;
+    const OSTime t0 = OSGetTime();
+    Handle* h = nullptr;
+    Handle one{f};
+    if (auto it = g_files.find(f); it != g_files.end()) {
+        Handles& hs = it->second;
+        // the handle just before the read (up to 4 MB: ahead within a cluster chain is cheap), else a new one, else the least used lately
+        for (int i = 0; i < hs.n; ++i)
+            if (hs.h[i].pos != ~0ull && hs.h[i].pos <= offset && offset - hs.h[i].pos <= (4u << 20) && (h == nullptr || hs.h[i].pos > h->pos)) h = &hs.h[i];
+        if (h == nullptr && hs.n < 4) {
+            if (std::FILE* g = std::fopen(hs.path.c_str(), "rb"); g != nullptr) {
+                h = &hs.h[hs.n++];
+                h->f = g;
+            }
+        }
+        if (h == nullptr) {
+            h = &hs.h[0];
+            for (int i = 1; i < hs.n; ++i)
+                if (hs.h[i].used < h->used) h = &hs.h[i];
+        }
+    } else {
+        h = &one;
+    }
+    h->used = ++g_reads;
+    if (h->pos != offset && fseeko(h->f, static_cast<off_t>(offset), SEEK_SET) != 0) {
+        h->pos = ~0ull;
+        return -1;
+    }
+    const auto r = static_cast<std::int64_t>(std::fread(dst, 1, n, h->f));
+    h->pos = r >= 0 ? offset + static_cast<std::uint64_t>(r) : ~0ull;
+    if (slow_ms >= 0.0) {  // (testing, RAC1_WIIU_SLOW_READ=<ms>: the reads slower than that)
+        const double ms = static_cast<double>(OSTicksToMicroseconds(OSGetTime() - t0)) / 1000.0;
+        if (ms > slow_ms) std::printf("[wiiu] read %llu bytes at %llu: %.1f ms\n", static_cast<unsigned long long>(n), static_cast<unsigned long long>(offset), ms);
+    }
+    return r;
 }
 
 void will_need(std::FILE*, std::uint64_t, std::uint64_t) {}

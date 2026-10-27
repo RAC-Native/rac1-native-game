@@ -172,7 +172,7 @@ against the PC (EE rounding on both), then the remaining edges (GS replica packe
 The unpatched build on the console (Aroma, wiiload), `console_run.cfg`: Veldin, the forward walk, a level change at
 frame 60, 600 frames, EE rounding (`mtfsfi`), no RAMHASH.
 - The six ISO blocks hash as on the PC; the game's main returned 0 after 127 s, back to the menu by itself.
-- Game code ("update" of a single frame every 60): 195 ms (frame 60), 172-304 ms in play (240-600), 8-45 ms on the
+- Game code (the "update" of the `[orig] frame` lines: the average of the last 60 frames): 195 ms (frame 60), 172-304 ms in play (240-600), 8-45 ms on the
   loading screen. About 212 ms/frame over the whole run; the PC does the same frames in about 6 ms.
 - Hero and camera at frames 60, 300, 600 equal the PC's to 0.01 (some print one hundredth higher: to check with a
   RAMHASH run whether it is only the printing).
@@ -250,3 +250,22 @@ start of the day:
 Next: the hot primitives on Espresso (the Q128 / VU0 macro registers on generic vectors, the emulated memory's
 accesses), which every one of these runs on - a sampling profile on the console would show which; the sky pass (with
 the host decoding the sky, does the GX2 renderer need it?); the spike.
+
+### The hot spots on Espresso (same day)
+
+A sampling profiler (ports/wiiu/game/wiiu_sampler.cpp, RAC1_WIIU_SAMPLE=<us>; ports/wiiu/tools/samples.py maps the
+samples on the ELF) put ~30% of the frame in the VU0 macro ops: their flags were built with SSE2's packs / movemask,
+loops of 16 on the shim. Without SSE2 they are now built lane by lane (vu0_regs.h fin_lanes: equal to the SSE2 path
+on 4 million cases; the console's RAMHASH equals the PC's for 300 frames). In play: 55-58 ms -> 22-24 ms (the poses
+18 -> 3.4, the moby draw loop 13-17 -> 8, the world passes 12 -> 4).
+
+The spike every ~36 frames (~95 ms) was the music streams' 2 KB reads: the SD card's file system walks the cluster
+chain from the file's start to seek back, and two streams 140 MB apart alternated (back: ~96 ms, ahead: ~10). The disc
+image is now read through up to four handles, each read taking the one just before it (platform_wiiu.cpp read_at):
+after the streams' first reads no stall is left. A stream's start still costs one ~100 ms read (an asynchronous
+read-ahead would hide it).
+
+The sky's pass cannot be skipped like the tie / shrub culling: without it the mobys' records differ.
+
+Console now, in play (Veldin, NO_GRAPHICS=2, WORLD_PASS_SKIP=6): **18-24 ms per frame**; 600 frames in 20 s (127 s
+this morning).

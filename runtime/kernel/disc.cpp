@@ -169,7 +169,7 @@ bool disc_open(const std::string& path) {
     if (g_iso != nullptr) return true;
     std::string p = path;
     if (p.empty()) p = disc_path();
-    g_iso = std::fopen(p.c_str(), "rb");
+    g_iso = platform::open_file(p, "rb");  // (the Wii U reads it through several handles: platform_wiiu.cpp)
     return g_iso != nullptr;
 }
 
