@@ -5,7 +5,18 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+### Gameplay
+- Buy All Ammo (Options > Advanced, Off by default): an All Ammo entry before the first item of the Vendor's list, as in Up Your
+  Arsenal: one purchase fills every weapon's ammo through the game's own purchase steps, or with too few bolts as much as they pay
+  for, weapon by weapon in the list's order. See [Advanced options](docs/advanced.md#buy-all-ammo).
+
 ### Graphics
+- The modern renderer no longer runs the GS replica: it reads the frame's chain itself (`mrp_chain`, on a worker of its own) and
+  draws the HUD, text, menus, fades and the menus' pictures with OpenGL or Vulkan (`mrp_2d`), the same pictures as before (the
+  reference images unchanged, the game's state the same); the Vendor's screens' item and monitors are the modern renderer's mobys
+  now; a new level's first frame keeps the loading screen's picture. The replica stays the faithful reference (`RAC1_MRP=0`,
+  "VU emulation"; `RAC1_MRP_CHAIN=0` to compare).
+- Ambient particles: Batalia's rain shows over the sea behind it (the seas that write depth are drawn before the particles).
 - Lights: Anya-Thoughtmane's second lighting pass (#102) on Veldin to Rilgar: emissive surfaces, lamps by class and by hand, merged with ours.
 - The levels' water, lava and sand seas (VU1 program 7's surfaces: Rilgar's harbour, Gaspar's lava sea, Aridia's sand sea, Hoven,
   Umbris, Novalis, Kalebo, Drek's fleet..., the levels' baked shadow meshes and the nanotech orbs) are drawn by the modern renderer
@@ -53,8 +64,16 @@ What changed in each release. Releases are source only: you build the game with 
   every level" box; a level's own line wins), a moby light on a joint of its pose (`emit moby ... joint <n>`, for the Buzzers' flight),
   and a Textures tab: the level's tfrag, tie, shrub and moby textures as thumbnails with their classes, a click to mark one emissive
   or give it a material. See [Lighting](docs/lighting.md#the-light-editor).
+- Ambient Occlusion: every mode at half resolution too (SSAO 1/2, SSAO+ 1/2, HBAO 1/2 beside GTAO 1/2), upsampled by the blur with
+  the full resolution's depth: about 45 % less on Vulkan at 5120 x 1440, a little softer; the full resolution stays each mode's
+  default. See [Lighting](docs/lighting.md#ambient-occlusion).
 
 ### Performance
+- The chain worker's time with the modern renderer: Rilgar at 5120 x 1440 3.8 to 2.4 ms a frame, Gaspar 6.2 to 5.3 (program 7's
+  kicks no longer assembled, the effects of a widened view's real ranges no longer kept, the texture uploads written a transfer at
+  a time).
+- The texture caches (the decoded textures, the 2D's, the effects' atlas, the GS replica's) are emptied at each level change:
+  they no longer grow from level to level (about 40 MB less resident memory after a 10-level chain).
 - The game's update runs on a thread of its own while the main thread draws the pipelined frame (a window's default): the host
   frame costs the update plus the frame's preparation, its drawing beside them; the game's state the same, word for word. With
   the two changes below, a game frame costs about a fifth less (Rilgar 12.2 to 9.7 ms, Kerwan 13.8 to 12.0 ms, headless at a
@@ -74,10 +93,20 @@ What changed in each release. Releases are source only: you build the game with 
   around them all, and the two far cascades' mobys are drawn every other frame in turn: the cascades' GPU time 2.1 to 1.3 ms on Rilgar, 2.4 to 0.6 on Kerwan, the same shadows (a far cascade's moby
   shadow a frame late every other frame)
   (`RAC1_SHADOW_CLUSTERS=1`, `RAC1_SHADOW_FAR_EVERY=0` for the old way). OpenGL and Vulkan.
+- The modern lighting's world at 5120 x 1440: the second pass of an alpha-tested batch (its failing pixels, no depth written) is
+  tested LESS, so the pixels the first pass drew are not shaded again: the world's GPU time 10 to 15 % less (Rilgar 5.3 to 4.8 ms,
+  Kerwan 12.5 to 10.9); a few pixels in a million (a failing pixel exactly on another surface's depth) are no longer drawn
+  (`RAC1_MRPW_P2_LESS=0` for the old way). OpenGL and Vulkan. See [Performance](docs/performance.md#gpu-round-3).
+- Vulkan: the last frame shown (the pause menu's and the fades' picture) is copied only when something reads it, not every frame:
+  0.6 ms of GPU at 5120 x 1440, the same pictures (`RAC1_LAZY_CAPTURE=0` for the old way).
+- The sun's cascades draw only the moby parts that reach them: the cascades about a tenth less (Rilgar 1.7 to 1.5 ms, Kerwan 2.2 to
+  2.0), the same shadows (`RAC1_SHADOW_PART_CULL=0` for the old way). OpenGL and Vulkan.
 - The profiler with Vulkan: the sun cascades' stage is closed where OpenGL closes it (left open, the GPU's work after the world's
   draw without a stage of its own counted as the cascades'), and the point lights' cube shadows have their own stage.
 
 ### Debug tools (`--debug-tools`)
+- `RAC1_MRP_CHAIN_CHECK=1` compares the modern renderer's reading of each frame's chain with the GS replica's, field by field.
+- The Profiler's chain stages and worker are named for whichever reader runs ("Chain worker", "2D, HUD").
 - Hoverboard anywhere (Player tab): on Rilgar and Kalebo III, gets Ratchet on the hoverboard race's board where he stands, as the board
   itself does when he walks up to it, and off again when unticked. Testing: `RAC1_HOVERBOARD_AT`.
 - Hoverboard anywhere on every other level: a free board (Kalebo III's board drawn on Ratchet's feet, his own board animations
@@ -85,6 +114,8 @@ What changed in each release. Releases are source only: you build the game with 
   below the level, in a pit or after a long fall he is back on foot on the last solid ground. No race rules. OpenGL and Vulkan.
 
 ### Fixes
+- Vulkan: the tfrags' resident colours are a buffer per frame in flight: a frame's colours were written while the frame before's
+  compute shader could still read them (a one-frame colour glitch was possible).
 - Windows: the build failed with MSYS2's current Clang ("'gnu::noinline' attribute cannot be applied to types" in
   moby_joints.cpp, #112).
 - Modern lighting: Ratchet and the other mobys are lit by the lights placed by hand, the lights per class and the automatic

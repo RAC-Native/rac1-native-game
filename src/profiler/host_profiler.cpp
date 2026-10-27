@@ -42,7 +42,7 @@ const StageInfo kStages[kStageCount] = {
     {"Wait: game thread", true, false, rgb(120, 170, 230)},
     {"Game thread: wait for the draw", true, false, rgb(100, 100, 160)},
     {"Prepare", false, false, rgb(70, 180, 190)},
-    {"GS chain capture / scene start", false, true, rgb(40, 150, 160)},
+    {"Chain capture / scene start", false, true, rgb(40, 150, 160)},
     {"Wait: scene capture", true, false, rgb(200, 200, 90)},
     {"Moby draw lists", false, true, rgb(110, 200, 170)},
     {"Draw (other)", false, false, rgb(160, 160, 160)},
@@ -51,14 +51,14 @@ const StageInfo kStages[kStageCount] = {
     {"Shadows: point cubes", false, true, rgb(190, 120, 70)},
     {"World (ties, tfrags, shrubs, sky)", false, true, rgb(80, 190, 80)},
     {"Mobys (legacy drawer)", false, true, rgb(100, 120, 60)},
-    {"Wait: GS chain worker", true, false, rgb(240, 170, 40)},
+    {"Wait: chain worker", true, false, rgb(240, 170, 40)},
     {"Mobys (MRP)", false, true, rgb(60, 220, 140)},
     {"Ambient occlusion", false, true, rgb(200, 80, 160)},
     {"Sun rays", false, true, rgb(250, 230, 120)},
     {"Ambient particles", false, true, rgb(170, 220, 250)},
     {"Render scale resolve", false, true, rgb(130, 130, 200)},
     {"Effects (MRP fx)", false, true, rgb(240, 110, 60)},
-    {"GS replica: 2D, HUD", false, true, rgb(80, 120, 250)},
+    {"2D, HUD", false, true, rgb(80, 120, 250)},
     {"Frame capture", false, true, rgb(170, 140, 120)},
     {"Debug menu / profiler view", false, true, rgb(200, 200, 200)},
     {"Profiler (readback, sampling)", false, false, rgb(255, 0, 255)},
@@ -66,7 +66,7 @@ const StageInfo kStages[kStageCount] = {
     {"Wait: frame cap", true, false, rgb(70, 70, 70)},
     {"Present (swap, v-sync)", true, true, rgb(230, 60, 60)},
 };
-const char* const kWorkerNames[kWorkerCount] = {"GS chain worker", "MRP scene worker", "Job workers (summed)", "Game thread"};
+const char* const kWorkerNames[kWorkerCount] = {"Chain worker", "MRP scene worker", "Job workers (summed)", "Game thread"};
 constexpr int kJobTrack = 10;  // (a trace's track of the job pool's worker k: kJobTrack + k)
 
 double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
@@ -279,7 +279,7 @@ void trace_write(State& s) {
         return;
     }
     std::fprintf(f, "{\"displayTimeUnit\":\"ms\",\"traceEvents\":[\n");
-    const char* tracks[] = {"main thread (CPU)", "GPU", "GS chain worker", "MRP scene worker"};
+    const char* tracks[] = {"main thread (CPU)", "GPU", "Chain worker", "MRP scene worker"};
     for (int t = 0; t < 4; ++t) std::fprintf(f, "{\"ph\":\"M\",\"pid\":1,\"tid\":%d,\"name\":\"thread_name\",\"args\":{\"name\":\"%s\"}},\n", t, tracks[t]);
     std::fprintf(f, "{\"ph\":\"M\",\"pid\":1,\"tid\":9,\"name\":\"thread_name\",\"args\":{\"name\":\"host frames\"}},\n");
     std::fprintf(f, "{\"ph\":\"M\",\"pid\":1,\"tid\":%d,\"name\":\"thread_name\",\"args\":{\"name\":\"game thread\"}},\n", 2 + kWorkerGame);
@@ -759,7 +759,7 @@ Summary summarize(int frames) {
                       m.worker_busy[kWorkerScene]);
     } else if (chain_wait >= 0.15 * P) {
         m.bound = Bound::ChainWorker;
-        std::snprintf(t, sizeof t, "Bound by the GS chain worker: the main thread waits %.2f ms a frame for it (%.2f ms busy)", chain_wait, m.worker_busy[kWorkerChain]);
+        std::snprintf(t, sizeof t, "Bound by the chain worker: the main thread waits %.2f ms a frame for it (%.2f ms busy)", chain_wait, m.worker_busy[kWorkerChain]);
     } else if (m.cpu[kGameThreadWait] >= 0.15 * P) {
         m.bound = Bound::GameThread;
         std::snprintf(t, sizeof t, "Bound by the game thread: the main thread waits %.2f ms a frame for the game's update (%.2f ms busy)", m.cpu[kGameThreadWait],

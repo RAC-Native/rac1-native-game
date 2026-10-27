@@ -28,7 +28,7 @@ src/
 runtime/           the PS2 hardware layer, no game logic
   ee/              EE: the coroutine, the game thread, timer 1, float rounding, the R5900 interpreter
   vu/              VU0 and VU1, the VIF, the VU interpreter, building blocks of translated programs
-  gs/              the GS replica: GS memory, packets, 2D drawing
+  gs/              the GS's local memory (game state), its blending as GPU state; the GS replica (the faithful reference)
   vk/              the experimental Vulkan backend: device, swapchain, frames, helpers
   iop/             IOP memory, the 989snd sound driver's IOP side, audio streams
   sif/             SIF RPC between the EE and the IOP's servers
@@ -93,7 +93,7 @@ flowchart TD
     GAME["src/game<br/>the ported game code"]
     REND["src/game/render<br/>the MRP and the other host renderers"]
     ENH["src/game/enhance<br/>PC options"]
-    RT["runtime<br/>EE memory, coroutine, VU, GS replica, IOP, SIF, disc"]
+    RT["runtime<br/>EE memory, coroutine, VU, GS memory and replica, IOP, SIF, disc"]
     FMT["src/formats<br/>file-format decoders"]
     SET["src/setup<br/>asset generation"]
     DEV["src/_devtools<br/>debug menu"]
@@ -220,8 +220,11 @@ and knows nothing about Ratchet & Clank. It provides:
 - the **float rounding** of the EE (`runtime/ee/ps2_fpu.h`);
 - **VU0 and VU1** with the VIF and the GIF's output (`runtime/vu/`), running the translated programs
   or, for testing and fallbacks, the VU interpreter;
-- the **GS replica** for the 2D (`runtime/gs/`), which also hands the MRP the effects' primitives and
-  VU1 program 7's batches ([Rendering](rendering.md#how-the-mrp-gets-the-frame));
+- the **GS's local memory** (`runtime/gs/gs_memory.cpp`): the 4 MB the game's uploads write and its
+  GS -> EE transfers read back, so game state; the textures decoded from it; the GS's blending as GPU state
+  (`gs_blend.cpp`), shared by every drawer;
+- the **GS replica** (`runtime/gs/gs_emu.cpp`, `gs_draw.cpp`), the faithful reference only: the MRP reads
+  the frame's chain with its own reader ([Rendering](rendering.md#the-2d));
 - the experimental **Vulkan** backend's device, frames and helpers (`runtime/vk/`, see [Vulkan](vulkan.md));
 - the **IOP side**: IOP memory, the SIF RPC servers the game calls, the 989snd sound driver and its
   streams (`runtime/iop/`, `runtime/sif/`);
@@ -247,7 +250,9 @@ context, or drives the Vulkan renderer), or, beside the drawing of a pipelined f
 game's update is split over threads or reordered, so the game's state is the same, word for word, however many cores the machine
 has and whichever thread ran a frame. What runs elsewhere is the host's work on what the game left behind:
 
-- the **GS chain worker** (`runtime/gs/gs_emu.cpp`) runs the GS replica on a copy of the frame's chain;
+- the **MRP chain worker** (`src/game/render/mrp_chain.cpp`) reads a copy of the frame's chain: the 2D, the effects (their
+  VU1 programs), the texture uploads ([Rendering](rendering.md#the-2d)); on the faithful path the GS replica's worker
+  (`runtime/gs/gs_emu.cpp`) runs the replica on it instead;
 - the **MRP scene worker** (`src/game/render/mrp_world_renderer.cpp`) captures the world's scene inputs, builds the scene, then
   the frame's triangles, draw commands and batches (`build_triangles`; a texture the build meets first is decoded there, its GL /
   Vulkan image made by the main thread when it takes the frame). With the pipelined frame (on in a window) it does so during the
@@ -262,10 +267,10 @@ has and whichever thread ran a frame. What runs elsewhere is the host's work on 
   frame prepared at the end of the host frame before; the main thread joins it before it prepares the next frame. The same game
   frames in the same order, with the main thread's float environment; the game's sound's random numbers are one sequence for
   both threads (989snd `RandUseGame`). The drawing reads only what that frame's preparation took: the view, the LOD widening, the
-  drop shadows (`g_draw_from_snapshot`), the moby draw lists, the world's scene, the GS replica's run of its chain, and a copy of
+  drop shadows (`g_draw_from_snapshot`), the moby draw lists, the world's scene, the chain reader's run of its chain, and a copy of
   the game's memory the modern lighting and the ambient particles read (`runtime/kernel/ee_copy.h`: the base executable's and the
   overlay's data, the moby array; `RAC1_DRAW_MEM_CHECK=1` names any read outside it). What the update may not do beside the
-  drawing waits for its end: the game's own GS transfers (`gs_exec_load_image` / `gs_exec_store_image`: the replica's memory) and
+  drawing waits for its end: the game's own GS transfers (`gs_exec_load_image` / `gs_exec_store_image`: the GS's local memory) and
   the pause menu's picture store (a GL / Vulkan copy, run by the main thread: `game_thread::on_main`). Not for a frame of a
   blocking loop, a level's exit or load, the boot, a movie, the full-screen menu, nor with the debug menu open (its tabs write the
   game's memory); never in a deterministic headless run (`RAC1_GAME_THREAD=2` forces it there for testing: the RAM hashes are

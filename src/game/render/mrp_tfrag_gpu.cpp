@@ -1177,7 +1177,15 @@ struct VkGpu {
     VkPipeline pipe = VK_NULL_HANDLE;
     vk::GpuBuffer img_buf{};
     vk::GpuBuffer plan_buf{};
-    vk::GpuBuffer col_buf{};
+    // the resident colours, one buffer per frame slot (the frame before's compute may still read its own while this one is written):
+    // each slot's copy at the colours' update `col_at` (0: none - written whole), brought up to date by the dirty ranges of the
+    // uploads it missed (this one's, and the one before's kept in `prev_dirty`), else from the mirror whole
+    vk::GpuBuffer col_buf[vk::kFramesInFlight]{};
+    uint64_t col_at[vk::kFramesInFlight]{};
+    uint32_t col_fi = 0;  // (the slot the frame's dispatch binds)
+    uint64_t last_at = 0, prev_at = 0;  // (the colours' update at the last upload, at the one before it)
+    std::vector<std::pair<uint32_t, uint32_t>> prev_dirty;  // (the last upload's dirty ranges and words)
+    std::vector<uint32_t> prev_words;
     vk::GpuBuffer out_v[vk::kFramesInFlight]{};
     vk::GpuBuffer out_i[vk::kFramesInFlight]{};
     uint32_t active_fi = 0;
@@ -1202,8 +1210,8 @@ void vk_tfrag_shutdown() {
     }
     vk::destroy_buffer_now(g_vk_gpu.img_buf);
     vk::destroy_buffer_now(g_vk_gpu.plan_buf);
-    vk::destroy_buffer_now(g_vk_gpu.col_buf);
     for (uint32_t i = 0; i < vk::kFramesInFlight; ++i) {
+        vk::destroy_buffer_now(g_vk_gpu.col_buf[i]);
         vk::destroy_buffer_now(g_vk_gpu.out_v[i]);
         vk::destroy_buffer_now(g_vk_gpu.out_i[i]);
     }
@@ -1369,36 +1377,47 @@ void tfrag_gpu_colours(TfragColours& c) {
     if (vk::is_active()) {
         if (!g_vk_gpu.ok) return;
         const size_t bytes = std::max<size_t>(c.mirror.size() * 4, 16);
-        const bool need_full = c.all_dirty || bytes != g_vk_gpu.colour_size || g_vk_gpu.col_buf.buffer == VK_NULL_HANDLE ||
-                               g_vk_gpu.colour_level != c.level ||
-                               (!c.dirty.empty() && g_vk_gpu.colour_updates + 1 != c.updates);
-        if (need_full) {
-            if (g_vk_gpu.col_buf.size < bytes) {
-                vk::destroy_buffer(g_vk_gpu.col_buf);
-                vk::create_buffer(bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                                  g_vk_gpu.col_buf, true);
-            }
-            if (g_vk_gpu.col_buf.mapped != nullptr && !c.mirror.empty()) {
-                std::memcpy(g_vk_gpu.col_buf.mapped, c.mirror.data(), c.mirror.size() * 4);
-            }
-            g_vk_gpu.colour_size = bytes;
-            g_vk_gpu.colour_words = c.mirror.size();
-            c.words_uploaded += c.mirror.size();
-            c.all_dirty = false;
-        } else if (g_vk_gpu.col_buf.mapped != nullptr) {
+        const uint32_t fi = vk::frame_index() % vk::kFramesInFlight;
+        g_vk_gpu.col_fi = fi;
+        if (c.all_dirty || bytes != g_vk_gpu.colour_size || g_vk_gpu.colour_level != c.level)
+            for (uint32_t i = 0; i < vk::kFramesInFlight; ++i) g_vk_gpu.col_at[i] = 0;  // (every slot written whole when its turn comes)
+        vk::GpuBuffer& buf = g_vk_gpu.col_buf[fi];
+        if (buf.buffer == VK_NULL_HANDLE || buf.size < bytes) {
+            vk::destroy_buffer(buf);
+            vk::create_buffer(bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, buf, true);
+            g_vk_gpu.col_at[fi] = 0;
+        }
+        auto apply = [&](const std::vector<std::pair<uint32_t, uint32_t>>& ranges, const std::vector<uint32_t>& words) {
             size_t at = 0;
-            uint8_t* dst = static_cast<uint8_t*>(g_vk_gpu.col_buf.mapped);
-            for (const auto& [first, n] : c.dirty) {
-                if (static_cast<size_t>(first + n) * 4 <= g_vk_gpu.col_buf.size) {
-                    std::memcpy(dst + static_cast<size_t>(first) * 4, c.dirty_words.data() + at, static_cast<size_t>(n) * 4);
-                }
+            uint8_t* dst = static_cast<uint8_t*>(buf.mapped);
+            for (const auto& [first, n] : ranges) {
+                if (static_cast<size_t>(first + n) * 4 <= buf.size) std::memcpy(dst + static_cast<size_t>(first) * 4, words.data() + at, static_cast<size_t>(n) * 4);
                 at += n;
             }
             c.words_uploaded += at;
+        };
+        const uint64_t at_slot = g_vk_gpu.col_at[fi];
+        if (buf.mapped != nullptr) {
+            if (at_slot != 0 && at_slot == g_vk_gpu.last_at) {
+                apply(c.dirty, c.dirty_words);  // (the slot at the last upload: this one's changes)
+            } else if (at_slot != 0 && at_slot == g_vk_gpu.prev_at) {
+                apply(g_vk_gpu.prev_dirty, g_vk_gpu.prev_words);  // (the slot at the upload before: the last one's changes, then this one's)
+                apply(c.dirty, c.dirty_words);
+            } else {
+                if (!c.mirror.empty()) std::memcpy(buf.mapped, c.mirror.data(), c.mirror.size() * 4);
+                c.words_uploaded += c.mirror.size();
+            }
         }
+        g_vk_gpu.col_at[fi] = c.updates;
+        g_vk_gpu.prev_at = g_vk_gpu.last_at;
+        g_vk_gpu.last_at = c.updates;
+        g_vk_gpu.prev_dirty.swap(c.dirty);
+        g_vk_gpu.prev_words.swap(c.dirty_words);
+        g_vk_gpu.colour_size = bytes;
+        g_vk_gpu.colour_words = c.mirror.size();
         g_vk_gpu.colour_level = c.level;
         g_vk_gpu.colour_updates = c.updates;
+        c.all_dirty = false;
         c.dirty.clear();
         c.dirty_words.clear();
         return;
@@ -1490,10 +1509,11 @@ void tfrag_gpu_dispatch(const TfragGpuFrame& f, uint32_t vertex_bytes) {
         const vk::RingAlloc r_consts = alloc_copy(f.consts.data(), f.consts.size() * 4);
         const vk::RingAlloc r_runs = alloc_copy(f.runs.data(), f.runs.size() * 4);
 
-        if (g_vk_gpu.col_buf.buffer == VK_NULL_HANDLE) {
+        vk::GpuBuffer& col_buf = g_vk_gpu.col_buf[g_vk_gpu.col_fi];  // (the slot tfrag_gpu_colours wrote this frame)
+        if (col_buf.buffer == VK_NULL_HANDLE) {
             vk::create_buffer(16, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                              g_vk_gpu.col_buf, true);
+                              col_buf, true);
         }
 
         VkDescriptorSet ds = vk::alloc_descriptor_set(g_vk_gpu.set_layout);
@@ -1501,7 +1521,7 @@ void tfrag_gpu_dispatch(const TfragGpuFrame& f, uint32_t vertex_bytes) {
         dbis[0] = {r_draws.buffer, r_draws.offset, std::max<VkDeviceSize>(kept.size() * sizeof(TfragGpuDraw), 16)};
         dbis[1] = {g_vk_gpu.img_buf.buffer, 0, VK_WHOLE_SIZE};
         dbis[2] = {g_vk_gpu.plan_buf.buffer, 0, VK_WHOLE_SIZE};
-        dbis[3] = {g_vk_gpu.col_buf.buffer, 0, VK_WHOLE_SIZE};
+        dbis[3] = {col_buf.buffer, 0, VK_WHOLE_SIZE};
         dbis[4] = {r_views.buffer, r_views.offset, std::max<VkDeviceSize>(f.views.size() * 8, 16)};
         dbis[5] = {r_vuviews.buffer, r_vuviews.offset, std::max<VkDeviceSize>(f.vu_views.size() * 4, 16)};
         dbis[6] = {r_consts.buffer, r_consts.offset, std::max<VkDeviceSize>(f.consts.size() * 4, 16)};

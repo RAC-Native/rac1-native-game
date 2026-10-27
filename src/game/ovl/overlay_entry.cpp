@@ -36,6 +36,7 @@
 #include <game/ovl/quad_draw.h>
 #include <game/ovl/screen_effects.h>
 #include <game/ovl/vendor_tr.h>
+#include <game/enhance/vendor_buy_all.h>
 #include <game/port_stubs.h>
 #include <runtime/kernel/bootstrap.h>
 #include <runtime/ee/ee_thread.h>
@@ -748,7 +749,12 @@ bool overlay_frame() {
         case 2: pad_read_packet(0x0013c940, g_host_pad_packet, 6); cutscene_update(); mode2_draw(); break;
         case 3: pad_read_packet(0x0013c940, g_host_pad_packet, 6); menu_update(); menu_draw_mode3(); break;
         case 4: pad_read_packet(0x0013c940, g_host_pad_packet, 6); screen_update(); screen_draw_mode4(); break;
-        case 5: pad_read_packet(0x0013c940, g_host_pad_packet, 6); vendor_mode_update_tr(0); vendor_mode_draw_tr(0); break;  // (the vendor screens)
+        case 5:  // (the vendor screens; enhancement: the Vendor's "All Ammo" entry's input, vendor_buy_all.h)
+            pad_read_packet(0x0013c940, g_host_pad_packet, 6);
+            vendor_buy_all_input();
+            vendor_mode_update_tr(0);
+            vendor_mode_draw_tr(0);
+            break;
         case 6: pad_read_packet(0x0013c940, g_host_pad_packet, 6); ship_sequence_update(); ship_sequence_draw(); break;
         case 7: pad_read_packet(0x0013c940, g_host_pad_packet, 6); credits_update_tr(0); credits_draw_tr(0); break;  // (the credits)
         case -1: pad_read_packet(0x0013c940, g_host_pad_packet, 6); TODO_PORT(0x001f4598, "mode -1 update")(); TODO_PORT(0x001f58e0, "mode -1 draw")(); break;

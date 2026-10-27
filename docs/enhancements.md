@@ -37,8 +37,10 @@ See [Advanced options](advanced.md).
 - **Aiming: Modern.** A modern shooter's aim built on the strafe: L2 aims, R2 fires, the right stick
   turns the aim. It needs a strafe (Movement: Strafing or RAC 3); turning it on with Movement on
   Original sets Strafing.
+- **Buy All Ammo: On.** The Vendor's list has an **All Ammo** entry first, as in *Up Your Arsenal*:
+  one purchase fills every weapon's ammo, or as much as the bolts pay for, in the list's order.
 
-All three work on every level. The page also has **Fades** (Fast by default, Original as an option),
+All four work on every level. The page also has **Fades** (Fast by default, Original as an option),
 which is a removed compromise rather than an enhancement.
 
 ### Graphics: Options > Graphics
@@ -78,7 +80,7 @@ See [Lighting](lighting.md). Off by default (Lighting: Original).
   a level's file can turn them off there.
 - Emissive surfaces: textures a level's file marks (lamps, screens, panels) keep the original
   lighting's brightness where the shadows would darken them.
-- Ambient occlusion, in five modes (SSAO, SSAO+, HBAO, GTAO, GTAO at half resolution), with an AO
+- Ambient occlusion, in four modes, each at full or half resolution (SSAO, SSAO+, HBAO, GTAO; "1/2"), with an AO
   Intensity setting.
 - Surface Detail (Off, Low, High): materials for the textures a level's file tags - shiny metal, wet
   ground with puddles and rain ripples, water, lava, mud - the PS2 textures kept, lit and animated;

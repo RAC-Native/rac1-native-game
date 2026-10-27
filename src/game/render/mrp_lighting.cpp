@@ -2242,6 +2242,14 @@ VkDescriptorSet alloc_samp2_ds(VkImageView v0, VkSampler s0, VkImageView v1, VkS
     return ds;
 }
 
+// orig: (host) the ambient occlusion's mode (g_ao) as the passes take it: 1 SSAO, 2 SSAO+, 3 HBAO, 4 GTAO; `half` at half
+// resolution (5 GTAO 1/2, 6 SSAO 1/2, 7 SSAO+ 1/2, 8 HBAO 1/2: Options > Graphics > Ambient Occlusion), upsampled by the separable
+// blur's first pass with the full resolution's depth
+int ao_base_mode(bool* half) {
+    *half = g_ao >= 5;
+    return g_ao <= 4 ? std::max(g_ao, 1) : g_ao == 5 ? 4 : std::clamp(g_ao - 5, 1, 3);
+}
+
 void vk_ao_and_rays_pass(const int vp[4]) {
     if (g_ao == 0 && g_sun_rays <= 0) return;
     ensure_vk_ao_pipelines();
@@ -2256,7 +2264,8 @@ void vk_ao_and_rays_pass(const int vp[4]) {
     int prof_zone = rac1::prof::begin(rac1::prof::kAo);  // (the debug menu's profiler: the occlusion, then the rays)
     if (g_ao != 0) {
         const int w = vp[2], h = vp[3];
-        const bool half_res = (g_ao == 5);
+        bool half_res = false;
+        const int base = ao_base_mode(&half_res);
         const int aw = half_res ? std::max(1, w / 2) : w;
         const int ah = half_res ? std::max(1, h / 2) : h;
         const VkFormat dfmt = vk::depth_stencil_format();
@@ -2327,11 +2336,11 @@ void vk_ao_and_rays_pass(const int vp[4]) {
         const glm::mat4 VP = glm::make_mat4(vpf), IVP = glm::inverse(VP);
         static const int env_r = env_int("RAC1_AO_RADIUS", -1), env_s = env_int("RAC1_AO_STRENGTH", -1);
         static const float kRadius[6] = {0.0f, 1.5f, 1.5f, 3.0f, 3.0f, 3.0f}, kStrength[6] = {0.0f, 1.0f, 1.2f, 2.0f, 2.5f, 2.5f};
-        const int mi = std::clamp(g_ao, 1, 5);
+        const int mi = base;
         const float radius = env_r >= 0 ? static_cast<float>(env_r) / 100.0f : kRadius[mi];
         // (Options > Graphics > AO Intensity, as mrp_lighting_ao_pass)
         const float strength = (env_s >= 0 ? static_cast<float>(env_s) / 100.0f : kStrength[mi]) * static_cast<float>(g_ao_intensity) / 100.0f;
-        const int shader_mode = (g_ao >= 5) ? 4 : g_ao;
+        const int shader_mode = base;
 
         // Pass 1: raw AO into ao_atex
         vk::transition_image(vk::cmd(), g_vk_sh.ao_atex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
@@ -2379,7 +2388,7 @@ void vk_ao_and_rays_pass(const int vp[4]) {
             rt_c.height = scolor.height;
             vk::push_target(rt_c);
         };
-        if (g_ao == 1) {
+        if (base == 1 && !half_res) {  // (SSAO 1/2: the separable blur below, its first pass the upsample)
             final_target();
             vk::set_viewport(vp[0], vp[1], w, h);
             vk::ensure_rendering();
@@ -2790,7 +2799,8 @@ void mrp_lighting_ao_pass() {
     if (g_ao != 0) {
         Ao& A = g_ao_s;
         const int w = vp[2], h = vp[3];
-        const bool half_res = (g_ao == 5);
+        bool half_res = false;
+        const int base = ao_base_mode(&half_res);
         const int aw = half_res ? std::max(1, w / 2) : w;
         const int ah = half_res ? std::max(1, h / 2) : h;
         if (A.prog == 0) {
@@ -2921,11 +2931,11 @@ void mrp_lighting_ao_pass() {
         // RAC1_AO_RADIUS / RAC1_AO_STRENGTH (percent, testing) override them
         static const int env_r = env_int("RAC1_AO_RADIUS", -1), env_s = env_int("RAC1_AO_STRENGTH", -1);
         static const float kRadius[6] = {0.0f, 1.5f, 1.5f, 3.0f, 3.0f, 3.0f}, kStrength[6] = {0.0f, 1.0f, 1.2f, 2.0f, 2.5f, 2.5f};
-        const int mi = std::clamp(g_ao, 1, 5);
+        const int mi = base;
         const float radius = env_r >= 0 ? static_cast<float>(env_r) / 100.0f : kRadius[mi];
         // (Options > Graphics > AO Intensity: the mode's strength scaled, 75 % by default)
         const float strength = (env_s >= 0 ? static_cast<float>(env_s) / 100.0f : kStrength[mi]) * static_cast<float>(g_ao_intensity) / 100.0f;
-        const int shader_mode = (g_ao >= 5) ? 4 : g_ao;
+        const int shader_mode = base;
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, A.afbo);
         glViewport(0, 0, aw, ah);
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
@@ -2977,7 +2987,7 @@ void mrp_lighting_ao_pass() {
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &prev_tex2);
         glBindTexture(GL_TEXTURE_2D, A.stex);
         glActiveTexture(GL_TEXTURE1);
-        if (g_ao == 1) {
+        if (base == 1 && !half_res) {  // (SSAO 1/2: the separable blur below, its first pass the upsample)
             // original SSAO: 5x5 box depth-threshold blur multiplied into the colour
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(fb));
             glViewport(vp[0], vp[1], w, h);

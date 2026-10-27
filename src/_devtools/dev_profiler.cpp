@@ -416,7 +416,7 @@ void profiler_overlay() {
                 case prof::Bound::Gpu: b = "GPU-bound"; break;
                 case prof::Bound::MainThread: b = "CPU-bound (main thread)"; break;
                 case prof::Bound::SceneWorker: b = "scene worker-bound"; break;
-                case prof::Bound::ChainWorker: b = "GS chain worker-bound"; break;
+                case prof::Bound::ChainWorker: b = "chain worker-bound"; break;
                 case prof::Bound::GameThread: b = "game thread-bound"; break;
                 case prof::Bound::Cap: b = "held by the cap / v-sync"; break;
                 default: b = "no single bottleneck"; break;

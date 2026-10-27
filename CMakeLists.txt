@@ -161,6 +161,8 @@ add_library(rac1_runtime STATIC
     runtime/vu/vu_xgkick.cpp
     runtime/vu/vu0.cpp
     runtime/vu/vu1.cpp
+    runtime/gs/gs_blend.cpp
+    runtime/gs/gs_memory.cpp
     runtime/gs/gs_emu.cpp
     runtime/gs/gs_draw.cpp
     runtime/gs/gs_renderer.cpp

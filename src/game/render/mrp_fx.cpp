@@ -11,8 +11,7 @@
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
-#include <runtime/gs/gs_draw.h>
-#include <runtime/gs/gs_emu.h>
+#include <runtime/gs/gs_blend.h>
 #include <runtime/vk/vk_context.h>
 #include <runtime/vk/vk_shaders.h>
 #include <runtime/vu/vu1.h>
@@ -913,7 +912,7 @@ void mrp_fx_particles_patch(bool begin) {
 }
 
 // orig: (host) see mrp_fx.h
-bool mrp_fx_chain_ranges(bool active, const std::vector<int>& subs, std::vector<gs::Gs::FxRange>& ranges, std::vector<gs::Gs::Vu7Range>& vu7) {
+bool mrp_fx_chain_ranges(bool active, const std::vector<int>& subs, std::vector<MrpChainInput::Fx>& ranges, std::vector<MrpChainInput::Vu7>& vu7) {
     mrp_particles_fx_capture();  // (the game's rain / snow textures this frame, for the drawing: nothing unless the ambient particles are on)
     ranges.clear();
     vu7.clear();
@@ -926,14 +925,14 @@ bool mrp_fx_chain_ranges(bool active, const std::vector<int>& subs, std::vector<
     if (!g_mrp_fx || !g_world_mrp || !active || !any) return false;
     if (g_mrp_seas && (g_kinds_mask >> kMrpFxVu7 & 1u) != 0) {  // (VU1 program 7's batches in the draw lists' callbacks)
         auto add_lists = [&](const Notes& N, uint8_t sub) {
-            for (const auto& l : N.lists) vu7.push_back(gs::Gs::Vu7Range{l[0], l[1] - 1, sub, l[2]});
+            for (const auto& l : N.lists) vu7.push_back(MrpChainInput::Vu7{l[0], l[1] - 1, sub, l[2]});
         };
         add_lists(g_real, 0);
         for (size_t i = 0; i < subs.size(); ++i)
             if (subs[i] >= 0 && subs[i] < kMrpLodSlots) add_lists(g_shadow[subs[i]], static_cast<uint8_t>(i + 1));
         // (the ranges must not overlap: a substitute's are its own, sub k)
-        std::sort(vu7.begin(), vu7.end(), [](const gs::Gs::Vu7Range& a, const gs::Gs::Vu7Range& b) { return a.sub != b.sub ? a.sub < b.sub : a.first < b.first; });
-        std::vector<gs::Gs::Vu7Range> merged;
+        std::sort(vu7.begin(), vu7.end(), [](const MrpChainInput::Vu7& a, const MrpChainInput::Vu7& b) { return a.sub != b.sub ? a.sub < b.sub : a.first < b.first; });
+        std::vector<MrpChainInput::Vu7> merged;
         for (const auto& r : vu7) {
             if (!merged.empty() && merged.back().sub == r.sub && r.first <= merged.back().last + 1 && r.tag == merged.back().tag)
                 merged.back().last = std::max(merged.back().last, r.last);
@@ -976,7 +975,7 @@ bool mrp_fx_chain_ranges(bool active, const std::vector<int>& subs, std::vector<
                 ++g_st.no_view;
                 continue;
             }
-            gs::Gs::FxRange r;
+            MrpChainInput::Fx r;
             r.first = n.first;
             r.last = n.end - 1;
             r.sub = sub;
@@ -1134,7 +1133,7 @@ void verify_vertex(const FrameNote& fn, const View& V, double X, double Y, doubl
     }
 }
 
-// the frame's work in the primitives' order: a run of the GS replica's (gs_draw from..to), of the MRP's effects' batches, or of
+// the frame's work in the primitives' order: a run of the 2D's (gs_draw from..to: mrp_2d), of the MRP's effects' batches, or of
 // VU1 program 7's surfaces' batches (kMrpFxVu7)
 enum : int { kStepGs = 0, kStepFx = 1, kStepVu7 = 2 };
 struct Step {
@@ -1223,8 +1222,8 @@ void vu7_emissive_refresh() {
 // the replica's depth map of the frame (render_gs_depth: window depth = a + b Z), for the surfaces' depth
 bool g_v7_depth = false;
 double g_v7_da = 0.0, g_v7_db = 0.0;
-bool build_vu7(const gs::Gs& gs, const gs::Primitive& p) {
-    const auto& bs = gs.vu7_batches();
+bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
+    const auto& bs = gs.vu7_batches;
     if (p.fx_id >= bs.size()) return false;
     const gs::Vu7Batch& b = bs[p.fx_id];
     const int type = static_cast<int>(fld(b.st.prim, 0, 3));
@@ -1297,7 +1296,7 @@ bool build_vu7(const gs::Gs& gs, const gs::Primitive& p) {
     ++g_s7.batches;
     ++g_st.by_kind[kMrpFxVu7];  // (the report's "by producer": batches)
     if (clip_path) ++g_s7.clip_path;
-    const auto& vin = gs.vu7_vertices();
+    const auto& vin = gs.vu7_verts;
     auto vert = [&](uint32_t i, const State& S) {
         const gs::Vu7Vertex& s = vin[b.first + i];
         const glm::dvec4 pt(s.xyz[0], s.xyz[1], s.xyz[2], 1.0);
@@ -1739,12 +1738,43 @@ void vk_draw_batches(const std::vector<Batch>& bs, size_t from, size_t to, const
 }  // namespace
 
 // orig: (host) see mrp_fx.h
-void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp, const std::function<void(size_t, size_t)>& gs_draw, size_t from,
-                 size_t to) {
-    const std::vector<gs::Primitive>& prims = gs.primitives();
+size_t mrp_fx_clear_caches() {
+    const size_t n = static_cast<size_t>(g_atlas.used + g_vk_atlas.used);
+    if (g_atlas.tex != 0) glDeleteTextures(1, &g_atlas.tex);
+    g_atlas = Atlas{};
+    vk::destroy_image(g_vk_atlas_img);  // (destroyed once the frames that drew with it are done)
+    g_vk_atlas = Atlas{};
+    return n;
+}
+
+namespace {
+// mrp_fx_draw's pass: 0 everything, 1 only program 7's surfaces that write Z (mrp_fx_draw_surfaces), 2 everything but those
+int g_pass = 0;
+// a program-7 batch's primitive (type 9) whose surface writes Z: the levels' seas, lava, sand (drawn before the ambient particles)
+bool z_surface(const gs::Primitive& p) { return p.type == 9 && fld(p.st.test, 16, 1) != 0 && fld(p.st.zbuf, 32, 1) == 0; }
+}  // namespace
+
+// orig: (host) see mrp_fx.h
+void mrp_fx_draw_surfaces(const MrpChainFrame& f, int win_w, int win_h, const gs::Viewport* vp, size_t from) {
+    g_pass = 1;
+    mrp_fx_draw(f, win_w, win_h, vp, nullptr, from);
+    g_pass = 0;
+}
+
+// orig: (host) see mrp_fx.h
+void mrp_fx_draw(const MrpChainFrame& gs, int win_w, int win_h, const gs::Viewport* vp, const std::function<void(size_t, size_t)>& gs_draw, size_t from,
+                 size_t to, bool skip_surfaces) {
+    struct Pass {
+        int before;
+        explicit Pass(bool skip) : before(g_pass) {
+            if (skip && g_pass == 0) g_pass = 2;
+        }
+        ~Pass() { g_pass = before; }
+    } pass{skip_surfaces};
+    const std::vector<gs::Primitive>& prims = gs.prims;
     to = std::min(to, prims.size());
     if (from >= to) return;
-    if (!gs.fx_external() || (g_frame.notes.empty() && gs.vu7_batches().empty()) || !init_gl()) {
+    if (!gs.fx_external || (g_frame.notes.empty() && gs.vu7_batches.empty()) || !init_gl()) {
         if (gs_draw) gs_draw(from, to);
         return;
     }
@@ -1794,10 +1824,12 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
         const gs::Primitive& p = prims[pi];
         // the MRP's: fx, not the real block's while the effects shadow's stands in for it (as gs::draw: those are dropped)
         if (p.fx == 0) {
-            switch_to(kStepGs, pi);
+            if (g_pass != 1) switch_to(kStepGs, pi);
             continue;
         }
         if (p.sub == 2) continue;
+        if (g_pass == 1 && !(p.fx == kMrpFxVu7 && z_surface(p))) continue;
+        if (g_pass == 2 && p.fx == kMrpFxVu7 && z_surface(p)) continue;
         if (p.fx == kMrpFxVu7) {  // (program 7's batches: drawn from their input; their kicks are not drawn)
             if (p.type != 9) continue;
             if (g_render_fx) {
@@ -1942,7 +1974,7 @@ void mrp_fx_draw(const gs::Gs& gs, int win_w, int win_h, const gs::Viewport* vp,
     };
     for (const Step& sp : g_steps) {
         if (!g_render_fx) break;  // (the debug menu's effects layer hidden)
-        if (sp.kind == kStepGs) {  // the GS replica's run (its own GL state)
+        if (sp.kind == kStepGs) {  // the 2D's run (mrp_2d: its own GL state)
             if (gs_draw) {
                 const auto g0 = clock::now();
                 gs_draw(sp.from, sp.to);

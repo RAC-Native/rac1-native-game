@@ -12,7 +12,7 @@
 //    (`g_mrp_world_projection` 0), or in the VU's projection onto the game's frame (1, the faithful path's own pixels: the
 //    image diff's reference mode). The GS state (PRIM, TEX0 / TEX1 / CLAMP, TEST, ALPHA, ZBUF, FOGCOL) as the chain sets it,
 //    in the fragment shader as for the MRP mobys (texture function, alpha test, the GS's mip level, fog).
-// The world's chain is then not processed by the GS replica (Gs::set_chain_skips), as the MRP mobys'.
+// The world's chain is then not processed by the frame's chain reader (mrp_chain.h: its skip ranges), as the MRP mobys'.
 #ifndef RAC1_GAME_RENDER_MRP_WORLD_RENDERER_H
 #define RAC1_GAME_RENDER_MRP_WORLD_RENDERER_H
 
@@ -50,8 +50,8 @@ bool mrp_world_tfrag_lod();
 // a movie, the full-screen menu)
 void mrp_world_begin_frame(bool active, uint32_t chain_start, uint32_t chain_end);
 // orig: (host) the same in two halves: _async starts the scene's build (on a worker thread, RAC1_MRPW_THREAD=0 not),
-// after it mrp_world_skip_ranges() is known; the host may then run the GS replica's chain (it only reads EE memory) and must
-// call mrp_world_finish_frame() before anything else reads or writes EE memory, the scene, or the GS replica's registers'
+// after it mrp_world_skip_ranges() is known; the host may then read the frame's chain (it only reads EE memory) and must
+// call mrp_world_finish_frame() before anything else reads or writes EE memory, the scene, or the chain reader's GS registers'
 // use by the world (the scene waited for, its triangles and draw lists built)
 void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t chain_end);
 void mrp_world_finish_frame();
@@ -67,7 +67,7 @@ bool mrp_world_active();
 void mrp_world_draw(int win_w, int win_h, const gs::Viewport* vp);
 // orig: (host) the viewport the last frame's world was drawn into (x, y, w, h: GL's, the render scale's buffer when scaled); false: none
 bool mrp_world_last_viewport(int out[4]);
-// orig: (host) the world passes' chain ranges (tags [first, last]) the GS replica skips this frame
+// orig: (host) the world passes' chain ranges (tags [first, last]) the chain's reader skips this frame
 std::vector<std::pair<uint32_t, uint32_t>> mrp_world_skip_ranges();
 // orig: (host) testing: the in-game check (RAC1_WORLD_MRP_CHECK=1) and image diff (RAC1_WORLD_MRP_DIFF=1) run the faithful
 // world as well: true when the world programs' starts must be reported (mrp_world_program_start / _kick) and their GS

@@ -6,7 +6,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/render/render_toggles.h>
-#include <runtime/gs/gs_draw.h>
+#include <runtime/gs/gs_blend.h>
 #include <runtime/gs/gs_emu.h>
 #include <runtime/vk/vk_context.h>
 #include <runtime/vk/vk_shaders.h>

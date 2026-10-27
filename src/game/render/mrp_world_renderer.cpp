@@ -1,5 +1,6 @@
 // orig: (host) The MRP world renderer (see mrp_world_renderer.h).
 #include <game/render/mrp_world_renderer.h>
+#include <game/render/mrp_chain.h>
 
 #include <formats/moby_mrp.h>
 #include <formats/world_mrp.h>
@@ -781,6 +782,15 @@ void main() {
 }
 )";
 
+// orig: (host) the modern lighting's second pass of an alpha-tested batch (AFAIL RGB_ONLY: its failing pixels, no depth written)
+// tested LESS where the GS's test is GEQUAL (the host's LEQUAL): the pixels where the batch's first pass wrote its own depth -
+// those the second pass discards (their alpha passes) - not shaded again, the driver's early depth test leaving them out. Only a
+// failing pixel lying exactly on another surface's depth is lost (a few pixels in a million: docs/performance.md). 0: LEQUAL, as
+// the original lighting keeps it (RAC1_MRPW_P2_LESS)
+const bool g_p2_less = [] {
+    const char* e = std::getenv("RAC1_MRPW_P2_LESS");
+    return e == nullptr || std::atoi(e) != 0;
+}();
 GLuint g_prog = 0, g_prog_gpu = 0;
 GLuint g_prog_l = 0, g_prog_gpu_l = 0;  // the modern lighting's variants (SH_POINTS)
 GLuint g_prog_e = 0, g_prog_gpu_e = 0;  // the shadow pass's depth-only variants (early fragment tests: the opaque batches)
@@ -1349,11 +1359,11 @@ const TexRef* vram_texture(Level& L, uint64_t tex0, uint64_t tex1, uint64_t mip1
         std::fprintf(stderr, "[mrpw] world GIF texture TEX0 %016llx: format not decoded (psm %x cpsm %x csa %x)\n", static_cast<unsigned long long>(tex0), psm, cpsm, csa);
         return nullptr;
     }
-    const uint8_t* vram = gs::gs_global().vram();
+    const uint8_t* vram = gs::local_memory().vram();
     uint32_t clut[256];
     for (uint32_t i = 0; i < 256; ++i) {
         const uint32_t j = (i & 0xe7) | ((i & 0x08) << 1) | ((i & 0x10) >> 1);  // (CSM1)
-        const uint8_t* c = vram + gs::Gs::addr32(cbp, 1, j & 0xf, j >> 4);  // (the local memory's pixel little-endian)
+        const uint8_t* c = vram + gs::LocalMemory::addr32(cbp, 1, j & 0xf, j >> 4);  // (the local memory's pixel little-endian)
         clut[i] = c[0] | (c[1] << 8) | (c[2] << 16) | (static_cast<uint32_t>(c[3]) << 24);
     }
     uint32_t levels = 1;
@@ -1366,7 +1376,7 @@ const TexRef* vram_texture(Level& L, uint64_t tex0, uint64_t tex1, uint64_t mip1
         std::vector<uint32_t>& px = lv[l];
         px.resize(static_cast<size_t>(lw) * lh);
         for (uint32_t y = 0; y < lh; ++y)
-            for (uint32_t x = 0; x < lw; ++x) px[y * lw + x] = clut[vram[gs::Gs::addr8(tbp, tbw, x, y)]];
+            for (uint32_t x = 0; x < lw; ++x) px[y * lw + x] = clut[vram[gs::LocalMemory::addr8(tbp, tbw, x, y)]];
     }
     r.bucket = add_bucket(L, w, h, std::move(lv));
     r.layer = 0;
@@ -2578,6 +2588,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
             auto bind_pass = [&](int pass, bool dmask, int cmask) {
                 push.uAtPass = pass;
                 pk.depth_write = dmask;
+                pk.depth_compare = (g_p2_less && lit_prog && pass == 2 && !dmask && zcmp == VK_COMPARE_OP_LESS_OR_EQUAL) ? VK_COMPARE_OP_LESS : zcmp;
                 pk.color_mask = cmask == 0 ? 0xF : cmask == 2 ? 0 : 0x7;
                 vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, get_world_vk_pipeline(pk));
                 vkCmdPushConstants(cb, g_vk_world.pipe_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
@@ -2853,8 +2864,11 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         static const bool one_pass = std::getenv("RAC1_MRPW_ONEPASS") != nullptr;  // (testing: the failing pixels not drawn)
         if (rk.pass2 != 0 && !one_pass) {
             const uint32_t afail = rk.pass2;
+            const bool less = g_p2_less && variant.on && !(afail == 2 && zwrite) && fld(k.test, 16, 1) != 0 && fld(k.test, 17, 2) == 2;  // (as the Vulkan path: g_p2_less)
+            if (less) glDepthFunc(GL_LESS);
             set_pass(2, afail == 2 && zwrite, afail == 2 ? 2 : afail == 3 ? 3 : 0);
             draw();
+            if (less) glDepthFunc(GL_LEQUAL);
         }
         cur = rk;
         have = true;
@@ -3491,9 +3505,8 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
             if (lbu(a + 8) == 0x18) F.env_xyoff = static_cast<uint64_t>(lwu(a)) | (static_cast<uint64_t>(lwu(a + 4)) << 32);
         }
     }
-    {  // the GS registers before the frame's chain (build_triangles)
-        const gs::Gs& gs = gs::gs_global();
-        for (uint32_t r = 0; r < 128; ++r) F.gs_regs[r] = gs.reg(r);
+    {  // the GS registers before the frame's chain (build_triangles): as the last chain read left them
+        for (uint32_t r = 0; r < 128; ++r) F.gs_regs[r] = mrp_chain_gs_reg(r);
     }
     // the passes' ranges the replica skips: scene_build builds a scene exactly when there are passes and a chain
     static const bool sky_noskip = std::getenv("RAC1_MRPW_SKY_NOSKIP") != nullptr;  // (testing: the replica runs the sky's range too, drawn twice)
