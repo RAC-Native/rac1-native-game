@@ -145,6 +145,28 @@ StaticLevel g_slevel;
 TfragLevel g_tlevel;
 TfragColours g_tcols;
 GLuint g_tfrag_vao = 0;
+// The GPU path's draws find their command (cmds[2 x i]) by an instanced vertex attribute (location 8, divisor 1) over the
+// integers 0, 1, 2..: a draw's base instance offsets it, as the core profile does for every instanced attribute (the hardware's own
+// instance start). Not gl_BaseInstance, a value the driver supplies itself: on an Intel UHD 620 under Windows the ties, shrubs and mobys
+// were drawn now and then with other draws' records (the world in pieces, issue #113), as a wrong gl_BaseInstance draws them. The
+// same values, the same picture elsewhere. The buffer is shared by the levels' VAOs, grown as needed. (Vulkan: gl_InstanceIndex.)
+GLuint g_draw_ids = 0;
+size_t g_draw_ids_n = 0;
+// orig: (host) the draw indices' buffer holding at least `n` (bound to GL_ARRAY_BUFFER after)
+void draw_ids_reserve(size_t n) {
+    if (g_draw_ids == 0) {
+        glGenBuffers(1, &g_draw_ids);
+        rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &g_draw_ids, "MRP world: draw indices");
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, g_draw_ids);
+    if (n <= g_draw_ids_n) return;
+    size_t m = std::max<size_t>(g_draw_ids_n, 4096);
+    while (m < n) m *= 2;
+    std::vector<uint32_t> ids(m);
+    for (size_t i = 0; i < m; ++i) ids[i] = static_cast<uint32_t>(i);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(m * sizeof(uint32_t)), ids.data(), GL_STATIC_DRAW);
+    g_draw_ids_n = m;
+}
 const bool g_tfrag_verify = std::getenv("RAC1_MRPW_TFRAG_VERIFY") != nullptr;
 // (RAC1_MRPW_TFRAG_CHECK=1: the host's tfrag decisions made at the game's own distances / frustum and compared with the walker's draws,
 // nothing replaced) the frame's decisions (made in the capture step from the snapshot the tfrag pass left)
@@ -522,6 +544,10 @@ void load_level(int id) {
         glVertexAttribIPointer(2, 4, GL_SHORT, T, reinterpret_cast<void*>(offsetof(TVert, uv)));
         glVertexAttribIPointer(3, 4, GL_UNSIGNED_BYTE, T, reinterpret_cast<void*>(offsetof(TVert, col)));
         for (GLuint a = 0; a < 4; ++a) glEnableVertexAttribArray(a);
+        draw_ids_reserve(0);  // (the draw's index: g_draw_ids)
+        glVertexAttribIPointer(8, 1, GL_UNSIGNED_INT, sizeof(uint32_t), nullptr);
+        glVertexAttribDivisor(8, 1);
+        glEnableVertexAttribArray(8);
         glBindVertexArray(0);
     }
     L.loaded = true;
@@ -588,6 +614,7 @@ layout(location = 0) in ivec4 aPos;    // x, y, z, flags (1: a tie fat position,
 layout(location = 1) in ivec4 aDelta;  // a tie fat vertex's delta
 layout(location = 2) in ivec4 aUv;     // s, t, q (shrub h) x 4096
 layout(location = 3) in uvec4 aCol;    // colour indices (tie fat: c0, c1, c2)
+layout(location = 8) in uint aDraw;    // the draw's index (its base instance: g_draw_ids)
 struct Inst {
     mat4 clip;
     vec4 rows[4];
@@ -611,8 +638,8 @@ flat out uvec2 vTex;
 flat out uvec2 vState;
 int ftoi4(float f) { return int(clamp(f * 16.0, -2147483648.0, 2147483520.0)); }
 void main() {
-    uvec4 cmd = cmds[2 * gl_BaseInstance];
-    vState = uvec2(cmd.w, cmds[2 * gl_BaseInstance + 1].x);
+    uvec4 cmd = cmds[2u * aDraw];
+    vState = uvec2(cmd.w, cmds[2u * aDraw + 1u].x);
     Inst I = insts[cmd.x];
     vTex = cmd.yz;
     // the position: tie fat (delta x morph) + base
@@ -2669,6 +2696,9 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         glBindBuffer(kGlShaderStorageBuffer, 0);
         glBindBuffer(kGlDrawIndirectBuffer, g_indirect);
         glBufferData(kGlDrawIndirectBuffer, static_cast<GLsizeiptr>(std::max<size_t>(F.draws.size() * sizeof(DrawCmd), 16)), F.draws.data(), GL_STREAM_DRAW);
+        uint32_t ids = 0;  // (the draws' base instances within the draw indices' buffer)
+        for (const DrawCmd& d : F.draws) ids = std::max(ids, d.base_instance + 1);
+        draw_ids_reserve(ids);
     } else {  // (the buffers bound again: another renderer's draw may have bound its own since)
         for (int i = 0; i < 3; ++i) glBindBufferBase(kGlShaderStorageBuffer, static_cast<GLuint>(i), g_ssbo[i]);
         glBindBufferBase(kGlShaderStorageBuffer, 3, g_rcol_buf);
