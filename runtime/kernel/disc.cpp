@@ -34,7 +34,11 @@ std::atomic<int> g_source{-1};  // -1: not decided yet, 0: the files, 1: the ima
 // overlapping; the bytes no piece holds are zero. One place maps the disc's bytes to the host's files (files_find):
 // a mods folder in front of assets/disc/ would change only which path a piece's file opens (files_load).
 constexpr const char* kLayoutMagic = "rac1-native disc layout 1";
+#if defined(__WIIU__)
+constexpr size_t kOpenFiles = 16;  // the files kept open at once (the oldest closed past that; the Wii U's file system has few handles)
+#else
 constexpr size_t kOpenFiles = 64;  // the files kept open at once (the oldest closed past that)
+#endif
 
 struct DiscPiece {
     uint64_t first = 0, size = 0, file_offset = 0;
@@ -122,6 +126,12 @@ std::shared_ptr<std::FILE> files_handle(DiscFiles& d, uint32_t i) {
     std::scoped_lock lock(d.lock);
     if (d.handles[i]) return d.handles[i];
     std::FILE* raw = platform::open_file(d.paths[i], "rb");
+    // (no handle left - the file system's limit, below kOpenFiles on some hosts -: the kept ones closed, once, and the open tried again)
+    if (raw == nullptr && !d.opened.empty()) {
+        for (uint32_t k : d.opened) d.handles[k].reset();
+        d.opened.clear();
+        raw = platform::open_file(d.paths[i], "rb");
+    }
     std::error_code ec;
     if (raw == nullptr || std::filesystem::file_size(d.paths[i], ec) != d.sizes[i]) {
         if (raw != nullptr) std::fclose(raw);

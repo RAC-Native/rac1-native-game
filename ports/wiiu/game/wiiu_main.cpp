@@ -203,7 +203,7 @@ void iso_check() {
 int read_settings() {
     setenv("RAC1_HEADLESS", "1", 1);
     setenv("RAC1_AUDIO_DEVICE", "ax", 1); // (a headless run plays its sound only with a device named; RAC1_NO_AUDIO=1 turns it off)
-    setenv("RAC1_READ_ISO", "1", 1);      // (the disc image, not assets/disc's extracted files: not on the SD card yet; run.cfg may say 0)
+    setenv("RAC1_READ_ISO", "0", 1);      // (assets/disc's extracted files on the SD card, as the PC reads them; run.cfg may say 1: the image)
     // the MRP-lite's settings (MRP_LITE.md; run.cfg may say otherwise): the MRP's mobys with the GS path's work they make needless
     // skipped (RAC1_NO_GRAPHICS=2), the ties / shrubs' culling and relighting off and the game's tfrag pass not run (their drawing is
     // the host's: RAC1_WORLD_PASS_SKIP=6, RAC1_TFRAG_PASS_OFF=1)
