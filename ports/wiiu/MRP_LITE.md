@@ -256,5 +256,7 @@ Each phase ends with shots of the console's TV (RAC1_WIIU_SHOT) compared with th
   on any host). Per-upload logs found TRXPOS garbage, written by program 7's kicks (start 0x0e, shadows_vu1): on the PPC each
   of its kicks was 1024 qwords - runtime/vu/vu1.cpp's gif_packet_qwc read the GIF tag from VU memory with an 8-byte memcpy
   (the host words' halves swapped: the EOP bit never found), so the reader went on through the rest of VU memory, taking
-  vertex data for A+D writes. Fixed there and in vu_xgkick.cpp (the PC unchanged); to verify on the console (the FTP plugin
-  hung before the run). The replica path had the same bug (its cyan square).
+  vertex data for A+D writes. Fixed there and in vu_xgkick.cpp (the PC unchanged). The replica path had the same bug (its cyan square).
+  Then on the console: the G icon and the HelpDesk's text as on the PC (game frames 150 / 200), the same with the reader on its
+  worker (core 0) and on the game's thread; the pause menu (frames 500 / 600) as the PC's, boxes, frames and text - the frozen
+  scene under it not drawn yet.
