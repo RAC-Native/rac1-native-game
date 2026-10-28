@@ -327,6 +327,14 @@ static bool world_pass_skipped(int kind) {
     return wp_skip != nullptr && kind >= 0 && ((std::strtoul(wp_skip, nullptr, 16) >> kind) & 1) != 0;
 }
 
+// orig: (host) testing (the Wii U port): RAC1_TFRAG_PASS_OFF=1, the game's tfrag pass not run at all, nor its relighting at the passes'
+// end (which reads the pass's lists) - the pass's work is the chain's tfrag packets, which a renderer making the tfrags from the host's
+// decisions does not read (the tfrag snapshot is taken all the same); the tfrags keep the colours of the level's load
+static bool tfrag_pass_off() {
+    static const bool off = std::getenv("RAC1_TFRAG_PASS_OFF") != nullptr && std::atoi(std::getenv("RAC1_TFRAG_PASS_OFF")) != 0;
+    return off;
+}
+
 // orig: (host) the world passes' chain ranges of the frame (first tag, end), noted while on: for a renderer that draws the
 // world itself and has the GS replica skip them (the Wii U's 2D path; the MRP has its own, mrp_world_skip_ranges). The
 // taker clears them.
@@ -351,7 +359,8 @@ void world_pass(void (*pass)(), int kind) {
     static double wp_ms[4] = {};
     static int wp_n = 0;
     const auto wp_t0 = wp_time ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
-    if (world_pass_skipped(kind)) {
+    if (kind == 0 && tfrag_pass_off()) {
+    } else if (world_pass_skipped(kind)) {
         // the pass with its culling off (its render enable 0 while it runs: EN + 0x10 / 0x18 / 0x20), then put back
         const uint32_t en = OV(0x00169ff0u) + 0x10 + 8 * static_cast<uint32_t>(kind), was = lwu(en);
         sw(en, 0);
@@ -578,7 +587,7 @@ void render_frame() {
     dma_wait(2);
     prof_mark(OV(0x0015f3d0), 0x11);
     if ((flags() & 2) != 0) {
-        if (lw(EN + 0x10) != 0) {
+        if (lw(EN + 0x10) != 0 && !tfrag_pass_off()) {
             world_tfrag_lighting(OV(0x001c5400u));
             world_tfrag_end();
         }

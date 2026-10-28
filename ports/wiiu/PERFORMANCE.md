@@ -111,3 +111,20 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
 - Veldin explore, everything on: host frame 231 -> 155 ms, 3.48 -> 4.96 frames a second, 17.1 -> 23.4 game steps a second; the
   GPU's wait 81 -> 6 ms. Left on the game's thread: the game's steps (~117 ms: ~5 x 23 ms) and the world's first half (~19 ms:
   the colours' compare, static_frame_build, scene_from_static). The picture as before (shots at game frames 150 / 200).
+
+### The game's tfrag pass off (2026-10-28)
+
+- RAC1_TFRAG_PASS_OFF=1 (a Wii U default now, with RAC1_NO_GRAPHICS=2, RAC1_MOBY_MRP=1, RAC1_WORLD_PASS_SKIP=6: wiiu_main.cpp, run.cfg
+  may say otherwise): the game's tfrag pass is not run, nor its relighting at the passes' end (which reads the pass's lists: it threw
+  on bad pointers without them) - the tfrags are the host's (tfrag_decide, the CPU route), their colours the level's load's. The game
+  state the same on the PC's walk (hero and camera, 600 frames explore; across a level change). Veldin: 23.4 -> 25.4 game steps a
+  second, 4.96 -> 5.33 frames a second; the ground drawn as before.
+- The way back to the menu hung with the frames overlapped: the frames after the game's end no longer overlap (WHBGfxFinishRender's
+  own wait), the end waits for the last frame's timestamp and the world's worker before the backends free their data; each step on
+  the log ("rac1-wiiu: ending: ...").
+- The game's own profiler (RAC1_PROFILER_DUMP=120) per host frame (~4.7 steps): the moby pass (the draw loop) 36.8 ms, the world
+  passes 20.7, logic 14.0, moby updates 13.2, joints / skinning 12.2, the chain reader's wait 7.1 -> next: the moby pass's work the
+  MRP does not need (its GS packets).
+- The stutters (the game's thread stalled while the IOP's mirror plays on: "frames played alone") come with streams and files read
+  from the ISO on the SD on the game's thread: the reads to a thread of their own (as the PS2's IOP did them), the disc's files
+  extracted onto the SD instead of the ISO.

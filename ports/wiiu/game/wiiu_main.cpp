@@ -202,9 +202,15 @@ void iso_check() {
 
 int read_settings() {
     setenv("RAC1_HEADLESS", "1", 1);
-    setenv("RAC1_NO_GRAPHICS", "1", 1);
     setenv("RAC1_AUDIO_DEVICE", "ax", 1); // (a headless run plays its sound only with a device named; RAC1_NO_AUDIO=1 turns it off)
     setenv("RAC1_READ_ISO", "1", 1);      // (the disc image, not assets/disc's extracted files: not on the SD card yet; run.cfg may say 0)
+    // the MRP-lite's settings (MRP_LITE.md; run.cfg may say otherwise): the MRP's mobys with the GS path's work they make needless
+    // skipped (RAC1_NO_GRAPHICS=2), the ties / shrubs' culling and relighting off and the game's tfrag pass not run (their drawing is
+    // the host's: RAC1_WORLD_PASS_SKIP=6, RAC1_TFRAG_PASS_OFF=1)
+    setenv("RAC1_NO_GRAPHICS", "2", 1);
+    setenv("RAC1_MOBY_MRP", "1", 1);
+    setenv("RAC1_WORLD_PASS_SKIP", "6", 1);
+    setenv("RAC1_TFRAG_PASS_OFF", "1", 1);
     std::FILE* f = std::fopen("run.cfg", "r");
     if (f == nullptr) return 0;
     int n = 0;
@@ -300,12 +306,14 @@ int main(int argc, char** argv_in) {
     // (with the picture, GX2 stays up until ProcUI lets go: the WHB helpers' foreground callbacks still use it while the
     // menu takes over; shut down before, the console hung on its way back)
     if (gfx_up) wiiu_gfx_game_ended();
+    say("ending: the menu asked for");
     SYSLaunchMenu();
     while (WHBProcIsRunning()) {
         if (gfx_up) wiiu_gfx_frame();
         else if (g_console) WHBLogConsoleDraw();
         OSSleepTicks(OSMillisecondsToTicks(16));
     }
+    say("ending: released");
     if (gfx_up) wiiu_gfx_stop();
     say("exit");
     if (g_console) WHBLogConsoleFree();

@@ -21,6 +21,8 @@
 #include <gx2/surface.h>
 #include <gx2/mem.h>
 #include <gx2/state.h>
+#include <coreinit/debug.h>
+#include <whb/log.h>
 #include <gx2/display.h>
 #include <gx2/event.h>
 #include <gx2/swap.h>
@@ -122,18 +124,43 @@ void rac1_wiiu_picture_frame(const rac1::gs::Gs* replica, float fb_w, float fb_h
 }
 
 // the game over (its main returned): its 2D no longer drawn, the frames on the way back to the menu the test's
+namespace {
+bool g_ending = false;  // (the game ended: wiiu_gfx_game_ended)
+OSTime g_frame_ts = 0;  // (the last frame's commands, GX2GetLastSubmittedTimeStamp: waited for before the next frame's writes)
+}  // namespace
+
 void wiiu_gfx_game_ended() {
+    // (the GPU may still be drawing the last frame - the frames overlap the next one's work, wiiu_gfx_frame -: waited for before the
+    // backends free what it reads)
+    // (each step on the log: the way back to the menu hung - 2026-10-28 - and the log says where)
+    auto step = [](const char* m) {
+        WHBLogPrintf("rac1-wiiu: ending: %s", m);
+        OSReport("rac1-wiiu: ending: %s\n", m);
+    };
+    step("the GPU's last frame");
+    if (g_on && g_frame_ts != 0) GX2WaitTimeStamp(g_frame_ts);
+    step("waited");
+    g_frame_ts = 0;
+    g_ending = true;  // (the frames from here to ProcUI's release: no timestamp waited for, WHBGfxFinishRender's own wait - the
+                      // application leaving the foreground, a frame's commands may never retire: waiting for them hung the console)
     g_2d.have = false;
     g_2d.replica = nullptr;
     // (the 2D's backend let go before the menu takes over: with it up, the console hung on its way back)
     if (g_2d_ready) rac1::gs::draw_gx2_shutdown();
     g_2d_ready = false;
+    step("2D (replica) down");
     if (g_m2d_ready) rac1::mrp_2d_gx2_shutdown();
     g_m2d_ready = false;
+    step("2D down");
     if (g_mobys_ready) rac1::mrp_moby_gx2_shutdown();
     g_mobys_ready = false;
-    if (g_world_ready) rac1::mrp_world_gx2_shutdown();
+    step("mobys down");
+    if (g_world_ready) {
+        rac1::mrp_world_wiiu_join();  // (the preparation's worker idle before the world's data goes)
+        rac1::mrp_world_gx2_shutdown();
+    }
     g_world_ready = false;
+    step("world down");
 }
 
 bool wiiu_gfx_wanted() {
@@ -187,7 +214,6 @@ namespace {
 enum TimeSlot { kTmChain, kTmMobyPrep, kTmWorldPrep, kTmWorldJoin, kTmGpuWait, kTmJoin, kTmBegin, kTmWorld, kTmMobys, kTm2d, kTmFinishTv, kTmDrc, kTmFinish, kTmN };
 const char* const kTmName[kTmN] = {"chain start", "mobys' prepare", "world's prepare", "world's worker join", "GPU wait (the frame before)", "chain join", "begin (swap wait)",
                                    "world draws", "moby draws", "2D draws", "TV finish", "GamePad", "finish"};
-OSTime g_frame_ts = 0;  // (the last frame's commands, GX2GetLastSubmittedTimeStamp: waited for before the next frame's writes)
 double g_tm[kTmN] = {}, g_tm_total = 0.0;
 uint64_t g_tm_frames = 0;
 std::chrono::steady_clock::time_point g_tm_last{};
@@ -357,7 +383,8 @@ void wiiu_gfx_frame() {
     // the GPU draws a frame while the game's thread runs the next steps: the frame before's commands waited for here, before
     // this frame writes the memory the GPU reads (the backends' rings, the per-frame buffers) - not at the frame's end as
     // WHBGfxFinishRender does (GX2DrawDone). (testing: RAC1_WIIU_OVERLAP=0 waits at the end as before)
-    static const bool overlap = std::getenv("RAC1_WIIU_OVERLAP") == nullptr || std::atoi(std::getenv("RAC1_WIIU_OVERLAP")) != 0;
+    static const bool overlap_on = std::getenv("RAC1_WIIU_OVERLAP") == nullptr || std::atoi(std::getenv("RAC1_WIIU_OVERLAP")) != 0;
+    const bool overlap = overlap_on && !g_ending;
     if (overlap && g_frame_ts != 0) GX2WaitTimeStamp(g_frame_ts);
     lap(kTmGpuWait);
     if (g_frames % 300 == 0)  // (the memory left, on the log: a leak shows)
