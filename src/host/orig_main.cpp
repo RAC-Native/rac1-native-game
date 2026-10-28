@@ -2197,8 +2197,18 @@ int main(int argc, char** argv) {
     if (!headless) {  // Options > Graphics's Monitor row: the host's monitors, for the row and for the window to go on
         std::vector<std::string> names;
         int n = 0;
-        if (GLFWmonitor** all = glfwGetMonitors(&n); all != nullptr)
-            for (int i = 0; i < n; ++i) names.emplace_back(glfwGetMonitorName(all[i]));
+        if (GLFWmonitor** all = glfwGetMonitors(&n); all != nullptr) {
+            for (int i = 0; i < n; ++i) names.emplace_back(glfwGetMonitorName(all[i]) != nullptr ? glfwGetMonitorName(all[i]) : "?");
+            // (two monitors of the same name - "Generic PnP Monitor" twice - told apart by their place on the desktop, which
+            // stays from one start to the next where GLFW's order may not: the name kept in the preferences, GitHub issue #111)
+            const std::vector<std::string> plain = names;
+            for (int i = 0; i < n; ++i) {
+                if (std::count(plain.begin(), plain.end(), plain[static_cast<size_t>(i)]) < 2) continue;
+                int mx = 0, my = 0;
+                glfwGetMonitorPos(all[i], &mx, &my);
+                names[static_cast<size_t>(i)] += " (at " + std::to_string(mx) + "," + std::to_string(my) + ")";
+            }
+        }
         rac1::graphics_set_monitors(std::move(names));
     }
     int win_w0 = 960, win_h0 = 720;  // testing: RAC1_WINDOW=WxH, RAC1_VIEW_MODE=0|1|2 (render_toggles.h)

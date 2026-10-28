@@ -16,7 +16,22 @@ What changed in each release. Releases are source only: you build the game with 
 - Debug menu: the levels' seas (water, lava, sand) can be picked and given a material (Lights tab, aimed or clicked; Textures tab,
   "Seas drawn"); a distant surface can be picked; the ambient particles have a tab of their own, with Solo per line.
 
+### Launcher and setup
+- Launcher: a new launcher is downloaded only once the player says yes, and checked against the SHA-256 the release lists for
+  it before it replaces the running one; the Windows launcher's file properties name its company, product and description, and
+  each release has a `.sha256` file beside each launcher. docs/launcher.md says how to check the file and report an
+  antivirus false positive (F-Secure's `Drop.Win64.APC.HEUR`, #115).
+
 ### Fixes
+- Options > Graphics > Monitor: two monitors with the same name ("Generic PnP Monitor" twice) are told apart by their place on
+  the desktop ("Generic PnP Monitor (at 1920,0)"), so the one chosen is the one the game opens on after a restart (#111).
+- Vulkan: the world's push constants are 128 bytes, not 144, and the ambient occlusion's 176 bytes of parameters are in a
+  uniform buffer: past the 128 bytes some drivers (Intel's) have, which can draw a level black (#113). At the start the log
+  names the device and checks every feature, limit and target format the renderer relies on: a missing one is named and the
+  game opens with OpenGL; without `shaderFloat64` the tfrags are made on the CPU, and a lost device is said in the log (#113).
+- Setup: a build folder configured for a compiler that a system update has since replaced is configured afresh, and a build
+  that fails in a kept build folder is tried once more from a fresh configuration before the update gives up: an update no
+  longer needs a new game folder (#114).
 - Debug menu: changing level (the Levels tab, `RAC1_GOTO`) during a movie stops the movie first, as its skip does: its sound
   no longer plays on and its last picture no longer stays on the screen over the next level (#101). Testing: `RAC1_MOVIE_AT`.
 - Debug menu: the free hoverboard's jump plays once (take-off, in the air, landing) and goes back to riding, as the race board's

@@ -205,6 +205,7 @@ namespace Rac1Launcher
             public Version Version;
             public string Notes = "";
             public string LauncherUrl;  // (the release's launcher for this system, Platform.LauncherAsset, when it has one)
+            public string LauncherSha256;  // (its SHA-256 as GitHub computed it at the upload, lowercase hex, or null)
         }
 
         /// <summary>The latest release (throws when GitHub cannot be reached).</summary>
@@ -220,7 +221,16 @@ namespace Rac1Launcher
             if (m.Success) r.Version = new Version(m.Value);
             r.Notes = JsonString(json, "body") ?? "";
             var a = Regex.Match(json, "\"browser_download_url\"\\s*:\\s*\"([^\"]*/" + Regex.Escape(Platform.LauncherAsset) + ")\"");
-            if (a.Success) r.LauncherUrl = a.Groups[1].Value;
+            if (a.Success)
+            {
+                r.LauncherUrl = a.Groups[1].Value;
+                // (the asset's "digest", "sha256:...", is in its own object, before its download URL: after the
+                // previous asset's URL, if any)
+                int from = json.LastIndexOf("\"browser_download_url\"", Math.Max(0, a.Index - 1), StringComparison.Ordinal);
+                string own = json.Substring(from < 0 ? 0 : from + 1, a.Index - (from < 0 ? 0 : from + 1));
+                var d = Regex.Match(own, "\"digest\"\\s*:\\s*\"sha256:([0-9a-fA-F]{64})\"");
+                if (d.Success) r.LauncherSha256 = d.Groups[1].Value.ToLowerInvariant();
+            }
             if (r.Tag == "") throw new InvalidDataException("GitHub's answer has no release tag");
             return r;
         }
@@ -276,6 +286,17 @@ namespace Rac1Launcher
                     progress(done, total);
                 }
             }
+        }
+    }
+
+    static class Hash
+    {
+        /// <summary>A file's SHA-256, lowercase hex.</summary>
+        public static string Sha256(string file)
+        {
+            using (var sha = SHA256.Create())
+            using (var f = File.OpenRead(file))
+                return BitConverter.ToString(sha.ComputeHash(f)).Replace("-", "").ToLowerInvariant();
         }
     }
 

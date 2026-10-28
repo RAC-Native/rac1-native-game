@@ -48,15 +48,23 @@ jobs:
           if ($p.HasExited) { throw "the launcher closed by itself (exit code $($p.ExitCode))" }
           "running: $($p.MainWindowTitle)"
           Stop-Process $p
+      - name: SHA-256 (in the job summary and beside the file; GitHub also lists it on the release page)
+        shell: pwsh
+        run: |
+          $h = (Get-FileHash out/rac1-launcher.exe -Algorithm SHA256).Hash.ToLower()
+          "$h  rac1-launcher.exe" | Set-Content -NoNewline -Encoding ascii out/rac1-launcher.exe.sha256
+          "rac1-launcher.exe SHA-256: ``$h``" >> $env:GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@v4
         with:
           name: rac1-launcher-windows
-          path: out/rac1-launcher.exe
+          path: |
+            out/rac1-launcher.exe
+            out/rac1-launcher.exe.sha256
       - name: Attach to the release
         if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" out/rac1-launcher.exe --clobber
+        run: gh release upload "${{ github.event.release.tag_name }}" out/rac1-launcher.exe out/rac1-launcher.exe.sha256 --clobber
 
   linux:
     name: Linux (rac1-launcher-linux-x64)
@@ -93,10 +101,16 @@ jobs:
             exit 1
           fi
           kill "$pid"
+      - name: SHA-256 (in the job summary and beside the file; GitHub also lists it on the release page)
+        run: |
+          (cd out && sha256sum rac1-launcher-linux-x64 > rac1-launcher-linux-x64.sha256)
+          echo "rac1-launcher-linux-x64 SHA-256: \`$(cut -d' ' -f1 out/rac1-launcher-linux-x64.sha256)\`" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: rac1-launcher-linux
-          path: out/rac1-launcher-linux-x64
+          path: |
+            out/rac1-launcher-linux-x64
+            out/rac1-launcher-linux-x64.sha256
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -107,4 +121,4 @@ jobs:
         if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" out/rac1-launcher-linux-x64 --clobber
+        run: gh release upload "${{ github.event.release.tag_name }}" out/rac1-launcher-linux-x64 out/rac1-launcher-linux-x64.sha256 --clobber

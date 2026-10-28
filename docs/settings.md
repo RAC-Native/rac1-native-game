@@ -88,7 +88,8 @@ headless runs) the row is the game's own Mono / Stereo.
   window mode the window is centred on it. GLFW cannot place a window on Wayland, where the
   compositor decides, so the window mode half does nothing there. The choice is kept by the
   monitor's name, not by its place in the list, because that order is not fixed; a monitor that is
-  not connected when the game starts falls back to the first one.
+  not connected when the game starts falls back to the first one. Two monitors with the same name
+  are told apart by their place on the desktop: "Generic PnP Monitor (at 1920,0)".
 - **Render Resolution** scales the 3D; the HUD stays at the window's resolution.
 - **Aspect Ratio** Fill Screen widens the 3D to the window's shape without changing what the game
   sees; **Fit to Screen** applies when the chosen shape is not the window's. See

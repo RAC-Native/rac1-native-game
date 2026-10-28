@@ -1276,6 +1276,7 @@ bool tfrag_gpu_init() {
         g_vk_gpu.tried = true;
         VkDevice dev = vk::device();
         if (dev == VK_NULL_HANDLE) return false;
+        if (!vk::has_float64()) return false;  // (the shader's doubles: without shaderFloat64 the tfrags are made on the CPU, #113)
         VkDescriptorSetLayoutBinding bindings[10]{};
         for (uint32_t i = 0; i < 10; ++i) {
             bindings[i].binding = i;
