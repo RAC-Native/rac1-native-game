@@ -176,8 +176,10 @@ other levels have instead, and what the free board uses:
   kill height still run as in any state), and the ride moves him between the game's frames (`dev_free_board_frame`, after
   each frame the hero was updated in; none in the pause menu, a dialog or the level's exit).
 - **The riding** is ours: the stick turned through the camera as Ratchet's walk does (up: away from the camera; the board
-  turns towards it at 4.5 rad/s standing, 2.2 at full speed), speeding up to 20 units/s, cross jumps (also just off an
-  edge), gravity 30. The game's own segment query (`segment_collide`, 0x1efc70) finds the walls (two rays, at 0.35 and 1.1,
+  turns towards it at 4.5 rad/s standing, 2.2 at full speed), speeding up to 20 units/s, gravity 21. Cross jumps (also just
+  off an edge): one jump a press (held, it does not jump again; a press is seen at any game frame and used at the ride's
+  next one), always 6.25 units/s up, the arc integrated exactly, so every jump goes 0.93 up and lasts 0.6 s whatever the
+  frame's length, as the race board's on Kalebo III (measured there: 0.93, 36 frames). The game's own segment query (`segment_collide`, 0x1efc70) finds the walls (two rays, at 0.35 and 1.1,
   slid along) and the floor (steps of 0.7 climbed, slopes followed down 0.9, more is a fall; a ramp's top throws him up), on a
   journal of EE memory with the contact registers kept (as `mrp_lod.cpp`'s shadow runs do), so the queries leave the game's
   memory as it was.
@@ -185,12 +187,17 @@ other levels have instead, and what the free board uses:
   (`0x15f638`), off the map, airborne for 4 s, or put in the fall to death 0x77 by a level's pit: back on foot (state 0) on
   the last solid ground (where he rode a quarter second before, on flat ground). Never a race respawn.
 - **The animations** are level data. The hero's sequences come from the level's core (its 256-entry hero sequence table, the
-  level loader puts them in his class's slots); Kalebo III's core has the board's (58 falling, 82 standing, 85 riding, 98
-  jumping), Veldin's has every sequence, most levels have none of them (their slots are null). They are read once from Kalebo
+  level loader puts them in his class's slots); Kalebo III's core has the board's, played as its race board plays them
+  (measured on Kalebo III): 82 the board ridden (standing too), 85 the jump (frames 0..4 a crouch the race skips, 5..13 in
+  the air, 14..22 the landing), 58 a long fall. Veldin's core has every sequence, most levels have none of them (their slots
+  are null). They are read once from Kalebo
   III's core on the disc, put at `host_layout::DEV_BOARD_SEQS` (0x02300000, above the game's 32 MB) with their frame table and
   trigger block made addresses as the game's load does (checked byte for byte against Kalebo III's own copies), and hooked into
   the class's null slots while riding; the slots are emptied again once Ratchet plays none of them. Played with the game's
-  `hero_anim_set`.
+  `hero_anim_set`; the game plays a sequence on at its own rate and loops it, so in the air the ride picks 85's frames
+  along the arc (from 5 at the take-off to 14 at the landing, as the race does; driving off an edge from 11), lets the
+  landing frames play once, then rides on 82; after 0.75 s falling, 58. (Before, 85 was taken for the riding and played on
+  a loop, and 98, which the race does not jump with, for the jump.)
 - **The board** is Kalebo III's class 439, drawn by the MRP only (`mrp_moby_renderer.cpp`, `append_guest`): its asset and the
   textures it names are read from `assets/generated/mrp/moby/level16/` and added to the level's (the level's assets loaded again
   once, at the first ride), and it is drawn after the frame's mobys on Ratchet as the frame drew him: his world matrix with the

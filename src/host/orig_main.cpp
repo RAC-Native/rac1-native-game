@@ -81,6 +81,8 @@
 #include <game/ovl/arrival.h>
 #include <game/ovl/cutscene.h>
 #include <game/ovl/level_change.h>
+#include <game/ovl/movie_mode.h>
+#include <game/ovl/veldin_mobys.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/particles_vu1.h>
@@ -2616,6 +2618,16 @@ int main(int argc, char** argv) {
         }
         if (!goto_chain.empty()) goto_level = goto_chain[0].first, goto_frame = goto_chain[0].second;
     }
+    // testing: RAC1_MOVIE_AT=[h]<n>@<frame>: at that game frame (in play, game mode 0) the game's movie `n` started in game
+    // mode 1: the story movie n (0x299560, as the pause menu plays them), or with `h` the level's help movie n (0x299460, as
+    // a help desk plays them)
+    int movie_at_n = -1;
+    bool movie_at_help = false;
+    long long movie_at = -1;
+    if (const char* m = std::getenv("RAC1_MOVIE_AT")) {
+        movie_at_help = *m == 'h';
+        if (std::sscanf(m + (movie_at_help ? 1 : 0), "%d@%lld", &movie_at_n, &movie_at) != 2) movie_at = -1;
+    }
     // testing: RAC1_DIE_AT=<frame>: at that game frame Ratchet is killed through the game's own death state
     // (the debug menu's Kill Ratchet)
     const long long die_at = std::getenv("RAC1_DIE_AT") != nullptr ? std::atoll(std::getenv("RAC1_DIE_AT")) : -1;
@@ -2881,16 +2893,28 @@ int main(int argc, char** argv) {
                 mrp_scene_begin_frame();
                 rac1::mrpw::scene_begin_update();  // (the MRP world: the world passes' chain ranges of this update)
                 g_world_chain_forced = boot_active() && !g_title_scene_host;  // (the title's passes keep their chain)
+                if (movie_at >= 0 && static_cast<long long>(game_frame) == movie_at && !exiting && !ee_thread_suspended() && !boot_active() && lw(OV(0x0015f5c4)) == 0) {
+                    if (movie_at_help) movie_play(movie_at_n);
+                    else movie_story_play(movie_at_n);
+                    std::printf("[orig] RAC1_MOVIE_AT: %s movie %d started at frame %llu\n", movie_at_help ? "the help" : "the story", movie_at_n, static_cast<unsigned long long>(game_frame));
+                }
                 for (const auto& [gl, gf] : goto_chain)  // (the chain's next change)
                     if (game_frame == gf) goto_level = gl, goto_frame = gf;
                 if (goto_level >= 0 && game_frame == goto_frame && !exiting && !ee_thread_suspended()) {
                     if (boot_active()) {  // the boot's title left for the level (the debug menu's skip)
                         boot_skip_to(goto_level);
+                    } else if (movie_mode_stop()) {  // (a movie playing, game mode 1: ended first, the change at the next frame)
+                        std::printf("[orig] RAC1_GOTO: a movie playing at frame %llu: stopped first\n", static_cast<unsigned long long>(game_frame));
+                        goto_frame = game_frame + 1;
                     } else {
                         level_change_request(0, goto_level);
                         level_exit_to(goto_level);
                     }
-                    std::printf("[orig] RAC1_GOTO: the level change to %d asked for at frame %llu\n", goto_level, static_cast<unsigned long long>(frame));
+                    if (goto_frame == game_frame) {
+                        int mw = 0, mh = 0;
+                        std::printf("[orig] RAC1_GOTO: the level change to %d asked for at frame %llu (movie: %s, picture %s)\n", goto_level, static_cast<unsigned long long>(frame),
+                                    movie_hw_is_open() ? "open" : "closed", movie_hw_shown(mw, mh) != nullptr ? "shown" : "none");
+                    }
                 }
                 // the game's frame on the EE thread's coroutine (ADR 0012): a vsync wait inside a blocking loop (the screen fade
                 // 0x1f9838) suspends it, this host frame shows that frame and the next one resumes it (the lambda not called again)

@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 343 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 344 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
 | [Debugging](#debugging-variables) | 258 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 64 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Automated testing](#automated-testing-variables) | 65 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -338,7 +338,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_FRAMES` | integer N; default 300 headless, 0 = run until closed in a window | Number of game frames to run before the program exits (screenshot.ppm is written at the last frame of a headless run). |
 | `RAC1_GIVE_FRAME` | game frame number; default 60 | The frame at which RAC1_GIVE_ITEMS, RAC1_BOLTS and the related item or ammo settings are applied (counted after a RAC1_GOTO level change). |
 | `RAC1_GIVE_ITEMS` | comma-separated item ids; unset = none | Gives Ratchet those items at the item-giving frame (RAC1_GIVE_FRAME), through the game's own item function. |
-| `RAC1_GOTO` | N@F[,N@F...] (level number @ game frame; the frame defaults to 60 if only N is given); unset = off | At game frame F triggers the game's own level change to level N, as the debug menu's Levels tab does; several, comma-separated, change level in turn. |
+| `RAC1_GOTO` | N@F[,N@F...] (level number @ game frame; the frame defaults to 60 if only N is given); unset = off | At game frame F triggers the game's own level change to level N, as the debug menu's Levels tab does; several, comma-separated, change level in turn. During a movie (game mode 1) the movie is stopped first, as its skip stops it, and the change made at the next frame. |
 | `RAC1_HERO_AT` | <class>@<frame>[,dx,dy,dz[,yaw]] (several separated by /); unset = off | At that game frame places Ratchet through the game's own placement next to the first live moby of that class (placed by the level or spawned since) (default offset 3 0 1, class -1 = the offset is an absolute position), without changing story flags. |
 | `RAC1_HOST_DELAY_MS` | integer milliseconds; default 0 | Makes each host frame this much longer by sleeping, to check that a slow host does not change the game's state. |
 | `RAC1_HOVERBOARD_AT` | <frame>[,<frame>,...] (at most 8); unset = off | At those game frames the debug menu's Hoverboard anywhere is ticked, unticked, ticked... in turn (Ratchet gets on a hoverboard where he stands, then off: the race's board on Rilgar and Kalebo III, the free board elsewhere). |
@@ -351,6 +351,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_LEVEL` | level number; default 0 (Veldin); same as --level | Starts directly on the given level instead of the normal start. |
 | `RAC1_MENU_AT` | integer frame number; default 120 | In a scripted menu input run (simulated keys), the frame at which the simulated button press happens instead of the default, with Start also pressed at frame 120 to skip the arrival scene. |
 | `RAC1_MIRROR_DUMP` | file path; default none | With RAC1_IOP_MIRROR_TEST, writes the mirror's output (48 kHz stereo 16-bit) to the file. |
+| `RAC1_MOVIE_AT` | [h]<n>@<frame>; unset = off | At that game frame (in play) starts the game's movie n in its movie mode: the story movie n, as the pause menu plays them, or with `h` the level's help movie n, as a help desk plays them; with RAC1_GOTO later, it tests a level change in the middle of a movie. |
 | `RAC1_MRP_CHECK` | any value = on; default off | Checks the modern moby renderer's triangles against the CPU reference (slots and textures, in order); also turns the moby skip optimisation off. |
 | `RAC1_MRP_DIFF` | any value = on; default off | Renders the faithful image offscreen first and compares the modern pipeline's mobys against it, accumulating pixel difference statistics; the moby skip optimisation is turned off. |
 | `RAC1_MRP_LOD_KEEP_REAL` | 0 = off; default on (any other value or unset keeps it on) | Testing switch for the modern renderer's level-of-detail handling: setting it to 0 turns off the step that keeps the real scene's objects in the drawn scene, so that the drops they prevent can be seen. |

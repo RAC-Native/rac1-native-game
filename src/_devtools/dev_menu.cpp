@@ -14,6 +14,7 @@
 #include <game/boot/front_end.h>
 #include <game/enhance/advanced.h>
 #include <game/ovl/level_change.h>
+#include <game/ovl/movie_mode.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/variants_l16.h>
 #include <game/ovl/variants_l5.h>
@@ -31,6 +32,7 @@
 #include <game/render/shader_manager.h>
 #include <runtime/iop/snd989_iop.h>
 #include <runtime/ipu/movie_hw.h>
+#include <runtime/ee/ee_thread.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/vk/vk_context.h>
@@ -895,6 +897,33 @@ std::vector<std::string> overlay_map_summary(int level) {
     return out;
 }
 
+// The Levels tab's level change waiting for a movie to end (-1: none)
+int g_level_pending = -1;
+
+// orig: (host) the Levels tab's level change: the game's request 0x24d430 (the level's state saved, as the ship's map
+// does) and 0x28eeb0 (the next level, the main loop left). A movie playing (game mode 1) is stopped first, as its skip
+// stops it, and the change made once it has ended (dev_level_pending_apply, between game frames): left in the middle,
+// the movie played on over the next level (its sound, its last picture on the screen)
+void dev_level_change(int32_t level) {
+    if (movie_mode_stop()) {
+        g_level_pending = level;
+        return;
+    }
+    g_level_pending = -1;
+    level_change_request(0, level);
+    level_exit_to(level);
+}
+
+// orig: (host) the level change asked for while a movie played, once it has ended
+void dev_level_pending_apply() {
+    if (g_level_pending < 0 || ee_thread_suspended()) return;
+    if (boot_active() || r32(OV(0x0015f570)) != 0) {  // (the boot again, or the level left by the game meanwhile)
+        g_level_pending = -1;
+        return;
+    }
+    dev_level_change(g_level_pending);
+}
+
 void tab_levels() {
     const int32_t cur = r32(0x0015ed84);
     ImGui::Text("Level %d: %s   game mode %d", cur, cur >= 0 && cur < 19 ? PLANETS[cur] : "?", r32(OV(0x0015f5c4)));
@@ -931,13 +960,12 @@ void tab_levels() {
     for (const std::string& s : overlay_map_summary(selected)) ImGui::BulletText("%s", s.c_str());
     if (selected != 0 && overlay_map_summary(selected).empty())
         ImGui::TextDisabled("(run setup.sh for assets/generated/overlay_map: the level's overlay compared)");
-    const bool busy = r32(OV(0x0015f570)) != 0;
+    const bool busy = r32(OV(0x0015f570)) != 0 || g_level_pending >= 0;  // (the level left, or a change waiting for a movie's end)
     if (busy) ImGui::BeginDisabled();
     if (boot_active()) {  // the game's own start: its title left for the planet, as a loaded game leaves it
         if (ImGui::Button("Skip the boot: go to this planet")) boot_skip_to(selected);
     } else if (ImGui::Button(selected == cur ? "Reload this planet" : "Go to this planet")) {
-        level_change_request(0, selected);  // 0x24d430: the level's state saved (as the ship's map does)
-        level_exit_to(selected);            // 0x28eeb0: the next level, the main loop left
+        dev_level_change(selected);  // (0x24d430, 0x28eeb0; a movie playing ended first)
     }
     if (busy) ImGui::EndDisabled();
     ImGui::SameLine();
@@ -2385,6 +2413,7 @@ void dev_hoverboard_apply() {
 
 void dev_menu_game_frame() {
     const DevSettings& s = g_settings;
+    dev_level_pending_apply();
     dev_kill_apply();
     dev_hoverboard_apply();
     if (g_move.on) hero_teleport(g_move.pos, &g_move.yaw);
