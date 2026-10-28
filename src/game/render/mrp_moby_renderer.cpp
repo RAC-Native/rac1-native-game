@@ -77,6 +77,28 @@ const bool g_env_debug = std::getenv("RAC1_MRP_DEBUG") != nullptr;
 
 double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 
+// The draws find their command (cmds[i]) by an instanced vertex attribute (location 8, divisor 1) over the integers 0, 1, 2..: a
+// draw's base instance offsets it, as the core profile does for every instanced attribute. Not gl_BaseInstance, which the driver
+// supplies itself: see mrp_world_renderer.cpp g_draw_ids (issue #113: on an Intel UHD 620 under Windows the mobys were drawn now and
+// then with other parts' records, or not at all). The buffer is shared by the levels' VAOs, grown as needed.
+GLuint g_draw_ids = 0;
+size_t g_draw_ids_n = 0;
+// orig: (host) the draw indices' buffer holding at least `n` (bound to GL_ARRAY_BUFFER after)
+void draw_ids_reserve(size_t n) {
+    if (g_draw_ids == 0) {
+        glGenBuffers(1, &g_draw_ids);
+        rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &g_draw_ids, "MRP mobys: draw indices");
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, g_draw_ids);
+    if (n <= g_draw_ids_n) return;
+    size_t m = std::max<size_t>(g_draw_ids_n, 4096);
+    while (m < n) m *= 2;
+    std::vector<uint32_t> ids(m);
+    for (size_t i = 0; i < m; ++i) ids[i] = static_cast<uint32_t>(i);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(m * sizeof(uint32_t)), ids.data(), GL_STATIC_DRAW);
+    g_draw_ids_n = m;
+}
+
 // ---- the GPU data of a class -----------------------------------------------------------------
 
 // One GPU vertex: a VU1 slot of a packet as the kick program sends it (its position, colour, UV are
@@ -755,6 +777,10 @@ void load_level(int id) {
         glVertexAttribIPointer(6, 4, GL_UNSIGNED_BYTE, S, reinterpret_cast<void*>(offsetof(GpuVertex, q2joint)));
         glVertexAttribIPointer(7, 4, GL_UNSIGNED_BYTE, S, reinterpret_cast<void*>(offsetof(GpuVertex, q2weight)));
         for (GLuint a = 0; a < 8; ++a) glEnableVertexAttribArray(a);
+        draw_ids_reserve(0);  // (the draw's index: g_draw_ids)
+        glVertexAttribIPointer(8, 1, GL_UNSIGNED_INT, sizeof(uint32_t), nullptr);
+        glVertexAttribDivisor(8, 1);
+        glEnableVertexAttribArray(8);
         glBindVertexArray(0);
         L.gl_loaded = true;
     }
@@ -830,6 +856,7 @@ layout(location = 4) in ivec2 aUv;
 layout(location = 5) in ivec4 aQ2Pos;
 layout(location = 6) in uvec4 aQ2Joint;
 layout(location = 7) in uvec4 aQ2Weight;
+layout(location = 8) in uint aDraw;  // the draw's index (its base instance: g_draw_ids)
 
 struct Part {
     vec4 clip[4];    // world mode: model -> GL clip (columns)
@@ -905,7 +932,7 @@ int ftoi4(float f) {
 }
 
 void main() {
-    uvec4 cmd = cmds[gl_BaseInstance];
+    uvec4 cmd = cmds[aDraw];
     Part P = parts[cmd.x];
     int first = P.info.x, count = P.info.y;
     vec4 m[4];
@@ -2311,6 +2338,9 @@ void upload_frame() {
     glBindBuffer(kGlShaderStorageBuffer, 0);
     glBindBuffer(kGlDrawIndirectBuffer, g_indirect);
     glBufferData(kGlDrawIndirectBuffer, static_cast<GLsizeiptr>(std::max<size_t>(g_frame.draws.size() * sizeof(DrawCmd), 16)), g_frame.draws.data(), GL_STREAM_DRAW);
+    uint32_t ids = 0;  // (the draws' base instances within the draw indices' buffer)
+    for (const DrawCmd& d : g_frame.draws) ids = std::max(ids, d.base_instance + 1);
+    draw_ids_reserve(ids);
 }
 
 void set_common_uniforms(const Loc& l, int win_w, int win_h, const gs::Viewport* vp) {
@@ -2920,6 +2950,7 @@ void shader_check(const gs::Viewport* vp) {
     std::vector<uint32_t> cmds = F.cmds;
     const uint32_t base = static_cast<uint32_t>(cmds.size() / 4);
     for (uint32_t i = 0; i < F.refs.size(); ++i) cmds.insert(cmds.end(), {i, 1u, 0u, 0u});
+    draw_ids_reserve(cmds.size() / 4);  // (the TF draws' base instances: base + i)
     glBindBuffer(kGlShaderStorageBuffer, g_ssbo[2]);
     glBufferData(kGlShaderStorageBuffer, static_cast<GLsizeiptr>(cmds.size() * 4), cmds.data(), GL_STREAM_DRAW);
     glBindBufferBase(kGlShaderStorageBuffer, 2, g_ssbo[2]);

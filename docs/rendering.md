@@ -196,6 +196,9 @@ colours are built.
   resident on the GPU: a copy is compared with EE memory after each update, and only the instances
   whose colours changed are uploaded (`ResidentColours`, `src/game/render/mrp_world_static.h`).
   The vertex shader evaluates the templates from storage buffers indexed by the draw's base instance.
+  OpenGL reads that index from an instanced vertex attribute over 0, 1, 2.. (which the base instance
+  offsets), not from `gl_BaseInstance`: with the built-in, an Intel UHD 620 under Windows drew the ties,
+  shrubs and mobys now and then with other draws' records (#113). Vulkan uses `gl_InstanceIndex`.
 - **tfrag** runs on a compute shader (next section).
 - **Draws are merged**: consecutive draws with the same state become one multi-draw-indirect call.
   A Veldin frame at the highest level of detail went from 157 world batches to 15.
@@ -268,7 +271,8 @@ of the original's integer alpha arithmetic, 0 of 203.6 million pixels differed. 
 lighting on they are not drawn (see [Lighting](lighting.md)).
 
 **Batching**: draws are merged into multi-draw-indirect calls, with one upload of joints, parts and
-draw records per frame.
+draw records per frame. Each draw finds its record as the world's do (the instanced attribute on
+OpenGL, see above).
 
 ## Particles and effects
 

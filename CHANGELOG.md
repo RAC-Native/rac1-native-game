@@ -3,6 +3,13 @@
 What changed in each release. Releases are source only: you build the game with `./setup.sh`
 (`setup.cmd` on Windows) from your own disc. Issue numbers refer to this repository's issues.
 
+## Unreleased
+
+### Fixes
+- OpenGL: the ties, foliage and mobys (Ratchet too) no longer vanish or turn into floating pieces of terrain and dark shapes from
+  one frame to the next on some integrated GPUs (an Intel UHD 620 under Windows, #113): each draw now finds its data through an
+  instanced vertex attribute instead of `gl_BaseInstance`. The same picture elsewhere.
+
 ## 0.6.0
 
 The modern renderer draws the whole game itself: the GS replica no longer runs beside it, and the
