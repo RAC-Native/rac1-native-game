@@ -70,10 +70,15 @@
 #endif
 
 #include "host_language.h"
+#include "rumble.h"
+
+#include <atomic>
+#include <mutex>
 
 #include <game/enhance/advanced.h>
 #include <game/enhance/controls.h>
 #include <game/enhance/graphics.h>
+#include <game/enhance/vibration.h>
 #include <game/boot/front_end.h>
 #include <game/boot/front_image.h>
 #include <game/boot/level_read.h>
@@ -1418,6 +1423,18 @@ bool g_capture_click_held = false;  // the click that captured the cursor, not g
 bool g_cursor_free = false;         // the debug menu is open: the cursor is the menu's
 double g_cursor_x = 0.0, g_cursor_y = 0.0;
 float g_mouse_dx = 0.0f, g_mouse_dy = 0.0f;  // the movement since the last game frame
+hi::WheelPulse g_wheel;                      // the wheel's notches, a press each (game frames: host_state)
+// the vibration (#10): the motors the game asked for in its last game frame (vibration_take, pad_packet: the game's thread),
+// given to the pad last used (g_pad_guid) once a host frame (host_input_poll: the main thread)
+std::atomic<float> g_rumble_low{0.0f}, g_rumble_high{0.0f};
+std::mutex g_pad_guid_lock;
+std::string g_pad_guid;  // (the GUID of the pad g_pad_name names)
+GLFWscrollfun g_prev_scroll = nullptr;       // the callback before ours (chained)
+// orig: (host) the window's wheel: its notches for the game (not while the debug menu has the cursor)
+void scroll_callback(GLFWwindow* win, double x, double y) {
+    if (!g_cursor_free) g_wheel.scroll(y);
+    if (g_prev_scroll != nullptr) g_prev_scroll(win, x, y);
+}
 
 // The standard game controller database (SDL's gamecontrollerdb.txt format, which GLFW reads): the copy bundled in
 // third_party/gamecontrollerdb, then the player's own additions (~/.config/rac1-native/gamecontrollerdb.txt), then
@@ -1500,6 +1517,9 @@ void host_input_init(GLFWwindow* win) {
     std::printf("[controls] joysticks: %s\n", list.empty() ? "none" : list.c_str());
     std::fflush(stdout);
     if (glfwRawMouseMotionSupported()) glfwSetInputMode(win, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+    std::printf("[controls] mouse: %s, raw motion %s\n", g_bindings.mouse_mode == hi::MouseMode::kDirect ? "direct" : "stick",
+                glfwRawMouseMotionSupported() ? "on" : "not supported");
+    g_prev_scroll = glfwSetScrollCallback(win, scroll_callback);
     g_input_ready = true;
 }
 
@@ -1527,6 +1547,14 @@ void host_input_poll(GLFWwindow* win, bool cursor_free) {
         g_capture_click_held = true;
     }
     if (g_capture_click_held && glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_LEFT) != GLFW_PRESS) g_capture_click_held = false;
+    {  // the vibration: the pad last used (none: stilled)
+        std::string guid;
+        {
+            std::lock_guard<std::mutex> lock(g_pad_guid_lock);
+            guid = g_pad_guid;
+        }
+        rac1::rumble::set(guid, g_rumble_low.load(), g_rumble_high.load());
+    }
     if (g_cursor_captured) {
         double x = 0.0, y = 0.0;
         glfwGetCursorPos(win, &x, &y);
@@ -1563,6 +1591,7 @@ hi::HostState host_state(GLFWwindow* win, bool raw = false) {
     st.mouse_dx = g_mouse_dx;
     st.mouse_dy = g_mouse_dy;
     g_mouse_dx = g_mouse_dy = 0.0f;
+    g_wheel.frame(st);  // (one game frame: a notch's press, or its release)
     ++g_pad_polls;
     struct Pad {
         int j;
@@ -1601,6 +1630,11 @@ hi::HostState host_state(GLFWwindow* win, bool raw = false) {
     g_pad_name.clear();
     if (named >= 0)
         if (const char* nm = glfwGetGamepadName(pads[named].j)) g_pad_name = nm;
+    {
+        std::lock_guard<std::mutex> lock(g_pad_guid_lock);
+        const char* g = named >= 0 ? glfwGetJoystickGUID(pads[named].j) : nullptr;
+        g_pad_guid = g != nullptr ? g : "";
+    }
     return st;
 }
 
@@ -1671,6 +1705,16 @@ public:
     float mouse_sensitivity() override { return g_bindings.mouse_sensitivity; }
     void set_mouse_sensitivity(float s) override {
         g_bindings.mouse_sensitivity = s;
+        controls_save();
+    }
+    bool mouse_direct() override { return g_bindings.mouse_mode == hi::MouseMode::kDirect; }
+    void set_mouse_direct(bool on) override {
+        g_bindings.mouse_mode = on ? hi::MouseMode::kDirect : hi::MouseMode::kStick;
+        controls_save();
+    }
+    float aim_sensitivity() override { return g_bindings.aim_sensitivity; }
+    void set_aim_sensitivity(float s) override {
+        g_bindings.aim_sensitivity = s;
         controls_save();
     }
 
@@ -1748,15 +1792,66 @@ void pad_packet(GLFWwindow* win, uint64_t frame, int pre = -1) {
     g_sim_host.pad_present = true;
     hi::HostState devices;  // (what the Controls page's rebinding reads)
     bool have_devices = false;
+    // the Direct mouse (#117) when the game takes it this frame (the follow camera in gameplay; asked once a game frame),
+    // and the PC's weapon actions: given to the game beside the packet
+    const bool direct = rac1::advanced_mouse_direct() && g_bindings.mouse_mode == hi::MouseMode::kDirect;
+    rac1::AdvancedHostInput extra;
     if (win != nullptr && !simulated && g_input_ready) {
         devices = pre >= 0 && static_cast<size_t>(pre) < g_pad_pre.size() ? g_pad_pre[static_cast<size_t>(pre)] : host_state(win, g_remap.active());
         have_devices = true;
-        const hi::PadOutput o = hi::compute(g_bindings, devices);
+        const hi::PadOutput o = hi::compute(g_bindings, devices, direct);
         held = o.held;
         lx = o.lx;
         ly = o.ly;
         rx = o.rx;
         ry = o.ry;
+        extra = {o.look_x, o.look_y, o.aim_x, o.aim_y, o.next_item, o.prev_item};
+    }
+    // (testing) RAC1_SIM_MOUSE=<from>:<to>:<dx>:<dy>[;...]: the mouse moved dx, dy pixels a game frame in the game frames
+    // from..to-1 (Direct when the game takes it, else as the stick), as the default bindings take the mouse;
+    // RAC1_SIM_ITEM=<frame>:<n|p>[;...]: the next / previous weapon pressed at that frame
+    if (simulated || win == nullptr) {
+        static const char* sim_mouse = std::getenv("RAC1_SIM_MOUSE");
+        for (const char* p = sim_mouse; p != nullptr && *p != 0;) {
+            unsigned long long f0 = 0, f1 = 0;
+            float dx = 0, dy = 0;
+            if (std::sscanf(p, "%llu:%llu:%f:%f", &f0, &f1, &dx, &dy) == 4 && frame >= f0 && frame < f1) {
+                hi::HostState ms;
+                ms.mouse_dx = dx;
+                ms.mouse_dy = dy;
+                const hi::PadOutput o = hi::compute(g_bindings, ms, direct);
+                rx = o.rx;
+                ry = o.ry;
+                extra.look_x = o.look_x;
+                extra.look_y = o.look_y;
+                extra.aim_x = o.aim_x;
+                extra.aim_y = o.aim_y;
+            }
+            p = std::strchr(p, ';');
+            if (p != nullptr) ++p;
+        }
+        static const char* sim_item = std::getenv("RAC1_SIM_ITEM");
+        for (const char* p = sim_item; p != nullptr && *p != 0;) {
+            unsigned long long f = 0;
+            char c = 0;
+            if (std::sscanf(p, "%llu:%c", &f, &c) == 2 && frame >= f && frame < f + 2) (c == 'p' ? extra.prev_item : extra.next_item) = true;
+            p = std::strchr(p, ';');
+            if (p != nullptr) ++p;
+        }
+    }
+    rac1::advanced_host_input(extra);
+    {  // the vibration of the game frame before (#10), for the pad (host_input_poll)
+        float vl = 0.0f, vh = 0.0f;
+        rac1::vibration_take(vl, vh);
+        g_rumble_low.store(vl);
+        g_rumble_high.store(vh);
+        static const bool vlog = std::getenv("RAC1_VIBRATION_LOG") != nullptr;  // (testing: the motors when they change)
+        static float vlast[2] = {0.0f, 0.0f};
+        if (vlog && (vl != vlast[0] || vh != vlast[1])) {
+            std::printf("[vibe] frame %llu low %.2f high %.2f\n", static_cast<unsigned long long>(frame), vl, vh);
+            vlast[0] = vl;
+            vlast[1] = vh;
+        }
     }
     // (testing) RAC1_SIM_DELAY=N: the RAC1_SIM_INPUT script starts N frames late (after a level's arrival scene)
     static const uint64_t sim_delay = std::getenv("RAC1_SIM_DELAY") != nullptr ? std::strtoull(std::getenv("RAC1_SIM_DELAY"), nullptr, 0) : 0;
@@ -4073,6 +4168,7 @@ int main(int argc, char** argv) {
         movie_picture.vk_reset();
         rac1::vk::shutdown();
     }
+    rac1::rumble::shutdown();
     glfwDestroyWindow(window);
     if (g_audio_dump != nullptr) std::fclose(g_audio_dump);
     if (g_mirror_test) {  // (testing)

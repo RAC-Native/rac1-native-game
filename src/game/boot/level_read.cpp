@@ -1,6 +1,7 @@
 // Ported base ELF code: the disc's table of contents and a level's files read into EE memory
 // before the level's overlay runs. The reads themselves go through the host's disc (the CDVD
 // driver: 0x121450 / 0x216728 and their waits).
+#include <game/enhance/advanced.h>
 #include <game/boot/level_read.h>
 
 #include <game/lib/snd989.h>
@@ -43,7 +44,8 @@ bool level_header_read(int32_t level) {
 // orig: 0x00204428 (steps 0, 1, 2)
 bool level_files_read() {
     const bool pal = ee_read<int32_t>(0x0015ed80) != 0;
-    const uint32_t armor = static_cast<uint32_t>(static_cast<int32_t>(ee_read<int16_t>(0x0013e056)) + 1);
+    // (enhancement: the ship chosen in Options > Advanced > Ship, #94: its armor file read; the game's 0x13e056 kept)
+    const uint32_t armor = static_cast<uint32_t>(advanced_ship_armor(static_cast<int32_t>(ee_read<int16_t>(0x0013e056))) + 1);
     const uint32_t gp_lba = rd(pal ? 0x0013a4f8 : 0x0013a4f0), gp_n = rd(pal ? 0x0013a4fc : 0x0013a4f4);
     const uint32_t ar_lba = rd(0x00138e48 + armor * 8), ar_n = rd(0x00138e4c + armor * 8);
     const uint32_t dt_lba = rd(0x0013a4e8), dt_n = rd(0x0013a4ec);

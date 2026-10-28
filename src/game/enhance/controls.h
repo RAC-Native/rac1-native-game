@@ -20,7 +20,8 @@
 namespace rac1 {
 
 // orig: (none) — enhancement: the host's side of the page (orig_main.cpp). Rows are host_input's
-// remap rows (0 Cross .. 11 Select, 12 the D-pad, 13 / 14 the sticks); device 0 the gamepad, 1 the
+// remap rows (0 Cross .. 11 Select, 12 the D-pad, 13 / 14 the sticks, 15 / 16 the
+// next / previous weapon); device 0 the gamepad, 1 the
 // keyboard and mouse.
 class ControlsHost {
 public:
@@ -40,6 +41,12 @@ public:
     virtual void set_invert_look(bool on) = 0;
     virtual float mouse_sensitivity() = 0;
     virtual void set_mouse_sensitivity(float s) = 0;
+    // the mouse's mode: Direct (the movement turns the camera and the aim) or Stick (a simulated right stick)
+    virtual bool mouse_direct() = 0;
+    virtual void set_mouse_direct(bool on) = 0;
+    // Direct while aiming: a factor of the mouse's sensitivity
+    virtual float aim_sensitivity() = 0;
+    virtual void set_aim_sensitivity(float s) = 0;
 };
 // orig: (none) — enhancement: the host's side set (nullptr: none)
 void controls_set_host(ControlsHost* host);

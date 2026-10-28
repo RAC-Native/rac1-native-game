@@ -5,6 +5,24 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+### Controls and gameplay
+- Mouse: a Direct mode, the new default (Options > Controls > Mouse Mode): the mouse turns the camera, and the aim while
+  strafing or aiming, by an angle proportional to its movement (raw motion where the system has it), with no stick
+  simulation, acceleration or speed cap; its own Aim Sensitivity while aiming; Stick keeps the earlier simulated right
+  stick (#117).
+- Keyboard and mouse defaults: the right mouse button aims (L2), the thumb button and F swing the wrench, Left Ctrl also
+  crouches, and the mouse wheel (a new kind of binding on the Controls page) goes through the weapons (#117, #61).
+- Next Weapon / Previous Weapon: two new actions (the wheel and X by default, bindable on the pad too) that put the
+  quick select's next or previous weapon in hand without opening it, or move its ring's selection while it is open (#61).
+- Advanced > Vibration (Off, Low, High; High in Modern and Experimental): the gamepad vibrates for damage, death, hard
+  landings, nearby explosions, each weapon's shot (by weapon), the wrench's hits, bolts and the ship's flight, through the
+  kernel's force feedback on Linux and XInput on Windows, with no new library; the game's state is only read (#10).
+- Advanced > Ship: the ship shown on every planet, Original (the story's) or any ship the save has unlocked; only its model
+  and look change, from the next planet (#94).
+- Advanced > Clank: Modern, a first step of a modern movement for Clank's sections: a faster, quicker walk and more air
+  control in his jump (on Orxon; Quartu's own hero code not yet), on in Experimental mode (#57).
+- Advanced > Aiming: Modern, No Zoom, Modern aiming at the normal camera distance, as Ratchet & Clank 3's lock-strafe (#70).
+
 ### Graphics
 - Lights: Anya-Thoughtmane's lighting batch 1 (#102) merged line by line: metal for the vendor, the bolts, the OmniWrench, the
   Magneboots and the pilot's helmet on every level, materials and lamps on Veldin, Novalis (the waterworks, the bridge), Aridia

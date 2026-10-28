@@ -1,6 +1,7 @@
 // Veldin's remaining moby callbacks: the class-1545 update, the class-1440 muzzle
 // flash's billboard, the ship's update and the ships' canopy reflection, with their helpers.
 // Header veldin_mobys.h.
+#include <game/enhance/advanced.h>
 #include <game/ovl/veldin_mobys.h>
 
 #include <game/ovl/ovl_reloc.h>
@@ -323,7 +324,7 @@ void ship_update(uint32_t m) {
         const float c = cos_vu(int_to_float(static_cast<int32_t>(g & 0xffu) - 0x80) * u2f(0x3cc90fdbu));
         const int32_t a = float_to_int(c * 50.0f) + 0x96;
         uint32_t col;
-        if (lh(m + 0xa6) == 0x215) {
+        if (advanced_ship_look_class(lh(m + 0xa6)) == 0x215) {  // (enhancement, #94: the shown ship's)
             col = static_cast<uint32_t>(a >> 1) | static_cast<uint32_t>(a << 8) | static_cast<uint32_t>(a << 16);
         } else {
             col = static_cast<uint32_t>(a) | static_cast<uint32_t>(a << 8) | static_cast<uint32_t>(a << 16);

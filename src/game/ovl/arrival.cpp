@@ -2,6 +2,7 @@
 // another one): their start 0x28e9c8, their frame 0x290590 and drawing 0x291d00, the take-off
 // from the ship 0x28ecd8 and the planet chosen on the ship's map 0x28ed58.
 
+#include <game/enhance/advanced.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/flight_draw.h>
 #include <game/ovl/ovl_reloc.h>
@@ -29,7 +30,7 @@ void dialog_slot_stop() {
 // halved on the ship of class 0x215
 uint32_t ship_grey(int32_t cls, int32_t v) {
     const uint32_t a = static_cast<uint32_t>(v);
-    if (cls == 0x215) return (static_cast<uint32_t>(v >> 1) | (a << 8)) | (a << 16);
+    if (advanced_ship_look_class(cls) == 0x215) return (static_cast<uint32_t>(v >> 1) | (a << 8)) | (a << 16);  // (enhancement, #94: the shown ship's)
     return (a | (a << 8)) | (a << 16);
 }
 
@@ -508,7 +509,7 @@ void ship_sequence_update() {
                 if (100.0f < sp0) swc1(G + 0x40, 100.0f);
                 if ((lwu(0x0013cae4) & 0x50) != 0 && lwc1(OV(0x0015f3fc)) < 0.0625f) swc1(OV(0x0015f3fc), 0.0625f);
                 if (int_to_float(lw(path) - 6) < lwc1(G + 0x3c) && lwc1(OV(0x0015f3fc)) < 0.0625f) swc1(OV(0x0015f3fc), 0.0625f);
-                if (lh(G + 0x26) < 2) {
+                if (advanced_ship_look(lh(G + 0x26)) < 2) {  // (enhancement, #94: the shown ship's flames)
                     sb(lwu(G) + 0xbc, 0x32);
                     sh(lwu(G) + 0xb2, 0xa);
                     sub_001f93e0(OVF(0x0028efc8), lwu(G));
@@ -526,7 +527,7 @@ void ship_sequence_update() {
                     if (lw(G + 0x54) < 0x20) sw(G + 0x54, static_cast<uint32_t>(lw(G + 0x54) + 1));
                     for (uint32_t k = 0; k < 2; ++k) {  // the trails: two points of the ship's
                         const uint32_t o = G + 0xc0 + k * 0x200 + static_cast<uint32_t>(lw(G + 0x50)) * 16;
-                        mat3_transform(V(o), V(OV(0x001bdab0) + k * 0x10 + static_cast<uint32_t>(lh(G + 0x26)) * 32), M(lwu(G) + 0xc0));
+                        mat3_transform(V(o), V(OV(0x001bdab0) + k * 0x10 + static_cast<uint32_t>(advanced_ship_look(lh(G + 0x26))) * 32), M(lwu(G) + 0xc0));
                         const uint32_t o2 = G + 0xc0 + k * 0x200 + static_cast<uint32_t>(lw(G + 0x50)) * 16;
                         vec3_add(V(o2), V(o2), V(lwu(G) + 0x10));
                         swc1(G + k * 0x200 + static_cast<uint32_t>(lw(G + 0x50)) * 16 + 0xcc, 1.0f);
@@ -543,7 +544,7 @@ void ship_sequence_update() {
             for (uint32_t k = 0; k < 2; ++k) {  // Ratchet and Clank on the ship
                 const uint32_t m = lwu(G + 0x10 + k * 4);
                 lq_sq(m + 0x40, lwu(G) + 0x40);
-                mat3_transform(V(m + 0x10), V((k == 0 ? OV(0x001bdd80u) : OV(0x001bddb0u)) + static_cast<uint32_t>(lh(G + 0x26)) * 16), M(lwu(G) + 0xc0));
+                mat3_transform(V(m + 0x10), V((k == 0 ? OV(0x001bdd80u) : OV(0x001bddb0u)) + static_cast<uint32_t>(advanced_ship_look(lh(G + 0x26))) * 16), M(lwu(G) + 0xc0));
                 const uint32_t m2 = lwu(G + 0x10 + k * 4);
                 vec3_add(V(m2 + 0x10), V(m2 + 0x10), V(lwu(G) + 0x10));
                 moby_update_transform(lwu(G + 0x10 + k * 4));
