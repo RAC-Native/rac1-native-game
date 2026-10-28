@@ -236,6 +236,7 @@ add_library(rac1_game STATIC
     ovl/render_setup.cpp
     input/pad_build.cpp
     render/render_toggles.cpp
+    render/gl_draws.cpp
     render/sky_render.cpp
     render/tfrag_render.cpp
     render/render_view.cpp

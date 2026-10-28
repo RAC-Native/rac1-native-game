@@ -1,5 +1,6 @@
 // orig: (host) The MRP moby renderer (see mrp_moby_renderer.h).
 #include <game/render/mrp_moby_renderer.h>
+#include <game/render/gl_draws.h>
 #include <profiler/host_profiler.h>
 #include <jobs/job_pool.h>
 
@@ -1153,9 +1154,9 @@ GLuint compile(GLenum type, const char* src) {
     GLint ok = 0;
     glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
     if (!ok) {
-        char log[2048];
+        char log[8192];
         glGetShaderInfoLog(s, sizeof log, nullptr, log);
-        std::fprintf(stderr, "[mrp] shader: %s\n", log);
+        std::fprintf(stderr, "[mrp] the mobys' %s shader did not compile: %s\n", type == GL_VERTEX_SHADER ? "vertex" : "fragment", log);
     }
     return s;
 }
@@ -1199,9 +1200,11 @@ bool init_gl() {
     GLint ok = 0;
     glGetProgramiv(g_prog, GL_LINK_STATUS, &ok);
     if (!ok) {
-        char log[2048];
+        char log[8192];
         glGetProgramInfoLog(g_prog, sizeof log, nullptr, log);
-        std::fprintf(stderr, "[mrp] link: %s\n", log);
+        std::fprintf(stderr, "[mrp] the mobys' program did not link, the MRP mobys off: %s\n", log);
+        glDeleteProgram(g_prog);
+        g_prog = 0;  // (not taken for a working program by the next call)
         return false;
     }
     g_loc = locs(g_prog);
@@ -1221,9 +1224,9 @@ bool init_gl() {
         GLint ok3 = 0;
         glGetProgramiv(g_prog_split, GL_LINK_STATUS, &ok3);
         if (!ok3) {
-            char log[2048];
+            char log[8192];
             glGetProgramInfoLog(g_prog_split, sizeof log, nullptr, log);
-            std::fprintf(stderr, "[mrp] link (lighting variant): %s\n", log);
+            std::fprintf(stderr, "[mrp] the mobys' modern lighting program did not link, the mobys drawn without it: %s\n", log);
             g_prog_split = 0;
         } else {
             g_loc_split = locs(g_prog_split);
@@ -2724,16 +2727,14 @@ void draw_batches(int win_w, int win_h, const gs::Viewport* vp, bool shadows = f
         if (split) {  // (the Z first, then the colour against it with LEQUAL: an opaque part's back faces stay hidden, as per primitive on the GS)
             glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
             glUniform1i(g_loc.pass, 1);
-            p_multi_draw_elements_indirect(GL_TRIANGLES, GL_UNSIGNED_INT, reinterpret_cast<const void*>(static_cast<uintptr_t>(b.first) * sizeof(DrawCmd)),
-                                           static_cast<GLsizei>(b.count), 0);
+            gl_multi_draw_elements(F.draws.data(), b.first, b.count);
             glUniform1i(g_loc.pass, 0);
             glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
             glDepthMask(GL_FALSE);
             if (kztst != 0) glDepthFunc(GL_LEQUAL);
             ++g_st.gl_calls;
         }
-        p_multi_draw_elements_indirect(GL_TRIANGLES, GL_UNSIGNED_INT, reinterpret_cast<const void*>(static_cast<uintptr_t>(b.first) * sizeof(DrawCmd)),
-                                       static_cast<GLsizei>(b.count), 0);
+        gl_multi_draw_elements(F.draws.data(), b.first, b.count);
         ++g_st.gl_calls;
         if (split) {
             glDepthMask(GL_TRUE);
@@ -2933,8 +2934,7 @@ void draw_casters(const float* light_vp, const float* sphere, const float* withi
         }
         cur = k;
         have = true;
-        p_multi_draw_elements_indirect(GL_TRIANGLES, GL_UNSIGNED_INT, reinterpret_cast<const void*>(static_cast<uintptr_t>(dfirst) * sizeof(DrawCmd)),
-                                       static_cast<GLsizei>(dcount), 0);
+        gl_multi_draw_elements(filter ? near.data() : F.draws.data(), dfirst, dcount);
     }
     glBindSampler(0, 0);
     glBindTexture(GL_TEXTURE_2D_ARRAY, 0);

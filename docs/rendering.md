@@ -202,6 +202,15 @@ colours are built.
 - **tfrag** runs on a compute shader (next section).
 - **Draws are merged**: consecutive draws with the same state become one multi-draw-indirect call.
   A Veldin frame at the highest level of detail went from 157 world batches to 15.
+  With Intel's Windows OpenGL driver the merged commands go as single draws instead
+  (`glDrawElementsInstancedBaseVertexBaseInstance` per command, from the CPU's copy;
+  `src/game/render/gl_draws.cpp`): there the ties, shrubs and mobys flickered, drawn now and then
+  with other draws' records or not at all (#113). The picture is the same either way;
+  `RAC1_GL_SINGLE_DRAWS=1` / `0` forces it on or off. At the start the log names the OpenGL driver
+  (`[gl] <vendor>, <renderer>, OpenGL <version>`). The frame's buffers (the indirect commands, the
+  records, the storage buffers) are given new storage each frame (`glBufferData` then
+  `glBufferSubData`; no persistent mapping), so the driver keeps the previous frame's until the GPU
+  is done with them.
 
 **The fragment shader is the GS**: its texture function, the alpha test including its "fail" modes
 (drawn in two passes where needed), its mip-level formula, and fog with the fog colour.
@@ -228,6 +237,12 @@ toward zero; a GPU rounds to nearest. The compute shader reproduces the VU's rou
 The result is checked bit for bit: `RAC1_MRPW_TFRAG_VERIFY=1` reads back the GPU's vertices and
 triangle lists and compares them byte for byte with the CPU reference. The project's measurements
 found 0 differing vertices out of 904,570 on Veldin, and likewise on the intro, Novalis and Kerwan.
+
+Where the GPU's doubles are slow the CPU makes the tfrags instead, as `RAC1_MRPW_TFRAG_GPU=0` does (the same picture at the
+default level of detail; with the LOD slider raised or the view widened the terrain's pieces and their levels of detail are
+the game's own run's, a little different at a distance): an Intel GPU of
+generation 9 or older under Vulkan, a level's first dispatch timed too slow, or `RAC1_TFRAG_CPU=1`
+(see [Vulkan](vulkan.md)).
 
 ### The sky
 

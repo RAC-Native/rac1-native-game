@@ -1800,7 +1800,8 @@ void main() {
             t = vec4(128.0 / 255.0);
         } else {
             int mips = int((w >> 22) & 7u) + 1;
-            for (;;) {
+            t = vec4(0.0);
+            for (uint wl = 0u; wl < 16u; ++wl) {  // (16 units at most: bounded, a driver that runs it wrong cannot hang the GPU, #113)
                 uint u = subgroupBroadcastFirst(unit);
                 if (u != unit) continue;
                 if (uMipMode == 0) {

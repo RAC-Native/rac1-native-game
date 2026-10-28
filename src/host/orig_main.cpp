@@ -117,6 +117,7 @@
 #include <game/render/mrp_world_scene.h>
 #include <setup/setup_manager.h>
 #include <game/render/render_toggles.h>
+#include <game/render/gl_draws.h>
 #include <game/render/render_view.h>
 #include <game/render/shader_manager.h>
 #include <game/render/sky_render.h>
@@ -2368,6 +2369,7 @@ int main(int argc, char** argv) {
         else host_apply_swap_interval(env_vsync >= 0 ? env_vsync != 0 : rac1::graphics_display().vsync, env_vsync >= 0 ? "start (RAC1_VSYNC)" : "start");
         if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) { std::fprintf(stderr, "rac1-native: GL load failed\n"); return 1; }
         if (!ShaderManager::get().init()) { std::fprintf(stderr, "rac1-native: shaders failed\n"); return 1; }
+        rac1::gl_draws_init();  // (the driver in the log; the multi-draws' single-draw path, issue #113)
     }
     sample_prof_start();  // (testing: RAC1_SAMPLE_PROF=<file>, see sample_prof.h)
     g_use_gpu_rendering = true;

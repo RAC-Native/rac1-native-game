@@ -84,6 +84,11 @@ What changed in each release. Releases are source only: you build the game with 
 - OpenGL: the ties, foliage and mobys (Ratchet too) no longer vanish or turn into floating pieces of terrain and dark shapes from
   one frame to the next on some integrated GPUs (an Intel UHD 620 under Windows, #113): each draw now finds its data through an
   instanced vertex attribute instead of `gl_BaseInstance`. The same picture elsewhere.
+- Intel GPUs (a UHD 620 under Windows, #113): with Vulkan the tfrags (the terrain) are made on the CPU on an Intel GPU of
+  generation 9 or older, whose doubles are slow, and elsewhere a level's first tfrag dispatch is split into short submits and
+  timed (too slow: the CPU from then on; `RAC1_TFRAG_CPU`); the world's texture loop is bounded so a driver cannot hang on it.
+  With Intel's Windows OpenGL driver the world's and mobys' multi-draws go as single draws (`RAC1_GL_SINGLE_DRAWS`, the same
+  picture); the log names the OpenGL driver and its uniform limits, and a world or moby program that does not link says so.
 
 ## 0.6.0
 
