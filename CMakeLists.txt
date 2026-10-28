@@ -244,6 +244,7 @@ set(RAC1_HOST_SOURCES
     src/host/audio_out.cpp
     src/host/sample_prof.cpp
     src/host/host_input.cpp
+    src/host/rumble.cpp
     src/host/host_language.cpp
     src/host/sim_script.cpp
     src/host/sim_autopilot.cpp

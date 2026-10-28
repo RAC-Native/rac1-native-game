@@ -128,6 +128,41 @@ void advanced_aim_frame_hand(uint32_t hand, uint32_t rows);
 // convention (atan2_f(x, y), -atan2_f(horizontal length, z)); false (and nothing set) otherwise
 bool advanced_aim_angles(uint32_t from, float& yaw, float& pitch);
 
+// --- The mouse and the PC's weapon actions (#117, #61) ---
+// What the host gives the game once a game frame, beside the pad's packet (src/host/host_input.h): the Direct mouse's
+// angles (radians, right / down positive; 0 unless the host asked advanced_mouse_direct and it said yes) and the PC
+// actions' buttons held
+struct AdvancedHostInput {
+    float look_x = 0.0f, look_y = 0.0f;  // at the look sensitivity: the follow camera, the strafe's heading
+    float aim_x = 0.0f, aim_y = 0.0f;    // at the aim sensitivity: the modern aim
+    bool next_item = false, prev_item = false;
+};
+// orig: (none) — enhancement: the host's input of the game frame about to run (pad_packet)
+void advanced_host_input(const AdvancedHostInput& in);
+// orig: (none) — enhancement: whether the game takes the Direct mouse now: the follow camera ran the last game frame,
+// in gameplay (else the host gives the mouse as the stick: the first-person view, the menus, other cameras)
+bool advanced_mouse_direct();
+// orig: (none) — enhancement: the follow camera's place (cam0_place_frame 0x2e9bb0), after its stick input (`b` the
+// pitch input, cam0_stick 0x2e89b0): the Direct mouse turns the offset (yaw) and holds the pitch spring where the
+// mouse put it; nothing without mouse movement
+void advanced_mouse_camera(uint32_t cam, float& b);
+
+// --- The ship selector (#94) ---
+// orig: (none) — enhancement: the armor file (the ship's model and textures: classes 0x160548[armor] / 0x160558[armor])
+// to read for the game's armor `armor` (0x13e056, set by the story at each level exit): Options > Advanced > Ship's
+// ship when the save has it (its index at most `armor`), else `armor`. The game's 0x13e056 and the classes are kept:
+// only the model and its look change, not the scenes, the story's special cases or anything saved
+int32_t advanced_ship_armor(int32_t armor);
+// orig: (none) — enhancement: the ship variant whose look tables (flames, trails, seats) to use, for the game's `variant`
+int32_t advanced_ship_look(int32_t variant);
+// orig: (none) — enhancement: a ship class (0x213..0x215) as the shown ship's class (its tint), other classes as they are
+int32_t advanced_ship_look_class(int32_t cls);
+
+// --- Clank's modern movement (#57) ---
+// orig: (none) — enhancement: Clank = Modern and the hero is Clank (mode 1, +0x20a4): his walk (state 0x44) and jump
+// (0x45) take the faster values in hero_state_update.cpp (wade_update, the 0x45 case)
+bool advanced_clank_modern();
+
 // --- R&C 3's on-foot movement ---
 // orig: (none) — enhancement: Movement = RAC 3
 bool advanced_rac3_movement();
