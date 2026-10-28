@@ -7,11 +7,13 @@
 
 #include <padscore/kpad.h>
 #include <padscore/wpad.h>
+#include <coreinit/time.h>
 #include <vpad/input.h>
 #include <whb/proc.h>
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 
 namespace hi = rac1::host_input;
 
@@ -34,6 +36,7 @@ constexpr Map kPro[] = {{WPAD_PRO_BUTTON_B, kA},       {WPAD_PRO_BUTTON_A, kB}, 
                         {WPAD_PRO_BUTTON_STICK_L, kLThumb}, {WPAD_PRO_BUTTON_STICK_R, kRThumb}, {WPAD_PRO_BUTTON_UP, kUp}, {WPAD_PRO_BUTTON_RIGHT, kRight},
                         {WPAD_PRO_BUTTON_DOWN, kDown}, {WPAD_PRO_BUTTON_LEFT, kLeft}};
 
+bool g_quit_asked = false;  // (the Minus button held: rac1_wiiu_frame says the game is to end)
 bool g_kpad = false;
 
 // one pad's state merged into the host's (hi::merge_pad: the buttons OR'ed, the stick deflected furthest)
@@ -63,6 +66,18 @@ hi::HostState rac1_wiiu_pad_state() {
         v_ok = true;
     } else if (ve != VPAD_READ_NO_SAMPLES) {
         v_ok = false;  // (the GamePad gone)
+    }
+    // (Daino's quit: the GamePad's Minus held a second ends the game by itself - its main returns, the way back to the menu that works;
+    // closing from the HOME menu hung the console, 2026-10-28)
+    {
+        static OSTime held_since = 0;
+        const bool minus = v_ok && (v.hold & VPAD_BUTTON_MINUS) != 0;
+        if (!minus) held_since = 0;
+        else if (held_since == 0) held_since = OSGetTime();
+        else if (!g_quit_asked && OSTicksToMilliseconds(OSGetTime() - held_since) >= 1000) {
+            g_quit_asked = true;
+            std::printf("[wiiu] Minus held: the game ends\n");
+        }
     }
     if (v_ok)
         merge(st, kVpad, v.hold, v.leftStick.x, v.leftStick.y, v.rightStick.x, v.rightStick.y, (v.hold & VPAD_BUTTON_ZL) != 0, (v.hold & VPAD_BUTTON_ZR) != 0);
@@ -94,9 +109,12 @@ hi::HostState rac1_wiiu_pad_state() {
     return st;
 }
 
+// the game asked to end by itself (the GamePad debug menu's "Exit game"; the Minus button held does the same)
+void rac1_wiiu_quit() { g_quit_asked = true; }
+
 // a host frame's picture (wiiu_gfx.cpp) and ProcUI (the HOME menu handled meanwhile): false when the application is to close
 void wiiu_gfx_frame();  // wiiu_gfx.cpp (nothing without the picture)
 bool rac1_wiiu_frame() {
     wiiu_gfx_frame();
-    return WHBProcIsRunning();
+    return WHBProcIsRunning() && !g_quit_asked;
 }

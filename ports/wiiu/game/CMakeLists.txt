@@ -138,6 +138,31 @@ if(RAC1_WIIU_GLSLC)
             COMMENT "CafeGLSL: ${sh}.gsh")
         list(APPEND _gsh ${CMAKE_CURRENT_BINARY_DIR}/shaders/${sh}.gsh)
     endforeach()
+    # the builds with defines (2026-10-28, the GPU's time: the backends pick one per batch, RAC1_WIIU_NOKILL / RAC1_WIIU_LEAN): each
+    # RAC1_WIIU_VARIANT_<name> is its vertex shader, its pixel shader and the defines (comma-separated) - the pixel shader's source
+    # with them written into the build (ports/wiiu/shaders/variant.cmake), then compiled as the others into shaders/<name>.gsh
+    set(RAC1_WIIU_VARIANTS mrp_world_noat mrp_tfrag_noat mrp_moby_noat)  # (the lean ones - their vertex shaders output vLodP - left out: the world came out untextured on the console, 2026-10-28; lean_vert.patch in rac1-scratch/gpuperf)
+    set(RAC1_WIIU_VARIANT_mrp_world_noat mrp_world mrp_world RAC1_NO_ALPHA_TEST)
+    set(RAC1_WIIU_VARIANT_mrp_world_lean mrp_world mrp_world RAC1_LEAN)
+    set(RAC1_WIIU_VARIANT_mrp_world_lean_noat mrp_world mrp_world RAC1_LEAN,RAC1_NO_ALPHA_TEST)
+    set(RAC1_WIIU_VARIANT_mrp_tfrag_noat mrp_tfrag mrp_world RAC1_NO_ALPHA_TEST)
+    set(RAC1_WIIU_VARIANT_mrp_tfrag_lean mrp_tfrag mrp_world RAC1_LEAN)
+    set(RAC1_WIIU_VARIANT_mrp_tfrag_lean_noat mrp_tfrag mrp_world RAC1_LEAN,RAC1_NO_ALPHA_TEST)
+    set(RAC1_WIIU_VARIANT_mrp_moby_noat mrp_moby mrp_moby RAC1_NO_ALPHA_TEST)
+    foreach(v ${RAC1_WIIU_VARIANTS})
+        set(_src ${CMAKE_CURRENT_SOURCE_DIR}/../shaders)
+        list(GET RAC1_WIIU_VARIANT_${v} 0 _vert)
+        list(GET RAC1_WIIU_VARIANT_${v} 1 _frag)
+        list(GET RAC1_WIIU_VARIANT_${v} 2 _defs)
+        set(_gen ${CMAKE_CURRENT_BINARY_DIR}/shader_src/${v}.frag)
+        add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/shaders/${v}.gsh
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/shaders ${CMAKE_CURRENT_BINARY_DIR}/shader_src
+            COMMAND ${CMAKE_COMMAND} -DIN=${_src}/${_frag}.frag -DOUT=${_gen} -DDEFS=${_defs} -P ${_src}/variant.cmake
+            COMMAND ${RAC1_WIIU_GLSLC} -vs ${_src}/${_vert}.vert -ps ${_gen} -o ${CMAKE_CURRENT_BINARY_DIR}/shaders/${v}.gsh
+            DEPENDS ${_src}/${_vert}.vert ${_src}/${_frag}.frag ${_src}/variant.cmake
+            COMMENT "CafeGLSL: ${v}.gsh (${_defs})")
+        list(APPEND _gsh ${CMAKE_CURRENT_BINARY_DIR}/shaders/${v}.gsh)
+    endforeach()
     add_custom_target(rac1_wiiu_shaders ALL DEPENDS ${_gsh})
 else()
     message(STATUS "RAC1_WIIU_GLSLC not set: the picture's shaders are not built")

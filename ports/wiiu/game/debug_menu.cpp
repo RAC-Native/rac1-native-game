@@ -32,6 +32,8 @@
 bool g_menu_draw_mobys = true, g_menu_draw_2d = true, g_menu_overlap = true;
 float g_menu_vpscale = 1.0f;
 
+void rac1_wiiu_quit();  // wiiu_input.cpp: the game asked to end by itself
+
 namespace {
 
 bool g_up = false;
@@ -99,6 +101,34 @@ const Item kRender[] = {
          return std::string(b);
      },
      [] { g_menu_vpscale = g_menu_vpscale > 0.9f ? 0.75f : g_menu_vpscale > 0.6f ? 0.5f : 1.0f; }},
+    // (2026-10-28, the GPU's time: rac1::Gx2Perf, mrp_world_gx2.h - three rows, the page's room)
+    {"GPU: hierarchical Z", [] { return on_off(rac1::g_gx2_perf.hiz); }, [] { rac1::g_gx2_perf.hiz = !rac1::g_gx2_perf.hiz; }},
+    {"GPU: pixel shaders", [] {
+         const rac1::Gx2Perf& g = rac1::g_gx2_perf;
+         return std::string(g.lean && g.nokill ? "lean+nokill" : g.lean ? "lean" : g.nokill ? "nokill" : "off");
+     },
+     [] {  // (off -> nokill -> lean -> both -> off)
+         rac1::Gx2Perf& g = rac1::g_gx2_perf;
+         const int k = ((g.lean ? 2 : 0) | (g.nokill ? 1 : 0)) + 1;
+         g.nokill = (k & 1) != 0;
+         g.lean = (k & 2) != 0;
+     }},
+    {"GPU test", [] {
+         const rac1::Gx2Perf& g = rac1::g_gx2_perf;
+         return std::string(g.pixels_off ? "no pixels" : !g.zclear2 ? "1 Z clear" : "off");
+     },
+     [] {  // (off -> the pixels off (8 x 8 scissor) -> one depth clear (WHB's) -> off)
+         rac1::Gx2Perf& g = rac1::g_gx2_perf;
+         if (!g.pixels_off && g.zclear2) {
+             g.pixels_off = true;
+         } else if (g.pixels_off) {
+             g.pixels_off = false;
+             g.zclear2 = false;
+         } else {
+             g.zclear2 = true;
+         }
+     }},
+    {"Exit game (back to the Wii U Menu)", [] { return std::string("tap"); }, [] { rac1_wiiu_quit(); }},
 };
 // (ON: the part runs; off: skipped - the game goes on without it)
 #define RAC1_SKIP_ITEM(label, var) {label, [] { return on_off(!rac1::var); }, [] { rac1::var = !rac1::var; }}
@@ -113,6 +143,7 @@ const Item kGame[] = {
     RAC1_SKIP_ITEM("Shadows", g_skip_shadows),
     RAC1_SKIP_ITEM("Mobys' poses (joints)", g_skip_joints),
     {"Catch-up steps drawn", [] { return on_off(!rac1::g_draw_last_step_only); }, [] { rac1::g_draw_last_step_only = !rac1::g_draw_last_step_only; }},
+    {"Exit game (back to the Wii U Menu)", [] { return std::string("tap"); }, [] { rac1_wiiu_quit(); }},
 };
 #undef RAC1_SKIP_ITEM
 // the page's items (row 0, above them, switches the page)

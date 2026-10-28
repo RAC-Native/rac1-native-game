@@ -3910,6 +3910,12 @@ bool g_wiiu_world_async = true;  // (see mrp_world_renderer.h)
 
 namespace {
 double g_ms_head = 0.0;  // (the preparation's first half's time, added to the second's)
+uint64_t g_regs_last[0x80] = {};  // (mrp_world_wiiu_chain_joined)
+bool g_regs_last_ok = false;
+bool regs_last_on() {
+    static const bool on = std::getenv("RAC1_WIIU_REGS_LAST") == nullptr || std::atoi(std::getenv("RAC1_WIIU_REGS_LAST")) != 0;
+    return on;
+}
 void wiiu_prep_dispatch();
 }  // namespace
 
@@ -3929,6 +3935,17 @@ void mrp_world_wiiu_prepare(bool active) {
     }
     if (!g_level.loaded || !g_slevel.ok) return;
     const double t0 = now_ms();
+    // (testing, RAC1_WIIU_PREP_TIME=1: the first half's parts, ms a call, every 120 calls)
+    static const bool part_time = std::getenv("RAC1_WIIU_PREP_TIME") != nullptr && std::atoi(std::getenv("RAC1_WIIU_PREP_TIME")) != 0;
+    static double part_ms[6] = {};
+    static int part_n = 0;
+    double tp = t0;
+    auto part = [&](int k) {
+        if (!part_time) return;
+        const double t = now_ms();
+        part_ms[k] += t - tp;
+        tp = t;
+    };
     {  // build_triangles' inputs (Frame::BuildInputs): the game's own projection (g_mrp_world_projection 1, mrp_world_gx2_init), no
        // widening, no modern lighting
         mrp_world_view_proj(F.in.vp);
@@ -3952,13 +3969,19 @@ void mrp_world_wiiu_prepare(bool active) {
        // (with the GS replica - RAC1_WIIU_REPLICA=1 -, or no world pass met: the values the frame environment had on Veldin - the PC's
        // walker: TEST_1 0x5360b, ALPHA_1 0x8000000044, ZBUF_1 0x10000d8, PRMODECONT 1, TEXA 0x8000000000, FBA_1 0 -, FOGCOL and the
        // others as the chain's reading left them: the texture registers are set by each packet's texture prims anyway)
-        const MrpChainFrame* cf = nullptr;
+        // (the Wii U: the frame before's, kept when its chain was joined - mrp_world_wiiu_chain_joined -: waiting for this frame's
+        // reader here cost 5-17 ms a host frame on Veldin, and these registers hardly change from a frame to the next)
+        const uint64_t* regs = nullptr;
         if (mrp_chain_used()) {
-            mrp_chain_join();
-            if (mrp_chain_frame().regs_at_ok) cf = &mrp_chain_frame();
+            if (g_regs_last_ok && regs_last_on()) {
+                regs = g_regs_last;
+            } else {
+                mrp_chain_join();
+                if (mrp_chain_frame().regs_at_ok) regs = mrp_chain_frame().regs_at;
+            }
         }
-        if (cf != nullptr) {
-            for (uint32_t r = 0; r < 128; ++r) F.gs_regs[r] = cf->regs_at[r];
+        if (regs != nullptr) {
+            for (uint32_t r = 0; r < 128; ++r) F.gs_regs[r] = regs[r];
         } else {
             for (uint32_t r = 0; r < 128; ++r) F.gs_regs[r] = mrp_chain_gs_reg(r);
             F.gs_regs[0x47] = 0x5360bull;
@@ -3969,10 +3992,23 @@ void mrp_world_wiiu_prepare(bool active) {
             F.gs_regs[0x4a] = 0;
         }
     }
+    part(0);
     // the ties / shrubs made by the host (mrp_world_static.h: the snapshot static_note_pass took before the passes, handle on - the
     // world passes' culling is off on the Wii U, RAC1_WORLD_PASS_SKIP=6, and so is the relighting: the colours stay the level's load's)
-    resident_colours_update(g_rcols, colour_source());
+    {  // (the Wii U: with the passes' relighting off - RAC1_WORLD_PASS_SKIP=6 - the colours stay the level's load's, and comparing the
+       // whole table every host frame cost ~3.5 ms on Veldin: compared every RAC1_WIIU_COLOUR_EVERY host frames, default 30, and when
+       // the level's tables move; a colour the game still changes shows up to that many frames late)
+        static const int every = std::getenv("RAC1_WIIU_COLOUR_EVERY") != nullptr ? std::max(1, std::atoi(std::getenv("RAC1_WIIU_COLOUR_EVERY"))) : 30;
+        static int since = 0;
+        const ColourSource src = colour_source();
+        if (g_rcols.all_dirty || !(src == g_rcols.src) || ++since >= every) {
+            resident_colours_update(g_rcols, src);
+            since = 0;
+        }
+    }
+    part(1);
     static_frame_build(g_slevel, g_rcols, g_sframe, false);
+    part(2);
     // the tfrags (MRP_LITE.md phase 4): the host's decisions (tfrag_decide) from the snapshot tfrag_note_pass took before the real tfrag
     // pass (handle on: overlay_entry.cpp world_pass; the game's tfrag pass runs, its culling too), drawn in the view and constants its chain
     // gives VU1 (scene_from_static: tfrag_pass_vu); their lit colours' mirror brought up to date (as the PC's capture step)
@@ -3982,12 +4018,21 @@ void mrp_world_wiiu_prepare(bool active) {
         tfrag_colours_update(g_tcols, g_tlevel);
         tfrag_decide(g_tlevel, ts, false, g_tdecide);
     }
+    part(3);
     const SceneAddrs ad = scene_addrs();
     std::array<float, 16> a{};
     std::array<float, 3> cam{};
     for (uint32_t k = 0; k < 16; ++k) a[k] = lwc1(ad.a + 4 * k);
     for (uint32_t k = 0; k < 3; ++k) cam[k] = lwc1(ad.camera + 4 * k);
     if (!scene_from_static(g_sframe, g_slevel, a, cam, tfrag ? &g_tlevel : nullptr, tfrag ? &g_tdecide : nullptr, F.scene)) return;
+    part(4);
+    if (part_time && ++part_n == 120) {
+        std::printf("[mrpw] the prepare's first half, ms a call: the chain's wait and the registers %.2f, the ties' / shrubs' colours %.2f, "
+                    "their frame %.2f, the tfrags' colours and decisions %.2f, the scene %.2f\n",
+                    part_ms[0] / 120, part_ms[1] / 120, part_ms[2] / 120, part_ms[3] / 120, part_ms[4] / 120);
+        part_n = 0;
+        for (double& v : part_ms) v = 0.0;
+    }
     g_ms_head += now_ms() - t0;
     wiiu_prep_dispatch();
 }
@@ -4069,6 +4114,13 @@ void wiiu_prep_dispatch() {
     w.cv.notify_all();
 }
 }  // namespace
+
+// orig: (host) see mrp_world_renderer.h
+void mrp_world_wiiu_chain_joined() {
+    const MrpChainFrame& f = mrp_chain_frame();
+    g_regs_last_ok = f.regs_at_ok;
+    if (f.regs_at_ok) std::memcpy(g_regs_last, f.regs_at, sizeof g_regs_last);
+}
 
 // orig: (host) see mrp_world_renderer.h
 void mrp_world_wiiu_join() {

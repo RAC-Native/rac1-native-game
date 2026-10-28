@@ -24,6 +24,7 @@
 #include "mrp_moby_gx2.h"
 
 #include "gs_draw_gx2.h"
+#include "mrp_world_gx2.h"
 
 #include <game/ovl/ovl_common.h>
 #include <game/render/mrp_chain.h>
@@ -93,6 +94,10 @@ WHBGfxShaderGroup g_sh{};
 // INTEGER; its fetch shader only: the shaders are g_sh's)
 WHBGfxShaderGroup g_sh_scaled{};  // (its fetch program kept until the app ends)
 bool g_scaled_ok = false;
+// (2026-10-28, the GPU's time) the pixel shader's build without the alpha test (shaders/mrp_moby_noat.gsh, RAC1_NO_ALPHA_TEST: no
+// discard - the depth tested and written before the shader), for the batches whose test is off or ALWAYS while Gx2Perf::nokill
+WHBGfxShaderGroup g_sh_noat{};
+const GX2PixelShader* g_ps_noat = nullptr;
 // the blocks' locations and sizes (the compiler's: at least the structs')
 struct BlockLoc {
     uint32_t loc = 0, size = 0;
@@ -500,6 +505,8 @@ bool mrp_moby_gx2_init() {
     const char* pj = std::getenv("RAC1_WIIU_MRP_PROJ");
     g_mrp_moby_projection = pj != nullptr && std::strcmp(pj, "vu") == 0 ? 1 : 0;
     g_ready = true;
+    gx2_perf_init();
+    if (!variant) g_ps_noat = gx2_ps_variant("shaders/mrp_moby_noat.gsh", g_sh, g_sh_noat);
     std::printf("[wiiu] mrp_moby_gx2: up (blocks: frame %u normals %u joints %u draw %u pixel %u bytes)\n", g_frame_loc.size, g_normals_loc.size,
                 g_joints_loc.size, g_draw_loc.size, g_pixel_loc.size);
     return true;
@@ -514,6 +521,9 @@ void mrp_moby_gx2_shutdown() {
     MEMFreeToDefaultHeap(g_ring);
     g_ring = nullptr;
     g_cache = Cache{};
+    if (g_ps_noat != nullptr) WHBGfxFreeShaderGroup(&g_sh_noat);
+    g_sh_noat = WHBGfxShaderGroup{};
+    g_ps_noat = nullptr;
     WHBGfxFreeShaderGroup(&g_sh);
     g_sh = WHBGfxShaderGroup{};
     g_ready = false;
@@ -620,10 +630,13 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
     GX2SetFetchShader((g_debug & 128) != 0 && g_scaled_ok ? &g_sh_scaled.fetchShader : &g_sh.fetchShader);
     GX2SetVertexShader(g_sh.vertexShader);
     GX2SetPixelShader(g_sh.pixelShader);
+    const GX2PixelShader* cur_ps = g_sh.pixelShader;  // (the pixel shader set: its own or the build without the alpha test)
     GX2SetCullOnlyControl(GX2_FRONT_FACE_CCW, FALSE, FALSE);
     GX2SetAlphaTest(FALSE, GX2_COMPARE_FUNC_ALWAYS, 0.0f);
     GX2SetViewport(static_cast<float>(vp.x), static_cast<float>(win_h - vp.y - vp.h), static_cast<float>(vp.w), static_cast<float>(vp.h), 0.0f, 1.0f);
-    GX2SetScissor(0, 0, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
+    // (testing, Gx2Perf::pixels_off: 8 x 8 pixels at the frame's centre - the draws' GPU time without their pixels')
+    if (g_gx2_perf.pixels_off) GX2SetScissor(static_cast<uint32_t>(win_w / 2), static_cast<uint32_t>(win_h / 2), 8, 8);
+    else GX2SetScissor(0, 0, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
     GX2SetAttribBuffer(0, static_cast<uint32_t>(g_geo.v_count * sizeof(mrpm::GpuVertex)), sizeof(mrpm::GpuVertex), g_geo.vb);
     if (g_normals_loc.found) GX2SetVertexUniformBlock(g_normals_loc.loc, g_normals_loc.size, g_cache.normals);
     const auto none = static_cast<GX2ChannelMask>(0);
@@ -778,6 +791,11 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
         // colour against it with LEQUAL and no Z writes (the pixels it writes colour for)
         static const bool no_split = std::getenv("RAC1_GS_AFAIL_SPLIT") != nullptr && std::atoi(std::getenv("RAC1_GS_AFAIL_SPLIT")) == 0;
         const bool split = !no_split && zwrite && pb.a[1] != 0 && pb.a[2] != 1 && pb.b[0] != 0;
+        {  // (Gx2Perf::nokill: the build without the alpha test when the batch's is off or ALWAYS - its pixels all pass, no discard)
+            const GX2PixelShader* ps = g_gx2_perf.nokill && g_ps_noat != nullptr && (pb.a[1] == 0 || pb.a[2] == 1) ? g_ps_noat : g_sh.pixelShader;
+            if (ps != cur_ps) GX2SetPixelShader(ps);
+            cur_ps = ps;
+        }
         if (split) {
             GX2SetDepthOnlyControl(TRUE, TRUE, zf);
             set_mask(none);

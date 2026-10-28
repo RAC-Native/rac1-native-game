@@ -15,6 +15,8 @@
 #include "mrp_world_gx2.h"
 
 #include <coreinit/cache.h>
+#include <coreinit/memdefaultheap.h>
+#include <coreinit/time.h>
 #include <coreinit/memexpheap.h>
 #include <coreinit/memheap.h>
 #include <gx2/clear.h>
@@ -129,7 +131,17 @@ void rac1_wiiu_picture_frame(const rac1::gs::Gs* replica, float fb_w, float fb_h
 namespace {
 bool g_ending = false;  // (the game ended: wiiu_gfx_game_ended)
 OSTime g_frame_ts = 0;  // (the last frame's commands, GX2GetLastSubmittedTimeStamp: waited for before the next frame's writes)
+// the foreground ours (ProcUI's release / acquire callbacks, wiiu_main.cpp). Released - the HOME menu, the exit - WHB's own
+// release callback has waited for the GPU (GX2DrawDone) and freed the TV's and the GamePad's buffers (MEM1, the foreground's):
+// no frame drawn into them until the acquire. (The game's host frame after the release still came here - WHBProcIsRunning
+// returns true from the release itself -, and the frames on the way back to the menu, 2026-10-28)
+bool g_foreground = true;
 }  // namespace
+
+void wiiu_gfx_foreground(bool on) {
+    g_foreground = on;
+    if (!on) g_frame_ts = 0;  // (the GPU idle: WHB's release callback's GX2DrawDone)
+}
 
 void wiiu_gfx_game_ended() {
     // (the GPU may still be drawing the last frame - the frames overlap the next one's work, wiiu_gfx_frame -: waited for before the
@@ -140,7 +152,7 @@ void wiiu_gfx_game_ended() {
         OSReport("rac1-wiiu: ending: %s\n", m);
     };
     step("the GPU's last frame");
-    if (g_on && g_frame_ts != 0) GX2WaitTimeStamp(g_frame_ts);
+    if (g_on && g_foreground && g_frame_ts != 0) GX2WaitTimeStamp(g_frame_ts);  // (released: the GPU idle already)
     step("waited");
     g_frame_ts = 0;
     g_ending = true;  // (the frames from here to ProcUI's release: no timestamp waited for, WHBGfxFinishRender's own wait - the
@@ -225,6 +237,187 @@ void rac1_wiiu_time(int slot, double ms) {
     if (tm_on() && slot >= 0 && slot < kTmN) g_tm[slot] += ms;
 }
 
+// (testing, the timing on - RAC1_WIIU_TIMING=1 or the debug menu -, 2026-10-28: the GPU's time) the TV frame's passes timed by the GPU
+// itself: at each mark two samples of the GPU's clock, a bottom-of-pipe one (GX2SampleBottomGPUCycle: written once everything before it
+// has been drawn) and a top-of-pipe one (GX2SampleTopGPUCycle: written when the command processor reaches it), into a ring of four
+// frames read two frames later (by then the frame before was waited for: no stall). A pass's time is the bottoms' difference; the CP's
+// lead (bottom - top at a mark) says how far the commands ran ahead of the drawing - near 0 the GPU waited for the CPU's commands, and
+// the pass's time is then the CPU's pace, not the GPU's. Averaged per timing window: the log's "[gpu]" line, the menu's timing page.
+extern "C" void GX2SampleTopGPUCycle(uint64_t* result);  // (gx2.rpl: wut has the imports, not the declarations)
+extern "C" void GX2SampleBottomGPUCycle(uint64_t* result);
+namespace {
+enum GpuMark { kGmStart, kGmClear, kGmZclear, kGmWorld, kGmMobys, kGm2d, kGmTvCopy, kGmDrc, kGmSwap, kGmN };
+const char* const kGmName[kGmN] = {"start", "clear (WHB)", "depth clear", "world", "mobys", "2D", "TV copy", "GamePad", "swap"};
+struct alignas(64) GpuSlot {  // (a cache line each: the GPU writes it, the CPU only reads it - no CPU line written back over it)
+    uint64_t v;
+    uint8_t pad[56];
+};
+constexpr int kGpuRing = 4;
+GpuSlot* g_gslots = nullptr;       // [kGpuRing][2: top, bottom][kGmN], MEM2
+uint64_t g_gframe[kGpuRing] = {};  // (the host frame whose marks a set holds; 0 none)
+uint32_t g_gmarked[kGpuRing] = {}; // (its marks made, bit per GpuMark)
+int g_gcur = -1;                   // (the set this host frame marks; -1 none)
+double g_gsum[kGmN] = {}, g_glead[kGmN] = {}, g_gbusy = 0.0, g_ggap = 0.0;
+uint64_t g_gn = 0, g_glate = 0, g_gbad = 0, g_gswapped = 0, g_gnperiod = 0;
+uint64_t g_gprev_end = 0, g_gprev_frame = 0;  // (the last set read: its swap's bottom, its host frame)
+GpuSlot& gpu_slot(int set, int bottom, int mark) { return g_gslots[(set * 2 + bottom) * kGmN + mark]; }
+// (the samples count the GPU's 27 MHz clock - its raw values on the console, 2026-10-28: a frame's passes 0.8-1 M ticks apart, as 30-36 ms;
+// GX2GPUTimeToCPUTime gave nonsense, 27 M ticks as 3.4e11 ms)
+double gpu_ms(uint64_t d) { return static_cast<double>(d) / 27000.0; }
+void gpu_mark(int mark) {
+    if (g_gcur < 0) return;
+    GpuSlot& t = gpu_slot(g_gcur, 0, mark);
+    GpuSlot& b = gpu_slot(g_gcur, 1, mark);
+    t.v = ~0ull;  // (not there yet)
+    b.v = ~0ull;
+    DCFlushRange(&t, sizeof t);
+    DCFlushRange(&b, sizeof b);
+    GX2SampleTopGPUCycle(&t.v);
+    GX2SampleBottomGPUCycle(&b.v);
+    DCFlushRange(&t, sizeof t);  // (whatever GX2 wrote there itself out before the GPU writes it)
+    DCFlushRange(&b, sizeof b);
+    g_gmarked[g_gcur] |= 1u << mark;
+}
+// a set two frames old read into the window's sums
+void gpu_read(int set) {
+    if (g_gframe[set] == 0 || (g_gmarked[set] & 1u) == 0) return;
+    uint64_t top[kGmN], bot[kGmN];
+    DCInvalidateRange(&gpu_slot(set, 0, 0), static_cast<uint32_t>(2 * kGmN * sizeof(GpuSlot)));
+    for (int k = 0; k < kGmN; ++k) {
+        top[k] = gpu_slot(set, 0, k).v;
+        bot[k] = gpu_slot(set, 1, k).v;
+        if ((g_gmarked[set] & (1u << k)) != 0 && (top[k] == ~0ull || bot[k] == ~0ull)) {
+            ++g_glate;  // (not written yet: dropped)
+            g_gframe[set] = 0;
+            return;
+        }
+    }
+    // the samples' byte order checked (the bottoms in mark order, the frame under a second; else byte-swapped, else unreadable)
+    auto sane = [&](const uint64_t* b) {
+        uint64_t last = b[0];
+        for (int k = 1; k < kGmN; ++k) {
+            if ((g_gmarked[set] & (1u << k)) == 0) continue;
+            if (b[k] < last) return false;
+            last = b[k];
+        }
+        return gpu_ms(last - b[0]) < 1000.0;
+    };
+    if (!sane(bot)) {
+        uint64_t t2[kGmN], b2[kGmN];
+        for (int k = 0; k < kGmN; ++k) {
+            t2[k] = __builtin_bswap64(top[k]);
+            b2[k] = __builtin_bswap64(bot[k]);
+        }
+        if (!sane(b2)) {
+            if (g_gbad++ < 3) {
+                std::printf("[gpu] host frame %llu: samples unreadable (marks %#x):", static_cast<unsigned long long>(g_gframe[set]), g_gmarked[set]);
+                for (int k = 0; k < kGmN; ++k) std::printf(" %s %016llx/%016llx", kGmName[k], static_cast<unsigned long long>(top[k]), static_cast<unsigned long long>(bot[k]));
+                std::printf("\n");
+            }
+            g_gframe[set] = 0;
+            return;
+        }
+        std::memcpy(top, t2, sizeof top);
+        std::memcpy(bot, b2, sizeof bot);
+        ++g_gswapped;
+    }
+    uint64_t prev = bot[0], end = bot[0];
+    for (int k = 1; k < kGmN; ++k) {
+        if ((g_gmarked[set] & (1u << k)) == 0) continue;  // (a pass not drawn: its time the next mark's)
+        g_gsum[k] += gpu_ms(bot[k] - prev);
+        g_glead[k] += bot[k] > top[k] ? gpu_ms(bot[k] - top[k]) : 0.0;
+        prev = end = bot[k];
+    }
+    g_gbusy += gpu_ms(end - bot[0]);
+    if (g_gprev_end != 0 && g_gprev_frame + 1 == g_gframe[set] && bot[0] >= g_gprev_end) {  // (from the frame before's end: the GPU idle)
+        g_ggap += gpu_ms(bot[0] - g_gprev_end);
+        ++g_gnperiod;
+    }
+    g_gprev_end = end;
+    g_gprev_frame = g_gframe[set];
+    ++g_gn;
+    g_gframe[set] = 0;
+}
+// a host frame's start (the frame before waited for): the set of two frames ago read, this frame's set begun (`on`: the timing's)
+void gpu_frame_begin(bool on, uint64_t frame) {
+    g_gcur = -1;
+    if (!on) return;
+    if (g_gslots == nullptr) {
+        const uint32_t bytes = static_cast<uint32_t>(kGpuRing * 2 * kGmN * sizeof(GpuSlot));
+        g_gslots = static_cast<GpuSlot*>(MEMAllocFromDefaultHeapEx(bytes, 64));
+        if (g_gslots == nullptr) return;
+        std::memset(g_gslots, 0xff, bytes);
+        DCFlushRange(g_gslots, bytes);
+        std::printf("[gpu] the GPU's clock: 27,000,000 of its ticks = %.1f ms (27 MHz)\n", gpu_ms(27000000ull));
+    }
+    gpu_read(static_cast<int>((frame + kGpuRing - 2) % kGpuRing));
+    g_gcur = static_cast<int>(frame % kGpuRing);
+    g_gframe[g_gcur] = frame;
+    g_gmarked[g_gcur] = 0;
+}
+// the window's averages on the log and the menu's lines (with the [timing] line)
+void gpu_window(std::vector<std::string>& menu) {
+    if (g_gn == 0) {
+        if (g_gslots != nullptr) std::printf("[gpu] no frame read (%llu late, %llu unreadable)\n", static_cast<unsigned long long>(g_glate), static_cast<unsigned long long>(g_gbad));
+        return;
+    }
+    const double n = static_cast<double>(g_gn);
+    char b[96];
+    std::printf("[gpu] %llu TV frames: busy %.1f ms (pass ms / the CP's lead at its end ms):", static_cast<unsigned long long>(g_gn), g_gbusy / n);
+    std::snprintf(b, sizeof b, "GPU %.1f ms a frame, idle between %.1f", g_gbusy / n, g_gnperiod != 0 ? g_ggap / static_cast<double>(g_gnperiod) : 0.0);
+    menu.emplace_back(b);
+    for (int k = 1; k < kGmN; ++k) {
+        std::printf(" %s %.2f/%.1f,", kGmName[k], g_gsum[k] / n, g_glead[k] / n);
+        if (g_gsum[k] / n >= 0.3) {
+            std::snprintf(b, sizeof b, "  gpu %-20.20s %6.1f", kGmName[k], g_gsum[k] / n);
+            menu.emplace_back(b);
+        }
+        g_gsum[k] = g_glead[k] = 0.0;
+    }
+    std::printf(" idle between frames %.1f; %llu late, %llu unreadable, %llu byte-swapped\n", g_gnperiod != 0 ? g_ggap / static_cast<double>(g_gnperiod) : 0.0,
+                static_cast<unsigned long long>(g_glate), static_cast<unsigned long long>(g_gbad), static_cast<unsigned long long>(g_gswapped));
+    g_gbusy = g_ggap = 0.0;
+    g_gn = g_gnperiod = g_glate = g_gswapped = 0;
+}
+
+// (Gx2Perf::hiz, 2026-10-28) a depth buffer's hierarchical Z: WHB makes the TV's and the GamePad's without its buffer (HTILE: no
+// hierarchical culling, no compressed depth, no fast clear); its memory (MEM2) made at the first frame on and kept, the buffer's
+// registers set each frame as the switch says (WHB's acquire may make them again), before the frame's clears
+struct HizMem {
+    const GX2DepthBuffer* db = nullptr;
+    void* mem = nullptr;
+    uint32_t size = 0;
+};
+HizMem g_hiz[2];
+void hiz_apply(GX2DepthBuffer* db) {
+    if (db == nullptr) return;
+    HizMem* h = nullptr;
+    for (HizMem& m : g_hiz)
+        if (m.db == db || (h == nullptr && m.db == nullptr)) h = &m;
+    if (h == nullptr) return;
+    h->db = db;
+    if (rac1::g_gx2_perf.hiz && (db->hiZPtr == nullptr || db->hiZPtr != h->mem)) {
+        uint32_t size = 0, align = 0;
+        GX2CalcDepthBufferHiZInfo(db, &size, &align);
+        if (h->mem == nullptr || h->size < size) {
+            if (h->mem != nullptr) MEMFreeToDefaultHeap(h->mem);
+            h->mem = size != 0 ? MEMAllocFromDefaultHeapEx(size, std::max<uint32_t>(align, 64)) : nullptr;
+            h->size = h->mem != nullptr ? size : 0;
+            if (h->mem != nullptr) DCFlushRange(h->mem, size);  // (no CPU line of it written back over the GPU's)
+            std::printf("[gpu] hierarchical Z for the %u x %u depth buffer: %u KB (align %u)%s\n", db->surface.width, db->surface.height, size / 1024, align,
+                        h->mem != nullptr ? "" : ": no memory, off");
+        }
+        if (h->mem == nullptr) {
+            rac1::g_gx2_perf.hiz = false;
+            return;
+        }
+        db->hiZPtr = h->mem;
+        db->hiZSize = h->size;
+    }
+    if (db->hiZPtr != nullptr && db->hiZPtr == h->mem) GX2InitDepthBufferHiZEnable(db, rac1::g_gx2_perf.hiz ? TRUE : FALSE);
+}
+}  // namespace
+
 
 namespace {
 // the game's frame (4:3) centred on a colour buffer and its 2D drawn (the test triangle until the game's first frame)
@@ -256,15 +449,33 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
     vp.skip_fbp = g_2d.skip_fbp;
     vp.sprite_clamp = true;
     vp.hide_edge_slivers = true;
+    {  // (2026-10-28, the GPU's time: the buffers the picture draws into, once on the log - sizes, formats, AA, tiling, hierarchical Z)
+        static bool told[2] = {false, false};
+        const int which = cb == WHBGfxGetTVColourBuffer() ? 0 : 1;
+        if (!told[which]) {
+            told[which] = true;
+            const GX2Surface& c = cb->surface;
+            std::printf("[gpu] the %s's colour buffer %u x %u, format %#x, aa %d, tile mode %d, %u KB; ", which == 0 ? "TV" : "GamePad", c.width, c.height,
+                        static_cast<unsigned>(c.format), static_cast<int>(c.aa), static_cast<int>(c.tileMode), c.imageSize / 1024);
+            if (db != nullptr)
+                std::printf("depth %u x %u, format %#x, aa %d, tile mode %d, %u KB, hierarchical Z %s; ", db->surface.width, db->surface.height,
+                            static_cast<unsigned>(db->surface.format), static_cast<int>(db->surface.aa), static_cast<int>(db->surface.tileMode), db->surface.imageSize / 1024,
+                            db->hiZPtr != nullptr ? "buffer there" : "none");
+            std::printf("the game's frame %d x %d at %d, %d (%.0f%% of the buffer's pixels)\n", vp.w, vp.h, vp.x, vp.y,
+                        100.0 * vp.w * vp.h / (static_cast<double>(w) * h));
+        }
+    }
     // the 3D under the 2D: the depth cleared once (the world and the mobys share it), the world's ties / shrubs, then the mobys.
     // (testing, RAC1_WIIU_ZCLEAR=0: the depth not cleared here - WHBGfxClearColor clears it too, when called before)
     static const bool zclear = std::getenv("RAC1_WIIU_ZCLEAR") == nullptr || std::atoi(std::getenv("RAC1_WIIU_ZCLEAR")) != 0;
-    if (db != nullptr && zclear && (g_mobys_ready || g_world_ready)) {
+    // ((2026-10-28) Gx2Perf::zclear2 off: the debug menu's - WHBGfxClearColor's clear alone)
+    if (db != nullptr && zclear && rac1::g_gx2_perf.zclear2 && (g_mobys_ready || g_world_ready)) {
         GX2ClearDepthStencilEx(db, 1.0f, 0, GX2_CLEAR_FLAGS_DEPTH);
         // (the clear changes the GPU's state: the context of `cb` set again, the TV's or the GamePad's)
         GX2ContextState* ctx = cb == WHBGfxGetTVColourBuffer() ? WHBGfxGetTVContextState() : WHBGfxGetDRCContextState();
         if (ctx != nullptr) GX2SetContextState(ctx);
     }
+    if (g_tm_draw) gpu_mark(kGmZclear);  // (the TV's call: the GPU's marks, gpu_mark)
     auto dt = std::chrono::steady_clock::now();
     auto dlap = [&](int slot) {
         if (!g_tm_draw) return;
@@ -276,11 +487,13 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
         dlap(kTmWorldJoin);
         rac1::mrp_world_gx2_debug_frame(g_2d.game_frame);
         rac1::mrp_world_gx2_draw(cb, db, vp);
+        if (g_tm_draw) gpu_mark(kGmWorld);
         dlap(kTmWorld);
     }
     if (g_mobys_ready && g_menu_draw_mobys) {
         rac1::mrp_moby_gx2_debug_frame(g_2d.game_frame);
         rac1::mrp_moby_gx2_draw(cb, db, vp);
+        if (g_tm_draw) gpu_mark(kGmMobys);
         dlap(kTmMobys);
     }
     if (s_2d == 3) {  // (testing, RAC1_WIIU_TEST_AFTER=1: the test triangle drawn over the mobys, the target checked)
@@ -292,6 +505,7 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
     if (!g_menu_draw_2d) return;  // (the GamePad's debug menu)
     if (g_2d.replica != nullptr) rac1::gs::draw_gx2(*g_2d.replica, cb, g_2d.fb_w, g_2d.fb_h, &vp, targets);
     else rac1::mrp_2d_gx2_draw(rac1::mrp_chain_frame(), cb, g_2d.fb_w, g_2d.fb_h, vp, targets);
+    if (g_tm_draw) gpu_mark(kGm2d);
     dlap(kTm2d);
 }
 }  // namespace
@@ -353,7 +567,7 @@ void shot(const GX2ColorBuffer* cb, uint64_t n) {
 
 // a frame for the TV and the GamePad, after a host frame of the game
 void wiiu_gfx_frame() {
-    if (!g_on) return;
+    if (!g_on || !g_foreground) return;  // (released: no buffers to draw into)
     ++g_frames;
     const bool tm = tm_on();
     if (debug_menu_wanted()) rac1::prof::request();  // (the game's stages recorded for the menu's game page: the next host frame)
@@ -401,6 +615,7 @@ void wiiu_gfx_frame() {
                 std::printf(" the rest (the game's steps) %.1f\n", (g_tm_total - known) / n);
                 std::snprintf(b, sizeof b, "  %-24.24s %6.1f", "the game's steps", (g_tm_total - known) / n);
                 g_menu_stats.emplace_back(b);
+                gpu_window(g_menu_stats);  // (the GPU's own times of the TV frame's passes: "[gpu]")
                 // the menu's game page: the game code's own stages (the host profiler's zones, ms a host frame), the biggest first
                 if (debug_menu_wanted() && rac1::prof::history_size() > 0) {
                     const rac1::prof::Summary sm = rac1::prof::summarize(window);
@@ -438,25 +653,37 @@ void wiiu_gfx_frame() {
     const bool overlap = overlap_on && g_menu_overlap && !g_ending;
     if (overlap && g_frame_ts != 0) GX2WaitTimeStamp(g_frame_ts);
     lap(kTmGpuWait);
+    rac1::gx2_perf_init();         // (the GPU switches' start, run.cfg's: once)
+    // (RAC1_WIIU_GPU_TIME=1: the GPU's marks - off by default: the first run with them on hung the console, 2026-10-28, not yet known why)
+    static const bool gpu_time = std::getenv("RAC1_WIIU_GPU_TIME") != nullptr && std::atoi(std::getenv("RAC1_WIIU_GPU_TIME")) != 0;
+    gpu_frame_begin(tm && gpu_time, g_frames);  // (the GPU's marks of two frames ago read, this frame's begun)
     if (g_frames % 300 == 0)  // (the memory left, on the log: a leak shows)
         std::printf("[wiiu] host frame %llu: %u KB free in the default heap\n", static_cast<unsigned long long>(g_frames),
                     static_cast<unsigned>(MEMGetTotalFreeSizeForExpHeap(MEMGetBaseHeapHandle(MEM_BASE_HEAP_MEM2)) / 1024));
-    if (g_2d.have && g_2d.replica == nullptr) rac1::mrp_chain_join();  // (the frame's chain read on the reader's worker)
+    if (g_2d.have && g_2d.replica == nullptr) {
+        rac1::mrp_chain_join();  // (the frame's chain read on the reader's worker)
+        rac1::mrp_world_wiiu_chain_joined();  // (its registers kept for the next frame's world)
+    }
     lap(kTmJoin);
     WHBGfxBeginRender();
     lap(kTmBegin);
+    hiz_apply(WHBGfxGetTVDepthBuffer());  // (Gx2Perf::hiz: before the clears, which clear its hierarchical Z too)
+    gpu_mark(kGmStart);
     WHBGfxBeginRenderTV();
     WHBGfxClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    gpu_mark(kGmClear);
     g_tm_draw = tm;
     draw_frame(WHBGfxGetTVColourBuffer(), WHBGfxGetTVDepthBuffer(), g_2d.targets_due);
     g_tm_draw = false;
     t = std::chrono::steady_clock::now();
     g_2d.targets_due = false;
     WHBGfxFinishRenderTV();
+    gpu_mark(kGmTvCopy);
     lap(kTmFinishTv);
     if (const uint64_t due = shot_wanted(g_2d.game_frame)) shot(WHBGfxGetTVColourBuffer(), due);
     // (testing, RAC1_WIIU_DRC=0: the GamePad's screen cleared only, the frame drawn for the TV alone)
     static const bool drc = std::getenv("RAC1_WIIU_DRC") == nullptr || std::atoi(std::getenv("RAC1_WIIU_DRC")) != 0;
+    hiz_apply(WHBGfxGetDRCDepthBuffer());
     WHBGfxBeginRenderDRC();
     WHBGfxClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     if (debug_menu_wanted() && !g_ending) {  // (the GamePad's debug menu in place of the game's picture there)
@@ -466,9 +693,11 @@ void wiiu_gfx_frame() {
         draw_frame(WHBGfxGetDRCColourBuffer(), WHBGfxGetDRCDepthBuffer(), false);
     }
     WHBGfxFinishRenderDRC();
+    gpu_mark(kGmDrc);
     lap(kTmDrc);
     if (overlap) {  // (WHBGfxFinishRender without its GX2DrawDone)
         GX2SwapScanBuffers();
+        gpu_mark(kGmSwap);
         GX2Flush();
         GX2SetTVEnable(TRUE);
         GX2SetDRCEnable(TRUE);

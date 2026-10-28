@@ -27,6 +27,7 @@
 #include "mrp_2d_gx2.h"
 
 #include "gs_draw_gx2.h"
+#include "mrp_world_gx2.h"
 
 #include <game/render/mrp_2d.h>
 #include <game/render/mrp_2d_backend.inc>
@@ -633,7 +634,8 @@ void mrp_2d_gx2_draw(const MrpChainFrame& f, const GX2ColorBuffer* screen, float
         set_texture(0, tex != nullptr ? tex : &g_white, lin, ws, wt);
         set_texture(1, scr, false, false, false);
         for (int m = 0; m < 3; ++m) set_texture(2 + m, mips[m] != nullptr ? mips[m] : &g_white, k.lin_min != 0, ws, wt);
-        GX2SetScissor(sc[0], sc[1], sc[2], sc[3]);
+        // (testing, Gx2Perf::pixels_off: 8 x 8 pixels at the box's corner - the draws' GPU time without their pixels')
+        GX2SetScissor(sc[0], sc[1], g_gx2_perf.pixels_off ? std::min<uint32_t>(sc[2], 8) : sc[2], g_gx2_perf.pixels_off ? std::min<uint32_t>(sc[3], 8) : sc[3]);
         Block blk{};
         blk.fog_col[0] = static_cast<float>(k.fogcol & 0xff) / 255.0f;
         blk.fog_col[1] = static_cast<float>((k.fogcol >> 8) & 0xff) / 255.0f;

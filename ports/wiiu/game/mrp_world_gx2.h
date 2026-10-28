@@ -39,7 +39,9 @@
 
 #include <runtime/gs/gs_draw.h>
 
+#include <gx2/shaders.h>
 #include <gx2/surface.h>
+#include <whb/gfx.h>
 
 #include <cstdint>
 
@@ -78,6 +80,26 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
 // alone; RAC1_WIIU_TFRAG_STAGE=<n> 1 the CPU route alone (nothing sent), 2 its data sent and the state set, no draws, 3 (the default)
 // everything; RAC1_WIIU_TFRAG_GSH=<file> another build of the tfrag shaders)
 void mrp_world_gx2_debug_frame(uint64_t game_frame);
+
+// (testing, 2026-10-28: the GPU's time - the console's TV frame took ~60 ms of GPU at full size, in proportion to its pixels) the
+// picture's GPU switches: read once from run.cfg (gx2_perf_init: RAC1_WIIU_HIZ, RAC1_WIIU_NOKILL, RAC1_WIIU_LEAN, RAC1_WIIU_PIXELS_OFF,
+// RAC1_WIIU_ZCLEAR), then flipped live by the GamePad's debug menu (Picture page); each one leaves the picture as it was, but
+// pixels_off (a diagnostic)
+struct Gx2Perf {
+    bool hiz = false;         // the TV's / GamePad's depth buffers with their hierarchical Z (HTILE: WHB makes them without; wiiu_gfx.cpp)
+    bool nokill = false;      // the batches without an alpha test drawn by the shaders' builds without discard (RAC1_NO_ALPHA_TEST: the
+                              // depth tested and written before the shader); the world's, the tfrags', the mobys'
+    bool lean = false;        // the world's / tfrags' lean pixel shader (mrp_world.frag RAC1_LEAN: the texture level's terms per vertex)
+    bool pixels_off = false;  // (diagnostic) the 3D's and the 2D's scissor 8 x 8 pixels: the GPU's time without the pixels' work
+    bool zclear2 = true;      // wiiu_gfx.cpp's own depth clear before the 3D (WHBGfxClearColor clears it already)
+};
+extern Gx2Perf g_gx2_perf;
+// (once; called by the backends' inits and wiiu_gfx.cpp's first frame)
+void gx2_perf_init();
+// another build of `main`'s shaders (`path`, beside them: the same vertex shader, another pixel shader) loaded into `keep`; its pixel
+// shader when it can stand in for `main`'s - the vertex shader the same (program and registers: the same outputs), the same uniform
+// mode, its blocks and samplers where `main`'s are -, else nullptr (`keep` freed; the reason on the log)
+const GX2PixelShader* gx2_ps_variant(const char* path, const WHBGfxShaderGroup& main, WHBGfxShaderGroup& keep);
 // everything it made freed (the level's textures and buffers, the colours' texture, the ring, the shaders): before WHBGfxShutdown;
 // it waits for the GPU
 void mrp_world_gx2_shutdown();

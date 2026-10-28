@@ -61,6 +61,9 @@ void mrp_world_wiiu_prepare(bool active);
 void mrp_world_wiiu_join();
 // (the Wii U: the preparation's second half on its worker - RAC1_WIIU_WORLD_ASYNC, the GamePad's debug menu flips it live)
 extern bool g_wiiu_world_async;
+// orig: (host) the Wii U: the frame's chain read (its reader joined, ports/wiiu/game/wiiu_gfx.cpp): its GS registers at the first world
+// pass kept for the next frame's preparation, which then does not wait for the reader (RAC1_WIIU_REGS_LAST=0: it waits, as before)
+void mrp_world_wiiu_chain_joined();
 #endif
 // orig: (host) the same in two halves: _async starts the scene's build (on a worker thread, RAC1_MRPW_THREAD=0 not),
 // after it mrp_world_skip_ranges() is known; the host may then read the frame's chain (it only reads EE memory) and must

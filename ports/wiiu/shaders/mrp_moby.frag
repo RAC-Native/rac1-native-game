@@ -1,7 +1,9 @@
 // The MRP's mobys on the Wii U (ports/wiiu/game/mrp_moby_gx2.cpp): mrp_moby_renderer.cpp's kFs brought to GLSL 330 for
 // CafeGLSL: the GS's texture functions, the texture level, FGE's fog and the alpha test with its fail modes (the AFAIL split's
 // two passes: uC.x). What differs from the PC's: no modern lighting (the sh_* hooks are the identity), and the "full texture"
-// level (mip mode 1) from the derivatives of the texture coordinates instead of textureQueryLod.
+// level (mip mode 1) from the derivatives of the texture coordinates instead of textureQueryLod. Its build RAC1_NO_ALPHA_TEST
+// (ports/wiiu/game/CMakeLists.txt, RAC1_WIIU_VARIANTS; mrp_moby_gx2.cpp's batches whose alpha test is off or ALWAYS - 2026-10-28)
+// has no alpha test: no discard in the program, so the depth test and write happen before the shader.
 #version 330 core
 noperspective in vec4 vColor;
 noperspective in vec3 vStq;
@@ -58,6 +60,7 @@ void main() {
         float f = vFog / 255.0;
         o.rgb = o.rgb * f + uFogCol.rgb * (1.0 - f);
     }
+#ifndef RAC1_NO_ALPHA_TEST
     float a = o.a * 255.0;
     if (uA.y != 0) {
         int atst = uA.z;
@@ -74,5 +77,6 @@ void main() {
         if (!pass && uC.x == 0 && (afail == 0 || afail == 2)) discard;
         if (!pass && uC.x == 1 && afail != 2) discard;
     }
+#endif
     FragColor = vec4(o.rgb, min(o.a * (255.0 / 128.0), 1.0));
 }

@@ -7,6 +7,7 @@
 #include <coreinit/foreground.h>
 #include <coreinit/thread.h>
 #include <coreinit/time.h>
+#include <proc_ui/procui.h>
 #include <sysapp/launch.h>
 #include <whb/log.h>
 #include <whb/log_console.h>
@@ -31,6 +32,7 @@ bool wiiu_gfx_start();
 void wiiu_gfx_stop();
 void wiiu_gfx_frame();
 void wiiu_gfx_game_ended();
+void wiiu_gfx_foreground(bool on);
 void rac1_wiiu_debug_tools_gate(int argc, char** argv);  // (src/host/orig_main.cpp)
 
 // ---- What goes wrong before main or outside it, on the UDP log (port 4405) ----
@@ -53,14 +55,35 @@ static void log_backtrace(const char* why) {
 // After a failure we can catch (an exception, an abort of our own code): back to the Wii U Menu instead of a stopped
 // console. (A crash of the processor itself, a DSI or an OS error, still shows Aroma's screen: power-cycle then.)
 static bool g_proc_up = false;  // (WHBProcInit done: the menu reachable)
+// ProcUI over: its exit seen (HOME's "close software"). WHBProcIsRunning then shuts ProcUI down (ProcUIShutdown) - and on
+// every later call processes its messages again, after that shutdown: ProcUIProcessMessages(TRUE) waits for a message that
+// never comes. The console hung there on its way back to the menu (2026-10-28: the log's last line "the game's main
+// returned", the next one never written). So no WHBProcIsRunning once ProcUI is over: proc_running.
+static volatile bool g_proc_exit = false;
+static uint32_t on_proc_exit(void*) {
+    g_proc_exit = true;
+    return 0;
+}
+// the picture's foreground (ProcUI's release / acquire: the HOME menu, the exit): no frame drawn without it (wiiu_gfx_frame)
+static uint32_t on_proc_release(void*) {
+    wiiu_gfx_foreground(false);
+    return 0;
+}
+static uint32_t on_proc_acquire(void*) {
+    wiiu_gfx_foreground(true);
+    return 0;
+}
+static bool proc_running() { return g_proc_up && !g_proc_exit && ProcUIIsRunning() && WHBProcIsRunning(); }
 [[noreturn]] static void back_to_menu(const char* why) {
     OSReport("rac1-wiiu: %s: back to the menu\n", why);
     std::fflush(stdout);
     static bool once = false;
     if (!once && g_proc_up) {
         once = true;
-        SYSLaunchMenu();
-        while (WHBProcIsRunning()) OSSleepTicks(OSMillisecondsToTicks(16));
+        if (proc_running()) {
+            SYSLaunchMenu();
+            while (proc_running()) OSSleepTicks(OSMillisecondsToTicks(16));
+        }
         WHBProcShutdown();
     }
     std::_Exit(1);
@@ -218,6 +241,7 @@ int read_settings() {
     setenv("RAC1_TFRAG_PASS_OFF", "1", 1);
     setenv("RAC1_MOBY_PASS_MRP", "1", 1);
     setenv("RAC1_DRAW_LAST_STEP", "1", 1);  // (a catch-up game frame, not shown, not drawn: game_skips.h)
+    setenv("RAC1_QUIT_ENDS", "1", 1);  // (the pause menu's Quit ends the game - back to the Wii U Menu - not the title: under 1 fps here, 2026-10-28)
     std::FILE* f = std::fopen("run.cfg", "r");
     if (f == nullptr) return 0;
     int n = 0;
@@ -260,6 +284,7 @@ int main(int argc, char** argv_in) {
     OSReport("rac1-wiiu: main\n");
     WHBProcInit();
     g_proc_up = true;
+    ProcUIRegisterCallback(PROCUI_CALLBACK_EXIT, &on_proc_exit, nullptr, 100);
     OSReport("rac1-wiiu: ProcUI up\n");
     WHBLogUdpInit();
     if (chdir(kDir) != 0) OSReport("rac1-wiiu: cannot enter fs:/vol/external01/rac1-native\n");
@@ -293,6 +318,10 @@ int main(int argc, char** argv_in) {
     const OSTime t0 = OSGetTime();
     int rc = -1;
     const bool gfx_up = gfx && wiiu_gfx_start();  // (the picture: GX2 on the TV and the GamePad)
+    if (gfx_up) {
+        ProcUIRegisterCallback(PROCUI_CALLBACK_RELEASE, &on_proc_release, nullptr, 100);
+        ProcUIRegisterCallback(PROCUI_CALLBACK_ACQUIRE, &on_proc_acquire, nullptr, 100);
+    }
     wiiu_sampler_start();  // (RAC1_WIIU_SAMPLE)
     try {
         rc = rac1_orig_main(1, argv);
@@ -313,17 +342,16 @@ int main(int argc, char** argv_in) {
     // back to the menu (ProcUI's messages handled meanwhile; the screen given back on its release)
     // (with the picture, GX2 stays up until ProcUI lets go: the WHB helpers' foreground callbacks still use it while the
     // menu takes over; shut down before, the console hung on its way back)
-    // (SYSLaunchMenu only when the game ended by itself: after HOME's "close", ProcUI is already taking the application down, and
-    // asking for the menu again on top of it left the console hung on the way back, 2026-10-28)
-    const bool still_running = WHBProcIsRunning();
+    // (SYSLaunchMenu only when the game ended by itself: after HOME's "close", ProcUI is already shut down - by the
+    // WHBProcIsRunning that saw its exit - and neither SYSLaunchMenu nor WHBProcIsRunning may be called again: proc_running)
+    const bool still_running = proc_running();
+    say(still_running ? "ending: the game ended by itself (ProcUI running)" : "ending: closed from HOME (ProcUI over)");
     if (gfx_up) wiiu_gfx_game_ended();
     if (still_running) {
         say("ending: the menu asked for");
         SYSLaunchMenu();
-    } else {
-        say("ending: closed from HOME (ProcUI already taking it down)");
     }
-    while (WHBProcIsRunning()) {
+    while (proc_running()) {
         if (gfx_up) wiiu_gfx_frame();
         else if (g_console) WHBLogConsoleDraw();
         OSSleepTicks(OSMillisecondsToTicks(16));

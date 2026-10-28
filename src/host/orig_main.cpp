@@ -1462,7 +1462,13 @@ bool level_enter(bool files_read) {
 // relocated onto it, and starts it: the title, its main menu, a new game or a loaded one from
 // there as at the boot.
 // orig: (host) the base ELF's main loop between the overlay and the boot module read back
+// (RAC1_QUIT_ENDS=1: the Quit ends the host's main loop instead - the game's main returns, as at a frame limit. The Wii U's
+// default, wiiu_main.cpp read_settings: its title runs under 1 fps there, 2026-10-28)
 bool title_return() {
+    if (const char* q = std::getenv("RAC1_QUIT_ENDS"); q != nullptr && q[0] == '1') {
+        std::printf("[orig] quit: the game ends (RAC1_QUIT_ENDS=1)\n");
+        return false;
+    }
     if (!front_image_load()) {
         std::fprintf(stderr, "rac1-native: cannot read the boot module from %s\n", disc_boot_elf_path().c_str());
         return false;

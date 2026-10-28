@@ -213,3 +213,24 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   moving twice, presses lost); quitting to the title (its bank's header read in the wrong byte order; the world-pass skips left the
   title's relighting stale pointers); RAC1_FRAMES=0 for a played run (a headless run stops at 300 frames). Still open: closing from
   the HOME menu leaves the console hung on its way back (after "ending: the menu asked for").
+
+### The world's prepare, the GPU, the way out (2026-10-28, later)
+
+- The world's prepare (RAC1_WIIU_PREP_TIME=1: its first half's parts every 120 calls) waited 5-17 ms a host frame for the chain's
+  reader, only for the GS registers at the first world pass: the frame before's are used now (mrp_world_wiiu_chain_joined; they
+  hardly change; RAC1_WIIU_REGS_LAST=0 waits as before). The ties' / shrubs' colours (3.4 ms: the whole table compared every frame,
+  though the relighting is off) are compared every RAC1_WIIU_COLOUR_EVERY host frames (30). The prepare: 18-30 -> 8-10 ms.
+- The GPU: its passes timed with GX2SampleTop/BottomGPUCycle (RAC1_WIIU_GPU_TIME=1; the samples count a 27 MHz clock; the first run
+  with them always on hung the console - not yet known why, hence off by default). Veldin at 1080p: the world ~36 ms, the mobys ~29.
+  Every pixel shader has KILL_ENABLE (its discard) and WHB never sets up hierarchical Z: no early / hierarchical depth culling at all.
+  Hierarchical Z (RAC1_WIIU_HIZ, now on by default; the menu's Picture page flips it): 101 -> 70 ms a host frame at the same place,
+  the GPU's wait 9 -> 0 ms, the swap's 12 -> 0; with the pixels scissored away (the menu's "GPU test") still ~69: the GPU no longer
+  holds the frame. The pixel shaders without discard (RAC1_WIIU_NOKILL) and the lighter mip choice (lean) measured nothing more;
+  the lean variant's vertex shaders (vLodP) made the world untextured on the console: left out.
+- To watch with the passes still to port (the sky, the effects, the alpha-fail passes, stencil shadows): a depth function changed
+  mid-frame leaves hierarchical Z wrong - each pass's depth state checked against it.
+- Leaving: HOME's close hung the console - wut's WHBProcIsRunning, called again after it returned false, runs ProcUIShutdown and
+  then waits for a message that never comes. The exit path now asks ProcUI once (wiiu_main.cpp proc_running); the frames stop at
+  the foreground's release. Also: the pause menu's Quit ends the game (RAC1_QUIT_ENDS=1, a Wii U default; the boot's title is under
+  1 fps there), the GamePad menu's "Exit game", the Minus button held a second. All four seen back at the Wii U Menu.
+- Veldin's start, everything on, 1080p: ~70 ms a host frame (from ~150 this morning), all of it the CPU's.
