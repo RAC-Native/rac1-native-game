@@ -4248,6 +4248,11 @@ bool mrp_lighting_screen_point(float u, float v, float out[3]) {
     return g_pick_ok;
 }
 
+// orig: (host) mrp_moby_renderer.cpp: the joint that carries the drawn moby's surface nearest a world point (the heaviest joint of
+// the nearest skinned triangle's vertex nearest the point), -1 none (not drawn, no pose); `dist` that triangle's distance. (Declared
+// here, not in mrp_lighting.h: a change to that header asks every build for ./setup.sh again - the generated code is built against it.)
+int mrp_moby_surface_joint(uint32_t moby, const float p[3], float* dist = nullptr);
+
 // orig: (host) see mrp_lighting.h
 LightPick mrp_lighting_pick(const float p[3]) {
     LightPick r;
@@ -4318,18 +4323,23 @@ LightPick mrp_lighting_pick(const float p[3]) {
             frame_off(m);
         }
     }
-    if (r.moby) {  // its pose this frame: the joint nearest the point, the point in that joint's frame
+    if (r.moby) {  // its pose this frame: the joint that carries its surface at the point, else the joint nearest the point; the
+                   // point in that joint's own frame (#102: before, the joint whose skinning matrix's origin was nearest - that origin
+                   // is the model's origin carried by the joint, not the joint - so almost any joint, one of Ratchet's fingers for
+                   // Clank's eyes, and the offset was not in the joint's frame)
         float jp[3], ax[9], best = 1e30f;
         int n = 0;
-        if (mrp_moby_draw_frame(r.moby_addr, -1, jp, ax, &n))
+        if (mrp_moby_draw_frame(r.moby_addr, -1, jp, ax, &n)) {
+            const int sj = mrp_moby_surface_joint(r.moby_addr, p);
             for (int j = 0; j < n && j < 128; ++j) {
-                if (!mrp_moby_draw_frame(r.moby_addr, j, jp, ax)) continue;
+                if ((sj >= 0 && j != sj) || !mrp_moby_draw_frame(r.moby_addr, j, jp, ax)) continue;
                 const glm::vec3 d = P - glm::vec3(jp[0], jp[1], jp[2]);
                 if (glm::length(d) >= best) continue;
                 best = glm::length(d);
                 r.moby_joint = j;
                 for (int k = 0; k < 3; ++k) r.moby_joint_off[k] = glm::dot(d, glm::vec3(ax[3 * k], ax[3 * k + 1], ax[3 * k + 2]));
             }
+        }
     }
     return r;
 }

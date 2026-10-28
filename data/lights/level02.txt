@@ -25,7 +25,7 @@ emissive moby 11 tex 0  3.02 0.91
 light 276.892 163.452 48.866  1.000 0.583 0.182  3.000 13.307 0.000 1
 light 52.576 228.400 56.484  0.182 1.000 0.447  1.131 16.042 0.000 1
 # Anya-Thoughtmane's lighting batch 1 (#102): most of the metal, the spot lamps
-emit moby 719  4.013 -0.081 3.708  1.000 0.975 0.449  1.000 12.501 0.000  0.00  joint 4
+emit moby 719  0.493 -0.081 -1.123  1.000 0.975 0.449  1.000 12.501 0.000  0.00  joint 3
 material tie 469 tex 1 metal 0.35 1
 material tie 467 tex 0 metal 0.35 1
 material tie 470 tex 0 metal 0.46 1

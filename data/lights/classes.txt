@@ -12,7 +12,7 @@ material moby 11 tex 2 metal 0.35 0.3
 material moby 790 tex 1 metal 0.3 1.54
 material moby 790 tex 2 metal 0.35 1
 emit moby 1143  -0.709 -0.510 0.002  0.316 0.933 1.000  1.000 3.748 0.000  0.00  joint 0
-emit moby 726  0.019 -0.444 -1.109  0.406 0.911 1.000  1.000 8.000 0.000  0.00  joint 0
+emit moby 726  0.858 0.703 -0.444  0.406 0.911 1.000  1.000 8.000 0.000  0.00  joint 0
 emissive moby 11 tex 0  2.46 0.16
 emissive moby 1134 tex 1  1.86 0.41
 material moby 13 tex 1 metal 0.35 1
@@ -20,8 +20,9 @@ material moby 14 tex 0 metal 0.35 1
 material moby 15 tex 0 metal 0.35 1
 material moby 16 tex 0 metal 0.35 1
 emissive moby 1143 tex 1  2.21 0.00
-emit moby 573  0.289 -0.182 0.041  0.167 1.000 0.000  1.000 1.000 0.000  0.00  joint 41
-emit moby 573  0.183 -0.593 0.201  0.169 1.000 0.000  1.000 1.000 0.000  0.00  joint 41
+# The Kerwan dogs' green eyes (moby 573; its eyes are its joints 53 and 54 - saved on joint 41, a hind leg, before the joint fix)
+emit moby 573  0.220 0.145 -0.028  0.167 1.000 0.000  1.000 1.000 0.000  0.00  joint 53
+emit moby 573  0.220 -0.145 -0.028  0.169 1.000 0.000  1.000 1.000 0.000  0.00  joint 54
 material moby 13 tex 0 metal 0.35 1
 material moby 173 tex 0 metal 0.39 1
 material moby 71 tex 0 metal 0.39 1
@@ -32,7 +33,7 @@ material moby 280 tex 0 metal 0.45 1
 material moby 501 tex 0 metal 0.61 1
 material moby 1290 tex 0 metal 0.41 1
 emit moby 615  1.207 0.000 0.047  0.000 1.000 0.014  1.000 1.000 0.000  0.00  joint 0
-emit moby 11  -0.010 -0.029 1.257  0.000 0.467 1.000  1.000 1.000 0.000  0.00  joint 25
+emit moby 11  0.220 0.029 -0.011  0.000 0.467 1.000  1.000 1.000 0.000  0.00  joint 30
 material moby 830 tex 0 metal 0.46 1
 material moby 830 tex 1 metal 0.46 1
 material moby 830 tex 2 metal 0.56 1
