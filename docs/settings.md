@@ -61,8 +61,7 @@ headless runs) the row is the game's own Mono / Stereo.
 | Sun Rays | Off, Low, Medium, High (more quality, strength and cost each step; Low has the strength of 0.4.x's Low, High of its High) | Off |
 | Surface Detail | Off, Low, High (materials: shiny metal, wet ground and puddles, water, lava, mud; High adds reflections and the lava's heat shimmer; with Lighting not Original, see [Materials](materials.md)) | Off |
 | Ambient Particles | Off, Low, High: our own dust, embers, fireflies, rain and snow on some levels, not in the original (see [Ambient particles](particles.md); `ambient_particles` in the preferences, id 50 in `save<N>.pc`) | Off |
-| Water | Off, Low, High: the water, lava and quicksand a level's light file tags - two scrolling normal maps, Fresnel, the sun's glints, lighter where shallow and darker where deep, a thin foam at the shore; High adds the scene's reflection and the refraction (see [Materials](materials.md#water-foliage-and-grass); `water`, id 52) | Off |
-| Foliage | Off, Low, High: the plants a level's light file tags sway in the wind, the sun shining through their leaves; High also keeps the cut-out leaves' coverage at a distance and smooths their edges (`foliage`, id 53) | Off |
+| Water | Off, Low, High: the water, lava and quicksand a level's light file tags - two scrolling normal maps, Fresnel, the sun's glints, lighter where shallow and darker where deep, a thin foam at the shore; High adds the scene's reflection and the refraction (see [Materials](materials.md#water-and-grass); `water`, id 52) | Off |
 | Grass | Off, Low, High: the ground a level's light file tags as grass gets a fine relief of blades (Low, no geometry), and on High also a few very low layers of blades near the camera (`grass`, id 54) | Off |
 | Texture Detail | Full, Original (PS2) | Full |
 
@@ -120,9 +119,9 @@ headless runs) the row is the game's own Mono / Stereo.
 - **Lighting and the eight rows after it** (Shadow Strength to Surface Detail) are the optional modern
   lighting; the eight only act when Lighting is not Original. See [Lighting](lighting.md) and, for
   Surface Detail, [Materials](materials.md).
-- **Water, Foliage and Grass** are optional too, off in every mode (Experimental included: they draw only on the textures a level's
+- **Water and Grass** are optional too, off in every mode (Experimental included: they draw only on the textures a level's
   file tags), and act only when Lighting is not Original. The debug menu's Enhancements tab switches them live. See
-  [Materials](materials.md#water-foliage-and-grass).
+  [Materials](materials.md#water-and-grass).
 - **Ambient Particles** works with any Lighting: our own particles, drawn over the world in play, never
   changing the game's state. See [Ambient particles](particles.md).
 

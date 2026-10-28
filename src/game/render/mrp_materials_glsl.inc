@@ -1,6 +1,6 @@
 // The surface materials' GLSL (docs/materials.md), spliced at the end of RAC1_SHADOW_FS (mrp_lighting.h): the lighting's variants
 // (SH_POINTS: the world; SH_SPLIT: the mobys) only, but for the lights' aim (sh_aim: every variant). RAC1_NATURE_VS: the world's vertex
-// shaders' foliage sway and grass shells (mrp_world_renderer.cpp). tools/gen_vk_shaders.py reads both for Vulkan: one text for the two.
+// shaders' grass shells (mrp_world_renderer.cpp). tools/gen_vk_shaders.py reads both for Vulkan: one text for the two.
 #define RAC1_MATERIALS_FS \
     "/* a light's aim (\"aim\" in an emit line, docs/lighting.md): 1 every way (w 0, the lights without it: their light as before, bit for bit),\n"      \
     "   else the cone around its direction (w its cosine + 2), its edge softened over the cone's inner 40 %; l the unit vector to the light */\n"        \
@@ -29,11 +29,11 @@
     "    vec2 u = f * f * (3.0 - 2.0 * f);\n"                                                                                                            \
     "    return mix(mix(sm_hash(i), sm_hash(i + vec2(1.0, 0.0)), u.x), mix(sm_hash(i + vec2(0.0, 1.0)), sm_hash(i + vec2(1.0, 1.0)), u.x), u.y);\n"      \
     "}\n"                                                                                                                                                \
-    "/* the options (uMat[127]): x Water, y Foliage, z Grass; w 1 when the picture of the 3D is this frame's (the seas drawn after it) */\n"             \
+    "/* the options (uMat[127]): x Water, z Grass (y unused); w 1 when the picture of the 3D is this frame's (the seas drawn after it) */\n"             \
     "int sm_type(uint s) {\n"                                                                                                                            \
     "    if (s == 0u || uShOn == 0 || uShPass != 0 || uEmis[s].w > 0.0) return 0;\n"                                                                     \
     "    int ty = int(uEmis[s].z + 0.5);\n"                                                                                                              \
-    "    if (ty >= 8) return (ty == 8 ? uMat[127].y : uMat[127].z) > 0.0 ? ty : 0;  /* foliage, grass: their own options */\n"                           \
+    "    if (ty == 8) return uMat[127].z > 0.0 ? ty : 0;  /* grass: its own option */\n"                                                                 \
     "    if ((ty == 4 || ty == 5 || ty == 7) && uMat[127].x > 0.0) return ty;       /* lava, water, quicksand: the Water option too */\n"                \
     "    if (uMat[0].x == 0.0) return 0;\n"                                                                                                              \
     "    return ty;\n"                                                                                                                                   \
@@ -330,38 +330,9 @@
     "    sm_w_add = aa;\n"                                                                                                                               \
     "    return S;\n"                                                                                                                                    \
     "}\n"                                                                                                                                                \
-    "/* ---- Options > Graphics > Foliage: the sun's light through the leaves (the sway is the vertices', RAC1_NATURE_VS) ---- */\n"                     \
-    "float sm_sunvis(vec3 p) {  /* the sun's visibility at a point, whatever its face's side (the back faces' shadow is not computed) */\n"              \
-    "    int count = int(uShParam.y);\n"                                                                                                                 \
-    "    for (int k = 0; k < count; ++k) {\n"                                                                                                            \
-    "        vec3 q = p + uShSun * (uShTexel[k] * 2.0);\n"                                                                                               \
-    "        if (sh_inside(k, q, 0.02)) return sh_tap(k, q);\n"                                                                                          \
-    "    }\n"                                                                                                                                            \
-    "    return 1.0;\n"                                                                                                                                  \
-    "}\n"                                                                                                                                                \
-    "vec3 sm_foliage(vec3 lit, vec3 A, uint s) {\n"                                                                                                      \
-    "    if (uShKey.w < 0.0 || uShSunK <= 0.0) return lit;\n"                                                                                            \
-    "    vec3 V = normalize(uShCam - vShWorld);\n"                                                                                                       \
-    "    float back = pow(clamp(dot(-V, uShSun), 0.0, 1.0), 3.0);\n"                                                                                     \
-    "    float edge = 1.0 - abs(dot(sh_n, V));  /* (thin, seen edge-on: more light through) */\n"                                                        \
-    "    float k = back * (0.6 + 0.4 * edge) * uMat[s].y;\n"                                                                                             \
-    "    if (k <= 0.0) return lit;\n"                                                                                                                    \
-    "    float vis = 1.0 - (1.0 - sm_sunvis(vShWorld)) * uShStrength;\n"                                                                                 \
-    "    return lit + A * uShKey.rgb * (255.0 / 128.0) * (uShSunK * 0.7 * k * vis);\n"                                                                   \
-    "}\n"                                                                                                                                                \
-    "/* High: an alpha-tested leaf's coverage kept on the far mips (their averaged alpha thins the cut-outs away) and its edge smoothed over\n"          \
-    "   a pixel inside the cut (the blended ones: anti-aliased) - what alpha-to-coverage would do without MSAA (docs/lighting.md) */\n"                  \
-    "float sh_foliage_alpha(float a, uint s, vec2 st, float ref) {\n"                                                                                    \
-    "    if (sm_type(s) != 8 || uMat[127].y < 1.5) return a;\n"                                                                                          \
-    "    vec2 dx = dFdx(st) * 64.0, dy = dFdy(st) * 64.0;\n"                                                                                             \
-    "    float lod = 0.5 * log2(max(max(dot(dx, dx), dot(dy, dy)), 1e-8));\n"                                                                            \
-    "    a = min(a * (1.0 + 0.3 * clamp(lod, 0.0, 4.0)), 1.0);\n"                                                                                        \
-    "    if (a < ref) return a;\n"                                                                                                                       \
-    "    float w = max(fwidth(a), 1e-3);\n"                                                                                                              \
-    "    return mix(ref, a, smoothstep(0.0, 1.5 * w, a - ref));\n"                                                                                       \
-    "}\n"                                                                                                                                                \
-    "/* ---- Options > Graphics > Grass: a shell (k of n over the ground, uShell) of the tfrags with the `grass` material: false where no\n"             \
-    "   blade is (discarded). uMat[s]: height, density, bend; uMat2[127]: the wind, the distance; uMat2[0] the hero ---- */\n"                           \
+    "/* ---- Options > Graphics > Grass on the tfrags with the `grass` material: Low's relief (sm_grass_detail) and High's shells (sm_grass;\n"          \
+    "   uShell k + 256 n), with the stencil's mask of where the grass is the ground seen (sm_grass_probe, uShell < 0). uMat[s]: height,\n"               \
+    "   density, bend; uMat2[127]: the wind, the distance; uMat2[0] the hero ---- */\n"                                                                  \
     "/* the blades' field (a cell's blade: its offset, height 0.45..1; the wind's lean, Ratchet's push): the blade's height at a point (0 none) */\n"    \
     "vec2 sm_grass_bend(vec3 P, vec4 m) {\n"                                                                                                             \
     "    vec4 w = uMat2[127], hero = uMat2[0];\n"                                                                                                        \
@@ -407,22 +378,37 @@
     "    float sun = uShKey.w >= 0.0 ? uShSunK * (dot(n, uShSun) - uShSun.z) : 0.0;  /* (the relief's light against the flat ground's) */\n"             \
     "    return lit * mix(1.0, (0.96 + 0.3 * (h - 0.15)) * (1.0 + 0.3 * sun), fade);  /* (the mean kept: the palette the texture's) */\n"                \
     "}\n"                                                                                                                                                \
-    "bool sm_grass(inout vec3 c, uint s, int k, int n) {\n"                                                                                              \
-    "    if (sm_type(s) != 9) return false;\n"                                                                                                           \
+    "/* High: shell k of n at this pixel - the factor of the blade's colour there (darker roots, lighter tips), -1 where no blade is (the\n"             \
+    "   pixel discarded). The blades are Low's own (its first grid: the same cells, offsets, directions and heights), so a shell grows from\n"           \
+    "   a tuft the relief already shows and fading it leaves the relief alone; past 30 % of the distance they get shorter and fewer, per\n"              \
+    "   pixel, until none at the distance or where a blade would be under a pixel (no edge where the shells end) */\n"                                   \
+    "float sm_grass(uint s, int k, int n) {\n"                                                                                                           \
+    "    if (sm_type(s) != 8) return -1.0;\n"                                                                                                            \
     "    vec4 m = uMat[s], w = uMat2[127];\n"                                                                                                            \
     "    float h = float(k) / float(n);\n"                                                                                                               \
     "    vec3 P = vShWorld;\n"                                                                                                                           \
-    "    float fade = 1.0 - smoothstep(w.z * 0.6, w.z, length(uShCam - P));\n"                                                                           \
-    "    vec2 bend = sm_grass_bend(P, m);\n"                                                                                                             \
-    "    vec2 q = (P.xy - bend * (m.x * h * h * 3.0)) * m.y;\n"                                                                                          \
+    "    vec2 q = (P.xy - sm_grass_bend(P, m) * (0.15 + m.x * h * h * 3.0)) * m.y;\n"                                                                    \
     "    vec2 fq = fwidth(q);\n"                                                                                                                         \
-    "    fade *= 1.0 - smoothstep(0.3, 0.7, max(fq.x, fq.y));  /* (the blades thinner than a pixel or so: none drawn) */\n"                              \
+    "    float fade = (1.0 - smoothstep(w.z * 0.3, w.z, length(uShCam - P))) * (1.0 - smoothstep(0.2, 0.55, max(fq.x, fq.y)));\n"                        \
+    "    if (fade <= 0.0) return -1.0;\n"                                                                                                                \
     "    vec2 cell = floor(q), f = fract(q) - 0.5;\n"                                                                                                    \
+    "    if (sm_hash(cell + 11.3) > 0.8 * fade) return -1.0;  /* (fewer with the distance: 80 % of the relief's tufts near the camera) */\n"             \
     "    vec2 jit = vec2(sm_hash(cell + 0.37), sm_hash(cell + 7.1)) - 0.5;\n"                                                                            \
-    "    float hr = 0.45 + 0.55 * sm_hash(cell + 3.3);\n"                                                                                                \
-    "    if (h > hr * fade) return false;\n"                                                                                                             \
-    "    if (length(f - jit * 0.45) > 0.45 * (1.0 - h / hr) + 0.03) return false;\n"                                                                     \
-    "    c *= mix(0.9, 1.08, h / hr) * mix(0.95, 1.05, sm_hash(cell + 9.9));  /* darker roots; a blade a little lighter or darker than the next */\n"    \
+    "    vec2 dir = normalize(vec2(sm_hash(cell + 5.3), sm_hash(cell + 2.9)) - 0.5 + 1e-4);\n"                                                           \
+    "    vec2 d = f - jit * 0.6;\n"                                                                                                                      \
+    "    vec2 e = vec2(dot(d, dir), dot(d, vec2(-dir.y, dir.x)));\n"                                                                                     \
+    "    float hr = (0.4 + 0.6 * sm_hash(cell + 3.3)) * (0.35 + 0.65 * fade);  /* (Low's height; shorter with the distance) */\n"                        \
+    "    if (h > hr) return -1.0;\n"                                                                                                                     \
+    "    if (length(e * vec2(1.0, 1.6)) > 0.36 * (1.0 - h / hr) + 0.05) return -1.0;  /* (narrow, tapering to the tip) */\n"                             \
+    "    return mix(0.97, 1.16, h / hr) * mix(0.94, 1.06, sm_hash(cell + 9.9));\n"                                                                       \
+    "}\n"                                                                                                                                                \
+    "/* the stencil's mask under the shells, drawn in the world's order before them: probe -1 the grass (stencil 1), -2 the grass blended,\n"            \
+    "   -3 the other tfrags (stencil 0: the dirt path over the meadow), -4 the others blended - a blended draw covers as much of the pixel as\n"         \
+    "   its alpha (cov), dithered on the screen. False: the pixel left as it is (discarded) */\n"                                                        \
+    "bool sm_grass_probe(uint s, float cov, int probe) {\n"                                                                                              \
+    "    int p = -probe;\n"                                                                                                                              \
+    "    if ((sm_type(s) == 8) != (p <= 2)) return false;\n"                                                                                             \
+    "    if (p == 2 || p == 4) return cov > fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));\n"                            \
     "    return true;\n"                                                                                                                                 \
     "}\n"                                                                                                                                                \
     "/* a material's texel: lit the texel as lit (after the emissive), orig as the original lighting shows it (the game's vertex colour,\n"              \
@@ -436,8 +422,7 @@
     "    float ndv = max(dot(N, V), 0.0);\n"                                                                                                             \
     "    vec3 R = reflect(-V, N);\n"                                                                                                                     \
     "    if (uMat[127].x > 0.0 && (ty == 4 || ty == 5 || ty == 7)) return sm_water2(lit, orig, tex, L, s, ty);\n"                                        \
-    "    if (ty == 8) return sm_foliage(lit, A, s);\n"                                                                                                   \
-    "    if (ty == 9) return sm_grass_detail(lit, s);  /* (Low: the blades as a detail relief of the ground; High's shells over it) */\n"                \
+    "    if (ty == 8) return sm_grass_detail(lit, s);  /* (Low: the blades as a detail relief of the ground; High's shells over it) */\n"                \
     "    if (ty == 1) {  /* metal: a roughness (0 a mirror .. 1 brushed), b strength */\n"                                                               \
     "        float r = clamp(m.x, 0.03, 1.0), gloss = 1.0 - r;\n"                                                                                        \
     "        vec3 F0 = mix(vec3(0.04), A, 0.85);\n"                                                                                                      \
@@ -507,35 +492,22 @@
     "#endif\n"
 
 #define RAC1_NATURE_VS \
-    "/* the vertices' side of the Options' foliage and grass (docs/materials.md): the world's vertex shaders, the lighting's variant */\n"               \
+    "/* the vertices' side of the Options' grass (docs/materials.md): the world's vertex shaders, the lighting's variant */\n"                           \
     "#ifndef VULKAN\n"                                                                                                                                   \
     "uniform vec4 uEmis[128];\n"                                                                                                                         \
     "uniform vec4 uMat[128];\n"                                                                                                                          \
     "uniform vec4 uMat2[128];\n"                                                                                                                         \
     "uniform vec3 uShCam;\n"                                                                                                                             \
     "#endif\n"                                                                                                                                           \
-    "/* Foliage: a vertex of a texture with the `foliage` material swayed by the level's wind - more the higher it is over its object's origin\n"        \
-    "   (`oclip`: the instance's origin in the clip space), a quick flutter besides; the clip position moved by the world offset (the view's\n"          \
-    "   inverse is a rotation: its transpose takes the offset to the view; clip z follows w) */\n"                                                       \
-    "vec4 sh_sway(vec4 clip, vec4 oclip, uint word) {\n"                                                                                                 \
-    "    uint s = (word >> 25) & 127u;\n"                                                                                                                \
-    "    if (s == 0u || uMat[127].y <= 0.0 || uEmis[s].w > 0.0 || int(uEmis[s].z + 0.5) != 8) return clip;\n"                                            \
-    "    vec3 wp = (uShInvView * vec4(clip.x / uShProj.x, clip.y / uShProj.y, -clip.w, 1.0)).xyz;\n"                                                     \
-    "    vec3 wo = (uShInvView * vec4(oclip.x / uShProj.x, oclip.y / uShProj.y, -oclip.w, 1.0)).xyz;\n"                                                  \
-    "    float k = clamp(wp.z - wo.z, 0.0, 8.0);\n"                                                                                                      \
-    "    float t = uMat[0].y;\n"                                                                                                                         \
-    "    float ph = dot(wo.xy, vec2(0.37, 0.23));\n"                                                                                                     \
-    "    vec2 sway = uMat2[127].xy * ((0.55 + 0.45 * sin(t * 1.3 + ph)) * uMat[s].x * 0.03 * k * sqrt(k));\n"                                            \
-    "    vec2 fl = vec2(sin(t * 4.1 + dot(wp.xy, vec2(1.7, 1.3))), cos(t * 3.7 + dot(wp.xy, vec2(1.1, 1.9)))) * (0.012 * uMat[s].z * min(k, 3.0));\n"    \
-    "    vec3 dv = transpose(mat3(uShInvView)) * vec3(sway + fl, 0.0);\n"                                                                                \
-    "    return clip + vec4(dv.x * uShProj.x, dv.y * uShProj.y, -dv.z, -dv.z);\n"                                                                        \
-    "}\n"                                                                                                                                                \
     "/* Grass: a shell's vertex (uShell = k + 256 n: shell k of n) - a tfrag vertex of a `grass` texture lifted k / n of the blades' height,\n"          \
-    "   the others (and those beyond the grass's distance) put behind the near plane: their triangles not drawn */\n"                                    \
+    "   the others put behind the near plane (their triangles not drawn); a probe's (uShell < 0) any tfrag vertex, not lifted. Only the\n"               \
+    "   vertices 16 units past the grass's distance are dropped: a triangle reaching inside it is drawn whole unless it is that large (the\n"            \
+    "   blades fade per pixel: no straight edge where the shells end) */\n"                                                                              \
     "bool sh_shell(inout vec4 wp, uint word, int shell) {\n"                                                                                             \
+    "    if (length(wp.xyz - uShCam) > uMat2[127].z + 16.0) return false;\n"                                                                             \
+    "    if (shell < 0) return true;\n"                                                                                                                  \
     "    uint s = (word >> 25) & 127u;\n"                                                                                                                \
-    "    if (s == 0u || uMat[127].z <= 0.0 || uEmis[s].w > 0.0 || int(uEmis[s].z + 0.5) != 9) return false;\n"                                           \
-    "    if (length(wp.xyz - uShCam) > uMat2[127].z + 6.0) return false;\n"                                                                              \
+    "    if (s == 0u || uMat[127].z <= 0.0 || uEmis[s].w > 0.0 || int(uEmis[s].z + 0.5) != 8) return false;\n"                                           \
     "    wp.z += uMat[s].x * float(shell & 255) / float(shell >> 8);\n"                                                                                  \
     "    return true;\n"                                                                                                                                 \
-    "}\n"
+    "}\n"                                                                                                                                                \

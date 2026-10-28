@@ -62,12 +62,11 @@ int g_sun_rays = env_int("RAC1_SUN_RAYS", 0);
 int g_emissive = env_int("RAC1_EMISSIVE", 1);
 int g_surface_detail = std::clamp(env_int("RAC1_SURFACE_DETAIL", 0), 0, 2);
 int g_water = std::clamp(env_int("RAC1_WATER", 0), 0, 2);
-int g_foliage = std::clamp(env_int("RAC1_FOLIAGE", 0), 0, 2);
 int g_grass = std::clamp(env_int("RAC1_GRASS", 0), 0, 2);
 int g_grass_shells = std::clamp(env_int("RAC1_GRASS_SHELLS", 0), 0, 32);
 float g_grass_distance = [] {
     const char* e = std::getenv("RAC1_GRASS_DIST");
-    return e != nullptr ? std::clamp(static_cast<float>(std::atof(e)), 4.0f, 200.0f) : 24.0f;
+    return e != nullptr ? std::clamp(static_cast<float>(std::atof(e)), 4.0f, 200.0f) : 40.0f;
 }();
 float g_shadow_moby_dist = std::getenv("RAC1_SHADOW_MOBY_DIST") != nullptr ? static_cast<float>(std::atof(std::getenv("RAC1_SHADOW_MOBY_DIST"))) : 0.0f;
 
@@ -3826,7 +3825,7 @@ const char* mrp_emissive_kind_name(int kind) {
     return kind >= 0 && kind < 5 ? names[kind] : "?";
 }
 namespace {
-constexpr const char* kMatNames[MAT_COUNT] = {"emissive", "metal", "wet", "puddle", "lava", "water", "mud", "quicksand", "foliage", "grass"};
+constexpr const char* kMatNames[MAT_COUNT] = {"emissive", "metal", "wet", "puddle", "lava", "water", "mud", "quicksand", "grass"};
 // per type its parameters a, b, c: name, default, range (lava's c is the emissive threshold: the texels that glow)
 constexpr MatParam kMatParams[MAT_COUNT][3] = {
     {{"strength", 1.0f, 0.0f, 4.0f}, {"threshold", 0.0f, 0.0f, 1.0f}, {nullptr, 0.0f, 0.0f, 0.0f}},
@@ -3837,8 +3836,6 @@ constexpr MatParam kMatParams[MAT_COUNT][3] = {
     {{"strength", 1.0f, 0.0f, 2.0f}, {"ripples", 1.0f, 0.0f, 3.0f}, {nullptr, 0.0f, 0.0f, 0.0f}},
     {{"wetness", 0.5f, 0.0f, 1.0f}, {"drift", 1.0f, 0.0f, 3.0f}, {nullptr, 0.0f, 0.0f, 0.0f}},
     {{"drift", 1.0f, 0.0f, 3.0f}, {"gloss", 0.3f, 0.0f, 1.0f}, {nullptr, 0.0f, 0.0f, 0.0f}},
-    // (Options > Graphics > Foliage: the sway's amplitude, the sun's light through the leaves, the leaves' quick flutter)
-    {{"sway", 1.0f, 0.0f, 3.0f}, {"backlight", 1.0f, 0.0f, 2.0f}, {"flutter", 1.0f, 0.0f, 3.0f}},
     // (Options > Graphics > Grass: the blades' height in units, how many a unit across, how much the wind and Ratchet bend them)
     {{"height", 0.05f, 0.01f, 0.3f}, {"density", 18.0f, 2.0f, 40.0f}, {"bend", 0.6f, 0.0f, 2.0f}},
 };
@@ -3884,21 +3881,20 @@ uint32_t mrp_emissive_snapshot(std::vector<EmissiveSurface>& out, EmissiveSurfac
         g_emis_preview_on = false;
         ++g_emis_gen;
     }
-    static int detail = -1;  // (Surface Detail, Water, Foliage or Grass changed: the slots made again)
+    static int detail = -1;  // (Surface Detail, Water or Grass changed: the slots made again)
     const int d = g_surface_detail != 0 ? 1 : 0;
-    const int key = d | (g_water != 0 ? 2 : 0) | (g_foliage != 0 ? 4 : 0) | (g_grass != 0 ? 8 : 0);
+    const int key = d | (g_water != 0 ? 2 : 0) | (g_grass != 0 ? 8 : 0);
     if (key != detail) {
         detail = key;
         ++g_emis_gen;
     }
     out = g_emis_copy;
     // (a material whose option is Off gets no slot: the original's draw - its glow alone if it has one. Surface Detail draws the first
-    // materials; Water also the water, lava and quicksand; Foliage and Grass theirs alone)
+    // materials; Water also the water, lava and quicksand; Grass its own alone)
     for (EmissiveSurface& e : out) {
-        if (e.type == MAT_EMISSIVE || (e.glow > 0.0f && e.type != MAT_LAVA && e.type != MAT_FOLIAGE && e.type != MAT_GRASS)) continue;
-        bool on = d != 0 && e.type < MAT_FOLIAGE;
+        if (e.type == MAT_EMISSIVE || (e.glow > 0.0f && e.type != MAT_LAVA && e.type != MAT_GRASS)) continue;
+        bool on = d != 0 && e.type < MAT_GRASS;
         if (e.type == MAT_WATER || e.type == MAT_LAVA || e.type == MAT_QUICKSAND) on = on || g_water != 0;
-        if (e.type == MAT_FOLIAGE) on = g_foliage != 0;
         if (e.type == MAT_GRASS) on = g_grass != 0;
         if (!on) e.kind = -1;
     }
@@ -3960,7 +3956,7 @@ void material_uniforms(MatUniforms& u) {
     // the options (sm_type), the picture's time; the hero (the grass bends away from him); the level's wind (its particles' first
     // line with one; else a breeze) and the grass's distance and shells
     const int shells = g_grass_shells > 0 ? g_grass_shells : 4;
-    u.mat[kEmissivePreviewSlot] = glm::vec4(static_cast<float>(g_water), static_cast<float>(g_foliage), static_cast<float>(g_grass), mat_ssr_this_frame() ? 1.0f : 0.0f);
+    u.mat[kEmissivePreviewSlot] = glm::vec4(static_cast<float>(g_water), 0.0f, static_cast<float>(g_grass), mat_ssr_this_frame() ? 1.0f : 0.0f);
     {
         constexpr uint32_t kHeroPos = 0x0013f350u + 0x80u;  // (the player's position, as the debug menu reads it)
         const glm::vec3 h(draw_lwc1(kHeroPos), draw_lwc1(kHeroPos + 4), draw_lwc1(kHeroPos + 8));
@@ -5300,15 +5296,6 @@ void mrp_lighting_bind_caster(const ShadowLocs& l, const float* light_vp) {
     bind_common(l);
     glUniformMatrix4fv(l.light, 1, GL_FALSE, light_vp);
     glUniform4f(l.cut, g_sh.sun.x, g_sh.sun.y, g_sh.sun.z, kBack + glm::dot(g_sh.cam, g_sh.sun));
-    if (l.emis >= 0 && l.mat >= 0 && g_foliage > 0) {  // (the foliage's sway: the casters' vertices move as the view's)
-        glm::vec4 e[kEmissivePreviewSlot + 1];
-        emissive_uniforms(e);
-        glUniform4fv(l.emis, kEmissivePreviewSlot + 1, glm::value_ptr(e[0]));
-        MatUniforms u;
-        material_uniforms(u);
-        glUniform4fv(l.mat, kEmissivePreviewSlot + 1, glm::value_ptr(u.mat[0]));
-        if (l.mat2 >= 0) glUniform4fv(l.mat2, kEmissivePreviewSlot + 1, glm::value_ptr(u.mat2[0]));
-    }
 }
 
 // orig: (host) see mrp_lighting.h
@@ -5505,13 +5492,6 @@ void mrp_lighting_vk_bind_caster(uint64_t pipe_layout, const float* light_vp, bo
         ubo.uShCam_Pass = glm::vec4(g_sh.cam, 1.0f);
         ubo.uShSun_On = glm::vec4(g_sh.sun, 0.0f);
         ubo.uShOpaque = opaque ? 1 : 0;
-        if (g_foliage > 0) {  // (the foliage's sway: the casters' vertices move as the view's)
-            emissive_uniforms(ubo.uEmis);
-            MatUniforms mu;
-            material_uniforms(mu);
-            std::memcpy(ubo.uMat, mu.mat, sizeof ubo.uMat);
-            std::memcpy(ubo.uMat2, mu.mat2, sizeof ubo.uMat2);
-        }
         g_vk_sh.cast_ds = build_lighting_vk_ds(ubo, true);
         g_vk_sh.cast_gen = gen;
         g_vk_sh.cast_opaque = opaque;

@@ -213,7 +213,7 @@ std::vector<EmitterClass> mrp_world_emitter_classes();
 // material, and a material (not lava, emissive by itself) may glow besides (`glow`: "material ... glow <strength> [threshold]", or an
 // emissive line for the same texture in the same file, folded into the material's entry when read). They share the slots in the
 // list's order
-enum MatType : int { MAT_EMISSIVE = 0, MAT_METAL, MAT_WET, MAT_PUDDLE, MAT_LAVA, MAT_WATER, MAT_MUD, MAT_QUICKSAND, MAT_FOLIAGE, MAT_GRASS, MAT_COUNT };
+enum MatType : int { MAT_EMISSIVE = 0, MAT_METAL, MAT_WET, MAT_PUDDLE, MAT_LAVA, MAT_WATER, MAT_MUD, MAT_QUICKSAND, MAT_GRASS, MAT_COUNT };
 struct EmissiveSurface {
     int kind = 1;  // 0 tfrag, 1 tie, 2 shrub, 3 moby, 4 surface (VU1 program 7's)
     int o_class = 0;
@@ -251,9 +251,6 @@ extern int g_surface_detail;
 // shore's foam), 2 High (also the scene's reflection and the refraction); the `water`, `lava` and `quicksand` materials and the seas.
 // Lighting not Original only (RAC1_WATER overrides it, testing)
 extern int g_water;
-// orig: (host) Options > Graphics > Foliage: 0 Off (default), 1 Low (the `foliage` material's wind sway and the sun's backlight), 2 High
-// (also the cut-outs' coverage kept at a distance and their edges sharpened at a high resolution) (RAC1_FOLIAGE)
-extern int g_foliage;
 // orig: (host) Options > Graphics > Grass: 0 Off (default), 1 Low (the blades as a detail relief of the ground, no geometry), 2 High
 // (also 4 very low shells) over the tfrags with the `grass` material (RAC1_GRASS); g_grass_shells > 0 the shells' count instead
 // (RAC1_GRASS_SHELLS, the debug menu), g_grass_distance how far they are drawn (units; RAC1_GRASS_DIST)

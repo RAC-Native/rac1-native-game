@@ -101,10 +101,5 @@ material shrub 160 tex 0 metal 0.37 1
 material moby 730 tex 1 metal 0.35 1
 material moby 730 tex 2 metal 0.35 1
 material tie 655 tex 0 metal 0.46 1
-# Options > Graphics > Foliage, Grass (docs/materials.md): the meadows' grass, the flowers
+# Options > Graphics > Grass (docs/materials.md): the meadows' grass
 material tfrag 0 tex 8 grass
-material shrub 92 tex 0 foliage 1 1 1
-material shrub 180 tex 0 foliage 1 1 1
-material tie 448 tex 1 foliage 0.4 1 0.5
-material tie 515 tex 3 foliage 0.8 1 1
-material shrub 150 tex 0 foliage 1 1 1
