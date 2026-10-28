@@ -4,6 +4,7 @@
 #if defined(__APPLE__)
 // (macOS: no rtkit; the threads keep the priorities the system gives them)
 namespace rac1 {
+// orig: (host) host_priority.h, on macOS: nothing to raise
 bool host_priority_enabled() { return false; }
 void host_priority_set_enabled(bool) {}
 bool host_priority_realtime(std::uint64_t, int) { return false; }

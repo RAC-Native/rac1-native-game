@@ -3,9 +3,9 @@
 // Vulkan branches with the descriptor sets, layouts and barriers gone:
 // - formats, filters, address modes, blend factors, compare ops, topologies and the rest are given as Vulkan's enums
 //   (Vulkan-Headers: types only, nothing of Vulkan runs), translated here;
-// - a pipeline is made from the shaders' names (runtime/mtl/shaders/, tools/gen_metal_shaders.py) and the same fixed
+// - a pipeline is made from the shaders' names (tools/gen_metal_shaders.py, at build time) and the same fixed
 //   state as a Vulkan pipeline; resources are bound by the Vulkan shaders' (set, binding), which the shader table
-//   (runtime/mtl/mtl_shader_table.inc) turns into Metal's buffer / texture / sampler indices;
+//   (<build>/generated_mtl/mtl_shader_table.inc) turns into Metal's buffer / texture / sampler indices;
 // - binds and state are kept and applied at the next draw or dispatch (a Metal encoder keeps nothing from the one
 //   before it: the bindings outlive a render pass, as in Vulkan);
 // - the pictures are kept as the Vulkan renderer keeps them, in OpenGL's orientation (row 0 the bottom): the vertex
@@ -122,7 +122,6 @@ void begin_frame(int win_w, int win_h, float clear_r, float clear_g, float clear
 void render_imgui(ImDrawData* draw_data);
 void imgui_init();      // (ImGui's Metal backend, its font texture; after ImGui's context is made)
 void imgui_shutdown();
-const char* device_name();  // (the GPU's name: the host's overlay)
 void end_frame();
 void flush_cmd();  // (the frame's commands so far run and are waited for; the frame goes on)
 void submit_immediate(const std::function<void()>& fn);  // (fn's commands run now and are waited for)

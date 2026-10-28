@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """The Metal renderer's shaders (docs/metal.md), made from the Vulkan renderer's GLSL (tools/gen_vk_shaders.py).
 
-A developer's tool, not part of the build: the build on macOS needs neither glslc nor SPIRV-Cross. Each GLSL shader of
-gen_vk_shaders.SHADERS is compiled to SPIR-V by glslc (unoptimised: the names are kept), translated to MSL by
-SPIRV-Cross, and written to runtime/mtl/shaders/<name>.metal, which the build embeds as text and the Metal device
-compiles when the game starts (cmake/metal_shaders.cmake). Run it again whenever gen_vk_shaders.py changes, and commit
-what it writes: the two sets of shaders are kept in step this way.
+Run by the build on macOS (CMakeLists.txt), as gen_vk_shaders.py is: nothing it writes is kept in the repository. Each
+GLSL shader of gen_vk_shaders.SHADERS is compiled to SPIR-V by glslc (unoptimised: the names are kept), translated to
+MSL by SPIRV-Cross, and embedded as text in <out_dir>/mtl_shader_sources.inc, which the Metal device compiles when the
+game starts. Each shader's MSL is also left in <out_dir>/shaders/<name>.metal, to read.
 
-    python3 tools/gen_metal_shaders.py [--check]
+    python3 tools/gen_metal_shaders.py <out_dir> [<glslc> <spirv-cross>]
 
 What differs from the Vulkan shaders:
 - The vertex shaders flip Y and map the depth from OpenGL's -1..1 to Metal's 0..1 at their end (--flip-vert-y,
@@ -17,7 +16,7 @@ What differs from the Vulkan shaders:
 - The tfrag compute shader's doubles (Metal has none) are done with 64-bit integers: the same round-toward-zero adds
   and multiplies, bit for bit (tests/metal/tfrag_double_check.mm checks them against the CPU's).
 
-Beside the shaders it writes runtime/mtl/mtl_shader_table.inc: for each shader, where each of its Vulkan resources
+Beside the shaders it writes <out_dir>/mtl_shader_table.inc: for each shader, where each of its Vulkan resources
 (descriptor set, binding) lands in Metal (a buffer, texture or sampler index), and the push constants' buffer index,
 so that the Metal branches bind by the Vulkan renderer's (set, binding) numbers.
 """
@@ -28,12 +27,11 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 import gen_vk_shaders as vk  # noqa: E402
 
-OUT_DIR = os.path.join(ROOT, "runtime", "mtl", "shaders")
-TABLE = os.path.join(ROOT, "runtime", "mtl", "mtl_shader_table.inc")
+GLSLC = "glslc"
+SPIRV_CROSS = "spirv-cross"
 
 # the first vertex buffer's index (binding b at kVertexBufferBase - b); the resources' buffers must stay below it
 VERTEX_BUFFER_BASE = 30
@@ -240,8 +238,8 @@ def translate(name: str, stage: str, src: str, td: str):
     msl_path = os.path.join(td, f"{name}.metal")
     with open(glsl, "w", encoding="utf-8") as f:
         f.write(src)
-    run(["glslc", "--target-env=vulkan1.3", f"-fshader-stage={stage}", glsl, "-o", spv])
-    cmd = ["spirv-cross", "--msl", "--msl-version", "30000", "--rename-entry-point", "main", name, stage]
+    run([GLSLC, "--target-env=vulkan1.3", f"-fshader-stage={stage}", glsl, "-o", spv])
+    cmd = [SPIRV_CROSS, "--msl", "--msl-version", "30000", "--rename-entry-point", "main", name, stage]
     if stage == "vert":
         cmd += ["--flip-vert-y", "--fixup-clipspace"]
     if "set = 2, binding = 0) uniform sampler2DArray uTexs" in src:
@@ -255,24 +253,40 @@ def translate(name: str, stage: str, src: str, td: str):
     if stage == "comp":
         msl = local_size_mark(name, src) + msl
     # (the source as glslc preprocessed it: the resources of the branches not taken left out)
-    pre = run(["glslc", "--target-env=vulkan1.3", f"-fshader-stage={stage}", "-E", glsl])
+    pre = run([GLSLC, "--target-env=vulkan1.3", f"-fshader-stage={stage}", "-E", glsl])
     return msl, pre
 
 
 KIND = {"buffer": "kBuffer", "texture": "kTexture", "sampler": "kSampler"}
 
 
+def write_if_changed(path: str, text: str) -> None:
+    """Writes text to path unless it is already there (the build then rebuilds nothing)."""
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            if f.read() == text:
+                return
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+
+
 def main():
-    check = "--check" in sys.argv[1:]
-    os.makedirs(OUT_DIR, exist_ok=True)
+    global GLSLC, SPIRV_CROSS
+    if len(sys.argv) < 2:
+        print("usage: gen_metal_shaders.py <out_dir> [<glslc> <spirv-cross>]", file=sys.stderr)
+        sys.exit(2)
+    out_dir = sys.argv[1]
+    if len(sys.argv) > 3:
+        GLSLC, SPIRV_CROSS = sys.argv[2], sys.argv[3]
+    shaders_dir = os.path.join(out_dir, "shaders")
+    os.makedirs(shaders_dir, exist_ok=True)
+    sources = ["// Made by tools/gen_metal_shaders.py from tools/gen_vk_shaders.py at build time - not in the repository."]
     table = [
-        "// Made by tools/gen_metal_shaders.py from tools/gen_vk_shaders.py: do not edit (run the tool again).",
+        "// Made by tools/gen_metal_shaders.py from tools/gen_vk_shaders.py at build time - not in the repository.",
         "// For each shader: where each Vulkan resource (set, binding) lands in Metal, and the push constants' buffer.",
         "// {set, binding, kind, index}; a combined image sampler has a kTexture and a kSampler entry.",
         "",
     ]
-    names = []
-    changed = []
     with tempfile.TemporaryDirectory() as td:
         for name, stage, src in vk.SHADERS:
             msrc = metal_source(name, stage, src)
@@ -311,39 +325,18 @@ def main():
                     continue
                 if (s, b) not in found and re.search(rf"\b{ident}\b", msl):
                     raise SystemExit(f"gen_metal_shaders: {name}: {ident} (set {s}, binding {b}) not found in the MSL signature")
-            header = (f"// {name} ({stage}): made by tools/gen_metal_shaders.py from tools/gen_vk_shaders.py - do not edit.\n")
-            text = header + msl
-            path = os.path.join(OUT_DIR, f"{name}.metal")
-            old = None
-            if os.path.exists(path):
-                with open(path, encoding="utf-8") as f:
-                    old = f.read()
-            if old != text:
-                changed.append(path)
-                if not check:
-                    with open(path, "w", encoding="utf-8", newline="\n") as f:
-                        f.write(text)
-            names.append(name)
+            text = f"// {name} ({stage}): made by tools/gen_metal_shaders.py from tools/gen_vk_shaders.py - do not edit.\n" + msl
+            if ")rac1src" in text:
+                raise SystemExit(f"gen_metal_shaders: {name}: the raw string's delimiter is in the MSL")
+            write_if_changed(os.path.join(shaders_dir, f"{name}.metal"), text)
+            sources.append(f'{{"{name}", R"rac1src({text})rac1src"}},')
             ent = ", ".join(f"{{{s}, {b}, {KIND[k]}, {i}}}" for s, b, k, i in sorted(entries))
             table.append(f"RAC1_MTL_SHADER({name}, \"{stage}\", {push_idx}, {argbuf}, {{{ent}}})")
     table.append("")
-    text = "\n".join(table)
-    old = None
-    if os.path.exists(TABLE):
-        with open(TABLE, encoding="utf-8") as f:
-            old = f.read()
-    if old != text:
-        changed.append(TABLE)
-        if not check:
-            with open(TABLE, "w", encoding="utf-8", newline="\n") as f:
-                f.write(text)
-    if check:
-        if changed:
-            print("gen_metal_shaders: out of date:\n  " + "\n  ".join(os.path.relpath(p, ROOT) for p in changed))
-            sys.exit(1)
-        print(f"[metal] {len(names)} shaders up to date")
-    else:
-        print(f"[metal] {len(names)} shaders, {len(changed)} files written")
+    sources.append("")
+    write_if_changed(os.path.join(out_dir, "mtl_shader_table.inc"), "\n".join(table))
+    write_if_changed(os.path.join(out_dir, "mtl_shader_sources.inc"), "\n".join(sources))
+    print(f"[metal] {len(vk.SHADERS)} shaders made with {os.path.basename(GLSLC)} and {os.path.basename(SPIRV_CROSS)}")
 
 
 if __name__ == "__main__":

@@ -18,12 +18,13 @@ on a small layer that implements Vulkan's calls with Metal:
 - `runtime/mtl/vk_on_metal.mm`: the `rac1::vk` API (`runtime/vk/vk_context.h`, unchanged) on top of
   `rac1::mtl`, and volk's function pointers (`vkCmdDraw`, `vkCreatePipeline`, `vkUpdateDescriptorSets`
   ...) pointed at Metal versions. On macOS it replaces `runtime/vk/vk_context.cpp`.
-- The shaders: `tools/gen_vk_shaders.py` (its `metal` mode) gives the GLSL, `tools/gen_metal_shaders.py`
-  turns it into MSL with SPIRV-Cross into `runtime/mtl/shaders/`, with a table of where each Vulkan
-  (set, binding) lands in Metal (`runtime/mtl/mtl_shader_table.inc`). CMake embeds them
-  (`cmake/embed_metal_shaders.cmake`) and Metal compiles them at start-up.
-
-After changing a shader in `tools/gen_vk_shaders.py`, run `python3 tools/gen_metal_shaders.py`.
+- The shaders: made at build time, as the Vulkan renderer's, and not kept in the repository.
+  `tools/gen_metal_shaders.py` takes the GLSL of `tools/gen_vk_shaders.py`, compiles it with glslc and
+  turns it into MSL with SPIRV-Cross (`brew install shaderc spirv-cross`, done by `setup.py`), with a
+  table of where each Vulkan (set, binding) lands in Metal. Both go to `build/generated_mtl/` (each
+  shader's MSL also in `build/generated_mtl/shaders/`, to read), are embedded in the game as text, and
+  Metal compiles them at start-up. A change to a shader in `tools/gen_vk_shaders.py` reaches Metal at
+  the next build.
 
 ## Differences from Vulkan, handled in the layer
 

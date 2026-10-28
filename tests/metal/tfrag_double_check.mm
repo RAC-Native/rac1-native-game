@@ -3,7 +3,7 @@
 // widening of the vertices' floats (f2d) and the narrowing of the results (d2fz), bit for bit. A developer's test, run by
 // hand on a Mac:
 //   clang++ -std=c++20 -O1 -frounding-math -fobjc-arc tests/metal/tfrag_double_check.mm -framework Metal -framework Foundation -o /tmp/tfdc
-//   /tmp/tfdc runtime/mtl/shaders/kMrpTfragCs.metal
+//   /tmp/tfdc build/generated_mtl/shaders/kMrpTfragCs.metal
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 

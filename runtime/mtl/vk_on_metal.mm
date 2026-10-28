@@ -37,7 +37,7 @@ struct ShaderName {
 };
 #define RAC1_MTL_SHADER(n, st, p, a, ...) {shaders::n, #n},
 const ShaderName kShaderNames[] = {
-#include <runtime/mtl/mtl_shader_table.inc>
+#include <mtl_shader_table.inc>  // (made by tools/gen_metal_shaders.py at build time)
 };
 #undef RAC1_MTL_SHADER
 
@@ -350,6 +350,9 @@ RenderTarget vk_target(const mtl::GpuImage& c, const mtl::GpuImage& d) {
 }  // namespace
 
 // ==== the rac1::vk API ====
+
+// orig: (host) — the tfrag compute shader's doubles: on Metal 64-bit integers, bit for bit (tools/gen_metal_shaders.py)
+bool has_float64() { return true; }
 
 bool init(GLFWwindow* window, bool vsync, bool headless) {
     if (mtl::is_active()) return true;

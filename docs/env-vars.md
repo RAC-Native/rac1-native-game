@@ -51,7 +51,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_NO_AUDIO` | any value = on; default audio on | Turns the sound output off entirely. |
 | `RAC1_PRIORITY` | 0 = off, any other integer = on; default on except when headless | Requests raised host thread priority through the system's real-time kit, if available. |
 | `RAC1_PYTHON` | path to a Python interpreter; set by `tools/setup.py` | Windows: the Python the game's setup mode runs its helper scripts with (also the update check's, when the build's own Python is gone); the setup sets it to its own interpreter; unset = `python`. Elsewhere `python3` is used and the variable is not read. Kept in a windowed run. |
-| `RAC1_RENDERER` | `opengl` or `vulkan` (also `vk`; any other value = OpenGL); unset = the Options > Graphics Renderer setting (a headless run: OpenGL) | The graphics API for this run: `vulkan` the experimental Vulkan renderer, OpenGL when it cannot start. See [Vulkan](vulkan.md). |
+| `RAC1_RENDERER` | `opengl` or `vulkan` (also `vk`; any other value = OpenGL); unset = the Options > Graphics Renderer setting (a headless run: OpenGL) | The graphics API for this run: `vulkan` the experimental Vulkan renderer, OpenGL when it cannot start. See [Vulkan](vulkan.md). Ignored on macOS, where Metal is the one renderer ([Metal](metal.md)). |
 | `RAC1_VSYNC` | 0 = off, 1 = on; unset = the Options > Graphics setting | Forces vertical sync on or off for a windowed run, overriding the in-game display setting. |
 | `RAC1_WINDOW` | "WIDTHxHEIGHT", e.g. 1280x720; unset = the default window size | Sets the size of the game window at start. |
 

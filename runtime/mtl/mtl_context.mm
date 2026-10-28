@@ -14,6 +14,7 @@
 #include <backends/imgui_impl_metal.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -26,11 +27,15 @@
 #include <unordered_set>
 #include <vector>
 
+// (the Objective-C runtime's autorelease pools, without a block: a frame's begins in begin_frame and ends in end_frame)
+extern "C" void* objc_autoreleasePoolPush(void);
+extern "C" void objc_autoreleasePoolPop(void* pool);
+
 namespace rac1::mtl {
 
 namespace {
 
-// ---- the shaders: their sources (runtime/mtl/shaders/, embedded at build) and binding tables ----
+// ---- the shaders: their sources (tools/gen_metal_shaders.py, at build time) and binding tables ----
 enum Kind : uint8_t { kBuffer, kTexture, kSampler };
 struct Bind {
     uint8_t set, binding;
@@ -46,7 +51,7 @@ struct ShaderInfo {
 };
 #define RAC1_MTL_SHADER(n, st, p, a, ...) {#n, st, p, a, __VA_ARGS__},
 const ShaderInfo kShaderInfos[] = {
-#include <runtime/mtl/mtl_shader_table.inc>
+#include <mtl_shader_table.inc>  // (made by tools/gen_metal_shaders.py at build time)
 };
 #undef RAC1_MTL_SHADER
 struct ShaderSrc {
@@ -54,7 +59,7 @@ struct ShaderSrc {
     const char* src;
 };
 const ShaderSrc kShaderSrcs[] = {
-#include <mtl_shader_sources.inc>  // (made by cmake/embed_metal_shaders.cmake)
+#include <mtl_shader_sources.inc>  // (made by tools/gen_metal_shaders.py at build time)
 };
 
 constexpr uint32_t kVertexBufferBase = 30;  // (tools/gen_metal_shaders.py: VERTEX_BUFFER_BASE)
@@ -173,6 +178,7 @@ struct Context {
     uint32_t frame_idx = 0;
     uint64_t frame_num = 0;
     bool in_frame = false;
+    void* frame_pool = nullptr;  // the frame's autorelease pool (begin_frame ... end_frame): its drawable and descriptors freed each frame
 
     id<MTLCommandBuffer> cmd = nil;
     int imm_depth = 0;  // (an immediate command buffer: out of a frame, committed and waited for when done)
@@ -1041,6 +1047,12 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     }
     ensure_main_targets(w, h);
     create_fallback_textures();
+    {  // every shader compiled now, not at its first draw (no hitch then; Metal's own cache makes the next starts quick)
+        const auto t0 = std::chrono::steady_clock::now();
+        for (const ShaderSrc& s : kShaderSrcs) shader(s.name);
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        std::printf("[mtl] %zu shaders compiled in %.0f ms\n", sizeof kShaderSrcs / sizeof kShaderSrcs[0], ms);
+    }
     prof::set_gpu_api(&kProfApi);
     g.active = true;
     std::printf("[mtl] Metal initialized on %s (%dx%d)\n", g.dev.name.UTF8String, w, h);
@@ -1090,6 +1102,7 @@ void set_vsync(bool vsync) {
 void begin_frame(int win_w, int win_h, float r, float gr, float b, float a) {
     if (!g.active) return;
     if (g.in_frame) end_frame();
+    g.frame_pool = objc_autoreleasePoolPush();
     win_w = std::max(1, win_w);
     win_h = std::max(1, win_h);
     {
@@ -1124,7 +1137,6 @@ void imgui_init() {
     // the frame's draw lists were made with the font texture's ID - they would replace the texture those lists name)
     ImGui_ImplMetal_CreateDeviceObjects(g.dev);
 }
-const char* device_name() { return g.dev != nil ? g.dev.name.UTF8String : ""; }
 
 void imgui_shutdown() {
     if (!g.active) return;
@@ -1190,6 +1202,10 @@ void end_frame() {
     (void)f;
     g.frame_idx = (g.frame_idx + 1) % kFramesInFlight;
     ++g.frame_num;
+    if (g.frame_pool != nullptr) {
+        objc_autoreleasePoolPop(g.frame_pool);
+        g.frame_pool = nullptr;
+    }
 }
 
 void flush_cmd() {
