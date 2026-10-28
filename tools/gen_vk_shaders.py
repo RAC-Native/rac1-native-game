@@ -34,6 +34,8 @@ layout(std140, set = 1, binding = 0) uniform ShadowUbo {
     mat4 uSsrVP;
     vec4 uSsrZ;
     vec4 uSsrSky;
+    vec4 uPtAim[96];
+    vec4 uMat2[128];
 };
 #define uShCam (uShCam_Pass.xyz)
 #define uShPass (int(uShCam_Pass.w + 0.5))
@@ -65,20 +67,27 @@ vec4 sh_clip(vec4 clip) {
 
 
 
-def read_c_glsl(path):
-    """The GLSL of a C string macro (src/game/render/mrp_materials_glsl.inc): its string literals joined, unescaped - the OpenGL
-    and the Vulkan shaders share that one text."""
+def read_c_glsl(path, name):
+    """The GLSL of the C string macro `name` (src/game/render/mrp_materials_glsl.inc): its string literals joined, unescaped - the
+    OpenGL and the Vulkan shaders share that one text."""
     import ast
     import re
     out = []
+    inside = False
     for line in open(path, encoding="utf-8"):
-        for lit in re.findall(r'"(?:[^"\\]|\\.)*"', line):
-            out.append(ast.literal_eval(lit))
+        if line.startswith("#define "):
+            inside = line.split()[1] == name
+            continue
+        if inside:
+            for lit in re.findall(r'"(?:[^"\\]|\\.)*"', line):
+                out.append(ast.literal_eval(lit))
     return "".join(out)
 
 
 # the surface materials (docs/materials.md), the end of the lighting's fragment code
-MATERIALS_GLSL = read_c_glsl(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "game", "render", "mrp_materials_glsl.inc"))
+_MATERIALS_INC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "game", "render", "mrp_materials_glsl.inc")
+MATERIALS_GLSL = read_c_glsl(_MATERIALS_INC, "RAC1_MATERIALS_FS")
+NATURE_VS_GLSL = read_c_glsl(_MATERIALS_INC, "RAC1_NATURE_VS")
 
 RAC1_VK_SHADOW_FS = SHADOW_UBO_GLSL + """
 layout(set = 1, binding = 1) uniform sampler2DArrayShadow uShMap;
@@ -146,6 +155,7 @@ void sh_prepare() {
 #endif
     sh_state = vec4(vis, facing, float(casc), 1.0);
 }
+float sh_aim(int i, vec3 l);
 vec3 sh_points(vec3 c) {
     if (uShOn == 0 || uPtN <= 0) return uShDebug == 3 && uShOn != 0 ? vec3(0.0) : c;
     vec3 add = vec3(0.0);
@@ -167,6 +177,7 @@ vec3 sh_points(vec3 c) {
         if (ndl_p <= 0.0) continue;
         float att = 1.0 - d / r;
         att = mix(att, att * att * max(L.z * inv_d, 0.0), uPtDown[i >> 2][i & 3]);
+        att *= sh_aim(i, L * inv_d);
         float sv = 1.0;
         if (uPtCol[i].w >= 0.0) {
             float layer = floor(uPtCol[i].w), kw = clamp((fract(uPtCol[i].w) - 0.05) / 0.9, 0.0, 1.0);
@@ -570,6 +581,10 @@ void main() {
         o.rgb = o.rgb * f + fogcol * (1.0 - f);
     }
     float a = o.a * 255.0;
+    uint bk0 = (fl >> 24) & 3u;
+    bool wcomp = sm_w_mode == 1 && (bk0 == 0u || bk0 == 2u);  /* (Options > Graphics > Water: the 3D under it, sm_water2) */
+    float wa = clamp(min(o.a * (255.0 / 128.0), 1.0) * sm_w_alpha + sm_w_add, 0.0, 1.0);
+    if (wcomp) o.rgb = mix(sm_w_refr, o.rgb, wa);
     if (ate) {
         bool pass = true;
         if (atst == 0u) pass = false;
@@ -583,6 +598,8 @@ void main() {
         if (!pass && uPass == 1 && afail != 2u) discard;
     }
     float as = min(o.a * (255.0 / 128.0), 1.0);
+    if (wcomp) as = 1.0;
+    else if (sm_w_mode == 2) as = wa;
     uint bk = (fl >> 24) & 3u;
     if (bk == 1u || bk == 2u) {
         FragColor = vec4(o.rgb * as, as);
@@ -1590,6 +1607,7 @@ layout(push_constant) uniform Push {
 // (128 bytes, the least maxPushConstantsSize there is - Intel's: the alpha test's pass in the fog colour's spare w, #113)
 #define uFogCol (uFogCol_Pad.xyz)
 #define uAtPass floatBitsToInt(uFogCol_Pad.w)
+#define uShell floatBitsToInt(uFrame.w)  /* (Options > Graphics > Grass: the shell drawn, k + 256 n; 0 the ground - the frame's spare w) */
 """
 
 MRP_WORLD_VS_BODY = """
@@ -1601,7 +1619,7 @@ layout(location = 4) in uvec4 aRgba;
 layout(location = 5) in float aFog;
 layout(location = 6) in uvec2 aTex;
 layout(location = 7) in uvec2 aState;
-""" + MRP_WORLD_PUSH + RAC1_VK_SHADOW_VS + """
+""" + MRP_WORLD_PUSH + RAC1_VK_SHADOW_VS + NATURE_VS_GLSL + """
 layout(location = 0) smooth out vec3 vStq;
 layout(location = 1) noperspective out float vLodQ;
 layout(location = 2) noperspective out vec4 vColor;
@@ -1612,6 +1630,18 @@ layout(location = 6) flat out uvec2 vState;
 void main() {
     vTex = aTex;
     vState = aState;
+#ifdef SH_POINTS
+    if (uShell != 0) {
+        vec4 wp = aWorld;
+        if (!sh_shell(wp, aTex.x, uShell)) {
+            vShWorld = vec3(0.0);
+            gl_ClipDistance[0] = 1.0;
+            gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
+            return;
+        }
+        gl_Position = sh_clip(uVP * wp);
+    } else
+#endif
     if (uMode == 0) {
         gl_Position = sh_clip(uVP * aWorld);
     } else {
@@ -1648,7 +1678,7 @@ layout(std430, set = 0, binding = 0) readonly buffer Insts { Inst insts[]; };
 layout(std430, set = 0, binding = 1) readonly buffer Cols { uvec4 cols[]; };
 layout(std430, set = 0, binding = 2) readonly buffer Cmds { uvec4 cmds[]; };
 layout(std430, set = 0, binding = 3) readonly buffer RCols { uint rcols[]; };
-""" + MRP_WORLD_PUSH + RAC1_VK_SHADOW_VS + """
+""" + MRP_WORLD_PUSH + RAC1_VK_SHADOW_VS + NATURE_VS_GLSL + """
 layout(location = 0) smooth out vec3 vStq;
 layout(location = 1) noperspective out float vLodQ;
 layout(location = 2) noperspective out vec4 vColor;
@@ -1706,7 +1736,11 @@ void main() {
     vStq = uv;
     vLodQ = uv.z * Q;
     if (uMode == 0) {
+#ifdef SH_POINTS
+        gl_Position = sh_clip(sh_sway(I.clip * vec4(P, 1.0), I.clip * vec4(0.0, 0.0, 0.0, 1.0), cmd.y));
+#else
         gl_Position = sh_clip(I.clip * vec4(P, 1.0));
+#endif
     } else {
         vShWorld = vec3(0.0);
         gl_ClipDistance[0] = 1.0;
@@ -1793,6 +1827,8 @@ void main() {
 #ifdef SH_POINTS
         o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 25) & 127u);
         o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 25) & 127u);
+        if (uShell != 0 && !sm_grass(o.rgb, (w >> 25) & 127u, uShell & 255, uShell >> 8)) discard;
+        if (uAte != 0) o.a = sh_foliage_alpha(o.a, (w >> 25) & 127u, st, float(uAref) / 255.0);
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }

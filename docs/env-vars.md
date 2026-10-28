@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 347 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 352 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 259 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 264 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 67 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -93,6 +93,11 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_GT_SERIAL` | set (any value) = on; default off | Debugging the game thread: its game frames joined before the drawing (on the game thread, but not beside the drawing), to tell a difference of the thread from one of the overlap. |
 | `RAC1_MRPW_BUILD_THREAD` | 0 = off; default on (off when `RAC1_MRPW_THREAD=0`, a check mode, `RAC1_MRPW_CPU` or `RAC1_MRPW_TFRAG_VERIFY`) | The MRP world's frame triangles and batches (build_triangles) made on the scene's worker after its scene, the new textures' images made by the main thread when it takes the frame; 0 makes them on the main thread when the frame is drawn, as before, for comparison (the same output). |
 | `RAC1_SURFACE_DETAIL` | 0, 1 or 2; default: Options > Graphics > Surface Detail (Off) | With the modern lighting, the materials of the level files' `material` lines: 0 off, 1 Low, 2 High (also the reflections and the lava's heat shimmer), whatever the option says. |
+| `RAC1_WATER` | 0, 1 or 2; default: Options > Graphics > Water (Off) | With the modern lighting, the `water`, `lava` and `quicksand` materials of the level files with the Water option's shading: 0 off, 1 Low (normal maps, Fresnel, glints, depth, foam), 2 High (also the scene's reflection and the refraction), whatever the option says. See [Materials](materials.md#water-foliage-and-grass). |
+| `RAC1_FOLIAGE` | 0, 1 or 2; default: Options > Graphics > Foliage (Off) | With the modern lighting, the `foliage` material: 0 off, 1 Low (the wind's sway, the sun through the leaves), 2 High (also the cut-outs' coverage at a distance and their smoothed edges), whatever the option says. |
+| `RAC1_GRASS` | 0, 1 or 2; default: Options > Graphics > Grass (Off) | With the modern lighting, the `grass` material on tfrags: 0 off, 1 Low (a detail relief of blades, no geometry), 2 High (also very low shells of blades near the camera), whatever the option says. |
+| `RAC1_GRASS_SHELLS` | 1 to 32; default 0 (4) | The Grass option High's number of shells (the debug menu's Enhancements tab sets it too). |
+| `RAC1_GRASS_DIST` | units, 4 to 200; default 24 | How far from the camera the Grass option's blades are drawn (faded out over the last 40 %). |
 | `RAC1_EMISSIVE` | integer; 0 = off; default on | With the modern lighting, `0` leaves out the level files' emissive surfaces (`emissive` lines: textures that keep the original's brightness in shade), to compare. |
 | `RAC1_EMIT_MAX_SHARE` | fraction 0 to 1; default 0.15 | The modern lighting's automatic emitters: a warm-coloured class glowing over more than this share of its surface is taken as a bright material, not a lamp. |
 | `RAC1_FADE_LOG` | set (any value) = on; default off | Prints the frames of the game's blocking loops (fades and waits) as they run. |

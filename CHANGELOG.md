@@ -33,6 +33,20 @@ What changed in each release. Releases are source only: you build the game with 
   with a lit bulb in its texture is both, not emissive alone.
 - Debug menu: the levels' seas (water, lava, sand) can be picked and given a material (Lights tab, aimed or clicked; Textures tab,
   "Seas drawn"); a distant surface can be picked; the ambient particles have a tab of their own, with Solo per line.
+- Water (Options > Graphics, off by default): the tagged water gets two scrolling normal maps, Fresnel, the sun's glints, depth
+  (lighter where shallow, darker where deep) and a thin foam at the shore; High adds the scene's reflection and a slight refraction.
+  Lava and quicksand get slow relief and a seam at their shore. Seeded on Rilgar, Pokitaru and Hoven.
+- Foliage (Options > Graphics, off by default): the tagged plants sway in the level's wind, the sun shining through their leaves;
+  High keeps the cut-out leaves' coverage at a distance and smooths their edges. Seeded on Novalis and Kerwan.
+- Grass (Options > Graphics, off by default): the ground tagged as grass gets a fine relief of blades (Low, no geometry) and a few very
+  low layers of blades near the camera (High), in the texture's colours, bending with the wind and away from Ratchet. Seeded on Veldin,
+  Novalis and Kerwan.
+- Materials: the `foliage` and `grass` types, and the water's `tint`, `waves`, `foam` and `depth` keywords (docs/materials.md).
+- Lights: an `emit` line can be aimed (`aim dx dy dz cone`): a spot lighting only what is in front of it. Clank's eye lights on Novalis
+  shine forward from his eyes and no longer light Ratchet's head behind him (also dimmed: intensity 0.35, radius 0.45).
+- Debug menu: an Enhancements tab switches the lighting, the shadows, the lights, the occlusion, the sun rays, the materials, the
+  emissive surfaces, the ambient particles (by kind) and the water, foliage and grass live, with each one's profiler time; "Save as
+  my settings" keeps them. The light editor has an Aim for the lights per class; the profiler has Water and Grass stages.
 
 ### Launcher and setup
 - Launcher: a new launcher is downloaded only once the player says yes, and checked against the SHA-256 the release lists for

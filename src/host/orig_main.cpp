@@ -3870,11 +3870,15 @@ int main(int argc, char** argv) {
                 // program 7's surfaces that write Z (the seas, lava, sand) before our ambient particles, which write none: drawn after them,
                 // the seas covered the rain, snow and embers in front of them (Batalia's rain). Only with the particles on (the order
                 // otherwise the chain's, the translucent effects and the 2D in it still)
+                // (also with Options > Graphics > Water on: the seas right after the 3D's picture was copied - the 3D under them, mrp_lighting.h)
                 bool surfaces_early = false;
-                if (world_3d && g_ambient_particles > 0 && reader && fx_external && movie_pic == nullptr && !fd.fade_held) {
+                const bool water_on = g_water > 0 && mrp_lighting_active();
+                if (world_3d && (g_ambient_particles > 0 || water_on) && reader && fx_external && movie_pic == nullptr && !fd.fade_held) {
                     RAC1_PROF_ZONE(kEffects);
+                    const int water_zone = water_on ? rac1::prof::begin(rac1::prof::kWater) : -1;
                     const rac1::gs::Viewport sv = g_scaled_scene.on ? g_scaled_scene.scaled(gv) : gv;
                     mrp_fx_draw_surfaces(cf, w, h, &sv, pre_moby);
+                    rac1::prof::end(water_zone);
                     surfaces_early = true;
                 }
                 if (world_3d && g_ambient_particles > 0) mrp_particles_draw(fd.frame);  // (our ambient particles: nothing unless asked)

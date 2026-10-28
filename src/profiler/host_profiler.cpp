@@ -56,6 +56,8 @@ const StageInfo kStages[kStageCount] = {
     {"Ambient occlusion", false, true, rgb(200, 80, 160)},
     {"Sun rays", false, true, rgb(250, 230, 120)},
     {"Ambient particles", false, true, rgb(170, 220, 250)},
+    {"Water (seas, depth copy)", false, true, rgb(60, 150, 230)},
+    {"Grass shells", false, true, rgb(120, 200, 60)},
     {"Render scale resolve", false, true, rgb(130, 130, 200)},
     {"Effects (MRP fx)", false, true, rgb(240, 110, 60)},
     {"2D, HUD", false, true, rgb(80, 120, 250)},

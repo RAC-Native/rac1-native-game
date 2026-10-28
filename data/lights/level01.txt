@@ -59,8 +59,9 @@ material moby 703 tex 7 metal 0.35 1
 material moby 703 tex 9 metal 0.35 1
 # Clank's green eyes on Ratchet's back (Anya's two lines, saved as moby 0 joint 62 - one of Ratchet's fingers - before the editor's
 # joint fix): Clank there is moby class 601, his head its joint 4; each light just in front of one eye.
-emit moby 601  0.125 -0.030 0.050  0.090 1.000 0.000  0.350 0.450 0.000  0.00  joint 4
-emit moby 601  0.125 0.030 0.050  0.115 1.000 0.000  0.350 0.450 0.000  0.00  joint 4
+# Aimed forward along the head's x (the eyes' side): they light what Clank looks at, not Ratchet's head behind him (Daino)
+emit moby 601  0.125 -0.030 0.050  0.090 1.000 0.000  0.350 0.450 0.000  0.00  aim 1.000 0.000 0.000 40.0  joint 4
+emit moby 601  0.125 0.030 0.050  0.115 1.000 0.000  0.350 0.450 0.000  0.00  aim 1.000 0.000 0.000 40.0  joint 4
 material moby 703 tex 10 metal 0.35 1
 material moby 703 tex 11 metal 0.35 1
 material moby 703 tex 5 metal 0.35 1
@@ -100,3 +101,10 @@ material shrub 160 tex 0 metal 0.37 1
 material moby 730 tex 1 metal 0.35 1
 material moby 730 tex 2 metal 0.35 1
 material tie 655 tex 0 metal 0.46 1
+# Options > Graphics > Foliage, Grass (docs/materials.md): the meadows' grass, the flowers
+material tfrag 0 tex 8 grass
+material shrub 92 tex 0 foliage 1 1 1
+material shrub 180 tex 0 foliage 1 1 1
+material tie 448 tex 1 foliage 0.4 1 0.5
+material tie 515 tex 3 foliage 0.8 1 1
+material shrub 150 tex 0 foliage 1 1 1

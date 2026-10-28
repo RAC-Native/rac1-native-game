@@ -1271,8 +1271,10 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
                 if (auto it = g_e7.slot.find(key); it != g_e7.slot.end()) S.emis = it->second;
             static const bool trace = std::getenv("RAC1_LIGHTS_TRACE") != nullptr;
             if (trace && g_e7.seen.insert(key).second)
-                std::printf("[lights] program 7 surface: class %u tex %u (TEX0 %016llx, %d x %d): \"emissive surface %u tex %u\"\n", b.tag, fld(st.tex0, 0, 14),
-                            static_cast<unsigned long long>(st.tex0), S.tw, S.th, b.tag, fld(st.tex0, 0, 14));
+                std::printf("[lights] program 7 surface: class %u tex %u (TEX0 %016llx, %d x %d) near %.1f %.1f %.1f, ABE %u ALPHA %02x ZWRITE %u: \"emissive surface %u tex %u\"\n", b.tag,
+                            fld(st.tex0, 0, 14), static_cast<unsigned long long>(st.tex0), S.tw, S.th, b.n > 0 ? gs.vu7_verts[b.first].xyz[0] : 0.0f,
+                            b.n > 0 ? gs.vu7_verts[b.first].xyz[1] : 0.0f, b.n > 0 ? gs.vu7_verts[b.first].xyz[2] : 0.0f, fld(st.prim, 6, 1), static_cast<unsigned>(st.alpha & 0xff),
+                            fld(st.zbuf, 32, 1) == 0 ? 1u : 0u, b.tag, fld(st.tex0, 0, 14));
         }
         key_and_flags(st, false, S.k, S.flags);
         S.ok = true;
@@ -1542,6 +1544,10 @@ void main() {
         o.rgb = o.rgb * f + fogcol * (1.0 - f);
     }
     float a = o.a * 255.0;
+    uint bk0 = (fl >> 24) & 3u;
+    bool wcomp = sm_w_mode == 1 && (bk0 == 0u || bk0 == 2u);  // (Options > Graphics > Water: the 3D under it, sm_water2)
+    float wa = clamp(min(o.a * (255.0 / 128.0), 1.0) * sm_w_alpha + sm_w_add, 0.0, 1.0);
+    if (wcomp) o.rgb = mix(sm_w_refr, o.rgb, wa);
     if (ate) {
         bool pass = true;
         if (atst == 0u) pass = false;
@@ -1555,6 +1561,8 @@ void main() {
         if (!pass && uPass == 1 && afail != 2u) discard;
     }
     float as = min(o.a * (255.0 / 128.0), 1.0);
+    if (wcomp) as = 1.0;
+    else if (sm_w_mode == 2) as = wa;
     uint bk = (fl >> 24) & 3u;
     if (bk == 1u || bk == 2u) {
         FragColor = vec4(o.rgb * as, as);

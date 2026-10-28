@@ -75,6 +75,9 @@ bool graphics_settings_dpad(uint32_t w, uint32_t e, uint32_t pressed);
 void graphics_mips_apply();
 // orig: (none) — enhancement: once a game frame: the preferences written when changed
 void graphics_frame();
+// orig: (none) — enhancement: the debug menu's Enhancements tab: the renderer's live switches (lighting, shadows, lights, occlusion,
+// rays, materials, particles, water, foliage, grass) taken as the player's preferences ("Save as my settings"), written at the next frame
+void graphics_take_live();
 // orig: (none) — enhancement: the saves' items (save<N>.pc, advanced.cpp's format): ours added /
 // one applied (false: not ours)
 void graphics_save_items(std::vector<uint8_t>& d, uint32_t& count);

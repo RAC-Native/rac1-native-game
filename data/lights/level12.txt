@@ -11,3 +11,5 @@ particles snow 0.55  wind 0.3 0.1
 # Beside the snow, Anya-Thoughtmane's motes (#102 batch 1; their ash, white, read as bigger snowflakes): fine ice glittering in
 # the air, faint.
 particles motes 4  wind 0.43 0.02
+# Options > Graphics > Water (docs/materials.md): the cold water under the town
+material surface 1901 tex 13323 water 1 1  depth 4

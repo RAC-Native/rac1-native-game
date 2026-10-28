@@ -30,7 +30,7 @@ It works only with Lighting not Original, like the rest of the modern lighting. 
 In the level's light file (`data/lights/level<N>.txt`):
 
 ```
-material <tfrag|tie|shrub|moby|surface> <class> tex <n> <type> [a] [b] [c] [glow <strength> [threshold]]
+material <tfrag|tie|shrub|moby|surface> <class> tex <n> <type> [a] [b] [c] [tint r g b] [waves <scale> <speed>] [foam f] [depth d] [glow <strength> [threshold]]
 rain on
 sky <r> <g> <b>
 ```
@@ -51,6 +51,8 @@ sky <r> <g> <b>
 | `water` | strength 1 (0..2) | ripples 1 (0..3) | | a sharp sun / lamp glint, Fresnel, procedural ripples (three crossing wave trains and a fine noise, animated) and, when it rains, rain rings; the reflection is the sky (Low) or the last frame's picture (High). Added on top of the game's water: its scrolling, its waves and its tints are its own |
 | `mud` | wetness 0.5 (0..1) | drift 1 (0..3) | | a wet glossy sheen and a very slow, viscous drift of the texture |
 | `quicksand` | drift 1 (0..3) | gloss 0.3 (0..1) | | the drift, a dull sheen |
+| `foliage` | sway 1 (0..3) | backlight 1 (0..2) | flutter 1 (0..3) | Options > Graphics > Foliage, not Surface Detail: the wind's sway, the sun through the leaves ([below](#water-foliage-and-grass)) |
+| `grass` | height 0.05 (0.01..0.3) | density 18 (2..40) | bend 0.6 (0..2) | Options > Graphics > Grass, tfrag textures only: the blades ([below](#water-foliage-and-grass)) |
 
 - `rain on` (default off): the puddles' and the water's rain rings on this level, only under the open sky (none under a roof:
   the ambient particles' sky grid, [Under a roof](particles.md#under-a-roof)). Batalia's is on.
@@ -89,7 +91,7 @@ red ones for lava, and so on).
 - **The uniforms.** Per slot `uEmis[s]` (strength, threshold - a material's glow -, the type in z) and `uMat[s]` (a, b, c with
   the defaults filled in), 128 of each (127 the editor's preview); `uMat[0]` holds Surface Detail, the clock (frames / 60, so a headless run is
   deterministic), the rain and whether the last frame's picture is ready. OpenGL: uniforms of the lighting's
-  programs; Vulkan: the lighting's uniform buffer (8192 bytes; 5120 before) and its descriptor set's bindings 2 (the
+  programs; Vulkan: the lighting's uniform buffer (11776 bytes: the Water option's `uMat2` and the lights' aim `uPtAim` since 0.6.x; 8192 before, 5120 before that) and its descriptor set's bindings 2 (the
   picture) and 5 (its depth). The rain rings' sky (`sm_sky`): the ambient particles' sky grid window, an R32F
   texture whose last row holds its place (OpenGL unit 30, Vulkan binding 6; none: open sky everywhere).
 - **The shading** (`sh_material`, after `sh_emissive`, in the world's `SH_POINTS` and the mobys' `SH_SPLIT`
@@ -146,12 +148,93 @@ material surface 879 tex 13040 water    # Rilgar's harbour
 material surface 317 tex 12811 lava     # Gaspar's lava sea
 ```
 
-Their normal is the face's (the seas are mostly flat: the ripples and the glint do the rest). No level ships such a line yet.
+Their normal is the face's (the seas are mostly flat: the ripples and the glint do the rest). Rilgar, Pokitaru and Hoven ship such lines
+for the Water option ([below](#water-foliage-and-grass)).
 
 In the editor (since #102's batch 1: "couldn't target water ... as it is a particle") the seas are found along the view, not by the
 depth the pick reads: they are drawn after it, so a click on the water read the bottom under it. The menu sends the ray from the
 eye toward the picked point (`mrp_fx_surface_pick`); the next frames test the seas' triangles as they are built (`build_vu7`) and
 keep the nearest hit, with its class and texture. The Textures tab lists every sea the level has drawn (`mrp_fx_surfaces_seen`).
+
+## Water, foliage and grass
+
+Three more options of Options > Graphics, each Off (the default), Low or High, each on the textures a level's file tags, each with
+Lighting not Original only (`water`, `foliage`, `grass` in the preferences; items 52, 53, 54 of a save's block; `RAC1_WATER`,
+`RAC1_FOLIAGE`, `RAC1_GRASS` for testing). They start from the game's own textures - their colours stay the texture's - and add
+relief and motion; a texture pack replacing those textures later gets the same treatment. Nothing of the game's state changes (proved
+with `RAC1_RAMHASH`: Novalis and Pokitaru with all three on, OpenGL and Vulkan, the same hashes as with them off).
+
+### Water
+
+The `water` material (and `lava`, `quicksand`) with Water on, Surface Detail whatever it is:
+
+- **Two procedural normal maps** (value noise with its gradient, two octaves each) scroll across each other over the texture, the game's
+  own water animation kept under them. `waves <scale> <speed>` (1 1) sets their size and speed; `b` (ripples) their height.
+- **The depth under the surface**: the 3D under the water is copied (colour and depth, as Surface Detail High's reflections do) right
+  before the seas are drawn - with Water on the program-7 seas that write depth are drawn just after that copy, as the ambient particles
+  already asked for - so a sea knows, per pixel, how much water lies under it. Shallow water is lighter and more transparent, deep
+  water darker (toward `tint r g b` when given, else a deeper shade of the texture's own colour) and as opaque as the game draws it; how
+  deep is "deep" is `depth d` (water 2.5 units). The water is never made more opaque than the game's own alpha: where the game drew it
+  translucent it stays at most that.
+- **Foam**: a thin, broken band where the water meets the shore (the depth near 0), `foam f` (water 0.6), white as bright as the place.
+- **Fresnel and the sky's reflection**; the **sun's and the lamps' glints** (a sharp specular on the waves); with **High** the scene's
+  reflection from the copy (the same ray march as the puddles') and a slight **refraction** of what is under the water (the copy read
+  bent by the waves, only where what it shows lies behind the water).
+- How it reaches the picture: a sea whose blending is the GS's alpha blend (0x44) or none is composited by our shader over the copy (its
+  colour, the water's, over the bent 3D under it, with the game's alpha scaled by the depth); a sea with another blend keeps its own,
+  its colour shaded and, when drawn before the copy, its alpha scaled. The world's water (tfrag, tie) draws the waves, the glints and the
+  reflections only: it is in the copy itself, so it has no depth under it.
+- **Lava** with Water on: the crust's relief lit by the sun from slow normal maps, a hotter seam where it meets the shore (`foam`), the
+  tint; on High the heat shimmer. **Quicksand**: the slow normal maps under a dull sheen, a darker wet band at its edge (`foam`).
+
+The additive overlays some seas draw over their water (Pokitaru's 13155 and 13223, Hoven's 13391: ALPHA 0x48 / 0x68, highlights) are
+best left untagged: `RAC1_LIGHTS_TRACE=1` prints each sea's blend (`ABE 1 ALPHA 44`) and a point of it (`near x y z`).
+
+### Foliage
+
+The `foliage` material (a tie's, a shrub's, a moby's texture) with Foliage on:
+
+- **Wind sway**, in the vertex shader of the world's GPU path (ties, shrubs): each vertex moved along the level's wind (its `particles`
+  lines' first `wind`, else a light breeze), more the higher it is over its object's origin (k^1.5, k its height in units up to 8), in
+  slow gusts whose phase changes from object to object, with a quick small flutter (`c`). Vertex-only: the game's state, collision
+  included, is untouched. The shadow maps take the same sway (the casters' pass gets the same uniforms).
+- **The sun through the leaves**: looking toward the sun, the leaves get the texture's colour times the sun's light (`b`), more on those
+  seen edge-on, as much as the sun reaches them (the shadow map read for the back faces as well).
+- **High: the cut-outs' coverage.** True alpha-to-coverage needs a multisampled picture: the MRP draws its 3D single-sampled (the
+  occlusion, the sun rays, the materials' copy and the render scale all read one sample per pixel), so turning MSAA on is a project of
+  its own. High does what can be done without it: an alpha-tested leaf's alpha is raised on the far mips (their averaged alpha thins
+  the cut-outs until the leaves vanish at a distance) and, inside the cut, faded over about a pixel (the blended leaves get a smooth
+  edge instead of a stair).
+
+### Grass
+
+The `grass` material on a tfrag texture with Grass on. Kept small, as the tester Anya-Thoughtmane and Daino asked: closer to what a
+detail or parallax map does to give the ground depth than to a field.
+
+- **Low: no geometry.** The ground's texel is shaded by a field of blades (one per cell, `density` a unit across, a random offset and
+  height): darker between them, lighter on their tips, the tufts turned by the sun - a detail normal map computed in the shader. Its mean
+  brightness is the texture's.
+- **High: a few very low shells** besides: the tagged tfrags drawn again 4 times (`RAC1_GRASS_SHELLS`, the Enhancements tab), each lifted
+  k / 4 of `height` (0.05 units: a few centimetres), only the blades' pixels kept; the colour the texture's, the roots a little darker. The
+  blades lean with the wind and away from Ratchet's feet (`bend`).
+- Both fade out with the distance (`RAC1_GRASS_DIST`, 24 units) and where a blade would be under a pixel or two (no shimmering); the
+  shells' vertices beyond the distance, and those of the untagged textures, are put behind the near plane (their triangles not drawn).
+  The shells are drawn after the world and before the occlusion: the sun's shadows, the point lights and the occlusion fall on them.
+  The game's drop shadows (the volumes cut to a slab around the ground) do not reach the shells' tops.
+
+### Tagging (Anya)
+
+As any material: the Lights tab's surface in hand (the crosshair, a click) or the Textures tab, the type in the combo (`foliage`,
+`grass`, `water`), its sliders live; for water, lava and quicksand also the **Tint**, **Waves**, **Foam** and **Depth** of the Water
+option. A warning says when the option that draws the type is Off. The debug menu's **Enhancements** tab switches every enhancement
+live, with its profiler stage's time (Water: "Water (seas, depth copy)"; Grass: "Grass shells"; Foliage is inside "World": compare
+it on and off).
+
+Seeded: Veldin (0) the plain's dry grass (tfrag texture 3); Novalis (1) the meadow's grass (tfrag 8), the flowers (shrubs 92, 180), the
+umbrella trees' canopy (tie 448 tex 1), the big leaves (tie 515 tex 3), the mushroom plants (shrub 150); Kerwan (3) the start's garden:
+the planters' plants (tie 880 tex 3, shrub 210 tex 1) and the lawn (tfrag 23); Rilgar (5) the harbour (surface 879 tex 13040) and the
+canals by the start (surface 831, 13052 and 13120); Pokitaru (11) the sea (surface 1111 tex 13135); Hoven (12) the water (surface 1901
+tex 13323). Novalis's sea is not tagged yet: its program-7 surfaces near the start (13347, 13351) are the landing area's, not water.
 
 ## Limits
 
@@ -177,3 +260,26 @@ GPU time per frame (`RAC1_FRAME_PROF=2`, the profiler's "gpu ms/frame", the mean
 The machine was shared with other GPU work while measuring: the numbers move by about half a millisecond between
 runs (Low below Off is that noise). Low costs nothing measurable; High about 0.4 to 1 ms, most of it the copies of
 the picture (colour and depth at the 3D's resolution) and the reflections' 20 steps where puddles fill the screen.
+
+### Water, foliage and grass
+
+GPU time per frame from the profiler's stages (`RAC1_PROFILER_DUMP=120`, the last 120 frames; integrated Radeon 890M, Lighting Medium,
+the widened view filling the window). Water: Pokitaru, Ratchet swimming among the deck's posts (the sea fills two thirds of the picture;
+`RAC1_GOTO=11@60 RAC1_SIM_INPUT=shipskip RAC1_HERO_AT=-1@2400,495,430,231,1.98`, frame 2640): with Water Off the seas are drawn in
+"Effects", with it on in "Water" (the seas and the copy of the 3D under them). Grass and Foliage: Kerwan's garden at the start
+(`RAC1_GOTO=3@60 RAC1_SIM_INPUT=shipskip`, frame 2640; the lawn fills half of the picture).
+
+| | Vulkan 2560 x 1440 | Vulkan 5120 x 1440 | OpenGL 2560 x 1440 | OpenGL 5120 x 1440 |
+|---|---|---|---|---|
+| Seas, Water Off (Effects) | 2.76 | 4.40 | 3.96 | 4.02 |
+| Water Low (Water + Effects) | 4.03 | 7.11 | 5.43 | 6.81 |
+| Water High | 6.02 | 11.13 | 7.70 | 12.31 |
+| Grass Low (World, against Off) | about +0.4 | within the noise | within the noise | within the noise |
+| Grass High (Grass shells, 4) | 2.65 | 3.86 | 2.60 | 3.82 |
+| Foliage Low / High (World, against Off) | within the noise (about 0.5) | within the noise | within the noise | within the noise |
+
+The machine was shared while measuring (the OpenGL numbers moved by a millisecond between runs). Water Low costs about 1.3 ms at
+2560 x 1440 and 2.7 at 5120 x 1440 (the normal maps, the depth, the copy); High twice that more (the reflection's ray march over the
+whole sea). The grass shells cost by the pixels of grass near the camera (each shell is shaded where it covers, its cut-outs discarded) and by
+the tfrags' vertices, run again per shell (4 shells cost little less than 6 did: 3.2 ms).
+Foliage is inside the world's own draws (a few instructions per vertex, the backlight per pixel of the tagged leaves): no stage of its own.
