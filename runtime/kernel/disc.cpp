@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -60,6 +61,16 @@ struct DiscFiles {
 // a file of the layout on the host: assets/disc/<path>; on Windows a long one (past the old 260 characters) through
 // the \\?\ prefix, which takes it whatever the system's long path setting
 std::filesystem::path files_host_path(const std::string& rel) {
+#if defined(__WIIU__)
+    // (the Wii U: toc/'s 1,581 files in one folder made each open scan it on the SD card's FAT - 140-190 ms, a stream's start stalling
+    // the game -; there they are spread in sub-folders by the name's first two hex digits, toc/row_1ac4.vag -> toc/1a/row_1ac4.vag:
+    // ports/wiiu/tools/sd_disc_layout.py lays the SD card's copy out so)
+    if (rel.size() > 10 && rel.compare(0, 8, "toc/row_") == 0) {
+        std::string r = rel;
+        r.insert(4, rel.substr(8, 2) + "/");
+        return std::filesystem::path(disc_files_dir()) / std::filesystem::path(r);
+    }
+#endif
     std::filesystem::path p = std::filesystem::path(disc_files_dir()) / std::filesystem::path(rel);
 #if defined(_WIN32)
     std::error_code ec;
@@ -179,10 +190,25 @@ bool files_read(uint64_t offset, size_t n, char* dst) {
     DiscFiles& d = files();
     if (!d.ok || offset + n > d.image_bytes) return false;
     std::memset(dst, 0, n);  // (what no piece holds)
-    return files_find(d, offset, n, [&](const DiscPiece& p, uint64_t a, uint64_t b) {
+    // (testing, RAC1_DISC_SLOWLOG=<ms>: a read slower than that on the log - its file, its size, the open's share)
+    static const double slow = std::getenv("RAC1_DISC_SLOWLOG") != nullptr ? std::atof(std::getenv("RAC1_DISC_SLOWLOG")) : -1.0;
+    const auto t0 = std::chrono::steady_clock::now();
+    double open_ms = 0.0;
+    uint32_t last_file = 0;
+    const bool ok = files_find(d, offset, n, [&](const DiscPiece& p, uint64_t a, uint64_t b) {
+        const auto o0 = std::chrono::steady_clock::now();
         const std::shared_ptr<std::FILE> f = files_handle(d, p.file);
+        if (slow >= 0.0) open_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - o0).count();
+        last_file = p.file;
         return f && read_full(f.get(), p.file_offset + (a - p.first), dst + (a - offset), static_cast<size_t>(b - a));
     });
+    if (slow >= 0.0) {
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        if (ms > slow)
+            std::fprintf(stderr, "[disc] slow read: %.1f ms (the open %.1f), %zu bytes of %s\n", ms, open_ms, n,
+                         last_file < d.paths.size() ? d.paths[last_file].string().c_str() : "?");
+    }
+    return ok;
 }
 
 // ---- The image ----

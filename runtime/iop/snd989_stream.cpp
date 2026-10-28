@@ -42,6 +42,7 @@ extern bool g_snd989_trace;
 
 namespace {
 constexpr uint32_t kSector = 2048;
+constexpr uint32_t kRunSectors = 32;
 
 struct Part {
     uint32_t lsn = 0, offset = 0;
@@ -77,8 +78,10 @@ struct Snd989Streams {
     std::vector<Stream> streams;
     uint32_t status_addr = 0;  // command 0: the EE word cleared when a game read is done
     std::array<int32_t, 16> master{};
-    uint32_t cached = 0xffffffffu;  // disc_bytes' sector
-    uint8_t sec[kSector];
+    // disc_bytes' sectors: a run of up to kRunSectors read at once (one read where the IRX's sceCdRead asked sector by sector - the same
+    // bytes; a disc read costs its own time on a slow medium, the Wii U's SD card: a stream's start read a sector at a time stalled the game)
+    uint32_t cached = 0xffffffffu, cached_n = 0;
+    uint8_t sec[kSector * kRunSectors];
     Snd989Streams() { master.fill(0x400); }
 };
 
@@ -108,15 +111,21 @@ uint32_t be32(const uint8_t* p) { return (uint32_t{p[0]} << 24) | (uint32_t{p[1]
 // orig: (host) bytes of the disc from byte `pos`, read a sector at a time (the IRX: sceCdRead)
 bool disc_bytes(uint64_t pos, uint8_t* dst, uint32_t n) {
     uint32_t& cached = st().cached;
+    uint32_t& cached_n = st().cached_n;
     uint8_t* sec = st().sec;
     while (n != 0) {
         const uint32_t lba = static_cast<uint32_t>(pos / kSector), o = static_cast<uint32_t>(pos % kSector);
-        if (lba != cached) {
-            if (!disc_read(lba, 1, sec)) return false;
+        if (cached == 0xffffffffu || lba < cached || lba >= cached + cached_n) {
+            if (disc_read(lba, kRunSectors, sec)) {
+                cached_n = kRunSectors;
+            } else {  // (a run past the disc's end: the sector alone)
+                if (!disc_read(lba, 1, sec)) return false;
+                cached_n = 1;
+            }
             cached = lba;
         }
         const uint32_t k = std::min(n, kSector - o);
-        std::memcpy(dst, sec + o, k);
+        std::memcpy(dst, sec + static_cast<size_t>(lba - cached) * kSector + o, k);
         dst += k;
         pos += k;
         n -= k;

@@ -215,6 +215,7 @@ enum TimeSlot { kTmChain, kTmMobyPrep, kTmWorldPrep, kTmWorldJoin, kTmGpuWait, k
 const char* const kTmName[kTmN] = {"chain start", "mobys' prepare", "world's prepare", "world's worker join", "GPU wait (the frame before)", "chain join", "begin (swap wait)",
                                    "world draws", "moby draws", "2D draws", "TV finish", "GamePad", "finish"};
 double g_tm[kTmN] = {}, g_tm_total = 0.0;
+double g_tm_mark[kTmN] = {};  // (the stages' sums at the host frame's start: a hitch's own share)
 uint64_t g_tm_frames = 0;
 std::chrono::steady_clock::time_point g_tm_last{};
 bool tm_on() {
@@ -358,7 +359,21 @@ void wiiu_gfx_frame() {
     if (tm) {  // (the host frame: from the last one's start to this one's)
         const auto now = std::chrono::steady_clock::now();
         if (g_tm_last.time_since_epoch().count() != 0) {
-            g_tm_total += std::chrono::duration<double, std::milli>(now - g_tm_last).count();
+            const double frame_ms = std::chrono::duration<double, std::milli>(now - g_tm_last).count();
+            // a hitch (a host frame over RAC1_WIIU_TIMING_SPIKE ms, default 400): its own stages on the log, the game frame it reached
+            static const double spike = std::getenv("RAC1_WIIU_TIMING_SPIKE") != nullptr ? std::atof(std::getenv("RAC1_WIIU_TIMING_SPIKE")) : 400.0;
+            if (frame_ms > spike) {
+                double known = 0.0;
+                std::printf("[hitch] game frame %llu: %.0f ms:", static_cast<unsigned long long>(g_2d.game_frame), frame_ms);
+                for (int i = 0; i < kTmN; ++i) {
+                    const double v = g_tm[i] - g_tm_mark[i];
+                    if (v >= 1.0) std::printf(" %s %.0f,", kTmName[i], v);
+                    known += v;
+                }
+                std::printf(" the rest (the game's steps) %.0f\n", frame_ms - known);
+            }
+            for (int i = 0; i < kTmN; ++i) g_tm_mark[i] = g_tm[i];
+            g_tm_total += frame_ms;
             if (++g_tm_frames == 60) {
                 double known = 0.0;
                 std::printf("[timing] 60 host frames, %.1f ms each:", g_tm_total / 60.0);
@@ -366,6 +381,7 @@ void wiiu_gfx_frame() {
                     std::printf(" %s %.1f,", kTmName[i], g_tm[i] / 60.0);
                     known += g_tm[i];
                     g_tm[i] = 0.0;
+                    g_tm_mark[i] = 0.0;
                 }
                 std::printf(" the rest (the game's steps) %.1f\n", (g_tm_total - known) / 60.0);
                 g_tm_total = 0.0;

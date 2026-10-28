@@ -128,3 +128,16 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
 - The stutters (the game's thread stalled while the IOP's mirror plays on: "frames played alone") come with streams and files read
   from the ISO on the SD on the game's thread: the reads to a thread of their own (as the PS2's IOP did them), the disc's files
   extracted onto the SD instead of the ISO.
+
+### The hitches: the disc's files on the SD card (2026-10-28)
+
+- RAC1_WIIU_TIMING's [hitch] lines (a host frame over 400 ms, its stages) and RAC1_DISC_SLOWLOG=<ms> (a disc read slower than that, its
+  file and the open's share): over 600 Veldin frames one hitch, game frame ~141, a 315-375 ms game step - the HelpDesk's voice stream
+  (toc/row_1ac4.vag) opened and read on the game's thread: its open 190-228 ms, then each 64 KB read of it 100-127 ms (~0.5 MB/s;
+  data.wad's 13 MB read at ~22 MB/s). On the PC no step passes 10 ms.
+- Not the folder: toc/'s 1,581 files spread in 40 sub-folders (toc/1a/row_1ac4.vag; disc.cpp files_host_path on the Wii U,
+  ports/wiiu/tools/sd_disc_layout.py for the card's copy) opened as slowly. The streams' sectors read in runs of 32 (one read for
+  32, the same bytes) changed nothing either.
+- Next: the streams' file I/O off the game's thread (as the PS2's IOP read them: the game asks, a reader thread on another core
+  opens and prefetches, the game's IOP takes the bytes when there); and why an open takes ~200 ms on the card (the stat after the
+  open? the file system's client on a busy core?).
