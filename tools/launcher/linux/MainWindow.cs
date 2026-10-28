@@ -377,11 +377,10 @@ namespace Rac1Launcher
                 try
                 {
                     ctl.FetchUpdates();
-                    string fresh = ctl.DownloadNewLauncher(RunningExe);
                     Dispatcher.UIThread.Post(async () =>
                     {
                         ShowUpdate();
-                        if (fresh != null && SwapLauncher(fresh)) return;
+                        if (await OfferNewLauncher(userAsked)) return;
                         if (userAsked) await Say(ctl.UpdateSummary(), "Updates");
                     });
                 }
@@ -391,6 +390,30 @@ namespace Rac1Launcher
                         Dispatcher.UIThread.Post(() => Say("GitHub could not be reached (" + e.Message + ").\nCheck the internet connection.", "Updates"));
                 }
             });
+        }
+
+        bool launcherDeclined;  // (the player said no to the new launcher: asked again only by Check for updates)
+
+        /// <summary>A newer launcher, when there is one: the player is asked first, then it is downloaded (and checked)
+        /// and swapped in. True when the question was asked.</summary>
+        async Task<bool> OfferNewLauncher(bool userAsked)
+        {
+            var v = ctl.NewLauncherVersion();
+            if (v == null || (launcherDeclined && !userAsked)) return false;
+            if (runner != null || (gameProc != null && !gameProc.HasExited)) return false;  // (next time)
+            if (!await Yes(ctl.NewLauncherQuestion(v), "Launcher update"))
+            {
+                launcherDeclined = true;
+                return true;
+            }
+            string fresh = await Task.Run(() => ctl.DownloadNewLauncher(RunningExe));
+            if (fresh == null)
+                await Say("The new launcher could not be downloaded (see Show the details). Try again later, or download "
+                          + "it from the release page.", "Launcher update");
+            else if (!SwapLauncher(fresh))
+                await Say("The new launcher could not replace this one now; it is tried again at the next update check.",
+                          "Launcher update");
+            return true;
         }
 
         /// <summary>The new launcher replaces this one, which then starts it. True when it did (the window closes).</summary>

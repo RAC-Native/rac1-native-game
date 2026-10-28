@@ -924,17 +924,15 @@ struct WorldVkPush {
     float uVP[16];
     float uFrame[4];
     float uXyOff[4];
-    float uFogCol_Pad[4];
+    float uFogCol_Pad[4];  // (w: uAtPass's bits, set_at_pass)
     int32_t uMode;
     int32_t uMipMode;
     int32_t uShade;
     int32_t uFge;
-    int32_t uAtPass;
-    int32_t uU8;
-    int32_t _pad0 = 0;
-    int32_t _pad1 = 0;
+    void set_at_pass(int32_t pass) { std::memcpy(&uFogCol_Pad[3], &pass, sizeof pass); }
 };
-static_assert(sizeof(WorldVkPush) == 144);
+// (128 bytes, the least maxPushConstantsSize a device may have - Intel's: 144 overran it, GitHub issue #113)
+static_assert(sizeof(WorldVkPush) == 128);
 
 struct WorldVkPipeKey {
     bool gpu = false;
@@ -2413,8 +2411,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         push.uMode = mode;
         push.uMipMode = g_mrp_world_mip;
         push.uShade = g_render_shade;
-        push.uAtPass = 1;
-        push.uU8 = 0;
+        push.set_at_pass(1);
 
         if (caster) {
             mrp_lighting_vk_bind_caster(reinterpret_cast<uint64_t>(g_vk_world.pipe_layout), caster_vp);
@@ -2605,7 +2602,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
             pk.has_stencil = has_stencil;
 
             auto bind_pass = [&](int pass, bool dmask, int cmask) {
-                push.uAtPass = pass;
+                push.set_at_pass(pass);
                 pk.depth_write = dmask;
                 pk.depth_compare = (g_p2_less && lit_prog && pass == 2 && !dmask && zcmp == VK_COMPARE_OP_LESS_OR_EQUAL) ? VK_COMPARE_OP_LESS : zcmp;
                 pk.color_mask = cmask == 0 ? 0xF : cmask == 2 ? 0 : 0x7;

@@ -99,6 +99,9 @@ void end_frame();
 void flush_cmd();
 void submit_immediate(const std::function<void(VkCommandBuffer)>& fn);
 
+// What the device can do (init's check: GitHub issue #113)
+bool has_float64();             // shaderFloat64: the tfrag compute shader's doubles
+
 // Core handles
 VkInstance instance();
 VkPhysicalDevice physical_device();

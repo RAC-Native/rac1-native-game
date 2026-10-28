@@ -624,6 +624,7 @@ struct VkLighting {
     VkShaderModule rays_split_fs_mod = VK_NULL_HANDLE;
     VkShaderModule rays_add_fs_mod = VK_NULL_HANDLE;
     VkDescriptorSetLayout samp1_layout = VK_NULL_HANDLE;
+    VkDescriptorSetLayout ao_set_layout = VK_NULL_HANDLE;  // (the depth, and the occlusion's parameters in a uniform buffer)
     VkDescriptorSetLayout samp2_layout = VK_NULL_HANDLE;
     VkDescriptorSetLayout samp3_layout = VK_NULL_HANDLE;  // (the occlusion's blurs: the occlusion, the depth, its stencil)
     VkImageView ao_stencil_view = VK_NULL_HANDLE;           // (ao_dtex's stencil: the mobys' pixels)
@@ -673,7 +674,8 @@ void vk_lighting_shutdown() {
         g_vk_sh.ao_stencil_view = VK_NULL_HANDLE;
         if (g_vk_sh.ao_sdepth_stencil != VK_NULL_HANDLE) vkDestroyImageView(dev, g_vk_sh.ao_sdepth_stencil, nullptr);
         g_vk_sh.ao_sdepth_stencil = VK_NULL_HANDLE;
-        for (VkDescriptorSetLayout dsl : {g_vk_sh.set_layout, g_vk_sh.samp1_layout, g_vk_sh.samp2_layout, g_vk_sh.samp3_layout}) {
+        for (VkDescriptorSetLayout dsl : {g_vk_sh.set_layout, g_vk_sh.samp1_layout, g_vk_sh.samp2_layout, g_vk_sh.samp3_layout,
+                                          g_vk_sh.ao_set_layout}) {
             if (dsl != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(dev, dsl, nullptr);
         }
         for (VkShaderModule sm : {g_vk_sh.vs_mod, g_vk_sh.ao_fs_mod, g_vk_sh.blur_fs_mod, g_vk_sh.blur_sep_fs_mod,
@@ -2031,6 +2033,15 @@ void ensure_vk_ao_pipelines() {
     dsl2.pBindings = b2;
     vkCreateDescriptorSetLayout(dev, &dsl2, nullptr, &g_vk_sh.samp2_layout);
 
+    VkDescriptorSetLayoutBinding bao[2]{};
+    bao[0] = {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+    bao[1] = {1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+    VkDescriptorSetLayoutCreateInfo dslao{};
+    dslao.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    dslao.bindingCount = 2;
+    dslao.pBindings = bao;
+    vkCreateDescriptorSetLayout(dev, &dslao, nullptr, &g_vk_sh.ao_set_layout);
+
     VkDescriptorSetLayoutBinding b3[3]{};
     for (uint32_t i = 0; i < 3; ++i) b3[i] = {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
     VkDescriptorSetLayoutCreateInfo dsl3{};
@@ -2052,7 +2063,7 @@ void ensure_vk_ao_pipelines() {
         return out;
     };
 
-    g_vk_sh.ao_layout = make_layout(g_vk_sh.samp1_layout, 176);
+    g_vk_sh.ao_layout = make_layout(g_vk_sh.ao_set_layout, 0);  // (its parameters in a uniform buffer: no push constants, #113)
     g_vk_sh.blur_layout = make_layout(g_vk_sh.samp3_layout, 48);
     g_vk_sh.rays_mask_layout = make_layout(g_vk_sh.samp2_layout, 48);
     g_vk_sh.rays_blur_layout = make_layout(g_vk_sh.samp1_layout, 32);
@@ -2361,12 +2372,29 @@ void vk_ao_and_rays_pass(const int vp[4]) {
                 glm::vec4 uParam;
                 glm::vec4 uDMap;
             } pc{IVP, VP, glm::vec4(g_sh.cam, 0.0f), glm::vec4(radius, strength, 0.02f, static_cast<float>(shader_mode)), dmap};
-            static_assert(sizeof(AoPush) == 176);
+            static_assert(sizeof(AoPush) == 176);  // (std140: the shader's AoUbo, the same layout)
             VkCommandBuffer cb = vk::cmd();
-            VkDescriptorSet ds = alloc_samp1_ds(dview, samp_nearest);
+            const vk::RingAlloc ub = vk::alloc_ring(sizeof(pc));
+            std::memcpy(ub.ptr, &pc, sizeof(pc));
+            VkDescriptorSet ds = vk::alloc_descriptor_set(g_vk_sh.ao_set_layout);
+            {
+                const VkDescriptorImageInfo dii{samp_nearest, dview, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+                const VkDescriptorBufferInfo dbi{ub.buffer, ub.offset, sizeof(pc)};
+                VkWriteDescriptorSet w[2]{};
+                w[0].sType = w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                w[0].dstSet = w[1].dstSet = ds;
+                w[0].dstBinding = 0;
+                w[0].descriptorCount = 1;
+                w[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                w[0].pImageInfo = &dii;
+                w[1].dstBinding = 1;
+                w[1].descriptorCount = 1;
+                w[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                w[1].pBufferInfo = &dbi;
+                vkUpdateDescriptorSets(vk::device(), 2, w, 0, nullptr);
+            }
             vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.ao_pipe);
             vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.ao_layout, 0, 1, &ds, 0, nullptr);
-            vkCmdPushConstants(cb, g_vk_sh.ao_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
             vkCmdDraw(cb, 3, 1, 0, 0);
         }
         vk::pop_target();
