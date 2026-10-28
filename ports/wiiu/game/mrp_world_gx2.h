@@ -84,8 +84,8 @@ bool mrp_world_gx2_sky_loaded();
 // RAC1_WIIU_WORLD_RCSWAP=0 the resident colours' words (and the run table's) as the PPC holds them (byte-swapped by default);
 // RAC1_WIIU_WORLD_MERGE=<n> the ties' / shrubs' draw commands merged (mrp_world_merge.inc): 0 one GX2 draw per command (the per-draw
 // path, as before), 1 an instance's consecutive commands of one texture unit one draw, 2 of any unit (the batch's units bound at once),
-// 3 (the default) and consecutive instances drawing the same commands one instanced draw (gl_InstanceID) - the debug bits 32 and 256
-// take the per-draw path; RAC1_WIIU_WORLD_PROJ=vu
+// 3 (the default) and consecutive instances drawing the same commands one instanced draw (gl_InstanceID), 4 (2026-10-28) as 3 split by
+// texture unit (one sampler bound by the CPU: the pixel shader's unit tree not run) - the debug bits 32 and 256 take the per-draw path; RAC1_WIIU_WORLD_PROJ=vu
 // the game's VU1 projection (mode 1); RAC1_WIIU_ZCLEAR=0 (wiiu_gfx.cpp) the depth not
 // cleared before the world)
 // (the tfrags', testing: RAC1_WIIU_TFRAG=0 none made nor drawn; RAC1_WIIU_TFRAG_DEBUG=<m>[,<m>...] / RAC1_WIIU_TFRAG_DEBUG_AT the
@@ -106,13 +106,34 @@ void mrp_world_gx2_debug_frame(uint64_t game_frame);
 // pixels_off (a diagnostic)
 struct Gx2Perf {
     bool hiz = false;         // the TV's / GamePad's depth buffers with their hierarchical Z (HTILE: WHB makes them without; wiiu_gfx.cpp)
-    bool nokill = false;      // the batches without an alpha test drawn by the shaders' builds without discard (RAC1_NO_ALPHA_TEST: the
+    bool nokill = true;       // the batches without an alpha test drawn by the shaders' builds without discard (RAC1_NO_ALPHA_TEST: the
                               // depth tested and written before the shader); the world's, the tfrags', the mobys'
     bool lean = false;        // the world's / tfrags' lean pixel shader (mrp_world.frag RAC1_LEAN: the texture level's terms per vertex)
     bool pixels_off = false;  // (diagnostic) the 3D's and the 2D's scissor 8 x 8 pixels: the GPU's time without the pixels' work
     bool zclear2 = true;      // wiiu_gfx.cpp's own depth clear before the 3D (WHBGfxClearColor clears it already)
+    // ((2026-10-28, the world's GPU time) read once from run.cfg, not on the menu)
+    bool earlyz = true;       // RAC1_WIIU_EARLYZ: the 3D's pixel shaders' DB_SHADER_CONTROL Z_ORDER made EARLY_Z_THEN_LATE_Z at their load
+                              // (CafeGLSL writes LATE_Z into every one: every pixel shaded before its depth test, the discarding builds and
+                              // the others alike); with a discard the early test culls only, the write stays late (the hardware's rule)
+    int flush = 2;            // RAC1_WIIU_FLUSH: GX2Flush at the frame's passes (1: after the depth clear, the sky, the world, the mobys) and
+                              // inside the world's every RAC1_WIIU_FLUSH_DRAWS GX2 draws (2); 0 none - the frame reaching the GPU at its end
+    uint32_t flush_draws = 64;
+    bool ub_bulk = true;      // RAC1_WIIU_UB_BULK: the uniform blocks' GPU caches invalidated once per call (and after a ring's wrap) for the
+                              // whole ring, the blocks only flushed out of the CPU's cache - not a GX2Invalidate (a SURFACE_SYNC) per block
+    // ((2026-10-28, the world's pixels) RAC1_WIIU_FASTPS, the debug menu's shaders row)
+    bool fast = true;         // the world's / tfrags' / sky's fast pixel shader (mrp_world_fast.frag: the per-draw decoding in the vertex
+                              // shader, ~16 ALU groups a pixel for ~66): shaders/mrp_{world,tfrag,sky}_fast[_noat].gsh, their own vertex
+                              // shaders bound with them; the shade debug and the grey test keep mrp_world.frag
 };
 extern Gx2Perf g_gx2_perf;
+// (Gx2Perf::flush) a point where the commands so far may go to the GPU: GX2Flush when the switch is at `level` or more
+void gx2_flush(int level);
+// (Gx2Perf::earlyz) a pixel shader's Z_ORDER made EARLY_Z_THEN_LATE_Z (nullptr: nothing); `who` on the log
+void gx2_ps_early_z(const GX2PixelShader* ps, const char* who);
+// ((2026-10-28) RAC1_WIIU_GPU_TIME=2, wiiu_gfx.cpp) the GPU's mark at the end of a pass of a sky / world batch, of kind Gx2SubMark: the
+// TV frame's sky and world passes split by kind on the log ("[gpu-world]")
+enum Gx2SubMark { kSmSky1, kSmSky2, kSmTfrag1, kSmTfrag2, kSmTies1, kSmTies2, kSmN };
+void wiiu_gpu_submark(int kind);
 // ((2026-10-28) the game's update on the game thread beside the drawing, orig_main.cpp's Wii U branch) what of the game's state the
 // backends' draws read, taken at the frame's prepare (rac1_wiiu_picture_frame, wiiu_gfx.cpp), not at the draw: the world's view-projection
 // (mrp_world_view_proj: the camera 0x166c80 / 0x166dc0, the projection's tangents 0x16caf0), the GS depth map (render_gs_depth: the
@@ -134,6 +155,11 @@ void gx2_perf_init();
 // shader when it can stand in for `main`'s - the vertex shader the same (program and registers: the same outputs), the same uniform
 // mode, its blocks and samplers where `main`'s are -, else nullptr (`keep` freed; the reason on the log)
 const GX2PixelShader* gx2_ps_variant(const char* path, const WHBGfxShaderGroup& main, WHBGfxShaderGroup& keep);
+// ((2026-10-28) the fast pixel shaders) another pair of `main`'s shaders (`path`: a vertex and a pixel shader compiled together, its vertex
+// shader's outputs its own) loaded into `keep`, the caller binding both: true when they can take `main`'s place with `main`'s fetch shader
+// and bindings - the same uniform mode, each of its attributes at `main`'s location, its blocks and samplers (vertex and pixel) where
+// `main`'s of the same name are, no larger -; false: not (`keep` freed; the reason on the log)
+bool gx2_pair_variant(const char* path, const WHBGfxShaderGroup& main, WHBGfxShaderGroup& keep);
 // everything it made freed (the level's textures and buffers, the colours' texture, the ring, the shaders): before WHBGfxShutdown;
 // it waits for the GPU
 void mrp_world_gx2_shutdown();

@@ -34,6 +34,7 @@
 #include <game/render/render_view.h>
 #include <runtime/gs/gs_emu.h>
 
+#include <coreinit/cache.h>
 #include <coreinit/memdefaultheap.h>
 #include <gx2/clear.h>
 #include <gx2/draw.h>
@@ -114,6 +115,7 @@ constexpr uint32_t kRingBytes = 16u << 20;
 uint8_t* g_ring = nullptr;
 uint32_t g_ring_off = 0;
 uint64_t g_ring_wraps = 0;
+bool g_ring_stale = false;  // (Gx2Perf::ub_bulk: the ring wrapped since its GPU caches were last invalidated)
 void* ring_alloc(uint32_t bytes) {
     uint32_t off = (g_ring_off + GX2_UNIFORM_BLOCK_ALIGNMENT - 1) & ~(GX2_UNIFORM_BLOCK_ALIGNMENT - 1);
     if (bytes > kRingBytes) return nullptr;
@@ -121,9 +123,17 @@ void* ring_alloc(uint32_t bytes) {
         GX2DrawDone();
         off = 0;
         ++g_ring_wraps;
+        g_ring_stale = true;
     }
     g_ring_off = off + bytes;
     return g_ring + off;
+}
+// ((2026-10-28) Gx2Perf::ub_bulk, as mrp_world_gx2.cpp's) the whole ring's GPU caches invalidated once a call (before its first draw) and
+// after a wrap, in place of a GX2Invalidate per block (two a draw command: its joints' and its own)
+void ring_gpu_invalidate() {
+    if (!g_gx2_perf.ub_bulk || g_ring == nullptr) return;
+    GX2Invalidate(GX2_INVALIDATE_MODE_UNIFORM_BLOCK, g_ring, kRingBytes);
+    g_ring_stale = false;
 }
 // a block of `size` bytes holding `data` (`bytes` of it; the rest left as it is: never read), written out of the CPU's cache.
 // The shaders' blocks are read by the GPU as little-endian words: written with each 32-bit word swapped (`vertex`: any block; testing:
@@ -143,7 +153,12 @@ void* block_of(const void* data, uint32_t bytes, uint32_t size, bool vertex) {
     } else {
         std::memcpy(p, data, n);
     }
-    GX2Invalidate(static_cast<GX2InvalidateMode>(GX2_INVALIDATE_MODE_CPU | GX2_INVALIDATE_MODE_UNIFORM_BLOCK), p, size);
+    if (g_gx2_perf.ub_bulk) {  // (out of the CPU's cache alone; the GPU's emptied by the call: ring_gpu_invalidate)
+        DCFlushRange(p, size);
+        if (g_ring_stale) ring_gpu_invalidate();
+    } else {
+        GX2Invalidate(static_cast<GX2InvalidateMode>(GX2_INVALIDATE_MODE_CPU | GX2_INVALIDATE_MODE_UNIFORM_BLOCK), p, size);
+    }
     return p;
 }
 
@@ -507,6 +522,8 @@ bool mrp_moby_gx2_init() {
     g_ready = true;
     gx2_perf_init();
     if (!variant) g_ps_noat = gx2_ps_variant("shaders/mrp_moby_noat.gsh", g_sh, g_sh_noat);
+    gx2_ps_early_z(g_sh.pixelShader, "mrp_moby");
+    gx2_ps_early_z(g_ps_noat, "mrp_moby (no alpha test)");
     std::printf("[wiiu] mrp_moby_gx2: up (blocks: frame %u normals %u joints %u draw %u pixel %u bytes)\n", g_frame_loc.size, g_normals_loc.size,
                 g_joints_loc.size, g_draw_loc.size, g_pixel_loc.size);
     return true;
@@ -537,7 +554,8 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
     if (stage <= 0) return;
     const auto t0 = std::chrono::steady_clock::now();
     const int win_w = static_cast<int>(cb->surface.width), win_h = static_cast<int>(cb->surface.height);
-    GX2ContextState* ctx = cb == WHBGfxGetTVColourBuffer() ? WHBGfxGetTVContextState() : WHBGfxGetDRCContextState();
+    // (the TV's context for the TV's buffer and the scaled 3D's, wiiu_gfx.cpp RAC1_WIIU_3D_SCALE)
+    GX2ContextState* ctx = cb != WHBGfxGetDRCColourBuffer() ? WHBGfxGetTVContextState() : WHBGfxGetDRCContextState();
     mrpm::FrameView F;
     mrpm::LevelView L;
     const bool have = mrpm::frame_view(F) && mrpm::level_view(L);
@@ -574,6 +592,7 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
         std::fflush(stdout);
     }
     ++g_calls;
+    ring_gpu_invalidate();  // (Gx2Perf::ub_bulk: the blocks' GPU caches once for the call, before its first draw)
     if (F.serial != g_cache.serial || g_ring_wraps != g_cache.wraps || g_cache.draws.size() != F.draws->size()) cache_reset(F.serial, F.draws->size());
 
     const std::vector<mrpm::Batch>& batches = *F.batches;

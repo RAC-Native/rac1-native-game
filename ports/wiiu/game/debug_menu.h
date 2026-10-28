@@ -25,6 +25,8 @@ void debug_menu_draw(const GX2ColorBuffer* cb, const std::vector<std::string>& s
 // the switches the menu flips (wiiu_gfx.cpp and the backends read them each frame)
 extern bool g_menu_draw_mobys, g_menu_draw_2d, g_menu_overlap;
 extern float g_menu_vpscale;
+// ((2026-10-28) RAC1_WIIU_3D_SCALE: the 3D's resolution on the TV, upscaled - wiiu_gfx.cpp's draw_frame; 1 drawn into the TV's buffer)
+extern float g_menu_3d_scale;
 // the game's steps on the game thread beside the drawing (RAC1_WIIU_GAME_THREAD, default on; orig_main.cpp asks each host frame)
 bool rac1_wiiu_game_thread();
 

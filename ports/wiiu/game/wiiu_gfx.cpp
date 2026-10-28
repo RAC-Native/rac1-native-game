@@ -25,7 +25,11 @@
 #include <gx2/draw.h>
 #include <gx2/surface.h>
 #include <gx2/mem.h>
+#include <gx2/registers.h>
+#include <gx2/sampler.h>
 #include <gx2/state.h>
+#include <gx2/texture.h>
+#include <gx2/utils.h>
 #include <coreinit/debug.h>
 #include <whb/log.h>
 #include <gx2/display.h>
@@ -258,8 +262,8 @@ void rac1_wiiu_time(int slot, double ms) {
 extern "C" void GX2SampleTopGPUCycle(uint64_t* result);  // (gx2.rpl: wut has the imports, not the declarations)
 extern "C" void GX2SampleBottomGPUCycle(uint64_t* result);
 namespace {
-enum GpuMark { kGmStart, kGmClear, kGmZclear, kGmSky, kGmWorld, kGmMobys, kGm2d, kGmTvCopy, kGmDrc, kGmSwap, kGmN };
-const char* const kGmName[kGmN] = {"start", "clear (WHB)", "depth clear", "sky", "world", "mobys", "2D", "TV copy", "GamePad", "swap"};
+enum GpuMark { kGmStart, kGmClear, kGmZclear, kGmSky, kGmWorld, kGmMobys, kGmUpscale, kGm2d, kGmTvCopy, kGmDrc, kGmSwap, kGmN };
+const char* const kGmName[kGmN] = {"start", "clear (WHB)", "depth clear", "sky", "world", "mobys", "3D upscale", "2D", "TV copy", "GamePad", "swap"};
 struct alignas(64) GpuSlot {  // (a cache line each: the GPU writes it, the CPU only reads it - no CPU line written back over it)
     uint64_t v;
     uint8_t pad[56];
@@ -290,6 +294,47 @@ void gpu_mark(int mark) {
     DCFlushRange(&b, sizeof b);
     g_gmarked[g_gcur] |= 1u << mark;
 }
+// ((2026-10-28, the world's GPU time) RAC1_WIIU_GPU_TIME=2: inside the sky's and the world's passes a bottom and a top sample at the end of
+// each pass of each batch (rac1::wiiu_gpu_submark, its kind: mrp_world_gx2.h Gx2SubMark), read with the frame's marks. Per kind the
+// GPU's time since the sample before (the bottoms') and the command processor's gap: the top minus the bottom before when positive - the
+// GPU had drawn everything before and the CP had not reached the mark yet (its commands not there: the CPU's pace, or not yet sent);
+// near 0 the GPU drew those passes with their commands waiting. The log's "[gpu-world]" line)
+constexpr int kSubMax = 256;
+constexpr int kSubKinds = rac1::kSmN + 1;  // (the last: from the last mark to the world's end - the state's reset, the passes past kSubMax)
+const char* const kSubName[kSubKinds] = {"sky pass 1", "sky pass 2", "tfrag pass 1", "tfrag pass 2", "ties/shrubs pass 1", "ties/shrubs pass 2", "the rest"};
+bool g_gsub_on = false;
+GpuSlot* g_gsub = nullptr;  // [kGpuRing][2: top, bottom][kSubMax], MEM2
+uint8_t g_gsub_kind[kGpuRing][kSubMax] = {};
+int g_gsub_n[kGpuRing] = {};
+uint64_t g_gsub_over = 0;  // (frames whose marks went past kSubMax)
+double g_gsub_ms[kSubKinds] = {}, g_gsub_gap[kSubKinds] = {};
+uint64_t g_gsub_cnt[kSubKinds] = {};
+GpuSlot& gsub_slot(int set, int bottom, int i) { return g_gsub[(set * 2 + bottom) * kSubMax + i]; }
+// a set's sub-marks read (its marks' samples `bot`, swapped as `swap` says): between the depth clear's mark and the world's
+void gsub_read(int set, const uint64_t* bot, bool swap) {
+    const int n = std::min(g_gsub_n[set], kSubMax);
+    g_gsub_n[set] = 0;
+    if (g_gsub == nullptr || n == 0 || (g_gmarked[set] & (1u << kGmZclear)) == 0 || (g_gmarked[set] & (1u << kGmWorld)) == 0) return;
+    DCInvalidateRange(&gsub_slot(set, 0, 0), static_cast<uint32_t>(2 * kSubMax * sizeof(GpuSlot)));
+    const uint64_t lo = bot[kGmZclear], hi = bot[kGmWorld];
+    uint64_t prev = lo;
+    for (int i = 0; i < n; ++i) {
+        uint64_t t = gsub_slot(set, 0, i).v, b = gsub_slot(set, 1, i).v;
+        if (t == ~0ull || b == ~0ull) return;  // (not written: the frame's sub-marks dropped from here)
+        if (swap) {
+            t = __builtin_bswap64(t);
+            b = __builtin_bswap64(b);
+        }
+        if (b < prev || b > hi) return;
+        const int k = g_gsub_kind[set][i] < rac1::kSmN ? g_gsub_kind[set][i] : rac1::kSmN;
+        g_gsub_ms[k] += gpu_ms(b - prev);
+        g_gsub_gap[k] += t > prev ? gpu_ms(t - prev) : 0.0;
+        ++g_gsub_cnt[k];
+        prev = b;
+    }
+    g_gsub_ms[rac1::kSmN] += gpu_ms(hi - prev);
+    ++g_gsub_cnt[rac1::kSmN];
+}
 // a set two frames old read into the window's sums
 void gpu_read(int set) {
     if (g_gframe[set] == 0 || (g_gmarked[set] & 1u) == 0) return;
@@ -314,7 +359,9 @@ void gpu_read(int set) {
         }
         return gpu_ms(last - b[0]) < 1000.0;
     };
+    bool swapped = false;
     if (!sane(bot)) {
+        swapped = true;
         uint64_t t2[kGmN], b2[kGmN];
         for (int k = 0; k < kGmN; ++k) {
             t2[k] = __builtin_bswap64(top[k]);
@@ -341,6 +388,7 @@ void gpu_read(int set) {
         prev = end = bot[k];
     }
     g_gbusy += gpu_ms(end - bot[0]);
+    gsub_read(set, bot, swapped);
     if (g_gprev_end != 0 && g_gprev_frame + 1 == g_gframe[set] && bot[0] >= g_gprev_end) {  // (from the frame before's end: the GPU idle)
         g_ggap += gpu_ms(bot[0] - g_gprev_end);
         ++g_gnperiod;
@@ -362,10 +410,20 @@ void gpu_frame_begin(bool on, uint64_t frame) {
         DCFlushRange(g_gslots, bytes);
         std::printf("[gpu] the GPU's clock: 27,000,000 of its ticks = %.1f ms (27 MHz)\n", gpu_ms(27000000ull));
     }
+    if (g_gsub_on && g_gsub == nullptr) {
+        const uint32_t bytes = static_cast<uint32_t>(kGpuRing * 2 * kSubMax * sizeof(GpuSlot));
+        g_gsub = static_cast<GpuSlot*>(MEMAllocFromDefaultHeapEx(bytes, 64));
+        if (g_gsub != nullptr) {
+            std::memset(g_gsub, 0xff, bytes);
+            DCFlushRange(g_gsub, bytes);
+        }
+        std::printf("[gpu] the sky's / world's passes timed by kind (RAC1_WIIU_GPU_TIME=2): %s\n", g_gsub != nullptr ? "on" : "no memory");
+    }
     gpu_read(static_cast<int>((frame + kGpuRing - 2) % kGpuRing));
     g_gcur = static_cast<int>(frame % kGpuRing);
     g_gframe[g_gcur] = frame;
     g_gmarked[g_gcur] = 0;
+    g_gsub_n[g_gcur] = 0;
 }
 // the window's averages on the log and the menu's lines (with the [timing] line)
 void gpu_window(std::vector<std::string>& menu) {
@@ -388,6 +446,20 @@ void gpu_window(std::vector<std::string>& menu) {
     }
     std::printf(" idle between frames %.1f; %llu late, %llu unreadable, %llu byte-swapped\n", g_gnperiod != 0 ? g_ggap / static_cast<double>(g_gnperiod) : 0.0,
                 static_cast<unsigned long long>(g_glate), static_cast<unsigned long long>(g_gbad), static_cast<unsigned long long>(g_gswapped));
+    if (g_gsub != nullptr) {  // (RAC1_WIIU_GPU_TIME=2)
+        std::printf("[gpu-world] ms a TV frame (passes a frame, the CP's gap ms):");
+        for (int k = 0; k < kSubKinds; ++k) {
+            std::printf(" %s %.2f (%.1f, gap %.2f),", kSubName[k], g_gsub_ms[k] / n, static_cast<double>(g_gsub_cnt[k]) / n, g_gsub_gap[k] / n);
+            if (g_gsub_ms[k] / n >= 0.3) {
+                std::snprintf(b, sizeof b, "   %-19.19s %6.1f", kSubName[k], g_gsub_ms[k] / n);
+                menu.emplace_back(b);
+            }
+            g_gsub_ms[k] = g_gsub_gap[k] = 0.0;
+            g_gsub_cnt[k] = 0;
+        }
+        std::printf(" %llu frames past %d marks\n", static_cast<unsigned long long>(g_gsub_over), kSubMax);
+        g_gsub_over = 0;
+    }
     g_gbusy = g_ggap = 0.0;
     g_gn = g_gnperiod = g_glate = g_gswapped = 0;
 }
@@ -400,7 +472,7 @@ struct HizMem {
     void* mem = nullptr;
     uint32_t size = 0;
 };
-HizMem g_hiz[2];
+HizMem g_hiz[3];  // (the TV's, the GamePad's, the scaled 3D's: RAC1_WIIU_3D_SCALE)
 void hiz_apply(GX2DepthBuffer* db) {
     if (db == nullptr) return;
     HizMem* h = nullptr;
@@ -430,6 +502,202 @@ void hiz_apply(GX2DepthBuffer* db) {
 }
 }  // namespace
 
+namespace {
+// ((2026-10-28, the GPU's time: the world's pixels) RAC1_WIIU_3D_SCALE / the debug menu's "3D resolution": the TV's 3D - the sky, the world,
+// the mobys - drawn into a colour and a depth buffer that much smaller (the TV's sides times the scale; its own hierarchical Z), then drawn
+// over the TV's frame by shaders/wiiu_blit.gsh (a quad, bilinear) before the 2D, which stays at the TV's resolution; the GamePad's copy
+// (RAC1_WIIU_GAMEPAD=1) and the shots copy the TV's buffer after it. Its memory: inside the TV's depth buffer (MEM1, WHB's - unused by the
+// TV's 3D then: nothing else reads or writes it between the frame's clear and the upscale; the depth caches flushed around it) as far as it
+// fits there (RAC1_WIIU_3D_MEM1, on: 1280 x 720 both buffers, 1440 x 810 the colour alone), the rest in MEM2. (g_menu_vpscale, the
+// frame's share, is another thing: the frame drawn smaller inside the TV's buffer, not scaled up.) 1: the 3D drawn into the TV's buffer
+struct Scaled3d {
+    bool ok = false;
+    float scale = 1.0f;
+    const void* tv_depth = nullptr;  // (the TV's depth image the buffers were placed against: WHB's acquire may make it again)
+    GX2ColorBuffer cb{};
+    GX2DepthBuffer db{};
+    GX2Texture tex{};                // (the colour buffer's image, sampled by the upscale)
+    void* own_c = nullptr;           // (MEM2 allocations; nullptr: inside the TV's depth buffer)
+    void* own_d = nullptr;
+} g_s3;
+WHBGfxShaderGroup g_blit{};
+bool g_blit_ok = false, g_blit_tried = false;
+uint32_t g_blit_loc = 0;
+GX2Sampler g_blit_sampler{};
+float* g_blit_vb = nullptr;  // [2][4 corners][x, y, u, v], MEM2 (the TV's call alternates its halves)
+uint32_t g_blit_half = 0;
+void s3_free() {
+    if (g_s3.own_c != nullptr) MEMFreeToDefaultHeap(g_s3.own_c);
+    if (g_s3.own_d != nullptr) MEMFreeToDefaultHeap(g_s3.own_d);
+    g_s3 = Scaled3d{};
+}
+// the upscale's shaders (shaders/wiiu_blit.gsh), sampler and corners, made at the first use; false: not there (the 3D drawn at the TV's size)
+bool blit_ready() {
+    if (g_blit_tried) return g_blit_ok;
+    g_blit_tried = true;
+    const std::vector<uint8_t> gsh = read_file("shaders/wiiu_blit.gsh");
+    if (gsh.empty() || !WHBGfxLoadGFDShaderGroup(&g_blit, 0, gsh.data())) {
+        std::printf("[gpu] shaders/wiiu_blit.gsh not loaded: the 3D drawn at the TV's resolution (RAC1_WIIU_3D_SCALE)\n");
+        g_blit = WHBGfxShaderGroup{};
+        return false;
+    }
+    bool loc = false;
+    for (uint32_t i = 0; i < g_blit.pixelShader->samplerVarCount; ++i)
+        if (std::strcmp(g_blit.pixelShader->samplerVars[i].name, "u_tex") == 0) {
+            g_blit_loc = g_blit.pixelShader->samplerVars[i].location;
+            loc = true;
+        }
+    g_blit_vb = static_cast<float*>(MEMAllocFromDefaultHeapEx(2 * 4 * 4 * sizeof(float), GX2_VERTEX_BUFFER_ALIGNMENT));
+    if (!loc || g_blit_vb == nullptr || !WHBGfxInitShaderAttribute(&g_blit, "a_pos", 0, 0, GX2_ATTRIB_FORMAT_FLOAT_32_32_32_32) || !WHBGfxInitFetchShader(&g_blit)) {
+        std::printf("[gpu] shaders/wiiu_blit.gsh: sampler %d, memory %d: the 3D drawn at the TV's resolution\n", loc, g_blit_vb != nullptr);
+        return false;
+    }
+    GX2InitSampler(&g_blit_sampler, GX2_TEX_CLAMP_MODE_CLAMP, GX2_TEX_XY_FILTER_MODE_LINEAR);
+    g_blit_ok = true;
+    return true;
+}
+// the scaled 3D's buffers for `scale` beside the TV's (made again when the scale or the TV's depth buffer changes); nullptr: the 3D drawn
+// into the TV's buffers (scale 1, no upscale shaders, no memory). Called after the frame before's GPU work was waited for: freeing is safe
+Scaled3d* s3_get(float scale, const GX2ColorBuffer* tv, GX2DepthBuffer* tvdb) {
+    if (scale > 0.99f || tv == nullptr || tvdb == nullptr || !blit_ready()) {
+        if (g_s3.ok) s3_free();
+        return nullptr;
+    }
+    if (g_s3.ok && g_s3.scale == scale && g_s3.tv_depth == tvdb->surface.image) return &g_s3;
+    s3_free();
+    static const bool mem1 = std::getenv("RAC1_WIIU_3D_MEM1") == nullptr || std::atoi(std::getenv("RAC1_WIIU_3D_MEM1")) != 0;
+    const uint32_t w = std::max(64u, static_cast<uint32_t>(static_cast<float>(tv->surface.width) * scale + 0.5f) & ~1u);
+    const uint32_t h = std::max(64u, static_cast<uint32_t>(static_cast<float>(tv->surface.height) * scale + 0.5f) & ~1u);
+    auto surface = [&](GX2Surface& sf, GX2SurfaceFormat format, GX2SurfaceUse use) {
+        sf = GX2Surface{};
+        sf.dim = GX2_SURFACE_DIM_TEXTURE_2D;
+        sf.width = w;
+        sf.height = h;
+        sf.depth = 1;
+        sf.mipLevels = 1;
+        sf.format = format;
+        sf.aa = GX2_AA_MODE1X;
+        sf.use = use;
+        sf.tileMode = GX2_TILE_MODE_DEFAULT;
+        GX2CalcSurfaceSizeAndAlignment(&sf);
+    };
+    GX2Surface& cs = g_s3.cb.surface;
+    GX2Surface& ds = g_s3.db.surface;
+    surface(cs, tv->surface.format, static_cast<GX2SurfaceUse>(GX2_SURFACE_USE_TEXTURE | GX2_SURFACE_USE_COLOR_BUFFER));
+    surface(ds, tvdb->surface.format, GX2_SURFACE_USE_DEPTH_BUFFER);
+    // the images: inside the TV's depth buffer while they fit (aligned), else MEM2
+    auto* base = static_cast<uint8_t*>(tvdb->surface.image);
+    uintptr_t at = reinterpret_cast<uintptr_t>(base), end = at + tvdb->surface.imageSize;
+    auto place = [&](GX2Surface& sf, void*& own) {
+        const uintptr_t p = (at + sf.alignment - 1) & ~static_cast<uintptr_t>(sf.alignment - 1);
+        if (mem1 && base != nullptr && p + sf.imageSize <= end) {
+            sf.image = reinterpret_cast<void*>(p);
+            at = p + sf.imageSize;
+            return true;
+        }
+        own = MEMAllocFromDefaultHeapEx(sf.imageSize, static_cast<int>(sf.alignment));
+        sf.image = own;
+        return own != nullptr;
+    };
+    if (!place(cs, g_s3.own_c) || !place(ds, g_s3.own_d)) {
+        std::printf("[gpu] the 3D at %u x %u: no memory, drawn at the TV's resolution\n", w, h);
+        s3_free();
+        return nullptr;
+    }
+    g_s3.cb.viewMip = 0;
+    g_s3.cb.viewFirstSlice = 0;
+    g_s3.cb.viewNumSlices = 1;
+    GX2InitColorBufferRegs(&g_s3.cb);
+    g_s3.db.viewMip = 0;
+    g_s3.db.viewFirstSlice = 0;
+    g_s3.db.viewNumSlices = 1;
+    g_s3.db.depthClear = 1.0f;
+    g_s3.db.stencilClear = 0;
+    GX2InitDepthBufferRegs(&g_s3.db);
+    GX2Texture& t = g_s3.tex;
+    t = GX2Texture{};
+    t.surface = cs;
+    t.viewFirstMip = 0;
+    t.viewNumMips = 1;
+    t.viewFirstSlice = 0;
+    t.viewNumSlices = 1;
+    t.compMap = GX2_COMP_MAP(GX2_SQ_SEL_R, GX2_SQ_SEL_G, GX2_SQ_SEL_B, GX2_SQ_SEL_A);
+    GX2InitTextureRegs(&t);
+    g_s3.ok = true;
+    g_s3.scale = scale;
+    g_s3.tv_depth = tvdb->surface.image;
+    std::printf("[gpu] the 3D at %u x %u (scale %.3f of %u x %u), upscaled: colour %u KB in %s, depth %u KB in %s\n", w, h, scale, tv->surface.width,
+                tv->surface.height, cs.imageSize / 1024, g_s3.own_c == nullptr ? "MEM1 (the TV's depth buffer)" : "MEM2", ds.imageSize / 1024,
+                g_s3.own_d == nullptr ? "MEM1 (the TV's depth buffer)" : "MEM2");
+    return &g_s3;
+}
+// the scaled 3D's frame `src` (on its buffers) drawn over the TV's frame `dst` (on `tv`), bilinear; the TV's buffers bound after it
+void s3_blit(const GX2ColorBuffer* tv, GX2DepthBuffer* tvdb, const rac1::gs::Viewport& src, const rac1::gs::Viewport& dst) {
+    // (the 3D's pixels out of the colour cache, the texture cache emptied over them; its depth out of the depth cache - the TV's depth
+    // buffer, whose memory it may be, is cleared by the next frame)
+    GX2Invalidate(static_cast<GX2InvalidateMode>(GX2_INVALIDATE_MODE_COLOR_BUFFER | GX2_INVALIDATE_MODE_TEXTURE), g_s3.cb.surface.image, g_s3.cb.surface.imageSize);
+    GX2Invalidate(GX2_INVALIDATE_MODE_DEPTH_BUFFER, g_s3.db.surface.image, g_s3.db.surface.imageSize);
+    const float sw = static_cast<float>(g_s3.cb.surface.width), sh = static_cast<float>(g_s3.cb.surface.height);
+    const float tw = static_cast<float>(tv->surface.width), th = static_cast<float>(tv->surface.height);
+    // (the Viewports' y from the bottom; the buffers' rows and GX2's from the top)
+    const float u0 = static_cast<float>(src.x) / sw, u1 = static_cast<float>(src.x + src.w) / sw;
+    const float v0 = (sh - static_cast<float>(src.y + src.h)) / sh, v1 = (sh - static_cast<float>(src.y)) / sh;
+    const float x0 = static_cast<float>(dst.x) / tw * 2.0f - 1.0f, x1 = static_cast<float>(dst.x + dst.w) / tw * 2.0f - 1.0f;
+    const float y0 = 1.0f - (th - static_cast<float>(dst.y + dst.h)) / th * 2.0f, y1 = 1.0f - (th - static_cast<float>(dst.y)) / th * 2.0f;
+    float* q = g_blit_vb + 16 * g_blit_half;
+    g_blit_half ^= 1u;
+    const float c[16] = {x0, y0, u0, v0, x1, y0, u1, v0, x0, y1, u0, v1, x1, y1, u1, v1};  // (a strip: top left, top right, bottom left, bottom right)
+    std::memcpy(q, c, sizeof c);
+    GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, q, sizeof c);
+    GX2SetColorBuffer(tv, GX2_RENDER_TARGET_0);
+    GX2SetDepthBuffer(tvdb);
+    GX2SetViewport(0.0f, 0.0f, tw, th, 0.0f, 1.0f);
+    GX2SetScissor(0, 0, tv->surface.width, tv->surface.height);
+    GX2SetDepthOnlyControl(FALSE, FALSE, GX2_COMPARE_FUNC_ALWAYS);  // (as the 3D's backends leave it)
+    GX2SetColorControl(GX2_LOGIC_OP_COPY, 0, FALSE, TRUE);
+    GX2SetCullOnlyControl(GX2_FRONT_FACE_CCW, FALSE, FALSE);
+    GX2SetAlphaTest(FALSE, GX2_COMPARE_FUNC_ALWAYS, 0.0f);
+    const auto none = static_cast<GX2ChannelMask>(0);
+    GX2SetTargetChannelMasks(GX2_CHANNEL_MASK_RGBA, none, none, none, none, none, none, none);
+    GX2SetShaderMode(g_blit.vertexShader->mode);
+    GX2SetFetchShader(&g_blit.fetchShader);
+    GX2SetVertexShader(g_blit.vertexShader);
+    GX2SetPixelShader(g_blit.pixelShader);
+    GX2SetPixelTexture(&g_s3.tex, g_blit_loc);
+    GX2SetPixelSampler(&g_blit_sampler, g_blit_loc);
+    GX2SetAttribBuffer(0, sizeof c, 4 * sizeof(float), q);
+    GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLE_STRIP, 4, 0, 1);
+    GX2SetShaderMode(GX2_SHADER_MODE_UNIFORM_REGISTER);  // (as the 3D's backends leave it)
+}
+}  // namespace
+
+
+namespace {
+bool g_tm_draw = false;  // (RAC1_WIIU_TIMING: the TV's call timed by backend)
+}  // namespace
+
+// orig: (host) see mrp_world_gx2.h (RAC1_WIIU_GPU_TIME=2: the TV's call only)
+void rac1::wiiu_gpu_submark(int kind) {
+    if (!g_tm_draw || g_gcur < 0 || g_gsub == nullptr) return;
+    const int i = g_gsub_n[g_gcur];
+    if (i >= kSubMax) {
+        if (i == kSubMax) ++g_gsub_over;
+        g_gsub_n[g_gcur] = kSubMax + 1;  // (counted once; read as kSubMax)
+        return;
+    }
+    GpuSlot& t = gsub_slot(g_gcur, 0, i);
+    GpuSlot& b = gsub_slot(g_gcur, 1, i);
+    t.v = ~0ull;
+    b.v = ~0ull;
+    DCFlushRange(&t, sizeof t);
+    DCFlushRange(&b, sizeof b);
+    GX2SampleTopGPUCycle(&t.v);
+    GX2SampleBottomGPUCycle(&b.v);
+    DCFlushRange(&t, sizeof t);
+    DCFlushRange(&b, sizeof b);
+    g_gsub_kind[g_gcur][i] = static_cast<uint8_t>(kind);
+    g_gsub_n[g_gcur] = i + 1;
+}
 
 namespace {
 // the game's frame on colour buffer `cb`: 4:3, or wider with the widescreen, centred
@@ -463,7 +731,6 @@ rac1::gs::Viewport frame_viewport(const GX2ColorBuffer* cb) {
 }
 
 // the game's frame (4:3) centred on a colour buffer and its 2D drawn (the test triangle until the game's first frame)
-bool g_tm_draw = false;  // (RAC1_WIIU_TIMING: the TV's call timed by backend)
 void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
     // (testing, RAC1_WIIU_2D: 0 the frame's chain read but nothing of it drawn, 1 the screen's primitives only: no target,
     // 3 the MRP's 3D alone - the world's ties / shrubs and the mobys -: no 2D; the same with the replica's backend)
@@ -477,6 +744,18 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
     }
     const int w = static_cast<int>(cb->surface.width), h = static_cast<int>(cb->surface.height);
     const rac1::gs::Viewport vp = frame_viewport(cb);
+    // ((2026-10-28) RAC1_WIIU_3D_SCALE, the debug menu's "3D resolution": the TV's 3D drawn smaller and upscaled - Scaled3d above; the
+    // GamePad's own drawing never)
+    static bool s3_first = true;
+    if (s3_first) {
+        s3_first = false;
+        if (const char* e = std::getenv("RAC1_WIIU_3D_SCALE"); e != nullptr && e[0] != 0) g_menu_3d_scale = std::clamp(static_cast<float>(std::atof(e)), 0.25f, 1.0f);
+    }
+    const bool tv = cb != WHBGfxGetDRCColourBuffer();
+    Scaled3d* s3 = tv && (g_mobys_ready || g_world_ready) ? s3_get(g_menu_3d_scale, cb, db) : nullptr;
+    const GX2ColorBuffer* cb3 = s3 != nullptr ? &s3->cb : cb;  // (the 3D's buffers and frame)
+    GX2DepthBuffer* db3 = s3 != nullptr ? &s3->db : db;
+    const rac1::gs::Viewport vp3 = s3 != nullptr ? frame_viewport(cb3) : vp;
     {  // (2026-10-28, the GPU's time: the buffers the picture draws into, once on the log - sizes, formats, AA, tiling, hierarchical Z)
         static bool told[2] = {false, false};
         const int which = cb == WHBGfxGetTVColourBuffer() ? 0 : 1;
@@ -496,14 +775,27 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
     // the 3D under the 2D: the depth cleared once (the world and the mobys share it), the world's ties / shrubs, then the mobys.
     // (testing, RAC1_WIIU_ZCLEAR=0: the depth not cleared here - WHBGfxClearColor clears it too, when called before)
     static const bool zclear = std::getenv("RAC1_WIIU_ZCLEAR") == nullptr || std::atoi(std::getenv("RAC1_WIIU_ZCLEAR")) != 0;
+    if (s3 != nullptr) {
+        // (the scaled 3D's buffers cleared - black, as WHBGfxClearColor the TV's, and the far depth -, after the TV's depth buffer's lines
+        // are out of the depth cache: its memory may hold them)
+        if (g_s3.own_c == nullptr || g_s3.own_d == nullptr) GX2Invalidate(GX2_INVALIDATE_MODE_DEPTH_BUFFER, db->surface.image, db->surface.imageSize);
+        hiz_apply(db3);
+        GX2ClearColor(&s3->cb, 0.0f, 0.0f, 0.0f, 1.0f);
+        GX2ClearDepthStencilEx(db3, 1.0f, 0, GX2_CLEAR_FLAGS_DEPTH);
+        if (GX2ContextState* ctx = WHBGfxGetTVContextState()) GX2SetContextState(ctx);
+    }
     // ((2026-10-28) Gx2Perf::zclear2 off: the debug menu's - WHBGfxClearColor's clear alone)
-    if (db != nullptr && zclear && rac1::g_gx2_perf.zclear2 && (g_mobys_ready || g_world_ready)) {
+    else if (db != nullptr && zclear && rac1::g_gx2_perf.zclear2 && (g_mobys_ready || g_world_ready)) {
         GX2ClearDepthStencilEx(db, 1.0f, 0, GX2_CLEAR_FLAGS_DEPTH);
         // (the clear changes the GPU's state: the context of `cb` set again, the TV's or the GamePad's)
         GX2ContextState* ctx = cb == WHBGfxGetTVColourBuffer() ? WHBGfxGetTVContextState() : WHBGfxGetDRCContextState();
         if (ctx != nullptr) GX2SetContextState(ctx);
     }
     if (g_tm_draw) gpu_mark(kGmZclear);  // (the TV's call: the GPU's marks, gpu_mark)
+    // ((2026-10-28) Gx2Perf::flush: the commands so far sent to the GPU at each pass's end - the clears before the world's worker's join, the
+    // sky before the world's draws are made, ...: GX2 sent a frame's commands at its end, the GPU idle meanwhile ("[gpu]" idle between frames
+    // 9-43 ms, the frame's making on the CPU))
+    rac1::gx2_flush(1);
     auto dt = std::chrono::steady_clock::now();
     auto dlap = [&](int slot) {
         if (!g_tm_draw) return;
@@ -515,18 +807,25 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
         dlap(kTmWorldJoin);
         rac1::mrp_world_gx2_debug_frame(g_2d.game_frame);
         // the sky first (MRP_LITE.md phase 5): no depth test nor writes, the depth's hierarchical Z untouched
-        rac1::mrp_world_gx2_draw_sky(cb, db, vp);
+        rac1::mrp_world_gx2_draw_sky(cb3, db3, vp3);
         if (g_tm_draw) gpu_mark(kGmSky);
+        rac1::gx2_flush(1);
         dlap(kTmSky);
-        rac1::mrp_world_gx2_draw(cb, db, vp);
+        rac1::mrp_world_gx2_draw(cb3, db3, vp3);
         if (g_tm_draw) gpu_mark(kGmWorld);
+        rac1::gx2_flush(1);
         dlap(kTmWorld);
     }
     if (g_mobys_ready && g_menu_draw_mobys) {
         rac1::mrp_moby_gx2_debug_frame(g_2d.game_frame);
-        rac1::mrp_moby_gx2_draw(cb, db, vp);
+        rac1::mrp_moby_gx2_draw(cb3, db3, vp3);
         if (g_tm_draw) gpu_mark(kGmMobys);
+        rac1::gx2_flush(1);
         dlap(kTmMobys);
+    }
+    if (s3 != nullptr) {  // (the scaled 3D over the TV's frame, the TV's buffers bound again for the 2D)
+        s3_blit(cb, db, vp3, vp);
+        if (g_tm_draw) gpu_mark(kGmUpscale);
     }
     if (s_2d == 3) {  // (testing, RAC1_WIIU_TEST_AFTER=1: the test triangle drawn over the mobys, the target checked)
         static const bool test_after = std::getenv("RAC1_WIIU_TEST_AFTER") != nullptr && std::atoi(std::getenv("RAC1_WIIU_TEST_AFTER")) != 0;
@@ -714,6 +1013,8 @@ void wiiu_gfx_frame() {
     rac1::gx2_perf_init();         // (the GPU switches' start, run.cfg's: once)
     // (RAC1_WIIU_GPU_TIME=1: the GPU's marks - off by default: the first run with them on hung the console, 2026-10-28, not yet known why)
     static const bool gpu_time = std::getenv("RAC1_WIIU_GPU_TIME") != nullptr && std::atoi(std::getenv("RAC1_WIIU_GPU_TIME")) != 0;
+    static const bool gpu_sub = gpu_time && std::atoi(std::getenv("RAC1_WIIU_GPU_TIME")) >= 2;  // (the sky's / world's passes by kind too)
+    g_gsub_on = gpu_sub;
     gpu_frame_begin(tm && gpu_time, g_frames);  // (the GPU's marks of two frames ago read, this frame's begun)
     if (g_frames % 300 == 0)  // (the memory left, on the log: a leak shows)
         std::printf("[wiiu] host frame %llu: %u KB free in the default heap\n", static_cast<unsigned long long>(g_frames),

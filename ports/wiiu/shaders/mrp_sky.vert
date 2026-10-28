@@ -18,21 +18,36 @@ layout(std140) uniform SkyFrame {
     vec4 uVP[4];  // the world renderers' view-projection (mrp_world_view_proj), its columns
 };
 smooth out vec3 vStq;
+#ifdef RAC1_FAST
+// (2026-10-28) the fast pixel shader's terms (mrp_world_fast.frag): its outputs and fast_terms()
+#pragma rac1_include mrp_world_fast.glsl
+noperspective out vec4 vColor;
+flat out vec4 vFlat;
+#else
 noperspective out float vLodQ;
 noperspective out vec4 vColor;
 flat out vec4 vFlat;
 noperspective out float vFog;
 flat out uvec2 vTex;
 flat out uvec2 vState;
+#endif
 void main() {
+#ifdef RAC1_FAST
+    fast_terms(aTex.x, aTex.y, aState.x, aLodQ, aFog);
+#else
     vTex = aTex;
     vState = aState;
+#endif
     vec4 p = mat4(uVP[0], uVP[1], uVP[2], uVP[3]) * aWorld;
     p.z = p.w * (1.0 - 1.0 / 1024.0);
     gl_Position = p;
     vStq = aStq;
+#ifndef RAC1_FAST
     vLodQ = aLodQ;
+#endif
     vColor = vec4(aRgba) / 255.0;
     vFlat = vColor;
+#ifndef RAC1_FAST
     vFog = aFog;
+#endif
 }

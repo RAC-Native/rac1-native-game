@@ -121,7 +121,7 @@ wut_create_rpx(rac1_wiiu)
 # generated: never in the repository). Each <name>.vert / <name>.frag pair is one file; a pair whose pixel shader is another's names it
 # in RAC1_WIIU_FRAG_<name> (mrp_tfrag, mrp_sky: mrp_world.frag).
 set(RAC1_WIIU_GLSLC "" CACHE FILEPATH "CafeGLSL's glslcompiler, for ports/wiiu/shaders")
-set(RAC1_WIIU_SHADERS test gs_draw mrp_2d mrp_moby mrp_world mrp_tfrag mrp_sky debug_text)
+set(RAC1_WIIU_SHADERS test gs_draw mrp_2d mrp_moby mrp_world mrp_tfrag mrp_sky debug_text wiiu_blit)
 set(RAC1_WIIU_FRAG_mrp_tfrag mrp_world)
 set(RAC1_WIIU_FRAG_mrp_sky mrp_world)
 if(RAC1_WIIU_GLSLC)
@@ -140,9 +140,13 @@ if(RAC1_WIIU_GLSLC)
         list(APPEND _gsh ${CMAKE_CURRENT_BINARY_DIR}/shaders/${sh}.gsh)
     endforeach()
     # the builds with defines (2026-10-28, the GPU's time: the backends pick one per batch, RAC1_WIIU_NOKILL / RAC1_WIIU_LEAN): each
-    # RAC1_WIIU_VARIANT_<name> is its vertex shader, its pixel shader and the defines (comma-separated) - the pixel shader's source
-    # with them written into the build (ports/wiiu/shaders/variant.cmake), then compiled as the others into shaders/<name>.gsh
-    set(RAC1_WIIU_VARIANTS mrp_world_noat mrp_tfrag_noat mrp_moby_noat)  # (the lean ones - their vertex shaders output vLodP - left out: the world came out untextured on the console, 2026-10-28; lean_vert.patch in rac1-scratch/gpuperf)
+    # RAC1_WIIU_VARIANT_<name> is its vertex shader, its pixel shader and the defines (comma-separated) - both shaders' sources with
+    # them written into the build (ports/wiiu/shaders/variant.cmake: a vertex shader that does not read them compiles as its own build;
+    # its "#pragma rac1_include" files put in), then compiled together as the others into shaders/<name>.gsh. (2026-10-28) The fast
+    # world pixel shader's pairs (RAC1_FAST: mrp_world_fast.frag, the vertex shaders' fast_terms - their own outputs: bound as a pair,
+    # mrp_world_gx2.cpp gx2_pair_variant; RAC1_UNITS the merged draws' unit tree, the ties' / shrubs')
+    set(RAC1_WIIU_VARIANTS mrp_world_noat mrp_tfrag_noat mrp_moby_noat mrp_sky_noat
+        mrp_world_fast mrp_world_fast_noat mrp_tfrag_fast mrp_tfrag_fast_noat mrp_sky_fast mrp_sky_fast_noat)  # (the lean ones - their vertex shaders output vLodP - left out: the world came out untextured on the console, 2026-10-28; lean_vert.patch in rac1-scratch/gpuperf)
     set(RAC1_WIIU_VARIANT_mrp_world_noat mrp_world mrp_world RAC1_NO_ALPHA_TEST)
     set(RAC1_WIIU_VARIANT_mrp_world_lean mrp_world mrp_world RAC1_LEAN)
     set(RAC1_WIIU_VARIANT_mrp_world_lean_noat mrp_world mrp_world RAC1_LEAN,RAC1_NO_ALPHA_TEST)
@@ -150,17 +154,26 @@ if(RAC1_WIIU_GLSLC)
     set(RAC1_WIIU_VARIANT_mrp_tfrag_lean mrp_tfrag mrp_world RAC1_LEAN)
     set(RAC1_WIIU_VARIANT_mrp_tfrag_lean_noat mrp_tfrag mrp_world RAC1_LEAN,RAC1_NO_ALPHA_TEST)
     set(RAC1_WIIU_VARIANT_mrp_moby_noat mrp_moby mrp_moby RAC1_NO_ALPHA_TEST)
+    set(RAC1_WIIU_VARIANT_mrp_sky_noat mrp_sky mrp_world RAC1_NO_ALPHA_TEST)  # (2026-10-28: the sky's batches without an alpha test)
+    set(RAC1_WIIU_VARIANT_mrp_world_fast mrp_world mrp_world_fast RAC1_FAST,RAC1_UNITS)
+    set(RAC1_WIIU_VARIANT_mrp_world_fast_noat mrp_world mrp_world_fast RAC1_FAST,RAC1_UNITS,RAC1_NO_ALPHA_TEST)
+    set(RAC1_WIIU_VARIANT_mrp_tfrag_fast mrp_tfrag mrp_world_fast RAC1_FAST)
+    set(RAC1_WIIU_VARIANT_mrp_tfrag_fast_noat mrp_tfrag mrp_world_fast RAC1_FAST,RAC1_NO_ALPHA_TEST)
+    set(RAC1_WIIU_VARIANT_mrp_sky_fast mrp_sky mrp_world_fast RAC1_FAST)
+    set(RAC1_WIIU_VARIANT_mrp_sky_fast_noat mrp_sky mrp_world_fast RAC1_FAST,RAC1_NO_ALPHA_TEST)
     foreach(v ${RAC1_WIIU_VARIANTS})
         set(_src ${CMAKE_CURRENT_SOURCE_DIR}/../shaders)
         list(GET RAC1_WIIU_VARIANT_${v} 0 _vert)
         list(GET RAC1_WIIU_VARIANT_${v} 1 _frag)
         list(GET RAC1_WIIU_VARIANT_${v} 2 _defs)
         set(_gen ${CMAKE_CURRENT_BINARY_DIR}/shader_src/${v}.frag)
+        set(_genv ${CMAKE_CURRENT_BINARY_DIR}/shader_src/${v}.vert)
         add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/shaders/${v}.gsh
             COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/shaders ${CMAKE_CURRENT_BINARY_DIR}/shader_src
             COMMAND ${CMAKE_COMMAND} -DIN=${_src}/${_frag}.frag -DOUT=${_gen} -DDEFS=${_defs} -P ${_src}/variant.cmake
-            COMMAND ${RAC1_WIIU_GLSLC} -vs ${_src}/${_vert}.vert -ps ${_gen} -o ${CMAKE_CURRENT_BINARY_DIR}/shaders/${v}.gsh
-            DEPENDS ${_src}/${_vert}.vert ${_src}/${_frag}.frag ${_src}/variant.cmake
+            COMMAND ${CMAKE_COMMAND} -DIN=${_src}/${_vert}.vert -DOUT=${_genv} -DDEFS=${_defs} -P ${_src}/variant.cmake
+            COMMAND ${RAC1_WIIU_GLSLC} -vs ${_genv} -ps ${_gen} -o ${CMAKE_CURRENT_BINARY_DIR}/shaders/${v}.gsh
+            DEPENDS ${_src}/${_vert}.vert ${_src}/${_frag}.frag ${_src}/variant.cmake ${_src}/mrp_world_fast.glsl
             COMMENT "CafeGLSL: ${v}.gsh (${_defs})")
         list(APPEND _gsh ${CMAKE_CURRENT_BINARY_DIR}/shaders/${v}.gsh)
     endforeach()

@@ -127,8 +127,13 @@ struct Item {
 };
 // What merges: 1 consecutive commands of one instance and one texture unit; 2 of one instance (the batch's texture units all bound,
 // the pixel shader samples the triangle's: its run's draw_flags); 3 as 2, and consecutive items of different instances over the same
-// indices one instanced draw (gl_InstanceID: an instanced draw is its instances' draws in turn, the order kept)
-enum Mode : int { kPerDraw = 0, kByUnit = 1, kUnits = 2, kInstanced = 3 };
+// indices one instanced draw (gl_InstanceID: an instanced draw is its instances' draws in turn, the order kept); 4 (2026-10-28, the
+// GPU's time) as 1 - one unit an item, bound by the CPU: the pixel shader samples one texture, no unit tree - and instanced as 3
+enum Mode : int { kPerDraw = 0, kByUnit = 1, kUnits = 2, kInstanced = 3, kInstancedByUnit = 4 };
+// (a mode's traits: an item of one texture unit, the CPU's binding; the batch's units bound, the shader's choice; instanced draws)
+inline bool mode_by_unit(int mode) { return mode == kByUnit || mode == kInstancedByUnit; }
+inline bool mode_units(int mode) { return mode == kUnits || mode == kInstanced; }
+inline bool mode_instanced(int mode) { return mode == kInstanced || mode == kInstancedByUnit; }
 constexpr uint32_t kMaxInstanced = 256;  // (an item's instances in one uniform block: 256 B each, 64 KB)
 
 struct Plan {
@@ -139,7 +144,7 @@ struct Plan {
     std::vector<uint32_t> idx;            // the frame's own indices (absolute)
     std::vector<uint32_t> ilist;          // the items' instances
     std::vector<uint32_t> runs_used;      // the runs drawn this frame (their records in `table`)
-    std::vector<uint32_t> table;          // per run 4 words: texture word, layer, draw_flags (kByUnit: without the unit), FOGCOL; valid for runs_used
+    std::vector<uint32_t> table;          // per run 4 words: texture word, layer, draw_flags (kByUnit, kInstancedByUnit: without the unit), FOGCOL; valid for runs_used
     std::vector<uint32_t> stamp;          // per run: the plan's number when its record was set
     uint32_t number = 0;
     // (plan_build's: the groups - one instance's consecutive commands - before the instancing, their index segments)
@@ -155,7 +160,7 @@ struct Plan {
 
 constexpr uint32_t kUnitMask = 0xfu << 16;  // (draw_flags' texture unit)
 
-// orig: (host) the frame's merged draws (see the top) in `mode` (kByUnit..kInstanced). `kinds`: the instances drawn (1 the ties, 2 the
+// orig: (host) the frame's merged draws (see the top) in `mode` (kByUnit..kInstancedByUnit). `kinds`: the instances drawn (1 the ties, 2 the
 // shrubs: the debug modes); a batch the caller does not draw (the sky's, the CPU path's, the tfrags', the casters') gets no items
 inline void plan_build(const mrpwb::FrameView& F, const Level& M, int kinds, int mode, Plan& P) {
     const std::vector<mrpwb::Batch>& batches = *F.batches;
@@ -183,7 +188,7 @@ inline void plan_build(const mrpwb::FrameView& F, const Level& M, int kinds, int
     }
     // (kByUnit: the unit is the item's, bound by the CPU - not compared; else the run's record holds it: a run drawn with two units
     // in a frame - two texture epochs - is drawn alone the second time)
-    const uint32_t cmp_mask = mode == kByUnit ? ~kUnitMask : ~0u;
+    const uint32_t cmp_mask = mode_by_unit(mode) ? ~kUnitMask : ~0u;
     std::vector<Plan::Group>& groups = P.groups;
     std::vector<std::pair<uint32_t, uint32_t>>& segs = P.segs;
     // the batch's groups made items: consecutive groups over the same indices (kInstanced) one instanced item; a group's indices the
@@ -192,7 +197,7 @@ inline void plan_build(const mrpwb::FrameView& F, const Level& M, int kinds, int
         for (size_t k = 0; k < groups.size();) {
             const Plan::Group& g = groups[k];
             size_t e = k + 1;
-            if (mode >= kInstanced)
+            if (mode_instanced(mode))
                 while (e < groups.size() && e - k < kMaxInstanced && groups[e].unit == g.unit && groups[e].nseg == g.nseg &&
                        std::equal(segs.begin() + groups[e].seg0, segs.begin() + groups[e].seg0 + groups[e].nseg, segs.begin() + g.seg0))
                     ++e;
@@ -267,7 +272,7 @@ inline void plan_build(const mrpwb::FrameView& F, const Level& M, int kinds, int
                 P.items.push_back(it);
                 continue;
             }
-            if (groups.empty() || groups.back().inst != rec[0] || (mode == kByUnit && groups.back().unit != unit))
+            if (groups.empty() || groups.back().inst != rec[0] || (mode_by_unit(mode) && groups.back().unit != unit))
                 groups.push_back(Plan::Group{rec[0], unit, 0, static_cast<uint32_t>(segs.size()), 0});
             Plan::Group& gr = groups.back();
             ++gr.cmds;

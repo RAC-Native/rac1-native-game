@@ -35,6 +35,7 @@
 
 bool g_menu_draw_mobys = true, g_menu_draw_2d = true, g_menu_overlap = true;
 float g_menu_vpscale = 1.0f;
+float g_menu_3d_scale = 1.0f;
 
 // ((2026-10-28) the game's update on the game thread beside the drawing - orig_main.cpp's Wii U branch, runtime/ee/game_thread.h:
 // RAC1_WIIU_GAME_THREAD=0 the host frame in series as before; read at the first ask, run.cfg's then set; the Game page flips it)
@@ -113,10 +114,11 @@ const Item kRender[] = {
     {"2D (HUD, text, menus)", [] { return on_off(g_menu_draw_2d); }, [] { g_menu_draw_2d = !g_menu_draw_2d; }},
     {"CPU / GPU overlap", [] { return on_off(g_menu_overlap); }, [] { g_menu_overlap = !g_menu_overlap; }},
     {"World prepared on a worker", [] { return on_off(rac1::g_wiiu_world_async); }, [] { rac1::g_wiiu_world_async = !rac1::g_wiiu_world_async; }},
+    // ((2026-10-28) 3 -> 4 (instanced by texture unit: no unit tree in the pixel shader) -> 0 -> 3)
     {"World draws merged", [] { return std::string("mode ") + std::to_string(rac1::mrp_world_gx2_merge_mode()); },
      [] {
          int& m = rac1::mrp_world_gx2_merge_mode();
-         m = m == 0 ? 3 : 0;
+         m = m == 3 ? 4 : m == 4 ? 0 : 3;
      }},
     {"Resolution (the frame's share)", [] {
          char b[16];
@@ -124,6 +126,14 @@ const Item kRender[] = {
          return std::string(b);
      },
      [] { g_menu_vpscale = g_menu_vpscale > 0.9f ? 0.75f : g_menu_vpscale > 0.6f ? 0.5f : 1.0f; }},
+    // ((2026-10-28) RAC1_WIIU_3D_SCALE, wiiu_gfx.cpp: the 3D drawn into a smaller buffer, upscaled under the 2D: 1 -> 0.75 -> 0.667 -> 0.5;
+    // the page's 15th row - the rows 28 pixels apart since)
+    {"3D resolution (upscaled)", [] {
+         char b[16];
+         std::snprintf(b, sizeof b, "%.3g", g_menu_3d_scale);
+         return std::string(b);
+     },
+     [] { g_menu_3d_scale = g_menu_3d_scale > 0.9f ? 0.75f : g_menu_3d_scale > 0.7f ? 0.667f : g_menu_3d_scale > 0.6f ? 0.5f : 1.0f; }},
     // (2026-10-28, the GPU's time: rac1::Gx2Perf, mrp_world_gx2.h - two rows, the page's room: the pixel shaders' builds and the tests in
     // one row since the sky's row came)
     {"GPU: hierarchical Z", [] { return on_off(rac1::g_gx2_perf.hiz); }, [] { rac1::g_gx2_perf.hiz = !rac1::g_gx2_perf.hiz; }},
@@ -131,15 +141,17 @@ const Item kRender[] = {
          const rac1::Gx2Perf& g = rac1::g_gx2_perf;
          if (g.pixels_off) return std::string("test: no pixels");
          if (!g.zclear2) return std::string("test: 1 Z clear");
+         if (g.fast) return std::string(g.nokill ? "fast+nokill" : "fast");
          return std::string(g.lean && g.nokill ? "lean+nokill" : g.lean ? "lean" : g.nokill ? "nokill" : "off");
      },
-     [] {  // (off -> nokill -> lean -> both -> the test: the pixels off (8 x 8 scissor) -> the test: one depth clear (WHB's) -> off; a test
-           // with the shaders' builds off)
+     [] {  // (2026-10-28: fast+nokill (the default) -> fast -> nokill -> off -> the test: the pixels off (8 x 8 scissor) -> the test: one
+           // depth clear (WHB's) -> fast+nokill; the tests with the shaders' builds off. The lean builds: RAC1_WIIU_LEAN alone - refused)
          rac1::Gx2Perf& g = rac1::g_gx2_perf;
-         const int k = g.pixels_off ? 4 : !g.zclear2 ? 5 : (g.lean ? 2 : 0) | (g.nokill ? 1 : 0);
+         const int k = g.pixels_off ? 4 : !g.zclear2 ? 5 : g.fast ? (g.nokill ? 0 : 1) : g.nokill ? 2 : 3;
          const int n = (k + 1) % 6;
-         g.nokill = n == 1 || n == 3;
-         g.lean = n == 2 || n == 3;
+         g.fast = n <= 1;
+         g.nokill = n == 0 || n == 2;
+         g.lean = false;
          g.pixels_off = n == 4;
          g.zclear2 = n != 5;
      }},
@@ -191,7 +203,7 @@ const Item* page_items(size_t* n) {
     *n = sizeof kGame / sizeof kGame[0];
     return kGame;
 }
-constexpr int kItemY = 34, kItemH = 30, kItemX = 8, kItemW = 420;
+constexpr int kItemY = 34, kItemH = 28, kItemX = 8, kItemW = 420;  // (28 apart: the Picture page's 15 rows, 2026-10-28)
 
 bool g_was_touched = false;
 int g_touch_x = -1, g_touch_y = -1, g_taps = 0;

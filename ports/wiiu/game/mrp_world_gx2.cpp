@@ -52,12 +52,14 @@
 #include <game/render/render_view.h>
 #include <runtime/gs/gs_emu.h>
 
+#include <coreinit/cache.h>
 #include <coreinit/memdefaultheap.h>
 #include <gx2/draw.h>
 #include <gx2/enum.h>
 #include <gx2/event.h>
 #include <gx2/mem.h>
 #include <gx2/registers.h>
+#include <gx2/state.h>
 #include <gx2/sampler.h>
 #include <gx2/shaders.h>
 #include <gx2/context.h>
@@ -125,7 +127,7 @@ uint32_t g_unit_loc[16] = {};  // (the merged draws' texture units: uTex, uT1..u
 bool g_units_ok = false;
 // RAC1_WIIU_WORLD_MERGE (mrpwm::Mode): 0 one GX2 draw per draw command (as before), 1 an instance's consecutive commands of one texture
 // unit one draw, 2 of any unit (the batch's units bound at once), 3 (the default) and consecutive instances drawing the same commands
-// one instanced draw
+// one instanced draw, 4 (2026-10-28) as 3 split by texture unit (one sampler: the pixel shader's unit tree not run)
 int g_merge = mrpwm::kInstanced;
 GX2Sampler g_samplers[16];  // [TEX1 / CLAMP bits: 0 MMAG linear, 1 MMIN linear, 2 wrap s, 3 wrap t] (mip mode 0: the GS's level, textureLod)
 GX2Sampler g_cols_sampler;  // (the colours' texture: point, clamped)
@@ -147,6 +149,10 @@ void* g_sfetch_prog[2] = {};
 BlockLoc g_sframe_loc, g_spixel_loc;
 uint32_t g_stex_loc = 0;
 bool g_stex_ok = false;
+// ((2026-10-28) Gx2Perf::nokill) its pixel shader's build without the alpha test (shaders/mrp_sky_noat.gsh: mrp_sky.vert + mrp_world.frag
+// RAC1_NO_ALPHA_TEST), for the sky batches none of whose draws tests (Batch::ate): ~14 of the shader's ~66 ALU groups fewer a pixel
+WHBGfxShaderGroup g_sshv_noat{};
+const GX2PixelShader* g_sps_noat = nullptr;
 // (2026-10-28, the GPU's time) the pixel shaders' other builds (Gx2Perf: nokill, lean), [path: 0 the ties' / shrubs', 1 the tfrags'][bits: 1
 // no alpha test (RAC1_NO_ALPHA_TEST), 2 lean (RAC1_LEAN)] - [k][0] the shaders' own; nullptr a build not there (or refused: gx2_ps_variant)
 WHBGfxShaderGroup g_shv[2][4]{};
@@ -171,6 +177,34 @@ const GX2PixelShader* variant_ps(int path, bool at) {
         if (g_ps[path][t] != nullptr) return g_ps[path][t];
     return nullptr;
 }
+// ((2026-10-28, the world's pixels) Gx2Perf::fast) the fast pixel shader's pairs (mrp_world_fast.frag with the path's vertex shader built
+// RAC1_FAST: ports/wiiu/game/CMakeLists.txt), [path: 0 the ties' / shrubs', 1 the tfrags', 2 the sky's][0 with the alpha test, 1 without
+// (RAC1_NO_ALPHA_TEST)]; g_fok false: not there (or refused: gx2_pair_variant). Each pair's vertex shader is bound with its pixel shader
+WHBGfxShaderGroup g_fsh[3][2]{};
+bool g_fok[3][2] = {};
+void fast_load(int path, const WHBGfxShaderGroup& main) {
+    static const char* const kFile[3][2] = {{"shaders/mrp_world_fast.gsh", "shaders/mrp_world_fast_noat.gsh"},
+                                            {"shaders/mrp_tfrag_fast.gsh", "shaders/mrp_tfrag_fast_noat.gsh"},
+                                            {"shaders/mrp_sky_fast.gsh", "shaders/mrp_sky_fast_noat.gsh"}};
+    for (int k = 0; k < 2; ++k) {
+        g_fok[path][k] = gx2_pair_variant(kFile[path][k], main, g_fsh[path][k]);
+        if (g_fok[path][k]) gx2_ps_early_z(g_fsh[path][k].pixelShader, kFile[path][k]);
+    }
+}
+void fast_free(int path) {
+    for (int k = 0; k < 2; ++k) {
+        if (g_fok[path][k]) WHBGfxFreeShaderGroup(&g_fsh[path][k]);
+        g_fsh[path][k] = WHBGfxShaderGroup{};
+        g_fok[path][k] = false;
+    }
+}
+// the fast pair for `path` with the alpha test (`at`) or not (Gx2Perf::nokill: the build without discard), when Gx2Perf::fast says so;
+// nullptr: the path's own shaders (mrp_world.frag's builds, variant_ps)
+const WHBGfxShaderGroup* fast_pair(int path, bool at) {
+    if (!g_gx2_perf.fast) return nullptr;
+    if (!at && g_gx2_perf.nokill && g_fok[path][1]) return &g_fsh[path][1];
+    return g_fok[path][0] ? &g_fsh[path][0] : nullptr;
+}
 
 // The uniform blocks, appended to a ring in MEM2 (mrp_moby_gx2.cpp's): before the ring wraps over what the GPU may still read the
 // CPU waits for it (GX2DrawDone)
@@ -178,6 +212,7 @@ constexpr uint32_t kRingBytes = 16u << 20;
 uint8_t* g_ring = nullptr;
 uint32_t g_ring_off = 0;
 uint64_t g_ring_wraps = 0;
+bool g_ring_stale = false;  // (Gx2Perf::ub_bulk: the ring wrapped since its GPU caches were last invalidated)
 void* ring_alloc(uint32_t bytes) {
     uint32_t off = (g_ring_off + GX2_UNIFORM_BLOCK_ALIGNMENT - 1) & ~(GX2_UNIFORM_BLOCK_ALIGNMENT - 1);
     if (bytes > kRingBytes) return nullptr;
@@ -185,9 +220,18 @@ void* ring_alloc(uint32_t bytes) {
         GX2DrawDone();
         off = 0;
         ++g_ring_wraps;
+        g_ring_stale = true;
     }
     g_ring_off = off + bytes;
     return g_ring + off;
+}
+// ((2026-10-28) Gx2Perf::ub_bulk) the whole ring's GPU caches invalidated: at a call's start (before its first draw) and after a wrap. A
+// block is read by the draws after its writing only, at an address no draw read since the ring last came round: the caches emptied once
+// a call hold no stale line of it (the blocks start 256 bytes apart: no line shared)
+void ring_gpu_invalidate() {
+    if (!g_gx2_perf.ub_bulk || g_ring == nullptr) return;
+    GX2Invalidate(GX2_INVALIDATE_MODE_UNIFORM_BLOCK, g_ring, kRingBytes);
+    g_ring_stale = false;
 }
 // `bytes` of `data` written at `p`, each 32-bit word swapped (GX2 reads the shaders' blocks as little-endian words)
 void words_swapped(void* p, const void* data, uint32_t bytes) {
@@ -205,7 +249,12 @@ void* block_of(const void* data, uint32_t bytes, uint32_t size) {
     void* p = ring_alloc(size);
     if (p == nullptr) return nullptr;
     words_swapped(p, data, std::min(bytes, size));
-    GX2Invalidate(static_cast<GX2InvalidateMode>(GX2_INVALIDATE_MODE_CPU | GX2_INVALIDATE_MODE_UNIFORM_BLOCK), p, size);
+    if (g_gx2_perf.ub_bulk) {  // (out of the CPU's cache alone; the GPU's emptied by the call: ring_gpu_invalidate)
+        DCFlushRange(p, size);
+        if (g_ring_stale) ring_gpu_invalidate();
+    } else {
+        GX2Invalidate(static_cast<GX2InvalidateMode>(GX2_INVALIDATE_MODE_CPU | GX2_INVALIDATE_MODE_UNIFORM_BLOCK), p, size);
+    }
     return p;
 }
 
@@ -722,12 +771,39 @@ void gx2_perf_init() {
     };
     // (hierarchical Z on by default: Veldin 101 -> 70 ms a host frame on the console, the GPU no longer waited for, 2026-10-28)
     g_gx2_perf.hiz = env("RAC1_WIIU_HIZ", true);
-    g_gx2_perf.nokill = env("RAC1_WIIU_NOKILL", false);
+    // (the builds without discard on by default with the early depth test, 2026-10-28: their batches' depth then tested and written before
+    // the shader - the same pixels: no draw of such a batch discards)
+    g_gx2_perf.nokill = env("RAC1_WIIU_NOKILL", true);
     g_gx2_perf.lean = env("RAC1_WIIU_LEAN", false);
     g_gx2_perf.pixels_off = env("RAC1_WIIU_PIXELS_OFF", false);
     g_gx2_perf.zclear2 = env("RAC1_WIIU_ZCLEAR", true);
-    std::printf("[wiiu] gx2 perf: hierarchical Z %d, no-kill shaders %d, lean world shader %d, pixels off %d, second depth clear %d\n", g_gx2_perf.hiz,
-                g_gx2_perf.nokill, g_gx2_perf.lean, g_gx2_perf.pixels_off, g_gx2_perf.zclear2);
+    g_gx2_perf.earlyz = env("RAC1_WIIU_EARLYZ", true);
+    g_gx2_perf.ub_bulk = env("RAC1_WIIU_UB_BULK", true);
+    if (const char* v = std::getenv("RAC1_WIIU_FLUSH"); v != nullptr && v[0] != 0) g_gx2_perf.flush = std::clamp(std::atoi(v), 0, 2);
+    if (const char* v = std::getenv("RAC1_WIIU_FLUSH_DRAWS"); v != nullptr && v[0] != 0) g_gx2_perf.flush_draws = static_cast<uint32_t>(std::max(1, std::atoi(v)));
+    g_gx2_perf.fast = env("RAC1_WIIU_FASTPS", true);
+    std::printf("[wiiu] gx2 perf: hierarchical Z %d, no-kill shaders %d, lean world shader %d, pixels off %d, second depth clear %d, early depth test %d, "
+                "flushes %d (every %u world draws), uniform blocks' caches once a call %d, fast world pixel shaders %d\n",
+                g_gx2_perf.hiz, g_gx2_perf.nokill, g_gx2_perf.lean, g_gx2_perf.pixels_off, g_gx2_perf.zclear2, g_gx2_perf.earlyz, g_gx2_perf.flush,
+                g_gx2_perf.flush_draws, g_gx2_perf.ub_bulk, g_gx2_perf.fast);
+}
+
+// orig: (host) see mrp_world_gx2.h
+void gx2_flush(int level) {
+    if (g_gx2_perf.flush >= level) GX2Flush();
+}
+
+// orig: (host) see mrp_world_gx2.h. DB_SHADER_CONTROL's Z_ORDER (bits 4..5): 0 EARLY_Z_THEN_LATE_Z, 1 LATE_Z (CafeGLSL's for every
+// shader, seen in the .gsh files' registers 2026-10-28: 0x50 with discard, 0x10 without), 2 / 3 the re-Z orders (left alone: Mesa's r600
+// driver keeps clear of RE_Z on R6xx / R7xx - lockups - and uses EARLY_Z_THEN_LATE_Z with a discarding shader too, LATE_Z only for the
+// fixed-function alpha test, which is off here: GX2SetAlphaTest FALSE). GX2SetPixelShader writes the register from the struct
+void gx2_ps_early_z(const GX2PixelShader* ps, const char* who) {
+    if (ps == nullptr || !g_gx2_perf.earlyz) return;
+    auto* p = const_cast<GX2PixelShader*>(ps);
+    const uint32_t was = p->regs.db_shader_control;
+    if (((was >> 4) & 3u) != 1u) return;
+    p->regs.db_shader_control = was & ~0x30u;
+    std::printf("[wiiu] gx2 perf: %s: db_shader_control %08x -> %08x (early depth test)\n", who, was, p->regs.db_shader_control);
 }
 
 // orig: (host) see mrp_world_gx2.h
@@ -778,6 +854,73 @@ const GX2PixelShader* gx2_ps_variant(const char* path, const WHBGfxShaderGroup& 
     }
     std::printf("[wiiu] gx2 perf: %s: its pixel shader (%u bytes, db_shader_control %08x) can stand in\n", path, q->size, q->regs.db_shader_control);
     return q;
+}
+
+// orig: (host) see mrp_world_gx2.h. The pair's own vertex shader feeds its own pixel shader (compiled together: the outputs' semantics
+// match - 2026-10-28, a vertex output only some pixel shaders read drew the world untextured when another build's pixel shader ran with
+// the main vertex shader); what must match `main`'s is what the caller sets once for both: the fetch shader (the attributes' locations),
+// the blocks' and samplers' slots, the uniform mode
+bool gx2_pair_variant(const char* path, const WHBGfxShaderGroup& main, WHBGfxShaderGroup& keep) {
+    keep = WHBGfxShaderGroup{};
+    if (main.vertexShader == nullptr || main.pixelShader == nullptr) return false;
+    std::vector<uint8_t> gsh;
+    if (std::FILE* f = std::fopen(path, "rb")) {
+        std::fseek(f, 0, SEEK_END);
+        gsh.resize(static_cast<size_t>(std::ftell(f)));
+        std::fseek(f, 0, SEEK_SET);
+        if (std::fread(gsh.data(), 1, gsh.size(), f) != gsh.size()) gsh.clear();
+        std::fclose(f);
+    }
+    if (gsh.empty() || !WHBGfxLoadGFDShaderGroup(&keep, 0, gsh.data())) {
+        std::printf("[wiiu] gx2 perf: %s not loaded\n", path);
+        keep = WHBGfxShaderGroup{};
+        return false;
+    }
+    const GX2VertexShader *a = main.vertexShader, *b = keep.vertexShader;
+    const GX2PixelShader *p = main.pixelShader, *q = keep.pixelShader;
+    const char* why = nullptr;
+    // (each of the pair's blocks / samplers where `main`'s of its name is: the caller binds them by `main`'s locations and sizes)
+    auto blocks = [&](const GX2UniformBlock* v, uint32_t nv, const GX2UniformBlock* m, uint32_t nm) {
+        for (uint32_t i = 0; why == nullptr && i < nv; ++i) {
+            bool same = false;
+            for (uint32_t j = 0; j < nm; ++j)
+                if (std::strcmp(v[i].name, m[j].name) == 0) same = v[i].offset == m[j].offset && v[i].size <= m[j].size;
+            if (!same) why = "a uniform block not where (or larger than) the main shaders' own";
+        }
+    };
+    auto samplers = [&](const GX2SamplerVar* v, uint32_t nv, const GX2SamplerVar* m, uint32_t nm) {
+        for (uint32_t i = 0; why == nullptr && i < nv; ++i) {
+            bool same = false;
+            for (uint32_t j = 0; j < nm; ++j)
+                if (std::strcmp(v[i].name, m[j].name) == 0) same = v[i].location == m[j].location;
+            if (!same) why = "a sampler not where the main shaders' own is";
+        }
+    };
+    if (b == nullptr || q == nullptr) {
+        why = "no vertex or pixel shader in it";
+    } else if (b->mode != a->mode || q->mode != p->mode) {
+        why = "another uniform mode";
+    } else {
+        for (uint32_t i = 0; why == nullptr && i < b->attribVarCount; ++i) {
+            bool same = false;
+            for (uint32_t j = 0; j < a->attribVarCount; ++j)
+                if (std::strcmp(b->attribVars[i].name, a->attribVars[j].name) == 0) same = b->attribVars[i].location == a->attribVars[j].location;
+            if (!same) why = "an attribute not at the main vertex shader's location (its fetch shader)";
+        }
+        blocks(b->uniformBlocks, b->uniformBlockCount, a->uniformBlocks, a->uniformBlockCount);
+        blocks(q->uniformBlocks, q->uniformBlockCount, p->uniformBlocks, p->uniformBlockCount);
+        samplers(b->samplerVars, b->samplerVarCount, a->samplerVars, a->samplerVarCount);
+        samplers(q->samplerVars, q->samplerVarCount, p->samplerVars, p->samplerVarCount);
+    }
+    if (why != nullptr) {
+        std::printf("[wiiu] gx2 perf: %s refused: %s\n", path, why);
+        WHBGfxFreeShaderGroup(&keep);
+        keep = WHBGfxShaderGroup{};
+        return false;
+    }
+    std::printf("[wiiu] gx2 perf: %s: its vertex (%u bytes, %u attributes) and pixel shader (%u bytes, db_shader_control %08x) can take the main ones' place\n", path,
+                b->size, b->attribVarCount, q->size, q->regs.db_shader_control);
+    return true;
 }
 
 int& mrp_world_gx2_merge_mode() { return g_merge; }
@@ -909,6 +1052,7 @@ void tfrag_free() {
     if (g_gring != nullptr) MEMFreeToDefaultHeap(g_gring);
     g_gring = nullptr;
     variants_free(1);
+    fast_free(1);
     if (g_tsh.vertexShader != nullptr || g_tsh.pixelShader != nullptr) WHBGfxFreeShaderGroup(&g_tsh);
     g_tsh = WHBGfxShaderGroup{};
     g_tcache = TfragCache{};
@@ -969,6 +1113,9 @@ void tfrag_init() {
     }
     g_tready = true;
     if (!variant) variants_load(1, g_tsh);  // (its pixel shader's other builds, Gx2Perf; not for another build of the shaders)
+    if (!variant) fast_load(1, g_tsh);      // (the fast pixel shader's pairs, Gx2Perf::fast)
+    gx2_ps_early_z(g_tsh.pixelShader, "mrp_tfrag");
+    for (int k = 1; k < 4; ++k) gx2_ps_early_z(g_ps[1][k], "mrp_tfrag (another build)");
     std::printf("[wiiu] mrp_world_gx2: tfrag up (%s; blocks: frame %u pixel %u bytes; geometry ring %u KB)\n", variant ? gsh_env : "shaders/mrp_tfrag.gsh", g_tframe_loc.size,
                 g_tpixel_loc.size, kGeoRingBytes / 1024);
 }
@@ -1046,6 +1193,10 @@ void sky_free() {
     if (g_sring != nullptr) MEMFreeToDefaultHeap(g_sring);
     g_sring = nullptr;
     sky_tex_free();
+    if (g_sps_noat != nullptr) WHBGfxFreeShaderGroup(&g_sshv_noat);
+    g_sshv_noat = WHBGfxShaderGroup{};
+    g_sps_noat = nullptr;
+    fast_free(2);
     if (g_ssh.vertexShader != nullptr || g_ssh.pixelShader != nullptr) WHBGfxFreeShaderGroup(&g_ssh);
     g_ssh = WHBGfxShaderGroup{};
     g_scache = SkyCache{};
@@ -1103,6 +1254,8 @@ void sky_init() {
         return;
     }
     g_sready = true;
+    if (!variant) g_sps_noat = gx2_ps_variant("shaders/mrp_sky_noat.gsh", g_ssh, g_sshv_noat);
+    if (!variant) fast_load(2, g_ssh);  // (the fast pixel shader's pairs, Gx2Perf::fast)
     std::printf("[wiiu] mrp_world_gx2: sky up (%s; blocks: frame %u pixel %u bytes; ring %u KB); %s (RAC1_WIIU_SKY)\n", variant ? gsh_env : "shaders/mrp_sky.gsh",
                 g_sframe_loc.size, g_spixel_loc.size, kSkyRingBytes / 1024, g_wiiu_sky ? "drawn" : "off");
 }
@@ -1213,12 +1366,12 @@ bool mrp_world_gx2_init() {
         g_units_ok = found == 16;
     }
     // (testing, RAC1_WIIU_WORLD_MERGE=<n>: the ties' / shrubs' draws merged as mrpwm::Mode says - 0 one draw per draw command, as before)
-    if (const char* e = std::getenv("RAC1_WIIU_WORLD_MERGE")) g_merge = std::clamp(std::atoi(e), 0, 3);
+    if (const char* e = std::getenv("RAC1_WIIU_WORLD_MERGE")) g_merge = std::clamp(std::atoi(e), 0, 4);
     if (g_merge > 0 && (!g_runs_ok || g_draw_loc.size < 2 * kSlot)) {
         std::printf("[wiiu] mrp_world_gx2: the merged draws off: no run table / instance slots in the shaders\n");
         g_merge = 0;
     }
-    if (g_merge >= 2 && !g_units_ok) {
+    if (mrpwm::mode_units(g_merge) && !g_units_ok) {
         std::printf("[wiiu] mrp_world_gx2: the merged draws by unit only: the shaders lack the units' samplers\n");
         g_merge = 1;
     }
@@ -1266,6 +1419,9 @@ bool mrp_world_gx2_init() {
     g_ready = true;
     gx2_perf_init();
     if (!variant) variants_load(0, g_sh);  // (its pixel shader's other builds, Gx2Perf; not for another build of the shaders)
+    if (!variant) fast_load(0, g_sh);      // (the fast pixel shader's pairs, Gx2Perf::fast)
+    gx2_ps_early_z(g_sh.pixelShader, "mrp_world");
+    for (int k = 1; k < 4; ++k) gx2_ps_early_z(g_ps[0][k], "mrp_world (another build)");
     std::printf("[wiiu] mrp_world_gx2: up (blocks: frame %u draw %u pixel %u bytes; merged draws: mode %d)\n", g_frame_loc.size, g_draw_loc.size, g_pixel_loc.size, g_merge);
     tfrag_init();
     sky_init();
@@ -1290,6 +1446,7 @@ void mrp_world_gx2_shutdown() {
     tfrag_free();
     sky_free();
     variants_free(0);
+    fast_free(0);
     WHBGfxFreeShaderGroup(&g_sh);
     g_sh = WHBGfxShaderGroup{};
     g_ready = false;
@@ -1304,7 +1461,8 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
     if (stage <= 1) return;
     const auto t0 = std::chrono::steady_clock::now();
     const int win_w = static_cast<int>(cb->surface.width), win_h = static_cast<int>(cb->surface.height);
-    GX2ContextState* ctx = cb == WHBGfxGetTVColourBuffer() ? WHBGfxGetTVContextState() : WHBGfxGetDRCContextState();
+    // (the TV's context for the TV's buffer and the scaled 3D's, wiiu_gfx.cpp RAC1_WIIU_3D_SCALE)
+    GX2ContextState* ctx = cb != WHBGfxGetDRCColourBuffer() ? WHBGfxGetTVContextState() : WHBGfxGetDRCContextState();
     mrpwb::FrameView F;
     mrpwb::LevelView L;
     const bool have = mrpwb::frame_view(F) && mrpwb::level_view(L);
@@ -1328,6 +1486,7 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
     cols_sync();
     if (g_geo.vb == nullptr || g_geo.ib == nullptr || g_cols.tex.surface.image == nullptr || F.batches->empty()) return;
     ++g_calls;
+    ring_gpu_invalidate();  // (Gx2Perf::ub_bulk: the blocks' GPU caches once for the call, before its first draw)
     if (F.serial != g_cache.serial || g_ring_wraps != g_cache.wraps || g_cache.draws.size() != F.draws->size()) cache_reset(F.serial, F.draws->size());
 
     const std::vector<mrpwb::Batch>& batches = *F.batches;
@@ -1358,7 +1517,7 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         fb.mode[0] = (g_debug & 4) != 0 ? 0 : F.mode;
         fb.mode[1] = (g_debug & 16) != 0 ? 1 : 0;
         fb.mode[2] = static_cast<int32_t>(kColsLog2);
-        fb.mode2[0] = g_merge >= mrpwm::kInstanced ? 1 : 0;  // (a draw of one instance: gl_InstanceID 0, its first slot either way)
+        fb.mode2[0] = mrpwm::mode_instanced(g_merge) ? 1 : 0;  // (a draw of one instance: gl_InstanceID 0, its first slot either way)
         fb.mode2[1] = static_cast<int32_t>(kRunsLog2);
         return block_of(&fb, sizeof fb, g_frame_loc.size);
     };
@@ -1439,17 +1598,38 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
     auto set_mask = [&](GX2ChannelMask m) { GX2SetTargetChannelMasks(m, none, none, none, none, none, none, none); };
     set_mask(GX2_CHANNEL_MASK_RGBA);
 
+    // ((2026-10-28) Gx2Perf::flush 2: the commands so far sent to the GPU every flush_draws GX2 draws - it draws while the CPU makes the rest)
+    uint32_t since_flush = 0;
+    auto drawn = [&] {
+        if (g_gx2_perf.flush >= 2 && ++since_flush >= g_gx2_perf.flush_draws) {
+            GX2Flush();
+            since_flush = 0;
+        }
+    };
     // the shaders of a batch: 0 the ties / shrubs' (mrp_world.gsh: the level's templates, the frame's plain uniforms, the resident colours),
-    // 1 the tfrags' (mrp_tfrag.gsh: the frame's tfrag vertices, its frame block); set when the batches' path changes
+    // 1 the tfrags' (mrp_tfrag.gsh: the frame's tfrag vertices, its frame block); set when the batches' path changes - the shader mode
+    // when it differs (the two paths' the same: uniform blocks)
     int path = -1;
+    int shader_mode = -1;
+    auto set_mode = [&](GX2ShaderMode m) {
+        if (static_cast<int>(m) == shader_mode) return;
+        GX2SetShaderMode(m);
+        shader_mode = static_cast<int>(m);
+    };
     int cur_bucket = -2;
     uint32_t cur_sampler = ~0u;
     int units_epoch = -3;  // (the merged draws' units bound: the batch epoch's; -3 none)
     const GX2PixelShader* cur_ps = nullptr;  // (the pixel shader set: the path's own or another build of it, Gx2Perf)
+    const GX2VertexShader* cur_vs = nullptr;  // (the vertex shader set: the path's own or a fast pair's, Gx2Perf::fast)
     auto use_ps = [&](const GX2PixelShader* ps) {
         if (ps == nullptr || ps == cur_ps) return;
         GX2SetPixelShader(ps);
         cur_ps = ps;
+    };
+    auto use_vs = [&](const GX2VertexShader* vs) {
+        if (vs == nullptr || vs == cur_vs) return;
+        GX2SetVertexShader(vs);
+        cur_vs = vs;
     };
     PixelBlock last_px{};
     const void* last_px_blk = nullptr;
@@ -1471,10 +1651,11 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         units_epoch = -3;
         last_px_blk = nullptr;
         if (want == 0) {
-            GX2SetShaderMode(g_sh.vertexShader->mode);
+            set_mode(g_sh.vertexShader->mode);
             GX2SetFetchShader(&g_sh.fetchShader);
             GX2SetVertexShader(g_sh.vertexShader);
             GX2SetPixelShader(g_sh.pixelShader);
+            cur_vs = g_sh.vertexShader;
             cur_ps = g_sh.pixelShader;
             if (!by_address) GX2SetAttribBuffer(0, vbytes, sizeof(mrpwm::VertR), g_geo.vb);
             if (g_frame_loc.found) GX2SetVertexUniformBlock(g_frame_loc.loc, g_frame_loc.size, g_cache.frame);
@@ -1487,10 +1668,11 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
                 GX2SetVertexSampler(&g_cols_sampler, g_runs_loc);
             }
         } else {
-            GX2SetShaderMode(g_tsh.vertexShader->mode);
+            set_mode(g_tsh.vertexShader->mode);
             GX2SetFetchShader(&g_tfetch[(g_tdebug & 1024) != 0 ? 1 : 0]);
             GX2SetVertexShader(g_tsh.vertexShader);
             GX2SetPixelShader(g_tsh.pixelShader);
+            cur_vs = g_tsh.vertexShader;
             cur_ps = g_tsh.pixelShader;
             GX2SetAttribBuffer(0, g_tcache.nverts * static_cast<uint32_t>(sizeof(mrpwb::GpuV)), sizeof(mrpwb::GpuV), g_tcache.vb);
             if (g_tframe_loc.found) GX2SetVertexUniformBlock(g_tframe_loc.loc, g_tframe_loc.size, g_tcache.frame);
@@ -1578,6 +1760,7 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         ++g_draws;
         ++g_cmds;
         g_tris += c.count / 3;
+        drawn();
     };
     // the merged draws: a batch's texture units all bound (mrpwm::kUnits and up: the pixel shader samples the triangle's unit; unit 0 and
     // the units the epoch lacks the white texture), when the batch's epoch is not the one bound
@@ -1600,15 +1783,15 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         cur_bucket = -2;  // (unit 0's slot is bind_unit's too)
         cur_sampler = ~0u;
     };
-    // a batch's merged items (mrpwm::Plan): per item its block (its instances' slots; a lone command's own), its texture (mrpwm::kByUnit:
-    // the item's unit bound), one GX2DrawIndexedEx - absolute indices (the level's or the frame's own) and its instances, or a lone
-    // command's relative ones from its template's first vertex
+    // a batch's merged items (mrpwm::Plan): per item its block (its instances' slots; a lone command's own), its texture (mrpwm::kByUnit,
+    // kInstancedByUnit: the item's unit bound), one GX2DrawIndexedEx - absolute indices (the level's or the frame's own) and its
+    // instances, or a lone command's relative ones from its template's first vertex
     auto draw_items = [&](const mrpwb::Batch& b, size_t bi) {
         const mrpwm::Plan& P = g_mg.plan;
         if (bi + 1 >= P.batch_items.size()) return;
         for (uint32_t k = P.batch_items[bi]; k < P.batch_items[bi + 1]; ++k) {
             const mrpwm::Item& it = P.items[k];
-            if (g_merge == mrpwm::kByUnit) bind_unit(b, it.unit);
+            if (mrpwm::mode_by_unit(g_merge)) bind_unit(b, it.unit);
             if (g_draw_loc.found) GX2SetVertexUniformBlock(g_draw_loc.loc, (it.lone ? 1u : it.ninst) * kSlot, g_mg.blk[k]);
             if (stage < 4) continue;
             if ((g_debug & 2048) != 0 && g_draws_this_call++ > 0) return;  // (testing: one draw a call)
@@ -1634,6 +1817,7 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
             }
             ++g_draws;
             g_cmds += it.cmds;
+            drawn();
         }
     };
     // a tfrag batch's triangles: one indexed draw per run of one texture unit (mrpwb::TfragRange, from `r0`: the batch's first), its
@@ -1672,6 +1856,7 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
             GX2DrawIndexedEx(GX2_PRIMITIVE_MODE_TRIANGLES, count, GX2_INDEX_TYPE_U32, static_cast<const uint32_t*>(g_tcache.ib) + first, 0, 1);
             ++g_tdraws;
             g_ttris += count / 3;
+            drawn();
             if (whole) return;
         }
     };
@@ -1735,11 +1920,24 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         pb.a[2] = (rk.fogcol >> 24) & 1 ? 1 : 0;
         pb.a[3] = grey ? 1 : 0;
         const bool items = merged && !b.tfrag;
-        pb.b[0] = items && g_merge >= mrpwm::kUnits ? 1 : 0;
-        if (items && g_merge >= mrpwm::kUnits) bind_units(b);
+        pb.b[0] = items && mrpwm::mode_units(g_merge) ? 1 : 0;
+        if (items && mrpwm::mode_units(g_merge)) bind_units(b);
+        // the batch's shaders (a pass's): the fast pair (Gx2Perf::fast; not with the shade debug nor the grey test - mrp_world.frag's), else
+        // the path's own vertex shader and pixel shader build
+        const int sp = b.tfrag ? 1 : 0;
+        const GX2VertexShader* own_vs = b.tfrag ? g_tsh.vertexShader : g_sh.vertexShader;
+        auto use_shaders = [&](bool at) {
+            if (const WHBGfxShaderGroup* fp = shade == 0 && !grey ? fast_pair(sp, at) : nullptr) {
+                use_vs(fp->vertexShader);
+                use_ps(fp->pixelShader);
+            } else {
+                use_vs(own_vs);
+                use_ps(variant_ps(sp, at));
+            }
+        };
         // pass 1: the passing pixels of the draws whose alpha test is on (their mode in draw_flags), every pixel of the others - by the
         // build without the alpha test when none of the batch's draws tests (Batch::ate; grey: the test off) and Gx2Perf says so
-        use_ps(variant_ps(b.tfrag ? 1 : 0, b.ate && !grey));
+        use_shaders(b.ate && !grey);
         GX2SetDepthOnlyControl(ztest ? TRUE : FALSE, ztest && zwrite ? TRUE : FALSE, zf);
         pb.a[0] = 1;
         set_pixel(pb);
@@ -1747,11 +1945,12 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         else if (items) draw_items(b, bi);
         else
             for (uint32_t i = b.first; i < b.first + b.count; ++i) draw_one(b, i);
+        wiiu_gpu_submark(b.tfrag ? kSmTfrag1 : kSmTies1);  // (RAC1_WIIU_GPU_TIME=2: the GPU's time by pass, wiiu_gfx.cpp)
         // pass 2: the failing ones as AFAIL says (RKey::pass2: 1 FB_ONLY the colour with alpha, 2 ZB_ONLY the depth, 3 RGB_ONLY the
         // colour without alpha)
         if (rk.pass2 != 0 && !one_pass && !grey) {
             const uint32_t afail = rk.pass2;
-            use_ps(variant_ps(b.tfrag ? 1 : 0, true));
+            use_shaders(true);
             GX2SetDepthOnlyControl(ztest ? TRUE : FALSE, ztest && afail == 2 && zwrite ? TRUE : FALSE, zf);
             set_mask(afail == 2 ? none : afail == 3 ? GX2_CHANNEL_MASK_RGB : GX2_CHANNEL_MASK_RGBA);
             pb.a[0] = 2;
@@ -1761,6 +1960,7 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
             else
                 for (uint32_t i = b.first; i < b.first + b.count; ++i) draw_one(b, i);
             set_mask(GX2_CHANNEL_MASK_RGBA);
+            wiiu_gpu_submark(b.tfrag ? kSmTfrag2 : kSmTies2);
         }
     }
 
@@ -1821,6 +2021,7 @@ void mrp_world_gx2_draw_sky(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const 
         }
     if (!any || sv.empty() || si.empty()) return;
     ++g_scalls;
+    ring_gpu_invalidate();  // (Gx2Perf::ub_bulk: the blocks' GPU caches once for the call, before its first draw)
     if (F.serial != g_slast_serial) {  // (the log's: per frame)
         g_slast_serial = F.serial;
         ++g_sframes;
@@ -1878,6 +2079,24 @@ void mrp_world_gx2_draw_sky(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const 
     GX2SetFetchShader(&g_sfetch[(g_sdebug & 1024) != 0 ? 1 : 0]);
     GX2SetVertexShader(g_ssh.vertexShader);
     GX2SetPixelShader(g_ssh.pixelShader);
+    const GX2PixelShader* cur_ps = g_ssh.pixelShader;  // (its own or the build without the alpha test, Gx2Perf::nokill)
+    const GX2VertexShader* cur_vs = g_ssh.vertexShader;  // (its own or a fast pair's, Gx2Perf::fast)
+    auto use_ps = [&](const GX2PixelShader* ps) {
+        if (ps == cur_ps) return;
+        GX2SetPixelShader(ps);
+        cur_ps = ps;
+    };
+    // (2026-10-28) a pass's shaders: the fast pair (Gx2Perf::fast; not with the shade debug nor the grey test), else its own vertex shader
+    // and its own pixel shader or the build without the alpha test (`at` false, Gx2Perf::nokill)
+    auto use_shaders = [&](bool at, bool plain) {
+        const WHBGfxShaderGroup* fp = plain ? fast_pair(2, at) : nullptr;
+        const GX2VertexShader* vs = fp != nullptr ? fp->vertexShader : g_ssh.vertexShader;
+        if (vs != cur_vs) {
+            GX2SetVertexShader(vs);
+            cur_vs = vs;
+        }
+        use_ps(fp != nullptr ? fp->pixelShader : g_gx2_perf.nokill && g_sps_noat != nullptr && !at ? g_sps_noat : g_ssh.pixelShader);
+    };
     GX2SetAttribBuffer(0, g_scache.nverts * static_cast<uint32_t>(sizeof(mrpwb::GpuV)), sizeof(mrpwb::GpuV), g_scache.vb);
     GX2SetVertexUniformBlock(g_sframe_loc.loc, g_sframe_loc.size, g_scache.frame);
 
@@ -1938,18 +2157,23 @@ void mrp_world_gx2_draw_sky(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const 
         pb.a[1] = shade;
         pb.a[2] = (rk.fogcol >> 24) & 1 ? 1 : 0;
         pb.a[3] = grey ? 1 : 0;
-        // pass 1: the passing pixels of the draws whose alpha test is on (their mode in draw_flags), every pixel of the others
+        // pass 1: the passing pixels of the draws whose alpha test is on (their mode in draw_flags), every pixel of the others - by the
+        // build without the alpha test when none of the batch's draws tests (Batch::ate; grey: the test off) and Gx2Perf says so
+        use_shaders(b.ate && !grey, shade == 0 && !grey);
         pb.a[0] = 1;
         if (void* blk = block_of(&pb, sizeof pb, g_spixel_loc.size)) GX2SetPixelUniformBlock(g_spixel_loc.loc, g_spixel_loc.size, blk);
         draw(b);
+        wiiu_gpu_submark(kSmSky1);  // (RAC1_WIIU_GPU_TIME=2: the GPU's time by pass, wiiu_gfx.cpp)
         // pass 2: the failing ones as AFAIL says (1 FB_ONLY the colour with alpha, 3 RGB_ONLY the colour without alpha; 2 ZB_ONLY the depth
         // alone: nothing here, the depth not written)
         if (rk.pass2 != 0 && rk.pass2 != 2 && !one_pass && !grey) {
             set_mask(rk.pass2 == 3 ? GX2_CHANNEL_MASK_RGB : GX2_CHANNEL_MASK_RGBA);
+            use_shaders(true, shade == 0);
             pb.a[0] = 2;
             if (void* blk = block_of(&pb, sizeof pb, g_spixel_loc.size)) GX2SetPixelUniformBlock(g_spixel_loc.loc, g_spixel_loc.size, blk);
             draw(b);
             set_mask(GX2_CHANNEL_MASK_RGBA);
+            wiiu_gpu_submark(kSmSky2);
         }
     }
 

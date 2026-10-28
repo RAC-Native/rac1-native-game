@@ -321,3 +321,68 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
 - To measure on the console ("[timing]"): "world's prepare" (8.7 -> well under 1 ms expected), "sky's capture" (-> ~0.1), "GamePad"
   (-> ~0 with the menu off), "2D draws" (its build moved out); "world's worker join" may grow: core 0 now runs the chain's reader and
   the whole prepare (~15-18 ms of work on the console's times) - RAC1_WIIU_PREP_TIME=1 prints both halves' parts.
+
+### The world pass's GPU time: the depth test after the shader, the frame sent at its end (2026-10-28, night)
+
+- The GPU's marks (RAC1_WIIU_GPU_TIME=1, Veldin 1080p) had the world at 27-35 ms, the sky 2.5-9 for ~10 draws, and the GPU idle 9-43 ms
+  between frames, with the main thread still waiting 22-36 ms for it. Two causes, both read off the code and the .gsh files (not yet
+  measured on the console):
+- Every pixel shader the world, the tfrags, the sky and the mobys draw with has DB_SHADER_CONTROL Z_ORDER = LATE_Z (CafeGLSL writes it
+  for every shader: 0x50 with discard, 0x10 without - the RAC1_NO_ALPHA_TEST builds included, which is why RAC1_WIIU_NOKILL measured
+  nothing): every pixel the rasterizer makes past hierarchical Z runs the whole shader before its depth test. mrp_world.frag's path is
+  ~66 ALU groups a pixel (the merged draws' unit tree ~10 CF instructions more; `glslcompiler -v`): at Latte's 32 VLIW lanes about half
+  a pixel a clock, ~7 ms of shading per 1080p screen of fragments - the world's overdraw and its alpha-fail passes shaded in full.
+  RAC1_WIIU_EARLYZ (on): the 3D's pixel shaders' Z_ORDER made EARLY_Z_THEN_LATE_Z at their load (Mesa's r600 order with a discarding
+  shader too; LATE_Z there only for the fixed-function alpha test, off here; RE_Z left alone - lockups on R6xx / R7xx). With a discard
+  the early test only culls, the write stays late. RAC1_WIIU_NOKILL is now on by default: the batches with no alpha-tested draw get
+  their depth written before the shader too.
+- GX2 sent a frame's commands to the GPU at its end (WHBGfxFinishRender's flush): the GPU drew nothing while the CPU made the frame (the
+  world's worker join, the draws) - the "idle between frames". RAC1_WIIU_FLUSH (2): GX2Flush after the depth clear, the sky, the world
+  and the mobys (1), and inside the world every RAC1_WIIU_FLUSH_DRAWS GX2 draws (64) (2); 0 as before. A host frame should go from
+  about the making plus the GPU's time to the larger of the two.
+- RAC1_WIIU_UB_BULK (on): the uniform blocks (the world's, the sky's, the mobys' rings) only flushed out of the CPU's cache, their GPU
+  caches invalidated once per call and after a ring's wrap, in place of a GX2Invalidate (a SURFACE_SYNC) per block - two per moby draw.
+  The world's merged draws (mode 3) had none per draw already: its slots one invalidation per frame, its pixel blocks one per batch pass.
+- The sky's batches without an alpha-tested draw use shaders/mrp_sky_noat.gsh (Gx2Perf::nokill; mrp_sky.vert + mrp_world.frag
+  RAC1_NO_ALPHA_TEST). The world's path switches (tfrag <-> ties / shrubs) set the shader mode only when it changes.
+- RAC1_WIIU_GPU_TIME=2: the sky's and the world's passes marked at each batch pass's end; the "[gpu-world]" line sums the GPU's time
+  by kind (sky / tfrag / ties-shrubs, pass 1 / 2, the rest) with the command processor's gap (its top sample after the GPU had drawn
+  everything before: the commands not there yet - the CPU's pace).
+- To measure on the console: bench.sh with RAC1_WIIU_GPU_TIME=2, then RAC1_WIIU_EARLYZ=0, RAC1_WIIU_FLUSH=0, RAC1_WIIU_UB_BULK=0 one
+  at a time; RAC1_WIIU_PIXELS_OFF=1 for the passes without their pixels.
+
+### The world's pixels: a fast pixel shader, the 3D upscaled (2026-10-28, late night)
+
+- Measured on the console before (Veldin, 1080p, hierarchical Z and the early depth test on): the world pass 27-35 ms of GPU a frame, 0.7
+  ms with its pixels scissored away (RAC1_WIIU_PIXELS_OFF=1); the early depth test changed nothing - not occluded overdraw: the cost of
+  each visible pixel's shader.
+- RAC1_WIIU_FASTPS (on; the debug menu's "GPU: shaders / test" row: fast+nokill -> fast -> nokill -> off -> the tests): the world's, the
+  tfrags' and the sky's pixels drawn by shaders/mrp_world_fast.frag. What mrp_world.frag decodes per pixel from the draw's texture word and
+  draw_flags (TME, IIP, the texture function and TCC, the mip level's L / K / LCM / MXL and the texture's levels, the alpha test's mode,
+  ATST, AREF) the vertex shaders built RAC1_FAST make once per vertex (mrp_world_fast.glsl's fast_terms: flat outputs), and the pixel's
+  work is straight arithmetic: t' = t tm + ta, o = t' (A + B c) + C c.a per channel, the level floor(clamp(2^L (-log2 |q|) + K + 0.5,
+  0, the last level + 0.5)), the alpha test one comparison (y = a 255 - AREF, y m + |y| n >= th; the strict
+  tests' th the next float above). `glslcompiler -v` (rac1-scratch/gpuperf3: count.py, sem.py, pairs.py):
+  - mrp_world.frag (every path before): 95 ALU groups, 110 CF instructions, 17 samples, 11 GPRs in the program - ~66 groups on a textured
+    pixel's path, ~10 CF more through the merged draws' unit tree; RAC1_NO_ALPHA_TEST 77 groups, 105 CF;
+  - mrp_world_fast.frag, one sampler (the tfrags', the sky's): 16 ALU groups, 4 CF (one ALU clause, the sample, one ALU clause, the export),
+    11 GPRs; without the alpha test 10 groups, 8 GPRs;
+  - with the units (RAC1_UNITS, the ties' / shrubs' merged draws, mode 3): 70 groups in the program, on a pixel's path ~26 (7 before the
+    tree, 4 of its branches, 2 copies, 13 after; ~19 without the alpha test) and ~19 CF;
+  - the vertex shaders: the ties' 78 -> 98 groups (24 -> 26 GPRs), the tfrags' / sky's 6 -> 31: per vertex, ~100 K vertices a frame.
+- Each fast build is a pair: its own vertex shader (outputs vQF, vLod, vFnA, vFnB, vAt, vSel in place of vLodQ, vFog, vTex, vState)
+  compiled with its pixel shader, bound together by the CPU (gx2_pair_variant: accepted when its attributes, blocks and samplers are where
+  the main shaders' are - the main fetch shader and bindings serve it; the varyings' semantics match within the pair: sem.py). Not the
+  vertex shader "standing in" (the lean builds' fault: a vertex output only some pixel shaders read). The shade debug and the grey test
+  keep mrp_world.frag. The old builds' .gsh files are byte-identical to before.
+- RAC1_WIIU_WORLD_MERGE=4 (the menu's merge row: 3 -> 4 -> 0): as 3, the items split by texture unit and the unit bound by the CPU - one
+  sampler, the pixel shader's unit tree not run (uB.x 0), at the cost of more GX2 draws (an instance's packet of two units is two items,
+  and instances interleave less). To compare with 3: the "[gpu-world]" ties/shrubs passes and the "[timing]" world draws.
+- RAC1_WIIU_3D_SCALE=<0.25..1> (default 1; the menu's "3D resolution" row: 1 -> 0.75 -> 0.667 -> 0.5): the TV's sky, world and mobys drawn
+  into a colour and depth buffer that much smaller (its own hierarchical Z), then a quad (shaders/wiiu_blit.gsh, bilinear) over the TV's
+  frame before the 2D, drawn at the TV's resolution; the GamePad's copy and the shots read the TV's buffer after it. The buffers inside the
+  TV's depth buffer (MEM1: the TV's 3D does not use it then; the depth cache flushed before, the colour and depth caches after) as far as
+  they fit - 1280 x 720 both, 1440 x 810 the colour alone -, the rest in MEM2; RAC1_WIIU_3D_MEM1=0 both in MEM2. "[gpu]" has a "3D
+  upscale" pass. (RAC1_WIIU_VPSCALE / the "Resolution" row, the frame's share, is another thing: the frame smaller inside the TV's buffer.)
+- To measure on the console (bench.sh, RAC1_WIIU_GPU_TIME=2): the fast shaders against RAC1_WIIU_FASTPS=0; RAC1_WIIU_WORLD_MERGE=4
+  against 3; RAC1_WIIU_3D_SCALE=0.667 (and 0.5) against 1, and RAC1_WIIU_3D_MEM1=0 against 1 at 0.667.

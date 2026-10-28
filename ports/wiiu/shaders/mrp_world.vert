@@ -39,12 +39,19 @@ uniform usampler2D uCols;
 uniform usampler2D uRuns;
 
 smooth out vec3 vStq;
+#ifdef RAC1_FAST
+// (2026-10-28) the fast pixel shader's terms (mrp_world_fast.frag): its outputs and fast_terms()
+#pragma rac1_include mrp_world_fast.glsl
+noperspective out vec4 vColor;
+flat out vec4 vFlat;
+#else
 noperspective out float vLodQ;
 noperspective out vec4 vColor;
 flat out vec4 vFlat;
 noperspective out float vFog;
 flat out uvec2 vTex;
 flat out uvec2 vState;
+#endif
 int ftoi4(float f) { return int(clamp(f * 16.0, -2147483648.0, 2147483520.0)); }
 uint rcol(uint i) {
     int n = uModeV.z;
@@ -70,8 +77,10 @@ void main() {
         dCmd = uvec4(dCmd.x, run_word(r), run_word(r + 1u), run_word(r + 2u));
         dCmd2.x = run_word(r + 3u);
     }
+#ifndef RAC1_FAST
     vState = uvec2(dCmd.w, dCmd2.x);
     vTex = dCmd.yz;
+#endif
     // the position: tie fat (delta x morph) + base
     vec3 P = vec3(aPos.xyz);
     if ((aPos.w & 1) != 0) {
@@ -109,9 +118,15 @@ void main() {
     }
     vColor = vec4(c) / 255.0;
     vFlat = vColor;
+#ifndef RAC1_FAST
     vFog = float(iInfo.y);
+#endif
     vStq = uv;  // ((s, t, q) Q: undivided by Q = 1 / w)
+#ifdef RAC1_FAST
+    fast_terms(dCmd.y, dCmd.z, dCmd.w, uv.z * Q, float(iInfo.y));
+#else
     vLodQ = uv.z * Q;
+#endif
     if (uModeV.x == 0) {
         gl_Position = mat4(iClip0, iClip1, iClip2, iClip3) * vec4(P, 1.0);
     } else {
