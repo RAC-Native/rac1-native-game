@@ -88,6 +88,10 @@ struct ClassLight {
     // a moby's: "joint <n>" - the offset in that joint's frame as the frame's pose moves it (its animated part: a flying Buzzer's body),
     // -1 the moby's own position and rotation
     int joint = -1;
+    // "aim <dx dy dz> <cone>": the light shines only into a cone around that direction (in the moby's, the joint's or the tie's frame,
+    // as the offset), `cone` its half angle in degrees (0: no aim - every way, as before); the edge softened over its inner 40 %
+    float aim[3] = {1.0f, 0.0f, 0.0f};
+    float cone = 0.0f;
     // (every level's: a line of data/lights/classes.txt, not of the level's file - mrp_user_lights_save writes it there; gidx its
     // place in that file's list, -1 one made global since the files were read)
     bool global = false;
@@ -209,7 +213,7 @@ std::vector<EmitterClass> mrp_world_emitter_classes();
 // material, and a material (not lava, emissive by itself) may glow besides (`glow`: "material ... glow <strength> [threshold]", or an
 // emissive line for the same texture in the same file, folded into the material's entry when read). They share the slots in the
 // list's order
-enum MatType : int { MAT_EMISSIVE = 0, MAT_METAL, MAT_WET, MAT_PUDDLE, MAT_LAVA, MAT_WATER, MAT_MUD, MAT_QUICKSAND, MAT_COUNT };
+enum MatType : int { MAT_EMISSIVE = 0, MAT_METAL, MAT_WET, MAT_PUDDLE, MAT_LAVA, MAT_WATER, MAT_MUD, MAT_QUICKSAND, MAT_FOLIAGE, MAT_GRASS, MAT_COUNT };
 struct EmissiveSurface {
     int kind = 1;  // 0 tfrag, 1 tie, 2 shrub, 3 moby, 4 surface (VU1 program 7's)
     int o_class = 0;
@@ -219,6 +223,12 @@ struct EmissiveSurface {
     int type = MAT_EMISSIVE;
     float p[3] = {0.0f, 0.0f, 0.0f};  // a material's parameters (as in its line; MatParam names them)
     float glow = 0.0f, glow_threshold = 0.0f;  // a material's glow: as an emissive line's strength and threshold (0: none)
+    // water, lava, quicksand with Options > Graphics > Water (docs/materials.md): "tint r g b" the deep colour (-1: the texture's
+    // own), "waves <scale> <speed>" the normal maps' size and speed (1 1), "foam <f>" the shore's foam (-1: the type's default),
+    // "depth <d>" the units of water before it is opaque (-1: the type's default)
+    float tint[3] = {-1.0f, -1.0f, -1.0f};
+    float waves[2] = {1.0f, 1.0f};
+    float foam = -1.0f, depth = -1.0f;
     bool global = false;  // (a moby's line of data/lights/classes.txt, every level's: as ClassLight::global)
     int gidx = -1;
 };
@@ -237,6 +247,19 @@ extern int g_emissive;
 // (lit and animated: specular, wet, ripples, flow), 2 High (also the reflections from the last frame's picture and the lava's heat
 // shimmer). Only with Lighting not Original (RAC1_SURFACE_DETAIL overrides it, testing)
 extern int g_surface_detail;
+// orig: (host) Options > Graphics > Water: 0 Off (default), 1 Low (two scrolling normal maps, Fresnel, glints, the depth's tint and the
+// shore's foam), 2 High (also the scene's reflection and the refraction); the `water`, `lava` and `quicksand` materials and the seas.
+// Lighting not Original only (RAC1_WATER overrides it, testing)
+extern int g_water;
+// orig: (host) Options > Graphics > Foliage: 0 Off (default), 1 Low (the `foliage` material's wind sway and the sun's backlight), 2 High
+// (also the cut-outs' coverage kept at a distance and their edges sharpened at a high resolution) (RAC1_FOLIAGE)
+extern int g_foliage;
+// orig: (host) Options > Graphics > Grass: 0 Off (default), 1 Low (the blades as a detail relief of the ground, no geometry), 2 High
+// (also 4 very low shells) over the tfrags with the `grass` material (RAC1_GRASS); g_grass_shells > 0 the shells' count instead
+// (RAC1_GRASS_SHELLS, the debug menu), g_grass_distance how far they are drawn (units; RAC1_GRASS_DIST)
+extern int g_grass;
+extern int g_grass_shells;
+extern float g_grass_distance;
 // orig: (host) the level's rain ("rain on" in its file; our data): the puddles' and the water's rain ripples
 bool mrp_user_rain();
 void mrp_user_rain_set(bool on);
@@ -354,6 +377,7 @@ struct ShadowLocs {
     int strength = -1;                       // (the shadows' strength)
     int emis = -1;                           // (the emissive surfaces' slots: strength, threshold, preview)
     int mat = -1, ssr_vp = -1, ssr_z = -1, ssr_sky = -1, ssr_col = -1, ssr_depth = -1;  // (the materials)
+    int mat2 = -1, pt_aim = -1;  // (the water's parameters; the lights' aim)
 };
 // orig: (host) the locations of a linked program
 ShadowLocs mrp_lighting_locs(unsigned prog);
@@ -503,6 +527,7 @@ bool mrp_moby_caster_rect(const float* light_vp, float rect[4], const float* wit
     "#endif\n"                                                                                          \
     "    sh_state = vec4(vis, facing, float(casc), 1.0);\n"                                             \
     "}\n"                                                                                               \
+    "float sh_aim(int i, vec3 l);\n" /* a light's aim (RAC1_MATERIALS_FS): 1 every way, else its cone toward l (unit, to the light) */ \
     "vec3 sh_points(vec3 c) {\n"                                                                        \
     "    if (uShOn == 0 || uPtN <= 0) return uShDebug == 3 && uShOn != 0 ? vec3(0.0) : c;\n"            \
     "    vec3 add = vec3(0.0);\n"                                                                       \
@@ -525,6 +550,7 @@ bool mrp_moby_caster_rect(const float* light_vp, float rect[4], const float* wit
     "        float att = 1.0 - d / r;\n"                                                                \
     /* aimed down (a ceiling fixture's tube or bulb): a Lambert lobe below the light, the falloff squared - a pool under it */ \
     "        att = mix(att, att * att * max(L.z * inv_d, 0.0), uPtDown[i >> 2][i & 3]);\n"              \
+    "        att *= sh_aim(i, L * inv_d);\n"                                                            \
     "        float sv = 1.0;\n"                                                                         \
     "        if (uPtCol[i].w >= 0.0) {\n" /* the cube (the integer part) and its shadow's weight (0.05..0.95: fading in or out) */ \
     "            float layer = floor(uPtCol[i].w), kw = clamp((fract(uPtCol[i].w) - 0.05) / 0.9, 0.0, 1.0);\n" \

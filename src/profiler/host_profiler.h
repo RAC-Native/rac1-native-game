@@ -58,6 +58,8 @@ enum Stage : int {
     kAo,                // the ambient occlusion (and the sun's cover probe)
     kSunRays,           // the sun's rays
     kParticles,         // the ambient particles (our own: dust, embers, rain, snow ...)
+    kWater,             // Options > Graphics > Water: the seas drawn after the 3D's picture (and the picture's copy for their depth)
+    kGrass,             // Options > Graphics > Grass: the grass shells over the tfrags
     kScaleResolve,      // the render scale's buffer put on the window
     kEffects,           // the MRP's 3D effects (particles ...), before and after the mobys
     kGs2d,              // the 2D: the HUD, text, menus, fades (mrp_2d.h; the GS replica's drawing on the faithful path)

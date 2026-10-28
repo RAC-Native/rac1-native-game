@@ -35,3 +35,5 @@ emissive moby 1440 tex 3  1.91 0.00
 emissive moby 1440 tex 2  2.71 0.00
 # Anya-Thoughtmane's lighting batch 1 (#102): a few metals
 material tie 2217 tex 2 metal 0.45 1
+# Options > Graphics > Grass (docs/materials.md): the dry grass of the start's plain
+material tfrag 0 tex 3 grass

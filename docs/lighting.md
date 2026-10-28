@@ -896,7 +896,7 @@ part of the original. The editor is in the debug menu (Lights tab), so it needs 
 Placing lamps one by one is slow; most lamps are one object class repeated. A level's file can say
 
 ```
-emit <tie|shrub|moby> <class> <ox oy oz> <r g b> <intensity> <radius> [flicker] [down]
+emit <tie|shrub|moby> <class> <ox oy oz> <r g b> <intensity> <radius> [flicker] [down] [aim <dx dy dz> <cone>]
 ```
 
 (and `joint <n>` at the end of a moby's line), and every tie or shrub instance of that class, or every live moby of that class (those placed by the level and those the game
@@ -913,7 +913,12 @@ round with the joint at the distance of the model's origin - Clank's eye lights 
 a Kerwan dog's eye lights on the ground. The `joint` lines of the files were converted.) A moby not drawn
 this frame falls back to its position and rotation. `down` (0 to 1, default 0) is the share of the
 light aimed straight down, as a ceiling fixture's: the squared falloff and the cosine below the light
-of [Point lights per pixel](#point-lights-per-pixel). At the level's start the log says how many
+of [Point lights per pixel](#point-lights-per-pixel). `aim <dx dy dz> <cone>` (after `down`, before `joint`) makes the light a
+spot: it lights only what lies within `cone` degrees (the half angle, 1 to 179) of the direction `dx dy dz`, given in the same frame as
+the offset (the moby's, the joint's, the tie's or shrub's) and turned with it, its edge softened over the inner 40 % of the cone. A
+line without `aim` lights every way exactly as before (its factor is 1.0, the pictures byte for byte the same). Clank's eye lights
+on Novalis (`emit moby 601 ... aim 1 0 0 40 joint 4`) shine forward along his head's x axis: before, they lit the back of
+Ratchet's head behind Clank, as if the light went through him (Daino). At the level's start the log says how many
 instances each line found (`[lights] level 1: emit shrub 282: 7 instances`): none means a wrong
 class or kind. They go through the same path as the lights placed by hand:
 within 60 units of the camera, the nearest first and faded at the reach and at the cap (96 lights in
@@ -931,7 +936,9 @@ The target is the depth's point, so a surface that leaves the depth to what is b
 back gave Ratchet's back (his joint 8) in a test; such a light's joint and offset are typed in (the Joint field keeps the offset,
 then in the new joint's frame). **Emit for every tie / shrub / moby of this class** adds a light at that point of every instance, live;
 **Emit on this joint (follows the animation)** the same in the joint's frame. The offset, colour, intensity, radius, flicker, the
-share aimed down and a moby's joint are then edited, and Save writes the `emit` lines with the rest of the file.
+share aimed down and a moby's joint are then edited, and Save writes the `emit` lines with the rest of the file. **Aimed (a cone)**
+gives the line an `aim`: the cone's half angle, the direction in the light's frame (typed, or one of the frame's axes, or **From the
+camera**: the view's direction taken into the frame of the moby of that class under the crosshair - its joint's when the line has one).
 
 ### Lines for every level
 
@@ -1062,8 +1069,12 @@ does not turn the lighting on; Experimental does (Lighting High, Dynamic Shadows
 | AO Intensity | 25 to 125 % | 75 % | the occlusion's darkness: each mode's strength scaled (`ao_intensity` in the preferences, item 47 of a save's block); see [Ambient occlusion](#ambient-occlusion) |
 | Sun Rays | Off, Low, Medium, High | Off | light shafts from the sun through openings, each step more quality and strength (`sun_rays_quality`, item 49; `sun_rays` and item 46 until 0.4.x read with Low as Medium); see [Sun rays](#sun-rays) |
 | Surface Detail | Off, Low, High | Off | the surfaces' materials (metal, wet, puddle, lava, water, mud, quicksand) tagged in the level's file; High adds the reflections and the lava's heat shimmer (`surface_detail`, item 51); see [Materials](materials.md) |
+| Water | Off, Low, High | Off | the tagged water, lava and quicksand: normal maps, Fresnel, glints, depth, foam; High: the scene's reflection and the refraction (`water`, item 52); see [Materials](materials.md#water-foliage-and-grass) |
+| Foliage | Off, Low, High | Off | the tagged plants' wind sway and the sun through their leaves; High: the cut-outs' coverage and edges (`foliage`, item 53) |
+| Grass | Off, Low, High | Off | the tagged ground's blades: a detail relief (Low), and a few very low shells near the camera (High) (`grass`, item 54) |
 
-The other rows take effect only when Lighting is not Original.
+The other rows take effect only when Lighting is not Original. The debug menu's **Enhancements** tab switches all of them live
+(for the run; "Save as my settings" makes them the preferences), each with its profiler stage's GPU / CPU time beside it.
 
 For testing, environment variables override each of these (they need `--debug-tools`):
 `RAC1_SHADOWS`, `RAC1_SHADOW_RES`, `RAC1_SHADOW_MOBY_DIST`, `RAC1_POINT_SHADOWS`, `RAC1_POINTS`,

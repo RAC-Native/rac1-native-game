@@ -5,3 +5,5 @@ sun -145.5 80.5
 # Pokitaru: our ambient particles (Options > Graphics > Ambient Particles, off by default): fireflies, brighter in the shade
 # and at night.
 particles fireflies 1
+# Options > Graphics > Water (docs/materials.md): the sea around the island
+material surface 1111 tex 13135 water 1 1  depth 5

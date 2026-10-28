@@ -44,6 +44,7 @@ int env_int(const char* name, int def) {
 int g_ambient_particles = std::clamp(env_int("RAC1_PARTICLES", 0), 0, 2);
 int g_particles_show_game = env_int("RAC1_PARTICLES_GAME", 0) != 0 ? 1 : 0;
 int g_particles_sky = env_int("RAC1_PARTICLES_SKY", 1) != 0 ? 1 : 0;
+uint32_t g_particles_kinds = 0xffffffffu;
 
 namespace {
 
@@ -1014,7 +1015,7 @@ bool make_draws(std::vector<Draw>& out, const int vp[4], uint64_t game_frame) {
     float lava_spread = 1.1f;
     for (const ParticleSpec& ps : lines) {
         ++seed;
-        if (!ps.on || ps.kind < 0 || ps.kind >= kPartKinds || !(ps.density > 0.0f)) continue;
+        if (!ps.on || ps.kind < 0 || ps.kind >= kPartKinds || !(ps.density > 0.0f) || ((g_particles_kinds >> ps.kind) & 1u) == 0) continue;
         const Kind& K = kKinds[ps.kind];
         const int count = std::clamp(static_cast<int>(static_cast<float>(K.count) * ps.density * q), 0, kMaxCount);
         if (count <= 0) continue;
@@ -1131,7 +1132,7 @@ void mrp_particles_draw(uint64_t game_frame) {
     const auto t0 = std::chrono::steady_clock::now();
     mrp_user_lights_ensure();
     for (const ParticleSpec& ps : mrp_user_particles())
-        if (ps.on && !ps.keep && (ps.kind == kPartRain || ps.kind == kPartSnow) && ps.density > 0.0f) g_hide_game = g_particles_show_game == 0;
+        if (ps.on && !ps.keep && (ps.kind == kPartRain || ps.kind == kPartSnow) && ps.density > 0.0f && ((g_particles_kinds >> ps.kind) & 1u) != 0) g_hide_game = g_particles_show_game == 0;
     RAC1_PROF_ZONE(kParticles);  // (the lava's slots, made with the draws, included)
     std::vector<Draw> draws;
     if (!make_draws(draws, vp, game_frame)) return;
@@ -1289,7 +1290,7 @@ bool mrp_particles_hide_game_kind(int kind) {
     if (g_ambient_particles <= 0 || g_particles_show_game != 0) return false;
     mrp_user_lights_ensure();
     for (const ParticleSpec& ps : mrp_user_particles())
-        if (ps.on && !ps.keep && ps.kind == kind && ps.density > 0.0f) return true;
+        if (ps.on && !ps.keep && ps.kind == kind && ps.density > 0.0f && ((g_particles_kinds >> ps.kind) & 1u) != 0) return true;
     return false;
 }
 }  // namespace
