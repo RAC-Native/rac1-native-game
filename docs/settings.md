@@ -197,7 +197,7 @@ Details:
 - **The channel:** Main menu > Updates > Update Channel. Players can switch between **Stable** (the
   latest release) and **Development** (`main`) at any time. A developer clone on a branch other than
   `main` stays on its branch.
-- **The installed version** is printed at start (`[orig] rac1-native 0.5.0 (v0.5.0-56-g0b232f5, main)`):
+- **The installed version** is printed at start (`[orig] rac1-native 0.6.0 (v0.6.0-12-g1a2b3c4, main)`):
   the release's version and, for a git clone, `git describe` and the branch, recorded by the build
   (`cmake/version.cmake`).
 - **Skip Version** is kept in `advanced_options.txt` (`update_skip <tag or commit>`); remove the

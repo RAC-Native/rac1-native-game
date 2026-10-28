@@ -1,25 +1,23 @@
 # rac1-native
 
-> **Current state (0.5.0):** every planet of the game is ported, from Veldin to the final fight with
+> **Current state (0.6.0):** every planet of the game is ported, from Veldin to the final fight with
 > Drek, the credits and the end menu, and of the game's code the game runs, one function is left to
-> port. **The whole game has been played through to the end** on 0.4.0. 0.5.0 brings a launcher for
-> Windows and Linux, an experimental Vulkan renderer (opt-in), a widescreen HUD option, a reworked
-> modern lighting (sun rays, ambient occlusion modes), 5.1 / 7.1 sound, a faster game update and
-> the fixes from the 0.4.0 reports: see the [Changelog](CHANGELOG.md#050). It has been playtested on
+> port. **The whole game has been played through to the end** on 0.4.0. 0.6.0 brings the native
+> renderer drawing the whole game itself (the HUD, the menus and the levels' seas included), the
+> whole disc extracted by the setup (the game no longer reads the disc image), Anya-Thoughtmane's
+> lighting passes with emissive surfaces, surface materials and the mobys lit by the point lights,
+> optional ambient particles (rain, snow, embers, dust), the Vendor's Buy All Ammo option, a faster
+> frame on the CPU and the GPU, the setup on the Steam Deck and other immutable Linux systems, and
+> the fixes from the 0.5.0 reports: see the [Changelog](CHANGELOG.md#060). It has been playtested on
 > Linux; Windows is no longer experimental: players have played through the game on it. Expect some
 > bugs and glitches.
-> Since 0.5.0, `main` has gained (not released yet, see the [Changelog](CHANGELOG.md#unreleased)): the levels'
-> water, lava and sand seas drawn by the native renderer too (so it draws all the 3D in play), surface materials
-> and emissive surfaces for the modern lighting, optional ambient particles (dust, embers, rain, snow), new level
-> suns, a faster frame (the game's update on its own thread), the setup on the Steam Deck and other immutable
-> Linux systems, and fixes.
 > See [Status](docs/status.md).
 
 A native PC port of **Ratchet & Clank** (PlayStation 2, 2002), for Linux and Windows.
 
 The game's own code is ported to C++, function by function, from the original North American release
 (`SCUS-97199`), and each port is proved against the original code. Support for the
-European PAL release (`SCES-50916`) is new and awaits testing: it goes through a table of where the PAL
+European PAL release (`SCES-50916`) is supported too (the Platinum re-releases are not yet, #64): it goes through a table of where the PAL
 build put the same code (see [Setup](docs/setup.md#the-european-pal-disc)). It is not an emulator: all of the game's
 code, the PS2's vector-unit microcode included, runs as native C++ while you play. The 3D is drawn by
 a native renderer (OpenGL, or Vulkan as an experimental option) from the game's own decisions, which
@@ -45,11 +43,11 @@ changing how the game behaves.
    program. While you play nothing is emulated or interpreted: the disc's files, which the setup
    extracts from your image, are only read for data (a level, streamed music and voices), and the PS2's hardware (DMA, GS, sound processor, memory card,
    pads) is replaced by host code in `runtime/`.
-4. **A renderer of its own.** The 3D is not drawn by emulating the PS2's graphics chip: the renderer
+4. **A renderer of its own.** The game is not drawn by emulating the PS2's graphics chip: the renderer
    (OpenGL, or Vulkan) reads what the game has decided to draw (its objects, world, effects, water and
-   lava) and draws it natively; only the 2D (HUD, menus, text) still goes through a replica of the
-   PS2's graphics chip. That is what makes widescreen, a wider HUD, high resolutions and the optional
-   modern lighting possible, while the game's own logic stays unchanged.
+   lava, and the 2D: HUD, menus, text) and draws it natively. A replica of the PS2's graphics chip is
+   kept only as the faithful reference. That is what makes widescreen, a wider HUD, high resolutions
+   and the optional modern lighting possible, while the game's own logic stays unchanged.
 5. **Proved against the original.** The oracle runs the original code in an R5900 interpreter beside
    each port and compares the results bit for bit; the reference images and per-frame RAM hashes
    catch any change in behaviour.
@@ -66,10 +64,13 @@ code is ported and proved against the original code, and **the whole game has be
 to the end** on 0.4.0, from Veldin to the final fight with Drek, the credits and the end menu, with
 the start of a New Game+ checked too. Veldin to Orxon have been played through many times; the
 planets after Orxon have had one full playthrough so far (on Linux), so more playtesting by players
-is welcome. 0.5.0 (see the [Changelog](CHANGELOG.md)) adds the launcher, the experimental Vulkan
-renderer, the widescreen HUD, a reworked modern lighting and 5.1 / 7.1 sound, and fixes the bugs
-reported on 0.4.0; it has been playtested on Linux, and players have played its development builds
-on Windows. What `main` has gained since is in the [Changelog](CHANGELOG.md#unreleased). Of the code the game runs, one function is left to port (see the [Port inventory](docs/port-inventory.md)).
+is welcome. 0.5.0 added the launcher, the experimental Vulkan renderer, the widescreen HUD, a
+reworked modern lighting and 5.1 / 7.1 sound. 0.6.0 (see the [Changelog](CHANGELOG.md)) has the
+native renderer draw the whole game, the GS replica no longer running beside it; the setup extracts
+the whole disc, which the game reads instead of the image; and it adds emissive surfaces, surface
+materials and ambient particles to the optional modern graphics, the Vendor's Buy All Ammo option, a
+faster frame, and the fixes for the bugs reported on 0.5.0. It has been playtested on Linux. Of the
+code the game runs, one function is left to port (see the [Port inventory](docs/port-inventory.md)).
 The port as a whole still needs polishing. See [Status](docs/status.md) (which also maps the names
 the code uses for the levels to the names in the game), the [Roadmap](docs/roadmap.md) and the
 [History](docs/history.md).

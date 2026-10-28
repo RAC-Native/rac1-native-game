@@ -182,6 +182,21 @@ systems build the game in a container (#108); the setup makes again the files de
 the scene's worker and the joints into SIMD registers: about a fifth less time per game frame, the
 game's state the same word for word.
 
+**26 to 28 October: 0.6.0.** Anya-Thoughtmane's second lighting pass, Veldin to Rilgar, was merged
+(#102), and the light editor gained the tools they asked for: a pick with the mouse, moby lines for
+every level, a Textures tab; Ratchet and the other mobys began taking the point lights too (#110).
+The debug menu gained a hoverboard anywhere, the race's board on Rilgar and Kalebo III and a free
+one elsewhere. The setup began extracting the whole disc into files, which the game reads instead of
+the image, the first step toward mods. An audit of the whole project fixed a Vulkan leak, made the
+saves and settings files atomic and found a Windows fiber bug by reading the code; MSYS2's new Clang
+broke the Windows build for a few hours (#112). Two rounds of GPU work cut the sun's cascades, the
+world's second alpha pass, Vulkan's ambient occlusion and its frame capture. Then the GS replica
+left the modern renderer, which now reads the frame's chain itself and draws the HUD and menus
+natively, the same pictures, the replica kept as the faithful reference; the menus' render targets
+became as sharp as the rest, and the 2D stopped remaking its textures every frame. The Vendor gained
+an optional All Ammo entry, and New Game's Experimental choice turns every graphics enhancement on.
+After a playtest on Linux it was released as 0.6.0 on 28 October.
+
 ## What came of it
 
 - Five months of trying became one rule: nothing is invented, and every port is checked against the

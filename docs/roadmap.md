@@ -78,14 +78,19 @@ Then: an experimental [Vulkan](vulkan.md) renderer, opt-in beside OpenGL; a wide
 cap's pacing; the game's own update 12 to 15 % cheaper on the CPU, the same state bit for bit (about
 8 % more with `./setup.sh --native-arch on`); the debug menu's Profiler and Unlocks tabs.
 
-**Since 0.5.0**, on `main` and not released yet (see the [Changelog](../CHANGELOG.md#unreleased)): the
-levels' water, lava and sand seas drawn by the MRP, so the GS replica draws no 3D in play any more; the
-modern lighting's emissive surfaces and surface materials (Surface Detail), the levels' suns from a
-tester's lighting pass and more lamps (#90, #101, #102); our own ambient particles (dust, embers, rain,
-snow); the game's update on a thread of its own beside the drawing, the world's triangles on the scene's
-worker and the joints in SIMD registers, about a fifth less per game frame; the setup on the Steam Deck,
-Bazzite and other immutable Linux systems (#108); `progress.json` for the RAC Native launcher (#107);
-the fix for a host frame that runs several game frames (#104).
+**0.6.0** (see the [Changelog](../CHANGELOG.md#060)): the MRP draws the whole game itself, the levels'
+water, lava and sand seas and the 2D (HUD, text, menus) included, so the GS replica no longer runs
+beside it and stays only as the faithful reference; the setup extracts the whole disc into
+`assets/disc/`, which the game reads instead of the image. The modern lighting gained emissive
+surfaces, surface materials (Surface Detail), the mobys lit by the point lights, the levels' suns and
+more lamps from Anya-Thoughtmane's lighting passes, and the light editor's mouse pick and Textures tab
+(#90, #101, #102, #110); Graphics gained our own ambient particles (dust, embers, rain, snow). The
+game's update runs on a thread of its own beside the drawing, the world's triangles on the scene's
+worker and the joints in SIMD registers, about a fifth less per game frame, and the sun's cascades,
+the world's second alpha pass and the ambient occlusion cost less GPU time. The Vendor offers Buy All
+Ammo as an option; the setup works on the Steam Deck, Bazzite and other immutable Linux systems
+(#108); the game writes `progress.json` for the RAC Native launcher (#107); and the reports were fixed
+(#104, #112).
 
 What comes next, in no fixed order:
 
@@ -94,8 +99,8 @@ What comes next, in no fixed order:
   (#78); the CI has a Linux ARM64 job, not blocking yet.
 - **The last items of the inventory:** the one function left, and, as optional enhancements, the
   cut content and development features it lists (see [Port inventory](port-inventory.md)).
-- **The renderer:** the 2D (HUD, menus) drawn natively, the level's baked shadow meshes across a widened
-  view, the mobys' flattened shadow meshes.
+- **The renderer:** the level's baked shadow meshes across a widened view, the mobys' flattened
+  shadow meshes.
 - **Mods (planned):** the setup already extracts the disc's files, which the game reads
   ([Setup](setup.md#the-discs-files)); next, a mods folder in front of them, and a Mods menu in the game.
 - **Testing on more machines:** the European PAL disc, Windows (now also through the launcher), the
