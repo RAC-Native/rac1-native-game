@@ -1,11 +1,11 @@
 # rac1-native: lights placed by hand for level 2 (the debug menu's Lights tab)
 # light x y z  r g b  intensity radius flicker on
-# Aridia. The sun turned to come from the big planet in the skybox (azimuth 33, elevation 19.5): the light matches
-# what the sky shows. Chosen by Daino with the Sun tab (kept after trying Anya-Thoughtmane's -131 / 5, #90).
-sun 33.0 19.5
+# Aridia. The sun from Anya-Thoughtmane's lighting batch 1 (#102, azimuth 38.6, elevation 16.7), chosen by Daino over his own
+# 33 / 19.5 (the light from the big planet in the skybox, #90): a little lower and further round.
+sun 38.6 16.7
 # Anya-Thoughtmane's second lighting pass (#102): the red bulbs, Skid's crashed ship, the anti-vehicle cannon and the fortress's
-# swing room (in part), the vendor, the bolts. (Her file also had her sun 7.7 / 9.9 with "sun_rays off"; Daino's sun above is
-# kept, and with it the Sun Rays he playtested.)
+# swing room (in part), the vendor, the bolts. (That file also had a sun 7.7 / 9.9 with "sun_rays off": not
+# taken; the Sun Rays stay on.)
 emit moby 1134  0.000 0.000 0.000  0.408 1.000 0.385  0.823 5.907 0.000  0.00
 emit moby 758  0.255 0.039 0.545  0.294 1.000 0.468  1.788 5.786 0.000  0.00
 emit moby 803  0.000 0.000 0.000  1.000 0.930 0.277  2.213 5.104 0.000  0.00
@@ -14,7 +14,7 @@ emissive shrub 231 tex 0  2.50 0.00
 emissive shrub 231 tex 1  2.50 0.00
 emissive moby 1134 tex 1  3.00 0.66
 emissive tfrag 0 tex 58  2.55 0.00
-emissive tfrag 0 tex 67  1.50 0.00
+emissive tfrag 0 tex 67  1.50 0.85
 emissive tfrag 0 tex 70  2.81 0.71
 emissive tfrag 0 tex 40  2.66 0.00
 emissive tfrag 0 tex 38  2.00 0.00
@@ -24,3 +24,27 @@ emissive shrub 149 tex 0  2.46 0.00
 emissive moby 11 tex 0  3.02 0.91
 light 276.892 163.452 48.866  1.000 0.583 0.182  3.000 13.307 0.000 1
 light 52.576 228.400 56.484  0.182 1.000 0.447  1.131 16.042 0.000 1
+# Anya-Thoughtmane's lighting batch 1 (#102): most of the metal, the spot lamps
+emit moby 719  4.013 -0.081 3.708  1.000 0.975 0.449  1.000 12.501 0.000  0.00  joint 4
+material tie 469 tex 1 metal 0.35 1
+material tie 467 tex 0 metal 0.35 1
+material tie 470 tex 0 metal 0.46 1
+material tie 600 tex 0 metal 0.35 1
+material tie 626 tex 2 metal 0.35 1
+material moby 208 tex 0 metal 0.42 1
+material moby 209 tex 0 metal 0.35 1
+material moby 1057 tex 0 metal 0.35 1
+material moby 1057 tex 1 metal 0.35 1
+material moby 1057 tex 2 metal 0.35 1
+material moby 1056 tex 4 metal 0.45 1
+material moby 1056 tex 5 metal 0.35 1
+material moby 1056 tex 3 metal 0.62 1
+material tfrag 0 tex 57 metal 0.34 1
+material tfrag 0 tex 49 metal 0.43 1
+emissive moby 719 tex 1  2.76 0.00
+material moby 781 tex 0 metal 0.35 1
+material moby 781 tex 1 metal 0.41 1
+material tfrag 0 tex 28 metal 0.35 1
+material tfrag 0 tex 63 metal 0.46 1
+material tfrag 0 tex 76 metal 0.71 1
+material moby 173 tex 0 metal 0.35 1

@@ -867,7 +867,7 @@ struct Part {
 };
 layout(std430, binding = 0) readonly buffer Joints { vec4 J[]; };
 layout(std430, binding = 1) readonly buffer Parts { Part parts[]; };
-layout(std430, binding = 2) readonly buffer Cmds { uvec4 cmds[]; };  // x part, y texture word, z layer, w 0
+layout(std430, binding = 2) readonly buffer Cmds { uvec4 cmds[]; };  // x part, y texture word, z layer, w the emissive / material slot
 layout(std430, binding = 3) readonly buffer Normals { vec2 normals[]; };
 
 uniform int uMode;       // 0 the world's projection, 1 the VU1's onto the frame
@@ -1071,7 +1071,7 @@ void main() {
     if (uTme != 0) {
         vec2 st = vStq.xy / vStq.z;
 #ifdef SH_SPLIT
-        st = sh_mat_uv(st, (w >> 27) & 31u);  // (lava, mud, quicksand: the slow flow)
+        st = sh_mat_uv(st, vCmd.w & 127u);  // (lava, mud, quicksand: the slow flow)
 #endif
         vec4 t;
         if ((w & 1u) != 0u) {
@@ -1099,8 +1099,8 @@ void main() {
         else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_SPLIT
-        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 27) & 31u);  // (the word's bits 27..31)
-        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 27) & 31u);
+        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, vCmd.w & 127u);  // (the command's fourth word)
+        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), vCmd.w & 127u);
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }
@@ -1209,7 +1209,7 @@ bool init_gl() {
         auto split = [](const char* src) {
             std::string t = src;
             const std::string v = "#version 460 core\n";
-            if (t.compare(0, v.size(), v) == 0) t.insert(v.size(), "#define SH_SPLIT 1\n");
+            if (t.compare(0, v.size(), v) == 0) t.insert(v.size(), "#define SH_SPLIT 1\n#define SH_MOBY 1\n");  // (SH_MOBY: no reflections of the last frame on a moby, sh_material)
             return t;
         };
         const std::string vss = split(kVs), fss = split(kFs);
@@ -1811,7 +1811,8 @@ void part_pre(const MrpFrame& f, const MrpMoby& m, const ClassGpu* cg, const Mrp
 }
 
 // the emissive surfaces of the moby classes (mrp_lighting.h EmissiveSurface): (class, local texture) -> shader slot, made again when the
-// list or the preview changes; the slot goes into the draw's texture word, bits 27..31, while the modern lighting is on
+// list or the preview changes; the slot goes into the draw command's fourth word (bits 27..31 of its texture word until #102's batch 1)
+// while the modern lighting is on
 struct MobyEmissive {
     uint32_t gen = 0;
     std::unordered_map<uint32_t, uint8_t> slot;
@@ -2192,9 +2193,10 @@ void build_frame() {
                 static const bool mark_mip0 = std::getenv("RAC1_MRP_MIP0") != nullptr;
                 if (mark_mip0 && pi.game_texture >= 0 && lh(OV(0x00199e80) + 4 * static_cast<uint32_t>(pi.game_texture)) == 0) word |= 1u << 25;
                 if (mark_mip0 && pi.game_texture >= 0 && lh(OV(0x00199e80) + 4 * static_cast<uint32_t>(pi.game_texture) + 2) == 0) word |= 1u << 26;
-                if (emis && pi.local >= 0)  // (an emissive surface's slot)
-                    if (const auto es = g_memis.slot.find(emis_key(m.class_id, pi.local)); es != g_memis.slot.end()) word |= static_cast<uint32_t>(es->second) << 27;
-                F.cmds.insert(F.cmds.end(), {part_index, word, pi.layer, 0u});
+                uint32_t slot = 0;  // (an emissive surface's or a material's slot: the command's fourth word)
+                if (emis && pi.local >= 0)
+                    if (const auto es = g_memis.slot.find(emis_key(m.class_id, pi.local)); es != g_memis.slot.end()) slot = es->second;
+                F.cmds.insert(F.cmds.end(), {part_index, word, pi.layer, slot});
                 Key key;
                 key.bucket = pi.bucket;
                 key.sampler = pi.sampler;

@@ -18,28 +18,28 @@ emit shrub 282  2.486 -4.590 -4.000  0.800 0.930 1.000  5.000 13.000 0.000  0.85
 emit shrub 281  -0.927 -0.975 -25.651  0.880 0.960 1.000  3.500 12.000 0.000  0.60
 # #102 (Anya's notes). Weak lights, small radius, no shadow cube (a moby's lamp gets none); they light the world around them.
 # The teleporter pads (moby class 1135): a cool glow just above the pad.
-emit moby 1135  0.000 0.000 0.300  0.550 0.850 1.000  1.000 4.000 0.000
+emit moby 1135  0.000 0.000 0.300  0.550 0.850 1.000  1.000 4.000 0.000  0.00
 # Clank's eyes on Ratchet's back (moby class 1204, at his shoulders): a faint green.
-emit moby 1204  0.000 0.000 0.550  0.400 1.000 0.400  0.500 2.500 0.000
+emit moby 1204  0.000 0.000 0.550  0.400 1.000 0.400  0.500 2.500 0.000  0.00
 # The red lamps of the landing pad by the start (shrub class 231, eight round its plates; the plates are shrub 165): a red glow just
 # above each (the shrub's +y is up, about 130 of its units a world unit).
-emit shrub 231  0.000 52.000 0.000  1.000 0.150 0.100  1.200 3.000 0.000
+emit shrub 231  0.000 52.000 0.000  1.000 0.150 0.100  1.200 3.000 0.000  0.00
 # The Large Amoeboid's eyes (moby class 572): green.
-emit moby 572  0.000 0.000 2.000  0.500 1.000 0.300  0.800 3.500 0.000
+emit moby 572  0.000 0.000 2.000  0.500 1.000 0.300  0.800 3.500 0.000  0.00
 # The yellow soldier bots (moby class 459): their green eyes and the thruster on their back.
-emit moby 459  0.000 0.000 2.000  0.400 1.000 0.400  0.600 3.000 0.000
-emit moby 459  0.000 0.000 1.300  1.000 0.600 0.250  0.800 3.000 0.400
+emit moby 459  0.000 0.000 2.000  0.400 1.000 0.400  0.600 3.000 0.000  0.00
+emit moby 459  0.000 0.000 1.300  1.000 0.600 0.250  0.800 3.000 0.400  0.00
 # The bomb glove's bombs (moby class 121): a warm, flickering glow.
-emit moby 121  0.000 0.000 0.000  1.000 0.450 0.150  0.800 3.000 0.300
+emit moby 121  0.000 0.000 0.000  1.000 0.450 0.150  0.800 3.000 0.300  0.00
 # The Buzzers (moby class 577, the yellow and black wasp robots in groups; #102): their green eyes, at the head's front.
-emit moby 577  0.500 0.000 0.880  0.400 1.000 0.300  0.400 2.000 0.000
+emit moby 577  0.500 0.000 0.880  0.400 1.000 0.300  0.400 2.000 0.000  0.00
 # The stationary drop ship over the gap (moby class 666): its orange lamps.
 # #102: moby 666 is the same ship as Gemlik's Blarg ships (moby 1805 on level 13, the ones destroyed for the skill point; the same
 # mesh and textures): Anya's "Sitting Duck" ship. Its lights moved from the hull's centre (inside it, 1.5 and 7) to its lamps: the
 # orange ones in two columns of three on the back's two sides and the pair of blue ones at the nose.
-emit moby 666  -3.300 1.800 3.000  1.000 0.550 0.200  0.800 3.500 0.000
-emit moby 666  -3.300 -1.800 3.000  1.000 0.550 0.200  0.800 3.500 0.000
-emit moby 666  4.500 0.000 2.450  0.600 0.800 1.000  0.800 3.500 0.000
+emit moby 666  -3.300 1.800 3.000  1.000 0.550 0.200  0.800 3.500 0.000  0.00
+emit moby 666  -3.300 -1.800 3.000  1.000 0.550 0.200  0.800 3.500 0.000  0.00
+emit moby 666  4.500 0.000 2.450  0.600 0.800 1.000  0.800 3.500 0.000  0.00
 # Emissive surfaces (#102, our choice): the landing pad's red lamps (shrub 231: tex 1 the red dome, tex 0 its highlight), the neon tubes'
 # panel (shrub 282 tex 0) and the hanging bulbs (shrub 281 tex 0) keep the original's brightness, a little more, in the halls' shade.
 emissive shrub 231 tex 1  1.30 0.00
@@ -53,6 +53,48 @@ light 96.359 235.602 60.469  1.000 0.544 0.148  3.000 8.923 0.000 1
 light 51.647 223.546 62.169  1.000 0.544 0.148  3.000 16.083 0.000 1
 light 54.197 178.927 77.493  1.000 0.000 0.000  3.000 8.923 0.000 1
 light 115.890 199.388 54.395  1.000 0.544 0.148  3.000 16.083 0.000 1
-emissive moby 11 tex 0  2.46 0.16
 emissive moby 1134 tex 0  3.02 0.44
-emissive moby 1134 tex 1  1.86 0.41
+# Anya-Thoughtmane's lighting batch 1 (#102): the waterworks' materials, the bridge as metal
+material moby 703 tex 7 metal 0.35 1
+material moby 703 tex 9 metal 0.35 1
+emit moby 0  -0.063 0.660 0.971  0.090 1.000 0.000  1.000 1.527 0.000  0.00  joint 62
+emit moby 0  -0.090 0.486 1.131  0.115 1.000 0.000  1.000 1.000 0.000  0.00  joint 62
+material moby 703 tex 10 metal 0.35 1
+material moby 703 tex 11 metal 0.35 1
+material moby 703 tex 5 metal 0.35 1
+material shrub 170 tex 0 metal 0.5 1
+material shrub 170 tex 3 metal 0.49 1
+material shrub 170 tex 1 metal 0.46 1
+material moby 13 tex 0 metal 0.35 1
+material tie 656 tex 0 metal 0.68 1
+material shrub 175 tex 1 metal 0.45 1
+material shrub 175 tex 0 metal 0.49 1
+material shrub 175 tex 2 metal 0.46 1
+material moby 768 tex 4 metal 0.41 1
+material moby 768 tex 1 metal 0.46 1
+material moby 705 tex 3 metal 0.35 1
+material moby 705 tex 2 metal 0.35 1
+material moby 715 tex 5 metal 0.35 1
+material moby 715 tex 7 metal 0.35 1
+material moby 715 tex 9 metal 0.35 1
+material moby 715 tex 10 metal 0.35 1
+material moby 715 tex 11 metal 0.35 1
+material moby 769 tex 0 metal 0.46 1
+material moby 769 tex 1 metal 0.46 1
+material moby 768 tex 3 metal 0.46 1
+material moby 768 tex 2 metal 0.46 1
+material shrub 141 tex 0 metal 0.35 1
+material tfrag 0 tex 60 metal 0.35 1.01
+material moby 742 tex 2 metal 0.35 1
+material shrub 126 tex 0 metal 0.35 1
+emissive shrub 126 tex 7  2.42 0.00
+material shrub 126 tex 3 metal 0.35 1
+material tie 669 tex 0 metal 0.36 1
+material tie 664 tex 0 metal 0.35 1
+material shrub 128 tex 0 metal 0.35 1
+material shrub 136 tex 0 metal 0.35 1
+material tie 581 tex 1 metal 0.35 1
+material shrub 160 tex 0 metal 0.37 1
+material moby 730 tex 1 metal 0.35 1
+material moby 730 tex 2 metal 0.35 1
+material tie 655 tex 0 metal 0.46 1

@@ -10,5 +10,9 @@ noauto 1521
 # around 216 154 58, the store room around 220 135 58); the outdoors around (the landing pad near 222 200 50, the rocks
 # near 220 172 50) stays out. Extend it with the debug menu's Sun tab while playing the rest of the base.
 interior 205.0 128.0 54.0  236.0 166.0 75.0
-# Orxon: our ambient particles (Options > Graphics > Ambient Particles, off by default): the toxic air's dust, a little green.
-particles dust 1.2  0.78 0.86 0.62  wind 0.8 0.3
+# Orxon: our ambient particles (Options > Graphics > Ambient Particles, off by default), from Anya-Thoughtmane's lighting batch 1
+# (#102, in place of our green dust): a dark green ash, green embers rising from the toxic pools (the level's lava faces), a little
+# dark snow.
+particles ash 2.71  0.269 0.355 0.097  wind 0.8 0.44
+particles embers 1.47  0.574 1 0.096  source lava
+particles snow 0.43  0.157 0.157 0.157  wind 0.69 0

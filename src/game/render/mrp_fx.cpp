@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <array>
 #include <map>
+#include <mutex>
 #include <set>
 #include <chrono>
 #include <cmath>
@@ -1199,6 +1200,15 @@ struct Vu7Emissive {
     bool on = false;
 } g_e7;
 uint64_t e7_key(uint32_t cls, uint32_t tbp) { return static_cast<uint64_t>(cls) << 32 | tbp; }
+// the debug menu's pick (mrp_fx_surface_pick): the ray asked for, the frame's nearest hit, the last answer; the surfaces the level drew
+struct Vu7Pick {
+    std::mutex m;
+    bool want = false;
+    glm::vec3 o{0.0f}, d{0.0f, 0.0f, 1.0f};
+    float max_t = 0.0f;
+    FxSurfacePick cur, last;  // (this frame's best; the answer)
+    std::set<uint64_t> level;  // (the surfaces drawn since the level started: mrp_fx_clear_caches empties it)
+} g_p7;
 // orig: (host) the table brought up to date (once a frame)
 void vu7_emissive_refresh() {
     std::vector<EmissiveSurface> list;
@@ -1238,6 +1248,7 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
         int layer = 0, tw = 1, th = 1;
         BKey k;
         uint32_t flags = 0, emis = 0;
+        uint64_t key = 0;
     };
     auto state = [&](const gs::DrawState& st, const std::shared_ptr<const gs::TexImage>& tex) {
         State S;
@@ -1255,6 +1266,7 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
             S.th = tex->h;
             // (an emissive surface or a material: the callback's class, the texture's block)
             const uint64_t key = e7_key(b.tag, fld(st.tex0, 0, 14));
+            S.key = key;
             if (g_e7.on)
                 if (auto it = g_e7.slot.find(key); it != g_e7.slot.end()) S.emis = it->second;
             static const bool trace = std::getenv("RAC1_LIGHTS_TRACE") != nullptr;
@@ -1386,6 +1398,34 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
         const uint32_t n = static_cast<uint32_t>(g_v7.size() - at);
         g_s7.tris += n / 3;
         if (n == 0) return;
+        if (S.key != 0) {  // (the debug menu: the surfaces drawn, the ray's nearest triangle - Moeller-Trumbore, either side)
+            std::lock_guard<std::mutex> lg(g_p7.m);
+            g_p7.level.insert(S.key);
+            if (g_p7.want)
+                for (size_t q = at; q + 2 < g_v7.size(); q += 3) {
+                    const glm::vec3 a(g_v7[q].wp[0], g_v7[q].wp[1], g_v7[q].wp[2]), e1 = glm::vec3(g_v7[q + 1].wp[0], g_v7[q + 1].wp[1], g_v7[q + 1].wp[2]) - a,
+                                    e2 = glm::vec3(g_v7[q + 2].wp[0], g_v7[q + 2].wp[1], g_v7[q + 2].wp[2]) - a;
+                    const glm::vec3 pv = glm::cross(g_p7.d, e2);
+                    const float det = glm::dot(e1, pv);
+                    if (std::fabs(det) < 1e-9f) continue;
+                    const glm::vec3 tv = g_p7.o - a;
+                    const float u = glm::dot(tv, pv) / det;
+                    if (u < 0.0f || u > 1.0f) continue;
+                    const glm::vec3 qv = glm::cross(tv, e1);
+                    const float v = glm::dot(g_p7.d, qv) / det;
+                    if (v < 0.0f || u + v > 1.0f) continue;
+                    const float t = glm::dot(e2, qv) / det;
+                    if (t <= 0.0f || t > g_p7.max_t || (g_p7.cur.hit && t >= g_p7.cur.t)) continue;
+                    FxSurfacePick& c = g_p7.cur;
+                    c.hit = true;
+                    c.t = t;
+                    c.o_class = static_cast<int>(S.key >> 32);
+                    c.tex = static_cast<int>(S.key & 0xffffffffu);
+                    const glm::vec3 nn = glm::cross(e1, e2);
+                    const float l = glm::length(nn);
+                    for (int k = 0; k < 3; ++k) c.normal[k] = l > 0.0f ? nn[k] / l : (k == 2 ? 1.0f : 0.0f);
+                }
+        }
         if (g_b7.empty() || g_b7.back().count == 0) {
             if (g_b7.empty()) g_b7.push_back(Batch{});
             g_b7.back().key = S.k;
@@ -1739,12 +1779,43 @@ void vk_draw_batches(const std::vector<Batch>& bs, size_t from, size_t to, const
 
 // orig: (host) see mrp_fx.h
 size_t mrp_fx_clear_caches() {
+    {
+        std::lock_guard<std::mutex> lg(g_p7.m);
+        g_p7.level.clear();
+    }
     const size_t n = static_cast<size_t>(g_atlas.used + g_vk_atlas.used);
     if (g_atlas.tex != 0) glDeleteTextures(1, &g_atlas.tex);
     g_atlas = Atlas{};
     vk::destroy_image(g_vk_atlas_img);  // (destroyed once the frames that drew with it are done)
     g_vk_atlas = Atlas{};
     return n;
+}
+
+// orig: (host) see mrp_fx.h
+void mrp_fx_surface_pick(const float o[3], const float d[3], float max_t) {
+    std::lock_guard<std::mutex> lg(g_p7.m);
+    const glm::vec3 no(o[0], o[1], o[2]), nd(d[0], d[1], d[2]);
+    if (glm::length(no - g_p7.o) > 0.25f || glm::length(nd - g_p7.d) > 0.01f || (max_t > 0.0f) != g_p7.want) {  // (a new ray, not the same one a little moved: no answer yet)
+        const uint32_t seq = g_p7.last.seq;
+        g_p7.last = FxSurfacePick{};
+        g_p7.last.seq = seq;
+    }
+    g_p7.want = max_t > 0.0f;
+    g_p7.o = glm::vec3(o[0], o[1], o[2]);
+    g_p7.d = glm::vec3(d[0], d[1], d[2]);
+    g_p7.max_t = max_t;
+}
+// orig: (host) see mrp_fx.h
+FxSurfacePick mrp_fx_surface_pick_result() {
+    std::lock_guard<std::mutex> lg(g_p7.m);
+    return g_p7.last;
+}
+// orig: (host) see mrp_fx.h
+std::vector<std::pair<int, int>> mrp_fx_surfaces_seen() {
+    std::lock_guard<std::mutex> lg(g_p7.m);
+    std::vector<std::pair<int, int>> out;
+    for (uint64_t k : g_p7.level) out.emplace_back(static_cast<int>(k >> 32), static_cast<int>(k & 0xffffffffu));
+    return out;
 }
 
 namespace {
@@ -1780,7 +1851,16 @@ void mrp_fx_draw(const MrpChainFrame& gs, int win_w, int win_h, const gs::Viewpo
     }
     using clock = std::chrono::steady_clock;
     const auto t0 = clock::now();
-    if (from == 0) ++g_st.frames;
+    if (from == 0) {
+        ++g_st.frames;
+        std::lock_guard<std::mutex> lg(g_p7.m);  // (the debug menu's pick: the last frame's answer kept, this frame's searched afresh)
+        if (g_p7.want) {
+            const uint32_t seq = g_p7.last.seq + 1;
+            g_p7.last = g_p7.cur;
+            g_p7.last.seq = seq;
+        }
+        g_p7.cur = FxSurfacePick{};
+    }
     g_v.clear();
     g_batches.clear();
     g_steps.clear();

@@ -9,8 +9,8 @@ sun -108.5 45.0
 # The street lamps (moby class 1827, the posts with the white globes; 39 on the level): a warm white light in each globe, 3 units
 # over the post's foot, half of it aimed down (a pool on the pavement around the post). No shadow cube (the globe's own mesh
 # would hide it).
-emit moby 1827  0.000 0.000 3.000  1.000 0.920 0.760  2.500 13.227 0.000  0.50
-# Anya-Thoughtmane's second lighting pass (#102): the street lamps' light reaches 13.2 units (9 before), and the lamps' globes,
+emit moby 1827  0.000 0.000 3.000  1.000 0.920 0.760  1.856 10.088 0.000  0.50
+# Anya-Thoughtmane's second lighting pass (#102): the street lamps' light reaches 13.2 units (9 before; 10.1, a little dimmer, since batch 1), and the lamps' globes,
 # the buildings' windows (in part), the Qwark-bot and the train's head glow.
 emissive tfrag 0 tex 51  4.00 0.00
 emissive moby 1827 tex 2  4.00 0.24
@@ -20,6 +20,24 @@ emissive moby 1012 tex 2  1.63 0.37
 emissive moby 822 tex 4  2.59 0.27
 emissive moby 822 tex 1  2.54 0.26
 emissive moby 627 tex 0  2.26 0.75
-# Kerwan: our ambient particles (Options > Graphics > Ambient Particles, off by default): light dust in the air, bright where
-# the view looks toward the sun (the sunbeams through the city's streets).
-particles motes 1
+# Anya-Thoughtmane's lighting batch 1 (#102): the street lamps nerfed (moby 1827 above), the gold surfaces, the landing pad's lamps;
+# the motes taken out on purpose ("weird mote particles")
+emit shrub 283  -3.001 -1.396 5.873  0.850 0.920 1.000  1.000 2.055 0.000  0.00
+material tfrag 0 tex 37 metal 0.35 1
+material tfrag 0 tex 21 metal 0.46 1
+material tfrag 0 tex 20 metal 0.46 1
+material tie 1024 tex 1 metal 0.45 1
+material shrub 217 tex 0 metal 0.43 1
+material tfrag 0 tex 58 metal 0.61 1
+material moby 928 tex 2 metal 0.56 1
+material moby 928 tex 1 metal 0.56 1
+material tie 1037 tex 0 metal 0.43 1
+material tie 933 tex 0 metal 0.51 1
+material tie 935 tex 0 metal 0.43 1
+emissive shrub 470 tex 0  2.17 0.00
+material tie 949 tex 0 metal 0.46 1
+material shrub 229 tex 1 metal 0.43 1
+material tfrag 0 tex 11 metal 0.46 1
+material shrub 218 tex 0 metal 0.45 1
+material moby 71 tex 0 metal 0.35 1
+emissive shrub 283 tex 0  1.31 0.00

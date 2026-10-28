@@ -5,7 +5,24 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+### Graphics
+- Lights: Anya-Thoughtmane's lighting batch 1 (#102) merged line by line: metal for the vendor, the bolts, the OmniWrench, the
+  Magneboots and the pilot's helmet on every level, materials and lamps on Veldin, Novalis (the waterworks, the bridge), Aridia
+  (most of its metal, the spot lamps, their sun 38.6 / 16.7), Kerwan (the gold surfaces, the landing pad's lamps, the street lamps
+  a little dimmer, its motes taken out), Eudora and Rilgar (a light experimental rain), Umbris's, Batalia's and Gaspar's particles,
+  Orxon's ash, embers and snow (in place of its dust), and on Hoven no Sun Rays and faint motes beside the snow.
+- Materials: a material can glow too (`glow <strength> [threshold]` on its line, or an emissive line for the same texture): a metal
+  with a lit bulb in its texture is both, not emissive alone.
+- Debug menu: the levels' seas (water, lava, sand) can be picked and given a material (Lights tab, aimed or clicked; Textures tab,
+  "Seas drawn"); a distant surface can be picked; the ambient particles have a tab of their own, with Solo per line.
+
 ### Fixes
+- Materials: a level now takes 126 emissive surfaces and materials, not 30 - with the lines for every level, the lines past the
+  30th were dropped ("metal rendering gives up after a set number of marked metals", #102).
+- Materials: a polished metal (roughness under about 0.4) no longer shows a sharp, jumping mirror of the last frame: the picture
+  is mixed in less and blurred, a hit is tested more tightly, and a moby never mirrors its own last pose (#102).
+- Materials: a metal's mirror is dimmed in the sun's shadow and on the faces turned from the sun (#102).
+- Lights files: a line the game does not understand is said in the log at the level's start.
 - OpenGL: the ties, foliage and mobys (Ratchet too) no longer vanish or turn into floating pieces of terrain and dark shapes from
   one frame to the next on some integrated GPUs (an Intel UHD 620 under Windows, #113): each draw now finds its data through an
   instanced vertex attribute instead of `gl_BaseInstance`. The same picture elsewhere.

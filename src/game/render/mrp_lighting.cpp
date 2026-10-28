@@ -1,5 +1,6 @@
 // The MRP's modern lighting: the sun's cascaded shadow maps (see mrp_lighting.h). Host code, an enhancement: none of it is the game's.
 #include <game/render/mrp_lighting.h>
+#include <game/render/mrp_fx.h>
 
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -3247,7 +3248,7 @@ std::string emit_line(const ClassLight& cl) {
     return out;
 }
 // orig: (host) an "emissive <tfrag|tie|shrub|moby|surface> <class> tex <n> [strength] [threshold]" or "material <kind> <class> tex <n>
-// <type> [a] [b] [c]" line read (false: neither)
+// <type> [a] [b] [c] [glow <strength> [threshold]]" line read (false: neither)
 bool emis_parse(const char* line, EmissiveSurface& out) {
     {
         EmissiveSurface es;
@@ -3267,7 +3268,8 @@ bool emis_parse(const char* line, EmissiveSurface& out) {
     EmissiveSurface es;
     char kind[8] = {}, type[16] = {};
     float a[3] = {0.0f, 0.0f, 0.0f};
-    const int got = std::sscanf(line, "material %7s %d tex %d %15s %f %f %f", kind, &es.o_class, &es.tex, type, &a[0], &a[1], &a[2]);
+    int at = 0;
+    const int got = std::sscanf(line, "material %7s %d tex %d %15s%n %f %f %f", kind, &es.o_class, &es.tex, type, &at, &a[0], &a[1], &a[2]);
     int k = -1;
     for (int i = 0; i < 5; ++i)
         if (std::strcmp(kind, mrp_emissive_kind_name(i)) == 0) k = i;
@@ -3280,9 +3282,37 @@ bool emis_parse(const char* line, EmissiveSurface& out) {
     if (ty == MAT_EMISSIVE) {  // ("material ... emissive [strength] [threshold]": the emissive line's numbers)
         es.strength = es.p[0];
         es.threshold = es.p[1];
+    } else if (const char* g = at > 0 ? std::strstr(line + at, " glow ") : nullptr; g != nullptr && ty != MAT_LAVA) {  // (its glow: lava glows by itself)
+        float gs = 0.0f, gt = 0.0f;
+        const int n = std::sscanf(g, " glow %f %f", &gs, &gt);
+        if (n >= 1) {
+            es.glow = std::clamp(gs, 0.0f, 4.0f);
+            es.glow_threshold = n >= 2 ? std::clamp(gt, 0.0f, 1.0f) : 0.0f;
+        }
     }
     out = es;
     return true;
+}
+// orig: (host) an emissive line and a material line for the same texture (a list read from one file): the emissive's strength and
+// threshold become the material's glow, the emissive entry dropped (before batch 1 of #102 the later line's slot won and the other
+// was not drawn: "a metal can't also be emissive"); `drop` says which entries go
+std::vector<bool> emis_fold(std::vector<EmissiveSurface*> L) {
+    std::vector<bool> drop(L.size(), false);
+    for (size_t i = 0; i < L.size(); ++i) {
+        const EmissiveSurface& e = *L[i];
+        if (e.type != MAT_EMISSIVE) continue;
+        for (size_t j = 0; j < L.size(); ++j) {
+            EmissiveSurface& m = *L[j];
+            if (j == i || drop[j] || m.type == MAT_EMISSIVE || m.type == MAT_LAVA || m.kind != e.kind || m.o_class != e.o_class || m.tex != e.tex) continue;
+            if (m.glow <= 0.0f) {  // (a glow written on the material line itself wins)
+                m.glow = e.strength;
+                m.glow_threshold = e.threshold;
+            }
+            drop[i] = true;
+            break;
+        }
+    }
+    return drop;
 }
 // orig: (host) an "emissive" / "material" line written
 std::string emis_line(const EmissiveSurface& es) {
@@ -3299,6 +3329,10 @@ std::string emis_line(const EmissiveSurface& es) {
             std::snprintf(b, sizeof b, " %g", static_cast<double>(es.p[i]));
             out += b;
         }
+    if (es.glow > 0.0f && es.type != MAT_LAVA) {
+        std::snprintf(b, sizeof b, "  glow %.2f %.2f", static_cast<double>(es.glow), static_cast<double>(es.glow_threshold));
+        out += b;
+    }
     return out;
 }
 bool same_emit(const ClassLight& a, const ClassLight& b) {
@@ -3307,7 +3341,7 @@ bool same_emit(const ClassLight& a, const ClassLight& b) {
 }
 bool same_emis(const EmissiveSurface& a, const EmissiveSurface& b) {
     return a.kind == b.kind && a.o_class == b.o_class && a.tex == b.tex && a.strength == b.strength && a.threshold == b.threshold && a.type == b.type &&
-           std::memcmp(a.p, b.p, sizeof a.p) == 0;
+           std::memcmp(a.p, b.p, sizeof a.p) == 0 && a.glow == b.glow && a.glow_threshold == b.glow_threshold;
 }
 
 // ---- the lines for every level: data/lights/classes.txt (moby classes: the same on every level) ----
@@ -3341,11 +3375,23 @@ void classes_load() {
         if (line[0] != '#') {
             if (emit_parse(line, g.cl) && g.cl.moby) g.kind = 'e';
             else if (emis_parse(line, g.es) && g.es.kind == 3) g.kind = 'm';
+            else if (g.text.find_first_not_of(" \t") != std::string::npos)
+                std::printf("[lights] %s: a line not used (only moby emit / emissive / material lines are), kept as it is: %s\n", g_global_path.c_str(), g.text.c_str());
         }
         g.cl.global = g.es.global = g.kind != '#';
         g_global.push_back(g);
     }
     std::fclose(f);
+    std::vector<EmissiveSurface*> L;  // (an emissive and a material line for the same class and texture: one entry, the glowing material)
+    std::vector<size_t> at;
+    for (size_t i = 0; i < g_global.size(); ++i)
+        if (g_global[i].kind == 'm') {
+            L.push_back(&g_global[i].es);
+            at.push_back(i);
+        }
+    const std::vector<bool> drop = emis_fold(L);
+    for (size_t k = 0; k < drop.size(); ++k)
+        if (drop[k]) g_global[at[k]].kind = '#';  // (its line kept as it is, not used: read again, folded again)
 }
 // orig: (host) the file's lines added to the level's lists (after its own), but where the level's file has its own line for that class
 // (emit) or class and texture (emissive, material)
@@ -3565,9 +3611,22 @@ void user_load(int level) {
             entry('l');
             continue;
         }
+        if (text.find_first_not_of(" \t") != std::string::npos)  // (a line not understood: said, so a typo does not go unseen)
+            std::printf("[lights] %s: a line not understood, kept as it is: %s\n", g_user_path.c_str(), text.c_str());
         g_user_layout.push_back(FileLine{'#', text});  // (a blank line, or one not understood: kept as it is)
     }
     std::fclose(f);
+    {  // (an emissive and a material line for the same texture: one entry, the glowing material - Save writes it as one line)
+        std::vector<EmissiveSurface*> L;
+        for (EmissiveSurface& e : g_emissive_list) L.push_back(&e);
+        const std::vector<bool> drop = emis_fold(L);
+        std::vector<EmissiveSurface> kept;
+        for (size_t i = 0; i < g_emissive_list.size(); ++i)
+            if (!drop[i]) kept.push_back(g_emissive_list[i]);
+        if (kept.size() != g_emissive_list.size())
+            std::printf("[lights] level %d: %zu emissive lines folded into the material of the same texture (its glow)\n", level, g_emissive_list.size() - kept.size());
+        g_emissive_list.swap(kept);
+    }
     std::printf("[lights] level %d: %zu lights placed by hand (%s)\n", level, g_user.size(), g_user_path.c_str());
     if (!g_emissive_list.empty()) {
         const size_t nm = static_cast<size_t>(std::count_if(g_emissive_list.begin(), g_emissive_list.end(), [](const EmissiveSurface& e) { return e.type != MAT_EMISSIVE; }));
@@ -3728,23 +3787,23 @@ uint32_t mrp_emissive_snapshot(std::vector<EmissiveSurface>& out, EmissiveSurfac
     out = g_emis_copy;
     if (d == 0)
         for (EmissiveSurface& e : out)
-            if (e.type != MAT_EMISSIVE) e.kind = -1;  // (a material while Surface Detail is Off: no slot, the original's draw)
+            if (e.type != MAT_EMISSIVE && !(e.glow > 0.0f && e.type != MAT_LAVA)) e.kind = -1;  // (a material while Surface Detail is Off: no slot, the original's draw - its glow alone if it has one)
     *preview = g_emis_preview;
     *has_preview = g_emis_preview_on;
     return g_emis_gen.load();
 }
 namespace {
 // orig: (host) the shaders' emissive slots (uEmis): [0].x on (the option and the lighting's variant), slot i + 1 the list's surface
-// i (strength, threshold), slot 31 the preview (w 1, x its pulse)
-void emissive_uniforms(glm::vec4 out[32]) {
-    for (int i = 0; i < 32; ++i) out[i] = glm::vec4(0.0f);
+// i (strength, threshold; a material's glow and its type in z), slot 127 the preview (w 1, x its pulse)
+void emissive_uniforms(glm::vec4 out[kEmissivePreviewSlot + 1]) {
+    for (int i = 0; i <= kEmissivePreviewSlot; ++i) out[i] = glm::vec4(0.0f);
     out[0].x = g_emissive != 0 ? 1.0f : 0.0f;
     out[0].y = static_cast<float>(g_sh.ngame);  // (the mobys' point lights per pixel start after the game's own: sh_points_moby)
     const size_t n = std::min<size_t>(g_emissive_list.size(), kEmissiveSlots);
     for (size_t i = 0; i < n; ++i) {
         const EmissiveSurface& e = g_emissive_list[i];
         out[i + 1] = e.type == MAT_EMISSIVE ? glm::vec4(e.strength, e.threshold, 0.0f, 0.0f)
-                                            : glm::vec4(0.0f, 0.0f, static_cast<float>(e.type), 0.0f);  // (a material: its type alone, uMat the rest)
+                                            : glm::vec4(e.type == MAT_LAVA ? 0.0f : e.glow, e.glow_threshold, static_cast<float>(e.type), 0.0f);  // (a material: its type and its glow, uMat the rest)
     }
     const double t = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     out[kEmissivePreviewSlot] = glm::vec4(0.25f + 0.45f * static_cast<float>(0.5 + 0.5 * std::sin(t * 6.0)), 0.0f, 0.0f, 1.0f);
@@ -3752,20 +3811,20 @@ void emissive_uniforms(glm::vec4 out[32]) {
 // orig: (host) the materials' uniforms (uMat, mrp_lighting.h): [0] Surface Detail (0 with no material), the clock (seconds, wrapped),
 // the rain, the High step's picture ready; slot i + 1 the list's surface i's parameters. The reflections' view, depth and sky
 struct MatUniforms {
-    glm::vec4 mat[32];
+    glm::vec4 mat[kEmissivePreviewSlot + 1];
     glm::mat4 ssr_vp{1.0f};
     glm::vec4 ssr_z{0.0f}, sky{0.0f};
 };
 constexpr float kSkyDefault[3] = {0.52f, 0.58f, 0.68f};  // (a level's file without "sky": a light, slightly blue grey)
 void material_uniforms(MatUniforms& u) {
-    for (int i = 0; i < 32; ++i) u.mat[i] = glm::vec4(0.0f);
+    for (int i = 0; i <= kEmissivePreviewSlot; ++i) u.mat[i] = glm::vec4(0.0f);
     const size_t n = std::min<size_t>(g_emissive_list.size(), kEmissiveSlots);
     bool any = false, ssr = false;
     for (size_t i = 0; i < n; ++i) {
         const EmissiveSurface& e = g_emissive_list[i];
         if (e.type == MAT_EMISSIVE) continue;
         any = true;
-        ssr = ssr || e.type == MAT_PUDDLE || e.type == MAT_WATER || e.type == MAT_LAVA || (e.type == MAT_METAL && e.p[0] < 0.6f);  // (a polished metal mirrors too)
+        ssr = ssr || e.type == MAT_PUDDLE || e.type == MAT_WATER || e.type == MAT_LAVA || (e.type == MAT_METAL && e.p[0] < 0.45f);  // (a polished metal mirrors too: roughness under 0.45, sh_material)
         u.mat[i + 1] = glm::vec4(e.p[0], e.p[1], e.p[2], 0.0f);
     }
     g_mat_ssr_wanted = ssr;
@@ -4116,6 +4175,17 @@ void screen_point_read(const int vp[4]) {
             }
     }
     const size_t at = env_uv.empty() ? 0 : static_cast<size_t>(n % 120);
+    if (env_uv.size() == 1 && g_pick_ok) {  // (testing: the seas along the one point's ray, the last depth read's)
+        float m[16];
+        mrp_world_view_proj(m);
+        const glm::vec4 e = glm::inverse(glm::make_mat4(m)) * glm::vec4(env_uv[0].first * 2.0f - 1.0f, env_uv[0].second * 2.0f - 1.0f, -1.0f, 1.0f);
+        const glm::vec3 o = glm::vec3(e) / e.w, r = glm::vec3(g_pick_world[0], g_pick_world[1], g_pick_world[2]) - o;
+        const float len = glm::length(r);
+        if (len > 0.0f) {
+            const float oo[3] = {o.x, o.y, o.z}, dd[3] = {r.x / len, r.y / len, r.z / len};
+            mrp_fx_surface_pick(oo, dd, 4000.0f);
+        }
+    }
     if (!env_uv.empty()) {
         ++n;
         if (at >= env_uv.size()) return;
@@ -4152,10 +4222,19 @@ void screen_point_read(const int vp[4]) {
             if (pk.moby)
                 std::printf("[lights] screen %.2f %.2f: moby %08x (%s), joint %d at %.3f %.3f %.3f in its frame\n", g_pick_uv[0], g_pick_uv[1], pk.moby_addr,
                             pk.moby_part ? "its parts hold the point" : "the nearest origin", pk.moby_joint, pk.moby_joint_off[0], pk.moby_joint_off[1], pk.moby_joint_off[2]);
-            const SurfacePick sp = mrp_world_surface_at(g_pick_world);  // (the surface there: an emissive line's kind, class, texture)
+            // (the surface there: an emissive line's kind, class, texture - within 2 % of the distance from the eye, as the debug menu)
+            float m[16];
+            mrp_world_view_proj(m);
+            const glm::vec4 e = glm::inverse(glm::make_mat4(m)) * glm::vec4(g_pick_uv[0] * 2.0f - 1.0f, g_pick_uv[1] * 2.0f - 1.0f, -1.0f, 1.0f);
+            const float dist = glm::length(glm::vec3(e) / e.w - glm::vec3(g_pick_world[0], g_pick_world[1], g_pick_world[2]));
+            const SurfacePick sp = mrp_world_surface_at(g_pick_world, std::max(0.5f, 0.02f * dist));
             if (sp.kind >= 0)
                 std::printf("[lights] screen %.2f %.2f: surface %s %d tex %d (level texture %d, %.3f away)\n", g_pick_uv[0], g_pick_uv[1], mrp_emissive_kind_name(sp.kind), sp.o_class,
                             sp.tex, sp.texture, sp.dist);
+            if (env_uv.size() == 1) {  // (one point: the seas along its ray too, asked every frame - the answer comes from the frames after)
+                const FxSurfacePick sea = mrp_fx_surface_pick_result();
+                if (sea.hit) std::printf("[lights] screen %.2f %.2f: a sea, surface %d tex %d, %.2f along the ray\n", g_pick_uv[0], g_pick_uv[1], sea.o_class, sea.tex, sea.t);
+            }
         }
     }
 }
@@ -5029,14 +5108,14 @@ void mrp_lighting_bind_receiver(const ShadowLocs& l, bool sky) {
         glUniform4fv(l.pt_down, (g_sh.npts + 3) / 4, g_sh.pt_down);
     }
     if (l.emis >= 0) {  // (the lighting's variants only)
-        glm::vec4 e[32];
+        glm::vec4 e[kEmissivePreviewSlot + 1];
         emissive_uniforms(e);
-        glUniform4fv(l.emis, 32, glm::value_ptr(e[0]));
+        glUniform4fv(l.emis, kEmissivePreviewSlot + 1, glm::value_ptr(e[0]));
     }
     if (l.mat >= 0) {
         MatUniforms u;
         material_uniforms(u);
-        glUniform4fv(l.mat, 32, glm::value_ptr(u.mat[0]));
+        glUniform4fv(l.mat, kEmissivePreviewSlot + 1, glm::value_ptr(u.mat[0]));
         glUniformMatrix4fv(l.ssr_vp, 1, GL_FALSE, glm::value_ptr(u.ssr_vp));
         glUniform4fv(l.ssr_z, 1, glm::value_ptr(u.ssr_z));
         glUniform4fv(l.ssr_sky, 1, glm::value_ptr(u.sky));
@@ -5083,13 +5162,13 @@ struct ShadowVkUbo {
     glm::vec4 uPtPos[96]{};
     glm::vec4 uPtCol[96]{};
     glm::vec4 uPtDown[24]{};
-    glm::vec4 uEmis[32]{};
-    glm::vec4 uMat[32]{};
+    glm::vec4 uEmis[kEmissivePreviewSlot + 1]{};
+    glm::vec4 uMat[kEmissivePreviewSlot + 1]{};
     glm::mat4 uSsrVP{1.0f};
     glm::vec4 uSsrZ{0.0f};
     glm::vec4 uSsrSky{0.0f};
 };
-static_assert(sizeof(ShadowVkUbo) == 5120, "ShadowVkUbo must match SHADOW_UBO_DECL in gen_vk_shaders.py");
+static_assert(sizeof(ShadowVkUbo) == 8192, "ShadowVkUbo must match SHADOW_UBO_DECL in gen_vk_shaders.py");
 
 VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, bool is_caster) {
     mrp_lighting_vk_set_layout();

@@ -135,30 +135,39 @@
     "    if (d >= 1.0) return -1e9;\n"                                                                                                                  \
     "    return c.w - uSsrZ.y / ((d * 2.0 - 1.0) - uSsrZ.x);  /* > 0: the ray behind the picture's surface (clip w: the depth along the view) */\n"     \
     "}\n"                                                                                                                                               \
-    "vec3 sm_ssr(vec3 P, vec3 R, vec3 miss) {\n"                                                                                                        \
-    "    if (uMat[0].x < 1.5 || uMat[0].w == 0.0) return miss;\n"                                                                                       \
-    "    float t0 = 0.0, t = 0.2;\n"                                                                                                                    \
-    "    vec2 uv;\n"                                                                                                                                    \
-    "    for (int i = 0; i < 24; ++i) {\n"                                                                                                              \
-    "        float dz = sm_ssr_dz(P + R * t, uv);\n"                                                                                                    \
-    "        if (uv.x < 0.0) return miss;\n"                                                                                                            \
-    "        if (dz > 0.0) {\n"                                                                                                                         \
-    "            for (int k = 0; k < 5; ++k) {\n"                                                                                                       \
-    "                float tm = 0.5 * (t0 + t);\n"                                                                                                      \
-    "                if (sm_ssr_dz(P + R * tm, uv) > 0.0) t = tm;\n"                                                                                    \
-    "                else t0 = tm;\n"                                                                                                                   \
-    "            }\n"                                                                                                                                   \
-    "            dz = sm_ssr_dz(P + R * t, uv);\n"                                                                                                      \
-    "            if (uv.x < 0.0) return miss;\n"                                                                                                        \
-    "            float th = 0.3 + 0.05 * t;  /* (behind an object rather than on its surface: faded out, not cut - no speckles) */\n"                   \
-    "            vec2 e = smoothstep(vec2(0.0), vec2(0.08), uv) * smoothstep(vec2(0.0), vec2(0.08), 1.0 - uv);\n"                                       \
-    "            return mix(miss, textureLod(uSsrCol, uv, 0.0).rgb, e.x * e.y * (1.0 - smoothstep(th, 3.0 * th, dz)));\n"                               \
-    "        }\n"                                                                                                                                       \
-    "        t0 = t;\n"                                                                                                                                 \
-    "        t = t * 1.25 + 0.15;\n"                                                                                                                    \
-    "    }\n"                                                                                                                                           \
-    "    return miss;\n"                                                                                                                                \
-    "}\n"                                                                                                                                               \
+    "/* `metal`: the hit kept only where the ray passes within some 0.2 units of the old picture's surface, faded out by twice that (the\n"            \
+    "   puddles' and the water's test - 0.3 + 5 % of the distance, faded to three times it - took rays passing well behind an object as hits:\n"                    \
+    "   on a polished metal the mirror smeared and jumped from frame to frame, #102 batch 1); `blur` (0 sharp, 1) spreads the picture read */\n"                  \
+    "vec3 sm_ssr(vec3 P, vec3 R, vec3 miss, float blur, bool metal) {\n"                                                                                               \
+    "    if (uMat[0].x < 1.5 || uMat[0].w == 0.0) return miss;\n"                                                                                          \
+    "    float t0 = 0.0, t = 0.2;\n"                                                                                                                       \
+    "    vec2 uv;\n"                                                                                                                                       \
+    "    for (int i = 0; i < 24; ++i) {\n"                                                                                                                 \
+    "        float dz = sm_ssr_dz(P + R * t, uv);\n"                                                                                                       \
+    "        if (uv.x < 0.0) return miss;\n"                                                                                                               \
+    "        if (dz > 0.0) {\n"                                                                                                                            \
+    "            for (int k = 0; k < 5; ++k) {\n"                                                                                                          \
+    "                float tm = 0.5 * (t0 + t);\n"                                                                                                         \
+    "                if (sm_ssr_dz(P + R * tm, uv) > 0.0) t = tm;\n"                                                                                       \
+    "                else t0 = tm;\n"                                                                                                                      \
+    "            }\n"                                                                                                                                      \
+    "            dz = sm_ssr_dz(P + R * t, uv);\n"                                                                                                         \
+    "            if (uv.x < 0.0) return miss;\n"                                                                                                           \
+    "            float th = metal ? 0.15 + 0.02 * t : 0.3 + 0.05 * t;  /* (behind an object rather than on its surface: faded out, not cut) */\n"                                                                                                            \
+    "            vec2 e = smoothstep(vec2(0.0), vec2(0.08), uv) * smoothstep(vec2(0.0), vec2(0.08), 1.0 - uv);\n"                                          \
+    "            vec3 col = textureLod(uSsrCol, uv, 0.0).rgb;\n"                                                                                           \
+    "            if (blur > 0.0) {  /* four more taps around the hit, farther apart the rougher and the longer the ray */\n"                               \
+    "                float r = blur * clamp(0.004 * t, 0.001, 0.012);\n"                                                                                     \
+    "                col = (col + textureLod(uSsrCol, clamp(uv + vec2(r, 0.0), 0.0, 1.0), 0.0).rgb + textureLod(uSsrCol, clamp(uv - vec2(r, 0.0), 0.0, 1.0), 0.0).rgb\n" \
+    "                       + textureLod(uSsrCol, clamp(uv + vec2(0.0, r), 0.0, 1.0), 0.0).rgb + textureLod(uSsrCol, clamp(uv - vec2(0.0, r), 0.0, 1.0), 0.0).rgb) * 0.2;\n" \
+    "            }\n"                                                                                                                                      \
+    "            return mix(miss, col, e.x * e.y * (1.0 - smoothstep(th, (metal ? 2.0 : 3.0) * th, dz)));\n"                                                               \
+    "        }\n"                                                                                                                                          \
+    "        t0 = t;\n"                                                                                                                                    \
+    "        t = t * 1.25 + 0.15;\n"                                                                                                                       \
+    "    }\n"                                                                                                                                              \
+    "    return miss;\n"                                                                                                                                   \
+    "}\n"                                                                                                                                                  \
     "/* High: lava's heat shimmer - the last frame's picture around the pixel, displaced by a rising noise */\n"                                        \
     "vec3 sm_shimmer(vec3 c, vec3 P, float t) {\n"                                                                                                      \
     "    if (uMat[0].x < 1.5 || uMat[0].w == 0.0) return c;\n"                                                                                          \
@@ -201,9 +210,7 @@
     "}\n" \
     "/* a material's texel: lit the texel as lit (after the emissive), orig as the original lighting shows it (the game's vertex colour,\n"             \
     "   unshadowed), tex the texel, light the lit vertex colour (x 255 / 128: 1 the texture as painted) */\n"                                           \
-    "vec3 sh_material(vec3 lit, vec3 orig, vec3 tex, vec3 light, uint s) {\n"                                                                           \
-    "    int ty = sm_type(s);\n"                                                                                                                        \
-    "    if (ty == 0) return lit;\n"                                                                                                                    \
+    "vec3 sm_material(vec3 lit, vec3 orig, vec3 tex, vec3 light, uint s, int ty) {\n"                                                                   \
     "    vec4 m = uMat[s];\n"                                                                                                                           \
     "    float t = uMat[0].y, rain = uMat[0].z;\n"                                                                                                      \
     "    vec3 P = vShWorld, N = sh_n, V = normalize(uShCam - P);\n"                                                                                     \
@@ -211,19 +218,27 @@
     "    vec3 L = clamp(light, 0.0, 1.5);\n"                                                                                                            \
     "    float ndv = max(dot(N, V), 0.0);\n"                                                                                                            \
     "    vec3 R = reflect(-V, N);\n"                                                                                                                    \
-    "    if (ty == 1) {  /* metal: a roughness (0 a mirror .. 1 brushed), b strength */\n" \
-    "        float r = clamp(m.x, 0.03, 1.0), gloss = 1.0 - r;\n" \
-    "        vec3 F0 = mix(vec3(0.04), A, 0.85);\n" \
-    "        vec3 Fv = F0 + (1.0 - F0) * pow(1.0 - ndv, 5.0);\n" \
-    "        /* what it mirrors: the sky above and the ground's shade below, its horizon sharper the more polished it is; on High the last\n" \
-    "           frame's picture along the reflected ray (polished: roughness under 0.6) */\n" \
-    "        float up = clamp(R.z * mix(1.0, 6.0, gloss * gloss) + 0.5, 0.0, 1.0);\n" \
-    "        vec3 env = uSsrSky.rgb * mix(0.25, 1.15, up * up * (3.0 - 2.0 * up)) * L;\n" \
-    "        if (gloss > 0.4) env = mix(env, sm_ssr(P + N * 0.03, R, env), smoothstep(0.4, 0.75, gloss));\n" \
-    "        /* polished: less of the painted (diffuse) colour, more mirror */\n" \
-    "        vec3 mirror = env * Fv * mix(0.35, 1.5, gloss * gloss);\n" \
-    "        return lit * (1.0 - m.y * mix(0.25, 0.55, gloss)) + m.y * (sm_spec(N, V, r, F0) + mirror);\n" \
-    "    }\n" \
+    "    if (ty == 1) {  /* metal: a roughness (0 a mirror .. 1 brushed), b strength */\n"                                                                 \
+    "        float r = clamp(m.x, 0.03, 1.0), gloss = 1.0 - r;\n"                                                                                          \
+    "        vec3 F0 = mix(vec3(0.04), A, 0.85);\n"                                                                                                        \
+    "        vec3 Fv = F0 + (1.0 - F0) * pow(1.0 - ndv, 5.0);\n"                                                                                           \
+    "        /* what it mirrors: the sky above and the ground's shade below, its horizon sharper the more polished it is (at most four\n"                  \
+    "           times: the faces are flat, and a sharper horizon flipped whole faces between the sky and the ground as they turned); on\n"                 \
+    "           High the last frame's picture along the reflected ray, from roughness 0.45 down (crisp only toward 0.05, blurred above: a\n"               \
+    "           crisp mirror from 0.4 down showed every flaw of the old picture, #102 batch 1) - not on a moby: the old picture holds the\n"               \
+    "           moby itself where it was a frame before (a spinning bolt mirrored its own last pose) */\n"                                                 \
+    "        float up = clamp(R.z * mix(1.0, 4.0, gloss * gloss) + 0.5, 0.0, 1.0);\n"                                                                      \
+    "        vec3 env = uSsrSky.rgb * mix(0.25, 1.15, up * up * (3.0 - 2.0 * up)) * L;\n"                                                                  \
+    "#ifndef SH_MOBY\n"                                                                                                                                    \
+    "        if (gloss > 0.55) env = mix(env, sm_ssr(P + N * 0.03, R, env, smoothstep(0.05, 0.45, r), true), smoothstep(0.55, 0.95, gloss));\n"            \
+    "#endif\n"                                                                                                                                             \
+    "        /* polished: less of the painted (diffuse) colour, more mirror; the mirror dimmed where the sun does not reach (its shadow, with\n"                \
+    "           the occlusion drawn after: the metals stayed as bright in the shadow as in the sun, #102 batch 1) */\n"                                    \
+    "        float sun = sh_state.w > 0.0 ? sh_state.x : 1.0;\n"                                                                                           \
+    "        sun *= mix(1.0, smoothstep(-0.2, 0.2, dot(N, uShSun)), uShKey.w >= 0.0 ? uShSunK : 0.0);  /* (and on the faces turned from the sun) */\n"     \
+    "        vec3 mirror = env * Fv * mix(0.35, 1.5, gloss * gloss) * mix(0.35, 1.0, sun);\n"                                                              \
+    "        return lit * (1.0 - m.y * mix(0.25, 0.55, gloss)) + m.y * (sm_spec(N, V, r, F0) + mirror);\n"                                                 \
+    "    }\n"                                                                                                                                              \
     "    if (ty == 2 || ty == 3) {  /* wet: a wetness, b roughness; puddle: a coverage, b the noise's scale, c wetness */\n"                            \
     "        float wet = ty == 2 ? m.x : m.z, rough = ty == 2 ? m.y : 0.4;\n"                                                                           \
     "        float Fw = 0.04 + 0.96 * pow(1.0 - ndv, 5.0);\n"                                                                                           \
@@ -236,7 +251,7 @@
     "        if (rain > 0.0) Np = sm_rain(Np, P, t, rain * 0.6 * sm_sky(P));\n"                                                                         \
     "        vec3 Rp = reflect(-V, Np);\n"                                                                                                              \
     "        float F = mix(0.15, 0.9, pow(1.0 - max(dot(Np, V), 0.0), 4.0));\n"                                                                         \
-    "        vec3 refl = sm_ssr(P + N * 0.03, Rp, sm_env(Rp, 0.05) * L);\n"                                                                             \
+    "        vec3 refl = sm_ssr(P + N * 0.03, Rp, sm_env(Rp, 0.05) * L, 0.0, false);\n"                                                                             \
     "        vec3 pud = lit * (0.4 * (1.0 - F)) + refl * F + sm_spec(Np, V, 0.06, vec3(0.02));\n"                                                       \
     "        return mix(base, pud, mask);\n"                                                                                                            \
     "    }\n"                                                                                                                                           \
@@ -253,12 +268,20 @@
     "        vec3 Rw = reflect(-V, Nw);\n"                                                                                                              \
     "        float F = 0.02 + 0.98 * pow(1.0 - max(dot(Nw, V), 0.0), 5.0);\n"                                                                           \
     "        F = mix(0.15, 1.0, F);\n"                                                                                                                  \
-    "        vec3 refl = sm_ssr(P + N * 0.03, Rw, sm_env(Rw, 0.05) * L);\n"                                                                             \
+    "        vec3 refl = sm_ssr(P + N * 0.03, Rw, sm_env(Rw, 0.05) * L, 0.0, false);\n"                                                                             \
     "        return lit * (1.0 - 0.35 * F * m.x) + m.x * (refl * (F * 0.7) + sm_spec(Nw, V, 0.07, vec3(0.02)) * 1.5);\n"                                \
     "    }\n"                                                                                                                                           \
     "    /* mud: a wetness, b drift; quicksand: a drift, b gloss - a sheen over the slow drift (sh_mat_uv) */\n"                                        \
     "    float g = ty == 6 ? m.x : m.y;\n"                                                                                                              \
     "    float Fm = 0.04 + 0.96 * pow(1.0 - ndv, 5.0);\n"                                                                                               \
     "    return lit * (1.0 - 0.25 * g) + g * (sm_spec(N, V, ty == 6 ? 0.38 : 0.5, vec3(0.04)) * 0.8 + sm_env(R, 0.5) * L * (Fm * 0.5));\n"              \
+    "}\n"                                                                                                                                               \
+    "/* the material, then its glow (an emissive line's strength and threshold on the same texture: a lamp's metal body and its bulb);\n"           \
+    "   lava is emissive by itself */\n"                                                                                                               \
+    "vec3 sh_material(vec3 lit, vec3 orig, vec3 tex, vec3 light, uint s) {\n"                                                                           \
+    "    int ty = sm_type(s);\n"                                                                                                                        \
+    "    if (ty == 0) return lit;\n"                                                                                                                    \
+    "    vec3 r = sm_material(lit, orig, tex, light, s, ty);\n"                                                                                         \
+    "    return ty == 4 ? r : sh_glow(r, orig, tex, uEmis[s]);\n"                                                                                       \
     "}\n"                                                                                                                                               \
     "#endif\n"

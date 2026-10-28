@@ -8,4 +8,5 @@ material tfrag 0 tex 9 mud 0.5 0.5
 # Umbris: our ambient particles (Options > Graphics > Ambient Particles, off by default): embers rising from the lava
 # itself (its collision's lava faces near the camera: the Snagglebeast's lava cave), drifting slowly in the air's
 # currents (Anya-Thoughtmane's suggestion for the Snagglebeast's arena; only over the lava after Daino's playtest).
-particles embers 2  source lava
+particles embers 4  source lava  rise 1.09
+emissive moby 179 tex 1  2.50 0.00
