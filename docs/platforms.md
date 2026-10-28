@@ -134,10 +134,9 @@ Windows job compiles against.
 ## macOS
 
 macOS stops at OpenGL 4.1 (deprecated, no compute shaders), so the OpenGL renderer can't run
-there. The way there is the [Vulkan](vulkan.md) renderer, through MoltenVK, or a Metal one (see
-[Roadmap](roadmap.md)). The Vulkan renderer has not been tried on macOS: it asks for Vulkan 1.3
-features that MoltenVK may not all offer (`shaderFloat64`, for the tfrag compute shader's EE
-rounding, among them). The host-interface work above would carry over.
+there. On macOS (Apple silicon) the game draws with [Metal](metal.md): the Vulkan renderer's code on
+a layer that implements Vulkan's calls with Metal. The Vulkan renderer itself has not been tried
+through MoltenVK.
 
 ## Other devices
 

@@ -24,6 +24,7 @@
 #include <game/render/mrp_lighting.h>
 #include <game/render/mrp_particles.h>
 #include <game/enhance/graphics.h>
+#include <host/graphics_quick.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/mrp_shadows.h>
@@ -36,6 +37,9 @@
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/vk/vk_context.h>
+#if defined(__APPLE__)
+#include <runtime/mtl/mtl_context.h>
+#endif
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -95,6 +99,9 @@ DevSettings g_settings;
 GLFWwindow* g_window = nullptr;
 bool g_imgui_vk = false;  // (ImGui drawn by Vulkan)
 bool g_menu = false;  // the menu and the debug tools: only with --debug-tools / RAC1_DEBUG_TOOLS=1
+bool g_imgui = false;  // ImGui up: the host's overlay (the rac1-native window, F1), and the debug menu with the debug tools
+bool g_overlay_mouse = false;  // the cursor over the overlay (its clicks not the game's)
+float g_overlay_bottom = 0.0f;  // where the overlay ends (the stats overlay put under it)
 bool g_prev_toggle = false;
 constexpr const char* DISPLAY_FILE = "devmenu_display.txt";
 
@@ -416,6 +423,11 @@ void tab_game() {
     ImGui::Separator();
     ImGui::Text("Level %d   mode %d   frame %d", r32(0x0015ed84), r32(OV(0x0015f5c4)), r32(OV(0x0015f5cc)));
     ImGui::Checkbox("Stats overlay", &s.show_stats);
+    ImGui::SameLine();
+    {  // (without the debug tools: F1)
+        bool shown = graphics_overlay_shown();
+        if (ImGui::Checkbox("rac1-native window", &shown)) graphics_set_overlay_shown(shown);
+    }
     {  // the screen fade in one host frame (the default) or shown frame by frame (Options > Advanced > Fades)
         bool original = advanced_original_fades();
         if (ImGui::Checkbox("Original fades (the screen fades shown, as on the PS2)", &original)) advanced_set_original_fades(original);
@@ -1946,7 +1958,9 @@ void tex_page_free() {
     if (g_imgui_vk) {
         if (g_tex.ds != VK_NULL_HANDLE) {
             vk::wait_idle();  // (a debug page's rebuild: the descriptor set freed once no frame uses it)
+#if !defined(__APPLE__)  // (macOS: the texture itself, ImGui's Metal backend's ImTextureID)
             ImGui_ImplVulkan_RemoveTexture(g_tex.ds);
+#endif
             g_tex.ds = VK_NULL_HANDLE;
         }
         vk::destroy_image(g_tex.vk);
@@ -1980,8 +1994,12 @@ void tex_page_build(int level) {
             return;
         for (int y = 0; y < g_tex.ah; y += kTexThumb)  // (a row of thumbnails at a time: the frame's staging ring stays small)
             vk::upload_image_2d(g_tex.vk, &px[static_cast<size_t>(y) * g_tex.aw], static_cast<size_t>(g_tex.aw) * kTexThumb * 4, 0, y, g_tex.aw, kTexThumb);
+#if defined(__APPLE__)
+        g_tex.ds = reinterpret_cast<VkDescriptorSet>(g_tex.vk.view);
+#else
         g_tex.ds = ImGui_ImplVulkan_AddTexture(vk::get_sampler(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE),
                                                g_tex.vk.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+#endif
     } else {
         GLint was = 0, unpack_buf = 0, row = 0, align = 4, active = 0;
         glGetIntegerv(GL_ACTIVE_TEXTURE, &active);
@@ -2225,7 +2243,7 @@ void dev_menu_init(GLFWwindow* window, bool with_menu) {
         std::fclose(f);
     }
     g_menu = with_menu;
-    if (!g_menu) return;  // (the display settings above only)
+    g_imgui = true;  // (the host's overlay with or without the debug tools)
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
@@ -2235,6 +2253,12 @@ void dev_menu_init(GLFWwindow* window, bool with_menu) {
     ImGui::GetStyle().ScaleAllSizes(1.2f);
     io.FontGlobalScale = 1.2f;
     g_imgui_vk = rac1::vk::is_active();
+#if defined(__APPLE__)  // (the Vulkan renderer's code on Metal: ImGui's Metal backend, docs/metal.md)
+    if (g_imgui_vk) {
+        ImGui_ImplGlfw_InitForOther(window, true);
+        rac1::mtl::imgui_init();
+    } else
+#endif
     if (g_imgui_vk) {
         ImGui_ImplGlfw_InitForVulkan(window, true);
         ImGui_ImplVulkan_LoadFunctions([](const char* name, void* inst) {
@@ -2268,13 +2292,18 @@ void dev_menu_shutdown() {
     if (g_cam.on) freecam_stop();
     g_move.on = false;
     if (g_window == nullptr) return;
-    if (!g_menu) { g_window = nullptr; return; }
+    if (!g_imgui) { g_window = nullptr; return; }
+    g_imgui = false;
     g_menu = false;
     tex_page_free();  // (the Textures tab's atlas)
     g_tex.level = -1;
     if (g_imgui_vk) {
         rac1::vk::wait_idle();
+#if defined(__APPLE__)
+        rac1::mtl::imgui_shutdown();
+#else
         ImGui_ImplVulkan_Shutdown();
+#endif
     } else {
         ImGui_ImplOpenGL3_Shutdown();
     }
@@ -2284,7 +2313,12 @@ void dev_menu_shutdown() {
 }
 
 void dev_menu_poll(GLFWwindow* window) {
-    if (!g_menu) return;  // (no menu, no moving Ratchet by hand without the debug tools)
+    if (!g_menu) {  // (no menu, no moving Ratchet by hand without the debug tools: F1 the overlay's)
+        const bool down = g_imgui && glfwGetKey(window, GLFW_KEY_F1) == GLFW_PRESS;
+        if (down && !g_prev_toggle) graphics_set_overlay_shown(!graphics_overlay_shown());
+        g_prev_toggle = down;
+        return;
+    }
     bool down = glfwGetKey(window, GLFW_KEY_F1) == GLFW_PRESS;
     GLFWgamepadstate s;
     if (glfwJoystickIsGamepad(GLFW_JOYSTICK_1) && glfwGetGamepadState(GLFW_JOYSTICK_1, &s))
@@ -2425,7 +2459,70 @@ void dev_menu_game_frame() {
 }
 
 // orig: (host) see dev_menu.h
-bool dev_menu_drawing() { return g_menu && (g_settings.open || g_settings.show_stats || profiler_overlay_wanted()); }
+namespace {
+// orig: (none) — the GPU's name (the renderer's device, once)
+const std::string& gpu_name() {
+    static std::string name;
+    if (!name.empty()) return name;
+#if defined(__APPLE__)
+    if (g_imgui_vk) name = rac1::mtl::device_name();
+#else
+    if (g_imgui_vk) {
+        VkPhysicalDeviceProperties p{};
+        vkGetPhysicalDeviceProperties(rac1::vk::physical_device(), &p);
+        name = p.deviceName;
+    }
+#endif
+    if (!g_imgui_vk) {
+        if (const GLubyte* r = glGetString(GL_RENDERER)) name = reinterpret_cast<const char*>(r);
+    }
+    if (name.empty()) name = "?";
+    return name;
+}
+
+// orig: (none) — a row of Options > Graphics as a combo; a choice applied between the game frames (graphics_quick_set)
+void quick_combo(const char* label, QuickSetting q) {
+    const int n = graphics_quick_count(q), v = graphics_quick_value(q);
+    ImGui::SetNextItemWidth(200.0f);
+    if (ImGui::BeginCombo(label, graphics_quick_text(q, v).c_str())) {
+        for (int i = 0; i < n; ++i) {
+            const bool sel = i == v;
+            if (!sel && !graphics_quick_supported(q, i)) continue;  // (the values this display shows as another's)
+            if (ImGui::Selectable(graphics_quick_text(q, i).c_str(), sel)) graphics_quick_set(q, i);
+            if (sel) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+}
+
+// The host's overlay (rac2-native's F1 window): the frame rate, the GPU and a few of Options > Graphics's rows; F1 shows /
+// hides it without the debug tools (with them, F1 is the debug menu's and the overlay is the Game tab's checkbox)
+void host_overlay(double frame_ms) {
+    g_overlay_bottom = 0.0f;
+    if (!graphics_overlay_shown()) return;
+    ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowBgAlpha(0.7f);
+    if (ImGui::Begin("rac1-native", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav |
+                                                 ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar)) {
+        ImGui::Text("%.1f FPS (%.2f ms)", frame_ms > 0 ? 1000.0 / frame_ms : 0.0, frame_ms);
+        ImGui::Text("GPU: %s", gpu_name().c_str());
+        ImGui::Separator();
+        quick_combo("Render scale", QuickSetting::RenderScale);
+        quick_combo("Screen", QuickSetting::Aspect);
+        quick_combo("HUD", QuickSetting::Hud);
+        bool vsync = graphics_quick_value(QuickSetting::Vsync) != 0;
+        if (ImGui::Checkbox("V-sync", &vsync)) graphics_quick_set(QuickSetting::Vsync, vsync ? 1 : 0);
+        ImGui::TextDisabled(g_menu ? "F1 debug menu (this window: its Game tab)" : "F1 overlay, Esc pause");
+        ImGui::TextDisabled("Every setting: Options > Graphics");
+        g_overlay_bottom = ImGui::GetWindowPos().y + ImGui::GetWindowSize().y;
+    }
+    ImGui::End();
+}
+}  // namespace
+
+bool dev_menu_drawing() { return g_imgui && (graphics_overlay_shown() || (g_menu && (g_settings.open || g_settings.show_stats || profiler_overlay_wanted()))); }
+
+bool dev_overlay_wants_mouse() { return g_imgui && g_overlay_mouse; }
 
 void dev_menu_draw(double update_ms, double frame_ms) {
     g_user_light_selected = -1;  // (the Lights tab's selection pulses while the tab is shown)
@@ -2434,13 +2531,19 @@ void dev_menu_draw(double update_ms, double frame_ms) {
         float unused[3];
         mrp_lighting_screen_point(-1.0f, -1.0f, unused);
     }
-    if (!g_menu || (!g_settings.open && !g_settings.show_stats && !profiler_overlay_wanted())) return;
+    g_overlay_mouse = false;
+    if (!dev_menu_drawing()) return;
+#if defined(__APPLE__)
+    if (!g_imgui_vk) ImGui_ImplOpenGL3_NewFrame();  // (Metal's: in rac1::vk::render_imgui, at its pass)
+#else
     if (g_imgui_vk) ImGui_ImplVulkan_NewFrame();
     else ImGui_ImplOpenGL3_NewFrame();
+#endif
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
-    if (g_settings.show_stats) {
-        ImGui::SetNextWindowPos(ImVec2(8, 8));
+    host_overlay(frame_ms);
+    if (g_menu && g_settings.show_stats) {
+        ImGui::SetNextWindowPos(ImVec2(8, g_overlay_bottom > 0.0f ? g_overlay_bottom + 8.0f : 8.0f));
         ImGui::SetNextWindowBgAlpha(0.5f);
         ImGui::Begin("stats", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs);
         ImGui::Text("%.1f fps  frame %.2f ms  update %.2f ms", frame_ms > 0 ? 1000.0 / frame_ms : 0.0, frame_ms, update_ms);
@@ -2449,8 +2552,8 @@ void dev_menu_draw(double update_ms, double frame_ms) {
         ImGui::Text("nanotech %d/%d  bolts %d  sounds %d", r32(HEALTH), r32(HEALTH_MAX), r32(BOLTS), snd989_iop_active_sounds());
         ImGui::End();
     }
-    profiler_overlay();
-    if (g_settings.open) {
+    if (g_menu) profiler_overlay();
+    if (g_menu && g_settings.open) {
         ImGui::SetNextWindowSize(ImVec2(720, 600), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowPos(ImVec2(40, 110), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowBgAlpha(0.85f);
@@ -2482,6 +2585,7 @@ void dev_menu_draw(double update_ms, double frame_ms) {
         }
         ImGui::End();
     }
+    g_overlay_mouse = ImGui::GetIO().WantCaptureMouse;
     ImGui::Render();
     if (g_imgui_vk) rac1::vk::render_imgui(ImGui::GetDrawData());
     else ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

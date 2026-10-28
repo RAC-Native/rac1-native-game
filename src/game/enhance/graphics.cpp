@@ -24,6 +24,7 @@
 // EE RAM block GFX (0xf2000..0xf8000), in the PS2 kernel's first megabyte as the Advanced block
 // (0xf0000..0xf2000): nothing of the game or the runtime lives there.
 #include <game/enhance/graphics.h>
+#include <host/graphics_quick.h>
 
 #include <game/enhance/advanced.h>
 #include <game/enhance/controls.h>
@@ -42,11 +43,15 @@
 #include <platform/platform.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <mutex>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace rac1 {
 
@@ -99,7 +104,8 @@ constexpr int SHADOW_STRS[] = {50, 60, 70, 80, 90, 100};  // the sun's shadows' 
 constexpr int SHADOW_STR_DEFAULT = 2;
 constexpr int AO_STRS[] = {25, 50, 75, 100, 125};  // the ambient occlusion's intensity, percent of each mode's own strength
 constexpr int AO_STR_DEFAULT = 2;
-constexpr int SCALES[] = {50, 75, 100, 125, 150, 175, 200};
+constexpr int SCALE_4K = 1000;  // the last value: not a multiple, the 3D at 3840 x 2160 (fitted to the output's shape)
+constexpr int SCALES[] = {50, 75, 100, 125, 150, 175, 200, 250, 300, SCALE_4K};
 constexpr int FOVS[] = {75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 130, 140, 150};
 constexpr int LODS[] = {0, 25, 50, 75, 100};  // Original, Low, Medium, High, Maximum: the LOD slider (mrp_lod.h)
 constexpr int CAPS[] = {30, 60, 120, 144, 240, 0};
@@ -128,7 +134,7 @@ enum : int32_t {
 constexpr const char* TEXTS[4][T_COUNT] = {
     {"Graphics", "Display, picture shape, detail and view of the PC version",
      "Display", "Monitor", "Window Size", "Render Resolution", "Aspect Ratio", "Fit to Screen", "Level of Detail", "Field of View", "V-Sync", "Frame Rate Cap", "Lighting", "Dynamic Shadows", "Secondary Lights", "Shadow Distance", "Ambient Occlusion", "Texture Detail", "Shadow Strength", "Sun Rays", "AO Intensity", "HUD", "Renderer", "Surface Detail", "Ambient Particles",
-     "In a window or on the whole screen.", "Which screen the window is put on.", "The window's size (in window mode).", "The 3D's resolution, times the screen's. The HUD stays sharp.",
+     "In a window or on the whole screen.", "Which screen the window is put on.", "The window's size (in window mode).", "The 3D's resolution, times the screen's, or 4K. The HUD stays sharp.",
      "4:3 as the original, 16:9, or the view widened to fill the screen.", "When the picture's shape is not the screen's: black bars, or stretched.",
      "How far objects keep their detail and stay drawn.", "x1.00 is the original's view.", "Waits for the screen's refresh: no tearing.",
      "The most frames a second. The game makes 60: more shows nothing new.",
@@ -268,7 +274,14 @@ struct State {
     bool loaded = false, dirty = false;
     int scale_override = -1;
     int mips_seen[2] = {1, 1};  // the mip globals as the settings left them: a change by the debug menu is taken into the row
+    bool overlay = true;  // the host's overlay shown (the rac1-native window, F1)
 } gs_;
+
+// the overlay's changes, asked for on the window's thread: applied by graphics_frame (between the game frames)
+std::mutex g_quick_mutex;
+std::vector<std::pair<Setting, int>> g_quick_pending;
+
+int g_out_w = 0, g_out_h = 0;  // the output's size in pixels (the host's, each frame; 0: not known yet)
 
 // orig: (none) — enhancement: the number of values of a setting
 uint32_t value_count(Setting s) {
@@ -344,6 +357,9 @@ void apply() {
     // a headless run keeps OpenGL unless RAC1_RENDERER asks)
     d.vulkan = !g_advanced_disabled && v[S_RENDERER] != 0;
     if (const char* env = std::getenv("RAC1_RENDERER")) d.vulkan = std::strcmp(env, "vulkan") == 0 || std::strcmp(env, "vk") == 0;
+#if defined(__APPLE__)
+    d.vulkan = true;  // (macOS: the Vulkan renderer's code on Metal, the one renderer there: docs/metal.md)
+#endif
     d.fullscreen = v[S_DISPLAY] != 0;
     d.window_w = gs_.win_w;
     d.window_h = gs_.win_h;
@@ -438,6 +454,7 @@ bool prefs_read(const std::filesystem::path& path) {
         else if (std::strcmp(key, "ambient_particles") == 0 && a >= 0 && a < 3) gs_.value[S_PARTICLES] = a;
         // ("overscan", the Overscan row's until 0.4: read like any other key and ignored, the full frame always shown)
         else if (std::strcmp(key, "mode") == 0 && a >= 0 && a <= 3) gs_.mode = static_cast<uint32_t>(a);
+        else if (std::strcmp(key, "overlay") == 0) gs_.overlay = a != 0;
     }
     std::fclose(f);
     return true;
@@ -482,10 +499,10 @@ void prefs_write() {
     {
         const int* v = gs_.value;
         static constexpr const char* kFormat =
-            "display %d\nmonitor %s\nwindow %d %d\nrender_scale %d\naspect %d\nfit %d\nlod %d\nfov %d\nvsync %d\nfps_cap %d\nlighting %d\ndynamic_shadows %d\nsecondary_lights %d\nshadow_distance %d\nambient_occlusion %d\ntexture_detail %d\nshadow_strength %d\nsun_rays_quality %d\nao_intensity %d\nambient_particles %d\nhud %d\nrenderer %s\nsurface_detail %d\nmode %u\n";
+            "display %d\nmonitor %s\nwindow %d %d\nrender_scale %d\naspect %d\nfit %d\nlod %d\nfov %d\nvsync %d\nfps_cap %d\nlighting %d\ndynamic_shadows %d\nsecondary_lights %d\nshadow_distance %d\nambient_occlusion %d\ntexture_detail %d\nshadow_strength %d\nsun_rays_quality %d\nao_intensity %d\nambient_particles %d\nhud %d\nrenderer %s\nsurface_detail %d\nmode %u\noverlay %d\n";
         auto format = [&](char* out, size_t n) {
             return std::snprintf(out, n, kFormat, v[S_DISPLAY], gs_.monitor_name.c_str(), gs_.win_w, gs_.win_h, SCALES[v[S_SCALE]], v[S_ASPECT], v[S_FIT], v[S_LOD], FOVS[v[S_FOV]], v[S_VSYNC], CAPS[v[S_CAP]], v[S_LIGHTING], v[S_DYN_SHADOWS],
-                     v[S_SEC_LIGHTS], v[S_SHADOW_DIST], v[S_AO], v[S_MIPS], SHADOW_STRS[v[S_SHADOW_STR]], v[S_SUN_RAYS], AO_STRS[v[S_AO_STR]], v[S_PARTICLES], v[S_HUD], v[S_RENDERER] != 0 ? "vulkan" : "opengl", v[S_SURFACE], gs_.mode);
+                     v[S_SEC_LIGHTS], v[S_SHADOW_DIST], v[S_AO], v[S_MIPS], SHADOW_STRS[v[S_SHADOW_STR]], v[S_SUN_RAYS], AO_STRS[v[S_AO_STR]], v[S_PARTICLES], v[S_HUD], v[S_RENDERER] != 0 ? "vulkan" : "opengl", v[S_SURFACE], gs_.mode, gs_.overlay ? 1 : 0);
         };
         // (through a temporary file: a crash or a full disk never leaves the preferences half written)
         const int len = format(nullptr, 0);
@@ -517,17 +534,23 @@ const char* const* texts() {
     }
 }
 
-// orig: (none) — enhancement: a row's value as text
-std::string value_text(Setting s) {
+// orig: (none) — enhancement: a row's value v as text
+std::string value_text(Setting s, int v) {
     const char* const* t = texts();
-    const int v = gs_.value[s];
     char b[48];
     switch (s) {
+#if defined(__APPLE__)
+        case S_RENDERER: return "Metal";
+#else
         case S_RENDERER: return v != 0 ? "Vulkan" : "OpenGL";
+#endif
         case S_DISPLAY: return t[v != 0 ? T_FULLSCREEN : T_WINDOW];
         case S_MONITOR: return v >= 0 && static_cast<size_t>(v) < gs_.monitors.size() ? gs_.monitors[v] : std::string("?");
         case S_WINDOW: std::snprintf(b, sizeof b, "%d x %d", gs_.win_w, gs_.win_h); return b;
-        case S_SCALE: std::snprintf(b, sizeof b, "x%d.%02d", SCALES[v] / 100, SCALES[v] % 100); return b;  // (the font's '%' is a button)
+        case S_SCALE:
+            if (SCALES[v] == SCALE_4K) return "4K";
+            std::snprintf(b, sizeof b, "x%d.%02d", SCALES[v] / 100, SCALES[v] % 100);
+            return b;  // (the font's '%' is a button)
         case S_ASPECT: return t[v == 0 ? T_43 : v == 1 ? T_169 : T_FILL];
         case S_FIT: return t[v != 0 ? T_STRETCH : T_BARS];
         case S_HUD: return t[v == 0 ? T_43 : v == 1 ? T_169 : v == 2 ? T_219 : v == 3 ? T_329 : T_HUD_FIT];
@@ -556,7 +579,21 @@ std::string value_text(Setting s) {
     }
 }
 
+// orig: (none) — enhancement: a row's value as text
+std::string value_text(Setting s) { return value_text(s, gs_.value[s]); }
+
 // orig: (none) — enhancement: a setting stepped by d (+1 / -1), wrapping
+// orig: (none) — enhancement: a value the display can show differently from the others (the rows step over the rest, the
+// overlay does not list them): the Screen's 16:9 only on a display wider than 16:9 (else it is Fill, or bars on a narrower
+// one), the HUD's 16:9 / 21:9 / 32:9 only when narrower than the view (else they are Fit's). 4:3 (the original) and
+// Fill / Fit always; a value chosen before (another display) stays, shown as it is
+bool value_supported(Setting s, int v) {
+    constexpr float kSlack = 0.01f;
+    if (s == S_ASPECT && v == 1) return g_out_w <= 0 || g_out_h <= 0 || static_cast<float>(g_out_w) / static_cast<float>(g_out_h) > 16.0f / 9.0f + kSlack;
+    if (s == S_HUD && v >= 1 && v <= 3) return g_out_w <= 0 || HUD_ASPECTS[v] < 4.0f / 3.0f * g_view_widen - kSlack;
+    return true;
+}
+
 void step(Setting s, int d) {
     if (s == S_WINDOW) {  // the sizes' list, the current size counted where it falls
         uint32_t i = size_index(gs_.win_w, gs_.win_h);
@@ -577,7 +614,13 @@ void step(Setting s, int d) {
     }
     const int n = static_cast<int>(value_count(s));
     if (n <= 0) return;  // (the monitor row before GLFW is up: nothing to step through)
-    gs_.value[s] = (gs_.value[s] + d + n) % n;
+    int v = gs_.value[s];
+    for (int i = 0; i < n; ++i) {  // (the next value the display supports)
+        v = (v + d + n) % n;
+        if (value_supported(s, v)) break;
+    }
+    if (v == gs_.value[s]) return;
+    gs_.value[s] = v;
     changed();
 }
 
@@ -645,10 +688,19 @@ void graphics_host_window(int w, int h, bool fullscreen) {
     if (!g_advanced_disabled) gs_.dirty = true;
 }
 
+namespace {
+// orig: (none) — enhancement: a SCALES value as a multiple of an output of w x h
+float scale_for(int value, int w, int h) {
+    if (value != SCALE_4K) return static_cast<float>(value) / 100.0f;
+    if (w <= 0 || h <= 0) return 1.0f;
+    return std::min(3840.0f / static_cast<float>(w), 2160.0f / static_cast<float>(h));
+}
+}  // namespace
+
 // orig: (none) — enhancement (graphics.h)
 float graphics_render_scale() {
     if (gs_.scale_override > 0) return static_cast<float>(gs_.scale_override) / 100.0f;
-    return static_cast<float>(SCALES[gs_.value[S_SCALE]]) / 100.0f;
+    return scale_for(SCALES[gs_.value[S_SCALE]], g_out_w, g_out_h);
 }
 // orig: (none) — enhancement (graphics.h)
 void graphics_set_render_scale_percent(int pct) { gs_.scale_override = std::clamp(pct, 25, 400); }
@@ -806,6 +858,18 @@ void graphics_mips_apply() {
 // orig: (none) — enhancement (graphics.h)
 void graphics_frame() {
     if (g_advanced_disabled) return;
+    {  // the overlay's changes (graphics_quick_set), as the page's: applied, the page's values and the preferences after
+        std::vector<std::pair<Setting, int>> pending;
+        {
+            std::lock_guard<std::mutex> lock(g_quick_mutex);
+            pending.swap(g_quick_pending);
+        }
+        for (const auto& [s, v] : pending) {
+            if (v < 0 || v >= static_cast<int>(value_count(s)) || gs_.value[s] == v) continue;
+            gs_.value[s] = v;
+            changed();
+        }
+    }
     // the debug menu's texture toggles: both set the same way, the row follows
     if ((g_mrp_world_mip != gs_.mips_seen[0] || g_mrp_moby_mip != gs_.mips_seen[1]) && g_mrp_world_mip == g_mrp_moby_mip) {
         gs_.value[S_MIPS] = g_mrp_world_mip != 0 ? 0 : 1;
@@ -975,6 +1039,54 @@ void graphics_new_game_choice(uint32_t w) {
     changed();
     advanced_apply_mode(mode);
     std::printf("[graphics] new game: %s mode\n", mode == GAME_MODE_ORIGINAL ? "Original" : mode == GAME_MODE_MODERN ? "Modern" : "Experimental");
+}
+
+namespace {
+// orig: (none) — enhancement: the overlay's rows as the page's settings
+Setting quick_setting(QuickSetting q) {
+    switch (q) {
+        case QuickSetting::RenderScale: return S_SCALE;
+        case QuickSetting::Aspect: return S_ASPECT;
+        case QuickSetting::Hud: return S_HUD;
+        case QuickSetting::Vsync: return S_VSYNC;
+    }
+    return S_SCALE;
+}
+}  // namespace
+
+// orig: (none) — enhancement (graphics.h)
+int graphics_quick_count(QuickSetting q) { return static_cast<int>(value_count(quick_setting(q))); }
+int graphics_quick_value(QuickSetting q) {
+    graphics_load();
+    return gs_.value[quick_setting(q)];
+}
+std::string graphics_quick_text(QuickSetting q, int value) {
+    std::string t = value_text(quick_setting(q), value);
+    if (q == QuickSetting::RenderScale && g_out_w > 0 && g_out_h > 0 && value >= 0 && value < static_cast<int>(value_count(S_SCALE))) {
+        const float s = scale_for(SCALES[value], g_out_w, g_out_h);
+        char b[48];
+        std::snprintf(b, sizeof b, " (%ld x %ld)", std::lround(g_out_w * s), std::lround(g_out_h * s));
+        t += b;
+    }
+    return t;
+}
+bool graphics_quick_supported(QuickSetting q, int value) { return value_supported(quick_setting(q), value); }
+void graphics_output_size(int w, int h) {
+    g_out_w = w;
+    g_out_h = h;
+}
+void graphics_quick_set(QuickSetting q, int value) {
+    std::lock_guard<std::mutex> lock(g_quick_mutex);
+    g_quick_pending.emplace_back(quick_setting(q), value);
+}
+bool graphics_overlay_shown() {
+    graphics_load();
+    return gs_.overlay;
+}
+void graphics_set_overlay_shown(bool on) {
+    if (gs_.overlay == on) return;
+    gs_.overlay = on;
+    if (!g_advanced_disabled) gs_.dirty = true;
 }
 
 }  // namespace rac1

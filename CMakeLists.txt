@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.20)
 # the release's version (semantic): bumped at each release, with its tag vX.Y.Z (the in-game update check compares
 # it with the latest release's: docs/settings.md)
 project(rac1-native VERSION 0.6.0 LANGUAGES C CXX)
+if(APPLE)
+    enable_language(OBJC OBJCXX)  # (the Metal renderer: docs/metal.md; OBJC too, else GLFW's .m files build as C++)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -12,7 +15,7 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
 
-if(NOT CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+if(NOT CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
     message(FATAL_ERROR "rac1-native builds with GCC or clang (on Windows: clang or GCC for MinGW-w64, see docs/platforms.md); "
                         "this is ${CMAKE_CXX_COMPILER_ID}.")
 endif()
@@ -130,7 +133,9 @@ set(RAC1_VK_SHADERS_DIR ${CMAKE_BINARY_DIR}/generated_vk)
 set(RAC1_VK_SHADERS_CPP ${RAC1_VK_SHADERS_DIR}/vk_shaders.cpp)
 if(Python3_Interpreter_FOUND)
     set(_rac1_vk_compiler "")
-    if(RAC1_GLSLC)
+    if(APPLE)  # (the Metal renderer's: runtime/mtl/vk_on_metal.mm, no SPIR-V)
+        set(_rac1_vk_compiler metal)
+    elseif(RAC1_GLSLC)
         set(_rac1_vk_compiler ${RAC1_GLSLC})
     endif()
     add_custom_command(
@@ -139,7 +144,7 @@ if(Python3_Interpreter_FOUND)
         DEPENDS ${CMAKE_SOURCE_DIR}/tools/gen_vk_shaders.py ${CMAKE_SOURCE_DIR}/src/game/render/mrp_materials_glsl.inc
         COMMENT "Vulkan shaders (tools/gen_vk_shaders.py)"
         VERBATIM)
-    if(NOT RAC1_GLSLC)
+    if(NOT RAC1_GLSLC AND NOT APPLE)
         message(STATUS "Vulkan renderer: no glslc / glslangValidator found - built without its shaders (OpenGL only)")
     endif()
     add_custom_target(rac1_vk_shaders DEPENDS ${RAC1_VK_SHADERS_CPP})
@@ -173,13 +178,35 @@ add_library(rac1_runtime STATIC
     runtime/iop/iop_ram.cpp
     runtime/iop/stash_iop.cpp
     runtime/ipu/movie_hw.cpp
-    runtime/vk/vk_context.cpp
+    $<$<NOT:$<PLATFORM_ID:Darwin>>:runtime/vk/vk_context.cpp>
     ${RAC1_VK_SHADERS_CPP}
     # file I/O (hardware-adjacent, no game decisions)
     runtime/level/level_loader.cpp
 )
 target_include_directories(rac1_runtime PUBLIC ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src ${RAC1_VK_SHADERS_DIR})
 target_link_libraries(rac1_runtime PUBLIC rac1_platform rac1_profiler rac1_jobs rac1_formats glad glfw glm_headers OpenGL::GL volk imgui opengoal_989snd)
+
+# ---- the Metal renderer (macOS; docs/metal.md): its shaders are MSL made from the Vulkan renderer's GLSL by
+# tools/gen_metal_shaders.py (kept in the repository, runtime/mtl/shaders/), embedded here as text and compiled when the
+# game starts (no offline Metal compiler needed to build). Vulkan itself is not used on macOS.
+if(APPLE)
+    file(GLOB RAC1_MTL_SHADER_FILES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/runtime/mtl/shaders/*.metal)
+    set(RAC1_MTL_SHADERS_DIR ${CMAKE_BINARY_DIR}/generated_mtl)
+    set(RAC1_MTL_SHADERS_INC ${RAC1_MTL_SHADERS_DIR}/mtl_shader_sources.inc)
+    add_custom_command(
+        OUTPUT ${RAC1_MTL_SHADERS_INC}
+        COMMAND ${CMAKE_COMMAND} -DDIR=${CMAKE_SOURCE_DIR}/runtime/mtl/shaders -DOUT=${RAC1_MTL_SHADERS_INC}
+                -P ${CMAKE_SOURCE_DIR}/cmake/embed_metal_shaders.cmake
+        DEPENDS ${RAC1_MTL_SHADER_FILES} ${CMAKE_SOURCE_DIR}/cmake/embed_metal_shaders.cmake
+        COMMENT "Metal shaders (runtime/mtl/shaders/)"
+        VERBATIM)
+    # (on macOS the Vulkan renderer's code runs on Metal: runtime/mtl/vk_on_metal.mm in place of runtime/vk/vk_context.cpp)
+    target_sources(rac1_runtime PRIVATE runtime/mtl/mtl_context.mm runtime/mtl/vk_on_metal.mm ${RAC1_MTL_SHADERS_INC})
+    set_source_files_properties(runtime/mtl/mtl_context.mm runtime/mtl/vk_on_metal.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_include_directories(rac1_runtime PUBLIC ${RAC1_MTL_SHADERS_DIR})
+    target_compile_definitions(rac1_runtime PUBLIC RAC1_HAVE_METAL=1)
+    target_link_libraries(rac1_runtime PUBLIC "-framework Metal" "-framework QuartzCore" "-framework Cocoa")
+endif()
 
 # The movies' MPEG-2 pictures (runtime/ipu/movie_hw.cpp, the IPU's stand-in): FFmpeg's libavcodec
 # when pkg-config finds it (optional). Without it the game runs and its movies are skipped (logged).
@@ -198,6 +225,19 @@ if(RAC1_MOVIES)
         message(STATUS "Movies: libavcodec ${RAC1_AVCODEC_libavcodec_VERSION}")
         target_link_libraries(rac1_runtime PUBLIC PkgConfig::RAC1_AVCODEC)
         target_compile_definitions(rac1_runtime PRIVATE RAC1_HAVE_AVCODEC=1)
+    elseif(APPLE)
+        # (macOS without pkg-config: Homebrew's FFmpeg found by its headers and libraries)
+        find_path(RAC1_AVCODEC_INCLUDE_DIR libavcodec/avcodec.h HINTS /opt/homebrew/include /usr/local/include)
+        find_library(RAC1_AVCODEC_LIBRARY avcodec HINTS /opt/homebrew/lib /usr/local/lib)
+        find_library(RAC1_AVUTIL_LIBRARY avutil HINTS /opt/homebrew/lib /usr/local/lib)
+        if(RAC1_AVCODEC_INCLUDE_DIR AND RAC1_AVCODEC_LIBRARY AND RAC1_AVUTIL_LIBRARY)
+            message(STATUS "Movies: libavcodec (${RAC1_AVCODEC_LIBRARY})")
+            target_include_directories(rac1_runtime SYSTEM PRIVATE ${RAC1_AVCODEC_INCLUDE_DIR})
+            target_link_libraries(rac1_runtime PUBLIC ${RAC1_AVCODEC_LIBRARY} ${RAC1_AVUTIL_LIBRARY})
+            target_compile_definitions(rac1_runtime PRIVATE RAC1_HAVE_AVCODEC=1)
+        else()
+            message(STATUS "Movies: libavcodec not found (brew install ffmpeg): the game's movies are skipped")
+        endif()
     else()
         message(STATUS "Movies: libavcodec not found (pkg-config): the game's movies are skipped")
     endif()
@@ -224,6 +264,20 @@ if(RAC1_ORACLE)
         message(FATAL_ERROR "RAC1_ORACLE needs the generated sources (RAC1_NO_GENERATED is ON)")
     endif()
     add_subdirectory(tests/oracle)
+endif()
+
+# ---- tests/neon/ : the scalar-equivalence test for the VU fast paths' NEON twins (tests/neon/vu_neon_equiv.cpp) ----
+# Off by default: ./setup.sh never builds it. It needs no generated sources and no disc: the one test that proves
+# the NEON port of the VU SIMD helpers bit-identical to the scalar rules, on x86 (the SSE path) and on AArch64.
+option(RAC1_NEON_TEST "Build the NEON equivalence test (tests/neon: build/vu_neon_equiv)" OFF)
+if(RAC1_NEON_TEST)
+    enable_testing()
+    add_executable(vu_neon_equiv tests/neon/vu_neon_equiv.cpp)
+    target_include_directories(vu_neon_equiv PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src)
+    if(NOT MSVC)
+        target_compile_options(vu_neon_equiv PRIVATE -ffp-contract=off)
+    endif()
+    add_test(NAME vu_neon_equiv COMMAND vu_neon_equiv)
 endif()
 
 # ---- src/setup/ : setup & asset extraction ----

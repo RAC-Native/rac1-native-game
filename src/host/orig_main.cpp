@@ -143,6 +143,7 @@
 #include <runtime/level/level_loader.h>
 #include "host_priority.h"
 #include "host_input.h"
+#include "graphics_quick.h"
 #include "sample_prof.h"
 #include "profiler/host_profiler.h"
 #include "sim_autopilot.h"
@@ -2249,6 +2250,10 @@ int main(int argc, char** argv) {
         if (window != nullptr && rac1::vk::init(window, vsync0, headless)) {
             if (!headless && fs_monitor == nullptr) host_window_on_monitor(window, rac1::graphics_display().monitor);
         } else {
+#if defined(__APPLE__)
+            std::fprintf(stderr, "rac1-native: Metal could not start\n");  // (no OpenGL 4.6 on macOS)
+            return 1;
+#endif
             std::fprintf(stderr, "rac1-native: Vulkan could not start, OpenGL instead\n");
             if (window != nullptr) glfwDestroyWindow(window);
             window = nullptr;
@@ -2728,7 +2733,7 @@ int main(int argc, char** argv) {
         if (!headless) {
             bool cursor_free = false;  // (the debug menu has the cursor while it is open)
 #ifdef RAC1_DEVTOOLS
-            cursor_free = g_debug_tools && dt::dev_settings().open;
+            cursor_free = (g_debug_tools && dt::dev_settings().open) || dt::dev_overlay_wants_mouse();  // (the overlay's clicks: F1's window)
 #endif
             host_input_poll(window, cursor_free);
         }
@@ -3093,6 +3098,7 @@ int main(int argc, char** argv) {
             }
             glfwGetFramebufferSize(window, &fd.w, &fd.h);
             if (test_zero_fb(frame)) fd.w = fd.h = 0;  // (testing: RAC1_TEST_ZERO_FB with raw)
+            rac1::graphics_output_size(fd.w, fd.h);  // (the render scale's 4K, the Graphics rows the display supports)
             w = fd.w;
             h = fd.h;
             fd.vx = 0, fd.vy = 0, fd.vw = fd.w, fd.vh = fd.h;
