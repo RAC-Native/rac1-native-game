@@ -45,6 +45,7 @@ import disc_extract  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 WINDOWS = os.name == "nt"  # (a native Windows Python: MSYS2's CLANG64 / UCRT64 one, or python.org's)
+MACOS = sys.platform == "darwin"  # (Apple silicon: the Metal renderer, docs/metal.md)
 SETUP_CMD = "setup.cmd" if WINDOWS else "./setup.sh"  # (what the messages tell the player to run)
 BUILD_DIR = ROOT / "build"
 EXE = BUILD_DIR / ("rac1-native.exe" if WINDOWS else "rac1-native")
@@ -404,6 +405,51 @@ WINDOWS_DEPENDENCIES = [
 ]
 
 
+def macos_avcodec_ok() -> bool:
+    """FFmpeg on macOS: by pkg-config, or Homebrew's headers and libraries as CMake finds them without it."""
+    if shutil.which("pkg-config") and pkg_config("libavcodec", "libavutil"):
+        return True
+    return any(os.path.exists(os.path.join(p, "include", "libavcodec", "avcodec.h")) and
+               os.path.exists(os.path.join(p, "lib", "libavcodec.dylib")) for p in ("/opt/homebrew", "/usr/local"))
+
+
+# macOS: Apple's clang (the Command Line Tools or Xcode), the rest from Homebrew (https://brew.sh). No OpenGL, X11 or
+# Wayland files (GLFW is built for Cocoa) and no glslc (the Metal shaders are in the repository, compiled at start).
+# (what, required, check, Homebrew package)
+MACOS_DEPENDENCIES = [
+    ("CMake 3.20 or newer", True, cmake_ok, "cmake"),
+    ("Apple's C++ compiler (the Command Line Tools: xcode-select --install)", True, compiler_ok, None),
+    ("FFmpeg's libavcodec (optional: plays the game's movies)", False, macos_avcodec_ok, "ffmpeg"),
+]
+
+
+def check_system_macos():
+    missing_req, missing_opt = [], []
+    for dep in MACOS_DEPENDENCIES:
+        if not dep[2]():
+            (missing_req if dep[1] else missing_opt).append(dep)
+    for dep in missing_opt:
+        warn(f"Not found: {dep[0]}. The game runs without it.")
+    if not missing_req:
+        ok("Everything needed to build the game is installed.")
+    else:
+        for dep in missing_req:
+            print(color("1;31", f"  Missing: {dep[0]}"))
+    brew = [dep[3] for dep in missing_req + missing_opt if dep[3]]
+    if brew:
+        cmd = "brew install " + " ".join(brew)
+        if shutil.which("brew") is None:
+            print("\n  Install Homebrew (https://brew.sh), then:\n    " + color("1", cmd))
+        else:
+            print("\n  With Homebrew:\n    " + color("1", cmd))
+            if missing_req and ask("Run this command now?", False):
+                if subprocess.run(cmd, shell=True).returncode == 0 and all(d[2]() for d in missing_req if d[3]):
+                    missing_req = [d for d in missing_req if not d[3]]
+    if missing_req:
+        print(f"\n  Then run {SETUP_CMD} again.")
+        sys.exit(1)
+
+
 def check_system_windows():
     missing_req, missing_opt = [], []
     for dep in WINDOWS_DEPENDENCIES:
@@ -431,6 +477,9 @@ def check_system(iso=None):
     where it is installed in a container instead."""
     if WINDOWS:
         check_system_windows()
+        return
+    if MACOS:
+        check_system_macos()
         return
     distro = detect_distro()
     immutable = immutable_system()
