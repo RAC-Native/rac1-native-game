@@ -59,8 +59,8 @@ material moby 703 tex 7 metal 0.35 1
 material moby 703 tex 9 metal 0.35 1
 # Clank's green eyes on Ratchet's back (Anya's two lines, saved as moby 0 joint 62 - one of Ratchet's fingers - before the editor's
 # joint fix): Clank there is moby class 601, his head its joint 4; each light just in front of one eye.
-emit moby 601  0.125 -0.030 0.050  0.090 1.000 0.000  1.000 1.527 0.000  0.00  joint 4
-emit moby 601  0.125 0.030 0.050  0.115 1.000 0.000  1.000 1.000 0.000  0.00  joint 4
+emit moby 601  0.125 -0.030 0.050  0.090 1.000 0.000  0.350 0.450 0.000  0.00  joint 4
+emit moby 601  0.125 0.030 0.050  0.115 1.000 0.000  0.350 0.450 0.000  0.00  joint 4
 material moby 703 tex 10 metal 0.35 1
 material moby 703 tex 11 metal 0.35 1
 material moby 703 tex 5 metal 0.35 1
