@@ -17,6 +17,11 @@ What changed in each release. Releases are source only: you build the game with 
   "Seas drawn"); a distant surface can be picked; the ambient particles have a tab of their own, with Solo per line.
 
 ### Fixes
+- Debug menu: changing level (the Levels tab, `RAC1_GOTO`) during a movie stops the movie first, as its skip does: its sound
+  no longer plays on and its last picture no longer stays on the screen over the next level (#101). Testing: `RAC1_MOVIE_AT`.
+- Debug menu: the free hoverboard's jump plays once (take-off, in the air, landing) and goes back to riding, as the race board's
+  on Kalebo III: before, the riding played the jump's animation on a loop. Every jump is the same, 0.93 up and 0.6 s long, as
+  the race board's, whatever the frame's length; a held cross does not jump again (#101).
 - Materials: a level now takes 126 emissive surfaces and materials, not 30 - with the lines for every level, the lines past the
   30th were dropped ("metal rendering gives up after a set number of marked metals", #102).
 - Materials: a polished metal (roughness under about 0.4) no longer shows a sharp, jumping mirror of the last frame: the picture

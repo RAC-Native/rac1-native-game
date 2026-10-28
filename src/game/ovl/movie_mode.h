@@ -17,6 +17,13 @@ namespace rac1 {
 void movie_mode_update();
 // orig: 0x002999a8 (the same, run to its end at once: the oracle's whole-function check)
 void movie_mode_run();
+// orig: (host) the debug level change (the debug menu's Levels tab, RAC1_GOTO): while game mode 1 is on (a movie started
+// or playing; true then), its player is stopped at its next frame (movie_mode_update), as the player's skip test stops
+// it: the movie ends as a skipped one does (its picture and sound stream closed, movie_mode_end: mode 0, the music, the
+// talk). The caller changes the level once this is false. The PS2 runs the whole movie inside one main loop pass, so
+// nothing could change the level in the middle of one; the host's movie runs a frame at a time, and the level's main
+// loop left in the middle of it left the movie playing over the next level.
+bool movie_mode_stop();
 // orig: 0x002997c8 — after the movie: the vsync callback back, the GS memory the movie start
 // loaded (0x2995d0: 13 images 128 x 128 PSMCT24 and 17 of 64 x 64 PSMCT32 at *(0x15ee88) /
 // *(0x15ee78)) stored back into the buffer *(0x161058) (sceGsSetDefStoreImage 0x122518 /

@@ -3,6 +3,7 @@
 
 #include <game/lib/libcdvd.h>
 #include <game/lib/libgraph.h>
+#include <game/lib/movie_player.h>
 #include <game/lib/snd989.h>
 #include <game/ovl/cutscene.h>
 #include <game/ovl/memory_card.h>
@@ -21,6 +22,7 @@ namespace rac1 {
 namespace {
 constexpr OvConst<0x00179100u> TK{};  // the talk state (talk.cpp): +8 the moby, +0xc its talk struct
 bool g_running = false;               // the player's loop going (the host's split of 0x2999a8)
+bool g_stop = false;                  // movie_mode_stop: the player stopped at the next frame (host)
 
 // The movie of game mode 1 (0x161048 sector, 0x16104c size, 0x161050 sound track, 0x161054 / 0x161058
 // the buffers movie_start kept): the cache flushed, the sounds, the music and the disc's sound
@@ -45,10 +47,21 @@ void movie_mode_begin() {
 // orig: 0x002999a8
 void movie_mode_update() {
     if (!g_running) movie_mode_begin();
+    if (g_stop) {  // (host: the debug level change's stop, as the player's skip test stops it)
+        g_stop = false;
+        movie_player_stop();
+    }
     if (!movie_stream_frame()) return;
     g_running = false;
     cd_sync(0);
     movie_mode_end();
+}
+
+// orig: (host) see movie_mode.h
+bool movie_mode_stop() {
+    if (lw(OV(0x0015f5c4)) != 1) return false;
+    g_stop = true;
+    return true;
 }
 
 // orig: 0x002999a8

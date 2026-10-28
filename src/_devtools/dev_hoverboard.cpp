@@ -10,7 +10,8 @@
 //   water and the kill height still run as for any state), and the riding below moves him between the game's frames,
 //   with the game's own collision query (segment_collide 0x1efc70).
 // - the hero's board animations: level data. The hero's sequences come from the level's core (its 256-entry hero sequence
-//   table); Kalebo III's has the board's (58, 82, 85, 98), most levels do not (Kerwan: their class slots are null). They
+//   table); Kalebo III's has the board's (82 ridden, 85 jumping, 58 falling), most levels do not (Kerwan: their class
+//   slots are null). They
 //   are read from Kalebo III's core on the disc, put at host_layout::DEV_BOARD_SEQS (above the game's 32 MB) with their
 //   frame pointers relocated as the game's load does (checked byte for byte against Kalebo III's own copy), and hooked into
 //   the hero class's null slots while riding (put back after).
@@ -77,15 +78,21 @@ constexpr uint32_t RIDE_STATE = 0x6b;       // the board state: nothing per fram
 constexpr uint32_t FALL_STATE = 0x77;       // the fall to death (below the kill height, or a level's pit)
 constexpr int SOURCE_LEVEL = 16;            // Kalebo III: the board's class and the hero's board sequences
 constexpr int BOARD_CLASS = 439;
-constexpr int SEQ_STAND = 82, SEQ_RIDE = 85, SEQ_FALL = 58, SEQ_JUMP = 98;  // (Kalebo III's own: stood / ridden / falling / jumping)
-constexpr int SEQS[] = {SEQ_STAND, SEQ_RIDE, SEQ_FALL, SEQ_JUMP};
+// Kalebo III's own, as its race board plays them (measured there): 82 the board ridden (standing too), 85 the jump (frames
+// 0..4 a crouch the race skips, 5..13 in the air, 14..22 the landing; driving off an edge starts it at 11), 58 a long fall
+constexpr int SEQ_RIDE = 82, SEQ_JUMP = 85, SEQ_FALL = 58;
+constexpr int SEQS[] = {SEQ_RIDE, SEQ_JUMP, SEQ_FALL};
+constexpr float JUMP_TAKEOFF = 5.0f, JUMP_DROP = 11.0f, JUMP_LAND = 14.0f, JUMP_END = 22.0f;  // (85's frames)
 constexpr float BOARD_LIFT = 0.215f;        // the board's origin above the hero's (Kalebo III's board, measured)
 
 // the riding (per game frame; units the game's, metres)
 constexpr uint32_t FRAME_SCALE = 0x0015ed68;  // the game's frame scale (1, or 50 / 60 on the PAL disc's 50 Hz)
 constexpr float MAX_SPEED = 20.0f, ACCEL = 18.0f, BRAKE = 30.0f, DRAG = 4.0f;
 constexpr float TURN_SLOW = 4.5f, TURN_FAST = 2.2f;  // rad / s at rest and at full speed
-constexpr float GRAVITY = 30.0f, JUMP_SPEED = 10.0f;
+// the jump as the race board's on Kalebo III (measured: 0.93 up, 0.6 s in the air): the same impulse at every press, the
+// arc integrated exactly (the height does not depend on the frame's length)
+constexpr float GRAVITY = 21.0f, JUMP_SPEED = 6.25f;
+constexpr float LONG_FALL = 0.75f;          // seconds in the air (falling) after which the falling animation (58) plays
 constexpr float STEP_UP = 0.7f;             // a step or a ramp the board climbs in one frame
 constexpr float SNAP_DOWN = 0.9f;           // the ground followed down a slope (more: a fall)
 constexpr float WALL_LOW = 0.35f, WALL_HIGH = 1.1f;  // the wall checks' heights (a railing, a wall)
@@ -189,7 +196,10 @@ struct Ride {
     V3 trail[16];         // the ground positions of the last frames (safe: the oldest)
     int trail_n = 0;
     int anim = -1;
+    enum class Air { None, Jump, Drop, Fall, Land } phase = Air::None;  // the animation's part (Land: 85's landing frames)
+    float air_t = 0.0f;   // seconds since the take-off / leaving the ground
     bool cross_was = false;
+    bool jump_asked = false;  // cross pressed (its edge, seen at any call) and not yet used by a step
     uint32_t tick = 0;    // the hero's state timer at the last step (+0x198: runs with his update; the pause stops it)
     std::vector<uint32_t> slots;  // the class slots hooked
     bool restore_pending = false;
@@ -243,14 +253,63 @@ void seqs_unhook() {
     g_ride.restore_pending = false;
 }
 
-// orig: (host) the hero's animation (the game's hero_anim_set), when the class has it
-void anim(int seq, float blend) {
-    if (g_ride.anim == seq) return;
+// orig: (host) the hero's animation (the game's hero_anim_set) from `frame`, when the class has it; the same one again only
+// when `restart`
+void anim(int seq, float blend, int frame = 0, bool restart = false) {
+    if (g_ride.anim == seq && !restart) return;
     const uint32_t hm = ru(HERO_MOBY);
     const uint32_t cls = hm != 0 ? ru(hm + 0x24) : 0;
     if (cls == 0 || ru(cls + 0x48 + 4 * static_cast<uint32_t>(seq)) == 0) return;
     g_ride.anim = seq;
-    hero_anim_set(static_cast<uint32_t>(seq), 0, blend);
+    hero_anim_set(static_cast<uint32_t>(seq), static_cast<uint32_t>(frame), blend);
+}
+
+// orig: (host) the hero's animation frame `f` (its frame +0x51, the part of the next +0x54), for the jump's frames in the air:
+// the game plays a sequence on at its own rate and loops it, the race's board code picks them along the arc
+void anim_frame(float f) {
+    const uint32_t hm = ru(HERO_MOBY);
+    if (hm == 0 || g_ride.anim < 0 || ee_read<uint8_t>(hm + 0x53) != static_cast<uint32_t>(g_ride.anim)) return;
+    const float w = std::floor(f);
+    ee_write<uint8_t>(hm + 0x51, static_cast<uint8_t>(w));
+    wf(hm + 0x54, f - w);
+}
+
+// orig: (host) the animation of the ride's frame: the board ridden on the ground; in the air the jump's frames along the arc
+// (a jump from its take-off, a drive off an edge from 11), a long fall's own; on landing the jump's landing frames played
+// once, then the board ridden again
+void ride_anim() {
+    Ride& R = g_ride;
+    const uint32_t hm = ru(HERO_MOBY);
+    using A = Ride::Air;
+    const float up_t = JUMP_SPEED / GRAVITY;  // (the time to the top of a jump; as long again down to the same height)
+    switch (R.phase) {
+        case A::Jump: {  // (the race's: 5..6 over the first quarter of the rise, then on to 14 at the landing)
+            const float p = std::min(R.air_t / (2.0f * up_t), 0.97f);
+            anim_frame(p < 0.28f ? JUMP_TAKEOFF + p / 0.28f : JUMP_TAKEOFF + 1.0f + (JUMP_LAND - JUMP_TAKEOFF - 1.0f) * (p - 0.28f) / 0.72f);
+            if (R.vz < 0.0f && R.air_t > 2.0f * up_t + LONG_FALL) {
+                R.phase = A::Fall;
+                anim(SEQ_FALL, 8.0f);
+            }
+            break;
+        }
+        case A::Drop:
+            anim_frame(std::min(JUMP_DROP + R.air_t * 6.0f, JUMP_LAND - 0.2f));
+            if (R.air_t > LONG_FALL) {
+                R.phase = A::Fall;
+                anim(SEQ_FALL, 8.0f);
+            }
+            break;
+        case A::Land: {  // (85 on from 14 at the game's rate: back to riding at its end, or if it looped)
+            const uint32_t f = hm != 0 ? ee_read<uint8_t>(hm + 0x53) == SEQ_JUMP ? ee_read<uint8_t>(hm + 0x51) : 0 : 0;
+            if (f < static_cast<uint32_t>(JUMP_LAND) || f >= static_cast<uint32_t>(JUMP_END)) {
+                R.phase = A::None;
+                anim(SEQ_RIDE, 6.0f);
+            }
+            break;
+        }
+        case A::Fall:
+        case A::None: break;
+    }
 }
 
 // orig: (host) the hero where the ride puts him: position, facing, velocity (his moby follows at his next update)
@@ -298,14 +357,17 @@ void step() {
     } else {
         R.speed = std::max(0.0f, R.speed - DRAG * DT);
     }
-    // the jump (cross, on the ground or just off it)
-    const bool cross = (ru(PAD + 0x1a0) & CROSS) != 0;
-    if (cross && !R.cross_was && (R.ground || R.air < COYOTE) && R.vz < JUMP_SPEED * 0.5f) {
+    // the jump (a press of cross, on the ground or just off it; held, it does not jump again): always the same speed up
+    const bool jump = R.jump_asked && (R.ground || R.air < COYOTE) && R.phase != Ride::Air::Jump;
+    R.jump_asked = false;
+    if (jump) {
         R.vz = JUMP_SPEED;
         R.ground = false;
         R.air = COYOTE;
+        R.air_t = 0.0f;
+        R.phase = Ride::Air::Jump;
+        anim(SEQ_JUMP, 3.0f, static_cast<int>(JUMP_TAKEOFF), true);
     }
-    R.cross_was = cross;
     // the horizontal move, the walls slid along
     const V3 fwd{std::cos(R.yaw), std::sin(R.yaw), 0.0f};
     V3 mv{fwd.x * R.speed * DT, fwd.y * R.speed * DT, 0.0f};
@@ -347,6 +409,11 @@ void step() {
     if (on) {
         if (R.ground) R.vz = std::clamp((np.z - old_z) / DT, -12.0f, 12.0f);  // (the slope's: carried off a ramp's top)
         else R.vz = 0.0f;
+        if (!R.ground && R.phase != Ride::Air::None && R.phase != Ride::Air::Land) {  // (landed: the jump's landing frames)
+            if (R.phase == Ride::Air::Fall) anim(SEQ_JUMP, 4.0f, static_cast<int>(JUMP_LAND));
+            else anim_frame(JUMP_LAND);
+            R.phase = Ride::Air::Land;
+        }
         R.ground = true;
         R.air = 0;
         ++R.grounded;
@@ -355,8 +422,9 @@ void step() {
         R.ground = false;
         R.grounded = 0;
         ++R.air;
+        R.air_t += DT;
+        np.z += R.vz * DT - 0.5f * GRAVITY * DT * DT;  // (exact for a constant gravity: the same arc at 60 or 50 Hz)
         R.vz -= GRAVITY * DT;
-        np.z += R.vz * DT;
         if (R.vz > 0.0f && segment({np.x, np.y, old_z + 1.2f}, {np.x, np.y, np.z + 1.5f}, hit, n) && n.z < -0.3f) {  // (a ceiling)
             R.vz = 0.0f;
             np.z = old_z;
@@ -384,8 +452,11 @@ void step() {
     }
     place(R.pos, R.yaw, {});  // (no velocity: the game's own move of the hero, which runs in any state, would add it)
     // the animation
-    if (!R.ground && R.air > COYOTE) anim(R.vz > 0.0f ? SEQ_JUMP : SEQ_FALL, 8.0f);
-    else anim(R.speed > 2.0f ? SEQ_RIDE : SEQ_STAND, 8.0f);
+    if (!R.ground && R.air > COYOTE && (R.phase == Ride::Air::None || R.phase == Ride::Air::Land)) {  // (off an edge: the jump's falling frames)
+        R.phase = Ride::Air::Drop;
+        anim(SEQ_JUMP, 6.0f, static_cast<int>(JUMP_DROP), true);
+    }
+    ride_anim();
 }
 
 }  // namespace
@@ -427,7 +498,7 @@ bool dev_free_board_start() {
     g_mrp_guest_class = SOURCE_LEVEL * 10000 + BOARD_CLASS;
     g_mrp_guest_lift = BOARD_LIFT;
     g_mrp_guest_on = true;
-    anim(SEQ_STAND, 6.0f);
+    anim(SEQ_RIDE, 6.0f);
     return true;
 }
 
@@ -467,6 +538,9 @@ void dev_free_board_frame() {
     }
     const int32_t mode = r32(GAME_MODE);
     g_mrp_guest_on = mode == 0 || mode == 3;  // (not in the level exit's flight)
+    const bool cross = (ru(PAD + 0x1a0) & CROSS) != 0;  // (the press seen at any call: it jumps at the next step)
+    if (mode == 0 && cross && !R.cross_was) R.jump_asked = true;
+    R.cross_was = cross;
     const uint32_t tick = ru(P + 0x198);
     if (tick == R.tick || mode != 0) return;  // (the hero not updated, or not playing: paused, a dialog, the level's exit)
     R.tick = tick;
