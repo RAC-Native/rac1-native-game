@@ -869,6 +869,13 @@ void mrp_chain_join() {
     }
 }
 
+// orig: (host) see mrp_world_wiiu.inc
+void mrp_chain_wait_idle() {
+    Worker& w = g_worker;
+    std::unique_lock<std::mutex> lk(w.m);
+    w.cv.wait(lk, [&w] { return !w.busy; });
+}
+
 // orig: (host) see mrp_chain.h
 const MrpChainFrame& mrp_chain_frame() { return g_reader.frame; }
 

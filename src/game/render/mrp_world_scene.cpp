@@ -1,6 +1,7 @@
 // The MRP world's scene: see mrp_world_scene.h. Host code.
 #include <game/render/mrp_world_scene.h>
 #include "mrp_world_sky.inc"
+#include "mrp_world_wiiu.inc"
 
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -1655,9 +1656,79 @@ vu1::Vu1* g_sky_vu = nullptr;
 // orig: (host) see mrp_world_sky.inc: the tags as scene_build follows them (REF data elsewhere, CALL / RET), each tag's stream - its upper
 // 64 bits, then its data - read from a copy (a code's data may cross from the tag into its data), its codes as scene_build's sky branch takes them
 bool sky_capture(uint32_t first, uint32_t end, const SceneAddrs& ad, SceneFrame& out, bool reset, uint32_t* outside) {
-    scene_reset(out);
-    if (outside != nullptr) *outside = 0;
+    // ((2026-10-28) the walk and the codes' run apart - sky_capture_copy, sky_capture_run -, the Wii U's prepare runs the second on its
+    // worker: the same packets, the same order)
+    static SkyStream s;
+    const bool walked = sky_capture_copy(first, end, ad, s);
+    if (outside != nullptr) *outside = s.outside;
+    if (!walked) {
+        scene_reset(out);
+        return false;
+    }
+    return sky_capture_run(s, out, reset);
+}
+
+// orig: (host) see mrp_world_wiiu.inc: sky_capture's walk - the tags as scene_build follows them (REF data elsewhere, CALL / RET), each
+// tag's stream (its upper 64 bits, then its data) copied
+bool sky_capture_copy(uint32_t first, uint32_t end, const SceneAddrs& ad, SkyStream& s) {
+    s.ok = false;
+    s.bytes.clear();
+    s.tags.clear();
+    s.outside = 0;
     if (end <= first) return false;
+    std::vector<uint32_t> stack;
+    uint32_t addr = first & 0x01fffff0u;
+    const uint32_t stop_at = end & 0x01fffff0u;
+    for (int guard = 0; guard < 100000 && addr != stop_at; ++guard) {
+        const uint8_t* t = static_cast<const uint8_t*>(ee_ram_ptr_read(addr));
+        if (t == nullptr) break;
+        const uint64_t lo = r64(t);
+        const uint32_t qwc = lo & 0xffff, id = (lo >> 28) & 7;
+        const uint32_t a = static_cast<uint32_t>(lo >> 32) & 0x01fffff0u;
+        uint32_t data = addr + 16, next = addr + 16 + qwc * 16;
+        bool stop = false;
+        switch (id) {
+        case 0: data = a; stop = true; break;
+        case 1: break;
+        case 2: next = a; break;
+        case 3: case 4: data = a; next = addr + 16; break;
+        case 5: stack.push_back(next); next = a; break;
+        case 6:
+            if (stack.empty()) stop = true;
+            else { next = stack.back(); stack.pop_back(); }
+            break;
+        case 7: stop = true; break;
+        }
+        if (addr < first || addr >= end) ++s.outside;
+        const uint32_t at = static_cast<uint32_t>(s.bytes.size());
+        s.bytes.resize(at + 16, 0);
+        std::memcpy(s.bytes.data() + at + 8, t + 8, 8);
+        if (qwc != 0) {
+            const uint8_t* d = static_cast<const uint8_t*>(ee_ram_ptr_read(data));
+            if (d == nullptr || ee_ram_ptr_read(data + qwc * 16 - 1) == nullptr) {
+                s.bytes.resize(at);
+                break;
+            }
+            s.bytes.insert(s.bytes.end(), d, d + qwc * 16);
+        }
+        s.tags.push_back({at, static_cast<uint32_t>(s.bytes.size()) - at});
+        if (stop) break;
+        addr = next;
+    }
+    s.sky_asset = lwu(ad.sky_asset);
+    sky_texture_entries_at(s.sky_tex, ad.sky_asset);
+    // (the A the sky pass projected with: the game's, or the widened one of the Wii U's widescreen - mrp_lod.h mrp_lod_sky_widen_real)
+    const float* wide_a = mrp_lod_sky_real_a();
+    for (uint32_t k = 0; k < 16; ++k) s.sky_a[k] = wide_a != nullptr ? wide_a[k] : lwc1(ad.a + 4 * k);
+    s.ok = true;
+    return true;
+}
+
+// orig: (host) see mrp_world_wiiu.inc: each tag's stream's codes as scene_build's sky branch takes them - its DIRECTs' GIF streams a
+// packet each, its other VIF codes on the private VU1 (the particle program's MPG, data and starts, its kicks a packet each)
+bool sky_capture_run(const SkyStream& s, SceneFrame& out, bool reset) {
+    scene_reset(out);
+    if (!s.ok) return false;
     if (g_sky_vu == nullptr || reset) {
         delete g_sky_vu;
         g_sky_vu = new vu1::Vu1();
@@ -1686,40 +1757,9 @@ bool sky_capture(uint32_t first, uint32_t end, const SceneAddrs& ad, SceneFrame&
         sky_packet(from, true);
     };
     SkyGif sky_gif;
-    std::vector<uint32_t> stack;
-    static std::vector<uint8_t> buf;
-    uint32_t addr = first & 0x01fffff0u;
-    const uint32_t stop_at = end & 0x01fffff0u;
-    for (int guard = 0; guard < 100000 && addr != stop_at; ++guard) {
-        const uint8_t* t = static_cast<const uint8_t*>(ee_ram_ptr_read(addr));
-        if (t == nullptr) break;
-        const uint64_t lo = r64(t);
-        const uint32_t qwc = lo & 0xffff, id = (lo >> 28) & 7;
-        const uint32_t a = static_cast<uint32_t>(lo >> 32) & 0x01fffff0u;
-        uint32_t data = addr + 16, next = addr + 16 + qwc * 16;
-        bool stop = false;
-        switch (id) {
-        case 0: data = a; stop = true; break;
-        case 1: break;
-        case 2: next = a; break;
-        case 3: case 4: data = a; next = addr + 16; break;
-        case 5: stack.push_back(next); next = a; break;
-        case 6:
-            if (stack.empty()) stop = true;
-            else { next = stack.back(); stack.pop_back(); }
-            break;
-        case 7: stop = true; break;
-        }
-        if (outside != nullptr && (addr < first || addr >= end)) ++*outside;
-        buf.assign(16, 0);
-        std::memcpy(buf.data() + 8, t + 8, 8);
-        if (qwc != 0) {
-            const uint8_t* d = static_cast<const uint8_t*>(ee_ram_ptr_read(data));
-            if (d == nullptr || ee_ram_ptr_read(data + qwc * 16 - 1) == nullptr) break;
-            buf.insert(buf.end(), d, d + qwc * 16);
-        }
-        const uint8_t* p = buf.data();
-        const uint32_t n = static_cast<uint32_t>(buf.size());
+    for (const auto& [at, len] : s.tags) {
+        const uint8_t* p = s.bytes.data() + at;
+        const uint32_t n = len;
         for (uint32_t i = 0; i + 4 <= n;) {
             const uint32_t code = r32(p + i);
             i += 4;
@@ -1739,15 +1779,11 @@ bool sky_capture(uint32_t first, uint32_t end, const SceneAddrs& ad, SceneFrame&
             if (vu_codes) vu1::vif1_command(vu, code, p + i, sky_kick);  // (the sprites: the particle program's MPG, its data, its starts)
             i += nb;
         }
-        if (stop) break;
-        addr = next;
     }
     out.has_sky = true;
-    out.sky_asset = lwu(ad.sky_asset);
-    sky_texture_entries_at(out.sky_tex, ad.sky_asset);
-    // (the A the sky pass projected with: the game's, or the widened one of the Wii U's widescreen - mrp_lod.h mrp_lod_sky_widen_real)
-    const float* wide_a = mrp_lod_sky_real_a();
-    for (uint32_t k = 0; k < 16; ++k) out.sky_a[k] = wide_a != nullptr ? wide_a[k] : lwc1(ad.a + 4 * k);
+    out.sky_asset = s.sky_asset;
+    out.sky_tex = s.sky_tex;
+    for (size_t k = 0; k < 16; ++k) out.sky_a[k] = s.sky_a[k];
     out.ok = true;
     return true;
 }
@@ -1823,33 +1859,41 @@ void tfrag_host_draws(SceneFrame& f, const TfragLevel& L, const std::vector<std:
 // orig: (host) see mrp_world_scene.h
 bool scene_from_static(const StaticFrame& sf, const StaticLevel& sl, const std::array<float, 16>& a, const std::array<float, 3>& camera, const TfragLevel* tl,
                        const std::vector<std::pair<uint32_t, uint8_t>>* tdraws, SceneFrame& f) {
+    SceneStaticConsts k;
+    scene_static_consts(k);
+    return scene_from_static_k(sf, sl, a, camera, tl, tdraws, k, f);
+}
+
+// orig: (host) see mrp_world_wiiu.inc
+void scene_static_consts(SceneStaticConsts& k) {
+    k.tfrag_vu = tfrag_pass_vu(k.tview, k.tconsts);
+    // the tie A alpha-test state packet's qwords 0x3cc (the GIF tag) / 0x3cd (TEST_1) as the tie pass's constants UNPACK them from the
+    // overlay (0x1c2a30, 0x1c2a40); the shrub A fog constants the shrub pass's constants UNPACK (0x1c2ad8)
+    const uint32_t tag = OV(0x001c2a30u), test = OV(0x001c2a40u), fc = OV(0x001c2ad8u);
+    k.tie_tag = {lwu(tag), lwu(tag + 4), lwu(tag + 8), lwu(tag + 12)};
+    k.tie_test = {lwu(test), lwu(test + 4), lwu(test + 8), lwu(test + 12)};
+    for (uint32_t i = 0; i < 4; ++i) k.shrub_fog[i] = lwc1(fc + 4 * i);
+}
+
+// orig: (host) see mrp_world_wiiu.inc
+bool scene_from_static_k(const StaticFrame& sf, const StaticLevel& sl, const std::array<float, 16>& a, const std::array<float, 3>& camera, const TfragLevel* tl,
+                         const std::vector<std::pair<uint32_t, uint8_t>>* tdraws, const SceneStaticConsts& k, SceneFrame& f) {
     scene_reset(f);
     if (!sl.ok) return false;
     // the tfrags first (the tfrag pass's range comes before the tie and shrub passes' in the chain: the walk emits the host's tfrag
     // draws at its end, before the host's ties / shrubs)
-    if (tl != nullptr && tdraws != nullptr) {
-        std::array<float, 16> tv;
-        std::array<uint32_t, 4 * 14> tc;
-        if (tfrag_pass_vu(tv, tc)) tfrag_host_draws(f, *tl, *tdraws, tv, tc);
-    }
+    if (tl != nullptr && tdraws != nullptr && k.tfrag_vu) tfrag_host_draws(f, *tl, *tdraws, k.tview, k.tconsts);
     const int view = static_cast<int>(f.views.size());
     f.views.push_back(view_of_ee(a.data(), camera.data()));
     // the tie A alpha-test state packet the walker emits before the host's ties when the program's state (VU1 0x3cb y) is not their 0:
     // its qwords 0x3cc (the GIF tag) / 0x3cd (TEST_1, no state) as the tie pass's constants UNPACK them from the overlay (0x1c2a30,
     // 0x1c2a40; on Veldin the tag 00008001 10000000 0000000e 0, TEST_1 0005340b 0 47 0). The state the chain's draws leave is not known
     // without the walker: on the PC it was not 0 (0xffffffff) at the host's ties, so the packet is always sent
-    if (sf.on[0] && !sf.draws[0].empty()) {
-        const uint32_t tag = OV(0x001c2a30u), test = OV(0x001c2a40u);
-        state_packet(f, {lwu(tag), lwu(tag + 4), lwu(tag + 8), lwu(tag + 12)}, {lwu(test), lwu(test + 4), lwu(test + 8), lwu(test + 12)});
-    }
+    if (sf.on[0] && !sf.draws[0].empty()) state_packet(f, k.tie_tag, k.tie_test);
     if (sf.on[0]) static_draws(f, sf, sl, 0, view, nullptr);
-    if (sf.on[1]) {
-        // the shrub A fog constants (vf30 z / w, vf29 x / y): the floats the shrub pass's constants UNPACK (0x6c030000: the overlay's
-        // 0x1c2ac0.. to VU1 qwords 0..2) leave there (Veldin: -0.0267885, 254.999, 53.5499, 255)
-        const uint32_t fc = OV(0x001c2ad8u);
-        const float fog[4] = {lwc1(fc), lwc1(fc + 4), lwc1(fc + 8), lwc1(fc + 12)};
-        static_draws(f, sf, sl, 1, view, fog);
-    }
+    // the shrub A fog constants (vf30 z / w, vf29 x / y): the floats the shrub pass's constants UNPACK (0x6c030000: the overlay's
+    // 0x1c2ac0.. to VU1 qwords 0..2) leave there (Veldin: -0.0267885, 254.999, 53.5499, 255)
+    if (sf.on[1]) static_draws(f, sf, sl, 1, view, k.shrub_fog);
     // (not made here: the shrub far variants' quads - phase 5 with the sky)
     f.ok = true;
     return true;

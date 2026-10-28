@@ -10,6 +10,7 @@
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
+#include <runtime/ee/game_thread.h>
 
 #include "font_atlas.h"  // (generated into the build folder)
 
@@ -35,7 +36,21 @@
 bool g_menu_draw_mobys = true, g_menu_draw_2d = true, g_menu_overlap = true;
 float g_menu_vpscale = 1.0f;
 
+// ((2026-10-28) the game's update on the game thread beside the drawing - orig_main.cpp's Wii U branch, runtime/ee/game_thread.h:
+// RAC1_WIIU_GAME_THREAD=0 the host frame in series as before; read at the first ask, run.cfg's then set; the Game page flips it)
+namespace {
+int g_game_thread = -1;  // (-1: not read yet)
+}  // namespace
+bool rac1_wiiu_game_thread() {
+    if (g_game_thread < 0) {
+        const char* e = std::getenv("RAC1_WIIU_GAME_THREAD");
+        g_game_thread = e == nullptr || std::atoi(e) != 0 ? 1 : 0;
+    }
+    return g_game_thread != 0;
+}
+
 void rac1_wiiu_quit();  // wiiu_input.cpp: the game asked to end by itself
+bool rac1_wiiu_last_vpad(VPADStatus* out);  // wiiu_input.cpp: the GamePad's last sample the game's pads read took
 
 namespace {
 
@@ -159,7 +174,12 @@ const Item kGame[] = {
          }
      }},
     {"Catch-up steps drawn", [] { return on_off(!rac1::g_draw_last_step_only); }, [] { rac1::g_draw_last_step_only = !rac1::g_draw_last_step_only; }},
-    {"Exit game (back to the Wii U Menu)", [] { return std::string("tap"); }, [] { rac1_wiiu_quit(); }},
+    // ((2026-10-28) the game's steps on the game thread while the frame before is drawn; the page's 14th row - "Exit game" is the
+    // Picture page's)
+    {"Game thread (beside the drawing)", [] { return on_off(rac1_wiiu_game_thread()); }, [] {
+         rac1_wiiu_game_thread();
+         g_game_thread = g_game_thread != 0 ? 0 : 1;
+     }},
 };
 #undef RAC1_SKIP_ITEM
 // the page's items (row 0, above them, switches the page)
@@ -175,6 +195,13 @@ constexpr int kItemY = 34, kItemH = 30, kItemX = 8, kItemW = 420;
 
 bool g_was_touched = false;
 int g_touch_x = -1, g_touch_y = -1, g_taps = 0;
+// ((2026-10-28) the taps while the game thread runs the game's steps - its update reads many of the switches -: flipped once it is
+// joined, debug_menu_flush)
+std::vector<const Item*> g_held;
+void flip(const Item& it) {
+    it.flip();
+    std::printf("[wiiu] menu: %s -> %s\n", it.label, it.state().c_str());
+}
 
 }  // namespace
 
@@ -250,8 +277,14 @@ void debug_menu_input() {
     if (!g_up) return;
     VPADStatus v{};
     VPADReadError e = VPAD_READ_SUCCESS;
-    // (VPAD's own sample buffer: the game's VPADRead takes the latest too - reading it here takes nothing from the game's buttons)
-    if (VPADRead(VPAD_CHAN_0, &v, 1, &e) != 1 || e != VPAD_READ_SUCCESS) return;
+    // (VPAD's own sample buffer: the game's VPADRead takes the latest too - reading it here takes nothing from the game's buttons.
+    // The game thread reading the pads meanwhile: its last sample, VPAD read by one thread at a time)
+    const bool game_running = rac1::game_thread::running();
+    if (game_running) {
+        if (!rac1_wiiu_last_vpad(&v)) return;
+    } else if (VPADRead(VPAD_CHAN_0, &v, 1, &e) != 1 || e != VPAD_READ_SUCCESS) {
+        return;
+    }
     VPADTouchData t{};
     VPADGetTPCalibratedPoint(VPAD_CHAN_0, &t, &v.tpNormal);
     const bool touched = v.tpNormal.touched != 0 && v.tpNormal.validity == 0;
@@ -270,27 +303,55 @@ void debug_menu_input() {
         } else {
             for (size_t i = 0; i < n; ++i)
                 if (hit(kItemY + static_cast<int>(i + 1) * kItemH)) {
-                    items[i].flip();
-                    std::printf("[wiiu] menu: %s -> %s\n", items[i].label, items[i].state().c_str());
+                    if (game_running) g_held.push_back(&items[i]);
+                    else flip(items[i]);
                 }
         }
     }
     g_was_touched = touched;
 }
 
+void debug_menu_flush() {
+    for (const Item* it : g_held) flip(*it);
+    g_held.clear();
+}
+
+namespace {
+void menu_submit(const GX2ColorBuffer* cb, size_t verts);
+}  // namespace
+
 void debug_menu_draw(const GX2ColorBuffer* cb, const std::vector<std::string>& stats) {
     if (!g_up || cb == nullptr) return;
+    size_t n = 0;
+    const Item* items = page_items(&n);
+    std::vector<std::string> states(n);
+    for (size_t i = 0; i < n; ++i) states[i] = items[i].state();
+    char b[64];
+    std::snprintf(b, sizeof b, "touch %d,%d  taps %d", g_touch_x, g_touch_y, g_taps);
+    // ((2026-10-28) the quads made again only when what they show changes - the page, the items' states, the stats (a window's: every 30
+    // host frames at most), the touch line -, and only their bytes flushed to the GPU (the buffer's whole 1.1 MB before): the menu cost ~2 ms
+    // a host frame. RAC1_WIIU_MENU_CACHE=0: made every frame as before)
+    static const bool cache = std::getenv("RAC1_WIIU_MENU_CACHE") == nullptr || std::atoi(std::getenv("RAC1_WIIU_MENU_CACHE")) != 0;
+    static std::string last_key;
+    static size_t last_n = 0;
+    std::string key(1, static_cast<char>('0' + g_page));
+    for (const std::string& st : states) key.append(st).push_back('\x1f');
+    for (const std::string& l : stats) key.append(l).push_back('\x1e');
+    key += b;
+    if (cache && key == last_key) {
+        if (last_n != 0) menu_submit(cb, last_n);
+        return;
+    }
+    last_key = std::move(key);
     g_v.clear();
     static const float white[4] = {1, 1, 1, 1}, grey[4] = {0.6f, 0.6f, 0.6f, 1}, on[4] = {0.10f, 0.45f, 0.15f, 1}, off[4] = {0.45f, 0.12f, 0.10f, 1},
                        head[4] = {1.0f, 0.85f, 0.3f, 1}, tab[4] = {0.15f, 0.2f, 0.35f, 1};
     text(kItemX, 6, "rac1-native debug menu (tap an item)", head);
-    size_t n = 0;
-    const Item* items = page_items(&n);
     box(kItemX, kItemY, kItemW, kItemH - 4, tab);
     text(kItemX + 6, kItemY + 4, g_page == 0 ? "Page: [Picture]  Game   (tap)" : "Page:  Picture  [Game]  (tap)", head);
     for (size_t i = 0; i < n; ++i) {
         const int y = kItemY + static_cast<int>(i + 1) * kItemH;
-        const std::string st = items[i].state();
+        const std::string& st = states[i];
         box(kItemX, static_cast<float>(y), kItemW, kItemH - 4, st == "off" ? off : on);
         text(kItemX + 6, static_cast<float>(y + 4), items[i].label, white);
         text(kItemX + kItemW - 6 - kFontCellW * static_cast<float>(st.size()), static_cast<float>(y + 4), st, white);
@@ -308,13 +369,22 @@ void debug_menu_draw(const GX2ColorBuffer* cb, const std::vector<std::string>& s
         text(440, y, l, l.rfind("  ", 0) == 0 ? grey : white);
         y += kFontCellH + 2;
     }
-    char b[64];
-    std::snprintf(b, sizeof b, "touch %d,%d  taps %d", g_touch_x, g_touch_y, g_taps);
     text(kItemX, kScreenH - kFontCellH - 4, b, grey);
+    last_n = g_v.size();
     if (g_v.empty()) return;
-    void* p = GX2RLockBufferEx(&g_vb, GX2R_RESOURCE_BIND_NONE);
-    std::memcpy(p, g_v.data(), g_v.size() * sizeof(V));
-    GX2RUnlockBufferEx(&g_vb, GX2R_RESOURCE_BIND_NONE);
+    // (the GPU is done with the buffer: wiiu_gfx.cpp waits for the frame before's commands before this frame's draws)
+    const auto lk = static_cast<GX2RResourceFlags>(GX2R_RESOURCE_DISABLE_CPU_INVALIDATE | GX2R_RESOURCE_DISABLE_GPU_INVALIDATE);
+    void* p = GX2RLockBufferEx(&g_vb, lk);
+    const uint32_t bytes = static_cast<uint32_t>(g_v.size() * sizeof(V));
+    std::memcpy(p, g_v.data(), bytes);
+    GX2RUnlockBufferEx(&g_vb, lk);
+    GX2Invalidate(static_cast<GX2InvalidateMode>(GX2_INVALIDATE_MODE_CPU | GX2_INVALIDATE_MODE_ATTRIBUTE_BUFFER), p, bytes);
+    menu_submit(cb, last_n);
+}
+
+namespace {
+// orig: (host) the menu's `verts` vertices (in g_vb) drawn into `cb`
+void menu_submit(const GX2ColorBuffer* cb, size_t verts) {
     GX2SetColorBuffer(cb, GX2_RENDER_TARGET_0);
     GX2SetViewport(0.0f, 0.0f, static_cast<float>(cb->surface.width), static_cast<float>(cb->surface.height), 0.0f, 1.0f);
     GX2SetScissor(0, 0, cb->surface.width, cb->surface.height);
@@ -330,6 +400,7 @@ void debug_menu_draw(const GX2ColorBuffer* cb, const std::vector<std::string>& s
     GX2SetPixelTexture(&g_font, g_sampler_loc);
     GX2SetPixelSampler(&g_sampler, g_sampler_loc);
     GX2RSetAttributeBuffer(&g_vb, 0, sizeof(V), 0);
-    GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, static_cast<uint32_t>(g_v.size()), 0, 1);
+    GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, static_cast<uint32_t>(verts), 0, 1);
     GX2SetColorControl(GX2_LOGIC_OP_COPY, 0x00, FALSE, TRUE);
 }
+}  // namespace

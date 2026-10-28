@@ -338,6 +338,10 @@ struct Log {
 } g_log;
 
 Built g_built;
+// (mrp_2d_gx2_prebuild) the draw g_built was made for ahead: its screen (null: none), frame and range
+const GX2ColorBuffer* g_pre_screen = nullptr;
+const MrpChainFrame* g_pre_frame = nullptr;
+size_t g_pre_from = 0, g_pre_to = 0;
 
 }  // namespace
 
@@ -438,6 +442,24 @@ size_t mrp_2d_gx2_clear_caches() {
 // orig: (host) see mrp_2d_backend.inc
 size_t mrp_2d_gx2_texture_count() { return g_tex.size(); }
 
+void mrp_2d_gx2_prebuild(const MrpChainFrame& f, const GX2ColorBuffer* screen, float FB_W, float FB_H, const gs::Viewport& vp, size_t from, size_t to) {
+    g_pre_screen = nullptr;
+    if (!g_ready || screen == nullptr) return;
+    const int win_w = static_cast<int>(screen->surface.width), win_h = static_cast<int>(screen->surface.height);
+    if (f.prims.empty() || from >= std::min(to, f.prims.size()) || win_w <= 0 || win_h <= 0 || FB_W <= 0.0f || FB_H <= 0.0f) return;
+    mrp2d::BuildOptions opt;
+    opt.drop_gif_3d = true;
+    mrp2d::build(f, win_w, win_h, FB_W, FB_H, nullptr, vp, from, to, g_built, opt);
+    g_pre_screen = screen;
+    g_pre_frame = &f;
+    g_pre_from = from;
+    g_pre_to = to;
+}
+
+// orig: (host) see mrp_2d_gx2.h
+void mrp_2d_gx2_prebuild_drop() { g_pre_screen = nullptr; }
+
+// orig: (host) see mrp_2d_gx2.h
 void mrp_2d_gx2_draw(const MrpChainFrame& f, const GX2ColorBuffer* screen, float FB_W, float FB_H, const gs::Viewport& vp, bool targets, size_t from, size_t to) {
     if (!g_ready || screen == nullptr) return;
     const int win_w = static_cast<int>(screen->surface.width), win_h = static_cast<int>(screen->surface.height);
@@ -447,10 +469,14 @@ void mrp_2d_gx2_draw(const MrpChainFrame& f, const GX2ColorBuffer* screen, float
     ++g_call;
     const auto t0 = std::chrono::steady_clock::now();
     const gs::Viewport& v = vp;
-    // (the build: the game's projected 3D on the GIF path left out - no host depth here, its effects not drawn yet)
-    mrp2d::BuildOptions opt;
-    opt.drop_gif_3d = true;
-    mrp2d::build(f, win_w, win_h, FB_W, FB_H, nullptr, v, from, to, g_built, opt);
+    // (the build: the game's projected 3D on the GIF path left out - no host depth here, its effects not drawn yet; or the one
+    // mrp_2d_gx2_prebuild made for this call)
+    if (!(g_pre_screen == screen && g_pre_frame == &f && g_pre_from == from && g_pre_to == to)) {
+        mrp2d::BuildOptions opt;
+        opt.drop_gif_3d = true;
+        mrp2d::build(f, win_w, win_h, FB_W, FB_H, nullptr, v, from, to, g_built, opt);
+    }
+    g_pre_screen = nullptr;
     const Built& b = g_built;
     const auto t1 = std::chrono::steady_clock::now();
     g_log.prims += b.prims;

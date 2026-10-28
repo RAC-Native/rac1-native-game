@@ -15,13 +15,17 @@ bool debug_menu_wanted();
 // its shader (shaders/debug_text.gsh), font and buffers: after WHBGfxInit; false: not up (the GamePad shows the game as before)
 bool debug_menu_init();
 void debug_menu_shutdown();
-// the touch screen read (once a host frame, before the draw: a new tap flips its item)
+// the touch screen read (once a host frame, before the draw: a new tap flips its item - held while the game thread runs the game's
+// steps, flipped by debug_menu_flush once it is joined)
 void debug_menu_input();
+void debug_menu_flush();
 // the menu and `stats` (the timing's lines) drawn into the GamePad's colour buffer (WHBGfxBeginRenderDRC done, the buffer cleared)
 void debug_menu_draw(const GX2ColorBuffer* cb, const std::vector<std::string>& stats);
 
 // the switches the menu flips (wiiu_gfx.cpp and the backends read them each frame)
 extern bool g_menu_draw_mobys, g_menu_draw_2d, g_menu_overlap;
 extern float g_menu_vpscale;
+// the game's steps on the game thread beside the drawing (RAC1_WIIU_GAME_THREAD, default on; orig_main.cpp asks each host frame)
+bool rac1_wiiu_game_thread();
 
 #endif

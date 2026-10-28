@@ -3,6 +3,7 @@
 #include <game/render/mrp_chain.h>
 #include "mrp_world_backend.inc"
 #include "mrp_world_sky.inc"
+#include "mrp_world_wiiu.inc"
 
 #include <formats/moby_mrp.h>
 #include <formats/world_mrp.h>
@@ -1294,7 +1295,21 @@ void create_new_buckets(Level& L) {
 // frame (the per-frame cache at its +0, 0x28b680 / 0x28c3c0 / 0x28c07c), its texels (+8: offset / 16 in the
 // asset's texture data *(asset + 0x14)) and palette (+0xa) as the sky's texture uploads send them (texture_uploads 0x24d760: the
 // texels as PSMT8 rows, the palette 16 x 16 PSMCT32, CSM1), decoded once per level to RGBA (the GS's 0..0x80 alpha kept)
+#if defined(__WIIU__)
+// ((2026-10-28) the Wii U, g_wiiu_sky_at_prepare: the frame's sky textures resolved by the prepare's first half - the entries' offsets
+// read from EE memory, a texture missing decoded -, the second half on its worker, beside the game thread's update, then reading
+// no EE memory: sky_texture finds them here)
+std::vector<std::pair<uint64_t, const TexRef*>> g_sky_resolved;
+bool g_sky_resolved_on = false;
+#endif
 const TexRef* sky_texture(Level& L, const SceneFrame& S, uint64_t tex0) {
+#if defined(__WIIU__)
+    if (g_sky_resolved_on) {
+        for (const auto& [t, r] : g_sky_resolved)
+            if (t == tex0) return r;
+        return nullptr;
+    }
+#endif
     uint32_t e = 0;
     for (const auto& [t, a] : S.sky_tex)
         if (t == tex0) {
@@ -3577,6 +3592,58 @@ void build_emitters() {
                 before_merge - tie_emitters, now_ms() - t0);
 }
 
+// (testing, any host, RAC1_MRPW_PAGES_CHECK=1, 2026-10-28) the Wii U worker's culling against the frame's own: after the capture step's
+// static_frame_build / tfrag_decide, the same made again from a copy of their snapshots and from EE memory's pages as the Wii U's
+// prepare keeps them (mrp_world_wiiu.inc EePages: noted once a level, copied again here every frame) - the instances, their rows,
+// draws, far variants and the tfrag decisions compared bit for bit, the reads outside the pages counted; a line every 300 frames
+const bool g_pages_check = std::getenv("RAC1_MRPW_PAGES_CHECK") != nullptr && std::atoi(std::getenv("RAC1_MRPW_PAGES_CHECK")) != 0;
+void pages_check() {
+    static EePages pg;
+    static int level = -1;
+    static const StaticLevel* noted = nullptr;
+    static uint64_t frames = 0, bad_static = 0, bad_tfrag = 0, misses = 0, insts = 0, tdraws = 0;
+    if (!g_slevel.ok) return;
+    if (level != g_level.id || noted != &g_slevel) {
+        pg.clear();
+        static_pages_note(g_slevel, pg);
+        tfrag_pages_note(g_tlevel, pg);
+        level = g_level.id;
+        noted = &g_slevel;
+        std::printf("[pages-check] level %d: %zu pages (%zu KB, %zu hot words)\n", level, pg.pages(), pg.pages() * 4, pg.hot_words());
+    }
+    if (frames % 2 == 0) pg.refresh_all();  // (every other frame: the hot words alone between - the Wii U's every frame)
+    else pg.refresh_hot();
+    pg.misses = 0;
+    const StaticSnapshot snap = static_snapshot();
+    StaticFrame f;
+    static_frame_build_at(g_slevel, g_rcols, f, g_static_check, snap, &pg);
+    bool same = f.on[0] == g_sframe.on[0] && f.on[1] == g_sframe.on[1] && f.insts.size() == g_sframe.insts.size() && f.variant_gif == g_sframe.variant_gif;
+    for (int k = 0; k < 2 && same; ++k) {
+        same = f.draws[k].size() == g_sframe.draws[k].size();
+        for (size_t i = 0; same && i < f.draws[k].size(); ++i) same = f.draws[k][i].pk == g_sframe.draws[k][i].pk && f.draws[k][i].inst == g_sframe.draws[k][i].inst;
+    }
+    for (size_t i = 0; same && i < f.insts.size(); ++i) {
+        const StaticInst &a = f.insts[i], &b = g_sframe.insts[i];
+        same = std::memcmp(a.rows, b.rows, sizeof a.rows) == 0 && std::memcmp(a.morph, b.morph, sizeof a.morph) == 0 && a.slot == b.slot && a.fog == b.fog && a.alpha == b.alpha;
+    }
+    if (!same && bad_static++ < 5) std::printf("[pages-check] frame %llu: the ties' / shrubs' frame differs (%zu / %zu instances)\n", static_cast<unsigned long long>(frames), f.insts.size(), g_sframe.insts.size());
+    insts += f.insts.size();
+    const TfragSnapshot tsnap = tfrag_snapshot();
+    if (g_tlevel.ok && tsnap.valid) {
+        std::vector<std::pair<uint32_t, uint8_t>> mine, theirs;
+        tfrag_decide_at(g_tlevel, tsnap, false, mine, &pg);
+        tfrag_decide(g_tlevel, tsnap, false, theirs);
+        if (mine != theirs && bad_tfrag++ < 5) std::printf("[pages-check] frame %llu: the tfrag decisions differ (%zu / %zu)\n", static_cast<unsigned long long>(frames), mine.size(), theirs.size());
+        tdraws += mine.size();
+    }
+    misses += pg.misses;
+    if (++frames % 300 == 0)
+        std::printf("[pages-check] %llu frames: %llu with another ties' / shrubs' frame, %llu with other tfrag decisions, %llu reads outside the pages; %.0f instances, %.0f tfrag draws a frame\n",
+                    static_cast<unsigned long long>(frames), static_cast<unsigned long long>(bad_static), static_cast<unsigned long long>(bad_tfrag),
+                    static_cast<unsigned long long>(misses), static_cast<double>(insts) / 300.0, static_cast<double>(tdraws) / 300.0);
+    if (frames % 300 == 0) insts = tdraws = 0;
+}
+
 bool g_cast_cascades = false;
 int g_colours_level = -1;  // the level whose resident / tfrag colours were taken at least once (the colours held before: none) // this frame's casters outside the view made for the cascades too
 // orig: (host) the casters' frame built with the static frame (its EE reads among the scene's captured inputs)
@@ -3631,6 +3698,7 @@ struct SceneWorker {
                     if (g_static_on) {  // (the colours alone kept while a light is in use: the instances are this frame's)
                         if (!freeze) resident_colours_update(g_rcols, colours);
                         static_frame_build(g_slevel, g_rcols, g_sframe, g_static_check);
+                        if (g_pages_check) pages_check();
                     }
                     shadow_static_build();
                     if (g_input.tfrag_level != nullptr && !freeze) tfrag_colours_update(g_tcols, g_tlevel);
@@ -3873,6 +3941,7 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
         if (g_static_on) {  // (the colours alone kept while a light is in use: the instances are this frame's)
             if (!freeze) resident_colours_update(g_rcols, colour_source());
             static_frame_build(g_slevel, g_rcols, g_sframe, g_static_check);
+            if (g_pages_check) pages_check();
         }
         shadow_static_build();
         if (g_input.tfrag_level != nullptr && !freeze) tfrag_colours_update(g_tcols, g_tlevel);
@@ -4002,6 +4071,7 @@ uint64_t g_wiiu_serial = 0;  // (mrpwb::FrameView::serial)
 
 // orig: (host) see mrp_world_renderer.h
 bool g_wiiu_world_async = true;  // (see mrp_world_renderer.h)
+bool g_wiiu_sky_at_prepare = false;  // (see mrp_world_renderer.h)
 
 namespace {
 double g_ms_head = 0.0;  // (the preparation's first half's time, added to the second's)
@@ -4017,32 +4087,110 @@ SceneFrame g_sky_cap;
 bool g_sky_cap_fresh = false;
 double g_sky_cap_ms = 0.0;
 int g_sky_cap_level = -1;
+// ((2026-10-28) the whole preparation on the worker, mrp_world_wiiu.inc; RAC1_WIIU_PREP_ALL, on by default, =0 the first half on the
+// main thread as before) what the main thread takes for it at the prepare - the game thread's update writes EE memory and the
+// snapshots meanwhile -: the snapshots' copies, the projection A and the camera, scene_from_static's constants, the sky's copied range
+bool prep_all_on() {
+    static const bool on = std::getenv("RAC1_WIIU_PREP_ALL") == nullptr || std::atoi(std::getenv("RAC1_WIIU_PREP_ALL")) != 0;
+    return on;
+}
+struct HeadIn {
+    StaticSnapshot snap;
+    TfragSnapshot tsnap;
+    bool tfrag = false;
+    std::array<float, 16> a{};
+    std::array<float, 3> cam{};
+    SceneStaticConsts k;
+    bool sky = false;  // (the sky's range copied this host frame and drawn: run on the worker, its packets before the world's)
+};
+HeadIn g_head_in;
+bool g_job_head = false;  // (the job dispatched runs the first half too: wiiu_prep_head)
+// the sky's range of the frame's chain copied by mrp_world_wiiu_sky_capture (prep-all: its codes run on the worker), the level it was
+// copied in; the level the capture's private VU1 last ran for (reset at a new one: the main thread's capture or the worker's run)
+SkyStream g_sky_stream;
+bool g_sky_stream_fresh = false;
+int g_sky_stream_level = -1;
+int g_sky_vu_level = -1;
+// EE memory's pages the culling reads (mrp_world_wiiu.inc), noted again at a new level (g_level_loads) or after a run that read outside
+// them; the class records' flags copied every prepare, the other pages RAC1_WIIU_PAGES_EVERY prepares round (default 30)
+EePages g_pages;
+uint64_t g_pages_loads = ~0ull;
+bool g_pages_renote = false;
+uint64_t g_pages_renotes = 0;
+// the relighting's marks (relight_visible_mark) the worker's culling made, applied by the next prepare - never while the game thread
+// runs its update, which reads them (overlay_entry.cpp world_relight): an entry relit a host frame later than with the first half on
+// the main thread
+struct VisPending {
+    bool on = false;
+    bool kind[3] = {};
+    std::vector<uint32_t> idx[3];
+};
+VisPending g_vis_pending;
+void vis_pending_apply() {
+    VisPending& v = g_vis_pending;
+    if (!v.on) return;
+    v.on = false;
+    relight_visible_clear();
+    for (int k = 0; k < 3; ++k) {
+        if (v.kind[k]) relight_visible_mark(k, ~0u);
+        for (uint32_t i : v.idx[k]) relight_visible_mark(k, i);
+    }
+}
+// (testing, RAC1_WIIU_PREP_TIME=1) the first half's parts, ms a call: 0..4 the main thread's (as before), 5..8 the worker's
+double g_part_ms[10] = {};
+int g_part_n = 0, g_part_wn = 0;
+bool part_time_on() {
+    static const bool on = std::getenv("RAC1_WIIU_PREP_TIME") != nullptr && std::atoi(std::getenv("RAC1_WIIU_PREP_TIME")) != 0;
+    return on;
+}
 }  // namespace
 
 // orig: (host) see mrp_world_sky.inc
 void mrp_world_wiiu_sky_capture(bool walk) {
+    if (prep_all_on()) mrp_world_wiiu_join();  // (the worker's last run, which reads the copy and adds its time, done)
     g_sky_cap_fresh = false;
+    g_sky_stream_fresh = false;
     g_sky_cap_ms = 0.0;
     if (!walk || !g_render_sky || !mrp_world_gx2_sky_ready()) return;
     const PassRange* r = nullptr;
     for (const PassRange& p : scene_passes())
         if (p.pass == 3) r = &p;
     if (r == nullptr) return;
-    mrp_chain_join();  // (the reader's VU1 programs done: the capture's run on the same VU1 runtime)
-    const double t0 = now_ms();
     const int id = world_level_id();
     uint32_t outside = 0;
-    g_sky_cap_fresh = sky_capture(r->first, r->end, scene_addrs(), g_sky_cap, id != g_sky_cap_level, &outside);
+    if (prep_all_on()) {
+        // ((2026-10-28) the range copied alone here - the tags' streams, the asset, its entries, A -, its codes run by the prepare's worker
+        // once the chain's reader is done with VU1: mrp_world_wiiu.inc sky_capture_copy / sky_capture_run)
+        const double t0 = now_ms();
+        g_sky_stream_fresh = sky_capture_copy(r->first, r->end, scene_addrs(), g_sky_stream);
+        g_sky_stream_level = id;
+        outside = g_sky_stream.outside;
+        g_sky_cap_ms = now_ms() - t0;
+    } else {
+        mrp_chain_join();  // (the reader's VU1 programs done: the capture's run on the same VU1 runtime)
+        const double t0 = now_ms();
+        g_sky_cap_fresh = sky_capture(r->first, r->end, scene_addrs(), g_sky_cap, id != g_sky_vu_level, &outside);
+        g_sky_vu_level = id;
+        g_sky_cap_ms = now_ms() - t0;
+    }
     g_sky_cap_level = id;
-    g_sky_cap_ms = now_ms() - t0;
     static uint64_t told = 0;
     if (outside != 0 && told++ < 4) std::printf("[mrpw] the sky's capture: %u tags outside the sky's range taken as the sky's\n", outside);
 }
 
 void mrp_world_wiiu_prepare(bool active) {
     mrp_world_wiiu_join();  // (the frame before's second half, if it was not drawn)
+    vis_pending_apply();    // (the worker's last culling's marks: the game thread is joined)
+    if (g_pages.misses != 0) {  // (a run read outside the pages - zeros there -: noted again, eight times at most)
+        if (g_pages_renotes < 8) std::printf("[mrpw] the worker's culling read %u times outside its EE pages: noted again\n", g_pages.misses);
+        g_pages.misses = 0;
+        g_pages_renote = g_pages_renotes++ < 8;
+    }
+    g_sky_resolved_on = false;
     const bool sky_fresh = g_sky_cap_fresh;  // (this host frame's capture only)
     g_sky_cap_fresh = false;
+    const bool stream_fresh = g_sky_stream_fresh;
+    g_sky_stream_fresh = false;
     Frame& F = g_frame;
     F.active = false;
     F.pending = false;
@@ -4058,9 +4206,9 @@ void mrp_world_wiiu_prepare(bool active) {
     if (!g_level.loaded || !g_slevel.ok) return;
     const double t0 = now_ms();
     // (testing, RAC1_WIIU_PREP_TIME=1: the first half's parts, ms a call, every 120 calls)
-    static const bool part_time = std::getenv("RAC1_WIIU_PREP_TIME") != nullptr && std::atoi(std::getenv("RAC1_WIIU_PREP_TIME")) != 0;
-    static double part_ms[6] = {};
-    static int part_n = 0;
+    const bool part_time = part_time_on();
+    double* const part_ms = g_part_ms;
+    int& part_n = g_part_n;
     double tp = t0;
     auto part = [&](int k) {
         if (!part_time) return;
@@ -4134,6 +4282,72 @@ void mrp_world_wiiu_prepare(bool active) {
         }
     }
     part(1);
+    if (prep_all_on()) {  // ((2026-10-28) the rest on the worker, wiiu_prep_head: its EE reads taken here)
+        HeadIn& in = g_head_in;
+        in.snap = static_snapshot();
+        in.tsnap = tfrag_snapshot();
+        in.tfrag = g_render_tfrag && mrp_world_gx2_tfrag_ready() && g_tlevel.ok && in.tsnap.valid && in.tsnap.handle;
+        if (in.tfrag) {
+            // the tfrags' lit colours (their mirror, which the worker's CPU route reads): as the ties' / shrubs' above, the whole table
+            // compared every RAC1_WIIU_TFRAG_COLOUR_EVERY host frames (default 30; 1 every frame as before) and at a new level, between
+            // them the entries the skipped pass's relighting relit (overlay_entry.cpp world_relight: tfrag_colours_touch)
+            static const int every = std::getenv("RAC1_WIIU_TFRAG_COLOUR_EVERY") != nullptr ? std::max(1, std::atoi(std::getenv("RAC1_WIIU_TFRAG_COLOUR_EVERY"))) : 30;
+            static int since = 0;
+            if (g_tcols.all_dirty || g_tcols.level != &g_tlevel || ++since >= every) {
+                tfrag_colours_update(g_tcols, g_tlevel);
+                tfrag_colours_update_touched(g_tcols, g_tlevel, true);
+                since = 0;
+            } else {
+                tfrag_colours_update_touched(g_tcols, g_tlevel, false);
+            }
+        } else {
+            tfrag_colours_update_touched(g_tcols, g_tlevel, true);  // (the notes dropped)
+        }
+        part(2);
+        {  // the culling's EE pages: noted at a new level, then kept up to date
+            static const uint32_t every = std::getenv("RAC1_WIIU_PAGES_EVERY") != nullptr ? static_cast<uint32_t>(std::max(1, std::atoi(std::getenv("RAC1_WIIU_PAGES_EVERY")))) : 30u;
+            if (g_pages_loads != g_level_loads || g_pages_renote) {
+                g_pages.clear();
+                static_pages_note(g_slevel, g_pages);
+                tfrag_pages_note(g_tlevel, g_pages);
+                g_pages.refresh_all();
+                if (g_pages_loads != g_level_loads)
+                    std::printf("[mrpw] level %d: the worker's culling reads %zu EE pages (%zu KB) copied, %zu words every prepare\n", g_level.id, g_pages.pages(),
+                                g_pages.pages() * 4, g_pages.hot_words());
+                g_pages_loads = g_level_loads;
+                g_pages_renote = false;
+            } else {
+                g_pages.refresh_hot();
+                g_pages.refresh_rolling(static_cast<uint32_t>((g_pages.pages() + every - 1) / every));
+            }
+        }
+        const SceneAddrs ad = scene_addrs();
+        for (uint32_t k = 0; k < 16; ++k) in.a[k] = lwc1(ad.a + 4 * k);
+        for (uint32_t k = 0; k < 3; ++k) in.cam[k] = lwc1(ad.camera + 4 * k);
+        scene_static_consts(in.k);
+        in.sky = stream_fresh && F.in.sky;
+        {  // the sky's textures (sky_texture: the entries' texels in EE memory, decoded once a level) resolved here, as with the game thread
+            static SceneFrame sky_entries;
+            sky_entries.sky_tex = in.sky ? g_sky_stream.sky_tex : std::vector<std::pair<uint64_t, uint32_t>>{};
+            sky_entries.sky_asset = in.sky ? g_sky_stream.sky_asset : 0;
+            g_sky_resolved.clear();
+            for (const auto& [t, e] : sky_entries.sky_tex) g_sky_resolved.emplace_back(t, sky_texture(g_level, sky_entries, t));
+            g_sky_resolved_on = true;
+        }
+        part(3);
+        if (part_time && ++part_n == 120) {
+            std::printf("[mrpw] the prepare on the main thread, ms a call: the chain's wait and the registers %.2f, the ties' / shrubs' colours %.2f, "
+                        "the tfrags' colours %.2f, the pages, the constants and the sky's textures %.2f\n",
+                        part_ms[0] / 120, part_ms[1] / 120, part_ms[2] / 120, part_ms[3] / 120);
+            part_n = 0;
+            for (int k = 0; k < 5; ++k) part_ms[k] = 0.0;
+        }
+        g_ms_head += now_ms() - t0;
+        g_job_head = true;
+        wiiu_prep_dispatch();
+        return;
+    }
+    g_job_head = false;
     static_frame_build(g_slevel, g_rcols, g_sframe, false);
     // ((2026-10-28) the instances drawn, for the skipped passes' relighting: overlay_entry.cpp world_relight relights those alone, as the
     // passes' lists; the tfrags' below)
@@ -4167,19 +4381,81 @@ void mrp_world_wiiu_prepare(bool active) {
     // the sky (MRP_LITE.md phase 5): this frame's capture's packets before the world's, as its range is in the chain - build_triangles makes
     // its batches (Batch::sky) as the PC's, the GS registers it leaves the world's start (the PC's tfrags see its ALPHA_1)
     if (sky_fresh && F.in.sky) sky_prepend(F.scene, g_sky_cap);
+    if (g_wiiu_sky_at_prepare) {  // (the second half may run beside the game thread's update: its EE reads done here, sky_texture)
+        g_sky_resolved.clear();
+        for (const auto& [t, e] : F.scene.sky_tex) g_sky_resolved.emplace_back(t, sky_texture(g_level, F.scene, t));
+        g_sky_resolved_on = true;
+    }
     part(4);
     if (part_time && ++part_n == 120) {
         std::printf("[mrpw] the prepare's first half, ms a call: the chain's wait and the registers %.2f, the ties' / shrubs' colours %.2f, "
                     "their frame %.2f, the tfrags' colours and decisions %.2f, the scene %.2f\n",
                     part_ms[0] / 120, part_ms[1] / 120, part_ms[2] / 120, part_ms[3] / 120, part_ms[4] / 120);
         part_n = 0;
-        for (double& v : part_ms) v = 0.0;
+        for (int k = 0; k < 5; ++k) part_ms[k] = 0.0;
     }
     g_ms_head += now_ms() - t0;
     wiiu_prep_dispatch();
 }
 
 namespace {
+// orig: (host) ((2026-10-28) RAC1_WIIU_PREP_ALL) the first half's computing part, on the worker - nothing of it reads EE memory: the ties' /
+// shrubs' frame from the snapshot's copy and the pages (static_frame_build_at), the tfrags' decisions (tfrag_decide_at), the scene
+// (scene_from_static_k), the sky's codes run (sky_capture_run: the chain's reader done with VU1 first) and its packets put first; the
+// relighting's marks kept for the next prepare (g_vis_pending). false: no scene (the frame not drawn)
+bool wiiu_prep_head() {
+    Frame& F = g_frame;
+    const HeadIn& in = g_head_in;
+    const double t0 = now_ms();
+    const bool part_time = part_time_on();
+    double tp = t0;
+    auto part = [&](int k) {
+        if (!part_time) return;
+        const double t = now_ms();
+        g_part_ms[k] += t - tp;
+        tp = t;
+    };
+    static_frame_build_at(g_slevel, g_rcols, g_sframe, false, in.snap, &g_pages);
+    VisPending& v = g_vis_pending;
+    for (int k = 0; k < 3; ++k) {
+        v.kind[k] = false;
+        v.idx[k].clear();
+    }
+    for (int k = 0; k < 2; ++k) v.kind[1 + k] = g_sframe.on[k];
+    const uint32_t sf = g_rcols.shrub_first();
+    for (const StaticInst& si : g_sframe.insts) {
+        if (si.slot < sf) v.idx[1].push_back(si.slot / kTieColours);
+        else v.idx[2].push_back((si.slot - sf) / kShrubColours);
+    }
+    part(5);
+    if (in.tfrag) {
+        tfrag_decide_at(g_tlevel, in.tsnap, false, g_tdecide, &g_pages);
+        v.kind[0] = true;
+        for (const auto& [k, code] : g_tdecide) v.idx[0].push_back(k);
+    }
+    v.on = true;
+    part(6);
+    const bool ok = scene_from_static_k(g_sframe, g_slevel, in.a, in.cam, in.tfrag ? &g_tlevel : nullptr, in.tfrag ? &g_tdecide : nullptr, in.k, F.scene);
+    part(7);
+    if (ok && in.sky) {
+        mrp_chain_wait_idle();  // (the chain's reader's VU1 programs done: the capture's private VU1 shares the VU1 runtime)
+        const bool reset = g_sky_stream_level != g_sky_vu_level;
+        g_sky_vu_level = g_sky_stream_level;
+        const double ts = now_ms();
+        if (sky_capture_run(g_sky_stream, g_sky_cap, reset)) sky_prepend(F.scene, g_sky_cap);
+        g_sky_cap_ms += now_ms() - ts;
+    }
+    part(8);
+    if (part_time && ++g_part_wn == 120) {
+        std::printf("[mrpw] the prepare on the worker, ms a call: the ties' / shrubs' frame %.2f, the tfrags' decisions %.2f, the scene %.2f, the sky's run %.2f\n",
+                    g_part_ms[5] / 120, g_part_ms[6] / 120, g_part_ms[7] / 120, g_part_ms[8] / 120);
+        g_part_wn = 0;
+        for (int k = 5; k < 9; ++k) g_part_ms[k] = 0.0;
+    }
+    g_ms_head += now_ms() - t0;
+    return ok;
+}
+
 // orig: (host) the preparation's second half - nothing of it reads EE memory: the scene's triangles (build_triangles), tfrag's CPU
 // route on its frozen inputs, the colours' changes taken (on the preparation's worker, or here with RAC1_WIIU_WORLD_ASYNC=0)
 void wiiu_prep_tail() {
@@ -4227,7 +4503,7 @@ void wiiu_prep_dispatch() {
     if (first) g_wiiu_world_async = async_env;
     first = false;
     if (!g_wiiu_world_async) {
-        wiiu_prep_tail();
+        if (!g_job_head || wiiu_prep_head()) wiiu_prep_tail();
         return;
     }
     PrepWorker& w = g_prep;
@@ -4244,7 +4520,7 @@ void wiiu_prep_dispatch() {
             w.job = false;
             __asm__ volatile("mtfsf 0xff, %0" : : "f"(w.fpscr));
             l.unlock();
-            wiiu_prep_tail();
+            if (!g_job_head || wiiu_prep_head()) wiiu_prep_tail();
             l.lock();
             w.busy = false;
             w.cv.notify_all();

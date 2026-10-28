@@ -697,6 +697,19 @@ bool mrp_world_gx2_ready() { return g_ready; }
 
 // orig: (host) see mrp_world_gx2.h
 Gx2Perf g_gx2_perf;
+Gx2DrawView g_gx2_view;
+
+// orig: (host) see mrp_world_gx2.h
+void gx2_draw_view_take() {
+    Gx2DrawView& v = g_gx2_view;
+    mrp_world_view_proj(v.vp);
+    v.depth_ok = render_gs_depth(v.da, v.db);
+    v.fb_w = static_cast<float>(lhu(0x001518d0));
+    v.fb_h = static_cast<float>(lhu(0x001518d2));
+    if (v.fb_w <= 0.0f) v.fb_w = 512.0f;
+    if (v.fb_h <= 0.0f) v.fb_h = 416.0f;
+    v.moby_mip = g_mrp_moby_mip;
+}
 
 // orig: (host) see mrp_world_gx2.h
 void gx2_perf_init() {
@@ -1326,15 +1339,13 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
     // the frame's plain uniforms (mrp_world_renderer.cpp's set_frame_uniforms)
     auto frame_block = [&] {
         FrameBlock fb{};
-        float fb_w = static_cast<float>(lhu(0x001518d0)), fb_h = static_cast<float>(lhu(0x001518d2));
-        if (fb_w <= 0.0f) fb_w = 512.0f;
-        if (fb_h <= 0.0f) fb_h = 416.0f;
+        const float fb_w = g_gx2_view.fb_w, fb_h = g_gx2_view.fb_h;  // (taken at the prepare: gx2_draw_view_take)
         fb.frame[0] = fb_w;
         fb.frame[1] = fb_h;
         fb.frame[2] = vp.xscale_3d;
         fb.frame[3] = 0.0f;
-        double da = 0.0, dbb = 0.0;
-        const bool has = render_gs_depth(da, dbb);
+        const double da = g_gx2_view.da, dbb = g_gx2_view.db;
+        const bool has = g_gx2_view.depth_ok;
         float xo = static_cast<float>(F.env_xyoff & 0xffff), yo = static_cast<float>((F.env_xyoff >> 32) & 0xffff);
         if (F.env_xyoff == 0) {
             xo = (2048.0f - fb_w * 0.5f) * 16.0f;
@@ -1379,7 +1390,7 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
     }
     auto tfrag_frame = [&] {
         TfragFrameBlock fb{};
-        mrp_world_view_proj(fb.vp);
+        std::memcpy(fb.vp, g_gx2_view.vp, sizeof fb.vp);  // (mrp_world_view_proj at the prepare: gx2_draw_view_take)
         return block_of(&fb, sizeof fb, g_tframe_loc.size);
     };
     bool tfrag = g_tready && tstage >= 2 && !tverts.empty() && !tidx.empty();
@@ -1838,7 +1849,7 @@ void mrp_world_gx2_draw_sky(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const 
     }
     auto frame_block = [&] {
         TfragFrameBlock fb{};
-        mrp_world_view_proj(fb.vp);
+        std::memcpy(fb.vp, g_gx2_view.vp, sizeof fb.vp);  // (mrp_world_view_proj at the prepare: gx2_draw_view_take)
         return block_of(&fb, sizeof fb, g_sframe_loc.size);
     };
     if (g_scache.frame == nullptr || g_scache.wraps != g_ring_wraps) {

@@ -15,12 +15,28 @@
 #include <xmmintrin.h>
 #define RAC1_GT_SSE 1
 #endif
+#if defined(__WIIU__)
+#include <coreinit/core.h>
+#include <coreinit/memdefaultheap.h>
+#include <coreinit/thread.h>
+
+#include <algorithm>
+#include <cstdlib>
+#endif
 
 namespace rac1::game_thread {
 
 namespace {
 // orig: (host) the float environment a job runs with: the caller's (the EE's rounding toward zero; MXCSR's flush-to-zero and
 // denormals-are-zero bits, which not every C library's fenv_t carries)
+#if (defined(__PPC__) || defined(__powerpc__)) && !defined(__powerpc64__)
+// (32-bit PowerPC, the Wii U: the whole FPSCR - its NI bit, the non-IEEE mode, is not in newlib's fenv -, as job_pool.cpp's)
+struct FloatEnv {
+    double fpscr = 0.0;
+    void take() { __asm__ volatile("mffs %0" : "=f"(fpscr)); }
+    void apply() const { __asm__ volatile("mtfsf 0xff, %0" : : "f"(fpscr)); }
+};
+#else
 struct FloatEnv {
     std::fenv_t env{};
 #ifdef RAC1_GT_SSE
@@ -39,8 +55,15 @@ struct FloatEnv {
 #endif
     }
 };
+#endif
 
+#if defined(__WIIU__)
+// (the Wii U: no polling - a core's scheduler wakes a waiting thread at once, and a poll there would take the core from the
+// others it runs: the IOP's mirror on core 2)
+constexpr double kSpinMs = 0.0;
+#else
 constexpr double kSpinMs = 4.0;  // (the game thread's poll for its next job, when the jobs come that close)
+#endif
 inline void spin_pause() {
 #ifdef RAC1_GT_SSE
     _mm_pause();
@@ -57,6 +80,7 @@ struct Runner {
     FloatEnv fenv;
     bool started = false;
     bool has_job = false, busy = false, drawn = true;
+    bool quit = false;  // (stop: the loop left)
     // (the hand-offs: the waiting side polls these a while before it sleeps - a sleeping thread's wake-up took milliseconds on a
     // loaded machine, the whole gain of the overlap. The main thread polls for the job's end (it would wait anyway); the game thread
     // polls for its next job only as long as the last gap between jobs was short: a host frame bound by the CPU, not paced)
@@ -83,7 +107,8 @@ struct Runner {
                 while (!a_job.load(std::memory_order_acquire) && Clock::now() - t0 < std::chrono::duration<double, std::milli>(kSpinMs)) spin_pause();
                 lk.lock();
             }
-            cv.wait(lk, [this] { return has_job; });
+            cv.wait(lk, [this] { return has_job || quit; });
+            if (!has_job) return;  // (stop)
             a_job.store(false, std::memory_order_relaxed);
             has_job = false;
             std::function<void()> fn = std::move(job);
@@ -112,19 +137,65 @@ struct Runner {
     }
 };
 Runner g_run;
+#if defined(__WIIU__)
+// The Wii U: the game thread an OS thread of its own (std::thread's stack is wut's 128 KB, on any core), and no thread_local there
+// (platform/per_thread.h): the game thread told by its OSThread. Its core RAC1_WIIU_GAME_CORE (default 2: the IOP's mirror there is
+// light, core 0 runs the chain's reader and the world's preparation worker - beside the update -, core 1 the main thread, GX2's);
+// its priority RAC1_WIIU_GAME_PRIORITY (default 25: below the streams' I/O thread, 24, and the IOP's mirror, 10, on core 2 - its
+// steps, most of a host frame, would keep the reads of the music waiting); a 1 MB stack (the game's frames run on the EE coroutine's
+// own stack, ee_thread.cpp; this one holds the host's work around them, as the main thread's does)
+OSThread g_os_thread __attribute__((aligned(16)));
+void* g_os_stack = nullptr;
+constexpr uint32_t kOsStack = 1u << 20;
+bool on_game_os_thread() { return OSGetCurrentThread() == &g_os_thread; }  // (never a live thread's address before it is made)
+int os_thread_main(int, const char**) {
+    std::printf("[game-thread] the game thread on core %u, priority %d\n", OSGetCoreId(), OSGetThreadPriority(OSGetCurrentThread()));
+    g_run.loop();
+    return 0;
+}
+// orig: (host) the game thread started (false: no stack, no thread - the job then runs on the caller's thread)
+bool os_thread_start() {
+    const char* ce = std::getenv("RAC1_WIIU_GAME_CORE");
+    const int core = ce != nullptr ? std::atoi(ce) : 2;
+    const char* pe = std::getenv("RAC1_WIIU_GAME_PRIORITY");
+    const int prio = pe != nullptr ? std::clamp(std::atoi(pe), 0, 31) : 25;
+    g_os_stack = MEMAllocFromDefaultHeapEx(kOsStack, 16);
+    if (g_os_stack == nullptr) return false;
+    const auto aff = static_cast<OSThreadAttributes>(core >= 0 && core <= 2 ? OS_THREAD_ATTRIB_AFFINITY_CPU0 << core : OS_THREAD_ATTRIB_AFFINITY_ANY);
+    if (!OSCreateThread(&g_os_thread, os_thread_main, 0, nullptr, static_cast<uint8_t*>(g_os_stack) + kOsStack, kOsStack, prio, aff)) {
+        MEMFreeToDefaultHeap(g_os_stack);
+        g_os_stack = nullptr;
+        return false;
+    }
+    OSSetThreadName(&g_os_thread, "rac1 game thread");
+    OSResumeThread(&g_os_thread);
+    return true;
+}
+#else
 thread_local bool t_game = false;
+#endif
 }  // namespace
 
 // orig: (host) see game_thread.h
-void run_async(std::function<void()> job) {
+void run_async(std::function<void()> job, bool draw_reads_gs) {
     Runner& r = g_run;
     std::unique_lock<std::mutex> lk(r.m);
     if (!r.started) {
+#if defined(__WIIU__)
+        if (!os_thread_start()) {  // (no thread: the job here, at once)
+            lk.unlock();
+            std::printf("[game-thread] not started: the game frames on the main thread\n");
+            job();
+            return;
+        }
+        r.started = true;
+#else
         r.started = true;
         std::thread([&r] {
             t_game = true;
             r.loop();
         }).detach();  // (the process ends with std::_Exit: the thread is never joined)
+#endif
     }
     {
         const Runner::Clock::time_point now = Runner::Clock::now();
@@ -133,7 +204,7 @@ void run_async(std::function<void()> job) {
     r.fenv.take();
     r.job = std::move(job);
     r.error = nullptr;
-    r.drawn = false;
+    r.drawn = !draw_reads_gs;
     r.busy = true;
     r.running.store(true, std::memory_order_release);
     r.has_job = true;
@@ -151,8 +222,10 @@ void finish() {
         r.drawn = true;
     }
     r.cv.notify_all();
+#if !defined(__WIIU__)
     // (polled: the job's end or a request; the wait below then returns at once)
     while (r.a_busy.load(std::memory_order_acquire) && !r.a_request.load(std::memory_order_acquire)) spin_pause();
+#endif
     std::unique_lock<std::mutex> lk(r.m);
     for (;;) {
         r.cv.wait(lk, [&r] { return !r.busy || (r.request != nullptr && !r.request_done); });
@@ -197,11 +270,15 @@ void report() {
 bool running() { return g_run.running.load(std::memory_order_acquire); }
 
 // orig: (host) see game_thread.h
+#if defined(__WIIU__)
+bool on_game_thread() { return on_game_os_thread(); }
+#else
 bool on_game_thread() { return t_game; }
+#endif
 
 // orig: (host) see game_thread.h
 void wait_draw() {
-    if (!t_game) return;
+    if (!on_game_thread()) return;
     Runner& r = g_run;
     std::unique_lock<std::mutex> lk(r.m);
     if (r.drawn) return;
@@ -212,7 +289,7 @@ void wait_draw() {
 
 // orig: (host) see game_thread.h
 void on_main(const std::function<void()>& fn) {
-    if (!t_game) {
+    if (!on_game_thread()) {
         fn();
         return;
     }
@@ -231,6 +308,25 @@ void on_main(const std::function<void()>& fn) {
         lk.unlock();
         std::rethrow_exception(e);
     }
+}
+
+// orig: (host) see game_thread.h
+void stop() {
+#if defined(__WIIU__)
+    Runner& r = g_run;
+    {
+        std::unique_lock<std::mutex> lk(r.m);
+        if (!r.started) return;
+        r.cv.wait(lk, [&r] { return !r.busy; });  // (a job not finished: waited for - its requests are not run any more)
+        r.quit = true;
+    }
+    r.cv.notify_all();
+    int rc = 0;
+    OSJoinThread(&g_os_thread, &rc);
+    std::lock_guard<std::mutex> lk(r.m);
+    r.started = false;
+    std::printf("[game-thread] the game thread ended\n");
+#endif
 }
 
 }  // namespace rac1::game_thread

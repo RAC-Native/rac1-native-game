@@ -42,6 +42,13 @@ bool mrp_2d_gx2_ready();
 // drawn and left out by reason, the targets, the textures, the screen copies, the CPU's time)
 void mrp_2d_gx2_draw(const MrpChainFrame& f, const GX2ColorBuffer* screen, float fb_w, float fb_h, const gs::Viewport& vp, bool targets, size_t from = 0,
                      size_t to = SIZE_MAX);
+// ((2026-10-28) RAC1_WIIU_2D_PREBUILD, on by default) the build of the next mrp_2d_gx2_draw into `screen` with these arguments made now
+// (mrp2d::build, CPU work alone: no GPU memory written) - wiiu_gfx.cpp calls it for the TV before it waits for the GPU's frame before, which
+// the build then overlaps; that draw takes it instead of building
+void mrp_2d_gx2_prebuild(const MrpChainFrame& f, const GX2ColorBuffer* screen, float fb_w, float fb_h, const gs::Viewport& vp, size_t from = 0,
+                         size_t to = SIZE_MAX);
+// (a prebuild no draw took - the TV's frame not drawn - forgotten: the next frame's draw builds its own)
+void mrp_2d_gx2_prebuild_drop();
 // everything it made freed (its textures, render targets, screen copies, the ring, the shaders): before WHBGfxShutdown; it waits for
 // the GPU first unless `gpu_idle` (the game's end, its last frame waited for: a GX2DrawDone there, the application leaving the
 // foreground, hung the console)

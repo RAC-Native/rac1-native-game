@@ -29,6 +29,7 @@
 #include <game/render/mrp_world_scene.h>
 #include <game/render/mrp_world_static.h>
 #include <game/render/mrp_world_sky.inc>
+#include <game/render/mrp_world_wiiu.inc>
 #if defined(__WIIU__)
 #include <game/render/mrp_world_renderer.h>
 #endif
@@ -381,6 +382,9 @@ uint32_t relight_flagged(void (*light)(uint32_t), uint32_t table, int32_t count,
         if (mrpw::relight_visible(kind, index) == 0) continue;
         sh(list + n * 2, index);
         if (touch >= 0) mrpw::resident_colours_touch(touch == 1, index);
+#if defined(__WIIU__)
+        if (kind == 0) mrpw::tfrag_colours_touch(index);  // ((2026-10-28) the Wii U compares the tfrags' colours every 30 frames too)
+#endif
         ++total;
         if (++n == 511) {
             sh(list + n * 2, 0xffff);

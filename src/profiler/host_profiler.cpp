@@ -5,6 +5,9 @@
 #include <GLFW/glfw3.h>
 
 #include "platform/platform.h"
+#if defined(__WIIU__)
+#include <coreinit/thread.h>
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -156,8 +159,22 @@ std::atomic<int64_t> g_wbusy_us[kWorkerCount], g_wcpu_us[kWorkerCount];
 std::atomic<bool> g_trace_on{false};
 std::vector<TraceEv> g_worker_trace;
 std::unordered_map<uint64_t, std::string> g_thread_names;
+#if defined(__WIIU__)
+// (the Wii U: no thread-local storage, platform/per_thread.h - the main thread and the game thread told by their OSThread: with the
+// game's update on a thread of its own, game_thread.h, a shared flag sent the main thread's zones to the game thread's stack)
+struct ThreadFlag {
+    std::atomic<void*> who{nullptr};
+    operator bool() const { return who.load(std::memory_order_relaxed) == OSGetCurrentThread(); }
+    ThreadFlag& operator=(bool on) {
+        who.store(on ? OSGetCurrentThread() : nullptr, std::memory_order_relaxed);
+        return *this;
+    }
+};
+ThreadFlag t_main, t_game;
+#else
 thread_local bool t_main = false;
 thread_local bool t_game = false;
+#endif
 constexpr int kGameZone0 = 1 << 20;  // (a game thread zone's index: kGameZone0 + its place in State::gzones)
 
 std::mutex g_gl_mutex;

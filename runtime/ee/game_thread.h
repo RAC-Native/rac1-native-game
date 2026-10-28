@@ -19,8 +19,9 @@
 namespace rac1::game_thread {
 
 // The main thread: `job` started on the game thread with the caller's float environment (the EE's rounding), returning at once.
-// One job at a time.
-void run_async(std::function<void()> job);
+// One job at a time. `draw_reads_gs` false: the drawing beside it reads nothing of the GS's local memory (the Wii U's: the 2D
+// decoded by the chain's reader, joined before the job), so wait_draw returns at once for this job.
+void run_async(std::function<void()> job, bool draw_reads_gs = true);
 // The main thread, after its drawing: the job's requests (on_main) run here until the job ends; its exception rethrown.
 void finish();
 // The jobs' timings (stdout, at the end of a run): the start's latency, the jobs' own time, the join's latency.
@@ -33,6 +34,9 @@ bool on_game_thread();
 void wait_draw();
 // The game thread: `fn` run by the main thread once its drawing is over, this thread waiting for it; elsewhere `fn()` here.
 void on_main(const std::function<void()>& fn);
+// The main thread, at the end (the Wii U: the way back to the menu): the game thread ended and joined, no job running.
+// Elsewhere (the PC's thread is never joined: the process ends with std::_Exit) nothing.
+void stop();
 
 }  // namespace rac1::game_thread
 

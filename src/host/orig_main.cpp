@@ -154,6 +154,8 @@ bool rac1_wiiu_picture();                           // ports/wiiu/game/wiiu_gfx.
 // the frame's chain (RAC1_WIIU_REPLICA=1), its primitives drawn; nullptr: the MRP's chain reader read it, mrp_chain_frame drawn)
 void rac1_wiiu_picture_frame(const rac1::gs::Gs* replica, float fb_w, float fb_h, int screen_fbp, int skip_fbp, uint64_t game_frame);
 void rac1_wiiu_time(int slot, double ms);  // (testing, RAC1_WIIU_TIMING: a stage's time of the host frame - wiiu_gfx.cpp)
+bool rac1_wiiu_game_thread();  // ports/wiiu/game/debug_menu.cpp: the game's steps on the game thread beside the drawing (RAC1_WIIU_GAME_THREAD)
+void debug_menu_flush();       // (the GamePad menu's taps held while the game thread ran, flipped once it is joined)
 #endif
 namespace rac1 {
 extern bool g_world_pass_ranges_on;  // src/game/ovl/overlay_entry.cpp: the world passes' chain ranges noted
@@ -3147,12 +3149,84 @@ int main(int argc, char** argv) {
             }
             rac1::prof::end(prof_game);
         };
-        if (!overlap) game_frames();
+        // (testing, RAC1_NO_GRAPHICS_WALK=1: the no-graphics branch's walk below on any host, to try the Wii U's path on the PC)
+        static const bool walk_test = std::getenv("RAC1_NO_GRAPHICS_WALK") != nullptr && std::atoi(std::getenv("RAC1_NO_GRAPHICS_WALK")) != 0;
+        // ((2026-10-28) the Wii U's game thread, runtime/ee/game_thread.h; RAC1_WIIU_GAME_THREAD, on by default, =0 the host frame in series
+        // as before; the GamePad menu's Game page flips it) the frame prepared at the end of the host frame before (wiiu_pend) is drawn
+        // now - wiiu_gfx.cpp, on this thread, GX2's -, the host frame's game frames run meanwhile on the game thread (its own core,
+        // RAC1_WIIU_GAME_CORE, default 2), joined before the next prepare reads the game's state: one frame of latency, a host frame
+        // about max(steps, drawing) + prepare long instead of their sum. The same game frames in the same order with the same float
+        // environment (the FPSCR): the game's state the same word for word. What makes it safe: the drawing reads only what the prepare
+        // took (the chain reader's frame, the mobys' and the world's prepared frames, the view - mrp_world_gx2.h Gx2DrawView); the chain's
+        // reader joined before the update starts (its VU1 runtime, the GS's local memory, the decoded textures); the world's second half,
+        // on its worker beside the update, reads no EE memory (g_wiiu_sky_at_prepare); the pads read by the game thread alone meanwhile
+        // (the GamePad menu takes the touch from its last sample, its taps held until the join: debug_menu_flush). Not beside a frame the
+        // game runs in a blocking loop (ee_thread_suspended), a level's exit or load, the boot, a movie, the full-screen menu, the
+        // Vendor's picture, the GS replica's walk: the prepared frame drawn first, then the game frames on this thread, in series.
+        // (testing: on the PC, RAC1_NO_GRAPHICS with RAC1_NO_GRAPHICS_WALK=1 and RAC1_WIIU_GAME_THREAD=1 runs the same order headless,
+        // nothing drawn: its RAM hashes against =0's)
+        struct WiiuPend {
+            bool on = false;     // (a frame prepared, not drawn yet)
+            bool plain = false;  // (a frame of the game's main loop: its next host frame may run its game frames beside its drawing)
+            int32_t level = 0;
+        };
+        static WiiuPend wiiu_pend;
+        static uint64_t wiiu_overlapped = 0;  // (the host frames whose game frames ran on the game thread)
+#if defined(__WIIU__)
+        const bool wiiu_gt_on = rac1_wiiu_game_thread() && rac1_wiiu_picture();
+        rac1::g_wiiu_sky_at_prepare = wiiu_gt_on;
+#else
+        static const bool wiiu_gt_on = no_graphics && walk_test && std::getenv("RAC1_WIIU_GAME_THREAD") != nullptr && std::atoi(std::getenv("RAC1_WIIU_GAME_THREAD")) != 0;
+#endif
+        bool steps_run = overlap;  // (the PC's game thread runs them further on)
+        if (wiiu_pend.on) {
+            wiiu_pend.on = false;
+            const bool wiiu_overlap = wiiu_pend.plain && steps > 0 && running && !host_paused && !exiting && !boot_active() && !ee_thread_suspended() &&
+                                      wiiu_pend.level == lw(0x0015ed84);
+            double gt_steps_ms = 0.0;
+            if (wiiu_overlap) {
+                const auto tj = std::chrono::steady_clock::now();
+                mrp_chain_join();  // (the prepared frame's chain read: its reader done before the update writes the game's memory)
+#if defined(__WIIU__)
+                rac1_wiiu_time(6, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tj).count());
+#endif
+                ++wiiu_overlapped;
+                // (draw_reads_gs false: the drawing reads nothing of the GS's local memory - the 2D's textures decoded by the reader -, the
+                // update's GS transfers need not wait for it, game_thread::wait_draw)
+                rac1::game_thread::run_async(
+                    [&] {
+                        const auto t0 = std::chrono::steady_clock::now();
+                        game_frames();
+                        gt_steps_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+                    },
+                    false);
+            }
+#if defined(__WIIU__)
+            const bool up = rac1_wiiu_frame();  // (the prepared frame drawn; ProcUI: false when the application closes)
+#else
+            const bool up = true;  // (the PC's test: nothing drawn)
+#endif
+            if (wiiu_overlap) {
+                const auto tw = std::chrono::steady_clock::now();
+                rac1::game_thread::finish();  // (its exception rethrown here)
+#if defined(__WIIU__)
+                rac1_wiiu_time(15, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tw).count());
+                rac1_wiiu_time(16, gt_steps_ms);
+                debug_menu_flush();
+#endif
+                steps_run = true;
+            }
+            if (!up) break;  // (the HOME menu's closing, the game asked to end: the game thread joined above)
+        }
+        if (!steps_run) game_frames();
         if (no_graphics) {  // (nothing prepared nor drawn: the next game frame)
             fprof.end_frame();
-            if (max_frames != 0 && frame >= max_frames) break;
-            // (testing, RAC1_NO_GRAPHICS_WALK=1: the walk below on any host, to try the Wii U's path on the PC)
-            static const bool walk_test = std::getenv("RAC1_NO_GRAPHICS_WALK") != nullptr && std::atoi(std::getenv("RAC1_NO_GRAPHICS_WALK")) != 0;
+            if (max_frames != 0 && frame >= max_frames) {
+                if (wiiu_overlapped != 0)
+                    std::printf("[game-thread] %llu host frames ran their game frames on the game thread beside the drawing\n", static_cast<unsigned long long>(wiiu_overlapped));
+                rac1::game_thread::report();
+                break;
+            }
 #if defined(__WIIU__)
             const bool walk = walk_test || rac1_wiiu_picture();
 #else
@@ -3330,10 +3404,19 @@ int main(int argc, char** argv) {
                 rac1_wiiu_picture_frame(replica ? &gs : nullptr, static_cast<float>(lhu(0x001518d0)), static_cast<float>(lhu(0x001518d2)), screen_fbp, fade ? screen_fbp : -1,
                                         game_frame);
 #endif
+                if (wiiu_gt_on) {  // (the game thread's switch: the frame drawn by the next host frame, beside its game frames - wiiu_pend)
+                    int mw = 0, mh = 0;
+                    wiiu_pend.on = true;
+                    wiiu_pend.plain = !replica && !fade && !ee_thread_suspended() && !boot_active() && !exiting && movie_hw_shown(mw, mh) == nullptr &&
+                                      !(lw(OV(0x0015f5c4)) == 3 && g_mode_at_update == 3) && !vendor_picture_frame();
+                    wiiu_pend.level = lw(0x0015ed84);
+                }
             }
+            if (!wiiu_pend.on) {
 #if defined(__WIIU__)
-            if (!rac1_wiiu_frame()) break;  // (the HOME menu's closing)
+                if (!rac1_wiiu_frame()) break;  // (the HOME menu's closing)
 #endif
+            }
             if (realtime_test && steps == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));  // (ahead of the clock: no busy loop)
             continue;
         }

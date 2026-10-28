@@ -1,5 +1,6 @@
 // orig: (host) The MRP world's terrain on the GPU (see mrp_tfrag_gpu.h).
 #include <game/render/mrp_tfrag_gpu.h>
+#include "mrp_world_wiiu.inc"
 #include <profiler/host_profiler.h>
 #include <game/render/mrp_world_static.h>
 
@@ -664,7 +665,11 @@ void tfrag_snapshot_widen(float w) {
 // orig: (host) see mrp_tfrag_gpu.h: 0x294368's per-entry work, in its order and with its VU0 macro operations (vu0_macro.h lanes: the
 // VU float rules), the chain's order kept: the entries in the table's order with their LOD code, then those its box test sends to the
 // clipping program (code 2; the list holds 127, the next ones are not drawn)
-void tfrag_decide(const TfragLevel& L, const TfragSnapshot& S, bool check, std::vector<std::pair<uint32_t, uint8_t>>& out) {
+void tfrag_decide(const TfragLevel& L, const TfragSnapshot& S, bool check, std::vector<std::pair<uint32_t, uint8_t>>& out) { tfrag_decide_at(L, S, check, out, nullptr); }
+
+// orig: (host) see mrp_world_wiiu.inc
+void tfrag_decide_at(const TfragLevel& L, const TfragSnapshot& S, bool check, std::vector<std::pair<uint32_t, uint8_t>>& out, const EePages* pages) {
+    const EeRead mr{pages};
     using namespace vu0m;
     out.clear();
     if (!L.ok || !S.valid || !S.enabled || L.count == 0) return;
@@ -696,7 +701,7 @@ void tfrag_decide(const TfragLevel& L, const TfragSnapshot& S, bool check, std::
     std::vector<uint32_t> clip_list;
     for (uint32_t k = 0; k < L.count; ++k) {
         const uint32_t e = L.table + 0x40 * k;
-        const float sph[4] = {rf(e), rf(e + 4), rf(e + 8), rf(e + 12)};
+        const float sph[4] = {mr.f(e), mr.f(e + 4), mr.f(e + 8), mr.f(e + 12)};
         float v2[3];
         for (int l = 0; l < 3; ++l) v2[l] = sub(sph[l], c28[l]);
         const float r = sph[3];
@@ -707,7 +712,7 @@ void tfrag_decide(const TfragLevel& L, const TfragSnapshot& S, bool check, std::
             a = madd(a, S.rot[1][static_cast<size_t>(l)], v2[1]);
             rv[l] = madd(a, S.rot[2][static_cast<size_t>(l)], v2[2]);
         }
-        const uint32_t cell = rb(e + 0x3b), mask = rb(e + 0x3a);
+        const uint32_t cell = mr.b(e + 0x3b), mask = mr.b(e + 0x3a);
         if (cell >= 0x80 || (mask & S.zone[cell]) == 0) continue;
         const float v8x = mul(S.c26[0], r), v8y = mul(S.c26[1], r);
         const float v1x = add(v3x, rv[2]), v1y = add(v3y, rv[2]);
@@ -727,12 +732,12 @@ void tfrag_decide(const TfragLevel& L, const TfragSnapshot& S, bool check, std::
         if (across) {
             // the box test (L_294978): the 8 corners (s16 at data + *(u16)(e + 0x38), x 64) through the clip matrix, VCLIPW unscaled (all
             // outside one plane: culled) and scaled by vf22.xy (any outside: the clipping program)
-            const uint32_t data = ru(e + 0x10);
-            const uint32_t at = rh(e + 0x38) + data;
+            const uint32_t data = mr.u(e + 0x10);
+            const uint32_t at = mr.h(e + 0x38) + data;
             uint32_t and_u = 0x3f, or_s = 0;
             for (uint32_t c = 0; c < 8; ++c) {
                 float cp[3];
-                for (uint32_t l = 0; l < 3; ++l) cp[l] = static_cast<float>(static_cast<int32_t>(static_cast<int16_t>(rh(at + 8 * c + 2 * l))) * 64);
+                for (uint32_t l = 0; l < 3; ++l) cp[l] = static_cast<float>(static_cast<int32_t>(static_cast<int16_t>(mr.h(at + 8 * c + 2 * l))) * 64);
                 Vf p;
                 for (int l = 0; l < 4; ++l) {
                     float a = mul(m18[0][l], cp[0]);
@@ -757,7 +762,7 @@ void tfrag_decide(const TfragLevel& L, const TfragSnapshot& S, bool check, std::
         }
         uint8_t code;
         auto le0 = [](int32_t a, int32_t b) { return static_cast<int32_t>(static_cast<uint32_t>(a) - static_cast<uint32_t>(b)) <= 0; };  // (sub; blez)
-        if (rb(e + 0x27) != 0 || le0(band[0], zm)) code = 0x06;
+        if (mr.b(e + 0x27) != 0 || le0(band[0], zm)) code = 0x06;
         else if (le0(band[0], zp)) code = 0x08;
         else if (le0(band[1], zm)) code = 0x0a;
         else if (le0(band[1], zp)) code = 0x0e;
@@ -1656,6 +1661,66 @@ void tfrag_gpu_readback(const TfragGpuFrame& f, uint32_t vertex_bytes, std::vect
     glBindBuffer(kSsbo, g_gpu.buf[9]);
     if (!idx.empty()) glGetBufferSubData(kSsbo, 0, static_cast<GLsizeiptr>(idx.size() * 4), idx.data());
     glBindBuffer(kSsbo, 0);
+}
+
+// ---- the Wii U's world preparation on its worker (mrp_world_wiiu.inc) ----------------------------------------------------------
+
+// orig: (host) see mrp_world_wiiu.inc: the table (0x40 bytes an entry) and each entry's box (8 corners of 3 halfwords at its data +
+// *(u16)(entry + 0x38))
+void tfrag_pages_note(const TfragLevel& L, EePages& pg) {
+    if (!L.ok || L.table == 0) return;
+    pg.note(L.table, 0x40 * L.count);
+    for (uint32_t k = 0; k < L.count; ++k) {
+        const uint32_t e = L.table + 0x40 * k;
+        const uint32_t data = ru(e + 0x10);
+        if (data != 0) pg.note(rh(e + 0x38) + data, 0x40);
+    }
+}
+
+namespace {
+// (the Wii U port) the tfrag entries relit since the last update (the EE table's indices); `over` past 4096 notes
+std::vector<uint32_t> g_ttouch;
+bool g_ttouch_over = false;
+}  // namespace
+
+// orig: (host) see mrp_world_wiiu.inc
+void tfrag_colours_touch(uint32_t index) {
+    if (g_ttouch_over) return;
+    if (g_ttouch.size() >= 4096) {
+        g_ttouch_over = true;
+        return;
+    }
+    if (g_ttouch.empty() || g_ttouch.back() != index) g_ttouch.push_back(index);
+}
+
+// orig: (host) see mrp_world_wiiu.inc: the noted entries in their colours' order (tfrag_colours_update's dirty ranges merge in it)
+void tfrag_colours_update_touched(TfragColours& c, const TfragLevel& L, bool drop) {
+    const bool none = g_ttouch.empty() && !g_ttouch_over;
+    if (drop || none) {
+    } else if (g_ttouch_over || c.level != &L || c.mirror.size() != L.colour_words) {
+        tfrag_colours_update(c, L);
+    } else {
+        std::vector<const TfragEntryGpu*> es;
+        for (uint32_t k : g_ttouch)
+            if (k < L.by_ee.size() && L.by_ee[k] >= 0) es.push_back(&L.entries[static_cast<size_t>(L.by_ee[k])]);
+        std::sort(es.begin(), es.end(), [](const TfragEntryGpu* a, const TfragEntryGpu* b) { return a->colour_slot < b->colour_slot; });
+        es.erase(std::unique(es.begin(), es.end()), es.end());
+        ++c.updates;
+        for (const TfragEntryGpu* e : es) {
+            if (!e->ok || e->colour_n == 0) continue;
+            const void* p = ee_ram_ptr_read(e->colour_ee);
+            if (p == nullptr) continue;
+            uint32_t* m = c.mirror.data() + e->colour_slot;
+            if (std::memcmp(m, p, 4 * e->colour_n) == 0) continue;
+            std::memcpy(m, p, 4 * e->colour_n);
+            ++c.entries_changed;
+            if (!c.dirty.empty() && c.dirty.back().first + c.dirty.back().second == e->colour_slot) c.dirty.back().second += e->colour_n;
+            else c.dirty.push_back({e->colour_slot, e->colour_n});
+            c.dirty_words.insert(c.dirty_words.end(), m, m + e->colour_n);
+        }
+    }
+    g_ttouch.clear();
+    g_ttouch_over = false;
 }
 
 }  // namespace rac1::mrpw

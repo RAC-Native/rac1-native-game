@@ -113,6 +113,21 @@ struct Gx2Perf {
     bool zclear2 = true;      // wiiu_gfx.cpp's own depth clear before the 3D (WHBGfxClearColor clears it already)
 };
 extern Gx2Perf g_gx2_perf;
+// ((2026-10-28) the game's update on the game thread beside the drawing, orig_main.cpp's Wii U branch) what of the game's state the
+// backends' draws read, taken at the frame's prepare (rac1_wiiu_picture_frame, wiiu_gfx.cpp), not at the draw: the world's view-projection
+// (mrp_world_view_proj: the camera 0x166c80 / 0x166dc0, the projection's tangents 0x16caf0), the GS depth map (render_gs_depth: the
+// projection's 0x16cb28...), the game's frame size (0x1518d0) and the mobys' mip choice (g_mrp_moby_mip, the game's graphics menu).
+// In series nothing writes them between the prepare and the draw: the same values
+struct Gx2DrawView {
+    float vp[16] = {};
+    bool depth_ok = false;
+    double da = 0.0, db = 0.0;
+    float fb_w = 512.0f, fb_h = 416.0f;
+    int moby_mip = 0;
+};
+extern Gx2DrawView g_gx2_view;
+// (the prepare's end: g_gx2_view taken now)
+void gx2_draw_view_take();
 // (once; called by the backends' inits and wiiu_gfx.cpp's first frame)
 void gx2_perf_init();
 // another build of `main`'s shaders (`path`, beside them: the same vertex shader, another pixel shader) loaded into `keep`; its pixel

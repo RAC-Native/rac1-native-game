@@ -1,5 +1,6 @@
 // orig: (host) The MRP world's static data (see mrp_world_static.h).
 #include <game/render/mrp_world_static.h>
+#include "mrp_world_wiiu.inc"
 
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -360,12 +361,12 @@ struct Cull {
 // +0xa0..+0x110) through the instance's matrix (rows x scale, (position - camera) x 1024) and the clip matrix 0x166d80, VCLIPW against w:
 // culled when all the corners are outside one plane (the AND of the unscaled corners' flags, cfc2 before the 0x160f90 scaling, non-zero;
 // the scaled ones only choose tie A / B). `xs` / `ys`: the widening (the 4:3 clip matrix's x / y narrowed by it; the shadow runs kept it 4:3)
-bool box_outside(const StaticSnapshot& S, uint32_t rec, uint32_t data, float xs, float ys) {
+bool box_outside(const EeRead& mr, const StaticSnapshot& S, uint32_t rec, uint32_t data, float xs, float ys) {
     float m[4][4];
-    const std::array<float, 4> pos = rq(data + 0x30);
+    const std::array<float, 4> pos = mr.q(data + 0x30);
     float rows[4][3];
     for (uint32_t r = 0; r < 3; ++r)
-        for (uint32_t l = 0; l < 3; ++l) rows[r][l] = rf(data + 0x10 * r + 4 * l) * pos[3];
+        for (uint32_t l = 0; l < 3; ++l) rows[r][l] = mr.f(data + 0x10 * r + 4 * l) * pos[3];
     for (uint32_t l = 0; l < 3; ++l) rows[3][l] = (pos[l] - S.cam[l]) * 1024.0f;
     for (int r = 0; r < 4; ++r)
         for (int l = 0; l < 4; ++l) {
@@ -376,7 +377,7 @@ bool box_outside(const StaticSnapshot& S, uint32_t rec, uint32_t data, float xs,
         }
     uint32_t all = 0x3f;
     for (uint32_t k = 0; k < 8; ++k) {
-        const std::array<float, 4> c = rq(rec + 0xa0 + 0x10 * k);
+        const std::array<float, 4> c = mr.q(rec + 0xa0 + 0x10 * k);
         float p[4];
         for (int l = 0; l < 4; ++l) {
             float acc = m[0][l] * c[0];
@@ -396,11 +397,11 @@ bool box_outside(const StaticSnapshot& S, uint32_t rec, uint32_t data, float xs,
 // orig: (host) the instance's rows (tie 0x296888.. / shrub 0x2874dc..): the matrix rows (data +0, +0x10, +0x20) times the scale (+0x3c),
 // the position (+0x30) less the camera, the wind's shear when the class sways (0x296a4c / 0x287618), the position x 1024, then
 // R_i = A M_i (no translation), T = A P + A3
-void instance_rows(const StaticSnapshot& S, uint32_t data, uint32_t sway, bool shrub, float rows[4][4]) {
+void instance_rows(const EeRead& mr, const StaticSnapshot& S, uint32_t data, uint32_t sway, bool shrub, float rows[4][4]) {
     float m[3][3];
-    const std::array<float, 4> pos = rq(data + 0x30);
+    const std::array<float, 4> pos = mr.q(data + 0x30);
     for (uint32_t r = 0; r < 3; ++r)
-        for (uint32_t l = 0; l < 3; ++l) m[r][l] = rf(data + 0x10 * r + 4 * l) * pos[3];
+        for (uint32_t l = 0; l < 3; ++l) m[r][l] = mr.f(data + 0x10 * r + 4 * l) * pos[3];
     float p[3] = {pos[0] - S.cam[0], pos[1] - S.cam[1], pos[2] - S.cam[2]};
     if (sway != 0) {
         const float* w8 = S.wind.data();
@@ -456,19 +457,19 @@ namespace {
 // scaled by the variant record's +4 / +8 and the instance's +0x2c halfwords / 4096 (z offset by +0xc of it) and the position's w; then
 // Q = vf22.x / w, F = clamp(w + vf23.w), X / Y / Z = xyz Q + vf23, FTOI4. The pass's DMA tags / VIF DIRECT codes are left out (the
 // walker takes the DIRECT data alone). The list's PS2 capacity (0x300 entries, SPR 0x2000..0x2c00) is not kept.
-void variant_stream(const StaticSnapshot& S, const StaticLevel& L, const std::vector<std::vector<std::pair<uint32_t, uint32_t>>>& variants, StaticFrame& f) {
+void variant_stream(const EeRead& mr, const StaticSnapshot& S, const StaticLevel& L, const std::vector<std::vector<std::pair<uint32_t, uint32_t>>>& variants, StaticFrame& f) {
     using namespace vu0m;
     auto& out = f.variant_gif;
     auto f2w = [](float v) { uint32_t u; std::memcpy(&u, &v, 4); return u; };
-    auto rw = [](uint32_t a) { return std::array<uint32_t, 4>{ru(a), ru(a + 4), ru(a + 8), ru(a + 12)}; };
+    auto rw = [&mr](uint32_t a) { return std::array<uint32_t, 4>{mr.u(a), mr.u(a + 4), mr.u(a + 8), mr.u(a + 12)}; };
     for (uint32_t q = 1; q < 4; ++q) out.push_back(S.vhdr[q]);
     for (const uint32_t sec : {0x80u, 0x7fu}) {
         if (sec == 0x7fu)
             for (uint32_t q = 1; q < 3; ++q) out.push_back(S.vhdr2[q]);
         for (size_t c = 0; c < L.shrubs.size() && c < variants.size(); ++c) {
             if (variants[c].empty()) continue;
-            const uint32_t vrec = ru(L.shrubs[c].rec + 0x1c);
-            const std::array<float, 4> v16 = rq(vrec);
+            const uint32_t vrec = mr.u(L.shrubs[c].rec + 0x1c);
+            const std::array<float, 4> v16 = mr.q(vrec);
             bool first = vrec != 0;
             for (const auto& [idx, alpha] : variants[c]) {
                 if ((alpha & sec) == 0) continue;
@@ -480,8 +481,8 @@ void variant_stream(const StaticSnapshot& S, const StaticLevel& L, const std::ve
                 out.push_back(S.vtpl[3]);
                 ++f.variants;
                 const uint32_t data = S.shrub_data + 0x40 * idx;
-                const std::array<float, 4> pos = rq(data + 0x30);
-                const uint32_t col = ru(data + 0x1c) | (alpha << 24), hw = ru(data + 0x2c);
+                const std::array<float, 4> pos = mr.q(data + 0x30);
+                const uint32_t col = mr.u(data + 0x1c) | (alpha << 24), hw = mr.u(data + 0x2c);
                 const std::array<uint32_t, 4> rgba{col & 0xff, (col >> 8) & 0xff, (col >> 16) & 0xff, col >> 24};
                 const float d[3] = {sub(pos[0], S.cam[0]), sub(pos[1], S.cam[1]), sub(pos[2], S.cam[2])};
                 const float v3x = static_cast<float>(static_cast<int32_t>(hw & 0xffff)) * (1.0f / 4096.0f);
@@ -520,8 +521,14 @@ void variant_stream(const StaticSnapshot& S, const StaticLevel& L, const std::ve
 }  // namespace
 
 // orig: (host) see mrp_world_static.h
-void static_frame_build(const StaticLevel& L, const ResidentColours& rc, StaticFrame& f, bool check) {
-    const StaticSnapshot& S = g_snap;
+void static_frame_build(const StaticLevel& L, const ResidentColours& rc, StaticFrame& f, bool check) { static_frame_build_at(L, rc, f, check, g_snap, nullptr); }
+
+// orig: (host) see mrp_world_wiiu.inc
+const StaticSnapshot& static_snapshot() { return g_snap; }
+
+// orig: (host) see mrp_world_wiiu.inc
+void static_frame_build_at(const StaticLevel& L, const ResidentColours& rc, StaticFrame& f, bool check, const StaticSnapshot& S, const EePages* pages) {
+    const EeRead mr{pages};
     f.insts.clear();
     f.draws[0].clear();
     f.draws[1].clear();
@@ -559,25 +566,25 @@ void static_frame_build(const StaticLevel& L, const ResidentColours& rc, StaticF
         const float tmax = bits_f(S.tie_max);
         for (const StaticTieClass& c : L.ties) {
             if (c.lod[0].empty() && c.lod[1].empty() && c.lod[2].empty()) continue;
-            const uint32_t flags = rh(c.rec + 0x24);
+            const uint32_t flags = mr.h(c.rec + 0x24);
             if ((flags & 9) != 0) continue;
             const uint32_t sway = (flags & 6) >> 1;
-            const float d16[3] = {scaled(rf(c.rec + 0x10), s), scaled(rf(c.rec + 0x14), s), scaled(rf(c.rec + 0x18), s)};
-            const uint32_t bounds = ru(c.rec + 0x28), n = rh(c.rec + 0x26);
+            const float d16[3] = {scaled(mr.f(c.rec + 0x10), s), scaled(mr.f(c.rec + 0x14), s), scaled(mr.f(c.rec + 0x18), s)};
+            const uint32_t bounds = mr.u(c.rec + 0x28), n = mr.h(c.rec + 0x26);
             std::vector<uint32_t> lists[3];
             for (uint32_t i = 0; i < n; ++i) {
                 const uint32_t b = bounds + 0x20 * i;
                 ++f.tested[0];
-                const uint32_t mask = rb(b + 0x18), cell = rb(b + 0x19);
+                const uint32_t mask = mr.b(b + 0x18), cell = mr.b(b + 0x19);
                 if (cell >= 0x80 || (mask & S.zone[cell]) == 0) continue;
-                const uint32_t dbits = ru(b + 0x14);
+                const uint32_t dbits = mr.u(b + 0x14);
                 const float dist = scaled(bits_f(static_cast<int32_t>(dbits) < static_cast<int32_t>(S.tie_max) ? dbits : S.tie_max), s);
                 (void)tmax;
-                const float sph[4] = {rf(b), rf(b + 4), rf(b + 8), rf(b + 12)};
+                const float sph[4] = {mr.f(b), mr.f(b + 4), mr.f(b + 8), mr.f(b + 12)};
                 float zv = 0;
                 bool clipf = false;
                 if (!cu.visible(S, sph, dist, zv, clipf)) continue;
-                if (clipf && box_outside(S, c.rec, ru(b + 0x10), boxx, boxy)) continue;
+                if (clipf && box_outside(mr, S, c.rec, mr.u(b + 0x10), boxx, boxy)) continue;
                 ++f.visible[0];
                 const float d = std::max(0.0f, zv);
                 StaticInst si;
@@ -603,11 +610,11 @@ void static_frame_build(const StaticLevel& L, const ResidentColours& rc, StaticF
                 fog = std::min(fog, S.fog[2]);
                 fog = std::max(S.fog[3], fog);
                 si.fog = (static_cast<uint32_t>(ftoi(fog, 16.0f)) >> 4) & 0xff;
-                const uint32_t data = ru(b + 0x10);
+                const uint32_t data = mr.u(b + 0x10);
                 const int64_t slot = rc.tie_slot(data + kTieColourOffset);
                 if (slot < 0) continue;
                 si.slot = static_cast<uint32_t>(slot);
-                instance_rows(S, data, sway, false, si.rows);
+                instance_rows(mr, S, data, sway, false, si.rows);
                 lists[lod].push_back(static_cast<uint32_t>(f.insts.size()));
                 f.insts.push_back(si);
             }
@@ -625,22 +632,22 @@ void static_frame_build(const StaticLevel& L, const ResidentColours& rc, StaticF
         std::vector<std::vector<std::pair<uint32_t, uint32_t>>> variants(L.shrubs.size());
         for (const StaticShrubClass& c : L.shrubs) {
             if (c.packets.empty()) continue;
-            const uint32_t flags = rh(c.rec + 0x14);
+            const uint32_t flags = mr.h(c.rec + 0x14);
             if ((flags & 1) != 0) continue;
             const uint32_t sway = (flags & 6) >> 1;
-            const bool variant = ru(c.rec + 0x1c) != 0 && s != 0.0f;  // (at the slider's max the far variant is off)
-            const uint32_t bounds = ru(c.rec + 0x18), n = rh(c.rec + 0x16);
+            const bool variant = mr.u(c.rec + 0x1c) != 0 && s != 0.0f;  // (at the slider's max the far variant is off)
+            const uint32_t bounds = mr.u(c.rec + 0x18), n = mr.h(c.rec + 0x16);
             std::vector<uint32_t> opaque;
             for (uint32_t i = 0; i < n; ++i) {
                 const uint32_t b = bounds + 0x20 * i;
                 ++f.tested[1];
-                const uint32_t dbits = ru(b + 0x10);
+                const uint32_t dbits = mr.u(b + 0x10);
                 const float dist = scaled(bits_f(static_cast<int32_t>(dbits) < static_cast<int32_t>(S.shrub_max) ? dbits : S.shrub_max), s);
-                const float sph[4] = {rf(b), rf(b + 4), rf(b + 8), rf(b + 12)};
+                const float sph[4] = {mr.f(b), mr.f(b + 4), mr.f(b + 8), mr.f(b + 12)};
                 float zv = 0;
                 bool clipf = false;
                 if (!cu.visible(S, sph, dist, zv, clipf)) continue;
-                const uint32_t idx = rh(b + 0x18);
+                const uint32_t idx = mr.h(b + 0x18);
                 // the shrub's alpha source: the fade near the draw distance (vf3.y = (dist - r) - (z - r), FTOI12), or with a far variant
                 // (0x2873a0..): the switch distance sw (bounds +0x17, units) against z12 = FTOI12(max(0, z)) (vf5.y): nearer than sw the
                 // shrub alone (0x8000 + (sw - z) 4096), within 8 units past it both (the variant's alpha (z - sw) 4096 >> 8, the shrub's the
@@ -649,7 +656,7 @@ void static_frame_build(const StaticLevel& L, const ResidentColours& rc, StaticF
                 int64_t src = fade12;
                 int32_t valpha = -1;
                 if (variant) {
-                    uint32_t sw = rb(b + 0x17);
+                    uint32_t sw = mr.b(b + 0x17);
                     if (s != 1.0f) {  // (mrp_lod.cpp patch_shrub: the switch scaled, capped at 255 units)
                         const double dd = static_cast<double>(sw) * static_cast<double>(s);
                         sw = static_cast<uint32_t>(dd > 255.0 ? 255.0 : dd);
@@ -679,7 +686,7 @@ void static_frame_build(const StaticLevel& L, const ResidentColours& rc, StaticF
                 if (slot < 0) continue;
                 StaticInst si;
                 si.slot = static_cast<uint32_t>(slot);
-                instance_rows(S, S.shrub_data + 0x40 * idx, sway, true, si.rows);
+                instance_rows(mr, S, S.shrub_data + 0x40 * idx, sway, true, si.rows);
                 if (src < 0) continue;
                 si.alpha = static_cast<uint32_t>(std::min<int64_t>(src, 0x8000)) >> 8;
                 const uint32_t at = static_cast<uint32_t>(f.insts.size());
@@ -694,7 +701,7 @@ void static_frame_build(const StaticLevel& L, const ResidentColours& rc, StaticF
         for (size_t k = 0; k < L.shrubs.size(); ++k)
             for (const StaticPacket& pk : L.shrubs[k].packets)
                 for (uint32_t at : faded[k]) f.draws[1].push_back({&pk, at});
-        variant_stream(S, L, variants, f);
+        variant_stream(mr, S, L, variants, f);
     }
 }
 
@@ -888,7 +895,7 @@ void static_shadow_build(const StaticLevel& L, const ResidentColours& rc, Static
             if (slot < 0) continue;
             si.slot = static_cast<uint32_t>(slot);
             si.mask = views;
-            instance_rows(S, data, sway, false, si.rows);
+            instance_rows(EeRead{}, S, data, sway, false, si.rows);
             lists[lod].push_back(static_cast<uint32_t>(f.insts.size()));
             f.insts.push_back(si);
         }
@@ -919,7 +926,7 @@ void static_shadow_build(const StaticLevel& L, const ResidentColours& rc, Static
             StaticInst si;
             si.slot = static_cast<uint32_t>(slot);
             si.mask = views;
-            instance_rows(S, S.shrub_data + 0x40 * idx, sway, true, si.rows);
+            instance_rows(EeRead{}, S, S.shrub_data + 0x40 * idx, sway, true, si.rows);
             list.push_back(static_cast<uint32_t>(f.insts.size()));
             f.insts.push_back(si);
         }
@@ -929,6 +936,91 @@ void static_shadow_build(const StaticLevel& L, const ResidentColours& rc, Static
     // (by their views, so that the renderer's batches - one per views - stay few)
     for (int k = 0; k < 2; ++k)
         std::stable_sort(f.draws[k].begin(), f.draws[k].end(), [&f](const StaticDraw& a, const StaticDraw& b) { return f.insts[a.inst].mask < f.insts[b.inst].mask; });
+}
+
+// ---- the Wii U's world preparation on its worker (mrp_world_wiiu.inc) ----------------------------------------------------------
+
+// orig: (host) see mrp_world_wiiu.inc
+void EePages::clear() {
+    index_.assign(index_.empty() ? (64u << 20) >> kShift : index_.size(), -1);
+    ee_page_.clear();
+    hot_.clear();
+    data_.clear();
+    roll_ = 0;
+    misses = 0;
+}
+
+// orig: (host) see mrp_world_wiiu.inc
+void EePages::note(uint32_t addr, uint32_t bytes, bool hot) {
+    if (bytes == 0 || addr == 0) return;
+    if (index_.empty()) clear();
+    const uint32_t last = (addr + bytes - 1) >> kShift;
+    for (uint32_t p = addr >> kShift; p <= last && p < index_.size(); ++p) {
+        if (index_[p] >= 0) continue;
+        index_[p] = static_cast<int32_t>(ee_page_.size());
+        ee_page_.push_back(p);
+        data_.resize(ee_page_.size() * (kSize / 4), 0);
+    }
+    if (hot)
+        for (uint32_t a = addr & ~3u; a < addr + bytes; a += 4) hot_.push_back(a);
+}
+
+// orig: (host) one copy taken again from EE memory (a page EE memory does not have: zeros)
+void EePages::copy(uint32_t i) {
+    const uint32_t a = ee_page_[i] << kShift;
+    const void* src = ee_ram_ptr_read(a);
+    uint32_t* dst = data_.data() + static_cast<size_t>(i) * (kSize / 4);
+    if (src == nullptr || ee_ram_ptr_read(a + kSize - 4) == nullptr) std::memset(dst, 0, kSize);
+    else std::memcpy(dst, src, kSize);
+}
+
+// orig: (host) see mrp_world_wiiu.inc
+void EePages::refresh_all() {
+    for (uint32_t i = 0; i < ee_page_.size(); ++i) copy(i);
+}
+
+// orig: (host) see mrp_world_wiiu.inc
+void EePages::refresh_hot() {
+    for (uint32_t a : hot_) {
+        const int32_t i = index_[a >> kShift];
+        const void* src = ee_ram_ptr_read(a);
+        uint32_t* dst = data_.data() + static_cast<size_t>(i) * (kSize / 4) + ((a & (kSize - 1)) >> 2);
+        if (src == nullptr) *dst = 0;
+        else std::memcpy(dst, src, 4);
+    }
+}
+
+// orig: (host) see mrp_world_wiiu.inc
+void EePages::refresh_rolling(uint32_t n) {
+    const uint32_t total = static_cast<uint32_t>(ee_page_.size());
+    for (uint32_t k = 0; k < n && k < total; ++k) {
+        if (roll_ >= total) roll_ = 0;
+        copy(roll_++);
+    }
+}
+
+// orig: (host) see mrp_world_wiiu.inc: what static_frame_build reads - per tie class with packets its record (to the box corners, +0x110;
+// its flags' word +0x24 hot), its bounds and each instance's data (rows, position: +0..+0x40); per shrub class its record (+0x14..+0x20,
+// its flags' word +0x14 hot), its bounds, each instance's data (*(0x16049c) + 0x40 x its index) and its far variant's record (+0..+0x40)
+void static_pages_note(const StaticLevel& L, EePages& pg) {
+    for (const StaticTieClass& c : L.ties) {
+        if (c.lod[0].empty() && c.lod[1].empty() && c.lod[2].empty()) continue;
+        pg.note(c.rec, 0x120);
+        pg.note(c.rec + 0x24, 4, true);
+        const uint32_t bounds = ru(c.rec + 0x28), n = rh(c.rec + 0x26);
+        pg.note(bounds, 0x20 * n);
+        for (uint32_t i = 0; i < n; ++i) pg.note(ru(bounds + 0x20 * i + 0x10), 0x40);
+    }
+    const uint32_t sdata = ru(OV(0x0016049cu));
+    for (const StaticShrubClass& c : L.shrubs) {
+        if (c.packets.empty()) continue;
+        pg.note(c.rec, 0x20);
+        pg.note(c.rec + 0x14, 4, true);
+        const uint32_t bounds = ru(c.rec + 0x18), n = rh(c.rec + 0x16);
+        pg.note(bounds, 0x20 * n);
+        for (uint32_t i = 0; i < n; ++i) pg.note(sdata + 0x40 * rh(bounds + 0x20 * i + 0x18), 0x40);
+        pg.note(ru(c.rec + 0x1c), 0x40);
+    }
 }
 
 }  // namespace rac1::mrpw

@@ -22,6 +22,7 @@
 #include <unistd.h>
 
 #include <game/render/render_view.h>
+#include <runtime/ee/game_thread.h>
 
 #include <exception>
 #include <typeinfo>
@@ -128,7 +129,11 @@ __attribute__((constructor(65535))) static void late_init() { OSReport("rac1-wii
 // stdout / stderr: a newlib device that writes each line to the system console (OSConsoleWrite: Cemu's log.txt) and to
 // the UDP log (WHBLogWrite, port 4405: the console's own); wut's default stdout reaches neither
 #include <sys/iosupport.h>
+#include <mutex>
 namespace {
+// ((2026-10-28) one line buffer for stdout and stderr, whose FILE locks are two: the writers serialised here - the game thread's
+// lines, the workers', the main thread's at once)
+std::mutex g_line_m;
 char g_line[1024];
 size_t g_line_n = 0;
 void line_out() {
@@ -138,6 +143,7 @@ void line_out() {
     g_line_n = 0;
 }
 ssize_t console_write(struct _reent*, void*, const char* p, size_t n) {
+    std::lock_guard<std::mutex> lk(g_line_m);
     for (size_t i = 0; i < n; ++i) {
         g_line[g_line_n++] = p[i];
         if (p[i] == '\n' || g_line_n == sizeof g_line - 1) line_out();
@@ -345,6 +351,7 @@ int main(int argc, char** argv_in) {
         back_to_menu("exception");
     }
     wiiu_sampler_stop();
+    rac1::game_thread::stop();  // ((2026-10-28) the game thread ended before the way back: no job left running, its OS thread joined)
     const unsigned ms = static_cast<unsigned>(OSTicksToMilliseconds(OSGetTime() - t0));
     std::printf("[wiiu] the game's main returned %d after %u ms\n", rc, ms);
     std::fflush(stdout);

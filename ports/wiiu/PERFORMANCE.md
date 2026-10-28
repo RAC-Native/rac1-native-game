@@ -258,3 +258,66 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   last place of those terms). Two Newton steps from a 5-bit estimate left the rows 1e-5 off and the translations 0.05: three.
 - The PC's own times say nothing (its VU0 path is SSE / AVX2, ~0.1 ms a frame either way). On the console to measure: the "[game]"
   line's "Game: moby joints / skinning (VU0)" with the menu's row at fast / exact / off (3-5 ms a host frame before).
+
+### The game's update on a core of its own (2026-10-28, night)
+
+- A host frame was the steps (~50-58 ms, 4 game frames), the prepare (~13: chain start, the mobys', the world's, the sky's capture) and
+  the drawing (~20-25 with its waits: the world's worker join ~6, the swap's ~6.5) in series on core 1. Now (RAC1_WIIU_GAME_THREAD, on by
+  default; the GamePad menu's Game page, "Game thread", in place of that page's "Exit game" - still on the Picture page): the frame
+  prepared at the end of a host frame is drawn by the next one while its game frames run on the game thread (runtime/ee/game_thread.h:
+  an OS thread on core 2 - RAC1_WIIU_GAME_CORE -, priority 25 - RAC1_WIIU_GAME_PRIORITY, below the streams' I/O thread, 24 -, a 1 MB
+  stack, the main thread's FPSCR), joined before the next prepare. One frame of latency; a host frame about max(steps, drawing) + prepare.
+- What the drawing read of the game and is now taken at the prepare: the backends' view-projection (mrp_world_view_proj, live in the
+  tfrags' and the sky's frame blocks), the GS depth map (render_gs_depth), the frame size (0x1518d0) and the mobys' mip choice:
+  mrp_world_gx2.h Gx2DrawView. The world's second half (its worker, now beside the update) read the sky's texture entries in EE memory:
+  resolved by the first half (g_wiiu_sky_at_prepare). The chain's reader is joined before the update starts (its VU1 runtime's globals,
+  the GS's local memory); the update's GS transfers do not wait for the drawing (it reads none of the local memory). The pads stay read
+  per game frame, by the game thread alone meanwhile (the menu takes the touch from its last sample, its taps held until the join).
+  thread_local being nothing here, the profiler's and the game thread's own "which thread" flags are by OSThread now; the console's
+  line buffer (stdout and stderr share it) is locked.
+- Not beside a frame of a blocking loop, a level's exit or load, the boot, a movie, the full-screen menu, the Vendor's picture: that
+  frame drawn first, the update after it, in series.
+- PC (RAC1_NO_GRAPHICS=2 + the Wii U's settings, RAC1_NO_GRAPHICS_WALK=1, RAC1_GOTO=0@60,1@700, 1500 frames, `forward`): RAMHASH with
+  RAC1_WIIU_GAME_THREAD=1 identical to =0's, one and three game frames a host frame (547 / 182 host frames on the game thread, the
+  rest the level change's). The PC's own game thread (RAC1_GAME_THREAD=2 RAC1_PIPELINE=1) identical to =0's; the references unchanged.
+- To measure on the console: the "[timing]" line's "game thread join" (the main thread waiting for the steps) and its tail "game
+  thread: N of 60 host frames, its steps X"; whether the steps are slower on core 2 (512 KB of L2 against core 1's 2 MB):
+  RAC1_WIIU_GAME_CORE=0 / 2, and =0 for the series.
+
+### The host's frame on the main thread: the world's whole prepare on core 0, the sky's run there, the GamePad copied (2026-10-28, night)
+
+- The world's prepare's first half (8.7 ms a host frame on the console: the ties' / shrubs' frame 2-2.8, the tfrags' colours and
+  decisions 1.5, the scene 4.5-5) now runs on its worker (core 0) before the second half (RAC1_WIIU_PREP_ALL, on by default; =0 on the
+  main thread as before). The worker reads no EE memory - the game thread's update writes it meanwhile -: the main thread takes, at the
+  prepare, the snapshots' copies (static_note_pass's, tfrag_note_pass's: the next update rewrites them), the projection A and the camera,
+  scene_from_static's constants (the tfrag view and VU1 constants, the tie A state packet, the shrub A fog: mrp_world_wiiu.inc
+  SceneStaticConsts) and the sky's textures; the culling reads the level's tables (class records, bounds, instance data, the tfrag table
+  and its boxes) from host copies of their EE pages (mrp_world_wiiu.inc EePages: noted once a level - Veldin 538 pages, 2.1 MB -, the
+  96 class flags' words copied every prepare, the rest RAC1_WIIU_PAGES_EVERY prepares round, default 30; a read outside them noted
+  again). The colours stay on the main thread (EE reads): the tfrags' now as the ties' - the whole table every
+  RAC1_WIIU_TFRAG_COLOUR_EVERY host frames (30), between them the entries the relighting relit (world_relight's tfrag_colours_touch).
+  The relighting's marks (relight_visible) the worker's culling makes are applied by the next prepare, never while the update reads
+  them: an entry relit a host frame later than before.
+- Checked on the PC (RAC1_MRPW_PAGES_CHECK=1, any host: the capture step's static_frame_build / tfrag_decide made again from the
+  snapshots' copies and the pages, compared bit for bit; with RAC1_MRPW_STATIC_CHECK=1 for the instances): Veldin GOTO=0@60 forward
+  900 frames and Kerwan GOTO=3@60 forward 1500 (1420 pages, 5.6 MB), every frame the same instances, rows, draws, far variants and
+  tfrag decisions, no read outside the pages. The sky's split (RAC1_MRPW_SKY_CHECK=1 RAC1_MRPW_THREAD=0, Veldin 600 frames): as the
+  walker's but at frame 60, as before. The references unchanged, RAMHASH as main's; gt_check.sh's runs identical, and the Wii U-like
+  run with the game thread and these switches off (=0 / 1 / 0 / 0 / 0) the same as with them on (the PC never reads them).
+- The sky: its capture (1.9-3.7 ms on the main thread) is now the range's copy alone there (sky_capture_copy: the tags' streams, the
+  asset, its entries, A); the codes - the DIRECTs' GIF streams, the particle program on the private VU1 - run on the worker
+  (sky_capture_run) after the scene, once the chain's reader is done with VU1 (mrp_chain_wait_idle: the VU1 runtime's state is one for
+  all threads here). The same packets in the same order (sky_capture is the two in a row on the PC). The game's sky pass still runs: the
+  capture reads its chain. A sky without it - the decoded asset drawn once a level, the shells turned on the GPU - needs each level's
+  variant of 0x23d968 for the host (Veldin's: shells 0, 1, the stars from the particle program, ALPHA_1 before shell 2, shell 3 turned
+  about z by the frame counter, shell 4) and the decoder checked against the capture; the cache of option (a) gains little, the pass
+  culling its clusters to the frustum and the stars being screen sprites: the captured set changes whenever the camera turns.
+- The GamePad (RAC1_WIIU_GAMEPAD): 1, the default, the TV's colour buffer copied to the GamePad's scan buffer
+  (GX2CopyColorBufferToScanBuffer scales it) - the frame no longer drawn twice, neither its CPU work (~2 ms) nor its GPU work; 2 drawn
+  every other host frame; 0 drawn every frame as before. The debug menu: its quads made again only when its text changes, and only
+  their bytes flushed (RAC1_WIIU_MENU_CACHE=0: every frame, the whole 1.1 MB buffer flushed, as before).
+- The TV's 2D built before the wait for the GPU's frame before (RAC1_WIIU_2D_PREBUILD, on; the chain's reader joined there first):
+  the "[timing]" slot "2D build (before the GPU wait)" now holds that part of "2D draws", overlapping the GPU.
+- To measure on the console ("[timing]"): "world's prepare" (8.7 -> well under 1 ms expected), "sky's capture" (-> ~0.1), "GamePad"
+  (-> ~0 with the menu off), "2D draws" (its build moved out); "world's worker join" may grow: core 0 now runs the chain's reader and
+  the whole prepare (~15-18 ms of work on the console's times) - RAC1_WIIU_PREP_TIME=1 prints both halves' parts.

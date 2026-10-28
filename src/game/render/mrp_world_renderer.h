@@ -61,6 +61,9 @@ void mrp_world_wiiu_prepare(bool active);
 void mrp_world_wiiu_join();
 // (the Wii U: the preparation's second half on its worker - RAC1_WIIU_WORLD_ASYNC, the GamePad's debug menu flips it live)
 extern bool g_wiiu_world_async;
+// ((2026-10-28) the Wii U: the second half reads no EE memory - the sky's textures resolved by the first half -, as it may run beside
+// the game thread's update; set by orig_main.cpp with the game thread's switch, off: as before)
+extern bool g_wiiu_sky_at_prepare;
 // orig: (host) the Wii U: the frame's chain read (its reader joined, ports/wiiu/game/wiiu_gfx.cpp): its GS registers at the first world
 // pass kept for the next frame's preparation, which then does not wait for the reader (RAC1_WIIU_REGS_LAST=0: it waits, as before)
 void mrp_world_wiiu_chain_joined();

@@ -126,6 +126,9 @@ void rac1_wiiu_picture_frame(const rac1::gs::Gs* replica, float fb_w, float fb_h
     g_2d.screen_fbp = screen_fbp;
     g_2d.skip_fbp = skip_fbp;
     g_2d.targets_due = true;
+    // ((2026-10-28) what of the game's state the backends' draws read, taken now: the game thread may run the next steps beside the
+    // drawing - orig_main.cpp's Wii U branch)
+    if (g_on) rac1::gx2_draw_view_take();
 }
 
 // the game over (its main returned): its 2D no longer drawn, the frames on the way back to the menu the test's
@@ -217,10 +220,16 @@ bool wiiu_gfx_start() {
 // clock: the stages orig_main.cpp times (rac1_wiiu_time), the picture's draws by backend, the GX2 waits, and the rest of the frame
 // - the game's steps)
 namespace {
-// (slots 0..3 orig_main.cpp's: rac1_wiiu_time(0 / 1 / 2 / 3); the sky's two, 2026-10-28: its capture on the game's thread, its draws)
-enum TimeSlot { kTmChain, kTmMobyPrep, kTmWorldPrep, kTmSkyCapture, kTmWorldJoin, kTmGpuWait, kTmJoin, kTmBegin, kTmSky, kTmWorld, kTmMobys, kTm2d, kTmFinishTv, kTmDrc, kTmFinish, kTmN };
+// (slots 0..3 orig_main.cpp's: rac1_wiiu_time(0 / 1 / 2 / 3); the sky's two, 2026-10-28: its capture on the game's thread, its draws.
+// (2026-10-28) the game thread's, orig_main.cpp's too: kTmJoin (6) also the chain's join before the game thread starts, kTmGameWait (15)
+// the main thread's wait for the game thread after its drawing, kTmGameSteps (16) the steps the game thread ran beside the drawing - not
+// the main thread's time: out of the sum, its own figure on the line)
+enum TimeSlot { kTmChain, kTmMobyPrep, kTmWorldPrep, kTmSkyCapture, kTmWorldJoin, kTmGpuWait, kTmJoin, kTmBegin, kTmSky, kTmWorld, kTmMobys, kTm2d, kTmFinishTv, kTmDrc, kTmFinish,
+                kTmGameWait, kTmGameSteps, kTm2dBuild, kTmN };
 const char* const kTmName[kTmN] = {"chain start", "mobys' prepare", "world's prepare", "sky's capture", "world's worker join", "GPU wait (the frame before)", "chain join",
-                                   "begin (swap wait)", "sky draws", "world draws", "moby draws", "2D draws", "TV finish", "GamePad", "finish"};
+                                   "begin (swap wait)", "sky draws", "world draws", "moby draws", "2D draws", "TV finish", "GamePad", "finish", "game thread join",
+                                   "game steps beside the drawing", "2D build (before the GPU wait)"};
+uint64_t g_tm_gt_frames = 0;  // (the window's host frames whose steps ran on the game thread: kTmGameSteps reported)
 double g_tm[kTmN] = {}, g_tm_total = 0.0;
 double g_tm_mark[kTmN] = {};  // (the stages' sums at the host frame's start: a hitch's own share)
 std::vector<std::string> g_menu_stats;  // (the GamePad's debug menu: the last window's times)
@@ -237,6 +246,7 @@ double ms_since(std::chrono::steady_clock::time_point t) { return std::chrono::d
 // orig: (host) a stage's time of this host frame (orig_main.cpp's Wii U branch: kTmChain, kTmMobyPrep, kTmWorldPrep)
 void rac1_wiiu_time(int slot, double ms) {
     if (tm_on() && slot >= 0 && slot < kTmN) g_tm[slot] += ms;
+    if (tm_on() && slot == kTmGameSteps) ++g_tm_gt_frames;
 }
 
 // (testing, the timing on - RAC1_WIIU_TIMING=1 or the debug menu -, 2026-10-28: the GPU's time) the TV frame's passes timed by the GPU
@@ -422,19 +432,8 @@ void hiz_apply(GX2DepthBuffer* db) {
 
 
 namespace {
-// the game's frame (4:3) centred on a colour buffer and its 2D drawn (the test triangle until the game's first frame)
-bool g_tm_draw = false;  // (RAC1_WIIU_TIMING: the TV's call timed by backend)
-void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
-    // (testing, RAC1_WIIU_2D: 0 the frame's chain read but nothing of it drawn, 1 the screen's primitives only: no target,
-    // 3 the MRP's 3D alone - the world's ties / shrubs and the mobys -: no 2D; the same with the replica's backend)
-    static const int s_2d = std::getenv("RAC1_WIIU_2D") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_2D")) : 2;
-    if (s_2d == 0) return;
-    if (s_2d == 1) targets = false;
-    const bool ready = g_2d.replica != nullptr ? g_2d_ready : g_m2d_ready;
-    if (!g_2d.have || !ready) {
-        if (!g_2d_ready && !g_m2d_ready) draw_test();
-        return;
-    }
+// the game's frame on colour buffer `cb`: 4:3, or wider with the widescreen, centred
+rac1::gs::Viewport frame_viewport(const GX2ColorBuffer* cb) {
     const int w = static_cast<int>(cb->surface.width), h = static_cast<int>(cb->surface.height);
     rac1::gs::Viewport vp;
     // (testing, RAC1_WIIU_VPSCALE=<0.1..1>: the game's frame drawn that much smaller, centred - the pixels' share of a frame's cost)
@@ -460,6 +459,24 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
     vp.skip_fbp = g_2d.skip_fbp;
     vp.sprite_clamp = true;
     vp.hide_edge_slivers = true;
+    return vp;
+}
+
+// the game's frame (4:3) centred on a colour buffer and its 2D drawn (the test triangle until the game's first frame)
+bool g_tm_draw = false;  // (RAC1_WIIU_TIMING: the TV's call timed by backend)
+void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
+    // (testing, RAC1_WIIU_2D: 0 the frame's chain read but nothing of it drawn, 1 the screen's primitives only: no target,
+    // 3 the MRP's 3D alone - the world's ties / shrubs and the mobys -: no 2D; the same with the replica's backend)
+    static const int s_2d = std::getenv("RAC1_WIIU_2D") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_2D")) : 2;
+    if (s_2d == 0) return;
+    if (s_2d == 1) targets = false;
+    const bool ready = g_2d.replica != nullptr ? g_2d_ready : g_m2d_ready;
+    if (!g_2d.have || !ready) {
+        if (!g_2d_ready && !g_m2d_ready) draw_test();
+        return;
+    }
+    const int w = static_cast<int>(cb->surface.width), h = static_cast<int>(cb->surface.height);
+    const rac1::gs::Viewport vp = frame_viewport(cb);
     {  // (2026-10-28, the GPU's time: the buffers the picture draws into, once on the log - sizes, formats, AA, tiling, hierarchical Z)
         static bool told[2] = {false, false};
         const int which = cb == WHBGfxGetTVColourBuffer() ? 0 : 1;
@@ -598,7 +615,7 @@ void wiiu_gfx_frame() {
                 for (int i = 0; i < kTmN; ++i) {
                     const double v = g_tm[i] - g_tm_mark[i];
                     if (v >= 1.0) std::printf(" %s %.0f,", kTmName[i], v);
-                    known += v;
+                    if (i != kTmGameSteps) known += v;
                 }
                 std::printf(" the rest (the game's steps) %.0f\n", frame_ms - known);
             }
@@ -617,7 +634,9 @@ void wiiu_gfx_frame() {
                 g_menu_stats.emplace_back(b);
                 std::snprintf(b, sizeof b, "game steps %.1f a second", 1000.0 * static_cast<double>(steps) / g_tm_total);
                 g_menu_stats.emplace_back(b);
+                const double gt_steps = g_tm[kTmGameSteps];
                 for (int i = 0; i < kTmN; ++i) {
+                    if (i == kTmGameSteps) continue;  // (the game thread's: below)
                     std::printf(" %s %.1f,", kTmName[i], g_tm[i] / n);
                     if (g_tm[i] / n >= 0.3) {
                         std::snprintf(b, sizeof b, "  %-24.24s %6.1f", kTmName[i], g_tm[i] / n);
@@ -627,9 +646,18 @@ void wiiu_gfx_frame() {
                     g_tm[i] = 0.0;
                     g_tm_mark[i] = 0.0;
                 }
-                std::printf(" the rest (the game's steps) %.1f\n", (g_tm_total - known) / n);
+                g_tm[kTmGameSteps] = g_tm_mark[kTmGameSteps] = 0.0;
+                // (the steps the main thread ran itself - in series -, then those the game thread ran beside the drawing: their host
+                // frames of the window, their time a host frame of the window)
+                std::printf(" the rest (the game's steps) %.1f; game thread: %llu of %d host frames, its steps %.1f\n", (g_tm_total - known) / n,
+                            static_cast<unsigned long long>(g_tm_gt_frames), window, gt_steps / n);
                 std::snprintf(b, sizeof b, "  %-24.24s %6.1f", "the game's steps", (g_tm_total - known) / n);
                 g_menu_stats.emplace_back(b);
+                if (g_tm_gt_frames != 0) {
+                    std::snprintf(b, sizeof b, "  %-24.24s %6.1f", "steps on the game thread", gt_steps / n);
+                    g_menu_stats.emplace_back(b);
+                }
+                g_tm_gt_frames = 0;
                 gpu_window(g_menu_stats);  // (the GPU's own times of the TV frame's passes: "[gpu]")
                 // the menu's game page: the game code's own stages (the host profiler's zones, ms a host frame), the biggest first
                 if (debug_menu_wanted() && rac1::prof::history_size() > 0) {
@@ -666,6 +694,21 @@ void wiiu_gfx_frame() {
     // WHBGfxFinishRender does (GX2DrawDone). (testing: RAC1_WIIU_OVERLAP=0 waits at the end as before)
     static const bool overlap_on = std::getenv("RAC1_WIIU_OVERLAP") == nullptr || std::atoi(std::getenv("RAC1_WIIU_OVERLAP")) != 0;
     const bool overlap = overlap_on && g_menu_overlap && !g_ending;
+    // ((2026-10-28) the TV's 2D built before the wait for the GPU, which it then overlaps - mrp_2d_gx2_prebuild: CPU work alone, nothing
+    // the GPU reads written; the chain's reader joined for it first. RAC1_WIIU_2D_PREBUILD=0: built at its draw as before)
+    static const bool prebuild_on = std::getenv("RAC1_WIIU_2D_PREBUILD") == nullptr || std::atoi(std::getenv("RAC1_WIIU_2D_PREBUILD")) != 0;
+    const bool chain_2d = g_2d.have && g_2d.replica == nullptr;
+    if (prebuild_on && chain_2d) {
+        rac1::mrp_chain_join();  // (the frame's chain read on the reader's worker)
+        rac1::mrp_world_wiiu_chain_joined();  // (its registers kept for the next frame's world)
+        lap(kTmJoin);
+        static const int s_2d = std::getenv("RAC1_WIIU_2D") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_2D")) : 2;
+        if (g_m2d_ready && g_menu_draw_2d && s_2d == 2) {
+            const GX2ColorBuffer* tv = WHBGfxGetTVColourBuffer();
+            rac1::mrp_2d_gx2_prebuild(rac1::mrp_chain_frame(), tv, g_2d.fb_w, g_2d.fb_h, frame_viewport(tv));
+        }
+        lap(kTm2dBuild);
+    }
     if (overlap && g_frame_ts != 0) GX2WaitTimeStamp(g_frame_ts);
     lap(kTmGpuWait);
     rac1::gx2_perf_init();         // (the GPU switches' start, run.cfg's: once)
@@ -675,7 +718,7 @@ void wiiu_gfx_frame() {
     if (g_frames % 300 == 0)  // (the memory left, on the log: a leak shows)
         std::printf("[wiiu] host frame %llu: %u KB free in the default heap\n", static_cast<unsigned long long>(g_frames),
                     static_cast<unsigned>(MEMGetTotalFreeSizeForExpHeap(MEMGetBaseHeapHandle(MEM_BASE_HEAP_MEM2)) / 1024));
-    if (g_2d.have && g_2d.replica == nullptr) {
+    if (chain_2d && !prebuild_on) {
         rac1::mrp_chain_join();  // (the frame's chain read on the reader's worker)
         rac1::mrp_world_wiiu_chain_joined();  // (its registers kept for the next frame's world)
     }
@@ -690,6 +733,7 @@ void wiiu_gfx_frame() {
     g_tm_draw = tm;
     draw_frame(WHBGfxGetTVColourBuffer(), WHBGfxGetTVDepthBuffer(), g_2d.targets_due);
     g_tm_draw = false;
+    if (g_m2d_ready) rac1::mrp_2d_gx2_prebuild_drop();
     t = std::chrono::steady_clock::now();
     g_2d.targets_due = false;
     WHBGfxFinishRenderTV();
@@ -698,16 +742,28 @@ void wiiu_gfx_frame() {
     if (const uint64_t due = shot_wanted(g_2d.game_frame)) shot(WHBGfxGetTVColourBuffer(), due);
     // (testing, RAC1_WIIU_DRC=0: the GamePad's screen cleared only, the frame drawn for the TV alone)
     static const bool drc = std::getenv("RAC1_WIIU_DRC") == nullptr || std::atoi(std::getenv("RAC1_WIIU_DRC")) != 0;
-    hiz_apply(WHBGfxGetDRCDepthBuffer());
-    WHBGfxBeginRenderDRC();
-    WHBGfxClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    if (debug_menu_wanted() && !g_ending) {  // (the GamePad's debug menu in place of the game's picture there)
-        debug_menu_input();
-        debug_menu_draw(WHBGfxGetDRCColourBuffer(), g_menu_stats);
-    } else if (drc) {
-        draw_frame(WHBGfxGetDRCColourBuffer(), WHBGfxGetDRCDepthBuffer(), false);
+    // ((2026-10-28) the game's picture on the GamePad, RAC1_WIIU_GAMEPAD: 1 (the default) the TV's colour buffer copied down to the
+    // GamePad's screen - GX2CopyColorBufferToScanBuffer scales it, as WHBGfxFinishRenderTV's copy does the TV's -: no second drawing of
+    // the frame, neither its CPU work (~2 ms a host frame) nor its GPU work (every pass again, at 854 x 480); 2 drawn for it every other
+    // host frame (its colour buffer, which keeps the last one, copied again between); 0 drawn every host frame as before. The debug menu
+    // is drawn as before)
+    static const int pad_mode = std::getenv("RAC1_WIIU_GAMEPAD") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_GAMEPAD")) : 1;
+    const bool menu = debug_menu_wanted() && !g_ending;
+    if (!menu && drc && (pad_mode == 1 || (pad_mode == 2 && (g_frames & 1) != 0))) {
+        GX2CopyColorBufferToScanBuffer(pad_mode == 1 ? WHBGfxGetTVColourBuffer() : WHBGfxGetDRCColourBuffer(), GX2_SCAN_TARGET_DRC);
+        GX2SetContextState(WHBGfxGetDRCContextState());  // (as WHBGfxFinishRenderDRC after its copy)
+    } else {
+        hiz_apply(WHBGfxGetDRCDepthBuffer());
+        WHBGfxBeginRenderDRC();
+        WHBGfxClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        if (menu) {  // (the GamePad's debug menu in place of the game's picture there)
+            debug_menu_input();
+            debug_menu_draw(WHBGfxGetDRCColourBuffer(), g_menu_stats);
+        } else if (drc) {
+            draw_frame(WHBGfxGetDRCColourBuffer(), WHBGfxGetDRCDepthBuffer(), false);
+        }
+        WHBGfxFinishRenderDRC();
     }
-    WHBGfxFinishRenderDRC();
     gpu_mark(kGmDrc);
     lap(kTmDrc);
     if (overlap) {  // (WHBGfxFinishRender without its GX2DrawDone)
