@@ -4,6 +4,7 @@
 // before the game's first frame, or without the 2D's shaders, a test triangle whose colours follow the frames. RAC1_WIIU_GFX=1 turns it on (the log's screen, WHBLogConsole, is then left out: the log
 // goes to the UDP log alone); the shaders are .gsh files compiled on the PC (ports/wiiu/shaders, CafeGLSL) and read
 // from shaders/ beside the game's data. Host code.
+#include <game/render/mrp_world_renderer.h>
 #include <game/render/mrp_chain.h>
 #include <runtime/gs/gs_emu.h>
 #include "gs_draw_gx2.h"
@@ -19,7 +20,10 @@
 #include <gx2/draw.h>
 #include <gx2/surface.h>
 #include <gx2/mem.h>
+#include <gx2/state.h>
+#include <gx2/display.h>
 #include <gx2/event.h>
+#include <gx2/swap.h>
 #include <gx2/enum.h>
 #include <gx2/shaders.h>
 #include <gx2r/buffer.h>
@@ -180,9 +184,10 @@ bool wiiu_gfx_start() {
 // clock: the stages orig_main.cpp times (rac1_wiiu_time), the picture's draws by backend, the GX2 waits, and the rest of the frame
 // - the game's steps)
 namespace {
-enum TimeSlot { kTmChain, kTmMobyPrep, kTmWorldPrep, kTmJoin, kTmBegin, kTmWorld, kTmMobys, kTm2d, kTmFinishTv, kTmDrc, kTmFinish, kTmN };
-const char* const kTmName[kTmN] = {"chain start", "mobys' prepare", "world's prepare", "chain join", "begin (swap wait)", "world draws",
-                                   "moby draws", "2D draws", "TV finish", "GamePad", "finish"};
+enum TimeSlot { kTmChain, kTmMobyPrep, kTmWorldPrep, kTmWorldJoin, kTmGpuWait, kTmJoin, kTmBegin, kTmWorld, kTmMobys, kTm2d, kTmFinishTv, kTmDrc, kTmFinish, kTmN };
+const char* const kTmName[kTmN] = {"chain start", "mobys' prepare", "world's prepare", "world's worker join", "GPU wait (the frame before)", "chain join", "begin (swap wait)",
+                                   "world draws", "moby draws", "2D draws", "TV finish", "GamePad", "finish"};
+OSTime g_frame_ts = 0;  // (the last frame's commands, GX2GetLastSubmittedTimeStamp: waited for before the next frame's writes)
 double g_tm[kTmN] = {}, g_tm_total = 0.0;
 uint64_t g_tm_frames = 0;
 std::chrono::steady_clock::time_point g_tm_last{};
@@ -241,6 +246,8 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
         dt = std::chrono::steady_clock::now();
     };
     if (g_world_ready) {
+        rac1::mrp_world_wiiu_join();  // (the frame's preparation's second half, on its worker core)
+        dlap(kTmWorldJoin);
         rac1::mrp_world_gx2_debug_frame(g_2d.game_frame);
         rac1::mrp_world_gx2_draw(cb, db, vp);
         dlap(kTmWorld);
@@ -347,6 +354,12 @@ void wiiu_gfx_frame() {
         g_tm[slot] += ms_since(t);
         t = std::chrono::steady_clock::now();
     };
+    // the GPU draws a frame while the game's thread runs the next steps: the frame before's commands waited for here, before
+    // this frame writes the memory the GPU reads (the backends' rings, the per-frame buffers) - not at the frame's end as
+    // WHBGfxFinishRender does (GX2DrawDone). (testing: RAC1_WIIU_OVERLAP=0 waits at the end as before)
+    static const bool overlap = std::getenv("RAC1_WIIU_OVERLAP") == nullptr || std::atoi(std::getenv("RAC1_WIIU_OVERLAP")) != 0;
+    if (overlap && g_frame_ts != 0) GX2WaitTimeStamp(g_frame_ts);
+    lap(kTmGpuWait);
     if (g_frames % 300 == 0)  // (the memory left, on the log: a leak shows)
         std::printf("[wiiu] host frame %llu: %u KB free in the default heap\n", static_cast<unsigned long long>(g_frames),
                     static_cast<unsigned>(MEMGetTotalFreeSizeForExpHeap(MEMGetBaseHeapHandle(MEM_BASE_HEAP_MEM2)) / 1024));
@@ -371,7 +384,15 @@ void wiiu_gfx_frame() {
     if (drc) draw_frame(WHBGfxGetDRCColourBuffer(), WHBGfxGetDRCDepthBuffer(), false);
     WHBGfxFinishRenderDRC();
     lap(kTmDrc);
-    WHBGfxFinishRender();
+    if (overlap) {  // (WHBGfxFinishRender without its GX2DrawDone)
+        GX2SwapScanBuffers();
+        GX2Flush();
+        GX2SetTVEnable(TRUE);
+        GX2SetDRCEnable(TRUE);
+        g_frame_ts = GX2GetLastSubmittedTimeStamp();
+    } else {
+        WHBGfxFinishRender();
+    }
     lap(kTmFinish);
 }
 

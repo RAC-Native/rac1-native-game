@@ -52,6 +52,11 @@
 #include <unordered_map>
 #include <vector>
 
+#if defined(__WIIU__)
+#include <coreinit/core.h>
+#include <coreinit/thread.h>
+#endif
+
 namespace rac1 {
 
 int g_mrp_world_projection = 0;
@@ -3901,7 +3906,13 @@ uint64_t g_wiiu_serial = 0;  // (mrpwb::FrameView::serial)
 }  // namespace
 
 // orig: (host) see mrp_world_renderer.h
+namespace {
+double g_ms_head = 0.0;  // (the preparation's first half's time, added to the second's)
+void wiiu_prep_dispatch();
+}  // namespace
+
 void mrp_world_wiiu_prepare(bool active) {
+    mrp_world_wiiu_join();  // (the frame before's second half, if it was not drawn)
     Frame& F = g_frame;
     F.active = false;
     F.pending = false;
@@ -3975,6 +3986,16 @@ void mrp_world_wiiu_prepare(bool active) {
     for (uint32_t k = 0; k < 16; ++k) a[k] = lwc1(ad.a + 4 * k);
     for (uint32_t k = 0; k < 3; ++k) cam[k] = lwc1(ad.camera + 4 * k);
     if (!scene_from_static(g_sframe, g_slevel, a, cam, tfrag ? &g_tlevel : nullptr, tfrag ? &g_tdecide : nullptr, F.scene)) return;
+    g_ms_head += now_ms() - t0;
+    wiiu_prep_dispatch();
+}
+
+namespace {
+// orig: (host) the preparation's second half - nothing of it reads EE memory: the scene's triangles (build_triangles), tfrag's CPU
+// route on its frozen inputs, the colours' changes taken (on the preparation's worker, or here with RAC1_WIIU_WORLD_ASYNC=0)
+void wiiu_prep_tail() {
+    Frame& F = g_frame;
+    const double t0 = now_ms();
     build_triangles(F);
     // the compute program's vertices / triangles made by the CPU route (tfrag_frame_cpu: on the game's thread for now; its inputs - the
     // frame, the level, the colours' mirror - stay as they are until the next prepare, its output is the frame's: a worker core can take
@@ -3985,9 +4006,70 @@ void mrp_world_wiiu_prepare(bool active) {
     g_tcols.all_dirty = false;
     for (int k = 0; k < 2; ++k) g_st.stat_draws[k] += F.scene.stat_draws[k];
     ++g_st.scene_frames;
-    g_st.ms_build += now_ms() - t0;
+    g_st.ms_build += now_ms() - t0 + g_ms_head;
+    g_ms_head = 0.0;
     ++g_wiiu_serial;
     F.active = true;
+}
+
+// The preparation's worker (the Wii U): a core of its own (RAC1_WIIU_PREP_CORE, default 0 - the chain's reader there is done by
+// then: the preparation waited for it -, -1 any), the game's thread's float rules (mffs at the dispatch, as mrp_chain.cpp's worker)
+struct PrepWorker {
+    std::mutex m;
+    std::condition_variable cv;
+    std::thread th;
+    bool job = false, busy = false, quit = false;
+    double fpscr = 0.0;
+    ~PrepWorker() {
+        {
+            std::lock_guard<std::mutex> lk(m);
+            quit = true;
+        }
+        cv.notify_all();
+        if (th.joinable()) th.join();
+    }
+};
+PrepWorker g_prep;
+
+// orig: (host)
+void wiiu_prep_dispatch() {
+    static const bool async = std::getenv("RAC1_WIIU_WORLD_ASYNC") == nullptr || std::atoi(std::getenv("RAC1_WIIU_WORLD_ASYNC")) != 0;
+    if (!async) {
+        wiiu_prep_tail();
+        return;
+    }
+    PrepWorker& w = g_prep;
+    std::lock_guard<std::mutex> lk(w.m);
+    if (!w.th.joinable()) w.th = std::thread([&w] {
+        const char* ce = std::getenv("RAC1_WIIU_PREP_CORE");
+        const int core = ce != nullptr ? std::atoi(ce) : 0;
+        if (core >= 0 && core <= 2) OSSetThreadAffinity(OSGetCurrentThread(), static_cast<OSThreadAttributes>(OS_THREAD_ATTRIB_AFFINITY_CPU0 << core));
+        std::printf("[mrpw] the world's preparation worker on core %u (RAC1_WIIU_PREP_CORE %d)\n", OSGetCoreId(), core);
+        std::unique_lock<std::mutex> l(w.m);
+        for (;;) {
+            w.cv.wait(l, [&w] { return w.job || w.quit; });
+            if (w.quit) return;
+            w.job = false;
+            __asm__ volatile("mtfsf 0xff, %0" : : "f"(w.fpscr));
+            l.unlock();
+            wiiu_prep_tail();
+            l.lock();
+            w.busy = false;
+            w.cv.notify_all();
+        }
+    });
+    __asm__ volatile("mffs %0" : "=f"(w.fpscr));
+    w.busy = true;
+    w.job = true;
+    w.cv.notify_all();
+}
+}  // namespace
+
+// orig: (host) see mrp_world_renderer.h
+void mrp_world_wiiu_join() {
+    PrepWorker& w = g_prep;
+    std::unique_lock<std::mutex> lk(w.m);
+    w.cv.wait(lk, [&w] { return !w.busy; });
 }
 #endif
 

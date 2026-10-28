@@ -57,6 +57,8 @@ void mrp_world_begin_frame(bool active, uint32_t chain_start, uint32_t chain_end
 // (the compute program's output, tfrag_frame_cpu), for ports/wiiu/game/mrp_world_gx2.cpp (`active`: as mrp_world_begin_frame's). No
 // sky, shadows yet.
 void mrp_world_wiiu_prepare(bool active);
+// orig: (host) the Wii U: the preparation's second half (on its worker core) waited for - before the frame's world is read
+void mrp_world_wiiu_join();
 #endif
 // orig: (host) the same in two halves: _async starts the scene's build (on a worker thread, RAC1_MRPW_THREAD=0 not),
 // after it mrp_world_skip_ranges() is known; the host may then read the frame's chain (it only reads EE memory) and must

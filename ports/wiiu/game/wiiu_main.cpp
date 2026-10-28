@@ -223,14 +223,35 @@ int read_settings() {
 }
 }  // namespace
 
-int main(int, char**) {
+// the launch's arguments (wiiload's, after the program): RAC1_*=value settings over run.cfg's, `--no-cfg` run.cfg left out - a run
+// without FTP (the console's FTP plugin hangs now and then). Returns the settings taken. (2026-10-28: Aroma's wiiload does not pass
+// them on - argc 1 -: kept for a loader that does)
+int argv_settings(int argc, char** argv) {
+    int n = 0;
+    for (int i = 1; i < argc; ++i) {
+        const char* a = argv[i];
+        const char* eq = a != nullptr ? std::strchr(a, '=') : nullptr;
+        if (eq == nullptr || std::strncmp(a, "RAC1_", 5) != 0) continue;
+        setenv(std::string(a, static_cast<size_t>(eq - a)).c_str(), eq + 1, 1);
+        ++n;
+    }
+    return n;
+}
+bool argv_has(int argc, char** argv, const char* flag) {
+    for (int i = 1; i < argc; ++i)
+        if (argv[i] != nullptr && std::strcmp(argv[i], flag) == 0) return true;
+    return false;
+}
+
+int main(int argc, char** argv_in) {
     OSReport("rac1-wiiu: main\n");
     WHBProcInit();
     g_proc_up = true;
     OSReport("rac1-wiiu: ProcUI up\n");
     WHBLogUdpInit();
     if (chdir(kDir) != 0) OSReport("rac1-wiiu: cannot enter fs:/vol/external01/rac1-native\n");
-    const int settings = read_settings();
+    const int settings = argv_has(argc, argv_in, "--no-cfg") ? 0 : read_settings();
+    const int from_args = argv_settings(argc, argv_in);
     const bool gfx = wiiu_gfx_wanted();
     if (!gfx) {
         WHBLogConsoleInit();
@@ -238,7 +259,8 @@ int main(int, char**) {
     }
     say("start");
     char msg[160];
-    std::snprintf(msg, sizeof msg, "%d settings from run.cfg; the game's output goes to the system console", settings);
+    std::snprintf(msg, sizeof msg, "%d settings from run.cfg, %d from the arguments (%d of them); the game's output goes to the system console", settings,
+                  from_args, argc);
     say(msg);
 
     // the game's output: the system console and the UDP log, or with RAC1_WIIU_LOG_FILE=1 run.log / run.err.log

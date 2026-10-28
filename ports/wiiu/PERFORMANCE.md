@@ -101,3 +101,13 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   16 ms - the CPU work (VU0 emulation, moby joints, the passes) is the second front.
 - The world's CPU prepare, 22 ms a frame on the game's thread (static frame, scene, triangles, tfrag's CPU route): to a worker core.
 - The GamePad's picture is cheap (~10%).
+
+### CPU and GPU overlapped, the world's preparation on a worker (2026-10-28)
+
+- wiiu_gfx.cpp no longer waits for the GPU at a frame's end (WHBGfxFinishRender's GX2DrawDone): the frame's commands' timestamp is
+  waited for at the next frame's start, before it writes the memory the GPU reads (RAC1_WIIU_OVERLAP=0 as before).
+- The world's preparation in two halves: what reads EE memory on the game's thread, build_triangles and tfrag's CPU route on a
+  worker on core 0 (RAC1_WIIU_WORLD_ASYNC=0 all on the game's thread), joined before the world's draw.
+- Veldin explore, everything on: host frame 231 -> 155 ms, 3.48 -> 4.96 frames a second, 17.1 -> 23.4 game steps a second; the
+  GPU's wait 81 -> 6 ms. Left on the game's thread: the game's steps (~117 ms: ~5 x 23 ms) and the world's first half (~19 ms:
+  the colours' compare, static_frame_build, scene_from_static). The picture as before (shots at game frames 150 / 200).
