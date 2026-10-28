@@ -41,7 +41,9 @@ It is attached to each [release](https://github.com/RAC-Native/rac1-native-game/
    Next time, start the game from there.
 
 When a new release is out, the **Play** page says so: **Update** downloads it and rebuilds what
-changed, and your saves and settings are kept. The launcher updates itself the same way.
+changed, and your saves and settings are kept. When a new launcher is out too, the launcher asks
+first; on yes it downloads it, checks it against the SHA-256 the release lists for it, and restarts
+with it. On no it asks again only when you click **Check for updates**.
 
 When the game closes with an error right after starting, the launcher shows the game's last
 messages (they are also in the game folder's `build/game.log`). The most common cause is a graphics
@@ -143,6 +145,34 @@ A first install unpacks the release's source zip into the game folder and record
 `tools/setup.py --update` would (`assets/update-version.txt`, and the files' hashes in
 `assets/setup-state.json`), so later updates work the same as for a zip set up by hand.
 
+## Antivirus warnings
+
+The launcher is not signed (a code-signing certificate costs money every year), and it does what
+antivirus heuristics watch for: it downloads programs and scripts, runs PowerShell and the build's
+tools, and keeps a copy of itself in the game folder. So some antivirus programs block it at first
+(F-Secure reports it as `Drop.Win64.APC.HEUR`, GitHub issue #115). These are false positives.
+
+To check that your file is the one the release published, compare its SHA-256 with the one on the
+[release page](https://github.com/RAC-Native/rac1-native-game/releases) (GitHub shows it beside each
+file, and the release has a `.sha256` file for each launcher):
+
+```bat
+certutil -hashfile rac1-launcher.exe SHA256
+```
+
+On Linux: `sha256sum rac1-launcher-linux-x64`.
+
+When the hashes match, you can let it run and report the false positive, which helps everyone else:
+
+- **F-Secure**: restore it from the quarantine (or allow it in **Viruses and threats** > **Harmful
+  items**), then send it at [f-secure.com/en/business/support-and-downloads/submit-a-sample](https://www.f-secure.com/en/business/support-and-downloads/submit-a-sample)
+  as a false positive.
+- **Microsoft Defender** and SmartScreen: submit it at
+  [microsoft.com/wdsi/filesubmission](https://www.microsoft.com/en-us/wdsi/filesubmission) ("Software
+  developer" or "Home customer", "Incorrectly detected as malware").
+- Other antivirus programs have a similar form; [VirusTotal](https://www.virustotal.com) shows
+  what each of them thinks of the file.
+
 ## Steam Deck, Bazzite and other immutable systems
 
 SteamOS, Bazzite, Fedora Silverblue and Kinoite, Bluefin, Aurora and the other immutable (atomic)
@@ -195,4 +225,5 @@ dotnet publish tools/launcher/linux/Launcher.Linux.csproj -c Release -p:Launcher
 
 The [launcher workflow](../.github/workflows/launcher.yml) builds both whenever the launcher's code changes, and attaches
 them to each published release, with the release's version (`project(... VERSION)` in `CMakeLists.txt`).
+Next to each launcher it attaches its SHA-256 (`rac1-launcher.exe.sha256`, `rac1-launcher-linux-x64.sha256`).
 A launcher built without a version (0.0.0) never updates itself.

@@ -5,6 +5,7 @@
 // and its offsets +0x50..+0xe0, the hero moby +0x100, the height +0xf0), +0x130 the offset
 // from the target and the distances (+0x15c / +0x160), +0x190 / +0x1a8 the springs, +0x1d0
 // the collision state, +0x220 the pitch state, +0x240 the previous target.
+#include <game/enhance/advanced.h>
 #include <game/ovl/kerwan_camera_tr.h>
 #include <game/ovl/variants_l3.h>
 #include <game/ovl/eudora_mobys.h>
@@ -1769,6 +1770,7 @@ void cam0_place_frame(uint32_t cam) {
     cam0_ease_offset(cam);
     float a, b;
     cam0_stick(cam, a, b);
+    advanced_mouse_camera(cam, b);  // orig: (none) — enhancement: the Direct mouse (#117)
     cam0_turn(cam, a, b);
     cam0_collide(cam);
     cam0_position(cam);

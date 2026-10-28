@@ -744,8 +744,13 @@ void graphics_set_monitors(std::vector<std::string> names) {
     // first, and its name kept, so the row shows what the window is on
     int index = -1;
     if (!gs_.monitor_name.empty())
-        for (size_t i = 0; i < gs_.monitors.size(); ++i)
+        for (size_t i = 0; i < gs_.monitors.size() && index < 0; ++i)
             if (gs_.monitors[i] == gs_.monitor_name) index = static_cast<int>(i);
+    // (a name kept before two monitors of that name were told apart by their place, "Name (at x,y)": the first of them, #111)
+    if (index < 0 && !gs_.monitor_name.empty())
+        for (size_t i = 0; i < gs_.monitors.size() && index < 0; ++i)
+            if (gs_.monitors[i].rfind(gs_.monitor_name + " (at ", 0) == 0) index = static_cast<int>(i);
+    if (index >= 0) gs_.monitor_name = gs_.monitors[static_cast<size_t>(index)];
     if (index < 0) {
         const std::string wanted = gs_.monitor_name;
         index = gs_.monitors.empty() ? -1 : 0;

@@ -109,9 +109,39 @@ code reading these fields.
 - **Keyboard and mouse.** Bound like any other input. Stick directions can be bound to keys (full
   deflection) or to mouse movement.
 - **Mouse look.** When the right stick is bound to the mouse and mouse look is on, a left click in the
-  window captures the cursor (raw motion when the system supports it); that click is not passed to
-  the game. Losing focus or opening the debug menu releases it. At sensitivity 1.0, 20 pixels of
-  movement in one game frame is a full stick deflection.
+  window captures the cursor (raw motion when the system supports it, `glfwRawMouseMotionSupported`:
+  no pointer acceleration); that click is not passed to the game. Losing focus or opening the debug
+  menu releases it. The mouse has two modes (`mouse_mode`, Options > Controls > Mouse Mode, #117):
+  - **Direct** (the default): the mouse's movement turns the camera by an angle proportional to it,
+    with no acceleration, no speed cap and no stick in between, so it does not depend on the frame
+    rate (the movement of each game frame is applied whole). At sensitivity 1.0 a pixel is 0.0025
+    radians (a full turn in 2500 pixels). The follow camera's offset is turned by the yaw before the
+    camera's own turn, collision and aim run, so it stays out of walls as before; the pitch is the
+    camera's own pitch spring held where the mouse put it (the stick's springs back when let go),
+    reached at the camera's own rate. While strafing or aiming (see
+    [Advanced options](advanced.md#modern-aiming)) the mouse turns the aim instead, the modern aim at
+    the **Aim Sensitivity** (a factor of the mouse's). Moving the mouse right turns the view right
+    and up looks up; Invert Look swaps up and down; the game's own Camera options are the stick's
+    and do not change the mouse. Where the follow camera is not the one playing (the first-person
+    view, the menus, the quick select's paused world, cutscenes, the levels with their own camera
+    code) the mouse is the right stick, as in Stick mode. The game is told the angles beside the
+    pad's packet (`advanced_host_input`, `advanced_mouse_camera` in
+    `src/game/enhance/advanced.cpp`); it asks for them only when it ran the follow camera the frame
+    before (`advanced_mouse_direct`).
+  - **Stick**: the earlier "relative analog" way, kept as it was and fully supported (some players
+    prefer it): the movement is a stick deflection, the camera then turns at the stick's speed with
+    its springs, everywhere the right stick works. At sensitivity 1.0, 20 pixels of movement in one
+    game frame is a full deflection.
+
+  Mouse Sensitivity and Invert Look apply to both modes; Aim Sensitivity only to Direct (in Stick
+  mode the aim turns at the stick's own aiming rate).
+- **The mouse wheel.** Each notch is a press of what it is bound to: one game frame held, one
+  released, so that fast scrolling still gives one press a notch (up to 4 notches wait their turn).
+  By default the wheel goes through the weapons (below).
+- **Next and previous weapon.** Two actions of the PC version that are no PS2 button (#61): the next
+  (or previous) weapon of the quick select's list is put in Ratchet's hand at once, without opening
+  the ring, the way the quick select equips it; while the ring is open (Triangle held), they move its
+  selection instead. They work where the quick select could open.
 
 ### Default bindings
 
@@ -121,20 +151,24 @@ code reading these fields.
 | Right stick | right stick | mouse movement, I J K L |
 | Cross | A (bottom) | Space |
 | Circle | B (right) | left mouse button |
-| Square | X (left) | right mouse button, F |
+| Square | X (left) | F, mouse button 4 (thumb) |
 | Triangle | Y (top) | E |
 | L1 | left bumper | Q |
-| R1 | right bumper | Left Shift |
-| L2 | left trigger | Z |
+| R1 | right bumper | Left Shift, Left Ctrl |
+| L2 | left trigger | right mouse button, Z |
 | R2 | right trigger | C |
 | L3 | left stick click | V |
 | R3 | right stick click | middle mouse button, B |
 | Start | Start | Escape, Enter |
 | Select | Back | Tab, Backspace |
 | D-pad | d-pad | arrow keys |
+| Next weapon | - | wheel down, X |
+| Previous weapon | - | wheel up |
 
 What each button does in the game is the original's. The optional modern controls change L2 and R2
-in gameplay (see [Advanced options](advanced.md#modern-aiming)).
+in gameplay (see [Advanced options](advanced.md#modern-aiming)): with them the right mouse button
+aims and the left one fires. A `controls.txt` written by an earlier version keeps its bindings; only
+the new actions (the weapons) get their defaults.
 
 ## The bindings file, `controls.txt`
 
@@ -155,7 +189,11 @@ right_stick_left = pad:-rightx, mouse:-x, key:j
 - One `control = input, input, ...` line per control. A control left out keeps its default; a
   control with nothing after `=` is unbound.
 - Inputs: `key:<name>`, `mouse:left`, `mouse:right`, `mouse:middle`, `mouse:button4` to `button8`,
-  `mouse:+x` / `-x` / `+y` / `-y`, `pad:<SDL button name>`, `pad:+<axis>` / `-<axis>`.
+  `mouse:+x` / `-x` / `+y` / `-y`, `mouse:wheelup` / `mouse:wheeldown`, `pad:<SDL button name>`,
+  `pad:+<axis>` / `-<axis>`.
+- Settings: `mouse_sensitivity`, `aim_sensitivity` (Direct, while aiming: a factor of the mouse's),
+  `mouse_mode` (`direct` or `stick`), `mouse_look`, `invert_look_y`.
+- The two PC actions: `next_item`, `prev_item`.
 - `#` starts a comment. Unknown lines are reported and ignored.
 
 ## The Controls page
@@ -164,11 +202,13 @@ Options > Controls (`src/game/enhance/controls.cpp`), in the pause menu and the 
 
 - **Device**: Gamepad or Keyboard / Mouse, the set of bindings shown and edited.
 - One row per control: Cross, Circle, Square, Triangle, L1, R1, L2, R2, L3, R3, Start, Select,
-  D-pad, Left Stick, Right Stick.
-- **Invert Look**, **Mouse Sensitivity** (0.25 to 4), and **Reset to Defaults**.
+  D-pad, Left Stick, Right Stick, Next Weapon, Previous Weapon.
+- **Invert Look**, **Mouse Mode** (Direct, Stick), **Mouse Sensitivity** (0.25 to 4), **Aim
+  Sensitivity** (0.25 to 4, of the mouse's), and **Reset to Defaults** (the keyboard and mouse's also
+  puts back the mouse's mode and sensitivities).
 
 To rebind, select a row and press Cross: the page waits for every input to be released, then takes
-the next one (it gives up after 5 seconds). For the stick and d-pad rows on a gamepad, move a stick
+the next one (it gives up after 5 seconds). A mouse wheel notch counts as a key. For the stick and d-pad rows on a gamepad, move a stick
 or press the d-pad; on the keyboard, press four keys in turn (up, down, left, right), or move the
 mouse to bind it as that stick. If the new input was already used by another control, the two swap,
 and the page says so.

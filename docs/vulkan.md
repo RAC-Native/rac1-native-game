@@ -13,6 +13,18 @@ the next start. When Vulkan cannot start (no Vulkan 1.3 driver, a device without
 below, a build without the shaders), the game says so in its log and opens with OpenGL; the saved
 choice is kept.
 
+At the start the log names the device (`[vk] <name>, Vulkan x.y.z, driver ...: push constants N
+bytes, subgroup S`) and checks what the renderer relies on: the features (dynamic rendering,
+synchronization2, scalar block layout, cube arrays, multi-draw indirect, depth clamp, clip
+distances, dual-source blending, subgroup ballot in fragment shaders), the limits (128 bytes of push
+constants, 24 samplers a stage) and the target formats. A missing one is listed (`[vk] missing:
+...`) and the game opens with OpenGL. A few are optional and only turned off (`[vk] not there,
+turned off: ...`): without `shaderFloat64` the tfrags are made on the CPU instead of by the compute
+shader (the same picture), and without `samplerAnisotropy` there is no anisotropic filtering. Every
+pass keeps to 128 bytes of push constants, the least a device may have (the ambient occlusion's
+parameters are in a uniform buffer). When the driver stops the GPU
+(`VK_ERROR_DEVICE_LOST`), the log says so once: the picture stays black while the game runs on.
+
 ## How it is built
 
 - `runtime/vk/vk_context.{h,cpp}`: the device, the swapchain, the frames in flight (2), a 32 MB

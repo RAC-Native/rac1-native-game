@@ -14,9 +14,19 @@
     <ApplicationIcon>launcher.ico</ApplicationIcon>
     <LauncherVersion Condition="'$(LauncherVersion)' == ''">0.0.0</LauncherVersion>
     <Version>$(LauncherVersion)</Version>
+    <!-- (the version resource Explorer's Properties > Details shows, and antivirus heuristics look at: a program with
+         no company, description or original file name looks like a dropped one, GitHub issue #115) -->
     <Product>rac1-native launcher</Product>
     <Description>Installs, sets up, updates and starts rac1-native</Description>
+    <AssemblyTitle>rac1-native launcher (Ratchet &amp; Clank PC port)</AssemblyTitle>
+    <Company>RAC-Native (github.com/RAC-Native)</Company>
+    <Authors>rac1-native contributors</Authors>
     <Copyright>rac1-native contributors, MIT license</Copyright>
+    <NeutralLanguage>en</NeutralLanguage>
+    <FileVersion>$(LauncherVersion).0</FileVersion>
+    <InformationalVersion>$(LauncherVersion)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Deterministic>true</Deterministic>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <!-- (no .exe.config beside it: the one .exe is all there is) -->
     <GenerateSupportedRuntime>false</GenerateSupportedRuntime>

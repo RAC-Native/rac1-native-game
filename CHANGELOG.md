@@ -5,6 +5,24 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+### Controls and gameplay
+- Mouse: a Direct mode, the new default (Options > Controls > Mouse Mode): the mouse turns the camera, and the aim while
+  strafing or aiming, by an angle proportional to its movement (raw motion where the system has it), with no stick
+  simulation, acceleration or speed cap; its own Aim Sensitivity while aiming; Stick keeps the earlier simulated right
+  stick (#117).
+- Keyboard and mouse defaults: the right mouse button aims (L2), the thumb button and F swing the wrench, Left Ctrl also
+  crouches, and the mouse wheel (a new kind of binding on the Controls page) goes through the weapons (#117, #61).
+- Next Weapon / Previous Weapon: two new actions (the wheel and X by default, bindable on the pad too) that put the
+  quick select's next or previous weapon in hand without opening it, or move its ring's selection while it is open (#61).
+- Advanced > Vibration (Off, Low, High; High in Modern and Experimental): the gamepad vibrates for damage, death, hard
+  landings, nearby explosions, each weapon's shot (by weapon), the wrench's hits, bolts and the ship's flight, through the
+  kernel's force feedback on Linux and XInput on Windows, with no new library; the game's state is only read (#10).
+- Advanced > Ship: the ship shown on every planet, Original (the story's) or any ship the save has unlocked; only its model
+  and look change, from the next planet (#94).
+- Advanced > Clank: Modern, a first step of a modern movement for Clank's sections: a faster, quicker walk and more air
+  control in his jump (on Orxon; Quartu's own hero code not yet), on in Experimental mode (#57).
+- Advanced > Aiming: Modern, No Zoom, Modern aiming at the normal camera distance, as Ratchet & Clank 3's lock-strafe (#70).
+
 ### Graphics
 - Lights: Anya-Thoughtmane's lighting batch 1 (#102) merged line by line: metal for the vendor, the bolts, the OmniWrench, the
   Magneboots and the pilot's helmet on every level, materials and lamps on Veldin, Novalis (the waterworks, the bridge), Aridia
@@ -30,7 +48,22 @@ What changed in each release. Releases are source only: you build the game with 
   emissive surfaces, the ambient particles (by kind) and the water, foliage and grass live, with each one's profiler time; "Save as
   my settings" keeps them. The light editor has an Aim for the lights per class; the profiler has Water and Grass stages.
 
+### Launcher and setup
+- Launcher: a new launcher is downloaded only once the player says yes, and checked against the SHA-256 the release lists for
+  it before it replaces the running one; the Windows launcher's file properties name its company, product and description, and
+  each release has a `.sha256` file beside each launcher. docs/launcher.md says how to check the file and report an
+  antivirus false positive (F-Secure's `Drop.Win64.APC.HEUR`, #115).
+
 ### Fixes
+- Options > Graphics > Monitor: two monitors with the same name ("Generic PnP Monitor" twice) are told apart by their place on
+  the desktop ("Generic PnP Monitor (at 1920,0)"), so the one chosen is the one the game opens on after a restart (#111).
+- Vulkan: the world's push constants are 128 bytes, not 144, and the ambient occlusion's 176 bytes of parameters are in a
+  uniform buffer: past the 128 bytes some drivers (Intel's) have, which can draw a level black (#113). At the start the log
+  names the device and checks every feature, limit and target format the renderer relies on: a missing one is named and the
+  game opens with OpenGL; without `shaderFloat64` the tfrags are made on the CPU, and a lost device is said in the log (#113).
+- Setup: a build folder configured for a compiler that a system update has since replaced is configured afresh, and a build
+  that fails in a kept build folder is tried once more from a fresh configuration before the update gives up: an update no
+  longer needs a new game folder (#114).
 - Debug menu: changing level (the Levels tab, `RAC1_GOTO`) during a movie stops the movie first, as its skip does: its sound
   no longer plays on and its last picture no longer stays on the screen over the next level (#101). Testing: `RAC1_MOVIE_AT`.
 - Debug menu: the free hoverboard's jump plays once (take-off, in the air, landing) and goes back to riding, as the race board's

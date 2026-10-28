@@ -939,7 +939,8 @@ MRP_AO_FS = """#version 450
 layout(location = 0) in vec2 vUv;
 layout(location = 0) out float FragAo;
 layout(set = 0, binding = 0) uniform sampler2D uDepth;
-layout(push_constant) uniform Push {
+// (a uniform buffer, not push constants: its 176 bytes are past the 128 some drivers have - Intel's, GitHub issue #113)
+layout(std140, set = 0, binding = 1) uniform AoUbo {
     mat4 uInvVP;
     mat4 uVP;
     vec4 uCam_Pad;
@@ -1602,12 +1603,11 @@ layout(push_constant) uniform Push {
     int uMipMode;
     int uShade;
     int uFge;
-    int uAtPass;
-    int uU8;
-    int uShell;
-    int _pad1;
 };
+// (128 bytes, the least maxPushConstantsSize there is - Intel's: the alpha test's pass in the fog colour's spare w, #113)
 #define uFogCol (uFogCol_Pad.xyz)
+#define uAtPass floatBitsToInt(uFogCol_Pad.w)
+#define uShell floatBitsToInt(uFrame.w)  /* (Options > Graphics > Grass: the shell drawn, k + 256 n; 0 the ground - the frame's spare w) */
 """
 
 MRP_WORLD_VS_BODY = """

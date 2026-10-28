@@ -49,8 +49,9 @@ constexpr OvConst<0x001b5ba0u> CAMERA_SETTINGS{};
 constexpr OvConst<0x001b6678u> TALL_PAGE{};  // its slot 3 box: the Graphics page's settings box
 constexpr uint32_t PAD = 0x0013c940;          // g_pad_state (+0x1c4 the buttons pressed this frame)
 
-// The page's rows: the device, the host's 15 remap rows, then three settings
-enum : int { R_DEVICE = 0, R_FIRST_CONTROL = 1, CONTROL_ROWS = 15, R_INVERT = R_FIRST_CONTROL + CONTROL_ROWS, R_SENS, R_RESET, ROW_COUNT };
+// The page's rows: the device, the host's 17 remap rows, then five settings
+enum : int { R_DEVICE = 0, R_FIRST_CONTROL = 1, CONTROL_ROWS = 17, R_INVERT = R_FIRST_CONTROL + CONTROL_ROWS, R_MOUSE_MODE, R_SENS, R_AIM_SENS, R_RESET, ROW_COUNT };
+constexpr int C_FIRST_GROUP = 12, C_LAST_GROUP = 14;  // the remap rows of four (the D-pad, the sticks)
 constexpr int VISIBLE = 10;  // the rows the box shows at once (the widget spreads its rows over the box's height)
 constexpr int SENS[] = {25, 50, 75, 100, 125, 150, 200, 250, 300, 400};  // the mouse's sensitivity, percent
 
@@ -59,7 +60,8 @@ constexpr int SENS[] = {25, 50, 75, 100, 125, 150, 200, 250, 300, 400};  // the 
 constexpr int32_t TEXT_FIRST = 0x7fa0;
 enum : int32_t {
     T_TITLE, T_OPTIONS_HELP, T_DEVICE, T_GAMEPAD, T_KBM, T_INVERT, T_SENS, T_RESET, T_OFF, T_ON,
-    T_CROSS, T_CIRCLE, T_SQUARE, T_TRIANGLE, T_START, T_SELECT, T_DPAD, T_LSTICK, T_RSTICK,
+    T_CROSS, T_CIRCLE, T_SQUARE, T_TRIANGLE, T_START, T_SELECT, T_DPAD, T_LSTICK, T_RSTICK, T_NEXT, T_PREV,
+    T_MOUSE_MODE, T_DIRECT, T_STICK, T_AIM_SENS, H_MOUSE_MODE, H_AIM_SENS, A_NEXT, A_PREV,
     A_CROSS, A_CIRCLE, A_SQUARE, A_TRIANGLE, A_L1, A_R1, A_L3, A_START, A_SELECT, A_LSTICK, A_RSTICK,
     H_DEVICE, H_NO_PAD, H_BUTTON, H_KEY, H_GROUP_PAD, H_GROUP_KEY, H_INVERT, H_SENS, H_RESET,
     W_BUTTON, W_KEY, W_GROUP_PAD, W_GROUP_KEY, W_MOUSE, W_CANCEL, D_UP, D_DOWN, D_LEFT, D_RIGHT,
@@ -74,7 +76,10 @@ constexpr uint32_t STRING_SIZE[] = {0x40, 0x80, 0x40, 0x80, 0x200};  // title, O
 constexpr const char* TEXTS[4][T_COUNT] = {
     {"Controls", "The buttons, keys and mouse that play the game, changed for each PS2 control",
      "Device", "Gamepad", "Keyboard / Mouse", "Invert Look", "Mouse Sensitivity", "Reset to Defaults", "Off", "On",
-     "Cross", "Circle", "Square", "Triangle", "Start", "Select", "D-pad", "Left Stick", "Right Stick",
+     "Cross", "Circle", "Square", "Triangle", "Start", "Select", "D-pad", "Left Stick", "Right Stick", "Next Weapon", "Previous Weapon",
+     "Mouse Mode", "Direct", "Stick", "Aim Sensitivity",
+     "Direct: the mouse turns the camera and the aim by its movement. Stick: the mouse as the right stick.",
+     "How far the mouse turns the aim with Modern aiming, of the mouse sensitivity.", "The quick select's next item; its ring's next slot while it is open.", "The quick select's previous item.",
      "Jump.", "Fire the equipped item.", "Swing the wrench.", "Quick select.", "First-person view.", "Crouch.", "Show the HUD.", "Pause menu.", "Map.", "Move.", "Camera.",
      "The device whose controls are shown and changed.", "No gamepad connected.",
      "Press %1 to change it, then press the new button.", "Press %1 to change it, then press the new key or mouse button.",
@@ -85,7 +90,10 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "%1: %2.", " Swapped with %1.", "Nothing pressed: unchanged.", "Default controls back for the %1."},
     {"Steuerung", "Tasten, Maus und Gamepad fur jede PS2-Taste andern",
      "Gerat", "Gamepad", "Tastatur / Maus", "Blick umkehren", "Mausempfindlichkeit", "Standard", "Aus", "An",
-     "Kreuz", "Kreis", "Quadrat", "Dreieck", "Start", "Select", "Steuerkreuz", "Linker Stick", "Rechter Stick",
+     "Kreuz", "Kreis", "Quadrat", "Dreieck", "Start", "Select", "Steuerkreuz", "Linker Stick", "Rechter Stick", "Nachste Waffe", "Vorherige Waffe",
+     "Mausmodus", "Direkt", "Stick", "Zielempfindlichkeit",
+     "Direkt: die Maus dreht Kamera und Zielen mit ihrer Bewegung. Stick: die Maus als rechter Stick.",
+     "Wie weit die Maus beim modernen Zielen dreht, von der Mausempfindlichkeit.", "Das nachste Objekt der Schnellauswahl.", "Das vorherige Objekt der Schnellauswahl.",
      "Springen.", "Ausgeruestetes benutzen.", "Schraubenschlussel.", "Schnellauswahl.", "Ego-Ansicht.", "Ducken.", "HUD zeigen.", "Pausenmenu.", "Karte.", "Bewegen.", "Kamera.",
      "Das Gerat, dessen Steuerung gezeigt und geandert wird.", "Kein Gamepad verbunden.",
      "%1 zum Andern, dann die neue Taste drucken.", "%1 zum Andern, dann die neue Taste oder Maustaste drucken.",
@@ -96,7 +104,10 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "%1: %2.", " Getauscht mit %1.", "Nichts gedruckt: unverandert.", "Standardsteuerung fur %1 zuruck."},
     {"Controles", "Botones, teclas y raton para cada control de PS2",
      "Dispositivo", "Mando", "Teclado / Raton", "Invertir vista", "Sensibilidad del raton", "Restablecer", "No", "Si",
-     "Equis", "Circulo", "Cuadrado", "Triangulo", "Start", "Select", "Cruceta", "Stick izquierdo", "Stick derecho",
+     "Equis", "Circulo", "Cuadrado", "Triangulo", "Start", "Select", "Cruceta", "Stick izquierdo", "Stick derecho", "Arma siguiente", "Arma anterior",
+     "Modo del raton", "Directo", "Stick", "Sensibilidad al apuntar",
+     "Directo: el raton gira la camara y la mira con su movimiento. Stick: el raton como stick derecho.",
+     "Cuanto gira la mira el raton con el apuntado moderno, de la sensibilidad del raton.", "El objeto siguiente de la seleccion rapida.", "El objeto anterior de la seleccion rapida.",
      "Saltar.", "Usar lo equipado.", "Llave.", "Seleccion rapida.", "Vista en primera persona.", "Agacharse.", "Mostrar el HUD.", "Menu de pausa.", "Mapa.", "Moverse.", "Camara.",
      "El dispositivo cuyos controles se muestran y cambian.", "No hay mando conectado.",
      "Pulsa %1 para cambiarlo y luego el nuevo boton.", "Pulsa %1 para cambiarlo y luego la nueva tecla o boton del raton.",
@@ -107,7 +118,10 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "%1: %2.", " Intercambiado con %1.", "Nada pulsado: sin cambios.", "Controles por defecto para %1."},
     {"Controlli", "Tasti, mouse e gamepad per ogni comando della PS2",
      "Dispositivo", "Gamepad", "Tastiera / Mouse", "Inverti visuale", "Sensibilita mouse", "Ripristina", "No", "Si",
-     "Croce", "Cerchio", "Quadrato", "Triangolo", "Start", "Select", "Croce direzionale", "Levetta sinistra", "Levetta destra",
+     "Croce", "Cerchio", "Quadrato", "Triangolo", "Start", "Select", "Croce direzionale", "Levetta sinistra", "Levetta destra", "Arma successiva", "Arma precedente",
+     "Modo mouse", "Diretto", "Levetta", "Sensibilita mira",
+     "Diretto: il mouse gira telecamera e mira col suo movimento. Levetta: il mouse come levetta destra.",
+     "Quanto il mouse gira la mira moderna, della sensibilita del mouse.", "L'oggetto successivo della selezione rapida.", "L'oggetto precedente della selezione rapida.",
      "Salto.", "Usa l'oggetto equipaggiato.", "Chiave inglese.", "Selezione rapida.", "Visuale in prima persona.", "Accucciati.", "Mostra l'HUD.", "Menu di pausa.", "Mappa.", "Movimento.", "Telecamera.",
      "Il dispositivo di cui si vedono e cambiano i controlli.", "Nessun gamepad collegato.",
      "Premi %1 per cambiarlo, poi il nuovo tasto.", "Premi %1 per cambiarlo, poi il nuovo tasto o tasto del mouse.",
@@ -131,6 +145,7 @@ constexpr ControlRow CONTROL_DEF[CONTROL_ROWS] = {
     {-1, "L1", A_L1, '\x14'},           {-1, "R1", A_R1, '\x15'},         {-1, "L2", -1, '\x16'},           {-1, "R2", -1, '\x17'},
     {-1, "L3", A_L3, 0},                {-1, "R3", -1, 0},                {T_START, "", A_START, 0},         {T_SELECT, "", A_SELECT, 0},
     {T_DPAD, "", -1, 0},                {T_LSTICK, "", A_LSTICK, '\x19'}, {T_RSTICK, "", A_RSTICK, '\x18'},
+    {T_NEXT, "", A_NEXT, 0},            {T_PREV, "", A_PREV, 0},
 };
 
 struct State {
@@ -181,6 +196,8 @@ std::string row_name(int row) {
     if (row == R_DEVICE) return t[T_DEVICE];
     if (row == R_INVERT) return t[T_INVERT];
     if (row == R_SENS) return t[T_SENS];
+    if (row == R_MOUSE_MODE) return t[T_MOUSE_MODE];
+    if (row == R_AIM_SENS) return t[T_AIM_SENS];
     if (row == R_RESET) return t[T_RESET];
     return control_name(row - R_FIRST_CONTROL, true);
 }
@@ -194,8 +211,9 @@ std::string row_value(int row) {
     if (row == R_RESET) return "";
     if (cs_.host == nullptr) return "-";
     if (row == R_INVERT) return t[cs_.host->invert_look() ? T_ON : T_OFF];
-    if (row == R_SENS) {
-        const int p = static_cast<int>(cs_.host->mouse_sensitivity() * 100.0f + 0.5f);
+    if (row == R_MOUSE_MODE) return t[cs_.host->mouse_direct() ? T_DIRECT : T_STICK];
+    if (row == R_SENS || row == R_AIM_SENS) {
+        const int p = static_cast<int>((row == R_SENS ? cs_.host->mouse_sensitivity() : cs_.host->aim_sensitivity()) * 100.0f + 0.5f);
         char b[16];
         std::snprintf(b, sizeof b, "x%d.%02d", p / 100, p % 100);  // (the font's '%' is a button)
         return b;
@@ -209,7 +227,7 @@ std::string help_text(int row) {
     const char* const* t = texts();
     if (cs_.host != nullptr && cs_.waiting_row >= 0) {  // a new input awaited
         const int c = cs_.waiting_row - R_FIRST_CONTROL;
-        const bool group = c >= 12, pad = cs_.device == 0;
+        const bool group = c >= C_FIRST_GROUP && c <= C_LAST_GROUP, pad = cs_.device == 0;
         int step = 0;
         cs_.host->rebind_waiting(&step);
         std::string s;
@@ -227,6 +245,8 @@ std::string help_text(int row) {
         }
         case R_INVERT: return t[H_INVERT];
         case R_SENS: return t[H_SENS];
+        case R_MOUSE_MODE: return t[H_MOUSE_MODE];
+        case R_AIM_SENS: return t[H_AIM_SENS];
         case R_RESET: return t[H_RESET];
         default: break;
     }
@@ -235,7 +255,7 @@ std::string help_text(int row) {
     std::string s;
     if (CONTROL_DEF[c].action >= 0) s = std::string(t[CONTROL_DEF[c].action]) + " ";
     const bool pad = cs_.device == 0;
-    if (c >= 12) return s + fill(t[pad ? H_GROUP_PAD : H_GROUP_KEY], confirm);
+    if (c >= C_FIRST_GROUP && c <= C_LAST_GROUP) return s + fill(t[pad ? H_GROUP_PAD : H_GROUP_KEY], confirm);
     return s + fill(t[pad ? H_BUTTON : H_KEY], confirm);
 }
 
@@ -279,13 +299,18 @@ void row_step(int row, int d) {
         h->set_invert_look(!h->invert_look());
         return;
     }
-    if (row == R_SENS) {
-        const int p = static_cast<int>(h->mouse_sensitivity() * 100.0f + 0.5f);
+    if (row == R_MOUSE_MODE) {
+        h->set_mouse_direct(!h->mouse_direct());
+        return;
+    }
+    if (row == R_SENS || row == R_AIM_SENS) {
+        const int p = static_cast<int>((row == R_SENS ? h->mouse_sensitivity() : h->aim_sensitivity()) * 100.0f + 0.5f);
         constexpr int n = sizeof(SENS) / sizeof(int);
         int i = 0;
         while (i < n - 1 && SENS[i] < p) ++i;  // (the nearest at or above)
         i = (i + d + n) % n;
-        h->set_mouse_sensitivity(static_cast<float>(SENS[i]) / 100.0f);
+        if (row == R_SENS) h->set_mouse_sensitivity(static_cast<float>(SENS[i]) / 100.0f);
+        else h->set_aim_sensitivity(static_cast<float>(SENS[i]) / 100.0f);
         return;
     }
     if (d < 0) return;  // (the controls and reset: cross only)

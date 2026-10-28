@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 349 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 352 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 263 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 65 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Debugging](#debugging-variables) | 264 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Automated testing](#automated-testing-variables) | 67 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -288,6 +288,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_VIEW_DIST` | float; default 1.3 | With RAC1_VIEW_HERO_FRONT, the distance of the debug camera from the hero. |
 | `RAC1_VIEW_HERO_FRONT` | any value = on; default off | Debug camera that gives a close look at the hero's face, placed in front of the hero (see RAC1_VIEW_ANGLE and RAC1_VIEW_DIST). |
 | `RAC1_VIEW_MODE` | integer: 0 = widescreen, 1 = 4:3 with bars, 2 = fit to the window's aspect; default 0 until the Options > Graphics settings override it | Sets the host's view/aspect mode at start (as the aspect and fit options do). The exact meaning of 0 is inferred from the view code, treat as approximate. |
+| `RAC1_VIBRATION_LOG` | set (any value) = on; default off | Prints the vibration motors' strengths (`[vibe] frame <n> low <l> high <h>`) each game frame they change (Options > Advanced > Vibration, #10), with or without a gamepad. |
 | `RAC1_VIF_TRACE` | any value = on; default off | Prints every VIF1 code word (as [VIF1] lines on stderr) as the GS emulation processes the DMA chain. |
 | `RAC1_VK_VALIDATION` | 1 = on; default off | With the Vulkan renderer, turns the Khronos validation layer on when it is installed (its messages on the standard output). See [Vulkan](vulkan.md). |
 | `RAC1_VU0_CAPTURE` | directory path; default off | Writes captures (code image, registers, memory) of VU0 program runs, spread over the calls, into that directory; used as inputs to prove the ported VU0 programs against the original. |
@@ -379,6 +380,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_SIM_DELAY` | integer N frames; default 0 | Delays the RAC1_SIM_INPUT script by N frames (for example to skip a level's arrival scene). |
 | `RAC1_SIM_HOST` | comma-separated host input names (keys, mouse buttons, mouse axes); unset = none | Supplies the host-device inputs that the "h" keys of a menu: or title: RAC1_SIM_INPUT script press, in order. Unrecognised names are reported and skipped. |
 | `RAC1_SIM_INPUT` | script name: forward, jump, dive, turn, attack, throw, hud, quick, fire, shoot, hold, holdwalk, look, start, ship, shipskip, vendor, menu:<keys>, title:<keys> or seq:<script>; default unset = real input | Simulates the pad with a scripted input pattern. Also makes the run ignore physical gamepads so it is deterministic. |
+| `RAC1_SIM_ITEM` | <frame>:<n or p>[;...]; unset = none | Presses the PC's Next Weapon (n) or Previous Weapon (p) action at that game frame, as the mouse wheel would (headless or simulated runs). |
+| `RAC1_SIM_MOUSE` | <from>:<to>:<dx>:<dy>[;...]; unset = none | Moves the mouse dx, dy pixels each game frame from frame `from` to `to - 1`, as the default bindings take it: the Direct mouse when the game takes it, else the simulated right stick (headless or simulated runs). |
 | `RAC1_STEPS` | integer >= 1; default 1 | In a headless run, the number of game frames run per host frame (exercises the catch-up path of a windowed run). Ignored in windowed runs. |
 | `RAC1_TEST_ZERO_FB` | <first>,<last>[,raw] game frames (last exclusive); unset = off | The host frames of those frames see a framebuffer of 0 x 0, as a minimised window's (on Windows a fullscreen window alt-tabbed out of): nothing is drawn or presented and the game goes on at 60 frames a second. With `raw` the renderers get the 0 x 0 size instead (the behaviour before the minimised window was skipped). |
 | `RAC1_TEXT_AUDIT` | set (any value) = on; default off | At the item-giving frame (RAC1_GIVE_FRAME), prints each item message the level's code asks for and whether the level's text table has it (`[textaudit]`, MISSING when it does not). |

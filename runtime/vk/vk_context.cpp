@@ -135,6 +135,9 @@ struct Context {
     bool has_memory_budget = false;
     VkDeviceSize ring_peak = 0;  // (the most of a frame ring a frame used: the profiler's memory view)
     bool has_host_query_reset = false;
+    bool has_float64 = false;       // (shaderFloat64: the tfrag compute's doubles; without it the tfrags are made on the CPU)
+    bool has_anisotropy = false;    // (samplerAnisotropy: without it every sampler is isotropic)
+    bool device_lost = false;       // (VK_ERROR_DEVICE_LOST seen: said once in the log)
 } g_ctx;
 
 // The renderer's allocations, by use (the profiler's memory view)
@@ -572,7 +575,112 @@ void prof_scan(std::vector<prof::GlOwnerRow>* out) {
 }
 const prof::GpuApi kProfApi = {"Vulkan", prof_alloc, prof_slot_reset, prof_write, prof_read, prof_now_ms, prof_resources, prof_scan};
 
+// orig: (host) the device's features, limits and formats against what the renderer uses, each missing one said in the log
+// ("[vk] missing: ..."): false when one the renderer cannot do without is missing (the game then starts with OpenGL, as
+// when Vulkan is not there), and the optional ones turned off (g_ctx.has_*). GitHub issue #113: a level's first frame
+// black on an Intel UHD 620, with nothing in the log to say why.
+template <typename HasExt>
+bool check_device(VkPhysicalDevice pd, const HasExt& has_ext) {
+    VkPhysicalDeviceVulkan13Features f13{};
+    f13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+    VkPhysicalDeviceVulkan12Features f12{};
+    f12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    f12.pNext = &f13;
+    VkPhysicalDeviceFeatures2 f2{};
+    f2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    f2.pNext = &f12;
+    vkGetPhysicalDeviceFeatures2(pd, &f2);
+
+    VkPhysicalDeviceSubgroupProperties sg{};
+    sg.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
+    VkPhysicalDeviceProperties2 p2{};
+    p2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    p2.pNext = &sg;
+    vkGetPhysicalDeviceProperties2(pd, &p2);
+    const VkPhysicalDeviceLimits& L = p2.properties.limits;
+
+    std::string missing, off;
+    auto need = [&](bool ok, const char* what) {
+        if (!ok) missing += std::string(missing.empty() ? "" : ", ") + what;
+    };
+    const VkPhysicalDeviceFeatures& f = f2.features;
+    need(f13.dynamicRendering == VK_TRUE, "dynamicRendering");
+    need(f13.synchronization2 == VK_TRUE, "synchronization2");
+    need(f12.scalarBlockLayout == VK_TRUE, "scalarBlockLayout");
+    need(f.imageCubeArray == VK_TRUE, "imageCubeArray (the point lights' shadows)");
+    need(f.multiDrawIndirect == VK_TRUE, "multiDrawIndirect");
+    need(f.drawIndirectFirstInstance == VK_TRUE, "drawIndirectFirstInstance");
+    need(f.depthClamp == VK_TRUE, "depthClamp");
+    need(f.depthBiasClamp == VK_TRUE, "depthBiasClamp");
+    need(f.shaderClipDistance == VK_TRUE, "shaderClipDistance");
+    need(f.dualSrcBlend == VK_TRUE, "dualSrcBlend");
+    need(f.shaderSampledImageArrayDynamicIndexing == VK_TRUE, "shaderSampledImageArrayDynamicIndexing");
+    // (the world's fragment shader picks its texture with subgroupBroadcastFirst)
+    need((sg.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0 && (sg.supportedOperations & VK_SUBGROUP_FEATURE_BALLOT_BIT) != 0,
+         "subgroup ballot in fragment shaders");
+    // (the largest push constants a pass uses: the 2D's, the world's; the occlusion's parameters are in a uniform buffer)
+    char buf[160];
+    std::snprintf(buf, sizeof buf, "maxPushConstantsSize %u (128 needed)", L.maxPushConstantsSize);
+    need(L.maxPushConstantsSize >= 128, buf);
+    std::snprintf(buf, sizeof buf, "maxPerStageDescriptorSamplers %u / SampledImages %u (24 needed)", L.maxPerStageDescriptorSamplers,
+                  L.maxPerStageDescriptorSampledImages);
+    need(L.maxPerStageDescriptorSamplers >= 24 && L.maxPerStageDescriptorSampledImages >= 24, buf);
+    std::snprintf(buf, sizeof buf, "maxComputeWorkGroupInvocations %u (64 needed)", L.maxComputeWorkGroupInvocations);
+    need(L.maxComputeWorkGroupInvocations >= 64 && L.maxComputeWorkGroupSize[0] >= 64, buf);
+    need(L.maxDrawIndirectCount > 1, "maxDrawIndirectCount > 1");
+
+    // the formats the targets are made in: colour (drawn into, blended, sampled) and depth (drawn into, sampled)
+    auto fmt_ok = [&](VkFormat fmt, VkFormatFeatureFlags want) {
+        VkFormatProperties fp{};
+        vkGetPhysicalDeviceFormatProperties(pd, fmt, &fp);
+        return (fp.optimalTilingFeatures & want) == want;
+    };
+    const VkFormatFeatureFlags colour = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT |
+                                        VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+    const VkFormatFeatureFlags depth = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+    need(fmt_ok(VK_FORMAT_R8G8B8A8_UNORM, colour), "R8G8B8A8_UNORM targets");
+    need(fmt_ok(VK_FORMAT_R16G16B16A16_SFLOAT, colour), "R16G16B16A16_SFLOAT targets");
+    need(fmt_ok(VK_FORMAT_R8_UNORM, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT), "R8_UNORM targets");
+    need(fmt_ok(VK_FORMAT_R32_SFLOAT, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT), "R32_SFLOAT targets");
+    need(fmt_ok(VK_FORMAT_D32_SFLOAT, depth), "D32_SFLOAT depth (the shadow maps)");
+    need(fmt_ok(VK_FORMAT_D32_SFLOAT_S8_UINT, depth) || fmt_ok(VK_FORMAT_D24_UNORM_S8_UINT, depth), "a depth-and-stencil format");
+
+    // optional: turned off when missing
+    g_ctx.has_float64 = f.shaderFloat64 == VK_TRUE;
+    if (!g_ctx.has_float64) off += "shaderFloat64 (the tfrags made on the CPU); ";
+    g_ctx.has_anisotropy = f.samplerAnisotropy == VK_TRUE;
+    if (!g_ctx.has_anisotropy) off += "samplerAnisotropy (no anisotropic filtering); ";
+    if (!has_ext(VK_EXT_PROVOKING_VERTEX_EXTENSION_NAME)) off += "VK_EXT_provoking_vertex; ";
+    if (!has_ext(VK_EXT_DEPTH_CLIP_CONTROL_EXTENSION_NAME)) off += "VK_EXT_depth_clip_control; ";
+
+    std::fprintf(stderr, "[vk] %s, Vulkan %u.%u.%u, driver 0x%x (vendor 0x%04x, device 0x%04x): push constants %u bytes, subgroup %u\n",
+                 p2.properties.deviceName, VK_API_VERSION_MAJOR(p2.properties.apiVersion), VK_API_VERSION_MINOR(p2.properties.apiVersion),
+                 VK_API_VERSION_PATCH(p2.properties.apiVersion), p2.properties.driverVersion, p2.properties.vendorID, p2.properties.deviceID,
+                 L.maxPushConstantsSize, sg.subgroupSize);
+    if (!off.empty()) {
+        off.resize(off.size() - 2);
+        std::fprintf(stderr, "[vk] not there, turned off: %s\n", off.c_str());
+    }
+    if (!missing.empty()) {
+        std::fprintf(stderr, "[vk] missing: %s. The Vulkan renderer needs them: OpenGL instead\n", missing.c_str());
+        return false;
+    }
+    return true;
+}
+
+// orig: (host) a VkResult of the queue or the swapchain: VK_ERROR_DEVICE_LOST said once (the driver stopped the GPU's work:
+// what follows draws nothing, the picture stays black or frozen while the game runs on)
+void check_lost(VkResult r, const char* where) {
+    if (r != VK_ERROR_DEVICE_LOST || g_ctx.device_lost) return;
+    g_ctx.device_lost = true;
+    std::fprintf(stderr, "[vk] the graphics driver stopped the GPU's work (VK_ERROR_DEVICE_LOST, at %s): nothing more can be drawn. "
+                         "Restart the game; if it happens again, set Renderer to OpenGL\n", where);
+}
+
 }  // namespace
+
+// orig: (host)
+bool has_float64() { return g_ctx.has_float64; }
 
 bool init(GLFWwindow* window, bool vsync, bool headless) {
     if (g_ctx.active) return true;
@@ -663,7 +771,11 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     for (VkPhysicalDevice pd : devs) {
         VkPhysicalDeviceProperties props{};
         vkGetPhysicalDeviceProperties(pd, &props);
-        if (props.apiVersion < VK_API_VERSION_1_3) continue;
+        if (props.apiVersion < VK_API_VERSION_1_3) {
+            std::fprintf(stderr, "[vk] %s: Vulkan %u.%u, not 1.3: left out\n", props.deviceName, VK_API_VERSION_MAJOR(props.apiVersion),
+                         VK_API_VERSION_MINOR(props.apiVersion));
+            continue;
+        }
 
         uint32_t qf_count = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(pd, &qf_count, nullptr);
@@ -748,6 +860,11 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
         g_ctx.has_host_query_reset = f12.hostQueryReset == VK_TRUE;
     }
 
+    if (!check_device(g_ctx.phys_dev, has_ext)) {
+        shutdown();
+        return false;
+    }
+
     VkPhysicalDeviceProvokingVertexFeaturesEXT prov_feat{};
     prov_feat.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROVOKING_VERTEX_FEATURES_EXT;
     prov_feat.provokingVertexLast = VK_TRUE;
@@ -773,8 +890,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     VkPhysicalDeviceFeatures2 feat2{};
     feat2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
     feat2.pNext = &v12_feat;
-    feat2.features.samplerAnisotropy = VK_TRUE;
-    feat2.features.fillModeNonSolid = VK_TRUE;
+    feat2.features.samplerAnisotropy = g_ctx.has_anisotropy ? VK_TRUE : VK_FALSE;
     feat2.features.imageCubeArray = VK_TRUE;
     feat2.features.multiDrawIndirect = VK_TRUE;
     feat2.features.drawIndirectFirstInstance = VK_TRUE;
@@ -782,8 +898,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     feat2.features.depthBiasClamp = VK_TRUE;
     feat2.features.shaderClipDistance = VK_TRUE;
     feat2.features.dualSrcBlend = VK_TRUE;
-    feat2.features.shaderFloat64 = VK_TRUE;
-    feat2.features.shaderInt64 = VK_TRUE;
+    feat2.features.shaderFloat64 = g_ctx.has_float64 ? VK_TRUE : VK_FALSE;
     feat2.features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
 
     const float q_prio = 1.0f;
@@ -801,8 +916,8 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     dci.enabledExtensionCount = static_cast<uint32_t>(enabled_dexts.size());
     dci.ppEnabledExtensionNames = enabled_dexts.data();
 
-    if (vkCreateDevice(g_ctx.phys_dev, &dci, nullptr, &g_ctx.device) != VK_SUCCESS) {
-        std::fprintf(stderr, "[vk] vkCreateDevice failed\n");
+    if (const VkResult r = vkCreateDevice(g_ctx.phys_dev, &dci, nullptr, &g_ctx.device); r != VK_SUCCESS) {
+        std::fprintf(stderr, "[vk] vkCreateDevice failed (VkResult %d)\n", static_cast<int>(r));
         shutdown();
         return false;
     }
@@ -1007,7 +1122,7 @@ void begin_frame(int win_w, int win_h, float clear_r, float clear_g, float clear
         // (the frame slot's fence: the GPU still on the frame before last - the driver's queue full, as an OpenGL swap that
         // blocks: the profiler's Present stage, a wait)
         RAC1_PROF_ZONE(kPresent);
-        vkWaitForFences(g_ctx.device, 1, &f.in_flight, VK_TRUE, UINT64_MAX);
+        check_lost(vkWaitForFences(g_ctx.device, 1, &f.in_flight, VK_TRUE, UINT64_MAX), "the frame's fence");
     }
     g_ctx.ring_peak = std::max(g_ctx.ring_peak, f.ring_offset);
 
@@ -1034,6 +1149,7 @@ void begin_frame(int win_w, int win_h, float clear_r, float clear_g, float clear
                                                 VK_NULL_HANDLE, &g_ctx.swap_img_idx);
                 }
             }
+            check_lost(res, "vkAcquireNextImageKHR");
             if (res == VK_SUCCESS || res == VK_SUBOPTIMAL_KHR) {
                 g_ctx.swap_image_acquired = true;
                 if (res == VK_SUBOPTIMAL_KHR) g_ctx.swapchain_dirty = true;
@@ -1197,7 +1313,7 @@ void end_frame() {
         si.signalSemaphoreCount = 1;
         si.pSignalSemaphores = &finished;
     }
-    vkQueueSubmit(g_ctx.queue, 1, &si, f.in_flight);
+    check_lost(vkQueueSubmit(g_ctx.queue, 1, &si, f.in_flight), "the frame's vkQueueSubmit");
 
     if (g_ctx.swap_image_acquired) {
         VkPresentInfoKHR pi{};
@@ -1208,6 +1324,7 @@ void end_frame() {
         pi.pSwapchains = &g_ctx.swapchain;
         pi.pImageIndices = &g_ctx.swap_img_idx;
         const VkResult pres = vkQueuePresentKHR(g_ctx.queue, &pi);
+        check_lost(pres, "vkQueuePresentKHR");
         if (pres == VK_ERROR_OUT_OF_DATE_KHR || pres == VK_SUBOPTIMAL_KHR) {
             g_ctx.swapchain_dirty = true;
         }
@@ -1228,7 +1345,7 @@ void flush_cmd() {
     si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     si.commandBufferCount = 1;
     si.pCommandBuffers = &g_ctx.cmd;
-    vkQueueSubmit(g_ctx.queue, 1, &si, VK_NULL_HANDLE);
+    check_lost(vkQueueSubmit(g_ctx.queue, 1, &si, VK_NULL_HANDLE), "vkQueueSubmit");
     vkQueueWaitIdle(g_ctx.queue);
 
     vkResetCommandBuffer(g_ctx.cmd, 0);
@@ -1259,8 +1376,8 @@ void submit_immediate(const std::function<void(VkCommandBuffer)>& fn) {
     si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     si.commandBufferCount = 1;
     si.pCommandBuffers = &g_ctx.imm_cmd;
-    vkQueueSubmit(g_ctx.queue, 1, &si, g_ctx.imm_fence);
-    vkWaitForFences(g_ctx.device, 1, &g_ctx.imm_fence, VK_TRUE, UINT64_MAX);
+    check_lost(vkQueueSubmit(g_ctx.queue, 1, &si, g_ctx.imm_fence), "an upload's vkQueueSubmit");
+    check_lost(vkWaitForFences(g_ctx.device, 1, &g_ctx.imm_fence, VK_TRUE, UINT64_MAX), "an upload's fence");
 }
 
 VkInstance instance() { return g_ctx.instance; }
@@ -1857,7 +1974,7 @@ VkSampler get_sampler(VkFilter min_filter, VkFilter mag_filter, VkSamplerAddress
     sci.addressModeU = wrap_s;
     sci.addressModeV = wrap_t;
     sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    sci.anisotropyEnable = max_anisotropy > 1.0f ? VK_TRUE : VK_FALSE;
+    sci.anisotropyEnable = max_anisotropy > 1.0f && g_ctx.has_anisotropy ? VK_TRUE : VK_FALSE;
     sci.maxAnisotropy = std::min(max_anisotropy, g_ctx.dev_props.limits.maxSamplerAnisotropy);
     sci.compareEnable = compare ? VK_TRUE : VK_FALSE;
     sci.compareOp = compare_op;
