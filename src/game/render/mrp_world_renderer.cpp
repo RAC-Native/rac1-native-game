@@ -11,6 +11,7 @@
 #include <game/ovl/level_change.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/vu0_regs.h>
 #include <game/ovl/world_vu1.h>
 #include <game/render/mrp_lighting.h>
 #include <game/render/mrp_lod.h>
@@ -26,6 +27,7 @@
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
 #include <runtime/kernel/ee_memory.h>
+#include <runtime/vu/vu0.h>
 #include <runtime/vk/vk_context.h>
 #include <runtime/vk/vk_shaders.h>
 
@@ -214,6 +216,7 @@ struct Frame {
     std::vector<GpuV> v;
     std::vector<uint32_t> idx;
     std::vector<Batch> batches;
+    std::vector<mrpwb::SkyHostDraw> sky_host;  // ((2026-10-28) the host sky's shell runs: Batch::host)
     std::vector<InstGpu> insts;
     std::vector<uint32_t> cmds;  // 8 words per draw command: instance, texture word, layer, draw_flags; FOGCOL, 0, 0, 0
     // the GPU path's texture units: per epoch the (bucket, sampler) bound to units 1; a new epoch when they are full
@@ -1479,6 +1482,87 @@ void emissive_refresh() {
 }
 bool g_emis_frame = false;  // (this frame's batches carry the slots)
 
+// ((2026-10-28) the host sky's check, RAC1_SKY_HOST_CHECK=2) where the pass's 0x28c14c puts a shell's point `p` turned by `m` on the GS's
+// frame: its VU0 macro code as sky_ee.cpp runs it, on VU0's registers (the caller keeps them), the view 0x166d80 and the screen's scale /
+// offset 0x16cbd0 / 0x16cbe0 (g_game_view: read by the check) - X, Y as its XYZ2 has them (1/16 pixel, 16 bits)
+struct GameView {
+    bool on = false;
+    float v[16] = {}, scale[4] = {}, off[4] = {};
+} g_game_view;
+void game_xy(const float m[16], const float p[3], float& X, float& Y) {
+    using namespace vu0m;
+    Vf* const f = vf();
+    for (int c = 0; c < 4; ++c)
+        for (int l = 0; l < 4; ++l) {
+            f[11 + c].v[l] = g_game_view.v[4 * c + l];
+            f[1 + c].v[l] = m[4 * c + l];
+        }
+    for (int c = 1; c <= 4; ++c) {
+        mulabc(f[11], f[c].v[0], 15);
+        maddabc(f[12], f[c].v[1], 15);
+        maddabc(f[13], f[c].v[2], 15);
+        maddbc(f[c], f[14], f[c].v[3], 15);
+    }
+    for (int l = 0; l < 4; ++l) {
+        f[26].v[l] = g_game_view.scale[l];
+        f[27].v[l] = g_game_view.off[l];
+    }
+    f[5].v[0] = 0.25f;
+    mulbc(f[26], f[26], f[5].v[0], 3);
+    f[11].v[0] = p[0];
+    f[11].v[1] = p[1];
+    f[11].v[2] = p[2];
+    mulabc(f[1], f[11].v[0], 15);
+    maddabc(f[2], f[11].v[1], 15);
+    maddabc(f[3], f[11].v[2], 15);
+    maddbc(f[10], f[4], f[0].v[3], 15);
+    q() = div(f[0].v[3], f[10].v[3]);
+    mulbc(f[10], f[10], q(), 7);
+    mulav(f[10], f[26], 15);
+    maddbc(f[14], f[27], f[0].v[3], 15);
+    ftoiv(f[15], f[14], 7, 16.0f);
+    uint32_t x, y;
+    std::memcpy(&x, &f[15].v[0], 4);
+    std::memcpy(&y, &f[15].v[1], 4);
+    X = static_cast<float>(x & 0xffff) / 16.0f;
+    Y = static_cast<float>(y & 0xffff) / 16.0f;
+}
+
+// ((2026-10-28) the host sky, mrp_sky_host.inc) its shells drawn from the model's static corners by the backend (the Wii U's: Batch::host,
+// SkyHostDraw), or made as the CPU path's triangles each frame (elsewhere: the GL / Vulkan backends draw no Batch::host)
+#if defined(__WIIU__)
+constexpr bool g_sky_host_static = true;
+#else
+constexpr bool g_sky_host_static = false;
+#endif
+// the model's corners as GPU vertices (wp the shell's point, w 0; STQ undivided; the flat values a draw's own, SkyHostDraw), made again
+// for a new model (main thread: the frame's view; the model is made again only at the next capture)
+std::vector<GpuV> g_sky_host_v;
+uint64_t g_sky_host_v_serial = 0;
+const std::vector<GpuV>* sky_host_verts(uint64_t& serial) {
+    const SkyHostModel* M = sky_host_model();
+    serial = M != nullptr ? M->serial : 0;
+    if (M == nullptr) return nullptr;
+    if (g_sky_host_v_serial != M->serial) {
+        g_sky_host_v.clear();
+        g_sky_host_v.reserve(M->corners.size());
+        for (const SkyHostCorner& h : M->corners) {
+            GpuV v{};
+            for (int l = 0; l < 3; ++l) v.wp[l] = h.p[l];
+            float q;
+            std::memcpy(&q, &h.q, 4);
+            v.stq[0] = h.st[0];
+            v.stq[1] = h.st[1];
+            v.stq[2] = q;
+            v.lodq = q;
+            for (int c = 0; c < 4; ++c) v.rgba[c] = static_cast<uint8_t>(h.rgba >> (8 * c));  // (R the low byte: as sky_gpuv's)
+            g_sky_host_v.push_back(v);
+        }
+        g_sky_host_v_serial = M->serial;
+    }
+    return &g_sky_host_v;
+}
+
 // orig: (host) the GS's state along the world's packets (the registers as the replica keeps them, gs_emu.cpp) and the vertex
 // queue; the triangles the GS would draw become GPU triangles with the state of their closing vertex
 struct GsFront {
@@ -1618,6 +1702,82 @@ struct GsFront {
         const double n = glm::length(d);
         return n > 0.0 ? d / n : d;
     }
+    // ((2026-10-28) the host sky, mrp_sky_host.inc) a corner turned to the world's axes `d` (a direction): wp the unit direction, vu where
+    // the projection A puts it (the GS's X, Y the capture's would have, unsnapped: the check's), STQ x its clip w - its own, negative
+    // behind the camera: the GPU clips the triangle with the attribute homogeneous (the capture's directions are all in front)
+    uint32_t host_gpuv(const glm::dvec3& d, float s, float t, float q, uint32_t rgba_, float fog, const float* m = nullptr, const float* p = nullptr) {
+        GpuV v{};
+        const double n = glm::length(d);
+        const glm::dvec3 u = n > 0.0 ? d / n : d;
+        const glm::dvec4 hp = sky_a * glm::dvec4(u, 0.0);
+        v.vu[0] = hp.w != 0.0 ? static_cast<float>(hp.x / hp.w) : 0.0f;
+        v.vu[1] = hp.w != 0.0 ? static_cast<float>(hp.y / hp.w) : 0.0f;
+        if (g_game_view.on && m != nullptr) game_xy(m, p, v.vu[0], v.vu[1]);  // (the check's: the pass's own X, Y)
+        v.vu[2] = static_cast<float>(hp.w);  // (the check's: in front of A where positive)
+        v.vu[3] = 1.0f;
+        for (int l = 0; l < 3; ++l) v.wp[l] = static_cast<float>(u[l]);
+        v.wp[3] = 0.0f;
+        const double w = sky_mode == 0 ? (sky_vp * glm::dvec4(u, 0.0)).w : 1.0;
+        v.stq[0] = static_cast<float>(s * w);
+        v.stq[1] = static_cast<float>(t * w);
+        v.stq[2] = static_cast<float>(q * w);
+        v.lodq = q;
+        for (int c = 0; c < 4; ++c) v.rgba[c] = static_cast<uint8_t>(rgba_ >> (8 * c));
+        v.fog = fog;
+        const uint32_t index = static_cast<uint32_t>(F.v.size());
+        F.v.push_back(v);
+        ++g_st.sky_vertices;
+        return index;
+    }
+    // orig: (host) a host sky shell where the pass would have written its clusters' DIRECTs (mrp_sky_host.inc): every triangle of the
+    // model's shell, in the pass's order, by runs of one texture entry - its TEX0 written as 0x28c3c0 writes it at a change -, the GS's state
+    // along the stream as the pass's packets leave it but for RGBAQ / ST (not used by what follows). On the Wii U (g_sky_host_static) a run
+    // is a batch drawn from the model's static corners (Batch::host: SkyHostDraw); elsewhere its corners are made here, turned by `m`, as
+    // the CPU path's triangles (the PC: its picture with RAC1_WIIU_SKY_HOST=1, the check)
+    void host_shell(uint32_t shell, const float m[16]) {
+        const SkyHostModel* M = sky_host_model();
+        if (M == nullptr || shell >= M->shells.size()) return;
+        const SkyHostShell& sh = M->shells[shell];
+        const glm::dmat3 R(m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10]);  // (its columns: the quadwords x, y, z)
+        for (const SkyHostRun& r : sh.runs) {
+            if (r.tex >= 0 && static_cast<size_t>(r.tex) < M->tex0.size()) write(0x06, M->tex0[static_cast<size_t>(r.tex)]);
+            if (g_sky_host_static) {
+                Key k = key_now(3);
+                mrpwb::SkyHostDraw d;
+                std::memcpy(d.m, m, sizeof d.m);
+                d.first = r.first;
+                d.count = r.count;
+                d.word = k.word;
+                d.layer = k.layer;
+                d.state[0] = draw_flags(k, 0);
+                d.state[1] = k.fogcol;
+                d.fog = static_cast<float>(fogreg);
+                k.word = 0;
+                k.layer = 0;
+                Batch b;
+                b.key = k;
+                b.sky = true;
+                b.rk = batch_key(k, false, true);
+                b.host = static_cast<int32_t>(F.sky_host.size());
+                if (fld(k.test, 0, 1) != 0 && fld(k.test, 1, 3) != 1) b.ate = true;
+                F.batches.push_back(b);
+                F.sky_host.push_back(d);
+                g_st.sky_triangles += r.count / 3;
+                continue;
+            }
+            for (uint32_t c = r.first; c + 3 <= r.first + r.count; c += 3) {
+                uint32_t ix[3];
+                for (uint32_t j = 0; j < 3; ++j) {
+                    const SkyHostCorner& h = M->corners[c + j];
+                    float q;
+                    std::memcpy(&q, &h.q, 4);
+                    ix[j] = host_gpuv(R * glm::dvec3(h.p[0], h.p[1], h.p[2]), h.st[0], h.st[1], q, h.rgba, static_cast<float>(fogreg), m, h.p);
+                }
+                triangle(ix[0], ix[1], ix[2], 3);
+                ++g_st.sky_triangles;
+            }
+        }
+    }
     // a world pass's GIF stream (gif_now): its points (X, Y, Z) taken back to the world through the pass's view
     // (hp = (X, Y, Z, 1) up to its w: the EE's quads are projected as the pass's programs are, by A), drawn with the world
     bool gif_now = false;
@@ -1712,6 +1872,20 @@ struct GsFront {
         static int dumped = 0;
         for (uint32_t k = p.sky_first; k < p.sky_first + p.sky_count && k < S.sky.size(); ++k) {
             const SkyWrite& w = S.sky[k];
+            if (w.mode == 4 || w.mode == 5) {  // ((2026-10-28) the host sky's shell, its matrix's columns in the four writes after it)
+                if (w.mode == 4 && k + 4 < p.sky_first + p.sky_count && k + 4 < S.sky.size()) {
+                    float m[16] = {};
+                    for (uint32_t c = 0; c < 4; ++c) {
+                        const SkyWrite& x = S.sky[k + 1 + c];
+                        const uint32_t u[3] = {static_cast<uint32_t>(x.v), static_cast<uint32_t>(x.v >> 32), x.q};
+                        std::memcpy(&m[4 * c], u, 12);
+                    }
+                    m[15] = 1.0f;
+                    host_shell(w.reg, m);
+                    k += 4;
+                }
+                continue;
+            }
             if (dump && dumped < 400 && w.mode == 0 && w.reg != 0x01 && w.reg != 0x02 && w.reg != 0x04 && w.reg != 0x05) {
                 ++dumped;
                 std::printf("[mrpw-sky] packet %u reg %02x %016llx\n", p.sky_first, w.reg, static_cast<unsigned long long>(w.v));
@@ -2054,6 +2228,7 @@ void build_triangles(Frame& F) {
     F.v.clear();
     F.idx.clear();
     F.batches.clear();
+    F.sky_host.clear();
     F.insts.clear();
     F.cmds.clear();
     F.draws.clear();
@@ -3860,6 +4035,241 @@ void sky_check(const SceneFrame& S, bool reset) {
                     static_cast<unsigned long long>(outside), ms / static_cast<double>(frames));
 }
 
+// ((2026-10-28) the host sky, mrp_sky_host.inc) a scene's sky packets through a GS front of their own from the frame's registers, into
+// `T` (its vertices, indices, batches): the check's, the PC's picture
+void sky_frame_build(Frame& T, const SceneFrame& S) {
+    T.scene = SceneFrame{};
+    T.scene.sky = S.sky;
+    for (const ScenePacket& p : S.packets)
+        if (p.sky) T.scene.packets.push_back(p);
+    T.scene.sky_tex = S.sky_tex;
+    T.scene.sky_asset = S.sky_asset;
+    T.scene.sky_a = S.sky_a;
+    T.scene.has_sky = S.has_sky;
+    T.v.clear();
+    T.idx.clear();
+    T.batches.clear();
+    T.sky_host.clear();
+    T.merge_afail = g_frame.merge_afail;
+    GsFront g(T);
+    for (uint32_t r = 0; r < 128; ++r) g.regs[r] = g_frame.gs_regs[r];
+    glm::mat4 vpm;
+    std::memcpy(&vpm[0][0], g_frame.in.vp, sizeof g_frame.in.vp);
+    g.sky_mode = g_frame.in.projection != 0 ? 1 : 0;
+    g.sky_vp = glm::dmat4(vpm);
+    std::memcpy(&g.sky_a[0][0], T.scene.sky_a.data(), sizeof(double) * 16);
+    for (const ScenePacket& p : T.scene.packets) g.sky_packet(p);
+    for (uint32_t r = 0; r < 128; ++r) T.gs_regs[r] = g.regs[r];  // (the registers the sky leaves)
+}
+
+// (testing, RAC1_SKY_HOST_CHECK=1, the PC, RAC1_MRPW_THREAD=0 - the game's sky pass run, the frame's chain in EE memory - 2026-10-28)
+// the host sky (mrp_sky_host.inc) against the capture of the pass (the walker's scene `S`): the variant's ops noted after the pass, the
+// host's stream made and run (its stars by 0x28bd58 again, its writes put back), both through a GS front; then every triangle of the
+// capture's found among the host's, in order - the GS state it is drawn with (RKey, the texture word, layer, draw_flags, FOGCOL), its
+// corners' RGBA, fog, S / Q and T / Q, and where the GS puts them (the capture's X, Y as kicked, 1/16 pixel; the host's direction through
+// the projection A) -; the host's triangles not in the capture (the pass culled them) told apart by where they are: on the frame, all
+// off it, or across the camera's plane. A summary every 300 frames, the first differences printed
+void sky_host_check(const SceneFrame& S, bool reset) {
+    static const bool on = std::getenv("RAC1_SKY_HOST_CHECK") != nullptr;
+    if (!on || !S.has_sky) return;
+    if (!g_pass_noted) return;  // (a sky not render_frame's: the flight's, the title's - not the host sky's)
+    g_pass_noted = false;
+    static SkyStream hs;
+    static SceneFrame hf;
+    static vu1::Vu1* vu = nullptr;
+    if (!sky_host_ops_after_pass() || !sky_host_stream(hs, 1.0f) || !sky_capture_run(hs, hf, reset, &vu)) return;
+    static Frame fc, fh;
+    sky_frame_build(fc, S);
+    static const bool game_mode = std::atoi(std::getenv("RAC1_SKY_HOST_CHECK")) == 2;  // (the corners' X, Y the pass's own computing: exact)
+    if (game_mode) {
+        g_game_view.on = true;
+        for (uint32_t k = 0; k < 16; ++k) g_game_view.v[k] = lwc1(OV(0x00166d80u) + 4 * k);
+        for (uint32_t k = 0; k < 4; ++k) {
+            g_game_view.scale[k] = lwc1(OV(0x0016cbd0u) + 4 * k);
+            g_game_view.off[k] = lwc1(OV(0x0016cbe0u) + 4 * k);
+        }
+    }
+    {
+        vu0::Vu0& v0 = vu0::global();
+        const VUState vs = v0.st;
+        hf.sky_a = S.sky_a;  // (the host's corners where the capture's A puts them: its X, Y are that A's - a widened shadow run's on the PC)
+        sky_frame_build(fh, hf);
+        v0.st = vs;
+    }
+    g_game_view.on = false;
+    struct Tri {
+        RKey rk;
+        uint32_t word = 0, layer = 0, st0 = 0, st1 = 0;
+        const GpuV* c[3] = {};
+    };
+    auto tris = [](const Frame& T, std::vector<Tri>& out) {
+        out.clear();
+        for (const Batch& b : T.batches)
+            for (uint32_t i = b.first; i + 3 <= b.first + b.count; i += 3) {
+                Tri t;
+                t.rk = b.rk;
+                for (int k = 0; k < 3; ++k) t.c[k] = &T.v[T.idx[i + static_cast<uint32_t>(k)]];
+                t.word = t.c[2]->word;
+                t.layer = t.c[2]->layer;
+                t.st0 = t.c[2]->state[0];
+                t.st1 = t.c[2]->state[1];
+                out.push_back(t);
+            }
+    };
+    static std::vector<Tri> tc, th;
+    tris(fc, tc);
+    tris(fh, th);
+    static uint64_t frames = 0, ctris = 0, matched = 0, unmatched = 0, skipped_on = 0, skipped_off = 0, skipped_cross = 0, regs_bad = 0, err_n = 0;
+    static double err_max = 0.0, err_sum = 0.0;
+    static int shown = 0;
+    ++frames;
+    ctris += tc.size();
+    const double ox = static_cast<double>(g_frame.env_xyoff & 0xffff) / 16.0, oy = static_cast<double>((g_frame.env_xyoff >> 32) & 0xffff) / 16.0;
+    auto same_state = [](const Tri& a, const Tri& b) { return a.rk == b.rk && a.word == b.word && a.layer == b.layer && a.st0 == b.st0 && a.st1 == b.st1; };
+    auto ratio = [](const GpuV& v, int l) { return v.stq[2] != 0.0f ? static_cast<double>(v.stq[l]) / static_cast<double>(v.stq[2]) : 0.0; };
+    auto corner_err = [&](const GpuV& a, const GpuV& b, bool tex) -> double {  // (b the host's) -1: not the same corner
+        if (std::memcmp(a.rgba, b.rgba, 4) != 0 || a.fog != b.fog || !(b.vu[2] > 0.0f)) return -1.0;
+        if (tex && (std::fabs(ratio(a, 0) - ratio(b, 0)) > 1e-5 || std::fabs(ratio(a, 1) - ratio(b, 1)) > 1e-5)) return -1.0;
+        const double dx = static_cast<double>(a.vu[0]) - b.vu[0], dy = static_cast<double>(a.vu[1]) - b.vu[1];
+        const double e = std::sqrt(dx * dx + dy * dy);
+        return e < 0.5 ? e : -1.0;
+    };
+    // a host triangle the pass did not draw: on the frame (the game's frame buffer from XYOFFSET, fw x fh) or not - its corners' directions
+    // through the capture's A, the part in front of the camera (w > 0) projected, tested against the frame's rectangle (separating axes)
+    const double scr_w = lhu(0x001518d0u) != 0 ? lhu(0x001518d0u) : 512.0, scr_h = lhu(0x001518d2u) != 0 ? lhu(0x001518d2u) : 416.0;
+    glm::dmat4 A;
+    std::memcpy(&A[0][0], S.sky_a.data(), sizeof(double) * 16);
+    auto skipped = [&](const Tri& t) {
+        glm::dvec3 h[3];
+        bool behind = false;
+        for (int c = 0; c < 3; ++c) {
+            const glm::dvec4 hp = A * glm::dvec4(t.c[c]->wp[0], t.c[c]->wp[1], t.c[c]->wp[2], 0.0);
+            h[c] = glm::dvec3(hp.x, hp.y, hp.w);
+            if (!(hp.w > 1e-9)) behind = true;
+        }
+        std::vector<glm::dvec2> poly;  // (the triangle clipped to w > e, projected)
+        for (int c = 0; c < 3; ++c) {
+            const glm::dvec3 &a = h[c], &b = h[(c + 1) % 3];
+            const double e = 1e-9;
+            if (a.z > e) poly.emplace_back(a.x / a.z, a.y / a.z);
+            if ((a.z > e) != (b.z > e)) {
+                const double u = (e - a.z) / (b.z - a.z);
+                const glm::dvec3 m = a + (b - a) * u;
+                poly.emplace_back(m.x / m.z, m.y / m.z);
+            }
+        }
+        bool on = poly.size() >= 3;
+        if (on) {  // (separating axes: the rectangle's, then the polygon's edges)
+            double x0 = 1e300, x1 = -1e300, y0 = 1e300, y1 = -1e300;
+            for (const auto& p : poly) {
+                x0 = std::min(x0, p.x);
+                x1 = std::max(x1, p.x);
+                y0 = std::min(y0, p.y);
+                y1 = std::max(y1, p.y);
+            }
+            if (x1 < ox || x0 > ox + scr_w || y1 < oy || y0 > oy + scr_h) on = false;
+            double area = 0.0;
+            for (size_t k = 0; k < poly.size(); ++k) area += poly[k].x * poly[(k + 1) % poly.size()].y - poly[(k + 1) % poly.size()].x * poly[k].y;
+            const glm::dvec2 rc[4] = {{ox, oy}, {ox + scr_w, oy}, {ox, oy + scr_h}, {ox + scr_w, oy + scr_h}};
+            for (size_t k = 0; on && k < poly.size(); ++k) {
+                const glm::dvec2 p = poly[k], q = poly[(k + 1) % poly.size()];
+                bool all_out = true;
+                for (const auto& r : rc)
+                    if (((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)) * area >= 0.0) all_out = false;
+                if (all_out) on = false;
+            }
+        }
+        if (!on) ++skipped_off;
+        else if (behind) ++skipped_cross;
+        else ++skipped_on;
+        static int told_on = 0;
+        if (on && frames >= 300 && told_on < 6) {
+            ++told_on;
+            std::printf("[sky-host] check: frame %llu: a host triangle not drawn by the pass, on the frame (%.0f..%.0f x %.0f..%.0f):", static_cast<unsigned long long>(frames), ox,
+                        ox + scr_w, oy, oy + scr_h);
+            for (const auto& p : poly) std::printf(" (%.1f %.1f)", p.x, p.y);
+            std::printf(" w %.3g %.3g %.3g\n", h[0].z, h[1].z, h[2].z);
+        }
+    };
+    size_t j = 0;
+    for (size_t i = 0; i < tc.size(); ++i) {
+        const Tri& a = tc[i];
+        const bool tex = (a.st0 & 1u) != 0;
+        size_t k = j;
+        double e3 = 0.0;
+        for (; k < th.size(); ++k) {
+            const Tri& b = th[k];
+            if (!same_state(a, b)) continue;
+            double e = 0.0;
+            bool ok = true;
+            for (int c = 0; ok && c < 3; ++c) {
+                const double ec = corner_err(*a.c[c], *b.c[c], tex);
+                ok = ec >= 0.0;
+                e = std::max(e, ec);
+            }
+            if (ok) {
+                e3 = e;
+                break;
+            }
+        }
+        if (k == th.size()) {
+            ++unmatched;
+            if (shown++ < 12) {
+                std::printf("[sky-host] check: frame %llu: the capture's triangle %zu (of %zu) not among the host's: rk alpha %llx abe %u word %x st %x %x; corners",
+                            static_cast<unsigned long long>(frames), i, tc.size(), static_cast<unsigned long long>(a.rk.alpha), a.rk.abe, a.word, a.st0, a.st1);
+                for (const GpuV* c : a.c)
+                    std::printf(" (%.2f %.2f rgba %02x%02x%02x%02x s/q %.4f t/q %.4f)", c->vu[0], c->vu[1], c->rgba[0], c->rgba[1], c->rgba[2], c->rgba[3], ratio(*c, 0),
+                                ratio(*c, 1));
+                std::printf("\n");
+            }
+            continue;
+        }
+        for (size_t m = j; m < k; ++m) skipped(th[m]);
+        ++matched;
+        err_max = std::max(err_max, e3);
+        err_sum += e3;
+        ++err_n;
+        j = k + 1;
+    }
+    for (size_t m = j; m < th.size(); ++m) skipped(th[m]);
+    {  // the registers the sky leaves (the world's start): the same but the texture's (TEX0 / TEX1 / CLAMP / MIPTBP: its packets set them) and the uploads'
+        std::string diff;
+        for (uint32_t r = 0; r < 128; ++r) {
+            if (r == 0x06 || r == 0x07 || r == 0x14 || r == 0x15 || r == 0x08 || r == 0x09 || r == 0x34 || r == 0x35 || r == 0x36 || r == 0x37 || r == 0x01 || r == 0x02 ||
+                r == 0x03 || (r >= 0x50 && r <= 0x54) || r == 0x3f)
+                continue;
+            if (fc.gs_regs[r] != fh.gs_regs[r]) {
+                char b[64];
+                std::snprintf(b, sizeof b, " %02x %llx/%llx", r, static_cast<unsigned long long>(fc.gs_regs[r]), static_cast<unsigned long long>(fh.gs_regs[r]));
+                diff += b;
+            }
+        }
+        if (!diff.empty()) {
+            ++regs_bad;
+            if (regs_bad <= 4) std::printf("[sky-host] check: frame %llu: the registers the sky leaves differ (capture / host):%s\n", static_cast<unsigned long long>(frames), diff.c_str());
+        }
+    }
+    if (frames % 300 == 0)
+        std::printf("[sky-host] check: %llu frames, the capture's %.1f triangles a frame: %llu found among the host's (the corners' points: %.4f px the most, %.5f "
+                    "on average), %llu not; the host's others %.1f a frame: %.1f on the frame, %.1f off it, %.1f on it across the camera's plane; the registers left "
+                    "differ in %llu frames\n",
+                    static_cast<unsigned long long>(frames), static_cast<double>(ctris) / static_cast<double>(frames), static_cast<unsigned long long>(matched), err_max,
+                    err_n != 0 ? err_sum / static_cast<double>(err_n) : 0.0, static_cast<unsigned long long>(unmatched),
+                    static_cast<double>(skipped_on + skipped_off + skipped_cross) / static_cast<double>(frames), static_cast<double>(skipped_on) / static_cast<double>(frames),
+                    static_cast<double>(skipped_off) / static_cast<double>(frames), static_cast<double>(skipped_cross) / static_cast<double>(frames),
+                    static_cast<unsigned long long>(regs_bad));
+}
+
+// (testing, the PC: RAC1_WIIU_SKY_HOST=1 with RAC1_MRPW_THREAD=0, 2026-10-28) the host sky's stream in place of the skipped pass's range:
+// run (the stars on a private VU1 of its own) and put before the frame's packets, as the Wii U's prepare does
+void sky_host_pc(SceneFrame& S, bool reset) {
+    static SkyStream hs;
+    static SceneFrame hf;
+    static vu1::Vu1* vu = nullptr;
+    if (!sky_host_stream(hs, 1.0f) || !sky_capture_run(hs, hf, reset, &vu)) return;
+    sky_prepend(S, hf);
+}
+
 // (RAC1_MRPW_BUILD_THREAD=0: the frame's triangles built on the host thread when it takes the frame, as before; the testing
 // modes too - their checks compare the build with the faithful path's on the host thread)
 bool build_threaded() {
@@ -3951,6 +4361,8 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
         g_worker.built = scene_build(*g_level.idx, g_input, F.scene, g_level.reset_walker, kicks);
         g_worker.ms = now_ms() - g_t_begin;
         sky_check(F.scene, g_level.reset_walker);  // (testing, RAC1_MRPW_SKY_CHECK=1)
+        sky_host_check(F.scene, g_level.reset_walker);  // (testing, RAC1_SKY_HOST_CHECK=1)
+        sky_host_pc(F.scene, g_level.reset_walker);     // (testing, RAC1_WIIU_SKY_HOST=1: the pass not run)
     }
     g_level.reset_walker = false;
 }
@@ -4151,7 +4563,28 @@ void mrp_world_wiiu_sky_capture(bool walk) {
     g_sky_cap_fresh = false;
     g_sky_stream_fresh = false;
     g_sky_cap_ms = 0.0;
-    if (!walk || !g_render_sky || !mrp_world_gx2_sky_ready()) return;
+    if (!walk || !g_render_sky || !mrp_world_gx2_sky_ready()) {
+        sky_host_forget();
+        return;
+    }
+    if (sky_host_pending()) {  // ((2026-10-28) the host sky, mrp_sky_host.inc: the pass not run - its stream made here, run as a capture's)
+        if (!prep_all_on()) mrp_world_wiiu_join();  // (the build that reads the model done: a new level makes it again)
+        const int id = world_level_id();
+        const double t0 = now_ms();
+        if (sky_host_stream(g_sky_stream, g_view_draw_widen > 1.0f ? g_view_draw_widen : 1.0f)) {
+            if (prep_all_on()) {
+                g_sky_stream_fresh = true;
+                g_sky_stream_level = id;
+            } else {
+                mrp_chain_join();  // (the reader's VU1 programs done: the stars' run on the same VU1 runtime)
+                g_sky_cap_fresh = sky_capture_run(g_sky_stream, g_sky_cap, id != g_sky_vu_level);
+                g_sky_vu_level = id;
+            }
+        }
+        g_sky_cap_ms = now_ms() - t0;
+        g_sky_cap_level = id;
+        return;
+    }
     const PassRange* r = nullptr;
     for (const PassRange& p : scene_passes())
         if (p.pass == 3) r = &p;
@@ -5295,6 +5728,8 @@ bool frame_view(FrameView& out) {
     out.tf_ms = F.tf_ms;
     out.cpu_verts = &F.v;
     out.cpu_idx = &F.idx;
+    out.sky_host = &F.sky_host;
+    out.sky_host_verts = sky_host_verts(out.sky_host_serial);
 #if defined(__WIIU__)
     out.sky_ms = g_sky_cap_ms + F.sky_ms;
 #else

@@ -12,6 +12,7 @@
 #include <game/render/mrp_world_scene.h>
 #include <game/render/mrp_world_static.h>
 #include <runtime/kernel/ee_memory.h>
+#include <runtime/vu/vu1.h>
 
 #include <array>
 #include <cstdint>
@@ -117,6 +118,13 @@ bool scene_from_static_k(const StaticFrame& sf, const StaticLevel& sl, const std
 
 // The sky pass's range copied out of EE memory (sky_capture_copy): each tag's stream - its upper 64 bits, then its data - in the walk's
 // order, and what sky_capture takes besides (the asset, its texture entries, the projection A); sky_capture_run makes the capture from it
+// ((2026-10-28) the host sky, mrp_sky_host.inc: a stream made by the host, its shells' places `shells` - each a packet of its own before
+// the tag `tag` - in place of their clusters' DIRECTs)
+struct SkyHostMark {
+    uint32_t tag = 0;
+    uint8_t shell = 0;
+    std::array<float, 16> m{};  // the shell's matrix as the variant left it at 0x1bd7e0 (four quadwords: the columns x, y, z, w)
+};
 struct SkyStream {
     bool ok = false;
     std::vector<uint8_t> bytes;
@@ -125,11 +133,65 @@ struct SkyStream {
     uint32_t sky_asset = 0;
     std::vector<std::pair<uint64_t, uint32_t>> sky_tex;
     std::array<float, 16> sky_a{};
+    std::vector<SkyHostMark> shells;  // (the host sky's; none in a capture)
 };
 // orig: (host) the walk of sky_capture without its codes run (main thread: EE memory); false: nothing walked
 bool sky_capture_copy(uint32_t first, uint32_t end, const SceneAddrs& ad, SkyStream& s);
-// orig: (host) the codes of a copied range run as sky_capture runs them (its private VU1: never while another thread runs VU1 programs)
-bool sky_capture_run(const SkyStream& s, SceneFrame& out, bool reset);
+// orig: (host) the codes of a copied range run as sky_capture runs them (its private VU1: never while another thread runs VU1 programs).
+// `vu`: the private VU1 to run them on (null: the capture's own)
+bool sky_capture_run(const SkyStream& s, SceneFrame& out, bool reset, vu1::Vu1** vu = nullptr);
+
+// ---- the host sky (2026-10-28, ports/wiiu/MRP_LITE.md "The host sky"): the sky drawn from the level's sky asset without the game's sky pass ----
+// The pass's work a frame is the sky's chain: its shells' clusters culled, their vertices transformed and their triangles written as GS
+// packets (0x28b8a0 / 0x28bae0), the stars as the particle program's data (0x28bd58). Here the shells are the asset's, decoded once a level
+// (SkyHostModel) and drawn whole by the GPU, turned by the matrix the level's variant gives each (0x1bd7e0, in its order); the variant's
+// game state runs on the game's thread in place of the pass (sky_host_frame: its RNG calls, the stars' movement); the stars' data are made
+// by the game's own 0x28bd58 once a host frame, its writes put back (sky_host_stream). The stream then goes the capture's way:
+// sky_capture_run (the stars on the private VU1), sky_prepend, build_triangles (the shells' places: SkyWrite mode 4, a shell; mode 5, its
+// matrix's quadwords) - the GS's state along it as the capture's.
+
+// A corner of a shell's triangle (three a triangle, in the pass's order): the vertex as the asset holds it (x, y, z: the shell's
+// coordinates, a direction once turned), its S / T (x 1/4096, the GS's ST) and Q (1; the colours' shells: the RGBAQ's word, unused), RGBA
+struct SkyHostCorner {
+    float p[3] = {};
+    float st[2] = {};
+    uint32_t q = 0x3f800000u;
+    uint32_t rgba = 0;
+};
+// a run of a shell's triangles of one texture entry (`tex`, -1: the colours' shells): corners [first, first + count)
+struct SkyHostRun {
+    uint32_t first = 0, count = 0;
+    int32_t tex = -1;
+};
+struct SkyHostShell {
+    bool colours = false;  // (header + 4 not 0: 0x28bae0 - RGBA from the asset, no texture)
+    uint32_t clusters = 0, first = 0, count = 0;
+    std::vector<SkyHostRun> runs;
+};
+struct SkyHostModel {
+    int level = -1;
+    uint32_t asset = 0;
+    uint64_t serial = 0;  // (a new number for each model made)
+    std::vector<SkyHostCorner> corners;
+    std::vector<SkyHostShell> shells;
+    std::vector<uint64_t> tex0;  // per texture entry: a TEX0 of its format (TBP / CBP the entry's own, CLD 0: never one the game makes)
+};
+// orig: (host) the model of the stream last made (null: none); valid until the next sky_host_stream (the prepare's worker joined first)
+const SkyHostModel* sky_host_model();
+// orig: (host) the frame's host sky stream (main thread, the game's update done, the chain's reader joined: EE memory this frame's): the
+// ops the last sky_host_frame noted, the stars' data made by 0x28bd58 (in the widened view `widen` > 1, mrp_lod_sky_widen_real; its EE
+// writes put back), the model made again at a new level. false: no ops this frame, or a level without a host variant
+bool sky_host_stream(SkyStream& s, float widen);
+// orig: (host) sky_host_frame noted ops not yet taken by sky_host_stream (this host frame's: the pass was not run); sky_host_forget
+// drops them (no stream made this host frame)
+bool sky_host_pending();
+void sky_host_forget();
+// orig: (host) the frame's ops noted after the pass ran (the PC's check, mrp_world_renderer.cpp sky_host_check: the pass's game state
+// left as it is) - false: no host variant
+bool sky_host_ops_after_pass();
+// orig: (host) testing (the check): render_frame runs the pass now (g_pass_noted: not the flight's sky, the title's)
+void sky_host_note_pass();
+extern bool g_pass_noted;
 
 }  // namespace rac1::mrpw
 

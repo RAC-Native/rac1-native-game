@@ -3,11 +3,15 @@
 #include "mrp_world_sky.inc"
 #include "mrp_world_wiiu.inc"
 
+#include <game/math/vecmath.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/sky_ee.h>
+#include <game/ovl/variants_sky.h>
 #include <game/ovl/world_vu1.h>
 #include <game/render/mrp_lod.h>
 #include <runtime/kernel/ee_memory.h>
+#include <runtime/vu/vu0.h>
 #include <runtime/vu/vu1.h>
 #include <runtime/vu/vu_interpreter.h>
 
@@ -1726,15 +1730,16 @@ bool sky_capture_copy(uint32_t first, uint32_t end, const SceneAddrs& ad, SkyStr
 
 // orig: (host) see mrp_world_wiiu.inc: each tag's stream's codes as scene_build's sky branch takes them - its DIRECTs' GIF streams a
 // packet each, its other VIF codes on the private VU1 (the particle program's MPG, data and starts, its kicks a packet each)
-bool sky_capture_run(const SkyStream& s, SceneFrame& out, bool reset) {
+bool sky_capture_run(const SkyStream& s, SceneFrame& out, bool reset, vu1::Vu1** vu_in) {
     scene_reset(out);
     if (!s.ok) return false;
-    if (g_sky_vu == nullptr || reset) {
-        delete g_sky_vu;
-        g_sky_vu = new vu1::Vu1();
-        g_sky_vu->st.vf[0].f[3] = 1.0f;  // (vf0 = (0, 0, 0, 1): the walker's, scene_build)
+    vu1::Vu1*& pvu = vu_in != nullptr ? *vu_in : g_sky_vu;
+    if (pvu == nullptr || reset) {
+        delete pvu;
+        pvu = new vu1::Vu1();
+        pvu->st.vf[0].f[3] = 1.0f;  // (vf0 = (0, 0, 0, 1): the walker's, scene_build)
     }
-    vu1::Vu1& vu = *g_sky_vu;
+    vu1::Vu1& vu = *pvu;
     // (testing, RAC1_SKY_CAPTURE_VU1=0: the range's VIF codes but its DIRECTs not run - no particle program, no kicks: the capture's cost
     // without the private VU1)
     static const bool vu_codes = std::getenv("RAC1_SKY_CAPTURE_VU1") == nullptr || std::atoi(std::getenv("RAC1_SKY_CAPTURE_VU1")) != 0;
@@ -1757,7 +1762,25 @@ bool sky_capture_run(const SkyStream& s, SceneFrame& out, bool reset) {
         sky_packet(from, true);
     };
     SkyGif sky_gif;
-    for (const auto& [at, len] : s.tags) {
+    // ((2026-10-28) the host sky's shells, mrp_sky_host.inc: a packet each - its shell (mode 4), its matrix's four quadwords (mode 5) - where
+    // the pass's DIRECTs of their clusters would be)
+    size_t mark = 0;
+    auto shells_before = [&](size_t tag) {
+        for (; mark < s.shells.size() && s.shells[mark].tag <= tag; ++mark) {
+            const SkyHostMark& h = s.shells[mark];
+            const uint32_t from = static_cast<uint32_t>(out.sky.size());
+            out.sky.push_back(SkyWrite{0, 0, h.shell, 4});
+            for (int c = 0; c < 4; ++c) {
+                uint32_t w[3];
+                std::memcpy(w, &h.m[static_cast<size_t>(4 * c)], 12);
+                out.sky.push_back(SkyWrite{static_cast<uint64_t>(w[0]) | (static_cast<uint64_t>(w[1]) << 32), w[2], 0, 5});
+            }
+            sky_packet(from, false);
+        }
+    };
+    for (size_t ti = 0; ti < s.tags.size(); ++ti) {
+        shells_before(ti);
+        const auto [at, len] = s.tags[ti];
         const uint8_t* p = s.bytes.data() + at;
         const uint32_t n = len;
         for (uint32_t i = 0; i + 4 <= n;) {
@@ -1780,6 +1803,7 @@ bool sky_capture_run(const SkyStream& s, SceneFrame& out, bool reset) {
             i += nb;
         }
     }
+    shells_before(s.tags.size());
     out.has_sky = true;
     out.sky_asset = s.sky_asset;
     out.sky_tex = s.sky_tex;
@@ -1962,5 +1986,8 @@ void scene_check_frame(const SceneFrame& f, CheckStats& stats) {
     }
     g_check.clear();
 }
+
+// ((2026-10-28) the host sky: its model, variants and stream - sky_capture_copy, SkyGif above)
+#include "mrp_sky_host.inc"
 
 }  // namespace rac1::mrpw

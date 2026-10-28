@@ -77,6 +77,19 @@ struct Batch {
     int epoch = -1;                 // the GPU path's texture units (Frame::epochs)
     bool tfrag = false;             // the GPU path's tfrag triangles (first / count: in the compute program's indices)
     bool ate = false;               // one of its draws has the alpha test on (the shadow pass's depth-only program not for it)
+    int32_t host = -1;              // ((2026-10-28) the host sky's: a shell's run, FrameView::sky_host[host]; first / count unused)
+};
+// (2026-10-28) a run of a host sky shell's triangles (mrp_sky_host.inc: the shell drawn whole from the level's model, no game pass) drawn
+// by a Batch with `host` >= 0: its corners [first, first + count) in FrameView::sky_host_verts (three a triangle, in order: static for
+// the model - wp the shell's own point, w 0; stq S, T, Q undivided, which the vertex shader multiplies by the clip w), turned by `m` (the
+// shell's matrix: four columns, the world's axes = m x the shell's point - its fourth column unused: a direction) before the world's
+// view-projection; the flat values its triangles' closing corners carry this frame (the GS state the build found: as the CPU path's)
+struct SkyHostDraw {
+    float m[16] = {};
+    uint32_t first = 0, count = 0;
+    uint32_t word = 0, layer = 0;
+    uint32_t state[2] = {};
+    float fog = 0.0f;
 };
 struct InstGpu {
     float clip[16];  // model -> GL clip (the world's projection)
@@ -124,6 +137,11 @@ struct FrameView {
     const std::vector<GpuV>* cpu_verts = nullptr;
     const std::vector<uint32_t>* cpu_idx = nullptr;
     double sky_ms = 0;  // (the sky's CPU time, ms: the Wii U's capture on the game's thread and its packets' build)
+    // ((2026-10-28) the host sky: its shells' draws (Batch::host), the corners of the model they were built from - the same vector for one
+    // `sky_host_serial`)
+    const std::vector<SkyHostDraw>* sky_host = nullptr;
+    const std::vector<GpuV>* sky_host_verts = nullptr;
+    uint64_t sky_host_serial = 0;
 };
 // false: no frame built (the world not drawn this frame)
 bool frame_view(FrameView& out);

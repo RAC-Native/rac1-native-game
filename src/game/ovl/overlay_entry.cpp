@@ -429,6 +429,7 @@ std::vector<std::pair<uint32_t, uint32_t>> g_world_pass_ranges;
 
 void world_pass(void (*pass)(), int kind) {
     RAC1_PROF_ZONE(kGameWorldPasses);
+    if (kind < 0) mrpw::sky_host_forget();  // ((2026-10-28) a sky pass runs - the flight's, the title's: the host sky's ops not this frame's)
     static const bool keep_env = std::getenv("RAC1_WORLD_CHAIN") != nullptr;
     const bool keep = keep_env || g_world_faithful || g_world_mrp || g_world_chain_forced;  // (RAC1_WORLD_FAITHFUL / the debug menu: the chain is the world's drawing)
     const uint32_t cur = lwu(OV(0x001611c0));
@@ -623,7 +624,13 @@ void render_frame() {
     prof_mark_end(OV(0x0015f340), 0xf);
     if (lwu(OV(0x0016051c)) != 0 && (flags() & 1) != 0) {
         if (lw(EN + 8) != 0) {
-            if (sky_wanted()) world_pass(sky_pass, -1);
+            // ((2026-10-28) the host sky, mrp_world_sky.inc: the level's variant's game state in place of the pass - the sky drawn from the
+            // decoded asset)
+            if (mrpw::sky_host_frame()) {
+            } else if (sky_wanted()) {
+                mrpw::sky_host_note_pass();  // (testing: the host sky's check)
+                world_pass(sky_pass, -1);
+            }
             else TODO_PORT(0x0023d968, "sky (VU1): the host's sky draws instead")();
         }
         prof_mark_end(OV(0x0015f350), 0xe);

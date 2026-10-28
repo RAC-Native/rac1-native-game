@@ -72,6 +72,12 @@ void mrp_world_gx2_draw_sky(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const 
 extern bool g_wiiu_sky;
 // the sky's shaders loaded (shaders/mrp_sky.gsh): g_wiiu_sky can draw it
 bool mrp_world_gx2_sky_loaded();
+namespace mrpw {
+// ((2026-10-28) the host sky, mrp_world_sky.inc / mrp_sky_host.inc: RAC1_WIIU_SKY_HOST, on by default - the sky drawn from the level's
+// decoded asset, the game's sky pass not run; off: the pass and its capture. The debug menu's "Sky" row)
+bool sky_host_on();
+void sky_host_set(bool on);
+}  // namespace mrpw
 
 // (testing, RAC1_WIIU_WORLD_DEBUG=<m>[,<m>...]: the debug modes in turn, each for 50 game frames from game frame
 // RAC1_WIIU_WORLD_DEBUG_AT (default 0) on, the last one kept; a mode's bits: 1 no depth test, 2 a plain grey (no texture, blending or

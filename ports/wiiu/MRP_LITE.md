@@ -314,6 +314,60 @@ Each phase ends with shots of the console's TV (RAC1_WIIU_SHOT) compared with th
   each level's variant of the pass written for the host (0x23d968's twenty: Veldin's draws shells 0, 1, its stars, ALPHA_1 0x80000044 before
   shell 2, shell 3 turned about z by (0x15f5cc & 0x7fff) x pi / 16384 - pi, shell 4) and the decoder checked against the PC's (its shells are
   re-centred, their rotation never filled, the untextured colours guessed).
+- The host sky (2026-10-28, not run on the console yet; src/game/render/mrp_sky_host.inc, declared in mrp_world_sky.inc / mrp_world_wiiu.inc):
+  the sky drawn without the game's sky pass. A console profile put ~11% of the game thread in it (sky_render_tr 10.9% inclusive, the
+  widened run mrp_lod_sky_widen_real ~5%) and the capture's copy and run ~2 ms a host frame.
+  - What the pass does a frame (sky_ee.cpp, read): 0x28b680 (the chain's first tag reserved, 0x15ee74 from 0x15ee78, the upload count
+    0x15f418 0, the texture entries' TEX0 cache - asset + 0x10, 16 bytes each - cleared); the level's variant (0x1e8580's table: 0x289330
+    Veldin ... twenty of them), which draws each shell (0x28b848 i, i below asset + 6) with the matrix it sets at 0x1bd7e0 before it -
+    identity or 0x1ffa90's turn about z (L9: and about y by 0.3) by an angle from the frame counter 0x15f5cc (masked, modulo, x 5 / x 10:
+    each variant its own) -, GS writes between them (ALPHA_1 0x8000000044 after the stars) and the stars (0x288ec0 their start when
+    asset + 8 is 0, 0x289108 their movement, both with libc_rand - the game's state -, 0x28bd58 the particle program's data); a shell
+    (header +0 clusters, +4 not 0 for an RGBA shell; 32 bytes a cluster: the culling sphere, the data's address, counts and offsets) a REF of
+    a 7-quadword set-up packet (0x13d160 textured, 0x13d0f0 RGBA) and the scratchpad's double buffer flipped once and once a cluster
+    (0x1604d0); a visible cluster DMAed, turned by 0x166d80 x the shell's matrix and projected (0x28c14c: screen scale 0x16cbd0 / 4, offset
+    0x16cbe0, FTOI4), its triangles not all outside one plane written as ST / RGBAQ (0x808080 + the vertex's A << 24, Q 1) / XYZ2 (Z 0),
+    an entry's TEX0 at each change (VRAM given at its first use); an RGBA shell's RGBAQ from the asset (Q its sign) and TEST_1 0x3180b,
+    ZBUF_1 with ZMSK after it; 0x28b710 (the uploads and 0x1c2f00's REF chained before the draws, 0x15ee74 back); TEST_1 0x5360b, ZBUF_1.
+  - The host: render_frame calls mrpw::sky_host_frame in place of the pass (RAC1_WIIU_SKY_HOST, on by default on the Wii U while its world
+    is up - with the sky off too: the pass's game state is then run, where before nothing was -; off elsewhere): the variant written for the
+    host runs its game state (asset + 4, 0x288ec0 / 0x289108, 0x1bd7e0's matrices, 0x1604d0's flips, 0x28b680 / 0x28b710's globals) and
+    notes its ops (each shell with its matrix, the stars, the writes). At the walk (mrp_world_wiiu_sky_capture) sky_host_stream makes a
+    SkyStream from them - 0x1c2f00's DIRECT, per shell its set-up DIRECT and its place (SkyHostMark: SkyWrite mode 4 + its matrix in four
+    mode 5 writes), the stars' data made by the game's own 0x28bd58 under the EE journal (its writes put back; in the widened view through
+    mrp_lod_sky_widen_real, 0.03-0.06 ms a run on the PC), the writes - and the capture's path runs it (sky_capture_run: the stars on the
+    private VU1, sky_prepend, build_triangles). The model (SkyHostModel) is the asset's shells decoded once a level from EE memory as
+    0x28b8a0 / 0x28bae0 read them: every triangle, three corners each (the shell's point, S / T x 1/4096 or the RGBA, A, Q), runs of one
+    texture entry (a TEX0 of the entry's format, TBP / CBP its own, CLD 0 - never one the game makes - paired with its entry in sky_tex).
+    In build_triangles a shell's place writes each run's TEX0 and, on the Wii U, makes a batch (Batch::host, SkyHostDraw: the matrix, the
+    run's corners, its GS state's flat values) drawn from the model's corners copied once into MEM2 (mrp_world_gx2.cpp sky_host_vb; a
+    run's flat values written again when its state changes), the world's view-projection x the shell's matrix in the frame block, by the
+    pairs shaders/mrp_sky_host*.gsh (mrp_sky.vert built RAC1_SKY_HOST: the STQ x the clip w in the shader - the GS's affine S / Q - with
+    mrp_world.frag / mrp_world_fast.frag, with and without the alpha test); elsewhere its triangles are made as the CPU path's. No culling:
+    every cluster drawn, at infinity; the GPU clips.
+  - Variants written (their levels by 0x1e8580's table): 0x289330 (0), 0x289420 (1), 0x2899a8 (3), 0x289a90 (4), 0x289bd8 (5, stars),
+    0x28a208 (7, stars), 0x28a2f0 (8), 0x28a3a8 (9), 0x28a480 (10), 0x28a620 / 0x28a7a0 / 0x28ab08 (11, 12, 16: one code), 0x28a920 (13,
+    stars), 0x28a998 (14), 0x28aa98 (15, stars), 0x28b080 (18). Not: 0x2895a0 (2), 0x289cb8 (6), 0x28ac88 (17), 0x28b1a0 (19) - they call
+    libc_rand themselves (flashes): the pass and its capture there, as before.
+  - Checked on the PC (RAC1_SKY_HOST_CHECK=1 / 2 with RAC1_MRPW_THREAD=0, mrp_world_renderer.cpp sky_host_check: the pass run, the host's
+    stream made after it, both through a GS front, every capture triangle looked for among the host's in order - its RKey, texture word,
+    layer, draw_flags, FOGCOL, the corners' RGBA, fog, S / Q, T / Q and where the GS puts them -; =2 the corners' X, Y by the pass's own
+    VU0 code, game_xy, with RAC1_MRP_WIDEN=0): Veldin (GOTO=0@60 forward, 1200 frames), Novalis (RAC1_LEVEL=1), Kerwan (GOTO=3@60, 1500)
+    and levels 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18 (RAC1_LEVEL, 600 frames): every triangle found, X / Y exact to the 1/16 pixel
+    (0.0000 px), the registers the sky leaves the same; the host's other triangles (the pass culled them) all off the frame (the part in
+    front of the camera projected, tested against the frame's rectangle), but at the level change's frame and the first frame. =1 (the GPU
+    path's geometry: the directions through A, unsnapped): 0.088 px the most, 0.058 on average. The PC's picture with the pass skipped
+    (RAC1_WIIU_SKY_HOST=1, RAC1_MRPW_THREAD=0: the host's stream drawn by the CPU path) against the pass's, shot_600: 15047 pixels differ,
+    by 3 at most, all in the sky (shot_300: one pixel by 9, the rest 3 or less).
+  - The game's state with the pass skipped (the PC, the Wii U-like path: RAC1_NO_GRAPHICS=2 RAC1_WORLD_PASS_SKIP=6 RAC1_TFRAG_PASS_OFF=1
+    RAC1_MOBY_MRP=1 RAC1_NO_GRAPHICS_WALK=1 RAC1_VU1_LIKE_WIIU=1, explore 600 frames, RAC1_WIIU_SKY_HOST=1 against 0): the hero / camera
+    lines the same; RAMHASH: the pages that differ hold the chain or addresses into it (the two packet buffers; 0x15f410, 0x15ffcc,
+    0x160000, 0x1604b0, 0x160fd8, 0x1611c0: chain positions; the moby records 0x45a000 / 0x496000 / 0x656000: their parts' chain
+    addresses), the sky's own state (0x160530 / 0x160534: its chain tags; asset + 0x10's TEX0 cache, cleared by the pass's start and read by
+    nothing else; the stars' +1 byte, written and read by 0x28bd58 alone), the upload list 0x16cd80 (the sky's entries), and the EE stack's
+    page below the top (the pass's allocas). (A word-level diff of frame 400's RAM: RAC1_RAMDUMP.)
+  - Switch: RAC1_WIIU_SKY_HOST=0 the pass and its capture as before; the debug menu's "Sky" row cycles host / capture / off. Log:
+    "[sky-host] level N: the sky asset ... decoded", "[sky-host] N streams ...", the sky's 120-call line ("host shells: N draws a call").
 - The tfrags' view and the widescreen (2026-10-28, not run on the console yet):
   - the ground missing in patches (the console, Veldin, also under Ratchet): `mrpw::tfrag_pass_vu` read the tfrag view from the tfrag pass's
     own chain (`*(0x160f7c)` + 0x20), but with RAC1_TFRAG_PASS_OFF=1 (the default since that day) the pass never runs: 0x160f7c was 0 (the

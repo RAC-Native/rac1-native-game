@@ -106,7 +106,19 @@ const Item kRender[] = {
     {"World: ties", [] { return on_off(rac1::g_render_tie); }, [] { rac1::g_render_tie = !rac1::g_render_tie; }},
     {"World: shrubs", [] { return on_off(rac1::g_render_shrub); }, [] { rac1::g_render_shrub = !rac1::g_render_shrub; }},
     // (2026-10-28: the MRP sky, mrp_world_gx2.h g_wiiu_sky - its capture and its draws; the game's sky pass runs either way)
-    {"Sky", [] { return rac1::mrp_world_gx2_sky_loaded() ? on_off(rac1::g_wiiu_sky) : std::string("no shaders"); }, [] { rac1::g_wiiu_sky = !rac1::g_wiiu_sky; }},
+    // ((2026-10-28) host -> capture -> off: the host sky, mrpw::sky_host_on - the level's decoded asset, no game sky pass where the level has
+    // its variant -, the pass's capture, none)
+    {"Sky", [] { return !rac1::mrp_world_gx2_sky_loaded() ? std::string("no shaders") : !rac1::g_wiiu_sky ? std::string("off") : rac1::mrpw::sky_host_on() ? std::string("host") : std::string("capture"); },
+     [] {
+         if (rac1::g_wiiu_sky && rac1::mrpw::sky_host_on()) {
+             rac1::mrpw::sky_host_set(false);
+         } else if (rac1::g_wiiu_sky) {
+             rac1::g_wiiu_sky = false;
+         } else {
+             rac1::g_wiiu_sky = true;
+             rac1::mrpw::sky_host_set(true);
+         }
+     }},
     // (2026-10-28: the skipped passes' relighting made from the entries' flags - the point lights' light on the world -, world_lighting.h
     // g_world_relight; the page's 14th row, its last at y 454)
     {"World relit (point lights)", [] { return on_off(rac1::g_world_relight); }, [] { rac1::g_world_relight = !rac1::g_world_relight; }},

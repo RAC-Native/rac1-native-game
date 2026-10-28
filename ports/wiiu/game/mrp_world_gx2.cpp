@@ -48,6 +48,7 @@
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_world_backend.inc>
 #include <game/render/mrp_world_renderer.h>
+#include <game/render/mrp_world_sky.inc>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
 #include <runtime/gs/gs_emu.h>
@@ -153,6 +154,12 @@ bool g_stex_ok = false;
 // RAC1_NO_ALPHA_TEST), for the sky batches none of whose draws tests (Batch::ate): ~14 of the shader's ~66 ALU groups fewer a pixel
 WHBGfxShaderGroup g_sshv_noat{};
 const GX2PixelShader* g_sps_noat = nullptr;
+// ((2026-10-28) the host sky, mrp_sky_host.inc: its shells drawn from static corners) the pairs whose vertex shader is mrp_sky.vert built
+// RAC1_SKY_HOST (the corners' STQ multiplied by the clip w there, not on the CPU): [0] with mrp_world.frag, [1] without the alpha test
+// (RAC1_NO_ALPHA_TEST), [2] / [3] the fast pixel shader's (RAC1_FAST) - each a pair compiled together, bound together (gx2_pair_variant);
+// g_hok false: not there. Without [0] the host sky does not stand in for the pass (mrp_world_wiiu_sky_host_wanted)
+WHBGfxShaderGroup g_hsh[4]{};
+bool g_hok[4] = {};
 // (2026-10-28, the GPU's time) the pixel shaders' other builds (Gx2Perf: nokill, lean), [path: 0 the ties' / shrubs', 1 the tfrags'][bits: 1
 // no alpha test (RAC1_NO_ALPHA_TEST), 2 lean (RAC1_LEAN)] - [k][0] the shaders' own; nullptr a build not there (or refused: gx2_ps_variant)
 WHBGfxShaderGroup g_shv[2][4]{};
@@ -934,6 +941,9 @@ bool g_wiiu_sky = false;
 // orig: (host) see mrp_world_sky.inc
 bool mrp_world_wiiu_sky_pass_wanted() { return !g_ready || g_wiiu_sky; }
 
+// orig: (host) see mrp_world_sky.inc: the world up; with its sky drawn, the host sky's shaders there (else the pass and its capture)
+bool mrp_world_wiiu_sky_host_wanted() { return g_ready && (!(g_sready && g_wiiu_sky) || g_hok[0]); }
+
 // orig: (host) see mrp_world_backend.inc
 bool mrp_world_gx2_sky_ready() { return g_ready && g_sready && g_wiiu_sky; }
 
@@ -1182,10 +1192,68 @@ struct SkyCache {
 // (the log per 120 calls) GX2 draws, triangles, batches, batches not drawn (their depth test fails at the far plane), frames; the CPU's
 // time: the capture and build (the frame's, mrpwb::FrameView::sky_ms), this backend's calls
 uint64_t g_scalls = 0, g_sdraws = 0, g_stris = 0, g_sbatches = 0, g_snever = 0, g_sframes = 0, g_srefused = 0, g_slast_serial = ~0ull;
+uint64_t g_shost_draws = 0;  // ((2026-10-28) of g_sdraws, the host sky's shells')
 double g_sprep_ms = 0.0, g_scpu_ms = 0.0;
+
+// ((2026-10-28) the host sky) the model's corners (mrpwb::FrameView::sky_host_verts: mrpwb::GpuV, written by the PPC as the CPU path's)
+// in MEM2, copied once a model (a level); a draw's flat values (its triangles' closing corners: the texture word, layer, draw_flags,
+// FOGCOL) and fog (every corner) written into its run when they differ from what the run holds - its first frame, or a GS state that
+// changed since (none on Veldin: the same every frame)
+struct SkyHostGpu {
+    uint64_t serial = 0;
+    void* vb = nullptr;
+    uint32_t n = 0;
+    uint64_t rebakes = 0;
+} g_shost;
+void sky_host_free() {
+    mem_free(g_shost.vb);
+    g_shost = SkyHostGpu{};
+}
+bool sky_host_vb(const mrpwb::FrameView& F) {
+    if (F.sky_host_verts == nullptr || F.sky_host_verts->empty()) return false;
+    if (g_shost.vb != nullptr && g_shost.serial == F.sky_host_serial) return true;
+    if (g_shost.vb != nullptr) GX2DrawDone();  // (the old model's may still be read)
+    sky_host_free();
+    const uint32_t n = static_cast<uint32_t>(F.sky_host_verts->size());
+    void* vb = mem_alloc(n * static_cast<uint32_t>(sizeof(mrpwb::GpuV)), GX2_VERTEX_BUFFER_ALIGNMENT);
+    if (vb == nullptr) {
+        std::printf("[wiiu] mrp_world_gx2: sky host: no memory for %u corners\n", n);
+        return false;
+    }
+    std::memcpy(vb, F.sky_host_verts->data(), n * sizeof(mrpwb::GpuV));
+    GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, vb, n * static_cast<uint32_t>(sizeof(mrpwb::GpuV)));
+    g_shost.vb = vb;
+    g_shost.n = n;
+    g_shost.serial = F.sky_host_serial;
+    std::printf("[wiiu] mrp_world_gx2: sky host: model %llu, %u corners (%u KB) in MEM2\n", static_cast<unsigned long long>(F.sky_host_serial), n,
+                n * static_cast<uint32_t>(sizeof(mrpwb::GpuV)) / 1024);
+    return true;
+}
+// a draw's flat values and fog into its run (the CPU's copy is the GPU's: MEM2, invalidated after)
+void sky_host_bake(const mrpwb::SkyHostDraw& d) {
+    if (d.count < 3 || static_cast<uint64_t>(d.first) + d.count > g_shost.n) return;
+    auto* v = static_cast<mrpwb::GpuV*>(g_shost.vb) + d.first;
+    const mrpwb::GpuV& c = v[2];
+    if (c.word == d.word && c.layer == d.layer && c.state[0] == d.state[0] && c.state[1] == d.state[1] && v[0].fog == d.fog) return;
+    for (uint32_t i = 0; i < d.count; ++i) {
+        v[i].word = d.word;
+        v[i].layer = d.layer;
+        v[i].state[0] = d.state[0];
+        v[i].state[1] = d.state[1];
+        v[i].fog = d.fog;
+    }
+    GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, v, d.count * static_cast<uint32_t>(sizeof(mrpwb::GpuV)));
+    ++g_shost.rebakes;
+}
 
 // orig: (host) the sky's shaders, fetch shaders, ring and textures freed (the GPU done with them: the caller waited)
 void sky_free() {
+    for (int k = 0; k < 4; ++k) {
+        if (g_hok[k]) WHBGfxFreeShaderGroup(&g_hsh[k]);
+        g_hsh[k] = WHBGfxShaderGroup{};
+        g_hok[k] = false;
+    }
+    sky_host_free();
     for (int k = 0; k < 2; ++k) {
         mem_free(g_sfetch_prog[k]);
         g_sfetch[k] = GX2FetchShader{};
@@ -1256,6 +1324,16 @@ void sky_init() {
     g_sready = true;
     if (!variant) g_sps_noat = gx2_ps_variant("shaders/mrp_sky_noat.gsh", g_ssh, g_sshv_noat);
     if (!variant) fast_load(2, g_ssh);  // (the fast pixel shader's pairs, Gx2Perf::fast)
+    {  // ((2026-10-28) the host sky's pairs)
+        static const char* const kHost[4] = {"shaders/mrp_sky_host.gsh", "shaders/mrp_sky_host_noat.gsh", "shaders/mrp_sky_host_fast.gsh",
+                                             "shaders/mrp_sky_host_fast_noat.gsh"};
+        for (int k = 0; k < 4; ++k) {
+            g_hok[k] = gx2_pair_variant(kHost[k], g_ssh, g_hsh[k]);
+            if (g_hok[k] && k >= 2) gx2_ps_early_z(g_hsh[k].pixelShader, kHost[k]);
+        }
+        std::printf("[wiiu] mrp_world_gx2: sky host: shaders %s (RAC1_WIIU_SKY_HOST %s)\n", g_hok[0] ? "loaded" : "NOT loaded: the pass and its capture",
+                    mrpw::sky_host_on() ? "on" : "off");
+    }
     std::printf("[wiiu] mrp_world_gx2: sky up (%s; blocks: frame %u pixel %u bytes; ring %u KB); %s (RAC1_WIIU_SKY)\n", variant ? gsh_env : "shaders/mrp_sky.gsh",
                 g_sframe_loc.size, g_spixel_loc.size, kSkyRingBytes / 1024, g_wiiu_sky ? "drawn" : "off");
 }
@@ -2013,13 +2091,11 @@ void mrp_world_gx2_draw_sky(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const 
     const std::vector<mrpwb::Batch>& batches = *F.batches;
     const std::vector<mrpwb::GpuV>& sv = *F.cpu_verts;
     const std::vector<uint32_t>& si = *F.cpu_idx;
-    bool any = false;
+    bool any_cpu = false, any_host = false;  // ((2026-10-28) the host sky's shells: Batch::host, drawn from the model's static corners)
     for (const mrpwb::Batch& b : batches)
-        if (b.sky) {
-            any = true;
-            break;
-        }
-    if (!any || sv.empty() || si.empty()) return;
+        if (b.sky) (b.host >= 0 ? any_host : any_cpu) = true;
+    if (sv.empty() || si.empty()) any_cpu = false;
+    if (!any_cpu && !any_host) return;
     ++g_scalls;
     ring_gpu_invalidate();  // (Gx2Perf::ub_bulk: the blocks' GPU caches once for the call, before its first draw)
     if (F.serial != g_slast_serial) {  // (the log's: per frame)
@@ -2028,7 +2104,7 @@ void mrp_world_gx2_draw_sky(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const 
         g_sprep_ms += F.sky_ms;
     }
     // the frame's vertices / indices into the sky's ring (one allocation) and its frame block, by the frame's first call
-    if (F.serial != g_scache.serial || g_sring_wraps != g_scache.swraps || g_scache.vb == nullptr) {
+    if (any_cpu && (F.serial != g_scache.serial || g_sring_wraps != g_scache.swraps || g_scache.vb == nullptr)) {
         const uint32_t vbytes = static_cast<uint32_t>(sv.size() * sizeof(mrpwb::GpuV));
         const uint32_t at_i = (vbytes + GX2_VERTEX_BUFFER_ALIGNMENT - 1) & ~(GX2_VERTEX_BUFFER_ALIGNMENT - 1);
         const uint32_t ibytes = static_cast<uint32_t>(si.size() * sizeof(uint32_t));
@@ -2057,7 +2133,9 @@ void mrp_world_gx2_draw_sky(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const 
         g_scache.frame = frame_block();
         g_scache.wraps = g_ring_wraps;
     }
-    if (g_scache.vb == nullptr || g_scache.frame == nullptr) return;
+    if (g_scache.frame == nullptr || (any_cpu && g_scache.vb == nullptr && !any_host)) return;
+    if (g_scache.vb == nullptr) any_cpu = false;
+    const bool host_ok = any_host && g_hok[0] && F.sky_host != nullptr && sky_host_vb(F);
 
     // GX2's state for the call (the world's, mrp_world_gx2_draw: the same viewport, scissor, no culling, the GS's alpha test in the shader)
     const int win_w = static_cast<int>(cb->surface.width), win_h = static_cast<int>(cb->surface.height);
@@ -2097,14 +2175,67 @@ void mrp_world_gx2_draw_sky(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const 
         }
         use_ps(fp != nullptr ? fp->pixelShader : g_gx2_perf.nokill && g_sps_noat != nullptr && !at ? g_sps_noat : g_ssh.pixelShader);
     };
-    GX2SetAttribBuffer(0, g_scache.nverts * static_cast<uint32_t>(sizeof(mrpwb::GpuV)), sizeof(mrpwb::GpuV), g_scache.vb);
-    GX2SetVertexUniformBlock(g_sframe_loc.loc, g_sframe_loc.size, g_scache.frame);
+    // (the CPU path's vertices and frame block, or a host shell's: its static corners, the world's view-projection x its matrix)
+    int bound = -1;  // (0 the CPU path's, 1 a host shell's)
+    auto bind_cpu = [&] {
+        if (bound == 0) return;
+        GX2SetAttribBuffer(0, g_scache.nverts * static_cast<uint32_t>(sizeof(mrpwb::GpuV)), sizeof(mrpwb::GpuV), g_scache.vb);
+        GX2SetVertexUniformBlock(g_sframe_loc.loc, g_sframe_loc.size, g_scache.frame);
+        bound = 0;
+    };
+    auto bind_host = [&](const mrpwb::SkyHostDraw& d) -> bool {
+        TfragFrameBlock fb{};
+        const float* A = g_gx2_view.vp;  // (column-major; the shell's columns x, y, z - a direction, w 0 - and (0, 0, 0, 1))
+        const float S[16] = {d.m[0], d.m[1], d.m[2], 0.0f, d.m[4], d.m[5], d.m[6], 0.0f, d.m[8], d.m[9], d.m[10], 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+        for (int c = 0; c < 4; ++c)
+            for (int r = 0; r < 4; ++r) {
+                float acc = 0.0f;
+                for (int k = 0; k < 4; ++k) acc += A[k * 4 + r] * S[c * 4 + k];
+                fb.vp[c * 4 + r] = acc;
+            }
+        void* blk = block_of(&fb, sizeof fb, g_sframe_loc.size);
+        if (blk == nullptr) return false;
+        if (bound != 1) GX2SetAttribBuffer(0, g_shost.n * static_cast<uint32_t>(sizeof(mrpwb::GpuV)), sizeof(mrpwb::GpuV), g_shost.vb);
+        GX2SetVertexUniformBlock(g_sframe_loc.loc, g_sframe_loc.size, blk);
+        bound = 1;
+        return true;
+    };
+    // the host pairs (g_hsh) as use_shaders picks the sky's own: the fast pair, else the main one or its build without the alpha test
+    auto use_host_shaders = [&](bool at, bool plain) {
+        int k = 0;
+        if (plain && g_gx2_perf.fast) k = !at && g_gx2_perf.nokill && g_hok[3] ? 3 : g_hok[2] ? 2 : 0;
+        if (k == 0 && !at && g_gx2_perf.nokill && g_hok[1]) k = 1;
+        const WHBGfxShaderGroup& g = g_hsh[k];
+        if (g.vertexShader != cur_vs) {
+            GX2SetVertexShader(g.vertexShader);
+            cur_vs = g.vertexShader;
+        }
+        use_ps(g.pixelShader);
+    };
 
     static const bool one_pass = std::getenv("RAC1_MRPW_ONEPASS") != nullptr;  // (testing: the failing pixels not drawn, as the world's)
     const GX2Texture* cur_tex = nullptr;
     uint32_t cur_sampler = ~0u, draws_this_call = 0;
     auto draw = [&](const mrpwb::Batch& b) {
         if ((g_sdebug & 2048) != 0 && draws_this_call++ > 0) return;  // (testing: one draw a call)
+        if (b.host >= 0) {  // (a host shell's run: its corners in order, three a triangle)
+            const mrpwb::SkyHostDraw& d = (*F.sky_host)[static_cast<size_t>(b.host)];
+            static bool told = false;
+            if (!told) {
+                told = true;
+                std::printf("[wiiu] mrp_world_gx2: first sky host draw: corners %u from %u, bucket %d, prim %llx alpha %llx test %llx; matrix x %g %g %g y %g %g %g "
+                            "z %g %g %g; word %08x state %08x %08x\n",
+                            d.count, d.first, b.key.bucket, static_cast<unsigned long long>(b.key.prim), static_cast<unsigned long long>(b.key.alpha),
+                            static_cast<unsigned long long>(b.key.test), d.m[0], d.m[1], d.m[2], d.m[4], d.m[5], d.m[6], d.m[8], d.m[9], d.m[10], d.word, d.state[0],
+                            d.state[1]);
+                std::fflush(stdout);
+            }
+            GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, d.count, d.first, 1);
+            ++g_sdraws;
+            ++g_shost_draws;
+            g_stris += d.count / 3;
+            return;
+        }
         static bool dumped = false;
         if (!dumped && b.count >= 3) {  // (the first sky draw's data, on the log: what the GPU reads)
             dumped = true;
@@ -2123,8 +2254,16 @@ void mrp_world_gx2_draw_sky(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const 
     };
     for (const mrpwb::Batch& b : batches) {
         if (!b.sky || b.gpu || b.tfrag) continue;
-        if (static_cast<uint64_t>(b.first) + b.count > g_scache.nidx) {
-            if (g_srefused++ < 8) std::printf("[wiiu] mrp_world_gx2: sky batch refused: first %u count %u (%u indices)\n", b.first, b.count, g_scache.nidx);
+        const bool host = b.host >= 0;
+        if (host) {
+            if (!host_ok || static_cast<size_t>(b.host) >= F.sky_host->size()) continue;
+            const mrpwb::SkyHostDraw& d = (*F.sky_host)[static_cast<size_t>(b.host)];
+            if (static_cast<uint64_t>(d.first) + d.count > g_shost.n) {
+                if (g_srefused++ < 8) std::printf("[wiiu] mrp_world_gx2: sky host draw refused: first %u count %u (%u corners)\n", d.first, d.count, g_shost.n);
+                continue;
+            }
+        } else if (!any_cpu || static_cast<uint64_t>(b.first) + b.count > g_scache.nidx) {
+            if (any_cpu && g_srefused++ < 8) std::printf("[wiiu] mrp_world_gx2: sky batch refused: first %u count %u (%u indices)\n", b.first, b.count, g_scache.nidx);
             continue;
         }
         const mrpwb::Key& k = b.key;
@@ -2150,6 +2289,13 @@ void mrp_world_gx2_draw_sky(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const 
             cur_sampler = k.sampler & 15u;
             GX2SetPixelSampler(&g_samplers[cur_sampler], g_stex_loc);
         }
+        if (host) {
+            const mrpwb::SkyHostDraw& d = (*F.sky_host)[static_cast<size_t>(b.host)];
+            sky_host_bake(d);
+            if (!bind_host(d)) continue;
+        } else {
+            bind_cpu();
+        }
         PixelBlock pb{};
         pb.fog_col[0] = static_cast<float>(rk.fogcol & 0xff) / 255.0f;
         pb.fog_col[1] = static_cast<float>((rk.fogcol >> 8) & 0xff) / 255.0f;
@@ -2159,7 +2305,8 @@ void mrp_world_gx2_draw_sky(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const 
         pb.a[3] = grey ? 1 : 0;
         // pass 1: the passing pixels of the draws whose alpha test is on (their mode in draw_flags), every pixel of the others - by the
         // build without the alpha test when none of the batch's draws tests (Batch::ate; grey: the test off) and Gx2Perf says so
-        use_shaders(b.ate && !grey, shade == 0 && !grey);
+        if (host) use_host_shaders(b.ate && !grey, shade == 0 && !grey);
+        else use_shaders(b.ate && !grey, shade == 0 && !grey);
         pb.a[0] = 1;
         if (void* blk = block_of(&pb, sizeof pb, g_spixel_loc.size)) GX2SetPixelUniformBlock(g_spixel_loc.loc, g_spixel_loc.size, blk);
         draw(b);
@@ -2168,7 +2315,8 @@ void mrp_world_gx2_draw_sky(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const 
         // alone: nothing here, the depth not written)
         if (rk.pass2 != 0 && rk.pass2 != 2 && !one_pass && !grey) {
             set_mask(rk.pass2 == 3 ? GX2_CHANNEL_MASK_RGB : GX2_CHANNEL_MASK_RGBA);
-            use_shaders(true, shade == 0);
+            if (host) use_host_shaders(true, shade == 0);
+            else use_shaders(true, shade == 0);
             pb.a[0] = 2;
             if (void* blk = block_of(&pb, sizeof pb, g_spixel_loc.size)) GX2SetPixelUniformBlock(g_spixel_loc.loc, g_spixel_loc.size, blk);
             draw(b);
@@ -2190,13 +2338,14 @@ void mrp_world_gx2_draw_sky(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const 
     if (g_scalls % 120 == 0) {
         std::printf("[wiiu] mrp_world_gx2: sky, last 120 calls: %.1f GX2 draws, %.1f triangles, %.1f batches (%.1f not drawn: their depth test fails at the far "
                     "plane); %llu frames: %zu vertices, the capture and build %.2f ms a frame (game thread and worker), the draws %.3f ms a call; %zu textures (%zu KB), "
-                    "%llu refused, ring wraps %llu\n",
+                    "%llu refused, ring wraps %llu; host shells: %.1f draws a call (%s), %llu runs' values written again\n",
                     static_cast<double>(g_sdraws) / 120.0, static_cast<double>(g_stris) / 120.0, static_cast<double>(g_sbatches) / 120.0,
                     static_cast<double>(g_snever) / 120.0, static_cast<unsigned long long>(g_sframes), sv.size(),
                     g_sframes != 0 ? g_sprep_ms / static_cast<double>(g_sframes) : 0.0, g_scpu_ms / 120.0, g_stex.made, g_stex.bytes / 1024,
-                    static_cast<unsigned long long>(g_srefused), static_cast<unsigned long long>(g_sring_wraps));
+                    static_cast<unsigned long long>(g_srefused), static_cast<unsigned long long>(g_sring_wraps), static_cast<double>(g_shost_draws) / 120.0,
+                    any_host ? (host_ok ? "drawn" : "NOT drawn: no shaders or memory") : "none", static_cast<unsigned long long>(g_shost.rebakes));
         std::fflush(stdout);
-        g_sdraws = g_stris = g_sbatches = g_snever = g_sframes = 0;
+        g_sdraws = g_stris = g_sbatches = g_snever = g_sframes = g_shost_draws = 0;
         g_sprep_ms = g_scpu_ms = 0.0;
     }
 }

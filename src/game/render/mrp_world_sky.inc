@@ -28,6 +28,17 @@ bool sky_capture(uint32_t first, uint32_t end, const SceneAddrs& ad, SceneFrame&
 // (none from mrpw::scene_from_static), the sky's asset, entries and projection taken
 void sky_prepend(SceneFrame& f, const SceneFrame& sky);
 
+// orig: (host) the host sky (mrp_world_wiiu.inc, mrp_sky_host.inc; 2026-10-28) in place of the game's sky pass this frame: on
+// (RAC1_WIIU_SKY_HOST: on by default on the Wii U while its world is drawn, off elsewhere; sky_host_set) and the level has a host
+// variant - then the variant's game state is run (the RNG calls, the stars' movement, the state the pass leaves) and its ops noted for
+// sky_host_stream, and true: the pass is not run. render_frame, game thread
+bool sky_host_frame();
+// orig: (host) the switch (the Wii U's debug menu: its "Sky" row)
+void sky_host_set(bool on);
+bool sky_host_on();
+// orig: (host) the level number has a host variant (lw(0x15ed84) on this overlay)
+bool sky_host_supported(int level);
+
 }  // namespace rac1::mrpw
 
 #if defined(__WIIU__)
@@ -41,6 +52,9 @@ void mrp_world_wiiu_sky_capture(bool walk);
 // a little state the moby pass reads, so the game's frames then differ from the PC's by that much). Without the picture (the console's
 // determinism runs) it runs, as on the PC
 bool mrp_world_wiiu_sky_pass_wanted();
+// orig: (host) the host sky may stand in for the pass (mrpw::sky_host_frame): the GX2 world is up (its sky on or off: the pass's game
+// state is run either way). Without the picture the pass runs, as on the PC
+bool mrp_world_wiiu_sky_host_wanted();
 }  // namespace rac1
 #endif
 

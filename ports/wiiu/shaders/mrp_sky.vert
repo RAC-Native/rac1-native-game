@@ -6,6 +6,9 @@
 // (GX2_ENDIAN_SWAP_8_IN_32), the RGBA bytes in memory order. What differs from mrp_tfrag.vert: the depth at the far plane (z = w (1 - e):
 // the PC's depth clamp for the sky - a direction's own z is past the far plane, and clipped there), the block's name. The CPU draws it
 // with the depth test and writes off: the depth is never read. The pixel side is mrp_world.frag's (the same outputs).
+// (2026-10-28) Built RAC1_SKY_HOST (shaders/mrp_sky_host*.gsh, its own pairs): the host sky's shells (mrp_sky_host.inc) - static corners,
+// the shell's point (w 0) through the view-projection x the shell's matrix (the block's), the STQ multiplied by the clip w here (the
+// GS's affine S / Q, as the CPU does for the capture's; negative behind the camera: the triangle clipped with the attribute homogeneous).
 #version 330 core
 layout(location = 0) in vec4 aWorld;
 layout(location = 2) in vec3 aStq;
@@ -41,7 +44,11 @@ void main() {
     vec4 p = mat4(uVP[0], uVP[1], uVP[2], uVP[3]) * aWorld;
     p.z = p.w * (1.0 - 1.0 / 1024.0);
     gl_Position = p;
+#ifdef RAC1_SKY_HOST
+    vStq = aStq * p.w;
+#else
     vStq = aStq;
+#endif
 #ifndef RAC1_FAST
     vLodQ = aLodQ;
 #endif
