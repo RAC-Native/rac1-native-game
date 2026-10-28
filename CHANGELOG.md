@@ -3,197 +3,204 @@
 What changed in each release. Releases are source only: you build the game with `./setup.sh`
 (`setup.cmd` on Windows) from your own disc. Issue numbers refer to this repository's issues.
 
-## Unreleased
+## 0.6.0
 
-### Gameplay
-- Buy All Ammo (Options > Advanced, Off by default): an All Ammo entry first in the Vendor's list, as in Up Your Arsenal: one
-  purchase fills every weapon's ammo through the game's own purchase steps, or with too few bolts as much as they pay for, weapon
-  by weapon in the list's order. The entry is an item of the game's own list, so it scrolls, highlights and wraps as the weapons
-  do, and the Vendor's and the PDA's screens open on it. See [Advanced options](docs/advanced.md#buy-all-ammo).
+The modern renderer draws the whole game itself: the GS replica no longer runs beside it, and the
+HUD, the menus and the levels' water, lava and sand seas are drawn natively too. The setup extracts
+the whole disc into `assets/disc/`, and the game reads those files, no longer the disc image. Also
+new: Anya-Thoughtmane's lighting passes, emissive surfaces, surface materials and the mobys lit by
+the point lights for the modern lighting, the light editor's new tools, optional ambient particles
+(rain, snow, embers, dust), the Vendor's Buy All Ammo option, a game frame about a fifth cheaper on
+the CPU and less GPU time, the setup on the Steam Deck and other immutable Linux systems, and the
+fixes from the 0.5.0 reports. Playtested on Linux; the Vulkan renderer and the modern lighting are
+experimental.
 
 ### Graphics
-- The modern renderer no longer runs the GS replica: it reads the frame's chain itself (`mrp_chain`, on a worker of its own) and
+- **The levels' water, lava and sand seas** (VU1 program 7's surfaces: Rilgar's harbour, Gaspar's lava sea, Aridia's sand sea,
+  Hoven, Umbris, Novalis, Kalebo, Drek's fleet..., the levels' baked shadow meshes and the nanotech orbs) are drawn by the modern
+  renderer from the game's own geometry, in the world's projection: no side cut or wedge in a widened view, fogged as the GS fogs
+  them, and with Lighting not Original they take the sun's shadows, the point lights, and emissive / material lines (`surface`).
+  `RAC1_MRP_SEAS=0` for the old path. OpenGL and Vulkan.
+- **The GS replica out of the modern renderer:** it reads the frame's chain itself (`mrp_chain`, on a worker of its own) and
   draws the HUD, text, menus, fades and the menus' pictures with OpenGL or Vulkan (`mrp_2d`), the same pictures as before (the
   reference images unchanged, the game's state the same); the Vendor's screens' item and monitors are the modern renderer's mobys
   now; a new level's first frame keeps the loading screen's picture. The replica stays the faithful reference (`RAC1_MRP=0`,
   "VU emulation"; `RAC1_MRP_CHAIN=0` to compare).
-- Ambient particles: Batalia's rain shows over the sea behind it (the seas that write depth are drawn before the particles).
-- The Vendor's screens: their text, icons and item pictures are smooth again, as before the chain reader (they were blocky at any
-  window larger than the PS2's: the panels took the nearest filter, the moby programs' last texture state was missing).
-- The menus' render targets (the Vendor's monitors, the pause menu's item models) are drawn at the window's scale: their text
-  and models as sharp as the rest of the 2D (`RAC1_2D_RT_SCALE=1` for the PS2's size, the original's softer look).
-- The 2D's textures are kept and reused: a texture decoded again with the same pixels (the title's menus', every frame) stays
-  the same image, and a changed image refills a free GPU texture of its size; the boot to Kerwan held 1835 GPU
-  textures (2293 in a windowed run) where it now holds 9, the pause menu made a texture and remade a render target every frame
-  and now makes none. The same pictures. `RAC1_2D_TEX_STATS` counts them.
-- New Game: Experimental turns on every graphics enhancement at its top (GTAO, Sun Rays High, Surface Detail High, Ambient
-  Particles High; Original and Modern turn them off); Modern and Experimental turn on Buy All Ammo, Original off.
-- Lights: Anya-Thoughtmane's second lighting pass (#102) on Veldin to Rilgar: emissive surfaces, lamps by class and by hand, merged with ours.
-- The levels' water, lava and sand seas (VU1 program 7's surfaces: Rilgar's harbour, Gaspar's lava sea, Aridia's sand sea, Hoven,
-  Umbris, Novalis, Kalebo, Drek's fleet..., the levels' baked shadow meshes and the nanotech orbs) are drawn by the modern renderer
-  from the game's own geometry, in the world's projection: no side cut or wedge in a widened view, fogged as the GS fogs them, and
-  with Lighting not Original they take the sun's shadows, the point lights, and emissive / material lines (`surface`); the GS
-  replica now draws no 3D in play. `RAC1_MRP_SEAS=0` for the old path. OpenGL and Vulkan.
-- Ambient particles (Options > Graphics > Ambient Particles: Off by default, Low, High): our own dust, ash, embers, fireflies,
-  light dust in the sunlight, rain with splashes and snow, per level from its light file (`particles` lines, editable in the
-  debug menu's Sun tab); Batalia's rain and Hoven's snow drawn in place of the game's own while it is on. OpenGL and Vulkan.
-  See [Ambient particles](docs/particles.md).
-- Ambient particles, after the first playtest: embers and ash can rise from the level's lava itself (`source lava`, `rise`: points
-  on the open lava faces of the level's collision near the camera, drifting slowly in the air's currents), as Umbris's (the
-  Snagglebeast's cave) and Gaspar's now do, none away from the lava or indoors; the wind is steady unless a line asks for gusts
-  (`gust`); Hoven's snow is a calm, light snowfall; Batalia has rain only.
-- Ambient particles: no rain, snow or ash under a roof - Batalia's covered hall, Hoven's rooms, any tunnel or ledge -, and no
-  splashes or materials' rain rings there: the level's collision seen from above (the height of its topmost face, read once per level
-  on a thread of its own) keeps them out, softly at the openings; no box to place by hand. See
-  [Ambient particles](docs/particles.md#under-a-roof).
+- **Ambient particles** (Options > Graphics > Ambient Particles: Off by default, Low, High): our own dust, ash, embers,
+  fireflies, light dust in the sunlight, rain with splashes and snow, per level from its light file (`particles` lines,
+  editable in the debug menu's Sun tab); Batalia's rain and Hoven's snow drawn in place of the game's own while it is on. OpenGL
+  and Vulkan. See [Ambient particles](docs/particles.md).
+  - After the first playtest: embers and ash can rise from the level's lava itself (`source lava`, `rise`: points on the open
+    lava faces of the level's collision near the camera, drifting slowly in the air's currents), as Umbris's (the
+    Snagglebeast's cave) and Gaspar's now do, none away from the lava or indoors; the wind is steady unless a line asks for
+    gusts (`gust`); Hoven's snow is a calm, light snowfall; Batalia has rain only, and it shows over the sea behind it.
+  - No rain, snow or ash under a roof - Batalia's covered hall, Hoven's rooms, any tunnel or ledge -, and no splashes or
+    materials' rain rings there: the level's collision seen from above (the height of its topmost face, read once per level on
+    a thread of its own) keeps them out, softly at the openings; no box to place by hand. See
+    [Ambient particles](docs/particles.md#under-a-roof).
+- **Sharper menus:** the menus' render targets (the Vendor's monitors, the pause menu's item models) are drawn at the window's
+  scale, their text and models as sharp as the rest of the 2D (`RAC1_2D_RT_SCALE=1` for the PS2's size, the original's softer
+  look). The Vendor's screens' text, icons and item pictures are smooth again, as before the chain reader (they were blocky at
+  any window larger than the PS2's: the panels took the nearest filter, the moby programs' last texture state was missing).
 
 ### Lighting (the optional modern lighting, still experimental)
-- The levels' own suns from Anya-Thoughtmane's lighting pass (#90, #101), set with the debug menu's Sun tab: Veldin, Novalis,
-  Kerwan, Eudora, Umbris, Gaspar, Orxon, Pokitaru, Hoven, Gemlik Base, Quartu, Kalebo III, Drek's fleet and the Veldin finale
-  get a sun of their own or a new one (to playtest); Aridia keeps its sun from the skybox's planet. See
+- **The levels' own suns from Anya-Thoughtmane's lighting pass** (#90, #101), set with the debug menu's Sun tab: Veldin,
+  Novalis, Kerwan, Eudora, Umbris, Gaspar, Orxon, Pokitaru, Hoven, Gemlik Base, Quartu, Kalebo III, Drek's fleet and the Veldin
+  finale get a sun of their own or a new one (to playtest); Aridia keeps its sun from the skybox's planet. See
   [The level's own sun](docs/lighting.md#the-levels-own-sun).
-- Sun Rays off per level: a level's light file can turn them off there (`sun_rays off`; the debug menu's Sun tab has a checkbox
-  for it, saved with the file). Off on Blarg's station, Rilgar, Batalia and Oltanis, from Anya-Thoughtmane's lighting
+- **Anya-Thoughtmane's second lighting pass** (#102) on Veldin to Rilgar: emissive surfaces, lamps by class and by hand, merged
+  with ours. More lamps light the world on Veldin and Novalis (nanotech crates, fires, plasma beams, landing pad, eyes, bombs),
+  and lights per object class follow the objects the game spawns later. Novalis's Buzzers light with their green eyes, and the
+  Blarg ship (Novalis's drop ship, Gemlik's ships of the skill point) lights from its orange and blue lamps, which glow, instead
+  of from inside its hull.
+- **Ratchet and the other mobys are lit by the point lights:** the lights placed by hand, the lights per class and the
+  automatic emitters, per pixel as the world (they had only the game's own lights; #110). OpenGL and Vulkan.
+- **Emissive surfaces:** a level's light file can mark a texture (`emissive <tfrag|tie|shrub|moby> <class> tex <n>
+  [strength] [threshold]`) that keeps the original lighting's brightness where the sun's shadows and the relighting would darken
+  it (lamps, screens, panels painted in textures), marked in the debug menu's Lights tab; Veldin's domed building lamps and
+  Novalis's landing pad lamps, neon tubes and bulbs are marked (#102).
+- **Surface materials**, a new Options > Graphics row Surface Detail (Off, the default; Low; High). A level's light file tags a
+  texture `material <tfrag|tie|shrub|moby> <class> tex <n> <type> [a] [b] [c]` - metal, wet, puddle, lava, water, mud,
+  quicksand - lit and animated over the PS2 texture (specular with Fresnel, wet ground with puddles and rain ripples, a slow
+  flow); High adds reflections from the last frame's picture and the lava's heat shimmer. `rain on` and `sky r g b` per level.
+  Tagged in the debug menu's Lights tab. Batalia's platform, railings and buildings (metal) and its paved ground (puddles, rain)
+  and Umbris's swampy ground (mud). The puddles, ripples, rain rings and the lava's pulse are placed by an exact integer noise,
+  the same on every GPU and driver. A metal's roughness works as it reads - low is polished, a sharp highlight and a clear
+  mirror of the sky (and on High of the picture), high is brushed (#101). See [Materials](docs/materials.md).
+- **Sun Rays off per level:** a level's light file can turn them off there (`sun_rays off`; the debug menu's Sun tab has a
+  checkbox for it, saved with the file). Off on Blarg's station, Rilgar, Batalia and Oltanis, from Anya-Thoughtmane's lighting
   pass (#101). See [Sun rays](docs/lighting.md#sun-rays).
-- Emissive surfaces: a level's light file can mark a texture (`emissive <tfrag|tie|shrub|moby> <class> tex <n>
-  [strength] [threshold]`) that keeps the original lighting's brightness where the sun's shadows and the relighting would darken it
-  (lamps, screens, panels painted in textures), marked in the debug menu's Lights tab; Veldin's domed building lamps and Novalis's
-  landing pad lamps, neon tubes and bulbs are marked (#102).
-- Surface materials, a new Options > Graphics row Surface Detail (Off, the default; Low; High). A level's light file
-  tags a texture `material <tfrag|tie|shrub|moby> <class> tex <n> <type> [a] [b] [c]` - metal, wet, puddle, lava, water, mud,
-  quicksand - lit and animated over the PS2 texture (specular with Fresnel, wet ground with puddles and rain ripples, a slow flow);
-  High adds reflections from the last frame's picture and the lava's heat shimmer. `rain on` and `sky r g b` per level. Tagged in
-  the debug menu's Lights tab. Batalia's platform, railings and buildings (metal) and its paved ground (puddles, rain) and Umbris's
-  swampy ground (mud). The puddles, ripples, rain rings and the lava's pulse are placed by an exact integer noise, the same on
-  every GPU and driver. See [Materials](docs/materials.md).
-- More lamps light the world on Veldin and Novalis (nanotech crates, fires, plasma beams, landing pad, eyes, bombs), and
-  lights per object class follow the objects the game spawns later (thanks Anya-Thoughtmane, #102).
-- Novalis's Buzzers light with their green eyes, and the Blarg ship (Novalis's drop ship, Gemlik's ships of the
-  skill point) lights from its orange and blue lamps, which glow, instead of from inside its hull (#102).
-- Light editor (debug menu, #101): click on the picture to pick a surface or an object part (the crosshair stays), a light added
-  at the clicked surface (just off it along its normal), lines for a moby class on every level (`data/lights/classes.txt`, a "For
-  every level" box; a level's own line wins), a moby light on a joint of its pose (`emit moby ... joint <n>`, for the Buzzers' flight),
-  and a Textures tab: the level's tfrag, tie, shrub and moby textures as thumbnails with their classes, a click to mark one emissive
-  or give it a material. See [Lighting](docs/lighting.md#the-light-editor).
-- Ambient Occlusion: every mode at half resolution too (SSAO 1/2, SSAO+ 1/2, HBAO 1/2 beside GTAO 1/2), upsampled by the blur with
-  the full resolution's depth: about 45 % less on Vulkan at 5120 x 1440, a little softer; the full resolution stays each mode's
-  default. See [Lighting](docs/lighting.md#ambient-occlusion).
+- **Ambient Occlusion at half resolution:** every mode has a 1/2 variant too (SSAO 1/2, SSAO+ 1/2, HBAO 1/2 beside GTAO 1/2),
+  upsampled by the blur with the full resolution's depth: about 45 % less on Vulkan at 5120 x 1440, a little softer; the full
+  resolution stays each mode's default. See [Lighting](docs/lighting.md#ambient-occlusion).
+- **The light editor** (debug menu, #101): click on the picture to pick a surface or an object part (the crosshair stays), a
+  light added at the clicked surface (just off it along its normal), lines for a moby class on every level
+  (`data/lights/classes.txt`, a "For every level" box; a level's own line wins), a moby light on a joint of its pose (`emit moby
+  ... joint <n>`, for the Buzzers' flight), and a Textures tab: the level's tfrag, tie, shrub and moby textures as thumbnails
+  with their classes, a click to mark one emissive or give it a material. Its Save no longer changes the numbers of a level's
+  light file: each Save took one unit off the last digit of the `emit` lines' offsets, colours and aim (the game rounds toward
+  zero, as the PS2 does, and the file was read and written so), and the file's comments and lines now stay where they were.
+  See [Lighting](docs/lighting.md#the-light-editor).
+
+### Gameplay
+- **Buy All Ammo** (Options > Advanced, Off by default): an All Ammo entry first in the Vendor's list, as in Up Your Arsenal:
+  one purchase fills every weapon's ammo through the game's own purchase steps, or with too few bolts as much as they pay for,
+  weapon by weapon in the list's order. The entry is an item of the game's own list, so it scrolls, highlights and wraps as the
+  weapons do, and the Vendor's and the PDA's screens open on it. See [Advanced options](docs/advanced.md#buy-all-ammo).
+- **New Game's presets:** Experimental turns on every graphics enhancement at its top (GTAO, Sun Rays High, Surface Detail
+  High, Ambient Particles High; Original and Modern turn them off); Modern and Experimental turn on Buy All Ammo, Original off.
+
+### Launcher and setup
+- **The whole disc extracted:** the setup extracts the disc into `assets/disc/` (about 6,800 files, 3.9 GB: the levels' data,
+  the scenes, the dialogue, the music and the movies, cut along the disc's own tables), each file checked against the image,
+  and the game reads those files instead of the disc image: it no longer needs the image once the setup has run (keep it for
+  the updates that regenerate from it). Done again only when the disc image changes (`--force disc` to redo it); a game
+  started without the files says to run the setup again. `RAC1_READ_ISO=1` reads the image itself, to compare, and
+  `rac1-native --setup --compare-disc` reads every sector both ways. See [Setup](docs/setup.md#the-discs-files).
+- **The Steam Deck (SteamOS), Bazzite and other immutable Linux systems:** the setup sees that the build's packages cannot be
+  installed there and gives the commands that build the game in a distrobox (or toolbox) container instead (exit status 20;
+  `--check-system` checks the system only), and the launcher offers to set up that container, builds the game in it and starts
+  it from it, with a script to add to Steam for the Gaming Mode (#108, #109). See
+  [Setup](docs/setup.md#steam-deck-bazzite-and-other-immutable-systems).
+- The game writes `progress.json` in its data folder for the
+  [RAC Native launcher](https://github.com/RAC-Native/rac-native-launcher): the planet played, the planets reached, the share
+  explored and the time played (thanks @mat-f96, #107). See [The launcher](docs/launcher.md#progressjson).
+- The setup no longer trusts its record of a step whose files were deleted since (`assets/generated`, or part of it: the moby
+  or world assets, the generated code, the overlay maps, the boot executable): it says which is missing and makes it again,
+  instead of leaving the game without the modern renderer's assets until `--force`. The game says so at start too when those
+  assets are missing, and points to `./setup.sh`.
+- `./setup.sh --update` on the development channel no longer resets a local `main` that has commits of its own (after a
+  stable update had checked out a release); `--update --native-arch` is kept for the rebuild; Ninja builds show their progress
+  on Linux too.
+- The launcher: Cancel right after a task starts stops it on Windows too; restoring a saves backup only writes inside the
+  memory card's folder; the status of a running task is no longer replaced by a late refresh.
+- The update check on the development channel offers main's latest commit even when it is more than 250 commits ahead.
 
 ### Performance
-- The chain worker's time with the modern renderer: Rilgar at 5120 x 1440 3.8 to 2.4 ms a frame, Gaspar 6.2 to 5.3 (program 7's
-  kicks no longer assembled, the effects of a widened view's real ranges no longer kept, the texture uploads written a transfer at
-  a time).
-- The texture caches (the decoded textures, the 2D's, the effects' atlas, the GS replica's) are emptied at each level change:
-  they no longer grow from level to level (about 40 MB less resident memory after a 10-level chain).
-- The game's update runs on a thread of its own while the main thread draws the pipelined frame (a window's default): the host
+- **The game's update on a thread of its own** while the main thread draws the pipelined frame (a window's default): the host
   frame costs the update plus the frame's preparation, its drawing beside them; the game's state the same, word for word. With
   the two changes below, a game frame costs about a fifth less (Rilgar 12.2 to 9.7 ms, Kerwan 13.8 to 12.0 ms, headless at a
-  2528 x 686 window with LOD 3 and the modern lighting), the main thread's own work about half.
-  The debug menu's Display tab (Game update on its own thread), `RAC1_GAME_THREAD`. See [Performance](docs/performance.md).
-- The MRP world's triangles and batches are built on the scene's worker, no longer on the main thread when the frame is drawn
-  (`RAC1_MRPW_BUILD_THREAD=0` for the old way).
-- The moby joints' pose (0x250fe0) keeps the VU0's registers in SIMD registers through its hot loops, two matrix chains at once
-  on a CPU with AVX2: about a quarter less time for the joints and skinning, the same results bit for bit (`RAC1_VU0_SIMD=0` for
-  the old way; oracle batch 470).
-- A pipelined frame's modern lighting and ambient particles read the game's memory as it was when the frame was prepared (a
-  copy), no longer the next update's.
+  2528 x 686 window with LOD 3 and the modern lighting), the main thread's own work about half. The debug menu's Display tab
+  (Game update on its own thread), `RAC1_GAME_THREAD`. See [Performance](docs/performance.md).
+  - The MRP world's triangles and batches are built on the scene's worker, no longer on the main thread when the frame is drawn
+    (`RAC1_MRPW_BUILD_THREAD=0` for the old way).
+  - The moby joints' pose (0x250fe0) keeps the VU0's registers in SIMD registers through its hot loops, two matrix chains at
+    once on a CPU with AVX2: about a quarter less time for the joints and skinning, the same results bit for bit
+    (`RAC1_VU0_SIMD=0` for the old way; oracle batch 470).
+  - A pipelined frame's modern lighting and ambient particles read the game's memory as it was when the frame was prepared (a
+    copy), no longer the next update's.
+- The chain worker's time with the modern renderer: Rilgar at 5120 x 1440 3.8 to 2.4 ms a frame, Gaspar 6.2 to 5.3 (program 7's
+  kicks no longer assembled, the effects of a widened view's real ranges no longer kept, the texture uploads written a transfer
+  at a time).
+- **The sun's shadows:** the mobys over a cascade's static cache are put back and drawn in up to four rectangles instead of one
+  around them all, and the two far cascades' mobys are drawn every other frame in turn: the cascades' GPU time 2.1 to 1.3 ms on
+  Rilgar, 2.4 to 0.6 on Kerwan, the same shadows (a far cascade's moby shadow a frame late every other frame)
+  (`RAC1_SHADOW_CLUSTERS=1`, `RAC1_SHADOW_FAR_EVERY=0` for the old way). The cascades draw only the moby parts that reach them:
+  about a tenth less again (Rilgar 1.7 to 1.5 ms, Kerwan 2.2 to 2.0), the same shadows (`RAC1_SHADOW_PART_CULL=0` for the old
+  way). OpenGL and Vulkan.
+- The modern lighting's world at 5120 x 1440: the second pass of an alpha-tested batch (its failing pixels, no depth written)
+  is tested LESS, so the pixels the first pass drew are not shaded again: the world's GPU time 10 to 15 % less (Rilgar 5.3 to
+  4.8 ms, Kerwan 12.5 to 10.9); a few pixels in a million (a failing pixel exactly on another surface's depth) are no longer
+  drawn (`RAC1_MRPW_P2_LESS=0` for the old way). OpenGL and Vulkan. See [Performance](docs/performance.md#gpu-round-3).
 - Vulkan: the ambient occlusion reads the 3D's depth where it is instead of copying it every frame: GTAO at 5053 x 1371 about a
   quarter less (Rilgar 4.1 to 3.1 ms of GPU, Kerwan 5.0 to 3.9; GTAO 1/2 2.8 to 1.7), the same picture
   (`RAC1_AO_DEPTH_COPY=1` for the old way). See [Lighting](docs/lighting.md#ambient-occlusion).
-- The sun's shadows: the mobys over a cascade's static cache are put back and drawn in up to four rectangles instead of one
-  around them all, and the two far cascades' mobys are drawn every other frame in turn: the cascades' GPU time 2.1 to 1.3 ms on Rilgar, 2.4 to 0.6 on Kerwan, the same shadows (a far cascade's moby
-  shadow a frame late every other frame)
-  (`RAC1_SHADOW_CLUSTERS=1`, `RAC1_SHADOW_FAR_EVERY=0` for the old way). OpenGL and Vulkan.
-- The modern lighting's world at 5120 x 1440: the second pass of an alpha-tested batch (its failing pixels, no depth written) is
-  tested LESS, so the pixels the first pass drew are not shaded again: the world's GPU time 10 to 15 % less (Rilgar 5.3 to 4.8 ms,
-  Kerwan 12.5 to 10.9); a few pixels in a million (a failing pixel exactly on another surface's depth) are no longer drawn
-  (`RAC1_MRPW_P2_LESS=0` for the old way). OpenGL and Vulkan. See [Performance](docs/performance.md#gpu-round-3).
-- Vulkan: the last frame shown (the pause menu's and the fades' picture) is copied only when something reads it, not every frame:
-  0.6 ms of GPU at 5120 x 1440, the same pictures (`RAC1_LAZY_CAPTURE=0` for the old way).
-- The sun's cascades draw only the moby parts that reach them: the cascades about a tenth less (Rilgar 1.7 to 1.5 ms, Kerwan 2.2 to
-  2.0), the same shadows (`RAC1_SHADOW_PART_CULL=0` for the old way). OpenGL and Vulkan.
-- The profiler with Vulkan: the sun cascades' stage is closed where OpenGL closes it (left open, the GPU's work after the world's
-  draw without a stage of its own counted as the cascades'), and the point lights' cube shadows have their own stage.
-
-### Debug tools (`--debug-tools`)
-- `RAC1_MRP_CHAIN_CHECK=1` compares the modern renderer's reading of each frame's chain with the GS replica's, field by field.
-- The Profiler's chain stages and worker are named for whichever reader runs ("Chain worker", "2D, HUD").
-- Hoverboard anywhere (Player tab): on Rilgar and Kalebo III, gets Ratchet on the hoverboard race's board where he stands, as the board
-  itself does when he walks up to it, and off again when unticked. Testing: `RAC1_HOVERBOARD_AT`.
-- Hoverboard anywhere on every other level: a free board (Kalebo III's board drawn on Ratchet's feet, his own board animations
-  read from Kalebo III's data, our own riding with the game's collision): the stick steers and speeds up, cross jumps; in the water,
-  below the level, in a pit or after a long fall he is back on foot on the last solid ground. No race rules. OpenGL and Vulkan.
+- Vulkan: the last frame shown (the pause menu's and the fades' picture) is copied only when something reads it, not every
+  frame: 0.6 ms of GPU at 5120 x 1440, the same pictures (`RAC1_LAZY_CAPTURE=0` for the old way).
+- The 2D's textures are kept and reused: a texture decoded again with the same pixels (the title's menus', every frame) stays
+  the same image, and a changed image refills a free GPU texture of its size; the boot to Kerwan held 1835 GPU textures (2293
+  in a windowed run) where it now holds 9, the pause menu made a texture and remade a render target every frame and now makes
+  none. The same pictures. `RAC1_2D_TEX_STATS` counts them.
+- The texture caches (the decoded textures, the 2D's, the effects' atlas, the GS replica's) are emptied at each level change:
+  they no longer grow from level to level (about 40 MB less resident memory after a 10-level chain).
 
 ### Fixes
-- Vulkan: the tfrags' resident colours are a buffer per frame in flight: a frame's colours were written while the frame before's
-  compute shader could still read them (a one-frame colour glitch was possible).
+- When the computer falls behind (or with V-Sync on a 75 Hz display) and a frame runs two or more of the game's frames, the
+  frame after no longer reuses the undrawn frame's drawing data without what it needs: the game no longer freezes at Aridia's
+  arrival, and no stray graphics programs run on Kerwan, Rilgar and other levels (#104).
 - Windows: the build failed with MSYS2's current Clang ("'gnu::noinline' attribute cannot be applied to types" in
   moby_joints.cpp, #112).
-- Modern lighting: Ratchet and the other mobys are lit by the lights placed by hand, the lights per class and the automatic
-  emitters, per pixel as the world (they had only the game's own lights; #110). OpenGL and Vulkan.
-- Surface materials: a metal's roughness works as it reads - low is polished, a sharp highlight and a clear mirror of the sky (and
-  on High of the picture), high is brushed - instead of looking duller when polished (#101).
-- When the computer falls behind (or with V-Sync on a 75 Hz display) and a frame runs two or more of the game's
-  frames, the frame after no longer reuses the undrawn frame's drawing data without what it needs: the game no
-  longer freezes at Aridia's arrival, and no stray graphics programs run on Kerwan, Rilgar and other levels (#104).
-- The debug menu's light editor no longer changes the numbers of a level's light file when it saves it: each Save took
-  one unit off the last digit of the `emit` lines' offsets, colours and aim (the game rounds toward zero, as the PS2
-  does, and the file was read and written so), and the file's comments and lines now stay where they were (#101).
 - Widescreen: Rilgar's water near the camera no longer loses a wedge (a dark band across the water, the sea bed showing
-  through) or shows a flat, stretched patch: the large water triangles that cross the whole 4:3 frame were stretched as if
-  they were full-screen 2D, their corners past the frame's sides moved to the window's edges.
+  through) or shows a flat, stretched patch: the large water triangles that cross the whole 4:3 frame were stretched as if they
+  were full-screen 2D, their corners past the frame's sides moved to the window's edges.
 - Vulkan: the effects (glows, trails, smoke, the levels' seas) no longer make a new graphics pipeline for every batch of every
   frame, never freed: the game's memory no longer grows the longer it runs (Kerwan, 2400 frames: 403 to 370 MB), and the
   effects' draw costs a quarter of what it did.
 - Vulkan: a few frame-timing fixes: objects freed between two frames (a level's load) wait for the frame that may still use
   them, the shadow maps' views are no longer freed while a frame draws into them (a Shadow Quality change), each swapchain
   image has its own "rendering finished" semaphore, the per-frame buffers are aligned as the GPU asks (Intel and other GPUs
-  that need more than 16 bytes), and the debug menu's overlay no longer recreates the render scale's images every frame.
-- Windows: with the game's update on its own thread (the default since the last change), the game's coroutine is no longer
-  resumed from a thread that is not a fiber (undefined in Windows' fiber API, most likely a crash; found by reading the
-  code, not yet tried on Windows).
+  that need more than 16 bytes), and the debug menu's overlay no longer recreates the render scale's images every frame. The
+  tfrags' resident colours are a buffer per frame in flight: a frame's colours were written while the frame before's compute
+  shader could still read them (a one-frame colour glitch was possible).
 - The settings files (graphics, Advanced, controls, the console's language), the memory card's saves and the setup's copy of
-  the boot executable are written to a temporary file and renamed over the old one: a crash or a full disk while writing
-  no longer leaves a file cut short (a save lost, or the settings back to their defaults).
+  the boot executable are written to a temporary file and renamed over the old one: a crash or a full disk while writing no
+  longer leaves a file cut short (a save lost, or the settings back to their defaults).
+- Windows: with the game's update on its own thread (the default in this release), the game's coroutine is no longer resumed
+  from a thread that is not a fiber (undefined in Windows' fiber API, most likely a crash; found by reading the code).
 - Options > Sound's 5.1 / 7.1: the reopened audio device's thread gets real-time priority again, as at start.
 - The game no longer reads its Advanced settings file every frame while the title's logos and intro play.
 - `RAC1_PROGRESS` is honoured in a normal (windowed) run too, as the launcher's page says; it was dropped without
   `--debug-tools`.
 
+### Debug tools (`--debug-tools`)
+- **Hoverboard anywhere** (Player tab): on Rilgar and Kalebo III, gets Ratchet on the hoverboard race's board where he stands,
+  as the board itself does when he walks up to it, and off again when unticked. On every other level, a free board (Kalebo
+  III's board drawn on Ratchet's feet, his own board animations read from Kalebo III's data, our own riding with the game's
+  collision): the stick steers and speeds up, cross jumps; in the water, below the level, in a pit or after a long fall he is
+  back on foot on the last solid ground. No race rules. OpenGL and Vulkan. Testing: `RAC1_HOVERBOARD_AT`.
+- The Profiler with Vulkan: the sun cascades' stage is closed where OpenGL closes it (left open, the GPU's work after the
+  world's draw without a stage of its own counted as the cascades'), and the point lights' cube shadows have their own stage.
+  The chain stages and worker are named for whichever reader runs ("Chain worker", "2D, HUD").
+
 ### Code clean-up
 - Removed code nothing used any more: the first GS renderer (`GsRenderer`, `gs_state`: its `GsPrimitive` also clashed with the
   VU interpreter's), the old VIF unpacker, the first VU0 helpers (`runtime/kernel/vu0.cpp`), the level loader's file-path
   variants, unused helpers in the movie, sound, memory and format code, the temporary `RAC1_VU7_WHERE` trace.
-- Bounds checks that could overflow (the level files', the disc's directory records, `ByteReader`), the job pool safe
-  if two threads ask it at once, the VU profiler's clock on ARM64, compiler warnings.
+- Bounds checks that could overflow (the level files', the disc's directory records, `ByteReader`), the job pool safe if two
+  threads ask it at once, the VU profiler's clock on ARM64, compiler warnings.
+- `RAC1_MRP_CHAIN_CHECK=1` compares the modern renderer's reading of each frame's chain with the GS replica's, field by field.
 - Docs checked against the code: env-vars.md's defaults, the update settings' place (Main menu > Updates), the setup's PAL
   disc, the launcher's buttons, and other out-of-date statements.
-
-### Launcher and setup
-- The game writes `progress.json` in its data folder for the [RAC Native launcher](https://github.com/RAC-Native/rac-native-launcher):
-  the planet played, the planets reached, the share explored and the time played (thanks @mat-f96, #107).
-  See [The launcher](docs/launcher.md#progressjson).
-- The Steam Deck (SteamOS), Bazzite and other immutable Linux systems: the setup sees that the build's packages cannot be
-  installed there and gives the commands that build the game in a distrobox (or toolbox) container instead (exit status
-  20; `--check-system` checks the system only), and the launcher offers to set up that container, builds the game in it
-  and starts it from it, with a script to add to Steam for the Gaming Mode (#108). See
-  [Setup](docs/setup.md#steam-deck-bazzite-and-other-immutable-systems).
-- The setup no longer trusts its record of a step whose files were deleted since (`assets/generated`, or part of it: the
-  moby or world assets, the generated code, the overlay maps, the boot executable): it says which is missing and makes it
-  again, instead of leaving the game without the modern renderer's assets until `--force`. The game says so at start too
-  when those assets are missing, and points to `./setup.sh`.
-- `./setup.sh --update` on the development channel no longer resets a local `main` that has commits of its own (after a
-  stable update had checked out a release); `--update --native-arch` is kept for the rebuild; Ninja builds show their
-  progress on Linux too.
-- The launcher: Cancel right after a task starts stops it on Windows too; restoring a saves backup only writes inside the
-  memory card's folder; the status of a running task is no longer replaced by a late refresh.
-- The update check on the development channel offers main's latest commit even when it is more than 250 commits ahead.
-- The setup extracts the whole disc into `assets/disc/` (about 6,800 files, 3.9 GB: the levels' data, the scenes, the
-  dialogue, the music and the movies, cut along the disc's own tables), each file checked against the image, and the game
-  reads those files instead of the disc image: it no longer needs the image once the setup has run (keep it for the
-  updates that regenerate from it). Done again only when the disc image changes (`--force disc` to redo it); a game
-  started without the files says to run the setup again. `RAC1_READ_ISO=1` reads the image itself, to compare, and
-  `rac1-native --setup --compare-disc` reads every sector both ways. See [Setup](docs/setup.md#the-discs-files).
 
 ## 0.5.0
 

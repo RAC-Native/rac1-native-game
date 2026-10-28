@@ -188,9 +188,9 @@ The launcher's code is in `tools/launcher/`: what it does in `core/` (shared), t
 
 ```bash
 # Windows: rac1-launcher.exe (any .NET SDK 6 or newer; the result needs only .NET Framework 4.8)
-dotnet build tools/launcher/windows/Launcher.csproj -c Release -p:LauncherVersion=0.5.0 -o out
+dotnet build tools/launcher/windows/Launcher.csproj -c Release -p:LauncherVersion=0.6.0 -o out
 # Linux: one self-contained file, rac1-launcher (.NET SDK 8 or newer, on Linux or Windows)
-dotnet publish tools/launcher/linux/Launcher.Linux.csproj -c Release -p:LauncherVersion=0.5.0 -o out
+dotnet publish tools/launcher/linux/Launcher.Linux.csproj -c Release -p:LauncherVersion=0.6.0 -o out
 ```
 
 The [launcher workflow](../.github/workflows/launcher.yml) builds both whenever the launcher's code changes, and attaches
