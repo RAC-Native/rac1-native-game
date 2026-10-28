@@ -18,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <sstream>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -416,7 +417,12 @@ bool disc_read_from(DiscSource src, uint32_t lba, uint32_t sectors, void* dst) {
     return read_full(g_iso, uint64_t{lba} * kSector, static_cast<char*>(dst), n);
 }
 
-bool disc_read(uint32_t lba, uint32_t sectors, void* dst) { return disc_read_from(disc_source(), lba, sectors, dst); }
+bool disc_read(uint32_t lba, uint32_t sectors, void* dst) {
+    // (testing, RAC1_DISC_DELAY_MS=<ms>: each read waits that long first - a slow medium, the Wii U's SD card, on any host)
+    static const int delay = std::getenv("RAC1_DISC_DELAY_MS") != nullptr ? std::atoi(std::getenv("RAC1_DISC_DELAY_MS")) : 0;
+    if (delay > 0) std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+    return disc_read_from(disc_source(), lba, sectors, dst);
+}
 
 void disc_will_need(uint32_t lba, uint32_t sectors) {
     const uint64_t offset = uint64_t{lba} * kSector, n = uint64_t{sectors} * kSector;

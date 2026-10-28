@@ -16,8 +16,13 @@
 // The host model: the disc read at once (the ISO), the SPU buffer of each stream a host array
 // played by an SPU voice of OpenGOAL's synth (its ADPCM decoder, interpolation, envelope), the
 // halves refilled when the voice has left them (the IRX's SPU interrupt), on the EE's thread.
+// With RAC1_STREAM_ASYNC=1 (the Wii U's default) the disc is read as the IRX's reader thread read it, off the EE's
+// thread: a part's bytes loaded by an I/O thread into a cache both IOPs share (the game's and the mirror's), a stream
+// started once its header is in, a half whose bytes are not in yet silence (an underrun).
 #if defined(__WIIU__)
 #include "platform/per_thread.h"
+#include <coreinit/core.h>
+#include <coreinit/thread.h>
 #endif
 #include <runtime/iop/snd989_stream.h>
 
@@ -28,12 +33,19 @@
 #include "game/sound/989snd/util.h"
 #include "game/sound/common/voice.h"
 
+#include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace rac1 {
@@ -44,10 +56,160 @@ namespace {
 constexpr uint32_t kSector = 2048;
 constexpr uint32_t kRunSectors = 32;
 
+// RAC1_STREAM_ASYNC: the streams' disc reads on the I/O thread (default on the Wii U, off elsewhere; read once)
+// orig: (host)
+bool stream_async() {
+#if defined(__WIIU__)
+    static const bool on = std::getenv("RAC1_STREAM_ASYNC") == nullptr || std::atoi(std::getenv("RAC1_STREAM_ASYNC")) != 0;
+#else
+    static const bool on = std::getenv("RAC1_STREAM_ASYNC") != nullptr && std::atoi(std::getenv("RAC1_STREAM_ASYNC")) != 0;
+#endif
+    return on;
+}
+
+// A part's bytes in the stream cache (async): its 0x30-byte header and its data, `loaded` bytes from its start in (the
+// I/O thread's, published with release: the bytes below it are the readers'), `total` (0x30 + the header's size) known
+// once the first chunk is in; `failed` when the header is not a VAGp one or the disc read failed (the bytes in still good).
+struct PartData {
+    uint32_t lsn = 0, offset = 0;
+    uint32_t total = 0;
+    std::vector<uint8_t> bytes;
+    std::atomic<uint32_t> loaded{0};
+    std::atomic<bool> failed{false};
+    uint64_t last_use = 0;                    // (the cache's lock)
+    std::chrono::steady_clock::time_point t0;  // the request (the log's load time)
+};
+
 struct Part {
     uint32_t lsn = 0, offset = 0;
     bool loop = false;
+    std::shared_ptr<PartData> data;  // (async) its bytes in the cache
 };
+
+// The stream cache: the parts' bytes, loaded by one I/O thread in chunks, the part with the fewest bytes in first (a new
+// stream's header before the rest of a playing one). An entry no stream holds (the cache's own reference alone) is
+// evicted, the oldest first, once the cache holds more than kCacheBytes.
+constexpr uint32_t kChunk = 64 * 1024;
+constexpr size_t kCacheBytes = 4u << 20;
+struct StreamCache {
+    std::mutex m;
+    std::condition_variable cv;
+    std::vector<std::shared_ptr<PartData>> parts;
+    uint64_t clock = 0;
+    bool running = false;
+};
+StreamCache& cache() {
+    static StreamCache* c = new StreamCache;  // (never freed: the I/O thread outlives the statics)
+    return *c;
+}
+
+// the next part to load a chunk of: a held one not all in, the fewest bytes in first (the cache's lock held)
+// orig: (host)
+std::shared_ptr<PartData> cache_pick(StreamCache& c) {
+    std::shared_ptr<PartData> best;
+    for (const std::shared_ptr<PartData>& e : c.parts) {
+        if (e.use_count() < 2 || e->failed.load(std::memory_order_relaxed)) continue;
+        const uint32_t have = e->loaded.load(std::memory_order_relaxed);
+        if (e->total != 0 && have >= e->total) continue;
+        if (!best || have < best->loaded.load(std::memory_order_relaxed)) best = e;
+    }
+    return best;
+}
+
+uint32_t be32(const uint8_t* p);
+
+// One chunk of a part read from the disc (the I/O thread): the first one parses the header and sizes the entry.
+// orig: (host) the IRX's reader thread 0x116e8 (its sceCdRead of the stream's sectors)
+void cache_load_chunk(PartData& e) {
+    static std::vector<uint8_t> buf;  // (the I/O thread's)
+    const uint64_t base = uint64_t{e.lsn} * kSector + e.offset;
+    const uint32_t have = e.loaded.load(std::memory_order_relaxed);
+    const uint32_t end = e.total == 0 ? kChunk : std::min(e.total, have + kChunk);
+    const uint64_t a = base + have, b = base + end;
+    const uint32_t lba = static_cast<uint32_t>(a / kSector);
+    const uint32_t n = static_cast<uint32_t>((b - uint64_t{lba} * kSector + kSector - 1) / kSector);
+    buf.resize(static_cast<size_t>(n) * kSector);
+    uint32_t got = n;
+    if (!disc_read(lba, n, buf.data())) {  // (past the disc's end: the sectors there are)
+        got = 0;
+        while (got < n && disc_read(lba + got, 1, buf.data() + static_cast<size_t>(got) * kSector)) ++got;
+    }
+    const uint64_t in_end = std::min<uint64_t>(b, uint64_t{lba + got} * kSector);
+    const uint32_t off = static_cast<uint32_t>(a - uint64_t{lba} * kSector);
+    if (e.total == 0) {
+        if (in_end < base + 0x30 || std::memcmp(buf.data() + off, "VAGp", 4) != 0) {
+            e.failed.store(true, std::memory_order_release);
+            return;
+        }
+        e.total = 0x30 + be32(buf.data() + off + 0xc);
+        e.bytes.assign(e.total, 0);
+    }
+    const uint32_t k = static_cast<uint32_t>(std::min<uint64_t>(in_end > a ? in_end - a : 0, e.total - have));
+    std::memcpy(e.bytes.data() + have, buf.data() + off, k);
+    e.loaded.store(have + k, std::memory_order_release);
+    if (have + k < e.total && got < n) e.failed.store(true, std::memory_order_release);
+    if (have + k >= e.total)
+        std::fprintf(stderr, "[989snd] stream data: sector 0x%x + %u in, %u bytes, %.0f ms after its request\n", e.lsn, e.offset, e.total,
+                     std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - e.t0).count());
+}
+
+// orig: (host) the IRX's reader thread (0x116e8), as the host's I/O thread
+void cache_thread() {
+#if defined(__WIIU__)  // (core 2, the IOP's mirror's, below its priority; the reads wait on the SD card, not the core)
+    OSSetThreadAffinity(OSGetCurrentThread(), OS_THREAD_ATTRIB_AFFINITY_CPU2);
+    OSSetThreadPriority(OSGetCurrentThread(), 24);
+    std::printf("[989snd] the streams' I/O thread on core %u\n", OSGetCoreId());
+#endif
+    StreamCache& c = cache();
+    for (;;) {
+        std::shared_ptr<PartData> e;
+        {
+            std::unique_lock<std::mutex> l(c.m);
+            c.cv.wait(l, [&] { return (e = cache_pick(c)) != nullptr; });
+        }
+        cache_load_chunk(*e);
+    }
+}
+
+// The cache's entry of a part (a new one queued for the I/O thread), the oldest unheld ones evicted past kCacheBytes.
+// orig: (host)
+std::shared_ptr<PartData> cache_request(uint32_t lsn, uint32_t offset) {
+    StreamCache& c = cache();
+    std::lock_guard<std::mutex> l(c.m);
+    std::shared_ptr<PartData> e;
+    for (const std::shared_ptr<PartData>& x : c.parts)
+        if (x->lsn == lsn && x->offset == offset) e = x;
+    if (!e) {
+        e = std::make_shared<PartData>();
+        e->lsn = lsn;
+        e->offset = offset;
+        e->t0 = std::chrono::steady_clock::now();
+        c.parts.push_back(e);
+    }
+    e->last_use = ++c.clock;
+    for (;;) {
+        size_t bytes = 0;
+        std::shared_ptr<PartData>* old = nullptr;
+        for (std::shared_ptr<PartData>& x : c.parts) {
+            bytes += x->loaded.load(std::memory_order_relaxed);  // (the bytes in: the I/O thread sizes the entry without the lock)
+            if (x.use_count() == 1 && (old == nullptr || x->last_use < (*old)->last_use)) old = &x;
+        }
+        if (bytes <= kCacheBytes || old == nullptr) break;
+        c.parts.erase(c.parts.begin() + (old - c.parts.data()));
+    }
+    if (!c.running) {
+        c.running = true;
+        std::thread(cache_thread).detach();
+    }
+    c.cv.notify_all();
+    return e;
+}
+
+// the part's header in (or its load failed): the stream can open it
+// orig: (host)
+bool part_ready(const Part& p) {
+    return !p.data || p.data->loaded.load(std::memory_order_acquire) >= 0x30 || p.data->failed.load(std::memory_order_acquire);
+}
 
 struct Stream {
     uint32_t handle = 0;  // 0: free
@@ -55,6 +217,9 @@ struct Stream {
     bool paused = false;        // the record's flag 2 (0x2c flag 1, 0x2d / 0x2e, 0x13 / 0x14)
     bool group_paused = false;  // paused by group mask (0x16 / 0x17)
     bool started = false;       // flag 8
+    bool pending = false;       // (async) its first part's header not in yet: no voice
+    bool reverb = false;        // (the 0x2c flag 2)
+    uint32_t half_data[2] = {};  // (async) the data bytes in each SPU half (the rest silence)
     int32_t vol = 0, pan = 0, group = 0;
     std::deque<Part> queue;
     Part part;
@@ -78,6 +243,7 @@ struct Snd989Streams {
     std::vector<Stream> streams;
     uint32_t status_addr = 0;  // command 0: the EE word cleared when a game read is done
     std::array<int32_t, 16> master{};
+    snd::Player* player = nullptr;  // the last command's (a pending stream's voice made in the update)
     // disc_bytes' sectors: a run of up to kRunSectors read at once (one read where the IRX's sceCdRead asked sector by sector - the same
     // bytes; a disc read costs its own time on a slow medium, the Wii U's SD card: a stream's start read a sector at a time stalled the game)
     uint32_t cached = 0xffffffffu, cached_n = 0;
@@ -186,7 +352,9 @@ void voice_apply(Stream& s) {
 // orig: (host) the header parse of the reader 0x116e8 (0x11b0c..0x11bdc)
 bool part_open(Stream& s, const Part& p) {
     uint8_t h[0x30];
-    if (!disc_bytes(uint64_t{p.lsn} * kSector + p.offset, h, sizeof h) || std::memcmp(h, "VAGp", 4) != 0) {
+    const bool in = p.data ? (p.data->loaded.load(std::memory_order_acquire) >= 0x30 && (std::memcpy(h, p.data->bytes.data(), sizeof h), true))
+                           : disc_bytes(uint64_t{p.lsn} * kSector + p.offset, h, sizeof h);
+    if (!in || std::memcmp(h, "VAGp", 4) != 0) {
         if (!quiet()) std::fprintf(stderr, "[989snd] stream: no VAGp header at sector 0x%x + %u\n", p.lsn, p.offset);
         return false;
     }
@@ -253,6 +421,64 @@ void fill_half(Stream& s, int h) {
     }
 }
 
+// fill_half from the cache (async): bytes not in yet (or a queued part's header) give silence for the rest of the half, the
+// cursor where it was (an underrun: the data's timeline kept); the game's thread never waits for the disc.
+// orig: (host) as fill_half
+void fill_half_async(Stream& s, int h) {
+    const uint32_t words = static_cast<uint32_t>(s.spu.size()) / 2;
+    uint16_t* dst = s.spu.data() + static_cast<size_t>(h) * words;
+    uint8_t blk[16];
+    bool starved = false;
+    uint32_t data = 0;
+    for (uint32_t w = 0; w < words; w += 8) {
+        bool end_block = false;
+        std::memset(blk, 0, sizeof blk);
+        if (!s.data_end && !starved) {
+            while (s.cursor + 16 > s.size) {
+                if (s.part.loop) {
+                    s.cursor = 0;
+                    if (s.size < 16) break;
+                } else if (!s.queue.empty()) {
+                    if (!part_ready(s.queue.front())) {
+                        starved = true;
+                        break;
+                    }
+                    const Part next = s.queue.front();
+                    s.queue.pop_front();
+                    if (!part_open(s, next)) break;
+                } else {
+                    break;
+                }
+            }
+            const uint32_t at = 0x30 + s.cursor;
+            if (starved) {
+            } else if (s.cursor + 16 > s.size) {
+                blk[1] = 1;
+                s.data_end = true;
+                end_block = true;
+            } else if (at + 16 <= s.part.data->loaded.load(std::memory_order_acquire)) {
+                std::memcpy(blk, s.part.data->bytes.data() + at, 16);
+                blk[1] = 0;
+                s.cursor += 16;
+                s.copied += 16;
+                data += 16;
+            } else if (s.part.data->failed.load(std::memory_order_acquire)) {
+                blk[1] = 1;
+                s.data_end = true;
+                end_block = true;
+            } else {
+                starved = true;
+            }
+        }
+        if (!end_block) {
+            if (h == 0 && w == 0) blk[1] |= 4;
+            if (h == 1 && w + 8 >= words) blk[1] |= 3;
+        }
+        for (int k = 0; k < 8; ++k) dst[w + k] = static_cast<uint16_t>(blk[2 * k] | blk[2 * k + 1] << 8);
+    }
+    s.half_data[h] = data;
+}
+
 // the stream record of a handle (0xcadc: type 4, index in bits 16..23, the record's handle equal)
 // orig: (host) as the IRX's 0xcadc
 Stream* find(uint32_t h) {
@@ -272,7 +498,34 @@ void stream_free(Stream& s, const char* why) {
         std::fprintf(stderr, "[989snd] stream %08x freed (%s): %llu ADPCM bytes queued, %llu played\n", s.handle, why,
                      static_cast<unsigned long long>(s.copied), static_cast<unsigned long long>(s.played));
     s.handle = 0;
+    s.pending = false;
+    s.part.data.reset();
     s.queue.clear();
+}
+
+// The stream's SPU buffer filled and its voice made, keyed on and submitted (the part opened).
+// orig: (host) the end of the IRX's 0xeacc and its reader's first buffer
+void stream_begin(Stream& s, snd::Player& p) {
+    s.spu.assign(st().size / 2 / 2, 0);  // half the stream's buffer, in 16-bit words
+    if (stream_async()) {
+        fill_half_async(s, 0);
+        fill_half_async(s, 1);
+    } else {
+        fill_half(s, 0);
+        fill_half(s, 1);
+    }
+    s.half = 0;
+    s.voice = std::make_shared<snd::Voice>();
+    s.voice->SetAsdr1(0x000f);  // the IRX's stream voices (0xa3d8 / 0xa430)
+    s.voice->SetAsdr2(0x1fc0);
+    s.voice->SetSample(s.spu.data());
+    s.voice->SetReverb(s.reverb);  // (the record's 0x100: the voice's VMIXE, 0xef8c / 0x1372c)
+    p.AllocVoice(*s.voice, s.group, 0x7f);  // (its SPU2 voice, 0xe948: the group's range; its core)
+    s.voice->KeyOn();
+    voice_apply(s);
+    std::shared_ptr<snd::Voice> v = s.voice;
+    p.SubmitVoice(v);
+    s.started = true;  // the first buffer is in (host: at once; async: once the header is)
 }
 
 // 0x2c: play / queue
@@ -292,6 +545,7 @@ int32_t stream_play(snd::Player& p, const uint32_t* args) {
     if (queue != 0 && find(queue) != nullptr) {
         Stream* s = find(queue);
         s->queue.push_back(part);
+        if (stream_async()) s->queue.back().data = cache_request(part.lsn, part.offset);  // (prefetched now)
         if (g_snd989_trace && !quiet()) std::fprintf(stderr, "[989snd] stream %08x: sector 0x%x queued (flags %x)\n", queue, loc1, flags);
         return 1;
     }
@@ -312,25 +566,31 @@ int32_t stream_play(snd::Player& p, const uint32_t* args) {
     s->data_end = false;
     s->played = s->copied = 0;
     s->queue.clear();
+    s->reverb = (flags & 2) != 0;
+    if (stream_async()) {  // (the header from the cache: when not in yet the stream waits for it, the handle answered now)
+        Part first = part;
+        first.data = cache_request(part.lsn, part.offset);
+        s->started = false;
+        s->voice.reset();
+        s->rate = s->size = s->cursor = 0;
+        s->part = first;
+        s->pending = !part_ready(first);
+        if (!s->pending) {
+            if (!part_open(*s, first)) {
+                stream_free(*s, "no VAGp header");
+                return 0;
+            }
+            stream_begin(*s, p);
+        }
+        if (!quiet()) std::fprintf(stderr, "[989snd] stream %08x play: sector 0x%x vol %d pan %d group %d flags %x%s%s\n", s->handle, loc1, s->vol, s->pan,
+                                   group, flags, s->paused ? " (paused)" : "", s->pending ? " (its header loading)" : "");
+        return static_cast<int32_t>(s->handle);
+    }
     if (!part_open(*s, part)) {
         s->handle = 0;
         return 0;
     }
-    s->spu.assign(st().size / 2 / 2, 0);  // half the stream's buffer, in 16-bit words
-    fill_half(*s, 0);
-    fill_half(*s, 1);
-    s->half = 0;
-    s->voice = std::make_shared<snd::Voice>();
-    s->voice->SetAsdr1(0x000f);  // the IRX's stream voices (0xa3d8 / 0xa430)
-    s->voice->SetAsdr2(0x1fc0);
-    s->voice->SetSample(s->spu.data());
-    s->voice->SetReverb((flags & 2) != 0);  // (the record's 0x100: the voice's VMIXE, 0xef8c / 0x1372c)
-    p.AllocVoice(*s->voice, group, 0x7f);   // (its SPU2 voice, 0xe948: the group's range; its core)
-    s->voice->KeyOn();
-    voice_apply(*s);
-    std::shared_ptr<snd::Voice> v = s->voice;
-    p.SubmitVoice(v);
-    s->started = true;  // the first buffer is in (host: at once)
+    stream_begin(*s, p);
     if (!quiet()) std::fprintf(stderr, "[989snd] stream %08x play: sector 0x%x vol %d pan %d group %d flags %x%s\n", s->handle, loc1, s->vol, s->pan, group,
                  flags, s->paused ? " (paused)" : "");
     return static_cast<int32_t>(s->handle);
@@ -404,6 +664,7 @@ void snd989_stream_group_pause(Snd989Streams* io, uint32_t mask, bool pause) {
 // orig: (host) the IRX's command dispatch 0x15d4 for the stream ids
 bool snd989_stream_command(Snd989Streams* io, snd::Player& p, uint32_t id, const uint32_t* args, int32_t& result) {
     Use use(io);
+    st().player = &p;
     auto a = [&](int i) { return args[i]; };
     result = 0;
     switch (id) {
@@ -497,6 +758,18 @@ bool snd989_stream_command(Snd989Streams* io, snd::Player& p, uint32_t id, const
 void snd989_stream_update(Snd989Streams* io) {
     Use use(io);
     for (Stream& s : st().streams) {
+        if (s.handle != 0 && s.pending && part_ready(s.part) && st().player != nullptr) {  // (async) its header in: the start finished
+            s.pending = false;
+            if (!part_open(s, s.part)) {
+                stream_free(s, "no VAGp header");
+                continue;
+            }
+            stream_begin(s, *st().player);
+            if (!quiet())
+                std::fprintf(stderr, "[989snd] stream %08x started (its header in, %.0f ms after the play)\n", s.handle,
+                             std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - s.part.data->t0).count());
+            continue;
+        }
         if (s.handle == 0 || !s.voice) continue;
         if (s.voice->Dead()) {  // the end block played: the stream is over
             stream_free(s, "ended");
@@ -505,8 +778,13 @@ void snd989_stream_update(Snd989Streams* io) {
         const uint32_t half_words = static_cast<uint32_t>(s.spu.size()) / 2;
         const int h = s.voice->GetNax() >= half_words ? 1 : 0;
         if (h != s.half) {
-            fill_half(s, s.half);
-            s.played += half_words * 2;
+            if (stream_async()) {  // (the half's data bytes played: an underrun's silence not counted)
+                s.played += s.half_data[s.half];
+                fill_half_async(s, s.half);
+            } else {
+                fill_half(s, s.half);
+                s.played += half_words * 2;
+            }
             s.half = h;
         }
     }
