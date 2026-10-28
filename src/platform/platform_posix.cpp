@@ -8,7 +8,12 @@
 #include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#if defined(__GLIBC__)
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#include <mach/mach.h>
+#include <pthread.h>
+#endif
+#if defined(__GLIBC__) || defined(__APPLE__)
 #include <execinfo.h>
 #endif
 
@@ -26,6 +31,10 @@
 #include <cstring>
 
 extern char** environ;
+
+#if !defined(MAP_STACK)
+#define MAP_STACK 0  // (macOS: no such flag; a plain anonymous mapping)
+#endif
 
 // ThreadSanitizer (a -fsanitize=thread build, testing): the coroutine's stack switches told to it as a fiber's
 #if defined(__SANITIZE_THREAD__)
@@ -170,7 +179,15 @@ std::int64_t read_at(std::FILE* f, std::uint64_t offset, void* dst, std::size_t 
 }
 
 void will_need(std::FILE* f, std::uint64_t offset, std::uint64_t bytes) {
+#if defined(__APPLE__)
+    // (macOS has no posix_fadvise: F_RDADVISE asks for the same read-ahead)
+    radvisory ra{};
+    ra.ra_offset = static_cast<off_t>(offset);
+    ra.ra_count = static_cast<int>(bytes > 0x7fffffffu ? 0x7fffffffu : bytes);
+    fcntl(fileno(f), F_RDADVISE, &ra);
+#else
     posix_fadvise(fileno(f), static_cast<off_t>(offset), static_cast<off_t>(bytes), POSIX_FADV_WILLNEED);
+#endif
 }
 
 bool map_file(const std::filesystem::path& path, const std::byte** data, std::size_t* size) {
@@ -196,12 +213,21 @@ void unmap_file(const std::byte* data, std::size_t size) {
 // ---- The player's folders ----
 
 std::filesystem::path config_dir() {
+#if defined(__APPLE__)
+    // (macOS: the settings and the saves in ~/Library/Application Support/rac1-native, as %APPDATA% on Windows)
+    if (const char* h = std::getenv("HOME"); h != nullptr && *h != 0)
+        return std::filesystem::path(h) / "Library" / "Application Support" / "rac1-native";
+    return {};
+#endif
     if (const char* x = std::getenv("XDG_CONFIG_HOME"); x != nullptr && *x != 0) return std::filesystem::path(x) / "rac1-native";
     if (const char* h = std::getenv("HOME"); h != nullptr && *h != 0) return std::filesystem::path(h) / ".config" / "rac1-native";
     return {};
 }
 
 std::filesystem::path data_dir() {
+#if defined(__APPLE__)
+    return config_dir();
+#endif
     if (const char* x = std::getenv("XDG_DATA_HOME"); x != nullptr && *x != 0) return std::string(x) + "/rac1-native";
     if (const char* h = std::getenv("HOME"); h != nullptr && *h != 0) return std::string(h) + "/.local/share/rac1-native";
     return {};
@@ -209,7 +235,14 @@ std::filesystem::path data_dir() {
 
 std::filesystem::path executable_path() {
     std::error_code ec;
+#if defined(__APPLE__)
+    char buf[4096];
+    uint32_t n = sizeof buf;
+    if (_NSGetExecutablePath(buf, &n) != 0) return {};
+    std::filesystem::path p = std::filesystem::canonical(buf, ec);
+#else
     std::filesystem::path p = std::filesystem::read_symlink("/proc/self/exe", ec);
+#endif
     return ec ? std::filesystem::path() : p;
 }
 
@@ -269,7 +302,15 @@ void unset_environment(const char* name) { unsetenv(name); }
 
 // ---- Threads, time ----
 
-std::uint64_t thread_id() { return static_cast<std::uint64_t>(syscall(SYS_gettid)); }
+std::uint64_t thread_id() {
+#if defined(__APPLE__)
+    std::uint64_t t = 0;
+    pthread_threadid_np(nullptr, &t);
+    return t;
+#else
+    return static_cast<std::uint64_t>(syscall(SYS_gettid));
+#endif
+}
 
 double thread_cpu_ms() {
     timespec ts{};
@@ -316,6 +357,15 @@ std::string field_str(const std::string& s, const char* key) {
 }  // namespace
 
 bool process_memory(ProcessMemory* out) {
+#if defined(__APPLE__)
+    mach_task_basic_info_data_t info{};
+    mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
+    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, reinterpret_cast<task_info_t>(&info), &count) != KERN_SUCCESS) return false;
+    out->resident = info.resident_size;
+    out->resident_peak = info.resident_size_max;
+    out->virtual_size = info.virtual_size;
+    return true;
+#endif
     const std::string s = read_small("/proc/self/status");
     if (s.empty()) return false;
     out->resident = field_u64(s, "\nVmRSS:") * 1024;
@@ -435,7 +485,7 @@ void process_end() {}
 // ---- Debugging ----
 
 void print_backtrace(int frames) {
-#if defined(__GLIBC__)
+#if defined(__GLIBC__) || defined(__APPLE__)
     void* f[64];
     const int n = frames < 64 ? frames : 64;
     backtrace_symbols_fd(f, backtrace(f, n), 2);

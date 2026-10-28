@@ -42,6 +42,7 @@
 #include <platform/platform.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -266,6 +267,7 @@ struct State {
     GraphicsDisplay display;
     uint32_t serial = 0;
     bool loaded = false, dirty = false;
+    int out_w = 0, out_h = 0;  // the window's size, or the screen's in fullscreen (graphics_host_window; 0: not known yet)
     int scale_override = -1;
     int mips_seen[2] = {1, 1};  // the mip globals as the settings left them: a change by the debug menu is taken into the row
 } gs_;
@@ -344,6 +346,9 @@ void apply() {
     // a headless run keeps OpenGL unless RAC1_RENDERER asks)
     d.vulkan = !g_advanced_disabled && v[S_RENDERER] != 0;
     if (const char* env = std::getenv("RAC1_RENDERER")) d.vulkan = std::strcmp(env, "vulkan") == 0 || std::strcmp(env, "vk") == 0;
+#if defined(__APPLE__)
+    d.vulkan = true;  // (macOS: the Vulkan renderer's code on Metal, the one renderer there: docs/metal.md)
+#endif
     d.fullscreen = v[S_DISPLAY] != 0;
     d.window_w = gs_.win_w;
     d.window_h = gs_.win_h;
@@ -523,7 +528,11 @@ std::string value_text(Setting s) {
     const int v = gs_.value[s];
     char b[48];
     switch (s) {
+#if defined(__APPLE__)
+        case S_RENDERER: return "Metal";
+#else
         case S_RENDERER: return v != 0 ? "Vulkan" : "OpenGL";
+#endif
         case S_DISPLAY: return t[v != 0 ? T_FULLSCREEN : T_WINDOW];
         case S_MONITOR: return v >= 0 && static_cast<size_t>(v) < gs_.monitors.size() ? gs_.monitors[v] : std::string("?");
         case S_WINDOW: std::snprintf(b, sizeof b, "%d x %d", gs_.win_w, gs_.win_h); return b;
@@ -556,7 +565,19 @@ std::string value_text(Setting s) {
     }
 }
 
-// orig: (none) — enhancement: a setting stepped by d (+1 / -1), wrapping
+// orig: (none) — enhancement: a value the display shows differently from the others (the rows step over the rest): the
+// Screen's 16:9 not on a 16:9 display (there it is Fill's; a narrower one shows it with bars), the HUD's 16:9 / 21:9 / 32:9 only when narrower
+// than the view (else they are Fit's). 4:3 (the original) and Fill / Fit always, so a HUD narrower than the view can always
+// be picked; a value chosen before (another display) stays, shown as it is
+bool value_supported(Setting s, int v) {
+    constexpr float kSlack = 0.01f;
+    if (gs_.out_w <= 0 || gs_.out_h <= 0) return true;
+    if (s == S_ASPECT && v == 1) return std::fabs(static_cast<float>(gs_.out_w) / static_cast<float>(gs_.out_h) - 16.0f / 9.0f) > kSlack;
+    if (s == S_HUD && v >= 1 && v <= 3) return HUD_ASPECTS[v] < 4.0f / 3.0f * g_view_widen - kSlack;
+    return true;
+}
+
+// orig: (none) — enhancement: a setting stepped by d (+1 / -1), wrapping, over the values the display supports
 void step(Setting s, int d) {
     if (s == S_WINDOW) {  // the sizes' list, the current size counted where it falls
         uint32_t i = size_index(gs_.win_w, gs_.win_h);
@@ -577,7 +598,13 @@ void step(Setting s, int d) {
     }
     const int n = static_cast<int>(value_count(s));
     if (n <= 0) return;  // (the monitor row before GLFW is up: nothing to step through)
-    gs_.value[s] = (gs_.value[s] + d + n) % n;
+    int v = gs_.value[s];
+    for (int i = 0; i < n; ++i) {  // (the next value the display supports)
+        v = (v + d + n) % n;
+        if (value_supported(s, v)) break;
+    }
+    if (v == gs_.value[s]) return;
+    gs_.value[s] = v;
     changed();
 }
 
@@ -636,6 +663,8 @@ uint32_t graphics_display_serial() { return gs_.serial; }
 // orig: (none) — enhancement (graphics.h)
 void graphics_host_window(int w, int h, bool fullscreen) {
     gs_.host_fullscreen = fullscreen;
+    gs_.out_w = w;  // (the Screen and HUD rows' values: value_supported)
+    gs_.out_h = h;
     if (fullscreen || w < 320 || h < 240) return;
     if (w == gs_.win_w && h == gs_.win_h) return;
     gs_.win_w = w;  // (resized by hand: the current size)

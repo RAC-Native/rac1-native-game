@@ -2249,6 +2249,10 @@ int main(int argc, char** argv) {
         if (window != nullptr && rac1::vk::init(window, vsync0, headless)) {
             if (!headless && fs_monitor == nullptr) host_window_on_monitor(window, rac1::graphics_display().monitor);
         } else {
+#if defined(__APPLE__)
+            std::fprintf(stderr, "rac1-native: Metal could not start\n");  // (no OpenGL 4.6 on macOS)
+            return 1;
+#endif
             std::fprintf(stderr, "rac1-native: Vulkan could not start, OpenGL instead\n");
             if (window != nullptr) glfwDestroyWindow(window);
             window = nullptr;

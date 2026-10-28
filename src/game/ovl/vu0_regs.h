@@ -4,7 +4,14 @@
 #define RAC1_GAME_OVL_VU0_REGS_H
 
 #include <game/ovl/vu0_macro.h>
+// The macro ops below run on four lanes at once with SSE2 integer / float ops
+// on x86; on ARM NEON the same call sites map to NEON twins, keeping the x86
+// path byte-identical (runtime/vu/vu_simd_shim.h).
+#if defined(__ARM_NEON) || defined(__aarch64__)
+#include <runtime/vu/vu_simd_shim.h>
+#else
 #include <emmintrin.h>
+#endif
 
 #include <concepts>
 

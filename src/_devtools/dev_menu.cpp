@@ -36,6 +36,9 @@
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/vk/vk_context.h>
+#if defined(__APPLE__)
+#include <runtime/mtl/mtl_context.h>
+#endif
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -1946,7 +1949,9 @@ void tex_page_free() {
     if (g_imgui_vk) {
         if (g_tex.ds != VK_NULL_HANDLE) {
             vk::wait_idle();  // (a debug page's rebuild: the descriptor set freed once no frame uses it)
+#if !defined(__APPLE__)  // (macOS: the texture itself, ImGui's Metal backend's ImTextureID)
             ImGui_ImplVulkan_RemoveTexture(g_tex.ds);
+#endif
             g_tex.ds = VK_NULL_HANDLE;
         }
         vk::destroy_image(g_tex.vk);
@@ -1980,8 +1985,12 @@ void tex_page_build(int level) {
             return;
         for (int y = 0; y < g_tex.ah; y += kTexThumb)  // (a row of thumbnails at a time: the frame's staging ring stays small)
             vk::upload_image_2d(g_tex.vk, &px[static_cast<size_t>(y) * g_tex.aw], static_cast<size_t>(g_tex.aw) * kTexThumb * 4, 0, y, g_tex.aw, kTexThumb);
+#if defined(__APPLE__)
+        g_tex.ds = reinterpret_cast<VkDescriptorSet>(g_tex.vk.view);
+#else
         g_tex.ds = ImGui_ImplVulkan_AddTexture(vk::get_sampler(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE),
                                                g_tex.vk.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+#endif
     } else {
         GLint was = 0, unpack_buf = 0, row = 0, align = 4, active = 0;
         glGetIntegerv(GL_ACTIVE_TEXTURE, &active);
@@ -2235,6 +2244,12 @@ void dev_menu_init(GLFWwindow* window, bool with_menu) {
     ImGui::GetStyle().ScaleAllSizes(1.2f);
     io.FontGlobalScale = 1.2f;
     g_imgui_vk = rac1::vk::is_active();
+#if defined(__APPLE__)  // (the Vulkan renderer's code on Metal: ImGui's Metal backend, docs/metal.md)
+    if (g_imgui_vk) {
+        ImGui_ImplGlfw_InitForOther(window, true);
+        rac1::mtl::imgui_init();
+    } else
+#endif
     if (g_imgui_vk) {
         ImGui_ImplGlfw_InitForVulkan(window, true);
         ImGui_ImplVulkan_LoadFunctions([](const char* name, void* inst) {
@@ -2274,7 +2289,11 @@ void dev_menu_shutdown() {
     g_tex.level = -1;
     if (g_imgui_vk) {
         rac1::vk::wait_idle();
+#if defined(__APPLE__)
+        rac1::mtl::imgui_shutdown();
+#else
         ImGui_ImplVulkan_Shutdown();
+#endif
     } else {
         ImGui_ImplOpenGL3_Shutdown();
     }
@@ -2435,8 +2454,12 @@ void dev_menu_draw(double update_ms, double frame_ms) {
         mrp_lighting_screen_point(-1.0f, -1.0f, unused);
     }
     if (!g_menu || (!g_settings.open && !g_settings.show_stats && !profiler_overlay_wanted())) return;
+#if defined(__APPLE__)
+    if (!g_imgui_vk) ImGui_ImplOpenGL3_NewFrame();  // (Metal's: in rac1::vk::render_imgui, at its pass)
+#else
     if (g_imgui_vk) ImGui_ImplVulkan_NewFrame();
     else ImGui_ImplOpenGL3_NewFrame();
+#endif
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
     if (g_settings.show_stats) {
