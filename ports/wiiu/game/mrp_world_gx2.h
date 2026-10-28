@@ -50,6 +50,8 @@ namespace rac1 {
 bool mrp_world_gx2_init();
 // true once mrp_world_gx2_init succeeded
 bool mrp_world_gx2_ready();
+// (testing: the merge mode, RAC1_WIIU_WORLD_MERGE's - the GamePad's debug menu flips it live)
+int& mrp_world_gx2_merge_mode();
 // the prepared frame's tfrags / ties / shrubs into `cb` / `db` (bound by this call, `db` not cleared), the game's frame mapped onto `vp` (x / y
 // from the bottom left, as gs::draw_gx2's); nullptr db: no depth test
 void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp);

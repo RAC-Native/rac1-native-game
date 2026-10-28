@@ -37,12 +37,16 @@ void rac1_wiiu_debug_tools_gate(int argc, char** argv);  // (src/host/orig_main.
 // The return addresses up the stack (the PowerPC back chain: r1 points at the caller's frame, its LR saved at +4), with
 // this function's own address beside them: the loader moves the code, `addr - here + here's ELF address` finds it in
 // the ELF.
+// (OSReport does not reach the UDP log once the game runs: the lines go to WHBLogPrintf too, which has no handler yet
+// before main)
 static void log_backtrace(const char* why) {
     OSReport("rac1-wiiu: %s; log_backtrace at %p\n", why, reinterpret_cast<void*>(&log_backtrace));
+    WHBLogPrintf("rac1-wiiu: %s; log_backtrace at %p", why, reinterpret_cast<void*>(&log_backtrace));
     uintptr_t* fp = static_cast<uintptr_t*>(__builtin_frame_address(0));
     for (int i = 0; i < 24 && fp != nullptr && (reinterpret_cast<uintptr_t>(fp) & 3) == 0; ++i) {
         const uintptr_t lr = fp[1];
         OSReport("rac1-wiiu:   #%d %08x\n", i, static_cast<unsigned>(lr));
+        WHBLogPrintf("rac1-wiiu:   #%d %08x", i, static_cast<unsigned>(lr));
         fp = reinterpret_cast<uintptr_t*>(fp[0]);
     }
 }
@@ -206,11 +210,14 @@ int read_settings() {
     setenv("RAC1_READ_ISO", "0", 1);      // (assets/disc's extracted files on the SD card, as the PC reads them; run.cfg may say 1: the image)
     // the MRP-lite's settings (MRP_LITE.md; run.cfg may say otherwise): the MRP's mobys with the GS path's work they make needless
     // skipped (RAC1_NO_GRAPHICS=2), the ties / shrubs' culling and relighting off and the game's tfrag pass not run (their drawing is
-    // the host's: RAC1_WORLD_PASS_SKIP=6, RAC1_TFRAG_PASS_OFF=1)
+    // the host's: RAC1_WORLD_PASS_SKIP=6, RAC1_TFRAG_PASS_OFF=1), the moby pass's chain parts and texture uploads not built (the MRP
+    // gets the parts from the draw loop: RAC1_MOBY_PASS_MRP=1, moby_pass.h)
     setenv("RAC1_NO_GRAPHICS", "2", 1);
     setenv("RAC1_MOBY_MRP", "1", 1);
     setenv("RAC1_WORLD_PASS_SKIP", "6", 1);
     setenv("RAC1_TFRAG_PASS_OFF", "1", 1);
+    setenv("RAC1_MOBY_PASS_MRP", "1", 1);
+    setenv("RAC1_DRAW_LAST_STEP", "1", 1);  // (a catch-up game frame, not shown, not drawn: game_skips.h)
     std::FILE* f = std::fopen("run.cfg", "r");
     if (f == nullptr) return 0;
     int n = 0;
@@ -293,6 +300,7 @@ int main(int argc, char** argv_in) {
         std::printf("[wiiu] exception %s: %s\n", typeid(x).name(), x.what());
         std::fflush(stdout);
         WHBLogPrintf("rac1-wiiu: exception %s: %s", typeid(x).name(), x.what());
+        wiiu_sampler_stop();  // (the samples kept up to the failure)
         back_to_menu("exception");
     }
     wiiu_sampler_stop();
@@ -305,9 +313,16 @@ int main(int argc, char** argv_in) {
     // back to the menu (ProcUI's messages handled meanwhile; the screen given back on its release)
     // (with the picture, GX2 stays up until ProcUI lets go: the WHB helpers' foreground callbacks still use it while the
     // menu takes over; shut down before, the console hung on its way back)
+    // (SYSLaunchMenu only when the game ended by itself: after HOME's "close", ProcUI is already taking the application down, and
+    // asking for the menu again on top of it left the console hung on the way back, 2026-10-28)
+    const bool still_running = WHBProcIsRunning();
     if (gfx_up) wiiu_gfx_game_ended();
-    say("ending: the menu asked for");
-    SYSLaunchMenu();
+    if (still_running) {
+        say("ending: the menu asked for");
+        SYSLaunchMenu();
+    } else {
+        say("ending: closed from HOME (ProcUI already taking it down)");
+    }
     while (WHBProcIsRunning()) {
         if (gfx_up) wiiu_gfx_frame();
         else if (g_console) WHBLogConsoleDraw();

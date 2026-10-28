@@ -7,6 +7,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/ovl_common.h>
+#include <game/ovl/game_skips.h>
 #include <game/ovl/pause_menu.h>
 #include <game/port_stubs.h>
 #include <profiler/host_profiler.h>
@@ -47,6 +48,11 @@ void level_stat(uint32_t s) {
     sw(s + 4, lwu(s + 4) | (1u << (lwu(0x0015ed84) & 31)) | 0x80000000u);
 }
 }  // namespace
+
+// (testing: the GamePad debug menu's switches, game_skips.h)
+bool g_skip_mobys = false, g_skip_hero = false, g_skip_particles = false, g_skip_camera = false, g_skip_sound = false, g_skip_hud = false,
+     g_skip_effects = false, g_skip_shadows = false, g_skip_joints = false;
+bool g_draw_last_step_only = false;  // (set from RAC1_DRAW_LAST_STEP at the start, orig_main.cpp: the Wii U sets it after the static constructors)
 
 // orig: 0x00297f78 — one gameplay frame: the pause / menu checks (start, select, the vendor and
 // the ship), the pad's single step, the level updates (tfrag, mobys, HUD bar, effects), the
@@ -147,7 +153,7 @@ void gameplay_frame() {
         }
     }
     if (on(2)) draw_lists_reset();
-    if (on(2)) {
+    if (on(2) && !g_skip_mobys) {
         RAC1_PROF_ZONE(kGameMobyUpdates);
         moby_free_slots_count();
         moby_updates();
@@ -156,34 +162,37 @@ void gameplay_frame() {
     }
     prof_mark(OV(0x00160ff8), 3);
     advanced_aim_before_hero();  // enhancement: the modern controls' aim
-    if (on(1)) {
+    if (on(1) && !g_skip_hero) {
         RAC1_PROF_ZONE(kGameHero);
         hero_frame_update();
     }
     if (on(1)) advanced_aim_after_hero();
     prof_mark(OV(0x00161008), 7);
-    if (on(4)) {
+    if (on(4) && !g_skip_particles) {
         RAC1_PROF_ZONE(kGameParticles);
         particles_update();
         spin_timers_update();
     }
     prof_mark(OV(0x00161018), 5);
     advanced_aim_before_camera();  // enhancement: the modern controls' aim
-    if (on(8)) {
+    if (on(8) && !g_skip_camera) {
         RAC1_PROF_ZONE(kGameCamera);
         camera_update();
+    } else if (on(8)) {  // (the camera switched off by the debug menu: nothing)
     } else if (lw(C + 0x14) != 0 && !g_world_paused) {
         TODO_PORT(0x001f3aa0, "cutscene camera")();
         if (lw(C + 0x14) == 2) TODO_PORT(0x001f4490, "cutscene camera target")();
     }
     advanced_aim_after_camera();
     prof_mark(OV(0x00161028), 8);
-    sound_frame();
+    if (!g_skip_sound) sound_frame();
     prof_mark(OV(0x00161038), 6);
-    level_lights_update();
-    shadow_direction_update();
-    hud_update(1);
-    help_update();
+    if (!g_skip_hud) {
+        level_lights_update();
+        shadow_direction_update();
+        hud_update(1);
+        help_update();
+    }
     if (on(2)) frame_counters_advance();
     const int32_t dv = lw(C + 0x18);
     if (dv == 2) debug_view_2();

@@ -7,8 +7,10 @@
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/mrp_chain.h>
 #include <runtime/gs/gs_emu.h>
+#include <profiler/host_profiler.h>
 #include "gs_draw_gx2.h"
 #include "mrp_2d_gx2.h"
+#include "debug_menu.h"
 #include "mrp_moby_gx2.h"
 #include "mrp_world_gx2.h"
 
@@ -145,22 +147,12 @@ void wiiu_gfx_game_ended() {
                       // application leaving the foreground, a frame's commands may never retire: waiting for them hung the console)
     g_2d.have = false;
     g_2d.replica = nullptr;
-    // (the 2D's backend let go before the menu takes over: with it up, the console hung on its way back)
-    if (g_2d_ready) rac1::gs::draw_gx2_shutdown();
-    g_2d_ready = false;
-    step("2D (replica) down");
-    if (g_m2d_ready) rac1::mrp_2d_gx2_shutdown();
-    g_m2d_ready = false;
-    step("2D down");
-    if (g_mobys_ready) rac1::mrp_moby_gx2_shutdown();
-    g_mobys_ready = false;
-    step("mobys down");
-    if (g_world_ready) {
-        rac1::mrp_world_wiiu_join();  // (the preparation's worker idle before the world's data goes)
-        rac1::mrp_world_gx2_shutdown();
-    }
-    g_world_ready = false;
-    step("world down");
+    // (the backends' memory not freed: the system takes back all of the application's memory when it ends, and freeing it here -
+    // the 2D's hundreds of textures after a long game, a full heap - took tens of seconds while ProcUI waited for the foreground:
+    // the console seemed hung on its way back, 2026-10-28. Only the world's worker is stopped, before the process goes)
+    if (g_world_ready) rac1::mrp_world_wiiu_join();
+    g_2d_ready = g_m2d_ready = g_mobys_ready = g_world_ready = false;
+    step("backends left (their memory the system's)");
 }
 
 bool wiiu_gfx_wanted() {
@@ -201,6 +193,7 @@ bool wiiu_gfx_start() {
     g_world_ready = (world == nullptr || std::atoi(world) != 0) && rac1::mrp_world_gx2_init();
     std::printf("[wiiu] gfx: the MRP world's ties / shrubs %s\n", g_world_ready ? "drawn (shaders/mrp_world.gsh)" : "not drawn (RAC1_WIIU_WORLD=0 or no shaders/mrp_world.gsh)");
     g_on = true;
+    if (debug_menu_wanted()) debug_menu_init();  // (the GamePad's debug menu, RAC1_WIIU_MENU=1)
     std::printf("[wiiu] gfx: GX2 up; the game's 2D %s\n", g_m2d_ready ? "drawn by the MRP's 2D (shaders/mrp_2d.gsh)"
                                                            : g_2d_ready ? "drawn by the GS replica's backend (RAC1_WIIU_REPLICA=1, shaders/gs_draw.gsh)"
                                                                         : "not drawn (no shaders/mrp_2d.gsh, or gs_draw.gsh with RAC1_WIIU_REPLICA=1): the test triangle");
@@ -216,10 +209,12 @@ const char* const kTmName[kTmN] = {"chain start", "mobys' prepare", "world's pre
                                    "world draws", "moby draws", "2D draws", "TV finish", "GamePad", "finish"};
 double g_tm[kTmN] = {}, g_tm_total = 0.0;
 double g_tm_mark[kTmN] = {};  // (the stages' sums at the host frame's start: a hitch's own share)
+std::vector<std::string> g_menu_stats;  // (the GamePad's debug menu: the last window's times)
+uint64_t g_tm_steps_mark = 0;  // (the game frame at the window's start)
 uint64_t g_tm_frames = 0;
 std::chrono::steady_clock::time_point g_tm_last{};
 bool tm_on() {
-    static const bool on = std::getenv("RAC1_WIIU_TIMING") != nullptr && std::atoi(std::getenv("RAC1_WIIU_TIMING")) != 0;
+    static const bool on = (std::getenv("RAC1_WIIU_TIMING") != nullptr && std::atoi(std::getenv("RAC1_WIIU_TIMING")) != 0) || debug_menu_wanted();
     return on;
 }
 double ms_since(std::chrono::steady_clock::time_point t) { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t).count(); }
@@ -248,7 +243,11 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
     const int w = static_cast<int>(cb->surface.width), h = static_cast<int>(cb->surface.height);
     rac1::gs::Viewport vp;
     // (testing, RAC1_WIIU_VPSCALE=<0.1..1>: the game's frame drawn that much smaller, centred - the pixels' share of a frame's cost)
-    static const float vps = std::getenv("RAC1_WIIU_VPSCALE") != nullptr ? std::clamp(static_cast<float>(std::atof(std::getenv("RAC1_WIIU_VPSCALE"))), 0.1f, 1.0f) : 1.0f;
+    static const float vps_env = std::getenv("RAC1_WIIU_VPSCALE") != nullptr ? std::clamp(static_cast<float>(std::atof(std::getenv("RAC1_WIIU_VPSCALE"))), 0.1f, 1.0f) : 1.0f;
+    static bool vps_first = true;
+    if (vps_first) g_menu_vpscale = vps_env;  // (the debug menu changes it live)
+    vps_first = false;
+    const float vps = g_menu_vpscale;
     vp.h = static_cast<int>(static_cast<float>(h) * vps);
     vp.w = vp.h * 4 / 3;
     vp.x = (w - vp.w) / 2;
@@ -279,7 +278,7 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
         rac1::mrp_world_gx2_draw(cb, db, vp);
         dlap(kTmWorld);
     }
-    if (g_mobys_ready) {
+    if (g_mobys_ready && g_menu_draw_mobys) {
         rac1::mrp_moby_gx2_debug_frame(g_2d.game_frame);
         rac1::mrp_moby_gx2_draw(cb, db, vp);
         dlap(kTmMobys);
@@ -290,6 +289,7 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
         return;
     }
     // the 2D (the render targets: by the TV's first call per frame), after the world and the mobys (no depth: over them)
+    if (!g_menu_draw_2d) return;  // (the GamePad's debug menu)
     if (g_2d.replica != nullptr) rac1::gs::draw_gx2(*g_2d.replica, cb, g_2d.fb_w, g_2d.fb_h, &vp, targets);
     else rac1::mrp_2d_gx2_draw(rac1::mrp_chain_frame(), cb, g_2d.fb_w, g_2d.fb_h, vp, targets);
     dlap(kTm2d);
@@ -356,6 +356,7 @@ void wiiu_gfx_frame() {
     if (!g_on) return;
     ++g_frames;
     const bool tm = tm_on();
+    if (debug_menu_wanted()) rac1::prof::request();  // (the game's stages recorded for the menu's game page: the next host frame)
     if (tm) {  // (the host frame: from the last one's start to this one's)
         const auto now = std::chrono::steady_clock::now();
         if (g_tm_last.time_since_epoch().count() != 0) {
@@ -374,16 +375,50 @@ void wiiu_gfx_frame() {
             }
             for (int i = 0; i < kTmN; ++i) g_tm_mark[i] = g_tm[i];
             g_tm_total += frame_ms;
-            if (++g_tm_frames == 60) {
+            static const int window = debug_menu_wanted() ? 30 : 60;
+            if (++g_tm_frames == window) {
+                const double n = window;
                 double known = 0.0;
-                std::printf("[timing] 60 host frames, %.1f ms each:", g_tm_total / 60.0);
+                std::printf("[timing] %d host frames, %.1f ms each:", window, g_tm_total / n);
+                g_menu_stats.clear();
+                char b[96];
+                const uint64_t steps = g_2d.game_frame - g_tm_steps_mark;
+                g_tm_steps_mark = g_2d.game_frame;
+                std::snprintf(b, sizeof b, "frame %.1f ms  %.1f fps", g_tm_total / n, 1000.0 * n / g_tm_total);
+                g_menu_stats.emplace_back(b);
+                std::snprintf(b, sizeof b, "game steps %.1f a second", 1000.0 * static_cast<double>(steps) / g_tm_total);
+                g_menu_stats.emplace_back(b);
                 for (int i = 0; i < kTmN; ++i) {
-                    std::printf(" %s %.1f,", kTmName[i], g_tm[i] / 60.0);
+                    std::printf(" %s %.1f,", kTmName[i], g_tm[i] / n);
+                    if (g_tm[i] / n >= 0.3) {
+                        std::snprintf(b, sizeof b, "  %-24.24s %6.1f", kTmName[i], g_tm[i] / n);
+                        g_menu_stats.emplace_back(b);
+                    }
                     known += g_tm[i];
                     g_tm[i] = 0.0;
                     g_tm_mark[i] = 0.0;
                 }
-                std::printf(" the rest (the game's steps) %.1f\n", (g_tm_total - known) / 60.0);
+                std::printf(" the rest (the game's steps) %.1f\n", (g_tm_total - known) / n);
+                std::snprintf(b, sizeof b, "  %-24.24s %6.1f", "the game's steps", (g_tm_total - known) / n);
+                g_menu_stats.emplace_back(b);
+                // the menu's game page: the game code's own stages (the host profiler's zones, ms a host frame), the biggest first
+                if (debug_menu_wanted() && rac1::prof::history_size() > 0) {
+                    const rac1::prof::Summary sm = rac1::prof::summarize(window);
+                    g_menu_stats.emplace_back("#game");
+                    std::vector<std::pair<double, int>> rows;
+                    for (int i = 0; i < rac1::prof::kStageCount; ++i)
+                        if ((rac1::prof::stage_info(i).game || i == rac1::prof::kAudioStep) && sm.cpu[i] >= 0.2) rows.emplace_back(sm.cpu[i], i);
+                    std::sort(rows.begin(), rows.end(), [](const auto& x, const auto& y) { return x.first > y.first; });
+                    std::snprintf(b, sizeof b, "game code %.1f ms, %.1f steps a frame", sm.game_code, sm.steps);
+                    g_menu_stats.emplace_back(b);
+                    std::printf("[game] code %.1f ms, %.1f steps:", sm.game_code, sm.steps);
+                    for (const auto& r : rows) {
+                        std::snprintf(b, sizeof b, "  %-26.26s %6.1f", rac1::prof::stage_info(r.second).name, r.first);
+                        g_menu_stats.emplace_back(b);
+                        std::printf(" %s %.1f,", rac1::prof::stage_info(r.second).name, r.first);
+                    }
+                    std::printf("\n");
+                }
                 g_tm_total = 0.0;
                 g_tm_frames = 0;
             }
@@ -400,7 +435,7 @@ void wiiu_gfx_frame() {
     // this frame writes the memory the GPU reads (the backends' rings, the per-frame buffers) - not at the frame's end as
     // WHBGfxFinishRender does (GX2DrawDone). (testing: RAC1_WIIU_OVERLAP=0 waits at the end as before)
     static const bool overlap_on = std::getenv("RAC1_WIIU_OVERLAP") == nullptr || std::atoi(std::getenv("RAC1_WIIU_OVERLAP")) != 0;
-    const bool overlap = overlap_on && !g_ending;
+    const bool overlap = overlap_on && g_menu_overlap && !g_ending;
     if (overlap && g_frame_ts != 0) GX2WaitTimeStamp(g_frame_ts);
     lap(kTmGpuWait);
     if (g_frames % 300 == 0)  // (the memory left, on the log: a leak shows)
@@ -424,7 +459,12 @@ void wiiu_gfx_frame() {
     static const bool drc = std::getenv("RAC1_WIIU_DRC") == nullptr || std::atoi(std::getenv("RAC1_WIIU_DRC")) != 0;
     WHBGfxBeginRenderDRC();
     WHBGfxClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    if (drc) draw_frame(WHBGfxGetDRCColourBuffer(), WHBGfxGetDRCDepthBuffer(), false);
+    if (debug_menu_wanted() && !g_ending) {  // (the GamePad's debug menu in place of the game's picture there)
+        debug_menu_input();
+        debug_menu_draw(WHBGfxGetDRCColourBuffer(), g_menu_stats);
+    } else if (drc) {
+        draw_frame(WHBGfxGetDRCColourBuffer(), WHBGfxGetDRCDepthBuffer(), false);
+    }
     WHBGfxFinishRenderDRC();
     lap(kTmDrc);
     if (overlap) {  // (WHBGfxFinishRender without its GX2DrawDone)

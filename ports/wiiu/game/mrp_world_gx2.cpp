@@ -643,6 +643,8 @@ bool merged_sync(const mrpwb::FrameView& F, int kinds, bool swap) {
 // orig: (host) see mrp_world_gx2.h
 bool mrp_world_gx2_ready() { return g_ready; }
 
+int& mrp_world_gx2_merge_mode() { return g_merge; }
+
 // orig: (host) see mrp_world_backend.inc
 bool mrp_world_gx2_tfrag_ready() { return g_ready && g_tready; }
 

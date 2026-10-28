@@ -5,7 +5,9 @@
 #include <chrono>
 #include <utility>
 #include <vector>
+#include <game/boot/front_end.h>
 #include <game/ovl/credits_tr.h>
+#include <game/ovl/game_skips.h>
 #include <game/ovl/screen_flash.h>
 #include <game/ovl/memory_card.h>
 #include <game/ovl/ovl_reloc.h>
@@ -322,9 +324,11 @@ void zones_update() {
 // orig: (host) testing (the Wii U port): RAC1_WORLD_PASS_SKIP, a mask of the kinds whose culling, and then relighting, is not run (2 tie,
 // 4 shrub: the game's own render enable off while they run; not the tfrag, whose packets read the culling's lists). The game state stays
 // (600 Veldin frames: hero and camera identical); the instances keep the colours of the level's load (a renderer relights them itself)
+// (neither skip in the boot's title: its draw relights the passes' lists itself - title.cpp title_draw -, which a skipped pass never
+// filled: a quit to the title read a level's stale pointers)
 static bool world_pass_skipped(int kind) {
     static const char* wp_skip = std::getenv("RAC1_WORLD_PASS_SKIP");
-    return wp_skip != nullptr && kind >= 0 && ((std::strtoul(wp_skip, nullptr, 16) >> kind) & 1) != 0;
+    return wp_skip != nullptr && kind >= 0 && ((std::strtoul(wp_skip, nullptr, 16) >> kind) & 1) != 0 && !boot_in_title();
 }
 
 // orig: (host) testing (the Wii U port): RAC1_TFRAG_PASS_OFF=1, the game's tfrag pass not run at all, nor its relighting at the passes'
@@ -332,7 +336,7 @@ static bool world_pass_skipped(int kind) {
 // decisions does not read (the tfrag snapshot is taken all the same); the tfrags keep the colours of the level's load
 static bool tfrag_pass_off() {
     static const bool off = std::getenv("RAC1_TFRAG_PASS_OFF") != nullptr && std::atoi(std::getenv("RAC1_TFRAG_PASS_OFF")) != 0;
-    return off;
+    return off && !boot_in_title();
 }
 
 // orig: (host) the world passes' chain ranges of the frame (first tag, end), noted while on: for a renderer that draws the
@@ -489,6 +493,7 @@ static void draw_list_block_dc80() { draw_list_block(0); }
 static void draw_list_block_de80() { draw_list_block(1); }
 // (host) the block run as a shadow first in a widened view (the memory put back), then for real
 static void draw_list_block_run(int list) {
+    if (g_skip_effects) return;
     RAC1_PROF_ZONE(kGameEffects);
     const uint32_t cur = lwu(OV(0x001611c0));
     mrp_lod_list_shadow(list, list == 0 ? draw_list_block_dc80 : draw_list_block_de80, cur);
@@ -542,7 +547,7 @@ void render_frame() {
         // (host: the level's shadow meshes are VU1 program 7's batches: noted for the MRP, which draws them from their input, mrp_fx.h)
         const uint32_t scur = lwu(OV(0x001611c0u));
         mrp_fx_window(true);
-        shadows_draw(0x00150000);  // $s6 as the main loop holds it (0x245c88): read by 0x1fe6d8
+        if (!g_skip_shadows) shadows_draw(0x00150000);  // $s6 as the main loop holds it (0x245c88): read by 0x1fe6d8
         mrp_fx_note_list(scur, lwu(OV(0x001611c0u)), 0);
         mrp_fx_window(false);
         texture_block_end();
@@ -557,7 +562,7 @@ void render_frame() {
         else TODO_PORT(0x00250038, "mobys (VU1): the host's model drawer instead")();
     }
     packet_mark(0x02080000);
-    {  // (host: the widened view's 3D effects - particles, glows, the canopy shine, sparkles - run first as a shadow, the memory put back)
+    if (!g_skip_effects) {  // (host: the widened view's 3D effects - particles, glows, the canopy shine, sparkles - run first as a shadow, the memory put back)
         RAC1_PROF_ZONE(kGameEffects);
         const uint32_t ecur = lwu(OV(0x001611c0));
         mrp_lod_effects_shadow(render_frame_overlay, ecur);
@@ -762,7 +767,7 @@ bool overlay_frame() {
         case 0:
             pad_read_packet(0x0013c940, g_host_pad_packet, 6);
             gameplay_frame();
-            render_frame_gate();
+            if (!g_draw_last_step_only || g_mrp_lod_frame_drawn) render_frame_gate();  // (game_skips.h: a catch-up frame not shown, not drawn)
             break;
         case 1: return overlay_movie_pass(movie_done);  // (the movie goes on in the next host frames: g_movie_pass)
         case 2: pad_read_packet(0x0013c940, g_host_pad_packet, 6); cutscene_update(); mode2_draw(); break;

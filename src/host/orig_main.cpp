@@ -81,6 +81,7 @@
 #include <game/lib/libcdvd.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/cutscene.h>
+#include <game/ovl/game_skips.h>
 #include <game/ovl/level_change.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -240,6 +241,7 @@ __attribute__((constructor(101))) void debug_tools_gate(int argc, char** argv, c
 // orig: (host) a profiler of the host's frame
 double g_prof_vu_moby_ms = 0;  // the moby VU1 programs' own time inside the GS chain stage (RAC1_FRAME_PROF)
 static int s_mrp_skip_mode = 1;  // orig: (host) RAC1_MRP_SKIP, see main()
+static int s_moby_pass_mrp_mode = 0;  // orig: (host) RAC1_MOBY_PASS_MRP (moby_pass.h g_moby_pass_mrp: 1 on, 2 verify), see main()
 
 // A vsync passed: the main loop's vsync at the end of each game frame, and each vsync wait of a blocking
 // loop (the screen fade's, shown or not; the start's: ee_thread_set_vsync_hook). What runs on the PS2's vsyncs runs
@@ -345,9 +347,12 @@ KickedChain g_loop_kicked;
 // buffer's chain is then a frame never walked, and with no ranges for it the replica ran its garbage - VU1 programs that do not
 // exist ("no port for the microprogram"), the GS memory and the VU1 state written with garbage, or the game hung for good in the
 // particle program's endless loop on the chain worker (Aridia's arrival, with two or three game frames in its last host frames: #104).
+// (With the MRP-only moby pass, g_moby_pass_mrp, a moby's range is one NEXT over bytes nothing wrote, the uploads' one NEXT too:
+// the ranges hold while their first tags are those NEXTs - `tags`: the hash is of the ranges' first tags, not of the chain.)
 struct MobySkipsMemo {
     uint32_t start = 0, end = 0;
     uint64_t hash = 0;
+    bool tags = false;
     std::vector<rac1::gs::Gs::SkipRange> ranges;
 };
 MobySkipsMemo g_moby_skips_memo;
@@ -363,13 +368,30 @@ static uint64_t chain_bytes_hash(uint32_t a, uint32_t e) {
     }
     return h;
 }
+// orig: (host) the hash of the ranges' first tags (MobySkipsMemo::tags)
+static uint64_t chain_tags_hash(uint32_t start, uint32_t end, const std::vector<rac1::gs::Gs::SkipRange>& ranges) {
+    uint64_t h = (1469598103934665603ull ^ start) * 1099511628211ull;
+    h = (h ^ end) * 1099511628211ull;
+    for (const rac1::gs::Gs::SkipRange& r : ranges)
+        for (uint32_t i = 0; i < 16; i += 4) h = (h ^ lwu(r.first + i)) * 1099511628211ull;
+    return h;
+}
 // orig: (host) the moby ranges the replica skips in the chain (start, end) of the game frame just updated (its MRP scene),
-// noted in g_moby_skips_memo; appended to `out` when given
+// noted in g_moby_skips_memo; appended to `out` when given. (The MRP-only moby pass: one range for the mobys one after
+// another in the chain - the reader flips their parts' VU1 buffers at its first tag as at each one's, nothing read between -,
+// a render target's moby its own)
 static void moby_skips_note(uint32_t start, uint32_t end, std::vector<rac1::gs::Gs::SkipRange>* out) {
     const MrpFrame& sf = mrp_scene();
     std::vector<rac1::gs::Gs::SkipRange> ranges;
+    const bool merge = g_moby_pass_mrp && !g_moby_pass_mrp_verify;
     for (const MrpMoby& m : sf.mobys)
         if (m.chain_end > m.chain_begin) {
+            if (merge && !m.rt && !ranges.empty() && ranges.back().moby && ranges.back().host_3d == 0 && ranges.back().last + 1 == m.chain_begin) {
+                rac1::gs::Gs::SkipRange& b = ranges.back();
+                b.last = m.chain_end - 1;
+                for (uint32_t k = 0; k < m.part_count; ++k) b.mscals.push_back(sf.parts[m.part_first + k].mscal);
+                continue;
+            }
             rac1::gs::Gs::SkipRange r;
             r.first = m.chain_begin;
             r.last = m.chain_end - 1;
@@ -386,7 +408,8 @@ static void moby_skips_note(uint32_t start, uint32_t end, std::vector<rac1::gs::
     }
     g_moby_skips_memo.start = start;
     g_moby_skips_memo.end = end;
-    g_moby_skips_memo.hash = chain_bytes_hash(start, end);
+    g_moby_skips_memo.tags = merge;
+    g_moby_skips_memo.hash = merge ? chain_tags_hash(start, end, ranges) : chain_bytes_hash(start, end);
     if (out != nullptr) out->insert(out->end(), ranges.begin(), ranges.end());
     g_moby_skips_memo.ranges = std::move(ranges);
 }
@@ -2251,6 +2274,7 @@ int main(int argc, char** argv) {
     // (RAC1_RAMHASH against that run). The GS's stores of a drawn picture (the pause menu's, a Vendor's) and the movies'
     // reads of the GS memory have no picture to read: their frames differ there.
     const bool no_graphics = std::getenv("RAC1_NO_GRAPHICS") != nullptr && std::atoi(std::getenv("RAC1_NO_GRAPHICS")) != 0;
+    rac1::g_draw_last_step_only = std::getenv("RAC1_DRAW_LAST_STEP") != nullptr && std::atoi(std::getenv("RAC1_DRAW_LAST_STEP")) != 0;  // (game_skips.h)
     // RAC1_NO_GRAPHICS=2: also the work only the GS / VU1 path reads skipped, as the MRP skips it when it draws (ADR 0010
     // step 3: the VU0 skinning, the sub-mesh colour fill, the texture slots; RAC1_MRP_SKIP / _PARTS apply): a renderer that
     // takes the mobys from the MRP scene state, as the Wii U's will (its game state is then that of a run with the MRP)
@@ -2451,6 +2475,10 @@ int main(int argc, char** argv) {
         s_mrp_skip_mode = ms == nullptr ? 1 : std::string(ms) == "verify" ? 2 : std::atoi(ms) != 0 ? 1 : 0;
         if (const char* pp = std::getenv("RAC1_MRP_SKIP_PARTS")) g_moby_mrp_skip_parts = static_cast<unsigned>(std::strtoul(pp, nullptr, 16));
         if (std::getenv("RAC1_MRP_DIFF") || std::getenv("RAC1_MRP_CHECK") || std::getenv("RAC1_MRP_SCENE_CHECK") || s_moby_diff) s_mrp_skip_mode = 0;
+        // the MRP-only moby pass (moby_pass.h): RAC1_MOBY_PASS_MRP=1 (a Wii U default) / 0 (off, the default) / verify (the chain written
+        // too, the parts given compared with the decoded ones)
+        const char* mp = std::getenv("RAC1_MOBY_PASS_MRP");
+        s_moby_pass_mrp_mode = mp == nullptr ? 0 : std::string(mp) == "verify" ? 2 : std::atoi(mp) != 0 ? 1 : 0;
     }
     vu1::g_start_hook = [](vu1::Vu1& vu, uint32_t start, uint64_t hash, vu1::ProgramFn fn, const std::function<void(uint32_t)>& kick) -> bool {
         // the debug menu's layers on the VU emulation path (the MRP has its own): a hidden layer's program runs, its VU
@@ -2977,6 +3005,9 @@ int main(int argc, char** argv) {
                     g_moby_mrp_skip = s_mrp_skip_mode != 0 && (mrp_moby_ready() || no_graphics_skip) && !boot_active() && !exiting && movie_hw_shown(mw0, mh0) == nullptr &&
                                       (lw(OV(0x0015f5c4)) != 5 || (lw(OV(0x001ca4c8)) == 0 && !ee_thread_suspended()));
                     g_moby_mrp_skip_verify = g_moby_mrp_skip && s_mrp_skip_mode == 2;
+                    // the MRP-only moby pass: with every skip on (the host's chain processing skipping the mobys' ranges)
+                    g_moby_pass_mrp = s_moby_pass_mrp_mode != 0 && g_moby_mrp_skip && (g_moby_mrp_skip_parts & 0xf) == 0xf && !g_moby_mrp_skip_verify;
+                    g_moby_pass_mrp_verify = g_moby_pass_mrp && s_moby_pass_mrp_mode == 2;
                     // the MRP's drop shadows: the shadow pass's data captured on a frame the MRP draws (whatever the skipping; the boot's title loop too)
                     mrp_shadows_begin_frame(mrp_moby_ready() && (!boot_active() || boot_in_title()) && !exiting && movie_hw_shown(mw0, mh0) == nullptr);
                 }
@@ -3172,7 +3203,7 @@ int main(int argc, char** argv) {
                     if (!prev_chain && g_moby_mrp_skip && (g_moby_mrp_skip_parts & 8) && !g_moby_mrp_skip_verify) {
                         moby_skips_note(start, end, &skips);
                     } else if (g_moby_skips_memo.start == start && g_moby_skips_memo.end == end && !g_moby_skips_memo.ranges.empty() &&
-                               g_moby_skips_memo.hash == chain_bytes_hash(start, end)) {
+                               g_moby_skips_memo.hash == (g_moby_skips_memo.tags ? chain_tags_hash(start, end, g_moby_skips_memo.ranges) : chain_bytes_hash(start, end))) {
                         skips.insert(skips.end(), g_moby_skips_memo.ranges.begin(), g_moby_skips_memo.ranges.end());
                     }
                     // (the world: the passes' ranges skipped, their 3D and their textures' uploads, as with the MRP's world)
@@ -3439,7 +3470,7 @@ int main(int argc, char** argv) {
                     moby_skips_note(start, end, &skips);  // (noted for the next frame, which may walk this chain again)
                     if (std::getenv("RAC1_SKIP_DBG")) { std::fprintf(stderr, "[skipdbg] frame %llu chain %08x..%08x ranges:", static_cast<unsigned long long>(frame), start, end); for (auto& r : skips) { std::fprintf(stderr, " %08x-%08x(%zu:", r.first, r.last, r.mscals.size()); for (auto m : r.mscals) std::fprintf(stderr, "%x,", m); std::fprintf(stderr, ")"); } std::fprintf(stderr, "\n"); }
                 } else if (chain_runs && g_moby_skips_memo.start == start && g_moby_skips_memo.end == end && !g_moby_skips_memo.ranges.empty() &&
-                           g_moby_skips_memo.hash == chain_bytes_hash(start, end)) {
+                           g_moby_skips_memo.hash == (g_moby_skips_memo.tags ? chain_tags_hash(start, end, g_moby_skips_memo.ranges) : chain_bytes_hash(start, end))) {
                     // the chain of the frame before walked (kept at 0x1611c4; a fade's frame; a frame not drawn): the mobys whose
                     // skinning the MRP skipped have no vertex data in it (their NEXT parts' inline quads are the buffer's older bytes,
                     // which the VIF would take for codes: STMOD 1 with a stale ROW broke the particles' UNPACK, an endless VU1 loop),

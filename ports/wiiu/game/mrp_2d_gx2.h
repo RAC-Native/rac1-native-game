@@ -43,8 +43,9 @@ bool mrp_2d_gx2_ready();
 void mrp_2d_gx2_draw(const MrpChainFrame& f, const GX2ColorBuffer* screen, float fb_w, float fb_h, const gs::Viewport& vp, bool targets, size_t from = 0,
                      size_t to = SIZE_MAX);
 // everything it made freed (its textures, render targets, screen copies, the ring, the shaders): before WHBGfxShutdown; it waits for
-// the GPU
-void mrp_2d_gx2_shutdown();
+// the GPU first unless `gpu_idle` (the game's end, its last frame waited for: a GX2DrawDone there, the application leaving the
+// foreground, hung the console)
+void mrp_2d_gx2_shutdown(bool gpu_idle = false);
 
 }  // namespace rac1
 

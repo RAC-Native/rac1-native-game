@@ -1,5 +1,6 @@
 // Ported overlay code: the moby drop shadows (see moby_shadows.h), the compiled parts.
 #include <game/ovl/moby_shadows.h>
+#include <game/ovl/game_skips.h>
 
 #include <game/ovl/ovl_reloc.h>
 #include <game/math/vecmath.h>
@@ -198,8 +199,10 @@ void moby_shadows() {
     sw(lwu(OV(0x00160000)) + 4, lwu(CUR));
     sw(lwu(OV(0x00160000)) + 8, 0);
     sw(lwu(OV(0x00160000)) + 0xc, 0);
-    shadow_points();
-    drop_shadows_draw(OV(0x001ac780));
+    if (!g_skip_shadows) {  // (testing: the GamePad debug menu, game_skips.h)
+        shadow_points();
+        drop_shadows_draw(OV(0x001ac780));
+    }
     sw(lwu(CUR), 0x20000000u);  // NEXT back to the deferred mobys
     sw(lwu(CUR) + 4, lwu(OV(0x00160000)) + 0x10);
     sw(lwu(CUR) + 8, 0);

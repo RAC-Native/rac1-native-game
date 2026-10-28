@@ -403,9 +403,9 @@ bool mrp_2d_gx2_init() {
     return true;
 }
 
-void mrp_2d_gx2_shutdown() {
+void mrp_2d_gx2_shutdown(bool gpu_idle) {
     if (!g_ready) return;
-    GX2DrawDone();
+    if (!gpu_idle) GX2DrawDone();
     for (auto& [id, e] : g_tex) tex_free(e.tex);
     g_tex.clear();
     g_tex_bytes = 0;

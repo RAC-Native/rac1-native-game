@@ -78,6 +78,7 @@ set(HOST_SRC
     mrp_2d_gx2.cpp
     mrp_moby_gx2.cpp
     mrp_world_gx2.cpp
+    debug_menu.cpp
 )
 
 add_executable(rac1_wiiu ${HOST_SRC} ${RUNTIME_SRC} ${FORMATS_SRC} ${SETUP_SRC} ${GAME_SRC} ${GEN_SRC} ${SND989_SRC})
@@ -86,6 +87,7 @@ target_include_directories(rac1_wiiu PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/compat
     ${ROOT} ${ROOT}/src ${ROOT}/third_party/989snd ${ROOT}/third_party/glad/include
     ${RAC1_PC_BUILD}/generated_vk ${RAC1_PC_BUILD}/version
+    ${CMAKE_CURRENT_BINARY_DIR}/generated
     ${DEPS}/glfw-src/include ${DEPS}/glm-src ${DEPS}/imgui-src ${DEPS}/imgui-src/backends ${DEPS}/tinygltf-src
     ${DEPS}/miniaudio-src ${DEPS}/volk-src ${DEPS}/vulkan_headers-src/include)
 target_compile_definitions(rac1_wiiu PRIVATE VK_NO_PROTOTYPES IMGUI_IMPL_OPENGL_LOADER_GLAD=1 IMGUI_IMPL_VULKAN_USE_VOLK=1
@@ -119,7 +121,7 @@ wut_create_rpx(rac1_wiiu)
 # generated: never in the repository). Each <name>.vert / <name>.frag pair is one file; a pair whose pixel shader is another's names it
 # in RAC1_WIIU_FRAG_<name> (mrp_tfrag: mrp_world.frag).
 set(RAC1_WIIU_GLSLC "" CACHE FILEPATH "CafeGLSL's glslcompiler, for ports/wiiu/shaders")
-set(RAC1_WIIU_SHADERS test gs_draw mrp_2d mrp_moby mrp_world mrp_tfrag)
+set(RAC1_WIIU_SHADERS test gs_draw mrp_2d mrp_moby mrp_world mrp_tfrag debug_text)
 set(RAC1_WIIU_FRAG_mrp_tfrag mrp_world)
 if(RAC1_WIIU_GLSLC)
     set(_gsh)
@@ -140,3 +142,19 @@ if(RAC1_WIIU_GLSLC)
 else()
     message(STATUS "RAC1_WIIU_GLSLC not set: the picture's shaders are not built")
 endif()
+
+# The GamePad debug menu's font atlas (debug_menu.cpp): made at build time from a monospaced font on this machine
+# (ports/wiiu/tools/font_atlas.py; an empty atlas when there is no font or no PIL), into the build folder - never committed
+# (the system's python3, whose PIL renders the font: not necessarily the interpreter CMake's FindPython picks)
+find_program(RAC1_FONT_PYTHON python3 PATHS /usr/bin /usr/local/bin NO_DEFAULT_PATH)
+if(NOT RAC1_FONT_PYTHON)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    set(RAC1_FONT_PYTHON ${Python3_EXECUTABLE})
+endif()
+add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/font_atlas.h
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/generated
+    COMMAND ${RAC1_FONT_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/../tools/font_atlas.py ${CMAKE_CURRENT_BINARY_DIR}/generated/font_atlas.h
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../tools/font_atlas.py
+    COMMENT "the debug menu's font atlas")
+add_custom_target(rac1_wiiu_font DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/generated/font_atlas.h)
+add_dependencies(rac1_wiiu rac1_wiiu_font)

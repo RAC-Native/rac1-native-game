@@ -13,8 +13,11 @@
 
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
+#include <game/ovl/moby_pass.h>
 #include <game/ovl/vu0_macro.h>
 #include <game/ovl/vu0_regs.h>
+
+#include <vector>
 
 namespace rac1 {
 
@@ -60,11 +63,42 @@ void chain_gs_state(uint32_t& sp) {
     sq(sp + 0x10, lq(SPR + 0x3f10));
 }
 
+// orig: (host) the MRP-only pass (moby_pass.h): the moby's parts as the loop builds them, for the observer
+std::vector<MobyDrawPart> g_parts;
+MobyDrawPart g_part;  // the part being built (its MSCAL ends it)
+// orig: (host) the part's model-to-view upload (VU1 `dest`: the rows v15..v18 as the chain gets them)
+void part_matrix(uint32_t dest, const Vf* rows) {
+    g_part.matrix_dest = static_cast<uint16_t>(dest);
+    for (int r = 0; r < 4; ++r)
+        for (int i = 0; i < 4; ++i) g_part.matrix[4 * r + i] = f2u(rows[r].v[i]);
+}
+// orig: (host) the part's DIRECT (chain_gs_state's packet: the template 0x3f00 carries the DIRECT, 0x3f10 the GIF tag, then `g`)
+void part_gs(const Q128& g) {
+    const Q128 t = lq(SPR + 0x3f00), gif = lq(SPR + 0x3f10);
+    uint32_t qwc = 0;
+    for (const uint32_t c : {static_cast<uint32_t>(t.hi), static_cast<uint32_t>(t.hi >> 32)})
+        if (((c >> 24) & 0x7e) == 0x50) qwc = (c & 0xffff) == 0 ? 0x10000 : c & 0xffff;
+    g_part.gs_qwc = qwc < 2 ? qwc : 2;
+    const uint64_t q[4] = {gif.lo, gif.hi, g.lo, g.hi};
+    for (int i = 0; i < 4; ++i) {
+        g_part.gs[2 * i] = static_cast<uint32_t>(q[i]);
+        g_part.gs[2 * i + 1] = static_cast<uint32_t>(q[i] >> 32);
+    }
+}
+// orig: (host) the part's MSCAL
+void part_end(uint32_t mscal) {
+    g_part.mscal = static_cast<uint16_t>(mscal);
+    g_parts.push_back(g_part);
+    g_part = MobyDrawPart();
+}
+
 }  // namespace
 
 // orig: 0x002559c0
 uint32_t moby_draw_loop(uint32_t a0_in, uint32_t a1_in, int32_t a2_in, uint32_t a3_in) {
     LocalFlags fl(regs());  // (host: the ops' flags in locals, the VU0's written back at the return: the same values)
+    // orig: (host) the MRP-only pass: the parts given to the observer (`mrp`), the mobys' chain parts written or not (`chain`)
+    const bool mrp = g_moby_pass_mrp, chain = !mrp || g_moby_pass_mrp_verify;
     Vf* const v = vf();
     uint32_t s8 = a0_in - 0x100;
     const uint32_t s5 = (static_cast<uint32_t>(a2_in) << 8) + a0_in;  // the list's end
@@ -239,6 +273,10 @@ L_255e38:
     if (t0 == 0) sb(s8 + 0x31, 1);
 L_255e48:
     chain_begin = sp;
+    if (mrp) {
+        g_parts.clear();
+        g_part = MobyDrawPart();
+    }
     at = sx(static_cast<uint32_t>(lw(static_cast<uint32_t>(a3) + 0x3a00)));
     s2 = 2;
     v[18] = vu0m::lqc2(s8 + 0x10);
@@ -531,46 +569,54 @@ L_2564c8:
     t5q = lq(SPR + 0x3ed0);
     // the chain, a part per packet of the class's mesh (s1..s0, 0x10 each): the matrices (the
     // first two parts, VU1 0x129 / 0x28d by turns), the vertex data references, the program call
+    // (host: the MRP-only pass computes the same positions, the records' words, without writing the chain's: `chain`)
     do {
         s4 = -s4;
         if (s2 > 0) {
-            sq(sp, t1q);
             --s2;
-            vu0m::sqc2(sp + 0x10, v[15]);
-            vu0m::sqc2(sp + 0x20, v[16]);
-            vu0m::sqc2(sp + 0x30, v[17]);
-            vu0m::sqc2(sp + 0x40, v[18]);
-            sh(sp + 0xc, s4 > 0 ? 0x28d : 0x129);
+            const uint32_t dest = s4 > 0 ? 0x28d : 0x129;
+            if (chain) {
+                sq(sp, t1q);
+                vu0m::sqc2(sp + 0x10, v[15]);
+                vu0m::sqc2(sp + 0x20, v[16]);
+                vu0m::sqc2(sp + 0x30, v[17]);
+                vu0m::sqc2(sp + 0x40, v[18]);
+                sh(sp + 0xc, dest);
+            }
+            if (mrp) part_matrix(dest, &v[15]);
             sp += 0x50;
         }
         {
             const uint32_t n = lwu(s1 + 8), d = lwu(s1 + 0xc);
             uint32_t p = sp + 0x20;
-            sq(sp, t2q);
-            sq(sp + 0x10, t3q);
+            if (chain) {
+                sq(sp, t2q);
+                sq(sp + 0x10, t3q);
+            }
             sw(t8, (n << 4) | (d & 0xff));
             sw(t8 + 4, p);
-            sb(sp + 0xe, d >> 24);
-            sb(sp + 0x1e, d >> 24);
-            sh(sp, (d >> 8) & 0xff);
-            sh(sp + 0x10, (d >> 16) & 0xff);
+            if (chain) {
+                sb(sp + 0xe, d >> 24);
+                sb(sp + 0x1e, d >> 24);
+                sh(sp, (d >> 8) & 0xff);
+                sh(sp + 0x10, (d >> 16) & 0xff);
+            }
             t8 += 8;
             p += ((d >> 16) & 0xff) << 4;
-            sw(sp + 4, p);
+            if (chain) sw(sp + 4, p);
             p += ((d >> 8) & 0xff) << 4;
-            sw(sp + 0x14, p);
+            if (chain) sw(sp + 0x14, p);
             sp = p;
         }
-        {
+        if (chain) {
             const uint64_t r = ld(s1);
-            s1 += 0x10;
             sq(sp, t4q);
-            sp += 0x10;
-            sw(sp - 0xc, static_cast<uint32_t>(r));
-            sh(sp - 0x10, static_cast<uint32_t>(r >> 32));
+            sw(sp + 4, static_cast<uint32_t>(r));
+            sh(sp, static_cast<uint32_t>(r >> 32));
         }
+        s1 += 0x10;
+        sp += 0x10;
         if (s2 > 0 && t6 != 0) {  // the first part of a faded / alpha-tested moby: its GS state
-            chain_gs_state(sp);
             Q128 g;
             if ((t6 & 0x200) != 0) {
                 g = lq(SPR + 0x3f20);
@@ -579,17 +625,31 @@ L_2564c8:
                 g = lq(SPR + 0x3f30);
                 g.lo = sx(static_cast<uint32_t>(g.lo) + (static_cast<uint32_t>(t6) << 4) - 0x600);
             }
-            sq(sp + 0x20, g);
+            if (chain) {
+                chain_gs_state(sp);
+                sq(sp + 0x20, g);
+            } else {
+                sp += 0x10;
+            }
+            if (mrp) part_gs(g);
             sp += 0x30;
         }
-        sq(sp, t5q);
+        if (chain) {
+            sq(sp, t5q);
+            sh(sp + 0xc, static_cast<uint32_t>(s3));
+        }
         sp += 0x10;
-        sh(sp - 4, static_cast<uint32_t>(s3));
+        if (mrp) part_end(static_cast<uint32_t>(s3) & 0xffff);
     } while (s1 != s0);
     if (t6 != 0) {  // the GS state put back
-        chain_gs_state(sp);
         const Q128 g = (t6 & 0x200) != 0 ? lq(SPR + 0x3f20) : lq(SPR + 0x3f30);
-        sq(sp + 0x20, g);
+        if (chain) {
+            chain_gs_state(sp);
+            sq(sp + 0x20, g);
+        } else {
+            sp += 0x10;
+        }
+        if (mrp) part_gs(g);  // (host: a DIRECT after the last MSCAL: the shadow mesh's first part's, if one follows)
         sp += 0x30;
     }
     sd(t8, 0);
@@ -602,7 +662,14 @@ L_256668: {
     t8 &= 0x2c00;
     n >>= 4;
     spr_dma_from(t9, t8, n);
-    if (g_moby_draw_observer != nullptr) g_moby_draw_observer(s8, chain_begin, sp, t9, SPR + t8, n, t6_hi, ra < 0 ? 1u : 0u);  // (host)
+    if (!chain && sp != chain_begin) {  // (host: the MRP-only pass: the moby's range one NEXT over it)
+        sw(chain_begin, 0x20000000u);
+        sw(chain_begin + 4, sp);
+        sw(chain_begin + 8, 0);
+        sw(chain_begin + 0xc, 0);
+    }
+    if (g_moby_draw_observer != nullptr)  // (host)
+        g_moby_draw_observer(s8, chain_begin, sp, t9, SPR + t8, n, t6_hi, ra < 0 ? 1u : 0u, mrp ? g_parts.data() : nullptr, mrp ? static_cast<uint32_t>(g_parts.size()) : 0u);
     t9 += n << 4;
     t8 += SPR;
 }
@@ -879,47 +946,57 @@ L_256b50: {  // the shadow mesh (class +6 / +7 packets): flattened along the lig
     do {
         s4 = -s4;
         if (s2 > 0) {
-            sq(sp, t1q);
             --s2;
-            vu0m::sqc2(sp + 0x10, v[15]);
-            vu0m::sqc2(sp + 0x20, v[16]);
-            vu0m::sqc2(sp + 0x30, v[17]);
-            vu0m::sqc2(sp + 0x40, v[18]);
-            sh(sp + 0xc, s4 > 0 ? 0x28d : 0x129);
+            const uint32_t dest = s4 > 0 ? 0x28d : 0x129;
+            if (chain) {
+                sq(sp, t1q);
+                vu0m::sqc2(sp + 0x10, v[15]);
+                vu0m::sqc2(sp + 0x20, v[16]);
+                vu0m::sqc2(sp + 0x30, v[17]);
+                vu0m::sqc2(sp + 0x40, v[18]);
+                sh(sp + 0xc, dest);
+            }
+            if (mrp) part_matrix(dest, &v[15]);
             sp += 0x50;
         }
         {
             const uint32_t n = lwu(s1 + 8), d = lwu(s1 + 0xc);
             uint32_t p = sp + 0x30;
-            sq(sp, t2q);
-            sq(sp + 0x10, t3q);
-            sq(sp + 0x20, t4q);
+            if (chain) {
+                sq(sp, t2q);
+                sq(sp + 0x10, t3q);
+                sq(sp + 0x20, t4q);
+            }
             sw(t8, (n << 4) | (d & 0xff));
             sw(t8 + 4, p);
-            sb(sp + 0xe, d >> 24);
-            sb(sp + 0x1e, d >> 24);
-            sb(sp + 0x2e, d >> 24);
-            sh(sp, (d >> 8) & 0xff);
-            sh(sp + 0x10, (d >> 16) & 0xff);
-            sh(sp + 0x20, (d >> 16) & 0xff);
+            if (chain) {
+                sb(sp + 0xe, d >> 24);
+                sb(sp + 0x1e, d >> 24);
+                sb(sp + 0x2e, d >> 24);
+                sh(sp, (d >> 8) & 0xff);
+                sh(sp + 0x10, (d >> 16) & 0xff);
+                sh(sp + 0x20, (d >> 16) & 0xff);
+            }
             t8 += 8;
             p += ((d >> 16) & 0xff) << 4;
-            sw(sp + 4, p);
+            if (chain) sw(sp + 4, p);
             p += ((d >> 8) & 0xff) << 4;
-            sw(sp + 0x14, p);
+            if (chain) sw(sp + 0x14, p);
             p += ((d >> 16) & 0xff) << 4;
-            sw(sp + 0x24, p);
+            if (chain) sw(sp + 0x24, p);
             sp = p;
         }
-        const uint64_t r = ld(s1);
+        if (chain) {
+            const uint64_t r = ld(s1);
+            sq(sp, t5q);
+            sw(sp + 4, static_cast<uint32_t>(r));
+            sh(sp, static_cast<uint32_t>(r >> 32));
+            sq(sp + 0x10, t6q);
+            sh(sp + 0x1c, static_cast<uint32_t>(s3));
+        }
         s1 += 0x10;
-        sq(sp, t5q);
-        sp += 0x10;
-        sw(sp - 0xc, static_cast<uint32_t>(r));
-        sh(sp - 0x10, static_cast<uint32_t>(r >> 32));
-        sq(sp, t6q);
-        sp += 0x10;
-        sh(sp - 4, static_cast<uint32_t>(s3));
+        sp += 0x20;
+        if (mrp) part_end(static_cast<uint32_t>(s3) & 0xffff);
     } while (s1 != s0);
     sd(t8, 0);
     t8 += 0x10;

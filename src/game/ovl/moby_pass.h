@@ -46,6 +46,15 @@ extern uint64_t g_moby_mrp_skip_next_bad, g_moby_mrp_skip_next_ok;
 // orig: (host) per-stage wall time of the moby pass's EE work (ms, summed; RAC1_FRAME_PROF): the skinning
 // (moby_skin_all, incl. the poses 0x250fe0), the sub-mesh fill, the texture groups 0x2555c0, the slots 0x24fad0
 extern double g_prof_moby_skin_ms, g_prof_moby_fill_ms, g_prof_moby_tex_ms, g_prof_moby_slots_ms;
+// orig: (host) the MRP-only moby pass (RAC1_MOBY_PASS_MRP=1, a Wii U default; set by the host per game frame, only with all the
+// skips above and the host's chain processing skipping the mobys' ranges): the draw loop and the texture uploads compute
+// everything as before - the culling, the drawn flags, the LOD, the lights, the skinning records, the depths, the texture
+// groups, the packet buffer's positions (0x1611c0, 0x160000, the records' chain addresses) - but do not write the mobys'
+// chain parts nor the uploads' packets, read by the GS / VU1 path only: each moby's range is one NEXT over it, its parts
+// given to the draw observer (moby_draw.h). With RAC1_MOBY_PASS_MRP=verify the chain is written too and the scene state
+// compares the parts it is given with the ones it decodes (g_moby_pass_mrp_verify).
+extern bool g_moby_pass_mrp;
+extern bool g_moby_pass_mrp_verify;
 // orig: (host) the DMA chain's range of the moby texture uploads of this frame's pass (tags from `first`
 // to `last` inclusive: the NEXT out of the pass's chain to the NEXT back); 0 when none
 extern uint32_t g_moby_upload_chain_first, g_moby_upload_chain_last;

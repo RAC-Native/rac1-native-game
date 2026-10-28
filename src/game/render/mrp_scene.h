@@ -97,6 +97,12 @@ struct MrpMoby {
     uint32_t record_first = 0;                // into MrpFrame::records (bytes, 0x10 * record_qwords)
     uint32_t record_qwords = 0;
     uint32_t part_first = 0, part_count = 0;  // into MrpFrame::parts
+    // the parts given by the draw loop (the MRP-only moby pass, moby_pass.h g_moby_pass_mrp), not decoded from the chain (which
+    // has none): no unpacks, their GS state read at once (MrpPart::gs_resolved)
+    bool direct = false;
+    // (testing, RAC1_MOBY_PASS_MRP=verify: the parts the draw loop gave, in MrpFrame::check_parts, against the decoded ones)
+    uint32_t check_first = 0, check_count = 0;
+    MrpMat4 check_model_to_view;
     // drawn into a render target: the game's view was a texture's when the draw loop ran (render_target_view 0x1f7fa0 set
     // the screen globals 0x13e500 / 0x13e504 to the texture's size, not the display's 0x1518d0 / 0x1518d2): the menus' item models
     // (0x24ff08 called by the widgets' draws between 0x1fc928 and 0x1fca18). Then the projection block the loop sent at this call
@@ -118,6 +124,7 @@ struct MrpFrame {
     std::vector<MrpUnpack> unpacks;
     std::vector<MrpMat4> joints;
     std::vector<uint8_t> records;
+    std::vector<MrpPart> check_parts;  // (testing: RAC1_MOBY_PASS_MRP=verify, MrpMoby::check_first)
 };
 
 // orig: (host) hooks the observers of the moby pass (moby_draw.h / moby_skin.h)

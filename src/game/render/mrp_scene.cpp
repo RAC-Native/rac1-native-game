@@ -8,6 +8,7 @@
 #include <game/render/mrp_scene.h>
 
 #include <game/ovl/moby_draw.h>
+#include <game/ovl/moby_pass.h>
 #include <game/ovl/moby_skin.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -52,10 +53,92 @@ MrpMat4 mat4_at(uint32_t a) {
     return m;
 }
 
+// orig: (host) the GS state of a part's DIRECT (A+D, PACKED: the frame's TEST_1 0x47 / ALPHA_1 0x42) from its GIF packet, `qwc`
+// quadwords read by `q(i)` (the quadword's four words): as mrp_moby_renderer.cpp's gif_ad reads it at the draw
+template <typename Q>
+void gs_resolve(MrpPart& p, uint32_t qwc, Q q) {
+    p.gs_resolved = true;
+    uint32_t off = 0;
+    while (off < qwc) {
+        uint32_t w[4];
+        q(off, w);
+        const uint64_t lo = static_cast<uint64_t>(w[0]) | (static_cast<uint64_t>(w[1]) << 32);
+        const uint64_t hi = static_cast<uint64_t>(w[2]) | (static_cast<uint64_t>(w[3]) << 32);
+        const uint32_t nloop = lo & 0x7fff, flg = (lo >> 58) & 3, nreg0 = (lo >> 60) & 0xf;
+        const uint32_t nreg = nreg0 == 0 ? 16 : nreg0;
+        if (flg != 0) break;
+        for (uint32_t i = 0; i < nloop; ++i)
+            for (uint32_t r = 0; r < nreg; ++r) {
+                if (((hi >> (4 * r)) & 0xf) != 0xe) continue;
+                uint32_t d[4];
+                q(off + 1 + i * nreg + r, d);
+                const uint64_t v = static_cast<uint64_t>(d[0]) | (static_cast<uint64_t>(d[1]) << 32);
+                const uint32_t reg = d[2] & 0xff;
+                if (reg == 0x47) p.test = v, p.has_test = true;
+                if (reg == 0x42) p.alpha = v, p.has_alpha = true;
+            }
+        off += 1 + nloop * nreg;
+        if ((lo >> 15) & 1) break;
+    }
+}
+// orig: (host) the same from EE memory at `a`
+void gs_resolve_at(MrpPart& p, uint32_t a, uint32_t qwc) {
+    gs_resolve(p, qwc, [a](uint32_t i, uint32_t w[4]) {
+        for (uint32_t k = 0; k < 4; ++k) w[k] = lwu(a + i * 16 + 4 * k);
+    });
+}
+
+// orig: (host) the parts the MRP-only draw loop gave (moby_draw.h MobyDrawPart) as decode_chain_to makes them from the chain:
+// each MSCAL a part, its model-to-view matrix the latest upload to its buffer (its own, or the one two parts back's), the
+// moby's the first upload; appended to `parts`
+void direct_parts(uint32_t mi, const MobyDrawPart* dp, uint32_t n, std::vector<MrpPart>& parts, uint32_t unpack_first, uint32_t& first,
+                  MrpMat4& model_to_view) {
+    first = static_cast<uint32_t>(parts.size());
+    bool have_matrix = false;
+    MrpMat4 last_mat[2];
+    bool have_last[2] = {false, false};
+    for (uint32_t k = 0; k < n; ++k) {
+        const MobyDrawPart& d = dp[k];
+        MrpPart cur;
+        cur.moby_index = mi;
+        cur.unpack_first = unpack_first;
+        cur.mscal = d.mscal;
+        if (d.matrix_dest != 0) {
+            MrpMat4 mm;
+            std::memcpy(&mm, d.matrix, sizeof mm);
+            if (!have_matrix) {
+                model_to_view = mm;
+                have_matrix = true;
+            }
+            const int bi = d.matrix_dest == 0x28d ? 1 : 0;
+            last_mat[bi] = mm;
+            have_last[bi] = true;
+            cur.matrix_dest = d.matrix_dest;
+        } else if (k >= 2) {
+            cur.matrix_dest = parts[parts.size() - 2].matrix_dest;
+        } else if (k == 1) {
+            cur.matrix_dest = parts.back().matrix_dest == 0x129 ? 0x28d : 0x129;
+        } else {
+            cur.matrix_dest = 0x129;
+        }
+        const int bi = cur.matrix_dest == 0x28d ? 1 : 0;
+        if (have_last[bi]) cur.model_to_view = last_mat[bi];
+        if (d.gs_qwc != 0) {
+            cur.has_gs_state = true;
+            cur.direct_qwc = d.gs_qwc;
+        }
+        gs_resolve(cur, d.gs_qwc, [&d](uint32_t i, uint32_t w[4]) {
+            for (uint32_t j = 0; j < 4; ++j) w[j] = i < 2 ? d.gs[4 * i + j] : 0u;
+        });
+        parts.push_back(cur);
+    }
+}
+
 // ---- observers -----------------------------------------------------------------------------
 
 // orig: (host) the draw loop's observer (0x002559c0, at the record's send, 0x256668)
-void on_draw(uint32_t moby, uint32_t chain_begin, uint32_t chain_end, uint32_t ring, uint32_t spr_rec, uint32_t qwords, uint32_t far_lod, uint32_t deferred) {
+void on_draw(uint32_t moby, uint32_t chain_begin, uint32_t chain_end, uint32_t ring, uint32_t spr_rec, uint32_t qwords, uint32_t far_lod, uint32_t deferred,
+             const MobyDrawPart* parts, uint32_t nparts) {
     const double t0 = g_prof ? now_ms() : 0.0;
     MrpFrame& f = g_frame;
     // a moby drawn into a render target (the screen globals the texture's size, not the display's)
@@ -104,6 +187,17 @@ void on_draw(uint32_t moby, uint32_t chain_begin, uint32_t chain_end, uint32_t r
     for (uint32_t i = 0; i < qwords * 16; i += 4) {
         const uint32_t w = lwu(spr_rec + i);
         std::memcpy(&f.records[m.record_first + i], &w, 4);
+    }
+    if (parts != nullptr) {  // the MRP-only pass: its parts as the chain would have had them (with the verify: kept aside)
+        const uint32_t mi = static_cast<uint32_t>(f.mobys.size());
+        if (g_moby_pass_mrp_verify) {
+            direct_parts(mi, parts, nparts, f.check_parts, 0, m.check_first, m.check_model_to_view);
+            m.check_count = nparts;
+        } else {
+            m.direct = true;
+            direct_parts(mi, parts, nparts, f.parts, static_cast<uint32_t>(f.unpacks.size()), m.part_first, m.model_to_view);
+            m.part_count = nparts;
+        }
     }
     f.mobys.push_back(m);
     if (g_prof) g_prof_obs_ms += now_ms() - t0;
@@ -352,10 +446,12 @@ constexpr size_t kDecodeGrain = 16;
 void decode_all(MrpFrame& f) {
     const size_t n = f.mobys.size();
     const size_t nc = jobs::chunks(n, kDecodeGrain);
-    if (jobs::threads() <= 1 || nc <= 1) {
+    bool any_direct = false;  // (the MRP-only pass's mobys: their parts given, only their records decoded)
+    for (const MrpMoby& m : f.mobys) any_direct = any_direct || m.direct;
+    if (jobs::threads() <= 1 || nc <= 1 || any_direct) {
         for (uint32_t i = 0; i < n; ++i) {
             decode_record(f, f.mobys[i]);
-            decode_chain(f, i);
+            if (!f.mobys[i].direct) decode_chain(f, i);
         }
         return;
     }
@@ -385,6 +481,101 @@ void decode_all(MrpFrame& f) {
         g_dec.guard += c.st.guard;
         g_dec.bad_tags += c.st.bad_tags;
     }
+}
+
+// orig: (host) testing, RAC1_MOBY_PASS_MRP=verify: the parts the draw loop gave (MrpFrame::check_parts) against the ones decoded
+// from the chain it also wrote (the MSCAL, the matrix's buffer and rows, the GS state as the renderer reads it), the moby's first
+// matrix; the totals every 200 frames, the first mismatches logged
+struct DirectStats {
+    uint64_t frames = 0, mobys = 0, parts = 0, bad_mobys = 0, bad_parts = 0, gs_parts = 0, shadow_mesh = 0;
+} g_direct;
+void direct_verify(const MrpFrame& f) {
+    if (!g_moby_pass_mrp_verify) return;
+    ++g_direct.frames;
+    for (const MrpMoby& m : f.mobys) {
+        ++g_direct.mobys;
+        if (m.shadow_mesh) ++g_direct.shadow_mesh;
+        const bool count_ok = m.check_count == m.part_count;
+        const bool m2v_ok = std::memcmp(&m.check_model_to_view, &m.model_to_view, sizeof m.model_to_view) == 0;
+        if (!count_ok || !m2v_ok) {
+            if (++g_direct.bad_mobys <= 10)
+                std::fprintf(stderr, "[moby-pass-mrp] verify: moby %08x class %d: %u parts given, %u decoded%s\n", m.moby, m.class_id, m.check_count, m.part_count,
+                             m2v_ok ? "" : ", its matrix differs");
+            if (!count_ok) continue;
+        }
+        for (uint32_t k = 0; k < m.part_count; ++k) {
+            ++g_direct.parts;
+            const MrpPart& g = f.check_parts[m.check_first + k];
+            MrpPart d = f.parts[m.part_first + k];
+            if (!d.gs_resolved && d.has_gs_state) gs_resolve_at(d, d.direct_data, d.direct_qwc);
+            if (d.has_gs_state) ++g_direct.gs_parts;
+            const bool ok = g.mscal == d.mscal && g.matrix_dest == d.matrix_dest && std::memcmp(&g.model_to_view, &d.model_to_view, sizeof g.model_to_view) == 0 &&
+                            g.has_gs_state == d.has_gs_state && g.has_test == d.has_test && g.has_alpha == d.has_alpha && (!g.has_test || g.test == d.test) &&
+                            (!g.has_alpha || g.alpha == d.alpha);
+            if (!ok && ++g_direct.bad_parts <= 10)
+                std::fprintf(stderr, "[moby-pass-mrp] verify: moby %08x class %d part %u: mscal %03x/%03x dest %03x/%03x gs %d/%d test %llx/%llx alpha %llx/%llx\n", m.moby,
+                             m.class_id, k, g.mscal, d.mscal, g.matrix_dest, d.matrix_dest, g.has_gs_state, d.has_gs_state, static_cast<unsigned long long>(g.test),
+                             static_cast<unsigned long long>(d.test), static_cast<unsigned long long>(g.alpha), static_cast<unsigned long long>(d.alpha));
+        }
+    }
+    if (g_direct.frames % 200 == 0)
+        std::printf("[moby-pass-mrp] verify: %llu frames, %llu mobys (%llu differ; %llu with the shadow mesh), %llu parts (%llu differ; %llu with a GS state)\n",
+                    static_cast<unsigned long long>(g_direct.frames), static_cast<unsigned long long>(g_direct.mobys), static_cast<unsigned long long>(g_direct.bad_mobys),
+                    static_cast<unsigned long long>(g_direct.shadow_mesh), static_cast<unsigned long long>(g_direct.parts), static_cast<unsigned long long>(g_direct.bad_parts),
+                    static_cast<unsigned long long>(g_direct.gs_parts));
+}
+
+// orig: (host) testing, RAC1_MRP_SCENE_HASH=frame: one hash per game frame of what the scene's users read (not the unpacks, which
+// only the debug checks read, nor where the GS state packet is: its values), to compare two runs frame for frame
+uint64_t scene_frame_hash(const MrpFrame& d) {
+    uint64_t h = 0xcbf29ce484222325ull;
+    auto add = [&h](const void* p, size_t k) {
+        const uint8_t* b = static_cast<const uint8_t*>(p);
+        for (size_t i = 0; i < k; ++i) h = (h ^ b[i]) * 0x100000001b3ull;
+    };
+    auto add_u = [&add](uint64_t v) { add(&v, 8); };
+    add(d.proj, sizeof d.proj);
+    add(&d.cam_pos, sizeof d.cam_pos);
+    add(d.view_rows, sizeof d.view_rows);
+    add(&d.view_trans, sizeof d.view_trans);
+    add_u(d.mobys.size());
+    for (const MrpMoby& m : d.mobys) {
+        add_u(m.moby);
+        add_u(m.class_ptr);
+        add_u(static_cast<uint64_t>(m.class_id) << 32 | static_cast<uint64_t>(m.flags) << 16 | m.state);
+        add_u(static_cast<uint64_t>(m.far_lod) | m.deferred << 1 | m.shadow_mesh << 2 | m.animated << 3 | m.other_view << 4 | m.rt << 5);
+        add_u(static_cast<uint64_t>(m.first_packet) << 32 | m.packet_count);
+        add(m.pos, sizeof m.pos);
+        add(&m.scale, 4);
+        add(m.rot, sizeof m.rot);
+        add(&m.model_to_view, sizeof m.model_to_view);
+        add(m.light_dir, sizeof m.light_dir);
+        add(m.light_col, sizeof m.light_col);
+        add(m.light_w, sizeof m.light_w);
+        add(m.tint, 4);
+        add_u(static_cast<uint64_t>(m.alpha_base) | m.light_set_a << 8 | m.light_set_b << 16 | m.light_blend << 24);
+        if (m.rt) {
+            add(m.rt_proj, sizeof m.rt_proj);
+            add_u(static_cast<uint64_t>(static_cast<uint32_t>(m.rt_w)) << 32 | static_cast<uint32_t>(m.rt_h));
+        }
+        add_u(m.joint_count);
+        if (m.joint_count != 0) add(&d.joints[m.joint_first], sizeof(MrpMat4) * m.joint_count);
+        add_u(static_cast<uint64_t>(m.chain_begin) << 32 | m.chain_end);
+        add_u(static_cast<uint64_t>(m.ring) << 32 | m.record_qwords);
+        if (m.record_qwords != 0) add(&d.records[m.record_first], 16u * m.record_qwords);
+        add_u(m.part_count);
+        for (uint32_t k = 0; k < m.part_count; ++k) {
+            MrpPart p = d.parts[m.part_first + k];
+            if (!p.gs_resolved && p.has_gs_state) gs_resolve_at(p, p.direct_data, p.direct_qwc);
+            add_u(static_cast<uint64_t>(p.mscal) << 32 | static_cast<uint64_t>(p.matrix_dest) << 16 | p.has_gs_state);
+            add_u(p.moby_index);
+            add(&p.model_to_view, sizeof p.model_to_view);
+            add_u(static_cast<uint64_t>(p.has_test) | p.has_alpha << 1);
+            add_u(p.has_test ? p.test : 0);
+            add_u(p.has_alpha ? p.alpha : 0);
+        }
+    }
+    return h;
 }
 
 // ---- the differential check ------------------------------------------------------------------
@@ -485,29 +676,11 @@ void mrp_scene_shadow_end() {
     g_ram_end = 0x04000000u;
     decode_all(f);
     g_ram_end = 0x02000000u;
-    for (MrpPart& p : f.parts) {  // the GS state packet (A+D, PACKED: the frame's TEST_1 0x47 / ALPHA_1 0x42)
+    direct_verify(f);
+    for (MrpPart& p : f.parts) {  // the GS state packet (A+D, PACKED: the frame's TEST_1 0x47 / ALPHA_1 0x42; the MRP-only pass's: resolved)
+        if (p.gs_resolved) continue;
         p.gs_resolved = true;
-        if (!p.has_gs_state) continue;
-        const uint32_t a = p.direct_data;  // (as mrp_moby_renderer.cpp's gif_ad reads it at the draw)
-        uint32_t off = 0;
-        while (off < p.direct_qwc) {
-            const uint64_t lo = static_cast<uint64_t>(lwu(a + off * 16)) | (static_cast<uint64_t>(lwu(a + off * 16 + 4)) << 32);
-            const uint64_t hi = static_cast<uint64_t>(lwu(a + off * 16 + 8)) | (static_cast<uint64_t>(lwu(a + off * 16 + 12)) << 32);
-            const uint32_t nloop = lo & 0x7fff, flg = (lo >> 58) & 3, nreg0 = (lo >> 60) & 0xf;
-            const uint32_t nreg = nreg0 == 0 ? 16 : nreg0;
-            if (flg != 0) break;
-            for (uint32_t i = 0; i < nloop; ++i)
-                for (uint32_t r = 0; r < nreg; ++r) {
-                    const uint32_t q = a + (off + 1 + i * nreg + r) * 16;
-                    if (((hi >> (4 * r)) & 0xf) != 0xe) continue;
-                    const uint64_t v = static_cast<uint64_t>(lwu(q)) | (static_cast<uint64_t>(lwu(q + 4)) << 32);
-                    const uint32_t reg = lbu(q + 8);
-                    if (reg == 0x47) p.test = v, p.has_test = true;
-                    if (reg == 0x42) p.alpha = v, p.has_alpha = true;
-                }
-            off += 1 + nloop * nreg;
-            if ((lo >> 15) & 1) break;
-        }
+        if (p.has_gs_state) gs_resolve_at(p, p.direct_data, p.direct_qwc);  // (as mrp_moby_renderer.cpp's gif_ad reads it at the draw)
     }
     g_shadow_frame = std::move(f);
     g_shadow_valid = true;
@@ -655,6 +828,16 @@ void mrp_scene_end_frame() {
     MrpFrame& f = g_frame;
     ++g_frame_no;
     decode_all(f);
+    direct_verify(f);
+    {  // (testing: RAC1_MRP_SCENE_HASH=frame)
+        static const bool per_frame = std::getenv("RAC1_MRP_SCENE_HASH") != nullptr && std::strcmp(std::getenv("RAC1_MRP_SCENE_HASH"), "frame") == 0;
+        if (per_frame) {
+            std::fprintf(stderr, "[scene-hash] frame %d: %016llx (%zu mobys, %zu parts)", g_frame_no, static_cast<unsigned long long>(scene_frame_hash(f)), f.mobys.size(),
+                         f.parts.size());
+            if (g_shadow_valid) std::fprintf(stderr, " draw %016llx", static_cast<unsigned long long>(scene_frame_hash(g_shadow_frame)));
+            std::fprintf(stderr, "\n");
+        }
+    }
     if (g_check) {
         ++g_cs.frames;
         g_cs.scene_mobys += f.mobys.size();
@@ -733,7 +916,7 @@ void mrp_scene_end_frame() {
         lod_drop_check(f, g_shadow_frame);
         lod_keep_real(f, g_shadow_frame);
     }
-    if (std::getenv("RAC1_MRP_SCENE_HASH") != nullptr) {  // (testing: a hash of every drawn scene, to compare two runs draw for draw)
+    if (std::getenv("RAC1_MRP_SCENE_HASH") != nullptr && std::strcmp(std::getenv("RAC1_MRP_SCENE_HASH"), "frame") != 0) {  // (testing: a hash of every drawn scene, to compare two runs draw for draw)
         static uint64_t h = 0xcbf29ce484222325ull, n = 0;
         auto add = [](const void* p, size_t k) {
             const uint8_t* b = static_cast<const uint8_t*>(p);

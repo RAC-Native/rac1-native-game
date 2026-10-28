@@ -1,5 +1,6 @@
 // Ported overlay code: the moby pass around its draw loop (see moby_pass.h, moby_draw.h).
 #include <game/ovl/moby_pass.h>
+#include <game/ovl/game_skips.h>
 
 #include <game/ovl/ovl_reloc.h>
 #include <game/math/vecmath.h>
@@ -25,6 +26,8 @@ uint64_t g_moby_mrp_skip_next_bad = 0, g_moby_mrp_skip_next_ok = 0;
 double g_prof_moby_skin_ms = 0, g_prof_moby_fill_ms = 0, g_prof_moby_tex_ms = 0, g_prof_moby_slots_ms = 0;
 uint32_t g_moby_upload_chain_first = 0, g_moby_upload_chain_last = 0;
 bool g_moby_pass_shadow_run = false;
+bool g_moby_pass_mrp = false;
+bool g_moby_pass_mrp_verify = false;
 
 namespace {
 // orig: (host) the per-stage timer of RAC1_FRAME_PROF
@@ -104,7 +107,7 @@ void moby_pass_end() {
     if (lw(OV(0x0016a018)) != 0) {
         {
             RAC1_PROF_ZONE(kGameMobyJoints);  // (host: the profiler's sub-stage)
-            moby_joints();
+            if (!g_skip_joints) moby_joints();
         }
         // orig: (host) the MRP skip: the sub-mesh colour fill writes the moby chain's vertex
         // colours, read by the GS path only (the MRP takes the colour from moby +0x90)
@@ -132,6 +135,14 @@ void moby_textures_chain() {
         {
             StageTimer st(g_prof_moby_tex_ms);
             moby_textures(lwu(0x0015ee74));
+        }
+        // orig: (host) the MRP-only pass (moby_pass.h): the uploads' packets not written, one NEXT over their place
+        const uint32_t up_end = lwu(OV(0x001611c0));
+        if (g_moby_pass_mrp && !g_moby_pass_mrp_verify && up_end != s0 + 0x10) {
+            sw(s0 + 0x10, 0x20000000u);
+            sw(s0 + 0x14, up_end);
+            sw(s0 + 0x18, 0);
+            sw(s0 + 0x1c, 0);
         }
         packet_ref_1c2f00();
         v1 = lwu(OV(0x001611c0));
@@ -183,8 +194,17 @@ uint32_t moby_textures(uint32_t vram) {
         g[q][0] = ld(OV(0x00160820) + 0x10 * q);
         g[q][1] = ld(OV(0x00160828) + 0x10 * q);
     }
+    // orig: (host) the MRP-only pass (moby_pass.h): the packets not written (the VRAM slots, the positions as before)
+    const bool packets = !g_moby_pass_mrp || g_moby_pass_mrp_verify;
     // one GS upload (BITBLTBUF / TRXPOS / TRXREG / TRXDIR, then the image by REF) per mip
     auto upload = [&](uint32_t log2, uint32_t data, uint32_t slot) {
+        if (!packets) {
+            const uint32_t side = 1u << (log2 & 31);
+            sh(slot, t9);
+            t9 += ((side << (log2 & 31)) >> 4) >> 4;
+            t8 += 0x70;
+            return static_cast<int32_t>(t9 - 0x3ffb) > 0;
+        }
         for (uint32_t q = 0; q < 4; ++q) {
             sd(t8 + 0x10 * q, g[q][0]);
             sd(t8 + 0x10 * q + 8, g[q][1]);

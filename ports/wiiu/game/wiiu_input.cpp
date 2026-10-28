@@ -51,9 +51,20 @@ void merge(hi::HostState& st, const Map (&map)[N], uint32_t hold, float lx, floa
 // the pads' state this frame (the GamePad's and every KPAD controller's with a Pro / Classic layout, merged)
 hi::HostState rac1_wiiu_pad_state() {
     hi::HostState st;
-    VPADStatus v{};
+    // (a read with no new sample - VPAD samples every ~5 ms, KPAD less often, and a late host frame reads them once for each of
+    // the game frames it runs, back to back - keeps the last state read: taken as "nothing held", a held button was released
+    // and pressed again (a menu moving two places) and a short press could fall in a read that saw none)
+    static VPADStatus v{};
+    static bool v_ok = false;
+    VPADStatus nv{};
     VPADReadError ve = VPAD_READ_SUCCESS;
-    if (VPADRead(VPAD_CHAN_0, &v, 1, &ve) == 1 && ve == VPAD_READ_SUCCESS)
+    if (VPADRead(VPAD_CHAN_0, &nv, 1, &ve) == 1 && ve == VPAD_READ_SUCCESS) {
+        v = nv;
+        v_ok = true;
+    } else if (ve != VPAD_READ_NO_SAMPLES) {
+        v_ok = false;  // (the GamePad gone)
+    }
+    if (v_ok)
         merge(st, kVpad, v.hold, v.leftStick.x, v.leftStick.y, v.rightStick.x, v.rightStick.y, (v.hold & VPAD_BUTTON_ZL) != 0, (v.hold & VPAD_BUTTON_ZR) != 0);
     if (!g_kpad) {
         KPADInit();
@@ -61,9 +72,18 @@ hi::HostState rac1_wiiu_pad_state() {
         g_kpad = true;
     }
     for (int c = 0; c < 4; ++c) {
-        KPADStatus k{};
+        static KPADStatus last[4] = {};
+        static bool last_ok[4] = {};
+        KPADStatus nk{};
         KPADError ke = KPAD_ERROR_OK;
-        if (KPADReadEx(static_cast<KPADChan>(c), &k, 1, &ke) < 1 || ke != KPAD_ERROR_OK) continue;
+        if (KPADReadEx(static_cast<KPADChan>(c), &nk, 1, &ke) >= 1 && ke == KPAD_ERROR_OK) {
+            last[c] = nk;
+            last_ok[c] = true;
+        } else if (ke != KPAD_ERROR_NO_SAMPLES) {
+            last_ok[c] = false;  // (no controller on the channel)
+        }
+        if (!last_ok[c]) continue;
+        const KPADStatus& k = last[c];
         if (k.extensionType == WPAD_EXT_PRO_CONTROLLER)
             merge(st, kPro, k.pro.hold, k.pro.leftStick.x, k.pro.leftStick.y, k.pro.rightStick.x, k.pro.rightStick.y, (k.pro.hold & WPAD_PRO_TRIGGER_ZL) != 0,
                   (k.pro.hold & WPAD_PRO_TRIGGER_ZR) != 0);

@@ -3906,6 +3906,8 @@ uint64_t g_wiiu_serial = 0;  // (mrpwb::FrameView::serial)
 }  // namespace
 
 // orig: (host) see mrp_world_renderer.h
+bool g_wiiu_world_async = true;  // (see mrp_world_renderer.h)
+
 namespace {
 double g_ms_head = 0.0;  // (the preparation's first half's time, added to the second's)
 void wiiu_prep_dispatch();
@@ -4033,8 +4035,11 @@ PrepWorker g_prep;
 
 // orig: (host)
 void wiiu_prep_dispatch() {
-    static const bool async = std::getenv("RAC1_WIIU_WORLD_ASYNC") == nullptr || std::atoi(std::getenv("RAC1_WIIU_WORLD_ASYNC")) != 0;
-    if (!async) {
+    static const bool async_env = std::getenv("RAC1_WIIU_WORLD_ASYNC") == nullptr || std::atoi(std::getenv("RAC1_WIIU_WORLD_ASYNC")) != 0;
+    static bool first = true;
+    if (first) g_wiiu_world_async = async_env;
+    first = false;
+    if (!g_wiiu_world_async) {
         wiiu_prep_tail();
         return;
     }

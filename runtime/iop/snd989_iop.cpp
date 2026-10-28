@@ -23,6 +23,7 @@
 #include <runtime/ipu/movie_hw.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/ee_memory.h>
+#include <io/host_endian.h>
 #include <runtime/sif/sif_rpc.h>
 
 #include "game/sound/989snd/player.h"
@@ -340,15 +341,11 @@ void loader_server(uint32_t fno, uint32_t send, uint32_t ssize, uint32_t recv, u
         std::vector<u8> head(2048 * 2);
         if (disc_read(lsn + off / 2048, 2, head.data())) {
             const uint32_t o = off % 2048;
-            uint32_t chunks = 0;
-            std::memcpy(&chunks, &head[o + 4], 4);
+            // (the disc's words little-endian: a big-endian host read them as they are, a size of gigabytes)
+            const uint32_t chunks = rac1::le32(&head[o + 4]);
             uint32_t end = 8 + chunks * 8;
-            for (uint32_t i = 0; i < chunks && i < 8 && o + 16 + i * 8 <= head.size(); ++i) {
-                uint32_t co = 0, cs = 0;
-                std::memcpy(&co, &head[o + 8 + i * 8], 4);
-                std::memcpy(&cs, &head[o + 12 + i * 8], 4);
-                end = std::max(end, co + cs);
-            }
+            for (uint32_t i = 0; i < chunks && i < 8 && o + 16 + i * 8 <= head.size(); ++i)
+                end = std::max(end, rac1::le32(&head[o + 8 + i * 8]) + rac1::le32(&head[o + 12 + i * 8]));
             std::vector<u8> all(((o + end + 2047) / 2048) * 2048);
             if (disc_read(lsn + off / 2048, static_cast<uint32_t>(all.size() / 2048), all.data())) {
                 std::vector<u8> d(all.begin() + o, all.begin() + o + end);
