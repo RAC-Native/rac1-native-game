@@ -4752,6 +4752,15 @@ bool level_view(LevelView& out) {
 }
 
 // orig: (host) see mrp_world_backend.inc
+void level_runs(std::vector<TplRunInfo>& out) {
+    out.clear();
+    const Level& L = g_level;
+    if (!L.loaded) return;
+    for (const auto& [key, t] : L.tpl)
+        for (const TplRun& r : t.runs) out.push_back(TplRunInfo{t.first_index + r.first, r.count, t.first_vertex});
+}
+
+// orig: (host) see mrp_world_backend.inc
 BucketInfo bucket_info(size_t bucket) {
     BucketInfo r;
     if (bucket >= g_level.buckets.size()) return r;

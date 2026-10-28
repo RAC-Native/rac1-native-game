@@ -132,6 +132,12 @@ struct LevelView {
     size_t buckets = 0;                           // the texture arrays (Key::bucket, the epochs' buckets; -1 none: the white texture)
 };
 bool level_view(LevelView& out);  // false: no level loaded
+// The level's template runs (one per DrawCmd a packet's template makes: its triangles of one texture slot and PRIM): its indices
+// [first_index, first_index + count) in LevelView::tidx, relative to its template's first vertex `base_vertex`; in no order
+struct TplRunInfo {
+    uint32_t first_index = 0, count = 0, base_vertex = 0;
+};
+void level_runs(std::vector<TplRunInfo>& out);  // (empty: no level loaded)
 struct BucketInfo {
     uint32_t w = 0, h = 0, levels = 0, layers = 0;
 };

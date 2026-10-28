@@ -2,7 +2,9 @@
 // 330 for CafeGLSL: the GS's texture functions, the GS's mip level from Q (TEX1 LCM / L / K, MXL), FGE's fog and the alpha test with
 // its AFAIL passes (uA.x: 1 the pixels that pass, 2 those that fail). What differs from the PC's: one texture array (the draw's,
 // bound by the CPU per draw: no texture units, no subgroup loop), the GS's mip level only (the PC's "full texture" mode by
-// textureQueryLod is not there), no modern lighting (sh_*), no shadow pass.
+// textureQueryLod is not there), no modern lighting (sh_*), no shadow pass. With uB.x (the ties' / shrubs' merged draws,
+// mrp_world_gx2.cpp) the triangle's texture is the one of its texture unit (draw_flags' bits 16..19, as the PC's units): the batch's
+// units bound to uTex (unit 0: none, the white texture) and uT1..uT15, so that a draw may hold triangles of several textures.
 #version 330 core
 smooth in vec3 vStq;
 noperspective in float vLodQ;
@@ -12,10 +14,54 @@ noperspective in float vFog;
 flat in uvec2 vTex;
 flat in uvec2 vState;  // the GS state as data: x = TME | IIP << 1 | FGE << 2 | the alpha test's mode << 3 | ATST << 4 | AREF << 8 | texture unit << 16, y = FOGCOL
 uniform sampler2DArray uTex;
+uniform sampler2DArray uT1, uT2, uT3, uT4, uT5, uT6, uT7, uT8, uT9, uT10, uT11, uT12, uT13, uT14, uT15;
 layout(std140) uniform WorldPixel {
     vec4 uFogCol;  // rgb: FOGCOL / 255 (the batch's)
     ivec4 uA;      // x: the alpha test's pass (1, 2), y: the shade debug, z: FGE (the batch's), w: 1 (testing) the alpha test off
+    ivec4 uB;      // x: 1 the texture by the triangle's unit (uTex unit 0, uT1..uT15), 0 uTex
 };
+// a texture unit's array sampled (u 0..15)
+vec4 unit_lod(int u, vec3 c, float l) {
+    vec4 t;
+    if (u < 8) {
+        if (u < 4) {
+            if (u < 2) {
+                if (u == 0) t = textureLod(uTex, c, l);
+                else t = textureLod(uT1, c, l);
+            } else {
+                if (u == 2) t = textureLod(uT2, c, l);
+                else t = textureLod(uT3, c, l);
+            }
+        } else {
+            if (u < 6) {
+                if (u == 4) t = textureLod(uT4, c, l);
+                else t = textureLod(uT5, c, l);
+            } else {
+                if (u == 6) t = textureLod(uT6, c, l);
+                else t = textureLod(uT7, c, l);
+            }
+        }
+    } else {
+        if (u < 12) {
+            if (u < 10) {
+                if (u == 8) t = textureLod(uT8, c, l);
+                else t = textureLod(uT9, c, l);
+            } else {
+                if (u == 10) t = textureLod(uT10, c, l);
+                else t = textureLod(uT11, c, l);
+            }
+        } else {
+            if (u < 14) {
+                if (u == 12) t = textureLod(uT12, c, l);
+                else t = textureLod(uT13, c, l);
+            } else {
+                if (u == 14) t = textureLod(uT14, c, l);
+                else t = textureLod(uT15, c, l);
+            }
+        }
+    }
+    return t;
+}
 out vec4 FragColor;
 void main() {
     uint fl = vState.x;
@@ -37,7 +83,8 @@ void main() {
             float lod = lcm != 0 ? K : log2(1.0 / max(abs(vLodQ), 1e-20)) * float(1 << L) + K;
             int level = lod <= 0.0 ? 0 : min(int(floor(lod + 0.5)), mxl);
             level = min(level, mips - 1);
-            t = textureLod(uTex, vec3(st, uLayer), float(level));
+            if (uB.x != 0) t = unit_lod(int((fl >> 16) & 15u), vec3(st, uLayer), float(level));
+            else t = textureLod(uTex, vec3(st, uLayer), float(level));
         }
         uint tfx = (w >> 1) & 3u, tcc = (w >> 3) & 1u;
         if (tfx == 0u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0); o.a = tcc != 0u ? t.a * c.a * (255.0 / 128.0) : c.a; }

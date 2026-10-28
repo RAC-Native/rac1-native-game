@@ -2,8 +2,9 @@
 // of mrp_world_renderer.cpp's GL draw (draw_frame, its GPU path batches) over the same CPU preparation, read through
 // mrp_world_backend.inc:
 //
-// - the level: its packet templates (TVert, 28 bytes, built by the PPC: big-endian) and their u32 indices (relative to the template's
-//   first vertex, big-endian: GX2_INDEX_TYPE_U32) copied once into MEM2 buffers; its texture buckets as GX2 2D-array textures with
+// - the level: its packet templates (TVert, 28 bytes, built by the PPC: big-endian; each with its template run, mrpwm::VertR) and
+//   their u32 indices (relative to the template's first vertex, and absolute; big-endian: GX2_INDEX_TYPE_U32) copied once into MEM2
+//   buffers; its texture buckets as GX2 2D-array textures with
 //   their mips (as mrp_moby_gx2.cpp's: each layer's level written into a linear surface and copied into the tiled array by
 //   GX2CopySurface; RGBA bytes in memory order);
 // - the resident lit colours (one u32 per colour, R in the low byte): an R32UI 2D texture, 1024 texels a row, linear, the vertex
@@ -15,7 +16,10 @@
 //   10 vec4) and its record (8 words), one GX2DrawIndexedEx with the template's first vertex as the draw's offset (base vertex); the
 //   draw's texture (its unit in the frame's epoch: one bucket and sampler) bound before it when it changes; per call the frame's plain
 //   uniforms; per batch and pass the pixel shader's block (the alpha test's pass, FGE, FOGCOL, the shade debug). All written into a
-//   MEM2 ring with each 32-bit word byte-swapped (GX2 reads the uniform blocks as little-endian words: mrp_moby_gx2.cpp's block_of);
+//   MEM2 ring with each 32-bit word byte-swapped (GX2 reads the uniform blocks as little-endian words: mrp_moby_gx2.cpp's block_of).
+//   That is the per-draw path (RAC1_WIIU_WORLD_MERGE=0); by default the draw commands are merged (mrp_world_merge.inc: an instance's
+//   consecutive commands one draw, consecutive instances drawing the same ones one instanced draw, in the same order): one block slot
+//   per instance per frame, the records in a run table (R32UI, the vertex's run), the batch's texture units bound at once (uT1..uT15);
 // - the GPU state per batch as the GL backend sets it: the GS's blending (gs::set_blend_gx2), the depth test (GEQUAL / GREATER as
 //   LEQUAL / LESS on the host's depth, written when ZBUF's ZMSK is off and the test on), the alpha test's two passes (pass 1 the passing
 //   pixels of the draws whose test is on, every pixel of the others; pass 2, RKey::pass2, the failing ones as AFAIL says: FB_ONLY the
@@ -38,6 +42,7 @@
 #include "mrp_world_gx2.h"
 
 #include "gs_draw_gx2.h"
+#include "mrp_world_merge.inc"
 
 #include <game/ovl/ovl_common.h>
 #include <game/render/mrp_moby_renderer.h>
@@ -80,20 +85,25 @@ struct alignas(16) FrameBlock {
     float frame[4];  // fb width, fb height, x scale, 0
     float xyoff[4];  // XYOFFSET x, y (1/16 px), depth a, depth b
     int32_t mode[4];  // the projection, the position's debug, the colours' row's log2, 0
+    int32_t mode2[4];  // 1 the instance's slot by gl_InstanceID (the instanced draws), the run table's row's log2, 0, 0
 };
-static_assert(sizeof(FrameBlock) == 48);
+static_assert(sizeof(FrameBlock) == 64);
+// a slot of the vertex shader's WorldDraw block (256 bytes: a block may start at any slot, GX2_UNIFORM_BLOCK_ALIGNMENT): the instance
+// and a record (cmd[5] 0: the record is this one, the per-draw path's; 1: the vertex's run's in the run table, the merged draws')
 struct alignas(16) DrawBlock {
     mrpwb::InstGpu inst;
     uint32_t cmd[8];
 };
 static_assert(sizeof(DrawBlock) == 192);
+constexpr uint32_t kSlot = 256;
 // The pixel shader's (mrp_world.frag's WorldPixel)
 struct alignas(16) PixelBlock {
     float fog_col[4];
     int32_t a[4];  // the alpha test's pass, the shade debug, FGE, 1 the alpha test off (testing)
+    int32_t b[4];  // 1 the texture by the triangle's unit (the merged draws: the batch's units bound), 0, 0, 0
     bool operator==(const PixelBlock& o) const { return std::memcmp(this, &o, sizeof *this) == 0; }
 };
-static_assert(sizeof(PixelBlock) == 32);
+static_assert(sizeof(PixelBlock) == 48);
 // The tfrag vertex shader's (mrp_tfrag.vert's TfragFrame)
 struct alignas(16) TfragFrameBlock {
     float vp[16];  // the world renderers' view-projection, column-major
@@ -109,8 +119,14 @@ struct BlockLoc {
     bool found = false;
 };
 BlockLoc g_frame_loc, g_draw_loc, g_pixel_loc;
-uint32_t g_tex_loc = 0, g_cols_loc = 0;
-bool g_tex_ok = false, g_cols_ok = false;
+uint32_t g_tex_loc = 0, g_cols_loc = 0, g_runs_loc = 0;
+bool g_tex_ok = false, g_cols_ok = false, g_runs_ok = false;
+uint32_t g_unit_loc[16] = {};  // (the merged draws' texture units: uTex, uT1..uT15)
+bool g_units_ok = false;
+// RAC1_WIIU_WORLD_MERGE (mrpwm::Mode): 0 one GX2 draw per draw command (as before), 1 an instance's consecutive commands of one texture
+// unit one draw, 2 of any unit (the batch's units bound at once), 3 (the default) and consecutive instances drawing the same commands
+// one instanced draw
+int g_merge = mrpwm::kInstanced;
 GX2Sampler g_samplers[16];  // [TEX1 / CLAMP bits: 0 MMAG linear, 1 MMIN linear, 2 wrap s, 3 wrap t] (mip mode 0: the GS's level, textureLod)
 GX2Sampler g_cols_sampler;  // (the colours' texture: point, clamped)
 // the tfrags' shaders (shaders/mrp_tfrag.gsh): their fetch shaders by the 32-bit attributes' byte order ([0] swapped, the default; [1] as
@@ -140,21 +156,43 @@ void* ring_alloc(uint32_t bytes) {
     g_ring_off = off + bytes;
     return g_ring + off;
 }
+// `bytes` of `data` written at `p`, each 32-bit word swapped (GX2 reads the shaders' blocks as little-endian words)
+void words_swapped(void* p, const void* data, uint32_t bytes) {
+    const auto* src = static_cast<const uint8_t*>(data);
+    auto* dst = static_cast<uint32_t*>(p);
+    for (uint32_t i = 0; i + 4 <= bytes; i += 4) {
+        uint32_t w;
+        std::memcpy(&w, src + i, 4);
+        dst[i / 4] = __builtin_bswap32(w);
+    }
+}
 // a block of `size` bytes holding `data` (`bytes` of it; the rest left as it is: never read), each 32-bit word swapped (GX2 reads the
 // shaders' blocks as little-endian words), written out of the CPU's cache
 void* block_of(const void* data, uint32_t bytes, uint32_t size) {
     void* p = ring_alloc(size);
     if (p == nullptr) return nullptr;
-    const uint32_t n = std::min(bytes, size);
-    const auto* src = static_cast<const uint8_t*>(data);
-    auto* dst = static_cast<uint32_t*>(p);
-    for (uint32_t i = 0; i + 4 <= n; i += 4) {
-        uint32_t w;
-        std::memcpy(&w, src + i, 4);
-        dst[i / 4] = __builtin_bswap32(w);
-    }
+    words_swapped(p, data, std::min(bytes, size));
     GX2Invalidate(static_cast<GX2InvalidateMode>(GX2_INVALIDATE_MODE_CPU | GX2_INVALIDATE_MODE_UNIFORM_BLOCK), p, size);
     return p;
+}
+
+// The merged draws' frame data (mrpwm::Plan: the instances' slots, the run table, the frame's own indices), written once per frame
+// (the TV's call; the GamePad's reuses it) into a MEM2 ring of their own: nothing else allocates there between a frame's calls, so a
+// wrap - the GPU waited for first - happens only while a frame's data is written
+constexpr uint32_t kPlanRingBytes = 8u << 20;
+uint8_t* g_pring = nullptr;
+uint32_t g_pring_off = 0;
+uint64_t g_pring_wraps = 0;
+void* plan_alloc(uint32_t bytes, uint32_t align) {
+    uint32_t off = (g_pring_off + align - 1) & ~(align - 1);
+    if (bytes > kPlanRingBytes) return nullptr;
+    if (off + bytes > kPlanRingBytes) {
+        GX2DrawDone();
+        off = 0;
+        ++g_pring_wraps;
+    }
+    g_pring_off = off + bytes;
+    return g_pring + off;
 }
 
 // The tfrags' vertices / indices, a frame's appended to a ring in MEM2 of their own (as the blocks' ring: before it wraps over what the
@@ -183,16 +221,21 @@ void mem_free(void*& p) {
 
 // ---- the level's data on the GPU ----------------------------------------------------------------------------------------
 
-// its templates' vertices and indices (static for the level: copied once per level loaded)
+// its templates' vertices and indices (static for the level: copied once per level loaded). The vertices with their template run
+// (mrpwm::VertR, 32 bytes: mrpwm::level_build - the vertices two runs share copied after the level's), the indices twice: relative to
+// their template's first vertex (tidx: the per-draw path, a draw's offset its base vertex) and absolute (the merged draws')
+mrpwm::Level g_mlevel;  // (the CPU's copy: the frame's own indices are copied from it)
 struct Geometry {
     uint64_t loads = ~0ull;
     void* vb = nullptr;
     void* ib = nullptr;
+    void* ib_abs = nullptr;
     size_t v_count = 0, i_count = 0;
 } g_geo;
 void geo_free() {
     mem_free(g_geo.vb);
     mem_free(g_geo.ib);
+    mem_free(g_geo.ib_abs);
     g_geo = Geometry{};
 }
 void geo_sync(const mrpwb::LevelView& L) {
@@ -200,12 +243,17 @@ void geo_sync(const mrpwb::LevelView& L) {
     GX2DrawDone();  // (the old buffers may still be read)
     geo_free();
     g_geo.loads = L.loads;
-    const std::vector<mrpwb::TVert>& v = *L.tverts;
+    const auto t0 = std::chrono::steady_clock::now();
+    std::vector<mrpwb::TplRunInfo> runs;
+    mrpwb::level_runs(runs);
+    mrpwm::level_build(L, std::move(runs), g_mlevel);
+    const std::vector<mrpwm::VertR>& v = g_mlevel.verts;
     const std::vector<uint32_t>& ix = *L.tidx;
-    const uint32_t vbytes = static_cast<uint32_t>(v.size() * sizeof(mrpwb::TVert)), ibytes = static_cast<uint32_t>(ix.size() * sizeof(uint32_t));
+    const uint32_t vbytes = static_cast<uint32_t>(v.size() * sizeof(mrpwm::VertR)), ibytes = static_cast<uint32_t>(ix.size() * sizeof(uint32_t));
     g_geo.vb = mem_alloc(vbytes, GX2_VERTEX_BUFFER_ALIGNMENT);
     g_geo.ib = mem_alloc(ibytes, GX2_INDEX_BUFFER_ALIGNMENT);
-    if (g_geo.vb == nullptr || g_geo.ib == nullptr) {
+    g_geo.ib_abs = mem_alloc(ibytes, GX2_INDEX_BUFFER_ALIGNMENT);
+    if (g_geo.vb == nullptr || g_geo.ib == nullptr || g_geo.ib_abs == nullptr) {
         std::printf("[wiiu] mrp_world_gx2: no memory for the level's %zu template vertices / %zu indices\n", v.size(), ix.size());
         geo_free();
         g_geo.loads = L.loads;  // (not tried again every frame)
@@ -213,11 +261,16 @@ void geo_sync(const mrpwb::LevelView& L) {
     }
     if (vbytes > 0) std::memcpy(g_geo.vb, v.data(), vbytes);
     if (ibytes > 0) std::memcpy(g_geo.ib, ix.data(), ibytes);
+    if (ibytes > 0) std::memcpy(g_geo.ib_abs, g_mlevel.idx.data(), ibytes);
     GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, g_geo.vb, std::max<uint32_t>(vbytes, 4));
     GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, g_geo.ib, std::max<uint32_t>(ibytes, 4));
+    GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, g_geo.ib_abs, std::max<uint32_t>(ibytes, 4));
     g_geo.v_count = v.size();
     g_geo.i_count = ix.size();
-    std::printf("[wiiu] mrp_world_gx2: level %d: %zu template vertices (%u KB), %zu indices (%u KB)\n", L.id, v.size(), vbytes / 1024, ix.size(), ibytes / 1024);
+    std::printf("[wiiu] mrp_world_gx2: level %d: %zu template vertices (%zu copied for their runs; %u KB), %zu indices (%u KB, twice), %zu runs (%zu left out) "
+                "in %.1f ms\n",
+                L.id, v.size(), g_mlevel.copies, vbytes / 1024, ix.size(), ibytes / 1024, g_mlevel.first.size(), g_mlevel.bad,
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
     std::fflush(stdout);
 }
 
@@ -369,13 +422,17 @@ bool cols_make(uint32_t rows) {
     std::memset(s.image, 0, s.imageSize);
     return true;
 }
+// the R32UI texels' words byte-swapped (the resident colours', the run table's): RAC1_WIIU_WORLD_RCSWAP, debug bit 1024 the other order
+bool cols_swap() {
+    static const bool rcswap = std::getenv("RAC1_WIIU_WORLD_RCSWAP") == nullptr || std::atoi(std::getenv("RAC1_WIIU_WORLD_RCSWAP")) != 0;
+    return rcswap != ((g_debug & 1024) != 0);
+}
 // the colours' changes since the last call written (the whole table: a new level, its size changed, the byte order changed)
 void cols_sync() {
     mrpwb::ColoursView cv;
     mrpwb::colours_view(cv);
     const std::vector<uint32_t>& m = *cv.words;
-    static const bool rcswap = std::getenv("RAC1_WIIU_WORLD_RCSWAP") == nullptr || std::atoi(std::getenv("RAC1_WIIU_WORLD_RCSWAP")) != 0;
-    const bool swap = rcswap != ((g_debug & 1024) != 0);
+    const bool swap = cols_swap();
     const uint32_t rows = std::max<uint32_t>(1, static_cast<uint32_t>((m.size() + (1u << kColsLog2) - 1) >> kColsLog2));
     const bool all = cv.all || m.size() != g_cols.words || swap != g_cols.swapped || g_cols.tex.surface.image == nullptr;
     if (!all && cv.dirty->empty()) return;
@@ -434,11 +491,152 @@ struct TfragCache {
 uint64_t g_tris = 0;
 uint32_t g_draws_this_call = 0;
 uint64_t g_calls = 0, g_draws = 0, g_batches = 0, g_refused = 0, g_skipped = 0;
-double g_cpu_ms = 0.0;
+uint64_t g_cmds = 0, g_blocks = 0, g_merged_calls = 0;  // (the log's: the draw commands drawn, the uniform blocks written, the merged calls)
+double g_cpu_ms = 0.0, g_plan_ms = 0.0;
 // the tfrags' (the log per 120 calls): GX2 draws, triangles, batches, frames, the CPU route's time (ms: sum, most), vertices
 uint64_t g_tdraws = 0, g_ttris = 0, g_tbatches = 0, g_tframes = 0, g_tverts = 0, g_trefused = 0;
 double g_troute_ms = 0.0, g_troute_max = 0.0;
 uint64_t g_tlast_serial = ~0ull;
+
+// ---- the merged draws' frame (mrpwm::Plan) ------------------------------------------------------------------------------
+constexpr uint32_t kRunsLog2 = 10;  // (the run table: 1 << kRunsLog2 texels a row, 4 a run)
+struct Merged {
+    uint64_t serial = ~0ull, pwraps = ~0ull, loads = ~0ull;
+    int mode = -1, kinds = -1;
+    bool swap = false, ok = false;
+    mrpwm::Plan plan;
+    GX2Texture runs{};          // the run table (R32UI, linear): its image in the plan ring, a frame's
+    uint32_t runs_rows = 0;
+    std::vector<void*> blk;     // per item: its block (its first instance's slot)
+    std::vector<uint32_t> item_slot;
+    std::vector<int32_t> inst_slot;
+    std::vector<uint8_t> written;
+    void* own = nullptr;        // the frame's own indices
+} g_mg;
+
+// orig: (host) the frame's merged draws made and written (once per frame: false, none - the per-draw path draws this call): the plan
+// (mrpwm::plan_build), the run table (the runs drawn: their 4 words, swapped as the resident colours' - the same R32UI reads -), the
+// frame's own indices, the uniform blocks in one allocation: a slot per instance drawn alone (its InstGpu, the record's flag 1: the run
+// table's), per lone draw command (its record, flag 0: as the per-draw path), per instanced item its instances' slots in a row (the
+// previous item's reused when its instances are the same)
+bool merged_sync(const mrpwb::FrameView& F, int kinds, bool swap) {
+    Merged& G = g_mg;
+    if (G.ok && G.serial == F.serial && G.pwraps == g_pring_wraps && G.mode == g_merge && G.kinds == kinds && G.loads == g_geo.loads && G.swap == swap) return true;
+    const auto t0 = std::chrono::steady_clock::now();
+    G.ok = false;
+    G.serial = F.serial;
+    G.mode = g_merge;
+    G.kinds = kinds;
+    G.loads = g_geo.loads;
+    G.swap = swap;
+    const uint64_t wraps0 = g_pring_wraps;
+    mrpwm::Plan& P = G.plan;
+    mrpwm::plan_build(F, g_mlevel, kinds, g_merge, P);
+    const std::vector<mrpwb::InstGpu>& insts = *F.insts;
+    const std::vector<uint32_t>& cmds = *F.cmds;
+    const std::vector<mrpwb::DrawCmd>& draws = *F.draws;
+    // the run table
+    const uint32_t rows = std::max<uint32_t>(1, static_cast<uint32_t>((g_mlevel.first.size() * 4 + (1u << kRunsLog2) - 1) >> kRunsLog2));
+    GX2Texture& t = G.runs;
+    if (G.runs_rows != rows) {
+        t = GX2Texture{};
+        GX2Surface& rs = t.surface;
+        rs.dim = GX2_SURFACE_DIM_TEXTURE_2D;
+        rs.width = 1u << kRunsLog2;
+        rs.height = rows;
+        rs.depth = 1;
+        rs.mipLevels = 1;
+        rs.format = GX2_SURFACE_FORMAT_UINT_R32;
+        rs.aa = GX2_AA_MODE1X;
+        rs.use = GX2_SURFACE_USE_TEXTURE;
+        rs.tileMode = GX2_TILE_MODE_LINEAR_ALIGNED;
+        t.viewNumMips = 1;
+        t.viewNumSlices = 1;
+        t.compMap = GX2_COMP_MAP(GX2_SQ_SEL_R, GX2_SQ_SEL_0, GX2_SQ_SEL_0, GX2_SQ_SEL_1);
+        GX2CalcSurfaceSizeAndAlignment(&rs);
+        GX2InitTextureRegs(&t);
+        G.runs_rows = rows;
+    }
+    GX2Surface& rs = t.surface;
+    auto* img = static_cast<uint32_t*>(plan_alloc(rs.imageSize, std::max<uint32_t>(rs.alignment, GX2_UNIFORM_BLOCK_ALIGNMENT)));
+    if (img == nullptr) return false;
+    for (const uint32_t g : P.runs_used)
+        for (uint32_t k = 0; k < 4; ++k) {
+            const uint32_t i = 4 * g + k, w = P.table[i];
+            img[static_cast<size_t>(i >> kRunsLog2) * rs.pitch + (i & ((1u << kRunsLog2) - 1))] = swap ? __builtin_bswap32(w) : w;
+        }
+    GX2Invalidate(GX2_INVALIDATE_MODE_CPU_TEXTURE, img, rs.imageSize);
+    rs.image = img;
+    GX2InitTextureRegs(&t);
+    // the frame's own indices (big-endian u32, as the level's)
+    G.own = nullptr;
+    if (!P.idx.empty()) {
+        const uint32_t bytes = static_cast<uint32_t>(P.idx.size() * sizeof(uint32_t));
+        G.own = plan_alloc(bytes, GX2_INDEX_BUFFER_ALIGNMENT);
+        if (G.own == nullptr) return false;
+        std::memcpy(G.own, P.idx.data(), bytes);
+        GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, G.own, bytes);
+    }
+    // the blocks: the slots laid out, then written in one allocation
+    const size_t n = P.items.size();
+    G.item_slot.assign(n, 0);
+    G.inst_slot.assign(insts.size(), -1);
+    uint32_t nslots = 0;
+    size_t prev = ~size_t{0};  // (the previous instance item)
+    for (size_t k = 0; k < n; ++k) {
+        const mrpwm::Item& it = P.items[k];
+        if (it.lone) {
+            G.item_slot[k] = nslots++;
+            continue;
+        }
+        if (it.ninst == 1) {
+            int32_t& is = G.inst_slot[P.ilist[it.inst]];
+            if (is < 0) is = static_cast<int32_t>(nslots++);
+            G.item_slot[k] = static_cast<uint32_t>(is);
+        } else if (prev != ~size_t{0} && P.items[prev].ninst == it.ninst &&
+                   std::equal(P.ilist.begin() + it.inst, P.ilist.begin() + it.inst + it.ninst, P.ilist.begin() + P.items[prev].inst)) {
+            G.item_slot[k] = G.item_slot[prev];
+        } else {
+            G.item_slot[k] = nslots;
+            nslots += it.ninst;
+        }
+        prev = k;
+    }
+    auto* blocks = static_cast<uint8_t*>(nslots > 0 ? plan_alloc(nslots * kSlot, GX2_UNIFORM_BLOCK_ALIGNMENT) : nullptr);
+    if (nslots > 0 && blocks == nullptr) return false;
+    G.written.assign(nslots, 0);
+    auto put = [&](uint32_t slot, const mrpwb::InstGpu& inst, const uint32_t* rec) {
+        if (G.written[slot]) return;
+        G.written[slot] = 1;
+        DrawBlock d;
+        d.inst = inst;
+        std::memcpy(d.cmd, rec, sizeof d.cmd);
+        words_swapped(blocks + static_cast<size_t>(slot) * kSlot, &d, sizeof d);
+    };
+    G.blk.assign(n, nullptr);
+    for (size_t k = 0; k < n; ++k) {
+        const mrpwm::Item& it = P.items[k];
+        const uint32_t slot = G.item_slot[k];
+        G.blk[k] = blocks + static_cast<size_t>(slot) * kSlot;
+        if (it.lone) {
+            const uint32_t* rec = &cmds[8 * static_cast<size_t>(draws[it.inst].base_instance)];
+            put(slot, insts[rec[0]], rec);
+            continue;
+        }
+        for (uint32_t q = 0; q < it.ninst; ++q) {
+            const uint32_t i = P.ilist[it.inst + q];
+            const uint32_t rec[8] = {i, 0, 0, 0, 0, 1, 0, 0};
+            put(slot + q, insts[i], rec);
+        }
+    }
+    if (nslots > 0) GX2Invalidate(static_cast<GX2InvalidateMode>(GX2_INVALIDATE_MODE_CPU | GX2_INVALIDATE_MODE_UNIFORM_BLOCK), blocks, nslots * kSlot);
+    if (g_pring_wraps > wraps0 + 1) return false;  // (more than the ring in one frame: its first data overwritten)
+    G.pwraps = g_pring_wraps;
+    G.ok = true;
+    g_blocks += nslots;
+    g_plan_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    return true;
+}
 
 }  // namespace
 
@@ -627,18 +825,21 @@ bool mrp_world_gx2_init() {
     }
     // The template vertex's attributes (mrpwb::TVert, 28 bytes, written by the PPC: big-endian), read as integers (ivec4 / uvec4):
     // the 16-bit ones swapped within each 16 bits (8_IN_16), the 8-bit ones not swapped (byte 0 is X), as mrp_moby_gx2.cpp's
+    // (the vertex buffer holds mrpwm::VertR, 32 bytes: the TVert, then its run - a u32, swapped within its 32 bits, 8_IN_32)
     const auto s16x4 = static_cast<GX2AttribFormat>(GX2_ATTRIB_FLAG_SIGNED | GX2_ATTRIB_FLAG_INTEGER | GX2_ATTRIB_TYPE_16_16_16_16);
     const auto u8x4 = GX2_ATTRIB_FORMAT_UINT_8_8_8_8;
+    const auto u32x1 = static_cast<GX2AttribFormat>(GX2_ATTRIB_FLAG_INTEGER | GX2_ATTRIB_TYPE_32);
     struct A {
         const char* name;
         uint32_t offset;
         GX2AttribFormat format;
     };
     const A attrs[] = {
-        {"aPos", offsetof(mrpwb::TVert, pos), s16x4},
-        {"aDelta", offsetof(mrpwb::TVert, delta), s16x4},
-        {"aUv", offsetof(mrpwb::TVert, uv), s16x4},
-        {"aCol", offsetof(mrpwb::TVert, col), u8x4},
+        {"aPos", offsetof(mrpwm::VertR, v) + offsetof(mrpwb::TVert, pos), s16x4},
+        {"aDelta", offsetof(mrpwm::VertR, v) + offsetof(mrpwb::TVert, delta), s16x4},
+        {"aUv", offsetof(mrpwm::VertR, v) + offsetof(mrpwb::TVert, uv), s16x4},
+        {"aCol", offsetof(mrpwm::VertR, v) + offsetof(mrpwb::TVert, col), u8x4},
+        {"aRun", offsetof(mrpwm::VertR, run), u32x1},
     };
     g_sh.numAttributes = 0;
     const GX2VertexShader* vs = g_sh.vertexShader;
@@ -655,8 +856,8 @@ bool mrp_world_gx2_init() {
         s.format = a.format;
         s.type = GX2_ATTRIB_INDEX_PER_VERTEX;
         s.aluDivisor = 0;
-        s.mask = GX2_SEL_MASK(GX2_SQ_SEL_X, GX2_SQ_SEL_Y, GX2_SQ_SEL_Z, GX2_SQ_SEL_W);
-        s.endianSwap = a.format == u8x4 ? GX2_ENDIAN_SWAP_NONE : GX2_ENDIAN_SWAP_8_IN_16;
+        s.mask = a.format == u32x1 ? GX2_SEL_MASK(GX2_SQ_SEL_X, GX2_SQ_SEL_0, GX2_SQ_SEL_0, GX2_SQ_SEL_1) : GX2_SEL_MASK(GX2_SQ_SEL_X, GX2_SQ_SEL_Y, GX2_SQ_SEL_Z, GX2_SQ_SEL_W);
+        s.endianSwap = a.format == u8x4 ? GX2_ENDIAN_SWAP_NONE : a.format == u32x1 ? GX2_ENDIAN_SWAP_8_IN_32 : GX2_ENDIAN_SWAP_8_IN_16;
     }
     std::printf("[wiiu] mrp_world_gx2: %u attributes:", g_sh.numAttributes);
     for (uint32_t i = 0; i < g_sh.numAttributes; ++i) std::printf(" loc %u off %u fmt %#x", g_sh.attributes[i].location, g_sh.attributes[i].offset, g_sh.attributes[i].format);
@@ -684,11 +885,43 @@ bool mrp_world_gx2_init() {
             g_tex_loc = ps->samplerVars[i].location;
             g_tex_ok = true;
         }
-    for (uint32_t i = 0; i < vs->samplerVarCount; ++i)
+    for (uint32_t i = 0; i < vs->samplerVarCount; ++i) {
         if (std::strcmp(vs->samplerVars[i].name, "uCols") == 0) {
             g_cols_loc = vs->samplerVars[i].location;
             g_cols_ok = true;
         }
+        if (std::strcmp(vs->samplerVars[i].name, "uRuns") == 0) {
+            g_runs_loc = vs->samplerVars[i].location;
+            g_runs_ok = true;
+        }
+    }
+    {  // the merged draws' texture units (uTex, uT1..uT15)
+        int found = g_tex_ok ? 1 : 0;
+        g_unit_loc[0] = g_tex_loc;
+        for (uint32_t u = 1; u < 16; ++u) {
+            char name[8];
+            std::snprintf(name, sizeof name, "uT%u", u);
+            for (uint32_t i = 0; i < ps->samplerVarCount; ++i)
+                if (std::strcmp(ps->samplerVars[i].name, name) == 0) {
+                    g_unit_loc[u] = ps->samplerVars[i].location;
+                    ++found;
+                }
+        }
+        g_units_ok = found == 16;
+    }
+    // (testing, RAC1_WIIU_WORLD_MERGE=<n>: the ties' / shrubs' draws merged as mrpwm::Mode says - 0 one draw per draw command, as before)
+    if (const char* e = std::getenv("RAC1_WIIU_WORLD_MERGE")) g_merge = std::clamp(std::atoi(e), 0, 3);
+    if (g_merge > 0 && (!g_runs_ok || g_draw_loc.size < 2 * kSlot)) {
+        std::printf("[wiiu] mrp_world_gx2: the merged draws off: no run table / instance slots in the shaders\n");
+        g_merge = 0;
+    }
+    if (g_merge >= 2 && !g_units_ok) {
+        std::printf("[wiiu] mrp_world_gx2: the merged draws by unit only: the shaders lack the units' samplers\n");
+        g_merge = 1;
+    }
+    g_pring = g_merge > 0 ? static_cast<uint8_t*>(mem_alloc(kPlanRingBytes, GX2_UNIFORM_BLOCK_ALIGNMENT)) : nullptr;
+    g_pring_off = 0;
+    if (g_merge > 0 && g_pring == nullptr) g_merge = 0;
     g_ring = static_cast<uint8_t*>(mem_alloc(kRingBytes, GX2_UNIFORM_BLOCK_ALIGNMENT));
     const bool white = g_ring != nullptr && tex_make(g_white, 1, 1, 1, 1, GX2_TILE_MODE_LINEAR_ALIGNED);
     if (variant)
@@ -700,6 +933,8 @@ bool mrp_world_gx2_init() {
         tex_free_one(g_white);
         if (g_ring != nullptr) MEMFreeToDefaultHeap(g_ring);
         g_ring = nullptr;
+        if (g_pring != nullptr) MEMFreeToDefaultHeap(g_pring);
+        g_pring = nullptr;
         WHBGfxFreeShaderGroup(&g_sh);
         g_sh = WHBGfxShaderGroup{};
         return false;
@@ -726,7 +961,7 @@ bool mrp_world_gx2_init() {
     const char* pj = std::getenv("RAC1_WIIU_WORLD_PROJ");
     g_mrp_world_projection = pj != nullptr && std::strcmp(pj, "vu") == 0 ? 1 : 0;
     g_ready = true;
-    std::printf("[wiiu] mrp_world_gx2: up (blocks: frame %u draw %u pixel %u bytes)\n", g_frame_loc.size, g_draw_loc.size, g_pixel_loc.size);
+    std::printf("[wiiu] mrp_world_gx2: up (blocks: frame %u draw %u pixel %u bytes; merged draws: mode %d)\n", g_frame_loc.size, g_draw_loc.size, g_pixel_loc.size, g_merge);
     tfrag_init();
     return true;
 }
@@ -741,6 +976,10 @@ void mrp_world_gx2_shutdown() {
     tex_free_one(g_white);
     MEMFreeToDefaultHeap(g_ring);
     g_ring = nullptr;
+    if (g_pring != nullptr) MEMFreeToDefaultHeap(g_pring);
+    g_pring = nullptr;
+    g_mg = Merged{};
+    g_mlevel = mrpwm::Level{};
     g_cache = Cache{};
     tfrag_free();
     WHBGfxFreeShaderGroup(&g_sh);
@@ -813,11 +1052,20 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         fb.mode[0] = (g_debug & 4) != 0 ? 0 : F.mode;
         fb.mode[1] = (g_debug & 16) != 0 ? 1 : 0;
         fb.mode[2] = static_cast<int32_t>(kColsLog2);
+        fb.mode2[0] = g_merge >= mrpwm::kInstanced ? 1 : 0;  // (a draw of one instance: gl_InstanceID 0, its first slot either way)
+        fb.mode2[1] = static_cast<int32_t>(kRunsLog2);
         return block_of(&fb, sizeof fb, g_frame_loc.size);
     };
     if (g_cache.frame == nullptr) g_cache.frame = frame_block();
     if (g_cache.frame == nullptr) return;
     const int mode = (g_debug & 4) != 0 ? 0 : F.mode;
+    // the merged draws (mrp_world_merge.inc), made by the frame's first call; the per-draw path when they are off
+    // (RAC1_WIIU_WORLD_MERGE=0), not made, or for the debug modes that draw by the template's base vertex (bits 32, 256)
+    int kinds = 3;  // (the debug modes' ties / shrubs alone)
+    if ((g_debug & 64) != 0) kinds &= 1;
+    if ((g_debug & 8) != 0) kinds &= 2;
+    const bool merged = g_merge > 0 && (g_debug & (256 | 32)) == 0 && merged_sync(F, kinds, cols_swap());
+    if (merged) ++g_merged_calls;
 
     // the tfrags' data (mrpwb::FrameView::tf_*: the CPU route's output), sent by the frame's first call: its vertices / indices into the
     // geometry ring (one allocation), its frame block (the world renderers' view-projection, as the PC's set_frame_uniforms reads it).
@@ -878,7 +1126,7 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
     GX2SetRasterizerClipControlEx(TRUE, mode == 1 ? FALSE : TRUE, FALSE);  // (the VU projection: the GL backend's depth clamp)
     // (testing, debug bit 256: the template's first vertex given by the attribute buffer's address instead of the draw's offset)
     const bool by_address = (g_debug & 256) != 0;
-    const uint32_t vbytes = static_cast<uint32_t>(g_geo.v_count * sizeof(mrpwb::TVert));
+    const uint32_t vbytes = static_cast<uint32_t>(g_geo.v_count * sizeof(mrpwm::VertR));
     const auto none = static_cast<GX2ChannelMask>(0);
     auto set_mask = [&](GX2ChannelMask m) { GX2SetTargetChannelMasks(m, none, none, none, none, none, none, none); };
     set_mask(GX2_CHANNEL_MASK_RGBA);
@@ -888,6 +1136,7 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
     int path = -1;
     int cur_bucket = -2;
     uint32_t cur_sampler = ~0u;
+    int units_epoch = -3;  // (the merged draws' units bound: the batch epoch's; -3 none)
     PixelBlock last_px{};
     const void* last_px_blk = nullptr;
     uint64_t last_px_wraps = 0;
@@ -905,17 +1154,22 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         path = want;
         cur_bucket = -2;  // (the texture, sampler and pixel block bound again: the other shader's locations, its block's size)
         cur_sampler = ~0u;
+        units_epoch = -3;
         last_px_blk = nullptr;
         if (want == 0) {
             GX2SetShaderMode(g_sh.vertexShader->mode);
             GX2SetFetchShader(&g_sh.fetchShader);
             GX2SetVertexShader(g_sh.vertexShader);
             GX2SetPixelShader(g_sh.pixelShader);
-            if (!by_address) GX2SetAttribBuffer(0, vbytes, sizeof(mrpwb::TVert), g_geo.vb);
+            if (!by_address) GX2SetAttribBuffer(0, vbytes, sizeof(mrpwm::VertR), g_geo.vb);
             if (g_frame_loc.found) GX2SetVertexUniformBlock(g_frame_loc.loc, g_frame_loc.size, g_cache.frame);
             if (g_cols_ok) {
                 GX2SetVertexTexture(&g_cols.tex, g_cols_loc);
                 GX2SetVertexSampler(&g_cols_sampler, g_cols_loc);
+            }
+            if (g_runs_ok) {  // (the per-draw path never reads it: the colours' texture in its place)
+                GX2SetVertexTexture(merged ? &g_mg.runs : &g_cols.tex, g_runs_loc);
+                GX2SetVertexSampler(&g_cols_sampler, g_runs_loc);
             }
         } else {
             GX2SetShaderMode(g_tsh.vertexShader->mode);
@@ -969,11 +1223,12 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         if (blk == nullptr) {
             DrawBlock d;
             d.inst = I;
-            std::memcpy(d.cmd, rec, sizeof d.cmd);
-            blk = block_of(&d, sizeof d, g_draw_loc.size);
+            std::memcpy(d.cmd, rec, sizeof d.cmd);  // (cmd[5] 0: this record, not the run table's)
+            blk = block_of(&d, sizeof d, kSlot);
+            ++g_blocks;
         }
         if (blk == nullptr) return;
-        if (g_draw_loc.found) GX2SetVertexUniformBlock(g_draw_loc.loc, g_draw_loc.size, blk);
+        if (g_draw_loc.found) GX2SetVertexUniformBlock(g_draw_loc.loc, kSlot, blk);
         if (stage < 4) return;
         if ((g_debug & 2048) != 0 && g_draws_this_call++ > 0) return;  // (testing: one draw a call)
         static bool dumped = false;
@@ -981,12 +1236,12 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
             dumped = true;
             const uint32_t* ix = static_cast<const uint32_t*>(g_geo.ib) + c.first_index;
             const uint32_t v0 = static_cast<uint32_t>(c.base_vertex) + ix[0];
-            const uint8_t* v = static_cast<const uint8_t*>(g_geo.vb) + static_cast<size_t>(v0) * sizeof(mrpwb::TVert);
+            const uint8_t* v = static_cast<const uint8_t*>(g_geo.vb) + static_cast<size_t>(v0) * sizeof(mrpwm::VertR);
             std::printf("[wiiu] mrp_world_gx2: first draw: %u indices from %u (%u %u %u) + base %d, record %08x %08x %08x %08x %08x, instance rows T %g %g %g %g, "
                         "morph %g %g %g %g, info %u %u %u %u; vertex %u:",
                         c.count, c.first_index, ix[0], ix[1], ix[2], c.base_vertex, rec[0], rec[1], rec[2], rec[3], rec[4], I.rows[12], I.rows[13], I.rows[14], I.rows[15],
                         I.morph[0], I.morph[1], I.morph[2], I.morph[3], I.info[0], I.info[1], I.info[2], I.info[3], v0);
-            for (size_t k = 0; k < sizeof(mrpwb::TVert); ++k) std::printf(" %02x", v[k]);
+            for (size_t k = 0; k < sizeof(mrpwm::VertR); ++k) std::printf(" %02x", v[k]);
             const uint8_t ci = v[24];
             const size_t at = static_cast<size_t>(I.info[0]) + ci;
             const uint32_t* colw = static_cast<const uint32_t*>(g_cols.tex.surface.image);
@@ -995,8 +1250,8 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
             std::fflush(stdout);
         }
         if (by_address) {
-            GX2SetAttribBuffer(0, vbytes - static_cast<uint32_t>(c.base_vertex) * sizeof(mrpwb::TVert), sizeof(mrpwb::TVert),
-                               static_cast<uint8_t*>(g_geo.vb) + static_cast<size_t>(c.base_vertex) * sizeof(mrpwb::TVert));
+            GX2SetAttribBuffer(0, vbytes - static_cast<uint32_t>(c.base_vertex) * sizeof(mrpwm::VertR), sizeof(mrpwm::VertR),
+                               static_cast<uint8_t*>(g_geo.vb) + static_cast<size_t>(c.base_vertex) * sizeof(mrpwm::VertR));
             GX2DrawIndexedEx(GX2_PRIMITIVE_MODE_TRIANGLES, c.count, GX2_INDEX_TYPE_U32, static_cast<const uint32_t*>(g_geo.ib) + c.first_index, 0, 1);
         } else if ((g_debug & 32) != 0) {
             GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, c.count, static_cast<uint32_t>(c.base_vertex), 1);
@@ -1005,7 +1260,65 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
                              static_cast<uint32_t>(c.base_vertex), 1);
         }
         ++g_draws;
+        ++g_cmds;
         g_tris += c.count / 3;
+    };
+    // the merged draws: a batch's texture units all bound (mrpwm::kUnits and up: the pixel shader samples the triangle's unit; unit 0 and
+    // the units the epoch lacks the white texture), when the batch's epoch is not the one bound
+    auto bind_units = [&](const mrpwb::Batch& b) {
+        if (b.epoch == units_epoch) return;
+        units_epoch = b.epoch;
+        for (uint32_t u = 0; u < 16; ++u) {
+            int bucket = -1;
+            uint32_t sampler = 0;
+            if (u != 0 && b.epoch >= 0 && static_cast<size_t>(b.epoch) < epochs.size() && u - 1 < epochs[static_cast<size_t>(b.epoch)].size()) {
+                bucket = epochs[static_cast<size_t>(b.epoch)][u - 1].first;
+                sampler = epochs[static_cast<size_t>(b.epoch)][u - 1].second & 15u;
+            }
+            const GX2Texture* t = bucket >= 0 && static_cast<size_t>(bucket) < g_tex.arrays.size() && g_tex.arrays[static_cast<size_t>(bucket)].surface.image != nullptr
+                                      ? &g_tex.arrays[static_cast<size_t>(bucket)]
+                                      : &g_white;
+            GX2SetPixelTexture(t, g_unit_loc[u]);
+            GX2SetPixelSampler(&g_samplers[sampler], g_unit_loc[u]);
+        }
+        cur_bucket = -2;  // (unit 0's slot is bind_unit's too)
+        cur_sampler = ~0u;
+    };
+    // a batch's merged items (mrpwm::Plan): per item its block (its instances' slots; a lone command's own), its texture (mrpwm::kByUnit:
+    // the item's unit bound), one GX2DrawIndexedEx - absolute indices (the level's or the frame's own) and its instances, or a lone
+    // command's relative ones from its template's first vertex
+    auto draw_items = [&](const mrpwb::Batch& b, size_t bi) {
+        const mrpwm::Plan& P = g_mg.plan;
+        if (bi + 1 >= P.batch_items.size()) return;
+        for (uint32_t k = P.batch_items[bi]; k < P.batch_items[bi + 1]; ++k) {
+            const mrpwm::Item& it = P.items[k];
+            if (g_merge == mrpwm::kByUnit) bind_unit(b, it.unit);
+            if (g_draw_loc.found) GX2SetVertexUniformBlock(g_draw_loc.loc, (it.lone ? 1u : it.ninst) * kSlot, g_mg.blk[k]);
+            if (stage < 4) continue;
+            if ((g_debug & 2048) != 0 && g_draws_this_call++ > 0) return;  // (testing: one draw a call)
+            static bool dumped = false;
+            if (!dumped && !it.lone && it.count >= 3) {  // (the first merged draw's data, on the log: what the GPU reads)
+                dumped = true;
+                const uint32_t* ix = (it.own ? P.idx.data() : g_mlevel.idx.data()) + it.first;
+                const mrpwm::VertR& v = g_mlevel.verts[ix[0]];
+                const uint32_t* t = &P.table[4 * static_cast<size_t>(v.run)];
+                std::printf("[wiiu] mrp_world_gx2: first merged draw: %u indices from %u%s (%u %u %u), %u instances from %u, %u commands, unit %u; vertex %u: run %u, "
+                            "its record %08x %08x %08x %08x\n",
+                            it.count, it.first, it.own ? " (the frame's)" : "", ix[0], ix[1], ix[2], it.ninst, P.ilist[it.inst], it.cmds, it.unit, ix[0], v.run, t[0], t[1], t[2],
+                            t[3]);
+                std::fflush(stdout);
+            }
+            if (it.lone) {
+                GX2DrawIndexedEx(GX2_PRIMITIVE_MODE_TRIANGLES, it.count, GX2_INDEX_TYPE_U32, static_cast<const uint32_t*>(g_geo.ib) + it.first, static_cast<uint32_t>(it.base), 1);
+                g_tris += it.count / 3;
+            } else {
+                const auto* ib = static_cast<const uint32_t*>(it.own ? g_mg.own : g_geo.ib_abs);
+                GX2DrawIndexedEx(GX2_PRIMITIVE_MODE_TRIANGLES, it.count, GX2_INDEX_TYPE_U32, ib + it.first, 0, it.ninst);
+                g_tris += static_cast<uint64_t>(it.count / 3) * it.ninst;
+            }
+            ++g_draws;
+            g_cmds += it.cmds;
+        }
     };
     // a tfrag batch's triangles: one indexed draw per run of one texture unit (mrpwb::TfragRange, from `r0`: the batch's first), its
     // texture bound first; the frame's tfrag vertices absolute (base vertex 0). (testing, tfrag debug bit 4: the batch in one draw, its
@@ -1105,11 +1418,15 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         pb.a[1] = shade;
         pb.a[2] = (rk.fogcol >> 24) & 1 ? 1 : 0;
         pb.a[3] = grey ? 1 : 0;
+        const bool items = merged && !b.tfrag;
+        pb.b[0] = items && g_merge >= mrpwm::kUnits ? 1 : 0;
+        if (items && g_merge >= mrpwm::kUnits) bind_units(b);
         // pass 1: the passing pixels of the draws whose alpha test is on (their mode in draw_flags), every pixel of the others
         GX2SetDepthOnlyControl(ztest ? TRUE : FALSE, ztest && zwrite ? TRUE : FALSE, zf);
         pb.a[0] = 1;
         set_pixel(pb);
         if (b.tfrag) draw_tfrag(b, bi, r0);
+        else if (items) draw_items(b, bi);
         else
             for (uint32_t i = b.first; i < b.first + b.count; ++i) draw_one(b, i);
         // pass 2: the failing ones as AFAIL says (RKey::pass2: 1 FB_ONLY the colour with alpha, 2 ZB_ONLY the depth, 3 RGB_ONLY the
@@ -1121,6 +1438,7 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
             pb.a[0] = 2;
             set_pixel(pb);
             if (b.tfrag) draw_tfrag(b, bi, r0);
+            else if (items) draw_items(b, bi);
             else
                 for (uint32_t i = b.first; i < b.first + b.count; ++i) draw_one(b, i);
             set_mask(GX2_CHANNEL_MASK_RGBA);
@@ -1138,10 +1456,13 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
 
     g_cpu_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     if (g_calls % 120 == 0) {  // (the log: what was drawn, the CPU's time in these calls)
-        std::printf("[wiiu] mrp_world_gx2: last 120 calls: %.1f draws, %.1f triangles, %.1f batches, %.2f ms CPU a call; %llu batches refused, %llu skipped (not "
-                    "the GPU path's); %zu instances\n",
-                    static_cast<double>(g_draws) / 120.0, static_cast<double>(g_tris) / 120.0, static_cast<double>(g_batches) / 120.0, g_cpu_ms / 120.0,
-                    static_cast<unsigned long long>(g_refused), static_cast<unsigned long long>(g_skipped), insts.size());
+        std::printf("[wiiu] mrp_world_gx2: last 120 calls: %.1f draw commands, %.1f GX2 draws (merged: mode %d, %llu calls), %.1f triangles, %.1f uniform blocks "
+                    "written, %.1f batches, %.2f ms CPU a call (the merge's plan and writing %.2f); %llu batches refused, %llu skipped (not the GPU path's); %zu "
+                    "instances; the last plan: %zu items, %zu instanced (%zu instances), %zu lone (%zu conflicts), %zu indices copied\n",
+                    static_cast<double>(g_cmds) / 120.0, static_cast<double>(g_draws) / 120.0, g_merge, static_cast<unsigned long long>(g_merged_calls),
+                    static_cast<double>(g_tris) / 120.0, static_cast<double>(g_blocks) / 120.0, static_cast<double>(g_batches) / 120.0, g_cpu_ms / 120.0,
+                    g_plan_ms / 120.0, static_cast<unsigned long long>(g_refused), static_cast<unsigned long long>(g_skipped), insts.size(), g_mg.plan.items.size(),
+                    g_mg.plan.instanced, g_mg.plan.instanced_insts, g_mg.plan.conflicts + g_mg.plan.unmatched, g_mg.plan.conflicts, g_mg.plan.copied);
         if (g_tready)
             std::printf("[wiiu] mrp_world_gx2: tfrag, last 120 calls: %.1f draws, %.1f triangles, %.1f batches; %llu frames: %.0f vertices, the CPU route %.2f ms "
                         "(the most %.2f ms); geometry ring wraps %llu\n",
@@ -1149,7 +1470,8 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
                         static_cast<unsigned long long>(g_tframes), g_tframes != 0 ? static_cast<double>(g_tverts) / static_cast<double>(g_tframes) : 0.0,
                         g_tframes != 0 ? g_troute_ms / static_cast<double>(g_tframes) : 0.0, g_troute_max, static_cast<unsigned long long>(g_gring_wraps));
         std::fflush(stdout);
-        g_draws = g_batches = g_tris = 0;
+        g_draws = g_batches = g_tris = g_cmds = g_blocks = g_merged_calls = 0;
+        g_plan_ms = 0.0;
         g_tdraws = g_ttris = g_tbatches = g_tframes = g_tverts = 0;
         g_troute_ms = g_troute_max = 0.0;
         g_cpu_ms = 0.0;

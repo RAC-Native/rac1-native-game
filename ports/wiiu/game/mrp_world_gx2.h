@@ -27,7 +27,8 @@
 // Drawn, in the frame's batch order: the tfrags' GPU path batches (shaders/mrp_tfrag.gsh: the compute program's vertices as the CPU
 // makes them, one GX2DrawIndexedEx per run of one texture unit, its texture array bound before it), then the ties' / shrubs' (tie A /
 // shrub A templates, one GX2DrawIndexedEx per draw command with the draw's instance and record as a uniform block, its texture array
-// bound per draw, the resident lit colours an R32UI texture the vertex shader reads with texelFetch), in the world's projection (mode 0:
+// bound per draw - or, by default, those draws merged: RAC1_WIIU_WORLD_MERGE below -, the resident lit colours an R32UI texture the
+// vertex shader reads with texelFetch), in the world's projection (mode 0:
 // the clip matrices, the tfrags' world points through the view-projection). Not drawn: the CPU path's triangles (none from the host's
 // paths), the sky and the shrub far variants (phase 5), the drop shadows, the modern lighting.
 //
@@ -61,7 +62,11 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
 // (the whole table sent again), 2048 one draw a call, 4096 the vertices' colours alone, 8192 the textures alone)
 // (also testing: RAC1_WIIU_WORLD_STAGE=<n> how far a call goes - 0 / 1 nothing, 2 the level's textures made, 3 its geometry and
 // colours sent and the state set, no draws, 4 (the default) everything; RAC1_WIIU_WORLD_GSH=<file> another build of the shaders;
-// RAC1_WIIU_WORLD_RCSWAP=0 the resident colours' words as the PPC holds them (byte-swapped by default); RAC1_WIIU_WORLD_PROJ=vu
+// RAC1_WIIU_WORLD_RCSWAP=0 the resident colours' words (and the run table's) as the PPC holds them (byte-swapped by default);
+// RAC1_WIIU_WORLD_MERGE=<n> the ties' / shrubs' draw commands merged (mrp_world_merge.inc): 0 one GX2 draw per command (the per-draw
+// path, as before), 1 an instance's consecutive commands of one texture unit one draw, 2 of any unit (the batch's units bound at once),
+// 3 (the default) and consecutive instances drawing the same commands one instanced draw (gl_InstanceID) - the debug bits 32 and 256
+// take the per-draw path; RAC1_WIIU_WORLD_PROJ=vu
 // the game's VU1 projection (mode 1); RAC1_WIIU_ZCLEAR=0 (wiiu_gfx.cpp) the depth not
 // cleared before the world)
 // (the tfrags', testing: RAC1_WIIU_TFRAG=0 none made nor drawn; RAC1_WIIU_TFRAG_DEBUG=<m>[,<m>...] / RAC1_WIIU_TFRAG_DEBUG_AT the

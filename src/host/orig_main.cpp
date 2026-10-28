@@ -151,6 +151,7 @@ bool rac1_wiiu_picture();                           // ports/wiiu/game/wiiu_gfx.
 // (the frame's 2D for the picture: the game's frame size, its page, the page not drawn in a fade; `replica`: the GS replica walked
 // the frame's chain (RAC1_WIIU_REPLICA=1), its primitives drawn; nullptr: the MRP's chain reader read it, mrp_chain_frame drawn)
 void rac1_wiiu_picture_frame(const rac1::gs::Gs* replica, float fb_w, float fb_h, int screen_fbp, int skip_fbp, uint64_t game_frame);
+void rac1_wiiu_time(int slot, double ms);  // (testing, RAC1_WIIU_TIMING: a stage's time of the host frame - wiiu_gfx.cpp)
 #endif
 namespace rac1 {
 extern bool g_world_pass_ranges_on;  // src/game/ovl/overlay_entry.cpp: the world passes' chain ranges noted
@@ -3195,7 +3196,13 @@ int main(int argc, char** argv) {
                         for (const rac1::gs::Gs::SkipRange& r : skips)
                             ci.skips.push_back(MrpChainInput::Skip{r.first, r.last, static_cast<uint32_t>(r.mscals.size()), r.host_3d, r.moby, true});
                         ci.regs_tag = world_first;
+#if defined(__WIIU__)
+                        const auto tc = std::chrono::steady_clock::now();
+#endif
                         mrp_chain_start(std::move(ci), chain_async);
+#if defined(__WIIU__)
+                        rac1_wiiu_time(0, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tc).count());
+#endif
                     }
                 } else if (!replica) {
                     mrp_chain_clear();
@@ -3264,10 +3271,14 @@ int main(int argc, char** argv) {
                     mrp_moby_begin_frame((title && !boot_in_title() && !flight) || (exiting && !flight) || movie || fade || vendor_pic, menu_mode,
                                          title && mrp_title_menu_drawn());
                     rac1::gs::Viewport mgv;
+                    const auto tm0 = std::chrono::steady_clock::now();
                     if (mrp_moby_active()) mrp_moby_prepare(&mgv);
+                    const auto tm1 = std::chrono::steady_clock::now();
+                    rac1_wiiu_time(1, std::chrono::duration<double, std::milli>(tm1 - tm0).count());
                     // the MRP world's ties / shrubs (ports/wiiu/game/mrp_world_gx2.h): the host-made static path's frame, on a frame
                     // whose world is drawn (mrp_world_begin_frame_async's condition on the PC)
                     mrp_world_wiiu_prepare(!movie && (flight || ((title ? boot_in_title() : !menu_mode) && !exiting)) && !fade && !vendor_pic);
+                    rac1_wiiu_time(2, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tm1).count());
                 }
                 const int screen_fbp = static_cast<int>(lwu(0x0013cf20) & 0x1ff);
                 rac1_wiiu_picture_frame(replica ? &gs : nullptr, static_cast<float>(lhu(0x001518d0)), static_cast<float>(lhu(0x001518d2)), screen_fbp, fade ? screen_fbp : -1,
