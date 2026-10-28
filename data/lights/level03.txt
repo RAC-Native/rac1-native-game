@@ -41,7 +41,5 @@ material tfrag 0 tex 11 metal 0.46 1
 material shrub 218 tex 0 metal 0.45 1
 material moby 71 tex 0 metal 0.35 1
 emissive shrub 283 tex 0  1.31 0.00
-# Options > Graphics > Foliage, Grass (docs/materials.md): the garden at the start - its planters' plants, the lawn
-material tie 880 tex 3 foliage 0.8 1 1
-material shrub 210 tex 1 foliage 1 1 1
+# Options > Graphics > Grass (docs/materials.md): the garden at the start's lawn
 material tfrag 0 tex 23 grass

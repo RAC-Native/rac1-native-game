@@ -1280,7 +1280,7 @@ void tab_sun() {
 }
 // orig: (host) the Enhancements tab (Daino's request: every enhancement switched on and off at once, to compare and to profile): the
 // live switches of the modern lighting, the shadows, the lights, the occlusion, the rays, the materials, the emissive surfaces, the
-// ambient particles (by kind) and the water, foliage and grass, each with its profiler stage's GPU / CPU time beside it (the last 60
+// ambient particles (by kind) and the water and grass, each with its profiler stage's GPU / CPU time beside it (the last 60
 // frames; the tab keeps the profiler recording while it is shown). For this run only: "Save as my settings" makes them the player's
 // preferences (Options > Graphics)
 void tab_enhancements() {
@@ -1322,7 +1322,7 @@ void tab_enhancements() {
         g_sun_rays = 0;
         g_surface_detail = 0;
         g_ambient_particles = 0;
-        g_water = g_foliage = g_grass = 0;
+        g_water = g_grass = 0;
     }
     ImGui::SameLine();
     if (ImGui::Button("All on (High)")) {
@@ -1338,7 +1338,7 @@ void tab_enhancements() {
         g_surface_detail = 2;
         g_emissive = 1;
         g_ambient_particles = 2;
-        g_water = g_foliage = g_grass = 2;
+        g_water = g_grass = 2;
     }
     ImGui::SameLine();
     ImGui::TextDisabled(sum.gpu_frames > 0 ? "frame: GPU %.2f ms" : "frame: -", sum.gpu_busy);
@@ -1391,9 +1391,6 @@ void tab_enhancements() {
     combo("Water##en", &g_water, olh, 3);
     ms(prof::kWater);
     ImGui::TextDisabled("   Low: normal maps, Fresnel, glints, depth, foam; High: + the scene's reflection, refraction (the material \"water\", \"lava\", \"quicksand\")");
-    combo("Foliage##en", &g_foliage, olh, 3);
-    in_world();
-    ImGui::TextDisabled("   Low: wind sway, the sun through the leaves; High: + the cut-outs' coverage and edges (the material \"foliage\")");
     combo("Grass##en", &g_grass, olh, 3);
     ms(prof::kGrass);
     if (g_grass != 0) {
@@ -1767,13 +1764,11 @@ void emis_in_hand() {
                         if (ImGui::IsItemHovered()) ImGui::SetTooltip("\"depth d\": how many units of water before it is opaque and dark");
                         if (g_water == 0) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Water is Off (Options > Graphics, or the Enhancements tab): these are not drawn.");
                     }
-                    if (e.type == MAT_FOLIAGE && g_foliage == 0)
-                        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Foliage is Off (Options > Graphics, or the Enhancements tab): the material is not drawn.");
-                    else if (e.type == MAT_GRASS && g_grass == 0)
+                    if (e.type == MAT_GRASS && g_grass == 0)
                         ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Grass is Off (Options > Graphics, or the Enhancements tab): the material is not drawn.");
                     else if (e.type == MAT_GRASS && e.kind != 0)
                         ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Grass grows on tfrag textures only (the terrain).");
-                    else if (g_surface_detail == 0 && e.type < MAT_FOLIAGE && !(g_water > 0 && (e.type == MAT_WATER || e.type == MAT_LAVA || e.type == MAT_QUICKSAND)))
+                    else if (g_surface_detail == 0 && e.type < MAT_GRASS && !(g_water > 0 && (e.type == MAT_WATER || e.type == MAT_LAVA || e.type == MAT_QUICKSAND)))
                         ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Surface Detail is Off: the material is not drawn.");
                 }
                 if (ch) g_light_dirty = true;

@@ -1069,8 +1069,7 @@ does not turn the lighting on; Experimental does (Lighting High, Dynamic Shadows
 | AO Intensity | 25 to 125 % | 75 % | the occlusion's darkness: each mode's strength scaled (`ao_intensity` in the preferences, item 47 of a save's block); see [Ambient occlusion](#ambient-occlusion) |
 | Sun Rays | Off, Low, Medium, High | Off | light shafts from the sun through openings, each step more quality and strength (`sun_rays_quality`, item 49; `sun_rays` and item 46 until 0.4.x read with Low as Medium); see [Sun rays](#sun-rays) |
 | Surface Detail | Off, Low, High | Off | the surfaces' materials (metal, wet, puddle, lava, water, mud, quicksand) tagged in the level's file; High adds the reflections and the lava's heat shimmer (`surface_detail`, item 51); see [Materials](materials.md) |
-| Water | Off, Low, High | Off | the tagged water, lava and quicksand: normal maps, Fresnel, glints, depth, foam; High: the scene's reflection and the refraction (`water`, item 52); see [Materials](materials.md#water-foliage-and-grass) |
-| Foliage | Off, Low, High | Off | the tagged plants' wind sway and the sun through their leaves; High: the cut-outs' coverage and edges (`foliage`, item 53) |
+| Water | Off, Low, High | Off | the tagged water, lava and quicksand: normal maps, Fresnel, glints, depth, foam; High: the scene's reflection and the refraction (`water`, item 52); see [Materials](materials.md#water-and-grass) |
 | Grass | Off, Low, High | Off | the tagged ground's blades: a detail relief (Low), and a few very low shells near the camera (High) (`grass`, item 54) |
 
 The other rows take effect only when Lighting is not Original. The debug menu's **Enhancements** tab switches all of them live

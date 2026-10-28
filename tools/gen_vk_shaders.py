@@ -1607,7 +1607,7 @@ layout(push_constant) uniform Push {
 // (128 bytes, the least maxPushConstantsSize there is - Intel's: the alpha test's pass in the fog colour's spare w, #113)
 #define uFogCol (uFogCol_Pad.xyz)
 #define uAtPass floatBitsToInt(uFogCol_Pad.w)
-#define uShell floatBitsToInt(uFrame.w)  /* (Options > Graphics > Grass: the shell drawn, k + 256 n; 0 the ground - the frame's spare w) */
+#define uShell floatBitsToInt(uFrame.w)  /* (Options > Graphics > Grass: the shell drawn, k + 256 n; a probe < 0; 0 the ground - the frame's spare w) */
 """
 
 MRP_WORLD_VS_BODY = """
@@ -1736,11 +1736,7 @@ void main() {
     vStq = uv;
     vLodQ = uv.z * Q;
     if (uMode == 0) {
-#ifdef SH_POINTS
-        gl_Position = sh_clip(sh_sway(I.clip * vec4(P, 1.0), I.clip * vec4(0.0, 0.0, 0.0, 1.0), cmd.y));
-#else
         gl_Position = sh_clip(I.clip * vec4(P, 1.0));
-#endif
     } else {
         vShWorld = vec3(0.0);
         gl_ClipDistance[0] = 1.0;
@@ -1781,10 +1777,13 @@ void main() {
     vec4 c = uIip != 0 ? vColor : vFlat;
 #ifdef SH_POINTS
     vec3 c_game = c.rgb;
-#endif
+    float gk = uShell > 0 ? sm_grass((vTex.x >> 25) & 127u, uShell & 255, uShell >> 8) : 1.0;  // (Grass: a shell's blade, -1 none)
+    if (uShell >= 0 && gk >= 0.0) {
+        c.rgb = sh_apply(c.rgb);
+        c.rgb = sh_points(c.rgb);
+    }
+#else
     c.rgb = sh_apply(c.rgb);
-#ifdef SH_POINTS
-    c.rgb = sh_points(c.rgb);
 #endif
     vec4 o = c;
     uint w = vTex.x;
@@ -1826,13 +1825,20 @@ void main() {
         else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_POINTS
-        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 25) & 127u);
-        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 25) & 127u);
-        if (uShell != 0 && !sm_grass(o.rgb, (w >> 25) & 127u, uShell & 255, uShell >> 8)) discard;
-        if (uAte != 0) o.a = sh_foliage_alpha(o.a, (w >> 25) & 127u, st, float(uAref) / 255.0);
+        if (uShell >= 0) {
+            o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 25) & 127u);
+            o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 25) & 127u);
+        }
+        if (uShell > 0) {
+            if (gk < 0.0) discard;
+            o.rgb *= gk;
+        }
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }
+#ifdef SH_POINTS
+    if (uShell < 0 && !sm_grass_probe((w >> 25) & 127u, min(o.a * (255.0 / 128.0), 1.0), uShell)) discard;  // (the grass's stencil)
+#endif
     if (uShade == 1) o.rgb = c.rgb;
     else if (uShade == 3) o.rgb = vec3(0.8);
     o = clamp(o, 0.0, 1.0);
