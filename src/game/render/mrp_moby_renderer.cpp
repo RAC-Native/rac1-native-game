@@ -1588,6 +1588,7 @@ struct Frame {
         uint32_t joint_first = 0, joint_count = 0;
         glm::vec3 centre{0.0f};
         float radius = 0.0f;
+        const ClassGpu* cg = nullptr;  // (its class: the joints' bind pose, the vertices the light editor finds a joint by)
     };
     std::vector<MobyXf> xf;
 };
@@ -2156,6 +2157,7 @@ void build_frame() {
                 x.W = glm::mat4(W);
                 x.joint_first = m.joint_first;
                 x.joint_count = m.joint_count;
+                x.cg = cg;
                 const auto& b = c.bsphere;
                 const glm::dvec4 cw = W * glm::dvec4(b[0], b[1], b[2], 1.0);
                 x.centre = glm::vec3(cw) / static_cast<float>(cw.w != 0.0 ? cw.w : 1.0);
@@ -3252,19 +3254,33 @@ float mrp_moby_nearest_part(const float p[3]) {
     return best;
 }
 
-// orig: (host) see mrp_lighting.h
+namespace {
+// orig: (host) a pose's joint matrix as a glm matrix (its rows the shader's m[0..3], q = m0 x + m1 y + m2 z + m3: glm's columns)
+glm::mat4 joint_mat(const MrpMat4& J) {
+    glm::mat4 m(1.0f);
+    for (int r = 0; r < 4; ++r) m[r] = glm::vec4(J.r[r].x, J.r[r].y, J.r[r].z, r == 3 ? 1.0f : 0.0f);
+    return m;
+}
+}  // namespace
+
+// orig: (host) see mrp_lighting.h. The pose's matrix of a joint is the skinning's (the pose by the joint's inverse bind matrix,
+// class +0x14: a bind-pose point of the model to where the joint carries it), its origin the model's origin carried, not the joint;
+// the joint's own frame is that matrix by the bind matrix (the inverse bind's inverse): its origin the joint itself (#102)
 bool mrp_moby_draw_frame(uint32_t moby, int joint, float pos[3], float axes[9], int* joints) {
     if (!g_frame.active || !g_frame.built || g_frame.mode != 0) return false;
     for (const Frame::MobyXf& x : g_frame.xf) {
         if (x.moby != moby) continue;
         if (joints != nullptr) *joints = static_cast<int>(x.joint_count);
-        glm::mat4 M = x.W;  // (model -> world; a joint: model -> model, its rows the shader's m[0..3] - q = m0 x + m1 y + m2 z + m3)
+        glm::mat4 M = x.W;  // (model -> world; a joint: model -> model)
         if (joint >= 0) {
             if (static_cast<uint32_t>(joint) >= x.joint_count || x.joint_first + static_cast<uint32_t>(joint) >= g_frame.joints_all.size()) return false;
-            const MrpMat4& J = g_frame.joints_all[x.joint_first + static_cast<uint32_t>(joint)];
-            glm::mat4 Jm(1.0f);
-            for (int r = 0; r < 4; ++r) Jm[r] = glm::vec4(J.r[r].x, J.r[r].y, J.r[r].z, r == 3 ? 1.0f : 0.0f);
-            M = x.W * Jm;
+            M = x.W * joint_mat(g_frame.joints_all[x.joint_first + static_cast<uint32_t>(joint)]);
+            if (x.cg != nullptr && x.cg->asset != nullptr && static_cast<size_t>(joint) < x.cg->asset->inverse_bind.size()) {
+                const std::array<float, 16>& ib = x.cg->asset->inverse_bind[static_cast<size_t>(joint)];
+                glm::mat4 IB(1.0f);  // (its rows as the pose's; the fourth column holds the bone's own data, not the matrix's)
+                for (int r = 0; r < 4; ++r) IB[r] = glm::vec4(ib[4 * r], ib[4 * r + 1], ib[4 * r + 2], r == 3 ? 1.0f : 0.0f);
+                if (const float d = glm::determinant(IB); std::isfinite(d) && std::fabs(d) > 1e-12f) M = M * glm::inverse(IB);
+            }
         }
         const glm::vec4 o = M[3];
         const float w = o.w != 0.0f ? o.w : 1.0f;
@@ -3280,15 +3296,119 @@ bool mrp_moby_draw_frame(uint32_t moby, int joint, float pos[3], float axes[9], 
     return false;
 }
 
-// orig: (host) see mrp_lighting.h
+namespace {
+// orig: (host) a point's distance from a triangle (the closest point of the triangle, by its region: Ericson's)
+float point_triangle_dist(const glm::vec3& p, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) {
+    const glm::vec3 ab = b - a, ac = c - a, ap = p - a;
+    const float d1 = glm::dot(ab, ap), d2 = glm::dot(ac, ap);
+    if (d1 <= 0.0f && d2 <= 0.0f) return glm::length(p - a);
+    const glm::vec3 bp = p - b;
+    const float d3 = glm::dot(ab, bp), d4 = glm::dot(ac, bp);
+    if (d3 >= 0.0f && d4 <= d3) return glm::length(p - b);
+    const float vc = d1 * d4 - d3 * d2;
+    if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f) return glm::length(p - (a + ab * (d1 / (d1 - d3))));
+    const glm::vec3 cp = p - c;
+    const float d5 = glm::dot(ab, cp), d6 = glm::dot(ac, cp);
+    if (d6 >= 0.0f && d5 <= d6) return glm::length(p - c);
+    const float vb = d5 * d2 - d1 * d6;
+    if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f) return glm::length(p - (a + ac * (d2 / (d2 - d6))));
+    const float va = d3 * d6 - d5 * d4;
+    if (va <= 0.0f && (d4 - d3) >= 0.0f && (d5 - d6) >= 0.0f) return glm::length(p - (b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6)))));
+    const float den = 1.0f / (va + vb + vc);
+    return glm::length(p - (a + ab * (vb * den) + ac * (vc * den)));
+}
+
+// orig: (host) the drawn moby's surface nearest a world point: its triangles (both LODs) skinned on the CPU as the shader does (a
+// vertex's joint matrix, or the blend of two or three by their weights / 256) through its model-to-world matrix; the distance, and
+// the heaviest joint of that triangle's vertex nearest the point (-1: no triangles, no pose)
+float surface_near(const Frame::MobyXf& x, const glm::vec3& P, int* joint) {
+    *joint = -1;
+    if (x.cg == nullptr || x.cg->asset == nullptr || x.joint_count == 0 || x.joint_first + x.joint_count > g_frame.joints_all.size()) return 1e30f;
+    static std::vector<glm::mat4> J;
+    J.resize(x.joint_count);
+    for (uint32_t j = 0; j < x.joint_count; ++j) J[j] = x.W * joint_mat(g_frame.joints_all[x.joint_first + j]);
+    static std::vector<glm::vec3> wp;
+    static std::vector<int> heavy;
+    float best = 1e30f;
+    const mrp::MobyClass& c = *x.cg->asset;
+    for (size_t pi = 0; pi < x.cg->packets.size() && pi < c.packets.size(); ++pi) {
+        if (c.packets[pi].lod > 1) continue;
+        const PacketGpu& pg = x.cg->packets[pi];
+        if (pg.first_vertex + pg.vertex_count > g_level.verts.size()) continue;
+        wp.assign(pg.vertex_count, glm::vec3(0.0f));
+        heavy.assign(pg.vertex_count, -1);
+        for (uint32_t v = 0; v < pg.vertex_count; ++v) {
+            const GpuVertex& gv = g_level.verts[pg.first_vertex + v];
+            if (gv.n == 0 || gv.n > 3) continue;
+            glm::mat4 M(0.0f);
+            int hw = -1;
+            bool ok = true;
+            for (uint8_t k = 0; k < gv.n && ok; ++k) {
+                ok = gv.joint[k] < x.joint_count;
+                if (!ok) break;
+                M += J[gv.joint[k]] * (gv.n == 1 ? 1.0f : static_cast<float>(gv.weight[k]) / 256.0f);
+                if (gv.n == 1 || gv.weight[k] > hw) {
+                    hw = gv.weight[k];
+                    heavy[v] = gv.joint[k];
+                }
+            }
+            const glm::vec4 q = M * glm::vec4(gv.pos[0], gv.pos[1], gv.pos[2], 1.0f);
+            if (!ok || !(std::fabs(q.w) > 1e-12f)) {
+                heavy[v] = -1;
+                continue;
+            }
+            wp[v] = glm::vec3(q) / q.w;
+        }
+        for (const Run& r : pg.runs)
+            for (uint32_t t = r.first_index; t + 2 < r.first_index + r.count && t + 2 < g_level.indices.size(); t += 3) {
+                uint32_t i[3];
+                bool ok = true;
+                for (int k = 0; k < 3; ++k) {
+                    i[k] = g_level.indices[t + static_cast<uint32_t>(k)] - pg.first_vertex;
+                    ok = ok && i[k] < pg.vertex_count && heavy[i[k]] >= 0;
+                }
+                if (!ok) continue;
+                const float d = point_triangle_dist(P, wp[i[0]], wp[i[1]], wp[i[2]]);
+                if (d >= best) continue;
+                best = d;
+                int nk = 0;
+                for (int k = 1; k < 3; ++k)
+                    if (glm::length(wp[i[k]] - P) < glm::length(wp[i[nk]] - P)) nk = k;
+                *joint = heavy[i[nk]];
+            }
+    }
+    return best;
+}
+}  // namespace
+
+// orig: (host) see mrp_lighting.cpp (its declaration)
+int mrp_moby_surface_joint(uint32_t moby, const float p[3], float* dist) {
+    if (!g_frame.active || !g_frame.built || g_frame.mode != 0) return -1;
+    for (const Frame::MobyXf& x : g_frame.xf) {
+        if (x.moby != moby) continue;
+        int j = -1;
+        const float d = surface_near(x, glm::vec3(p[0], p[1], p[2]), &j);
+        if (dist != nullptr) *dist = d;
+        return j;
+    }
+    return -1;
+}
+
+// orig: (host) see mrp_lighting.h. Among the drawn mobys whose parts' bounding spheres hold the point, the one whose skinned surface
+// is nearest it, the smallest sphere between equals (#102: the smallest sphere alone took a little moby at Clank's head, class 1204,
+// over Clank and Ratchet)
 bool mrp_moby_at(const float p[3], uint32_t* moby, int* o_class, float* dist) {
     if (!g_frame.active || !g_frame.built || g_frame.mode != 0) return false;
     const glm::vec3 P(p[0], p[1], p[2]);
-    float best = 1e30f;
+    float best = 1e30f, best_surface = 1e30f;
     bool any = false;
     for (const Frame::MobyXf& x : g_frame.xf) {
         const float d = glm::length(P - x.centre);
-        if (!(x.radius > 0.0f) || d > x.radius + 0.25f || x.radius >= best) continue;
+        if (!(x.radius > 0.0f) || d > x.radius + 0.25f) continue;
+        int j = -1;
+        const float s = surface_near(x, P, &j);
+        if (!(s < best_surface || (s == best_surface && x.radius < best))) continue;
+        best_surface = s;
         best = x.radius;
         any = true;
         *moby = x.moby;

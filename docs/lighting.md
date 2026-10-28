@@ -446,7 +446,8 @@ by hand on Novalis and Aridia, and Kerwan's street lamps reaching further.
 Their lighting batch 1 (#102, the build 4fc6a6e) was merged the same way: [materials](materials.md) on Veldin to Rilgar (Novalis's
 waterworks and bridge, most of Aridia's metal, Kerwan's gold surfaces, Eudora's metals, a part of Rilgar's), and in `classes.txt`
 the vendor, the bolts, the OmniWrench, the Magneboots and the pilot's helmet as metal on every level, with a few lamps by class; on
-Novalis two green lights on Ratchet (moby class 0, joint 62), Aridia's spot lamps, Kerwan's landing pad lamps and its
+Novalis two green lights for Clank's eyes on Ratchet's back (saved on moby class 0, joint 62, one of Ratchet's fingers, by the
+editor's joint pick before its fix; now on Clank there, moby class 601, his head's joint 4), Aridia's spot lamps, Kerwan's landing pad lamps and its
 street lamps a little dimmer (1.86, radius 10.1), and the particles (Umbris, Batalia, Gaspar, Rilgar's rain, Orxon, Hoven's motes:
 [Ambient particles](particles.md#what-a-level-has)). Daino chose their Aridia sun (38.6 / 16.7) over his own and their Orxon
 particles; on Hoven their `sun_rays off` and motes were taken beside our snow. Kerwan's motes were taken out (their notes: "weird
@@ -903,9 +904,13 @@ spawns later - the walk goes to the moby array's end *(0x15ffe0), not to the pla
 light at the offset in its own frame (a tie's or shrub's rows, model / 1024 at its scale; a moby's
 rotation, in world units), so a moby's lamp follows it. A moby whose model the animation moves away from
 its position (the Buzzers of Novalis, moby 577, fly with their body high above the point the game keeps:
-their light stayed in the sky) takes `joint <n>`: the offset is then in that joint's frame as the frame's
-pose has it (the joint's matrix the skinning used, through the moby's drawn model-to-world matrix; units
-and axes the world's, `mrp_moby_draw_frame`), so the light follows the animated part. A moby not drawn
+their light stayed in the sky) takes `joint <n>`: the offset is then in that joint's own frame as the frame's
+pose has it, so the light follows the animated part. The joint's frame is the skinning's matrix of the joint (the pose by the
+joint's inverse bind matrix, class +0x14) by the joint's bind matrix, through the moby's drawn model-to-world matrix: its origin
+is the joint itself and its axes the joint's, in world units (`mrp_moby_draw_frame`). (Before #102's fix the skinning's matrix was
+taken alone: its origin is the model's origin carried by the joint, not the joint, so a light on a joint other than the root swung
+round with the joint at the distance of the model's origin - Clank's eye lights in front of Ratchet and under him when he jumped,
+a Kerwan dog's eye lights on the ground. The `joint` lines of the files were converted.) A moby not drawn
 this frame falls back to its position and rotation. `down` (0 to 1, default 0) is the share of the
 light aimed straight down, as a ceiling fixture's: the squared falloff and the cosine below the light
 of [Point lights per pixel](#point-lights-per-pixel). At the level's start the log says how many
@@ -917,9 +922,14 @@ mesh around the light would hide it); a tie's may (cast by mobys only, as the em
 
 **In the editor** (Lights tab, "Lights per object class"): the target (the crosshair or the clicked point, above) and the
 objects at it - the tie instance whose model's box holds it, the shrub whose sphere holds it, the drawn moby whose parts' bounding
-spheres hold it (the smallest; a big moby whose origin is far away, a cannon or a train, is found this way) or else the nearest moby
-within 6 units - with their class and the point in their frame; for a drawn moby also the joint of its pose nearest the point and the
-point in that joint's frame. **Emit for every tie / shrub / moby of this class** adds a light at that point of every instance, live;
+spheres hold it (a big moby whose origin is far away, a cannon or a train, is found this way) or else the nearest moby
+within 6 units - with their class and the point in their frame; for a drawn moby also the joint that carries its surface at the point
+(its triangles skinned on the CPU as the shader does: the heaviest joint of the nearest triangle's vertex nearest the point; the
+joint nearest the point when it has no triangles) and the point in that joint's own frame. Among the drawn mobys whose spheres hold it, the one whose
+skinned surface is nearest the point is taken, the smallest sphere between equals (before, the smallest sphere alone: a little moby at Clank's head, class 1204, over Clank).
+The target is the depth's point, so a surface that leaves the depth to what is behind it is not found: Clank's eyes on Ratchet's
+back gave Ratchet's back (his joint 8) in a test; such a light's joint and offset are typed in (the Joint field keeps the offset,
+then in the new joint's frame). **Emit for every tie / shrub / moby of this class** adds a light at that point of every instance, live;
 **Emit on this joint (follows the animation)** the same in the joint's frame. The offset, colour, intensity, radius, flicker, the
 share aimed down and a moby's joint are then edited, and Save writes the `emit` lines with the rest of the file.
 

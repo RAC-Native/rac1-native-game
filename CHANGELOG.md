@@ -28,6 +28,12 @@ What changed in each release. Releases are source only: you build the game with 
   is mixed in less and blurred, a hit is tested more tightly, and a moby never mirrors its own last pose (#102).
 - Materials: a metal's mirror is dimmed in the sun's shadow and on the faces turned from the sun (#102).
 - Lights files: a line the game does not understand is said in the log at the level's start.
+- Lights: a light on a moby's joint (`emit moby ... joint <n>`) is placed in the joint's own frame, so it follows the joint where
+  the editor put it: before, the frame's origin was the model's origin carried by the joint, and the light swung round with the
+  joint - Clank's green eyes on Novalis lit in front of and under Ratchet, the Kerwan dogs' eyes the ground (#102). The editor's
+  pick takes the joint that carries the surface at the point and the moby whose surface is nearest; Anya-Thoughtmane's joint lines
+  were converted (Clank's eyes now on Clank, moby 601 joint 4; the dogs' on their eyes, joints 53 and 54; the vendor's light on
+  joint 30, Aridia's spot lamps on joint 3, the rest unchanged in place).
 - OpenGL: the ties, foliage and mobys (Ratchet too) no longer vanish or turn into floating pieces of terrain and dark shapes from
   one frame to the next on some integrated GPUs (an Intel UHD 620 under Windows, #113): each draw now finds its data through an
   instanced vertex attribute instead of `gl_BaseInstance`. The same picture elsewhere.
