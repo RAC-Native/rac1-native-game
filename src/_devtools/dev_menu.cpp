@@ -1027,6 +1027,21 @@ void interior_boxes(const std::vector<SunInterior>& B) {
             }
     }
 }
+// the Particles tab's Solo: the line drawn alone (-1 none), the lines' switches before it (given back by particles_unsolo)
+int g_part_solo = -1, g_part_solo_level = -1;
+std::vector<bool> g_part_saved;
+// orig: (host) the solo ended: the lines' switches as they were (on the level it was started on)
+void particles_unsolo() {
+    std::vector<ParticleSpec>& P = mrp_user_particles();
+    if (g_part_solo >= 0 && g_part_solo_level == mrp_user_lights_level())
+        for (size_t i = 0; i < P.size() && i < g_part_saved.size(); ++i) P[i].on = g_part_saved[i];
+    g_part_solo = -1;
+}
+// orig: (host) the level's file written (a solo ended first: the lines it turned off are written as they were)
+bool lights_save() {
+    particles_unsolo();
+    return mrp_user_lights_save();
+}
 // the level's ambient particles ("particles" lines of its file: mrp_particles.h), edited live, saved with the file
 void sun_particles() {
     ImGui::Separator();
@@ -1122,7 +1137,7 @@ void sun_particles() {
         g_sun_dirty = true;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Save##particles")) g_sun_dirty = !mrp_user_lights_save();
+    if (ImGui::Button("Save##particles")) g_sun_dirty = !lights_save();
     ImGui::TextWrapped("Applied at once. Saved as \"particles <kind> <density> [r g b] [wind x y] [gust g] [box x0 y0 z0 x1 y1 z1] [source lava] [rise r] [keep]\" lines in the "
                        "level's file (a line not edited is written back as it was).");
 }
@@ -1166,7 +1181,7 @@ void tab_sun() {
         g_sun_dirty = true;
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Saved as \"sun_rays off\" in the level's file (the Sun Rays option still sets the other levels')");
-    if (ImGui::Button("Save")) g_sun_dirty = !mrp_user_lights_save();
+    if (ImGui::Button("Save")) g_sun_dirty = !lights_save();
     ImGui::SameLine();
     if (ImGui::Button("Reload")) {
         mrp_user_lights_reload();
@@ -1231,6 +1246,58 @@ void tab_sun() {
         if (ch) g_sun_dirty = true;
     }
     if (g_interior_show) interior_boxes(B);
+    ImGui::Separator();
+    ImGui::TextDisabled("The level's ambient particles: the Particles tab.");
+}
+// orig: (host) the Particles tab (a tester's request, #102 batch 1: the ambient particles were at the bottom of the Sun tab): the
+// level's "particles" lines, each with Solo (only that line drawn while it is held, to tell the lines apart), saved with the file
+void tab_particles() {
+    mrp_user_lights_ensure();  // (the level's file: also with the modern lighting off)
+    const int level = mrp_user_lights_level();
+    if (level != g_sun_level) {
+        g_sun_level = level;
+        g_sun_dirty = false;
+    }
+    if (level < 0) {
+        ImGui::TextWrapped("No level loaded yet.");
+        return;
+    }
+    ImGui::Text("Level %d%s   %s", level, g_sun_dirty ? " (not saved)" : "", mrp_user_lights_path());
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("The game's own effects (sparks, smoke, explosions) are the game's and stay as they are. The seas (water, lava, sand) are "
+                        "surfaces, not particles: their materials are in the Lights tab (aim or click at them) and the Textures tab (\"Seas drawn\").");
+    ImGui::PopTextWrapPos();
+    // Solo: the other lines turned off while it is on, their switches given back after (not saved: Save writes them as they were)
+    int& solo = g_part_solo;
+    std::vector<bool>& saved = g_part_saved;
+    std::vector<ParticleSpec>& P = mrp_user_particles();
+    auto unsolo = [] { particles_unsolo(); };
+    if (solo >= 0 && (g_part_solo_level != level || static_cast<size_t>(solo) >= P.size())) unsolo();
+    if (!P.empty()) {
+        ImGui::Text("Solo:");
+        for (size_t i = 0; i < P.size(); ++i) {
+            ImGui::SameLine();
+            char t[48];
+            std::snprintf(t, sizeof t, "%zu %s##solo%zu", i + 1, mrp_particle_kind_name(P[i].kind), i);
+            if (ImGui::Selectable(t, solo == static_cast<int>(i), 0, ImVec2(ImGui::CalcTextSize(t, nullptr, true).x, 0.0f))) {
+                if (solo == static_cast<int>(i)) {
+                    unsolo();
+                } else {
+                    if (solo < 0) {
+                        saved.assign(P.size(), true);
+                        for (size_t k = 0; k < P.size(); ++k) saved[k] = P[k].on;
+                    }
+                    for (size_t k = 0; k < P.size(); ++k) P[k].on = k == i;
+                    solo = static_cast<int>(i);
+                    g_part_solo_level = level;
+                }
+            }
+        }
+        if (solo >= 0) {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("All")) unsolo();
+        }
+    }
     sun_particles();
 }
 // The 3D's place on the window, as the markers above project with it: the world's view-projection, the last viewport (in the render
@@ -1292,10 +1359,14 @@ void aim_take(bool hit, const float w[3]) {
         return;
     }
     for (int k = 0; k < 3; ++k) g_aim.wp[k] = w[k];
-    g_aim.sp = mrp_world_surface_at(w);
-    g_aim.mp = mrp_lighting_pick(w);
     const glm::mat4 iv = glm::inverse(render_view_matrix());
     const glm::vec3 to_cam = glm::vec3(iv[3]) - glm::vec3(w[0], w[1], w[2]);
+    // (the point is the depth buffer's, and a far tie is drawn with a coarser level of detail than the one searched: on Veldin a tie
+    // 90 units away lay 0.9 to 1.3 units from the point, and could not be picked with 0.5 - #102 batch 1; the nearest triangle wins)
+    const float dist = glm::length(to_cam);
+    g_aim.sp = mrp_world_surface_at(w, std::max(0.5f, 0.02f * dist));
+    g_aim.mp = mrp_lighting_pick(w);
+
     glm::vec3 n = glm::length(to_cam) > 0.0f ? glm::normalize(to_cam) : glm::vec3(0.0f, 0.0f, 1.0f);
     if (g_aim.sp.kind >= 0) {
         glm::vec3 sn(g_aim.sp.normal[0], g_aim.sp.normal[1], g_aim.sp.normal[2]);
@@ -1413,32 +1484,36 @@ void emis_in_hand() {
         ImGui::TextDisabled("No surface in hand: aim at one, or pick one below.");
         mrp_emissive_preview(-1, 0, 0);
     } else {
-        // the class's textures, stepped (a moby's: its local textures in use; a tie's: its prims; a shrub's: 0..15; a tfrag's: the level's)
-        int ntex = 0;
-        uint32_t moby_bits = 0;
-        if (cur.kind == 3) moby_bits = mrp_moby_class_local_textures(cur.o_class);
-        else mrp_world_class_texture(cur.kind, cur.o_class, cur.tex, &ntex);
-        const int level_tex = cur.kind == 3 ? -1 : mrp_world_class_texture(cur.kind, cur.o_class, cur.tex);
-        auto step = [&](int d) {
-            follow = false;
-            for (int n = 0; n < 64; ++n) {
-                cur.tex += d;
-                if (cur.kind == 3) {
-                    cur.tex = (cur.tex + 32) % 32;
-                    if (moby_bits == 0 || ((moby_bits >> cur.tex) & 1u) != 0) break;
-                } else {
-                    cur.tex = ntex > 0 ? (cur.tex + ntex) % ntex : 0;
-                    if (mrp_world_class_texture(cur.kind, cur.o_class, cur.tex) >= 0) break;
-                }
-            }
-        };
-        if (ImGui::ArrowButton("##emis_prev", ImGuiDir_Left)) step(-1);
-        ImGui::SameLine();
-        if (ImGui::ArrowButton("##emis_next", ImGuiDir_Right)) step(1);
-        ImGui::SameLine();
         const char* marked = idx >= 0 ? mrp_material_name(E[static_cast<size_t>(idx)].type) : nullptr;
-        if (cur.kind == 3) ImGui::Text("In hand: moby %d tex %d (its textures: mask %08x)%s%s", cur.o_class, cur.tex, moby_bits, marked ? "  - " : "", marked ? marked : "");
-        else ImGui::Text("In hand: %s %d tex %d of %d (the level's texture %d)%s%s", mrp_emissive_kind_name(cur.kind), cur.o_class, cur.tex, ntex, level_tex, marked ? "  - " : "", marked ? marked : "");
+        if (cur.kind == 4) {  // (a sea, VU1 program 7's: one texture, no class's textures to step through)
+            ImGui::Text("In hand: surface %d tex %d (a sea: water, lava or sand - VU1 program 7)%s%s", cur.o_class, cur.tex, marked ? "  - " : "", marked ? marked : "");
+        } else {
+            // the class's textures, stepped (a moby's: its local textures in use; a tie's: its prims; a shrub's: 0..15; a tfrag's: the level's)
+            int ntex = 0;
+            uint32_t moby_bits = 0;
+            if (cur.kind == 3) moby_bits = mrp_moby_class_local_textures(cur.o_class);
+            else mrp_world_class_texture(cur.kind, cur.o_class, cur.tex, &ntex);
+            const int level_tex = cur.kind == 3 ? -1 : mrp_world_class_texture(cur.kind, cur.o_class, cur.tex);
+            auto step = [&](int d) {
+                follow = false;
+                for (int n = 0; n < 64; ++n) {
+                    cur.tex += d;
+                    if (cur.kind == 3) {
+                        cur.tex = (cur.tex + 32) % 32;
+                        if (moby_bits == 0 || ((moby_bits >> cur.tex) & 1u) != 0) break;
+                    } else {
+                        cur.tex = ntex > 0 ? (cur.tex + ntex) % ntex : 0;
+                        if (mrp_world_class_texture(cur.kind, cur.o_class, cur.tex) >= 0) break;
+                    }
+                }
+            };
+            if (ImGui::ArrowButton("##emis_prev", ImGuiDir_Left)) step(-1);
+            ImGui::SameLine();
+            if (ImGui::ArrowButton("##emis_next", ImGuiDir_Right)) step(1);
+            ImGui::SameLine();
+            if (cur.kind == 3) ImGui::Text("In hand: moby %d tex %d (its textures: mask %08x)%s%s", cur.o_class, cur.tex, moby_bits, marked ? "  - " : "", marked ? marked : "");
+            else ImGui::Text("In hand: %s %d tex %d of %d (the level's texture %d)%s%s", mrp_emissive_kind_name(cur.kind), cur.o_class, cur.tex, ntex, level_tex, marked ? "  - " : "", marked ? marked : "");
+        }
         mrp_emissive_preview(preview ? cur.kind : -1, cur.o_class, cur.tex);
         if (idx < 0) {
             type_combo("##mat_new", &new_type);
@@ -1486,6 +1561,15 @@ void emis_in_hand() {
                             std::snprintf(lab, sizeof lab, "%s##matp%d", mp[i].name, i);
                             ch |= ImGui::SliderFloat(lab, &e.p[i], mp[i].lo, mp[i].hi, "%.2f");
                         }
+                    if (e.type != MAT_LAVA) {  // (a metal lamp with a lit bulb: the material and an emissive glow on the same texture)
+                        const bool had = e.glow > 0.0f;
+                        ch |= ImGui::SliderFloat("Glow##matglow", &e.glow, 0.0f, 4.0f, e.glow > 0.0f ? "%.2f" : "none");
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Emissive on top of the material, as an emissive line's strength (0: none). Saved as \"glow <strength> <threshold>\"\n"
+                                              "at the end of the material line. Drawn with Surface Detail Off too (the glow alone).");
+                        if (e.glow > 0.0f) ch |= ImGui::SliderFloat("Glow threshold##matglow", &e.glow_threshold, 0.0f, 1.0f, "%.2f");
+                        if (had != (e.glow > 0.0f)) mrp_user_emissive_changed();  // (a glowing material keeps its slot with Surface Detail Off)
+                    }
                     if (g_surface_detail == 0) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Surface Detail is Off: the material is not drawn.");
                 }
                 if (ch) g_light_dirty = true;
@@ -1506,6 +1590,8 @@ void tab_emissive() {
     static int cands_level = -1;
     if (!ImGui::CollapsingHeader("Emissive surfaces and materials (emissive, material)")) {
         mrp_emissive_preview(-1, 0, 0);
+        const float z[3] = {0.0f, 0.0f, 0.0f};
+        mrp_fx_surface_pick(z, z, 0.0f);  // (no ray tested while closed)
         return;
     }
     std::vector<EmissiveSurface>& E = mrp_user_emissive();
@@ -1548,7 +1634,26 @@ void tab_emissive() {
                 follow = false;
             }
         }
-        if (follow && sp.kind >= 0) cur = EmissiveSurface{sp.kind, sp.o_class, sp.tex, 1.0f, 0.0f};
+        // a sea (water, lava, sand: VU1 program 7's) in front of the point: drawn after the depth the pick reads, found along the ray
+        const glm::mat4 iv = glm::inverse(render_view_matrix());
+        const glm::vec3 eye(iv[3]), ray = glm::vec3(g_aim.wp[0], g_aim.wp[1], g_aim.wp[2]) - eye;
+        const float dist = glm::length(ray);
+        if (dist > 0.0f) {  // (the ray from the eye toward the point, tested by the next frames' seas as they are drawn)
+            const float o[3] = {eye.x, eye.y, eye.z}, d[3] = {ray.x / dist, ray.y / dist, ray.z / dist};
+            mrp_fx_surface_pick(o, d, 4000.0f);  // (beyond the point too: a sea drawn over it is still named, not followed)
+        }
+        const FxSurfacePick sea = mrp_fx_surface_pick_result();
+        const bool sea_front = sea.hit && sea.t < dist - 0.1f;
+        if (sea.hit) {
+            ImGui::Text("a sea: surface %d tex %d, %.1f units along the view%s", sea.o_class, sea.tex, sea.t, sea_front ? " (in front of the point)" : " (behind the point)");
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Take the sea")) {
+                cur = EmissiveSurface{4, sea.o_class, sea.tex, 1.0f, 0.0f};
+                follow = false;
+            }
+        }
+        if (follow && sea_front) cur = EmissiveSurface{4, sea.o_class, sea.tex, 1.0f, 0.0f};
+        else if (follow && sp.kind >= 0) cur = EmissiveSurface{sp.kind, sp.o_class, sp.tex, 1.0f, 0.0f};
     }
     ImGui::Checkbox(g_aim.clicked ? "Follow the clicks" : "Follow the crosshair", &follow);
     ImGui::SameLine();
@@ -1558,13 +1663,13 @@ void tab_emissive() {
         if (E[i].kind == cur.kind && E[i].o_class == cur.o_class && E[i].tex == cur.tex) idx = static_cast<int>(i);
     ImGui::Text("Marked (%zu, at most %d):", E.size(), kEmissiveSlots);
     for (size_t i = 0; i < E.size(); ++i) {
-        char t[128];
+        char t[160];
         if (E[i].type == MAT_EMISSIVE)
             std::snprintf(t, sizeof t, "%s %d tex %d  x%.2f  threshold %.2f%s##em%zu", mrp_emissive_kind_name(E[i].kind), E[i].o_class, E[i].tex, E[i].strength, E[i].threshold,
                           E[i].global ? "  (every level)" : "", i);
         else
-            std::snprintf(t, sizeof t, "%s %d tex %d  %s %.2f %.2f %.2f%s##em%zu", mrp_emissive_kind_name(E[i].kind), E[i].o_class, E[i].tex, mrp_material_name(E[i].type), E[i].p[0],
-                          E[i].p[1], E[i].p[2], E[i].global ? "  (every level)" : "", i);
+            std::snprintf(t, sizeof t, "%s %d tex %d  %s %.2f %.2f %.2f%s%s##em%zu", mrp_emissive_kind_name(E[i].kind), E[i].o_class, E[i].tex, mrp_material_name(E[i].type), E[i].p[0],
+                          E[i].p[1], E[i].p[2], E[i].glow > 0.0f ? "  + glow" : "", E[i].global ? "  (every level)" : "", i);
         if (ImGui::Selectable(t, static_cast<int>(i) == idx)) {
             cur = E[i];
             follow = false;
@@ -1641,7 +1746,7 @@ void tab_lights() {
         add(iv[3][0], iv[3][1], iv[3][2]);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Save")) g_light_dirty = !mrp_user_lights_save();
+    if (ImGui::Button("Save")) g_light_dirty = !lights_save();
     ImGui::SameLine();
     if (ImGui::Button("Reload")) {
         mrp_user_lights_reload();
@@ -1915,6 +2020,34 @@ void tab_textures() {
     ImGui::SameLine();
     ImGui::SetNextItemWidth(140.0f);
     ImGui::SliderFloat("Size", &size, 32.0f, 128.0f, "%.0f");
+    // the seas (VU1 program 7's water, lava and sand: not the world's textures, so not in the grid) the level has drawn so far
+    static bool sea_in_hand = false;
+    {
+        const std::vector<std::pair<int, int>> seas = mrp_fx_surfaces_seen();
+        ImGui::Text("Seas drawn (water, lava, sand):");
+        if (seas.empty()) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("none yet on this level (they are listed once drawn)");
+        }
+        for (size_t i = 0; i < seas.size(); ++i) {
+            const EmissiveSurface su{4, seas[i].first, seas[i].second, 1.0f, 0.0f};
+            int mk = -1;
+            const std::vector<EmissiveSurface>& E = mrp_user_emissive();
+            for (size_t k = 0; k < E.size(); ++k)
+                if (E[k].kind == 4 && E[k].o_class == su.o_class && E[k].tex == su.tex) mk = static_cast<int>(k);
+            char t[96];
+            std::snprintf(t, sizeof t, "surface %d tex %d%s%s##sea%zu", su.o_class, su.tex, mk >= 0 ? " - " : "", mk >= 0 ? mrp_material_name(E[static_cast<size_t>(mk)].type) : "", i);
+            ImGui::SameLine();
+            const bool in_hand = g_emis_cur.kind == 4 && g_emis_cur.o_class == su.o_class && g_emis_cur.tex == su.tex;
+            if (ImGui::Selectable(t, in_hand, 0, ImVec2(ImGui::CalcTextSize(t, nullptr, true).x, 0.0f))) {
+                g_emis_cur = su;
+                g_emis_follow = false;
+                g_emis_preview = true;
+                g_tex.sel = -1;
+                sea_in_hand = true;
+            }
+        }
+    }
     // the texture in hand (clicked here or picked in the Lights tab): its users, the marking
     if (g_tex.sel >= 0 && g_tex.sel < static_cast<int>(g_tex.list.size())) {
         const TextureEntry& e = g_tex.list[static_cast<size_t>(g_tex.sel)];
@@ -1946,7 +2079,12 @@ void tab_textures() {
         ImGui::EndGroup();
         emis_in_hand();
         ImGui::Separator();
+    } else if (sea_in_hand && g_emis_cur.kind == 4) {
+        ImGui::Separator();
+        emis_in_hand();
+        ImGui::Separator();
     } else {
+        sea_in_hand = false;
         mrp_emissive_preview(-1, 0, 0);
         ImGui::TextDisabled("Click a texture to take it in hand (a line for emissive or a material, as in the Lights tab).");
     }
@@ -1979,6 +2117,7 @@ void tab_textures() {
         const bool sel = static_cast<int>(i) == g_tex.sel;
         if (ImGui::ImageButton("##t", tex_page_id(), ImVec2(size, size), uv0, uv1)) {
             g_tex.sel = static_cast<int>(i);
+            sea_in_hand = false;
             if (!e.users.empty()) g_emis_cur = tex_user_surface(e, 0);
             g_emis_follow = false;
             g_emis_preview = true;
@@ -2302,6 +2441,7 @@ void dev_menu_draw(double update_ms, double frame_ms) {
                 if (tab("Rendering")) { tab_rendering(); ImGui::EndTabItem(); }
                 if (tab("Lights")) { tab_lights(); ImGui::EndTabItem(); }
                 if (tab("Sun")) { tab_sun(); ImGui::EndTabItem(); }
+                if (tab("Particles")) { tab_particles(); ImGui::EndTabItem(); }
                 if (tab("Textures")) { tab_textures(); ImGui::EndTabItem(); }
                 if (tab("Display")) { tab_display(); ImGui::EndTabItem(); }
                 if (tab("Audio")) { tab_audio(); ImGui::EndTabItem(); }

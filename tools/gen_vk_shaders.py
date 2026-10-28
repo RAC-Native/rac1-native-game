@@ -29,8 +29,8 @@ layout(std140, set = 1, binding = 0) uniform ShadowUbo {
     vec4 uPtPos[96];
     vec4 uPtCol[96];
     vec4 uPtDown[24];
-    vec4 uEmis[32];
-    vec4 uMat[32];
+    vec4 uEmis[128];
+    vec4 uMat[128];
     mat4 uSsrVP;
     vec4 uSsrZ;
     vec4 uSsrSky;
@@ -193,14 +193,18 @@ vec3 sh_apply_split(vec3 full, vec3 nokey) {
     return mix(nokey, full, sh_state.x);
 }
 #if defined(SH_POINTS) || defined(SH_SPLIT)
+vec3 sh_glow(vec3 lit, vec3 orig, vec3 tex, vec4 e) {
+    if (e.x <= 0.0) return lit;
+    float v = max(tex.r, max(tex.g, tex.b));
+    float m = e.y > 0.0 ? smoothstep(e.y - 0.04, e.y + 0.04, v) : 1.0;
+    return mix(lit, max(lit, orig * e.x), m);
+}
 vec3 sh_emissive(vec3 lit, vec3 orig, vec3 tex, uint s) {
     if (s == 0u || uShOn == 0 || uShPass != 0 || uEmis[0].x == 0.0) return lit;
     vec4 e = uEmis[s];
     if (e.w > 0.0) return mix(lit, vec3(1.0, 0.0, 1.0), e.x);
-    if (e.z > 0.0) return lit;
-    float v = max(tex.r, max(tex.g, tex.b));
-    float m = e.y > 0.0 ? smoothstep(e.y - 0.04, e.y + 0.04, v) : 1.0;
-    return mix(lit, max(lit, orig * e.x), m);
+    if (e.z > 0.0 && uMat[0].x != 0.0) return lit;
+    return sh_glow(lit, orig, tex, e);
 }
 #endif
 vec3 sh_apply(vec3 c) {
@@ -1501,7 +1505,7 @@ void main() {
         vec2 st = vStq.xy / vStq.z;
         vec2 st_dx = dFdx(st), st_dy = dFdy(st);  // (in uniform control flow: the texture level below)
 #ifdef SH_SPLIT
-        st = sh_mat_uv(st, (w >> 27) & 31u);
+        st = sh_mat_uv(st, vCmd.w & 127u);
 #endif
         vec4 t;
         if ((w & 1u) != 0u) {
@@ -1533,8 +1537,8 @@ void main() {
         else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_SPLIT
-        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 27) & 31u);
-        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 27) & 31u);
+        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, vCmd.w & 127u);
+        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), vCmd.w & 127u);
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }
@@ -1566,7 +1570,7 @@ void main() {
 MRP_MOBY_VS = "#version 450\n" + MRP_MOBY_VS_BODY
 MRP_MOBY_FS = "#version 450\n" + MRP_MOBY_FS_BODY
 MRP_MOBY_SPLIT_VS = "#version 450\n#define SH_SPLIT 1\n" + MRP_MOBY_VS_BODY
-MRP_MOBY_SPLIT_FS = "#version 450\n#define SH_SPLIT 1\n" + MRP_MOBY_FS_BODY
+MRP_MOBY_SPLIT_FS = "#version 450\n#define SH_SPLIT 1\n#define SH_MOBY 1\n" + MRP_MOBY_FS_BODY
 
 # ---------------------------------------------------------------------------
 # 7. mrp_world_renderer.cpp shaders
@@ -1756,7 +1760,7 @@ void main() {
         vec2 st = vStq.xy / vStq.z;
         vec2 st_dx = dFdx(st), st_dy = dFdy(st);  // (in uniform control flow: the texture level below)
 #ifdef SH_POINTS
-        st = sh_mat_uv(st, (w >> 25) & 31u);
+        st = sh_mat_uv(st, (w >> 25) & 127u);
 #endif
         vec4 t;
         if ((w & 1u) != 0u) {
@@ -1788,8 +1792,8 @@ void main() {
         else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_POINTS
-        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 25) & 31u);
-        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 25) & 31u);
+        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 25) & 127u);
+        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 25) & 127u);
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }

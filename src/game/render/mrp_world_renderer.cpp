@@ -740,7 +740,7 @@ void main() {
     if (uTme != 0) {
         vec2 st = vStq.xy / vStq.z;
 #ifdef SH_POINTS
-        st = sh_mat_uv(st, (w >> 25) & 31u);  // (lava, mud, quicksand: the slow flow)
+        st = sh_mat_uv(st, (w >> 25) & 127u);  // (lava, mud, quicksand: the slow flow)
 #endif
         vec4 t;
         if ((w & 1u) != 0u) {
@@ -772,8 +772,8 @@ void main() {
         else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_POINTS
-        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 25) & 31u);  // (the word's bits 25..29)
-        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 25) & 31u);
+        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 25) & 127u);  // (the word's bits 25..31)
+        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 25) & 127u);
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }
@@ -1406,7 +1406,7 @@ const TexRef* vram_texture(Level& L, uint64_t tex0, uint64_t tex1, uint64_t mip1
 
 // ---- the emissive surfaces (mrp_lighting.h EmissiveSurface; our data) ----------------------------------------------------------
 // per level texture (tfrag, tie, shrub tables) its shader slot (0 none), rebuilt on the scene's worker when the list, the preview or
-// the level changes; the slot goes into the texture word's bits 25..29 (key_now) while the modern lighting is on, the original's draws
+// the level changes; the slot goes into the texture word's bits 25..31 (key_now) while the modern lighting is on, the original's draws
 // untouched
 }  // namespace
 void mrp_world_texture_survey();
@@ -3839,12 +3839,12 @@ struct InstFrame {
 int mrp_world_class_texture(int kind, int o_class, int tex, int* ntex) { return class_texture(g_level, kind, o_class, tex, ntex); }
 
 // orig: (host) see mrp_lighting.h
-SurfacePick mrp_world_surface_at(const float pp[3]) {
+SurfacePick mrp_world_surface_at(const float pp[3], float within) {
     SurfacePick r;
     const Level& L = g_level;
     if (!L.loaded || L.world == nullptr || !g_slevel.ok) return r;
     const glm::vec3 P(pp[0], pp[1], pp[2]);
-    float best = 0.5f;  // (units: a triangle farther than this is not the one under the crosshair)
+    float best = std::max(within, 0.01f);  // (units: a triangle farther than this is not the one under the crosshair)
     auto consider = [&](int kind, int o_class, int tex, int texture, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) {
         const float d = point_triangle_dist(P, a, b, c);
         if (d >= best) return;
@@ -3873,7 +3873,7 @@ SurfacePick mrp_world_surface_at(const float pp[3]) {
         for (uint32_t i = 0; i < n; ++i) {
             InstFrame f;
             for (uint32_t l = 0; l < 4; ++l) f.sphere[static_cast<int>(l)] = lwc1(bounds + 0x20 * i + 4 * l);
-            if (glm::length(P - glm::vec3(f.sphere)) > f.sphere.w + 1.0f) continue;
+            if (glm::length(P - glm::vec3(f.sphere)) > f.sphere.w + 1.0f + best) continue;
             const uint32_t data = lwu(bounds + 0x20 * i + 0x10);
             const float w = lwc1(data + 0x3c);
             f.pos = glm::vec3(lwc1(data + 0x30), lwc1(data + 0x34), lwc1(data + 0x38));
@@ -3913,7 +3913,7 @@ SurfacePick mrp_world_surface_at(const float pp[3]) {
             const uint32_t b = bounds + 0x20 * i;
             InstFrame f;
             for (uint32_t l = 0; l < 4; ++l) f.sphere[static_cast<int>(l)] = lwc1(b + 4 * l);
-            if (glm::length(P - glm::vec3(f.sphere)) > f.sphere.w + 1.0f) continue;
+            if (glm::length(P - glm::vec3(f.sphere)) > f.sphere.w + 1.0f + best) continue;
             const uint32_t data = shrub_data + 0x40 * lhu(b + 0x18);
             const float w = lwc1(data + 0x3c);
             f.pos = glm::vec3(lwc1(data + 0x30), lwc1(data + 0x34), lwc1(data + 0x38));

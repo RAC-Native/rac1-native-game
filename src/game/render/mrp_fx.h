@@ -24,6 +24,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <utility>
 #include <vector>
 
 namespace rac1 {
@@ -121,6 +122,21 @@ bool mrp_fx_vu1_check(void* vu, uint32_t start, uint64_t hash, void (*fn)(VUStat
 size_t mrp_fx_clear_caches();
 // orig: (host) the totals at the run's end
 void mrp_fx_report();
+// orig: (host) the debug menu's pick of VU1 program 7's surfaces (the levels' water, lava and sand seas; mrp_lighting.h's `surface`
+// kind): the ray from `o` along the unit `d`, as far as `max_t`, tested against the triangles the next frames draw (the seas are drawn
+// after the depth the menu's pick reads: a click on the water finds the bottom). The result: the nearest hit, its class and texture
+// (TEX0's TBP), `seq` counting the frames that answered
+struct FxSurfacePick {
+    bool hit = false;
+    int o_class = 0, tex = 0;
+    float t = 0.0f;
+    float normal[3] = {0.0f, 0.0f, 1.0f};
+    uint32_t seq = 0;
+};
+void mrp_fx_surface_pick(const float o[3], const float d[3], float max_t);
+FxSurfacePick mrp_fx_surface_pick_result();
+// orig: (host) the program 7 surfaces the level has drawn since it started (class, texture), for the debug menu's Textures tab
+std::vector<std::pair<int, int>> mrp_fx_surfaces_seen();
 
 }  // namespace rac1
 

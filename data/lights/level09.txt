@@ -11,3 +11,4 @@ noauto 1558
 # platforms.
 particles embers 1.5  source lava  rise 1.6
 particles ash 0.6  source lava  rise 1
+particles embers 1  1 0.714 0.247  source lava
