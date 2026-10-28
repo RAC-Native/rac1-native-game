@@ -5,7 +5,16 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+### Platforms
+- macOS on Apple Silicon (#119): a Metal renderer, the Vulkan renderer's code on a Metal layer, its shaders made from the
+  Vulkan GLSL at build time (glslc and SPIRV-Cross: `brew install shaderc spirv-cross`, which the setup asks for); NEON for the
+  vector units' SIMD, checked bit for bit against SSE (`tests/neon/vu_neon_equiv.cpp`); the POSIX layer on macOS; the movies
+  with Homebrew's FFmpeg. The game state over a five-level run hashes the same as on Linux. See [Metal](docs/metal.md).
+
 ### Graphics
+- Options > Graphics: Aspect Ratio and HUD step only over the values the display shows differently: 16:9 on a 16:9 screen is
+  Fill Screen's picture (a 16:10 screen still has it, with bars), and a HUD as wide as the view or wider is Fit Screen's. 4:3 Original and Fill Screen /
+  Fit Screen are always there, so a HUD narrower than the view can always be picked (16:9 or 21:9 on a 32:9 view, 4:3 on 16:9).
 - Lights: Anya-Thoughtmane's lighting batch 1 (#102) merged line by line: metal for the vendor, the bolts, the OmniWrench, the
   Magneboots and the pilot's helmet on every level, materials and lamps on Veldin, Novalis (the waterworks, the bridge), Aridia
   (most of its metal, the spot lamps, their sun 38.6 / 16.7), Kerwan (the gold surfaces, the landing pad's lamps, the street lamps

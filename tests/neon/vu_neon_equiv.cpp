@@ -22,9 +22,9 @@
 // paths compute under that mode, so the bit-exact comparison above still holds.
 //
 // Build and run (x86_64: validates the untouched SSE path against scalar):
-//   g++ -std=c++17 -O2 -ffp-contract=off -I<repo> -I<repo>/src tests/neon/vu_neon_equiv.cpp -o /tmp/vu_equiv_x86 && /tmp/vu_equiv_x86
+//   g++ -std=c++20 -O2 -ffp-contract=off -I<repo> -I<repo>/src tests/neon/vu_neon_equiv.cpp -o /tmp/vu_equiv_x86 && /tmp/vu_equiv_x86
 // Build and run (aarch64: validates the NEON path against scalar):
-//   aarch64-linux-gnu-g++ -std=c++17 -O2 -ffp-contract=off -I<repo> -I<repo>/src tests/neon/vu_neon_equiv.cpp -o /tmp/vu_equiv_neon && qemu-aarch64 -L /usr/aarch64-linux-gnu /tmp/vu_equiv_neon
+//   aarch64-linux-gnu-g++ -std=c++20 -O2 -ffp-contract=off -I<repo> -I<repo>/src tests/neon/vu_neon_equiv.cpp -o /tmp/vu_equiv_neon && qemu-aarch64 -L /usr/aarch64-linux-gnu /tmp/vu_equiv_neon
 // Build and run (through CMake, either architecture):
 //   cmake -S . -B build -DRAC1_NEON_TEST=ON -DRAC1_NO_GENERATED=ON -DRAC1_MOVIES=OFF -DRAC1_DEVTOOLS=OFF && cmake --build build --target vu_neon_equiv && ctest --test-dir build -R vu_neon_equiv
 //

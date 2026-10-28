@@ -143,7 +143,6 @@
 #include <runtime/level/level_loader.h>
 #include "host_priority.h"
 #include "host_input.h"
-#include "graphics_quick.h"
 #include "sample_prof.h"
 #include "profiler/host_profiler.h"
 #include "sim_autopilot.h"
@@ -2733,7 +2732,7 @@ int main(int argc, char** argv) {
         if (!headless) {
             bool cursor_free = false;  // (the debug menu has the cursor while it is open)
 #ifdef RAC1_DEVTOOLS
-            cursor_free = (g_debug_tools && dt::dev_settings().open) || dt::dev_overlay_wants_mouse();  // (the overlay's clicks: F1's window)
+            cursor_free = g_debug_tools && dt::dev_settings().open;
 #endif
             host_input_poll(window, cursor_free);
         }
@@ -3098,7 +3097,6 @@ int main(int argc, char** argv) {
             }
             glfwGetFramebufferSize(window, &fd.w, &fd.h);
             if (test_zero_fb(frame)) fd.w = fd.h = 0;  // (testing: RAC1_TEST_ZERO_FB with raw)
-            rac1::graphics_output_size(fd.w, fd.h);  // (the render scale's 4K, the Graphics rows the display supports)
             w = fd.w;
             h = fd.h;
             fd.vx = 0, fd.vy = 0, fd.vw = fd.w, fd.vh = fd.h;

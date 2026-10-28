@@ -2170,7 +2170,7 @@ def main():
     write_if_changed(os.path.join(out_dir, "runtime", "vk", "vk_shaders.h"), "\n".join(header))
     write_if_changed(os.path.join(out_dir, "vk_shaders.cpp"), "\n".join(body))
     if metal:
-        print(f"[vk] {len(SHADERS)} shaders: the Metal renderer's (runtime/mtl/shaders/)")
+        print(f"[vk] {len(SHADERS)} shaders: the Metal renderer's (tools/gen_metal_shaders.py)")
         return
     print(f"[vk] {len(SHADERS)} shaders {'compiled with ' + compiler if compiler else 'left out (no glslc / glslangValidator found): the Vulkan renderer will not start'}")
 

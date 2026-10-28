@@ -38,8 +38,8 @@ void dev_language_boot();
 bool dev_boot_wanted();
 
 // Loads its saved settings (devmenu_display.txt: pipelining, language, boot; the window's are Options > Graphics). with_menu:
-// the debug tools (--debug-tools / RAC1_DEBUG_TOOLS=1): the menu and its hotkeys; without, poll / draw only show the
-// host's overlay (the rac1-native window, F1) and dev_menu_owns_input is false.
+// the debug tools (--debug-tools / RAC1_DEBUG_TOOLS=1): the menu (ImGui) and its hotkeys; without, poll / draw
+// do nothing and dev_menu_owns_input is false.
 void dev_menu_init(GLFWwindow* window, bool with_menu);
 void dev_menu_shutdown();
 // Polls R3 / F1 (edge): opens or closes the menu; F2 / L3 toggles moving the hero by hand; moves
@@ -48,9 +48,6 @@ void dev_menu_shutdown();
 void dev_menu_poll(GLFWwindow* window);
 // Whether the game should get no pad input this frame (the menu or the free camera has it).
 bool dev_menu_owns_input();
-// Whether the cursor is over the host's overlay (the rac1-native window, F1): its clicks are not the game's, nor do they
-// capture the cursor.
-bool dev_overlay_wants_mouse();
 // The cheats that hold every game frame (after the game's update).
 void dev_menu_game_frame();
 // Kills Ratchet through the game's own death state (done at the next game frame's end). Also RAC1_DIE_AT=<game frame> (testing).

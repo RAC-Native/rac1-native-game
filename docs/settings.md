@@ -39,7 +39,7 @@ headless runs) the row is the game's own Mono / Stereo.
 
 | Row | Values | Default |
 |---|---|---|
-| Renderer | OpenGL, Vulkan (experimental; from the next start, see [Vulkan](vulkan.md)) | OpenGL |
+| Renderer | OpenGL, Vulkan (experimental; from the next start, see [Vulkan](vulkan.md)); on macOS Metal only ([Metal](metal.md)) | OpenGL (macOS: Metal) |
 | Display | Window, Fullscreen | Window |
 | Monitor | the connected monitors by name (DP-1, HDMI-A-1, ...) | the first one |
 | Window Size | 640x480 (the original's) to 3840x2160 (16 sizes, 4:3 and 16:9 among them) | 960x720 |
@@ -93,11 +93,14 @@ headless runs) the row is the game's own Mono / Stereo.
 - **Render Resolution** scales the 3D; the HUD stays at the window's resolution.
 - **Aspect Ratio** Fill Screen widens the 3D to the window's shape without changing what the game
   sees; **Fit to Screen** applies when the chosen shape is not the window's. See
-  [Rendering](rendering.md#widescreen-and-render-scale).
+  [Rendering](rendering.md#widescreen-and-render-scale). 16:9 is not offered on a 16:9 screen, where it
+  is Fill Screen's picture.
 - **HUD** spreads the HUD over a wider area when the 3D is widened (Aspect Ratio 16:9 or Fill Screen).
   4:3 Original keeps it on the original's 4:3 frame in the middle; 16:9, 21:9 (64:27, an ultrawide
   2560 x 1080's) and 32:9 spread it over a box of that shape centred in the view; Fit Screen over the
-  view's whole width. The box is never wider than the view (16:9 on a 16:9 view is Fit Screen). On a
+  view's whole width. The box is never wider than the view (16:9 on a 16:9 view is Fit Screen), so
+  the row offers only the widths narrower than the view, besides 4:3 Original and Fit Screen; a width
+  chosen on a wider screen stays until it is changed. On a
   32:9 screen, 16:9 or 21:9 keeps the HUD near the middle of the view; Fit Screen puts it at the far
   edges. Only the elements the game anchors to a side move, each by the same amount, toward its
   side: the ammo and the weapon, the quick select (and Gadgebot's commands), the bottom left slot on

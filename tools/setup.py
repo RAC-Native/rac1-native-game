@@ -414,11 +414,13 @@ def macos_avcodec_ok() -> bool:
 
 
 # macOS: Apple's clang (the Command Line Tools or Xcode), the rest from Homebrew (https://brew.sh). No OpenGL, X11 or
-# Wayland files (GLFW is built for Cocoa) and no glslc (the Metal shaders are in the repository, compiled at start).
+# Wayland files (GLFW is built for Cocoa). glslc and SPIRV-Cross make the Metal renderer's shaders at build time.
 # (what, required, check, Homebrew package)
 MACOS_DEPENDENCIES = [
     ("CMake 3.20 or newer", True, cmake_ok, "cmake"),
     ("Apple's C++ compiler (the Command Line Tools: xcode-select --install)", True, compiler_ok, None),
+    ("glslc (the Metal renderer's shaders)", True, lambda: shutil.which("glslc") is not None, "shaderc"),
+    ("SPIRV-Cross (the Metal renderer's shaders)", True, lambda: shutil.which("spirv-cross") is not None, "spirv-cross"),
     ("FFmpeg's libavcodec (optional: plays the game's movies)", False, macos_avcodec_ok, "ffmpeg"),
 ]
 

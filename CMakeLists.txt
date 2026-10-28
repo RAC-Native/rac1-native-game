@@ -186,22 +186,28 @@ add_library(rac1_runtime STATIC
 target_include_directories(rac1_runtime PUBLIC ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src ${RAC1_VK_SHADERS_DIR})
 target_link_libraries(rac1_runtime PUBLIC rac1_platform rac1_profiler rac1_jobs rac1_formats glad glfw glm_headers OpenGL::GL volk imgui opengoal_989snd)
 
-# ---- the Metal renderer (macOS; docs/metal.md): its shaders are MSL made from the Vulkan renderer's GLSL by
-# tools/gen_metal_shaders.py (kept in the repository, runtime/mtl/shaders/), embedded here as text and compiled when the
-# game starts (no offline Metal compiler needed to build). Vulkan itself is not used on macOS.
+# ---- the Metal renderer (macOS; docs/metal.md): its shaders are MSL made from the Vulkan renderer's GLSL at build time by
+# tools/gen_metal_shaders.py (glslc, then SPIRV-Cross: brew install shaderc spirv-cross), embedded as text and compiled
+# when the game starts (no offline Metal compiler needed). Nothing of it is kept in the repository. Vulkan itself is not
+# used on macOS.
 if(APPLE)
-    file(GLOB RAC1_MTL_SHADER_FILES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/runtime/mtl/shaders/*.metal)
+    find_program(RAC1_SPIRV_CROSS NAMES spirv-cross DOC "the SPIR-V to MSL translator for the Metal renderer")
+    find_program(RAC1_GLSLC_ONLY NAMES glslc DOC "glslc (shaderc) for the Metal renderer's shaders")
+    if(NOT RAC1_GLSLC_ONLY OR NOT RAC1_SPIRV_CROSS)
+        message(FATAL_ERROR "the Metal renderer's shaders need glslc and spirv-cross: brew install shaderc spirv-cross")
+    endif()
     set(RAC1_MTL_SHADERS_DIR ${CMAKE_BINARY_DIR}/generated_mtl)
     set(RAC1_MTL_SHADERS_INC ${RAC1_MTL_SHADERS_DIR}/mtl_shader_sources.inc)
     add_custom_command(
-        OUTPUT ${RAC1_MTL_SHADERS_INC}
-        COMMAND ${CMAKE_COMMAND} -DDIR=${CMAKE_SOURCE_DIR}/runtime/mtl/shaders -DOUT=${RAC1_MTL_SHADERS_INC}
-                -P ${CMAKE_SOURCE_DIR}/cmake/embed_metal_shaders.cmake
-        DEPENDS ${RAC1_MTL_SHADER_FILES} ${CMAKE_SOURCE_DIR}/cmake/embed_metal_shaders.cmake
-        COMMENT "Metal shaders (runtime/mtl/shaders/)"
+        OUTPUT ${RAC1_MTL_SHADERS_INC} ${RAC1_MTL_SHADERS_DIR}/mtl_shader_table.inc
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/gen_metal_shaders.py ${RAC1_MTL_SHADERS_DIR} ${RAC1_GLSLC_ONLY} ${RAC1_SPIRV_CROSS}
+        DEPENDS ${CMAKE_SOURCE_DIR}/tools/gen_metal_shaders.py ${CMAKE_SOURCE_DIR}/tools/gen_vk_shaders.py
+                ${CMAKE_SOURCE_DIR}/src/game/render/mrp_materials_glsl.inc
+        COMMENT "Metal shaders (tools/gen_metal_shaders.py)"
         VERBATIM)
     # (on macOS the Vulkan renderer's code runs on Metal: runtime/mtl/vk_on_metal.mm in place of runtime/vk/vk_context.cpp)
-    target_sources(rac1_runtime PRIVATE runtime/mtl/mtl_context.mm runtime/mtl/vk_on_metal.mm ${RAC1_MTL_SHADERS_INC})
+    target_sources(rac1_runtime PRIVATE runtime/mtl/mtl_context.mm runtime/mtl/vk_on_metal.mm ${RAC1_MTL_SHADERS_INC}
+        ${RAC1_MTL_SHADERS_DIR}/mtl_shader_table.inc)
     set_source_files_properties(runtime/mtl/mtl_context.mm runtime/mtl/vk_on_metal.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
     target_include_directories(rac1_runtime PUBLIC ${RAC1_MTL_SHADERS_DIR})
     target_compile_definitions(rac1_runtime PUBLIC RAC1_HAVE_METAL=1)
