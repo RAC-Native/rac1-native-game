@@ -31,6 +31,11 @@ void render_view_rect(int win_w, int win_h, int& x, int& y, int& w, int& h);
 // overscan a TV hid, "l,r,t,b" those margins.
 void render_overscan_crop(float fb_w, float fb_h, int crop[4]);
 extern float g_view_widen;
+// (the Wii U's widescreen, ports/wiiu/game/wiiu_main.cpp RAC1_WIIU_WIDE; 1 elsewhere) a host that draws the game's 4:3 view wider without
+// render_view_projection - the game's tangent never widened in its memory -: render_proj_x's x tangent times this; the host's culling of
+// the world widened by it (overlay_entry.cpp world_pass), the moby pass's frustum too while g_view_draw_widen_mobys (render_frame)
+extern float g_view_draw_widen;
+extern bool g_view_draw_widen_mobys;
 // The field of view scale (debug menu, 1 the game's).
 extern float g_view_fov_scale;
 // The game's x fov tangent 0x16caf0 times the fov scale and, in widescreen, the window's widening,

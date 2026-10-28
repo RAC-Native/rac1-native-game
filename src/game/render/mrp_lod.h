@@ -64,6 +64,17 @@ void mrp_lod_world_after(int kind, uint32_t cur, uint32_t real_end);
 // what the MRP draws this frame (mrp_scene_draw()): its mobys at their near model, with the poses the pass computed for them.
 // The drop shadows stay the real pass's.
 void mrp_lod_moby_shadow(void (*pass)());
+// orig: (host) the real moby pass `pass` run with its frustum widened by `w` (the Wii U's widescreen, render_view.h g_view_draw_widen: no
+// shadow run - its journal of the whole pass costs too much there): patch_widen's tangent, projection_setup outputs and clip matrix
+// (the rows A the pass projects with kept), put back after the pass where the pass left them. The game's state then differs from a 4:3
+// run's in what the pass writes for the mobys in the side bands (their +0x31 "drawn" byte, their draw loop's work); w <= 1: the pass
+// as it is
+void mrp_lod_moby_widen_real(void (*pass)(), float w);
+// orig: (host) the same for the real sky pass (0x23d968: it projects its shells itself, culling its clusters to its frustum): the whole
+// projection widened (widen_projection: the rows A too, the sky's screen points in the widened view), the A it projected with kept for the
+// sky's capture (mrpw::sky_capture: mrp_lod_sky_real_a, nullptr when the last sky pass was not widened)
+void mrp_lod_sky_widen_real(void (*pass)(), float w);
+const float* mrp_lod_sky_real_a();
 
 // orig: (host) the 3D effects the GS replica draws (render_frame's block after the moby pass: the draw lists' callbacks - the
 // glows of the lights, the ships' canopy shine, through quad_draw 0x1fd228 -, the lens flare, the decals, the particles 0x267c98,

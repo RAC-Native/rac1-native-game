@@ -51,7 +51,7 @@ void level_stat(uint32_t s) {
 
 // (testing: the GamePad debug menu's switches, game_skips.h)
 bool g_skip_mobys = false, g_skip_hero = false, g_skip_particles = false, g_skip_camera = false, g_skip_sound = false, g_skip_hud = false,
-     g_skip_effects = false, g_skip_shadows = false, g_skip_joints = false;
+     g_skip_effects = false, g_skip_shadows = false, g_skip_joints = false, g_skip_draw_lists = false;
 bool g_draw_last_step_only = false;  // (set from RAC1_DRAW_LAST_STEP at the start, orig_main.cpp: the Wii U sets it after the static constructors)
 
 // orig: 0x00297f78 — one gameplay frame: the pause / menu checks (start, select, the vendor and

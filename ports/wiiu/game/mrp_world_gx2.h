@@ -17,8 +17,12 @@
 //   each host frame, after the game's frames ran and before the next update, in the walk branch next to the mobys' prepare:
 //       mrp_world_wiiu_prepare(active);  // (mrp_world_renderer.h) `active` as the PC's mrp_world_begin_frame's
 //
+//   each host frame too, right before the chain's reader starts (orig_main's walk branch): the sky's range walked (mrp_world_sky.inc)
+//       mrp_world_wiiu_sky_capture(walk);  // its packets put before the world's by the prepare, its batches made by build_triangles
+//
 //   then in the picture (wiiu_gfx.cpp's draw_frame, for the TV and again for the GamePad), after the depth's clear and BEFORE the
 //   mobys (mrp_moby_gx2_draw) and the 2D:
+//       rac1::mrp_world_gx2_draw_sky(cb, db, vp);  // the sky first: no depth test nor writes (behind everything)
 //       rac1::mrp_world_gx2_draw(cb, db, vp);  // as mrp_moby_gx2_draw's arguments (the depth NOT cleared here: shared with the mobys)
 //
 //   at the end, before WHBGfxShutdown:
@@ -29,8 +33,10 @@
 // shrub A templates, one GX2DrawIndexedEx per draw command with the draw's instance and record as a uniform block, its texture array
 // bound per draw - or, by default, those draws merged: RAC1_WIIU_WORLD_MERGE below -, the resident lit colours an R32UI texture the
 // vertex shader reads with texelFetch), in the world's projection (mode 0:
-// the clip matrices, the tfrags' world points through the view-projection). Not drawn: the CPU path's triangles (none from the host's
-// paths), the sky and the shrub far variants (phase 5), the drop shadows, the modern lighting.
+// the clip matrices, the tfrags' world points through the view-projection). Not drawn: the CPU path's triangles but the sky's (none other
+// from the host's paths), the shrub far variants (phase 5), the drop shadows, the modern lighting. The sky (phase 5, mrp_world_gx2_draw_sky):
+// its batches (Batch::sky) over the frame's CPU-path vertices with shaders/mrp_sky.gsh (mrp_sky.vert + mrp_world.frag), their textures the
+// sky asset's (mrpwb::built_bucket), made at their first draw.
 //
 // State left by mrp_world_gx2_draw: as mrp_moby_gx2_draw's (mrp_moby_gx2.h). It may call GX2SetContextState (the context of `cb`)
 // after the level's texture uploads (GX2CopySurface), which change the GPU's state.
@@ -57,6 +63,15 @@ int& mrp_world_gx2_merge_mode();
 // the prepared frame's tfrags / ties / shrubs into `cb` / `db` (bound by this call, `db` not cleared), the game's frame mapped onto `vp` (x / y
 // from the bottom left, as gs::draw_gx2's); nullptr db: no depth test
 void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp);
+// the prepared frame's sky into `cb` (the depth buffer bound, never tested nor written: its hierarchical Z untouched), the game's frame on
+// `vp` as mrp_world_gx2_draw's; before it. State left: as mrp_world_gx2_draw's
+void mrp_world_gx2_draw_sky(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp);
+// the sky drawn (RAC1_WIIU_SKY=1; off by default; the GamePad's debug menu flips it live): off, the frame's sky is neither captured nor
+// drawn, the game's sky pass not run either while the picture is up (mrp_world_wiiu_sky_pass_wanted), and the world's batches start from
+// the GS registers before the sky's (as they did before the sky)
+extern bool g_wiiu_sky;
+// the sky's shaders loaded (shaders/mrp_sky.gsh): g_wiiu_sky can draw it
+bool mrp_world_gx2_sky_loaded();
 
 // (testing, RAC1_WIIU_WORLD_DEBUG=<m>[,<m>...]: the debug modes in turn, each for 50 game frames from game frame
 // RAC1_WIIU_WORLD_DEBUG_AT (default 0) on, the last one kept; a mode's bits: 1 no depth test, 2 a plain grey (no texture, blending or
@@ -79,6 +94,10 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
 // 32-bit attributes not swapped (the other byte order), 2048 one tfrag draw a call, 4096 the vertices' colours alone, 8192 the textures
 // alone; RAC1_WIIU_TFRAG_STAGE=<n> 1 the CPU route alone (nothing sent), 2 its data sent and the state set, no draws, 3 (the default)
 // everything; RAC1_WIIU_TFRAG_GSH=<file> another build of the tfrag shaders)
+// (the sky's, testing: RAC1_WIIU_SKY=1 on at the start; RAC1_WIIU_SKY_DEBUG=<m>[,<m>...] / RAC1_WIIU_SKY_DEBUG_AT its modes as the others' -
+// bits 2 a plain grey (no texture, blending or alpha test), 16 the batches whose depth test fails at the far plane drawn too, 1024 the
+// 32-bit attributes not swapped, 2048 one sky draw a call, 4096 the vertices' colours alone, 8192 the textures alone; RAC1_WIIU_SKY_GSH=<file>
+// another build of the sky's shaders)
 void mrp_world_gx2_debug_frame(uint64_t game_frame);
 
 // (testing, 2026-10-28: the GPU's time - the console's TV frame took ~60 ms of GPU at full size, in proportion to its pixels) the

@@ -2,7 +2,9 @@
 // loop), the per-frame helpers it calls and the render view setup 0x1f6e48.
 // Callees not ported (or not yet proven with the oracle) are TODO_PORT. The hardware the loop
 // waits on (the RCNT1 counter, vsync, DMA kicks) is the host's: see host_rcnt1().
+#include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <utility>
 #include <vector>
 #include <game/boot/front_end.h>
@@ -25,6 +27,8 @@
 #include <game/render/mrp_fx.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_world_scene.h>
+#include <game/render/mrp_world_static.h>
+#include <game/render/mrp_world_sky.inc>
 #if defined(__WIIU__)
 #include <game/render/mrp_world_renderer.h>
 #endif
@@ -323,7 +327,8 @@ void zones_update() {
 // and its range noted: the MRP decodes it (mrp_world_scene.h), the GS replica skips it. `kind`: 0 tfrag, 1 tie, 2 shrub, -1 the sky.
 // orig: (host) testing (the Wii U port): RAC1_WORLD_PASS_SKIP, a mask of the kinds whose culling, and then relighting, is not run (2 tie,
 // 4 shrub: the game's own render enable off while they run; not the tfrag, whose packets read the culling's lists). The game state stays
-// (600 Veldin frames: hero and camera identical); the instances keep the colours of the level's load (a renderer relights them itself)
+// (600 Veldin frames: hero and camera identical); the instances keep the colours of the level's load, but for the point lights' (see
+// g_world_relight below)
 // (neither skip in the boot's title: its draw relights the passes' lists itself - title.cpp title_draw -, which a skipped pass never
 // filled: a quit to the title read a level's stale pointers)
 static bool world_pass_skipped(int kind) {
@@ -339,6 +344,79 @@ static bool tfrag_pass_off() {
     return off && !boot_in_title();
 }
 
+// orig: (host) the Wii U port (2026-10-28): the relighting of a pass whose culling is skipped (RAC1_WORLD_PASS_SKIP) or which is off
+// (RAC1_TFRAG_PASS_OFF), its list made here. The passes' relighting (0x295350 / 0x297728 / 0x288908 at the passes' end) is
+// incremental: the culling lists only the visible entries whose dirty byte is set (tfrag +0x35, tie / shrub bounds +0x1b: set when a
+// point light lets go of them, region_release) or that a dynamic point light holds (their nibbles, tfrag +0x36, tie / shrub +0x1e,
+// not 0xffff: light_assign); the rest keep the colours the level's load lit, which every frame's relighting reproduces bit for bit
+// (Veldin, frames 300 / 600 / 900: the 71296 tie, 40728 shrub and 24064 tfrag colours identical with and without the passes). So
+// what the skipped passes lose is the point lights' light (explosions, shots, effect lights) and its removal - not the world's
+// static lighting. Here every entry so flagged that the host's own culling drew in the last prepared frame (mrpw::relight_visible,
+// the Wii U's; without its marks - the PC - every flagged entry) is relit by the game's own routine, in lists of at most 511 (the
+// passes' buffers 0x1c5400 / 0x1c7300 / 0x1bcfb0, 0x40 quadwords, unused with their pass skipped). The game's code, the game's
+// colours: on the PC (Veldin, the Blaster's muzzle light, 270 frames of fire, every flagged entry relit) the light's entries come
+// back to the load's colours after it - the ties' exactly, the tfrags' but for the padding words of their last quadword -, where the
+// passes leave those off screen lit until seen; with the Wii U's marks an entry is relit a frame later than the game would. A quiet
+// frame costs a scan of the three tables' flags. RAC1_WIIU_RELIGHT=0 (or the GamePad menu's Picture page) leaves the colours of the
+// load, as before; the summary line "[relight]" every 600 frames.
+bool g_world_relight = std::getenv("RAC1_WIIU_RELIGHT") == nullptr || std::atoi(std::getenv("RAC1_WIIU_RELIGHT")) != 0;
+namespace {
+struct RelightStats {
+    uint64_t frames = 0, entries[3] = {}, max_frame = 0;
+    double us = 0.0, max_us = 0.0;
+};
+RelightStats g_relight_stats;
+// `count` entries of `stride` bytes from `table`: those whose byte `dirty` is set or halfword `nib` is not 0xffff listed (by their index,
+// or the halfword `index_at` when not 0: the shrubs' +0x18, as their culling lists them) at `list` and relit by `light`, each noted for the
+// MRP's resident colours (`touch`: 0 a tie, 1 a shrub, -1 none - the tfrags' are compared every frame); only those the host drew last
+// (mrpw::relight_visible of `kind`, 0 tfrag, 1 tie, 2 shrub: all when it has no marks); the number relit
+uint32_t relight_flagged(void (*light)(uint32_t), uint32_t table, int32_t count, uint32_t stride, uint32_t dirty, uint32_t nib, uint32_t index_at,
+                         uint32_t list, int kind, int touch) {
+    if (table == 0 || count <= 0 || count > 0x10000) return 0;
+    uint32_t n = 0, total = 0;
+    for (uint32_t i = 0; i < static_cast<uint32_t>(count); ++i) {
+        const uint32_t e = table + i * stride;
+        if (lbu(e + dirty) == 0 && lhu(e + nib) == 0xffffu) continue;
+        const uint32_t index = index_at != 0 ? lhu(e + index_at) : i;
+        if (mrpw::relight_visible(kind, index) == 0) continue;
+        sh(list + n * 2, index);
+        if (touch >= 0) mrpw::resident_colours_touch(touch == 1, index);
+        ++total;
+        if (++n == 511) {
+            sh(list + n * 2, 0xffff);
+            light(list);
+            n = 0;
+        }
+    }
+    if (n != 0) {
+        sh(list + n * 2, 0xffff);
+        light(list);
+    }
+    return total;
+}
+// kind 0 tfrag, 1 tie, 2 shrub: its flagged entries relit (see g_world_relight)
+void world_relight(int kind) {
+    if (!g_world_relight) return;
+    const auto t0 = std::chrono::steady_clock::now();
+    uint32_t n = 0;
+    if (kind == 0) n = relight_flagged(world_tfrag_lighting, lwu(OV(0x00160f4cu)), lw(OV(0x00160f50u)), 0x40, 0x35, 0x36, 0, OV(0x001c5400u), 0, -1);
+    else if (kind == 1) n = relight_flagged(world_tie_lighting, lwu(OV(0x00160fc0u)), lw(OV(0x00160fccu)), 0x20, 0x1b, 0x1e, 0, OV(0x001c7300u), 1, 0);
+    else n = relight_flagged(world_shrub_lighting, lwu(OV(0x00160494u)), lw(OV(0x00160490u)), 0x20, 0x1b, 0x1e, 0x18, OV(0x001bcfb0u), 2, 1);
+    RelightStats& s = g_relight_stats;
+    s.entries[kind] += n;
+    const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count();
+    s.us += us;
+    s.max_us = std::max(s.max_us, us);
+    s.max_frame = std::max<uint64_t>(s.max_frame, n);
+    if (kind != 2) return;  // (the frame's last: its summary every 600 frames)
+    if (++s.frames % 600 != 0) return;
+    std::printf("[relight] 600 frames: entries relit: tfrag %llu, tie %llu, shrub %llu (at most %llu of a kind in a frame); %.0f us a frame (at most %.0f us a kind)\n",
+                static_cast<unsigned long long>(s.entries[0]), static_cast<unsigned long long>(s.entries[1]), static_cast<unsigned long long>(s.entries[2]),
+                static_cast<unsigned long long>(s.max_frame), s.us / 600.0, s.max_us);
+    s = RelightStats{};
+}
+}  // namespace
+
 // orig: (host) the world passes' chain ranges of the frame (first tag, end), noted while on: for a renderer that draws the
 // world itself and has the GS replica skip them (the Wii U's 2D path; the MRP has its own, mrp_world_skip_ranges). The
 // taker clears them.
@@ -353,10 +431,16 @@ void world_pass(void (*pass)(), int kind) {
     if (g_world_mrp) mrp_lod_world_shadow(kind >= 0 ? kind : 3, pass, cur);  // (the LOD slider's shadow run first, the memory put back)
 #if defined(__WIIU__)
     // (the Wii U's MRP-lite: its ties / shrubs always made by the host from the pass's inputs - mrp_world_static.h, MRP_LITE.md phase 3 -,
-    // whose snapshot is taken here, as mrp_lod_world_shadow does on the PC: no LOD slider, no widening; its tfrags' decisions too -
+    // whose snapshot is taken here, as mrp_lod_world_shadow does on the PC: no LOD slider (the widening below); its tfrags' decisions too -
     // mrp_tfrag_gpu.h tfrag_decide, phase 4 -: the game's tfrag pass still runs, its packets read the culling's lists)
-    if (kind == 1 || kind == 2) mrpw::static_note_pass(kind, mrp_world_ready(), 1.0f, 1.0f, 1.0f);
-    if (kind == 0) mrpw::tfrag_note_pass(mrp_world_ready(), 1.0f, 1.0f);
+    // ((2026-10-28) the widescreen, render_view.h g_view_draw_widen: the host's culling widened as the drawing is - the ties' / shrubs'
+    // by their snapshot's widening, the tfrags' snapshot widened after it is taken -, the game's memory untouched)
+    const float ww = g_view_draw_widen > 1.0f ? g_view_draw_widen : 1.0f;
+    if (kind == 1 || kind == 2) mrpw::static_note_pass(kind, mrp_world_ready(), 1.0f, ww, 1.0f);
+    if (kind == 0) {
+        mrpw::tfrag_note_pass(mrp_world_ready(), 1.0f, 1.0f);
+        mrpw::tfrag_snapshot_widen(ww);
+    }
 #endif
     // (testing, the Wii U port: RAC1_WORLD_PASS_TIME, each world pass's own time every 60 frames)
     static const bool wp_time = std::getenv("RAC1_WORLD_PASS_TIME") != nullptr;
@@ -371,7 +455,13 @@ void world_pass(void (*pass)(), int kind) {
         pass();
         sw(en, was);
     } else {
+#if defined(__WIIU__)
+        // (the Wii U's widescreen, render_view.h g_view_draw_widen: the sky's clusters culled in the widened view, mrp_lod.h)
+        if (kind < 0) mrp_lod_sky_widen_real(pass, g_view_draw_widen);
+        else pass();
+#else
         pass();
+#endif
     }
     if (wp_time) {
         wp_ms[kind >= 0 ? kind : 3] += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - wp_t0).count();
@@ -387,6 +477,9 @@ void world_pass(void (*pass)(), int kind) {
         return;
     }
     if (g_world_mrp) mrpw::scene_note_pass(kind >= 0 ? kind : 3, cur, lwu(OV(0x001611c0)));  // (the sky: 3)
+#if defined(__WIIU__)
+    else if (kind < 0) mrpw::scene_note_pass(3, cur, lwu(OV(0x001611c0)));  // (the Wii U's sky: its range walked by mrpw::sky_capture, mrp_world_sky.inc)
+#endif
     if (g_world_pass_ranges_on && lwu(OV(0x001611c0)) > cur) g_world_pass_ranges.emplace_back(cur, lwu(OV(0x001611c0)));
     if (g_world_mrp) mrp_lod_world_after(kind >= 0 ? kind : 3, cur, lwu(OV(0x001611c0)));  // (the shadow chain in place of this range)
     static const bool trace = std::getenv("RAC1_VU1_TRACE") != nullptr;  // (testing)
@@ -400,6 +493,9 @@ void world_pass(void (*pass)(), int kind) {
 // differs from the one without it by a sub-pixel shift of one prop)
 static void sky_pass() { sky_render(); }
 bool sky_wanted() {
+#if defined(__WIIU__)
+    if (!mrp_world_wiiu_sky_pass_wanted()) return false;  // (the Wii U's picture without its sky, mrp_world_sky.inc)
+#endif
     static const bool env = std::getenv("RAC1_SKY_CHAIN") != nullptr || std::getenv("RAC1_WORLD_CHAIN") != nullptr;
     return env || ((g_world_faithful || g_world_mrp || g_world_chain_forced) && g_render_sky);  // (the debug menu's Sky checkbox gates the faithful / MRP sky too)
 }
@@ -493,7 +589,7 @@ static void draw_list_block_dc80() { draw_list_block(0); }
 static void draw_list_block_de80() { draw_list_block(1); }
 // (host) the block run as a shadow first in a widened view (the memory put back), then for real
 static void draw_list_block_run(int list) {
-    if (g_skip_effects) return;
+    if (g_skip_effects || g_skip_draw_lists) return;
     RAC1_PROF_ZONE(kGameEffects);
     const uint32_t cur = lwu(OV(0x001611c0));
     mrp_lod_list_shadow(list, list == 0 ? draw_list_block_dc80 : draw_list_block_de80, cur);
@@ -557,7 +653,12 @@ void render_frame() {
         if (g_moby_vu1_pass) {
             mrp_lod_moby_shadow(moby_pass);  // (the MRP's LOD slider / widened view, the memory put back)
             RAC1_PROF_ZONE(kGameMobyPass);
+#if defined(__WIIU__)
+            // (the Wii U's widescreen, render_view.h: the real pass's frustum widened - no shadow run -, unless the mobys are kept 4:3)
+            mrp_lod_moby_widen_real(moby_pass, g_view_draw_widen_mobys ? g_view_draw_widen : 1.0f);
+#else
             moby_pass();
+#endif
         }
         else TODO_PORT(0x00250038, "mobys (VU1): the host's model drawer instead")();
     }
@@ -595,6 +696,8 @@ void render_frame() {
         if (lw(EN + 0x10) != 0 && !tfrag_pass_off()) {
             world_tfrag_lighting(OV(0x001c5400u));
             world_tfrag_end();
+        } else if (lw(EN + 0x10) != 0) {
+            world_relight(0);  // (host: the pass off, its relighting from the flags - g_world_relight)
         }
         prof_mark(OV(0x001e7a00), 2);
     }
@@ -609,6 +712,8 @@ void render_frame() {
                 world_tie_lighting(OV(0x001c7300u));
                 world_tie_end();
             }
+        } else if (lw(EN + 0x18) != 0 && lw(0x0015ed80) == 0) {
+            world_relight(1);  // (host: the culling skipped, its relighting from the flags - g_world_relight)
         }
         prof_mark(OV(0x0015f3d8), 5);
     }
@@ -618,6 +723,8 @@ void render_frame() {
         if (lw(EN + 0x20) != 0 && !world_pass_skipped(2)) {
             world_shrub_lighting(OV(0x001bcfb0u));
             world_shrub_end();
+        } else if (lw(EN + 0x20) != 0) {
+            world_relight(2);  // (host: the culling skipped, its relighting from the flags - g_world_relight)
         }
         prof_mark(OV(0x001e7a18), 7);
     }

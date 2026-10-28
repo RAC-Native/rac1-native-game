@@ -58,7 +58,8 @@ in `tools/gen_vk_shaders.py`) brought to GLSL 330 for CafeGLSL, kept in `ports/w
 
 - tie / shrub: the host-made path (`static_frame_build`) turned on for the Wii U - the game's tie / shrub culling stays off. The
   instances' lit colours stay those of the level's load until the game's relighting runs again (to look at later: a
-  relighting of our own, or the game's relighting on a worker core).
+  relighting of our own, or the game's relighting on a worker core). (2026-10-28: the load's colours are the right ones; the point
+  lights' relighting is the game's own, from the entries' flags - Progress, "The world's relighting".)
 - tfrag: first the static form (each entry's near image, no morph: a T-only mesh the vertex shader transforms; one LOD
   everywhere, no cracks), then `tfrag_exec_cpu` on a worker core if the LOD morph is wanted. The game's tfrag pass keeps running
   (its packets read the culling's lists). (Phase 4 went to the exact form at once: `tfrag_exec_cpu` on the game's thread, cheap
@@ -260,3 +261,106 @@ Each phase ends with shots of the console's TV (RAC1_WIIU_SHOT) compared with th
   Then on the console: the G icon and the HelpDesk's text as on the PC (game frames 150 / 200), the same with the reader on its
   worker (core 0) and on the game's thread; the pause menu (frames 500 / 600) as the PC's, boxes, frames and text - the frozen
   scene under it not drawn yet.
+- The sky (phase 5, 2026-10-28): the PC MRP's own sky - the sky pass's GS streams of the frame's chain, the points taken back as directions
+  (sky_dir) - made for GX2 without the scene's walker (not run on the console yet). What it is:
+  - the capture (`mrpw::sky_capture`, mrp_world_sky.inc - a .inc, not a header: the generated code's fingerprint): the sky pass's range of
+    the chain (overlay_entry.cpp world_pass notes it on the Wii U as scene_note_pass's pass 3; the sky pass already ran there - g_world_faithful -,
+    its range skipped by the chain's reader) walked in EE memory as scene_build walks it: its DIRECTs' GIF streams (SkyGif) as register writes, a
+    packet each, its other VIF codes on a private VU1 (the particle program's kicks: 0.65 a frame on Veldin), the sky asset, its texture entries
+    and the projection A. orig_main's walk branch calls it (mrp_world_wiiu_sky_capture) right before the chain's reader starts, the reader
+    joined first: with `thread_local` defined away the VU1 runtime's start state and memo are one for all threads, so the two never run VU1
+    programs at once. mrp_world_wiiu_prepare puts its packets before scene_from_static's (`mrpw::sky_prepend`), and build_triangles makes the
+    sky's batches exactly as the PC's (Batch::sky: GsFront's state along the streams, the GpuV vertices, sky_texture);
+  - checked on the PC (RAC1_MRPW_SKY_CHECK=1 with RAC1_MRPW_THREAD=0: the capture against the walker's sky in the same frame's scene, packet
+    by packet, write by write, the asset, entries and projection): GOTO=0@60 forward 900 frames and GOTO=3@60 forward 2400 (Kerwan), identical
+    but at game frame 60 (the level change: the walker's scene has no sky packets there, the capture 24). No tag outside the range was met. The
+    capture's time on the PC 0.044 ms a frame (the walker's own sky part 0.02-0.06, RAC1_FRAME_PROF);
+  - big-endian fixes in the shared code (the PC unchanged: the three references, RAMHASH as main's): sky_texture read the texels' bytes and the
+    CLUT entries as raw memory (on the PPC EE memory holds host-order words: ee_byte_addr for the indices, the CLUT word's bytes taken from its
+    value - RGBA bytes in memory on any host), sky_gpuv copied the RGBA word into GpuV::rgba with memcpy (bytes reversed on the PPC);
+  - textures: the sky's buckets (made by the build, no GL / Vulkan image) keep their texels on the Wii U (Bucket::texels,
+    mrpwb::built_bucket); the GX2 backend makes each a linear 1-layer array at its first draw (13 on Veldin), dropped at a level change;
+  - GX2 (mrp_world_gx2.cpp `mrp_world_gx2_draw_sky`, shaders/mrp_sky.gsh = mrp_sky.vert + mrp_world.frag): drawn first, before the world,
+    for the TV and the GamePad; the frame's CPU-path vertices / indices (mrpwb::FrameView::cpu_verts / cpu_idx: the sky's alone on the Wii U)
+    copied once a frame into a 2 MB MEM2 ring of their own (fetch shader as the tfrags': gpuv_fetch, 8_IN_32); per batch the GS's blending
+    (set_blend_gx2), the bucket's texture and sampler, the alpha test's passes (FB_ONLY / RGB_ONLY; ZB_ONLY draws nothing here), FGE / FOGCOL
+    as the world's. The vertex shader is mrp_tfrag.vert's with z = w (1 - 1/1024) (the PC's depth clamp: a direction lies past the far plane).
+    The depth: the PC tests the sky at the far plane against the cleared depth and writes what is there; here the test and the writes are off
+    (GX2SetDepthOnlyControl(FALSE, FALSE, LEQUAL): the world's direction kept, nothing read or written, the hierarchical Z stays valid), and
+    the batches whose test would fail there (ZTST NEVER / GREATER) are not drawn - the same picture. The GS registers the sky leaves are the
+    world's start now, as on the PC (ALPHA_1 0x2000000044 at the tfrags; with the sky off, the registers before it, as before);
+  - no clear colour of the sky asset is drawn (the PC MRP draws none: its frame is cleared black, as the Wii U's);
+  - off by default (RAC1_WIIU_SKY=1 on; the GamePad menu's "Sky" row flips it live): a first console run with it on (2026-10-28) timed
+    "sky's capture" 1.5-3.6 ms a host frame - the reader's join was inside that span then, it is outside now - and "sky draws" 0.2-0.9. Off,
+    nothing of it runs: no capture, no draws, and while the GX2 world is up the game's sky pass is not run either
+    (mrp_world_wiiu_sky_pass_wanted, overlay_entry.cpp sky_wanted: its work is the sky's chain alone; it also updates a little state the moby
+    pass reads, so the game's frames then differ from the PC's by that much - without the picture, the determinism runs, it runs);
+  - the scissor is the game's 4:3 frame (the console showed the sky in the bars beside it: the clipper keeps a primitive whole inside its
+    guard band, past the viewport). The world's and the mobys' scissors are still the whole buffer;
+  - the registers the sky leaves (Veldin, the PC's capture): TEST_1 5360b and ZBUF_1 10000d8 as before it, ALPHA_1 2000000044 (FIX 0x20 for
+    0x80: unused by that blend), TEX0_1 / CLAMP_1 / TEX1_1 and the context 2 / texture flush registers - none the world's packets do not set
+    again: the world's depth state is the same with the sky on or off;
+  - the private VU1 is ~15% of the capture's time on the PC (RAC1_SKY_CAPTURE_VU1=0, testing: its VIF codes not run - 394 of 600 frames then
+    differ, the particle program's kicks missing);
+  - switches: RAC1_WIIU_SKY_DEBUG / _DEBUG_AT (mrp_world_gx2.h), RAC1_WIIU_SKY_GSH; the log line every 120 calls ("sky, last 120 calls":
+    draws, triangles, batches, the capture and build's ms, the draws' ms); the first sky draw dumped once; RAC1_WIIU_TIMING's slots
+    "sky's capture" and "sky draws", the GPU marks' "sky" (RAC1_WIIU_GPU_TIME=1). The menu's "GPU test" row went into "GPU: shaders / test"
+    (one cycle: off, nokill, lean, both, no pixels, 1 Z clear) to keep the Picture page at 13 rows.
+  Expected cost on the console (the capture's own time not measured yet - the sky's log line has it): Veldin ~50 packets, ~3000 register writes, ~900 vertices, ~300 triangles a frame; the capture on
+  the game's thread and the build on the prepare's worker, perhaps 0.5-2 ms each at Espresso's pace; a handful of draws. The GPU's share is
+  the unknown: the shells cover the whole frame with blending and the world's pixel shader, drawn twice (TV, GamePad), none of it culled.
+  Left: the console's picture and times, the sky's frame at a level change (frame 60 above), the title's sky (title_scene_host: its own path);
+  a cheaper sky - the sky asset decoded once a level (sky_render.cpp's g_decoded_sky, uploaded once) with the game's sky pass not run - needs
+  each level's variant of the pass written for the host (0x23d968's twenty: Veldin's draws shells 0, 1, its stars, ALPHA_1 0x80000044 before
+  shell 2, shell 3 turned about z by (0x15f5cc & 0x7fff) x pi / 16384 - pi, shell 4) and the decoder checked against the PC's (its shells are
+  re-centred, their rotation never filled, the untextured colours guessed).
+- The tfrags' view and the widescreen (2026-10-28, not run on the console yet):
+  - the ground missing in patches (the console, Veldin, also under Ratchet): `mrpw::tfrag_pass_vu` read the tfrag view from the tfrag pass's
+    own chain (`*(0x160f7c)` + 0x20), but with RAC1_TFRAG_PASS_OFF=1 (the default since that day) the pass never runs: 0x160f7c was 0 (the
+    PC's headless run started in the level: tfrag_pass_vu found nothing, no tfrag would be drawn) or, after the title, a stale tag into a packet buffer other passes write (the
+    console: another frame's view, or none). The view is now the tfrag snapshot's (tfrag_note_pass makes it as 0x294240 does: the identity
+    with the camera x -1024, times 0x166cc0, vecmath's mat4_mul): the same as the chain's on every frame of explore and GOTO=0@60 forward
+    (420 / 420 each, the pass on). RAC1_MRPW_TFRAG_VIEW_CHAIN=1 (testing): the chain's as before;
+  - "objects vanish at the sides": the 3D was drawn with the game's 4:3 projection into the 4:3 viewport (1440 x 1080 at 240), the world's
+    and mobys' scissor the whole buffer: GX2's clipper keeps a primitive whole inside its guard band, so the triangles across the 4:3
+    frame's sides were drawn into the bars, those wholly outside it were not (nor the instances / mobys the 4:3 culling dropped) - the
+    picture across the TV, with blocks missing. Now a real widescreen (RAC1_WIIU_WIDE=1, the default; 0 the 4:3 frame as before): the
+    viewport 16:9 (1920 x 1080; the resolution's share scales it), render_proj_x's x tangent times g_view_draw_widen (4 / 3; render_view.h,
+    1 on the PC), the game's 2D and its projected 3D at xscale 3 / 4 in the centre (gs::Viewport::xscale / xscale_3d). The culling widened
+    the same: the ties / shrubs by static_note_pass's widening, the tfrags' snapshot widened after it is taken (tfrag_snapshot_widen: the x
+    tangent, its radius factor, the clip matrix's x column - no game memory written), the moby pass's frustum (mrp_lod_moby_widen_real:
+    patch_widen on the real pass, its writes journaled and put back after it; RAC1_WIIU_WIDE_MOBYS=0 keeps the mobys' 4:3) and the sky
+    pass's whole projection (mrp_lod_sky_widen_real, its A kept for sky_capture). The GamePad menu's Game page: "Widescreen" (16:9 ->
+    16:9 with the mobys 4:3 -> off).
+  - what the widening keeps more (the PC, the game's own passes widened by the same patch, Wii U settings, 600 frames; per frame, 4:3 ->
+    16:9): explore tfrag entries 24.1 -> 35.5, ties 133 -> 168, shrubs 95 -> 120, mobys drawn 20.5 -> 27.7; GOTO=0@60 forward 33.2 ->
+    47.6, 170 -> 211, 103 -> 135, 29.0 -> 36.9 (+27..47%). The hero and the camera at frame 600 the same either way. The moby pass on the
+    PC 0.18 -> 0.22 ms. The PC unchanged (the three references, RAMHASH as main's).
+- The world's relighting (2026-10-28, not run on the console yet): "the world is darker than the PC's" is not the colours. Measured on the
+  PC: with the Wii U's settings (RAC1_WORLD_PASS_SKIP=6 RAC1_TFRAG_PASS_OFF=1 ...) the level's lit colours at Veldin's frames 300 / 600 /
+  900 (explore) and 300 (GOTO=0@60 forward) are those of the passes' run bit for bit (71,296 tie, 40,728 shrub, 24,064 tfrag colours: RAM
+  dumps, RAC1_RAMDUMP); and the console's shots (cull_169_300 / _600, explore) against the PC's at the same frames (hero and camera the
+  same), the console's scaled and cropped to the PC's 4:3: the means per region (sky, ground, rocks, tree, Ratchet, the whole) within
+  0.7 of 255 per channel. The colour scale (0x80 = 1, mrp_world.frag's 255 / 128), the resident colours' byte order and the tfrags' are
+  right; the darker look came from the camera (the PC's GOTO=0@60 forward looks at the lit horizon, the console's explore at the shaded
+  rocks). What the skipped passes did lose: the passes' relighting is incremental - the culling lists the visible entries whose dirty
+  byte is set (tfrag +0x35, tie / shrub +0x1b: region_release when a point light lets go) or that a dynamic point light holds (nibbles
+  tfrag +0x36, tie / shrub +0x1e: light_assign) -, everything else keeps the load's lighting (which some vertices' light-set blend makes
+  depend on the camera's set 13 at the time they were lit: a relit entry may differ from the load's by a few words). So the Wii U lacked
+  the point lights on the world (the Blaster's muzzle flash, explosions, effect lights) and their removal - nothing else.
+  - The relighting now (overlay_entry.cpp world_relight; RAC1_WIIU_RELIGHT, default on; the GamePad menu's Picture page, "World relit
+    (point lights)"): with a pass's culling skipped or the tfrag pass off, the flags of the three tables scanned at the passes' end and the
+    flagged entries the host's culling drew in the last prepared frame (mrp_world_static.h relight_visible_*: the static frame's
+    instances, tfrag_decide's entries) relit by the game's own routines (0x295350 / 0x297728 / 0x288908) through the passes' list buffers
+    (unused with the passes skipped), 511 a call. The tie / shrub instances relit are noted (resident_colours_touch) and compared alone in
+    the next prepare, not waiting for the 30-frame whole-table compare (RAC1_WIIU_COLOUR_EVERY); the tfrags' colours are compared every
+    frame already. Not a GPU relighting: the world's colours are right without it, the point lights touch a few dozen entries for a few
+    frames, and the game's routine gives its exact colours where a shader would need the vertices' normals, base colours and light-set
+    blends on the GPU and the VU0 arithmetic matched.
+  - The PC with the Wii U's settings (every flagged entry relit: no host marks there), Veldin GOTO=0@60, the Blaster (GIVE_ITEMS=0xf,
+    circle held frames 330-600): at frame 450 the passes' run had 34 tfrag / 48 tie entries held, its lists 11 / 7 (the visible ones);
+    after the shots (frame 760) the ties' colours are the load's again (the passes' run keeps 71 ties / 44 tfrags dirty off screen), the
+    tfrags' too but for the padding words of their last quadword. Cost on the PC: 25 us a frame quiet (the scan of 460 + 1114 + 1697
+    entries), 566 us a frame on average over the 600 frames with the fire (38 entries a frame), 1.96 ms the worst kind in a frame.
+    On the console expect ~10x: ~0.2-0.3 ms a quiet frame, a few ms a frame while a light is on (less with the host's marks: the
+    visible entries, ~1/4 of the held ones in that run). The PC unchanged (no skips by default: the three references, RAMHASH as main's).

@@ -90,7 +90,7 @@ glm::mat4 view_matrix_live() {
 // orig: (host) the projection scales of 0x001f7980's fov tangents
 float render_proj_x(float aspect, float fov) {
     const float t = g_draw_from_snapshot ? g_vs.tx : ee_read<float>(OV(0x0016caf0));
-    if (g_view_from_game && !g_view_debug && t > 0.0f) return 1.0f / t;  // widened in the game's own (render_view_projection)
+    if (g_view_from_game && !g_view_debug && t > 0.0f) return 1.0f / (t * g_view_draw_widen);  // widened in the game's own (render_view_projection) or by the host (the Wii U)
     return 1.0f / (aspect * std::tan(fov * 0.5f));
 }
 // orig: (host) the projection scales of 0x001f7980's fov tangents
@@ -125,6 +125,8 @@ bool gs_depth_live(double& a, double& b) {
 }  // namespace
 
 float g_view_widen = 1.0f;
+float g_view_draw_widen = 1.0f;
+bool g_view_draw_widen_mobys = true;
 float g_view_fov_scale = 1.0f;
 
 float g_hud_aspect = 0.0f;

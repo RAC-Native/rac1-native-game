@@ -234,3 +234,27 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   the foreground's release. Also: the pause menu's Quit ends the game (RAC1_QUIT_ENDS=1, a Wii U default; the boot's title is under
   1 fps there), the GamePad menu's "Exit game", the Minus button held a second. All four seen back at the Wii U Menu.
 - Veldin's start, everything on, 1080p: ~70 ms a host frame (from ~150 this morning), all of it the CPU's.
+
+### The poses in plain floats (2026-10-28, later)
+
+- What the console ran: moby_joints_pose's loops in their "SIMD" form (RAC1_VU0_SIMD), which on the Wii U is the SSE2 shim on GCC
+  vectors (runtime/vu/vu_simd_shim.h: no AltiVec, four scalar lanes, every float op's operands clamped with integer masks, every
+  result's MAC / status flags built lane by lane by fin_lanes). Built for the Wii U, the joints' matrices loop is 4553 instructions
+  (18 KB, mostly straight-line, run once per joint), the rotations' 3293, the bind matrices' 1704, the lists' 1303: 43 KB together,
+  more than Espresso's 32 KB instruction cache.
+- Nothing reads what the plain-float form drops: the matrices go to the skinning, the MRP's pose observer and the strafe's hook only
+  (all drawing; with RAC1_DRAW_LAST_STEP the game runs without them for most game frames already); no CFC2 of the status flag in
+  the whole game and no VU0 program tests it; every MAC read (cfc2 17) follows an op of its own; the pose's later ops load or set
+  the scratch registers they read, the skinning loads its own.
+- RAC1_WIIU_FAST_POSE (moby_joints.cpp; 1 on the Wii U, 0 on the PC; the debug menu's Game page, "Fast poses": fast -> exact -> off):
+  the four hot loops, the blend channels' loop and the one-keyframe rotations in plain floats, the scratchpad through its host
+  pointer, the s16 keys made floats through their mantissa (no integer conversion). 1: the multiply-adds fused (fmadds), 1 / sqrt
+  from frsqrte and three Newton steps (no fsqrt on the 750: sqrtf is software). 2: each op rounded as the VU0's, sqrtf. The
+  matrices' loop is 325 instructions (1.3 KB), the rotations' 300, the bind matrices' 238, the lists' 158, the blend channel 242;
+  the exact mode's copies are about as big (only one runs).
+- RAC1_WIIU_FAST_POSE_CHECK=1 builds each pose twice (the VU0's way, then the fast one, kept) and prints "[pose]" every 2000 poses.
+  PC, Veldin 600 frames (10000 poses, 161972 joints): mode 2 bit for bit the VU0 path's; mode 1 the rotation rows at most 1.1e-6 off,
+  the translation rows 0.0068 (joints ~1000-8000 units from the moby's origin, where the bind's terms cancel: a few units in the
+  last place of those terms). Two Newton steps from a 5-bit estimate left the rows 1e-5 off and the translations 0.05: three.
+- The PC's own times say nothing (its VU0 path is SSE / AVX2, ~0.1 ms a frame either way). On the console to measure: the "[game]"
+  line's "Game: moby joints / skinning (VU0)" with the menu's row at fast / exact / off (3-5 ms a host frame before).

@@ -81,6 +81,77 @@ void resident_colours_update(ResidentColours& rc, const ColourSource& src) {
     rc.all_dirty = all;  // (the draw sends the whole table and clears it)
 }
 
+namespace {
+// (the Wii U port) the instances relit since the last update: tie indices, then shrub indices; `over` past kTouchMax notes
+constexpr size_t kTouchMax = 4096;
+std::vector<uint32_t> g_touch[2];
+bool g_touch_over = false;
+// (the Wii U port) the host's last drawn entries by kind (relight_visible_mark)
+std::vector<uint8_t> g_vis[3];
+bool g_vis_have[3] = {};
+}  // namespace
+
+// orig: (host) see mrp_world_static.h
+void relight_visible_clear() {
+    for (int k = 0; k < 3; ++k) {
+        std::fill(g_vis[k].begin(), g_vis[k].end(), uint8_t{0});
+        g_vis_have[k] = false;
+    }
+}
+
+// orig: (host) see mrp_world_static.h
+void relight_visible_mark(int kind, uint32_t index) {
+    if (kind < 0 || kind > 2) return;
+    g_vis_have[kind] = true;
+    if (index >= 0x10000) return;  // (~0u: the kind's culling ran, nothing marked by it)
+    std::vector<uint8_t>& v = g_vis[kind];
+    if (v.size() <= index) v.resize(index + 1, 0);
+    v[index] = 1;
+}
+
+// orig: (host) see mrp_world_static.h
+int relight_visible(int kind, uint32_t index) {
+    if (kind < 0 || kind > 2 || !g_vis_have[kind]) return -1;
+    return index < g_vis[kind].size() ? g_vis[kind][index] : 0;
+}
+
+// orig: (host) see mrp_world_static.h
+void resident_colours_touch(bool shrub, uint32_t index) {
+    if (g_touch_over) return;
+    if (g_touch[0].size() + g_touch[1].size() >= kTouchMax) {
+        g_touch_over = true;
+        return;
+    }
+    std::vector<uint32_t>& v = g_touch[shrub ? 1 : 0];
+    if (v.empty() || v.back() != index) v.push_back(index);
+}
+
+// orig: (host) see mrp_world_static.h
+void resident_colours_update_touched(ResidentColours& rc, const ColourSource& src, bool drop) {
+    const bool none = g_touch[0].empty() && g_touch[1].empty() && !g_touch_over;
+    if (drop || none) {
+    } else if (g_touch_over || !(src == rc.src) ||
+               rc.mirror.size() != static_cast<size_t>(src.tie_count) * kTieColours + static_cast<size_t>(src.shrub_count) * kShrubColours) {
+        resident_colours_update(rc, src);
+    } else {
+        for (int k = 0; k < 2; ++k) {  // (ascending slots: the ties' first, as compare_table's ranges want them)
+            std::vector<uint32_t>& v = g_touch[k];
+            std::sort(v.begin(), v.end());
+            v.erase(std::unique(v.begin(), v.end()), v.end());
+            for (uint32_t i : v) {
+                if (k == 0 && i < src.tie_count) {
+                    compare_table(rc, i * kTieColours, 1, kTieColours, src.tie_data + i * kTieDataStride, kTieDataStride, kTieColourOffset, false);
+                } else if (k == 1 && i < src.shrub_count) {
+                    compare_table(rc, rc.shrub_first() + i * kShrubColours, 1, kShrubColours, src.shrub_cols + i * kShrubColourStride, kShrubColourStride, 0, false);
+                }
+            }
+        }
+    }
+    g_touch[0].clear();
+    g_touch[1].clear();
+    g_touch_over = false;
+}
+
 // ---- stage 2 ---------------------------------------------------------------------------------------------------------------
 
 namespace {

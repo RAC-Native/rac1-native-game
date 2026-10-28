@@ -6,6 +6,7 @@
 // from shaders/ beside the game's data. Host code.
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/mrp_chain.h>
+#include <game/render/render_view.h>
 #include <runtime/gs/gs_emu.h>
 #include <profiler/host_profiler.h>
 #include "gs_draw_gx2.h"
@@ -216,9 +217,10 @@ bool wiiu_gfx_start() {
 // clock: the stages orig_main.cpp times (rac1_wiiu_time), the picture's draws by backend, the GX2 waits, and the rest of the frame
 // - the game's steps)
 namespace {
-enum TimeSlot { kTmChain, kTmMobyPrep, kTmWorldPrep, kTmWorldJoin, kTmGpuWait, kTmJoin, kTmBegin, kTmWorld, kTmMobys, kTm2d, kTmFinishTv, kTmDrc, kTmFinish, kTmN };
-const char* const kTmName[kTmN] = {"chain start", "mobys' prepare", "world's prepare", "world's worker join", "GPU wait (the frame before)", "chain join", "begin (swap wait)",
-                                   "world draws", "moby draws", "2D draws", "TV finish", "GamePad", "finish"};
+// (slots 0..3 orig_main.cpp's: rac1_wiiu_time(0 / 1 / 2 / 3); the sky's two, 2026-10-28: its capture on the game's thread, its draws)
+enum TimeSlot { kTmChain, kTmMobyPrep, kTmWorldPrep, kTmSkyCapture, kTmWorldJoin, kTmGpuWait, kTmJoin, kTmBegin, kTmSky, kTmWorld, kTmMobys, kTm2d, kTmFinishTv, kTmDrc, kTmFinish, kTmN };
+const char* const kTmName[kTmN] = {"chain start", "mobys' prepare", "world's prepare", "sky's capture", "world's worker join", "GPU wait (the frame before)", "chain join",
+                                   "begin (swap wait)", "sky draws", "world draws", "moby draws", "2D draws", "TV finish", "GamePad", "finish"};
 double g_tm[kTmN] = {}, g_tm_total = 0.0;
 double g_tm_mark[kTmN] = {};  // (the stages' sums at the host frame's start: a hitch's own share)
 std::vector<std::string> g_menu_stats;  // (the GamePad's debug menu: the last window's times)
@@ -246,8 +248,8 @@ void rac1_wiiu_time(int slot, double ms) {
 extern "C" void GX2SampleTopGPUCycle(uint64_t* result);  // (gx2.rpl: wut has the imports, not the declarations)
 extern "C" void GX2SampleBottomGPUCycle(uint64_t* result);
 namespace {
-enum GpuMark { kGmStart, kGmClear, kGmZclear, kGmWorld, kGmMobys, kGm2d, kGmTvCopy, kGmDrc, kGmSwap, kGmN };
-const char* const kGmName[kGmN] = {"start", "clear (WHB)", "depth clear", "world", "mobys", "2D", "TV copy", "GamePad", "swap"};
+enum GpuMark { kGmStart, kGmClear, kGmZclear, kGmSky, kGmWorld, kGmMobys, kGm2d, kGmTvCopy, kGmDrc, kGmSwap, kGmN };
+const char* const kGmName[kGmN] = {"start", "clear (WHB)", "depth clear", "sky", "world", "mobys", "2D", "TV copy", "GamePad", "swap"};
 struct alignas(64) GpuSlot {  // (a cache line each: the GPU writes it, the CPU only reads it - no CPU line written back over it)
     uint64_t v;
     uint8_t pad[56];
@@ -443,6 +445,15 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
     const float vps = g_menu_vpscale;
     vp.h = static_cast<int>(static_cast<float>(h) * vps);
     vp.w = vp.h * 4 / 3;
+    {  // ((2026-10-28) the widescreen, RAC1_WIIU_WIDE / the debug menu: the 3D in a frame g_view_draw_widen wider than the game's 4:3 -
+       // render_proj_x's projection, the host's culling widened the same -, the game's 2D and its projected 3D kept 4:3 in its centre)
+        const float wd = rac1::g_view_draw_widen;
+        if (wd > 1.0f) {
+            const int w43 = vp.w;
+            vp.w = std::min(static_cast<int>(static_cast<float>(w43) * wd + 0.5f), static_cast<int>(static_cast<float>(w) * vps + 0.5f));
+            vp.xscale = vp.xscale_3d = static_cast<float>(w43) / static_cast<float>(vp.w);
+        }
+    }
     vp.x = (w - vp.w) / 2;
     vp.y = (h - vp.h) / 2;
     vp.screen_fbp = g_2d.screen_fbp;
@@ -486,6 +497,10 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
         rac1::mrp_world_wiiu_join();  // (the frame's preparation's second half, on its worker core)
         dlap(kTmWorldJoin);
         rac1::mrp_world_gx2_debug_frame(g_2d.game_frame);
+        // the sky first (MRP_LITE.md phase 5): no depth test nor writes, the depth's hierarchical Z untouched
+        rac1::mrp_world_gx2_draw_sky(cb, db, vp);
+        if (g_tm_draw) gpu_mark(kGmSky);
+        dlap(kTmSky);
         rac1::mrp_world_gx2_draw(cb, db, vp);
         if (g_tm_draw) gpu_mark(kGmWorld);
         dlap(kTmWorld);

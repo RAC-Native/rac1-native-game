@@ -19,6 +19,7 @@
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
 #include <runtime/kernel/ee_memory.h>
+#include <runtime/kernel/ee_journal.h>
 #include <runtime/vu/vu0.h>
 #include <profiler/host_profiler.h>
 
@@ -963,6 +964,57 @@ void mrp_lod_moby_shadow(void (*pass)()) {
     for (const MrpMoby& m : mrp_scene_draw().mobys) g_mst.faded += m.tint[3] < m.alpha_base ? 1u : 0u;
     g_mst.ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
 }
+
+namespace {
+// the A (0x166d00) the last real sky pass widened by mrp_lod_sky_widen_real projected with (mrp_lod_sky_real_a)
+std::array<float, 16> g_real_sky_a{};
+bool g_real_sky_a_on = false;
+// orig: (host) the real pass `pass` with the frustum widened by `w` (patch_widen: the rows A kept) or, `projection`, the whole projection
+// (widen_projection, A widened too - its A copied to `a_out` after the pass); the patch's own writes journaled and put back after the pass
+// where it left them, the VU0 registers the setups leave kept as they were
+void widen_real(void (*pass)(), float w, bool projection, float* a_out) {
+    const Vu0Save vu0_saved(false);
+    std::vector<EeByteRun> runs;
+    ee_journal_begin();
+    if (projection) widen_projection(w, 1.0f);
+    else patch_widen(w, 0, 1.0f);
+    ee_journal_commit(runs);
+    vu0_saved.restore();
+    pass();  // (patch_widen's g_patch set: a setup the pass calls gets the game's own tangent, then the patch again - MrpLodSetupScope)
+    patch_clear();
+    if (a_out != nullptr)
+        for (uint32_t k = 0; k < 16; ++k) a_out[k] = lwc1(OV(0x00166d00u) + 4 * k);
+    // the game's bytes put back where they still hold the patch's (the game's own writes since kept), as render_view_projection_undo
+    for (auto it = runs.rbegin(); it != runs.rend(); ++it) {
+        uint8_t* p = static_cast<uint8_t*>(ee_ram_ptr(it->addr));
+        if (p == nullptr || std::memcmp(p, it->after.data(), it->after.size()) != 0) continue;
+        std::memcpy(p, it->before.data(), it->before.size());
+    }
+}
+}  // namespace
+
+// orig: (host) see mrp_lod.h
+void mrp_lod_moby_widen_real(void (*pass)(), float w) {
+    if (!(w > 1.0f) || g_patch.type != kPatchNone || ee_journal_active()) {
+        pass();
+        return;
+    }
+    widen_real(pass, w, false, nullptr);
+}
+
+// orig: (host) see mrp_lod.h
+void mrp_lod_sky_widen_real(void (*pass)(), float w) {
+    if (!(w > 1.0f) || g_patch.type != kPatchNone || ee_journal_active()) {
+        g_real_sky_a_on = false;
+        pass();
+        return;
+    }
+    widen_real(pass, w, true, g_real_sky_a.data());
+    g_real_sky_a_on = true;
+}
+
+// orig: (host) see mrp_lod.h
+const float* mrp_lod_sky_real_a() { return g_real_sky_a_on ? g_real_sky_a.data() : nullptr; }
 
 // orig: (host)
 void mrp_lod_report() {

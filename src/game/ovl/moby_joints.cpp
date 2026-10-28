@@ -13,7 +13,11 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/vu0_regs.h>
 
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #if defined(__x86_64__)
 #include <immintrin.h>
 #endif
@@ -726,6 +730,232 @@ int g_pose_wide = [] {
     } while (m != last);
 }
 
+// ---- The pose's hot loops in plain floats (RAC1_WIIU_FAST_POSE: the Wii U's default, 2026-10-28) ----
+// The same arithmetic on the pose's data without the VU0's rules: no operand / result clamps (the pose's numbers are never
+// denormal, infinite or NaN), no MAC / status flags, the scratchpad reached through its host pointer, the s16 keys made floats
+// without an integer conversion (slow on the 750). Mode 1: the multiply-adds of the matrices, the lerps and the lengths fused (one
+// rounding: fmadds on the Wii U), 1 / sqrt from the CPU's estimate and Newton steps (no fsqrt on the 750: sqrtf is software);
+// the matrices then differ from the VU0's by rounding alone (the check's numbers: PERFORMANCE.md). Mode 2 ("exact"): each op
+// rounded as the VU0's and its sqrt - the PC's check finds every matrix the VU0 path's, bit for bit. Either way the quaternions'
+// dot (whose sign picks the shorter arc) and the rotation matrices' terms are the VU0's own ops.
+// The VU0's registers these loops use as scratch (vf8 .. vf23, ACC, Q) and its flags are left as they were: nothing reads them
+// after (the pose's later ops load or set theirs first, the skinning loads its own; the game never reads the status flag -
+// no CFC2 of it, the VU0 programs test none - and its MAC reads each follow an op of their own). The matrices are read by the
+// skinning, the MRP's pose observer and the strafe's hook only: all drawing, no game logic.
+// orig: (host)
+}  // namespace
+int g_pose_fast = [] {
+    const char* e = std::getenv("RAC1_WIIU_FAST_POSE");
+#if defined(__WIIU__)
+    return e == nullptr ? 1 : std::atoi(e);
+#else
+    return e == nullptr ? 0 : std::atoi(e);  // (the PC: the VU0's path unless asked)
+#endif
+}();
+namespace {
+namespace fast {
+// orig: (helper) a multiply-add a b + c: fused (the Wii U: fmadds; the PC: fmaf, the same value), or (X, exact) two roundings
+template <bool X>
+inline float madd(float a, float b, float c) {
+    if constexpr (X) return a * b + c;
+    else return __builtin_fmaf(a, b, c);
+}
+// orig: (helper) 1 / sqrt(x) of a quaternion's squared length (~0.5 .. 1 here): the estimate (the 750's frsqrte; on the PC a stand-in
+// as coarse as the architecture lets it be, 5 bits) and three Newton steps (5 -> 10 -> 20 -> 24 bits: with two the PC's check
+// found the rotation rows up to 1e-5 off, with three 1e-6 - the fused ops' own rounding); a zero quaternion's 0: the largest
+// float, the VU0's. X: 1 / sqrtf, the VU0 path's VRSQRT
+template <bool X>
+inline float rsqrt(float x) {
+    if (!(x > 0.0f)) return u2f(0x7f7fffffu);
+    if constexpr (X) return 1.0f / std::sqrt(x);
+#if defined(__WIIU__)
+    double e;
+    __asm__("frsqrte %0,%1" : "=f"(e) : "f"(static_cast<double>(x)));
+    float y = static_cast<float>(e);
+#else
+    float y = u2f(f2u(1.0f / std::sqrt(x)) & 0xfffc0000u);
+#endif
+    const float h = 0.5f * x;
+    y = y * madd<false>(-h * y, y, 1.5f);
+    y = y * madd<false>(-h * y, y, 1.5f);
+    return y * madd<false>(-h * y, y, 1.5f);
+}
+// orig: (helper) a halfword (the low 16 bits of `h`) sign-extended, times 2^-15 (PSRAW 16, VITOF15): exactly, by the float
+// whose mantissa holds it (256 + (h ^ 0x8000) 2^-15, then less 257) - no integer conversion (slow on the 750)
+inline float s16f(uint32_t h) { return u2f(0x43800000u | ((h ^ 0x8000u) & 0xffffu)) - 257.0f; }
+// orig: (helper) a quadword of EE memory (the scratchpad, a RAM buffer) as four host floats; a word of it
+inline float* q4(uint32_t a) { return static_cast<float*>(ee_ram_ptr(a)); }
+inline uint32_t word(const float* p) {
+    uint32_t u;
+    std::memcpy(&u, p, 4);
+    return u;
+}
+// orig: (helper) a row (four lanes) times the point p: r0 p.x + r1 p.y + r2 p.z (VMULAx / VMADDAy / VMADDz, vu0_regs.h's rotate),
+// into o
+template <bool X>
+[[gnu::always_inline]] inline void row(const float* r, float x, float y, float z, float* o) {
+    o[0] = madd<X>(r[8], z, madd<X>(r[4], y, r[0] * x));
+    o[1] = madd<X>(r[9], z, madd<X>(r[5], y, r[1] * x));
+    o[2] = madd<X>(r[10], z, madd<X>(r[6], y, r[2] * x));
+    o[3] = madd<X>(r[11], z, madd<X>(r[7], y, r[3] * x));
+}
+// orig: (helper) the rows r (16 floats) times the points p (16): out row i = r0 p_i.x + r1 p_i.y + r2 p_i.z, row 3 + r3 (w = 1:
+// rotate x3 and transform); `o` written after r and p are read whole (it may be r)
+template <bool X>
+[[gnu::always_inline]] inline void compose(const float* r, const float* p, float* o) {
+    float t[16];
+    row<X>(r, p[0], p[1], p[2], t);
+    row<X>(r, p[4], p[5], p[6], t + 4);
+    row<X>(r, p[8], p[9], p[10], t + 8);
+    row<X>(r, p[12], p[13], p[14], t + 12);
+    t[12] += r[12];
+    t[13] += r[13];
+    t[14] += r[14];
+    t[15] += r[15];
+#pragma GCC unroll 16
+    for (int i = 0; i < 16; ++i) o[i] = t[i];
+}
+const float kIdentity[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+}  // namespace fast
+
+// orig: (helper) lerp_lists_simd in plain floats (the result's w lane, in the scales' list, vf10.w: 1)
+template <bool X>
+[[gnu::noinline]] void lerp_lists_fast(uint32_t t5) {
+    Vf* const v = vf();
+    const float t0 = v[6].v[0], t1 = v[7].v[0], w = v[10].v[3];
+    for (uint32_t p = lwu(t5 - 0x10); p != 0;) {
+        float* const s = fast::q4(p);
+        s[4] = fast::madd<X>(s[4], t1, s[0] * t0);
+        s[5] = fast::madd<X>(s[5], t1, s[1] * t0);
+        s[6] = fast::madd<X>(s[6], t1, s[2] * t0);
+        s[7] = w;
+        p = fast::word(s + 3);
+    }
+    for (uint32_t p = lwu(t5 - 0xc); p != 0;) {
+        float* const s = fast::q4(p);
+        s[8] = fast::madd<X>(s[12], t1, s[8] * t0);
+        s[9] = fast::madd<X>(s[13], t1, s[9] * t0);
+        s[10] = fast::madd<X>(s[14], t1, s[10] * t0);
+        p = fast::word(s + 15);
+    }
+}
+
+// orig: (helper) lerp_rotations_simd in plain floats: per joint the keys' quaternions (s16), their dot (the VU0's products and sums:
+// its sign picks the arc), lerped, normalised unless `plain`
+template <bool X>
+[[gnu::noinline]] void lerp_rotations_fast(int32_t n, uint32_t at, uint32_t k2, bool plain) {
+    Vf* const v = vf();
+    const float t0 = v[6].v[0], t1 = v[7].v[0];
+    float* o = fast::q4(SPR);
+    const float* ka = fast::q4(at);
+    const float* kb = fast::q4(k2);
+    for (int32_t c = (n + 1) & ~1; c > 0; --c, o += 16, ka += 2, kb += 2) {  // (the original's two joints a step: an odd count's pair whole)
+        const uint32_t wa0 = fast::word(ka), wa1 = fast::word(ka + 1), wb0 = fast::word(kb), wb1 = fast::word(kb + 1);
+        const float a0 = fast::s16f(wa0), a1 = fast::s16f(wa0 >> 16), a2 = fast::s16f(wa1), a3 = fast::s16f(wa1 >> 16);
+        const float b0 = fast::s16f(wb0), b1 = fast::s16f(wb0 >> 16), b2 = fast::s16f(wb1), b3 = fast::s16f(wb1 >> 16);
+        float tb = t1;
+        if (!plain) {
+            const float d = ((a1 * b1 + a0 * b0) + a2 * b2) + a3 * b3;
+            if ((f2u(d) >> 31) != 0) tb = -t1;
+        }
+        float r0 = fast::madd<X>(b0, tb, a0 * t0), r1 = fast::madd<X>(b1, tb, a1 * t0), r2 = fast::madd<X>(b2, tb, a2 * t0), r3 = fast::madd<X>(b3, tb, a3 * t0);
+        if (!plain) {
+            const float q = fast::rsqrt<X>(fast::madd<X>(r3, r3, fast::madd<X>(r2, r2, fast::madd<X>(r1, r1, r0 * r0))));
+            r0 *= q;
+            r1 *= q;
+            r2 *= q;
+            r3 *= q;
+        }
+        o[0] = r0;
+        o[1] = r1;
+        o[2] = r2;
+        o[3] = r3;
+    }
+}
+
+// orig: (helper) the one keyframe's rotations (s16, one quadword's half a joint) into the joints' records, in plain floats
+[[gnu::noinline]] void single_key_fast(int32_t n, uint32_t at) {
+    float* o = fast::q4(SPR);
+    const float* k = fast::q4(at);
+    for (int32_t c = n; c > 0; --c, o += 16, k += 2) {
+        const uint32_t w0 = fast::word(k), w1 = fast::word(k + 1);
+        o[0] = fast::s16f(w0);
+        o[1] = fast::s16f(w0 >> 16);
+        o[2] = fast::s16f(w1);
+        o[3] = fast::s16f(w1 >> 16);
+    }
+}
+
+// orig: (helper) a blend channel's loop (the pose's, below) in plain floats: per joint (+0x2c of the channel's record: 3 quadwords)
+// its rotation, scale and translation blended into the joint's by the weights `w0` (1 - the weight) and `w` - the quaternions'
+// shorter arc by the VU0's dot - the rotation normalised, the scale's word +0x1c taken from the channel when the joint's is 0
+template <bool X>
+[[gnu::noinline]] void blend_channel_fast(uint32_t r, uint32_t end, float w0, float w) {
+    for (; r != end; r += 0x30) {
+        const float* const c = fast::q4(r);
+        float* const j = fast::q4(fast::word(c + 11));
+        const float a0 = j[0] * w0, a1 = j[1] * w0, a2 = j[2] * w0, a3 = j[3] * w0;
+        const float b0 = c[0] * w, b1 = c[1] * w, b2 = c[2] * w, b3 = c[3] * w;
+        j[4] = fast::madd<X>(c[4], w, j[4] * w0);
+        j[5] = fast::madd<X>(c[5], w, j[5] * w0);
+        j[6] = fast::madd<X>(c[6], w, j[6] * w0);
+        j[8] = fast::madd<X>(c[8], w, j[8] * w0);
+        j[9] = fast::madd<X>(c[9], w, j[9] * w0);
+        j[10] = fast::madd<X>(c[10], w, j[10] * w0);
+        const float d = ((a1 * b1 + a0 * b0) + a2 * b2) + a3 * b3;
+        float q0, q1, q2, q3;
+        if ((f2u(d) >> 31) == 0) {
+            q0 = a0 + b0, q1 = a1 + b1, q2 = a2 + b2, q3 = a3 + b3;
+        } else {
+            q0 = a0 - b0, q1 = a1 - b1, q2 = a2 - b2, q3 = a3 - b3;
+        }
+        const float q = fast::rsqrt<X>(fast::madd<X>(q3, q3, fast::madd<X>(q2, q2, fast::madd<X>(q1, q1, q0 * q0))));
+        if (fast::word(j + 7) == 0) std::memcpy(j + 7, c + 7, 4);
+        j[0] = q0 * q;
+        j[1] = q1 * q;
+        j[2] = q2 * q;
+        j[3] = q3 * q;
+    }
+}
+
+// orig: (helper) joint_matrices_simd in plain floats: the rotation's rows from the quaternion (the VU0's terms), scaled, the
+// translation, under the parent's matrix (or the identity)
+template <bool X>
+[[gnu::noinline]] void joint_matrices_fast(uint32_t last) {
+    float* j = fast::q4(SPR);
+    for (uint32_t a3 = SPR; a3 != last; a3 += 0x40, j += 16) {
+        const float x = j[0], y = j[1], z = j[2], w = j[3];
+        const float x2 = x + x, y2 = y + y, z2 = z + z;
+        const float xw = x2 * w, yw = y2 * w, zw = z2 * w, xx = x2 * x, xy = y2 * x, xz = z2 * x, yy = y2 * y, yz = z2 * y, zz = z2 * z;
+        float p[16];
+        p[0] = (1.0f - yy) - zz, p[1] = xy - zw, p[2] = xz + yw;
+        p[4] = zw + xy, p[5] = (1.0f - xx) - zz, p[6] = yz - xw;
+        p[8] = xz - yw, p[9] = xw + yz, p[10] = (1.0f - xx) - yy;
+        p[12] = j[8], p[13] = j[9], p[14] = j[10];
+        if (fast::word(j + 7) != 0) {
+            const float sx = j[4], sy = j[5], sz = j[6];
+            p[0] *= sx, p[1] *= sx, p[2] *= sx;
+            p[4] *= sy, p[5] *= sy, p[6] *= sy;
+            p[8] *= sz, p[9] *= sz, p[10] *= sz;
+        }
+        const uint32_t parent = fast::word(j + 11);
+        fast::compose<X>(parent != 0 ? fast::q4(parent) : fast::kIdentity, p, j);  // (p's w lanes: compose reads none)
+    }
+}
+
+// orig: (helper) bind_matrices_simd in plain floats
+template <bool X>
+[[gnu::noinline]] void bind_matrices_fast(uint32_t last) {
+    float* o = fast::q4(SPR);
+    const float* b = fast::q4(SPR + 0x1c00);
+    for (uint32_t m = SPR; m != last; m += 0x40, o += 16, b += 16) {
+        float r[16];
+#pragma GCC unroll 16
+        for (int i = 0; i < 16; ++i) r[i] = o[i];
+        fast::compose<X>(r, b, o);
+    }
+}
+
 }  // namespace
 
 // orig: (host) testing (oracle batch 470, joints_simd): one of the pose's loops - 0 the listed scales and translations (`a` the
@@ -747,8 +977,10 @@ void moby_joints_pose_loop(int loop, int mode, uint32_t a, uint32_t b, int32_t n
     g_pose_wide = wide;
 }
 
-// orig: 0x00250fe0
-void moby_joints_pose(uint32_t a0, uint32_t a1) {
+namespace {
+// orig: 0x00250fe0 (`fast`: the hot loops in plain floats, g_pose_fast's modes; 0 the VU0's ops)
+void pose(uint32_t a0, uint32_t a1, int fast) {
+    const bool ex = fast == 2;
     LocalFlags fl(regs());  // (host: the ops' flags in locals, the VU0's written back at the return: the same values)
     Vf* const v = vf();
     qset_xy(v[28], sx(a1));  // (the caller's s0..s2 parked in vf29..vf31: no such registers here)
@@ -938,12 +1170,14 @@ void moby_joints_pose(uint32_t a0, uint32_t a1) {
         }
         // the listed scales and translations lerped by t
         v[10].v[3] = v[0].v[3];
-        if (g_pose_simd) lerp_lists_simd(fl, t5);
+        if (fast) ex ? lerp_lists_fast<true>(t5) : lerp_lists_fast<false>(t5);
+        else if (g_pose_simd) lerp_lists_simd(fl, t5);
         else lerp_lists_ref(fl, t5);
         // the rotations, two joints at a time: lerped along the shorter arc and normalised
         // (flag 0x400: lerped only)
         const bool plain = (flags & 0x400) != 0;
-        if (g_pose_simd) lerp_rotations_simd(fl, n, at, k2, plain);
+        if (fast) ex ? lerp_rotations_fast<true>(n, at, k2, plain) : lerp_rotations_fast<false>(n, at, k2, plain);
+        else if (g_pose_simd) lerp_rotations_simd(fl, n, at, k2, plain);
         else lerp_rotations_ref(fl, n, at, k2, plain);
     } else {  // one keyframe
         {
@@ -1009,19 +1243,23 @@ void moby_joints_pose(uint32_t a0, uint32_t a1) {
             sqc2(jp + 0x20, v[8]);
             sw(jp + 0x2c, keep);
         }
-        int32_t c = n;
-        uint32_t p = SPR - 0x40;
-        unpack_s16(v[8], ld(at));
-        at += 8;
-        do {
-            const uint64_t d = ld(at);
-            itof_lanes(v[9], v[8], XYZW, 1.0f / 32768.0f);
-            --c;
+        if (fast) {
+            single_key_fast(n, at);
+        } else {
+            int32_t c = n;
+            uint32_t p = SPR - 0x40;
+            unpack_s16(v[8], ld(at));
             at += 8;
-            unpack_s16(v[8], d);
-            p += 0x40;
-            sqc2(p, v[9]);
-        } while (c > 0);
+            do {
+                const uint64_t d = ld(at);
+                itof_lanes(v[9], v[8], XYZW, 1.0f / 32768.0f);
+                --c;
+                at += 8;
+                unpack_s16(v[8], d);
+                p += 0x40;
+                sqc2(p, v[9]);
+            } while (c > 0);
+        }
     }
     // the blend channels: per channel (+8 its weight, +0x10 its keys, 3 quadwords per joint,
     // +0x2c the joint's record) blended into the joints by weight
@@ -1032,6 +1270,10 @@ void moby_joints_pose(uint32_t a0, uint32_t a1) {
         qset_xy(v[21], sx(lwu(t9 + 8)));
         t9 = lwu(t9 + 0x1c);
         sub(fl, v[20], v[4], v[21], X);
+        if (fast) {
+            (ex ? blend_channel_fast<true> : blend_channel_fast<false>)(SPR + 0x2000, end, v[20].v[0], v[21].v[0]);
+            continue;
+        }
         uint32_t r = SPR + 0x2000;
         do {
             const uint32_t j = lwu(r + 0x2c);
@@ -1110,7 +1352,8 @@ void moby_joints_pose(uint32_t a0, uint32_t a1) {
     sw((un << 6) + SPR + 0x1bfc, 0xffffffffu);  // (the transfer's last word: the original waits on it)
     spr_dma_to(0x1c00, lwu(t7 + 0x1c), un << 2);
     const uint32_t last = (un << 6) + SPR;
-    if (g_pose_simd) joint_matrices_simd(fl, last);
+    if (fast) ex ? joint_matrices_fast<true>(last) : joint_matrices_fast<false>(last);
+    else if (g_pose_simd) joint_matrices_simd(fl, last);
     else joint_matrices_ref(fl, last);
     // the record scales (lerped by t with a second key) on the joints' rows
     for (uint32_t r = lwu(t5 - 4); r != 0;) {
@@ -1133,8 +1376,68 @@ void moby_joints_pose(uint32_t a0, uint32_t a1) {
         sqc2(m + 0x20, v[4]);
     }
     // each joint's matrix times its bind matrix
-    if (g_pose_simd) bind_matrices_simd(fl, last);
+    if (fast) ex ? bind_matrices_fast<true>(last) : bind_matrices_fast<false>(last);
+    else if (g_pose_simd) bind_matrices_simd(fl, last);
     else bind_matrices_ref(fl, last);
+}
+
+// orig: (host) RAC1_WIIU_FAST_POSE_CHECK=1: each pose built twice from the same state - the VU0's way, then the fast loops' (kept;
+// g_pose_fast's mode, 1 when 0) -
+// and their matrices compared: the largest difference in the rotation / scale rows (0 .. 2), in the translation row (3, also
+// relative to the row's size) and in units in the last place (of the values of 1e-3 or more), printed every 2000 poses
+struct PoseCheck {
+    uint64_t poses = 0, joints = 0, differing = 0;
+    float rows = 0, trans = 0, trans_rel = 0;
+    uint32_t ulps = 0;
+};
+void pose_checked(uint32_t a0, uint32_t a1) {
+    static PoseCheck c;
+    alignas(16) static uint8_t spr0[0x4000], work0[0x2000], ref[0x1c00];
+    Regs& R = regs();
+    const Regs saved = R;
+    uint8_t* const spr = static_cast<uint8_t*>(ee_ram_ptr(SPR));
+    uint8_t* const work = static_cast<uint8_t*>(ee_ram_ptr(a1));
+    std::memcpy(spr0, spr, sizeof spr0);
+    std::memcpy(work0, work, sizeof work0);
+    pose(a0, a1, 0);
+    const uint32_t n = std::min<uint32_t>(std::max<int32_t>(lh(a0 + 0x10), 1), 0x70);
+    std::memcpy(ref, spr, n * 0x40);
+    std::memcpy(spr, spr0, sizeof spr0);
+    std::memcpy(work, work0, sizeof work0);
+    R = saved;
+    pose(a0, a1, g_pose_fast != 0 ? g_pose_fast : 1);
+    ++c.poses;
+    c.joints += n;
+    for (uint32_t i = 0; i < n * 16; ++i) {
+        float a, b;
+        std::memcpy(&a, ref + 4 * i, 4);
+        std::memcpy(&b, spr + 4 * i, 4);
+        if (f2u(a) == f2u(b)) continue;
+        ++c.differing;
+        const float d = std::fabs(a - b);
+        const int32_t ia = static_cast<int32_t>(f2u(a)), ib = static_cast<int32_t>(f2u(b));
+        if ((ia < 0) == (ib < 0) && std::fabs(a) >= 1e-3f) c.ulps = std::max(c.ulps, static_cast<uint32_t>(std::abs(ia - ib)));  // (near 0: |d| alone)
+        if ((i & 15) < 12) {
+            c.rows = std::max(c.rows, d);
+        } else {
+            c.trans = std::max(c.trans, d);
+            const float* const t = reinterpret_cast<const float*>(ref) + (i & ~3u);  // (the row's size: its largest lane, at least 1)
+            c.trans_rel = std::max(c.trans_rel, d / std::max({std::fabs(t[0]), std::fabs(t[1]), std::fabs(t[2]), 1.0f}));
+        }
+    }
+    if (c.poses % 2000 == 0)
+        std::printf("[pose] fast against the VU0's: %llu poses, %llu joints, %llu floats differing: largest |d| rows 0-2 %.3g, row 3 %.3g (relative %.3g), "
+                    "%u ulps\n",
+                    static_cast<unsigned long long>(c.poses), static_cast<unsigned long long>(c.joints), static_cast<unsigned long long>(c.differing),
+                    static_cast<double>(c.rows), static_cast<double>(c.trans), static_cast<double>(c.trans_rel), c.ulps);
+}
+}  // namespace
+
+// orig: 0x00250fe0
+void moby_joints_pose(uint32_t a0, uint32_t a1) {
+    static const bool check = std::getenv("RAC1_WIIU_FAST_POSE_CHECK") != nullptr && std::atoi(std::getenv("RAC1_WIIU_FAST_POSE_CHECK")) != 0;
+    if (__builtin_expect(check, 0)) pose_checked(a0, a1);
+    else pose(a0, a1, g_pose_fast);
 }
 
 }  // namespace rac1

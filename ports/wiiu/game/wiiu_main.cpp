@@ -21,6 +21,8 @@
 #include <string>
 #include <unistd.h>
 
+#include <game/render/render_view.h>
+
 #include <exception>
 #include <typeinfo>
 
@@ -240,6 +242,8 @@ int read_settings() {
     setenv("RAC1_WORLD_PASS_SKIP", "6", 1);
     setenv("RAC1_TFRAG_PASS_OFF", "1", 1);
     setenv("RAC1_MOBY_PASS_MRP", "1", 1);
+    setenv("RAC1_SKIP_SHADOWS", "1", 1);     // (the shadows and the effects' draw lists: not drawn on the Wii U yet - their work
+    setenv("RAC1_SKIP_DRAW_LISTS", "1", 1);  // skipped, game_skips.h; the debug menu's Game page turns them back on)
     setenv("RAC1_DRAW_LAST_STEP", "1", 1);  // (a catch-up game frame, not shown, not drawn: game_skips.h)
     setenv("RAC1_QUIT_ENDS", "1", 1);  // (the pause menu's Quit ends the game - back to the Wii U Menu - not the title: under 1 fps here, 2026-10-28)
     std::FILE* f = std::fopen("run.cfg", "r");
@@ -290,6 +294,14 @@ int main(int argc, char** argv_in) {
     if (chdir(kDir) != 0) OSReport("rac1-wiiu: cannot enter fs:/vol/external01/rac1-native\n");
     const int settings = argv_has(argc, argv_in, "--no-cfg") ? 0 : read_settings();
     const int from_args = argv_settings(argc, argv_in);
+    {  // ((2026-10-28) the widescreen: RAC1_WIIU_WIDE=0 the game's 4:3 frame, 1 (the default) 16:9 - the 3D drawn and culled 4/3 wider,
+       // render_view.h g_view_draw_widen -; RAC1_WIIU_WIDE_MOBYS=0 the mobys' culling kept 4:3 (the moby pass's frustum not widened); the
+       // debug menu's Game page changes both)
+        const char* wide = std::getenv("RAC1_WIIU_WIDE");
+        rac1::g_view_draw_widen = wide == nullptr || std::atoi(wide) != 0 ? 4.0f / 3.0f : 1.0f;
+        const char* wm = std::getenv("RAC1_WIIU_WIDE_MOBYS");
+        rac1::g_view_draw_widen_mobys = wm == nullptr || std::atoi(wm) != 0;
+    }
     const bool gfx = wiiu_gfx_wanted();
     if (!gfx) {
         WHBLogConsoleInit();

@@ -5,8 +5,11 @@
 #include "mrp_world_gx2.h"
 
 #include <game/ovl/game_skips.h>
+#include <game/ovl/moby_joints.h>
+#include <game/ovl/world_lighting.h>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_toggles.h>
+#include <game/render/render_view.h>
 
 #include "font_atlas.h"  // (generated into the build folder)
 
@@ -86,6 +89,11 @@ const Item kRender[] = {
     {"World: terrain (tfrag)", [] { return on_off(rac1::g_render_tfrag); }, [] { rac1::g_render_tfrag = !rac1::g_render_tfrag; }},
     {"World: ties", [] { return on_off(rac1::g_render_tie); }, [] { rac1::g_render_tie = !rac1::g_render_tie; }},
     {"World: shrubs", [] { return on_off(rac1::g_render_shrub); }, [] { rac1::g_render_shrub = !rac1::g_render_shrub; }},
+    // (2026-10-28: the MRP sky, mrp_world_gx2.h g_wiiu_sky - its capture and its draws; the game's sky pass runs either way)
+    {"Sky", [] { return rac1::mrp_world_gx2_sky_loaded() ? on_off(rac1::g_wiiu_sky) : std::string("no shaders"); }, [] { rac1::g_wiiu_sky = !rac1::g_wiiu_sky; }},
+    // (2026-10-28: the skipped passes' relighting made from the entries' flags - the point lights' light on the world -, world_lighting.h
+    // g_world_relight; the page's 14th row, its last at y 454)
+    {"World relit (point lights)", [] { return on_off(rac1::g_world_relight); }, [] { rac1::g_world_relight = !rac1::g_world_relight; }},
     {"Mobys drawn", [] { return on_off(g_menu_draw_mobys); }, [] { g_menu_draw_mobys = !g_menu_draw_mobys; }},
     {"2D (HUD, text, menus)", [] { return on_off(g_menu_draw_2d); }, [] { g_menu_draw_2d = !g_menu_draw_2d; }},
     {"CPU / GPU overlap", [] { return on_off(g_menu_overlap); }, [] { g_menu_overlap = !g_menu_overlap; }},
@@ -101,32 +109,24 @@ const Item kRender[] = {
          return std::string(b);
      },
      [] { g_menu_vpscale = g_menu_vpscale > 0.9f ? 0.75f : g_menu_vpscale > 0.6f ? 0.5f : 1.0f; }},
-    // (2026-10-28, the GPU's time: rac1::Gx2Perf, mrp_world_gx2.h - three rows, the page's room)
+    // (2026-10-28, the GPU's time: rac1::Gx2Perf, mrp_world_gx2.h - two rows, the page's room: the pixel shaders' builds and the tests in
+    // one row since the sky's row came)
     {"GPU: hierarchical Z", [] { return on_off(rac1::g_gx2_perf.hiz); }, [] { rac1::g_gx2_perf.hiz = !rac1::g_gx2_perf.hiz; }},
-    {"GPU: pixel shaders", [] {
+    {"GPU: shaders / test", [] {
          const rac1::Gx2Perf& g = rac1::g_gx2_perf;
+         if (g.pixels_off) return std::string("test: no pixels");
+         if (!g.zclear2) return std::string("test: 1 Z clear");
          return std::string(g.lean && g.nokill ? "lean+nokill" : g.lean ? "lean" : g.nokill ? "nokill" : "off");
      },
-     [] {  // (off -> nokill -> lean -> both -> off)
+     [] {  // (off -> nokill -> lean -> both -> the test: the pixels off (8 x 8 scissor) -> the test: one depth clear (WHB's) -> off; a test
+           // with the shaders' builds off)
          rac1::Gx2Perf& g = rac1::g_gx2_perf;
-         const int k = ((g.lean ? 2 : 0) | (g.nokill ? 1 : 0)) + 1;
-         g.nokill = (k & 1) != 0;
-         g.lean = (k & 2) != 0;
-     }},
-    {"GPU test", [] {
-         const rac1::Gx2Perf& g = rac1::g_gx2_perf;
-         return std::string(g.pixels_off ? "no pixels" : !g.zclear2 ? "1 Z clear" : "off");
-     },
-     [] {  // (off -> the pixels off (8 x 8 scissor) -> one depth clear (WHB's) -> off)
-         rac1::Gx2Perf& g = rac1::g_gx2_perf;
-         if (!g.pixels_off && g.zclear2) {
-             g.pixels_off = true;
-         } else if (g.pixels_off) {
-             g.pixels_off = false;
-             g.zclear2 = false;
-         } else {
-             g.zclear2 = true;
-         }
+         const int k = g.pixels_off ? 4 : !g.zclear2 ? 5 : (g.lean ? 2 : 0) | (g.nokill ? 1 : 0);
+         const int n = (k + 1) % 6;
+         g.nokill = n == 1 || n == 3;
+         g.lean = n == 2 || n == 3;
+         g.pixels_off = n == 4;
+         g.zclear2 = n != 5;
      }},
     {"Exit game (back to the Wii U Menu)", [] { return std::string("tap"); }, [] { rac1_wiiu_quit(); }},
 };
@@ -141,7 +141,23 @@ const Item kGame[] = {
     RAC1_SKIP_ITEM("HUD, lights, help", g_skip_hud),
     RAC1_SKIP_ITEM("3D effects, draw lists", g_skip_effects),
     RAC1_SKIP_ITEM("Shadows", g_skip_shadows),
+    RAC1_SKIP_ITEM("Effects' draw lists", g_skip_draw_lists),
     RAC1_SKIP_ITEM("Mobys' poses (joints)", g_skip_joints),
+    // (2026-10-28: the poses' hot loops in plain floats, moby_joints.cpp: fast -> exact (rounded as the VU0) -> off (the VU0's ops))
+    {"Fast poses", [] { return std::string(rac1::g_pose_fast == 1 ? "fast" : rac1::g_pose_fast == 2 ? "exact" : "off"); },
+     [] { rac1::g_pose_fast = rac1::g_pose_fast == 1 ? 2 : rac1::g_pose_fast == 2 ? 0 : 1; }},
+    // ((2026-10-28) the widescreen, render_view.h g_view_draw_widen: 16:9 -> 16:9 with the mobys culled 4:3 -> the game's 4:3 -> 16:9)
+    {"Widescreen", [] { return std::string(!(rac1::g_view_draw_widen > 1.0f) ? "off (4:3)" : rac1::g_view_draw_widen_mobys ? "16:9" : "16:9, mobys 4:3"); },
+     [] {
+         if (!(rac1::g_view_draw_widen > 1.0f)) {
+             rac1::g_view_draw_widen = 4.0f / 3.0f;
+             rac1::g_view_draw_widen_mobys = true;
+         } else if (rac1::g_view_draw_widen_mobys) {
+             rac1::g_view_draw_widen_mobys = false;
+         } else {
+             rac1::g_view_draw_widen = 1.0f;
+         }
+     }},
     {"Catch-up steps drawn", [] { return on_off(!rac1::g_draw_last_step_only); }, [] { rac1::g_draw_last_step_only = !rac1::g_draw_last_step_only; }},
     {"Exit game (back to the Wii U Menu)", [] { return std::string("tap"); }, [] { rac1_wiiu_quit(); }},
 };

@@ -51,6 +51,22 @@ struct ResidentColours {
 // orig: (host) after the game's update (its state frozen; any thread): the mirror compared with EE memory, the changed instances
 // copied and queued for upload (a new source: everything)
 void resident_colours_update(ResidentColours& rc, const ColourSource& src);
+// orig: (host) the Wii U port (2026-10-28): an instance a skipped pass's relighting relit (overlay_entry.cpp world_relight; game
+// thread), noted for resident_colours_update_touched - the Wii U compares the whole table only every RAC1_WIIU_COLOUR_EVERY frames
+// (`shrub`: a shrub's index, else a tie's). Past 4096 notes between two updates the next one compares the whole table.
+void resident_colours_touch(bool shrub, uint32_t index);
+// orig: (host) the instances noted since the last call compared with EE memory alone (as resident_colours_update, the same source;
+// a new source or too many notes: the whole table) and their changes queued; the notes cleared (`drop`: only cleared - the whole table
+// was just compared)
+void resident_colours_update_touched(ResidentColours& rc, const ColourSource& src, bool drop);
+// orig: (host) the Wii U port (2026-10-28): what the host's culling drew in the last prepared frame, for that relighting - the passes
+// relight only their visible entries (their lists come from the culling), so world_relight relights only these, a frame late. Kind 0
+// tfrag (the EE table's index), 1 tie, 2 shrub. Cleared and marked by the Wii U's prepare; a kind never marked since the last clear
+// reads as all visible (-1), as on the PC; `index` ~0u marks the kind's culling as run, nothing drawn by it.
+void relight_visible_clear();
+void relight_visible_mark(int kind, uint32_t index);
+// -1: no marks for the kind, 0 not drawn, 1 drawn
+int relight_visible(int kind, uint32_t index);
 
 // ---- Stage 2: the ties and shrubs at LOD > 0 / widened, without the passes' shadow runs ---------------------------------------
 //

@@ -2,6 +2,7 @@
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/mrp_chain.h>
 #include "mrp_world_backend.inc"
+#include "mrp_world_sky.inc"
 
 #include <formats/moby_mrp.h>
 #include <formats/world_mrp.h>
@@ -100,6 +101,9 @@ struct Bucket {
     GLuint tex = 0;
     vk::GpuImage vk_tex{};
     std::vector<std::pair<int, int>> textures;  // (table, index) per layer
+#if defined(__WIIU__)
+    std::vector<uint32_t> texels;  // a bucket a frame's build made (the sky's): its one level's texels, for the GX2 backend (mrpwb::built_bucket)
+#endif
 };
 struct TexRef {
     int bucket = -1;
@@ -252,6 +256,7 @@ struct Frame {
     std::vector<uint32_t> tf_idx;
     std::vector<mrpwb::TfragRange> tf_ranges;
     double tf_ms = 0;  // (the CPU route's time)
+    double sky_ms = 0;  // (the Wii U: the sky's packets' build time, build_triangles)
     // what build_triangles reads of the host's state, taken when the frame's scene starts (mrp_world_begin_frame_async, the host
     // thread): the same values as the host thread had at its end, the build may run on the scene's worker (RAC1_MRPW_BUILD_THREAD)
     struct BuildInputs {
@@ -1235,8 +1240,9 @@ std::vector<NewBucket> g_new_buckets;  // (made by the host thread: create_new_b
 void create_bucket_image(Bucket& b, const std::vector<std::vector<uint32_t>>& levels) {
     const uint32_t n = static_cast<uint32_t>(levels.size());
 #if defined(__WIIU__)
-    (void)b;  // (the Wii U: no GL / Vulkan images; such buckets - the sky's, a GIF stream's - are not drawn there yet)
-    (void)n;
+    // (the Wii U: no GL / Vulkan images; the texels of such a bucket - the sky's - kept for the GX2 backend, which makes its texture at
+    // its first draw: mrpwb::built_bucket)
+    if (n != 0) b.texels = levels[0];
     return;
 #endif
     if (vk::is_active()) {
@@ -1310,16 +1316,22 @@ const TexRef* sky_texture(Level& L, const SceneFrame& S, uint64_t tex0) {
         return nullptr;
     }
     // (reads only: never a journal's page, the build may run on the scene's worker while the game's thread re-runs a pass, mrp_lod.h)
-    const uint8_t* pix = static_cast<const uint8_t*>(ee_ram_ptr_read(img));
+    const uint32_t o = img & 3u;  // (the texels' first byte in its word)
+    const uint8_t* pix = static_cast<const uint8_t*>(ee_ram_ptr_read(img - o));
     const uint8_t* clut = static_cast<const uint8_t*>(ee_ram_ptr_read(pal));
     const uint32_t bytes = psm == 0x13 ? w * h : w * h / 2;
     if (pix == nullptr || clut == nullptr || ee_ram_ptr_read(img + bytes - 1) == nullptr) return nullptr;
     auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
+    // (EE memory as the host holds it: its bytes by ee_byte_addr, its CLUT entries as 32-bit words - RGBA from the low byte -, the
+    // texels' bytes R, G, B, A in memory on any host: the big-endian Wii U's too)
     std::vector<uint32_t> px(static_cast<size_t>(w) * h);
     for (uint32_t i = 0; i < w * h; ++i) {
-        const uint32_t idx = psm == 0x13 ? pix[i] : (pix[i >> 1] >> (4 * (i & 1))) & 0xf;
+        const uint32_t idx = psm == 0x13 ? pix[ee_byte_addr(o + i)] : (pix[ee_byte_addr(o + (i >> 1))] >> (4 * (i & 1))) & 0xf;
         const uint32_t ci = psm == 0x13 && csm == 0 ? csm1(idx) : idx;
-        std::memcpy(&px[i], clut + 4 * ci, 4);
+        uint32_t c;
+        std::memcpy(&c, clut + 4 * ci, 4);
+        const uint8_t rgba[4] = {static_cast<uint8_t>(c), static_cast<uint8_t>(c >> 8), static_cast<uint8_t>(c >> 16), static_cast<uint8_t>(c >> 24)};
+        std::memcpy(&px[i], rgba, 4);
     }
     std::vector<std::vector<uint32_t>> lv;
     lv.push_back(std::move(px));
@@ -1619,7 +1631,7 @@ struct GsFront {
         v.stq[1] = static_cast<float>(t * w);
         v.stq[2] = static_cast<float>(q * w);
         v.lodq = q;
-        std::memcpy(v.rgba, &rgba_, 4);
+        for (int c = 0; c < 4; ++c) v.rgba[c] = static_cast<uint8_t>(rgba_ >> (8 * c));  // (R the low byte: its bytes R, G, B, A on any host)
         v.fog = fog;
         const uint32_t index = static_cast<uint32_t>(F.v.size());
         F.v.push_back(v);
@@ -2039,6 +2051,7 @@ void build_triangles(Frame& F) {
     F.tf_v.clear();
     F.tf_idx.clear();
     F.tf_ms = 0;
+    F.sky_ms = 0;
     for (const auto& v : F.scene.tfrag.views) F.tf.vu_views.insert(F.tf.vu_views.end(), v.begin(), v.end());
     for (const auto& c : F.scene.tfrag.consts) F.tf.consts.insert(F.tf.consts.end(), c.begin(), c.end());
     if (!F.scene.tfrag.draws.empty())
@@ -2079,7 +2092,13 @@ void build_triangles(Frame& F) {
         g_view_only_emit = g_shframe.on[1] && !p.sky && !p.shadow &&
                            (p.table == 2 || p.prog == Program::TieB || p.prog == Program::TfragB || (!keep_tfrag && p.tfrag >= 0 && g_tfrag_shadow_on));
         if (p.sky) {  // the sky
+#if defined(__WIIU__)
+            const double ts = now_ms();
             if (in.sky) g.sky_packet(p);
+            F.sky_ms += now_ms() - ts;
+#else
+            if (in.sky) g.sky_packet(p);
+#endif
             continue;
         }
         if (p.gif) {  // a world pass's GIF vertices (the shrub far variants)
@@ -3698,6 +3717,81 @@ bool scene_threaded() {
     }();
     return on;
 }
+// (testing, RAC1_MRPW_SKY_CHECK=1, with RAC1_MRPW_THREAD=0 - the scene built on the game's thread, the chain in EE memory still the frame's -,
+// 2026-10-28) the sky as the Wii U's capture makes it (mrpw::sky_capture, mrp_world_sky.inc: the sky pass's range walked in EE memory) against
+// the walker's in the frame's scene: its packets and their writes, the asset, the texture entries, the projection A; the first differences
+// printed, a summary every 300 frames
+void sky_check(const SceneFrame& S, bool reset) {
+    static const bool on = std::getenv("RAC1_MRPW_SKY_CHECK") != nullptr;
+    if (!on) return;
+    static uint64_t frames = 0, bad = 0, packets = 0, writes = 0, kicks = 0, outside = 0;
+    static double ms = 0.0;
+    static int shown = 0;
+    const PassRange* r = nullptr;
+    for (const PassRange& p : scene_passes())
+        if (p.pass == 3) r = &p;
+    if (r == nullptr || !S.has_sky) return;
+    static SceneFrame mine;
+    uint32_t out = 0;
+    const double t0 = now_ms();
+    sky_capture(r->first, r->end, scene_addrs(), mine, reset, &out);
+    ms += now_ms() - t0;
+    outside += out;
+    std::vector<const ScenePacket*> wp;
+    for (const ScenePacket& p : S.packets)
+        if (p.sky) wp.push_back(&p);
+    std::string why;
+    if (wp.size() != mine.packets.size()) why = "packets " + std::to_string(wp.size()) + " / " + std::to_string(mine.packets.size());
+    for (size_t k = 0; why.empty() && k < wp.size(); ++k) {
+        const ScenePacket& a = *wp[k];
+        const ScenePacket& b = mine.packets[k];
+        if (a.sky_count != b.sky_count) {
+            why = "packet " + std::to_string(k) + ": writes " + std::to_string(a.sky_count) + " / " + std::to_string(b.sky_count);
+            break;
+        }
+        for (uint32_t i = 0; i < a.sky_count; ++i) {
+            const SkyWrite& x = S.sky[a.sky_first + i];
+            const SkyWrite& y = mine.sky[b.sky_first + i];
+            if (x.v != y.v || x.q != y.q || x.reg != y.reg || x.mode != y.mode) {
+                char b2[160];
+                std::snprintf(b2, sizeof b2, "packet %zu write %u: reg %02x mode %u %016llx / reg %02x mode %u %016llx", k, i, x.reg, x.mode,
+                              static_cast<unsigned long long>(x.v), y.reg, y.mode, static_cast<unsigned long long>(y.v));
+                why = b2;
+                break;
+            }
+        }
+    }
+    if (why.empty() && S.sky_kicks != mine.sky_kicks) why = "kicks " + std::to_string(S.sky_kicks) + " / " + std::to_string(mine.sky_kicks);
+    if (why.empty() && (S.sky_asset != mine.sky_asset || S.sky_tex != mine.sky_tex || S.sky_a != mine.sky_a)) why = "the asset, its entries or the projection";
+    if (frames % 300 == 0) {  // (the GS registers the sky leaves: the world's start on the Wii U)
+        uint64_t last[0x80] = {};
+        bool set[0x80] = {};
+        for (const SkyWrite& w : mine.sky)
+            if (w.mode == 0 && (w.reg & 0x7f) >= 0x06) {
+                last[w.reg & 0x7f] = w.v;
+                set[w.reg & 0x7f] = true;
+            }
+        std::printf("[mrpw] sky check: the registers the sky leaves:");
+        for (int r = 0; r < 0x80; ++r)
+            if (set[r]) std::printf(" %02x=%llx", r, static_cast<unsigned long long>(last[r]));
+        std::printf("\n");
+    }
+    ++frames;
+    packets += mine.packets.size();
+    writes += mine.sky.size();
+    kicks += mine.sky_kicks;
+    if (!why.empty()) {
+        ++bad;
+        if (shown++ < 10) std::printf("[mrpw] sky check: frame %llu differs: %s\n", static_cast<unsigned long long>(frames), why.c_str());
+    }
+    if (frames % 300 == 0)
+        std::printf("[mrpw] sky check: %llu frames, %llu differ; the capture's %.1f packets, %.1f writes, %.2f kicks a frame, %llu tags outside the range, "
+                    "%.3f ms a frame\n",
+                    static_cast<unsigned long long>(frames), static_cast<unsigned long long>(bad), static_cast<double>(packets) / static_cast<double>(frames),
+                    static_cast<double>(writes) / static_cast<double>(frames), static_cast<double>(kicks) / static_cast<double>(frames),
+                    static_cast<unsigned long long>(outside), ms / static_cast<double>(frames));
+}
+
 // (RAC1_MRPW_BUILD_THREAD=0: the frame's triangles built on the host thread when it takes the frame, as before; the testing
 // modes too - their checks compare the build with the faithful path's on the host thread)
 bool build_threaded() {
@@ -3787,6 +3881,7 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
         scene_capture(chain_start, chain_end, g_input);
         g_worker.built = scene_build(*g_level.idx, g_input, F.scene, g_level.reset_walker, kicks);
         g_worker.ms = now_ms() - g_t_begin;
+        sky_check(F.scene, g_level.reset_walker);  // (testing, RAC1_MRPW_SKY_CHECK=1)
     }
     g_level.reset_walker = false;
 }
@@ -3917,10 +4012,37 @@ bool regs_last_on() {
     return on;
 }
 void wiiu_prep_dispatch();
+// the frame's sky (mrp_world_wiiu_sky_capture), taken by the next prepare; the capture's time (ms), the level its VU1 was for
+SceneFrame g_sky_cap;
+bool g_sky_cap_fresh = false;
+double g_sky_cap_ms = 0.0;
+int g_sky_cap_level = -1;
 }  // namespace
+
+// orig: (host) see mrp_world_sky.inc
+void mrp_world_wiiu_sky_capture(bool walk) {
+    g_sky_cap_fresh = false;
+    g_sky_cap_ms = 0.0;
+    if (!walk || !g_render_sky || !mrp_world_gx2_sky_ready()) return;
+    const PassRange* r = nullptr;
+    for (const PassRange& p : scene_passes())
+        if (p.pass == 3) r = &p;
+    if (r == nullptr) return;
+    mrp_chain_join();  // (the reader's VU1 programs done: the capture's run on the same VU1 runtime)
+    const double t0 = now_ms();
+    const int id = world_level_id();
+    uint32_t outside = 0;
+    g_sky_cap_fresh = sky_capture(r->first, r->end, scene_addrs(), g_sky_cap, id != g_sky_cap_level, &outside);
+    g_sky_cap_level = id;
+    g_sky_cap_ms = now_ms() - t0;
+    static uint64_t told = 0;
+    if (outside != 0 && told++ < 4) std::printf("[mrpw] the sky's capture: %u tags outside the sky's range taken as the sky's\n", outside);
+}
 
 void mrp_world_wiiu_prepare(bool active) {
     mrp_world_wiiu_join();  // (the frame before's second half, if it was not drawn)
+    const bool sky_fresh = g_sky_cap_fresh;  // (this host frame's capture only)
+    g_sky_cap_fresh = false;
     Frame& F = g_frame;
     F.active = false;
     F.pending = false;
@@ -4003,11 +4125,26 @@ void mrp_world_wiiu_prepare(bool active) {
         const ColourSource src = colour_source();
         if (g_rcols.all_dirty || !(src == g_rcols.src) || ++since >= every) {
             resident_colours_update(g_rcols, src);
+            resident_colours_update_touched(g_rcols, src, true);  // (its notes dropped: the whole table just compared)
             since = 0;
+        } else {
+            // ((2026-10-28) the instances the skipped passes' relighting relit - the point lights', overlay_entry.cpp world_relight -
+            // compared at once, alone)
+            resident_colours_update_touched(g_rcols, src, false);
         }
     }
     part(1);
     static_frame_build(g_slevel, g_rcols, g_sframe, false);
+    // ((2026-10-28) the instances drawn, for the skipped passes' relighting: overlay_entry.cpp world_relight relights those alone, as the
+    // passes' lists; the tfrags' below)
+    relight_visible_clear();
+    for (int k = 0; k < 2; ++k)
+        if (g_sframe.on[k]) relight_visible_mark(1 + k, ~0u);
+    for (const StaticInst& in : g_sframe.insts) {
+        const uint32_t sf = g_rcols.shrub_first();
+        if (in.slot < sf) relight_visible_mark(1, in.slot / kTieColours);
+        else relight_visible_mark(2, (in.slot - sf) / kShrubColours);
+    }
     part(2);
     // the tfrags (MRP_LITE.md phase 4): the host's decisions (tfrag_decide) from the snapshot tfrag_note_pass took before the real tfrag
     // pass (handle on: overlay_entry.cpp world_pass; the game's tfrag pass runs, its culling too), drawn in the view and constants its chain
@@ -4017,6 +4154,8 @@ void mrp_world_wiiu_prepare(bool active) {
     if (tfrag) {
         tfrag_colours_update(g_tcols, g_tlevel);
         tfrag_decide(g_tlevel, ts, false, g_tdecide);
+        relight_visible_mark(0, ~0u);  // ((2026-10-28) the relighting's, as above)
+        for (const auto& [k, code] : g_tdecide) relight_visible_mark(0, k);
     }
     part(3);
     const SceneAddrs ad = scene_addrs();
@@ -4025,6 +4164,9 @@ void mrp_world_wiiu_prepare(bool active) {
     for (uint32_t k = 0; k < 16; ++k) a[k] = lwc1(ad.a + 4 * k);
     for (uint32_t k = 0; k < 3; ++k) cam[k] = lwc1(ad.camera + 4 * k);
     if (!scene_from_static(g_sframe, g_slevel, a, cam, tfrag ? &g_tlevel : nullptr, tfrag ? &g_tdecide : nullptr, F.scene)) return;
+    // the sky (MRP_LITE.md phase 5): this frame's capture's packets before the world's, as its range is in the chain - build_triangles makes
+    // its batches (Batch::sky) as the PC's, the GS registers it leaves the world's start (the PC's tfrags see its ALPHA_1)
+    if (sky_fresh && F.in.sky) sky_prepend(F.scene, g_sky_cap);
     part(4);
     if (part_time && ++part_n == 120) {
         std::printf("[mrpw] the prepare's first half, ms a call: the chain's wait and the registers %.2f, the ties' / shrubs' colours %.2f, "
@@ -4875,6 +5017,13 @@ bool frame_view(FrameView& out) {
     out.tf_ranges = &F.tf_ranges;
     out.tf_draws = static_cast<uint32_t>(F.tf.draws.size());
     out.tf_ms = F.tf_ms;
+    out.cpu_verts = &F.v;
+    out.cpu_idx = &F.idx;
+#if defined(__WIIU__)
+    out.sky_ms = g_sky_cap_ms + F.sky_ms;
+#else
+    out.sky_ms = F.sky_ms;
+#endif
     return true;
 }
 
@@ -4916,6 +5065,25 @@ void bucket_texels(size_t bucket, uint32_t layer, uint32_t level, std::vector<ui
     px.clear();
     if (bucket >= g_level.buckets.size() || layer >= g_level.buckets[bucket].textures.size()) return;
     rac1::bucket_texels(g_level, g_level.buckets[bucket], layer, level, px);
+}
+
+// orig: (host) see mrp_world_backend.inc
+bool built_bucket(size_t bucket, uint32_t& w, uint32_t& h, const std::vector<uint32_t>*& px) {
+    px = nullptr;
+#if defined(__WIIU__)
+    if (bucket >= g_level.buckets.size()) return false;
+    const Bucket& b = g_level.buckets[bucket];
+    if (!b.textures.empty() || b.w == 0 || b.h == 0 || b.texels.size() < static_cast<size_t>(b.w) * b.h) return false;
+    w = b.w;
+    h = b.h;
+    px = &b.texels;
+    return true;
+#else
+    (void)bucket;
+    (void)w;
+    (void)h;
+    return false;
+#endif
 }
 
 // orig: (host) see mrp_world_backend.inc

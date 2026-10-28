@@ -13,6 +13,9 @@ extern bool g_skip_hud;        // the level's lights, the shadows' direction, th
 extern bool g_skip_effects;    // the 3D effects' drawing and the draw lists' blocks
 extern bool g_skip_shadows;    // the drop shadows (0x1fe6d8's shadows_draw)
 extern bool g_skip_joints;     // the mobys' joints and skinning (the poses kept as they were)
+extern bool g_skip_draw_lists; // the draw lists' blocks only (the effects' draw callbacks: glows, sparkles ...; the HUD stays)
+// (g_skip_shadows / g_skip_draw_lists start from RAC1_SKIP_SHADOWS / RAC1_SKIP_DRAW_LISTS, orig_main.cpp: the Wii U sets both - its
+// renderer draws neither yet, and the game spent ~16% of its work on them, 2026-10-28)
 // (the Wii U port: RAC1_DRAW_LAST_STEP=1, its default there) a host frame that runs several game frames to catch up shows the last
 // one only: the others' drawing (0x1f8e30's render_frame - the moby pass, the joints, the world passes, the effects, the shadows)
 // not run. The game's state may then differ from the PS2's (what the drawing writes that the update reads: the mobys' visibility)

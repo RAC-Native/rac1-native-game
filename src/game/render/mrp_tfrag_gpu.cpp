@@ -6,6 +6,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/vu0_macro.h>
+#include <game/math/vecmath.h>
 #include <game/render/mrp_world_assets.h>
 #include <runtime/kernel/ee_memory.h>
 #include "io/host_endian.h"
@@ -631,11 +632,34 @@ void tfrag_note_pass(bool handle, float scale, float widen) {
     S.dist = ru(OV(0x00160f80u));
     for (uint32_t k = 0; k < 0x80; ++k) S.zone[k] = static_cast<uint8_t>(rb(OV(0x00173d00u) + k));
     S.enabled = static_cast<int32_t>(ru(OV(0x00169ff0u) + 0x10)) != 0;
+    {  // the pass's view (0x294240's stack: mat4_identity, vec3_scale(camera, -1024), w 1, mat4_mul by 0x166cc0)
+        Mat4 m;
+        mat4_identity(m);
+        vec3_scale(m.r[3], *static_cast<const Vec4*>(ee_ram_ptr(OV(0x00166dc0u))), -1024.0f);
+        m.r[3].w = 1.0f;
+        mat4_mul(m, *static_cast<const Mat4*>(ee_ram_ptr(OV(0x00166cc0u))), m);
+        for (int r = 0; r < 4; ++r) {
+            S.view[static_cast<size_t>(4 * r)] = m.r[r].x;
+            S.view[static_cast<size_t>(4 * r + 1)] = m.r[r].y;
+            S.view[static_cast<size_t>(4 * r + 2)] = m.r[r].z;
+            S.view[static_cast<size_t>(4 * r + 3)] = m.r[r].w;
+        }
+    }
     S.valid = true;
 }
 
 // orig: (host) see mrp_tfrag_gpu.h
 const TfragSnapshot& tfrag_snapshot() { return g_tsnap; }
+
+// orig: (host) see mrp_tfrag_gpu.h
+void tfrag_snapshot_widen(float w) {
+    TfragSnapshot& S = g_tsnap;
+    if (!S.valid || !(w > 1.0f)) return;
+    S.widen = w;
+    S.c24[0] = S.c24[0] * w;
+    S.c26[0] = std::sqrt(1.0f + S.c24[0] * S.c24[0]);
+    for (auto& row : S.clip) row[0] = row[0] / w;
+}
 
 // orig: (host) see mrp_tfrag_gpu.h: 0x294368's per-entry work, in its order and with its VU0 macro operations (vu0_macro.h lanes: the
 // VU float rules), the chain's order kept: the entries in the table's order with their LOD code, then those its box test sends to the

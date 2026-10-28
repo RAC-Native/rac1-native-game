@@ -1,9 +1,11 @@
 // The MRP world's scene: see mrp_world_scene.h. Host code.
 #include <game/render/mrp_world_scene.h>
+#include "mrp_world_sky.inc"
 
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/world_vu1.h>
+#include <game/render/mrp_lod.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/vu/vu1.h>
 #include <runtime/vu/vu_interpreter.h>
@@ -1645,6 +1647,127 @@ bool scene_build(const WorldIndex& idx, const SceneInput& in, SceneFrame& f, boo
     return true;
 }
 
+namespace {
+// the sky capture's private VU1 (persistent, as the walker's: the particle program's MPG and constants carry over between frames)
+vu1::Vu1* g_sky_vu = nullptr;
+}  // namespace
+
+// orig: (host) see mrp_world_sky.inc: the tags as scene_build follows them (REF data elsewhere, CALL / RET), each tag's stream - its upper
+// 64 bits, then its data - read from a copy (a code's data may cross from the tag into its data), its codes as scene_build's sky branch takes them
+bool sky_capture(uint32_t first, uint32_t end, const SceneAddrs& ad, SceneFrame& out, bool reset, uint32_t* outside) {
+    scene_reset(out);
+    if (outside != nullptr) *outside = 0;
+    if (end <= first) return false;
+    if (g_sky_vu == nullptr || reset) {
+        delete g_sky_vu;
+        g_sky_vu = new vu1::Vu1();
+        g_sky_vu->st.vf[0].f[3] = 1.0f;  // (vf0 = (0, 0, 0, 1): the walker's, scene_build)
+    }
+    vu1::Vu1& vu = *g_sky_vu;
+    // (testing, RAC1_SKY_CAPTURE_VU1=0: the range's VIF codes but its DIRECTs not run - no particle program, no kicks: the capture's cost
+    // without the private VU1)
+    static const bool vu_codes = std::getenv("RAC1_SKY_CAPTURE_VU1") == nullptr || std::atoi(std::getenv("RAC1_SKY_CAPTURE_VU1")) != 0;
+    auto sky_packet = [&out](uint32_t from, bool kick) {
+        if (out.sky.size() == from) return;
+        ScenePacket p;
+        p.sky = true;
+        p.table = 3;
+        p.seq = 0xffffffffu;
+        p.sky_first = from;
+        p.sky_count = static_cast<uint32_t>(out.sky.size()) - from;
+        out.packets.push_back(std::move(p));
+        ++out.sky_packets;
+        if (kick) ++out.sky_kicks;
+    };
+    const vu1::KickSink sky_kick = [&out, &sky_packet](const uint8_t* data, uint32_t qwc) {
+        const uint32_t from = static_cast<uint32_t>(out.sky.size());
+        SkyGif g;
+        g.data(data, qwc, out.sky);
+        sky_packet(from, true);
+    };
+    SkyGif sky_gif;
+    std::vector<uint32_t> stack;
+    static std::vector<uint8_t> buf;
+    uint32_t addr = first & 0x01fffff0u;
+    const uint32_t stop_at = end & 0x01fffff0u;
+    for (int guard = 0; guard < 100000 && addr != stop_at; ++guard) {
+        const uint8_t* t = static_cast<const uint8_t*>(ee_ram_ptr_read(addr));
+        if (t == nullptr) break;
+        const uint64_t lo = r64(t);
+        const uint32_t qwc = lo & 0xffff, id = (lo >> 28) & 7;
+        const uint32_t a = static_cast<uint32_t>(lo >> 32) & 0x01fffff0u;
+        uint32_t data = addr + 16, next = addr + 16 + qwc * 16;
+        bool stop = false;
+        switch (id) {
+        case 0: data = a; stop = true; break;
+        case 1: break;
+        case 2: next = a; break;
+        case 3: case 4: data = a; next = addr + 16; break;
+        case 5: stack.push_back(next); next = a; break;
+        case 6:
+            if (stack.empty()) stop = true;
+            else { next = stack.back(); stack.pop_back(); }
+            break;
+        case 7: stop = true; break;
+        }
+        if (outside != nullptr && (addr < first || addr >= end)) ++*outside;
+        buf.assign(16, 0);
+        std::memcpy(buf.data() + 8, t + 8, 8);
+        if (qwc != 0) {
+            const uint8_t* d = static_cast<const uint8_t*>(ee_ram_ptr_read(data));
+            if (d == nullptr || ee_ram_ptr_read(data + qwc * 16 - 1) == nullptr) break;
+            buf.insert(buf.end(), d, d + qwc * 16);
+        }
+        const uint8_t* p = buf.data();
+        const uint32_t n = static_cast<uint32_t>(buf.size());
+        for (uint32_t i = 0; i + 4 <= n;) {
+            const uint32_t code = r32(p + i);
+            i += 4;
+            const uint32_t cmd = (code >> 24) & 0x7f, imm = code & 0xffff;
+            if (cmd == 0x50 || cmd == 0x51) {  // DIRECT / DIRECTHL: its writes a packet of their own
+                const uint32_t q = imm == 0 ? 65536 : imm;
+                i = (i + 15) & ~15u;
+                const uint32_t take = std::min(q * 16, n - std::min(n, i));
+                const uint32_t from = static_cast<uint32_t>(out.sky.size());
+                sky_gif.data(p + i, take / 16, out.sky);
+                sky_packet(from, false);
+                i += q * 16;
+                continue;
+            }
+            const uint32_t nb = vu1::vif_data_bytes(vu, code);
+            if (nb != 0 && i + nb > n) break;
+            if (vu_codes) vu1::vif1_command(vu, code, p + i, sky_kick);  // (the sprites: the particle program's MPG, its data, its starts)
+            i += nb;
+        }
+        if (stop) break;
+        addr = next;
+    }
+    out.has_sky = true;
+    out.sky_asset = lwu(ad.sky_asset);
+    sky_texture_entries_at(out.sky_tex, ad.sky_asset);
+    // (the A the sky pass projected with: the game's, or the widened one of the Wii U's widescreen - mrp_lod.h mrp_lod_sky_widen_real)
+    const float* wide_a = mrp_lod_sky_real_a();
+    for (uint32_t k = 0; k < 16; ++k) out.sky_a[k] = wide_a != nullptr ? wide_a[k] : lwc1(ad.a + 4 * k);
+    out.ok = true;
+    return true;
+}
+
+// orig: (host) see mrp_world_sky.inc
+void sky_prepend(SceneFrame& f, const SceneFrame& sky) {
+    const uint32_t nw = static_cast<uint32_t>(sky.sky.size()), np = static_cast<uint32_t>(sky.packets.size());
+    for (ScenePacket& p : f.packets)
+        if (p.sky || p.gif) p.sky_first += nw;
+    f.packets.insert(f.packets.begin(), sky.packets.begin(), sky.packets.end());
+    f.sky.insert(f.sky.begin(), sky.sky.begin(), sky.sky.end());
+    for (SceneReg& r : f.regs) r.before += np;
+    f.sky_packets += sky.sky_packets;
+    f.sky_kicks += sky.sky_kicks;
+    f.has_sky = sky.has_sky;
+    f.sky_asset = sky.sky_asset;
+    f.sky_tex = sky.sky_tex;
+    f.sky_a = sky.sky_a;
+}
+
 // orig: (host) see mrp_world_scene.h. The view: 0x294240 computes it on its stack (the camera's translation x -1024 into the view
 // matrix 0x166cc0) and UNPACKs it (packet_vif_unpack 0x2a0ab0: a CNT tag, STCYCL, UNPACK V4-32 4 qwords) to VU1 5 and 0x14d right after
 // the range's first tag, whose address it keeps at 0x160f7c: the data at that tag + 0x20. The constants: the culling 0x294368's
@@ -1652,12 +1775,23 @@ bool scene_build(const WorldIndex& idx, const SceneInput& in, SceneFrame& f, boo
 // qwords to 0x290, then 0x290..0x29e's data (Veldin: C0 bcdb73b0 42563333 437f0000 45400000; the strips' GIF tag at 0x292, the
 // texture's at 0x294; the bands 0x29a / 0x29b) -: 0x1c2850 + 16 k. (Found by the walker's VU1 memory against EE memory: the
 // UNPACKs' sources it notes, Walker::unpack_src; compared over frames on the PC: ports/wiiu/MRP_LITE.md phase 4.)
+// ((2026-10-28) the view now the tfrag snapshot's (tfrag_note_pass: made as 0x294240 makes it, the same on every frame of an explore run
+// with the pass on): with RAC1_TFRAG_PASS_OFF - the Wii U's default - the pass never ran, 0x160f7c was 0 (no tfrag drawn) or, after the
+// title, a stale tag into a packet buffer other passes write: no view, or another frame's - the console's ground missing in patches.
+// RAC1_MRPW_TFRAG_VIEW_CHAIN=1, testing: the chain's as before)
 bool tfrag_pass_vu(std::array<float, 16>& view, std::array<uint32_t, 4 * 14>& consts) {
-    const uint32_t tag = lwu(OV(0x00160f7cu));
-    if (tag == 0 || tag >= 0x02000000u) return false;
-    // (the pass's first CNT: 4 qwords, UNPACK V4-32 to VU1 5 - 0x6c040005 -, else not this pass's packet)
-    if ((lwu(tag + 0x10) & 0x7000ffffu) != 0x10000004u || lwu(tag + 0x1c) != 0x6c040005u) return false;
-    for (uint32_t k = 0; k < 16; ++k) view[k] = lwc1(tag + 0x20 + 4 * k);
+    static const bool from_chain = std::getenv("RAC1_MRPW_TFRAG_VIEW_CHAIN") != nullptr && std::atoi(std::getenv("RAC1_MRPW_TFRAG_VIEW_CHAIN")) != 0;
+    if (from_chain) {
+        const uint32_t tag = lwu(OV(0x00160f7cu));
+        if (tag == 0 || tag >= 0x02000000u) return false;
+        // (the pass's first CNT: 4 qwords, UNPACK V4-32 to VU1 5 - 0x6c040005 -, else not this pass's packet)
+        if ((lwu(tag + 0x10) & 0x7000ffffu) != 0x10000004u || lwu(tag + 0x1c) != 0x6c040005u) return false;
+        for (uint32_t k = 0; k < 16; ++k) view[k] = lwc1(tag + 0x20 + 4 * k);
+    } else {
+        const TfragSnapshot& S = tfrag_snapshot();
+        if (!S.valid) return false;
+        view = S.view;
+    }
     const uint32_t o = OV(0x001c2840u);
     if (lwu(o + 0xc) != 0x6c0f0290u) return false;  // (the UNPACK to 0x290: the overlay's block as found)
     for (uint32_t k = 0; k < 4 * 14; ++k) consts[k] = lwu(o + 0x10 + 4 * k);

@@ -166,11 +166,20 @@ struct TfragSnapshot {
     std::array<int32_t, 3> bands{};              // 0x160f70.. (scaled)
     uint32_t dist = 0;                           // 0x160f80 (float bits, scaled)
     std::array<uint8_t, 0x80> zone{};            // 0x173d00
+    // the view the pass UNPACKs to VU1 5..8 (and 0x14d), as 0x294240 makes it on its stack: the identity with the camera 0x166dc0 x -1024
+    // as its translation, times 0x166cc0 (mat4_mul). Taken here so that a frame whose tfrag pass is not run (the Wii U's
+    // RAC1_TFRAG_PASS_OFF) has it: mrpw::tfrag_pass_vu
+    std::array<float, 16> view{};
 };
 // orig: (host) before the real tfrag pass (mrp_lod_world_shadow, the game's thread): the snapshot of what the pass reads (inside the
 // shadow's journal with the view widened when `widen` > 1: the widened values); `handle`: the host makes the frame's tfrag decisions,
 // its distances scaled by `scale` (as mrp_lod.cpp patch_tfrag)
 void tfrag_note_pass(bool handle, float scale, float widen);
+// orig: (host) the snapshot's frustum widened by `w` after tfrag_note_pass took it from the game's own 4:3 memory (the Wii U's widescreen,
+// render_view.h g_view_draw_widen: no shadow run, nothing of the game's memory written): the x tangent (vf24.x) times w, its radius factor
+// (vf26.x) sqrt(1 + t^2), the clip matrix's x column (vf12..vf15) divided by w - as mrp_lod.cpp patch_widen's projection_setup and
+// clip_widen_apply make them; the view (VU1 5..8, the game's projection A) kept
+void tfrag_snapshot_widen(float w);
 const TfragSnapshot& tfrag_snapshot();
 // orig: (host) the frame's visible entries and their LOD codes from the snapshot (as 0x294368 decides them; `check`: at the game's own
 // distances and frustum, RAC1_MRPW_TFRAG_CHECK): (entry index, code; 2 = the clipping program), in the chain's order

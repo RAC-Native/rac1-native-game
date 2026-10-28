@@ -6,8 +6,8 @@
 // template run (DrawCmd: the record's index in `base_instance`, the template's first vertex in `base_vertex`), the runs of draws
 // sharing one GPU state (Batch / RKey, the GS state of its first draw in Key), in the chain's order. Its GL and Vulkan backends
 // are inline in that file; the Wii U's GX2 one (ports/wiiu/game/mrp_world_gx2.cpp) reads the same data through the accessors
-// below (the tie / shrub GPU path, the tfrag GPU path's triangles as the CPU makes them - tfrag_frame_cpu -: the CPU path's vertices
-// and the sky are not in it yet).
+// below (the tie / shrub GPU path, the tfrag GPU path's triangles as the CPU makes them - tfrag_frame_cpu -, the CPU path's vertices: on
+// the Wii U the sky's, mrp_world_sky.inc).
 //
 // (A .inc, not a .h: the generated code is fingerprinted with every header of src/game - tools/setup.py's CODE_SOURCES - and a
 // renderer's change must not ask for ./setup.sh again; as mrp_moby_backend.inc.)
@@ -119,6 +119,11 @@ struct FrameView {
     const std::vector<TfragRange>* tf_ranges = nullptr;
     uint32_t tf_draws = 0;  // (the frame's tfrag draws; the CPU route's time, ms)
     double tf_ms = 0;
+    // the CPU path's vertices and triangles (GsFront: the indices absolute, base vertex 0) - on the Wii U the sky's alone: its batches
+    // (Batch::sky, gpu and tfrag false) [first, first + count) in `cpu_idx`, their texture Key::bucket (a frame's: built_bucket) / sampler
+    const std::vector<GpuV>* cpu_verts = nullptr;
+    const std::vector<uint32_t>* cpu_idx = nullptr;
+    double sky_ms = 0;  // (the sky's CPU time, ms: the Wii U's capture on the game's thread and its packets' build)
 };
 // false: no frame built (the world not drawn this frame)
 bool frame_view(FrameView& out);
@@ -146,6 +151,10 @@ BucketInfo bucket_info(size_t bucket);
 // (max(1, w >> level)) x (max(1, h >> level)); a level the texture lacks: transparent black; a bucket made by a frame's build (the
 // sky's, a GIF stream's: no layer of the level's tables) has none
 void bucket_texels(size_t bucket, uint32_t layer, uint32_t level, std::vector<uint32_t>& px);
+// a bucket a frame's build made (the sky's: one layer, one level - mrp_world_renderer.cpp sky_texture): its size and texels, RGBA bytes
+// in memory order (any host), valid until the level changes (LevelView::loads); false: not such a bucket, or not kept (the Wii U alone
+// keeps them: elsewhere they are GL / Vulkan images)
+bool built_bucket(size_t bucket, uint32_t& w, uint32_t& h, const std::vector<uint32_t>*& px);
 
 // The resident lit colours (mrp_world_static.h ResidentColours): the table (one u32 per colour, RGBA8 as the level's data holds
 // them: R in the low byte, host order), whether all of it is to be sent (a new level), else the ranges (first u32, count) that
@@ -167,6 +176,8 @@ namespace rac1 {
 bool mrp_world_gx2_ready();
 // ... and its tfrag shaders (shaders/mrp_tfrag.gsh) loaded, the tfrags not turned off (RAC1_WIIU_TFRAG=0): the frame's tfrags made
 bool mrp_world_gx2_tfrag_ready();
+// ... and its sky's shaders (shaders/mrp_sky.gsh) loaded, the sky on (RAC1_WIIU_SKY, the debug menu's "Sky"): the frame's sky captured
+bool mrp_world_gx2_sky_ready();
 }  // namespace rac1
 #endif
 

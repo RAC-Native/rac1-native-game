@@ -110,6 +110,7 @@
 #include <game/render/mrp_fx.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_world_renderer.h>
+#include <game/render/mrp_world_sky.inc>
 #include <game/render/mrp_world_scene.h>
 #include <setup/setup_manager.h>
 #include <formats/mrp_asset_check.h>
@@ -2281,6 +2282,8 @@ int main(int argc, char** argv) {
     // reads of the GS memory have no picture to read: their frames differ there.
     const bool no_graphics = std::getenv("RAC1_NO_GRAPHICS") != nullptr && std::atoi(std::getenv("RAC1_NO_GRAPHICS")) != 0;
     rac1::g_draw_last_step_only = std::getenv("RAC1_DRAW_LAST_STEP") != nullptr && std::atoi(std::getenv("RAC1_DRAW_LAST_STEP")) != 0;  // (game_skips.h)
+    rac1::g_skip_shadows = std::getenv("RAC1_SKIP_SHADOWS") != nullptr && std::atoi(std::getenv("RAC1_SKIP_SHADOWS")) != 0;
+    rac1::g_skip_draw_lists = std::getenv("RAC1_SKIP_DRAW_LISTS") != nullptr && std::atoi(std::getenv("RAC1_SKIP_DRAW_LISTS")) != 0;
     // RAC1_NO_GRAPHICS=2: also the work only the GS / VU1 path reads skipped, as the MRP skips it when it draws (ADR 0010
     // step 3: the VU0 skinning, the sub-mesh colour fill, the texture slots; RAC1_MRP_SKIP / _PARTS apply): a renderer that
     // takes the mobys from the MRP scene state, as the Wii U's will (its game state is then that of a run with the MRP)
@@ -3234,7 +3237,13 @@ int main(int argc, char** argv) {
                             ci.skips.push_back(MrpChainInput::Skip{r.first, r.last, static_cast<uint32_t>(r.mscals.size()), r.host_3d, r.moby, true});
                         ci.regs_tag = world_first;
 #if defined(__WIIU__)
+                        // (the MRP sky, mrp_world_sky.inc: its range walked in EE memory before the reader starts - their VU1 programs never
+                        // run at once -, for mrp_world_wiiu_prepare)
+                        mrp_chain_join();  // (the frame before's reading - waited for by the start anyway: not the sky's time)
+                        const auto ts = std::chrono::steady_clock::now();
+                        mrp_world_wiiu_sky_capture(!prev_chain && !fade);
                         const auto tc = std::chrono::steady_clock::now();
+                        rac1_wiiu_time(3, std::chrono::duration<double, std::milli>(tc - ts).count());
 #endif
                         mrp_chain_start(std::move(ci), chain_async);
 #if defined(__WIIU__)

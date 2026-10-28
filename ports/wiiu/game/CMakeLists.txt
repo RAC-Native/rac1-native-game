@@ -119,10 +119,11 @@ wut_create_rpx(rac1_wiiu)
 # The picture's shaders (ports/wiiu/shaders): GLSL compiled on the PC into .gsh files with CafeGLSL's compiler
 # (-DRAC1_WIIU_GLSLC=<its bin/glslcompiler>), written to shaders/ in the build (copied beside the game's data on the SD;
 # generated: never in the repository). Each <name>.vert / <name>.frag pair is one file; a pair whose pixel shader is another's names it
-# in RAC1_WIIU_FRAG_<name> (mrp_tfrag: mrp_world.frag).
+# in RAC1_WIIU_FRAG_<name> (mrp_tfrag, mrp_sky: mrp_world.frag).
 set(RAC1_WIIU_GLSLC "" CACHE FILEPATH "CafeGLSL's glslcompiler, for ports/wiiu/shaders")
-set(RAC1_WIIU_SHADERS test gs_draw mrp_2d mrp_moby mrp_world mrp_tfrag debug_text)
+set(RAC1_WIIU_SHADERS test gs_draw mrp_2d mrp_moby mrp_world mrp_tfrag mrp_sky debug_text)
 set(RAC1_WIIU_FRAG_mrp_tfrag mrp_world)
+set(RAC1_WIIU_FRAG_mrp_sky mrp_world)
 if(RAC1_WIIU_GLSLC)
     set(_gsh)
     foreach(sh ${RAC1_WIIU_SHADERS})
