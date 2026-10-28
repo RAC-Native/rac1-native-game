@@ -138,6 +138,7 @@ struct Context {
     bool has_float64 = false;       // (shaderFloat64: the tfrag compute's doubles; without it the tfrags are made on the CPU)
     bool has_anisotropy = false;    // (samplerAnisotropy: without it every sampler is isotropic)
     bool device_lost = false;       // (VK_ERROR_DEVICE_LOST seen: said once in the log)
+    VkQueryPool timed_pool = VK_NULL_HANDLE;  // (timed_submit's two timestamps)
 } g_ctx;
 
 // The renderer's allocations, by use (the profiler's memory view)
@@ -682,6 +683,21 @@ void check_lost(VkResult r, const char* where) {
 // orig: (host)
 bool has_float64() { return g_ctx.has_float64; }
 
+// orig: (host) by the PCI device ID's high byte, the families Intel's own tables (and Mesa's) give generations 7 to 9.5:
+// Ivy Bridge 0x01, Haswell 0x04 / 0x0a / 0x0c / 0x0d, Bay Trail 0x0f, Broadwell 0x16, Cherry / Braswell 0x22, Skylake 0x19,
+// Gemini Lake 0x31, Coffee / Whiskey Lake 0x3e, Kaby Lake 0x59, Apollo Lake 0x5a, Amber Lake 0x87, Comet Lake 0x9b
+bool float64_slow() {
+    const VkPhysicalDeviceProperties& p = g_ctx.dev_props;
+    if (p.vendorID != 0x8086) return false;
+    switch ((p.deviceID >> 8) & 0xff) {
+    case 0x01: case 0x04: case 0x0a: case 0x0c: case 0x0d: case 0x0f: case 0x16: case 0x19: case 0x22: case 0x31: case 0x3e:
+    case 0x59: case 0x5a: case 0x87: case 0x9b:
+        return true;
+    default:
+        return false;
+    }
+}
+
 bool init(GLFWwindow* window, bool vsync, bool headless) {
     if (g_ctx.active) return true;
     g_ctx = Context{};
@@ -1059,6 +1075,7 @@ void shutdown() {
 
         destroy_swapchain();
         if (g_ctx.prof_pool != VK_NULL_HANDLE) vkDestroyQueryPool(g_ctx.device, g_ctx.prof_pool, nullptr);
+        if (g_ctx.timed_pool != VK_NULL_HANDLE) vkDestroyQueryPool(g_ctx.device, g_ctx.timed_pool, nullptr);
         g_ctx.prof_pool = VK_NULL_HANDLE;
         prof::set_gpu_api(nullptr);
 
@@ -1378,6 +1395,39 @@ void submit_immediate(const std::function<void(VkCommandBuffer)>& fn) {
     si.pCommandBuffers = &g_ctx.imm_cmd;
     check_lost(vkQueueSubmit(g_ctx.queue, 1, &si, g_ctx.imm_fence), "an upload's vkQueueSubmit");
     check_lost(vkWaitForFences(g_ctx.device, 1, &g_ctx.imm_fence, VK_TRUE, UINT64_MAX), "an upload's fence");
+}
+
+// orig: (host) see vk_context.h
+double timed_submit(const std::function<void(VkCommandBuffer)>& record) {
+    if (g_ctx.device == VK_NULL_HANDLE) return -1.0;
+    if (g_ctx.timed_pool == VK_NULL_HANDLE && g_ctx.dev_props.limits.timestampComputeAndGraphics == VK_TRUE) {
+        VkQueryPoolCreateInfo qci{};
+        qci.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+        qci.queryType = VK_QUERY_TYPE_TIMESTAMP;
+        qci.queryCount = 2;
+        if (vkCreateQueryPool(g_ctx.device, &qci, nullptr, &g_ctx.timed_pool) != VK_SUCCESS) g_ctx.timed_pool = VK_NULL_HANDLE;
+    }
+    const VkQueryPool pool = g_ctx.timed_pool;
+    auto fn = [&](VkCommandBuffer cb) {
+        if (pool != VK_NULL_HANDLE) {
+            vkCmdResetQueryPool(cb, pool, 0, 2);
+            vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, pool, 0);
+        }
+        record(cb);
+        if (pool != VK_NULL_HANDLE) vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, pool, 1);
+    };
+    if (g_ctx.in_frame && g_ctx.cmd != VK_NULL_HANDLE) {
+        flush_cmd();  // (the frame's commands before: a submit of their own)
+        fn(g_ctx.cmd);
+        flush_cmd();
+    } else {
+        submit_immediate(fn);
+    }
+    if (pool == VK_NULL_HANDLE || g_ctx.device_lost) return -1.0;
+    uint64_t ts[2] = {};
+    if (vkGetQueryPoolResults(g_ctx.device, pool, 0, 2, sizeof ts, ts, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT) != VK_SUCCESS)
+        return -1.0;
+    return static_cast<double>((ts[1] - ts[0]) & g_ctx.ts_mask) * g_ctx.ts_period_ns * 1e-6;
 }
 
 VkInstance instance() { return g_ctx.instance; }

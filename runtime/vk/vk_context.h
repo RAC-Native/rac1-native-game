@@ -98,9 +98,16 @@ void render_imgui(ImDrawData* draw_data);
 void end_frame();
 void flush_cmd();
 void submit_immediate(const std::function<void(VkCommandBuffer)>& fn);
+// `record`'s commands in a submit of their own, waited for (inside a frame: the frame's commands before them submitted first,
+// as flush_cmd), and their time on the GPU in ms by two timestamps; < 0 when the device has none (issue #113: the tfrag
+// compute's first dispatches of a level timed)
+double timed_submit(const std::function<void(VkCommandBuffer)>& record);
 
 // What the device can do (init's check: GitHub issue #113)
 bool has_float64();             // shaderFloat64: the tfrag compute shader's doubles
+// an Intel GPU of generation 9 (Skylake .. Comet Lake, the UHD 620) or older: its doubles are slow (the tfrags made on the CPU
+// unless RAC1_TFRAG_CPU=0; issue #113)
+bool float64_slow();
 
 // Core handles
 VkInstance instance();

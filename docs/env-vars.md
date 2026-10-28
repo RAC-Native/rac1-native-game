@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 352 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 354 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 264 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 266 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 67 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -91,6 +91,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_EDGE_SLIVERS` | 0 = hidden, 1 = drawn; default hidden with the modern renderer, drawn with the faithful one (RAC1_MRP=0) | The 2D slivers the game leaves at the frame's edges: a textured 2D primitive with at most 4 frame pixels inside the frame and the rest past its left, right or top edge (the Suck Cannon's gauge and the air meter keep their 3 leftmost columns at the right edge for 16 frames as they hide, which a TV's overscan hid). Set it to 1 to see everything the game draws. |
 | `RAC1_GAME_THREAD` | 0 = off, 1 = on, 2 = also in a deterministic headless run (with `RAC1_PIPELINE=1`); unset = the debug menu's setting (Display: "Game update on its own thread", on by default) | With the pipelined frames, a host frame that draws a pipelined frame runs its game frames on the game thread while the main thread draws (runtime/ee/game_thread.h). Off: the game frames before the drawing, on the main thread, as before. 2 is for testing: its `RAC1_RAMHASH` is the same as 0's. |
 | `RAC1_GT_SERIAL` | set (any value) = on; default off | Debugging the game thread: its game frames joined before the drawing (on the game thread, but not beside the drawing), to tell a difference of the thread from one of the overlap. |
+| `RAC1_GL_SINGLE_DRAWS` | 1 = on, 0 = off; default on with Intel's Windows OpenGL driver, else off | With OpenGL, issues the MRP world's and mobys' multi-draws (glMultiDrawElementsIndirect) as one glDrawElementsInstancedBaseVertexBaseInstance per command, for drivers whose multi-draws draw the ties, shrubs and mobys with the wrong records (#113). The same picture. See [Rendering](rendering.md). |
 | `RAC1_MRPW_BUILD_THREAD` | 0 = off; default on (off when `RAC1_MRPW_THREAD=0`, a check mode, `RAC1_MRPW_CPU` or `RAC1_MRPW_TFRAG_VERIFY`) | The MRP world's frame triangles and batches (build_triangles) made on the scene's worker after its scene, the new textures' images made by the main thread when it takes the frame; 0 makes them on the main thread when the frame is drawn, as before, for comparison (the same output). |
 | `RAC1_SURFACE_DETAIL` | 0, 1 or 2; default: Options > Graphics > Surface Detail (Off) | With the modern lighting, the materials of the level files' `material` lines: 0 off, 1 Low, 2 High (also the reflections and the lava's heat shimmer), whatever the option says. |
 | `RAC1_WATER` | 0, 1 or 2; default: Options > Graphics > Water (Off) | With the modern lighting, the `water`, `lava` and `quicksand` materials of the level files with the Water option's shading: 0 off, 1 Low (normal maps, Fresnel, glints, depth, foam), 2 High (also the scene's reflection and the refraction), whatever the option says. See [Materials](materials.md#water-foliage-and-grass). |
@@ -279,6 +280,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_SUN_RAYS_TRACE` | set (any value) = on; default off | Every 60 frames prints the sun's place on the screen, the rays' gain, how open the sky around the sun is (OpenGL) and their GPU time. |
 | `RAC1_SUN_TRACE` | set (any value) = on; default off | Prints the light sets the hero is lit with, for the modern lighting's sun. See [Lighting](lighting.md). |
 | `RAC1_SUN_ZONE` | set (any value) = on; default off | The modern lighting's sun takes its direction from the light sets the hero is lit with, everywhere, as before #3; by default the direction is light set 0's wherever set 0 has a sun, and the hero's sets give only its weight. See [Lighting](lighting.md#the-sun). |
+| `RAC1_TFRAG_CPU` | 1 = the CPU, 0 = the GPU; unset = the GPU, except under Vulkan on an Intel GPU of generation 9 or older, or when a level's first tfrag dispatch is timed too slow | Makes the tfrags (the terrain) on the CPU instead of by the compute shader, where the GPU's doubles are slow (#113); 0 keeps the GPU whatever the device. As `RAC1_MRPW_TFRAG_GPU=0`: the same picture at the default level of detail, a little different at a distance with the LOD slider raised or the view widened. See [Vulkan](vulkan.md). |
 | `RAC1_TFRAG_LIGHT_TRACE` | <every>[,x,y,z,r]; default off | Every <every> drawn frames with the modern lighting on, takes the terrain's (tfrag) lit vertex colours within r units (default 12) of the hero, or of x,y,z, apart as the game's relighting makes them: base colour, the light set's two directional terms, against the colour in EE memory; prints the means, the light sets used and the sun. See [Lighting](lighting.md). |
 | `RAC1_TF_HITS` | integer; default 3 | Testing threshold for the terrain shadow build: a candidate with fewer than this many hits is discarded. |
 | `RAC1_TIE_NEAR` | x,y,z[,r[,frame]]; default off | With the modern lighting, prints once (after that many of its frames, default 60) the tie instances and the mobys within r units (default 6) of that point, with their class. |

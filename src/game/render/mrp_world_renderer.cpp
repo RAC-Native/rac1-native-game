@@ -1,5 +1,6 @@
 // orig: (host) The MRP world renderer (see mrp_world_renderer.h).
 #include <game/render/mrp_world_renderer.h>
+#include <game/render/gl_draws.h>
 #include <game/render/mrp_chain.h>
 
 #include <formats/moby_mrp.h>
@@ -767,7 +768,8 @@ void main() {
             int mips = int((w >> 22) & 7u) + 1;
             // (a multi-draw's fragments of several draws share a wave, their units may differ: each unit the wave holds
             // sampled in turn with an index uniform over the subgroup; a quad is one primitive's, so its derivatives stay its own)
-            for (;;) {
+            t = vec4(0.0);
+            for (uint wl = 0u; wl < 16u; ++wl) {  // (16 units at most: bounded, a driver that runs it wrong cannot hang the GPU, #113)
                 uint u = subgroupBroadcastFirst(unit);
                 if (u != unit) continue;
                 if (uMipMode == 0) {
@@ -878,9 +880,9 @@ GLuint compile(GLenum type, const char* src) {
     GLint ok = 0;
     glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
     if (!ok) {
-        char log[2048];
+        char log[8192];
         glGetShaderInfoLog(s, sizeof log, nullptr, log);
-        std::fprintf(stderr, "[mrpw] shader: %s\n", log);
+        std::fprintf(stderr, "[mrpw] the %s shader did not compile: %s\n", type == GL_VERTEX_SHADER ? "vertex" : "fragment", log);
     }
     return s;
 }
@@ -907,10 +909,12 @@ GLuint link(const char* vsrc, bool variant = false, bool early = false) {
     glDeleteShader(fs);
     GLint ok = 0;
     glGetProgramiv(prog, GL_LINK_STATUS, &ok);
-    if (!ok) {
-        char log[2048];
+    if (!ok) {  // (#113: a driver may refuse a program - too many uniform components -: said, never drawn with)
+        char log[8192];
         glGetProgramInfoLog(prog, sizeof log, nullptr, log);
-        std::fprintf(stderr, "[mrpw] link: %s\n", log);
+        std::fprintf(stderr, "[mrpw] the world's program (%s, %s%s) did not link, %s: %s\n", vsrc == kVs ? "the CPU path" : "the GPU path",
+                     variant ? "the modern lighting's variant" : "the base program", early ? ", depth only" : "",
+                     variant ? "the world drawn without the modern lighting's variant" : "the MRP world off", log);
         glDeleteProgram(prog);
         return 0;
     }
@@ -2819,7 +2823,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
     auto flush = [&] {
         if (!pend.on) return;
         if (pend.kind % 3 == 1)
-            p_multi_draw_elements_indirect(GL_TRIANGLES, GL_UNSIGNED_INT, reinterpret_cast<const void*>(static_cast<uintptr_t>(pend.first) * sizeof(DrawCmd)), static_cast<GLsizei>(pend.count), 0);
+            gl_multi_draw_elements(F.draws.data(), pend.first, pend.count);
         else
             glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(pend.count), GL_UNSIGNED_INT, reinterpret_cast<const void*>(static_cast<uintptr_t>(pend.first) * sizeof(uint32_t)));
         pend.on = false;
@@ -2917,7 +2921,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         const bool zwrite = rk.zwrite != 0;
         auto draw = [&] {
             if (b.gpu)
-                p_multi_draw_elements_indirect(GL_TRIANGLES, GL_UNSIGNED_INT, reinterpret_cast<const void*>(static_cast<uintptr_t>(b.first) * sizeof(DrawCmd)), static_cast<GLsizei>(b.count), 0);
+                gl_multi_draw_elements(F.draws.data(), b.first, b.count);
             else
                 glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(b.count), GL_UNSIGNED_INT, reinterpret_cast<const void*>(static_cast<uintptr_t>(b.first) * sizeof(uint32_t)));
         };

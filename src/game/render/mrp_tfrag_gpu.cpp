@@ -16,6 +16,7 @@
 #include <GLFW/glfw3.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -1199,7 +1200,23 @@ struct VkGpu {
     std::unordered_map<uint32_t, uint32_t> plan_runs;
     size_t colour_words = 0;
     uint64_t refused = 0;
+    // (a level's first dispatches timed, tfrag_gpu_dispatch: the level, the draws and milliseconds so far, the frames, done)
+    uint64_t timed_gen = 0;
+    uint32_t timed_draws = 0, timed_frames = 0;
+    double timed_ms = 0.0, timed_worst = 0.0;
+    bool timed_done = false;
 } g_vk_gpu;
+// (the GPU path given up for the rest of the session: its dispatch too slow, tfrag_gpu_dispatch; read by the game's thread too)
+std::atomic<bool> g_vk_given_up{false};
+
+// orig: (host) RAC1_TFRAG_CPU: 1 the tfrags made on the CPU, 0 on the GPU whatever the device (the automatic choices off), -1 unset
+int tfrag_cpu_env() {
+    static const int v = [] {
+        const char* e = std::getenv("RAC1_TFRAG_CPU");
+        return e == nullptr || *e == '\0' ? -1 : std::atoi(e) != 0 ? 1 : 0;
+    }();
+    return v;
+}
 
 void vk_tfrag_shutdown() {
     VkDevice dev = vk::device();
@@ -1272,11 +1289,18 @@ void upload(int i, const void* data, size_t bytes, GLenum usage) {
 // orig: (host) see mrp_tfrag_gpu.h
 bool tfrag_gpu_init() {
     if (vk::is_active()) {
-        if (g_vk_gpu.tried) return g_vk_gpu.ok;
+        if (g_vk_gpu.tried) return g_vk_gpu.ok && !g_vk_given_up.load(std::memory_order_relaxed);
         g_vk_gpu.tried = true;
         VkDevice dev = vk::device();
         if (dev == VK_NULL_HANDLE) return false;
         if (!vk::has_float64()) return false;  // (the shader's doubles: without shaderFloat64 the tfrags are made on the CPU, #113)
+        // (the CPU path where the doubles are known to be slow - an Intel GPU of generation 9 or older: on a UHD 620 a level's
+        // first frame went past Windows' 2 s limit and the device was lost, #113 - or when asked)
+        if (tfrag_cpu_env() == 1 || (tfrag_cpu_env() == -1 && vk::float64_slow())) {
+            std::fprintf(stderr, "[mrpw tfrag] the tfrags made on the CPU (%s; RAC1_TFRAG_CPU=0 for the GPU)\n",
+                         tfrag_cpu_env() == 1 ? "RAC1_TFRAG_CPU=1" : "an Intel GPU of generation 9 or older: slow doubles");
+            return false;
+        }
         VkDescriptorSetLayoutBinding bindings[10]{};
         for (uint32_t i = 0; i < 10; ++i) {
             bindings[i].binding = i;
@@ -1307,6 +1331,10 @@ bool tfrag_gpu_init() {
     }
     if (g_gpu.tried) return g_gpu.ok;
     g_gpu.tried = true;
+    if (tfrag_cpu_env() == 1) {
+        std::fprintf(stderr, "[mrpw tfrag] the tfrags made on the CPU (RAC1_TFRAG_CPU=1)\n");
+        return false;
+    }
     p_dispatch = reinterpret_cast<PfnDispatchCompute>(glfwGetProcAddress("glDispatchCompute"));
     p_barrier = reinterpret_cast<PfnMemoryBarrier>(glfwGetProcAddress("glMemoryBarrier"));
     if (p_dispatch == nullptr || p_barrier == nullptr) return false;
@@ -1340,7 +1368,7 @@ bool tfrag_gpu_init() {
 }
 
 // orig: (host) see mrp_tfrag_gpu.h
-bool tfrag_gpu_ready() { return vk::is_active() ? g_vk_gpu.ok : g_gpu.ok; }
+bool tfrag_gpu_ready() { return vk::is_active() ? g_vk_gpu.ok && !g_vk_given_up.load(std::memory_order_relaxed) : g_gpu.ok; }
 
 // orig: (host) see mrp_tfrag_gpu.h
 void tfrag_gpu_level(const TfragLevel& L) {
@@ -1552,9 +1580,63 @@ void tfrag_gpu_dispatch(const TfragGpuFrame& f, uint32_t vertex_bytes) {
             fill_bar.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
             vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &fill_bar, 0, nullptr, 0, nullptr);
         }
-        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, g_vk_gpu.pipe);
-        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, g_vk_gpu.pipe_layout, 0, 1, &ds, 0, nullptr);
-        vkCmdDispatch(cb, static_cast<uint32_t>(kept.size()), 1, 1);
+        if (g_vk_gpu.timed_gen != g_vk_gpu.level_gen) {  // (a new level: timed again)
+            g_vk_gpu.timed_gen = g_vk_gpu.level_gen;
+            g_vk_gpu.timed_draws = g_vk_gpu.timed_frames = 0;
+            g_vk_gpu.timed_ms = g_vk_gpu.timed_worst = 0.0;
+            g_vk_gpu.timed_done = false;
+        }
+        if (!g_vk_gpu.timed_done) {
+            // a level's first dispatches (until kSample draws in full chunks, or kFrames frames): in chunks of kChunk draws, each its
+            // own submit waited for and timed on the GPU (two timestamps; a chunk less than full not counted - a few draws' time is
+            // the GPU's start, not theirs), so that no submit of a slow GPU holds a whole frame's tfrags:
+            // Windows resets a GPU whose work runs past about 2 s (#113). Too slow - the cost per draw, over a big level's frame
+            // (kFrameDraws), past kSlowMs - and the tfrags are made on the CPU from the next frame on, for the rest of the session
+            // (RAC1_TFRAG_CPU=0: never)
+            constexpr uint32_t kChunk = 64, kSample = 512, kFrames = 30, kFrameDraws = 1500;  // (kChunk records: 4 KB, aligned for any device)
+            constexpr double kSlowMs = 12.0;
+            const uint32_t n = static_cast<uint32_t>(kept.size());
+            for (uint32_t first = 0; first < n; first += kChunk) {
+                const uint32_t cn = std::min(kChunk, n - first);
+                VkDescriptorSet cds = vk::alloc_descriptor_set(g_vk_gpu.set_layout);
+                VkDescriptorBufferInfo cdbis[10];
+                std::copy(dbis, dbis + 10, cdbis);
+                cdbis[0] = {r_draws.buffer, r_draws.offset + static_cast<VkDeviceSize>(first) * sizeof(TfragGpuDraw), static_cast<VkDeviceSize>(cn) * sizeof(TfragGpuDraw)};
+                for (uint32_t i = 0; i < 10; ++i) {
+                    writes[i].dstSet = cds;
+                    writes[i].pBufferInfo = &cdbis[i];
+                }
+                vkUpdateDescriptorSets(vk::device(), 10, writes, 0, nullptr);
+                const double c = vk::timed_submit([&](VkCommandBuffer tcb) {
+                    vkCmdBindPipeline(tcb, VK_PIPELINE_BIND_POINT_COMPUTE, g_vk_gpu.pipe);
+                    vkCmdBindDescriptorSets(tcb, VK_PIPELINE_BIND_POINT_COMPUTE, g_vk_gpu.pipe_layout, 0, 1, &cds, 0, nullptr);
+                    vkCmdDispatch(tcb, cn, 1, 1);
+                });
+                if (c < 0.0) {  // (no timestamps: nothing to decide by)
+                    g_vk_gpu.timed_done = true;
+                    continue;
+                }
+                g_vk_gpu.timed_worst = std::max(g_vk_gpu.timed_worst, c);
+                if (cn == kChunk) {
+                    g_vk_gpu.timed_ms += c;
+                    g_vk_gpu.timed_draws += cn;
+                }
+            }
+            if (g_vk_gpu.timed_draws >= kSample || ++g_vk_gpu.timed_frames >= kFrames) {
+                g_vk_gpu.timed_done = true;
+                const double per = g_vk_gpu.timed_draws > 0 ? g_vk_gpu.timed_ms / g_vk_gpu.timed_draws : 0.0;
+                const bool slow = tfrag_cpu_env() != 0 && g_vk_gpu.timed_draws > 0 && per * kFrameDraws > kSlowMs;
+                std::fprintf(stderr, "[mrpw tfrag] the level's first dispatches timed: %u draws in full chunks of %u, %.2f ms (the longest chunk %.2f ms; %.4f ms a draw, %.1f ms for %u)%s\n",
+                             g_vk_gpu.timed_draws, kChunk, g_vk_gpu.timed_ms, g_vk_gpu.timed_worst, per, per * kFrameDraws, kFrameDraws,
+                             slow ? ": too slow, the tfrags made on the CPU from now on (RAC1_TFRAG_CPU=0 for the GPU)" : "");
+                if (slow) g_vk_given_up.store(true, std::memory_order_relaxed);
+            }
+            cb = vk::cmd();
+        } else {
+            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, g_vk_gpu.pipe);
+            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, g_vk_gpu.pipe_layout, 0, 1, &ds, 0, nullptr);
+            vkCmdDispatch(cb, static_cast<uint32_t>(kept.size()), 1, 1);
+        }
 
         VkMemoryBarrier bar{};
         bar.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
