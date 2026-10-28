@@ -80,6 +80,9 @@ struct MrpChainInput {
     // the frame (block, width in 64 pixels, rows; bw 0: none): an IMAGE transfer into it is a type-7 primitive (the Vendor's
     // screens putting their stored picture back)
     uint32_t scr_bp = 0, scr_bw = 0, scr_h = 0;
+    // (host) the tag at which the GS registers are kept as the reading has them before it (MrpChainFrame::regs_at; 0: none): the
+    // Wii U's first world pass, whose registers its world backend takes in place of the walker's (MRP_LITE.md, the 2D on mrp_2d)
+    uint32_t regs_tag = 0;
 };
 
 // A frame's chain as read: its primitives in the chain's order (the 2D, the effects' (fx), type 7 / 8 / 9 markers), program 7's
@@ -94,6 +97,9 @@ struct MrpChainFrame {
     // again - its world's ranges unknown, the MRP's scene not of it - shows the picture kept instead)
     uint64_t dropped_3d = 0;
     uint64_t tags = 0, skipped_tags = 0, program_runs = 0, flips = 0;  // (statistics)
+    // the GS registers before the tag MrpChainInput::regs_tag (regs_at_ok false: no such tag met)
+    bool regs_at_ok = false;
+    uint64_t regs_at[0x80] = {};
 };
 
 // orig: (host) the frame's chain captured with `in` and its reading started (on the worker; `async` false: here, now)

@@ -454,6 +454,13 @@ void set_blend_gx2(uint64_t prim, uint64_t alpha) {
     set_blend(blend_of(st));
 }
 
+bool blend_reads_src_alpha_gx2(uint64_t prim, uint64_t alpha) {
+    DrawState st;
+    st.prim = prim;
+    st.alpha = alpha;
+    return blend_of(st).src_alpha();
+}
+
 void draw_gx2(const Gs& gs, const GX2ColorBuffer* screen, float FB_W, float FB_H, const Viewport* vp, bool targets, int prim_filter, size_t from,
               size_t to) {
     if (!g_ready || screen == nullptr) return;

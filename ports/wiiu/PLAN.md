@@ -395,3 +395,6 @@ moved the game's.
   (RAC1_WIIU_2D_BSWAP=0 the old order); found with the MRP's mobys (MRP_LITE.md, phase 2). The pause menu's boxes now
   have their golden frames, as on the PC (they were missing before, unnoticed). Under the pause menu the PC shows the
   frozen scene, the Wii U black: to do with the world.
+- Replaced (2026-10-28): the frame's chain is now read by main's MRP chain reader and its 2D drawn by mrp_2d_gx2.cpp (MRP_LITE.md,
+  the 2D on mrp_2d); the replica's walk and gs_draw_gx2 stay behind RAC1_WIIU_REPLICA=1 (RAC1_GX2_SKIPLOG still counts that one's
+  skips; the new backend logs every 300 calls by itself).

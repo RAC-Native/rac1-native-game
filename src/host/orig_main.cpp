@@ -104,6 +104,7 @@
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_shadows.h>
 #include <game/render/mrp_2d.h>
+#include <game/render/mrp_2d_backend.inc>
 #include <game/render/mrp_chain.h>
 #include <game/render/mrp_fx.h>
 #include <game/render/mrp_lod.h>
@@ -147,8 +148,9 @@
 rac1::host_input::HostState rac1_wiiu_pad_state();  // ports/wiiu/game/wiiu_input.cpp: the GamePad and the Pro / Classic controllers
 bool rac1_wiiu_frame();                             // (ProcUI each host frame: false when the application closes)
 bool rac1_wiiu_picture();                           // ports/wiiu/game/wiiu_gfx.cpp: the picture is up (RAC1_WIIU_GFX)
-// (the frame's 2D for the picture: the replica's primitives, the game's frame size, its page, the page not drawn in a fade)
-void rac1_wiiu_picture_frame(const rac1::gs::Gs& gs, float fb_w, float fb_h, int screen_fbp, int skip_fbp, uint64_t game_frame);
+// (the frame's 2D for the picture: the game's frame size, its page, the page not drawn in a fade; `replica`: the GS replica walked
+// the frame's chain (RAC1_WIIU_REPLICA=1), its primitives drawn; nullptr: the MRP's chain reader read it, mrp_chain_frame drawn)
+void rac1_wiiu_picture_frame(const rac1::gs::Gs* replica, float fb_w, float fb_h, int screen_fbp, int skip_fbp, uint64_t game_frame);
 #endif
 namespace rac1 {
 extern bool g_world_pass_ranges_on;  // src/game/ovl/overlay_entry.cpp: the world passes' chain ranges noted
@@ -390,14 +392,23 @@ static void moby_skips_note(uint32_t start, uint32_t end, std::vector<rac1::gs::
 // orig: (host) testing (RAC1_GS_PRIMDUMP=<game frame>): the GS replica's primitives of that frame but the projected 3D, one line
 // each (the type, the registers, the vertices, a hash of the texture's pixels), to compare a host's 2D with another's (the
 // Wii U's with the PC's)
-static void gs_prims_dump(const rac1::gs::Gs& gs, uint64_t game_frame) {
+static void gs_prims_dump(const std::vector<rac1::gs::Primitive>& prims, uint64_t game_frame) {
     static const char* e = std::getenv("RAC1_GS_PRIMDUMP");
     static bool done = false;  // (once, at the first frame drawn at or past it: a slow host runs several game frames in one)
     if (e == nullptr || done || game_frame < std::strtoull(e, nullptr, 10)) return;
     done = true;
-    std::printf("[prim] game frame %llu: %zu primitives\n", static_cast<unsigned long long>(game_frame), gs.primitives().size());
+    std::printf("[prim] game frame %llu: %zu primitives\n", static_cast<unsigned long long>(game_frame), prims.size());
+    // (testing, RAC1_GS_VRAMDUMP=1 with it: the GS's local memory written to vram_<frame>.bin, to compare a big-endian host's with the PC's)
+    if (std::getenv("RAC1_GS_VRAMDUMP") != nullptr) {
+        char path[64];
+        std::snprintf(path, sizeof path, "vram_%llu.bin", static_cast<unsigned long long>(game_frame));
+        if (std::FILE* f = std::fopen(path, "wb")) {
+            std::fwrite(rac1::gs::local_memory().vram(), 1, size_t{4} << 20, f);
+            std::fclose(f);
+        }
+    }
     size_t i = 0;
-    for (const rac1::gs::Primitive& p : gs.primitives()) {
+    for (const rac1::gs::Primitive& p : prims) {
         ++i;
         if (p.vu || p.fx != 0) continue;
         uint64_t th = 1469598103934665603ull;
@@ -3106,12 +3117,32 @@ int main(int argc, char** argv) {
 #else
             const bool walk = walk_test;
 #endif
-            if (walk) {  // (the Wii U's picture: the frame's chain on the GS replica, its 2D drawn by the port)
+            if (walk) {  // (the Wii U's picture: the frame's chain read by the MRP's chain reader, its 2D drawn by the port)
+                // the frame's chain read by the MRP's reader (mrp_chain.h: the 2D, the uploads into the GS's local memory - game state -,
+                // the VU1 programs outside the skipped ranges run for the VU1's and the GS registers' state) on its worker thread, joined
+                // before the picture (wiiu_gfx.cpp), the next chain and the game's GS transfers; its 2D drawn by mrp_2d_gx2 (MRP_LITE.md,
+                // the 2D on mrp_2d). No effects' or program 7's ranges are given (mrp_fx, the seas: not ported yet): those programs' kicks
+                // are dropped, as the GS replica's GX2 backend never drew them. (testing: RAC1_WIIU_REPLICA=1 the GS replica walks it, its
+                // 2D drawn by gs_draw_gx2, as before; RAC1_WIIU_CHAIN_ASYNC=0 the reading on this thread)
+                static const bool replica = std::getenv("RAC1_WIIU_REPLICA") != nullptr && std::atoi(std::getenv("RAC1_WIIU_REPLICA")) != 0;
+                static const bool chain_async = std::getenv("RAC1_WIIU_CHAIN_ASYNC") == nullptr || std::atoi(std::getenv("RAC1_WIIU_CHAIN_ASYNC")) != 0;
                 // (chain_stage's choice of the chain below, without the MRP's parts: the frame's own, else the one a loop kicked
                 // before it flipped the buffers, never one already sent, nothing on a held fade frame)
                 rac1::g_world_pass_ranges_on = true;  // (the next updates' world passes noted: their ranges skipped below)
                 rac1::gs::Gs& gs = rac1::gs::gs_global();
-                gs.reset_frame();
+                if (replica) gs.reset_frame();
+                {  // a level change: the textures decoded for the old level forgotten (as prepare does; the chain's reading waited for)
+                    static int32_t s_cache_level = INT32_MIN;
+                    const int32_t lv = lw(0x0015ed84);
+                    if (lv != s_cache_level) {
+                        if (s_cache_level != INT32_MIN) {
+                            rac1::gs::memory_join();
+                            const size_t decoded = rac1::gs::local_memory().clear_caches(), two_d = mrp_2d_clear_caches();
+                            std::printf("[caches] level %d -> %d: dropped %zu decoded textures, %zu 2D textures\n", s_cache_level, lv, decoded, two_d);
+                        }
+                        s_cache_level = lv;
+                    }
+                }
                 const bool fade = ee_thread_suspended() && ee_thread_frame() != rac1::EeVsyncFrame::Scene;
                 const bool fade_held = fade && ee_thread_frame() == rac1::EeVsyncFrame::Held;
                 const uint32_t idx = lwu(OV(0x001611d0));
@@ -3124,11 +3155,14 @@ int main(int argc, char** argv) {
                 }
                 const bool already_kicked = prev_chain && start == g_loop_kicked.start && end == g_loop_kicked.end;
                 if (!prev_chain && !fade) g_loop_kicked = KickedChain{};
+                mrp_chain_set_used(!replica);  // (mrp_chain_gs_reg: the reader's registers, or the replica's)
                 if (!fade_held && !already_kicked && start != 0 && end > start) {
                     // (as chain_stage: the mobys whose skinning was skipped have no vertex data in the chain, their parts' bytes
                     // are older ones the VIF would take for codes - this frame's ranges, or the ones noted when the chain is walked again)
                     std::vector<rac1::gs::Gs::SkipRange> skips;
-                    if (!prev_chain && !fade && mrp_moby_ready() && !(lw(OV(0x0015f5c4)) == 3 && g_mode_at_update == 3)) {
+                    // (testing, RAC1_WIIU_SHADOW_SKIP=0: the drop shadows' range read as any other)
+                    static const bool shadow_skip = std::getenv("RAC1_WIIU_SHADOW_SKIP") == nullptr || std::atoi(std::getenv("RAC1_WIIU_SHADOW_SKIP")) != 0;
+                    if (shadow_skip && !prev_chain && !fade && mrp_moby_ready() && !(lw(OV(0x0015f5c4)) == 3 && g_mode_at_update == 3)) {
                         // (the MRP's mobys: the drop shadows' tags walked but not processed, as chain_stage does - the MRP-lite
                         // draws no drop shadows yet, MRP_LITE.md phase 5)
                         rac1::gs::Gs::SkipRange r;
@@ -3141,18 +3175,78 @@ int main(int argc, char** argv) {
                         skips.insert(skips.end(), g_moby_skips_memo.ranges.begin(), g_moby_skips_memo.ranges.end());
                     }
                     // (the world: the passes' ranges skipped, their 3D and their textures' uploads, as with the MRP's world)
+                    uint32_t world_first = 0;  // (the first world pass's tag: the reader keeps the GS registers there for the world's backend)
                     if (!prev_chain && !fade)
                         for (const auto& [first, last] : rac1::g_world_pass_ranges) {
                             rac1::gs::Gs::SkipRange r;
                             r.first = first;
                             r.last = last - 16;
+                            if (world_first == 0 || first < world_first) world_first = first;
                             skips.push_back(std::move(r));
                         }
-                    if (!skips.empty()) gs.set_chain_skips(std::move(skips));
-                    gs.set_screen_area(0, 0, 0);
-                    gs.vif1_chain(start, end);
+                    if (replica) {
+                        if (!skips.empty()) gs.set_chain_skips(std::move(skips));
+                        gs.set_screen_area(0, 0, 0);
+                        gs.vif1_chain(start, end);
+                    } else {
+                        MrpChainInput ci;
+                        ci.start = start;
+                        ci.end = end;
+                        for (const rac1::gs::Gs::SkipRange& r : skips)
+                            ci.skips.push_back(MrpChainInput::Skip{r.first, r.last, static_cast<uint32_t>(r.mscals.size()), r.host_3d, r.moby, true});
+                        ci.regs_tag = world_first;
+                        mrp_chain_start(std::move(ci), chain_async);
+                    }
+                } else if (!replica) {
+                    mrp_chain_clear();
                 }
-                gs_prims_dump(gs, game_frame);  // (testing)
+                if (replica) {
+                    gs_prims_dump(gs.primitives(), game_frame);  // (testing)
+                } else if (std::getenv("RAC1_GS_PRIMDUMP") != nullptr || std::getenv("RAC1_WIIU_REGS_LOG") != nullptr) {
+                    mrp_chain_join();
+                    gs_prims_dump(mrp_chain_frame().prims, game_frame);  // (testing)
+                    // (testing, RAC1_WIIU_REGS_LOG=1: every 60 game frames the GS registers the reader had at the first world pass - those
+                    // the Wii U's world backend takes -, and FOGCOL at the chain's end - the mobys')
+                    const MrpChainFrame& cf = mrp_chain_frame();
+                    if (std::getenv("RAC1_WIIU_REGS_LOG") != nullptr && game_frame % 60 == 0)
+                        std::printf("[chain] game frame %llu: GS registers at the world passes (%s): TEST_1 %llx ALPHA_1 %llx ZBUF_1 %llx PRMODECONT %llx TEXA %llx FBA_1 %llx "
+                                    "FOGCOL %llx; at the chain's end FOGCOL %llx\n",
+                                    static_cast<unsigned long long>(game_frame), cf.regs_at_ok ? "kept" : "not met", static_cast<unsigned long long>(cf.regs_at[0x47]),
+                                    static_cast<unsigned long long>(cf.regs_at[0x42]), static_cast<unsigned long long>(cf.regs_at[0x4e]),
+                                    static_cast<unsigned long long>(cf.regs_at[0x1a]), static_cast<unsigned long long>(cf.regs_at[0x3b]),
+                                    static_cast<unsigned long long>(cf.regs_at[0x4a]), static_cast<unsigned long long>(cf.regs_at[0x3d]),
+                                    static_cast<unsigned long long>(mrp_chain_gs_reg(0x3d)));
+                }
+                static const bool build_log = std::getenv("RAC1_WIIU_2D_BUILD_LOG") != nullptr;
+                if (build_log && !replica && game_frame % 20 == 0) {
+                    // (testing, RAC1_WIIU_2D_BUILD_LOG=1, any host: the Wii U's 2D build of the frame read - mrp2d::build, as mrp_2d_gx2 makes it
+                    // for the TV's 1280 x 720, the game's frame in a 4:3 area - and its counts every 20 game frames)
+                    mrp_chain_join();
+                    rac1::gs::Viewport tv;
+                    tv.h = 720;
+                    tv.w = 960;
+                    tv.x = 160;
+                    tv.screen_fbp = static_cast<int>(lwu(0x0013cf20) & 0x1ff);
+                    tv.skip_fbp = fade ? tv.screen_fbp : -1;
+                    tv.sprite_clamp = true;
+                    tv.hide_edge_slivers = true;
+                    static rac1::mrp2d::Built bt;
+                    rac1::mrp2d::BuildOptions bo;
+                    bo.drop_gif_3d = true;
+                    rac1::mrp2d::build(mrp_chain_frame(), 1280, 720, static_cast<float>(lhu(0x001518d0)), static_cast<float>(lhu(0x001518d2)), nullptr, tv, 0, SIZE_MAX, bt, bo);
+                    size_t runs = 0, rt_runs = 0, alone = 0, other = 0;
+                    for (const rac1::mrp2d::Item& it : bt.items) {
+                        if (it.kind != rac1::mrp2d::Item::kDraw) ++other;
+                        else if (it.alone) ++alone;
+                        else if (it.key.to_rt) ++rt_runs;
+                        else ++runs;
+                    }
+                    std::printf("[2d-build] game frame %llu: %u primitives, %u in runs (%zu on the screen, %zu into targets, %zu reading the screen, %zu other), %zu vertices; left out:",
+                                static_cast<unsigned long long>(game_frame), bt.prims, bt.drawn, runs, rt_runs, alone, other, bt.verts.size());
+                    for (int k = 0; k < rac1::mrp2d::kSkN; ++k)
+                        if (bt.skipped[k] != 0) std::printf(" %d:%u", k, bt.skipped[k]);
+                    std::printf("\n");
+                }
                 if (walk_test && game_frame % 300 < 2) {  // (testing: the heap in use, a leak shows)
                     const struct mallinfo mi = mallinfo();
                     std::printf("[heap] game frame %llu: %d KB in use, %d KB in mapped blocks\n", static_cast<unsigned long long>(game_frame), mi.uordblks / 1024, mi.hblkhd / 1024);
@@ -3176,7 +3270,8 @@ int main(int argc, char** argv) {
                     mrp_world_wiiu_prepare(!movie && (flight || ((title ? boot_in_title() : !menu_mode) && !exiting)) && !fade && !vendor_pic);
                 }
                 const int screen_fbp = static_cast<int>(lwu(0x0013cf20) & 0x1ff);
-                rac1_wiiu_picture_frame(gs, static_cast<float>(lhu(0x001518d0)), static_cast<float>(lhu(0x001518d2)), screen_fbp, fade ? screen_fbp : -1, game_frame);
+                rac1_wiiu_picture_frame(replica ? &gs : nullptr, static_cast<float>(lhu(0x001518d0)), static_cast<float>(lhu(0x001518d2)), screen_fbp, fade ? screen_fbp : -1,
+                                        game_frame);
 #endif
             }
 #if defined(__WIIU__)
@@ -3839,7 +3934,7 @@ int main(int argc, char** argv) {
             {
                 rac1::gs::memory_join();  // (the frame's chain run on the worker thread)
                 rac1::gs::Gs& gs = rac1::gs::gs_global();
-                gs_prims_dump(gs, game_frame);  // (testing)
+                gs_prims_dump(gs.primitives(), game_frame);  // (testing)
                 fprof.mark(4);
                 rac1::gs::Viewport& gv = fd.gv;
                 const bool has_dm = fd.has_dm;

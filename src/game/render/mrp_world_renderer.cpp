@@ -3934,20 +3934,27 @@ void mrp_world_wiiu_prepare(bool active) {
             if (lbu(a + 8) == 0x18) F.env_xyoff = static_cast<uint64_t>(lwu(a)) | (static_cast<uint64_t>(lwu(a + 4)) << 32);
         }
     }
-    {  // the GS registers before the world's packets: without the walker the chain's DIRECT packets before the world passes (the
-       // frame environment, SceneFrame::regs on the PC) are not read, so their values are set here - those the frame environment had
-       // on Veldin (the PC's walker: TEST_1 0x5360b, ALPHA_1 0x8000000044, ZBUF_1 0x10000d8, PRMODECONT 1, TEXA 0x8000000000, FBA_1 0;
-       // FOGCOL per level: the value the GS replica's walk of the frame's chain left, as the mobys' backend reads it). The others as
-       // the replica's walk left them (the texture registers are set by each packet's texture prims anyway)
-        const gs::Gs& gs = gs::gs_global();
-        for (uint32_t r = 0; r < 128; ++r) F.gs_regs[r] = gs.reg(r);
-        F.gs_regs[0x47] = 0x5360bull;
-        F.gs_regs[0x42] = 0x8000000044ull;
-        F.gs_regs[0x4e] = 0x10000d8ull;
-        F.gs_regs[0x1a] = 1;
-        F.gs_regs[0x3b] = 0x8000000000ull;
-        F.gs_regs[0x4a] = 0;
-        F.gs_regs[0x3d] = gs.reg(0x3d);
+    {  // the GS registers before the world's packets (the frame environment's DIRECT packets the PC's walker reads, SceneFrame::regs):
+       // those the MRP's chain reader had at the frame's first world pass (MrpChainFrame::regs_at: its reading waited for here).
+       // (with the GS replica - RAC1_WIIU_REPLICA=1 -, or no world pass met: the values the frame environment had on Veldin - the PC's
+       // walker: TEST_1 0x5360b, ALPHA_1 0x8000000044, ZBUF_1 0x10000d8, PRMODECONT 1, TEXA 0x8000000000, FBA_1 0 -, FOGCOL and the
+       // others as the chain's reading left them: the texture registers are set by each packet's texture prims anyway)
+        const MrpChainFrame* cf = nullptr;
+        if (mrp_chain_used()) {
+            mrp_chain_join();
+            if (mrp_chain_frame().regs_at_ok) cf = &mrp_chain_frame();
+        }
+        if (cf != nullptr) {
+            for (uint32_t r = 0; r < 128; ++r) F.gs_regs[r] = cf->regs_at[r];
+        } else {
+            for (uint32_t r = 0; r < 128; ++r) F.gs_regs[r] = mrp_chain_gs_reg(r);
+            F.gs_regs[0x47] = 0x5360bull;
+            F.gs_regs[0x42] = 0x8000000044ull;
+            F.gs_regs[0x4e] = 0x10000d8ull;
+            F.gs_regs[0x1a] = 1;
+            F.gs_regs[0x3b] = 0x8000000000ull;
+            F.gs_regs[0x4a] = 0;
+        }
     }
     // the ties / shrubs made by the host (mrp_world_static.h: the snapshot static_note_pass took before the passes, handle on - the
     // world passes' culling is off on the Wii U, RAC1_WORLD_PASS_SKIP=6, and so is the relighting: the colours stay the level's load's)

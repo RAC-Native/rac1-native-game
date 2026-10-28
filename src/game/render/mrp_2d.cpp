@@ -1,6 +1,8 @@
 // See mrp_2d.h.
 #include <game/render/mrp_2d.h>
 
+#include "mrp_2d_backend.inc"
+
 #include <profiler/host_profiler.h>
 #include <runtime/gs/gs_blend.h>
 #include <runtime/vk/vk_context.h>
@@ -33,6 +35,7 @@ using gs::Viewport;
 
 uint32_t field(uint64_t v, int lo, int n) { return static_cast<uint32_t>((v >> lo) & ((1ull << n) - 1)); }
 
+#if !defined(__WIIU__)  // (the Wii U: no GL / Vulkan - glad's functions never loaded, a call jumps to 0; its GX2 submit, ports/wiiu/game/mrp_2d_gx2.cpp, has its own shaders)
 // ---- the shaders (OpenGL; Vulkan's are the same, made by tools/gen_vk_shaders.py: kMrp2dVs / kMrp2dFs) ----
 
 const char* VS = R"(
@@ -144,75 +147,27 @@ void main() {
 }
 )";
 
-// ---- the frame's vertices and runs, built once for both backends ----
+#endif
 
-struct V {
-    float x, y;
-    float r, g, b, a;
-    float s, t, q;
-    float d;  // window depth (0.5 without depth)
-    float f;  // the vertex's fog byte
-    float c0 = 1.0f, c1 = 1.0f, c2 = 0.0f, c3 = 0.0f;  // a glyph's sampling clamp (s0, t0, s1, t1; s0 > s1: none)
-};
-static_assert(sizeof(V) == 15 * sizeof(float));
+// ---- the frame's vertices and runs, built once for all backends (mrp_2d_backend.inc) ----
 
-// A texture a run samples: a decoded image (its id the GPU texture's key) or a render target (its frame page)
-struct TexRef {
-    const TexImage* img = nullptr;
-    int rt = -1;
-    bool operator==(const TexRef& o) const { return img == o.img && rt == o.rt; }
-};
-
-// Everything a run's draw sets
-struct Key {
-    int want = -1;  // the target: -1 the screen, else a render target's frame page
-    bool to_rt = false;
-    float sx = 1.0f;
-    bool lines = false;
-    int fge = 0;
-    uint32_t fogcol = 0;
-    int tme = 0, tfx = 0, tcc = 0, ate = 0, atst = 0, aref = 0, afail = 0, datm = 0, scr = 0, dt = 0;
-    uint32_t fbmsk = 0;
-    TexRef tex;
-    int lin = 0, wrap_s = 0, wrap_t = 0;
-    int mip_n = 0, mip_lo = 0, lcm = 0, mxl = 0, lin_min = 0;
-    float mip_k = 0.0f, mip_l = 0.0f;
-    TexRef mip[3];
-    bool blend = false;
-    uint64_t alpha = 0;
-    bool ztest = false, zwrite = false;
-    int ztst = 0;
-    int sc[4] = {0, 0, 0, 0};
-    bool operator==(const Key&) const = default;
-};
-
-// A step of the frame's 2D in its order
-struct Item {
-    enum Kind { kDraw, kPicture, kHost3d } kind = kDraw;
-    Key key;
-    uint32_t first = 0, count = 0;  // its vertices
-    bool alone = false;             // it reads the screen under it (DATE / the frame sampled): drawn alone, after a copy of its box
-    int copy[4] = {0, 0, 0, 0};     // that box (window pixels x0, y0, x1, y1)
-    float scr_map[4] = {0, 0, 0, 0};
-    // a render target the draw needs (created / resized - which clears it - before it), its size, its depth buffer
-    int rt_w = 0, rt_h = 0;
-    bool rt_depth = false;
-    const Primitive* p = nullptr;  // kPicture / kHost3d: the primitive
-    bool host_first = false;       // kHost3d: the first of a run into its target (its depth cleared)
-};
-
-struct Built {
-    std::vector<V> verts;
-    std::vector<Item> items;
-};
+using mrp2d::Built;
+using mrp2d::Item;
+using mrp2d::Key;
+using mrp2d::TexRef;
+using mrp2d::V;
 
 // The render targets' sizes as the backend holds them (the builder follows the frame's draws into them in order)
 std::map<uint32_t, std::pair<int, int>> g_rt_size;
 
 // orig: (host)
-void build(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H, const DepthMap* depth, const Viewport& v, size_t from, size_t to, Built& out) {
+void build_frame(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H, const DepthMap* depth, const Viewport& v, size_t from, size_t to, Built& out,
+                 const mrp2d::BuildOptions& opt) {
     out.verts.clear();
     out.items.clear();
+    out.prims = out.drawn = 0;
+    for (uint32_t& n : out.skipped) n = 0;
+    auto skip = [&out](mrp2d::Skip why) { ++out.skipped[why]; };
     const std::vector<Primitive>& prims = f.prims;
     // the frame pages drawn into and then sampled (TEX0's base = FRAME's page * 32): render targets
     std::set<uint32_t> sampled;
@@ -226,9 +181,10 @@ void build(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H,
     const size_t prim_end = std::min(to, prims.size());
     for (size_t pi = from; pi < prim_end; ++pi) {
         const Primitive& p = prims[pi];
-        if (p.fx != 0) continue;  // (the MRP's effects: mrp_fx)
+        ++out.prims;
+        if (p.fx != 0) { skip(mrp2d::kSkFx); continue; }  // (the MRP's effects: mrp_fx)
         if (p.type == 7) {  // the frame's picture put back: drawn by the host
-            if (v.screen_picture == nullptr || p.tex == nullptr) continue;
+            if (v.screen_picture == nullptr || p.tex == nullptr) { skip(mrp2d::kSkPicture); continue; }
             Item it;
             it.kind = Item::kPicture;
             it.p = &p;
@@ -240,6 +196,7 @@ void build(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H,
             const uint32_t tfbp = field(p.st.frame, 0, 9);
             if (v.host_3d == nullptr || static_cast<int>(tfbp) == v.screen_fbp || sampled.count(tfbp * 32) == 0) {
                 host_run_fbp = -1;
+                skip(mrp2d::kSkHost3d);
                 continue;
             }
             const int rw = std::max(64, static_cast<int>(field(p.st.frame, 16, 6)) * 64), rh = std::max(rw, 512);
@@ -258,12 +215,12 @@ void build(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H,
             continue;
         }
         host_run_fbp = -1;
-        if (p.type != 1 && p.type != 3 && p.type != 6) continue;
+        if (p.type != 1 && p.type != 3 && p.type != 6) { skip(mrp2d::kSkType); continue; }
         const DrawState& st = p.st;
         const bool tme = field(st.prim, 4, 1) != 0, fst = field(st.prim, 8, 1) != 0;
         const uint32_t ztst = field(st.test, 17, 2);
         const uint32_t fbp = field(st.frame, 0, 9);
-        if (v.skip_fbp >= 0 && static_cast<int>(fbp) == v.skip_fbp) continue;
+        if (v.skip_fbp >= 0 && static_cast<int>(fbp) == v.skip_fbp) { skip(mrp2d::kSkSkipFbp); continue; }
         // (the frame's own page is the screen even when sampled; a page at or above Viewport::rt_min_fbp that this frame does not
         // sample is a target too: the GS draws there, unseen)
         const bool to_rt = static_cast<int>(fbp) != v.screen_fbp && (sampled.count(fbp * 32) != 0 || (v.rt_min_fbp >= 0 && static_cast<int>(fbp) >= v.rt_min_fbp));
@@ -312,7 +269,12 @@ void build(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H,
             bool sub3d = p.vu;
             if (!sub3d && !to_rt && field(st.test, 16, 1) != 0 && ztst >= 2)
                 for (const Vertex& q : p.v) sub3d = sub3d || (q.z != 0 && q.z < 0xff0000u);
-            if ((p.sub == 1) != sub3d) continue;
+            if ((p.sub == 1) != sub3d) { skip(mrp2d::kSkSub); continue; }
+        }
+        if (opt.drop_gif_3d && !p.vu && !to_rt && field(st.test, 16, 1) != 0 && ztst >= 2) {
+            bool p3d = false;
+            for (const Vertex& q : p.v) p3d = p3d || (q.z != 0 && q.z < 0xff0000u);
+            if (p3d) { skip(mrp2d::kSkGif3d); continue; }
         }
         const float sx = to_rt ? 1.0f : proj3d ? v.xscale_3d : v.xscale;
         verts.clear();
@@ -384,7 +346,7 @@ void build(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H,
             bx1 = std::min(bx1, static_cast<float>(field(st.scissor, 16, 11) + 1));
             by0 = std::max(by0, static_cast<float>(field(st.scissor, 32, 11)));
             by1 = std::min(by1, static_cast<float>(field(st.scissor, 48, 11) + 1));
-            if (std::ceil(bx0) >= bx1 || std::ceil(by0) >= by1) continue;
+            if (std::ceil(bx0) >= bx1 || std::ceil(by0) >= by1) { skip(mrp2d::kSkNoSample); continue; }
         }
         // the widened view's full-span 2D (a fade, a darkening in strips: its vertices at the frame's edges moved to the window's; a
         // flat fill covering every column / row as the GS fills it, a textured one only when it reaches the edges themselves) and
@@ -464,7 +426,7 @@ void build(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H,
                 by1 = std::max(by1, q.y);
             }
             constexpr float kSliver = 4.0f;
-            if ((bx1 > FB_W + 0.5f && bx0 >= FB_W - kSliver) || (bx0 < -0.5f && bx1 <= kSliver) || (by0 < -0.5f && by1 <= kSliver)) continue;
+            if ((bx1 > FB_W + 0.5f && bx0 >= FB_W - kSliver) || (bx0 < -0.5f && bx1 <= kSliver) || (by0 < -0.5f && by1 <= kSliver)) { skip(mrp2d::kSkSliver); continue; }
         }
         // the overscan crop (testing: RAC1_OVERSCAN): the 2D's scissor narrowed to the area a TV showed
         if (crop_on && !crop_3d && !p.vu && !p.wide && !full_span && !edge_fill) {
@@ -473,7 +435,7 @@ void build(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H,
             x1 = std::min(x1, cw - 1 - v.crop[1]);
             y0 = std::max(y0, v.crop[2]);
             y1 = std::min(y1, ch - 1 - v.crop[3]);
-            if (x1 < x0 || y1 < y0) continue;
+            if (x1 < x0 || y1 < y0) { skip(mrp2d::kSkCrop); continue; }
         }
         // a HUD wider than 4:3 (Viewport::hud_shift): an element at the frame's left / right side moved toward the window's edges in
         // whole window pixels, its scissor with it
@@ -545,6 +507,7 @@ void build(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H,
         }
         out.verts.insert(out.verts.end(), verts.begin(), verts.end());
         out.items.back().count += static_cast<uint32_t>(verts.size());
+        ++out.drawn;
         if (alone) have = false;
     }
 }
@@ -552,6 +515,7 @@ void build(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H,
 Built g_built;
 uint64_t g_frame_no = 0;  // (the calls' count: the textures' last use)
 
+#if !defined(__WIIU__)
 // ---- OpenGL ----
 
 GLuint g_prog = 0, g_vao = 0, g_vbo = 0;
@@ -1371,11 +1335,14 @@ void vk_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
     vk::set_scissor(false);
 }
 
+#endif  // !__WIIU__
+
 // the textures unused for this many calls forgotten (an image the game no longer draws: a texture whose memory it rewrote)
 constexpr uint64_t kTexKeep = 600;
 
 // orig: (host)
 void evict() {
+#if !defined(__WIIU__)
     if (g_frame_no % 64 != 0) return;
     for (auto it = g_gl_tex.begin(); it != g_gl_tex.end();) {
         if (g_frame_no - it->second.used > kTexKeep) {
@@ -1393,6 +1360,7 @@ void evict() {
             ++it;
         }
     }
+#endif
 }
 
 }  // namespace
@@ -1404,15 +1372,20 @@ void mrp_2d_draw(const MrpChainFrame& f, int win_w, int win_h, float fb_w, float
     if (vp != nullptr) v = *vp;
     else { v.w = win_w; v.h = win_h; }
     ++g_frame_no;
-    build(f, win_w, win_h, fb_w, fb_h, depth, v, from, to, g_built);
+    build_frame(f, win_w, win_h, fb_w, fb_h, depth, v, from, to, g_built, mrp2d::BuildOptions{});
     if (g_built.items.empty()) return;
+#if !defined(__WIIU__)  // (the Wii U draws with mrp_2d_gx2_draw, ports/wiiu/game/mrp_2d_gx2.h)
     if (vk::is_active()) vk_submit(g_built, win_w, win_h, fb_w, fb_h, v);
     else gl_submit(g_built, win_w, win_h, fb_w, fb_h, v);
+#endif
     evict();
 }
 
 // orig: (host) see mrp_2d.h
 size_t mrp_2d_clear_caches() {
+#if defined(__WIIU__)
+    return mrp_2d_gx2_clear_caches();
+#else
     const size_t n = g_gl_tex.size() + g_vk_tex.size();
     for (auto& [id, t] : g_gl_tex) {
         glDeleteTextures(1, &t.id);
@@ -1421,9 +1394,33 @@ size_t mrp_2d_clear_caches() {
     for (auto& [id, t] : g_vk_tex) vk::destroy_image(t.img);
     g_vk_tex.clear();
     return n;
+#endif
 }
 
 // orig: (host) see mrp_2d.h
-size_t mrp_2d_texture_count() { return g_gl_tex.size() + g_vk_tex.size(); }
+size_t mrp_2d_texture_count() {
+#if defined(__WIIU__)
+    return mrp_2d_gx2_texture_count();
+#else
+    return g_gl_tex.size() + g_vk_tex.size();
+#endif
+}
+
+// ---- the backends' accessors (mrp_2d_backend.inc) ----------------------------------------------------------------------
+
+namespace mrp2d {
+
+// orig: (host) see mrp_2d_backend.inc
+void build(const MrpChainFrame& f, int win_w, int win_h, float fb_w, float fb_h, const gs::DepthMap* depth, const gs::Viewport& v, size_t from, size_t to, Built& out,
+           const BuildOptions& opt) {
+    build_frame(f, win_w, win_h, fb_w, fb_h, depth, v, from, to, out, opt);
+}
+
+// orig: (host) see mrp_2d_backend.inc
+void rt_size_note(uint32_t fbp, int w, int h) { g_rt_size[fbp] = {w, h}; }
+// orig: (host) see mrp_2d_backend.inc
+void rt_sizes_clear() { g_rt_size.clear(); }
+
+}  // namespace mrp2d
 
 }  // namespace rac1

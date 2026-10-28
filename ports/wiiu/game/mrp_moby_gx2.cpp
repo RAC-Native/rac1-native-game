@@ -26,6 +26,7 @@
 #include "gs_draw_gx2.h"
 
 #include <game/ovl/ovl_common.h>
+#include <game/render/mrp_chain.h>
 #include <game/render/mrp_moby_backend.inc>
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/render_toggles.h>
@@ -603,8 +604,9 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
     if (g_cache.normals == nullptr) g_cache.normals = block_of(F.normals, 0x200 * 4, g_normals_loc.size, true);
     if (g_cache.frame == nullptr || g_cache.normals == nullptr) return;
     float fog_col[4];
-    {  // FOGCOL (the GS register the game's packets set: R, G, B in the low 24 bits)
-        const uint64_t fc = gs::gs_global().reg(0x3d);
+    {  // FOGCOL (the GS register the game's packets set: R, G, B in the low 24 bits; as the frame's chain left it - the MRP's reader, or
+       // the GS replica's walk: mrp_chain_gs_reg, as the PC's mobys)
+        const uint64_t fc = mrp_chain_gs_reg(0x3d);
         fog_col[0] = static_cast<float>(fc & 0xff) / 255.0f;
         fog_col[1] = static_cast<float>((fc >> 8) & 0xff) / 255.0f;
         fog_col[2] = static_cast<float>((fc >> 16) & 0xff) / 255.0f;

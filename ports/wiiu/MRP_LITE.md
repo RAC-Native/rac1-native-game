@@ -90,9 +90,10 @@ These are fixed in the common code (the same results on the PC: checked by the t
 
 ### The 2D, and main's replica-out
 
-The game's 2D is drawn today through the GS replica's GX2 backend (`gs_draw_gx2.cpp`). On main the replica is being removed for
-the HUD too (`feature/replica-out`): when that lands, the HUD follows main's native path here as well. What the 2D backend
-taught (textures, render targets, blending, the uniform-block layout, the ring) carries over to the MRP-lite.
+The game's 2D was drawn through the GS replica's GX2 backend (`gs_draw_gx2.cpp`). Main took the replica out of the MRP (2066123:
+the chain reader `mrp_chain`, the 2D `mrp_2d`); the Wii U now reads the chain and draws its 2D the same way (Progress: the 2D on
+mrp_2d), the replica's path kept behind RAC1_WIIU_REPLICA=1. What the replica's backend taught (textures, render targets, blending,
+the uniform-block layout, the ring) carried over.
 
 ## Phases
 
@@ -214,3 +215,46 @@ Each phase ends with shots of the console's TV (RAC1_WIIU_SHOT) compared with th
   GPU copies unused here: to drop later). Left: the
   tfrag relighting is the game's (its colours read every frame: the mirror's compare), the route's allocations per draw (Mem's
   vector), a worker core.
+- The 2D on mrp_2d (2026-10-28): the Wii U reads the frame's chain with main's reader (mrp_chain.cpp) and draws its 2D with mrp_2d.cpp's
+  CPU build and a GX2 submit, in place of the GS replica (not run on the console yet). What it is:
+  - orig_main's walk branch builds an MrpChainInput (the drop shadows', the mobys' and the world passes' ranges as before, dry, the
+    mobys' VU1 starts as flips) and starts the reading on the reader's worker thread (RAC1_WIIU_CHAIN_ASYNC=0: on the game's thread),
+    pinned to core 0 (RAC1_WIIU_CHAIN_CORE, -1 wut's "any"), under the game's FPSCR (mffs at the start, mtfsf on the worker); joined by
+    the world's prepare (its registers, below), the picture (wiiu_gfx_frame), the next chain and libgraph's transfers (gs::memory_join).
+    No effects' or program-7 ranges are given (mrp_fx, the seas: phase 5), so every VU1 program outside the dry ranges - the particles',
+    program 7 (shadows_vu1), the moby / world stubs - runs on the reader's VU1 for the VU1's and the GS registers' state, its kicks
+    dropped (MrpChainFrame::dropped_3d): the same programs the replica ran, the same picture (gs_draw_gx2 never drew the VU1's 3D);
+  - mrp_2d.cpp split as the moby / world backends (mrp_2d_backend.inc: V, Key, Item, Built, mrp2d::build, the targets' sizes;
+    GL / Vulkan compiled out on the Wii U); its build counts what it leaves out by reason, and BuildOptions::drop_gif_3d (the Wii U's)
+    leaves out the game's projected 3D on the GIF path (Z-tested inside the view: no host depth to test it against), as gs_draw_gx2 did;
+  - mrp_2d_gx2.cpp + shaders/mrp_2d.gsh (mrp_2d.cpp's GL shader in GLSL 330, one uniform block, byte-swapped): the vertices mapped to
+    clip space on the CPU, one ring allocation a call; textures per decoded image (by TexImage::id, LRU / 600 calls / level change);
+    render targets keeping the raw GS alpha, the dual-source blend as gs_draw_gx2's two passes (gs::blend_reads_src_alpha_gx2); the
+    screen-reading runs (DATE, the frame sampled: 16 a frame on the PC's walk, the drop shadows' darkening - skipped on the console with
+    the MRP's mobys) get a GX2CopySurfaceEx of their box into a texture laid out as the colour buffer, read by texelFetch at the
+    vertices' window position (no gl_FragCoord), the context set again after the copy. (The PC's OpenGL path reads an incomplete
+    texture there - its default filter, no mips -, Vulkan a real copy: the Wii U's is Vulkan's.) Not drawn: a target's own Z test (ZTST
+    NEVER dropped, the rest untested), type 7 (the Vendor's stored picture) and type 8 (the menus' item models);
+  - the world's GS registers: MrpChainInput::regs_tag (the first world pass's tag) makes the reader keep its registers there
+    (MrpChainFrame::regs_at), which mrp_world_wiiu_prepare takes in place of Veldin's constants; the mobys' FOGCOL is mrp_chain_gs_reg's
+    (the chain's end). On the PC's walk (RAC1_WIIU_REGS_LOG=1, explore 700 frames): TEST_1 5360b, ALPHA_1 8000000044, ZBUF_1 10000d8,
+    PRMODECONT 1, TEXA 8000000000, FBA_1 0, FOGCOL f1a2f every 60 frames - Veldin's constants, and the tfrags' FOGCOL of phase 4;
+  - determinism (the PC, RAC1_NO_GRAPHICS_WALK=1 RAC1_VU1_LIKE_WIIU=1 RAC1_NO_GRAPHICS=2 RAC1_WORLD_PASS_SKIP=6): RAMHASH identical
+    between the reader (async and synchronous), RAC1_WIIU_REPLICA=1 and the build before the change: explore 700 frames, GOTO=0@60
+    forward 300, GOTO=3@60 forward 400 (a real level change: the caches dropped). RAC1_GS_PRIMDUMP at 200 / 400 (explore) and 500
+    (start: the pause menu): the reader's primitives identical to the replica's but the VU1's 3D (86 a frame) it does not keep;
+  - switches: RAC1_WIIU_REPLICA=1 (the old path), RAC1_WIIU_2D=0 / 1 / 3 as before, RAC1_WIIU_2D_DEBUG (1 one draw a call, 2 no
+    textures, 4 no blending, 8 no screen copy, 16 the screen-reading runs not drawn), RAC1_WIIU_2D_LOG=0 (the log line every 300 calls:
+    primitives, runs, draws, screen copies, left out by reason, targets, textures, CPU ms), RAC1_WIIU_2D_BUILD_LOG=1 (any host: the
+    build's counts every 20 frames), RAC1_GS_PRIMDUMP (the reader's primitives).
+  Left / unverified: the worker and its affinity on the console, GX2CopySurfaceEx between the colour buffer and the copy, the 2D's
+  cost (built twice a frame: the TV's and the GamePad's), the order (all the 2D over the mobys: the PC draws the primitives before
+  moby_mark under them), the veil seen with the replica's targets (to look at again with this backend).
+  On the console (2026-10-28, the reader on the game's thread): the veil is gone (the 3D's colours as the PC's), the HelpDesk
+  box shows (its text not yet). A HUD icon (the Gadgetron G, game frame 150) came out a cyan square, as with the replica: the
+  GS memory differed from the PC's in 24 pages (RAC1_GS_VRAMDUMP=1 with RAC1_GS_PRIMDUMP: the memory written to vram_<n>.bin
+  on any host). Per-upload logs found TRXPOS garbage, written by program 7's kicks (start 0x0e, shadows_vu1): on the PPC each
+  of its kicks was 1024 qwords - runtime/vu/vu1.cpp's gif_packet_qwc read the GIF tag from VU memory with an 8-byte memcpy
+  (the host words' halves swapped: the EOP bit never found), so the reader went on through the rest of VU memory, taking
+  vertex data for A+D writes. Fixed there and in vu_xgkick.cpp (the PC unchanged); to verify on the console (the FTP plugin
+  hung before the run). The replica path had the same bug (its cyan square).

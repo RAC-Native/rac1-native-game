@@ -290,8 +290,9 @@ uint32_t vif_data_bytes(const Vu1& vu, uint32_t code) {
 uint32_t gif_packet_qwc(const VUState& st, uint32_t addr) {
     uint32_t total = 0;
     for (int guard = 0; guard < 1024; ++guard) {
-        uint64_t tag;
-        std::memcpy(&tag, &st.mem[((addr + total) & 0x3ff) << 4], 8);
+        uint32_t w[2];  // (VU memory: host-order 32-bit words, the doubleword's low one first on any host)
+        std::memcpy(w, &st.mem[((addr + total) & 0x3ff) << 4], 8);
+        const uint64_t tag = (static_cast<uint64_t>(w[1]) << 32) | w[0];
         const uint32_t nloop = tag & 0x7fff, flg = (tag >> 58) & 3;
         const uint32_t nreg = ((tag >> 60) & 0xf) == 0 ? 16 : (tag >> 60) & 0xf;
         const uint32_t body = flg == 0 ? nloop * nreg : flg == 1 ? (nloop * nreg + 1) / 2 : nloop;

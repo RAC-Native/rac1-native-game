@@ -19,6 +19,11 @@
 #include <mutex>
 #include <thread>
 
+#if defined(__WIIU__)
+#include <coreinit/core.h>
+#include <coreinit/thread.h>
+#endif
+
 namespace rac1 {
 
 namespace {
@@ -174,6 +179,7 @@ public:
         frame.fx_mark = frame.moby_mark = SIZE_MAX;
         frame.fx_external = !in.fx.empty() || (!in.vu7.empty() && in.vu7_kind != 0);
         frame.tags = frame.skipped_tags = frame.program_runs = frame.flips = frame.dropped_3d = 0;
+        frame.regs_at_ok = false;
         tag_left_ = 0;
         scr_prim_ = -1;
         skip_started_.assign(in.skips.size(), false);
@@ -233,6 +239,10 @@ public:
                     tag_reg_ = saved->tag_reg;
                     tag_regs_ = saved->tag_regs;
                     saved.reset();
+                }
+                if (in.regs_tag != 0 && !in_sub && !drop && !frame.regs_at_ok && addr == (in.regs_tag & 0x01fffff0u)) {  // (the registers before this tag)
+                    std::memcpy(frame.regs_at, regs, sizeof regs);
+                    frame.regs_at_ok = true;
                 }
                 sub_wide_ = in_sub;
                 sub_drop_ = drop;
@@ -769,6 +779,9 @@ struct Worker {
     std::thread th;
     bool job = false, busy = false, quit = false;
     std::exception_ptr error;
+#if defined(__WIIU__)
+    double fpscr = 0.0;  // (the game's thread's float rules, mffs at the start: the VU1 programs read on the worker run under them, as job_pool.cpp's FloatEnv)
+#endif
     void loop();
     ~Worker() {
         {
@@ -792,6 +805,9 @@ void Worker::loop() {
         cv.wait(lk, [this] { return job || quit; });
         if (quit) return;
         job = false;
+#if defined(__WIIU__)
+        __asm__ volatile("mtfsf 0xff, %0" : : "f"(fpscr));
+#endif
         lk.unlock();
         try {
             const rac1::prof::Job prof_job(rac1::prof::kWorkerChain);  // (the debug menu's profiler: the job's time)
@@ -821,8 +837,19 @@ void mrp_chain_start(MrpChainInput&& in, bool async) {
     std::lock_guard<std::mutex> lk(w.m);
     if (!w.th.joinable()) w.th = std::thread([&w] {
         rac1::prof::thread_name("MRP chain worker");
+#if defined(__WIIU__)
+        // (the Wii U: the worker on a core of its own - RAC1_WIIU_CHAIN_CORE, default 0; the game runs on core 1, the IOP's mirror on
+        // core 2 -, -1: wut's "any core")
+        const char* ce = std::getenv("RAC1_WIIU_CHAIN_CORE");
+        const int core = ce != nullptr ? std::atoi(ce) : 0;
+        if (core >= 0 && core <= 2) OSSetThreadAffinity(OSGetCurrentThread(), static_cast<OSThreadAttributes>(OS_THREAD_ATTRIB_AFFINITY_CPU0 << core));
+        std::printf("[mrp-chain] the chain worker on core %u (RAC1_WIIU_CHAIN_CORE %d)\n", OSGetCoreId(), core);
+#endif
         w.loop();
     });
+#if defined(__WIIU__)
+    __asm__ volatile("mffs %0" : "=f"(w.fpscr));
+#endif
     w.error = nullptr;
     w.busy = true;
     w.job = true;
@@ -853,6 +880,7 @@ void mrp_chain_clear() {
     g_reader.frame.vu7_verts.clear();
     g_reader.frame.fx_mark = g_reader.frame.moby_mark = SIZE_MAX;
     g_reader.frame.fx_external = false;
+    g_reader.frame.regs_at_ok = false;
 }
 
 // orig: (host) see mrp_chain.h

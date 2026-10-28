@@ -9,9 +9,10 @@ void vu_execute_xgkick(VUState& state, uint32_t addr, std::vector<GsPrimitive>& 
     if (byte_addr + 16 > sizeof(state.mem)) return;
 
     // Read 128-bit GIF Tag
-    uint64_t tag_low, tag_high;
-    std::memcpy(&tag_low, &state.mem[byte_addr], 8);
-    std::memcpy(&tag_high, &state.mem[byte_addr + 8], 8);
+    // (VU memory: host-order 32-bit words, a doubleword's low one first on any host)
+    uint32_t w[4];
+    std::memcpy(w, &state.mem[byte_addr], 16);
+    const uint64_t tag_low = (static_cast<uint64_t>(w[1]) << 32) | w[0], tag_high = (static_cast<uint64_t>(w[3]) << 32) | w[2];
     byte_addr += 16;
 
     uint32_t nloop = tag_low & 0x7FFF;
