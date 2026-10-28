@@ -27,6 +27,12 @@ void snd989_iop_stop();   // every sound stopped and bank unloaded
 // output on 5.1 / 7.1 speakers (`channels` 6 / 8 per frame, the WAVE order FL FR FC LFE, then SL SR / BL BR SL SR; the
 // voices placed by Synth::Tick), else nullptr.
 void snd989_iop_render(int16_t* out, int frames, int16_t* multi = nullptr, int channels = 2);
+// RAC1_IOP_STATE_ONLY=1 (the Wii U's default; off on the PC): while the mirror plays the sound (and RAC1_IOP_VERIFY does
+// not compare its mix with the game's), the game's IOP needs no output. True then: the caller advances it with
+// snd989_iop_tick_state instead of snd989_iop_render - its handlers, voices' positions, loop / end flags and envelopes as
+// the render leaves them (everything the game reads back), no sample mixed (snd::Player::TickState).
+bool snd989_iop_state_only();
+void snd989_iop_tick_state(int frames);
 // The movie's samples (as movie_hw_audio_add) added to a 5.1 / 7.1 output's front left / right.
 void snd989_movie_add_multi(int16_t* multi, int channels, const int16_t* movie, int movie_frames, float gl, float gr);
 

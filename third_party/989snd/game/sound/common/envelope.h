@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: ISC
 #pragma once
 
+#include <algorithm>
+
 #include "bitfield.h"
 
 #include "common/common_types.h"
@@ -144,4 +146,62 @@ struct VolumePair {
     right.Reset();
   }
 };
+// rac1: Step and Run inline (each voice's every sample; Voice::RunState's loop)
+inline void Envelope::Step() {
+  // arbitrary number of bits, this is probably incorrect for the
+  // "reserved" and infinite duration values
+  // test hw or copy mednafen instead?
+  u32 cStep = 0x800000;
+
+  s32 shift = m_Shift - 11;
+  if (shift > 0)
+    cStep >>= shift;
+
+  s16 step = static_cast<s16>(m_Step << std::max(0, 11 - m_Shift));
+
+  if (m_Exp) {
+    if (!m_Decrease && m_Level > 0x6000)
+      cStep >>= 2;
+
+    if (m_Decrease)
+      step = static_cast<s16>((step * m_Level) >> 15);
+  }
+
+  m_Counter += cStep;
+
+  if (m_Counter >= 0x800000) {
+    m_Counter = 0;
+    m_Level = std::clamp<s32>(m_Level + step, 0, INT16_MAX);
+  }
+}
+
+inline void ADSR::Run() {
+  // Let's not waste time calculating silent voices
+  if (m_Phase == Phase::Stopped)
+    return;
+
+  Step();
+
+  if (m_Phase == Phase::Sustain)
+    return;
+
+  if ((!m_Decrease && m_Level >= m_Target) || (m_Decrease && m_Level <= m_Target)) {
+    switch (m_Phase) {
+      case Phase::Attack:
+        m_Phase = Phase::Decay;
+        break;
+      case Phase::Decay:
+        m_Phase = Phase::Sustain;
+        break;
+      case Phase::Release:
+        m_Phase = Phase::Stopped;
+        break;
+      default:
+        break;
+    }
+
+    UpdateSettings();
+  }
+}
+
 }  // namespace snd

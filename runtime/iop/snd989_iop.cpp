@@ -393,6 +393,21 @@ void snd989_iop_stop() {
 
 void snd989_iop_render(int16_t* out, int frames, int16_t* multi, int channels) { render(game(), out, frames, multi, channels); }
 
+// orig: (host) RAC1_IOP_STATE_ONLY: the game's IOP's state without its mix (snd989_iop.h)
+bool snd989_iop_state_only() {
+    static const bool on = [] {
+        const char* e = std::getenv("RAC1_IOP_STATE_ONLY");
+        return e != nullptr && std::atoi(e) != 0;
+    }();
+    return on && g_rec.on.load(std::memory_order_relaxed) && !g_rec.verify;
+}
+
+void snd989_iop_tick_state(int frames) {
+    Iop& io = game();
+    std::scoped_lock lock(io.render_lock);
+    if (io.player) io.player->TickState(frames);
+}
+
 void snd989_movie_add_multi(int16_t* multi, int channels, const int16_t* movie, int movie_frames, float gl, float gr) {
     movie_add_multi(multi, channels, movie, movie_frames, gl, gr);
 }

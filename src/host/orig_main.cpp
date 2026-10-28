@@ -311,7 +311,12 @@ void vsync_passed() {
     const int dev_ch = snd989_mirror_enabled() ? 2 : audio_out_channels();
     const int multi_ch = g_audio_dump != nullptr && g_audio_dump_ch > 2 ? g_audio_dump_ch : dev_ch;
     int16_t* const mp = multi_ch > 2 ? multi : nullptr;
-    snd989_iop_render(pcm, 800, mp, multi_ch);
+    if (g_audio_dump == nullptr && snd989_iop_state_only()) {  // (the mirror plays the sound: the game's IOP's state alone, no mix)
+        snd989_iop_tick_state(800);
+        std::memset(pcm, 0, sizeof(pcm));
+    } else {
+        snd989_iop_render(pcm, 800, mp, multi_ch);
+    }
     float movie_gl = 1.0f, movie_gr = 1.0f;
     snd989_movie_gain(movie_gl, movie_gr);  // (the IRX's volumes of the movie's voices, not unity)
     int16_t movie[800 * 2];

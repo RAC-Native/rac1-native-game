@@ -31,6 +31,11 @@ class Synth {
   // rac1: `multi` (host): also the voices placed on `channels` speakers (6: 5.1, 8: 7.1, the WAVE order FL FR FC LFE
   // then 5.1's SL SR / 7.1's BL BR SL SR), one frame of s16; the stereo result unchanged
   s16Output Tick(s16* multi = nullptr, int channels = 2);
+  // rac1 (host): `samples` Ticks' state alone, no output (RAC1_IOP_STATE_ONLY: the game's IOP while the host's mirror
+  // plays the sound): the voices' positions, flags and envelopes, each dead voice dropped at the sample Tick drops it
+  // (the handlers see a voice end by its weak_ptr expiring). Nothing may start a voice in between: Player::TickState
+  // calls it between the handlers' ticks.
+  void TickState(int samples);
   void AddVoice(std::shared_ptr<Voice> voice);
   // rac1: the IRX's voice allocation (0x14d60) for the cores: the lowest free voice of the group's range (0x4e
   // snd_SetGroupVoiceRange, 0x0d snd_SetMixerMode), when none the one it would steal (the lowest priority, the

@@ -19,6 +19,11 @@ class Voice {
 
   Voice(AllocationType alloc = AllocationType::Managed) : mAlloc(alloc) {}
   s16Output Run();
+  // rac1 (host): `n` samples of Run's state alone, no sample made (the game's IOP while the host's mirror plays the sound,
+  // RAC1_IOP_STATE_ONLY): the decode position, the block headers' loop / end flags and the envelope as Run leaves them
+  // (the volumes' ramps not run: only the samples read them); false when the voice is found dead before one of them
+  // (Synth::Tick then drops it at that sample)
+  bool RunState(int n);
 
   void KeyOn();
 
@@ -142,6 +147,7 @@ class Voice {
   s16 mLastSample{0};
 
   void DecodeSamples();
+  void DecodeState();  // rac1: DecodeSamples' positions and flags alone
   void UpdateBlockHeader();
   s16 StepNoise();
 

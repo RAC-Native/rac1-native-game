@@ -74,6 +74,38 @@ void Voice::DecodeSamples() {
   }
 }
 
+// rac1 (host): DecodeSamples without the samples: the same pushes (their values not made), the same position, loop and
+// end. (The ADPCM history is left as it was: only the samples read it.)
+void Voice::DecodeState() {
+  if (mSample == nullptr) {
+    while (mDecodeBuf.Size() < 16) {
+      mDecodeBuf.PushSkip(4);
+    }
+    return;
+  }
+
+  while (mDecodeBuf.Size() < 16) {
+    mDecodeBuf.PushSkip(4);
+    mNAX++;
+
+    if ((mNAX & 0x7) == 0) {
+      if (mCurHeader.LoopEnd.get()) {
+        mNAX = mLSA;
+        mENDX = true;
+
+        if (!mCurHeader.LoopRepeat.get()) {
+          if (!mNoise)
+            mADSR.Stop();
+        }
+      }
+
+      UpdateBlockHeader();
+
+      mNAX++;
+    }
+  }
+}
+
 void Voice::UpdateBlockHeader() {
   if (mSample == nullptr)
     return;
@@ -176,5 +208,24 @@ s16Output Voice::Run() {
   mVolume.Run();
 
   return s16Output{left, right};
+}
+// rac1 (host): Run's state for `n` samples (Synth::TickState): the noise's and the samples' values not made, nor the
+// last sample (the 5.1 / 7.1 placement's), nor the volumes' ramps (nothing but the samples reads them)
+bool Voice::RunState(int n) {
+  for (int i = 0; i < n; i++) {
+    if (Dead()) {
+      return false;
+    }
+    if (!mNoise) {
+      DecodeState();
+      s32 step = mPitch;
+      step = std::min(step, 0x3FFF);
+      mCounter += step;
+      mDecodeBuf.PopSkip(mCounter >> 12);
+      mCounter &= 0xFFF;
+    }
+    mADSR.Run();
+  }
+  return true;
 }
 }  // namespace snd

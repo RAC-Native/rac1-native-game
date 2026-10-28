@@ -18,6 +18,10 @@ class fifo {
   Tp Peek() { return array[Mask(read + 1)]; }
   Tp Peek(size_t offset) { return array[Mask(read + offset)]; }
 
+  // rac1: the pushes / pops alone, their values not written / read (Voice::RunState: the positions without the samples)
+  void PushSkip(size_t n) { write += n; }
+  void PopSkip(size_t n) { read += n; }
+
   size_t Size() { return write - read; }
   bool Full() { return Size() == capacity; }
   bool Empty() { return read == write; }

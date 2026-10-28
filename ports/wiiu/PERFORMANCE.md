@@ -386,3 +386,25 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   upscale" pass. (RAC1_WIIU_VPSCALE / the "Resolution" row, the frame's share, is another thing: the frame smaller inside the TV's buffer.)
 - To measure on the console (bench.sh, RAC1_WIIU_GPU_TIME=2): the fast shaders against RAC1_WIIU_FASTPS=0; RAC1_WIIU_WORLD_MERGE=4
   against 3; RAC1_WIIU_3D_SCALE=0.667 (and 0.5) against 1, and RAC1_WIIU_3D_MEM1=0 against 1 at 0.667.
+
+### The game's IOP without its mix (2026-10-28, late night)
+
+- The console's sampling profile (the game thread, core 2, Veldin): ~10% of it in the game's IOP's sound synthesis - snd::Synth::Tick
+  9.9% inclusive, Voice::Run 7.9% (4.1% self), DecodeSamples 1.5%, the envelopes ~1.7% - from vsync_passed's snd989_iop_render, every
+  vsync. With the mirror on (ADR 0013, the Wii U's way) nobody hears that output: the game's IOP's pcm only feeds RAC1_AUDIO_DUMP and
+  RAC1_IOP_VERIFY's comparison (snd989_mirror_vsync keeps it for that alone).
+- RAC1_IOP_STATE_ONLY=1 (the Wii U's default, wiiu_main.cpp; off on the PC): with the mirror on and neither of those, vsync_passed calls
+  snd989_iop_tick_state (snd::Player::TickState) in place of the render: the handlers ticked at the same samples (every 200th), and
+  between two of their ticks each voice run on its own (Synth::TickState, Voice::RunState) - the decode position (the fifo's pushes and
+  pops counted, no ADPCM decoded), the block headers read at the same positions (loop start, loop end / repeat: the jump, ENDX, the
+  ADSR's stop at the end), the pitch counter and the envelope; a voice found dead at a sample's start dropped at that sample, as
+  Tick's remove_if does (the handlers see a voice's end by its weak_ptr expiring). Not run: the samples (decode, interpolation, noise),
+  the volumes' ramps, the reverb, the mix. The envelope's Step / Run made inline (envelope.h): both paths, the mirror's too.
+- Exact on the PC (RAMHASH every frame, switch 0 against 1): Veldin explore with level changes (RAC1_GOTO=0@60,1@700, 1600 frames;
+  0@60,1@700,2@1800, 3000 frames; forward 0@60,3@600, 2000 frames), each with the mirror on the game's thread (RAC1_IOP_MIRROR_TEST=1:
+  the mirror's output, RAC1_MIRROR_DUMP, byte-identical too) and on the null device's audio thread (RAC1_AUDIO_DEVICE=null). The check
+  is sensitive: RunState without the end's ADSR stop differs from game frame 20 on.
+- The saving on the PC (the game thread's CPU time of the call per vsync, the 3000-frame run, 3.6 voices on average): 80-117 us the
+  render, 18-32 us the state alone (handlers ~3.5 us of it), ~75% less.
+- To measure on the console: RAC1_IOP_STATE_ONLY=0 against the default 1 - the "[game]" line and the "[timing]" game thread's steps;
+  the sound unchanged (it is the mirror's).

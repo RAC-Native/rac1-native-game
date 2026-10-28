@@ -318,6 +318,14 @@ s16Output Synth::Tick(s16* multi, int channels) {
   return out;
 }
 
+// orig: (host) Tick's state for `samples` samples, voice by voice (they are independent without the mix): a voice dead at
+// the start of one of them dropped (Tick's remove_if at that sample), one that dies at the last kept until the next
+// call, as Tick keeps it until its next sample. The reverb's delay line and the master / reverb volumes' ramps are not
+// run (only the output reads them).
+void Synth::TickState(int samples) {
+  mVoices.remove_if([samples](std::shared_ptr<Voice>& v) { return !v->RunState(samples); });
+}
+
 void Synth::AddVoice(std::shared_ptr<Voice> voice) {
   if (voice->Slot() >= 0) {
     mSlots[voice->Slot()] = voice;

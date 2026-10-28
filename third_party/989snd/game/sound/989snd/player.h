@@ -93,6 +93,9 @@ class Player {
  // rac1: the host's audio device pulls the output (the cubeb stream removed)
   // `multi` (host): also `channels` (6 / 8) speakers' samples per frame (Synth::Tick)
   void Tick(s16Output* stream, int samples, s16* multi = nullptr, int channels = 2);
+  // rac1 (host): Tick without the output (RAC1_IOP_STATE_ONLY, Synth::TickState): the handlers ticked at the same
+  // samples, the voices' state between them
+  void TickState(int samples);
 
  private:
 #if defined(__WIIU__)

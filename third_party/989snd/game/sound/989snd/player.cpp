@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: ISC
 #include "player.h"
 
+#include <algorithm>
 #include <fstream>
 
 #include "sfxblock.h"
@@ -53,6 +54,35 @@ void Player::Tick(s16Output* stream, int samples, s16* multi, int channels) {
     if (multi != nullptr) {
       multi += channels;
     }
+  }
+}
+
+// orig: (host) Tick's state alone: the handlers at the same samples (every 200th), the synth's voices run between them
+void Player::TickState(int samples) {
+  std::scoped_lock lock(mTickLock);
+  int& htick = mHTick;
+  int& stick = mSTick;
+  for (int i = 0; i < samples;) {
+    if (htick == 200) {
+      mTick++;
+
+      for (auto it = mHandlers.begin(); it != mHandlers.end();) {
+        bool done = it->second->Tick();
+        if (done) {
+          mHandleAllocator.FreeId(it->first);
+          it = mHandlers.erase(it);
+        } else {
+          ++it;
+        }
+      }
+
+      htick = 0;
+    }
+    const int n = std::min(samples - i, 200 - htick);  // (to the next handlers' tick)
+    stick = (stick - 1 + n) % 48000 + 1;                // (Tick's: 1..48000)
+    htick += n;
+    mSynth.TickState(n);
+    i += n;
   }
 }
 
