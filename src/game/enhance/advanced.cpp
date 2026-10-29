@@ -1598,6 +1598,10 @@ int advanced_audio_channels() {
 
 // orig: (none) — enhancement (advanced.h)
 bool advanced_sound_output_cycle(uint32_t mono_byte) {
+#if defined(__WIIU__)
+    (void)mono_byte;
+    return false;
+#else
     if (g_advanced_disabled) return false;
     settings_load();
     const int ch = advanced_audio_channels();
@@ -1609,6 +1613,7 @@ bool advanced_sound_output_cycle(uint32_t mono_byte) {
     if (g_loaded) settings_save();
     if (g_advanced_audio_reopen != nullptr) g_advanced_audio_reopen(advanced_audio_channels());  // (RAC1_AUDIO_CHANNELS over the menu)
     return true;
+#endif
 }
 
 // orig: (none) — enhancement (advanced.h)

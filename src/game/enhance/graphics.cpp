@@ -234,6 +234,15 @@ struct Row {
     int32_t name, help;
 };
 // (grouped: the renderer, the window, the picture, the view, the light)
+#if defined(__WIIU__)
+constexpr Row ROWS_DEF[] = {
+    {S_SCALE, T_SCALE, H_SCALE},
+    {S_ASPECT, T_ASPECT, H_ASPECT},
+    {S_FIT, T_FIT, H_FIT},
+    {S_HUD, T_HUD, H_HUD},
+    {S_MIPS, T_MIPS, H_MIPS},
+};
+#else
 constexpr Row ROWS_DEF[] = {
     {S_RENDERER, T_RENDERER, H_RENDERER},
     {S_DISPLAY, T_DISPLAY, H_DISPLAY},       {S_MONITOR, T_MONITOR, H_MONITOR},                {S_WINDOW, T_WINDOW_SIZE, H_WINDOW_SIZE},          {S_VSYNC, T_VSYNC, H_VSYNC},
@@ -245,6 +254,7 @@ constexpr Row ROWS_DEF[] = {
     {S_PARTICLES, T_PARTICLES, H_PARTICLES},
     {S_MIPS, T_MIPS, H_MIPS},
 };
+#endif
 constexpr int ROW_COUNT = static_cast<int>(sizeof(ROWS_DEF) / sizeof(Row));
 static_assert(T_COUNT + VISIBLE <= 0x60, "the Graphics page's text ids end where the Controls page's begin (0x7fa0)");
 // the value words (T_WINDOW..T_HUD_FIT) are never asked for by id (value_text puts them in the rows' value texts): no string of
@@ -278,9 +288,15 @@ uint32_t value_count(Setting s) {
         case S_SEC_LIGHTS: return 3;
         case S_SHADOW_DIST: return 4;  // Off, the game's (its point lights per pixel), all (the automatic emitters too)
         case S_WINDOW: return SIZE_COUNT + 1;  // (the last: the current size, when not in the list)
+#if defined(__WIIU__)
+        case S_SCALE: return 3;   // 50, 75, 100
+        case S_ASPECT: return 2;  // 4:3 (the original), 16:9
+        case S_HUD: return 2;     // 4:3 (the original), 16:9
+#else
         case S_SCALE: return sizeof(SCALES) / sizeof(int);
         case S_ASPECT: return 3;
         case S_HUD: return 5;  // 4:3 (the original), 16:9, 21:9, 32:9, the view's width
+#endif
         case S_LOD: return sizeof(LODS) / sizeof(int);
         case S_SHADOW_STR: return sizeof(SHADOW_STRS) / sizeof(int);
         case S_SUN_RAYS: return 4;  // Off, Low, Medium, High (quality; the same look)
@@ -319,6 +335,11 @@ void apply() {
     if (!g_advanced_disabled) {  // (the tests: the renderer's own defaults and switches, RAC1_VIEW_MODE / RAC1_MRP_LOD)
         g_view_mode = v[S_ASPECT] == 2 ? 2 : (v[S_FIT] == 0 ? 1 : 0);
         g_view_frame_aspect = v[S_ASPECT] == 1 ? 16.0f / 9.0f : 4.0f / 3.0f;
+#if defined(__WIIU__)
+        g_view_draw_widen = v[S_ASPECT] == 0 ? 1.0f : 4.0f / 3.0f;
+        if (std::getenv("RAC1_HUD") == nullptr) g_hud_aspect = HUD_ASPECTS[std::min(v[S_HUD], 1)];
+        mips_apply();
+#else
         g_view_fov_scale = static_cast<float>(FOVS[v[S_FOV]]) / 100.0f;
         if (std::getenv("RAC1_HUD") == nullptr) g_hud_aspect = HUD_ASPECTS[v[S_HUD]];
         g_mrp_lod = LODS[v[S_LOD]];
@@ -338,6 +359,7 @@ void apply() {
         if (std::getenv("RAC1_SHADOW_STRENGTH") == nullptr) g_shadow_strength = SHADOW_STRS[v[S_SHADOW_STR]];
         if (std::getenv("RAC1_AO_INTENSITY") == nullptr) g_ao_intensity = AO_STRS[v[S_AO_STR]];
         mips_apply();
+#endif
     }
     GraphicsDisplay d;
     // (the Renderer row: read by the host once, when it makes its window - a change takes effect at the next start;
@@ -616,10 +638,21 @@ void graphics_load() {
     if (gs_.loaded) return;
     gs_.loaded = true;
     if (!g_advanced_disabled) {
+#if defined(__WIIU__)
+        if (const char* w = std::getenv("RAC1_WIIU_WIDE"); w == nullptr || std::atoi(w) != 0) gs_.value[S_ASPECT] = 1;
+        gs_.value[S_HUD] = gs_.value[S_ASPECT];
+        if (const char* e = std::getenv("RAC1_WIIU_3D_SCALE"); e != nullptr && e[0] != 0)
+            gs_.value[S_SCALE] = std::min(2, nearest(SCALES, static_cast<int>(std::atof(e) * 100.0f + 0.5f)));
+#endif
         if (!prefs_read(prefs_path())) {
             prefs_migrate();
             gs_.dirty = true;
         }
+#if defined(__WIIU__)
+        gs_.value[S_SCALE] = std::min(gs_.value[S_SCALE], 2);
+        gs_.value[S_ASPECT] = std::min(gs_.value[S_ASPECT], 1);
+        gs_.value[S_HUD] = std::min(gs_.value[S_HUD], 1);
+#endif
     }
     apply();
     values_to_ee();
@@ -879,10 +912,14 @@ void graphics_main_menu_install() {
     ee_copy(POP_LIST, list, 0x50);
     sw(POP_TITLE + 0x34, TEXT_NEW_GAME);
     const uint32_t ng = lwu(ROOT_NEW_GAME + 0x34);  // the root's New Game entry (action 4, its page)
+#if defined(__WIIU__)
+    constexpr uint32_t MODES = 2;
+#else
     constexpr uint32_t MODES = 3;
-    static constexpr int32_t NAMES[MODES] = {T_MODE_ORIGINAL, T_MODE_MODERN, T_MODE_EXPERIMENTAL};
-    static constexpr int32_t HELPS[MODES] = {H_MODE_ORIGINAL, H_MODE_MODERN, H_MODE_EXPERIMENTAL};
-    static constexpr uint32_t PICS[MODES] = {PIC_ORIGINAL, PIC_MODERN, PIC_EXPERIMENTAL};
+#endif
+    static constexpr int32_t NAMES[3] = {T_MODE_ORIGINAL, T_MODE_MODERN, T_MODE_EXPERIMENTAL};
+    static constexpr int32_t HELPS[3] = {H_MODE_ORIGINAL, H_MODE_MODERN, H_MODE_EXPERIMENTAL};
+    static constexpr uint32_t PICS[3] = {PIC_ORIGINAL, PIC_MODERN, PIC_EXPERIMENTAL};
     for (uint32_t i = 0; i < MODES; ++i) {
         const uint32_t e = POP_ENTRIES + i * 0xc;
         ee_copy(e, ng, 0xc);
@@ -915,7 +952,9 @@ void graphics_main_menu_install() {
         sw(ROOT_ENTRY + 4, POP_PAGE);
         sw(ROOT_NEW_GAME + 0x34, ROOT_ENTRY);
     }
+#if !defined(__WIIU__)
     update_menu_main_install();
+#endif
 }
 
 // orig: (none) — enhancement (graphics.h)
@@ -958,9 +997,18 @@ void graphics_new_game_choice(uint32_t w) {
         gs_.value[S_ASPECT] = 0;
         gs_.value[S_LOD] = 0;
         gs_.value[S_MIPS] = 1;  // (the original's mips, like its detail)
+#if defined(__WIIU__)
+        gs_.value[S_HUD] = 0;
+#endif
     } else {
+#if defined(__WIIU__)
+        gs_.value[S_ASPECT] = 1;
+        gs_.value[S_HUD] = 1;
+        gs_.value[S_LOD] = 0;
+#else
         gs_.value[S_ASPECT] = 2;
         gs_.value[S_LOD] = 3;
+#endif
         gs_.value[S_MIPS] = 0;
     }
     changed();

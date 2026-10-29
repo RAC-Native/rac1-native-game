@@ -50,7 +50,11 @@ constexpr OvConst<0x001b6678u> TALL_PAGE{};  // its slot 3 box: the Graphics pag
 constexpr uint32_t PAD = 0x0013c940;          // g_pad_state (+0x1c4 the buttons pressed this frame)
 
 // The page's rows: the device, the host's 17 remap rows, then five settings
+#if defined(__WIIU__)
+enum : int { R_FIRST_CONTROL = 0, CONTROL_ROWS = 17, R_INVERT = R_FIRST_CONTROL + CONTROL_ROWS, R_RESET, ROW_COUNT, R_DEVICE = -1, R_MOUSE_MODE = -2, R_SENS = -3, R_AIM_SENS = -4 };
+#else
 enum : int { R_DEVICE = 0, R_FIRST_CONTROL = 1, CONTROL_ROWS = 17, R_INVERT = R_FIRST_CONTROL + CONTROL_ROWS, R_MOUSE_MODE, R_SENS, R_AIM_SENS, R_RESET, ROW_COUNT };
+#endif
 constexpr int C_FIRST_GROUP = 12, C_LAST_GROUP = 14;  // the remap rows of four (the D-pad, the sticks)
 constexpr int VISIBLE = 10;  // the rows the box shows at once (the widget spreads its rows over the box's height)
 constexpr int SENS[] = {25, 50, 75, 100, 125, 150, 200, 250, 300, 400};  // the mouse's sensitivity, percent
@@ -352,7 +356,11 @@ void controls_set_host(ControlsHost* host) { cs_.host = host; }
 
 // orig: (none) — enhancement (controls.h)
 uint32_t controls_page_install(uint32_t parent) {
+#if defined(__WIIU__)
+    cs_.device = 0;
+#else
     if (cs_.device < 0) cs_.device = cs_.host != nullptr && !cs_.host->pad_name().empty() ? 0 : 1;  // (a pad connected: the pad first)
+#endif
     cs_.top = 0;
     cs_.prev_sel = 0;
     cs_.msg_row = -1;

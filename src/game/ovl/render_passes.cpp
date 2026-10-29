@@ -192,7 +192,7 @@ void draw_list_run(uint32_t count, uint32_t fns, uint32_t args) {
     static const bool inventory = std::getenv("RAC1_MRP_FX_INVENTORY") != nullptr;  // (host: testing)
     mrp_lod_draw_list_widen(true);  // (host: in a widened view's shadow block, the callbacks' clip matrix widened, mrp_lod.h)
     // (host: a widened view's full-screen 2D layers noted in the real block, not in a shadow run's)
-    const bool layers = g_view_widen > 1.0f && mrp_lod_shadow_slot() < 0;
+    const bool layers = (g_view_widen > 1.0f || g_view_draw_widen > 1.0f) && mrp_lod_shadow_slot() < 0;
     for (int32_t i = 0; i < lw(count); ++i) {
         const uint32_t fn = lwu(fns + static_cast<uint32_t>(i) * 4);
         const bool layer = layers && screen_layer_fn(fn);

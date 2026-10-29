@@ -4,8 +4,11 @@
 // before the game's first frame, or without the 2D's shaders, a test triangle whose colours follow the frames. RAC1_WIIU_GFX=1 turns it on (the log's screen, WHBLogConsole, is then left out: the log
 // goes to the UDP log alone); the shaders are .gsh files compiled on the PC (ports/wiiu/shaders, CafeGLSL) and read
 // from shaders/ beside the game's data. Host code.
+#include <game/enhance/advanced.h>
+#include <game/enhance/graphics.h>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/mrp_chain.h>
+#include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
 #include <runtime/gs/gs_emu.h>
 #include <runtime/ipu/movie_hw.h>
@@ -826,8 +829,11 @@ rac1::gs::Viewport frame_viewport(const GX2ColorBuffer* cb) {
             const int w43 = vp.w;
             vp.w = std::min(static_cast<int>(static_cast<float>(w43) * wd + 0.5f), static_cast<int>(static_cast<float>(w) * vps + 0.5f));
             vp.xscale = vp.xscale_3d = static_cast<float>(w43) / static_cast<float>(vp.w);
+        } else if (rac1::g_view_mode == 0) {
+            vp.w = static_cast<int>(static_cast<float>(w) * vps + 0.5f);
         }
     }
+    vp.hud_shift = rac1::render_view_hud_shift(g_2d.fb_w);
     vp.x = (w - vp.w) / 2;
     vp.y = (h - vp.h) / 2;
     vp.screen_fbp = g_2d.screen_fbp;
@@ -860,9 +866,14 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
     // ((2026-10-28) RAC1_WIIU_3D_SCALE, the debug menu's "3D resolution": the TV's 3D drawn smaller and upscaled - Scaled3d above; the
     // GamePad's own drawing never)
     static bool s3_first = true;
+    static float s3_gfx_seen = 0.0f;
     if (s3_first) {
         s3_first = false;
         if (const char* e = std::getenv("RAC1_WIIU_3D_SCALE"); e != nullptr && e[0] != 0) g_menu_3d_scale = std::clamp(static_cast<float>(std::atof(e)), 0.25f, 1.0f);
+    }
+    if (!rac1::g_advanced_disabled) {
+        const float gs = std::clamp(rac1::graphics_render_scale(), 0.25f, 1.0f);
+        if (gs != s3_gfx_seen) g_menu_3d_scale = s3_gfx_seen = gs;
     }
     const bool tv = cb != WHBGfxGetDRCColourBuffer();
     Scaled3d* s3 = tv && (g_mobys_ready || g_world_ready) ? s3_get(g_menu_3d_scale, cb, db) : nullptr;

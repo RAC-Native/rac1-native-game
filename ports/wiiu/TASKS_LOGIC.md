@@ -172,3 +172,19 @@ Questo file coordina il lavoro dei subagenti (Gemini 4) sul branch `port/wiiu` i
      - Racchiusi `mrp_world_wiiu_sky_capture`, `mrp_moby_prepare`, `mrp_world_wiiu_prepare` e `rac1_wiiu_picture_frame` tra `const bool title_view = wiiu_title && mrp_title_view_swap_in();` e `if (title_view) { mrp_world_wiiu_join(); mrp_title_view_swap_out(); }`, ripristinando la camera 3D della scena titolo dietro il Menu Principale (`mode == 3`).
   5. **Default di Avvio nel Menu Principale e Memory Card su Wii U (`ports/wiiu/game/wiiu_main.cpp`):**
      - Impostati i default `RAC1_BOOT=1`, `RAC1_MEMCARD=1`, `RAC1_MEMCARD_DIR=memcard` e `RAC1_QUIT_ENDS=0` prima della lettura di `run.cfg`, così il gioco su Wii U parte dal Menu Principale con salvataggi su SD attivi e "Quit Game" riporta al Menu Principale.
+
+- **Data:** 2026-10-29
+- **Autore:** OpenClaw (Gemini 4 Argon)
+- **Stato:** COMPLETATO — Abilitazione QoL e menu `Options > Advanced`, `Options > Controls` e `Options > Graphics` su Wii U
+- **Attività svolta:**
+  1. **Abilitazione `RAC1_ADVANCED=1` di default su Wii U (`ports/wiiu/game/wiiu_main.cpp`, `src/host/orig_main.cpp`):**
+     - Impostato `setenv("RAC1_ADVANCED", "1", 1)` prima della lettura di `run.cfg` in `wiiu_main.cpp`.
+     - Sotto `#if defined(__WIIU__)` in `src/host/orig_main.cpp`, abilitati `g_controls_save` (persistenza di `config/controls.txt` su SD) e `console_language(!rac1::g_advanced_disabled)` (persistenza di `config/language.txt`), oltre al passaggio di `extra` (`o.next_item`, `o.prev_item`) in `pad_packet()`.
+  2. **Pagina `Options > Advanced` e popup `New Game` (`src/game/enhance/advanced.cpp`, `src/game/enhance/graphics.cpp`):**
+     - Attivate tutte le 8 opzioni QoL di `Options > Advanced` (`Quick Select: Normal / Pause`, `Aiming: Original / Modern / Modern, No Zoom`, `Movement: Original / Strafing / RAC 3`, `Fades: Fast / Original`, `Buy All Ammo: Off / On`, `Vibration: Off / Low / High`, `Ship: Original / Ship 1..3`, `Clank: Original / Modern`) con salvataggio in `config/advanced_options.txt` e nei file `save<N>.pc` sulla Memory Card.
+     - Attivato il popup `New Game` con le modalità `Original` e `Modern` su Wii U.
+  3. **Pagina `Options > Controls` (`src/game/enhance/controls.cpp`, `src/host/orig_main.cpp`):**
+     - Nascoste su `__WIIU__` le righe solo tastiera/mouse (`Device`, `Mouse Mode`, `Mouse Sensitivity`, `Aim Sensitivity`), esponendo la rimappatura completa dei 17 comandi del controller (inclusi `Next Weapon` e `Previous Weapon`), `Invert Look` e `Reset to Defaults`, con etichette pulsanti in stile Nintendo (`B`, `A`, `Y`, `X`, `L`, `R`, `ZL`, `ZR`, `+`, `-`).
+  4. **Pagina `Options > Graphics` e HUD 16:9 (`src/game/enhance/graphics.cpp`, `src/game/render/render_view.cpp`, `src/game/ovl/render_passes.cpp`, `ports/wiiu/game/wiiu_gfx.cpp`):**
+     - Filtrate le righe di `Options > Graphics` su `__WIIU__` alle 5 opzioni pertinenti (`Render Resolution`: `x0.50 / x0.75 / x1.00`, `Aspect Ratio`: `4:3 Original / 16:9`, `Fit to Screen`: `Black Bars / Stretch`, `HUD`: `4:3 Original / 16:9`, `Texture Detail`: `Full / Original (PS2)`), escludendo le opzioni finestra PC e l'illuminazione/ombre pesanti PC.
+     - Collegati `render_view_hud_wide()`, `render_view_hud_shift()`, `ci.hud` e `ci.layers` al backend GX2 (`wiiu_gfx.cpp` `frame_viewport()`).

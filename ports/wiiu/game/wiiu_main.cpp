@@ -256,6 +256,7 @@ int read_settings() {
     setenv("RAC1_MEMCARD", "1", 1);
     setenv("RAC1_MEMCARD_DIR", "memcard", 1);
     setenv("RAC1_QUIT_ENDS", "0", 1);
+    setenv("RAC1_ADVANCED", "1", 1);
     std::FILE* f = std::fopen("run.cfg", "r");
     if (f == nullptr) return 0;
     int n = 0;

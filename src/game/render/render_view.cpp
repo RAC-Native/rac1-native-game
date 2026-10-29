@@ -137,10 +137,10 @@ std::vector<HudNote> g_hud_notes;                      // render_view_hud_note's
 }  // namespace
 
 // orig: (host) see render_view.h
-bool render_view_hud_wide() { return g_hud_aspect > 4.0f / 3.0f && g_view_widen > 1.0f; }
+bool render_view_hud_wide() { return g_hud_aspect > 4.0f / 3.0f && std::max(g_view_widen, g_view_draw_widen) > 1.0f; }
 float render_view_hud_shift(float fb_w) {
     if (!render_view_hud_wide()) return 0.0f;
-    const float widen = std::min(g_hud_aspect * 0.75f, g_view_widen);  // (the HUD's width over the 4:3 frame's)
+    const float widen = std::min(g_hud_aspect * 0.75f, std::max(g_view_widen, g_view_draw_widen));  // (the HUD's width over the 4:3 frame's)
     return widen > 1.0f ? fb_w * 0.5f * (widen - 1.0f) : 0.0f;
 }
 void render_view_hud_note(uint32_t first, uint32_t end, uint8_t side) {

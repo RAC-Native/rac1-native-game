@@ -1771,7 +1771,11 @@ void controls_save() {
 class HostControls final : public rac1::ControlsHost {
 public:
     std::string row_value(int row, int device) override { return hi::row_label(g_bindings, row, dev(device), style()); }
+#if defined(__WIIU__)
+    std::string pad_name() override { return "Wii U GamePad / Pro Controller"; }
+#else
     std::string pad_name() override { return g_pad_name; }
+#endif
     void rebind_begin(int row, int device) override { g_remap.begin(row, dev(device)); }
     bool rebind_waiting(int* step) override {
         if (step != nullptr) *step = g_remap.step();
@@ -1823,7 +1827,11 @@ public:
 private:
     static hi::Device dev(int d) { return d == 0 ? hi::Device::kPad : hi::Device::kKeyboardMouse; }
     // the pad's labels: its own (a PlayStation pad and no pad: the game's button glyphs)
+#if defined(__WIIU__)
+    static hi::PadStyle style() { return hi::PadStyle::kNintendo; }
+#else
     static hi::PadStyle style() { return g_pad_name.empty() ? hi::PadStyle::kPlayStation : hi::pad_style(g_pad_name); }
+#endif
 };
 HostControls g_host_controls;
 
@@ -1919,6 +1927,7 @@ void pad_packet(GLFWwindow* win, uint64_t frame, int pre = -1) {
         ly = o.ly;
         rx = o.rx;
         ry = o.ry;
+        extra = {o.look_x, o.look_y, o.aim_x, o.aim_y, o.next_item, o.prev_item};
     }
 #endif
     // (testing) RAC1_SIM_MOUSE=<from>:<to>:<dx>:<dy>[;...]: the mouse moved dx, dy pixels a game frame in the game frames
@@ -2508,7 +2517,11 @@ int main(int argc, char** argv) {
     }
     if (!headless) host_input_init(window);  // the controls: the controller database, the bindings
     // the Controls page's host side; its changes saved in a window, headless only to an explicit RAC1_CONTROLS_FILE
+#if defined(__WIIU__)
+    g_controls_save = !rac1::g_advanced_disabled || std::getenv("RAC1_CONTROLS_FILE") != nullptr;
+#else
     g_controls_save = !headless || std::getenv("RAC1_CONTROLS_FILE") != nullptr;
+#endif
     if (headless && g_controls_save) g_bindings = hi::load_or_create(hi::controls_path());
     rac1::controls_set_host(&g_host_controls);
     if (gl_host) {
@@ -2723,7 +2736,11 @@ int main(int argc, char** argv) {
     // host stands in for the console's settings (host_language.h): the language the player last
     // chose in the game, else the system's; English in a headless run. Then the debug menu's saved
     // choice, then RAC1_LANGUAGE.
+#if defined(__WIIU__)
+    sw(0x0015ed88, rac1::host_language::console_language(!rac1::g_advanced_disabled));
+#else
     sw(0x0015ed88, rac1::host_language::console_language(!headless));
+#endif
 #ifdef RAC1_DEVTOOLS
     if (!headless || std::getenv("RAC1_DEVMENU_SHOT") != nullptr) rac1::devtools::dev_language_boot();
 #endif
@@ -3488,6 +3505,17 @@ int main(int argc, char** argv) {
                         }
                     if (replica) {
                         if (!skips.empty()) gs.set_chain_skips(std::move(skips));
+#if defined(__WIIU__)
+                        if (!prev_chain && !wiiu_menu_mode) {
+                            if (auto layers = render_view_layers(); !layers.empty()) gs.set_chain_layers(std::move(layers));
+                            if (const auto notes = render_view_hud_notes(); !notes.empty()) {
+                                std::vector<rac1::gs::Gs::HudRange> hr;
+                                hr.reserve(notes.size());
+                                for (const HudNote& n : notes) hr.push_back({n.first, n.last, n.side});
+                                gs.set_chain_hud(std::move(hr));
+                            }
+                        }
+#endif
                         gs.set_screen_area(0, 0, 0);
                         gs.vif1_chain(start, end);
                     } else {
@@ -3498,6 +3526,13 @@ int main(int argc, char** argv) {
                             ci.skips.push_back(MrpChainInput::Skip{r.first, r.last, static_cast<uint32_t>(r.mscals.size()), r.host_3d, r.moby, true});
                         ci.regs_tag = world_first;
 #if defined(__WIIU__)
+                        if (!prev_chain && !wiiu_menu_mode) {
+                            if (auto layers = render_view_layers(); !layers.empty()) ci.layers = std::move(layers);
+                            if (const auto notes = render_view_hud_notes(); !notes.empty()) {
+                                ci.hud.reserve(notes.size());
+                                for (const HudNote& n : notes) ci.hud.push_back({n.first, n.last, n.side});
+                            }
+                        }
                         if (wiiu_vendor_pic)
                             for (MrpChainInput::Skip& s : ci.skips)
                                 if (s.moby) s.dry = false;
