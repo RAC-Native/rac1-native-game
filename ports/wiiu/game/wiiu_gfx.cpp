@@ -57,6 +57,8 @@
 #include <cstring>
 #include <vector>
 
+#include "gx2_counters.h"  // (after every GX2 header: the frame's GX2 work counted)
+
 namespace {
 bool g_on = false;
 WHBGfxShaderGroup g_test{};
@@ -236,10 +238,10 @@ namespace {
 // the main thread's wait for the game thread after its drawing, kTmGameSteps (16) the steps the game thread ran beside the drawing - not
 // the main thread's time: out of the sum, its own figure on the line)
 enum TimeSlot { kTmChain, kTmMobyPrep, kTmWorldPrep, kTmSkyCapture, kTmWorldJoin, kTmGpuWait, kTmJoin, kTmBegin, kTmSky, kTmWorld, kTmMobys, kTm2d, kTmFinishTv, kTmDrc, kTmFinish,
-                kTmGameWait, kTmGameSteps, kTm2dBuild, kTmN };
+                kTmGameWait, kTmGameSteps, kTm2dBuild, kTmFxPrep, kTmFx, kTmN };
 const char* const kTmName[kTmN] = {"chain start", "mobys' prepare", "world's prepare", "sky's capture", "world's worker join", "GPU wait (the frame before)", "chain join",
                                    "begin (swap wait)", "sky draws", "world draws", "moby draws", "2D draws", "TV finish", "GamePad", "finish", "game thread join",
-                                   "game steps beside the drawing", "2D build (before the GPU wait)"};
+                                   "game steps beside the drawing", "2D build (before the GPU wait)", "effects' prepare", "effects' draws"};
 uint64_t g_tm_gt_frames = 0;  // (the window's host frames whose steps ran on the game thread: kTmGameSteps reported)
 double g_tm[kTmN] = {}, g_tm_total = 0.0;
 double g_tm_mark[kTmN] = {};  // (the stages' sums at the host frame's start: a hitch's own share)
@@ -260,6 +262,51 @@ void rac1_wiiu_time(int slot, double ms) {
     if (tm_on() && slot == kTmGameSteps) ++g_tm_gt_frames;
 }
 
+// (2026-10-29, gx2_counters.h) the frame's GX2 work: the counters, the GX2DrawDone sites
+rac1::gx2c::Counters rac1::gx2c::g;
+namespace {
+struct DrawDoneSite {
+    const char* file;
+    int line;
+    uint32_t n;
+};
+constexpr int kDdSites = 32;
+DrawDoneSite g_dd_sites[kDdSites] = {};
+int g_dd_nsites = 0;
+uint32_t g_dd_other = 0;
+// the window's counts per host frame on the log ("[gx2]") and the menu's lines; the counters reset
+void gx2c_window(int frames, std::vector<std::string>& menu) {
+    using rac1::gx2c::g;
+    const double n = frames > 0 ? frames : 1;
+    std::printf("[gx2] per host frame: GX2DrawDone %.1f, GX2Invalidate %.1f, draws %.1f, DCFlushRange %.1f (%.1f KB); DrawDone sites:", g.draw_done / n,
+                g.invalidate / n, g.draws / n, g.flushes / n, static_cast<double>(g.flush_bytes) / 1024.0 / n);
+    for (int i = 0; i < g_dd_nsites; ++i) {
+        if (g_dd_sites[i].n == 0) continue;
+        const char* base = std::strrchr(g_dd_sites[i].file, '/');
+        std::printf(" %s:%d %.2f,", base != nullptr ? base + 1 : g_dd_sites[i].file, g_dd_sites[i].line, g_dd_sites[i].n / n);
+        g_dd_sites[i].n = 0;
+    }
+    std::printf(" other %.2f\n", g_dd_other / n);
+    char b[96];
+    std::snprintf(b, sizeof b, "DrawDone %.1f  Inval %.1f  draws %.0f", g.draw_done / n, g.invalidate / n, g.draws / n);
+    menu.emplace_back(b);
+    std::snprintf(b, sizeof b, "flushed %.0f KB a frame (%.0f calls)", static_cast<double>(g.flush_bytes) / 1024.0 / n, g.flushes / n);
+    menu.emplace_back(b);
+    g = {};
+    g_dd_other = 0;
+}
+}  // namespace
+void rac1::gx2c::note_draw_done(const char* file, int line) {
+    for (int i = 0; i < g_dd_nsites; ++i) {
+        if (g_dd_sites[i].line == line && g_dd_sites[i].file == file) {
+            ++g_dd_sites[i].n;
+            return;
+        }
+    }
+    if (g_dd_nsites < kDdSites) g_dd_sites[g_dd_nsites++] = {file, line, 1};
+    else ++g_dd_other;
+}
+
 // (testing, the timing on - RAC1_WIIU_TIMING=1 or the debug menu -, 2026-10-28: the GPU's time) the TV frame's passes timed by the GPU
 // itself: at each mark two samples of the GPU's clock, a bottom-of-pipe one (GX2SampleBottomGPUCycle: written once everything before it
 // has been drawn) and a top-of-pipe one (GX2SampleTopGPUCycle: written when the command processor reaches it), into a ring of four
@@ -269,8 +316,8 @@ void rac1_wiiu_time(int slot, double ms) {
 extern "C" void GX2SampleTopGPUCycle(uint64_t* result);  // (gx2.rpl: wut has the imports, not the declarations)
 extern "C" void GX2SampleBottomGPUCycle(uint64_t* result);
 namespace {
-enum GpuMark { kGmStart, kGmClear, kGmZclear, kGmSky, kGmWorld, kGmMobys, kGmUpscale, kGm2d, kGmTvCopy, kGmDrc, kGmSwap, kGmN };
-const char* const kGmName[kGmN] = {"start", "clear (WHB)", "depth clear", "sky", "world", "mobys", "3D upscale", "2D", "TV copy", "GamePad", "swap"};
+enum GpuMark { kGmStart, kGmClear, kGmZclear, kGmSky, kGmWorld, kGmMobys, kGmFx, kGmUpscale, kGm2d, kGmTvCopy, kGmDrc, kGmSwap, kGmN };
+const char* const kGmName[kGmN] = {"start", "clear (WHB)", "depth clear", "sky", "world", "mobys", "effects", "3D upscale", "2D", "TV copy", "GamePad", "swap"};
 struct alignas(64) GpuSlot {  // (a cache line each: the GPU writes it, the CPU only reads it - no CPU line written back over it)
     uint64_t v;
     uint8_t pad[56];
@@ -951,7 +998,9 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
     }
     if (g_world_ready) {
         rac1::mrp_world_gx2_draw_fx(cb3, db3, vp3);
+        if (g_tm_draw) gpu_mark(kGmFx);
         rac1::gx2_flush(1);
+        dlap(kTmFx);
     }
     if (s3 != nullptr) {  // (the scaled 3D over the TV's frame, the TV's buffers bound again for the 2D)
         s3_blit(cb, db, vp3, vp);
@@ -1088,6 +1137,7 @@ void wiiu_gfx_frame() {
                 }
                 g_tm_gt_frames = 0;
                 gpu_window(g_menu_stats);  // (the GPU's own times of the TV frame's passes: "[gpu]")
+                gx2c_window(window, g_menu_stats);  // (the frame's GX2 work: "[gx2]")
                 // the menu's game page: the game code's own stages (the host profiler's zones, ms a host frame), the biggest first
                 if (debug_menu_wanted() && rac1::prof::history_size() > 0) {
                     const rac1::prof::Summary sm = rac1::prof::summarize(window);
@@ -1132,8 +1182,9 @@ void wiiu_gfx_frame() {
     if (prebuild_on && chain_2d) {
         rac1::mrp_chain_join();  // (the frame's chain read on the reader's worker)
         rac1::mrp_world_wiiu_chain_joined();  // (its registers kept for the next frame's world)
-        rac1::mrp_fx_wiiu_prepare(rac1::mrp_chain_frame(), rac1::g_gx2_view.vp);
         lap(kTmJoin);
+        rac1::mrp_fx_wiiu_prepare(rac1::mrp_chain_frame(), rac1::g_gx2_view.vp);
+        lap(kTmFxPrep);
         static const int s_2d = std::getenv("RAC1_WIIU_2D") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_2D")) : 2;
         if (!has_movie && g_m2d_ready && g_menu_draw_2d && s_2d == 2) {
             const GX2ColorBuffer* tv = WHBGfxGetTVColourBuffer();

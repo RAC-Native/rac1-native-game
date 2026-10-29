@@ -691,7 +691,12 @@ void render_frame() {
     if (lw(EN + 0x34) != 0 && lw(OV(0x0015f430)) != 0) draw_list_block_run(1);
     if ((flags() & 0x10) != 0) {
         if (g_moby_vu1_pass) {
+#if defined(__WIIU__)
+            // ((2026-10-29) no shadow run on the Wii U: the real pass below is run with the LOD slider and the widened frustum itself
+            // (mrp_lod_moby_widen_real) - the shadow run drew the same mobys a second time, ~6.5 ms a host frame on Veldin's game thread)
+#else
             mrp_lod_moby_shadow(moby_pass);  // (the MRP's LOD slider / widened view, the memory put back)
+#endif
             RAC1_PROF_ZONE(kGameMobyPass);
 #if defined(__WIIU__)
             // (the Wii U's widescreen, render_view.h: the real pass's frustum widened - no shadow run -, unless the mobys are kept 4:3)

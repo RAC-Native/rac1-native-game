@@ -64,6 +64,8 @@
 #include <utility>
 #include <vector>
 
+#include "gx2_counters.h"  // (after every GX2 header: the frame's GX2 work counted)
+
 namespace rac1 {
 
 namespace {

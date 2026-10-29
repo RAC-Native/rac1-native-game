@@ -280,7 +280,13 @@ static bool test_zero_fb(uint64_t frame) { return g_test_zero_fb_to != 0 && fram
 // the longest game step of the last host frame; a step longer than kStallMs is a stall (a load) the host does
 // not catch up
 double g_last_steps_ms = 0.0;
+#if defined(__WIIU__)
+// ((2026-10-29) the Wii U: a drawn game step - the last of a host frame, RAC1_DRAW_LAST_STEP - took 50-60 ms on Novalis, every host frame
+// counted as a stall: one game frame a host frame, the game in slow motion at ~11 game frames a second. A load's step takes far longer)
+constexpr double kStallMs = 250.0;
+#else
 constexpr double kStallMs = 50.0;
+#endif
 // (testing) RAC1_IOP_MIRROR_TEST=<vsync>:<n>,... (or 1): a headless run drives the host's mirror of the IOP itself, on
 // the game's thread, with no audio device: each vsync replayed on it (snd989_mirror_next) and, at the vsyncs listed, n frames
 // rendered by the mirror alone first (a stall of the game's thread, as the audio thread plays through a load). Each change of
