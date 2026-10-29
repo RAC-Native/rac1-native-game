@@ -618,6 +618,8 @@ void state_packet(SceneFrame& f, const std::array<uint32_t, 4>& tag, const std::
 void static_draws(SceneFrame& f, const StaticFrame& sf, const StaticLevel& sl, int kind, int view, const float shrub_fog[4], int32_t tex_at = -1) {
     const uint32_t tex_base = tex_at >= 0 ? static_cast<uint32_t>(tex_at) : static_cast<uint32_t>(f.tex.size());
     if (tex_at < 0) f.tex.insert(f.tex.end(), sl.tex.begin(), sl.tex.end());
+    f.packets.reserve(f.packets.size() + sf.draws[kind].size());
+    if (f.insts.capacity() < sf.insts.size()) f.insts.reserve(sf.insts.size());
     std::vector<int32_t> map(sf.insts.size(), -1);
     for (const StaticDraw& d : sf.draws[kind]) {
         const StaticInst& si = sf.insts[d.inst];
@@ -1904,7 +1906,7 @@ void scene_static_consts(SceneStaticConsts& k) {
 
 // orig: (host) see mrp_world_wiiu.inc
 bool scene_from_static_k(const StaticFrame& sf, const StaticLevel& sl, const std::array<float, 16>& a, const std::array<float, 3>& camera, const TfragLevel* tl,
-                         const std::vector<std::pair<uint32_t, uint8_t>>* tdraws, const SceneStaticConsts& k, SceneFrame& f) {
+                         const std::vector<std::pair<uint32_t, uint8_t>>* tdraws, const SceneStaticConsts& k, SceneFrame& f, const SceneFrame* sky) {
     // (host) the level's texture table: kept from the frame before when it is this level's (the same build), else copied once - the
     // ties and shrubs both index it at 0 (it was copied for each kind on every frame: thousands of qwords)
     const uint32_t kept_gen = f.static_tex_gen, kept_n = f.static_tex_n;
@@ -1920,6 +1922,12 @@ bool scene_from_static_k(const StaticFrame& sf, const StaticLevel& sl, const std
     f.static_tex_base = 0;
     f.static_tex_gen = sl.gen;
     f.static_tex_n = ntex;
+    const size_t n_sky = sky != nullptr ? sky->packets.size() : 0;
+    const size_t n_tdraws = (tl != nullptr && tdraws != nullptr && k.tfrag_vu) ? tdraws->size() : 0;
+    const size_t n_sdraws = (sf.on[0] ? sf.draws[0].size() + 1 : 0) + (sf.on[1] ? sf.draws[1].size() : 0) + 32;
+    f.packets.reserve(n_sky + n_tdraws + n_sdraws);
+    f.insts.reserve(sf.insts.size());
+    if (sky != nullptr) sky_prepend(f, *sky);
     // the tfrags first (the tfrag pass's range comes before the tie and shrub passes' in the chain: the walk emits the host's tfrag
     // draws at its end, before the host's ties / shrubs)
     if (tl != nullptr && tdraws != nullptr && k.tfrag_vu) tfrag_host_draws(f, *tl, *tdraws, k.tview, k.tconsts);

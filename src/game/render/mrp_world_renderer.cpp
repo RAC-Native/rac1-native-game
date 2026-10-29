@@ -2235,12 +2235,20 @@ void build_triangles(Frame& F) {
     F.draws.clear();
     F.epochs.clear();
     F.inst_of.assign(F.scene.insts.size(), 0xffffffffu);
-    F.tf = TfragGpuFrame{};
+    F.tf.draws.clear();
+    F.tf.views.clear();
+    F.tf.vu_views.clear();
+    F.tf.consts.clear();
+    F.tf.runs.clear();
+    F.tf.nverts = 0;
+    F.tf.nidx = 0;
     F.tf_expect.clear();
     F.tf_cpu.clear();
     F.tf_ranges.clear();
+#if !defined(__WIIU__)
     F.tf_v.clear();
     F.tf_idx.clear();
+#endif
     F.tf_ms = 0;
     F.sky_ms = 0;
     for (const auto& v : F.scene.tfrag.views) F.tf.vu_views.insert(F.tf.vu_views.end(), v.begin(), v.end());
@@ -2449,88 +2457,111 @@ int32_t ftoi_sat(float v) {
 // (`T`, `cd`: inputs frozen after the game's update), the level and the colours' mirror, writes `v` / `idx` alone (a worker can run
 // it); under the EE's float rules whatever the thread's (EeFloatScope). The Wii U's tfrags (no compute shader); on the PC
 // RAC1_MRPW_TFRAG_CPU (testing)
-void tfrag_frame_cpu(const TfragGpuFrame& T, const std::vector<Frame::TfragCpuDraw>& cd, const TfragLevel& L, const TfragColours& C, std::vector<GpuV>& v,
-                     std::vector<uint32_t>& idx) {
-    const EeFloatScope fenv;
-    v.assign(T.nverts, GpuV{});
-    idx.assign(T.nidx, 0u);
-    static std::vector<TfragCpuVertex> out;  // (the game's thread only for now: per thread when it moves to a worker)
-    static std::vector<uint8_t> adc;
-    for (size_t di = 0; di < T.draws.size() && di < cd.size(); ++di) {
-        const TfragGpuDraw& d = T.draws[di];
-        const Frame::TfragCpuDraw& h = cd[di];
-        if (h.plan == nullptr || h.entry >= L.entries.size()) continue;
-        const TfragEntryGpu& e = L.entries[h.entry];
-        const TfragPlan& pl = *h.plan;
-        const uint32_t nv = static_cast<uint32_t>(pl.verts.size());
-        if (d.vbase > T.nverts || nv > T.nverts - d.vbase || d.ibase > T.nidx || 3 * pl.ntris > T.nidx - d.ibase || (static_cast<size_t>(d.view) + 1) * 16 > T.vu_views.size() ||
-            (static_cast<size_t>(d.consts) + 1) * 56 > T.consts.size() || (static_cast<size_t>(d.wview) + 1) * 16 > T.views.size() ||
-            static_cast<size_t>(d.rbase) + pl.runs.size() > T.runs.size() / 4 || (d.colour != 0xffffffffu && static_cast<size_t>(d.colour) + d.col_count > C.mirror.size()))
-            continue;
-        const uint32_t* K = T.consts.data() + 56 * static_cast<size_t>(d.consts);
-        const uint32_t* col = d.colour != 0xffffffffu ? C.mirror.data() + d.colour : nullptr;
-        if (!tfrag_exec_cpu(e, pl, h.lod, col, T.vu_views.data() + 16 * static_cast<size_t>(d.view), K, out, &adc) || out.size() != nv) continue;
-        const bool caster = (d.flags & 0x80000000u) != 0;
-        const int form = pl.form == 4 ? 3 : pl.form;
-        float c0[4], c5w;
-        std::memcpy(c0, K, 16);
-        std::memcpy(&c5w, K + 4 * 5 + 3, 4);
-        const double* M = T.views.data() + 16 * static_cast<size_t>(d.wview);
-        uint32_t tri = 0;
-        for (uint32_t j = 0; j < nv; ++j) {
-            const TfragCpuVertex& o = out[j];
-            const TfragPlanVertex& pv = pl.verts[j];
-            bool a = adc[j] != 0;
-            uint32_t xyzf3 = o.xyzf[3];
-            if (caster && a) {  // (F as the vertex's without the guard band: P.w + C5.w clamped to C0.y..C0.z, no C0.w)
-                a = false;
-                float fw = o.hp[3] + c5w;
-                if (form == 3) {
-                    fw = c0[2] < fw ? c0[2] : fw;
-                    fw = fw < c0[1] ? c0[1] : fw;
-                } else {
-                    fw = fw < c0[1] ? c0[1] : fw;
-                    fw = c0[2] < fw ? c0[2] : fw;
-                }
-                xyzf3 = static_cast<uint32_t>(ftoi_sat(fw * 16.0f));
+uint32_t tfrag_draw_cpu_one(const TfragGpuFrame& T, const std::vector<Frame::TfragCpuDraw>& cd, const TfragLevel& L, const TfragColours& C, std::vector<GpuV>& v,
+                            std::vector<uint32_t>& idx, size_t di, int slot) {
+    static std::vector<TfragCpuVertex> out_slots[2];
+    static std::vector<uint8_t> adc_slots[2];
+    std::vector<TfragCpuVertex>& out = out_slots[slot & 1];
+    std::vector<uint8_t>& adc = adc_slots[slot & 1];
+    const TfragGpuDraw& d = T.draws[di];
+    const Frame::TfragCpuDraw& h = cd[di];
+    if (h.plan == nullptr || h.entry >= L.entries.size()) return 0;
+    const TfragEntryGpu& e = L.entries[h.entry];
+    const TfragPlan& pl = *h.plan;
+    const uint32_t nv = static_cast<uint32_t>(pl.verts.size());
+    auto zero_out = [&] {
+        if (d.vbase <= T.nverts && nv <= T.nverts - d.vbase) std::fill_n(v.data() + d.vbase, nv, GpuV{});
+        if (d.ibase <= T.nidx && 3 * pl.ntris <= T.nidx - d.ibase) std::fill_n(idx.data() + d.ibase, 3 * pl.ntris, 0u);
+    };
+    if (d.vbase > T.nverts || nv > T.nverts - d.vbase || d.ibase > T.nidx || 3 * pl.ntris > T.nidx - d.ibase || (static_cast<size_t>(d.view) + 1) * 16 > T.vu_views.size() ||
+        (static_cast<size_t>(d.consts) + 1) * 56 > T.consts.size() || (static_cast<size_t>(d.wview) + 1) * 16 > T.views.size() ||
+        static_cast<size_t>(d.rbase) + pl.runs.size() > T.runs.size() / 4 || (d.colour != 0xffffffffu && static_cast<size_t>(d.colour) + d.col_count > C.mirror.size())) {
+        zero_out();
+        return 0;
+    }
+    const uint32_t* K = T.consts.data() + 56 * static_cast<size_t>(d.consts);
+    const uint32_t* col = d.colour != 0xffffffffu ? C.mirror.data() + d.colour : nullptr;
+    if (!tfrag_exec_cpu_fast(e, pl, h.lod, col, T.vu_views.data() + 16 * static_cast<size_t>(d.view), K, out, &adc, false, slot) || out.size() != nv) {
+        zero_out();
+        return 0;
+    }
+    const bool caster = (d.flags & 0x80000000u) != 0;
+    const int form = pl.form == 4 ? 3 : pl.form;
+    float c0[4], c5w;
+    std::memcpy(c0, K, 16);
+    std::memcpy(&c5w, K + 4 * 5 + 3, 4);
+    const double* M = T.views.data() + 16 * static_cast<size_t>(d.wview);
+    uint32_t tri = 0, adc_tris = 0;
+    for (uint32_t j = 0; j < nv; ++j) {
+        const TfragCpuVertex& o = out[j];
+        const TfragPlanVertex& pv = pl.verts[j];
+        bool a = adc[j] != 0;
+        uint32_t xyzf3 = o.xyzf[3];
+        if (caster && a) {  // (F as the vertex's without the guard band: P.w + C5.w clamped to C0.y..C0.z, no C0.w)
+            a = false;
+            float fw = o.hp[3] + c5w;
+            if (form == 3) {
+                fw = c0[2] < fw ? c0[2] : fw;
+                fw = fw < c0[1] ? c0[1] : fw;
+            } else {
+                fw = fw < c0[1] ? c0[1] : fw;
+                fw = c0[2] < fw ? c0[2] : fw;
             }
-            GpuV& g = v[d.vbase + j];
-            const double h0 = o.hp[0], h1 = o.hp[1], h2 = o.hp[2], h3 = o.hp[3];
-            for (int r = 0; r < 4; ++r) g.wp[r] = d2fz(M[r] * h0 + M[4 + r] * h1 + M[8 + r] * h2 + M[12 + r] * h3);
-            float ss, tt, qq;
-            std::memcpy(&ss, &o.stq[0], 4);
-            std::memcpy(&tt, &o.stq[1], 4);
-            std::memcpy(&qq, &o.stq[2], 4);
-            const float kk = qq * o.hp[3];
-            const float sgn = kk < 0.0f ? -1.0f : 1.0f;
-            const float Wg = o.hp[3] * sgn;
-            const float ws = Wg != 0.0f ? Wg : 1.0f;
-            g.stq[0] = ss * ws;
-            g.stq[1] = tt * ws;
-            g.stq[2] = qq * ws;
-            g.lodq = qq;
-            for (int l = 0; l < 4; ++l) g.rgba[l] = static_cast<uint8_t>(o.rgba[static_cast<size_t>(l)] & 0xffu);
-            g.fog = static_cast<float>((xyzf3 >> 4) & 0xffu);
-            const uint32_t* run = T.runs.data() + 4 * (static_cast<size_t>(d.rbase) + pv.run);
-            g.word = run[0];
-            g.layer = run[1];
-            g.state[0] = run[2];
-            g.state[1] = run[3];
-            if (pv.pos >= 2) {
-                uint32_t* t = idx.data() + d.ibase + 3 * tri++;
-                const uint32_t c = d.vbase + j;
-                t[0] = a ? c : c - 2;
-                t[1] = a ? c : c - 1;
-                t[2] = c;
-            }
+            xyzf3 = static_cast<uint32_t>(ftoi_sat(fw * 16.0f));
+        }
+        GpuV& g = v[d.vbase + j];
+        const double h0 = o.hp[0], h1 = o.hp[1], h2 = o.hp[2], h3 = o.hp[3];
+        for (int r = 0; r < 4; ++r) g.wp[r] = d2fz(M[r] * h0 + M[4 + r] * h1 + M[8 + r] * h2 + M[12 + r] * h3);
+#if !defined(__WIIU__)
+        g.vu[0] = g.vu[1] = g.vu[2] = g.vu[3] = 0.0f;
+#endif
+        float ss, tt, qq;
+        std::memcpy(&ss, &o.stq[0], 4);
+        std::memcpy(&tt, &o.stq[1], 4);
+        std::memcpy(&qq, &o.stq[2], 4);
+        const float kk = qq * o.hp[3];
+        const float sgn = kk < 0.0f ? -1.0f : 1.0f;
+        const float Wg = o.hp[3] * sgn;
+        const float ws = Wg != 0.0f ? Wg : 1.0f;
+        g.stq[0] = ss * ws;
+        g.stq[1] = tt * ws;
+        g.stq[2] = qq * ws;
+        g.lodq = qq;
+        for (int l = 0; l < 4; ++l) g.rgba[l] = static_cast<uint8_t>(o.rgba[static_cast<size_t>(l)] & 0xffu);
+        g.fog = static_cast<float>((xyzf3 >> 4) & 0xffu);
+        const uint32_t* run = T.runs.data() + 4 * (static_cast<size_t>(d.rbase) + pv.run);
+        g.word = run[0];
+        g.layer = run[1];
+        g.state[0] = run[2];
+        g.state[1] = run[3];
+        if (pv.pos >= 2) {
+            uint32_t* t = idx.data() + d.ibase + 3 * tri++;
+            const uint32_t c = d.vbase + j;
+            t[0] = a ? c : c - 2;
+            t[1] = a ? c : c - 1;
+            t[2] = c;
+            if (a) ++adc_tris;
         }
     }
+    return adc_tris;
+}
+
+void tfrag_frame_cpu(const TfragGpuFrame& T, const std::vector<Frame::TfragCpuDraw>& cd, const TfragLevel& L, const TfragColours& C, std::vector<GpuV>& v,
+                     std::vector<uint32_t>& idx, uint64_t* adc_out = nullptr) {
+    const EeFloatScope fenv;
+    v.resize(T.nverts);
+    idx.resize(T.nidx);
+    uint64_t adc_sum = 0;
+    for (size_t di = 0; di < T.draws.size() && di < cd.size(); ++di) {
+        adc_sum += tfrag_draw_cpu_one(T, cd, L, C, v, idx, di, 0);
+    }
+    if (adc_out != nullptr) *adc_out += adc_sum;
 }
 
 // orig: (host) the frame's CPU route run (tfrag_frame_cpu into F.tf_v / F.tf_idx), timed, its counts in the stats
 void tfrag_cpu_run(Frame& F) {
     const double t0 = now_ms();
-    tfrag_frame_cpu(F.tf, F.tf_cpu, g_tlevel, g_tcols, F.tf_v, F.tf_idx);
+    tfrag_frame_cpu(F.tf, F.tf_cpu, g_tlevel, g_tcols, F.tf_v, F.tf_idx, &g_st.tc_adc);
     const double ms = now_ms() - t0;
     F.tf_ms = ms;
     ++g_st.tc_frames;
@@ -2539,8 +2570,6 @@ void tfrag_cpu_run(Frame& F) {
     g_st.tc_tris += F.tf.nidx / 3;
     g_st.tc_ranges += F.tf_ranges.size();
     for (const Batch& b : F.batches) g_st.tc_batches += b.tfrag ? 1 : 0;
-    for (size_t t = 0; t + 2 < F.tf_idx.size(); t += 3)
-        if (F.tf_idx[t] == F.tf_idx[t + 2] && F.tf_idx[t + 1] == F.tf_idx[t + 2]) ++g_st.tc_adc;
     g_st.tc_ms += ms;
     g_st.tc_max = std::max(g_st.tc_max, ms);
 }
@@ -4563,7 +4592,8 @@ bool part_time_on() {
 
 // orig: (host) see mrp_world_sky.inc
 void mrp_world_wiiu_sky_capture(bool walk) {
-    if (prep_all_on()) mrp_world_wiiu_join();  // (the worker's last run, which reads the copy and adds its time, done)
+    mrp_world_wiiu_join();  // (the last run, which reads the copy and the sky host model, done)
+    mrp_world_wiiu_tfrag_join();
     g_sky_cap_fresh = false;
     g_sky_stream_fresh = false;
     g_sky_cap_ms = 0.0;
@@ -4572,18 +4602,12 @@ void mrp_world_wiiu_sky_capture(bool walk) {
         return;
     }
     if (sky_host_pending()) {  // ((2026-10-28) the host sky, mrp_sky_host.inc: the pass not run - its stream made here, run as a capture's)
-        if (!prep_all_on()) mrp_world_wiiu_join();  // (the build that reads the model done: a new level makes it again)
         const int id = world_level_id();
         const double t0 = now_ms();
         if (sky_host_stream(g_sky_stream, g_view_draw_widen > 1.0f ? g_view_draw_widen : 1.0f)) {
-            if (prep_all_on()) {
-                g_sky_stream_fresh = true;
-                g_sky_stream_level = id;
-            } else {
-                mrp_chain_join();  // (the reader's VU1 programs done: the stars' run on the same VU1 runtime)
-                g_sky_cap_fresh = sky_capture_run(g_sky_stream, g_sky_cap, id != g_sky_vu_level);
-                g_sky_vu_level = id;
-            }
+            mrp_chain_join();  // (already idle at orig_main.cpp:3559 before mrp_chain_start)
+            g_sky_cap_fresh = sky_capture_run(g_sky_stream, g_sky_cap, id != g_sky_vu_level);
+            g_sky_vu_level = id;
         }
         g_sky_cap_ms = now_ms() - t0;
         g_sky_cap_level = id;
@@ -4595,21 +4619,11 @@ void mrp_world_wiiu_sky_capture(bool walk) {
     if (r == nullptr) return;
     const int id = world_level_id();
     uint32_t outside = 0;
-    if (prep_all_on()) {
-        // ((2026-10-28) the range copied alone here - the tags' streams, the asset, its entries, A -, its codes run by the prepare's worker
-        // once the chain's reader is done with VU1: mrp_world_wiiu.inc sky_capture_copy / sky_capture_run)
-        const double t0 = now_ms();
-        g_sky_stream_fresh = sky_capture_copy(r->first, r->end, scene_addrs(), g_sky_stream);
-        g_sky_stream_level = id;
-        outside = g_sky_stream.outside;
-        g_sky_cap_ms = now_ms() - t0;
-    } else {
-        mrp_chain_join();  // (the reader's VU1 programs done: the capture's run on the same VU1 runtime)
-        const double t0 = now_ms();
-        g_sky_cap_fresh = sky_capture(r->first, r->end, scene_addrs(), g_sky_cap, id != g_sky_vu_level, &outside);
-        g_sky_vu_level = id;
-        g_sky_cap_ms = now_ms() - t0;
-    }
+    mrp_chain_join();  // (already idle at orig_main.cpp:3559 before mrp_chain_start)
+    const double t0 = now_ms();
+    g_sky_cap_fresh = sky_capture(r->first, r->end, scene_addrs(), g_sky_cap, id != g_sky_vu_level, &outside);
+    g_sky_vu_level = id;
+    g_sky_cap_ms = now_ms() - t0;
     g_sky_cap_level = id;
     static uint64_t told = 0;
     if (outside != 0 && told++ < 4) std::printf("[mrpw] the sky's capture: %u tags outside the sky's range taken as the sky's\n", outside);
@@ -4617,6 +4631,7 @@ void mrp_world_wiiu_sky_capture(bool walk) {
 
 void mrp_world_wiiu_prepare(bool active) {
     mrp_world_wiiu_join();  // (the frame before's second half, if it was not drawn)
+    mrp_world_wiiu_tfrag_join();
     vis_pending_apply();    // (the worker's last culling's marks: the game thread is joined)
     if (g_pages.misses != 0) {  // (a run read outside the pages - zeros there -: noted again, eight times at most)
         if (g_pages_renotes < 8) std::printf("[mrpw] the worker's culling read %u times outside its EE pages: noted again\n", g_pages.misses);
@@ -4626,7 +4641,6 @@ void mrp_world_wiiu_prepare(bool active) {
     g_sky_resolved_on = false;
     const bool sky_fresh = g_sky_cap_fresh;  // (this host frame's capture only)
     g_sky_cap_fresh = false;
-    const bool stream_fresh = g_sky_stream_fresh;
     g_sky_stream_fresh = false;
     Frame& F = g_frame;
     F.active = false;
@@ -4762,13 +4776,11 @@ void mrp_world_wiiu_prepare(bool active) {
         for (uint32_t k = 0; k < 16; ++k) in.a[k] = lwc1(ad.a + 4 * k);
         for (uint32_t k = 0; k < 3; ++k) in.cam[k] = lwc1(ad.camera + 4 * k);
         scene_static_consts(in.k);
-        in.sky = stream_fresh && F.in.sky;
+        in.sky = sky_fresh && F.in.sky;
         {  // the sky's textures (sky_texture: the entries' texels in EE memory, decoded once a level) resolved here, as with the game thread
-            static SceneFrame sky_entries;
-            sky_entries.sky_tex = in.sky ? g_sky_stream.sky_tex : std::vector<std::pair<uint64_t, uint32_t>>{};
-            sky_entries.sky_asset = in.sky ? g_sky_stream.sky_asset : 0;
             g_sky_resolved.clear();
-            for (const auto& [t, e] : sky_entries.sky_tex) g_sky_resolved.emplace_back(t, sky_texture(g_level, sky_entries, t));
+            if (in.sky)
+                for (const auto& [t, e] : g_sky_cap.sky_tex) g_sky_resolved.emplace_back(t, sky_texture(g_level, g_sky_cap, t));
             g_sky_resolved_on = true;
         }
         part(3);
@@ -4838,8 +4850,7 @@ void mrp_world_wiiu_prepare(bool active) {
 namespace {
 // orig: (host) ((2026-10-28) RAC1_WIIU_PREP_ALL) the first half's computing part, on the worker - nothing of it reads EE memory: the ties' /
 // shrubs' frame from the snapshot's copy and the pages (static_frame_build_at), the tfrags' decisions (tfrag_decide_at), the scene
-// (scene_from_static_k), the sky's codes run (sky_capture_run: the chain's reader done with VU1 first) and its packets put first; the
-// relighting's marks kept for the next prepare (g_vis_pending). false: no scene (the frame not drawn)
+// (scene_from_static_k), and the sky's packets put first; the relighting's marks kept for the next prepare (g_vis_pending). false: no scene
 bool wiiu_prep_head() {
     Frame& F = g_frame;
     const HeadIn& in = g_head_in;
@@ -4872,16 +4883,9 @@ bool wiiu_prep_head() {
     }
     v.on = true;
     part(6);
-    const bool ok = scene_from_static_k(g_sframe, g_slevel, in.a, in.cam, in.tfrag ? &g_tlevel : nullptr, in.tfrag ? &g_tdecide : nullptr, in.k, F.scene);
+    const bool sky_ok = in.sky;
     part(7);
-    if (ok && in.sky) {
-        mrp_chain_wait_idle();  // (the chain's reader's VU1 programs done: the capture's private VU1 shares the VU1 runtime)
-        const bool reset = g_sky_stream_level != g_sky_vu_level;
-        g_sky_vu_level = g_sky_stream_level;
-        const double ts = now_ms();
-        if (sky_capture_run(g_sky_stream, g_sky_cap, reset)) sky_prepend(F.scene, g_sky_cap);
-        g_sky_cap_ms += now_ms() - ts;
-    }
+    const bool ok = scene_from_static_k(g_sframe, g_slevel, in.a, in.cam, in.tfrag ? &g_tlevel : nullptr, in.tfrag ? &g_tdecide : nullptr, in.k, F.scene, sky_ok ? &g_sky_cap : nullptr);
     part(8);
     if (part_time && ++g_part_wn == 120) {
         std::printf("[mrpw] the prepare on the worker, ms a call: the ties' / shrubs' frame %.2f, the tfrags' decisions %.2f, the scene %.2f, the sky's run %.2f\n",
@@ -4893,34 +4897,13 @@ bool wiiu_prep_head() {
     return ok;
 }
 
-// orig: (host) the preparation's second half - nothing of it reads EE memory: the scene's triangles (build_triangles), tfrag's CPU
-// route on its frozen inputs, the colours' changes taken (on the preparation's worker, or here with RAC1_WIIU_WORLD_ASYNC=0)
-void wiiu_prep_tail() {
-    Frame& F = g_frame;
-    const double t0 = now_ms();
-    build_triangles(F);
-    // the compute program's vertices / triangles made by the CPU route (tfrag_frame_cpu: on the game's thread for now; its inputs - the
-    // frame, the level, the colours' mirror - stay as they are until the next prepare, its output is the frame's: a worker core can take
-    // it), the colours' changes taken (no GPU copy of them here: the route reads the mirror)
-    if (!F.tf.draws.empty()) tfrag_cpu_run(F);
-    g_tcols.dirty.clear();
-    g_tcols.dirty_words.clear();
-    g_tcols.all_dirty = false;
-    for (int k = 0; k < 2; ++k) g_st.stat_draws[k] += F.scene.stat_draws[k];
-    ++g_st.scene_frames;
-    g_st.ms_build += now_ms() - t0 + g_ms_head;
-    g_ms_head = 0.0;
-    ++g_wiiu_serial;
-    F.active = true;
-}
-
 // The preparation's worker (the Wii U): a core of its own (RAC1_WIIU_PREP_CORE, default 0 - the chain's reader there is done by
 // then: the preparation waited for it -, -1 any), the game's thread's float rules (mffs at the dispatch, as mrp_chain.cpp's worker)
 struct PrepWorker {
     std::mutex m;
     std::condition_variable cv;
     PinnedThread th;
-    bool job = false, busy = false, quit = false;
+    bool job = false, tfrag_only = false, busy = false, quit = false;
     double fpscr = 0.0;
     ~PrepWorker() {
         {
@@ -4932,6 +4915,125 @@ struct PrepWorker {
     }
 };
 PrepWorker g_prep;
+bool g_prep_on_main_pending = false;
+double g_prep_on_main_fpscr = 0.0;
+std::atomic<size_t> g_tfrag_next_di{0};
+std::atomic<uint64_t> g_tfrag_adc_acc{0};
+std::atomic<uint64_t> g_tfrag_ns_acc{0};
+bool g_tfrag_pending = false;
+
+bool prep_on_main_on() {
+    static const bool on = std::getenv("RAC1_WIIU_PREP_ON_MAIN") == nullptr || std::atoi(std::getenv("RAC1_WIIU_PREP_ON_MAIN")) != 0;
+    return on;
+}
+bool tfrag_parallel_on() {
+    static const bool on = std::getenv("RAC1_WIIU_TFRAG_PARALLEL") == nullptr || std::atoi(std::getenv("RAC1_WIIU_TFRAG_PARALLEL")) != 0;
+    return on;
+}
+
+void tfrag_drain_draws(Frame& F, int slot, bool stop_when_chain_idle = false) {
+    const size_t n = std::min(F.tf.draws.size(), F.tf_cpu.size());
+    if (g_tfrag_next_di.load(std::memory_order_relaxed) >= n) return;
+    const auto t0 = std::chrono::steady_clock::now();
+    const EeFloatScope fenv;
+    uint64_t adc_local = 0;
+    for (;;) {
+        if (stop_when_chain_idle && mrp_chain_is_idle()) break;
+        const size_t di = g_tfrag_next_di.fetch_add(1, std::memory_order_relaxed);
+        if (di >= n) break;
+        adc_local += tfrag_draw_cpu_one(F.tf, F.tf_cpu, g_tlevel, g_tcols, F.tf_v, F.tf_idx, di, slot);
+    }
+    if (adc_local != 0) g_tfrag_adc_acc.fetch_add(adc_local, std::memory_order_relaxed);
+    const auto ns = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
+    g_tfrag_ns_acc.fetch_add(ns, std::memory_order_relaxed);
+}
+
+void ensure_prep_worker_started(PrepWorker& w);
+
+void tfrag_kick_worker_if_needed() {
+    if (!g_tfrag_pending) return;
+    const size_t n = std::min(g_frame.tf.draws.size(), g_frame.tf_cpu.size());
+    if (g_tfrag_next_di.load(std::memory_order_relaxed) >= n) return;
+    PrepWorker& w = g_prep;
+    std::lock_guard<std::mutex> lk(w.m);
+    if (w.busy) return;
+    ensure_prep_worker_started(w);
+    w.fpscr = g_prep_on_main_fpscr;
+    w.tfrag_only = true;
+    w.busy = true;
+    w.job = true;
+    w.cv.notify_all();
+}
+
+void wiiu_prep_tail();
+
+void ensure_prep_worker_started(PrepWorker& w) {
+    if (w.th.joinable()) return;
+    const char* ce = std::getenv("RAC1_WIIU_PREP_CORE");
+    const int core = ce != nullptr ? std::atoi(ce) : 0;
+    w.th.start(core, 16, "MRP world prep worker", [&w, core] {
+        std::printf("[mrpw] the world's preparation worker on core %u (RAC1_WIIU_PREP_CORE %d)\n", OSGetCoreId(), core);
+        std::unique_lock<std::mutex> l(w.m);
+        for (;;) {
+            w.cv.wait(l, [&w] { return w.job || w.quit; });
+            if (w.quit) return;
+            const bool tf_only = w.tfrag_only;
+            w.job = false;
+            w.tfrag_only = false;
+            __asm__ volatile("mtfsf 0xff, %0" : : "f"(w.fpscr));
+            l.unlock();
+            if (tf_only) {
+                tfrag_drain_draws(g_frame, 0, false);
+            } else {
+                if (!g_job_head || wiiu_prep_head()) wiiu_prep_tail();
+            }
+            l.lock();
+            w.busy = false;
+            w.cv.notify_all();
+        }
+    }, 512u * 1024u);
+}
+
+// orig: (host) the preparation's second half - nothing of it reads EE memory: the scene's triangles (build_triangles), tfrag's CPU
+// route on its frozen inputs, the colours' changes taken (on the preparation's worker, or here with RAC1_WIIU_WORLD_ASYNC=0)
+void wiiu_prep_tail() {
+    Frame& F = g_frame;
+    const double t0 = now_ms();
+    build_triangles(F);
+    // the compute program's vertices / triangles made by the CPU route (tfrag_frame_cpu: on the game's thread for now; its inputs - the
+    // frame, the level, the colours' mirror - stay as they are until the next prepare, its output is the frame's: a worker core can take
+    // it), the colours' changes taken (no GPU copy of them here: the route reads the mirror)
+    if (F.tf.draws.empty()) {
+        F.tf_v.clear();
+        F.tf_idx.clear();
+    } else if (prep_on_main_on() && tfrag_parallel_on() && g_wiiu_world_async) {
+        F.tf_v.resize(F.tf.nverts);
+        F.tf_idx.resize(F.tf.nidx);
+        g_tfrag_next_di.store(0, std::memory_order_relaxed);
+        g_tfrag_adc_acc.store(0, std::memory_order_relaxed);
+        g_tfrag_ns_acc.store(0, std::memory_order_relaxed);
+        g_tfrag_pending = true;
+        // If mrp_chain is still running on Core 0, use Core 1's wait time before mrp_chain_join() to drain tfrag draws without contending on Core 0.
+        if (!mrp_chain_is_idle()) {
+            tfrag_drain_draws(F, 1, true);
+        }
+        // If mrp_chain is now idle and tfrag draws remain, wake PrepWorker on Core 0 immediately.
+        if (mrp_chain_is_idle()) {
+            tfrag_kick_worker_if_needed();
+        }
+    } else {
+        tfrag_cpu_run(F);
+    }
+    g_tcols.dirty.clear();
+    g_tcols.dirty_words.clear();
+    g_tcols.all_dirty = false;
+    for (int k = 0; k < 2; ++k) g_st.stat_draws[k] += F.scene.stat_draws[k];
+    ++g_st.scene_frames;
+    g_st.ms_build += now_ms() - t0 + g_ms_head;
+    g_ms_head = 0.0;
+    ++g_wiiu_serial;
+    F.active = true;
+}
 
 // orig: (host)
 void wiiu_prep_dispatch() {
@@ -4943,44 +5045,76 @@ void wiiu_prep_dispatch() {
         if (!g_job_head || wiiu_prep_head()) wiiu_prep_tail();
         return;
     }
+    if (prep_on_main_on()) {
+        // (run on Core 1 at the start of wiiu_gfx_frame before mrp_chain_join, so Core 1 builds the world in parallel with Core 0's
+        // mrp_chain worker and Core 2's game_thread instead of queuing behind mrp_chain on Core 0)
+        __asm__ volatile("mffs %0" : "=f"(g_prep_on_main_fpscr));
+        g_prep_on_main_pending = true;
+        return;
+    }
     PrepWorker& w = g_prep;
     std::lock_guard<std::mutex> lk(w.m);
-    if (!w.th.joinable()) {
-        // (created on its core: pinned_thread.h - a std::thread moved there by OSSetThreadAffinity ran on all three, 2026-10-29)
-        const char* ce = std::getenv("RAC1_WIIU_PREP_CORE");
-        const int core = ce != nullptr ? std::atoi(ce) : 0;
-        w.th.start(core, 16, "MRP world prep worker", [&w, core] {
-        std::printf("[mrpw] the world's preparation worker on core %u (RAC1_WIIU_PREP_CORE %d)\n", OSGetCoreId(), core);
-        std::unique_lock<std::mutex> l(w.m);
-        for (;;) {
-            w.cv.wait(l, [&w] { return w.job || w.quit; });
-            if (w.quit) return;
-            w.job = false;
-            __asm__ volatile("mtfsf 0xff, %0" : : "f"(w.fpscr));
-            l.unlock();
-            if (!g_job_head || wiiu_prep_head()) wiiu_prep_tail();
-            l.lock();
-            w.busy = false;
-            w.cv.notify_all();
-        }
-        }, 512u * 1024u);
-    }
+    ensure_prep_worker_started(w);
     __asm__ volatile("mffs %0" : "=f"(w.fpscr));
+    w.tfrag_only = false;
     w.busy = true;
     w.job = true;
     w.cv.notify_all();
 }
 }  // namespace
 
+// orig: (host) see mrp_world_backend.inc
+void mrp_world_wiiu_tfrag_join(double* out_ms) {
+    if (!g_tfrag_pending) {
+        if (out_ms != nullptr) *out_ms = g_frame.tf_ms;
+        return;
+    }
+    g_tfrag_pending = false;
+    Frame& F = g_frame;
+    double prev_fpscr = 0.0;
+    __asm__ volatile("mffs %0" : "=f"(prev_fpscr));
+    __asm__ volatile("mtfsf 0xff, %0" : : "f"(g_prep_on_main_fpscr));
+    tfrag_drain_draws(F, 1, false);
+    __asm__ volatile("mtfsf 0xff, %0" : : "f"(prev_fpscr));
+    {
+        PrepWorker& w = g_prep;
+        std::unique_lock<std::mutex> lk(w.m);
+        w.cv.wait(lk, [&w] { return !w.busy; });
+    }
+    const double ms = static_cast<double>(g_tfrag_ns_acc.load(std::memory_order_relaxed)) * 1e-6;
+    F.tf_ms = ms;
+    if (out_ms != nullptr) *out_ms = ms;
+    ++g_st.tc_frames;
+    g_st.tc_draws += F.tf.draws.size();
+    g_st.tc_verts += F.tf.nverts;
+    g_st.tc_tris += F.tf.nidx / 3;
+    g_st.tc_ranges += F.tf_ranges.size();
+    for (const Batch& b : F.batches) g_st.tc_batches += b.tfrag ? 1 : 0;
+    g_st.tc_adc += g_tfrag_adc_acc.load(std::memory_order_relaxed);
+    g_st.tc_ms += ms;
+    g_st.tc_max = std::max(g_st.tc_max, ms);
+}
+
 // orig: (host) see mrp_world_renderer.h
 void mrp_world_wiiu_chain_joined() {
     const MrpChainFrame& f = mrp_chain_frame();
     g_regs_last_ok = f.regs_at_ok;
     if (f.regs_at_ok) std::memcpy(g_regs_last, f.regs_at, sizeof g_regs_last);
+    tfrag_kick_worker_if_needed();
 }
 
 // orig: (host) see mrp_world_renderer.h
 void mrp_world_wiiu_join() {
+    if (g_prep_on_main_pending) {
+        g_prep_on_main_pending = false;
+        double prev_fpscr = 0.0;
+        __asm__ volatile("mffs %0" : "=f"(prev_fpscr));
+        __asm__ volatile("mtfsf 0xff, %0" : : "f"(g_prep_on_main_fpscr));
+        if (!g_job_head || wiiu_prep_head()) wiiu_prep_tail();
+        __asm__ volatile("mtfsf 0xff, %0" : : "f"(prev_fpscr));
+        return;
+    }
+    if (g_tfrag_pending) return;
     PrepWorker& w = g_prep;
     std::unique_lock<std::mutex> lk(w.m);
     w.cv.wait(lk, [&w] { return !w.busy; });

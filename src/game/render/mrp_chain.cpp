@@ -886,6 +886,13 @@ void mrp_chain_wait_idle() {
     w.cv.wait(lk, [&w] { return !w.busy; });
 }
 
+// orig: (host) see mrp_world_wiiu.inc
+bool mrp_chain_is_idle() {
+    Worker& w = g_worker;
+    std::lock_guard<std::mutex> lk(w.m);
+    return !w.busy;
+}
+
 // orig: (host) see mrp_chain.h
 const MrpChainFrame& mrp_chain_frame() { return g_reader.frame; }
 

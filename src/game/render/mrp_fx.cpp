@@ -2355,10 +2355,13 @@ void mrp_fx_wiiu_prepare(const MrpChainFrame& gs, const float* vpm_opt) {
     float vpm[16];
     if (vpm_opt != nullptr) std::memcpy(vpm, vpm_opt, sizeof(vpm));
     else mrp_world_view_proj(vpm);
-    glm::dmat4 VP;
-    for (int c = 0; c < 4; ++c)
-        for (int r = 0; r < 4; ++r) VP[c][r] = vpm[c * 4 + r];
+    const double vpw0 = vpm[3], vpw1 = vpm[7], vpw2 = vpm[11], vpw3 = vpm[15];
     const auto& prims = gs.prims;
+    if (g_wiiu_fx_verts.capacity() < prims.size() * 4) g_wiiu_fx_verts.reserve(prims.size() * 4);
+    static std::vector<std::array<uint32_t, 3>> tris;
+    static std::vector<uint8_t> how, flags, behind;
+    static std::vector<float> v_fog;
+    static std::vector<std::array<float, 3>> v_wp;
     for (size_t pi = 0; pi < prims.size(); ++pi) {
         const gs::Primitive& p = prims[pi];
         if (p.fx == 0 || p.sub == 2) continue;
@@ -2367,14 +2370,11 @@ void mrp_fx_wiiu_prepare(const MrpChainFrame& gs, const float* vpm_opt) {
             const gs::Vu7Batch& b = gs.vu7_batches[p.fx_id];
             const int type = static_cast<int>(fld(b.st.prim, 0, 3));
             if (type != 3 && type != 4 && type != 5) continue;
-            glm::dmat4 M, C;
+            glm::dmat4 Me;
             for (int c = 0; c < 4; ++c) {
-                M[c] = glm::dvec4(b.m[4 * c], b.m[4 * c + 1], b.m[4 * c + 2], b.m[4 * c + 3]);
-                C[c] = glm::dvec4(b.clip[4 * c], b.clip[4 * c + 1], b.clip[4 * c + 2], b.clip[4 * c + 3]);
-            }
-            glm::dmat4 Me = M;
-            for (int c = 0; c < 4; ++c)
+                Me[c] = glm::dvec4(b.m[4 * c], b.m[4 * c + 1], b.m[4 * c + 2], b.m[4 * c + 3]);
                 for (int r = 0; r < 3; ++r) Me[c][r] *= static_cast<double>(b.k);
+            }
             const glm::dmat4& Ge = g_frame.vu7_ge;
             auto wsize = [](const glm::dmat4& A) { return std::max({std::fabs(A[0][3]), std::fabs(A[1][3]), std::fabs(A[2][3]), std::fabs(A[3][3]), 1e-30}); };
             const double sm = wsize(Me), sg = wsize(Ge);
@@ -2384,7 +2384,7 @@ void mrp_fx_wiiu_prepare(const MrpChainFrame& gs, const float* vpm_opt) {
                 for (int c = 0; c < 4 && same; ++c)
                     if (std::fabs(Me[c][r] / sm - Ge[c][r] / sg) > 1e-5 * std::max(row, 1e-12)) same = false;
             }
-            std::vector<std::array<uint32_t, 3>> tris;
+            tris.clear();
             if (type == 3) {
                 for (uint32_t i = 0; i + 2 < b.n; i += 3) tris.push_back({i, i + 1, i + 2});
             } else {
@@ -2392,20 +2392,46 @@ void mrp_fx_wiiu_prepare(const MrpChainFrame& gs, const float* vpm_opt) {
                     tris.push_back(type == 4 ? std::array<uint32_t, 3>{i, i + 1, i + 2} : std::array<uint32_t, 3>{0, i + 1, i + 2});
             }
             enum : uint8_t { kNone = 0, kStrip = 1, kFan = 2 };
-            std::vector<uint8_t> how(tris.size(), kStrip);
+            how.assign(tris.size(), kStrip);
             const auto& vin = gs.vu7_verts;
+            bool any_fan = false, any_strip = false;
             {
-                std::vector<uint8_t> flags(b.n), behind(b.n);
+                flags.resize(b.n);
+                behind.resize(b.n);
+                v_fog.resize(b.n);
+                v_wp.resize(b.n);
+                const glm::dmat4 U = same ? glm::dmat4(1.0) : (g_frame.vu7_geinv * Me);
+                const float* const bm = b.m;
+                const float* const bc = b.clip;
                 for (uint32_t i = 0; i < b.n; ++i) {
                     const gs::Vu7Vertex& s = vin[b.first + i];
-                    const glm::dvec4 pt(s.xyz[0], s.xyz[1], s.xyz[2], 1.0);
-                    const glm::dvec4 c = C * pt;
-                    const double aw = std::fabs(c.w);
-                    flags[i] = static_cast<uint8_t>((c.x > aw ? 1 : 0) | (c.x < -aw ? 2 : 0) | (c.y > aw ? 4 : 0) | (c.y < -aw ? 8 : 0) | (c.z < -aw ? 16 : 0));
-                    const glm::dvec4 h = M * pt;
-                    const double q = static_cast<double>(b.k) / h.w;
-                    const double X = h.x * q + b.off[0], Y = h.y * q + b.off[1], Z = h.z * q + b.off[2];
+                    const float px = s.xyz[0], py = s.xyz[1], pz = s.xyz[2];
+                    const float cx = bc[0] * px + bc[4] * py + bc[8] * pz + bc[12];
+                    const float cy = bc[1] * px + bc[5] * py + bc[9] * pz + bc[13];
+                    const float cz = bc[2] * px + bc[6] * py + bc[10] * pz + bc[14];
+                    const float cw = bc[3] * px + bc[7] * py + bc[11] * pz + bc[15];
+                    const float aw = std::fabs(cw);
+                    flags[i] = static_cast<uint8_t>((cx > aw ? 1 : 0) | (cx < -aw ? 2 : 0) | (cy > aw ? 4 : 0) | (cy < -aw ? 8 : 0) | (cz < -aw ? 16 : 0));
+                    const float hx = bm[0] * px + bm[4] * py + bm[8] * pz + bm[12];
+                    const float hy = bm[1] * px + bm[5] * py + bm[9] * pz + bm[13];
+                    const float hz = bm[2] * px + bm[6] * py + bm[10] * pz + bm[14];
+                    const float hw = bm[3] * px + bm[7] * py + bm[11] * pz + bm[15];
+                    const double q = static_cast<double>(b.k) / static_cast<double>(hw);
+                    const double X = static_cast<double>(hx) * q + b.off[0], Y = static_cast<double>(hy) * q + b.off[1], Z = static_cast<double>(hz) * q + b.off[2];
                     behind[i] = !(q > 0.0) || !(X >= 0.0 && X < 4096.0 && Y >= 0.0 && Y < 4096.0) || !(Z >= 0.0 && Z < 16777216.0) ? 1 : 0;
+                    const float fw = std::min(std::max(hw + b.off[3], b.fog[0]), b.fog[1]);
+                    v_fog[i] = std::isfinite(fw) ? static_cast<float>(static_cast<uint32_t>(std::max(fw, 0.0f)) & 0xffu) : 255.0f;
+                    if (same) {
+                        v_wp[i] = {px, py, pz};
+                    } else {
+                        const glm::dvec4 uh = U * glm::dvec4(px, py, pz, 1.0);
+                        if (std::fabs(uh.w) > 1e-30) {
+                            const double inv_w = 1.0 / uh.w;
+                            v_wp[i] = {static_cast<float>(uh.x * inv_w), static_cast<float>(uh.y * inv_w), static_cast<float>(uh.z * inv_w)};
+                        } else {
+                            v_wp[i] = {px, py, pz};
+                        }
+                    }
                 }
                 const bool clip_path = b.start == 0xe;
                 const bool have = b.kicked.size() == b.n && type == 4;
@@ -2416,14 +2442,16 @@ void mrp_fx_wiiu_prepare(const MrpChainFrame& gs, const float* vpm_opt) {
                     const bool whole = have ? b.kicked[T[2]] != 0 : !(clip_path && any_out);
                     if (whole) how[t] = (behind[T[0]] | behind[T[1]] | behind[T[2]]) != 0 ? kNone : kStrip;
                     else how[t] = all_one || !clip_path ? kNone : kFan;
+                    if (how[t] == kStrip) any_strip = true;
+                    else if (how[t] == kFan) any_fan = true;
                 }
             }
             auto emit_vu7 = [&](const gs::DrawState& st, const std::shared_ptr<const gs::TexImage>& tex, uint8_t want) {
                 const bool tme = fld(st.prim, 4, 1) != 0;
                 if (tme && tex == nullptr) return;
                 const bool fst = fld(st.prim, 8, 1) != 0;
-                const float tw = tex != nullptr && tex->w > 0 ? static_cast<float>(tex->w) : 1.0f;
-                const float th = tex != nullptr && tex->h > 0 ? static_cast<float>(tex->h) : 1.0f;
+                const float inv_tw = tex != nullptr && tex->w > 0 ? 1.0f / static_cast<float>(tex->w) : 1.0f;
+                const float inv_th = tex != nullptr && tex->h > 0 ? 1.0f / static_cast<float>(tex->h) : 1.0f;
                 MrpFxWiiuBatch wb;
                 uint32_t word = 1u, dflags = 0u;
                 wiiu_fx_state(st, tex, wb, word, dflags);
@@ -2432,21 +2460,15 @@ void mrp_fx_wiiu_prepare(const MrpChainFrame& gs, const float* vpm_opt) {
                     if (how[t] != want) continue;
                     for (uint32_t i : tris[t]) {
                         const gs::Vu7Vertex& s = vin[b.first + i];
-                        const glm::dvec4 pt(s.xyz[0], s.xyz[1], s.xyz[2], 1.0);
-                        const glm::dvec4 clip = M * pt;
-                        glm::dvec3 w(pt);
-                        if (!same) {
-                            const glm::dvec4 h = g_frame.vu7_geinv * (Me * pt);
-                            w = std::fabs(h.w) > 1e-30 ? glm::dvec3(h) / h.w : glm::dvec3(pt);
-                        }
+                        const auto& w = v_wp[i];
                         mrpwb::GpuV gv{};
-                        gv.wp[0] = static_cast<float>(w.x);
-                        gv.wp[1] = static_cast<float>(w.y);
-                        gv.wp[2] = static_cast<float>(w.z);
+                        gv.wp[0] = w[0];
+                        gv.wp[1] = w[1];
+                        gv.wp[2] = w[2];
                         gv.wp[3] = 1.0f;
                         if (fst) {
-                            gv.stq[0] = s.st[0] / tw;
-                            gv.stq[1] = s.st[1] / th;
+                            gv.stq[0] = s.st[0] * inv_tw;
+                            gv.stq[1] = s.st[1] * inv_th;
                             gv.stq[2] = 1.0f;
                         } else {
                             gv.stq[0] = s.st[0];
@@ -2455,8 +2477,7 @@ void mrp_fx_wiiu_prepare(const MrpChainFrame& gs, const float* vpm_opt) {
                         }
                         gv.lodq = 1.0f;
                         for (int l = 0; l < 4; ++l) gv.rgba[l] = s.rgba[l];
-                        const float fw = std::min(std::max(static_cast<float>(clip.w) + b.off[3], b.fog[0]), b.fog[1]);
-                        gv.fog = std::isfinite(fw) ? static_cast<float>(static_cast<uint32_t>(std::max(fw, 0.0f)) & 0xffu) : 255.0f;
+                        gv.fog = v_fog[i];
                         gv.word = word;
                         gv.layer = 0;
                         gv.state[0] = dflags;
@@ -2467,8 +2488,8 @@ void mrp_fx_wiiu_prepare(const MrpChainFrame& gs, const float* vpm_opt) {
                 const uint32_t count = static_cast<uint32_t>(g_wiiu_fx_verts.size()) - first;
                 wiiu_fx_append_batch(wb, first, count);
             };
-            if (b.start == 0xe) emit_vu7(b.st_fan, b.tex_fan, kFan);
-            emit_vu7(b.st, b.tex, kStrip);
+            if (b.start == 0xe && any_fan) emit_vu7(b.st_fan, b.tex_fan, kFan);
+            if (any_strip) emit_vu7(b.st, b.tex, kStrip);
             continue;
         }
         if ((p.type != 3 && p.type != 6) || p.fx_id >= g_frame.notes.size()) continue;
@@ -2477,26 +2498,27 @@ void mrp_fx_wiiu_prepare(const MrpChainFrame& gs, const float* vpm_opt) {
         const gs::DrawState& st = p.st;
         const bool tme = fld(st.prim, 4, 1) != 0, fst = fld(st.prim, 8, 1) != 0;
         if (tme && p.tex == nullptr) continue;
-        const double tw = tme && p.tex->w > 0 ? static_cast<double>(p.tex->w) : 1.0;
-        const double th = tme && p.tex->h > 0 ? static_cast<double>(p.tex->h) : 1.0;
+        const double inv_tw = tme && p.tex->w > 0 ? 1.0 / static_cast<double>(p.tex->w) : 1.0;
+        const double inv_th = tme && p.tex->h > 0 ? 1.0 / static_cast<double>(p.tex->h) : 1.0;
         MrpFxWiiuBatch wb;
         uint32_t word = 1u, dflags = 0u;
         wiiu_fx_state(st, p.tex, wb, word, dflags);
         const double ox = static_cast<double>(fld(st.xyoffset, 0, 16)) / 16.0, oy = static_cast<double>(fld(st.xyoffset, 32, 16)) / 16.0;
-        auto mk = [&](float x, float y, uint32_t z, float s, float t, float q, const gs::Vertex& col) {
-            const double X = static_cast<double>(x) + ox, Y = static_cast<double>(y) + oy;
-            const glm::dvec4 wp = world_of(V, X, Y, static_cast<double>(z));
+        auto mk_from_wp = [&](const glm::dvec4& wp, double X, double Y, uint32_t z, float s, float t, float q, const gs::Vertex& col) {
             mrpwb::GpuV gv{};
-            for (int l = 0; l < 4; ++l) gv.wp[l] = static_cast<float>(wp[l]);
+            gv.wp[0] = static_cast<float>(wp[0]);
+            gv.wp[1] = static_cast<float>(wp[1]);
+            gv.wp[2] = static_cast<float>(wp[2]);
+            gv.wp[3] = 1.0f;
             gv.vu[0] = static_cast<float>(X);
             gv.vu[1] = static_cast<float>(Y);
             gv.vu[2] = static_cast<float>(z);
             gv.vu[3] = 1.0f;
-            double w = (VP * wp).w;
+            double w = vpw0 * wp[0] + vpw1 * wp[1] + vpw2 * wp[2] + vpw3;
             if (!(w > 1e-9)) w = 1e-9;
             if (fst) {
-                gv.stq[0] = static_cast<float>(static_cast<double>(s) / tw * w);
-                gv.stq[1] = static_cast<float>(static_cast<double>(t) / th * w);
+                gv.stq[0] = static_cast<float>(static_cast<double>(s) * inv_tw * w);
+                gv.stq[1] = static_cast<float>(static_cast<double>(t) * inv_th * w);
                 gv.stq[2] = static_cast<float>(w);
             } else {
                 gv.stq[0] = static_cast<float>(static_cast<double>(s) * w);
@@ -2522,14 +2544,27 @@ void mrp_fx_wiiu_prepare(const MrpChainFrame& gs, const float* vpm_opt) {
             const auto sa = st_of(a), sb = st_of(b);
             const float qa = a.q != 0.0f ? a.q : 1.0f;
             const float as = fst ? sa[0] : sa[0] / qa * b.q, at_ = fst ? sa[1] : sa[1] / qa * b.q;
-            const mrpwb::GpuV c0 = mk(a.x, a.y, b.z, as, at_, b.q, b), c1 = mk(b.x, a.y, b.z, sb[0], at_, b.q, b),
-                              c2 = mk(a.x, b.y, b.z, as, sb[1], b.q, b), c3 = mk(b.x, b.y, b.z, sb[0], sb[1], b.q, b);
+            const double X0 = static_cast<double>(a.x) + ox, X1 = static_cast<double>(b.x) + ox;
+            const double Y0 = static_cast<double>(a.y) + oy, Y1 = static_cast<double>(b.y) + oy;
+            const double dz = (static_cast<double>(b.z) - V.off.z) / V.zscale;
+            const glm::dvec4 hz = V.inv[2] * dz + V.inv[3] * V.k;
+            const glm::dvec4 hx0 = V.inv[0] * (X0 - V.off.x) + hz, hx1 = V.inv[0] * (X1 - V.off.x) + hz;
+            const glm::dvec4 hy0 = V.inv[1] * (Y0 - V.off.y), hy1 = V.inv[1] * (Y1 - V.off.y);
+            auto wp_of_h = [&](const glm::dvec4& h) {
+                if (!(std::fabs(h.w) > 1e-30)) return glm::dvec4(V.base, 1.0);
+                return glm::dvec4(glm::dvec3(h) / h.w + V.base, 1.0);
+            };
+            const mrpwb::GpuV c0 = mk_from_wp(wp_of_h(hx0 + hy0), X0, Y0, b.z, as, at_, b.q, b),
+                              c1 = mk_from_wp(wp_of_h(hx1 + hy0), X1, Y0, b.z, sb[0], at_, b.q, b),
+                              c2 = mk_from_wp(wp_of_h(hx0 + hy1), X0, Y1, b.z, as, sb[1], b.q, b),
+                              c3 = mk_from_wp(wp_of_h(hx1 + hy1), X1, Y1, b.z, sb[0], sb[1], b.q, b);
             g_wiiu_fx_verts.insert(g_wiiu_fx_verts.end(), {c0, c1, c2, c1, c3, c2});
         } else {
             for (int i = 0; i < 3; ++i) {
                 const gs::Vertex& pv = p.v[static_cast<size_t>(i)];
                 const auto s2 = st_of(pv);
-                g_wiiu_fx_verts.push_back(mk(pv.x, pv.y, pv.z, s2[0], s2[1], pv.q, pv));
+                const double X = static_cast<double>(pv.x) + ox, Y = static_cast<double>(pv.y) + oy;
+                g_wiiu_fx_verts.push_back(mk_from_wp(world_of(V, X, Y, static_cast<double>(pv.z)), X, Y, pv.z, s2[0], s2[1], pv.q, pv));
             }
         }
         const uint32_t count = static_cast<uint32_t>(g_wiiu_fx_verts.size()) - first;

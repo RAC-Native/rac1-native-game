@@ -429,3 +429,24 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
     - **Novalis** (1500 frames, 11 windows): `world's worker join` dropped from **9–32 ms (`m1d`) to 2.1–25.5 ms (`m1f`)**; host frame average **62.7 ms** (steady-state gameplay windows 2–6 at **41.1–44.2 ms**).
     - **Veldin** (1200 frames, 15 windows): host frame average **42.6 → 38.3 ms**, with the second half of the run locked at **33.2–33.3 ms (30.0 fps)**.
 
+### M1h–M1l: True 3-core overlap (`RAC1_WIIU_CHAIN_OVERLAP_GT`, `RAC1_WIIU_PREP_ON_MAIN`), cooperative `tfrag_exec_cpu_fast` drain, and `mrp_fx_wiiu_prepare` fast path (2026-10-30)
+
+- **Zero-alloc VU1 kicks (`runtime/vu/vu1.cpp`) and O(1) `sky_prepend` (`src/game/render/mrp_world_scene.cpp`, `mrp_world_renderer.cpp`):**
+  - `vu1::start_program`'s `kick_at` passes `&vu.st.mem[(addr & 0x3ffu) << 4]` directly when the kicked packet does not wrap past `0x400` qwords (>99.9% of kicks), eliminating a per-kick `std::vector<uint8_t>` heap allocation and copy.
+  - `scene_from_static_k` reserves `f.packets` and `f.insts` upfront and calls `sky_prepend` while `f.packets` is still empty, eliminating the O(N) front-insertion move of 5,800+ `ScenePacket`s every frame.
+- **Immediate `game_thread` launch on Core 2 (`RAC1_WIIU_CHAIN_OVERLAP_GT`, default 1, `src/host/orig_main.cpp`):**
+  - Previously, `wiiu_overlap` called `mrp_chain_join()` on Core 1 before launching `game_thread::run_async()` on Core 2, leaving Core 2 idle for 8–24 ms every frame while Core 0 was reading the chain.
+  - Because `mrp_chain` operates on `g_capture` (already copied before `mrp_chain_start`) and the world prep worker reads frozen `g_pages` / `g_head_in` snapshots, `game_thread` can start on Core 2 immediately after `mrp_world_prepare` and `mrp_mobys_prepare` finish their EE reads.
+  - Console benchmark (`m1i_novalis`): Novalis host frame average dropped from **62.2 ms (11 windows) to 49.2 ms (15 windows)** (**-13.0 ms / -21%**), with windows 6–10 hitting **33.4–34.6 ms (30.0 fps)**.
+- **World preparation on Core 1 in parallel with Core 0 `mrp_chain` (`RAC1_WIIU_PREP_ON_MAIN`, default 1, `mrp_world_renderer.cpp`, `wiiu_gfx.cpp`):**
+  - Previously both `mrp_chain` and `PrepWorker` were pinned to Core 0, so world prep sat queued behind `mrp_chain` on Core 0 while Core 1 blocked inside `mrp_chain_join()`.
+  - `mrp_world_wiiu_join()` is now called at the top of `wiiu_gfx_frame()` before `mrp_chain_join()` and runs `wiiu_prep_head()` + `build_triangles()` on Core 1 while Core 0 runs `mrp_chain` and Core 2 runs `game_thread`. `mrp_world_wiiu_sky_capture()` also runs `sky_capture_run()` immediately when `mrp_chain` is already idle.
+  - Console benchmark (`m1j_novalis`): Novalis host frame average dropped from **49.2 ms to 45.9 ms (16 windows)**; heaviest window dropped from **76.7 ms to 64.9 ms (-11.8 ms)**; `GPU busy` average **33.8 → 28.3 ms**.
+- **Zero-heap `tfrag_exec_cpu_fast` and cooperative Core 1 + Core 0 tfrag drain (`RAC1_WIIU_TFRAG_PARALLEL`, default 1, `mrp_tfrag_gpu.cpp`, `mrp_world_renderer.cpp`, `mrp_world_gx2.cpp`):**
+  - `tfrag_exec_cpu_fast` uses a 2-slot static scratch array (`g_exec_scratch[2]`), fixed `Mem::q` array, pre-decoded `m.v[4][4]` view floats, and `need_xyz = false` (skipping unused `Pj.v[0..2]` + `ftoi`). `build_triangles` preserves `F.tf` sub-vector capacities, and `tfrag_frame_cpu` uses `resize` instead of zero-filling ~1.2 MB per frame (`assign`).
+  - While `mrp_chain` is still busy on Core 0 (`!mrp_chain_is_idle()`), Core 1 uses its pre-`mrp_chain_join()` wait time to drain tfrag draws (`slot 1`) without contending on Core 0. As soon as `mrp_chain` finishes on Core 0 (`mrp_world_wiiu_chain_joined()`), `PrepWorker` wakes on Core 0 (`slot 0`) to drain the remaining tfrag draws in parallel while Core 1 prepares effects, 2D, and GX2 sky/world draws.
+- **`mrp_fx_wiiu_prepare` fast path (`src/game/render/mrp_fx.cpp`):**
+  - Reuses `static` scratch vectors across VU7 batches, computes VU7 per-vertex `wp` and `fog` once per vertex `i < b.n` instead of recomputing `M * pt` and `vu7_geinv * (Me * pt)` 3× per vertex inside `emit_vu7`, and factors sprite unprojection (`p.type == 6`) + `VP.w` dot product.
+- **Console benchmark (`m1l`):**
+  - **Novalis** (1500 frames, 16 windows): host frame average **44.4 ms** (down from **87.8 ms** baseline — **nearly 2× faster overall**); 5 consecutive windows at **32.5–34.2 ms (30.0 fps)**; heaviest final window dropped to **54.9 ms** (from **64.9 ms** in `m1j` and **87.8 ms** baseline); `the CPU route` for tfrag dropped from **6.56 / 4.70 ms to 5.53 / 3.87 ms**.
+  - **Veldin** (1200 frames, 16 windows): host frame average dropped from **38.3 ms (`m1f`) to 35.3 ms (`m1l`)** (down from **52.6 ms** baseline); 10 of 16 windows locked at **32.8–33.5 ms (30.0 fps)** (and 1 window at **16.7 ms / 60.0 fps**) with 8–13.8 ms of swap wait headroom.

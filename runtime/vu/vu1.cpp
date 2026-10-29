@@ -328,8 +328,14 @@ void start_program(Vu1& vu, uint32_t start, const KickSink& kick) {
     auto kick_at = [&vu, &kick, start](uint32_t addr) {
         const uint32_t qwc = gif_packet_qwc(vu.st, addr);
         if (trace_on()) std::fprintf(stderr, "[VU1] kick %03x qwc %u\n", addr, qwc);
-        std::vector<uint8_t> buf(static_cast<size_t>(qwc) * 16);
-        for (uint32_t q = 0; q < qwc; ++q) std::memcpy(&buf[q * 16], &vu.st.mem[((addr + q) & 0x3ff) << 4], 16);
+        const uint32_t a0 = addr & 0x3ffu;
+        std::vector<uint8_t> wrap_buf;
+        const uint8_t* pkt = &vu.st.mem[a0 << 4];
+        if (a0 + qwc > 0x400u) {
+            wrap_buf.resize(static_cast<size_t>(qwc) * 16);
+            for (uint32_t q = 0; q < qwc; ++q) std::memcpy(&wrap_buf[q * 16], &vu.st.mem[((a0 + q) & 0x3ffu) << 4], 16);
+            pkt = wrap_buf.data();
+        }
         static const char* const pkt_dir = std::getenv("RAC1_VU1_PKTDUMP");  // testing: kicks #20000. as files <dir>/pkt_<n>_s<start>_a<addr>.bin
         if (pkt_dir != nullptr) {
             static int kicks = 0;
@@ -340,11 +346,11 @@ void start_program(Vu1& vu, uint32_t start, const KickSink& kick) {
             } else if (++kicks >= from && kicks < from + 60) {
                 char path[512];
                 std::snprintf(path, sizeof path, "%s/pkt_%05d_s%03x_a%03x.bin", pkt_dir, kicks, start, addr);
-                if (FILE* f = std::fopen(path, "wb")) { std::fwrite(buf.data(), 1, buf.size(), f); std::fclose(f); }
+                if (FILE* f = std::fopen(path, "wb")) { std::fwrite(pkt, 1, static_cast<size_t>(qwc) * 16, f); std::fclose(f); }
             }
         }
-        if (g_kick_tap) g_kick_tap(buf.data(), qwc);
-        if (kick) kick(buf.data(), qwc);
+        if (g_kick_tap) g_kick_tap(pkt, qwc);
+        if (kick) kick(pkt, qwc);
     };
     static const char* const capture_dir = std::getenv("RAC1_VU1_CAPTURE");
     if (capture_dir != nullptr) capture(vu, start, capture_dir);  // testing: the oracle's inputs

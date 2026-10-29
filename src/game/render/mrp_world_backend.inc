@@ -196,7 +196,10 @@ bool mrp_world_gx2_ready();
 bool mrp_world_gx2_tfrag_ready();
 // ... and its sky's shaders (shaders/mrp_sky.gsh) loaded, the sky on (RAC1_WIIU_SKY, the debug menu's "Sky"): the frame's sky captured
 bool mrp_world_gx2_sky_ready();
+// mrp_world_renderer.cpp: finishes any remaining tfrag_frame_cpu draws on Core 1 alongside Core 0's worker before mrp_world_gx2_draw reads tf_verts
+void mrp_world_wiiu_tfrag_join(double* out_ms = nullptr);
 }  // namespace rac1
 #endif
 
 #endif
+

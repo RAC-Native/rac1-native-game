@@ -114,7 +114,7 @@ struct SceneStaticConsts {
 void scene_static_consts(SceneStaticConsts& k);
 // orig: (host) scene_from_static with the constants `k` (no EE memory read)
 bool scene_from_static_k(const StaticFrame& sf, const StaticLevel& sl, const std::array<float, 16>& a, const std::array<float, 3>& camera, const TfragLevel* tl,
-                         const std::vector<std::pair<uint32_t, uint8_t>>* tdraws, const SceneStaticConsts& k, SceneFrame& out);
+                         const std::vector<std::pair<uint32_t, uint8_t>>* tdraws, const SceneStaticConsts& k, SceneFrame& out, const SceneFrame* sky = nullptr);
 
 // The sky pass's range copied out of EE memory (sky_capture_copy): each tag's stream - its upper 64 bits, then its data - in the walk's
 // order, and what sky_capture takes besides (the asset, its texture entries, the projection A); sky_capture_run makes the capture from it
@@ -193,11 +193,17 @@ bool sky_host_ops_after_pass();
 void sky_host_note_pass();
 extern bool g_pass_noted;
 
+// orig: (host) tfrag_exec_cpu with an explicit scratch slot (0 or 1, for Core 0 worker + Core 1 main thread) and optional xyzf[0..2]
+bool tfrag_exec_cpu_fast(const TfragEntryGpu& e, const TfragPlan& p, int lod, const uint32_t* colours, const float view[16], const uint32_t consts[4 * 14],
+                         std::vector<TfragCpuVertex>& out, std::vector<uint8_t>* adc_out, bool need_xyz, int slot);
+
 }  // namespace rac1::mrpw
 
 namespace rac1 {
 // orig: (host) the chain's reader waited for, its error left to mrp_chain_join (any thread: mrp_chain.cpp)
 void mrp_chain_wait_idle();
+bool mrp_chain_is_idle();
 }  // namespace rac1
 
 #endif
+

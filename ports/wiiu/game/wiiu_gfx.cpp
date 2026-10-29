@@ -1179,6 +1179,10 @@ void wiiu_gfx_frame() {
     const bool chain_2d = g_2d.have && g_2d.replica == nullptr;
     int pre_mw = 0, pre_mh = 0;
     const bool has_movie = !g_ending && rac1::movie_hw_shown(pre_mw, pre_mh) != nullptr;
+    if (g_world_ready) {
+        rac1::mrp_world_wiiu_join();  // (runs world prep on Core 1 while Core 0 runs mrp_chain and Core 2 runs game_thread)
+        lap(kTmWorldJoin);
+    }
     if (prebuild_on && chain_2d) {
         rac1::mrp_chain_join();  // (the frame's chain read on the reader's worker)
         rac1::mrp_world_wiiu_chain_joined();  // (its registers kept for the next frame's world)

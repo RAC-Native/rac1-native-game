@@ -3390,8 +3390,13 @@ int main(int argc, char** argv) {
                                       wiiu_pend.level == lw(0x0015ed84);
             double gt_steps_ms = 0.0;
             if (wiiu_overlap) {
+                // (the chain's bytes were already copied out of EE RAM into g_capture by mrp_chain_start at the end of the previous
+                // host frame, and libgraph's GS transfers join gs::memory_join() before touching gs::local_memory(), while wiiu_gfx_frame
+                // joins mrp_chain_join() on Core 1 before reading mrp_chain_frame() - so Core 2's game_frames() can start immediately in
+                // parallel with Core 0's chain worker; RAC1_WIIU_CHAIN_OVERLAP_GT=0 joins before run_async as before)
+                static const bool chain_overlap_gt = std::getenv("RAC1_WIIU_CHAIN_OVERLAP_GT") == nullptr || std::atoi(std::getenv("RAC1_WIIU_CHAIN_OVERLAP_GT")) != 0;
                 const auto tj = std::chrono::steady_clock::now();
-                mrp_chain_join();  // (the prepared frame's chain read: its reader done before the update writes the game's memory)
+                if (!chain_overlap_gt) mrp_chain_join();
 #if defined(__WIIU__)
                 rac1_wiiu_time(6, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tj).count());
 #endif

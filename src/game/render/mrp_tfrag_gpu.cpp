@@ -352,11 +352,13 @@ namespace {
 
 // The program's memory as the GPU program keeps it: the image (image-relative qwords), the constants 0x290..0x29d.
 struct Mem {
-    std::vector<std::array<uint32_t, 4>> q;
+    std::array<std::array<uint32_t, 4>, 0x290> q{};
+    uint32_t nq = 0;
+    float v[4][4]{};
     std::array<std::array<uint32_t, 4>, 14> k{};
     std::array<uint32_t, 4> zero{};
     std::array<uint32_t, 4>& at(uint32_t a) {
-        if (a < q.size()) return q[a];
+        if (a < nq) return q[a];
         zero = {};
         return zero;
     }
@@ -380,13 +382,13 @@ V4 itof0(Mem& m, uint32_t a) {
 void st(Mem& m, uint32_t a, const V4& v) {
     for (int l = 0; l < 4; ++l) m.at(a)[static_cast<size_t>(l)] = u_of(v.v[l]);
 }
-V4 xform(Mem& m, const V4& p) {
+V4 xform(const Mem& m, const V4& p) {
     V4 o;
     for (int l = 0; l < 4; ++l) {
-        float a = m.f(8, l);
-        a = a + m.f(5, l) * p.v[0];
-        a = a + m.f(6, l) * p.v[1];
-        o.v[l] = a + m.f(7, l) * p.v[2];
+        float a = m.v[3][l];
+        a = a + m.v[0][l] * p.v[0];
+        a = a + m.v[1][l] * p.v[1];
+        o.v[l] = a + m.v[2][l] * p.v[2];
     }
     return o;
 }
@@ -452,18 +454,30 @@ void run_step(Mem& m, const TfragStep& s) {
     }
 }
 
+struct ExecScratch {
+    Mem m;
+    std::vector<V4> P;
+    std::vector<uint8_t> f6;
+};
+ExecScratch g_exec_scratch[2];
+
 }  // namespace
 
-// orig: (host) see mrp_tfrag_gpu.h (the steps in their order; the emission per sent vertex as world_mrp.cpp tf_emit)
-bool tfrag_exec_cpu(const TfragEntryGpu& e, const TfragPlan& p, int lod, const uint32_t* colours, const float view[16], const uint32_t consts[4 * 14],
-                    std::vector<TfragCpuVertex>& out, std::vector<uint8_t>* adc_out) {
+// orig: (host) see mrp_world_wiiu.inc
+bool tfrag_exec_cpu_fast(const TfragEntryGpu& e, const TfragPlan& p, int lod, const uint32_t* colours, const float view[16], const uint32_t consts[4 * 14],
+                         std::vector<TfragCpuVertex>& out, std::vector<uint8_t>* adc_out, bool need_xyz, int slot) {
     out.clear();
     const std::vector<uint8_t>& img = e.image[static_cast<size_t>(lod)];
-    Mem m;
-    m.q.resize(img.size() / 16);
-    std::memcpy(m.q.data(), img.data(), m.q.size() * 16);
+    ExecScratch& sc = g_exec_scratch[slot & 1];
+    Mem& m = sc.m;
+    m.nq = static_cast<uint32_t>(std::min<size_t>(img.size() / 16, m.q.size()));
+    std::memcpy(m.q.data(), img.data(), static_cast<size_t>(m.nq) * 16);
     for (uint32_t r = 0; r < 4; ++r)
-        for (int l = 0; l < 4; ++l) m.at(5 + r)[static_cast<size_t>(l)] = u_of(view[4 * r + static_cast<uint32_t>(l)]);
+        for (int l = 0; l < 4; ++l) {
+            const float vf = view[4 * r + static_cast<uint32_t>(l)];
+            m.v[r][l] = vf;
+            m.at(5 + r)[static_cast<size_t>(l)] = u_of(vf);
+        }
     for (uint32_t c = 0; c < 14; ++c)
         for (int l = 0; l < 4; ++l) m.k[c][static_cast<size_t>(l)] = consts[4 * c + static_cast<uint32_t>(l)];
     const uint32_t ca = e.colour_addr[static_cast<size_t>(lod)], cn = e.colour_count[static_cast<size_t>(lod)];
@@ -486,12 +500,15 @@ bool tfrag_exec_cpu(const TfragEntryGpu& e, const TfragPlan& p, int lod, const u
         c6[l] = m.kf(0x296, l);
     }
     const size_t nv = p.verts.size();
-    std::vector<V4> P(nv);
-    std::vector<uint8_t> f6(nv, 0);
+    std::vector<V4>& P = sc.P;
+    std::vector<uint8_t>& f6 = sc.f6;
+    P.resize(nv);
+    const bool guard = form == 1 || form == 3;
+    if (guard) f6.resize(nv);
     for (size_t j = 0; j < nv; ++j) {  // phase 1: the positions and the guard band's flags
         const uint32_t rec = m.u16(p.verts[j].via, 3);
         P[j] = form <= 1 ? ld(m, rec) : xform(m, itof0(m, rec));
-        if (form == 1 || form == 3) {
+        if (guard) {
             V4 g;
             for (int l = 0; l < 4; ++l) g.v[l] = P[j].v[l] * c6[l];
             const float w = std::fabs(g.v[3]);
@@ -505,7 +522,7 @@ bool tfrag_exec_cpu(const TfragEntryGpu& e, const TfragPlan& p, int lod, const u
             f6[j] = f;
         }
     }
-    if (adc_out != nullptr) adc_out->assign(nv, 0);
+    if (adc_out != nullptr) adc_out->resize(nv);
     out.resize(nv);
     for (size_t j = 0; j < nv; ++j) {  // phase 2: the vertex
         const TfragPlanVertex& pv = p.verts[j];
@@ -515,18 +532,23 @@ bool tfrag_exec_cpu(const TfragEntryGpu& e, const TfragPlan& p, int lod, const u
         o.hp = {Pj.v[0], Pj.v[1], Pj.v[2], Pj.v[3]};
         float stq[3] = {m.f(via, 0) - stoff, m.f(via, 1) - stoff, (1.0f + stoff) - stoff};
         bool adc = false;
-        if ((form == 1 || form == 3) && !bform) {
+        if (guard && !bform) {
             uint32_t h = pv.counts ? f6[j] : 0;
             if (pv.pos >= 1 && p.verts[j - 1].counts) h |= f6[j - 1];
             if (pv.pos >= 2 && p.verts[j - 2].counts) h |= f6[j - 2];
             adc = h != 0;
         }
         const float q = c0[0] / Pj.v[3];
-        for (int l = 0; l < 3; ++l) {
-            Pj.v[l] = Pj.v[l] * q;
-            stq[l] = stq[l] * q;
+        if (need_xyz) {
+            for (int l = 0; l < 3; ++l) {
+                Pj.v[l] = Pj.v[l] * q;
+                stq[l] = stq[l] * q;
+            }
+            for (int l = 0; l < 4; ++l) Pj.v[l] = Pj.v[l] + c5[l];
+        } else {
+            for (int l = 0; l < 3; ++l) stq[l] = stq[l] * q;
+            Pj.v[3] = Pj.v[3] + c5[3];
         }
-        for (int l = 0; l < 4; ++l) Pj.v[l] = Pj.v[l] + c5[l];
         if (form == 3) {
             Pj.v[3] = fmin_(Pj.v[3], c0[2]);
             Pj.v[3] = fmax_(Pj.v[3], c0[1]);
@@ -543,10 +565,21 @@ bool tfrag_exec_cpu(const TfragEntryGpu& e, const TfragPlan& p, int lod, const u
         } else {
             o.rgba = m.at(rec + 1);
         }
-        for (int l = 0; l < 4; ++l) o.xyzf[static_cast<size_t>(l)] = static_cast<uint32_t>(ftoi(Pj.v[l] * 16.0f));
+        if (need_xyz) {
+            for (int l = 0; l < 4; ++l) o.xyzf[static_cast<size_t>(l)] = static_cast<uint32_t>(ftoi(Pj.v[l] * 16.0f));
+        } else {
+            o.xyzf[3] = static_cast<uint32_t>(ftoi(Pj.v[3] * 16.0f));
+        }
     }
     return true;
 }
+
+// orig: (host) see mrp_tfrag_gpu.h (the steps in their order; the emission per sent vertex as world_mrp.cpp tf_emit)
+bool tfrag_exec_cpu(const TfragEntryGpu& e, const TfragPlan& p, int lod, const uint32_t* colours, const float view[16], const uint32_t consts[4 * 14],
+                    std::vector<TfragCpuVertex>& out, std::vector<uint8_t>* adc_out) {
+    return tfrag_exec_cpu_fast(e, p, lod, colours, view, consts, out, adc_out, true, 0);
+}
+
 
 // orig: (host) see mrp_tfrag_gpu.h
 uint32_t tfrag_selfcheck(const TfragEntryGpu& e, const TfragPlan& p, int lod, uint32_t code, bool b, const uint32_t* colours, const float view[16],

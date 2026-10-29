@@ -1634,6 +1634,7 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
     // (testing, RAC1_WIIU_TFRAG_STAGE=<n>: 1 the CPU route alone - nothing sent -, 2 its data sent and the batches' state set, no draws, 3
     // (the default) everything)
     static const int tstage = std::getenv("RAC1_WIIU_TFRAG_STAGE") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_TFRAG_STAGE")) : 3;
+    mrp_world_wiiu_tfrag_join(&F.tf_ms);
     const std::vector<mrpwb::GpuV>& tverts = *F.tf_verts;
     const std::vector<uint32_t>& tidx = *F.tf_idx;
     const std::vector<mrpwb::TfragRange>& tranges = *F.tf_ranges;
