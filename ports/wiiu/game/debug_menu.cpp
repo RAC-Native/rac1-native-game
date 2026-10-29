@@ -4,13 +4,17 @@
 
 #include "mrp_world_gx2.h"
 
+#include <_devtools/item_give_quiet.h>
 #include <game/ovl/game_skips.h>
 #include <game/ovl/moby_joints.h>
+#include <game/ovl/ovl.h>
+#include <game/ovl/ovl_reloc.h>
 #include <game/ovl/world_lighting.h>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
 #include <runtime/ee/game_thread.h>
+#include <runtime/kernel/ee_memory.h>
 
 #include "font_atlas.h"  // (generated into the build folder)
 
@@ -29,6 +33,8 @@
 #include <whb/gfx.h>
 
 #include <algorithm>
+#include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -206,16 +212,126 @@ const Item kGame[] = {
      }},
 };
 #undef RAC1_SKIP_ITEM
-// the page's items (row 0, above them, switches the page)
+
+// --- Page 2 (Player / Cheats / Unlocks) & Page 3 (Levels / Planet Select) ---
+constexpr uint32_t kPlayer = 0x0013f350u;
+constexpr uint32_t kHealth = kPlayer + 0x22a8u;
+constexpr uint32_t kHealthMax = 0x0015eda0u;
+constexpr uint32_t kBolts = 0x0015ed98u;
+constexpr uint32_t kOwned = 0x0013d4c0u;
+constexpr uint32_t kAmmo = 0x0013d428u;
+constexpr rac1::OvConst<0x001c40b0u> kAmmoRows{};
+constexpr uint32_t kGoodies = 0x0013d388u;
+constexpr uint32_t kGoldWeapons = 0x0013e520u;
+constexpr uint32_t kGoldBolts = 0x0014bec0u;
+constexpr uint32_t kSkillPoints = 0x0013d408u;
+constexpr uint32_t kCheatOn = 0x0015edb0u;
+constexpr uint32_t kCheatUnlocked = 0x0015edc0u;
+constexpr uint32_t kChallenge = 0x0015ee20u;
+constexpr uint32_t kLevel = 0x0015ed84u;
+constexpr uint32_t kHeroMoby = kPlayer + 0x2080u;
+constexpr uint32_t kHeroPos = kPlayer + 0x80u;
+constexpr uint32_t kHeroRot = kPlayer + 0x90u;
+constexpr uint32_t kHeroVel = kPlayer + 0xe0u;
+constexpr uint32_t kHeroVelH = kPlayer + 0x100u;
+constexpr uint32_t kHeroPosRing = kPlayer + 0x1b00u;
+constexpr uint32_t kCheckpoint = 0x0013e090u;
+constexpr uint32_t kCheckpointRot = 0x0013e0a0u;
+constexpr rac1::OvConst<0x00166dc0u> kCamera{};
+
+bool g_shown = true;
+bool g_prev_r3 = false, g_prev_combo = false;
+bool g_god_mode = false, g_inf_ammo = false, g_inf_bolts = false, g_move_hero = false;
+float g_move_pos[3] = {}, g_move_yaw = 0.0f;
+bool g_move_pos_init = false;
+bool g_saved_pos_set = false;
+float g_saved_pos[3] = {}, g_saved_yaw = 0.0f;
+std::atomic<int> g_goto_level{-1};
+std::atomic<uint32_t> g_player_ops{0};
+
+enum PlayerOp : uint32_t {
+    kOpRefillHealth = 1u << 0,
+    kOpAddBolts = 1u << 1,
+    kOpGiveAllItems = 1u << 2,
+    kOpGiveGoldWeapons = 1u << 3,
+    kOpGiveGoldBolts = 1u << 4,
+    kOpUnlockPlanets = 1u << 5,
+    kOpUnlockGoodies = 1u << 6,
+    kOpTeleportCheckpoint = 1u << 7,
+    kOpSavePos = 1u << 8,
+    kOpTeleportSaved = 1u << 9,
+    kOpKillHero = 1u << 10,
+};
+
+void hero_teleport_wiiu(const float p[3], const float* yaw = nullptr) {
+    for (int c = 0; c < 3; ++c) {
+        rac1::ee_write<float>(kHeroPos + c * 4, p[c]);
+        rac1::ee_write<float>(kPlayer + 0xc0u + c * 4, p[c]);
+        rac1::ee_write<float>(kHeroVel + c * 4, 0.0f);
+        rac1::ee_write<float>(kHeroVelH + c * 4, 0.0f);
+    }
+    for (uint32_t i = 0; i < 32; ++i)
+        for (int c = 0; c < 3; ++c) rac1::ee_write<float>(kHeroPosRing + i * 16 + c * 4, p[c]);
+    if (yaw != nullptr) rac1::ee_write<float>(kHeroRot + 8, *yaw);
+    const uint32_t hm = rac1::ee_read<uint32_t>(kHeroMoby);
+    if (hm != 0) {
+        for (int c = 0; c < 3; ++c) rac1::ee_write<float>(hm + 0x10u + c * 4, p[c]);
+        if (yaw != nullptr) rac1::ee_write<float>(hm + 0x48u, *yaw);
+    }
+}
+
+int ammo_max_wiiu(int id) {
+    const uint32_t row = kAmmoRows + static_cast<uint32_t>(id) * 0x18u;
+    if (rac1::ee_read<uint16_t>(row + 8) == 0) return 0;
+    return rac1::ee_read<uint16_t>(row + 0xe);
+}
+
+const Item kPlayerItems[] = {
+    {"God mode (nanotech max)", [] { return on_off(g_god_mode); }, [] { g_god_mode = !g_god_mode; }},
+    {"Infinite ammo", [] { return on_off(g_inf_ammo); }, [] { g_inf_ammo = !g_inf_ammo; }},
+    {"Infinite bolts", [] { return on_off(g_inf_bolts); }, [] { g_inf_bolts = !g_inf_bolts; }},
+    {"Move Ratchet / fly (R3+L3)", [] { return on_off(g_move_hero); },
+     [] {
+         g_move_hero = !g_move_hero;
+         g_move_pos_init = false;
+     }},
+    {"Refill nanotech & max (80)", [] { return std::string("tap"); }, [] { g_player_ops.fetch_or(kOpRefillHealth); }},
+    {"Give +100,000 bolts", [] { return std::string("tap"); }, [] { g_player_ops.fetch_or(kOpAddBolts); }},
+    {"Give all weapons & gadgets", [] { return std::string("tap"); }, [] { g_player_ops.fetch_or(kOpGiveAllItems); }},
+    {"Give all gold weapons", [] { return std::string("tap"); }, [] { g_player_ops.fetch_or(kOpGiveGoldWeapons); }},
+    {"Give all 40 gold bolts", [] { return std::string("tap"); }, [] { g_player_ops.fetch_or(kOpGiveGoldBolts); }},
+    {"Unlock all planets on map", [] { return std::string("tap"); }, [] { g_player_ops.fetch_or(kOpUnlockPlanets); }},
+    {"Unlock goodies & skill pts", [] { return std::string("tap"); }, [] { g_player_ops.fetch_or(kOpUnlockGoodies); }},
+    {"Teleport to checkpoint", [] { return std::string("tap"); }, [] { g_player_ops.fetch_or(kOpTeleportCheckpoint); }},
+    {"Save position", [] { return std::string("tap"); }, [] { g_player_ops.fetch_or(kOpSavePos); }},
+    {"Teleport to saved pos", [] { return std::string(g_saved_pos_set ? "tap" : "none"); }, [] { g_player_ops.fetch_or(kOpTeleportSaved); }},
+    {"Kill Ratchet (respawn)", [] { return std::string("tap"); }, [] { g_player_ops.fetch_or(kOpKillHero); }},
+};
+
+constexpr const char* kPlanetNames[19] = {
+    "0 Veldin",        "1 Novalis",    "2 Aridia",     "3 Kerwan",    "4 Eudora",   "5 Rilgar",        "6 Nebula G34",
+    "7 Umbris",        "8 Batalia",    "9 Gaspar",     "10 Orxon",    "11 Pokitaru","12 Hoven",        "13 Oltanis Orb",
+    "14 Oltanis",      "15 Quartu",    "16 Kalebo III","17 Veldin Orb","18 Veldin II"};
+
+// the page's items (row 0, above them, switches the page: 0 Picture, 1 Game, 2 Player, 3 Levels)
 const Item* page_items(size_t* n) {
     if (g_page == 0) {
         *n = sizeof kRender / sizeof kRender[0];
         return kRender;
     }
-    *n = sizeof kGame / sizeof kGame[0];
-    return kGame;
+    if (g_page == 1) {
+        *n = sizeof kGame / sizeof kGame[0];
+        return kGame;
+    }
+    if (g_page == 2) {
+        *n = sizeof kPlayerItems / sizeof kPlayerItems[0];
+        return kPlayerItems;
+    }
+    *n = 0;
+    return nullptr;
 }
 constexpr int kItemY = 34, kItemH = 28, kItemX = 8, kItemW = 420;  // (28 apart: the Picture page's 15 rows, 2026-10-28)
+constexpr int kLevelColW = 206, kLevelColGap = 8;
 
 bool g_was_touched = false;
 int g_touch_x = -1, g_touch_y = -1, g_taps = 0;
@@ -230,8 +346,118 @@ void flip(const Item& it) {
 }  // namespace
 
 bool debug_menu_wanted() {
-    static const bool on = std::getenv("RAC1_WIIU_MENU") != nullptr && std::atoi(std::getenv("RAC1_WIIU_MENU")) != 0;
+    static const bool on = std::getenv("RAC1_WIIU_MENU") == nullptr || std::atoi(std::getenv("RAC1_WIIU_MENU")) != 0;
     return on;
+}
+
+bool debug_menu_shown() { return g_shown; }
+
+int debug_menu_take_goto() { return g_goto_level.exchange(-1); }
+
+void debug_menu_game_frame() {
+    const uint32_t ops = g_player_ops.exchange(0);
+    if (ops & kOpRefillHealth) {
+        rac1::ee_write<int32_t>(kHealthMax, 80);
+        rac1::ee_write<int32_t>(kHealth, 80);
+    }
+    if (ops & kOpAddBolts) {
+        rac1::ee_write<int32_t>(kBolts, std::min(rac1::ee_read<int32_t>(kBolts) + 100000, 9999999));
+    }
+    if (ops & kOpGiveAllItems) {
+        for (int id = 2; id < 0x24; ++id) {
+            if (rac1::ee_read<uint8_t>(kOwned + static_cast<uint32_t>(id)) == 0) rac1::devtools::item_give_quiet(id, 0);
+            const int m = ammo_max_wiiu(id);
+            if (m > 0) rac1::ee_write<int32_t>(kAmmo + static_cast<uint32_t>(id) * 4, m);
+        }
+    }
+    if (ops & kOpGiveGoldWeapons) {
+        constexpr int kGoldIds[] = {0x13, 0x0a, 0x0b, 0x10, 0x11, 0x0f, 0x15, 0x14, 0x19, 0x09};
+        for (int id : kGoldIds) {
+            if (rac1::ee_read<uint8_t>(kOwned + static_cast<uint32_t>(id)) == 0) rac1::devtools::item_give_quiet(id, 0);
+            rac1::ee_write<uint8_t>(kGoldWeapons + static_cast<uint32_t>(id), 1);
+        }
+    }
+    if (ops & kOpGiveGoldBolts) {
+        constexpr int kGoldBoltsOf[19] = {0, 3, 4, 3, 1, 2, 2, 2, 2, 2, 2, 1, 2, 1, 4, 2, 2, 2, 3};
+        for (int l = 0; l < 19; ++l)
+            for (int k = 0; k < kGoldBoltsOf[l]; ++k) rac1::ee_write<uint8_t>(kGoldBolts + static_cast<uint32_t>(l * 4 + k), 1);
+    }
+    if (ops & kOpUnlockPlanets) {
+        for (int32_t l = 1; l <= 18; ++l) rac1::level_mark_visited(l);
+    }
+    if (ops & kOpUnlockGoodies) {
+        for (int g : {0, 1, 2, 4, 5}) rac1::ee_write<uint8_t>(kGoodies + static_cast<uint32_t>(g), 1);
+        for (int s = 0; s < 30; ++s) rac1::ee_write<uint8_t>(kSkillPoints + static_cast<uint32_t>(s), 1);
+        for (int c = 0; c < 12; ++c) rac1::ee_write<uint8_t>(kCheatUnlocked + static_cast<uint32_t>(c), 1);
+        if (rac1::ee_read<int32_t>(kChallenge) <= 0) rac1::ee_write<int32_t>(kChallenge, 1);
+    }
+    if ((ops & kOpTeleportCheckpoint) && rac1::ee_read<uint32_t>(kHeroMoby) != 0) {
+        const float cp[3] = {rac1::ee_read<float>(kCheckpoint), rac1::ee_read<float>(kCheckpoint + 4), rac1::ee_read<float>(kCheckpoint + 8)};
+        const float yaw = rac1::ee_read<float>(kCheckpointRot + 8);
+        hero_teleport_wiiu(cp, &yaw);
+        g_move_pos_init = false;
+    }
+    if ((ops & kOpSavePos) && rac1::ee_read<uint32_t>(kHeroMoby) != 0) {
+        for (int c = 0; c < 3; ++c) g_saved_pos[c] = rac1::ee_read<float>(kHeroPos + c * 4);
+        g_saved_yaw = rac1::ee_read<float>(kHeroRot + 8);
+        g_saved_pos_set = true;
+    }
+    if ((ops & kOpTeleportSaved) && g_saved_pos_set && rac1::ee_read<uint32_t>(kHeroMoby) != 0) {
+        hero_teleport_wiiu(g_saved_pos, &g_saved_yaw);
+        g_move_pos_init = false;
+    }
+    if ((ops & kOpKillHero) && rac1::ee_read<uint32_t>(kHeroMoby) != 0 && rac1::ee_read<uint8_t>(kPlayer + 0x20b1u) == 0) {
+        const uint32_t sub = rac1::ee_read<uint32_t>(kPlayer + 0x208cu), mode = rac1::ee_read<uint8_t>(kPlayer + 0x20a4u);
+        rac1::ee_write<int32_t>(kHealth, 0);
+        if (sub != 0x14u && mode != 2u) rac1::hero_set_state(0x3du, 1);
+    }
+    if (g_god_mode && rac1::ee_read<int32_t>(kHealth) > 0) {
+        rac1::ee_write<int32_t>(kHealth, rac1::ee_read<int32_t>(kHealthMax));
+    }
+    if (g_inf_bolts) {
+        rac1::ee_write<int32_t>(kBolts, 9999999);
+    }
+    if (g_inf_ammo) {
+        for (int id = 0; id < 0x25; ++id) {
+            const int m = ammo_max_wiiu(id);
+            if (m > 0 && rac1::ee_read<uint8_t>(kOwned + static_cast<uint32_t>(id)) != 0)
+                rac1::ee_write<int32_t>(kAmmo + static_cast<uint32_t>(id) * 4, m);
+        }
+    }
+    if (g_move_hero && rac1::ee_read<uint32_t>(kHeroMoby) != 0) {
+        if (!g_move_pos_init) {
+            for (int c = 0; c < 3; ++c) g_move_pos[c] = rac1::ee_read<float>(kHeroPos + c * 4);
+            g_move_yaw = rac1::ee_read<float>(kHeroRot + 8);
+            g_move_pos_init = true;
+        }
+        VPADStatus v{};
+        if (rac1_wiiu_last_vpad(&v)) {
+            auto dz = [](float x) { return std::fabs(x) < 0.15f ? 0.0f : x; };
+            const float mx = dz(v.leftStick.x), my = dz(v.leftStick.y);
+            const float mz = ((v.hold & VPAD_BUTTON_R) ? 1.0f : 0.0f) - ((v.hold & VPAD_BUTTON_L) ? 1.0f : 0.0f);
+            const float boost = (v.hold & VPAD_BUTTON_ZR) ? 4.0f : 1.0f;
+            const float cx = rac1::ee_read<float>(kCamera), cy = rac1::ee_read<float>(kCamera + 4);
+            float fx = g_move_pos[0] - cx, fy = g_move_pos[1] - cy;
+            const float fl = std::sqrt(fx * fx + fy * fy);
+            if (fl > 0.01f) {
+                fx /= fl;
+                fy /= fl;
+            } else {
+                fx = std::cos(g_move_yaw);
+                fy = std::sin(g_move_yaw);
+            }
+            const float rx = fy, ry = -fx;
+            const float step = 10.0f * boost * (1.0f / 60.0f);
+            const float dx = (fx * my + rx * mx) * step, dy = (fy * my + ry * mx) * step;
+            g_move_pos[0] += dx;
+            g_move_pos[1] += dy;
+            g_move_pos[2] += mz * step;
+            if (dx != 0.0f || dy != 0.0f) g_move_yaw = std::atan2(dy, dx);
+        }
+        hero_teleport_wiiu(g_move_pos, &g_move_yaw);
+    } else {
+        g_move_pos_init = false;
+    }
 }
 
 bool debug_menu_init() {
@@ -309,6 +535,21 @@ void debug_menu_input() {
     } else if (VPADRead(VPAD_CHAN_0, &v, 1, &e) != 1 || e != VPAD_READ_SUCCESS) {
         return;
     }
+    const bool r3 = (v.hold & VPAD_BUTTON_STICK_R) != 0;
+    const bool l3 = (v.hold & VPAD_BUTTON_STICK_L) != 0;
+    const bool combo = r3 && l3;
+    if (combo && !g_prev_combo) {
+        g_move_hero = !g_move_hero;
+        g_move_pos_init = false;
+        std::printf("[wiiu] menu: Move Ratchet (R3+L3) -> %s\n", g_move_hero ? "ON" : "off");
+    } else if (r3 && !l3 && !g_prev_r3) {
+        g_shown = !g_shown;
+        std::printf("[wiiu] menu: GamePad debug menu (R3) -> %s\n", g_shown ? "shown" : "hidden (TV mirror)");
+    }
+    g_prev_r3 = r3;
+    g_prev_combo = combo;
+    if (!g_shown) return;
+
     VPADTouchData t{};
     VPADGetTPCalibratedPoint(VPAD_CHAN_0, &t, &v.tpNormal);
     const bool touched = v.tpNormal.touched != 0 && v.tpNormal.validity == 0;
@@ -319,12 +560,28 @@ void debug_menu_input() {
     }
     if (touched && !g_was_touched) {  // a new tap: the item under it flipped
         ++g_taps;
-        size_t n = 0;
-        const Item* items = page_items(&n);
         auto hit = [](int y) { return g_touch_x >= kItemX && g_touch_x < kItemX + kItemW && g_touch_y >= y && g_touch_y < y + kItemH - 2; };
         if (hit(kItemY)) {
-            g_page ^= 1;
+            const int tab_idx = std::clamp((g_touch_x - kItemX) * 4 / kItemW, 0, 3);
+            g_page = (tab_idx == g_page) ? ((g_page + 1) & 3) : tab_idx;
+        } else if (g_page == 3) {
+            for (int i = 0; i < 20; ++i) {
+                const int col = i / 10, row = i % 10;
+                const int x0 = kItemX + col * (kLevelColW + kLevelColGap);
+                const int y0 = kItemY + (row + 1) * kItemH;
+                if (g_touch_x >= x0 && g_touch_x < x0 + kLevelColW && g_touch_y >= y0 && g_touch_y < y0 + kItemH - 2) {
+                    if (i < 19) {
+                        g_goto_level.store(i);
+                        std::printf("[wiiu] menu: Go to planet %d (%s)\n", i, kPlanetNames[i]);
+                    } else {
+                        g_player_ops.fetch_or(kOpUnlockPlanets);
+                        std::printf("[wiiu] menu: Unlock all planets on ship map\n");
+                    }
+                }
+            }
         } else {
+            size_t n = 0;
+            const Item* items = page_items(&n);
             for (size_t i = 0; i < n; ++i)
                 if (hit(kItemY + static_cast<int>(i + 1) * kItemH)) {
                     if (game_running) g_held.push_back(&items[i]);
@@ -350,8 +607,11 @@ void debug_menu_draw(const GX2ColorBuffer* cb, const std::vector<std::string>& s
     const Item* items = page_items(&n);
     std::vector<std::string> states(n);
     for (size_t i = 0; i < n; ++i) states[i] = items[i].state();
+    const int32_t cur_level = rac1::ee_read<int32_t>(kLevel);
+    const int32_t cur_hp = rac1::ee_read<int32_t>(kHealth), cur_hp_max = rac1::ee_read<int32_t>(kHealthMax);
+    const int32_t cur_bolts = rac1::ee_read<int32_t>(kBolts);
     char b[64];
-    std::snprintf(b, sizeof b, "touch %d,%d  taps %d", g_touch_x, g_touch_y, g_taps);
+    std::snprintf(b, sizeof b, "touch %d,%d  taps %d  (R3: hide/show)", g_touch_x, g_touch_y, g_taps);
     // ((2026-10-28) the quads made again only when what they show changes - the page, the items' states, the stats (a window's: every 30
     // host frames at most), the touch line -, and only their bytes flushed to the GPU (the buffer's whole 1.1 MB before): the menu cost ~2 ms
     // a host frame. RAC1_WIIU_MENU_CACHE=0: made every frame as before)
@@ -361,6 +621,11 @@ void debug_menu_draw(const GX2ColorBuffer* cb, const std::vector<std::string>& s
     std::string key(1, static_cast<char>('0' + g_page));
     for (const std::string& st : states) key.append(st).push_back('\x1f');
     for (const std::string& l : stats) key.append(l).push_back('\x1e');
+    if (g_page >= 2) {
+        char pbuf[64];
+        std::snprintf(pbuf, sizeof pbuf, "L%d:%d/%d:%d", static_cast<int>(cur_level), static_cast<int>(cur_hp), static_cast<int>(cur_hp_max), static_cast<int>(cur_bolts));
+        key.append(pbuf).push_back('\x1d');
+    }
     key += b;
     if (cache && key == last_key) {
         if (last_n != 0) menu_submit(cb, last_n);
@@ -369,18 +634,45 @@ void debug_menu_draw(const GX2ColorBuffer* cb, const std::vector<std::string>& s
     last_key = std::move(key);
     g_v.clear();
     static const float white[4] = {1, 1, 1, 1}, grey[4] = {0.6f, 0.6f, 0.6f, 1}, on[4] = {0.10f, 0.45f, 0.15f, 1}, off[4] = {0.45f, 0.12f, 0.10f, 1},
-                       head[4] = {1.0f, 0.85f, 0.3f, 1}, tab[4] = {0.15f, 0.2f, 0.35f, 1};
-    text(kItemX, 6, "rac1-native debug menu (tap an item)", head);
-    box(kItemX, kItemY, kItemW, kItemH - 4, tab);
-    text(kItemX + 6, kItemY + 4, g_page == 0 ? "Page: [Picture]  Game   (tap)" : "Page:  Picture  [Game]  (tap)", head);
-    for (size_t i = 0; i < n; ++i) {
-        const int y = kItemY + static_cast<int>(i + 1) * kItemH;
-        const std::string& st = states[i];
-        box(kItemX, static_cast<float>(y), kItemW, kItemH - 4, st == "off" ? off : on);
-        text(kItemX + 6, static_cast<float>(y + 4), items[i].label, white);
-        text(kItemX + kItemW - 6 - kFontCellW * static_cast<float>(st.size()), static_cast<float>(y + 4), st, white);
+                       act[4] = {0.18f, 0.30f, 0.48f, 1}, head[4] = {1.0f, 0.85f, 0.3f, 1}, tab[4] = {0.15f, 0.2f, 0.35f, 1},
+                       tab_sel[4] = {0.25f, 0.38f, 0.62f, 1};
+    text(kItemX, 6, "rac1-native debug menu (tap an item, R3 toggles screen)", head);
+    constexpr const char* kTabNames[4] = {"Picture", "Game", "Player", "Levels"};
+    for (int ti = 0; ti < 4; ++ti) {
+        const float tx = static_cast<float>(kItemX + ti * (kItemW / 4));
+        const float tw = static_cast<float>(kItemW / 4 - 2);
+        box(tx, kItemY, tw, kItemH - 4, ti == g_page ? tab_sel : tab);
+        const std::string tlabel = ti == g_page ? (std::string("[") + kTabNames[ti] + "]") : std::string(kTabNames[ti]);
+        text(tx + 8.0f, kItemY + 4, tlabel, ti == g_page ? head : white);
     }
-    // the stats: their first two lines (the frame, the steps) on both pages, then the page's own section (the game's after "#game")
+    if (g_page == 3) {
+        for (int i = 0; i < 20; ++i) {
+            const int col = i / 10, row = i % 10;
+            const float x0 = static_cast<float>(kItemX + col * (kLevelColW + kLevelColGap));
+            const float y0 = static_cast<float>(kItemY + (row + 1) * kItemH);
+            if (i < 19) {
+                const bool is_cur = (cur_level == i);
+                box(x0, y0, kLevelColW, kItemH - 4, is_cur ? on : act);
+                text(x0 + 6.0f, y0 + 4.0f, kPlanetNames[i], white);
+                const char* st = is_cur ? "NOW" : "go";
+                text(x0 + kLevelColW - 6.0f - kFontCellW * static_cast<float>(std::strlen(st)), y0 + 4.0f, st, is_cur ? head : grey);
+            } else {
+                box(x0, y0, kLevelColW, kItemH - 4, on);
+                text(x0 + 6.0f, y0 + 4.0f, "Unlock all on map", white);
+                text(x0 + kLevelColW - 6.0f - kFontCellW * 3.0f, y0 + 4.0f, "tap", head);
+            }
+        }
+    } else {
+        for (size_t i = 0; i < n; ++i) {
+            const int y = kItemY + static_cast<int>(i + 1) * kItemH;
+            const std::string& st = states[i];
+            const float* row_col = (st == "off" || st == "none") ? off : (st == "tap") ? act : on;
+            box(kItemX, static_cast<float>(y), kItemW, kItemH - 4, row_col);
+            text(kItemX + 6, static_cast<float>(y + 4), items[i].label, white);
+            text(kItemX + kItemW - 6 - kFontCellW * static_cast<float>(st.size()), static_cast<float>(y + 4), st, white);
+        }
+    }
+    // the stats: their first two lines (the frame, the steps) on all pages, plus hero info on Player/Levels, then the page's own section
     float y = 6;
     bool game_part = false;
     int line = 0;
@@ -392,6 +684,22 @@ void debug_menu_draw(const GX2ColorBuffer* cb, const std::vector<std::string>& s
         if (line++ >= 2 && game_part != (g_page == 1)) continue;
         text(440, y, l, l.rfind("  ", 0) == 0 ? grey : white);
         y += kFontCellH + 2;
+    }
+    if (g_page >= 2) {
+        y += 4;
+        char hbuf[64];
+        std::snprintf(hbuf, sizeof hbuf, "Planet: %s", (cur_level >= 0 && cur_level < 19) ? kPlanetNames[cur_level] : "?");
+        text(440, y, hbuf, head);
+        y += kFontCellH + 2;
+        std::snprintf(hbuf, sizeof hbuf, "Nanotech: %d / %d   Bolts: %d", static_cast<int>(cur_hp), static_cast<int>(cur_hp_max), static_cast<int>(cur_bolts));
+        text(440, y, hbuf, white);
+        y += kFontCellH + 2;
+        if (rac1::ee_read<uint32_t>(kHeroMoby) != 0) {
+            std::snprintf(hbuf, sizeof hbuf, "Pos: %.1f, %.1f, %.1f", rac1::ee_read<float>(kHeroPos), rac1::ee_read<float>(kHeroPos + 4),
+                          rac1::ee_read<float>(kHeroPos + 8));
+            text(440, y, hbuf, grey);
+            y += kFontCellH + 2;
+        }
     }
     text(kItemX, kScreenH - kFontCellH - 4, b, grey);
     last_n = g_v.size();

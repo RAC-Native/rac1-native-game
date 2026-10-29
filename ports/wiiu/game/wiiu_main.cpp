@@ -252,6 +252,9 @@ int read_settings() {
     setenv("RAC1_SKIP_DRAW_LISTS", "1", 1);  // skipped, game_skips.h; the debug menu's Game page turns them back on)
     setenv("RAC1_DRAW_LAST_STEP", "1", 1);  // (a catch-up game frame, not shown, not drawn: game_skips.h)
     setenv("RAC1_IOP_STATE_ONLY", "1", 1);  // (the mirror plays the sound: the game's IOP keeps its state, unmixed - about 10% of the game thread, 2026-10-28)
+    setenv("RAC1_WIIU_GFX", "1", 1);
+    setenv("RAC1_REALTIME", "1", 1);
+    setenv("RAC1_WIIU_MENU", "1", 1);
     setenv("RAC1_BOOT", "1", 1);
     setenv("RAC1_MEMCARD", "1", 1);
     setenv("RAC1_MEMCARD_DIR", "memcard", 1);

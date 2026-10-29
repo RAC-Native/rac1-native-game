@@ -10,8 +10,10 @@
 #include <string>
 #include <vector>
 
-// on: RAC1_WIIU_MENU=1 (read once)
+// on: RAC1_WIIU_MENU=1 (default on; read once)
 bool debug_menu_wanted();
+// whether the debug menu is currently visible on the GamePad screen (default on; R3 toggles between menu and TV mirror)
+bool debug_menu_shown();
 // its shader (shaders/debug_text.gsh), font and buffers: after WHBGfxInit; false: not up (the GamePad shows the game as before)
 bool debug_menu_init();
 void debug_menu_shutdown();
@@ -19,6 +21,10 @@ void debug_menu_shutdown();
 // steps, flipped by debug_menu_flush once it is joined)
 void debug_menu_input();
 void debug_menu_flush();
+// per-game-frame hook for Player cheats/actions (called inside game_frames() on Wii U)
+void debug_menu_game_frame();
+// returns a requested level (0..18) from the Levels page and clears it, or -1 if none
+int debug_menu_take_goto();
 // the menu and `stats` (the timing's lines) drawn into the GamePad's colour buffer (WHBGfxBeginRenderDRC done, the buffer cleared)
 void debug_menu_draw(const GX2ColorBuffer* cb, const std::vector<std::string>& stats);
 

@@ -163,6 +163,8 @@ void rac1_wiiu_picture_frame(const rac1::gs::Gs* replica, float fb_w, float fb_h
 void rac1_wiiu_time(int slot, double ms);  // (testing, RAC1_WIIU_TIMING: a stage's time of the host frame - wiiu_gfx.cpp)
 bool rac1_wiiu_game_thread();  // ports/wiiu/game/debug_menu.cpp: the game's steps on the game thread beside the drawing (RAC1_WIIU_GAME_THREAD)
 void debug_menu_flush();       // (the GamePad menu's taps held while the game thread ran, flipped once it is joined)
+void debug_menu_game_frame();  // (the GamePad menu's Player cheats and one-shot actions, between game frames)
+int debug_menu_take_goto();    // (the GamePad menu's Levels page level request, or -1)
 #endif
 namespace rac1 {
 extern bool g_world_pass_ranges_on;  // src/game/ovl/overlay_entry.cpp: the world passes' chain ranges noted
@@ -3215,6 +3217,12 @@ int main(int argc, char** argv) {
                 }
                 for (const auto& [gl, gf] : goto_chain)  // (the chain's next change)
                     if (game_frame == gf) goto_level = gl, goto_frame = gf;
+#if defined(__WIIU__)
+                if (const int wl = debug_menu_take_goto(); wl >= 0) {
+                    goto_level = wl;
+                    goto_frame = game_frame;
+                }
+#endif
                 if (goto_level >= 0 && game_frame == goto_frame && !exiting && !ee_thread_suspended()) {
                     sync_main_for_transition();
                     if (boot_active()) {  // the boot's title left for the level (the debug menu's skip)
@@ -3276,6 +3284,9 @@ int main(int argc, char** argv) {
                     dt::dev_kill_apply();
                     dt::dev_hoverboard_apply();
                 }
+    #endif
+    #if defined(__WIIU__)
+                if (!exiting && !ee_thread_suspended() && !boot_active()) debug_menu_game_frame();
     #endif
                 mrp_scene_end_frame();
                 const bool game_frame_ended = !ee_thread_suspended();

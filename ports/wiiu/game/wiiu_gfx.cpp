@@ -1181,7 +1181,9 @@ void wiiu_gfx_frame() {
     // host frame (its colour buffer, which keeps the last one, copied again between); 0 drawn every host frame as before. The debug menu
     // is drawn as before)
     static const int pad_mode = std::getenv("RAC1_WIIU_GAMEPAD") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_GAMEPAD")) : 1;
-    const bool menu = debug_menu_wanted() && !g_ending;
+    const bool menu_on = debug_menu_wanted() && !g_ending;
+    if (menu_on) debug_menu_input();
+    const bool menu = menu_on && debug_menu_shown();
     if (!menu && drc && (pad_mode == 1 || (pad_mode == 2 && (g_frames & 1) != 0))) {
         GX2CopyColorBufferToScanBuffer(pad_mode == 1 ? WHBGfxGetTVColourBuffer() : WHBGfxGetDRCColourBuffer(), GX2_SCAN_TARGET_DRC);
         GX2SetContextState(WHBGfxGetDRCContextState());  // (as WHBGfxFinishRenderDRC after its copy)
@@ -1190,7 +1192,6 @@ void wiiu_gfx_frame() {
         WHBGfxBeginRenderDRC();
         WHBGfxClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         if (menu) {  // (the GamePad's debug menu in place of the game's picture there)
-            debug_menu_input();
             debug_menu_draw(WHBGfxGetDRCColourBuffer(), g_menu_stats);
         } else if (drc) {
             draw_frame(WHBGfxGetDRCColourBuffer(), WHBGfxGetDRCDepthBuffer(), false);
