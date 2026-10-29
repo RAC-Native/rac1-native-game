@@ -129,3 +129,46 @@ Questo file coordina il lavoro dei subagenti (Gemini 4) sul branch `port/wiiu` i
      - `ports/wiiu/game/wiiu_input.cpp` & `ports/wiiu/game/wiiu_stubs.cpp`: Aggiunto `VPADStopMotor(VPAD_CHAN_0)` all'uscita (`rac1_wiiu_quit` / Minus tenuto premuto) e lo stub `glfwSetScrollCallback` in `wiiu_stubs.cpp` per il nuovo callback rotella mouse di `orig_main.cpp`.
 - **Verifiche:**
   - Controllo sintattico e warning (`-fsyntax-only -Wall -Wextra`) superato con 0 errori e 0 warning sui file modificati sia con `powerpc-eabi-g++` (devkitPPC GCC 16) sia con `g++` host PC.
+
+## Track D — FMV (.pss) MPEG-2 VLC & Streaming Demux Fix
+- **Stato:** `[COMPLETATO]`
+- **File modificati (esclusivi Track D):**
+  - `runtime/ipu/mpeg2_dec.h`
+  - `runtime/ipu/movie_hw.cpp`
+- **Analisi e Modifiche Effettuate:**
+  1. **Correzione Tabelle VLC ISO/IEC 13818-2 Annex B (B.1, B.14, B.15), LUT e Riferimento P-frame in `runtime/ipu/mpeg2_dec.h`:**
+     - Riallineati gli array canonici `kCoeffRun[111]`, `kCoeffLevel[111]`, `kB14Code[111]`, `kB14Len[111]`, `kB15Code[111]` e `kB15Len[111]` alle tabelle ufficiali ISO/IEC 13818-2 Annex B Table B.14 / Table B.15 (`ff_rl_mpeg1` / `ff_rl_mpeg2`), eliminando tutte le collisioni di prefisso (0 collisioni su tutti i 224 codici `sign=0/1` + `EOB` + `Escape`) e ripristinando le 7 coppie `(run, level)` mancanti (`(0, 36..40)`, `(30, 1)`, `(31, 1)`).
+     - Aggiornata `VlcTables` e `decode_block` con `b14_short[1 << 12]` / `b15_short[1 << 12]` (per `total_len <= 12`, indicizzate da `br.show(12)`) e `b14_long[1 << 11]` / `b15_long[1 << 11]` (per `total_len in 13..17`, indicizzate da `br.show(17) < 2048`), garantendo il round-trip esatto al 100% di tutte le entry B.14 e B.15.
+     - Corretto `decode_mb_address_increment` (Table B.1) per gli incrementi `10..15` (`v >= 48`), `16..21` (`v >= 36`, `23 - c`) e `22..33` (`v >= 24`, `35 - v`), lo shift di dequantizzazione AC/non-intra (`>> 5`, ovvero `/ 32` come da ISO/IEC 13818-2 §7.4.2.2) e il frame di riferimento forward `ref[0]` in `apply_mc` per i P-frame (`do_dir(0, ref[0])` dopo `std::swap(ref[0], ref[1])`).
+  2. **Eliminazione dell'Hitch di Allocazione Sincrona da 40 MB in `runtime/ipu/movie_hw.cpp`:**
+     - In `movie_hw_open()`, rimosso `L.d.resize((bytes + 2047) / 2048 * 2048)` (20 MB zero-filled) e `m.video.resize(bytes)` (20 MB zero-filled) che causavano un hitch sincrono di ~1240 ms sul game thread e occupavano 20 MB extra in MEM2.
+     - Convertito `L.d` in un buffer sliding-window (`L.d.reserve(kChunk + 65536)` = 320 KB): `load_step()` legge fino a `kChunk` (256 KB) per passo, esegue `L.dx.step()` e rimuove i byte già demuxati (`L.d.erase(L.d.begin(), L.d.begin() + consumed)`), mantenendo la dimensione massima di `L.d` a 256 KB.
+     - Sostituito `m.video.resize(bytes)` con `m.video.reserve(bytes)` (singola `malloc` senza zero-fill) e append incrementale in `load_step()` tramite `m.video.insert(m.video.end(), p, p + n)` senza alcuna riallocazione durante la lettura concorrente del decoder.
+- **Verifiche:**
+  - **Round-trip VLC & Collision Test:** 0 collisioni di prefisso in B.14 e B.15; 100% round-trip verificato su tutte le 111 entry (`sign=0` e `sign=1`), `EOB` ed `Escape`.
+  - **Confronto Demux Sliding-Window vs Full-Buffer:** Output `m.video` e `L.tracks` 100% bit-identical su `row_17f8.pss` (7,316,543 B), `row_1950.pss` (4,966,544 B) e `row_1958.pss` (12,799,876 B), con `max_d_size = 262,144` byte (256 KB).
+  - **Confronto Decodifica Primi 30 Frame (`mpeg2_dec.h` vs `libavcodec`):**
+    - `assets/disc/toc/row_17f8.pss` (Intro FMV): 0 slice fallite, max `|Y_builtin - Y_avcodec| = 0.0994` (`< 0.5`).
+    - `assets/disc/toc/row_1950.pss`: 0 slice fallite, max `|Y_builtin - Y_avcodec| = 0.0287` (`< 0.5`).
+    - `assets/disc/toc/row_1958.pss` (Veldin FMV, sector 622319): 0 slice fallite, max `|Y_builtin - Y_avcodec| = 0.0212` (`< 0.5`).
+  - **Controllo Compilazione PC e Wii U:** `-fsyntax-only -Wall -Wextra` superato con 0 errori e 0 warning sia con `g++` host PC sia con `powerpc-eabi-g++` (devkitPPC).
+
+## Track E — Main Menu (RAC1_BOOT=1) Speedup, Camera View Swap & Default Boot Config on Wii U
+- **Stato:** `[COMPLETATO]`
+- **File modificati (esclusivi Track E):**
+  - `src/host/orig_main.cpp`
+  - `src/game/ovl/overlay_entry.cpp`
+  - `src/game/boot/title.cpp`
+  - `ports/wiiu/game/wiiu_main.cpp`
+- **Analisi e Modifiche Effettuate:**
+  1. **Guardie `world_tfrag/tie/shrub_lighting` e `_end` in `src/game/boot/title.cpp` (`title_draw`):**
+     - Sotto `#if defined(__WIIU__)`, protette `world_tfrag_lighting` / `world_tfrag_end` con `if (!tfrag_off)` (`RAC1_TFRAG_PASS_OFF`), `world_tie_lighting` / `world_tie_end` con `if ((wp_skip & 2ul) == 0)` e `world_shrub_lighting` / `world_shrub_end` con `if ((wp_skip & 4ul) == 0)` (`RAC1_WORLD_PASS_SKIP`), evitando la dereferenziazione di puntatori non inizializzati o obsoleti quando i pass CPU world sono saltati su Wii U.
+  2. **Abilitazione `world_pass_skipped` e `tfrag_pass_off` durante `boot_in_title()` su `__WIIU__` in `src/game/ovl/overlay_entry.cpp`:**
+     - Sotto `#if defined(__WIIU__)`, rimosso `&& !boot_in_title()` da `world_pass_skipped(int kind)` e `tfrag_pass_off()` (mantenendolo su `#else` per non alterare il test di riferimento `boot` su PC), dato che su Wii U `mrp_world_gx2` disegna direttamente il mondo del Title Screen su GX2.
+  3. **Abilitazione `g_moby_mrp_skip`, `g_moby_pass_mrp`, skip hook VU1 moby e `g_world_chain_forced = false` durante `boot_in_title()` su `__WIIU__` in `src/host/orig_main.cpp`:**
+     - In `vu1::g_start_hook` e in `game_frames()`, consentito lo skip dei programmi VU1 moby (`0x008..0x00e`) e dello skinning/joints CPU VU0 (`g_moby_mrp_skip`, `g_moby_pass_mrp`) quando `(!boot_active() || boot_in_title())` su `#if defined(__WIIU__)`, eliminando ~180 ms/frame di lavoro CPU sul Title Screen e sul Menu Principale (`mrp_moby_gx2` disegna già sia i moby della scena titolo sia i box 3D del menu `mode == 3`).
+     - Sotto `#if defined(__WIIU__)`, impostato `g_world_chain_forced = false` per riavvolgere la catena VU1 world inutilizzata durante `boot_active()`.
+  4. **Ripristino `mrp_title_view_swap_in()` / `mrp_title_view_swap_out()` su `__WIIU__` in `src/host/orig_main.cpp`:**
+     - Racchiusi `mrp_world_wiiu_sky_capture`, `mrp_moby_prepare`, `mrp_world_wiiu_prepare` e `rac1_wiiu_picture_frame` tra `const bool title_view = wiiu_title && mrp_title_view_swap_in();` e `if (title_view) { mrp_world_wiiu_join(); mrp_title_view_swap_out(); }`, ripristinando la camera 3D della scena titolo dietro il Menu Principale (`mode == 3`).
+  5. **Default di Avvio nel Menu Principale e Memory Card su Wii U (`ports/wiiu/game/wiiu_main.cpp`):**
+     - Impostati i default `RAC1_BOOT=1`, `RAC1_MEMCARD=1`, `RAC1_MEMCARD_DIR=memcard` e `RAC1_QUIT_ENDS=0` prima della lettura di `run.cfg`, così il gioco su Wii U parte dal Menu Principale con salvataggi su SD attivi e "Quit Game" riporta al Menu Principale.

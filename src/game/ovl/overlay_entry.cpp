@@ -330,11 +330,15 @@ void zones_update() {
 // 4 shrub: the game's own render enable off while they run; not the tfrag, whose packets read the culling's lists). The game state stays
 // (600 Veldin frames: hero and camera identical); the instances keep the colours of the level's load, but for the point lights' (see
 // g_world_relight below)
-// (neither skip in the boot's title: its draw relights the passes' lists itself - title.cpp title_draw -, which a skipped pass never
-// filled: a quit to the title read a level's stale pointers)
+// (neither skip in the boot's title on the PC: its draw relights the passes' lists itself - title.cpp title_draw -, which a skipped pass never
+// filled: a quit to the title read a level's stale pointers; on the Wii U mrp_world_gx2 draws the title's world and title_draw guards the relighting)
 static bool world_pass_skipped(int kind) {
     static const char* wp_skip = std::getenv("RAC1_WORLD_PASS_SKIP");
+#if defined(__WIIU__)
+    return wp_skip != nullptr && kind >= 0 && ((std::strtoul(wp_skip, nullptr, 16) >> kind) & 1) != 0;
+#else
     return wp_skip != nullptr && kind >= 0 && ((std::strtoul(wp_skip, nullptr, 16) >> kind) & 1) != 0 && !boot_in_title();
+#endif
 }
 
 // orig: (host) testing (the Wii U port): RAC1_TFRAG_PASS_OFF=1, the game's tfrag pass not run at all, nor its relighting at the passes'
@@ -342,7 +346,11 @@ static bool world_pass_skipped(int kind) {
 // decisions does not read (the tfrag snapshot is taken all the same); the tfrags keep the colours of the level's load
 static bool tfrag_pass_off() {
     static const bool off = std::getenv("RAC1_TFRAG_PASS_OFF") != nullptr && std::atoi(std::getenv("RAC1_TFRAG_PASS_OFF")) != 0;
+#if defined(__WIIU__)
+    return off;
+#else
     return off && !boot_in_title();
+#endif
 }
 
 // orig: (host) the Wii U port (2026-10-28): the relighting of a pass whose culling is skipped (RAC1_WORLD_PASS_SKIP) or which is off

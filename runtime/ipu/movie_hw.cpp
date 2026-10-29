@@ -95,7 +95,9 @@ struct Demux {
             const uint8_t id = d[i + 3];
             if (id == 0xba) {  // pack header (MPEG-2: 14 bytes + stuffing)
                 if (!more(i + 14)) return;
-                i += 14 + (d[i + 13] & 7);
+                const size_t pack_len = 14 + (d[i + 13] & 7);
+                if (!more(i + pack_len)) return;
+                i += pack_len;
                 continue;
             }
             if (id == 0xb9) {  // program end
@@ -281,22 +283,39 @@ constexpr size_t kChunk = 256 * 1024;  // bytes read at a time
 // orig: (host) the next part of the file read and demultiplexed, the sound decoded as far as it goes
 void load_step(Load& L, Movie& m) {
     if (!L.complete()) {
-        const size_t n = std::min<size_t>(kChunk, L.d.size() - L.got);
-        if (!disc_read(L.lba + static_cast<uint32_t>(L.got / 2048), static_cast<uint32_t>(n / 2048), L.d.data() + L.got)) L.ok = false;
-        else L.got += n;
+        const size_t read_cap = (static_cast<size_t>(L.bytes) + 2047) / 2048 * 2048;
+        const size_t n = std::min<size_t>(kChunk, read_cap - L.got);
+        const size_t old_sz = L.d.size();
+        L.d.resize(old_sz + n);
+        if (!disc_read(L.lba + static_cast<uint32_t>(L.got / 2048), static_cast<uint32_t>(n / 2048), L.d.data() + old_sz)) {
+            L.d.resize(old_sz);
+            L.ok = false;
+        } else {
+            L.got += n;
+            if (L.got > L.bytes) {
+                const size_t excess = L.got - L.bytes;
+                if (excess <= L.d.size()) L.d.resize(L.d.size() - excess);
+            }
+        }
     }
     const bool complete = L.complete();
-    const size_t avail = std::min<size_t>(L.got, L.bytes);
-    L.dx.step(L.d.data(), avail, complete,
+    L.dx.step(L.d.data(), L.d.size(), complete,
               [&m](const uint8_t* p, size_t n) {
                   const size_t at = m.video_len.load(std::memory_order_relaxed);
-                  std::memcpy(m.video.data() + at, p, n);
-                  m.video_len.store(at + n, std::memory_order_release);
+                  if (at + n <= m.video.capacity()) {
+                      m.video.insert(m.video.end(), p, p + n);
+                      m.video_len.store(at + n, std::memory_order_release);
+                  }
               },
               [&L](int t, const uint8_t* p, size_t n) {
                   if (L.tracks.size() <= static_cast<size_t>(t)) L.tracks.resize(static_cast<size_t>(t) + 1);
                   L.tracks[static_cast<size_t>(t)].insert(L.tracks[static_cast<size_t>(t)].end(), p, p + n);
               });
+    if (L.dx.i > 0) {
+        const size_t consumed = std::min(L.dx.i, L.d.size());
+        L.d.erase(L.d.begin(), L.d.begin() + static_cast<std::ptrdiff_t>(consumed));
+        L.dx.i -= consumed;
+    }
     const bool all = complete && L.dx.ended;  // (the demux's end is the file's: every track is whole)
     if (L.chosen < 0) {
         if (static_cast<size_t>(L.track) < L.tracks.size() && !L.tracks[static_cast<size_t>(L.track)].empty()) L.chosen = L.track;
@@ -347,6 +366,7 @@ bool movie_hw_open(uint32_t lba, uint32_t bytes, int track) {
     if (!movie_hw_available()) {
         return false;
     }
+    if (bytes == 0) return false;
     if (!disc_is_open() && !disc_open()) return false;
     Movie& m = g_movie;
     Load& L = g_load;
@@ -354,9 +374,9 @@ bool movie_hw_open(uint32_t lba, uint32_t bytes, int track) {
     L.lba = lba;
     L.bytes = bytes;
     L.track = track;
-    L.d.resize((static_cast<size_t>(bytes) + 2047) / 2048 * 2048);
-    if (L.d.empty()) return false;
-    m.video.resize(bytes);
+    L.d.reserve(kChunk + 65536);
+    m.video.clear();
+    m.video.reserve(bytes);
     m.video_len.store(0);
     m.stop.store(false);
     m.video_done.store(false);

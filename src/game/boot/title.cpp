@@ -4,6 +4,7 @@
 // addresses below are the boot module's.
 #include <game/boot/title.h>
 
+#include <cstdlib>
 #include <game/boot/title_menu.h>
 #include <game/boot/title_sky.h>
 #include <game/lib/libc.h>
@@ -289,6 +290,24 @@ void title_draw() {
     // (FlushCache: no memory effect)
     if (lw(MODE) == 4) screen_draw();
     dma_wait(2);
+#if defined(__WIIU__)
+    static const bool tfrag_off = std::getenv("RAC1_TFRAG_PASS_OFF") != nullptr && std::atoi(std::getenv("RAC1_TFRAG_PASS_OFF")) != 0;
+    static const unsigned long wp_skip = std::getenv("RAC1_WORLD_PASS_SKIP") != nullptr ? std::strtoul(std::getenv("RAC1_WORLD_PASS_SKIP"), nullptr, 16) : 0ul;
+    if (!tfrag_off) {
+        world_tfrag_lighting(FR(0x001e1300u));  // (front: 0x234f98; the tfrag pass's list)
+        world_tfrag_end();                      // (front: 0x233308)
+    }
+    dma_wait(4);
+    if ((wp_skip & 2ul) == 0) {
+        world_tie_lighting(FR(0x001e3200u));  // (front: 0x237370; the tie pass's list)
+        world_tie_end();                      // (front: 0x235780)
+    }
+    dma_wait(8);
+    if ((wp_skip & 4ul) == 0) {
+        world_shrub_lighting(FR(0x001d8eb0u));  // (front: 0x22a5e0, the overlays' 0x288908; the shrub pass's list)
+        world_shrub_end();                      // (front: 0x228a30)
+    }
+#else
     world_tfrag_lighting(FR(0x001e1300u));  // (front: 0x234f98; the tfrag pass's list)
     world_tfrag_end();                  // (front: 0x233308)
     dma_wait(4);
@@ -297,6 +316,7 @@ void title_draw() {
     dma_wait(8);
     world_shrub_lighting(FR(0x001d8eb0u));  // (front: 0x22a5e0, the overlays' 0x288908; the shrub pass's list)
     world_shrub_end();                  // (front: 0x228a30)
+#endif
     dma_wait(0x10);
     if (g_moby_vu1_pass) moby_texture_slots();  // (its group list is the moby pass's: with the pass only)
     else TODO_PORT(0x0020cef8, "front: moby end: with the original moby pass only")();

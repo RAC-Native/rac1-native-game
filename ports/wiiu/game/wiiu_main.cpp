@@ -252,7 +252,10 @@ int read_settings() {
     setenv("RAC1_SKIP_DRAW_LISTS", "1", 1);  // skipped, game_skips.h; the debug menu's Game page turns them back on)
     setenv("RAC1_DRAW_LAST_STEP", "1", 1);  // (a catch-up game frame, not shown, not drawn: game_skips.h)
     setenv("RAC1_IOP_STATE_ONLY", "1", 1);  // (the mirror plays the sound: the game's IOP keeps its state, unmixed - about 10% of the game thread, 2026-10-28)
-    setenv("RAC1_QUIT_ENDS", "1", 1);  // (the pause menu's Quit ends the game - back to the Wii U Menu - not the title: under 1 fps here, 2026-10-28)
+    setenv("RAC1_BOOT", "1", 1);
+    setenv("RAC1_MEMCARD", "1", 1);
+    setenv("RAC1_MEMCARD_DIR", "memcard", 1);
+    setenv("RAC1_QUIT_ENDS", "0", 1);
     std::FILE* f = std::fopen("run.cfg", "r");
     if (f == nullptr) return 0;
     int n = 0;

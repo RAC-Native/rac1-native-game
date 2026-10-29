@@ -2636,7 +2636,11 @@ int main(int argc, char** argv) {
                 fn(vu.st, start, kick);
                 return true;
             }
+#if defined(__WIIU__)
+            if (!boot_active() || boot_in_title()) return true;
+#else
             if (!boot_active()) return true;
+#endif
             // the boot's title: the programs run for the GS state their kicks leave (the boot module's logo after the mobys
             // draws on it), their primitives flagged as the mobys' (the replica does not draw them: the MRP does)
             gs.set_moby_kick(true);
@@ -3135,11 +3139,16 @@ int main(int argc, char** argv) {
                 }
                 render_view_projection_undo();  // (the game's own projection back before its update: its state is a 4:3 run's)
                 {  // the MRP skips what only the GS / VU1 path needs: asked
-                   // before the update, for a frame the MRP will draw (not the title, the level exit, a movie, the debug diffs)
+                   // before the update, for a frame the MRP will draw (not the title on the PC, the level exit, a movie, the debug diffs)
                     int mw0 = 0, mh0 = 0;
                     // (not on the Vendor's screens, game mode 5 once the picture is stored: their frames over it are drawn by the GS path)
+#if defined(__WIIU__)
+                    g_moby_mrp_skip = s_mrp_skip_mode != 0 && (mrp_moby_ready() || no_graphics_skip) && (!boot_active() || boot_in_title()) && !exiting &&
+                                      movie_hw_shown(mw0, mh0) == nullptr && (lw(OV(0x0015f5c4)) != 5 || (lw(OV(0x001ca4c8)) == 0 && !ee_thread_suspended()));
+#else
                     g_moby_mrp_skip = s_mrp_skip_mode != 0 && (mrp_moby_ready() || no_graphics_skip) && !boot_active() && !exiting && movie_hw_shown(mw0, mh0) == nullptr &&
                                       (lw(OV(0x0015f5c4)) != 5 || (lw(OV(0x001ca4c8)) == 0 && !ee_thread_suspended()));
+#endif
                     g_moby_mrp_skip_verify = g_moby_mrp_skip && s_mrp_skip_mode == 2;
                     // the MRP-only moby pass: with every skip on (the host's chain processing skipping the mobys' ranges)
                     g_moby_pass_mrp = s_moby_pass_mrp_mode != 0 && g_moby_mrp_skip && (g_moby_mrp_skip_parts & 0xf) == 0xf && !g_moby_mrp_skip_verify;
@@ -3160,7 +3169,11 @@ int main(int argc, char** argv) {
     #endif
                 mrp_scene_begin_frame();
                 rac1::mrpw::scene_begin_update();  // (the MRP world: the world passes' chain ranges of this update)
+#if defined(__WIIU__)
+                g_world_chain_forced = false;
+#else
                 g_world_chain_forced = boot_active() && !g_title_scene_host;  // (the title's passes keep their chain)
+#endif
                 // When the game thread runs overlapped with drawing (wiiu_overlap with draw_reads_gs=false, or PC overlap),
                 // a level transition (level_exit_start -> loading_screen_setup, level_exit_frame -> card_start / flight load,
                 // or RAC1_GOTO) overwrites EE RAM (0x00100000, 0x0015ed84, 0x002c3b00, 0x004c3b00, overlay globals) and GS VRAM
@@ -3433,6 +3446,7 @@ int main(int argc, char** argv) {
                 // g_frame.active and g_level are updated before the chain worker on Core 0 reads mrp_moby_active().
                 mrp_chain_join();
                 const bool wiiu_title = boot_active();
+                const bool title_view = wiiu_title && mrp_title_view_swap_in();
                 const bool wiiu_flight = exiting && level_exit_loading_screen();
                 const bool wiiu_scene = ee_thread_suspended() && ee_thread_frame() == rac1::EeVsyncFrame::Scene;
                 int wiiu_mw = 0, wiiu_mh = 0;
@@ -3568,11 +3582,15 @@ int main(int argc, char** argv) {
                 const int screen_fbp = static_cast<int>(lwu(0x0013cf20) & 0x1ff);
                 rac1_wiiu_picture_frame(replica ? &gs : nullptr, static_cast<float>(lhu(0x001518d0)), static_cast<float>(lhu(0x001518d2)), screen_fbp, fade ? screen_fbp : -1,
                                         game_frame);
+                if (title_view) {
+                    mrp_world_wiiu_join();
+                    mrp_title_view_swap_out();
+                }
 #endif
                 if (wiiu_gt_on) {  // (the game thread's switch: the frame drawn by the next host frame, beside its game frames - wiiu_pend)
                     int mw = 0, mh = 0;
                     wiiu_pend.on = true;
-                    wiiu_pend.plain = !replica && !fade && !ee_thread_suspended() && !boot_active() && !exiting && movie_hw_shown(mw, mh) == nullptr &&
+                    wiiu_pend.plain = !replica && !fade && !ee_thread_suspended() && (!boot_active() || boot_in_title()) && !exiting && movie_hw_shown(mw, mh) == nullptr &&
                                       !(lw(OV(0x0015f5c4)) == 3 && g_mode_at_update == 3) && !vendor_picture_frame();
                     wiiu_pend.level = lw(0x0015ed84);
                 }
