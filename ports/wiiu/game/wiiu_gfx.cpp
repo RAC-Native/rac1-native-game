@@ -531,6 +531,7 @@ float* g_blit_vb = nullptr;  // [8][4 corners][x, y, u, v], MEM2 (cycled across 
 uint32_t g_blit_half = 0;
 GX2Texture g_movie_tex{};
 bool g_movie_active = false;
+uint64_t g_movie_tex_serial = 0;
 void movie_tex_free() {
     if (g_movie_tex.surface.image != nullptr) {
         GX2DrawDone();
@@ -538,6 +539,7 @@ void movie_tex_free() {
     }
     g_movie_tex = GX2Texture{};
     g_movie_active = false;
+    g_movie_tex_serial = 0;
 }
 void s3_free() {
     if (g_s3.own_c != nullptr) MEMFreeToDefaultHeap(g_s3.own_c);
@@ -724,20 +726,30 @@ void movie_sync() {
         g_movie_tex.compMap = GX2_COMP_MAP(GX2_SQ_SEL_R, GX2_SQ_SEL_G, GX2_SQ_SEL_B, GX2_SQ_SEL_1);
         GX2InitTextureRegs(&g_movie_tex);
     }
-    const uint8_t* src = movie_rgba->data();
-    uint8_t* dst = static_cast<uint8_t*>(g_movie_tex.surface.image);
-    const size_t src_row_bytes = static_cast<size_t>(mw) * 4;
-    const size_t dst_row_bytes = static_cast<size_t>(g_movie_tex.surface.pitch) * 4;
-    for (int y = 0; y < mh; ++y) {
-        std::memcpy(dst + static_cast<size_t>(y) * dst_row_bytes, src + static_cast<size_t>(y) * src_row_bytes, src_row_bytes);
+    const uint64_t serial = rac1::movie_hw_shown_serial();
+    if (serial != g_movie_tex_serial) {
+        const uint8_t* src = movie_rgba->data();
+        uint8_t* dst = static_cast<uint8_t*>(g_movie_tex.surface.image);
+        const size_t src_row_bytes = static_cast<size_t>(mw) * 4;
+        const size_t dst_row_bytes = static_cast<size_t>(g_movie_tex.surface.pitch) * 4;
+        if (dst_row_bytes == src_row_bytes) {
+            std::memcpy(dst, src, src_row_bytes * static_cast<size_t>(mh));
+        } else {
+            for (int y = 0; y < mh; ++y) {
+                std::memcpy(dst + static_cast<size_t>(y) * dst_row_bytes, src + static_cast<size_t>(y) * src_row_bytes, src_row_bytes);
+            }
+        }
+        GX2Invalidate(GX2_INVALIDATE_MODE_CPU_TEXTURE, g_movie_tex.surface.image, static_cast<uint32_t>(dst_row_bytes * static_cast<size_t>(mh)));
+        g_movie_tex_serial = serial;
     }
-    GX2Invalidate(GX2_INVALIDATE_MODE_CPU_TEXTURE, g_movie_tex.surface.image, g_movie_tex.surface.imageSize);
     g_movie_active = true;
 }
 void movie_blit(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const rac1::gs::Viewport& dst) {
     if (!g_movie_active || g_movie_tex.surface.image == nullptr || !blit_ready()) return;
     const float tw = static_cast<float>(cb->surface.width), th = static_cast<float>(cb->surface.height);
-    const float x0 = static_cast<float>(dst.x) / tw * 2.0f - 1.0f, x1 = static_cast<float>(dst.x + dst.w) / tw * 2.0f - 1.0f;
+    const int cw = static_cast<int>(static_cast<float>(dst.w) * dst.xscale + 0.5f);
+    const int cx = dst.x + (dst.w - cw) / 2;
+    const float x0 = static_cast<float>(cx) / tw * 2.0f - 1.0f, x1 = static_cast<float>(cx + cw) / tw * 2.0f - 1.0f;
     const float y0 = 1.0f - (th - static_cast<float>(dst.y + dst.h)) / th * 2.0f, y1 = 1.0f - (th - static_cast<float>(dst.y)) / th * 2.0f;
     float* q = g_blit_vb + 16 * g_blit_half;
     g_blit_half = (g_blit_half + 1u) & 7u;

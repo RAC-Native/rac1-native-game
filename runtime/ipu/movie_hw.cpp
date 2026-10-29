@@ -66,6 +66,7 @@ std::mutex g_audio_lock;
 std::condition_variable g_audio_cv;  // (the sound decoded further, or all of it)
 std::vector<uint8_t> g_shown;
 int g_shown_w = 0, g_shown_h = 0;
+uint64_t g_shown_serial = 0;
 
 uint32_t be32(const uint8_t* p) { return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | p[3]; }
 uint32_t le32(const uint8_t* p) { return uint32_t(p[0]) | (uint32_t(p[1]) << 8) | (uint32_t(p[2]) << 16) | (uint32_t(p[3]) << 24); }
@@ -440,7 +441,7 @@ int movie_hw_height() { return g_movie.height; }
 double movie_hw_fps() { return g_movie.fps; }
 bool movie_hw_video_ended() { return !g_movie.open || g_movie.video_ended; }
 
-bool movie_hw_next_picture(std::vector<uint8_t>& rgba) {
+bool movie_hw_next_picture(std::vector<uint8_t>& rgba, bool render_rgba) {
     Movie& m = g_movie;
     if (!m.open || m.video_ended) return false;
     if (m.use_builtin) {
@@ -449,7 +450,7 @@ bool movie_hw_next_picture(std::vector<uint8_t>& rgba) {
             const bool vdone = m.video_done.load(std::memory_order_acquire);
             if (vdone) vlen = m.video_len.load(std::memory_order_acquire);
             int out_w = m.width, out_h = m.height;
-            const int res = m.mpeg2_dec.next_picture(m.video.data(), vlen, vdone, m.video_pos, rgba, out_w, out_h);
+            const int res = m.mpeg2_dec.next_picture(m.video.data(), vlen, vdone, m.video_pos, rgba, out_w, out_h, render_rgba);
             if (res == 1) {
                 if (out_w > 0 && out_h > 0) {
                     m.width = out_w;
@@ -479,7 +480,7 @@ bool movie_hw_next_picture(std::vector<uint8_t>& rgba) {
             }
             m.width = f->width;
             m.height = f->height;
-            csc(f->data[0], f->linesize[0], f->data[1], f->linesize[1], f->data[2], f->linesize[2], f->width, f->height, rgba);
+            if (render_rgba) csc(f->data[0], f->linesize[0], f->data[1], f->linesize[1], f->data[2], f->linesize[2], f->width, f->height, rgba);
             av_frame_unref(m.frame);
             return true;
         }
@@ -589,6 +590,14 @@ void movie_hw_show(const std::vector<uint8_t>& rgba, int w, int h) {
     g_shown = rgba;
     g_shown_w = w;
     g_shown_h = h;
+    ++g_shown_serial;
+}
+
+void movie_hw_show_swap(std::vector<uint8_t>& rgba, int w, int h) {
+    g_shown.swap(rgba);
+    g_shown_w = w;
+    g_shown_h = h;
+    ++g_shown_serial;
 }
 
 const std::vector<uint8_t>* movie_hw_shown(int& w, int& h) {
@@ -598,10 +607,13 @@ const std::vector<uint8_t>* movie_hw_shown(int& w, int& h) {
     return &g_shown;
 }
 
+uint64_t movie_hw_shown_serial() { return g_shown_serial; }
+
 void movie_hw_show_clear() {
     g_shown.clear();
     g_shown.shrink_to_fit();
     g_shown_w = g_shown_h = 0;
+    g_shown_serial = 0;
 }
 
 }  // namespace rac1

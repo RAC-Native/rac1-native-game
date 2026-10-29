@@ -56,14 +56,16 @@ bool movie_player_loop_frame() {
         ++p.frame;
         const double fps = movie_hw_fps() > 0.0 ? movie_hw_fps() : 30.0;
         const auto want = static_cast<uint64_t>(static_cast<double>(p.frame) * fps / 60.0) + 1;
+        bool decoded = false;
         while (p.shown < want) {
-            if (!movie_hw_next_picture(p.picture)) {
+            if (!movie_hw_next_picture(p.picture, p.shown + 1 >= want)) {
                 p.stopping = true;
                 break;
             }
             ++p.shown;
+            decoded = true;
         }
-        if (!p.picture.empty()) movie_hw_show(p.picture, movie_hw_width(), movie_hw_height());
+        if (decoded && !p.picture.empty()) movie_hw_show_swap(p.picture, movie_hw_width(), movie_hw_height());
         if (!p.stopping) return false;
     }
     std::printf("[movie] end after %llu frames, %llu pictures%s\n", static_cast<unsigned long long>(p.frame), static_cast<unsigned long long>(p.shown),

@@ -34,8 +34,8 @@ int movie_hw_height();
 double movie_hw_fps();
 
 // Decodes the next picture into `rgba` (width * height * 4, row 0 at the top). False at the end of
-// the stream.
-bool movie_hw_next_picture(std::vector<uint8_t>& rgba);
+// the stream. When `render_rgba` is false (catching up skipped frames), only advances the decoder.
+bool movie_hw_next_picture(std::vector<uint8_t>& rgba, bool render_rgba = true);
 // True when every picture has been taken.
 bool movie_hw_video_ended();
 
@@ -56,7 +56,9 @@ void movie_hw_close();
 // vblank): set by the player, drawn by the host over the frame while a movie runs. Null when
 // no movie picture is shown.
 void movie_hw_show(const std::vector<uint8_t>& rgba, int w, int h);
+void movie_hw_show_swap(std::vector<uint8_t>& rgba, int w, int h);
 const std::vector<uint8_t>* movie_hw_shown(int& w, int& h);
+uint64_t movie_hw_shown_serial();
 void movie_hw_show_clear();
 
 // The SPU2's ADPCM: one 16-byte block (shift / filter, flags, 14 bytes of 4-bit samples) to 28

@@ -3043,7 +3043,7 @@ int main(int argc, char** argv) {
                 // game frame each even when their measured length jitters around it - the floor gave 0 then 2, a frame shown twice)
                 steps = static_cast<int>(std::floor(game_time + 0.5));
                 game_time -= steps;
-                steps = std::min(steps, 8);
+                steps = std::min(steps, movie_hw_is_open() ? 2 : 8);
             }
         }
         audio_out_set_alone(iop_alone);
@@ -3351,7 +3351,7 @@ int main(int argc, char** argv) {
         bool steps_run = overlap;  // (the PC's game thread runs them further on)
         if (wiiu_pend.on) {
             wiiu_pend.on = false;
-            const bool wiiu_overlap = wiiu_pend.plain && steps > 0 && running && !host_paused && !exiting && !boot_active() && !ee_thread_suspended() &&
+            const bool wiiu_overlap = wiiu_pend.plain && steps > 0 && running && !host_paused && !exiting && (!boot_active() || boot_in_title()) && !ee_thread_suspended() &&
                                       wiiu_pend.level == lw(0x0015ed84);
             double gt_steps_ms = 0.0;
             if (wiiu_overlap) {
@@ -3455,8 +3455,10 @@ int main(int argc, char** argv) {
                 const bool wiiu_menu_mode = lw(OV(0x0015f5c4)) == 3 && g_mode_at_update == 3;
                 mrp_moby_begin_frame((wiiu_title && !boot_in_title() && !wiiu_flight) || (exiting && !wiiu_flight) || wiiu_movie || fade || wiiu_vendor_pic,
                                      wiiu_menu_mode, wiiu_title && mrp_title_menu_drawn());
-#endif
+                if (!fade_held && !already_kicked && start != 0 && end > start && !wiiu_movie) {
+#else
                 if (!fade_held && !already_kicked && start != 0 && end > start) {
+#endif
                     // (as chain_stage: the mobys whose skinning was skipped have no vertex data in the chain, their parts' bytes
                     // are older ones the VIF would take for codes - this frame's ranges, or the ones noted when the chain is walked again)
                     std::vector<rac1::gs::Gs::SkipRange> skips;
@@ -3583,7 +3585,6 @@ int main(int argc, char** argv) {
                 rac1_wiiu_picture_frame(replica ? &gs : nullptr, static_cast<float>(lhu(0x001518d0)), static_cast<float>(lhu(0x001518d2)), screen_fbp, fade ? screen_fbp : -1,
                                         game_frame);
                 if (title_view) {
-                    mrp_world_wiiu_join();
                     mrp_title_view_swap_out();
                 }
 #endif

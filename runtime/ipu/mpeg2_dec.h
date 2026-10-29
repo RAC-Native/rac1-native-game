@@ -19,6 +19,27 @@ inline uint8_t clamp_u8(int v) {
     return static_cast<uint8_t>(v < 0 ? 0 : (v > 255 ? 255 : v));
 }
 
+struct ClampLut {
+    uint8_t tab[1024];
+    constexpr ClampLut() : tab{} {
+        for (int i = 0; i < 1024; ++i) {
+            int v = i - 384;
+            tab[i] = static_cast<uint8_t>(v < 0 ? 0 : (v > 255 ? 255 : v));
+        }
+    }
+};
+inline constexpr ClampLut kClampLut{};
+
+inline uint32_t pack_rgba8(uint8_t r, uint8_t g, uint8_t b) {
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    return (static_cast<uint32_t>(r) << 24) | (static_cast<uint32_t>(g) << 16) |
+           (static_cast<uint32_t>(b) << 8) | 0x80u;
+#else
+    return static_cast<uint32_t>(r) | (static_cast<uint32_t>(g) << 8) |
+           (static_cast<uint32_t>(b) << 16) | 0x80000000u;
+#endif
+}
+
 struct FrameBuf {
     int w = 0;
     int h = 0;
@@ -55,14 +76,15 @@ struct FrameBuf {
         const int cw = w >> 1;
         const int w_even = width & ~1;
         const int h_even = height & ~1;
+        const uint8_t* const clp = kClampLut.tab + 384;
 
         for (int py = 0; py < h_even; py += 2) {
             const uint8_t* y_row0 = y.data() + py * w;
             const uint8_t* y_row1 = y_row0 + w;
             const uint8_t* cb_row = cb.data() + (py >> 1) * cw;
             const uint8_t* cr_row = cr.data() + (py >> 1) * cw;
-            uint8_t* dst0 = rgba.data() + static_cast<size_t>(py) * width * 4;
-            uint8_t* dst1 = dst0 + static_cast<size_t>(width) * 4;
+            uint32_t* dst0 = reinterpret_cast<uint32_t*>(rgba.data() + static_cast<size_t>(py) * width * 4);
+            uint32_t* dst1 = dst0 + width;
 
             for (int px = 0; px < w_even; px += 2) {
                 const int U = static_cast<int>(cb_row[px >> 1]) - 128;
@@ -72,31 +94,19 @@ struct FrameBuf {
                 const int b_off = 258 * U + 64;
 
                 const int Y00 = (static_cast<int>(y_row0[px]) - 16) * 149;
-                dst0[0] = clamp_u8((Y00 + r_off) >> 7);
-                dst0[1] = clamp_u8((Y00 + g_off) >> 7);
-                dst0[2] = clamp_u8((Y00 + b_off) >> 7);
-                dst0[3] = 0x80;
+                dst0[0] = pack_rgba8(clp[(Y00 + r_off) >> 7], clp[(Y00 + g_off) >> 7], clp[(Y00 + b_off) >> 7]);
 
                 const int Y01 = (static_cast<int>(y_row0[px + 1]) - 16) * 149;
-                dst0[4] = clamp_u8((Y01 + r_off) >> 7);
-                dst0[5] = clamp_u8((Y01 + g_off) >> 7);
-                dst0[6] = clamp_u8((Y01 + b_off) >> 7);
-                dst0[7] = 0x80;
+                dst0[1] = pack_rgba8(clp[(Y01 + r_off) >> 7], clp[(Y01 + g_off) >> 7], clp[(Y01 + b_off) >> 7]);
 
                 const int Y10 = (static_cast<int>(y_row1[px]) - 16) * 149;
-                dst1[0] = clamp_u8((Y10 + r_off) >> 7);
-                dst1[1] = clamp_u8((Y10 + g_off) >> 7);
-                dst1[2] = clamp_u8((Y10 + b_off) >> 7);
-                dst1[3] = 0x80;
+                dst1[0] = pack_rgba8(clp[(Y10 + r_off) >> 7], clp[(Y10 + g_off) >> 7], clp[(Y10 + b_off) >> 7]);
 
                 const int Y11 = (static_cast<int>(y_row1[px + 1]) - 16) * 149;
-                dst1[4] = clamp_u8((Y11 + r_off) >> 7);
-                dst1[5] = clamp_u8((Y11 + g_off) >> 7);
-                dst1[6] = clamp_u8((Y11 + b_off) >> 7);
-                dst1[7] = 0x80;
+                dst1[1] = pack_rgba8(clp[(Y11 + r_off) >> 7], clp[(Y11 + g_off) >> 7], clp[(Y11 + b_off) >> 7]);
 
-                dst0 += 8;
-                dst1 += 8;
+                dst0 += 2;
+                dst1 += 2;
             }
             if (w_even < width) {
                 const int px = w_even;
@@ -106,15 +116,9 @@ struct FrameBuf {
                 const int g_off = -50 * U - 104 * V + 64;
                 const int b_off = 258 * U + 64;
                 const int Y00 = (static_cast<int>(y_row0[px]) - 16) * 149;
-                dst0[0] = clamp_u8((Y00 + r_off) >> 7);
-                dst0[1] = clamp_u8((Y00 + g_off) >> 7);
-                dst0[2] = clamp_u8((Y00 + b_off) >> 7);
-                dst0[3] = 0x80;
+                dst0[0] = pack_rgba8(clp[(Y00 + r_off) >> 7], clp[(Y00 + g_off) >> 7], clp[(Y00 + b_off) >> 7]);
                 const int Y10 = (static_cast<int>(y_row1[px]) - 16) * 149;
-                dst1[0] = clamp_u8((Y10 + r_off) >> 7);
-                dst1[1] = clamp_u8((Y10 + g_off) >> 7);
-                dst1[2] = clamp_u8((Y10 + b_off) >> 7);
-                dst1[3] = 0x80;
+                dst1[0] = pack_rgba8(clp[(Y10 + r_off) >> 7], clp[(Y10 + g_off) >> 7], clp[(Y10 + b_off) >> 7]);
             }
         }
         if (h_even < height) {
@@ -122,16 +126,14 @@ struct FrameBuf {
             const uint8_t* y_row0 = y.data() + py * w;
             const uint8_t* cb_row = cb.data() + (py >> 1) * cw;
             const uint8_t* cr_row = cr.data() + (py >> 1) * cw;
-            uint8_t* dst0 = rgba.data() + static_cast<size_t>(py) * width * 4;
+            uint32_t* dst0 = reinterpret_cast<uint32_t*>(rgba.data() + static_cast<size_t>(py) * width * 4);
             for (int px = 0; px < width; ++px) {
                 const int U = static_cast<int>(cb_row[px >> 1]) - 128;
                 const int V = static_cast<int>(cr_row[px >> 1]) - 128;
                 const int Y00 = (static_cast<int>(y_row0[px]) - 16) * 149;
-                dst0[0] = clamp_u8((Y00 + 204 * V + 64) >> 7);
-                dst0[1] = clamp_u8((Y00 - 50 * U - 104 * V + 64) >> 7);
-                dst0[2] = clamp_u8((Y00 + 258 * U + 64) >> 7);
-                dst0[3] = 0x80;
-                dst0 += 4;
+                dst0[px] = pack_rgba8(clp[(Y00 + 204 * V + 64) >> 7],
+                                      clp[(Y00 - 50 * U - 104 * V + 64) >> 7],
+                                      clp[(Y00 + 258 * U + 64) >> 7]);
             }
         }
     }
@@ -149,13 +151,20 @@ struct BitReader {
 
     uint32_t show(int n) const {
         if (n <= 0) return 0;
-        size_t byte_idx = bit_pos >> 3;
-        int bit_off = static_cast<int>(bit_pos & 7);
-        uint64_t val = 0;
-        for (int i = 0; i < 5; ++i) {
-            val = (val << 8) | (byte_idx + i < size ? data[byte_idx + i] : 0);
+        const size_t byte_idx = bit_pos >> 3;
+        const int bit_off = static_cast<int>(bit_pos & 7);
+        uint32_t val = 0;
+        if (byte_idx + 4 <= size) {
+            std::memcpy(&val, data + byte_idx, 4);
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+            val = __builtin_bswap32(val);
+#endif
+        } else {
+            for (int i = 0; i < 4; ++i) {
+                val = (val << 8) | (byte_idx + i < size ? data[byte_idx + i] : 0);
+            }
         }
-        return static_cast<uint32_t>((val >> (40 - bit_off - n)) & ((1ULL << n) - 1));
+        return (val << bit_off) >> (32 - n);
     }
 
     void skip(int n) { bit_pos += static_cast<size_t>(n); }
@@ -392,10 +401,10 @@ inline void idct_row(int16_t* blk) {
 
     int d0 = c5 + c7;
     int d1 = c5 - c7;
-    int d2 = c4 + c6;
-    int d3 = c4 - c6;
-    int e1 = (181 * (d1 + d2) + 128) >> 8;
-    int e2 = (181 * (d1 - d2) + 128) >> 8;
+    int d2 = c4 - c6;
+    int d3 = c4 + c6;
+    int e1 = static_cast<int>((181LL * (d1 + d2) + 128) >> 8);
+    int e2 = static_cast<int>((181LL * (d1 - d2) + 128) >> 8);
 
     blk[0] = static_cast<int16_t>((s0 + d0) >> 8);
     blk[7] = static_cast<int16_t>((s0 - d0) >> 8);
@@ -437,10 +446,10 @@ inline void idct_col(int16_t* blk) {
 
     int d0 = c5 + c7;
     int d1 = c5 - c7;
-    int d2 = c4 + c6;
-    int d3 = c4 - c6;
-    int e1 = (181 * (d1 + d2) + 128) >> 8;
-    int e2 = (181 * (d1 - d2) + 128) >> 8;
+    int d2 = c4 - c6;
+    int d3 = c4 + c6;
+    int e1 = static_cast<int>((181LL * (d1 + d2) + 128) >> 8);
+    int e2 = static_cast<int>((181LL * (d1 - d2) + 128) >> 8);
 
     blk[0 * 8] = static_cast<int16_t>((s0 + d0) >> 17);
     blk[7 * 8] = static_cast<int16_t>((s0 - d0) >> 17);
@@ -452,8 +461,16 @@ inline void idct_col(int16_t* blk) {
     blk[4 * 8] = static_cast<int16_t>((s3 - d3) >> 17);
 }
 
-inline void idct8x8(int16_t block[64]) {
-    for (int i = 0; i < 8; ++i) idct_row(block + i * 8);
+inline void idct8x8(int16_t block[64], uint8_t row_mask) {
+    if (row_mask == 0) return;
+    if (row_mask == 1 && (block[1] | block[2] | block[3] | block[4] | block[5] | block[6] | block[7]) == 0) {
+        const int16_t v = static_cast<int16_t>((block[0] + 4) >> 3);
+        for (int i = 0; i < 64; ++i) block[i] = v;
+        return;
+    }
+    for (int i = 0; i < 8; ++i) {
+        if (row_mask & (1u << i)) idct_row(block + i * 8);
+    }
     for (int i = 0; i < 8; ++i) idct_col(block + i);
 }
 
@@ -541,56 +558,78 @@ inline uint8_t decode_mb_type(BitReader& br, int pic_type) {
     return 0;
 }
 
-inline int decode_cbp(BitReader& br) {
-    struct Entry { uint16_t code; uint8_t len; uint8_t cbp; };
-    static constexpr Entry kCbp[64] = {
-        {0b111, 3, 60},       {0b1101, 4, 4},       {0b1100, 4, 8},       {0b1011, 4, 16},
-        {0b1010, 4, 32},      {0b10011, 5, 12},     {0b10010, 5, 48},     {0b10001, 5, 20},
-        {0b10000, 5, 40},     {0b01111, 5, 28},     {0b01110, 5, 44},     {0b01101, 5, 52},
-        {0b01100, 5, 56},     {0b01011, 5, 1},      {0b01010, 5, 61},     {0b01001, 5, 2},
-        {0b01000, 5, 62},     {0b001111, 6, 24},    {0b001110, 6, 36},    {0b001101, 6, 3},
-        {0b001100, 6, 63},    {0b0010111, 7, 5},    {0b0010110, 7, 9},    {0b0010101, 7, 17},
-        {0b0010100, 7, 33},   {0b0010011, 7, 6},    {0b0010010, 7, 10},   {0b0010001, 7, 18},
-        {0b0010000, 7, 34},   {0b00011111, 8, 7},   {0b00011110, 8, 11},  {0b00011101, 8, 19},
-        {0b00011100, 8, 35},  {0b00011011, 8, 13},  {0b00011010, 8, 49},  {0b00011001, 8, 21},
-        {0b00011000, 8, 41},  {0b00010111, 8, 14},  {0b00010110, 8, 50},  {0b00010101, 8, 22},
-        {0b00010100, 8, 42},  {0b00010011, 8, 15},  {0b00010010, 8, 51},  {0b00010001, 8, 23},
-        {0b00010000, 8, 43},  {0b00001111, 8, 25},  {0b00001110, 8, 37},  {0b00001101, 8, 26},
-        {0b00001100, 8, 38},  {0b00001011, 8, 29},  {0b00001010, 8, 45},  {0b00001001, 8, 53},
-        {0b00001000, 8, 57},  {0b00000111, 8, 30},  {0b00000110, 8, 46},  {0b00000101, 8, 54},
-        {0b00000100, 8, 58},  {0b000000111, 9, 31}, {0b000000110, 9, 47}, {0b000000101, 9, 55},
-        {0b000000100, 9, 59}, {0b000000011, 9, 27}, {0b000000010, 9, 39}, {0b000000001, 9, 0}
-    };
-    uint32_t v = br.show(9);
-    for (const auto& e : kCbp) {
-        if ((v >> (9 - e.len)) == e.code) {
-            br.skip(e.len);
-            return e.cbp;
+struct CbpMvLut {
+    uint8_t cbp_val[512];
+    uint8_t cbp_len[512];
+    uint8_t mv_val[512];
+    uint8_t mv_len[512];
+
+    constexpr CbpMvLut() : cbp_val{}, cbp_len{}, mv_val{}, mv_len{} {
+        struct CbpEntry { uint16_t code; uint8_t len; uint8_t cbp; };
+        constexpr CbpEntry kCbp[64] = {
+            {0b111, 3, 60},       {0b1101, 4, 4},       {0b1100, 4, 8},       {0b1011, 4, 16},
+            {0b1010, 4, 32},      {0b10011, 5, 12},     {0b10010, 5, 48},     {0b10001, 5, 20},
+            {0b10000, 5, 40},     {0b01111, 5, 28},     {0b01110, 5, 44},     {0b01101, 5, 52},
+            {0b01100, 5, 56},     {0b01011, 5, 1},      {0b01010, 5, 61},     {0b01001, 5, 2},
+            {0b01000, 5, 62},     {0b001111, 6, 24},    {0b001110, 6, 36},    {0b001101, 6, 3},
+            {0b001100, 6, 63},    {0b0010111, 7, 5},    {0b0010110, 7, 9},    {0b0010101, 7, 17},
+            {0b0010100, 7, 33},   {0b0010011, 7, 6},    {0b0010010, 7, 10},   {0b0010001, 7, 18},
+            {0b0010000, 7, 34},   {0b00011111, 8, 7},   {0b00011110, 8, 11},  {0b00011101, 8, 19},
+            {0b00011100, 8, 35},  {0b00011011, 8, 13},  {0b00011010, 8, 49},  {0b00011001, 8, 21},
+            {0b00011000, 8, 41},  {0b00010111, 8, 14},  {0b00010110, 8, 50},  {0b00010101, 8, 22},
+            {0b00010100, 8, 42},  {0b00010011, 8, 15},  {0b00010010, 8, 51},  {0b00010001, 8, 23},
+            {0b00010000, 8, 43},  {0b00001111, 8, 25},  {0b00001110, 8, 37},  {0b00001101, 8, 26},
+            {0b00001100, 8, 38},  {0b00001011, 8, 29},  {0b00001010, 8, 45},  {0b00001001, 8, 53},
+            {0b00001000, 8, 57},  {0b00000111, 8, 30},  {0b00000110, 8, 46},  {0b00000101, 8, 54},
+            {0b00000100, 8, 58},  {0b000000111, 9, 31}, {0b000000110, 9, 47}, {0b000000101, 9, 55},
+            {0b000000100, 9, 59}, {0b000000011, 9, 27}, {0b000000010, 9, 39}, {0b000000001, 9, 0}
+        };
+        for (const auto& e : kCbp) {
+            int shift = 9 - e.len;
+            int base = static_cast<int>(e.code) << shift;
+            for (int s = 0; s < (1 << shift); ++s) {
+                cbp_val[base | s] = e.cbp;
+                cbp_len[base | s] = e.len;
+            }
+        }
+        struct MvEntry { uint16_t code; uint8_t len; uint8_t val; };
+        constexpr MvEntry kMv[16] = {
+            {0b01, 2, 1},          {0b001, 3, 2},         {0b0001, 4, 3},
+            {0b000011, 6, 4},      {0b0000101, 7, 5},     {0b0000100, 7, 6},
+            {0b0000011, 7, 7},     {0b000001011, 9, 8},   {0b000001010, 9, 9},
+            {0b000001001, 9, 10},  {0b0000010001, 10, 11},{0b0000010000, 10, 12},
+            {0b0000001111, 10, 13},{0b0000001110, 10, 14},{0b0000001101, 10, 15},
+            {0b0000001100, 10, 16}
+        };
+        for (const auto& e : kMv) {
+            int shift = 10 - e.len;
+            int base = static_cast<int>(e.code) << shift;
+            for (int s = 0; s < (1 << shift); ++s) {
+                mv_val[base | s] = e.val;
+                mv_len[base | s] = e.len - 1;
+            }
         }
     }
-    return -1;
+};
+inline constexpr CbpMvLut kCbpMvLut{};
+
+inline int decode_cbp(BitReader& br) {
+    uint32_t v = br.show(9);
+    uint8_t len = kCbpMvLut.cbp_len[v];
+    if (len == 0) return -1;
+    br.skip(len);
+    return kCbpMvLut.cbp_val[v];
 }
 
 inline int decode_mv_code(BitReader& br) {
     if (br.get(1) == 1) return 0;
-    struct Entry { uint16_t code; uint8_t len; uint8_t val; };
-    static constexpr Entry kMv[16] = {
-        {0b01, 2, 1},          {0b001, 3, 2},         {0b0001, 4, 3},
-        {0b000011, 6, 4},      {0b0000101, 7, 5},     {0b0000100, 7, 6},
-        {0b0000011, 7, 7},     {0b000001011, 9, 8},   {0b000001010, 9, 9},
-        {0b000001001, 9, 10},  {0b0000010001, 10, 11},{0b0000010000, 10, 12},
-        {0b0000001111, 10, 13},{0b0000001110, 10, 14},{0b0000001101, 10, 15},
-        {0b0000001100, 10, 16}
-    };
     uint32_t v = br.show(9);
-    for (const auto& e : kMv) {
-        if ((v >> (10 - e.len)) == e.code) {
-            br.skip(e.len - 1);
-            int sign = br.get(1);
-            return sign ? -static_cast<int>(e.val) : static_cast<int>(e.val);
-        }
-    }
-    return 0;
+    uint8_t len = kCbpMvLut.mv_len[v];
+    if (len == 0) return 0;
+    br.skip(len);
+    int sign = br.get(1);
+    int val = static_cast<int>(kCbpMvLut.mv_val[v]);
+    return sign ? -val : val;
 }
 
 inline int decode_motion_vector(BitReader& br, int r_size, int pred) {
@@ -662,6 +701,31 @@ inline void mc_block(uint8_t* dst, int dst_stride, int dst_step_y,
     const int src_y = y + (mv_y >> 1);
     const int hx = mv_x & 1;
     const int hy = mv_y & 1;
+
+    if (src_x >= 0 && src_x + w + hx <= ref_w && src_y >= 0 && src_y + (h - 1 + hy) * ref_step_y < ref_h) {
+        const int r_step = ref_step_y * ref_stride;
+        const int d_step = dst_step_y * dst_stride;
+        const uint8_t* r0 = ref + src_y * ref_stride + src_x;
+        const uint8_t* r1 = r0 + hy * r_step;
+        uint8_t* d = dst + y * dst_stride + x;
+        const int mode = (avg ? 4 : 0) | (hy << 1) | hx;
+        for (int py = 0; py < h; ++py) {
+            switch (mode) {
+                case 0: for (int px = 0; px < w; ++px) d[px] = r0[px]; break;
+                case 1: for (int px = 0; px < w; ++px) d[px] = static_cast<uint8_t>((r0[px] + r0[px + 1] + 1) >> 1); break;
+                case 2: for (int px = 0; px < w; ++px) d[px] = static_cast<uint8_t>((r0[px] + r1[px] + 1) >> 1); break;
+                case 3: for (int px = 0; px < w; ++px) d[px] = static_cast<uint8_t>((r0[px] + r0[px + 1] + r1[px] + r1[px + 1] + 2) >> 2); break;
+                case 4: for (int px = 0; px < w; ++px) d[px] = static_cast<uint8_t>((d[px] + r0[px] + 1) >> 1); break;
+                case 5: for (int px = 0; px < w; ++px) d[px] = static_cast<uint8_t>((d[px] + ((r0[px] + r0[px + 1] + 1) >> 1) + 1) >> 1); break;
+                case 6: for (int px = 0; px < w; ++px) d[px] = static_cast<uint8_t>((d[px] + ((r0[px] + r1[px] + 1) >> 1) + 1) >> 1); break;
+                case 7: for (int px = 0; px < w; ++px) d[px] = static_cast<uint8_t>((d[px] + ((r0[px] + r0[px + 1] + r1[px] + r1[px + 1] + 2) >> 2) + 1) >> 1); break;
+            }
+            r0 += r_step;
+            r1 += r_step;
+            d += d_step;
+        }
+        return;
+    }
 
     for (int py = 0; py < h; ++py) {
         const int ry0 = std::clamp(src_y + py * ref_step_y, 0, ref_h - 1);
@@ -847,6 +911,7 @@ struct Decoder {
 
         int idx = 0;
         int sum = 0;
+        uint8_t row_mask = 0;
         if (intra) {
             int dc_size = (comp == 0) ? decode_dc_size_luma(br) : decode_dc_size_chroma(br);
             int dc_diff = decode_dc_diff(br, dc_size);
@@ -854,6 +919,7 @@ struct Decoder {
             int dc_mult = 8 >> intra_dc_precision;
             block[0] = static_cast<int16_t>(dc_pred[comp] * dc_mult);
             sum ^= block[0];
+            if (block[0] != 0) row_mask |= 1u;
             idx = 1;
         }
 
@@ -869,6 +935,7 @@ struct Decoder {
                     if (sign) val = -val;
                     block[0] = static_cast<int16_t>(val);
                     sum ^= block[0];
+                    if (val != 0) row_mask |= 1u;
                     idx = 1;
                     continue;
                 }
@@ -915,13 +982,15 @@ struct Decoder {
             else if (val < -2048) val = -2048;
             sum ^= (val - block[pos]);
             block[pos] = static_cast<int16_t>(val);
+            if (val != 0) row_mask |= static_cast<uint8_t>(1u << (pos >> 3));
             ++idx;
         }
 
         if ((sum & 1) == 0) {
             block[63] ^= 1;
+            if (block[63] != 0) row_mask |= 0x80u;
         }
-        idct8x8(block);
+        idct8x8(block, row_mask);
         return true;
     }
 
@@ -1265,40 +1334,56 @@ struct Decoder {
         }
     }
 
+    static size_t find_start_code(const uint8_t* es, size_t pos, size_t limit) {
+        while (pos + 2 < limit) {
+            const void* p = std::memchr(es + pos + 2, 1, limit - (pos + 2));
+            if (p == nullptr) return limit;
+            const size_t idx = static_cast<size_t>(static_cast<const uint8_t*>(p) - es);
+            if (es[idx - 2] == 0 && es[idx - 1] == 0) return idx - 2;
+            pos = idx + 1;
+        }
+        return limit;
+    }
+
     // Step through `es[pos..vlen)` until one display-order picture is ready in `rgba`.
     // Returns: 1 = picture ready, 0 = need more bytes (when !vdone), -1 = EOF.
     int next_picture(const uint8_t* es, size_t vlen, bool vdone, size_t& pos,
-                     std::vector<uint8_t>& rgba, int& out_w, int& out_h) {
+                     std::vector<uint8_t>& rgba, int& out_w, int& out_h, bool render_rgba = true) {
+        auto emit = [&](const FrameBuf& fb) {
+            if (render_rgba) {
+                fb.to_rgba(rgba, out_w, out_h);
+            } else {
+                out_w = (fb.disp_w > 0 && fb.disp_w <= fb.w) ? fb.disp_w : fb.w;
+                out_h = (fb.disp_h > 0 && fb.disp_h <= fb.h) ? fb.disp_h : fb.h;
+            }
+            return 1;
+        };
         if (seq_ended) {
             if (ref_count >= 1) {
                 ref_count = 0;
-                ref[1].to_rgba(rgba, out_w, out_h);
-                return 1;
+                return emit(ref[1]);
             }
             return -1;
         }
         for (;;) {
-            while (pos + 3 < vlen && !(es[pos] == 0 && es[pos + 1] == 0 && es[pos + 2] == 1)) {
-                ++pos;
+            if (vlen >= 4 && pos + 3 < vlen) {
+                pos = find_start_code(es, pos, vlen - 1);
             }
             if (pos + 3 >= vlen) {
                 if (!vdone) return 0;
                 if (in_pic) {
                     in_pic = false;
                     if (pic_type == 3) {
-                        b_buf.to_rgba(rgba, out_w, out_h);
-                        return 1;
+                        return emit(b_buf);
                     }
                     ++ref_count;
                     if (ref_count >= 2) {
-                        ref[0].to_rgba(rgba, out_w, out_h);
-                        return 1;
+                        return emit(ref[0]);
                     }
                 }
                 if (ref_count >= 1) {
                     ref_count = 0;
-                    ref[1].to_rgba(rgba, out_w, out_h);
-                    return 1;
+                    return emit(ref[1]);
                 }
                 return -1;
             }
@@ -1307,13 +1392,11 @@ struct Decoder {
             if (in_pic && (code == 0xB3 || code == 0xB8 || code == 0x00 || code == 0xB7)) {
                 in_pic = false;
                 if (pic_type == 3) {
-                    b_buf.to_rgba(rgba, out_w, out_h);
-                    return 1;
+                    return emit(b_buf);
                 }
                 ++ref_count;
                 if (ref_count >= 2) {
-                    ref[0].to_rgba(rgba, out_w, out_h);
-                    return 1;
+                    return emit(ref[0]);
                 }
             }
 
@@ -1322,16 +1405,12 @@ struct Decoder {
                 seq_ended = true;
                 if (ref_count >= 1) {
                     ref_count = 0;
-                    ref[1].to_rgba(rgba, out_w, out_h);
-                    return 1;
+                    return emit(ref[1]);
                 }
                 return -1;
             }
 
-            size_t next = pos + 4;
-            while (next + 2 < vlen && !(es[next] == 0 && es[next + 1] == 0 && es[next + 2] == 1)) {
-                ++next;
-            }
+            size_t next = find_start_code(es, pos + 4, vlen);
             if (next + 2 >= vlen) {
                 if (!vdone) return 0;
                 next = vlen;
