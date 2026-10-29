@@ -1,3 +1,4 @@
+// wiiu: release previous level GX2 buffers before alloc
 // The MRP world's ties and shrubs drawn with GX2 on the Wii U (MRP_LITE.md phase 3; how a caller uses it: mrp_world_gx2.h). A port
 // of mrp_world_renderer.cpp's GL draw (draw_frame, its GPU path batches) over the same CPU preparation, read through
 // mrp_world_backend.inc:
@@ -45,7 +46,9 @@
 #include "mrp_world_merge.inc"
 
 #include <game/ovl/ovl_common.h>
+#include <game/render/mrp_fx.h>
 #include <game/render/mrp_moby_renderer.h>
+#include <game/render/mrp_shadows.h>
 #include <game/render/mrp_world_backend.inc>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/mrp_world_sky.inc>
@@ -75,6 +78,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <unordered_map>
 #include <vector>
 
 namespace rac1 {
@@ -1671,6 +1675,33 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         }
         tfrag = g_tcache.vb != nullptr && g_tcache.frame != nullptr;
     }
+    bool cpu_ready = false;
+    if (g_tready && g_sring != nullptr && F.cpu_verts != nullptr && F.cpu_idx != nullptr && !F.cpu_verts->empty() && !F.cpu_idx->empty()) {
+        if (F.serial != g_scache.serial || g_sring_wraps != g_scache.swraps || g_scache.vb == nullptr) {
+            const auto& sv = *F.cpu_verts;
+            const auto& si = *F.cpu_idx;
+            const uint32_t vbytes = static_cast<uint32_t>(sv.size() * sizeof(mrpwb::GpuV));
+            const uint32_t at_i = (vbytes + GX2_VERTEX_BUFFER_ALIGNMENT - 1) & ~(GX2_VERTEX_BUFFER_ALIGNMENT - 1);
+            const uint32_t ibytes = static_cast<uint32_t>(si.size() * sizeof(uint32_t));
+            g_scache = SkyCache{};
+            g_scache.serial = F.serial;
+            if (auto* p = static_cast<uint8_t*>(sky_alloc(at_i + ibytes))) {
+                std::memcpy(p, sv.data(), vbytes);
+                std::memcpy(p + at_i, si.data(), ibytes);
+                GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, p, at_i + ibytes);
+                g_scache.vb = p;
+                g_scache.ib = p + at_i;
+                g_scache.nverts = static_cast<uint32_t>(sv.size());
+                g_scache.nidx = static_cast<uint32_t>(si.size());
+            }
+            g_scache.swraps = g_sring_wraps;
+        }
+        if (g_tcache.frame == nullptr || g_tcache.wraps != g_ring_wraps) {
+            g_tcache.frame = tfrag_frame();
+            g_tcache.wraps = g_ring_wraps;
+        }
+        cpu_ready = g_scache.vb != nullptr && g_scache.ib != nullptr && g_tcache.frame != nullptr;
+    }
 
     // GX2's state for the whole call
     GX2SetColorBuffer(cb, GX2_RENDER_TARGET_0);
@@ -1727,11 +1758,11 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
     uint64_t last_px_wraps = 0;
     auto set_pixel = [&](const PixelBlock& pb) {
         if (last_px_blk == nullptr || last_px_wraps != g_ring_wraps || !(last_px == pb)) {
-            last_px_blk = block_of(&pb, sizeof pb, path == 1 ? g_tpixel_loc.size : g_pixel_loc.size);
+            last_px_blk = block_of(&pb, sizeof pb, path != 0 ? g_tpixel_loc.size : g_pixel_loc.size);
             last_px_wraps = g_ring_wraps;
             last_px = pb;
         }
-        const BlockLoc& pl = path == 1 ? g_tpixel_loc : g_pixel_loc;
+        const BlockLoc& pl = path != 0 ? g_tpixel_loc : g_pixel_loc;
         if (last_px_blk != nullptr && pl.found) GX2SetPixelUniformBlock(pl.loc, pl.size, last_px_blk);
     };
     auto bind_path = [&](int want) {
@@ -1765,7 +1796,8 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
             GX2SetPixelShader(g_tsh.pixelShader);
             cur_vs = g_tsh.vertexShader;
             cur_ps = g_tsh.pixelShader;
-            GX2SetAttribBuffer(0, g_tcache.nverts * static_cast<uint32_t>(sizeof(mrpwb::GpuV)), sizeof(mrpwb::GpuV), g_tcache.vb);
+            if (want == 2) GX2SetAttribBuffer(0, g_scache.nverts * static_cast<uint32_t>(sizeof(mrpwb::GpuV)), sizeof(mrpwb::GpuV), g_scache.vb);
+            else GX2SetAttribBuffer(0, g_tcache.nverts * static_cast<uint32_t>(sizeof(mrpwb::GpuV)), sizeof(mrpwb::GpuV), g_tcache.vb);
             if (g_tframe_loc.found) GX2SetVertexUniformBlock(g_tframe_loc.loc, g_tframe_loc.size, g_tcache.frame);
         }
     };
@@ -1957,14 +1989,21 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
     size_t tr = 0;  // (the tfrag ranges' cursor: made in the batches' order)
     for (size_t bi = 0; bi < batches.size(); ++bi) {
         const mrpwb::Batch& b = batches[bi];
-        if (b.sky || b.rk.shadow || (!b.gpu && !b.tfrag)) {  // (the CPU path's, the sky's, the casters': not drawn here yet)
+        if (b.sky || b.rk.shadow) {
+            ++g_skipped;
+            continue;
+        }
+        const bool cpu_batch = !b.gpu && !b.tfrag;
+        if (cpu_batch && !cpu_ready) {
             ++g_skipped;
             continue;
         }
         if (b.tfrag && !tfrag) continue;
         if (!b.tfrag && (g_tdebug & 8) != 0) continue;  // (testing, tfrag debug bit 8: the tfrags alone)
         size_t r0 = 0;
-        if (b.tfrag) {  // the batch's triangles and ranges checked against the frame's tfrag indices
+        if (cpu_batch) {
+            if (static_cast<uint64_t>(b.first) + b.count > g_scache.nidx) continue;
+        } else if (b.tfrag) {  // the batch's triangles and ranges checked against the frame's tfrag indices
             while (tr < tranges.size() && tranges[tr].batch < bi) ++tr;
             r0 = tr;
             bool ok = static_cast<uint64_t>(b.first) + b.count <= g_tcache.nidx;
@@ -1988,10 +2027,10 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
                 continue;
             }
         }
-        bind_path(b.tfrag ? 1 : 0);
-        if (b.tfrag) ++g_tbatches;
+        bind_path(cpu_batch ? 2 : b.tfrag ? 1 : 0);
+        if (b.tfrag || cpu_batch) ++g_tbatches;
         else ++g_batches;
-        const int dbg = b.tfrag ? g_tdebug : g_debug;  // (the tfrags' debug bits: RAC1_WIIU_TFRAG_DEBUG)
+        const int dbg = (b.tfrag || cpu_batch) ? g_tdebug : g_debug;  // (the tfrags' debug bits: RAC1_WIIU_TFRAG_DEBUG)
         const bool grey = (dbg & 2) != 0;
         const int shade = grey ? 3 : (dbg & 4096) != 0 ? 1 : (dbg & 8192) != 0 ? 2 : g_render_shade;
         const mrpwb::Key& k = b.key;
@@ -2010,13 +2049,22 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         pb.a[1] = shade;
         pb.a[2] = (rk.fogcol >> 24) & 1 ? 1 : 0;
         pb.a[3] = grey ? 1 : 0;
-        const bool items = merged && !b.tfrag;
+        const bool items = merged && !b.tfrag && !cpu_batch;
         pb.b[0] = items && mrpwm::mode_units(g_merge) ? 1 : 0;
         if (items && mrpwm::mode_units(g_merge)) bind_units(b);
+        if (cpu_batch) {
+            const GX2Texture* ct = sky_texture(L, k.bucket);
+            if (g_ttex_ok) {
+                GX2SetPixelTexture(ct, g_ttex_loc);
+                GX2SetPixelSampler(&g_samplers[k.sampler & 15u], g_ttex_loc);
+            }
+            cur_bucket = -2;
+            cur_sampler = ~0u;
+        }
         // the batch's shaders (a pass's): the fast pair (Gx2Perf::fast; not with the shade debug nor the grey test - mrp_world.frag's), else
         // the path's own vertex shader and pixel shader build
-        const int sp = b.tfrag ? 1 : 0;
-        const GX2VertexShader* own_vs = b.tfrag ? g_tsh.vertexShader : g_sh.vertexShader;
+        const int sp = (b.tfrag || cpu_batch) ? 1 : 0;
+        const GX2VertexShader* own_vs = (b.tfrag || cpu_batch) ? g_tsh.vertexShader : g_sh.vertexShader;
         auto use_shaders = [&](bool at) {
             if (const WHBGfxShaderGroup* fp = shade == 0 && !grey ? fast_pair(sp, at) : nullptr) {
                 use_vs(fp->vertexShader);
@@ -2032,11 +2080,16 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         GX2SetDepthOnlyControl(ztest ? TRUE : FALSE, ztest && zwrite ? TRUE : FALSE, zf);
         pb.a[0] = 1;
         set_pixel(pb);
-        if (b.tfrag) draw_tfrag(b, bi, r0);
+        if (cpu_batch) {
+            GX2DrawIndexedEx(GX2_PRIMITIVE_MODE_TRIANGLES, b.count, GX2_INDEX_TYPE_U32, static_cast<const uint32_t*>(g_scache.ib) + b.first, 0, 1);
+            ++g_tdraws;
+            g_ttris += b.count / 3;
+            drawn();
+        } else if (b.tfrag) draw_tfrag(b, bi, r0);
         else if (items) draw_items(b, bi);
         else
             for (uint32_t i = b.first; i < b.first + b.count; ++i) draw_one(b, i);
-        wiiu_gpu_submark(b.tfrag ? kSmTfrag1 : kSmTies1);  // (RAC1_WIIU_GPU_TIME=2: the GPU's time by pass, wiiu_gfx.cpp)
+        wiiu_gpu_submark((b.tfrag || cpu_batch) ? kSmTfrag1 : kSmTies1);  // (RAC1_WIIU_GPU_TIME=2: the GPU's time by pass, wiiu_gfx.cpp)
         // pass 2: the failing ones as AFAIL says (RKey::pass2: 1 FB_ONLY the colour with alpha, 2 ZB_ONLY the depth, 3 RGB_ONLY the
         // colour without alpha)
         if (rk.pass2 != 0 && !one_pass && !grey) {
@@ -2046,12 +2099,17 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
             set_mask(afail == 2 ? none : afail == 3 ? GX2_CHANNEL_MASK_RGB : GX2_CHANNEL_MASK_RGBA);
             pb.a[0] = 2;
             set_pixel(pb);
-            if (b.tfrag) draw_tfrag(b, bi, r0);
+            if (cpu_batch) {
+                GX2DrawIndexedEx(GX2_PRIMITIVE_MODE_TRIANGLES, b.count, GX2_INDEX_TYPE_U32, static_cast<const uint32_t*>(g_scache.ib) + b.first, 0, 1);
+                ++g_tdraws;
+                g_ttris += b.count / 3;
+                drawn();
+            } else if (b.tfrag) draw_tfrag(b, bi, r0);
             else if (items) draw_items(b, bi);
             else
                 for (uint32_t i = b.first; i < b.first + b.count; ++i) draw_one(b, i);
             set_mask(GX2_CHANNEL_MASK_RGBA);
-            wiiu_gpu_submark(b.tfrag ? kSmTfrag2 : kSmTies2);
+            wiiu_gpu_submark((b.tfrag || cpu_batch) ? kSmTfrag2 : kSmTies2);
         }
     }
 
@@ -2361,6 +2419,205 @@ void mrp_world_gx2_draw_sky(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const 
         g_sdraws = g_stris = g_sbatches = g_snever = g_sframes = g_shost_draws = 0;
         g_sprep_ms = g_scpu_ms = 0.0;
     }
+}
+
+namespace {
+struct FxTextures {
+    uint64_t loads = ~0ull;
+    std::unordered_map<uint64_t, GX2Texture> map;
+    size_t bytes = 0;
+} g_fxtex;
+
+void fx_tex_free() {
+    for (auto& [id, t] : g_fxtex.map) tex_free_one(t);
+    g_fxtex = FxTextures{};
+}
+
+const GX2Texture* fx_texture(const mrpwb::LevelView& L, const gs::TexImage* ti) {
+    if (g_fxtex.loads != L.loads || g_fxtex.bytes > 8u * 1024u * 1024u) {
+        GX2DrawDone();
+        fx_tex_free();
+        g_fxtex.loads = L.loads;
+    }
+    if (ti == nullptr || ti->w <= 0 || ti->h <= 0 || ti->px.empty()) return &g_white;
+    auto it = g_fxtex.map.find(ti->id);
+    if (it != g_fxtex.map.end()) return it->second.surface.image != nullptr ? &it->second : &g_white;
+    GX2Texture& t = g_fxtex.map[ti->id];
+    const uint32_t w = static_cast<uint32_t>(ti->w), h = static_cast<uint32_t>(ti->h);
+    if (!tex_make(t, w, h, 1, 1, GX2_TILE_MODE_LINEAR_ALIGNED)) {
+        tex_free_one(t);
+        return &g_white;
+    }
+    t.compMap = GX2_COMP_MAP(GX2_SQ_SEL_A, GX2_SQ_SEL_B, GX2_SQ_SEL_G, GX2_SQ_SEL_R);
+    GX2InitTextureRegs(&t);
+    auto* dst = static_cast<uint32_t*>(t.surface.image);
+    for (uint32_t y = 0; y < h && static_cast<size_t>(y + 1) * w <= ti->px.size(); ++y)
+        std::memcpy(dst + static_cast<size_t>(y) * t.surface.pitch, ti->px.data() + static_cast<size_t>(y) * w, w * 4u);
+    GX2Invalidate(GX2_INVALIDATE_MODE_CPU_TEXTURE, t.surface.image, t.surface.imageSize);
+    g_fxtex.bytes += t.surface.imageSize;
+    return &t;
+}
+
+struct FxCache {
+    uint64_t serial = ~0ull, gwraps = ~0ull;
+    void* vb = nullptr;
+    uint32_t nverts = 0;
+} g_fxcache;
+}  // namespace
+
+void mrp_world_gx2_draw_fx(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp) {
+    if (!g_ready || !g_tready || cb == nullptr) return;
+    mrpwb::LevelView L;
+    if (!mrpwb::level_view(L)) return;
+    MrpShadowsWiiuView sv;
+    const bool have_sh = mrp_shadows_wiiu_view(sv) && sv.mark_floats >= 9;
+    MrpFxWiiuView fv;
+    const bool have_fx = mrp_fx_wiiu_view(fv) && fv.nverts >= 3;
+    if (!have_sh && !have_fx) return;
+
+    ring_gpu_invalidate();
+    TfragFrameBlock fb{};
+    std::memcpy(fb.vp, g_gx2_view.vp, sizeof fb.vp);
+    void* frame_blk = block_of(&fb, sizeof fb, g_tframe_loc.size);
+    if (frame_blk == nullptr) return;
+
+    const int win_w = static_cast<int>(cb->surface.width), win_h = static_cast<int>(cb->surface.height);
+    GX2SetColorBuffer(cb, GX2_RENDER_TARGET_0);
+    if (db != nullptr) GX2SetDepthBuffer(db);
+    GX2SetCullOnlyControl(GX2_FRONT_FACE_CCW, FALSE, FALSE);
+    GX2SetAlphaTest(FALSE, GX2_COMPARE_FUNC_ALWAYS, 0.0f);
+    GX2SetViewport(static_cast<float>(vp.x), static_cast<float>(win_h - vp.y - vp.h), static_cast<float>(vp.w), static_cast<float>(vp.h), 0.0f, 1.0f);
+    if (g_gx2_perf.pixels_off) GX2SetScissor(static_cast<uint32_t>(win_w / 2), static_cast<uint32_t>(win_h / 2), 8, 8);
+    else GX2SetScissor(static_cast<uint32_t>(std::max(0, vp.x)), static_cast<uint32_t>(std::max(0, win_h - vp.y - vp.h)), static_cast<uint32_t>(vp.w), static_cast<uint32_t>(vp.h));
+    GX2SetRasterizerClipControlEx(TRUE, TRUE, FALSE);
+    const auto none = static_cast<GX2ChannelMask>(0);
+    auto set_mask = [&](GX2ChannelMask m) { GX2SetTargetChannelMasks(m, none, none, none, none, none, none, none); };
+    set_mask(GX2_CHANNEL_MASK_RGBA);
+
+    GX2SetShaderMode(g_tsh.vertexShader->mode);
+    GX2SetFetchShader(&g_tfetch[0]);
+    const GX2VertexShader* cur_vs = g_tsh.vertexShader;
+    const GX2PixelShader* cur_ps = g_tsh.pixelShader;
+    GX2SetVertexShader(cur_vs);
+    GX2SetPixelShader(cur_ps);
+    if (g_tframe_loc.found) GX2SetVertexUniformBlock(g_tframe_loc.loc, g_tframe_loc.size, frame_blk);
+
+    auto use_shaders = [&](bool at, bool plain) {
+        const WHBGfxShaderGroup* fp = plain ? fast_pair(1, at) : nullptr;
+        const GX2VertexShader* vs = fp != nullptr ? fp->vertexShader : g_tsh.vertexShader;
+        const GX2PixelShader* ps = fp != nullptr ? fp->pixelShader : variant_ps(1, at);
+        if (vs != cur_vs) {
+            GX2SetVertexShader(vs);
+            cur_vs = vs;
+        }
+        if (ps != cur_ps) {
+            GX2SetPixelShader(ps);
+            cur_ps = ps;
+        }
+    };
+
+    if (have_sh) {
+        const uint32_t sverts = static_cast<uint32_t>(sv.mark_floats / 3);
+        const uint32_t sbytes = sverts * static_cast<uint32_t>(sizeof(mrpwb::GpuV));
+        if (auto* svb = static_cast<mrpwb::GpuV*>(geo_alloc(sbytes))) {
+            for (uint32_t i = 0; i < sverts; ++i) {
+                mrpwb::GpuV& g = svb[i];
+                g = mrpwb::GpuV{};
+                g.wp[0] = sv.mark[3 * i + 0];
+                g.wp[1] = sv.mark[3 * i + 1];
+                g.wp[2] = sv.mark[3 * i + 2];
+                g.wp[3] = 1.0f;
+                g.stq[2] = 1.0f;
+                g.lodq = 1.0f;
+                for (int l = 0; l < 4; ++l) g.rgba[l] = static_cast<uint8_t>((sv.apply_rgba >> (8 * l)) & 0xffu);
+                g.fog = 255.0f;
+                g.word = 1u;
+            }
+            GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, svb, sbytes);
+            GX2SetAttribBuffer(0, sbytes, sizeof(mrpwb::GpuV), svb);
+            if (g_ttex_ok) {
+                GX2SetPixelTexture(&g_white, g_ttex_loc);
+                GX2SetPixelSampler(&g_samplers[0], g_ttex_loc);
+            }
+            gs::set_blend_gx2(1ull << 6, sv.apply_alpha);
+            GX2SetDepthOnlyControl(db != nullptr ? TRUE : FALSE, FALSE, GX2_COMPARE_FUNC_LEQUAL);
+            use_shaders(false, true);
+            PixelBlock pb{};
+            pb.a[0] = 1;
+            if (void* blk = block_of(&pb, sizeof pb, g_tpixel_loc.size); blk != nullptr && g_tpixel_loc.found)
+                GX2SetPixelUniformBlock(g_tpixel_loc.loc, g_tpixel_loc.size, blk);
+            GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, sverts, 0, 1);
+        }
+    }
+
+    if (have_fx) {
+        const uint32_t vbytes = static_cast<uint32_t>(fv.nverts * sizeof(mrpwb::GpuV));
+        if (fv.serial != g_fxcache.serial || g_gring_wraps != g_fxcache.gwraps || g_fxcache.vb == nullptr) {
+            g_fxcache = FxCache{};
+            g_fxcache.serial = fv.serial;
+            if (void* p = geo_alloc(vbytes)) {
+                std::memcpy(p, fv.verts, vbytes);
+                GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, p, vbytes);
+                g_fxcache.vb = p;
+                g_fxcache.nverts = static_cast<uint32_t>(fv.nverts);
+            }
+            g_fxcache.gwraps = g_gring_wraps;
+        }
+        if (g_fxcache.vb != nullptr) {
+            GX2SetAttribBuffer(0, vbytes, sizeof(mrpwb::GpuV), g_fxcache.vb);
+            const GX2Texture* cur_tex = nullptr;
+            uint32_t cur_sampler = ~0u;
+            const int shade = g_render_shade;
+            for (const MrpFxWiiuBatch& b : *fv.batches) {
+                if (b.count == 0 || static_cast<uint64_t>(b.first) + b.count > g_fxcache.nverts) continue;
+                gs::set_blend_gx2(b.prim, b.alpha);
+                const bool ztest = db != nullptr && b.ztest;
+                const bool zwrite = ztest && b.zwrite;
+                const GX2CompareFunction zf = b.ztst == 0 ? GX2_COMPARE_FUNC_NEVER : b.ztst == 2 ? GX2_COMPARE_FUNC_LEQUAL : GX2_COMPARE_FUNC_LESS;
+                const GX2Texture* t = fx_texture(L, b.tex.get());
+                if (g_ttex_ok && t != cur_tex) {
+                    GX2SetPixelTexture(t, g_ttex_loc);
+                    cur_tex = t;
+                }
+                const uint32_t smp = b.sampler & 15u;
+                if (g_ttex_ok && smp != cur_sampler) {
+                    GX2SetPixelSampler(&g_samplers[smp], g_ttex_loc);
+                    cur_sampler = smp;
+                }
+                PixelBlock pb{};
+                pb.fog_col[0] = static_cast<float>(b.fogcol & 0xff) / 255.0f;
+                pb.fog_col[1] = static_cast<float>((b.fogcol >> 8) & 0xff) / 255.0f;
+                pb.fog_col[2] = static_cast<float>((b.fogcol >> 16) & 0xff) / 255.0f;
+                pb.a[0] = 1;
+                pb.a[1] = shade;
+                pb.a[2] = b.fge ? 1 : 0;
+                use_shaders(b.ate, shade == 0);
+                GX2SetDepthOnlyControl(ztest ? TRUE : FALSE, zwrite ? TRUE : FALSE, zf);
+                if (void* blk = block_of(&pb, sizeof pb, g_tpixel_loc.size); blk != nullptr && g_tpixel_loc.found)
+                    GX2SetPixelUniformBlock(g_tpixel_loc.loc, g_tpixel_loc.size, blk);
+                GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, b.count, b.first, 1);
+                if (b.pass2 != 0) {
+                    const uint32_t afail = b.pass2;
+                    use_shaders(true, shade == 0);
+                    GX2SetDepthOnlyControl(ztest ? TRUE : FALSE, ztest && afail == 2 && zwrite ? TRUE : FALSE, zf);
+                    set_mask(afail == 2 ? none : afail == 3 ? GX2_CHANNEL_MASK_RGB : GX2_CHANNEL_MASK_RGBA);
+                    pb.a[0] = 2;
+                    if (void* blk = block_of(&pb, sizeof pb, g_tpixel_loc.size); blk != nullptr && g_tpixel_loc.found)
+                        GX2SetPixelUniformBlock(g_tpixel_loc.loc, g_tpixel_loc.size, blk);
+                    GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, b.count, b.first, 1);
+                    set_mask(GX2_CHANNEL_MASK_RGBA);
+                }
+            }
+        }
+    }
+
+    GX2SetColorControl(GX2_LOGIC_OP_COPY, 0, FALSE, TRUE);
+    set_mask(GX2_CHANNEL_MASK_RGBA);
+    GX2SetDepthOnlyControl(FALSE, FALSE, GX2_COMPARE_FUNC_ALWAYS);
+    GX2SetRasterizerClipControlEx(TRUE, TRUE, FALSE);
+    GX2SetViewport(0.0f, 0.0f, static_cast<float>(win_w), static_cast<float>(win_h), 0.0f, 1.0f);
+    GX2SetScissor(0, 0, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
+    GX2SetShaderMode(GX2_SHADER_MODE_UNIFORM_REGISTER);
 }
 
 }  // namespace rac1

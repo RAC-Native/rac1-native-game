@@ -248,11 +248,12 @@ int read_settings() {
     setenv("RAC1_WORLD_PASS_SKIP", "6", 1);
     setenv("RAC1_TFRAG_PASS_OFF", "1", 1);
     setenv("RAC1_MOBY_PASS_MRP", "1", 1);
-    setenv("RAC1_SKIP_SHADOWS", "1", 1);     // (the shadows and the effects' draw lists: not drawn on the Wii U yet - their work
-    setenv("RAC1_SKIP_DRAW_LISTS", "1", 1);  // skipped, game_skips.h; the debug menu's Game page turns them back on)
+    setenv("RAC1_SKIP_SHADOWS", "0", 1);     // (drop shadows and draw lists enabled on Wii U: rendered via mrp_world_gx2_draw_fx)
+    setenv("RAC1_SKIP_DRAW_LISTS", "0", 1);  // (run.cfg or the debug menu's Game page can still override them)
     setenv("RAC1_DRAW_LAST_STEP", "1", 1);  // (a catch-up game frame, not shown, not drawn: game_skips.h)
     setenv("RAC1_IOP_STATE_ONLY", "1", 1);  // (the mirror plays the sound: the game's IOP keeps its state, unmixed - about 10% of the game thread, 2026-10-28)
     setenv("RAC1_WIIU_GFX", "1", 1);
+    setenv("RAC1_WIIU_3D_SCALE", "0.75", 1); // (default 0.75 3D internal scale in MEM1 eDRAM for smooth Novalis frame times; run.cfg can override)
     setenv("RAC1_REALTIME", "1", 1);
     setenv("RAC1_WIIU_MENU", "1", 1);
     setenv("RAC1_BOOT", "1", 1);

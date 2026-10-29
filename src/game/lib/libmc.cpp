@@ -176,6 +176,9 @@ void host_load(const fs::path& root) {
         if (!e.dir) {
             std::ifstream f(it->path(), std::ios::binary);
             e.data.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+#if defined(__WIIU__)
+            if (e.data.empty()) continue;
+#endif
         }
         const auto t = fs::last_write_time(it->path(), ec);
         const auto sys = std::chrono::time_point_cast<std::chrono::system_clock::duration>(t - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
@@ -257,7 +260,9 @@ int32_t do_open(int32_t port, int32_t slot, const std::string& name, int32_t mod
         e.order = g_card.next_order++;
         e.created = e.modified = std::time(nullptr);
         it = g_card.entries.emplace(p, e).first;
+#if !defined(__WIIU__)
         host_write(p);
+#endif
     } else if (it->second.dir) {
         return DENIED;
     }

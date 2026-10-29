@@ -11,6 +11,8 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/pause_menu.h>
 #include <game/ovl/screen_fade.h>
+#include <game/ovl/game_skips.h>
+#include <game/render/mrp_lod.h>
 #include <game/port_stubs.h>
 
 namespace rac1 {
@@ -576,7 +578,7 @@ void ship_sequence_draw() {
         case 3:
         case 7:
             sw(OV(0x0015f3f4), 0x7f);
-            render_frame();
+            if (!g_draw_last_step_only || g_mrp_lod_frame_drawn) render_frame();
             break;
         case 4: flight_draw(); break;
         default: break;
@@ -590,7 +592,7 @@ void mode2_draw() {
     if (lw(OV(0x0015f5d8)) != 0) return;
     sub_00200fd8();
     sw(OV(0x0015f3f4), 0x7f);
-    render_frame();
+    if (!g_draw_last_step_only || g_mrp_lod_frame_drawn) render_frame();
 }
 
 // The planet `planet` chosen on the ship's map: game mode 6; the same planet: the landing again,

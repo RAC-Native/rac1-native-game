@@ -383,7 +383,17 @@ uint32_t relight_flagged(void (*light)(uint32_t), uint32_t table, int32_t count,
                          uint32_t list, int kind, int touch) {
     if (table == 0 || count <= 0 || count > 0x10000) return 0;
     uint32_t n = 0, total = 0;
+#if defined(__WIIU__)
+    static uint32_t s_cursor[3] = {0, 0, 0};
+    constexpr uint32_t kMaxPerFrame = 64;
+    const uint32_t ucount = static_cast<uint32_t>(count);
+    const uint32_t start = s_cursor[kind] < ucount ? s_cursor[kind] : 0;
+    uint32_t next_cursor = 0;
+    for (uint32_t step = 0; step < ucount; ++step) {
+        const uint32_t i = (start + step) % ucount;
+#else
     for (uint32_t i = 0; i < static_cast<uint32_t>(count); ++i) {
+#endif
         const uint32_t e = table + i * stride;
         if (lbu(e + dirty) == 0 && lhu(e + nib) == 0xffffu) continue;
         const uint32_t index = index_at != 0 ? lhu(e + index_at) : i;
@@ -399,7 +409,16 @@ uint32_t relight_flagged(void (*light)(uint32_t), uint32_t table, int32_t count,
             light(list);
             n = 0;
         }
+#if defined(__WIIU__)
+        if (total == kMaxPerFrame) {
+            next_cursor = (i + 1) % ucount;
+            break;
+        }
+#endif
     }
+#if defined(__WIIU__)
+    s_cursor[kind] = next_cursor;
+#endif
     if (n != 0) {
         sh(list + n * 2, 0xffff);
         light(list);

@@ -122,6 +122,26 @@ size_t mrp_fx_clear_caches();
 // orig: (host) the totals at the run's end
 void mrp_fx_report();
 
+struct MrpFxWiiuBatch {
+    uint64_t prim = 0, test = 0, alpha = 0, zbuf = 0;
+    uint32_t fogcol = 0, pass2 = 0, sampler = 0, ztst = 2;
+    bool ztest = false, zwrite = false, ate = false, fge = false;
+    std::shared_ptr<const gs::TexImage> tex;
+    uint32_t first = 0, count = 0;
+};
+
+struct MrpFxWiiuView {
+    uint64_t serial = 0;
+    const void* verts = nullptr;  // const mrpwb::GpuV*
+    size_t nverts = 0;
+    const std::vector<MrpFxWiiuBatch>* batches = nullptr;
+};
+
+// orig: (host) builds the Wii U GX2 vertex/batch snapshot from `gs` (called after mrp_chain_join on Wii U)
+void mrp_fx_wiiu_prepare(const MrpChainFrame& gs, const float* vpm_opt = nullptr);
+// orig: (host) reads the latest prepared Wii U GX2 effects snapshot
+bool mrp_fx_wiiu_view(MrpFxWiiuView& out);
+
 }  // namespace rac1
 
 #endif

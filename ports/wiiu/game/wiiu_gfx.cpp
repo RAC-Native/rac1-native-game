@@ -8,6 +8,7 @@
 #include <game/enhance/graphics.h>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/mrp_chain.h>
+#include <game/render/mrp_fx.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
 #include <runtime/gs/gs_emu.h>
@@ -869,6 +870,7 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
     static float s3_gfx_seen = 0.0f;
     if (s3_first) {
         s3_first = false;
+        if (!rac1::g_advanced_disabled) s3_gfx_seen = std::clamp(rac1::graphics_render_scale(), 0.25f, 1.0f);
         if (const char* e = std::getenv("RAC1_WIIU_3D_SCALE"); e != nullptr && e[0] != 0) g_menu_3d_scale = std::clamp(static_cast<float>(std::atof(e)), 0.25f, 1.0f);
     }
     if (!rac1::g_advanced_disabled) {
@@ -946,6 +948,10 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
         if (g_tm_draw) gpu_mark(kGmMobys);
         rac1::gx2_flush(1);
         dlap(kTmMobys);
+    }
+    if (g_world_ready) {
+        rac1::mrp_world_gx2_draw_fx(cb3, db3, vp3);
+        rac1::gx2_flush(1);
     }
     if (s3 != nullptr) {  // (the scaled 3D over the TV's frame, the TV's buffers bound again for the 2D)
         s3_blit(cb, db, vp3, vp);
@@ -1126,6 +1132,7 @@ void wiiu_gfx_frame() {
     if (prebuild_on && chain_2d) {
         rac1::mrp_chain_join();  // (the frame's chain read on the reader's worker)
         rac1::mrp_world_wiiu_chain_joined();  // (its registers kept for the next frame's world)
+        rac1::mrp_fx_wiiu_prepare(rac1::mrp_chain_frame(), rac1::g_gx2_view.vp);
         lap(kTmJoin);
         static const int s_2d = std::getenv("RAC1_WIIU_2D") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_2D")) : 2;
         if (!has_movie && g_m2d_ready && g_menu_draw_2d && s_2d == 2) {

@@ -1,3 +1,4 @@
+// wiiu: thread sync for load/reload
 // The original runtime: the game's own start on a level and its main loop, ported
 // (src/game/ovl), with the host standing in for the hardware: the disc (the user's ISO), the pad
 // (keyboard / gamepad -> the controller packet), the vsync (60 Hz pacing) and the GS / VU (the
@@ -3550,6 +3551,11 @@ int main(int argc, char** argv) {
                         // (the MRP sky, mrp_world_sky.inc: its range walked in EE memory before the reader starts - their VU1 programs never
                         // run at once -, for mrp_world_wiiu_prepare)
                         mrp_chain_join();  // (the frame before's reading - waited for by the start anyway: not the sky's time)
+                        const bool wiiu_fx_world_on = !wiiu_movie && (wiiu_flight || ((wiiu_title ? boot_in_title() : !wiiu_menu_mode) && !exiting)) && !fade && !wiiu_vendor_pic;
+                        if (!prev_chain && wiiu_fx_world_on) {
+                            std::vector<int> no_subs;
+                            mrp_fx_chain_ranges(true, no_subs, ci.fx, ci.vu7);
+                        }
                         const auto ts = std::chrono::steady_clock::now();
                         mrp_world_wiiu_sky_capture(!prev_chain && !fade);
                         const auto tc = std::chrono::steady_clock::now();
@@ -3624,7 +3630,10 @@ int main(int argc, char** argv) {
                     rac1_wiiu_time(1, std::chrono::duration<double, std::milli>(tm1 - tm0).count());
                     // the MRP world's ties / shrubs (ports/wiiu/game/mrp_world_gx2.h): the host-made static path's frame, on a frame
                     // whose world is drawn (mrp_world_begin_frame_async's condition on the PC)
-                    mrp_world_wiiu_prepare(!wiiu_movie && (wiiu_flight || ((wiiu_title ? boot_in_title() : !wiiu_menu_mode) && !exiting)) && !fade && !wiiu_vendor_pic);
+                    const bool wiiu_world_on = !wiiu_movie && (wiiu_flight || ((wiiu_title ? boot_in_title() : !wiiu_menu_mode) && !exiting)) && !fade && !wiiu_vendor_pic;
+                    if (wiiu_world_on && g_mrp_shadows) mrp_shadows_snapshot();
+                    else mrp_shadows_clear_snapshot();
+                    mrp_world_wiiu_prepare(wiiu_world_on);
                     rac1_wiiu_time(2, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tm1).count());
                 }
                 const int screen_fbp = static_cast<int>(lwu(0x0013cf20) & 0x1ff);

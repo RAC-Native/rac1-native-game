@@ -1,3 +1,4 @@
+// wiiu: release previous level GX2 buffers before alloc
 // The MRP's mobys drawn with GX2 on the Wii U (MRP_LITE.md phase 2; how a caller uses it: mrp_moby_gx2.h). A port of
 // mrp_moby_renderer.cpp's GL draw (draw_batches) over the same CPU preparation, read through mrp_moby_backend.inc:
 //

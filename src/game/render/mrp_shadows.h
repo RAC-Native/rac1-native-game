@@ -34,6 +34,17 @@ bool mrp_shadows_draw(const float* view_proj);
 // orig: (host) the frame's faces and darkening captured for a frame drawn after the next update (render_toggles.h
 // g_draw_from_snapshot)
 void mrp_shadows_snapshot();
+
+struct MrpShadowsWiiuView {
+    const float* mark = nullptr;
+    size_t mark_floats = 0;
+    const float* unmark = nullptr;
+    size_t unmark_floats = 0;
+    uint64_t apply_alpha = 0;
+    uint32_t apply_rgba = 0;
+};
+bool mrp_shadows_wiiu_view(MrpShadowsWiiuView& out);
+void mrp_shadows_clear_snapshot();
 // orig: (host) the frame's totals for RAC1_FRAME_PROF / RAC1_MRP_DEBUG
 void mrp_shadows_report();
 // orig: (host) RAC1_MRP_SHADOW_CHECK: true when the faithful GS path should also walk the shadow tags, so that mrp_shadows_check_gs can compare

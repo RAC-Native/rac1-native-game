@@ -8,6 +8,7 @@
 #include <game/render/mrp_lighting.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_moby_renderer.h>
+#include <game/render/mrp_world_backend.inc>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
@@ -922,7 +923,11 @@ bool mrp_fx_chain_ranges(bool active, const std::vector<int>& subs, std::vector<
     F.vu7 = false;
     bool any = !g_real.list.empty() || !g_real.lists.empty();
     for (int k : subs) any = any || (k >= 0 && k < kMrpLodSlots && (!g_shadow[k].list.empty() || !g_shadow[k].lists.empty()));
+#if defined(__WIIU__)
+    if (!g_mrp_fx || !active || !any) return false;
+#else
     if (!g_mrp_fx || !g_world_mrp || !active || !any) return false;
+#endif
     if (g_mrp_seas && (g_kinds_mask >> kMrpFxVu7 & 1u) != 0) {  // (VU1 program 7's batches in the draw lists' callbacks)
         auto add_lists = [&](const Notes& N, uint8_t sub) {
             for (const auto& l : N.lists) vu7.push_back(MrpChainInput::Vu7{l[0], l[1] - 1, sub, l[2]});
@@ -2278,6 +2283,266 @@ void mrp_fx_report() {
                             static_cast<unsigned long long>(I.calls), static_cast<unsigned long long>(I.bytes), static_cast<unsigned long long>(I.uncovered),
                             I.uncovered != 0 ? " (the GS replica draws these)" : "");
     }
+}
+
+namespace {
+uint64_t g_wiiu_fx_serial = 0;
+std::vector<mrpwb::GpuV> g_wiiu_fx_verts;
+std::vector<MrpFxWiiuBatch> g_wiiu_fx_batches;
+
+void wiiu_fx_state(const gs::DrawState& st, const std::shared_ptr<const gs::TexImage>& tex, MrpFxWiiuBatch& b, uint32_t& word, uint32_t& dflags) {
+    const bool tme = fld(st.prim, 4, 1) != 0 && tex != nullptr;
+    const bool iip = fld(st.prim, 3, 1) != 0;
+    const bool fge = fld(st.prim, 5, 1) != 0;
+    const uint32_t atst = static_cast<uint32_t>(fld(st.test, 1, 3));
+    const uint32_t aref = static_cast<uint32_t>(fld(st.test, 4, 8));
+    const uint32_t afail = static_cast<uint32_t>(fld(st.test, 12, 2));
+    const bool ate = fld(st.test, 0, 1) != 0 && atst != 1 && !(atst == 5 && aref == 0);
+    const uint32_t ztst = static_cast<uint32_t>(fld(st.test, 17, 2));
+    const bool ztest = fld(st.test, 16, 1) != 0 && ztst != 1;
+    const bool zwrite = ztest && fld(st.zbuf, 32, 1) == 0;
+    const uint32_t pass2 = (ate && zwrite) ? afail : 0u;
+    const uint32_t wms = static_cast<uint32_t>(fld(st.clamp, 0, 2));
+    const uint32_t wmt = static_cast<uint32_t>(fld(st.clamp, 2, 2));
+    const uint32_t mmag = static_cast<uint32_t>(fld(st.tex1, 5, 1));
+    const uint32_t mmin = static_cast<uint32_t>(fld(st.tex1, 6, 3));
+    const uint32_t sampler = (mmag != 0 ? 1u : 0u) | (mmin != 0 ? 2u : 0u) | ((wms & 1u) == 0 ? 4u : 0u) | ((wmt & 1u) == 0 ? 8u : 0u);
+    word = tme ? ((static_cast<uint32_t>(fld(st.tex0, 35, 2)) << 1) | (static_cast<uint32_t>(fld(st.tex0, 34, 1)) << 3)) : 1u;
+    dflags = (tme ? 1u : 0u) | (iip ? 2u : 0u) | (fge ? 4u : 0u) | ((ate ? (pass2 != 0 ? 2u : 1u) : 0u) << 3) | (atst << 4) | (aref << 8);
+    b.prim = st.prim;
+    b.test = st.test;
+    b.alpha = st.alpha;
+    b.zbuf = st.zbuf;
+    b.fogcol = static_cast<uint32_t>(st.fogcol & 0xffffff);
+    b.pass2 = pass2;
+    b.sampler = sampler;
+    b.ztst = ztst;
+    b.ztest = ztest;
+    b.zwrite = zwrite;
+    b.ate = ate;
+    b.fge = fge;
+    b.tex = tme ? tex : nullptr;
+}
+
+bool wiiu_fx_same_batch(const MrpFxWiiuBatch& a, const MrpFxWiiuBatch& b) {
+    const bool ab = (a.prim & (1ull << 6)) != 0, bb = (b.prim & (1ull << 6)) != 0;
+    if (ab != bb) return false;
+    if (ab && (a.alpha & 0xff000000ffull) != (b.alpha & 0xff000000ffull)) return false;
+    return a.ztest == b.ztest && a.ztst == b.ztst && a.zwrite == b.zwrite && a.ate == b.ate && a.fge == b.fge && a.pass2 == b.pass2 &&
+           a.sampler == b.sampler && (!a.fge || a.fogcol == b.fogcol) &&
+           ((a.tex == nullptr && b.tex == nullptr) || (a.tex != nullptr && b.tex != nullptr && a.tex->id == b.tex->id));
+}
+
+void wiiu_fx_append_batch(const MrpFxWiiuBatch& cur, uint32_t first, uint32_t count) {
+    if (count == 0) return;
+    if (!g_wiiu_fx_batches.empty() && wiiu_fx_same_batch(g_wiiu_fx_batches.back(), cur) &&
+        g_wiiu_fx_batches.back().first + g_wiiu_fx_batches.back().count == first) {
+        g_wiiu_fx_batches.back().count += count;
+        return;
+    }
+    MrpFxWiiuBatch b = cur;
+    b.first = first;
+    b.count = count;
+    g_wiiu_fx_batches.push_back(std::move(b));
+}
+}  // namespace
+
+void mrp_fx_wiiu_prepare(const MrpChainFrame& gs, const float* vpm_opt) {
+    g_wiiu_fx_verts.clear();
+    g_wiiu_fx_batches.clear();
+    ++g_wiiu_fx_serial;
+    if (!g_render_fx || !gs.fx_external || (g_frame.notes.empty() && gs.vu7_batches.empty())) return;
+    float vpm[16];
+    if (vpm_opt != nullptr) std::memcpy(vpm, vpm_opt, sizeof(vpm));
+    else mrp_world_view_proj(vpm);
+    glm::dmat4 VP;
+    for (int c = 0; c < 4; ++c)
+        for (int r = 0; r < 4; ++r) VP[c][r] = vpm[c * 4 + r];
+    const auto& prims = gs.prims;
+    for (size_t pi = 0; pi < prims.size(); ++pi) {
+        const gs::Primitive& p = prims[pi];
+        if (p.fx == 0 || p.sub == 2) continue;
+        if (p.fx == kMrpFxVu7) {
+            if (p.type != 9 || p.fx_id >= gs.vu7_batches.size()) continue;
+            const gs::Vu7Batch& b = gs.vu7_batches[p.fx_id];
+            const int type = static_cast<int>(fld(b.st.prim, 0, 3));
+            if (type != 3 && type != 4 && type != 5) continue;
+            glm::dmat4 M, C;
+            for (int c = 0; c < 4; ++c) {
+                M[c] = glm::dvec4(b.m[4 * c], b.m[4 * c + 1], b.m[4 * c + 2], b.m[4 * c + 3]);
+                C[c] = glm::dvec4(b.clip[4 * c], b.clip[4 * c + 1], b.clip[4 * c + 2], b.clip[4 * c + 3]);
+            }
+            glm::dmat4 Me = M;
+            for (int c = 0; c < 4; ++c)
+                for (int r = 0; r < 3; ++r) Me[c][r] *= static_cast<double>(b.k);
+            const glm::dmat4& Ge = g_frame.vu7_ge;
+            auto wsize = [](const glm::dmat4& A) { return std::max({std::fabs(A[0][3]), std::fabs(A[1][3]), std::fabs(A[2][3]), std::fabs(A[3][3]), 1e-30}); };
+            const double sm = wsize(Me), sg = wsize(Ge);
+            bool same = std::isfinite(sm) && b.k != 0.0f;
+            for (int r = 0; r < 4 && same; ++r) {
+                const double row = std::max({std::fabs(Ge[0][r]), std::fabs(Ge[1][r]), std::fabs(Ge[2][r]), std::fabs(Ge[3][r])}) / sg;
+                for (int c = 0; c < 4 && same; ++c)
+                    if (std::fabs(Me[c][r] / sm - Ge[c][r] / sg) > 1e-5 * std::max(row, 1e-12)) same = false;
+            }
+            std::vector<std::array<uint32_t, 3>> tris;
+            if (type == 3) {
+                for (uint32_t i = 0; i + 2 < b.n; i += 3) tris.push_back({i, i + 1, i + 2});
+            } else {
+                for (uint32_t i = 0; i + 2 < b.n; ++i)
+                    tris.push_back(type == 4 ? std::array<uint32_t, 3>{i, i + 1, i + 2} : std::array<uint32_t, 3>{0, i + 1, i + 2});
+            }
+            enum : uint8_t { kNone = 0, kStrip = 1, kFan = 2 };
+            std::vector<uint8_t> how(tris.size(), kStrip);
+            const auto& vin = gs.vu7_verts;
+            {
+                std::vector<uint8_t> flags(b.n), behind(b.n);
+                for (uint32_t i = 0; i < b.n; ++i) {
+                    const gs::Vu7Vertex& s = vin[b.first + i];
+                    const glm::dvec4 pt(s.xyz[0], s.xyz[1], s.xyz[2], 1.0);
+                    const glm::dvec4 c = C * pt;
+                    const double aw = std::fabs(c.w);
+                    flags[i] = static_cast<uint8_t>((c.x > aw ? 1 : 0) | (c.x < -aw ? 2 : 0) | (c.y > aw ? 4 : 0) | (c.y < -aw ? 8 : 0) | (c.z < -aw ? 16 : 0));
+                    const glm::dvec4 h = M * pt;
+                    const double q = static_cast<double>(b.k) / h.w;
+                    const double X = h.x * q + b.off[0], Y = h.y * q + b.off[1], Z = h.z * q + b.off[2];
+                    behind[i] = !(q > 0.0) || !(X >= 0.0 && X < 4096.0 && Y >= 0.0 && Y < 4096.0) || !(Z >= 0.0 && Z < 16777216.0) ? 1 : 0;
+                }
+                const bool clip_path = b.start == 0xe;
+                const bool have = b.kicked.size() == b.n && type == 4;
+                for (size_t t = 0; t < tris.size(); ++t) {
+                    const auto& T = tris[t];
+                    const bool any_out = (flags[T[0]] | flags[T[1]] | flags[T[2]]) != 0;
+                    const bool all_one = (flags[T[0]] & flags[T[1]] & flags[T[2]]) != 0;
+                    const bool whole = have ? b.kicked[T[2]] != 0 : !(clip_path && any_out);
+                    if (whole) how[t] = (behind[T[0]] | behind[T[1]] | behind[T[2]]) != 0 ? kNone : kStrip;
+                    else how[t] = all_one || !clip_path ? kNone : kFan;
+                }
+            }
+            auto emit_vu7 = [&](const gs::DrawState& st, const std::shared_ptr<const gs::TexImage>& tex, uint8_t want) {
+                const bool tme = fld(st.prim, 4, 1) != 0;
+                if (tme && tex == nullptr) return;
+                const bool fst = fld(st.prim, 8, 1) != 0;
+                const float tw = tex != nullptr && tex->w > 0 ? static_cast<float>(tex->w) : 1.0f;
+                const float th = tex != nullptr && tex->h > 0 ? static_cast<float>(tex->h) : 1.0f;
+                MrpFxWiiuBatch wb;
+                uint32_t word = 1u, dflags = 0u;
+                wiiu_fx_state(st, tex, wb, word, dflags);
+                const uint32_t first = static_cast<uint32_t>(g_wiiu_fx_verts.size());
+                for (size_t t = 0; t < tris.size(); ++t) {
+                    if (how[t] != want) continue;
+                    for (uint32_t i : tris[t]) {
+                        const gs::Vu7Vertex& s = vin[b.first + i];
+                        const glm::dvec4 pt(s.xyz[0], s.xyz[1], s.xyz[2], 1.0);
+                        const glm::dvec4 clip = M * pt;
+                        glm::dvec3 w(pt);
+                        if (!same) {
+                            const glm::dvec4 h = g_frame.vu7_geinv * (Me * pt);
+                            w = std::fabs(h.w) > 1e-30 ? glm::dvec3(h) / h.w : glm::dvec3(pt);
+                        }
+                        mrpwb::GpuV gv{};
+                        gv.wp[0] = static_cast<float>(w.x);
+                        gv.wp[1] = static_cast<float>(w.y);
+                        gv.wp[2] = static_cast<float>(w.z);
+                        gv.wp[3] = 1.0f;
+                        if (fst) {
+                            gv.stq[0] = s.st[0] / tw;
+                            gv.stq[1] = s.st[1] / th;
+                            gv.stq[2] = 1.0f;
+                        } else {
+                            gv.stq[0] = s.st[0];
+                            gv.stq[1] = s.st[1];
+                            gv.stq[2] = s.st[2] != 0.0f ? s.st[2] : 1.0f;
+                        }
+                        gv.lodq = 1.0f;
+                        for (int l = 0; l < 4; ++l) gv.rgba[l] = s.rgba[l];
+                        const float fw = std::min(std::max(static_cast<float>(clip.w) + b.off[3], b.fog[0]), b.fog[1]);
+                        gv.fog = std::isfinite(fw) ? static_cast<float>(static_cast<uint32_t>(std::max(fw, 0.0f)) & 0xffu) : 255.0f;
+                        gv.word = word;
+                        gv.layer = 0;
+                        gv.state[0] = dflags;
+                        gv.state[1] = wb.fogcol;
+                        g_wiiu_fx_verts.push_back(gv);
+                    }
+                }
+                const uint32_t count = static_cast<uint32_t>(g_wiiu_fx_verts.size()) - first;
+                wiiu_fx_append_batch(wb, first, count);
+            };
+            if (b.start == 0xe) emit_vu7(b.st_fan, b.tex_fan, kFan);
+            emit_vu7(b.st, b.tex, kStrip);
+            continue;
+        }
+        if ((p.type != 3 && p.type != 6) || p.fx_id >= g_frame.notes.size()) continue;
+        const FrameNote& fn = g_frame.notes[p.fx_id];
+        const View& V = g_frame.views[fn.view];
+        const gs::DrawState& st = p.st;
+        const bool tme = fld(st.prim, 4, 1) != 0, fst = fld(st.prim, 8, 1) != 0;
+        if (tme && p.tex == nullptr) continue;
+        const double tw = tme && p.tex->w > 0 ? static_cast<double>(p.tex->w) : 1.0;
+        const double th = tme && p.tex->h > 0 ? static_cast<double>(p.tex->h) : 1.0;
+        MrpFxWiiuBatch wb;
+        uint32_t word = 1u, dflags = 0u;
+        wiiu_fx_state(st, p.tex, wb, word, dflags);
+        const double ox = static_cast<double>(fld(st.xyoffset, 0, 16)) / 16.0, oy = static_cast<double>(fld(st.xyoffset, 32, 16)) / 16.0;
+        auto mk = [&](float x, float y, uint32_t z, float s, float t, float q, const gs::Vertex& col) {
+            const double X = static_cast<double>(x) + ox, Y = static_cast<double>(y) + oy;
+            const glm::dvec4 wp = world_of(V, X, Y, static_cast<double>(z));
+            mrpwb::GpuV gv{};
+            for (int l = 0; l < 4; ++l) gv.wp[l] = static_cast<float>(wp[l]);
+            gv.vu[0] = static_cast<float>(X);
+            gv.vu[1] = static_cast<float>(Y);
+            gv.vu[2] = static_cast<float>(z);
+            gv.vu[3] = 1.0f;
+            double w = (VP * wp).w;
+            if (!(w > 1e-9)) w = 1e-9;
+            if (fst) {
+                gv.stq[0] = static_cast<float>(static_cast<double>(s) / tw * w);
+                gv.stq[1] = static_cast<float>(static_cast<double>(t) / th * w);
+                gv.stq[2] = static_cast<float>(w);
+            } else {
+                gv.stq[0] = static_cast<float>(static_cast<double>(s) * w);
+                gv.stq[1] = static_cast<float>(static_cast<double>(t) * w);
+                gv.stq[2] = static_cast<float>(static_cast<double>(q != 0.0f ? q : 1.0f) * w);
+            }
+            gv.lodq = 1.0f;
+            gv.rgba[0] = col.r;
+            gv.rgba[1] = col.g;
+            gv.rgba[2] = col.b;
+            gv.rgba[3] = col.a;
+            gv.fog = static_cast<float>(col.fog);
+            gv.word = word;
+            gv.layer = 0;
+            gv.state[0] = dflags;
+            gv.state[1] = wb.fogcol;
+            return gv;
+        };
+        auto st_of = [fst](const gs::Vertex& a) { return fst ? std::array<float, 2>{a.u, a.v} : std::array<float, 2>{a.s, a.t}; };
+        const uint32_t first = static_cast<uint32_t>(g_wiiu_fx_verts.size());
+        if (p.type == 6) {
+            const gs::Vertex &a = p.v[0], &b = p.v[1];
+            const auto sa = st_of(a), sb = st_of(b);
+            const float qa = a.q != 0.0f ? a.q : 1.0f;
+            const float as = fst ? sa[0] : sa[0] / qa * b.q, at_ = fst ? sa[1] : sa[1] / qa * b.q;
+            const mrpwb::GpuV c0 = mk(a.x, a.y, b.z, as, at_, b.q, b), c1 = mk(b.x, a.y, b.z, sb[0], at_, b.q, b),
+                              c2 = mk(a.x, b.y, b.z, as, sb[1], b.q, b), c3 = mk(b.x, b.y, b.z, sb[0], sb[1], b.q, b);
+            g_wiiu_fx_verts.insert(g_wiiu_fx_verts.end(), {c0, c1, c2, c1, c3, c2});
+        } else {
+            for (int i = 0; i < 3; ++i) {
+                const gs::Vertex& pv = p.v[static_cast<size_t>(i)];
+                const auto s2 = st_of(pv);
+                g_wiiu_fx_verts.push_back(mk(pv.x, pv.y, pv.z, s2[0], s2[1], pv.q, pv));
+            }
+        }
+        const uint32_t count = static_cast<uint32_t>(g_wiiu_fx_verts.size()) - first;
+        wiiu_fx_append_batch(wb, first, count);
+    }
+}
+
+bool mrp_fx_wiiu_view(MrpFxWiiuView& out) {
+    out.serial = g_wiiu_fx_serial;
+    out.verts = g_wiiu_fx_verts.data();
+    out.nverts = g_wiiu_fx_verts.size();
+    out.batches = &g_wiiu_fx_batches;
+    return !g_wiiu_fx_verts.empty() && !g_wiiu_fx_batches.empty();
 }
 
 }  // namespace rac1

@@ -438,6 +438,28 @@ void mrp_shadows_snapshot() {
     D.unmark = S.unmark;
 }
 
+void mrp_shadows_clear_snapshot() {
+    D.on = false;
+    D.captured = false;
+    D.have_apply = false;
+    D.mark.clear();
+    D.unmark.clear();
+}
+
+bool mrp_shadows_wiiu_view(MrpShadowsWiiuView& out) {
+    const State& X = D;
+    if (!X.on || !X.captured || !X.have_apply) return false;
+    if (X.mark.empty() && X.unmark.empty()) return false;
+    out.mark = X.mark.data();
+    out.mark_floats = X.mark.size();
+    out.unmark = X.unmark.data();
+    out.unmark_floats = X.unmark.size();
+    out.apply_alpha = X.apply_alpha;
+    out.apply_rgba = X.apply_rgba;
+    ++S.drawn_frames;
+    return true;
+}
+
 // orig: (host) see mrp_shadows.h
 bool mrp_shadows_draw(const float* view_proj) {
     // (a pipelined frame draws what was captured before the next update)

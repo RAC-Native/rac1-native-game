@@ -66,6 +66,8 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
 // the prepared frame's sky into `cb` (the depth buffer bound, never tested nor written: its hierarchical Z untouched), the game's frame on
 // `vp` as mrp_world_gx2_draw's; before it. State left: as mrp_world_gx2_draw's
 void mrp_world_gx2_draw_sky(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp);
+// the prepared frame's drop shadows (mrp_shadows) and 3D effects / program 7 surfaces / particles (mrp_fx) into `cb` / `db`
+void mrp_world_gx2_draw_fx(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp);
 // the sky drawn (RAC1_WIIU_SKY=1; off by default; the GamePad's debug menu flips it live): off, the frame's sky is neither captured nor
 // drawn, the game's sky pass not run either while the picture is up (mrp_world_wiiu_sky_pass_wanted), and the world's batches start from
 // the GS registers before the sky's (as they did before the sky)

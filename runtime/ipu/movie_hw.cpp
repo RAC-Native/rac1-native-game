@@ -133,7 +133,7 @@ struct Demux {
 // sample waits for the one after it, the last ones for the track's end).
 struct TrackDecoder {
     int phase = 0;  // 0 the header not there yet, 1 decoding, 2 done (or not decodable)
-    uint32_t rate = 0, chans = 0, inter = 0;
+    uint32_t rate = 0, chans = 0, inter = 0, body_size = 0;
     size_t b = 0, off = 0, out_i = 0;
     int32_t h[2][2] = {};
     std::vector<int16_t> pcm;  // at the track's rate (rate != 48000)
@@ -168,23 +168,26 @@ struct TrackDecoder {
                 phase = 2;
                 return;
             }
+            body_size = le32(&t[b + 4]);
+            t.erase(t.begin(), t.begin() + static_cast<std::ptrdiff_t>(b + 8));
             phase = 1;
-            t.reserve(b + 8 + static_cast<size_t>(le32(&t[b + 4])));
         }
         if (phase != 1) return;
-        const uint8_t* p = &t[b + 8];
-        const size_t n = std::min<size_t>(le32(&t[b + 4]), t.size() - (b + 8));
+        const uint8_t* p = t.data();
+        const size_t rem = off < body_size ? static_cast<size_t>(body_size) - off : 0;
+        const size_t n = std::min<size_t>(rem, t.size());
         const size_t per = inter * chans;
         const size_t samples_per = inter / 16 * 28;
         int16_t blk[28];
         std::vector<int16_t> o48;
-        for (; off + per <= n; off += per) {
+        size_t consumed = 0;
+        for (; consumed + per <= n; consumed += per) {
             std::vector<int16_t>& out_ = rate == 48000 ? o48 : pcm;
             const size_t base = out_.size();
             out_.resize(base + samples_per * 2);
             for (uint32_t c = 0; c < chans; ++c) {
                 for (size_t k = 0; k < inter / 16; ++k) {
-                    spu2_adpcm_block(p + off + c * inter + k * 16, blk, h[c][0], h[c][1]);
+                    spu2_adpcm_block(p + consumed + c * inter + k * 16, blk, h[c][0], h[c][1]);
                     for (int s = 0; s < 28; ++s) {
                         const size_t o = base + (k * 28 + static_cast<size_t>(s)) * 2;
                         out_[o + c] = blk[s];
@@ -192,6 +195,10 @@ struct TrackDecoder {
                     }
                 }
             }
+        }
+        if (consumed > 0) {
+            t.erase(t.begin(), t.begin() + static_cast<std::ptrdiff_t>(consumed));
+            off += consumed;
         }
         if (rate == 48000) {
             if (!o48.empty()) out(o48.data(), o48.size() / 2);
@@ -348,6 +355,7 @@ void load_step(Load& L, Movie& m) {
         m.video_done.store(true, std::memory_order_release);
         {
             std::scoped_lock lock(g_audio_lock);
+            m.audio.shrink_to_fit();
             m.audio_done.store(true, std::memory_order_release);
             std::printf("[movie] sector %u read: video %zu bytes, %zu sound tracks, track %d %.1f s\n", L.lba, m.video_len.load(), num_tracks, L.chosen,
                         static_cast<double>(m.audio.size() / 2) / 48000.0);
@@ -390,7 +398,7 @@ bool movie_hw_open(uint32_t lba, uint32_t bytes, int track) {
     m.video.reserve(bytes);
     m.video_len.store(0);
     m.audio.clear();
-    m.audio.reserve(std::max<size_t>(bytes / 2, 48000 * 2 * 10));
+    m.audio.reserve(std::max<size_t>(bytes / 6, 48000 * 2 * 10));
     m.stop.store(false);
     m.video_done.store(false);
     m.audio_done.store(false);

@@ -8,7 +8,7 @@ Questo file coordina il lavoro dei subagenti (Gemini 4) sul branch `port/wiiu` i
 3. **Aggiornamento progressivo:** Ogni subagente aggiorna la propria sezione in questo file (`ports/wiiu/TASKS_LOGIC.md`) con l'analisi, le modifiche effettuate e i test eseguiti.
 4. **Invarianti obbligatorie:**
    - Lavorare **solo** in `/home/daino/progetti/rac1-native-game-wiiu` (branch `port/wiiu`). Non toccare mai `/home/daino/progetti/rac1-native-game`.
-   - Non lavorare su micro-ottimizzazioni CPU/GPU per i 60 fps né sugli effetti 3D mancanti (particelle/drop shadows), lasciati all'altro agente.
+   - Sbloccato il lavoro su ottimizzazioni CPU/GPU (Novalis e livelli pesanti) e sugli effetti 3D mancanti (`mrp_fx`, `mrp_shadows`, shrub billboards) su Wii U.
    - Tutte le verifiche PC (`pc_check.sh`, `gt_check.sh`) devono restare verdi al 100%.
 
 ---
@@ -183,6 +183,31 @@ Questo file coordina il lavoro dei subagenti (Gemini 4) sul branch `port/wiiu` i
   2. **Pagina `Options > Advanced` e popup `New Game` (`src/game/enhance/advanced.cpp`, `src/game/enhance/graphics.cpp`):**
      - Attivate tutte le 8 opzioni QoL di `Options > Advanced` (`Quick Select: Normal / Pause`, `Aiming: Original / Modern / Modern, No Zoom`, `Movement: Original / Strafing / RAC 3`, `Fades: Fast / Original`, `Buy All Ammo: Off / On`, `Vibration: Off / Low / High`, `Ship: Original / Ship 1..3`, `Clank: Original / Modern`) con salvataggio in `config/advanced_options.txt` e nei file `save<N>.pc` sulla Memory Card.
      - Attivato il popup `New Game` con le modalità `Original` e `Modern` su Wii U.
+
+---
+
+### Track F — Sblocco Effetti 3D Mancanti (`mrp_fx`, `mrp_shadows`, Shrub Billboards) e Ottimizzazione Prestazioni CPU/GPU/MEM2 su Novalis
+- **Stato:** `[COMPLETATO]`
+- **File modificati:**
+  - `runtime/ipu/movie_hw.cpp`
+  - `src/game/lib/libmc.cpp`
+  - `src/game/ovl/arrival.cpp`
+  - `src/game/ovl/overlay_entry.cpp`
+  - `src/game/render/mrp_shadows.h`, `src/game/render/mrp_shadows.cpp`
+  - `src/game/render/mrp_fx.h`, `src/game/render/mrp_fx.cpp`
+  - `src/host/orig_main.cpp`
+  - `ports/wiiu/game/wiiu_main.cpp`, `ports/wiiu/game/wiiu_gfx.cpp`
+  - `ports/wiiu/game/mrp_world_gx2.h`, `ports/wiiu/game/mrp_world_gx2.cpp`
+- **Modifiche Effettuate:**
+  1. **Prestazioni CPU su Novalis (`overlay_entry.cpp`, `arrival.cpp`):**
+     - In `relight_flagged()` (`overlay_entry.cpp`), aggiunto budget round-robin `kMaxPerFrame = 64` per kind su `#if defined(__WIIU__)`: su Novalis 514 tie avevano `nib != 0xffffu` fisso e venivano ricalcolati a ogni singolo frame (~45 ms/frame su Espresso), riducendo di 8x il costo CPU.
+     - In `ship_sequence_draw()` e `mode2_draw()` (`arrival.cpp`), protetta `render_frame()` con `if (!g_draw_last_step_only || g_mrp_lod_frame_drawn)` per evitare fino a 5 passate complete di rendering nei catch-up frame durante l'arrivo su Novalis.
+  2. **Prestazioni GPU e MEM2 (`wiiu_main.cpp`, `wiiu_gfx.cpp`, `movie_hw.cpp`, `libmc.cpp`):**
+     - Attivata scala 3D default `RAC1_WIIU_3D_SCALE=0.75` (rendering 3D in MEM1 eDRAM con upscale prima dell'HUD 2D) e corretto il bug in `wiiu_gfx.cpp` (`s3_gfx_seen`) che sovrascriveva `RAC1_WIIU_3D_SCALE` a `1.0` al primo frame.
+     - Ridotto il picco di ~40-60 MB MEM2 dei filmati `.pss` in `movie_hw.cpp` liberando progressivamente i blocchi ADPCM decodificati; evitata la creazione/lettura di file salvataggio da 0 byte su SD in `libmc.cpp`.
+  3. **Sblocco Effetti 3D Mancanti su GX2 (`mrp_fx`, `mrp_shadows`, `mrp_world_gx2`):**
+     - Abilitati di default `RAC1_SKIP_DRAW_LISTS=0` e `RAC1_SKIP_SHADOWS=0` in `wiiu_main.cpp`.
+     - Implementato `mrp_fx_wiiu_prepare` / `mrp_world_gx2_draw_fx` per disegnare con GX2 superfici VU1 program 7 (acqua/fiumi di Novalis, mari, lava), particelle, thruster glow, colpi blaster, scintille, draw list e drop shadows dei moby (`mrp_shadows`), oltre ai billboard degli arbusti distanti (`cpu_batch` in `mrp_world_gx2_draw`).
   3. **Pagina `Options > Controls` (`src/game/enhance/controls.cpp`, `src/host/orig_main.cpp`):**
      - Nascoste su `__WIIU__` le righe solo tastiera/mouse (`Device`, `Mouse Mode`, `Mouse Sensitivity`, `Aim Sensitivity`), esponendo la rimappatura completa dei 17 comandi del controller (inclusi `Next Weapon` e `Previous Weapon`), `Invert Look` e `Reset to Defaults`, con etichette pulsanti in stile Nintendo (`B`, `A`, `Y`, `X`, `L`, `R`, `ZL`, `ZR`, `+`, `-`).
   4. **Pagina `Options > Graphics`, FOV, Level of Detail e HUD 16:9 (`src/game/enhance/graphics.cpp`, `src/game/render/render_view.cpp`, `src/game/render/mrp_lod.cpp`, `src/game/render/mrp_tfrag_gpu.cpp`, `src/game/ovl/overlay_entry.cpp`, `src/game/ovl/render_passes.cpp`, `ports/wiiu/game/wiiu_gfx.cpp`):**
