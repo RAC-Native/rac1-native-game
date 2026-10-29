@@ -5,10 +5,27 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
-### Gameplay
-- Buy All Ammo (Options > Advanced, Off by default): an All Ammo entry before the first item of the Vendor's list, as in Up Your
-  Arsenal: one purchase fills every weapon's ammo through the game's own purchase steps, or with too few bolts as much as they pay
-  for, weapon by weapon in the list's order. See [Advanced options](docs/advanced.md#buy-all-ammo).
+### Controls and gameplay
+- Mouse: a Direct mode, the new default (Options > Controls > Mouse Mode): the mouse turns the camera, and the aim while
+  strafing or aiming, by an angle proportional to its movement (raw motion where the system has it), with no stick
+  simulation, acceleration or speed cap; its own Aim Sensitivity while aiming; Stick keeps the earlier simulated right
+  stick (#117).
+- Keyboard and mouse defaults: the right mouse button aims (L2), the thumb button and F swing the wrench, Left Ctrl also
+  crouches, and the mouse wheel (a new kind of binding on the Controls page) goes through the weapons (#117, #61).
+- Next Weapon / Previous Weapon: two new actions (the wheel and X by default, bindable on the pad too) that put the
+  quick select's next or previous weapon in hand without opening it, or move its ring's selection while it is open (#61).
+- Advanced > Vibration (Off, Low, High; High in Modern and Experimental): the gamepad vibrates for damage, death, hard
+  landings, nearby explosions, each weapon's shot (by weapon), the wrench's hits, bolts and the ship's flight, through the
+  kernel's force feedback on Linux and XInput on Windows, with no new library; the game's state is only read (#10).
+- Advanced > Ship: the ship shown on every planet, Original (the story's) or any ship the save has unlocked; only its model
+  and look change, from the next planet (#94).
+- Advanced > Clank: Modern, a first step of a modern movement for Clank's sections: a faster, quicker walk and more air
+  control in his jump (on Orxon; Quartu's own hero code not yet), on in Experimental mode (#57).
+- Advanced > Aiming: Modern, No Zoom, Modern aiming at the normal camera distance, as Ratchet & Clank 3's lock-strafe (#70).
+- Buy All Ammo (Options > Advanced, Off by default): an All Ammo entry first in the Vendor's list, as in Up Your Arsenal: one
+  purchase fills every weapon's ammo through the game's own purchase steps, or with too few bolts as much as they pay for, weapon
+  by weapon in the list's order. The entry is an item of the game's own list, so it scrolls, highlights and wraps as the weapons
+  do, and the Vendor's and the PDA's screens open on it. See [Advanced options](docs/advanced.md#buy-all-ammo).
 
 ### Graphics
 - The modern renderer no longer runs the GS replica: it reads the frame's chain itself (`mrp_chain`, on a worker of its own) and
@@ -17,6 +34,14 @@ What changed in each release. Releases are source only: you build the game with 
   now; a new level's first frame keeps the loading screen's picture. The replica stays the faithful reference (`RAC1_MRP=0`,
   "VU emulation"; `RAC1_MRP_CHAIN=0` to compare).
 - Ambient particles: Batalia's rain shows over the sea behind it (the seas that write depth are drawn before the particles).
+- The Vendor's screens: their text, icons and item pictures are smooth again, as before the chain reader (they were blocky at any
+  window larger than the PS2's: the panels took the nearest filter, the moby programs' last texture state was missing).
+- `RAC1_2D_RT_SCALE` (testing): the menus' render targets (the Vendor's monitors, the pause menu's item models) at the window's
+  scale or N times the PS2's, for sharper menu text and models; off by default (it changes the look).
+- The 2D's textures are kept and reused: a texture decoded again with the same pixels (the title's menus', every frame) stays
+  the same image, and a changed image refills a free GPU texture of its size; the boot to Kerwan held 1835 GPU
+  textures (2293 in a windowed run) where it now holds 9, the pause menu made a texture and remade a render target every frame
+  and now makes none. The same pictures. `RAC1_2D_TEX_STATS` counts them.
 - Lights: Anya-Thoughtmane's second lighting pass (#102) on Veldin to Rilgar: emissive surfaces, lamps by class and by hand, merged with ours.
 - The levels' water, lava and sand seas (VU1 program 7's surfaces: Rilgar's harbour, Gaspar's lava sea, Aridia's sand sea, Hoven,
   Umbris, Novalis, Kalebo, Drek's fleet..., the levels' baked shadow meshes and the nanotech orbs) are drawn by the modern renderer
@@ -114,6 +139,11 @@ What changed in each release. Releases are source only: you build the game with 
   below the level, in a pit or after a long fall he is back on foot on the last solid ground. No race rules. OpenGL and Vulkan.
 
 ### Fixes
+- Debug menu: changing level (the Levels tab, `RAC1_GOTO`) during a movie stops the movie first, as its skip does: its sound
+  no longer plays on and its last picture no longer stays on the screen over the next level (#101). Testing: `RAC1_MOVIE_AT`.
+- Debug menu: the free hoverboard's jump plays once (take-off, in the air, landing) and goes back to riding, as the race board's
+  on Kalebo III: before, the riding played the jump's animation on a loop. Every jump is the same, 0.93 up and 0.6 s long, as
+  the race board's, whatever the frame's length; a held cross does not jump again (#101).
 - Vulkan: the tfrags' resident colours are a buffer per frame in flight: a frame's colours were written while the frame before's
   compute shader could still read them (a one-frame colour glitch was possible).
 - Windows: the build failed with MSYS2's current Clang ("'gnu::noinline' attribute cannot be applied to types" in

@@ -183,14 +183,23 @@ struct Geometry {
 bool geo_copy(void*& buf, size_t& cap, size_t from, size_t count, const void* src, size_t elem, uint32_t align) {
     if (count > cap) {
         size_t ncap = std::max<size_t>(count + count / 2, 4096);
+        if (from == 0 && buf != nullptr) {
+            // Free the old buffer before allocating the new one when no prefix needs to be preserved,
+            // avoiding holding both buffers in MEM2 simultaneously across a level change.
+            GX2DrawDone();
+            mem_free(buf);
+            cap = 0;
+        }
         void* nb = mem_alloc(static_cast<uint32_t>(ncap * elem), align);
         if (nb == nullptr) return false;
-        GX2DrawDone();  // (the old buffer may still be read)
-        if (buf != nullptr && from > 0) std::memcpy(nb, buf, from * elem);
-        mem_free(buf);
+        if (buf != nullptr) {
+            GX2DrawDone();  // (the old buffer may still be read)
+            if (from > 0) std::memcpy(nb, buf, from * elem);
+            mem_free(buf);
+        }
         buf = nb;
         cap = ncap;
-        GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, buf, static_cast<uint32_t>(from * elem));
+        if (from > 0) GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, buf, static_cast<uint32_t>(from * elem));
     }
     if (count > from) {
         uint8_t* dst = static_cast<uint8_t*>(buf) + from * elem;
@@ -569,6 +578,13 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
         std::fflush(stdout);
     }
     bool restore = false;
+    if (stage >= 2 && have && (L.loads != g_tex.loads || L.loads != g_geo.loads)) {
+        // Free the old level's textures and geometry upfront after a single GX2DrawDone() so the old level's
+        // buffers and the new level's textures do not coexist in MEM2 during level transitions.
+        GX2DrawDone();
+        if (L.loads != g_tex.loads) tex_free();
+        if (L.loads != g_geo.loads) geo_free();
+    }
     if (stage >= 2 && have && L.loads != g_tex.loads) {
         std::printf("[wiiu] mrp_moby_gx2: level %d's textures: %zu arrays\n", L.id, L.buckets);
         std::fflush(stdout);

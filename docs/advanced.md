@@ -10,15 +10,18 @@ from the PS2 compromises the port removes (see [Overview](overview.md#faithful-t
   whether the world pauses. Enhancements are **optional, off by default, and labelled as changes to
   the game**. With all of them off, the game plays as the original.
 
-The Advanced page has five rows:
+The Advanced page has these rows:
 
 | Row | Values (default first) | Kind |
 |---|---|---|
 | Quick Select | Normal, Pause | enhancement |
-| Aiming | Original, Modern | enhancement |
+| Aiming | Original, Modern, Modern, No Zoom | enhancement |
 | Movement | Original, Strafing, RAC 3 | enhancement |
 | Fades | Fast, Original | a removed compromise: Fast is the port's default, Original the PS2's |
 | Buy All Ammo | Off, On | enhancement |
+| Vibration | Off, Low, High | enhancement (kept as the machine's preference, not with the saves) |
+| Ship | Original, Ship 1, Ship 2, Ship 3 (only the ships the save has) | enhancement (its look only) |
+| Clank | Original, Modern | enhancement |
 
 All of it is in `src/game/enhance/advanced.{h,cpp}` (Buy All Ammo's Vendor entry in
 `src/game/enhance/vendor_buy_all.{h,cpp}`). None of it is a port: every function there is annotated
@@ -30,7 +33,7 @@ The page is made from the game's own menu data, so it looks and behaves like the
 the pause menu opens (`menu_open`, 0x276190, calls `advanced_menu_install`), the port copies the
 original's Camera page (0x1b5a60), its title and its "settings" widget (the widget at 0x27ef00 whose
 rows are a name, the byte it sets and up to four value texts; Cross cycles the value) into a block
-of EE memory the game never uses (0xf0000 to 0xf2000, inside the PS2 kernel's first megabyte, which
+of EE memory the game never uses (0xf0000 to 0xf2000, its texts at 0xfb000 to 0xfe000, inside the PS2 kernel's first megabyte, which
 the port does not use since its kernel is the host). It then writes its own rows and texts there and
 inserts Graphics, Controls and Advanced into the Options list before Quit Game. The main menu gets
 the same pages (`title_menu_page_start`). The game's text lookup (0x203ad8) asks `advanced_text`
@@ -50,9 +53,11 @@ port's fast fades). Left and right on a row step the value (`advanced_settings_d
   check's two rows are not: they belong to the machine (in the file, `update_check_off` and
   `update_channel`, and `update_skip`, the version the update notice's Skip Version chose).
 
-**The New Game choice.** Picking "Modern mode" at New Game turns Quick Select, Aiming and Movement
-(RAC 3) on; "Original mode" turns them off (`advanced_apply_mode`). Fades is left as it is. Every
-setting can be changed at any time afterwards.
+**The New Game choice.** Picking "Modern mode" or "Experimental" at New Game turns Quick Select, Aiming
+(Modern), Movement (RAC 3), Buy All Ammo and Vibration (High) on; Experimental also turns Clank (Modern)
+on; "Original mode" turns them all off (`advanced_apply_mode`). Ship goes back to Original in every mode
+(a new game has the first ship only). Fades is left as it is. Every setting can be changed at any time
+afterwards. The Controls page's mouse settings are the machine's and no mode changes them.
 
 **Linked settings.** Modern aiming is built on the strafe, so turning Aiming to Modern when Movement
 is Original turns Movement to Strafing (keeping RAC 3 if already chosen), and turning Movement back
@@ -68,21 +73,113 @@ element is the one open (its update function is 0x237ba0, or 0x238b80 for the va
 in his other mode). `gameplay_frame` (0x297f78, `src/game/ovl/game_frame.cpp`) then skips the hero,
 the mobys, the particles and the camera for that frame, and the play-time statistic does not count it.
 
+## Vibration (#10)
+
+The original has no vibration (it came with *Going Commando*). With **Vibration = Low** or **High**, the
+gamepad's motors answer what happens, in the spirit of *Ratchet & Clank 2* and *3*: damage taken (stronger
+the more nanotech is lost; a hit on the ship's shield too), Ratchet's death, a hard landing, explosions
+nearby, each weapon's shot (light ticks for the Blaster, the Pyrocitor and the Tesla Claw, medium for the
+gloves and the others, heavy for the Devastator and the R.Y.N.O.), the wrench's hit, a subtle tick for the
+bolts picked up, and a low hum while the ship flies. Low is a little under half of High. It is off by
+default and in Original mode; Modern and Experimental set it to High.
+
+**The game is only read.** Once a gameplay frame `vibration_frame` (`src/game/enhance/vibration.cpp`,
+called by `advanced_frame`) compares what the game's own code did with the frame before: the nanotech
+(+0x22a8) and the hits counted by `hero_hurt` (0x15eea8), the hero's state (the death states 0x3d and
+0x5d) and the lost-hero flag (+0x20b1), the fall speed when the jump states end, a new camera shake
+(0x166de0 / 0x166de8, which the weapons' blasts, mines and bombs set when they go off in view, bigger the
+closer), the ammo of the item in hand (0x13d428 + item x 4), the wrench swing's hit flag (+0xa64, set by
+`wrench_hit_sparks` 0x217368), the bolt count (0x15ed98) and the ship mode (+0x20a4 = 2). Reading the
+results instead of hooking the functions covers every level's own build of the hero and weapon code
+(several levels run transliterated copies) with one reader, and cannot change the game: a run with
+Vibration on has the same RAM hashes as one without, outside the menus' own block. Each event starts a
+pulse of the two motors that fades over a few frames; the host takes the motors once a game frame
+(`vibration_take`: 0 when no gameplay frame ran, so menus and pauses still them).
+
+**The motors** (`src/host/rumble.cpp`): GLFW has no force feedback, and no library is added for it:
+- Linux: the kernel's force feedback (`FF_RUMBLE`) on the pad's event device, found among
+  `/dev/input/event*` by the same bus / vendor / product / version numbers GLFW's GUID is made of. The
+  kernel's drivers cover the Xbox pads (`xpad`), the DualShock 4 and the DualSense (`hid-playstation`,
+  `hid-sony`), the Switch Pro (`hid-nintendo`) and most others. The desktop gives the seated user access
+  to a gamepad's event device; without it the log says so and nothing vibrates.
+- Windows: XInput (`XInputSetState`, from `xinput1_4.dll` or `xinput9_1_0.dll`, loaded when first
+  needed) on every connected Xbox-compatible pad. A DualShock 4 or DualSense on Windows is a HID device
+  that XInput does not see: it vibrates through Steam Input or DS4Windows (which present it as an Xbox
+  pad), not by itself.
+- macOS: none.
+The pad driven is the one last used (the one the Controls page names). A setting lasts one second and is
+renewed every half second while the motors run, so a stalled game never leaves the pad buzzing.
+`RAC1_VIBRATION_LOG` prints the motors as they change (with or without a pad).
+
+## Ship (#94)
+
+Ratchet's ship changes twice in the story. With **Ship** set to one of the ships the save has, that ship
+is the one shown, on every planet, from the next level load (the ship is read with the level); Original
+shows the game's own choice. The row offers only the ships unlocked so far (left, right and Cross skip
+the others); a save loaded with a ship it does not have yet shows the game's.
+
+How the game picks it: at each level exit (`level_exit_start`, 0x292e08) it sets 0x13e056 to 0, then
+1 after the story point 0x13dd48 or from level 8 on, then 2 after 0x13dd4e or from level 14 on. That
+index names the "armor" file read with the level (the disc's table of contents 0x138e48[index + 1]),
+which holds the ship's two classes (0x160548[index] = 0x213 to 0x215, the ship, and 0x160558[index] =
+0x217 to 0x219) with their models and textures (`armor_load`, 0x23fa00), and the ship variant whose
+tables place its flames, its trails and Ratchet's and Clank's seats in the ship sequences.
+
+What the option changes: the chosen ship's armor file is read instead (`advanced_ship_armor`, in the
+level loader's three places: `level_files_read`, `level_load_step`, `armor_load`'s size), and its
+models are registered as the game's own ship classes; the sequences' flames, trails and seats and the
+third ship's tint follow the ship shown (`advanced_ship_look`, `advanced_ship_look_class`). Everything
+else keeps the game's index: 0x13e056 itself, the ship moby's class, the landing and take-off scenes
+and their sounds, the story's special cases (Orxon, where Clank goes alone; Oltanis; Gemlik's ship),
+the ship's hatch and the saves. The ship's collision is its model's, so it is the shown ship's shape.
+Checked on Kerwan with the third ship unlocked: the landing scene, Ratchet's place and the scene's
+timing are the game's, with the first ship's model in it. Gemlik's space fight with Qwark flies the
+armor's ship (the game spawns 0x160548[index] there), so it shows the chosen ship too; its stats are the
+game's. The flight between planets on the loading screen shows the ship of the level being left. Not
+checked in a run: the space fight and every planet's take-off.
+
+## Clank: Modern (#57)
+
+Clank's sections (Orxon, where he goes alone) are slow next to Ratchet's RAC 3 movement. With **Clank =
+Modern**, in the spirit of Clank's puzzles in *A Crack in Time* and *Rift Apart*:
+
+- **His walk** (state 0x44, `wade_update` in `hero_state_update.cpp`, which Ratchet's wading 0x50 shares:
+  only Clank's is changed) is 5 units/s at full tilt instead of 3, gets there faster (acceleration 25 /
+  braking 30 instead of 7.5 / 8.5) and turns with the tighter turn of his slow walk at 1.5 times its rate.
+- **His jump** (state 0x45) steers at 5 units/s eased at 20 (3 and 12 in the original): more control in
+  the air. The jump's height is the original's.
+
+His movement was already relative to the camera (the stick through `hero_stick_move` mode 0, as
+Ratchet's). The option is tested by `advanced_clank_modern`: the setting on and the hero in Clank's mode
+(+0x20a4 = 1); Giant Clank (Quartu) is untouched. Measured on Orxon's start: over the same 200 frames of
+stick forward Clank covers 14.7 units instead of 9.0.
+
+A first step. Not done yet: Quartu's small-Clank section (Quartu runs its own build of the hero code,
+which these hooks do not reach), a higher or longer jump, a run (a faster gait past a tilt, with its
+animation), and the Gadgebots' commands.
+
 ## Buy All Ammo
 
 *Ratchet & Clank: Up Your Arsenal*'s Vendor can fill every weapon's ammo in one purchase. With **Buy All
 Ammo = On**, R&C1's Vendor has the same: an **All Ammo** entry before the first item of its list, on the
 Vendor's screens and on the PDA's.
 
-- **Choosing it.** Left on the list's first item selects the entry; Right goes back to the list. The entry
-  is a tile like the list's own (its word "ALL" over "AMMO"): left of the strip when the list is short (7
-  items or fewer: the strip does not move), or the place before the first item on the turning wheel of a
-  longer list. Selected, it has the list's highlight, the item monitor shows "All Ammo" and the price of
-  filling every weapon of the list that is not full, and the sign over the Vendor says "ALL AMMO".
+- **An entry of the list.** The entry is a tile of the Vendor's strip like the others, the first one:
+  the strip, its highlight and its scrolling are the game's own, so it moves, scrolls and wraps exactly
+  as the weapons do. Its tile shows four of the list's weapons, a quarter each. Selected, the item
+  monitor shows "All Ammo" and the price of filling every weapon of the list that is not full, and the
+  sign over the Vendor says "ALL AMMO".
+- **Opened on it.** With the option on, the Vendor's screens (and the PDA's) open with the entry
+  selected; the game opens them in the middle of the list.
+- **Moving and wrapping are the game's.** The game's Vendor has one list: the weapons for sale and the
+  ammo of the weapons Ratchet owns, in one strip (there is no separate weapons screen). With fewer than 8
+  items the strip is fixed and does not wrap: Left stops at the first item, Right at the last. With 8 or
+  more it is a turning wheel that wraps both ways. The entry is the list's first item, so it counts
+  towards the 8 (a list of 7 weapons becomes a wheel) and, on a wheel, Left from the entry goes to the
+  last weapon and Right from the last weapon comes back to the entry.
 - **The price** is the game's own: for each weapon, its missing rounds times its price a round (the item
-  table's, or the PDA's dearer one when the PDA opened the screens), written as the game writes prices
-  (the thousands separator of the language). It is red when the bolts do not cover it, grey (and the tile
-  greyed) when every weapon is full.
+  table's), written as the game writes prices. On the PDA, the monitor shows the PDA's dearer total and,
+  struck through, the Vendor's, as the game does for one weapon.
 - **Cross buys**, weapon by weapon in the list's order, with the steps of the game's own ammo purchase
   (0x29ba78): the rounds added by the game's ammo function (0x233e40), the ammo bought counted
   (0x13dd70), the bolts taken. Then, once, what the game does after a purchase: the Vendor's thanks,
@@ -91,19 +188,26 @@ Vendor's screens and on the PDA's.
   weapon whose round costs more than what is left is passed over, and the next ones still get theirs),
   so the bolts end as near 0 as the prices allow. With not enough bolts for a single round of any
   weapon, the game's own "not enough bolts" message and error sound; with every weapon full, the
-  game's "full" sound. (UYA's own rule here was not checked; this is the likely expectation.)
+  game's "full" sound and a price of 0. (UYA's own rule here was not checked; this is the likely
+  expectation.)
 - **Off, the game's Vendor is untouched:** nothing of the entry runs, and the game's state is the
-  original's (checked with RAC1_RAMHASH on a Vendor run with purchases).
+  original's (checked with RAC1_RAMHASH on Vendor runs with moves, a purchase and the PDA).
 
-How it is built: the entry is the port's, beside the game's list, so the list (0x1ca4c0), its count
-and its cursor are left as the game has them. Before the Vendor's update (`overlay_entry.cpp`, game
-mode 5), `vendor_buy_all_input` selects the entry on Left from the first item, and while it is
-selected takes Left, Right and Cross out of the pad's state the game reads (held and pressed; the
-previous-held word the next frame's presses are made from is kept, so no press is invented). The
-drawing is the HUD's pass of the Vendor's draw (`hud_draw`): the tile, the highlight (the game's own
-on the first item covered with the strip's black), the monitor's title and price, in the game's own
-fonts and its 2D units, so it follows the Vendor's 2D in a widened view. `RAC1_VENDOR_TRACE=<n>`
-prints the Vendor's state, the bolts and each weapon's ammo every n frames (testing).
+How it is built: the entry is put into the game's own item list (0x1ca4c0) by `item_list_build`
+(0x29a400), first, as an ammo entry of one of the list's weapons (the one not full with the cheapest
+round, else the first), marked by its third word, which the game leaves 0 and tests before it starts a
+purchase: Cross on the entry starts none, `vendor_buy_all_input` (before the Vendor's update in
+`overlay_entry.cpp`) buys instead. Everything else (the cursor, the strip, the wheel, the highlight,
+the sounds) is the game's code walking its list. The port steps in only at a few calls of the Vendor's
+transliteration (`tools/codegen/gen/mkall/veldin_vendor.glue`, each told its call site): the tile's
+sprites (four weapon tiles at a quarter size, with the game's `hud_frame` / `hud_sprite`), the monitor's
+two title lines and its price, the sign's text when the cursor arrives on the entry, and the cursor put
+on the entry when the screens open. The hologram on the stand, the monitor's picture and the ammo counter
+at the top left are the game's own for the entry's weapon. The list is not saved (the save's block lists,
+0x1845c0 and 0x1848c0, do not include it). The list holds 16 entries at most: a list that is already
+full gets no entry (no Vendor list reaches it in normal play). Every planet runs the same Vendor code,
+relocated (the overlay maps have no variant of it). `RAC1_VENDOR_TRACE=<n>` prints the Vendor's state,
+the bolts and each entry of the list every n frames (testing).
 
 ## Fades: Fast or Original
 
@@ -247,6 +351,8 @@ on the strafe:
   fire button, which still works. In the menus nothing changes.
 - **The right stick turns the aim**, not the camera: its heading, and its pitch between looking down
   0.75 and up 0.55 radians, held where it is let go. It follows the camera's own invert options.
+  With the mouse in Direct mode (Options > Controls, #117) the mouse turns the aim by its movement as
+  it is, at the Aim Sensitivity (see [Input](input.md#how-the-host-builds-the-packet)).
 - **A view over the right shoulder** eases in over 8 frames: 3 units behind a point 1.2 above
   Ratchet, 0.75 to the right. A collision test with the follow camera's own flags keeps it out of
   walls. Only the view the renderer reads is moved; the follow camera's own state is turned onto the
@@ -272,6 +378,17 @@ on the strafe:
   the Swingshot (it locks onto swing points), the Drone Device (no hand code: the drones pick their
   targets), the Hydrodisplacer and the Metal Detector (no direction).
 
+### Modern, No Zoom (#70)
+
+Aiming = **Modern, No Zoom** is Modern aiming without the view over the shoulder: the lock-strafe of
+*Ratchet & Clank 3* and *Deadlocked*. L2 aims and R2 fires, the right stick (or the mouse) turns the
+aim's heading and pitch, the reticle is at the screen's centre and the shots go along it, as with
+Modern; but the view stays at the follow camera's own distance, behind and above Ratchet, held on the
+aim's heading and turned about the point 1.2 above him for the pitch (`aim_shoulder` is given no
+shoulder weight: only its wall test runs). The screen's centre is above Ratchet's head there, so the
+reticle is not hidden by him. It is the Aiming byte's third value (2): everything that tests "Modern"
+(the trigger mapping, the pitch, the reticle, the shots) takes it too.
+
 ### What the RAC 3 movement measured
 
 In the project's automated runs: top running speed 6.17 units/s (Original 5.7), 95 % of
@@ -284,5 +401,6 @@ it in 12 frames (46), a stop in 8 frames (29), lift-off 3 frames after the press
   (the flip uses R&C1's own quadrants).
 - When backing into a wall while aiming, the camera can come very close.
 - The page's French texts are shown in English.
-- Buy All Ammo: the item hologram on the Vendor's stand still shows the list's first item while the
-  entry is selected, and a thin line of the game's pulsing highlight can show under that item.
+- Buy All Ammo: the entry's hologram, the monitor's picture and the ammo counter at the top left show
+  one weapon of the list (the one not full with the cheapest round), and after a purchase the counter
+  can keep showing the weapon whose ammo was added last until the cursor moves.

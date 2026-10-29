@@ -90,6 +90,7 @@ hi::HostState rac1_wiiu_pad_state() {
         else if (held_since == 0) held_since = OSGetTime();
         else if (!g_quit_asked.load() && OSTicksToMilliseconds(OSGetTime() - held_since) >= 1000) {
             g_quit_asked = true;
+            VPADStopMotor(VPAD_CHAN_0);
             std::printf("[wiiu] Minus held: the game ends\n");
         }
     }
@@ -124,7 +125,10 @@ hi::HostState rac1_wiiu_pad_state() {
 }
 
 // the game asked to end by itself (the GamePad debug menu's "Exit game"; the Minus button held does the same)
-void rac1_wiiu_quit() { g_quit_asked = true; }
+void rac1_wiiu_quit() {
+    g_quit_asked = true;
+    VPADStopMotor(VPAD_CHAN_0);
+}
 
 // the GamePad's last sample rac1_wiiu_pad_state read (false: none, or the GamePad gone)
 bool rac1_wiiu_last_vpad(VPADStatus* out) {

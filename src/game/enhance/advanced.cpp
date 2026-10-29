@@ -13,6 +13,7 @@
 #include <game/enhance/controls.h>
 #include <game/enhance/graphics.h>
 #include <game/enhance/update_notice.h>
+#include <game/enhance/vibration.h>
 
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -50,12 +51,16 @@ namespace {
 constexpr uint32_t ADV = 0x000f0000u;
 constexpr uint32_t SETTINGS = ADV;             // one byte per setting (the settings widget writes them)
 constexpr uint32_t QS_PAUSE = SETTINGS + 0;    // the world paused while the quick select is open
-constexpr uint32_t CONTROLS = SETTINGS + 1;    // 1: the modern controls (L2 aims with the strafe, R2 fires)
+constexpr uint32_t CONTROLS = SETTINGS + 1;    // 1: the modern controls (L2 aims with the strafe, R2 fires); 2: the same without the
+                                               // shoulder view (#70: R&C 3's lock-strafe camera, at the follow distance)
 constexpr uint32_t MOVEMENT = SETTINGS + 2;    // 1: the strafe with R&C 1's movement, 2: R&C 3's on-foot movement
 constexpr uint32_t FADES = SETTINGS + 3;       // 1: the original's screen fades shown (0: run in one host frame)
 constexpr uint32_t UPDATE_OFF = SETTINGS + 4;  // 1: no update check at start (update_notice.h)
 constexpr uint32_t UPDATE_DEV = SETTINGS + 5;  // 1: the update check's development channel (main), 0 the releases
 constexpr uint32_t VENDOR_ALL = SETTINGS + 6;  // 1: the Vendor's "All Ammo" entry (vendor_buy_all.h)
+constexpr uint32_t VIBRATION = SETTINGS + 7;   // the controller's vibration: 0 off, 1 low, 2 high (vibration.h, #10)
+constexpr uint32_t SHIP = SETTINGS + 8;        // the ship shown: 0 the game's (by the story), 1..3 the first..third (#94)
+constexpr uint32_t CLANK = SETTINGS + 9;       // 1: Clank's modern movement (#57)
 constexpr uint32_t ENTRIES = ADV + 0x680;      // the Options list's entries, ours added (0x100 before ten rows overflowed into HELP)
 constexpr uint32_t HELP = ADV + 0x180;         // the Options help label's texts, ours added
 constexpr uint32_t PICTURES = ADV + 0x600;     // the Options picture's images (sector, count), ours added (0x1c0 before two more rows did not fit)
@@ -63,7 +68,9 @@ constexpr uint32_t PAGE = ADV + 0x200;         // our page (a copy of Camera's)
 constexpr uint32_t TITLE = ADV + 0x300;        // its title (a copy of Camera's label)
 constexpr uint32_t ROWS_WIDGET = ADV + 0x380;  // its settings widget (a copy of Camera's)
 constexpr uint32_t ROWS = ADV + 0x400;         // the widget's rows (0x18 bytes, ended by text 0)
-constexpr uint32_t STRINGS = ADV + 0x800;      // our texts, per language
+constexpr uint32_t STRINGS = 0x000fb000u;      // our texts, per language (0xfb000..0xfe000: past the menus' blocks and the
+                                               // Vendor's 0xfa000..0xfa100, in the same unused first megabyte; ADV + 0x800
+                                               // held 21 texts at most)
 
 // Our menu pictures: a picture table entry (sector, count) whose sector is PICTURE_SECTOR + n is
 // made here instead of read from the disc (sectors that high are past the end of the disc)
@@ -79,22 +86,23 @@ constexpr OvConst<0x001b5a60u> CAMERA_PAGE{};
 constexpr OvConst<0x001b5ae8u> CAMERA_TITLE{};
 constexpr OvConst<0x001b5ba0u> CAMERA_SETTINGS{};
 constexpr OvConst<0x001b8888u> MAIN_OPTIONS_PAGE{};  // the main menu's Options (the boot module's)
+constexpr OvConst<0x001b6678u> TALL_PAGE{};          // a page whose slot 3 box is tall (graphics.cpp)
 
 // Our text ids, after the game's (0x4e00..0x5300 in the level text tables)
 constexpr int32_t TEXT_FIRST = 0x7f00;
-enum : int32_t { T_ADVANCED, T_HELP, T_QUICK_SELECT, T_NORMAL, T_PAUSE, T_CONTROLS, T_CLASSIC, T_MODERN, T_MOVEMENT, T_ORIGINAL, T_STRAFING, T_RAC3, T_FADES, T_FAST, T_FADES_ORIGINAL, T_SOUND_51, T_SOUND_71, T_BUY_ALL, T_OFF, T_ON, T_COUNT };
+enum : int32_t { T_ADVANCED, T_HELP, T_QUICK_SELECT, T_NORMAL, T_PAUSE, T_CONTROLS, T_CLASSIC, T_MODERN, T_MOVEMENT, T_ORIGINAL, T_STRAFING, T_RAC3, T_FADES, T_FAST, T_FADES_ORIGINAL, T_SOUND_51, T_SOUND_71, T_BUY_ALL, T_OFF, T_ON, T_NO_ZOOM, T_VIBRATION, T_LOW, T_HIGH, T_SHIP, T_SHIP1, T_SHIP2, T_SHIP3, T_CLANK, T_COUNT };
 // per language (0x15ed88: 0 English, 2 French, 3 German, 4 Spanish, 5 Italian; French in English
 // for now, the font's accented letters not looked at yet)
 constexpr const char* TEXTS[6][T_COUNT] = {
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On"},
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On"},
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On"},
-    {"Erweitert", "Extra-Einstellungen der PC-Version", "Schnellwahl", "Normal", "Pause", "Zielen", "Original", "Modern", "Bewegung", "Original", "Strafing", "RAC 3", "Blenden", "Schnell", "Original", "5.1", "7.1", "Alle Munition", "Aus", "An"},
-    {"Avanzado", "Ajustes extra de la version PC", "Seleccion rapida", "Normal", "Pausa", "Apuntado", "Original", "Moderno", "Movimiento", "Original", "Strafing", "RAC 3", "Fundidos", "Rapidos", "Originales", "5.1", "7.1", "Toda la municion", "No", "Si"},
-    {"Avanzate", "Impostazioni extra della versione PC", "Scelta rapida", "Normale", "Pausa", "Mira", "Originale", "Moderna", "Movimento", "Originale", "Strafing", "RAC 3", "Dissolvenze", "Rapide", "Originali", "5.1", "7.1", "Tutte le munizioni", "No", "Si"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Ship", "Ship 1", "Ship 2", "Ship 3", "Clank"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Ship", "Ship 1", "Ship 2", "Ship 3", "Clank"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Ship", "Ship 1", "Ship 2", "Ship 3", "Clank"},
+    {"Erweitert", "Extra-Einstellungen der PC-Version", "Schnellwahl", "Normal", "Pause", "Zielen", "Original", "Modern", "Bewegung", "Original", "Strafing", "RAC 3", "Blenden", "Schnell", "Original", "5.1", "7.1", "Alle Munition", "Aus", "An", "Modern, ohne Zoom", "Vibration", "Schwach", "Stark", "Schiff", "Schiff 1", "Schiff 2", "Schiff 3", "Clank"},
+    {"Avanzado", "Ajustes extra de la version PC", "Seleccion rapida", "Normal", "Pausa", "Apuntado", "Original", "Moderno", "Movimiento", "Original", "Strafing", "RAC 3", "Fundidos", "Rapidos", "Originales", "5.1", "7.1", "Toda la municion", "No", "Si", "Moderno, sin zoom", "Vibracion", "Baja", "Alta", "Nave", "Nave 1", "Nave 2", "Nave 3", "Clank"},
+    {"Avanzate", "Impostazioni extra della versione PC", "Scelta rapida", "Normale", "Pausa", "Mira", "Originale", "Moderna", "Movimento", "Originale", "Strafing", "RAC 3", "Dissolvenze", "Rapide", "Originali", "5.1", "7.1", "Tutte le munizioni", "No", "Si", "Moderna, senza zoom", "Vibrazione", "Bassa", "Alta", "Nave", "Nave 1", "Nave 2", "Nave 3", "Clank"},
 };
 constexpr uint32_t STRING_SIZE = 0x30;
-static_assert(0x800 + 6 * T_COUNT * STRING_SIZE <= 0x2000, "the Advanced page's texts end where the Graphics page's block begins");
+static_assert(6 * T_COUNT * STRING_SIZE <= 0x3000, "the Advanced page's texts fit in 0xfb000..0xfe000");
 
 // The page's rows: the name in the settings file, the id in the saves' files (never reused),
 // the byte, the name's text, the values' texts (the byte's value is the index; value 0 is the
@@ -111,10 +119,13 @@ struct Row {
 };
 constexpr Row SETTINGS_ROWS[] = {
     {"quick_select_pause", 1, QS_PAUSE, T_QUICK_SELECT, {T_NORMAL, T_PAUSE, -1, -1}},
-    {"controls", 2, CONTROLS, T_CONTROLS, {T_CLASSIC, T_MODERN, -1, -1}},
+    {"controls", 2, CONTROLS, T_CONTROLS, {T_CLASSIC, T_MODERN, T_NO_ZOOM, -1}},
     {"movement", 3, MOVEMENT, T_MOVEMENT, {T_ORIGINAL, T_STRAFING, T_RAC3, -1}},
     {"fades", 4, FADES, T_FADES, {T_FAST, T_FADES_ORIGINAL, -1, -1}},
     {"vendor_buy_all", 5, VENDOR_ALL, T_BUY_ALL, {T_OFF, T_ON, -1, -1}},
+    {"vibration", 6, VIBRATION, T_VIBRATION, {T_OFF, T_LOW, T_HIGH, -1}, false},  // (the machine's pad: not with the saves)
+    {"ship", 7, SHIP, T_SHIP, {T_ORIGINAL, T_SHIP1, T_SHIP2, T_SHIP3}},  // (per save: the ships it has)
+    {"clank", 8, CLANK, T_CLANK, {T_ORIGINAL, T_MODERN, -1, -1}},
 };
 constexpr uint32_t ROW_COUNT = sizeof(SETTINGS_ROWS) / sizeof(Row);
 
@@ -334,6 +345,9 @@ void advanced_menu_install() {
         if (lwu(slot) == CAMERA_TITLE) sw(slot, TITLE);
         else if (lwu(slot) == CAMERA_SETTINGS) sw(slot, ROWS_WIDGET);
     }
+    // the rows in the taller box of page 0x1b6678 (its slot 3), as the Graphics page's: Camera's box holds 5 rows, ours
+    // are 8 (#10, #94, #57 added three)
+    sw(PAGE + 0xc, lwu(TALL_PAGE + 0xc));
     sw(PAGE + 0x80, 0);
 
     // the Options list: our entries (Graphics, Controls, then Advanced) before the last one (Quit
@@ -509,6 +523,7 @@ void combo_table_sync();  // the wrench section below
 void legs_update();       // the strafe's legs, below
 void backpedal_show();
 void backpedal_restore();
+void items_frame();  // the PC's weapon actions, below
 }  // namespace
 
 // orig: (none) — enhancement (advanced.h)
@@ -516,6 +531,8 @@ void advanced_frame() {
     if (g_advanced_disabled) return;
     settings_load();
     combo_table_sync();
+    items_frame();
+    vibration_frame(lbu(VIBRATION));
     for (uint32_t i = 0; i < ROW_COUNT; ++i)
         if (lbu(SETTINGS_ROWS[i].byte) != g_saved[i]) {
             settings_save();
@@ -579,6 +596,13 @@ bool g_strafe_flip = false;                    // the flip 0xb under way came fr
 bool g_aim_was = false;                        // aiming (as of the camera's update)
 float g_aim_yaw = 0.0f;                        // the aim's heading (the camera is held on it)
 bool g_pitch_was = false;                      // the modern aim (its pitch) held last frame
+AdvancedHostInput g_host_in;                   // the host's input of this game frame (the Direct mouse, the PC actions)
+
+// orig: (none) — enhancement: the Direct mouse's x angle `dx` (right positive) as a heading change that turns the view
+// on the screen with the mouse: the heading grows to the left (measured: the game's stick, with its Camera option at 1,
+// turns the view against the stick, the way the camera orbits), the other way in the mirrored levels (0x15edb4: the
+// screen's left and right swapped). The game's own Camera options are the stick's, not the mouse's: Invert Look is.
+float mouse_yaw(float dx) { return lbu(0x0015edb4) != 0 ? dx : -dx; }
 
 // orig: (none) — enhancement: R&C 3's stick tilt (UYA 0x4ea9a8): the mean of the stick's square and
 // round lengths, at most 1 (R&C1 0x211830: the round length) — full sooner on the diagonals
@@ -746,6 +770,11 @@ void advanced_aim_before_camera() {
     // (measured: RAC1_SIM_INPUT=stick)
     const float a = lw(0x0015ede0) == 0 ? -g_saved_rx : g_saved_rx;
     g_aim_yaw = angle_add(g_aim_yaw, a * AIM_TURN_RATE);
+    // the Direct mouse (#117): its angle added as it is, the view turning with the mouse (mouse_yaw; the modern aim
+    // at the aim's sensitivity, the strafe at the camera's); taken from the camera
+    const float mx = pitch_aim ? g_host_in.aim_x : g_host_in.look_x;
+    if (mx != 0.0f) g_aim_yaw = angle_add(g_aim_yaw, mouse_yaw(mx));
+    g_host_in.look_x = 0.0f;
     swc1(PAD + 0x100, 0.0f);
     if (!pitch_aim) return;  // the strafe leaves the pitch to the camera
     // its y the aim's pitch, the same way as the camera (its input b = y, negated unless the option
@@ -753,6 +782,8 @@ void advanced_aim_before_camera() {
     // back to its rest: 0x2e8bb8)
     const float b = lw(0x0015eddc) == 0 ? g_saved_ry : -g_saved_ry;
     float pitch = g_aim_pitch - b * AIM_PITCH_RATE;
+    pitch = pitch - g_host_in.aim_y;  // (the Direct mouse: up looks up)
+    g_host_in.look_y = 0.0f;
     if (pitch < AIM_PITCH_MIN) pitch = AIM_PITCH_MIN;
     if (AIM_PITCH_MAX < pitch) pitch = AIM_PITCH_MAX;
     g_aim_pitch = pitch;
@@ -889,7 +920,7 @@ void advanced_aim_after_camera() {
     aim_pitch_hold(cam, modern);
     // the view the renderer reads, as camera_update makes it from the active camera (its position
     // moved over the shoulder / out of the walls)
-    aim_shoulder(cam, modern);
+    aim_shoulder(cam, modern && lbu(CONTROLS) != 2);  // (Modern, No Zoom: the view stays at the follow distance, #70)
     lq_sq(OV(0x00166fd0), cam);
     lq_sq(OV(0x00166fe0), cam + 0x10);
     lq_sq(OV(0x00166ff0), cam + 0x20);
@@ -991,6 +1022,186 @@ bool advanced_aim_angles(uint32_t from, float& yaw, float& pitch) {
     yaw = atan2_f(d.x, d.y);
     pitch = -atan2_f(vec2_length(d), d.z);
     return true;
+}
+
+// --- The mouse and the PC's weapon actions (#117, #61) --------------------------------
+// The Direct mouse: the host turns the mouse's movement bound to the right stick into angles (host_input.h,
+// direct_look) when the game says it takes them (advanced_mouse_direct: the follow camera ran the last game frame).
+// The follow camera's offset is turned by the yaw as it is (no spring, no speed cap, the same sense as the stick's,
+// the game's own Camera options included), before the camera's own turn, collision and aim run; the pitch is the
+// stick's pitch spring (+0x1a8 +8) held where the mouse puts it (the stick's springs back to its rest), its elevation
+// then reached at the camera's own rate. The aim (strafe, modern aim) takes the mouse in advanced_aim_before_camera.
+// Without mouse movement nothing here runs; every enhancement off (the oracle, headless runs): nothing at all.
+
+namespace {
+constexpr float CAM_PITCH_RANGE = 0.6982f;  // the stick's pitch target at full tilt (0x3f32b8c2, cam0_turn)
+constexpr float CAM_PITCH_DEAD = 0.3f;      // its dead zone (cam0_turn)
+bool g_follow_ran = false;                  // the follow camera's place ran this game frame (advanced_mouse_camera)
+bool g_mouse_pitch_on = false;              // the mouse holds the pitch (since its last movement, until the stick's)
+float g_mouse_pitch = 0.0f;                 // its pitch target (the spring's units: -1..1)
+bool g_item_was[2] = {};                    // the PC actions held the last gameplay frame (next, previous)
+
+// orig: (none) — enhancement: the quick select's current page's slot `i` (as quick_select.cpp's qs_slot)
+uint32_t qs_slot_of(int32_t i) { return static_cast<uint32_t>(i) * 0x1c + lwu(lwu(OV(0x0015fac0)) + lwu(OV(0x0015f72c)) * 4); }
+
+// orig: (none) — enhancement: the next (`dir` 1) / previous (-1) weapon: while the quick select is open its ring's
+// selection moves to the next slot holding an item (equipped when Triangle is let go, the game's way); else the next
+// slot's item after the one in hand is equipped, as the quick select equips (0x237ba0: the request +0x20b8, the
+// ammo clamped), where the hero could open the quick select (hero_input_update 0x229b70's conditions)
+void item_cycle(int32_t dir) {
+    if (lw(OV(0x0015f5c4)) != 0) return;
+    const uint32_t e = OV(0x0017dc50) + 3 * 0x90;
+    if (lwu(e + 0x14) == OVF(0x00237ba0)) {  // the ring open (its start 0x237ae8 made 0x15fa90 slots of the page 0x15fac0)
+        const int32_t n = lw(OV(0x0015fa90));
+        if (n <= 0 || n > 16 || lwu(OV(0x0015fac0)) == 0) return;
+        const int32_t sel = lw(e + 0x74);
+        const int32_t base = sel < 0 ? (dir > 0 ? -1 : n) : sel;
+        for (int32_t k = 1; k <= n; ++k) {
+            const int32_t t = ((base + dir * k) % n + n) % n;
+            if (lw(qs_slot_of(t)) != 0 && lwu(qs_slot_of(t) + 0x18) != 0) {
+                sw(e + 0x74, static_cast<uint32_t>(t));
+                sb(e + 0x71, 0);  // (the choice fades in, as the game's own move)
+                return;
+            }
+        }
+        return;
+    }
+    if (lwu(e + 0x14) != 0) return;  // (another element in the slot)
+    const int32_t st = lw(HERO + 0x2084);
+    const uint32_t mode = lbu(HERO + 0x20a4);
+    if (!aim_state(st) || lbu(HERO + 0x10ac) == 2 || lw(OV(0x0015f594)) != 0 || (mode != 0 && mode != 3)) return;
+    if (!(lbu(HERO + 0x20ac) == 0 || lbu(HERO + 0x20a4) == 1 || lh(HERO + 0x1b2) != 0)) return;
+    if (!(lbu(HERO + 0x20a7) == 0 || lbu(HERO + 0x20a4) == 1 || lh(HERO + 0x1b2) != 0)) return;
+    // the ring closed: its eight items, the quick-select list 0x141ea0 (what quick_select_start puts in the slots)
+    constexpr uint32_t LIST = 0x00141ea0;
+    constexpr int32_t n = 8;
+    const uint32_t now = lwu(HERO + 0x10b8);
+    int32_t base = dir > 0 ? -1 : n;
+    for (int32_t i = 0; i < n; ++i)
+        if (lwu(LIST + static_cast<uint32_t>(i) * 4) == now) base = i;
+    for (int32_t k = 1; k <= n; ++k) {
+        const int32_t t = ((base + dir * k) % n + n) % n;
+        const uint32_t item = lwu(LIST + static_cast<uint32_t>(t) * 4);
+        if (item == 0 || item == now) continue;
+        if (item == 0x18) sb(HERO + 0x1ff5, 1);
+        else sw(HERO + 0x20b8, item);
+        const uint32_t row = item * 0x18 + OV(0x001c40b0);
+        if (lhu(row + 8) != 0) {
+            const uint32_t a = item * 4 + 0x0013d428;
+            const int32_t max = static_cast<int32_t>(lhu(row + 0xe));
+            if (max < lw(a)) sw(a, static_cast<uint32_t>(max));
+        }
+        return;
+    }
+}
+
+// orig: (none) — enhancement: once a gameplay frame (advanced_frame): the PC's next / previous weapon on their press
+void items_frame() {
+    const bool held[2] = {g_host_in.next_item, g_host_in.prev_item};
+    for (int i = 0; i < 2; ++i) {
+        if (held[i] && !g_item_was[i]) item_cycle(i == 0 ? 1 : -1);
+        g_item_was[i] = held[i];
+    }
+}
+}  // namespace
+
+// orig: (none) — enhancement (advanced.h)
+void advanced_host_input(const AdvancedHostInput& in) {
+    if (g_advanced_disabled) return;
+    g_host_in = in;
+}
+
+// orig: (none) — enhancement (advanced.h)
+bool advanced_mouse_direct() {
+    if (g_advanced_disabled) return false;
+    const bool ran = g_follow_ran;
+    g_follow_ran = false;
+    if (!ran) g_mouse_pitch_on = false;  // (another camera, a menu: the follow camera's own pitch when it is back)
+    return ran && lw(OV(0x0015f5c4)) == 0;
+}
+
+// orig: (none) — enhancement (advanced.h)
+void advanced_mouse_camera(uint32_t cam, float& b) {
+    if (g_advanced_disabled || cam != lwu(ACTIVE_CAMERA)) return;
+    g_follow_ran = true;
+    const uint32_t w = lwu(cam + 0x70), s = w + 0x1a8;
+    const float dx = g_host_in.look_x, dy = g_host_in.look_y;
+    g_host_in.look_x = g_host_in.look_y = 0.0f;  // (once)
+    if (dx != 0.0f) {  // (the offset turned by +a turns the view's heading by +a: cam0_turn)
+        Vec4& off = V(w + 0x130);
+        vec_rotate_axis(off, off, V(OV(0x00166e30)), mouse_yaw(dx));
+    }
+    if ((lw(s + 0x10) & 2) != 0 || CAM_PITCH_DEAD < abs_f(b)) {  // a scripted pitch, or the stick's: theirs
+        g_mouse_pitch_on = false;
+        return;
+    }
+    if (dy != 0.0f) {  // (a positive pitch input raises the camera: the view looks down, as the mouse moved down)
+        if (!g_mouse_pitch_on) g_mouse_pitch = lwc1(s + 8);
+        g_mouse_pitch_on = true;
+        float p = g_mouse_pitch + dy / CAM_PITCH_RANGE;
+        if (p < -1.0f) p = -1.0f;
+        if (1.0f < p) p = 1.0f;
+        g_mouse_pitch = p;
+    }
+    if (!g_mouse_pitch_on) return;
+    // the spring at the target, at rest, and the input that asks for that target (cam0_turn's p = (b -+ 0.3) / 0.7)
+    swc1(s + 8, g_mouse_pitch);
+    swc1(s + 0xc, 0.0f);
+    const float k = 1.0f - CAM_PITCH_DEAD;
+    b = g_mouse_pitch == 0.0f ? 0.0f : (0.0f < g_mouse_pitch ? g_mouse_pitch * k + CAM_PITCH_DEAD : g_mouse_pitch * k - CAM_PITCH_DEAD);
+}
+
+// --- The ship selector (#94) ---------------------------------------------------------
+// The game picks its ship by the story: at each level exit (level_exit_start 0x292e08) 0x13e056 is 0, then 1 after the
+// story point 0x13dd48 or from level 8 on, then 2 after 0x13dd4e or from level 14 on. That index names the armor file
+// read with the level (the table of contents 0x138e48[index + 1]: the ship's two classes, 0x160548[index] = 0x213..0x215
+// and 0x160558[index] = 0x217..0x219, their model and textures, armor_load 0x23fa00) and the ship variant of the
+// sequences' look tables (flames, trails, Ratchet's and Clank's seats). With Ship = Ship n (the save having it: n - 1
+// at most the game's index) the n-th ship's armor file is read instead and registered as the game's classes: the ship
+// moby, the scenes, the hatch, the story's special cases (Orxon's, Oltanis's, Gemlik's) and the saves keep the game's
+// index; only the model, its textures, its tint and its flames' and seats' places are the chosen ship's. From the next
+// level load (the armor is read with the level).
+
+namespace {
+int32_t g_ship_game = -1;   // the game's index the last armor file was read for
+int32_t g_ship_shown = -1;  // and the index read
+
+// orig: (none) — enhancement: whether the Ship row's value `v` is offered (Original, or a ship the save has)
+bool ship_allowed(uint32_t v) {
+    int32_t have = lh(0x0013e056);
+    if (have < 0 || have > 2) have = 0;
+    return v == 0 || static_cast<int32_t>(v) - 1 <= have;
+}
+}  // namespace
+
+// orig: (none) — enhancement (advanced.h)
+int32_t advanced_ship_armor(int32_t armor) {
+    if (g_advanced_disabled || armor < 0 || armor > 2) return armor;
+    settings_load();
+    const int32_t sel = lbu(SHIP);
+    const int32_t shown = sel != 0 && sel - 1 <= armor ? sel - 1 : armor;
+    g_ship_game = armor;
+    g_ship_shown = shown;
+    return shown;
+}
+
+// orig: (none) — enhancement (advanced.h)
+int32_t advanced_ship_look(int32_t variant) {
+    if (g_advanced_disabled || variant != g_ship_game || g_ship_shown < 0) return variant;
+    return g_ship_shown;
+}
+
+// orig: (none) — enhancement (advanced.h)
+int32_t advanced_ship_look_class(int32_t cls) {
+    if (cls < 0x213 || cls > 0x215) return cls;
+    return 0x213 + advanced_ship_look(cls - 0x213);
+}
+
+// --- Clank's modern movement (#57) ----------------------------------------------------
+// orig: (none) — enhancement (advanced.h)
+bool advanced_clank_modern() {
+    if (g_advanced_disabled) return false;
+    return lbu(CLANK) != 0 && lbu(HERO + 0x20a4) == 1;
 }
 
 // --- R&C 3's on-foot movement -------------------------------------------------------
@@ -1316,6 +1527,7 @@ void advanced_setting_changed(uint32_t byte) {
     // turns Strafing on; turning Movement back to Original turns Aiming off
     if (byte == CONTROLS && lbu(CONTROLS) != 0 && lbu(MOVEMENT) == 0) sb(MOVEMENT, 1);
     if (byte == MOVEMENT && lbu(MOVEMENT) == 0) sb(CONTROLS, 0);
+    if (byte == SHIP && !ship_allowed(lbu(SHIP))) sb(SHIP, 0);  // (past the ships the save has: back to Original)
     // saved now: a row changed at the title's main menu would otherwise wait for the next gameplay frame
     // (advanced_frame), and be lost by quitting from the menu (the preferences are loaded by then: the page's
     // install reads them)
@@ -1420,6 +1632,10 @@ void advanced_apply_mode(uint32_t mode) {
     sb(QS_PAUSE, v);
     sb(CONTROLS, v);
     sb(MOVEMENT, v != 0 ? 2u : 0u);
+    sb(VENDOR_ALL, v);
+    sb(VIBRATION, v != 0 ? 2u : 0u);  // (Modern, Experimental: High)
+    sb(SHIP, 0);  // (a new game has the first ship only: the game's)
+    sb(CLANK, mode == GAME_MODE_EXPERIMENTAL ? 1u : 0u);  // (Experimental only: a first step, less played)
     settings_save();
 }
 
@@ -1436,6 +1652,7 @@ bool advanced_settings_dpad(uint32_t w, uint32_t e) {
         if (r.byte == b) {
             const uint32_t n = row_values(r);
             sb(b, (lbu(b) + ((pressed & 0x8000u) != 0 ? n - 1 : 1)) % n);
+            while (b == SHIP && !ship_allowed(lbu(b))) sb(b, (lbu(b) + ((pressed & 0x8000u) != 0 ? n - 1 : 1)) % n);  // (only the ships the save has)
             advanced_setting_changed(b);
             return true;
         }

@@ -1,6 +1,7 @@
-// The movie hardware stand-in: PSS demux, MPEG-2 pictures (libavcodec, optional), SPU2 ADPCM
+// The movie hardware stand-in: PSS demux, MPEG-2 pictures (built-in mpeg2_dec or libavcodec), SPU2 ADPCM
 // sound. See movie_hw.h.
 #include <runtime/ipu/movie_hw.h>
+#include <runtime/ipu/mpeg2_dec.h>
 
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/load_prof.h>
@@ -14,6 +15,10 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
+
+#if defined(__WIIU__)
+#include <coreinit/thread.h>
+#endif
 
 #ifdef RAC1_HAVE_AVCODEC
 extern "C" {
@@ -43,6 +48,8 @@ struct Movie {
     std::atomic<bool> stop{false}, video_done{false}, audio_done{false};
     std::mutex lk;  // (with cv: the video's progress)
     std::condition_variable cv;
+    bool use_builtin = true;
+    mpeg2::Decoder mpeg2_dec;
 #ifdef RAC1_HAVE_AVCODEC
     const AVCodec* codec = nullptr;
     AVCodecContext* ctx = nullptr;
@@ -204,6 +211,7 @@ struct TrackDecoder {
     }
 };
 
+#ifdef RAC1_HAVE_AVCODEC
 // The IPU's colour conversion (ITU-R BT.601, studio range) of a 4:2:0 picture, alpha 0x80 (the
 // IPU's RGB32 output with its alpha threshold off).
 void csc(const uint8_t* y, int ys, const uint8_t* cb, int cbs, const uint8_t* cr, int crs, int w, int h, std::vector<uint8_t>& out) {
@@ -224,6 +232,7 @@ void csc(const uint8_t* y, int ys, const uint8_t* cb, int cbs, const uint8_t* cr
         }
     }
 }
+#endif
 
 }  // namespace
 
@@ -246,12 +255,7 @@ void movie_hw_enable(bool on) { g_enabled = on; }
 bool movie_hw_enabled() { return g_enabled; }
 
 bool movie_hw_available() {
-    if (!g_enabled) return false;
-#ifdef RAC1_HAVE_AVCODEC
-    return avcodec_find_decoder(AV_CODEC_ID_MPEG2VIDEO) != nullptr;
-#else
-    return false;
-#endif
+    return g_enabled;
 }
 
 // The file's reading, its demultiplexing and its sound's decoding, in steps: the open runs it until the video's
@@ -306,11 +310,16 @@ void load_step(Load& L, Movie& m) {
             m.audio.insert(m.audio.end(), pcm, pcm + frames * 2);
         });
     if (all) {
+        const size_t num_tracks = L.tracks.size();
+        L.d.clear();
+        L.d.shrink_to_fit();
+        L.tracks.clear();
+        L.tracks.shrink_to_fit();
         m.video_done.store(true, std::memory_order_release);
         {
             std::scoped_lock lock(g_audio_lock);
             m.audio_done.store(true, std::memory_order_release);
-            std::printf("[movie] sector %u read: video %zu bytes, %zu sound tracks, track %d %.1f s\n", L.lba, m.video_len.load(), L.tracks.size(), L.chosen,
+            std::printf("[movie] sector %u read: video %zu bytes, %zu sound tracks, track %d %.1f s\n", L.lba, m.video_len.load(), num_tracks, L.chosen,
                         static_cast<double>(m.audio.size() / 2) / 48000.0);
         }
     }
@@ -323,6 +332,12 @@ void load_step(Load& L, Movie& m) {
 
 // orig: (host) the rest of the file (the worker thread)
 void load_rest(Movie& m) {
+#if defined(__WIIU__)
+    if (OSThread* self = OSGetCurrentThread()) {
+        OSSetThreadAffinity(self, OS_THREAD_ATTRIB_AFFINITY_CPU2);
+        OSSetThreadPriority(self, 24);
+    }
+#endif
     while (!m.stop.load(std::memory_order_relaxed) && !m.video_done.load(std::memory_order_relaxed)) load_step(g_load, m);
 }
 
@@ -330,7 +345,6 @@ bool movie_hw_open(uint32_t lba, uint32_t bytes, int track) {
     LoadProf prof_all("movie_hw_open");
     movie_hw_close();
     if (!movie_hw_available()) {
-        if (g_enabled) std::fprintf(stderr, "[movie] no MPEG-2 decoder (built without libavcodec): movie at sector %u not played\n", lba);
         return false;
     }
     if (!disc_is_open() && !disc_open()) return false;
@@ -368,23 +382,35 @@ bool movie_hw_open(uint32_t lba, uint32_t bytes, int track) {
         if (vl >= 12 && header) break;
     }
     if (m.video_len.load() < 12) return false;
+    m.mpeg2_dec.reset();
+    m.use_builtin = true;
 #ifdef RAC1_HAVE_AVCODEC
-    m.codec = avcodec_find_decoder(AV_CODEC_ID_MPEG2VIDEO);
-    m.ctx = avcodec_alloc_context3(m.codec);
-    m.parser = av_parser_init(AV_CODEC_ID_MPEG2VIDEO);
-    m.pkt = av_packet_alloc();
-    m.frame = av_frame_alloc();
-    if (m.ctx == nullptr || m.parser == nullptr || m.pkt == nullptr || m.frame == nullptr || avcodec_open2(m.ctx, m.codec, nullptr) < 0) {
-        movie_hw_close();
-        return false;
+    const char* env_builtin = std::getenv("RAC1_BUILTIN_MPEG2");
+    m.use_builtin = (env_builtin != nullptr && std::atoi(env_builtin) != 0);
+    if (!m.use_builtin) {
+        m.codec = avcodec_find_decoder(AV_CODEC_ID_MPEG2VIDEO);
+        m.ctx = m.codec ? avcodec_alloc_context3(m.codec) : nullptr;
+        m.parser = av_parser_init(AV_CODEC_ID_MPEG2VIDEO);
+        m.pkt = av_packet_alloc();
+        m.frame = av_frame_alloc();
+        if (m.ctx == nullptr || m.parser == nullptr || m.pkt == nullptr || m.frame == nullptr || avcodec_open2(m.ctx, m.codec, nullptr) < 0) {
+            if (m.frame != nullptr) av_frame_free(&m.frame);
+            if (m.pkt != nullptr) av_packet_free(&m.pkt);
+            if (m.parser != nullptr) av_parser_close(m.parser);
+            if (m.ctx != nullptr) avcodec_free_context(&m.ctx);
+            m.parser = nullptr;
+            m.codec = nullptr;
+            m.use_builtin = true;
+        }
+        m.flushed = false;
     }
-    m.flushed = false;
 #endif
     m.video_pos = 0;
     m.video_ended = false;
     m.open = true;
     if (!m.video_done.load()) m.loader = std::thread([&m] { load_rest(m); });
-    std::printf("[movie] sector %u, %u bytes: %d x %d, %.2f fps (the rest read as it plays)\n", lba, bytes, m.width, m.height, m.fps);
+    std::printf("[movie] sector %u, %u bytes: %d x %d, %.2f fps (%s, the rest read as it plays)\n",
+                lba, bytes, m.width, m.height, m.fps, m.use_builtin ? "builtin-mpeg2" : "libavcodec");
     return true;
 }
 
@@ -397,6 +423,31 @@ bool movie_hw_video_ended() { return !g_movie.open || g_movie.video_ended; }
 bool movie_hw_next_picture(std::vector<uint8_t>& rgba) {
     Movie& m = g_movie;
     if (!m.open || m.video_ended) return false;
+    if (m.use_builtin) {
+        for (;;) {
+            size_t vlen = m.video_len.load(std::memory_order_acquire);
+            const bool vdone = m.video_done.load(std::memory_order_acquire);
+            if (vdone) vlen = m.video_len.load(std::memory_order_acquire);
+            int out_w = m.width, out_h = m.height;
+            const int res = m.mpeg2_dec.next_picture(m.video.data(), vlen, vdone, m.video_pos, rgba, out_w, out_h);
+            if (res == 1) {
+                if (out_w > 0 && out_h > 0) {
+                    m.width = out_w;
+                    m.height = out_h;
+                }
+                return true;
+            }
+            if (res < 0) {
+                m.video_ended = true;
+                return false;
+            }
+            std::unique_lock lock(m.lk);
+            m.cv.wait(lock, [&m, vlen] {
+                return m.video_len.load(std::memory_order_acquire) >= vlen + 0x4000 ||
+                       m.video_done.load(std::memory_order_acquire);
+            });
+        }
+    }
 #ifdef RAC1_HAVE_AVCODEC
     for (;;) {
         const int r = avcodec_receive_frame(m.ctx, m.frame);
@@ -500,6 +551,8 @@ void movie_hw_close() {
     m.parser = nullptr;
     m.codec = nullptr;
 #endif
+    m.mpeg2_dec.reset();
+    g_load = Load{};
     std::scoped_lock lock(g_audio_lock);
     m.open = false;
     m.video.clear();
@@ -527,6 +580,7 @@ const std::vector<uint8_t>* movie_hw_shown(int& w, int& h) {
 
 void movie_hw_show_clear() {
     g_shown.clear();
+    g_shown.shrink_to_fit();
     g_shown_w = g_shown_h = 0;
 }
 

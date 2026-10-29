@@ -6,6 +6,7 @@
 // The writer stays ~3 game frames ahead of the voices' play position and starts again from there when it falls behind
 // or runs too far ahead. Host code.
 #include <runtime/iop/snd989_iop.h>
+#include <runtime/ipu/movie_hw.h>
 
 #include <coreinit/cache.h>
 #include <coreinit/thread.h>
@@ -93,7 +94,10 @@ int iop_main(int, const char**) {
             continue;
         }
         const double t = now_ms(), step_t0 = g_step_t0_ms.load(std::memory_order_relaxed);
-        const bool stalled = (step_t0 != 0.0 && t - step_t0 > 20.0 && t - last > 20.0) || t - last > 100.0;
+        // While a .pss movie is open (30 fps: 2 vsyncs every 33.3 ms, with movie_hw_audio_take samples recorded per vsync for
+        // snd989_mirror_next), do not trigger the 20 ms stall heuristic in the middle of a movie frame decode.
+        const bool movie_open = rac1::movie_hw_is_open();
+        const bool stalled = (!movie_open && step_t0 != 0.0 && t - step_t0 > 20.0 && t - last > 20.0) || t - last > 100.0;
         if (g_alone_ok.load(std::memory_order_relaxed) && last != 0.0 && stalled && lead() < static_cast<uint32_t>(kFrame + kFrame / 2)) {
             ++run;
             rac1::snd989_mirror_alone(buf, nullptr, 2);

@@ -1553,6 +1553,19 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         std::fflush(stdout);
     }
     if (!have) return;
+    if (L.loads != g_tex.loads || L.loads != g_geo.loads) {
+        // Free the previous level's GPU/MEM2 buffers (textures, template geometry, merged plan, resident colours)
+        // upfront after a single GX2DrawDone() so the old level's geometry and the new level's textures never
+        // coexist in MEM2 during level transitions (level0 -> flight -> level1 or level0 -> level1).
+        GX2DrawDone();
+        if (L.loads != g_tex.loads) tex_free();
+        if (L.loads != g_geo.loads) {
+            geo_free();
+            cols_free();
+            g_mlevel = mrpwm::Level{};
+            g_mg = Merged{};
+        }
+    }
     if (L.loads != g_tex.loads) {  // (the level's textures: GX2CopySurface changes the GPU's state, the context set again after)
         std::printf("[wiiu] mrp_world_gx2: level %d's textures: %zu arrays\n", L.id, L.buckets);
         std::fflush(stdout);

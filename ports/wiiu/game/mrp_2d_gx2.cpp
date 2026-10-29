@@ -10,11 +10,14 @@
 //   little-endian words), the GS's state as mrp_2d.cpp's uniforms: TME / TFX / TCC, the alpha test and its fail modes, FGE and
 //   FOGCOL, the raw alpha of a render target, the screen-reading modes, the mip levels;
 // - the textures: one GX2 texture per decoded image (TexImage::id: an image never changes under its id), linear, the texels'
-//   bytes as the PPC holds them with the component map putting them back (gs_draw_gx2.cpp's make_texture); forgotten when unused
-//   for kTexKeep calls, or past kTexCap the least recently used, at a level change all (mrp_2d_clear_caches);
-// - the render targets (a FRAME page the frame samples): a colour buffer per page as large as the build says (Item::rt_w / rt_h,
-//   noted back with mrp2d::rt_size_note), cleared when made, kept across frames, the raw GS alpha in them; a run that blends with
-//   the source alpha into one is drawn twice, the colour then the raw alpha (gs_draw_gx2.cpp: GX2 has no second output here);
+//   bytes as the PPC holds them with the component map putting them back (gs_draw_gx2.cpp's make_texture); returned to a pool by
+//   size (g_pool) when the image is gone (a texture the game changed) or unused for kTexKeep calls, refilled in place for the next
+//   image of that size, and destroyed after kTexKeep calls unused in the pool, or past kTexCap, at a level change all
+//   (mrp_2d_clear_caches);
+// - the render targets (a FRAME page the frame samples): a colour buffer per (page, width, height) as large as the build says
+//   (Item::rt_w / rt_h, scaled by RAC1_2D_RT_SCALE, noted back with mrp2d::rt_size_note), cleared when made or when a page switches
+//   between sizes, kept across frames, the raw GS alpha in them; a run that blends with the source alpha into one is drawn twice,
+//   the colour then the raw alpha (gs_draw_gx2.cpp: GX2 has no second output here);
 // - the primitives that read the screen (Item::alone: DATE, the frame sampled as a texture): the colour buffer's box around them
 //   copied first (GX2CopySurfaceEx) into a texture of the screen's size, which the pixel shader reads with texelFetch (the copy's
 //   rows from the top: its y flipped from the build's GL rows); the copy changes the GPU's state, so the context and this call's
@@ -33,6 +36,7 @@
 #include <game/render/mrp_2d_backend.inc>
 
 #include <coreinit/memdefaultheap.h>
+#include <gx2/clear.h>
 #include <gx2/context.h>
 #include <gx2/draw.h>
 #include <gx2/enum.h>
@@ -53,6 +57,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <memory>
+#include <string>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -115,19 +122,101 @@ void* ring_alloc(uint32_t bytes, uint32_t align) {
     return g_ring + off;
 }
 
+// ---- RAC1_2D_TEX_STATS=N (testing): the GPU textures' churn, a line every N calls ----
+
+struct TexStats {
+    uint64_t made = 0, reused = 0, freed = 0, rt_made = 0, calls = 0;
+    int64_t bytes = 0, peak = 0, rt_bytes = 0;
+    std::map<std::string, uint64_t> src;            // made / reused since the last line, by source
+    std::unordered_map<uint64_t, std::string> tag;  // image id -> its source
+};
+TexStats g_ts;
+const int g_ts_every = [] {
+    const char* e = std::getenv("RAC1_2D_TEX_STATS");
+    return e == nullptr ? 0 : std::max(1, std::atoi(e));
+}();
+
+void ts_tag(const gs::TexImage* img, uint64_t tex0) {
+    if (g_ts_every == 0 || img == nullptr || g_ts.tag.count(img->id) != 0) return;
+    char b[64];
+    std::snprintf(b, sizeof b, "psm%02x %dx%d tbp%04x", static_cast<unsigned>((tex0 >> 20) & 0x3f), img->w, img->h, static_cast<unsigned>(tex0 & 0x3fff));
+    g_ts.tag[img->id] = b;
+}
+
+void ts_made(const gs::TexImage* img, bool reused) {
+    if (g_ts_every == 0) return;
+    if (reused) {
+        ++g_ts.reused;
+    } else {
+        ++g_ts.made;
+        g_ts.bytes += static_cast<int64_t>(img->w) * img->h * 4;
+        g_ts.peak = std::max(g_ts.peak, g_ts.bytes + g_ts.rt_bytes);
+    }
+    const auto t = g_ts.tag.find(img->id);
+    ++g_ts.src[(t != g_ts.tag.end() ? t->second : std::string("?")) + (reused ? " reused" : " made")];
+}
+
+void ts_freed(int w, int h) {
+    if (g_ts_every == 0) return;
+    ++g_ts.freed;
+    g_ts.bytes -= static_cast<int64_t>(w) * h * 4;
+}
+
+void ts_rt(int64_t before, int64_t after) {
+    if (g_ts_every == 0) return;
+    ++g_ts.rt_made;
+    g_ts.rt_bytes += after - before;
+    g_ts.peak = std::max(g_ts.peak, g_ts.bytes + g_ts.rt_bytes);
+}
+
+void ts_print(size_t held, size_t pool_count) {
+    if (g_ts_every == 0 || ++g_ts.calls % static_cast<uint64_t>(g_ts_every) != 0) return;
+    std::printf("[2d-tex] call %llu: made %llu reused %llu destroyed %llu rt-made %llu | held %zu pooled %zu, %.1f MB + targets %.1f MB (peak %.1f MB)\n",
+                static_cast<unsigned long long>(g_ts.calls), static_cast<unsigned long long>(g_ts.made), static_cast<unsigned long long>(g_ts.reused),
+                static_cast<unsigned long long>(g_ts.freed), static_cast<unsigned long long>(g_ts.rt_made), held, pool_count,
+                static_cast<double>(g_ts.bytes) / 1048576.0, static_cast<double>(g_ts.rt_bytes) / 1048576.0, static_cast<double>(g_ts.peak) / 1048576.0);
+    for (const auto& [s, n] : g_ts.src) std::printf("[2d-tex]   %s: %llu\n", s.c_str(), static_cast<unsigned long long>(n));
+    g_ts.src.clear();
+    if (g_ts.tag.size() > 65536) g_ts.tag.clear();
+    std::fflush(stdout);
+}
+
 // ---- the textures ----
 
 constexpr size_t kTexCap = 48u << 20;
-constexpr uint64_t kTexKeep = 600;  // (mrp_2d.cpp's: unused for this many calls, forgotten)
+constexpr uint64_t kTexKeep = 600;  // (mrp_2d.cpp's: unused for this many calls, given back to the pool / destroyed)
 struct TexEntry {
     GX2Texture tex{};
     uint32_t bytes = 0;
     uint64_t last_use = 0;
+    int w = 0, h = 0;
+    std::weak_ptr<const gs::TexImage> src;  // (empty: an image nobody holds, kept by its use alone)
+    bool owned = false;
 };
-std::unordered_map<uint64_t, TexEntry> g_tex;  // by the image's id
+struct FreeTex {
+    GX2Texture tex{};
+    uint32_t bytes = 0;
+    uint64_t since = 0;     // the call it entered the pool
+    uint64_t last_use = 0;  // the call it was last sampled by the GPU
+};
+std::unordered_map<uint64_t, TexEntry> g_tex;             // by the image's id
+std::map<std::pair<int, int>, std::vector<FreeTex>> g_pool;  // by (w, h)
 size_t g_tex_bytes = 0;
 uint64_t g_call = 0;
 GX2Texture g_white{}, g_black{};
+
+size_t pooled() {
+    size_t n = 0;
+    for (const auto& [k, l] : g_pool) n += l.size();
+    return n;
+}
+
+void fill_texture(GX2Texture& t, int w, int h, const uint32_t* src) {
+    GX2Surface& s = t.surface;
+    auto* dst = static_cast<uint32_t*>(s.image);
+    for (int y = 0; y < h; ++y) std::memcpy(dst + static_cast<size_t>(y) * s.pitch, src + static_cast<size_t>(y) * w, static_cast<size_t>(w) * 4);
+    GX2Invalidate(GX2_INVALIDATE_MODE_CPU_TEXTURE, s.image, s.imageSize);
+}
 
 // a w x h texture of `src`'s texels (rows of w; r | g << 8 | b << 16 | a << 24, the bytes in memory a, b, g, r on the PPC: the
 // component map puts them back - gs_draw_gx2.cpp's) in MEM2, linear; false: no memory for it
@@ -153,9 +242,7 @@ bool make_texture(GX2Texture& t, int w, int h, const uint32_t* src) {
     GX2InitTextureRegs(&t);
     s.image = MEMAllocFromDefaultHeapEx(s.imageSize, static_cast<int32_t>(s.alignment));
     if (s.image == nullptr) return false;
-    auto* dst = static_cast<uint32_t*>(s.image);
-    for (int y = 0; y < h; ++y) std::memcpy(dst + static_cast<size_t>(y) * s.pitch, src + static_cast<size_t>(y) * w, static_cast<size_t>(w) * 4);
-    GX2Invalidate(GX2_INVALIDATE_MODE_CPU_TEXTURE, s.image, s.imageSize);
+    fill_texture(t, w, h, src);
     return true;
 }
 
@@ -164,14 +251,30 @@ void tex_free(GX2Texture& t) {
     t.surface.image = nullptr;
 }
 
-// the least recently used past kTexCap, never one this call used (a run still to draw may name it); the GPU waited for first
+// the pool's unused textures first, then the least recently used past kTexCap, never one this call used; the GPU waited for first
 void tex_evict_cap() {
     if (g_tex_bytes <= kTexCap) return;
+    bool waited = false;
+    for (auto pt = g_pool.begin(); pt != g_pool.end() && g_tex_bytes > kTexCap * 3 / 4;) {
+        auto& l = pt->second;
+        while (!l.empty() && g_tex_bytes > kTexCap * 3 / 4) {
+            FreeTex f = l.front();
+            l.erase(l.begin());
+            if (!waited && f.last_use + 2 > g_call) {
+                GX2DrawDone();
+                waited = true;
+            }
+            ts_freed(pt->first.first, pt->first.second);
+            tex_free(f.tex);
+            g_tex_bytes -= f.bytes;
+        }
+        pt = l.empty() ? g_pool.erase(pt) : std::next(pt);
+    }
+    if (g_tex_bytes <= kTexCap * 3 / 4) return;
     std::vector<std::pair<uint64_t, uint64_t>> order;
     for (const auto& [id, e] : g_tex)
         if (e.last_use < g_call) order.emplace_back(e.last_use, id);
     std::sort(order.begin(), order.end());
-    bool waited = false;
     for (const auto& [use, id] : order) {
         if (g_tex_bytes <= kTexCap * 3 / 4) break;
         if (!waited) {
@@ -179,40 +282,83 @@ void tex_evict_cap() {
             waited = true;
         }
         auto it = g_tex.find(id);
+        ts_freed(it->second.w, it->second.h);
         tex_free(it->second.tex);
         g_tex_bytes -= it->second.bytes;
         g_tex.erase(it);
     }
 }
 
-// those unused for kTexKeep calls (every 64 calls; mrp_2d.cpp's evict)
-void tex_evict_old() {
-    if (g_call % 64 != 0) return;
-    bool waited = false;
+// after each call (mrp_2d.cpp's evict): the textures of the images gone given back to the pool; every 64 calls those unused for
+// kTexKeep calls too, and the pool's unused for as long destroyed
+void tex_evict() {
+    const bool old = g_call % 64 == 0;
     for (auto it = g_tex.begin(); it != g_tex.end();) {
-        if (g_call - it->second.last_use > kTexKeep) {
-            if (!waited) {
-                GX2DrawDone();
-                waited = true;
-            }
-            tex_free(it->second.tex);
-            g_tex_bytes -= it->second.bytes;
+        TexEntry& t = it->second;
+        if ((t.owned && t.src.expired()) || (old && g_call - t.last_use > kTexKeep)) {
+            g_pool[{t.w, t.h}].push_back(FreeTex{t.tex, t.bytes, g_call, t.last_use});
             it = g_tex.erase(it);
         } else {
             ++it;
         }
     }
+    if (!old) return;
+    bool waited = false;
+    for (auto pt = g_pool.begin(); pt != g_pool.end();) {
+        auto& l = pt->second;
+        for (size_t i = 0; i < l.size();) {
+            if (g_call - l[i].since > kTexKeep) {
+                if (!waited && l[i].last_use + 2 > g_call) {
+                    GX2DrawDone();
+                    waited = true;
+                }
+                ts_freed(pt->first.first, pt->first.second);
+                tex_free(l[i].tex);
+                g_tex_bytes -= l[i].bytes;
+                l.erase(l.begin() + static_cast<long>(i));
+            } else {
+                ++i;
+            }
+        }
+        pt = l.empty() ? g_pool.erase(pt) : std::next(pt);
+    }
 }
 
-// the GX2 texture of a decoded image, made at its first use
-const GX2Texture* texture_of(const gs::TexImage* img) {
+// the GX2 texture of a decoded image, made at its first use or refilled in place from the pool when one of its size is free
+const GX2Texture* texture_of(const mrp2d::TexRef& r) {
+    const gs::TexImage* img = r.img;
     if (img == nullptr || img->w <= 0 || img->h <= 0 || img->px.size() < static_cast<size_t>(img->w) * static_cast<size_t>(img->h)) return nullptr;
     auto it = g_tex.find(img->id);
     if (it != g_tex.end()) {
         it->second.last_use = g_call;
+        if (!it->second.owned && r.own != nullptr && *r.own != nullptr) {
+            it->second.src = *r.own;
+            it->second.owned = true;
+        }
         return &it->second.tex;
     }
     TexEntry e;
+    e.w = img->w;
+    e.h = img->h;
+    if (r.own != nullptr && *r.own != nullptr) {
+        e.src = *r.own;
+        e.owned = true;
+    }
+    const auto pool = g_pool.find({img->w, img->h});
+    if (pool != g_pool.end() && !pool->second.empty()) {
+        FreeTex f = pool->second.front();
+        pool->second.erase(pool->second.begin());
+        if (pool->second.empty()) g_pool.erase(pool);
+        if (f.last_use + 2 > g_call) GX2DrawDone();
+        fill_texture(f.tex, img->w, img->h, img->px.data());
+        e.tex = f.tex;
+        e.bytes = f.bytes;
+        e.last_use = g_call;
+        TexEntry& slot = g_tex[img->id];
+        slot = e;
+        ts_made(img, true);
+        return &slot.tex;
+    }
     if (!make_texture(e.tex, img->w, img->h, img->px.data())) {
         tex_evict_cap();
         if (!make_texture(e.tex, img->w, img->h, img->px.data())) return nullptr;
@@ -222,36 +368,80 @@ const GX2Texture* texture_of(const gs::TexImage* img) {
     g_tex_bytes += e.bytes;
     TexEntry& slot = g_tex[img->id];
     slot = e;
+    ts_made(img, false);
     tex_evict_cap();
     return &g_tex.find(img->id)->second.tex;
 }
 
-// ---- the render targets (gs_draw_gx2.cpp's): a colour buffer per frame page, its texture a view of the same surface ----
+// ---- the render targets: a colour buffer per (frame page, GS width, GS height), its texture a view of the same surface ----
 
+int g_rt_s = 1;  // GPU pixels per GS pixel (1: the GS's own; RAC1_2D_RT_SCALE)
+
+int rt_scale_for(const gs::Viewport& v, float fb_h) {
+    static const int s_env = [] {
+        const char* e = std::getenv("RAC1_2D_RT_SCALE");
+        return e == nullptr ? 1 : std::clamp(std::atoi(e), 0, 8);
+    }();
+    if (s_env != 0) return s_env;
+    return std::clamp(static_cast<int>(std::ceil(static_cast<float>(v.h) / std::max(fb_h, 1.0f) - 1.0f / 64.0f)), 1, 8);
+}
+
+struct RtKey {
+    uint32_t fbp = 0;
+    int w = 0, h = 0;  // GS pixels
+    bool operator<(const RtKey& o) const { return std::tie(fbp, w, h) < std::tie(o.fbp, o.w, o.h); }
+};
 struct Rt {
     GX2ColorBuffer cb{};
     GX2Texture tex{};
-    int w = 0, h = 0;
+    uint32_t bytes = 0;
+    int w = 0, h = 0;  // GS pixels
+    int s = 1;         // GPU pixels per GS pixel (g_rt_s)
 };
-std::map<uint32_t, Rt> g_rt;
+std::map<RtKey, Rt> g_rt;
+std::map<uint32_t, std::pair<int, int>> g_rt_cur;  // page -> current (w, h) in GS pixels
 
 void rt_free(Rt& r) {
     if (r.cb.surface.image != nullptr) MEMFreeToDefaultHeap(r.cb.surface.image);
     r = Rt{};
 }
 
-// the target of page `fbp` at w x h, made (or remade: the GPU waited for first) when it is not that size, cleared to 0; nullptr: no memory
-Rt* render_target(uint32_t fbp, int w, int h) {
-    Rt& r = g_rt[fbp];
-    if (r.cb.surface.image != nullptr && r.w == w && r.h == h) return &r;
+Rt* rt_find_cur(uint32_t fbp) {
+    const auto c = g_rt_cur.find(fbp);
+    if (c == g_rt_cur.end()) return nullptr;
+    const auto it = g_rt.find(RtKey{fbp, c->second.first, c->second.second});
+    return it != g_rt.end() ? &it->second : nullptr;
+}
+
+// the target of page `fbp` at GS size w x h (scaled by g_rt_s), kept per (fbp, w, h) so a page drawn at two sizes in a frame
+// (the pause menu's) is not reallocated; cleared when made or when the page switches from another size; nullptr: no memory
+Rt* render_target(uint32_t fbp, int w, int h, bool& gpu_cleared) {
+    gpu_cleared = false;
+    const auto cur_it = g_rt_cur.find(fbp);
+    const bool size_changed = cur_it != g_rt_cur.end() && (cur_it->second.first != w || cur_it->second.second != h);
+    const RtKey key{fbp, w, h};
+    Rt& r = g_rt[key];
+    if (r.cb.surface.image != nullptr && r.w == w && r.h == h && r.s == g_rt_s) {
+        g_rt_cur[fbp] = {w, h};
+        mrp2d::rt_size_note(fbp, w, h);
+        if (size_changed) {
+            GX2ClearColor(&r.cb, 0.0f, 0.0f, 0.0f, 0.0f);
+            GX2Invalidate(static_cast<GX2InvalidateMode>(GX2_INVALIDATE_MODE_COLOR_BUFFER | GX2_INVALIDATE_MODE_TEXTURE), r.cb.surface.image,
+                          r.cb.surface.imageSize);
+            gpu_cleared = true;
+        }
+        return &r;
+    }
+    int64_t before = 0;
     if (r.cb.surface.image != nullptr) {
         GX2DrawDone();
+        before = r.bytes;
         rt_free(r);
     }
     GX2Surface& s = r.cb.surface;
     s.dim = GX2_SURFACE_DIM_TEXTURE_2D;
-    s.width = static_cast<uint32_t>(w);
-    s.height = static_cast<uint32_t>(h);
+    s.width = static_cast<uint32_t>(w * g_rt_s);
+    s.height = static_cast<uint32_t>(h * g_rt_s);
     s.depth = 1;
     s.mipLevels = 1;
     s.format = GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8;
@@ -266,7 +456,8 @@ Rt* render_target(uint32_t fbp, int w, int h) {
     GX2InitColorBufferRegs(&r.cb);
     s.image = MEMAllocFromDefaultHeapEx(s.imageSize, static_cast<int32_t>(s.alignment));
     if (s.image == nullptr) {
-        g_rt.erase(fbp);
+        if (before != 0) ts_rt(before, 0);
+        g_rt.erase(key);
         return nullptr;
     }
     std::memset(s.image, 0, s.imageSize);  // (transparent black, mrp_2d.cpp's clear: zero bytes are zero in any tiling)
@@ -278,8 +469,12 @@ Rt* render_target(uint32_t fbp, int w, int h) {
     r.tex.viewNumSlices = 1;
     r.tex.compMap = GX2_COMP_MAP(GX2_SQ_SEL_R, GX2_SQ_SEL_G, GX2_SQ_SEL_B, GX2_SQ_SEL_A);
     GX2InitTextureRegs(&r.tex);
+    r.bytes = s.imageSize;
     r.w = w;
     r.h = h;
+    r.s = g_rt_s;
+    ts_rt(before, r.bytes);
+    g_rt_cur[fbp] = {w, h};
     mrp2d::rt_size_note(fbp, w, h);
     return &r;
 }
@@ -413,9 +608,13 @@ void mrp_2d_gx2_shutdown(bool gpu_idle) {
     if (!gpu_idle) GX2DrawDone();
     for (auto& [id, e] : g_tex) tex_free(e.tex);
     g_tex.clear();
+    for (auto& [k, l] : g_pool)
+        for (FreeTex& f : l) tex_free(f.tex);
+    g_pool.clear();
     g_tex_bytes = 0;
     for (auto& [k, r] : g_rt) rt_free(r);
     g_rt.clear();
+    g_rt_cur.clear();
     mrp2d::rt_sizes_clear();
     for (auto& [k, t] : g_scr) tex_free(t);
     g_scr.clear();
@@ -430,12 +629,32 @@ void mrp_2d_gx2_shutdown(bool gpu_idle) {
 
 // orig: (host) see mrp_2d_backend.inc (mrp_2d_clear_caches on the Wii U)
 size_t mrp_2d_gx2_clear_caches() {
-    const size_t n = g_tex.size();
-    if (!g_ready || n == 0) return n;
+    const size_t n = g_tex.size() + pooled();
+    if (!g_ready || (n == 0 && g_rt.size() <= g_rt_cur.size())) return n;
     GX2DrawDone();
-    for (auto& [id, e] : g_tex) tex_free(e.tex);
+    for (auto& [id, e] : g_tex) {
+        ts_freed(e.w, e.h);
+        tex_free(e.tex);
+    }
     g_tex.clear();
+    for (auto& [k, l] : g_pool)
+        for (FreeTex& f : l) {
+            ts_freed(k.first, k.second);
+            tex_free(f.tex);
+        }
+    g_pool.clear();
     g_tex_bytes = 0;
+    // (the targets' buffers of their other sizes too: the targets themselves stay, as the game's memory does)
+    for (auto it = g_rt.begin(); it != g_rt.end();) {
+        const auto cur = g_rt_cur.find(it->first.fbp);
+        if (cur == g_rt_cur.end() || cur->second.first != it->first.w || cur->second.second != it->first.h) {
+            ts_rt(it->second.bytes, 0);
+            rt_free(it->second);
+            it = g_rt.erase(it);
+        } else {
+            ++it;
+        }
+    }
     return n;
 }
 
@@ -469,6 +688,16 @@ void mrp_2d_gx2_draw(const MrpChainFrame& f, const GX2ColorBuffer* screen, float
     ++g_call;
     const auto t0 = std::chrono::steady_clock::now();
     const gs::Viewport& v = vp;
+    if (targets) g_rt_s = rt_scale_for(v, FB_H);
+    if (g_ts_every != 0) {
+        const size_t pend = std::min(to, f.prims.size());
+        for (size_t pi = from; pi < pend; ++pi) {
+            const gs::Primitive& p = f.prims[pi];
+            if (p.tex != nullptr) ts_tag(p.tex.get(), p.st.tex0);
+            for (int m = 0; m < p.mip_n && m < 3; ++m)
+                if (p.mip_tex[m] != nullptr) ts_tag(p.mip_tex[m].get(), p.mip_tex0[m]);
+        }
+    }
     // (the build: the game's projected 3D on the GIF path left out - no host depth here, its effects not drawn yet; or the one
     // mrp_2d_gx2_prebuild made for this call)
     if (!(g_pre_screen == screen && g_pre_frame == &f && g_pre_from == from && g_pre_to == to)) {
@@ -510,7 +739,7 @@ void mrp_2d_gx2_draw(const MrpChainFrame& f, const GX2ColorBuffer* screen, float
         GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, gv, static_cast<uint32_t>(b.verts.size() * sizeof(GV)));
     }
 
-    // the target bound: -1 the screen (bound by the caller), else a render target's page; -2 none known (after a screen copy)
+    // the target bound: -1 the screen (bound by the caller), else a render target's page; -2 none known (after a screen copy / clear)
     int bound = -2;
     auto set_screen_viewport = [&] {  // (GX2's y from the top, the Viewport's from the bottom)
         GX2SetViewport(static_cast<float>(v.x), static_cast<float>(win_h - v.y - v.h), static_cast<float>(v.w), static_cast<float>(v.h), 0.0f, 1.0f);
@@ -530,18 +759,18 @@ void mrp_2d_gx2_draw(const MrpChainFrame& f, const GX2ColorBuffer* screen, float
     // leaving a render target: what was drawn into it written out of the colour cache, the texture cache's view of it dropped
     auto leave_target = [&] {
         if (bound < 0) return;
-        const auto it = g_rt.find(static_cast<uint32_t>(bound));
-        if (it != g_rt.end())
-            GX2Invalidate(static_cast<GX2InvalidateMode>(GX2_INVALIDATE_MODE_COLOR_BUFFER | GX2_INVALIDATE_MODE_TEXTURE), it->second.cb.surface.image,
-                          it->second.cb.surface.imageSize);
+        if (const Rt* r = rt_find_cur(static_cast<uint32_t>(bound)))
+            GX2Invalidate(static_cast<GX2InvalidateMode>(GX2_INVALIDATE_MODE_COLOR_BUFFER | GX2_INVALIDATE_MODE_TEXTURE), r->cb.surface.image,
+                          r->cb.surface.imageSize);
     };
     auto bind = [&](int want) {
         if (want == bound) return;
         leave_target();
         if (want >= 0) {
-            const Rt& r = g_rt[static_cast<uint32_t>(want)];
-            GX2SetColorBuffer(&r.cb, GX2_RENDER_TARGET_0);
-            GX2SetViewport(0.0f, 0.0f, static_cast<float>(r.w), static_cast<float>(r.h), 0.0f, 1.0f);
+            const Rt* r = rt_find_cur(static_cast<uint32_t>(want));
+            if (r == nullptr) return;
+            GX2SetColorBuffer(&r->cb, GX2_RENDER_TARGET_0);
+            GX2SetViewport(0.0f, 0.0f, static_cast<float>(r->w * r->s), static_cast<float>(r->h * r->s), 0.0f, 1.0f);
         } else {
             GX2SetColorBuffer(screen, GX2_RENDER_TARGET_0);
             set_screen_viewport();
@@ -587,14 +816,29 @@ void mrp_2d_gx2_draw(const MrpChainFrame& f, const GX2ColorBuffer* screen, float
         if ((s_debug & 1) != 0 && runs_drawn >= 1) { ++g_log.draw_skip[kDsDebug]; continue; }
         if (it.alone && (s_debug & 16) != 0) { ++g_log.draw_skip[kDsScreenRead]; continue; }
         if (k.to_rt) {
-            // (drawn by the first call of a frame only: the second, the GamePad's, samples what the first drew)
-            if (!targets) { ++g_log.draw_skip[kDsRtOff]; continue; }
+            // (drawn by the first call of a frame only: the second, the GamePad's, samples what the first drew at each size in order)
+            if (!targets) {
+                const uint32_t fbp = static_cast<uint32_t>(k.want);
+                if (g_rt.count(RtKey{fbp, it.rt_w, it.rt_h}) != 0) {
+                    g_rt_cur[fbp] = {it.rt_w, it.rt_h};
+                    mrp2d::rt_size_note(fbp, it.rt_w, it.rt_h);
+                }
+                ++g_log.draw_skip[kDsRtOff];
+                continue;
+            }
             // (no depth buffer of a target's own: ZTST NEVER draws nothing, the others untested)
             if (k.ztest && k.ztst == 0) { ++g_log.draw_skip[kDsRtZNever]; continue; }
-            const auto ex = g_rt.find(static_cast<uint32_t>(k.want));
-            if (ex == g_rt.end() || ex->second.w != it.rt_w || ex->second.h != it.rt_h) {
+            const Rt* cur = rt_find_cur(static_cast<uint32_t>(k.want));
+            if (cur == nullptr || cur->w != it.rt_w || cur->h != it.rt_h || cur->s != g_rt_s) {
                 if (bound == k.want) bind(-1);
-                if (render_target(static_cast<uint32_t>(k.want), it.rt_w, it.rt_h) == nullptr) { ++g_log.draw_skip[kDsRtMem]; continue; }
+                bool gpu_cleared = false;
+                if (render_target(static_cast<uint32_t>(k.want), it.rt_w, it.rt_h, gpu_cleared) == nullptr) { ++g_log.draw_skip[kDsRtMem]; continue; }
+                if (gpu_cleared) {
+                    if (ctx != nullptr) GX2SetContextState(ctx);
+                    set_call_state();
+                    bound = -2;
+                    last_blk = nullptr;
+                }
             }
         }
         // the textures it samples (made at their first use)
@@ -602,24 +846,26 @@ void mrp_2d_gx2_draw(const MrpChainFrame& f, const GX2ColorBuffer* screen, float
         const GX2Texture* mips[3] = {nullptr, nullptr, nullptr};
         if (k.tme && (s_debug & 2) == 0) {
             if (k.tex.rt >= 0) {
-                const auto r = g_rt.find(static_cast<uint32_t>(k.tex.rt));
-                if (r != g_rt.end()) tex = &r->second.tex;
+                if (bound == k.tex.rt) bind(-1);
+                if (const Rt* r = rt_find_cur(static_cast<uint32_t>(k.tex.rt))) tex = &r->tex;
             } else {
-                tex = texture_of(k.tex.img);
+                tex = texture_of(k.tex);
             }
             if (tex == nullptr) { ++g_log.draw_skip[kDsNoTex]; continue; }
-            for (int m = 0; m < k.mip_n && m < 3; ++m) mips[m] = texture_of(k.mip[m].img);
+            for (int m = 0; m < k.mip_n && m < 3; ++m) mips[m] = texture_of(k.mip[m]);
         }
-        // the scissor: a target's in its GS pixels (row 0 GX2's top, as the target's row 0 is), the screen's from the bottom left in
-        // window pixels to GX2's from the top left inside the buffer
+        // the scissor: a target's in its GS pixels scaled by r.s (row 0 GX2's top, as the target's row 0 is), the screen's from the
+        // bottom left in window pixels to GX2's from the top left inside the buffer
         uint32_t sc[4];
         {
             int gx0, gx1, gy0, gy1;
             if (k.to_rt) {
-                gx0 = std::clamp(k.sc[0], 0, it.rt_w);
-                gx1 = std::clamp(k.sc[0] + k.sc[2], 0, it.rt_w);
-                gy0 = std::clamp(k.sc[1], 0, it.rt_h);
-                gy1 = std::clamp(k.sc[1] + k.sc[3], 0, it.rt_h);
+                const Rt* r = rt_find_cur(static_cast<uint32_t>(k.want));
+                const int rs = r != nullptr ? r->s : g_rt_s;
+                gx0 = std::clamp(k.sc[0] * rs, 0, it.rt_w * rs);
+                gx1 = std::clamp((k.sc[0] + k.sc[2]) * rs, 0, it.rt_w * rs);
+                gy0 = std::clamp(k.sc[1] * rs, 0, it.rt_h * rs);
+                gy1 = std::clamp((k.sc[1] + k.sc[3]) * rs, 0, it.rt_h * rs);
             } else {
                 gx0 = std::clamp(k.sc[0], 0, win_w);
                 gx1 = std::clamp(k.sc[0] + k.sc[2], 0, win_w);
@@ -734,7 +980,8 @@ void mrp_2d_gx2_draw(const MrpChainFrame& f, const GX2ColorBuffer* screen, float
     GX2SetScissor(0, 0, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
     GX2SetViewport(0.0f, 0.0f, static_cast<float>(win_w), static_cast<float>(win_h), 0.0f, 1.0f);
     GX2SetShaderMode(GX2_SHADER_MODE_UNIFORM_REGISTER);
-    tex_evict_old();
+    tex_evict();
+    ts_print(g_tex.size(), pooled());
 
     const auto t2 = std::chrono::steady_clock::now();
     g_log.build_ms += std::chrono::duration<double, std::milli>(t1 - t0).count();
@@ -748,7 +995,7 @@ void mrp_2d_gx2_draw(const MrpChainFrame& f, const GX2ColorBuffer* screen, float
         std::printf(" runs not drawn:");
         for (int k = 0; k < kDsN; ++k)
             if (g_log.draw_skip[k] != 0) std::printf(" %s %llu,", kDsName[k], static_cast<unsigned long long>(g_log.draw_skip[k]));
-        std::printf(" %zu targets, %zu textures (%zu KB); CPU %.2f ms a call (build %.2f, submit %.2f)\n", g_rt.size(), g_tex.size(), g_tex_bytes / 1024,
+        std::printf(" %zu targets, %zu+%zu textures (%zu KB); CPU %.2f ms a call (build %.2f, submit %.2f)\n", g_rt.size(), g_tex.size(), pooled(), g_tex_bytes / 1024,
                     (g_log.build_ms + g_log.submit_ms) / 300.0, g_log.build_ms / 300.0, g_log.submit_ms / 300.0);
         std::fflush(stdout);
         g_log = Log{};

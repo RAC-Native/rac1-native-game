@@ -79,6 +79,13 @@ std::shared_ptr<Prefetched> take_prefetched_level(int level) {
 
 // orig: (host) see level_loader.h
 void LevelLoader::prefetch(int level) {
+#if defined(__WIIU__)
+    // On Wii U there is no legacy OpenGL host renderer; engine_image_load loads the level overlay directly
+    // via disc_read_level_overlay, so reading the 25-35 MB WAD and decompressing its core into a 40-55 MB
+    // MEM2 buffer during the flight scene is pure waste and causes SD I/O contention and MEM2 pressure.
+    (void)level;
+    return;
+#else
     std::scoped_lock lock(g_pf_lock);
     if (g_pf.valid() && g_pf_level == level) return;
     g_pf_level = level;
@@ -89,6 +96,7 @@ void LevelLoader::prefetch(int level) {
                    p->ok = extract_core_from_level_wad(std::span<const std::byte>(p->file.data(), p->file.size()), p->core_index, p->core_data);
                return p;
            }).share();
+#endif
 }
 
 void build_legacy(std::span<const std::byte> level_wad_span);
@@ -150,6 +158,12 @@ void finish_level_wad_load(std::span<const std::byte> level_wad_span,
 }  // namespace
 
 void LevelLoader::load_level_wad(int level) {
+#if defined(__WIIU__)
+    // On Wii U, host_layout::CORE, host_layout::TEX_HEAP, and g_decoded_sky are unused (legacy OpenGL host
+    // renderers are not built on Wii U, and engine_image_load already calls LevelLoader::load_level_overlay).
+    (void)level;
+    return;
+#else
     LoadProf prof_all("load_level_wad");
     std::vector<std::byte> file_data;
     std::vector<std::uint8_t> core_index;
@@ -171,6 +185,7 @@ void LevelLoader::load_level_wad(int level) {
     }
     finish_level_wad_load(std::span<const std::byte>(file_data.data(), file_data.size()),
                           core_index, core_data_decompressed, prof, level);
+#endif
 }
 
 // orig: (host) the legacy host renderers' copy of a level (see level_loader.h)

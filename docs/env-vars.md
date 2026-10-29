@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 341 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 347 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 256 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 64 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Debugging](#debugging-variables) | 259 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Automated testing](#automated-testing-variables) | 67 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -61,6 +61,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | Variable | Values and default | What it does |
 |---|---|---|
 | `RAC1_2D_EDGES` | integer pixels; default off | Prints the 2D drawn within that many pixels of the frame's edges that the overscan crop applies to, with its box (how the crop's margins were chosen). |
+| `RAC1_2D_RT_SCALE` | integer: 1 = the PS2's resolution, 2-8 = that many times, 0 = the window's scale (its height over the frame's, rounded up); default 1 | The MRP's 2D: the size of the render targets the menus draw panels into (the Vendor's monitors, the pause menu's item models), for sharper text and models at large window sizes (the look changes: the monitors' static and scan lines are finer). See [Rendering](rendering.md#the-2d). |
+| `RAC1_2D_TEX_STATS` | integer N calls; unset = off | The MRP's 2D: prints a `[2d-tex]` line every N calls of its drawing (a few per frame) with its GPU textures' churn since the start: the textures made, taken back from the pool of free ones, destroyed, the render targets made or resized, the textures held and pooled and their memory (now and the peak), then the textures made and reused since the last line by source (the sampled TEX0's format, size and base). See [Rendering](rendering.md#the-2d). |
 | `RAC1_ANIM_FIRST` | integer; default 0 | Only in the "animsheet" simulated-input script: the number of the first hero animation set to play (each set runs 16 frames), used to make animation contact sheets. |
 | `RAC1_ANIM_FREEZE` | set (any value) = on; default off | Only in the "animsheet" script: at frame 200 switches off the hero's own update so the forced animations play without the game moving him. |
 | `RAC1_AO` | integer: 0 off, 1 SSAO, 2 SSAO+, 3 HBAO, 4 GTAO, 5 GTAO at half resolution, 6 SSAO, 7 SSAO+, 8 HBAO at half resolution; default 0 (the Options > Graphics Ambient Occlusion setting is used unless this is set) | Forces the ambient occlusion mode, overriding the menu setting, for comparison and testing. |
@@ -287,6 +289,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_VIEW_DIST` | float; default 1.3 | With RAC1_VIEW_HERO_FRONT, the distance of the debug camera from the hero. |
 | `RAC1_VIEW_HERO_FRONT` | any value = on; default off | Debug camera that gives a close look at the hero's face, placed in front of the hero (see RAC1_VIEW_ANGLE and RAC1_VIEW_DIST). |
 | `RAC1_VIEW_MODE` | integer: 0 = widescreen, 1 = 4:3 with bars, 2 = fit to the window's aspect; default 0 until the Options > Graphics settings override it | Sets the host's view/aspect mode at start (as the aspect and fit options do). The exact meaning of 0 is inferred from the view code, treat as approximate. |
+| `RAC1_VIBRATION_LOG` | set (any value) = on; default off | Prints the vibration motors' strengths (`[vibe] frame <n> low <l> high <h>`) each game frame they change (Options > Advanced > Vibration, #10), with or without a gamepad. |
 | `RAC1_VIF_TRACE` | any value = on; default off | Prints every VIF1 code word (as [VIF1] lines on stderr) as the GS emulation processes the DMA chain. |
 | `RAC1_VK_VALIDATION` | 1 = on; default off | With the Vulkan renderer, turns the Khronos validation layer on when it is installed (its messages on the standard output). See [Vulkan](vulkan.md). |
 | `RAC1_VU0_CAPTURE` | directory path; default off | Writes captures (code image, registers, memory) of VU0 program runs, spread over the calls, into that directory; used as inputs to prove the ported VU0 programs against the original. |
@@ -342,7 +345,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_FRAMES` | integer N; default 300 headless, 0 = run until closed in a window | Number of game frames to run before the program exits (screenshot.ppm is written at the last frame of a headless run). |
 | `RAC1_GIVE_FRAME` | game frame number; default 60 | The frame at which RAC1_GIVE_ITEMS, RAC1_BOLTS and the related item or ammo settings are applied (counted after a RAC1_GOTO level change). |
 | `RAC1_GIVE_ITEMS` | comma-separated item ids; unset = none | Gives Ratchet those items at the item-giving frame (RAC1_GIVE_FRAME), through the game's own item function. |
-| `RAC1_GOTO` | N@F[,N@F...] (level number @ game frame; the frame defaults to 60 if only N is given); unset = off | At game frame F triggers the game's own level change to level N, as the debug menu's Levels tab does; several, comma-separated, change level in turn. |
+| `RAC1_GOTO` | N@F[,N@F...] (level number @ game frame; the frame defaults to 60 if only N is given); unset = off | At game frame F triggers the game's own level change to level N, as the debug menu's Levels tab does; several, comma-separated, change level in turn. During a movie (game mode 1) the movie is stopped first, as its skip stops it, and the change made at the next frame. |
 | `RAC1_HERO_AT` | <class>@<frame>[,dx,dy,dz[,yaw]] (several separated by /); unset = off | At that game frame places Ratchet through the game's own placement next to the first live moby of that class (placed by the level or spawned since) (default offset 3 0 1, class -1 = the offset is an absolute position), without changing story flags. |
 | `RAC1_HOST_DELAY_MS` | integer milliseconds; default 0 | Makes each host frame this much longer by sleeping, to check that a slow host does not change the game's state. |
 | `RAC1_HOVERBOARD_AT` | <frame>[,<frame>,...] (at most 8); unset = off | At those game frames the debug menu's Hoverboard anywhere is ticked, unticked, ticked... in turn (Ratchet gets on a hoverboard where he stands, then off: the race's board on Rilgar and Kalebo III, the free board elsewhere). |
@@ -355,6 +358,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_LEVEL` | level number; default 0 (Veldin); same as --level | Starts directly on the given level instead of the normal start. |
 | `RAC1_MENU_AT` | integer frame number; default 120 | In a scripted menu input run (simulated keys), the frame at which the simulated button press happens instead of the default, with Start also pressed at frame 120 to skip the arrival scene. |
 | `RAC1_MIRROR_DUMP` | file path; default none | With RAC1_IOP_MIRROR_TEST, writes the mirror's output (48 kHz stereo 16-bit) to the file. |
+| `RAC1_MOVIE_AT` | [h]<n>@<frame>; unset = off | At that game frame (in play) starts the game's movie n in its movie mode: the story movie n, as the pause menu plays them, or with `h` the level's help movie n, as a help desk plays them; with RAC1_GOTO later, it tests a level change in the middle of a movie. |
 | `RAC1_MRP_CHECK` | any value = on; default off | Checks the modern moby renderer's triangles against the CPU reference (slots and textures, in order); also turns the moby skip optimisation off. |
 | `RAC1_MRP_DIFF` | any value = on; default off | Renders the faithful image offscreen first and compares the modern pipeline's mobys against it, accumulating pixel difference statistics; the moby skip optimisation is turned off. |
 | `RAC1_MRP_LOD_KEEP_REAL` | 0 = off; default on (any other value or unset keeps it on) | Testing switch for the modern renderer's level-of-detail handling: setting it to 0 turns off the step that keeps the real scene's objects in the drawn scene, so that the drops they prevent can be seen. |
@@ -377,6 +381,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_SIM_DELAY` | integer N frames; default 0 | Delays the RAC1_SIM_INPUT script by N frames (for example to skip a level's arrival scene). |
 | `RAC1_SIM_HOST` | comma-separated host input names (keys, mouse buttons, mouse axes); unset = none | Supplies the host-device inputs that the "h" keys of a menu: or title: RAC1_SIM_INPUT script press, in order. Unrecognised names are reported and skipped. |
 | `RAC1_SIM_INPUT` | script name: forward, jump, dive, turn, attack, throw, hud, quick, fire, shoot, hold, holdwalk, look, start, ship, shipskip, explore (out of gameplay as shipskip; in gameplay forward with turns, jumps and attacks), vendor, menu:<keys>, title:<keys> or seq:<script>; default unset = real input | Simulates the pad with a scripted input pattern. Also makes the run ignore physical gamepads so it is deterministic. |
+| `RAC1_SIM_ITEM` | <frame>:<n or p>[;...]; unset = none | Presses the PC's Next Weapon (n) or Previous Weapon (p) action at that game frame, as the mouse wheel would (headless or simulated runs). |
+| `RAC1_SIM_MOUSE` | <from>:<to>:<dx>:<dy>[;...]; unset = none | Moves the mouse dx, dy pixels each game frame from frame `from` to `to - 1`, as the default bindings take it: the Direct mouse when the game takes it, else the simulated right stick (headless or simulated runs). |
 | `RAC1_STEPS` | integer >= 1; default 1 | In a headless run, the number of game frames run per host frame (exercises the catch-up path of a windowed run). Ignored in windowed runs. |
 | `RAC1_TEST_ZERO_FB` | <first>,<last>[,raw] game frames (last exclusive); unset = off | The host frames of those frames see a framebuffer of 0 x 0, as a minimised window's (on Windows a fullscreen window alt-tabbed out of): nothing is drawn or presented and the game goes on at 60 frames a second. With `raw` the renderers get the 0 x 0 size instead (the behaviour before the minimised window was skipped). |
 | `RAC1_TEXT_AUDIT` | set (any value) = on; default off | At the item-giving frame (RAC1_GIVE_FRAME), prints each item message the level's code asks for and whether the level's text table has it (`[textaudit]`, MISSING when it does not). |
@@ -387,6 +393,6 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_UNLOCK_PLANETS` | comma-separated level numbers, e.g. 2,3,4; unset = none | At the first gameplay frame, makes those planets reachable from the ship by calling the game's own unlock routine, so the galactic map shows them. |
 | `RAC1_UPDATE_FAKE` | x.y.z (a release) or dev:N (N new commits on main); unset = off | Offers a made-up update to the update notice instead of asking GitHub (no network), so the main menu's panel can be seen and tried: with `--debug-tools`, or headless with RAC1_ADVANCED=1 and RAC1_BOOT=1 (a headless run never checks for real). Skip Version applies to it as to a real one (`update_skip` in advanced_options.txt). |
 | `RAC1_VENDOR_OPEN` | button bitmask (decimal or 0x hex); default 0x10 (triangle) | With the RAC1_SIM_INPUT vendor script, the button press used to open the vendor screens (for example 0x20 for circle). |
-| `RAC1_VENDOR_TRACE` | integer n; default 0 (off) | Every n frames of the Vendor's screens prints their state, the cursor, the bolts, the price of Buy All Ammo's entry and each weapon of the list with its ammo, its most and its price a round (`[vendor]`), to check a purchase from EE memory. |
+| `RAC1_VENDOR_TRACE` | integer n; default 0 (off) | Every n frames of the Vendor's screens prints their state, the cursor, the bolts, the price of Buy All Ammo's entry and each entry of the list (`ALL(<weapon>)` for Buy All Ammo's, each weapon with its ammo, its most and its price a round; `[vendor]`), to check a purchase from EE memory. |
 | `RAC1_VU_SELFCHECK` | any value = on; default off | Runs each fast VU1 port and the exact port side by side and reports on stderr when their results differ; a progress line every 5000 programs. |
 | `RAC1_WORLD_MRP_CHECK` | any value = on; default off | Verification mode for the modern world renderer: it compares the triangles it builds against the CPU reference and also disables the GPU fast paths. |

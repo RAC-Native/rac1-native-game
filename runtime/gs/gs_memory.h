@@ -44,7 +44,11 @@ public:
     // The texture TEX0 / TEXA as the memory holds it now, decoded once: the same image while the bytes it read (its pixels and
     // its CLUT) are unchanged (an upload that writes the bytes already there changes nothing, so a texture the game loads
     // again each frame is decoded once).
+    // A decode that reads the same pixels as the snapshot it replaces (a change in the bytes around it) keeps the snapshot's image.
     std::shared_ptr<const TexImage> texture_at_kick(uint64_t tex0, uint64_t texa);
+    // (host) the cache's key of TEX0 / TEXA: the bits the decode reads (no TFX, TCC, CLD; the CLUT only for an indexed format,
+    // TEXA only where it applies)
+    static std::pair<uint64_t, uint64_t> texture_key(uint64_t tex0, uint64_t texa);
     // (host) the w x h CT32 picture at block bp (bw x 64 wide), as one image, decoded again only when those bytes changed
     // (the frame an IMAGE transfer put back: gs_emu.h's type-7 primitive)
     std::shared_ptr<const TexImage> picture_ct32(uint32_t bp, uint32_t bw, uint32_t w, uint32_t h);
@@ -87,7 +91,7 @@ private:
     };
     std::vector<VUndo> vundo_;
     bool vundo_on_ = false;
-    // the textures read since the memory last changed (TEX0 without CLD, TEXA) -> image
+    // the textures read since the memory last changed (texture_key) -> image
     // (valid while the local memory it read, [rd_lo, rd_hi), has not changed since `seq`)
     struct TexSnap {
         uint64_t gen = ~0ull;
@@ -97,7 +101,8 @@ private:
     };
     bool snap_stale(const TexSnap& s) const;
     bool changed_since(uint64_t seq, uint32_t lo, uint32_t hi) const;
-    std::map<std::pair<uint64_t, uint64_t>, TexSnap> tex_snaps_;
+    std::map<std::pair<uint64_t, uint64_t>, TexSnap> tex_snaps_;  // by texture_key
+    std::vector<uint32_t> dec_;                                     // (a decode's pixels, before they become an image)
     size_t tex_snap_bytes_ = 0;  // (the bytes of the images decoded into tex_snaps_ since it was last emptied)
     uint64_t tex_ids_ = 0;
     // the writes that changed the local memory's bytes: [lo, hi) per run of changes, numbered

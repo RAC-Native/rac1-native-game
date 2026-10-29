@@ -88,7 +88,8 @@ headless runs) the row is the game's own Mono / Stereo.
   window mode the window is centred on it. GLFW cannot place a window on Wayland, where the
   compositor decides, so the window mode half does nothing there. The choice is kept by the
   monitor's name, not by its place in the list, because that order is not fixed; a monitor that is
-  not connected when the game starts falls back to the first one.
+  not connected when the game starts falls back to the first one. Two monitors with the same name
+  are told apart by their place on the desktop: "Generic PnP Monitor (at 1920,0)".
 - **Render Resolution** scales the 3D; the HUD stays at the window's resolution.
 - **Aspect Ratio** Fill Screen widens the 3D to the window's shape without changing what the game
   sees; **Fit to Screen** applies when the chosen shape is not the window's. See
@@ -121,8 +122,10 @@ headless runs) the row is the game's own Mono / Stereo.
 
 ### Controls
 
-The controller and keyboard bindings, look inversion and mouse sensitivity (mouse look itself is the `mouse_look`
-line of `controls.txt`). See
+The controller and keyboard bindings (with the PC's Next / Previous Weapon and the mouse wheel), look inversion, the
+mouse's mode (Direct: it turns the camera and the aim by its movement; Stick: a simulated right stick), its
+sensitivity and its sensitivity while aiming (mouse look itself is the `mouse_look` line of `controls.txt`). They are
+the machine's, kept in `controls.txt`, not with the saves, and no New Game mode changes them. See
 [Input](input.md#the-controls-page).
 
 ### Advanced
@@ -130,10 +133,13 @@ line of `controls.txt`). See
 | Row | Values (default first) |
 |---|---|
 | Quick Select | Normal, Pause |
-| Aiming | Original, Modern |
+| Aiming | Original, Modern, Modern, No Zoom |
 | Movement | Original, Strafing, RAC 3 |
 | Fades | Fast, Original |
 | Buy All Ammo | Off, On |
+| Vibration | Off, Low, High |
+| Ship | Original, Ship 1, Ship 2, Ship 3 (the ships the save has) |
+| Clank | Original, Modern |
 
 See [Advanced options](advanced.md) for what each one does and how it is built.
 
@@ -160,9 +166,13 @@ New Game opens a choice between three modes before the game starts
 | Level of Detail | Original | High | High |
 | Texture Detail | Original (PS2) | Full | Full |
 | Quick Select, Aiming, Movement | Normal, Original, Original | Pause, Modern, RAC 3 | Pause, Modern, RAC 3 |
-| Modern lighting (Lighting, Dynamic Shadows, Secondary Lights, Shadow Distance, Ambient Occlusion) | off (the defaults) | off (the defaults) | Lighting High, Dynamic Shadows On, Secondary Lights All, Shadow Distance Maximum, Ambient Occlusion SSAO (Shadow Strength, Sun Rays, Surface Detail and Ambient Particles left as they are) |
+| Modern lighting and graphics enhancements (Lighting, Dynamic Shadows, Secondary Lights, Shadow Distance, Ambient Occlusion, Sun Rays, Surface Detail, Ambient Particles) | off (the defaults) | off (the defaults) | Lighting High, Dynamic Shadows On, Secondary Lights All, Shadow Distance Maximum, Ambient Occlusion GTAO, Sun Rays High, Surface Detail High, Ambient Particles High (Shadow Strength and AO Strength left as they are) |
+| Buy All Ammo (the Vendor) | Off | On | On |
+| Vibration | Off | High | High |
+| Clank's movement | Original | Original | Modern |
+| Ship | Original | Original | Original |
 
-Experimental is Modern plus the [modern lighting](lighting.md), which is experimental. No mode changes
+Experimental is Modern plus the [modern lighting](lighting.md) and every graphics enhancement, which are experimental. No mode changes
 the window settings or Fades. The mode chosen is kept with the save.
 
 ## The update check
@@ -196,7 +206,7 @@ Details:
 - **The channel:** Main menu > Updates > Update Channel. Players can switch between **Stable** (the
   latest release) and **Development** (`main`) at any time. A developer clone on a branch other than
   `main` stays on its branch.
-- **The installed version** is printed at start (`[orig] rac1-native 0.5.0 (v0.5.0-56-g0b232f5, main)`):
+- **The installed version** is printed at start (`[orig] rac1-native 0.6.0 (v0.6.0-12-g1a2b3c4, main)`):
   the release's version and, for a git clone, `git describe` and the branch, recorded by the build
   (`cmake/version.cmake`).
 - **Skip Version** is kept in `advanced_options.txt` (`update_skip <tag or commit>`); remove the

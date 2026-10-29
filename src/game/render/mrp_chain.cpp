@@ -164,6 +164,9 @@ struct Walk {
     }
 };
 
+// (the reader's thread inside a moby range read as any other: mrp_chain_reading_moby_state)
+thread_local bool t_moby_state = false;
+
 // The reader: the GS registers and the GIF's state, the VU1 the effects' programs run on, the frame read.
 class Reader : public vu1::StartObserver {
 public:
@@ -285,7 +288,9 @@ public:
                 buf_.assign(16, 0);
                 std::memcpy(buf_.data() + 8, t + 8, 8);
                 if (d != nullptr) buf_.insert(buf_.end(), d, d + static_cast<size_t>(qwc) * 16);
+                t_moby_state = skip >= 0 && in.skips[static_cast<size_t>(skip)].moby;  // (dry here is false)
                 vif_stream(buf_.data(), static_cast<uint32_t>(buf_.size()));
+                t_moby_state = false;
             });
         if (scr_prim_ >= 0) screen_picture();
         if (saved != nullptr) mem.undo_end();  // (a chain that ended inside a substitute)
@@ -394,10 +399,11 @@ void Reader::vif_stream(const uint8_t* p, uint32_t n) {
 }
 
 // A program start (MSCAL / MSCALF / MSCNT): run as the GS replica runs it (the host's hook first: the MRP's mobys' programs are not
-// run, vu1::g_start_hook), so that the VU1's state - its registers, its clip flags, which the next program reads - is the same; its
-// kicks kept only inside the effects' and program 7's ranges (not in a real range a substitute stood in for: its 3D is the
-// substitute's), elsewhere read for the GS registers they set and dropped (the moby programs' at the boot's title, whose logo
-// draws with the state their last kick left).
+// run, vu1::g_start_hook, except in the Vendor's moby ranges: mrp_chain_reading_moby_state), so that the VU1's state - its
+// registers, its clip flags, which the next program reads - is the same; its kicks kept only inside the effects' and program 7's
+// ranges (not in a real range a substitute stood in for: its 3D is the substitute's), elsewhere read for the GS registers they set
+// and dropped (the moby programs' at the boot's title, whose logo draws with the state their last kick left; the Vendor's, whose
+// panels draw with it).
 // orig: (host)
 void Reader::mscal(uint32_t code) {
     const bool range = (fx_now_ != 0 || vu7_now_) && !sub_drop_;
@@ -894,6 +900,9 @@ void mrp_chain_clear() {
 bool mrp_chain_used() { return g_used; }
 // orig: (host) see mrp_chain.h
 void mrp_chain_set_used(bool used) { g_used = used; }
+
+// orig: (host) see mrp_chain.h
+bool mrp_chain_reading_moby_state() { return t_moby_state; }
 
 // orig: (host) see mrp_chain.h
 uint64_t mrp_chain_gs_reg(uint32_t r) { return g_used ? g_reader.regs[r & 0x7f] : gs::gs_global().reg(r); }

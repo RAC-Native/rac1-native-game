@@ -115,6 +115,11 @@ void mrp_chain_set_used(bool used);
 // orig: (host) a GS register as the last chain read left it: the reader's, or the GS replica's when it read the chain (the moby
 // renderer's FOGCOL, the world scene's registers before the frame's chain)
 uint64_t mrp_chain_gs_reg(uint32_t r);
+// orig: (host) on this thread, the reader is inside a moby range it reads as any other (MrpChainInput::Skip::dry false: the Vendor's
+// screens, whose mobys the MRP draws): the moby programs' starts are run for the GS registers their kicks set (vu1::g_start_hook),
+// their primitives dropped. The 2D after them draws with that state, as on the GS: the Vendor's panels, drawn into a render target
+// and from it onto the screen, take their bilinear filter (TEX1 MMAG) from the last moby's kick
+bool mrp_chain_reading_moby_state();
 // orig: (host) whether the reader reads the frames' chains: the MRP draws the world, the mobys and the effects (RAC1_MRP_CHAIN=0,
 // testing: the GS replica reads them, as before the reader)
 bool mrp_chain_wanted();

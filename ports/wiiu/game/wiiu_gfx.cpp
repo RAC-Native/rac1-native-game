@@ -8,12 +8,15 @@
 #include <game/render/mrp_chain.h>
 #include <game/render/render_view.h>
 #include <runtime/gs/gs_emu.h>
+#include <runtime/ipu/movie_hw.h>
 #include <profiler/host_profiler.h>
 #include "gs_draw_gx2.h"
 #include "mrp_2d_gx2.h"
 #include "debug_menu.h"
 #include "mrp_moby_gx2.h"
 #include "mrp_world_gx2.h"
+
+#include <malloc.h>
 
 #include <coreinit/cache.h>
 #include <coreinit/memdefaultheap.h>
@@ -524,8 +527,18 @@ WHBGfxShaderGroup g_blit{};
 bool g_blit_ok = false, g_blit_tried = false;
 uint32_t g_blit_loc = 0;
 GX2Sampler g_blit_sampler{};
-float* g_blit_vb = nullptr;  // [2][4 corners][x, y, u, v], MEM2 (the TV's call alternates its halves)
+float* g_blit_vb = nullptr;  // [8][4 corners][x, y, u, v], MEM2 (cycled across blits and overlapped frames)
 uint32_t g_blit_half = 0;
+GX2Texture g_movie_tex{};
+bool g_movie_active = false;
+void movie_tex_free() {
+    if (g_movie_tex.surface.image != nullptr) {
+        GX2DrawDone();
+        MEMFreeToDefaultHeap(g_movie_tex.surface.image);
+    }
+    g_movie_tex = GX2Texture{};
+    g_movie_active = false;
+}
 void s3_free() {
     if (g_s3.own_c != nullptr) MEMFreeToDefaultHeap(g_s3.own_c);
     if (g_s3.own_d != nullptr) MEMFreeToDefaultHeap(g_s3.own_d);
@@ -547,7 +560,7 @@ bool blit_ready() {
             g_blit_loc = g_blit.pixelShader->samplerVars[i].location;
             loc = true;
         }
-    g_blit_vb = static_cast<float*>(MEMAllocFromDefaultHeapEx(2 * 4 * 4 * sizeof(float), GX2_VERTEX_BUFFER_ALIGNMENT));
+    g_blit_vb = static_cast<float*>(MEMAllocFromDefaultHeapEx(8 * 4 * 4 * sizeof(float), GX2_VERTEX_BUFFER_ALIGNMENT));
     if (!loc || g_blit_vb == nullptr || !WHBGfxInitShaderAttribute(&g_blit, "a_pos", 0, 0, GX2_ATTRIB_FORMAT_FLOAT_32_32_32_32) || !WHBGfxInitFetchShader(&g_blit)) {
         std::printf("[gpu] shaders/wiiu_blit.gsh: sampler %d, memory %d: the 3D drawn at the TV's resolution\n", loc, g_blit_vb != nullptr);
         return false;
@@ -645,7 +658,7 @@ void s3_blit(const GX2ColorBuffer* tv, GX2DepthBuffer* tvdb, const rac1::gs::Vie
     const float x0 = static_cast<float>(dst.x) / tw * 2.0f - 1.0f, x1 = static_cast<float>(dst.x + dst.w) / tw * 2.0f - 1.0f;
     const float y0 = 1.0f - (th - static_cast<float>(dst.y + dst.h)) / th * 2.0f, y1 = 1.0f - (th - static_cast<float>(dst.y)) / th * 2.0f;
     float* q = g_blit_vb + 16 * g_blit_half;
-    g_blit_half ^= 1u;
+    g_blit_half = (g_blit_half + 1u) & 7u;
     const float c[16] = {x0, y0, u0, v0, x1, y0, u1, v0, x0, y1, u0, v1, x1, y1, u1, v1};  // (a strip: top left, top right, bottom left, bottom right)
     std::memcpy(q, c, sizeof c);
     GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, q, sizeof c);
@@ -668,6 +681,88 @@ void s3_blit(const GX2ColorBuffer* tv, GX2DepthBuffer* tvdb, const rac1::gs::Vie
     GX2SetAttribBuffer(0, sizeof c, 4 * sizeof(float), q);
     GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLE_STRIP, 4, 0, 1);
     GX2SetShaderMode(GX2_SHADER_MODE_UNIFORM_REGISTER);  // (as the 3D's backends leave it)
+}
+// .pss FMV picture uploaded to `g_movie_tex` once per host frame (after the previous frame's GPU commands finished)
+void movie_sync() {
+    int mw = 0, mh = 0;
+    const std::vector<uint8_t>* movie_rgba = !g_ending ? rac1::movie_hw_shown(mw, mh) : nullptr;
+    if (movie_rgba == nullptr || mw <= 0 || mh <= 0 || movie_rgba->size() < static_cast<size_t>(mw) * static_cast<size_t>(mh) * 4) {
+        if (g_movie_tex.surface.image != nullptr) movie_tex_free();
+        g_movie_active = false;
+        return;
+    }
+    if (!blit_ready()) {
+        g_movie_active = false;
+        return;
+    }
+    if (g_movie_tex.surface.image == nullptr ||
+        g_movie_tex.surface.width != static_cast<uint32_t>(mw) ||
+        g_movie_tex.surface.height != static_cast<uint32_t>(mh)) {
+        movie_tex_free();
+        g_movie_tex = GX2Texture{};
+        GX2Surface& sf = g_movie_tex.surface;
+        sf.dim = GX2_SURFACE_DIM_TEXTURE_2D;
+        sf.width = static_cast<uint32_t>(mw);
+        sf.height = static_cast<uint32_t>(mh);
+        sf.depth = 1;
+        sf.mipLevels = 1;
+        sf.format = GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8;
+        sf.aa = GX2_AA_MODE1X;
+        sf.use = GX2_SURFACE_USE_TEXTURE;
+        sf.tileMode = GX2_TILE_MODE_LINEAR_ALIGNED;
+        GX2CalcSurfaceSizeAndAlignment(&sf);
+        const uint32_t align = std::max<uint32_t>(sf.alignment, 64u);
+        sf.image = MEMAllocFromDefaultHeapEx(sf.imageSize, static_cast<int>(align));
+        if (sf.image == nullptr) {
+            g_movie_active = false;
+            return;
+        }
+        g_movie_tex.viewFirstMip = 0;
+        g_movie_tex.viewNumMips = 1;
+        g_movie_tex.viewFirstSlice = 0;
+        g_movie_tex.viewNumSlices = 1;
+        g_movie_tex.compMap = GX2_COMP_MAP(GX2_SQ_SEL_R, GX2_SQ_SEL_G, GX2_SQ_SEL_B, GX2_SQ_SEL_1);
+        GX2InitTextureRegs(&g_movie_tex);
+    }
+    const uint8_t* src = movie_rgba->data();
+    uint8_t* dst = static_cast<uint8_t*>(g_movie_tex.surface.image);
+    const size_t src_row_bytes = static_cast<size_t>(mw) * 4;
+    const size_t dst_row_bytes = static_cast<size_t>(g_movie_tex.surface.pitch) * 4;
+    for (int y = 0; y < mh; ++y) {
+        std::memcpy(dst + static_cast<size_t>(y) * dst_row_bytes, src + static_cast<size_t>(y) * src_row_bytes, src_row_bytes);
+    }
+    GX2Invalidate(GX2_INVALIDATE_MODE_CPU_TEXTURE, g_movie_tex.surface.image, g_movie_tex.surface.imageSize);
+    g_movie_active = true;
+}
+void movie_blit(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const rac1::gs::Viewport& dst) {
+    if (!g_movie_active || g_movie_tex.surface.image == nullptr || !blit_ready()) return;
+    const float tw = static_cast<float>(cb->surface.width), th = static_cast<float>(cb->surface.height);
+    const float x0 = static_cast<float>(dst.x) / tw * 2.0f - 1.0f, x1 = static_cast<float>(dst.x + dst.w) / tw * 2.0f - 1.0f;
+    const float y0 = 1.0f - (th - static_cast<float>(dst.y + dst.h)) / th * 2.0f, y1 = 1.0f - (th - static_cast<float>(dst.y)) / th * 2.0f;
+    float* q = g_blit_vb + 16 * g_blit_half;
+    g_blit_half = (g_blit_half + 1u) & 7u;
+    const float c[16] = {x0, y0, 0.0f, 0.0f, x1, y0, 1.0f, 0.0f, x0, y1, 0.0f, 1.0f, x1, y1, 1.0f, 1.0f};
+    std::memcpy(q, c, sizeof c);
+    GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, q, sizeof c);
+    GX2SetColorBuffer(cb, GX2_RENDER_TARGET_0);
+    if (db != nullptr) GX2SetDepthBuffer(db);
+    GX2SetViewport(0.0f, 0.0f, tw, th, 0.0f, 1.0f);
+    GX2SetScissor(0, 0, cb->surface.width, cb->surface.height);
+    GX2SetDepthOnlyControl(FALSE, FALSE, GX2_COMPARE_FUNC_ALWAYS);
+    GX2SetColorControl(GX2_LOGIC_OP_COPY, 0, FALSE, TRUE);
+    GX2SetCullOnlyControl(GX2_FRONT_FACE_CCW, FALSE, FALSE);
+    GX2SetAlphaTest(FALSE, GX2_COMPARE_FUNC_ALWAYS, 0.0f);
+    const auto none = static_cast<GX2ChannelMask>(0);
+    GX2SetTargetChannelMasks(GX2_CHANNEL_MASK_RGBA, none, none, none, none, none, none, none);
+    GX2SetShaderMode(g_blit.vertexShader->mode);
+    GX2SetFetchShader(&g_blit.fetchShader);
+    GX2SetVertexShader(g_blit.vertexShader);
+    GX2SetPixelShader(g_blit.pixelShader);
+    GX2SetPixelTexture(&g_movie_tex, g_blit_loc);
+    GX2SetPixelSampler(&g_blit_sampler, g_blit_loc);
+    GX2SetAttribBuffer(0, sizeof c, 4 * sizeof(float), q);
+    GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLE_STRIP, 4, 0, 1);
+    GX2SetShaderMode(GX2_SHADER_MODE_UNIFORM_REGISTER);
 }
 }  // namespace
 
@@ -732,6 +827,12 @@ rac1::gs::Viewport frame_viewport(const GX2ColorBuffer* cb) {
 
 // the game's frame (4:3) centred on a colour buffer and its 2D drawn (the test triangle until the game's first frame)
 void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
+    if (g_movie_active) {
+        if (g_world_ready) rac1::mrp_world_wiiu_join();
+        movie_blit(cb, db, frame_viewport(cb));
+        if (g_tm_draw) gpu_mark(kGm2d);
+        return;
+    }
     // (testing, RAC1_WIIU_2D: 0 the frame's chain read but nothing of it drawn, 1 the screen's primitives only: no target,
     // 3 the MRP's 3D alone - the world's ties / shrubs and the mobys -: no 2D; the same with the replica's backend)
     static const int s_2d = std::getenv("RAC1_WIIU_2D") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_2D")) : 2;
@@ -997,12 +1098,14 @@ void wiiu_gfx_frame() {
     // the GPU reads written; the chain's reader joined for it first. RAC1_WIIU_2D_PREBUILD=0: built at its draw as before)
     static const bool prebuild_on = std::getenv("RAC1_WIIU_2D_PREBUILD") == nullptr || std::atoi(std::getenv("RAC1_WIIU_2D_PREBUILD")) != 0;
     const bool chain_2d = g_2d.have && g_2d.replica == nullptr;
+    int pre_mw = 0, pre_mh = 0;
+    const bool has_movie = !g_ending && rac1::movie_hw_shown(pre_mw, pre_mh) != nullptr;
     if (prebuild_on && chain_2d) {
         rac1::mrp_chain_join();  // (the frame's chain read on the reader's worker)
         rac1::mrp_world_wiiu_chain_joined();  // (its registers kept for the next frame's world)
         lap(kTmJoin);
         static const int s_2d = std::getenv("RAC1_WIIU_2D") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_2D")) : 2;
-        if (g_m2d_ready && g_menu_draw_2d && s_2d == 2) {
+        if (!has_movie && g_m2d_ready && g_menu_draw_2d && s_2d == 2) {
             const GX2ColorBuffer* tv = WHBGfxGetTVColourBuffer();
             rac1::mrp_2d_gx2_prebuild(rac1::mrp_chain_frame(), tv, g_2d.fb_w, g_2d.fb_h, frame_viewport(tv));
         }
@@ -1010,15 +1113,21 @@ void wiiu_gfx_frame() {
     }
     if (overlap && g_frame_ts != 0) GX2WaitTimeStamp(g_frame_ts);
     lap(kTmGpuWait);
+    movie_sync();
     rac1::gx2_perf_init();         // (the GPU switches' start, run.cfg's: once)
     // (RAC1_WIIU_GPU_TIME=1: the GPU's marks - off by default: the first run with them on hung the console, 2026-10-28, not yet known why)
     static const bool gpu_time = std::getenv("RAC1_WIIU_GPU_TIME") != nullptr && std::atoi(std::getenv("RAC1_WIIU_GPU_TIME")) != 0;
     static const bool gpu_sub = gpu_time && std::atoi(std::getenv("RAC1_WIIU_GPU_TIME")) >= 2;  // (the sky's / world's passes by kind too)
     g_gsub_on = gpu_sub;
     gpu_frame_begin(tm && gpu_time, g_frames);  // (the GPU's marks of two frames ago read, this frame's begun)
-    if (g_frames % 300 == 0)  // (the memory left, on the log: a leak shows)
-        std::printf("[wiiu] host frame %llu: %u KB free in the default heap\n", static_cast<unsigned long long>(g_frames),
-                    static_cast<unsigned>(MEMGetTotalFreeSizeForExpHeap(MEMGetBaseHeapHandle(MEM_BASE_HEAP_MEM2)) / 1024));
+    if (g_frames % 300 == 0) {  // (the memory left, on the log: a leak shows)
+        const struct mallinfo mi = mallinfo();
+        const unsigned exp_free_kb = static_cast<unsigned>(MEMGetTotalFreeSizeForExpHeap(MEMGetBaseHeapHandle(MEM_BASE_HEAP_MEM2)) / 1024);
+        const unsigned mall_free_kb = static_cast<unsigned>(static_cast<uint32_t>(mi.fordblks) / 1024);
+        const unsigned mall_used_kb = static_cast<unsigned>(static_cast<uint32_t>(mi.uordblks) / 1024);
+        std::printf("[wiiu] host frame %llu: %u KB free in the default heap (MEM2 exp: %u KB free, malloc: %u KB free, %u KB used)\n",
+                    static_cast<unsigned long long>(g_frames), exp_free_kb + mall_free_kb, exp_free_kb, mall_free_kb, mall_used_kb);
+    }
     if (chain_2d && !prebuild_on) {
         rac1::mrp_chain_join();  // (the frame's chain read on the reader's worker)
         rac1::mrp_world_wiiu_chain_joined();  // (its registers kept for the next frame's world)
@@ -1082,6 +1191,7 @@ void wiiu_gfx_frame() {
 
 void wiiu_gfx_stop() {
     if (!g_on) return;
+    movie_tex_free();
     if (g_2d_ready) rac1::gs::draw_gx2_shutdown();
     if (g_m2d_ready) rac1::mrp_2d_gx2_shutdown();
     if (g_mobys_ready) rac1::mrp_moby_gx2_shutdown();

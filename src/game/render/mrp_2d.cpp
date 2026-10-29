@@ -17,7 +17,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <set>
+#include <string>
 #include <tuple>
 #include <unordered_map>
 #include <vector>
@@ -157,8 +159,89 @@ using mrp2d::Key;
 using mrp2d::TexRef;
 using mrp2d::V;
 
-// The render targets' sizes as the backend holds them (the builder follows the frame's draws into them in order)
+// The render targets' sizes as the backend holds them (the builder follows the frame's draws into them in order), in GS pixels
 std::map<uint32_t, std::pair<int, int>> g_rt_size;
+// The render targets' resolution: GPU pixels per GS pixel (1: the GS's own; RAC1_2D_RT_SCALE). A target is a texture the game draws a
+// menu panel into at the PS2's resolution (the Vendor's monitors, the pause menu's screens, their item models), then shows it scaled
+// up; at the window's scale its text and pictures are as sharp as the 2D drawn on the screen. Its vertices, scissors and texture
+// coordinates stay in GS pixels: only its viewport and its texture are larger.
+int g_rt_s = 1;
+
+// RAC1_2D_TEX_STATS=N (testing): the GPU textures' churn, a line every N calls: the textures made, reused from the pool, destroyed,
+// the render targets (re)made, the textures held and their memory; then the textures made and reused by source (the sampled TEX0:
+// format, size, base)
+struct TexStats {
+    uint64_t made = 0, reused = 0, freed = 0, rt_made = 0, calls = 0;
+    int64_t bytes = 0, peak = 0, rt_bytes = 0;
+    std::map<std::string, uint64_t> src;            // made / reused since the last line, by source
+    std::unordered_map<uint64_t, std::string> tag;  // image id -> its source
+};
+TexStats g_ts;
+const int g_ts_every = [] {
+    const char* e = std::getenv("RAC1_2D_TEX_STATS");
+    return e == nullptr ? 0 : std::max(1, std::atoi(e));
+}();
+
+// orig: (host)
+void ts_tag(const TexImage* img, uint64_t tex0) {
+    if (g_ts_every == 0 || img == nullptr || g_ts.tag.count(img->id) != 0) return;
+    char b[64];
+    std::snprintf(b, sizeof b, "psm%02x %dx%d tbp%04x", static_cast<unsigned>((tex0 >> 20) & 0x3f), img->w, img->h, static_cast<unsigned>(tex0 & 0x3fff));
+    g_ts.tag[img->id] = b;
+}
+
+// orig: (host) a texture made for `img` (`reused`: taken from the pool)
+[[maybe_unused]] void ts_made(const TexImage* img, bool reused) {
+    if (g_ts_every == 0) return;
+    if (reused) {
+        ++g_ts.reused;
+    } else {
+        ++g_ts.made;
+        g_ts.bytes += static_cast<int64_t>(img->w) * img->h * 4;
+        g_ts.peak = std::max(g_ts.peak, g_ts.bytes + g_ts.rt_bytes);
+    }
+    const auto t = g_ts.tag.find(img->id);
+    ++g_ts.src[(t != g_ts.tag.end() ? t->second : std::string("?")) + (reused ? " reused" : " made")];
+}
+
+// orig: (host)
+[[maybe_unused]] void ts_freed(int w, int h) {
+    if (g_ts_every == 0) return;
+    ++g_ts.freed;
+    g_ts.bytes -= static_cast<int64_t>(w) * h * 4;
+}
+
+// orig: (host) a render target's colour (re)made: its bytes before, after
+[[maybe_unused]] void ts_rt(int64_t before, int64_t after) {
+    if (g_ts_every == 0) return;
+    ++g_ts.rt_made;
+    g_ts.rt_bytes += after - before;
+    g_ts.peak = std::max(g_ts.peak, g_ts.bytes + g_ts.rt_bytes);
+}
+
+// orig: (host) the line, every N calls
+[[maybe_unused]] void ts_print(size_t held, size_t pooled) {
+    if (g_ts_every == 0 || ++g_ts.calls % static_cast<uint64_t>(g_ts_every) != 0) return;
+    std::printf("[2d-tex] call %llu: made %llu reused %llu destroyed %llu rt-made %llu | held %zu pooled %zu, %.1f MB + targets %.1f MB (peak %.1f MB)\n",
+                static_cast<unsigned long long>(g_ts.calls), static_cast<unsigned long long>(g_ts.made), static_cast<unsigned long long>(g_ts.reused),
+                static_cast<unsigned long long>(g_ts.freed), static_cast<unsigned long long>(g_ts.rt_made), held, pooled, static_cast<double>(g_ts.bytes) / 1048576.0,
+                static_cast<double>(g_ts.rt_bytes) / 1048576.0, static_cast<double>(g_ts.peak) / 1048576.0);
+    for (const auto& [s, n] : g_ts.src) std::printf("[2d-tex]   %s: %llu\n", s.c_str(), static_cast<unsigned long long>(n));
+    g_ts.src.clear();
+    if (g_ts.tag.size() > 65536) g_ts.tag.clear();
+    std::fflush(stdout);
+}
+
+// orig: (host) the scale for this call: RAC1_2D_RT_SCALE unset or 1 the GS's, N (2..8) that many times, 0 the window's (its height
+// over the frame's, rounded up)
+int rt_scale_for(const Viewport& v, float fb_h) {
+    static const int s_env = [] {
+        const char* e = std::getenv("RAC1_2D_RT_SCALE");
+        return e == nullptr ? 1 : std::clamp(std::atoi(e), 0, 8);
+    }();
+    if (s_env != 0) return s_env;
+    return std::clamp(static_cast<int>(std::ceil(static_cast<float>(v.h) / std::max(fb_h, 1.0f) - 1.0f / 64.0f)), 1, 8);
+}
 
 // orig: (host)
 void build_frame(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H, const DepthMap* depth, const Viewport& v, size_t from, size_t to, Built& out,
@@ -396,13 +479,21 @@ void build_frame(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float
         k.fbmsk = field(st.frame, 32, 32);
         if (tme) {
             if (from_rt) k.tex.rt = static_cast<int>(src_rt->first);
-            else k.tex.img = p.tex.get();
+            else {
+                k.tex.img = p.tex.get();
+                k.tex.own = &p.tex;
+                ts_tag(k.tex.img, st.tex0);
+            }
             k.lin = field(st.tex1, 5, 1) != 0 ? 1 : 0;
             k.wrap_s = field(st.clamp, 0, 2) == 0 ? 1 : 0;
             k.wrap_t = field(st.clamp, 2, 2) == 0 ? 1 : 0;
             k.lin_min = field(st.tex1, 6, 3) >= 4 ? 1 : 0;
             k.mip_n = p.mip_n;
-            for (int m = 0; m < p.mip_n && m < 3; ++m) k.mip[m].img = p.mip_tex[m].get();
+            for (int m = 0; m < p.mip_n && m < 3; ++m) {
+                k.mip[m].img = p.mip_tex[m].get();
+                k.mip[m].own = &p.mip_tex[m];
+                ts_tag(k.mip[m].img, p.mip_tex0[m]);
+            }
         }
         k.mip_lo = p.mip_lo;
         k.lcm = static_cast<int>(field(st.tex1, 0, 1));
@@ -528,14 +619,31 @@ struct GlLocs {
 } g_loc;
 struct GlRt {
     GLuint fbo = 0, tex = 0, depth = 0;
-    int w = 0, h = 0, depth_w = 0, depth_h = 0;
+    int w = 0, h = 0, depth_w = 0, depth_h = 0;  // (GS pixels; the depth buffer's: GPU pixels)
+    int s = 1;                                     // GPU pixels per GS pixel (g_rt_s)
 };
 std::map<uint32_t, GlRt> g_gl_rt;
+// A target's buffers of its other sizes, kept for when it takes that size again (a page the game draws at two widths in a frame:
+// the pause menu's, every frame), by (frame page, 0 colour / 1 depth, GPU width, height). Taken back, a colour buffer is cleared
+// as a new one would be.
+std::multimap<std::tuple<uint32_t, int, int, int>, GLuint> g_gl_rt_spare;
+// A decoded image's GPU texture, by the image's id. It goes back to the pool (by size) when the image is gone - the local memory's
+// cache replaced it and no frame holds it: a texture the game changed - or after kTexKeep calls unused; the pool's textures are
+// filled again for the next images of their size (an image that changes every frame keeps the same few textures) and destroyed
+// after kTexKeep calls unused.
 struct GlTex {
     GLuint id = 0;
     uint64_t used = 0;
+    int w = 0, h = 0;
+    std::weak_ptr<const TexImage> src;  // (empty: an image nobody holds, kept by its use alone)
+    bool owned = false;
 };
 std::unordered_map<uint64_t, GlTex> g_gl_tex;  // by the image's id
+struct GlFree {
+    GLuint id = 0;
+    uint64_t since = 0;
+};
+std::map<std::pair<int, int>, std::vector<GlFree>> g_gl_pool;  // by size
 GLuint g_gl_screen = 0;
 int g_gl_screen_w = 0, g_gl_screen_h = 0;
 std::map<int, GLuint> g_gl_samplers;  // (lin, wrap_s, wrap_t) -> sampler
@@ -633,54 +741,110 @@ GLuint gl_sampler(bool lin, bool wrap_s, bool wrap_t) {
     return s;
 }
 
-// orig: (host)
-GLuint gl_texture(const TexImage* img) {
+// orig: (host) the image's texture: made at its first use, from the pool when one of its size is free (filled again in place)
+GLuint gl_texture(const TexRef& r) {
+    const TexImage* img = r.img;
     GlTex& e = g_gl_tex[img->id];
     e.used = g_frame_no;
     if (e.id != 0) return e.id;
+    e.w = img->w;
+    e.h = img->h;
+    if (r.own != nullptr && *r.own != nullptr) {
+        e.src = *r.own;
+        e.owned = true;
+    }
+    const auto pool = g_gl_pool.find({img->w, img->h});
+    if (pool != g_gl_pool.end() && !pool->second.empty()) {
+        e.id = pool->second.back().id;
+        pool->second.pop_back();
+        glBindTexture(GL_TEXTURE_2D, e.id);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, img->w, img->h, GL_RGBA, GL_UNSIGNED_BYTE, img->px.data());
+        ts_made(img, true);
+        return e.id;
+    }
     glGenTextures(1, &e.id);
     rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &e.id, "MRP 2D: textures");
     glBindTexture(GL_TEXTURE_2D, e.id);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, img->w, img->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, img->px.data());
+    ts_made(img, false);
     return e.id;
+}
+
+// orig: (host)
+// orig: (host) a target's buffer of that size kept before (0: none)
+GLuint gl_rt_spare(uint32_t fbp, int kind, int w, int h) {
+    const auto it = g_gl_rt_spare.find({fbp, kind, w, h});
+    if (it == g_gl_rt_spare.end()) return 0;
+    const GLuint id = it->second;
+    g_gl_rt_spare.erase(it);
+    return id;
 }
 
 // orig: (host)
 GlRt& gl_rt(uint32_t fbp, int w, int h) {
     GlRt& r = g_gl_rt[fbp];
-    if (r.fbo != 0 && r.w == w && r.h == h) return r;
-    if (r.fbo == 0) {
-        glGenFramebuffers(1, &r.fbo);
+    if (r.fbo != 0 && r.w == w && r.h == h && r.s == g_rt_s) return r;
+    if (r.fbo == 0) glGenFramebuffers(1, &r.fbo);
+    if (r.tex != 0) g_gl_rt_spare.insert({{fbp, 0, r.w * r.s, r.h * r.s}, r.tex});
+    r.tex = gl_rt_spare(fbp, 0, w * g_rt_s, h * g_rt_s);
+    const bool spare = r.tex != 0;
+    if (!spare) {
+        ts_rt(0, static_cast<int64_t>(w) * h * g_rt_s * g_rt_s * 4);
         glGenTextures(1, &r.tex);
         rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &r.tex, "MRP 2D: render targets");
+        glBindTexture(GL_TEXTURE_2D, r.tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w * g_rt_s, h * g_rt_s, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     }
     r.w = w;
     r.h = h;
-    glBindTexture(GL_TEXTURE_2D, r.tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    r.s = g_rt_s;
     glBindFramebuffer(GL_FRAMEBUFFER, r.fbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, r.tex, 0);
     if (r.depth != 0) r.depth_w = r.depth_h = 0;  // (resized with it below, when asked)
     glClearColor(0, 0, 0, 0);
-    glClear(GL_COLOR_BUFFER_BIT);
+    if (spare) {  // (all of it, as a new one is: the callers set their masks and scissor again)
+        glDisable(GL_SCISSOR_TEST);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glEnable(GL_SCISSOR_TEST);
+    } else {
+        glClear(GL_COLOR_BUFFER_BIT);
+    }
     g_rt_size[fbp] = {w, h};
     return r;
 }
 
 // orig: (host)
-void gl_rt_depth(GlRt& r) {
-    if (r.depth == 0) {
-        glGenRenderbuffers(1, &r.depth);
-        rac1::prof::gl_track_n(rac1::prof::kGlRenderbuffer, 1, &r.depth, "MRP 2D: render targets");
-    }
+void gl_rt_depth(GlRt& r, uint32_t fbp) {
     glBindFramebuffer(GL_FRAMEBUFFER, r.fbo);
-    if (r.depth_w != r.w || r.depth_h != r.h) {
-        glBindRenderbuffer(GL_RENDERBUFFER, r.depth);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, r.w, r.h);
-        glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    if (r.depth == 0 || r.depth_w != r.w * r.s || r.depth_h != r.h * r.s) {
+        // (a new depth buffer's contents are undefined, a kept one's those it was left with: what a target draws with its Z test
+        // clears it first - the menus' models)
+        if (r.depth != 0) {
+            GLint dw = 0, dh = 0;  // (its storage: depth_w / depth_h were reset with the colour's size)
+            glBindRenderbuffer(GL_RENDERBUFFER, r.depth);
+            glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH, &dw);
+            glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, &dh);
+            glBindRenderbuffer(GL_RENDERBUFFER, 0);
+            if (dw == r.w * r.s && dh == r.h * r.s) {
+                r.depth_w = dw;
+                r.depth_h = dh;
+                return;
+            }
+            g_gl_rt_spare.insert({{fbp, 1, dw, dh}, r.depth});
+        }
+        r.depth = gl_rt_spare(fbp, 1, r.w * r.s, r.h * r.s);
+        if (r.depth == 0) {
+            glGenRenderbuffers(1, &r.depth);
+            rac1::prof::gl_track_n(rac1::prof::kGlRenderbuffer, 1, &r.depth, "MRP 2D: render targets");
+            glBindRenderbuffer(GL_RENDERBUFFER, r.depth);
+            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, r.w * r.s, r.h * r.s);
+            glBindRenderbuffer(GL_RENDERBUFFER, 0);
+            ts_rt(0, 0);
+        }
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, r.depth);
-        r.depth_w = r.w;
-        r.depth_h = r.h;
+        r.depth_w = r.w * r.s;
+        r.depth_h = r.h * r.s;
     }
 }
 
@@ -714,7 +878,7 @@ void gl_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
         if (want >= 0) {
             const GlRt& r = g_gl_rt[static_cast<uint32_t>(want)];
             glBindFramebuffer(GL_FRAMEBUFFER, r.fbo);
-            glViewport(0, 0, r.w, r.h);
+            glViewport(0, 0, r.w * r.s, r.h * r.s);
             glUniform2f(g_loc.fb, static_cast<float>(r.w), static_cast<float>(r.h));
             glUniform1i(g_loc.rt, 1);
         } else {
@@ -750,8 +914,8 @@ void gl_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
         }
         if (it.kind == Item::kHost3d) {
             GlRt& r = gl_rt(static_cast<uint32_t>(it.key.want), it.rt_w, it.rt_h);
-            gl_rt_depth(r);
-            glViewport(0, 0, r.w, r.h);
+            gl_rt_depth(r, static_cast<uint32_t>(it.key.want));
+            glViewport(0, 0, r.w * r.s, r.h * r.s);
             glDisable(GL_SCISSOR_TEST);
             glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
             if (it.host_first) {
@@ -766,15 +930,15 @@ void gl_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
         const Key& k = it.key;
         if (k.to_rt) {
             const auto ex = g_gl_rt.find(static_cast<uint32_t>(k.want));
-            if (ex == g_gl_rt.end() || ex->second.fbo == 0 || ex->second.w != it.rt_w || ex->second.h != it.rt_h) {
+            if (ex == g_gl_rt.end() || ex->second.fbo == 0 || ex->second.w != it.rt_w || ex->second.h != it.rt_h || ex->second.s != g_rt_s) {
                 gl_rt(static_cast<uint32_t>(k.want), it.rt_w, it.rt_h);  // (created or resized: it binds and clears it)
                 cur_rt = -2;
                 dirty = true;
             }
             if (it.rt_depth) {
                 GlRt& r = g_gl_rt[static_cast<uint32_t>(k.want)];
-                if (r.depth == 0 || r.depth_w != r.w || r.depth_h != r.h) {
-                    gl_rt_depth(r);
+                if (r.depth == 0 || r.depth_w != r.w * r.s || r.depth_h != r.h * r.s) {
+                    gl_rt_depth(r, static_cast<uint32_t>(k.want));
                     cur_rt = -2;
                     dirty = true;
                 }
@@ -784,9 +948,9 @@ void gl_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
         GLuint tex = 0, mips[3] = {0, 0, 0};
         if (k.tme) {
             if (k.tex.rt >= 0) tex = g_gl_rt[static_cast<uint32_t>(k.tex.rt)].tex;
-            else if (k.tex.img != nullptr) tex = gl_texture(k.tex.img);
+            else if (k.tex.img != nullptr) tex = gl_texture(k.tex);
             for (int m = 0; m < k.mip_n && m < 3; ++m)
-                if (k.mip[m].img != nullptr) mips[m] = gl_texture(k.mip[m].img);
+                if (k.mip[m].img != nullptr) mips[m] = gl_texture(k.mip[m]);
             dirty = true;  // (an upload binds its texture on unit 0)
         }
         auto chg = [&](auto m) { return dirty || k.*m != applied.*m; };
@@ -862,7 +1026,12 @@ void gl_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
                 glDepthMask(GL_FALSE);
             }
         }
-        if (dirty || std::memcmp(k.sc, applied.sc, sizeof k.sc) != 0) glScissor(k.sc[0], k.sc[1], k.sc[2], k.sc[3]);
+        if (k.to_rt) {  // (a render target's scissor in GS pixels: its GPU pixels)
+            const int rs = g_gl_rt[static_cast<uint32_t>(k.want)].s;
+            glScissor(k.sc[0] * rs, k.sc[1] * rs, k.sc[2] * rs, k.sc[3] * rs);
+        } else if (dirty || applied.to_rt || std::memcmp(k.sc, applied.sc, sizeof k.sc) != 0) {
+            glScissor(k.sc[0], k.sc[1], k.sc[2], k.sc[3]);
+        }
         applied = k;
         dirty = false;
         const GLenum mode = k.lines ? GL_LINES : GL_TRIANGLES;
@@ -934,12 +1103,21 @@ static_assert(sizeof(Push) == 128);
 struct VkRt {
     vk::GpuImage color{};
     vk::GpuImage depth{};
-    int w = 0, h = 0;
+    int w = 0, h = 0;  // (GS pixels; the depth buffer's: GPU pixels)
     int depth_w = 0, depth_h = 0;
+    int s = 1;  // GPU pixels per GS pixel (g_rt_s)
+    uint32_t fbp = 0;
 };
-struct VkTex {
+struct VkTex {  // (as GlTex)
     vk::GpuImage img{};
     uint64_t used = 0;
+    int w = 0, h = 0;
+    std::weak_ptr<const TexImage> src;
+    bool owned = false;
+};
+struct VkFree {
+    vk::GpuImage img{};
+    uint64_t since = 0;
 };
 struct PipeKey {
     VkPrimitiveTopology topology;
@@ -962,7 +1140,12 @@ VkDescriptorSetLayout g_vk_set_layout = VK_NULL_HANDLE;
 VkPipelineLayout g_vk_layout = VK_NULL_HANDLE;
 std::map<PipeKey, VkPipeline> g_vk_pipes;
 std::map<uint32_t, VkRt> g_vk_rt;
+// (as g_gl_rt_spare; taken back, a buffer is cleared as a new one is)
+std::multimap<std::tuple<uint32_t, int, int, int>, vk::GpuImage> g_vk_rt_spare;
 std::unordered_map<uint64_t, VkTex> g_vk_tex;  // by the image's id
+// by size. A pooled image filled again in this frame's command buffer: its copy's barriers (vk::upload_image_2d, all commands
+// before and after) order it after the draws that sampled it before, this frame's and the frames' still running on the queue
+std::map<std::pair<int, int>, std::vector<VkFree>> g_vk_pool;
 vk::GpuImage g_vk_screen{};
 int g_vk_screen_w = 0, g_vk_screen_h = 0;
 
@@ -983,8 +1166,13 @@ void vk_shutdown() {
         vk::destroy_image(r.depth);
     }
     g_vk_rt.clear();
+    for (auto& [k, im] : g_vk_rt_spare) vk::destroy_image(im);
+    g_vk_rt_spare.clear();
     for (auto& [k, t] : g_vk_tex) vk::destroy_image(t.img);
     g_vk_tex.clear();
+    for (auto& [k, l] : g_vk_pool)
+        for (VkFree& f : l) vk::destroy_image(f.img);
+    g_vk_pool.clear();
     vk::destroy_image(g_vk_screen);
     g_vk_screen_w = g_vk_screen_h = 0;
     g_rt_size.clear();
@@ -1058,26 +1246,60 @@ VkPipeline vk_pipeline(const PipeKey& key) {
     return p;
 }
 
-// orig: (host)
-VkImageView vk_texture(const TexImage* img) {
+// orig: (host) the image's texture (as gl_texture)
+VkImageView vk_texture(const TexRef& r) {
+    const TexImage* img = r.img;
     VkTex& e = g_vk_tex[img->id];
     e.used = g_frame_no;
     if (e.img.view != VK_NULL_HANDLE) return e.img.view;
-    vk::create_image(static_cast<uint32_t>(img->w), static_cast<uint32_t>(img->h), VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-                     VK_IMAGE_ASPECT_COLOR_BIT, e.img);
+    e.w = img->w;
+    e.h = img->h;
+    if (r.own != nullptr && *r.own != nullptr) {
+        e.src = *r.own;
+        e.owned = true;
+    }
+    const auto pool = g_vk_pool.find({img->w, img->h});
+    const bool reused = pool != g_vk_pool.end() && !pool->second.empty();
+    if (reused) {
+        e.img = pool->second.back().img;
+        pool->second.pop_back();
+    } else {
+        vk::create_image(static_cast<uint32_t>(img->w), static_cast<uint32_t>(img->h), VK_FORMAT_R8G8B8A8_UNORM,
+                         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, e.img);
+    }
     vk::upload_image_2d(e.img, img->px.data(), img->px.size() * 4, 0, 0, img->w, img->h);
+    ts_made(img, reused);
     return e.img.view;
+}
+
+// orig: (host)
+// orig: (host) a target's buffer of that size kept before, into `out` (false: none)
+bool vk_rt_spare(uint32_t fbp, int kind, int w, int h, vk::GpuImage& out) {
+    const auto it = g_vk_rt_spare.find({fbp, kind, w, h});
+    if (it == g_vk_rt_spare.end()) return false;
+    out = it->second;
+    g_vk_rt_spare.erase(it);
+    return true;
 }
 
 // orig: (host)
 VkRt& vk_rt(uint32_t fbp, int w, int h) {
     VkRt& r = g_vk_rt[fbp];
-    if (r.color.image != VK_NULL_HANDLE && r.w == w && r.h == h) return r;
+    if (r.color.image != VK_NULL_HANDLE && r.w == w && r.h == h && r.s == g_rt_s) return r;
+    if (r.color.image != VK_NULL_HANDLE) {
+        g_vk_rt_spare.insert({{fbp, 0, r.w * r.s, r.h * r.s}, r.color});
+        r.color = vk::GpuImage{};
+    }
+    r.fbp = fbp;
     r.w = w;
     r.h = h;
-    vk::create_image(static_cast<uint32_t>(w), static_cast<uint32_t>(h), VK_FORMAT_R8G8B8A8_UNORM,
-                     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-                     VK_IMAGE_ASPECT_COLOR_BIT, r.color);
+    r.s = g_rt_s;
+    if (!vk_rt_spare(fbp, 0, w * r.s, h * r.s, r.color)) {
+        ts_rt(0, static_cast<int64_t>(w) * h * g_rt_s * g_rt_s * 4);
+        vk::create_image(static_cast<uint32_t>(w * r.s), static_cast<uint32_t>(h * r.s), VK_FORMAT_R8G8B8A8_UNORM,
+                         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                         VK_IMAGE_ASPECT_COLOR_BIT, r.color);
+    }
     vk::end_rendering();
     vk::transition_image(vk::cmd(), r.color, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     VkClearColorValue cc = {{0.0f, 0.0f, 0.0f, 0.0f}};
@@ -1090,12 +1312,19 @@ VkRt& vk_rt(uint32_t fbp, int w, int h) {
 
 // orig: (host)
 void vk_rt_depth(VkRt& r) {
-    if (r.depth.image != VK_NULL_HANDLE && r.depth_w == r.w && r.depth_h == r.h) return;
-    r.depth_w = r.w;
-    r.depth_h = r.h;
-    vk::create_image(static_cast<uint32_t>(r.w), static_cast<uint32_t>(r.h), vk::depth_stencil_format(),
-                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-                     VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, r.depth);
+    if (r.depth.image != VK_NULL_HANDLE && r.depth_w == r.w * r.s && r.depth_h == r.h * r.s) return;
+    if (r.depth.image != VK_NULL_HANDLE) {
+        g_vk_rt_spare.insert({{r.fbp, 1, r.depth_w, r.depth_h}, r.depth});
+        r.depth = vk::GpuImage{};
+    }
+    r.depth_w = r.w * r.s;
+    r.depth_h = r.h * r.s;
+    if (!vk_rt_spare(r.fbp, 1, r.depth_w, r.depth_h, r.depth)) {
+        ts_rt(0, 0);
+        vk::create_image(static_cast<uint32_t>(r.depth_w), static_cast<uint32_t>(r.depth_h), vk::depth_stencil_format(),
+                         VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                         VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, r.depth);
+    }
     vk::end_rendering();
     vk::transition_image(vk::cmd(), r.depth, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     VkClearDepthStencilValue dv = {1.0f, 0};
@@ -1127,9 +1356,9 @@ void vk_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
             rt.depth_view = r.depth.view;
             rt.depth_format = r.depth.format;
             rt.stencil_view = r.depth.view;
-            rt.width = static_cast<uint32_t>(r.w);
-            rt.height = static_cast<uint32_t>(r.h);
-            vk::set_viewport(0, 0, r.w, r.h);
+            rt.width = static_cast<uint32_t>(r.w * r.s);
+            rt.height = static_cast<uint32_t>(r.h * r.s);
+            vk::set_viewport(0, 0, r.w * r.s, r.h * r.s);
             vk::push_target(rt);
             rt_pushed = true;
         } else {
@@ -1156,7 +1385,7 @@ void vk_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
             VkRt& r = vk_rt(static_cast<uint32_t>(it.key.want), it.rt_w, it.rt_h);
             vk_rt_depth(r);
             bind_target(it.key.want, true);
-            vk::set_viewport(0, 0, r.w, r.h);
+            vk::set_viewport(0, 0, r.w * r.s, r.h * r.s);
             vk::set_scissor(false);
             if (it.host_first) vk::clear_attachments(false, nullptr, true, 1.0f, false, 0);
             v.host_3d(*it.p, r.w, r.h, it.host_first);
@@ -1165,13 +1394,13 @@ void vk_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
         const Key& k = it.key;
         if (k.to_rt) {
             const auto ex = g_vk_rt.find(static_cast<uint32_t>(k.want));
-            if (ex == g_vk_rt.end() || ex->second.color.image == VK_NULL_HANDLE || ex->second.w != it.rt_w || ex->second.h != it.rt_h) {
+            if (ex == g_vk_rt.end() || ex->second.color.image == VK_NULL_HANDLE || ex->second.w != it.rt_w || ex->second.h != it.rt_h || ex->second.s != g_rt_s) {
                 bind_target(-1, false);
                 vk_rt(static_cast<uint32_t>(k.want), it.rt_w, it.rt_h);
             }
             if (it.rt_depth) {
                 VkRt& r = g_vk_rt[static_cast<uint32_t>(k.want)];
-                if (r.depth.image == VK_NULL_HANDLE || r.depth_w != r.w || r.depth_h != r.h) {
+                if (r.depth.image == VK_NULL_HANDLE || r.depth_w != r.w * r.s || r.depth_h != r.h * r.s) {
                     bind_target(-1, false);
                     vk_rt_depth(r);
                 }
@@ -1183,10 +1412,10 @@ void vk_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
                 if (cur_rt == k.tex.rt) bind_target(-1, false);  // (sampled: not the target bound)
                 tex = g_vk_rt[static_cast<uint32_t>(k.tex.rt)].color.view;
             } else if (k.tex.img != nullptr) {
-                tex = vk_texture(k.tex.img);
+                tex = vk_texture(k.tex);
             }
             for (int m = 0; m < k.mip_n && m < 3; ++m)
-                if (k.mip[m].img != nullptr) mips[m] = vk_texture(k.mip[m].img);
+                if (k.mip[m].img != nullptr) mips[m] = vk_texture(k.mip[m]);
         }
         float scr_map[4] = {0, 0, 0, 0};
         if (it.alone) {  // the screen under the primitive copied
@@ -1206,13 +1435,14 @@ void vk_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
         }
         bind_target(k.want, k.ztest);
         vk::ensure_rendering();
-        if (k.to_rt) {
+        if (k.to_rt) {  // (its viewport and scissor in its GPU pixels)
             const VkRt& r = g_vk_rt[static_cast<uint32_t>(k.want)];
-            vk::set_viewport(0, 0, r.w, r.h);
+            vk::set_viewport(0, 0, r.w * r.s, r.h * r.s);
+            vk::set_scissor(true, k.sc[0] * r.s, k.sc[1] * r.s, k.sc[2] * r.s, k.sc[3] * r.s);
         } else {
             vk::set_viewport(v.x, v.y, v.w, v.h);
+            vk::set_scissor(true, k.sc[0], k.sc[1], k.sc[2], k.sc[3]);
         }
-        vk::set_scissor(true, k.sc[0], k.sc[1], k.sc[2], k.sc[3]);
         const VkFilter mag_f = k.lin ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
         const VkFilter mip_f = k.lin_min ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
         const VkSamplerAddressMode ws = k.wrap_s ? VK_SAMPLER_ADDRESS_MODE_REPEAT : VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
@@ -1337,31 +1567,54 @@ void vk_submit(const Built& b, int win_w, int win_h, float FB_W, float FB_H, con
 
 #endif  // !__WIIU__
 
-// the textures unused for this many calls forgotten (an image the game no longer draws: a texture whose memory it rewrote)
+// the textures unused for this many calls given back to the pool, the pool's destroyed after as many (an image the game no longer
+// draws: a texture whose memory it rewrote)
 constexpr uint64_t kTexKeep = 600;
 
-// orig: (host)
+// orig: (host) after each call: the textures of the images gone given back to the pool; every 64 calls those unused for kTexKeep
+// calls too, and the pool's unused for as long destroyed
 void evict() {
 #if !defined(__WIIU__)
-    if (g_frame_no % 64 != 0) return;
-    for (auto it = g_gl_tex.begin(); it != g_gl_tex.end();) {
-        if (g_frame_no - it->second.used > kTexKeep) {
-            glDeleteTextures(1, &it->second.id);
-            it = g_gl_tex.erase(it);
-        } else {
-            ++it;
+    const bool old = g_frame_no % 64 == 0;
+    auto give_back = [&](auto& held, auto& pool, auto take, auto destroy) {
+        for (auto it = held.begin(); it != held.end();) {
+            auto& t = it->second;
+            if ((t.owned && t.src.expired()) || (old && g_frame_no - t.used > kTexKeep)) {
+                pool[{t.w, t.h}].push_back({take(t), g_frame_no});
+                it = held.erase(it);
+            } else {
+                ++it;
+            }
         }
-    }
-    for (auto it = g_vk_tex.begin(); it != g_vk_tex.end();) {
-        if (g_frame_no - it->second.used > kTexKeep) {
-            vk::destroy_image(it->second.img);
-            it = g_vk_tex.erase(it);
-        } else {
-            ++it;
+        if (!old) return;
+        for (auto pt = pool.begin(); pt != pool.end();) {
+            auto& l = pt->second;
+            for (size_t i = 0; i < l.size();) {
+                if (g_frame_no - l[i].since > kTexKeep) {
+                    ts_freed(pt->first.first, pt->first.second);
+                    destroy(l[i]);
+                    l.erase(l.begin() + static_cast<long>(i));
+                } else {
+                    ++i;
+                }
+            }
+            pt = l.empty() ? pool.erase(pt) : std::next(pt);
         }
-    }
+    };
+    give_back(g_gl_tex, g_gl_pool, [](GlTex& t) { return t.id; }, [](GlFree& f) { glDeleteTextures(1, &f.id); });
+    give_back(g_vk_tex, g_vk_pool, [](VkTex& t) { return t.img; }, [](VkFree& f) { vk::destroy_image(f.img); });
 #endif
 }
+
+#if !defined(__WIIU__)
+// orig: (host) the textures in the pool (the statistics)
+size_t pooled() {
+    size_t n = 0;
+    for (const auto& [k, l] : g_gl_pool) n += l.size();
+    for (const auto& [k, l] : g_vk_pool) n += l.size();
+    return n;
+}
+#endif
 
 }  // namespace
 
@@ -1372,6 +1625,7 @@ void mrp_2d_draw(const MrpChainFrame& f, int win_w, int win_h, float fb_w, float
     if (vp != nullptr) v = *vp;
     else { v.w = win_w; v.h = win_h; }
     ++g_frame_no;
+    g_rt_s = rt_scale_for(v, fb_h);
     build_frame(f, win_w, win_h, fb_w, fb_h, depth, v, from, to, g_built, mrp2d::BuildOptions{});
     if (g_built.items.empty()) return;
 #if !defined(__WIIU__)  // (the Wii U draws with mrp_2d_gx2_draw, ports/wiiu/game/mrp_2d_gx2.h)
@@ -1379,6 +1633,9 @@ void mrp_2d_draw(const MrpChainFrame& f, int win_w, int win_h, float fb_w, float
     else gl_submit(g_built, win_w, win_h, fb_w, fb_h, v);
 #endif
     evict();
+#if !defined(__WIIU__)
+    ts_print(g_gl_tex.size() + g_vk_tex.size(), pooled());
+#endif
 }
 
 // orig: (host) see mrp_2d.h
@@ -1386,13 +1643,37 @@ size_t mrp_2d_clear_caches() {
 #if defined(__WIIU__)
     return mrp_2d_gx2_clear_caches();
 #else
-    const size_t n = g_gl_tex.size() + g_vk_tex.size();
+    const size_t n = g_gl_tex.size() + g_vk_tex.size() + pooled();
     for (auto& [id, t] : g_gl_tex) {
+        ts_freed(t.w, t.h);
         glDeleteTextures(1, &t.id);
     }
     g_gl_tex.clear();
-    for (auto& [id, t] : g_vk_tex) vk::destroy_image(t.img);
+    for (auto& [k, l] : g_gl_pool)
+        for (GlFree& f : l) {
+            ts_freed(k.first, k.second);
+            glDeleteTextures(1, &f.id);
+        }
+    g_gl_pool.clear();
+    for (auto& [id, t] : g_vk_tex) {
+        ts_freed(t.w, t.h);
+        vk::destroy_image(t.img);
+    }
     g_vk_tex.clear();
+    for (auto& [k, l] : g_vk_pool)
+        for (VkFree& f : l) {
+            ts_freed(k.first, k.second);
+            vk::destroy_image(f.img);
+        }
+    g_vk_pool.clear();
+    // (the targets' buffers of their other sizes too: the targets themselves stay, as the game's memory does)
+    for (auto& [k, id] : g_gl_rt_spare) {
+        if (std::get<1>(k) == 0) glDeleteTextures(1, &id);
+        else glDeleteRenderbuffers(1, &id);
+    }
+    g_gl_rt_spare.clear();
+    for (auto& [k, im] : g_vk_rt_spare) vk::destroy_image(im);
+    g_vk_rt_spare.clear();
     return n;
 #endif
 }

@@ -102,6 +102,7 @@ void glfwGetFramebufferSize(GLFWwindow*, int* w, int* h) {
 int glfwGetWindowAttrib(GLFWwindow*, int) { return 0; }
 void glfwSetInputMode(GLFWwindow*, int, int) {}
 int glfwRawMouseMotionSupported(void) { return GLFW_FALSE; }
+GLFWscrollfun glfwSetScrollCallback(GLFWwindow*, GLFWscrollfun) { return nullptr; }
 int glfwGetKey(GLFWwindow*, int) { return GLFW_RELEASE; }
 int glfwGetMouseButton(GLFWwindow*, int) { return GLFW_RELEASE; }
 void glfwGetCursorPos(GLFWwindow*, double* x, double* y) {

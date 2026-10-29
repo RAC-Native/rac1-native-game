@@ -536,15 +536,38 @@ It skips what the MRP draws from its own decoding (the world's and the mobys' ra
 starts only flip the VU1's double buffer) and runs the VU1 programs everywhere else as the PS2 would: in
 the effects' ranges for their output, elsewhere (the moby program's set-up) for the VU1's state the next
 programs read - its clip flags reach program 7's first triangle - their kicks read for the GS registers
-only. On the boot's title those registers matter: the logo after the mobys draws with the state their
-last kick left.
+only. Those registers matter in two places, so there the moby programs run too, for them alone: on the
+boot's title the logo after the mobys draws with the state their last kick left, and on the Vendor's
+screens the panels are drawn from a render target with the texture filter (TEX1's MMAG) the last moby's
+kick set. Without it the panels took the nearest filter a font draw had left: the Vendor's text, icons
+and item pictures came out blocky at any window size larger than the PS2's (the first version of the
+reader, fixed since).
 
 **The GS's local memory** (`runtime/gs/gs_memory.cpp`) is kept, as game state: the game stores parts of
 it back into its own memory (`gs_exec_store_image`: the pause menu's picture, `movie_mode_end` 0x2997c8),
 so the uploads - libgraph's and the chain's - are written into its 4 MB with the GS's layouts. Nothing is
 drawn into it. The textures the 2D and the effects sample are decoded from it at their first use and
 kept while the bytes they read are unchanged (a texture the game uploads again unchanged is the same
-image); the GPU textures are made once per decoded image. These caches are emptied at each level change.
+image). The cache's key is what the decode reads: TEX0's base, width, format and size, its CLUT fields only for an
+indexed format, TEXA only for a 16 or 24-bit texture or a 16-bit CLUT (not the texture function, TCC or CLD: a texture
+drawn with another function is the same image). The bytes a texture reads are followed as a range, so a change inside
+that range decodes it again even when its texels end up as they were (written back, or bytes between them that it does
+not read): when the pixels come out the same, the image is kept, with its id. The title's menus' textures are decoded
+again so every frame; before this check each frame made a new image of each of them, and a new GPU texture of each image: about 8 a frame, 1835 held at the first level change of a boot to
+Kerwan (2293 in a windowed run with the title shown longer), 92 MB. Now 9.
+
+The 2D's GPU textures are made once per decoded image, by its id. When the image is gone (the cache replaced it, a texture
+the game changed, and no frame holds it any more) or after 600 calls unused, its GPU texture goes back to a pool by size;
+the next image of that size takes it and is uploaded into it (`glTexSubImage2D`; in Vulkan a copy in the frame's command
+buffer, whose barriers order it after the draws, this frame's and the earlier frames' still on the queue, that sampled it
+before), so an image that changes every frame keeps the same few textures, and no texture is made or destroyed in a steady
+state. The pool's textures unused for 600 calls are destroyed. These caches are emptied at each level change.
+A render target is the game's frame page, and the game may draw into one page at two widths in a frame (the pause menu
+does, every frame); the target was then made again at each change of size, twice a frame. Its buffers of the other size are
+kept instead, by page and size, and taken back (the colour cleared as a new one is, Vulkan's depth too); they are dropped
+at a level change.
+`RAC1_2D_TEX_STATS=N` prints the counts every N calls (made, reused, destroyed, held, pooled, their memory, by source).
+The movies do not go through it: their picture is one streaming texture of the host's, filled each frame.
 
 **Drawing it** (`src/game/render/mrp_2d.cpp`). A call builds the vertices and the draw runs on the CPU
 first, the same for OpenGL and Vulkan - the widened view's rules ([The 2D in a widened view](#the-2d-in-a-widened-view)),
@@ -557,7 +580,16 @@ picture the Vendor's screens put back as the frame.
 
 What the game draws into its own memory to use as a texture goes into a render target that keeps the GS's
 alpha (0x80 = 1.0; the ship's planet menu's planet is three blended layers drawn into one); its blending
-reads that alpha at the GS's scale. A font's glyph (a 16 x 16 or 24 x 16 texel cell, a quad whose texture
+reads that alpha at the GS's scale. A render target has the PS2's resolution: the game draws a whole menu
+panel into one at 512 x 512 (the Vendor draws each of its monitors' contents into the same target, then
+that target onto the screen, bilinear; the pause menu's weapon and gadget screens draw their item models
+the same way), so on a 1440-line window that panel is the PS2's picture scaled 3.5 times, softer than the
+2D drawn on the screen itself. `RAC1_2D_RT_SCALE` (testing) makes the targets larger: 0 at the window's
+scale (its height over the frame's, rounded up: 4 at 1440 lines), N that many times. The game's
+coordinates, scissors and texture coordinates in a target stay in GS pixels; only its viewport, texture
+and depth buffer grow, and the models drawn into it are the MRP's at that size. The text and models are
+then as sharp as on the screen, but the look changes (the monitors' static and scan lines are finer), so
+it is off by default. A font's glyph (a 16 x 16 or 24 x 16 texel cell, a quad whose texture
 coordinates follow x and y apart) is sampled only inside its own cell: scaled up from the PS2's
 resolution, the bilinear filtering of a glyph's outer half texel blended in the neighbouring glyphs'
 edges in the font's texture, thin lines under, over and through the letters (issue #76; the GS drew the
@@ -581,7 +613,8 @@ Two kinds of frame the GS replica used to draw some 3D for:
 views at 16:9 and 32:9 (the HUD spread, the effects' substitutes) on five levels, in both renderers,
 identical to the replica's pictures; the game's state identical (`RAC1_RAMHASH`: level chains at 4:3 and
 32:9, the boot with its movies, the Vendor, the pause menu, the pipelined frames with the game thread).
-`RAC1_MRP_CHAIN_CHECK=1` reads each chain both ways - the reader and the replica, from the same local
+The Vendor's screens (Novalis, OpenGL and Vulkan, 4:3 and 32:9 at 5120 x 1440): their 2D as the replica's, the
+mobys aside. `RAC1_MRP_CHAIN_CHECK=1` reads each chain both ways - the reader and the replica, from the same local
 memory - and compares their primitives, marks and program 7's batches field by field: no difference on
 any of the 19 levels at 4:3 and at 32:9 but the new level's first frame above.
 
@@ -646,6 +679,9 @@ thread): see [Performance](performance.md).
   widened view's substitute stands in for a range (the substitute's for its 3D, the real range's for the VU1
   state it leaves): about 5 ms a frame of the chain worker on Gaspar at 32:9, beside the main thread.
 - A new level's first frame shows the loading screen's last picture ([The 2D](#the-2d)).
+- The menus' render targets (the Vendor's monitors, the pause menu's item models) are drawn at the PS2's
+  resolution and scaled up: soft at large window sizes, as in the original. Larger targets exist for
+  testing (`RAC1_2D_RT_SCALE`), not as a setting yet ([The 2D](#the-2d)).
 - The level's baked shadow meshes are culled by the game against its 4:3 view (no widened shadow run
   for that pass): their parts past the sides of a widened view are missing. So are the surfaces a
   moby's update queues only when the moby was drawn in the 4:3 view (one of Rilgar's water patches,

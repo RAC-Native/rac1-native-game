@@ -71,10 +71,15 @@
 #endif
 
 #include "host_language.h"
+#include "rumble.h"
+
+#include <atomic>
+#include <mutex>
 
 #include <game/enhance/advanced.h>
 #include <game/enhance/controls.h>
 #include <game/enhance/graphics.h>
+#include <game/enhance/vibration.h>
 #include <game/boot/front_end.h>
 #include <game/boot/front_image.h>
 #include <game/boot/level_read.h>
@@ -83,6 +88,8 @@
 #include <game/ovl/cutscene.h>
 #include <game/ovl/game_skips.h>
 #include <game/ovl/level_change.h>
+#include <game/ovl/movie_mode.h>
+#include <game/ovl/veldin_mobys.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/particles_vu1.h>
@@ -1427,6 +1434,7 @@ bool level_host_load(int level) {
 // reads still happen at its load's steps, in its order; they find the disc's sectors in the host's cache.
 // orig: (host) a read ahead of the level's files
 void level_prefetch(int level) {
+#if !defined(__WIIU__)
     if (!disc_has_level(level)) return;
     LevelLoader::prefetch(level);
     const uint32_t header_lba = lwu(0x0013a448 + static_cast<uint32_t>(level) * 8);  // (the table of contents, read at the start: toc_read)
@@ -1434,9 +1442,12 @@ void level_prefetch(int level) {
     std::thread([header_lba] {
         std::vector<uint8_t> h(5 * 2048);
         if (!disc_read(header_lba, 5, h.data())) return;
-        auto word = [&h](uint32_t o) { uint32_t v = 0; std::memcpy(&v, &h[o], 4); return v; };
+        auto word = [&h](uint32_t o) { return rac1::le32(&h[o]); };
         for (uint32_t o : {0x08u, 0x10u, 0x18u}) disc_will_need(word(o), word(o + 4));  // (0x13a4e8 the data, 0x13a4f0 / 0x13a4f8 the gameplay NTSC / PAL)
     }).detach();
+#else
+    (void)level;
+#endif
 }
 
 // After the level exit (0x292e08) the overlay's main returns to the base ELF's main loop
@@ -1514,6 +1525,18 @@ bool g_capture_click_held = false;  // the click that captured the cursor, not g
 bool g_cursor_free = false;         // the debug menu is open: the cursor is the menu's
 double g_cursor_x = 0.0, g_cursor_y = 0.0;
 float g_mouse_dx = 0.0f, g_mouse_dy = 0.0f;  // the movement since the last game frame
+hi::WheelPulse g_wheel;                      // the wheel's notches, a press each (game frames: host_state)
+// the vibration (#10): the motors the game asked for in its last game frame (vibration_take, pad_packet: the game's thread),
+// given to the pad last used (g_pad_guid) once a host frame (host_input_poll: the main thread)
+std::atomic<float> g_rumble_low{0.0f}, g_rumble_high{0.0f};
+std::mutex g_pad_guid_lock;
+std::string g_pad_guid;  // (the GUID of the pad g_pad_name names)
+GLFWscrollfun g_prev_scroll = nullptr;       // the callback before ours (chained)
+// orig: (host) the window's wheel: its notches for the game (not while the debug menu has the cursor)
+void scroll_callback(GLFWwindow* win, double x, double y) {
+    if (!g_cursor_free) g_wheel.scroll(y);
+    if (g_prev_scroll != nullptr) g_prev_scroll(win, x, y);
+}
 
 // The standard game controller database (SDL's gamecontrollerdb.txt format, which GLFW reads): the copy bundled in
 // third_party/gamecontrollerdb, then the player's own additions (~/.config/rac1-native/gamecontrollerdb.txt), then
@@ -1596,6 +1619,9 @@ void host_input_init(GLFWwindow* win) {
     std::printf("[controls] joysticks: %s\n", list.empty() ? "none" : list.c_str());
     std::fflush(stdout);
     if (glfwRawMouseMotionSupported()) glfwSetInputMode(win, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+    std::printf("[controls] mouse: %s, raw motion %s\n", g_bindings.mouse_mode == hi::MouseMode::kDirect ? "direct" : "stick",
+                glfwRawMouseMotionSupported() ? "on" : "not supported");
+    g_prev_scroll = glfwSetScrollCallback(win, scroll_callback);
     g_input_ready = true;
 }
 
@@ -1623,6 +1649,14 @@ void host_input_poll(GLFWwindow* win, bool cursor_free) {
         g_capture_click_held = true;
     }
     if (g_capture_click_held && glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_LEFT) != GLFW_PRESS) g_capture_click_held = false;
+    {  // the vibration: the pad last used (none: stilled)
+        std::string guid;
+        {
+            std::lock_guard<std::mutex> lock(g_pad_guid_lock);
+            guid = g_pad_guid;
+        }
+        rac1::rumble::set(guid, g_rumble_low.load(), g_rumble_high.load());
+    }
     if (g_cursor_captured) {
         double x = 0.0, y = 0.0;
         glfwGetCursorPos(win, &x, &y);
@@ -1659,6 +1693,7 @@ hi::HostState host_state(GLFWwindow* win, bool raw = false) {
     st.mouse_dx = g_mouse_dx;
     st.mouse_dy = g_mouse_dy;
     g_mouse_dx = g_mouse_dy = 0.0f;
+    g_wheel.frame(st);  // (one game frame: a notch's press, or its release)
     ++g_pad_polls;
     struct Pad {
         int j;
@@ -1697,6 +1732,11 @@ hi::HostState host_state(GLFWwindow* win, bool raw = false) {
     g_pad_name.clear();
     if (named >= 0)
         if (const char* nm = glfwGetGamepadName(pads[named].j)) g_pad_name = nm;
+    {
+        std::lock_guard<std::mutex> lock(g_pad_guid_lock);
+        const char* g = named >= 0 ? glfwGetJoystickGUID(pads[named].j) : nullptr;
+        g_pad_guid = g != nullptr ? g : "";
+    }
     return st;
 }
 
@@ -1767,6 +1807,16 @@ public:
     float mouse_sensitivity() override { return g_bindings.mouse_sensitivity; }
     void set_mouse_sensitivity(float s) override {
         g_bindings.mouse_sensitivity = s;
+        controls_save();
+    }
+    bool mouse_direct() override { return g_bindings.mouse_mode == hi::MouseMode::kDirect; }
+    void set_mouse_direct(bool on) override {
+        g_bindings.mouse_mode = on ? hi::MouseMode::kDirect : hi::MouseMode::kStick;
+        controls_save();
+    }
+    float aim_sensitivity() override { return g_bindings.aim_sensitivity; }
+    void set_aim_sensitivity(float s) override {
+        g_bindings.aim_sensitivity = s;
         controls_save();
     }
 
@@ -1844,21 +1894,26 @@ void pad_packet(GLFWwindow* win, uint64_t frame, int pre = -1) {
     g_sim_host.pad_present = true;
     hi::HostState devices;  // (what the Controls page's rebinding reads)
     bool have_devices = false;
+    // the Direct mouse (#117) when the game takes it this frame (the follow camera in gameplay; asked once a game frame),
+    // and the PC's weapon actions: given to the game beside the packet
+    const bool direct = rac1::advanced_mouse_direct() && g_bindings.mouse_mode == hi::MouseMode::kDirect;
+    rac1::AdvancedHostInput extra;
     if (win != nullptr && !simulated && g_input_ready) {
         devices = pre >= 0 && static_cast<size_t>(pre) < g_pad_pre.size() ? g_pad_pre[static_cast<size_t>(pre)] : host_state(win, g_remap.active());
         have_devices = true;
-        const hi::PadOutput o = hi::compute(g_bindings, devices);
+        const hi::PadOutput o = hi::compute(g_bindings, devices, direct);
         held = o.held;
         lx = o.lx;
         ly = o.ly;
         rx = o.rx;
         ry = o.ry;
+        extra = {o.look_x, o.look_y, o.aim_x, o.aim_y, o.next_item, o.prev_item};
     }
 #if defined(__WIIU__)
     else if (!simulated) {  // (the Wii U: no window, its pads read through the port)
         devices = rac1_wiiu_pad_state();
         have_devices = true;
-        const hi::PadOutput o = hi::compute(g_bindings, devices);
+        const hi::PadOutput o = hi::compute(g_bindings, devices, direct);
         held = o.held;
         lx = o.lx;
         ly = o.ly;
@@ -1866,6 +1921,55 @@ void pad_packet(GLFWwindow* win, uint64_t frame, int pre = -1) {
         ry = o.ry;
     }
 #endif
+    // (testing) RAC1_SIM_MOUSE=<from>:<to>:<dx>:<dy>[;...]: the mouse moved dx, dy pixels a game frame in the game frames
+    // from..to-1 (Direct when the game takes it, else as the stick), as the default bindings take the mouse;
+    // RAC1_SIM_ITEM=<frame>:<n|p>[;...]: the next / previous weapon pressed at that frame
+    if (simulated || win == nullptr) {
+        static const char* sim_mouse = std::getenv("RAC1_SIM_MOUSE");
+        for (const char* p = sim_mouse; p != nullptr && *p != 0;) {
+            unsigned long long f0 = 0, f1 = 0;
+            float dx = 0, dy = 0;
+            if (std::sscanf(p, "%llu:%llu:%f:%f", &f0, &f1, &dx, &dy) == 4 && frame >= f0 && frame < f1) {
+                hi::HostState ms;
+                ms.mouse_dx = dx;
+                ms.mouse_dy = dy;
+                const hi::PadOutput o = hi::compute(g_bindings, ms, direct);
+                rx = o.rx;
+                ry = o.ry;
+                extra.look_x = o.look_x;
+                extra.look_y = o.look_y;
+                extra.aim_x = o.aim_x;
+                extra.aim_y = o.aim_y;
+            }
+            p = std::strchr(p, ';');
+            if (p != nullptr) ++p;
+        }
+        static const char* sim_item = std::getenv("RAC1_SIM_ITEM");
+        for (const char* p = sim_item; p != nullptr && *p != 0;) {
+            unsigned long long f = 0;
+            char c = 0;
+            if (std::sscanf(p, "%llu:%c", &f, &c) == 2 && frame >= f && frame < f + 2) (c == 'p' ? extra.prev_item : extra.next_item) = true;
+            p = std::strchr(p, ';');
+            if (p != nullptr) ++p;
+        }
+    }
+    rac1::advanced_host_input(extra);
+    {  // the vibration of the game frame before (#10), for the pad (host_input_poll)
+        float vl = 0.0f, vh = 0.0f;
+        rac1::vibration_take(vl, vh);
+        g_rumble_low.store(vl);
+        g_rumble_high.store(vh);
+#if defined(__WIIU__)
+        rac1::rumble::set(g_pad_guid, vl, vh);
+#endif
+        static const bool vlog = std::getenv("RAC1_VIBRATION_LOG") != nullptr;  // (testing: the motors when they change)
+        static float vlast[2] = {0.0f, 0.0f};
+        if (vlog && (vl != vlast[0] || vh != vlast[1])) {
+            std::printf("[vibe] frame %llu low %.2f high %.2f\n", static_cast<unsigned long long>(frame), vl, vh);
+            vlast[0] = vl;
+            vlast[1] = vh;
+        }
+    }
     // (testing) RAC1_SIM_DELAY=N: the RAC1_SIM_INPUT script starts N frames late (after a level's arrival scene)
     static const uint64_t sim_delay = std::getenv("RAC1_SIM_DELAY") != nullptr ? std::strtoull(std::getenv("RAC1_SIM_DELAY"), nullptr, 0) : 0;
     if (const char* sim = frame >= sim_delay ? std::getenv("RAC1_SIM_INPUT") : nullptr) {
@@ -2526,6 +2630,12 @@ int main(int argc, char** argv) {
         static const bool s_mrp_diff = std::getenv("RAC1_MRP_DIFF") != nullptr;
         rac1::gs::Gs& gs = rac1::gs::gs_global();
         if (mrp_moby_active() && !s_mrp_diff && (start == 0x008 || start == 0x00a || start == 0x00c || start == 0x00e)) {
+            // the MRP's reader in the Vendor's moby ranges (mrp_chain_reading_moby_state): the programs run for the GS registers their
+            // kicks set (the reader drops their primitives), as the GS path ran them before the reader
+            if (mrp_chain_reading_moby_state()) {
+                fn(vu.st, start, kick);
+                return true;
+            }
             if (!boot_active()) return true;
             // the boot's title: the programs run for the GS state their kicks leave (the boot module's logo after the mobys
             // draws on it), their primitives flagged as the mobys' (the replica does not draw them: the MRP does)
@@ -2772,6 +2882,16 @@ int main(int argc, char** argv) {
             q = c + 1;
         }
         if (!goto_chain.empty()) goto_level = goto_chain[0].first, goto_frame = goto_chain[0].second;
+    }
+    // testing: RAC1_MOVIE_AT=[h]<n>@<frame>: at that game frame (in play, game mode 0) the game's movie `n` started in game
+    // mode 1: the story movie n (0x299560, as the pause menu plays them), or with `h` the level's help movie n (0x299460, as
+    // a help desk plays them)
+    int movie_at_n = -1;
+    bool movie_at_help = false;
+    long long movie_at = -1;
+    if (const char* m = std::getenv("RAC1_MOVIE_AT")) {
+        movie_at_help = *m == 'h';
+        if (std::sscanf(m + (movie_at_help ? 1 : 0), "%d@%lld", &movie_at_n, &movie_at) != 2) movie_at = -1;
     }
     // testing: RAC1_DIE_AT=<frame>: at that game frame Ratchet is killed through the game's own death state
     // (the debug menu's Kill Ratchet)
@@ -3041,16 +3161,46 @@ int main(int argc, char** argv) {
                 mrp_scene_begin_frame();
                 rac1::mrpw::scene_begin_update();  // (the MRP world: the world passes' chain ranges of this update)
                 g_world_chain_forced = boot_active() && !g_title_scene_host;  // (the title's passes keep their chain)
+                // When the game thread runs overlapped with drawing (wiiu_overlap with draw_reads_gs=false, or PC overlap),
+                // a level transition (level_exit_start -> loading_screen_setup, level_exit_frame -> card_start / flight load,
+                // or RAC1_GOTO) overwrites EE RAM (0x00100000, 0x0015ed84, 0x002c3b00, 0x004c3b00, overlay globals) and GS VRAM
+                // (gs_ram_upload at base 0, read by PrepWorker::vram_texture). Synchronize with the main thread (waiting for
+                // drawing to finish) and join background chain/world workers before executing the transition.
+                bool main_synced = false;
+                auto sync_main_for_transition = [&main_synced] {
+                    if (!main_synced && rac1::game_thread::on_game_thread()) {
+                        rac1::game_thread::on_main([] {
+                            mrp_chain_join();
+#if defined(__WIIU__)
+                            mrp_world_wiiu_join();
+#endif
+                        });
+                        main_synced = true;
+                    }
+                };
+                if (movie_at >= 0 && static_cast<long long>(game_frame) == movie_at && !exiting && !ee_thread_suspended() && !boot_active() && lw(OV(0x0015f5c4)) == 0) {
+                    if (movie_at_help) movie_play(movie_at_n);
+                    else movie_story_play(movie_at_n);
+                    std::printf("[orig] RAC1_MOVIE_AT: %s movie %d started at frame %llu\n", movie_at_help ? "the help" : "the story", movie_at_n, static_cast<unsigned long long>(game_frame));
+                }
                 for (const auto& [gl, gf] : goto_chain)  // (the chain's next change)
                     if (game_frame == gf) goto_level = gl, goto_frame = gf;
                 if (goto_level >= 0 && game_frame == goto_frame && !exiting && !ee_thread_suspended()) {
+                    sync_main_for_transition();
                     if (boot_active()) {  // the boot's title left for the level (the debug menu's skip)
                         boot_skip_to(goto_level);
+                    } else if (movie_mode_stop()) {  // (a movie playing, game mode 1: ended first, the change at the next frame)
+                        std::printf("[orig] RAC1_GOTO: a movie playing at frame %llu: stopped first\n", static_cast<unsigned long long>(game_frame));
+                        goto_frame = game_frame + 1;
                     } else {
                         level_change_request(0, goto_level);
                         level_exit_to(goto_level);
                     }
-                    std::printf("[orig] RAC1_GOTO: the level change to %d asked for at frame %llu\n", goto_level, static_cast<unsigned long long>(frame));
+                    if (goto_frame == game_frame) {
+                        int mw = 0, mh = 0;
+                        std::printf("[orig] RAC1_GOTO: the level change to %d asked for at frame %llu (movie: %s, picture %s)\n", goto_level, static_cast<unsigned long long>(frame),
+                                    movie_hw_is_open() ? "open" : "closed", movie_hw_shown(mw, mh) != nullptr ? "shown" : "none");
+                    }
                 }
                 // the game's frame on the EE thread's coroutine (ADR 0012): a vsync wait inside a blocking loop (the screen fade
                 // 0x1f9838) suspends it, this host frame shows that frame and the next one resumes it (the lambda not called again)
@@ -3059,6 +3209,7 @@ int main(int argc, char** argv) {
                 const int prof_code = rac1::prof::begin(rac1::prof::kGameCode);
                 ee_thread_run([&] {
                     if (exiting) {  // the level exit's loops (the loading screen, the load), then the new level
+                        sync_main_for_transition();
                         static uint64_t flight_frames = 0, flight_first = 0;  // (the frames the loading screen's flight was drawn)
                         if (level_exit_loading_screen() && lw(OV(0x0015f5d8)) == 0 && flight_frames++ == 0) flight_first = frame;
                         if (level_exit_frame()) {
@@ -3070,6 +3221,7 @@ int main(int argc, char** argv) {
                             running = level_enter(level_exit_files_read());
                         }
                     } else if (boot_active() ? !boot_frame() : !overlay_frame()) {  // the main loop (or the boot's title loop) left (0x15f570): the level exit
+                        sync_main_for_transition();
                         switch (level_exit_start()) {
                             case LevelExit::Load:
                                 exiting = true;
@@ -3276,6 +3428,20 @@ int main(int argc, char** argv) {
                 const bool already_kicked = prev_chain && start == g_loop_kicked.start && end == g_loop_kicked.end;
                 if (!prev_chain && !fade) g_loop_kicked = KickedChain{};
                 mrp_chain_set_used(!replica);  // (mrp_chain_gs_reg: the reader's registers, or the replica's)
+#if defined(__WIIU__)
+                // Begin the moby frame before mrp_moby_ready() and mrp_chain_start() (matching chain_stage on PC) so that
+                // g_frame.active and g_level are updated before the chain worker on Core 0 reads mrp_moby_active().
+                mrp_chain_join();
+                const bool wiiu_title = boot_active();
+                const bool wiiu_flight = exiting && level_exit_loading_screen();
+                const bool wiiu_scene = ee_thread_suspended() && ee_thread_frame() == rac1::EeVsyncFrame::Scene;
+                int wiiu_mw = 0, wiiu_mh = 0;
+                const bool wiiu_movie = movie_hw_shown(wiiu_mw, wiiu_mh) != nullptr;
+                const bool wiiu_vendor_pic = !wiiu_title && !wiiu_scene && vendor_picture_frame();
+                const bool wiiu_menu_mode = lw(OV(0x0015f5c4)) == 3 && g_mode_at_update == 3;
+                mrp_moby_begin_frame((wiiu_title && !boot_in_title() && !wiiu_flight) || (exiting && !wiiu_flight) || wiiu_movie || fade || wiiu_vendor_pic,
+                                     wiiu_menu_mode, wiiu_title && mrp_title_menu_drawn());
+#endif
                 if (!fade_held && !already_kicked && start != 0 && end > start) {
                     // (as chain_stage: the mobys whose skinning was skipped have no vertex data in the chain, their parts' bytes
                     // are older ones the VIF would take for codes - this frame's ranges, or the ones noted when the chain is walked again)
@@ -3316,6 +3482,9 @@ int main(int argc, char** argv) {
                             ci.skips.push_back(MrpChainInput::Skip{r.first, r.last, static_cast<uint32_t>(r.mscals.size()), r.host_3d, r.moby, true});
                         ci.regs_tag = world_first;
 #if defined(__WIIU__)
+                        if (wiiu_vendor_pic)
+                            for (MrpChainInput::Skip& s : ci.skips)
+                                if (s.moby) s.dry = false;
                         // (the MRP sky, mrp_world_sky.inc: its range walked in EE memory before the reader starts - their VU1 programs never
                         // run at once -, for mrp_world_wiiu_prepare)
                         mrp_chain_join();  // (the frame before's reading - waited for by the start anyway: not the sky's time)
@@ -3385,16 +3554,7 @@ int main(int argc, char** argv) {
                 }
                 rac1::g_world_pass_ranges.clear();
 #if defined(__WIIU__)
-                {  // the MRP's mobys (ports/wiiu/game/mrp_moby_gx2.h): chain_stage's begin_frame, then the frame prepared for the picture
-                    const bool title = boot_active();
-                    const bool flight = exiting && level_exit_loading_screen();
-                    const bool scene = ee_thread_suspended() && ee_thread_frame() == rac1::EeVsyncFrame::Scene;
-                    int mw = 0, mh = 0;
-                    const bool movie = movie_hw_shown(mw, mh) != nullptr;
-                    const bool vendor_pic = !title && !scene && vendor_picture_frame();
-                    const bool menu_mode = lw(OV(0x0015f5c4)) == 3 && g_mode_at_update == 3;
-                    mrp_moby_begin_frame((title && !boot_in_title() && !flight) || (exiting && !flight) || movie || fade || vendor_pic, menu_mode,
-                                         title && mrp_title_menu_drawn());
+                {  // the MRP's mobys (ports/wiiu/game/mrp_moby_gx2.h): the frame prepared for the picture (begin_frame ran before mrp_chain_start)
                     rac1::gs::Viewport mgv;
                     const auto tm0 = std::chrono::steady_clock::now();
                     if (mrp_moby_active()) mrp_moby_prepare(&mgv);
@@ -3402,7 +3562,7 @@ int main(int argc, char** argv) {
                     rac1_wiiu_time(1, std::chrono::duration<double, std::milli>(tm1 - tm0).count());
                     // the MRP world's ties / shrubs (ports/wiiu/game/mrp_world_gx2.h): the host-made static path's frame, on a frame
                     // whose world is drawn (mrp_world_begin_frame_async's condition on the PC)
-                    mrp_world_wiiu_prepare(!movie && (flight || ((title ? boot_in_title() : !menu_mode) && !exiting)) && !fade && !vendor_pic);
+                    mrp_world_wiiu_prepare(!wiiu_movie && (wiiu_flight || ((wiiu_title ? boot_in_title() : !wiiu_menu_mode) && !exiting)) && !fade && !wiiu_vendor_pic);
                     rac1_wiiu_time(2, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tm1).count());
                 }
                 const int screen_fbp = static_cast<int>(lwu(0x0013cf20) & 0x1ff);
@@ -4470,6 +4630,7 @@ int main(int argc, char** argv) {
         movie_picture.vk_reset();
         rac1::vk::shutdown();
     }
+    rac1::rumble::shutdown();
     if (window != nullptr) glfwDestroyWindow(window);
     if (g_audio_dump != nullptr) std::fclose(g_audio_dump);
     if (g_mirror_test) {  // (testing)

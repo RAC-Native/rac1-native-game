@@ -46,6 +46,8 @@ constexpr ControlInfo CONTROLS[kControlCount] = {
     {"right_stick_right", "Right stick right", "", 0},
     {"right_stick_up", "Right stick up", "", 0},
     {"right_stick_down", "Right stick down", "", 0},
+    {"next_item", "Next weapon", "The quick select's next item (its ring's while it is open)", 0},
+    {"prev_item", "Previous weapon", "The quick select's previous item", 0},
 };
 
 struct Name { const char* name; int code; };
@@ -131,6 +133,7 @@ HostInput mouse(int c) { return {InputKind::kMouseButton, c, 1}; }
 HostInput mouse_axis(int c, int sign) { return {InputKind::kMouseAxis, c, sign}; }
 HostInput pad(int c) { return {InputKind::kPadButton, c, 1}; }
 HostInput pad_axis(int c, int sign) { return {InputKind::kPadAxis, c, sign}; }
+HostInput wheel(int sign) { return {InputKind::kMouseWheel, 0, sign}; }
 
 constexpr float MOUSE_PIXELS_FULL = 20.0f;  // pixels in a game frame that tilt a stick fully at sensitivity 1
 constexpr float TRIGGER_PRESSED = 0.1f;      // a trigger as a button (what the DualSense code did before)
@@ -149,6 +152,7 @@ std::string input_to_string(const HostInput& in) {
         case InputKind::kMouseAxis: return std::string("mouse:") + sign + (in.code == 0 ? "x" : "y");
         case InputKind::kPadButton: { const char* n = name_of(PAD_BUTTONS, in.code); return std::string("pad:") + (n ? n : "?"); }
         case InputKind::kPadAxis: { const char* n = name_of(PAD_AXES, in.code); return std::string("pad:") + sign + (n ? n : "?"); }
+        case InputKind::kMouseWheel: return in.sign < 0 ? "mouse:wheeldown" : "mouse:wheelup";
         default: return "none";
     }
 }
@@ -168,6 +172,7 @@ bool input_from_string(std::string_view s, HostInput& out) {
     }
     if (dev == "mouse") {
         if (sign != 0 && (rest == "x" || rest == "y")) { out = mouse_axis(rest == "x" ? 0 : 1, sign); return true; }
+        if (sign == 0 && (rest == "wheelup" || rest == "wheeldown")) { out = wheel(rest == "wheelup" ? 1 : -1); return true; }
         if (sign == 0 && code_of(MOUSE_BUTTONS, rest, code)) { out = mouse(code); return true; }
         return false;
     }
@@ -184,7 +189,9 @@ Bindings default_bindings() {
     Bindings b;
     auto set = [&b](P c, std::initializer_list<HostInput> in) { b.map[static_cast<int>(c)] = in; };
     // the pad: as the earlier DualSense code (the pad's position names: a = bottom face button = Cross)
-    // the keyboard and mouse: WASD moves, the mouse is the right stick (a click in the window captures it)
+    // the keyboard and mouse: WASD moves, the mouse is the right stick (a click in the window captures it), the left
+    // button fires (circle), the right one aims (L2: Aiming = Modern's aim, else the original's L2), the thumb button
+    // and F swing the wrench, the wheel goes through the weapons (#117, #61)
     set(P::kSelect, {pad(GLFW_GAMEPAD_BUTTON_BACK), key(GLFW_KEY_TAB), key(GLFW_KEY_BACKSPACE)});
     set(P::kL3, {pad(GLFW_GAMEPAD_BUTTON_LEFT_THUMB), key(GLFW_KEY_V)});
     set(P::kR3, {pad(GLFW_GAMEPAD_BUTTON_RIGHT_THUMB), mouse(GLFW_MOUSE_BUTTON_MIDDLE), key(GLFW_KEY_B)});
@@ -193,14 +200,14 @@ Bindings default_bindings() {
     set(P::kRight, {pad(GLFW_GAMEPAD_BUTTON_DPAD_RIGHT), key(GLFW_KEY_RIGHT)});
     set(P::kDown, {pad(GLFW_GAMEPAD_BUTTON_DPAD_DOWN), key(GLFW_KEY_DOWN)});
     set(P::kLeft, {pad(GLFW_GAMEPAD_BUTTON_DPAD_LEFT), key(GLFW_KEY_LEFT)});
-    set(P::kL2, {pad_axis(GLFW_GAMEPAD_AXIS_LEFT_TRIGGER, 1), key(GLFW_KEY_Z)});
+    set(P::kL2, {pad_axis(GLFW_GAMEPAD_AXIS_LEFT_TRIGGER, 1), mouse(GLFW_MOUSE_BUTTON_RIGHT), key(GLFW_KEY_Z)});
     set(P::kR2, {pad_axis(GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER, 1), key(GLFW_KEY_C)});
     set(P::kL1, {pad(GLFW_GAMEPAD_BUTTON_LEFT_BUMPER), key(GLFW_KEY_Q)});
-    set(P::kR1, {pad(GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER), key(GLFW_KEY_LEFT_SHIFT)});
+    set(P::kR1, {pad(GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER), key(GLFW_KEY_LEFT_SHIFT), key(GLFW_KEY_LEFT_CONTROL)});
     set(P::kTriangle, {pad(GLFW_GAMEPAD_BUTTON_Y), key(GLFW_KEY_E)});
     set(P::kCircle, {pad(GLFW_GAMEPAD_BUTTON_B), mouse(GLFW_MOUSE_BUTTON_LEFT)});
     set(P::kCross, {pad(GLFW_GAMEPAD_BUTTON_A), key(GLFW_KEY_SPACE)});
-    set(P::kSquare, {pad(GLFW_GAMEPAD_BUTTON_X), mouse(GLFW_MOUSE_BUTTON_RIGHT), key(GLFW_KEY_F)});
+    set(P::kSquare, {pad(GLFW_GAMEPAD_BUTTON_X), mouse(GLFW_MOUSE_BUTTON_4), key(GLFW_KEY_F)});
     set(P::kLeftStickLeft, {pad_axis(GLFW_GAMEPAD_AXIS_LEFT_X, -1), key(GLFW_KEY_A)});
     set(P::kLeftStickRight, {pad_axis(GLFW_GAMEPAD_AXIS_LEFT_X, 1), key(GLFW_KEY_D)});
     set(P::kLeftStickUp, {pad_axis(GLFW_GAMEPAD_AXIS_LEFT_Y, -1), key(GLFW_KEY_W)});
@@ -209,6 +216,8 @@ Bindings default_bindings() {
     set(P::kRightStickRight, {pad_axis(GLFW_GAMEPAD_AXIS_RIGHT_X, 1), mouse_axis(0, 1), key(GLFW_KEY_L)});
     set(P::kRightStickUp, {pad_axis(GLFW_GAMEPAD_AXIS_RIGHT_Y, -1), mouse_axis(1, -1), key(GLFW_KEY_I)});
     set(P::kRightStickDown, {pad_axis(GLFW_GAMEPAD_AXIS_RIGHT_Y, 1), mouse_axis(1, 1), key(GLFW_KEY_K)});
+    set(P::kNextItem, {wheel(-1), key(GLFW_KEY_X)});
+    set(P::kPrevItem, {wheel(1)});
     return b;
 }
 
@@ -217,6 +226,7 @@ std::string bindings_to_text(const Bindings& b) {
     o << "# rac1-native controls. One line per PS2 pad control: <control> = <input>, <input>, ...\n"
          "# Inputs: key:<name> (a..z, 0..9, f1.., space, enter, escape, tab, left_shift, up, kp_0, ...),\n"
          "#         mouse:left / right / middle / button4..8, mouse:+x / -x / +y / -y (movement, needs the captured cursor),\n"
+         "#         mouse:wheelup / wheeldown (a notch is a press),\n"
          "#         pad:a / b / x / y / back / start / guide / leftshoulder / rightshoulder / leftstick / rightstick /\n"
          "#             dpup / dpdown / dpleft / dpright, pad:+leftx / -leftx / +lefty / -lefty / ... / +lefttrigger / +righttrigger\n"
          "# The pad names are positions (gamecontrollerdb): a = the bottom face button (Cross on a PlayStation pad).\n"
@@ -225,6 +235,9 @@ std::string bindings_to_text(const Bindings& b) {
     char buf[64];
     std::snprintf(buf, sizeof(buf), "%g", b.mouse_sensitivity);
     o << "mouse_sensitivity = " << buf << "\n";
+    std::snprintf(buf, sizeof(buf), "%g", b.aim_sensitivity);
+    o << "aim_sensitivity = " << buf << "  # Direct mouse while aiming: a factor of mouse_sensitivity\n";
+    o << "mouse_mode = " << (b.mouse_mode == MouseMode::kStick ? "stick" : "direct") << "  # direct: the mouse turns the camera; stick: a simulated right stick\n";
     o << "mouse_look = " << (b.mouse_look ? 1 : 0) << "\n";
     o << "invert_look_y = " << (b.invert_look_y ? 1 : 0) << "\n";
     for (int i = 0; i < kControlCount; ++i) {
@@ -259,6 +272,18 @@ Bindings bindings_from_text(std::string_view text, std::vector<std::string>* war
             const float v = std::strtof(value.c_str(), nullptr);
             if (v > 0.0f && v <= 100.0f) b.mouse_sensitivity = v;
             else warn("line " + std::to_string(line_no) + ": bad mouse_sensitivity");
+            continue;
+        }
+        if (name == "aim_sensitivity") {
+            const float v = std::strtof(value.c_str(), nullptr);
+            if (v > 0.0f && v <= 100.0f) b.aim_sensitivity = v;
+            else warn("line " + std::to_string(line_no) + ": bad aim_sensitivity");
+            continue;
+        }
+        if (name == "mouse_mode") {
+            if (value == "direct") b.mouse_mode = MouseMode::kDirect;
+            else if (value == "stick") b.mouse_mode = MouseMode::kStick;
+            else warn("line " + std::to_string(line_no) + ": mouse_mode is direct or stick");
             continue;
         }
         if (name == "mouse_look") { b.mouse_look = std::atoi(value.c_str()) != 0; continue; }
@@ -322,6 +347,7 @@ float input_value(const HostInput& in, const HostState& s, const Bindings& b) {
         }
         case InputKind::kPadButton:
             return s.pad_present && in.code >= 0 && in.code < static_cast<int>(s.pad_buttons.size()) && s.pad_buttons[in.code] ? 1.0f : 0.0f;
+        case InputKind::kMouseWheel: return (in.sign < 0 ? s.wheel_down : s.wheel_up) ? 1.0f : 0.0f;
         case InputKind::kPadAxis: {
             if (!s.pad_present || in.code < 0 || in.code >= static_cast<int>(s.pad_axes.size())) return 0.0f;
             const float v = s.pad_axes[in.code];
@@ -350,17 +376,50 @@ bool input_pressed(const HostInput& in, const HostState& s, const Bindings& b) {
 }
 }  // namespace
 
-PadOutput compute(const Bindings& b, const HostState& s) {
+namespace {
+bool right_stick(int c) {
+    return c >= static_cast<int>(PadControl::kRightStickLeft) && c <= static_cast<int>(PadControl::kRightStickDown);
+}
+}  // namespace
+
+void direct_look(const Bindings& b, float dx, float dy, PadOutput& o) {
+    // each right-stick half's mouse movement inputs, linear (no clamp: no speed cap): right minus left, down minus up
+    float x = 0.0f, y = 0.0f;
+    using P = PadControl;
+    for (const P c : {P::kRightStickLeft, P::kRightStickRight, P::kRightStickUp, P::kRightStickDown}) {
+        const float half_sign = c == P::kRightStickLeft || c == P::kRightStickUp ? -1.0f : 1.0f;
+        for (const HostInput& in : b.map[static_cast<int>(c)]) {
+            if (in.kind != InputKind::kMouseAxis) continue;
+            const float d = (in.code == 0 ? dx : dy) * static_cast<float>(in.sign);
+            if (d <= 0.0f) continue;
+            (c == P::kRightStickLeft || c == P::kRightStickRight ? x : y) += half_sign * d;
+        }
+    }
+    if (b.invert_look_y) y = -y;
+    const float k = b.mouse_sensitivity * kDirectRadPerPixel;
+    o.look_x = x * k;
+    o.look_y = y * k;
+    o.aim_x = o.look_x * b.aim_sensitivity;
+    o.aim_y = o.look_y * b.aim_sensitivity;
+}
+
+PadOutput compute(const Bindings& b, const HostState& s, bool direct) {
     PadOutput o;
     for (int i = 0; i < kButtonCount; ++i)
         for (const HostInput& in : b.map[i])
             if (input_pressed(in, s, b)) { o.held |= control_info(i).bit; break; }
     auto half = [&](PadControl c) {
         float v = 0.0f;
-        for (const HostInput& in : b.map[static_cast<int>(c)]) v = std::max(v, input_value(in, s, b));
+        for (const HostInput& in : b.map[static_cast<int>(c)]) {
+            if (direct && in.kind == InputKind::kMouseAxis && right_stick(static_cast<int>(c))) continue;  // (given as angles)
+            v = std::max(v, input_value(in, s, b));
+        }
         return v;
     };
     using P = PadControl;
+    for (const HostInput& in : b.map[static_cast<int>(P::kNextItem)]) o.next_item |= input_pressed(in, s, b);
+    for (const HostInput& in : b.map[static_cast<int>(P::kPrevItem)]) o.prev_item |= input_pressed(in, s, b);
+    if (direct) direct_look(b, s.mouse_dx, s.mouse_dy, o);
     o.lx = half(P::kLeftStickRight) - half(P::kLeftStickLeft);
     o.ly = half(P::kLeftStickDown) - half(P::kLeftStickUp);
     o.rx = half(P::kRightStickRight) - half(P::kRightStickLeft);
@@ -369,6 +428,35 @@ PadOutput compute(const Bindings& b, const HostState& s) {
     stick_to_square(o.lx, o.ly);
     stick_to_square(o.rx, o.ry);
     return o;
+}
+
+void WheelPulse::scroll(double y) {
+    acc_ += y;
+    while (acc_ >= 1.0) {
+        acc_ -= 1.0;
+        if (up_ < kMaxQueued) ++up_;
+    }
+    while (acc_ <= -1.0) {
+        acc_ += 1.0;
+        if (down_ < kMaxQueued) ++down_;
+    }
+}
+
+void WheelPulse::frame(HostState& s) {
+    s.wheel_up = s.wheel_down = false;
+    if (phase_ == 1 || phase_ == -1) {  // a notch held last frame: released now
+        phase_ = 0;
+        return;
+    }
+    if (up_ > 0) {
+        --up_;
+        phase_ = 1;
+        s.wheel_up = true;
+    } else if (down_ > 0) {
+        --down_;
+        phase_ = -1;
+        s.wheel_down = true;
+    }
 }
 
 void stick_to_square(float& x, float& y) {
@@ -410,6 +498,7 @@ constexpr RemapRow ROWS[kRemapRowCount] = {
     {"D-pad", {P::kUp, P::kDown, P::kLeft, P::kRight}, 4},
     {"Left Stick", {P::kLeftStickUp, P::kLeftStickDown, P::kLeftStickLeft, P::kLeftStickRight}, 4},
     {"Right Stick", {P::kRightStickUp, P::kRightStickDown, P::kRightStickLeft, P::kRightStickRight}, 4},
+    {"Next Weapon", {P::kNextItem}, 1},  {"Previous Weapon", {P::kPrevItem}, 1},
 };
 
 bool contains(const std::vector<HostInput>& v, const HostInput& in) { return std::find(v.begin(), v.end(), in) != v.end(); }
@@ -498,7 +587,8 @@ const RemapRow& remap_row(int i) { return ROWS[std::clamp(i, 0, kRemapRowCount -
 
 bool on_device(const HostInput& in, Device d) {
     const bool pad_in = in.kind == InputKind::kPadButton || in.kind == InputKind::kPadAxis;
-    const bool kbm = in.kind == InputKind::kKey || in.kind == InputKind::kMouseButton || in.kind == InputKind::kMouseAxis;
+    const bool kbm = in.kind == InputKind::kKey || in.kind == InputKind::kMouseButton || in.kind == InputKind::kMouseAxis ||
+                     in.kind == InputKind::kMouseWheel;
     return d == Device::kPad ? pad_in : kbm;
 }
 
@@ -532,6 +622,7 @@ std::string input_label(const HostInput& in, PadStyle st) {
             }
         case InputKind::kMouseAxis:
             return in.code == 0 ? (in.sign < 0 ? "Mouse Left" : "Mouse Right") : (in.sign < 0 ? "Mouse Up" : "Mouse Down");
+        case InputKind::kMouseWheel: return in.sign < 0 ? "Wheel Down" : "Wheel Up";
         case InputKind::kPadButton: return in.code >= 0 && in.code < 15 ? PAD_NAMES[s][in.code] : "?";
         case InputKind::kPadAxis: {
             if (is_trigger(in.code)) return TRIGGER_NAMES[s][in.code == GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER ? 1 : 0];
@@ -611,7 +702,11 @@ void reset_device(Bindings& b, Device d) {
                 if (on_device(in, k)) v.push_back(in);
         b.map[i] = std::move(v);
     }
-    if (d == Device::kKeyboardMouse) b.mouse_sensitivity = def.mouse_sensitivity;
+    if (d == Device::kKeyboardMouse) {
+        b.mouse_sensitivity = def.mouse_sensitivity;
+        b.aim_sensitivity = def.aim_sensitivity;
+        b.mouse_mode = def.mouse_mode;
+    }
     b.invert_look_y = def.invert_look_y;
 }
 
@@ -752,6 +847,10 @@ bool Remapper::frame(Bindings& b, const HostState& s) {
             in = mouse(m);
             found = true;
         }
+    if (!found && (s.wheel_up || s.wheel_down)) {  // a wheel notch (#61: the D-pad's up / down, the weapons)
+        in = wheel(s.wheel_up ? 1 : -1);
+        found = true;
+    }
     // a mouse movement before the first key: the mouse as the stick (the sticks only, as the page says: the D-pad bound to the
     // mouse loses the arrow keys the menus are moved with, #61)
     if (group && step_ == 0 && !found && r.controls[0] != PadControl::kUp) {

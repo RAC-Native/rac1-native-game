@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace rac1::mrp2d {
@@ -32,9 +33,11 @@ struct V {
 };
 static_assert(sizeof(V) == 15 * sizeof(float));
 
-// A texture a run samples: a decoded image (its id the GPU texture's key) or a render target (its frame page)
+// A texture a run samples: a decoded image (its id the GPU texture's key; `own` the primitive's hold on it, for the GPU texture to
+// know when the image is gone) or a render target (its frame page)
 struct TexRef {
     const gs::TexImage* img = nullptr;
+    const std::shared_ptr<const gs::TexImage>* own = nullptr;
     int rt = -1;
     bool operator==(const TexRef& o) const { return img == o.img && rt == o.rt; }
 };
