@@ -732,9 +732,8 @@ uint32_t graphics_text(int32_t id) {
     else if (gs_.top + (k - V_FIRST) < ROW_COUNT) s = value_text(ROWS_DEF[gs_.top + (k - V_FIRST)].s);
     if (k >= T_WINDOW && k <= T_HUD_FIT) return 0;  // (a value word: never asked for, see string_slot)
     const uint32_t at = STRINGS + static_cast<uint32_t>(string_slot(k)) * STRING_SIZE;
-    char* p = static_cast<char*>(ee_ram_ptr(at));
-    std::strncpy(p, s.c_str(), STRING_SIZE - 1);
-    p[STRING_SIZE - 1] = 0;
+    ee_zero(at, STRING_SIZE);
+    ee_copy_in(at, s.c_str(), std::min<size_t>(s.size(), STRING_SIZE - 1));
     return at;
 }
 

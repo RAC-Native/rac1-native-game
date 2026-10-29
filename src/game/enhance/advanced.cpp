@@ -314,9 +314,10 @@ void advanced_menu_install() {
     // the texts (all languages: the lookup picks)
     for (uint32_t lang = 0; lang < 6; ++lang)
         for (uint32_t t = 0; t < T_COUNT; ++t) {
-            char* s = static_cast<char*>(ee_ram_ptr(STRINGS + (lang * T_COUNT + t) * STRING_SIZE));
-            std::strncpy(s, TEXTS[lang][t], STRING_SIZE - 1);
-            s[STRING_SIZE - 1] = 0;
+            const uint32_t at = STRINGS + (lang * T_COUNT + t) * STRING_SIZE;
+            const char* src = TEXTS[lang][t];
+            ee_zero(at, STRING_SIZE);
+            ee_copy_in(at, src, std::min<size_t>(std::strlen(src), STRING_SIZE - 1));
         }
 
     // the page: Camera's with our title and rows, its parent the Options page
@@ -446,10 +447,10 @@ void picture_placeholder(uint32_t buf, uint32_t which) {
     colour(FRAME, 0x50, 0x68, 0xa0);
     uint8_t* px = static_cast<uint8_t*>(ee_ram_ptr(buf + 0x420));
     for (int y = 0; y < H; ++y)
-        for (int x = 0; x < W; ++x) px[y * W + x] = static_cast<uint8_t>(y < VH ? (VH - 1 - y) * 127 / VH : 0);
+        for (int x = 0; x < W; ++x) px[ee_byte_addr(static_cast<uint32_t>(y * W + x))] = static_cast<uint8_t>(y < VH ? (VH - 1 - y) * 127 / VH : 0);
     for (int y = 0; y < VH; ++y)
         for (int x = 0; x < VW; ++x)
-            if (x < 3 || y < 3 || x >= VW - 3 || y >= VH - 3) px[y * W + x] = FRAME;
+            if (x < 3 || y < 3 || x >= VW - 3 || y >= VH - 3) px[ee_byte_addr(static_cast<uint32_t>(y * W + x))] = FRAME;
     // the letters (5 x 7, rows from the top, bit 4 the left column), 7 texels a dot: "PC+" (the
     // Advanced page), "GFX" (Graphics), "PS2" / "PC+" (the new game's Original / Modern modes), "NEW" (the update notice)
     static constexpr uint8_t P[7] = {0x1e, 0x11, 0x11, 0x1e, 0x10, 0x10, 0x10}, C[7] = {0x0e, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0e},
@@ -469,7 +470,7 @@ void picture_placeholder(uint32_t buf, uint32_t which) {
                 for (int col = 0; col < GW; ++col)
                     if ((GLYPHS[g][row / S] >> (4 - col / S)) & 1) {
                         const int x = X0 + g * (GW + GAP) + col + off, y = Y0 + row + off;
-                        px[y * W + x] = pass == 0 ? SHADOW : TEXT;
+                        px[ee_byte_addr(static_cast<uint32_t>(y * W + x))] = pass == 0 ? SHADOW : TEXT;
                     }
     }
 }

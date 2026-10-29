@@ -457,10 +457,10 @@ uint32_t update_notice_text(int32_t id) {
                 break;
             default: break;
         }
-        char* p = static_cast<char*>(ee_ram_ptr(U_STRINGS + static_cast<uint32_t>(k) * U_STRING_SIZE));
-        std::strncpy(p, s.c_str(), U_STRING_SIZE - 1);
-        p[U_STRING_SIZE - 1] = 0;
-        return U_STRINGS + static_cast<uint32_t>(k) * U_STRING_SIZE;
+        const uint32_t at = U_STRINGS + static_cast<uint32_t>(k) * U_STRING_SIZE;
+        ee_zero(at, U_STRING_SIZE);
+        ee_copy_in(at, s.c_str(), std::min<size_t>(s.size(), U_STRING_SIZE - 1));
+        return at;
     }
     if (id < TEXT_FIRST || id >= TEXT_FIRST + I_COUNT || !st_.offered) return 0;
     const int32_t k = id - TEXT_FIRST;
@@ -485,10 +485,10 @@ uint32_t update_notice_text(int32_t id) {
         case I_HELP_SKIP: s = fill(t[o.development ? T_SKIP_COMMITS : T_SKIP_RELEASE]) + " " + how + "."; break;
         default: break;
     }
-    char* p = static_cast<char*>(ee_ram_ptr(STRINGS + static_cast<uint32_t>(k) * STRING_SIZE));
-    std::strncpy(p, s.c_str(), STRING_SIZE - 1);
-    p[STRING_SIZE - 1] = 0;
-    return STRINGS + static_cast<uint32_t>(k) * STRING_SIZE;
+    const uint32_t at = STRINGS + static_cast<uint32_t>(k) * STRING_SIZE;
+    ee_zero(at, STRING_SIZE);
+    ee_copy_in(at, s.c_str(), std::min<size_t>(s.size(), STRING_SIZE - 1));
+    return at;
 }
 
 }  // namespace rac1

@@ -420,9 +420,8 @@ uint32_t controls_text(int32_t id) {
     uint32_t at = STRINGS;
     for (int i = 0; i < kind; ++i) at += STRING_SIZE[i] * (i >= 2 && i <= 3 ? VISIBLE : 1);
     at += STRING_SIZE[kind] * static_cast<uint32_t>(slot);
-    char* p = static_cast<char*>(ee_ram_ptr(at));
-    std::strncpy(p, s.c_str(), STRING_SIZE[kind] - 1);
-    p[STRING_SIZE[kind] - 1] = 0;
+    ee_zero(at, STRING_SIZE[kind]);
+    ee_copy_in(at, s.c_str(), std::min<size_t>(s.size(), STRING_SIZE[kind] - 1));
     return at;
 }
 

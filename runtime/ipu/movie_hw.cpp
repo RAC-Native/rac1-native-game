@@ -139,7 +139,7 @@ struct TrackDecoder {
     std::vector<int16_t> pcm;  // at the track's rate (rate != 48000)
     // `t`: the track's bytes so far; `out(samples, n)`: n stereo frames more of the 48 kHz track
     template <class Out>
-    void step(const std::vector<uint8_t>& t, bool complete, Out&& out) {
+    void step(std::vector<uint8_t>& t, bool complete, Out&& out) {
         if (phase == 0) {
             if (t.size() < 0x28) {
                 if (complete) phase = 2;
@@ -169,6 +169,7 @@ struct TrackDecoder {
                 return;
             }
             phase = 1;
+            t.reserve(b + 8 + static_cast<size_t>(le32(&t[b + 4])));
         }
         if (phase != 1) return;
         const uint8_t* p = &t[b + 8];
@@ -310,6 +311,7 @@ void load_step(Load& L, Movie& m) {
               },
               [&L](int t, const uint8_t* p, size_t n) {
                   if (L.tracks.size() <= static_cast<size_t>(t)) L.tracks.resize(static_cast<size_t>(t) + 1);
+                  if (L.chosen >= 0 && t != L.chosen) return;
                   L.tracks[static_cast<size_t>(t)].insert(L.tracks[static_cast<size_t>(t)].end(), p, p + n);
               });
     if (L.dx.i > 0) {
@@ -323,6 +325,14 @@ void load_step(Load& L, Movie& m) {
         else if (all)
             for (size_t k = 0; L.chosen < 0 && k < L.tracks.size(); ++k)
                 if (!L.tracks[k].empty()) L.chosen = static_cast<int>(k);
+        if (L.chosen >= 0) {
+            for (size_t k = 0; k < L.tracks.size(); ++k) {
+                if (static_cast<int>(k) != L.chosen) {
+                    L.tracks[k].clear();
+                    L.tracks[k].shrink_to_fit();
+                }
+            }
+        }
     }
     if (L.chosen >= 0)
         L.dec.step(L.tracks[static_cast<size_t>(L.chosen)], all, [&m](const int16_t* pcm, size_t frames) {
@@ -379,12 +389,19 @@ bool movie_hw_open(uint32_t lba, uint32_t bytes, int track) {
     m.video.clear();
     m.video.reserve(bytes);
     m.video_len.store(0);
+    m.audio.clear();
+    m.audio.reserve(std::max<size_t>(bytes / 2, 48000 * 2 * 10));
     m.stop.store(false);
     m.video_done.store(false);
     m.audio_done.store(false);
     // the start: until the video's first bytes are there and its sequence header (12-bit width / height, frame rate code)
     // found, or the whole file read (as a demux of the whole file would see them)
     bool header = false;
+#if defined(__WIIU__)
+    constexpr size_t kMinPrebuffer = 512 * 1024;
+#else
+    constexpr size_t kMinPrebuffer = 12;
+#endif
     for (;;) {
         load_step(L, m);
         if (!L.ok) return false;  // (the disc read failed: the open of the whole file failed)
@@ -400,7 +417,7 @@ bool movie_hw_open(uint32_t lba, uint32_t bytes, int track) {
             }
         }
         if (m.video_done.load()) break;
-        if (vl >= 12 && header) break;
+        if (vl >= kMinPrebuffer && header) break;
     }
     if (m.video_len.load() < 12) return false;
     m.mpeg2_dec.reset();
