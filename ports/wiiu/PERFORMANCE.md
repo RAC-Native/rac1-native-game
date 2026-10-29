@@ -408,3 +408,24 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   render, 18-32 us the state alone (handlers ~3.5 us of it), ~75% less.
 - To measure on the console: RAC1_IOP_STATE_ONLY=0 against the default 1 - the "[game]" line and the "[timing]" game thread's steps;
   the sound unchanged (it is the mirror's).
+
+### M0 / M1: GX2 counters, real-time stall threshold, moby LOD undo log, OS thread pinning, cached static level texture table (2026-10-29)
+
+- **GX2 and effects instrumentation (`ports/wiiu/game/gx2_counters.h`, `wiiu_gfx.cpp`):**
+  - Per-site `GX2DrawDone`, `GX2Invalidate`, draw-call and `DCFlushRange` byte counters (`[gx2]` log line), plus host timing slots `effects' prepare` / `effects' draws` and GPU mark `effects`.
+  - Console measurement (explore, 1080p × 0.75): `GX2DrawDone` is ~0.0/frame on Veldin and ~0.2/frame on Novalis (only on ring wraps); the GPU is idle 15–35 ms/frame. The bottleneck is CPU work on Core 0 (world prep + chain reader) and Core 2 (game thread render passes).
+- **Skip duplicate `mrp_lod_moby_shadow` pass on Wii U (`src/game/ovl/overlay_entry.cpp`) and `kStallMs = 250` (`src/host/orig_main.cpp`):**
+  - On Wii U the real moby pass already widens and runs LOD (`mrp_lod_moby_widen_real`), making the second `mrp_lod_moby_shadow` pass redundant.
+  - With `kStallMs = 50`, every Novalis host frame (>50 ms) was treated as a disc load stall and clamped to 1 game step per host frame (slow-motion). Raising `kStallMs` to 250 ms on `__WIIU__` restored real-time catch-up (3–5.7 steps per host frame).
+  - Console benchmark: Veldin **52.6 → 42.6 ms** average (last window 33.4 ms, 30 fps); Novalis **87.8 → 76.7 ms** at full game speed.
+- **Per-field undo log in `mrp_lod.cpp` (`patch_moby_logged` / `patch_moby_undo`):**
+  - Replaced the 4 KB page-by-page EE memory journal in `mrp_lod_moby_widen_real` (when no projection override is needed) with a compact per-field undo log (`patch_widen` only).
+  - Console benchmark (`m1c_novalis`): Novalis moby draw loop **20.7 → 12.7 ms**, game code **50.6 → 38.2 ms**, host frame average **76.7 → 66.1 ms**.
+- **True core affinity via `PinnedThread` (`src/platform/pinned_thread.h`, `mrp_chain.cpp`, `mrp_world_renderer.cpp`):**
+  - `OSSetThreadAffinity` inside a `std::thread` did not prevent worker threads from migrating across cores and stealing Core 2 from `game_thread`. `PinnedThread` creates threads via `OSCreateThread` with explicit core affinity flags on `__WIIU__` (Core 0 default for both the chain reader and the world prep worker; moving the chain reader to Core 1 at priority 16 starved the Cafe OS main thread during Novalis cutscenes).
+- **Static level texture table cached across frames (`mrp_world_scene.h`, `mrp_world_scene.cpp`, `mrp_world_static.h`, `mrp_world_static.cpp`):**
+  - Profiling showed 41% of the world prep worker in `memcpy`, mostly `static_draws` copying `sl.tex` (thousands of qwords) into `SceneFrame::tex` twice every frame (once for ties, once for shrubs). `SceneFrame` now keeps `sl.tex` at index 0 across frames as long as `StaticLevel::gen` matches, and both kinds share it.
+  - Console benchmark (`m1f`):
+    - **Novalis** (1500 frames, 11 windows): `world's worker join` dropped from **9–32 ms (`m1d`) to 2.1–25.5 ms (`m1f`)**; host frame average **62.7 ms** (steady-state gameplay windows 2–6 at **41.1–44.2 ms**).
+    - **Veldin** (1200 frames, 15 windows): host frame average **42.6 → 38.3 ms**, with the second half of the run locked at **33.2–33.3 ms (30.0 fps)**.
+

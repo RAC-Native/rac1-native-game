@@ -23,6 +23,7 @@
 #include <game/render/mrp_world_static.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
+#include <platform/pinned_thread.h>
 #include <profiler/host_profiler.h>
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
@@ -2326,8 +2327,11 @@ void build_triangles(Frame& F) {
     // their batches the shadow maps' only
     if (g_shframe.on[0] && (cast_have[0] || cast_have[1])) {
         const StaticFrame& sf = g_shframe;
-        const uint32_t tex_base = static_cast<uint32_t>(F.scene.tex.size());
-        F.scene.tex.insert(F.scene.tex.end(), g_slevel.tex.begin(), g_slevel.tex.end());
+        uint32_t tex_base = static_cast<uint32_t>(F.scene.tex.size());
+        if (F.scene.static_tex_base >= 0 && F.scene.static_tex_gen == g_slevel.gen && F.scene.static_tex_n == g_slevel.tex.size() &&
+            static_cast<size_t>(F.scene.static_tex_base) + g_slevel.tex.size() <= F.scene.tex.size())
+            tex_base = static_cast<uint32_t>(F.scene.static_tex_base);  // (the level's table already there: scene_from_static_k)
+        else F.scene.tex.insert(F.scene.tex.end(), g_slevel.tex.begin(), g_slevel.tex.end());
         const uint32_t inst_base = static_cast<uint32_t>(F.scene.insts.size());
         for (const StaticInst& si : sf.insts) {
             SceneInst x;
@@ -4915,7 +4919,7 @@ void wiiu_prep_tail() {
 struct PrepWorker {
     std::mutex m;
     std::condition_variable cv;
-    std::thread th;
+    PinnedThread th;
     bool job = false, busy = false, quit = false;
     double fpscr = 0.0;
     ~PrepWorker() {
@@ -4941,10 +4945,11 @@ void wiiu_prep_dispatch() {
     }
     PrepWorker& w = g_prep;
     std::lock_guard<std::mutex> lk(w.m);
-    if (!w.th.joinable()) w.th = std::thread([&w] {
+    if (!w.th.joinable()) {
+        // (created on its core: pinned_thread.h - a std::thread moved there by OSSetThreadAffinity ran on all three, 2026-10-29)
         const char* ce = std::getenv("RAC1_WIIU_PREP_CORE");
         const int core = ce != nullptr ? std::atoi(ce) : 0;
-        if (core >= 0 && core <= 2) OSSetThreadAffinity(OSGetCurrentThread(), static_cast<OSThreadAttributes>(OS_THREAD_ATTRIB_AFFINITY_CPU0 << core));
+        w.th.start(core, 16, "MRP world prep worker", [&w, core] {
         std::printf("[mrpw] the world's preparation worker on core %u (RAC1_WIIU_PREP_CORE %d)\n", OSGetCoreId(), core);
         std::unique_lock<std::mutex> l(w.m);
         for (;;) {
@@ -4958,7 +4963,8 @@ void wiiu_prep_dispatch() {
             w.busy = false;
             w.cv.notify_all();
         }
-    });
+        }, 512u * 1024u);
+    }
     __asm__ volatile("mffs %0" : "=f"(w.fpscr));
     w.busy = true;
     w.job = true;

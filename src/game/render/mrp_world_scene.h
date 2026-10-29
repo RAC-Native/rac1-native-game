@@ -94,6 +94,10 @@ struct SceneFrame {
     std::vector<std::pair<uint64_t, uint32_t>> sky_tex;
     uint32_t sky_asset = 0, sky_packets = 0, sky_kicks = 0;
     uint32_t gif_packets = 0;  // the world ranges' GIF vertex packets (their writes in `sky` too)
+    // the static level's texture table at `tex` [static_tex_base, + static_tex_n) (scene_from_static_k: put once at 0 and kept over
+    // frames while the level - StaticLevel::gen - is the same; -1 / 0 when not there)
+    int32_t static_tex_base = -1;
+    uint32_t static_tex_gen = 0, static_tex_n = 0;
     std::array<double, 16> sky_a{};  // the frame's projection A (0x166d00, its qwords the columns): the sky's screen points to directions
     bool has_sky = false;
     double ms_sky = 0;  // (RAC1_FRAME_PROF) the walker's time in the sky's range

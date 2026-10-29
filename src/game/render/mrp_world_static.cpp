@@ -257,6 +257,9 @@ bool tie_matches(uint32_t rec, const TieClass& c) {
 // orig: (host) see mrp_world_static.h
 bool static_level_build(StaticLevel& L, const World& w) {
     L = StaticLevel{};
+    static uint32_t s_gen = 0;
+    if (++s_gen == 0) s_gen = 1;
+    L.gen = s_gen;
     // assets with no tie / shrub class: the loading screen's flight (an empty world), not the EE's level - its
     // class tables are the level being left or loaded: none of their records is read
     const int32_t tn = w.ties.empty() ? 0 : lw(OV(0x00160fbcu));

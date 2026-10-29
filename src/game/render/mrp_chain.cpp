@@ -8,6 +8,7 @@
 #include <runtime/gs/gs_memory.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/vu/vu1.h>
+#include <platform/pinned_thread.h>
 
 #include <algorithm>
 #include <cmath>
@@ -782,7 +783,7 @@ void capture(MrpChainInput&& in, Capture& c) {
 struct Worker {
     std::mutex m;
     std::condition_variable cv;
-    std::thread th;
+    PinnedThread th;
     bool job = false, busy = false, quit = false;
     std::exception_ptr error;
 #if defined(__WIIU__)
@@ -841,18 +842,21 @@ void mrp_chain_start(MrpChainInput&& in, bool async) {
     }
     Worker& w = g_worker;
     std::lock_guard<std::mutex> lk(w.m);
-    if (!w.th.joinable()) w.th = std::thread([&w] {
-        rac1::prof::thread_name("MRP chain worker");
-#if defined(__WIIU__)
-        // (the Wii U: the worker on a core of its own - RAC1_WIIU_CHAIN_CORE, default 0; the game runs on core 1, the IOP's mirror on
-        // core 2 -, -1: wut's "any core")
+    if (!w.th.joinable()) {
+        // (the Wii U: the worker on a core of its own - RAC1_WIIU_CHAIN_CORE, default 0; the game thread on core 2, the main thread on
+        // core 1 -, -1: any core. Created there: pinned_thread.h)
         const char* ce = std::getenv("RAC1_WIIU_CHAIN_CORE");
         const int core = ce != nullptr ? std::atoi(ce) : 0;
-        if (core >= 0 && core <= 2) OSSetThreadAffinity(OSGetCurrentThread(), static_cast<OSThreadAttributes>(OS_THREAD_ATTRIB_AFFINITY_CPU0 << core));
-        std::printf("[mrp-chain] the chain worker on core %u (RAC1_WIIU_CHAIN_CORE %d)\n", OSGetCoreId(), core);
+        w.th.start(core, 16, "MRP chain worker", [&w, core] {
+            rac1::prof::thread_name("MRP chain worker");
+#if defined(__WIIU__)
+            std::printf("[mrp-chain] the chain worker on core %u (RAC1_WIIU_CHAIN_CORE %d)\n", OSGetCoreId(), core);
+#else
+            (void)core;
 #endif
-        w.loop();
-    });
+            w.loop();
+        });
+    }
 #if defined(__WIIU__)
     __asm__ volatile("mffs %0" : "=f"(w.fpscr));
 #endif

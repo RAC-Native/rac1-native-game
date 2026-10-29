@@ -613,10 +613,11 @@ void state_packet(SceneFrame& f, const std::array<uint32_t, 4>& tag, const std::
 
 // orig: (host) the host's ties (kind 0) / shrubs (1) of a static frame appended to `f` as the GPU path's packets (the instance's rows,
 // morph, F, alpha; its resident colours; the class's texture prims as VU1 memory would hold them), in `view`; the shrubs' F from the
-// shrub A fog constants `shrub_fog` (vf30 z / w, vf29 x / y)
-void static_draws(SceneFrame& f, const StaticFrame& sf, const StaticLevel& sl, int kind, int view, const float shrub_fog[4]) {
-    const uint32_t tex_base = static_cast<uint32_t>(f.tex.size());
-    f.tex.insert(f.tex.end(), sl.tex.begin(), sl.tex.end());
+// shrub A fog constants `shrub_fog` (vf30 z / w, vf29 x / y). `tex_at` >= 0: the level's texture table already in `f.tex` there (else
+// appended)
+void static_draws(SceneFrame& f, const StaticFrame& sf, const StaticLevel& sl, int kind, int view, const float shrub_fog[4], int32_t tex_at = -1) {
+    const uint32_t tex_base = tex_at >= 0 ? static_cast<uint32_t>(tex_at) : static_cast<uint32_t>(f.tex.size());
+    if (tex_at < 0) f.tex.insert(f.tex.end(), sl.tex.begin(), sl.tex.end());
     std::vector<int32_t> map(sf.insts.size(), -1);
     for (const StaticDraw& d : sf.draws[kind]) {
         const StaticInst& si = sf.insts[d.inst];
@@ -1349,6 +1350,8 @@ void scene_reset(SceneFrame& f) {
     f.insts.clear();
     f.colours.clear();
     f.tex.clear();
+    f.static_tex_base = -1;
+    f.static_tex_gen = f.static_tex_n = 0;
     f.regs.clear();
     f.views.clear();
     f.sky.clear();
@@ -1902,8 +1905,21 @@ void scene_static_consts(SceneStaticConsts& k) {
 // orig: (host) see mrp_world_wiiu.inc
 bool scene_from_static_k(const StaticFrame& sf, const StaticLevel& sl, const std::array<float, 16>& a, const std::array<float, 3>& camera, const TfragLevel* tl,
                          const std::vector<std::pair<uint32_t, uint8_t>>* tdraws, const SceneStaticConsts& k, SceneFrame& f) {
+    // (host) the level's texture table: kept from the frame before when it is this level's (the same build), else copied once - the
+    // ties and shrubs both index it at 0 (it was copied for each kind on every frame: thousands of qwords)
+    const uint32_t kept_gen = f.static_tex_gen, kept_n = f.static_tex_n;
+    std::vector<std::array<uint32_t, 4>> kept;
+    kept.swap(f.tex);
     scene_reset(f);
     if (!sl.ok) return false;
+    const uint32_t ntex = static_cast<uint32_t>(sl.tex.size());
+    if (kept_gen != 0 && kept_gen == sl.gen && kept_n == ntex && kept.size() >= ntex) {
+        kept.resize(ntex);
+        f.tex.swap(kept);
+    } else f.tex.assign(sl.tex.begin(), sl.tex.end());
+    f.static_tex_base = 0;
+    f.static_tex_gen = sl.gen;
+    f.static_tex_n = ntex;
     // the tfrags first (the tfrag pass's range comes before the tie and shrub passes' in the chain: the walk emits the host's tfrag
     // draws at its end, before the host's ties / shrubs)
     if (tl != nullptr && tdraws != nullptr && k.tfrag_vu) tfrag_host_draws(f, *tl, *tdraws, k.tview, k.tconsts);
@@ -1914,10 +1930,10 @@ bool scene_from_static_k(const StaticFrame& sf, const StaticLevel& sl, const std
     // 0x1c2a40; on Veldin the tag 00008001 10000000 0000000e 0, TEST_1 0005340b 0 47 0). The state the chain's draws leave is not known
     // without the walker: on the PC it was not 0 (0xffffffff) at the host's ties, so the packet is always sent
     if (sf.on[0] && !sf.draws[0].empty()) state_packet(f, k.tie_tag, k.tie_test);
-    if (sf.on[0]) static_draws(f, sf, sl, 0, view, nullptr);
+    if (sf.on[0]) static_draws(f, sf, sl, 0, view, nullptr, f.static_tex_base);
     // the shrub A fog constants (vf30 z / w, vf29 x / y): the floats the shrub pass's constants UNPACK (0x6c030000: the overlay's
     // 0x1c2ac0.. to VU1 qwords 0..2) leave there (Veldin: -0.0267885, 254.999, 53.5499, 255)
-    if (sf.on[1]) static_draws(f, sf, sl, 1, view, k.shrub_fog);
+    if (sf.on[1]) static_draws(f, sf, sl, 1, view, k.shrub_fog, f.static_tex_base);
     // (not made here: the shrub far variants' quads - phase 5 with the sky)
     f.ok = true;
     return true;

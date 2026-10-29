@@ -134,6 +134,7 @@ struct StaticLevel {
     std::vector<StaticShrubClass> shrubs;
     std::vector<std::array<uint32_t, 4>> tex;
     uint32_t tie_unmatched = 0, shrub_unmatched = 0;
+    uint32_t gen = 0;  // (host) this build's number (static_level_build: never 0), the scenes' cached `tex` key
 };
 // orig: (host) at the level's load (game thread: EE memory, overlay addresses): `w` the level's MRP world asset
 bool static_level_build(StaticLevel& L, const World& w);

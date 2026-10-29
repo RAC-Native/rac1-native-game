@@ -889,6 +889,54 @@ void patch_moby(float s) {
         sb(m + 0x72, static_cast<uint32_t>(dist(lbu(m + 0x72), 0xff)));
     }
 }
+// ((2026-10-29) the Wii U's real moby pass, widen_real) patch_moby's writes with their own undo log, not through the EE journal: the
+// journal saved every page the patch touched (a 4 KB copy each), then diffed them byte by byte into runs (two vectors allocated per run)
+// - ~10% of the game thread on Novalis for a few hundred halfwords and bytes. Each field written is logged with its value before and
+// after; patch_moby_undo puts a field back where it still holds the patch's value (the game's own writes since kept), as the journal's
+// runs were put back.
+struct MobyFieldUndo {
+    uint32_t addr;
+    uint8_t size;  // 1, 2 or 4
+    uint32_t before, after;
+};
+std::vector<MobyFieldUndo> g_moby_undo;
+void patch_moby_logged(float s) {
+    g_moby_undo.clear();
+    auto dist = [s](int32_t d, int32_t cap) {
+        if (s == 0.0f) return cap;
+        const double v = static_cast<double>(d) * static_cast<double>(s);
+        return v > static_cast<double>(cap) ? cap : static_cast<int32_t>(v);
+    };
+    auto put = [](uint32_t addr, uint8_t size, uint32_t before, uint32_t after) {
+        if (before == after) return;
+        if (size == 4) sw(addr, after);
+        else if (size == 2) sh(addr, after);
+        else sb(addr, after);
+        g_moby_undo.push_back({addr, size, before, after});
+    };
+    {
+        const uint32_t before = lwu(OV(0x0015fff0u));
+        put(OV(0x0015fff0u), 4, before, static_cast<uint32_t>(dist(static_cast<int32_t>(before), 0x7fff)));
+    }
+    uint32_t m = lwu(OV(0x0015ffd8u));
+    for (int guard = 0; guard < 4096 && m != 0 && m < 0x02000000u && lbu(m + 0x20) != 0xff; ++guard, m += 0x100) {
+        if (lwu(m + 0x24) == 0) continue;  // (patch_moby's rule: a class not loaded keeps the game's distances)
+        const int32_t d = lh(m + 0x32);
+        if (d > 0) put(m + 0x32, 2, static_cast<uint32_t>(lhu(m + 0x32)), static_cast<uint32_t>(dist(d, 0x7fff)) & 0xffffu);
+        const uint32_t b = lbu(m + 0x72);
+        put(m + 0x72, 1, b, static_cast<uint32_t>(dist(static_cast<int32_t>(b), 0xff)) & 0xffu);
+    }
+}
+void patch_moby_undo() {
+    for (auto it = g_moby_undo.rbegin(); it != g_moby_undo.rend(); ++it) {
+        const uint32_t now = it->size == 4 ? lwu(it->addr) : it->size == 2 ? lhu(it->addr) : lbu(it->addr);
+        if (now != it->after) continue;
+        if (it->size == 4) sw(it->addr, it->before);
+        else if (it->size == 2) sh(it->addr, it->before);
+        else sb(it->addr, it->before);
+    }
+    g_moby_undo.clear();
+}
 struct MobyStats {
     uint64_t runs = 0, widened = 0, mobys_real = 0, mobys_shadow = 0, faded = 0;
     double ms = 0;
@@ -975,13 +1023,15 @@ bool g_real_sky_a_on = false;
 void widen_real(void (*pass)(), float w, float wy, float lod_s, bool projection, float* a_out) {
     const Vu0Save vu0_saved(false);
     std::vector<EeByteRun> runs;
-    ee_journal_begin();
-    if (!projection && lod_s != 1.0f) patch_moby(lod_s);
-    if (w > 1.0f || wy > 1.0f) {
+    const bool lod = !projection && lod_s != 1.0f;
+    if (lod) patch_moby_logged(lod_s);  // (its own undo log: patch_moby_undo below)
+    const bool widen = w > 1.0f || wy > 1.0f;
+    if (widen) {
+        ee_journal_begin();
         if (projection) widen_projection(w, wy);
         else patch_widen(w, 0, wy);
+        ee_journal_commit(runs);
     }
-    ee_journal_commit(runs);
     vu0_saved.restore();
     pass();  // (patch_widen's g_patch set: a setup the pass calls gets the game's own tangent, then the patch again - MrpLodSetupScope)
     patch_clear();
@@ -993,6 +1043,7 @@ void widen_real(void (*pass)(), float w, float wy, float lod_s, bool projection,
         if (p == nullptr || std::memcmp(p, it->after.data(), it->after.size()) != 0) continue;
         std::memcpy(p, it->before.data(), it->before.size());
     }
+    if (lod) patch_moby_undo();
 }
 }  // namespace
 
