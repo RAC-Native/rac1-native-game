@@ -112,6 +112,10 @@ void write() {
     if (f == nullptr) return;
     const bool ok = std::fwrite(s.data(), 1, s.size(), f) == s.size();
     if (std::fclose(f) != 0 || !ok) return;
+#if defined(__WIIU__)
+    std::filesystem::remove(g.path, ec);
+    ec.clear();
+#endif
     std::filesystem::rename(tmp, g.path, ec);
 }
 

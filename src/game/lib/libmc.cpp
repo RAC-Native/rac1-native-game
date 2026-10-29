@@ -168,10 +168,12 @@ void host_load(const fs::path& root) {
     std::error_code ec;
     std::vector<std::pair<std::string, Entry>> found;
     for (auto it = fs::recursive_directory_iterator(root, ec); !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
-        const std::string rel = fs::relative(it->path(), root, ec).generic_string();
-        if (ec || rel.empty()) continue;
+        const std::string rel = it->path().lexically_relative(root).generic_string();
+        if (rel.empty() || rel == "." || rel.rfind("..", 0) == 0) continue;
+        std::error_code item_ec;
         Entry e;
-        e.dir = it->is_directory(ec);
+        e.dir = it->is_directory(item_ec);
+        if (item_ec) continue;
         if (!e.dir && it->path().extension() == ".tmp") continue;  // (a write that never finished: host_write's temporary file)
         if (!e.dir) {
             std::ifstream f(it->path(), std::ios::binary);
@@ -180,9 +182,14 @@ void host_load(const fs::path& root) {
             if (e.data.empty()) continue;
 #endif
         }
-        const auto t = fs::last_write_time(it->path(), ec);
-        const auto sys = std::chrono::time_point_cast<std::chrono::system_clock::duration>(t - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
-        e.created = e.modified = std::chrono::system_clock::to_time_t(sys);
+        std::error_code time_ec;
+        const auto t = fs::last_write_time(it->path(), time_ec);
+        if (!time_ec) {
+            const auto sys = std::chrono::time_point_cast<std::chrono::system_clock::duration>(t - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
+            e.created = e.modified = std::chrono::system_clock::to_time_t(sys);
+        } else {
+            e.created = e.modified = std::time(nullptr);
+        }
         found.emplace_back(rel, std::move(e));
     }
     std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
@@ -190,6 +197,22 @@ void host_load(const fs::path& root) {
         e.order = g_card.next_order++;
         g_card.entries[k] = std::move(e);
     }
+#if defined(__WIIU__)
+    std::vector<std::string> bad_dirs;
+    for (const auto& [k, e] : g_card.entries) {
+        if (e.dir && g_card.entries.find(k + "/save0.bin") == g_card.entries.end()) bad_dirs.push_back(k);
+    }
+    for (const std::string& d : bad_dirs) {
+        for (auto it = g_card.entries.begin(); it != g_card.entries.end();) {
+            if (it->first == d || (it->first.size() > d.size() && it->first.compare(0, d.size(), d) == 0 && it->first[d.size()] == '/')) {
+                it = g_card.entries.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+    std::printf("[memcard] loaded %zu entries from %s\n", g_card.entries.size(), root.string().c_str());
+#endif
 }
 
 // orig: (host) a sceMcStDateTime (the card keeps Japan's time: the host's own)

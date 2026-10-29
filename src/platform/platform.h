@@ -52,6 +52,10 @@ inline bool write_file_replace(const std::filesystem::path& path, const void* da
         std::filesystem::remove(tmp, ec);
         return false;
     }
+#if defined(__WIIU__)
+    std::filesystem::remove(path, ec);
+    ec.clear();
+#endif
     std::filesystem::rename(tmp, path, ec);
     if (ec) {
         std::error_code ec2;
