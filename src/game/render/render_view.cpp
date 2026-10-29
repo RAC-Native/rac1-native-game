@@ -88,15 +88,26 @@ glm::mat4 view_matrix_live() {
 }  // namespace
 
 // orig: (host) the projection scales of 0x001f7980's fov tangents
+namespace {
+float fov_scale_now();
+}  // namespace
 float render_proj_x(float aspect, float fov) {
     const float t = g_draw_from_snapshot ? g_vs.tx : ee_read<float>(OV(0x0016caf0));
+#if defined(__WIIU__)
+    if (g_view_from_game && !g_view_debug && t > 0.0f) return 1.0f / (t * g_view_draw_widen * fov_scale_now());
+#else
     if (g_view_from_game && !g_view_debug && t > 0.0f) return 1.0f / (t * g_view_draw_widen);  // widened in the game's own (render_view_projection) or by the host (the Wii U)
+#endif
     return 1.0f / (aspect * std::tan(fov * 0.5f));
 }
 // orig: (host) the projection scales of 0x001f7980's fov tangents
 float render_proj_y(float fov) {
     const float t = g_draw_from_snapshot ? g_vs.ty : ee_read<float>(OV(0x0016caf4));
+#if defined(__WIIU__)
+    if (g_view_from_game && !g_view_debug && t > 0.0f) return 1.0f / (t * fov_scale_now());
+#else
     if (g_view_from_game && !g_view_debug && t > 0.0f) return 1.0f / t;
+#endif
     return 1.0f / std::tan(fov * 0.5f);
 }
 
@@ -261,18 +272,26 @@ std::vector<EeByteRun> g_proj_runs;  // the game's bytes render_view_projection 
 
 // orig: (host) see render_view.h
 float render_view_cull_widen() {
+#if defined(__WIIU__)
+    return std::max(1.0f, fov_scale_now() * g_view_draw_widen);
+#else
     const float cur = ee_read<float>(OV(0x0016caf0));
     if (!(cur > 0.0f) || g_last_w <= 0 || g_last_h <= 0) return 1.0f;
     if (fov_write_of(cur) != nullptr) return 1.0f;  // (the host's widened value is in place)
     return std::max(1.0f, fov_scale_now() * view_widen(g_last_w, g_last_h));
+#endif
 }
 
 // orig: (host) see render_view.h
 float render_view_cull_widen_y() {
+#if defined(__WIIU__)
+    return std::max(1.0f, fov_scale_now());
+#else
     const float cur = ee_read<float>(OV(0x0016caf0));
     if (!(cur > 0.0f) || g_last_w <= 0 || g_last_h <= 0) return 1.0f;
     if (fov_write_of(cur) != nullptr) return 1.0f;  // (the host's widened value is in place)
     return std::max(1.0f, fov_scale_now());
+#endif
 }
 
 // orig: (host) see render_view.h

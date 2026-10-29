@@ -240,6 +240,8 @@ constexpr Row ROWS_DEF[] = {
     {S_ASPECT, T_ASPECT, H_ASPECT},
     {S_FIT, T_FIT, H_FIT},
     {S_HUD, T_HUD, H_HUD},
+    {S_FOV, T_FOV, H_FOV},
+    {S_LOD, T_LOD, H_LOD},
     {S_MIPS, T_MIPS, H_MIPS},
 };
 #else
@@ -337,7 +339,9 @@ void apply() {
         g_view_frame_aspect = v[S_ASPECT] == 1 ? 16.0f / 9.0f : 4.0f / 3.0f;
 #if defined(__WIIU__)
         g_view_draw_widen = v[S_ASPECT] == 0 ? 1.0f : 4.0f / 3.0f;
+        g_view_fov_scale = static_cast<float>(FOVS[v[S_FOV]]) / 100.0f;
         if (std::getenv("RAC1_HUD") == nullptr) g_hud_aspect = HUD_ASPECTS[std::min(v[S_HUD], 1)];
+        if (std::getenv("RAC1_MRP_LOD") == nullptr) g_mrp_lod = LODS[v[S_LOD]];
         mips_apply();
 #else
         g_view_fov_scale = static_cast<float>(FOVS[v[S_FOV]]) / 100.0f;

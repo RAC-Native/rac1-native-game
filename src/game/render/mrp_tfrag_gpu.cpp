@@ -9,6 +9,7 @@
 #include <game/ovl/vu0_macro.h>
 #include <game/math/vecmath.h>
 #include <game/render/mrp_world_assets.h>
+#include <game/render/render_view.h>
 #include <runtime/kernel/ee_memory.h>
 #include "io/host_endian.h"
 #include <runtime/vk/vk_context.h>
@@ -655,11 +656,19 @@ const TfragSnapshot& tfrag_snapshot() { return g_tsnap; }
 // orig: (host) see mrp_tfrag_gpu.h
 void tfrag_snapshot_widen(float w) {
     TfragSnapshot& S = g_tsnap;
-    if (!S.valid || !(w > 1.0f)) return;
-    S.widen = w;
-    S.c24[0] = S.c24[0] * w;
-    S.c26[0] = std::sqrt(1.0f + S.c24[0] * S.c24[0]);
-    for (auto& row : S.clip) row[0] = row[0] / w;
+    const float wy = render_view_cull_widen_y();
+    if (!S.valid || !(w > 1.0f || wy > 1.0f)) return;
+    if (w > 1.0f) {
+        S.widen = w;
+        S.c24[0] = S.c24[0] * w;
+        S.c26[0] = std::sqrt(1.0f + S.c24[0] * S.c24[0]);
+        for (auto& row : S.clip) row[0] = row[0] / w;
+    }
+    if (wy > 1.0f) {
+        S.c24[1] = S.c24[1] * wy;
+        S.c26[1] = std::sqrt(1.0f + S.c24[1] * S.c24[1]);
+        for (auto& row : S.clip) row[1] = row[1] / wy;
+    }
 }
 
 // orig: (host) see mrp_tfrag_gpu.h: 0x294368's per-entry work, in its order and with its VU0 macro operations (vu0_macro.h lanes: the

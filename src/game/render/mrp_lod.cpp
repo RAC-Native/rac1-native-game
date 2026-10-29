@@ -972,12 +972,15 @@ bool g_real_sky_a_on = false;
 // orig: (host) the real pass `pass` with the frustum widened by `w` (patch_widen: the rows A kept) or, `projection`, the whole projection
 // (widen_projection, A widened too - its A copied to `a_out` after the pass); the patch's own writes journaled and put back after the pass
 // where it left them, the VU0 registers the setups leave kept as they were
-void widen_real(void (*pass)(), float w, bool projection, float* a_out) {
+void widen_real(void (*pass)(), float w, float wy, float lod_s, bool projection, float* a_out) {
     const Vu0Save vu0_saved(false);
     std::vector<EeByteRun> runs;
     ee_journal_begin();
-    if (projection) widen_projection(w, 1.0f);
-    else patch_widen(w, 0, 1.0f);
+    if (!projection && lod_s != 1.0f) patch_moby(lod_s);
+    if (w > 1.0f || wy > 1.0f) {
+        if (projection) widen_projection(w, wy);
+        else patch_widen(w, 0, wy);
+    }
     ee_journal_commit(runs);
     vu0_saved.restore();
     pass();  // (patch_widen's g_patch set: a setup the pass calls gets the game's own tangent, then the patch again - MrpLodSetupScope)
@@ -995,21 +998,24 @@ void widen_real(void (*pass)(), float w, bool projection, float* a_out) {
 
 // orig: (host) see mrp_lod.h
 void mrp_lod_moby_widen_real(void (*pass)(), float w) {
-    if (!(w > 1.0f) || g_patch.type != kPatchNone || ee_journal_active()) {
+    const float wy = fill_widen_y();
+    const float s = mrp_lod_scale(g_mrp_lod);
+    if (!(w > 1.0f || wy > 1.0f || s != 1.0f) || g_patch.type != kPatchNone || ee_journal_active()) {
         pass();
         return;
     }
-    widen_real(pass, w, false, nullptr);
+    widen_real(pass, w > 1.0f ? w * wy : wy, wy, s, false, nullptr);
 }
 
 // orig: (host) see mrp_lod.h
 void mrp_lod_sky_widen_real(void (*pass)(), float w) {
-    if (!(w > 1.0f) || g_patch.type != kPatchNone || ee_journal_active()) {
+    const float wy = fill_widen_y();
+    if (!(w > 1.0f || wy > 1.0f) || g_patch.type != kPatchNone || ee_journal_active()) {
         g_real_sky_a_on = false;
         pass();
         return;
     }
-    widen_real(pass, w, true, g_real_sky_a.data());
+    widen_real(pass, w > 1.0f ? w * wy : wy, wy, 1.0f, true, g_real_sky_a.data());
     g_real_sky_a_on = true;
 }
 

@@ -448,10 +448,12 @@ void world_pass(void (*pass)(), int kind) {
     // mrp_tfrag_gpu.h tfrag_decide, phase 4 -: the game's tfrag pass still runs, its packets read the culling's lists)
     // ((2026-10-28) the widescreen, render_view.h g_view_draw_widen: the host's culling widened as the drawing is - the ties' / shrubs'
     // by their snapshot's widening, the tfrags' snapshot widened after it is taken -, the game's memory untouched)
-    const float ww = g_view_draw_widen > 1.0f ? g_view_draw_widen : 1.0f;
-    if (kind == 1 || kind == 2) mrpw::static_note_pass(kind, mrp_world_ready(), 1.0f, ww, 1.0f);
+    const float wy = render_view_cull_widen_y();
+    const float ww = (g_view_draw_widen > 1.0f ? g_view_draw_widen : 1.0f) * wy;
+    const float ls = mrp_lod_scale(g_mrp_lod);
+    if (kind == 1 || kind == 2) mrpw::static_note_pass(kind, mrp_world_ready(), ls, ww, wy);
     if (kind == 0) {
-        mrpw::tfrag_note_pass(mrp_world_ready(), 1.0f, 1.0f);
+        mrpw::tfrag_note_pass(mrp_world_ready(), ls, 1.0f);
         mrpw::tfrag_snapshot_widen(ww);
     }
 #endif
