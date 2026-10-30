@@ -795,10 +795,12 @@ void gx2_perf_init() {
     if (const char* v = std::getenv("RAC1_WIIU_FLUSH"); v != nullptr && v[0] != 0) g_gx2_perf.flush = std::clamp(std::atoi(v), 0, 2);
     if (const char* v = std::getenv("RAC1_WIIU_FLUSH_DRAWS"); v != nullptr && v[0] != 0) g_gx2_perf.flush_draws = static_cast<uint32_t>(std::max(1, std::atoi(v)));
     g_gx2_perf.fast = env("RAC1_WIIU_FASTPS", true);
+    g_gx2_perf.p2_less = env("RAC1_WIIU_P2_LESS", true);
+    g_gx2_perf.p2_cull = env("RAC1_WIIU_P2_CULL", true);
     std::printf("[wiiu] gx2 perf: hierarchical Z %d, no-kill shaders %d, lean world shader %d, pixels off %d, second depth clear %d, early depth test %d, "
-                "flushes %d (every %u world draws), uniform blocks' caches once a call %d, fast world pixel shaders %d\n",
+                "flushes %d (every %u world draws), uniform blocks' caches once a call %d, fast world pixel shaders %d, pass2 less %d, pass2 cull %d\n",
                 g_gx2_perf.hiz, g_gx2_perf.nokill, g_gx2_perf.lean, g_gx2_perf.pixels_off, g_gx2_perf.zclear2, g_gx2_perf.earlyz, g_gx2_perf.flush,
-                g_gx2_perf.flush_draws, g_gx2_perf.ub_bulk, g_gx2_perf.fast);
+                g_gx2_perf.flush_draws, g_gx2_perf.ub_bulk, g_gx2_perf.fast, g_gx2_perf.p2_less, g_gx2_perf.p2_cull);
 }
 
 // orig: (host) see mrp_world_gx2.h
@@ -1828,7 +1830,12 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         return bucket;
     };
     // one draw command: its texture (the unit its record names in the batch's epoch), its instance and record, the indexed draw
-    auto draw_one = [&](const mrpwb::Batch& b, uint32_t i) {
+    auto draw_one = [&](const mrpwb::Batch& b, uint32_t i, bool pass2_only, auto&& set_p1_at) {
+        const mrpwb::DrawCmd& c = draws[i];
+        const uint32_t* rec = &cmds[8 * static_cast<size_t>(c.base_instance)];
+        const bool need_p2 = rec[6] != 0;
+        if (pass2_only && g_gx2_perf.p2_cull && !need_p2) return;
+        if (!pass2_only) set_p1_at(need_p2);
         if (g_ring_wraps != g_cache.wraps) {  // (the ring wrapped during this call: what it held is written again as needed)
             const uint64_t serial = g_cache.serial;
             cache_reset(serial, draws.size());
@@ -1837,8 +1844,6 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
             last_px_blk = nullptr;
             set_pixel(last_px);
         }
-        const mrpwb::DrawCmd& c = draws[i];
-        const uint32_t* rec = &cmds[8 * static_cast<size_t>(c.base_instance)];
         const mrpwb::InstGpu& I = insts[rec[0]];
         const uint32_t kind = I.info[3] & 1u;
         if (((g_debug & 64) != 0 && kind != 0) || ((g_debug & 8) != 0 && kind != 1)) return;  // (testing: the ties / shrubs alone)
@@ -1912,11 +1917,13 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
     // a batch's merged items (mrpwm::Plan): per item its block (its instances' slots; a lone command's own), its texture (mrpwm::kByUnit,
     // kInstancedByUnit: the item's unit bound), one GX2DrawIndexedEx - absolute indices (the level's or the frame's own) and its
     // instances, or a lone command's relative ones from its template's first vertex
-    auto draw_items = [&](const mrpwb::Batch& b, size_t bi) {
+    auto draw_items = [&](const mrpwb::Batch& b, size_t bi, bool pass2_only, auto&& set_p1_at) {
         const mrpwm::Plan& P = g_mg.plan;
         if (bi + 1 >= P.batch_items.size()) return;
         for (uint32_t k = P.batch_items[bi]; k < P.batch_items[bi + 1]; ++k) {
             const mrpwm::Item& it = P.items[k];
+            if (pass2_only && g_gx2_perf.p2_cull && !it.pass2) continue;
+            if (!pass2_only) set_p1_at(it.pass2);
             if (mrpwm::mode_by_unit(g_merge)) bind_unit(b, it.unit);
             if (g_draw_loc.found) GX2SetVertexUniformBlock(g_draw_loc.loc, (it.lone ? 1u : it.ninst) * kSlot, g_mg.blk[k]);
             if (stage < 4) continue;
@@ -1950,10 +1957,12 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
     // texture bound first; the frame's tfrag vertices absolute (base vertex 0). (testing, tfrag debug bit 4: the batch in one draw, its
     // first range's texture)
     uint32_t tdraws_this_call = 0;
-    auto draw_tfrag = [&](const mrpwb::Batch& b, size_t bi, size_t r0) {
+    auto draw_tfrag = [&](const mrpwb::Batch& b, size_t bi, size_t r0, bool pass2_only, auto&& set_p1_at) {
         const bool whole = (g_tdebug & 4) != 0;
         for (size_t r = r0; r < tranges.size() && tranges[r].batch == bi; ++r) {
             const mrpwb::TfragRange& R = tranges[r];
+            if (!whole && pass2_only && g_gx2_perf.p2_cull && !R.pass2) continue;
+            if (!whole && !pass2_only) set_p1_at(R.pass2);
             if (g_ring_wraps != g_tcache.wraps) {  // (the blocks' ring wrapped during this call: the frame block written again)
                 g_tcache.frame = tfrag_frame();
                 g_tcache.wraps = g_ring_wraps;
@@ -2077,6 +2086,9 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
                 use_ps(variant_ps(sp, at));
             }
         };
+        auto set_p1_at = [&](bool at) {
+            if (g_gx2_perf.p2_cull && b.ate && !grey) use_shaders(at);
+        };
         // pass 1: the passing pixels of the draws whose alpha test is on (their mode in draw_flags), every pixel of the others - by the
         // build without the alpha test when none of the batch's draws tests (Batch::ate; grey: the test off) and Gx2Perf says so
         use_shaders(b.ate && !grey);
@@ -2088,17 +2100,46 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
             ++g_tdraws;
             g_ttris += b.count / 3;
             drawn();
-        } else if (b.tfrag) draw_tfrag(b, bi, r0);
-        else if (items) draw_items(b, bi);
+        } else if (b.tfrag) draw_tfrag(b, bi, r0, false, set_p1_at);
+        else if (items) draw_items(b, bi, false, set_p1_at);
         else
-            for (uint32_t i = b.first; i < b.first + b.count; ++i) draw_one(b, i);
+            for (uint32_t i = b.first; i < b.first + b.count; ++i) draw_one(b, i, false, set_p1_at);
         wiiu_gpu_submark((b.tfrag || cpu_batch) ? kSmTfrag1 : kSmTies1);  // (RAC1_WIIU_GPU_TIME=2: the GPU's time by pass, wiiu_gfx.cpp)
         // pass 2: the failing ones as AFAIL says (RKey::pass2: 1 FB_ONLY the colour with alpha, 2 ZB_ONLY the depth, 3 RGB_ONLY the
         // colour without alpha)
-        if (rk.pass2 != 0 && !one_pass && !grey) {
+        bool has_p2 = rk.pass2 != 0 && !one_pass && !grey;
+        if (has_p2 && g_gx2_perf.p2_cull && !cpu_batch) {
+            has_p2 = false;
+            if (b.tfrag) {
+                const bool whole = (g_tdebug & 4) != 0;
+                if (whole) has_p2 = true;
+                else
+                    for (size_t r = r0; r < tranges.size() && tranges[r].batch == bi; ++r)
+                        if (tranges[r].pass2) {
+                            has_p2 = true;
+                            break;
+                        }
+            } else if (items) {
+                const mrpwm::Plan& P = g_mg.plan;
+                if (bi + 1 < P.batch_items.size())
+                    for (uint32_t q = P.batch_items[bi]; q < P.batch_items[bi + 1]; ++q)
+                        if (P.items[q].pass2) {
+                            has_p2 = true;
+                            break;
+                        }
+            } else {
+                for (uint32_t i = b.first; i < b.first + b.count; ++i)
+                    if (cmds[8 * static_cast<size_t>(draws[i].base_instance) + 6] != 0) {
+                        has_p2 = true;
+                        break;
+                    }
+            }
+        }
+        if (has_p2) {
             const uint32_t afail = rk.pass2;
+            const GX2CompareFunction zf2 = g_gx2_perf.p2_less && !(afail == 2 && zwrite) && zf == GX2_COMPARE_FUNC_LEQUAL ? GX2_COMPARE_FUNC_LESS : zf;
             use_shaders(true);
-            GX2SetDepthOnlyControl(ztest ? TRUE : FALSE, ztest && afail == 2 && zwrite ? TRUE : FALSE, zf);
+            GX2SetDepthOnlyControl(ztest ? TRUE : FALSE, ztest && afail == 2 && zwrite ? TRUE : FALSE, zf2);
             set_mask(afail == 2 ? none : afail == 3 ? GX2_CHANNEL_MASK_RGB : GX2_CHANNEL_MASK_RGBA);
             pb.a[0] = 2;
             set_pixel(pb);
@@ -2107,10 +2148,10 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
                 ++g_tdraws;
                 g_ttris += b.count / 3;
                 drawn();
-            } else if (b.tfrag) draw_tfrag(b, bi, r0);
-            else if (items) draw_items(b, bi);
+            } else if (b.tfrag) draw_tfrag(b, bi, r0, true, set_p1_at);
+            else if (items) draw_items(b, bi, true, set_p1_at);
             else
-                for (uint32_t i = b.first; i < b.first + b.count; ++i) draw_one(b, i);
+                for (uint32_t i = b.first; i < b.first + b.count; ++i) draw_one(b, i, true, set_p1_at);
             set_mask(GX2_CHANNEL_MASK_RGBA);
             wiiu_gpu_submark((b.tfrag || cpu_batch) ? kSmTfrag2 : kSmTies2);
         }

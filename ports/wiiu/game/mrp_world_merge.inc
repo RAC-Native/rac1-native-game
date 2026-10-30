@@ -124,6 +124,7 @@ struct Item {
     int32_t base = 0;               // a lone command's template first vertex (its indices relative: tidx's)
     bool own = false;               // its indices are the frame's list's
     bool lone = false;              // a draw command drawn as before: its own block (its record in it), relative indices, `base`
+    bool pass2 = true;              // true when any draw command in this item may fail the alpha test (needs the AFAIL pass 2)
 };
 // What merges: 1 consecutive commands of one instance and one texture unit; 2 of one instance (the batch's texture units all bound,
 // the pixel shader samples the triangle's: its run's draw_flags); 3 as 2, and consecutive items of different instances over the same
@@ -150,6 +151,7 @@ struct Plan {
     // (plan_build's: the groups - one instance's consecutive commands - before the instancing, their index segments)
     struct Group {
         uint32_t inst = 0, unit = 0, cmds = 0, seg0 = 0, nseg = 0;
+        bool pass2 = true;
     };
     std::vector<Group> groups;
     std::vector<std::pair<uint32_t, uint32_t>> segs;
@@ -198,11 +200,12 @@ inline void plan_build(const mrpwb::FrameView& F, const Level& M, int kinds, int
             const Plan::Group& g = groups[k];
             size_t e = k + 1;
             if (mode_instanced(mode))
-                while (e < groups.size() && e - k < kMaxInstanced && groups[e].unit == g.unit && groups[e].nseg == g.nseg &&
+                while (e < groups.size() && e - k < kMaxInstanced && groups[e].unit == g.unit && groups[e].pass2 == g.pass2 && groups[e].nseg == g.nseg &&
                        std::equal(segs.begin() + groups[e].seg0, segs.begin() + groups[e].seg0 + groups[e].nseg, segs.begin() + g.seg0))
                     ++e;
             Item it;
             it.unit = g.unit;
+            it.pass2 = g.pass2;
             it.inst = static_cast<uint32_t>(P.ilist.size());
             it.ninst = static_cast<uint32_t>(e - k);
             for (size_t q = k; q < e; ++q) {
@@ -242,6 +245,7 @@ inline void plan_build(const mrpwb::FrameView& F, const Level& M, int kinds, int
             if ((kinds & (kind != 0 ? 2 : 1)) == 0) continue;
             ++P.cmds;
             const uint32_t unit = (rec[3] >> 16) & 15u;
+            const bool pass2 = rec[6] != 0;
             const uint32_t g = run_of(M, c.first_index, c.count, hint);
             bool lone = g == kNoRun;
             if (lone) {
@@ -269,11 +273,12 @@ inline void plan_build(const mrpwb::FrameView& F, const Level& M, int kinds, int
                 it.cmds = 1;
                 it.base = c.base_vertex;
                 it.lone = true;
+                it.pass2 = pass2;
                 P.items.push_back(it);
                 continue;
             }
-            if (groups.empty() || groups.back().inst != rec[0] || (mode_by_unit(mode) && groups.back().unit != unit))
-                groups.push_back(Plan::Group{rec[0], unit, 0, static_cast<uint32_t>(segs.size()), 0});
+            if (groups.empty() || groups.back().inst != rec[0] || groups.back().pass2 != pass2 || (mode_by_unit(mode) && groups.back().unit != unit))
+                groups.push_back(Plan::Group{rec[0], unit, 0, static_cast<uint32_t>(segs.size()), 0, pass2});
             Plan::Group& gr = groups.back();
             ++gr.cmds;
             if (gr.nseg > 0 && segs.back().first + segs.back().second == c.first_index) {

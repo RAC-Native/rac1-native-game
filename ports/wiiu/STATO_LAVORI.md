@@ -16,7 +16,8 @@ Tutti i test sono eseguiti con `ports/wiiu/tools/bench.sh` (`explore` input dete
 | **`m1a`–`m1c`** (`f9d57de`) | **42.6 ms** (~23.5 fps, fine run **33.4 ms**) | **76.7 ms** (velocità reale 100%) | Rimosso doppio `mrp_lod_moby_shadow` su Wii U; `kStallMs = 250` |
 | **`m1d`–`m1f`** (`5e9c173`) | **38.3 ms** (6 finestre fisse a **33.2–33.3 ms / 30 fps**) | **62.7 ms** (moby draw loop `20.7 -> 12.7 ms`) | Undo log per-campo in `mrp_lod.cpp`; `PinnedThread`; cache `StaticLevel::tex` |
 | **`m1h`–`m1j`** | — | **45.9 ms** (16 finestre; 5 finestre consecutive a **33.4–34.6 ms / 30 fps**) | Overlap `game_thread` (Core 2) + `mrp_chain` (Core 0) + `world prep` (Core 1) |
-| **`m1k`–`m1l`** | **35.3 ms** (10/16 finestre fisse a **32.8–33.5 ms / 30 fps**, 1 a **16.7 ms / 60 fps**) | **44.4 ms** (5 finestre a **32.5–34.2 ms / 30 fps**; finestra finale scesa da **64.9 a 54.9 ms**) | `tfrag_exec_cpu_fast` + drenaggio cooperativo Core 1/Core 0 + fast path `mrp_fx_wiiu_prepare` |
+| **`m1k`–`m1l`** (`0b70fb6`) | **35.3 ms** (10/16 finestre fisse a **32.8–33.5 ms / 30 fps**, 1 a **16.7 ms / 60 fps**) | **44.4 ms** (5 finestre a **32.5–34.2 ms / 30 fps**; finestra finale scesa da **64.9 a 54.9 ms**) | `tfrag_exec_cpu_fast` + drenaggio cooperativo Core 1/Core 0 + fast path `mrp_fx_wiiu_prepare` |
+| **`m1m`** (`RAC1_WIIU_P2_CULL` + `RAC1_WIIU_P2_LESS`) | **30.3 ms** (~33.0 fps medi! Finestre a **25.4–26.1 ms / 38–39 fps** e **16.7–18.8 ms / 53–60 fps**; GPU busy **17.8 ms**) | Finestra finale più pesante scesa da **54.9 ms a 36.1 ms (-18.8 ms!)**; GPU busy medio **38.2 → 24.1 ms (-36.9%)**; World GPU **26.98 → 10.06 ms** | Culling Pass 2 per-draw/per-range + shader `_noat` Early-Z in Pass 1 + `LESS` depth in Pass 2 |
 
 ---
 
@@ -41,7 +42,7 @@ Tutti i test sono eseguiti con `ports/wiiu/tools/bench.sh` (`explore` input dete
 6. **Cache `StaticLevel::tex` persistente tra frame** (`src/game/render/mrp_world_scene.h`, `src/game/render/mrp_world_scene.cpp`, `src/game/render/mrp_world_static.cpp`):
    - Evitata la copia di `L.tex` (95 KB/frame su Novalis) dentro `SceneFrame::tex` a ogni frame per ties e shrubs.
 
-### Modifiche `m1h`–`m1l` (in corso di validazione e commit)
+### Commit `0b70fb6` (già su `origin/port/wiiu`)
 7. **Zero allocazioni in `vu1::start_program` e `sky_prepend` O(1)** (`runtime/vu/vu1.cpp`, `src/game/render/mrp_world_scene.cpp`, `src/game/render/mrp_world_renderer.cpp`):
    - Eliminata l'allocazione `std::vector<uint8_t> buf` a ogni `XGKICK` VU1 (passando direttamente `&vu.st.mem[a0 << 4]` quando non wrappa).
    - Inseriti i pacchetti sky in `SceneFrame::packets` prima dei pacchetti tie/shrub/tfrag, eliminando lo spostamento `memmove` di oltre 5.800 `ScenePacket` a ogni frame.
@@ -54,39 +55,36 @@ Tutti i test sono eseguiti con `ports/wiiu/tools/bench.sh` (`explore` input dete
    - Calcolo di posizione mondo `wp` e `fog` una sola volta per vertice VU7 (invece di ricalcolare `M * pt` e `vu7_geinv * (Me * pt)` per ogni angolo di ogni triangolo nello strip, riducendo del ~70% la matematica VU7).
    - Fattorizzazione dell'unprojection per gli sprite (`p.type == 6`, 4 vertici con la stessa profondità `b.z`) e calcolo diretto di `(VP * wp).w` con prodotto scalare a 3 moltiplicazioni invece di `dmat4 * dvec4` completo.
 
+### Milestone `m1m` (`RAC1_WIIU_P2_CULL` + `RAC1_WIIU_P2_LESS`)
+10. **Eliminazione Pass 2 (`AFAIL`) e `discard` Pass 1 per le geometrie opache + `LESS` depth in Pass 2** (`ports/wiiu/game/mrp_world_gx2.h`, `src/game/render/mrp_world_backend.inc`, `ports/wiiu/game/mrp_world_merge.inc`, `src/game/render/mrp_world_renderer.cpp`, `ports/wiiu/game/mrp_world_gx2.cpp`):
+    - Pre-calcolo di `TexRef::opaque` su tutti i mip level campionati (`alpha >= 0x80` su tutti i texel) e cache dell'opacità alpha per-vertice per slot tie (`tie_slot_opaque`) e tfrag (`tfrag_entry_opaque`).
+    - In **Pass 1**, tutti i range tfrag e gli item tie/shrub con `pass2 == false` usano gli shader `_noat` (`mrp_world_fast_noat.gsh` / `mrp_tfrag_fast_noat.gsh`), eliminando `KILL_ENABLE` (`discard`) e abilitando scrittura depth Early-Z e aggiornamento Hi-Z HTILE hardware *prima* del pixel shader.
+    - In **Pass 2**, tutti i range/item con `pass2 == false` (~85–95% del mondo) vengono saltati; per il restante 5–15% di cutout (`pass2 == true`), `RAC1_WIIU_P2_LESS` imposta il depth test a `LESS` anziché `LEQUAL`, così l'Early-Z/Hi-Z hardware scarta tutti i pixel interni opachi già scritti in Pass 1.
+    - **Risultato misurato su Wii U:**
+      - **Veldin:** media globale **30.3 ms (~33.0 fps)**, con finestre a **25.4–26.1 ms (38–39 fps)** e **16.7–18.8 ms (53–60 fps)**; GPU busy **31.9 → 17.8 ms (-44.2%)**; World GPU **26.98 → 7.62 ms (3.5× più veloce)**; `GPU wait = 0.0 ms`.
+      - **Novalis:** finestra finale più pesante scesa da **54.9 ms a 36.1 ms (-18.8 ms)**; GPU busy medio **38.2 → 24.1 ms (-36.9%)**; World GPU nella vista più pesante **26.98 → 10.06 ms**; `GPU wait = 0.0 ms`.
+
 ---
 
 ## 3. Cosa Manca (Prossimi Passi in Ordine di Impatto)
 
-### Priorità 1 — Ridurre il Tempo GPU del Mondo (Obiettivo: 1080p nativo `RAC1_WIIU_3D_SCALE=1.0`)
-Dai contatori `[gpu-world]` su Novalis (`m1k_novalis`), nelle viste più pesanti la GPU impiega **26.8–32.2 ms** sul mondo:
-- `ties/shrubs pass 1`: **10.3–11.5 ms**
-- `ties/shrubs pass 2`: **9.4–10.7 ms**
-- `tfrag pass 1 + 2`: **6.5–10.0 ms**
+### Priorità 1 — Eliminare la contesa Core 0 tra `PrepWorker` e `mrp_chain` + Testare 1080p Nativo (`RAC1_WIIU_3D_SCALE=1.0`)
+Con la GPU ora scesa a **17.8 ms** su Veldin e **24.1 ms** su Novalis (`GPU wait = 0.0 ms`), il tempo frame residuo su Novalis (**36.1 ms** nella vista più pesante) è interamente CPU:
+- Su Core 1: `world's worker join` (**10.0 ms**) + `chain join` (**4.4 ms**). Perché `mrp_world_wiiu_prepare_async` accoda ancora `PrepWorker` su Core 0 mentre `mrp_chain` sta girando su Core 0! Eseguendo lo step di preparazione direttamente su Core 1 in `mrp_world_wiiu_join()` prima di drenare i tfrag, Core 0 resta dedicato al 100% a `mrp_chain` e Core 1 a `mrp_world`, eliminando la contesa su Core 0.
+- Testare e misurare **1080p nativo (`RAC1_WIIU_3D_SCALE=1.0`)** su Veldin e Novalis ora che il tempo GPU del mondo è sceso di 3.5×.
 
-**Cosa fare:**
-1. **Eliminare `ties/shrubs pass 2` per le mesh opache / cutout semplici (`ports/wiiu/game/mrp_world_gx2.cpp`):**
-   - Attualmente quasi tutti i batch di ties/shrubs eseguono un secondo passaggio completo (`pass 2`, **9.4–10.7 ms GPU**) per emulare `AFAIL = FB_ONLY / RGB_ONLY` (disegnare i pixel con `alpha < 0x80` senza scrivere nello Z-buffer).
-   - Pre-analizzando al caricamento del livello quali texture/run di ties e shrubs hanno effettivamente texel semitrasparenti (`0 < alpha < 0x80`) rispetto a texture 100% opache (`alpha >= 0x80`) o cutout puri (`alpha == 0` o `alpha >= 0x80`), possiamo saltare `pass 2` per tutte le geometrie che non ne hanno bisogno (o attivare `RAC1_MRPW_ONEPASS` selettivo per i tie/shrub oltre una certa distanza). Risparmio stimato: **6–10 ms GPU**.
-2. **Spostare Tfrag su GPU Latte (Vertex Shader GX2):**
-   - Oggi i tfrag generano 3.000–5.000 vertici da 72 byte via CPU a ogni frame (`tfrag_exec_cpu_fast`).
-   - Creare un Vertex Shader GX2 dedicato per i tfrag che legge i template statici già residenti in MEM2 e applica matrice vista/proiezione, morph LOD e colori vertice direttamente sulla GPU Latte (come già avviene per ties e shrubs). Risparmio stimato: **5–12 ms CPU** + riduzione drastica del traffico bus MEM2.
-
-### Priorità 2 — Ridurre il Carico CPU sul `game_thread` (Core 2: `22–39 ms` su Novalis)
-Dai log `[game]` su Novalis (`m1k_novalis`), il tempo per step sul `game_thread` è composto da:
-- `Game code (EE update, other)`: **11.1–26.3 ms** (3–3.9 step per host frame = ~6–7 ms per singolo step a 60 Hz)
-- `Game: moby pass (draw loop)`: **8.2–12.8 ms** (~3.5 ms per singolo step a 60 Hz)
-- `Game: effects draw, draw lists`: **1.2–4.8 ms**
-
-**Cosa fare:**
-1. **Snellire `Game: moby pass (draw loop)` (`8.2–12.8 ms`):**
-   - Su Wii U `mrp_moby_gx2` disegna i moby leggendo la lista delle istanze preparate da `mrp_moby.cpp`. Tuttavia il gioco esegue ancora l'intero loop MIPS ricompilato di disegno moby per popolare i registri/matrici e invocare gli hook VU1. Saltare la generazione delle catene DMA VU1 nel loop MIPS per i moby già catturati da `mrp_moby` può dimezzare quei 12.7 ms.
-2. **Ottimizzare i kernel VU0 / collisioni in `EE update`:**
-   - Usare le istruzioni SIMD **Paired Singles (`ps_*`)** di Espresso in `runtime/vu/vu0_macro.h` per le operazioni vettoriali a 4 componenti (`vmul`, `vmadd`, `vadd`, `vsub`) usate intensivamente da skinning, fisica e particelle.
+### Priorità 2 — Spostare Tfrag su GPU Latte (Vertex Shader GX2) e Snellire `game_thread` (Core 2)
+1. **Tfrag su GPU Latte (Vertex Shader GX2):**
+   - Oggi i tfrag generano 3.000–5.000 vertici da 72 byte via CPU a ogni frame (`tfrag_exec_cpu_fast`, ~3.8–5.5 ms CPU).
+   - Spostare morph/proiezione tfrag su Vertex Shader GX2 elimina il percorso CPU dei tfrag.
+2. **Ridurre il carico CPU sul `game_thread` (Core 2: `30.9 ms` nella finestra 14 di Novalis, per `game thread join = 8.8 ms`):**
+   - `Game code (EE update, other)`: **12.3 ms** (~5.8 ms/step)
+   - `Game: moby pass (draw loop)`: **11.2 ms** (~5.3 ms/step, principalmente `moby_shadows` e `moby_cull_light` VU0)
+   - `Game: effects draw, draw lists`: **3.4 ms** (~1.6 ms/step)
+   - Ottimizzare `moby_shadows` / `moby_cull_light` e i kernel VU0 / collisioni in `EE update` con **Paired Singles (`ps_*`)**.
 
 ### Priorità 3 — Ombre Moderne Leggere su Wii U
-- Attualmente le ombre stencil/proiettate PS2 sono disattivate di default su Wii U perché emulare i render-target GS + VU1 costava troppo.
-- Implementare proiezione blob-shadow / shadow-map leggera su GX2 (sfruttando l'infrastruttura di `src/game/render/mrp_lighting.cpp` già presente su PC) in un singolo draw call istanziato.
+- Implementare proiezione blob-shadow / shadow-map leggera su GX2 (sfruttando l'infrastruttura di `src/game/render/mrp_lighting.cpp` già presente su PC) o ottimizzare le drop shadows esistenti.
 
 ---
 

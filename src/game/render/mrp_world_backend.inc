@@ -52,7 +52,11 @@ struct Key {
     uint32_t layer = 0, word = 1, sampler = 0;
     uint64_t prim = 0, test = 0, alpha = 0, zbuf = 0;
     uint32_t fogcol = 0;
-    bool operator==(const Key&) const = default;
+    bool opaque = false;  // (host: the bound texture's sampled mip levels have alpha >= 0x80 everywhere; not part of the GS state comparison)
+    bool operator==(const Key& o) const {
+        return bucket == o.bucket && layer == o.layer && word == o.word && sampler == o.sampler && prim == o.prim && test == o.test &&
+               alpha == o.alpha && zbuf == o.zbuf && fogcol == o.fogcol;
+    }
 };
 // what a batch's draws share: the GL state the GS state maps to (blending: PRIM ABE + ALPHA; the depth test; the depth
 // write; the alpha test's second pass, AFAIL), and for the CPU path its texture (bucket, sampler); the rest of the GS state (TME, IIP,
@@ -106,9 +110,10 @@ struct DrawCmd {  // DrawElementsIndirectCommand
 
 // A tfrag batch's triangles of one texture unit (the GPU path's tfrag draws sample by unit, the unit in each vertex's draw_flags; a
 // backend without texture units binds the unit's texture per range): `batch` the frame's batch (Batch::tfrag), [first, first + count)
-// in the frame's tfrag indices, `unit` 1.. in the batch's epoch (0: none)
+// in the frame's tfrag indices, `unit` 1.. in the batch's epoch (0: none), `pass2` whether any pixel in the range can fail the alpha test
 struct TfragRange {
     uint32_t batch = 0, first = 0, count = 0, unit = 0;
+    bool pass2 = true;
 };
 
 // The frame the renderer built (valid until the next frame is prepared)

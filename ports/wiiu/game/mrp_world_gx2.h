@@ -132,6 +132,10 @@ struct Gx2Perf {
     bool fast = true;         // the world's / tfrags' / sky's fast pixel shader (mrp_world_fast.frag: the per-draw decoding in the vertex
                               // shader, ~16 ALU groups a pixel for ~66): shaders/mrp_{world,tfrag,sky}_fast[_noat].gsh, their own vertex
                               // shaders bound with them; the shade debug and the grey test keep mrp_world.frag
+    bool p2_less = true;      // RAC1_WIIU_P2_LESS: the AFAIL second pass (RGB_ONLY / FB_ONLY) uses LESS where pass 1 used LEQUAL, so
+                              // hardware early-Z / Hi-Z culls every pixel that already wrote its own depth in pass 1
+    bool p2_cull = true;      // RAC1_WIIU_P2_CULL: draws whose texture and vertex alpha are provably >= AREF use the _noat shader in
+                              // pass 1 (hardware early-Z + Hi-Z writes) and skip pass 2 completely
 };
 extern Gx2Perf g_gx2_perf;
 // (Gx2Perf::flush) a point where the commands so far may go to the GPU: GX2Flush when the switch is at `level` or more

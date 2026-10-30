@@ -112,6 +112,7 @@ struct Bucket {
 struct TexRef {
     int bucket = -1;
     uint32_t layer = 0, mips = 1;
+    bool opaque = false;  // every texel of levels 0..mips-1 has alpha >= 0x80
 };
 // the GPU path's template vertex, the frame's instances, draw commands and batches: mrp_world_backend.inc (the backends' boundary)
 using mrpwb::Batch;
@@ -293,6 +294,7 @@ void bucket_texels(const Level& L, const Bucket& b, size_t layer, uint32_t l, st
 // alpha kept) in one texture array per size, every mip
 void load_textures(Level& L) {
     static const char* names[3] = {"tfrag", "tie", "shrub"};
+    auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
     std::map<std::pair<uint32_t, uint32_t>, int> by_size;
     for (int k = 0; k < 3; ++k) {
         const std::string path = asset_root() + "/" + level_dir_name(L.id) + "/textures_" + names[k] + ".mrpt";
@@ -312,6 +314,25 @@ void load_textures(Level& L) {
             L.ref[k][i].bucket = it->second;
             L.ref[k][i].layer = static_cast<uint32_t>(b.textures.size());
             L.ref[k][i].mips = static_cast<uint32_t>(std::min<size_t>(t.mips.size(), 4));
+            bool pal_opq[256];
+            for (uint32_t p = 0; p < 256; ++p)
+                pal_opq[p] = reinterpret_cast<const uint8_t*>(&t.palette[csm1(p)])[3] >= 0x80u;
+            bool opq = true;
+            for (uint32_t l = 0; opq && l < L.ref[k][i].mips; ++l) {
+                const uint32_t lw = std::max(1u, t.width >> l), lh = std::max(1u, t.height >> l);
+                if (l >= t.mips.size() || t.mips[l].size() < static_cast<size_t>(lw) * lh) {
+                    opq = false;
+                    break;
+                }
+                const uint8_t* mip = t.mips[l].data();
+                const size_t n = static_cast<size_t>(lw) * lh;
+                for (size_t q = 0; q < n; ++q)
+                    if (!pal_opq[mip[q]]) {
+                        opq = false;
+                        break;
+                    }
+            }
+            L.ref[k][i].opaque = opq;
             b.textures.push_back({k, static_cast<int>(i)});
             b.levels = std::max<uint32_t>(b.levels, L.ref[k][i].mips);
         }
@@ -1656,6 +1677,7 @@ struct GsFront {
         const TexRef& r = L.ref[table][ti];
         k.bucket = r.bucket;
         k.layer = r.layer;
+        k.opaque = r.opaque;
         k.word |= (std::min(std::min(r.mips, mxl + 1), 4u) - 1) << 22;  // (the GS samples levels 0..MXL only, as the mobys')
         if (g_emis_frame && ti < g_emis.slot[table].size()) k.word |= static_cast<uint32_t>(g_emis.slot[table][ti]) << 25;  // (an emissive surface's slot)
         ++g_st.tex_ok;
@@ -2025,6 +2047,71 @@ struct GsFront {
 bool g_shadow_emit = false;  // gpu_packet's batches are the casters'
 uint16_t g_shadow_emit_views = 0xffff;  // and their shadow views
 
+// Per-tie-instance and per-tfrag-entry vertex-alpha opacity tables (1 when every resident lit colour word has alpha >= 0x80),
+// refreshed only when g_rcols.updates / g_tcols.updates advances.
+std::vector<uint8_t> g_tie_slot_opq;
+uint64_t g_tie_slot_opq_updates = ~0ull;
+bool tie_slot_opaque(uint32_t colour_first) {
+    if (g_tie_slot_opq_updates != g_rcols.updates) {
+        g_tie_slot_opq_updates = g_rcols.updates;
+        const uint32_t n = g_rcols.src.tie_count;
+        g_tie_slot_opq.assign(n, 0);
+        for (uint32_t i = 0; i < n && static_cast<size_t>(i + 1) * kTieColours <= g_rcols.mirror.size(); ++i) {
+            const uint32_t* p = &g_rcols.mirror[static_cast<size_t>(i) * kTieColours];
+            uint8_t opq = 1;
+            for (uint32_t c = 0; c < kTieColours; ++c)
+                if ((p[c] >> 24) < 0x80u) {
+                    opq = 0;
+                    break;
+                }
+            g_tie_slot_opq[i] = opq;
+        }
+    }
+    return (colour_first % kTieColours) == 0 && (colour_first / kTieColours) < g_tie_slot_opq.size() &&
+           g_tie_slot_opq[colour_first / kTieColours] != 0;
+}
+
+std::vector<uint8_t> g_tfrag_entry_opq;
+uint64_t g_tfrag_entry_opq_updates = ~0ull;
+uint64_t g_tfrag_entry_opq_gen = ~0ull;
+bool tfrag_entry_opaque(uint32_t entry) {
+    if (g_tfrag_entry_opq_updates != g_tcols.updates || g_tfrag_entry_opq_gen != g_tlevel.generation) {
+        g_tfrag_entry_opq_updates = g_tcols.updates;
+        g_tfrag_entry_opq_gen = g_tlevel.generation;
+        const size_t n = g_tlevel.entries.size();
+        g_tfrag_entry_opq.assign(n, 0);
+        for (size_t i = 0; i < n; ++i) {
+            const TfragEntryGpu& e = g_tlevel.entries[i];
+            if (!e.ok || e.colour_n == 0 || static_cast<size_t>(e.colour_slot) + e.colour_n > g_tcols.mirror.size()) continue;
+            const uint32_t* p = &g_tcols.mirror[e.colour_slot];
+            uint8_t opq = 1;
+            for (uint32_t c = 0; c < e.colour_n; ++c)
+                if ((p[c] >> 24) < 0x80u) {
+                    opq = 0;
+                    break;
+                }
+            g_tfrag_entry_opq[i] = opq;
+        }
+    }
+    return entry < g_tfrag_entry_opq.size() && g_tfrag_entry_opq[entry] != 0;
+}
+
+// True when a draw's fragments can fail its alpha test (so Pass 1 needs the `discard` shader and Pass 2 must run for it).
+// When every sampled texel has alpha >= 0x80 (`k.opaque`) and/or every vertex colour has alpha >= 0x80 (`vert_opq`, >= 0x7f after
+// morphing), `o.a * 255.0 >= 127.0` for 100% of fragments; under ATST GEQUAL (`5`) with AREF <= 0x7f (e.g. world TEST_1 0x5360b:
+// ATST=5, AREF=0x60) or ATST GREATER (`6`) with AREF < 0x7f, `pass` is guaranteed true for every pixel.
+bool draw_needs_pass2(const Key& k, uint32_t fl, bool vert_opq) {
+    if ((fl & 8u) == 0) return false;
+    const uint32_t atst = (fl >> 4) & 7u, aref = (fl >> 8) & 0xffu;
+    if (!((atst == 5u && aref <= 0x7fu) || (atst == 6u && aref < 0x7fu))) return true;
+    const bool tme = (fl & 1u) != 0;
+    const uint32_t tfx = (k.word >> 1) & 3u, tcc = (k.word >> 3) & 1u;
+    const bool tex_opq = !tme || ((k.word & 1u) != 0) || k.opaque;
+    if (!tme || tcc == 0u) return !vert_opq;
+    if (tfx == 1u || tfx == 3u) return !tex_opq;
+    return !(tex_opq && vert_opq);
+}
+
 // orig: (host) a GPU path packet (tie A / shrub A): its instance record, its template's runs as draw commands with the GS state
 // at each (its texture prims' A+D from the instance's VU1 memory applied to the registers as the GS would)
 void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp) {
@@ -2034,6 +2121,7 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
     if (it == L.tpl.end() || p.inst >= F.scene.insts.size()) return;
     const Tpl& t = it->second;
     const SceneInst& si = F.scene.insts[p.inst];
+    const bool vert_opq = p.shrub != nullptr ? si.alpha >= 0x80u : (si.resident && tie_slot_opaque(si.colour_first));
     // (an instance drawn by several packets - the host's ties / shrubs, each packet of its LOD - made once)
     if (F.inst_of.size() < F.scene.insts.size()) F.inst_of.resize(F.scene.insts.size(), 0xffffffffu);
     uint32_t inst = F.inst_of[p.inst];
@@ -2091,7 +2179,9 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
             }
             unit = static_cast<uint32_t>(u) + 1;
         }
-        F.cmds.insert(F.cmds.end(), {inst, k.word, k.layer, draw_flags(k, unit), k.fogcol, 0u, 0u, 0u});
+        const uint32_t fl = draw_flags(k, unit);
+        const bool pass2 = draw_needs_pass2(k, fl, vert_opq);
+        F.cmds.insert(F.cmds.end(), {inst, k.word, k.layer, fl, k.fogcol, 0u, pass2 ? 1u : 0u, 0u});
         k.word = 0;
         k.layer = 0;
         RKey rk = batch_key(k, true, false);
@@ -2125,6 +2215,7 @@ void tfrag_packet(GsFront& g, Frame& F, const ScenePacket& p) {
     const TfragEntryGpu& e = g_tlevel.entries[d.entry];
     const TfragPlan* pl = e.plan(d.lod, d.code, d.b);
     if (pl == nullptr) return;
+    const bool vert_opq = tfrag_entry_opaque(d.entry);
     TfragGpuFrame& T = F.tf;
     TfragGpuDraw gd{};
     gd.image = e.gpu_image[d.lod];
@@ -2173,7 +2264,9 @@ void tfrag_packet(GsFront& g, Frame& F, const ScenePacket& p) {
             }
             unit = static_cast<uint32_t>(u) + 1;
         }
-        T.runs.insert(T.runs.end(), {k.word, k.layer, draw_flags(k, unit), k.fogcol});
+        const uint32_t fl = draw_flags(k, unit);
+        const bool run_pass2 = draw_needs_pass2(k, fl, vert_opq);
+        T.runs.insert(T.runs.end(), {k.word, k.layer, fl, k.fogcol});
         if (ntri == 0) continue;
         k.word = 0;
         k.layer = 0;
@@ -2193,8 +2286,11 @@ void tfrag_packet(GsFront& g, Frame& F, const ScenePacket& p) {
         g_st.triangles += ntri;
         const uint32_t first = gd.ibase + 3 * pl->runs[r].first_tri, batch = static_cast<uint32_t>(F.batches.size() - 1);
         auto& tr = F.tf_ranges;
-        if (!tr.empty() && tr.back().batch == batch && tr.back().unit == unit && tr.back().first + tr.back().count == first) tr.back().count += 3 * ntri;
-        else tr.push_back({batch, first, 3 * ntri, unit});
+        if (!tr.empty() && tr.back().batch == batch && tr.back().unit == unit && tr.back().pass2 == run_pass2 &&
+            tr.back().first + tr.back().count == first)
+            tr.back().count += 3 * ntri;
+        else
+            tr.push_back({batch, first, 3 * ntri, unit, run_pass2});
     }
     g.queue.clear();
     T.draws.push_back(gd);

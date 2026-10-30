@@ -450,3 +450,34 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
 - **Console benchmark (`m1l`):**
   - **Novalis** (1500 frames, 16 windows): host frame average **44.4 ms** (down from **87.8 ms** baseline — **nearly 2× faster overall**); 5 consecutive windows at **32.5–34.2 ms (30.0 fps)**; heaviest final window dropped to **54.9 ms** (from **64.9 ms** in `m1j` and **87.8 ms** baseline); `the CPU route` for tfrag dropped from **6.56 / 4.70 ms to 5.53 / 3.87 ms**.
   - **Veldin** (1200 frames, 16 windows): host frame average dropped from **38.3 ms (`m1f`) to 35.3 ms (`m1l`)** (down from **52.6 ms** baseline); 10 of 16 windows locked at **32.8–33.5 ms (30.0 fps)** (and 1 window at **16.7 ms / 60.0 fps**) with 8–13.8 ms of swap wait headroom.
+
+### M1m: Per-draw / per-range Pass 2 culling (`RAC1_WIIU_P2_CULL`), Pass 1 `_noat` Early-Z depth writes, and Pass 2 `LESS` depth rejection (`RAC1_WIIU_P2_LESS`) (2026-10-30)
+
+- **Why the world GPU pass was still 27–32 ms (`m1k`/`m1l`):**
+  - The game sets `TEST_1 = 0x5360b` (`ATE = 1`, `ATST = GEQUAL`, `AREF = 0x80`, `AFAIL = RGB_ONLY`) across the entire static world pass (tfrag, tie, shrub).
+  - Because `has_afail` was a batch-wide boolean (`b.ate && b.atst != 1 && b.atst != 0 && b.afail != 0`), **every** tfrag range and tie/shrub draw in the batch:
+    1. Ran with `discard` (`KILL_ENABLE`) in Pass 1 (`mrp_world_fast.gsh` / `mrp_tfrag_fast.gsh`), forcing Latte to defer depth writes and Hi-Z HTILE updates until after the pixel shader.
+    2. Was drawn a **second time** in Pass 2 (`RGB_ONLY`, `zwrite = false`, `zfunc = LEQUAL`), shading every visible pixel twice even when 85–95% of world textures and vertex colours have `alpha >= 0x80` on every texel and vertex!
+    3. Even for genuine cutout draws (`pass2 == true`), Pass 2 used `LEQUAL` (`zfunc == 3`), so every opaque interior pixel (`alpha >= 0x80`) that had already passed Pass 1 and written its depth passed the depth test again in Pass 2 and was shaded a second time.
+- **`RAC1_WIIU_P2_CULL` (default 1) and `RAC1_WIIU_P2_LESS` (default 1) (`mrp_world_gx2.h`, `mrp_world_backend.inc`, `mrp_world_merge.inc`, `mrp_world_renderer.cpp`, `mrp_world_gx2.cpp`):**
+  - `load_textures` inspects all sampled mip levels (`0 .. mips - 1`) of each texture (`csm1(p)` palette alpha byte `[3] >= 0x80u`) and caches `TexRef::opaque`.
+  - `tie_slot_opaque` and `tfrag_entry_opaque` cache per-instance / per-tfrag vertex-alpha opacity (`(w >> 24) >= 0x80u` on `g_rcols.mirror` and `g_tcols.mirror`, recomputed only when `updates` advances); shrubs test `si.alpha >= 0x80u`.
+  - `draw_needs_pass2(k, fl, vert_opq)` checks whether any fragment in a draw or tfrag range can fail the alpha test (`ATST == 5` `GEQUAL` with `AREF <= 0x7f` or `ATST == 6` `GREATER` with `AREF < 0x7f`, given `TCC`, texture opacity, and vertex-alpha opacity).
+  - In `mrp_world_gx2_draw`:
+    1. **Pass 1 Early-Z depth writes:** items/ranges/draws with `pass2 == false` switch to `_noat` shaders (`mrp_world_fast_noat.gsh` / `mrp_tfrag_fast_noat.gsh`) via `set_p1_at(false)`, removing `KILL_ENABLE` so Latte writes depth and updates Hi-Z HTILE **before** running the pixel shader.
+    2. **Pass 2 culling:** items/ranges/draws with `pass2 == false` are skipped completely in Pass 2 (and if no item/range in a batch has `pass2 == true`, Pass 2 is skipped for the entire batch).
+    3. **Pass 2 `LESS` depth rejection (`RAC1_WIIU_P2_LESS`):** for the remaining ~5–15% of cutout draws in Pass 2 (`pass2 == true`), when `!(afail == 2 && zwrite)`, `GX2SetDepthOnlyControl` uses `LESS` instead of `LEQUAL` (`pass2_less`), so hardware Early-Z/Hi-Z rejects all opaque interior pixels that already wrote their depth in Pass 1, shading only the cutout fringe pixels that failed Pass 1!
+- **Console benchmark (`m1m`, 1080p × 0.75):**
+  - **Veldin (`RAC1_LEVEL=0`, 19 windows):**
+    - **Host frame average: `35.3 → 30.3 ms` (~33.0 fps average, down from `52.6 ms` baseline, -42.4%)**, with many windows running at **`25.4–26.1 ms` (~38–39 fps)** and **`16.7–18.8 ms` (53–60 fps)**!
+    - **GPU busy average: `31.9 → 17.8 ms` (-44.2% GPU time)**; `GPU wait (the frame before)`: **`10.3 → 0.0 ms`** (`10.5 ms` GPU idle headroom per frame).
+    - **World GPU pass: `26.98 → 7.62 ms` (3.5× faster)**: `tfrag pass 1` `1.39 ms`, `tfrag pass 2` `3.50 → 0.17 ms`, `ties/shrubs pass 1` `11.17 → 5.15 ms`, `ties/shrubs pass 2` `9.45 → 0.89 ms`.
+    - **CPU `world draws`: `5.6 → 2.5 ms`**; GX2 draws/frame: **`1148 → 648`**.
+  - **Novalis (`RAC1_LEVEL=1`, 14 windows):**
+    - **GPU busy average: `38.2 → 24.1 ms` (-14.1 ms / -36.9% GPU time across all windows)**.
+    - **Heaviest final gameplay window (window 14, frame 1140–1200):**
+      - **Host frame ms: `54.9 → 36.1 ms` (-18.8 ms faster than `m1l`, 2.43× faster than `87.8 ms` baseline)**!
+      - **GPU busy ms: `38.9 → 23.9 ms` (-15.0 ms)**, with **`GPU wait = 0.0 ms`** (was `15.7 ms`) and **`idle between frames = 12.6 ms`**.
+      - **World GPU pass: `26.98 → 10.06 ms` (2.68× faster)**: `tfrag pass 1` `1.50 ms`, `tfrag pass 2` `0.03 ms`, `ties/shrubs pass 1` `5.52 ms`, `ties/shrubs pass 2` `3.01 ms`.
+      - **CPU `world draws`: `6.1 → 3.6 ms`**; GX2 draws/frame: **`1710 → 1013`**.
+
