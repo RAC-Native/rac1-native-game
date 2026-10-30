@@ -59,8 +59,6 @@ constexpr uint32_t UPDATE_OFF = SETTINGS + 4;  // 1: no update check at start (u
 constexpr uint32_t UPDATE_DEV = SETTINGS + 5;  // 1: the update check's development channel (main), 0 the releases
 constexpr uint32_t VENDOR_ALL = SETTINGS + 6;  // 1: the Vendor's "All Ammo" entry (vendor_buy_all.h)
 constexpr uint32_t VIBRATION = SETTINGS + 7;   // the controller's vibration: 0 off, 1 low, 2 high (vibration.h, #10)
-constexpr uint32_t SHIP = SETTINGS + 8;        // the ship shown: 0 the game's (by the story), 1..3 the first..third (#94)
-constexpr uint32_t CLANK = SETTINGS + 9;       // 1: Clank's modern movement (#57)
 constexpr uint32_t ENTRIES = ADV + 0x680;      // the Options list's entries, ours added (0x100 before ten rows overflowed into HELP)
 constexpr uint32_t HELP = ADV + 0x180;         // the Options help label's texts, ours added
 constexpr uint32_t PICTURES = ADV + 0x600;     // the Options picture's images (sector, count), ours added (0x1c0 before two more rows did not fit)
@@ -90,16 +88,16 @@ constexpr OvConst<0x001b6678u> TALL_PAGE{};          // a page whose slot 3 box 
 
 // Our text ids, after the game's (0x4e00..0x5300 in the level text tables)
 constexpr int32_t TEXT_FIRST = 0x7f00;
-enum : int32_t { T_ADVANCED, T_HELP, T_QUICK_SELECT, T_NORMAL, T_PAUSE, T_CONTROLS, T_CLASSIC, T_MODERN, T_MOVEMENT, T_ORIGINAL, T_STRAFING, T_RAC3, T_FADES, T_FAST, T_FADES_ORIGINAL, T_SOUND_51, T_SOUND_71, T_BUY_ALL, T_OFF, T_ON, T_NO_ZOOM, T_VIBRATION, T_LOW, T_HIGH, T_SHIP, T_SHIP1, T_SHIP2, T_SHIP3, T_CLANK, T_COUNT };
+enum : int32_t { T_ADVANCED, T_HELP, T_QUICK_SELECT, T_NORMAL, T_PAUSE, T_CONTROLS, T_CLASSIC, T_MODERN, T_MOVEMENT, T_ORIGINAL, T_STRAFING, T_RAC3, T_FADES, T_FAST, T_FADES_ORIGINAL, T_SOUND_51, T_SOUND_71, T_BUY_ALL, T_OFF, T_ON, T_NO_ZOOM, T_VIBRATION, T_LOW, T_HIGH, T_COUNT };
 // per language (0x15ed88: 0 English, 2 French, 3 German, 4 Spanish, 5 Italian; French in English
 // for now, the font's accented letters not looked at yet)
 constexpr const char* TEXTS[6][T_COUNT] = {
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Ship", "Ship 1", "Ship 2", "Ship 3", "Clank"},
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Ship", "Ship 1", "Ship 2", "Ship 3", "Clank"},
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Ship", "Ship 1", "Ship 2", "Ship 3", "Clank"},
-    {"Erweitert", "Extra-Einstellungen der PC-Version", "Schnellwahl", "Normal", "Pause", "Zielen", "Original", "Modern", "Bewegung", "Original", "Strafing", "RAC 3", "Blenden", "Schnell", "Original", "5.1", "7.1", "Alle Munition", "Aus", "An", "Modern, ohne Zoom", "Vibration", "Schwach", "Stark", "Schiff", "Schiff 1", "Schiff 2", "Schiff 3", "Clank"},
-    {"Avanzado", "Ajustes extra de la version PC", "Seleccion rapida", "Normal", "Pausa", "Apuntado", "Original", "Moderno", "Movimiento", "Original", "Strafing", "RAC 3", "Fundidos", "Rapidos", "Originales", "5.1", "7.1", "Toda la municion", "No", "Si", "Moderno, sin zoom", "Vibracion", "Baja", "Alta", "Nave", "Nave 1", "Nave 2", "Nave 3", "Clank"},
-    {"Avanzate", "Impostazioni extra della versione PC", "Scelta rapida", "Normale", "Pausa", "Mira", "Originale", "Moderna", "Movimento", "Originale", "Strafing", "RAC 3", "Dissolvenze", "Rapide", "Originali", "5.1", "7.1", "Tutte le munizioni", "No", "Si", "Moderna, senza zoom", "Vibrazione", "Bassa", "Alta", "Nave", "Nave 1", "Nave 2", "Nave 3", "Clank"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High"},
+    {"Erweitert", "Extra-Einstellungen der PC-Version", "Schnellwahl", "Normal", "Pause", "Zielen", "Original", "Modern", "Bewegung", "Original", "Strafing", "RAC 3", "Blenden", "Schnell", "Original", "5.1", "7.1", "Alle Munition", "Aus", "An", "Modern, ohne Zoom", "Vibration", "Schwach", "Stark"},
+    {"Avanzado", "Ajustes extra de la version PC", "Seleccion rapida", "Normal", "Pausa", "Apuntado", "Original", "Moderno", "Movimiento", "Original", "Strafing", "RAC 3", "Fundidos", "Rapidos", "Originales", "5.1", "7.1", "Toda la municion", "No", "Si", "Moderno, sin zoom", "Vibracion", "Baja", "Alta"},
+    {"Avanzate", "Impostazioni extra della versione PC", "Scelta rapida", "Normale", "Pausa", "Mira", "Originale", "Moderna", "Movimento", "Originale", "Strafing", "RAC 3", "Dissolvenze", "Rapide", "Originali", "5.1", "7.1", "Tutte le munizioni", "No", "Si", "Moderna, senza zoom", "Vibrazione", "Bassa", "Alta"},
 };
 constexpr uint32_t STRING_SIZE = 0x30;
 static_assert(6 * T_COUNT * STRING_SIZE <= 0x3000, "the Advanced page's texts fit in 0xfb000..0xfe000");
@@ -124,9 +122,9 @@ constexpr Row SETTINGS_ROWS[] = {
     {"fades", 4, FADES, T_FADES, {T_FAST, T_FADES_ORIGINAL, -1, -1}},
     {"vendor_buy_all", 5, VENDOR_ALL, T_BUY_ALL, {T_OFF, T_ON, -1, -1}},
     {"vibration", 6, VIBRATION, T_VIBRATION, {T_OFF, T_LOW, T_HIGH, -1}, false},  // (the machine's pad: not with the saves)
-    {"ship", 7, SHIP, T_SHIP, {T_ORIGINAL, T_SHIP1, T_SHIP2, T_SHIP3}},  // (per save: the ships it has)
-    {"clank", 8, CLANK, T_CLANK, {T_ORIGINAL, T_MODERN, -1, -1}},
 };
+// (ids 7 and 8, keys "ship" and "clank": the ship selector and Clank's movement, removed; a settings file or a save
+// that has them loads, the values ignored. Never reused)
 constexpr uint32_t ROW_COUNT = sizeof(SETTINGS_ROWS) / sizeof(Row);
 
 bool g_loaded = false;
@@ -346,7 +344,7 @@ void advanced_menu_install() {
         else if (lwu(slot) == CAMERA_SETTINGS) sw(slot, ROWS_WIDGET);
     }
     // the rows in the taller box of page 0x1b6678 (its slot 3), as the Graphics page's: Camera's box holds 5 rows, ours
-    // are 8 (#10, #94, #57 added three)
+    // are 6 (#10 added one)
     sw(PAGE + 0xc, lwu(TALL_PAGE + 0xc));
     sw(PAGE + 0x80, 0);
 
@@ -1151,59 +1149,6 @@ void advanced_mouse_camera(uint32_t cam, float& b) {
     b = g_mouse_pitch == 0.0f ? 0.0f : (0.0f < g_mouse_pitch ? g_mouse_pitch * k + CAM_PITCH_DEAD : g_mouse_pitch * k - CAM_PITCH_DEAD);
 }
 
-// --- The ship selector (#94) ---------------------------------------------------------
-// The game picks its ship by the story: at each level exit (level_exit_start 0x292e08) 0x13e056 is 0, then 1 after the
-// story point 0x13dd48 or from level 8 on, then 2 after 0x13dd4e or from level 14 on. That index names the armor file
-// read with the level (the table of contents 0x138e48[index + 1]: the ship's two classes, 0x160548[index] = 0x213..0x215
-// and 0x160558[index] = 0x217..0x219, their model and textures, armor_load 0x23fa00) and the ship variant of the
-// sequences' look tables (flames, trails, Ratchet's and Clank's seats). With Ship = Ship n (the save having it: n - 1
-// at most the game's index) the n-th ship's armor file is read instead and registered as the game's classes: the ship
-// moby, the scenes, the hatch, the story's special cases (Orxon's, Oltanis's, Gemlik's) and the saves keep the game's
-// index; only the model, its textures, its tint and its flames' and seats' places are the chosen ship's. From the next
-// level load (the armor is read with the level).
-
-namespace {
-int32_t g_ship_game = -1;   // the game's index the last armor file was read for
-int32_t g_ship_shown = -1;  // and the index read
-
-// orig: (none) — enhancement: whether the Ship row's value `v` is offered (Original, or a ship the save has)
-bool ship_allowed(uint32_t v) {
-    int32_t have = lh(0x0013e056);
-    if (have < 0 || have > 2) have = 0;
-    return v == 0 || static_cast<int32_t>(v) - 1 <= have;
-}
-}  // namespace
-
-// orig: (none) — enhancement (advanced.h)
-int32_t advanced_ship_armor(int32_t armor) {
-    if (g_advanced_disabled || armor < 0 || armor > 2) return armor;
-    settings_load();
-    const int32_t sel = lbu(SHIP);
-    const int32_t shown = sel != 0 && sel - 1 <= armor ? sel - 1 : armor;
-    g_ship_game = armor;
-    g_ship_shown = shown;
-    return shown;
-}
-
-// orig: (none) — enhancement (advanced.h)
-int32_t advanced_ship_look(int32_t variant) {
-    if (g_advanced_disabled || variant != g_ship_game || g_ship_shown < 0) return variant;
-    return g_ship_shown;
-}
-
-// orig: (none) — enhancement (advanced.h)
-int32_t advanced_ship_look_class(int32_t cls) {
-    if (cls < 0x213 || cls > 0x215) return cls;
-    return 0x213 + advanced_ship_look(cls - 0x213);
-}
-
-// --- Clank's modern movement (#57) ----------------------------------------------------
-// orig: (none) — enhancement (advanced.h)
-bool advanced_clank_modern() {
-    if (g_advanced_disabled) return false;
-    return lbu(CLANK) != 0 && lbu(HERO + 0x20a4) == 1;
-}
-
 // --- R&C 3's on-foot movement -------------------------------------------------------
 // With Movement = RAC 3: the values and rules UYA's hero code uses where R&C1's differ, from the
 // study (UYA level-1 addresses cited). Applied inside the
@@ -1527,7 +1472,6 @@ void advanced_setting_changed(uint32_t byte) {
     // turns Strafing on; turning Movement back to Original turns Aiming off
     if (byte == CONTROLS && lbu(CONTROLS) != 0 && lbu(MOVEMENT) == 0) sb(MOVEMENT, 1);
     if (byte == MOVEMENT && lbu(MOVEMENT) == 0) sb(CONTROLS, 0);
-    if (byte == SHIP && !ship_allowed(lbu(SHIP))) sb(SHIP, 0);  // (past the ships the save has: back to Original)
     // saved now: a row changed at the title's main menu would otherwise wait for the next gameplay frame
     // (advanced_frame), and be lost by quitting from the menu (the preferences are loaded by then: the page's
     // install reads them)
@@ -1634,8 +1578,6 @@ void advanced_apply_mode(uint32_t mode) {
     sb(MOVEMENT, v != 0 ? 2u : 0u);
     sb(VENDOR_ALL, v);
     sb(VIBRATION, v != 0 ? 2u : 0u);  // (Modern, Experimental: High)
-    sb(SHIP, 0);  // (a new game has the first ship only: the game's)
-    sb(CLANK, mode == GAME_MODE_EXPERIMENTAL ? 1u : 0u);  // (Experimental only: a first step, less played)
     settings_save();
 }
 
@@ -1652,7 +1594,6 @@ bool advanced_settings_dpad(uint32_t w, uint32_t e) {
         if (r.byte == b) {
             const uint32_t n = row_values(r);
             sb(b, (lbu(b) + ((pressed & 0x8000u) != 0 ? n - 1 : 1)) % n);
-            while (b == SHIP && !ship_allowed(lbu(b))) sb(b, (lbu(b) + ((pressed & 0x8000u) != 0 ? n - 1 : 1)) % n);  // (only the ships the save has)
             advanced_setting_changed(b);
             return true;
         }
