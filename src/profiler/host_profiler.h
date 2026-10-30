@@ -36,6 +36,7 @@ enum Stage : int {
     kGameWorldPasses,   // the world passes: sky, tfrag, tie, shrub (visibility, LOD, the VU1 chains)
     kGameMobyPass,      // the moby pass (0x250038): the draw loop, the mobys' packets, the textures
     kGameMobyJoints,    // the mobys' joints and skinning (0x251490's VU0 work), in the real pass and the re-run
+    kGameMobyShadows,   // the mobys' drop shadows (0x24fc38: their points, poses and volumes, the VU0 program, the packets)
     kGameEffects,       // the 3D effects' drawing (particles, glows ...) and the draw lists
     kGameWorldEnd,      // the world passes' lighting and ends after the DMA waits, the moby texture slots
     kGameLodMobys,      // host: the moby pass re-run for the LOD slider / the widened view (journaled, the memory put back)

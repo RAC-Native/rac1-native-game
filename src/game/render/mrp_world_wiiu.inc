@@ -197,6 +197,40 @@ extern bool g_pass_noted;
 bool tfrag_exec_cpu_fast(const TfragEntryGpu& e, const TfragPlan& p, int lod, const uint32_t* colours, const float view[16], const uint32_t consts[4 * 14],
                          std::vector<TfragCpuVertex>& out, std::vector<uint8_t>* adc_out, bool need_xyz, int slot);
 
+// ---- (2026-10-30) the tfrags' programs in a vertex shader (mrp_tfrag_gpu_vs.inc; the Wii U's RAC1_WIIU_TFRAG_VS) ----------------------
+
+// The level's tables the vertex shader reads (one RGBA32UI texel each): per plan its header, sent vertices, slots, leaves, records
+// (mrp_tfrag_gpu_vs.inc). `plan_base`: per entry x 7 (far6, mid8, mida, neare, near10, near14, nearb) its plan's first texel, ~0 refused
+struct TfragVsLevel {
+    bool ok = false;
+    uint64_t generation = 0;  // (TfragLevel::generation it was built from)
+    std::vector<std::array<uint32_t, 4>> plans;
+    std::vector<uint32_t> plan_base;
+    uint32_t refused = 0;
+};
+// The frame's block (uvec4 tD[]): per draw kTvsDrawTexels texels from 0 - (image's first texel, plan's first texel, colours' first word
+// or ~0, its first run's texel), (its view set's texel, stoff, q0 (floats' bits), flags: 1 a caster), (col_addr, col_count, 0, 0) -;
+// per view set kTvsSetTexels - the VU view's R0, R1, R2, T; the clip matrix's columns (the world renderers' view-projection x the draw's
+// world view); the constants 0x290, 0x291, 0x298, 0x295, 0x296, 0x29a, 0x29b, 0x29c, 0x29d -; per run one (texture word, layer,
+// draw_flags, FOGCOL)
+constexpr uint32_t kTvsDrawTexels = 3, kTvsSetTexels = 17, kTvsBlockTexels = 4096;
+// one triangle corner as the shader makes it (the PC's check)
+struct TfragVsCorner {
+    std::array<float, 4> hp{}, clip{};
+    std::array<float, 3> stq{};
+    float lodq = 0.0f, fog = 0.0f;
+    std::array<uint8_t, 4> rgba{};
+    std::array<uint32_t, 4> run{};
+    bool adc = false;
+};
+// orig: (host) the level's tables from its plans (after tfrag_level_build)
+void tfrag_vs_build(const TfragLevel& L, TfragVsLevel& V);
+// orig: (host) a draw's plan's first texel (~0: refused, the CPU route's)
+uint32_t tfrag_vs_plan(const TfragVsLevel& V, const TfragLevel& L, uint32_t entry, const TfragPlan* p);
+// orig: (host) testing: the shader's corner `word` (draw << 16 | closing vertex << 2 | corner) evaluated on the CPU from the same tables
+// and the frame's block `tD` (its words)
+void tfrag_vs_eval_cpu(const TfragVsLevel& V, const TfragLevel& L, const TfragColours& C, const uint32_t* tD, uint32_t word, TfragVsCorner& o);
+
 }  // namespace rac1::mrpw
 
 namespace rac1 {

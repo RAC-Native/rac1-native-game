@@ -118,7 +118,10 @@ void moby_pass_end() {
     }
     prof_mark(OV(0x0015ffb0), 3);
     // orig: (host) not in the LOD slider's shadow run (g_moby_pass_shadow_run)
-    if (lw(OV(0x0016a018)) != 0 && lw(OV(0x00160000)) != 0 && !g_moby_pass_shadow_run) moby_shadows();
+    if (lw(OV(0x0016a018)) != 0 && lw(OV(0x00160000)) != 0 && !g_moby_pass_shadow_run) {
+        RAC1_PROF_ZONE(kGameMobyShadows);  // (host: the profiler's sub-stage)
+        moby_shadows();
+    }
 }
 
 // orig: 0x0024f9c8

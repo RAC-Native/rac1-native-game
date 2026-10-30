@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <set>
 #include <unordered_map>
 
@@ -1766,3 +1767,5 @@ void tfrag_colours_update_touched(TfragColours& c, const TfragLevel& L, bool dro
 }
 
 }  // namespace rac1::mrpw
+
+#include "mrp_tfrag_gpu_vs.inc"

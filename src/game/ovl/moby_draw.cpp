@@ -17,6 +17,8 @@
 #include <game/ovl/vu0_macro.h>
 #include <game/ovl/vu0_regs.h>
 
+#include <cstdio>
+#include <cstdlib>
 #include <vector>
 
 namespace rac1 {
@@ -92,11 +94,22 @@ void part_end(uint32_t mscal) {
     g_part = MobyDrawPart();
 }
 
-}  // namespace
+#include "moby_draw_fast.inc"
 
+// orig: (host) RAC1_WIIU_FAST_MOBY_LOOP (moby_draw_fast.inc): the loop's ops without their flags - 1 the Wii U's default, 0 the PC's
+const bool g_fast_loop = [] {
+    const char* e = std::getenv("RAC1_WIIU_FAST_MOBY_LOOP");
+#if defined(__WIIU__)
+    return e == nullptr || std::atoi(e) != 0;
+#else
+    return e != nullptr && std::atoi(e) != 0;
+#endif
+}();
+
+// The loop, on the flag sink `fl`: the VU0's flags in locals (LocalFlags) or none (NoFlags, moby_draw_fast.inc).
 // orig: 0x002559c0
-uint32_t moby_draw_loop(uint32_t a0_in, uint32_t a1_in, int32_t a2_in, uint32_t a3_in) {
-    LocalFlags fl(regs());  // (host: the ops' flags in locals, the VU0's written back at the return: the same values)
+template <class FL>
+uint32_t draw_loop(FL& fl, uint32_t a0_in, uint32_t a1_in, int32_t a2_in, uint32_t a3_in) {
     // orig: (host) the MRP-only pass: the parts given to the observer (`mrp`), the mobys' chain parts written or not (`chain`)
     const bool mrp = g_moby_pass_mrp, chain = !mrp || g_moby_pass_mrp_verify;
     Vf* const v = vf();
@@ -1002,6 +1015,23 @@ L_256b50: {  // the shadow mesh (class +6 / +7 packets): flattened along the lig
     t8 += 0x10;
     goto L_256668;
 }
+}
+
+}  // namespace
+
+// orig: (host) 0x002559c0 entered: the loop on its flag sink (RAC1_WIIU_FAST_MOBY_LOOP)
+uint32_t moby_draw_loop(uint32_t a0_in, uint32_t a1_in, int32_t a2_in, uint32_t a3_in) {
+    if (g_fast_loop) {
+        static bool said = false;
+        if (!said) {
+            said = true;
+            std::printf("[moby] the draw loop's VU0 ops without their flags (RAC1_WIIU_FAST_MOBY_LOOP=1)\n");
+        }
+        NoFlags fl;
+        return draw_loop(fl, a0_in, a1_in, a2_in, a3_in);
+    }
+    LocalFlags fl(regs());  // (host: the ops' flags in locals, the VU0's written back at the return: the same values)
+    return draw_loop(fl, a0_in, a1_in, a2_in, a3_in);
 }
 
 }  // namespace rac1

@@ -14,6 +14,7 @@
 #ifndef RAC1_GAME_RENDER_MRP_WORLD_BACKEND_INC
 #define RAC1_GAME_RENDER_MRP_WORLD_BACKEND_INC
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <utility>
@@ -114,6 +115,9 @@ struct DrawCmd {  // DrawElementsIndirectCommand
 struct TfragRange {
     uint32_t batch = 0, first = 0, count = 0, unit = 0;
     bool pass2 = true;
+    // ((2026-10-30) the Wii U's late sky) every pixel its pass 1 draws of alpha >= 0x80 (the texture's sampled levels and the vertices'
+    // alphas: no blend with what lies behind it)
+    bool opaque = false;
 };
 
 // The frame the renderer built (valid until the next frame is prepared)
@@ -147,6 +151,12 @@ struct FrameView {
     const std::vector<SkyHostDraw>* sky_host = nullptr;
     const std::vector<GpuV>* sky_host_verts = nullptr;
     uint64_t sky_host_serial = 0;
+    // ((2026-10-30) the tfrags' programs in the vertex shader, src/game/render/mrp_tfrag_gpu_vs.inc: `tvs` the frame's tfrags made by it -
+    // tf_verts / tf_idx empty -, its block's words (host order: mrp_world_wiiu.inc kTvs*) and one u32 per triangle corner, the frame's
+    // triangle slots' order: the tfrag ranges' first / count are the corners')
+    bool tvs = false;
+    const std::vector<uint32_t>* tvs_block = nullptr;
+    const std::vector<uint32_t>* tvs_corners = nullptr;
 };
 // false: no frame built (the world not drawn this frame)
 bool frame_view(FrameView& out);
@@ -190,6 +200,22 @@ struct ColoursView {
 void colours_view(ColoursView& out);
 void colours_taken();
 
+// ((2026-10-30) mrp_tfrag_gpu_vs.inc) the level's tables for the tfrags' vertex shader: the images (a qword a texel) and the plans'
+// tables (RGBA32UI texels, host order), new when `generation` changes (0: none); the tfrags' lit colours (as the resident ones: one u32
+// each), all of them to be sent or the ranges changed since tfrag_vs_colours_taken(). tfrag_vs_tables_taken(): the plans' tables sent
+// (their host copy dropped: `plans` empty after)
+struct TfragVsView {
+    uint64_t generation = 0;
+    const std::vector<std::array<uint32_t, 4>>* images = nullptr;
+    const std::vector<std::array<uint32_t, 4>>* plans = nullptr;
+    const std::vector<uint32_t>* colours = nullptr;
+    bool colours_all = true;
+    const std::vector<std::pair<uint32_t, uint32_t>>* colours_dirty = nullptr;
+};
+bool tfrag_vs_view(TfragVsView& out);  // false: no level
+void tfrag_vs_tables_taken();
+void tfrag_vs_colours_taken();
+
 }  // namespace rac1::mrpwb
 
 #if defined(__WIIU__)
@@ -203,6 +229,9 @@ bool mrp_world_gx2_tfrag_ready();
 bool mrp_world_gx2_sky_ready();
 // mrp_world_renderer.cpp: finishes any remaining tfrag_frame_cpu draws on Core 1 alongside Core 0's worker before mrp_world_gx2_draw reads tf_verts
 void mrp_world_wiiu_tfrag_join(double* out_ms = nullptr);
+// ((2026-10-30) mrp_world_gx2.cpp) the tfrags' vertex shader's pairs loaded (shaders/mrp_tfrag_vs_fast.gsh), RAC1_WIIU_TFRAG_VS on, and
+// nothing that needs the other shaders (the fast pixel shaders off, the shade debug, the tfrag debug): the frame's tfrags may take it
+bool mrp_world_gx2_tfrag_vs_ready();
 }  // namespace rac1
 #endif
 

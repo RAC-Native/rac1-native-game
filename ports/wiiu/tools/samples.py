@@ -136,6 +136,8 @@ def main():
     ap.add_argument('--paths', type=int, default=10, help='the call paths of the N hottest (self)')
     ap.add_argument('--force', action='store_true', help='print a profile even when the self-test fails')
     ap.add_argument('--delta', help='the code\'s relocation (hex), instead of the anchors\'')
+    ap.add_argument('--under', help='only the samples whose call chain holds a function whose mangled or demangled name holds this'
+                    ' (e.g. moby_pass): the zone\'s breakdown, in % of the samples kept before the filter')
     args = ap.parse_args()
     rows = args.rows_opt or args.rows
 
@@ -212,6 +214,17 @@ def main():
     total = len(kept)
     if total == 0:
         sys.exit('no sample kept')
+    if args.under:
+        def chain_names(k):
+            return [name(a) for a in (k[1], k[2]) + k[4]]
+        cand = set(n for k in kept for n in chain_names(k) if n and n[0] not in '[?')
+        dmu = demangle(cand)
+        hit = set(n for n in cand if args.under in n or args.under in dmu.get(n, ''))
+        under = [k for k in kept if any(n in hit for n in chain_names(k))]
+        print(f'--under {args.under}: {len(under)} of {total} samples ({100.0 * len(under) / total:.2f}%); the rows below in % of all {total}')
+        kept = under
+        if not kept:
+            sys.exit('no sample under it')
 
     by_thread = collections.Counter((k[0], k[3]) for k in kept)
     if version == 2:

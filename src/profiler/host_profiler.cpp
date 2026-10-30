@@ -37,6 +37,7 @@ const StageInfo kStages[kStageCount] = {
     {"Game: world passes", false, false, rgb(40, 170, 220), true},
     {"Game: moby pass (draw loop)", false, false, rgb(20, 120, 170), true},
     {"Game: moby joints / skinning (VU0)", false, false, rgb(80, 200, 240), true},
+    {"Game: moby drop shadows", false, false, rgb(50, 160, 200), true},
     {"Game: effects draw, draw lists", false, false, rgb(30, 100, 140), true},
     {"Game: world lighting / pass ends", false, false, rgb(100, 180, 210), true},
     {"Host: LOD / wide view moby re-run", false, false, rgb(140, 100, 240), true},

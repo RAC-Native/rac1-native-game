@@ -165,6 +165,26 @@ StaticLevel g_slevel;
 // compute program writes; RAC1_MRPW_TFRAG_VERIFY=1: the GPU's vertices / triangles read back and compared with the CPU reference's
 TfragLevel g_tlevel;
 TfragColours g_tcols;
+// ((2026-10-30) the tfrags' programs in a vertex shader, mrp_tfrag_gpu_vs.inc: the level's tables - the Wii U's RAC1_WIIU_TFRAG_VS, the
+// PC's check RAC1_MRPW_TFRAG_VS_CHECK)
+TfragVsLevel g_tvs;
+// (the tfrags' lit colours changed since the vertex shader's last send: wiiu_prep_tail keeps them for it, the backend takes them)
+bool g_tvs_cols_all = true;
+std::vector<std::pair<uint32_t, uint32_t>> g_tvs_cols_dirty;
+// (testing, the PC: RAC1_MRPW_TFRAG_VS_CHECK=1 - with RAC1_MRPW_TFRAG_CPU=1 - the shader's C++ twin against the CPU route, every frame)
+bool tfrag_vs_check_on() {
+    static const bool on = std::getenv("RAC1_MRPW_TFRAG_VS_CHECK") != nullptr && std::atoi(std::getenv("RAC1_MRPW_TFRAG_VS_CHECK")) != 0;
+    return on;
+}
+// the tables wanted: the Wii U's RAC1_WIIU_TFRAG_VS (on by default; drawn only with its shaders loaded), the PC's check
+bool tfrag_vs_wanted() {
+#if defined(__WIIU__)
+    static const bool on = std::getenv("RAC1_WIIU_TFRAG_VS") == nullptr || std::atoi(std::getenv("RAC1_WIIU_TFRAG_VS")) != 0;
+    return on;
+#else
+    return tfrag_vs_check_on();
+#endif
+}
 GLuint g_tfrag_vao = 0;
 const bool g_tfrag_verify = std::getenv("RAC1_MRPW_TFRAG_VERIFY") != nullptr;
 // (RAC1_MRPW_TFRAG_CHECK=1: the host's tfrag decisions made at the game's own distances / frustum and compared with the walker's draws,
@@ -261,6 +281,10 @@ struct Frame {
     std::vector<GpuV> tf_v;
     std::vector<uint32_t> tf_idx;
     std::vector<mrpwb::TfragRange> tf_ranges;
+    // ((2026-10-30) the vertex shader's route, mrp_tfrag_gpu_vs.inc: the frame's block - its words, host order - and one u32 per triangle
+    // corner (draw << 16 | closing vertex << 2 | corner), the frame's triangle slots' order; `tvs` set when the frame's tfrags take it)
+    std::vector<uint32_t> tvs_block, tvs_corners;
+    bool tvs = false;
     double tf_ms = 0;  // (the CPU route's time)
     double sky_ms = 0;  // (the Wii U: the sky's packets' build time, build_triangles)
     // what build_triangles reads of the host's state, taken when the frame's scene starts (mrp_world_begin_frame_async, the host
@@ -551,6 +575,7 @@ void load_level(int id) {
     L.loaded = true;
     static_level_build(g_slevel, *L.world);  // (the classes as the passes find them in EE memory)
     tfrag_level_build(g_tlevel, *L.world);   // (the tfrag images / plans from EE memory)
+    if (tfrag_vs_wanted()) tfrag_vs_build(g_tlevel, g_tvs);  // ((2026-10-30) the vertex shader's tables)
     g_tcols = TfragColours{};
     L.reset_walker = true;
     size_t ns = 0, nt = 0;
@@ -2112,6 +2137,18 @@ bool draw_needs_pass2(const Key& k, uint32_t fl, bool vert_opq) {
     return !(tex_opq && vert_opq);
 }
 
+// orig: (host) ((2026-10-30) the Wii U's late sky, mrp_world_gx2.cpp) whether every pixel a draw's first pass writes has alpha >= 0x80
+// (the texture function's alpha from the texture's sampled levels and the vertices' alphas, as draw_needs_pass2 reads them): blended
+// as ALPHA_1 0x44 does, such a pixel is the source alone - what was drawn behind it does not show
+bool draw_opaque(const Key& k, uint32_t fl, bool vert_opq) {
+    const bool tme = (fl & 1u) != 0;
+    const uint32_t tfx = (k.word >> 1) & 3u, tcc = (k.word >> 3) & 1u;
+    const bool tex_opq = !tme || ((k.word & 1u) != 0) || k.opaque;
+    if (!tme || tcc == 0u) return vert_opq;
+    if (tfx == 1u || tfx == 3u) return tex_opq;
+    return tex_opq && vert_opq;
+}
+
 // orig: (host) a GPU path packet (tie A / shrub A): its instance record, its template's runs as draw commands with the GS state
 // at each (its texture prims' A+D from the instance's VU1 memory applied to the registers as the GS would)
 void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp) {
@@ -2266,6 +2303,7 @@ void tfrag_packet(GsFront& g, Frame& F, const ScenePacket& p) {
         }
         const uint32_t fl = draw_flags(k, unit);
         const bool run_pass2 = draw_needs_pass2(k, fl, vert_opq);
+        const bool run_opaque = draw_opaque(k, fl, vert_opq);
         T.runs.insert(T.runs.end(), {k.word, k.layer, fl, k.fogcol});
         if (ntri == 0) continue;
         k.word = 0;
@@ -2286,11 +2324,11 @@ void tfrag_packet(GsFront& g, Frame& F, const ScenePacket& p) {
         g_st.triangles += ntri;
         const uint32_t first = gd.ibase + 3 * pl->runs[r].first_tri, batch = static_cast<uint32_t>(F.batches.size() - 1);
         auto& tr = F.tf_ranges;
-        if (!tr.empty() && tr.back().batch == batch && tr.back().unit == unit && tr.back().pass2 == run_pass2 &&
+        if (!tr.empty() && tr.back().batch == batch && tr.back().unit == unit && tr.back().pass2 == run_pass2 && tr.back().opaque == run_opaque &&
             tr.back().first + tr.back().count == first)
             tr.back().count += 3 * ntri;
         else
-            tr.push_back({batch, first, 3 * ntri, unit, run_pass2});
+            tr.push_back({batch, first, 3 * ntri, unit, run_pass2, run_opaque});
     }
     g.queue.clear();
     T.draws.push_back(gd);
@@ -2669,6 +2707,345 @@ void tfrag_cpu_run(Frame& F) {
     g_st.tc_ms += ms;
     g_st.tc_max = std::max(g_st.tc_max, ms);
 }
+
+// orig: (host) ((2026-10-30) mrp_tfrag_gpu_vs.inc) the frame's tfrags for the vertex shader's route: the block (mrp_world_wiiu.inc
+// kTvs*: the draws, their view sets - the clip matrix the world renderers' view-projection `in.vp` x the draw's world view, in doubles -,
+// the runs) and the triangle corners, in the frame's triangle slots' order (TfragGpuDraw::ibase: the ranges' indices are the corners').
+// false (the CPU route's frame): a draw whose plan the tables refused, a caster, or more than the block holds. Reads the frame alone
+// (a worker can run it)
+bool tfrag_vs_frame(Frame& F) {
+    F.tvs = false;
+    F.tvs_block.clear();
+    F.tvs_corners.clear();
+    const TfragGpuFrame& T = F.tf;
+    if (!g_tvs.ok || g_tvs.generation != g_tlevel.generation || T.draws.size() != F.tf_cpu.size() || T.draws.size() >= 0x10000) return false;
+    const uint32_t nd = static_cast<uint32_t>(T.draws.size());
+    // the view sets: (view, constants, world view) as the draws name them
+    std::vector<std::array<uint32_t, 3>> sets;
+    std::vector<uint32_t> set_of(nd);
+    for (uint32_t d = 0; d < nd; ++d) {
+        const TfragGpuDraw& g = T.draws[d];
+        const std::array<uint32_t, 3> k{g.view, g.consts, g.wview};
+        size_t i = 0;
+        while (i < sets.size() && sets[i] != k) ++i;
+        if (i == sets.size()) sets.push_back(k);
+        set_of[d] = static_cast<uint32_t>(i);
+    }
+    const uint32_t nruns = static_cast<uint32_t>(T.runs.size() / 4);
+    const uint32_t set0 = kTvsDrawTexels * nd, run0 = set0 + kTvsSetTexels * static_cast<uint32_t>(sets.size());
+    const uint32_t texels = run0 + nruns;
+    if (texels > kTvsBlockTexels) return false;
+    std::vector<uint32_t>& B = F.tvs_block;
+    B.assign(4 * static_cast<size_t>(texels), 0u);
+    auto putf = [&B](uint32_t at, float f) { std::memcpy(&B[at], &f, 4); };
+    glm::dmat4 vp;
+    for (int c = 0; c < 4; ++c)
+        for (int r = 0; r < 4; ++r) vp[c][r] = static_cast<double>(F.in.vp[4 * c + r]);
+    for (size_t i = 0; i < sets.size(); ++i) {
+        const auto [view, consts, wview] = sets[i];
+        if ((static_cast<size_t>(view) + 1) * 16 > T.vu_views.size() || (static_cast<size_t>(consts) + 1) * 56 > T.consts.size() ||
+            (static_cast<size_t>(wview) + 1) * 16 > T.views.size())
+            return false;
+        const uint32_t at = 4 * (set0 + kTvsSetTexels * static_cast<uint32_t>(i));
+        for (uint32_t k = 0; k < 16; ++k) putf(at + k, T.vu_views[16 * static_cast<size_t>(view) + k]);
+        glm::dmat4 m;
+        for (int c = 0; c < 4; ++c)
+            for (int r = 0; r < 4; ++r) m[c][r] = T.views[16 * static_cast<size_t>(wview) + static_cast<size_t>(4 * c + r)];
+        const glm::dmat4 cm = vp * m;
+        for (int c = 0; c < 4; ++c)
+            for (int r = 0; r < 4; ++r) putf(at + 16 + static_cast<uint32_t>(4 * c + r), static_cast<float>(cm[c][r]));
+        static const uint32_t kConst[9] = {0, 1, 8, 5, 6, 10, 11, 12, 13};  // (0x290, 0x291, 0x298, 0x295, 0x296, 0x29a, 0x29b, 0x29c, 0x29d)
+        const uint32_t* K = T.consts.data() + 56 * static_cast<size_t>(consts);
+        for (uint32_t k = 0; k < 9; ++k) std::memcpy(&B[at + 32 + 4 * k], K + 4 * kConst[k], 16);
+    }
+    if (!T.runs.empty()) std::memcpy(&B[4 * static_cast<size_t>(run0)], T.runs.data(), 4 * T.runs.size());
+    F.tvs_corners.assign(T.nidx, 0u);
+    for (uint32_t d = 0; d < nd; ++d) {
+        const TfragGpuDraw& g = T.draws[d];
+        const Frame::TfragCpuDraw& h = F.tf_cpu[d];
+        if (h.plan == nullptr || h.entry >= g_tlevel.entries.size() || (g.flags & 0x80000000u) != 0) return false;
+        const uint32_t pb = tfrag_vs_plan(g_tvs, g_tlevel, h.entry, h.plan);
+        if (pb == ~0u) return false;
+        const TfragPlan& pl = *h.plan;
+        const TfragEntryGpu& e = g_tlevel.entries[h.entry];
+        if (g.ibase > T.nidx || 3 * pl.ntris > T.nidx - g.ibase || static_cast<size_t>(g.rbase) + pl.runs.size() > nruns) return false;
+        float stoff;
+        const uint32_t* K = T.consts.data() + 56 * static_cast<size_t>(g.consts);
+        std::memcpy(&stoff, K + 4 + 2, 4);  // (0x291.z)
+        if (pl.form == 4) {  // (tfrag B: the first texture prim's second qword's w, as tf_emit)
+            const std::vector<uint8_t>& img = e.image[static_cast<size_t>(h.lod)];
+            uint32_t tex = 0, w = 0;
+            if (4 * 16 + 16 <= img.size()) std::memcpy(&tex, img.data() + 4 * 16 + 12, 4);
+            tex &= 0xffff;
+            if (16u * (tex + 1) + 16 <= img.size()) std::memcpy(&w, img.data() + 16u * (tex + 1) + 12, 4);
+            std::memcpy(&stoff, &w, 4);
+        }
+        const float q0 = (1.0f + stoff) - stoff;
+        uint32_t* r = &B[4 * static_cast<size_t>(kTvsDrawTexels * d)];
+        r[0] = g.image;
+        r[1] = pb;
+        r[2] = g.colour;
+        r[3] = run0 + g.rbase;
+        r[4] = set0 + kTvsSetTexels * set_of[d];
+        std::memcpy(&r[5], &stoff, 4);
+        std::memcpy(&r[6], &q0, 4);
+        r[7] = 0;
+        r[8] = g.col_addr;
+        r[9] = g.col_count;
+        uint32_t* c = F.tvs_corners.data() + g.ibase;
+        const uint32_t nv = static_cast<uint32_t>(pl.verts.size());
+        for (uint32_t j = 0; j < nv; ++j) {
+            if (pl.verts[j].pos < 2) continue;
+            const uint32_t w = d << 16 | j << 2;
+            c[0] = w;
+            c[1] = w | 1u;
+            c[2] = w | 2u;
+            c += 3;
+        }
+    }
+    F.tvs = true;
+    return true;
+}
+
+#if !defined(__WIIU__)
+// orig: (host) testing (RAC1_MRPW_TFRAG_VS_CHECK=2): the Wii U's shader itself (ports/wiiu/shaders/mrp_tfrag_vs.vert, its
+// "#pragma rac1_include" put in, read from the working directory) compiled by the PC's GL, run over the frame's corners with the
+// rasterizer off, its outputs caught by transform feedback (gl_Position, vStq, vQF, vColor, vLod) and compared with the C++ twin's
+void tfrag_vs_gltest(Frame& F) {
+    static GLuint prog = 0, vao = 0, buf[4] = {}, tex[3] = {};
+    static bool tried = false;
+    static uint64_t gen = 0, frames = 0, corners = 0, adc_bad = 0, pos_bad = 0, stq_bad = 0, col_bad = 0, fog_bad = 0, layer_bad = 0;
+    static double pos_max = 0.0, stq_max = 0.0;
+    if (!tried) {
+        tried = true;
+        auto rd = [](const char* path) {
+            std::string t;
+            if (std::FILE* f = std::fopen(path, "rb")) {
+                char b[4096];
+                size_t n;
+                while ((n = std::fread(b, 1, sizeof b, f)) > 0) t.append(b, n);
+                std::fclose(f);
+            }
+            return t;
+        };
+        std::string src = rd("ports/wiiu/shaders/mrp_tfrag_vs.vert");
+        const std::string inc = rd("ports/wiiu/shaders/mrp_world_fast.glsl");
+        const std::string pr = "#pragma rac1_include mrp_world_fast.glsl";
+        const size_t at = src.find(pr);
+        if (src.empty() || inc.empty() || at == std::string::npos) {
+            std::printf("[mrpw tfrag vs] GL test: ports/wiiu/shaders not found from here\n");
+            return;
+        }
+        src.replace(at, pr.size(), inc);
+        const GLuint vs = glCreateShader(GL_VERTEX_SHADER);
+        const char* c = src.c_str();
+        glShaderSource(vs, 1, &c, nullptr);
+        glCompileShader(vs);
+        GLint ok = 0;
+        glGetShaderiv(vs, GL_COMPILE_STATUS, &ok);
+        if (!ok) {
+            char log[4096];
+            glGetShaderInfoLog(vs, sizeof log, nullptr, log);
+            std::printf("[mrpw tfrag vs] GL test: the shader does not compile:\n%s\n", log);
+            return;
+        }
+        prog = glCreateProgram();
+        glAttachShader(prog, vs);
+        glBindAttribLocation(prog, 0, "aCorner");
+        const char* outs[] = {"gl_Position", "vStq", "vQF", "vColor", "vLod"};
+        glTransformFeedbackVaryings(prog, 5, outs, GL_INTERLEAVED_ATTRIBS);
+        glLinkProgram(prog);
+        glGetProgramiv(prog, GL_LINK_STATUS, &ok);
+        if (!ok) {
+            char log[4096];
+            glGetProgramInfoLog(prog, sizeof log, nullptr, log);
+            std::printf("[mrpw tfrag vs] GL test: the program does not link:\n%s\n", log);
+            glDeleteProgram(prog);
+            prog = 0;
+            return;
+        }
+        glUseProgram(prog);
+        glUniformBlockBinding(prog, glGetUniformBlockIndex(prog, "TfragVs"), 7);
+        glUniform1i(glGetUniformLocation(prog, "uImg"), 0);
+        glUniform1i(glGetUniformLocation(prog, "uPlan"), 1);
+        glUniform1i(glGetUniformLocation(prog, "uTCol"), 2);
+        glUseProgram(0);
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(4, buf);
+        glGenTextures(3, tex);
+        std::printf("[mrpw tfrag vs] GL test: ports/wiiu/shaders/mrp_tfrag_vs.vert compiled by the PC's GL\n");
+    }
+    if (prog == 0 || !F.tvs || F.tvs_corners.empty()) return;
+    auto upload = [](GLuint t, GLenum ifmt, GLenum fmt, uint32_t log2w, const void* data, size_t texels, size_t texel_bytes) {
+        const uint32_t w = 1u << log2w;
+        const uint32_t h = static_cast<uint32_t>(std::max<size_t>(1, (texels + w - 1) >> log2w));
+        std::vector<uint8_t> px(static_cast<size_t>(w) * h * texel_bytes, 0);
+        if (texels != 0) std::memcpy(px.data(), data, texels * texel_bytes);
+        glBindTexture(GL_TEXTURE_2D, t);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(ifmt), static_cast<GLsizei>(w), static_cast<GLsizei>(h), 0, fmt, GL_UNSIGNED_INT, px.data());
+    };
+    if (gen != g_tvs.generation) {
+        gen = g_tvs.generation;
+        upload(tex[0], GL_RGBA32UI, GL_RGBA_INTEGER, 12, g_tlevel.images.data(), g_tlevel.images.size(), 16);
+        upload(tex[1], GL_RGBA32UI, GL_RGBA_INTEGER, 12, g_tvs.plans.data(), g_tvs.plans.size(), 16);
+    }
+    upload(tex[2], GL_R32UI, GL_RED_INTEGER, 10, g_tcols.mirror.data(), g_tcols.mirror.size(), 4);
+    const size_t n = F.tvs_corners.size();
+    glBindBuffer(GL_UNIFORM_BUFFER, buf[0]);
+    std::vector<uint32_t> blk(4 * kTvsBlockTexels, 0u);
+    std::memcpy(blk.data(), F.tvs_block.data(), 4 * std::min(F.tvs_block.size(), blk.size()));
+    glBufferData(GL_UNIFORM_BUFFER, static_cast<GLsizeiptr>(blk.size() * 4), blk.data(), GL_STREAM_DRAW);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 7, buf[0]);
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, buf[1]);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(n * 4), F.tvs_corners.data(), GL_STREAM_DRAW);
+    glVertexAttribIPointer(0, 1, GL_UNSIGNED_INT, 4, nullptr);
+    glEnableVertexAttribArray(0);
+    constexpr size_t kOut = 4 + 3 + 2 + 4 + 4;
+    glBindBuffer(GL_TRANSFORM_FEEDBACK_BUFFER, buf[2]);
+    glBufferData(GL_TRANSFORM_FEEDBACK_BUFFER, static_cast<GLsizeiptr>(n * kOut * 4), nullptr, GL_STREAM_READ);
+    glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, buf[2]);
+    for (int k = 0; k < 3; ++k) {
+        glActiveTexture(GL_TEXTURE0 + static_cast<GLenum>(k));
+        glBindTexture(GL_TEXTURE_2D, tex[k]);
+    }
+    glActiveTexture(GL_TEXTURE0);
+    glUseProgram(prog);
+    glEnable(GL_RASTERIZER_DISCARD);
+    glBeginTransformFeedback(GL_POINTS);
+    glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(n));
+    glEndTransformFeedback();
+    glDisable(GL_RASTERIZER_DISCARD);
+    std::vector<float> out(n * kOut);
+    glGetBufferSubData(GL_TRANSFORM_FEEDBACK_BUFFER, 0, static_cast<GLsizeiptr>(out.size() * 4), out.data());
+    glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, 0);
+    glBindBuffer(GL_TRANSFORM_FEEDBACK_BUFFER, 0);
+    glUseProgram(0);
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    for (int k = 2; k >= 0; --k) {
+        glActiveTexture(GL_TEXTURE0 + static_cast<GLenum>(k));
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+    ++frames;
+    for (size_t i = 0; i < n; ++i) {
+        TfragVsCorner o;
+        tfrag_vs_eval_cpu(g_tvs, g_tlevel, g_tcols, F.tvs_block.data(), F.tvs_corners[i], o);
+        const float* g = out.data() + i * kOut;
+        ++corners;
+        const bool gadc = g[0] == 2.0f && g[1] == 2.0f && g[2] == 2.0f && g[3] == 1.0f;
+        if (gadc != o.adc) ++adc_bad;
+        if (o.adc) continue;
+        const double sz = std::fabs(o.clip[3]) + 1e-3;
+        double e = 0.0;
+        for (int l = 0; l < 4; ++l) e = std::max(e, std::fabs(static_cast<double>(g[l]) - o.clip[static_cast<size_t>(l)]) / sz);
+        const double ssz = std::fabs(o.stq[0]) + std::fabs(o.stq[1]) + std::fabs(o.stq[2]) + 1e-6;
+        double es = std::fabs(static_cast<double>(g[7]) - o.lodq) / (std::fabs(o.lodq) + 1e-9);
+        for (int l = 0; l < 3; ++l) es = std::max(es, std::fabs(static_cast<double>(g[4 + l]) - o.stq[static_cast<size_t>(l)]) / ssz);
+        pos_max = std::max(pos_max, e);
+        stq_max = std::max(stq_max, es);
+        bool cb = false;
+        for (int l = 0; l < 4; ++l) cb = cb || std::fabs(g[9 + l] * 255.0f - static_cast<float>(o.rgba[static_cast<size_t>(l)])) > 1.5f;  // (C x C4 at an integer: the GPU's rounding)
+        const bool fb = std::fabs(g[8] * 255.0f - o.fog) > 0.5f;
+        const bool lb = std::fabs(g[16] - static_cast<float>(o.run[1])) > 0.5f;
+        pos_bad += e > 1e-4 ? 1 : 0;
+        stq_bad += es > 1e-4 ? 1 : 0;
+        col_bad += cb ? 1 : 0;
+        fog_bad += fb ? 1 : 0;
+        layer_bad += lb ? 1 : 0;
+        if (e > 1e-4 || es > 1e-4 || fb || lb) {
+            static int shown = 0;
+            if (shown++ < 12)
+                std::printf("[mrpw tfrag vs] GL corner %zu (word %08x): clip %.7g %.7g %.7g %.7g / %.7g %.7g %.7g %.7g stq %.7g %.7g %.7g / %.7g %.7g %.7g lodq %.7g / %.7g "
+                            "colour %g %g %g %g / %u %u %u %u fog %g / %g layer %g / %u\n",
+                            i, F.tvs_corners[i], g[0], g[1], g[2], g[3], o.clip[0], o.clip[1], o.clip[2], o.clip[3], g[4], g[5], g[6], o.stq[0], o.stq[1], o.stq[2], g[7],
+                            o.lodq, g[9] * 255.0f, g[10] * 255.0f, g[11] * 255.0f, g[12] * 255.0f, o.rgba[0], o.rgba[1], o.rgba[2], o.rgba[3], g[8] * 255.0f, o.fog, g[16],
+                            o.run[1]);
+        }
+    }
+    if (frames % 120 == 0)
+        std::printf("[mrpw tfrag vs] GL test, %llu frames: %llu corners; ADC differing %llu; positions past 1e-4 %llu (most %.3g), STQ / Q %llu (most %.3g), colour past 1 %llu, "
+                    "F %llu, layer %llu\n",
+                    static_cast<unsigned long long>(frames), static_cast<unsigned long long>(corners), static_cast<unsigned long long>(adc_bad),
+                    static_cast<unsigned long long>(pos_bad), pos_max, static_cast<unsigned long long>(stq_bad), stq_max, static_cast<unsigned long long>(col_bad),
+                    static_cast<unsigned long long>(fog_bad), static_cast<unsigned long long>(layer_bad));
+}
+
+// orig: (host) testing (RAC1_MRPW_TFRAG_VS_CHECK=1 with RAC1_MRPW_TFRAG_CPU=1): every triangle corner of the frame by the shader's C++
+// twin (tfrag_vs_eval_cpu) against the CPU route's vertex (F.tf_v / F.tf_idx): the triangle dropped (ADC) or not, the clip position (the
+// route's world point x in.vp) and STQ / the GS's Q relative to their size, RGBA / F, the run's words; a summary every 120 frames
+void tfrag_vs_check(Frame& F) {
+    static uint64_t frames = 0, corners = 0, adc_bad = 0, adc_n = 0, pos_bad = 0, stq_bad = 0, col_bad = 0, fog_bad = 0, run_bad = 0, refused = 0;
+    static double pos_max = 0.0, stq_max = 0.0;
+    static uint64_t forms[5] = {};
+    ++frames;
+    if (!tfrag_vs_frame(F)) {
+        ++refused;
+    } else {
+        for (const Frame::TfragCpuDraw& h : F.tf_cpu) ++forms[std::min(h.plan->form, 4)];
+        const std::vector<uint32_t>& W = F.tvs_corners;
+        for (size_t i = 0; i + 2 < W.size() && i + 2 < F.tf_idx.size(); i += 3) {
+            const uint32_t* t = F.tf_idx.data() + i;
+            const bool cpu_adc = t[0] == t[1] && t[1] == t[2];
+            for (int k = 0; k < 3; ++k) {
+                TfragVsCorner o;
+                tfrag_vs_eval_cpu(g_tvs, g_tlevel, g_tcols, F.tvs_block.data(), W[i + static_cast<size_t>(k)], o);
+                ++corners;
+                if (k == 0) {
+                    adc_n += cpu_adc ? 1 : 0;
+                    if (o.adc != cpu_adc) {
+                        ++adc_bad;
+                        static int shown = 0;
+                        if (shown++ < 8) std::printf("[mrpw tfrag vs] triangle %zu: ADC %d, the CPU route's %d\n", i / 3, o.adc ? 1 : 0, cpu_adc ? 1 : 0);
+                    }
+                }
+                if (cpu_adc || o.adc) continue;
+                const GpuV& g = F.tf_v[t[k]];
+                float cc[4];
+                for (int l = 0; l < 4; ++l) cc[l] = F.in.vp[l] * g.wp[0] + F.in.vp[4 + l] * g.wp[1] + F.in.vp[8 + l] * g.wp[2] + F.in.vp[12 + l] * g.wp[3];
+                const double sz = std::fabs(cc[3]) + 1e-3;
+                double e = 0.0;
+                for (int l = 0; l < 4; ++l) e = std::max(e, std::fabs(static_cast<double>(cc[l]) - o.clip[static_cast<size_t>(l)]) / sz);
+                pos_max = std::max(pos_max, e);
+                const double ssz = std::fabs(g.stq[0]) + std::fabs(g.stq[1]) + std::fabs(g.stq[2]) + 1e-6;
+                double es = std::fabs(static_cast<double>(g.lodq) - o.lodq) / (std::fabs(g.lodq) + 1e-9);
+                for (int l = 0; l < 3; ++l) es = std::max(es, std::fabs(static_cast<double>(g.stq[l]) - o.stq[static_cast<size_t>(l)]) / ssz);
+                stq_max = std::max(stq_max, es);
+                bool cb = false;
+                for (int l = 0; l < 4; ++l) cb = cb || std::abs(static_cast<int>(g.rgba[l]) - static_cast<int>(o.rgba[static_cast<size_t>(l)])) > 1;
+                const bool fb = std::fabs(g.fog - o.fog) > 1.0f;
+                const bool rb = g.word != o.run[0] || g.layer != o.run[1] || g.state[0] != o.run[2] || g.state[1] != o.run[3];
+                if (e > 1e-4) ++pos_bad;
+                if (es > 1e-4) ++stq_bad;
+                col_bad += cb ? 1 : 0;
+                fog_bad += fb ? 1 : 0;
+                run_bad += rb ? 1 : 0;
+                if (e > 1e-4 || es > 1e-4 || cb || fb || rb) {
+                    static int shown = 0;
+                    if (shown++ < 12)
+                        std::printf("[mrpw tfrag vs] corner %zu (word %08x): clip %.7g %.7g %.7g %.7g / %.7g %.7g %.7g %.7g stq %.7g %.7g %.7g / %.7g %.7g %.7g lodq %.7g / %.7g "
+                                    "rgba %02x%02x%02x%02x / %02x%02x%02x%02x fog %g / %g word %x / %x\n",
+                                    i + static_cast<size_t>(k), W[i + static_cast<size_t>(k)], cc[0], cc[1], cc[2], cc[3], o.clip[0], o.clip[1], o.clip[2], o.clip[3], g.stq[0],
+                                    g.stq[1], g.stq[2], o.stq[0], o.stq[1], o.stq[2], g.lodq, o.lodq, g.rgba[0], g.rgba[1], g.rgba[2], g.rgba[3], o.rgba[0], o.rgba[1], o.rgba[2],
+                                    o.rgba[3], g.fog, o.fog, g.word, o.run[0]);
+                }
+            }
+        }
+    }
+    if (frames % 120 == 0)
+        std::printf("[mrpw tfrag vs] check, %llu frames (%llu refused): %llu corners; triangles dropped (ADC) %llu, differing %llu; positions past 1e-4 %llu (most %.3g), "
+                    "STQ / Q %llu (most %.3g), RGBA %llu, F %llu, runs %llu; draws by form 0 %llu, 3 %llu, 4 %llu\n",
+                    static_cast<unsigned long long>(frames), static_cast<unsigned long long>(refused), static_cast<unsigned long long>(corners),
+                    static_cast<unsigned long long>(adc_n), static_cast<unsigned long long>(adc_bad), static_cast<unsigned long long>(pos_bad), pos_max,
+                    static_cast<unsigned long long>(stq_bad), stq_max, static_cast<unsigned long long>(col_bad), static_cast<unsigned long long>(fog_bad),
+                    static_cast<unsigned long long>(run_bad), static_cast<unsigned long long>(forms[0]), static_cast<unsigned long long>(forms[3]),
+                    static_cast<unsigned long long>(forms[4]));
+    static const bool gl = std::atoi(std::getenv("RAC1_MRPW_TFRAG_VS_CHECK")) >= 2;
+    if (gl && F.tvs) tfrag_vs_gltest(F);
+}
+#endif
 
 #if !defined(__WIIU__)
 // (testing, RAC1_MRPW_TFRAG_CPU=1: the frame's tfrag vertices / indices made by the CPU route and sent to the buffers the tfrag VAO
@@ -3217,6 +3594,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
 #if !defined(__WIIU__)
         if (tfrag_cpu_mode() == 1) tfrag_cpu_upload(F);  // (testing: the CPU route's instead, RAC1_MRPW_TFRAG_CPU)
         else tfrag_gpu_dispatch(F.tf, sizeof(GpuV));
+        if (tfrag_cpu_mode() == 1 && tfrag_vs_check_on()) tfrag_vs_check(F);  // (testing: the vertex shader's C++ twin against it)
         if (tfrag_cpu_mode() == 2) tfrag_cpu_compare(F);
 #else
         tfrag_gpu_dispatch(F.tf, sizeof(GpuV));
@@ -5096,10 +5474,33 @@ void wiiu_prep_tail() {
     Frame& F = g_frame;
     const double t0 = now_ms();
     build_triangles(F);
+    const double t_built = now_ms();
     // the compute program's vertices / triangles made by the CPU route (tfrag_frame_cpu: on the game's thread for now; its inputs - the
     // frame, the level, the colours' mirror - stay as they are until the next prepare, its output is the frame's: a worker core can take
     // it), the colours' changes taken (no GPU copy of them here: the route reads the mirror)
-    if (F.tf.draws.empty()) {
+    // ((2026-10-30) RAC1_WIIU_TFRAG_VS: the frame's tfrags made by the vertex shader - their block and corners here, no vertex -, when its
+    // shaders can draw them and every draw's plan has its tables; else the CPU route as before)
+    F.tvs = false;
+    if (!F.tf.draws.empty() && tfrag_vs_wanted() && mrp_world_gx2_tfrag_vs_ready()) {
+        const double tv0 = now_ms();
+        if (tfrag_vs_frame(F)) {
+            F.tf_v.clear();
+            F.tf_idx.clear();
+            F.tf_ms = now_ms() - tv0;
+        }
+    }
+    if (g_tcols.all_dirty) {  // (the colours' changes kept for the vertex shader's texture until it takes them)
+        g_tvs_cols_all = true;
+        g_tvs_cols_dirty.clear();
+    } else if (!g_tvs_cols_all) {
+        g_tvs_cols_dirty.insert(g_tvs_cols_dirty.end(), g_tcols.dirty.begin(), g_tcols.dirty.end());
+        if (g_tvs_cols_dirty.size() > 4096) {
+            g_tvs_cols_all = true;
+            g_tvs_cols_dirty.clear();
+        }
+    }
+    if (F.tvs) {
+    } else if (F.tf.draws.empty()) {
         F.tf_v.clear();
         F.tf_idx.clear();
     } else if (prep_on_main_on() && tfrag_parallel_on() && g_wiiu_world_async) {
@@ -5125,6 +5526,18 @@ void wiiu_prep_tail() {
     g_tcols.all_dirty = false;
     for (int k = 0; k < 2; ++k) g_st.stat_draws[k] += F.scene.stat_draws[k];
     ++g_st.scene_frames;
+    if (part_time_on()) {  // ((2026-10-30) RAC1_WIIU_PREP_TIME: the second half too - build_triangles, the tfrags' route on this thread)
+        static double tri_ms = 0.0, tf_ms = 0.0;
+        static int n = 0;
+        tri_ms += t_built - t0;
+        tf_ms += now_ms() - t_built;
+        if (++n == 120) {
+            std::printf("[mrpw] the prepare's second half, ms a call: the triangles (build_triangles) %.2f, the tfrags (%s, this thread's share) %.2f\n", tri_ms / 120,
+                        F.tvs ? "the vertex shader's block" : "the CPU route", tf_ms / 120);
+            n = 0;
+            tri_ms = tf_ms = 0.0;
+        }
+    }
     g_st.ms_build += now_ms() - t0 + g_ms_head;
     g_ms_head = 0.0;
     ++g_wiiu_serial;
@@ -5962,6 +6375,9 @@ bool frame_view(FrameView& out) {
     out.tf_ranges = &F.tf_ranges;
     out.tf_draws = static_cast<uint32_t>(F.tf.draws.size());
     out.tf_ms = F.tf_ms;
+    out.tvs = F.tvs;
+    out.tvs_block = &F.tvs_block;
+    out.tvs_corners = &F.tvs_corners;
     out.cpu_verts = &F.v;
     out.cpu_idx = &F.idx;
     out.sky_host = &F.sky_host;
@@ -6051,6 +6467,26 @@ void colours_taken() {
     rc.all_dirty = false;
     rc.dirty.clear();
     rc.dirty_words.clear();
+}
+
+
+// orig: (host) see mrp_world_backend.inc
+bool tfrag_vs_view(TfragVsView& out) {
+    if (!g_tvs.ok || g_tvs.generation != g_tlevel.generation) return false;
+    out.generation = g_tvs.generation;
+    out.images = &g_tlevel.images;
+    out.plans = &g_tvs.plans;
+    out.colours = &g_tcols.mirror;
+    out.colours_all = g_tvs_cols_all;
+    out.colours_dirty = &g_tvs_cols_dirty;
+    return true;
+}
+// orig: (host) see mrp_world_backend.inc
+void tfrag_vs_tables_taken() { std::vector<std::array<uint32_t, 4>>().swap(g_tvs.plans); }
+// orig: (host) see mrp_world_backend.inc
+void tfrag_vs_colours_taken() {
+    g_tvs_cols_all = false;
+    g_tvs_cols_dirty.clear();
 }
 
 }  // namespace mrpwb

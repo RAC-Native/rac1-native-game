@@ -1,6 +1,6 @@
 # Stato Lavori — Ottimizzazione e Riscrittura Nativa Wii U (`port/wiiu`)
 
-Ultimo aggiornamento: **30 Ottobre 2026**
+Ultimo aggiornamento: **30 Ottobre 2026 (sera)**
 
 Questo documento traccia in modo completo **cosa è stato fatto**, **i risultati misurati sulla console Wii U reale (`192.168.0.16`)**, **cosa stiamo facendo ora**, **cosa manca** e **le note tecniche / trappole da evitare** per poter riprendere il lavoro in qualsiasi momento.
 
@@ -84,7 +84,22 @@ Tutti i test sono eseguiti con `ports/wiiu/tools/bench.sh` (`explore` input dete
     - Fix: `vAt` in `#ifndef RAC1_NO_ALPHA_TEST` anche nel VS + `gx2_fix_noat_pair()` che riallinea in RAM `spi_ps_input_cntls` (funziona anche con `.gsh` vecchi sulla SD; nel log: `aligned 8 SPI PS inputs`).
     - **Regola:** ogni varying condizionato da `#ifdef` deve esserlo identicamente in VS **e** PS. Verificare con lo script Python di dump dei blocchi GFD (tipo 3 VS / tipo 6 PS) che confronta `spi_vs_out_id` e `spi_ps_input_cntls`.
 
+14. **Tfrag nel vertex shader (`RAC1_WIIU_TFRAG_VS`, default on; da misurare su console)** (`src/game/render/mrp_tfrag_gpu_vs.inc`, `ports/wiiu/shaders/mrp_tfrag_vs.vert`, `shaders/mrp_tfrag_vs_fast.gsh` + `_noat`, `mrp_world_gx2.cpp`, `mrp_world_renderer.cpp`):
+    - Nessun piano tfrag di Veldin/Novalis ha step seriali e ogni slot è scritto una volta sola: `tfrag_vs_build` risolve a ogni caricamento di livello ogni piano in tabelle statiche (record X / M / raw, selezioni MS sotto F), caricate come texture RGBA32UI (Novalis: piani 15.3 MB + immagini 10 MB in MEM2; la copia CPU dei piani liberata dopo l'upload).
+    - Per frame la CPU scrive solo un blocco (draw, set di viste con la matrice clip = VP × vista mondo in double, costanti, run) e un u32 per angolo di triangolo; il VS calcola ogni angolo come la CPU route (selezioni, morph, STQ, Q, F, RGBA) e collassa i triangoli con ADC. Niente più `tfrag_exec_cpu_fast` / drenaggio su Core 1 e Core 0.
+    - **Verifica PC:** `RAC1_MRPW_TFRAG_CPU=1 RAC1_MRPW_TFRAG_VS_CHECK=1` (gemello C++ contro la CPU route) e `=2` (lo stesso `.vert` compilato dal GL del PC, transform feedback): decisioni ADC identiche, STQ/RGBA/F/run esatti, posizioni entro il rumore float, 0 piani rifiutati (Veldin e Novalis, forme 0/3/4).
+    - SPI controllato con `rac1-scratch/gpuperf3/sem.py`: le due coppie nuove hanno gli stessi semantic e flat di `mrp_tfrag_fast(_noat).gsh` (MATCH); blocco/sampler del PS dove sono quelli di `mrp_tfrag.gsh` (verificato anche al caricamento).
+15. **Cielo dopo il primo passo del terreno (`RAC1_WIIU_SKY_LATE`, default on; da misurare)** (`mrp_world_gx2.cpp`, `TfragRange::opaque` in `mrp_world_backend.inc` / `mrp_world_renderer.cpp draw_opaque`):
+    - I 5 gusci del cielo coprivano tutto lo schermo senza depth test (3.8 ms GPU Veldin, 5.4 Novalis a 1080p). Ora il cielo è disegnato dopo il Pass 1 dei batch tfrag iniziali i cui pixel sono tutti alpha >= 0x80 (texture e vertici opachi, blend `ALPHA_1 0x44` o niente), con depth test `LEQUAL` senza scrittura e viewport depth range [1, 1]: passa solo dove nulla è stato disegnato, Hi-Z scarta i tile coperti. Immagine identica per costruzione; Pass 2 dei tfrag e il resto dopo il cielo come prima.
+
 ---
+
+### Moby pass del game thread (30 Ottobre 2026, da misurare su console)
+14. **Mappa del moby pass + draw loop senza flag VU0 (`RAC1_WIIU_FAST_MOBY_LOOP`, default 1 su Wii U, 0 su PC)** (`src/game/ovl/moby_draw.cpp`, `src/game/ovl/moby_draw_fast.inc`):
+    - Su Novalis il moby pass (12.7 ms/host frame) è stimato ~7 ms drop shadows, ~4 ms draw loop, 1–2 ms il resto (profilo `m1b` con `samples.py --under widen_real`; mappa completa e chi legge cosa in `PERFORMANCE.md`).
+    - Il draw loop su Wii U era 142 KB di codice (le op VU0 dello shim SSE2 inline + `fin_lanes`), 4.4× la I-cache del 750: ora le op senza flag MAC/status (stessi valori: clamp VU decisi sulla FPU, `vuc` per i casi rari), una piccola funzione per (op, forma, maschera): 31 KB + ~12 KB.
+    - Prova PC (walk Wii U-like con drop shadows attive): RAMHASH identico parola per parola `=1` vs `=0` (Veldin→Novalis forward 1500 frame, Novalis explore 1200).
+15. **Nuovo stadio profiler `Game: moby drop shadows`** (`src/profiler/host_profiler.*`, `src/game/ovl/moby_pass.cpp`): la riga `[game]` separa le drop shadows dal moby pass. `samples.py --under NOME` per il dettaglio di una zona.
 
 ## 3. Cosa Manca (Prossimi Passi in Ordine di Impatto)
 
@@ -92,15 +107,18 @@ Tutti i test sono eseguiti con `ports/wiiu/tools/bench.sh` (`explore` input dete
 - A 1080p nativo (`RAC1_WIIU_3D_SCALE=1.0`) la GPU sta sotto i 33 ms anche su Novalis (29.9 ms). Valutare di portare il default in `wiiu_main.cpp` da `0.75` a `1.0` (o `0.875`) dopo conferma visiva di Daino sulla TV.
 - Far verificare a Daino (build su SD) terreno/rocce, cielo e cutout (foglie, recinzioni) nel Pass 2.
 
-### Priorità 2 — Spostare Tfrag su GPU Latte (Vertex Shader GX2) e Snellire `game_thread` (Core 2)
-1. **Tfrag su GPU Latte (Vertex Shader GX2):**
-   - Oggi i tfrag generano 3.000–5.000 vertici da 72 byte via CPU a ogni frame (`tfrag_exec_cpu_fast`, ~3.8–5.0 ms CPU).
-   - Spostare morph/proiezione tfrag su Vertex Shader GX2 elimina il percorso CPU dei tfrag e riduce `world's worker join`.
+### Priorità 2 — Misurare Tfrag VS + cielo tardivo, poi il costo CPU del mondo e `game_thread` (Core 2)
+1. **Tfrag su GPU Latte (Vertex Shader GX2): fatto (punto 14), da misurare** — `bench.sh` col default contro `RAC1_WIIU_TFRAG_VS=0`; poi riprovare `RAC1_WIIU_PREP_ON_MAIN=0` (Core 0 ora libero dopo la catena) e `RAC1_WIIU_PREP_TIME=1` per la ripartizione di `world's worker join` (ties/shrubs frame, scena, `build_triangles`).
+   - Restano su Core 1: `static_frame_build_at` + `scene_from_static_k` + `build_triangles` (worker join) e il piano merged + ~600 draw GX2 (world draws). Proposta successiva: matrici modello statiche dei tie/shrub in una texture per livello, VP per frame nel blocco, `clip`/`rows` calcolati nel VS (niente `InstGpu` da 160 byte per istanza riscritte e byte-swappate ogni frame: ~3400 istanze × 192 B su Novalis).
 2. **Ridurre il carico CPU sul `game_thread` (Core 2: ~12.5 ms/step su Novalis):**
    - `Game code (EE update, other)`: ~5.8 ms/step
    - `Game: moby pass (draw loop)`: ~3.9 ms/step (principalmente `moby_shadows` e `moby_cull_light` VU0)
    - `Game: effects draw, draw lists`: ~1.3 ms/step
    - Ottimizzare `moby_shadows` / `moby_cull_light` e i kernel VU0 / collisioni in `EE update` con **Paired Singles (`ps_*`)**.
+
+### Priorità 2b — Proposte che cambiano lo stato del gioco (decide Daino)
+- **Drop shadows native (MRP/GPU) invece del codice del gioco** (~7 ms stimati su Novalis per host frame): saltare `shadow_points` / `drop_shadows_draw` sul game thread e disegnarle dalla lista dei moby differiti (0x1ac600, scritta ancora dal draw loop) e dalle pose già nella scena MRP. Cambiano solo memoria che la logica non legge (0x1ac780, 0x160420..0x16046c, scratchpad, registri VU0, packet buffer): RAMHASH diverso in quelle pagine.
+- **`vuc` decisa sulla FPU in `ovl_common.h`** (bit-exact, ma è un header: fingerprint del codegen + rebuild completo): accelera tutti i port scritti a mano con le regole VU (pose `moby_pose_matrices`, collisioni, particelle).
 
 ### Priorità 3 — Ombre Moderne Leggere su Wii U
 - Implementare proiezione blob-shadow / shadow-map leggera su GX2 (sfruttando l'infrastruttura di `src/game/render/mrp_lighting.cpp` già presente su PC) o ottimizzare le drop shadows esistenti.
@@ -120,3 +138,4 @@ Tutti i test sono eseguiti con `ports/wiiu/tools/bench.sh` (`explore` input dete
    - Tutte le ottimizzazioni nel codice condiviso (`mrp_lod.cpp`, `mrp_world_scene.cpp`, `vu1.cpp`, `mrp_tfrag_gpu.cpp`, `mrp_fx.cpp`, `gs_memory.cpp`, `mrp_chain.cpp`) sono documentate in `MAIN_PERF_FINDINGS.md` (sia in questo worktree sia in `/home/daino/progetti/rac1-native-game/MAIN_PERF_FINDINGS.md`).
 5. **`run.cfg` sulla SD azzerato (0 byte) da una vecchia versione di `bench.sh`** (quella che scambiava `run.cfg` via FTP): senza `RAC1_FRAMES=0` il gioco headless si chiudeva dopo 300 frame (subito dopo l'intro). Ora `wiiu_main.cpp` imposta `RAC1_FRAMES=0` di default (un `run.cfg` lo può ancora sovrascrivere) e `run.cfg` è stato ripristinato da `rac1-scratch/wiiu/play.cfg`. I benchmark mettono sempre il proprio `RAC1_FRAMES` nella config incorporata.
 6. **Debug menu GamePad:** la pagina Picture ha 15 righe e l'ultima ("Exit game") si sovrapponeva alla riga di stato in basso, quindi non si poteva toccare. Ora l'altezza delle righe si adatta (`row_h()` in `debug_menu.cpp`). **Da verificare con Daino:** i controlli che "non andavano" (forse per lo stesso problema dei tocchi, o per un input sul GamePad; nel test `boot_test` il gioco raggiungeva il titolo e il menù riceveva i tocchi).
+7. **Shader nuovi = coppie VS+PS compilate insieme (regola SPI del punto 13):** `mrp_tfrag_vs.vert` dichiara gli stessi varying di `mrp_tfrag.vert` fast (stesso `#ifndef RAC1_NO_ALPHA_TEST` per `vAt`, incluso da `mrp_world_fast.glsl`). Controllare ogni nuova `.gsh` con `python3 rac1-scratch/gpuperf3/sem.py <gsh>` (deve dire MATCH). Il VS tfrag è grande (~1500 gruppi ALU inlined, 27 GPR): se CafeGLSL cambia, ricontrollare che compili.

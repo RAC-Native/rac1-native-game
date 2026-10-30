@@ -526,3 +526,98 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
     - **GPU busy average: `29.9 ms`** (final window **`30.8 ms`**, **below the 33.3 ms 30 fps budget even at full 1920×1080 on Novalis!**): `tfrag pass 1 = 2.46 ms`, `tfrag pass 2 = 0.04 ms`, `ties/shrubs pass 1 = 7.34 ms`, `ties/shrubs pass 2 = 3.85 ms`, `3D upscale = 0.00 ms`.
     - Proves that even at **full Native 1080p (`1920x1080`)**, the Latte GPU is no longer the bottleneck on either Veldin (`22.8 ms`) or Novalis (`29.9 ms`); the remaining frame time on Novalis is 100% CPU-bound on Core 2 (`game_thread`, `31.5 ms`).
 
+
+### The tfrags' programs in the vertex shader, the late sky (2026-10-30, evening)
+
+- **RAC1_WIIU_TFRAG_VS (on by default; =0 the CPU route as before): the tfrags made by their vertex shader** (src/game/render/
+  mrp_tfrag_gpu_vs.inc, ports/wiiu/shaders/mrp_tfrag_vs.vert, shaders/mrp_tfrag_vs_fast.gsh + _noat). The CPU route (tfrag_exec_cpu_fast
+  + tfrag_draw_cpu_one: ~3,000-5,000 72-byte vertices a frame, 3-10 ms on cores 1 and 0 on Novalis, part of it waited for in "world's
+  worker join", the rest in "world draws" - mrp_world_wiiu_tfrag_join) is gone from the frames that take it:
+  - every plan of Veldin (3220) and Novalis (7028) has no serial step and writes each slot once (tfrag_level_build: "steps run in order
+    0"), so a slot's final value is a closed expression: a record X(q) / M(q, P1, P2, band) (two morph levels at most) or raw, a vertex
+    info the image's or a selection (MS under F: three conditions at most). tfrag_vs_build resolves them once a level into tables (one
+    RGBA32UI texel each: per plan its header, the sent vertices four a texel, the slots, the leaves, the records; Veldin 441 K texels /
+    6.9 MB, Novalis 982 K / 15.3 MB - their host copy dropped once uploaded; the images 4.5 / 10 MB as a texture beside the CPU's copy):
+    "[mrpw tfrag] the vertex shader's tables: N plans, 0 refused";
+  - per frame the CPU writes only a block (TfragVs, 64 KB at most: per draw 3 texels, per view set 17 - the VU view, the clip matrix =
+    the world renderers' view-projection x the draw's world view (doubles), the program's constants -, per run 1) and one u32 per
+    triangle corner (draw << 16 | closing vertex << 2 | corner: 36 KB for 3,000 triangles), in the frame's triangle slots' order, so the
+    tfrag ranges' first / count are the corners'. One GX2DrawEx per range as before (its first corner as the draw's offset);
+  - the vertex shader evaluates the corner's vertex as the CPU route does (the selections, the records, STQ, the GS's Q, F, RGBA, the
+    run), and a triangle whose closing vertex has ADC (form 3: the three vertices' guard band flags) is collapsed (its three corners
+    one point outside the view). ~1500 ALU groups in the program (fully inlined), a corner's path a fraction of it, 27 GPRs; ~9,000
+    corners a frame on Novalis;
+  - the lit colours: an R32UI texture, the dirty ranges each frame (wiiu_prep_tail keeps g_tcols' changes for it);
+  - checked on the PC (RAC1_MRPW_TFRAG_CPU=1 RAC1_MRPW_TFRAG_VS_CHECK=1: the shader's C++ twin tfrag_vs_eval_cpu against the CPU route
+    every frame; =2 also ports/wiiu/shaders/mrp_tfrag_vs.vert itself compiled by the PC's GL, run with transform feedback): Veldin 700
+    frames (2.7 M corners) and Novalis with RAC1_MRP_LOD=1 600 frames (2.6 M corners, forms 0 / 3 / 4 all drawn): 0 plans refused, ADC
+    decisions identical, STQ / RGBA / F / runs exact against the CPU route; positions within float noise (largest relative differences
+    at vertices behind the camera, w ~ 0.1); the GLSL against the twin: the colours +-1 where C x C4 falls on an integer (the GPU's
+    rounding), the GS's Q / STQ at a few hundred corners behind the camera within 1e-2 relative. The decisions can differ from the
+    route's where a w lies within a few ulps of a band's threshold (the GPU rounds to nearest, the route toward zero): a morph's
+    substitution a frame earlier or later.
+  - expected on the console: Novalis "world's worker join" minus the tfrag drain's share and "world draws" minus
+    mrp_world_wiiu_tfrag_join (together ~5-10 ms in the heavy windows), core 0 free after the chain (the drain's worker idle); the GPU's
+    tfrag pass 1 plus the vertex work (~0.5-1 ms estimated). The log: "[wiiu] mrp_world_gx2: tfrag vertex shader, N frames: corners, KB
+    of block, ms sending" every 120 calls; RAC1_WIIU_PREP_TIME=1 adds "[mrpw] the prepare's second half" (build_triangles, the tfrags).
+  - with the prepare's tfrag drain gone, core 0 idles after the chain's read: RAC1_WIIU_PREP_ON_MAIN=0 (the whole prepare on core 0's
+    worker, core 1 doing the effects' prepare and the 2D meanwhile) is worth measuring again.
+- **RAC1_WIIU_SKY_LATE (on by default): the sky after the terrain's first pass.** The sky's shells (5 on Veldin / Novalis) cover the
+  screen and were drawn first without a depth test: every pixel the terrain then covers was shaded and blended five times (the sky's
+  GPU pass 3.8 ms on Veldin, 5.4 on Novalis at 1080p - its pixel shader's ALU, ~10-16 groups a pixel at ~32 a clock). Now
+  mrp_world_gx2_draw_sky keeps its arguments and mrp_world_gx2_draw draws the sky before its first batch that is not a leading tfrag
+  batch whose first pass writes the source alone (every range TfragRange::opaque - the texture's sampled levels and the vertices'
+  alphas >= 0x80, draw_opaque -, blended as ALPHA_1 0x44 or not at all, the depth tested LEQUAL / LESS and written), and before such a
+  batch's second pass; with the depth test on (LEQUAL, no writes) and the viewport's depth range [1, 1]: its pixels at the cleared depth
+  pass only where nothing was drawn, hierarchical Z drops the covered tiles. The same picture by construction (those pixels hide what
+  lies behind them; the shells blend among themselves in their order; the tfrags' second pass and the rest after the sky as before).
+  The "[gpu]" line's "sky" pass is then ~0 (the sky's time inside "world"; "[gpu-world]" still sums it as the sky's). The log: "[wiiu]
+  mrp_world_gx2: late sky, last 120 calls: N after the tfrags' first pass, M first".
+- To measure on the console (bench.sh, RAC1_WIIU_GPU_TIME=2): the default against RAC1_WIIU_TFRAG_VS=0 and against RAC1_WIIU_SKY_LATE=0;
+  the "[timing]" world's worker join / world draws, "[gpu-world]" sky / tfrag pass 1, "[gpu]" busy.
+
+### The game thread's moby pass: what it computes, the draw loop's ops without flags, the drop shadows timed apart (2026-10-30)
+
+- The map (Novalis 1080p, n1080: "Game: moby pass (draw loop)" 12.7 ms a host frame, the drawn game frame's only - RAC1_DRAW_LAST_STEP).
+  The zone is mrp_lod_moby_widen_real(moby_pass): (1) widen_real: the VU0 saved, patch_widen through the EE journal (projection_setup /
+  render_view_setup re-run on the widened tangent, the A rows put back; 1-2 pages diffed), patch_moby_logged only with the LOD slider; (2)
+  moby_pass_start, spr_moby_fill: the chain's head, the VU0 programs' upload, the scratchpad's state; (3) moby_draw_loop over every live moby
+  of the level's table (0x100 bytes each): the culling - draw distance (+0x32 against 0x15fff0), the zone masks (+0x37, 0x173d00), +0x34 &
+  0x81, the sphere against the view rows and the guard band (MSCAL 0xa / 0xe) - writing the drawn flag +0x31 (GAME STATE: the glows, the
+  updates read it), the per-class near / far counters (scratchpad 0x2600) and the texture groups' nearest depths (0x3a00 -> moby_textures:
+  the mips and VRAM slots 0x19a600 / 0x199e80), the drop-shadow mobys deferred (their ground point, culling, intensity: 0x1ac600 / 0x15fffc,
+  read by the drop shadows only), and per moby drawn the lighting (the light sets +0x38 / +0x39 blended by +0x3a, the point lights within
+  their radius summed), the fade's colour, the model-to-view matrix, the parts (the chain's, not written with RAC1_MOBY_PASS_MRP), the
+  sub-mesh records (0x1ac200: the GS path's colour fill, skipped) and the skinning record into the ring (fromSPR) - the ring is inside the
+  packet buffer (sub_002a0858: the buffer's end), read by the skinning and the MRP's observer (on_draw) only; (4) moby_pass_end: the
+  textures' chain, the joints (their own stage), the drop shadows (moby_shadows 0x24fc38: shadow_points - each deferred moby's pose again,
+  moby_pose_matrices, and its class's shadow points into 0x1ac780 -, drop_shadows_draw - per entry the light's axes 0x160430..0x16045f, the
+  tube's point pairs on the scratchpad, shadow_points_clip, shadow_quads with the VU0 program 0x190, shadow_packets per layer into the
+  packet buffer, the buffer's clear / apply sprites -, the MRP's observers mrp_shadows.cpp).
+  Who reads what: game logic - the drawn flags +0x31 and the culling / LOD results the update sees (the moby's own fields), the packet
+  pointer 0x1611c0's positions; drawing only - the lighting, colour, matrices and parts (the record, in packet-buffer pages), the textures'
+  slots, the sub-mesh records, everything the drop shadows write (0x1ac780 is the level load's uid -> spawn index map, read at the load only,
+  level_load.cpp; 0x160420..0x16046c by the shadows only; the scratchpad and the VU0 registers set again by their next users).
+  The old profile on the console (m1b_novalis_prof.samples.bin, before the LOD undo log; samples.py --under widen_real, core 2): the zone
+  20.6% of core 2's samples, of which ~10% the journal (since removed: -8 ms), the drop shadows 6.2% (shadow_quads 2.1, shadow_segment_draw 1.6,
+  shadow_points 1.2 with its poses, the observers ~0.5, the VU0 macro helpers mulbc / maddabc / maddbc / sub / fin_lanes ~2.4 out of line),
+  the draw loop ~3.3% (2.3 its own code). So today's 12.7 ms is about 7 ms drop shadows, 4 ms draw loop, 1-2 ms the rest - to confirm
+  with the new stage below and a sampled run.
+- RAC1_WIIU_FAST_MOBY_LOOP (moby_draw.cpp, moby_draw_fast.inc; 1 the Wii U's default, 0 the PC's): the draw loop on a flag sink of its
+  own (NoFlags) - the same lanes as vu0_regs.h's ops (operands and results clamped by the VU rules, masked lanes, vf0 constant, ACC written)
+  without the MAC / status flags. A lane's clamp is decided on the FPU (|x| a normal number: kept; zeros, denormals, Inf / NaN: vuc's own
+  integer path, a cold call), so the values are vuc's by construction. Nothing reads the flags the loop leaves (no CFC2 in it; after it the
+  game never reads the status flag and every MAC read follows an op of its own - the analysis of RAC1_WIIU_FAST_POSE); the VU0's flag
+  registers keep their values from before the loop. Each (op, form, mask) is one small function, called: the loop was 142 KB of code on
+  the Wii U (the SSE2 shim's ops inlined: four scalar lanes, every clamp through memory - no FPR <-> GPR move on the 750 -, fin_lanes'
+  flag words), 4.4 times the 750's instruction cache and run through again for every moby drawn; now 31 KB plus ~12 KB of ops.
+  PC proof (the Wii U-like walk with the drop shadows ON: RAC1_NO_GRAPHICS=2 RAC1_NO_GRAPHICS_WALK=1 RAC1_MOBY_MRP=1 RAC1_WORLD_PASS_SKIP=6
+  RAC1_TFRAG_PASS_OFF=1 RAC1_MOBY_PASS_MRP=1 RAC1_SKIP_SHADOWS=0 RAC1_SKIP_DRAW_LISTS=1 RAC1_DRAW_LAST_STEP=1 RAC1_VU1_LIKE_WIIU=1;
+  rac1-scratch/wiiu/mobyperf/loop_check.sh): RAMHASH word for word identical =1 against =0, RAC1_GOTO=0@60,1@700 forward 1500 frames and
+  Novalis explore 1200 frames (every page, every game frame).
+- The drop shadows timed apart: the profiler's new game stage "Game: moby drop shadows" (kGameMobyShadows, moby_pass_end's moby_shadows),
+  so "[game]" splits the moby pass. RAC1_SKIP_SHADOWS=1 (the debug menu's "Shadows") still skips them for a measure.
+- samples.py --under NAME: only the samples whose call chain holds NAME (e.g. widen_real, moby_shadows): a zone's breakdown.
+- To measure on the console (bench.sh; build in rac1-scratch/wiiu/mobyperf/build): Novalis 1080p with RAC1_WIIU_FAST_MOBY_LOOP=0 and =1
+  ("[game]": the moby pass and the drop shadows rows); then a sampled run (RAC1_WIIU_SAMPLE=200 RAC1_WIIU_SAMPLE_AFTER=12
+  RAC1_WIIU_SAMPLE_CORES=2) for samples.py --under widen_real.
