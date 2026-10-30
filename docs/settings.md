@@ -143,8 +143,6 @@ the machine's, kept in `controls.txt`, not with the saves, and no New Game mode 
 | Fades | Fast, Original |
 | Buy All Ammo | Off, On |
 | Vibration | Off, Low, High |
-| Ship | Original, Ship 1, Ship 2, Ship 3 (the ships the save has) |
-| Clank | Original, Modern |
 
 See [Advanced options](advanced.md) for what each one does and how it is built.
 
@@ -174,8 +172,6 @@ New Game opens a choice between three modes before the game starts
 | Modern lighting and graphics enhancements (Lighting, Dynamic Shadows, Secondary Lights, Shadow Distance, Ambient Occlusion, Sun Rays, Surface Detail, Ambient Particles) | off (the defaults) | off (the defaults) | Lighting High, Dynamic Shadows On, Secondary Lights All, Shadow Distance Maximum, Ambient Occlusion GTAO, Sun Rays High, Surface Detail High, Ambient Particles High (Shadow Strength and AO Strength left as they are) |
 | Buy All Ammo (the Vendor) | Off | On | On |
 | Vibration | Off | High | High |
-| Clank's movement | Original | Original | Modern |
-| Ship | Original | Original | Original |
 
 Experimental is Modern plus the [modern lighting](lighting.md) and every graphics enhancement, which are experimental. No mode changes
 the window settings or Fades. The mode chosen is kept with the save.

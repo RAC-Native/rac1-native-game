@@ -147,22 +147,6 @@ bool advanced_mouse_direct();
 // mouse put it; nothing without mouse movement
 void advanced_mouse_camera(uint32_t cam, float& b);
 
-// --- The ship selector (#94) ---
-// orig: (none) — enhancement: the armor file (the ship's model and textures: classes 0x160548[armor] / 0x160558[armor])
-// to read for the game's armor `armor` (0x13e056, set by the story at each level exit): Options > Advanced > Ship's
-// ship when the save has it (its index at most `armor`), else `armor`. The game's 0x13e056 and the classes are kept:
-// only the model and its look change, not the scenes, the story's special cases or anything saved
-int32_t advanced_ship_armor(int32_t armor);
-// orig: (none) — enhancement: the ship variant whose look tables (flames, trails, seats) to use, for the game's `variant`
-int32_t advanced_ship_look(int32_t variant);
-// orig: (none) — enhancement: a ship class (0x213..0x215) as the shown ship's class (its tint), other classes as they are
-int32_t advanced_ship_look_class(int32_t cls);
-
-// --- Clank's modern movement (#57) ---
-// orig: (none) — enhancement: Clank = Modern and the hero is Clank (mode 1, +0x20a4): his walk (state 0x44) and jump
-// (0x45) take the faster values in hero_state_update.cpp (wade_update, the 0x45 case)
-bool advanced_clank_modern();
-
 // --- R&C 3's on-foot movement ---
 // orig: (none) — enhancement: Movement = RAC 3
 bool advanced_rac3_movement();

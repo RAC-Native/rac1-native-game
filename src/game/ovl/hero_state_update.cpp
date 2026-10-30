@@ -1199,32 +1199,24 @@ void swim_idle_update() {
     sub_002334d0(P + 0xe0, P + 0xe0, sp * u2f(0x3f3851ecu));
 }
 
-// (enhancement: Clank = Modern's values, #57: the walk 5 units/s (the original's 3), its acceleration 25 / braking 30
-// (7.5 / 8.5), the jump's air steering 5 units/s eased at 20 (3 / 12))
-constexpr float CLANK_WALK = 5.0f, CLANK_ACCEL = 25.0f, CLANK_BRAKE = 30.0f, CLANK_AIR = 5.0f, CLANK_AIR_EASE = 20.0f;
-
 // Wading (states 0x44 / 0x50): slower stick move, the turn spring (tighter when slow), speed
 // cut by the turn, skid target, wall slide, ground follow-up.
 // orig: 0x00217970 (block 0x21fd28)
 void wade_update() {
-    // (enhancement: Clank = Modern, #57: Clank's walk (state 0x44) faster, quicker to speed up and to turn)
-    const bool clank = advanced_clank_modern() && lw(P + 0x2084) == 0x44;
     float turn = angle_dist(lwc1(P + 0x98), lwc1(P + 0x180));
-    const float sp = fs6c() * (clank ? CLANK_WALK : 3.0f);
+    const float sp = fs6c() * 3.0f;
     hero_stick_move(0, sp);
     turn = turn * u2f(0x3e99999au);
     const float g = lwc1(P + 0x229c) + u2f(0x3eb33333u);
     float slow = 1.0f - turn;
     if (slow < 0.0f) slow = 0.0f;
     const float k = lwc1(0x0015ed64);
-    if (clank) {  // (the tighter turn of the slow walk, its rate up)
-        sub_00211e30(0, k * u2f(0x3d0f5c29u) * g * 1.5f, k * u2f(0x3e19999au), fs6c() * u2f(0x411996c7u) * g * 1.5f);
-    } else if (lwc1(P + 0x160) < sp * 0.5f) {
+    if (lwc1(P + 0x160) < sp * 0.5f) {
         sub_00211e30(0, k * u2f(0x3d0f5c29u) * g, k * u2f(0x3e19999au), fs6c() * u2f(0x411996c7u) * g);
     } else {
         sub_00211e30(0, k * u2f(0x3c03126fu) * g, k * u2f(0x3e19999au), fs6c() * u2f(0x411f2c8du) * g);
     }
-    sub_00212088(fs70() * (clank ? CLANK_ACCEL : 7.5f) * slow, fs70() * (clank ? CLANK_BRAKE : 8.5f));
+    sub_00212088(fs70() * 7.5f * slow, fs70() * 8.5f);
     if (lh(P + 0x3b8) != 0 && lh(P + 0x308) == 0) {
         sub_002120d8(lwc1(P + 0x180));
     } else {
@@ -2580,9 +2572,8 @@ void update_state(uint32_t state, uint32_t hm) {
     case 0x79:
         glide_update();
         return;
-    case 0x45:  // (enhancement: Clank = Modern, #57: more control in Clank's jump)
-        if (advanced_clank_modern()) paddle_update(CLANK_AIR, CLANK_AIR_EASE, -10.0f);
-        else paddle_update(3.0f, 12.0f, -10.0f);
+    case 0x45:
+        paddle_update(3.0f, 12.0f, -10.0f);
         return;
     case 0x55:
         paddle_update(1.5f, 21.0f, -15.0f);

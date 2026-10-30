@@ -20,8 +20,6 @@ The Advanced page has these rows:
 | Fades | Fast, Original | a removed compromise: Fast is the port's default, Original the PS2's |
 | Buy All Ammo | Off, On | enhancement |
 | Vibration | Off, Low, High | enhancement (kept as the machine's preference, not with the saves) |
-| Ship | Original, Ship 1, Ship 2, Ship 3 (only the ships the save has) | enhancement (its look only) |
-| Clank | Original, Modern | enhancement |
 
 All of it is in `src/game/enhance/advanced.{h,cpp}` (Buy All Ammo's Vendor entry in
 `src/game/enhance/vendor_buy_all.{h,cpp}`). None of it is a port: every function there is annotated
@@ -53,10 +51,13 @@ port's fast fades). Left and right on a row step the value (`advanced_settings_d
   check's two rows are not: they belong to the machine (in the file, `update_check_off` and
   `update_channel`, and `update_skip`, the version the update notice's Skip Version chose).
 
+A preferences file or a `save<N>.pc` written by an earlier build may hold a setting that has since been
+removed (`ship` and `clank`, the ship selector and Clank's movement, ids 7 and 8): it loads, and those
+lines are ignored.
+
 **The New Game choice.** Picking "Modern mode" or "Experimental" at New Game turns Quick Select, Aiming
-(Modern), Movement (RAC 3), Buy All Ammo and Vibration (High) on; Experimental also turns Clank (Modern)
-on; "Original mode" turns them all off (`advanced_apply_mode`). Ship goes back to Original in every mode
-(a new game has the first ship only). Fades is left as it is. Every setting can be changed at any time
+(Modern), Movement (RAC 3), Buy All Ammo and Vibration (High) on; "Original mode" turns them all off
+(`advanced_apply_mode`). Fades is left as it is. Every setting can be changed at any time
 afterwards. The Controls page's mouse settings are the machine's and no mode changes them.
 
 **Linked settings.** Modern aiming is built on the strafe, so turning Aiming to Modern when Movement
@@ -110,53 +111,6 @@ pulse of the two motors that fades over a few frames; the host takes the motors 
 The pad driven is the one last used (the one the Controls page names). A setting lasts one second and is
 renewed every half second while the motors run, so a stalled game never leaves the pad buzzing.
 `RAC1_VIBRATION_LOG` prints the motors as they change (with or without a pad).
-
-## Ship (#94)
-
-Ratchet's ship changes twice in the story. With **Ship** set to one of the ships the save has, that ship
-is the one shown, on every planet, from the next level load (the ship is read with the level); Original
-shows the game's own choice. The row offers only the ships unlocked so far (left, right and Cross skip
-the others); a save loaded with a ship it does not have yet shows the game's.
-
-How the game picks it: at each level exit (`level_exit_start`, 0x292e08) it sets 0x13e056 to 0, then
-1 after the story point 0x13dd48 or from level 8 on, then 2 after 0x13dd4e or from level 14 on. That
-index names the "armor" file read with the level (the disc's table of contents 0x138e48[index + 1]),
-which holds the ship's two classes (0x160548[index] = 0x213 to 0x215, the ship, and 0x160558[index] =
-0x217 to 0x219) with their models and textures (`armor_load`, 0x23fa00), and the ship variant whose
-tables place its flames, its trails and Ratchet's and Clank's seats in the ship sequences.
-
-What the option changes: the chosen ship's armor file is read instead (`advanced_ship_armor`, in the
-level loader's three places: `level_files_read`, `level_load_step`, `armor_load`'s size), and its
-models are registered as the game's own ship classes; the sequences' flames, trails and seats and the
-third ship's tint follow the ship shown (`advanced_ship_look`, `advanced_ship_look_class`). Everything
-else keeps the game's index: 0x13e056 itself, the ship moby's class, the landing and take-off scenes
-and their sounds, the story's special cases (Orxon, where Clank goes alone; Oltanis; Gemlik's ship),
-the ship's hatch and the saves. The ship's collision is its model's, so it is the shown ship's shape.
-Checked on Kerwan with the third ship unlocked: the landing scene, Ratchet's place and the scene's
-timing are the game's, with the first ship's model in it. Gemlik's space fight with Qwark flies the
-armor's ship (the game spawns 0x160548[index] there), so it shows the chosen ship too; its stats are the
-game's. The flight between planets on the loading screen shows the ship of the level being left. Not
-checked in a run: the space fight and every planet's take-off.
-
-## Clank: Modern (#57)
-
-Clank's sections (Orxon, where he goes alone) are slow next to Ratchet's RAC 3 movement. With **Clank =
-Modern**, in the spirit of Clank's puzzles in *A Crack in Time* and *Rift Apart*:
-
-- **His walk** (state 0x44, `wade_update` in `hero_state_update.cpp`, which Ratchet's wading 0x50 shares:
-  only Clank's is changed) is 5 units/s at full tilt instead of 3, gets there faster (acceleration 25 /
-  braking 30 instead of 7.5 / 8.5) and turns with the tighter turn of his slow walk at 1.5 times its rate.
-- **His jump** (state 0x45) steers at 5 units/s eased at 20 (3 and 12 in the original): more control in
-  the air. The jump's height is the original's.
-
-His movement was already relative to the camera (the stick through `hero_stick_move` mode 0, as
-Ratchet's). The option is tested by `advanced_clank_modern`: the setting on and the hero in Clank's mode
-(+0x20a4 = 1); Giant Clank (Quartu) is untouched. Measured on Orxon's start: over the same 200 frames of
-stick forward Clank covers 14.7 units instead of 9.0.
-
-A first step. Not done yet: Quartu's small-Clank section (Quartu runs its own build of the hero code,
-which these hooks do not reach), a higher or longer jump, a run (a faster gait past a tilt, with its
-animation), and the Gadgebots' commands.
 
 ## Buy All Ammo
 
