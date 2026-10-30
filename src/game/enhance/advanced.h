@@ -77,6 +77,11 @@ bool advanced_world_paused();
 // first (vendor_buy_all.h)
 bool advanced_vendor_buy_all();
 
+// orig: (none) — enhancement: Options > Advanced > Skip Cutscenes is Always: the game's own skip tests (the scenes'
+// cutscene_update 0x298f90, the movies' 0x2eddd0) take Start alone, as they do on Veldin and in Challenge Mode, on
+// every level; the skip itself is the game's (cutscene_end, the movie's end)
+bool advanced_skip_cutscenes();
+
 // --- Fast fades ---
 // orig: (none) — a console compromise removed (faithful to the game's code, not to the PS2's limits): the screen fade
 // 0x1f9838 (it hid the PS2's disc loading) runs its loop whole - the same RAM writes, the frame

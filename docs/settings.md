@@ -144,6 +144,7 @@ the machine's, kept in `controls.txt`, not with the saves, and no New Game mode 
 | Buy All Ammo | Off, On |
 | Vibration | Off, Low, High |
 | Adaptive Triggers | Off, On (shown only when the pad in use is a DualSense) |
+| Skip Cutscenes | Original, Always |
 
 See [Advanced options](advanced.md) for what each one does and how it is built.
 
@@ -174,6 +175,7 @@ New Game opens a choice between three modes before the game starts
 | Buy All Ammo (the Vendor) | Off | On | On |
 | Vibration | Off | High | High |
 | Adaptive Triggers (a DualSense in use) | Off | On | On |
+| Skip Cutscenes | Original | Always | Always |
 
 Experimental is Modern plus the [modern lighting](lighting.md) and every graphics enhancement, which are experimental. No mode changes
 the window settings or Fades. The mode chosen is kept with the save.

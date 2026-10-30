@@ -22,6 +22,8 @@ What changed in each release. Releases are source only: you build the game with 
   through its own output report (Linux hidraw, Windows HID): its two actuators as left and right, so explosions, hits,
   the thrown wrench and flying enemies are felt from their side; Advanced > Adaptive Triggers (with a DualSense: L2 and
   R2's resistance by weapon with Modern aiming, the light bar by health) (#10).
+- Advanced > Skip Cutscenes (Original, Always; Always in Modern and Experimental): Start skips every in-engine scene and
+  movie on every planet, through the game's own skip, as on Veldin and in Challenge Mode.
 - Advanced > Aiming: Modern, No Zoom, Modern aiming at the normal camera distance, as Ratchet & Clank 3's lock-strafe (#70).
 
 ### Graphics

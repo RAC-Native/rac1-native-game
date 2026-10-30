@@ -19,6 +19,7 @@
 #include <game/ovl/particle_16_spawn.h>
 #include <game/ovl/variants_l14.h>
 #include <game/ovl/quartu_call.h>
+#include <game/enhance/advanced.h>
 #include <game/port_stubs.h>
 
 namespace rac1 {
@@ -175,7 +176,8 @@ int32_t cutscene_camera() {
 // scene extras, the mobys and the sound emitters, the hero, the particles), the fade, the dialog
 // continued at its frame (+0x48), the end (the last frame, or Start once 18 frames are past and
 // the fade is done: on Veldin, or with 0x15eea0 / 0x15ee20 / 0x15eed8 set, Start alone; elsewhere
-// L1 + L2 + R1 + R2 held and Start), the next block every 0x60 frames (0x50 PAL), the camera,
+// L1 + L2 + R1 + R2 held and Start; the PC's Skip Cutscenes = Always: Start alone everywhere, advanced.h), the
+// next block every 0x60 frames (0x50 PAL), the camera,
 // the scene's mobys placed between their two positions of the frame pair (the hero's and
 // Clank's own updates), the sound, the lights, the shadows, the frame counters.
 // orig: 0x00298f90
@@ -203,7 +205,8 @@ void cutscene_update() {
     int32_t end = !(lw(SC + 0x34) < frames) ? 1 : 0;
     const int32_t t18 = frame_scale_i(0x12);
     if (!(lw(SC + 0x34) < t18) && lwc1(OV(0x0015f3fc)) == f20) {
-        bool start_alone = lw(0x0015eea0) != 0 || lw(0x0015ee20) != 0 || lw(0x0015eed8) != 0 || !(0 < lw(0x0015ed84));
+        bool start_alone = lw(0x0015eea0) != 0 || lw(0x0015ee20) != 0 || lw(0x0015eed8) != 0 || !(0 < lw(0x0015ed84)) ||
+                           advanced_skip_cutscenes();  // (the PC's Always: the condition passes, the skip is the game's)
         if (start_alone && (lwu(PAD + 0x1a4) & 0x800) != 0) {
             end = 1;
         } else {

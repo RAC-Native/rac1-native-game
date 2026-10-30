@@ -17,6 +17,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/screen_fade.h>
 #include <game/port_stubs.h>
+#include <game/enhance/advanced.h>
 
 namespace rac1 {
 
@@ -339,18 +340,20 @@ bool movie_stream_frame() {
 // The skip test of the player's loop: the pad read (0x267898); with 0x15eed8 -1 none; 2: any button
 // pressed; then, with 0x15eea0, 0x15ee20 or 0x15eed8 set or on level 0 or below, Start pressed;
 // and in every case L2 + R2 + L1 + R1 held with Start pressed. The player's stop flag
-// (`player` + 0xa8 = 1, 0x2f05e0) set when it skips.
+// (`player` + 0xa8 = 1, 0x2f05e0) set when it skips. The PC's Skip Cutscenes = Always (advanced.h): Start alone
+// skips every movie, the boot's intro (-1) too.
 // orig: 0x002eddd0 (its skip test)
 bool movie_skip_test(uint32_t player) {
     constexpr uint32_t PAD = 0x0013c940;
     pad_update();
     const int32_t mode = lw(0x0015eed8);
-    if (mode == -1) return false;
+    const bool always = advanced_skip_cutscenes();  // (the PC's Always: the condition passes, the skip is the game's)
+    if (mode == -1 && !always) return false;
     bool skip = false;
     if (mode == 2 && lw(PAD + 0x1a4) != 0) {
         skip = true;
     } else {
-        const bool start_skips = lw(0x0015eea0) != 0 || lw(0x0015ee20) != 0 || lw(0x0015eed8) != 0 || !(0 < lw(0x0015ed84));
+        const bool start_skips = lw(0x0015eea0) != 0 || lw(0x0015ee20) != 0 || lw(0x0015eed8) != 0 || !(0 < lw(0x0015ed84)) || always;
         if (start_skips && (lw(PAD + 0x1a4) & 0x800) != 0) {
             skip = true;
         } else {
