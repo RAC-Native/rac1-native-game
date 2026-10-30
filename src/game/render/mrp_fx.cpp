@@ -1311,7 +1311,7 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
     ++g_st.by_kind[kMrpFxVu7];  // (the report's "by producer": batches)
     if (clip_path) ++g_s7.clip_path;
     const auto& vin = gs.vu7_verts;
-    auto vert = [&](uint32_t i, const State& S) {
+    auto vert = [&](uint32_t i, const State& S, bool gs_z) {
         const gs::Vu7Vertex& s = vin[b.first + i];
         const glm::dvec4 pt(s.xyz[0], s.xyz[1], s.xyz[2], 1.0);
         const glm::dvec4 clip = M * pt;
@@ -1347,7 +1347,7 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
         {  // the depth: the program's Z (its integer part, FTOI4) through the replica's map (render_gs_depth)
             const double q = static_cast<double>(b.k) / clip.w;
             const double Z = std::floor(clip.z * q + static_cast<double>(b.off[2]));
-            v.depth = g_v7_depth ? static_cast<float>(2.0 * (g_v7_da + g_v7_db * Z) - 1.0) : 2.0f;
+            v.depth = g_v7_depth && gs_z ? static_cast<float>(2.0 * (g_v7_da + g_v7_db * Z) - 1.0) : 2.0f;
         }
         g_v7.push_back(v);
     };
@@ -1365,8 +1365,15 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
     // state - unless all three points lie past one plane of the guard band (not drawn).
     enum : uint8_t { kNone = 0, kStrip = 1, kFan = 2 };
     std::vector<uint8_t> how(tris.size(), kStrip);
+    // A clipped triangle reaching behind the eye or past the GS's Z range has no GS depth there (Q of the wrong sign: its Z is
+    // nonsense). Drawn whole for the GPU to clip, with the depth clamp (which turns the near plane's clipping off), it came out in
+    // some frames and not others as the camera moved by a hair - OpenGL on radeonsi; Vulkan was right: Pokitaru with the camera at
+    // the water, the near sea white with the original lighting, dark with the modern one, the posts under it gone, every few frames.
+    // Such a triangle is cut at the view's near plane here (emit) and drawn with the view's own depth (in front of the eye the two
+    // depths are the same map)
+    std::vector<uint8_t> gs_z(tris.size(), 1);
     {
-        std::vector<uint8_t> flags(b.n), behind(b.n);
+        std::vector<uint8_t> flags(b.n), behind(b.n), zbad(b.n);
         for (uint32_t i = 0; i < b.n; ++i) {
             const gs::Vu7Vertex& s = vin[b.first + i];
             const glm::dvec4 pt(s.xyz[0], s.xyz[1], s.xyz[2], 1.0);
@@ -1380,6 +1387,7 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
             const double q = static_cast<double>(b.k) / h.w;
             const double X = h.x * q + b.off[0], Y = h.y * q + b.off[1], Z = h.z * q + b.off[2];
             behind[i] = !(q > 0.0) || !(X >= 0.0 && X < 4096.0 && Y >= 0.0 && Y < 4096.0) || !(Z >= 0.0 && Z < 16777216.0) ? 1 : 0;
+            zbad[i] = !(q > 0.0) || !(Z >= 0.0 && Z < 16777216.0) ? 1 : 0;
         }
         const bool have = b.kicked.size() == b.n && type == 4;
         for (size_t t = 0; t < tris.size(); ++t) {
@@ -1389,14 +1397,55 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
             const bool whole = have ? b.kicked[T[2]] != 0 : !(clip_path && any_out);
             if (whole) how[t] = (behind[T[0]] | behind[T[1]] | behind[T[2]]) != 0 ? kNone : kStrip;
             else how[t] = all_one || !clip_path ? kNone : kFan;
+            gs_z[t] = (zbad[T[0]] | zbad[T[1]] | zbad[T[2]]) == 0 ? 1 : 0;
         }
     }
+    bool have_vp = false;
+    float wrow[4] = {};
     auto emit = [&](const State& S, uint8_t want) {  // (the program kicks the clipped fans as it goes, the strip at its end)
         if (!S.ok) return;
         const size_t at = g_v7.size();
-        for (size_t t = 0; t < tris.size(); ++t)
-            if (how[t] == want)
-                for (uint32_t i : tris[t]) vert(i, S);
+        for (size_t t = 0; t < tris.size(); ++t) {
+            if (how[t] != want) continue;
+            if (gs_z[t] != 0) {
+                for (uint32_t i : tris[t]) vert(i, S, true);
+                continue;
+            }
+            // (no GS depth: the triangle cut at the view's near plane here, its part in front of it drawn with the view's depth)
+            if (!have_vp) {
+                float m[16];
+                mrp_world_view_proj(m);
+                for (int k = 0; k < 4; ++k) wrow[k] = m[k * 4 + 3];  // (column-major: the clip w's row)
+                have_vp = true;
+            }
+            V7 in[3];
+            for (int k = 0; k < 3; ++k) {
+                vert(tris[t][static_cast<size_t>(k)], S, false);
+                in[k] = g_v7.back();
+                g_v7.pop_back();
+            }
+            auto dist = [&](const V7& v) { return wrow[0] * v.wp[0] + wrow[1] * v.wp[1] + wrow[2] * v.wp[2] + wrow[3] - kRenderNear * 1.5f; };
+            V7 poly[4];
+            int np = 0;
+            for (int k = 0; k < 3; ++k) {
+                const V7 &a = in[k], &c = in[(k + 1) % 3];
+                const float da = dist(a), dc = dist(c);
+                if (da >= 0.0f) poly[np++] = a;
+                if ((da >= 0.0f) != (dc >= 0.0f)) {
+                    const float f = da / (da - dc);
+                    V7 v = a;
+                    for (int l = 0; l < 3; ++l) {
+                        v.wp[l] = a.wp[l] + (c.wp[l] - a.wp[l]) * f;
+                        v.stq[l] = a.stq[l] + (c.stq[l] - a.stq[l]) * f;
+                    }
+                    v.fogw = a.fogw + (c.fogw - a.fogw) * f;
+                    for (int l = 0; l < 4; ++l)
+                        v.rgba[l] = static_cast<uint8_t>(std::lround(static_cast<float>(a.rgba[l]) + (static_cast<float>(c.rgba[l]) - static_cast<float>(a.rgba[l])) * f));
+                    poly[np++] = v;
+                }
+            }
+            for (int k = 1; k + 1 < np; ++k) g_v7.insert(g_v7.end(), {poly[0], poly[k], poly[k + 1]});
+        }
         const uint32_t n = static_cast<uint32_t>(g_v7.size() - at);
         g_s7.tris += n / 3;
         if (n == 0) return;
@@ -1859,7 +1908,7 @@ void mrp_fx_draw(const MrpChainFrame& gs, int win_w, int win_h, const gs::Viewpo
     }
     using clock = std::chrono::steady_clock;
     const auto t0 = clock::now();
-    if (from == 0) {
+    if (from == 0 && g_pass != 1) {  // (once a frame: the early surfaces' pass, from 0 with Options > Graphics > Water, comes after it)
         ++g_st.frames;
         std::lock_guard<std::mutex> lg(g_p7.m);  // (the debug menu's pick: the last frame's answer kept, this frame's searched afresh)
         if (g_p7.want) {

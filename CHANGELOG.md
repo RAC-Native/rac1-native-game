@@ -31,7 +31,8 @@ What changed in each release. Releases are source only: you build the game with 
   "Seas drawn"); a distant surface can be picked; the ambient particles have a tab of their own, with Solo per line.
 - Water (Options > Graphics, off by default): the tagged water gets two scrolling normal maps, Fresnel, the sun's glints, depth
   (lighter where shallow, darker where deep) and a thin foam at the shore; High adds the scene's reflection and a slight refraction.
-  Lava and quicksand get slow relief and a seam at their shore. Seeded on Rilgar, Pokitaru and Hoven.
+  Lava and quicksand get slow relief and a seam at their shore. Seeded on Rilgar, Pokitaru, Hoven and Novalis (the gorge's water
+  and its waterfall, the river of the first walk, the stream and pools by the landing pad, the basins, the cave's water columns).
 - Grass (Options > Graphics, off by default): the ground tagged as grass gets a fine relief of blades (Low, no geometry) and a few very
   low layers of blades near the camera (High), in the texture's colours, bending with the wind and away from Ratchet. Seeded on Veldin,
   Novalis and Kerwan.
@@ -52,6 +53,13 @@ What changed in each release. Releases are source only: you build the game with 
   antivirus false positive (F-Secure's `Drop.Win64.APC.HEUR`, #115).
 
 ### Fixes
+- Water: Rilgar's harbour (and Hoven's, Gaspar's and Umbris's seas) no longer flickers between a dark sea and a grey, speckled
+  sheet with Water on: a sea the game draws before its mobys was drawn before the copy of the 3D under the water, and read the
+  last frame's, which held the sea itself. With Surface Detail on too, its `water` look is kept and the Water option adds its
+  normal maps, the depth's colour, the foam and the see-through over it, in one draw.
+- The levels' seas near the camera: on OpenGL a clipped triangle reaching behind the eye was drawn through it in some frames
+  (Pokitaru, swimming among the posts: the near water white or dark every few frames, with any lighting and any option); it is
+  now cut at the near plane, as Vulkan did, and Vulkan draws the near water it had left out.
 - Options > Graphics > Monitor: two monitors with the same name ("Generic PnP Monitor" twice) are told apart by their place on
   the desktop ("Generic PnP Monitor (at 1920,0)"), so the one chosen is the one the game opens on after a restart (#111).
 - Vulkan: the world's push constants are 128 bytes, not 144, and the ambient occlusion's 176 bytes of parameters are in a

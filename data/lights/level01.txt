@@ -103,3 +103,19 @@ material moby 730 tex 2 metal 0.35 1
 material tie 655 tex 0 metal 0.46 1
 # Options > Graphics > Grass (docs/materials.md): the meadows' grass
 material tfrag 0 tex 8 grass
+# Options > Graphics > Water (docs/materials.md): Novalis's water, VU1 program 7's strips and tiles (novalis_water.cpp), each class's
+# base layer (the second layers some classes draw over it, the same water, left as the game draws them). Not the landing area: the
+# program-7 surfaces of class 0 there (13347, 13351, 13355...) are the shadow meshes under Ratchet and the pads.
+# The water at the bottom of the gorge below the start's cliffs (class 676: x 22..178, y 137..297, z 38.5; Ratchet swims in it),
+# with its waterfall at the north-west end (x 28..41, y 275..295, from z 59 down): deep, broad waves
+material surface 676 tex 13347 water 1 1  waves 0.8 0.8  depth 6
+# The river along the first walk, from beside the landing pad east to x 323 (class 761, z 59.7 rising to 80): shallow, quick ripples
+material surface 761 tex 13347 water 1 1.2  waves 1.4 1.5  foam 0.7  depth 1.5
+# The stream and the pools of water tiles south-west of the pad (class 751: x 119..164, y 45..132, z 56..66)
+material surface 751 tex 13347 water 1 1  waves 1.4 1.2  depth 1
+material surface 751 tex 13483 water 1 1  waves 1.4 1.2  depth 1
+# The waterworks: the basins at z 82 behind the railings (class 678, x 260..309, y 138..184), still water
+material surface 678 tex 13347 water 0.8 0.7  waves 0.7 0.5  foam 0.4  depth 3
+# The three round water columns in the blue cave south-west of the start (class 1225, x 93..120, y 60..86; their wave height the
+# game's): mostly upright, the glints and the see-through only (the normal maps lie on the flat parts alone)
+material surface 1225 tex 13347 water 0.8 0.6  depth 2
