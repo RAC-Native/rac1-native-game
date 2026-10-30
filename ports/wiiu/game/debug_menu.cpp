@@ -712,7 +712,10 @@ void debug_menu_draw(const GX2ColorBuffer* cb, const std::vector<std::string>& s
     text(kItemX, kScreenH - kFontCellH - 4, b, grey);
     last_n = g_v.size();
     if (g_v.empty()) return;
-    // (the GPU is done with the buffer: wiiu_gfx.cpp waits for the frame before's commands before this frame's draws)
+    // (the GPU is done with the buffer: wiiu_gfx.cpp waits for the frame before's commands before this frame's draws - with two frames in
+    // flight, RAC1_WIIU_FRAMES_IN_FLIGHT=2, for the frame before last's: the frame before's waited for here, the quads changing a few times
+    // a second at most)
+    rac1::gx2_wait_frame_before();
     const auto lk = static_cast<GX2RResourceFlags>(GX2R_RESOURCE_DISABLE_CPU_INVALIDATE | GX2R_RESOURCE_DISABLE_GPU_INVALIDATE);
     void* p = GX2RLockBufferEx(&g_vb, lk);
     const uint32_t bytes = static_cast<uint32_t>(g_v.size() * sizeof(V));

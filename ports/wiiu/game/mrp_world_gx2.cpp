@@ -244,23 +244,23 @@ const bool g_ring_nowait = std::getenv("RAC1_WIIU_RING_NOWAIT") == nullptr || st
 constexpr uint32_t kRingBytes = 16u << 20;
 uint8_t* g_ring = nullptr;
 uint32_t g_ring_off = 0;
-uint32_t g_ring_frame_bytes = 0;
+Gx2RingUse g_ring_use;  // (Gx2RingUse: this host frame's bytes and the frame before's)
 uint64_t g_ring_wraps = 0;
 bool g_ring_stale = false;  // (Gx2Perf::ub_bulk: the ring wrapped since its GPU caches were last invalidated)
 void* ring_alloc(uint32_t bytes) {
     uint32_t off = (g_ring_off + GX2_UNIFORM_BLOCK_ALIGNMENT - 1) & ~(GX2_UNIFORM_BLOCK_ALIGNMENT - 1);
     if (bytes > kRingBytes) return nullptr;
     if (off + bytes > kRingBytes) {
-        g_ring_frame_bytes += (kRingBytes - g_ring_off) + bytes;
-        if (!g_ring_nowait || g_ring_frame_bytes > (kRingBytes >> 1)) {
+        g_ring_use.cur += (kRingBytes - g_ring_off) + bytes;
+        if (!g_ring_nowait || g_ring_use.must_wait(kRingBytes)) {
             GX2DrawDone();
-            g_ring_frame_bytes = bytes;
+            g_ring_use.waited(bytes);
         }
         off = 0;
         ++g_ring_wraps;
         g_ring_stale = true;
     } else {
-        g_ring_frame_bytes += (off - g_ring_off) + bytes;
+        g_ring_use.cur += (off - g_ring_off) + bytes;
     }
     g_ring_off = off + bytes;
     return g_ring + off;
@@ -304,21 +304,21 @@ void* block_of(const void* data, uint32_t bytes, uint32_t size) {
 constexpr uint32_t kPlanRingBytes = 8u << 20;
 uint8_t* g_pring = nullptr;
 uint32_t g_pring_off = 0;
-uint32_t g_pring_frame_bytes = 0;
+Gx2RingUse g_pring_use;  // (Gx2RingUse: this host frame's bytes and the frame before's)
 uint64_t g_pring_wraps = 0;
 void* plan_alloc(uint32_t bytes, uint32_t align) {
     uint32_t off = (g_pring_off + align - 1) & ~(align - 1);
     if (bytes > kPlanRingBytes) return nullptr;
     if (off + bytes > kPlanRingBytes) {
-        g_pring_frame_bytes += (kPlanRingBytes - g_pring_off) + bytes;
-        if (!g_ring_nowait || g_pring_frame_bytes > (kPlanRingBytes >> 1)) {
+        g_pring_use.cur += (kPlanRingBytes - g_pring_off) + bytes;
+        if (!g_ring_nowait || g_pring_use.must_wait(kPlanRingBytes)) {
             GX2DrawDone();
-            g_pring_frame_bytes = bytes;
+            g_pring_use.waited(bytes);
         }
         off = 0;
         ++g_pring_wraps;
     } else {
-        g_pring_frame_bytes += (off - g_pring_off) + bytes;
+        g_pring_use.cur += (off - g_pring_off) + bytes;
     }
     g_pring_off = off + bytes;
     return g_pring + off;
@@ -329,21 +329,21 @@ void* plan_alloc(uint32_t bytes, uint32_t align) {
 constexpr uint32_t kGeoRingBytes = 16u << 20;
 uint8_t* g_gring = nullptr;
 uint32_t g_gring_off = 0;
-uint32_t g_gring_frame_bytes = 0;
+Gx2RingUse g_gring_use;  // (Gx2RingUse: this host frame's bytes and the frame before's)
 uint64_t g_gring_wraps = 0;
 void* geo_alloc(uint32_t bytes) {
     uint32_t off = (g_gring_off + GX2_VERTEX_BUFFER_ALIGNMENT - 1) & ~(GX2_VERTEX_BUFFER_ALIGNMENT - 1);
     if (bytes > kGeoRingBytes) return nullptr;
     if (off + bytes > kGeoRingBytes) {
-        g_gring_frame_bytes += (kGeoRingBytes - g_gring_off) + bytes;
-        if (!g_ring_nowait || g_gring_frame_bytes > (kGeoRingBytes >> 1)) {
+        g_gring_use.cur += (kGeoRingBytes - g_gring_off) + bytes;
+        if (!g_ring_nowait || g_gring_use.must_wait(kGeoRingBytes)) {
             GX2DrawDone();
-            g_gring_frame_bytes = bytes;
+            g_gring_use.waited(bytes);
         }
         off = 0;
         ++g_gring_wraps;
     } else {
-        g_gring_frame_bytes += (off - g_gring_off) + bytes;
+        g_gring_use.cur += (off - g_gring_off) + bytes;
     }
     g_gring_off = off + bytes;
     return g_gring + off;
@@ -354,21 +354,21 @@ void* geo_alloc(uint32_t bytes) {
 constexpr uint32_t kSkyRingBytes = 2u << 20;
 uint8_t* g_sring = nullptr;
 uint32_t g_sring_off = 0;
-uint32_t g_sring_frame_bytes = 0;
+Gx2RingUse g_sring_use;  // (Gx2RingUse: this host frame's bytes and the frame before's)
 uint64_t g_sring_wraps = 0;
 void* sky_alloc(uint32_t bytes) {
     uint32_t off = (g_sring_off + GX2_VERTEX_BUFFER_ALIGNMENT - 1) & ~(GX2_VERTEX_BUFFER_ALIGNMENT - 1);
     if (bytes > kSkyRingBytes) return nullptr;
     if (off + bytes > kSkyRingBytes) {
-        g_sring_frame_bytes += (kSkyRingBytes - g_sring_off) + bytes;
-        if (!g_ring_nowait || g_sring_frame_bytes > (kSkyRingBytes >> 1)) {
+        g_sring_use.cur += (kSkyRingBytes - g_sring_off) + bytes;
+        if (!g_ring_nowait || g_sring_use.must_wait(kSkyRingBytes)) {
             GX2DrawDone();
-            g_sring_frame_bytes = bytes;
+            g_sring_use.waited(bytes);
         }
         off = 0;
         ++g_sring_wraps;
     } else {
-        g_sring_frame_bytes += (off - g_sring_off) + bytes;
+        g_sring_use.cur += (off - g_sring_off) + bytes;
     }
     g_sring_off = off + bytes;
     return g_sring + off;
@@ -812,6 +812,8 @@ bool mrp_world_gx2_ready() { return g_ready; }
 
 // orig: (host) see mrp_world_gx2.h
 Gx2Perf g_gx2_perf;
+int g_gx2_in_flight = 1;
+uint64_t g_gx2_frame = 0;
 Gx2DrawView g_gx2_view;
 
 // orig: (host) see mrp_world_gx2.h
@@ -1053,10 +1055,10 @@ int debug_mode(const char* list, uint64_t at, uint64_t game_frame) {
 
 // orig: (host) see mrp_world_gx2.h
 void mrp_world_gx2_debug_frame(uint64_t game_frame) {
-    g_ring_frame_bytes = 0;
-    g_pring_frame_bytes = 0;
-    g_gring_frame_bytes = 0;
-    g_sring_frame_bytes = 0;
+    g_ring_use.frame_start();
+    g_pring_use.frame_start();
+    g_gring_use.frame_start();
+    g_sring_use.frame_start();
     static const char* list = std::getenv("RAC1_WIIU_WORLD_DEBUG");
     static const uint64_t at = std::getenv("RAC1_WIIU_WORLD_DEBUG_AT") != nullptr ? std::strtoull(std::getenv("RAC1_WIIU_WORLD_DEBUG_AT"), nullptr, 10) : 0;
     const int mode = debug_mode(list, at, game_frame);
@@ -1441,6 +1443,8 @@ bool tvx_sync() {
         g_tvx.gen = v.generation;
     }
     const std::vector<uint32_t>& m = *v.colours;
+    // ((2026-11-01) RAC1_WIIU_FRAMES_IN_FLIGHT=2: the frame before may still read the colours' texture - made again or written in place)
+    if (g_tvx.col.surface.image != nullptr && (v.colours_all || m.size() != g_tvx.col_words || !v.colours_dirty->empty())) gx2_wait_frame_before();
     if (v.colours_all || m.size() != g_tvx.col_words || g_tvx.col.surface.image == nullptr) {
         if (!tvx_tex_make(g_tvx.col, 1, kTvsColLog2, m.data(), m.size())) {
             std::printf("[wiiu] mrp_world_gx2: tfrag vertex shader: no memory for the colours' texture: the CPU route from the next frame on\n");
@@ -1564,6 +1568,7 @@ void sky_host_bake(const mrpwb::SkyHostDraw& d) {
     auto* v = static_cast<mrpwb::GpuV*>(g_shost.vb) + d.first;
     const mrpwb::GpuV& c = v[2];
     if (c.word == d.word && c.layer == d.layer && c.state[0] == d.state[0] && c.state[1] == d.state[1] && v[0].fog == d.fog) return;
+    gx2_wait_frame_before();  // ((2026-11-01) two frames in flight: the frame before may still draw the run's old values)
     for (uint32_t i = 0; i < d.count; ++i) {
         v[i].word = d.word;
         v[i].layer = d.layer;

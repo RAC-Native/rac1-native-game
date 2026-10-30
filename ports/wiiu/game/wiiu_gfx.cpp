@@ -168,6 +168,8 @@ void rac1_wiiu_picture_frame(const rac1::gs::Gs* replica, float fb_w, float fb_h
 namespace {
 bool g_ending = false;  // (the game ended: wiiu_gfx_game_ended)
 OSTime g_frame_ts = 0;  // (the last frame's commands, GX2GetLastSubmittedTimeStamp: waited for before the next frame's writes)
+OSTime g_frame_ts_prev = 0;  // ((2026-11-01) the frame before's: waited for instead with two frames in flight, RAC1_WIIU_FRAMES_IN_FLIGHT)
+uint64_t g_wait_before = 0;  // (gx2_wait_frame_before's waits: the log every 300 host frames)
 // the foreground ours (ProcUI's release / acquire callbacks, wiiu_main.cpp). Released - the HOME menu, the exit - WHB's own
 // release callback has waited for the GPU (GX2DrawDone) and freed the TV's and the GamePad's buffers (MEM1, the foreground's):
 // no frame drawn into them until the acquire. (The game's host frame after the release still came here - WHBProcIsRunning
@@ -177,7 +179,14 @@ bool g_foreground = true;
 
 void wiiu_gfx_foreground(bool on) {
     g_foreground = on;
-    if (!on) g_frame_ts = 0;  // (the GPU idle: WHB's release callback's GX2DrawDone)
+    if (!on) g_frame_ts = g_frame_ts_prev = 0;  // (the GPU idle: WHB's release callback's GX2DrawDone)
+}
+
+// orig: (host) see mrp_world_gx2.h
+void rac1::gx2_wait_frame_before() {
+    if (rac1::g_gx2_in_flight < 2 || g_frame_ts == 0) return;
+    GX2WaitTimeStamp(g_frame_ts);
+    ++g_wait_before;
 }
 
 void wiiu_gfx_game_ended() {
@@ -191,7 +200,7 @@ void wiiu_gfx_game_ended() {
     step("the GPU's last frame");
     if (g_on && g_foreground && g_frame_ts != 0) GX2WaitTimeStamp(g_frame_ts);  // (released: the GPU idle already)
     step("waited");
-    g_frame_ts = 0;
+    g_frame_ts = g_frame_ts_prev = 0;
     g_ending = true;  // (the frames from here to ProcUI's release: no timestamp waited for, WHBGfxFinishRender's own wait - the
                       // application leaving the foreground, a frame's commands may never retire: waiting for them hung the console)
     g_2d.have = false;
@@ -1274,6 +1283,18 @@ void shot(const GX2ColorBuffer* cb, uint64_t n) {
 }
 }  // namespace
 
+namespace {
+// ((2026-11-01) RAC1_WIIU_FRAMES_IN_FLIGHT: 1 or 2 - unset 1, wiiu_main.cpp sets 2; read once - mrp_fx.cpp reads it too, for its vertices'
+// count)
+int frames_in_flight_env() {
+    static const int n = [] {
+        const char* e = std::getenv("RAC1_WIIU_FRAMES_IN_FLIGHT");
+        return e != nullptr && e[0] != 0 ? std::clamp(std::atoi(e), 1, 2) : 1;
+    }();
+    return n;
+}
+}  // namespace
+
 // a frame for the TV and the GamePad, after a host frame of the game
 void wiiu_gfx_frame() {
     if (!g_on || !g_foreground) return;  // (released: no buffers to draw into)
@@ -1414,7 +1435,16 @@ void wiiu_gfx_frame() {
         lap(kTmFxPrep);
         rac1::ctl::mark(rac1::ctl::kFx1);
     }
-    if (overlap && g_frame_ts != 0) GX2WaitTimeStamp(g_frame_ts);
+    // ((2026-11-01) RAC1_WIIU_FRAMES_IN_FLIGHT=2: only the frame before last waited for - the GPU still drawing the frame before while this
+    // one's commands are made and queued behind it (the backends' rings sized for both: Gx2RingUse; the effects' vertices in three vectors,
+    // mrp_fx.cpp; in-place rewrites - the GamePad's debug menu's quads among them - wait for the frame before: gx2_wait_frame_before). 1
+    // with a movie (its texture written in place every frame), with the GS replica's 2D (its own ring) and without the overlap)
+    rac1::g_gx2_frame = g_frames;
+    rac1::g_gx2_in_flight = overlap && frames_in_flight_env() >= 2 && !has_movie && g_2d.replica == nullptr ? 2 : 1;
+    {
+        const OSTime w = rac1::g_gx2_in_flight >= 2 ? g_frame_ts_prev : g_frame_ts;
+        if (overlap && w != 0) GX2WaitTimeStamp(w);
+    }
     rac1::ctl::mark(rac1::ctl::kGpu1);
     lap(kTmGpuWait);
     movie_sync();
@@ -1429,8 +1459,10 @@ void wiiu_gfx_frame() {
         const unsigned exp_free_kb = static_cast<unsigned>(MEMGetTotalFreeSizeForExpHeap(MEMGetBaseHeapHandle(MEM_BASE_HEAP_MEM2)) / 1024);
         const unsigned mall_free_kb = static_cast<unsigned>(static_cast<uint32_t>(mi.fordblks) / 1024);
         const unsigned mall_used_kb = static_cast<unsigned>(static_cast<uint32_t>(mi.uordblks) / 1024);
-        std::printf("[wiiu] host frame %llu: %u KB free in the default heap (MEM2 exp: %u KB free, malloc: %u KB free, %u KB used)\n",
-                    static_cast<unsigned long long>(g_frames), exp_free_kb + mall_free_kb, exp_free_kb, mall_free_kb, mall_used_kb);
+        std::printf("[wiiu] host frame %llu: %u KB free in the default heap (MEM2 exp: %u KB free, malloc: %u KB free, %u KB used); frames in flight %d "
+                    "(RAC1_WIIU_FRAMES_IN_FLIGHT %d), %llu waits for the frame before\n",
+                    static_cast<unsigned long long>(g_frames), exp_free_kb + mall_free_kb, exp_free_kb, mall_free_kb, mall_used_kb, rac1::g_gx2_in_flight,
+                    frames_in_flight_env(), static_cast<unsigned long long>(g_wait_before));
     }
     if (chain_2d && !prebuild_on) {
         rac1::mrp_chain_join();  // (the frame's chain read on the reader's worker)
@@ -1489,9 +1521,11 @@ void wiiu_gfx_frame() {
         GX2Flush();
         GX2SetTVEnable(TRUE);
         GX2SetDRCEnable(TRUE);
+        g_frame_ts_prev = g_frame_ts;
         g_frame_ts = GX2GetLastSubmittedTimeStamp();
     } else {
         WHBGfxFinishRender();
+        g_frame_ts = g_frame_ts_prev = 0;  // (the GPU idle)
     }
     lap(kTmFinish);
     rac1::ctl::mark(rac1::ctl::kFrame1);

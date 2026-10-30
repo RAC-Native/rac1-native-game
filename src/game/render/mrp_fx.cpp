@@ -2313,8 +2313,18 @@ struct FxVertAlloc {
     bool operator!=(const FxVertAlloc<U>&) const noexcept { return false; }
 };
 using FxVerts = std::vector<mrpwb::GpuV, FxVertAlloc<mrpwb::GpuV>>;
-FxVerts g_wiiu_fx_vb[2];
+// ((2026-11-01) RAC1_WIIU_FRAMES_IN_FLIGHT=2, wiiu_gfx.cpp: the main thread waits only for the frame before last - three vectors, the
+// prepare writing the one the frame two before drew)
+FxVerts g_wiiu_fx_vb[3];
 int g_wiiu_fx_cur = 0;
+int wiiu_fx_vectors() {
+#if defined(__WIIU__)
+    static const int n = std::getenv("RAC1_WIIU_FRAMES_IN_FLIGHT") != nullptr && std::atoi(std::getenv("RAC1_WIIU_FRAMES_IN_FLIGHT")) >= 2 ? 3 : 2;
+    return n;
+#else
+    return 2;
+#endif
+}
 bool wiiu_fx_direct_on() {
 #if defined(__WIIU__)
     static const bool on = std::getenv("RAC1_WIIU_FX_DIRECT") == nullptr || std::atoi(std::getenv("RAC1_WIIU_FX_DIRECT")) != 0;
@@ -2383,7 +2393,7 @@ void wiiu_fx_append_batch(const MrpFxWiiuBatch& cur, uint32_t first, uint32_t co
 }  // namespace
 
 void mrp_fx_wiiu_prepare(const MrpChainFrame& gs, const float* vpm_opt) {
-    if (wiiu_fx_direct_on()) g_wiiu_fx_cur ^= 1;  // (the frame before last's vectors: RAC1_WIIU_FX_DIRECT)
+    if (wiiu_fx_direct_on()) g_wiiu_fx_cur = (g_wiiu_fx_cur + 1) % wiiu_fx_vectors();  // (the frame before last's vectors: RAC1_WIIU_FX_DIRECT)
     FxVerts& g_wiiu_fx_verts = g_wiiu_fx_vb[g_wiiu_fx_cur];
     struct Flush {  // (RAC1_WIIU_FX_DIRECT: the vertices out of this core's data cache for the GPU, at every return)
         const FxVerts& v;

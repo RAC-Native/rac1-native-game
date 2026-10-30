@@ -111,22 +111,22 @@ const bool g_ring_nowait = std::getenv("RAC1_WIIU_RING_NOWAIT") == nullptr || st
 constexpr uint32_t kRingBytes = 8u << 20;
 uint8_t* g_ring = nullptr;
 uint32_t g_ring_off = 0;
-uint32_t g_ring_frame_bytes = 0;
+Gx2RingUse g_ring_use;  // (Gx2RingUse: this host frame's bytes and the frame before's)
 uint64_t g_ring_wraps = 0;
 
 void* ring_alloc(uint32_t bytes, uint32_t align) {
     uint32_t off = (g_ring_off + align - 1) & ~(align - 1);
     if (bytes > kRingBytes) return nullptr;
     if (off + bytes > kRingBytes) {
-        g_ring_frame_bytes += (kRingBytes - g_ring_off) + bytes;
-        if (!g_ring_nowait || g_ring_frame_bytes > (kRingBytes >> 1)) {
+        g_ring_use.cur += (kRingBytes - g_ring_off) + bytes;
+        if (!g_ring_nowait || g_ring_use.must_wait(kRingBytes)) {
             GX2DrawDone();
-            g_ring_frame_bytes = bytes;
+            g_ring_use.waited(bytes);
         }
         off = 0;
         ++g_ring_wraps;
     } else {
-        g_ring_frame_bytes += (off - g_ring_off) + bytes;
+        g_ring_use.cur += (off - g_ring_off) + bytes;
     }
     g_ring_off = off + bytes;
     return g_ring + off;
@@ -215,6 +215,11 @@ size_t g_tex_bytes = 0;
 uint64_t g_call = 0;
 GX2Texture g_white{}, g_black{};
 
+// the calls the GPU may still be drawing from (a texture last sampled by one of them waited for before it is written again or freed): the
+// frame before's with one frame in flight, and ((2026-11-01) RAC1_WIIU_FRAMES_IN_FLIGHT=2) the frame before last's - a call or two
+// (the GamePad's) a frame
+uint64_t gpu_calls() { return g_gx2_in_flight > 1 ? 4 : 2; }
+
 size_t pooled() {
     size_t n = 0;
     for (const auto& [k, l] : g_pool) n += l.size();
@@ -270,7 +275,7 @@ void tex_evict_cap() {
         while (!l.empty() && g_tex_bytes > kTexCap * 3 / 4) {
             FreeTex f = l.front();
             l.erase(l.begin());
-            if (!waited && f.last_use + 2 > g_call) {
+            if (!waited && f.last_use + gpu_calls() > g_call) {
                 GX2DrawDone();
                 waited = true;
             }
@@ -318,7 +323,7 @@ void tex_evict() {
         auto& l = pt->second;
         for (size_t i = 0; i < l.size();) {
             if (g_call - l[i].since > kTexKeep) {
-                if (!waited && l[i].last_use + 2 > g_call) {
+                if (!waited && l[i].last_use + gpu_calls() > g_call) {
                     GX2DrawDone();
                     waited = true;
                 }
@@ -359,7 +364,7 @@ const GX2Texture* texture_of(const mrp2d::TexRef& r) {
         FreeTex f = pool->second.front();
         pool->second.erase(pool->second.begin());
         if (pool->second.empty()) g_pool.erase(pool);
-        if (f.last_use + 2 > g_call) GX2DrawDone();
+        if (f.last_use + gpu_calls() > g_call) GX2DrawDone();
         fill_texture(f.tex, img->w, img->h, img->px.data());
         e.tex = f.tex;
         e.bytes = f.bytes;
@@ -696,7 +701,7 @@ void mrp_2d_gx2_draw(const MrpChainFrame& f, const GX2ColorBuffer* screen, float
     static const int s_debug = std::getenv("RAC1_WIIU_2D_DEBUG") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_2D_DEBUG")) : 0;
     static const bool s_log = std::getenv("RAC1_WIIU_2D_LOG") == nullptr || std::atoi(std::getenv("RAC1_WIIU_2D_LOG")) != 0;
     ++g_call;
-    if (targets) g_ring_frame_bytes = 0;
+    g_ring_use.frame_start();
     const auto t0 = std::chrono::steady_clock::now();
     const gs::Viewport& v = vp;
     if (targets) g_rt_s = rt_scale_for(v, FB_H);

@@ -144,6 +144,33 @@ struct Gx2Perf {
                               // pass 1 (hardware early-Z + Hi-Z writes) and skip pass 2 completely
 };
 extern Gx2Perf g_gx2_perf;
+// ((2026-11-01) RAC1_WIIU_FRAMES_IN_FLIGHT, wiiu_gfx.cpp) the frames the GPU may hold while the CPU writes this one's data: 1, the frame
+// before waited for before this frame's first write (as before); 2, only the frame before last - the GPU draws frame N while the main
+// thread makes N + 1 (the movies, the GamePad's debug menu and the GS replica's 2D: 1, their buffers written in place). Set by
+// wiiu_gfx_frame before the backends draw; g_gx2_frame the host frame's number
+extern int g_gx2_in_flight;
+extern uint64_t g_gx2_frame;
+// the frame before's GPU work waited for (its timestamp) when g_gx2_in_flight is 2 - before data a frame drew from is written again in
+// place (the tfrag vertex shader's colours, the host sky's baked values); nothing with 1 (waited for already)
+void gx2_wait_frame_before();
+// a ring's use (the backends' blocks / vertices rings): the bytes this host frame and the frame before allocated. At a wrap the ring's start
+// is written again: the CPU waits for the GPU (GX2DrawDone) first only when the frames the GPU may still read - this one's and, with two
+// in flight, the one before - took more than half the ring (the ring's start then older than both)
+struct Gx2RingUse {
+    uint32_t cur = 0, prev = 0;
+    uint64_t frame = ~0ull;
+    void frame_start() {  // (once a host frame counted: the GamePad's call within the TV's frame)
+        if (frame == g_gx2_frame) return;
+        prev = cur;
+        cur = 0;
+        frame = g_gx2_frame;
+    }
+    bool must_wait(uint32_t ring_bytes) const { return cur + (g_gx2_in_flight > 1 ? prev : 0u) > (ring_bytes >> 1); }
+    void waited(uint32_t bytes) {  // (GX2DrawDone: nothing older in use)
+        cur = bytes;
+        prev = 0;
+    }
+};
 // (Gx2Perf::flush) a point where the commands so far may go to the GPU: GX2Flush when the switch is at `level` or more
 void gx2_flush(int level);
 // ((2026-10-31) RAC1_WIIU_VS_GPRS, RAC1_WIIU_MOBY_VS_GPRS - default the first's) GX2SetShaderMode with the GPR pool split toward the vertex

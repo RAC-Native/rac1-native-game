@@ -917,3 +917,54 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
 - Shots (Veldin open, RAC1_REALTIME=0, game frame 1200): defaults against all three off differ only where two runs of the same build
   differ too (Ratchet's pose, the particles, blinking lights - the run's own timing); outside 4 px of those, 3,795 pixels, all at Ratchet
   and the effects near him, none on the terrain.
+
+### Two frames in flight: the GPU draws frame N while the main thread makes N + 1 (2026-11-01)
+
+- **Why:** wiiu_gfx_frame waited (GX2WaitTimeStamp) for the frame before's GPU work before this frame wrote anything the GPU reads, then
+  sent this frame's commands as it made them (the world's ~4 ms, the mobys' ~2.7): the GPU started each frame idle and drew as fast as the
+  CPU sent - the ~5 ms of "tfrag pass 1" that is no tfrag work, and "GPU wait (the frame before)" ~11 ms on the main thread. CPU and GPU
+  took turns.
+- **RAC1_WIIU_FRAMES_IN_FLIGHT (wiiu_main.cpp sets 2; unset or 1: as before):** with 2 only the frame before last is waited for
+  (g_frame_ts_prev), so the frame before may still be drawing while this one's commands are made and queue behind it. Everything the GPU
+  reads that the CPU writes per frame, and what keeps it safe with two frames in flight:
+  - the backends' rings (the world's blocks / plan / tfrag geometry / sky, the mobys' blocks, the 2D's vertices and blocks): already
+    rings of 2-16 MB with a frame using tens to hundreds of KB. Gx2RingUse (mrp_world_gx2.h) counts a host frame's bytes and the frame
+    before's (once a host frame: g_gx2_frame); at a wrap the CPU waits (GX2DrawDone) when this frame's and - two in flight - the frame
+    before's bytes pass half the ring, as the one frame did before. 0 waits on both levels (the [gx2] DrawDone line).
+  - the effects' vertices read in place (RAC1_WIIU_FX_DIRECT, mrp_fx.cpp): three vectors in turn (two with 1 in flight), the prepare -
+    before the GPU wait, on core 0 - writing the one the frame two before drew.
+  - in-place rewrites of data a frame drew from: the tfrag vertex shader's colours' texture (written / made again when the colours change),
+    the host sky's runs (sky_host_bake: "runs' values written again", ~5 per 120 calls on Novalis), the GamePad debug menu's quads (when
+    its text changes: the stats every 30 host frames) - each waits for the frame before first (gx2_wait_frame_before; ~50 waits per 300
+    host frames on Veldin, ~25 on Novalis).
+  - the 2D's texture pool (a texture refilled or freed when the GPU may still sample it): GX2DrawDone when it was last used within the last
+    4 calls (2 with one frame in flight).
+  - unchanged and safe as they were: the GPU's own targets (colour / depth, the scaled 3D, the shadow mask, the 2D's render targets: the GPU
+    runs its commands in order), the level's data (made with a GX2DrawDone), cols_sync (GX2DrawDone), the blit quads (8 slots, up to 3
+    a frame), the GPU's timing marks (4 sets, the one two frames old read after the wait).
+  - one frame in flight kept for a movie (its texture written in place every frame), the GS replica's 2D (its own ring) and without the
+    overlap (RAC1_WIIU_OVERLAP=0).
+- **Measured** (build-wiiu-mt, averages over the windows after the first two; the same build with RAC1_WIIU_FRAMES_IN_FLIGHT=1 / 2):
+
+  | run | tfrag p1 | GPU busy | host frame | GPU wait | swap wait |
+  | :--- | :--- | :--- | :--- | :--- | :--- |
+  | Veldin open, 1 | 5.17 | 30.09 | 32.21 | 10.65 | 0 |
+  | Veldin open, 2 | 3.32 | 28.34 | 29.52 | 1.59 | 2-7 |
+  | Veldin open, defaults (2), again | 3.41 | 28.53 | 29.79 | 1.65 | |
+  | Novalis 1500, 1 | 4.74 | 28.38 | 31.35 | 10.89 | 0 |
+  | Novalis 1500, 2 | 4.07 | 27.79 | 30.27 | 2.41 | 0-9 |
+  | Novalis 1500, defaults (2), again | 3.61 | 27.70 | 30.33 | 2.34 | |
+
+  Veldin open's heavy windows 31-33 ms -> 28-30. Every window's host frame now equals its GPU busy time: the GPU holds the frame, the main
+  thread waits at the swap (the vsync) instead. With the late sky off (RAC1_WIIU_SKY_LATE=0) and two in flight: Veldin 29.47 (the same),
+  Novalis 31.63 (worse): the late sky stays.
+- **Memory:** the third effects' vector - malloc's used bytes +0.4 MB on Veldin, +1.0 MB on Novalis (the rings unchanged); malloc free
+  ~6-7 MB on Veldin open, 15-23 MB on Novalis at the logged frames.
+- **Shots** (RAC1_REALTIME=0, 1 against 2): Veldin open game frames 1200 and 1800, Novalis 900: the pixels differing are Ratchet's pose,
+  the particles / sparkles, the birds, the blinking lights and the smoke - as between two runs of one build (Veldin 1200: 18,196 pixels
+  for 1 against 2, 21,895 between two runs of the earlier build); nothing on the terrain, the ties, the sky, no stray triangles.
+- **What is left of the frame's start:** the GPU still waits ~2 ms in the tfrag segment (its CP gap 1.9 on Veldin): the main thread waits
+  ~3.6 ms at the draws' world join for the world job's second half on core 0 (the [core0] line: main at the draws 16.9, the second half
+  done 19.6), and the world's first commands come after it. The swap wait (2-7 ms) is the CPU's slack now: the next gains are the GPU's own
+  work (ties / shrubs pass 1 ~7.6 ms on Veldin open, the mobys ~5.3, the sky ~3.8).
+- One frame more between the input and the screen (~30 ms) with two in flight.

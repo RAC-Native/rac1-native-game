@@ -118,23 +118,23 @@ const bool g_ring_nowait = std::getenv("RAC1_WIIU_RING_NOWAIT") == nullptr || st
 constexpr uint32_t kRingBytes = 16u << 20;
 uint8_t* g_ring = nullptr;
 uint32_t g_ring_off = 0;
-uint32_t g_ring_frame_bytes = 0;
+Gx2RingUse g_ring_use;  // (Gx2RingUse: this host frame's bytes and the frame before's)
 uint64_t g_ring_wraps = 0;
 bool g_ring_stale = false;  // (Gx2Perf::ub_bulk: the ring wrapped since its GPU caches were last invalidated)
 void* ring_alloc(uint32_t bytes) {
     uint32_t off = (g_ring_off + GX2_UNIFORM_BLOCK_ALIGNMENT - 1) & ~(GX2_UNIFORM_BLOCK_ALIGNMENT - 1);
     if (bytes > kRingBytes) return nullptr;
     if (off + bytes > kRingBytes) {
-        g_ring_frame_bytes += (kRingBytes - g_ring_off) + bytes;
-        if (!g_ring_nowait || g_ring_frame_bytes > (kRingBytes >> 1)) {
+        g_ring_use.cur += (kRingBytes - g_ring_off) + bytes;
+        if (!g_ring_nowait || g_ring_use.must_wait(kRingBytes)) {
             GX2DrawDone();
-            g_ring_frame_bytes = bytes;
+            g_ring_use.waited(bytes);
         }
         off = 0;
         ++g_ring_wraps;
         g_ring_stale = true;
     } else {
-        g_ring_frame_bytes += (off - g_ring_off) + bytes;
+        g_ring_use.cur += (off - g_ring_off) + bytes;
     }
     g_ring_off = off + bytes;
     return g_ring + off;
@@ -394,7 +394,7 @@ double g_cpu_ms = 0.0;
 bool mrp_moby_gx2_ready() { return g_ready; }
 
 void mrp_moby_gx2_debug_frame(uint64_t game_frame) {
-    g_ring_frame_bytes = 0;
+    g_ring_use.frame_start();
     static const char* list = std::getenv("RAC1_WIIU_MRP_DEBUG");
     static const uint64_t at = std::getenv("RAC1_WIIU_MRP_DEBUG_AT") != nullptr ? std::strtoull(std::getenv("RAC1_WIIU_MRP_DEBUG_AT"), nullptr, 10) : 125;
     int mode = 0;

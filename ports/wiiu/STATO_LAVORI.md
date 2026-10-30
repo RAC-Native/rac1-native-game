@@ -1,6 +1,6 @@
 # Stato Lavori — Ottimizzazione e Riscrittura Nativa Wii U (`port/wiiu`)
 
-Ultimo aggiornamento: **31 Ottobre 2026 (effetti su Core 0, cielo dopo un pre-pass di profondità, memo dei pacchetti tie/shrub)**
+Ultimo aggiornamento: **1 Novembre 2026 (due frame in volo: CPU e GPU in parallelo)**
 
 Questo documento traccia in modo completo **cosa è stato fatto**, **i risultati misurati sulla console Wii U reale (`192.168.0.16`)**, **cosa stiamo facendo ora**, **cosa manca** e **le note tecniche / trappole da evitare** per poter riprendere il lavoro in qualsiasi momento.
 
@@ -140,6 +140,10 @@ Tutti i test sono eseguiti con `ports/wiiu/tools/bench.sh` (`explore` input dete
 ### Vertex shader dei tfrag: indicizzato, un solo set di vista, GPR (31 Ottobre 2026 — misurato su console; dettagli in `PERFORMANCE.md`)
 30. **`RAC1_WIIU_TFRAG_IDX=1`**: tfrag disegnati indicizzati, ogni vertice inviato valutato una volta (Veldin open 10.938 corner -> 5.444 vertici); i draw di forma 3 (ADC per triangolo) tengono i loro tre corner, indicizzati sul posto. **`RAC1_WIIU_TFRAG_ONESET=1`**: header + set di vista dal texel 1, coppie `shaders/mrp_tfrag_vs1_fast[_noat].gsh` (nuove, da copiare sulla SD) con il set a indici costanti (27 -> 19 GPR). **`RAC1_WIIU_TFRAG_VS_GPRS=128`**: 128 GPR ai vertex shader durante i tfrag (GX2 ne dà 48: una sola wavefront per SIMD); ties/mobys lasciati al default (i ties peggiorano: sono pixel-bound).
 31. Misure (medie): Veldin open tfrag pass 1 **7.91 -> 5.13 ms**, GPU busy **32.4 -> 29.5**; Novalis tfrag **5.98 -> 4.87**, GPU busy **29.5 -> 28.4**. Il resto del "tfrag pass 1" (~5 ms) **non è lavoro dei tfrag**: con un VS banale o senza draw tfrag resta ~5 ms (pixel off) — è la GPU che aspetta i comandi del mondo all'inizio del frame. Con `RAC1_WIIU_SKY_LATE=0` Veldin open migliora (GPU 27.6, host 28.1), Novalis peggiora (+0.6): da decidere. Shot identici sul terreno (differenze solo dove due run uguali differiscono). PC: check del VS identici, `pc_check.sh`/`gt_check.sh` verdi.
+
+### Due frame in volo: la GPU disegna il frame N mentre il main thread prepara N+1 (1 Novembre 2026 — misurato su console; dettagli in `PERFORMANCE.md`)
+32. **`RAC1_WIIU_FRAMES_IN_FLIGHT=2`** (default impostato da `wiiu_main.cpp`; `=1` come prima): `wiiu_gfx_frame` aspetta solo il frame prima del precedente (`g_frame_ts_prev`). Ring dei backend (mondo, mobys, 2D) con `Gx2RingUse` (byte di questo frame + del precedente prima di ricominciare dall'inizio), vertici degli effetti in **tre** vettori (`mrp_fx.cpp`), riscritture sul posto (colori del VS tfrag, valori del cielo host, quad del debug menu) precedute da `gx2_wait_frame_before()`, pool texture 2D con margine di 4 chiamate. Un solo frame in volo con un filmato, con la replica GS e senza overlap.
+33. Misure (medie, stessa build 1 contro 2): Veldin open host **32.2 -> 29.5 ms** (finestre pesanti 31-33 -> 28-30), GPU busy **30.1 -> 28.3**, attesa GPU **10.7 -> 1.6**, tfrag pass 1 **5.2 -> 3.3**; Novalis host **31.4 -> 30.3**, GPU busy **28.4 -> 27.8**, attesa GPU **10.9 -> 2.4**. Ora host = GPU busy in ogni finestra: il limite è la GPU, il main aspetta lo swap. Memoria: +0.4 MB (Veldin) / +1.0 MB (Novalis) di malloc (il terzo vettore degli effetti). Shot (Veldin 1200/1800, Novalis 900, `RAC1_REALTIME=0`): differenze solo dove due run uguali differiscono (Ratchet, particelle, uccelli, luci, fumo). Con due frame in volo `RAC1_WIIU_SKY_LATE=0` non aiuta (Veldin uguale, Novalis peggio): resta il cielo tardivo. Un frame in più di latenza input (~30 ms). PC: `pc_check.sh`/`gt_check.sh` verdi.
 
 ## 3. Cosa Manca (Prossimi Passi in Ordine di Impatto)
 
