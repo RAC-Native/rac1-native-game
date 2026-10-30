@@ -292,6 +292,7 @@ int read_settings(bool read_file = true) {
     setenv("RAC1_MEMCARD_DIR", "memcard", 1);
     setenv("RAC1_QUIT_ENDS", "0", 1);
     setenv("RAC1_ADVANCED", "1", 1);
+    setenv("RAC1_FRAMES", "0", 1);  // (no frame limit: the headless default is 300 frames - the game ended after the intro when run.cfg was empty)
     if (!read_file) return 0;
     std::FILE* f = std::fopen("run.cfg", "r");
     if (f == nullptr) return 0;

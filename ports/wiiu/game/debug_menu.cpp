@@ -331,6 +331,9 @@ const Item* page_items(size_t* n) {
     return nullptr;
 }
 constexpr int kItemY = 34, kItemH = 28, kItemX = 8, kItemW = 420;  // (28 apart: the Picture page's 15 rows, 2026-10-28)
+// (2026-10-30) a page's row height: 28, less when its rows would reach the touch line at the bottom (the Picture page's last row,
+// "Exit game", overlapped it and could not be tapped)
+int row_h(size_t n) { return std::min(kItemH, (kScreenH - static_cast<int>(kFontCellH) - 10 - kItemY) / static_cast<int>(n + 1)); }
 constexpr int kLevelColW = 206, kLevelColGap = 8;
 
 bool g_was_touched = false;
@@ -561,6 +564,7 @@ void debug_menu_input() {
     if (touched && !g_was_touched) {  // a new tap: the item under it flipped
         ++g_taps;
         auto hit = [](int y) { return g_touch_x >= kItemX && g_touch_x < kItemX + kItemW && g_touch_y >= y && g_touch_y < y + kItemH - 2; };
+        auto hit_rh = [](int y, int h) { return g_touch_x >= kItemX && g_touch_x < kItemX + kItemW && g_touch_y >= y && g_touch_y < y + h - 2; };
         if (hit(kItemY)) {
             const int tab_idx = std::clamp((g_touch_x - kItemX) * 4 / kItemW, 0, 3);
             g_page = (tab_idx == g_page) ? ((g_page + 1) & 3) : tab_idx;
@@ -583,7 +587,7 @@ void debug_menu_input() {
             size_t n = 0;
             const Item* items = page_items(&n);
             for (size_t i = 0; i < n; ++i)
-                if (hit(kItemY + static_cast<int>(i + 1) * kItemH)) {
+                if (hit_rh(kItemY + static_cast<int>(i + 1) * row_h(n), row_h(n))) {
                     if (game_running) g_held.push_back(&items[i]);
                     else flip(items[i]);
                 }
@@ -664,12 +668,12 @@ void debug_menu_draw(const GX2ColorBuffer* cb, const std::vector<std::string>& s
         }
     } else {
         for (size_t i = 0; i < n; ++i) {
-            const int y = kItemY + static_cast<int>(i + 1) * kItemH;
+            const int y = kItemY + static_cast<int>(i + 1) * row_h(n);
             const std::string& st = states[i];
             const float* row_col = (st == "off" || st == "none") ? off : (st == "tap") ? act : on;
-            box(kItemX, static_cast<float>(y), kItemW, kItemH - 4, row_col);
-            text(kItemX + 6, static_cast<float>(y + 4), items[i].label, white);
-            text(kItemX + kItemW - 6 - kFontCellW * static_cast<float>(st.size()), static_cast<float>(y + 4), st, white);
+            box(kItemX, static_cast<float>(y), kItemW, row_h(n) - 4, row_col);
+            text(kItemX + 6, static_cast<float>(y + 3), items[i].label, white);
+            text(kItemX + kItemW - 6 - kFontCellW * static_cast<float>(st.size()), static_cast<float>(y + 3), st, white);
         }
     }
     // the stats: their first two lines (the frame, the steps) on all pages, plus hero info on Player/Levels, then the page's own section
