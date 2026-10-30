@@ -122,7 +122,7 @@ wut_create_rpx(rac1_wiiu)
 # generated: never in the repository). Each <name>.vert / <name>.frag pair is one file; a pair whose pixel shader is another's names it
 # in RAC1_WIIU_FRAG_<name> (mrp_tfrag, mrp_sky: mrp_world.frag).
 set(RAC1_WIIU_GLSLC "" CACHE FILEPATH "CafeGLSL's glslcompiler, for ports/wiiu/shaders")
-set(RAC1_WIIU_SHADERS test gs_draw mrp_2d mrp_moby mrp_world mrp_tfrag mrp_sky debug_text wiiu_blit)
+set(RAC1_WIIU_SHADERS test gs_draw mrp_2d mrp_moby mrp_world mrp_tfrag mrp_sky debug_text wiiu_blit mrp_shadow_vol mrp_shadow_dark)
 set(RAC1_WIIU_FRAG_mrp_tfrag mrp_world)
 set(RAC1_WIIU_FRAG_mrp_sky mrp_world)
 if(RAC1_WIIU_GLSLC)

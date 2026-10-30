@@ -6,10 +6,12 @@
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
+#include <game/render/mrp_shadows_gpu.inc>
 
 namespace rac1 {
 
 DropShadowObserver g_drop_shadow_observer;  // orig: (host)
+bool (*g_drop_shadows_native)() = nullptr;  // orig: (host) mrp_shadows_gpu.inc
 
 namespace {
 constexpr uint32_t kShadowClearRgba = 0x7f808080u;  // shadow_buffer_clear's sprite colour (0x002854f8): the frame's alpha 0x7f
@@ -199,7 +201,8 @@ void moby_shadows() {
     sw(lwu(OV(0x00160000)) + 4, lwu(CUR));
     sw(lwu(OV(0x00160000)) + 8, 0);
     sw(lwu(OV(0x00160000)) + 0xc, 0);
-    if (!g_skip_shadows) {  // (testing: the GamePad debug menu, game_skips.h)
+    // (host: RAC1_WIIU_SHADOWS_GPU - the shapes taken by the host, mrp_shadows_gpu.inc: the game's own drawing of them not run)
+    if (!g_skip_shadows && !(g_drop_shadows_native != nullptr && g_drop_shadows_native())) {  // (testing: the GamePad debug menu, game_skips.h)
         shadow_points();
         drop_shadows_draw(OV(0x001ac780));
     }

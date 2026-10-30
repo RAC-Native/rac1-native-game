@@ -621,3 +621,67 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
 - To measure on the console (bench.sh; build in rac1-scratch/wiiu/mobyperf/build): Novalis 1080p with RAC1_WIIU_FAST_MOBY_LOOP=0 and =1
   ("[game]": the moby pass and the drop shadows rows); then a sampled run (RAC1_WIIU_SAMPLE=200 RAC1_WIIU_SAMPLE_AFTER=12
   RAC1_WIIU_SAMPLE_CORES=2) for samples.py --under widen_real.
+
+### The drop shadows drawn by the GPU: the game's shadow code skipped (RAC1_WIIU_SHADOWS_GPU, 2026-10-30; to measure on the console)
+
+- What the game draws: per deferred moby (0x1ac600, the draw loop's) the shapes of its class's shadow list (class +0x14 - lbu(+0xf) x 16:
+  0x20-byte spheres on one joint, 0x30-byte capsules between two joints with a radius at each end, a negative end word moving that end along
+  the segment), through its pose (moby_pose_matrices 0x2531e0 again: the joints' own matrices J), scaled by moby +0x2c / 1024 x the entry's
+  word / 4096, placed by the moby's rows; each shape extruded along the shadow direction (0x1aeb80 + 16 x moby +0xbd, 1000 units) into a tube
+  of ring points cut by the planes z = moby +0x88 and +0x84 (a slab of ~0.5 units around the ground: no shadow through a floor), its faces
+  counted in the frame's alpha, the frame darkened by FIX 0x20 (x 0.75) where the count is positive. Ratchet: 21 capsules.
+- The design: the same shapes, kept by the host (mrp_shadows_gpu.inc, mrp_shadows.cpp ds_capture: moby_shadows' new hook skips
+  shadow_points / drop_shadows_draw), drawn by the GPU as shadow volumes (mrp_world_gx2.cpp mrp_world_gx2_draw_shadows): each shape's
+  outline across the direction (a 12-gon around the circle; a capsule the arcs between the outer tangents of its two circles) extruded into
+  a closed prism between the two planes (the original's tube), its faces split on the CPU by the side they show the camera; an RG8 mask the
+  size of the 3D buffer, beside the frame's depth buffer (LEQUAL, no writes: the passes' own function, Hi-Z untouched), cleared over the
+  shadows' rectangles, the faces toward the camera that pass counted in its red, the others in its green (adds alone; inside where
+  red > green) - the original's z-pass sign; then a quad per rectangle over the frame: 13 point taps of the mask around the
+  pixel (~2.5 px at 1080p) give the soft edge, colour x (1 - 0.25 x share), alpha kept. Between the first chain's mobys and the deferred
+  ones (mrp_moby_gx2_draw's new `part`), as the game chains them: the casters are not darkened by their own shadow.
+- Why not a shadow map: sampling it in the world's pixel shader adds to the pass that bounds the console (mrp_world_fast.frag, ~16 ALU
+  groups), and a depth texture of the main depth buffer (D32F, no stencil on WHB's buffers) is not readable without a conversion; a
+  separate decal pass with a shadow map would still need the receivers' positions (the depth). The game's own shapes are capsules and
+  spheres: their volumes give the exact shape the PS2 drew, bounded by the game's slab, at the cost of a few thousand small triangles and
+  the rectangles' pixels, with no change to any world shader. The direction and the slab are per caster: a baked term for the static
+  world (RAC1_WIIU_SHADOWS_BAKED, Daino's follow-up: the ties' / shrubs' / tfrags' shadows once per level, in their colours or a small
+  lightmap) can take the same direction table (0x1aeb80) and leave this pass for the mobys alone.
+- The pose: the MRP scene's (mrp_scene.h, the joints the skinning consumed: S = B J, B the record's bind matrices +0x1c), J p = (p B^-1) S;
+  a moby the scene has no pose of (not drawn - its shadow seen, the moby not -, another joint count) gets the game's moby_pose_matrices.
+  RAC1_WIIU_SHADOWS_GPU_CHECK=1 (any host: the game's code runs too, the shapes compared): Veldin -> Novalis forward 1500 frames, 542
+  deferred mobys (508 posed by the scene), 7964 shapes, the largest difference 0.000015 units, radii equal.
+- Game state (the PC, the Wii U-like walk with the drop shadows on: rac1-scratch/wiiu/shgpu/state_check.sh): =1 against =0, Veldin ->
+  Novalis forward 1500 frames and Novalis explore 1200: the hero / camera lines identical; RAMHASH differs only in the overlay's globals
+  0x15f000-0x161fff and 0x1ac000-0x1adfff, the two packet buffers (0x2f4000 / 0x4b4000, 0x1c0000 each: the packets after the shadows' slot
+  sit lower, the skinning ring's records hold their addresses) and the scratchpad. Word by word at game frame 400 (RAC1_RAMDUMP): outside
+  the packet buffers only 0x15f410-0x15f417 (the texture block's tags, packet addresses), 0x160430-0x16046f (the shadows' axes and ring
+  counts), 0x1611c0-0x1611c7 (the packet pointer and its last value), 0x1ac780.. (the shadow entries), the scratchpad 0x800-0x381b (the
+  tubes' points and the faces' bytes) - none read by the game's logic.
+- The PC's check of the shapes (RAC1_WIIU_SHADOWS_GPU=1 with graphics: the prisms' faces as mrp_shadows' stencil counter's, the original's
+  darkening): Veldin forward game frame 300, Ratchet's shadow (body, legs, wrench) as the game's to the pixel but for the ring's polygon
+  (rac1-scratch/wiiu/shgpu/crop300_g0.png / _g1.png).
+- CPU (the PC; RAC1_WIIU_SHADOWS_GPU_TIME=1, any host: moby_shadows' start to its end every 120 frames that drew shadows): Veldin -> Novalis
+  forward, the game's code 0.12-0.22 ms a frame, the capture 0.002-0.006 ms (x 40-60). On the console the profiler's "Game: moby drop
+  shadows" stage was ~4.4 ms a host frame on Novalis: expected ~0.1-0.2 ms. The prisms' making on the render thread: 0.02-0.03 ms on the PC
+  for 21-37 prisms, 900-1500 faces (Espresso: ~0.2-0.4 ms on core 1, plus ~70 KB of vertices written).
+- GPU (estimate, to measure): ~1-1.5 K triangles into the R8 mask, depth-tested (thin slabs: tens of K pixels); the rectangles' clear and
+  darkening (Ratchet near: ~300 x 200 px at 0.75 scale, 13 taps of an 8-bit texture); a colour / texture cache flush of the mask. Expected
+  0.1-0.3 ms; the old faces' pass (draw_fx, the game's faces drawn with blending and no counter: the glitches) goes. The "[gpu]" line has
+  "drop shadows" (the pass) and "mobys deferred" (the mobys after it).
+- Switches: RAC1_WIIU_SHADOWS_GPU (1 the Wii U's default, 0 the PC's; 0 the game's code and draw_fx's faces as before; the debug menu's
+  Picture row "Drop shadows": GPU / game's), _RING (12), _DARK (25 %), _SOFT (2.5 px at 1080p, 0 hard), _DEBUG=1 (red shadows at 60 %), 2 (the rectangles darkened whole: the darkening and the mask's reading),
+  3 (the prisms' front faces white where they pass the depth test: the geometry and the depth), 4 (the mask's raw counts: red fronts / 8,
+  green backs / 8, blue net / 4), _LOG
+  (the captured casters), _CHECK, _TIME; the log line "[wiiu] mrp_world_gx2: drop shadows on the GPU" every 300 calls (casters, prisms, faces,
+  rectangles, pixels, CPU ms). Without the new shaders on the SD (shaders/mrp_shadow_vol.gsh, mrp_shadow_dark.gsh) the game's code comes back.
+- To measure on the console: bench.sh / bench_veldin_open.sh with BUILD=build-wiiu-sh and RAC1_WIIU_SHADOWS_GPU=1 against =0 ("[game]"
+  drop shadows row, "[gpu]" drop shadows / mobys deferred / effects, "[timing]" mobys); shots RAC1_WIIU_SHOT=300 (Veldin forward: Ratchet
+  near the start) and the open-area bench's 1200 / 1800 for the look.
+- The console's first picture (2026-10-30): no shadow under Ratchet in the normal mode (Veldin's open area, game frame 1800), the red shapes
+  there with RAC1_WIIU_SHADOWS_GPU_DEBUG=1; Novalis' game code 34-37 -> 27.6-29.5 ms a host frame, the "[gpu]" drop shadows 0.37-0.55 ms.
+  The suspect found by reading: the counter's step 1 / 255 (an R8 mask, the backs taken away by a reverse subtract). The pixel shader's
+  1 / 255 is 0.99998 counts: a colour buffer that truncates the blend's result stores 0 for one face (only pixels under two or more
+  overlapping fronts counted - Ratchet's 21 capsules overlap: a partial shape, shown at 60 % in red, its 25 % under the 13 taps' average
+  hardly seen) and a subtraction then takes one count too many. Now an RG8 mask: the fronts counted in red, the backs in green, adds alone,
+  1.25 / 255 a face (one count rounded or truncated), inside where red > green (shaders/mrp_shadow_dark.gsh changed; mrp_shadow_vol.gsh the
+  same bytes). The debug modes 2-4 above tell the passes apart if it is not that.

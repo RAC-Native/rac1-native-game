@@ -60,7 +60,9 @@ bool mrp_moby_gx2_init();
 bool mrp_moby_gx2_ready();
 // the prepared frame's mobys into `cb` / `db` (bound by this call), the game's frame mapped onto `vp` (x / y from the bottom
 // left, as gs::draw_gx2's), `db` as the caller cleared it (the world drawn into it first); nullptr db: no depth (drawn without the depth test)
-void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp);
+// ((2026-10-30) `part`: 0 every moby, 1 the draw loop's first chain alone (not Key::deferred), 2 the deferred mobys alone - drawn after the
+// drop shadows, mrp_world_gx2_draw_shadows: the casters over their own shadow, as the game chains them)
+void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp, int part = 0);
 
 // (testing, RAC1_WIIU_MRP_DEBUG=<m>[,<m>...]: the debug modes in turn, each for 50 game frames from game frame
 // RAC1_WIIU_MRP_DEBUG_AT (default 125) on, the last one kept; a mode's bits: 1 no depth test, 2 a plain grey (no texture, blending or alpha

@@ -5,6 +5,9 @@
 #include <game/ovl/moby_shadows.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/ovl.h>
+#include <game/render/mrp_scene.h>
+#include <game/render/mrp_shadows_gpu.inc>
 #include <game/render/render_toggles.h>
 #include <runtime/gs/gs_blend.h>
 #include <runtime/gs/gs_emu.h>
@@ -15,6 +18,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -141,7 +145,9 @@ void obs_apply(uint64_t alpha_reg, uint32_t rgba) {
     S.have_apply = true;
 }
 
+void ds_time_end();
 void obs_chain(uint32_t first, uint32_t last) {
+    ds_time_end();
     if (!S.on) return;
     S.chain_first = first;
     S.chain_last = last;
@@ -385,6 +391,420 @@ void check_pass(const float* vp) {
     }
 }
 
+// ---- RAC1_WIIU_SHADOWS_GPU: the shapes taken by the host (mrp_shadows_gpu.inc) -------------------------------------------------------
+
+DropShadowFrame g_ds;       // (this frame's capture)
+DropShadowFrame g_ds_draw;  // (the copy the renderer draws: mrp_shadows_snapshot)
+bool g_ds_check = false;    // (testing, RAC1_WIIU_SHADOWS_GPU_CHECK=1: the game's shadow_points run too, its points against the capture's)
+struct DsCheck {
+    uint64_t frames = 0, mobys = 0, points = 0, differ = 0, scene = 0, game = 0;
+    double max_d = 0.0, max_r = 0.0;
+} g_dsc;
+bool g_ds_log = false;  // (testing, RAC1_WIIU_SHADOWS_GPU_LOG=1: each frame's casters on the log)
+
+// orig: (helper) the inverse of the 3 x 3 rows r (p' = p.x r0 + p.y r1 + p.z r2), row-major into m; false: singular
+bool inv3(const MrpVec4* r, float m[9]) {
+    const float a = r[0].x, b = r[0].y, c = r[0].z, d = r[1].x, e = r[1].y, f = r[1].z, g = r[2].x, h = r[2].y, i = r[2].z;
+    const float A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g;
+    const float det = a * A + b * B + c * C;
+    if (!(std::fabs(det) > 1e-20f)) return false;
+    const float k = 1.0f / det;
+    m[0] = A * k;
+    m[1] = -(b * i - c * h) * k;
+    m[2] = (b * f - c * e) * k;
+    m[3] = B * k;
+    m[4] = (a * i - c * g) * k;
+    m[5] = -(a * f - c * d) * k;
+    m[6] = C * k;
+    m[7] = -(a * h - b * g) * k;
+    m[8] = (a * e - b * d) * k;
+    return true;
+}
+MrpVec4 row_at(uint32_t a) { return MrpVec4{lwc1(a), lwc1(a + 4), lwc1(a + 8), lwc1(a + 12)}; }
+// orig: (helper) p through four rows (x r0 + y r1 + z r2 + r3), xyz
+void xform(const MrpVec4* r, const float p[3], float o[3]) {
+    o[0] = p[0] * r[0].x + p[1] * r[1].x + p[2] * r[2].x + r[3].x;
+    o[1] = p[0] * r[0].y + p[1] * r[1].y + p[2] * r[2].y + r[3].y;
+    o[2] = p[0] * r[0].z + p[1] * r[1].z + p[2] * r[2].z + r[3].z;
+}
+
+// The joint matrices a deferred moby's shadow points go through (shadow_points 0x285a68: moby_pose_matrices 0x2531e0 onto the
+// scratchpad, the joints' own matrices J). The MRP's scene already holds the pose the skinning consumed this frame (mrp_scene.h: per
+// joint S = B J, B the record's bind matrix +0x1c); J p = (p B^-1) S. A moby the scene has no pose of (not drawn: a shadow seen
+// under a moby out of the view; a pose of another joint count) gets the game's routine, as the original.
+struct PoseSource {
+    const MrpVec4* skin = nullptr;  // the scene's S rows (4 per joint), or nullptr: the scratchpad's J
+    uint32_t bind = 0;              // the record's bind matrices (0x40 per joint)
+    uint32_t joints = 0;
+};
+bool pose_point(const PoseSource& ps, uint32_t j, const float p[3], float o[3]) {
+    if (ps.skin == nullptr) {
+        MrpVec4 J[4];
+        for (int r = 0; r < 4; ++r) J[r] = row_at(0x70000000u + 0x40u * j + 0x10u * static_cast<uint32_t>(r));
+        xform(J, p, o);
+        return true;
+    }
+    if (j >= ps.joints) return false;
+    MrpVec4 B[4];
+    for (int r = 0; r < 4; ++r) B[r] = row_at(ps.bind + 0x40u * j + 0x10u * static_cast<uint32_t>(r));
+    float inv[9];
+    if (!inv3(B, inv)) return false;
+    const float q[3] = {p[0] - B[3].x, p[1] - B[3].y, p[2] - B[3].z};
+    const float u[3] = {q[0] * inv[0] + q[1] * inv[3] + q[2] * inv[6], q[0] * inv[1] + q[1] * inv[4] + q[2] * inv[7], q[0] * inv[2] + q[1] * inv[5] + q[2] * inv[8]};
+    xform(ps.skin + 4u * j, u, o);
+    return true;
+}
+
+// orig: (host) moby_shadows' hook (moby_shadows.cpp): the shapes of the deferred mobys 0x1ac600 (count 0x15fffc) as shadow_points
+// would write them into 0x1ac780, kept on the host; true: the game's shadow_points / drop_shadows_draw not run
+// (testing, RAC1_WIIU_SHADOWS_GPU_TIME=1, any host: the drop shadows' time on the game's thread - from this hook, at moby_shadows' start,
+// to its chain observer, at its end: the game's shadow_points / drop_shadows_draw, or the capture -, per frame every 120 frames that drew any)
+bool g_ds_time = false;
+std::chrono::steady_clock::time_point g_ds_t0;
+double g_ds_ms = 0.0;
+uint64_t g_ds_frames = 0;
+bool ds_capture_impl();
+bool ds_capture() {
+    if (g_ds_time) g_ds_t0 = std::chrono::steady_clock::now();
+    return ds_capture_impl();
+}
+void ds_time_end() {
+    if (!g_ds_time || g_ds_t0.time_since_epoch().count() == 0) return;
+    g_ds_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - g_ds_t0).count();
+    g_ds_t0 = {};
+    if (++g_ds_frames % 120 == 0) {
+        std::printf("[shadows-gpu] the drop shadows on the game's thread (%s): %.4f ms a frame (120 frames)\n", g_drop_shadows_gpu != 0 ? "the host's capture" : "the game's code",
+                    g_ds_ms / 120.0);
+        g_ds_ms = 0.0;
+    }
+}
+bool ds_capture_impl() {
+    if (g_drop_shadows_gpu == 0) return false;
+    DropShadowFrame& F = g_ds;
+    F.casters.clear();
+    F.prims.clear();
+    F.scene_poses = F.game_poses = 0;
+    ++F.serial;
+    const int32_t n = lw(OV(0x0015fffc));
+    const MrpFrame& sc = mrp_scene();
+    uint32_t bytes = 0;  // (shadow_points' room: 0x1f80 bytes of entries at 0x1ac780, checked before each moby)
+    for (int32_t i = 0; i < n && bytes <= 0x1f80u; ++i) {
+        const uint32_t e = OV(0x001ac600u) + 8u * static_cast<uint32_t>(i);
+        const uint32_t m = lwu(e);
+        const uint32_t cls = lwu(m + 0x24);
+        const uint32_t nj = lbu(cls + 8);
+        const float s = lwc1(m + 0x2c) * (1.0f / 1024.0f) * (static_cast<float>(lhu(e + 4)) * (1.0f / 4096.0f));
+        MrpVec4 M[4];
+        for (int r = 0; r < 3; ++r) M[r] = row_at(m + 0xc0u + 0x10u * static_cast<uint32_t>(r));
+        M[3] = row_at(m + 0x10);
+        PoseSource ps;
+        for (size_t k = sc.mobys.size(); k-- > 0;) {
+            const MrpMoby& mm = sc.mobys[k];
+            if (mm.moby != m) continue;
+            if (mm.joint_count == nj && nj > 0 && mm.ring != 0 && static_cast<uint32_t>(lh(mm.ring + 0x10)) == nj && mm.joint_first + nj <= sc.joints.size()) {
+                ps.skin = &sc.joints[mm.joint_first].r[0];
+                ps.bind = lwu(mm.ring + 0x1c);
+                ps.joints = nj;
+            }
+            break;
+        }
+        if (g_ds_check) ps.skin = nullptr;  // (the check: the game's own routine's matrices; the scene's compared below)
+        PoseSource scene_ps;
+        if (g_ds_check)
+            for (size_t k = sc.mobys.size(); k-- > 0;) {
+                const MrpMoby& mm = sc.mobys[k];
+                if (mm.moby != m) continue;
+                if (mm.joint_count == nj && nj > 0 && mm.ring != 0 && static_cast<uint32_t>(lh(mm.ring + 0x10)) == nj && mm.joint_first + nj <= sc.joints.size()) {
+                    scene_ps.skin = &sc.joints[mm.joint_first].r[0];
+                    scene_ps.bind = lwu(mm.ring + 0x1c);
+                    scene_ps.joints = nj;
+                }
+                break;
+            }
+        if (g_ds_check && scene_ps.skin != nullptr) ++g_dsc.scene;
+        if (ps.skin == nullptr) {
+            moby_pose_matrices(m, static_cast<int32_t>(nj), -1, 0, 0);
+            ++F.game_poses;
+        } else {
+            ++F.scene_poses;
+        }
+        DropShadowCaster c;
+        c.moby = m;
+        {
+            const uint32_t da = OV(0x001aeb80u) + (static_cast<uint32_t>(lbu(m + 0xbd)) << 4);
+            float d[3] = {lwc1(da), lwc1(da + 4), lwc1(da + 8)};
+            const float l = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+            if (l > 0.0f)
+                for (float& x : d) x /= l;
+            std::memcpy(c.dir, d, sizeof d);
+        }
+        c.z_near = lwc1(m + 0x88);
+        c.z_far = lwc1(m + 0x84);
+        c.first = static_cast<uint32_t>(F.prims.size());
+        bytes += 0x20;
+        // the class's shadow list: 0x20-byte one-joint entries (kind byte 0) and 0x30-byte two-joint ones; byte +1 ends the list
+        uint32_t t = lwu(cls + 0x14) - (static_cast<uint32_t>(lbu(cls + 0xf)) << 4);
+        bool last = false;
+        auto world = [&](const PoseSource& src, uint32_t j, uint32_t pa, float o[3], float& r) {
+            const float p[3] = {lwc1(pa), lwc1(pa + 4), lwc1(pa + 8)};
+            float q[3];
+            if (!pose_point(src, j, p, q)) {  // (a joint past the pose's, a singular bind matrix: the shape left out)
+                o[0] = o[1] = o[2] = 0.0f;
+                r = 0.0f;
+                return;
+            }
+            const float w[3] = {q[0] * s, q[1] * s, q[2] * s};
+            xform(M, w, o);
+            r = lwc1(pa + 12) * s;
+        };
+        for (int guard = 0; !last && guard < 64; ++guard) {
+            const uint32_t kind = lbu(t);
+            last = lbu(t + 1) != 0;
+            DropShadowPrim p;
+            if (kind == 0) {
+                world(ps, lwu(t + 4), t + 0x10, p.c0, p.r0);
+                t += 0x20;
+                bytes += 0x20;
+            } else {
+                world(ps, lhu(t + 4), t + 0x10, p.c0, p.r0);
+                world(ps, lhu(t + 6), t + 0x20, p.c1, p.r1);
+                p.capsule = true;
+                // a negative end word: that end moved along the segment by -w x 16 / 4096 of it (its ring then left out: the end flat)
+                const int32_t w0 = lw(t + 8), w1 = lw(t + 0xc);
+                if (w0 < 0) {
+                    const float f = static_cast<float>(-w0 * 16) * (1.0f / 4096.0f);
+                    for (int k = 0; k < 3; ++k) p.c0[k] += (p.c0[k] - p.c1[k]) * f;
+                }
+                if (w1 < 0) {
+                    const float f = static_cast<float>(-w1 * 16) * (1.0f / 4096.0f);
+                    for (int k = 0; k < 3; ++k) p.c1[k] += (p.c1[k] - p.c0[k]) * f;
+                }
+                t += 0x30;
+                bytes += 0x30;
+            }
+            if (g_ds_check && scene_ps.skin != nullptr) {  // (the scene's pose against the game's: the same points?)
+                const uint32_t back = t - (p.capsule ? 0x30u : 0x20u);
+                DropShadowPrim q;
+                if (!p.capsule) {
+                    world(scene_ps, lwu(back + 4), back + 0x10, q.c0, q.r0);
+                } else {
+                    world(scene_ps, lhu(back + 4), back + 0x10, q.c0, q.r0);
+                    world(scene_ps, lhu(back + 6), back + 0x20, q.c1, q.r1);
+                    const int32_t w0 = lw(back + 8), w1 = lw(back + 0xc);
+                    if (w0 < 0)
+                        for (int k = 0; k < 3; ++k) q.c0[k] += (q.c0[k] - q.c1[k]) * (static_cast<float>(-w0 * 16) * (1.0f / 4096.0f));
+                    if (w1 < 0)
+                        for (int k = 0; k < 3; ++k) q.c1[k] += (q.c1[k] - q.c0[k]) * (static_cast<float>(-w1 * 16) * (1.0f / 4096.0f));
+                }
+                double dmax = 0.0;
+                for (int k = 0; k < 3; ++k) {
+                    dmax = std::max(dmax, static_cast<double>(std::fabs(q.c0[k] - p.c0[k])));
+                    if (p.capsule) dmax = std::max(dmax, static_cast<double>(std::fabs(q.c1[k] - p.c1[k])));
+                }
+                g_dsc.max_d = std::max(g_dsc.max_d, dmax);
+                g_dsc.max_r = std::max(g_dsc.max_r, static_cast<double>(std::fabs(q.r0 - p.r0)));
+                ++g_dsc.points;
+                if (dmax > 1e-3) {
+                    ++g_dsc.differ;
+                    static int shown = 0;
+                    if (shown++ < 12)
+                        std::printf("[shadows-gpu-check] moby %08x class %d entry %u: scene's point %.4f %.4f %.4f, the game's %.4f %.4f %.4f\n", m, lh(m + 0xa6),
+                                    (back - (lwu(cls + 0x14) - (static_cast<uint32_t>(lbu(cls + 0xf)) << 4))), q.c0[0], q.c0[1], q.c0[2], p.c0[0], p.c0[1], p.c0[2]);
+                }
+            }
+            if (p.r0 > 0.0f || (p.capsule && p.r1 > 0.0f)) F.prims.push_back(p);
+        }
+        c.count = static_cast<uint32_t>(F.prims.size()) - c.first;
+        if (c.count != 0) F.casters.push_back(c);
+    }
+    if (g_ds_check) {
+        ++g_dsc.frames;
+        g_dsc.mobys += static_cast<uint64_t>(std::max(n, 0));
+        g_dsc.game += F.game_poses;
+        if (g_dsc.frames % 300 == 0)
+            std::printf("[shadows-gpu-check] %llu frames, %llu deferred mobys (the scene's pose for %llu), %llu shapes compared, %llu differ by more than 0.001, "
+                        "the largest difference %.6f (radius %.6f)\n",
+                        static_cast<unsigned long long>(g_dsc.frames), static_cast<unsigned long long>(g_dsc.mobys), static_cast<unsigned long long>(g_dsc.scene),
+                        static_cast<unsigned long long>(g_dsc.points), static_cast<unsigned long long>(g_dsc.differ), g_dsc.max_d, g_dsc.max_r);
+        return false;  // (the game's code runs as well: the check's own run, its points written to 0x1ac780 as ever)
+    }
+    if (g_ds_log) {
+        std::printf("[shadows-gpu] serial %llu: %zu casters, %zu shapes (poses: %u the scene's, %u the game's)", static_cast<unsigned long long>(F.serial), F.casters.size(),
+                    F.prims.size(), F.scene_poses, F.game_poses);
+        for (const DropShadowCaster& c : F.casters) {
+            const DropShadowPrim& p = F.prims[c.first];
+            std::printf(" | moby %08x z %.2f..%.2f (moby %.2f) dir %.2f %.2f %.2f, %u: %s r %.2f at %.2f %.2f %.2f", c.moby, c.z_far, c.z_near, lwc1(c.moby + 0x18), c.dir[0], c.dir[1],
+                        c.dir[2], c.count, p.capsule ? "capsule" : "sphere", p.r0, p.c0[0], p.c0[1], p.c0[2]);
+        }
+        std::printf("\n");
+    }
+    return true;
+}
+
+}  // namespace
+
+int g_drop_shadows_gpu = 0;
+
+// orig: (host) see mrp_shadows_gpu.inc
+const DropShadowFrame* mrp_drop_shadows_view() { return g_ds_draw.casters.empty() ? nullptr : &g_ds_draw; }
+
+// orig: (host) see mrp_shadows_gpu.inc
+bool mrp_drop_shadows_camera(const float* M, float cam[3]) {
+    // rows x (0), y (1), w (3) of M: M[c * 4 + r]; solve r . (C, 1) = 0
+    double a[3][4];
+    const int rows[3] = {0, 1, 3};
+    for (int i = 0; i < 3; ++i)
+        for (int c = 0; c < 4; ++c) a[i][c] = M[c * 4 + rows[i]];
+    for (int col = 0; col < 3; ++col) {  // (Gaussian elimination, partial pivoting)
+        int piv = col;
+        for (int i = col + 1; i < 3; ++i)
+            if (std::fabs(a[i][col]) > std::fabs(a[piv][col])) piv = i;
+        if (std::fabs(a[piv][col]) < 1e-12) return false;
+        if (piv != col)
+            for (int c = 0; c < 4; ++c) std::swap(a[piv][c], a[col][c]);
+        for (int i = 0; i < 3; ++i) {
+            if (i == col) continue;
+            const double f = a[i][col] / a[col][col];
+            for (int c = col; c < 4; ++c) a[i][c] -= f * a[col][c];
+        }
+    }
+    for (int i = 0; i < 3; ++i) cam[i] = static_cast<float>(-a[i][3] / a[i][i]);
+    return std::isfinite(cam[0]) && std::isfinite(cam[1]) && std::isfinite(cam[2]);
+}
+
+// orig: (host) see mrp_shadows_gpu.inc. Per shape its outline across the direction (a circle of `ring` points, a capsule the hull of
+// its two circles), each outline point's line along the direction cut by the slab's two planes (the original's tube: a ring of points
+// and its far points, shadow_points_clip), the sides and the two caps as triangles; a face goes to `front` when its outward side
+// looks at the camera
+void mrp_drop_shadows_volumes(const DropShadowFrame& f, const float cam[3], int ring, DropShadowVolumes& out) {
+    out.front.clear();
+    out.back.clear();
+    out.inside = 0;
+    out.prisms = 0;
+    out.boxes.clear();
+    for (int k = 0; k < 3; ++k) {
+        out.lo[k] = 1e30f;
+        out.hi[k] = -1e30f;
+    }
+    ring = std::clamp(ring, 6, 32);
+    std::vector<float> o2;
+    std::vector<float> top, bot;
+    auto put = [](std::vector<float>& v, const float* a, const float* b, const float* c) {
+        v.insert(v.end(), a, a + 3);
+        v.insert(v.end(), b, b + 3);
+        v.insert(v.end(), c, c + 3);
+    };
+    for (const DropShadowCaster& c : f.casters) {
+        const float* d = c.dir;
+        if (!(std::fabs(d[2]) > 0.05f) || c.z_near == c.z_far) continue;  // (a light along the ground; an empty slab)
+        // U, V across the direction
+        float U[3], V[3];
+        {
+            const float ax[3] = {std::fabs(d[0]) < 0.9f ? 1.0f : 0.0f, std::fabs(d[0]) < 0.9f ? 0.0f : 1.0f, 0.0f};
+            U[0] = d[1] * ax[2] - d[2] * ax[1];
+            U[1] = d[2] * ax[0] - d[0] * ax[2];
+            U[2] = d[0] * ax[1] - d[1] * ax[0];
+            const float l = std::sqrt(U[0] * U[0] + U[1] * U[1] + U[2] * U[2]);
+            for (float& x : U) x /= l;
+            V[0] = d[1] * U[2] - d[2] * U[1];
+            V[1] = d[2] * U[0] - d[0] * U[2];
+            V[2] = d[0] * U[1] - d[1] * U[0];
+        }
+        const float zlo = std::min(c.z_near, c.z_far), zhi = std::max(c.z_near, c.z_far);
+        const size_t box = out.boxes.size();
+        out.boxes.insert(out.boxes.end(), {1e30f, 1e30f, 1e30f, -1e30f, -1e30f, -1e30f});
+        const float cu = cam[0] * U[0] + cam[1] * U[1] + cam[2] * U[2], cv = cam[0] * V[0] + cam[1] * V[1] + cam[2] * V[2];
+        for (uint32_t i = c.first; i < c.first + c.count && i < f.prims.size(); ++i) {
+            const DropShadowPrim& p = f.prims[i];
+            o2.clear();
+            // the outline, counter-clockwise in (U, V): a circle's polygon (around it, not inside it), or a capsule's - the far arc of one
+            // end's circle and the near arc of the other's between their outer tangents (cos a = (r0 - r1) / length from the axis)
+            const float grow = 1.0f / std::cos(3.14159265f / static_cast<float>(ring));
+            const float a0u = p.c0[0] * U[0] + p.c0[1] * U[1] + p.c0[2] * U[2], a0v = p.c0[0] * V[0] + p.c0[1] * V[1] + p.c0[2] * V[2];
+            auto arc = [&](float cu0, float cv0, float r, float from, float to, int steps) {
+                for (int k = 0; k <= steps; ++k) {
+                    const float a = from + (to - from) * static_cast<float>(k) / static_cast<float>(steps);
+                    o2.push_back(cu0 + r * grow * std::cos(a));
+                    o2.push_back(cv0 + r * grow * std::sin(a));
+                }
+            };
+            float r0 = std::max(p.r0, 0.0f), r1 = std::max(p.r1, 0.0f);
+            bool one = !p.capsule;
+            float b0u = 0.0f, b0v = 0.0f, L = 0.0f;
+            if (p.capsule) {
+                b0u = p.c1[0] * U[0] + p.c1[1] * U[1] + p.c1[2] * U[2];
+                b0v = p.c1[0] * V[0] + p.c1[1] * V[1] + p.c1[2] * V[2];
+                L = std::hypot(b0u - a0u, b0v - a0v);
+                if (!(L > std::fabs(r0 - r1) + 1e-4f)) one = true;  // (one circle holds the other: the larger alone)
+            }
+            if (one) {
+                float cu0 = a0u, cv0 = a0v, r = r0;
+                if (p.capsule && r1 > r0) {
+                    cu0 = b0u;
+                    cv0 = b0v;
+                    r = r1;
+                }
+                if (!(r > 0.0f)) continue;
+                arc(cu0, cv0, r, 0.0f, 6.2831853f * static_cast<float>(ring - 1) / static_cast<float>(ring), ring - 1);
+            } else {
+                const float e = std::atan2(b0v - a0v, b0u - a0u);
+                const float al = std::acos(std::clamp((r0 - r1) / L, -1.0f, 1.0f));
+                const int nb = std::max(1, static_cast<int>(std::lround(static_cast<float>(ring) * al / 6.2831853f)));
+                const int na = std::max(1, static_cast<int>(std::lround(static_cast<float>(ring) * (6.2831853f - 2.0f * al) / 6.2831853f)));
+                arc(b0u, b0v, r1, e - al, e + al, nb);
+                arc(a0u, a0v, r0, e + al, e + 6.2831853f - al, na);
+            }
+            const size_t n = o2.size() / 2;
+            if (n < 3) continue;
+            // each outline point's line: the point u U + v V + t d, at z = zlo and z = zhi
+            top.resize(3 * n);
+            bot.resize(3 * n);
+            bool inside = cam[2] >= zlo && cam[2] <= zhi;
+            for (size_t k = 0; k < n; ++k) {
+                const float u = o2[2 * k], v = o2[2 * k + 1];
+                const float P[3] = {u * U[0] + v * V[0], u * U[1] + v * V[1], u * U[2] + v * V[2]};
+                const float th = (zhi - P[2]) / d[2], tl = (zlo - P[2]) / d[2];
+                for (int a = 0; a < 3; ++a) {
+                    top[3 * k + a] = P[a] + th * d[a];
+                    bot[3 * k + a] = P[a] + tl * d[a];
+                    out.boxes[box + a] = std::min({out.boxes[box + a], top[3 * k + a], bot[3 * k + a]});
+                    out.boxes[box + 3 + a] = std::max({out.boxes[box + 3 + a], top[3 * k + a], bot[3 * k + a]});
+                }
+                top[3 * k + 2] = zhi;
+                bot[3 * k + 2] = zlo;
+                // (the camera inside the outline: left of every edge of the counter-clockwise hull)
+                const size_t k1 = (k + 1) % n;
+                const float ex = o2[2 * k1] - u, ey = o2[2 * k1 + 1] - v;
+                if (ex * (cv - v) - ey * (cu - u) < 0.0f) inside = false;
+            }
+            ++out.prisms;
+            if (inside) ++out.inside;
+            for (int a = 0; a < 3; ++a) {
+                out.lo[a] = std::min(out.lo[a], out.boxes[box + a]);
+                out.hi[a] = std::max(out.hi[a], out.boxes[box + 3 + a]);
+            }
+            // the sides: outward normal (ey, -ex) in (U, V) - across the direction
+            for (size_t k = 0; k < n; ++k) {
+                const size_t k1 = (k + 1) % n;
+                const float ex = o2[2 * k1] - o2[2 * k], ey = o2[2 * k1 + 1] - o2[2 * k + 1];
+                const float N[3] = {ey * U[0] - ex * V[0], ey * U[1] - ex * V[1], ey * U[2] - ex * V[2]};
+                const float* a = &top[3 * k];
+                const bool fr = N[0] * (cam[0] - a[0]) + N[1] * (cam[1] - a[1]) + N[2] * (cam[2] - a[2]) > 0.0f;
+                std::vector<float>& dst = fr ? out.front : out.back;
+                put(dst, &top[3 * k], &bot[3 * k], &top[3 * k1]);
+                put(dst, &bot[3 * k], &bot[3 * k1], &top[3 * k1]);
+            }
+            // the caps: the top's outward side up, the bottom's down
+            std::vector<float>& tdst = cam[2] > zhi ? out.front : out.back;
+            std::vector<float>& bdst = cam[2] < zlo ? out.front : out.back;
+            for (size_t k = 2; k < n; ++k) {
+                put(tdst, &top[0], &top[3 * (k - 1)], &top[3 * k]);
+                put(bdst, &bot[0], &bot[3 * k], &bot[3 * (k - 1)]);
+            }
+        }
+    }
+}
+namespace {
 }  // namespace
 
 // orig: (host) see mrp_shadows.h
@@ -396,6 +816,16 @@ void mrp_shadows_install() {
     g_drop_shadow_observer.layer = obs_layer;
     g_drop_shadow_observer.apply = obs_apply;
     g_drop_shadow_observer.chain = obs_chain;
+    // (2026-10-30, RAC1_WIIU_SHADOWS_GPU: the game's shadow code skipped, the shapes taken by the host - mrp_shadows_gpu.inc; the Wii U's
+    // default, off elsewhere: the PC's game unchanged)
+#if defined(__WIIU__)
+    g_drop_shadows_gpu = 1;
+#endif
+    if (const char* e = std::getenv("RAC1_WIIU_SHADOWS_GPU")) g_drop_shadows_gpu = std::atoi(e) != 0 ? 1 : 0;
+    g_ds_check = std::getenv("RAC1_WIIU_SHADOWS_GPU_CHECK") != nullptr && std::atoi(std::getenv("RAC1_WIIU_SHADOWS_GPU_CHECK")) != 0;
+    g_ds_log = std::getenv("RAC1_WIIU_SHADOWS_GPU_LOG") != nullptr && std::atoi(std::getenv("RAC1_WIIU_SHADOWS_GPU_LOG")) != 0;
+    g_ds_time = std::getenv("RAC1_WIIU_SHADOWS_GPU_TIME") != nullptr && std::atoi(std::getenv("RAC1_WIIU_SHADOWS_GPU_TIME")) != 0;
+    g_drop_shadows_native = ds_capture;
 }
 
 // orig: (host) see mrp_shadows.h
@@ -412,6 +842,8 @@ void mrp_shadows_begin_frame(bool on) {
     S.mark.clear();
     S.unmark.clear();
     S.ordered.clear();
+    g_ds.casters.clear();
+    g_ds.prims.clear();
 }
 
 // orig: (host) see mrp_shadows.h
@@ -436,6 +868,7 @@ void mrp_shadows_snapshot() {
     D.apply_rgba = S.apply_rgba;
     D.mark = S.mark;
     D.unmark = S.unmark;
+    g_ds_draw = g_ds;
 }
 
 void mrp_shadows_clear_snapshot() {
@@ -444,6 +877,8 @@ void mrp_shadows_clear_snapshot() {
     D.have_apply = false;
     D.mark.clear();
     D.unmark.clear();
+    g_ds_draw.casters.clear();
+    g_ds_draw.prims.clear();
 }
 
 bool mrp_shadows_wiiu_view(MrpShadowsWiiuView& out) {
@@ -463,7 +898,39 @@ bool mrp_shadows_wiiu_view(MrpShadowsWiiuView& out) {
 // orig: (host) see mrp_shadows.h
 bool mrp_shadows_draw(const float* view_proj) {
     // (a pipelined frame draws what was captured before the next update)
-    const State& X = g_draw_from_snapshot ? D : S;
+    const State& X0 = g_draw_from_snapshot ? D : S;
+    // ((2026-10-30) RAC1_WIIU_SHADOWS_GPU on the PC: the host's shapes (mrp_shadows_gpu.inc) as the counter's faces - the prisms' faces
+    // toward the camera marking, the others unmarking -, the original's darkening: the shapes and their place seen on the PC)
+    static State N;
+    const DropShadowFrame& nf = g_draw_from_snapshot ? g_ds_draw : g_ds;
+    if (g_drop_shadows_gpu != 0 && !g_ds_check && X0.on && !X0.captured && !nf.casters.empty()) {
+        float cam[3];
+        static DropShadowVolumes vol;
+        if (!mrp_drop_shadows_camera(view_proj, cam)) return false;
+        const auto tv = std::chrono::steady_clock::now();
+        mrp_drop_shadows_volumes(nf, cam, 12, vol);
+        if (g_ds_time) {  // (the prisms' making: on the Wii U the draw's, mrp_world_gx2_draw_shadows)
+            static double ms = 0.0;
+            static uint64_t n = 0, faces = 0, prisms = 0;
+            ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tv).count();
+            faces += (vol.front.size() + vol.back.size()) / 9;
+            prisms += vol.prisms;
+            if (++n % 120 == 0) {
+                std::printf("[shadows-gpu] the prisms made for the draw: %.4f ms a frame, %.1f prisms, %.0f faces (120 frames)\n", ms / 120.0, prisms / 120.0, faces / 120.0);
+                ms = 0.0;
+                faces = prisms = 0;
+            }
+        }
+        N.on = N.captured = N.have_apply = true;
+        N.clear_rgba = 0x7f808080u;
+        N.apply_alpha = (static_cast<uint64_t>(0x8000) << 22) | 0x64;
+        N.apply_rgba = 0;
+        N.mark.swap(vol.front);
+        N.unmark.swap(vol.back);
+    } else {
+        N.on = false;
+    }
+    const State& X = N.on ? N : X0;
     if (!X.on || !X.captured || !X.have_apply) return false;
     if (X.mark.empty() && X.unmark.empty()) return false;
     if (vk::is_active()) {
@@ -698,6 +1165,12 @@ void mrp_shadows_report() {
                     "from the GS's, max vertex distance %.3f px, max depth difference %.6f\n",
                     static_cast<unsigned long long>(g_chk_gs.frames), static_cast<unsigned long long>(g_chk_gs.count_differs), static_cast<unsigned long long>(g_chk_gs.faces),
                     static_cast<unsigned long long>(g_chk_gs.alpha_differs), static_cast<unsigned long long>(g_chk_gs.pos_differs), g_chk_gs.max_px, g_chk_gs.max_dz);
+    if (g_ds_check)
+        std::printf("[shadows-gpu-check] %llu frames, %llu deferred mobys (poses: %llu the scene's, %llu the game's), %llu shapes compared, %llu differ by more than "
+                    "0.001, the largest difference %.6f (radius %.6f)\n",
+                    static_cast<unsigned long long>(g_dsc.frames), static_cast<unsigned long long>(g_dsc.mobys), static_cast<unsigned long long>(g_dsc.scene),
+                    static_cast<unsigned long long>(g_dsc.game), static_cast<unsigned long long>(g_dsc.points), static_cast<unsigned long long>(g_dsc.differ), g_dsc.max_d,
+                    g_dsc.max_r);
     if (S.frames == 0) return;
     if (S.check)
         std::printf("[mrp-shadows-check] %llu frames, %llu faces (%llu skipped at the near plane), %llu pixels compared (%llu shadowed by the CPU), %llu differ, %llu border pixels not compared\n",

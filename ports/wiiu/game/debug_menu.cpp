@@ -10,6 +10,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/world_lighting.h>
+#include <game/render/mrp_shadows_gpu.inc>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
@@ -129,6 +130,9 @@ const Item kRender[] = {
     // g_world_relight; the page's 14th row, its last at y 454)
     {"World relit (point lights)", [] { return on_off(rac1::g_world_relight); }, [] { rac1::g_world_relight = !rac1::g_world_relight; }},
     {"Mobys drawn", [] { return on_off(g_menu_draw_mobys); }, [] { g_menu_draw_mobys = !g_menu_draw_mobys; }},
+    // ((2026-10-30) RAC1_WIIU_SHADOWS_GPU, mrp_shadows_gpu.inc: GPU - the game's shadow code skipped, the shapes drawn by the GPU; game's - its
+    // own code and faces, drawn by the effects' pass as before. The Game page's "Shadows" still turns both off)
+    {"Drop shadows", [] { return std::string(rac1::g_drop_shadows_gpu != 0 ? "GPU" : "game's"); }, [] { rac1::g_drop_shadows_gpu = rac1::g_drop_shadows_gpu != 0 ? 0 : 1; }},
     {"2D (HUD, text, menus)", [] { return on_off(g_menu_draw_2d); }, [] { g_menu_draw_2d = !g_menu_draw_2d; }},
     {"CPU / GPU overlap", [] { return on_off(g_menu_overlap); }, [] { g_menu_overlap = !g_menu_overlap; }},
     {"World prepared on a worker", [] { return on_off(rac1::g_wiiu_world_async); }, [] { rac1::g_wiiu_world_async = !rac1::g_wiiu_world_async; }},

@@ -68,6 +68,12 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
 void mrp_world_gx2_draw_sky(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp);
 // the prepared frame's drop shadows (mrp_shadows) and 3D effects / program 7 surfaces / particles (mrp_fx) into `cb` / `db`
 void mrp_world_gx2_draw_fx(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp);
+// ((2026-10-30) RAC1_WIIU_SHADOWS_GPU) the drop shadows drawn by the GPU from the game's shadow shapes (mrp_shadows_gpu.inc): a counter
+// of the shapes' prisms in a mask of its own against `db` (tested, not written), then `cb` darkened softly where it counts. Called between
+// the first chain's mobys and the deferred ones (mrp_moby_gx2_draw's parts 1 and 2); true when it drew. State left: as mrp_world_gx2_draw's.
+// _wanted: this frame has shapes to draw (the mobys' draw then split)
+bool mrp_world_gx2_shadows_wanted();
+bool mrp_world_gx2_draw_shadows(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp);
 // the sky drawn (RAC1_WIIU_SKY=1; off by default; the GamePad's debug menu flips it live): off, the frame's sky is neither captured nor
 // drawn, the game's sky pass not run either while the picture is up (mrp_world_wiiu_sky_pass_wanted), and the world's batches start from
 // the GS registers before the sky's (as they did before the sky)

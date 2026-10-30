@@ -1,6 +1,6 @@
 # Stato Lavori — Ottimizzazione e Riscrittura Nativa Wii U (`port/wiiu`)
 
-Ultimo aggiornamento: **30 Ottobre 2026 (sera)**
+Ultimo aggiornamento: **30 Ottobre 2026 (sera, drop shadows sulla GPU)**
 
 Questo documento traccia in modo completo **cosa è stato fatto**, **i risultati misurati sulla console Wii U reale (`192.168.0.16`)**, **cosa stiamo facendo ora**, **cosa manca** e **le note tecniche / trappole da evitare** per poter riprendere il lavoro in qualsiasi momento.
 
@@ -101,6 +101,15 @@ Tutti i test sono eseguiti con `ports/wiiu/tools/bench.sh` (`explore` input dete
     - Prova PC (walk Wii U-like con drop shadows attive): RAMHASH identico parola per parola `=1` vs `=0` (Veldin→Novalis forward 1500 frame, Novalis explore 1200).
 15. **Nuovo stadio profiler `Game: moby drop shadows`** (`src/profiler/host_profiler.*`, `src/game/ovl/moby_pass.cpp`): la riga `[game]` separa le drop shadows dal moby pass. `samples.py --under NOME` per il dettaglio di una zona.
 
+### Drop shadows sulla GPU (30 Ottobre 2026, sera — da misurare e guardare su console)
+16. **`RAC1_WIIU_SHADOWS_GPU` (default 1 su Wii U, 0 su PC)** (`src/game/render/mrp_shadows_gpu.inc`, `mrp_shadows.cpp`, `src/game/ovl/moby_shadows.cpp`, `ports/wiiu/game/mrp_world_gx2.cpp` `mrp_world_gx2_draw_shadows`, `mrp_moby_gx2.cpp` `part`, `wiiu_gfx.cpp`, shader `mrp_shadow_vol` / `mrp_shadow_dark`):
+    - Il codice del gioco (`shadow_points` con le pose rifatte, `drop_shadows_draw`, VU0 0x190, pacchetti) non gira più: l'host prende le stesse forme (sfere e capsule della lista ombre della classe, posate con i giunti della scena MRP: `J p = (p B^-1) S`; `moby_pose_matrices` solo per i moby senza posa nella scena), la direzione (0x1aeb80 + 16 × moby +0xbd) e lo slab (moby +0x84 / +0x88: niente ombre attraverso i pavimenti).
+    - La GPU disegna i prismi (i tubi dell'originale) in una maschera RG8 contro il depth del frame (LEQUAL senza scrittura: facce verso la camera contate nel rosso, le altre nel verde, dentro dove rosso > verde = z-pass dell'originale), poi scurisce ×0.75 con bordo morbido (13 tap, ~2.5 px a 1080p) solo nei rettangoli delle ombre. Fra i moby della prima catena e quelli differiti, come il gioco. Nessuno shader del mondo toccato.
+    - Prova PC: forme identiche al gioco (scene vs gioco: differenza max 0.000015 su 7964 forme); immagine PC delle forme uguale all'originale al pixel salvo il poligono; walk Wii U-like `=1` vs `=0`: righe hero/camera identiche, RAMHASH diverso solo in 0x15f000–0x161fff (0x15f410 tag texture, 0x160430–0x16046f, 0x1611c0 puntatore pacchetti), 0x1ac780.. (voci ombra), buffer pacchetti, scratchpad.
+    - CPU (PC): game thread 0.12–0.22 → 0.002–0.006 ms/frame; console attesa: da ~4.4 ms (Novalis) a ~0.1–0.2 ms. Prismi sul render thread ~0.2–0.4 ms stimati su core 1. GPU attesa 0.1–0.3 ms (riga `[gpu]`: "drop shadows", "mobys deferred").
+    - Prima prova su console: Novalis game code 34–37 → 27.6–29.5 ms/host frame, GPU "drop shadows" 0.37–0.55 ms; ma nessuna ombra visibile in modo normale (forme rosse solo con `_DEBUG=1`). Causa probabile: passo 1/255 con sottrazione su R8 (0.99998 troncato a 0). Corretto con maschera RG8, solo addizioni, passo 1.25/255; nuovi debug `_DEBUG=2` (rettangoli scuriti interi), `3` (facce frontali bianche col depth test), `4` (conteggi grezzi). Cambiato solo `mrp_shadow_dark.gsh`. Da riprovare.
+    - Servono sulla SD i due `.gsh` nuovi (`shaders/mrp_shadow_vol.gsh`, `mrp_shadow_dark.gsh`); senza, torna il codice del gioco. Riga nel debug menu (Picture): "Drop shadows" GPU / game's.
+
 ## 3. Cosa Manca (Prossimi Passi in Ordine di Impatto)
 
 ### Priorità 1 — Decidere default scala 3D e far confermare visivamente a Daino
@@ -117,11 +126,12 @@ Tutti i test sono eseguiti con `ports/wiiu/tools/bench.sh` (`explore` input dete
    - Ottimizzare `moby_shadows` / `moby_cull_light` e i kernel VU0 / collisioni in `EE update` con **Paired Singles (`ps_*`)**.
 
 ### Priorità 2b — Proposte che cambiano lo stato del gioco (decide Daino)
-- **Drop shadows native (MRP/GPU) invece del codice del gioco** (~7 ms stimati su Novalis per host frame): saltare `shadow_points` / `drop_shadows_draw` sul game thread e disegnarle dalla lista dei moby differiti (0x1ac600, scritta ancora dal draw loop) e dalle pose già nella scena MRP. Cambiano solo memoria che la logica non legge (0x1ac780, 0x160420..0x16046c, scratchpad, registri VU0, packet buffer): RAMHASH diverso in quelle pagine.
+- ~~**Drop shadows native (MRP/GPU) invece del codice del gioco**~~: fatto (punto 16, `RAC1_WIIU_SHADOWS_GPU`), da misurare e da far guardare a Daino.
+- **Ombre statiche precalcolate (`RAC1_WIIU_SHADOWS_BAKED`, proposta di Daino, passo successivo):** le ombre di tie / shrub / tfrag calcolate una volta per livello (colori dei vertici residenti o piccola lightmap, mai committate) con la stessa direzione (tabella 0x1aeb80); per frame restano solo le ombre dei moby.
 - **`vuc` decisa sulla FPU in `ovl_common.h`** (bit-exact, ma è un header: fingerprint del codegen + rebuild completo): accelera tutti i port scritti a mano con le regole VU (pose `moby_pose_matrices`, collisioni, particelle).
 
 ### Priorità 3 — Ombre Moderne Leggere su Wii U
-- Implementare proiezione blob-shadow / shadow-map leggera su GX2 (sfruttando l'infrastruttura di `src/game/render/mrp_lighting.cpp` già presente su PC) o ottimizzare le drop shadows esistenti.
+- Drop shadows dei moby sulla GPU: fatto (punto 16). Restano le ombre statiche precalcolate (`RAC1_WIIU_SHADOWS_BAKED`, sopra).
 
 ---
 

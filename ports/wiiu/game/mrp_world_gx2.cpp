@@ -49,6 +49,7 @@
 #include <game/render/mrp_fx.h>
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_shadows.h>
+#include <game/render/mrp_shadows_gpu.inc>
 #include <game/render/mrp_world_backend.inc>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/mrp_world_sky.inc>
@@ -73,6 +74,7 @@
 #include <whb/gfx.h>
 
 #include <algorithm>
+#include <cmath>
 #include <chrono>
 #include <cstddef>
 #include <cstdio>
@@ -3105,6 +3107,412 @@ void mrp_world_gx2_draw_fx(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const g
     GX2SetViewport(0.0f, 0.0f, static_cast<float>(win_w), static_cast<float>(win_h), 0.0f, 1.0f);
     GX2SetScissor(0, 0, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
     GX2SetShaderMode(GX2_SHADER_MODE_UNIFORM_REGISTER);
+}
+
+// ---- the drop shadows drawn by the GPU (RAC1_WIIU_SHADOWS_GPU, 2026-10-30) -------------------------------------------------------------
+// The game's shadow shapes (mrp_shadows_gpu.inc: per deferred moby its spheres / capsules, the direction, the slab) as prisms - the
+// original's tubes, closed by the slab's planes -, counted per pixel in a mask of their own and darkened softly. Between the first
+// chain's mobys and the deferred ones, as the game chains them (wiiu_gfx.cpp): the shadows' casters are drawn over their own shadow.
+//  1. the mask (an R8 colour buffer the size of the 3D's, beside the frame's depth buffer: tested LEQUAL, not written - the passes'
+//     function, its hierarchical Z untouched): an RG8 mask cleared to 0 over the shadows' rectangles (one per group of casters near on the
+//     screen; a quad each); the faces toward the camera counted in red where they are not farther than the surface, the others in green
+//     (adds alone, 1.25 / 255 a face: one count whatever the colour buffer's rounding); a pixel is inside where red > green - the
+//     original's sign of (faces marking - faces unmarking), z-pass; a prism holding the camera (its front faces behind it) adds one to red
+//     over the whole viewport;
+//  2. the darkening: a quad over each rectangle on the frame, the mask read at 13 points around each pixel (the edge's softness, ~2.5
+//     pixels at 1080p), the colour multiplied by 1 - 0.25 x the share inside (the original's FIX 0x20: x 0.75), its alpha kept.
+// The world's pixel shaders are not touched; the pass costs the prisms' faces (twice the screen they cover, depth-tested: the
+// hierarchical Z culls the hidden ones) and the rectangles' pixels. Switches: RAC1_WIIU_SHADOWS_GPU=0 the game's own shadow code (its
+// faces drawn by draw_fx as before), RAC1_WIIU_SHADOWS_GPU_RING the sphere's points (12), RAC1_WIIU_SHADOWS_GPU_DARK the darkening in
+// percent (25), RAC1_WIIU_SHADOWS_GPU_SOFT the edge's radius in pixels at 1080p (2.5; 0 hard), RAC1_WIIU_SHADOWS_GPU_DEBUG (testing): 1 the
+// shadows red (60%: the green and blue darkened alone), 2 the rectangles darkened whole (the mask filled: the darkening and the mask's
+// reading alone), 3 the prisms' faces toward the camera white on the frame where they pass the depth test (the geometry and the depth;
+// no darkening), 4 the mask's raw counts in the rectangles (red the front faces / 8, green the others / 8, blue the net / 4); the log
+// line every 300 calls.
+namespace {
+struct ShadowMask {
+    GX2ColorBuffer cb{};
+    GX2Texture tex{};
+    void* mem = nullptr;
+    uint32_t w = 0, h = 0;
+};
+ShadowMask g_smask[2];
+bool g_sh_tried = false, g_sh_ok = false;
+WHBGfxShaderGroup g_shvol{}, g_shdark{};
+BlockLoc g_shvol_loc;
+uint32_t g_shdark_tex = 0;
+GX2Sampler g_shdark_sampler{};
+struct ShadowStats {
+    uint64_t calls = 0, drawn = 0, casters = 0, prisms = 0, tris = 0, inside = 0, pixels = 0, rects = 0;
+    double cpu_ms = 0.0;
+} g_shs;
+
+bool shadow_shaders() {
+    if (g_sh_tried) return g_sh_ok;
+    g_sh_tried = true;
+    auto load = [](const char* path, WHBGfxShaderGroup& g) {
+        const std::vector<uint8_t> gsh = [&] {
+            std::vector<uint8_t> v;
+            if (std::FILE* f = std::fopen(path, "rb")) {
+                std::fseek(f, 0, SEEK_END);
+                v.resize(static_cast<size_t>(std::ftell(f)));
+                std::fseek(f, 0, SEEK_SET);
+                if (std::fread(v.data(), 1, v.size(), f) != v.size()) v.clear();
+                std::fclose(f);
+            }
+            return v;
+        }();
+        if (gsh.empty() || !WHBGfxLoadGFDShaderGroup(&g, 0, gsh.data())) {
+            g = WHBGfxShaderGroup{};
+            return false;
+        }
+        return true;
+    };
+    bool ok = load("shaders/mrp_shadow_vol.gsh", g_shvol) && load("shaders/mrp_shadow_dark.gsh", g_shdark);
+    if (ok) {
+        const GX2VertexShader* vs = g_shvol.vertexShader;
+        for (uint32_t i = 0; i < vs->uniformBlockCount; ++i)
+            if (std::strcmp(vs->uniformBlocks[i].name, "ShadowFrame") == 0) {
+                g_shvol_loc.loc = vs->uniformBlocks[i].offset;
+                g_shvol_loc.size = (std::max(vs->uniformBlocks[i].size, 64u) + 15u) & ~15u;
+                g_shvol_loc.found = true;
+            }
+        bool smp = false;
+        for (uint32_t i = 0; i < g_shdark.pixelShader->samplerVarCount; ++i)
+            if (std::strcmp(g_shdark.pixelShader->samplerVars[i].name, "u_mask") == 0) {
+                g_shdark_tex = g_shdark.pixelShader->samplerVars[i].location;
+                smp = true;
+            }
+        ok = g_shvol_loc.found && smp && WHBGfxInitShaderAttribute(&g_shvol, "a_pos", 0, 0, GX2_ATTRIB_FORMAT_FLOAT_32_32_32_32) && WHBGfxInitFetchShader(&g_shvol) &&
+             WHBGfxInitShaderAttribute(&g_shdark, "a_pos", 0, 0, GX2_ATTRIB_FORMAT_FLOAT_32_32_32_32) &&
+             WHBGfxInitShaderAttribute(&g_shdark, "a_par", 0, 16, GX2_ATTRIB_FORMAT_FLOAT_32_32_32_32) && WHBGfxInitFetchShader(&g_shdark);
+        if (ok) gx2_ps_early_z(g_shvol.pixelShader, "mrp_shadow_vol");
+    }
+    GX2InitSampler(&g_shdark_sampler, GX2_TEX_CLAMP_MODE_CLAMP, GX2_TEX_XY_FILTER_MODE_POINT);
+    g_sh_ok = ok && g_ring != nullptr && g_gring != nullptr;
+    // (not there - the SD's shaders/ without the new files -: the game's own shadow code again, its faces drawn by draw_fx)
+    if (!g_sh_ok) g_drop_shadows_gpu = 0;
+    std::printf("[wiiu] mrp_world_gx2: the drop shadows on the GPU (shaders/mrp_shadow_vol.gsh, mrp_shadow_dark.gsh): %s\n",
+                g_sh_ok ? "ready" : "not loaded (the game's drop shadows instead)");
+    return g_sh_ok;
+}
+
+// the mask for a 3D buffer of w x h (two kept: the TV's and the GamePad's sizes); nullptr: no memory
+ShadowMask* shadow_mask(uint32_t w, uint32_t h) {
+    for (ShadowMask& m : g_smask)
+        if (m.mem != nullptr && m.w == w && m.h == h) return &m;
+    ShadowMask* m = g_smask[0].mem == nullptr ? &g_smask[0] : g_smask[1].mem == nullptr ? &g_smask[1] : &g_smask[0];
+    if (m->mem != nullptr) {
+        GX2DrawDone();
+        MEMFreeToDefaultHeap(m->mem);
+    }
+    *m = ShadowMask{};
+    GX2Surface& sf = m->cb.surface;
+    sf.dim = GX2_SURFACE_DIM_TEXTURE_2D;
+    sf.width = w;
+    sf.height = h;
+    sf.depth = 1;
+    sf.mipLevels = 1;
+    sf.format = GX2_SURFACE_FORMAT_UNORM_R8_G8;
+    sf.aa = GX2_AA_MODE1X;
+    sf.use = static_cast<GX2SurfaceUse>(GX2_SURFACE_USE_TEXTURE | GX2_SURFACE_USE_COLOR_BUFFER);
+    sf.tileMode = GX2_TILE_MODE_DEFAULT;
+    GX2CalcSurfaceSizeAndAlignment(&sf);
+    m->mem = MEMAllocFromDefaultHeapEx(sf.imageSize, static_cast<int>(std::max<uint32_t>(sf.alignment, 256u)));
+    if (m->mem == nullptr) {
+        std::printf("[wiiu] mrp_world_gx2: the drop shadows' mask %u x %u: no memory\n", w, h);
+        *m = ShadowMask{};
+        return nullptr;
+    }
+    sf.image = m->mem;
+    m->cb.viewMip = 0;
+    m->cb.viewFirstSlice = 0;
+    m->cb.viewNumSlices = 1;
+    GX2InitColorBufferRegs(&m->cb);
+    m->tex.surface = sf;
+    m->tex.viewFirstMip = 0;
+    m->tex.viewNumMips = 1;
+    m->tex.viewFirstSlice = 0;
+    m->tex.viewNumSlices = 1;
+    m->tex.compMap = GX2_COMP_MAP(GX2_SQ_SEL_R, GX2_SQ_SEL_G, GX2_SQ_SEL_0, GX2_SQ_SEL_1);
+    GX2InitTextureRegs(&m->tex);
+    m->w = w;
+    m->h = h;
+    std::printf("[wiiu] mrp_world_gx2: the drop shadows' mask %u x %u (%u KB, MEM2)\n", w, h, sf.imageSize / 1024);
+    return m;
+}
+}  // namespace
+
+// orig: (host) see mrp_world_gx2.h
+bool mrp_world_gx2_shadows_wanted() { return g_ready && g_drop_shadows_gpu != 0 && mrp_drop_shadows_view() != nullptr && shadow_shaders(); }
+
+// orig: (host) see mrp_world_gx2.h
+bool mrp_world_gx2_draw_shadows(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp) {
+    if (!g_ready || cb == nullptr || db == nullptr || g_drop_shadows_gpu == 0) return false;
+    const DropShadowFrame* f = mrp_drop_shadows_view();
+    if (f == nullptr || !shadow_shaders()) return false;
+    const auto t0 = std::chrono::steady_clock::now();
+    ++g_shs.calls;
+    static const int ring = std::getenv("RAC1_WIIU_SHADOWS_GPU_RING") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_SHADOWS_GPU_RING")) : 12;
+    static const float dark = (std::getenv("RAC1_WIIU_SHADOWS_GPU_DARK") != nullptr ? static_cast<float>(std::atof(std::getenv("RAC1_WIIU_SHADOWS_GPU_DARK"))) : 25.0f) / 100.0f;
+    static const float soft = std::getenv("RAC1_WIIU_SHADOWS_GPU_SOFT") != nullptr ? static_cast<float>(std::atof(std::getenv("RAC1_WIIU_SHADOWS_GPU_SOFT"))) : 2.5f;
+    static const int debug = std::getenv("RAC1_WIIU_SHADOWS_GPU_DEBUG") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_SHADOWS_GPU_DEBUG")) : 0;
+    float cam[3];
+    if (!mrp_drop_shadows_camera(g_gx2_view.vp, cam)) return false;
+    static DropShadowVolumes vol;
+    mrp_drop_shadows_volumes(*f, cam, ring, vol);
+    if (vol.front.empty() && vol.back.empty()) return false;
+    const int win_w = static_cast<int>(cb->surface.width), win_h = static_cast<int>(cb->surface.height);
+    // the world's viewport (top-left origin, as GX2's) and the shadows' rectangles on it: each caster's prisms' bounds projected (a corner
+    // behind the camera, a prism holding it: the whole viewport), grown by the taps' reach twice (the clear's: every tap reads a cleared
+    // texel), those that meet merged - the darkening's rectangles (grown once) never overlap: no pixel darkened twice
+    const float vx = static_cast<float>(vp.x), vy = static_cast<float>(win_h - vp.y - vp.h), vw = static_cast<float>(vp.w), vh = static_cast<float>(vp.h);
+    const float rad = soft > 0.0f ? std::max(1.0f, soft * static_cast<float>(win_h) / 1080.0f) : 0.0f;  // (the taps' radius, pixels)
+    const float grow_clear = 2.0f * rad + 2.0f, grow_dark = rad + 1.0f;
+    struct Rect {
+        float x0, y0, x1, y1;  // (the shadows', not grown)
+    };
+    static std::vector<Rect> rects;
+    rects.clear();
+    {
+        const float* M = g_gx2_view.vp;
+        bool whole = vol.inside != 0;
+        for (size_t b = 0; !whole && b + 6 <= vol.boxes.size(); b += 6) {
+            const float* lo = &vol.boxes[b];
+            const float* hi = lo + 3;
+            if (!(hi[0] >= lo[0])) continue;  // (a caster without prisms)
+            Rect r{1e30f, 1e30f, -1e30f, -1e30f};
+            for (int k = 0; k < 8; ++k) {
+                const float P[3] = {(k & 1) ? hi[0] : lo[0], (k & 2) ? hi[1] : lo[1], (k & 4) ? hi[2] : lo[2]};
+                float c[4];
+                for (int q = 0; q < 4; ++q) c[q] = M[q] * P[0] + M[4 + q] * P[1] + M[8 + q] * P[2] + M[12 + q];
+                if (!(c[3] > 1e-3f)) {
+                    whole = true;
+                    break;
+                }
+                const float px = vx + (c[0] / c[3] + 1.0f) * 0.5f * vw, py = vy + (1.0f - c[1] / c[3]) * 0.5f * vh;
+                r.x0 = std::min(r.x0, px);
+                r.x1 = std::max(r.x1, px);
+                r.y0 = std::min(r.y0, py);
+                r.y1 = std::max(r.y1, py);
+            }
+            r.x0 = std::max(r.x0, vx);
+            r.y0 = std::max(r.y0, vy);
+            r.x1 = std::min(r.x1, vx + vw);
+            r.y1 = std::min(r.y1, vy + vh);
+            if (r.x1 > r.x0 && r.y1 > r.y0) rects.push_back(r);
+        }
+        if (whole) {
+            rects.clear();
+            rects.push_back(Rect{vx, vy, vx + vw, vy + vh});
+        }
+        // (merged while two grown ones meet; more than 8 left: their union)
+        for (bool again = true; again;) {
+            again = false;
+            for (size_t a = 0; a < rects.size() && !again; ++a)
+                for (size_t b = a + 1; b < rects.size() && !again; ++b) {
+                    const Rect& A = rects[a];
+                    const Rect& B = rects[b];
+                    if (A.x0 - grow_clear <= B.x1 + grow_clear && B.x0 - grow_clear <= A.x1 + grow_clear && A.y0 - grow_clear <= B.y1 + grow_clear &&
+                        B.y0 - grow_clear <= A.y1 + grow_clear) {
+                        rects[a] = Rect{std::min(A.x0, B.x0), std::min(A.y0, B.y0), std::max(A.x1, B.x1), std::max(A.y1, B.y1)};
+                        rects.erase(rects.begin() + static_cast<std::ptrdiff_t>(b));
+                        again = true;
+                    }
+                }
+        }
+        if (rects.size() > 8) {
+            Rect u = rects[0];
+            for (const Rect& r : rects) u = Rect{std::min(u.x0, r.x0), std::min(u.y0, r.y0), std::max(u.x1, r.x1), std::max(u.y1, r.y1)};
+            rects.assign(1, u);
+        }
+    }
+    if (rects.empty()) return false;
+    ShadowMask* mask = shadow_mask(cb->surface.width, cb->surface.height);
+    if (mask == nullptr) return false;
+    // a rectangle grown by `grow` as a scissor (x, y, w, h in pixels, top-left origin)
+    auto scissor = [&](const Rect& r, float grow) {
+        const int x0 = std::max(0, static_cast<int>(std::floor(r.x0 - grow))), y0 = std::max(0, static_cast<int>(std::floor(r.y0 - grow)));
+        const int x1 = std::min(win_w, static_cast<int>(std::ceil(r.x1 + grow))), y1 = std::min(win_h, static_cast<int>(std::ceil(r.y1 + grow)));
+        GX2SetScissor(static_cast<uint32_t>(x0), static_cast<uint32_t>(y0), static_cast<uint32_t>(std::max(1, x1 - x0)), static_cast<uint32_t>(std::max(1, y1 - y0)));
+        return static_cast<uint64_t>(std::max(0, x1 - x0)) * static_cast<uint64_t>(std::max(0, y1 - y0));
+    };
+    Rect all = rects[0];
+    for (const Rect& r : rects) all = Rect{std::min(all.x0, r.x0), std::min(all.y0, r.y0), std::max(all.x1, r.x1), std::max(all.y1, r.y1)};
+
+    // the vertices: the quads (the clear's 0, the inside prisms' step; a strip over the window, the scissor cuts it), the faces (front, back)
+    // (the counters' step: 1.25 / 255 - one count whether the colour buffer rounds or truncates the blend's result (the first build's
+    // 1 / 255 with a reverse subtract lost its counts: 0.99998 truncated; 2026-10-30, the console's picture), 255 faces before saturating)
+    constexpr float kStep = 1.25f / 255.0f;
+    const uint32_t nf = static_cast<uint32_t>(vol.front.size() / 3), nb = static_cast<uint32_t>(vol.back.size() / 3);
+    const uint32_t nverts = 8 + nf + nb;
+    auto* vb = static_cast<float*>(geo_alloc(nverts * 16u + 4u * 32u));
+    if (vb == nullptr) return false;
+    {
+        float* q = vb;
+        const float in_val = std::min(1.0f, kStep * static_cast<float>(std::max<uint32_t>(vol.inside, 1)));  // (debug 2: one count)
+        for (int k = 0; k < 2; ++k) {
+            const float v = k == 0 ? 0.0f : in_val;
+            const float c[16] = {-1, 1, 0, v, 1, 1, 0, v, -1, -1, 0, v, 1, -1, 0, v};
+            std::memcpy(q, c, sizeof c);
+            q += 16;
+        }
+        auto faces = [&](const std::vector<float>& src) {
+            for (size_t i = 0; i + 3 <= src.size(); i += 3) {
+                q[0] = src[i];
+                q[1] = src[i + 1];
+                q[2] = src[i + 2];
+                q[3] = kStep;
+                q += 4;
+            }
+        };
+        faces(vol.front);
+        faces(vol.back);
+    }
+    // the darkening's quad: over the whole window (the scissors cut it), clip x, y and the mask's u, v; the taps' step, the darkening,
+    // 1 / the counter's step
+    float* dq = vb + nverts * 4;
+    {
+        const float pu = rad / static_cast<float>(win_w), pv = rad / static_cast<float>(win_h);
+        const float corners[4][2] = {{0.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 1.0f}, {1.0f, 1.0f}};
+        for (int k = 0; k < 4; ++k) {
+            float* o = dq + 8 * k;
+            o[0] = corners[k][0] * 2.0f - 1.0f;
+            o[1] = 1.0f - corners[k][1] * 2.0f;
+            o[2] = corners[k][0];
+            o[3] = corners[k][1];
+            o[4] = pu;
+            o[5] = pv;
+            o[6] = debug == 1 ? 0.6f : debug == 4 ? -1.0f : dark;
+            o[7] = 255.0f;  // (the counts' difference x 255: whole counts)
+        }
+    }
+    GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, vb, nverts * 16u + 4u * 32u);
+    ring_gpu_invalidate();
+    struct alignas(16) VpBlock {
+        float m[16];
+    } world_b{}, ident_b{};
+    std::memcpy(world_b.m, g_gx2_view.vp, sizeof world_b.m);
+    for (int k = 0; k < 4; ++k) ident_b.m[k * 5] = 1.0f;
+    void* world_blk = block_of(&world_b, sizeof world_b, g_shvol_loc.size);
+    void* ident_blk = block_of(&ident_b, sizeof ident_b, g_shvol_loc.size);
+    if (world_blk == nullptr || ident_blk == nullptr) return false;
+
+    const auto none = static_cast<GX2ChannelMask>(0);
+    auto set_mask = [&](GX2ChannelMask m) { GX2SetTargetChannelMasks(m, none, none, none, none, none, none, none); };
+    auto full_viewport = [&] { GX2SetViewport(0.0f, 0.0f, static_cast<float>(win_w), static_cast<float>(win_h), 0.0f, 1.0f); };
+    // 1. the mask
+    GX2SetColorBuffer(&mask->cb, GX2_RENDER_TARGET_0);
+    GX2SetDepthBuffer(db);
+    GX2SetShaderMode(g_shvol.vertexShader->mode);
+    GX2SetFetchShader(&g_shvol.fetchShader);
+    GX2SetVertexShader(g_shvol.vertexShader);
+    GX2SetPixelShader(g_shvol.pixelShader);
+    GX2SetCullOnlyControl(GX2_FRONT_FACE_CCW, FALSE, FALSE);
+    GX2SetAlphaTest(FALSE, GX2_COMPARE_FUNC_ALWAYS, 0.0f);
+    GX2SetAttribBuffer(0, nverts * 16u, 16u, vb);
+    set_mask(GX2_CHANNEL_MASK_RG);
+    // the clears (both counters; RAC1_WIIU_SHADOWS_GPU_DEBUG=2: the front counter one, every pixel of the rectangles "inside") and the
+    // inside prisms' step (the front counter): no depth, the identity
+    full_viewport();
+    GX2SetRasterizerClipControlEx(TRUE, FALSE, FALSE);
+    GX2SetDepthOnlyControl(FALSE, FALSE, GX2_COMPARE_FUNC_ALWAYS);
+    GX2SetVertexUniformBlock(g_shvol_loc.loc, g_shvol_loc.size, ident_blk);
+    GX2SetColorControl(GX2_LOGIC_OP_COPY, 0, FALSE, TRUE);
+    for (const Rect& r : rects) {
+        scissor(r, grow_clear);
+        GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLE_STRIP, 4, 0, 1);
+    }
+    GX2SetBlendControl(GX2_RENDER_TARGET_0, GX2_BLEND_MODE_ONE, GX2_BLEND_MODE_ONE, GX2_BLEND_COMBINE_MODE_ADD, FALSE, GX2_BLEND_MODE_ONE, GX2_BLEND_MODE_ONE,
+                       GX2_BLEND_COMBINE_MODE_ADD);
+    GX2SetColorControl(GX2_LOGIC_OP_COPY, 1, FALSE, TRUE);
+    set_mask(GX2_CHANNEL_MASK_R);
+    if (debug == 2) {  // (testing (a): the darkening and the mask's reading alone - the rectangles darkened whole)
+        for (const Rect& r : rects) {
+            scissor(r, grow_clear);
+            GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLE_STRIP, 4, 4, 1);
+        }
+    }
+    scissor(all, grow_clear);  // (the faces: within the rectangles' union - every prism inside its caster's rectangle)
+    if (vol.inside != 0 && debug != 2) GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLE_STRIP, 4, 4, 1);
+    // the faces: the world's projection and viewport, the depth tested as the passes test it (LEQUAL, no writes); those toward the camera
+    // counted in red, the others in green - adds alone (no subtraction: a counter never under 0, the blend's rounding the same both ways)
+    GX2SetViewport(vx, vy, vw, vh, 0.0f, 1.0f);
+    GX2SetRasterizerClipControlEx(TRUE, TRUE, FALSE);
+    GX2SetDepthOnlyControl(TRUE, FALSE, GX2_COMPARE_FUNC_LEQUAL);
+    GX2SetVertexUniformBlock(g_shvol_loc.loc, g_shvol_loc.size, world_blk);
+    if (debug != 2) {
+        if (nf != 0) GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, nf, 8, 1);
+        set_mask(GX2_CHANNEL_MASK_G);
+        if (nb != 0) GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, nb, 8 + nf, 1);
+    }
+    if (debug == 3) {  // (testing (b): the prisms' faces toward the camera, white, on the frame where they pass the depth test - no mask read)
+        GX2SetColorBuffer(cb, GX2_RENDER_TARGET_0);
+        GX2SetDepthBuffer(db);
+        GX2SetColorControl(GX2_LOGIC_OP_COPY, 0, FALSE, TRUE);
+        set_mask(GX2_CHANNEL_MASK_RGB);
+        scissor(Rect{vx, vy, vx + vw, vy + vh}, 0.0f);
+        // (the faces' value 1.25 / 255 in all channels: drawn again from a copy whose value is 1, white)
+        if (auto* wv = static_cast<float*>(geo_alloc(nf * 16u)); wv != nullptr && nf != 0) {
+            for (uint32_t i = 0; i < nf; ++i) {
+                std::memcpy(wv + 4 * i, vb + 4 * (8 + i), 12);
+                wv[4 * i + 3] = 1.0f;
+            }
+            GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, wv, nf * 16u);
+            GX2SetAttribBuffer(0, nf * 16u, 16u, wv);
+            GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, nf, 0, 1);
+        }
+    }
+    // 2. the darkening: the mask's pixels out of the colour cache, the texture cache emptied over them
+    GX2Invalidate(static_cast<GX2InvalidateMode>(GX2_INVALIDATE_MODE_COLOR_BUFFER | GX2_INVALIDATE_MODE_TEXTURE), mask->cb.surface.image, mask->cb.surface.imageSize);
+    GX2SetColorBuffer(cb, GX2_RENDER_TARGET_0);
+    GX2SetDepthBuffer(db);
+    GX2SetDepthOnlyControl(FALSE, FALSE, GX2_COMPARE_FUNC_ALWAYS);
+    GX2SetRasterizerClipControlEx(TRUE, FALSE, FALSE);
+    full_viewport();
+    GX2SetShaderMode(g_shdark.vertexShader->mode);
+    GX2SetFetchShader(&g_shdark.fetchShader);
+    GX2SetVertexShader(g_shdark.vertexShader);
+    GX2SetPixelShader(g_shdark.pixelShader);
+    GX2SetPixelTexture(&mask->tex, g_shdark_tex);
+    GX2SetPixelSampler(&g_shdark_sampler, g_shdark_tex);
+    GX2SetAttribBuffer(0, 4u * 32u, 32u, dq);
+    GX2SetBlendControl(GX2_RENDER_TARGET_0, GX2_BLEND_MODE_ZERO, GX2_BLEND_MODE_SRC_COLOR, GX2_BLEND_COMBINE_MODE_ADD, FALSE, GX2_BLEND_MODE_ZERO, GX2_BLEND_MODE_ONE,
+                       GX2_BLEND_COMBINE_MODE_ADD);
+    GX2SetColorControl(GX2_LOGIC_OP_COPY, debug == 4 ? 0 : 1, FALSE, TRUE);  // (testing (c), debug 4: the raw counts written as they are)
+    set_mask(debug == 1 ? static_cast<GX2ChannelMask>(GX2_CHANNEL_MASK_G | GX2_CHANNEL_MASK_B) : GX2_CHANNEL_MASK_RGB);  // (testing: red shadows)
+    uint64_t px = 0;
+    if (debug != 3)
+        for (const Rect& r : rects) {
+            px += scissor(r, grow_dark);
+            GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLE_STRIP, 4, 0, 1);
+        }
+    // the state as the 3D's backends leave it
+    GX2SetColorControl(GX2_LOGIC_OP_COPY, 0, FALSE, TRUE);
+    set_mask(GX2_CHANNEL_MASK_RGBA);
+    GX2SetDepthOnlyControl(FALSE, FALSE, GX2_COMPARE_FUNC_ALWAYS);
+    GX2SetRasterizerClipControlEx(TRUE, TRUE, FALSE);
+    GX2SetScissor(0, 0, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
+    GX2SetShaderMode(GX2_SHADER_MODE_UNIFORM_REGISTER);
+
+    ++g_shs.drawn;
+    g_shs.casters += f->casters.size();
+    g_shs.prisms += vol.prisms;
+    g_shs.tris += nf + nb;
+    g_shs.inside += vol.inside;
+    g_shs.pixels += px;
+    g_shs.rects += rects.size();
+    g_shs.cpu_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    if (g_shs.calls % 300 == 0 && g_shs.drawn != 0) {
+        const double n = static_cast<double>(g_shs.drawn);
+        std::printf("[wiiu] mrp_world_gx2: drop shadows on the GPU, last 300 calls: %llu drawn; a call %.1f casters, %.1f prisms, %.0f faces, %.2f holding the camera, "
+                    "%.0f K pixels darkened in %.1f rectangles, CPU %.3f ms\n",
+                    static_cast<unsigned long long>(g_shs.drawn), static_cast<double>(g_shs.casters) / n, static_cast<double>(g_shs.prisms) / n,
+                    static_cast<double>(g_shs.tris) / n, static_cast<double>(g_shs.inside) / n, static_cast<double>(g_shs.pixels) / n / 1000.0, static_cast<double>(g_shs.rects) / n, g_shs.cpu_ms / n);
+        std::fflush(stdout);
+        g_shs = ShadowStats{};
+    }
+    return true;
 }
 
 }  // namespace rac1

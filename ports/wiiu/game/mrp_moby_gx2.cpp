@@ -19,9 +19,9 @@
 //   (mrp_world_gx2.cpp, drawn before into the same depth). (testing: RAC1_WIIU_MRP_PROJ=vu the game's own VU1 projection onto its
 //   4:3 frame, the depth a + b Z the host's GS depth mapping gives, the GL backend's depth clamp as the z clipping off)
 //
-// Not drawn (phase 2): the drop shadows, the modern lighting (none of its hooks), the mobys drawn into render targets (the menus'
-// item models: Key::rt), the casters' cache; the deferred mobys are drawn in the frame's order (after the others, no shadows
-// between). Host code.
+// Not drawn (phase 2): the modern lighting (none of its hooks), the mobys drawn into render targets (the menus' item models: Key::rt),
+// the casters' cache; the deferred mobys are drawn after the others - (2026-10-30) the drop shadows between them (`part`, wiiu_gfx.cpp,
+// RAC1_WIIU_SHADOWS_GPU). Host code.
 #include "mrp_moby_gx2.h"
 
 #include "gs_draw_gx2.h"
@@ -567,7 +567,7 @@ void mrp_moby_gx2_shutdown() {
     g_ready = false;
 }
 
-void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp) {
+void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp, int part) {
     if (!g_ready || cb == nullptr) return;
     // (testing, RAC1_WIIU_MRP_STAGE=<n>: how far a call goes - 0 / 1 nothing (the depth's clear is wiiu_gfx.cpp's now, before the
     // world), 2 the level's textures made, 3 its geometry copied and the state set, no draws, 4 (the default) everything)
@@ -782,6 +782,7 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
     for (const mrpm::Batch& b : batches) {
         const mrpm::Key& k = b.key;
         if (k.caster_only) continue;  // (the casters' cache: the shadow maps' only)
+        if ((part == 1 && k.deferred) || (part == 2 && !k.deferred)) continue;  // ((2026-10-30) the drop shadows between: wiiu_gfx.cpp)
         if (k.rt != 0) {              // TODO: the menus' item models (drawn into a render target the 2D samples)
             ++g_skipped_rt;
             continue;

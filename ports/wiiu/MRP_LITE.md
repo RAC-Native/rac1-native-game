@@ -105,7 +105,9 @@ the uniform-block layout, the ring) carried over.
    skinning in the vertex shader. First picture: Ratchet and the mobys on Veldin over the 2D.
 3. **tie / shrub**: the host-made path on, the template shader, the resident colours as a texture.
 4. **tfrag**: the static form, then the morph on a worker core if needed.
-5. **sky, effects (`mrp_fx`), alpha-fail passes, drop shadows** (a D24S8 buffer of our own for the stencil).
+5. **sky, effects (`mrp_fx`), alpha-fail passes, drop shadows** (a D24S8 buffer of our own for the stencil). (2026-10-30: the drop
+   shadows without a stencil - WHB's depth buffers are D32F -: the game's shapes as prisms counted in an R8 mask of their own beside the
+   frame's depth buffer, then a soft darkening; the game's shadow code skipped, RAC1_WIIU_SHADOWS_GPU - PERFORMANCE.md.)
 6. **Speed**: draw-call cost, batching, the work on cores 0 / 2.
 
 Each phase ends with shots of the console's TV (RAC1_WIIU_SHOT) compared with the PC's at the same game frames.

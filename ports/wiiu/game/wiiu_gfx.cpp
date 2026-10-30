@@ -316,8 +316,10 @@ void rac1::gx2c::note_draw_done(const char* file, int line) {
 extern "C" void GX2SampleTopGPUCycle(uint64_t* result);  // (gx2.rpl: wut has the imports, not the declarations)
 extern "C" void GX2SampleBottomGPUCycle(uint64_t* result);
 namespace {
-enum GpuMark { kGmStart, kGmClear, kGmZclear, kGmSky, kGmWorld, kGmMobys, kGmFx, kGmUpscale, kGm2d, kGmTvCopy, kGmDrc, kGmSwap, kGmN };
-const char* const kGmName[kGmN] = {"start", "clear (WHB)", "depth clear", "sky", "world", "mobys", "effects", "3D upscale", "2D", "TV copy", "GamePad", "swap"};
+// ((2026-10-30) RAC1_WIIU_SHADOWS_GPU: the drop shadows between the first chain's mobys and the deferred ones - "drop shadows", "mobys deferred")
+enum GpuMark { kGmStart, kGmClear, kGmZclear, kGmSky, kGmWorld, kGmMobys, kGmShadows, kGmMobys2, kGmFx, kGmUpscale, kGm2d, kGmTvCopy, kGmDrc, kGmSwap, kGmN };
+const char* const kGmName[kGmN] = {"start", "clear (WHB)", "depth clear", "sky", "world", "mobys", "drop shadows", "mobys deferred", "effects", "3D upscale", "2D",
+                                   "TV copy", "GamePad", "swap"};
 struct alignas(64) GpuSlot {  // (a cache line each: the GPU writes it, the CPU only reads it - no CPU line written back over it)
     uint64_t v;
     uint8_t pad[56];
@@ -991,8 +993,17 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
     }
     if (g_mobys_ready && g_menu_draw_mobys) {
         rac1::mrp_moby_gx2_debug_frame(g_2d.game_frame);
-        rac1::mrp_moby_gx2_draw(cb3, db3, vp3);
+        // ((2026-10-30) RAC1_WIIU_SHADOWS_GPU: the drop shadows drawn by the GPU between the first chain's mobys and the deferred ones,
+        // as the game chains them - the casters drawn over their own shadow)
+        const bool shadows = g_world_ready && db3 != nullptr && rac1::mrp_world_gx2_shadows_wanted();
+        rac1::mrp_moby_gx2_draw(cb3, db3, vp3, shadows ? 1 : 0);
         if (g_tm_draw) gpu_mark(kGmMobys);
+        if (shadows) {
+            const bool drew = rac1::mrp_world_gx2_draw_shadows(cb3, db3, vp3);
+            if (g_tm_draw && drew) gpu_mark(kGmShadows);
+            rac1::mrp_moby_gx2_draw(cb3, db3, vp3, 2);
+            if (g_tm_draw) gpu_mark(kGmMobys2);
+        }
         rac1::gx2_flush(1);
         dlap(kTmMobys);
     }
