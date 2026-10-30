@@ -38,3 +38,5 @@ material tfrag 0 tex 26 metal 0.51 1
 material tie 1457 tex 1 metal 0.61 1
 material tfrag 0 tex 17 metal 0.55 1
 material tfrag 0 tex 25 metal 0.53 1
+particles fireflies 1.52  0.996 0.823 0
+particles motes 0.49  0.479 0.235 0  wind -0.34 -0.16
