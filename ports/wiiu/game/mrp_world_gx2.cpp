@@ -1826,7 +1826,20 @@ struct SkyLate {
     GX2DepthBuffer* db = nullptr;
     gs::Viewport vp{};
     uint64_t late = 0, early = 0;  // (the log's: calls drawn after the tfrags, drawn first)
+    uint64_t prepass = 0, prepass_ranges = 0;  // ((2026-10-31) RAC1_WIIU_SKY_PREPASS: calls whose sky followed the depth pre-pass, its ranges)
 } g_sky_late;
+// ((2026-10-31) RAC1_WIIU_SKY_PREPASS, on by default with the late sky) when the frame's first tfrag batch mixes ranges whose pixels are all
+// opaque with others (Novalis: ~93% of its triangles opaque, interleaved by texture with the others - the late sky above then always drawn
+// first, 7.4 ms of GPU at 1080p), the depth of its opaque ranges that write every pixel of their first pass (TfragRange::opaque, not pass2)
+// is drawn first, colour off, with the very shaders of their first pass; the sky then tested against it (passing only where nothing opaque
+// lies), and the batch drawn as before (its opaque ranges again, LEQUAL at their own depth). Requires the batch's depth test LEQUAL with
+// writes (the GS's GEQUAL) and its blending the source alone for alpha >= 0x80 (none, or ALPHA_1 0x44). The same picture but where a range
+// drawn before an opaque one lies in front of it, writes its depth and has partly transparent pixels: those blended with the clear colour
+// instead of the sky (on the PS2 the sky showed through them although the terrain is behind - an ordering artifact either way)
+bool sky_prepass_on() {
+    static const bool on = std::getenv("RAC1_WIIU_SKY_PREPASS") == nullptr || std::atoi(std::getenv("RAC1_WIIU_SKY_PREPASS")) != 0;
+    return on;
+}
 void sky_draw_impl(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp, bool late);
 }  // namespace
 
@@ -2331,10 +2344,11 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
     // texture bound first; the frame's tfrag vertices absolute (base vertex 0). (testing, tfrag debug bit 4: the batch in one draw, its
     // first range's texture)
     uint32_t tdraws_this_call = 0;
-    auto draw_tfrag = [&](const mrpwb::Batch& b, size_t bi, size_t r0, bool pass2_only, auto&& set_p1_at) {
-        const bool whole = (g_tdebug & 4) != 0;
+    auto draw_tfrag = [&](const mrpwb::Batch& b, size_t bi, size_t r0, bool pass2_only, auto&& set_p1_at, bool prepass = false) {
+        const bool whole = (g_tdebug & 4) != 0 && !prepass;
         for (size_t r = r0; r < tranges.size() && tranges[r].batch == bi; ++r) {
             const mrpwb::TfragRange& R = tranges[r];
+            if (prepass && !(R.opaque && !R.pass2)) continue;  // ((2026-10-31) RAC1_WIIU_SKY_PREPASS: the opaque ranges writing every pixel)
             if (!whole && pass2_only && g_gx2_perf.p2_cull && !R.pass2) continue;
             if (!whole && !pass2_only) set_p1_at(R.pass2);
             if (g_ring_wraps != g_tcache.wraps) {  // (the blocks' ring wrapped during this call: the frame block written again)
@@ -2429,16 +2443,22 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         // ((2026-10-30) RAC1_WIIU_SKY_LATE) the sky kept back drawn before the first batch that is not a leading tfrag batch whose first
         // pass writes the source alone where it writes its depth (every range TfragRange::opaque, blended as ALPHA_1 0x44 or not at all,
         // the depth tested LEQUAL / LESS and written)
+        bool prepass = false;  // ((2026-10-31) RAC1_WIIU_SKY_PREPASS: this batch's opaque ranges' depth, then the sky, before its first pass)
         if (g_sky_late.pending) {
             const uint32_t zt = fld(b.key.test, 17, 2);
             const bool zon = db != nullptr && fld(b.key.test, 16, 1) != 0 && zt != 1 && (g_tdebug & 1) == 0 && zt != 0;
-            bool safe = b.tfrag && tfrag && zon && b.rk.zwrite != 0 && (g_tdebug & 2) == 0 && (fld(b.key.prim, 6, 1) == 0 || (b.key.alpha & 0xffu) == 0x44u);
+            const bool base = b.tfrag && tfrag && zon && b.rk.zwrite != 0 && (g_tdebug & 2) == 0 && (fld(b.key.prim, 6, 1) == 0 || (b.key.alpha & 0xffu) == 0x44u);
+            bool safe = base;
             bool any = false;
             for (size_t r = r0; safe && r < tranges.size() && tranges[r].batch == bi; ++r) {
                 safe = tranges[r].opaque;
                 any = true;
             }
-            if (!safe || !any) sky_flush();
+            if (!safe || !any) {
+                if (base && zt == 2 && sky_prepass_on() && (g_tdebug & 4) == 0)
+                    for (size_t r = r0; !prepass && r < tranges.size() && tranges[r].batch == bi; ++r) prepass = tranges[r].opaque && !tranges[r].pass2 && tranges[r].count != 0;
+                if (!prepass) sky_flush();
+            }
         }
         bind_path(cpu_batch ? 2 : b.tfrag ? 1 : 0);
         if (b.tfrag || cpu_batch) ++g_tbatches;
@@ -2502,6 +2522,23 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         GX2SetDepthOnlyControl(ztest ? TRUE : FALSE, ztest && zwrite ? TRUE : FALSE, zf);
         pb.a[0] = 1;
         set_pixel(pb);
+        if (prepass) {  // ((2026-10-31) RAC1_WIIU_SKY_PREPASS: the opaque ranges' depth alone, the sky, then this batch's state again)
+            set_mask(none);
+            GX2SetDepthOnlyControl(TRUE, TRUE, GX2_COMPARE_FUNC_LEQUAL);
+            const uint64_t before = g_tdraws;
+            draw_tfrag(b, bi, r0, false, set_p1_at, true);
+            g_sky_late.prepass_ranges += g_tdraws - before;
+            set_mask(GX2_CHANNEL_MASK_RGBA);
+            wiiu_gpu_submark(kSmTfrag1);
+            sky_drew_world = true;
+            ++g_sky_late.prepass;
+            sky_flush();
+            bind_path(1);
+            gs::set_blend_gx2(k.prim, k.alpha);
+            use_shaders(b.ate && !grey);
+            GX2SetDepthOnlyControl(ztest ? TRUE : FALSE, ztest && zwrite ? TRUE : FALSE, zf);
+            set_pixel(pb);
+        }
         if (cpu_batch) {
             GX2DrawIndexedEx(GX2_PRIMITIVE_MODE_TRIANGLES, b.count, GX2_INDEX_TYPE_U32, static_cast<const uint32_t*>(g_scache.ib) + b.first, 0, 1);
             ++g_tdraws;
@@ -2599,9 +2636,10 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         g_draws = g_batches = g_tris = g_cmds = g_blocks = g_merged_calls = 0;
         g_plan_ms = 0.0;
         if (g_sky_late.late + g_sky_late.early != 0) {
-            std::printf("[wiiu] mrp_world_gx2: late sky, last 120 calls: %llu after the tfrags' first pass, %llu first\n", static_cast<unsigned long long>(g_sky_late.late),
-                        static_cast<unsigned long long>(g_sky_late.early));
-            g_sky_late.late = g_sky_late.early = 0;
+            std::printf("[wiiu] mrp_world_gx2: late sky, last 120 calls: %llu after the tfrags' first pass, %llu first; %llu of the late ones after the depth pre-pass "
+                        "(%.1f ranges a call, RAC1_WIIU_SKY_PREPASS)\n", static_cast<unsigned long long>(g_sky_late.late), static_cast<unsigned long long>(g_sky_late.early),
+                        static_cast<unsigned long long>(g_sky_late.prepass), g_sky_late.prepass != 0 ? static_cast<double>(g_sky_late.prepass_ranges) / static_cast<double>(g_sky_late.prepass) : 0.0);
+            g_sky_late.late = g_sky_late.early = g_sky_late.prepass = g_sky_late.prepass_ranges = 0;
         }
         if (g_tvx.frames != 0) {
             std::printf("[wiiu] mrp_world_gx2: tfrag vertex shader, %llu frames: %.0f corners, %.1f KB of block, %.3f ms sending (tables, corners) a frame\n",
@@ -3041,7 +3079,18 @@ void mrp_world_gx2_draw_fx(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const g
 
     if (have_fx) {
         const uint32_t vbytes = static_cast<uint32_t>(fv.nverts * sizeof(mrpwb::GpuV));
-        if (fv.serial != g_fxcache.serial || g_gring_wraps != g_fxcache.gwraps || g_fxcache.vb == nullptr) {
+        // ((2026-10-31) RAC1_WIIU_FX_DIRECT, mrp_fx.cpp: the prepare's own vertices, 64-byte aligned and flushed by the core that wrote them -
+        // read where they are, the GPU's attribute cache invalidated; else copied into the geometry ring as before)
+        static const bool direct_env = std::getenv("RAC1_WIIU_FX_DIRECT") == nullptr || std::atoi(std::getenv("RAC1_WIIU_FX_DIRECT")) != 0;
+        const bool direct = direct_env && (reinterpret_cast<uintptr_t>(fv.verts) & 63u) == 0;
+        if (direct && (fv.serial != g_fxcache.serial || g_fxcache.vb != fv.verts)) {
+            g_fxcache = FxCache{};
+            g_fxcache.serial = fv.serial;
+            g_fxcache.gwraps = ~0ull;
+            g_fxcache.vb = const_cast<void*>(fv.verts);
+            g_fxcache.nverts = static_cast<uint32_t>(fv.nverts);
+            GX2Invalidate(GX2_INVALIDATE_MODE_ATTRIBUTE_BUFFER, g_fxcache.vb, vbytes);
+        } else if (!direct && (fv.serial != g_fxcache.serial || g_gring_wraps != g_fxcache.gwraps || g_fxcache.vb == nullptr)) {
             g_fxcache = FxCache{};
             g_fxcache.serial = fv.serial;
             if (void* p = geo_alloc(vbytes)) {

@@ -62,7 +62,24 @@
 
 #include "gx2_counters.h"  // (after every GX2 header: the frame's GX2 work counted)
 
+namespace rac1 {
+// (mrp_world_renderer.cpp, the Wii U's: the world's preparation worker's side job, 2026-10-31)
+void mrp_world_wiiu_side_post(void (*fn)(void*), void* arg);
+void mrp_world_wiiu_side_join();
+}  // namespace rac1
+
 namespace {
+// ((2026-10-31) RAC1_WIIU_FX_WORKER, on by default: the effects' prepare - mrp_fx_wiiu_prepare, every effect vertex taken back to the world
+// in doubles: ~3.5 ms of the main thread on Novalis - run by the world's preparation worker on core 0 once the chain is read (after the world
+// job's second half, RAC1_WIIU_PREP_SPLIT), beside the main thread's waits for the GPU and the swap; waited for before the effects' draws.
+// =0 on the main thread after the chain's join as before)
+bool fx_worker_on() {
+    static const bool on = std::getenv("RAC1_WIIU_FX_WORKER") == nullptr || std::atoi(std::getenv("RAC1_WIIU_FX_WORKER")) != 0;
+    return on;
+}
+float g_fx_vp[16] = {};  // (the view-projection the job unprojects with: the main thread's at the post)
+void fx_prepare_job(void*) { rac1::mrp_fx_wiiu_prepare(rac1::mrp_chain_frame(), g_fx_vp); }
+
 bool g_on = false;
 WHBGfxShaderGroup g_test{};
 GX2RBuffer g_pos{}, g_col{};
@@ -282,6 +299,7 @@ struct CycleWindow {
     uint32_t job_at[2][6] = {};
     uint32_t chain_busy[3] = {};
     uint32_t prep_core[4] = {}, tail_core[4] = {};  // (cores 0..2, other)
+    uint32_t side_core[4] = {};  // ((2026-10-31) the side job's: the effects' prepare, RAC1_WIIU_FX_WORKER)
     double cat[rac1::ctl::kCatN] = {};
     uint32_t runs[2] = {};
     struct Prog {
@@ -338,6 +356,7 @@ void rac1_wiiu_cycle() {
         if (ok[ctl::kCJoin0] && chain_busy(ts[ctl::kCJoin0])) ++w.chain_busy[2];
         if (ok[ctl::kPrep0]) ++w.prep_core[std::clamp(ctl::g_prep_core.load(std::memory_order_relaxed), 0, 3)];
         if (ok[ctl::kTail0]) ++w.tail_core[std::clamp(ctl::g_tail_core.load(std::memory_order_relaxed), 0, 3)];
+        if (ok[ctl::kSide0]) ++w.side_core[std::clamp(ctl::g_side_core.load(std::memory_order_relaxed), 0, 3)];
         // the chain reader's (joined before this call: orig_main.cpp's mrp_chain_join)
         ctl::ChainProf& cp = ctl::g_cp;
         for (int c = 0; c < ctl::kCatN; ++c) w.cat[c] += static_cast<double>(cp.acc[c]) * tick_ms;
@@ -394,6 +413,15 @@ void rac1_wiiu_cycle() {
         if (w.job_at[1][k] != 0) std::printf(" %s %u,", kJob[k], w.job_at[1][k]);
     std::printf(" the chain still reading at the drawing's join %u, the draws' %u, the chain join %u; its first half on cores 0/1/2 %u/%u/%u, its second %u/%u/%u\n",
                 w.chain_busy[0], w.chain_busy[1], w.chain_busy[2], w.prep_core[0], w.prep_core[1], w.prep_core[2], w.tail_core[0], w.tail_core[1], w.tail_core[2]);
+    {  // ((2026-10-31) the side job: the effects' prepare on the world's worker, RAC1_WIIU_FX_WORKER)
+        char s0[24], s1[24], j0[24], j1[24];
+        at(ctl::kSide0, s0, sizeof s0);
+        at(ctl::kSide1, s1, sizeof s1);
+        at(ctl::kSideJ0, j0, sizeof j0);
+        at(ctl::kSideJ1, j1, sizeof j1);
+        std::printf("[core0] the effects' prepare %s->%s on cores 0/1/2 %u/%u/%u; the main thread's wait for it before the effects' draws %s->%s\n", s0, s1, w.side_core[0],
+                    w.side_core[1], w.side_core[2], j0, j1);
+    }
     std::printf("[core0] the chain reader, ms a cycle: the walk (VIF, GIF, primitives) %.2f, VU1 programs in the effects' ranges %.2f (%.0f runs), elsewhere %.2f (%.0f runs), "
                 "their kicks %.2f, textures %.2f, GS uploads %.2f; programs by time (start, in a range, ms, runs a cycle):",
                 w.cat[ctl::kCatVif] / n, w.cat[ctl::kCatVuRange] / n, w.runs[0] / n, w.cat[ctl::kCatVuOther] / n, w.runs[1] / n, w.cat[ctl::kCatKick] / n, w.cat[ctl::kCatTex] / n,
@@ -1164,6 +1192,9 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
         rac1::gx2_flush(1);
         dlap(kTmMobys);
     }
+    if (g_tm_draw) rac1::ctl::mark(rac1::ctl::kSideJ0);
+    rac1::mrp_world_wiiu_side_join();  // ((2026-10-31) RAC1_WIIU_FX_WORKER: the effects' prepare done on core 0)
+    if (g_tm_draw) rac1::ctl::mark(rac1::ctl::kSideJ1);
     if (g_world_ready) {
         rac1::mrp_world_gx2_draw_fx(cb3, db3, vp3);
         if (g_tm_draw) gpu_mark(kGmFx);
@@ -1366,7 +1397,7 @@ void wiiu_gfx_frame() {
         rac1::ctl::mark(rac1::ctl::kCJoin1);
         rac1::mrp_world_wiiu_chain_joined();  // (its registers kept for the next frame's world)
         lap(kTmJoin);
-        rac1::mrp_fx_wiiu_prepare(rac1::mrp_chain_frame(), rac1::g_gx2_view.vp);
+        if (!fx_worker_on()) rac1::mrp_fx_wiiu_prepare(rac1::mrp_chain_frame(), rac1::g_gx2_view.vp);
         lap(kTmFxPrep);
         static const int s_2d = std::getenv("RAC1_WIIU_2D") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_2D")) : 2;
         if (!has_movie && g_m2d_ready && g_menu_draw_2d && s_2d == 2) {
@@ -1374,6 +1405,13 @@ void wiiu_gfx_frame() {
             rac1::mrp_2d_gx2_prebuild(rac1::mrp_chain_frame(), tv, g_2d.fb_w, g_2d.fb_h, frame_viewport(tv));
         }
         lap(kTm2dBuild);
+        // ((2026-10-31) RAC1_WIIU_FX_WORKER: the effects' prepare handed to the world's worker on core 0 - after the 2D's build, which reads
+        // the same chain frame -, waited for before the effects' draws (draw_frame))
+        if (fx_worker_on()) {
+            std::memcpy(g_fx_vp, rac1::g_gx2_view.vp, sizeof g_fx_vp);
+            rac1::mrp_world_wiiu_side_post(fx_prepare_job, nullptr);
+        }
+        lap(kTmFxPrep);
         rac1::ctl::mark(rac1::ctl::kFx1);
     }
     if (overlap && g_frame_ts != 0) GX2WaitTimeStamp(g_frame_ts);

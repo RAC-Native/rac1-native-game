@@ -620,7 +620,8 @@ void static_draws(SceneFrame& f, const StaticFrame& sf, const StaticLevel& sl, i
     if (tex_at < 0) f.tex.insert(f.tex.end(), sl.tex.begin(), sl.tex.end());
     f.packets.reserve(f.packets.size() + sf.draws[kind].size());
     if (f.insts.capacity() < sf.insts.size()) f.insts.reserve(sf.insts.size());
-    std::vector<int32_t> map(sf.insts.size(), -1);
+    static thread_local std::vector<int32_t> map;  // ((2026-10-31) kept between calls: no allocation a frame)
+    map.assign(sf.insts.size(), -1);
     for (const StaticDraw& d : sf.draws[kind]) {
         const StaticInst& si = sf.insts[d.inst];
         if (map[d.inst] < 0) {
@@ -642,7 +643,7 @@ void static_draws(SceneFrame& f, const StaticFrame& sf, const StaticLevel& sl, i
             }
             f.insts.push_back(x);
         }
-        ScenePacket sp;
+        ScenePacket& sp = f.packets.emplace_back();  // ((2026-10-31) made in place)
         sp.prog = kind == 0 ? Program::TieA : Program::ShrubA;
         sp.start = static_cast<uint16_t>(kind == 0 ? 0x000 : 0x063);
         sp.seq = f.draw_starts;
@@ -653,7 +654,6 @@ void static_draws(SceneFrame& f, const StaticFrame& sf, const StaticLevel& sl, i
         sp.tex = tex_base + d.pk->tex_first;
         sp.ntex = d.pk->ntex;
         sp.inst = static_cast<uint32_t>(map[d.inst]);
-        f.packets.push_back(std::move(sp));
         ++f.stat_draws[kind];
     }
 }
@@ -1905,8 +1905,20 @@ void scene_static_consts(SceneStaticConsts& k) {
 }
 
 // orig: (host) see mrp_world_wiiu.inc
+// ((2026-10-31) testing, the Wii U's RAC1_WIIU_PREP_TIME=1 - mrp_world_wiiu.inc: the parts of scene_from_static_k, ms summed)
+bool g_scene_static_time = false;
+double g_scene_static_ms[5] = {};
 bool scene_from_static_k(const StaticFrame& sf, const StaticLevel& sl, const std::array<float, 16>& a, const std::array<float, 3>& camera, const TfragLevel* tl,
                          const std::vector<std::pair<uint32_t, uint8_t>>* tdraws, const SceneStaticConsts& k, SceneFrame& f, const SceneFrame* sky) {
+    using tclock = std::chrono::steady_clock;
+    tclock::time_point tp{};
+    if (g_scene_static_time) tp = tclock::now();
+    auto part = [&](int i) {
+        if (!g_scene_static_time) return;
+        const tclock::time_point t = tclock::now();
+        g_scene_static_ms[i] += std::chrono::duration<double, std::milli>(t - tp).count();
+        tp = t;
+    };
     // (host) the level's texture table: kept from the frame before when it is this level's (the same build), else copied once - the
     // ties and shrubs both index it at 0 (it was copied for each kind on every frame: thousands of qwords)
     const uint32_t kept_gen = f.static_tex_gen, kept_n = f.static_tex_n;
@@ -1927,10 +1939,13 @@ bool scene_from_static_k(const StaticFrame& sf, const StaticLevel& sl, const std
     const size_t n_sdraws = (sf.on[0] ? sf.draws[0].size() + 1 : 0) + (sf.on[1] ? sf.draws[1].size() : 0) + 32;
     f.packets.reserve(n_sky + n_tdraws + n_sdraws);
     f.insts.reserve(sf.insts.size());
+    part(0);
     if (sky != nullptr) sky_prepend(f, *sky);
+    part(1);
     // the tfrags first (the tfrag pass's range comes before the tie and shrub passes' in the chain: the walk emits the host's tfrag
     // draws at its end, before the host's ties / shrubs)
     if (tl != nullptr && tdraws != nullptr && k.tfrag_vu) tfrag_host_draws(f, *tl, *tdraws, k.tview, k.tconsts);
+    part(2);
     const int view = static_cast<int>(f.views.size());
     f.views.push_back(view_of_ee(a.data(), camera.data()));
     // the tie A alpha-test state packet the walker emits before the host's ties when the program's state (VU1 0x3cb y) is not their 0:
@@ -1939,9 +1954,11 @@ bool scene_from_static_k(const StaticFrame& sf, const StaticLevel& sl, const std
     // without the walker: on the PC it was not 0 (0xffffffff) at the host's ties, so the packet is always sent
     if (sf.on[0] && !sf.draws[0].empty()) state_packet(f, k.tie_tag, k.tie_test);
     if (sf.on[0]) static_draws(f, sf, sl, 0, view, nullptr, f.static_tex_base);
+    part(3);
     // the shrub A fog constants (vf30 z / w, vf29 x / y): the floats the shrub pass's constants UNPACK (0x6c030000: the overlay's
     // 0x1c2ac0.. to VU1 qwords 0..2) leave there (Veldin: -0.0267885, 254.999, 53.5499, 255)
     if (sf.on[1]) static_draws(f, sf, sl, 1, view, k.shrub_fog, f.static_tex_base);
+    part(4);
     // (not made here: the shrub far variants' quads - phase 5 with the sky)
     f.ok = true;
     return true;

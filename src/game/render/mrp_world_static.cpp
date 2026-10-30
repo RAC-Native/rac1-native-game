@@ -574,7 +574,10 @@ void static_frame_build_at(const StaticLevel& L, const ResidentColours& rc, Stat
             const uint32_t sway = (flags & 6) >> 1;
             const float d16[3] = {scaled(mr.f(c.rec + 0x10), s), scaled(mr.f(c.rec + 0x14), s), scaled(mr.f(c.rec + 0x18), s)};
             const uint32_t bounds = mr.u(c.rec + 0x28), n = mr.h(c.rec + 0x26);
-            std::vector<uint32_t> lists[3];
+            // ((2026-10-31) the lists kept between classes and frames - no allocation per class: the Wii U's malloc is shared with the
+            // game thread - one set per thread, the frame's builds of other threads apart)
+            static thread_local std::vector<uint32_t> lists[3];
+            for (auto& l : lists) l.clear();
             for (uint32_t i = 0; i < n; ++i) {
                 const uint32_t b = bounds + 0x20 * i;
                 ++f.tested[0];
@@ -630,9 +633,14 @@ void static_frame_build_at(const StaticLevel& L, const ResidentColours& rc, Stat
     // far variant's switch (units), +0x18 the instance's index), the fade near the draw distance (alpha = min((dist - z) 4096, 0x8000)
     // >> 8); the opaque ones per class, the faded ones after all the classes
     if (f.on[1]) {
-        std::vector<std::vector<uint32_t>> faded(L.shrubs.size());
+        // ((2026-10-31) kept between frames, one set per thread: no allocation per class and frame)
+        static thread_local std::vector<std::vector<uint32_t>> faded;
+        faded.resize(L.shrubs.size());
+        for (auto& v : faded) v.clear();
         // (per class its far variants' entries in the pass's order: the instance's index, the variant's alpha; SPR 0x2000 / 0x3600)
-        std::vector<std::vector<std::pair<uint32_t, uint32_t>>> variants(L.shrubs.size());
+        static thread_local std::vector<std::vector<std::pair<uint32_t, uint32_t>>> variants;
+        variants.resize(L.shrubs.size());
+        for (auto& v : variants) v.clear();
         for (const StaticShrubClass& c : L.shrubs) {
             if (c.packets.empty()) continue;
             const uint32_t flags = mr.h(c.rec + 0x14);
@@ -640,7 +648,8 @@ void static_frame_build_at(const StaticLevel& L, const ResidentColours& rc, Stat
             const uint32_t sway = (flags & 6) >> 1;
             const bool variant = mr.u(c.rec + 0x1c) != 0 && s != 0.0f;  // (at the slider's max the far variant is off)
             const uint32_t bounds = mr.u(c.rec + 0x18), n = mr.h(c.rec + 0x16);
-            std::vector<uint32_t> opaque;
+            static thread_local std::vector<uint32_t> opaque;
+            opaque.clear();
             for (uint32_t i = 0; i < n; ++i) {
                 const uint32_t b = bounds + 0x20 * i;
                 ++f.tested[1];

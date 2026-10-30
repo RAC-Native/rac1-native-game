@@ -1,6 +1,6 @@
 # Stato Lavori — Ottimizzazione e Riscrittura Nativa Wii U (`port/wiiu`)
 
-Ultimo aggiornamento: **31 Ottobre 2026 (il lettore della catena su Core 0: lookup dei port VU1, regole VU sulla FPU, batch del programma 7 dal loro input)**
+Ultimo aggiornamento: **31 Ottobre 2026 (effetti su Core 0, cielo dopo un pre-pass di profondità, memo dei pacchetti tie/shrub)**
 
 Questo documento traccia in modo completo **cosa è stato fatto**, **i risultati misurati sulla console Wii U reale (`192.168.0.16`)**, **cosa stiamo facendo ora**, **cosa manca** e **le note tecniche / trappole da evitare** per poter riprendere il lavoro in qualsiasi momento.
 
@@ -129,6 +129,13 @@ Tutti i test sono eseguiti con `ports/wiiu/tools/bench.sh` (`explore` input dete
     - La riga `[core0]` del lettore termina con `| a cycle: ports' lookups ..., textures from the memo ..., program 7's kicks without their vertices ...`.
 23. **Esattezza (PC, MRP headless):** `RAC1_MRP_CHAIN_HASH=<file>` (hash di tutto ciò che la lettura produce) identico con tutti gli switch spenti e accesi su Novalis explore 1500 frame (RAMHASH identico), Novalis forward, Veldin forward / explore, Kerwan forward; `RAC1_VU1_FAST=2`: 0 start diversi (programma 7: 60.000+ start su Novalis, 4.5 M qword); `RAC1_VU1_PORT_CHECK=1` (nuovo: port contro l'interprete VU): 0 differenze salvo 11 start 0xe nel primo frame dopo il boot (uguali col port esatto: preesistenti); `RAC1_MRP_FX_WIIU_CHECK=1` (nuovo): i vertici del programma 7 di `mrp_fx_wiiu_prepare` uguali a quelli di `build_vu7` del PC (Novalis 1500 frame, livelli 0 e 2–18). `pc_check.sh` e `gt_check.sh` verdi.
 24. **Atteso su console:** lettore ~18 → ~7–9 ms (lookup −3..−5, programma 7 non più in primitive + kick −3..−4, regole FPU −1.5..−3), chain join verso 0; anche l'`effects' prepare` del main thread dovrebbe scendere. Build: `build-wiiu-ch/rac1_wiiu.rpx`.
+
+### Effetti su Core 0, cielo dopo il pre-pass, memo dei pacchetti (31 Ottobre 2026 — da misurare su console; dettagli in `PERFORMANCE.md`)
+25. **`RAC1_WIIU_FX_WORKER=1`** (`wiiu_gfx.cpp`, `mrp_world_renderer.cpp` `mrp_world_wiiu_side_post/join`): `mrp_fx_wiiu_prepare` passato al worker del mondo su Core 0 dopo il build 2D, atteso prima dei draw degli effetti. Atteso: main thread −3.5 ms. Nuova riga `[core0] the effects' prepare ...`.
+26. **`RAC1_WIIU_FX_DIRECT=1`** (`mrp_fx.cpp`, `mrp_world_gx2.cpp`): vertici degli effetti in due vettori allineati a 64 byte alternati, letti dalla GPU dove sono (niente copia nel ring).
+27. **`RAC1_WIIU_SKY_PREPASS=1`** (`mrp_world_gx2.cpp`): su Novalis il cielo tardivo non si applicava mai ("0 after the tfrags' first pass, 120 first": il batch tfrag mescola range opachi e no). Ora la profondità dei range opachi del primo batch tfrag prima, poi il cielo testato contro di essa, poi il batch come prima. Unica differenza possibile: bordi semitrasparenti di range disegnati prima e davanti a un range opaco mostrano il colore di clear invece del cielo — **da guardare** (recinzioni/vegetazione di Novalis sul terreno).
+28. **`RAC1_MRPW_PKT_MEMO`** (Wii U 1, PC 0; `=2` controllo): `gpu_packet` riusa le run del pacchetto precedente identico (registri letti invariati, nessuna epoch nuova) + `vp * V` per vista. PC: 0 differenze su Novalis/Veldin/Kerwan, ~56–64% dei pacchetti riusati, shot MRP_LOD identici.
+29. **Prima metà:** contenitori riusati (`static_frame_build`, `static_draws`), pacchetti costruiti sul posto; `RAC1_WIIU_PREP_TIME=1` stampa ora le parti di `scene_from_static_k` con i conteggi (la vecchia etichetta "the sky's run" era `scene_from_static_k`). `pc_check.sh` e `gt_check.sh` verdi. Build: `build-wiiu-mt/rac1_wiiu.rpx`, nessuna `.gsh` nuova.
 
 ## 3. Cosa Manca (Prossimi Passi in Ordine di Impatto)
 

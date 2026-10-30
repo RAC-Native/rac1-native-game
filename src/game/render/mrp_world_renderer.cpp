@@ -1627,8 +1627,10 @@ struct GsFront {
     explicit GsFront(Frame& f) : F(f), S(f.scene) {}
 
     uint64_t prim() const { return fld(regs[0x1a], 0, 1) != 0 ? regs[0x00] : ((regs[0x1b] & ~7ull) | (regs[0x00] & 7)); }
+    uint64_t gen = 0;  // ((2026-10-31) a register's value changed by write(): gpu_packet's memo)
     void write(uint32_t reg, uint64_t v) {
         reg &= 0x7f;
+        if (regs[reg] != v) ++gen;
         regs[reg] = v;
         if (reg == 0x00) {
             queue.clear();
@@ -2150,14 +2152,65 @@ bool draw_opaque(const Key& k, uint32_t fl, bool vert_opq) {
     return tex_opq && vert_opq;
 }
 
+// ((2026-10-31) RAC1_MRPW_PKT_MEMO: 1 the Wii U's default, 0 the PC's; =2 testing, every replay checked against the full replay) The host's
+// ties / shrubs come packet by packet, each packet for every instance of its class at that LOD in a row (static_frame_build's order): the
+// same template, texture prims and incoming GS state, so the same runs, keys, units and batch keys - only the instance (and the pass 2 flag
+// its vertices' alpha gives) differs. A packet's replay whose GS registers came out as they went in (no value changed: GsFront::gen) and
+// whose texture units added none to the frame's epoch is kept; the next packet with the same inputs - template, texture prims, table, the
+// emit flags, the registers untouched since (gen), the epochs as they were - appends the kept runs' draw records and commands, its batches
+// decided as the full replay decides them, without the A+D writes, key_now, the units' search and batch_key of every run. The same output by
+// construction (the replay is a function of those inputs). Also the world's view-projection times the packet's view kept per view
+// (vp * V, the product the instance's clip starts with: the same doubles).
+struct PktMemo {
+    bool valid = false;
+    const void* key = nullptr;
+    const Tpl* t = nullptr;
+    int32_t table = 0;
+    uint32_t tex = 0, ntex = 0;
+    bool shadow = false, view_only = false;
+    uint16_t views = 0;
+    uint64_t gen = 0;
+    size_t epochs = 0, epoch_back = 0;
+    uint64_t tex_ok = 0, tex_missing = 0;  // (key_now's counts over the packet, added again by a replay)
+    struct Run {
+        Key k;  // (word / layer cleared: the batch's)
+        RKey rk;
+        uint32_t word = 0, layer = 0, fl = 0, fogcol = 0, unit = 0, count = 0, first = 0;
+        int epoch = -1;
+        bool p2[2] = {};  // (pass 2 for the instance's vertices not opaque / opaque)
+        bool ate = false;
+    };
+    std::vector<Run> runs;
+    // the view-projection times a view (vp * V), for one build
+    int32_t vv_view = -2;
+    glm::dmat4 vv{1.0};
+};
+PktMemo g_pkt_memo;
+int pkt_memo_mode() {
+#if defined(__WIIU__)
+    static const int m = std::getenv("RAC1_MRPW_PKT_MEMO") != nullptr ? std::atoi(std::getenv("RAC1_MRPW_PKT_MEMO")) : 1;
+#else
+    static const int m = std::getenv("RAC1_MRPW_PKT_MEMO") != nullptr ? std::atoi(std::getenv("RAC1_MRPW_PKT_MEMO")) : 0;
+#endif
+    return m;
+}
+uint64_t g_memo_hits = 0, g_memo_packets = 0, g_memo_checked = 0, g_memo_bad = 0;
+
 // orig: (host) a GPU path packet (tie A / shrub A): its instance record, its template's runs as draw commands with the GS state
 // at each (its texture prims' A+D from the instance's VU1 memory applied to the registers as the GS would)
 void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp) {
     const Level& L = g_level;
     const void* key = p.tie != nullptr ? static_cast<const void*>(p.tie) : static_cast<const void*>(p.shrub);
-    const auto it = L.tpl.find(key);
-    if (it == L.tpl.end() || p.inst >= F.scene.insts.size()) return;
-    const Tpl& t = it->second;
+    const int memo_mode = pkt_memo_mode();
+    PktMemo& M = g_pkt_memo;
+    const Tpl* tp = nullptr;
+    if (memo_mode != 0 && M.valid && M.key == key) tp = M.t;
+    else {
+        const auto it = L.tpl.find(key);
+        if (it != L.tpl.end()) tp = &it->second;
+    }
+    if (tp == nullptr || p.inst >= F.scene.insts.size()) return;
+    const Tpl& t = *tp;
     const SceneInst& si = F.scene.insts[p.inst];
     const bool vert_opq = p.shrub != nullptr ? si.alpha >= 0x80u : (si.resident && tie_slot_opaque(si.colour_first));
     // (an instance drawn by several packets - the host's ties / shrubs, each packet of its LOD - made once)
@@ -2170,9 +2223,20 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
         R[r] = glm::dvec4(si.rows[r][0], si.rows[r][1], si.rows[r][2], si.rows[r][3]);
         for (int l = 0; l < 4; ++l) ig.rows[r * 4 + l] = si.rows[r][l];
     }
+    glm::mat4 clip;
+    if (memo_mode != 0) {  // (vp * V once per view: vp * V * R is (vp * V) * R)
+        if (M.vv_view != p.view) {
+            glm::dmat4 V(0.0);
+            if (p.view >= 0 && static_cast<size_t>(p.view) < F.scene.views.size()) std::memcpy(&V[0][0], F.scene.views[static_cast<size_t>(p.view)].data(), sizeof(double) * 16);
+            M.vv = vp * V;
+            M.vv_view = p.view;
+        }
+        clip = glm::mat4(M.vv * R);
+    } else {
     glm::dmat4 V(0.0);
     if (p.view >= 0 && static_cast<size_t>(p.view) < F.scene.views.size()) std::memcpy(&V[0][0], F.scene.views[static_cast<size_t>(p.view)].data(), sizeof(double) * 16);
-    const glm::mat4 clip = glm::mat4(vp * V * R);
+    clip = glm::mat4(vp * V * R);
+    }
     std::memcpy(ig.clip, glm::value_ptr(clip), sizeof ig.clip);
     std::memcpy(ig.morph, si.morph, sizeof ig.morph);
     ig.info[0] = si.colour_first;
@@ -2183,6 +2247,83 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
     F.inst_of[p.inst] = inst;
     F.insts.push_back(ig);
     }
+    // ((2026-10-31) RAC1_MRPW_PKT_MEMO) the kept runs appended, when this packet's inputs are the kept one's
+    const bool memo_hit = memo_mode != 0 && M.valid && M.key == key && M.table == p.table && M.tex == p.tex && M.ntex == p.ntex && M.shadow == g_shadow_emit &&
+                          M.views == (g_shadow_emit ? g_shadow_emit_views : 0) && M.view_only == g_view_only_emit && M.gen == g.gen && M.epochs == F.epochs.size() &&
+                          M.epoch_back == (F.epochs.empty() ? 0 : F.epochs.back().size());
+    ++g_memo_packets;
+    auto replay = [&] {
+        for (const PktMemo::Run& r : M.runs) {
+            const uint32_t cmd = static_cast<uint32_t>(F.cmds.size() / 8);
+            F.cmds.insert(F.cmds.end(), {inst, r.word, r.layer, r.fl, r.fogcol, 0u, r.p2[vert_opq ? 1 : 0] ? 1u : 0u, 0u});
+            if (F.batches.empty() || F.batches.back().tfrag || !(F.batches.back().rk == r.rk) || (r.rk.pass2 != 0 && !F.merge_afail && !(F.batches.back().key == r.k)) ||
+                (r.unit != 0 && F.batches.back().epoch >= 0 && F.batches.back().epoch != r.epoch)) {
+                F.batches.push_back(Batch{r.k, true, false, static_cast<uint32_t>(F.draws.size()), 0});
+                F.batches.back().rk = r.rk;
+            }
+            if (r.unit != 0) F.batches.back().epoch = r.epoch;
+            F.draws.push_back(DrawCmd{r.count, 1, r.first, static_cast<int32_t>(t.first_vertex), cmd});
+            if (r.ate) F.batches.back().ate = true;
+            ++F.batches.back().count;
+            g_st.triangles += r.count / 3;
+        }
+        g_st.tex_ok += M.tex_ok;
+        g_st.tex_missing += M.tex_missing;
+        g.queue.clear();
+        ++g_st.gpu_packets;
+    };
+    // (=2: the replay made, its output kept aside and taken back, then the full replay compared with it)
+    std::vector<uint32_t> chk_cmds;
+    std::vector<DrawCmd> chk_draws;
+    std::vector<Batch> chk_batches;
+    size_t chk_c = 0, chk_d = 0, chk_b = 0;
+    bool chk = false;
+    if (memo_hit) {
+        ++g_memo_hits;
+        if (memo_mode != 2) {
+            replay();
+            return;
+        }
+        chk = true;
+        chk_c = F.cmds.size();
+        chk_d = F.draws.size();
+        chk_b = F.batches.size();
+        const Batch back = F.batches.empty() ? Batch{} : F.batches.back();
+        const uint64_t tri = g_st.triangles, tok = g_st.tex_ok, tmiss = g_st.tex_missing, gp = g_st.gpu_packets;
+        replay();
+        chk_cmds.assign(F.cmds.begin() + static_cast<std::ptrdiff_t>(chk_c), F.cmds.end());
+        chk_draws.assign(F.draws.begin() + static_cast<std::ptrdiff_t>(chk_d), F.draws.end());
+        chk_batches.assign(F.batches.begin() + static_cast<std::ptrdiff_t>(chk_b == 0 ? 0 : chk_b - 1), F.batches.end());
+        F.cmds.resize(chk_c);
+        F.draws.resize(chk_d);
+        F.batches.resize(chk_b);
+        if (chk_b != 0) F.batches.back() = back;
+        g_st.triangles = tri;
+        g_st.tex_ok = tok;
+        g_st.tex_missing = tmiss;
+        g_st.gpu_packets = gp;
+    }
+    // (the full replay, kept for the next packet when the registers its keys read before writing them come out as they went in - the next
+    // same packet, starting from the registers this one leaves, then makes the same runs - and it opened no epoch)
+    const uint64_t tok0 = g_st.tex_ok, tmiss0 = g_st.tex_missing;
+    const size_t ep0 = F.epochs.size();
+    const bool record = memo_mode != 0;
+    uint64_t wmask[2] = {}, rmask[2] = {};  // (the registers written by this packet / read by its keys before it wrote them)
+    std::pair<uint8_t, uint64_t> reads[24];
+    int nreads = 0;
+    bool reads_over = false;
+    auto note_write = [&](uint32_t r) { wmask[(r >> 6) & 1] |= 1ull << (r & 63); };
+    auto note_read = [&](uint32_t r) {
+        const uint64_t bit = 1ull << (r & 63);
+        if ((wmask[(r >> 6) & 1] & bit) != 0 || (rmask[(r >> 6) & 1] & bit) != 0) return;
+        rmask[(r >> 6) & 1] |= bit;
+        if (nreads == 24) reads_over = true;
+        else reads[nreads++] = {static_cast<uint8_t>(r), g.regs[r]};
+    };
+    if (record) {
+        M.valid = false;
+        M.runs.clear();
+    }
     const uint32_t n = p.tie != nullptr ? 5u : 4u;  // (the A+D qwords of a tie texture slot / a shrub prim)
     auto apply = [&](int slot) {
         for (uint32_t r = 0; r < n; ++r) {
@@ -2190,6 +2331,7 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
             if (at >= p.ntex) break;
             const auto& q = F.scene.tex[p.tex + at];
             g.write(q[2] & 0xff, static_cast<uint64_t>(q[0]) | static_cast<uint64_t>(q[1]) << 32);
+            if (record) note_write(q[2] & 0x7f);
         }
     };
     int applied = -1;
@@ -2198,7 +2340,24 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
             apply(run.slot);
             applied = run.slot;
         }
+        if (g.regs[0] != run.prim) ++g.gen;
         g.regs[0] = run.prim;
+        if (record) {  // (what key_now reads: GsFront::prim, the context's TEST / ALPHA / ZBUF, FOGCOL; textured: TEX0 / TEX1 / CLAMP)
+            note_write(0);
+            note_read(0x1a);
+            note_read(0x1b);
+            const uint64_t pr = g.prim();
+            const uint32_t ctx = fld(pr, 9, 1);
+            note_read(0x47 + ctx);
+            note_read(0x42 + ctx);
+            note_read(0x4e + ctx);
+            note_read(0x3d);
+            if (fld(pr, 4, 1) != 0) {
+                note_read(0x06 + ctx);
+                note_read(0x14 + ctx);
+                note_read(0x08 + ctx);
+            }
+        }
         Key k = g.key_now(p.table);
         const uint32_t cmd = static_cast<uint32_t>(F.cmds.size() / 8);
         // (the texture's unit in the frame's current epoch; a new epoch, so a new batch, when the 15 units are taken)
@@ -2232,14 +2391,72 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
         }
         if (unit != 0) F.batches.back().epoch = epoch;
         F.draws.push_back(DrawCmd{run.count, 1, t.first_index + run.first, static_cast<int32_t>(t.first_vertex), cmd});
-        if (fld(k.test, 0, 1) != 0 && fld(k.test, 1, 3) != 1) F.batches.back().ate = true;  // (ATST ALWAYS: no test)
+        const bool ate = fld(k.test, 0, 1) != 0 && fld(k.test, 1, 3) != 1;
+        if (ate) F.batches.back().ate = true;  // (ATST ALWAYS: no test)
         ++F.batches.back().count;
         g_st.triangles += run.count / 3;
+        if (record) {
+            PktMemo::Run r;
+            r.k = k;
+            r.rk = rk;
+            r.word = F.cmds[8 * static_cast<size_t>(cmd) + 1];
+            r.layer = F.cmds[8 * static_cast<size_t>(cmd) + 2];
+            r.fl = fl;
+            r.fogcol = k.fogcol;
+            r.unit = unit;
+            r.count = run.count;
+            r.first = t.first_index + run.first;
+            r.epoch = epoch;
+            Key kf = k;  // (pass 2 for either kind of instance: draw_needs_pass2 reads the texture's word, cleared in k)
+            kf.word = r.word;
+            r.p2[0] = draw_needs_pass2(kf, fl, false);
+            r.p2[1] = draw_needs_pass2(kf, fl, true);
+            r.ate = ate;
+            M.runs.push_back(r);
+        }
     }
     if (t.last_slot >= 0 && t.last_slot != applied) apply(t.last_slot);
-    if (t.has_prim) g.regs[0] = t.last_prim;
+    if (t.has_prim) {
+        if (g.regs[0] != t.last_prim) ++g.gen;
+        g.regs[0] = t.last_prim;
+    }
     g.queue.clear();
     ++g_st.gpu_packets;
+    if (record) {  // (kept when the registers it read before writing them are as they were - the next same packet's runs are these - and no epoch opened)
+        bool fixed = !reads_over && F.epochs.size() == ep0 && p.table >= 1 && p.table <= 2;
+        for (int i = 0; fixed && i < nreads; ++i) fixed = g.regs[reads[i].first] == reads[i].second;
+        M.valid = fixed;
+        M.key = key;
+        M.t = &t;
+        M.table = p.table;
+        M.tex = p.tex;
+        M.ntex = p.ntex;
+        M.shadow = g_shadow_emit;
+        M.views = g_shadow_emit ? g_shadow_emit_views : 0;
+        M.view_only = g_view_only_emit;
+        M.gen = g.gen;
+        M.epochs = F.epochs.size();
+        M.epoch_back = F.epochs.empty() ? 0 : F.epochs.back().size();
+        M.tex_ok = g_st.tex_ok - tok0;
+        M.tex_missing = g_st.tex_missing - tmiss0;
+    }
+    if (chk) {  // (=2: the replay's output against this one's)
+        ++g_memo_checked;
+        bool same = chk_cmds.size() == F.cmds.size() - chk_c && std::equal(chk_cmds.begin(), chk_cmds.end(), F.cmds.begin() + static_cast<std::ptrdiff_t>(chk_c));
+        same = same && chk_draws.size() == F.draws.size() - chk_d;
+        for (size_t i = 0; same && i < chk_draws.size(); ++i) {
+            const DrawCmd &a = chk_draws[i], &b = F.draws[chk_d + i];
+            same = a.count == b.count && a.instances == b.instances && a.first_index == b.first_index && a.base_vertex == b.base_vertex && a.base_instance == b.base_instance;
+        }
+        const size_t b0 = chk_b == 0 ? 0 : chk_b - 1;
+        same = same && chk_batches.size() == F.batches.size() - b0;
+        for (size_t i = 0; same && i < chk_batches.size(); ++i) {
+            const Batch &a = chk_batches[i], &b = F.batches[b0 + i];
+            same = a.key == b.key && a.gpu == b.gpu && a.sky == b.sky && a.first == b.first && a.count == b.count && a.rk == b.rk && a.epoch == b.epoch && a.tfrag == b.tfrag &&
+                   a.ate == b.ate && a.host == b.host;
+        }
+        if (!same && g_memo_bad++ < 5) std::printf("[mrpw] packet memo: a replay differs from the full one (packet %p, instance %u)\n", key, inst);
+    }
 }
 
 // orig: (host) a GPU path tfrag draw (mrp_tfrag_gpu.h): its vertices / triangles laid out in the compute program's buffers;
@@ -2395,6 +2612,8 @@ void build_triangles(Frame& F) {
         F.merge_afail = env != nullptr ? std::atoi(env) != 0 : (F.scene.stat_draws[0] + F.scene.stat_draws[1]) != 0;
     }
     GsFront g(F);
+    g_pkt_memo.valid = false;  // ((2026-10-31) RAC1_MRPW_PKT_MEMO: nothing kept from another build - its view-projection, its templates)
+    g_pkt_memo.vv_view = -2;
     // the GS's registers as the replica has them before this frame's chain (the frame packets set them again: the scene's
     // DIRECT writes from the chain's start)
     for (uint32_t r = 0; r < 128; ++r) g.regs[r] = F.gs_regs[r];  // (taken before the frame's chain: mrp_world_begin_frame_async)
@@ -2418,6 +2637,8 @@ void build_triangles(Frame& F) {
             ++ri;
         }
         const ScenePacket& p = F.scene.packets[pi];
+        // ((2026-10-31) RAC1_MRPW_PKT_MEMO: a packet not the GPU path's may set the registers otherwise - the kept packet dropped)
+        if (p.sky || p.gif || p.tfrag >= 0 || (p.tie == nullptr && p.shrub == nullptr) || (no_gpu && !p.k.q.empty())) g_pkt_memo.valid = false;
         // with the lighting's casters made (g_shframe), the frame's shrubs - their far variants camera-facing quads, the
         // faded ones without depth writes - are the view's only: the casters' full shrub models cast instead
         // ... and so are the clipping programs' draws (tie B, tfrag B: their triangles cut to the view): the casters' whole instances cast instead
@@ -2489,6 +2710,7 @@ void build_triangles(Frame& F) {
         for (int kind = 0; kind < 2; ++kind) {
             const int from = cast_have[kind] ? kind : 1 - kind;
             g.regs = cast_regs[from];
+            g_pkt_memo.valid = false;  // (the registers set again)
             g.queue.clear();
             for (const StaticDraw& d : sf.draws[kind]) {
                 ScenePacket sp;
@@ -5362,13 +5584,20 @@ bool wiiu_prep_head() {
     part(6);
     const bool sky_ok = in.sky;
     part(7);
+    g_scene_static_time = part_time;
     const bool ok = scene_from_static_k(g_sframe, g_slevel, in.a, in.cam, in.tfrag ? &g_tlevel : nullptr, in.tfrag ? &g_tdecide : nullptr, in.k, F.scene, sky_ok ? &g_sky_cap : nullptr);
     part(8);
     if (part_time && ++g_part_wn == 120) {
-        std::printf("[mrpw] the prepare on the worker, ms a call: the ties' / shrubs' frame %.2f, the tfrags' decisions %.2f, the scene %.2f, the sky's run %.2f\n",
-                    g_part_ms[5] / 120, g_part_ms[6] / 120, g_part_ms[7] / 120, g_part_ms[8] / 120);
+        // ((2026-10-31) the labels put right - "the scene" was the vis marks' copy, "the sky's run" scene_from_static_k -, its parts added)
+        const double* q = g_scene_static_ms;
+        std::printf("[mrpw] the prepare's first half, ms a call: the ties' / shrubs' frame %.2f, the tfrags' decisions %.2f, the scene (scene_from_static_k) %.2f: its reset "
+                    "and texture table %.2f, the sky's packets %.2f, the tfrags' draws %.2f, the ties' %.2f, the shrubs' %.2f; %zu instances, %zu + %zu tie / shrub draws, %zu tfrag "
+                    "draws, %zu packets\n",
+                    g_part_ms[5] / 120, g_part_ms[6] / 120, g_part_ms[8] / 120, q[0] / 120, q[1] / 120, q[2] / 120, q[3] / 120, q[4] / 120, g_sframe.insts.size(), g_sframe.draws[0].size(),
+                    g_sframe.draws[1].size(), g_tdecide.size(), F.scene.packets.size());
         g_part_wn = 0;
         for (int k = 5; k < 9; ++k) g_part_ms[k] = 0.0;
+        for (double& v : g_scene_static_ms) v = 0.0;
     }
     g_ms_head += now_ms() - t0;
     ctl::mark(ctl::kHead1);
@@ -5419,6 +5648,23 @@ bool prep_split_on() {
 }
 // the split's second half: 0 none, 1 handed to the worker (not started), 2 taken (by the worker or the main thread)
 std::atomic<int> g_tail_state{0};
+// ((2026-10-31) mrp_world_wiiu_side_post: a host job - the effects' prepare, wiiu_gfx.cpp - run by the worker once it is free, after the
+// world's second half when that one is its; never waited for by the world's joins (w.busy is the world job's alone): 0 none, 1 posted (not
+// started), 2 taken (by the worker or the main thread), 3 done)
+std::atomic<int> g_side_state{0};
+void (*g_side_fn)(void*) = nullptr;
+void* g_side_arg = nullptr;
+double g_side_fpscr = 0.0;
+bool side_take() {
+    int want = 1;
+    return g_side_state.compare_exchange_strong(want, 2, std::memory_order_acq_rel);
+}
+void side_run() {
+    ctl::mark(ctl::kSide0);
+    ctl::g_side_core.store(ctl::core_id(), std::memory_order_relaxed);
+    g_side_fn(g_side_arg);
+    ctl::mark(ctl::kSide1);
+}
 bool tail_take() {
     int want = 1;
     return g_tail_state.compare_exchange_strong(want, 2, std::memory_order_acq_rel);
@@ -5468,8 +5714,20 @@ void ensure_prep_worker_started(PrepWorker& w) {
         std::printf("[mrpw] the world's preparation worker on core %u (RAC1_WIIU_PREP_CORE %d)\n", OSGetCoreId(), core);
         std::unique_lock<std::mutex> l(w.m);
         for (;;) {
-            w.cv.wait(l, [&w] { return w.job || w.quit; });
+            w.cv.wait(l, [&w] { return w.job || w.quit || g_side_state.load(std::memory_order_acquire) == 1; });
             if (w.quit) return;
+            if (!w.job) {  // ((2026-10-31) a side job alone: mrp_world_wiiu_side_post)
+                if (side_take()) {
+                    const double fp = g_side_fpscr;
+                    l.unlock();
+                    __asm__ volatile("mtfsf 0xff, %0" : : "f"(fp));
+                    side_run();
+                    l.lock();
+                    g_side_state.store(3, std::memory_order_release);
+                    w.cv.notify_all();
+                }
+                continue;
+            }
             const bool tf_only = w.tfrag_only, tail_only = w.tail_only;
             w.job = false;
             w.tfrag_only = false;
@@ -5630,6 +5888,36 @@ void mrp_world_wiiu_tfrag_join(double* out_ms) {
     g_st.tc_adc += g_tfrag_adc_acc.load(std::memory_order_relaxed);
     g_st.tc_ms += ms;
     g_st.tc_max = std::max(g_st.tc_max, ms);
+}
+
+// orig: (host) ((2026-10-31) RAC1_WIIU_FX_WORKER, wiiu_gfx.cpp; declared where used) the worker's side job: `fn(arg)` taken by the world's
+// preparation worker (core 0) as soon as it is free - after the world's second half when that one is its - with the posting thread's
+// float mode; mrp_world_wiiu_side_join before what it makes is read. One at a time (a second post joins the first)
+void mrp_world_wiiu_side_join();
+void mrp_world_wiiu_side_post(void (*fn)(void*), void* arg) {
+    mrp_world_wiiu_side_join();
+    PrepWorker& w = g_prep;
+    std::lock_guard<std::mutex> lk(w.m);
+    ensure_prep_worker_started(w);
+    __asm__ volatile("mffs %0" : "=f"(g_side_fpscr));
+    g_side_fn = fn;
+    g_side_arg = arg;
+    g_side_state.store(1, std::memory_order_release);
+    w.cv.notify_all();
+}
+// orig: (host) the side job done: run here if the worker has not taken it, else waited for
+void mrp_world_wiiu_side_join() {
+    const int s = g_side_state.load(std::memory_order_acquire);
+    if (s == 0) return;
+    if (s == 1 && side_take()) {
+        side_run();
+        g_side_state.store(0, std::memory_order_release);
+        return;
+    }
+    PrepWorker& w = g_prep;
+    std::unique_lock<std::mutex> lk(w.m);
+    w.cv.wait(lk, [] { return g_side_state.load(std::memory_order_acquire) == 3; });
+    g_side_state.store(0, std::memory_order_release);
 }
 
 // orig: (host) see mrp_world_renderer.h
@@ -6339,6 +6627,10 @@ void mrp_world_report() {
                 static_cast<unsigned long long>(g_rcols.words_uploaded));
     std::printf("[mrpw] static ties / shrubs: host draws %llu / %llu, shrub far variants' quads %llu\n", static_cast<unsigned long long>(g_st.stat_draws[0]),
                 static_cast<unsigned long long>(g_st.stat_draws[1]), static_cast<unsigned long long>(g_st.stat_variants));
+    if (pkt_memo_mode() != 0)
+        std::printf("[mrpw] packet memo (RAC1_MRPW_PKT_MEMO=%d): %llu GPU path packets, %llu replayed from the packet before; %llu checked against the full replay, %llu differing\n",
+                    pkt_memo_mode(), static_cast<unsigned long long>(g_memo_packets), static_cast<unsigned long long>(g_memo_hits), static_cast<unsigned long long>(g_memo_checked),
+                    static_cast<unsigned long long>(g_memo_bad));
     if (g_static_check) {
         for (int k = 0; k < 2; ++k)
             std::printf("[mrpw] static check %s: walker draws %llu, found %llu, missing %llu, host extra %llu\n", k == 0 ? "ties" : "shrubs", static_cast<unsigned long long>(g_st.chk_walker[k]),

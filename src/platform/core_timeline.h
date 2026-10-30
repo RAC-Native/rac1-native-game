@@ -44,6 +44,10 @@ enum Ev : int {
     kHead1,      //   the first half (wiiu_prep_head) done
     kTail0,      //   the second half's start (wiiu_prep_tail)
     kPrep1,      //   its end
+    kSide0,      // ((2026-10-31) the side job - the effects' prepare, RAC1_WIIU_FX_WORKER - any thread) its start
+    kSide1,      //   its end
+    kSideJ0,     // (main) the wait for it before the effects' draws
+    kSideJ1,
     kEvN
 };
 
@@ -64,6 +68,7 @@ inline bool on() { return g_on.load(std::memory_order_relaxed); }
 inline std::atomic<uint64_t> g_ev[kEvN] = {};
 inline std::atomic<int> g_prep_core{-1};  // (the core the world's first half ran on)
 inline std::atomic<int> g_tail_core{-1};  // (and its second half)
+inline std::atomic<int> g_side_core{-1};  // ((2026-10-31) and the side job)
 inline uint64_t now() { return static_cast<uint64_t>(OSGetTime()); }
 inline void mark(Ev e) {
     if (on()) g_ev[e].store(now(), std::memory_order_relaxed);

@@ -24,9 +24,14 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#if defined(__WIIU__)
+#include <coreinit/cache.h>
+#endif
+
 #include <algorithm>
 #include <array>
 #include <map>
+#include <new>
 #include <set>
 #include <chrono>
 #include <cmath>
@@ -2290,7 +2295,34 @@ void mrp_fx_report() {
 
 namespace {
 uint64_t g_wiiu_fx_serial = 0;
-std::vector<mrpwb::GpuV> g_wiiu_fx_verts;
+// ((2026-10-31) RAC1_WIIU_FX_DIRECT, on by default on the Wii U: the GPU reads the effects' vertices where the prepare writes them - no copy
+// into the geometry ring at the draw -: two vectors, 64-byte aligned (GX2's attribute buffers), the prepare writing the one the frame before
+// last drew (the main thread waited for that frame's GPU work before this frame's prepare) and flushing it from the data cache on the core
+// that wrote it - the effects' worker, RAC1_WIIU_FX_WORKER)
+template <class T>
+struct FxVertAlloc {
+    using value_type = T;
+    FxVertAlloc() = default;
+    template <class U>
+    FxVertAlloc(const FxVertAlloc<U>&) noexcept {}
+    T* allocate(size_t n) { return static_cast<T*>(::operator new(n * sizeof(T), std::align_val_t{64})); }
+    void deallocate(T* p, size_t) noexcept { ::operator delete(p, std::align_val_t{64}); }
+    template <class U>
+    bool operator==(const FxVertAlloc<U>&) const noexcept { return true; }
+    template <class U>
+    bool operator!=(const FxVertAlloc<U>&) const noexcept { return false; }
+};
+using FxVerts = std::vector<mrpwb::GpuV, FxVertAlloc<mrpwb::GpuV>>;
+FxVerts g_wiiu_fx_vb[2];
+int g_wiiu_fx_cur = 0;
+bool wiiu_fx_direct_on() {
+#if defined(__WIIU__)
+    static const bool on = std::getenv("RAC1_WIIU_FX_DIRECT") == nullptr || std::atoi(std::getenv("RAC1_WIIU_FX_DIRECT")) != 0;
+    return on;
+#else
+    return false;
+#endif
+}
 std::vector<MrpFxWiiuBatch> g_wiiu_fx_batches;
 
 void wiiu_fx_state(const gs::DrawState& st, const std::shared_ptr<const gs::TexImage>& tex, MrpFxWiiuBatch& b, uint32_t& word, uint32_t& dflags) {
@@ -2351,6 +2383,16 @@ void wiiu_fx_append_batch(const MrpFxWiiuBatch& cur, uint32_t first, uint32_t co
 }  // namespace
 
 void mrp_fx_wiiu_prepare(const MrpChainFrame& gs, const float* vpm_opt) {
+    if (wiiu_fx_direct_on()) g_wiiu_fx_cur ^= 1;  // (the frame before last's vectors: RAC1_WIIU_FX_DIRECT)
+    FxVerts& g_wiiu_fx_verts = g_wiiu_fx_vb[g_wiiu_fx_cur];
+    struct Flush {  // (RAC1_WIIU_FX_DIRECT: the vertices out of this core's data cache for the GPU, at every return)
+        const FxVerts& v;
+        ~Flush() {
+#if defined(__WIIU__)
+            if (wiiu_fx_direct_on() && !v.empty()) DCFlushRange(const_cast<mrpwb::GpuV*>(v.data()), static_cast<uint32_t>(v.size() * sizeof(mrpwb::GpuV)));
+#endif
+        }
+    } flush{g_wiiu_fx_verts};
     g_wiiu_fx_verts.clear();
     g_wiiu_fx_batches.clear();
     ++g_wiiu_fx_serial;
@@ -2597,7 +2639,7 @@ void wiiu_vu7_check(const MrpChainFrame& gs) {
     g_b7 = std::move(keep_b);
     mrp_fx_wiiu_prepare(gs, nullptr);
     std::vector<const mrpwb::GpuV*> wu;  // (its program 7 vertices: no GS position - vu w 0 - the kicks' have w 1)
-    for (const mrpwb::GpuV& v : g_wiiu_fx_verts)
+    for (const mrpwb::GpuV& v : g_wiiu_fx_vb[g_wiiu_fx_cur])
         if (v.vu[3] == 0.0f) wu.push_back(&v);
     ++frames;
     if (wu.size() != pc.size()) ++count_bad;
@@ -2627,6 +2669,7 @@ void wiiu_vu7_check(const MrpChainFrame& gs) {
 
 bool mrp_fx_wiiu_view(MrpFxWiiuView& out) {
     out.serial = g_wiiu_fx_serial;
+    const FxVerts& g_wiiu_fx_verts = g_wiiu_fx_vb[g_wiiu_fx_cur];
     out.verts = g_wiiu_fx_verts.data();
     out.nverts = g_wiiu_fx_verts.size();
     out.batches = &g_wiiu_fx_batches;

@@ -814,3 +814,49 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   batch's kicked[1] - a flag no drawing reads (mrp_fx reads kicked[2..]). ~1-2 ms more if 0xe still shows after this round. (b) The
   particles drawn from their records (the chunks the reader UNPACKs) instead of the program's kicks taken back to the world: no 0x14 run,
   no kicks, a cheaper effects' prepare - not bit-exact (the projection's float noise gone), a look to compare.
+
+### The effects' prepare on core 0, their vertices read in place, the sky after a depth pre-pass, the ties' packets replayed (2026-10-31; to measure)
+
+- **What n_split says (Novalis 1080p, RAC1_WIIU_PREP_SPLIT=1):** the main thread does ~24 ms of work a host frame (prepare 5, the world job's
+  first half 6.5, effects' prepare 3.5, draws 8.2, GamePad 0.4), core 0 ~14 (the chain reader 9.6, the second half 4.7); the frame is 33.3 by
+  the vsync. The GPU's "busy" 30.2 is not its work: ties/shrubs pass 1 7.54 with a CP gap of 7.53 means the GPU drew them as fast as the CPU
+  sent them. Its own work is ~17 ms, the sky's 5.4 of it (7.39 less its gap): "late sky, last 120 calls: 0 after the tfrags' first pass, 120
+  first" - on Novalis the late sky never applied (the one tfrag batch interleaves opaque and other ranges: on the PC's Novalis explore ~93% of
+  the tfrag triangles are in opaque ranges, ~20% in the leading ones).
+- **RAC1_WIIU_FX_WORKER (default 1; =0 as before):** mrp_fx_wiiu_prepare handed, after the 2D's build, to the world's preparation worker on
+  core 0 (mrp_world_wiiu_side_post: a side job taken once the worker is free - after the second half when that one is its; the world's joins
+  never wait for it), waited for before the effects' draws (draw_frame: mrp_world_wiiu_side_join, which runs it on the main thread if the
+  worker has not taken it). Expected: main thread -3.5 ms; core 0 +3.5 (chain 9.6 + second half ~4 + effects ~3.5, before ~20 ms of a cycle).
+  The timeline's new line: "[core0] the effects' prepare A->B on cores 0/1/2 ..; the main thread's wait for it before the effects' draws C->D".
+- **RAC1_WIIU_FX_DIRECT (default 1):** the prepare's vertices in two 64-byte aligned vectors used in turn (the one the frame before last drew:
+  its GPU work waited for before this frame's prepare), flushed by the core that wrote them; mrp_world_gx2_draw_fx binds them where they are
+  (GPU attribute cache invalidated) - no copy into the geometry ring (PC Novalis explore: 2-6 K vertices, 150-450 KB a frame).
+- **RAC1_WIIU_SKY_PREPASS (default 1, with the late sky):** when the frame's first tfrag batch mixes opaque ranges with others, the depth of
+  its opaque ranges that write every pixel (TfragRange::opaque && !pass2) is drawn first - colour off, LEQUAL, with exactly the shaders their
+  first pass uses (set_p1_at) -, then the sky tested against it, then the batch as before (the opaque ranges pass again at their own depth,
+  LEQUAL). Only for a batch tested GEQUAL->LEQUAL with depth writes and blended as none / ALPHA_1 0x44. Same picture except: a range drawn
+  before an opaque one, in front of it, writing its depth, with partly transparent pixels (an alpha-tested cut-out's edge) shows the clear
+  colour through those pixels instead of the sky (the PS2 showed the sky there though the terrain is behind - an ordering artifact either
+  way): to look at on Novalis' fences / foliage over the ground. Expected: the sky's 5.4 ms times the sky's share of the screen, plus the
+  pre-pass (~0.5 ms: the tfrag vertex shader again, depth only); "[gpu-world]" tfrag pass 1 shows 2 passes a frame (the pre-pass counted
+  there); log: "late sky, ...; N of the late ones after the depth pre-pass (M ranges a call, RAC1_WIIU_SKY_PREPASS)".
+- **RAC1_MRPW_PKT_MEMO (Wii U default 1, PC 0; =2 checks every replay against the full one):** gpu_packet (build_triangles, the second half
+  on core 0) keeps a packet's runs - keys, units, batch keys, draw records but the instance and pass-2 flag - when the GS registers its keys
+  read before writing them come out as they went in and no epoch opened; the next draw of the same packet (static_frame_build emits a
+  packet for every instance of its class in a row) with the registers untouched since (GsFront::gen) appends them without the A+D writes,
+  key_now, the units' search and batch_key. Also vp * V kept per view ((vp * V) * R as before: the same doubles). PC: Novalis explore 1500
+  (RAC1_MRP_LOD=1, the host's ties / shrubs) 431 K of 768 K packets replayed, 0 differing; Veldin forward 749 K / 1175 K, Kerwan 328 K / 576 K,
+  0 differing; MRP_LOD shots identical with =0 / =1. Expected: the second half 4.7 -> ~3 ms (half its packets skip the per-run GS work).
+- **The first half:** static_frame_build's per-class lists and static_draws' map kept between frames (no allocation per class: malloc is
+  shared with the game thread), the scene packets made in place. RAC1_WIIU_PREP_TIME=1 now prints "[mrpw] the prepare's first half":
+  the frame, the tfrag decisions, scene_from_static_k and its parts (reset, sky packets, tfrag draws, ties', shrubs') with the counts -
+  the old line called scene_from_static_k "the sky's run". On the PC's Novalis the scene is ~550 packets a frame, so its 4.2 ms on the console
+  (n1080_tvs) is not the packets' count: the next bench with RAC1_WIIU_PREP_TIME=1 says which part.
+- **To measure** (BUILD=build-wiiu-mt): the defaults with RAC1_WIIU_PREP_TIME=1; RAC1_WIIU_FX_WORKER=0; RAC1_WIIU_SKY_PREPASS=0;
+  RAC1_MRPW_PKT_MEMO=0; on Novalis and Veldin open.
+- **Proposals (not applied).** (a) The opaque ties / shrubs in the sky's pre-pass too (their merged draws, depth only): the sky only where it
+  shows. (b) The sky's pixel shader killing pixels whose alpha is 0 (exact for ALPHA_1 0x44: Cd), saving the ROP on the clouds' clear parts -
+  a new pair. (c) Option (a) of the brief - static instance matrices in a texture, clip / rows in mrp_world.vert - first needs the first
+  half's parts: if static_frame_build's instance_rows / EePages reads dominate, it pays; if scene_from_static_k's reset or the sky's
+  packets do, a cheaper fix is there. (d) At 60 fps core 0 would be ~17 ms (chain 9.6 + tail + effects): the tfrag decisions (1.1) could
+  stay on the main thread and the effects' doubles become floats.

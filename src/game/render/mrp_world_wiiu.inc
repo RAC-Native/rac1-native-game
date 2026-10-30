@@ -112,6 +112,10 @@ struct SceneStaticConsts {
 };
 // orig: (host) the constants read (main thread, after the update)
 void scene_static_consts(SceneStaticConsts& k);
+// ((2026-10-31) testing, the Wii U's RAC1_WIIU_PREP_TIME=1) scene_from_static_k's parts, ms summed while g_scene_static_time: the frame's reset and
+// the texture table, the sky's packets put first, the tfrags' draws, the ties' draws, the shrubs'
+extern bool g_scene_static_time;
+extern double g_scene_static_ms[5];
 // orig: (host) scene_from_static with the constants `k` (no EE memory read)
 bool scene_from_static_k(const StaticFrame& sf, const StaticLevel& sl, const std::array<float, 16>& a, const std::array<float, 3>& camera, const TfragLevel* tl,
                          const std::vector<std::pair<uint32_t, uint8_t>>* tdraws, const SceneStaticConsts& k, SceneFrame& out, const SceneFrame* sky = nullptr);
