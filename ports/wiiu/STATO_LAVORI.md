@@ -1,6 +1,6 @@
 # Stato Lavori — Ottimizzazione e Riscrittura Nativa Wii U (`port/wiiu`)
 
-Ultimo aggiornamento: **30 Ottobre 2026 (notte, timeline dei core e split del job del mondo)**
+Ultimo aggiornamento: **31 Ottobre 2026 (il lettore della catena su Core 0: lookup dei port VU1, regole VU sulla FPU, batch del programma 7 dal loro input)**
 
 Questo documento traccia in modo completo **cosa è stato fatto**, **i risultati misurati sulla console Wii U reale (`192.168.0.16`)**, **cosa stiamo facendo ora**, **cosa manca** e **le note tecniche / trappole da evitare** per poter riprendere il lavoro in qualsiasi momento.
 
@@ -118,6 +118,18 @@ Tutti i test sono eseguiti con `ports/wiiu/tools/bench.sh` (`explore` input dete
     - Bench: `BUILD=…/build-wiiu-c0`, default vs `RAC1_WIIU_PREP_SPLIT=1` vs `RAC1_WIIU_PREP_ON_MAIN=0 RAC1_WIIU_WJOIN_LATE=1` (righe in `PERFORMANCE.md`).
     - Proposte non applicate (decide Daino): prepare dei moby su Core 2 in parallelo al prepare del mondo / copia della catena su Core 0 prima di `run_async` (fino a 3–5 ms in meno sul percorso del game thread); prima metà divisa (decisioni tfrag su Core 0); `build_triangles` su due core.
 
+### Il lettore della catena su Core 0 (31 Ottobre 2026 — da misurare su console; dettagli in `PERFORMANCE.md`)
+21. **Cosa nutrono i programmi VU1 degli effetti:** 0x14 (particelle) → i loro kick SONO gli effetti (`mrp_fx_wiiu_prepare` li riproietta nel mondo); 0xc / 0xe = programma 7 (le superfici: l'acqua di Novalis, i mari, la lava). Sul Wii U il walk passava i range vu7 ma mai `vu7_hash` / `vu7_kind`: nessun batch tenuto, l'acqua di Novalis girava intera e i suoi kick diventavano primitive (con una texture cercata per triangolo) riproiettate vertice per vertice; il percorso "batch dal loro input" di `mrp_fx_wiiu_prepare` (come `build_vu7` del PC) non veniva mai raggiunto. I run 0x0 a 0.24 ms e 0xc a 0.4 ms erano soprattutto il **lookup del port**: `start_program` ricalcolava un fnv1a64 a 64 bit byte per byte su ~69 KB di micro memoria a ogni start dopo un MPG (moltiplicazioni a 64 bit su una CPU a 32 bit).
+22. **Cosa è cambiato (ogni cosa dietro uno switch, default del PC invariati):**
+    - `RAC1_VU1_LOOKUP` (`runtime/vu/vu1.cpp`, default 1 su Wii U, 0 su PC): ogni port tiene le ultime 4 immagini del suo range con la risposta; un'immagine già vista si confronta (memcmp) invece di ricalcolare l'hash. La generazione a 64 bit del memo letta una volta per start (su Wii U un `std::atomic<uint64_t>` è una chiamata di libreria).
+    - `RAC1_VU1_FAST` (`particles_vu1.cpp`, `shadows_vu1.cpp` + `*_body.inc` + `vu1_fast.inc`, default 1 su Wii U, 0 su PC): le istruzioni dei due programmi compilate due volte, regole VU esatte e regole decise sulla FPU (nessun passaggio float→intero via memoria per ogni operando/risultato). `=2` le esegue entrambe e confronta tutto.
+    - `RAC1_WIIU_SEAS_BATCH` (`orig_main.cpp`, default 1): `vu7_hash` / `vu7_kind` impostati anche sul Wii U: i batch del programma 7 disegnati dal loro input come sul PC. **Cambio visivo da guardare:** l'acqua di Novalis, i mari di Rilgar / Pokitaru / Batalia, la lava di Gaspar, la sabbia di Aridia (prima: kick riproiettati o disegnati dal 2D).
+    - `RAC1_MRP_VU7_KICK` (`mrp_chain.cpp` `Reader::vu7_kick`, default 1): il pacchetto strip di un batch tenuto letto senza costruirne i vertici (flag ADC dalla parola XYZF2, solo gli ultimi vertici passati a `gif()` per lo stato che lasciano).
+    - Primitive riusate fra una lettura e l'altra (`new_prim`, `RAC1_MRP_CHAIN_POOL=0` per spegnerlo) e memo dell'ultima risposta di `texture_at_kick` (`RAC1_GS_TEX_MEMO=0`).
+    - La riga `[core0]` del lettore termina con `| a cycle: ports' lookups ..., textures from the memo ..., program 7's kicks without their vertices ...`.
+23. **Esattezza (PC, MRP headless):** `RAC1_MRP_CHAIN_HASH=<file>` (hash di tutto ciò che la lettura produce) identico con tutti gli switch spenti e accesi su Novalis explore 1500 frame (RAMHASH identico), Novalis forward, Veldin forward / explore, Kerwan forward; `RAC1_VU1_FAST=2`: 0 start diversi (programma 7: 60.000+ start su Novalis, 4.5 M qword); `RAC1_VU1_PORT_CHECK=1` (nuovo: port contro l'interprete VU): 0 differenze salvo 11 start 0xe nel primo frame dopo il boot (uguali col port esatto: preesistenti); `RAC1_MRP_FX_WIIU_CHECK=1` (nuovo): i vertici del programma 7 di `mrp_fx_wiiu_prepare` uguali a quelli di `build_vu7` del PC (Novalis 1500 frame, livelli 0 e 2–18). `pc_check.sh` e `gt_check.sh` verdi.
+24. **Atteso su console:** lettore ~18 → ~7–9 ms (lookup −3..−5, programma 7 non più in primitive + kick −3..−4, regole FPU −1.5..−3), chain join verso 0; anche l'`effects' prepare` del main thread dovrebbe scendere. Build: `build-wiiu-ch/rac1_wiiu.rpx`.
+
 ## 3. Cosa Manca (Prossimi Passi in Ordine di Impatto)
 
 ### Priorità 1 — Decidere default scala 3D e far confermare visivamente a Daino
@@ -125,7 +137,8 @@ Tutti i test sono eseguiti con `ports/wiiu/tools/bench.sh` (`explore` input dete
 - Far verificare a Daino (build su SD) terreno/rocce, cielo e cutout (foglie, recinzioni) nel Pass 2.
 
 ### Priorità 2 — Misurare Tfrag VS + cielo tardivo, poi il costo CPU del mondo e `game_thread` (Core 2)
-0. **Prima di tutto:** bench con le righe `[core0]` (default, `RAC1_WIIU_PREP_SPLIT=1`, `RAC1_WIIU_PREP_ON_MAIN=0 RAC1_WIIU_WJOIN_LATE=1`) su Novalis e Veldin open; scegliere il default; dalla riga del lettore della catena decidere se vale la pena tagliare i programmi VU1 eseguiti fuori dai range.
+0. **Prima di tutto (31 ottobre):** bench di `build-wiiu-ch` (default; `RAC1_WIIU_SEAS_BATCH=0`; `RAC1_VU1_FAST=0 RAC1_VU1_LOOKUP=0`) su Novalis e Veldin open, e Daino guarda l'acqua / i mari / la lava (ora dal loro input come sul PC). Poi, se il lettore non è ancora sotto il primo mezzo job del mondo: proposta (non applicata) di saltare del tutto i run 0xe/0xc dei batch tenuti calcolando sul host solo i flag ADC (vedi `PERFORMANCE.md`).
+0b. **Poi:** bench con le righe `[core0]` (default, `RAC1_WIIU_PREP_SPLIT=1`, `RAC1_WIIU_PREP_ON_MAIN=0 RAC1_WIIU_WJOIN_LATE=1`) su Novalis e Veldin open; scegliere il default; dalla riga del lettore della catena decidere se vale la pena tagliare i programmi VU1 eseguiti fuori dai range.
 1. **Tfrag su GPU Latte (Vertex Shader GX2): fatto (punto 14), da misurare** — `bench.sh` col default contro `RAC1_WIIU_TFRAG_VS=0`; poi riprovare `RAC1_WIIU_PREP_ON_MAIN=0` (Core 0 ora libero dopo la catena) e `RAC1_WIIU_PREP_TIME=1` per la ripartizione di `world's worker join` (ties/shrubs frame, scena, `build_triangles`).
    - Restano su Core 1: `static_frame_build_at` + `scene_from_static_k` + `build_triangles` (worker join) e il piano merged + ~600 draw GX2 (world draws). Proposta successiva: matrici modello statiche dei tie/shrub in una texture per livello, VP per frame nel blocco, `clip`/`rows` calcolati nel VS (niente `InstGpu` da 160 byte per istanza riscritte e byte-swappate ogni frame: ~3400 istanze × 192 B su Novalis).
 2. **Ridurre il carico CPU sul `game_thread` (Core 2: ~12.5 ms/step su Novalis):**

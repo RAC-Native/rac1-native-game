@@ -12,7 +12,9 @@
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
 #include <runtime/gs/gs_emu.h>
+#include <runtime/gs/gs_memory.h>
 #include <runtime/ipu/movie_hw.h>
+#include <runtime/vu/vu1.h>
 #include <platform/core_timeline.h>
 #include <profiler/host_profiler.h>
 #include "gs_draw_gx2.h"
@@ -290,8 +292,12 @@ struct CycleWindow {
     };
     Prog prog[32] = {};
     int nprog = 0;
+    uint32_t vu7_kicks = 0, vu7_verts = 0;  // ((2026-10-31) program 7's kept batches' kicks read without their vertices)
 };
 CycleWindow g_cw;
+// ((2026-10-31) the VU1 ports' lookups and the textures' memo at the window's start: their counts are the run's)
+rac1::vu1::LookupStats g_cw_lookups;
+uint64_t g_cw_tex_memo = 0;
 }  // namespace
 
 void rac1_wiiu_cycle() {
@@ -337,6 +343,8 @@ void rac1_wiiu_cycle() {
         for (int c = 0; c < ctl::kCatN; ++c) w.cat[c] += static_cast<double>(cp.acc[c]) * tick_ms;
         w.runs[0] += cp.runs[0];
         w.runs[1] += cp.runs[1];
+        w.vu7_kicks += cp.vu7_kicks;
+        w.vu7_verts += cp.vu7_verts;
         for (int i = 0; i < cp.nprog; ++i) {
             const ctl::ChainProf::Prog& p = cp.prog[i];
             int k = 0;
@@ -353,6 +361,7 @@ void rac1_wiiu_cycle() {
         ctl::ChainProf& cp = ctl::g_cp;
         for (int c = 0; c < ctl::kCatN; ++c) cp.acc[c] = 0;
         cp.runs[0] = cp.runs[1] = 0;
+        cp.vu7_kicks = cp.vu7_verts = 0;
         cp.nprog = 0;
         cp.prog_other = 0;
     }
@@ -392,7 +401,19 @@ void rac1_wiiu_cycle() {
     std::sort(w.prog, w.prog + w.nprog, [](const CycleWindow::Prog& x, const CycleWindow::Prog& y) { return x.ms > y.ms; });
     for (int i = 0; i < std::min(w.nprog, 10); ++i)
         std::printf(" %#x%s %.2f/%.1f,", w.prog[i].pc, w.prog[i].range ? "r" : "", w.prog[i].ms / n, w.prog[i].runs / n);
-    std::printf("\n");
+    // ((2026-10-31) the lookups of the programs' ports (all threads: RAC1_VU1_LOOKUP), the textures' memo, program 7's kicks read without
+    // their vertices (RAC1_MRP_VU7_KICK), the fast lane rules (RAC1_VU1_FAST)
+    {
+        const rac1::vu1::LookupStats ls = rac1::vu1::lookup_stats();
+        const uint64_t memo = rac1::gs::local_memory().texture_memo_hits();
+        std::printf(" | a cycle: ports' lookups %.1f (ranges hashed %.1f, %.1f KB; images compared %.1f), textures from the memo %.1f, program 7's kicks without "
+                    "their vertices %.1f (%.0f vertices); RAC1_VU1_FAST %s, RAC1_VU1_LOOKUP %s\n",
+                    (ls.misses - g_cw_lookups.misses) / n, (ls.hashed - g_cw_lookups.hashed) / n, static_cast<double>(ls.hashed_bytes - g_cw_lookups.hashed_bytes) / 1024.0 / n,
+                    (ls.reused - g_cw_lookups.reused) / n, static_cast<double>(memo - g_cw_tex_memo) / n, w.vu7_kicks / n, w.vu7_verts / n,
+                    std::getenv("RAC1_VU1_FAST") != nullptr ? std::getenv("RAC1_VU1_FAST") : "default", std::getenv("RAC1_VU1_LOOKUP") != nullptr ? std::getenv("RAC1_VU1_LOOKUP") : "default");
+        g_cw_lookups = ls;
+        g_cw_tex_memo = memo;
+    }
     g_cw = CycleWindow{};
 }
 

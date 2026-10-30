@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cstdlib>
 #include <cstring>
 
 namespace rac1::gs {
@@ -411,8 +412,29 @@ std::shared_ptr<const TexImage> LocalMemory::texture_at_kick(uint64_t tex0, uint
     if (tex_snap_bytes_ > kSnapBudget) {
         tex_snaps_.clear();
         tex_snap_bytes_ = 0;
+        memo_img_.reset();
     }
-    TexSnap& s = tex_snaps_[texture_key(tex0, texa)];
+    const std::pair<uint64_t, uint64_t> key = texture_key(tex0, texa);
+    // (the last answer: its snapshot was at this generation - the lookup below would return it at once, `s.gen == gen_`)
+    static const bool memo_on = [] {  // (RAC1_GS_TEX_MEMO=0: testing, the lookup every time)
+        const char* e = std::getenv("RAC1_GS_TEX_MEMO");
+        return e == nullptr || std::atoi(e) != 0;
+    }();
+    if (memo_on && memo_img_ != nullptr && memo_gen_ == gen_ && memo_key_ == key) {
+        ++memo_hits_;
+        return memo_img_;
+    }
+    TexSnap& s = tex_snaps_[key];
+    struct Memo {  // (every answer below is a snapshot at this generation: kept as the last one)
+        LocalMemory& m;
+        const TexSnap& s;
+        const std::pair<uint64_t, uint64_t>& key;
+        ~Memo() {
+            m.memo_key_ = key;
+            m.memo_gen_ = s.gen;
+            m.memo_img_ = s.img;
+        }
+    } memo{*this, s, key};
     if (s.img != nullptr) {
         if (s.gen == gen_) return s.img;
         if (!snap_stale(s)) {  // the memory it read is as it was: the same image
@@ -633,6 +655,7 @@ std::shared_ptr<const TexImage> LocalMemory::picture_ct32(uint32_t bp, uint32_t 
 size_t LocalMemory::clear_caches() {
     const size_t n = tex_snaps_.size();
     tex_snaps_.clear();
+    memo_img_.reset();
     tex_snap_bytes_ = 0;
     pic_.reset();
     pic_bp_ = ~0u;

@@ -85,6 +85,7 @@ struct ChainProf {
     Prog prog[kProgs] = {};
     int nprog = 0;
     uint32_t prog_other = 0;  // (runs past the table)
+    uint32_t vu7_kicks = 0, vu7_verts = 0;  // ((2026-10-31) program 7's kept batches' kicks read without their vertices: mrp_chain.cpp vu7_kick)
 };
 inline ChainProf g_cp;
 inline void chain_begin() {
@@ -132,6 +133,12 @@ inline void prog_note(uint32_t pc, bool range, uint64_t ticks) {
     if (g_cp.nprog < ChainProf::kProgs) g_cp.prog[g_cp.nprog++] = ChainProf::Prog{pc, static_cast<uint8_t>(range ? 1 : 0), 1, ticks};
     else ++g_cp.prog_other;
 }
+// (2026-10-31) a kept batch's kick read by mrp_chain.cpp's vu7_kick: its vertices
+inline void vu7_kick_note(uint32_t verts) {
+    if (!on()) return;
+    ++g_cp.vu7_kicks;
+    g_cp.vu7_verts += verts;
+}
 inline int core_id() { return static_cast<int>(OSGetCoreId()); }
 #else
 inline bool on() { return false; }
@@ -142,6 +149,7 @@ inline void chain_end() {}
 inline int cat_push(int) { return -1; }
 inline void cat_pop(int) {}
 inline void prog_note(uint32_t, bool, uint64_t) {}
+inline void vu7_kick_note(uint32_t) {}
 inline int core_id() { return -1; }
 #endif
 

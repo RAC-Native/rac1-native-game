@@ -1227,6 +1227,7 @@ void vu7_emissive_refresh() {
 // the replica's depth map of the frame (render_gs_depth: window depth = a + b Z), for the surfaces' depth
 bool g_v7_depth = false;
 double g_v7_da = 0.0, g_v7_db = 0.0;
+void wiiu_vu7_check(const MrpChainFrame& gs);
 bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
     const auto& bs = gs.vu7_batches;
     if (p.fx_id >= bs.size()) return false;
@@ -1786,6 +1787,8 @@ void mrp_fx_draw(const MrpChainFrame& gs, int win_w, int win_h, const gs::Viewpo
     using clock = std::chrono::steady_clock;
     const auto t0 = clock::now();
     if (from == 0) ++g_st.frames;
+    static const bool wiiu_check = std::getenv("RAC1_MRP_FX_WIIU_CHECK") != nullptr;  // (testing: see wiiu_vu7_check)
+    if (wiiu_check && from == 0 && g_pass != 2) wiiu_vu7_check(gs);
     g_v.clear();
     g_batches.clear();
     g_steps.clear();
@@ -2571,6 +2574,56 @@ void mrp_fx_wiiu_prepare(const MrpChainFrame& gs, const float* vpm_opt) {
         wiiu_fx_append_batch(wb, first, count);
     }
 }
+
+namespace {
+// (2026-10-31) testing (RAC1_MRP_FX_WIIU_CHECK=1, the PC): the Wii U's program 7 surfaces (mrp_fx_wiiu_prepare's batches path, the Wii U's
+// default since RAC1_WIIU_SEAS_BATCH) against the PC's own (build_vu7) on the same frame: the same triangles in the same order, their
+// world points, S / T / Q, colours and fog. Run at the first mrp_fx_draw of a frame; the counts every 300 frames ("[mrp-fx] wiiu check").
+// orig: (host)
+void wiiu_vu7_check(const MrpChainFrame& gs) {
+    static uint64_t frames = 0, verts = 0, count_bad = 0, rgba_bad = 0, fog_bad = 0, wp_bad = 0, stq_bad = 0;
+    static double wp_max = 0.0, stq_max = 0.0;
+    std::vector<V7> keep = std::move(g_v7);
+    std::vector<Batch> keep_b = std::move(g_b7);
+    g_v7.clear();
+    g_b7.clear();
+    for (const gs::Primitive& p : gs.prims)
+        if (p.fx == kMrpFxVu7 && p.type == 9 && p.sub != 2) {
+            if (g_b7.empty()) g_b7.push_back(Batch{});
+            build_vu7(gs, p);
+        }
+    std::vector<V7> pc = std::move(g_v7);
+    g_v7 = std::move(keep);
+    g_b7 = std::move(keep_b);
+    mrp_fx_wiiu_prepare(gs, nullptr);
+    std::vector<const mrpwb::GpuV*> wu;  // (its program 7 vertices: no GS position - vu w 0 - the kicks' have w 1)
+    for (const mrpwb::GpuV& v : g_wiiu_fx_verts)
+        if (v.vu[3] == 0.0f) wu.push_back(&v);
+    ++frames;
+    if (wu.size() != pc.size()) ++count_bad;
+    for (size_t i = 0; i < std::min(wu.size(), pc.size()); ++i) {
+        const mrpwb::GpuV& a = *wu[i];
+        const V7& b = pc[i];
+        ++verts;
+        for (int l = 0; l < 3; ++l) {
+            const double d = std::fabs(static_cast<double>(a.wp[l]) - b.wp[l]) / std::max(1.0, std::fabs(static_cast<double>(b.wp[l])));
+            wp_max = std::max(wp_max, d);
+            if (d > 1e-5) ++wp_bad;
+            const double e = std::fabs(static_cast<double>(a.stq[l]) - b.stq[l]) / std::max(1.0, std::fabs(static_cast<double>(b.stq[l])));
+            stq_max = std::max(stq_max, e);
+            if (e > 1e-5) ++stq_bad;
+        }
+        if (std::memcmp(a.rgba, b.rgba, 4) != 0) ++rgba_bad;
+        if (std::fabs(a.fog - b.fogw) > 1.0f) ++fog_bad;
+    }
+    if (frames % 300 == 0 || (count_bad != 0 && count_bad < 4 && wu.size() != pc.size()))
+        std::printf("[mrp-fx] wiiu check: %llu frames, %llu program 7 vertices compared; frames whose counts differ %llu (this one: Wii U %zu, PC %zu); world points "
+                    "differing %llu (largest %.2g, relative), S / T / Q %llu (%.2g), colours %llu, fog by more than 1 %llu\n",
+                    static_cast<unsigned long long>(frames), static_cast<unsigned long long>(verts), static_cast<unsigned long long>(count_bad), wu.size(), pc.size(),
+                    static_cast<unsigned long long>(wp_bad), wp_max, static_cast<unsigned long long>(stq_bad), stq_max, static_cast<unsigned long long>(rgba_bad),
+                    static_cast<unsigned long long>(fog_bad));
+}
+}  // namespace
 
 bool mrp_fx_wiiu_view(MrpFxWiiuView& out) {
     out.serial = g_wiiu_fx_serial;

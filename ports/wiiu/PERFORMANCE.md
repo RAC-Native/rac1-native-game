@@ -740,3 +740,77 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   but they change who reads what when - to decide. (b) The first half is splittable too: static_frame_build_at and tfrag_decide_at are
   independent (2.5 + 1.1 ms): the tfrags' decisions on core 0 when the chain is done early. (c) build_triangles by packet ranges on two
   cores (6 ms on Novalis' heavy windows) - more invasive (its batches' order).
+
+### The chain reader on core 0: the ports' lookups, the VU1 programs' lane rules on the FPU, program 7's batches from their input (2026-10-31; to measure)
+
+- **What the effects' VU1 programs feed on the Wii U, read off the code.** c0_n_base (Novalis 1080p): the reader ~17.8 ms of a ~37 ms
+  cycle, the main thread's chain join waiting for it; programs 0xe 5.87 ms / 35 runs, 0xc 3.17 / 8, 0x0 1.70 / 7, 0x14 0.66 / 2, their
+  kicks 4.05, walk 3.84, GS uploads 2.31, textures 1.44.
+  - 0xc / 0xe are program 7 (shadows_vu1.cpp: a strip; 0xe clips each triangle crossing the guard band into a fan); 0x0 is the start-up
+    of program 7 or of the particle program (twelve / sixteen LQs - nothing to time); 0x14 the particle program's chunk.
+  - The particles' kicks are the effects themselves: mrp_fx_wiiu_prepare takes each kicked vertex back to the world through the
+    producer's projection (kMrpFxParticles); the 2D's build leaves them out ("fx" in the 2D's line). Their output is needed.
+  - Program 7 on the Wii U: orig_main.cpp's Wii U walk gave the vu7 ranges (mrp_fx_chain_ranges) but never vu7_hash / vu7_kind, so
+    Reader::before never kept a batch: Novalis' water ran whole, its kicks made into primitives (fx = the prim lists' kind, Novalis'
+    callbacks' MrpFxScope), a texture looked up per triangle, and mrp_fx_wiiu_prepare unprojected every corner - while its own program-7
+    path (the batches drawn from their input, as the PC's build_vu7) was there, never reached. The other levels' seas (no prim-list
+    scope) went to the 2D as projected 3D. What the PC needs from a kept batch's run: its strip's ADC flags (Vu7Batch::kicked) and the
+    GS state its kicks leave.
+  - The 0x0 runs at 0.24 ms each (and 0xc at 0.4) were not the programs: vu1.cpp's start_program looks a port up by hashing every
+    registered port's range of the micro memory whenever the memo is stale (any MPG makes it stale) - fnv1a64 a byte at a time, 64-bit
+    multiplies on a 32-bit CPU, 69 KB for each of program 7's starts (particles, mobys, the six world programs registered before it).
+    The PC measures ~467 KB hashed a frame on Novalis (all threads).
+- **What changed** (each behind its switch; the PC's defaults unchanged):
+  - RAC1_VU1_LOOKUP (vu1.cpp; Wii U default 1, PC 0): each port keeps the last four micro images of its range it hashed and their
+    answer; an image met again is compared (memcmp), not hashed - the same answer by construction. The memo's 64-bit generation read
+    once a start (a library call on the 32-bit CPU, read 32 times before). Counts: vu1::lookup_stats().
+  - RAC1_VU1_FAST (particles_vu1.cpp, shadows_vu1.cpp; Wii U default 1, PC 0): the two programs' instructions moved into
+    particles_vu1_body.inc / shadows_vu1_body.inc and compiled twice, `exact` (the port as it was) and `fast`: vu1_fast.inc decides the
+    VU rules on the FPU (a normal finite value kept, zeros / denormals / infinities / NaNs through vuc itself; FTOI, CLIP and MAX / MINI
+    by float compares where the bits order as the values, the rest the exact helpers) - no float -> integer trip through memory per
+    operand and result (three a lane op before). =2: both run from the same state, everything compared.
+  - RAC1_WIIU_SEAS_BATCH (orig_main.cpp; default 1): the Wii U walk sets vu7_hash / vu7_kind as the PC does: program 7's batches in the
+    draw lists' ranges kept as the program finds them and drawn by mrp_fx_wiiu_prepare's program-7 path; their kicks no longer made
+    into primitives. A rendering change on the console (the PC's way): Novalis' water from its input instead of its unprojected kicks,
+    the other levels' seas (Rilgar, Pokitaru, Gaspar's lava, Batalia, Aridia's sand) by mrp_fx with depth instead of the 2D - to look at.
+  - RAC1_MRP_VU7_KICK (mrp_chain.cpp Reader::vu7_kick; default 1 everywhere): a kept batch's strip packet (one PACKED tag ST, RGBAQ,
+    XYZF2, EOP) read without making its vertices: every vertex's ADC flag straight from its XYZF2 word, then only its last vertices
+    through gif() (the registers, the current vertex and the primitive queue they leave) - the state gif() leaves over the whole packet.
+  - The primitives without an allocation each (mrp_chain.cpp new_prim, RAC1_MRP_CHAIN_POOL=0 off): frame.prims' elements made again
+    from one reading to the next (their vertex vectors keep their memory), the extras kept aside.
+  - texture_at_kick's last answer (gs_memory.cpp, RAC1_GS_TEX_MEMO=0 off): the same key at the same memory generation returns the same
+    image without the map's search (what the lookup's `s.gen == gen_` branch returns).
+  - The "[core0]" chain reader line ends with "| a cycle: ports' lookups N (ranges hashed N, KB; images compared N), textures from the
+    memo N, program 7's kicks without their vertices N (vertices); RAC1_VU1_FAST .., RAC1_VU1_LOOKUP ..".
+- **Exactness (the PC, headless MRP: its reader runs the same code with the effects' and program 7's ranges, batches kept):**
+  - RAC1_MRP_CHAIN_HASH=<file> (testing): a line per reading, a hash of everything it made (primitives with state, vertices field by
+    field, textures' ids and sizes, mips, marks; program 7's batches with their kicked flags and vertices; the GS registers at its end
+    and at regs_tag). Every switch above off against every one on: identical on Novalis explore 1500 frames (1479 readings compared,
+    RAMHASH identical too), Novalis GOTO=0@60,1@700 forward 1500, Veldin GOTO=0@60 forward 1500, Veldin explore 1200, Kerwan GOTO=3@60
+    forward 1500 (1140-1440 readings each).
+  - RAC1_VU1_FAST=2 (the fast rules against the exact port, every register, Q / I, the flags, XTOP, the data memory, every kicked
+    packet): 0 starts differ on all the runs above (program 7: 60,000+ starts on Novalis explore, 4.5 M qwords kicked; particles 5,000+).
+  - RAC1_VU1_PORT_CHECK=1 (new, vu1.cpp: the port against the VU interpreter running the uploaded microcode, kicks and data memory,
+    the fast port on): 70,000 starts on Novalis, 0 differ but 11 program 7 0xe starts in the first frame after the boot (also with the
+    exact port, RAC1_VU1_FAST=0: the registers' state before any start-up; not from this change).
+  - RAC1_MRP_FX_WIIU_CHECK=1 (new, mrp_fx.cpp: mrp_fx_wiiu_prepare's program-7 vertices against build_vu7's, same frame): the same
+    triangles in the same order, world points, S / T / Q and colours exact, fog within 1 - Novalis 1500 frames (2.3 M vertices) and
+    levels 0, 2-18 600 frames each.
+- **Cost on the PC** (Novalis explore, the reading's wall time a frame, RAC1_MRP_CHAIN_HASH's lines): 1.12 ms -> 0.64 ms with all on;
+  the lookups alone ~-0.6 to -0.8 (x86's 64-bit multiply is cheap: on the console far more); the fast rules ~0 on x86 (its float/int
+  moves are cheap); the texture memo and the kicks' path -0.1..-0.3 each (noisy).
+- **Expected on the console** (c0_n_base's cycle, ~17.8 ms): the lookups -3..-5 ms (the 0x0 runs ~0.1 ms, 0xc ~0.5); program 7 not
+  made into primitives + the kicks' path -3..-4 (kicks 4.05 -> <1, textures 1.44 -> ~0.4); the fast rules on what is left of 0xe / 0xc
+  / 0x14 -1.5..-3; the pool ~-0.3. The reader ~18 -> ~7-9 ms, under the world job's first half: the chain join should drop to ~0.
+  The main thread's effects' prepare (3.2-3.5 ms) should shrink too (a batch's vertices once instead of every triangle's corners
+  unprojected in doubles).
+- **To measure** (BUILD=build-wiiu-ch): the defaults; RAC1_WIIU_SEAS_BATCH=0 (the water as before, the rest on); RAC1_VU1_FAST=0
+  RAC1_VU1_LOOKUP=0 (the reader's VU1 as before). And to look at: Novalis' water, Rilgar's / Pokitaru's seas, Gaspar's lava (now drawn by
+  mrp_fx from their input on the console).
+- **Proposals (not applied; rendering only, no game state).** (a) A kept batch's 0xc / 0xe run skipped altogether: its strip's ADC flags
+  computed on the host (the clip matrix's transform and the w lane with the VU rules: ~1/3 of the program's arithmetic, no clipper, no
+  kick), vf31 and the clip flags set as the run leaves them. Not exact on the reader's own state: 0xe clip-tests one vertex past its
+  batch (the memory after it - the previous runs' in-place output, which a skipped run never writes), whose flags reach only the next
+  batch's kicked[1] - a flag no drawing reads (mrp_fx reads kicked[2..]). ~1-2 ms more if 0xe still shows after this round. (b) The
+  particles drawn from their records (the chunks the reader UNPACKs) instead of the program's kicks taken back to the world: no 0x14 run,
+  no kicks, a cheaper effects' prepare - not bit-exact (the projection's float noise gone), a look to compare.

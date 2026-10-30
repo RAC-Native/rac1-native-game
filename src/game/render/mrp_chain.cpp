@@ -12,6 +12,7 @@
 #include <platform/pinned_thread.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <condition_variable>
 #include <cstdio>
@@ -179,7 +180,12 @@ public:
         const MrpChainInput& in = c.in;
         in_ = &in;
         ctl::chain_begin();  // ((2026-10-30) the cores' timeline, the Wii U's timing: the reading's start and its time by kind)
-        frame.prims.clear();
+        t_read0_ = std::chrono::steady_clock::now();
+        np_ = 0;  // (the primitives of the reading before kept to be made again: their vertices' memory - new_prim)
+        if (!pool_on()) {  // (RAC1_MRP_CHAIN_POOL=0: each primitive made anew, as before)
+            frame.prims.clear();
+            spare_.clear();
+        }
         frame.vu7_batches.clear();
         frame.vu7_verts.clear();
         frame.fx_mark = frame.moby_mark = SIZE_MAX;
@@ -262,10 +268,10 @@ public:
                     if (!skip_started_[k]) {  // the range's VU1 program starts, once: the double buffer flipped
                         skip_started_[k] = true;
                         const MrpChainInput::Skip& r = in.skips[k];
-                        if (r.moby && frame.moby_mark == SIZE_MAX) frame.moby_mark = frame.prims.size();
+                        if (r.moby && frame.moby_mark == SIZE_MAX) frame.moby_mark = np_;
                         if (r.host_3d != 0) {  // the host's 3D in the primitives' order, with context 1's state now
                             if (scr_prim_ >= 0) screen_picture();
-                            Primitive p;
+                            Primitive& p = new_prim();
                             p.type = 8;
                             DrawState& s = p.st;
                             s.prim = regs[0x00];
@@ -277,7 +283,6 @@ public:
                             s.zbuf = regs[0x4e];
                             s.xyoffset = regs[0x18];
                             p.fx_id = r.host_3d;
-                            frame.prims.push_back(std::move(p));
                         }
                         if (dry) {
                             for (uint32_t m = 0; m < r.mscals; ++m) vu1::flip_buffers(vu_, vu_.next_pc);
@@ -301,6 +306,8 @@ public:
             });
         if (scr_prim_ >= 0) screen_picture();
         if (saved != nullptr) mem.undo_end();  // (a chain that ended inside a substitute)
+        prims_end();
+        frame_hash();
         in_ = nullptr;
         ctl::chain_end();
     }
@@ -328,6 +335,45 @@ private:
     bool vu7_drop_ = false;
     bool kicks_dropped_ = false;  // a program outside the ranges runs: its kicks read for the GS registers only
     long scr_prim_ = -1;
+    // ((2026-10-31) the primitives without an allocation each: frame.prims' elements made again from one reading to the next (their
+    // vertices' vectors keep their memory), those past the reading's count kept aside, not freed)
+    size_t np_ = 0;
+    std::vector<Primitive> spare_;
+    Primitive& new_prim() {
+        auto& v = frame.prims;
+        if (np_ == v.size()) {
+            if (spare_.empty()) {
+                v.emplace_back();
+                ++np_;
+                return v.back();
+            }
+            v.push_back(std::move(spare_.back()));
+            spare_.pop_back();
+        }
+        Primitive& p = v[np_++];
+        std::vector<Vertex> keep = std::move(p.v);
+        p = Primitive{};
+        keep.clear();
+        p.v = std::move(keep);
+        return p;
+    }
+    void prims_end() {
+        auto& v = frame.prims;
+        for (size_t i = np_; i < v.size(); ++i) spare_.push_back(std::move(v[i]));
+        v.resize(np_);
+    }
+    static bool pool_on() {
+        static const bool on = [] {
+            const char* e = std::getenv("RAC1_MRP_CHAIN_POOL");
+            return e == nullptr || std::atoi(e) != 0;
+        }();
+        return on;
+    }
+    void frame_hash();
+    uint64_t readings_ = 0, vu7_kicks_ = 0;
+    std::chrono::steady_clock::time_point t_read0_;
+    bool kicked_done_ = false;  // (vu7_kick: the kept batch's ADC flags already taken)
+    bool vu7_kick(const uint8_t* d, uint32_t qwc);
 
     // the ranges the tag at `addr` is in (`sb`: the substitute's index + 1, 0 the real chain)
     void marks(uint32_t addr, uint8_t sb, bool in_sub) {
@@ -346,7 +392,7 @@ private:
                 }
             }
         }
-        if (fx_now_ != 0 && frame.fx_mark == SIZE_MAX) frame.fx_mark = frame.prims.size();
+        if (fx_now_ != 0 && frame.fx_mark == SIZE_MAX) frame.fx_mark = np_;
         layer_now_ = false;
         if (!in.layers.empty() && !in_sub) {
             auto it = std::upper_bound(in.layers.begin(), in.layers.end(), addr, [](uint32_t a, const std::pair<uint32_t, uint32_t>& r) { return a < r.first; });
@@ -422,12 +468,51 @@ void Reader::mscal(uint32_t code) {
         vu1::vif1_command(vu_, code, nullptr, [this](const uint8_t* d, uint32_t q) {
             const ctl::CatScope ck(ctl::kCatKick);
             vu_kick_ = true;
-            gif(d, q);
+            if (!(vu7_drop_ && vu7_kick(d, q))) gif(d, q);
             vu_kick_ = false;
         });
     }
     ctl::prog_note(vu1::g_last_start, range, ctl::now() - t0);
     kicks_dropped_ = false;
+}
+
+// (2026-10-31) A kick of program 7's kept batch (vu7_drop_: the MRP draws the batch from its input, the kick is read for the strip's ADC
+// flags and the GS state it leaves): the strip's packet - one PACKED tag ST, RGBAQ, XYZF2, EOP - read without making its vertices:
+// every vertex's flag (XYZF2's ADC bit, as vertex_kick takes it), then its last vertices through gif() as before (the registers, the
+// current vertex, the primitive's queue they leave: a strip keeps its last two, a list its last n mod 3), their flags not taken again.
+// The same state as gif() over the whole packet. Anything else (another tag, a GIF transfer in progress): false, gif() reads it.
+// RAC1_MRP_VU7_KICK=0: gif() always.
+// orig: (host)
+bool Reader::vu7_kick(const uint8_t* d, uint32_t qwc) {
+    static const bool on = [] {
+        const char* e = std::getenv("RAC1_MRP_VU7_KICK");
+        return e == nullptr || std::atoi(e) != 0;
+    }();
+    if (!on || tag_left_ != 0 || qwc < 1 || frame.vu7_batches.empty()) return false;
+    const uint64_t lo = r64(d), hi = r64(d + 8);
+    const uint32_t n = bits(lo, 0, 15);
+    const bool pre = bits(lo, 46, 1) != 0;
+    if (bits(lo, 15, 1) == 0 || bits(lo, 58, 2) != 0 || bits(lo, 60, 4) != 3 || (hi & 0xfff) != 0x412 || n == 0 || qwc != 1 + 3 * n) return false;
+    const uint32_t type = pre ? bits(lo, 47, 3) : bits(regs[0x00], 0, 3);
+    if ((type != 3 && type != 4) || (type == 3 && !pre && !queue_.empty())) return false;
+    if (pre) write_reg(0x00, bits(lo, 47, 11));
+    std::vector<uint8_t>& kicked = frame.vu7_batches.back().kicked;
+    const size_t at = kicked.size();
+    kicked.resize(at + n);
+    for (uint32_t k = 0; k < n; ++k) kicked[at + k] = ((r32(d + 16 * (3 + 3 * k) + 12) >> 15) & 1) != 0 ? 0 : 1;
+    // the last vertices as gif() reads them (the tag's state as it leaves it)
+    tag_flg_ = 0;
+    tag_nreg_ = 3;
+    tag_regs_ = hi;
+    tag_reg_ = 0;
+    const uint32_t last = type == 4 ? std::min(n, 2u) : n % 3;
+    kicked_done_ = true;
+    for (uint32_t k = n - last; k < n; ++k)
+        for (uint32_t r = 0; r < 3; ++r) packed(d + 16 * (1 + 3 * k + r), bits(hi, static_cast<int>(4 * r), 4));
+    kicked_done_ = false;
+    ++vu7_kicks_;
+    ctl::vu7_kick_note(n);
+    return true;
 }
 
 // GIF data, a quadword at a time: a tag and its data may arrive in separate transfers (an IMAGE tag in a CNT, its pixels in the
@@ -541,7 +626,7 @@ void Reader::write_reg(uint32_t reg, uint64_t v) {
 
 // orig: (host)
 void Reader::vertex_kick(const Vertex& vin, bool draw) {
-    if (vu7_drop_ && vu_kick_ && !frame.vu7_batches.empty()) {  // (a kept batch's strip as the program kicked it: its ADC flags)
+    if (vu7_drop_ && vu_kick_ && !kicked_done_ && !frame.vu7_batches.empty()) {  // (a kept batch's strip as the program kicked it: its ADC flags)
         const uint32_t t = bits(regs[0x00], 0, 3);
         if (t == 3 || t == 4) frame.vu7_batches.back().kicked.push_back(draw ? 1 : 0);
     }
@@ -568,7 +653,7 @@ void Reader::vertex_kick(const Vertex& vin, bool draw) {
     if (draw && type != 0 && vu_kick_ && kicks_dropped_) ++frame.dropped_3d;
     if (keep) {
         if (scr_prim_ >= 0) screen_picture();  // (the frame's picture put back before this primitive)
-        Primitive p;
+        Primitive& p = new_prim();
         p.type = assembled;
         DrawState& s = p.st;
         s.prim = prim;
@@ -642,7 +727,6 @@ void Reader::vertex_kick(const Vertex& vin, bool draw) {
         p.fx_id = fx_id_;
         p.layer = layer_now_;
         p.hud = hud_now_;
-        frame.prims.push_back(std::move(p));
     }
     switch (type) {
     case 2: queue_.erase(queue_.begin(), queue_.end() - 1); break;
@@ -658,14 +742,13 @@ void Reader::screen_transfer(uint32_t dbp) {
     const MrpChainInput& in = *in_;
     const uint32_t blocks = in.scr_bw * 64 * in.scr_h * 4 / 256;
     if (dbp < in.scr_bp || dbp >= in.scr_bp + blocks || scr_prim_ >= 0) return;
-    Primitive p;
+    scr_prim_ = static_cast<long>(np_);
+    Primitive& p = new_prim();
     p.type = 7;
     p.v.resize(2);
     p.v[1].x = static_cast<float>(in.scr_bw * 64);
     p.v[1].y = static_cast<float>(in.scr_h);
     p.st.frame = (in.scr_bp / 32) | (static_cast<uint64_t>(in.scr_bw) << 16);
-    scr_prim_ = static_cast<long>(frame.prims.size());
-    frame.prims.push_back(std::move(p));
 }
 
 // orig: (host)
@@ -754,7 +837,7 @@ void Reader::before(vu1::Vu1& vu, uint32_t start, uint64_t hash) {
         frame.vu7_verts.push_back(v);
     }
     if (scr_prim_ >= 0) screen_picture();
-    Primitive p;  // (its place in the primitives' order)
+    Primitive& p = new_prim();  // (its place in the primitives' order)
     p.type = 9;
     p.st = s;
     p.fx = in.vu7_kind;
@@ -763,9 +846,79 @@ void Reader::before(vu1::Vu1& vu, uint32_t start, uint64_t hash) {
     p.wide = sub_wide_;
     p.vu = true;
     p.vu_start = start;
-    frame.prims.push_back(std::move(p));
     frame.vu7_batches.push_back(std::move(b));
     vu7_drop_ = true;
+}
+
+// (2026-10-31) testing (RAC1_MRP_CHAIN_HASH=<file>): a line per reading - its number and a hash of everything it made: the primitives
+// (type, GS state, vertices field by field, textures' ids and sizes, mip levels, marks), program 7's batches (state, matrices, kicked
+// flags, vertices), the marks, the GS registers at its end and at regs_tag - to compare two runs' readings (the switches of
+// 2026-10-31 on and off: RAC1_VU1_FAST, RAC1_VU1_LOOKUP, RAC1_MRP_VU7_KICK, RAC1_MRP_CHAIN_POOL, RAC1_GS_TEX_MEMO)
+// orig: (host)
+void Reader::frame_hash() {
+    static FILE* const out = [] {
+        const char* e = std::getenv("RAC1_MRP_CHAIN_HASH");
+        return e != nullptr ? std::fopen(e, "w") : nullptr;
+    }();
+    ++readings_;
+    if (out == nullptr) return;
+    uint64_t h = 0xcbf29ce484222325ull;
+    auto mix = [&h](const void* p, size_t n) {
+        const uint8_t* b = static_cast<const uint8_t*>(p);
+        for (size_t i = 0; i < n; ++i) h = (h ^ b[i]) * 0x100000001b3ull;
+    };
+    auto mixv = [&mix](uint64_t v) { mix(&v, sizeof v); };
+    auto mixtex = [&mixv](const std::shared_ptr<const TexImage>& t) {
+        mixv(t != nullptr ? t->id : 0);
+        mixv(t != nullptr ? static_cast<uint64_t>(t->w) << 32 | static_cast<uint32_t>(t->h) : 0);
+    };
+    for (const Primitive& p : frame.prims) {
+        mixv(static_cast<uint64_t>(p.type));
+        mix(&p.st, sizeof p.st);
+        mixv(p.v.size());
+        for (const Vertex& v : p.v) {
+            const float f[7] = {v.x, v.y, v.q, v.s, v.t, v.u, v.v};
+            mix(f, sizeof f);
+            const uint32_t u[3] = {v.z, static_cast<uint32_t>(v.r) | v.g << 8 | v.b << 16 | static_cast<uint32_t>(v.a) << 24, v.fog};
+            mix(u, sizeof u);
+        }
+        mixtex(p.tex);
+        mixv(static_cast<uint64_t>(p.mip_lo) << 32 | static_cast<uint32_t>(p.mip_n));
+        for (int k = 0; k < 3; ++k) {
+            mixv(p.mip_tex0[k]);
+            mixtex(p.mip_tex[k]);
+        }
+        const uint32_t m[9] = {p.vu, p.moby, p.wide, p.sub, p.vu_start, p.fx, p.fx_id, p.layer, p.hud};
+        mix(m, sizeof m);
+    }
+    for (const gs::Vu7Batch& b : frame.vu7_batches) {
+        mix(&b.st, sizeof b.st);
+        mix(&b.st_fan, sizeof b.st_fan);
+        mixtex(b.tex);
+        mixtex(b.tex_fan);
+        mix(b.m, sizeof b.m);
+        mix(b.clip, sizeof b.clip);
+        mix(b.off, sizeof b.off);
+        mix(&b.k, sizeof b.k);
+        mix(b.fog, sizeof b.fog);
+        const uint32_t u[6] = {b.first, b.n, b.start, b.tag, b.sub, b.mip};
+        mix(u, sizeof u);
+        mixv(b.kicked.size());
+        if (!b.kicked.empty()) mix(b.kicked.data(), b.kicked.size());
+    }
+    for (const gs::Vu7Vertex& v : frame.vu7_verts) mix(&v, sizeof v);
+    mixv(frame.fx_mark);
+    mixv(frame.moby_mark);
+    mixv(frame.dropped_3d);
+    mix(regs, sizeof regs);
+    mixv(frame.regs_at_ok);
+    if (frame.regs_at_ok) mix(frame.regs_at, sizeof frame.regs_at);
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_read0_).count();
+    const vu1::LookupStats ls = vu1::lookup_stats();
+    std::fprintf(out, "%llu %zu %zu %016llx (kicks read without their vertices so far: %llu; ports' lookups so far %u, %llu KB hashed; the reading %.3f ms)\n",
+                 static_cast<unsigned long long>(readings_), frame.prims.size(), frame.vu7_batches.size(), static_cast<unsigned long long>(h),
+                 static_cast<unsigned long long>(vu7_kicks_), ls.misses, static_cast<unsigned long long>(ls.hashed_bytes / 1024), ms);
+    if (readings_ % 60 == 0) std::fflush(out);
 }
 
 // The capture: the walk's tags and data copied in its order (the game's thread)

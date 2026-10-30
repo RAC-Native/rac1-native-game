@@ -76,6 +76,8 @@ public:
     // (host) the decoded textures forgotten (a level change: the GS worker and the drawers idle). Their count before.
     size_t clear_caches();
     size_t cached_textures() const { return tex_snaps_.size(); }
+    // (host) texture_at_kick's calls answered by its last answer (the same key, the memory unchanged since): a count
+    uint64_t texture_memo_hits() const { return memo_hits_; }
 
 private:
     void note_change(uint32_t a, uint32_t n);
@@ -106,6 +108,13 @@ private:
     bool snap_stale(const TexSnap& s) const;
     bool changed_since(uint64_t seq, uint32_t lo, uint32_t hi) const;
     std::map<std::pair<uint64_t, uint64_t>, TexSnap> tex_snaps_;  // by texture_key
+    // ((2026-10-31) texture_at_kick's last answer: its key, the memory's generation then, the image - what the snapshot's lookup
+    // would answer again while the generation is the same: the effects' and the HUD's runs of primitives of one texture without the
+    // map's search each)
+    std::pair<uint64_t, uint64_t> memo_key_{};
+    uint64_t memo_gen_ = ~0ull;
+    std::shared_ptr<const TexImage> memo_img_;
+    uint64_t memo_hits_ = 0;
     std::vector<uint32_t> dec_;                                     // (a decode's pixels, before they become an image)
     size_t tex_snap_bytes_ = 0;  // (the bytes of the images decoded into tex_snaps_ since it was last emptied)
     uint64_t tex_ids_ = 0;

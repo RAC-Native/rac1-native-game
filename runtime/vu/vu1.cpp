@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <vector>
@@ -235,7 +236,59 @@ std::map<std::pair<uint32_t, uint64_t>, std::pair<uint64_t, uint64_t>>& vu1_fall
     return m;
 }
 std::mutex g_fb_mutex;
+
+// (host, 2026-10-31) the ports' lookup without hashing the micro memory again (RAC1_VU1_LOOKUP=1, the Wii U's default; 0 the PC's): a
+// start whose memo is stale (the micro memory written since) hashed every registered port's range of it - fnv1a64 a byte at a time, up
+// to 69 KB of micro memory for program 7's starts (the ports registered before it: particles, mobys, the six world programs). On the
+// Wii U's 32-bit Espresso a 64-bit multiply a byte: ~0.5 ms a start, the chain reader's "0r 1.70 ms / 7 runs" on Novalis. Now each port
+// keeps the last kSeen micro images of its range it hashed, with the answer (the same words: the same hash - the answer is the hash's,
+// never a guess); an image met again is compared (memcmp, ~30 times cheaper there than the hash), not hashed. The memo and the MPGs as
+// before (every MPG makes the memos stale: a memo is not tied to one VU1's micro memory).
+bool lookup_cache_on() {
+    static const bool on = [] {
+        const char* e = std::getenv("RAC1_VU1_LOOKUP");
+#if defined(__WIIU__)
+        return e == nullptr || std::atoi(e) != 0;
+#else
+        return e != nullptr && std::atoi(e) != 0;
+#endif
+    }();
+    return on;
+}
+constexpr int kSeen = 4;
+struct SeenImage {
+    std::vector<uint64_t> words;
+    bool match = false;
+};
+struct SeenRing {
+    SeenImage img[kSeen];
+    unsigned next = 0;
+};
+LookupStats g_lookup_stats;
+// orig: (host) whether port r's range of the micro memory `micro` is its code: an image of it seen before (its answer), else hashed
+bool port_matches(const Registered& r, size_t index, const uint64_t* micro) {
+    // (per thread, as the memo: the Wii U build defines thread_local away - one reader of VU1 programs at a time there)
+    static thread_local std::vector<SeenRing> seen;
+    if (seen.size() < registry().size()) seen.resize(registry().size());
+    SeenRing& ring = seen[index];
+    const uint64_t* w = micro + r.addr;
+    const size_t bytes = static_cast<size_t>(r.n) * 8;
+    for (const SeenImage& s : ring.img)
+        if (s.words.size() == r.n && std::memcmp(s.words.data(), w, bytes) == 0) {
+            ++g_lookup_stats.reused;
+            return s.match;
+        }
+    ++g_lookup_stats.hashed;
+    g_lookup_stats.hashed_bytes += bytes;
+    SeenImage& s = ring.img[ring.next++ % kSeen];
+    s.words.assign(w, w + r.n);
+    s.match = code_hash(w, r.n) == r.hash;
+    return s.match;
+}
 }  // namespace
+
+// orig: (host) see vu1.h
+LookupStats lookup_stats() { return g_lookup_stats; }
 
 void fallback_report() {
     if (std::getenv("RAC1_VU_FALLBACK") == nullptr) return;
@@ -323,6 +376,60 @@ void flip_buffers(Vu1& vu, uint32_t start) {
     vu.st.xtop = vu.top;
 }
 
+namespace {
+// (host, 2026-10-31) testing (RAC1_VU1_PORT_CHECK=1: the particles' and program 7's ports, =2 every port): a port's start run on the VU
+// interpreter as well, from a copy of the same state (the uploaded microcode), its kicked packets and its data memory after it compared
+// with the port's (what the ports were proved on; the registers apart: the ports keep no MAC / status flags). Totals at the exit.
+bool port_check_on() {
+    static const bool on = std::getenv("RAC1_VU1_PORT_CHECK") != nullptr;
+    return on;
+}
+struct PortCheckTotals {
+    uint64_t starts = 0, bad = 0, kicks = 0, qwords = 0, vf_diff = 0;
+    void print() const {
+        std::printf("[vu1-port-check] %llu starts run on the interpreter too: %llu kicks, %llu qwords kicked, %llu starts whose kicks or data memory differ; "
+                    "vf registers differing after %llu starts (not compared: informative)\n",
+                    static_cast<unsigned long long>(starts), static_cast<unsigned long long>(kicks), static_cast<unsigned long long>(qwords),
+                    static_cast<unsigned long long>(bad), static_cast<unsigned long long>(vf_diff));
+    }
+};
+template <class Kick>
+void port_check(Vu1& vu, uint32_t start, const Registered& port, const Kick& kick_at) {
+    static PortCheckTotals tot;
+    static const int level = std::atoi(std::getenv("RAC1_VU1_PORT_CHECK"));
+    const bool mine = port.hash == 0x901435981696d0d3ull || port.hash == 0x3dc739c28ad6ece5ull;
+    if (!(mine || level >= 2)) {
+        port.fn(vu.st, start, kick_at);
+        return;
+    }
+    auto grab = [](const VUState& st, uint32_t addr, std::vector<std::vector<uint8_t>>& out) {
+        const uint32_t qwc = gif_packet_qwc(st, addr);
+        std::vector<uint8_t> b(static_cast<size_t>(qwc) * 16);
+        for (uint32_t q = 0; q < qwc; ++q) std::memcpy(&b[q * 16], &st.mem[((addr + q) & 0x3ff) << 4], 16);
+        out.push_back(std::move(b));
+    };
+    std::unique_ptr<Vu1> ref(new Vu1(vu));
+    std::vector<std::vector<uint8_t>> want, got;
+    run_interpreter(*ref, start, [&](uint32_t addr) { grab(ref->st, addr, want); });
+    port.fn(vu.st, start, [&](uint32_t addr) {
+        grab(vu.st, addr, got);
+        kick_at(addr);
+    });
+    ++tot.starts;
+    tot.kicks += got.size();
+    for (const auto& k : got) tot.qwords += k.size() / 16;
+    if (std::memcmp(ref->st.vf.data(), vu.st.vf.data(), sizeof(VUVector) * 32) != 0) ++tot.vf_diff;
+    if (tot.starts % 5000 == 0) tot.print();  // (the totals so far: the process may end without its destructors)
+    if (want == got && ref->st.mem == vu.st.mem) return;
+    ++tot.bad;
+    tot.print();
+    static int shown = 0;
+    if (shown++ < 8)
+        std::printf("[vu1-port-check] %s start %03x: the port's %s differ from the interpreter's (%zu / %zu kicks)\n", port.name, start,
+                    want != got ? "kicks" : "data memory", got.size(), want.size());
+}
+}  // namespace
+
 void start_program(Vu1& vu, uint32_t start, const KickSink& kick) {
     flip_buffers(vu, start);
     auto kick_at = [&vu, &kick, start](uint32_t addr) {
@@ -370,19 +477,35 @@ void start_program(Vu1& vu, uint32_t start, const KickSink& kick) {
         static thread_local unsigned next = 0;
         const Registered* found = nullptr;
         bool hit = false;
+        // (the generation read once: a 64-bit atomic is a library call on the Wii U's 32-bit CPU)
+        const uint64_t gen = g_micro_gen.load(std::memory_order_relaxed);
         for (const Memo& e : memo)
-            if (e.gen == g_micro_gen.load(std::memory_order_relaxed) && e.start == start) {
+            if (e.gen == gen && e.start == start) {
                 found = e.port;
                 hit = true;
                 break;
             }
         if (!hit) {
-            for (const Registered& r : registry())
-                if (start >= r.addr && start < r.addr + r.n && r.addr + r.n <= vu.micro.size() && code_hash(vu.micro.data() + r.addr, r.n) == r.hash) {
+            ++g_lookup_stats.misses;
+            const bool cached = lookup_cache_on();
+            const auto& reg = registry();
+            for (size_t k = 0; k < reg.size(); ++k) {
+                const Registered& r = reg[k];
+                if (!(start >= r.addr && start < r.addr + r.n && r.addr + r.n <= vu.micro.size())) continue;
+                bool match;
+                if (cached) {
+                    match = port_matches(r, k, vu.micro.data());
+                } else {
+                    ++g_lookup_stats.hashed;
+                    g_lookup_stats.hashed_bytes += static_cast<uint64_t>(r.n) * 8;
+                    match = code_hash(vu.micro.data() + r.addr, r.n) == r.hash;
+                }
+                if (match) {
                     found = &r;
                     break;
                 }
-            memo[next++ & 31] = Memo{start, g_micro_gen.load(std::memory_order_relaxed), found};
+            }
+            memo[next++ & 31] = Memo{start, gen, found};
         }
         if (found != nullptr) {
             struct Observed {  // (host: the walk's observer around the start, StartObserver)
@@ -396,7 +519,8 @@ void start_program(Vu1& vu, uint32_t start, const KickSink& kick) {
             } observed{g_start_observer, vu, start, found->hash};
             if (observed.o != nullptr) observed.o->before(vu, start, found->hash);
             if (g_start_hook && g_start_hook(vu, start, found->hash, found->fn, kick_at)) return;
-            found->fn(vu.st, start, kick_at);
+            if (__builtin_expect(port_check_on(), 0)) port_check(vu, start, *found, kick_at);
+            else found->fn(vu.st, start, kick_at);
             if (trace_on()) std::fprintf(stderr, "[VU1] ran %s start %03x: vi11 %d vi13 %d\n", found->name, start, vu.st.vi[11], vu.st.vi[13]);
             return;
         }

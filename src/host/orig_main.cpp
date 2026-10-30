@@ -3579,6 +3579,18 @@ int main(int argc, char** argv) {
                         if (!prev_chain && wiiu_fx_world_on) {
                             std::vector<int> no_subs;
                             mrp_fx_chain_ranges(true, no_subs, ci.fx, ci.vu7);
+                            // ((2026-10-31) program 7's batches in the draw lists' ranges kept as the program finds them, drawn from their
+                            // input (mrp_fx_wiiu_prepare's program 7 path), as the PC does: their kicks no longer made into primitives - nor
+                            // their textures looked up - on the chain's reader (Novalis' water: ~35 batches, ~4 ms of the reader's ~18 a
+                            // frame on the console). RAC1_WIIU_SEAS_BATCH=0: as before, the kicks drawn (the prim lists' fx ranges) or dropped)
+                            static const bool seas_batch = [] {
+                                const char* e = std::getenv("RAC1_WIIU_SEAS_BATCH");
+                                return e == nullptr || std::atoi(e) != 0;
+                            }();
+                            if (seas_batch && !ci.vu7.empty()) {
+                                ci.vu7_hash = kMrpVu7Hash;
+                                ci.vu7_kind = kMrpFxVu7;
+                            }
                         }
                         const auto ts = std::chrono::steady_clock::now();
                         mrp_world_wiiu_sky_capture(!prev_chain && !fade);

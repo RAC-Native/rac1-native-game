@@ -59,6 +59,13 @@ extern StartHook g_start_hook;
 // hash (fnv1a64 of their little-endian 64-bit words) to `hash`.
 void register_program(uint32_t addr, uint32_t n, uint64_t hash, ProgramFn fn, const char* name);
 uint64_t code_hash(const uint64_t* words, uint32_t n);
+// (host) the ports' lookups at the program starts (all threads, approximate: plain counters): memo misses, the ports' ranges hashed
+// (and their bytes), the ranges answered by an image seen before (RAC1_VU1_LOOKUP, vu1.cpp)
+struct LookupStats {
+    uint32_t misses = 0, hashed = 0, reused = 0;
+    uint64_t hashed_bytes = 0;
+};
+LookupStats lookup_stats();
 // Testing (RAC1_VU_FALLBACK=1): the program starts no port ran (skipped, or on the interpreter with RAC1_VU1_INTERP), per start and micro image (stderr).
 void fallback_report();
 
