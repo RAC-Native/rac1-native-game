@@ -312,6 +312,15 @@
     "    vec3 spec = sm_spec(N, V, 0.05, vec3(0.02)) * 2.0;\n"                                                                                           \
     "    vec3 fcol = vec3(0.9, 0.95, 1.0) * clamp(dot(lit, vec3(0.3333)) * 2.2, 0.4, 1.0);  /* (white, as bright as the place) */\n"                     \
     "    vec3 S = mix(wcol * (1.0 - F * 0.7) + refl * (F * 0.7 * m.x), fcol, clamp(foam, 0.0, 1.0)) + spec * m.x;\n"                                     \
+    "    if (uMat[0].x > 0.5) {  /* Surface Detail on too: its water is the look (sh_material's ty 5: its ripples over the normal maps, its\n"           \
+    "       Fresnel, reflection and glint), over the depth's colour, with the foam; the composite over the 3D under it as below */\n"                    \
+    "        vec3 Nw = sm_waves(N, P, m.y, t);\n"                                                                                                        \
+    "        vec3 Rw = reflect(-V, Nw);\n"                                                                                                               \
+    "        float Fs = mix(0.15, 1.0, 0.02 + 0.98 * pow(1.0 - max(dot(Nw, V), 0.0), 5.0));\n"                                                           \
+    "        vec3 rs = sm_ssr(P + sh_n * 0.03, Rw, sm_env(Rw, 0.05) * L, 0.0, false);\n"                                                                 \
+    "        vec3 base = wcol * (1.0 - 0.35 * Fs * m.x) + m.x * (rs * (Fs * 0.7) + sm_spec(Nw, V, 0.07, vec3(0.02)) * 1.5);\n"                           \
+    "        S = mix(base, fcol, clamp(foam, 0.0, 1.0));\n"                                                                                              \
+    "    }\n"                                                                                                                                            \
     "    float ak = mix(0.7, 1.0, deep), aa = F * 0.35 + foam;\n"                                                                                        \
     "    if (depth < 1e3 && uMat[127].w != 0.0) {  /* the 3D under it, this frame's: seen through, bent by the waves on High */\n"                       \
     "        vec2 ruv = uv;\n"                                                                                                                           \

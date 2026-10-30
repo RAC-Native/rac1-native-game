@@ -340,7 +340,12 @@ The MRP draws them itself (`RAC1_MRP_SEAS`, on by default; `mrp_fx.cpp`, "progra
   in the original. The program's own decisions are taken from its kick: a triangle it clipped is drawn with the fans' GS state (their
   GIF tag's PRIM, context 1 - a second pass in context 2 draws its clipped triangles with context 1's texture and blending), one past
   the guard band's sides is not drawn, and one it kicked whole with a point behind the camera or past the GS's 12.4 coordinate range
-  is not drawn (the PS2 drew it torn across or off the screen).
+  is not drawn (the PS2 drew it torn across or off the screen). A clipped triangle with a point behind the camera (or past the GS's
+  Z range) has no GS depth there: it is cut at the view's near plane on the CPU and drawn with the view's own depth. Drawn whole
+  for the GPU to clip, under the depth clamp (which turns the near plane's clipping off), OpenGL on radeonsi drew it through the
+  eye in some frames and not others as the camera moved by a hair: on Pokitaru, the camera at the water while swimming, the near
+  sea turned white (Lighting Original) or dark (modern) for a frame every few, the posts under the water hidden; Vulkan did not
+  show it, and now draws the same triangles as OpenGL (the part of the near sea it left out, too).
 - **The modern lighting** (Lighting not Original): the sun's shadows (the surface's colour taken as 55 % sun, our choice), the point
   lights per pixel, the emissive surfaces and the materials (Surface Detail) by texture: an `emissive surface` or `material surface`
   line names the callback's moby class and the texture's GS block ([Emissive surfaces](lighting.md#emissive-surfaces),

@@ -3823,6 +3823,13 @@ int main(int argc, char** argv) {
                     if (reader) mrp_2d_draw(cf, w, h, fd.fb_w, fd.fb_h, has_dm ? &dm : nullptr, &v, from, to);
                     else rac1::gs::draw(gs, w, h, fd.fb_w, fd.fb_h, has_dm ? &dm : nullptr, &v, prim_filt, from, to);
                 };
+                // program 7's surfaces that write Z drawn early, after the 3D's copy (below): with the ambient particles or Options > Graphics
+                // > Water. With Water on, also those the chain made before the moby pass (Rilgar's harbour, Hoven's, Gaspar's and Umbris's
+                // seas): drawn there, before the copy, a sea read the last frame's picture, which held the sea itself where the game's
+                // waves had put it a frame before - the depth under it nothing or nearly nothing from frame to frame, the water flickering
+                // between two looks (Daino on Rilgar). One draw per sea, after the copy
+                const bool water_on = g_water > 0 && mrp_lighting_active();
+                const bool surfaces_early = world_3d && (g_ambient_particles > 0 || water_on) && reader && fx_external && movie_pic == nullptr && !fd.fade_held;
                 size_t pre_moby = 0;
                 if (mrp_moby_active() && g_render_moby && g_render_gs2d && movie_pic == nullptr && !fd.fade_held && !menu_mode && !title) {
                     const size_t mark = moby_mark;
@@ -3830,7 +3837,7 @@ int main(int argc, char** argv) {
                         const rac1::gs::Viewport pv = g_scaled_scene.on ? g_scaled_scene.scaled(gv) : gv;
                         if (fx_external) {
                             RAC1_PROF_ZONE(kEffects);
-                            mrp_fx_draw(cf, w, h, &pv, [&](size_t from, size_t to) { draw_2d(pv, from, to); }, 0, mark);
+                            mrp_fx_draw(cf, w, h, &pv, [&](size_t from, size_t to) { draw_2d(pv, from, to); }, 0, mark, surfaces_early && water_on);
                         } else {
                             draw_2d(pv, 0, mark);
                         }
@@ -3873,15 +3880,12 @@ int main(int argc, char** argv) {
                 // the seas covered the rain, snow and embers in front of them (Batalia's rain). Only with the particles on (the order
                 // otherwise the chain's, the translucent effects and the 2D in it still)
                 // (also with Options > Graphics > Water on: the seas right after the 3D's picture was copied - the 3D under them, mrp_lighting.h)
-                bool surfaces_early = false;
-                const bool water_on = g_water > 0 && mrp_lighting_active();
-                if (world_3d && (g_ambient_particles > 0 || water_on) && reader && fx_external && movie_pic == nullptr && !fd.fade_held) {
+                if (surfaces_early) {
                     RAC1_PROF_ZONE(kEffects);
                     const int water_zone = water_on ? rac1::prof::begin(rac1::prof::kWater) : -1;
                     const rac1::gs::Viewport sv = g_scaled_scene.on ? g_scaled_scene.scaled(gv) : gv;
-                    mrp_fx_draw_surfaces(cf, w, h, &sv, pre_moby);
+                    mrp_fx_draw_surfaces(cf, w, h, &sv, water_on ? 0 : pre_moby);
                     rac1::prof::end(water_zone);
-                    surfaces_early = true;
                 }
                 if (world_3d && g_ambient_particles > 0) mrp_particles_draw(fd.frame);  // (our ambient particles: nothing unless asked)
                 if (g_scaled_scene.on) {  // the scaled 3D on the window; the effects and the 2D drawn over it at the window's resolution

@@ -171,7 +171,8 @@ The `water` material (and `lava`, `quicksand`) with Water on, Surface Detail wha
   own water animation kept under them. `waves <scale> <speed>` (1 1) sets their size and speed; `b` (ripples) their height.
 - **The depth under the surface**: the 3D under the water is copied (colour and depth, as Surface Detail High's reflections do) right
   before the seas are drawn - with Water on the program-7 seas that write depth are drawn just after that copy, as the ambient particles
-  already asked for - so a sea knows, per pixel, how much water lies under it. Shallow water is lighter and more transparent, deep
+  already asked for, those the game draws before its mobys too (Rilgar's harbour, Hoven's, Gaspar's and Umbris's seas: once, after
+  the mobys) - so a sea knows, per pixel, how much water lies under it. Shallow water is lighter and more transparent, deep
   water darker (toward `tint r g b` when given, else a deeper shade of the texture's own colour) and as opaque as the game draws it; how
   deep is "deep" is `depth d` (water 2.5 units). The water is never made more opaque than the game's own alpha: where the game drew it
   translucent it stays at most that.
@@ -179,6 +180,9 @@ The `water` material (and `lava`, `quicksand`) with Water on, Surface Detail wha
 - **Fresnel and the sky's reflection**; the **sun's and the lamps' glints** (a sharp specular on the waves); with **High** the scene's
   reflection from the copy (the same ray march as the puddles') and a slight **refraction** of what is under the water (the copy read
   bent by the waves, only where what it shows lies behind the water).
+- **With Surface Detail on too** (Low or High) the water's look is Surface Detail's `water` (its ripples, Fresnel, reflection and
+  glint), the Water option adding its normal maps under those ripples, the depth's colour, the foam and the composite over the 3D under
+  it; with Surface Detail Off, the Water option's own shading above. One draw of each sea either way.
 - How it reaches the picture: a sea whose blending is the GS's alpha blend (0x44) or none is composited by our shader over the copy (its
   colour, the water's, over the bent 3D under it, with the game's alpha scaled by the depth); a sea with another blend keeps its own,
   its colour shaded and, when drawn before the copy, its alpha scaled. The world's water (tfrag, tie) draws the waves, the glints and the
@@ -188,6 +192,14 @@ The `water` material (and `lava`, `quicksand`) with Water on, Surface Detail wha
 
 The additive overlays some seas draw over their water (Pokitaru's 13155 and 13223, Hoven's 13391: ALPHA 0x48 / 0x68, highlights) are
 best left untagged: `RAC1_LIGHTS_TRACE=1` prints each sea's blend (`ABE 1 ALPHA 44`) and a point of it (`near x y z`).
+
+**Rilgar's flicker.** Daino saw Rilgar's harbour change from frame to frame with Water on: the far water dark and right in one
+frame, a grey, speckled sheet of the sky's colour with a hard edge in the next. The harbour (surface 879) is drawn by the chain before
+the moby pass, and was drawn there - before the copy of the 3D under the water. It then read the last frame's copy, which held the
+harbour itself where the game's waves had put it a frame before: the depth under it was nothing (the water taken for a shore, light,
+the sky's Fresnel at a low angle) or a little (dark), as the waves went. With Water on such seas are now left out of that early pass
+and drawn with the others, after the copy; the water is the same from frame to frame (headless, the camera still: the water's change
+between frames that of the rain alone, on OpenGL and Vulkan, 16:9 and 32:9, every combination of Surface Detail and Water).
 
 ### Grass
 
@@ -234,7 +246,13 @@ live, with its profiler stage's time (Water: "Water (seas, depth copy)"; Grass: 
 Seeded: Veldin (0) the plain's dry grass (tfrag texture 3); Novalis (1) the meadow's grass (tfrag 8); Kerwan (3) the lawn of the start's
 garden (tfrag 23); Rilgar (5) the harbour (surface 879 tex 13040) and the
 canals by the start (surface 831, 13052 and 13120); Pokitaru (11) the sea (surface 1111 tex 13135); Hoven (12) the water (surface 1901
-tex 13323). Novalis's sea is not tagged yet: its program-7 surfaces near the start (13347, 13351) are the landing area's, not water.
+tex 13323); Novalis (1) all its water, VU1 program 7's strips and tiles (`novalis_water.cpp`), each class's base layer: the water at
+the bottom of the gorge below the start's cliffs with its waterfall (surface 676), the river along the first walk (761), the stream
+and pools of water tiles south-west of the landing pad (751, textures 13347 and 13483), the basins behind the railings at z 82 (678)
+and the three round water columns in the blue cave (1225), all `tex 13347`. The class-0 program-7 surfaces at the landing pad
+(13347, 13351, 13355...) are shadow meshes, not water; a sea's second layer (751's 13415 and 13551, 761's 13483, 1225's 13551...)
+is the same water drawn again, left untagged. Novalis's waterfalls are part of their water's strips: upright, they get the glints,
+the Fresnel and the see-through, not the normal maps (those lie on the flat water).
 
 ## Limits
 
