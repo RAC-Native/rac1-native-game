@@ -212,7 +212,8 @@ struct TfragVsLevel {
     std::vector<uint32_t> plan_base;
     uint32_t refused = 0;
 };
-// The frame's block (uvec4 tD[]): per draw kTvsDrawTexels texels from 0 - (image's first texel, plan's first texel, colours' first word
+// The frame's block (uvec4 tD[]): ((2026-10-31) texel 0 a header: the draws' first texel, the view sets' count, 0, 0 - the sets from texel
+// 1, so a frame of one set has it at constant indices: the shader's RAC1_TVS_ONE_SET build) per draw kTvsDrawTexels texels - (image's first texel, plan's first texel, colours' first word
 // or ~0, its first run's texel), (its view set's texel, stoff, q0 (floats' bits), flags: 1 a caster), (col_addr, col_count, 0, 0) -;
 // per view set kTvsSetTexels - the VU view's R0, R1, R2, T; the clip matrix's columns (the world renderers' view-projection x the draw's
 // world view); the constants 0x290, 0x291, 0x298, 0x295, 0x296, 0x29a, 0x29b, 0x29c, 0x29d -; per run one (texture word, layer,

@@ -146,6 +146,12 @@ struct Gx2Perf {
 extern Gx2Perf g_gx2_perf;
 // (Gx2Perf::flush) a point where the commands so far may go to the GPU: GX2Flush when the switch is at `level` or more
 void gx2_flush(int level);
+// ((2026-10-31) RAC1_WIIU_VS_GPRS, RAC1_WIIU_MOBY_VS_GPRS - default the first's) GX2SetShaderMode with the GPR pool split toward the vertex
+// shaders: GX2's split gives them 48 of the 248 GPRs, so a vertex shader of 24-27 GPRs (the ties', the tfrags') runs one wavefront a SIMD
+// at a time, its fetches' latency never hidden; n (48..184) of them to the vertex shaders, 248 - n to the pixel shaders (theirs use 7-11).
+// `who` 0 the world's draws (ties, shrubs, the CPU route's tfrags), 1 the mobys' (RAC1_WIIU_MOBY_VS_GPRS), 2 the tfrags' vertex shader's
+// (RAC1_WIIU_TFRAG_VS_GPRS, 128 by default - the others' default 0). 0 / unset: GX2SetShaderMode as before
+void gx2_shader_mode(GX2ShaderMode m, int who);
 // (Gx2Perf::earlyz) a pixel shader's Z_ORDER made EARLY_Z_THEN_LATE_Z (nullptr: nothing); `who` on the log
 void gx2_ps_early_z(const GX2PixelShader* ps, const char* who);
 // ((2026-10-28) RAC1_WIIU_GPU_TIME=2, wiiu_gfx.cpp) the GPU's mark at the end of a pass of a sky / world batch, of kind Gx2SubMark: the

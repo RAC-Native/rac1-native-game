@@ -177,6 +177,13 @@ bool tfrag_vs_check_on() {
     static const bool on = std::getenv("RAC1_MRPW_TFRAG_VS_CHECK") != nullptr && std::atoi(std::getenv("RAC1_MRPW_TFRAG_VS_CHECK")) != 0;
     return on;
 }
+// ((2026-10-31) RAC1_WIIU_TFRAG_IDX, on by default: the vertex shader's tfrags drawn indexed - each sent vertex evaluated once and
+// shared by the strip's triangles through the post-transform cache, form 3's triangles with ADC as their corners -; =0 one invocation
+// per triangle corner as before. The PC's check (RAC1_MRPW_TFRAG_VS_CHECK) follows the same switch)
+bool tfrag_vs_indexed() {
+    static const bool on = std::getenv("RAC1_WIIU_TFRAG_IDX") == nullptr || std::atoi(std::getenv("RAC1_WIIU_TFRAG_IDX")) != 0;
+    return on;
+}
 // the tables wanted: the Wii U's RAC1_WIIU_TFRAG_VS (on by default; drawn only with its shaders loaded), the PC's check
 bool tfrag_vs_wanted() {
 #if defined(__WIIU__)
@@ -285,6 +292,10 @@ struct Frame {
     // ((2026-10-30) the vertex shader's route, mrp_tfrag_gpu_vs.inc: the frame's block - its words, host order - and one u32 per triangle
     // corner (draw << 16 | closing vertex << 2 | corner), the frame's triangle slots' order; `tvs` set when the frame's tfrags take it)
     std::vector<uint32_t> tvs_block, tvs_corners;
+    // ((2026-10-31) RAC1_WIIU_TFRAG_IDX: the indexed form - `tvs_corners` then holds the attribute words, a sent vertex's once (draw << 16
+    // | vertex << 2 | 3) or a triangle's three corners (form 3 drawn with ADC), and `tvs_index` one u32 per triangle corner into them, the
+    // frame's triangle slots' order; empty: the corners drawn in order, as before)
+    std::vector<uint32_t> tvs_index;
     bool tvs = false;
     double tf_ms = 0;  // (the CPU route's time)
     double sky_ms = 0;  // (the Wii U: the sky's packets' build time, build_triangles)
@@ -2940,6 +2951,7 @@ bool tfrag_vs_frame(Frame& F) {
     F.tvs = false;
     F.tvs_block.clear();
     F.tvs_corners.clear();
+    F.tvs_index.clear();
     const TfragGpuFrame& T = F.tf;
     if (!g_tvs.ok || g_tvs.generation != g_tlevel.generation || T.draws.size() != F.tf_cpu.size() || T.draws.size() >= 0x10000) return false;
     const uint32_t nd = static_cast<uint32_t>(T.draws.size());
@@ -2955,11 +2967,14 @@ bool tfrag_vs_frame(Frame& F) {
         set_of[d] = static_cast<uint32_t>(i);
     }
     const uint32_t nruns = static_cast<uint32_t>(T.runs.size() / 4);
-    const uint32_t set0 = kTvsDrawTexels * nd, run0 = set0 + kTvsSetTexels * static_cast<uint32_t>(sets.size());
+    // ((2026-10-31) a header, the view sets, the draws, the runs: one set's constants at fixed texels for RAC1_TVS_ONE_SET)
+    const uint32_t set0 = 1, draw0 = set0 + kTvsSetTexels * static_cast<uint32_t>(sets.size()), run0 = draw0 + kTvsDrawTexels * nd;
     const uint32_t texels = run0 + nruns;
     if (texels > kTvsBlockTexels) return false;
     std::vector<uint32_t>& B = F.tvs_block;
     B.assign(4 * static_cast<size_t>(texels), 0u);
+    B[0] = draw0;
+    B[1] = static_cast<uint32_t>(sets.size());
     auto putf = [&B](uint32_t at, float f) { std::memcpy(&B[at], &f, 4); };
     glm::dmat4 vp;
     for (int c = 0; c < 4; ++c)
@@ -2982,7 +2997,13 @@ bool tfrag_vs_frame(Frame& F) {
         for (uint32_t k = 0; k < 9; ++k) std::memcpy(&B[at + 32 + 4 * k], K + 4 * kConst[k], 16);
     }
     if (!T.runs.empty()) std::memcpy(&B[4 * static_cast<size_t>(run0)], T.runs.data(), 4 * T.runs.size());
-    F.tvs_corners.assign(T.nidx, 0u);
+    const bool indexed = tfrag_vs_indexed();
+    if (indexed) {
+        F.tvs_index.assign(T.nidx, 0u);
+        F.tvs_corners.reserve(T.nidx);
+    } else {
+        F.tvs_corners.assign(T.nidx, 0u);
+    }
     for (uint32_t d = 0; d < nd; ++d) {
         const TfragGpuDraw& g = T.draws[d];
         const Frame::TfragCpuDraw& h = F.tf_cpu[d];
@@ -3004,7 +3025,7 @@ bool tfrag_vs_frame(Frame& F) {
             std::memcpy(&stoff, &w, 4);
         }
         const float q0 = (1.0f + stoff) - stoff;
-        uint32_t* r = &B[4 * static_cast<size_t>(kTvsDrawTexels * d)];
+        uint32_t* r = &B[4 * static_cast<size_t>(draw0 + kTvsDrawTexels * d)];
         r[0] = g.image;
         r[1] = pb;
         r[2] = g.colour;
@@ -3015,8 +3036,38 @@ bool tfrag_vs_frame(Frame& F) {
         r[7] = 0;
         r[8] = g.col_addr;
         r[9] = g.col_count;
-        uint32_t* c = F.tvs_corners.data() + g.ibase;
         const uint32_t nv = static_cast<uint32_t>(pl.verts.size());
+        if (indexed) {
+            // a sent vertex once (corner 3: the vertex itself, no triangle's ADC), its triangles' indices into them; form 3 drawn with ADC
+            // (not a caster: always here) keeps its corners - the triangle's drop is decided per corner from its three vertices
+            uint32_t* ix = F.tvs_index.data() + g.ibase;
+            const uint32_t vb = static_cast<uint32_t>(F.tvs_corners.size());
+            if (pl.form == 3) {
+                for (uint32_t j = 0; j < nv; ++j) {
+                    if (pl.verts[j].pos < 2) continue;
+                    const uint32_t w = d << 16 | j << 2;
+                    const uint32_t at = static_cast<uint32_t>(F.tvs_corners.size());
+                    F.tvs_corners.push_back(w);
+                    F.tvs_corners.push_back(w | 1u);
+                    F.tvs_corners.push_back(w | 2u);
+                    ix[0] = at;
+                    ix[1] = at + 1;
+                    ix[2] = at + 2;
+                    ix += 3;
+                }
+            } else {
+                for (uint32_t j = 0; j < nv; ++j) F.tvs_corners.push_back(d << 16 | j << 2 | 3u);
+                for (uint32_t j = 0; j < nv; ++j) {
+                    if (pl.verts[j].pos < 2) continue;
+                    ix[0] = vb + j - 2;
+                    ix[1] = vb + j - 1;
+                    ix[2] = vb + j;
+                    ix += 3;
+                }
+            }
+            continue;
+        }
+        uint32_t* c = F.tvs_corners.data() + g.ibase;
         for (uint32_t j = 0; j < nv; ++j) {
             if (pl.verts[j].pos < 2) continue;
             const uint32_t w = d << 16 | j << 2;
@@ -3060,6 +3111,11 @@ void tfrag_vs_gltest(Frame& F) {
             return;
         }
         src.replace(at, pr.size(), inc);
+        if (std::atoi(std::getenv("RAC1_MRPW_TFRAG_VS_CHECK")) >= 3) {  // ((2026-10-31) =3: the one-set build, RAC1_TVS_ONE_SET)
+            const size_t v = src.find('\n', src.find("#version"));
+            src.insert(v + 1, "#define RAC1_TVS_ONE_SET 1\n");
+            std::printf("[mrpw tfrag vs] GL test: the RAC1_TVS_ONE_SET build (frames of more than one view set skipped)\n");
+        }
         const GLuint vs = glCreateShader(GL_VERTEX_SHADER);
         const char* c = src.c_str();
         glShaderSource(vs, 1, &c, nullptr);
@@ -3099,6 +3155,7 @@ void tfrag_vs_gltest(Frame& F) {
         std::printf("[mrpw tfrag vs] GL test: ports/wiiu/shaders/mrp_tfrag_vs.vert compiled by the PC's GL\n");
     }
     if (prog == 0 || !F.tvs || F.tvs_corners.empty()) return;
+    if (std::atoi(std::getenv("RAC1_MRPW_TFRAG_VS_CHECK")) >= 3 && F.tvs_block[1] != 1) return;
     auto upload = [](GLuint t, GLenum ifmt, GLenum fmt, uint32_t log2w, const void* data, size_t texels, size_t texel_bytes) {
         const uint32_t w = 1u << log2w;
         const uint32_t h = static_cast<uint32_t>(std::max<size_t>(1, (texels + w - 1) >> log2w));
@@ -3208,7 +3265,13 @@ void tfrag_vs_check(Frame& F) {
         ++refused;
     } else {
         for (const Frame::TfragCpuDraw& h : F.tf_cpu) ++forms[std::min(h.plan->form, 4)];
-        const std::vector<uint32_t>& W = F.tvs_corners;
+        // ((2026-10-31) the indexed form: each triangle corner's attribute word through its index)
+        static std::vector<uint32_t> Wx;
+        if (!F.tvs_index.empty()) {
+            Wx.resize(F.tvs_index.size());
+            for (size_t i = 0; i < Wx.size(); ++i) Wx[i] = F.tvs_index[i] < F.tvs_corners.size() ? F.tvs_corners[F.tvs_index[i]] : 0u;
+        }
+        const std::vector<uint32_t>& W = F.tvs_index.empty() ? F.tvs_corners : Wx;
         for (size_t i = 0; i + 2 < W.size() && i + 2 < F.tf_idx.size(); i += 3) {
             const uint32_t* t = F.tf_idx.data() + i;
             const bool cpu_adc = t[0] == t[1] && t[1] == t[2];
@@ -6721,6 +6784,7 @@ bool frame_view(FrameView& out) {
     out.tvs = F.tvs;
     out.tvs_block = &F.tvs_block;
     out.tvs_corners = &F.tvs_corners;
+    out.tvs_index = &F.tvs_index;
     out.cpu_verts = &F.v;
     out.cpu_idx = &F.idx;
     out.sky_host = &F.sky_host;

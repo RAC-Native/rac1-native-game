@@ -453,8 +453,8 @@ struct TvsEval {
 void tfrag_vs_eval_cpu(const TfragVsLevel& V, const TfragLevel& L, const TfragColours& C, const uint32_t* tD, uint32_t word, TfragVsCorner& o) {
     TvsEval E{&L.images, &V.plans, tD, C.mirror.data(), C.mirror.size(), 0, 0, 0, 0, {}};
     const uint32_t d = word >> 16, jc = (word >> 2) & 0x3fff, c = word & 3u;
-    const uint32_t j = jc - 2 + c;
-    const uint32_t* t0 = tD + 4 * kTvsDrawTexels * d;
+    const uint32_t j = c == 3 ? jc : jc - 2 + c;  // ((2026-10-31) corner 3: the sent vertex itself, RAC1_WIIU_TFRAG_IDX)
+    const uint32_t* t0 = tD + 4 * (tD[0] + kTvsDrawTexels * d);  // ((2026-10-31) texel 0: the draws' first texel)
     E.gImg = t0[0];
     E.gPlan = t0[1];
     E.gCol = t0[2];
@@ -472,7 +472,7 @@ void tfrag_vs_eval_cpu(const TfragVsLevel& V, const TfragLevel& L, const TfragCo
     const uint32_t form = hdr[0];
     const auto c0 = E.fv(E.gSet + 8), c4 = E.fv(E.gSet + 10), c5 = E.fv(E.gSet + 11), c6 = E.fv(E.gSet + 12);
     o.adc = false;
-    if (form == 3 && !caster) {  // the guard band's flags of the triangle's three vertices (those that count)
+    if (form == 3 && !caster && c != 3) {  // the guard band's flags of the triangle's three vertices (those that count)
         uint32_t h = 0;
         for (uint32_t k = 0; k < 3; ++k) {
             const uint32_t vk = E.vtx(jc - 2 + k);

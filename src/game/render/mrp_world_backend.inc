@@ -157,6 +157,9 @@ struct FrameView {
     bool tvs = false;
     const std::vector<uint32_t>* tvs_block = nullptr;
     const std::vector<uint32_t>* tvs_corners = nullptr;
+    // ((2026-10-31) RAC1_WIIU_TFRAG_IDX) not empty: `tvs_corners` the attribute words (a sent vertex once, or a form 3 triangle's corners)
+    // and this one index per triangle corner into them - the ranges' first / count are the indices'
+    const std::vector<uint32_t>* tvs_index = nullptr;
 };
 // false: no frame built (the world not drawn this frame)
 bool frame_view(FrameView& out);

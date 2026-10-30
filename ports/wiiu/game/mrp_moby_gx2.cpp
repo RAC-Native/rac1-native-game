@@ -671,7 +671,7 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
     // GX2's state for the whole call
     GX2SetColorBuffer(cb, GX2_RENDER_TARGET_0);
     if (db != nullptr) GX2SetDepthBuffer(db);
-    GX2SetShaderMode(g_sh.vertexShader->mode);  // (uniform blocks: a reduced build without any, registers)
+    gx2_shader_mode(g_sh.vertexShader->mode, 1);  // (uniform blocks: a reduced build without any, registers; RAC1_WIIU_MOBY_VS_GPRS)
     GX2SetFetchShader((g_debug & 128) != 0 && g_scaled_ok ? &g_sh_scaled.fetchShader : &g_sh.fetchShader);
     GX2SetVertexShader(g_sh.vertexShader);
     GX2SetPixelShader(g_sh.pixelShader);

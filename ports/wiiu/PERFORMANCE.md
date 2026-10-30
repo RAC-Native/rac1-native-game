@@ -860,3 +860,60 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   half's parts: if static_frame_build's instance_rows / EePages reads dominate, it pays; if scene_from_static_k's reset or the sky's
   packets do, a cheaper fix is there. (d) At 60 fps core 0 would be ~17 ms (chain 9.6 + tail + effects): the tfrag decisions (1.1) could
   stay on the main thread and the effects' doubles become floats.
+
+### The tfrags' vertex shader: indexed, one view set, its GPR share - and what "tfrag pass 1" measures (2026-10-31)
+
+- **RAC1_WIIU_TFRAG_IDX (default 1; =0 a corner each as before):** the vertex shader's tfrags drawn indexed (GX2DrawIndexedEx, u32 indices
+  after the attribute words in the geometry ring): a sent vertex's word once (draw << 16 | vertex << 2 | 3: corner 3, the vertex itself,
+  no triangle's ADC), its strip's triangles indexing it - the post-transform cache shares it. Form 3's draws (ADC: the triangle dropped
+  when one of its three vertices is outside the guard band, a triangle's decision) keep their three corners each, indexed in place: no
+  vertex kill flag nor NaN trick needed. The ranges' first / count are the indices' (the same triangle slots). Veldin open: 10,938 corners
+  -> 5,444 vertices shaded a frame; Novalis ~8,000 -> ~4,300 (Frame::tvs_index, mrp_world_backend.inc FrameView::tvs_index).
+- **RAC1_WIIU_TFRAG_ONESET (default 1; =0 the generic pairs only):** the frame's block starts with a header texel (the draws' first texel,
+  the view sets' count) and the view sets from texel 1; shaders/mrp_tfrag_vs1_fast[_noat].gsh (mrp_tfrag_vs.vert built RAC1_TVS_ONE_SET)
+  read the set at constant indices - the constant cache instead of a fetch per use: 27 -> 19 GPRs, 103 -> 63 fetches in the program. Used
+  by the frames whose draws share one view set (every frame of Veldin / Novalis seen: "N frames by the one-set pairs" on the log line);
+  the others take the generic pairs.
+- **RAC1_WIIU_TFRAG_VS_GPRS (default 128; 0 GX2's split), RAC1_WIIU_VS_GPRS / RAC1_WIIU_MOBY_VS_GPRS (default 0):** GX2SetShaderMode gives
+  the vertex shaders 48 of the 248 GPRs: a 24-27 GPR vertex shader (the ties', the tfrags') runs one wavefront a SIMD at a time, its fetches'
+  latency never hidden. gx2_shader_mode (mrp_world_gx2.cpp) gives n to the vertex shaders, 248 - n to the pixel shaders, per path (the
+  world's set_mode keyed by mode and path). The tfrags' vertex shader takes 128; the ties' / shrubs' pass is pixel-bound (128: 7.5 ->
+  7.9 ms, 184: 13 ms - the pixel shaders starved) and the mobys' did not move: both left at GX2's.
+- Checked on the PC (Veldin GOTO=0@60 forward 720 frames, RAC1_MRPW_TFRAG_CPU=1): RAC1_MRPW_TFRAG_VS_CHECK=1 / 2 (the twin against the CPU
+  route, the GLSL by the PC's GL against the twin) with RAC1_WIIU_TFRAG_IDX=1 and 0: the same counts (2,273,976 corners, ADC 2 dropped / 0
+  differing, positions past 1e-4 8704, STQ / RGBA / F / runs 0) - the GL test now runs over the attribute words (1.02 M for 2.27 M);
+  =3 the RAC1_TVS_ONE_SET build in the GL test: the same numbers. pc_check.sh / gt_check.sh green.
+- **Measured** (build-wiiu-mt, averages over the windows after the first two; tfrag / ties "pass 1"):
+
+  | run | tfrag p1 | ties p1 | GPU busy | host frame | GPU wait |
+  | :--- | :--- | :--- | :--- | :--- | :--- |
+  | Veldin open, all three off | 7.91 | 7.52 | 32.39 | 32.74 | 14.12 |
+  | + RAC1_WIIU_TFRAG_IDX alone (earlier build) | 6.94 | 7.52 | 31.94 | 33.58 | - |
+  | + RAC1_WIIU_TFRAG_ONESET, GPRs at GX2's | 5.68 | 7.54 | 30.62 | 32.18 | 10.82 |
+  | defaults (+ tfrag VS GPRs 128) | 5.13 | 7.57 | 29.48 | 29.81 | 11.16 |
+  | Novalis 1500, all three off | 5.98 | 5.23 | 29.53 | 31.64 | 11.99 |
+  | Novalis, defaults | 4.87 | 5.28 | 28.36 | 30.78 | 10.67 |
+
+  The host frame varies a lot from run to run (realtime input): the GPU columns are the ones to read.
+- **What "tfrag pass 1" is now (the experiments, Veldin open, RAC1_WIIU_PIXELS_OFF=1, testing builds through RAC1_WIIU_TFRAG_VS_TEST=<name>:
+  the one-set pairs loaded from shaders/<name>.gsh):** the real shader 5.26 ms; a vertex shader with no fetch at all (a constant position
+  from aCorner) 4.97; the leaf's selections skipped 5.50 (pixels on: the same as the real one); no tfrag draw at all (RAC1_WIIU_TFRAG_STAGE=2)
+  4.99. So ~5 ms of the segment is not the tfrags' work: it is the first world segment, from the depth clear's mark to the tfrags' first
+  pass, and the GPU waits there for the CPU (the frame starts on an idle GPU - GX2WaitTimeStamp on the frame before - and gets the world's
+  commands as the main thread makes them). The tfrags' own vertex work is now ~0.3 ms of it (pixels off), from ~3 ms before. With the
+  sky drawn first (RAC1_WIIU_SKY_LATE=0) the wait goes into the "sky pass 1" segment and the tfrag pass shows its own time: 3.47 ms (all
+  three off) -> 2.00 (defaults), one pass (no depth pre-pass).
+- Tried and dropped: the plans' tables a texel a sent vertex with the next fetches resolved in it (form 3 / 4: the raw record's qword;
+  form 0 without selections: the leaf's qword and record) - two dependent fetches less a vertex, no measurable change, +1.8 MB (Veldin) /
+  +4.3 MB (Novalis) of tables.
+- **To decide (not changed):** RAC1_WIIU_SKY_LATE=0 with the vertex shader cheap: Veldin open GPU busy 29.48 -> 27.60, host 29.81 -> 28.08,
+  GPU wait 11.16 -> 8.65 (the sky's full screen drawn while the GPU would wait anyway, no depth pre-pass); Novalis GPU busy 28.36 -> 28.91,
+  host 30.78 -> 31.43 (worse). The picture of SKY_LATE=0 is the one before the late sky (no pre-pass artifact).
+- **Next (proposals):** the frame's start - the GPU idle from the depth clear until the world's first commands: issue the world's first
+  draws sooner (flush after the tfrags' pre-pass, not only every 64 draws; the tfrag block / corners copied before the sky's deferral), or
+  wait on the frame before last instead of the frame before (the rings sized for two frames) so the GPU always has queued work. Ties /
+  shrubs: their pass 1 is ~4.6 ms of pixels and ~2.9 of the rest at 1080p (RAC1_WIIU_PIXELS_OFF: 2.90): their vertex shader is not the
+  cost.
+- Shots (Veldin open, RAC1_REALTIME=0, game frame 1200): defaults against all three off differ only where two runs of the same build
+  differ too (Ratchet's pose, the particles, blinking lights - the run's own timing); outside 4 px of those, 3,795 pixels, all at Ratchet
+  and the effects near him, none on the terrain.

@@ -150,7 +150,7 @@ if(RAC1_WIIU_GLSLC)
     set(RAC1_WIIU_VARIANTS mrp_world_noat mrp_tfrag_noat mrp_moby_noat mrp_sky_noat
         mrp_world_fast mrp_world_fast_noat mrp_tfrag_fast mrp_tfrag_fast_noat mrp_sky_fast mrp_sky_fast_noat
         mrp_sky_host mrp_sky_host_noat mrp_sky_host_fast mrp_sky_host_fast_noat
-        mrp_tfrag_vs_fast mrp_tfrag_vs_fast_noat)  # (the lean ones - their vertex shaders output vLodP - left out: the world came out untextured on the console, 2026-10-28; lean_vert.patch in rac1-scratch/gpuperf)
+        mrp_tfrag_vs_fast mrp_tfrag_vs_fast_noat mrp_tfrag_vs1_fast mrp_tfrag_vs1_fast_noat)  # (the lean ones - their vertex shaders output vLodP - left out: the world came out untextured on the console, 2026-10-28; lean_vert.patch in rac1-scratch/gpuperf)
     set(RAC1_WIIU_VARIANT_mrp_world_noat mrp_world mrp_world RAC1_NO_ALPHA_TEST)
     set(RAC1_WIIU_VARIANT_mrp_world_lean mrp_world mrp_world RAC1_LEAN)
     set(RAC1_WIIU_VARIANT_mrp_world_lean_noat mrp_world mrp_world RAC1_LEAN,RAC1_NO_ALPHA_TEST)
@@ -173,6 +173,9 @@ if(RAC1_WIIU_GLSLC)
     # (2026-10-30: the tfrags' programs in the vertex shader, RAC1_WIIU_TFRAG_VS - mrp_tfrag_vs.vert, the fast pixel shader's pairs only)
     set(RAC1_WIIU_VARIANT_mrp_tfrag_vs_fast mrp_tfrag_vs mrp_world_fast RAC1_FAST)
     set(RAC1_WIIU_VARIANT_mrp_tfrag_vs_fast_noat mrp_tfrag_vs mrp_world_fast RAC1_FAST,RAC1_NO_ALPHA_TEST)
+    # (2026-10-31: the frames of one view set - its constants at fixed texels, read from the constant cache)
+    set(RAC1_WIIU_VARIANT_mrp_tfrag_vs1_fast mrp_tfrag_vs mrp_world_fast RAC1_FAST,RAC1_TVS_ONE_SET)
+    set(RAC1_WIIU_VARIANT_mrp_tfrag_vs1_fast_noat mrp_tfrag_vs mrp_world_fast RAC1_FAST,RAC1_NO_ALPHA_TEST,RAC1_TVS_ONE_SET)
     foreach(v ${RAC1_WIIU_VARIANTS})
         set(_src ${CMAKE_CURRENT_SOURCE_DIR}/../shaders)
         list(GET RAC1_WIIU_VARIANT_${v} 0 _vert)

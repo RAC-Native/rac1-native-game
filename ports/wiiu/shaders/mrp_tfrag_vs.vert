@@ -2,13 +2,17 @@
 // RAC1_WIIU_TFRAG_VS; src/game/render/mrp_tfrag_gpu_vs.inc): what the CPU route (mrp_world_renderer.cpp tfrag_draw_cpu_one over
 // tfrag_exec_cpu_fast) makes per sent vertex, made here per triangle corner from the level's tables and the frame's block - no vertex
 // written by the CPU. tfrag_vs_eval_cpu (mrp_tfrag_gpu_vs.inc) is this shader's C++ twin, operation for operation: change both.
-//  - aCorner: draw << 16 | the triangle's closing vertex << 2 | the corner (0, 1, 2: the vertices closing - 2 .. closing);
-//  - tD (the frame's block, little-endian words): per draw 3 texels (image's first texel, plan's first texel, colours' first word or ~0,
+//  - aCorner: draw << 16 | the triangle's closing vertex << 2 | the corner (0, 1, 2: the vertices closing - 2 .. closing); (2026-10-31,
+//    RAC1_WIIU_TFRAG_IDX) corner 3: the sent vertex itself (closing = the vertex), no triangle's ADC - the indexed draws' shared vertices;
+//  - tD (the frame's block, little-endian words): (2026-10-31) texel 0 a header (the draws' first texel, the view sets' count), the view
+//    sets from texel 1; then per draw 3 texels (image's first texel, plan's first texel, colours' first word or ~0,
 //    its first run's texel; its view set's texel, stoff, q0, flags; col_addr, col_count), per view set 17 (the VU view's R0, R1, R2, T;
 //    the clip matrix's columns; the constants 0x290, 0x291, 0x298, 0x295, 0x296, 0x29a, 0x29b, 0x29c, 0x29d), per run 1 (texture word,
 //    layer, draw_flags, FOGCOL);
 //  - uImg: the level's tfrag images (a texel a qword, RGBA32UI, 4096 a row), uPlan: the plans' tables (RGBA32UI, 4096 a row), uTCol: the
 //    resident lit colours (R32UI, 1024 a row: RGBA8, R in the low byte).
+// (2026-10-31) Built RAC1_TVS_ONE_SET too (shaders/mrp_tfrag_vs1_fast[_noat].gsh, the frames whose draws share one view set - all of them on
+// Veldin / Novalis): the set read at texel 1, constant indices - the constant cache, not a fetch each (19 GPRs for 27).
 // Built RAC1_FAST only (its pixel shader mrp_world_fast.frag: shaders/mrp_tfrag_vs_fast.gsh, _noat without the alpha test - each pair
 // compiled together: the varyings the same set as mrp_tfrag.vert's fast build, vAt under the same #ifndef as the pixel shader's).
 #version 330 core
@@ -145,14 +149,20 @@ int ftoi(float v) { return int(clamp(v, -2147483648.0, 2147483520.0)); }
 void main() {
     uint d = aCorner >> 16u;
     uint jc = (aCorner >> 2u) & 0x3fffu;
-    uint j = jc - 2u + (aCorner & 3u);
-    uvec4 t0 = tD[3u * d];
-    uvec4 t1 = tD[3u * d + 1u];
-    uvec4 t2 = tD[3u * d + 2u];
+    uint cr = aCorner & 3u;
+    uint j = cr == 3u ? jc : jc - 2u + cr;
+    uint dt = tD[0].x + 3u * d;
+    uvec4 t0 = tD[dt];
+    uvec4 t1 = tD[dt + 1u];
+    uvec4 t2 = tD[dt + 2u];
     gImg = t0.x;
     gPlan = t0.y;
     gCol = t0.z;
+#ifdef RAC1_TVS_ONE_SET
+    gSet = 1u;
+#else
     gSet = t1.x;
+#endif
     float stoff = uintBitsToFloat(t1.y);
     float q0 = uintBitsToFloat(t1.z);
     gV0 = fv(gSet);
@@ -166,7 +176,7 @@ void main() {
     vec4 c6 = fv(gSet + 12u);
     // ADC (form 3, not a caster): a vertex of the triangle - one whose flags count - outside the guard band drops it
     bool adc = false;
-    if (form == 3u && (t1.w & 1u) == 0u) {
+    if (form == 3u && (t1.w & 1u) == 0u && cr != 3u) {
         for (uint k = 0u; k < 3u; ++k) {
             uint vk = vtx(jc - 2u + k);
             if ((vk & 0x10000u) != 0u && outside(raw_pos(vk & 0xffffu), c6)) adc = true;

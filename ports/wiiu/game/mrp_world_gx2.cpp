@@ -865,6 +865,27 @@ void gx2_flush(int level) {
 // shader, seen in the .gsh files' registers 2026-10-28: 0x50 with discard, 0x10 without), 2 / 3 the re-Z orders (left alone: Mesa's r600
 // driver keeps clear of RE_Z on R6xx / R7xx - lockups - and uses EARLY_Z_THEN_LATE_Z with a discarding shader too, LATE_Z only for the
 // fixed-function alpha test, which is off here: GX2SetAlphaTest FALSE). GX2SetPixelShader writes the register from the struct
+// orig: (host) ((2026-10-31) RAC1_WIIU_VS_GPRS / RAC1_WIIU_MOBY_VS_GPRS) see mrp_world_gx2.h
+void gx2_shader_mode(GX2ShaderMode m, int who) {
+    static int gprs[3] = {-1, -1, -1};
+    if (gprs[0] < 0) {
+        const char* e = std::getenv("RAC1_WIIU_VS_GPRS");
+        const char* f = std::getenv("RAC1_WIIU_MOBY_VS_GPRS");
+        const char* t = std::getenv("RAC1_WIIU_TFRAG_VS_GPRS");
+        gprs[0] = e != nullptr ? std::atoi(e) : 0;
+        gprs[1] = f != nullptr ? std::atoi(f) : gprs[0];
+        gprs[2] = t != nullptr ? std::atoi(t) : e != nullptr ? gprs[0] : 128;  // (the tfrags' vertex shader: 128 by default, measured)
+        for (int k = 0; k < 3; ++k)
+            if (gprs[k] != 0 && (gprs[k] < 48 || gprs[k] > 184)) gprs[k] = 0;  // (the pixel shaders keep 64 at least: theirs use 7-11)
+        std::printf("[wiiu] gx2: the vertex shaders' GPRs: ties / shrubs %d, mobys %d, tfrags' vertex shader %d (0: GX2's 48 of 248)\n", gprs[0], gprs[1], gprs[2]);
+    }
+    const int n = gprs[who >= 0 && who < 3 ? who : 0];
+    if (n == 0 || m == GX2_SHADER_MODE_GEOMETRY_SHADER) {
+        GX2SetShaderMode(m);
+        return;
+    }
+    GX2SetShaderModeEx(m, static_cast<uint32_t>(n), 0x40, 0, 0, static_cast<uint32_t>(248 - n), 0xc0);
+}
 void gx2_ps_early_z(const GX2PixelShader* ps, const char* who) {
     if (ps == nullptr || !g_gx2_perf.earlyz) return;
     auto* p = const_cast<GX2PixelShader*>(ps);
@@ -1210,8 +1231,12 @@ void tfrag_init() {
 // plans' tables (RGBA32UI, 4096 texels a row), its lit colours (R32UI, 1024 a row) -, made at the level's first frame. The pixel side
 // is the tfrags' fast pairs': its block and sampler where mrp_tfrag.gsh's are (the pairs refused otherwise)
 struct TfragVsGx2 {
-    bool on = false, ok[2] = {};
-    WHBGfxShaderGroup sh[2]{};
+    // ((2026-10-31) [2], [3]: the RAC1_TVS_ONE_SET builds, shaders/mrp_tfrag_vs1_fast[_noat].gsh - the frames of one view set; `one` this
+    // frame's: 2 or 0, added to the pair's index)
+    bool on = false, ok[4] = {};
+    WHBGfxShaderGroup sh[4]{};
+    int one = 0;
+    uint64_t one_frames = 0;
     GX2FetchShader fetch{};
     void* fetch_prog = nullptr;
     BlockLoc blk;
@@ -1219,7 +1244,7 @@ struct TfragVsGx2 {
     GX2Texture img{}, plan{}, col{};
     uint64_t gen = 0;
     size_t col_words = 0;
-    uint64_t frames = 0, corners = 0, block_bytes = 0;  // (the log's)
+    uint64_t frames = 0, corners = 0, verts = 0, block_bytes = 0;  // (the log's; verts: the attribute words - the corners when not indexed)
     double ms = 0.0;
 } g_tvx;
 constexpr uint32_t kTvsImgLog2 = 12, kTvsColLog2 = 10;
@@ -1229,7 +1254,7 @@ void tvx_tex_free(GX2Texture& t) {
     t = GX2Texture{};
 }
 void tvx_free() {
-    for (int k = 0; k < 2; ++k) {
+    for (int k = 0; k < 4; ++k) {
         if (g_tvx.ok[k]) WHBGfxFreeShaderGroup(&g_tvx.sh[k]);
         g_tvx.sh[k] = WHBGfxShaderGroup{};
         g_tvx.ok[k] = false;
@@ -1248,10 +1273,21 @@ void tvx_load() {
         std::printf("[wiiu] mrp_world_gx2: tfrag vertex shader off (RAC1_WIIU_TFRAG_VS=0): the CPU route\n");
         return;
     }
-    static const char* const kFile[2] = {"shaders/mrp_tfrag_vs_fast.gsh", "shaders/mrp_tfrag_vs_fast_noat.gsh"};
-    for (int k = 0; k < 2; ++k) {
+    static const char* const kFile[4] = {"shaders/mrp_tfrag_vs_fast.gsh", "shaders/mrp_tfrag_vs_fast_noat.gsh", "shaders/mrp_tfrag_vs1_fast.gsh",
+                                         "shaders/mrp_tfrag_vs1_fast_noat.gsh"};
+    static const bool one_off = std::getenv("RAC1_WIIU_TFRAG_ONESET") != nullptr && std::atoi(std::getenv("RAC1_WIIU_TFRAG_ONESET")) == 0;
+    // (testing, RAC1_WIIU_TFRAG_VS_TEST=<name>: the one-set pairs both loaded from shaders/<name>.gsh - a timing experiment's build)
+    static const char* const test = std::getenv("RAC1_WIIU_TFRAG_VS_TEST");
+    static char test_path[96];
+    for (int k = 0; k < 4; ++k) {
+        if (k >= 2 && (one_off || !g_tvx.ok[0])) break;
+        const char* file = kFile[k];
+        if (k >= 2 && test != nullptr) {
+            std::snprintf(test_path, sizeof test_path, "shaders/%s.gsh", test);
+            file = test_path;
+        }
         std::vector<uint8_t> gsh;
-        if (std::FILE* f = std::fopen(kFile[k], "rb")) {
+        if (std::FILE* f = std::fopen(file, "rb")) {
             std::fseek(f, 0, SEEK_END);
             gsh.resize(static_cast<size_t>(std::ftell(f)));
             std::fseek(f, 0, SEEK_SET);
@@ -1260,25 +1296,32 @@ void tvx_load() {
         }
         WHBGfxShaderGroup& g = g_tvx.sh[k];
         if (gsh.empty() || !WHBGfxLoadGFDShaderGroup(&g, 0, gsh.data())) {
-            std::printf("[wiiu] mrp_world_gx2: %s not loaded\n", kFile[k]);
+            std::printf("[wiiu] mrp_world_gx2: %s not loaded\n", file);
             g = WHBGfxShaderGroup{};
             continue;
         }
         const GX2VertexShader* vs = g.vertexShader;
         const GX2PixelShader* ps = g.pixelShader;
         bool blk = false, img = false, plan = false, col = false, attr = false, pblk = false, ptex = false;
+        // (the pairs after the first: their block and samplers where the first's are)
         for (uint32_t i = 0; i < vs->uniformBlockCount; ++i)
             if (std::strcmp(vs->uniformBlocks[i].name, "TfragVs") == 0) {
-                blk = true;
-                g_tvx.blk.loc = vs->uniformBlocks[i].offset;
-                g_tvx.blk.size = vs->uniformBlocks[i].size;
-                g_tvx.blk.found = true;
+                if (k == 0) {
+                    g_tvx.blk.loc = vs->uniformBlocks[i].offset;
+                    g_tvx.blk.size = vs->uniformBlocks[i].size;
+                    g_tvx.blk.found = true;
+                }
+                blk = vs->uniformBlocks[i].offset == g_tvx.blk.loc;
             }
         for (uint32_t i = 0; i < vs->samplerVarCount; ++i) {
             const char* n = vs->samplerVars[i].name;
-            if (std::strcmp(n, "uImg") == 0) img = true, g_tvx.loc_img = vs->samplerVars[i].location;
-            if (std::strcmp(n, "uPlan") == 0) plan = true, g_tvx.loc_plan = vs->samplerVars[i].location;
-            if (std::strcmp(n, "uTCol") == 0) col = true, g_tvx.loc_col = vs->samplerVars[i].location;
+            const uint32_t l = vs->samplerVars[i].location;
+            if (std::strcmp(n, "uImg") == 0) img = k == 0 || l == g_tvx.loc_img;
+            if (k == 0 && std::strcmp(n, "uImg") == 0) g_tvx.loc_img = l;
+            if (std::strcmp(n, "uPlan") == 0) plan = k == 0 || l == g_tvx.loc_plan;
+            if (k == 0 && std::strcmp(n, "uPlan") == 0) g_tvx.loc_plan = l;
+            if (std::strcmp(n, "uTCol") == 0) col = k == 0 || l == g_tvx.loc_col;
+            if (k == 0 && std::strcmp(n, "uTCol") == 0) g_tvx.loc_col = l;
         }
         for (uint32_t i = 0; i < vs->attribVarCount; ++i)
             if (std::strcmp(vs->attribVars[i].name, "aCorner") == 0) attr = true;
@@ -1287,15 +1330,15 @@ void tvx_load() {
         for (uint32_t i = 0; i < ps->samplerVarCount; ++i)
             if (std::strcmp(ps->samplerVars[i].name, "uTex") == 0) ptex = ps->samplerVars[i].location == g_ttex_loc;
         if (!blk || !img || !plan || !col || !attr || !pblk || !ptex) {
-            std::printf("[wiiu] mrp_world_gx2: %s refused: block %d, samplers %d %d %d, attribute %d, pixel block %d / sampler %d where mrp_tfrag.gsh's are\n", kFile[k], blk,
+            std::printf("[wiiu] mrp_world_gx2: %s refused: block %d, samplers %d %d %d, attribute %d, pixel block %d / sampler %d where mrp_tfrag.gsh's are\n", file, blk,
                         img, plan, col, attr, pblk, ptex);
             WHBGfxFreeShaderGroup(&g);
             g = WHBGfxShaderGroup{};
             continue;
         }
         g_tvx.ok[k] = true;
-        gx2_ps_early_z(ps, kFile[k]);
-        std::printf("[wiiu] mrp_world_gx2: %s up (block %u at %u; samplers %u %u %u)\n", kFile[k], g_tvx.blk.size, g_tvx.blk.loc, g_tvx.loc_img, g_tvx.loc_plan, g_tvx.loc_col);
+        gx2_ps_early_z(ps, file);
+        std::printf("[wiiu] mrp_world_gx2: %s up (block %u at %u; samplers %u %u %u)\n", file, g_tvx.blk.size, g_tvx.blk.loc, g_tvx.loc_img, g_tvx.loc_plan, g_tvx.loc_col);
     }
     if (!g_tvx.ok[0]) {
         tvx_free();
@@ -1306,15 +1349,23 @@ void tvx_load() {
     uint32_t loc = 0;
     for (uint32_t i = 0; i < vs->attribVarCount; ++i)
         if (std::strcmp(vs->attribVars[i].name, "aCorner") == 0) loc = vs->attribVars[i].location;
-    if (g_tvx.ok[1]) {
-        const GX2VertexShader* v1 = g_tvx.sh[1].vertexShader;
+    for (int k = 1; k < 4; ++k) {
+        if (!g_tvx.ok[k]) continue;
+        const GX2VertexShader* v1 = g_tvx.sh[k].vertexShader;
         for (uint32_t i = 0; i < v1->attribVarCount; ++i)
             if (std::strcmp(v1->attribVars[i].name, "aCorner") == 0 && v1->attribVars[i].location != loc) {
-                std::printf("[wiiu] mrp_world_gx2: shaders/mrp_tfrag_vs_fast_noat.gsh: aCorner elsewhere: not used\n");
-                WHBGfxFreeShaderGroup(&g_tvx.sh[1]);
-                g_tvx.sh[1] = WHBGfxShaderGroup{};
-                g_tvx.ok[1] = false;
+                std::printf("[wiiu] mrp_world_gx2: %s: aCorner elsewhere: not used\n", k == 1 ? "shaders/mrp_tfrag_vs_fast_noat.gsh" : "a one-set pair");
+                WHBGfxFreeShaderGroup(&g_tvx.sh[k]);
+                g_tvx.sh[k] = WHBGfxShaderGroup{};
+                g_tvx.ok[k] = false;
             }
+    }
+    if (g_tvx.ok[2] != g_tvx.ok[3] && g_tvx.ok[1]) {  // (the one-set builds as a whole or not at all, when the first two are both up)
+        for (int k = 2; k < 4; ++k) {
+            if (g_tvx.ok[k]) WHBGfxFreeShaderGroup(&g_tvx.sh[k]);
+            g_tvx.sh[k] = WHBGfxShaderGroup{};
+            g_tvx.ok[k] = false;
+        }
     }
     GX2AttribStream st{};
     st.location = loc;
@@ -1983,18 +2034,27 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
             g_tcache.serial = F.serial;
             g_tcache.tvs = true;
             const auto& cn = *F.tvs_corners;
+            // ((2026-10-31) RAC1_WIIU_TFRAG_IDX) the indexed form: the attribute words, then the indices (big-endian u32, as the CPU route's)
+            const std::vector<uint32_t>* ix = F.tvs_index != nullptr && !F.tvs_index->empty() ? F.tvs_index : nullptr;
             const uint32_t bytes = static_cast<uint32_t>(cn.size() * 4);
+            const uint32_t at_i = (bytes + GX2_VERTEX_BUFFER_ALIGNMENT - 1) & ~(GX2_VERTEX_BUFFER_ALIGNMENT - 1);
+            const uint32_t ibytes = ix != nullptr ? static_cast<uint32_t>(ix->size() * 4) : 0u;
             if (tvx_sync()) {
-                if (auto* p = static_cast<uint8_t*>(geo_alloc(bytes))) {
+                if (auto* p = static_cast<uint8_t*>(geo_alloc(ix != nullptr ? at_i + ibytes : bytes))) {
                     std::memcpy(p, cn.data(), bytes);
-                    GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, p, bytes);
+                    if (ix != nullptr) std::memcpy(p + at_i, ix->data(), ibytes);
+                    GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, p, ix != nullptr ? at_i + ibytes : bytes);
                     g_tcache.vb = p;
-                    g_tcache.nidx = static_cast<uint32_t>(cn.size());
+                    g_tcache.nverts = static_cast<uint32_t>(cn.size());
+                    g_tcache.ib = ix != nullptr ? p + at_i : nullptr;
+                    g_tcache.nidx = ix != nullptr ? static_cast<uint32_t>(ix->size()) : static_cast<uint32_t>(cn.size());
                 }
             }
             g_tcache.gwraps = g_gring_wraps;
             ++g_tvx.frames;
-            g_tvx.corners += cn.size();
+            g_tvx.one_frames += F.tvs_block->size() >= 2 && (*F.tvs_block)[1] == 1 && g_tvx.ok[2] ? 1 : 0;
+            g_tvx.corners += ix != nullptr ? ix->size() : cn.size();
+            g_tvx.verts += cn.size();
             g_tvx.block_bytes += tvs_bytes;
             g_tvx.ms += now_ms_gx2() - t0v;
         }
@@ -2003,6 +2063,7 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
             g_tcache.wraps = g_ring_wraps;
         }
         tfrag = g_tcache.vb != nullptr && g_tcache.tvs_blk != nullptr;
+        g_tvx.one = F.tvs_block->size() >= 2 && (*F.tvs_block)[1] == 1 && g_tvx.ok[2] ? 2 : 0;  // ((2026-10-31) the one-set pairs)
     } else if (tfrag) {
         if (F.serial != g_tcache.serial || g_gring_wraps != g_tcache.gwraps || g_tcache.vb == nullptr) {
             const uint32_t vbytes = static_cast<uint32_t>(tverts.size() * sizeof(mrpwb::GpuV));
@@ -2091,10 +2152,11 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
     // when it differs (the two paths' the same: uniform blocks)
     int path = -1;
     int shader_mode = -1;
-    auto set_mode = [&](GX2ShaderMode m) {
-        if (static_cast<int>(m) == shader_mode) return;
-        GX2SetShaderMode(m);
-        shader_mode = static_cast<int>(m);
+    auto set_mode = [&](GX2ShaderMode m, int who = 0) {  // (who: gx2_shader_mode's - 0 the ties' / shrubs' and the rest, 2 the tfrags' vertex shader)
+        const int key = static_cast<int>(m) | who << 8;
+        if (key == shader_mode) return;
+        gx2_shader_mode(m, who);
+        shader_mode = key;
     };
     int cur_bucket = -2;
     uint32_t cur_sampler = ~0u;
@@ -2148,14 +2210,14 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
                 GX2SetVertexSampler(&g_cols_sampler, g_runs_loc);
             }
         } else if (want == 1 && tvs) {  // ((2026-10-30) the tfrags' vertex shader: its corners, block and tables)
-            const WHBGfxShaderGroup& p = g_tvx.sh[0];
-            set_mode(p.vertexShader->mode);
+            const WHBGfxShaderGroup& p = g_tvx.sh[g_tvx.one];
+            set_mode(p.vertexShader->mode, 2);
             GX2SetFetchShader(&g_tvx.fetch);
             GX2SetVertexShader(p.vertexShader);
             GX2SetPixelShader(p.pixelShader);
             cur_vs = p.vertexShader;
             cur_ps = p.pixelShader;
-            GX2SetAttribBuffer(0, g_tcache.nidx * 4u, 4, g_tcache.vb);
+            GX2SetAttribBuffer(0, g_tcache.nverts * 4u, 4, g_tcache.vb);
             if (g_tcache.tvs_blk != nullptr) GX2SetVertexUniformBlock(g_tvx.blk.loc, g_tcache.tvs_bytes, g_tcache.tvs_blk);
             GX2SetVertexTexture(&g_tvx.img, g_tvx.loc_img);
             GX2SetVertexSampler(&g_cols_sampler, g_tvx.loc_img);
@@ -2368,7 +2430,10 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
             if ((g_tdebug & 2048) != 0 && tdraws_this_call++ > 0) return;  // (testing: one draw a call)
             const uint32_t first = whole ? b.first : R.first, count = whole ? b.count : R.count;
             if (tvs) {  // ((2026-10-30) the corners [first, first + count): the vertex shader makes each one's vertex)
-                GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, count, first, 1);
+                if (g_tcache.ib != nullptr)  // ((2026-10-31) RAC1_WIIU_TFRAG_IDX: through the indices, a sent vertex evaluated once)
+                    GX2DrawIndexedEx(GX2_PRIMITIVE_MODE_TRIANGLES, count, GX2_INDEX_TYPE_U32, static_cast<const uint32_t*>(g_tcache.ib) + first, 0, 1);
+                else
+                    GX2DrawEx(GX2_PRIMITIVE_MODE_TRIANGLES, count, first, 1);
                 ++g_tdraws;
                 g_ttris += count / 3;
                 drawn();
@@ -2500,7 +2565,8 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         const GX2VertexShader* own_vs = (b.tfrag || cpu_batch) ? g_tsh.vertexShader : g_sh.vertexShader;
         auto use_shaders = [&](bool at) {
             if (b.tfrag && tvs) {  // ((2026-10-30) the tfrags' vertex shader's pairs: without the alpha test when Gx2Perf::nokill says so)
-                const WHBGfxShaderGroup& p = g_tvx.sh[!at && g_gx2_perf.nokill && g_tvx.ok[1] ? 1 : 0];
+                const int o = g_tvx.one;
+                const WHBGfxShaderGroup& p = g_tvx.sh[o + (!at && g_gx2_perf.nokill && g_tvx.ok[o + 1] ? 1 : 0)];
                 use_vs(p.vertexShader);
                 use_ps(p.pixelShader);
                 return;
@@ -2642,10 +2708,12 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
             g_sky_late.late = g_sky_late.early = g_sky_late.prepass = g_sky_late.prepass_ranges = 0;
         }
         if (g_tvx.frames != 0) {
-            std::printf("[wiiu] mrp_world_gx2: tfrag vertex shader, %llu frames: %.0f corners, %.1f KB of block, %.3f ms sending (tables, corners) a frame\n",
+            std::printf("[wiiu] mrp_world_gx2: tfrag vertex shader, %llu frames: %.0f corners, %.0f vertices shaded (%s), %.1f KB of block, %.3f ms sending (tables, corners) a frame; %llu frames by the one-set pairs\n",
                         static_cast<unsigned long long>(g_tvx.frames), static_cast<double>(g_tvx.corners) / static_cast<double>(g_tvx.frames),
-                        static_cast<double>(g_tvx.block_bytes) / 1024.0 / static_cast<double>(g_tvx.frames), g_tvx.ms / static_cast<double>(g_tvx.frames));
-            g_tvx.frames = g_tvx.corners = g_tvx.block_bytes = 0;
+                        static_cast<double>(g_tvx.verts) / static_cast<double>(g_tvx.frames), g_tcache.ib != nullptr ? "indexed, RAC1_WIIU_TFRAG_IDX" : "a corner each",
+                        static_cast<double>(g_tvx.block_bytes) / 1024.0 / static_cast<double>(g_tvx.frames), g_tvx.ms / static_cast<double>(g_tvx.frames),
+                        static_cast<unsigned long long>(g_tvx.one_frames));
+            g_tvx.frames = g_tvx.corners = g_tvx.verts = g_tvx.block_bytes = g_tvx.one_frames = 0;
             g_tvx.ms = 0.0;
         }
         g_tdraws = g_ttris = g_tbatches = g_tframes = g_tverts = 0;
