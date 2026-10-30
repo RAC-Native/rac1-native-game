@@ -20,6 +20,7 @@ The Advanced page has these rows:
 | Fades | Fast, Original | a removed compromise: Fast is the port's default, Original the PS2's |
 | Buy All Ammo | Off, On | enhancement |
 | Vibration | Off, Low, High | enhancement (kept as the machine's preference, not with the saves) |
+| Skip Cutscenes | Original, Always | enhancement |
 
 All of it is in `src/game/enhance/advanced.{h,cpp}` (Buy All Ammo's Vendor entry in
 `src/game/enhance/vendor_buy_all.{h,cpp}`). None of it is a port: every function there is annotated
@@ -56,7 +57,7 @@ removed (`ship` and `clank`, the ship selector and Clank's movement, ids 7 and 8
 lines are ignored.
 
 **The New Game choice.** Picking "Modern mode" or "Experimental" at New Game turns Quick Select, Aiming
-(Modern), Movement (RAC 3), Buy All Ammo and Vibration (High) on; "Original mode" turns them all off
+(Modern), Movement (RAC 3), Buy All Ammo, Vibration (High) and Skip Cutscenes (Always) on; "Original mode" turns them all off
 (`advanced_apply_mode`). Fades is left as it is. Every setting can be changed at any time
 afterwards. The Controls page's mouse settings are the machine's and no mode changes them.
 
@@ -111,6 +112,34 @@ pulse of the two motors that fades over a few frames; the host takes the motors 
 The pad driven is the one last used (the one the Controls page names). A setting lasts one second and is
 renewed every half second while the motors run, so a stalled game never leaves the pad buzzing.
 `RAC1_VIBRATION_LOG` prints the motors as they change (with or without a pad).
+
+## Skip Cutscenes: Original or Always
+
+**The game's rule.** The game has one skip test for its in-engine scenes (game mode 2, `cutscene_update`
+0x298f90) and the same one for its pre-rendered movies played in a level (the Infobots, the story movies, the help
+desks' videos: the movie player's loop, its test at 0x2eddd0):
+
+- **Start alone** skips on Veldin (level 0), in Challenge Mode (the count 0x15ee20 set), and with 0x15eea0 or
+  0x15eed8 set (0x15eea0 is never written; 0x15eed8 is 2 for the movies the pause menu and the title play, which any
+  button skips);
+- **everywhere else**, only **L1 + L2 + R1 + R2 held with Start pressed** skips (a hidden combination);
+- an in-engine scene takes neither before its 18th frame or while its fade-in is still on.
+
+The boot's intro movie is never skippable (0x15eed8 = -1). The planet arrival and departure scenes (game mode 6) take
+Cross or Circle after 30 frames on every planet, and the help desk's messages Triangle: neither has a condition to
+lift. The flight between planets is the loading screen and ends with the level's loading.
+
+**Always.** With **Skip Cutscenes = Always**, the condition passes on every level: Start alone skips every in-engine
+scene and every movie, the boot's intro too. The skip itself is the game's own, the one Veldin and Challenge Mode run:
+a scene's skip goes to `cutscene_end` (0x298b18), the same end as a scene played to its last frame (the hero given
+back and placed, the scene's mobys removed, the talk script stepped to its next record), and a movie's sets the
+player's stop flag, then `movie_mode_end` (0x2997c8) continues the talk. Items, story flags and the Infobots' new
+planets come from the talk scripts and the classes' own updates after those ends, so a skipped scene gives what a
+watched one gives. Challenge Mode's own count is not touched (it also doubles the bolts). Original leaves the game's
+rule as it is.
+
+The two tests (`src/game/ovl/cutscene.cpp`, `src/game/ovl/movies.cpp`) ask `advanced_skip_cutscenes()`, false while
+every enhancement is off (headless runs, the oracle).
 
 ## Buy All Ammo
 

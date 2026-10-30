@@ -17,6 +17,8 @@ What changed in each release. Releases are source only: you build the game with 
 - Advanced > Vibration (Off, Low, High; High in Modern and Experimental): the gamepad vibrates for damage, death, hard
   landings, nearby explosions, each weapon's shot (by weapon), the wrench's hits, bolts and the ship's flight, through the
   kernel's force feedback on Linux and XInput on Windows, with no new library; the game's state is only read (#10).
+- Advanced > Skip Cutscenes (Original, Always; Always in Modern and Experimental): Start skips every in-engine scene and
+  movie on every planet, through the game's own skip, as on Veldin and in Challenge Mode.
 - Advanced > Aiming: Modern, No Zoom, Modern aiming at the normal camera distance, as Ratchet & Clank 3's lock-strafe (#70).
 
 ### Graphics
