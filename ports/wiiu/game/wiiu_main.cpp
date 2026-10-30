@@ -285,6 +285,7 @@ int read_settings(bool read_file = true) {
     setenv("RAC1_IOP_STATE_ONLY", "1", 1);  // (the mirror plays the sound: the game's IOP keeps its state, unmixed - about 10% of the game thread, 2026-10-28)
     setenv("RAC1_WIIU_GFX", "1", 1);
     setenv("RAC1_WIIU_3D_SCALE", "1.0", 1);  // (the 3D at the TV's native resolution: Daino saw no frame-rate difference against 0.75 on Veldin / Novalis, 2026-10-30 - the CPU holds the frame; run.cfg or the debug menu can lower it)
+    setenv("RAC1_WIIU_PREP_SPLIT", "1", 1);  // (the world job's second half on core 0 once the chain reader is done - it ends at ~10 ms of the cycle since 622ff0e: Novalis, the main thread's world join 11.4 -> 6.5 ms, 2026-10-30)
     setenv("RAC1_REALTIME", "1", 1);
     setenv("RAC1_WIIU_MENU", "1", 1);
     setenv("RAC1_BOOT", "1", 1);
