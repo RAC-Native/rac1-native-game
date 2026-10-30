@@ -75,6 +75,7 @@ set(HOST_SRC
     wiiu_input.cpp
     wiiu_audio.cpp
     wiiu_gfx.cpp
+    whb_gfx.c
     gs_draw_gx2.cpp
     mrp_2d_gx2.cpp
     mrp_moby_gx2.cpp
