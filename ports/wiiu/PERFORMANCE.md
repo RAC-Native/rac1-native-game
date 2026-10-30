@@ -968,3 +968,87 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   done 19.6), and the world's first commands come after it. The swap wait (2-7 ms) is the CPU's slack now: the next gains are the GPU's own
   work (ties / shrubs pass 1 ~7.6 ms on Veldin open, the mobys ~5.3, the sky ~3.8).
 - One frame more between the input and the screen (~30 ms) with two in flight.
+
+### The GPU's pixels at 1080p: the mobys' fast pixel shader, the sky's shells, and what bounds a pixel on Latte (2026-11-01)
+
+- **Where the sky's 5 ms went (Veldin open):** a new line, "[gpu-sky]" (RAC1_WIIU_GPU_TIME=2: the sky's pass-1 marks by their order in the
+  frame), and "sky info" lines on the log (per sky batch, once a level and again when the count changes: host shell / CPU path, corners,
+  blending, test, texture word, its texture's alphas, the vertices' alphas, a CPU batch's box in NDC). Veldin's sky is 11 host shells and
+  ~10 small CPU batches (the stars: 32 x 32 sprites, a few ms of nothing); the time is the shells': the dome (shell 0: untextured, every
+  vertex's alpha 0x80, ALPHA_1 0x44 - opaque) 1.37 ms, the stars' shell (97% of its texels alpha 0) 1.08, the clouds' shells (textures
+  half clear, half below 0x80) 0.23 + 0.80 + 0.93 + 0.53; the rest ~0. Novalis: the dome 1.25 and four cloud shells 0.28 / 1.28 / 0.68 / 0.24.
+- **What does not bound them:** the textures' tiling (RAC1_WIIU_SKY_TILED: the shells' textures copied tiled by the GPU - no change, they
+  are magnified; default 0), the blending (RAC1_WIIU_SKY_KILL0, testing: the textured shells' pixels of alpha 0 discarded - their (Cs - Cd)
+  As + Cd leaves Cd - no change; default 0), the pixel shader's ALU alone (the noat build, 16 -> 10 ALU groups: -10%).
+- **What does: the pixel shader's inputs.** RAC1_WIIU_SKY_UTERMS: a shell is one draw a batch, its terms (what mrp_world_fast.glsl's
+  fast_terms makes per vertex: vLod, vFnA, vFnB, vAt, vSel - five flat vec4s) the same for the whole draw: written by the CPU
+  (fast_terms_cpu, the same float values) into a block of the pair's own (SkyTerms; shaders/mrp_sky_host_fast_noat_ut.gsh,
+  mrp_sky_host_fast_noat_notex_ut.gsh - mrp_world_fast.frag built RAC1_UNIFORM_TERMS) - the pixel's inputs 9 -> 4 (3 untextured), the ALU
+  the same: every shell -30..40% (the dome 1.04 -> 0.63, the stars 0.96 -> 0.67, the clouds 0.71 -> 0.49, 0.83 -> 0.57, 0.47 -> 0.33), the
+  sky 3.12 -> 2.10 ms on Veldin open. On Latte a pixel's rate follows the count of its interpolated inputs (flat ones too) more than its
+  ALU: the fast pixel shaders' flat terms (moved there from the pixels' decoding, 2026-10-28) cost as inputs. gx2_pair_variant accepts a
+  block the main shaders lack when it is named SkyTerms / MobyTerms (the caller binds it at the pair's own place).
+- **The sky's other switches (exact by construction):** RAC1_WIIU_SKY_OPAQUE - an untextured batch whose vertices' alphas are all 0x80 and up
+  under ALPHA_1 0x44 (the dome) drawn with the blending off (As 1: Cs 1 + Cd 0 is Cs); RAC1_WIIU_SKY_NOTEX - an untextured host shell by the
+  pair built RAC1_NO_TEX (no sample: t' = ta, what t tm + ta is with tm 0; shaders/mrp_sky_host_fast_noat_notex.gsh): the two together the
+  dome 1.37 -> 1.04, Novalis' 1.25 -> 0.95; RAC1_WIIU_SKY_ATMODE - a batch keyed with the alpha test whose draws all have the test's mode
+  off (draw_flags bit 3: ATE, AFAIL FB_ONLY, no depth write - the shader never discards) by the noat pair: the textured shells -10%.
+- **The mobys' fast pixel shader (RAC1_WIIU_MOBY_FAST):** mrp_moby.frag decoded the draw's texture word per pixel (TFX / TCC / the level's
+  L / K / MXL / LCM / the levels, by branches; a textureSize per pixel): 55-73 ALU groups, 28-33 CF instructions. The pairs
+  shaders/mrp_moby_fast.gsh / mrp_moby_fast_noat.gsh (mrp_moby.vert built RAC1_FAST: moby_fast_terms from pCmd.y / z and the batch's
+  TME / ATST / AREF the CPU puts in MobyDraw's pCmd.w; mrp_moby_fast.frag): 20-27 ALU groups, 6 CF. Its arithmetic in mrp_moby.frag's
+  order (o = (t' (A + B c)) S + C c.a: the product t c first, then x 255 / 128 - the same values), the levels as mrp_moby.frag's (mode 0 the
+  GS's, mode 1 by the derivatives - the bound array's size from the batch's block, uC.y / z, instead of textureSize), the alpha test as
+  mrp_world_fast.frag's one comparison, the discard's rule (pass, AFAIL) worked out by the CPU into uC.w. The main shaders' .gsh are
+  byte-identical to before. RAC1_WIIU_MOBY_UTERMS (prepared, **not run on the console yet**, default 0): the same pairs built
+  RAC1_UNIFORM_TERMS (mrp_moby_fast_ut.gsh, mrp_moby_fast_noat_ut.gsh) taking the draw's terms from a block (MobyTerms, moby_terms_cpu,
+  one a draw command kept for the frame) - three inputs a pixel instead of eight, as the sky's shells above.
+- **Measured** (build-wiiu-mt, averages over the windows after the first two; each row adds its switch to the row before; ms):
+
+  | run | sky | tfrag p1 | ties p1 / p2 | mobys + deferred | effects | GPU busy | host |
+  | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+  | Veldin open, before | 3.77 | 3.41 | 7.59 / 1.22 | 5.28 + 1.89 | 1.54 | 28.65 | 29.91 |
+  | + SKY_TILED | 3.78 | 3.47 | 7.61 / 1.22 | 5.27 + 1.88 | 1.48 | 28.59 | 29.86 |
+  | + MOBY_FAST | 3.72 | 4.60 | 7.54 / 1.23 | 3.33 + 1.39 | 1.35 | 27.02 | 28.34 |
+  | + SKY_OPAQUE + SKY_NOTEX | 3.42 | 5.09 | 7.52 / 1.23 | 3.31 + 1.39 | 1.50 | 27.31 | 28.70 |
+  | + SKY_ATMODE | 3.12 | 5.44 | 7.51 / 1.23 | 3.31 + 1.39 | 1.37 | 27.22 | 28.65 |
+  | + SKY_KILL0 (testing) | 3.15 | 5.60 | 7.51 / 1.23 | 3.31 + 1.40 | 1.45 | 26.94 | 29.22 |
+  | + WORLD_MERGE=4 (instead of KILL0) | 3.05 | 5.99 | 7.34 / 1.09 | 3.24 + 1.42 | 1.46 | 26.87 | 29.35 |
+  | + SKY_UTERMS (instead of KILL0) | 2.10 | 6.25 | 7.49 / 1.23 | 3.30 + 1.40 | 1.44 | 27.06 | 29.13 |
+  | Novalis 1500, before | 1.50 | 4.04 | 5.22 / 2.42 | 2.06 + 3.96 | 3.35 | 27.75 | 30.34 |
+  | + SKY_TILED | 1.51 | 4.05 | 5.23 / 2.42 | 2.08 + 3.96 | 3.39 | 27.87 | 30.43 |
+  | + MOBY_FAST | 1.53 | 4.15 | 5.28 / 2.44 | 1.32 + 2.37 | 3.36 | 25.71 | 28.59 |
+  | + SKY_OPAQUE + SKY_NOTEX | 1.32 | 4.27 | 5.19 / 2.45 | 1.32 + 2.37 | 3.37 | 25.69 | 28.54 |
+  | + SKY_ATMODE | 1.29 | 4.25 | 5.28 / 2.44 | 1.33 + 2.36 | 3.37 | 25.58 | 28.54 |
+  | + SKY_KILL0 (testing) | 1.29 | 4.24 | 5.28 / 2.45 | 1.31 + 2.38 | 3.30 | 25.49 | 28.43 |
+  | + WORLD_MERGE=4 (instead of KILL0) | 1.27 | 4.37 | 4.57 / 1.99 | 1.22 + 2.44 | 3.08 | 24.37 | 27.67 |
+
+  Novalis with SKY_UTERMS not measured: the console stopped answering after the Veldin run (it had exited normally). Shots of the new
+  switches not compared yet (same reason): **all the new switches are default 0** until they are - the picture should be identical by
+  construction (the same values in the same order; the dome's blending off where As is 1). The measured set:
+  `RAC1_WIIU_MOBY_FAST=1 RAC1_WIIU_SKY_OPAQUE=1 RAC1_WIIU_SKY_NOTEX=1 RAC1_WIIU_SKY_ATMODE=1 RAC1_WIIU_SKY_UTERMS=1`; the .gsh files on the
+  SD already (mrp_moby_fast*, mrp_sky_host_fast_noat_notex*, mrp_sky_host_fast_noat_kz, mrp_sky_host_fast_noat_ut; not yet
+  mrp_moby_fast_ut / mrp_moby_fast_noat_ut).
+- **Where the gains went:** the GPU's own work fell ~4.2 ms on Veldin open (mobys -2.5, sky -1.7) and ~2.5 on Novalis (mobys -2.3, sky
+  -0.2), but "GPU busy" only ~1.6 / 2.2: the frame's start now waits for the CPU's commands longer - "tfrag pass 1"'s CP gap on Veldin open 1.13 (before) -> 2.21
+  (mobys) -> 3.83 ms (all), the segment itself 3.41 -> 6.25. Novalis' host frame (28.5) is now ~3 ms above its GPU busy (25.6): the CPU
+  holds it. The next GPU gains count only once the world's first commands come sooner (the proposals of 2026-10-31 above: the world job's
+  second half before the draws, or the world's draws issued in two parts).
+- **RAC1_WIIU_WORLD_MERGE=4** (the existing switch: the items split by texture unit, no unit tree in the pixel shader): ties pass 1 / 2
+  -0.2 / -0.1 ms on Veldin open, -0.7 / -0.5 on Novalis, but 523 -> 1865 GX2 draws and "world draws" on the CPU 4.4 -> 7.2 ms on Veldin
+  open: the host frame worse there (29.35 against 28.65), better on Novalis (27.67 against 28.54). Not changed (mode 3 stays).
+- **Not done:** the opaque ties / shrubs in the sky's depth pre-pass (proposal (a) of 2026-10-31) - their pass 1's non-pixel part (~2.9 ms
+  with the pixels off) would be paid twice for at most ~2 ms of sky; a position-only vertex shader for the pre-pass would have to give
+  the very same depths as the full one (else holes where the colour pass's LEQUAL fails). With the sky's shells cheaper (above) it pays
+  even less.
+- **Next (proposals, by what this found):**
+  - the shots (Veldin open 1200 / 1800, Novalis 900 / 1400, RAC1_REALTIME=0) of the measured set against the defaults, then the defaults
+    on; RAC1_WIIU_MOBY_UTERMS measured (expected: the mobys' pixels another -30..40%, as the shells');
+  - the same for the world's fast pairs: the tfrags' and the ties' / shrubs' pixel shader reads nine inputs (vStq, vQF, vColor, vFlat and
+    the five flat terms). A tfrag range or a lone draw has one texture word: its terms could come from a block as the shells'; the merged
+    ties' draws change word per triangle - their five flat vec4s packed into one or two (the texture function's A / B / C and the alpha
+    test's r / m / n / th from small codes decoded by a few ALU groups: ALU is cheaper than inputs here). Ties pass 1's pixels are ~4.6 ms
+    on Veldin open;
+  - the effects (Novalis 3.35 ms) draw with the tfrags' fast pairs (nine inputs) and linear textures (fx_texture): the same two ideas;
+  - the mobys' vertex shader: 341 ALU groups, 246 CF instructions (42 branches, 27 fetch clauses: joint_row's bounds, matrix_of's cases) -
+    the mobys' non-pixel time (~2 ms on Veldin open) is likely there.

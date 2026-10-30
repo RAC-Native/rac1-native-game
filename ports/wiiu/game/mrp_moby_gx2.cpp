@@ -87,7 +87,7 @@ struct alignas(16) PixelBlock {
     float fog_col[4];
     int32_t a[4];  // TME, ATE, ATST, AREF
     int32_t b[4];  // AFAIL, the mip mode, the shade debug, FGE
-    int32_t c[4];  // the pass
+    int32_t c[4];  // the pass; (the fast pair's, 2026-11-01) the bound array's width / height as float bits, 1 the failing pixels discarded
     bool operator==(const PixelBlock& o) const { return std::memcmp(this, &o, sizeof *this) == 0; }
 };
 static_assert(sizeof(PixelBlock) == 64);
@@ -102,6 +102,86 @@ bool g_scaled_ok = false;
 // discard - the depth tested and written before the shader), for the batches whose test is off or ALWAYS while Gx2Perf::nokill
 WHBGfxShaderGroup g_sh_noat{};
 const GX2PixelShader* g_ps_noat = nullptr;
+// ((2026-11-01, the GPU's pixels) RAC1_WIIU_MOBY_FAST, default 0 - measured better, the shots to compare) the fast pairs
+// (shaders/mrp_moby_fast.gsh and mrp_moby_fast_noat.gsh: mrp_moby.vert built RAC1_FAST + mrp_moby_fast.frag - the texture word and the
+// batch's flags decoded per vertex, the pixel's work straight arithmetic), for the batches drawn without the shade debug nor the grey test;
+// [0] with the alpha test, [1] without
+WHBGfxShaderGroup g_fast[2]{};
+bool g_fast_ok[2] = {};
+bool moby_fast_on() {
+    static const bool on = std::getenv("RAC1_WIIU_MOBY_FAST") != nullptr && std::atoi(std::getenv("RAC1_WIIU_MOBY_FAST")) != 0;
+    return on;
+}
+// ((2026-11-01) RAC1_WIIU_MOBY_UTERMS, default 0 - not run on the console yet; with RAC1_WIIU_MOBY_FAST) the fast pairs built
+// RAC1_UNIFORM_TERMS (shaders/mrp_moby_fast_ut.gsh, mrp_moby_fast_noat_ut.gsh): the draw's terms from a block of their own (MobyTerms,
+// moby_terms_cpu - one a draw command, kept for the frame as its DrawBlock) instead of five flat inputs, three inputs a pixel instead of
+// eight (the sky's shells drew ~1.5x faster so: PERFORMANCE.md)
+WHBGfxShaderGroup g_fast_ut[2]{};
+bool g_fast_ut_ok[2] = {};
+uint32_t g_terms_loc[2] = {};
+bool moby_uterms_on() {
+    static const bool on = std::getenv("RAC1_WIIU_MOBY_UTERMS") != nullptr && std::atoi(std::getenv("RAC1_WIIU_MOBY_UTERMS")) != 0;
+    return on;
+}
+// orig: (host) mrp_moby.vert's moby_fast_terms for a draw's texture word `w`, layer and its batch's flags `fl`: vLod, vFnA, vFnB, vScl,
+// vAt (std140 vec4s) - the same float values (small integers, an integer / 16, constants)
+struct alignas(16) MobyTermsBlock {
+    float v[5][4];
+};
+MobyTermsBlock moby_terms_cpu(uint32_t w, uint32_t layer, uint32_t fl) {
+    MobyTermsBlock t{};
+    const int mips = static_cast<int>((w >> 22) & 7u) + 1;
+    const int mxl = static_cast<int>((w >> 4) & 7u), lcm = static_cast<int>((w >> 7) & 1u), L = static_cast<int>((w >> 8) & 3u);
+    const float K = static_cast<float>(static_cast<int32_t>((w >> 10) << 20) >> 20) / 16.0f;
+    const float lod[4] = {lcm != 0 ? 0.0f : static_cast<float>(1 << L), K, static_cast<float>(std::min(mxl, mips - 1)) + 0.5f, static_cast<float>(layer)};
+    const float k2 = 255.0f / 128.0f;
+    const uint32_t tfx = (w >> 1) & 3u, tcc = (w >> 3) & 1u;
+    float rgb[3] = {0.0f, 0.0f, 0.0f}, a[3] = {0.0f, 0.0f, 1.0f}, sc[2] = {1.0f, 1.0f};
+    float tm = (w & 1u) != 0u ? 0.0f : 1.0f, ta = (w & 1u) != 0u ? 128.0f / 255.0f : 0.0f;
+    auto set3 = [](float* d, float x, float y, float z) { d[0] = x, d[1] = y, d[2] = z; };
+    if ((fl & 1u) == 0u) {
+        set3(rgb, 0.0f, 1.0f, 0.0f);
+        set3(a, 0.0f, 1.0f, 0.0f);
+        tm = 0.0f;
+        ta = 1.0f;
+    } else if (tfx == 0u) {
+        set3(rgb, 0.0f, 1.0f, 0.0f);
+        sc[0] = k2;
+        if (tcc != 0u) {
+            set3(a, 0.0f, 1.0f, 0.0f);
+            sc[1] = k2;
+        }
+    } else if (tfx == 1u) {
+        set3(rgb, 1.0f, 0.0f, 0.0f);
+        if (tcc != 0u) set3(a, 1.0f, 0.0f, 0.0f);
+    } else if (tfx == 2u) {
+        set3(rgb, 0.0f, 1.0f, 1.0f);
+        sc[0] = k2;
+        if (tcc != 0u) set3(a, 1.0f, 0.0f, 1.0f);
+    } else {
+        set3(rgb, 0.0f, 1.0f, 1.0f);
+        sc[0] = k2;
+        if (tcc != 0u) set3(a, 1.0f, 0.0f, 0.0f);
+    }
+    const uint32_t atst = (fl >> 4) & 7u;
+    const float aref = static_cast<float>((fl >> 8) & 0xffu);
+    float at[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    auto set4 = [&](float x, float y, float z, float q) { at[0] = x, at[1] = y, at[2] = z, at[3] = q; };
+    if (atst == 0u) set4(0.0f, 0.0f, 0.0f, 1.0f);
+    else if (atst == 2u) set4(aref, -1.0f, 0.0f, 1e-30f);
+    else if (atst == 3u) set4(aref, -1.0f, 0.0f, 0.0f);
+    else if (atst == 4u) set4(aref, 0.0f, -1.0f, -0.49999997f);
+    else if (atst == 5u) set4(aref, 1.0f, 0.0f, 0.0f);
+    else if (atst == 6u) set4(aref, 1.0f, 0.0f, 1e-30f);
+    else if (atst == 7u) set4(aref, 0.0f, 1.0f, 0.5f);
+    const float fa[4] = {rgb[0], rgb[1], rgb[2], tm}, fb[4] = {a[0], a[1], a[2], ta}, scl[4] = {sc[0], sc[1], static_cast<float>(mips - 1), 0.0f};
+    std::memcpy(t.v[0], lod, sizeof lod);
+    std::memcpy(t.v[1], fa, sizeof fa);
+    std::memcpy(t.v[2], fb, sizeof fb);
+    std::memcpy(t.v[3], scl, sizeof scl);
+    std::memcpy(t.v[4], at, sizeof at);
+    return t;
+}
 // the blocks' locations and sizes (the compiler's: at least the structs')
 struct BlockLoc {
     uint32_t loc = 0, size = 0;
@@ -369,6 +449,7 @@ void tex_sync(const mrpm::LevelView& L) {
 struct Cache {
     uint64_t serial = ~0ull, wraps = ~0ull;
     std::vector<void*> draws;                      // per draw command: its DrawBlock
+    std::vector<void*> terms;                      // ((2026-11-01) RAC1_WIIU_MOBY_UTERMS) per draw command: its MobyTerms block
     std::unordered_map<uint64_t, void*> joints;    // per (first joint, count): the moby's joints block
     void* frame = nullptr;
     void* frame_own = nullptr;                     // (the title menu's boxes: the 4:3 projection whatever the frame's)
@@ -378,6 +459,7 @@ void cache_reset(uint64_t serial, size_t draws) {
     g_cache.serial = serial;
     g_cache.wraps = g_ring_wraps;
     g_cache.draws.assign(draws, nullptr);
+    g_cache.terms.assign(draws, nullptr);
     g_cache.joints.clear();
     g_cache.frame = g_cache.frame_own = g_cache.normals = nullptr;
 }
@@ -545,6 +627,34 @@ bool mrp_moby_gx2_init() {
     if (!variant) g_ps_noat = gx2_ps_variant("shaders/mrp_moby_noat.gsh", g_sh, g_sh_noat);
     gx2_ps_early_z(g_sh.pixelShader, "mrp_moby");
     gx2_ps_early_z(g_ps_noat, "mrp_moby (no alpha test)");
+    if (!variant && moby_fast_on()) {  // ((2026-11-01) RAC1_WIIU_MOBY_FAST: the fast pairs)
+        static const char* const kFast[2] = {"shaders/mrp_moby_fast.gsh", "shaders/mrp_moby_fast_noat.gsh"};
+        for (int k = 0; k < 2; ++k) {
+            g_fast_ok[k] = gx2_pair_variant(kFast[k], g_sh, g_fast[k]);
+            if (g_fast_ok[k]) gx2_ps_early_z(g_fast[k].pixelShader, kFast[k]);
+        }
+        if (moby_uterms_on()) {  // ((2026-11-01) RAC1_WIIU_MOBY_UTERMS: the pairs taking the terms from MobyTerms)
+            static const char* const kUt[2] = {"shaders/mrp_moby_fast_ut.gsh", "shaders/mrp_moby_fast_noat_ut.gsh"};
+            for (int k = 0; k < 2; ++k) {
+                g_fast_ut_ok[k] = g_fast_ok[k] && gx2_pair_variant(kUt[k], g_sh, g_fast_ut[k]);
+                bool found = false;
+                if (g_fast_ut_ok[k])
+                    for (uint32_t i = 0; i < g_fast_ut[k].pixelShader->uniformBlockCount; ++i)
+                        if (std::strcmp(g_fast_ut[k].pixelShader->uniformBlocks[i].name, "MobyTerms") == 0) {
+                            g_terms_loc[k] = g_fast_ut[k].pixelShader->uniformBlocks[i].offset;
+                            found = true;
+                        }
+                if (g_fast_ut_ok[k] && !found) {
+                    WHBGfxFreeShaderGroup(&g_fast_ut[k]);
+                    g_fast_ut[k] = WHBGfxShaderGroup{};
+                    g_fast_ut_ok[k] = false;
+                }
+                if (g_fast_ut_ok[k]) gx2_ps_early_z(g_fast_ut[k].pixelShader, kUt[k]);
+            }
+            std::printf("[wiiu] mrp_moby_gx2: the fast pairs' terms from a block %s (RAC1_WIIU_MOBY_UTERMS)\n", g_fast_ut_ok[0] ? "on" : "NOT loaded");
+        }
+        std::printf("[wiiu] mrp_moby_gx2: the fast pairs %s (RAC1_WIIU_MOBY_FAST)\n", g_fast_ok[0] ? (g_fast_ok[1] ? "loaded" : "loaded (with the alpha test only)") : "NOT loaded");
+    }
     std::printf("[wiiu] mrp_moby_gx2: up (blocks: frame %u normals %u joints %u draw %u pixel %u bytes)\n", g_frame_loc.size, g_normals_loc.size,
                 g_joints_loc.size, g_draw_loc.size, g_pixel_loc.size);
     return true;
@@ -562,6 +672,14 @@ void mrp_moby_gx2_shutdown() {
     if (g_ps_noat != nullptr) WHBGfxFreeShaderGroup(&g_sh_noat);
     g_sh_noat = WHBGfxShaderGroup{};
     g_ps_noat = nullptr;
+    for (int k = 0; k < 2; ++k) {
+        if (g_fast_ok[k]) WHBGfxFreeShaderGroup(&g_fast[k]);
+        g_fast[k] = WHBGfxShaderGroup{};
+        g_fast_ok[k] = false;
+        if (g_fast_ut_ok[k]) WHBGfxFreeShaderGroup(&g_fast_ut[k]);
+        g_fast_ut[k] = WHBGfxShaderGroup{};
+        g_fast_ut_ok[k] = false;
+    }
     WHBGfxFreeShaderGroup(&g_sh);
     g_sh = WHBGfxShaderGroup{};
     g_ready = false;
@@ -676,6 +794,9 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
     GX2SetVertexShader(g_sh.vertexShader);
     GX2SetPixelShader(g_sh.pixelShader);
     const GX2PixelShader* cur_ps = g_sh.pixelShader;  // (the pixel shader set: its own or the build without the alpha test)
+    const GX2VertexShader* cur_vs = g_sh.vertexShader;  // ((2026-11-01) its own or a fast pair's)
+    uint32_t draw_fl = 0;  // ((2026-11-01) the batch's flags for the fast pairs' vertex shader, MobyDraw's pCmd.w: TME, ATST << 4, AREF << 8)
+    int terms_k = -1;      // ((2026-11-01) RAC1_WIIU_MOBY_UTERMS: the batch's pair takes its terms from MobyTerms - [0] / [1]'s place; -1 not)
     GX2SetCullOnlyControl(GX2_FRONT_FACE_CCW, FALSE, FALSE);
     GX2SetAlphaTest(FALSE, GX2_COMPARE_FUNC_ALWAYS, 0.0f);
     GX2SetViewport(static_cast<float>(vp.x), static_cast<float>(win_h - vp.y - vp.h), static_cast<float>(vp.w), static_cast<float>(vp.h), 0.0f, 1.0f);
@@ -748,6 +869,7 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
             d.part.info[0] = 0;
             d.part.info[1] = static_cast<int32_t>(jc);
             std::memcpy(d.cmd, &cmds[4 * ci], sizeof d.cmd);
+            d.cmd[3] = draw_fl;  // ((2026-11-01) the batch's flags: the fast pairs' vertex shader's; the main one does not read them)
             db_ = block_of(&d, sizeof d, g_draw_loc.size, true);
         }
         if (jb == nullptr || db_ == nullptr) return;
@@ -756,6 +878,15 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
             bound_joints = jb;
         }
         if (g_draw_loc.found) GX2SetVertexUniformBlock(g_draw_loc.loc, g_draw_loc.size, db_);
+        if (terms_k >= 0) {  // ((2026-11-01) RAC1_WIIU_MOBY_UTERMS: the draw's terms)
+            void*& tb = g_cache.terms[i];
+            if (tb == nullptr) {
+                const MobyTermsBlock t = moby_terms_cpu(cmds[4 * ci + 1], cmds[4 * ci + 2], draw_fl);
+                tb = block_of(&t, sizeof t, sizeof t, true);
+            }
+            if (tb == nullptr) return;
+            GX2SetPixelUniformBlock(g_terms_loc[terms_k], sizeof(MobyTermsBlock), tb);
+        }
         if (stage < 4) return;
         if ((g_debug & 2048) != 0 && g_draws_this_call++ > 0) return;  // (testing: one draw a call - the screen triangles drawn once)
         static bool dumped = false;
@@ -803,11 +934,11 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
         }
         ++g_batches;
         own_view(k.own_view);
+        const GX2Texture* bt = k.bucket >= 0 && static_cast<size_t>(k.bucket) < g_tex.arrays.size() && g_tex.arrays[static_cast<size_t>(k.bucket)].surface.image != nullptr
+                                   ? &g_tex.arrays[static_cast<size_t>(k.bucket)]
+                                   : &g_white;
         if (k.bucket != cur_bucket) {
-            const GX2Texture* t = k.bucket >= 0 && static_cast<size_t>(k.bucket) < g_tex.arrays.size() && g_tex.arrays[static_cast<size_t>(k.bucket)].surface.image != nullptr
-                                      ? &g_tex.arrays[static_cast<size_t>(k.bucket)]
-                                      : &g_white;
-            if (g_sampler_ok) GX2SetPixelTexture(t, g_sampler_loc);
+            if (g_sampler_ok) GX2SetPixelTexture(bt, g_sampler_loc);
             cur_bucket = k.bucket;
         }
         if ((k.sampler & 15u) != cur_sampler) {
@@ -837,8 +968,25 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
         // colour against it with LEQUAL and no Z writes (the pixels it writes colour for)
         static const bool no_split = std::getenv("RAC1_GS_AFAIL_SPLIT") != nullptr && std::atoi(std::getenv("RAC1_GS_AFAIL_SPLIT")) == 0;
         const bool split = !no_split && zwrite && pb.a[1] != 0 && pb.a[2] != 1 && pb.b[0] != 0;
+        // ((2026-11-01) RAC1_WIIU_MOBY_FAST) the fast pair when the batch has no debug: its block's extra words (the bound array's size, the
+        // kill rule of mrp_moby.frag: a failing pixel discarded in the colour pass with AFAIL KEEP / ZB_ONLY, in the depth pass but ZB_ONLY)
+        const bool noat = g_gx2_perf.nokill && (pb.a[1] == 0 || pb.a[2] == 1);
+        const int fk = noat && g_fast_ok[1] ? 1 : 0;
+        const bool fast = g_fast_ok[fk] && pb.b[2] == 0 && (g_debug & 2) == 0;
+        draw_fl = static_cast<uint32_t>(pb.a[0]) | static_cast<uint32_t>(pb.a[2]) << 4 | static_cast<uint32_t>(pb.a[3]) << 8;
+        if (fast) {
+            const float tw = static_cast<float>(bt->surface.width), th = static_cast<float>(bt->surface.height);
+            std::memcpy(&pb.c[1], &tw, 4);
+            std::memcpy(&pb.c[2], &th, 4);
+        }
+        auto kill_rule = [&] { pb.c[3] = fast ? ((pb.c[0] == 0 && (pb.b[0] == 0 || pb.b[0] == 2)) || (pb.c[0] == 1 && pb.b[0] != 2) ? 1 : 0) : 0; };
+        terms_k = fast && g_fast_ut_ok[fk] ? fk : -1;
         {  // (Gx2Perf::nokill: the build without the alpha test when the batch's is off or ALWAYS - its pixels all pass, no discard)
-            const GX2PixelShader* ps = g_gx2_perf.nokill && g_ps_noat != nullptr && (pb.a[1] == 0 || pb.a[2] == 1) ? g_ps_noat : g_sh.pixelShader;
+            const WHBGfxShaderGroup* fp = terms_k >= 0 ? &g_fast_ut[fk] : fast ? &g_fast[fk] : nullptr;
+            const GX2PixelShader* ps = fp != nullptr ? fp->pixelShader : noat && g_ps_noat != nullptr ? g_ps_noat : g_sh.pixelShader;
+            const GX2VertexShader* vs = fp != nullptr ? fp->vertexShader : g_sh.vertexShader;
+            if (vs != cur_vs) GX2SetVertexShader(vs);
+            cur_vs = vs;
             if (ps != cur_ps) GX2SetPixelShader(ps);
             cur_ps = ps;
         }
@@ -846,6 +994,7 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
             GX2SetDepthOnlyControl(TRUE, TRUE, zf);
             set_mask(none);
             pb.c[0] = 1;
+            kill_rule();
             set_pixel(pb);
             for (uint32_t i = b.first; i < b.first + b.count; ++i) draw_one(i);
             set_mask(GX2_CHANNEL_MASK_RGBA);
@@ -854,6 +1003,7 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
             GX2SetDepthOnlyControl(ztest ? TRUE : FALSE, zwrite ? TRUE : FALSE, zf);
         }
         pb.c[0] = 0;
+        kill_rule();
         set_pixel(pb);
         for (uint32_t i = b.first; i < b.first + b.count; ++i) draw_one(i);
     }

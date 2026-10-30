@@ -478,7 +478,7 @@ void gx2c_window(int frames, std::vector<std::string>& menu) {
         std::printf(" %s:%d %.2f,", base != nullptr ? base + 1 : g_dd_sites[i].file, g_dd_sites[i].line, g_dd_sites[i].n / n);
         g_dd_sites[i].n = 0;
     }
-    std::printf(" other %.2f\n", g_dd_other / n);
+    std::printf(" other %.2f; blendings reading the destination's alpha %llu\n", g_dd_other / n, static_cast<unsigned long long>(rac1::gs::g_blend_dst_alpha));
     char b[96];
     std::snprintf(b, sizeof b, "DrawDone %.1f  Inval %.1f  draws %.0f", g.draw_done / n, g.invalidate / n, g.draws / n);
     menu.emplace_back(b);
@@ -557,6 +557,9 @@ int g_gsub_n[kGpuRing] = {};
 uint64_t g_gsub_over = 0;  // (frames whose marks went past kSubMax)
 double g_gsub_ms[kSubKinds] = {}, g_gsub_gap[kSubKinds] = {};
 uint64_t g_gsub_cnt[kSubKinds] = {};
+// ((2026-11-01) the GPU's pixels) the sky's pass-1 marks by their order in the frame (its batches in order): the "[gpu-sky]" line
+constexpr int kSkyMarks = 32;
+double g_gsky_ms[kSkyMarks] = {};
 GpuSlot& gsub_slot(int set, int bottom, int i) { return g_gsub[(set * 2 + bottom) * kSubMax + i]; }
 // a set's sub-marks read (its marks' samples `bot`, swapped as `swap` says): between the depth clear's mark and the world's
 void gsub_read(int set, const uint64_t* bot, bool swap) {
@@ -566,6 +569,7 @@ void gsub_read(int set, const uint64_t* bot, bool swap) {
     DCInvalidateRange(&gsub_slot(set, 0, 0), static_cast<uint32_t>(2 * kSubMax * sizeof(GpuSlot)));
     const uint64_t lo = bot[kGmZclear], hi = bot[kGmWorld];
     uint64_t prev = lo;
+    int sky_i = 0;
     for (int i = 0; i < n; ++i) {
         uint64_t t = gsub_slot(set, 0, i).v, b = gsub_slot(set, 1, i).v;
         if (t == ~0ull || b == ~0ull) return;  // (not written: the frame's sub-marks dropped from here)
@@ -578,6 +582,7 @@ void gsub_read(int set, const uint64_t* bot, bool swap) {
         g_gsub_ms[k] += gpu_ms(b - prev);
         g_gsub_gap[k] += t > prev ? gpu_ms(t - prev) : 0.0;
         ++g_gsub_cnt[k];
+        if (k == rac1::kSmSky1 && sky_i < kSkyMarks) g_gsky_ms[sky_i++] += gpu_ms(b - prev);
         prev = b;
     }
     g_gsub_ms[rac1::kSmN] += gpu_ms(hi - prev);
@@ -707,6 +712,12 @@ void gpu_window(std::vector<std::string>& menu) {
         }
         std::printf(" %llu frames past %d marks\n", static_cast<unsigned long long>(g_gsub_over), kSubMax);
         g_gsub_over = 0;
+        std::printf("[gpu-sky] the sky's pass 1 by batch, ms a TV frame:");
+        for (int j = 0; j < kSkyMarks; ++j) {
+            if (g_gsky_ms[j] != 0.0) std::printf(" %.2f", g_gsky_ms[j] / n);
+            g_gsky_ms[j] = 0.0;
+        }
+        std::printf("\n");
     }
     g_gbusy = g_ggap = 0.0;
     g_gn = g_gnperiod = g_glate = g_gswapped = 0;

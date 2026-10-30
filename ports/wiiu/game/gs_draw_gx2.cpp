@@ -71,6 +71,9 @@
 #include "gx2_counters.h"  // (after every GX2 header: the frame's GX2 work counted)
 
 namespace rac1::gs {
+// ((2026-11-01, the GPU's pixels) the blendings set that read the destination's alpha (the GS's C = Ad): the "[gx2]" line's count -
+// whether a pixel's alpha left in the colour buffer is ever read)
+uint64_t g_blend_dst_alpha = 0;
 
 namespace {
 
@@ -291,6 +294,9 @@ Blend blend_of(const DrawState& st) {
     return b;
 }
 void set_blend(const Blend& b) {
+    if (b.on && (b.sf == GX2_BLEND_MODE_DST_ALPHA || b.sf == GX2_BLEND_MODE_INV_DST_ALPHA || b.df == GX2_BLEND_MODE_DST_ALPHA ||
+                 b.df == GX2_BLEND_MODE_INV_DST_ALPHA))
+        ++g_blend_dst_alpha;
     if (!b.on) {
         GX2SetColorControl(GX2_LOGIC_OP_COPY, 0, FALSE, TRUE);
         return;

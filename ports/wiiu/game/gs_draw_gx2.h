@@ -28,6 +28,7 @@ void draw_gx2(const Gs& gs, const GX2ColorBuffer* screen, float fb_w, float fb_h
 // target 0, as draw_gx2 sets it for the screen (the alpha written the source's); ABE off: blending off. (The MRP's mobys,
 // mrp_moby_gx2.cpp.)
 void set_blend_gx2(uint64_t prim, uint64_t alpha);
+extern uint64_t g_blend_dst_alpha;  // ((2026-11-01) the blendings set that read the destination's alpha, counted)
 // Whether that blending reads the source alpha as a factor (in a render target, which keeps the GS's raw alpha, draw_gx2 then draws
 // the batch twice: the colour blended with the alpha as 0x80 = 1.0, then the raw alpha alone; mrp_2d_gx2.cpp does the same)
 bool blend_reads_src_alpha_gx2(uint64_t prim, uint64_t alpha);

@@ -47,7 +47,73 @@ layout(std140) uniform MobyDraw {
 noperspective out vec4 vColor;
 noperspective out vec3 vStq;
 noperspective out float vFog;  // the XYZF2's F byte (the GS interpolates it along the triangle)
+#ifdef RAC1_FAST
+// ((2026-11-01, the GPU's pixels) the fast pixel shader's terms, mrp_moby_fast.frag: what mrp_moby.frag decodes per pixel from the
+// texture word (pCmd.y), the layer (pCmd.z) and its batch's TME / ATST / AREF (pCmd.w, mrp_moby_gx2.cpp: bit 0 TME, 4..6 ATST, 8..15
+// AREF) made here - flat, the provoking vertex's, the same for the whole draw)
+flat out vec4 vLod;  // A (2^L, 0 with LCM), K, min(MXL, the levels - 1) + 0.5, the layer
+flat out vec4 vFnA;  // RGB's A, B, C, then tm
+flat out vec4 vFnB;  // alpha's A, B, C, then ta
+flat out vec4 vScl;  // RGB's S, alpha's S, the levels - 1, 0
+#ifndef RAC1_NO_ALPHA_TEST
+flat out vec4 vAt;  // the alpha test's r, m, n, th (mrp_world_fast.glsl's)
+#endif
+// orig: (host) mrp_moby.frag's decoding of the texture word `w`, the layer and the batch's flags `fl`, its results as terms:
+// o = (t' (A + B c)) S + C c.a per channel, t' = t tm + ta
+void moby_fast_terms(uint w, uint layer, uint fl) {
+    int mips = int((w >> 22) & 7u) + 1;
+    int mxl = int((w >> 4) & 7u), lcm = int((w >> 7) & 1u), L = int((w >> 8) & 3u);
+    float K = float((int(w >> 10) << 20) >> 20) / 16.0;
+    vLod = vec4(lcm != 0 ? 0.0 : float(1 << L), K, float(min(mxl, mips - 1)) + 0.5, float(layer));
+    const float k2 = 255.0 / 128.0;
+    uint tfx = (w >> 1) & 3u, tcc = (w >> 3) & 1u;
+    vec3 rgb, a = vec3(0.0, 0.0, 1.0);  // (alpha with TCC off: the colour's)
+    vec2 s = vec2(1.0);
+    float tm = (w & 1u) != 0u ? 0.0 : 1.0, ta = (w & 1u) != 0u ? 128.0 / 255.0 : 0.0;
+    if ((fl & 1u) == 0u) {  // (TME off: the colour)
+        rgb = vec3(0.0, 1.0, 0.0);
+        a = vec3(0.0, 1.0, 0.0);
+        tm = 0.0;
+        ta = 1.0;
+    } else if (tfx == 0u) {  // MODULATE: t c 255 / 128
+        rgb = vec3(0.0, 1.0, 0.0);
+        s.x = k2;
+        if (tcc != 0u) {
+            a = vec3(0.0, 1.0, 0.0);
+            s.y = k2;
+        }
+    } else if (tfx == 1u) {  // DECAL
+        rgb = vec3(1.0, 0.0, 0.0);
+        if (tcc != 0u) a = vec3(1.0, 0.0, 0.0);
+    } else if (tfx == 2u) {  // HIGHLIGHT: t c 255 / 128 + c.a; alpha t.a + c.a
+        rgb = vec3(0.0, 1.0, 1.0);
+        s.x = k2;
+        if (tcc != 0u) a = vec3(1.0, 0.0, 1.0);
+    } else {  // HIGHLIGHT2: t c 255 / 128 + c.a; alpha t.a
+        rgb = vec3(0.0, 1.0, 1.0);
+        s.x = k2;
+        if (tcc != 0u) a = vec3(1.0, 0.0, 0.0);
+    }
+    vFnA = vec4(rgb, tm);
+    vFnB = vec4(a, ta);
+    vScl = vec4(s, float(mips - 1), 0.0);
+#ifndef RAC1_NO_ALPHA_TEST
+    uint atst = (fl >> 4) & 7u;
+    float aref = float((fl >> 8) & 0xffu);
+    vec4 at = vec4(0.0);  // (ALWAYS: 0 >= 0)
+    if (atst == 0u) at = vec4(0.0, 0.0, 0.0, 1.0);                // NEVER: 0 >= 1, never
+    else if (atst == 2u) at = vec4(aref, -1.0, 0.0, 1e-30);       // LESS: -y > 0
+    else if (atst == 3u) at = vec4(aref, -1.0, 0.0, 0.0);         // LEQUAL: -y >= 0
+    else if (atst == 4u) at = vec4(aref, 0.0, -1.0, -0.49999997); // EQUAL: -|y| > -0.5
+    else if (atst == 5u) at = vec4(aref, 1.0, 0.0, 0.0);          // GEQUAL: y >= 0
+    else if (atst == 6u) at = vec4(aref, 1.0, 0.0, 1e-30);        // GREATER: y > 0
+    else if (atst == 7u) at = vec4(aref, 0.0, 1.0, 0.5);          // NOTEQUAL: |y| >= 0.5
+    vAt = at;
+#endif
+}
+#else
 flat out uvec4 vCmd;
+#endif
 
 vec2 normal_of(uint i) {
     vec4 v = uNormals[i >> 1];
@@ -174,5 +240,9 @@ void main() {
     vFog = floor(min(max(((pInfo.w & 1) != 0 ? p.w : pRows[3].w) + uOffset.w, uProjFog.y), 255.0));
     vColor = vec4(col) / 255.0;
     vStq = stq;
+#ifdef RAC1_FAST
+    moby_fast_terms(pCmd.y, pCmd.z, pCmd.w);
+#else
     vCmd = pCmd;
+#endif
 }
