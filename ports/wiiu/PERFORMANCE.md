@@ -507,4 +507,22 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   - Because `wiiu_gfx_frame()` already waits for the previous frame's GPU timestamp (`GX2WaitTimeStamp(g_frame_ts)`) before any draw call of the current frame, data at offset `0` of an 8–16 MB ring buffer is from 10–50 frames ago and is guaranteed to be retired on the GPU unless a *single frame* allocates more than the ring size.
   - Raised `kGeoRingBytes` from 8 MB to 16 MB and added per-frame byte tracking (`g_ring_frame_bytes`, `g_pring_frame_bytes`, `g_gring_frame_bytes`, `g_sring_frame_bytes`) so ring wraps only call `GX2DrawDone()` if a single frame's allocations exceed half the ring size.
   - Added a 1 KB patchable `g_embedded_cfg` slot in `wiiu_main.cpp` and updated `ports/wiiu/tools/bench.sh` + `wiiu-run.sh` to embed benchmark settings directly into `$out/$tag.elf` -> `$out/$tag.rpx` via `elf2rpl`, eliminating all FTP connections and SD `run.cfg` touches during benchmarks.
+- **Fixing `*_fast_noat.gsh` VS/PS SPI varying semantic shift (`mrp_world_fast.glsl`, `gx2_fix_noat_pair` in `mrp_world_gx2.cpp`, `m1p`):**
+  - When `m1m` (`RAC1_WIIU_P2_CULL`) began binding `mrp_world_fast_noat.gsh` and `mrp_tfrag_fast_noat.gsh` for opaque draws (`pass2 == false`) in Pass 1, terrain (`tfrag`) and rocks (`ties`) rendered with corrupted UVs and colours.
+  - **Root cause:** CafeGLSL (`glslcompiler`) assigns hardware SPI semantic IDs (`0x8a..0x92`) in alphabetical order of active varyings independently in each shader stage (`vAt`, `vColor`, `vFlat`, `vFnA`, `vFnB`, `vLod`, `vQF`, `vSel`, `vStq`). `mrp_world_fast.frag` wrapped `flat in vec4 vAt;` in `#ifndef RAC1_NO_ALPHA_TEST`, whereas `mrp_world_fast.glsl` exported `flat out vec4 vAt;` unconditionally — shifting all 8 remaining pixel-shader inputs (`vColor..vStq`) down by 1 SPI slot (`0x8a..0x91` instead of `0x8b..0x92`)!
+  - **Fix:** Wrapped `vAt` in `#ifndef RAC1_NO_ALPHA_TEST` in `ports/wiiu/shaders/mrp_world_fast.glsl` AND added `gx2_fix_noat_pair()` in `ports/wiiu/game/mrp_world_gx2.cpp` so even pre-existing `*_fast_noat.gsh` files on the SD card have their `spi_ps_input_cntls[0..7]` aligned in RAM at load time without requiring FTP uploads.
+- **Console benchmark (`m1p`, verified with intact rendering on both `0.75` scale and `1.0` Native 1080p):**
+  - **Veldin (`m1p_veldin`, `0.75` scale, 20 windows):**
+    - **Host frame average: `29.3 ms` (~34.1 fps average; down from `52.6 ms` baseline, -44.3%)**, steady-state final window **`22.9 ms` (`43.7 fps` equivalent)**!
+    - **GPU busy average: `17.8 ms`** (final window **`15.4 ms`**); **`GX2DrawDone = 0.0`** across all gameplay windows!
+  - **Veldin at Native 1080p (`m1p_1080p_veldin`, `RAC1_WIIU_3D_SCALE=1.0`, full `1920x1080`, 17 windows):**
+    - **Host frame average: `35.1 ms`**, steady-state final window **`33.3 ms` (`30.0 fps`)**!
+    - **GPU busy average: `22.9 ms`** (final window **`20.8 ms`**, `GPU wait 5.2 ms` + `swap wait 12.2 ms` of headroom); **`GX2DrawDone = 0.0`**.
+  - **Novalis (`m1p_novalis`, `0.75` scale, 14 windows):**
+    - **Host frame average: `42.9 ms` (down from `87.8 ms` baseline, -51.1% / 2.05× faster)**, final window **`38.2 ms`**!
+    - **GPU busy average: `23.9 ms`** (final window **`23.7 ms`**); **`GX2DrawDone = 0.0`** across all gameplay windows!
+  - **Novalis at Native 1080p (`m1p_1080p_novalis`, `RAC1_WIIU_3D_SCALE=1.0`, full `1920x1080`, 14 windows):**
+    - **Host frame average: `43.4 ms`** (within `0.5 ms` of `0.75` scale!), final window **`37.1 ms`**!
+    - **GPU busy average: `29.9 ms`** (final window **`30.8 ms`**, **below the 33.3 ms 30 fps budget even at full 1920×1080 on Novalis!**): `tfrag pass 1 = 2.46 ms`, `tfrag pass 2 = 0.04 ms`, `ties/shrubs pass 1 = 7.34 ms`, `ties/shrubs pass 2 = 3.85 ms`, `3D upscale = 0.00 ms`.
+    - Proves that even at **full Native 1080p (`1920x1080`)**, the Latte GPU is no longer the bottleneck on either Veldin (`22.8 ms`) or Novalis (`29.9 ms`); the remaining frame time on Novalis is 100% CPU-bound on Core 2 (`game_thread`, `31.5 ms`).
 

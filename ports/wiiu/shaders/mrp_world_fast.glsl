@@ -7,7 +7,9 @@ noperspective out vec2 vQF;  // the GS's Q for the mip level, F / 255
 flat out vec4 vLod;          // 2^L (0 with LCM), K + 0.5, min(MXL, the texture's levels - 1) + 0.5, the layer
 flat out vec4 vFnA;          // the texture function, RGB: o = t' (A + B c) + C c.a - A, B, C; then tm (t' = t tm + ta)
 flat out vec4 vFnB;          // alpha's A, B, C; then ta
+#ifndef RAC1_NO_ALPHA_TEST
 flat out vec4 vAt;           // the alpha test: y = a 255 - r, pass y m + |y| n >= th - r, m, n, th
+#endif
 flat out vec4 vSel;          // 1 IIP, 1 the alpha test on, the texture unit (draw_flags' bits 16..19), 0
 // orig: (host) `w` the texture word, `layer`, `fl` draw_flags (TME | IIP << 1 | FGE << 2 | the alpha test's mode << 3 | ATST << 4 |
 // AREF << 8 | unit << 16), `lodq` the vertex's Q for the level, `fog` its F (0..255): mrp_world.frag's decoding, its results as terms
@@ -43,6 +45,7 @@ void fast_terms(uint w, uint layer, uint fl, float lodq, float fog) {
     }
     vFnA = vec4(rgb, tm);
     vFnB = vec4(a, ta);
+#ifndef RAC1_NO_ALPHA_TEST
     // the alpha test (ATST: 0 NEVER, 1 ALWAYS, 2 LESS, 3 LEQUAL, 4 EQUAL, 5 GEQUAL, 6 GREATER, 7 NOTEQUAL; mrp_world.frag's comparisons
     // of a = o.a 255 with AREF): x = y m + |y| n >= th, y = a - AREF; a strict test's th the next float above its bound (y is 0 or at
     // least ~1e-5 from it: a's steps)
@@ -57,5 +60,6 @@ void fast_terms(uint w, uint layer, uint fl, float lodq, float fog) {
     else if (atst == 6u) at = vec4(aref, 1.0, 0.0, 1e-30);        // GREATER: y > 0
     else if (atst == 7u) at = vec4(aref, 0.0, 1.0, 0.5);          // NOTEQUAL: |y| >= 0.5
     vAt = at;
+#endif
     vSel = vec4(float((fl >> 1) & 1u), float((fl >> 3) & 1u), float((fl >> 16) & 15u), 0.0);
 }

@@ -19,6 +19,8 @@ Tutti i test sono eseguiti con `ports/wiiu/tools/bench.sh` (`explore` input dete
 | **`m1k`–`m1l`** (`0b70fb6`) | **35.3 ms** (10/16 finestre fisse a **32.8–33.5 ms / 30 fps**, 1 a **16.7 ms / 60 fps**) | **44.4 ms** (5 finestre a **32.5–34.2 ms / 30 fps**; finestra finale scesa da **64.9 a 54.9 ms**) | `tfrag_exec_cpu_fast` + drenaggio cooperativo Core 1/Core 0 + fast path `mrp_fx_wiiu_prepare` |
 | **`m1m`** (`53e2018`) | **30.3 ms** (~33.0 fps medi! Finestre a **25.4–26.1 ms / 38–39 fps** e **16.7–18.8 ms / 53–60 fps**; GPU busy **17.8 ms**) | Finestra 1140–1200 scesa da **54.9 ms a 36.1 ms (-18.8 ms!)**; GPU busy medio **38.2 → 25.1 ms (-34.3%)**; World GPU **26.98 → 10.06 ms** | Culling Pass 2 per-draw/per-range + shader `_noat` Early-Z in Pass 1 + `LESS` depth in Pass 2 |
 | **`m1n`** (`gs_memory` + `mrp_chain`) | *(da misurare insieme a `m1o`)* | `chain join` sceso di **60–100%** (`5.3–7.7 → 2.2–3.0 ms` a 30 fps; **`3.9–7.1 → 0.0–0.1 ms`** nelle viste pesanti!); `fx_texture` `GX2DrawDone` **azzerato (`0.00/frame`)**; frame 960 **49.3 → 44.7 ms**, frame 1080 **47.5 → 41.9 ms** | LUT `in_page` in `addr16`/`addr8`/`addr4`, pre-decodifica CLUT in `texture_at_kick`, ring a 16 slot in `TexSnap`, zero-copy in `Reader::read` |
+| **`m1o`** (`d2cee34`) | **29.4 ms** (ultima finestra 23.7 ms) — ⚠️ terreno/rocce corrotti | **43.5 ms** — ⚠️ terreno/rocce corrotti | `RAC1_WIIU_RING_NOWAIT` (GX2DrawDone = 0.0), `bench.sh` senza FTP |
+| **`m1p`** (fix varying SPI `*_fast_noat`) | **29.3 ms** (ultima **22.9 ms**, GPU 17.8 ms) ✅ rendering corretto | **42.9 ms** (ultima **38.2 ms**, GPU 23.9 ms) ✅ | **1080p nativo (scale 1.0):** Veldin **35.1 ms** (ultima **33.3 ms = 30 fps**, GPU 22.9 ms); Novalis **43.4 ms** (ultima 37.1 ms, GPU **29.9 ms**: la GPU non è più il collo di bottiglia, Novalis è CPU-bound su Core 2) |
 
 ---
 
@@ -77,14 +79,18 @@ Tutti i test sono eseguiti con `ports/wiiu/tools/bench.sh` (`explore` input dete
     - Poiché `wiiu_gfx_frame()` attende già `GX2WaitTimeStamp(g_frame_ts)` (la fine del frame precedente `N-1`) prima di qualsiasi draw del frame `N`, i dati all'offset `0` di un ring da 8–16 MB risalgono a 10–50 frame prima e sono già stati letti dalla GPU! Ora i ring buffer tracciano i byte allocati nel frame corrente (`*_frame_bytes`) e chiamano `GX2DrawDone()` sul wrap solo se un singolo frame supera metà ring (`kGeoRingBytes` portato anche da 8 MB a 16 MB).
     - `wiiu_main.cpp` espone ora uno slot `g_embedded_cfg` da 1 KB che `bench.sh` patcha direttamente nell'ELF temporaneo del benchmark prima di `elf2rpl`: **`bench.sh` e `wiiu-run.sh` non aprono più alcuna connessione FTP né toccano mai il `run.cfg` sulla SD**, evitando i crash del plugin `ftpiiu` di Aroma!
 
+13. **Fix rendering rotto di terreno e rocce (`m1p`)** (`ports/wiiu/shaders/mrp_world_fast.glsl`, `ports/wiiu/game/mrp_world_gx2.cpp`):
+    - Da `m1m` in poi, nel Pass 1 i draw opachi usano `*_fast_noat.gsh`. CafeGLSL assegna gli ID SPI dei varying in **ordine alfabetico** per ogni stadio: il VS esportava `vAt` sempre, il PS lo ometteva con `RAC1_NO_ALPHA_TEST` → tutti gli input del PS slittavano di 1 slot (colori/UV/unità texture sbagliati).
+    - Fix: `vAt` in `#ifndef RAC1_NO_ALPHA_TEST` anche nel VS + `gx2_fix_noat_pair()` che riallinea in RAM `spi_ps_input_cntls` (funziona anche con `.gsh` vecchi sulla SD; nel log: `aligned 8 SPI PS inputs`).
+    - **Regola:** ogni varying condizionato da `#ifdef` deve esserlo identicamente in VS **e** PS. Verificare con lo script Python di dump dei blocchi GFD (tipo 3 VS / tipo 6 PS) che confronta `spi_vs_out_id` e `spi_ps_input_cntls`.
+
 ---
 
 ## 3. Cosa Manca (Prossimi Passi in Ordine di Impatto)
 
-### Priorità 1 — Misurare `m1o` su Console + Testare 1080p Nativo (`RAC1_WIIU_3D_SCALE=1.0`)
-Non appena la console è riavviata (ora `bench.sh` non usa più FTP!):
-1. Eseguire `ports/wiiu/tools/bench.sh m1o_veldin RAC1_LEVEL=0` e `ports/wiiu/tools/bench.sh m1o_novalis RAC1_LEVEL=1 RAC1_FRAMES=1500` per verificare l'azzeramento totale di `GX2DrawDone` (`0.0/frame`) e il guadagno su `world draws` / `2D draws`.
-2. Eseguire il test a **1080p nativo (`RAC1_WIIU_3D_SCALE=1.0`)** su Veldin e Novalis (`m1o_1080p_veldin` e `m1o_1080p_novalis`).
+### Priorità 1 — Decidere default scala 3D e far confermare visivamente a Daino
+- A 1080p nativo (`RAC1_WIIU_3D_SCALE=1.0`) la GPU sta sotto i 33 ms anche su Novalis (29.9 ms). Valutare di portare il default in `wiiu_main.cpp` da `0.75` a `1.0` (o `0.875`) dopo conferma visiva di Daino sulla TV.
+- Far verificare a Daino (build su SD) terreno/rocce, cielo e cutout (foglie, recinzioni) nel Pass 2.
 
 ### Priorità 2 — Spostare Tfrag su GPU Latte (Vertex Shader GX2) e Snellire `game_thread` (Core 2)
 1. **Tfrag su GPU Latte (Vertex Shader GX2):**

@@ -195,6 +195,21 @@ const GX2PixelShader* variant_ps(int path, bool at) {
 // (RAC1_NO_ALPHA_TEST)]; g_fok false: not there (or refused: gx2_pair_variant). Each pair's vertex shader is bound with its pixel shader
 WHBGfxShaderGroup g_fsh[3][2]{};
 bool g_fok[3][2] = {};
+void gx2_fix_noat_pair(const WHBGfxShaderGroup& at_pair, WHBGfxShaderGroup& noat_pair, const char* who) {
+    const GX2VertexShader *va = at_pair.vertexShader, *vb = noat_pair.vertexShader;
+    const GX2PixelShader* pa = at_pair.pixelShader;
+    GX2PixelShader* pb = noat_pair.pixelShader;
+    if (va == nullptr || vb == nullptr || pa == nullptr || pb == nullptr) return;
+    if (va->size == vb->size && std::memcmp(&va->regs, &vb->regs, sizeof va->regs) == 0 &&
+        pb->regs.num_spi_ps_input_cntl + 1 == pa->regs.num_spi_ps_input_cntl &&
+        pb->regs.num_spi_ps_input_cntl > 0 && pb->regs.num_spi_ps_input_cntl < 32 &&
+        pb->regs.spi_ps_input_cntls[0] + 1 == pa->regs.spi_ps_input_cntls[1]) {
+        for (uint32_t i = 0; i < pb->regs.num_spi_ps_input_cntl; ++i)
+            pb->regs.spi_ps_input_cntls[i] = pa->regs.spi_ps_input_cntls[i + 1];
+        std::printf("[wiiu] gx2 perf: %s: aligned %u SPI PS inputs to VS outputs (%08x..%08x)\n", who, pb->regs.num_spi_ps_input_cntl,
+                    pb->regs.spi_ps_input_cntls[0], pb->regs.spi_ps_input_cntls[pb->regs.num_spi_ps_input_cntl - 1]);
+    }
+}
 void fast_load(int path, const WHBGfxShaderGroup& main) {
     static const char* const kFile[3][2] = {{"shaders/mrp_world_fast.gsh", "shaders/mrp_world_fast_noat.gsh"},
                                             {"shaders/mrp_tfrag_fast.gsh", "shaders/mrp_tfrag_fast_noat.gsh"},
@@ -203,6 +218,7 @@ void fast_load(int path, const WHBGfxShaderGroup& main) {
         g_fok[path][k] = gx2_pair_variant(kFile[path][k], main, g_fsh[path][k]);
         if (g_fok[path][k]) gx2_ps_early_z(g_fsh[path][k].pixelShader, kFile[path][k]);
     }
+    if (g_fok[path][0] && g_fok[path][1]) gx2_fix_noat_pair(g_fsh[path][0], g_fsh[path][1], kFile[path][1]);
 }
 void fast_free(int path) {
     for (int k = 0; k < 2; ++k) {
@@ -1373,6 +1389,7 @@ void sky_init() {
             g_hok[k] = gx2_pair_variant(kHost[k], g_ssh, g_hsh[k]);
             if (g_hok[k] && k >= 2) gx2_ps_early_z(g_hsh[k].pixelShader, kHost[k]);
         }
+        if (g_hok[2] && g_hok[3]) gx2_fix_noat_pair(g_hsh[2], g_hsh[3], kHost[3]);
         std::printf("[wiiu] mrp_world_gx2: sky host: shaders %s (RAC1_WIIU_SKY_HOST %s)\n", g_hok[0] ? "loaded" : "NOT loaded: the pass and its capture",
                     mrpw::sky_host_on() ? "on" : "off");
     }

@@ -27,7 +27,7 @@ log=$out/$tag.udp.log
 # (Aroma's wiiload passes no arguments - argc 1 -, and Aroma's ftpiiu plugin crashes after repeated FTP sessions:
 # we patch the benchmark settings directly into g_embedded_cfg inside $out/$tag.elf and convert to $out/$tag.rpx via elf2rpl,
 # so bench.sh makes ZERO FTP connections and never touches Daino's run.cfg on the SD card!)
-{ printf '--no-cfg\n'
+{ printf -- '--no-cfg\n'
   printf '%s\n' RAC1_WIIU_GFX=1 RAC1_BOOT=0 RAC1_MEMCARD=0 RAC1_REALTIME=1 RAC1_SIM_INPUT=explore RAC1_FRAMES=1200 RAC1_WIIU_TIMING=1 \
       RAC1_WIIU_GPU_TIME=2 RAC1_WIIU_WATCHDOG=10 RAC1_WIIU_MENU=1 "$@"; } > "$out/$tag.cfg"
 python3 - "$out/$tag.elf" "$out/$tag.cfg" <<'PY' || { echo "bench: failed to embed config in $out/$tag.elf" >&2; exit 3; }
