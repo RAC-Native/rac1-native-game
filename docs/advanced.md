@@ -20,6 +20,7 @@ The Advanced page has these rows:
 | Fades | Fast, Original | a removed compromise: Fast is the port's default, Original the PS2's |
 | Buy All Ammo | Off, On | enhancement |
 | Vibration | Off, Low, High | enhancement (kept as the machine's preference, not with the saves) |
+| Adaptive Triggers | Off, On | enhancement, shown only when the pad in use is a DualSense (kept as the machine's preference) |
 | Skip Cutscenes | Original, Always | enhancement |
 
 All of it is in `src/game/enhance/advanced.{h,cpp}` (Buy All Ammo's Vendor entry in
@@ -50,14 +51,19 @@ port's fast fades). Left and right on a row step the value (`advanced_settings_d
 - with each save, in a `save<N>.pc` file next to the game's own `save<N>.bin` (see
   [Saves](saves.md#the-pc-settings-next-to-each-save)), so each playthrough keeps its own. The update
   check's two rows are not: they belong to the machine (in the file, `update_check_off` and
-  `update_channel`, and `update_skip`, the version the update notice's Skip Version chose).
+  `update_channel`, and `update_skip`, the version the update notice's Skip Version chose), nor are
+  Vibration and Adaptive Triggers (the machine's pad).
+
+The ids in `save<N>.pc`: Quick Select 1, Aiming 2, Movement 3, Fades 4, Buy All Ammo 5, Skip Cutscenes 10 (Vibration 6
+and Adaptive Triggers 9 have ids but are not written with the saves; 7 and 8 are removed rows, never reused).
 
 A preferences file or a `save<N>.pc` written by an earlier build may hold a setting that has since been
 removed (`ship` and `clank`, the ship selector and Clank's movement, ids 7 and 8): it loads, and those
 lines are ignored.
 
 **The New Game choice.** Picking "Modern mode" or "Experimental" at New Game turns Quick Select, Aiming
-(Modern), Movement (RAC 3), Buy All Ammo, Vibration (High) and Skip Cutscenes (Always) on; "Original mode" turns them all off
+(Modern), Movement (RAC 3), Buy All Ammo, Vibration (High), Skip Cutscenes (Always) and, when the pad in use is a
+DualSense, Adaptive Triggers on; "Original mode" turns them all off
 (`advanced_apply_mode`). Fades is left as it is. Every setting can be changed at any time
 afterwards. The Controls page's mouse settings are the machine's and no mode changes them.
 
@@ -78,40 +84,106 @@ the mobys, the particles and the camera for that frame, and the play-time statis
 ## Vibration (#10)
 
 The original has no vibration (it came with *Going Commando*). With **Vibration = Low** or **High**, the
-gamepad's motors answer what happens, in the spirit of *Ratchet & Clank 2* and *3*: damage taken (stronger
-the more nanotech is lost; a hit on the ship's shield too), Ratchet's death, a hard landing, explosions
-nearby, each weapon's shot (light ticks for the Blaster, the Pyrocitor and the Tesla Claw, medium for the
-gloves and the others, heavy for the Devastator and the R.Y.N.O.), the wrench's hit, a subtle tick for the
-bolts picked up, and a low hum while the ship flies. Low is a little under half of High. It is off by
-default and in Original mode; Modern and Experimental set it to High.
+gamepad answers what happens, in the spirit of *Ratchet & Clank 2* and *3*. Each event is a short pulse
+with a crisp end: held at its strength for about half its length, then brought down to 0 in a few
+frames. The strong, low-frequency motor (the left one) takes impacts and explosions; the weak,
+high-frequency one (the right one) takes shots and ticks. Low is a little under half of High. Vibration
+is off by default and in Original mode; Modern and Experimental set it to High.
+
+| Event | Low motor | High motor | Length | Felt from its side (DualSense) |
+|---|---|---|---|---|
+| A shot: Blaster, Pyrocitor, Tesla Claw | 0 | 0.35 | 50 ms | no |
+| A shot: the gloves and the other weapons | 0.25 | 0.45 | 70 ms | no |
+| A shot: Devastator, R.Y.N.O. | 0.7 | 0.5 | 90 ms | no |
+| The wrench's hit | 0.3 | 0.5 | 60 ms | no |
+| A hit taken (1 nanotech; 2 or more) | 0.6 (0.8) | 0.41 (0.55) | 167 ms (to 250 ms) | yes: the attacker |
+| A hit on the ship's shield | 0.55 | 0.4 | 150 ms | yes: the attacker |
+| An explosion, by its distance (k = 0.15 far .. 1 near) | k | 0.5 k | 200 to 300 ms | yes: the blast's sound |
+| A hard landing | up to 0.6 | up to 0.25 | 100 ms | no |
+| Death | 1.0 | 0.8 | 600 ms | no |
+| Bolts picked up (at most every 4 frames) | 0 | 0.12 | 33 ms | no |
+| The ship flying | 0.12 | 0.04 | while it flies | no |
+| The thrown wrench | 0 | 0.1 | while it flies | yes |
+| A moving sound source (a flying enemy, a ship) within 20 units | up to 0.12 | up to 0.03 | while it moves | yes |
+
+Lengths are in gameplay frames (60 a second), rounded: 50 ms is 3 frames. Pulses that overlap take the
+stronger of each motor; the motors are at exactly 0 on the frame the last pulse ends.
 
 **The game is only read.** Once a gameplay frame `vibration_frame` (`src/game/enhance/vibration.cpp`,
 called by `advanced_frame`) compares what the game's own code did with the frame before: the nanotech
-(+0x22a8) and the hits counted by `hero_hurt` (0x15eea8), the hero's state (the death states 0x3d and
-0x5d) and the lost-hero flag (+0x20b1), the fall speed when the jump states end, a new camera shake
-(0x166de0 / 0x166de8, which the weapons' blasts, mines and bombs set when they go off in view, bigger the
-closer), the ammo of the item in hand (0x13d428 + item x 4), the wrench swing's hit flag (+0xa64, set by
-`wrench_hit_sparks` 0x217368), the bolt count (0x15ed98) and the ship mode (+0x20a4 = 2). Reading the
-results instead of hooking the functions covers every level's own build of the hero and weapon code
-(several levels run transliterated copies) with one reader, and cannot change the game: a run with
-Vibration on has the same RAM hashes as one without, outside the menus' own block. Each event starts a
-pulse of the two motors that fades over a few frames; the host takes the motors once a game frame
-(`vibration_take`: 0 when no gameplay frame ran, so menus and pauses still them).
+(+0x22a8) and the hits counted by `hero_hurt` (0x15eea8), with the attacker it keeps (+0x2280), the hero's
+state (the death states 0x3d and 0x5d) and the lost-hero flag (+0x20b1), the fall speed when the jump
+states end, a new camera shake (0x166de0 / 0x166de8, which the weapons' blasts, mines and bombs set when
+they go off in view, 0.4 - 0.0175 x the distance), the ammo of the item in hand (0x13d428 + item x 4), the
+wrench swing's hit flag (+0xa64, set by `wrench_hit_sparks` 0x217368), the bolt count (0x15ed98), the ship
+mode (+0x20a4 = 2), the thrown wrench (+0x10aa, its moby +0x1090) and the game's 30 sound slots
+(0x13e5c0). Reading the results instead of hooking the functions covers every level's own build of the
+hero and weapon code (several levels run transliterated copies) with one reader, and cannot change the
+game: a run with Vibration on has the same RAM hashes as one without, outside the menus' own block. The
+host takes the result once a game frame (`vibration_take`): neutral when no gameplay frame ran, so menus,
+pauses and a level's loading still the motors and give the triggers and the light bar back.
 
-**The motors** (`src/host/rumble.cpp`): GLFW has no force feedback, and no library is added for it:
-- Linux: the kernel's force feedback (`FF_RUMBLE`) on the pad's event device, found among
+**From its side.** An event with a position is felt from where it is on screen: its direction in the
+camera's view (the camera's position 0x166dc0 and its rows 0x166fd0: forward, left, up) gives a pan from
+-1 (left) to 1 (right), centred within a unit of the camera, as the game's own sound pan (0x28c9e8) is.
+- An explosion's position is the sound the blast started that frame: of the sound slots new that frame,
+  the one whose distance from Ratchet is nearest the distance the shake's size says. None close enough
+  (a shake that is not a blast's): the pulse stays centred.
+- A hit's is the attacker's moby, which `hero_hurt` keeps in +0x2280.
+- The thrown wrench, and a moby's sound playing for a second or more while the moby moves faster than
+  9 units a second within 20 units (the flying enemies' engines, the ships around Ratchet), are followed
+  each frame: their hum moves around the player. Only the nearest one is felt.
+On a **DualSense** the two actuators are a true left and right: a positional pulse of strength `a` is split
+with a constant-power pan (`a * min(1, sqrt2 * cos t)` left and `a * min(1, sqrt2 * sin t)` right, t from 0
+to a quarter turn), so in the centre both sides have the full strength and to one side the other fades
+out. On the **other pads** the two motors are the low and the high frequencies, not left and right, so
+the pulses stay centred there.
+
+**Adaptive Triggers** (shown only when the pad in use is a DualSense; off by default; Modern and
+Experimental turn it on when a DualSense is in use) works with Aiming = Modern, where L2 aims and R2 fires,
+in gameplay on foot:
+- L2: a soft resistance from a quarter of its travel;
+- R2, by the item in hand: the Blaster, the Pyrocitor and the Tesla Claw a light resistance that rattles
+  while they fire; the gloves and the other weapons a stiff section that gives way (a click); the
+  Devastator and the R.Y.N.O. a harder one; each shot a short kick; the wrench and the gadgets nothing;
+- the light bar: Ratchet's health, from green (full) through yellow to red.
+The triggers and the light bar go back to neutral (no effect, the pad's own colour) in menus, in pauses,
+during a level's loading, when the setting goes off and when the game ends. With Aiming = Original the
+triggers do not fire, so they stay neutral; the light bar still follows the health.
+
+**The pad** (`src/host/rumble.cpp`, `src/host/dualsense.cpp`). GLFW has no force feedback, and no library
+is added for it:
+- A DualSense, on Linux and Windows: the game writes the pad's own output report, in the layout of the
+  kernel's `hid-playstation` and SDL: report 0x02 over USB, 0x31 over Bluetooth (with its sequence number
+  and a CRC-32 of 0xa2 and the report). It sets the two actuators (as the kernel's rumble does, in the
+  firmware's newer rumble mode from 2.21 on, read from feature report 0x20), the triggers' effects (the
+  simple ones: 0x01 resistance, 0x02 section, 0x06 vibration, 0x05 off) and the light bar. Linux: the
+  pad's `/dev/hidraw*` node, found by the bus, vendor and product of GLFW's GUID; Steam's and the
+  systems' udev rules usually give the seated user access to it. Without access the log says why, and
+  the kernel's force feedback below is used instead (rumble only, no triggers). Windows: the HID device
+  (SetupAPI, `hid.dll`), written with its own report length. `tests/rumble/dualsense_test.cpp` checks the
+  layout and the CRC (`cmake --build build --target dualsense_test && ./build/dualsense_test`).
+- Linux, other pads: the kernel's force feedback (`FF_RUMBLE`) on the pad's event device, found among
   `/dev/input/event*` by the same bus / vendor / product / version numbers GLFW's GUID is made of. The
-  kernel's drivers cover the Xbox pads (`xpad`), the DualShock 4 and the DualSense (`hid-playstation`,
-  `hid-sony`), the Switch Pro (`hid-nintendo`) and most others. The desktop gives the seated user access
-  to a gamepad's event device; without it the log says so and nothing vibrates.
-- Windows: XInput (`XInputSetState`, from `xinput1_4.dll` or `xinput9_1_0.dll`, loaded when first
-  needed) on every connected Xbox-compatible pad. A DualShock 4 or DualSense on Windows is a HID device
-  that XInput does not see: it vibrates through Steam Input or DS4Windows (which present it as an Xbox
-  pad), not by itself.
+  kernel's drivers cover the Xbox pads (`xpad`), the DualShock 4 (`hid-sony`, `hid-playstation`), the
+  Switch Pro (`hid-nintendo`) and most others. One effect is uploaded once and updated in place; each
+  setting is played again, and the motors are stopped by setting 0, playing it, then stopping it. (Until
+  this was fixed the stop came right after the upload of the 0: the kernel's `ff-memless`, behind most
+  pad drivers, then sends nothing to the pad, which kept the last, weakest strength of the fade until
+  the next event: the endless tail.) The desktop gives the seated user access to a gamepad's event
+  device; without it the log says so and nothing vibrates.
+- Windows, other pads: XInput (`XInputSetState`, from `xinput1_4.dll` or `xinput9_1_0.dll`, loaded when
+  first needed) on every connected Xbox-compatible pad, and a DualShock 4 or DualSense that Steam Input or
+  DS4Windows presents as one.
 - macOS: none.
-The pad driven is the one last used (the one the Controls page names). A setting lasts one second and is
-renewed every half second while the motors run, so a stalled game never leaves the pad buzzing.
-`RAC1_VIBRATION_LOG` prints the motors as they change (with or without a pad).
+The pad driven is the one last used (the one the Controls page names). A force feedback setting lasts one
+second and is renewed every half second while the motors run, and the host stills the pad when the game
+gives nothing for 150 ms, so a stalled game never leaves the pad buzzing.
+
+`RAC1_VIBRATION_LOG` prints each event's pulse (its motors, length, pan, distance), the motors and the
+triggers when they change (`[vibe] f<gameplay frame> ...`) and what the host takes (`[vibe] host frame
+...`), with or without a pad. `RAC1_DUALSENSE_OUT=<file>` takes a DualSense as connected (in headless runs
+too) and appends its output reports to the file instead of a device.
 
 ## Skip Cutscenes: Original or Always
 

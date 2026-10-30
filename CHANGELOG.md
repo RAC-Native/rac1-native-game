@@ -17,6 +17,11 @@ What changed in each release. Releases are source only: you build the game with 
 - Advanced > Vibration (Off, Low, High; High in Modern and Experimental): the gamepad vibrates for damage, death, hard
   landings, nearby explosions, each weapon's shot (by weapon), the wrench's hits, bolts and the ship's flight, through the
   kernel's force feedback on Linux and XInput on Windows, with no new library; the game's state is only read (#10).
+- Vibration: each event a short pulse with a crisp end (the motors used to keep the last, weakest strength of a fade
+  until the next event on Linux: the kernel's ff-memless ignored a stop right after an upload); a DualSense driven
+  through its own output report (Linux hidraw, Windows HID): its two actuators as left and right, so explosions, hits,
+  the thrown wrench and flying enemies are felt from their side; Advanced > Adaptive Triggers (with a DualSense: L2 and
+  R2's resistance by weapon with Modern aiming, the light bar by health) (#10).
 - Advanced > Skip Cutscenes (Original, Always; Always in Modern and Experimental): Start skips every in-engine scene and
   movie on every planet, through the game's own skip, as on Veldin and in Challenge Mode.
 - Advanced > Aiming: Modern, No Zoom, Modern aiming at the normal camera distance, as Ratchet & Clank 3's lock-strafe (#70).
