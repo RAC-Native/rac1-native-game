@@ -685,3 +685,58 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   hardly seen) and a subtraction then takes one count too many. Now an RG8 mask: the fronts counted in red, the backs in green, adds alone,
   1.25 / 255 a face (one count rounded or truncated), inside where red > green (shaders/mrp_shadow_dark.gsh changed; mrp_shadow_vol.gsh the
   same bytes). The debug modes 2-4 above tell the passes apart if it is not that.
+
+### The cores' timeline; what "world's worker join" is; the world's job split between cores 1 and 0 (2026-10-30, night; to measure)
+
+- **What the join is, read off the code.** With RAC1_WIIU_PREP_ON_MAIN=1 (the default since m1j) mrp_world_wiiu_prepare only notes the
+  job (wiiu_prep_dispatch: g_prep_on_main_pending) and the first mrp_world_wiiu_join of wiiu_gfx_frame *runs* it on the main thread, core 1:
+  wiiu_prep_head (static_frame_build_at, tfrag_decide_at, scene_from_static_k with the sky's packets) and wiiu_prep_tail (build_triangles,
+  the tfrags' vertex-shader block). It waits for nothing: no wait for the chain's reader is left in it (the sky's VU1 run is at the
+  prepare, mrp_world_wiiu_sky_capture; the GS registers are the frame before's, g_regs_last; the tfrags' CPU-route drain is gone with
+  RAC1_WIIU_TFRAG_VS). The worker on core 0 is not used at all. n1080_tvs (RAC1_WIIU_PREP_TIME=1, Novalis 1080p) over its last 120 calls:
+  the first half 2.46 + 1.14 + 4.18 = 7.8 ms, the second 6.02 + 0.61 = 6.6 ms - 14.4 ms, the four "[timing]" windows' "world's worker join"
+  averaging the same (6.8, 13.5, 19.7, 20.0): the heavy windows' 20 ms are ~10 + ~9 of the job itself, on the main thread, in series with the
+  rest of the drawing. ("[mrpw] the prepare on the worker" is then printed by the main thread; its "the scene" is 0 and "the sky's run" is
+  scene_from_static_k - the labels are one part off.) Core 0 idles once the chain is read ("chain join" 0.0-0.4: the reader done long before).
+- **The critical paths.** Main thread (Novalis' heavy windows, ~50 ms): the prepare ~7.3 (chain start 1.5, mobys' 3.6, world's 2.1) + the job
+  ~20 + effects' prepare / 2D build ~5.3 + swap wait ~3.3 + draws ~13. Game thread: the prepare (it waits for it: the update reads after it)
+  + its steps (30-40 ms) ~ 44 ms. Taking the job's second half off core 1 brings the main thread to ~40-42, under the game thread's ~44:
+  the host frame is then bound by the steps + the serial prepare (expected ~44-46 instead of ~50 in Novalis' heavy windows; on Veldin's open
+  view the GPU and the swap waits are already ~15-25 ms of the frame - little to gain there, the GPU bound).
+- **The timers ("[core0]" lines, src/platform/core_timeline.h; the timing on - RAC1_WIIU_TIMING=1 or the debug menu, so every bench).**
+  OSGetTime marks (an atomic store each, no lock, no allocation) by the main thread, the game thread, the chain's reader and the world's job;
+  a cycle runs from a prepare's start (orig_main.cpp, after the frame before's mrp_chain_join: rac1_wiiu_cycle) to the next, its marks taken
+  as offsets from its start, averaged over 30 cycles (a count in brackets when not every cycle had the mark; "-" none). Three lines:
+  - `[core0] 30 cycles, 50.1 ms each, ms from the prepare's start: main: chain kicked A, prepared B, drawing C, world join D->E, chain join
+    F->G, fx/2D built H, GPU wait done I, swap wait done J, draws' world join K->L, TV drawn M, frame done N, game thread join O->P |
+    game thread Q->R | chain reader S->T | world job U->V: first half ->W, the chain waited X->Y, second half Z->V`
+  - `[core0] the world job at the drawing's join: not started 30, ... at the draws' join: done 30, ...; the chain still reading at the
+    drawing's join n, the draws' n, the chain join n; its first half on cores 0/1/2 a/b/c, its second a/b/c` - what the job was doing when
+    the main thread reached each join (not started, in its first half, between its halves, waiting for the chain, in its second half, done).
+  - `[core0] the chain reader, ms a cycle: the walk (VIF, GIF, primitives) a, VU1 programs in the effects' ranges b (n runs), elsewhere c
+    (n runs), their kicks d, textures e, GS uploads f; programs by time (start, in a range, ms, runs a cycle): 0x..r 1.23/40.0, ...` - the
+    reader's time by kind, exclusive (mrp_chain.cpp: the program runs - their kicks apart -, texture_at_kick / picture_ct32, the IMAGE
+    transfers into the GS memory, the rest the walk), and its ten heaviest programs (inclusive, "r": run inside an effects' / program 7's
+    range, its kicks kept; without it: run for the VU1 / GS state alone, its kicks dropped).
+  The PC: every call is an empty inline (core_timeline.h's #else), its behaviour unchanged.
+- **RAC1_WIIU_PREP_SPLIT=1 (off by default; with RAC1_WIIU_PREP_ON_MAIN=1):** the first half on the main thread at the drawing's start as
+  before (core 0 is reading the chain then), the second half handed to the worker on core 0, which waits for the chain's reader to be idle
+  (mrp_chain_wait_idle: the "chain waited" span) and runs it beside the main thread's chain join, effects' prepare, 2D build, GPU and swap
+  waits; draw_frame's mrp_world_wiiu_join waits for it, or runs it itself if the worker has not taken it yet (an atomic claim: whichever
+  thread gets it). The tfrags' CPU route (RAC1_WIIU_TFRAG_VS=0) runs whole where the second half runs (the cooperative drain's slots are the
+  main thread's and the worker's). Expected (Novalis heavy): "world's worker join" ~20 -> ~10 (the first half), its rest moved to the draws'
+  join only when the worker is late; host frame ~50 -> ~44-46.
+- **RAC1_WIIU_WJOIN_LATE=1 (off; only with RAC1_WIIU_PREP_ON_MAIN=0):** the whole job on core 0's worker as before m1j, but not waited for at
+  the drawing's start: the main thread joins the chain, prepares the effects and the 2D, waits for the GPU and the swap first, and joins the
+  world before its draws. With the chain and the job in series on core 0 this wins only if the chain is short - the timeline says.
+- **To measure** (BUILD=build-wiiu-c0): the default (the timeline alone, RAC1_WIIU_PREP_TIME=1 for the halves' parts), RAC1_WIIU_PREP_SPLIT=1,
+  and RAC1_WIIU_PREP_ON_MAIN=0 RAC1_WIIU_WJOIN_LATE=1, on Novalis and on Veldin's open view; then decide the default from "[timing]" and
+  "[core0]". The chain reader's line says whether the reader's own time is worth cutting (the programs run outside the ranges only for
+  their state - the comment at Reader::mscal - are the candidates; not skipped here: the in-range programs read the VU1 state they leave).
+- **Proposals (not applied).** (a) The game thread waits for the whole prepare (~7.3 ms, the game's EE memory read for the drawing):
+  the mobys' prepare (build_frame, 3.6 ms) on core 2 beside the main thread's world prepare and chain start, the steps started there once
+  the main thread's reads are done (all three only read EE memory; the chain's reader reads mrp_moby_active() meanwhile - to check), or the chain's capture copy (1.5 ms) on core 0 with a
+  "capture done" join before run_async: up to ~3-5 ms off the game thread's path, which bounds the frame once the split is in. No EE write,
+  but they change who reads what when - to decide. (b) The first half is splittable too: static_frame_build_at and tfrag_decide_at are
+  independent (2.5 + 1.1 ms): the tfrags' decisions on core 0 when the chain is done early. (c) build_triangles by packet ranges on two
+  cores (6 ms on Novalis' heavy windows) - more invasive (its batches' order).

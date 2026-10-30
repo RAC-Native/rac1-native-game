@@ -1,6 +1,6 @@
 # Stato Lavori — Ottimizzazione e Riscrittura Nativa Wii U (`port/wiiu`)
 
-Ultimo aggiornamento: **30 Ottobre 2026 (sera, drop shadows sulla GPU)**
+Ultimo aggiornamento: **30 Ottobre 2026 (notte, timeline dei core e split del job del mondo)**
 
 Questo documento traccia in modo completo **cosa è stato fatto**, **i risultati misurati sulla console Wii U reale (`192.168.0.16`)**, **cosa stiamo facendo ora**, **cosa manca** e **le note tecniche / trappole da evitare** per poter riprendere il lavoro in qualsiasi momento.
 
@@ -110,6 +110,14 @@ Tutti i test sono eseguiti con `ports/wiiu/tools/bench.sh` (`explore` input dete
     - Prima prova su console: Novalis game code 34–37 → 27.6–29.5 ms/host frame, GPU "drop shadows" 0.37–0.55 ms; ma nessuna ombra visibile in modo normale (forme rosse solo con `_DEBUG=1`). Causa probabile: passo 1/255 con sottrazione su R8 (0.99998 troncato a 0). Corretto con maschera RG8, solo addizioni, passo 1.25/255; nuovi debug `_DEBUG=2` (rettangoli scuriti interi), `3` (facce frontali bianche col depth test), `4` (conteggi grezzi). Cambiato solo `mrp_shadow_dark.gsh`. Da riprovare.
     - Servono sulla SD i due `.gsh` nuovi (`shaders/mrp_shadow_vol.gsh`, `mrp_shadow_dark.gsh`); senza, torna il codice del gioco. Riga nel debug menu (Picture): "Drop shadows" GPU / game's.
 
+### Timeline dei core e "world's worker join" (30 Ottobre 2026, notte — da misurare su console)
+17. **Cosa è davvero "world's worker join" (~20 ms nelle viste pesanti di Novalis):** con `RAC1_WIIU_PREP_ON_MAIN=1` (default) non è un'attesa: il primo `mrp_world_wiiu_join()` di `wiiu_gfx_frame` *esegue* l'intero job del mondo sul main thread (Core 1): `wiiu_prep_head` (~8–10 ms) + `wiiu_prep_tail` (`build_triangles` ~6–9 ms). Non aspetta la catena (cielo e registri GS già risolti al prepare, drenaggio tfrag sparito col VS). Il worker su Core 0 resta inutilizzato e Core 0 è fermo dopo la lettura della catena (`n1080_tvs`: 7.8 + 6.6 ms = media delle 4 finestre).
+18. **Timeline dei core (`src/platform/core_timeline.h`, righe `[core0]` col timing attivo)** (`wiiu_gfx.cpp` `rac1_wiiu_cycle`, `orig_main.cpp`, `mrp_chain.cpp`, `mrp_world_renderer.cpp`): marcatori `OSGetTime` (store atomico, niente lock/allocazioni) di main thread, game thread, lettore della catena e job del mondo; offset dall'inizio del prepare, media su 30 cicli; cosa faceva il job quando il main è arrivato ai join; tempo del lettore per tipo (walk, VU1 nei range / fuori, kick, texture, upload GS) e i 10 programmi VU1 più pesanti. Sul PC tutte funzioni inline vuote.
+19. **`RAC1_WIIU_PREP_SPLIT=1` (default 0):** prima metà sul main a inizio disegno (Core 0 sta leggendo la catena), seconda metà al worker su Core 0 appena il lettore è libero, in parallelo a chain join / effetti / 2D / attese GPU e swap; il join prima dei draw del mondo la esegue sul main se il worker non l'ha ancora presa (claim atomico). Atteso su Novalis pesante: join ~20 → ~10 ms, host frame ~50 → ~44–46 ms (poi il limite è il game thread: prepare seriale ~7.3 ms + step 30–40 ms).
+20. **`RAC1_WIIU_WJOIN_LATE=1` (default 0, solo con `RAC1_WIIU_PREP_ON_MAIN=0`):** tutto il job sul worker di Core 0, atteso solo prima dei draw del mondo (chain join, effetti, 2D, attese GPU/swap prima).
+    - Bench: `BUILD=…/build-wiiu-c0`, default vs `RAC1_WIIU_PREP_SPLIT=1` vs `RAC1_WIIU_PREP_ON_MAIN=0 RAC1_WIIU_WJOIN_LATE=1` (righe in `PERFORMANCE.md`).
+    - Proposte non applicate (decide Daino): prepare dei moby su Core 2 in parallelo al prepare del mondo / copia della catena su Core 0 prima di `run_async` (fino a 3–5 ms in meno sul percorso del game thread); prima metà divisa (decisioni tfrag su Core 0); `build_triangles` su due core.
+
 ## 3. Cosa Manca (Prossimi Passi in Ordine di Impatto)
 
 ### Priorità 1 — Decidere default scala 3D e far confermare visivamente a Daino
@@ -117,6 +125,7 @@ Tutti i test sono eseguiti con `ports/wiiu/tools/bench.sh` (`explore` input dete
 - Far verificare a Daino (build su SD) terreno/rocce, cielo e cutout (foglie, recinzioni) nel Pass 2.
 
 ### Priorità 2 — Misurare Tfrag VS + cielo tardivo, poi il costo CPU del mondo e `game_thread` (Core 2)
+0. **Prima di tutto:** bench con le righe `[core0]` (default, `RAC1_WIIU_PREP_SPLIT=1`, `RAC1_WIIU_PREP_ON_MAIN=0 RAC1_WIIU_WJOIN_LATE=1`) su Novalis e Veldin open; scegliere il default; dalla riga del lettore della catena decidere se vale la pena tagliare i programmi VU1 eseguiti fuori dai range.
 1. **Tfrag su GPU Latte (Vertex Shader GX2): fatto (punto 14), da misurare** — `bench.sh` col default contro `RAC1_WIIU_TFRAG_VS=0`; poi riprovare `RAC1_WIIU_PREP_ON_MAIN=0` (Core 0 ora libero dopo la catena) e `RAC1_WIIU_PREP_TIME=1` per la ripartizione di `world's worker join` (ties/shrubs frame, scena, `build_triangles`).
    - Restano su Core 1: `static_frame_build_at` + `scene_from_static_k` + `build_triangles` (worker join) e il piano merged + ~600 draw GX2 (world draws). Proposta successiva: matrici modello statiche dei tie/shrub in una texture per livello, VP per frame nel blocco, `clip`/`rows` calcolati nel VS (niente `InstGpu` da 160 byte per istanza riscritte e byte-swappate ogni frame: ~3400 istanze × 192 B su Novalis).
 2. **Ridurre il carico CPU sul `game_thread` (Core 2: ~12.5 ms/step su Novalis):**

@@ -8,6 +8,7 @@
 #include <runtime/gs/gs_memory.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/vu/vu1.h>
+#include <platform/core_timeline.h>
 #include <platform/pinned_thread.h>
 
 #include <algorithm>
@@ -177,6 +178,7 @@ public:
     void read(const Capture& c) {
         const MrpChainInput& in = c.in;
         in_ = &in;
+        ctl::chain_begin();  // ((2026-10-30) the cores' timeline, the Wii U's timing: the reading's start and its time by kind)
         frame.prims.clear();
         frame.vu7_batches.clear();
         frame.vu7_verts.clear();
@@ -300,6 +302,7 @@ public:
         if (scr_prim_ >= 0) screen_picture();
         if (saved != nullptr) mem.undo_end();  // (a chain that ended inside a substitute)
         in_ = nullptr;
+        ctl::chain_end();
     }
 
     // vu1::StartObserver (this thread's program starts): program 7's batch in a vu7 range kept as the program finds it
@@ -413,11 +416,17 @@ void Reader::mscal(uint32_t code) {
     const bool range = (fx_now_ != 0 || vu7_now_) && !sub_drop_;
     kicks_dropped_ = !range;
     ++frame.program_runs;
-    vu1::vif1_command(vu_, code, nullptr, [this](const uint8_t* d, uint32_t q) {
-        vu_kick_ = true;
-        gif(d, q);
-        vu_kick_ = false;
-    });
+    const uint64_t t0 = ctl::now();  // ((2026-10-30) the Wii U's timing: the run's time by program, its kicks apart)
+    {
+        const ctl::CatScope cs(range ? ctl::kCatVuRange : ctl::kCatVuOther);
+        vu1::vif1_command(vu_, code, nullptr, [this](const uint8_t* d, uint32_t q) {
+            const ctl::CatScope ck(ctl::kCatKick);
+            vu_kick_ = true;
+            gif(d, q);
+            vu_kick_ = false;
+        });
+    }
+    ctl::prog_note(vu1::g_last_start, range, ctl::now() - t0);
     kicks_dropped_ = false;
 }
 
@@ -453,6 +462,7 @@ void Reader::gif(const uint8_t* p, uint32_t qwc) {
             }
         } else {
             const uint32_t take = std::min(tag_left_, qwc - i);
+            const ctl::CatScope cs(ctl::kCatXfer);
             gs::local_memory().transfer_data(regs[0x50], regs[0x51], regs[0x52], q, take * 16);
             tag_left_ -= take;
             i += take - 1;
@@ -517,9 +527,11 @@ void Reader::write_reg(uint32_t reg, uint64_t v) {
     }
     case 0x53:  // TRXDIR: host -> local
         if (bits(v, 0, 2) == 0) {
+            const ctl::CatScope cs(ctl::kCatXfer);
             gs::local_memory().transfer_start();
             if (in_->scr_bw != 0) screen_transfer(bits(regs[0x50], 32, 14));
         } else {
+            const ctl::CatScope cs(ctl::kCatXfer);
             gs::local_memory().transfer_stop();
         }
         break;
@@ -611,11 +623,13 @@ void Reader::vertex_kick(const Vertex& vin, bool draw) {
                     const int idx = l - lo - 1;
                     if (idx >= 0 && idx < 3) {
                         p.mip_tex0[idx] = level_tex0(l);
+                        const ctl::CatScope cs(ctl::kCatTex);
                         p.mip_tex[idx] = mem.texture_at_kick(p.mip_tex0[idx], s.texa);
                     }
                 }
                 s.tex0 = level_tex0(lo);
             }
+            const ctl::CatScope cs(ctl::kCatTex);
             p.tex = mem.texture_at_kick(s.tex0, s.texa);
         }
         if (!bits(prim, 3, 1))  // flat: the last vertex's colour
@@ -657,6 +671,7 @@ void Reader::screen_transfer(uint32_t dbp) {
 // orig: (host)
 void Reader::screen_picture() {
     const MrpChainInput& in = *in_;
+    const ctl::CatScope cs(ctl::kCatTex);
     frame.prims[static_cast<size_t>(scr_prim_)].tex = gs::local_memory().picture_ct32(in.scr_bp, in.scr_bw, in.scr_bw * 64, in.scr_h);
     scr_prim_ = -1;
 }
@@ -698,6 +713,7 @@ void Reader::before(vu1::Vu1& vu, uint32_t start, uint64_t hash) {
         s.dthe = regs[0x45];
         s.xyoffset = regs[0x18 + ctx];
         if (bits(prim, 4, 1) != 0) {
+            const ctl::CatScope cs(ctl::kCatTex);
             tex = gs::local_memory().texture_at_kick(s.tex0, s.texa);
             if (mip != nullptr) *mip = std::min(bits(s.tex1, 2, 3), 3u) != 0 && bits(s.tex1, 6, 3) >= 2;
         }

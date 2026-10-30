@@ -13,6 +13,7 @@
 #include <game/render/render_view.h>
 #include <runtime/gs/gs_emu.h>
 #include <runtime/ipu/movie_hw.h>
+#include <platform/core_timeline.h>
 #include <profiler/host_profiler.h>
 #include "gs_draw_gx2.h"
 #include "mrp_2d_gx2.h"
@@ -260,6 +261,139 @@ double ms_since(std::chrono::steady_clock::time_point t) { return std::chrono::d
 void rac1_wiiu_time(int slot, double ms) {
     if (tm_on() && slot >= 0 && slot < kTmN) g_tm[slot] += ms;
     if (tm_on() && slot == kTmGameSteps) ++g_tm_gt_frames;
+}
+
+// ((2026-10-30) the cores' timeline, platform/core_timeline.h) a cycle runs from a prepare's start (the frame before's chain joined, this
+// frame's started) to the next one's: the frame's chain read on core 0, the game thread's steps (core 2) and the drawing (the main
+// thread, core 1). Its marks as offsets from its start, averaged over 30 cycles ("[core0]" lines, the timing on): an offset is averaged
+// over the cycles that had its mark (their count in brackets when not all). With them, what the world's job was doing when the main
+// thread reached its joins, and the chain reader's time by kind and by program.
+namespace {
+struct CycleWindow {
+    double sum[rac1::ctl::kEvN] = {};
+    uint32_t n[rac1::ctl::kEvN] = {};
+    double len = 0.0;
+    uint32_t cycles = 0;
+    // the world's job at the drawing's join (0) and at the draws' join (1): not started, in its first half, between the halves (the split's
+    // second half not started), waiting for the chain's reader, in its second half, done; the chain's reader still reading there (and at
+    // the chain's join, 2)
+    uint32_t job_at[2][6] = {};
+    uint32_t chain_busy[3] = {};
+    uint32_t prep_core[4] = {}, tail_core[4] = {};  // (cores 0..2, other)
+    double cat[rac1::ctl::kCatN] = {};
+    uint32_t runs[2] = {};
+    struct Prog {
+        uint32_t pc;
+        uint8_t range;
+        uint32_t runs;
+        double ms;
+    };
+    Prog prog[32] = {};
+    int nprog = 0;
+};
+CycleWindow g_cw;
+}  // namespace
+
+void rac1_wiiu_cycle() {
+    namespace ctl = rac1::ctl;
+    if (!ctl::on()) return;
+    const uint64_t now = ctl::now();
+    const uint64_t c0 = ctl::g_ev[ctl::kCycle].load(std::memory_order_relaxed);
+    const double tick_ms = 1000.0 / static_cast<double>(OSTimerClockSpeed);
+    CycleWindow& w = g_cw;
+    if (c0 != 0 && now > c0) {
+        uint64_t ts[ctl::kEvN];
+        bool ok[ctl::kEvN];
+        for (int e = 0; e < ctl::kEvN; ++e) {
+            ts[e] = ctl::g_ev[e].load(std::memory_order_relaxed);
+            ok[e] = e != ctl::kCycle && ts[e] >= c0 && ts[e] <= now;
+            if (ok[e]) {
+                w.sum[e] += static_cast<double>(ts[e] - c0) * tick_ms;
+                ++w.n[e];
+            }
+        }
+        w.len += static_cast<double>(now - c0) * tick_ms;
+        ++w.cycles;
+        auto job_at = [&](uint64_t t) {
+            if (!ok[ctl::kPrep0] || ts[ctl::kPrep0] >= t) return 0;
+            if (ok[ctl::kPrep1] && ts[ctl::kPrep1] <= t) return 5;
+            if (ok[ctl::kTail0] && ts[ctl::kTail0] <= t) return 4;
+            if (ok[ctl::kPrepW0] && ts[ctl::kPrepW0] <= t && (!ok[ctl::kPrepW1] || ts[ctl::kPrepW1] > t)) return 3;
+            if (ok[ctl::kHead1] && ts[ctl::kHead1] <= t) return 2;
+            return 1;
+        };
+        auto chain_busy = [&](uint64_t t) { return ok[ctl::kChain0] && ts[ctl::kChain0] <= t && (!ok[ctl::kChain1] || ts[ctl::kChain1] > t); };
+        const int joins[2] = {ctl::kWJoin0, ctl::kDJoin0};
+        for (int j = 0; j < 2; ++j) {
+            if (!ok[joins[j]]) continue;
+            ++w.job_at[j][job_at(ts[joins[j]])];
+            if (chain_busy(ts[joins[j]])) ++w.chain_busy[j];
+        }
+        if (ok[ctl::kCJoin0] && chain_busy(ts[ctl::kCJoin0])) ++w.chain_busy[2];
+        if (ok[ctl::kPrep0]) ++w.prep_core[std::clamp(ctl::g_prep_core.load(std::memory_order_relaxed), 0, 3)];
+        if (ok[ctl::kTail0]) ++w.tail_core[std::clamp(ctl::g_tail_core.load(std::memory_order_relaxed), 0, 3)];
+        // the chain reader's (joined before this call: orig_main.cpp's mrp_chain_join)
+        ctl::ChainProf& cp = ctl::g_cp;
+        for (int c = 0; c < ctl::kCatN; ++c) w.cat[c] += static_cast<double>(cp.acc[c]) * tick_ms;
+        w.runs[0] += cp.runs[0];
+        w.runs[1] += cp.runs[1];
+        for (int i = 0; i < cp.nprog; ++i) {
+            const ctl::ChainProf::Prog& p = cp.prog[i];
+            int k = 0;
+            while (k < w.nprog && !(w.prog[k].pc == p.pc && w.prog[k].range == p.range)) ++k;
+            if (k == w.nprog) {
+                if (w.nprog == 32) continue;
+                w.prog[w.nprog++] = CycleWindow::Prog{p.pc, p.range, 0, 0.0};
+            }
+            w.prog[k].runs += p.runs;
+            w.prog[k].ms += static_cast<double>(p.ticks) * tick_ms;
+        }
+    }
+    {  // (the chain reader's sums started again: it is idle now)
+        ctl::ChainProf& cp = ctl::g_cp;
+        for (int c = 0; c < ctl::kCatN; ++c) cp.acc[c] = 0;
+        cp.runs[0] = cp.runs[1] = 0;
+        cp.nprog = 0;
+        cp.prog_other = 0;
+    }
+    ctl::g_ev[ctl::kCycle].store(now, std::memory_order_relaxed);
+    if (w.cycles < 30) return;
+    const double n = w.cycles;
+    auto at = [&](int e, char* b, size_t sz) {  // (an offset, or "-": never met)
+        if (w.n[e] == 0) std::snprintf(b, sz, "-");
+        else if (w.n[e] == w.cycles) std::snprintf(b, sz, "%.1f", w.sum[e] / w.n[e]);
+        else std::snprintf(b, sz, "%.1f(%u)", w.sum[e] / w.n[e], w.n[e]);
+    };
+    char b[24][24];
+    const int evs[] = {ctl::kChainKick, ctl::kPrepEnd, ctl::kGfx, ctl::kWJoin0, ctl::kWJoin1, ctl::kCJoin0, ctl::kCJoin1, ctl::kFx1, ctl::kGpu1, ctl::kBegin1, ctl::kDJoin0, ctl::kDJoin1,
+                       ctl::kDraw1, ctl::kFrame1, ctl::kGtJoin0, ctl::kGtJoin1, ctl::kGt0, ctl::kGt1, ctl::kChain0, ctl::kChain1, ctl::kPrep0, ctl::kHead1, ctl::kPrepW0, ctl::kPrepW1};
+    for (int i = 0; i < 24; ++i) at(evs[i], b[i], sizeof b[i]);
+    char t0[24], t1[24];
+    at(ctl::kTail0, t0, sizeof t0);
+    at(ctl::kPrep1, t1, sizeof t1);
+    std::printf("[core0] %u cycles, %.1f ms each, ms from the prepare's start: main: chain kicked %s, prepared %s, drawing %s, world join %s->%s, chain join %s->%s, "
+                "fx/2D built %s, GPU wait done %s, swap wait done %s, draws' world join %s->%s, TV drawn %s, frame done %s, game thread join %s->%s | game thread %s->%s | "
+                "chain reader %s->%s | world job %s->%s: first half ->%s, the chain waited %s->%s, second half %s->%s\n",
+                w.cycles, w.len / n, b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15], b[16], b[17], b[18], b[19], b[20], t1,
+                b[21], b[22], b[23], t0, t1);
+    static const char* const kJob[6] = {"not started", "in its first half", "between its halves", "waiting for the chain", "in its second half", "done"};
+    std::printf("[core0] the world job at the drawing's join:");
+    for (int k = 0; k < 6; ++k)
+        if (w.job_at[0][k] != 0) std::printf(" %s %u,", kJob[k], w.job_at[0][k]);
+    std::printf(" at the draws' join:");
+    for (int k = 0; k < 6; ++k)
+        if (w.job_at[1][k] != 0) std::printf(" %s %u,", kJob[k], w.job_at[1][k]);
+    std::printf(" the chain still reading at the drawing's join %u, the draws' %u, the chain join %u; its first half on cores 0/1/2 %u/%u/%u, its second %u/%u/%u\n",
+                w.chain_busy[0], w.chain_busy[1], w.chain_busy[2], w.prep_core[0], w.prep_core[1], w.prep_core[2], w.tail_core[0], w.tail_core[1], w.tail_core[2]);
+    std::printf("[core0] the chain reader, ms a cycle: the walk (VIF, GIF, primitives) %.2f, VU1 programs in the effects' ranges %.2f (%.0f runs), elsewhere %.2f (%.0f runs), "
+                "their kicks %.2f, textures %.2f, GS uploads %.2f; programs by time (start, in a range, ms, runs a cycle):",
+                w.cat[ctl::kCatVif] / n, w.cat[ctl::kCatVuRange] / n, w.runs[0] / n, w.cat[ctl::kCatVuOther] / n, w.runs[1] / n, w.cat[ctl::kCatKick] / n, w.cat[ctl::kCatTex] / n,
+                w.cat[ctl::kCatXfer] / n);
+    std::sort(w.prog, w.prog + w.nprog, [](const CycleWindow::Prog& x, const CycleWindow::Prog& y) { return x.ms > y.ms; });
+    for (int i = 0; i < std::min(w.nprog, 10); ++i)
+        std::printf(" %#x%s %.2f/%.1f,", w.prog[i].pc, w.prog[i].range ? "r" : "", w.prog[i].ms / n, w.prog[i].runs / n);
+    std::printf("\n");
+    g_cw = CycleWindow{};
 }
 
 // (2026-10-29, gx2_counters.h) the frame's GX2 work: the counters, the GX2DrawDone sites
@@ -978,7 +1112,9 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
         dt = std::chrono::steady_clock::now();
     };
     if (g_world_ready) {
+        if (g_tm_draw) rac1::ctl::mark(rac1::ctl::kDJoin0);  // ((2026-10-30) the cores' timeline: the TV's call)
         rac1::mrp_world_wiiu_join();  // (the frame's preparation's second half, on its worker core)
+        if (g_tm_draw) rac1::ctl::mark(rac1::ctl::kDJoin1);
         dlap(kTmWorldJoin);
         rac1::mrp_world_gx2_debug_frame(g_2d.game_frame);
         // the sky first (MRP_LITE.md phase 5): no depth test nor writes, the depth's hierarchical Z untouched
@@ -1091,6 +1227,7 @@ void wiiu_gfx_frame() {
     if (!g_on || !g_foreground) return;  // (released: no buffers to draw into)
     ++g_frames;
     const bool tm = tm_on();
+    rac1::ctl::g_on.store(tm, std::memory_order_relaxed);  // ((2026-10-30) the cores' timeline: rac1_wiiu_cycle)
     if (debug_menu_wanted()) rac1::prof::request();  // (the game's stages recorded for the menu's game page: the next host frame)
     if (tm) {  // (the host frame: from the last one's start to this one's)
         const auto now = std::chrono::steady_clock::now();
@@ -1190,12 +1327,22 @@ void wiiu_gfx_frame() {
     const bool chain_2d = g_2d.have && g_2d.replica == nullptr;
     int pre_mw = 0, pre_mh = 0;
     const bool has_movie = !g_ending && rac1::movie_hw_shown(pre_mw, pre_mh) != nullptr;
-    if (g_world_ready) {
+    rac1::ctl::mark(rac1::ctl::kGfx);
+    // ((2026-10-30) RAC1_WIIU_WJOIN_LATE=1 with RAC1_WIIU_PREP_ON_MAIN=0: the world's job, on its worker, not waited for here but before the
+    // world's draws (draw_frame) - the chain's join, the effects' prepare, the 2D's build and the waits for the GPU and the swap meanwhile.
+    // With RAC1_WIIU_PREP_ON_MAIN=1 this join runs the job (or its first half, RAC1_WIIU_PREP_SPLIT): kept here)
+    static const bool wjoin_late = std::getenv("RAC1_WIIU_WJOIN_LATE") != nullptr && std::atoi(std::getenv("RAC1_WIIU_WJOIN_LATE")) != 0 &&
+                                   std::getenv("RAC1_WIIU_PREP_ON_MAIN") != nullptr && std::atoi(std::getenv("RAC1_WIIU_PREP_ON_MAIN")) == 0;
+    if (g_world_ready && !wjoin_late) {
+        rac1::ctl::mark(rac1::ctl::kWJoin0);
         rac1::mrp_world_wiiu_join();  // (runs world prep on Core 1 while Core 0 runs mrp_chain and Core 2 runs game_thread)
+        rac1::ctl::mark(rac1::ctl::kWJoin1);
         lap(kTmWorldJoin);
     }
     if (prebuild_on && chain_2d) {
+        rac1::ctl::mark(rac1::ctl::kCJoin0);
         rac1::mrp_chain_join();  // (the frame's chain read on the reader's worker)
+        rac1::ctl::mark(rac1::ctl::kCJoin1);
         rac1::mrp_world_wiiu_chain_joined();  // (its registers kept for the next frame's world)
         lap(kTmJoin);
         rac1::mrp_fx_wiiu_prepare(rac1::mrp_chain_frame(), rac1::g_gx2_view.vp);
@@ -1206,8 +1353,10 @@ void wiiu_gfx_frame() {
             rac1::mrp_2d_gx2_prebuild(rac1::mrp_chain_frame(), tv, g_2d.fb_w, g_2d.fb_h, frame_viewport(tv));
         }
         lap(kTm2dBuild);
+        rac1::ctl::mark(rac1::ctl::kFx1);
     }
     if (overlap && g_frame_ts != 0) GX2WaitTimeStamp(g_frame_ts);
+    rac1::ctl::mark(rac1::ctl::kGpu1);
     lap(kTmGpuWait);
     movie_sync();
     rac1::gx2_perf_init();         // (the GPU switches' start, run.cfg's: once)
@@ -1230,6 +1379,7 @@ void wiiu_gfx_frame() {
     }
     lap(kTmJoin);
     WHBGfxBeginRender();
+    rac1::ctl::mark(rac1::ctl::kBegin1);
     lap(kTmBegin);
     hiz_apply(WHBGfxGetTVDepthBuffer());  // (Gx2Perf::hiz: before the clears, which clear its hierarchical Z too)
     gpu_mark(kGmStart);
@@ -1239,6 +1389,7 @@ void wiiu_gfx_frame() {
     g_tm_draw = tm;
     draw_frame(WHBGfxGetTVColourBuffer(), WHBGfxGetTVDepthBuffer(), g_2d.targets_due);
     g_tm_draw = false;
+    rac1::ctl::mark(rac1::ctl::kDraw1);
     if (g_m2d_ready) rac1::mrp_2d_gx2_prebuild_drop();
     t = std::chrono::steady_clock::now();
     g_2d.targets_due = false;
@@ -1284,6 +1435,7 @@ void wiiu_gfx_frame() {
         WHBGfxFinishRender();
     }
     lap(kTmFinish);
+    rac1::ctl::mark(rac1::ctl::kFrame1);
 }
 
 void wiiu_gfx_stop() {

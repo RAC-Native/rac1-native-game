@@ -67,6 +67,7 @@
 #include <vector>
 
 #include <platform/platform.h>
+#include <platform/core_timeline.h>
 #if defined(__SANITIZE_ADDRESS__)
 #include <sanitizer/lsan_interface.h>
 #endif
@@ -162,6 +163,7 @@ bool rac1_wiiu_picture();                           // ports/wiiu/game/wiiu_gfx.
 // the frame's chain (RAC1_WIIU_REPLICA=1), its primitives drawn; nullptr: the MRP's chain reader read it, mrp_chain_frame drawn)
 void rac1_wiiu_picture_frame(const rac1::gs::Gs* replica, float fb_w, float fb_h, int screen_fbp, int skip_fbp, uint64_t game_frame);
 void rac1_wiiu_time(int slot, double ms);  // (testing, RAC1_WIIU_TIMING: a stage's time of the host frame - wiiu_gfx.cpp)
+void rac1_wiiu_cycle();                    // (testing, RAC1_WIIU_TIMING: the cores' timeline, a cycle from a prepare to the next - wiiu_gfx.cpp)
 bool rac1_wiiu_game_thread();  // ports/wiiu/game/debug_menu.cpp: the game's steps on the game thread beside the drawing (RAC1_WIIU_GAME_THREAD)
 void debug_menu_flush();       // (the GamePad menu's taps held while the game thread ran, flipped once it is joined)
 void debug_menu_game_frame();  // (the GamePad menu's Player cheats and one-shot actions, between game frames)
@@ -3406,7 +3408,13 @@ int main(int argc, char** argv) {
                 rac1::game_thread::run_async(
                     [&] {
                         const auto t0 = std::chrono::steady_clock::now();
+#if defined(__WIIU__)
+                        rac1::ctl::mark(rac1::ctl::kGt0);  // ((2026-10-30) the cores' timeline: the game thread's steps)
+#endif
                         game_frames();
+#if defined(__WIIU__)
+                        rac1::ctl::mark(rac1::ctl::kGt1);
+#endif
                         gt_steps_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
                     },
                     false);
@@ -3418,8 +3426,12 @@ int main(int argc, char** argv) {
 #endif
             if (wiiu_overlap) {
                 const auto tw = std::chrono::steady_clock::now();
+#if defined(__WIIU__)
+                rac1::ctl::mark(rac1::ctl::kGtJoin0);
+#endif
                 rac1::game_thread::finish();  // (its exception rethrown here)
 #if defined(__WIIU__)
+                rac1::ctl::mark(rac1::ctl::kGtJoin1);
                 rac1_wiiu_time(15, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tw).count());
                 rac1_wiiu_time(16, gt_steps_ms);
                 debug_menu_flush();
@@ -3485,6 +3497,7 @@ int main(int argc, char** argv) {
                 // Begin the moby frame before mrp_moby_ready() and mrp_chain_start() (matching chain_stage on PC) so that
                 // g_frame.active and g_level are updated before the chain worker on Core 0 reads mrp_moby_active().
                 mrp_chain_join();
+                rac1_wiiu_cycle();  // ((2026-10-30) the cores' timeline: the cycle before closed, this one's start - the chain's reader joined)
                 const bool wiiu_title = boot_active();
                 const bool title_view = wiiu_title && mrp_title_view_swap_in();
                 const bool wiiu_flight = exiting && level_exit_loading_screen();
@@ -3574,6 +3587,7 @@ int main(int argc, char** argv) {
 #endif
                         mrp_chain_start(std::move(ci), chain_async);
 #if defined(__WIIU__)
+                        rac1::ctl::mark(rac1::ctl::kChainKick);
                         rac1_wiiu_time(0, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tc).count());
 #endif
                     }
@@ -3645,6 +3659,7 @@ int main(int argc, char** argv) {
                     if (wiiu_world_on && g_mrp_shadows) mrp_shadows_snapshot();
                     else mrp_shadows_clear_snapshot();
                     mrp_world_wiiu_prepare(wiiu_world_on);
+                    rac1::ctl::mark(rac1::ctl::kPrepEnd);
                     rac1_wiiu_time(2, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tm1).count());
                 }
                 const int screen_fbp = static_cast<int>(lwu(0x0013cf20) & 0x1ff);

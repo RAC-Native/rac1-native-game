@@ -23,6 +23,7 @@
 #include <game/render/mrp_world_static.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
+#include <platform/core_timeline.h>
 #include <platform/pinned_thread.h>
 #include <profiler/host_profiler.h>
 #include <runtime/gs/gs_draw.h>
@@ -5329,6 +5330,8 @@ bool wiiu_prep_head() {
     Frame& F = g_frame;
     const HeadIn& in = g_head_in;
     const double t0 = now_ms();
+    ctl::mark(ctl::kPrep0);  // ((2026-10-30) the cores' timeline: the job's start, its core)
+    ctl::g_prep_core.store(ctl::core_id(), std::memory_order_relaxed);
     const bool part_time = part_time_on();
     double tp = t0;
     auto part = [&](int k) {
@@ -5368,6 +5371,7 @@ bool wiiu_prep_head() {
         for (int k = 5; k < 9; ++k) g_part_ms[k] = 0.0;
     }
     g_ms_head += now_ms() - t0;
+    ctl::mark(ctl::kHead1);
     return ok;
 }
 
@@ -5377,7 +5381,7 @@ struct PrepWorker {
     std::mutex m;
     std::condition_variable cv;
     PinnedThread th;
-    bool job = false, tfrag_only = false, busy = false, quit = false;
+    bool job = false, tfrag_only = false, tail_only = false, busy = false, quit = false;
     double fpscr = 0.0;
     ~PrepWorker() {
         {
@@ -5403,6 +5407,21 @@ bool prep_on_main_on() {
 bool tfrag_parallel_on() {
     static const bool on = std::getenv("RAC1_WIIU_TFRAG_PARALLEL") == nullptr || std::atoi(std::getenv("RAC1_WIIU_TFRAG_PARALLEL")) != 0;
     return on;
+}
+// ((2026-10-30) RAC1_WIIU_PREP_SPLIT=1, with RAC1_WIIU_PREP_ON_MAIN: the first half on the main thread at the drawing's start, as before -
+// core 0 is reading the chain then -, the second half (build_triangles, the tfrags' block) on the worker on core 0 once the chain's
+// reader is done, beside the main thread's chain join, effects' prepare, 2D build, GPU and swap waits; joined before the world's draws
+// (draw_frame's mrp_world_wiiu_join), where the main thread runs it itself if the worker has not started it. The tfrags' CPU route
+// (RAC1_WIIU_TFRAG_VS=0) then runs whole where the second half runs (no shared drain). 0, the default: the whole job at the drawing's start)
+bool prep_split_on() {
+    static const bool on = prep_on_main_on() && std::getenv("RAC1_WIIU_PREP_SPLIT") != nullptr && std::atoi(std::getenv("RAC1_WIIU_PREP_SPLIT")) != 0;
+    return on;
+}
+// the split's second half: 0 none, 1 handed to the worker (not started), 2 taken (by the worker or the main thread)
+std::atomic<int> g_tail_state{0};
+bool tail_take() {
+    int want = 1;
+    return g_tail_state.compare_exchange_strong(want, 2, std::memory_order_acq_rel);
 }
 
 void tfrag_drain_draws(Frame& F, int slot, bool stop_when_chain_idle = false) {
@@ -5451,13 +5470,19 @@ void ensure_prep_worker_started(PrepWorker& w) {
         for (;;) {
             w.cv.wait(l, [&w] { return w.job || w.quit; });
             if (w.quit) return;
-            const bool tf_only = w.tfrag_only;
+            const bool tf_only = w.tfrag_only, tail_only = w.tail_only;
             w.job = false;
             w.tfrag_only = false;
+            w.tail_only = false;
             __asm__ volatile("mtfsf 0xff, %0" : : "f"(w.fpscr));
             l.unlock();
             if (tf_only) {
                 tfrag_drain_draws(g_frame, 0, false);
+            } else if (tail_only) {  // (RAC1_WIIU_PREP_SPLIT: the second half once the chain's reader is done with core 0)
+                ctl::mark(ctl::kPrepW0);
+                mrp_chain_wait_idle();
+                ctl::mark(ctl::kPrepW1);
+                if (tail_take()) wiiu_prep_tail();
             } else {
                 if (!g_job_head || wiiu_prep_head()) wiiu_prep_tail();
             }
@@ -5473,6 +5498,8 @@ void ensure_prep_worker_started(PrepWorker& w) {
 void wiiu_prep_tail() {
     Frame& F = g_frame;
     const double t0 = now_ms();
+    ctl::mark(ctl::kTail0);
+    ctl::g_tail_core.store(ctl::core_id(), std::memory_order_relaxed);
     build_triangles(F);
     const double t_built = now_ms();
     // the compute program's vertices / triangles made by the CPU route (tfrag_frame_cpu: on the game's thread for now; its inputs - the
@@ -5503,7 +5530,7 @@ void wiiu_prep_tail() {
     } else if (F.tf.draws.empty()) {
         F.tf_v.clear();
         F.tf_idx.clear();
-    } else if (prep_on_main_on() && tfrag_parallel_on() && g_wiiu_world_async) {
+    } else if (prep_on_main_on() && tfrag_parallel_on() && g_wiiu_world_async && !prep_split_on()) {
         F.tf_v.resize(F.tf.nverts);
         F.tf_idx.resize(F.tf.nidx);
         g_tfrag_next_di.store(0, std::memory_order_relaxed);
@@ -5542,6 +5569,7 @@ void wiiu_prep_tail() {
     g_ms_head = 0.0;
     ++g_wiiu_serial;
     F.active = true;
+    ctl::mark(ctl::kPrep1);
 }
 
 // orig: (host)
@@ -5619,9 +5647,32 @@ void mrp_world_wiiu_join() {
         double prev_fpscr = 0.0;
         __asm__ volatile("mffs %0" : "=f"(prev_fpscr));
         __asm__ volatile("mtfsf 0xff, %0" : : "f"(g_prep_on_main_fpscr));
+        if (prep_split_on() && g_job_head) {  // (RAC1_WIIU_PREP_SPLIT: the first half here, the second to the worker)
+            const bool ok = wiiu_prep_head();
+            __asm__ volatile("mtfsf 0xff, %0" : : "f"(prev_fpscr));
+            if (!ok) return;
+            PrepWorker& w = g_prep;
+            std::lock_guard<std::mutex> lk(w.m);
+            ensure_prep_worker_started(w);
+            w.fpscr = g_prep_on_main_fpscr;
+            g_tail_state.store(1, std::memory_order_release);
+            w.tfrag_only = false;
+            w.tail_only = true;
+            w.busy = true;
+            w.job = true;
+            w.cv.notify_all();
+            return;
+        }
         if (!g_job_head || wiiu_prep_head()) wiiu_prep_tail();
         __asm__ volatile("mtfsf 0xff, %0" : : "f"(prev_fpscr));
         return;
+    }
+    if (g_tail_state.load(std::memory_order_acquire) == 1 && tail_take()) {  // (RAC1_WIIU_PREP_SPLIT: not started by the worker - run here)
+        double prev_fpscr = 0.0;
+        __asm__ volatile("mffs %0" : "=f"(prev_fpscr));
+        __asm__ volatile("mtfsf 0xff, %0" : : "f"(g_prep_on_main_fpscr));
+        wiiu_prep_tail();
+        __asm__ volatile("mtfsf 0xff, %0" : : "f"(prev_fpscr));
     }
     if (g_tfrag_pending) return;
     PrepWorker& w = g_prep;
