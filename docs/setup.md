@@ -55,7 +55,7 @@ container instead: see [Steam Deck, Bazzite and other immutable systems](#steam-
 sudo apt install cmake build-essential pkg-config libgl-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libwayland-dev libxkbcommon-dev python3 libavcodec-dev libavutil-dev glslc
 
 # Fedora
-sudo dnf install cmake gcc-c++ pkgconf-pkg-config mesa-libGL-devel libX11-devel libXrandr-devel libXinerama-devel libXcursor-devel libXi-devel libXext-devel wayland-devel libxkbcommon-devel python3 ffmpeg-free-devel glslc
+sudo dnf install cmake gcc-c++ pkgconf-pkg-config mesa-libGL-devel libX11-devel libXrandr-devel libXinerama-devel libXcursor-devel libXi-devel libXext-devel wayland-devel libxkbcommon-devel python3 libavcodec-devel glslc
 
 # Arch
 sudo pacman -S --needed cmake base-devel pkgconf mesa libx11 libxrandr libxinerama libxcursor libxi libxext wayland libxkbcommon python ffmpeg shaderc
@@ -302,7 +302,7 @@ it offers **Set up a build container** and then builds and starts the game in it
 
 ```bash
 distrobox create -n rac1-native -i registry.fedoraproject.org/fedora-toolbox:44 --yes
-distrobox enter rac1-native -- sudo dnf install -y cmake gcc-c++ pkgconf-pkg-config mesa-libGL-devel libX11-devel libXrandr-devel libXinerama-devel libXcursor-devel libXi-devel libXext-devel wayland-devel libxkbcommon-devel ffmpeg-free-devel glslc python3 mesa-dri-drivers mesa-vulkan-drivers pulseaudio-libs alsa-lib
+distrobox enter rac1-native -- sudo dnf install -y cmake gcc-c++ pkgconf-pkg-config mesa-libGL-devel libX11-devel libXrandr-devel libXinerama-devel libXcursor-devel libXi-devel libXext-devel wayland-devel libxkbcommon-devel libavcodec-devel glslc python3 mesa-dri-drivers mesa-vulkan-drivers pulseaudio-libs alsa-lib
 distrobox enter rac1-native -- ./setup.sh --iso /path/to/your/ratchet.iso
 ```
 

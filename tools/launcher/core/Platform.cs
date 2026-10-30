@@ -264,7 +264,7 @@ namespace Rac1Launcher
         public const string ContainerName = "rac1-native";
         public const string ContainerImage = "registry.fedoraproject.org/fedora-toolbox:44";
         public const string ContainerPackages = "cmake gcc-c++ pkgconf-pkg-config mesa-libGL-devel libX11-devel libXrandr-devel "
-            + "libXinerama-devel libXcursor-devel libXi-devel libXext-devel wayland-devel libxkbcommon-devel ffmpeg-free-devel glslc "
+            + "libXinerama-devel libXcursor-devel libXi-devel libXext-devel wayland-devel libxkbcommon-devel libavcodec-devel glslc "
             + "python3 mesa-dri-drivers mesa-vulkan-drivers pulseaudio-libs alsa-lib";
         /// <summary>tools/setup.py's exit status when the build's packages are missing on an immutable system.</summary>
         public const int ExitUseContainer = 20;

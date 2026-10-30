@@ -281,7 +281,7 @@ DEPENDENCIES = [
      lambda: pkg_config("wayland-client", "wayland-cursor", "wayland-egl", "xkbcommon") and shutil.which("wayland-scanner"),
      "libwayland-dev libxkbcommon-dev", "wayland-devel libxkbcommon-devel", "wayland libxkbcommon"),
     ("FFmpeg's libavcodec (optional: plays the game's movies)", False,
-     lambda: pkg_config("libavcodec", "libavutil") or pkg_config("libavcodec", "libavutil", extra_path=HOMEBREW_PKGCONFIG), "libavcodec-dev libavutil-dev", "ffmpeg-free-devel", "ffmpeg"),
+     lambda: pkg_config("libavcodec", "libavutil") or pkg_config("libavcodec", "libavutil", extra_path=HOMEBREW_PKGCONFIG), "libavcodec-dev libavutil-dev", "libavcodec-devel", "ffmpeg"),
     ("glslc (optional: the experimental Vulkan renderer's shaders)", False,
      lambda: shutil.which("glslc") is not None or shutil.which("glslangValidator") is not None, "glslc", "glslc", "shaderc"),
 ]
