@@ -3049,6 +3049,16 @@ int main(int argc, char** argv) {
             if (paused) dt::dev_settings().step_once = false;
 #endif
             iop_alone = !paused && speed == 1.0;
+            // ((2026-10-31) RAC1_SCENE_NO_ALONE, the Wii U's default 1, the PC's 0: in a cutscene (game mode 2) the IOP's mirror does
+            // not play on alone while the game's thread is late - its streams, the dialogue, would run ahead of the scene's pictures
+            // for the rest of the scene, the alone frames never run again. A stall in a scene is a short silence instead, the sound
+            // and the pictures kept together)
+#if defined(__WIIU__)
+            static const bool scene_no_alone = std::getenv("RAC1_SCENE_NO_ALONE") == nullptr || std::atoi(std::getenv("RAC1_SCENE_NO_ALONE")) != 0;
+#else
+            static const bool scene_no_alone = std::getenv("RAC1_SCENE_NO_ALONE") != nullptr && std::atoi(std::getenv("RAC1_SCENE_NO_ALONE")) != 0;
+#endif
+            if (scene_no_alone && lw(OV(0x0015f5c4)) == 2) iop_alone = false;
             host_paused = paused;
             if (paused) {
                 game_time = 0.0;
