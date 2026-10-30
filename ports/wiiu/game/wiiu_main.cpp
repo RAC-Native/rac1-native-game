@@ -235,7 +235,38 @@ void iso_check() {
     std::fclose(f);
 }
 
-int read_settings() {
+// Patchable 1 KB config slot for bench.sh (so benchmark runs never need FTP or touch Daino's SD run.cfg).
+// Empty in normal builds ("RAC1_EMBEDDED_CFG:\0").
+alignas(16) volatile char g_embedded_cfg[1024] = "RAC1_EMBEDDED_CFG:";
+
+bool embedded_has_no_cfg() {
+    const char* p = const_cast<const char*>(g_embedded_cfg) + 18;
+    return std::strncmp(p, "--no-cfg\n", 9) == 0;
+}
+
+int embedded_settings() {
+    const char* p = const_cast<const char*>(g_embedded_cfg) + 18;
+    if (*p == '\0') return 0;
+    int n = 0;
+    while (*p != '\0') {
+        const char* nl = std::strchr(p, '\n');
+        const size_t len = nl != nullptr ? static_cast<size_t>(nl - p) : std::strlen(p);
+        std::string l(p, len);
+        while (!l.empty() && (l.back() == '\r' || l.back() == ' ')) l.pop_back();
+        if (!l.empty() && l[0] != '#' && l != "--no-cfg") {
+            const size_t eq = l.find('=');
+            if (eq != std::string::npos) {
+                setenv(l.substr(0, eq).c_str(), l.substr(eq + 1).c_str(), 1);
+                ++n;
+            }
+        }
+        if (nl == nullptr) break;
+        p = nl + 1;
+    }
+    return n;
+}
+
+int read_settings(bool read_file = true) {
     setenv("RAC1_HEADLESS", "1", 1);
     setenv("RAC1_AUDIO_DEVICE", "ax", 1); // (a headless run plays its sound only with a device named; RAC1_NO_AUDIO=1 turns it off)
     setenv("RAC1_READ_ISO", "0", 1);      // (assets/disc's extracted files on the SD card, as the PC reads them; run.cfg may say 1: the image)
@@ -261,6 +292,7 @@ int read_settings() {
     setenv("RAC1_MEMCARD_DIR", "memcard", 1);
     setenv("RAC1_QUIT_ENDS", "0", 1);
     setenv("RAC1_ADVANCED", "1", 1);
+    if (!read_file) return 0;
     std::FILE* f = std::fopen("run.cfg", "r");
     if (f == nullptr) return 0;
     int n = 0;
@@ -307,8 +339,9 @@ int main(int argc, char** argv_in) {
     OSReport("rac1-wiiu: ProcUI up\n");
     WHBLogUdpInit();
     if (chdir(kDir) != 0) OSReport("rac1-wiiu: cannot enter fs:/vol/external01/rac1-native\n");
-    const int settings = argv_has(argc, argv_in, "--no-cfg") ? 0 : read_settings();
-    const int from_args = argv_settings(argc, argv_in);
+    const bool no_cfg = argv_has(argc, argv_in, "--no-cfg") || embedded_has_no_cfg();
+    const int settings = read_settings(!no_cfg);
+    const int from_args = embedded_settings() + argv_settings(argc, argv_in);
     {  // ((2026-10-28) the widescreen: RAC1_WIIU_WIDE=0 the game's 4:3 frame, 1 (the default) 16:9 - the 3D drawn and culled 4/3 wider,
        // render_view.h g_view_draw_widen -; RAC1_WIIU_WIDE_MOBYS=0 the mobys' culling kept 4:3 (the moby pass's frustum not widened); the
        // debug menu's Game page changes both)

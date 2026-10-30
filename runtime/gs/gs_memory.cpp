@@ -107,28 +107,48 @@ uint32_t LocalMemory::addr32(uint32_t bp, uint32_t bw, uint32_t x, uint32_t y) {
     return (bp * 256 + page * 8192 + in_page[((y & 31) << 6) | (x & 63)]) & (VRAM - 1);
 }
 uint32_t LocalMemory::addr16(uint32_t bp, uint32_t bw, uint32_t x, uint32_t y, bool s) {
+    static const std::array<uint16_t, 64 * 64> in_page0 = [] {
+        std::array<uint16_t, 64 * 64> t{};
+        for (uint32_t py = 0; py < 64; ++py)
+            for (uint32_t px = 0; px < 64; ++px)
+                t[py * 64 + px] = static_cast<uint16_t>((BLOCK16[py / 8][px / 16] * 128 + PIX16[py % 8][px % 16]) * 2);
+        return t;
+    }();
+    static const std::array<uint16_t, 64 * 64> in_page1 = [] {
+        std::array<uint16_t, 64 * 64> t{};
+        for (uint32_t py = 0; py < 64; ++py)
+            for (uint32_t px = 0; px < 64; ++px)
+                t[py * 64 + px] = static_cast<uint16_t>((BLOCK16S[py / 8][px / 16] * 128 + PIX16[py % 8][px % 16]) * 2);
+        return t;
+    }();
     const uint32_t ppr = std::max(1u, bw);
-    const uint32_t page = x / 64 + (y / 64) * ppr;
-    const uint32_t px = x % 64, py = y % 64;
-    const uint32_t block = s ? BLOCK16S[py / 8][px / 16] : BLOCK16[py / 8][px / 16];
-    const uint32_t pix = PIX16[py % 8][px % 16];
-    return ((bp * 128 + page * 4096 + block * 128 + pix) * 2) & (VRAM - 1);
+    const uint32_t page = (x >> 6) + (y >> 6) * ppr;
+    const uint32_t idx = ((y & 63) << 6) | (x & 63);
+    return (bp * 256 + page * 8192 + (s ? in_page1[idx] : in_page0[idx])) & (VRAM - 1);
 }
 uint32_t LocalMemory::addr8(uint32_t bp, uint32_t bw, uint32_t x, uint32_t y) {
-    const uint32_t ppr = std::max(1u, bw / 2);
-    const uint32_t page = x / 128 + (y / 64) * ppr;
-    const uint32_t px = x % 128, py = y % 64;
-    const uint32_t block = BLOCK32[py / 16][px / 16];
-    const uint32_t pix = PIX8[py % 16][px % 16];
-    return (bp * 256 + page * 8192 + block * 256 + pix) & (VRAM - 1);
+    static const std::array<uint16_t, 128 * 64> in_page = [] {
+        std::array<uint16_t, 128 * 64> t{};
+        for (uint32_t py = 0; py < 64; ++py)
+            for (uint32_t px = 0; px < 128; ++px)
+                t[py * 128 + px] = static_cast<uint16_t>(BLOCK32[py / 16][px / 16] * 256 + PIX8[py % 16][px % 16]);
+        return t;
+    }();
+    const uint32_t ppr = std::max(1u, bw >> 1);
+    const uint32_t page = (x >> 7) + (y >> 6) * ppr;
+    return (bp * 256 + page * 8192 + in_page[((y & 63) << 7) | (x & 127)]) & (VRAM - 1);
 }
 uint32_t LocalMemory::addr4(uint32_t bp, uint32_t bw, uint32_t x, uint32_t y) {
-    const uint32_t ppr = std::max(1u, bw / 2);
-    const uint32_t page = x / 128 + (y / 128) * ppr;
-    const uint32_t px = x % 128, py = y % 128;
-    const uint32_t block = BLOCK16[py / 16][px / 32];
-    const uint32_t pix = PIX4[py % 16][px % 32];
-    return (bp * 512 + page * 16384 + block * 512 + pix) & (VRAM * 2 - 1);
+    static const std::array<uint16_t, 128 * 128> in_page = [] {
+        std::array<uint16_t, 128 * 128> t{};
+        for (uint32_t py = 0; py < 128; ++py)
+            for (uint32_t px = 0; px < 128; ++px)
+                t[py * 128 + px] = static_cast<uint16_t>(BLOCK16[py / 16][px / 32] * 512 + PIX4[py % 16][px % 32]);
+        return t;
+    }();
+    const uint32_t ppr = std::max(1u, bw >> 1);
+    const uint32_t page = (x >> 7) + (y >> 7) * ppr;
+    return (bp * 512 + page * 16384 + in_page[((y & 127) << 7) | (x & 127)]) & (VRAM * 2 - 1);
 }
 
 uint32_t LocalMemory::read_pixel(uint32_t psm, uint32_t bp, uint32_t bw, uint32_t x, uint32_t y) const {
@@ -194,9 +214,9 @@ bool LocalMemory::snap_stale(const TexSnap& s) const {
 // snapshots of textures stay valid; a change is kept for undo_restore while undo_begin's scope lasts.) Returns the changed bytes'
 // address and count (count 0: unchanged), for the caller to note.
 inline uint32_t LocalMemory::store(uint32_t psm, uint32_t bp, uint32_t bw, uint32_t x, uint32_t y, uint32_t v, uint32_t& n_out) {
+    n_out = 0;
     if (psm == CT32) {
         const uint32_t a0 = addr32(bp, bw, x, y);
-        n_out = 0;
         if (vram_r32(&vram_[a0]) != v) {
             uint32_t raw;  // (the bytes as they were, for the undo's put-back)
             std::memcpy(&raw, &vram_[a0], 4);
@@ -206,19 +226,52 @@ inline uint32_t LocalMemory::store(uint32_t psm, uint32_t bp, uint32_t bw, uint3
         }
         return a0;
     }
+    if (psm == T8) {
+        const uint32_t a0 = addr8(bp, bw, x, y);
+        const uint8_t b = static_cast<uint8_t>(v & 0xff);
+        if (vram_[a0] != b) {
+            if (vundo_on_) vundo_.push_back({a0, 1, vram_[a0]});
+            vram_[a0] = b;
+            n_out = 1;
+        }
+        return a0;
+    }
+    if (psm == T4) {
+        const uint32_t a = addr4(bp, bw, x, y);
+        const uint32_t a0 = a >> 1;
+        const uint8_t old_b = vram_[a0];
+        const uint8_t new_b = (a & 1) ? static_cast<uint8_t>((old_b & 0x0f) | ((v & 0xf) << 4)) : static_cast<uint8_t>((old_b & 0xf0) | (v & 0xf));
+        if (old_b != new_b) {
+            if (vundo_on_) vundo_.push_back({a0, 1, old_b});
+            vram_[a0] = new_b;
+            n_out = 1;
+        }
+        return a0;
+    }
+    if (psm == CT16 || psm == CT16S) {
+        const uint32_t a0 = addr16(bp, bw, x, y, psm == CT16S);
+        const uint8_t b0 = static_cast<uint8_t>(v & 0xff), b1 = static_cast<uint8_t>((v >> 8) & 0xff);
+        if (vram_[a0] != b0 || vram_[a0 + 1] != b1) {
+            if (vundo_on_) {
+                uint32_t w = 0;
+                std::memcpy(&w, &vram_[a0], 2);
+                vundo_.push_back({a0, 2, w});
+            }
+            vram_[a0] = b0;
+            vram_[a0 + 1] = b1;
+            n_out = 2;
+        }
+        return a0;
+    }
     uint32_t a0 = 0, n0 = 0;
     switch (psm) {
     case CT24: a0 = addr32(bp, bw, x, y); n0 = 3; break;
-    case CT16: case CT16S: a0 = addr16(bp, bw, x, y, psm == CT16S); n0 = 2; break;
-    case T8: a0 = addr8(bp, bw, x, y); n0 = 1; break;
-    case T4: a0 = addr4(bp, bw, x, y) >> 1; n0 = 1; break;
     case T8H: case T4HL: case T4HH: a0 = addr32(bp, bw, x, y) + 3; n0 = 1; break;
     default: break;
     }
     uint8_t before[4] = {0, 0, 0, 0};
     if (n0 != 0) std::memcpy(before, &vram_[a0], n0);
     write_pixel_raw(psm, bp, bw, x, y, v);
-    n_out = 0;
     if (n0 != 0 && std::memcmp(before, &vram_[a0], n0) != 0) {
         if (vundo_on_) {
             uint32_t w = 0;
@@ -371,14 +424,83 @@ std::shared_ptr<const TexImage> LocalMemory::texture_at_kick(uint64_t tex0, uint
     }
     const int w = 1 << std::min(10u, bits(tex0, 26, 4)), h = 1 << std::min(10u, bits(tex0, 30, 4));
     dec_.resize(static_cast<size_t>(w) * h);
-    rd_track_ = true;
     for (int k = 0; k < 2; ++k) {
         rd_lo_[k] = 0xffffffffu;
         rd_hi_[k] = 0;
     }
-    for (int y = 0; y < h; ++y)
-        for (int x = 0; x < w; ++x) dec_[static_cast<size_t>(y) * w + x] = texel(tex0, texa, x, y);
-    rd_track_ = false;
+    const uint32_t tbp = bits(tex0, 0, 14), tbw = bits(tex0, 14, 6), psm = bits(tex0, 20, 6);
+    const uint32_t cbp = bits(tex0, 37, 14), cpsm = bits(tex0, 51, 4);
+    const uint32_t ta0 = bits(texa, 0, 8), aem = bits(texa, 15, 1), ta1 = bits(texa, 32, 8);
+    auto c16 = [&](uint32_t v) {
+        const uint32_t r = (v & 0x1f) << 3, g = ((v >> 5) & 0x1f) << 3, b = ((v >> 10) & 0x1f) << 3;
+        uint32_t a = (v & 0x8000) ? ta1 : ta0;
+        if (aem && (v & 0x7fff) == 0 && !(v & 0x8000)) a = 0;
+        return r | (g << 8) | (b << 16) | (a << 24);
+    };
+    const bool eight = psm == T8 || psm == T8H;
+    const bool four = psm == T4 || psm == T4HL || psm == T4HH;
+    if (eight || four) {
+        uint32_t clut[256];
+        rd_track_ = true;
+        rd_slot_ = 1;
+        const uint32_t nclut = eight ? 256u : 16u;
+        for (uint32_t raw = 0; raw < nclut; ++raw) {
+            uint32_t cx, cy;
+            if (eight) {
+                const uint32_t j = (raw & 0xe7u) | ((raw & 0x08u) << 1) | ((raw & 0x10u) >> 1);
+                cx = j & 0xfu;
+                cy = j >> 4;
+            } else {
+                cx = raw & 7u;
+                cy = raw >> 3;
+            }
+            clut[raw] = cpsm == CT32 ? read_pixel(CT32, cbp, 1, cx, cy) : c16(read_pixel(cpsm == CT16S ? CT16S : CT16, cbp, 1, cx, cy));
+        }
+        rd_track_ = false;
+        rd_slot_ = 0;
+        uint32_t lo0 = 0xffffffffu, hi0 = 0;
+        if (psm == T8) {
+            for (int y = 0; y < h; ++y) {
+                uint32_t* row = dec_.data() + static_cast<size_t>(y) * w;
+                for (int x = 0; x < w; ++x) {
+                    const uint32_t a = addr8(tbp, tbw, static_cast<uint32_t>(x), static_cast<uint32_t>(y));
+                    lo0 = std::min(lo0, a);
+                    hi0 = std::max(hi0, a + 1);
+                    row[x] = clut[vram_[a]];
+                }
+            }
+        } else if (psm == T4) {
+            for (int y = 0; y < h; ++y) {
+                uint32_t* row = dec_.data() + static_cast<size_t>(y) * w;
+                for (int x = 0; x < w; ++x) {
+                    const uint32_t nib = addr4(tbp, tbw, static_cast<uint32_t>(x), static_cast<uint32_t>(y));
+                    const uint32_t a = nib >> 1;
+                    lo0 = std::min(lo0, a);
+                    hi0 = std::max(hi0, a + 1);
+                    row[x] = clut[(vram_[a] >> ((nib & 1u) * 4u)) & 0xfu];
+                }
+            }
+        } else {
+            const uint32_t shift = psm == T4HH ? 4u : 0u;
+            const uint32_t mask = psm == T8H ? 0xffu : 0xfu;
+            for (int y = 0; y < h; ++y) {
+                uint32_t* row = dec_.data() + static_cast<size_t>(y) * w;
+                for (int x = 0; x < w; ++x) {
+                    const uint32_t a = addr32(tbp, tbw, static_cast<uint32_t>(x), static_cast<uint32_t>(y)) + 3;
+                    lo0 = std::min(lo0, a);
+                    hi0 = std::max(hi0, a + 1);
+                    row[x] = clut[(vram_[a] >> shift) & mask];
+                }
+            }
+        }
+        rd_lo_[0] = lo0;
+        rd_hi_[0] = hi0;
+    } else {
+        rd_track_ = true;
+        for (int y = 0; y < h; ++y)
+            for (int x = 0; x < w; ++x) dec_[static_cast<size_t>(y) * w + x] = texel(tex0, texa, x, y);
+        rd_track_ = false;
+    }
     for (int k = 0; k < 2; ++k) {
         s.rd_lo[k] = rd_lo_[k];
         s.rd_hi[k] = rd_hi_[k];
@@ -390,12 +512,26 @@ std::shared_ptr<const TexImage> LocalMemory::texture_at_kick(uint64_t tex0, uint
     // does not read: the title's menus' textures, every frame - and the same pixels decoded: the image kept, its id with it, so that
     // the drawers' GPU textures made from it are kept too)
     if (s.img != nullptr && s.img->w == w && s.img->h == h && s.img->px == dec_) return s.img;
+    uint64_t h64 = 14695981039346656037ull;
+    const size_t npx = dec_.size();
+    const size_t step = std::max<size_t>(1, npx / 256);
+    for (size_t i = 0; i < npx; i += step) h64 = (h64 ^ dec_[i]) * 1099511628211ull;
+    h64 ^= static_cast<uint64_t>(npx);
+    for (size_t i = 0; i < TexSnap::kRing; ++i) {
+        if (s.ring[i] != nullptr && s.ring_hash[i] == h64 && s.ring[i]->w == w && s.ring[i]->h == h && s.ring[i]->px == dec_) {
+            s.img = s.ring[i];
+            return s.img;
+        }
+    }
     auto img = std::make_shared<TexImage>();
     img->id = ++tex_ids_;
     img->w = w;
     img->h = h;
     img->px = dec_;
-    if (s.img == nullptr) tex_snap_bytes_ += img->px.size() * 4;
+    const uint32_t slot = s.ring_next++ % TexSnap::kRing;
+    if (s.ring[slot] == nullptr) tex_snap_bytes_ += img->px.size() * 4;
+    s.ring[slot] = img;
+    s.ring_hash[slot] = h64;
     s.img = img;
     return img;
 }

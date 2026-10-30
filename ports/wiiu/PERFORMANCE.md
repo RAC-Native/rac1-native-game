@@ -481,3 +481,30 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
       - **World GPU pass: `26.98 → 10.06 ms` (2.68× faster)**: `tfrag pass 1` `1.50 ms`, `tfrag pass 2` `0.03 ms`, `ties/shrubs pass 1` `5.52 ms`, `ties/shrubs pass 2` `3.01 ms`.
       - **CPU `world draws`: `6.1 → 3.6 ms`**; GX2 draws/frame: **`1710 → 1013`**.
 
+### M1n–M1o: `gs::LocalMemory` CLUT pre-decode & `TexSnap` 16-entry ring, zero-copy `mrp_chain` `Reader::read`, ring-wrap `GX2DrawDone` elimination (`RAC1_WIIU_RING_NOWAIT`), and FTP-free `bench.sh` (2026-10-30)
+
+- **Why `chain join` on Core 1 was still 4–13 ms and `g_fxtex` (`mrp_world_gx2.cpp:2482`) stalled with `GX2DrawDone`:**
+  1. `LocalMemory::addr16`, `addr8`, and `addr4` in `runtime/gs/gs_memory.cpp` computed PS2 GS page/block/column swizzling with bit-shifts and switches on every texel access instead of using `static const` `in_page` lookup tables like `addr32`.
+  2. `LocalMemory::store` called `write_pixel_raw` for `T8`, `T4`, and `CT16`/`CT16S`, which recomputed `addr*` a second time for every byte/halfword written and used `memcmp`/`memcpy` on 1–2 byte values.
+  3. `LocalMemory::texture_at_kick` called `read_pixel(CT32, cbp, 1, cx, cy)` inside the inner `(y, x)` texel loop for every single texel (`w * h` times) instead of pre-decoding the 256-entry (`T8`) or 16-entry (`T4`) CLUT once per texture!
+  4. `LocalMemory::snap_` (`TexSnap`) stored only a single `std::shared_ptr<const TexImage> img` per `(tex0, texa)` key. Because the game reuses the same GS VRAM `TBP` slot for multiple effect/HUD textures within a single frame (`store()` increments `writes_`), `texture_at_kick` allocated a brand-new `TexImage` with a new `TexImage::id` every time, causing `mrp_world_gx2.cpp`'s 8 MB effect texture cache (`g_fxtex`) to overflow every few frames and call `GX2DrawDone()` (`mrp_world_gx2.cpp:2482`).
+  5. `Reader::read` in `src/game/render/mrp_chain.cpp` copied `t + 8` and `d` (`qwc * 16` bytes) into `buf_` on every single DMA tag even when `d == t + 16` is already contiguous inside `g_capture.bytes`.
+- **`runtime/gs/gs_memory.h`, `runtime/gs/gs_memory.cpp`, `src/game/render/mrp_chain.cpp` (`m1n`):**
+  - Added `static const` `in_page` lookup tables to `addr16`, `addr8`, and `addr4`, and inlined direct byte/halfword stores in `LocalMemory::store`.
+  - Pre-decoded the 256-entry (`T8`) or 16-entry (`T4`) CLUT once per `texture_at_kick` call and specialized the inner texel loops by `psm`.
+  - Added a 16-entry variant ring (`TexSnap::ring[16]` + `ring_hash[16]`) to `TexSnap` keyed by FNV-1a pixel hash so alternating textures sharing a `(tex0, texa)` slot reuse their existing `std::shared_ptr<const TexImage>` (and stable `TexImage::id`) across frames without reallocating or overflowing `g_fxtex`.
+  - Passed `t` directly to `vif_stream` in `Reader::read` when `d == nullptr || d == t + 16`.
+- **Console benchmark (`m1n_novalis`, `RAC1_LEVEL=1 RAC1_FRAMES=1500`):**
+  - **`chain join` dropped by 60–100% across the entire Novalis run** (compare `m1l_novalis` vs `m1n_novalis` at identical game frames):
+    - Frame 180: `chain join` **`12.1 → 4.6 ms` (-7.5 ms)**
+    - Frame 300–360: `chain join` **`13.0 → 6.4 ms` (-6.6 ms)**
+    - Frames 420–720 (5 steady-state 30 fps windows): `chain join` **`5.3–7.7 ms → 2.2–3.0 ms`** (nearly 3× faster), with all 5 windows locked at **32.5–33.4 ms (30.0 fps)** and `begin (swap wait)` headroom rising to **12.4–14.5 ms**!
+    - Frames 840–1500 (heavy Novalis canyon vistas): `chain join` dropped from **`3.9–7.1 ms` to `0.0–0.1 ms`** (`mrp_chain` on Core 0 now finishes *before* `world's worker join` on Core 1 finishes, immediately freeing Core 0 to drain the tfrag queue in parallel!).
+    - Frame 960 host frame: **`49.3 → 44.7 ms` (-4.6 ms)**; Frame 1080 host frame: **`47.5 → 41.9 ms` (-5.6 ms)**!
+  - **`mrp_world_gx2.cpp:2482` (`g_fxtex` 8 MB `GX2DrawDone`) dropped to `0.00/frame` across all gameplay windows!**
+- **Eliminating mid-frame ring-wrap `GX2DrawDone()` stalls (`RAC1_WIIU_RING_NOWAIT`, default 1, `mrp_world_gx2.cpp`, `mrp_moby_gx2.cpp`, `mrp_2d_gx2.cpp`) and FTP-free `bench.sh` (`m1o`):**
+  - `[gx2]` counters in `m1n_novalis` showed `DrawDone sites: mrp_world_gx2.cpp:303 0.10, mrp_moby_gx2.cpp:126 0.03, mrp_world_gx2.cpp:285 0.03, mrp_2d_gx2.cpp:119 0.03` (up to `0.20` `GX2DrawDone()` calls/frame = 1 full GPU pipeline stall every 5 frames when ring buffers wrapped!).
+  - Because `wiiu_gfx_frame()` already waits for the previous frame's GPU timestamp (`GX2WaitTimeStamp(g_frame_ts)`) before any draw call of the current frame, data at offset `0` of an 8–16 MB ring buffer is from 10–50 frames ago and is guaranteed to be retired on the GPU unless a *single frame* allocates more than the ring size.
+  - Raised `kGeoRingBytes` from 8 MB to 16 MB and added per-frame byte tracking (`g_ring_frame_bytes`, `g_pring_frame_bytes`, `g_gring_frame_bytes`, `g_sring_frame_bytes`) so ring wraps only call `GX2DrawDone()` if a single frame's allocations exceed half the ring size.
+  - Added a 1 KB patchable `g_embedded_cfg` slot in `wiiu_main.cpp` and updated `ports/wiiu/tools/bench.sh` + `wiiu-run.sh` to embed benchmark settings directly into `$out/$tag.elf` -> `$out/$tag.rpx` via `elf2rpl`, eliminating all FTP connections and SD `run.cfg` touches during benchmarks.
+

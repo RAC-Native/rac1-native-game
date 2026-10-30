@@ -25,9 +25,9 @@ exit_re=${WIIU_EXIT_RE:-auto-exit|: exit}
 log=${WIIU_LOG:-${app%.*}.udp.log}
 wiiload=${DEVKITPRO:-/opt/devkitpro}/tools/bin/wiiload
 
-# (no probe of port 4299: the plugin serves one connection at a time and would wait on the probe's for a file
-# that never comes, with the real upload queued behind it; FTP's port says whether the console is up)
-if ! timeout 5 bash -c "exec 3<>/dev/tcp/$ip/21" 2>/dev/null; then
+# (no probe of port 4299: the plugin serves one connection at a time; use ICMP ping rather than TCP port 21 so we never
+# touch Aroma's ftpiiu plugin)
+if ! ping -c1 -W2 "$ip" >/dev/null 2>&1; then
     echo "wiiu-run: $ip not reachable (console off?)" >&2
     exit 2
 fi

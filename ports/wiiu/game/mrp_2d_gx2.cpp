@@ -106,19 +106,27 @@ uint32_t g_block_loc = 0, g_block_size = sizeof(Block);
 uint32_t g_smp_loc[5] = {0, 1, 2, 3, 4};
 
 // The vertices and blocks, appended to a ring in MEM2 (gs_draw_gx2.cpp's): before the ring wraps over what the GPU may still read the
-// CPU waits for it
+// CPU waits for it only if the current frame's allocations exceed half the ring.
+const bool g_ring_nowait = std::getenv("RAC1_WIIU_RING_NOWAIT") == nullptr || std::atoi(std::getenv("RAC1_WIIU_RING_NOWAIT")) != 0;
 constexpr uint32_t kRingBytes = 8u << 20;
 uint8_t* g_ring = nullptr;
 uint32_t g_ring_off = 0;
+uint32_t g_ring_frame_bytes = 0;
 uint64_t g_ring_wraps = 0;
 
 void* ring_alloc(uint32_t bytes, uint32_t align) {
     uint32_t off = (g_ring_off + align - 1) & ~(align - 1);
     if (bytes > kRingBytes) return nullptr;
     if (off + bytes > kRingBytes) {
-        GX2DrawDone();
+        g_ring_frame_bytes += (kRingBytes - g_ring_off) + bytes;
+        if (!g_ring_nowait || g_ring_frame_bytes > (kRingBytes >> 1)) {
+            GX2DrawDone();
+            g_ring_frame_bytes = bytes;
+        }
         off = 0;
         ++g_ring_wraps;
+    } else {
+        g_ring_frame_bytes += (off - g_ring_off) + bytes;
     }
     g_ring_off = off + bytes;
     return g_ring + off;
@@ -688,6 +696,7 @@ void mrp_2d_gx2_draw(const MrpChainFrame& f, const GX2ColorBuffer* screen, float
     static const int s_debug = std::getenv("RAC1_WIIU_2D_DEBUG") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_2D_DEBUG")) : 0;
     static const bool s_log = std::getenv("RAC1_WIIU_2D_LOG") == nullptr || std::atoi(std::getenv("RAC1_WIIU_2D_LOG")) != 0;
     ++g_call;
+    if (targets) g_ring_frame_bytes = 0;
     const auto t0 = std::chrono::steady_clock::now();
     const gs::Viewport& v = vp;
     if (targets) g_rt_s = rt_scale_for(v, FB_H);

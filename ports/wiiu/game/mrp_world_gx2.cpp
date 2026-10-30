@@ -220,20 +220,29 @@ const WHBGfxShaderGroup* fast_pair(int path, bool at) {
 }
 
 // The uniform blocks, appended to a ring in MEM2 (mrp_moby_gx2.cpp's): before the ring wraps over what the GPU may still read the
-// CPU waits for it (GX2DrawDone)
+// CPU waits for it (GX2DrawDone) only if the current frame's allocations exceed half the ring (wiiu_gfx_frame waits for the previous
+// frame's GPU timestamp before any draw call).
+const bool g_ring_nowait = std::getenv("RAC1_WIIU_RING_NOWAIT") == nullptr || std::atoi(std::getenv("RAC1_WIIU_RING_NOWAIT")) != 0;
 constexpr uint32_t kRingBytes = 16u << 20;
 uint8_t* g_ring = nullptr;
 uint32_t g_ring_off = 0;
+uint32_t g_ring_frame_bytes = 0;
 uint64_t g_ring_wraps = 0;
 bool g_ring_stale = false;  // (Gx2Perf::ub_bulk: the ring wrapped since its GPU caches were last invalidated)
 void* ring_alloc(uint32_t bytes) {
     uint32_t off = (g_ring_off + GX2_UNIFORM_BLOCK_ALIGNMENT - 1) & ~(GX2_UNIFORM_BLOCK_ALIGNMENT - 1);
     if (bytes > kRingBytes) return nullptr;
     if (off + bytes > kRingBytes) {
-        GX2DrawDone();
+        g_ring_frame_bytes += (kRingBytes - g_ring_off) + bytes;
+        if (!g_ring_nowait || g_ring_frame_bytes > (kRingBytes >> 1)) {
+            GX2DrawDone();
+            g_ring_frame_bytes = bytes;
+        }
         off = 0;
         ++g_ring_wraps;
         g_ring_stale = true;
+    } else {
+        g_ring_frame_bytes += (off - g_ring_off) + bytes;
     }
     g_ring_off = off + bytes;
     return g_ring + off;
@@ -277,14 +286,21 @@ void* block_of(const void* data, uint32_t bytes, uint32_t size) {
 constexpr uint32_t kPlanRingBytes = 8u << 20;
 uint8_t* g_pring = nullptr;
 uint32_t g_pring_off = 0;
+uint32_t g_pring_frame_bytes = 0;
 uint64_t g_pring_wraps = 0;
 void* plan_alloc(uint32_t bytes, uint32_t align) {
     uint32_t off = (g_pring_off + align - 1) & ~(align - 1);
     if (bytes > kPlanRingBytes) return nullptr;
     if (off + bytes > kPlanRingBytes) {
-        GX2DrawDone();
+        g_pring_frame_bytes += (kPlanRingBytes - g_pring_off) + bytes;
+        if (!g_ring_nowait || g_pring_frame_bytes > (kPlanRingBytes >> 1)) {
+            GX2DrawDone();
+            g_pring_frame_bytes = bytes;
+        }
         off = 0;
         ++g_pring_wraps;
+    } else {
+        g_pring_frame_bytes += (off - g_pring_off) + bytes;
     }
     g_pring_off = off + bytes;
     return g_pring + off;
@@ -292,17 +308,24 @@ void* plan_alloc(uint32_t bytes, uint32_t align) {
 
 // The tfrags' vertices / indices, a frame's appended to a ring in MEM2 of their own (as the blocks' ring: before it wraps over what the
 // GPU may still read the CPU waits for it); a frame's twice the size of Veldin's busiest (~2200 vertices: 160 KB) many times over
-constexpr uint32_t kGeoRingBytes = 8u << 20;
+constexpr uint32_t kGeoRingBytes = 16u << 20;
 uint8_t* g_gring = nullptr;
 uint32_t g_gring_off = 0;
+uint32_t g_gring_frame_bytes = 0;
 uint64_t g_gring_wraps = 0;
 void* geo_alloc(uint32_t bytes) {
     uint32_t off = (g_gring_off + GX2_VERTEX_BUFFER_ALIGNMENT - 1) & ~(GX2_VERTEX_BUFFER_ALIGNMENT - 1);
     if (bytes > kGeoRingBytes) return nullptr;
     if (off + bytes > kGeoRingBytes) {
-        GX2DrawDone();
+        g_gring_frame_bytes += (kGeoRingBytes - g_gring_off) + bytes;
+        if (!g_ring_nowait || g_gring_frame_bytes > (kGeoRingBytes >> 1)) {
+            GX2DrawDone();
+            g_gring_frame_bytes = bytes;
+        }
         off = 0;
         ++g_gring_wraps;
+    } else {
+        g_gring_frame_bytes += (off - g_gring_off) + bytes;
     }
     g_gring_off = off + bytes;
     return g_gring + off;
@@ -313,14 +336,21 @@ void* geo_alloc(uint32_t bytes) {
 constexpr uint32_t kSkyRingBytes = 2u << 20;
 uint8_t* g_sring = nullptr;
 uint32_t g_sring_off = 0;
+uint32_t g_sring_frame_bytes = 0;
 uint64_t g_sring_wraps = 0;
 void* sky_alloc(uint32_t bytes) {
     uint32_t off = (g_sring_off + GX2_VERTEX_BUFFER_ALIGNMENT - 1) & ~(GX2_VERTEX_BUFFER_ALIGNMENT - 1);
     if (bytes > kSkyRingBytes) return nullptr;
     if (off + bytes > kSkyRingBytes) {
-        GX2DrawDone();
+        g_sring_frame_bytes += (kSkyRingBytes - g_sring_off) + bytes;
+        if (!g_ring_nowait || g_sring_frame_bytes > (kSkyRingBytes >> 1)) {
+            GX2DrawDone();
+            g_sring_frame_bytes = bytes;
+        }
         off = 0;
         ++g_sring_wraps;
+    } else {
+        g_sring_frame_bytes += (off - g_sring_off) + bytes;
     }
     g_sring_off = off + bytes;
     return g_sring + off;
@@ -974,6 +1004,10 @@ int debug_mode(const char* list, uint64_t at, uint64_t game_frame) {
 
 // orig: (host) see mrp_world_gx2.h
 void mrp_world_gx2_debug_frame(uint64_t game_frame) {
+    g_ring_frame_bytes = 0;
+    g_pring_frame_bytes = 0;
+    g_gring_frame_bytes = 0;
+    g_sring_frame_bytes = 0;
     static const char* list = std::getenv("RAC1_WIIU_WORLD_DEBUG");
     static const uint64_t at = std::getenv("RAC1_WIIU_WORLD_DEBUG_AT") != nullptr ? std::strtoull(std::getenv("RAC1_WIIU_WORLD_DEBUG_AT"), nullptr, 10) : 0;
     const int mode = debug_mode(list, at, game_frame);
