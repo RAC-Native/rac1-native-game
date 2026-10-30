@@ -70,6 +70,7 @@
 #endif
 
 #include "host_language.h"
+#include "dualsense.h"
 #include "rumble.h"
 
 #include <atomic>
@@ -1425,9 +1426,12 @@ bool g_cursor_free = false;         // the debug menu is open: the cursor is the
 double g_cursor_x = 0.0, g_cursor_y = 0.0;
 float g_mouse_dx = 0.0f, g_mouse_dy = 0.0f;  // the movement since the last game frame
 hi::WheelPulse g_wheel;                      // the wheel's notches, a press each (game frames: host_state)
-// the vibration (#10): the motors the game asked for in its last game frame (vibration_take, pad_packet: the game's thread),
-// given to the pad last used (g_pad_guid) once a host frame (host_input_poll: the main thread)
-std::atomic<float> g_rumble_low{0.0f}, g_rumble_high{0.0f};
+// the vibration (#10): what the game asked for in its last game frame (vibration_take, pad_packet: the game's thread),
+// given to the pad last used (g_pad_guid) once a host frame (host_input_poll: the main thread); neutral when the game's
+// thread has given nothing for 150 ms (a stalled game leaves the pad still)
+std::mutex g_rumble_lock;
+rac1::rumble::Output g_rumble;
+std::chrono::steady_clock::time_point g_rumble_time{};
 std::mutex g_pad_guid_lock;
 std::string g_pad_guid;  // (the GUID of the pad g_pad_name names)
 GLFWscrollfun g_prev_scroll = nullptr;       // the callback before ours (chained)
@@ -1554,7 +1558,13 @@ void host_input_poll(GLFWwindow* win, bool cursor_free) {
             std::lock_guard<std::mutex> lock(g_pad_guid_lock);
             guid = g_pad_guid;
         }
-        rac1::rumble::set(guid, g_rumble_low.load(), g_rumble_high.load());
+        rac1::vibration_set_dualsense(rac1::dualsense::is_dualsense(guid));  // (the Adaptive Triggers row)
+        rac1::rumble::Output out;
+        {
+            std::lock_guard<std::mutex> lock(g_rumble_lock);
+            if (std::chrono::steady_clock::now() - g_rumble_time < std::chrono::milliseconds(150)) out = g_rumble;
+        }
+        rac1::rumble::set(guid, out);
     }
     if (g_cursor_captured) {
         double x = 0.0, y = 0.0;
@@ -1842,16 +1852,32 @@ void pad_packet(GLFWwindow* win, uint64_t frame, int pre = -1) {
     }
     rac1::advanced_host_input(extra);
     {  // the vibration of the game frame before (#10), for the pad (host_input_poll)
-        float vl = 0.0f, vh = 0.0f;
-        rac1::vibration_take(vl, vh);
-        g_rumble_low.store(vl);
-        g_rumble_high.store(vh);
-        static const bool vlog = std::getenv("RAC1_VIBRATION_LOG") != nullptr;  // (testing: the motors when they change)
-        static float vlast[2] = {0.0f, 0.0f};
-        if (vlog && (vl != vlast[0] || vh != vlast[1])) {
-            std::printf("[vibe] frame %llu low %.2f high %.2f\n", static_cast<unsigned long long>(frame), vl, vh);
-            vlast[0] = vl;
-            vlast[1] = vh;
+        rac1::VibeOut v;
+        rac1::vibration_take(v);
+        rac1::rumble::Output out;
+        out.low = v.low;
+        out.high = v.high;
+        out.left = v.left;
+        out.right = v.right;
+        out.dualsense = v.dualsense;
+        out.r2 = rac1::rumble::Trigger{v.r2.kind, v.r2.a, v.r2.b, v.r2.c};
+        out.l2 = rac1::rumble::Trigger{v.l2.kind, v.l2.a, v.l2.b, v.l2.c};
+        out.health = v.health;
+        {
+            std::lock_guard<std::mutex> lock(g_rumble_lock);
+            g_rumble = out;
+            g_rumble_time = std::chrono::steady_clock::now();
+        }
+        // (testing) RAC1_DUALSENSE_OUT in a headless run: the reports written here, once a game frame (no pad is polled)
+        static const bool fake_pad = std::getenv("RAC1_HEADLESS") != nullptr && std::getenv("RAC1_DUALSENSE_OUT") != nullptr;
+        if (fake_pad) rac1::rumble::set("fake-dualsense", out);
+        static const bool vlog = std::getenv("RAC1_VIBRATION_LOG") != nullptr;  // (testing: what the host takes, when it changes)
+        static rac1::rumble::Output vlast;
+        if (vlog && (out.low != vlast.low || out.high != vlast.high || out.left != vlast.left || out.right != vlast.right ||
+                     out.dualsense != vlast.dualsense)) {
+            std::printf("[vibe] host frame %llu low %.2f high %.2f left %.2f right %.2f%s\n", static_cast<unsigned long long>(frame), out.low,
+                        out.high, out.left, out.right, out.dualsense ? " (triggers)" : "");
+            vlast = out;
         }
     }
     // (testing) RAC1_SIM_DELAY=N: the RAC1_SIM_INPUT script starts N frames late (after a level's arrival scene)
@@ -2267,6 +2293,7 @@ int main(int argc, char** argv) {
     // a headless run ignores the player's Advanced settings (~/.config/rac1-native/advanced_options.txt, save<N>.pc): tests are
     // deterministic, the enhancements off; RAC1_ADVANCED=1 keeps them (testing an enhancement)
     if (headless && std::getenv("RAC1_ADVANCED") == nullptr) rac1::g_advanced_disabled = true;
+    if (headless && std::getenv("RAC1_DUALSENSE_OUT") != nullptr) rac1::vibration_set_dualsense(true);  // (testing: a DualSense taken as connected)
     std::printf("[orig] rac1-native %s\n", rac1::update_check::version_text().c_str());
     // the update check (Updates > Update Check): started when the main menu opens on the title screen (or on demand
     // via Check Now), never in a headless run; what it finds is shown as the update notice

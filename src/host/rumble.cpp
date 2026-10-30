@@ -1,6 +1,8 @@
 // src/host/rumble.cpp — the gamepad's vibration motors (see rumble.h). Host code, not a port.
 #include "rumble.h"
 
+#include "dualsense.h"
+
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -27,6 +29,9 @@ struct State {
     int low = 0, high = 0;      // the strengths last set, in 64ths
     Clock::time_point last{};   // when they were last set
     bool tried = false;         // the device looked for (once per pad)
+    bool hid = false;           // a DualSense driven by its output report (dualsense.h), else the motors below
+    bool triggers_held = false; // its triggers' effects set (given back when the setting goes off or the pad changes)
+    bool light_held = false;    // its light bar set
 #if defined(__linux__)
     int fd = -1;
     int effect = -1;
@@ -38,6 +43,7 @@ constexpr auto kRefresh = std::chrono::milliseconds(500);
 constexpr uint16_t kLengthMs = 1000;
 
 #if defined(__linux__)
+// orig: (host) bit `n` of a bit array
 bool test_bit(const unsigned long* bits, int n) {
     constexpr int kBits = 8 * sizeof(unsigned long);
     return (bits[n / kBits] >> (n % kBits)) & 1ul;
@@ -52,6 +58,7 @@ std::string evdev_guid(const input_id& id) {
     return g;
 }
 
+// orig: (host) the event device's effect removed, the device closed
 void close_device() {
     if (g_state.fd >= 0) {
         if (g_state.effect >= 0) ioctl(g_state.fd, EVIOCRMFF, g_state.effect);
@@ -85,6 +92,7 @@ void open_device(const std::string& guid) {
     std::fflush(stdout);
 }
 
+// orig: (host) the motors set (in 64ths): the effect uploaded and played, and stopped at 0
 bool write_motors(int low, int high) {
     if (g_state.fd < 0) return false;
     ff_effect e{};
@@ -98,17 +106,26 @@ bool write_motors(int low, int high) {
         return false;
     }
     g_state.effect = e.id;
+    // played even at 0, then stopped: ff-memless (most pad drivers) restarts a playing effect after an upload at its
+    // next tick, and a stop written before that tick is taken as the stop of an effect not playing, which sends
+    // nothing to the pad (it kept its last strength). Played, the 0 is sent at once; the stop then ends the effect.
     input_event ev{};
     ev.type = EV_FF;
     ev.code = static_cast<uint16_t>(g_state.effect);
-    ev.value = low > 0 || high > 0 ? 1 : 0;
-    return write(g_state.fd, &ev, sizeof ev) == static_cast<ssize_t>(sizeof ev);
+    ev.value = 1;
+    bool ok = write(g_state.fd, &ev, sizeof ev) == static_cast<ssize_t>(sizeof ev);
+    if (low == 0 && high == 0) {
+        ev.value = 0;
+        ok = write(g_state.fd, &ev, sizeof ev) == static_cast<ssize_t>(sizeof ev) && ok;
+    }
+    return ok;
 }
 #elif defined(_WIN32)
 struct XInputVibration {
     WORD left, right;
 };
 using SetStateFn = DWORD(WINAPI*)(DWORD, XInputVibration*);
+// orig: (host) XInputSetState, loaded when first needed
 SetStateFn xinput_set() {
     static SetStateFn fn = [] {
         HMODULE m = LoadLibraryA("xinput1_4.dll");
@@ -117,8 +134,11 @@ SetStateFn xinput_set() {
     }();
     return fn;
 }
+// orig: (host) (XInput: no device of its own)
 void close_device() {}
+// orig: (host) (XInput: no device of its own)
 void open_device(const std::string&) {}
+// orig: (host) the motors set (in 64ths) on every XInput pad
 bool write_motors(int low, int high) {
     SetStateFn fn = xinput_set();
     if (fn == nullptr) return false;
@@ -128,40 +148,94 @@ bool write_motors(int low, int high) {
     return any;
 }
 #else
+// orig: (host) (none elsewhere)
 void close_device() {}
+// orig: (host) (none elsewhere)
 void open_device(const std::string&) {}
+// orig: (host) (none elsewhere)
 bool write_motors(int, int) { return false; }
 #endif
 
+// orig: (host) a strength in 64ths
 int steps(float v) { return static_cast<int>(std::lround(std::fmin(std::fmax(v, 0.0f), 1.0f) * kSteps)); }
-}  // namespace
+// orig: (host) a strength in 255ths
+uint8_t byte(float v) { return static_cast<uint8_t>(std::lround(std::fmin(std::fmax(v, 0.0f), 1.0f) * 255.0f)); }
 
-void set(const std::string& guid, float low, float high) {
+// orig: (host) the DualSense's report for `out` written: the triggers' effects and the light bar while the setting is
+// on, given back to neutral (effects off, the pad's own colour) once when it goes off
+void hid_write(const Output& out) {
     State& s = g_state;
-    const int l = guid.empty() ? 0 : steps(low), h = guid.empty() ? 0 : steps(high);
-    if (guid != s.guid) {  // another pad (or none): the old one stilled, the new one looked for when it first vibrates
+    dualsense::State d;
+    d.left = byte(out.left);
+    d.right = byte(out.right);
+    if (out.dualsense || s.triggers_held) {
+        d.triggers = true;
+        if (out.dualsense) {
+            d.r2 = dualsense::trigger(out.r2.kind, out.r2.a, out.r2.b, out.r2.c);
+            d.l2 = dualsense::trigger(out.l2.kind, out.l2.a, out.l2.b, out.l2.c);
+        }
+    }
+    const bool light = out.dualsense && out.health >= 0.0f;
+    if (light) {  // the health's colour: green when full, through yellow to red, a little dimmed
+        const float h = std::fmin(std::fmax(out.health, 0.0f), 1.0f);
+        d.lightbar = true;
+        d.red = byte(0.75f * std::fmin(1.0f, 2.0f * (1.0f - h)));
+        d.green = byte(0.75f * std::fmin(1.0f, 2.0f * h));
+        d.blue = 0;
+    } else if (s.light_held) {
+        d.lightbar = true;
+        dualsense::lightbar_neutral(d.red, d.green, d.blue);
+    }
+    if (!dualsense::write(d)) return;
+    s.triggers_held = out.dualsense;
+    s.light_held = light;
+}
+
+// orig: (host) the pad driven let go: motors still, triggers and light bar given back, the device closed
+void release() {
+    State& s = g_state;
+    if (s.hid) {
+        hid_write(Output{});
+        dualsense::close();
+    } else {
         if (s.low != 0 || s.high != 0) write_motors(0, 0);
         close_device();
+    }
+}
+}  // namespace
+
+// orig: (host) (rumble.h)
+void set(const std::string& guid, const Output& out) {
+    State& s = g_state;
+    if (guid != s.guid) {  // another pad (or none): the old one stilled, the new one looked for when it first vibrates
+        release();
         s = State{};
         s.guid = guid;
     }
     if (guid.empty()) return;
-    const Clock::time_point now = Clock::now();
-    const bool running = l != 0 || h != 0;
-    if (l == s.low && h == s.high && (!running || now - s.last < kRefresh)) return;
-    if (!s.tried && running) {
+    const int l = steps(out.low), h = steps(out.high);
+    const bool running = l != 0 || h != 0 || out.left > 0.0f || out.right > 0.0f;
+    if (!s.tried && (running || out.dualsense)) {
         s.tried = true;
-        open_device(guid);
+        s.hid = dualsense::is_dualsense(guid) && dualsense::open(guid);
+        if (!s.hid) open_device(guid);
     }
+    if (s.hid) {
+        hid_write(out);
+        return;
+    }
+    const Clock::time_point now = Clock::now();
+    if (l == s.low && h == s.high && (!(l != 0 || h != 0) || now - s.last < kRefresh)) return;
+    if (!s.tried) return;  // (never vibrated: nothing to stop)
     write_motors(l, h);
     s.low = l;
     s.high = h;
     s.last = now;
 }
 
+// orig: (host) (rumble.h)
 void shutdown() {
-    if (g_state.low != 0 || g_state.high != 0) write_motors(0, 0);
-    close_device();
+    release();
     g_state = State{};
 }
 
