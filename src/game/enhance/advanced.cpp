@@ -59,6 +59,7 @@ constexpr uint32_t UPDATE_OFF = SETTINGS + 4;  // 1: no update check at start (u
 constexpr uint32_t UPDATE_DEV = SETTINGS + 5;  // 1: the update check's development channel (main), 0 the releases
 constexpr uint32_t VENDOR_ALL = SETTINGS + 6;  // 1: the Vendor's "All Ammo" entry (vendor_buy_all.h)
 constexpr uint32_t VIBRATION = SETTINGS + 7;   // the controller's vibration: 0 off, 1 low, 2 high (vibration.h, #10)
+constexpr uint32_t TRIGGERS = SETTINGS + 8;    // 1: a DualSense's adaptive triggers and light bar (vibration.h, #10)
 constexpr uint32_t ENTRIES = ADV + 0x680;      // the Options list's entries, ours added (0x100 before ten rows overflowed into HELP)
 constexpr uint32_t HELP = ADV + 0x180;         // the Options help label's texts, ours added
 constexpr uint32_t PICTURES = ADV + 0x600;     // the Options picture's images (sector, count), ours added (0x1c0 before two more rows did not fit)
@@ -88,16 +89,16 @@ constexpr OvConst<0x001b6678u> TALL_PAGE{};          // a page whose slot 3 box 
 
 // Our text ids, after the game's (0x4e00..0x5300 in the level text tables)
 constexpr int32_t TEXT_FIRST = 0x7f00;
-enum : int32_t { T_ADVANCED, T_HELP, T_QUICK_SELECT, T_NORMAL, T_PAUSE, T_CONTROLS, T_CLASSIC, T_MODERN, T_MOVEMENT, T_ORIGINAL, T_STRAFING, T_RAC3, T_FADES, T_FAST, T_FADES_ORIGINAL, T_SOUND_51, T_SOUND_71, T_BUY_ALL, T_OFF, T_ON, T_NO_ZOOM, T_VIBRATION, T_LOW, T_HIGH, T_COUNT };
+enum : int32_t { T_ADVANCED, T_HELP, T_QUICK_SELECT, T_NORMAL, T_PAUSE, T_CONTROLS, T_CLASSIC, T_MODERN, T_MOVEMENT, T_ORIGINAL, T_STRAFING, T_RAC3, T_FADES, T_FAST, T_FADES_ORIGINAL, T_SOUND_51, T_SOUND_71, T_BUY_ALL, T_OFF, T_ON, T_NO_ZOOM, T_VIBRATION, T_LOW, T_HIGH, T_TRIGGERS, T_COUNT };
 // per language (0x15ed88: 0 English, 2 French, 3 German, 4 Spanish, 5 Italian; French in English
 // for now, the font's accented letters not looked at yet)
 constexpr const char* TEXTS[6][T_COUNT] = {
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High"},
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High"},
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High"},
-    {"Erweitert", "Extra-Einstellungen der PC-Version", "Schnellwahl", "Normal", "Pause", "Zielen", "Original", "Modern", "Bewegung", "Original", "Strafing", "RAC 3", "Blenden", "Schnell", "Original", "5.1", "7.1", "Alle Munition", "Aus", "An", "Modern, ohne Zoom", "Vibration", "Schwach", "Stark"},
-    {"Avanzado", "Ajustes extra de la version PC", "Seleccion rapida", "Normal", "Pausa", "Apuntado", "Original", "Moderno", "Movimiento", "Original", "Strafing", "RAC 3", "Fundidos", "Rapidos", "Originales", "5.1", "7.1", "Toda la municion", "No", "Si", "Moderno, sin zoom", "Vibracion", "Baja", "Alta"},
-    {"Avanzate", "Impostazioni extra della versione PC", "Scelta rapida", "Normale", "Pausa", "Mira", "Originale", "Moderna", "Movimento", "Originale", "Strafing", "RAC 3", "Dissolvenze", "Rapide", "Originali", "5.1", "7.1", "Tutte le munizioni", "No", "Si", "Moderna, senza zoom", "Vibrazione", "Bassa", "Alta"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers"},
+    {"Erweitert", "Extra-Einstellungen der PC-Version", "Schnellwahl", "Normal", "Pause", "Zielen", "Original", "Modern", "Bewegung", "Original", "Strafing", "RAC 3", "Blenden", "Schnell", "Original", "5.1", "7.1", "Alle Munition", "Aus", "An", "Modern, ohne Zoom", "Vibration", "Schwach", "Stark", "Adaptive Trigger"},
+    {"Avanzado", "Ajustes extra de la version PC", "Seleccion rapida", "Normal", "Pausa", "Apuntado", "Original", "Moderno", "Movimiento", "Original", "Strafing", "RAC 3", "Fundidos", "Rapidos", "Originales", "5.1", "7.1", "Toda la municion", "No", "Si", "Moderno, sin zoom", "Vibracion", "Baja", "Alta", "Gatillos adaptativos"},
+    {"Avanzate", "Impostazioni extra della versione PC", "Scelta rapida", "Normale", "Pausa", "Mira", "Originale", "Moderna", "Movimento", "Originale", "Strafing", "RAC 3", "Dissolvenze", "Rapide", "Originali", "5.1", "7.1", "Tutte le munizioni", "No", "Si", "Moderna, senza zoom", "Vibrazione", "Bassa", "Alta", "Grilletti adattivi"},
 };
 constexpr uint32_t STRING_SIZE = 0x30;
 static_assert(6 * T_COUNT * STRING_SIZE <= 0x3000, "the Advanced page's texts fit in 0xfb000..0xfe000");
@@ -122,10 +123,15 @@ constexpr Row SETTINGS_ROWS[] = {
     {"fades", 4, FADES, T_FADES, {T_FAST, T_FADES_ORIGINAL, -1, -1}},
     {"vendor_buy_all", 5, VENDOR_ALL, T_BUY_ALL, {T_OFF, T_ON, -1, -1}},
     {"vibration", 6, VIBRATION, T_VIBRATION, {T_OFF, T_LOW, T_HIGH, -1}, false},  // (the machine's pad: not with the saves)
+    {"adaptive_triggers", 9, TRIGGERS, T_TRIGGERS, {T_OFF, T_ON, -1, -1}, false},  // (shown only with a DualSense: row_shown)
 };
 // (ids 7 and 8, keys "ship" and "clank": the ship selector and Clank's movement, removed; a settings file or a save
 // that has them loads, the values ignored. Never reused)
 constexpr uint32_t ROW_COUNT = sizeof(SETTINGS_ROWS) / sizeof(Row);
+
+// orig: (none) — enhancement: a row on the page (Adaptive Triggers only when the pad is a DualSense: the host's
+// vibration_set_dualsense; the page is made again at each overlay load)
+bool row_shown(const Row& r) { return r.byte != TRIGGERS || vibration_dualsense(); }
 
 bool g_loaded = false;
 uint8_t g_saved[ROW_COUNT] = {};
@@ -324,6 +330,7 @@ void advanced_menu_install() {
     sw(TITLE + 0x34, TEXT_FIRST + T_ADVANCED);
     uint32_t row = ROWS;
     for (const Row& r : SETTINGS_ROWS) {
+        if (!row_shown(r)) continue;
         sw(row, static_cast<uint32_t>(TEXT_FIRST + r.name));
         sw(row + 4, r.byte);
         for (uint32_t k = 0; k < 4; ++k) sw(row + 8 + k * 4, r.values[k] >= 0 ? static_cast<uint32_t>(TEXT_FIRST + r.values[k]) : 0u);
@@ -344,7 +351,7 @@ void advanced_menu_install() {
         else if (lwu(slot) == CAMERA_SETTINGS) sw(slot, ROWS_WIDGET);
     }
     // the rows in the taller box of page 0x1b6678 (its slot 3), as the Graphics page's: Camera's box holds 5 rows, ours
-    // are 6 (#10 added one)
+    // are 6, or 7 with a DualSense (#10 added them)
     sw(PAGE + 0xc, lwu(TALL_PAGE + 0xc));
     sw(PAGE + 0x80, 0);
 
@@ -522,6 +529,7 @@ void legs_update();       // the strafe's legs, below
 void backpedal_show();
 void backpedal_restore();
 void items_frame();  // the PC's weapon actions, below
+bool modern_aim();   // Aiming = Modern, below
 }  // namespace
 
 // orig: (none) — enhancement (advanced.h)
@@ -530,7 +538,7 @@ void advanced_frame() {
     settings_load();
     combo_table_sync();
     items_frame();
-    vibration_frame(lbu(VIBRATION));
+    vibration_frame(lbu(VIBRATION), lbu(TRIGGERS), modern_aim());
     for (uint32_t i = 0; i < ROW_COUNT; ++i)
         if (lbu(SETTINGS_ROWS[i].byte) != g_saved[i]) {
             settings_save();
@@ -1578,6 +1586,7 @@ void advanced_apply_mode(uint32_t mode) {
     sb(MOVEMENT, v != 0 ? 2u : 0u);
     sb(VENDOR_ALL, v);
     sb(VIBRATION, v != 0 ? 2u : 0u);  // (Modern, Experimental: High)
+    sb(TRIGGERS, v != 0 && vibration_dualsense() ? 1u : 0u);  // (and the adaptive triggers when the pad is a DualSense)
     settings_save();
 }
 

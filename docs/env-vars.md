@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 353 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 354 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
 | [Debugging](#debugging-variables) | 265 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 67 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Automated testing](#automated-testing-variables) | 68 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -289,7 +289,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_VIEW_DIST` | float; default 1.3 | With RAC1_VIEW_HERO_FRONT, the distance of the debug camera from the hero. |
 | `RAC1_VIEW_HERO_FRONT` | any value = on; default off | Debug camera that gives a close look at the hero's face, placed in front of the hero (see RAC1_VIEW_ANGLE and RAC1_VIEW_DIST). |
 | `RAC1_VIEW_MODE` | integer: 0 = widescreen, 1 = 4:3 with bars, 2 = fit to the window's aspect; default 0 until the Options > Graphics settings override it | Sets the host's view/aspect mode at start (as the aspect and fit options do). The exact meaning of 0 is inferred from the view code, treat as approximate. |
-| `RAC1_VIBRATION_LOG` | set (any value) = on; default off | Prints the vibration motors' strengths (`[vibe] frame <n> low <l> high <h>`) each game frame they change (Options > Advanced > Vibration, #10), with or without a gamepad. |
+| `RAC1_VIBRATION_LOG` | set (any value) = on; default off | Prints the vibration (Options > Advanced > Vibration and Adaptive Triggers, #10), with or without a gamepad: each event's pulse (`[vibe] f<gameplay frame> <event>: low <l> high <h>, <n> frames (<ms> ms, held <k>), pan <p>` or `centred`, its distance), the motors and the DualSense's actuators when they change (`[vibe] f<n> motors low .. high .. \| left .. right ..`), the triggers' effects and the health when they change, the moving source followed, and what the host takes each game frame (`[vibe] host frame <n> ...`). |
 | `RAC1_VIF_TRACE` | any value = on; default off | Prints every VIF1 code word (as [VIF1] lines on stderr) as the GS emulation processes the DMA chain. |
 | `RAC1_VK_VALIDATION` | 1 = on; default off | With the Vulkan renderer, turns the Khronos validation layer on when it is installed (its messages on the standard output). See [Vulkan](vulkan.md). |
 | `RAC1_VU0_CAPTURE` | directory path; default off | Writes captures (code image, registers, memory) of VU0 program runs, spread over the calls, into that directory; used as inputs to prove the ported VU0 programs against the original. |
@@ -339,6 +339,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_DEVMENU_SHOT` | name of a debug-menu tab; unset = off | Opens the debug menu on the named tab even in a headless run, so a screenshot can capture it. |
 | `RAC1_DIE_AT` | game frame number; default off | At that game frame Ratchet is killed through the game's own death state. |
 | `RAC1_DJ_AT` | game frame number; default 216 | Only in the scripted "ship" input sequence: the frame at which the second double-jump press starts (a 12-frame hold). |
+| `RAC1_DUALSENSE_OUT` | file path; unset = off | Takes the pad as a DualSense (in a headless run too, where no pad is polled) and appends the DualSense output reports the game would send it (USB layout, 63 bytes each, written when they change) to that file instead of a device: Advanced > Adaptive Triggers is shown, and the triggers', light bar's and actuators' bytes can be checked without a pad (#10). See [Advanced options](advanced.md#vibration-10). |
 | `RAC1_EQUIP` | item id (decimal or 0x hex); unset = unchanged | Puts that item in Ratchet's hand ten frames after the item-giving frame, as the quick select would. |
 | `RAC1_EQUIP_CYCLE` | <item>,<item>,...@<period>; unset = off | From ten frames after the item-giving frame, puts the next listed item in hand every <period> frames, round and round. |
 | `RAC1_FADES` | original or fast; default fast (screen fades run in a single host frame) | Chooses whether screen fades are shown frame by frame as on the PS2 (original) or completed instantly in one host frame; sets the Fades setting over the saved preference. |
