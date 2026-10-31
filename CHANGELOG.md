@@ -96,6 +96,10 @@ What changed in each release. Releases are source only: you build the game with 
 - Water: the shore no longer flashes (Pokitaru's posts and rocks, Rilgar's beach): a slower foam pulse, the foam and the normal maps
   faded where finer than a pixel, the refraction mixed in smoothly; still camera, flashing pixels a fifth to a tenth of before.
 - Water's help text and docs/materials.md say that with Water Off, Surface Detail's own `water` shine stays.
+- Water: Pokitaru's sea no longer flashes at the far islands' and the rocks' feet with Surface Detail High (Water Off too): the
+  picture's reflection faded to the sky's where a pixel covers more than about half a unit of water, Surface Detail's ripples and
+  the Water option's normal maps faded wave by wave where finer than the pixel (the glint widened instead), the far foam faded;
+  still camera at the start's dock, 32:9: the far sea's flashing pixels 14 533 -> 1 578 (Surface Detail Off: 1 889).
 - Options > Graphics > Monitor: two monitors with the same name ("Generic PnP Monitor" twice) are told apart by their place on
   the desktop ("Generic PnP Monitor (at 1920,0)"), so the one chosen is the one the game opens on after a restart (#111).
 - Vulkan: the world's push constants are 128 bytes, not 144, and the ambient occlusion's 176 bytes of parameters are in a

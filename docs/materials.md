@@ -245,6 +245,33 @@ posts' waterline flashes about half as much (a 90 x 40 box at the near post: 763
 of the posts and the island: the reflection is marched through the picture, and a camera moving by a hair turns a far, thin post from
 a hit to a miss (the puddles' and the metals' reflections do the same).
 
+**Pokitaru's sea from the dock (playtest round 3).** Daino, Water Off, Surface Detail High, 32:9, at the start's dock looking out to
+sea: "that ugly effect near the collisions is still there, like a flash" - lighter, hard-edged trapezoids around the far islands'
+feet and by the rock, changing from frame to frame. The trapezoids themselves are the game's: the sea around each island is its own
+pieces of class 1111 (effect texture 22, the tagged `water`) with the two additive layers over them (textures 40 and 41, ALPHA 0x48),
+drawn the same with Lighting Original and by the GS replica (`RAC1_MRP_SEAS=0`); the open sea between them is not that class. What
+flashed was our shading of the tagged pieces, far away and at a grazing angle (headless, the game's camera still but for the hair it
+drifts, 12 frames, the second difference over 8 less the same with Surface Detail Off):
+- the picture's reflection (High): a ray from the far water passes the islands' and the rocks' feet at a hair's height, and the game's
+  waves - lifting the sea a few thousandths a frame - and the camera's drift turned whole stretches of it from a hit (the island's
+  colour) to a miss (the sky's) and back. Tracing it along the flat water's mirror ray, finer marching, or leaving out the hits under
+  the water did not change it; the reflection is now faded to the sky's where a pixel covers more than about half a unit of the water
+  (from 0.35 to 0.9 units: the far sea; near water keeps it), and not marched where it is faded out. The Water option's High the same;
+- Surface Detail's ripples (three wave trains and a noise) were drawn whole at any distance: far away they sparkled. Each train now
+  fades by the pixel's footprint (the point's `fwidth`), from 0.15 to 0.45 of a wave a pixel, the glint widened by the slope lost, so
+  far water has a soft sheen; the Water option's normal maps the same, octave by octave (they used to keep a fifth of their height);
+- with the Water option, the foam at the far islands' feet (under a pixel there) fades out over the same footprint as the reflection.
+
+| Still camera at the dock, 1920 x 540 (32:9), Vulkan / OpenGL | Water Off + SD High | Water High + SD High | Water Low + SD Low | Water High |
+|---|---|---|---|---|
+| The far sea's band (the islands' feet), pixels flashing | 14533 / 14564 -> 1578 / 1562 | 17611 / 17566 -> 3331 / 3306 | 5115 / 5086 -> 3271 / 3249 | 17320 / 17289 -> 3643 / 3637 |
+| The whole picture, more than with SD and Water Off | 21420 / 21437 -> 7623 / 7632 | 23949 / 23962 -> 10207 / 10215 | 8678 / 8671 -> 6825 / 6822 | 17680 / 17687 -> 3373 / 3387 |
+
+(With Surface Detail and Water Off the band has 1889: the flying ships' shadows. The whole picture's count keeps about 5000 of the
+bolts spinning with their metal.) Local main (f976533) flashed as the test branch: the water and the performance branches did not
+cause it, nor did the seas' depth order (no change with the ambient particles off). Left: with Water on, the contact line itself
+at the far islands' feet (a pixel row where the water turns see-through) moves with the game's waves.
+
 ### Grass
 
 The `grass` material on a tfrag texture with Grass on. Kept small, as the tester Anya-Thoughtmane and Daino asked: closer to what a
