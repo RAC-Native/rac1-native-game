@@ -583,7 +583,8 @@ void main() {
     float a = o.a * 255.0;
     uint bk0 = (fl >> 24) & 3u;
     bool wcomp = sm_w_mode == 1 && (bk0 == 0u || bk0 == 2u);  /* (Options > Graphics > Water: the 3D under it, sm_water2) */
-    float wa = clamp(min(o.a * (255.0 / 128.0), 1.0) * sm_w_alpha + sm_w_add, 0.0, 1.0);
+    float ga = ((fl >> 26) & 1u) != 0u ? min(float(vTex.w >> 24) / 128.0, 1.0) : min(o.a * (255.0 / 128.0), 1.0);  /* (FIX: a fixed alpha) */
+    float wa = clamp(ga * sm_w_alpha + sm_w_add, 0.0, 1.0);
     if (wcomp) o.rgb = mix(sm_w_refr, o.rgb, wa);
     if (ate) {
         bool pass = true;
@@ -597,7 +598,7 @@ void main() {
         if (!pass && uPass == 0 && (afail == 0u || afail == 2u)) discard;
         if (!pass && uPass == 1 && afail != 2u) discard;
     }
-    float as = min(o.a * (255.0 / 128.0), 1.0);
+    float as = ga;
     if (wcomp) as = 1.0;
     else if (sm_w_mode == 2) as = wa;
     uint bk = (fl >> 24) & 3u;

@@ -85,6 +85,12 @@ private:
 // orig: (host) a draw list's callback wrote [first, end) of the chain in the update running now (the real block or a shadow's): its
 // VU1 program 7 batches are the MRP's (kMrpFxVu7); `cls` the moby class of its argument (0: not a moby), the emissive surfaces' key
 void mrp_fx_note_list(uint32_t first, uint32_t end, uint32_t cls);
+// orig: (host) effect texture `index` (0x16d180's table, effect_tex0) given GS block `tbp` in the texture block running now: the effect
+// textures get their blocks in the order a block first asks for them (texture_block_begin starts again from 0x15ee78), so a sea's
+// TBP depends on what was drawn before it; its program 7 batches are keyed by the index instead (a `surface` line's `tex`)
+void mrp_fx_note_effect_tex(int32_t index, uint32_t tbp);
+// orig: (host) texture_block_begin: the effect textures' blocks of the block before forgotten
+void mrp_fx_texture_block();
 // orig: (host) testing (RAC1_MRP_FX_INVENTORY=1): a draw list's callback `fn` wrote [first, end) of the chain; what no producer's note
 // covers is counted per callback (the report: the effects no producer notes)
 void mrp_fx_list_call(uint32_t fn, uint32_t first, uint32_t end);
