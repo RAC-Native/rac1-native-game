@@ -35,7 +35,19 @@ inline uint32_t f2u(float f) { uint32_t u; std::memcpy(&u, &f, 4); return u; }
 // (rounded to nearest, PCSX2's FPUDiv setting), VU code vuc(). Game data stays in range.
 // orig: (helper) an EE FPU operand: exponent 255 is an ordinary number (up to 2^129, the PS2
 // has no Inf / NaN, game data uses 0x7f800000 as "very large"), denormals read as signed zero.
+#if (defined(__WIIU__) && !defined(RAC1_VU0_EXACT)) || defined(RAC1_VU0_NF)
+[[gnu::noinline, gnu::cold]] inline double fpu_in_rare(float f);
 inline double fpu_in(float f) {
+    // ((2026-11-01) the Wii U: a normal number or a zero decided on the FPU - returned as it is, as below; the rest out of line, the
+    // same rules. No float -> integer trip through memory on the 750. RAC1_VU0_NF: the PC's check)
+    const float a = __builtin_fabsf(f);
+    if (__builtin_expect(a <= 3.40282347e+38f && (a >= 1.17549435e-38f || a == 0.0f), 1)) return static_cast<double>(f);
+    return fpu_in_rare(f);
+}
+inline double fpu_in_rare(float f) {
+#else
+inline double fpu_in(float f) {
+#endif
     const uint32_t u = f2u(f);
     const uint32_t m = u & 0x7fffffffu;
     if (__builtin_expect(m >= 0x7f800000u || (m - 1u < 0x007fffffu), 0)) {
@@ -51,6 +63,12 @@ inline double fpu_in(float f) {
 inline float fpu_out(double r) {
     if (__builtin_expect(std::fabs(r) > static_cast<double>(FLT_MAX), 0)) return std::signbit(r) ? -FLT_MAX : FLT_MAX;
     const float f = static_cast<float>(r);
+#if (defined(__WIIU__) && !defined(RAC1_VU0_EXACT)) || defined(RAC1_VU0_NF)
+    {  // ((2026-11-01) as fpu_in: a normal result or a zero decided on the FPU, kept)
+        const float a = __builtin_fabsf(f);
+        if (__builtin_expect(a <= 3.40282347e+38f && (a >= 1.17549435e-38f || a == 0.0f), 1)) return f;
+    }
+#endif
     const uint32_t u = f2u(f), m = u & 0x7fffffffu;
     if (__builtin_expect(m >= 0x7f800000u || (m - 1u < 0x007fffffu), 0)) {
         return u2f((u & 0x80000000u) | (m >= 0x7f800000u ? 0x7f7fffffu : 0u));
@@ -73,7 +91,7 @@ inline int32_t ee_div(int32_t a, int32_t b) { return b == 0 ? (a >= 0 ? -1 : 1) 
 // orig: (helper) R5900 DIV remainder (HI): x/0 leaves HI = x, INT_MIN/-1 gives 0.
 inline int32_t ee_rem(int32_t a, int32_t b) { return b == 0 ? a : (b == -1 ? 0 : a % b); }
 // orig: (helper) VU0 float operand/result rule — denormals are signed zero, Inf/NaN are +-max.
-inline float vuc(float f) {
+inline float vuc_bits(float f) {
     uint32_t u;
     std::memcpy(&u, &f, 4);
     const uint32_t m = u & 0x7fffffffu;
@@ -83,6 +101,19 @@ inline float vuc(float f) {
     }
     return f;
 }
+#if (defined(__WIIU__) && !defined(RAC1_VU0_EXACT)) || defined(RAC1_VU0_NF)
+// ((2026-11-01) the Wii U: the common case decided on the FPU - a normal finite number is returned as it is, as vuc_bits does; the
+// rest (zeros, denormals, infinities, NaNs: any comparison of a NaN is false) by vuc_bits, out of line. The same value always; no
+// float -> integer trip through memory (the 750 has no move between its float and integer registers). RAC1_VU0_NF: the PC's check)
+[[gnu::noinline, gnu::cold]] inline float vuc_rare(float f) { return vuc_bits(f); }
+inline float vuc(float f) {
+    const float a = __builtin_fabsf(f);
+    if (__builtin_expect(a >= 1.17549435e-38f && a <= 3.40282347e+38f, 1)) return f;
+    return vuc_rare(f);
+}
+#else
+inline float vuc(float f) { return vuc_bits(f); }
+#endif
 // Views of EE RAM as the math library's vector / matrix types.
 inline Vec4& V(uint32_t a) { return *static_cast<Vec4*>(ee_ram_ptr(a)); }
 inline Mat4& M(uint32_t a) { return *static_cast<Mat4*>(ee_ram_ptr(a)); }

@@ -1127,3 +1127,24 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
 - **Next (by the map):** measure on the console (Kerwan, Nebula G34, Batalia, Veldin Orb: the game step's samples on core 2); then, where
   the generated code still costs, hand ports of the hottest: the world's lighting (its EE side: the vertices' unpacking and the point
   lights), the program-7 surface routine the levels share (L3:0x23c428 and its callers), sky_render (Veldin 22%), Kerwan's class 75.
+
+### Kerwan on the console, and the float helpers decided on the FPU (2026-11-01, night)
+
+- **Kerwan** (bench RAC1_LEVEL=3, explore, the build with vu0nf): host frame 68.8 ms, GPU busy 29.1, the game thread ~15 ms a game step
+  and 4-5 steps a host frame (real time catching up: a step near the frame's budget makes every slow frame owe more steps). The game
+  thread's samples (RAC1_WIIU_SAMPLE=200, core 2 only, launched through BaristaMAN): the IOP's mirror (the sound) 13% of core 2 - the same
+  core as the game; moby updates 35% (segment_collide_v 12%, Kerwan's classes 75 / 574 11% / 7%, moby_transform_core 8%,
+  euler_to_mat3_vu 6.6%); class 994's surface 5% with vu0nf; the VU float helpers (qsub / qmul / vmadd ..., vuc) ~11% of self time -
+  each a float -> integer trip through memory on the 750.
+- **What changed** (Wii U defaults; RAC1_VU0_EXACT=1 at build time turns them all off, a PC built -DRAC1_VU0_NF turns them on for the check):
+  - vuc (ovl_common.h), vuclamp (vecmath.cpp), fpu_in / fpu_out (the EE FPU's operand / result rules, ~32,000 uses): a normal number
+    (or a zero, for the EE FPU's) decided on the FPU and returned as it is, the rest by the bit rules out of line - the same value.
+    (The Wii U runs with NI = 1: a single denormal loaded by lfs is a normal double, its comparisons exact, so it takes the bit rules;
+    on the PC with DAZ it compares as zero and converts to the signed zero - the bit rules' value too.)
+  - RAC1_EULER_CACHE (the Wii U's default 1): euler_to_mat3_vu's rows per angles' bits in a 512-entry table per thread (PerThread).
+  - ports/wiiu/tools/wiiu-run.sh WIIU_LAUNCH=barista: the run's .rpx put on the SD (sd:/wiiu/apps/rac1-bench) and started by
+    BaristaMAN's /api/homebrew/launch - no wiiload (which refused an upload this night).
+- **Exactness:** build-nf (with RAC1_EULER_CACHE=1) against the PC's build: RAMHASH identical on Kerwan (both paths), Nebula G34,
+  Novalis (1500 frames each); the earlier vu0nf check covered levels 0-18. **Not measured on the console yet** (it was switched off).
+- **Next:** the A/B on the console (build-wiiu-ex, configured -DRAC1_VU0_EXACT=1, against build-wiiu-mt); the IOP mirror off the game
+  thread's core; segment_collide_v and Kerwan's classes 75 / 574.

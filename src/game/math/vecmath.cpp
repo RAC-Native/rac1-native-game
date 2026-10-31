@@ -6,11 +6,13 @@
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/ee/ps2_fpu.h>
+#include <platform/per_thread.h>
 
 #include <algorithm>
 #include <bit>
 #include <cfloat>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 
 namespace rac1 {
@@ -544,13 +546,25 @@ namespace {
 
 // VU MAX / MINI compare the float bit patterns as signed-magnitude integers.
 // orig: (helper) a VU result: Inf / NaN become +-max, denormals signed zero
-inline float vuclamp(float f) {
+inline float vuclamp_bits(float f) {
     uint32_t u = std::bit_cast<uint32_t>(f);
     const uint32_t e = u & 0x7f800000u;
     if (e == 0) u &= 0x80000000u;
     else if (e == 0x7f800000u) u = (u & 0x80000000u) | 0x7f7fffffu;
     return std::bit_cast<float>(u);
 }
+#if (defined(__WIIU__) && !defined(RAC1_VU0_EXACT)) || defined(RAC1_VU0_NF)
+// ((2026-11-01) the Wii U: a normal finite number decided on the FPU and returned as it is - vuclamp_bits's value; the rest by it, out
+// of line: no float -> integer trip through memory on the 750. RAC1_VU0_NF: the PC's check)
+[[gnu::noinline, gnu::cold]] float vuclamp_rare(float f) { return vuclamp_bits(f); }
+inline float vuclamp(float f) {
+    const float a = __builtin_fabsf(f);
+    if (__builtin_expect(a >= 1.17549435e-38f && a <= 3.40282347e+38f, 1)) return f;
+    return vuclamp_rare(f);
+}
+#else
+inline float vuclamp(float f) { return vuclamp_bits(f); }
+#endif
 // orig: (helper) VU MAX semantics
 inline float vu_max(float a, float b) {
     const int32_t x = std::bit_cast<int32_t>(a), y = std::bit_cast<int32_t>(b);
@@ -642,10 +656,56 @@ float fpu_sin_kernel(float x) {
 float cos_vu(float a) { return vu_sin_kernel(a + VU_HALF_PI); }
 float sin_vu(float a) { return vu_sin_kernel(a); }
 
+namespace {
+// ((2026-11-01, the Wii U's game step) RAC1_EULER_CACHE, the Wii U's default 1, the PC's 0) euler_vu is a function of the three angles'
+// bits alone (its constants, nothing else read): its rows kept per angles in a small table per thread, a moby whose rotation did not
+// change (most of them, every frame) found there - the same rows. On the console (Kerwan) the conversion was ~6.6% of the game thread.
+struct EulerCache {
+    static constexpr uint32_t kN = 512;
+    uint32_t key[kN][3];
+    Vec4 rows[kN][3];
+    bool used[kN];
+};
+bool euler_cache_on() {
+    static const bool on = [] {
+        const char* e = std::getenv("RAC1_EULER_CACHE");
+#if defined(__WIIU__) && !defined(RAC1_VU0_EXACT)
+        return e == nullptr || std::atoi(e) != 0;
+#else
+        return e != nullptr && std::atoi(e) != 0;
+#endif
+    }();
+    return on;
+}
+EulerCache& euler_cache() {
+#if defined(__WIIU__)
+    static platform::PerThread<EulerCache, 4> c;
+    return c.get();
+#else
+    static thread_local EulerCache c{};
+    return c;
+#endif
+}
+}  // namespace
+
 // orig: 0x001ffa50
 void euler_to_mat3_vu(Mat4& d, const Vec4& angles) {
     Vec4 r0, r1, r2;
-    euler_vu(angles, r0, r1, r2);
+    if (euler_cache_on()) {
+        const uint32_t ax = std::bit_cast<uint32_t>(angles.x), ay = std::bit_cast<uint32_t>(angles.y), az = std::bit_cast<uint32_t>(angles.z);
+        const uint32_t i = ((ax * 0x9e3779b1u) ^ (ay * 0x85ebca77u) ^ (az * 0xc2b2ae3du)) >> 23;  // (0 .. 511)
+        EulerCache& c = euler_cache();
+        if (c.used[i] && c.key[i][0] == ax && c.key[i][1] == ay && c.key[i][2] == az) {
+            d.r[0] = c.rows[i][0]; d.r[1] = c.rows[i][1]; d.r[2] = c.rows[i][2];
+            return;
+        }
+        euler_vu(angles, r0, r1, r2);
+        c.used[i] = true;
+        c.key[i][0] = ax, c.key[i][1] = ay, c.key[i][2] = az;
+        c.rows[i][0] = r0, c.rows[i][1] = r1, c.rows[i][2] = r2;
+    } else {
+        euler_vu(angles, r0, r1, r2);
+    }
     d.r[0] = r0; d.r[1] = r1; d.r[2] = r2;
 }
 

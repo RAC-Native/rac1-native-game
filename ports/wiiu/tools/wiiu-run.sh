@@ -10,6 +10,9 @@
 #   WIIU_UPLOAD_TIMEOUT  seconds the upload may take (default 300: about 1 MB/s)
 #   WIIU_EXIT_RE   extended regex marking the app's exit (default "auto-exit|: exit")
 #   WIIU_LOG       where to write the UDP log (default: next to the app, .udp.log)
+#   WIIU_LAUNCH    "barista": no wiiload - the app put on the SD (sd:/wiiu/apps/rac1-bench/rac1-bench.rpx, HTTP PUT) and started
+#                  by the BaristaMAN plugin's API (POST /api/homebrew/launch, port 80), once its /api/status says the menu is in
+#                  front; app args are not passed (the bench's settings are embedded in the .rpx)
 #
 # Exit codes: 0 app ran and exited, 2 console not reachable, 3 upload failed,
 # 4 no exit line within the timeout (the console is probably hung: power-cycle it).
@@ -38,7 +41,23 @@ listener=$!
 trap 'kill $listener 2>/dev/null' EXIT
 sleep 0.5
 
-if ! WIILOAD=tcp:$ip timeout "$upload_s" "$wiiload" "$app" "$@" > /dev/null 2>&1; then
+if [ "${WIIU_LAUNCH:-}" = barista ]; then
+    dest=wiiu/apps/rac1-bench/rac1-bench.rpx
+    if ! curl -sf -m "$upload_s" -T "$app" -H "X-Barista-Request: 1" "http://$ip/api/fs/sd/$dest?overwrite=1" > /dev/null; then
+        echo "wiiu-run: upload to the SD (BaristaMAN) failed" >&2
+        exit 3
+    fi
+    ok=0
+    for i in $(seq 1 30); do  # (the launch answers 409 while an app starts or exits: tried again)
+        code=$(curl -s -o /dev/null -w '%{http_code}' -m 10 -X POST -H "X-Barista-Request: 1" "http://$ip/api/homebrew/launch?path=$dest")
+        [ "$code" = 202 ] && { ok=1; break; }
+        sleep 3
+    done
+    if [ $ok = 0 ]; then
+        echo "wiiu-run: BaristaMAN did not take the launch (last answer $code)" >&2
+        exit 3
+    fi
+elif ! WIILOAD=tcp:$ip timeout "$upload_s" "$wiiload" "$app" "$@" > /dev/null 2>&1; then
     echo "wiiu-run: upload failed or timed out" >&2
     exit 3
 fi
