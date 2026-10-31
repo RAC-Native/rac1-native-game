@@ -2113,6 +2113,9 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         std::printf("[wiiu] mrp_world_gx2: level %d's textures: %zu arrays\n", L.id, L.buckets);
         std::fflush(stdout);
         tex_sync(L);
+        // ((2026-10-31) the tfrag vertex shader's tables (~21 MB on Novalis) made with the level's textures, not at the first frame
+        // that draws a tfrag: Novalis' opening scene shows none until the crash, where they stalled the scene ~0.4 s)
+        if (g_tvx.on) tvx_sync();
         if (ctx != nullptr) GX2SetContextState(ctx);
     }
     if (stage < 3) return;
