@@ -4,6 +4,12 @@
 // (mrp_world.vert, mrp_tfrag.vert, mrp_sky.vert): the outputs are declared here, fast_terms() writes them; the shader writes vStq, vColor,
 // vFlat and gl_Position itself.
 noperspective out vec2 vQF;  // the GS's Q for the mip level, F / 255
+#ifdef RAC1_UNIFORM_TERMS
+// ((2026-10-31) the pair whose pixel shader takes the terms from SkyTerms: not outputs - CafeGLSL numbers each stage's varyings
+// alphabetically among its own, so a vertex shader still writing them gave the pixel shader's vQF / vStq the slots of vFnA / vFnB.
+// Plain values here, left unused)
+vec4 vLod, vFnA, vFnB, vAt, vSel;
+#else
 flat out vec4 vLod;          // 2^L (0 with LCM), K + 0.5, min(MXL, the texture's levels - 1) + 0.5, the layer
 flat out vec4 vFnA;          // the texture function, RGB: o = t' (A + B c) + C c.a - A, B, C; then tm (t' = t tm + ta)
 flat out vec4 vFnB;          // alpha's A, B, C; then ta
@@ -11,6 +17,7 @@ flat out vec4 vFnB;          // alpha's A, B, C; then ta
 flat out vec4 vAt;           // the alpha test: y = a 255 - r, pass y m + |y| n >= th - r, m, n, th
 #endif
 flat out vec4 vSel;          // 1 IIP, 1 the alpha test on, the texture unit (draw_flags' bits 16..19), 0
+#endif
 // orig: (host) `w` the texture word, `layer`, `fl` draw_flags (TME | IIP << 1 | FGE << 2 | the alpha test's mode << 3 | ATST << 4 |
 // AREF << 8 | unit << 16), `lodq` the vertex's Q for the level, `fog` its F (0..255): mrp_world.frag's decoding, its results as terms
 void fast_terms(uint w, uint layer, uint fl, float lodq, float fog) {

@@ -51,12 +51,17 @@ noperspective out float vFog;  // the XYZF2's F byte (the GS interpolates it alo
 // ((2026-11-01, the GPU's pixels) the fast pixel shader's terms, mrp_moby_fast.frag: what mrp_moby.frag decodes per pixel from the
 // texture word (pCmd.y), the layer (pCmd.z) and its batch's TME / ATST / AREF (pCmd.w, mrp_moby_gx2.cpp: bit 0 TME, 4..6 ATST, 8..15
 // AREF) made here - flat, the provoking vertex's, the same for the whole draw)
+#ifdef RAC1_UNIFORM_TERMS
+// ((2026-10-31) the pairs whose pixel shader takes the terms from MobyTerms: not outputs - mrp_world_fast.glsl's note)
+vec4 vLod, vFnA, vFnB, vScl, vAt;
+#else
 flat out vec4 vLod;  // A (2^L, 0 with LCM), K, min(MXL, the levels - 1) + 0.5, the layer
 flat out vec4 vFnA;  // RGB's A, B, C, then tm
 flat out vec4 vFnB;  // alpha's A, B, C, then ta
 flat out vec4 vScl;  // RGB's S, alpha's S, the levels - 1, 0
 #ifndef RAC1_NO_ALPHA_TEST
 flat out vec4 vAt;  // the alpha test's r, m, n, th (mrp_world_fast.glsl's)
+#endif
 #endif
 // orig: (host) mrp_moby.frag's decoding of the texture word `w`, the layer and the batch's flags `fl`, its results as terms:
 // o = (t' (A + B c)) S + C c.a per channel, t' = t tm + ta

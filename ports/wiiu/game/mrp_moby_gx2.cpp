@@ -102,17 +102,18 @@ bool g_scaled_ok = false;
 // discard - the depth tested and written before the shader), for the batches whose test is off or ALWAYS while Gx2Perf::nokill
 WHBGfxShaderGroup g_sh_noat{};
 const GX2PixelShader* g_ps_noat = nullptr;
-// ((2026-11-01, the GPU's pixels) RAC1_WIIU_MOBY_FAST, default 0 - measured better, the shots to compare) the fast pairs
+// ((2026-11-01, the GPU's pixels) RAC1_WIIU_MOBY_FAST, default 1 since 2026-10-31: mobys 7.2 -> 4.7 ms on Veldin, the shots of Veldin and Novalis the same
+// but for a few pixels of the animation's run-to-run noise; =0 the main pair) the fast pairs
 // (shaders/mrp_moby_fast.gsh and mrp_moby_fast_noat.gsh: mrp_moby.vert built RAC1_FAST + mrp_moby_fast.frag - the texture word and the
 // batch's flags decoded per vertex, the pixel's work straight arithmetic), for the batches drawn without the shade debug nor the grey test;
 // [0] with the alpha test, [1] without
 WHBGfxShaderGroup g_fast[2]{};
 bool g_fast_ok[2] = {};
 bool moby_fast_on() {
-    static const bool on = std::getenv("RAC1_WIIU_MOBY_FAST") != nullptr && std::atoi(std::getenv("RAC1_WIIU_MOBY_FAST")) != 0;
+    static const bool on = std::getenv("RAC1_WIIU_MOBY_FAST") == nullptr || std::atoi(std::getenv("RAC1_WIIU_MOBY_FAST")) != 0;
     return on;
 }
-// ((2026-11-01) RAC1_WIIU_MOBY_UTERMS, default 0 - not run on the console yet; with RAC1_WIIU_MOBY_FAST) the fast pairs built
+// ((2026-11-01) RAC1_WIIU_MOBY_UTERMS, default 0 - measured 2026-10-31: no gain, the mobys 3.46 -> 3.45 ms; with RAC1_WIIU_MOBY_FAST) the fast pairs built
 // RAC1_UNIFORM_TERMS (shaders/mrp_moby_fast_ut.gsh, mrp_moby_fast_noat_ut.gsh): the draw's terms from a block of their own (MobyTerms,
 // moby_terms_cpu - one a draw command, kept for the frame as its DrawBlock) instead of five flat inputs, three inputs a pixel instead of
 // eight (the sky's shells drew ~1.5x faster so: PERFORMANCE.md)

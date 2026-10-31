@@ -1042,8 +1042,6 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   the very same depths as the full one (else holes where the colour pass's LEQUAL fails). With the sky's shells cheaper (above) it pays
   even less.
 - **Next (proposals, by what this found):**
-  - the shots (Veldin open 1200 / 1800, Novalis 900 / 1400, RAC1_REALTIME=0) of the measured set against the defaults, then the defaults
-    on; RAC1_WIIU_MOBY_UTERMS measured (expected: the mobys' pixels another -30..40%, as the shells');
   - the same for the world's fast pairs: the tfrags' and the ties' / shrubs' pixel shader reads nine inputs (vStq, vQF, vColor, vFlat and
     the five flat terms). A tfrag range or a lone draw has one texture word: its terms could come from a block as the shells'; the merged
     ties' draws change word per triangle - their five flat vec4s packed into one or two (the texture function's A / B / C and the alpha
@@ -1052,3 +1050,32 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   - the effects (Novalis 3.35 ms) draw with the tfrags' fast pairs (nine inputs) and linear textures (fx_texture): the same two ideas;
   - the mobys' vertex shader: 341 ALU groups, 246 CF instructions (42 branches, 27 fetch clauses: joint_row's bounds, matrix_of's cases) -
     the mobys' non-pixel time (~2 ms on Veldin open) is likely there.
+### The uniform-terms pairs fixed, and the defaults (2026-10-31)
+
+- **The bug:** the `_ut` pairs (mrp_sky_host_fast_noat[_notex]_ut, mrp_moby_fast[_noat]_ut) read the wrong inputs. CafeGLSL numbers each
+  stage's varyings alphabetically among its own (PS input semantics 0x8a..), and the vertex shader still wrote the five terms as outputs
+  while the pixel shader took them from the block: the PS's vQF / vStq landed on the VS's vFnA / vFnB. The sky came out flat brown (no
+  planet, no clouds) - seen only with SKY_ATMODE, the one way the shells' noat pairs are used. Fix: built RAC1_UNIFORM_TERMS, the terms
+  are plain values in mrp_world_fast.glsl / mrp_moby.vert (not outputs). Checked by reading each .gsh's VS spi_vs_out_id and PS
+  spi_ps_input_cntl semantics: equal now (they differed before). The NOTEX pair was already right (its unused inputs keep their numbers).
+- **Measured again** (the earlier "sky 3.12 -> 2.10" was the broken shader's; averages, ms):
+
+  | run | sky | mobys | GPU busy | host |
+  | :--- | :--- | :--- | :--- | :--- |
+  | Veldin open, defaults before | 3.87 | 5.40 | 28.60 | 29.62 |
+  | + SKY_ATMODE | 3.57 | 5.40 | 29.09 | 29.86 |
+  | + SKY_ATMODE + SKY_UTERMS | 2.49 | 5.40 | 28.94 | 29.78 |
+  | + MOBY_FAST + SKY_OPAQUE / NOTEX / ATMODE / UTERMS | 2.20 | 3.46 | 27.97 | 28.93 |
+  | + MOBY_UTERMS | 2.20 | 3.45 | 27.56 | 28.53 |
+  | Novalis 1500, defaults before | 1.58 | 2.16 | 27.61 | 30.12 |
+  | + MOBY_FAST | 1.58 | 1.41 | 25.41 | 28.30 |
+  | + SKY_OPAQUE alone | 1.58 | 2.16 | 27.66 | 30.16 |
+  | + MOBY_FAST + SKY_NOTEX / ATMODE / UTERMS | 0.90 | 1.41 | 24.91 | 27.95 |
+
+- **Shots** (Veldin open 1200 / 1800, Novalis 900 / 1400, RAC1_REALTIME=0): differences only on Ratchet, the smoke and particles, and they
+  vary from run to run (SKY_OPAQUE alone and SKY_ATMODE alone - different sky draws - give the same ~555 pixels on Novalis' canopy; the set
+  without OPAQUE none in the smoke): not the switches. Two default runs of Novalis matched to 52 pixels by chance.
+- **Defaults now 1:** RAC1_WIIU_MOBY_FAST, RAC1_WIIU_SKY_NOTEX, RAC1_WIIU_SKY_ATMODE, RAC1_WIIU_SKY_UTERMS. Left 0: RAC1_WIIU_SKY_OPAQUE (no gain on
+  Novalis; with the blending off it writes a different alpha into the colour buffer), RAC1_WIIU_MOBY_UTERMS (no gain: the mobys are not
+  bound by their pixel inputs as the shells are).
+

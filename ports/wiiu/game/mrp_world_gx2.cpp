@@ -1494,32 +1494,32 @@ void sky_tex_free() {
 // ((2026-11-01, the GPU's pixels) RAC1_WIIU_SKY_OPAQUE, default 0 (measured better, the shots to compare): a sky batch whose every pixel
 // is the source alone under its blending - ALPHA_1 0x44 ((Cs - Cd) As + Cd), no texture (TME off) and every vertex's alpha 0x80 and up:
 // As 1 - drawn with the blending off, the ROPs not reading the colour behind (the same values: Cs 1 + Cd 0). RAC1_WIIU_SKY_NOTEX, default
-// 0 (as SKY_OPAQUE): an untextured host shell drawn by the fast pair built RAC1_NO_TEX (shaders/mrp_sky_host_fast_noat_notex.gsh:
+// 1 since 2026-10-31 (the shots the same): an untextured host shell drawn by the fast pair built RAC1_NO_TEX (shaders/mrp_sky_host_fast_noat_notex.gsh:
 // mrp_world_fast.frag without its texture's sample - t' = ta, what t tm + ta is with tm 0)
 bool sky_opaque_on() {
     static const bool on = std::getenv("RAC1_WIIU_SKY_OPAQUE") != nullptr && std::atoi(std::getenv("RAC1_WIIU_SKY_OPAQUE")) != 0;
     return on;
 }
 bool sky_notex_on() {
-    static const bool on = std::getenv("RAC1_WIIU_SKY_NOTEX") != nullptr && std::atoi(std::getenv("RAC1_WIIU_SKY_NOTEX")) != 0;
+    static const bool on = std::getenv("RAC1_WIIU_SKY_NOTEX") == nullptr || std::atoi(std::getenv("RAC1_WIIU_SKY_NOTEX")) != 0;
     return on;
 }
-// ((2026-11-01) RAC1_WIIU_SKY_ATMODE, default 0 (measured better, the shots to compare): a sky batch keyed with the alpha test
+// ((2026-11-01) RAC1_WIIU_SKY_ATMODE, default 1 since 2026-10-31 (measured better, the shots the same): a sky batch keyed with the alpha test
 // (Batch::ate) whose draws all have the test's mode off (draw_flags bit 3: ATE with AFAIL FB_ONLY and no depth write - every pixel written
 // whatever its alpha: the shader never discards) drawn by the build without the alpha test - the same pixels, no discard, fewer ALU groups.
 // RAC1_WIIU_SKY_KILL0 (default 0, testing - no faster: the shells are not bound by their blending): a textured host shell without the
 // alpha test blended as (Cs - Cd) As + Cd or Cs As + Cd drawn by the pair discarding the pixels of alpha 0 (mrp_world_fast.frag
 // RAC1_KILL_ZERO: the colour the same; the colour buffer's alpha there left as it was instead of 0)
 bool sky_atmode_on() {
-    static const bool on = std::getenv("RAC1_WIIU_SKY_ATMODE") != nullptr && std::atoi(std::getenv("RAC1_WIIU_SKY_ATMODE")) != 0;
+    static const bool on = std::getenv("RAC1_WIIU_SKY_ATMODE") == nullptr || std::atoi(std::getenv("RAC1_WIIU_SKY_ATMODE")) != 0;
     return on;
 }
-// ((2026-11-01) RAC1_WIIU_SKY_UTERMS, default 0 (measured better on Veldin, the shots to compare): a host shell drawn by the fast pairs
+// ((2026-11-01) RAC1_WIIU_SKY_UTERMS, default 1 since 2026-10-31 (the sky 3.57 -> 2.49 ms on Veldin open, the shots the same): a host shell drawn by the fast pairs
 // without the alpha test takes its draw's terms (what mrp_world_fast.glsl's fast_terms makes per vertex from the texture word, the layer
 // and draw_flags - the same for the whole draw) from a block (SkyTerms, written by fast_terms_cpu: the same values) instead of five flat
 // inputs - the pixel's inputs 9 -> 4 (on Latte the pixels' rate follows their inputs' count: PERFORMANCE.md)
 bool sky_uterms_on() {
-    static const bool on = std::getenv("RAC1_WIIU_SKY_UTERMS") != nullptr && std::atoi(std::getenv("RAC1_WIIU_SKY_UTERMS")) != 0;
+    static const bool on = std::getenv("RAC1_WIIU_SKY_UTERMS") == nullptr || std::atoi(std::getenv("RAC1_WIIU_SKY_UTERMS")) != 0;
     return on;
 }
 // orig: (host) mrp_world_fast.glsl's fast_terms for a draw's texture word `w`, layer and draw_flags `fl`: vLod, vFnA, vFnB, vAt, vSel in
