@@ -2191,8 +2191,7 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
             F.cmds.insert(F.cmds.end(), {inst, r.word, r.layer, r.fl, r.fogcol, 0u, 0u, 0u});
             if (F.batches.empty() || F.batches.back().tfrag || !(F.batches.back().rk == r.rk) || (r.rk.pass2 != 0 && !F.merge_afail && !(F.batches.back().key == r.k)) ||
                 (r.unit != 0 && F.batches.back().epoch >= 0 && F.batches.back().epoch != r.epoch)) {
-                F.batches.push_back(Batch{r.k, true, false, static_cast<uint32_t>(F.draws.size()), 0});
-                F.batches.back().rk = r.rk;
+                F.batches.push_back(Batch{r.k, true, false, static_cast<uint32_t>(F.draws.size()), 0, r.rk});
             }
             if (r.unit != 0) F.batches.back().epoch = r.epoch;
             note_run(F.p2runs, F.batches.back(), static_cast<uint32_t>(F.draws.size()), 1, r.astate[vert_opq ? 1 : 0]);
