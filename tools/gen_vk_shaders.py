@@ -2087,6 +2087,8 @@ MRP_WORLD_LIT_VS = "#version 460\n#define SH_POINTS 1\n" + MRP_WORLD_VS_BODY
 MRP_WORLD_GPU_LIT_VS = "#version 460\n#define SH_POINTS 1\n" + MRP_WORLD_GPU_VS_BODY
 MRP_WORLD_LIT_FS = "#version 460\n#define SH_POINTS 1\n" + MRP_WORLD_FS_HEADER + MRP_WORLD_FS_BODY
 MRP_WORLD_EARLY_FS = "#version 460\n#define SH_POINTS 1\n" + MRP_WORLD_FS_HEADER + "\nlayout(early_fragment_tests) in;\n" + MRP_WORLD_FS_BODY
+# the base program's first pass of the draws no pixel of which fails the alpha test (RAC1_PERF_OPAQUE, mrp_world_renderer.cpp)
+MRP_WORLD_EARLY_BASE_FS = "#version 460\n" + MRP_WORLD_FS_HEADER + "\nlayout(early_fragment_tests) in;\n" + MRP_WORLD_FS_BODY
 
 # the MRP's 2D (src/game/render/mrp_2d.cpp): the same pixel arithmetic as the GS replica's drawing (the GS's texture functions,
 # alpha test, fogging, the render targets' alpha), the same push block
@@ -2131,6 +2133,7 @@ SHADERS = [
     ("kMrpWorldGpuLitVs", "vert", MRP_WORLD_GPU_LIT_VS),
     ("kMrpWorldLitFs", "frag", MRP_WORLD_LIT_FS),
     ("kMrpWorldEarlyFs", "frag", MRP_WORLD_EARLY_FS),
+    ("kMrpWorldEarlyBaseFs", "frag", MRP_WORLD_EARLY_BASE_FS),
 ]
 
 

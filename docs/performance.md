@@ -128,6 +128,38 @@ OpenGL, a slightly different look. The debug menu's Vulkan ImGui pass copies the
 windows' rectangles cost more with the menu open (a copy and its barriers per window): left as it was. The depth pre-pass was
 measured before (above).
 
+## Found while profiling a low-end target
+
+Changes found while profiling the port on a much slower machine, where these costs showed; each is on by default, gives the
+same picture and game state as before (the reference images, `RAC1_RAMHASH` over a four-level walk, and the modern lighting with
+Surface Detail, Water and Grass at High on Veldin, Novalis, Rilgar and Pokitaru, OpenGL and Vulkan, all identical), and has a
+`RAC1_PERF_*=0` switch to compare.
+
+- **The world's alpha test** (`RAC1_PERF_OPAQUE`, `mrp_world_renderer.cpp`): a world draw whose pixels cannot fail the alpha test
+  (see [Rendering](rendering.md)) is drawn in its batch's first pass with early depth testing and left out of the second pass. The
+  batch's draws keep their order (a batch is split into runs of draws that can fail and draws that cannot). `RAC1_PERF_OPAQUE=2`
+  draws each run held opaque again counting its failing pixels: 0 in all the runs above. The world's GPU time, headless,
+  `RAC1_SIM_INPUT=forward`, the last 600 frames: Novalis 0.97 to 0.81 ms (OpenGL) and 1.24 to 0.88 (Vulkan), Pokitaru 1.85 to
+  1.36 and 1.94 to 1.37; the Vulkan world stage's CPU time Pokitaru 0.96 to 0.50 ms (half the second-pass draws gone).
+- **The chain reader's GS memory** (`RAC1_PERF_GS_MEM`, `gs_memory.cpp`, `mrp_chain.cpp`): in-page tables for the 16, 8 and 4-bit
+  addresses (as the 32-bit one had), the address made once in the 8 / 4 / 16-bit stores, an indexed texture's CLUT decoded once per
+  texture instead of per texel, the last 16 images of a texture key kept (an effect's or the HUD's textures taking turns at one
+  address keep their image id, so the GPU texture made from it), the DMA tags' data read in place. The chain worker's busy time:
+  Novalis 0.99 to 0.45 ms a frame, Pokitaru 1.53 to 0.85.
+- **The VU1 port lookup** (`RAC1_PERF_VU1_LOOKUP`, `vu1.cpp`): after each MPG the first start of a program hashed every registered
+  port's range holding it (up to ~69 KB for program 7's starts, ~470 KB a frame on Novalis); each port now keeps the last four
+  images of its range with their answer and compares instead. The chain worker: Novalis 0.77 to 0.45 ms, Pokitaru 1.05 to 0.85.
+- Smaller ones, below the noise of a shared machine here (< 0.1 ms): the XGKICK's packet read in place in VU1 memory
+  (`RAC1_PERF_XGKICK`), the static level's texture table kept in the scene's table instead of copied three times a frame
+  (`RAC1_PERF_TEXTABLE`), the tfrag lists' storage kept (`RAC1_PERF_TFRAG_ALLOC`), program 7's per-vertex work done once per vertex
+  instead of per triangle corner and the effects' Q from the w row alone (`RAC1_PERF_VU7`), and a tie / shrub packet repeated for
+  the next instance reusing the previous one's runs when the GS state it reads is unchanged (`RAC1_PERF_PKT_MEMO`; `=2` compares
+  every reuse with the full replay: 0 differences over 3.2 million reuses).
+
+All together (headless, Radeon 890M, a shared machine: two runs each, the last 600 frames of a forward walk): the chain worker
+Veldin 0.46 to 0.20 ms, Novalis 1.17-1.33 to 0.45-0.54, Rilgar 1.07-1.25 to 0.56, Pokitaru 1.74-2.0 to 0.91-1.04; the world's GPU
+time Veldin 1.56 to 1.45 ms, Novalis 1.03 to 0.83, Rilgar 1.85 to 1.40, Pokitaru 1.94 to 1.34 (OpenGL; Vulkan alike).
+
 ## Switches to compare
 
 These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
@@ -144,6 +176,9 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_SHADOW_PART_CULL=0` | every moby part within the shadow distance drawn into every sun cascade |
 | `RAC1_LAZY_CAPTURE=0` | Vulkan: the last frame shown copied every frame |
 | `RAC1_MRPW_P2_LESS=0` | the lighting's second pass of an alpha-tested batch tested LEQUAL (the original's picture: see above) |
+| `RAC1_PERF_OPAQUE=0` | every world draw in both alpha-test passes, with the discard's late depth test |
+| `RAC1_PERF_GS_MEM=0`, `RAC1_PERF_VU1_LOOKUP=0`, `RAC1_PERF_XGKICK=0` | the chain reader's GS memory, VU1 port lookups and kicks as before |
+| `RAC1_PERF_TEXTABLE=0`, `RAC1_PERF_TFRAG_ALLOC=0`, `RAC1_PERF_VU7=0`, `RAC1_PERF_PKT_MEMO=0` | the scene's and the effects' preparation as before |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's

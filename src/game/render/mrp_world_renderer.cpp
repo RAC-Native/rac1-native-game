@@ -92,6 +92,7 @@ struct Bucket {
 struct TexRef {
     int bucket = -1;
     uint32_t layer = 0, mips = 1;
+    bool opaque = false;  // (host) every texel of the levels it is sampled at (0 .. mips - 1) has an alpha >= 0x80 (RAC1_PERF_OPAQUE)
 };
 // The GPU path's static data of a tie / shrub packet (its kick program evaluated once, by the GS's rules): one GPU vertex per
 // kicked vertex (its sources), the triangles as runs of one texture slot and PRIM.
@@ -201,7 +202,11 @@ struct Key {
     uint32_t layer = 0, word = 1, sampler = 0;
     uint64_t prim = 0, test = 0, alpha = 0, zbuf = 0;
     uint32_t fogcol = 0;
-    bool operator==(const Key&) const = default;
+    bool opaque = false;  // (host) the texture's TexRef::opaque: not GS state, not compared
+    bool operator==(const Key& o) const {
+        return bucket == o.bucket && layer == o.layer && word == o.word && sampler == o.sampler && prim == o.prim && test == o.test && alpha == o.alpha &&
+               zbuf == o.zbuf && fogcol == o.fogcol;
+    }
 };
 // what a batch's draws share: the GL state the GS state maps to (blending: PRIM ABE + ALPHA; the depth test; the depth
 // write; the alpha test's second pass, AFAIL), and for the CPU path its texture (bucket, sampler); the rest of the GS state (TME, IIP,
@@ -226,6 +231,17 @@ struct Batch {
     int epoch = -1;                 // the GPU path's texture units (Frame::epochs)
     bool tfrag = false;             // the GPU path's tfrag triangles (first / count: in the compute program's indices)
     bool ate = false;               // one of its draws has the alpha test on (the shadow pass's depth-only program not for it)
+    // (host, RAC1_PERF_OPAQUE) its draws as runs of Frame::p2runs [r0, r0 + rn) by whether their pixels can fail the alpha test;
+    // runs_ok: the runs cover [first, first + count) in order (else the batch is drawn whole, as before)
+    uint32_t r0 = 0, rn = 0;
+    bool runs_ok = true;
+};
+// (host, RAC1_PERF_OPAQUE) a run of a batch's draws (draw commands on the GPU path, indices otherwise): state 0 no alpha test (its mode
+// off), 1 the test on but no pixel can fail it (every texel sampled and every vertex colour has an alpha >= 0x80, the test GEQUAL /
+// GREATER below that), 2 pixels may fail it
+struct P2Run {
+    uint32_t first = 0, count = 0;
+    uint8_t state = 2;
 };
 struct InstGpu {
     float clip[16];  // model -> GL clip (the world's projection)
@@ -275,6 +291,7 @@ struct Frame {
     // the GPU path's texture units: per epoch the (bucket, sampler) bound to units 1; a new epoch when they are full
     std::vector<std::vector<std::pair<int, uint32_t>>> epochs;
     std::vector<uint32_t> inst_of;  // the scene's instance -> its record in `insts`
+    std::vector<P2Run> p2runs;      // (host, RAC1_PERF_OPAQUE) the batches' runs (Batch::r0 / rn)
     // the alpha test's second pass (AFAIL) made once for consecutive draws of different GS states that share the GL
     // state (RKey), as it already was for draws of one GS state: the GS writes a primitive's failing pixels before the next primitive,
     // the two passes write all the batch's passing pixels first - differs where draws of the batch overlap. Off (the earlier batching,
@@ -338,6 +355,22 @@ void load_textures(Level& L) {
             L.ref[k][i].bucket = it->second;
             L.ref[k][i].layer = static_cast<uint32_t>(b.textures.size());
             L.ref[k][i].mips = static_cast<uint32_t>(std::min<size_t>(t.mips.size(), 4));
+            {  // (host, RAC1_PERF_OPAQUE) every texel of the levels sampled (the palette's CSM1 entries, as uploaded below) with alpha >= 0x80
+                auto csm1 = [](uint32_t c) { return ((c & 0x08) != 0) != ((c & 0x10) != 0) ? c ^ 0x18u : c; };
+                bool pal_opq[256];
+                for (uint32_t c = 0; c < 256; ++c) pal_opq[c] = (t.palette[csm1(c)] >> 24) >= 0x80u;
+                bool opq = true;
+                for (uint32_t l = 0; opq && l < L.ref[k][i].mips; ++l) {
+                    const size_t n = static_cast<size_t>(std::max(1u, t.width >> l)) * std::max(1u, t.height >> l);
+                    if (l >= t.mips.size() || t.mips[l].size() < n) {
+                        opq = false;
+                        break;
+                    }
+                    const uint8_t* mip = t.mips[l].data();
+                    for (size_t q = 0; q < n && opq; ++q) opq = pal_opq[mip[q]];
+                }
+                L.ref[k][i].opaque = opq;
+            }
             b.textures.push_back({k, static_cast<int>(i)});
             b.levels = std::max<uint32_t>(b.levels, L.ref[k][i].mips);
         }
@@ -843,6 +876,10 @@ const bool g_p2_less = [] {
 GLuint g_prog = 0, g_prog_gpu = 0;
 GLuint g_prog_l = 0, g_prog_gpu_l = 0;  // the modern lighting's variants (SH_POINTS)
 GLuint g_prog_e = 0, g_prog_gpu_e = 0;  // the shadow pass's depth-only variants (early fragment tests: the opaque batches)
+// (host, RAC1_PERF_OPAQUE) the view's first pass of the draws no pixel of which fails the alpha test: early fragment tests (the base
+// program's and the modern lighting's)
+GLuint g_prog_o = 0, g_prog_gpu_o = 0, g_prog_o_l = 0, g_prog_gpu_o_l = 0;
+int perf_opaque();
 GLuint g_ssbo[3] = {}, g_indirect = 0;
 // the resident lit colours (mrp_world_static.h): the mirror the worker keeps, its GL buffer
 ResidentColours g_rcols;
@@ -859,7 +896,7 @@ constexpr GLenum kGlShaderStorageBuffer = 0x90D2, kGlDrawIndirectBuffer = 0x8F3F
 struct Loc {
     GLint mode, vp, frame, xyoff, tex, word, layer, tme, iip, ate, atst, aref, atpass, mip, shade, fge, fogcol, u8, shell;
     ShadowLocs sh;  // (the modern lighting, mrp_lighting.h)
-} g_loc{}, g_loc_gpu{}, g_loc_l{}, g_loc_gpu_l{}, g_loc_e{}, g_loc_gpu_e{};
+} g_loc{}, g_loc_gpu{}, g_loc_l{}, g_loc_gpu_l{}, g_loc_e{}, g_loc_gpu_e{}, g_loc_o{}, g_loc_gpu_o{}, g_loc_o_l{}, g_loc_gpu_o_l{};
 // orig: (host) the draw's programs swapped for the lighting's variants while it is on (restored at the scope's end)
 struct VariantScope {
     bool on = false;
@@ -877,6 +914,10 @@ struct VariantScope {
         std::swap(g_prog_gpu, g_prog_gpu_l);
         std::swap(g_loc, g_loc_l);
         std::swap(g_loc_gpu, g_loc_gpu_l);
+        std::swap(g_prog_o, g_prog_o_l);
+        std::swap(g_prog_gpu_o, g_prog_gpu_o_l);
+        std::swap(g_loc_o, g_loc_o_l);
+        std::swap(g_loc_gpu_o, g_loc_gpu_o_l);
     }
 };
 
@@ -1020,6 +1061,7 @@ struct VkWorldState {
     VkShaderModule vs_gpu_lit = VK_NULL_HANDLE;
     VkShaderModule fs_lit = VK_NULL_HANDLE;
     VkShaderModule fs_early = VK_NULL_HANDLE;
+    VkShaderModule fs_early_base = VK_NULL_HANDLE;  // (RAC1_PERF_OPAQUE: the base program's early fragment tests)
     VkSampler samplers[2][16]{};
     std::unordered_map<WorldVkPipeKey, VkPipeline, WorldVkPipeKeyHash> pipelines;
     vk::RingAlloc cpu_vbo_alloc{};
@@ -1051,6 +1093,7 @@ void shutdown_vk_world() {
         destroy_mod(g_vk_world.vs_gpu_lit);
         destroy_mod(g_vk_world.fs_lit);
         destroy_mod(g_vk_world.fs_early);
+        destroy_mod(g_vk_world.fs_early_base);
         if (g_vk_world.pipe_layout != VK_NULL_HANDLE) {
             vkDestroyPipelineLayout(dev, g_vk_world.pipe_layout, nullptr);
             g_vk_world.pipe_layout = VK_NULL_HANDLE;
@@ -1111,6 +1154,7 @@ bool init_vk_world() {
     g_vk_world.vs_gpu_lit = vk::create_shader_module(vk::shaders::kMrpWorldGpuLitVs, sizeof(vk::shaders::kMrpWorldGpuLitVs));
     g_vk_world.fs_lit = vk::create_shader_module(vk::shaders::kMrpWorldLitFs, sizeof(vk::shaders::kMrpWorldLitFs));
     g_vk_world.fs_early = vk::create_shader_module(vk::shaders::kMrpWorldEarlyFs, sizeof(vk::shaders::kMrpWorldEarlyFs));
+    g_vk_world.fs_early_base = vk::create_shader_module(vk::shaders::kMrpWorldEarlyBaseFs, sizeof(vk::shaders::kMrpWorldEarlyBaseFs));
 
     for (int mm = 0; mm < 2; ++mm) {
         for (uint32_t s = 0; s < 16; ++s) {
@@ -1133,7 +1177,10 @@ VkPipeline get_world_vk_pipeline(const WorldVkPipeKey& k) {
 
     vk::GraphicsPipelineDesc ci{};
     ci.layout = g_vk_world.pipe_layout;
-    if (k.early) {
+    if (k.early && !k.lit && !k.caster) {  // (RAC1_PERF_OPAQUE: the base program's first pass of opaque draws)
+        ci.vs = k.gpu ? g_vk_world.vs_gpu : g_vk_world.vs;
+        ci.fs = g_vk_world.fs_early_base;
+    } else if (k.early) {
         ci.vs = k.gpu ? g_vk_world.vs_gpu_lit : g_vk_world.vs_lit;
         ci.fs = g_vk_world.fs_early;
     } else if (k.lit) {
@@ -1247,6 +1294,20 @@ bool init_gl() {
     } else {
         g_prog_e = g_prog_gpu_e = 0;
     }
+    if (perf_opaque() != 0) {  // (RAC1_PERF_OPAQUE: without them, every draw with the base programs)
+        g_prog_o = link(kVs, false, true);
+        g_prog_gpu_o = link(kVsGpu, false, true);
+        g_prog_o_l = link(kVs, true, true);
+        g_prog_gpu_o_l = link(kVsGpu, true, true);
+        if (g_prog_o != 0 && g_prog_gpu_o != 0 && g_prog_o_l != 0 && g_prog_gpu_o_l != 0) {
+            g_loc_o = locs(g_prog_o);
+            g_loc_gpu_o = locs(g_prog_gpu_o);
+            g_loc_o_l = locs(g_prog_o_l);
+            g_loc_gpu_o_l = locs(g_prog_gpu_o_l);
+        } else {
+            g_prog_o = g_prog_gpu_o = g_prog_o_l = g_prog_gpu_o_l = 0;
+        }
+    }
     glGenBuffers(3, g_ssbo);
     rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 3, g_ssbo, "MRP world: frame buffers");
     glGenBuffers(1, &g_indirect);
@@ -1286,6 +1347,56 @@ uint32_t draw_flags(const Key& k, uint32_t unit) {
     const uint32_t fge = g_mrp_world_fog != 0 && fld(k.prim, 5, 1) != 0 ? 1u : 0u;
     return fld(k.prim, 4, 1) | (fld(k.prim, 3, 1) << 1) | (fge << 2) | (mode << 3) | (atst << 4) | (fld(k.test, 4, 8) << 8) | (unit << 16);
 }
+
+// ---- (host) the alpha test's passes left out where no pixel can fail it (RAC1_PERF_OPAQUE; found while profiling a low-end target) --
+// The world passes draw with the alpha test on (TEST_1 0x5360b: GEQUAL 0x60, AFAIL RGB_ONLY), so every tie / shrub / tfrag draw had
+// the shader's discard in its first pass (no early depth test) and a second pass for the failing pixels. Most of them cannot fail:
+// every texel the draw samples (TexRef::opaque) and every vertex colour have an alpha >= 0x80, the test GEQUAL / GREATER below
+// 0x80. Those draws' first pass is drawn with the program without the discard's effect on the depth (early fragment tests), their
+// second pass left out: the same pixels. 1 on (default), 0 off, 2 also a check (OpenGL): each such draw drawn again with the test's
+// failing pixels counted (an occlusion query, no depth test), the count reported - it must be 0.
+// orig: (host)
+int perf_opaque() {
+    static const int m = std::getenv("RAC1_PERF_OPAQUE") != nullptr ? std::atoi(std::getenv("RAC1_PERF_OPAQUE")) : 1;
+    return m;
+}
+// (RAC1_PERF_OPAQUE=2) the check's totals: runs drawn again, their draws / indices, the runs with failing pixels and those pixels
+struct OpaqueCheck {
+    uint64_t runs = 0, units = 0, bad_runs = 0, pixels = 0;
+    uint64_t built[2][3] = {};  // (the frames' runs' units by state: [0] draw commands, [1] indices)
+} g_opq_chk;
+// orig: (host) whether a draw's pixels can fail its alpha test (P2Run's state): `fl` its draw_flags, `k` its key (the full texture
+// word), `vert_opq` every vertex colour it draws with has an alpha >= 0x80
+uint8_t alpha_state(const Key& k, uint32_t fl, bool vert_opq) {
+    if ((fl & 8u) == 0) return 0;  // (the test's mode off: drawn in one pass, no discard)
+    const uint32_t atst = (fl >> 4) & 7u, aref = (fl >> 8) & 0xffu;
+    if (!((atst == 5u && aref <= 0x7fu) || (atst == 6u && aref < 0x7fu))) return 2;
+    const bool tme = (fl & 1u) != 0;
+    const uint32_t tfx = (k.word >> 1) & 3u, tcc = (k.word >> 3) & 1u;
+    const bool tex_opq = (k.word & 1u) != 0 || (k.bucket >= 0 && k.opaque);  // (the white texture: 0x80)
+    bool opq;
+    if (!tme || tcc == 0u) opq = vert_opq;           // (the alpha the vertex colour's)
+    else if (tfx == 1u || tfx == 3u) opq = tex_opq;  // (DECAL / HIGHLIGHT2: the texel's)
+    else opq = tex_opq && vert_opq;                  // (MODULATE: the product x 2; HIGHLIGHT: the sum)
+    return opq ? 1 : 2;
+}
+// orig: (host) a draw of the last batch noted in its runs (first / count: draw commands or indices)
+void note_run(std::vector<P2Run>& runs, Batch& b, uint32_t first, uint32_t count, uint8_t state) {
+    if (b.rn != 0) {
+        P2Run& r = runs.back();
+        if (r.first + r.count != first) b.runs_ok = false;
+        if (r.state == state && r.first + r.count == first) {
+            r.count += count;
+            return;
+        }
+    } else {
+        b.r0 = static_cast<uint32_t>(runs.size());
+        if (first != b.first) b.runs_ok = false;
+    }
+    runs.push_back({first, count, state});
+    ++b.rn;
+}
+
 // orig: (host) the batch key of a draw (RKey)
 bool g_view_only_emit = false;  // the batches made now are the view's only (RKey::view_only)
 RKey batch_key(const Key& k, bool gpu, bool sky) {
@@ -1553,8 +1664,10 @@ struct GsFront {
     explicit GsFront(Frame& f) : F(f), S(f.scene) {}
 
     uint64_t prim() const { return fld(regs[0x1a], 0, 1) != 0 ? regs[0x00] : ((regs[0x1b] & ~7ull) | (regs[0x00] & 7)); }
+    uint64_t gen = 0;  // (host) the writes that changed a register's value (gpu_packet's memo, RAC1_PERF_PKT_MEMO)
     void write(uint32_t reg, uint64_t v) {
         reg &= 0x7f;
+        if (regs[reg] != v) ++gen;
         regs[reg] = v;
         if (reg == 0x00) {
             queue.clear();
@@ -1629,6 +1742,7 @@ struct GsFront {
         const TexRef& r = L.ref[table][ti];
         k.bucket = r.bucket;
         k.layer = r.layer;
+        k.opaque = r.opaque;
         k.word |= (std::min(std::min(r.mips, mxl + 1), 4u) - 1) << 22;  // (the GS samples levels 0..MXL only, as the mobys')
         if (g_emis_frame && ti < g_emis.slot[table].size()) k.word |= static_cast<uint32_t>(g_emis.slot[table][ti]) << 25;  // (an emissive surface's slot)
         ++g_st.tex_ok;
@@ -1640,6 +1754,7 @@ struct GsFront {
         F.v[c].layer = k.layer;
         F.v[c].state[0] = draw_flags(k, 0);
         F.v[c].state[1] = k.fogcol;
+        const uint8_t astate = perf_opaque() != 0 ? alpha_state(k, F.v[c].state[0], F.v[a].rgba[3] >= 0x80 && F.v[b].rgba[3] >= 0x80 && F.v[c].rgba[3] >= 0x80) : 2;
         k.word = 0;
         k.layer = 0;
         const RKey rk = batch_key(k, false, sky_now);
@@ -1647,6 +1762,7 @@ struct GsFront {
             F.batches.push_back(Batch{k, false, sky_now, static_cast<uint32_t>(F.idx.size()), 0});
             F.batches.back().rk = rk;
         }
+        note_run(F.p2runs, F.batches.back(), static_cast<uint32_t>(F.idx.size()), 3, astate);
         F.idx.insert(F.idx.end(), {a, b, c});
         if (fld(k.test, 0, 1) != 0 && fld(k.test, 1, 3) != 1) F.batches.back().ate = true;  // (ATST ALWAYS: no test)
         F.batches.back().count += 3;
@@ -1908,15 +2024,128 @@ struct GsFront {
 bool g_shadow_emit = false;  // gpu_packet's batches are the casters'
 uint16_t g_shadow_emit_views = 0xffff;  // and their shadow views
 
+// (host, RAC1_PERF_OPAQUE) the resident tie colours' and the tfrag entries' alpha: 1 when every colour word of the instance slot /
+// entry has an alpha >= 0x80, made again when the colours change (their update counters)
+std::vector<uint8_t> g_tie_slot_amin;  // (the least alpha of an instance slot's resident colours)
+uint64_t g_tie_slot_opq_updates = ~0ull;
+size_t g_tie_slot_opq_size = 0;
+// orig: (host) whether every vertex of a tie instance has an alpha >= 0x80: its resident colours' least alpha A, and a fat vertex's
+// colour as the GPU path's vertex shader makes it from three of them - ((C1 0.5 + C2 0.5) morph.w + C0 morph.z), each C the float
+// 2^23 + byte, the result's low byte - is at least that of three colours of alpha A: the operations are monotonic for weights >= 0,
+// and the low byte is too while the bits above it do not change (checked with three colours of alpha 0xff)
+bool tie_vert_opaque(const SceneInst& si) {
+    if (!si.resident) return false;
+    if (g_tie_slot_opq_updates != g_rcols.updates || g_tie_slot_opq_size != g_rcols.mirror.size()) {
+        g_tie_slot_opq_updates = g_rcols.updates;
+        g_tie_slot_opq_size = g_rcols.mirror.size();
+        const uint32_t n = g_rcols.src.tie_count;
+        g_tie_slot_amin.assign(n, 0);
+        for (uint32_t i = 0; i < n && static_cast<size_t>(i + 1) * kTieColours <= g_rcols.mirror.size(); ++i) {
+            const uint32_t* c = &g_rcols.mirror[static_cast<size_t>(i) * kTieColours];
+            uint32_t m = 0xff;
+            for (uint32_t j = 0; j < kTieColours; ++j) m = std::min(m, c[j] >> 24);
+            g_tie_slot_amin[i] = static_cast<uint8_t>(m);
+        }
+    }
+    const uint32_t slot = si.colour_first / kTieColours;
+    if (si.colour_first % kTieColours != 0 || slot >= g_tie_slot_amin.size() || g_tie_slot_amin[slot] < 0x80u) return false;
+    const float mz = si.morph[2], mw = si.morph[3];
+    if (!(mz >= 0.0f) || !(mw >= 0.0f)) return false;
+    auto fat = [mz, mw](uint32_t byte) {  // (the shader's arithmetic, `precise`: no fused operations)
+        const uint32_t cu = 0x4b000000u | byte;
+        float c;
+        std::memcpy(&c, &cu, 4);
+        float a = c * 0.5f;
+        a = a + c * 0.5f;
+        const float b = c * mz;
+        float r = a * mw;
+        r = r + b;
+        uint32_t u;
+        std::memcpy(&u, &r, 4);
+        return u;
+    };
+    const uint32_t lo = fat(g_tie_slot_amin[slot]), hi = fat(0xffu);
+    return (lo >> 8) == (hi >> 8) && (lo & 0xffu) >= 0x80u;
+}
+std::vector<uint8_t> g_tfrag_entry_opq;
+uint64_t g_tfrag_entry_opq_updates = ~0ull, g_tfrag_entry_opq_gen = ~0ull;
+// orig: (host)
+bool tfrag_entry_opaque(uint32_t entry) {
+    if (g_tfrag_entry_opq_updates != g_tcols.updates || g_tfrag_entry_opq_gen != g_tlevel.generation) {
+        g_tfrag_entry_opq_updates = g_tcols.updates;
+        g_tfrag_entry_opq_gen = g_tlevel.generation;
+        g_tfrag_entry_opq.assign(g_tlevel.entries.size(), 0);
+        for (size_t i = 0; i < g_tlevel.entries.size(); ++i) {
+            const TfragEntryGpu& e = g_tlevel.entries[i];
+            if (!e.ok || e.colour_n == 0 || static_cast<size_t>(e.colour_slot) + e.colour_n > g_tcols.mirror.size()) continue;
+            const uint32_t* c = &g_tcols.mirror[e.colour_slot];
+            uint8_t opq = 1;
+            for (uint32_t j = 0; j < e.colour_n && opq != 0; ++j) opq = (c[j] >> 24) >= 0x80u ? 1 : 0;
+            g_tfrag_entry_opq[i] = opq;
+        }
+    }
+    return entry < g_tfrag_entry_opq.size() && g_tfrag_entry_opq[entry] != 0;
+}
+
+// (host, RAC1_PERF_PKT_MEMO; found while profiling a low-end target) The host's ties / shrubs come packet by packet, each packet for
+// every instance of its class at that LOD in a row (static_frame_build's order): the same template, texture prims and incoming GS
+// state, so the same runs, keys, texture units and batch keys - only the instance (and its vertices' alpha, RAC1_PERF_OPAQUE)
+// differs. A packet's replay whose GS registers read before it wrote them came out as they went in, and that opened no epoch, is kept;
+// the next packet with the same inputs - template, texture prims, table, the emit flags, the registers untouched since (GsFront::gen),
+// the epochs as they were - appends the kept runs' draw records and commands, its batches decided as the full replay decides them,
+// without the A+D writes, key_now, the units' search and batch_key of every run: the same output (the replay is a function of those
+// inputs). Also the view-projection times the packet's view kept per view (vp * V * R is (vp * V) * R: the same doubles).
+// 1 on (default), 0 off, 2 a check: every reuse compared with the full replay (the report's count of differences must be 0).
+// orig: (host)
+int pkt_memo_mode() {
+    static const int m = std::getenv("RAC1_PERF_PKT_MEMO") != nullptr ? std::atoi(std::getenv("RAC1_PERF_PKT_MEMO")) : 1;
+    return m;
+}
+struct PktMemo {
+    bool valid = false;
+    const void* key = nullptr;
+    const Tpl* t = nullptr;
+    int32_t table = 0;
+    uint32_t tex = 0, ntex = 0;
+    bool shadow = false, view_only = false, gif = false, sky = false;
+    uint16_t views = 0;
+    uint64_t gen = 0;
+    size_t epochs = 0, epoch_back = 0;
+    uint64_t tex_ok = 0, tex_missing = 0;  // (key_now's counts over the packet, added again by a replay)
+    struct Run {
+        Key k;  // (word / layer cleared: the batch's)
+        RKey rk;
+        uint32_t word = 0, layer = 0, fl = 0, fogcol = 0, unit = 0, count = 0, first = 0;
+        int epoch = -1;
+        uint8_t astate[2] = {2, 2};  // (RAC1_PERF_OPAQUE: for an instance whose vertices are not / are opaque)
+        bool ate = false;
+    };
+    std::vector<Run> runs;
+    int32_t vv_view = -2;  // (the view-projection times a view, for one build)
+    glm::dmat4 vv{1.0};
+};
+PktMemo g_pkt_memo;
+uint64_t g_memo_hits = 0, g_memo_packets = 0, g_memo_checked = 0, g_memo_bad = 0;
+
 // orig: (host) a GPU path packet (tie A / shrub A): its instance record, its template's runs as draw commands with the GS state
 // at each (its texture prims' A+D from the instance's VU1 memory applied to the registers as the GS would)
 void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp) {
     const Level& L = g_level;
     const void* key = p.tie != nullptr ? static_cast<const void*>(p.tie) : static_cast<const void*>(p.shrub);
-    const auto it = L.tpl.find(key);
-    if (it == L.tpl.end() || p.inst >= F.scene.insts.size()) return;
-    const Tpl& t = it->second;
+    const int memo_mode = pkt_memo_mode();
+    PktMemo& M = g_pkt_memo;
+    const Tpl* tp = nullptr;
+    if (memo_mode != 0 && M.valid && M.key == key) {
+        tp = M.t;
+    } else {
+        const auto it = L.tpl.find(key);
+        if (it != L.tpl.end()) tp = &it->second;
+    }
+    if (tp == nullptr || p.inst >= F.scene.insts.size()) return;
+    const Tpl& t = *tp;
     const SceneInst& si = F.scene.insts[p.inst];
+    // (RAC1_PERF_OPAQUE) its vertices' alpha: a shrub's the instance's, a tie's its resident colours' (tie_vert_opaque)
+    const bool vert_opq = perf_opaque() != 0 && (p.shrub != nullptr ? si.alpha >= 0x80u : tie_vert_opaque(si));
     // (an instance drawn by several packets - the host's ties / shrubs, each packet of its LOD - made once)
     if (F.inst_of.size() < F.scene.insts.size()) F.inst_of.resize(F.scene.insts.size(), 0xffffffffu);
     uint32_t inst = F.inst_of[p.inst];
@@ -1927,9 +2156,20 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
         R[r] = glm::dvec4(si.rows[r][0], si.rows[r][1], si.rows[r][2], si.rows[r][3]);
         for (int l = 0; l < 4; ++l) ig.rows[r * 4 + l] = si.rows[r][l];
     }
-    glm::dmat4 V(0.0);
-    if (p.view >= 0 && static_cast<size_t>(p.view) < F.scene.views.size()) std::memcpy(&V[0][0], F.scene.views[static_cast<size_t>(p.view)].data(), sizeof(double) * 16);
-    const glm::mat4 clip = glm::mat4(vp * V * R);
+    glm::mat4 clip;
+    if (memo_mode != 0) {  // ((vp * V) once per view)
+        if (M.vv_view != p.view) {
+            glm::dmat4 V(0.0);
+            if (p.view >= 0 && static_cast<size_t>(p.view) < F.scene.views.size()) std::memcpy(&V[0][0], F.scene.views[static_cast<size_t>(p.view)].data(), sizeof(double) * 16);
+            M.vv = vp * V;
+            M.vv_view = p.view;
+        }
+        clip = glm::mat4(M.vv * R);
+    } else {
+        glm::dmat4 V(0.0);
+        if (p.view >= 0 && static_cast<size_t>(p.view) < F.scene.views.size()) std::memcpy(&V[0][0], F.scene.views[static_cast<size_t>(p.view)].data(), sizeof(double) * 16);
+        clip = glm::mat4(vp * V * R);
+    }
     std::memcpy(ig.clip, glm::value_ptr(clip), sizeof ig.clip);
     std::memcpy(ig.morph, si.morph, sizeof ig.morph);
     ig.info[0] = si.colour_first;
@@ -1940,6 +2180,90 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
     F.inst_of[p.inst] = inst;
     F.insts.push_back(ig);
     }
+    // (RAC1_PERF_PKT_MEMO) the kept runs appended when this packet's inputs are the kept one's
+    const bool memo_hit = memo_mode != 0 && M.valid && M.key == key && M.table == p.table && M.tex == p.tex && M.ntex == p.ntex && M.shadow == g_shadow_emit &&
+                          M.views == (g_shadow_emit ? g_shadow_emit_views : 0) && M.view_only == g_view_only_emit && M.gif == g.gif_now && M.sky == g.sky_now &&
+                          M.gen == g.gen && M.epochs == F.epochs.size() && M.epoch_back == (F.epochs.empty() ? 0 : F.epochs.back().size());
+    ++g_memo_packets;
+    auto replay = [&] {
+        for (const PktMemo::Run& r : M.runs) {
+            const uint32_t cmd = static_cast<uint32_t>(F.cmds.size() / 8);
+            F.cmds.insert(F.cmds.end(), {inst, r.word, r.layer, r.fl, r.fogcol, 0u, 0u, 0u});
+            if (F.batches.empty() || F.batches.back().tfrag || !(F.batches.back().rk == r.rk) || (r.rk.pass2 != 0 && !F.merge_afail && !(F.batches.back().key == r.k)) ||
+                (r.unit != 0 && F.batches.back().epoch >= 0 && F.batches.back().epoch != r.epoch)) {
+                F.batches.push_back(Batch{r.k, true, false, static_cast<uint32_t>(F.draws.size()), 0});
+                F.batches.back().rk = r.rk;
+            }
+            if (r.unit != 0) F.batches.back().epoch = r.epoch;
+            note_run(F.p2runs, F.batches.back(), static_cast<uint32_t>(F.draws.size()), 1, r.astate[vert_opq ? 1 : 0]);
+            F.draws.push_back(DrawCmd{r.count, 1, r.first, static_cast<int32_t>(t.first_vertex), cmd});
+            if (r.ate) F.batches.back().ate = true;
+            ++F.batches.back().count;
+            g_st.triangles += r.count / 3;
+        }
+        g_st.tex_ok += M.tex_ok;
+        g_st.tex_missing += M.tex_missing;
+        g.queue.clear();
+        ++g_st.gpu_packets;
+    };
+    // (=2: the replay made, its output kept aside and taken back, then the full replay compared with it)
+    std::vector<uint32_t> chk_cmds;
+    std::vector<DrawCmd> chk_draws;
+    std::vector<Batch> chk_batches;
+    std::vector<P2Run> chk_runs;
+    size_t chk_c = 0, chk_d = 0, chk_b = 0, chk_r = 0;
+    bool chk = false;
+    if (memo_hit) {
+        ++g_memo_hits;
+        if (memo_mode != 2) {
+            replay();
+            return;
+        }
+        chk = true;
+        chk_c = F.cmds.size();
+        chk_d = F.draws.size();
+        chk_b = F.batches.size();
+        chk_r = F.p2runs.size();
+        const Batch back = F.batches.empty() ? Batch{} : F.batches.back();
+        const P2Run rback = F.p2runs.empty() ? P2Run{} : F.p2runs.back();
+        const uint64_t tri = g_st.triangles, tok = g_st.tex_ok, tmiss = g_st.tex_missing, gp = g_st.gpu_packets;
+        replay();
+        chk_cmds.assign(F.cmds.begin() + static_cast<std::ptrdiff_t>(chk_c), F.cmds.end());
+        chk_draws.assign(F.draws.begin() + static_cast<std::ptrdiff_t>(chk_d), F.draws.end());
+        chk_batches.assign(F.batches.begin() + static_cast<std::ptrdiff_t>(chk_b == 0 ? 0 : chk_b - 1), F.batches.end());
+        chk_runs.assign(F.p2runs.begin() + static_cast<std::ptrdiff_t>(chk_r == 0 ? 0 : chk_r - 1), F.p2runs.end());
+        F.cmds.resize(chk_c);
+        F.draws.resize(chk_d);
+        F.batches.resize(chk_b);
+        F.p2runs.resize(chk_r);
+        if (chk_b != 0) F.batches.back() = back;
+        if (chk_r != 0) F.p2runs.back() = rback;
+        g_st.triangles = tri;
+        g_st.tex_ok = tok;
+        g_st.tex_missing = tmiss;
+        g_st.gpu_packets = gp;
+    }
+    // (the full replay, kept for the next packet when the registers its keys read before writing them come out as they went in, and it
+    // opened no epoch)
+    const uint64_t tok0 = g_st.tex_ok, tmiss0 = g_st.tex_missing;
+    const size_t ep0 = F.epochs.size();
+    const bool record = memo_mode != 0;
+    uint64_t wmask[2] = {}, rmask[2] = {};  // (the registers written by this packet / read by its keys before it wrote them)
+    std::pair<uint8_t, uint64_t> reads[24];
+    int nreads = 0;
+    bool reads_over = false;
+    auto note_write = [&](uint32_t r) { wmask[(r >> 6) & 1] |= 1ull << (r & 63); };
+    auto note_read = [&](uint32_t r) {
+        const uint64_t bit = 1ull << (r & 63);
+        if ((wmask[(r >> 6) & 1] & bit) != 0 || (rmask[(r >> 6) & 1] & bit) != 0) return;
+        rmask[(r >> 6) & 1] |= bit;
+        if (nreads == 24) reads_over = true;
+        else reads[nreads++] = {static_cast<uint8_t>(r), g.regs[r]};
+    };
+    if (record) {
+        M.valid = false;
+        M.runs.clear();
+    }
     const uint32_t n = p.tie != nullptr ? 5u : 4u;  // (the A+D qwords of a tie texture slot / a shrub prim)
     auto apply = [&](int slot) {
         for (uint32_t r = 0; r < n; ++r) {
@@ -1947,6 +2271,7 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
             if (at >= p.ntex) break;
             const auto& q = F.scene.tex[p.tex + at];
             g.write(q[2] & 0xff, static_cast<uint64_t>(q[0]) | static_cast<uint64_t>(q[1]) << 32);
+            if (record) note_write(q[2] & 0x7f);
         }
     };
     int applied = -1;
@@ -1955,7 +2280,25 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
             apply(run.slot);
             applied = run.slot;
         }
+        if (g.regs[0] != run.prim) ++g.gen;
         g.regs[0] = run.prim;
+        if (record) {  // (what key_now reads: GsFront::prim, the context's TEST / ALPHA / ZBUF, FOGCOL; textured: TEX0 / TEX1 / CLAMP; a GIF stream's MIPTBP1)
+            note_write(0);
+            note_read(0x1a);
+            note_read(0x1b);
+            const uint64_t pr = g.prim();
+            const uint32_t ctx = fld(pr, 9, 1);
+            note_read(0x47 + ctx);
+            note_read(0x42 + ctx);
+            note_read(0x4e + ctx);
+            note_read(0x3d);
+            if (fld(pr, 4, 1) != 0) {
+                note_read(0x06 + ctx);
+                note_read(0x14 + ctx);
+                note_read(0x08 + ctx);
+                note_read(0x34 + ctx);
+            }
+        }
         Key k = g.key_now(p.table);
         const uint32_t cmd = static_cast<uint32_t>(F.cmds.size() / 8);
         // (the texture's unit in the frame's current epoch; a new epoch, so a new batch, when the 15 units are taken)
@@ -1974,7 +2317,9 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
             }
             unit = static_cast<uint32_t>(u) + 1;
         }
-        F.cmds.insert(F.cmds.end(), {inst, k.word, k.layer, draw_flags(k, unit), k.fogcol, 0u, 0u, 0u});
+        const uint32_t fl = draw_flags(k, unit);
+        const uint8_t astate = perf_opaque() != 0 ? alpha_state(k, fl, vert_opq) : 2;
+        F.cmds.insert(F.cmds.end(), {inst, k.word, k.layer, fl, k.fogcol, 0u, 0u, 0u});
         k.word = 0;
         k.layer = 0;
         RKey rk = batch_key(k, true, false);
@@ -1986,15 +2331,84 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
             F.batches.back().rk = rk;
         }
         if (unit != 0) F.batches.back().epoch = epoch;
+        note_run(F.p2runs, F.batches.back(), static_cast<uint32_t>(F.draws.size()), 1, astate);
         F.draws.push_back(DrawCmd{run.count, 1, t.first_index + run.first, static_cast<int32_t>(t.first_vertex), cmd});
-        if (fld(k.test, 0, 1) != 0 && fld(k.test, 1, 3) != 1) F.batches.back().ate = true;  // (ATST ALWAYS: no test)
+        const bool ate = fld(k.test, 0, 1) != 0 && fld(k.test, 1, 3) != 1;
+        if (ate) F.batches.back().ate = true;  // (ATST ALWAYS: no test)
         ++F.batches.back().count;
         g_st.triangles += run.count / 3;
+        if (record) {
+            PktMemo::Run r;
+            r.k = k;
+            r.rk = rk;
+            r.word = F.cmds[8 * static_cast<size_t>(cmd) + 1];
+            r.layer = F.cmds[8 * static_cast<size_t>(cmd) + 2];
+            r.fl = fl;
+            r.fogcol = F.cmds[8 * static_cast<size_t>(cmd) + 4];
+            r.unit = unit;
+            r.count = run.count;
+            r.first = t.first_index + run.first;
+            r.epoch = epoch;
+            if (perf_opaque() != 0) {  // (alpha_state reads the texture's word, cleared in k)
+                Key kf = k;
+                kf.word = r.word;
+                r.astate[0] = alpha_state(kf, fl, false);
+                r.astate[1] = alpha_state(kf, fl, true);
+            }
+            r.ate = ate;
+            M.runs.push_back(r);
+        }
     }
     if (t.last_slot >= 0 && t.last_slot != applied) apply(t.last_slot);
-    if (t.has_prim) g.regs[0] = t.last_prim;
+    if (t.has_prim) {
+        if (g.regs[0] != t.last_prim) ++g.gen;
+        g.regs[0] = t.last_prim;
+    }
     g.queue.clear();
     ++g_st.gpu_packets;
+    if (record) {  // (kept when the registers it read before writing them are as they were, and no epoch opened)
+        bool fixed = !reads_over && F.epochs.size() == ep0 && p.table >= 1 && p.table <= 2;
+        for (int i = 0; fixed && i < nreads; ++i) fixed = g.regs[reads[i].first] == reads[i].second;
+        M.valid = fixed;
+        M.key = key;
+        M.t = &t;
+        M.table = p.table;
+        M.tex = p.tex;
+        M.ntex = p.ntex;
+        M.shadow = g_shadow_emit;
+        M.views = g_shadow_emit ? g_shadow_emit_views : 0;
+        M.view_only = g_view_only_emit;
+        M.gif = g.gif_now;
+        M.sky = g.sky_now;
+        M.gen = g.gen;
+        M.epochs = F.epochs.size();
+        M.epoch_back = F.epochs.empty() ? 0 : F.epochs.back().size();
+        M.tex_ok = g_st.tex_ok - tok0;
+        M.tex_missing = g_st.tex_missing - tmiss0;
+    }
+    if (chk) {  // (=2: the replay's output against this one's)
+        ++g_memo_checked;
+        bool same = chk_cmds.size() == F.cmds.size() - chk_c && std::equal(chk_cmds.begin(), chk_cmds.end(), F.cmds.begin() + static_cast<std::ptrdiff_t>(chk_c));
+        same = same && chk_draws.size() == F.draws.size() - chk_d;
+        for (size_t i = 0; same && i < chk_draws.size(); ++i) {
+            const DrawCmd &a = chk_draws[i], &b = F.draws[chk_d + i];
+            same = a.count == b.count && a.instances == b.instances && a.first_index == b.first_index && a.base_vertex == b.base_vertex && a.base_instance == b.base_instance;
+        }
+        const size_t b0 = chk_b == 0 ? 0 : chk_b - 1;
+        same = same && chk_batches.size() == F.batches.size() - b0;
+        for (size_t i = 0; same && i < chk_batches.size(); ++i) {
+            const Batch &a = chk_batches[i], &b = F.batches[b0 + i];
+            same = a.key == b.key && a.gpu == b.gpu && a.sky == b.sky && a.first == b.first && a.count == b.count && a.rk == b.rk && a.epoch == b.epoch && a.tfrag == b.tfrag &&
+                   a.ate == b.ate && a.r0 == b.r0 && a.rn == b.rn && a.runs_ok == b.runs_ok;
+        }
+        const size_t r0 = chk_r == 0 ? 0 : chk_r - 1;
+        same = same && chk_runs.size() == F.p2runs.size() - r0;
+        for (size_t i = 0; same && i < chk_runs.size(); ++i) {
+            const P2Run &a = chk_runs[i], &b = F.p2runs[r0 + i];
+            same = a.first == b.first && a.count == b.count && a.state == b.state;
+        }
+        if (!same && g_memo_bad++ < 5) std::printf("[perf] packet memo: a replay differs from the full one (packet %p, instance %u)\n", key, inst);
+    }
 }
 
 // orig: (host) a GPU path tfrag draw (mrp_tfrag_gpu.h): its vertices / triangles laid out in the compute program's buffers;
@@ -2008,6 +2422,7 @@ void tfrag_packet(GsFront& g, Frame& F, const ScenePacket& p) {
     const TfragEntryGpu& e = g_tlevel.entries[d.entry];
     const TfragPlan* pl = e.plan(d.lod, d.code, d.b);
     if (pl == nullptr) return;
+    const bool vert_opq = perf_opaque() != 0 && tfrag_entry_opaque(d.entry);  // (RAC1_PERF_OPAQUE)
     TfragGpuFrame& T = F.tf;
     TfragGpuDraw gd{};
     gd.image = e.gpu_image[d.lod];
@@ -2056,7 +2471,9 @@ void tfrag_packet(GsFront& g, Frame& F, const ScenePacket& p) {
             }
             unit = static_cast<uint32_t>(u) + 1;
         }
-        T.runs.insert(T.runs.end(), {k.word, k.layer, draw_flags(k, unit), k.fogcol});
+        const uint32_t fl = draw_flags(k, unit);
+        const uint8_t astate = perf_opaque() != 0 ? alpha_state(k, fl, vert_opq) : 2;
+        T.runs.insert(T.runs.end(), {k.word, k.layer, fl, k.fogcol});
         if (ntri == 0) continue;
         k.word = 0;
         k.layer = 0;
@@ -2072,6 +2489,7 @@ void tfrag_packet(GsFront& g, Frame& F, const ScenePacket& p) {
         }
         if (unit != 0) F.batches.back().epoch = epoch;
         if (fld(k.test, 0, 1) != 0 && fld(k.test, 1, 3) != 1) F.batches.back().ate = true;  // (ATST ALWAYS: no test)
+        note_run(F.p2runs, F.batches.back(), gd.ibase + 3 * pl->runs[r].first_tri, 3 * ntri, astate);
         F.batches.back().count += 3 * ntri;
         g_st.triangles += ntri;
     }
@@ -2087,6 +2505,7 @@ void tfrag_expect(const GsFront& g, Frame& F, const ScenePacket& p, uint32_t vba
     tmp.v.clear();
     tmp.idx.clear();
     tmp.batches.clear();
+    tmp.p2runs.clear();
     tmp.scene.views = F.scene.views;
     GsFront g2(tmp);
     g2.regs = g.regs;
@@ -2107,12 +2526,16 @@ void build_triangles(Frame& F) {
     F.v.clear();
     F.idx.clear();
     F.batches.clear();
+    F.p2runs.clear();
     F.insts.clear();
     F.cmds.clear();
     F.draws.clear();
     F.epochs.clear();
     F.inst_of.assign(F.scene.insts.size(), 0xffffffffu);
-    F.tf = TfragGpuFrame{};
+    // (host) the tfrag frame emptied with its vectors' storage kept, not made anew each frame (RAC1_PERF_TFRAG_ALLOC=0: made anew)
+    static const bool tf_keep = std::getenv("RAC1_PERF_TFRAG_ALLOC") == nullptr || std::atoi(std::getenv("RAC1_PERF_TFRAG_ALLOC")) != 0;
+    if (tf_keep) F.tf.clear();
+    else F.tf = TfragGpuFrame{};
     F.tf_expect.clear();
     for (const auto& v : F.scene.tfrag.views) F.tf.vu_views.insert(F.tf.vu_views.end(), v.begin(), v.end());
     for (const auto& c : F.scene.tfrag.consts) F.tf.consts.insert(F.tf.consts.end(), c.begin(), c.end());
@@ -2126,6 +2549,8 @@ void build_triangles(Frame& F) {
     // the GS's registers as the replica has them before this frame's chain (the frame packets set them again: the scene's
     // DIRECT writes from the chain's start)
     for (uint32_t r = 0; r < 128; ++r) g.regs[r] = F.gs_regs[r];  // (taken before the frame's chain: mrp_world_begin_frame_async)
+    g_pkt_memo.valid = false;  // (RAC1_PERF_PKT_MEMO: nothing kept from another build - its view-projection, its templates)
+    g_pkt_memo.vv_view = -2;
     glm::mat4 vpm;
     std::memcpy(&vpm[0][0], in.vp, sizeof in.vp);
     const glm::dmat4 vp(vpm);
@@ -2146,6 +2571,8 @@ void build_triangles(Frame& F) {
             ++ri;
         }
         const ScenePacket& p = F.scene.packets[pi];
+        // (RAC1_PERF_PKT_MEMO: a packet not the GPU path's may set the registers otherwise - the kept packet dropped)
+        if (p.sky || p.gif || p.tfrag >= 0 || (p.tie == nullptr && p.shrub == nullptr) || (no_gpu && !p.k.q.empty())) g_pkt_memo.valid = false;
         // with the lighting's casters made (g_shframe), the frame's shrubs - their far variants camera-facing quads, the
         // faded ones without depth writes - are the view's only: the casters' full shrub models cast instead
         // ... and so are the clipping programs' draws (tie B, tfrag B: their triangles cut to the view): the casters' whole instances cast instead
@@ -2171,6 +2598,7 @@ void build_triangles(Frame& F) {
             tfrag_packet(g, F, p);
             g_shadow_emit = false;
             g.regs = saved;
+            g_pkt_memo.valid = false;
             g.queue.clear();
             F.shadow_casters = true;
         } else if (p.tfrag >= 0) {
@@ -2192,8 +2620,12 @@ void build_triangles(Frame& F) {
     // their batches the shadow maps' only
     if (g_shframe.on[0] && (cast_have[0] || cast_have[1])) {
         const StaticFrame& sf = g_shframe;
-        const uint32_t tex_base = static_cast<uint32_t>(F.scene.tex.size());
-        F.scene.tex.insert(F.scene.tex.end(), g_slevel.tex.begin(), g_slevel.tex.end());
+        uint32_t tex_base = static_cast<uint32_t>(F.scene.tex.size());
+        const SceneFrame& S = F.scene;
+        if (S.static_tex_base >= 0 && S.static_tex_gen == g_slevel.gen && S.static_tex_n == g_slevel.tex.size() &&
+            static_cast<size_t>(S.static_tex_base) + g_slevel.tex.size() <= S.tex.size())
+            tex_base = static_cast<uint32_t>(S.static_tex_base);  // (the level's table kept in the frame: scene_build)
+        else F.scene.tex.insert(F.scene.tex.end(), g_slevel.tex.begin(), g_slevel.tex.end());
         const uint32_t inst_base = static_cast<uint32_t>(F.scene.insts.size());
         for (const StaticInst& si : sf.insts) {
             SceneInst x;
@@ -2208,6 +2640,7 @@ void build_triangles(Frame& F) {
         for (int kind = 0; kind < 2; ++kind) {
             const int from = cast_have[kind] ? kind : 1 - kind;
             g.regs = cast_regs[from];
+            g_pkt_memo.valid = false;  // (the registers set again)
             g.queue.clear();
             for (const StaticDraw& d : sf.draws[kind]) {
                 ScenePacket sp;
@@ -2227,6 +2660,8 @@ void build_triangles(Frame& F) {
         F.shadow_casters = true;
     }
     g_st.batches += F.batches.size();
+    for (const Batch& b : F.batches)
+        for (uint32_t r = b.r0; r < b.r0 + b.rn; ++r) g_opq_chk.built[b.gpu ? 0 : 1][F.p2runs[r].state] += F.p2runs[r].count;
 }
 
 // ---- drawing -----------------------------------------------------------------------------------
@@ -2675,7 +3110,8 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
             auto bind_pass = [&](int pass, bool dmask, int cmask) {
                 push.set_at_pass(pass);
                 pk.depth_write = dmask;
-                pk.depth_compare = (g_p2_less && lit_prog && pass == 2 && !dmask && zcmp == VK_COMPARE_OP_LESS_OR_EQUAL) ? VK_COMPARE_OP_LESS : zcmp;
+                static const bool p2_less_orig = std::getenv("RAC1_PERF_P2_LESS") != nullptr && std::atoi(std::getenv("RAC1_PERF_P2_LESS")) != 0;
+                pk.depth_compare = (g_p2_less && (lit_prog || p2_less_orig) && pass == 2 && !dmask && zcmp == VK_COMPARE_OP_LESS_OR_EQUAL) ? VK_COMPARE_OP_LESS : zcmp;
                 pk.color_mask = cmask == 0 ? 0xF : cmask == 2 ? 0 : 0x7;
                 vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, get_world_vk_pipeline(pk));
                 vkCmdPushConstants(cb, g_vk_world.pipe_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
@@ -2703,13 +3139,57 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
                 have = true;
                 continue;
             }
-            bind_pass(1, zwrite, 0);
-            draw_vk();
             static const bool one_pass = std::getenv("RAC1_MRPW_ONEPASS") != nullptr;
-            if (rk.pass2 != 0 && !one_pass) {
+            // (RAC1_PERF_OPAQUE) the batch by its runs: those whose pixels cannot fail the alpha test drawn with the early fragment tests
+            // in the first pass and left out of the second (as the OpenGL path)
+            const bool by_runs = b.rn != 0 && b.runs_ok && g_vk_world.fs_early_base != VK_NULL_HANDLE && g_vk_world.fs_early != VK_NULL_HANDLE;
+            bool all_opq = by_runs, any_opq = false;
+            if (by_runs)
+                for (uint32_t r = b.r0; r < b.r0 + b.rn; ++r) {
+                    const bool o = F.p2runs[r].state != 2;
+                    all_opq = all_opq && o;
+                    any_opq = any_opq || o;
+                }
+            auto draw_range = [&](uint32_t first, uint32_t count) {
+                if (b.gpu)
+                    vkCmdDrawIndexedIndirect(cb, g_vk_world.indirect_alloc.buffer,
+                                             g_vk_world.indirect_alloc.offset + static_cast<VkDeviceSize>(first) * sizeof(DrawCmd), count, sizeof(DrawCmd));
+                else
+                    vkCmdDrawIndexed(cb, count, 1, first, 0, 0);
+            };
+            auto group_end = [&](uint32_t r) {
+                const bool o = F.p2runs[r].state != 2;
+                uint32_t e = r + 1;
+                while (e < b.r0 + b.rn && (F.p2runs[e].state != 2) == o) ++e;
+                return e;
+            };
+            auto group_count = [&](uint32_t r, uint32_t e) { return F.p2runs[e - 1].first + F.p2runs[e - 1].count - F.p2runs[r].first; };
+            if (!by_runs || all_opq || !any_opq) {
+                pk.early = all_opq;
+                bind_pass(1, zwrite, 0);
+                draw_vk();
+            } else {
+                for (uint32_t r = b.r0; r < b.r0 + b.rn;) {
+                    const uint32_t e = group_end(r);
+                    pk.early = F.p2runs[r].state != 2;
+                    bind_pass(1, zwrite, 0);
+                    draw_range(F.p2runs[r].first, group_count(r, e));
+                    r = e;
+                }
+            }
+            pk.early = false;
+            if (rk.pass2 != 0 && !one_pass && !all_opq) {
                 const uint32_t afail = rk.pass2;
                 bind_pass(2, afail == 2 && zwrite, afail == 2 ? 2 : afail == 3 ? 3 : 0);
-                draw_vk();
+                if (!by_runs || !any_opq) {
+                    draw_vk();
+                } else {
+                    for (uint32_t r = b.r0; r < b.r0 + b.rn;) {
+                        const uint32_t e = group_end(r);
+                        if (F.p2runs[r].state == 2) draw_range(F.p2runs[r].first, group_count(r, e));
+                        r = e;
+                    }
+                }
             }
             cur = rk;
             have = true;
@@ -2862,7 +3342,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
     bool have = false;
     int cur_path = -1, last_path = -1, bound_epoch = -2, bound0_bucket = -2;
     GLuint cur_vao = 0xffffffffu;  // (the tfrag GPU path's batches read the compute program's buffers)
-    int gl_pass[4] = {-1, -1, -1, -1}, gl_dmask = -1, gl_cmask = -1;
+    int gl_pass[8] = {-1, -1, -1, -1, -1, -1, -1, -1}, gl_dmask = -1, gl_cmask = -1;
     uint32_t bound0_sampler = 0xffffffffu, bound_units = 0;
     auto bind_unit = [&](uint32_t u, int bucket, uint32_t sampler) {
         glActiveTexture(GL_TEXTURE0 + u);
@@ -2907,7 +3387,22 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         const RKey& rk = b.rk;
         static const bool no_early = std::getenv("RAC1_SHADOW_EARLYZ") != nullptr && std::atoi(std::getenv("RAC1_SHADOW_EARLYZ")) == 0;  // (testing)
         const bool early = caster && !b.ate && g_prog_e != 0 && !no_early;  // (an opaque caster batch: the depth-only program)
-        const Loc& lc = early ? (b.gpu ? g_loc_gpu_e : g_loc_e) : (b.gpu ? g_loc_gpu : g_loc);
+        // (RAC1_PERF_OPAQUE) the view's batch drawn by its runs: those whose pixels cannot fail the alpha test with the early program
+        // in the first pass, left out of the second
+        const bool by_runs = !caster && b.rn != 0 && b.runs_ok && g_prog_o != 0 && g_prog_gpu_o != 0;
+        bool all_opq = by_runs, any_opq = false;
+        if (by_runs)
+            for (uint32_t r = b.r0; r < b.r0 + b.rn; ++r) {
+                const bool o = F.p2runs[r].state != 2;
+                all_opq = all_opq && o;
+                any_opq = any_opq || o;
+            }
+        // (the path: 1 the GPU path's program, + 2 the casters' depth-only one, + 4 the view's early one)
+        auto path_of = [&](bool opq) { return (b.gpu ? 1 : 0) + (early ? 2 : 0) + (opq ? 4 : 0); };
+        auto loc_of = [&](int path) -> const Loc& {
+            return (path & 4) != 0 ? ((path & 1) != 0 ? g_loc_gpu_o : g_loc_o) : (path & 2) != 0 ? ((path & 1) != 0 ? g_loc_gpu_e : g_loc_e) : ((path & 1) != 0 ? g_loc_gpu : g_loc);
+        };
+        const Loc* lcp = &loc_of(path_of(all_opq));
         if (caster && pend.on) {
             const int kind = (b.gpu ? 1 : b.tfrag ? 2 : 0) + (early ? 3 : 0);
             const bool same = kind == pend.kind && b.first == pend.first + pend.count &&
@@ -2930,17 +3425,26 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
             else glDisable(GL_DEPTH_CLAMP);
             clamp_on = want;
         }
-        if (cur_path != (b.gpu ? 1 : 0) + (early ? 2 : 0)) {
-            cur_path = (b.gpu ? 1 : 0) + (early ? 2 : 0);
-            glUseProgram(early ? (b.gpu ? g_prog_gpu_e : g_prog_e) : (b.gpu ? g_prog_gpu : g_prog));
-            set_frame_uniforms(lc, vp, mode);
-            if (caster) mrp_lighting_bind_caster(lc.sh, caster_vp);
-            cur_sky = -1;
-        }
-        if (!caster && cur_sky != (b.sky ? 1 : 0)) {  // (the modern lighting's receivers: not the sky)
-            cur_sky = b.sky ? 1 : 0;
-            mrp_lighting_bind_receiver(lc.sh, b.sky);
-        }
+        // (the program of a path made current: its frame uniforms, the lighting's binding, FOGCOL - the first of a batch's runs, or
+        // between its runs)
+        auto use_path = [&](int path) {
+            if (cur_path != path) {
+                cur_path = path;
+                lcp = &loc_of(path);
+                const Loc& lc = *lcp;
+                glUseProgram((path & 4) != 0 ? ((path & 1) != 0 ? g_prog_gpu_o : g_prog_o)
+                                             : (path & 2) != 0 ? ((path & 1) != 0 ? g_prog_gpu_e : g_prog_e) : ((path & 1) != 0 ? g_prog_gpu : g_prog));
+                set_frame_uniforms(lc, vp, mode);
+                if (caster) mrp_lighting_bind_caster(lc.sh, caster_vp);
+                cur_sky = -1;
+            }
+            if (!caster && cur_sky != (b.sky ? 1 : 0)) {  // (the modern lighting's receivers: not the sky)
+                cur_sky = b.sky ? 1 : 0;
+                mrp_lighting_bind_receiver(lcp->sh, b.sky);
+            }
+        };
+        use_path(path_of(all_opq));
+        const Loc& lc = *lcp;
         if (const GLuint want = b.gpu ? L.tvao : b.tfrag ? g_tfrag_vao : L.vao; want != cur_vao) {
             glBindVertexArray(want);
             cur_vao = want;
@@ -2963,11 +3467,16 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
             ds.alpha = k.alpha;
             gs::blend_state(ds);
         }
-        if (!have || rk.fogcol != cur.fogcol || cur_path != last_path) {
-            glUniform3f(lc.fogcol, static_cast<float>(rk.fogcol & 0xff) / 255.0f, static_cast<float>((rk.fogcol >> 8) & 0xff) / 255.0f, static_cast<float>((rk.fogcol >> 16) & 0xff) / 255.0f);
-            glUniform1i(lc.fge, (rk.fogcol >> 24) & 1 ? 1 : 0);
-            last_path = cur_path;
-        }
+        auto set_fog = [&] {
+            if (!have || rk.fogcol != cur.fogcol || cur_path != last_path) {
+                glUniform3f(lcp->fogcol, static_cast<float>(rk.fogcol & 0xff) / 255.0f, static_cast<float>((rk.fogcol >> 8) & 0xff) / 255.0f,
+                            static_cast<float>((rk.fogcol >> 16) & 0xff) / 255.0f);
+                glUniform1i(lcp->fge, (rk.fogcol >> 24) & 1 ? 1 : 0);
+                last_path = cur_path;
+            }
+        };
+        set_fog();
+        (void)lc;
         if (!caster && (!have || rk.ztest != cur.ztest)) {
             const uint32_t ztst = fld(k.test, 17, 2);
             if (fld(k.test, 16, 1) != 0 && ztst != 1) {  // the GS's GEQUAL / GREATER on the host's depth: LEQUAL / LESS
@@ -2991,7 +3500,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         // (the pass uniform, depth mask and colour mask set only when they change)
         auto set_pass = [&](int pass, bool dmask, int cmask) {
             if (pass != gl_pass[cur_path]) {
-                glUniform1i(lc.atpass, pass);
+                glUniform1i(lcp->atpass, pass);
                 gl_pass[cur_path] = pass;
             }
             if (static_cast<int>(dmask) != gl_dmask) {
@@ -3018,16 +3527,83 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
             have = true;
             continue;
         }
-        set_pass(1, zwrite, 0);
-        draw();
         static const bool one_pass = std::getenv("RAC1_MRPW_ONEPASS") != nullptr;  // (testing: the failing pixels not drawn)
-        if (rk.pass2 != 0 && !one_pass) {
+        // (RAC1_PERF_OPAQUE) a range of the batch's draws / indices
+        auto draw_range = [&](uint32_t first, uint32_t count) {
+            if (b.gpu)
+                gl_multi_draw_elements(F.draws.data(), first, count);
+            else
+                glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(count), GL_UNSIGNED_INT, reinterpret_cast<const void*>(static_cast<uintptr_t>(first) * sizeof(uint32_t)));
+        };
+        // (the runs taken together where they share the program: [r, e) of the same kind, opaque or not)
+        auto group_end = [&](uint32_t r) {
+            const bool o = F.p2runs[r].state != 2;
+            uint32_t e = r + 1;
+            while (e < b.r0 + b.rn && (F.p2runs[e].state != 2) == o) ++e;
+            return e;
+        };
+        auto group_count = [&](uint32_t r, uint32_t e) { return F.p2runs[e - 1].first + F.p2runs[e - 1].count - F.p2runs[r].first; };
+        if (!by_runs || all_opq || !any_opq) {
+            set_pass(1, zwrite, 0);
+            draw();
+        } else {
+            for (uint32_t r = b.r0; r < b.r0 + b.rn;) {
+                const uint32_t e = group_end(r);
+                use_path(path_of(F.p2runs[r].state != 2));
+                set_fog();
+                set_pass(1, zwrite, 0);
+                draw_range(F.p2runs[r].first, group_count(r, e));
+                r = e;
+            }
+        }
+        if (rk.pass2 != 0 && !one_pass && !all_opq) {
             const uint32_t afail = rk.pass2;
-            const bool less = g_p2_less && variant.on && !(afail == 2 && zwrite) && fld(k.test, 16, 1) != 0 && fld(k.test, 17, 2) == 2;  // (as the Vulkan path: g_p2_less)
+            static const bool p2_less_orig = std::getenv("RAC1_PERF_P2_LESS") != nullptr && std::atoi(std::getenv("RAC1_PERF_P2_LESS")) != 0;
+            const bool less = g_p2_less && (variant.on || p2_less_orig) && !(afail == 2 && zwrite) && fld(k.test, 16, 1) != 0 && fld(k.test, 17, 2) == 2;  // (as the Vulkan path: g_p2_less)
+            if (by_runs) {
+                use_path(path_of(false));
+                set_fog();
+            }
             if (less) glDepthFunc(GL_LESS);
             set_pass(2, afail == 2 && zwrite, afail == 2 ? 2 : afail == 3 ? 3 : 0);
-            draw();
+            if (!by_runs || !any_opq) {
+                draw();
+            } else {
+                for (uint32_t r = b.r0; r < b.r0 + b.rn;) {
+                    const uint32_t e = group_end(r);
+                    if (F.p2runs[r].state == 2) draw_range(F.p2runs[r].first, group_count(r, e));
+                    r = e;
+                }
+            }
             if (less) glDepthFunc(GL_LEQUAL);
+        }
+        if (by_runs && perf_opaque() == 2) {  // (the check: the failing pixels of the runs held opaque counted - none)
+            static GLuint q = 0;
+            if (q == 0) glGenQueries(1, &q);
+            use_path(path_of(false));
+            set_fog();
+            set_pass(2, false, 2);
+            glDisable(GL_DEPTH_TEST);
+            for (uint32_t r = b.r0; r < b.r0 + b.rn; ++r) {
+                const P2Run& pr = F.p2runs[r];
+                if (pr.state != 1) continue;
+                glBeginQuery(GL_SAMPLES_PASSED, q);
+                draw_range(pr.first, pr.count);
+                glEndQuery(GL_SAMPLES_PASSED);
+                GLuint n = 0;
+                glGetQueryObjectuiv(q, GL_QUERY_RESULT, &n);
+                ++g_opq_chk.runs;
+                g_opq_chk.units += pr.count;
+                if (n != 0) {
+                    ++g_opq_chk.bad_runs;
+                    g_opq_chk.pixels += n;
+                    if (g_opq_chk.bad_runs <= 8)
+                        std::printf("[perf] opaque check: a run of %u %s (batch %s) drew %u pixels that fail the alpha test\n", pr.count,
+                                    b.gpu ? "draw commands" : "indices", b.tfrag ? "tfrag" : b.gpu ? "tie / shrub" : "CPU path", n);
+                }
+            }
+            const uint32_t ztst = fld(k.test, 17, 2);  // (the batch's depth test back)
+            if (fld(k.test, 16, 1) != 0 && ztst != 1) glEnable(GL_DEPTH_TEST);
         }
         cur = rk;
         have = true;
@@ -4547,6 +5123,20 @@ void mrp_world_after_chain(int win_w, int win_h, const gs::Viewport* vp, const g
 // orig: (host) see mrp_world_renderer.h
 void mrp_world_report() {
     if (!g_world_mrp) return;
+    if (pkt_memo_mode() != 0)
+        std::printf("[perf] packet memo (RAC1_PERF_PKT_MEMO=%d): %llu GPU path packets, %llu replayed from the packet before; %llu checked against the full replay, %llu differing\n",
+                    pkt_memo_mode(), static_cast<unsigned long long>(g_memo_packets), static_cast<unsigned long long>(g_memo_hits), static_cast<unsigned long long>(g_memo_checked),
+                    static_cast<unsigned long long>(g_memo_bad));
+    if (perf_opaque() != 0) {
+        const auto& c = g_opq_chk.built;
+        std::printf("[perf] opaque draws (RAC1_PERF_OPAQUE=%d): draw commands without the test %llu, with it but opaque %llu, may fail %llu; indices %llu / %llu / %llu\n",
+                    perf_opaque(), static_cast<unsigned long long>(c[0][0]), static_cast<unsigned long long>(c[0][1]), static_cast<unsigned long long>(c[0][2]),
+                    static_cast<unsigned long long>(c[1][0]), static_cast<unsigned long long>(c[1][1]), static_cast<unsigned long long>(c[1][2]));
+        if (perf_opaque() == 2)
+            std::printf("[perf] opaque check: %llu runs (%llu draw commands / indices) drawn again, %llu with pixels failing the alpha test (%llu pixels)\n",
+                        static_cast<unsigned long long>(g_opq_chk.runs), static_cast<unsigned long long>(g_opq_chk.units), static_cast<unsigned long long>(g_opq_chk.bad_runs),
+                        static_cast<unsigned long long>(g_opq_chk.pixels));
+    }
     if (scene_capture_misses() != 0) std::printf("[mrpw] WARNING: %llu scene reads not captured\n", static_cast<unsigned long long>(scene_capture_misses()));
     static const char* names[6] = {"tfrag A", "tfrag B", "tie A", "tie B", "shrub A", "shrub B"};
     std::printf("[mrpw] %llu frames drawn, %llu scenes: packets %llu, vertices %llu, triangles %llu (ADC %llu, tie B flagged dropped %llu), batches %llu; set-up starts %llu, unknown programs %llu\n",

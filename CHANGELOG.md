@@ -53,6 +53,19 @@ What changed in each release. Releases are source only: you build the game with 
   emissive surfaces, the ambient particles (by kind) and the water and grass live, with each one's profiler time; "Save as
   my settings" keeps them. The light editor has an Aim for the lights per class; the profiler has Water and Grass stages.
 
+### Performance
+- The world's draws that cannot fail the alpha test (opaque textures and vertex colours) drawn with early depth testing and
+  without the alpha test's second pass, OpenGL and Vulkan: the world's GPU time about a fifth to a third less (Novalis 0.97 to
+  0.81 ms, Pokitaru 1.85 to 1.36 headless); the same picture (`RAC1_PERF_OPAQUE`). See [Performance](docs/performance.md).
+- The MRP chain reader: the GS memory's 16 / 8 / 4-bit addressing by tables, an indexed texture's palette decoded once, an
+  effect's textures taking turns at one address keeping their GPU texture, the DMA data read in place, and the VU1 program
+  ports found without hashing their code again after each upload: its time a frame about halved (Novalis 1.2 to 0.5 ms); the
+  same game state (`RAC1_PERF_GS_MEM`, `RAC1_PERF_VU1_LOOKUP`, `RAC1_PERF_XGKICK`).
+- The world's preparation: the level's texture table no longer copied three times a frame, a tie / shrub packet repeated for
+  the next instance reusing the previous one's work, the tfrag lists' and program 7's working memory kept, program 7's
+  vertices made once instead of once per triangle corner (`RAC1_PERF_TEXTABLE`, `RAC1_PERF_PKT_MEMO`, `RAC1_PERF_TFRAG_ALLOC`,
+  `RAC1_PERF_VU7`); the same picture.
+
 ### Launcher and setup
 - Launcher: a new launcher is downloaded only once the player says yes, and checked against the SHA-256 the release lists for
   it before it replaces the running one; the Windows launcher's file properties name its company, product and description, and

@@ -603,8 +603,10 @@ void emit_static(Build& b, VUState& st, int kind) {
         b.shrub_fog[2] = st.vf[29].f[0];
         b.shrub_fog[3] = st.vf[29].f[1];
     }
-    const uint32_t tex_base = static_cast<uint32_t>(b.f.tex.size());
-    b.f.tex.insert(b.f.tex.end(), sl->tex.begin(), sl->tex.end());
+    uint32_t tex_base = static_cast<uint32_t>(b.f.tex.size());
+    if (b.f.static_tex_base >= 0 && b.f.static_tex_gen == sl->gen && b.f.static_tex_n == sl->tex.size())
+        tex_base = static_cast<uint32_t>(b.f.static_tex_base);  // (the level's table kept in the frame: scene_build)
+    else b.f.tex.insert(b.f.tex.end(), sl->tex.begin(), sl->tex.end());
     std::vector<int32_t> map(sf->insts.size(), -1);
     const int view = b.view(false);
     for (const StaticDraw& d : sf->draws[kind]) {
@@ -1310,7 +1312,22 @@ bool scene_build(const WorldIndex& idx, const SceneInput& in, SceneFrame& f, boo
     f.packets.clear();
     f.insts.clear();
     f.colours.clear();
-    f.tex.clear();
+    {  // (host) the static level's texture table kept at 0 over the frames (SceneFrame::static_tex_base)
+        static const bool keep_on = std::getenv("RAC1_PERF_TEXTABLE") == nullptr || std::atoi(std::getenv("RAC1_PERF_TEXTABLE")) != 0;
+        const StaticLevel* sl = in.stat_level;
+        if (keep_on && sl != nullptr && in.stat != nullptr && !in.stat_check) {
+            const uint32_t n = static_cast<uint32_t>(sl->tex.size());
+            if (f.static_tex_base == 0 && f.static_tex_gen == sl->gen && f.static_tex_n == n && f.tex.size() >= n) f.tex.resize(n);
+            else f.tex.assign(sl->tex.begin(), sl->tex.end());
+            f.static_tex_base = 0;
+            f.static_tex_gen = sl->gen;
+            f.static_tex_n = n;
+        } else {
+            f.tex.clear();
+            f.static_tex_base = -1;
+            f.static_tex_gen = f.static_tex_n = 0;
+        }
+    }
     f.regs.clear();
     f.views.clear();
     f.sky.clear();

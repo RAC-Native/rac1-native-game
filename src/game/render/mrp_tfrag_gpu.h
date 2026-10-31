@@ -194,6 +194,15 @@ struct TfragGpuFrame {
     std::vector<uint32_t> consts;  // per constants set 56 words
     std::vector<uint32_t> runs;    // per run: texture word, layer, draw flags, FOGCOL
     uint32_t nverts = 0, nidx = 0;
+    // (host) emptied for the next frame, the vectors' storage kept
+    void clear() {
+        draws.clear();
+        views.clear();
+        vu_views.clear();
+        consts.clear();
+        runs.clear();
+        nverts = nidx = 0;
+    }
 };
 bool tfrag_gpu_init();
 bool tfrag_gpu_ready();  // (the program compiled: no GL call, any thread)

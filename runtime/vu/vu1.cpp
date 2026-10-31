@@ -233,6 +233,45 @@ std::map<std::pair<uint32_t, uint64_t>, std::pair<uint64_t, uint64_t>>& vu1_fall
     return m;
 }
 std::mutex g_fb_mutex;
+
+// (host) the ports' lookup without hashing the micro memory again (RAC1_PERF_VU1_LOOKUP=0: as before): a start whose memo is stale
+// (the micro memory written since: every MPG, several times a frame where the effects' programs and program 7 take turns) hashed
+// every registered port's range holding it, fnv1a64 a byte at a time - up to ~69 KB for program 7's starts (the particles', the
+// mobys', the six world programs' ranges), ~470 KB a frame on Novalis. Now each port keeps the last kSeen images of its range it
+// hashed, with the answer; an image met again is compared (memcmp) instead of hashed: the same words, the same hash, the same answer.
+// (found while profiling a low-end target)
+// orig: (host)
+bool lookup_cache_on() {
+    static const bool on = [] {
+        const char* e = std::getenv("RAC1_PERF_VU1_LOOKUP");
+        return e == nullptr || std::atoi(e) != 0;
+    }();
+    return on;
+}
+constexpr int kSeen = 4;
+struct SeenImage {
+    std::vector<uint64_t> words;
+    bool match = false;
+};
+struct SeenRing {
+    SeenImage img[kSeen];
+    unsigned next = 0;
+};
+// orig: (host) whether port `r` (registry index `index`) is the code in its range of the micro memory `micro`: an image of the range
+// seen before gives its answer, else it is hashed (and kept)
+bool port_matches(const Registered& r, size_t index, const uint64_t* micro) {
+    thread_local std::vector<SeenRing> seen;  // (per thread, as the start memo: the replica's VU1 and the scene walker's)
+    if (seen.size() < registry().size()) seen.resize(registry().size());
+    SeenRing& ring = seen[index];
+    const uint64_t* w = micro + r.addr;
+    const size_t bytes = static_cast<size_t>(r.n) * 8;
+    for (const SeenImage& im : ring.img)
+        if (im.words.size() == r.n && std::memcmp(im.words.data(), w, bytes) == 0) return im.match;
+    SeenImage& im = ring.img[ring.next++ % kSeen];
+    im.words.assign(w, w + r.n);
+    im.match = code_hash(w, r.n) == r.hash;
+    return im.match;
+}
 }  // namespace
 
 void fallback_report() {
@@ -325,8 +364,17 @@ void start_program(Vu1& vu, uint32_t start, const KickSink& kick) {
     auto kick_at = [&vu, &kick, start](uint32_t addr) {
         const uint32_t qwc = gif_packet_qwc(vu.st, addr);
         if (trace_on()) std::fprintf(stderr, "[VU1] kick %03x qwc %u\n", addr, qwc);
-        std::vector<uint8_t> buf(static_cast<size_t>(qwc) * 16);
-        for (uint32_t q = 0; q < qwc; ++q) std::memcpy(&buf[q * 16], &vu.st.mem[((addr + q) & 0x3ff) << 4], 16);
+        // (host) the packet read in place in the data memory when it does not wrap past its end (nearly always), not copied to a
+        // vector allocated for each kick; RAC1_PERF_XGKICK=0: always copied, as before
+        static const bool in_place = std::getenv("RAC1_PERF_XGKICK") == nullptr || std::atoi(std::getenv("RAC1_PERF_XGKICK")) != 0;
+        const uint32_t a0 = addr & 0x3ffu;
+        std::vector<uint8_t> buf;
+        const uint8_t* pkt = &vu.st.mem[static_cast<size_t>(a0) << 4];
+        if (!in_place || a0 + qwc > 0x400u) {
+            buf.resize(static_cast<size_t>(qwc) * 16);
+            for (uint32_t q = 0; q < qwc; ++q) std::memcpy(&buf[q * 16], &vu.st.mem[((addr + q) & 0x3ff) << 4], 16);
+            pkt = buf.data();
+        }
         static const char* const pkt_dir = std::getenv("RAC1_VU1_PKTDUMP");  // testing: kicks #20000. as files <dir>/pkt_<n>_s<start>_a<addr>.bin
         if (pkt_dir != nullptr) {
             static int kicks = 0;
@@ -337,11 +385,11 @@ void start_program(Vu1& vu, uint32_t start, const KickSink& kick) {
             } else if (++kicks >= from && kicks < from + 60) {
                 char path[512];
                 std::snprintf(path, sizeof path, "%s/pkt_%05d_s%03x_a%03x.bin", pkt_dir, kicks, start, addr);
-                if (FILE* f = std::fopen(path, "wb")) { std::fwrite(buf.data(), 1, buf.size(), f); std::fclose(f); }
+                if (FILE* f = std::fopen(path, "wb")) { std::fwrite(pkt, 1, static_cast<size_t>(qwc) * 16, f); std::fclose(f); }
             }
         }
-        if (g_kick_tap) g_kick_tap(buf.data(), qwc);
-        if (kick) kick(buf.data(), qwc);
+        if (g_kick_tap) g_kick_tap(pkt, qwc);
+        if (kick) kick(pkt, qwc);
     };
     static const char* const capture_dir = std::getenv("RAC1_VU1_CAPTURE");
     if (capture_dir != nullptr) capture(vu, start, capture_dir);  // testing: the oracle's inputs
@@ -361,19 +409,26 @@ void start_program(Vu1& vu, uint32_t start, const KickSink& kick) {
         thread_local unsigned next = 0;
         const Registered* found = nullptr;
         bool hit = false;
+        const bool cached = lookup_cache_on();
+        // (the generation read once for the start, not once per memo entry; RAC1_PERF_VU1_LOOKUP=0: as before)
+        const uint64_t gen0 = g_micro_gen.load(std::memory_order_relaxed);
         for (const Memo& e : memo)
-            if (e.gen == g_micro_gen.load(std::memory_order_relaxed) && e.start == start) {
+            if (e.gen == (cached ? gen0 : g_micro_gen.load(std::memory_order_relaxed)) && e.start == start) {
                 found = e.port;
                 hit = true;
                 break;
             }
         if (!hit) {
-            for (const Registered& r : registry())
-                if (start >= r.addr && start < r.addr + r.n && r.addr + r.n <= vu.micro.size() && code_hash(vu.micro.data() + r.addr, r.n) == r.hash) {
+            const auto& reg = registry();
+            for (size_t i = 0; i < reg.size(); ++i) {
+                const Registered& r = reg[i];
+                if (!(start >= r.addr && start < r.addr + r.n && r.addr + r.n <= vu.micro.size())) continue;
+                if (cached ? port_matches(r, i, vu.micro.data()) : code_hash(vu.micro.data() + r.addr, r.n) == r.hash) {
                     found = &r;
                     break;
                 }
-            memo[next++ & 31] = Memo{start, g_micro_gen.load(std::memory_order_relaxed), found};
+            }
+            memo[next++ & 31] = Memo{start, cached ? gen0 : g_micro_gen.load(std::memory_order_relaxed), found};
         }
         if (found != nullptr) {
             struct Observed {  // (host: the walk's observer around the start, StartObserver)

@@ -1311,7 +1311,15 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
     ++g_st.by_kind[kMrpFxVu7];  // (the report's "by producer": batches)
     if (clip_path) ++g_s7.clip_path;
     const auto& vin = gs.vu7_verts;
-    auto vert = [&](uint32_t i, const State& S, bool gs_z) {
+    // (host) a vertex's world point, fog and depth made once per vertex (vu7_pre) instead of once per corner of each triangle using it
+    // (a strip's vertex is three corners): the same doubles. RAC1_PERF_VU7=0: made per corner, as before
+    static const bool pre_on = std::getenv("RAC1_PERF_VU7") == nullptr || std::atoi(std::getenv("RAC1_PERF_VU7")) != 0;
+    struct Pre {
+        double cw = 0, Z = 0;  // the clip w, the GS depth's Z
+        float wp[3] = {};
+    };
+    thread_local std::vector<Pre> pre;
+    auto vert_pre = [&](uint32_t i, Pre& o) {
         const gs::Vu7Vertex& s = vin[b.first + i];
         const glm::dvec4 pt(s.xyz[0], s.xyz[1], s.xyz[2], 1.0);
         const glm::dvec4 clip = M * pt;
@@ -1320,10 +1328,26 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
             const glm::dvec4 h = g_frame.vu7_geinv * (Me * pt);
             w = std::fabs(h.w) > 1e-30 ? glm::dvec3(h) / h.w : glm::dvec3(pt);
         }
+        o.wp[0] = static_cast<float>(w.x);
+        o.wp[1] = static_cast<float>(w.y);
+        o.wp[2] = static_cast<float>(w.z);
+        o.cw = clip.w;
+        const double q = static_cast<double>(b.k) / clip.w;
+        o.Z = std::floor(clip.z * q + static_cast<double>(b.off[2]));
+    };
+    if (pre_on) {
+        pre.resize(b.n);
+        for (uint32_t i = 0; i < b.n; ++i) vert_pre(i, pre[i]);
+    }
+    auto vert = [&](uint32_t i, const State& S, bool gs_z) {
+        const gs::Vu7Vertex& s = vin[b.first + i];
+        Pre own;
+        if (!pre_on) vert_pre(i, own);
+        const Pre& P = pre_on ? pre[i] : own;
         V7 v{};
-        v.wp[0] = static_cast<float>(w.x);
-        v.wp[1] = static_cast<float>(w.y);
-        v.wp[2] = static_cast<float>(w.z);
+        v.wp[0] = P.wp[0];
+        v.wp[1] = P.wp[1];
+        v.wp[2] = P.wp[2];
         if (S.fst) {  // (UV in texels: with FST the GS reads the UV register, not kicked here)
             v.stq[0] = s.st[0] / static_cast<float>(S.tw);
             v.stq[1] = s.st[1] / static_cast<float>(S.th);
@@ -1334,7 +1358,7 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
             v.stq[2] = s.st[2] != 0.0f ? s.st[2] : 1.0f;
         }
         // (the fog per vertex as the program makes it - clamped, its integer part - and interpolated over the screen as the GS does)
-        const float fw = std::min(std::max(static_cast<float>(clip.w) + b.off[3], b.fog[0]), b.fog[1]);
+        const float fw = std::min(std::max(static_cast<float>(P.cw) + b.off[3], b.fog[0]), b.fog[1]);
         v.fogw = std::isfinite(fw) ? std::floor(fw) : 0.0f;
         for (int l = 0; l < 4; ++l) v.rgba[l] = s.rgba[l];
         v.tex[0] = static_cast<uint32_t>(S.layer);
@@ -1345,13 +1369,14 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
         v.fogc[1] = b.fog[1];
         v.emis = S.emis;
         {  // the depth: the program's Z (its integer part, FTOI4) through the replica's map (render_gs_depth)
-            const double q = static_cast<double>(b.k) / clip.w;
-            const double Z = std::floor(clip.z * q + static_cast<double>(b.off[2]));
+            const double Z = P.Z;
             v.depth = g_v7_depth && gs_z ? static_cast<float>(2.0 * (g_v7_da + g_v7_db * Z) - 1.0) : 2.0f;
         }
         g_v7.push_back(v);
     };
-    std::vector<std::array<uint32_t, 3>> tris;
+    // (host) the batch's lists in vectors kept by the thread (RAC1_PERF_VU7), not allocated for each batch
+    thread_local std::vector<std::array<uint32_t, 3>> tris;
+    tris.clear();
     if (type == 3) {
         for (uint32_t i = 0; i + 2 < b.n; i += 3) tris.push_back({i, i + 1, i + 2});
     } else {
@@ -1364,16 +1389,21 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
     // covered the lava far away where the PS2 shows none). A triangle it did not kick whole was clipped - drawn as a fan of the fans'
     // state - unless all three points lie past one plane of the guard band (not drawn).
     enum : uint8_t { kNone = 0, kStrip = 1, kFan = 2 };
-    std::vector<uint8_t> how(tris.size(), kStrip);
+    thread_local std::vector<uint8_t> how;
+    how.assign(tris.size(), kStrip);
     // A clipped triangle reaching behind the eye or past the GS's Z range has no GS depth there (Q of the wrong sign: its Z is
     // nonsense). Drawn whole for the GPU to clip, with the depth clamp (which turns the near plane's clipping off), it came out in
     // some frames and not others as the camera moved by a hair - OpenGL on radeonsi; Vulkan was right: Pokitaru with the camera at
     // the water, the near sea white with the original lighting, dark with the modern one, the posts under it gone, every few frames.
     // Such a triangle is cut at the view's near plane here (emit) and drawn with the view's own depth (in front of the eye the two
     // depths are the same map)
-    std::vector<uint8_t> gs_z(tris.size(), 1);
+    thread_local std::vector<uint8_t> gs_z;
+    gs_z.assign(tris.size(), 1);
     {
-        std::vector<uint8_t> flags(b.n), behind(b.n), zbad(b.n);
+        thread_local std::vector<uint8_t> flags, behind, zbad;
+        flags.assign(b.n, 0);
+        behind.assign(b.n, 0);
+        zbad.assign(b.n, 0);
         for (uint32_t i = 0; i < b.n; ++i) {
             const gs::Vu7Vertex& s = vin[b.first + i];
             const glm::dvec4 pt(s.xyz[0], s.xyz[1], s.xyz[2], 1.0);
@@ -2027,7 +2057,10 @@ void mrp_fx_draw(const MrpChainFrame& gs, int win_w, int win_h, const gs::Viewpo
             v.vu[0] = static_cast<float>(X);
             v.vu[1] = static_cast<float>(Y);
             v.vu[2] = static_cast<float>(z);
-            double w = vu_mode ? 1.0 : (VP * wp).w;
+            // (host) the w row alone, in glm's order for a matrix times a vector ((m0 x + m1 y) + (m2 z + m3 w)): the same double
+            // (RAC1_PERF_VU7=0: the whole product)
+            static const bool w_row = std::getenv("RAC1_PERF_VU7") == nullptr || std::atoi(std::getenv("RAC1_PERF_VU7")) != 0;
+            double w = vu_mode ? 1.0 : w_row ? (VP[0][3] * wp.x + VP[1][3] * wp.y) + (VP[2][3] * wp.z + VP[3][3] * wp.w) : (VP * wp).w;
             if (!(w > 1e-9)) w = 1e-9;
             if (fst) {  // (UV in texels)
                 v.stq[0] = static_cast<float>(static_cast<double>(s) / tw * w);
