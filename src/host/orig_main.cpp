@@ -3049,16 +3049,16 @@ int main(int argc, char** argv) {
             if (paused) dt::dev_settings().step_once = false;
 #endif
             iop_alone = !paused && speed == 1.0;
-            // ((2026-10-31) RAC1_SCENE_NO_ALONE, the Wii U's default 1, the PC's 0: in a cutscene (game mode 2) the IOP's mirror does
-            // not play on alone while the game's thread is late - its streams, the dialogue, would run ahead of the scene's pictures
-            // for the rest of the scene, the alone frames never run again. A stall in a scene is a short silence instead, the sound
-            // and the pictures kept together)
-#if defined(__WIIU__)
+            // ((2026-10-31) RAC1_SCENE_NO_ALONE, default 1: in a scene played to the picture - a cutscene (game mode 2), a ship's
+            // landing (game mode 6 but the level exit's flight) - the IOP's mirror does not play on alone while the game is late. A
+            // stall there (the level's first frames, the load after a skipped movie) had the music and the dialogue run ahead of the
+            // scene's pictures for the rest of the scene, the alone frames never run again (on the Wii U by seconds). The stall is a
+            // short silence instead, the sound and the pictures kept together. =0: alone as in gameplay)
             static const bool scene_no_alone = std::getenv("RAC1_SCENE_NO_ALONE") == nullptr || std::atoi(std::getenv("RAC1_SCENE_NO_ALONE")) != 0;
-#else
-            static const bool scene_no_alone = std::getenv("RAC1_SCENE_NO_ALONE") != nullptr && std::atoi(std::getenv("RAC1_SCENE_NO_ALONE")) != 0;
-#endif
-            if (scene_no_alone && lw(OV(0x0015f5c4)) == 2) iop_alone = false;
+            {
+                const int32_t md = lw(OV(0x0015f5c4));
+                if (scene_no_alone && (md == 2 || (md == 6 && !exiting))) iop_alone = false;
+            }
             host_paused = paused;
             if (paused) {
                 game_time = 0.0;
@@ -3076,6 +3076,15 @@ int main(int argc, char** argv) {
                 static uint64_t alone_seen = 0;
                 const uint64_t alone_now = audio_out_alone_total();
                 game_time = std::max(game_time - static_cast<double>(alone_now - alone_seen), std::min(game_time, 1.0));
+                {  // testing: RAC1_STALL_LOG: the frames the IOP's mirror played alone, and the game mode they were played in
+                    static const double stall_log_ms = std::getenv("RAC1_STALL_LOG") != nullptr ? std::atof(std::getenv("RAC1_STALL_LOG")) : -1.0;
+                    const bool stall_log = stall_log_ms >= 0.0;
+                    if (stall_log && dt_s * 1000.0 > stall_log_ms)  // (and the host frames longer than that, a draw's stall included)
+                        std::printf("[stall] frame %llu: host frame %.1f ms, mode %d\n", static_cast<unsigned long long>(frame), dt_s * 1000.0, lw(OV(0x0015f5c4)));
+                    if (stall_log && alone_now != alone_seen)
+                        std::printf("[stall] frame %llu: %llu frames played by the IOP alone, mode %d\n", static_cast<unsigned long long>(frame),
+                                    static_cast<unsigned long long>(alone_now - alone_seen), lw(OV(0x0015f5c4)));
+                }
                 alone_seen = alone_now;
                 // (the nearest whole number of game frames, the rest carried (-0.5 .. 0.5): host frames of 1/60 s give one
                 // game frame each even when their measured length jitters around it - the floor gave 0 then 2, a frame shown twice)
