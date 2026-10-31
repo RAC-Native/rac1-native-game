@@ -1079,3 +1079,51 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   Novalis; with the blending off it writes a different alpha into the colour buffer), RAC1_WIIU_MOBY_UTERMS (no gain: the mobys are not
   bound by their pixel inputs as the shells are).
 
+
+### The other planets: what their game step costs, the VU0 ops without flags, the relighting's scan (2026-11-01; not measured on the console yet)
+
+- **The map** (the PC, no console: the Wii U's headless path - RAC1_NO_GRAPHICS=2 and the rest of gt_check.sh's settings, the game on
+  the main thread, RAC1_GOTO=<level>@60, explore from frame 1000; RAC1_SAMPLE_PROF from host frame 1400, 1600 frames; the generated
+  code told by its names, `_tr` / `_l<n>`, it has no debug info). The game step's host time on the PC and the share of its samples
+  whose leaf is generated code, then its costliest generated entry points (inclusive share of the game step):
+
+  | level | game step (PC) | generated leaf | the costliest generated entries |
+  | :--- | :--- | :--- | :--- |
+  | 0 Veldin | 0.45 ms | 15% | sky_render_tr 22%, moby_skin_all 11% |
+  | 1 Novalis | 0.65 | 28% | world_tie_lighting 20%, nov_water_751_draw 5% |
+  | 2 Aridia | 0.56 | 11% | ovl_2895a0_tr 14%, moby_skin_all 11%, hero_frame_update_l1 11% |
+  | 3 Kerwan | 0.97 | 21% | class 994's draw 12% (a program-7 surface built on the EE), class 75's update 11%, class 574's 6% |
+  | 6 Nebula G34 | 2.85 | 56% | world_tfrag_lighting 72% |
+  | 7 Umbris | 0.39 | 22% | ovl_28a208_tr 12%, world_tie_lighting 8% |
+  | 8 Batalia | 0.90 | 25% | class 327's draw 15% (the same surface routine as Kerwan's 994) |
+  | 14 Oltanis | 0.69 | 25% | callback 0x303350 19% |
+  | 15 Quartu | 1.02 | 19% | world_tfrag_lighting 14%, classes 44 / 28 8% each |
+  | 17 Veldin Orb | 1.34 | 40% | world_tfrag_lighting 45% |
+  | 4, 5, 9-13, 16, 18 | 0.38-0.75 | 6-11% | moby_skin_all, the levels' own classes, a few % each |
+
+- **The world's relighting.** On a level whose point lights flicker (Nebula G34: light 0's colour and the light sets change every frame)
+  the entries they hold are relit every frame they are drawn - by the game too. On the console (Novalis, the bench logs' `[relight]`
+  line) a tie relit costs ~320 us, and the scan of the three tables' flags ~0.5 ms a frame with nothing to relight; 64 a kind a frame at
+  most (kMaxPerFrame) - up to ~20 ms in one frame.
+- **What changed:**
+  - The VU0 macro ops without their flags in the generated code (src/game/ovl/vu0_nf.h, tools/codegen/vu0_nf_pass.py; the Wii U only, a
+    PC build defining RAC1_VU0_NF for the check). On the Wii U vu0_regs.h's ops run on the SSE2 shim (~150 instructions an op: every
+    operand and result clamped with integer masks through memory, the flag words built lane by lane); vu0_nf.h's do the same arithmetic
+    with the clamp decided on the FPU (moby_draw_fast.inc's way) and no flags. generate_all.py's last pass gives a generated file
+    vu0nf's ops when every CFC2 of its status / MAC flags follows, with no label between, an op into vf0 (kept exact: those ops exist for
+    their flags) - 176 of 177 files; moby_shadows_asm.cpp reads the MAC flags of an op into vf1 and keeps vu0m's. CFC2 18 is the clip
+    flags, vclip's alone (left exact). vu0nf exports vu0m's names; its ops take non-const operands, chosen over vu0m's for the generated
+    code's vf()[n] / acc(). Covered: the world's lighting, the levels' program-7 surfaces (Kerwan's 994, Batalia's 327, Umbris, Rilgar,
+    Oltanis, Gaspar, Aridia's ocean), sky_ee, world_cull, every transliterated class.
+  - The relighting's scan reads the tables' flags in place (overlay_entry.cpp relight_flagged: one pointer to the table, the bytes at
+    their swizzled places) instead of an lbu / lhu per entry.
+- **Exactness:** the PC built -DRAC1_VU0_NF=1 (build-nf) against the PC's build, RAMHASH word for word, every level 0-18, 1800 frames
+  (GOTO <level>@60, explore from 1000), both the PC's path and the Wii U's headless path (relighting from the flags): all identical. The
+  three references with build-nf: MRP 6faa80a7..., MRP=0 b0b9aa45..., boot 3c83c728... (the same). pc_check.sh / gt_check.sh green.
+- **Tried, left out:** a memo of the relighting (an entry not relit when its bytes, its output and the lights' memory are what they were
+  after its last relighting): ~30% of Novalis' tie relightings kept, none elsewhere (the lights flicker), and Umbris' check mode found 38 of
+  1083 kept entries whose colours would have changed - an input outside the key (a VU0 register the routine reads before it writes it, or
+  data elsewhere). Not worth finding for that gain (patch kept in rac1-scratch/wiiu/lv/relight_memo.patch).
+- **Next (by the map):** measure on the console (Kerwan, Nebula G34, Batalia, Veldin Orb: the game step's samples on core 2); then, where
+  the generated code still costs, hand ports of the hottest: the world's lighting (its EE side: the vertices' unpacking and the point
+  lights), the program-7 surface routine the levels share (L3:0x23c428 and its callers), sky_render (Veldin 22%), Kerwan's class 75.

@@ -383,6 +383,11 @@ uint32_t relight_flagged(void (*light)(uint32_t), uint32_t table, int32_t count,
                          uint32_t list, int kind, int touch) {
     if (table == 0 || count <= 0 || count > 0x10000) return 0;
     uint32_t n = 0, total = 0;
+    // ((2026-11-01) the table's flags read in place - every entry's, every frame: ~0.5 ms a frame on the Wii U through lbu / lhu -
+    // when the table lies whole in the RAM, word-aligned; a byte's / halfword's host place swizzled as ee_read's)
+    const uint8_t* tp = nullptr;
+    if ((table & 3u) == 0 && table < 0x02000000u && ee_is_valid_addr(table, static_cast<uint32_t>(count) * stride))
+        tp = static_cast<const uint8_t*>(ee_ram_ptr_read(table));
 #if defined(__WIIU__)
     static uint32_t s_cursor[3] = {0, 0, 0};
     constexpr uint32_t kMaxPerFrame = 64;
@@ -395,7 +400,9 @@ uint32_t relight_flagged(void (*light)(uint32_t), uint32_t table, int32_t count,
     for (uint32_t i = 0; i < static_cast<uint32_t>(count); ++i) {
 #endif
         const uint32_t e = table + i * stride;
-        if (lbu(e + dirty) == 0 && lhu(e + nib) == 0xffffu) continue;
+        if (tp != nullptr ? tp[ee_byte_addr(i * stride + dirty)] == 0 && *reinterpret_cast<const uint16_t*>(tp + ee_half_addr(i * stride + nib)) == 0xffffu
+                          : lbu(e + dirty) == 0 && lhu(e + nib) == 0xffffu)
+            continue;
         const uint32_t index = index_at != 0 ? lhu(e + index_at) : i;
         if (mrpw::relight_visible(kind, index) == 0) continue;
         sh(list + n * 2, index);
