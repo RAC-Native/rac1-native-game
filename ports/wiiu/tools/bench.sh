@@ -46,7 +46,7 @@ open(elf_path, "wb").write(data)
 PY
 elf2rpl=${DEVKITPRO:-/opt/devkitpro}/tools/bin/elf2rpl
 "$elf2rpl" "$out/$tag.elf" "$out/$tag.rpx" >/dev/null || { echo "bench: elf2rpl failed" >&2; exit 3; }
-WIIU_IP=$ip WIIU_TIMEOUT=${WIIU_TIMEOUT:-400} WIIU_LOG=$log WIIU_EXIT_RE="rac1-wiiu: (exit|back to the menu|operator new)|watchdog 50 s" \
+WIIU_IP=$ip WIIU_TIMEOUT=${WIIU_TIMEOUT:-400} WIIU_LOG=$log WIIU_EXIT_RE="rac1-wiiu: (exit|back to the menu|operator new)" \
     "$W/ports/wiiu/tools/wiiu-run.sh" "$out/$tag.rpx" > /dev/null
 rc=$?
 rm -f "$out/$tag.rpx"
