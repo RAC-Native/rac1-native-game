@@ -67,6 +67,14 @@ What changed in each release. Releases are source only: you build the game with 
 - The levels' seas near the camera: on OpenGL a clipped triangle reaching behind the eye was drawn through it in some frames
   (Pokitaru, swimming among the posts: the near water white or dark every few frames, with any lighting and any option); it is
   now cut at the near plane, as Vulkan did, and Vulkan draws the near water it had left out.
+- Water: Novalis's water gets the Water option every frame and after any save's load: a sea's `surface` line now names its effect
+  texture, not the GS block it is given that frame (which moved with what was drawn before it; the river lost its material a
+  quarter of the time, Rilgar's canals a third). The level files' lines re-derived; a line naming a block still works as before.
+- Water: the seas the GS blends with a fixed alpha (Novalis's water, Rilgar's harbour and canals, Hoven's) get the depth's
+  transparency, the see-through and the composite over the 3D under them, as the other seas; before, only their colour changed.
+- Water: the shore no longer flashes (Pokitaru's posts and rocks, Rilgar's beach): a slower foam pulse, the foam and the normal maps
+  faded where finer than a pixel, the refraction mixed in smoothly; still camera, flashing pixels a fifth to a tenth of before.
+- Water's help text and docs/materials.md say that with Water Off, Surface Detail's own `water` shine stays.
 - Options > Graphics > Monitor: two monitors with the same name ("Generic PnP Monitor" twice) are told apart by their place on
   the desktop ("Generic PnP Monitor (at 1920,0)"), so the one chosen is the one the game opens on after a restart (#111).
 - Vulkan: the world's push constants are 128 bytes, not 144, and the ambient occlusion's 176 bytes of parameters are in a

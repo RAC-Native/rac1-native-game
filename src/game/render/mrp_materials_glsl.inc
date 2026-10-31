@@ -272,16 +272,33 @@
     "    vec3 P = vShWorld, V = normalize(uShCam - P);\n"                                                                                                \
     "    float up = smoothstep(0.3, 0.7, sh_n.z);\n"                                                                                                     \
     "    float spd = ty == 5 ? 1.0 : ty == 4 ? 0.12 : 0.05;\n"                                                                                           \
-    "    float amp = ty == 5 ? 0.09 * m.y : 0.1;\n"                                                                                                      \
+    "    /* the pixel's size on the water in world units: the normal maps' and the foam's finest detail faded where a pixel holds about a cell of\n"     \
+    "       it - finer, it only sparkles from one frame to the next as it scrolls (far away, at grazing angles) */\n"                                    \
+    "    vec2 fwp = fwidth(P.xy);\n"                                                                                                                     \
+    "    float px = max(fwp.x, fwp.y);\n"                                                                                                                \
+    "    float amp = (ty == 5 ? 0.09 * m.y : 0.1) * mix(1.0, 0.2, smoothstep(0.3, 1.2, px * m2.x * 4.4));\n"                                             \
     "    vec2 g = sm_wgrad(P.xy * (m2.x * 1.5), t * spd * m2.y);\n"                                                                                      \
-    "    vec3 N = normalize(sh_n - vec3(g * amp, 0.0) * up);\n"                                                                                          \
+    "    /* the base normal: up where the water lies flat, the face's where it stands (a waterfall) - the game's waves move the seas' triangles\n"       \
+    "       every frame, and their faces' normals, at a grazing view, turned the reflection and the Fresnel from one frame to the next */\n"             \
+    "    vec3 nb = normalize(mix(sh_n, vec3(0.0, 0.0, 1.0), up));\n"                                                                                     \
+    "    vec3 N = normalize(nb - vec3(g * amp, 0.0) * up);\n"                                                                                            \
     "    if (ty == 5 && uMat[0].z > 0.0) N = sm_rain(N, P, t, uMat[0].z * 0.5 * sm_sky(P));\n"                                                           \
     "    vec2 uv;\n"                                                                                                                                     \
     "    float depth = sm_under(P, uv);\n"                                                                                                               \
     "    float dv = depth * clamp(abs(V.z) * 1.2, 0.1, 1.0);  /* (along the view: about the water's height there) */\n"                                  \
     "    float deep = 1.0 - exp(-dv / max(m2.w, 0.05));\n"                                                                                               \
-    "    float shore = 1.0 - smoothstep(0.0, 0.1 + 0.05 * m2.w, dv);  /* (a thin band: the depth's tenth or so) */\n"                                    \
-    "    float brk = sm_noise(P.xy * (3.0 * m2.x) + vec2(t * 0.4, -t * 0.3)) + 0.3 * sin(dv * 25.0 - t * 2.0);\n"                                        \
+    "    /* the shore: a thin band (the depth's tenth or so), its edge widened to two pixels' change of the depth (at most twice the band) so\n"         \
+    "       that it does not step or flash where the depth changes fast across the picture */\n"                                                         \
+    "    float bw = 0.1 + 0.05 * m2.w;\n"                                                                                                                \
+    "    float shore = 1.0 - smoothstep(0.0, bw + min(2.0 * fwidth(dv), bw), dv);\n"                                                                     \
+    "    /* (and softer right at the contact - 40 %, full a third of the band out: the line where the water meets a post moves with the game's\n"        \
+    "       waves, and full foam there made it a bright edge jumping from frame to frame) */\n"                                                          \
+    "    shore *= 0.4 + 0.6 * smoothstep(0.0, 0.35 * bw, dv);\n"                                                                                         \
+    "    /* the foam's breaking: a world-space noise drifting slowly, and a slow pulse out from the shore - 8 radians a unit of depth (25\n"             \
+    "       before: the game's waves lifting the water a few hundredths a frame turned it on and off at the posts and the rocks) -, each\n"              \
+    "       flattened where it is finer than the pixel */\n"                                                                                             \
+    "    float fn = mix(0.5, sm_noise(P.xy * (3.0 * m2.x) + vec2(t * 0.4, -t * 0.3)), 1.0 - smoothstep(0.25, 0.8, px * 3.0 * m2.x));\n"                  \
+    "    float brk = fn + 0.3 * sin(dv * 8.0 - t * 1.5) * (1.0 - smoothstep(0.3, 1.0, fwidth(dv) * 8.0));\n"                                             \
     "    float foam = m2.z * shore * smoothstep(0.25, 0.6, brk);\n"                                                                                      \
     "    if (ty == 4) {  /* lava: the crust's relief lit by the sun, a hotter seam where it meets the shore; then the emissive */\n"                     \
     "        float pulse = 1.0 + m.y * sin(t * 0.8 + sm_noise(P.xy * 0.08) * 6.2832);\n"                                                                 \
@@ -314,7 +331,7 @@
     "    vec3 S = mix(wcol * (1.0 - F * 0.7) + refl * (F * 0.7 * m.x), fcol, clamp(foam, 0.0, 1.0)) + spec * m.x;\n"                                     \
     "    if (uMat[0].x > 0.5) {  /* Surface Detail on too: its water is the look (sh_material's ty 5: its ripples over the normal maps, its\n"           \
     "       Fresnel, reflection and glint), over the depth's colour, with the foam; the composite over the 3D under it as below */\n"                    \
-    "        vec3 Nw = sm_waves(N, P, m.y, t);\n"                                                                                                        \
+    "        vec3 Nw = sm_waves(N, P, m.y * mix(1.0, 0.2, smoothstep(0.3, 1.2, px * 3.7)), t);  /* (its ripples faded as the maps where too fine) */\n"  \
     "        vec3 Rw = reflect(-V, Nw);\n"                                                                                                               \
     "        float Fs = mix(0.15, 1.0, 0.02 + 0.98 * pow(1.0 - max(dot(Nw, V), 0.0), 5.0));\n"                                                           \
     "        vec3 rs = sm_ssr(P + sh_n * 0.03, Rw, sm_env(Rw, 0.05) * L, 0.0, false);\n"                                                                 \
@@ -323,14 +340,16 @@
     "    }\n"                                                                                                                                            \
     "    float ak = mix(0.7, 1.0, deep), aa = F * 0.35 + foam;\n"                                                                                        \
     "    if (depth < 1e3 && uMat[127].w != 0.0) {  /* the 3D under it, this frame's: seen through, bent by the waves on High */\n"                       \
-    "        vec2 ruv = uv;\n"                                                                                                                           \
-    "        if (uMat[127].x >= 1.5) {  /* (the bent sample kept only where what it shows lies behind the water: not an object in front) */\n"           \
-    "            vec2 o = clamp(uv + (N.xy - sh_n.xy) * (0.03 * min(dv, 1.5)), vec2(0.0), vec2(1.0));\n"                                                 \
+    "        vec3 under = textureLod(uSsrCol, uv, 0.0).rgb;\n"                                                                                           \
+    "        if (uMat[127].x >= 1.5) {  /* (the bent sample mixed in only where what it shows lies behind the water - not an object in front -,\n"       \
+    "           by how far behind, and not at the shore: a smooth weight, not a choice that flips as the waves move) */\n"                               \
+    "            vec2 o = clamp(uv + (N.xy - nb.xy) * (0.03 * min(dv, 1.5)), vec2(0.0), vec2(1.0));\n"                                                   \
     "            float d = textureLod(uSsrDepth, o, 0.0).r;\n"                                                                                           \
     "            float fw = (uSsrVP * vec4(P, 1.0)).w;\n"                                                                                                \
-    "            if (d < 1.0 && uSsrZ.y / ((d * 2.0 - 1.0) - uSsrZ.x) > fw + 0.02) ruv = o;\n"                                                           \
+    "            float k = d < 1.0 ? smoothstep(fw + 0.02, fw + 0.3, uSsrZ.y / ((d * 2.0 - 1.0) - uSsrZ.x)) * smoothstep(0.05, 0.3, dv) : 0.0;\n"        \
+    "            under = mix(under, textureLod(uSsrCol, o, 0.0).rgb, k);\n"                                                                              \
     "        }\n"                                                                                                                                        \
-    "        sm_w_refr = textureLod(uSsrCol, ruv, 0.0).rgb * mix(vec3(1.0), wcol / max(max(lit.r, max(lit.g, lit.b)), 0.05), 0.15 + 0.25 * deep);\n"     \
+    "        sm_w_refr = under * mix(vec3(1.0), wcol / max(max(lit.r, max(lit.g, lit.b)), 0.05), 0.15 + 0.25 * deep);\n"                                 \
     "        sm_w_mode = 1;\n"                                                                                                                           \
     "    } else if (depth < 1e3) {\n"                                                                                                                    \
     "        sm_w_mode = 2;\n"                                                                                                                           \

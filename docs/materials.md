@@ -143,9 +143,20 @@ take a material as a `surface` line, named as an `emissive surface` line names t
 [Emissive surfaces](lighting.md#emissive-surfaces)): `RAC1_LIGHTS_TRACE=1` prints each one with its class and texture, e.g.
 
 ```
-material surface 879 tex 13040 water    # Rilgar's harbour
-material surface 317 tex 12811 lava     # Gaspar's lava sea
+material surface 761 tex 44 water       # Novalis's river: effect texture 44
+material surface 879 tex 13040 water    # Rilgar's harbour: a level texture, its GS block
 ```
+
+The `tex` of a sea is its **effect texture** (the index in the level's table of effect textures, the one `effect_tex0` takes) when
+its texture is one, as most seas' are; else the GS memory block its texture is read from (TEX0's TBP). The effect textures have no
+fixed block: a texture block gives them blocks in the order it first asks for them (from the same start each block), so the block a
+sea's texture lands in depends on what was drawn before it - on Novalis the river's water was at 13347, 13483 or 13619 depending on
+which of the level's water was in view, and after a save's load the order can be another one for good. Until playtest round 2 the
+lines named that block (`surface 761 tex 13347`): the material was there in some frames and not in others, or not at all - Daino's
+"Novalis's water looks untouched" (the river untagged a quarter of the frames of a headless walk, the cave's columns a third, Rilgar's
+canals a third). Now the host notes which effect texture each block holds (`effect_tex0`, reset by `texture_block_begin`) and keys
+the seas by it; the trace says which of the two a `tex` is. A line still naming a block (a file saved before) keeps working as it
+did, where the block happens to be the one named.
 
 Their normal is the face's (the seas are mostly flat: the ripples and the glint do the rest). Rilgar, Pokitaru and Hoven ship such lines
 for the Water option ([below](#water-and-grass)).
@@ -176,16 +187,23 @@ The `water` material (and `lava`, `quicksand`) with Water on, Surface Detail wha
   water darker (toward `tint r g b` when given, else a deeper shade of the texture's own colour) and as opaque as the game draws it; how
   deep is "deep" is `depth d` (water 2.5 units). The water is never made more opaque than the game's own alpha: where the game drew it
   translucent it stays at most that.
-- **Foam**: a thin, broken band where the water meets the shore (the depth near 0), `foam f` (water 0.6), white as bright as the place.
+- **Foam**: a thin, broken band where the water meets the shore (the depth near 0), `foam f` (water 0.6), white as bright as the place;
+  softer right at the contact (40 %), full a third of the band out.
 - **Fresnel and the sky's reflection**; the **sun's and the lamps' glints** (a sharp specular on the waves); with **High** the scene's
   reflection from the copy (the same ray march as the puddles') and a slight **refraction** of what is under the water (the copy read
   bent by the waves, only where what it shows lies behind the water).
 - **With Surface Detail on too** (Low or High) the water's look is Surface Detail's `water` (its ripples, Fresnel, reflection and
   glint), the Water option adding its normal maps under those ripples, the depth's colour, the foam and the composite over the 3D under
   it; with Surface Detail Off, the Water option's own shading above. One draw of each sea either way.
-- How it reaches the picture: a sea whose blending is the GS's alpha blend (0x44) or none is composited by our shader over the copy (its
-  colour, the water's, over the bent 3D under it, with the game's alpha scaled by the depth); a sea with another blend keeps its own,
-  its colour shaded and, when drawn before the copy, its alpha scaled. The world's water (tfrag, tie) draws the waves, the glints and the
+- How it reaches the picture: a sea whose blending is the GS's alpha blend (0x44), its fixed-alpha blend (0x64: (Cs - Cd) FIX + Cd,
+  drawn as the alpha blend it is with FIX for its alpha) or none is composited by our shader over the copy (its colour, the water's,
+  over the bent 3D under it, with the game's alpha scaled by the depth); a sea with another blend keeps its own, its colour shaded and,
+  when drawn before the copy, its alpha scaled. The 0x64 seas - all of Novalis's water, Rilgar's harbour and canals, Hoven's - were
+  among the latter until playtest round 2: their alpha is FIX, not the pixel's, so the depth's transparency and the composite never
+  reached them, and only their colour changed a little (with Novalis's water, untagged, little more than nothing).
+- **Water Off is not the game's water** when Surface Detail is on: the `water` material is Surface Detail's too (its ripples, Fresnel,
+  sky or picture reflection and glint stay); Water adds the normal maps, the depth's colour and transparency, the foam and the
+  composite. The world's water (tfrag, tie) draws the waves, the glints and the
   reflections only: it is in the copy itself, so it has no depth under it.
 - **Lava** with Water on: the crust's relief lit by the sun from slow normal maps, a hotter seam where it meets the shore (`foam`), the
   tint; on High the heat shimmer. **Quicksand**: the slow normal maps under a dull sheen, a darker wet band at its edge (`foam`).
@@ -200,6 +218,27 @@ harbour itself where the game's waves had put it a frame before: the depth under
 the sky's Fresnel at a low angle) or a little (dark), as the waves went. With Water on such seas are now left out of that early pass
 and drawn with the others, after the copy; the water is the same from frame to frame (headless, the camera still: the water's change
 between frames that of the rain alone, on OpenGL and Vulkan, 16:9 and 32:9, every combination of Surface Detail and Water).
+
+**The shore's flicker (playtest round 2).** Daino: "where the water meets the terrain or other objects it flashes and trembles a little",
+Pokitaru worst. Measured with consecutive headless frames, rain off: per pixel the second difference of the brightness between frames
+(a flash; a steady motion has little of it), less the same with Water Off, counted where it is over 8 (of 255) at 960 x 720. The causes:
+- the foam's breaking had a pulse of 25 radians a unit of depth: the game's waves lift Pokitaru's sea a few hundredths each frame, and
+  the foam at the posts and the rocks turned on and off with them; now 8 radians, the noise and the pulse flattened where they are finer
+  than the pixel, the band's edge at least two pixels' change of the depth wide, and softer at the contact line itself;
+- the refraction's bent sample was taken or not by a hard test (behind the water by 0.02): at the edges the waves flipped it from frame
+  to frame; now a smooth weight by how far behind, none at the shore (depth under 0.05);
+- the normal maps and Surface Detail's ripples sparkled far away, where a pixel holds a whole cell of them; now faded there.
+
+| Still camera, 11 frames | Water High | Water High + SD High | Water Low + SD Low |
+|---|---|---|---|
+| Pokitaru, the island's shore and the deck (OpenGL / Vulkan) | 1640 -> 138 | 3699 / 3693 -> 774 / 766 | 1056 -> 229 |
+| Rilgar's harbour at the start's beach (OpenGL / Vulkan) | 3511 -> 1111 | 12081 / 12084 -> 2671 / 2671 | 5299 -> 902 |
+
+(pixels flashing more than with Water Off: before, the code of 0.6.x; after, this round's - the harbour's count includes its new
+composite, below.) With the game's camera following Ratchet swimming among the deck's posts (the docs' Water benchmark spot), the
+posts' waterline flashes about half as much (a 90 x 40 box at the near post: 763 -> 405 pixels on High); what is left is High's reflection
+of the posts and the island: the reflection is marched through the picture, and a camera moving by a hair turns a far, thin post from
+a hit to a miss (the puddles' and the metals' reflections do the same).
 
 ### Grass
 
@@ -244,15 +283,15 @@ option. A warning says when the option that draws the type is Off. The debug men
 live, with its profiler stage's time (Water: "Water (seas, depth copy)"; Grass: "Grass shells").
 
 Seeded: Veldin (0) the plain's dry grass (tfrag texture 3); Novalis (1) the meadow's grass (tfrag 8); Kerwan (3) the lawn of the start's
-garden (tfrag 23); Rilgar (5) the harbour (surface 879 tex 13040) and the
-canals by the start (surface 831, 13052 and 13120); Pokitaru (11) the sea (surface 1111 tex 13135); Hoven (12) the water (surface 1901
-tex 13323); Novalis (1) all its water, VU1 program 7's strips and tiles (`novalis_water.cpp`), each class's base layer: the water at
-the bottom of the gorge below the start's cliffs with its waterfall (surface 676), the river along the first walk (761), the stream
-and pools of water tiles south-west of the landing pad (751, textures 13347 and 13483), the basins behind the railings at z 82 (678)
-and the three round water columns in the blue cave (1225), all `tex 13347`. The class-0 program-7 surfaces at the landing pad
-(13347, 13351, 13355...) are shadow meshes, not water; a sea's second layer (751's 13415 and 13551, 761's 13483, 1225's 13551...)
-is the same water drawn again, left untagged. Novalis's waterfalls are part of their water's strips: upright, they get the glints,
-the Fresnel and the see-through, not the normal maps (those lie on the flat water).
+garden (tfrag 23); Rilgar (5) the harbour (surface 879 tex 13040, a level texture) and the canals by the start (surface 831, effect
+textures 42 and 41); Pokitaru (11) the sea (surface 1111 tex 22); Hoven (12) the water (surface 1901 tex 47); Novalis (1) all its water,
+VU1 program 7's strips and tiles (`novalis_water.cpp`): the water at the bottom of the gorge below the start's cliffs with its waterfall
+(surface 676), the river along the first walk (761) and the basins behind the railings at z 82 (678), all effect texture 44; the stream
+and pools of water tiles south-west of the landing pad (751: its two base layers, 43 and 41; their second layers, 42 and 40, left as the
+game draws them); the three round water columns in the blue cave (1225, tex 43). The class-0 program-7 surfaces at the landing pad are
+shadow meshes, not water. (The first lines named blocks: 761's 13483 and 13619, 1225's 13483, taken then for second layers, were the
+same water in another block.) Novalis's waterfalls are part of their water's strips: upright, they get the glints, the Fresnel and
+the see-through, not the normal maps (those lie on the flat water).
 
 ## Limits
 

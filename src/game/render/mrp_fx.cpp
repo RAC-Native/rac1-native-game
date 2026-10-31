@@ -88,13 +88,23 @@ struct Notes {
     std::vector<Note> list;
     std::vector<Vu7> vu7;
     std::vector<glm::dvec3> vin;
-    std::vector<std::array<uint32_t, 3>> lists;  // the draw lists' callbacks' ranges [first, end) and their moby class (kMrpFxVu7)
+    // the draw lists' callbacks' ranges [first, end), their moby class and their effect textures' blocks (an index in fx_maps,
+    // 0xffffffff none) (kMrpFxVu7)
+    std::vector<std::array<uint32_t, 4>> lists;
+    // the effect textures given a block in the texture block running now (TBP, effect texture index: mrp_fx_note_effect_tex) and the
+    // copies the lists took of it
+    std::vector<std::pair<uint16_t, uint16_t>> fx_now;
+    std::vector<std::vector<std::pair<uint16_t, uint16_t>>> fx_maps;
+    bool fx_new = true;  // (fx_now changed since its last copy)
     int32_t vu7_cur = -1;
     void clear() {
         list.clear();
         vu7.clear();
         vin.clear();
         lists.clear();
+        fx_now.clear();
+        fx_maps.clear();
+        fx_new = true;
         vu7_cur = -1;
     }
 };
@@ -134,6 +144,8 @@ struct Frame {
     glm::dmat4 vu7_g{1.0}, vu7_ginv{1.0};
     glm::dmat4 vu7_ge{1.0}, vu7_geinv{1.0};  // (its x, y, z rows times its Q numerator 0x16cc50: the screen's (X, Y, Z) less the offset, times w)
     bool vu7 = false;
+    // the effect textures' blocks of the lists' texture blocks ((TBP, effect texture index) pairs): a batch's tag >> 16, less 1
+    std::vector<std::vector<std::pair<uint16_t, uint16_t>>> fx_maps;
 } g_frame;
 std::array<glm::dvec4, 16> g_slots_real{}, g_slots_shadow{};
 
@@ -765,8 +777,35 @@ void mrp_fx_note(uint8_t kind, uint32_t first, uint32_t end) {
 void mrp_fx_note_list(uint32_t first, uint32_t end, uint32_t cls) {
     if (!g_window || end <= first || !g_mrp_seas) return;
     Notes& N = notes_now();
-    if (!N.lists.empty() && N.lists.back()[1] == first && N.lists.back()[2] == cls) N.lists.back()[1] = end;
-    else N.lists.push_back({first, end, cls});
+    if (N.fx_new && !N.fx_now.empty()) {
+        N.fx_maps.push_back(N.fx_now);
+        N.fx_new = false;
+    }
+    const uint32_t map = N.fx_now.empty() ? 0xffffffffu : static_cast<uint32_t>(N.fx_maps.size() - 1);
+    if (!N.lists.empty() && N.lists.back()[1] == first && N.lists.back()[2] == cls && N.lists.back()[3] == map) N.lists.back()[1] = end;
+    else N.lists.push_back({first, end, cls, map});
+}
+
+// orig: (host) see mrp_fx.h
+void mrp_fx_note_effect_tex(int32_t index, uint32_t tbp) {
+    if (!g_mrp_seas || index < 0 || index > 0xffff) return;
+    Notes& N = notes_now();
+    const uint16_t t = static_cast<uint16_t>(tbp & 0x3fffu);
+    for (auto& e : N.fx_now)
+        if (e.first == t) {
+            if (e.second != index) N.fx_new = true;
+            e.second = static_cast<uint16_t>(index);
+            return;
+        }
+    N.fx_now.emplace_back(t, static_cast<uint16_t>(index));
+    N.fx_new = true;
+}
+
+// orig: (host) see mrp_fx.h
+void mrp_fx_texture_block() {
+    Notes& N = notes_now();
+    if (!N.fx_now.empty()) N.fx_new = true;
+    N.fx_now.clear();
 }
 
 // orig: (host) see mrp_fx.h
@@ -925,8 +964,13 @@ bool mrp_fx_chain_ranges(bool active, const std::vector<int>& subs, std::vector<
     for (int k : subs) any = any || (k >= 0 && k < kMrpLodSlots && (!g_shadow[k].list.empty() || !g_shadow[k].lists.empty()));
     if (!g_mrp_fx || !g_world_mrp || !active || !any) return false;
     if (g_mrp_seas && (g_kinds_mask >> kMrpFxVu7 & 1u) != 0) {  // (VU1 program 7's batches in the draw lists' callbacks)
+        // (the tag: the moby class, and above it the list's effect textures' blocks, F.fx_maps' index + 1)
+        F.fx_maps.clear();
         auto add_lists = [&](const Notes& N, uint8_t sub) {
-            for (const auto& l : N.lists) vu7.push_back(MrpChainInput::Vu7{l[0], l[1] - 1, sub, l[2]});
+            const uint32_t base = static_cast<uint32_t>(F.fx_maps.size());
+            F.fx_maps.insert(F.fx_maps.end(), N.fx_maps.begin(), N.fx_maps.end());
+            for (const auto& l : N.lists)
+                vu7.push_back(MrpChainInput::Vu7{l[0], l[1] - 1, sub, (l[2] & 0xffffu) | (l[3] == 0xffffffffu ? 0u : (base + l[3] + 1) << 16)});
         };
         add_lists(g_real, 0);
         for (size_t i = 0; i < subs.size(); ++i)
@@ -1247,7 +1291,7 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
         bool ok = false, fst = false;
         int layer = 0, tw = 1, th = 1;
         BKey k;
-        uint32_t flags = 0, emis = 0;
+        uint32_t flags = 0, emis = 0, fix = 0;
         uint64_t key = 0;
     };
     auto state = [&](const gs::DrawState& st, const std::shared_ptr<const gs::TexImage>& tex) {
@@ -1264,19 +1308,39 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
             if (S.layer < 0) return S;
             S.tw = tex->w;
             S.th = tex->h;
-            // (an emissive surface or a material: the callback's class, the texture's block)
-            const uint64_t key = e7_key(b.tag, fld(st.tex0, 0, 14));
+            // (an emissive surface or a material: the callback's class and its effect texture - the index, the texture's block when it
+            // is not one -; a line naming the block, as the first ones did, still found by it)
+            const uint32_t cls = b.tag & 0xffffu, tbp = fld(st.tex0, 0, 14);
+            int fx = -1;
+            if (const uint32_t mi = b.tag >> 16; mi != 0 && mi - 1 < g_frame.fx_maps.size())
+                for (const auto& e : g_frame.fx_maps[mi - 1])
+                    if (e.first == tbp) fx = e.second;
+            const uint64_t key = e7_key(cls, fx >= 0 ? static_cast<uint32_t>(fx) : tbp);
             S.key = key;
-            if (g_e7.on)
+            if (g_e7.on) {
                 if (auto it = g_e7.slot.find(key); it != g_e7.slot.end()) S.emis = it->second;
+                else if (fx >= 0)
+                    if (auto it2 = g_e7.slot.find(e7_key(cls, tbp)); it2 != g_e7.slot.end()) S.emis = it2->second;
+            }
             static const bool trace = std::getenv("RAC1_LIGHTS_TRACE") != nullptr;
             if (trace && g_e7.seen.insert(key).second)
-                std::printf("[lights] program 7 surface: class %u tex %u (TEX0 %016llx, %d x %d) near %.1f %.1f %.1f, ABE %u ALPHA %02x ZWRITE %u: \"emissive surface %u tex %u\"\n", b.tag,
-                            fld(st.tex0, 0, 14), static_cast<unsigned long long>(st.tex0), S.tw, S.th, b.n > 0 ? gs.vu7_verts[b.first].xyz[0] : 0.0f,
+                std::printf("[lights] program 7 surface: class %u tex %u (%s, TBP %u, TEX0 %016llx, %d x %d) near %.1f %.1f %.1f, ABE %u ALPHA %02x ZWRITE %u: \"emissive surface %u tex %u\"\n",
+                            cls, static_cast<uint32_t>(key & 0xffffffffu), fx >= 0 ? "effect texture" : "not an effect texture: its GS block", tbp,
+                            static_cast<unsigned long long>(st.tex0), S.tw, S.th, b.n > 0 ? gs.vu7_verts[b.first].xyz[0] : 0.0f,
                             b.n > 0 ? gs.vu7_verts[b.first].xyz[1] : 0.0f, b.n > 0 ? gs.vu7_verts[b.first].xyz[2] : 0.0f, fld(st.prim, 6, 1), static_cast<unsigned>(st.alpha & 0xff),
-                            fld(st.zbuf, 32, 1) == 0 ? 1u : 0u, b.tag, fld(st.tex0, 0, 14));
+                            fld(st.zbuf, 32, 1) == 0 ? 1u : 0u, cls, static_cast<uint32_t>(key & 0xffffffffu));
         }
         key_and_flags(st, false, S.k, S.flags);
+        // (a sea of the Water option's whose blend is the GS's fixed alpha - ALPHA 0x64, (Cs - Cd) FIX + Cd: Novalis's water, Rilgar's,
+        // Hoven's - drawn as the alpha blend it is, with FIX for its alpha (flag 26, FIX in the fog colour's top byte), so that the
+        // shader can put it over the 3D under it as it does the 0x44 seas; the same picture as the GS's blend when it does not)
+        if (S.emis != 0 && g_water > 0 && fld(st.prim, 6, 1) != 0 && (st.alpha & 0xff) == 0x64) {
+            S.k.dual = true;
+            S.k.blend = false;
+            S.k.alpha = 0;
+            S.flags = (S.flags & ~(3u << 24)) | (2u << 24) | (1u << 26);
+            S.fix = static_cast<uint32_t>((st.alpha >> 32) & 0xff);
+        }
         S.ok = true;
         return S;
     };
@@ -1340,7 +1404,7 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
         v.tex[0] = static_cast<uint32_t>(S.layer);
         v.tex[1] = static_cast<uint32_t>(S.tw) | static_cast<uint32_t>(S.th) << 16;
         v.tex[2] = S.flags;
-        v.tex[3] = static_cast<uint32_t>(S.st->fogcol & 0xffffff);
+        v.tex[3] = static_cast<uint32_t>(S.st->fogcol & 0xffffff) | S.fix << 24;
         v.fogc[0] = b.fog[0];
         v.fogc[1] = b.fog[1];
         v.emis = S.emis;
@@ -1595,7 +1659,8 @@ void main() {
     float a = o.a * 255.0;
     uint bk0 = (fl >> 24) & 3u;
     bool wcomp = sm_w_mode == 1 && (bk0 == 0u || bk0 == 2u);  // (Options > Graphics > Water: the 3D under it, sm_water2)
-    float wa = clamp(min(o.a * (255.0 / 128.0), 1.0) * sm_w_alpha + sm_w_add, 0.0, 1.0);
+    float ga = ((fl >> 26) & 1u) != 0u ? min(float(vTex.w >> 24) / 128.0, 1.0) : min(o.a * (255.0 / 128.0), 1.0);  /* (FIX: a fixed alpha) */
+    float wa = clamp(ga * sm_w_alpha + sm_w_add, 0.0, 1.0);
     if (wcomp) o.rgb = mix(sm_w_refr, o.rgb, wa);
     if (ate) {
         bool pass = true;
@@ -1609,7 +1674,7 @@ void main() {
         if (!pass && uPass == 0 && (afail == 0u || afail == 2u)) discard;
         if (!pass && uPass == 1 && afail != 2u) discard;
     }
-    float as = min(o.a * (255.0 / 128.0), 1.0);
+    float as = ga;
     if (wcomp) as = 1.0;
     else if (sm_w_mode == 2) as = wa;
     uint bk = (fl >> 24) & 3u;
