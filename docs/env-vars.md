@@ -6,7 +6,7 @@ total, in three groups.
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 274 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 276 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 68 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -64,11 +64,13 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_2D_TEX_STATS` | integer N calls; unset = off | The MRP's 2D: prints a `[2d-tex]` line every N calls of its drawing (a few per frame) with its GPU textures' churn since the start: the textures made, taken back from the pool of free ones, destroyed, the render targets made or resized, the textures held and pooled and their memory (now and the peak), then the textures made and reused since the last line by source (the sampled TEX0's format, size and base). See [Rendering](rendering.md#the-2d). |
 | `RAC1_ANIM_FIRST` | integer; default 0 | Only in the "animsheet" simulated-input script: the number of the first hero animation set to play (each set runs 16 frames), used to make animation contact sheets. |
 | `RAC1_ANIM_FREEZE` | set (any value) = on; default off | Only in the "animsheet" script: at frame 200 switches off the hero's own update so the forced animations play without the game moving him. |
-| `RAC1_AO` | integer: 0 off, 1 SSAO, 2 SSAO+, 3 HBAO, 4 GTAO, 5 GTAO at half resolution, 6 SSAO, 7 SSAO+, 8 HBAO at half resolution; default 0 (the Options > Graphics Ambient Occlusion setting is used unless this is set) | Forces the ambient occlusion mode, overriding the menu setting, for comparison and testing. |
-| `RAC1_AO_RADIUS` | integer in hundredths of a unit; default per mode (150 SSAO / SSAO+, 300 HBAO / GTAO) | Overrides the ambient occlusion's reach in every mode, for tuning. |
-| `RAC1_AO_STRENGTH` | integer percent; default per mode (100 SSAO, 120 SSAO+, 200 HBAO, 250 GTAO) | Overrides the ambient occlusion's strength in every mode, for tuning. |
+| `RAC1_AO` | integer: 0 off, 1 SSAO, 2 SSAO+, 3 HBAO, 4 GTAO, 5 GTAO at half resolution, 6 SSAO, 7 SSAO+, 8 HBAO at half resolution, 9 MXAO, 10 MXAO at half resolution; default 0 (the Options > Graphics Ambient Occlusion setting is used unless this is set) | Forces the ambient occlusion mode, overriding the menu setting, for comparison and testing. |
+| `RAC1_AO_RADIUS` | integer in hundredths of a unit; default per mode (150 SSAO / SSAO+, 300 HBAO / GTAO, 250 MXAO) | Overrides the ambient occlusion's reach in every mode, for tuning. |
+| `RAC1_AO_STRENGTH` | integer percent; default per mode (100 SSAO, 120 SSAO+, 200 HBAO, 250 GTAO, 280 MXAO) | Overrides the ambient occlusion's strength in every mode, for tuning. |
 | `RAC1_AO_INTENSITY` | integer percent 0-200; default 75 (Options > Graphics > AO Intensity) | Overrides the ambient occlusion's intensity: every mode's strength scaled by it. |
 | `RAC1_AO_MOBY` | integer percent 0-100; default 40 | The share of the ambient occlusion the mobys' pixels keep (the world's keep all of it); 100: the mobys as the world. See [Lighting](lighting.md#ambient-occlusion). |
+| `RAC1_AO_BOUNCE` | integer percent 0-100; default 0 | MXAO only: lightens the occluded parts by a grey approximation of the light the surroundings bounce back (0 none, 100 all of it). See [Lighting](lighting.md#mxao). |
+| `RAC1_AO_MXAO_BIAS` | integer percent 0-90; default 30 | MXAO only: the cosine to the smooth normal a sample must pass to occlude (higher: less occlusion on gentle bends and facets, lower: more), for tuning. See [Lighting](lighting.md#mxao). |
 | `RAC1_AO_DEPTH_COPY` | 1 = on; default 0 | Vulkan: the ambient occlusion's passes read a copy of the 3D's depth (and its stencil), as before, instead of the depth itself; the same picture, for comparison (the copy cost about 1.1 ms at 5053 x 1371). See [Lighting](lighting.md#ambient-occlusion). |
 | `RAC1_AO_DUMP` | set (any value) = on; default off | Writes the raw ambient occlusion of each frame to ao_<mode>.pgm (the last frame stays) and prints its mean every 60 frames. |
 | `RAC1_AO_PROF` | set (any value) = on; default off | Prints the ambient occlusion pass's GPU time every 60 frames. |

@@ -657,6 +657,12 @@ struct VkLighting {
     VkImage ao_sdepth_img = VK_NULL_HANDLE;
     VkImageView ao_sdepth_stencil = VK_NULL_HANDLE;
     VkPipeline blur_nd_pipe = VK_NULL_HANDLE, blur_sep_v_nd_pipe = VK_NULL_HANDLE;
+    // MXAO: its two programs (the ambient occlusion's layout: a texture and the parameters' uniform buffer), the pyramid (RGBA16F with
+    // mips) and its level 0's own view (the target of the first pass)
+    VkShaderModule mx_prep_fs_mod = VK_NULL_HANDLE, mx_fs_mod = VK_NULL_HANDLE;
+    VkPipeline mx_prep_pipe = VK_NULL_HANDLE, mx_pipe = VK_NULL_HANDLE;
+    vk::GpuImage mx_pyr{};
+    VkImageView mx_pyr_l0 = VK_NULL_HANDLE;
     vk::GpuImage rays_dtex{}, rays_ctex{}, rays_mtex{}, rays_rtex{};
     int rays_w = 0, rays_h = 0, rays_div = 0;
 } g_vk_sh;
@@ -671,7 +677,7 @@ void vk_lighting_shutdown() {
             if (g_vk_sh.ptex_faces[i] != VK_NULL_HANDLE) vkDestroyImageView(dev, g_vk_sh.ptex_faces[i], nullptr);
         }
         for (VkPipeline p : {g_vk_sh.ao_pipe, g_vk_sh.blur_pipe, g_vk_sh.blur_sep_h_pipe, g_vk_sh.blur_sep_v_pipe, g_vk_sh.blur_nd_pipe, g_vk_sh.blur_sep_v_nd_pipe,
-                             g_vk_sh.rays_mask_pipe, g_vk_sh.rays_blur_pipe, g_vk_sh.rays_split_pipe, g_vk_sh.rays_add_pipe}) {
+                             g_vk_sh.mx_prep_pipe, g_vk_sh.mx_pipe, g_vk_sh.rays_mask_pipe, g_vk_sh.rays_blur_pipe, g_vk_sh.rays_split_pipe, g_vk_sh.rays_add_pipe}) {
             if (p != VK_NULL_HANDLE) vkDestroyPipeline(dev, p, nullptr);
         }
         for (VkPipelineLayout pl : {g_vk_sh.ao_layout, g_vk_sh.blur_layout, g_vk_sh.rays_mask_layout,
@@ -682,12 +688,15 @@ void vk_lighting_shutdown() {
         g_vk_sh.ao_stencil_view = VK_NULL_HANDLE;
         if (g_vk_sh.ao_sdepth_stencil != VK_NULL_HANDLE) vkDestroyImageView(dev, g_vk_sh.ao_sdepth_stencil, nullptr);
         g_vk_sh.ao_sdepth_stencil = VK_NULL_HANDLE;
+        if (g_vk_sh.mx_pyr_l0 != VK_NULL_HANDLE) vkDestroyImageView(dev, g_vk_sh.mx_pyr_l0, nullptr);
+        g_vk_sh.mx_pyr_l0 = VK_NULL_HANDLE;
         for (VkDescriptorSetLayout dsl : {g_vk_sh.set_layout, g_vk_sh.samp1_layout, g_vk_sh.samp2_layout, g_vk_sh.samp3_layout,
                                           g_vk_sh.ao_set_layout}) {
             if (dsl != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(dev, dsl, nullptr);
         }
         for (VkShaderModule sm : {g_vk_sh.vs_mod, g_vk_sh.ao_fs_mod, g_vk_sh.blur_fs_mod, g_vk_sh.blur_sep_fs_mod,
-                                  g_vk_sh.rays_mask_fs_mod, g_vk_sh.rays_blur_fs_mod, g_vk_sh.rays_split_fs_mod, g_vk_sh.rays_add_fs_mod}) {
+                                  g_vk_sh.rays_mask_fs_mod, g_vk_sh.rays_blur_fs_mod, g_vk_sh.rays_split_fs_mod, g_vk_sh.rays_add_fs_mod,
+                                  g_vk_sh.mx_prep_fs_mod, g_vk_sh.mx_fs_mod}) {
             if (sm != VK_NULL_HANDLE) vkDestroyShaderModule(dev, sm, nullptr);
         }
     }
@@ -698,6 +707,7 @@ void vk_lighting_shutdown() {
     vk::destroy_image_now(g_vk_sh.ao_dtex);
     vk::destroy_image_now(g_vk_sh.ao_atex);
     vk::destroy_image_now(g_vk_sh.ao_btex);
+    vk::destroy_image_now(g_vk_sh.mx_pyr);
     vk::destroy_image_now(g_vk_sh.rays_dtex);
     vk::destroy_image_now(g_vk_sh.rays_ctex);
     vk::destroy_image_now(g_vk_sh.rays_mtex);
@@ -1460,6 +1470,167 @@ void main() {
     FragColor = vec4(vec3(mix(1.0, ao, k)), 1.0);
 }
 )";
+// MXAO (Options > Graphics > Ambient Occlusion "MXAO", "MXAO 1/2"): written for this game from the published idea (no shader of
+// another project used). Two passes before the blur: kMxaoPrepFs writes, per pixel of the occlusion's size, the face's normal and
+// its distance from the camera (RGBA16F), whose mips (averages, glGenerateMipmap / a blit chain) make a pyramid; kMxaoFs takes a
+// smooth normal from the pyramid's coarser levels and a Vogel disc of 4 to 12 taps on the screen, each read from the pyramid's
+// level for its distance, occluding by the cosine to the smooth normal.
+const char* kMxaoPrepFs = R"(#version 460 core
+in vec2 vUv;
+uniform sampler2D uDepth;
+uniform mat4 uInvVP;
+uniform vec3 uCam;
+out vec4 FragPyr;
+vec3 world(vec2 uv, float d) {
+    vec4 p = uInvVP * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+    return p.xyz / p.w;
+}
+// the camera's rays: the eye from the inverted view-projection (its point at infinity along the view), the ray through a point of
+// the view affine on the screen (to a plane of one depth), scaled so that the view's centre has length 1 - a point is eye + ray * t,
+// t about its depth along the view's axis (what the pyramid keeps: affine, so the mips' averages stay on the rays)
+vec3 g_eye, g_r0, g_rx, g_ry;
+void rays_init() {
+    g_eye = uInvVP[2].xyz / uInvVP[2].w;
+    vec3 a = world(vec2(0.0), 0.9) - g_eye;
+    vec3 bx = world(vec2(1.0, 0.0), 0.9) - g_eye, by = world(vec2(0.0, 1.0), 0.9) - g_eye;
+    float s = 1.0 / length(world(vec2(0.5), 0.9) - g_eye);
+    g_r0 = a * s;
+    g_rx = (bx - a) * s;
+    g_ry = (by - a) * s;
+}
+vec3 ray(vec2 uv) { return g_r0 + uv.x * g_rx + uv.y * g_ry; }
+void main() {
+    rays_init();
+    // (the depth's texel under this pixel, at its centre: at half resolution the pixel's centre is a corner of four)
+    vec2 texel = 1.0 / vec2(textureSize(uDepth, 0));
+    vec2 uv = (floor(vUv / texel) + 0.5) * texel;
+    float d = texture(uDepth, uv).r;
+    vec3 P = world(uv, d);
+    vec3 dPdx = dFdx(P), dPdy = dFdy(P);  // (before any return: derivatives in non-uniform control flow are undefined)
+    if (d >= 1.0) { FragPyr = vec4(0.0, 0.0, 0.0, 60000.0); return; }  // (the sky: no normal, far away)
+    // the face's normal from the depth: per axis the neighbour with the smaller depth step (as SSAO+: no false ridges at silhouettes)
+    float dr = texture(uDepth, uv + vec2(texel.x, 0.0)).r;
+    float dl = texture(uDepth, uv - vec2(texel.x, 0.0)).r;
+    float du = texture(uDepth, uv + vec2(0.0, texel.y)).r;
+    float dd = texture(uDepth, uv - vec2(0.0, texel.y)).r;
+    vec3 dPx = (abs(dr - d) < abs(d - dl) && dr < 1.0) ? (world(uv + vec2(texel.x, 0.0), dr) - P)
+                                                        : (dl < 1.0 ? (P - world(uv - vec2(texel.x, 0.0), dl)) : dPdx);
+    vec3 dPy = (abs(du - d) < abs(d - dd) && du < 1.0) ? (world(uv + vec2(0.0, texel.y), du) - P)
+                                                        : (dd < 1.0 ? (P - world(uv - vec2(0.0, texel.y), dd)) : dPdy);
+    vec3 N = cross(dPx, dPy);
+    if (dot(N, N) < 1e-12) { FragPyr = vec4(0.0, 0.0, 0.0, 60000.0); return; }
+    N = normalize(N);
+    vec3 r = ray(uv);
+    if (dot(N, r) > 0.0) N = -N;  // (toward the camera)
+    FragPyr = vec4(N, dot(P - g_eye, r) / dot(r, r));
+}
+)";
+const char* kMxaoFs = R"(#version 460 core
+in vec2 vUv;
+uniform sampler2D uPyr;  // (rgb the face's normal, a its distance from the camera; the mips their averages)
+uniform mat4 uInvVP, uVP;
+uniform vec3 uCam;
+uniform vec4 uParam;   // radius (units), strength, bias (the cosine a tap must pass), mode
+uniform vec4 uParam2;  // the bounce (0 to 1), the pyramid's last level, its level 0's texel (1 / width, 1 / height)
+out float FragAo;
+vec3 world(vec2 uv, float d) {
+    vec4 p = uInvVP * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+    return p.xyz / p.w;
+}
+// the camera's rays: the eye from the inverted view-projection (its point at infinity along the view), the ray through a point of
+// the view affine on the screen (to a plane of one depth), scaled so that the view's centre has length 1 - a point is eye + ray * t,
+// t about its depth along the view's axis (what the pyramid keeps: affine, so the mips' averages stay on the rays)
+vec3 g_eye, g_r0, g_rx, g_ry;
+void rays_init() {
+    g_eye = uInvVP[2].xyz / uInvVP[2].w;
+    vec3 a = world(vec2(0.0), 0.9) - g_eye;
+    vec3 bx = world(vec2(1.0, 0.0), 0.9) - g_eye, by = world(vec2(0.0, 1.0), 0.9) - g_eye;
+    float s = 1.0 / length(world(vec2(0.5), 0.9) - g_eye);
+    g_r0 = a * s;
+    g_rx = (bx - a) * s;
+    g_ry = (by - a) * s;
+}
+vec3 ray(vec2 uv) { return g_r0 + uv.x * g_rx + uv.y * g_ry; }
+#define uBias (uParam.z)
+void main() {
+    rays_init();
+    vec4 c0 = textureLod(uPyr, vUv, 0.0);
+    float dist = c0.a;
+    if (dist > 50000.0 || dot(c0.rgb, c0.rgb) < 0.25) { FragAo = 1.0; return; }
+    vec3 Nf = normalize(c0.rgb);  // (the face's own normal)
+    vec3 dir0 = ray(vUv);
+    vec3 P = g_eye + dir0 * dist;
+    dir0 = normalize(dir0);
+    float R = uParam.x * mix(1.0, 2.0, clamp(dist / 120.0, 0.0, 1.0));  // (the reach in world units, wider far away)
+    vec2 tx = uParam2.zw;  // (one texel of the pyramid's level 0)
+
+    // the reach on the screen, in pixels of the pyramid's level 0 (capped: 12 % of the view's height)
+    vec3 side = normalize(cross(dir0, abs(dir0.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0)));
+    vec4 a0 = uVP * vec4(P, 1.0), a1 = uVP * vec4(P + side * R, 1.0);
+    float rpx = a1.w > 0.0 ? length((a1.xy / a1.w - a0.xy / a0.w) * 0.5 / tx) : 0.0;
+    rpx = min(rpx, 0.12 / tx.y);
+    if (rpx < 1.5) { FragAo = 1.0; return; }
+    // The smooth normal: the face's normal averaged with the pyramid's coarser levels around the point (4 diagonal taps at a
+    // quarter of the reach on the screen, 4 straight ones at half of it, each from a level whose texel is about half that distance:
+    // a wider footprint up close, where a low-poly surface's facets are large), each weighted by how well it continues this
+    // surface - its normal within about 60 degrees of the face's, its point near the face's plane and within the reach - so a
+    // low-poly shrub's or terrain's facets blend into one curved surface while a box's corner or an object in front stays apart.
+    float s1 = clamp(rpx * 0.25, 4.0, 64.0);
+    float lod1 = clamp(floor(log2(s1)) - 1.0, 0.0, max(uParam2.y - 1.0, 0.0));
+    vec3 Ns = Nf;
+    for (int i = 0; i < 8; ++i) {
+        float lod = i < 4 ? lod1 : lod1 + 1.0;
+        float o1 = i < 4 ? s1 * 0.7071 : s1 * 2.0;
+        vec2 o = i < 4 ? vec2((i & 1) != 0 ? o1 : -o1, (i & 2) != 0 ? o1 : -o1)
+                       : vec2(i == 4 ? o1 : i == 5 ? -o1 : 0.0, i == 6 ? o1 : i == 7 ? -o1 : 0.0);
+        vec2 uv = vUv + o * tx;
+        vec4 s = textureLod(uPyr, uv, lod);
+        float ls = length(s.rgb);
+        if (ls < 0.3 || s.a > 50000.0) continue;
+        vec3 n = s.rgb / ls;
+        vec3 v = g_eye + ray(uv) * s.a - P;
+        float lv = length(v);
+        float off_plane = abs(dot(v, Nf)) / max(lv, 1e-4);
+        float w = smoothstep(0.45, 0.85, dot(n, Nf)) * (1.0 - smoothstep(0.35, 0.6, off_plane)) * step(lv, R) * ls;
+        Ns += n * w;
+    }
+    Ns = normalize(Ns);
+
+    // more taps for a reach that covers more of the view (near), fewer far: 4 to 12 (by its share of the view's height, so a higher
+    // resolution does not take more taps)
+    int K = clamp(int(rpx * tx.y * 135.0), 4, 12);
+    float rot = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    float inv_r2 = 1.0 / (R * R);
+    // a surface seen edge-on (a far ceiling or floor) carries the depth buffer's steps, which would read as rows of small ridges: a
+    // higher bias there
+    float bias = mix(uBias, 0.65, smoothstep(0.3, 0.05, abs(dot(Ns, dir0))));
+    float occ = 0.0, wsum = 0.0;
+    for (int i = 0; i < 12; ++i) {
+        if (i >= K) break;
+        // a Vogel disc: the i-th tap at the golden angle from the last, its distance the square root of its share (even over the
+        // disc's area), the whole disc turned per pixel
+        float r = sqrt((float(i) + 0.5) / float(K)) * rpx;
+        float a = float(i) * 2.3999632 + rot;
+        vec2 uv = vUv + vec2(cos(a), sin(a)) * r * tx;
+        if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) continue;
+        // the pyramid's level by the tap's distance on the screen: one level per doubling past 4 pixels (far taps read averages)
+        float lod = clamp(log2(r) - 2.0, 0.0, uParam2.y);
+        float sd = textureLod(uPyr, uv, lod).a;
+        wsum += 1.0;
+        if (sd > 50000.0) continue;
+        vec3 v = g_eye + ray(uv) * sd - P;
+        float l2 = dot(v, v);
+        float il = inversesqrt(max(l2, 1e-6));
+        // occluded by the cosine of the tap's direction to the smooth normal past a bias (the smooth surface's own gentle bends,
+        // its facets and its depth noise occlude nothing), fading out to the reach
+        occ += clamp((dot(v, Ns) * il - bias) / (1.0 - bias), 0.0, 1.0) * clamp(1.0 - l2 * inv_r2, 0.0, 1.0);
+    }
+    float vis = clamp(1.0 - uParam.y * occ / max(wsum, 1.0), 0.0, 1.0);
+    // the optional bounce: the light the surroundings send back (a grey approximation, as GTAO's), off unless RAC1_AO_BOUNCE
+    vis = mix(vis, vis / (vis * 0.6 + 0.4), uParam2.x);
+    FragAo = vis;
+}
+)";
 GLuint ao_compile(GLenum type, const char* src) {
     const GLuint s = glCreateShader(type);
     glShaderSource(s, 1, &src, nullptr);
@@ -1496,6 +1667,11 @@ struct Ao {
     GLint u_depth = -1, u_inv_vp = -1, u_vp = -1, u_cam = -1, u_param = -1;
     GLint u_b_depth = -1, u_b_ao = -1, u_b_texel = -1, u_b_st = -1, u_b_moby = -1;
     GLint u_bs_depth = -1, u_bs_ao = -1, u_bs_texel = -1, u_bs_st = -1, u_bs_moby = -1;
+    // MXAO: its two programs, the pyramid (RGBA16F with mips: the face's normal, its distance) and its framebuffer (level 0)
+    GLuint mx_prep = 0, mx_ao = 0, ptex = 0, pfbo = 0;
+    int pw = 0, ph = 0;
+    GLint u_mp_depth = -1, u_mp_inv_vp = -1, u_mp_cam = -1;
+    GLint u_mx_pyr = -1, u_mx_inv_vp = -1, u_mx_vp = -1, u_mx_cam = -1, u_mx_param = -1, u_mx_param2 = -1;
 } g_ao_s;
 // The mobys' pixels (mrp_lighting_ao_moby_mark): stencil bit 0 set where the MRP drew a moby this frame. Screen-space occlusion
 // sees a character's own arms, head and body overlapping as creases (Big Al's face and arms in his shop): on those pixels only a
@@ -2099,6 +2275,13 @@ void ensure_vk_ao_pipelines() {
         d.has_depth_attachment = false;
         d.has_stencil_attachment = false;
         g_vk_sh.ao_pipe = vk::create_graphics_pipeline(d);
+        g_vk_sh.mx_prep_fs_mod = vk::create_shader_module(vk::shaders::kMrpMxaoPrepFs, sizeof(vk::shaders::kMrpMxaoPrepFs));
+        g_vk_sh.mx_fs_mod = vk::create_shader_module(vk::shaders::kMrpMxaoFs, sizeof(vk::shaders::kMrpMxaoFs));
+        d.fs = g_vk_sh.mx_fs_mod;  // (MXAO: the occlusion, R8 as the others')
+        g_vk_sh.mx_pipe = vk::create_graphics_pipeline(d);
+        d.fs = g_vk_sh.mx_prep_fs_mod;  // (its pyramid's level 0)
+        d.color_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+        g_vk_sh.mx_prep_pipe = vk::create_graphics_pipeline(d);
     }
     {
         vk::GraphicsPipelineDesc d{};
@@ -2262,10 +2445,67 @@ VkDescriptorSet alloc_samp2_ds(VkImageView v0, VkSampler s0, VkImageView v1, VkS
     return ds;
 }
 
-// orig: (host) the ambient occlusion's mode (g_ao) as the passes take it: 1 SSAO, 2 SSAO+, 3 HBAO, 4 GTAO; `half` at half
-// resolution (5 GTAO 1/2, 6 SSAO 1/2, 7 SSAO+ 1/2, 8 HBAO 1/2: Options > Graphics > Ambient Occlusion), upsampled by the separable
-// blur's first pass with the full resolution's depth
+// orig: (host) the MXAO pyramid's mips on Vulkan (level 0 drawn): each level the linear blit of the one above (the average of its
+// 2 x 2), the whole image left readable by the shaders
+void vk_mxao_mips(vk::GpuImage& img) {
+    VkCommandBuffer cb = vk::cmd();
+    vk::transition_image(cb, img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);  // (ends the rendering; level 0 kept: not from undefined)
+    auto barrier = [&](uint32_t level, uint32_t count, VkImageLayout from, VkImageLayout to) {
+        VkImageMemoryBarrier b{};
+        b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_MEMORY_READ_BIT;
+        b.dstAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_MEMORY_READ_BIT;
+        b.oldLayout = from;
+        b.newLayout = to;
+        b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        b.image = img.image;
+        b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, level, count, 0, 1};
+        vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
+    };
+    const uint32_t n = img.mip_levels;
+    for (uint32_t l = 1; l < n; ++l) {
+        barrier(l - 1, 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        VkImageBlit bl{};
+        bl.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, l - 1, 0, 1};
+        bl.srcOffsets[1] = {static_cast<int32_t>(std::max(1u, img.width >> (l - 1))), static_cast<int32_t>(std::max(1u, img.height >> (l - 1))), 1};
+        bl.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, l, 0, 1};
+        bl.dstOffsets[1] = {static_cast<int32_t>(std::max(1u, img.width >> l)), static_cast<int32_t>(std::max(1u, img.height >> l)), 1};
+        vkCmdBlitImage(cb, img.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, img.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bl, VK_FILTER_LINEAR);
+    }
+    if (n > 1) barrier(0, n - 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    barrier(n - 1, 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    img.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+}
+
+// orig: (host) MXAO's bounce: the light the surroundings send back, a grey lightening of the occluded (0 to 1; RAC1_AO_BOUNCE,
+// percent, testing; off by default)
+float mxao_bounce() {
+    static const float b = static_cast<float>(std::clamp(env_int("RAC1_AO_BOUNCE", 0), 0, 100)) / 100.0f;
+    return b;
+}
+
+// orig: (host) MXAO's bias: the cosine to the smooth normal a tap must pass to occlude (tuning: RAC1_AO_MXAO_BIAS, percent)
+float mxao_bias() {
+    static const float b = static_cast<float>(std::clamp(env_int("RAC1_AO_MXAO_BIAS", 30), 0, 90)) / 100.0f;
+    return b;
+}
+
+// orig: (host) the MXAO pyramid's number of levels at the occlusion's size: 5 (level 0 and four halvings), fewer for a tiny view
+int mxao_levels(int w, int h) {
+    int l = 1;
+    while (l < 5 && (std::min(w, h) >> l) >= 1) ++l;
+    return l;
+}
+
+// orig: (host) the ambient occlusion's mode (g_ao) as the passes take it: 1 SSAO, 2 SSAO+, 3 HBAO, 4 GTAO, 5 MXAO (g_ao 9); `half`
+// at half resolution (5 GTAO 1/2, 6 SSAO 1/2, 7 SSAO+ 1/2, 8 HBAO 1/2, 10 MXAO 1/2: Options > Graphics > Ambient Occlusion), upsampled
+// by the separable blur's first pass with the full resolution's depth
 int ao_base_mode(bool* half) {
+    if (g_ao >= 9) {
+        *half = g_ao >= 10;
+        return 5;
+    }
     *half = g_ao >= 5;
     return g_ao <= 4 ? std::max(g_ao, 1) : g_ao == 5 ? 4 : std::clamp(g_ao - 5, 1, 3);
 }
@@ -2355,58 +2595,141 @@ void vk_ao_and_rays_pass(const int vp[4]) {
         mrp_world_view_proj(vpf);
         const glm::mat4 VP = glm::make_mat4(vpf), IVP = glm::inverse(VP);
         static const int env_r = env_int("RAC1_AO_RADIUS", -1), env_s = env_int("RAC1_AO_STRENGTH", -1);
-        static const float kRadius[6] = {0.0f, 1.5f, 1.5f, 3.0f, 3.0f, 3.0f}, kStrength[6] = {0.0f, 1.0f, 1.2f, 2.0f, 2.5f, 2.5f};
+        static const float kRadius[6] = {0.0f, 1.5f, 1.5f, 3.0f, 3.0f, 2.5f}, kStrength[6] = {0.0f, 1.0f, 1.2f, 2.0f, 2.5f, 2.8f};  // (5: MXAO)
         const int mi = base;
         const float radius = env_r >= 0 ? static_cast<float>(env_r) / 100.0f : kRadius[mi];
         // (Options > Graphics > AO Intensity, as mrp_lighting_ao_pass)
         const float strength = (env_s >= 0 ? static_cast<float>(env_s) / 100.0f : kStrength[mi]) * static_cast<float>(g_ao_intensity) / 100.0f;
         const int shader_mode = base;
 
-        // Pass 1: raw AO into ao_atex
-        vk::transition_image(vk::cmd(), g_vk_sh.ao_atex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-        vk::RenderTarget rt_a{};
-        rt_a.color_view = g_vk_sh.ao_atex.view;
-        rt_a.color_format = VK_FORMAT_R8_UNORM;
-        rt_a.width = static_cast<uint32_t>(aw);
-        rt_a.height = static_cast<uint32_t>(ah);
-        vk::set_viewport(0, 0, aw, ah);
-        vk::push_target(rt_a);
-        vk::ensure_rendering();
-        {
-            struct AoPush {
+        if (base == 5) {
+            // MXAO: the pyramid's level 0 (the face's normal and its distance), its mips, then the occlusion from it into ao_atex
+            const int levels = mxao_levels(aw, ah);
+            if (g_vk_sh.mx_pyr.image == VK_NULL_HANDLE || static_cast<int>(g_vk_sh.mx_pyr.width) != aw || static_cast<int>(g_vk_sh.mx_pyr.height) != ah) {
+                if (g_vk_sh.mx_pyr_l0 != VK_NULL_HANDLE) {  // (a new size: rare; the old view waited for)
+                    vk::wait_idle();
+                    vkDestroyImageView(vk::device(), g_vk_sh.mx_pyr_l0, nullptr);
+                    g_vk_sh.mx_pyr_l0 = VK_NULL_HANDLE;
+                }
+                vk::create_image(static_cast<uint32_t>(aw), static_cast<uint32_t>(ah), VK_FORMAT_R16G16B16A16_SFLOAT,
+                                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                                 VK_IMAGE_ASPECT_COLOR_BIT, g_vk_sh.mx_pyr, 1, 0, VK_IMAGE_VIEW_TYPE_2D, static_cast<uint32_t>(levels));
+                VkImageViewCreateInfo vci{};
+                vci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+                vci.image = g_vk_sh.mx_pyr.image;
+                vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+                vci.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+                vci.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+                if (vkCreateImageView(vk::device(), &vci, nullptr, &g_vk_sh.mx_pyr_l0) != VK_SUCCESS) g_vk_sh.mx_pyr_l0 = VK_NULL_HANDLE;
+            }
+            struct MxaoUbo {
                 glm::mat4 uInvVP;
                 glm::mat4 uVP;
                 glm::vec4 uCam;
                 glm::vec4 uParam;
                 glm::vec4 uDMap;
-            } pc{IVP, VP, glm::vec4(g_sh.cam, 0.0f), glm::vec4(radius, strength, 0.02f, static_cast<float>(shader_mode)), dmap};
-            static_assert(sizeof(AoPush) == 176);  // (std140: the shader's AoUbo, the same layout)
-            VkCommandBuffer cb = vk::cmd();
-            const vk::RingAlloc ub = vk::alloc_ring(sizeof(pc));
-            std::memcpy(ub.ptr, &pc, sizeof(pc));
-            VkDescriptorSet ds = vk::alloc_descriptor_set(g_vk_sh.ao_set_layout);
+                glm::vec4 uParam2;
+            } ubo{IVP, VP, glm::vec4(g_sh.cam, 0.0f), glm::vec4(radius, strength, mxao_bias(), static_cast<float>(shader_mode)), dmap,
+                  glm::vec4(mxao_bounce(), static_cast<float>(levels - 1), 1.0f / static_cast<float>(aw), 1.0f / static_cast<float>(ah))};
+            static_assert(sizeof(MxaoUbo) == 192);  // (std140: the shaders' MxaoUbo)
+            const vk::RingAlloc ub = vk::alloc_ring(sizeof(ubo));
+            std::memcpy(ub.ptr, &ubo, sizeof(ubo));
+            auto draw = [&](VkPipeline pipe, VkImageView tex, VkSampler samp) {
+                VkCommandBuffer cb = vk::cmd();
+                VkDescriptorSet ds = vk::alloc_descriptor_set(g_vk_sh.ao_set_layout);
+                const VkDescriptorImageInfo dii{samp, tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+                const VkDescriptorBufferInfo dbi{ub.buffer, ub.offset, sizeof(ubo)};
+                VkWriteDescriptorSet wr[2]{};
+                wr[0].sType = wr[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                wr[0].dstSet = wr[1].dstSet = ds;
+                wr[0].dstBinding = 0;
+                wr[0].descriptorCount = 1;
+                wr[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                wr[0].pImageInfo = &dii;
+                wr[1].dstBinding = 1;
+                wr[1].descriptorCount = 1;
+                wr[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                wr[1].pBufferInfo = &dbi;
+                vkUpdateDescriptorSets(vk::device(), 2, wr, 0, nullptr);
+                vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
+                vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.ao_layout, 0, 1, &ds, 0, nullptr);
+                vkCmdDraw(cb, 3, 1, 0, 0);
+            };
+            vk::transition_image(vk::cmd(), g_vk_sh.mx_pyr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            vk::RenderTarget rt_p{};
+            rt_p.color_view = g_vk_sh.mx_pyr_l0;
+            rt_p.color_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+            rt_p.width = static_cast<uint32_t>(aw);
+            rt_p.height = static_cast<uint32_t>(ah);
+            vk::set_viewport(0, 0, aw, ah);
+            vk::push_target(rt_p);
+            vk::ensure_rendering();
+            draw(g_vk_sh.mx_prep_pipe, dview, samp_nearest);
+            vk::pop_target();
+            vk_mxao_mips(g_vk_sh.mx_pyr);
+            // (as OpenGL's: bilinear within a level, the level chosen)
+            const VkSampler samp_mips = vk::get_sampler(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+                                                        VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, false, VK_COMPARE_OP_LESS_OR_EQUAL, 1.0f,
+                                                        VK_SAMPLER_MIPMAP_MODE_NEAREST, 16.0f);
+            vk::transition_image(vk::cmd(), g_vk_sh.ao_atex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            vk::RenderTarget rt_m{};
+            rt_m.color_view = g_vk_sh.ao_atex.view;
+            rt_m.color_format = VK_FORMAT_R8_UNORM;
+            rt_m.width = static_cast<uint32_t>(aw);
+            rt_m.height = static_cast<uint32_t>(ah);
+            vk::set_viewport(0, 0, aw, ah);
+            vk::push_target(rt_m);
+            vk::ensure_rendering();
+            draw(g_vk_sh.mx_pipe, g_vk_sh.mx_pyr.view, samp_mips);
+            vk::pop_target();
+            vk::transition_image(vk::cmd(), g_vk_sh.ao_atex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        } else {
+            // Pass 1: raw AO into ao_atex
+            vk::transition_image(vk::cmd(), g_vk_sh.ao_atex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            vk::RenderTarget rt_a{};
+            rt_a.color_view = g_vk_sh.ao_atex.view;
+            rt_a.color_format = VK_FORMAT_R8_UNORM;
+            rt_a.width = static_cast<uint32_t>(aw);
+            rt_a.height = static_cast<uint32_t>(ah);
+            vk::set_viewport(0, 0, aw, ah);
+            vk::push_target(rt_a);
+            vk::ensure_rendering();
             {
-                const VkDescriptorImageInfo dii{samp_nearest, dview, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-                const VkDescriptorBufferInfo dbi{ub.buffer, ub.offset, sizeof(pc)};
-                VkWriteDescriptorSet w[2]{};
-                w[0].sType = w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                w[0].dstSet = w[1].dstSet = ds;
-                w[0].dstBinding = 0;
-                w[0].descriptorCount = 1;
-                w[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                w[0].pImageInfo = &dii;
-                w[1].dstBinding = 1;
-                w[1].descriptorCount = 1;
-                w[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-                w[1].pBufferInfo = &dbi;
-                vkUpdateDescriptorSets(vk::device(), 2, w, 0, nullptr);
+                struct AoPush {
+                    glm::mat4 uInvVP;
+                    glm::mat4 uVP;
+                    glm::vec4 uCam;
+                    glm::vec4 uParam;
+                    glm::vec4 uDMap;
+                } pc{IVP, VP, glm::vec4(g_sh.cam, 0.0f), glm::vec4(radius, strength, 0.02f, static_cast<float>(shader_mode)), dmap};
+                static_assert(sizeof(AoPush) == 176);  // (std140: the shader's AoUbo, the same layout)
+                VkCommandBuffer cb = vk::cmd();
+                const vk::RingAlloc ub = vk::alloc_ring(sizeof(pc));
+                std::memcpy(ub.ptr, &pc, sizeof(pc));
+                VkDescriptorSet ds = vk::alloc_descriptor_set(g_vk_sh.ao_set_layout);
+                {
+                    const VkDescriptorImageInfo dii{samp_nearest, dview, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+                    const VkDescriptorBufferInfo dbi{ub.buffer, ub.offset, sizeof(pc)};
+                    VkWriteDescriptorSet w[2]{};
+                    w[0].sType = w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    w[0].dstSet = w[1].dstSet = ds;
+                    w[0].dstBinding = 0;
+                    w[0].descriptorCount = 1;
+                    w[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                    w[0].pImageInfo = &dii;
+                    w[1].dstBinding = 1;
+                    w[1].descriptorCount = 1;
+                    w[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                    w[1].pBufferInfo = &dbi;
+                    vkUpdateDescriptorSets(vk::device(), 2, w, 0, nullptr);
+                }
+                vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.ao_pipe);
+                vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.ao_layout, 0, 1, &ds, 0, nullptr);
+                vkCmdDraw(cb, 3, 1, 0, 0);
             }
-            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.ao_pipe);
-            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk_sh.ao_layout, 0, 1, &ds, 0, nullptr);
-            vkCmdDraw(cb, 3, 1, 0, 0);
+            vk::pop_target();
+            vk::transition_image(vk::cmd(), g_vk_sh.ao_atex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         }
-        vk::pop_target();
-        vk::transition_image(vk::cmd(), g_vk_sh.ao_atex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
         // (the mobys' pixels, marked in the stencil, with their share of the occlusion: as mrp_lighting_ao_pass)
         static const float moby_k = static_cast<float>(std::clamp(env_int("RAC1_AO_MOBY", 40), 0, 100)) / 100.0f;
@@ -2978,25 +3301,84 @@ void mrp_lighting_ao_pass() {
         // the same (and none showed). The sphere-sampling modes 1.5 units, the horizon-based ones 3 (their falloff is smoother);
         // RAC1_AO_RADIUS / RAC1_AO_STRENGTH (percent, testing) override them
         static const int env_r = env_int("RAC1_AO_RADIUS", -1), env_s = env_int("RAC1_AO_STRENGTH", -1);
-        static const float kRadius[6] = {0.0f, 1.5f, 1.5f, 3.0f, 3.0f, 3.0f}, kStrength[6] = {0.0f, 1.0f, 1.2f, 2.0f, 2.5f, 2.5f};
+        static const float kRadius[6] = {0.0f, 1.5f, 1.5f, 3.0f, 3.0f, 2.5f}, kStrength[6] = {0.0f, 1.0f, 1.2f, 2.0f, 2.5f, 2.8f};  // (5: MXAO)
         const int mi = base;
         const float radius = env_r >= 0 ? static_cast<float>(env_r) / 100.0f : kRadius[mi];
         // (Options > Graphics > AO Intensity: the mode's strength scaled, 75 % by default)
         const float strength = (env_s >= 0 ? static_cast<float>(env_s) / 100.0f : kStrength[mi]) * static_cast<float>(g_ao_intensity) / 100.0f;
         const int shader_mode = base;
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, A.afbo);
-        glViewport(0, 0, aw, ah);
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-        glUseProgram(A.prog);
         glActiveTexture(GL_TEXTURE0);
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &prev_tex);
-        glBindTexture(GL_TEXTURE_2D, A.dtex);
-        glUniform1i(A.u_depth, 0);
-        glUniformMatrix4fv(A.u_inv_vp, 1, GL_FALSE, glm::value_ptr(IVP));
-        glUniformMatrix4fv(A.u_vp, 1, GL_FALSE, glm::value_ptr(VP));
-        glUniform3f(A.u_cam, g_sh.cam.x, g_sh.cam.y, g_sh.cam.z);
-        glUniform4f(A.u_param, radius, strength, 0.02f, static_cast<float>(shader_mode));
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        if (base == 5) {
+            // MXAO: the pyramid's level 0 (the face's normal and its distance, at the occlusion's size), its mips (averages), then
+            // the occlusion read from it
+            if (A.mx_prep == 0) {
+                A.mx_prep = ao_link(kMxaoPrepFs);
+                A.mx_ao = ao_link(kMxaoFs);
+                A.u_mp_depth = glGetUniformLocation(A.mx_prep, "uDepth");
+                A.u_mp_inv_vp = glGetUniformLocation(A.mx_prep, "uInvVP");
+                A.u_mp_cam = glGetUniformLocation(A.mx_prep, "uCam");
+                A.u_mx_pyr = glGetUniformLocation(A.mx_ao, "uPyr");
+                A.u_mx_inv_vp = glGetUniformLocation(A.mx_ao, "uInvVP");
+                A.u_mx_vp = glGetUniformLocation(A.mx_ao, "uVP");
+                A.u_mx_cam = glGetUniformLocation(A.mx_ao, "uCam");
+                A.u_mx_param = glGetUniformLocation(A.mx_ao, "uParam");
+                A.u_mx_param2 = glGetUniformLocation(A.mx_ao, "uParam2");
+                glGenFramebuffers(1, &A.pfbo);
+            }
+            const int levels = mxao_levels(aw, ah);
+            if (A.pw != aw || A.ph != ah || A.ptex == 0) {
+                A.pw = aw;
+                A.ph = ah;
+                if (A.ptex != 0) glDeleteTextures(1, &A.ptex);
+                glGenTextures(1, &A.ptex);
+                rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &A.ptex, "Ambient occlusion");
+                glBindTexture(GL_TEXTURE_2D, A.ptex);
+                for (int l = 0; l < levels; ++l)
+                    glTexImage2D(GL_TEXTURE_2D, l, GL_RGBA16F, std::max(1, aw >> l), std::max(1, ah >> l), 0, GL_RGBA, GL_HALF_FLOAT, nullptr);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, levels - 1);
+                // (bilinear within a level: the coarse levels' normals and distances without blocks; the level itself chosen)
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                glBindFramebuffer(GL_FRAMEBUFFER, A.pfbo);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, A.ptex, 0);
+            }
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, A.pfbo);
+            glViewport(0, 0, aw, ah);
+            glUseProgram(A.mx_prep);
+            glBindTexture(GL_TEXTURE_2D, A.dtex);
+            glUniform1i(A.u_mp_depth, 0);
+            glUniformMatrix4fv(A.u_mp_inv_vp, 1, GL_FALSE, glm::value_ptr(IVP));
+            glUniform3f(A.u_mp_cam, g_sh.cam.x, g_sh.cam.y, g_sh.cam.z);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+            glBindTexture(GL_TEXTURE_2D, A.ptex);
+            glGenerateMipmap(GL_TEXTURE_2D);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, A.afbo);
+            glUseProgram(A.mx_ao);
+            glUniform1i(A.u_mx_pyr, 0);
+            glUniformMatrix4fv(A.u_mx_inv_vp, 1, GL_FALSE, glm::value_ptr(IVP));
+            glUniformMatrix4fv(A.u_mx_vp, 1, GL_FALSE, glm::value_ptr(VP));
+            glUniform3f(A.u_mx_cam, g_sh.cam.x, g_sh.cam.y, g_sh.cam.z);
+            glUniform4f(A.u_mx_param, radius, strength, mxao_bias(), static_cast<float>(shader_mode));
+            glUniform4f(A.u_mx_param2, mxao_bounce(), static_cast<float>(levels - 1), 1.0f / static_cast<float>(aw), 1.0f / static_cast<float>(ah));
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+            glBindTexture(GL_TEXTURE_2D, A.dtex);  // (the blur's depth, on unit 0 as the other modes leave it)
+        } else {
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, A.afbo);
+            glViewport(0, 0, aw, ah);
+            glUseProgram(A.prog);
+            glBindTexture(GL_TEXTURE_2D, A.dtex);
+            glUniform1i(A.u_depth, 0);
+            glUniformMatrix4fv(A.u_inv_vp, 1, GL_FALSE, glm::value_ptr(IVP));
+            glUniformMatrix4fv(A.u_vp, 1, GL_FALSE, glm::value_ptr(VP));
+            glUniform3f(A.u_cam, g_sh.cam.x, g_sh.cam.y, g_sh.cam.z);
+            glUniform4f(A.u_param, radius, strength, 0.02f, static_cast<float>(shader_mode));
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+        }
 
         if (std::getenv("RAC1_AO_DUMP") != nullptr) {  // (testing: the raw occlusion, ao_<mode>.pgm written every frame - the last one stays -, its stats every 60)
             static int n = 0;

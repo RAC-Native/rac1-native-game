@@ -1367,8 +1367,8 @@ void tab_enhancements() {
         in_world();
     }
     {
-        static const char* names[] = {"Off", "SSAO", "SSAO+", "HBAO", "GTAO", "GTAO 1/2", "SSAO 1/2", "SSAO+ 1/2", "HBAO 1/2"};
-        combo("Ambient occlusion##en", &g_ao, names, 9);
+        static const char* names[] = {"Off", "SSAO", "SSAO+", "HBAO", "GTAO", "GTAO 1/2", "SSAO 1/2", "SSAO+ 1/2", "HBAO 1/2", "MXAO", "MXAO 1/2"};
+        combo("Ambient occlusion##en", &g_ao, names, 11);
         ms(prof::kAo);
         if (g_ao != 0) {
             ImGui::SetNextItemWidth(150.0f);

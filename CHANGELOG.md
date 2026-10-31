@@ -57,6 +57,9 @@ What changed in each release. Releases are source only: you build the game with 
 - Debug menu: an Enhancements tab switches the lighting, the shadows, the lights, the occlusion, the sun rays, the materials, the
   emissive surfaces, the ambient particles (by kind) and the water and grass live, with each one's profiler time; "Save as
   my settings" keeps them. The light editor has an Aim for the lights per class; the profiler has Water and Grass stages.
+- Ambient Occlusion: MXAO and MXAO 1/2 (Options > Graphics), Anya-Thoughtmane's suggestion (#101, #118, #120): smooth normals over a
+  wider footprint so low-poly shrubs, terrain and Drek's Fleet get soft creases instead of jagged lines, a Vogel disc of taps over
+  a depth pyramid (OpenGL and Vulkan).
 
 ### Performance
 - The world's draws that cannot fail the alpha test (opaque textures and vertex colours) drawn with early depth testing and

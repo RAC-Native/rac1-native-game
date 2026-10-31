@@ -786,7 +786,7 @@ Options > Graphics > Ambient Occlusion (`mrp_lighting_ao_pass`): a screen-space 
 pass after the mobys and before the effects, the ambient particles and the 2D (so those get none). The
 depth buffer is copied to a texture; per pixel the world position comes from the inverse
 view-projection; the result (8 bits) is blurred within the surface and multiplied into the colour
-(the sky untouched). Four modes, each also at half resolution:
+(the sky untouched). Five modes, each also at half resolution:
 
 | Mode | Normal | Sampling | Reach, strength | Blur | GPU at 5053 x 1371 |
 |---|---|---|---|---|---|
@@ -796,6 +796,7 @@ view-projection; the result (8 bits) is blurred within the surface and multiplie
 | GTAO | as SSAO+ | 3 slices x 2 sides x 3 steps, the cosine-weighted visible arc over the horizons, a multi-bounce tint | 3 units, 250 % | separable | 6.9 ms |
 | GTAO 1/2 | as SSAO+ | GTAO at half resolution, upsampled by the blur | as GTAO | separable | 4.4 ms |
 | SSAO 1/2, SSAO+ 1/2, HBAO 1/2 | as their mode | their mode at half resolution, upsampled by the blur as GTAO 1/2 | as their mode | separable (SSAO 1/2 too) | see below |
+| MXAO, MXAO 1/2 | as SSAO+, then smoothed over a wider footprint ([below](#mxao)) | 4 to 12 taps on a Vogel disc, from a pyramid of the depth, cosine-weighted to the smooth normal | 2.5 units (wider far away), 280 % | separable | [below](#mxao) |
 
 (Measured on Kerwan's plaza with a Radeon 890M; noisy by a few tenths; before the change below.) The reach is capped on the
 screen: a surface close to the camera samples no further than 4 % of the view's height around it
@@ -852,9 +853,55 @@ occluder counted twice the visibility, clamped to 1, so a corner occluded on one
 nothing). Both fixed: each mode has its own reach and strength (above) and GTAO takes, per side,
 1 - the sine of the horizon's elevation.
 
-Not done (issue #75's further items): a Hi-Z depth pyramid (SAO) for large radii, bent normals
-(directional occlusion fed into the lighting), a normal G-buffer from the MRP's passes (smooth
-normals instead of the depth's faceted ones), ray-traced AO.
+### MXAO
+
+Options > Graphics > Ambient Occlusion "MXAO" and "MXAO 1/2" (Anya-Thoughtmane's suggestion in #101, #118 and #120: the
+low-poly shrubs, terrain and Drek's Fleet looked jagged under the other modes). Written for this game from the published
+idea of MXAO (no other project's shader used); the parts:
+
+- **A pyramid.** A first pass writes, per pixel of the occlusion's size (the view's, or half of it), the face's normal (as SSAO+:
+  per axis the neighbour with the smaller depth step) and its depth along the view's axis, in an RGBA16F texture; its four
+  mips are averages (`glGenerateMipmap`; on Vulkan a chain of linear blits). A point is the eye plus its ray times that
+  depth, the rays affine on the screen, so the mips' averages stay on the rays and a tap costs no matrix.
+- **Smooth normals.** The normal the occlusion uses is the face's averaged with 8 taps of the pyramid's coarser levels around
+  the point (4 diagonal at a quarter of the reach on the screen, 4 straight at half of it, each from a level whose texel is
+  about half that distance: a wider footprint up close, where the facets are large), each weighted by how well it continues
+  the surface: its normal within about 60 degrees of the face's, its point near the face's plane and within the reach. A
+  shrub's or the terrain's facets blend into one curved surface; a box's corner or an object in front stays apart.
+- **The taps.** A Vogel disc on the screen (the golden angle between taps, the distance the square root of the tap's
+  share, turned per pixel), its radius the reach projected (2.5 units, up to twice that 120 units away; at most 12 % of the
+  view's height), 4 to 12 taps by that radius's share of the view (more near, fewer far, the same at any resolution). Each tap
+  reads the pyramid at the level for its distance from the centre (one level per doubling past 4 pixels: far taps read
+  averages, which is what keeps a wide reach affordable). A tap occludes by the cosine of its direction to the smooth normal
+  past a bias (30 %, `RAC1_AO_MXAO_BIAS`), fading out to the reach; the bias rises to 65 % on a surface seen edge-on, where
+  the depth's own steps would read as rows of ridges.
+- **The rest as the others.** The separable blur weighted by the depth (and at half resolution the upsample), the sky
+  untouched, the mobys' share (`RAC1_AO_MOBY`), AO Intensity, before the 2D and the effects. An optional bounce
+  (`RAC1_AO_BOUNCE`, off) lightens the occluded parts by a grey approximation of the light the surroundings send back; a
+  coloured bounce would need the occlusion in colour, which the passes do not carry.
+
+What it looks like: the broad, soft darkening of a crease or a contact (a crate on the floor, Ratchet's feet, the base of
+a shrub), with none of the thin dark lines GTAO and HBAO draw along every concave seam of a low-poly mesh (Eudora's tree
+crowns, Novalis's path banks and mountains) and none of SSAO+'s dotted rims on the leaves. Its mean darkening is close to
+GTAO's (on Novalis, Eudora, Kerwan, Veldin and Drek's Fleet the raw occlusion averages 245 to 249 of 255 against GTAO's 246
+to 249). OpenGL and Vulkan darken the same scenes by the same amount (within 0.05 of a level of 255 on average).
+
+Its cost, Radeon 890M, Kerwan's first walk (the profiler's Ambient occlusion stage, frames 1500 to 1800; noisy by a few
+tenths):
+
+| Mode | Vulkan 5120 x 1440 | Vulkan 1920 x 1080 | OpenGL 5120 x 1440 | OpenGL 1920 x 1080 |
+|---|---|---|---|---|
+| SSAO+ | 4.1 ms | 1.6 ms | 5.5 ms | 1.7 ms |
+| GTAO | 4.1 to 4.4 ms | 2.3 ms | 7.2 ms | 2.8 ms |
+| GTAO 1/2 | 2.9 ms | 0.9 ms | 4.4 ms | 1.1 ms |
+| MXAO | 6.1 to 7.6 ms | 3.2 ms | 9.8 ms | 2.8 ms |
+| MXAO 1/2 | 2.6 to 3.3 ms | 1.1 ms | 5.1 ms | 1.3 ms |
+
+MXAO 1/2 costs about what GTAO 1/2 does and is the one to use at a wide resolution; the full MXAO is the most expensive mode
+(its pyramid's 8 bytes a pixel written and read, and the smooth normal's 8 taps).
+
+Not done (issue #75's further items): bent normals (directional occlusion fed into the lighting), a normal G-buffer from the
+MRP's passes (the true smooth normals instead of the depth's), ray-traced AO.
 
 ## The light editor
 
