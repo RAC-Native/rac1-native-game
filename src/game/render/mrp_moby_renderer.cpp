@@ -1,6 +1,7 @@
 // orig: (host) The MRP moby renderer (see mrp_moby_renderer.h).
 #include <game/render/mrp_moby_renderer.h>
 #include "mrp_moby_backend.inc"
+#include <game/render/gl_draws.h>
 #include <profiler/host_profiler.h>
 #include <jobs/job_pool.h>
 
@@ -79,6 +80,28 @@ const bool g_env_prof_finish = g_env_prof && std::atoi(std::getenv("RAC1_FRAME_P
 const bool g_env_debug = std::getenv("RAC1_MRP_DEBUG") != nullptr;
 
 double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+
+// The draws find their command (cmds[i]) by an instanced vertex attribute (location 8, divisor 1) over the integers 0, 1, 2..: a
+// draw's base instance offsets it, as the core profile does for every instanced attribute. Not gl_BaseInstance, which the driver
+// supplies itself: see mrp_world_renderer.cpp g_draw_ids (issue #113: on an Intel UHD 620 under Windows the mobys were drawn now and
+// then with other parts' records, or not at all). The buffer is shared by the levels' VAOs, grown as needed.
+GLuint g_draw_ids = 0;
+size_t g_draw_ids_n = 0;
+// orig: (host) the draw indices' buffer holding at least `n` (bound to GL_ARRAY_BUFFER after)
+void draw_ids_reserve(size_t n) {
+    if (g_draw_ids == 0) {
+        glGenBuffers(1, &g_draw_ids);
+        rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &g_draw_ids, "MRP mobys: draw indices");
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, g_draw_ids);
+    if (n <= g_draw_ids_n) return;
+    size_t m = std::max<size_t>(g_draw_ids_n, 4096);
+    while (m < n) m *= 2;
+    std::vector<uint32_t> ids(m);
+    for (size_t i = 0; i < m; ++i) ids[i] = static_cast<uint32_t>(i);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(m * sizeof(uint32_t)), ids.data(), GL_STATIC_DRAW);
+    g_draw_ids_n = m;
+}
 
 // ---- the GPU data of a class -----------------------------------------------------------------
 
@@ -779,6 +802,10 @@ void load_level(int id) {
         glVertexAttribIPointer(6, 4, GL_UNSIGNED_BYTE, S, reinterpret_cast<void*>(offsetof(GpuVertex, q2joint)));
         glVertexAttribIPointer(7, 4, GL_UNSIGNED_BYTE, S, reinterpret_cast<void*>(offsetof(GpuVertex, q2weight)));
         for (GLuint a = 0; a < 8; ++a) glEnableVertexAttribArray(a);
+        draw_ids_reserve(0);  // (the draw's index: g_draw_ids)
+        glVertexAttribIPointer(8, 1, GL_UNSIGNED_INT, sizeof(uint32_t), nullptr);
+        glVertexAttribDivisor(8, 1);
+        glEnableVertexAttribArray(8);
         glBindVertexArray(0);
         L.gl_loaded = true;
 #endif
@@ -855,6 +882,7 @@ layout(location = 4) in ivec2 aUv;
 layout(location = 5) in ivec4 aQ2Pos;
 layout(location = 6) in uvec4 aQ2Joint;
 layout(location = 7) in uvec4 aQ2Weight;
+layout(location = 8) in uint aDraw;  // the draw's index (its base instance: g_draw_ids)
 
 struct Part {
     vec4 clip[4];    // world mode: model -> GL clip (columns)
@@ -865,7 +893,7 @@ struct Part {
 };
 layout(std430, binding = 0) readonly buffer Joints { vec4 J[]; };
 layout(std430, binding = 1) readonly buffer Parts { Part parts[]; };
-layout(std430, binding = 2) readonly buffer Cmds { uvec4 cmds[]; };  // x part, y texture word, z layer, w 0
+layout(std430, binding = 2) readonly buffer Cmds { uvec4 cmds[]; };  // x part, y texture word, z layer, w the emissive / material slot
 layout(std430, binding = 3) readonly buffer Normals { vec2 normals[]; };
 
 uniform int uMode;       // 0 the world's projection, 1 the VU1's onto the frame
@@ -930,7 +958,7 @@ int ftoi4(float f) {
 }
 
 void main() {
-    uvec4 cmd = cmds[gl_BaseInstance];
+    uvec4 cmd = cmds[aDraw];
     Part P = parts[cmd.x];
     int first = P.info.x, count = P.info.y;
     vec4 m[4];
@@ -1069,7 +1097,7 @@ void main() {
     if (uTme != 0) {
         vec2 st = vStq.xy / vStq.z;
 #ifdef SH_SPLIT
-        st = sh_mat_uv(st, (w >> 27) & 31u);  // (lava, mud, quicksand: the slow flow)
+        st = sh_mat_uv(st, vCmd.w & 127u);  // (lava, mud, quicksand: the slow flow)
 #endif
         vec4 t;
         if ((w & 1u) != 0u) {
@@ -1097,8 +1125,8 @@ void main() {
         else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_SPLIT
-        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 27) & 31u);  // (the word's bits 27..31)
-        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 27) & 31u);
+        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, vCmd.w & 127u);  // (the command's fourth word)
+        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), vCmd.w & 127u);
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }
@@ -1151,9 +1179,9 @@ GLuint compile(GLenum type, const char* src) {
     GLint ok = 0;
     glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
     if (!ok) {
-        char log[2048];
+        char log[8192];
         glGetShaderInfoLog(s, sizeof log, nullptr, log);
-        std::fprintf(stderr, "[mrp] shader: %s\n", log);
+        std::fprintf(stderr, "[mrp] the mobys' %s shader did not compile: %s\n", type == GL_VERTEX_SHADER ? "vertex" : "fragment", log);
     }
     return s;
 }
@@ -1197,9 +1225,11 @@ bool init_gl() {
     GLint ok = 0;
     glGetProgramiv(g_prog, GL_LINK_STATUS, &ok);
     if (!ok) {
-        char log[2048];
+        char log[8192];
         glGetProgramInfoLog(g_prog, sizeof log, nullptr, log);
-        std::fprintf(stderr, "[mrp] link: %s\n", log);
+        std::fprintf(stderr, "[mrp] the mobys' program did not link, the MRP mobys off: %s\n", log);
+        glDeleteProgram(g_prog);
+        g_prog = 0;  // (not taken for a working program by the next call)
         return false;
     }
     g_loc = locs(g_prog);
@@ -1207,7 +1237,7 @@ bool init_gl() {
         auto split = [](const char* src) {
             std::string t = src;
             const std::string v = "#version 460 core\n";
-            if (t.compare(0, v.size(), v) == 0) t.insert(v.size(), "#define SH_SPLIT 1\n");
+            if (t.compare(0, v.size(), v) == 0) t.insert(v.size(), "#define SH_SPLIT 1\n#define SH_MOBY 1\n");  // (SH_MOBY: no reflections of the last frame on a moby, sh_material)
             return t;
         };
         const std::string vss = split(kVs), fss = split(kFs);
@@ -1219,9 +1249,9 @@ bool init_gl() {
         GLint ok3 = 0;
         glGetProgramiv(g_prog_split, GL_LINK_STATUS, &ok3);
         if (!ok3) {
-            char log[2048];
+            char log[8192];
             glGetProgramInfoLog(g_prog_split, sizeof log, nullptr, log);
-            std::fprintf(stderr, "[mrp] link (lighting variant): %s\n", log);
+            std::fprintf(stderr, "[mrp] the mobys' modern lighting program did not link, the mobys drawn without it: %s\n", log);
             g_prog_split = 0;
         } else {
             g_loc_split = locs(g_prog_split);
@@ -1553,6 +1583,7 @@ struct Frame {
         uint32_t joint_first = 0, joint_count = 0;
         glm::vec3 centre{0.0f};
         float radius = 0.0f;
+        const ClassGpu* cg = nullptr;  // (its class: the joints' bind pose, the vertices the light editor finds a joint by)
     };
     std::vector<MobyXf> xf;
 };
@@ -1785,7 +1816,8 @@ void part_pre(const MrpFrame& f, const MrpMoby& m, const ClassGpu* cg, const Mrp
 }
 
 // the emissive surfaces of the moby classes (mrp_lighting.h EmissiveSurface): (class, local texture) -> shader slot, made again when the
-// list or the preview changes; the slot goes into the draw's texture word, bits 27..31, while the modern lighting is on
+// list or the preview changes; the slot goes into the draw command's fourth word (bits 27..31 of its texture word until #102's batch 1)
+// while the modern lighting is on
 struct MobyEmissive {
     uint32_t gen = 0;
     std::unordered_map<uint32_t, uint8_t> slot;
@@ -2129,6 +2161,7 @@ void build_frame() {
                 x.W = glm::mat4(W);
                 x.joint_first = m.joint_first;
                 x.joint_count = m.joint_count;
+                x.cg = cg;
                 const auto& b = c.bsphere;
                 const glm::dvec4 cw = W * glm::dvec4(b[0], b[1], b[2], 1.0);
                 x.centre = glm::vec3(cw) / static_cast<float>(cw.w != 0.0 ? cw.w : 1.0);
@@ -2166,9 +2199,10 @@ void build_frame() {
                 static const bool mark_mip0 = std::getenv("RAC1_MRP_MIP0") != nullptr;
                 if (mark_mip0 && pi.game_texture >= 0 && lh(OV(0x00199e80) + 4 * static_cast<uint32_t>(pi.game_texture)) == 0) word |= 1u << 25;
                 if (mark_mip0 && pi.game_texture >= 0 && lh(OV(0x00199e80) + 4 * static_cast<uint32_t>(pi.game_texture) + 2) == 0) word |= 1u << 26;
-                if (emis && pi.local >= 0)  // (an emissive surface's slot)
-                    if (const auto es = g_memis.slot.find(emis_key(m.class_id, pi.local)); es != g_memis.slot.end()) word |= static_cast<uint32_t>(es->second) << 27;
-                F.cmds.insert(F.cmds.end(), {part_index, word, pi.layer, 0u});
+                uint32_t slot = 0;  // (an emissive surface's or a material's slot: the command's fourth word)
+                if (emis && pi.local >= 0)
+                    if (const auto es = g_memis.slot.find(emis_key(m.class_id, pi.local)); es != g_memis.slot.end()) slot = es->second;
+                F.cmds.insert(F.cmds.end(), {part_index, word, pi.layer, slot});
                 Key key;
                 key.bucket = pi.bucket;
                 key.sampler = pi.sampler;
@@ -2312,6 +2346,9 @@ void upload_frame() {
     glBindBuffer(kGlShaderStorageBuffer, 0);
     glBindBuffer(kGlDrawIndirectBuffer, g_indirect);
     glBufferData(kGlDrawIndirectBuffer, static_cast<GLsizeiptr>(std::max<size_t>(g_frame.draws.size() * sizeof(DrawCmd), 16)), g_frame.draws.data(), GL_STREAM_DRAW);
+    uint32_t ids = 0;  // (the draws' base instances within the draw indices' buffer)
+    for (const DrawCmd& d : g_frame.draws) ids = std::max(ids, d.base_instance + 1);
+    draw_ids_reserve(ids);
 }
 
 void set_common_uniforms(const Loc& l, int win_w, int win_h, const gs::Viewport* vp) {
@@ -2691,16 +2728,14 @@ void draw_batches(int win_w, int win_h, const gs::Viewport* vp, bool shadows = f
         if (split) {  // (the Z first, then the colour against it with LEQUAL: an opaque part's back faces stay hidden, as per primitive on the GS)
             glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
             glUniform1i(g_loc.pass, 1);
-            p_multi_draw_elements_indirect(GL_TRIANGLES, GL_UNSIGNED_INT, reinterpret_cast<const void*>(static_cast<uintptr_t>(b.first) * sizeof(DrawCmd)),
-                                           static_cast<GLsizei>(b.count), 0);
+            gl_multi_draw_elements(F.draws.data(), b.first, b.count);
             glUniform1i(g_loc.pass, 0);
             glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
             glDepthMask(GL_FALSE);
             if (kztst != 0) glDepthFunc(GL_LEQUAL);
             ++g_st.gl_calls;
         }
-        p_multi_draw_elements_indirect(GL_TRIANGLES, GL_UNSIGNED_INT, reinterpret_cast<const void*>(static_cast<uintptr_t>(b.first) * sizeof(DrawCmd)),
-                                       static_cast<GLsizei>(b.count), 0);
+        gl_multi_draw_elements(F.draws.data(), b.first, b.count);
         ++g_st.gl_calls;
         if (split) {
             glDepthMask(GL_TRUE);
@@ -2900,8 +2935,7 @@ void draw_casters(const float* light_vp, const float* sphere, const float* withi
         }
         cur = k;
         have = true;
-        p_multi_draw_elements_indirect(GL_TRIANGLES, GL_UNSIGNED_INT, reinterpret_cast<const void*>(static_cast<uintptr_t>(dfirst) * sizeof(DrawCmd)),
-                                       static_cast<GLsizei>(dcount), 0);
+        gl_multi_draw_elements(filter ? near.data() : F.draws.data(), dfirst, dcount);
     }
     glBindSampler(0, 0);
     glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
@@ -2921,6 +2955,7 @@ void shader_check(const gs::Viewport* vp) {
     std::vector<uint32_t> cmds = F.cmds;
     const uint32_t base = static_cast<uint32_t>(cmds.size() / 4);
     for (uint32_t i = 0; i < F.refs.size(); ++i) cmds.insert(cmds.end(), {i, 1u, 0u, 0u});
+    draw_ids_reserve(cmds.size() / 4);  // (the TF draws' base instances: base + i)
     glBindBuffer(kGlShaderStorageBuffer, g_ssbo[2]);
     glBufferData(kGlShaderStorageBuffer, static_cast<GLsizeiptr>(cmds.size() * 4), cmds.data(), GL_STREAM_DRAW);
     glBindBufferBase(kGlShaderStorageBuffer, 2, g_ssbo[2]);
@@ -3234,19 +3269,33 @@ float mrp_moby_nearest_part(const float p[3]) {
     return best;
 }
 
-// orig: (host) see mrp_lighting.h
+namespace {
+// orig: (host) a pose's joint matrix as a glm matrix (its rows the shader's m[0..3], q = m0 x + m1 y + m2 z + m3: glm's columns)
+glm::mat4 joint_mat(const MrpMat4& J) {
+    glm::mat4 m(1.0f);
+    for (int r = 0; r < 4; ++r) m[r] = glm::vec4(J.r[r].x, J.r[r].y, J.r[r].z, r == 3 ? 1.0f : 0.0f);
+    return m;
+}
+}  // namespace
+
+// orig: (host) see mrp_lighting.h. The pose's matrix of a joint is the skinning's (the pose by the joint's inverse bind matrix,
+// class +0x14: a bind-pose point of the model to where the joint carries it), its origin the model's origin carried, not the joint;
+// the joint's own frame is that matrix by the bind matrix (the inverse bind's inverse): its origin the joint itself (#102)
 bool mrp_moby_draw_frame(uint32_t moby, int joint, float pos[3], float axes[9], int* joints) {
     if (!g_frame.active || !g_frame.built || g_frame.mode != 0) return false;
     for (const Frame::MobyXf& x : g_frame.xf) {
         if (x.moby != moby) continue;
         if (joints != nullptr) *joints = static_cast<int>(x.joint_count);
-        glm::mat4 M = x.W;  // (model -> world; a joint: model -> model, its rows the shader's m[0..3] - q = m0 x + m1 y + m2 z + m3)
+        glm::mat4 M = x.W;  // (model -> world; a joint: model -> model)
         if (joint >= 0) {
             if (static_cast<uint32_t>(joint) >= x.joint_count || x.joint_first + static_cast<uint32_t>(joint) >= g_frame.joints_all.size()) return false;
-            const MrpMat4& J = g_frame.joints_all[x.joint_first + static_cast<uint32_t>(joint)];
-            glm::mat4 Jm(1.0f);
-            for (int r = 0; r < 4; ++r) Jm[r] = glm::vec4(J.r[r].x, J.r[r].y, J.r[r].z, r == 3 ? 1.0f : 0.0f);
-            M = x.W * Jm;
+            M = x.W * joint_mat(g_frame.joints_all[x.joint_first + static_cast<uint32_t>(joint)]);
+            if (x.cg != nullptr && x.cg->asset != nullptr && static_cast<size_t>(joint) < x.cg->asset->inverse_bind.size()) {
+                const std::array<float, 16>& ib = x.cg->asset->inverse_bind[static_cast<size_t>(joint)];
+                glm::mat4 IB(1.0f);  // (its rows as the pose's; the fourth column holds the bone's own data, not the matrix's)
+                for (int r = 0; r < 4; ++r) IB[r] = glm::vec4(ib[4 * r], ib[4 * r + 1], ib[4 * r + 2], r == 3 ? 1.0f : 0.0f);
+                if (const float d = glm::determinant(IB); std::isfinite(d) && std::fabs(d) > 1e-12f) M = M * glm::inverse(IB);
+            }
         }
         const glm::vec4 o = M[3];
         const float w = o.w != 0.0f ? o.w : 1.0f;
@@ -3262,15 +3311,119 @@ bool mrp_moby_draw_frame(uint32_t moby, int joint, float pos[3], float axes[9], 
     return false;
 }
 
-// orig: (host) see mrp_lighting.h
+namespace {
+// orig: (host) a point's distance from a triangle (the closest point of the triangle, by its region: Ericson's)
+float point_triangle_dist(const glm::vec3& p, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) {
+    const glm::vec3 ab = b - a, ac = c - a, ap = p - a;
+    const float d1 = glm::dot(ab, ap), d2 = glm::dot(ac, ap);
+    if (d1 <= 0.0f && d2 <= 0.0f) return glm::length(p - a);
+    const glm::vec3 bp = p - b;
+    const float d3 = glm::dot(ab, bp), d4 = glm::dot(ac, bp);
+    if (d3 >= 0.0f && d4 <= d3) return glm::length(p - b);
+    const float vc = d1 * d4 - d3 * d2;
+    if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f) return glm::length(p - (a + ab * (d1 / (d1 - d3))));
+    const glm::vec3 cp = p - c;
+    const float d5 = glm::dot(ab, cp), d6 = glm::dot(ac, cp);
+    if (d6 >= 0.0f && d5 <= d6) return glm::length(p - c);
+    const float vb = d5 * d2 - d1 * d6;
+    if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f) return glm::length(p - (a + ac * (d2 / (d2 - d6))));
+    const float va = d3 * d6 - d5 * d4;
+    if (va <= 0.0f && (d4 - d3) >= 0.0f && (d5 - d6) >= 0.0f) return glm::length(p - (b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6)))));
+    const float den = 1.0f / (va + vb + vc);
+    return glm::length(p - (a + ab * (vb * den) + ac * (vc * den)));
+}
+
+// orig: (host) the drawn moby's surface nearest a world point: its triangles (both LODs) skinned on the CPU as the shader does (a
+// vertex's joint matrix, or the blend of two or three by their weights / 256) through its model-to-world matrix; the distance, and
+// the heaviest joint of that triangle's vertex nearest the point (-1: no triangles, no pose)
+float surface_near(const Frame::MobyXf& x, const glm::vec3& P, int* joint) {
+    *joint = -1;
+    if (x.cg == nullptr || x.cg->asset == nullptr || x.joint_count == 0 || x.joint_first + x.joint_count > g_frame.joints_all.size()) return 1e30f;
+    static std::vector<glm::mat4> J;
+    J.resize(x.joint_count);
+    for (uint32_t j = 0; j < x.joint_count; ++j) J[j] = x.W * joint_mat(g_frame.joints_all[x.joint_first + j]);
+    static std::vector<glm::vec3> wp;
+    static std::vector<int> heavy;
+    float best = 1e30f;
+    const mrp::MobyClass& c = *x.cg->asset;
+    for (size_t pi = 0; pi < x.cg->packets.size() && pi < c.packets.size(); ++pi) {
+        if (c.packets[pi].lod > 1) continue;
+        const PacketGpu& pg = x.cg->packets[pi];
+        if (pg.first_vertex + pg.vertex_count > g_level.verts.size()) continue;
+        wp.assign(pg.vertex_count, glm::vec3(0.0f));
+        heavy.assign(pg.vertex_count, -1);
+        for (uint32_t v = 0; v < pg.vertex_count; ++v) {
+            const GpuVertex& gv = g_level.verts[pg.first_vertex + v];
+            if (gv.n == 0 || gv.n > 3) continue;
+            glm::mat4 M(0.0f);
+            int hw = -1;
+            bool ok = true;
+            for (uint8_t k = 0; k < gv.n && ok; ++k) {
+                ok = gv.joint[k] < x.joint_count;
+                if (!ok) break;
+                M += J[gv.joint[k]] * (gv.n == 1 ? 1.0f : static_cast<float>(gv.weight[k]) / 256.0f);
+                if (gv.n == 1 || gv.weight[k] > hw) {
+                    hw = gv.weight[k];
+                    heavy[v] = gv.joint[k];
+                }
+            }
+            const glm::vec4 q = M * glm::vec4(gv.pos[0], gv.pos[1], gv.pos[2], 1.0f);
+            if (!ok || !(std::fabs(q.w) > 1e-12f)) {
+                heavy[v] = -1;
+                continue;
+            }
+            wp[v] = glm::vec3(q) / q.w;
+        }
+        for (const Run& r : pg.runs)
+            for (uint32_t t = r.first_index; t + 2 < r.first_index + r.count && t + 2 < g_level.indices.size(); t += 3) {
+                uint32_t i[3];
+                bool ok = true;
+                for (int k = 0; k < 3; ++k) {
+                    i[k] = g_level.indices[t + static_cast<uint32_t>(k)] - pg.first_vertex;
+                    ok = ok && i[k] < pg.vertex_count && heavy[i[k]] >= 0;
+                }
+                if (!ok) continue;
+                const float d = point_triangle_dist(P, wp[i[0]], wp[i[1]], wp[i[2]]);
+                if (d >= best) continue;
+                best = d;
+                int nk = 0;
+                for (int k = 1; k < 3; ++k)
+                    if (glm::length(wp[i[k]] - P) < glm::length(wp[i[nk]] - P)) nk = k;
+                *joint = heavy[i[nk]];
+            }
+    }
+    return best;
+}
+}  // namespace
+
+// orig: (host) see mrp_lighting.cpp (its declaration)
+int mrp_moby_surface_joint(uint32_t moby, const float p[3], float* dist) {
+    if (!g_frame.active || !g_frame.built || g_frame.mode != 0) return -1;
+    for (const Frame::MobyXf& x : g_frame.xf) {
+        if (x.moby != moby) continue;
+        int j = -1;
+        const float d = surface_near(x, glm::vec3(p[0], p[1], p[2]), &j);
+        if (dist != nullptr) *dist = d;
+        return j;
+    }
+    return -1;
+}
+
+// orig: (host) see mrp_lighting.h. Among the drawn mobys whose parts' bounding spheres hold the point, the one whose skinned surface
+// is nearest it, the smallest sphere between equals (#102: the smallest sphere alone took a little moby at Clank's head, class 1204,
+// over Clank and Ratchet)
 bool mrp_moby_at(const float p[3], uint32_t* moby, int* o_class, float* dist) {
     if (!g_frame.active || !g_frame.built || g_frame.mode != 0) return false;
     const glm::vec3 P(p[0], p[1], p[2]);
-    float best = 1e30f;
+    float best = 1e30f, best_surface = 1e30f;
     bool any = false;
     for (const Frame::MobyXf& x : g_frame.xf) {
         const float d = glm::length(P - x.centre);
-        if (!(x.radius > 0.0f) || d > x.radius + 0.25f || x.radius >= best) continue;
+        if (!(x.radius > 0.0f) || d > x.radius + 0.25f) continue;
+        int j = -1;
+        const float s = surface_near(x, P, &j);
+        if (!(s < best_surface || (s == best_surface && x.radius < best))) continue;
+        best_surface = s;
         best = x.radius;
         any = true;
         *moby = x.moby;

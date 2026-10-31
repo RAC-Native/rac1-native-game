@@ -77,6 +77,11 @@ bool advanced_world_paused();
 // first (vendor_buy_all.h)
 bool advanced_vendor_buy_all();
 
+// orig: (none) — enhancement: Options > Advanced > Skip Cutscenes is Always: the game's own skip tests (the scenes'
+// cutscene_update 0x298f90, the movies' 0x2eddd0) take Start alone, as they do on Veldin and in Challenge Mode, on
+// every level; the skip itself is the game's (cutscene_end, the movie's end)
+bool advanced_skip_cutscenes();
+
 // --- Fast fades ---
 // orig: (none) — a console compromise removed (faithful to the game's code, not to the PS2's limits): the screen fade
 // 0x1f9838 (it hid the PS2's disc loading) runs its loop whole - the same RAM writes, the frame
@@ -146,22 +151,6 @@ bool advanced_mouse_direct();
 // pitch input, cam0_stick 0x2e89b0): the Direct mouse turns the offset (yaw) and holds the pitch spring where the
 // mouse put it; nothing without mouse movement
 void advanced_mouse_camera(uint32_t cam, float& b);
-
-// --- The ship selector (#94) ---
-// orig: (none) — enhancement: the armor file (the ship's model and textures: classes 0x160548[armor] / 0x160558[armor])
-// to read for the game's armor `armor` (0x13e056, set by the story at each level exit): Options > Advanced > Ship's
-// ship when the save has it (its index at most `armor`), else `armor`. The game's 0x13e056 and the classes are kept:
-// only the model and its look change, not the scenes, the story's special cases or anything saved
-int32_t advanced_ship_armor(int32_t armor);
-// orig: (none) — enhancement: the ship variant whose look tables (flames, trails, seats) to use, for the game's `variant`
-int32_t advanced_ship_look(int32_t variant);
-// orig: (none) — enhancement: a ship class (0x213..0x215) as the shown ship's class (its tint), other classes as they are
-int32_t advanced_ship_look_class(int32_t cls);
-
-// --- Clank's modern movement (#57) ---
-// orig: (none) — enhancement: Clank = Modern and the hero is Clank (mode 1, +0x20a4): his walk (state 0x44) and jump
-// (0x45) take the faster values in hero_state_update.cpp (wade_update, the 0x45 case)
-bool advanced_clank_modern();
 
 // --- R&C 3's on-foot movement ---
 // orig: (none) — enhancement: Movement = RAC 3

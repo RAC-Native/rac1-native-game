@@ -170,6 +170,28 @@ in gameplay (see [Advanced options](advanced.md#modern-aiming)): with them the r
 aims and the left one fires. A `controls.txt` written by an earlier version keeps its bindings; only
 the new actions (the weapons) get their defaults.
 
+## Vibration, the DualSense's triggers and light bar
+
+The game drives the pad last used (the one the Controls page names): its motors for Advanced >
+Vibration, and on a DualSense its adaptive triggers and light bar for Advanced > Adaptive Triggers (a
+row shown only when that pad is a DualSense). What makes the pulses, and how each system's pad is
+reached, is in [Advanced options](advanced.md#vibration-10). In short:
+
+- A DualSense is written its own output report (`src/host/dualsense.cpp`): on Linux through its
+  `/dev/hidraw*` node, on Windows through the HID device. Its two actuators are a true left and right, so
+  explosions, hits and moving things are felt from their side. On Linux the node needs a udev rule that
+  gives the seated user access (Steam's `60-steam-input.rules`, or the system's); without one the log
+  says so and the kernel's force feedback is used (rumble only):
+
+  ```
+  [rumble] DualSense: /dev/hidraw4: Permission denied (no udev rule gives this user the pad's hidraw node); the kernel's force feedback instead (no adaptive triggers)
+  ```
+
+- Other pads: the kernel's force feedback on Linux (`FF_RUMBLE` on the pad's event device), XInput on
+  Windows. Their two motors are the low and the high frequencies, so every pulse is centred.
+
+`RAC1_VIBRATION_LOG` (with `--debug-tools` in a window) prints the pulses and what is sent.
+
 ## The bindings file, `controls.txt`
 
 The bindings are kept in `~/.config/rac1-native/controls.txt` (`$XDG_CONFIG_HOME/rac1-native/` if

@@ -13,13 +13,13 @@ comes from the disc: the kinds, their looks and where they are are our art choic
 
 | Level | Particles | Notes |
 |---|---|---|
-| Kerwan | motes (light dust) | brighter where the view looks toward the sun: the sunbeams through the streets |
-| Umbris | embers | rising from the lava itself, only near it: the Snagglebeast's lava cave (Anya-Thoughtmane's suggestion) |
-| Batalia | rain | slanted by the wind (with its gusts), splashes on the ground; it replaces the game's own rain (below) |
-| Gaspar | embers, ash | rising from the lava sea itself, higher than Umbris's (it lies deep below the platforms); none indoors or away from the lava |
-| Orxon | dust | the toxic air's, a little green |
+| Rilgar | rain | a very light rain (Anya-Thoughtmane's experiment, #102 batch 1, after Ratchet & Clank 2016's Rilgar) |
+| Umbris | embers | rising from the lava itself, only near it: the Snagglebeast's lava cave (Anya-Thoughtmane's suggestion; denser and slower since #102 batch 1) |
+| Batalia | rain | slanted by the wind (with its gusts), splashes on the ground; drawn with the game's own rain (`keep`, since #102 batch 1) |
+| Gaspar | embers, ash | rising from the lava sea itself, higher than Umbris's (it lies deep below the platforms); none indoors or away from the lava; a second, orange line of embers since #102 batch 1 |
+| Orxon | ash, embers, snow | a dark green ash, green embers rising from the toxic pools, a little dark snow (Anya-Thoughtmane's, #102 batch 1; a green dust before) |
 | Pokitaru | fireflies | brighter in the shade and at night |
-| Hoven | snow | a calm, light snowfall, a gentle steady drift; it replaces the game's own snow (below) |
+| Hoven | snow, motes | a calm, light snowfall, a gentle steady drift; it replaces the game's own snow (below); faint motes beside it, ice glittering in the air (Anya-Thoughtmane's, #102 batch 1) |
 
 The other levels have none: a line in their file adds some (the [editor](#the-editor)).
 
@@ -75,7 +75,7 @@ snow.)
   loaded (`*(0x173e40)`, read only) is read on a thread of its own: every face that is not a wall (its normal at least a tenth
   up or down) is drawn into a grid of 0.5-unit squares over the whole level, each square keeping the height of the topmost face
   over it (Batalia about 35 ms, Hoven about 75 ms, 1.5 MB). Only levels whose file has a rain, snow or ash line are read
-  (Batalia, Hoven), or `rain on` while Surface Detail and the modern lighting are on (Batalia); a grid read from another level's
+  (Rilgar, Batalia, Orxon, Hoven), or `rain on` while Surface Detail and the modern lighting are on (Batalia); a grid read from another level's
   collision (while a level loads) is never used.
 - **The test**: a window of the grid around the camera (256 squares a side, 128 units) is a texture the particles read, taken
   again when the camera has moved 24 units. A particle below the topmost face at its place (blended over the grid's four
@@ -98,8 +98,8 @@ fields and arenas have them and its other places (indoors, away from the lava) n
   own (Umbris about 20 ms, Gaspar about 60 ms) and its lava gets a point every 1.5 square units, spread by area with a fixed seed:
   the same points in every run. Only levels whose file has a `source lava` line are read.
 - **Which lava**: the levels' kind 1 faces, in the NTSC game: Umbris (the Snagglebeast's arena and its cave, 10 700 square units),
-  Gaspar (the lava sea under the level, 168 000), and the green liquids of Blarg, Orxon and Drek's fleet, which are not lava and
-  have no line. The other levels have none (Aridia's quicksand is kind 3).
+  Gaspar (the lava sea under the level, 168 000), and the green liquids of Blarg, Orxon and Drek's fleet, which are not lava (Orxon's
+  green embers rise from its toxic pools this way; Blarg and Drek's fleet have no line). The other levels have none (Aridia's quicksand is kind 3).
 - **Near the camera**: each frame up to 512 of the points within 60 units are the draw's slots, the nearer the more (a point is
   taken with a chance falling with the square of its distance, about as many on screen near as far; behind the camera a point
   counts as twice as far). A slot keeps its point while it stays taken; a point no longer taken lets its particles fade out over
@@ -141,9 +141,12 @@ line not edited is written back exactly as it was read.
 
 ## The editor
 
-The debug menu's Sun tab (F1, with the debug tools) has the level's particle lines under the interiors: each line's kind,
-density, colour, wind, gusts, "from the lava" and its rise, box ("around the camera" makes one 40 x 40 x 12 units), `keep`, an
-on switch and remove; "Add a particles line"; Save (the whole level file, as the Sun tab's other Save). Every change shows at once. The tab also sets the option for
+The debug menu's Particles tab (F1, with the debug tools; until #102's batch 1 at the bottom of the Sun tab) has the level's particle
+lines: each line's kind, density, colour, wind, gusts, "from the lava" and its rise, box ("around the camera" makes one 40 x 40 x 12
+units), `keep`, an on switch and remove; "Add a particles line"; Save (the whole level file, as the other tabs' Save). **Solo** (a
+button per line, by its number and kind) draws that line alone while it is on, to tell the lines apart on screen; "All" (or Save,
+which ends the solo first and writes every line as it was) gives the others back. Every change shows at once. The seas (water,
+lava, sand) are surfaces, not particles: their materials are given in the Lights tab or the Textures tab ([Materials](materials.md#the-levels-seas-and-pools)). The tab also sets the option for
 the run (Off, Low, High), draws the game's rain and snow as well, and shows the particles drawn and the CPU time; the GPU's is
 the Profiler tab's "Ambient particles" stage.
 

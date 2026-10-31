@@ -1,5 +1,4 @@
 // Ported overlay code: the level setup (0x244110) and the loaders it calls.
-#include <game/enhance/advanced.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/lib/libgraph.h>
@@ -926,8 +925,7 @@ void gs_ram_upload(uint32_t data, int32_t n, uint32_t list) {
 // orig: 0x0023fa00
 uint32_t armor_load(uint32_t dst, uint32_t core) {
     const int32_t armor = lh(0x0013e056);
-    // (enhancement, #94: the file read is the chosen ship's, its size that file's; its classes registered as the game's ship's)
-    mem_copy128(dst, lwu(0x0015ee54), lw(0x00137b80 + static_cast<uint32_t>(advanced_ship_armor(armor) + 1) * 8 + 0x12cc) << 11);
+    mem_copy128(dst, lwu(0x0015ee54), lw(0x00137b80 + static_cast<uint32_t>(armor + 1) * 8 + 0x12cc) << 11);
     const uint32_t w0 = lwu(dst), s3 = lwu(dst + 4), w8 = lwu(dst + 8), s7 = lwu(dst + 0xc);
     // the four GS uploads (sceGsSetDefLoadImage 0x122330 / FlushCache 0x118a80 / sceGsExecLoadImage 0x122658 / sceGsSyncPath
     // 0x120558, four times at the loop 0x23fa88): the armor's 64 x 64 and 32 x 32 texture levels (PSMT8) of block 0, and

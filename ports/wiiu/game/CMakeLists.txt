@@ -53,6 +53,7 @@ set(HOST_SRC
     ${ROOT}/src/host/sample_prof.cpp
     ${ROOT}/src/host/host_input.cpp
     ${ROOT}/src/host/rumble.cpp
+    ${ROOT}/src/host/dualsense.cpp
     ${ROOT}/src/host/host_language.cpp
     ${ROOT}/src/host/sim_script.cpp
     ${ROOT}/src/host/sim_autopilot.cpp

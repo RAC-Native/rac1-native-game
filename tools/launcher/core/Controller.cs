@@ -153,28 +153,52 @@ namespace Rac1Launcher
         public const string DevelopmentWarning = "The development channel gets the newest changes on main, before they are released: "
             + "new fixes sooner, but also new bugs. The game's own Update Channel option changes too.\n\nSwitch to the development channel?";
 
-        /// <summary>The latest release's launcher for this system when it is newer than this one, downloaded beside it
-        /// (off the window's thread); null when there is none.</summary>
-        public string DownloadNewLauncher(string runningExe)
+        /// <summary>The latest release's launcher version when it is newer than this one (after FetchUpdates), or null.
+        /// Nothing is downloaded until the player agrees (DownloadNewLauncher): a program that fetches and swaps its own
+        /// .exe unasked is what antivirus heuristics take for a dropper (GitHub issue #115).</summary>
+        public Version NewLauncherVersion()
         {
             var rel = Latest;
             if (rel?.LauncherUrl == null || rel.Version == null) return null;
             var lv = LauncherVersion;
             if (lv.Major == 0 && lv.Minor == 0 && lv.Build == 0) return null;  // (a build of one's own)
             if (rel.Version <= new Version(lv.Major, lv.Minor, lv.Build)) return null;
+            return rel.Version;
+        }
+
+        /// <summary>The latest release's launcher, downloaded beside the running one once the player agreed (off the
+        /// window's thread) and checked against the SHA-256 GitHub lists for it; null when that did not work.</summary>
+        public string DownloadNewLauncher(string runningExe)
+        {
+            var rel = Latest;
+            if (NewLauncherVersion() == null) return null;
             string fresh = runningExe + ".new";
             try
             {
+                Log($"Downloading the new launcher ({rel.Tag}): {rel.LauncherUrl}");
                 GitHub.Download(rel.LauncherUrl, fresh, (a, b) => { }, CancellationToken.None);
                 if (new FileInfo(fresh).Length < 32 * 1024) throw new InvalidDataException("the download is too small");
+                if (rel.LauncherSha256 != null)
+                {
+                    string got = Hash.Sha256(fresh);
+                    if (got != rel.LauncherSha256)
+                        throw new InvalidDataException($"its SHA-256 is {got}, the release lists {rel.LauncherSha256}");
+                    Log($"The new launcher's SHA-256 matches the release's ({got}).");
+                }
                 return fresh;
             }
-            catch (Exception)
+            catch (Exception e)
             {
+                Log("The new launcher could not be downloaded: " + e.Message);
                 try { File.Delete(fresh); } catch (Exception) { }
                 return null;
             }
         }
+
+        /// <summary>The question the window asks before the launcher updates itself.</summary>
+        public string NewLauncherQuestion(Version v) =>
+            $"A new launcher is out ({VersionText(v)}; this one is {VersionText(LauncherVersion)}).\n\n"
+            + "Download it from GitHub and restart the launcher with it now?";
 
         // --- The work: download, setup ------------------------------------------------------------------------
 

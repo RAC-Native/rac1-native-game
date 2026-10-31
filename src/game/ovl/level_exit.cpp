@@ -5,7 +5,6 @@
 // its callees. The function's loops (the loading screen's frames, the load's wait) run one pass a
 // host frame: level_exit_start / level_exit_frame / level_exit_finish.
 
-#include <game/enhance/advanced.h>
 #include <game/ovl/memory_card.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/boot/level_read.h>
@@ -72,8 +71,7 @@ int32_t front_read_back() {
 // 1 once the bank is in.
 // orig: 0x00243db0
 int32_t level_load_step() {
-    // (enhancement: the ship chosen in Options > Advanced > Ship, #94: its armor file read; the game's 0x13e056 kept)
-    const uint32_t armor = static_cast<uint32_t>(advanced_ship_armor(lh(0x0013e056)) + 1);
+    const uint32_t armor = static_cast<uint32_t>(lh(0x0013e056) + 1);
     if (cd_sync(1) != 0) {
         const int32_t t = lw(0x0015eebc) + 1;
         const int32_t spin = lw(0x0015ed58);

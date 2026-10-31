@@ -61,6 +61,8 @@ headless runs) the row is the game's own Mono / Stereo.
 | Sun Rays | Off, Low, Medium, High (more quality, strength and cost each step; Low has the strength of 0.4.x's Low, High of its High) | Off |
 | Surface Detail | Off, Low, High (materials: shiny metal, wet ground and puddles, water, lava, mud; High adds reflections and the lava's heat shimmer; with Lighting not Original, see [Materials](materials.md)) | Off |
 | Ambient Particles | Off, Low, High: our own dust, embers, fireflies, rain and snow on some levels, not in the original (see [Ambient particles](particles.md); `ambient_particles` in the preferences, id 50 in `save<N>.pc`) | Off |
+| Water | Off, Low, High: the water, lava and quicksand a level's light file tags - two scrolling normal maps, Fresnel, the sun's glints, lighter where shallow and darker where deep, a thin foam at the shore; High adds the scene's reflection and the refraction (see [Materials](materials.md#water-and-grass); `water`, id 52) | Off |
+| Grass | Off, Low, High: the ground a level's light file tags as grass gets a fine relief of blades (Low, no geometry), and on High also a few very low layers of blades near the camera (`grass`, id 54) | Off |
 | Texture Detail | Full, Original (PS2) | Full |
 
 - **The frame-rate cap** only paces the picture. The game itself always runs at 60 frames a second,
@@ -117,6 +119,9 @@ headless runs) the row is the game's own Mono / Stereo.
 - **Lighting and the eight rows after it** (Shadow Strength to Surface Detail) are the optional modern
   lighting; the eight only act when Lighting is not Original. See [Lighting](lighting.md) and, for
   Surface Detail, [Materials](materials.md).
+- **Water and Grass** are optional too, off in every mode (Experimental included: they draw only on the textures a level's
+  file tags), and act only when Lighting is not Original. The debug menu's Enhancements tab switches them live. See
+  [Materials](materials.md#water-and-grass).
 - **Ambient Particles** works with any Lighting: our own particles, drawn over the world in play, never
   changing the game's state. See [Ambient particles](particles.md).
 
@@ -138,8 +143,8 @@ the machine's, kept in `controls.txt`, not with the saves, and no New Game mode 
 | Fades | Fast, Original |
 | Buy All Ammo | Off, On |
 | Vibration | Off, Low, High |
-| Ship | Original, Ship 1, Ship 2, Ship 3 (the ships the save has) |
-| Clank | Original, Modern |
+| Adaptive Triggers | Off, On (shown only when the pad in use is a DualSense) |
+| Skip Cutscenes | Original, Always |
 
 See [Advanced options](advanced.md) for what each one does and how it is built.
 
@@ -169,8 +174,8 @@ New Game opens a choice between three modes before the game starts
 | Modern lighting and graphics enhancements (Lighting, Dynamic Shadows, Secondary Lights, Shadow Distance, Ambient Occlusion, Sun Rays, Surface Detail, Ambient Particles) | off (the defaults) | off (the defaults) | Lighting High, Dynamic Shadows On, Secondary Lights All, Shadow Distance Maximum, Ambient Occlusion GTAO, Sun Rays High, Surface Detail High, Ambient Particles High (Shadow Strength and AO Strength left as they are) |
 | Buy All Ammo (the Vendor) | Off | On | On |
 | Vibration | Off | High | High |
-| Clank's movement | Original | Original | Modern |
-| Ship | Original | Original | Original |
+| Adaptive Triggers (a DualSense in use) | Off | On | On |
+| Skip Cutscenes | Original | Always | Always |
 
 Experimental is Modern plus the [modern lighting](lighting.md) and every graphics enhancement, which are experimental. No mode changes
 the window settings or Fades. The mode chosen is kept with the save.

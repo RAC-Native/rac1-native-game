@@ -196,9 +196,21 @@ colours are built.
   resident on the GPU: a copy is compared with EE memory after each update, and only the instances
   whose colours changed are uploaded (`ResidentColours`, `src/game/render/mrp_world_static.h`).
   The vertex shader evaluates the templates from storage buffers indexed by the draw's base instance.
+  OpenGL reads that index from an instanced vertex attribute over 0, 1, 2.. (which the base instance
+  offsets), not from `gl_BaseInstance`: with the built-in, an Intel UHD 620 under Windows drew the ties,
+  shrubs and mobys now and then with other draws' records (#113). Vulkan uses `gl_InstanceIndex`.
 - **tfrag** runs on a compute shader (next section).
 - **Draws are merged**: consecutive draws with the same state become one multi-draw-indirect call.
   A Veldin frame at the highest level of detail went from 157 world batches to 15.
+  With Intel's Windows OpenGL driver the merged commands go as single draws instead
+  (`glDrawElementsInstancedBaseVertexBaseInstance` per command, from the CPU's copy;
+  `src/game/render/gl_draws.cpp`): there the ties, shrubs and mobys flickered, drawn now and then
+  with other draws' records or not at all (#113). The picture is the same either way;
+  `RAC1_GL_SINGLE_DRAWS=1` / `0` forces it on or off. At the start the log names the OpenGL driver
+  (`[gl] <vendor>, <renderer>, OpenGL <version>`). The frame's buffers (the indirect commands, the
+  records, the storage buffers) are given new storage each frame (`glBufferData` then
+  `glBufferSubData`; no persistent mapping), so the driver keeps the previous frame's until the GPU
+  is done with them.
 
 **The fragment shader is the GS**: its texture function, the alpha test including its "fail" modes
 (drawn in two passes where needed), its mip-level formula, and fog with the fog colour.
@@ -225,6 +237,12 @@ toward zero; a GPU rounds to nearest. The compute shader reproduces the VU's rou
 The result is checked bit for bit: `RAC1_MRPW_TFRAG_VERIFY=1` reads back the GPU's vertices and
 triangle lists and compares them byte for byte with the CPU reference. The project's measurements
 found 0 differing vertices out of 904,570 on Veldin, and likewise on the intro, Novalis and Kerwan.
+
+Where the GPU's doubles are slow the CPU makes the tfrags instead, as `RAC1_MRPW_TFRAG_GPU=0` does (the same picture at the
+default level of detail; with the LOD slider raised or the view widened the terrain's pieces and their levels of detail are
+the game's own run's, a little different at a distance): an Intel GPU of
+generation 9 or older under Vulkan, a level's first dispatch timed too slow, or `RAC1_TFRAG_CPU=1`
+(see [Vulkan](vulkan.md)).
 
 ### The sky
 
@@ -268,7 +286,8 @@ of the original's integer alpha arithmetic, 0 of 203.6 million pixels differed. 
 lighting on they are not drawn (see [Lighting](lighting.md)).
 
 **Batching**: draws are merged into multi-draw-indirect calls, with one upload of joints, parts and
-draw records per frame.
+draw records per frame. Each draw finds its record as the world's do (the instanced attribute on
+OpenGL, see above).
 
 ## Particles and effects
 
@@ -321,7 +340,12 @@ The MRP draws them itself (`RAC1_MRP_SEAS`, on by default; `mrp_fx.cpp`, "progra
   in the original. The program's own decisions are taken from its kick: a triangle it clipped is drawn with the fans' GS state (their
   GIF tag's PRIM, context 1 - a second pass in context 2 draws its clipped triangles with context 1's texture and blending), one past
   the guard band's sides is not drawn, and one it kicked whole with a point behind the camera or past the GS's 12.4 coordinate range
-  is not drawn (the PS2 drew it torn across or off the screen).
+  is not drawn (the PS2 drew it torn across or off the screen). A clipped triangle with a point behind the camera (or past the GS's
+  Z range) has no GS depth there: it is cut at the view's near plane on the CPU and drawn with the view's own depth. Drawn whole
+  for the GPU to clip, under the depth clamp (which turns the near plane's clipping off), OpenGL on radeonsi drew it through the
+  eye in some frames and not others as the camera moved by a hair: on Pokitaru, the camera at the water while swimming, the near
+  sea turned white (Lighting Original) or dark (modern) for a frame every few, the posts under the water hidden; Vulkan did not
+  show it, and now draws the same triangles as OpenGL (the part of the near sea it left out, too).
 - **The modern lighting** (Lighting not Original): the sun's shadows (the surface's colour taken as 55 % sun, our choice), the point
   lights per pixel, the emissive surfaces and the materials (Surface Detail) by texture: an `emissive surface` or `material surface`
   line names the callback's moby class and the texture's GS block ([Emissive surfaces](lighting.md#emissive-surfaces),
@@ -580,16 +604,15 @@ picture the Vendor's screens put back as the frame.
 
 What the game draws into its own memory to use as a texture goes into a render target that keeps the GS's
 alpha (0x80 = 1.0; the ship's planet menu's planet is three blended layers drawn into one); its blending
-reads that alpha at the GS's scale. A render target has the PS2's resolution: the game draws a whole menu
-panel into one at 512 x 512 (the Vendor draws each of its monitors' contents into the same target, then
+reads that alpha at the GS's scale. The game draws a whole menu
+panel into a render target at 512 x 512 (the Vendor draws each of its monitors' contents into the same target, then
 that target onto the screen, bilinear; the pause menu's weapon and gadget screens draw their item models
-the same way), so on a 1440-line window that panel is the PS2's picture scaled 3.5 times, softer than the
-2D drawn on the screen itself. `RAC1_2D_RT_SCALE` (testing) makes the targets larger: 0 at the window's
-scale (its height over the frame's, rounded up: 4 at 1440 lines), N that many times. The game's
+the same way); at the PS2's resolution, on a 1440-line window, that panel would be the PS2's picture scaled 3.5 times,
+softer than the 2D drawn on the screen itself. So the targets are drawn at the window's scale (its height over the
+frame's, rounded up: 4 at 1440 lines); `RAC1_2D_RT_SCALE=1` keeps the PS2's size (the original's look), N draws them N times. The game's
 coordinates, scissors and texture coordinates in a target stay in GS pixels; only its viewport, texture
 and depth buffer grow, and the models drawn into it are the MRP's at that size. The text and models are
-then as sharp as on the screen, but the look changes (the monitors' static and scan lines are finer), so
-it is off by default. A font's glyph (a 16 x 16 or 24 x 16 texel cell, a quad whose texture
+then as sharp as on the screen; the look changes a little (the monitors' static and scan lines are finer). A font's glyph (a 16 x 16 or 24 x 16 texel cell, a quad whose texture
 coordinates follow x and y apart) is sampled only inside its own cell: scaled up from the PS2's
 resolution, the bilinear filtering of a glyph's outer half texel blended in the neighbouring glyphs'
 edges in the font's texture, thin lines under, over and through the letters (issue #76; the GS drew the
@@ -679,9 +702,9 @@ thread): see [Performance](performance.md).
   widened view's substitute stands in for a range (the substitute's for its 3D, the real range's for the VU1
   state it leaves): about 5 ms a frame of the chain worker on Gaspar at 32:9, beside the main thread.
 - A new level's first frame shows the loading screen's last picture ([The 2D](#the-2d)).
-- The menus' render targets (the Vendor's monitors, the pause menu's item models) are drawn at the PS2's
-  resolution and scaled up: soft at large window sizes, as in the original. Larger targets exist for
-  testing (`RAC1_2D_RT_SCALE`), not as a setting yet ([The 2D](#the-2d)).
+- The menus' render targets (the Vendor's monitors, the pause menu's item models) are drawn at the window's
+  scale, sharper than the original: the monitors' static and scan lines are finer. `RAC1_2D_RT_SCALE=1` gives
+  the PS2's size ([The 2D](#the-2d)).
 - The level's baked shadow meshes are culled by the game against its 4:3 view (no widened shadow run
   for that pass): their parts past the sides of a widened view are missing. So are the surfaces a
   moby's update queues only when the moby was drawn in the 4:3 view (one of Rilgar's water patches,

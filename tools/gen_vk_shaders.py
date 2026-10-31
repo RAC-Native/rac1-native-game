@@ -29,11 +29,13 @@ layout(std140, set = 1, binding = 0) uniform ShadowUbo {
     vec4 uPtPos[96];
     vec4 uPtCol[96];
     vec4 uPtDown[24];
-    vec4 uEmis[32];
-    vec4 uMat[32];
+    vec4 uEmis[128];
+    vec4 uMat[128];
     mat4 uSsrVP;
     vec4 uSsrZ;
     vec4 uSsrSky;
+    vec4 uPtAim[96];
+    vec4 uMat2[128];
 };
 #define uShCam (uShCam_Pass.xyz)
 #define uShPass (int(uShCam_Pass.w + 0.5))
@@ -65,20 +67,27 @@ vec4 sh_clip(vec4 clip) {
 
 
 
-def read_c_glsl(path):
-    """The GLSL of a C string macro (src/game/render/mrp_materials_glsl.inc): its string literals joined, unescaped - the OpenGL
-    and the Vulkan shaders share that one text."""
+def read_c_glsl(path, name):
+    """The GLSL of the C string macro `name` (src/game/render/mrp_materials_glsl.inc): its string literals joined, unescaped - the
+    OpenGL and the Vulkan shaders share that one text."""
     import ast
     import re
     out = []
+    inside = False
     for line in open(path, encoding="utf-8"):
-        for lit in re.findall(r'"(?:[^"\\]|\\.)*"', line):
-            out.append(ast.literal_eval(lit))
+        if line.startswith("#define "):
+            inside = line.split()[1] == name
+            continue
+        if inside:
+            for lit in re.findall(r'"(?:[^"\\]|\\.)*"', line):
+                out.append(ast.literal_eval(lit))
     return "".join(out)
 
 
 # the surface materials (docs/materials.md), the end of the lighting's fragment code
-MATERIALS_GLSL = read_c_glsl(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "game", "render", "mrp_materials_glsl.inc"))
+_MATERIALS_INC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "game", "render", "mrp_materials_glsl.inc")
+MATERIALS_GLSL = read_c_glsl(_MATERIALS_INC, "RAC1_MATERIALS_FS")
+NATURE_VS_GLSL = read_c_glsl(_MATERIALS_INC, "RAC1_NATURE_VS")
 
 RAC1_VK_SHADOW_FS = SHADOW_UBO_GLSL + """
 layout(set = 1, binding = 1) uniform sampler2DArrayShadow uShMap;
@@ -146,6 +155,7 @@ void sh_prepare() {
 #endif
     sh_state = vec4(vis, facing, float(casc), 1.0);
 }
+float sh_aim(int i, vec3 l);
 vec3 sh_points(vec3 c) {
     if (uShOn == 0 || uPtN <= 0) return uShDebug == 3 && uShOn != 0 ? vec3(0.0) : c;
     vec3 add = vec3(0.0);
@@ -167,6 +177,7 @@ vec3 sh_points(vec3 c) {
         if (ndl_p <= 0.0) continue;
         float att = 1.0 - d / r;
         att = mix(att, att * att * max(L.z * inv_d, 0.0), uPtDown[i >> 2][i & 3]);
+        att *= sh_aim(i, L * inv_d);
         float sv = 1.0;
         if (uPtCol[i].w >= 0.0) {
             float layer = floor(uPtCol[i].w), kw = clamp((fract(uPtCol[i].w) - 0.05) / 0.9, 0.0, 1.0);
@@ -193,14 +204,18 @@ vec3 sh_apply_split(vec3 full, vec3 nokey) {
     return mix(nokey, full, sh_state.x);
 }
 #if defined(SH_POINTS) || defined(SH_SPLIT)
+vec3 sh_glow(vec3 lit, vec3 orig, vec3 tex, vec4 e) {
+    if (e.x <= 0.0) return lit;
+    float v = max(tex.r, max(tex.g, tex.b));
+    float m = e.y > 0.0 ? smoothstep(e.y - 0.04, e.y + 0.04, v) : 1.0;
+    return mix(lit, max(lit, orig * e.x), m);
+}
 vec3 sh_emissive(vec3 lit, vec3 orig, vec3 tex, uint s) {
     if (s == 0u || uShOn == 0 || uShPass != 0 || uEmis[0].x == 0.0) return lit;
     vec4 e = uEmis[s];
     if (e.w > 0.0) return mix(lit, vec3(1.0, 0.0, 1.0), e.x);
-    if (e.z > 0.0) return lit;
-    float v = max(tex.r, max(tex.g, tex.b));
-    float m = e.y > 0.0 ? smoothstep(e.y - 0.04, e.y + 0.04, v) : 1.0;
-    return mix(lit, max(lit, orig * e.x), m);
+    if (e.z > 0.0 && uMat[0].x != 0.0) return lit;
+    return sh_glow(lit, orig, tex, e);
 }
 #endif
 vec3 sh_apply(vec3 c) {
@@ -566,6 +581,10 @@ void main() {
         o.rgb = o.rgb * f + fogcol * (1.0 - f);
     }
     float a = o.a * 255.0;
+    uint bk0 = (fl >> 24) & 3u;
+    bool wcomp = sm_w_mode == 1 && (bk0 == 0u || bk0 == 2u);  /* (Options > Graphics > Water: the 3D under it, sm_water2) */
+    float wa = clamp(min(o.a * (255.0 / 128.0), 1.0) * sm_w_alpha + sm_w_add, 0.0, 1.0);
+    if (wcomp) o.rgb = mix(sm_w_refr, o.rgb, wa);
     if (ate) {
         bool pass = true;
         if (atst == 0u) pass = false;
@@ -579,6 +598,8 @@ void main() {
         if (!pass && uPass == 1 && afail != 2u) discard;
     }
     float as = min(o.a * (255.0 / 128.0), 1.0);
+    if (wcomp) as = 1.0;
+    else if (sm_w_mode == 2) as = wa;
     uint bk = (fl >> 24) & 3u;
     if (bk == 1u || bk == 2u) {
         FragColor = vec4(o.rgb * as, as);
@@ -918,7 +939,8 @@ MRP_AO_FS = """#version 450
 layout(location = 0) in vec2 vUv;
 layout(location = 0) out float FragAo;
 layout(set = 0, binding = 0) uniform sampler2D uDepth;
-layout(push_constant) uniform Push {
+// (a uniform buffer, not push constants: its 176 bytes are past the 128 some drivers have - Intel's, GitHub issue #113)
+layout(std140, set = 0, binding = 1) uniform AoUbo {
     mat4 uInvVP;
     mat4 uVP;
     vec4 uCam_Pad;
@@ -1501,7 +1523,7 @@ void main() {
         vec2 st = vStq.xy / vStq.z;
         vec2 st_dx = dFdx(st), st_dy = dFdy(st);  // (in uniform control flow: the texture level below)
 #ifdef SH_SPLIT
-        st = sh_mat_uv(st, (w >> 27) & 31u);
+        st = sh_mat_uv(st, vCmd.w & 127u);
 #endif
         vec4 t;
         if ((w & 1u) != 0u) {
@@ -1533,8 +1555,8 @@ void main() {
         else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_SPLIT
-        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 27) & 31u);
-        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 27) & 31u);
+        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, vCmd.w & 127u);
+        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), vCmd.w & 127u);
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }
@@ -1566,7 +1588,7 @@ void main() {
 MRP_MOBY_VS = "#version 450\n" + MRP_MOBY_VS_BODY
 MRP_MOBY_FS = "#version 450\n" + MRP_MOBY_FS_BODY
 MRP_MOBY_SPLIT_VS = "#version 450\n#define SH_SPLIT 1\n" + MRP_MOBY_VS_BODY
-MRP_MOBY_SPLIT_FS = "#version 450\n#define SH_SPLIT 1\n" + MRP_MOBY_FS_BODY
+MRP_MOBY_SPLIT_FS = "#version 450\n#define SH_SPLIT 1\n#define SH_MOBY 1\n" + MRP_MOBY_FS_BODY
 
 # ---------------------------------------------------------------------------
 # 7. mrp_world_renderer.cpp shaders
@@ -1581,12 +1603,11 @@ layout(push_constant) uniform Push {
     int uMipMode;
     int uShade;
     int uFge;
-    int uAtPass;
-    int uU8;
-    int _pad0;
-    int _pad1;
 };
+// (128 bytes, the least maxPushConstantsSize there is - Intel's: the alpha test's pass in the fog colour's spare w, #113)
 #define uFogCol (uFogCol_Pad.xyz)
+#define uAtPass floatBitsToInt(uFogCol_Pad.w)
+#define uShell floatBitsToInt(uFrame.w)  /* (Options > Graphics > Grass: the shell drawn, k + 256 n; a probe < 0; 0 the ground - the frame's spare w) */
 """
 
 MRP_WORLD_VS_BODY = """
@@ -1598,7 +1619,7 @@ layout(location = 4) in uvec4 aRgba;
 layout(location = 5) in float aFog;
 layout(location = 6) in uvec2 aTex;
 layout(location = 7) in uvec2 aState;
-""" + MRP_WORLD_PUSH + RAC1_VK_SHADOW_VS + """
+""" + MRP_WORLD_PUSH + RAC1_VK_SHADOW_VS + NATURE_VS_GLSL + """
 layout(location = 0) smooth out vec3 vStq;
 layout(location = 1) noperspective out float vLodQ;
 layout(location = 2) noperspective out vec4 vColor;
@@ -1609,6 +1630,18 @@ layout(location = 6) flat out uvec2 vState;
 void main() {
     vTex = aTex;
     vState = aState;
+#ifdef SH_POINTS
+    if (uShell != 0) {
+        vec4 wp = aWorld;
+        if (!sh_shell(wp, aTex.x, uShell)) {
+            vShWorld = vec3(0.0);
+            gl_ClipDistance[0] = 1.0;
+            gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
+            return;
+        }
+        gl_Position = sh_clip(uVP * wp);
+    } else
+#endif
     if (uMode == 0) {
         gl_Position = sh_clip(uVP * aWorld);
     } else {
@@ -1645,7 +1678,7 @@ layout(std430, set = 0, binding = 0) readonly buffer Insts { Inst insts[]; };
 layout(std430, set = 0, binding = 1) readonly buffer Cols { uvec4 cols[]; };
 layout(std430, set = 0, binding = 2) readonly buffer Cmds { uvec4 cmds[]; };
 layout(std430, set = 0, binding = 3) readonly buffer RCols { uint rcols[]; };
-""" + MRP_WORLD_PUSH + RAC1_VK_SHADOW_VS + """
+""" + MRP_WORLD_PUSH + RAC1_VK_SHADOW_VS + NATURE_VS_GLSL + """
 layout(location = 0) smooth out vec3 vStq;
 layout(location = 1) noperspective out float vLodQ;
 layout(location = 2) noperspective out vec4 vColor;
@@ -1744,10 +1777,13 @@ void main() {
     vec4 c = uIip != 0 ? vColor : vFlat;
 #ifdef SH_POINTS
     vec3 c_game = c.rgb;
-#endif
+    float gk = uShell > 0 ? sm_grass((vTex.x >> 25) & 127u, uShell & 255, uShell >> 8) : 1.0;  // (Grass: a shell's blade, -1 none)
+    if (uShell >= 0 && gk >= 0.0) {
+        c.rgb = sh_apply(c.rgb);
+        c.rgb = sh_points(c.rgb);
+    }
+#else
     c.rgb = sh_apply(c.rgb);
-#ifdef SH_POINTS
-    c.rgb = sh_points(c.rgb);
 #endif
     vec4 o = c;
     uint w = vTex.x;
@@ -1756,14 +1792,15 @@ void main() {
         vec2 st = vStq.xy / vStq.z;
         vec2 st_dx = dFdx(st), st_dy = dFdy(st);  // (in uniform control flow: the texture level below)
 #ifdef SH_POINTS
-        st = sh_mat_uv(st, (w >> 25) & 31u);
+        st = sh_mat_uv(st, (w >> 25) & 127u);
 #endif
         vec4 t;
         if ((w & 1u) != 0u) {
             t = vec4(128.0 / 255.0);
         } else {
             int mips = int((w >> 22) & 7u) + 1;
-            for (;;) {
+            t = vec4(0.0);
+            for (uint wl = 0u; wl < 16u; ++wl) {  // (16 units at most: bounded, a driver that runs it wrong cannot hang the GPU, #113)
                 uint u = subgroupBroadcastFirst(unit);
                 if (u != unit) continue;
                 if (uMipMode == 0) {
@@ -1788,11 +1825,20 @@ void main() {
         else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_POINTS
-        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 25) & 31u);
-        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 25) & 31u);
+        if (uShell >= 0) {
+            o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 25) & 127u);
+            o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 25) & 127u);
+        }
+        if (uShell > 0) {
+            if (gk < 0.0) discard;
+            o.rgb *= gk;
+        }
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }
+#ifdef SH_POINTS
+    if (uShell < 0 && !sm_grass_probe((w >> 25) & 127u, min(o.a * (255.0 / 128.0), 1.0), uShell)) discard;  // (the grass's stencil)
+#endif
     if (uShade == 1) o.rgb = c.rgb;
     else if (uShade == 3) o.rgb = vec3(0.8);
     o = clamp(o, 0.0, 1.0);

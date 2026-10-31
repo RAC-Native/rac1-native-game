@@ -978,15 +978,97 @@ def windows_compilers():
          "pacman -S mingw-w64-clang-x86_64-clang")
 
 
-def build(jobs, native_arch=None):
+# What CMake made in build/ (the configuration, the objects, the libraries' builds), removed by fresh_build_config(); the
+# rest stays: the downloaded libraries' sources (_deps/*-src, *-subbuild), the game itself, the logs, an update's backups
+BUILD_PRODUCTS = ("CMakeCache.txt", "CMakeFiles", "Makefile", "build.ninja", ".ninja_deps", ".ninja_log",
+                  "cmake_install.cmake", "src", "third_party", "generated_vk")
+
+
+def cached_compiler():
+    """The C++ compiler the build folder was configured with, as CMake recorded it: (path, id, version), or None."""
+    try:
+        cache = (BUILD_DIR / "CMakeCache.txt").read_text(errors="replace")
+    except OSError:
+        return None
+    m = re.search(r"^CMAKE_CXX_COMPILER:\w+=(.*)$", cache, re.M)
+    if not m:
+        return None
+    ident = version = ""
+    for f in sorted((BUILD_DIR / "CMakeFiles").glob("*/CMakeCXXCompiler.cmake")):
+        text = f.read_text(errors="replace")
+        i = re.search(r'^set\(CMAKE_CXX_COMPILER_ID "([^"]*)"\)', text, re.M)
+        v = re.search(r'^set\(CMAKE_CXX_COMPILER_VERSION "([^"]*)"\)', text, re.M)
+        if i and v:
+            ident, version = i.group(1), v.group(1)
+    return m.group(1).strip(), ident, version
+
+
+def compiler_change():
+    """Why the build folder's configuration no longer fits this system's compiler (a system update replaced it: GCC 15
+    by GCC 16, say), or None. CMake detects the compiler only when it configures a new folder, and keeps using what it
+    found then (GitHub issue #114)."""
+    found = cached_compiler()
+    if found is None:
+        return None
+    path, ident, version = found
+    if not path or not version:
+        return None
+    if not Path(path).is_file() and shutil.which(path) is None:
+        return f"the compiler it was configured with, {path}, is not there any more"
+    flag = "-dumpfullversion" if ident == "GNU" else "-dumpversion"
+    try:
+        now = subprocess.run([path, flag], capture_output=True, text=True, timeout=30).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if not re.fullmatch(r"\d+(\.\d+)*", now) or now == version:
+        return None
+    # (clang's -dumpversion may give fewer parts than CMake recorded: compare only what both have)
+    a, b = now.split("."), version.split(".")
+    n = min(len(a), len(b))
+    if a[:n] == b[:n]:
+        return None
+    return f"the compiler changed ({ident} {version} then, {now} now)"
+
+
+def fresh_build_config():
+    """build/ without what CMake made (BUILD_PRODUCTS, _deps/*-build): the next build configures and compiles afresh,
+    as in a new folder, without downloading the libraries again. Returns the game's own on / off options the cache had
+    (RAC1_NATIVE_ARCH and the other RAC1_* ones), as -D arguments for the new configuration; the paths CMake found
+    (glslc...) are looked for again."""
+    kept = []
+    try:
+        cache = (BUILD_DIR / "CMakeCache.txt").read_text(errors="replace")
+        kept = [f"-D{m.group(1)}:{m.group(2)}={m.group(3)}"
+                for m in re.finditer(r"^(RAC1_\w+):(BOOL)=(.*)$", cache, re.M)]
+    except OSError:
+        pass
+    for name in BUILD_PRODUCTS:
+        p = BUILD_DIR / name
+        if p.is_dir():
+            shutil.rmtree(p, ignore_errors=True)
+        elif p.exists():
+            p.unlink(missing_ok=True)
+    for p in BUILD_DIR.glob("*.a"):
+        p.unlink(missing_ok=True)
+    for p in (BUILD_DIR / "_deps").glob("*-build"):
+        shutil.rmtree(p, ignore_errors=True)
+    return kept
+
+
+def build(jobs, native_arch=None, retry=True, kept=()):
     BUILD_DIR.mkdir(exist_ok=True)
     BUILD_LOG.write_text("")
+    change = compiler_change()
+    if change:
+        print(f"  The build folder was configured for another compiler: {change}. Configuring it afresh...", flush=True)
+        kept = fresh_build_config()
+    configured = (BUILD_DIR / "CMakeCache.txt").exists()
     # --native-arch on / off: the game compiled for this machine's CPU or not (CMakeLists.txt RAC1_NATIVE_ARCH), kept in the
     # build's CMake cache for the next builds (a change rebuilds everything)
     arch = [] if native_arch is None else [f"-DRAC1_NATIVE_ARCH={'ON' if native_arch == 'on' else 'OFF'}"]
     if not (BUILD_DIR / "CMakeCache.txt").exists() or not any((BUILD_DIR / f).exists() for f in ("Makefile", "build.ninja")):
         print("  Configuring (this downloads a few libraries the first time)...", flush=True)
-        cmd = ["cmake", "-S", str(ROOT), "-B", str(BUILD_DIR), "-DCMAKE_BUILD_TYPE=RelWithDebInfo"] + arch
+        cmd = ["cmake", "-S", str(ROOT), "-B", str(BUILD_DIR), "-DCMAKE_BUILD_TYPE=RelWithDebInfo"] + list(kept) + arch
         if WINDOWS:  # (Ninja and clang, not Visual Studio's generator and compiler: docs/platforms.md)
             cmd += ["-G", "Ninja"] + windows_compilers()
         if not run_logged(cmd, BUILD_LOG):
@@ -998,6 +1080,13 @@ def build(jobs, native_arch=None):
             fail(f"CMake could not configure the build (see above).")
     print(f"  Compiling with {jobs} parallel jobs (the first build takes several minutes)...", flush=True)
     if not run_logged(["cmake", "--build", str(BUILD_DIR), "-j", str(jobs)], BUILD_LOG):
+        if retry and configured:
+            # (a build folder kept from an earlier version or system can fail where a new one builds: files the sources
+            # no longer have, a cache of another compiler. Once more from a fresh configuration before giving up; #114)
+            shutil.copyfile(BUILD_LOG, BUILD_DIR / "setup-build-first.log")
+            warn("The build failed in the build folder as it was. Trying once more with a fresh build configuration "
+                 "(the first attempt's output is in build/setup-build-first.log)...")
+            return build(jobs, native_arch, retry=False, kept=fresh_build_config())
         fail("The build failed (see above).")
     if not EXE.exists():
         # (the build ran to the end: the program was made, then removed, which is what an antivirus does with a new

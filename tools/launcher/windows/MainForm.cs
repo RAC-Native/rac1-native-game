@@ -390,11 +390,10 @@ namespace Rac1Launcher
                 try
                 {
                     ctl.FetchUpdates();
-                    string fresh = ctl.DownloadNewLauncher(Application.ExecutablePath);
                     BeginInvoke((Action)(() =>
                     {
                         ShowUpdate();
-                        if (fresh != null && SwapLauncher(fresh)) return;
+                        if (OfferNewLauncher(userAsked)) return;
                         if (userAsked) Say(ctl.UpdateSummary(), "Updates");
                     }));
                 }
@@ -405,6 +404,36 @@ namespace Rac1Launcher
                                                        "Updates", MessageBoxIcon.Warning)));
                 }
             });
+        }
+
+        bool launcherDeclined;  // (the player said no to the new launcher: asked again only by Check for updates)
+
+        /// <summary>A newer launcher, when there is one: the player is asked first, then it is downloaded (and checked)
+        /// and swapped in. True when the question was asked.</summary>
+        bool OfferNewLauncher(bool userAsked)
+        {
+            var v = ctl.NewLauncherVersion();
+            if (v == null || (launcherDeclined && !userAsked)) return false;
+            if (runner != null || (gameProc != null && !gameProc.HasExited)) return false;  // (next time)
+            if (!Yes(ctl.NewLauncherQuestion(v), "Launcher update"))
+            {
+                launcherDeclined = true;
+                return true;
+            }
+            Task.Run(() =>
+            {
+                string fresh = ctl.DownloadNewLauncher(Application.ExecutablePath);
+                BeginInvoke((Action)(() =>
+                {
+                    if (fresh == null)
+                        Say("The new launcher could not be downloaded (see Show the details). Try again later, or download "
+                            + "it from the release page.", "Launcher update", MessageBoxIcon.Warning);
+                    else if (!SwapLauncher(fresh))
+                        Say("The new launcher could not replace this one now; it is tried again at the next update check.",
+                            "Launcher update", MessageBoxIcon.Warning);
+                }));
+            });
+            return true;
         }
 
         /// <summary>The new launcher replaces this one, which then starts it. True when it did (the window closes).</summary>

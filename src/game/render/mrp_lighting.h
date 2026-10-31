@@ -88,6 +88,10 @@ struct ClassLight {
     // a moby's: "joint <n>" - the offset in that joint's frame as the frame's pose moves it (its animated part: a flying Buzzer's body),
     // -1 the moby's own position and rotation
     int joint = -1;
+    // "aim <dx dy dz> <cone>": the light shines only into a cone around that direction (in the moby's, the joint's or the tie's frame,
+    // as the offset), `cone` its half angle in degrees (0: no aim - every way, as before); the edge softened over its inner 40 %
+    float aim[3] = {1.0f, 0.0f, 0.0f};
+    float cone = 0.0f;
     // (every level's: a line of data/lights/classes.txt, not of the level's file - mrp_user_lights_save writes it there; gidx its
     // place in that file's list, -1 one made global since the files were read)
     bool global = false;
@@ -201,12 +205,15 @@ std::vector<EmitterClass> mrp_world_emitter_classes();
 // A `surface` is one of VU1 program 7's surfaces the MRP draws (the levels' water, lava and sand sea, mrp_fx.h kMrpFxVu7): its class
 // the moby class whose draw-list callback draws it (0: a callback without a moby), its texture the GS memory block it is read from
 // (TEX0's TBP, as the RAC1_LIGHTS_TRACE report lists them).
-// Shader slots 1..30 (uEmis), 31 the debug menu's preview (a pulsing magenta)
+// Shader slots 1..126 (uEmis), 127 the debug menu's preview (a pulsing magenta); 30 until batch 1 of #102 (five bits of the texture word:
+// a level's own lines and the classes.txt ones filled them, and the rest were dropped)
 // The same entry is a surface's material ("material <kind> <class> tex <n> <type> [a] [b] [c]", Options > Graphics > Surface
 // Detail): `type` 0 is the emissive line above (strength, threshold); the others are the materials (MatType, docs/materials.md)
 // with their own parameters a, b, c (0: the type's default, kMatDefaults). One entry per surface: a surface is emissive or one
-// material. They share the 30 slots in the list's order
-enum MatType : int { MAT_EMISSIVE = 0, MAT_METAL, MAT_WET, MAT_PUDDLE, MAT_LAVA, MAT_WATER, MAT_MUD, MAT_QUICKSAND, MAT_COUNT };
+// material, and a material (not lava, emissive by itself) may glow besides (`glow`: "material ... glow <strength> [threshold]", or an
+// emissive line for the same texture in the same file, folded into the material's entry when read). They share the slots in the
+// list's order
+enum MatType : int { MAT_EMISSIVE = 0, MAT_METAL, MAT_WET, MAT_PUDDLE, MAT_LAVA, MAT_WATER, MAT_MUD, MAT_QUICKSAND, MAT_GRASS, MAT_COUNT };
 struct EmissiveSurface {
     int kind = 1;  // 0 tfrag, 1 tie, 2 shrub, 3 moby, 4 surface (VU1 program 7's)
     int o_class = 0;
@@ -215,10 +222,17 @@ struct EmissiveSurface {
     float threshold = 0.0f;  // the texels' brightest channel from which they glow (0..1; 0: the whole texture)
     int type = MAT_EMISSIVE;
     float p[3] = {0.0f, 0.0f, 0.0f};  // a material's parameters (as in its line; MatParam names them)
+    float glow = 0.0f, glow_threshold = 0.0f;  // a material's glow: as an emissive line's strength and threshold (0: none)
+    // water, lava, quicksand with Options > Graphics > Water (docs/materials.md): "tint r g b" the deep colour (-1: the texture's
+    // own), "waves <scale> <speed>" the normal maps' size and speed (1 1), "foam <f>" the shore's foam (-1: the type's default),
+    // "depth <d>" the units of water before it is opaque (-1: the type's default)
+    float tint[3] = {-1.0f, -1.0f, -1.0f};
+    float waves[2] = {1.0f, 1.0f};
+    float foam = -1.0f, depth = -1.0f;
     bool global = false;  // (a moby's line of data/lights/classes.txt, every level's: as ClassLight::global)
     int gidx = -1;
 };
-constexpr int kEmissiveSlots = 30, kEmissivePreviewSlot = 31;
+constexpr int kEmissiveSlots = 126, kEmissivePreviewSlot = 127;
 // orig: (host) the material types' names as the level's file writes them ("emissive" for type 0), their parameters' names and defaults
 const char* mrp_material_name(int type);
 int mrp_material_type(const char* name);  // -1: not a type
@@ -233,6 +247,16 @@ extern int g_emissive;
 // (lit and animated: specular, wet, ripples, flow), 2 High (also the reflections from the last frame's picture and the lava's heat
 // shimmer). Only with Lighting not Original (RAC1_SURFACE_DETAIL overrides it, testing)
 extern int g_surface_detail;
+// orig: (host) Options > Graphics > Water: 0 Off (default), 1 Low (two scrolling normal maps, Fresnel, glints, the depth's tint and the
+// shore's foam), 2 High (also the scene's reflection and the refraction); the `water`, `lava` and `quicksand` materials and the seas.
+// Lighting not Original only (RAC1_WATER overrides it, testing)
+extern int g_water;
+// orig: (host) Options > Graphics > Grass: 0 Off (default), 1 Low (the blades as a detail relief of the ground, no geometry), 2 High
+// (also 4 very low shells) over the tfrags with the `grass` material (RAC1_GRASS); g_grass_shells > 0 the shells' count instead
+// (RAC1_GRASS_SHELLS, the debug menu), g_grass_distance how far they are drawn (units; RAC1_GRASS_DIST)
+extern int g_grass;
+extern int g_grass_shells;
+extern float g_grass_distance;
 // orig: (host) the level's rain ("rain on" in its file; our data): the puddles' and the water's rain ripples
 bool mrp_user_rain();
 void mrp_user_rain_set(bool on);
@@ -244,7 +268,7 @@ void mrp_user_emissive_changed();
 void mrp_lighting_material_capture(const int vp[4]);
 // orig: (host) the debug menu's preview (kind -1: none): that texture pulses magenta
 void mrp_emissive_preview(int kind, int o_class, int tex);
-// orig: (host) the renderers' copy (any thread): the surfaces by slot (index i: slot i + 1; the preview, when on, in slot 31 -
+// orig: (host) the renderers' copy (any thread): the surfaces by slot (index i: slot i + 1; the preview, when on, in slot 127 -
 // `preview` set), and a generation that changes with the list or the level
 uint32_t mrp_emissive_snapshot(std::vector<EmissiveSurface>& out, EmissiveSurface* preview, bool* has_preview);
 const char* mrp_emissive_kind_name(int kind);
@@ -259,7 +283,7 @@ struct SurfacePick {
     float dist = 0.0f;
     float normal[3] = {0.0f, 0.0f, 1.0f};  // (the triangle's, either side: the caller turns it toward the camera)
 };
-SurfacePick mrp_world_surface_at(const float p[3]);
+SurfacePick mrp_world_surface_at(const float p[3], float within = 0.5f);  // (`within`: the farthest triangle taken, units)
 // orig: (host) the level texture of a class's texture (-1 none) and the class's texture count
 int mrp_world_class_texture(int kind, int o_class, int tex, int* ntex = nullptr);
 // orig: (host) the debug menu's "suggest": the level's tie / shrub textures with bright saturated or near-white texels (as
@@ -350,6 +374,7 @@ struct ShadowLocs {
     int strength = -1;                       // (the shadows' strength)
     int emis = -1;                           // (the emissive surfaces' slots: strength, threshold, preview)
     int mat = -1, ssr_vp = -1, ssr_z = -1, ssr_sky = -1, ssr_col = -1, ssr_depth = -1;  // (the materials)
+    int mat2 = -1, pt_aim = -1;  // (the water's parameters; the lights' aim)
 };
 // orig: (host) the locations of a linked program
 ShadowLocs mrp_lighting_locs(unsigned prog);
@@ -423,8 +448,8 @@ bool mrp_moby_caster_rect(const float* light_vp, float rect[4], const float* wit
     "uniform vec3 uShKeyDir;\n"          /* toward the key light as the game lights with it (the sun may be turned) */ \
     "uniform float uShStrength;\n"       /* the shadows' strength: the share of the key light a shadow hides (Options) */ \
     "float sh_vis = 1.0;\n"              /* the sun's visibility (the strength applied), the zone's weight not applied */ \
-    "uniform vec4 uEmis[32];\n"          /* the emissive surfaces: [0].x on; per slot strength, threshold, material type, preview (x the pulse) */ \
-    "uniform vec4 uMat[32];\n"           /* the materials: [0] Surface Detail, time, rain, the reflections' picture ready; per slot a, b, c */ \
+    "uniform vec4 uEmis[128];\n"          /* the emissive surfaces: [0].x on; per slot strength, threshold, material type, preview (x the pulse) */ \
+    "uniform vec4 uMat[128];\n"           /* the materials: [0] Surface Detail, time, rain, the reflections' picture ready; per slot a, b, c */ \
     "uniform mat4 uSsrVP;\n"             /* the reflections' picture (the last frame's 3D): its view-projection */ \
     "uniform vec4 uSsrZ;\n"              /* its depth's linearisation (clip z = x w + y); z, w - */      \
     "uniform vec4 uSsrSky;\n"            /* the sky's colour (rgb): what a reflection shows where its ray finds nothing */ \
@@ -499,6 +524,7 @@ bool mrp_moby_caster_rect(const float* light_vp, float rect[4], const float* wit
     "#endif\n"                                                                                          \
     "    sh_state = vec4(vis, facing, float(casc), 1.0);\n"                                             \
     "}\n"                                                                                               \
+    "float sh_aim(int i, vec3 l);\n" /* a light's aim (RAC1_MATERIALS_FS): 1 every way, else its cone toward l (unit, to the light) */ \
     "vec3 sh_points(vec3 c) {\n"                                                                        \
     "    if (uShOn == 0 || uPtN <= 0) return uShDebug == 3 && uShOn != 0 ? vec3(0.0) : c;\n"            \
     "    vec3 add = vec3(0.0);\n"                                                                       \
@@ -521,6 +547,7 @@ bool mrp_moby_caster_rect(const float* light_vp, float rect[4], const float* wit
     "        float att = 1.0 - d / r;\n"                                                                \
     /* aimed down (a ceiling fixture's tube or bulb): a Lambert lobe below the light, the falloff squared - a pool under it */ \
     "        att = mix(att, att * att * max(L.z * inv_d, 0.0), uPtDown[i >> 2][i & 3]);\n"              \
+    "        att *= sh_aim(i, L * inv_d);\n"                                                            \
     "        float sv = 1.0;\n"                                                                         \
     "        if (uPtCol[i].w >= 0.0) {\n" /* the cube (the integer part) and its shadow's weight (0.05..0.95: fading in or out) */ \
     "            float layer = floor(uPtCol[i].w), kw = clamp((fract(uPtCol[i].w) - 0.05) / 0.9, 0.0, 1.0);\n" \
@@ -551,14 +578,19 @@ bool mrp_moby_caster_rect(const float* light_vp, float rect[4], const float* wit
     "#if defined(SH_POINTS) || defined(SH_SPLIT)\n"                                                   \
     /* an emissive surface's texel (its texture word's slot): the original's colour - the game's vertex colour, unshadowed - times */ \
     /* the strength where the modern lighting made it darker; the texels under the threshold (the brightest channel) lit as before */ \
+    "vec3 sh_glow(vec3 lit, vec3 orig, vec3 tex, vec4 e) {\n" /* e.x the strength (0: none), e.y the threshold */ \
+    "    if (e.x <= 0.0) return lit;\n"                                                                \
+    "    float v = max(tex.r, max(tex.g, tex.b));\n"                                                   \
+    "    float m = e.y > 0.0 ? smoothstep(e.y - 0.04, e.y + 0.04, v) : 1.0;\n"                         \
+    "    return mix(lit, max(lit, orig * e.x), m);\n"                                                  \
+    "}\n"                                                                                              \
     "vec3 sh_emissive(vec3 lit, vec3 orig, vec3 tex, uint s) {\n"                                      \
     "    if (s == 0u || uShOn == 0 || uShPass != 0 || uEmis[0].x == 0.0) return lit;\n"                \
     "    vec4 e = uEmis[s];\n"                                                                         \
     "    if (e.w > 0.0) return mix(lit, vec3(1.0, 0.0, 1.0), e.x);\n" /* the debug menu's preview */    \
-    "    if (e.z > 0.0) return lit;\n" /* a material's slot (sh_material; lava is emissive there) */       \
-    "    float v = max(tex.r, max(tex.g, tex.b));\n"                                                   \
-    "    float m = e.y > 0.0 ? smoothstep(e.y - 0.04, e.y + 0.04, v) : 1.0;\n"                         \
-    "    return mix(lit, max(lit, orig * e.x), m);\n"                                                  \
+    /* a material's slot (z its type): drawn by sh_material, its glow after it; with Surface Detail Off (uMat[0].x 0) its glow alone */ \
+    "    if (e.z > 0.0 && uMat[0].x != 0.0) return lit;\n"                                             \
+    "    return sh_glow(lit, orig, tex, e);\n"                                                         \
     "}\n"                                                                                              \
     "#endif\n"                                                                                         \
     "vec3 sh_apply(vec3 c) {\n"                                                                         \

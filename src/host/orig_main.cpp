@@ -73,6 +73,7 @@
 #endif
 
 #include "host_language.h"
+#include "dualsense.h"
 #include "rumble.h"
 
 #include <atomic>
@@ -124,6 +125,7 @@
 #include <setup/setup_manager.h>
 #include <formats/mrp_asset_check.h>
 #include <game/render/render_toggles.h>
+#include <game/render/gl_draws.h>
 #include <game/render/render_view.h>
 #include <game/render/shader_manager.h>
 #include <game/render/sky_render.h>
@@ -1548,9 +1550,12 @@ bool g_cursor_free = false;         // the debug menu is open: the cursor is the
 double g_cursor_x = 0.0, g_cursor_y = 0.0;
 float g_mouse_dx = 0.0f, g_mouse_dy = 0.0f;  // the movement since the last game frame
 hi::WheelPulse g_wheel;                      // the wheel's notches, a press each (game frames: host_state)
-// the vibration (#10): the motors the game asked for in its last game frame (vibration_take, pad_packet: the game's thread),
-// given to the pad last used (g_pad_guid) once a host frame (host_input_poll: the main thread)
-std::atomic<float> g_rumble_low{0.0f}, g_rumble_high{0.0f};
+// the vibration (#10): what the game asked for in its last game frame (vibration_take, pad_packet: the game's thread),
+// given to the pad last used (g_pad_guid) once a host frame (host_input_poll: the main thread); neutral when the game's
+// thread has given nothing for 150 ms (a stalled game leaves the pad still)
+std::mutex g_rumble_lock;
+rac1::rumble::Output g_rumble;
+std::chrono::steady_clock::time_point g_rumble_time{};
 std::mutex g_pad_guid_lock;
 std::string g_pad_guid;  // (the GUID of the pad g_pad_name names)
 GLFWscrollfun g_prev_scroll = nullptr;       // the callback before ours (chained)
@@ -1677,7 +1682,13 @@ void host_input_poll(GLFWwindow* win, bool cursor_free) {
             std::lock_guard<std::mutex> lock(g_pad_guid_lock);
             guid = g_pad_guid;
         }
-        rac1::rumble::set(guid, g_rumble_low.load(), g_rumble_high.load());
+        rac1::vibration_set_dualsense(rac1::dualsense::is_dualsense(guid));  // (the Adaptive Triggers row)
+        rac1::rumble::Output out;
+        {
+            std::lock_guard<std::mutex> lock(g_rumble_lock);
+            if (std::chrono::steady_clock::now() - g_rumble_time < std::chrono::milliseconds(150)) out = g_rumble;
+        }
+        rac1::rumble::set(guid, out);
     }
     if (g_cursor_captured) {
         double x = 0.0, y = 0.0;
@@ -1986,19 +1997,35 @@ void pad_packet(GLFWwindow* win, uint64_t frame, int pre = -1) {
     }
     rac1::advanced_host_input(extra);
     {  // the vibration of the game frame before (#10), for the pad (host_input_poll)
-        float vl = 0.0f, vh = 0.0f;
-        rac1::vibration_take(vl, vh);
-        g_rumble_low.store(vl);
-        g_rumble_high.store(vh);
+        rac1::VibeOut v;
+        rac1::vibration_take(v);
+        rac1::rumble::Output out;
+        out.low = v.low;
+        out.high = v.high;
+        out.left = v.left;
+        out.right = v.right;
+        out.dualsense = v.dualsense;
+        out.r2 = rac1::rumble::Trigger{v.r2.kind, v.r2.a, v.r2.b, v.r2.c};
+        out.l2 = rac1::rumble::Trigger{v.l2.kind, v.l2.a, v.l2.b, v.l2.c};
+        out.health = v.health;
+        {
+            std::lock_guard<std::mutex> lock(g_rumble_lock);
+            g_rumble = out;
+            g_rumble_time = std::chrono::steady_clock::now();
+        }
+        // (testing) RAC1_DUALSENSE_OUT in a headless run: the reports written here, once a game frame (no pad is polled)
+        static const bool fake_pad = std::getenv("RAC1_HEADLESS") != nullptr && std::getenv("RAC1_DUALSENSE_OUT") != nullptr;
+        if (fake_pad) rac1::rumble::set("fake-dualsense", out);
 #if defined(__WIIU__)
-        rac1::rumble::set(g_pad_guid, vl, vh);
+        rac1::rumble::set(g_pad_guid, out);  // (the GamePad's motor: no host_input_poll pad on the Wii U)
 #endif
-        static const bool vlog = std::getenv("RAC1_VIBRATION_LOG") != nullptr;  // (testing: the motors when they change)
-        static float vlast[2] = {0.0f, 0.0f};
-        if (vlog && (vl != vlast[0] || vh != vlast[1])) {
-            std::printf("[vibe] frame %llu low %.2f high %.2f\n", static_cast<unsigned long long>(frame), vl, vh);
-            vlast[0] = vl;
-            vlast[1] = vh;
+        static const bool vlog = std::getenv("RAC1_VIBRATION_LOG") != nullptr;  // (testing: what the host takes, when it changes)
+        static rac1::rumble::Output vlast;
+        if (vlog && (out.low != vlast.low || out.high != vlast.high || out.left != vlast.left || out.right != vlast.right ||
+                     out.dualsense != vlast.dualsense)) {
+            std::printf("[vibe] host frame %llu low %.2f high %.2f left %.2f right %.2f%s\n", static_cast<unsigned long long>(frame), out.low,
+                        out.high, out.left, out.right, out.dualsense ? " (triggers)" : "");
+            vlast = out;
         }
     }
     // (testing) RAC1_SIM_DELAY=N: the RAC1_SIM_INPUT script starts N frames late (after a level's arrival scene)
@@ -2447,6 +2474,7 @@ int main(int argc, char** argv) {
     // a headless run ignores the player's Advanced settings (~/.config/rac1-native/advanced_options.txt, save<N>.pc): tests are
     // deterministic, the enhancements off; RAC1_ADVANCED=1 keeps them (testing an enhancement)
     if (headless && std::getenv("RAC1_ADVANCED") == nullptr) rac1::g_advanced_disabled = true;
+    if (headless && std::getenv("RAC1_DUALSENSE_OUT") != nullptr) rac1::vibration_set_dualsense(true);  // (testing: a DualSense taken as connected)
     std::printf("[orig] rac1-native %s\n", rac1::update_check::version_text().c_str());
     // the update check (Updates > Update Check): started when the main menu opens on the title screen (or on demand
     // via Check Now), never in a headless run; what it finds is shown as the update notice
@@ -2481,8 +2509,18 @@ int main(int argc, char** argv) {
     if (!headless) {  // Options > Graphics's Monitor row: the host's monitors, for the row and for the window to go on
         std::vector<std::string> names;
         int n = 0;
-        if (GLFWmonitor** all = glfwGetMonitors(&n); all != nullptr)
-            for (int i = 0; i < n; ++i) names.emplace_back(glfwGetMonitorName(all[i]));
+        if (GLFWmonitor** all = glfwGetMonitors(&n); all != nullptr) {
+            for (int i = 0; i < n; ++i) names.emplace_back(glfwGetMonitorName(all[i]) != nullptr ? glfwGetMonitorName(all[i]) : "?");
+            // (two monitors of the same name - "Generic PnP Monitor" twice - told apart by their place on the desktop, which
+            // stays from one start to the next where GLFW's order may not: the name kept in the preferences, GitHub issue #111)
+            const std::vector<std::string> plain = names;
+            for (int i = 0; i < n; ++i) {
+                if (std::count(plain.begin(), plain.end(), plain[static_cast<size_t>(i)]) < 2) continue;
+                int mx = 0, my = 0;
+                glfwGetMonitorPos(all[i], &mx, &my);
+                names[static_cast<size_t>(i)] += " (at " + std::to_string(mx) + "," + std::to_string(my) + ")";
+            }
+        }
         rac1::graphics_set_monitors(std::move(names));
     }
     int win_w0 = 960, win_h0 = 720;  // testing: RAC1_WINDOW=WxH, RAC1_VIEW_MODE=0|1|2 (render_toggles.h)
@@ -2551,6 +2589,7 @@ int main(int argc, char** argv) {
         else host_apply_swap_interval(env_vsync >= 0 ? env_vsync != 0 : rac1::graphics_display().vsync, env_vsync >= 0 ? "start (RAC1_VSYNC)" : "start");
         if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) { std::fprintf(stderr, "rac1-native: GL load failed\n"); return 1; }
         if (!ShaderManager::get().init()) { std::fprintf(stderr, "rac1-native: shaders failed\n"); return 1; }
+        rac1::gl_draws_init();  // (the driver in the log; the multi-draws' single-draw path, issue #113)
     }
     sample_prof_start();  // (testing: RAC1_SAMPLE_PROF=<file>, see sample_prof.h)
     g_use_gpu_rendering = !no_graphics;
@@ -4431,6 +4470,13 @@ int main(int argc, char** argv) {
                     if (reader) mrp_2d_draw(cf, w, h, fd.fb_w, fd.fb_h, has_dm ? &dm : nullptr, &v, from, to);
                     else rac1::gs::draw(gs, w, h, fd.fb_w, fd.fb_h, has_dm ? &dm : nullptr, &v, prim_filt, from, to);
                 };
+                // program 7's surfaces that write Z drawn early, after the 3D's copy (below): with the ambient particles or Options > Graphics
+                // > Water. With Water on, also those the chain made before the moby pass (Rilgar's harbour, Hoven's, Gaspar's and Umbris's
+                // seas): drawn there, before the copy, a sea read the last frame's picture, which held the sea itself where the game's
+                // waves had put it a frame before - the depth under it nothing or nearly nothing from frame to frame, the water flickering
+                // between two looks (Daino on Rilgar). One draw per sea, after the copy
+                const bool water_on = g_water > 0 && mrp_lighting_active();
+                const bool surfaces_early = world_3d && (g_ambient_particles > 0 || water_on) && reader && fx_external && movie_pic == nullptr && !fd.fade_held;
                 size_t pre_moby = 0;
                 if (mrp_moby_active() && g_render_moby && g_render_gs2d && movie_pic == nullptr && !fd.fade_held && !menu_mode && !title) {
                     const size_t mark = moby_mark;
@@ -4438,7 +4484,7 @@ int main(int argc, char** argv) {
                         const rac1::gs::Viewport pv = g_scaled_scene.on ? g_scaled_scene.scaled(gv) : gv;
                         if (fx_external) {
                             RAC1_PROF_ZONE(kEffects);
-                            mrp_fx_draw(cf, w, h, &pv, [&](size_t from, size_t to) { draw_2d(pv, from, to); }, 0, mark);
+                            mrp_fx_draw(cf, w, h, &pv, [&](size_t from, size_t to) { draw_2d(pv, from, to); }, 0, mark, surfaces_early && water_on);
                         } else {
                             draw_2d(pv, 0, mark);
                         }
@@ -4480,12 +4526,13 @@ int main(int argc, char** argv) {
                 // program 7's surfaces that write Z (the seas, lava, sand) before our ambient particles, which write none: drawn after them,
                 // the seas covered the rain, snow and embers in front of them (Batalia's rain). Only with the particles on (the order
                 // otherwise the chain's, the translucent effects and the 2D in it still)
-                bool surfaces_early = false;
-                if (world_3d && g_ambient_particles > 0 && reader && fx_external && movie_pic == nullptr && !fd.fade_held) {
+                // (also with Options > Graphics > Water on: the seas right after the 3D's picture was copied - the 3D under them, mrp_lighting.h)
+                if (surfaces_early) {
                     RAC1_PROF_ZONE(kEffects);
+                    const int water_zone = water_on ? rac1::prof::begin(rac1::prof::kWater) : -1;
                     const rac1::gs::Viewport sv = g_scaled_scene.on ? g_scaled_scene.scaled(gv) : gv;
-                    mrp_fx_draw_surfaces(cf, w, h, &sv, pre_moby);
-                    surfaces_early = true;
+                    mrp_fx_draw_surfaces(cf, w, h, &sv, water_on ? 0 : pre_moby);
+                    rac1::prof::end(water_zone);
                 }
                 if (world_3d && g_ambient_particles > 0) mrp_particles_draw(fd.frame);  // (our ambient particles: nothing unless asked)
                 if (g_scaled_scene.on) {  // the scaled 3D on the window; the effects and the 2D drawn over it at the window's resolution

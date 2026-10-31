@@ -10,16 +10,19 @@ Blarg / Nebula G34 and Umbris; see [Roadmap](roadmap.md)); Batalia, Gaspar and O
 the game runs, one function is left to port (see the [Port inventory](port-inventory.md)). The
 whole game has been played through to the end on 0.4.0 (Linux), and the start of a New Game+
 checked; the planets after Orxon have had one full playthrough so far, so expect some bugs and
-glitches there; the port as a whole still needs polishing. 0.5.0 adds the launcher for Windows and
+glitches there; the port as a whole still needs polishing. 0.5.0 added the launcher for Windows and
 Linux, an experimental Vulkan renderer (opt-in), a widescreen HUD option, a reworked modern
-lighting, 5.1 / 7.1 sound and a faster game update, and fixes the bugs reported on 0.4.0 (see the
-[Changelog](../CHANGELOG.md#050)); it has been playtested on Linux. Windows is no longer
-experimental: players have played through the game on it. Since 0.5.0, `main` has gained (see the
-[Changelog](../CHANGELOG.md#unreleased); not released yet): the levels' water, lava and sand seas drawn by
-the native renderer, which now draws all of the 3D in play; surface materials (Surface Detail) and
-emissive surfaces for the modern lighting, and new level suns to playtest; optional ambient particles; the
-game's update on a thread of its own beside the drawing; the setup on the Steam Deck, Bazzite and other
-immutable Linux systems; `progress.json` for the RAC Native launcher; and fixes (#104, #101).
+lighting, 5.1 / 7.1 sound and a faster game update. Windows is no longer experimental: players have
+played through the game on it. 0.6.0 (see the [Changelog](../CHANGELOG.md#060)) has the native
+renderer draw the whole game itself, the HUD and menus and the levels' water, lava and sand seas
+included, with the GS replica no longer running beside it; the setup extracts the whole disc, and
+the game reads those files instead of the image. It adds emissive surfaces, surface materials
+(Surface Detail), the mobys lit by the point lights and new level suns from Anya-Thoughtmane's
+lighting passes (#90, #101, #102, #110), optional ambient particles, the Vendor's Buy All Ammo
+option, the game's update on a thread of its own beside the drawing (about a fifth less per game
+frame) and less GPU time, the setup on the Steam Deck, Bazzite and other immutable Linux systems
+(#108), `progress.json` for the RAC Native launcher (#107), and fixes (#104, #112); it has been
+playtested on Linux.
 
 Every planet of the milestone has its own classes ported and proved against the original code, and
 runs on its own overlay. The gaps that remain on them are listed below as **known issues**; they are
@@ -119,14 +122,14 @@ nothing, so an object whose class is not ported stands still or does not appear.
 | Memory card, save and load, the save on planet change | Works, but may still change: the save files' format, location and size have not been checked by hand yet. See [Saves](saves.md). |
 | Pause menu (with its 3D models), HUD, Vendor, the ship's planet menu, the loading screen's flight | Ported. Known issue: the planet menu's information panels draw empty. |
 | Sound and music (989snd), dialogue streams, movies; 5.1 and 7.1 output | Working; see [Audio](audio.md). The sound mirror keeps music and sounds playing through loads, on by default (`RAC1_IOP_MIRROR=0` turns it off; see [Decisions](decisions.md#13-the-iops-sound-runs-twice)). |
-| 3D rendering (the MRP) | The default renderer; all of the 3D in play, the levels' water, lava and sand seas included; see [Rendering](rendering.md). |
+| Rendering (the MRP) | The default renderer; it draws the whole game itself: all of the 3D in play, the levels' water, lava and sand seas included, and the 2D (HUD, text, menus, fades), with the GS replica no longer running beside it (it stays the faithful reference, `RAC1_MRP=0`); see [Rendering](rendering.md). |
 | The Vulkan renderer (Options > Graphics > Renderer) | Experimental, opt-in: the same picture as OpenGL, which stays the default and takes over when Vulkan cannot start; see [Vulkan](vulkan.md). |
 | Modern lighting (optional) | Working, off by default, experimental; with surface materials (Surface Detail) and emissive surfaces; see [Lighting](lighting.md) and [Materials](materials.md). |
 | Ambient particles (optional) | Working, off by default, on seven levels; see [Ambient particles](particles.md). |
 | Options > Graphics (including Texture Detail and the widescreen HUD), Controls, Advanced; the Original / Modern / Experimental choice at New Game | Implemented, known issues may remain; see [Settings](settings.md). |
 | Keyboard, mouse and controller mapping, remapping in Options > Controls | Implemented, known issues may remain; see [Input](input.md). |
 | Debug tools behind `--debug-tools` (with the Profiler and Unlocks tabs) | Implemented; see [Settings](settings.md#debug-tools). |
-| The launcher (Windows and Linux x86-64): install, update, play, saves | New in 0.5.0; on the Steam Deck, Bazzite and other immutable Linux systems it builds the game in a container (after 0.5.0); see [The launcher](launcher.md). |
+| The launcher (Windows and Linux x86-64): install, update, play, saves | New in 0.5.0; on the Steam Deck, Bazzite and other immutable Linux systems it builds the game in a container (new in 0.6.0); see [The launcher](launcher.md). |
 
 ## Not done yet
 
@@ -140,9 +143,9 @@ nothing, so an object whose class is not ported stands still or does not appear.
   purpose (hardware, DMA, the movie library) or debug features (the one left is the boot module's
   copy of a help page's focus-in, to review). About 200 unique functions are not connected to anything
   (cut content and dead code), listed there too.
-- **Not everything is native in the renderer.** The HUD, menus and the rest of the 2D are still drawn
-  through the GS replica; the level's baked shadow meshes are still cut at the sides of a widened
-  view, and the mobys' flattened shadow meshes are not drawn yet (see [Rendering](rendering.md#limits)).
+- **The renderer's limits.** The native renderer draws the whole game, the 2D included; the level's
+  baked shadow meshes are still cut at the sides of a widened view, and the mobys' flattened shadow
+  meshes are not drawn yet (see [Rendering](rendering.md#limits)).
 - **One approximation kept on purpose.** With the modern lighting, the world's second alpha-tested pass skips the
   pixels its first pass drew, for about 0.5 to 1.5 ms of GPU a frame; a few single pixels on foliage differ. It stays on
   until it shows worse effects (see [Performance](performance.md#gpu-round-3)).
@@ -154,7 +157,7 @@ nothing, so an object whose class is not ported stands still or does not appear.
   Direct3D and macOS may come later.
 - **Regions.** The North American disc (`SCUS-97199`) is the reference. The European PAL disc
   (`SCES-50916`) can now be used on its own, through its region table: the setup, the generated code
-  and the game run from it, in the PAL game's 60 Hz mode. This is new and awaits playtesting. Still to
-  do for PAL: the functions the PAL build changed run as the North American port, or, for ten
+  and the game run from it, in the PAL game's 60 Hz mode. The Platinum re-releases, other builds, are not
+  supported yet (#64). Still to do for PAL: the functions the PAL build changed run as the North American port, or, for ten
   generated ones, as stand-ins translated from the PAL code that are not yet proved; the 50 Hz mode; the
   levels after Umbris have not been tried. See [Setup](setup.md#the-european-pal-disc).

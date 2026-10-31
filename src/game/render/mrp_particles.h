@@ -38,6 +38,8 @@ bool mrp_particles_hide_fx(uint8_t kind, uint64_t tex0, int prim_type);
 
 // orig: (host) testing / the debug menu: 1 (RAC1_PARTICLES_GAME=1) the game's own rain / snow drawn even where ours replace it
 extern int g_particles_show_game;
+// orig: (host) the debug menu's Enhancements tab: the kinds drawn (bit 1 << ParticleKind; all by default), live, not saved
+extern uint32_t g_particles_kinds;
 
 // orig: (host) the debug menu's numbers: the particles drawn last frame, the pass's CPU and GPU time (ms, averaged over a second;
 // GPU 0 until measured)

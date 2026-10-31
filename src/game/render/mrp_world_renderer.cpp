@@ -1,5 +1,6 @@
 // orig: (host) The MRP world renderer (see mrp_world_renderer.h).
 #include <game/render/mrp_world_renderer.h>
+#include <game/render/gl_draws.h>
 #include <game/render/mrp_chain.h>
 #include "mrp_world_backend.inc"
 #include "mrp_world_sky.inc"
@@ -194,6 +195,28 @@ bool tfrag_vs_wanted() {
 #endif
 }
 GLuint g_tfrag_vao = 0;
+// The GPU path's draws find their command (cmds[2 x i]) by an instanced vertex attribute (location 8, divisor 1) over the
+// integers 0, 1, 2..: a draw's base instance offsets it, as the core profile does for every instanced attribute (the hardware's own
+// instance start). Not gl_BaseInstance, a value the driver supplies itself: on an Intel UHD 620 under Windows the ties, shrubs and mobys
+// were drawn now and then with other draws' records (the world in pieces, issue #113), as a wrong gl_BaseInstance draws them. The
+// same values, the same picture elsewhere. The buffer is shared by the levels' VAOs, grown as needed. (Vulkan: gl_InstanceIndex.)
+GLuint g_draw_ids = 0;
+size_t g_draw_ids_n = 0;
+// orig: (host) the draw indices' buffer holding at least `n` (bound to GL_ARRAY_BUFFER after)
+void draw_ids_reserve(size_t n) {
+    if (g_draw_ids == 0) {
+        glGenBuffers(1, &g_draw_ids);
+        rac1::prof::gl_track_n(rac1::prof::kGlBuffer, 1, &g_draw_ids, "MRP world: draw indices");
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, g_draw_ids);
+    if (n <= g_draw_ids_n) return;
+    size_t m = std::max<size_t>(g_draw_ids_n, 4096);
+    while (m < n) m *= 2;
+    std::vector<uint32_t> ids(m);
+    for (size_t i = 0; i < m; ++i) ids[i] = static_cast<uint32_t>(i);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(m * sizeof(uint32_t)), ids.data(), GL_STATIC_DRAW);
+    g_draw_ids_n = m;
+}
 const bool g_tfrag_verify = std::getenv("RAC1_MRPW_TFRAG_VERIFY") != nullptr;
 // (RAC1_MRPW_TFRAG_CHECK=1: the host's tfrag decisions made at the game's own distances / frustum and compared with the walker's draws,
 // nothing replaced) the frame's decisions (made in the capture step from the snapshot the tfrag pass left)
@@ -581,6 +604,10 @@ void load_level(int id) {
         glVertexAttribIPointer(2, 4, GL_SHORT, T, reinterpret_cast<void*>(offsetof(TVert, uv)));
         glVertexAttribIPointer(3, 4, GL_UNSIGNED_BYTE, T, reinterpret_cast<void*>(offsetof(TVert, col)));
         for (GLuint a = 0; a < 4; ++a) glEnableVertexAttribArray(a);
+        draw_ids_reserve(0);  // (the draw's index: g_draw_ids)
+        glVertexAttribIPointer(8, 1, GL_UNSIGNED_INT, sizeof(uint32_t), nullptr);
+        glVertexAttribDivisor(8, 1);
+        glEnableVertexAttribArray(8);
         glBindVertexArray(0);
     }
 #endif
@@ -612,7 +639,8 @@ uniform int uMode;      // 0 the world renderers' projection (uVP), 1 the GS's f
 uniform mat4 uVP;
 uniform vec4 uFrame;    // fb width, fb height, x scale, 0
 uniform vec4 uXyOff;    // XYOFFSET x, y (1/16 px), depth a, depth b
-)" RAC1_SHADOW_VS R"(
+uniform int uShell;     // Options > Graphics > Grass: the shell drawn (k + 256 n), a probe (< 0: sm_grass_probe), 0 the ground itself
+)" RAC1_SHADOW_VS RAC1_NATURE_VS R"(
 smooth out vec3 vStq;
 noperspective out float vLodQ;
 noperspective out vec4 vColor;
@@ -623,6 +651,18 @@ flat out uvec2 vState;
 void main() {
     vTex = aTex;
     vState = aState;
+#ifdef SH_POINTS
+    if (uShell != 0) {  // (a grass shell: the tfrags' grass alone, lifted, the rest behind the near plane; a probe: the tfrags near)
+        vec4 wp = aWorld;
+        if (!sh_shell(wp, aTex.x, uShell)) {
+            vShWorld = vec3(0.0);
+            gl_ClipDistance[0] = 1.0;
+            gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
+            return;
+        }
+        gl_Position = sh_clip(uVP * wp);
+    } else
+#endif
     if (uMode == 0) {
         gl_Position = sh_clip(uVP * aWorld);
     } else {
@@ -649,6 +689,7 @@ layout(location = 0) in ivec4 aPos;    // x, y, z, flags (1: a tie fat position,
 layout(location = 1) in ivec4 aDelta;  // a tie fat vertex's delta
 layout(location = 2) in ivec4 aUv;     // s, t, q (shrub h) x 4096
 layout(location = 3) in uvec4 aCol;    // colour indices (tie fat: c0, c1, c2)
+layout(location = 8) in uint aDraw;    // the draw's index (its base instance: g_draw_ids)
 struct Inst {
     mat4 clip;
     vec4 rows[4];
@@ -662,7 +703,7 @@ layout(std430, binding = 3) readonly buffer RCols { uint rcols[]; };  // the res
 uniform int uMode;
 uniform vec4 uFrame;
 uniform vec4 uXyOff;
-)" RAC1_SHADOW_VS R"(
+)" RAC1_SHADOW_VS RAC1_NATURE_VS R"(
 smooth out vec3 vStq;
 noperspective out float vLodQ;
 noperspective out vec4 vColor;
@@ -672,8 +713,8 @@ flat out uvec2 vTex;
 flat out uvec2 vState;
 int ftoi4(float f) { return int(clamp(f * 16.0, -2147483648.0, 2147483520.0)); }
 void main() {
-    uvec4 cmd = cmds[2 * gl_BaseInstance];
-    vState = uvec2(cmd.w, cmds[2 * gl_BaseInstance + 1].x);
+    uvec4 cmd = cmds[2u * aDraw];
+    vState = uvec2(cmd.w, cmds[2u * aDraw + 1u].x);
     Inst I = insts[cmd.x];
     vTex = cmd.yz;
     // the position: tie fat (delta x morph) + base
@@ -749,6 +790,7 @@ flat in uvec2 vTex;
 flat in uvec2 vState;  // the GS state as data: x = TME | IIP << 1 | FGE << 2 | the alpha test's mode << 3 | ATST << 4 | AREF << 8 | texture unit << 16, y = FOGCOL
 uniform sampler2DArray uTexs[16];
 uniform int uAtPass, uMipMode, uShade, uFge;
+uniform int uShell;  // (a grass shell: k + 256 n)
 uniform vec3 uFogCol;  // (FOGCOL: per batch, RKey; as a uniform the fog's arithmetic compiles as before bit for bit)
 )" RAC1_SHADOW_FS R"(
 out vec4 FragColor;
@@ -763,10 +805,14 @@ void main() {
     vec4 c = uIip != 0 ? vColor : vFlat;
 #ifdef SH_POINTS
     vec3 c_game = c.rgb;  // (the game's colour: an emissive texel's, sh_emissive)
-#endif
+    // (Options > Graphics > Grass: a shell's blade here, -1 none; a shell's pixel without one and a probe's are not lit)
+    float gk = uShell > 0 ? sm_grass((vTex.x >> 25) & 127u, uShell & 255, uShell >> 8) : 1.0;
+    if (uShell >= 0 && gk >= 0.0) {
+        c.rgb = sh_apply(c.rgb);
+        c.rgb = sh_points(c.rgb);  // (the game's point lights per pixel; the lighting's variant only)
+    }
+#else
     c.rgb = sh_apply(c.rgb);
-#ifdef SH_POINTS
-    c.rgb = sh_points(c.rgb);  // (the game's point lights per pixel; the lighting's variant only)
 #endif
     vec4 o = c;
     uint w = vTex.x;
@@ -774,7 +820,7 @@ void main() {
     if (uTme != 0) {
         vec2 st = vStq.xy / vStq.z;
 #ifdef SH_POINTS
-        st = sh_mat_uv(st, (w >> 25) & 31u);  // (lava, mud, quicksand: the slow flow)
+        st = sh_mat_uv(st, (w >> 25) & 127u);  // (lava, mud, quicksand: the slow flow)
 #endif
         vec4 t;
         if ((w & 1u) != 0u) {
@@ -783,7 +829,8 @@ void main() {
             int mips = int((w >> 22) & 7u) + 1;
             // (a multi-draw's fragments of several draws share a wave, their units may differ: each unit the wave holds
             // sampled in turn with an index uniform over the subgroup; a quad is one primitive's, so its derivatives stay its own)
-            for (;;) {
+            t = vec4(0.0);
+            for (uint wl = 0u; wl < 16u; ++wl) {  // (16 units at most: bounded, a driver that runs it wrong cannot hang the GPU, #113)
                 uint u = subgroupBroadcastFirst(unit);
                 if (u != unit) continue;
                 if (uMipMode == 0) {
@@ -806,11 +853,20 @@ void main() {
         else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_POINTS
-        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 25) & 31u);  // (the word's bits 25..29)
-        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 25) & 31u);
+        if (uShell >= 0) {
+            o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 25) & 127u);  // (the word's bits 25..31)
+            o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 25) & 127u);
+        }
+        if (uShell > 0) {  // (Options > Graphics > Grass: a shell's blade, or nothing)
+            if (gk < 0.0) discard;
+            o.rgb *= gk;
+        }
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }
+#ifdef SH_POINTS
+    if (uShell < 0 && !sm_grass_probe((w >> 25) & 127u, min(o.a * (255.0 / 128.0), 1.0), uShell)) discard;  // (the grass's stencil)
+#endif
     if (uShade == 1) o.rgb = c.rgb;
     else if (uShade == 3) o.rgb = vec3(0.8);
     o = clamp(o, 0.0, 1.0);
@@ -862,7 +918,7 @@ using PfnMultiDrawElementsIndirect = void(APIENTRYP)(GLenum, GLenum, const void*
 PfnMultiDrawElementsIndirect p_multi_draw_elements_indirect = nullptr;
 constexpr GLenum kGlShaderStorageBuffer = 0x90D2, kGlDrawIndirectBuffer = 0x8F3F;
 struct Loc {
-    GLint mode, vp, frame, xyoff, tex, word, layer, tme, iip, ate, atst, aref, atpass, mip, shade, fge, fogcol, u8;
+    GLint mode, vp, frame, xyoff, tex, word, layer, tme, iip, ate, atst, aref, atpass, mip, shade, fge, fogcol, u8, shell;
     ShadowLocs sh;  // (the modern lighting, mrp_lighting.h)
 } g_loc{}, g_loc_gpu{}, g_loc_l{}, g_loc_gpu_l{}, g_loc_e{}, g_loc_gpu_e{};
 // orig: (host) the draw's programs swapped for the lighting's variants while it is on (restored at the scope's end)
@@ -892,9 +948,9 @@ GLuint compile(GLenum type, const char* src) {
     GLint ok = 0;
     glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
     if (!ok) {
-        char log[2048];
+        char log[8192];
         glGetShaderInfoLog(s, sizeof log, nullptr, log);
-        std::fprintf(stderr, "[mrpw] shader: %s\n", log);
+        std::fprintf(stderr, "[mrpw] the %s shader did not compile: %s\n", type == GL_VERTEX_SHADER ? "vertex" : "fragment", log);
     }
     return s;
 }
@@ -921,10 +977,12 @@ GLuint link(const char* vsrc, bool variant = false, bool early = false) {
     glDeleteShader(fs);
     GLint ok = 0;
     glGetProgramiv(prog, GL_LINK_STATUS, &ok);
-    if (!ok) {
-        char log[2048];
+    if (!ok) {  // (#113: a driver may refuse a program - too many uniform components -: said, never drawn with)
+        char log[8192];
         glGetProgramInfoLog(prog, sizeof log, nullptr, log);
-        std::fprintf(stderr, "[mrpw] link: %s\n", log);
+        std::fprintf(stderr, "[mrpw] the world's program (%s, %s%s) did not link, %s: %s\n", vsrc == kVs ? "the CPU path" : "the GPU path",
+                     variant ? "the modern lighting's variant" : "the base program", early ? ", depth only" : "",
+                     variant ? "the world drawn without the modern lighting's variant" : "the MRP world off", log);
         glDeleteProgram(prog);
         return 0;
     }
@@ -950,6 +1008,7 @@ Loc locs(GLuint prog) {
     l.fge = glGetUniformLocation(prog, "uFge");
     l.fogcol = glGetUniformLocation(prog, "uFogCol");
     l.u8 = glGetUniformLocation(prog, "uU8");
+    l.shell = glGetUniformLocation(prog, "uShell");
     l.sh = mrp_lighting_locs(prog);
     return l;
 }
@@ -958,17 +1017,17 @@ struct WorldVkPush {
     float uVP[16];
     float uFrame[4];
     float uXyOff[4];
-    float uFogCol_Pad[4];
+    float uFogCol_Pad[4];  // (w: uAtPass's bits, set_at_pass)
     int32_t uMode;
     int32_t uMipMode;
     int32_t uShade;
     int32_t uFge;
-    int32_t uAtPass;
-    int32_t uU8;
-    int32_t _pad0 = 0;
-    int32_t _pad1 = 0;
+    void set_at_pass(int32_t pass) { std::memcpy(&uFogCol_Pad[3], &pass, sizeof pass); }
+    // (Options > Graphics > Grass: the shell drawn, k + 256 n, in the frame's spare w - 0.0f's bits: none; the shader's uShell)
+    void set_shell(int32_t shell) { std::memcpy(&uFrame[3], &shell, sizeof shell); }
 };
-static_assert(sizeof(WorldVkPush) == 144);
+// (128 bytes, the least maxPushConstantsSize a device may have - Intel's: 144 overran it, GitHub issue #113)
+static_assert(sizeof(WorldVkPush) == 128);
 
 struct WorldVkPipeKey {
     bool gpu = false;
@@ -985,12 +1044,13 @@ struct WorldVkPipeKey {
     VkFormat color_fmt = VK_FORMAT_R8G8B8A8_UNORM;
     VkFormat depth_fmt = VK_FORMAT_D32_SFLOAT_S8_UINT;
     bool has_stencil = true;
+    uint8_t grass = 0;  // (Options > Graphics > Grass: 1 / 2 a probe setting / clearing the stencil, 3 the shells tested on it)
     bool operator==(const WorldVkPipeKey& o) const {
         return gpu == o.gpu && lit == o.lit && early == o.early && caster == o.caster &&
                depth_clamp == o.depth_clamp && depth_test == o.depth_test && depth_write == o.depth_write &&
                depth_compare == o.depth_compare && color_mask == o.color_mask &&
                prim == o.prim && alpha == o.alpha && color_fmt == o.color_fmt &&
-               depth_fmt == o.depth_fmt && has_stencil == o.has_stencil;
+               depth_fmt == o.depth_fmt && has_stencil == o.has_stencil && grass == o.grass;
     }
 };
 
@@ -1005,7 +1065,8 @@ struct WorldVkPipeKeyHash {
                          (static_cast<uint32_t>(k.color_fmt) << 15) |
                          (static_cast<uint32_t>(k.depth_fmt) << 23) |
                          (k.has_stencil ? (1u << 31) : 0u);
-        return h ^ (std::hash<uint32_t>{}(flags) + 0x9e3779b9 + (h << 6) + (h >> 2));
+        h ^= std::hash<uint32_t>{}(flags) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        return h ^ (static_cast<size_t>(k.grass) << 40);
     }
 };
 
@@ -1183,6 +1244,23 @@ VkPipeline get_world_vk_pipeline(const WorldVkPipeKey& k) {
         ci.depth_bias_enable = true;
         ci.depth_bias_constant = 2.0f;
         ci.depth_bias_slope = 1.5f;
+    }
+    if (k.grass != 0 && k.has_stencil) {  // (the grass's stencil: the probes a little toward the camera, as the OpenGL path's offset)
+        ci.stencil_test = true;
+        VkStencilOpState st{};
+        st.failOp = VK_STENCIL_OP_KEEP;
+        st.depthFailOp = VK_STENCIL_OP_KEEP;
+        st.passOp = k.grass == 3 ? VK_STENCIL_OP_KEEP : VK_STENCIL_OP_REPLACE;
+        st.compareOp = k.grass == 3 ? VK_COMPARE_OP_EQUAL : VK_COMPARE_OP_ALWAYS;
+        st.compareMask = 0xff;
+        st.writeMask = 0xff;
+        st.reference = k.grass == 2 ? 0u : 1u;
+        ci.stencil_front = ci.stencil_back = st;
+        if (k.grass != 3) {
+            ci.depth_bias_enable = true;
+            ci.depth_bias_constant = -4.0f;
+            ci.depth_bias_slope = -1.0f;
+        }
     }
     ci.color_write_mask = k.color_mask;
     ci.color_format = k.color_fmt;
@@ -1467,7 +1545,7 @@ const TexRef* vram_texture(Level& L, uint64_t tex0, uint64_t tex1, uint64_t mip1
 
 // ---- the emissive surfaces (mrp_lighting.h EmissiveSurface; our data) ----------------------------------------------------------
 // per level texture (tfrag, tie, shrub tables) its shader slot (0 none), rebuilt on the scene's worker when the list, the preview or
-// the level changes; the slot goes into the texture word's bits 25..29 (key_now) while the modern lighting is on, the original's draws
+// the level changes; the slot goes into the texture word's bits 25..31 (key_now) while the modern lighting is on, the original's draws
 // untouched
 }  // namespace
 void mrp_world_texture_survey();
@@ -1476,6 +1554,7 @@ struct EmissiveTable {
     uint32_t gen = 0;
     int level = -1;
     bool on = false;  // (this frame: the modern lighting and the option on, a surface marked)
+    bool grass = false;  // (a tfrag texture has the grass material: Options > Graphics > Grass draws its shells)
     std::vector<uint8_t> slot[3];
 } g_emis;
 
@@ -1534,9 +1613,14 @@ void emissive_refresh() {
             g_emis.slot[e.kind][static_cast<size_t>(t)] = slot;
             any = true;
         };
-        for (size_t i = 0; i < list.size() && i < static_cast<size_t>(kEmissiveSlots); ++i) mark(list[i], static_cast<uint8_t>(i + 1));
+        bool grass = false;
+        for (size_t i = 0; i < list.size() && i < static_cast<size_t>(kEmissiveSlots); ++i) {
+            mark(list[i], static_cast<uint8_t>(i + 1));
+            grass = grass || (list[i].kind == 0 && list[i].type == MAT_GRASS);
+        }
         if (has_pv) mark(pv, static_cast<uint8_t>(kEmissivePreviewSlot));
         g_emis.on = any;
+        g_emis.grass = grass;
     }
 }
 bool g_emis_frame = false;  // (this frame's batches carry the slots)
@@ -3547,6 +3631,18 @@ const char* batch_refused(const Frame& F, const Level& L, const Batch& b) {
 // (the modern lighting: `caster_vp` set, the frame's casters into the bound shadow map with that light view-projection, depth only)
 // (`view` the shadow view a caster draw is for: 0..2 a cascade - the frame's draws and the casters sorted into it -, 3 + i
 // point light slot i's cube - the casters near it alone)
+// orig: (host) Options > Graphics > Grass: the shells drawn this frame (High, the lighting, a tfrag texture with the grass material;
+// Low draws none: the detail relief alone), and how many (4, or RAC1_GRASS_SHELLS / the debug menu's count)
+bool grass_shells_now() { return g_grass >= 2 && g_emis.grass && mrp_lighting_active() && g_mrp_world_projection == 0 && g_render_tfrag; }
+int grass_shell_count() { return std::clamp(g_grass_shells > 0 ? g_grass_shells : 4, 1, 32); }
+// orig: (host) Options > Graphics > Grass: a tfrag batch's probe for the stencil under the shells (sm_grass_probe; its grass, or its
+// other textures): -1 / -3 drawn opaque, -2 / -4 blended with the GS's usual alpha blend (ALPHA 0x44: its alpha is how much it covers);
+// 0 another blend (an additive one hides nothing): no probe
+int grass_probe(const RKey& rk, bool grass) {
+    const int blended = rk.abe == 0 ? 0 : (rk.alpha & 0xffu) == 0x44u ? 1 : -1;
+    if (blended < 0) return 0;
+    return grass ? -1 - blended : -3 - blended;
+}
 void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caster_vp = nullptr, int view = 0) {
     Frame& F = g_frame;
     Level& L = g_level;
@@ -3622,8 +3718,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         push.uMode = mode;
         push.uMipMode = g_mrp_world_mip;
         push.uShade = g_render_shade;
-        push.uAtPass = 1;
-        push.uU8 = 0;
+        push.set_at_pass(1);
 
         if (caster) {
             mrp_lighting_vk_bind_caster(reinterpret_cast<uint64_t>(g_vk_world.pipe_layout), caster_vp);
@@ -3814,7 +3909,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
             pk.has_stencil = has_stencil;
 
             auto bind_pass = [&](int pass, bool dmask, int cmask) {
-                push.uAtPass = pass;
+                push.set_at_pass(pass);
                 pk.depth_write = dmask;
                 pk.depth_compare = (g_p2_less && lit_prog && pass == 2 && !dmask && zcmp == VK_COMPARE_OP_LESS_OR_EQUAL) ? VK_COMPARE_OP_LESS : zcmp;
                 pk.color_mask = cmask == 0 ? 0xF : cmask == 2 ? 0 : 0x7;
@@ -3856,6 +3951,75 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
             have = true;
         }
         flush();
+        // Options > Graphics > Grass: the shells over the tfrags' grass (after the world, before the occlusion: shadowed, occluded)
+        if (!caster && lit_prog && grass_shells_now()) {
+            RAC1_PROF_ZONE(kGrass);
+            const int n = grass_shell_count();
+            mrp_lighting_vk_bind_receiver(reinterpret_cast<uint64_t>(g_vk_world.pipe_layout), false, true);
+            bool vb = false;
+            auto shell_batch = [&](const Batch& b) { return b.tfrag && !b.sky && !b.rk.shadow && batch_refused(F, L, b) == nullptr; };
+            auto bind_batch = [&](const Batch& b) {
+                if (!vb) {
+                    VkBuffer vbo = reinterpret_cast<VkBuffer>(tfrag_gpu_vk_vbo());
+                    VkBuffer ibo = reinterpret_cast<VkBuffer>(tfrag_gpu_vk_ibo());
+                    VkDeviceSize vo = 0;
+                    vkCmdBindVertexBuffers(cb, 0, 1, &vbo, &vo);
+                    vkCmdBindIndexBuffer(cb, ibo, 0, VK_INDEX_TYPE_UINT32);
+                    vb = true;
+                }
+                if (b.epoch >= 0 && b.epoch != bound_epoch) {
+                    const auto& ep = F.epochs[static_cast<size_t>(b.epoch)];
+                    for (size_t u = 0; u < ep.size(); ++u) set_unit_info(static_cast<uint32_t>(u) + 1, ep[u].first, ep[u].second);
+                    bound_epoch = b.epoch;
+                    bind_set0();
+                }
+                push.uFogCol_Pad[0] = static_cast<float>(b.rk.fogcol & 0xff) / 255.0f;
+                push.uFogCol_Pad[1] = static_cast<float>((b.rk.fogcol >> 8) & 0xff) / 255.0f;
+                push.uFogCol_Pad[2] = static_cast<float>((b.rk.fogcol >> 16) & 0xff) / 255.0f;
+                push.uFge = (b.rk.fogcol >> 24) & 1 ? 1 : 0;
+                push.set_at_pass(1);
+            };
+            auto pipe = [&](uint8_t grass) {
+                WorldVkPipeKey pk{};
+                pk.lit = true;
+                pk.depth_test = true;
+                pk.depth_write = grass == 0 || grass == 3;
+                pk.depth_compare = VK_COMPARE_OP_LESS_OR_EQUAL;
+                pk.color_mask = grass == 1 || grass == 2 ? 0 : 0xF;
+                pk.color_fmt = cfmt;
+                pk.depth_fmt = dfmt;
+                pk.has_stencil = has_stencil;
+                pk.grass = has_stencil ? grass : 0;
+                vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, get_world_vk_pipeline(pk));
+            };
+            auto draw_batch = [&](const Batch& b, int shell) {
+                push.set_shell(shell);
+                vkCmdPushConstants(cb, g_vk_world.pipe_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
+                vkCmdDrawIndexed(cb, b.count, 1, b.first, 0, 0);
+            };
+            // the stencil: 1 where the grass is the ground seen (as the OpenGL path: the tfrags again in the world's order, the grass
+            // setting it, the other textures clearing it; the drop shadows clear it for their own count after)
+            if (has_stencil) {
+                vk::clear_attachments(false, nullptr, false, 1.0f, true, 0u);
+                for (const Batch& b : F.batches) {
+                    if (!shell_batch(b)) continue;
+                    bind_batch(b);
+                    for (int g = 1; g >= 0; --g) {
+                        const int probe = grass_probe(b.rk, g != 0);
+                        if (probe == 0) continue;
+                        pipe(g != 0 ? 1 : 2);
+                        draw_batch(b, probe);
+                    }
+                }
+            }
+            pipe(3);
+            for (const Batch& b : F.batches) {
+                if (!shell_batch(b)) continue;
+                bind_batch(b);
+                for (int k = 1; k <= n; ++k) draw_batch(b, k + 256 * n);
+            }
+            push.set_shell(0);
+        }
         return;
     }
 
@@ -3912,6 +4076,9 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         glBindBuffer(kGlShaderStorageBuffer, 0);
         glBindBuffer(kGlDrawIndirectBuffer, g_indirect);
         glBufferData(kGlDrawIndirectBuffer, static_cast<GLsizeiptr>(std::max<size_t>(F.draws.size() * sizeof(DrawCmd), 16)), F.draws.data(), GL_STREAM_DRAW);
+        uint32_t ids = 0;  // (the draws' base instances within the draw indices' buffer)
+        for (const DrawCmd& d : F.draws) ids = std::max(ids, d.base_instance + 1);
+        draw_ids_reserve(ids);
     } else {  // (the buffers bound again: another renderer's draw may have bound its own since)
         for (int i = 0; i < 3; ++i) glBindBufferBase(kGlShaderStorageBuffer, static_cast<GLuint>(i), g_ssbo[i]);
         glBindBufferBase(kGlShaderStorageBuffer, 3, g_rcol_buf);
@@ -3958,7 +4125,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
     auto flush = [&] {
         if (!pend.on) return;
         if (pend.kind % 3 == 1)
-            p_multi_draw_elements_indirect(GL_TRIANGLES, GL_UNSIGNED_INT, reinterpret_cast<const void*>(static_cast<uintptr_t>(pend.first) * sizeof(DrawCmd)), static_cast<GLsizei>(pend.count), 0);
+            gl_multi_draw_elements(F.draws.data(), pend.first, pend.count);
         else
             glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(pend.count), GL_UNSIGNED_INT, reinterpret_cast<const void*>(static_cast<uintptr_t>(pend.first) * sizeof(uint32_t)));
         pend.on = false;
@@ -4056,7 +4223,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         const bool zwrite = rk.zwrite != 0;
         auto draw = [&] {
             if (b.gpu)
-                p_multi_draw_elements_indirect(GL_TRIANGLES, GL_UNSIGNED_INT, reinterpret_cast<const void*>(static_cast<uintptr_t>(b.first) * sizeof(DrawCmd)), static_cast<GLsizei>(b.count), 0);
+                gl_multi_draw_elements(F.draws.data(), b.first, b.count);
             else
                 glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(b.count), GL_UNSIGNED_INT, reinterpret_cast<const void*>(static_cast<uintptr_t>(b.first) * sizeof(uint32_t)));
         };
@@ -4109,6 +4276,84 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         have = true;
     }
     flush();  // (the shadow pass's last merged draw)
+    // Options > Graphics > Grass: the shells over the tfrags' grass (after the world, before the occlusion: shadowed, occluded)
+    if (!caster && variant.on && grass_shells_now()) {
+        RAC1_PROF_ZONE(kGrass);
+        const int n = grass_shell_count();
+        glUseProgram(g_prog);
+        set_frame_uniforms(g_loc, vp, mode);
+        mrp_lighting_bind_receiver(g_loc.sh, false);
+        cur_path = -1;
+        glBindVertexArray(g_tfrag_vao);
+        cur_vao = g_tfrag_vao;
+        glDisable(GL_BLEND);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LEQUAL);
+        glDepthMask(GL_TRUE);
+        gl_dmask = 1;
+        if (gl_cmask != 0) glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        gl_cmask = 0;
+        glUniform1i(g_loc.atpass, 1);
+        auto bind_batch = [&](const Batch& b) {
+            if (b.epoch >= 0 && b.epoch != bound_epoch) {
+                const auto& ep = F.epochs[static_cast<size_t>(b.epoch)];
+                for (size_t u = 0; u < ep.size(); ++u) bind_unit(static_cast<uint32_t>(u) + 1, ep[u].first, ep[u].second);
+                bound_units = std::max(bound_units, static_cast<uint32_t>(ep.size()));
+                bound_epoch = b.epoch;
+            }
+            glUniform3f(g_loc.fogcol, static_cast<float>(b.rk.fogcol & 0xff) / 255.0f, static_cast<float>((b.rk.fogcol >> 8) & 0xff) / 255.0f,
+                        static_cast<float>((b.rk.fogcol >> 16) & 0xff) / 255.0f);
+            glUniform1i(g_loc.fge, (b.rk.fogcol >> 24) & 1 ? 1 : 0);
+        };
+        auto draw_batch = [&](const Batch& b) {
+            glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(b.count), GL_UNSIGNED_INT, reinterpret_cast<const void*>(static_cast<uintptr_t>(b.first) * sizeof(uint32_t)));
+        };
+        auto shell_batch = [&](const Batch& b) { return b.tfrag && !b.sky && !b.rk.shadow && batch_refused(F, L, b) == nullptr; };
+        // the stencil: 1 where the grass is the ground seen - the tfrags drawn again in the world's order, colour and depth kept,
+        // the grass's pixels setting it and the other textures' (the dirt path laid over the meadow) clearing it, both a little
+        // toward the camera to pass on their own depth (the drop shadows clear the stencil for their own count after)
+        GLint fbo = 0, sbits = 0;
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &fbo);
+        glGetFramebufferAttachmentParameteriv(GL_DRAW_FRAMEBUFFER, fbo == 0 ? GL_STENCIL : GL_STENCIL_ATTACHMENT, GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &sbits);
+        const bool mask = sbits > 0;
+        if (mask) {
+            glEnable(GL_STENCIL_TEST);
+            glStencilMask(0xff);
+            glClearStencil(0);
+            glClear(GL_STENCIL_BUFFER_BIT);
+            glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+            glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+            glDepthMask(GL_FALSE);
+            glEnable(GL_POLYGON_OFFSET_FILL);
+            glPolygonOffset(-1.0f, -4.0f);
+            for (const Batch& b : F.batches) {
+                if (!shell_batch(b)) continue;
+                bind_batch(b);
+                for (int g = 1; g >= 0; --g) {
+                    const int probe = grass_probe(b.rk, g != 0);
+                    if (probe == 0) continue;
+                    glStencilFunc(GL_ALWAYS, g, 0xff);
+                    glUniform1i(g_loc.shell, probe);
+                    draw_batch(b);
+                }
+            }
+            glDisable(GL_POLYGON_OFFSET_FILL);
+            glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+            glDepthMask(GL_TRUE);
+            glStencilFunc(GL_EQUAL, 1, 0xff);
+            glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+        }
+        for (const Batch& b : F.batches) {
+            if (!shell_batch(b)) continue;
+            bind_batch(b);
+            for (int k = 1; k <= n; ++k) {
+                glUniform1i(g_loc.shell, k + 256 * n);
+                draw_batch(b);
+            }
+        }
+        glUniform1i(g_loc.shell, 0);
+        if (mask) glDisable(GL_STENCIL_TEST);
+    }
     if (sky_timing) {  // (a frame of sky alone)
         glEndQuery(GL_TIME_ELAPSED);
         GLuint64 ns = 0;
@@ -6184,12 +6429,12 @@ struct InstFrame {
 int mrp_world_class_texture(int kind, int o_class, int tex, int* ntex) { return class_texture(g_level, kind, o_class, tex, ntex); }
 
 // orig: (host) see mrp_lighting.h
-SurfacePick mrp_world_surface_at(const float pp[3]) {
+SurfacePick mrp_world_surface_at(const float pp[3], float within) {
     SurfacePick r;
     const Level& L = g_level;
     if (!L.loaded || L.world == nullptr || !g_slevel.ok) return r;
     const glm::vec3 P(pp[0], pp[1], pp[2]);
-    float best = 0.5f;  // (units: a triangle farther than this is not the one under the crosshair)
+    float best = std::max(within, 0.01f);  // (units: a triangle farther than this is not the one under the crosshair)
     auto consider = [&](int kind, int o_class, int tex, int texture, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) {
         const float d = point_triangle_dist(P, a, b, c);
         if (d >= best) return;
@@ -6218,7 +6463,7 @@ SurfacePick mrp_world_surface_at(const float pp[3]) {
         for (uint32_t i = 0; i < n; ++i) {
             InstFrame f;
             for (uint32_t l = 0; l < 4; ++l) f.sphere[static_cast<int>(l)] = lwc1(bounds + 0x20 * i + 4 * l);
-            if (glm::length(P - glm::vec3(f.sphere)) > f.sphere.w + 1.0f) continue;
+            if (glm::length(P - glm::vec3(f.sphere)) > f.sphere.w + 1.0f + best) continue;
             const uint32_t data = lwu(bounds + 0x20 * i + 0x10);
             const float w = lwc1(data + 0x3c);
             f.pos = glm::vec3(lwc1(data + 0x30), lwc1(data + 0x34), lwc1(data + 0x38));
@@ -6258,7 +6503,7 @@ SurfacePick mrp_world_surface_at(const float pp[3]) {
             const uint32_t b = bounds + 0x20 * i;
             InstFrame f;
             for (uint32_t l = 0; l < 4; ++l) f.sphere[static_cast<int>(l)] = lwc1(b + 4 * l);
-            if (glm::length(P - glm::vec3(f.sphere)) > f.sphere.w + 1.0f) continue;
+            if (glm::length(P - glm::vec3(f.sphere)) > f.sphere.w + 1.0f + best) continue;
             const uint32_t data = shrub_data + 0x40 * lhu(b + 0x18);
             const float w = lwc1(data + 0x3c);
             f.pos = glm::vec3(lwc1(data + 0x30), lwc1(data + 0x34), lwc1(data + 0x38));

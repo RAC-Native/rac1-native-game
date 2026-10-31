@@ -36,6 +36,7 @@
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/vk/vk_context.h>
+#include <profiler/host_profiler.h>
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -1055,6 +1056,21 @@ void interior_boxes(const std::vector<SunInterior>& B) {
             }
     }
 }
+// the Particles tab's Solo: the line drawn alone (-1 none), the lines' switches before it (given back by particles_unsolo)
+int g_part_solo = -1, g_part_solo_level = -1;
+std::vector<bool> g_part_saved;
+// orig: (host) the solo ended: the lines' switches as they were (on the level it was started on)
+void particles_unsolo() {
+    std::vector<ParticleSpec>& P = mrp_user_particles();
+    if (g_part_solo >= 0 && g_part_solo_level == mrp_user_lights_level())
+        for (size_t i = 0; i < P.size() && i < g_part_saved.size(); ++i) P[i].on = g_part_saved[i];
+    g_part_solo = -1;
+}
+// orig: (host) the level's file written (a solo ended first: the lines it turned off are written as they were)
+bool lights_save() {
+    particles_unsolo();
+    return mrp_user_lights_save();
+}
 // the level's ambient particles ("particles" lines of its file: mrp_particles.h), edited live, saved with the file
 void sun_particles() {
     ImGui::Separator();
@@ -1150,7 +1166,7 @@ void sun_particles() {
         g_sun_dirty = true;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Save##particles")) g_sun_dirty = !mrp_user_lights_save();
+    if (ImGui::Button("Save##particles")) g_sun_dirty = !lights_save();
     ImGui::TextWrapped("Applied at once. Saved as \"particles <kind> <density> [r g b] [wind x y] [gust g] [box x0 y0 z0 x1 y1 z1] [source lava] [rise r] [keep]\" lines in the "
                        "level's file (a line not edited is written back as it was).");
 }
@@ -1194,7 +1210,7 @@ void tab_sun() {
         g_sun_dirty = true;
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Saved as \"sun_rays off\" in the level's file (the Sun Rays option still sets the other levels')");
-    if (ImGui::Button("Save")) g_sun_dirty = !mrp_user_lights_save();
+    if (ImGui::Button("Save")) g_sun_dirty = !lights_save();
     ImGui::SameLine();
     if (ImGui::Button("Reload")) {
         mrp_user_lights_reload();
@@ -1259,6 +1275,195 @@ void tab_sun() {
         if (ch) g_sun_dirty = true;
     }
     if (g_interior_show) interior_boxes(B);
+    ImGui::Separator();
+    ImGui::TextDisabled("The level's ambient particles: the Particles tab.");
+}
+// orig: (host) the Enhancements tab (Daino's request: every enhancement switched on and off at once, to compare and to profile): the
+// live switches of the modern lighting, the shadows, the lights, the occlusion, the rays, the materials, the emissive surfaces, the
+// ambient particles (by kind) and the water and grass, each with its profiler stage's GPU / CPU time beside it (the last 60
+// frames; the tab keeps the profiler recording while it is shown). For this run only: "Save as my settings" makes them the player's
+// preferences (Options > Graphics)
+void tab_enhancements() {
+    namespace prof = rac1::prof;
+    prof::request();
+    static prof::Summary sum;
+    static double last = -1.0;
+    const double now = ImGui::GetTime();
+    if (last < 0.0 || now - last > 0.5) {  // (twice a second: the summary is not free)
+        sum = prof::summarize(60);
+        last = now;
+    }
+    auto ms = [&](prof::Stage st) {
+        ImGui::SameLine(430.0f);
+        if (sum.frames == 0) {
+            ImGui::TextDisabled("-");
+            return;
+        }
+        if (sum.gpu_frames > 0) ImGui::TextDisabled("GPU %.2f ms  CPU %.2f ms", sum.gpu[st], sum.cpu[st]);
+        else ImGui::TextDisabled("CPU %.2f ms", sum.cpu[st]);
+    };
+    auto in_world = [&] {
+        ImGui::SameLine(430.0f);
+        ImGui::TextDisabled("in World (%.2f ms GPU): compare on / off", sum.gpu_frames > 0 ? sum.gpu[prof::kWorld] : 0.0);
+    };
+    auto combo = [](const char* label, int* v, const char* const* names, int n) {
+        ImGui::SetNextItemWidth(150.0f);
+        return ImGui::Combo(label, v, names, n);
+    };
+    static const char* olh[] = {"Off", "Low", "High"};
+    ImGui::TextWrapped("Live, for this run (the player's Options > Graphics are kept): switch an enhancement to compare and to see its cost. "
+                       "Everything here but Lighting needs Lighting not Original.");
+    if (ImGui::Button("Save as my settings")) graphics_take_live();
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("These values become the player's preferences (Options > Graphics), written now");
+    ImGui::SameLine();
+    if (ImGui::Button("All off")) {
+        g_point_shadows = 0;
+        g_ao = 0;
+        g_sun_rays = 0;
+        g_surface_detail = 0;
+        g_ambient_particles = 0;
+        g_water = g_grass = 0;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("All on (High)")) {
+        if (g_modern_shadows == 0) {
+            g_modern_shadows = 1;
+            g_shadow_quality = 2;
+        }
+        g_point_shadows = 1;
+        g_modern_points = 1;
+        g_auto_lights = 1;
+        g_ao = 4;
+        g_sun_rays = 3;
+        g_surface_detail = 2;
+        g_emissive = 1;
+        g_ambient_particles = 2;
+        g_water = g_grass = 2;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled(sum.gpu_frames > 0 ? "frame: GPU %.2f ms" : "frame: -", sum.gpu_busy);
+    ImGui::SeparatorText("Lighting");
+    {
+        static const char* names[] = {"Original", "Low (1024)", "Medium (2048)", "High (4096)"};
+        int v = g_modern_shadows != 0 ? std::clamp(g_shadow_quality + 1, 1, 3) : 0;
+        if (combo("Lighting##en", &v, names, 4)) {
+            g_modern_shadows = v != 0 ? 1 : 0;
+            if (v != 0) g_shadow_quality = v - 1;
+        }
+        ms(prof::kShadowCascades);
+    }
+    {
+        bool on = g_point_shadows != 0;
+        if (ImGui::Checkbox("Dynamic shadows##en", &on)) g_point_shadows = on ? 1 : 0;
+        ms(prof::kPointCubes);
+    }
+    {
+        static const char* names[] = {"Off", "Game's", "All"};
+        int v = g_modern_points == 0 ? 0 : g_auto_lights != 0 ? 2 : 1;
+        if (combo("Secondary lights##en", &v, names, 3)) {
+            g_modern_points = v != 0 ? 1 : 0;
+            g_auto_lights = v == 2 ? 1 : 0;
+        }
+        in_world();
+    }
+    {
+        static const char* names[] = {"Off", "SSAO", "SSAO+", "HBAO", "GTAO", "GTAO 1/2", "SSAO 1/2", "SSAO+ 1/2", "HBAO 1/2"};
+        combo("Ambient occlusion##en", &g_ao, names, 9);
+        ms(prof::kAo);
+        if (g_ao != 0) {
+            ImGui::SetNextItemWidth(150.0f);
+            ImGui::SliderInt("AO intensity (percent)##en", &g_ao_intensity, 0, 150);
+        }
+    }
+    {
+        static const char* names[] = {"Off", "Low", "Medium", "High"};
+        combo("Sun Rays##en", &g_sun_rays, names, 4);
+        ms(prof::kSunRays);
+    }
+    ImGui::SeparatorText("Surfaces");
+    combo("Surface Detail (materials)##en", &g_surface_detail, olh, 3);
+    in_world();
+    {
+        bool on = g_emissive != 0;
+        if (ImGui::Checkbox("Emissive surfaces##en", &on)) g_emissive = on ? 1 : 0;
+        in_world();
+    }
+    combo("Water##en", &g_water, olh, 3);
+    ms(prof::kWater);
+    ImGui::TextDisabled("   Low: normal maps, Fresnel, glints, depth, foam; High: + the scene's reflection, refraction (the material \"water\", \"lava\", \"quicksand\")");
+    combo("Grass##en", &g_grass, olh, 3);
+    ms(prof::kGrass);
+    if (g_grass != 0) {
+        ImGui::SetNextItemWidth(150.0f);
+        ImGui::SliderInt("Shells (0: 4)##en", &g_grass_shells, 0, 32);
+        ImGui::SetNextItemWidth(150.0f);
+        ImGui::SliderFloat("Grass distance##en", &g_grass_distance, 4.0f, 120.0f, "%.0f units");
+    }
+    ImGui::SeparatorText("Ambient particles");
+    combo("Ambient particles##en", &g_ambient_particles, olh, 3);
+    ms(prof::kParticles);
+    for (int k = 0; k < kPartKinds; ++k) {
+        if (k > 0) ImGui::SameLine();
+        bool on = ((g_particles_kinds >> k) & 1u) != 0;
+        char lab[32];
+        std::snprintf(lab, sizeof lab, "%s##enk", mrp_particle_kind_name(k));
+        if (ImGui::Checkbox(lab, &on)) g_particles_kinds = on ? (g_particles_kinds | (1u << k)) : (g_particles_kinds & ~(1u << k));
+    }
+    {
+        bool game = g_particles_show_game != 0;
+        if (ImGui::Checkbox("The game's own rain / snow drawn as well (as \"keep\")##en", &game)) g_particles_show_game = game ? 1 : 0;
+    }
+    ImGui::TextDisabled("The level's particle lines: the Particles tab. The tags (materials) of the textures: the Lights and Textures tabs.");
+}
+// orig: (host) the Particles tab (a tester's request, #102 batch 1: the ambient particles were at the bottom of the Sun tab): the
+// level's "particles" lines, each with Solo (only that line drawn while it is held, to tell the lines apart), saved with the file
+void tab_particles() {
+    mrp_user_lights_ensure();  // (the level's file: also with the modern lighting off)
+    const int level = mrp_user_lights_level();
+    if (level != g_sun_level) {
+        g_sun_level = level;
+        g_sun_dirty = false;
+    }
+    if (level < 0) {
+        ImGui::TextWrapped("No level loaded yet.");
+        return;
+    }
+    ImGui::Text("Level %d%s   %s", level, g_sun_dirty ? " (not saved)" : "", mrp_user_lights_path());
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("The game's own effects (sparks, smoke, explosions) are the game's and stay as they are. The seas (water, lava, sand) are "
+                        "surfaces, not particles: their materials are in the Lights tab (aim or click at them) and the Textures tab (\"Seas drawn\").");
+    ImGui::PopTextWrapPos();
+    // Solo: the other lines turned off while it is on, their switches given back after (not saved: Save writes them as they were)
+    int& solo = g_part_solo;
+    std::vector<bool>& saved = g_part_saved;
+    std::vector<ParticleSpec>& P = mrp_user_particles();
+    auto unsolo = [] { particles_unsolo(); };
+    if (solo >= 0 && (g_part_solo_level != level || static_cast<size_t>(solo) >= P.size())) unsolo();
+    if (!P.empty()) {
+        ImGui::Text("Solo:");
+        for (size_t i = 0; i < P.size(); ++i) {
+            ImGui::SameLine();
+            char t[48];
+            std::snprintf(t, sizeof t, "%zu %s##solo%zu", i + 1, mrp_particle_kind_name(P[i].kind), i);
+            if (ImGui::Selectable(t, solo == static_cast<int>(i), 0, ImVec2(ImGui::CalcTextSize(t, nullptr, true).x, 0.0f))) {
+                if (solo == static_cast<int>(i)) {
+                    unsolo();
+                } else {
+                    if (solo < 0) {
+                        saved.assign(P.size(), true);
+                        for (size_t k = 0; k < P.size(); ++k) saved[k] = P[k].on;
+                    }
+                    for (size_t k = 0; k < P.size(); ++k) P[k].on = k == i;
+                    solo = static_cast<int>(i);
+                    g_part_solo_level = level;
+                }
+            }
+        }
+        if (solo >= 0) {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("All")) unsolo();
+        }
+    }
     sun_particles();
 }
 // The 3D's place on the window, as the markers above project with it: the world's view-projection, the last viewport (in the render
@@ -1320,10 +1525,14 @@ void aim_take(bool hit, const float w[3]) {
         return;
     }
     for (int k = 0; k < 3; ++k) g_aim.wp[k] = w[k];
-    g_aim.sp = mrp_world_surface_at(w);
-    g_aim.mp = mrp_lighting_pick(w);
     const glm::mat4 iv = glm::inverse(render_view_matrix());
     const glm::vec3 to_cam = glm::vec3(iv[3]) - glm::vec3(w[0], w[1], w[2]);
+    // (the point is the depth buffer's, and a far tie is drawn with a coarser level of detail than the one searched: on Veldin a tie
+    // 90 units away lay 0.9 to 1.3 units from the point, and could not be picked with 0.5 - #102 batch 1; the nearest triangle wins)
+    const float dist = glm::length(to_cam);
+    g_aim.sp = mrp_world_surface_at(w, std::max(0.5f, 0.02f * dist));
+    g_aim.mp = mrp_lighting_pick(w);
+
     glm::vec3 n = glm::length(to_cam) > 0.0f ? glm::normalize(to_cam) : glm::vec3(0.0f, 0.0f, 1.0f);
     if (g_aim.sp.kind >= 0) {
         glm::vec3 sn(g_aim.sp.normal[0], g_aim.sp.normal[1], g_aim.sp.normal[2]);
@@ -1441,32 +1650,36 @@ void emis_in_hand() {
         ImGui::TextDisabled("No surface in hand: aim at one, or pick one below.");
         mrp_emissive_preview(-1, 0, 0);
     } else {
-        // the class's textures, stepped (a moby's: its local textures in use; a tie's: its prims; a shrub's: 0..15; a tfrag's: the level's)
-        int ntex = 0;
-        uint32_t moby_bits = 0;
-        if (cur.kind == 3) moby_bits = mrp_moby_class_local_textures(cur.o_class);
-        else mrp_world_class_texture(cur.kind, cur.o_class, cur.tex, &ntex);
-        const int level_tex = cur.kind == 3 ? -1 : mrp_world_class_texture(cur.kind, cur.o_class, cur.tex);
-        auto step = [&](int d) {
-            follow = false;
-            for (int n = 0; n < 64; ++n) {
-                cur.tex += d;
-                if (cur.kind == 3) {
-                    cur.tex = (cur.tex + 32) % 32;
-                    if (moby_bits == 0 || ((moby_bits >> cur.tex) & 1u) != 0) break;
-                } else {
-                    cur.tex = ntex > 0 ? (cur.tex + ntex) % ntex : 0;
-                    if (mrp_world_class_texture(cur.kind, cur.o_class, cur.tex) >= 0) break;
-                }
-            }
-        };
-        if (ImGui::ArrowButton("##emis_prev", ImGuiDir_Left)) step(-1);
-        ImGui::SameLine();
-        if (ImGui::ArrowButton("##emis_next", ImGuiDir_Right)) step(1);
-        ImGui::SameLine();
         const char* marked = idx >= 0 ? mrp_material_name(E[static_cast<size_t>(idx)].type) : nullptr;
-        if (cur.kind == 3) ImGui::Text("In hand: moby %d tex %d (its textures: mask %08x)%s%s", cur.o_class, cur.tex, moby_bits, marked ? "  - " : "", marked ? marked : "");
-        else ImGui::Text("In hand: %s %d tex %d of %d (the level's texture %d)%s%s", mrp_emissive_kind_name(cur.kind), cur.o_class, cur.tex, ntex, level_tex, marked ? "  - " : "", marked ? marked : "");
+        if (cur.kind == 4) {  // (a sea, VU1 program 7's: one texture, no class's textures to step through)
+            ImGui::Text("In hand: surface %d tex %d (a sea: water, lava or sand - VU1 program 7)%s%s", cur.o_class, cur.tex, marked ? "  - " : "", marked ? marked : "");
+        } else {
+            // the class's textures, stepped (a moby's: its local textures in use; a tie's: its prims; a shrub's: 0..15; a tfrag's: the level's)
+            int ntex = 0;
+            uint32_t moby_bits = 0;
+            if (cur.kind == 3) moby_bits = mrp_moby_class_local_textures(cur.o_class);
+            else mrp_world_class_texture(cur.kind, cur.o_class, cur.tex, &ntex);
+            const int level_tex = cur.kind == 3 ? -1 : mrp_world_class_texture(cur.kind, cur.o_class, cur.tex);
+            auto step = [&](int d) {
+                follow = false;
+                for (int n = 0; n < 64; ++n) {
+                    cur.tex += d;
+                    if (cur.kind == 3) {
+                        cur.tex = (cur.tex + 32) % 32;
+                        if (moby_bits == 0 || ((moby_bits >> cur.tex) & 1u) != 0) break;
+                    } else {
+                        cur.tex = ntex > 0 ? (cur.tex + ntex) % ntex : 0;
+                        if (mrp_world_class_texture(cur.kind, cur.o_class, cur.tex) >= 0) break;
+                    }
+                }
+            };
+            if (ImGui::ArrowButton("##emis_prev", ImGuiDir_Left)) step(-1);
+            ImGui::SameLine();
+            if (ImGui::ArrowButton("##emis_next", ImGuiDir_Right)) step(1);
+            ImGui::SameLine();
+            if (cur.kind == 3) ImGui::Text("In hand: moby %d tex %d (its textures: mask %08x)%s%s", cur.o_class, cur.tex, moby_bits, marked ? "  - " : "", marked ? marked : "");
+            else ImGui::Text("In hand: %s %d tex %d of %d (the level's texture %d)%s%s", mrp_emissive_kind_name(cur.kind), cur.o_class, cur.tex, ntex, level_tex, marked ? "  - " : "", marked ? marked : "");
+        }
         mrp_emissive_preview(preview ? cur.kind : -1, cur.o_class, cur.tex);
         if (idx < 0) {
             type_combo("##mat_new", &new_type);
@@ -1514,7 +1727,49 @@ void emis_in_hand() {
                             std::snprintf(lab, sizeof lab, "%s##matp%d", mp[i].name, i);
                             ch |= ImGui::SliderFloat(lab, &e.p[i], mp[i].lo, mp[i].hi, "%.2f");
                         }
-                    if (g_surface_detail == 0) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Surface Detail is Off: the material is not drawn.");
+                    if (e.type != MAT_LAVA) {  // (a metal lamp with a lit bulb: the material and an emissive glow on the same texture)
+                        const bool had = e.glow > 0.0f;
+                        ch |= ImGui::SliderFloat("Glow##matglow", &e.glow, 0.0f, 4.0f, e.glow > 0.0f ? "%.2f" : "none");
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Emissive on top of the material, as an emissive line's strength (0: none). Saved as \"glow <strength> <threshold>\"\n"
+                                              "at the end of the material line. Drawn with Surface Detail Off too (the glow alone).");
+                        if (e.glow > 0.0f) ch |= ImGui::SliderFloat("Glow threshold##matglow", &e.glow_threshold, 0.0f, 1.0f, "%.2f");
+                        if (had != (e.glow > 0.0f)) mrp_user_emissive_changed();  // (a glowing material keeps its slot with Surface Detail Off)
+                    }
+                    if (e.type == MAT_WATER || e.type == MAT_LAVA || e.type == MAT_QUICKSAND) {  // (Options > Graphics > Water: its keywords)
+                        ImGui::SeparatorText("With Options > Graphics > Water");
+                        bool tint = e.tint[0] >= 0.0f;
+                        if (ImGui::Checkbox("Tint##wat", &tint)) {
+                            for (float& c : e.tint) c = tint ? 0.25f : -1.0f;
+                            if (tint) e.tint[2] = 0.45f, e.tint[1] = 0.4f;
+                            ch = true;
+                        }
+                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("\"tint r g b\" (0..2): the deep water's colour; off: a deeper shade of the texture's own");
+                        if (tint) {
+                            ImGui::SameLine();
+                            ch |= ImGui::DragFloat3("##wtint", e.tint, 0.01f, 0.0f, 2.0f, "%.2f");
+                        }
+                        ch |= ImGui::DragFloat2("Waves: scale, speed##wat", e.waves, 0.01f, 0.0f, 8.0f, "%.2f");
+                        float foam = e.foam;
+                        if (ImGui::SliderFloat("Foam##wat", &foam, -0.01f, 2.0f, foam < 0.0f ? "the type's" : "%.2f")) {
+                            e.foam = foam < 0.0f ? -1.0f : foam;
+                            ch = true;
+                        }
+                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("\"foam f\": the water's foam at the shore (lava: its hot seam; quicksand: its wet band)");
+                        float depth = e.depth;
+                        if (ImGui::SliderFloat("Depth##wat", &depth, 0.0f, 20.0f, depth < 0.1f ? "the type's" : "%.1f units")) {
+                            e.depth = depth < 0.1f ? -1.0f : depth;
+                            ch = true;
+                        }
+                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("\"depth d\": how many units of water before it is opaque and dark");
+                        if (g_water == 0) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Water is Off (Options > Graphics, or the Enhancements tab): these are not drawn.");
+                    }
+                    if (e.type == MAT_GRASS && g_grass == 0)
+                        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Grass is Off (Options > Graphics, or the Enhancements tab): the material is not drawn.");
+                    else if (e.type == MAT_GRASS && e.kind != 0)
+                        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Grass grows on tfrag textures only (the terrain).");
+                    else if (g_surface_detail == 0 && e.type < MAT_GRASS && !(g_water > 0 && (e.type == MAT_WATER || e.type == MAT_LAVA || e.type == MAT_QUICKSAND)))
+                        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Surface Detail is Off: the material is not drawn.");
                 }
                 if (ch) g_light_dirty = true;
             }
@@ -1534,6 +1789,8 @@ void tab_emissive() {
     static int cands_level = -1;
     if (!ImGui::CollapsingHeader("Emissive surfaces and materials (emissive, material)")) {
         mrp_emissive_preview(-1, 0, 0);
+        const float z[3] = {0.0f, 0.0f, 0.0f};
+        mrp_fx_surface_pick(z, z, 0.0f);  // (no ray tested while closed)
         return;
     }
     std::vector<EmissiveSurface>& E = mrp_user_emissive();
@@ -1576,7 +1833,26 @@ void tab_emissive() {
                 follow = false;
             }
         }
-        if (follow && sp.kind >= 0) cur = EmissiveSurface{sp.kind, sp.o_class, sp.tex, 1.0f, 0.0f};
+        // a sea (water, lava, sand: VU1 program 7's) in front of the point: drawn after the depth the pick reads, found along the ray
+        const glm::mat4 iv = glm::inverse(render_view_matrix());
+        const glm::vec3 eye(iv[3]), ray = glm::vec3(g_aim.wp[0], g_aim.wp[1], g_aim.wp[2]) - eye;
+        const float dist = glm::length(ray);
+        if (dist > 0.0f) {  // (the ray from the eye toward the point, tested by the next frames' seas as they are drawn)
+            const float o[3] = {eye.x, eye.y, eye.z}, d[3] = {ray.x / dist, ray.y / dist, ray.z / dist};
+            mrp_fx_surface_pick(o, d, 4000.0f);  // (beyond the point too: a sea drawn over it is still named, not followed)
+        }
+        const FxSurfacePick sea = mrp_fx_surface_pick_result();
+        const bool sea_front = sea.hit && sea.t < dist - 0.1f;
+        if (sea.hit) {
+            ImGui::Text("a sea: surface %d tex %d, %.1f units along the view%s", sea.o_class, sea.tex, sea.t, sea_front ? " (in front of the point)" : " (behind the point)");
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Take the sea")) {
+                cur = EmissiveSurface{4, sea.o_class, sea.tex, 1.0f, 0.0f};
+                follow = false;
+            }
+        }
+        if (follow && sea_front) cur = EmissiveSurface{4, sea.o_class, sea.tex, 1.0f, 0.0f};
+        else if (follow && sp.kind >= 0) cur = EmissiveSurface{sp.kind, sp.o_class, sp.tex, 1.0f, 0.0f};
     }
     ImGui::Checkbox(g_aim.clicked ? "Follow the clicks" : "Follow the crosshair", &follow);
     ImGui::SameLine();
@@ -1586,13 +1862,13 @@ void tab_emissive() {
         if (E[i].kind == cur.kind && E[i].o_class == cur.o_class && E[i].tex == cur.tex) idx = static_cast<int>(i);
     ImGui::Text("Marked (%zu, at most %d):", E.size(), kEmissiveSlots);
     for (size_t i = 0; i < E.size(); ++i) {
-        char t[128];
+        char t[160];
         if (E[i].type == MAT_EMISSIVE)
             std::snprintf(t, sizeof t, "%s %d tex %d  x%.2f  threshold %.2f%s##em%zu", mrp_emissive_kind_name(E[i].kind), E[i].o_class, E[i].tex, E[i].strength, E[i].threshold,
                           E[i].global ? "  (every level)" : "", i);
         else
-            std::snprintf(t, sizeof t, "%s %d tex %d  %s %.2f %.2f %.2f%s##em%zu", mrp_emissive_kind_name(E[i].kind), E[i].o_class, E[i].tex, mrp_material_name(E[i].type), E[i].p[0],
-                          E[i].p[1], E[i].p[2], E[i].global ? "  (every level)" : "", i);
+            std::snprintf(t, sizeof t, "%s %d tex %d  %s %.2f %.2f %.2f%s%s##em%zu", mrp_emissive_kind_name(E[i].kind), E[i].o_class, E[i].tex, mrp_material_name(E[i].type), E[i].p[0],
+                          E[i].p[1], E[i].p[2], E[i].glow > 0.0f ? "  + glow" : "", E[i].global ? "  (every level)" : "", i);
         if (ImGui::Selectable(t, static_cast<int>(i) == idx)) {
             cur = E[i];
             follow = false;
@@ -1669,7 +1945,7 @@ void tab_lights() {
         add(iv[3][0], iv[3][1], iv[3][2]);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Save")) g_light_dirty = !mrp_user_lights_save();
+    if (ImGui::Button("Save")) g_light_dirty = !lights_save();
     ImGui::SameLine();
     if (ImGui::Button("Reload")) {
         mrp_user_lights_reload();
@@ -1788,9 +2064,62 @@ void tab_lights() {
             ch |= ImGui::DragFloat3("Offset (its frame)", cl.off, 0.02f);
             ch |= ImGui::ColorEdit3("Colour##cl", cl.col);
             ch |= ImGui::SliderFloat("Intensity##cl", &cl.intensity, 0.0f, 6.0f);
-            ch |= ImGui::SliderFloat("Radius##cl", &cl.radius, 1.0f, 30.0f);
+            ch |= ImGui::SliderFloat("Radius##cl", &cl.radius, 0.1f, 30.0f);
             ch |= ImGui::SliderFloat("Flicker##cl", &cl.flicker, 0.0f, 1.0f);
             ch |= ImGui::SliderFloat("Aimed down##cl", &cl.down, 0.0f, 1.0f);  // (a ceiling fixture: 1 all its light below it)
+            // the aim ("aim dx dy dz cone"): a spot shining along a direction of its frame (the moby's, the joint's, the tie's), only
+            // what is in front of it lit (Clank's eyes: not Ratchet's head behind him)
+            {
+                bool aimed = cl.cone > 0.0f;
+                if (ImGui::Checkbox("Aimed (a cone)##cl", &aimed)) {
+                    cl.cone = aimed ? 35.0f : 0.0f;
+                    ch = true;
+                }
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("Saved as \"aim dx dy dz cone\": the light lights only what is in front of it, within the cone");
+                if (aimed) {
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(160.0f);
+                    ch |= ImGui::SliderFloat("Cone (half angle)##cl", &cl.cone, 1.0f, 179.0f, "%.0f deg");
+                    if (ImGui::DragFloat3("Aim (its frame)##cl", cl.aim, 0.01f, -1.0f, 1.0f, "%.3f")) {
+                        const float l = std::sqrt(cl.aim[0] * cl.aim[0] + cl.aim[1] * cl.aim[1] + cl.aim[2] * cl.aim[2]);
+                        if (l > 1e-4f)
+                            for (float& a : cl.aim) a /= l;
+                        ch = true;
+                    }
+                    static const char* axes[6] = {"+x", "-x", "+y", "-y", "+z", "-z"};
+                    ImGui::Text("Along the frame's axis:");
+                    for (int a = 0; a < 6; ++a) {
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton(axes[a])) {
+                            for (float& v : cl.aim) v = 0.0f;
+                            cl.aim[a / 2] = (a & 1) != 0 ? -1.0f : 1.0f;
+                            ch = true;
+                        }
+                    }
+                    // from the camera: the view's direction taken into the frame of the light's object under the crosshair (its joint)
+                    float axw[9];
+                    bool frame = false;
+                    if (cl.moby && g_aim.hit && g_aim.mp.moby && g_aim.mp.moby_class == cl.o_class && g_aim.mp.moby_addr != 0) {
+                        float pw[3];
+                        frame = mrp_moby_draw_frame(g_aim.mp.moby_addr, cl.joint, pw, axw);
+                    }
+                    ImGui::SameLine();
+                    ImGui::BeginDisabled(!frame);
+                    if (ImGui::SmallButton("From the camera##claim") && frame) {
+                        const glm::mat4 iv = glm::inverse(render_view_matrix());
+                        const glm::vec3 fwd = -glm::normalize(glm::vec3(iv[2]));
+                        for (int r = 0; r < 3; ++r) cl.aim[r] = fwd.x * axw[3 * r] + fwd.y * axw[3 * r + 1] + fwd.z * axw[3 * r + 2];
+                        const float l = std::sqrt(cl.aim[0] * cl.aim[0] + cl.aim[1] * cl.aim[1] + cl.aim[2] * cl.aim[2]);
+                        if (l > 1e-4f)
+                            for (float& a : cl.aim) a /= l;
+                        ch = true;
+                    }
+                    ImGui::EndDisabled();
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                        ImGui::SetTooltip("The camera's view direction, in the frame of the moby of this class under the crosshair (its joint's when the line has one):\n"
+                                          "look the way the light should shine with the moby in the crosshair");
+                }
+            }
             ch |= ImGui::Checkbox("On##cl", &cl.on);
             if (cl.moby) {  // (a moby class is the same on every level: its line in data/lights/classes.txt; its joint: follows the pose)
                 ImGui::SameLine();
@@ -1943,6 +2272,34 @@ void tab_textures() {
     ImGui::SameLine();
     ImGui::SetNextItemWidth(140.0f);
     ImGui::SliderFloat("Size", &size, 32.0f, 128.0f, "%.0f");
+    // the seas (VU1 program 7's water, lava and sand: not the world's textures, so not in the grid) the level has drawn so far
+    static bool sea_in_hand = false;
+    {
+        const std::vector<std::pair<int, int>> seas = mrp_fx_surfaces_seen();
+        ImGui::Text("Seas drawn (water, lava, sand):");
+        if (seas.empty()) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("none yet on this level (they are listed once drawn)");
+        }
+        for (size_t i = 0; i < seas.size(); ++i) {
+            const EmissiveSurface su{4, seas[i].first, seas[i].second, 1.0f, 0.0f};
+            int mk = -1;
+            const std::vector<EmissiveSurface>& E = mrp_user_emissive();
+            for (size_t k = 0; k < E.size(); ++k)
+                if (E[k].kind == 4 && E[k].o_class == su.o_class && E[k].tex == su.tex) mk = static_cast<int>(k);
+            char t[96];
+            std::snprintf(t, sizeof t, "surface %d tex %d%s%s##sea%zu", su.o_class, su.tex, mk >= 0 ? " - " : "", mk >= 0 ? mrp_material_name(E[static_cast<size_t>(mk)].type) : "", i);
+            ImGui::SameLine();
+            const bool in_hand = g_emis_cur.kind == 4 && g_emis_cur.o_class == su.o_class && g_emis_cur.tex == su.tex;
+            if (ImGui::Selectable(t, in_hand, 0, ImVec2(ImGui::CalcTextSize(t, nullptr, true).x, 0.0f))) {
+                g_emis_cur = su;
+                g_emis_follow = false;
+                g_emis_preview = true;
+                g_tex.sel = -1;
+                sea_in_hand = true;
+            }
+        }
+    }
     // the texture in hand (clicked here or picked in the Lights tab): its users, the marking
     if (g_tex.sel >= 0 && g_tex.sel < static_cast<int>(g_tex.list.size())) {
         const TextureEntry& e = g_tex.list[static_cast<size_t>(g_tex.sel)];
@@ -1974,7 +2331,12 @@ void tab_textures() {
         ImGui::EndGroup();
         emis_in_hand();
         ImGui::Separator();
+    } else if (sea_in_hand && g_emis_cur.kind == 4) {
+        ImGui::Separator();
+        emis_in_hand();
+        ImGui::Separator();
     } else {
+        sea_in_hand = false;
         mrp_emissive_preview(-1, 0, 0);
         ImGui::TextDisabled("Click a texture to take it in hand (a line for emissive or a material, as in the Lights tab).");
     }
@@ -2007,6 +2369,7 @@ void tab_textures() {
         const bool sel = static_cast<int>(i) == g_tex.sel;
         if (ImGui::ImageButton("##t", tex_page_id(), ImVec2(size, size), uv0, uv1)) {
             g_tex.sel = static_cast<int>(i);
+            sea_in_hand = false;
             if (!e.users.empty()) g_emis_cur = tex_user_surface(e, 0);
             g_emis_follow = false;
             g_emis_preview = true;
@@ -2329,8 +2692,10 @@ void dev_menu_draw(double update_ms, double frame_ms) {
                 if (tab("Mobys")) { tab_mobys(); ImGui::EndTabItem(); }
                 if (tab("Camera")) { tab_camera(); ImGui::EndTabItem(); }
                 if (tab("Rendering")) { tab_rendering(); ImGui::EndTabItem(); }
+                if (tab("Enhancements")) { tab_enhancements(); ImGui::EndTabItem(); }
                 if (tab("Lights")) { tab_lights(); ImGui::EndTabItem(); }
                 if (tab("Sun")) { tab_sun(); ImGui::EndTabItem(); }
+                if (tab("Particles")) { tab_particles(); ImGui::EndTabItem(); }
                 if (tab("Textures")) { tab_textures(); ImGui::EndTabItem(); }
                 if (tab("Display")) { tab_display(); ImGui::EndTabItem(); }
                 if (tab("Audio")) { tab_audio(); ImGui::EndTabItem(); }

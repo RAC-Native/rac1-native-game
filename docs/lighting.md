@@ -434,7 +434,7 @@ Before Anya-Thoughtmane's second pass (below) the project's level files placed n
 off one automatic class that was taken for a lamp, `level00.txt` (Veldin) makes lamps of classes and marks [emissive surfaces](#emissive-surfaces), and `level01.txt` (Novalis, also its lamps by class and emissive surfaces), `level03.txt`
 (Kerwan), `level04.txt` (Eudora), `level14.txt` (Oltanis) and `level15.txt` (Quartu) turn the sun,
 each with a comment saying why. `level05.txt` (Rilgar), `level06.txt` (Blarg's station), `level08.txt`
-(Batalia) and `level14.txt` turn the [sun rays](#sun-rays) off (`sun_rays off`, #101).
+(Batalia), `level12.txt` (Hoven, since #102's batch 1) and `level14.txt` turn the [sun rays](#sun-rays) off (`sun_rays off`, #101).
 
 Anya-Thoughtmane's second lighting pass (#102) added her own lines to the files of Veldin to Rilgar (`level00.txt` to
 `level05.txt`), merged line by line with ours (our comments, particles and suns kept; Aridia keeps Daino's sun): emissive surfaces
@@ -442,6 +442,17 @@ on every one of them (the vendors' blue parts, the gold bolts, Ratchet's garage 
 ship, the anti-vehicle cannon and the fortress's swing room, Kerwan's lamps, buildings, Qwark-bot and the train's head, most of
 Rilgar's lamps), lamps by class on Aridia and Rilgar (the Swingshot's versa-targets, the floating lifts' thrusters), lights placed
 by hand on Novalis and Aridia, and Kerwan's street lamps reaching further.
+
+Their lighting batch 1 (#102, the build 4fc6a6e) was merged the same way: [materials](materials.md) on Veldin to Rilgar (Novalis's
+waterworks and bridge, most of Aridia's metal, Kerwan's gold surfaces, Eudora's metals, a part of Rilgar's), and in `classes.txt`
+the vendor, the bolts, the OmniWrench, the Magneboots and the pilot's helmet as metal on every level, with a few lamps by class; on
+Novalis two green lights for Clank's eyes on Ratchet's back (saved on moby class 0, joint 62, one of Ratchet's fingers, by the
+editor's joint pick before its fix; now on Clank there, moby class 601, his head's joint 4), Aridia's spot lamps, Kerwan's landing pad lamps and its
+street lamps a little dimmer (1.86, radius 10.1), and the particles (Umbris, Batalia, Gaspar, Rilgar's rain, Orxon, Hoven's motes:
+[Ambient particles](particles.md#what-a-level-has)). Daino chose their Aridia sun (38.6 / 16.7) over his own and their Orxon
+particles; on Hoven their `sun_rays off` and motes were taken beside our snow. Kerwan's motes were taken out (their notes: "weird
+mote particles"). Lines of ours their files did not have were kept; most were the same lines written by a newer editor (an `emit`
+line's `down` written as `0.00`).
 
 ### Point-light shadows, per-pixel cost and occlusion
 
@@ -885,7 +896,7 @@ part of the original. The editor is in the debug menu (Lights tab), so it needs 
 Placing lamps one by one is slow; most lamps are one object class repeated. A level's file can say
 
 ```
-emit <tie|shrub|moby> <class> <ox oy oz> <r g b> <intensity> <radius> [flicker] [down]
+emit <tie|shrub|moby> <class> <ox oy oz> <r g b> <intensity> <radius> [flicker] [down] [aim <dx dy dz> <cone>]
 ```
 
 (and `joint <n>` at the end of a moby's line), and every tie or shrub instance of that class, or every live moby of that class (those placed by the level and those the game
@@ -893,12 +904,21 @@ spawns later - the walk goes to the moby array's end *(0x15ffe0), not to the pla
 light at the offset in its own frame (a tie's or shrub's rows, model / 1024 at its scale; a moby's
 rotation, in world units), so a moby's lamp follows it. A moby whose model the animation moves away from
 its position (the Buzzers of Novalis, moby 577, fly with their body high above the point the game keeps:
-their light stayed in the sky) takes `joint <n>`: the offset is then in that joint's frame as the frame's
-pose has it (the joint's matrix the skinning used, through the moby's drawn model-to-world matrix; units
-and axes the world's, `mrp_moby_draw_frame`), so the light follows the animated part. A moby not drawn
+their light stayed in the sky) takes `joint <n>`: the offset is then in that joint's own frame as the frame's
+pose has it, so the light follows the animated part. The joint's frame is the skinning's matrix of the joint (the pose by the
+joint's inverse bind matrix, class +0x14) by the joint's bind matrix, through the moby's drawn model-to-world matrix: its origin
+is the joint itself and its axes the joint's, in world units (`mrp_moby_draw_frame`). (Before #102's fix the skinning's matrix was
+taken alone: its origin is the model's origin carried by the joint, not the joint, so a light on a joint other than the root swung
+round with the joint at the distance of the model's origin - Clank's eye lights in front of Ratchet and under him when he jumped,
+a Kerwan dog's eye lights on the ground. The `joint` lines of the files were converted.) A moby not drawn
 this frame falls back to its position and rotation. `down` (0 to 1, default 0) is the share of the
 light aimed straight down, as a ceiling fixture's: the squared falloff and the cosine below the light
-of [Point lights per pixel](#point-lights-per-pixel). At the level's start the log says how many
+of [Point lights per pixel](#point-lights-per-pixel). `aim <dx dy dz> <cone>` (after `down`, before `joint`) makes the light a
+spot: it lights only what lies within `cone` degrees (the half angle, 1 to 179) of the direction `dx dy dz`, given in the same frame as
+the offset (the moby's, the joint's, the tie's or shrub's) and turned with it, its edge softened over the inner 40 % of the cone. A
+line without `aim` lights every way exactly as before (its factor is 1.0, the pictures byte for byte the same). Clank's eye lights
+on Novalis (`emit moby 601 ... aim 1 0 0 40 joint 4`) shine forward along his head's x axis: before, they lit the back of
+Ratchet's head behind Clank, as if the light went through him (Daino). At the level's start the log says how many
 instances each line found (`[lights] level 1: emit shrub 282: 7 instances`): none means a wrong
 class or kind. They go through the same path as the lights placed by hand:
 within 60 units of the camera, the nearest first and faded at the reach and at the cap (96 lights in
@@ -907,11 +927,18 @@ mesh around the light would hide it); a tie's may (cast by mobys only, as the em
 
 **In the editor** (Lights tab, "Lights per object class"): the target (the crosshair or the clicked point, above) and the
 objects at it - the tie instance whose model's box holds it, the shrub whose sphere holds it, the drawn moby whose parts' bounding
-spheres hold it (the smallest; a big moby whose origin is far away, a cannon or a train, is found this way) or else the nearest moby
-within 6 units - with their class and the point in their frame; for a drawn moby also the joint of its pose nearest the point and the
-point in that joint's frame. **Emit for every tie / shrub / moby of this class** adds a light at that point of every instance, live;
+spheres hold it (a big moby whose origin is far away, a cannon or a train, is found this way) or else the nearest moby
+within 6 units - with their class and the point in their frame; for a drawn moby also the joint that carries its surface at the point
+(its triangles skinned on the CPU as the shader does: the heaviest joint of the nearest triangle's vertex nearest the point; the
+joint nearest the point when it has no triangles) and the point in that joint's own frame. Among the drawn mobys whose spheres hold it, the one whose
+skinned surface is nearest the point is taken, the smallest sphere between equals (before, the smallest sphere alone: a little moby at Clank's head, class 1204, over Clank).
+The target is the depth's point, so a surface that leaves the depth to what is behind it is not found: Clank's eyes on Ratchet's
+back gave Ratchet's back (his joint 8) in a test; such a light's joint and offset are typed in (the Joint field keeps the offset,
+then in the new joint's frame). **Emit for every tie / shrub / moby of this class** adds a light at that point of every instance, live;
 **Emit on this joint (follows the animation)** the same in the joint's frame. The offset, colour, intensity, radius, flicker, the
-share aimed down and a moby's joint are then edited, and Save writes the `emit` lines with the rest of the file.
+share aimed down and a moby's joint are then edited, and Save writes the `emit` lines with the rest of the file. **Aimed (a cone)**
+gives the line an `aim`: the cone's half angle, the direction in the light's frame (typed, or one of the frame's axes, or **From the
+camera**: the view's direction taken into the frame of the moby of that class under the crosshair - its joint's when the line has one).
 
 ### Lines for every level
 
@@ -975,24 +1002,29 @@ emissive <tfrag|tie|shrub|moby|surface> <class> tex <n> [strength] [threshold]
   makes it darker: `max(lit, original x strength)`. In daylight a lamp in the sun looks as before; in shade or at night it keeps
   its painted brightness. A threshold keeps a lamp's dark frame lit normally while its bright glass glows. Point lights still add,
   and fog applies after it.
-- **How.** `emissive_refresh` (`mrp_world_renderer.cpp`) maps each marked tfrag, tie or shrub texture to a shader slot (1 to 30),
-  and the slot goes into the draw's texture word (bits 25 to 29) when the texture is looked up (`GsFront::key_now`); the mobys'
-  draws carry theirs in bits 27 to 31, by class and local texture (`moby_emissive_refresh`, `mrp_moby_renderer.cpp`). The
-  lighting's shader variants (`SH_POINTS`, `SH_SPLIT`, OpenGL and Vulkan) read the slot's strength and threshold from `uEmis[32]`
+- **How.** `emissive_refresh` (`mrp_world_renderer.cpp`) maps each marked tfrag, tie or shrub texture to a shader slot (1 to 126),
+  and the slot goes into the draw's texture word (bits 25 to 31) when the texture is looked up (`GsFront::key_now`); the mobys'
+  draws carry theirs in the draw command's fourth word, by class and local texture (`moby_emissive_refresh`, `mrp_moby_renderer.cpp`;
+  until #102's batch 1 the world's bits 25 to 29 and the mobys' texture word's 27 to 31: 30 slots). The
+  lighting's shader variants (`SH_POINTS`, `SH_SPLIT`, OpenGL and Vulkan) read the slot's strength and threshold from `uEmis[128]`
   (a uniform array; in Vulkan part of the lighting's uniform buffer) in `sh_emissive`. Nothing changes with Lighting on Original:
   the bits are not set and the original programs do not read them.
-- **Limits.** At most 30 surfaces per level. The ambient occlusion, drawn after the world, still darkens an emissive texel
+- **Limits.** At most 126 surfaces and materials per level, the `classes.txt` lines included. The ambient occlusion, drawn after the world, still darkens an emissive texel
   where surfaces meet. There is no bloom (glow around the bright pixels).
 
 `RAC1_EMISSIVE=0` (testing) turns them all off.
 
 The same mechanism gives a texture a **material** instead (a `material` line: metal, wet, puddle, lava, water, mud, quicksand), drawn
 with Options > Graphics > Surface Detail: see [Materials](materials.md). An `emissive` line is the same as `material ... emissive`; the
-two kinds share the 30 slots.
+two kinds share the 126 slots. A material can glow besides (`glow <strength> [threshold]` at the end of its line, or an `emissive`
+line for the same texture in the same file, read as one entry): [Materials](materials.md#tagging-a-texture).
 
 **In the editor** (Lights tab, "Emissive surfaces and materials"): the target's surface (the crosshair's or the clicked point's) - the
-level's nearest tfrag, tie or shrub triangle within 0.5 units of the point (`mrp_world_surface_at`) - shows its kind, class and
-texture; "Take the moby" takes the moby there instead (the one whose drawn parts hold the point, or the nearest within 3 units; its
+level's nearest tfrag, tie or shrub triangle within 0.5 units of the point, or 2 % of its distance from the eye when that is more
+(`mrp_world_surface_at`, which searches a tie's finest level of detail; a far tie is drawn with a coarser one, and on Veldin's start
+the point read on the tall tie 2049, 90 units away, lay 0.9 to 1.3 units from its finest mesh: until #102's batch 1 such surfaces
+could not be picked) - shows its kind, class and texture; a sea (water, lava, sand: VU1
+program 7's, drawn after the depth the pick reads) is found along the ray from the eye to the point ([Materials](materials.md#the-levels-seas-and-pools)); "Take the moby" takes the moby there instead (the one whose drawn parts hold the point, or the nearest within 3 units; its
 local textures in use are stepped through). The arrows step through the class's textures,
 the texture in hand pulses magenta with **Preview** ticked, **Mark emissive** / **Unmark** add or remove the line, and **Strength** and
 **Threshold** act live; Save writes `emissive` lines with the rest of the file. **Suggest** lists the level's tie and shrub textures
@@ -1005,7 +1037,11 @@ tie and shrub textures the MRP's world draws (`mrp_world_texture_list`; a tie or
 it) and the level's moby textures (`mrp_moby_texture_list`), each with the classes that use it (a tie's texture prim, a shrub's or a
 moby's local texture: as an `emissive` line names it). They are filtered by kind, by a number (the level's texture or a class) and
 to the marked ones (a yellow frame: emissive; blue: a material). A click puts the texture in hand with the preview on, by its first
-user (the others are buttons above the grid): the same Mark / material controls as the Lights tab, the same lines. The thumbnails are
+user (the others are buttons above the grid): the same Mark / material controls as the Lights tab, the same lines. Above the grid,
+"Seas drawn" lists the level's seas (water, lava, sand) drawn so far, by class and texture: they are not world textures and have no
+thumbnail; a click puts one in hand. The grid holds every texture the level loaded, so it has more than a walk shows: the classes'
+other levels of detail, ties and shrubs placed far from the start, mobys spawned later or never (a Veldin texture seen in the grid
+may have nothing to aim at near the start; its classes are under the thumbnail, and the preview shows where it is drawn). The thumbnails are
 one atlas of 64 x 64 pictures made on the CPU from the renderers' decoded textures when the tab is first shown on a level (or
 **Refresh**): an OpenGL texture or a Vulkan image ImGui draws; nothing of the game's drawing changes.
 
@@ -1033,8 +1069,11 @@ does not turn the lighting on; Experimental does (Lighting High, Dynamic Shadows
 | AO Intensity | 25 to 125 % | 75 % | the occlusion's darkness: each mode's strength scaled (`ao_intensity` in the preferences, item 47 of a save's block); see [Ambient occlusion](#ambient-occlusion) |
 | Sun Rays | Off, Low, Medium, High | Off | light shafts from the sun through openings, each step more quality and strength (`sun_rays_quality`, item 49; `sun_rays` and item 46 until 0.4.x read with Low as Medium); see [Sun rays](#sun-rays) |
 | Surface Detail | Off, Low, High | Off | the surfaces' materials (metal, wet, puddle, lava, water, mud, quicksand) tagged in the level's file; High adds the reflections and the lava's heat shimmer (`surface_detail`, item 51); see [Materials](materials.md) |
+| Water | Off, Low, High | Off | the tagged water, lava and quicksand: normal maps, Fresnel, glints, depth, foam; High: the scene's reflection and the refraction (`water`, item 52); see [Materials](materials.md#water-and-grass) |
+| Grass | Off, Low, High | Off | the tagged ground's blades: a detail relief (Low), and a few very low shells near the camera (High) (`grass`, item 54) |
 
-The other rows take effect only when Lighting is not Original.
+The other rows take effect only when Lighting is not Original. The debug menu's **Enhancements** tab switches all of them live
+(for the run; "Save as my settings" makes them the preferences), each with its profiler stage's GPU / CPU time beside it.
 
 For testing, environment variables override each of these (they need `--debug-tools`):
 `RAC1_SHADOWS`, `RAC1_SHADOW_RES`, `RAC1_SHADOW_MOBY_DIST`, `RAC1_POINT_SHADOWS`, `RAC1_POINTS`,

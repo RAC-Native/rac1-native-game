@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <array>
 #include <map>
+#include <mutex>
 #include <new>
 #include <set>
 #include <chrono>
@@ -1209,6 +1210,15 @@ struct Vu7Emissive {
     bool on = false;
 } g_e7;
 uint64_t e7_key(uint32_t cls, uint32_t tbp) { return static_cast<uint64_t>(cls) << 32 | tbp; }
+// the debug menu's pick (mrp_fx_surface_pick): the ray asked for, the frame's nearest hit, the last answer; the surfaces the level drew
+struct Vu7Pick {
+    std::mutex m;
+    bool want = false;
+    glm::vec3 o{0.0f}, d{0.0f, 0.0f, 1.0f};
+    float max_t = 0.0f;
+    FxSurfacePick cur, last;  // (this frame's best; the answer)
+    std::set<uint64_t> level;  // (the surfaces drawn since the level started: mrp_fx_clear_caches empties it)
+} g_p7;
 // orig: (host) the table brought up to date (once a frame)
 void vu7_emissive_refresh() {
     std::vector<EmissiveSurface> list;
@@ -1249,6 +1259,7 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
         int layer = 0, tw = 1, th = 1;
         BKey k;
         uint32_t flags = 0, emis = 0;
+        uint64_t key = 0;
     };
     auto state = [&](const gs::DrawState& st, const std::shared_ptr<const gs::TexImage>& tex) {
         State S;
@@ -1266,12 +1277,15 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
             S.th = tex->h;
             // (an emissive surface or a material: the callback's class, the texture's block)
             const uint64_t key = e7_key(b.tag, fld(st.tex0, 0, 14));
+            S.key = key;
             if (g_e7.on)
                 if (auto it = g_e7.slot.find(key); it != g_e7.slot.end()) S.emis = it->second;
             static const bool trace = std::getenv("RAC1_LIGHTS_TRACE") != nullptr;
             if (trace && g_e7.seen.insert(key).second)
-                std::printf("[lights] program 7 surface: class %u tex %u (TEX0 %016llx, %d x %d): \"emissive surface %u tex %u\"\n", b.tag, fld(st.tex0, 0, 14),
-                            static_cast<unsigned long long>(st.tex0), S.tw, S.th, b.tag, fld(st.tex0, 0, 14));
+                std::printf("[lights] program 7 surface: class %u tex %u (TEX0 %016llx, %d x %d) near %.1f %.1f %.1f, ABE %u ALPHA %02x ZWRITE %u: \"emissive surface %u tex %u\"\n", b.tag,
+                            fld(st.tex0, 0, 14), static_cast<unsigned long long>(st.tex0), S.tw, S.th, b.n > 0 ? gs.vu7_verts[b.first].xyz[0] : 0.0f,
+                            b.n > 0 ? gs.vu7_verts[b.first].xyz[1] : 0.0f, b.n > 0 ? gs.vu7_verts[b.first].xyz[2] : 0.0f, fld(st.prim, 6, 1), static_cast<unsigned>(st.alpha & 0xff),
+                            fld(st.zbuf, 32, 1) == 0 ? 1u : 0u, b.tag, fld(st.tex0, 0, 14));
         }
         key_and_flags(st, false, S.k, S.flags);
         S.ok = true;
@@ -1308,7 +1322,7 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
     ++g_st.by_kind[kMrpFxVu7];  // (the report's "by producer": batches)
     if (clip_path) ++g_s7.clip_path;
     const auto& vin = gs.vu7_verts;
-    auto vert = [&](uint32_t i, const State& S) {
+    auto vert = [&](uint32_t i, const State& S, bool gs_z) {
         const gs::Vu7Vertex& s = vin[b.first + i];
         const glm::dvec4 pt(s.xyz[0], s.xyz[1], s.xyz[2], 1.0);
         const glm::dvec4 clip = M * pt;
@@ -1344,7 +1358,7 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
         {  // the depth: the program's Z (its integer part, FTOI4) through the replica's map (render_gs_depth)
             const double q = static_cast<double>(b.k) / clip.w;
             const double Z = std::floor(clip.z * q + static_cast<double>(b.off[2]));
-            v.depth = g_v7_depth ? static_cast<float>(2.0 * (g_v7_da + g_v7_db * Z) - 1.0) : 2.0f;
+            v.depth = g_v7_depth && gs_z ? static_cast<float>(2.0 * (g_v7_da + g_v7_db * Z) - 1.0) : 2.0f;
         }
         g_v7.push_back(v);
     };
@@ -1362,8 +1376,15 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
     // state - unless all three points lie past one plane of the guard band (not drawn).
     enum : uint8_t { kNone = 0, kStrip = 1, kFan = 2 };
     std::vector<uint8_t> how(tris.size(), kStrip);
+    // A clipped triangle reaching behind the eye or past the GS's Z range has no GS depth there (Q of the wrong sign: its Z is
+    // nonsense). Drawn whole for the GPU to clip, with the depth clamp (which turns the near plane's clipping off), it came out in
+    // some frames and not others as the camera moved by a hair - OpenGL on radeonsi; Vulkan was right: Pokitaru with the camera at
+    // the water, the near sea white with the original lighting, dark with the modern one, the posts under it gone, every few frames.
+    // Such a triangle is cut at the view's near plane here (emit) and drawn with the view's own depth (in front of the eye the two
+    // depths are the same map)
+    std::vector<uint8_t> gs_z(tris.size(), 1);
     {
-        std::vector<uint8_t> flags(b.n), behind(b.n);
+        std::vector<uint8_t> flags(b.n), behind(b.n), zbad(b.n);
         for (uint32_t i = 0; i < b.n; ++i) {
             const gs::Vu7Vertex& s = vin[b.first + i];
             const glm::dvec4 pt(s.xyz[0], s.xyz[1], s.xyz[2], 1.0);
@@ -1377,6 +1398,7 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
             const double q = static_cast<double>(b.k) / h.w;
             const double X = h.x * q + b.off[0], Y = h.y * q + b.off[1], Z = h.z * q + b.off[2];
             behind[i] = !(q > 0.0) || !(X >= 0.0 && X < 4096.0 && Y >= 0.0 && Y < 4096.0) || !(Z >= 0.0 && Z < 16777216.0) ? 1 : 0;
+            zbad[i] = !(q > 0.0) || !(Z >= 0.0 && Z < 16777216.0) ? 1 : 0;
         }
         const bool have = b.kicked.size() == b.n && type == 4;
         for (size_t t = 0; t < tris.size(); ++t) {
@@ -1386,17 +1408,86 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
             const bool whole = have ? b.kicked[T[2]] != 0 : !(clip_path && any_out);
             if (whole) how[t] = (behind[T[0]] | behind[T[1]] | behind[T[2]]) != 0 ? kNone : kStrip;
             else how[t] = all_one || !clip_path ? kNone : kFan;
+            gs_z[t] = (zbad[T[0]] | zbad[T[1]] | zbad[T[2]]) == 0 ? 1 : 0;
         }
     }
+    bool have_vp = false;
+    float wrow[4] = {};
     auto emit = [&](const State& S, uint8_t want) {  // (the program kicks the clipped fans as it goes, the strip at its end)
         if (!S.ok) return;
         const size_t at = g_v7.size();
-        for (size_t t = 0; t < tris.size(); ++t)
-            if (how[t] == want)
-                for (uint32_t i : tris[t]) vert(i, S);
+        for (size_t t = 0; t < tris.size(); ++t) {
+            if (how[t] != want) continue;
+            if (gs_z[t] != 0) {
+                for (uint32_t i : tris[t]) vert(i, S, true);
+                continue;
+            }
+            // (no GS depth: the triangle cut at the view's near plane here, its part in front of it drawn with the view's depth)
+            if (!have_vp) {
+                float m[16];
+                mrp_world_view_proj(m);
+                for (int k = 0; k < 4; ++k) wrow[k] = m[k * 4 + 3];  // (column-major: the clip w's row)
+                have_vp = true;
+            }
+            V7 in[3];
+            for (int k = 0; k < 3; ++k) {
+                vert(tris[t][static_cast<size_t>(k)], S, false);
+                in[k] = g_v7.back();
+                g_v7.pop_back();
+            }
+            auto dist = [&](const V7& v) { return wrow[0] * v.wp[0] + wrow[1] * v.wp[1] + wrow[2] * v.wp[2] + wrow[3] - kRenderNear * 1.5f; };
+            V7 poly[4];
+            int np = 0;
+            for (int k = 0; k < 3; ++k) {
+                const V7 &a = in[k], &c = in[(k + 1) % 3];
+                const float da = dist(a), dc = dist(c);
+                if (da >= 0.0f) poly[np++] = a;
+                if ((da >= 0.0f) != (dc >= 0.0f)) {
+                    const float f = da / (da - dc);
+                    V7 v = a;
+                    for (int l = 0; l < 3; ++l) {
+                        v.wp[l] = a.wp[l] + (c.wp[l] - a.wp[l]) * f;
+                        v.stq[l] = a.stq[l] + (c.stq[l] - a.stq[l]) * f;
+                    }
+                    v.fogw = a.fogw + (c.fogw - a.fogw) * f;
+                    for (int l = 0; l < 4; ++l)
+                        v.rgba[l] = static_cast<uint8_t>(std::lround(static_cast<float>(a.rgba[l]) + (static_cast<float>(c.rgba[l]) - static_cast<float>(a.rgba[l])) * f));
+                    poly[np++] = v;
+                }
+            }
+            for (int k = 1; k + 1 < np; ++k) g_v7.insert(g_v7.end(), {poly[0], poly[k], poly[k + 1]});
+        }
         const uint32_t n = static_cast<uint32_t>(g_v7.size() - at);
         g_s7.tris += n / 3;
         if (n == 0) return;
+        if (S.key != 0) {  // (the debug menu: the surfaces drawn, the ray's nearest triangle - Moeller-Trumbore, either side)
+            std::lock_guard<std::mutex> lg(g_p7.m);
+            g_p7.level.insert(S.key);
+            if (g_p7.want)
+                for (size_t q = at; q + 2 < g_v7.size(); q += 3) {
+                    const glm::vec3 a(g_v7[q].wp[0], g_v7[q].wp[1], g_v7[q].wp[2]), e1 = glm::vec3(g_v7[q + 1].wp[0], g_v7[q + 1].wp[1], g_v7[q + 1].wp[2]) - a,
+                                    e2 = glm::vec3(g_v7[q + 2].wp[0], g_v7[q + 2].wp[1], g_v7[q + 2].wp[2]) - a;
+                    const glm::vec3 pv = glm::cross(g_p7.d, e2);
+                    const float det = glm::dot(e1, pv);
+                    if (std::fabs(det) < 1e-9f) continue;
+                    const glm::vec3 tv = g_p7.o - a;
+                    const float u = glm::dot(tv, pv) / det;
+                    if (u < 0.0f || u > 1.0f) continue;
+                    const glm::vec3 qv = glm::cross(tv, e1);
+                    const float v = glm::dot(g_p7.d, qv) / det;
+                    if (v < 0.0f || u + v > 1.0f) continue;
+                    const float t = glm::dot(e2, qv) / det;
+                    if (t <= 0.0f || t > g_p7.max_t || (g_p7.cur.hit && t >= g_p7.cur.t)) continue;
+                    FxSurfacePick& c = g_p7.cur;
+                    c.hit = true;
+                    c.t = t;
+                    c.o_class = static_cast<int>(S.key >> 32);
+                    c.tex = static_cast<int>(S.key & 0xffffffffu);
+                    const glm::vec3 nn = glm::cross(e1, e2);
+                    const float l = glm::length(nn);
+                    for (int k = 0; k < 3; ++k) c.normal[k] = l > 0.0f ? nn[k] / l : (k == 2 ? 1.0f : 0.0f);
+                }
+        }
         if (g_b7.empty() || g_b7.back().count == 0) {
             if (g_b7.empty()) g_b7.push_back(Batch{});
             g_b7.back().key = S.k;
@@ -1513,6 +1604,10 @@ void main() {
         o.rgb = o.rgb * f + fogcol * (1.0 - f);
     }
     float a = o.a * 255.0;
+    uint bk0 = (fl >> 24) & 3u;
+    bool wcomp = sm_w_mode == 1 && (bk0 == 0u || bk0 == 2u);  // (Options > Graphics > Water: the 3D under it, sm_water2)
+    float wa = clamp(min(o.a * (255.0 / 128.0), 1.0) * sm_w_alpha + sm_w_add, 0.0, 1.0);
+    if (wcomp) o.rgb = mix(sm_w_refr, o.rgb, wa);
     if (ate) {
         bool pass = true;
         if (atst == 0u) pass = false;
@@ -1526,6 +1621,8 @@ void main() {
         if (!pass && uPass == 1 && afail != 2u) discard;
     }
     float as = min(o.a * (255.0 / 128.0), 1.0);
+    if (wcomp) as = 1.0;
+    else if (sm_w_mode == 2) as = wa;
     uint bk = (fl >> 24) & 3u;
     if (bk == 1u || bk == 2u) {
         FragColor = vec4(o.rgb * as, as);
@@ -1750,12 +1847,43 @@ void vk_draw_batches(const std::vector<Batch>& bs, size_t from, size_t to, const
 
 // orig: (host) see mrp_fx.h
 size_t mrp_fx_clear_caches() {
+    {
+        std::lock_guard<std::mutex> lg(g_p7.m);
+        g_p7.level.clear();
+    }
     const size_t n = static_cast<size_t>(g_atlas.used + g_vk_atlas.used);
     if (g_atlas.tex != 0) glDeleteTextures(1, &g_atlas.tex);
     g_atlas = Atlas{};
     vk::destroy_image(g_vk_atlas_img);  // (destroyed once the frames that drew with it are done)
     g_vk_atlas = Atlas{};
     return n;
+}
+
+// orig: (host) see mrp_fx.h
+void mrp_fx_surface_pick(const float o[3], const float d[3], float max_t) {
+    std::lock_guard<std::mutex> lg(g_p7.m);
+    const glm::vec3 no(o[0], o[1], o[2]), nd(d[0], d[1], d[2]);
+    if (glm::length(no - g_p7.o) > 0.25f || glm::length(nd - g_p7.d) > 0.01f || (max_t > 0.0f) != g_p7.want) {  // (a new ray, not the same one a little moved: no answer yet)
+        const uint32_t seq = g_p7.last.seq;
+        g_p7.last = FxSurfacePick{};
+        g_p7.last.seq = seq;
+    }
+    g_p7.want = max_t > 0.0f;
+    g_p7.o = glm::vec3(o[0], o[1], o[2]);
+    g_p7.d = glm::vec3(d[0], d[1], d[2]);
+    g_p7.max_t = max_t;
+}
+// orig: (host) see mrp_fx.h
+FxSurfacePick mrp_fx_surface_pick_result() {
+    std::lock_guard<std::mutex> lg(g_p7.m);
+    return g_p7.last;
+}
+// orig: (host) see mrp_fx.h
+std::vector<std::pair<int, int>> mrp_fx_surfaces_seen() {
+    std::lock_guard<std::mutex> lg(g_p7.m);
+    std::vector<std::pair<int, int>> out;
+    for (uint64_t k : g_p7.level) out.emplace_back(static_cast<int>(k >> 32), static_cast<int>(k & 0xffffffffu));
+    return out;
 }
 
 namespace {
@@ -1791,9 +1919,18 @@ void mrp_fx_draw(const MrpChainFrame& gs, int win_w, int win_h, const gs::Viewpo
     }
     using clock = std::chrono::steady_clock;
     const auto t0 = clock::now();
-    if (from == 0) ++g_st.frames;
+    if (from == 0 && g_pass != 1) {  // (once a frame: the early surfaces' pass, from 0 with Options > Graphics > Water, comes after it)
+        ++g_st.frames;
+        std::lock_guard<std::mutex> lg(g_p7.m);  // (the debug menu's pick: the last frame's answer kept, this frame's searched afresh)
+        if (g_p7.want) {
+            const uint32_t seq = g_p7.last.seq + 1;
+            g_p7.last = g_p7.cur;
+            g_p7.last.seq = seq;
+        }
+        g_p7.cur = FxSurfacePick{};
+    }
     static const bool wiiu_check = std::getenv("RAC1_MRP_FX_WIIU_CHECK") != nullptr;  // (testing: see wiiu_vu7_check)
-    if (wiiu_check && from == 0 && g_pass != 2) wiiu_vu7_check(gs);
+    if (wiiu_check && from == 0 && g_pass == 0) wiiu_vu7_check(gs);
     g_v.clear();
     g_batches.clear();
     g_steps.clear();

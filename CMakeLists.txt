@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 # the release's version (semantic): bumped at each release, with its tag vX.Y.Z (the in-game update check compares
 # it with the latest release's: docs/settings.md)
-project(rac1-native VERSION 0.5.0 LANGUAGES C CXX)
+project(rac1-native VERSION 0.6.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -227,6 +227,11 @@ if(RAC1_ORACLE)
     add_subdirectory(tests/oracle)
 endif()
 
+# ---- tests/rumble/ : the DualSense output report's layout and CRC (host code only, no pad: not built by default) ----
+#   cmake --build build --target dualsense_test && ./build/dualsense_test
+add_executable(dualsense_test EXCLUDE_FROM_ALL tests/rumble/dualsense_test.cpp src/host/dualsense.cpp)
+target_include_directories(dualsense_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
 # ---- src/setup/ : setup & asset extraction ----
 add_library(rac1_setup STATIC
     src/setup/kick_trace.cpp
@@ -246,6 +251,7 @@ set(RAC1_HOST_SOURCES
     src/host/sample_prof.cpp
     src/host/host_input.cpp
     src/host/rumble.cpp
+    src/host/dualsense.cpp
     src/host/host_language.cpp
     src/host/sim_script.cpp
     src/host/sim_autopilot.cpp
