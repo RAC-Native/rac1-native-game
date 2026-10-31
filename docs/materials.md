@@ -64,9 +64,11 @@ texture, applied after the material (a metal lamp whose bulb is painted in the s
 also be emissive", #102 batch 1). A level's file or `classes.txt` with an `emissive` line and a `material` line for the same texture
 is read as one entry, the glowing material (before, the later line's slot won and the other was not drawn); the editor's Save
 writes it as one line. The glow is drawn with Surface Detail Off too (the glow alone, as an emissive surface). Emissive surfaces and
-materials share the level's 126 slots, in the file's order, the level's own lines first and then the `classes.txt` ones (30 slots
-until #102's batch 1: with batch 1's lines for every level the slots were full on every level and the lines past the 30th were
-dropped - "metal rendering just gives up after a set number of marked metals"; Novalis had 71 lines, Rilgar 73).
+materials share the level's 254 slots, in the file's order, the level's own lines first and then the `classes.txt` ones for the
+classes the level has (30 slots until #102's batch 1: with batch 1's lines for every level the slots were full on every level and the
+lines past the 30th were dropped - "metal rendering just gives up after a set number of marked metals"; Novalis had 71 lines, Rilgar
+73. 126 until #121: with Anya-Thoughtmane's batches 2 and 3, `classes.txt` alone had 73 lines, each taking a slot on every level,
+and seven levels lost lines - Gemlik 76 of 202).
 
 ### How to find a texture (for Anya)
 
@@ -83,15 +85,18 @@ red ones for lava, and so on).
 
 ## How it is drawn
 
-- **The slot.** `emissive_refresh` / `moby_emissive_refresh` give each listed texture a slot (1 to 126),
-  carried in the world draw's texture word (bits 25..31), in the mobys' draw command's fourth word (until #102's batch 1 their
-  texture word's bits 27..31: five bits, 30 slots) and in the seas' vertices, as for the emissive surfaces. With Surface Detail
+- **The slot.** `emissive_refresh` / `moby_emissive_refresh` give each listed texture a slot (1 to 254, a byte: 0 none, 255 the
+  editor's preview), carried in the world draw's texture word (bits 24..31; bits 25..31 until #121), in the mobys' draw command's
+  fourth word (until #102's batch 1 their texture word's bits 27..31: five bits, 30 slots) and in the seas' vertices, as for the
+  emissive surfaces. With Surface Detail
   Off a material gets no slot (those draws are the original's), unless it glows.
-- **The uniforms.** Per slot `uEmis[s]` (strength, threshold - a material's glow -, the type in z) and `uMat[s]` (a, b, c with
-  the defaults filled in), 128 of each (127 the editor's preview); `uMat[0]` holds Surface Detail, the clock (frames / 60, so a headless run is
-  deterministic), the rain and whether the last frame's picture is ready. OpenGL: uniforms of the lighting's
-  programs; Vulkan: the lighting's uniform buffer (11776 bytes: the Water option's `uMat2` and the lights' aim `uPtAim` since 0.6.x; 8192 before, 5120 before that) and its descriptor set's bindings 2 (the
-  picture) and 5 (its depth). The rain rings' sky (`sm_sky`): the ambient particles' sky grid window, an R32F
+- **The slots' table.** Per slot `uEmis[s]` (strength, threshold - a material's glow -, the type in z), `uMat[s]` (a, b, c with
+  the defaults filled in) and `uMat2[s]` (the Water option's), 256 of each (255 the editor's preview and the options); `uMat[0]`
+  holds Surface Detail, the clock (frames / 60, so a headless run is deterministic), the rain and whether the last frame's picture
+  is ready. One storage buffer of 12 KB (`RacMatTable`): OpenGL binding 12, sent when it changes; Vulkan binding 7 of the lighting's
+  descriptor set. Until #121 uniforms of 128 (OpenGL: the programs' uniforms; Vulkan: in the lighting's uniform buffer, 11776 bytes,
+  5632 now - at 256 slots it would have passed the 16 KB `maxUniformBufferRange` every device must give). The
+  reflections' picture and its depth: Vulkan bindings 2 and 5. The rain rings' sky (`sm_sky`): the ambient particles' sky grid window, an R32F
   texture whose last row holds its place (OpenGL unit 30, Vulkan binding 6; none: open sky everywhere).
 - **The shading** (`sh_material`, after `sh_emissive`, in the world's `SH_POINTS` and the mobys' `SH_SPLIT`
   variants). The normal is the face normal the lighting already has (flat on each triangle); ripples and rain
@@ -130,9 +135,9 @@ darkens all of it).
 
 ## Shipped
 
-- **Batalia (8)**, the pilot, `rain on`, a stormy sky: the landing platform's steel deck (tie 391 `tex 2`, the
-  level's texture 108), the railings' posts (tie 338 `tex 2`) and the military buildings' walls (tie 297
-  `tex 5`) as metal; the paved ground of the base below the platform (tfrag texture 11) as puddles.
+- **Batalia (8)**, the pilot, `rain on`, a stormy sky: the railings' posts (tie 338 `tex 2`) and the military
+  buildings' walls (tie 297 `tex 5`) as metal; since Anya-Thoughtmane's batch 2 (#120) the landing platform's deck
+  (tie 391 `tex 3`) and the paved ground below it (tfrag texture 11, puddles before) are metal too.
 - **Umbris (7)**: the swampy ground where the walk starts (tfrag texture 9) as mud.
 
 ## The levels' seas and pools
@@ -299,7 +304,8 @@ the see-through, not the normal maps (those lie on the flat water).
 - The reflections are of the last frame (one frame late when the camera turns fast) and of what is on
   screen; off it, the sky colour.
 - No reflections of the effects and particles drawn after the world (the copy is taken before them).
-- At most 126 emissive surfaces and materials a level, the `classes.txt` lines included (the log says so when there are more).
+- At most 254 emissive surfaces and materials a level, the `classes.txt` lines for the level's classes included (the log says so
+  when there are more).
 - The heat shimmer moves the picture on the lava itself (and a few pixels around its edge), not the air
   above it.
 

@@ -18,7 +18,7 @@ emissive tfrag 0 tex 67  1.50 0.85
 emissive tfrag 0 tex 70  2.81 0.71
 emissive tfrag 0 tex 40  2.66 0.00
 emissive tfrag 0 tex 38  2.00 0.00
-emissive tie 1414 tex 0  1.85 0.50
+emissive tie 1414 tex 0  1.85 0.74
 emissive tie 1417 tex 0  4.00 0.80
 emissive shrub 149 tex 0  2.46 0.00
 emissive moby 11 tex 0  3.02 0.91
@@ -39,7 +39,7 @@ material moby 1057 tex 2 metal 0.35 1
 material moby 1056 tex 4 metal 0.45 1
 material moby 1056 tex 5 metal 0.35 1
 material moby 1056 tex 3 metal 0.62 1
-material tfrag 0 tex 57 metal 0.34 1
+material tfrag 0 tex 57 metal 0.63 0.74
 material tfrag 0 tex 49 metal 0.43 1
 emissive moby 719 tex 1  2.76 0.00
 material moby 781 tex 0 metal 0.35 1

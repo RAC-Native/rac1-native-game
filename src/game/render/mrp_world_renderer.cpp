@@ -778,7 +778,7 @@ void main() {
 #ifdef SH_POINTS
     vec3 c_game = c.rgb;  // (the game's colour: an emissive texel's, sh_emissive)
     // (Options > Graphics > Grass: a shell's blade here, -1 none; a shell's pixel without one and a probe's are not lit)
-    float gk = uShell > 0 ? sm_grass((vTex.x >> 25) & 127u, uShell & 255, uShell >> 8) : 1.0;
+    float gk = uShell > 0 ? sm_grass((vTex.x >> 24) & 255u, uShell & 255, uShell >> 8) : 1.0;
     if (uShell >= 0 && gk >= 0.0) {
         c.rgb = sh_apply(c.rgb);
         c.rgb = sh_points(c.rgb);  // (the game's point lights per pixel; the lighting's variant only)
@@ -792,13 +792,13 @@ void main() {
     if (uTme != 0) {
         vec2 st = vStq.xy / vStq.z;
 #ifdef SH_POINTS
-        st = sh_mat_uv(st, (w >> 25) & 127u);  // (lava, mud, quicksand: the slow flow)
+        st = sh_mat_uv(st, (w >> 24) & 255u);  // (lava, mud, quicksand: the slow flow)
 #endif
         vec4 t;
         if ((w & 1u) != 0u) {
             t = vec4(128.0 / 255.0);
         } else {
-            int mips = int((w >> 22) & 7u) + 1;
+            int mips = int((w >> 22) & 3u) + 1;
             // (a multi-draw's fragments of several draws share a wave, their units may differ: each unit the wave holds
             // sampled in turn with an index uniform over the subgroup; a quad is one primitive's, so its derivatives stay its own)
             t = vec4(0.0);
@@ -826,8 +826,8 @@ void main() {
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_POINTS
         if (uShell >= 0) {
-            o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 25) & 127u);  // (the word's bits 25..31)
-            o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 25) & 127u);
+            o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 24) & 255u);  // (the word's bits 24..31)
+            o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 24) & 255u);
         }
         if (uShell > 0) {  // (Options > Graphics > Grass: a shell's blade, or nothing)
             if (gk < 0.0) discard;
@@ -837,7 +837,7 @@ void main() {
         if (uShade == 2) o.rgb = t.rgb;
     }
 #ifdef SH_POINTS
-    if (uShell < 0 && !sm_grass_probe((w >> 25) & 127u, min(o.a * (255.0 / 128.0), 1.0), uShell)) discard;  // (the grass's stencil)
+    if (uShell < 0 && !sm_grass_probe((w >> 24) & 255u, min(o.a * (255.0 / 128.0), 1.0), uShell)) discard;  // (the grass's stencil)
 #endif
     if (uShade == 1) o.rgb = c.rgb;
     else if (uShade == 3) o.rgb = vec3(0.8);
@@ -1568,7 +1568,7 @@ const TexRef* vram_texture(Level& L, uint64_t tex0, uint64_t tex1, uint64_t mip1
 
 // ---- the emissive surfaces (mrp_lighting.h EmissiveSurface; our data) ----------------------------------------------------------
 // per level texture (tfrag, tie, shrub tables) its shader slot (0 none), rebuilt on the scene's worker when the list, the preview or
-// the level changes; the slot goes into the texture word's bits 25..31 (key_now) while the modern lighting is on, the original's draws
+// the level changes; the slot goes into the texture word's bits 24..31 (key_now) while the modern lighting is on, the original's draws
 // untouched
 }  // namespace
 void mrp_world_texture_survey();
@@ -1744,7 +1744,7 @@ struct GsFront {
         k.layer = r.layer;
         k.opaque = r.opaque;
         k.word |= (std::min(std::min(r.mips, mxl + 1), 4u) - 1) << 22;  // (the GS samples levels 0..MXL only, as the mobys')
-        if (g_emis_frame && ti < g_emis.slot[table].size()) k.word |= static_cast<uint32_t>(g_emis.slot[table][ti]) << 25;  // (an emissive surface's slot)
+        if (g_emis_frame && ti < g_emis.slot[table].size()) k.word |= static_cast<uint32_t>(g_emis.slot[table][ti]) << 24;  // (an emissive surface's slot: bits 24..31, the mip count below it in 22..23)
         ++g_st.tex_ok;
         return k;
     }

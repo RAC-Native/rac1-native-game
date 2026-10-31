@@ -32,6 +32,11 @@ What changed in each release. Releases are source only: you build the game with 
   (most of its metal, the spot lamps, their sun 38.6 / 16.7), Kerwan (the gold surfaces, the landing pad's lamps, the street lamps
   a little dimmer, its motes taken out), Eudora and Rilgar (a light experimental rain), Umbris's, Batalia's and Gaspar's particles,
   Orxon's ash, embers and snow (in place of its dust), and on Hoven no Sun Rays and faint motes beside the snow.
+- Lights: Anya-Thoughtmane's lighting batches 2 and 3 and their Test 3 tweaks (#102, #120) merged line by line: metals, emissive
+  surfaces and lamps from Blarg to Veldin's finale, more moby classes for every level (crates, teleporters, foot switches, robo-birds),
+  Ratchet's own roughness (on every level, in `classes.txt`) and the stone-like 100 roughness surfaces on Veldin and Novalis, Al's shop on Kerwan, Batalia's deck and
+  ground as metal (no puddles), Gaspar's ash falling, Hoven's white ash in place of the motes, Pokitaru's fireflies off, ash on
+  Gemlik and rain on Oltanis; our water, grass, particles and aimed lines kept.
 - Materials: a material can glow too (`glow <strength> [threshold]` on its line, or an emissive line for the same texture): a metal
   with a lit bulb in its texture is both, not emissive alone.
 - Debug menu: the levels' seas (water, lava, sand) can be picked and given a material (Lights tab, aimed or clicked; Textures tab,
@@ -73,6 +78,9 @@ What changed in each release. Releases are source only: you build the game with 
   antivirus false positive (F-Secure's `Drop.Win64.APC.HEUR`, #115).
 
 ### Fixes
+- Materials: a level takes 254 emissive surfaces and materials, not 126, and a `classes.txt` line takes a slot only on the levels
+  that have its class: with Anya-Thoughtmane's batches 2 and 3 seven levels ran out and dropped lines (Gemlik 76 of 202, its bolts
+  among them). The slots' table is a storage buffer now (OpenGL and Vulkan), the Vulkan lighting uniform buffer 5632 bytes.
 - Water: Rilgar's harbour (and Hoven's, Gaspar's and Umbris's seas) no longer flickers between a dark sea and a grey, speckled
   sheet with Water on: a sea the game draws before its mobys was drawn before the copy of the 3D under the water, and read the
   last frame's, which held the sea itself. With Surface Detail on too, its `water` look is kept and the Water option adds its

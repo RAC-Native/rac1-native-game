@@ -29,12 +29,12 @@
     "    vec2 u = f * f * (3.0 - 2.0 * f);\n"                                                                                                            \
     "    return mix(mix(sm_hash(i), sm_hash(i + vec2(1.0, 0.0)), u.x), mix(sm_hash(i + vec2(0.0, 1.0)), sm_hash(i + vec2(1.0, 1.0)), u.x), u.y);\n"      \
     "}\n"                                                                                                                                                \
-    "/* the options (uMat[127]): x Water, z Grass (y unused); w 1 when the picture of the 3D is this frame's (the seas drawn after it) */\n"             \
+    "/* the options (uMat[255]): x Water, z Grass (y unused); w 1 when the picture of the 3D is this frame's (the seas drawn after it) */\n"             \
     "int sm_type(uint s) {\n"                                                                                                                            \
     "    if (s == 0u || uShOn == 0 || uShPass != 0 || uEmis[s].w > 0.0) return 0;\n"                                                                     \
     "    int ty = int(uEmis[s].z + 0.5);\n"                                                                                                              \
-    "    if (ty == 8) return uMat[127].z > 0.0 ? ty : 0;  /* grass: its own option */\n"                                                                 \
-    "    if ((ty == 4 || ty == 5 || ty == 7) && uMat[127].x > 0.0) return ty;       /* lava, water, quicksand: the Water option too */\n"                \
+    "    if (ty == 8) return uMat[255].z > 0.0 ? ty : 0;  /* grass: its own option */\n"                                                                 \
+    "    if ((ty == 4 || ty == 5 || ty == 7) && uMat[255].x > 0.0) return ty;       /* lava, water, quicksand: the Water option too */\n"                \
     "    if (uMat[0].x == 0.0) return 0;\n"                                                                                                              \
     "    return ty;\n"                                                                                                                                   \
     "}\n"                                                                                                                                                \
@@ -227,10 +227,7 @@
     "    }\n"                                                                                                                                            \
     "    return c + add;\n"                                                                                                                              \
     "}\n"                                                                                                                                                \
-    "/* ---- Options > Graphics > Water (docs/materials.md): water, lava, quicksand; uMat2[s] = wave scale, speed, foam, depth ---- */\n"                \
-    "#ifndef VULKAN\n"                                                                                                                                   \
-    "uniform vec4 uMat2[128];\n"                                                                                                                         \
-    "#endif\n"                                                                                                                                           \
+    "/* ---- Options > Graphics > Water (docs/materials.md): water, lava, quicksand; uMat2[s] = wave scale, speed, foam, depth (the slots' table) ---- */\n"                \
     "/* a value noise and its gradient */\n"                                                                                                             \
     "vec3 sm_noised(vec2 p) {\n"                                                                                                                         \
     "    vec2 i = floor(p), f = fract(p);\n"                                                                                                             \
@@ -256,7 +253,7 @@
     "    float dz = sm_ssr_dz(P, uv);\n"                                                                                                                 \
     "    if (dz < -1e8) return 1e4;\n"                                                                                                                   \
     "    float d = -dz;\n"                                                                                                                               \
-    "    if (uMat[127].w == 0.0 && d < 0.03) return 1e4;\n"                                                                                              \
+    "    if (uMat[255].w == 0.0 && d < 0.03) return 1e4;\n"                                                                                              \
     "    return max(d, 0.0);\n"                                                                                                                          \
     "}\n"                                                                                                                                                \
     "/* what the seas' shaders do with the water after the fog (mrp_fx.cpp kV7Fs, gen_vk_shaders.py MRP_VU7_FS): 0 nothing; 1 their colour\n"            \
@@ -308,12 +305,12 @@
     "        c = mix(c, max(c, orig * (m.x * pulse)), k);\n"                                                                                             \
     "        c *= 1.0 + m2.z * shore;\n"                                                                                                                 \
     "        if (m.w >= 0.0) c *= mix(vec3(1.0), sm_tint(m.w), 0.5);\n"                                                                                  \
-    "        return uMat[127].x >= 1.5 ? sm_shimmer(c, P, t) : c;\n"                                                                                     \
+    "        return uMat[255].x >= 1.5 ? sm_shimmer(c, P, t) : c;\n"                                                                                     \
     "    }\n"                                                                                                                                            \
     "    float ndv = max(dot(N, V), 0.0);\n"                                                                                                             \
     "    float F = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);\n"                                                                                                 \
     "    vec3 R = reflect(-V, N);\n"                                                                                                                     \
-    "    sm_ssr_water = uMat[127].x >= 1.5;\n"                                                                                                           \
+    "    sm_ssr_water = uMat[255].x >= 1.5;\n"                                                                                                           \
     "    if (ty == 7) {  /* quicksand: a dull wet sheen over the slow drift, a darker wet band at its edge */\n"                                         \
     "        vec3 c = lit * (1.0 - 0.25 * m2.z * shore);\n"                                                                                              \
     "        if (m.w >= 0.0) c *= mix(vec3(1.0), sm_tint(m.w), 0.5);\n"                                                                                  \
@@ -339,9 +336,9 @@
     "        S = mix(base, fcol, clamp(foam, 0.0, 1.0));\n"                                                                                              \
     "    }\n"                                                                                                                                            \
     "    float ak = mix(0.7, 1.0, deep), aa = F * 0.35 + foam;\n"                                                                                        \
-    "    if (depth < 1e3 && uMat[127].w != 0.0) {  /* the 3D under it, this frame's: seen through, bent by the waves on High */\n"                       \
+    "    if (depth < 1e3 && uMat[255].w != 0.0) {  /* the 3D under it, this frame's: seen through, bent by the waves on High */\n"                       \
     "        vec3 under = textureLod(uSsrCol, uv, 0.0).rgb;\n"                                                                                           \
-    "        if (uMat[127].x >= 1.5) {  /* (the bent sample mixed in only where what it shows lies behind the water - not an object in front -,\n"       \
+    "        if (uMat[255].x >= 1.5) {  /* (the bent sample mixed in only where what it shows lies behind the water - not an object in front -,\n"       \
     "           by how far behind, and not at the shore: a smooth weight, not a choice that flips as the waves move) */\n"                               \
     "            vec2 o = clamp(uv + (N.xy - nb.xy) * (0.03 * min(dv, 1.5)), vec2(0.0), vec2(1.0));\n"                                                   \
     "            float d = textureLod(uSsrDepth, o, 0.0).r;\n"                                                                                           \
@@ -360,10 +357,10 @@
     "}\n"                                                                                                                                                \
     "/* ---- Options > Graphics > Grass on the tfrags with the `grass` material: Low's relief (sm_grass_detail) and High's shells (sm_grass;\n"          \
     "   uShell k + 256 n), with the stencil's mask of where the grass is the ground seen (sm_grass_probe, uShell < 0). uMat[s]: height,\n"               \
-    "   density, bend; uMat2[127]: the wind, the distance; uMat2[0] the hero ---- */\n"                                                                  \
+    "   density, bend; uMat2[255]: the wind, the distance; uMat2[0] the hero ---- */\n"                                                                  \
     "/* the blades' field (a cell's blade: its offset, height 0.45..1; the wind's lean, Ratchet's push): the blade's height at a point (0 none) */\n"    \
     "vec2 sm_grass_bend(vec3 P, vec4 m) {\n"                                                                                                             \
-    "    vec4 w = uMat2[127], hero = uMat2[0];\n"                                                                                                        \
+    "    vec4 w = uMat2[255], hero = uMat2[0];\n"                                                                                                        \
     "    float t = uMat[0].y;\n"                                                                                                                         \
     "    vec2 bend = w.xy * (0.35 + 0.25 * sin(t * 1.7 + dot(P.xy, vec2(0.6, 0.4)))) * m.z;\n"                                                           \
     "    if (hero.w > 0.0) {  /* pushed away from Ratchet's feet */\n"                                                                                   \
@@ -379,7 +376,7 @@
     "vec3 sm_grass_detail(vec3 lit, uint s) {\n"                                                                                                         \
     "    vec4 m = uMat[s];\n"                                                                                                                            \
     "    vec3 P = vShWorld;\n"                                                                                                                           \
-    "    float fade = 1.0 - smoothstep(uMat2[127].z * 0.6, uMat2[127].z, length(uShCam - P));\n"                                                         \
+    "    float fade = 1.0 - smoothstep(uMat2[255].z * 0.6, uMat2[255].z, length(uShCam - P));\n"                                                         \
     "    if (fade <= 0.0) return lit;\n"                                                                                                                 \
     "    vec2 base = (P.xy - sm_grass_bend(P, m) * 0.15) * m.y;\n"                                                                                       \
     "    vec2 fq = fwidth(base);\n"                                                                                                                      \
@@ -412,7 +409,7 @@
     "   pixel, until none at the distance or where a blade would be under a pixel (no edge where the shells end) */\n"                                   \
     "float sm_grass(uint s, int k, int n) {\n"                                                                                                           \
     "    if (sm_type(s) != 8) return -1.0;\n"                                                                                                            \
-    "    vec4 m = uMat[s], w = uMat2[127];\n"                                                                                                            \
+    "    vec4 m = uMat[s], w = uMat2[255];\n"                                                                                                            \
     "    float h = float(k) / float(n);\n"                                                                                                               \
     "    vec3 P = vShWorld;\n"                                                                                                                           \
     "    vec2 q = (P.xy - sm_grass_bend(P, m) * (0.15 + m.x * h * h * 3.0)) * m.y;\n"                                                                    \
@@ -449,7 +446,7 @@
     "    vec3 L = clamp(light, 0.0, 1.5);\n"                                                                                                             \
     "    float ndv = max(dot(N, V), 0.0);\n"                                                                                                             \
     "    vec3 R = reflect(-V, N);\n"                                                                                                                     \
-    "    if (uMat[127].x > 0.0 && (ty == 4 || ty == 5 || ty == 7)) return sm_water2(lit, orig, tex, L, s, ty);\n"                                        \
+    "    if (uMat[255].x > 0.0 && (ty == 4 || ty == 5 || ty == 7)) return sm_water2(lit, orig, tex, L, s, ty);\n"                                        \
     "    if (ty == 8) return sm_grass_detail(lit, s);  /* (Low: the blades as a detail relief of the ground; High's shells over it) */\n"                \
     "    if (ty == 1) {  /* metal: a roughness (0 a mirror .. 1 brushed), b strength */\n"                                                               \
     "        float r = clamp(m.x, 0.03, 1.0), gloss = 1.0 - r;\n"                                                                                        \
@@ -522,9 +519,7 @@
 #define RAC1_NATURE_VS \
     "/* the vertices' side of the Options' grass (docs/materials.md): the world's vertex shaders, the lighting's variant */\n"                           \
     "#ifndef VULKAN\n"                                                                                                                                   \
-    "uniform vec4 uEmis[128];\n"                                                                                                                         \
-    "uniform vec4 uMat[128];\n"                                                                                                                          \
-    "uniform vec4 uMat2[128];\n"                                                                                                                         \
+    "layout(std430, binding = 12) readonly buffer RacMatTable { vec4 uEmis[256]; vec4 uMat[256]; vec4 uMat2[256]; };\n"                                \
     "uniform vec3 uShCam;\n"                                                                                                                             \
     "#endif\n"                                                                                                                                           \
     "/* Grass: a shell's vertex (uShell = k + 256 n: shell k of n) - a tfrag vertex of a `grass` texture lifted k / n of the blades' height,\n"          \
@@ -532,10 +527,10 @@
     "   vertices 16 units past the grass's distance are dropped: a triangle reaching inside it is drawn whole unless it is that large (the\n"            \
     "   blades fade per pixel: no straight edge where the shells end) */\n"                                                                              \
     "bool sh_shell(inout vec4 wp, uint word, int shell) {\n"                                                                                             \
-    "    if (length(wp.xyz - uShCam) > uMat2[127].z + 16.0) return false;\n"                                                                             \
+    "    if (length(wp.xyz - uShCam) > uMat2[255].z + 16.0) return false;\n"                                                                             \
     "    if (shell < 0) return true;\n"                                                                                                                  \
-    "    uint s = (word >> 25) & 127u;\n"                                                                                                                \
-    "    if (s == 0u || uMat[127].z <= 0.0 || uEmis[s].w > 0.0 || int(uEmis[s].z + 0.5) != 8) return false;\n"                                           \
+    "    uint s = (word >> 24) & 255u;\n"                                                                                                                \
+    "    if (s == 0u || uMat[255].z <= 0.0 || uEmis[s].w > 0.0 || int(uEmis[s].z + 0.5) != 8) return false;\n"                                           \
     "    wp.z += uMat[s].x * float(shell & 255) / float(shell >> 8);\n"                                                                                  \
     "    return true;\n"                                                                                                                                 \
     "}\n"                                                                                                                                                \

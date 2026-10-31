@@ -2689,7 +2689,7 @@ bool mat_ssr_now() { return ((g_surface_detail >= 2 && g_mat_ssr_wanted.load()) 
 // orig: (host) the picture usable by this frame's draws: captured the frame before (the world, the mobys) or this frame already (the
 // seas, drawn after the capture - the 3D under them, seen with this frame's view), at the same size
 bool mat_ssr_ready() { return mat_ssr_now() && (g_mssr.frame + 1 == g_mat_frames || g_mssr.frame == g_mat_frames) && g_mssr.w > 0; }
-// orig: (host) the picture is this frame's (the seas drawn after it: their composite over it, uMat[127].w)
+// orig: (host) the picture is this frame's (the seas drawn after it: their composite over it, uMat[255].w)
 bool mat_ssr_this_frame() { return mat_ssr_ready() && g_mssr.frame == g_mat_frames; }
 // orig: (host) the Vulkan copies freed with the device
 void vk_mat_shutdown() {
@@ -3494,13 +3494,32 @@ void classes_load() {
     for (size_t k = 0; k < drop.size(); ++k)
         if (drop[k]) g_global[at[k]].kind = '#';  // (its line kept as it is, not used: read again, folded again)
 }
+// orig: (host) the moby classes the level has registered, sorted: the game's class table (*(0x15ffc0) entries, their o_class at
+// 0x197a00 + 2 i, as level_setup.cpp fills them); empty while it is not filled
+std::vector<int> level_moby_classes() {
+    std::vector<int> out;
+    const int32_t n = std::min<int32_t>(draw_lw(OV(0x0015ffc0)), 0xe0);  // (0x197a00..0x197bc0: 224 at most; Gemlik registers 222)
+    for (int32_t i = 0; i < n; ++i) out.push_back(static_cast<int>(draw_lbu(OV(0x00197a00) + 2 * i) | (draw_lbu(OV(0x00197a00) + 2 * i + 1) << 8)));
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
+}
+std::vector<int> g_global_classes;  // (the level's classes classes_apply saw: a change - the level's classes registered after its file was
+                                    // read - applies the lines again)
 // orig: (host) the file's lines added to the level's lists (after its own), but where the level's file has its own line for that class
-// (emit) or class and texture (emissive, material)
+// (emit) or class and texture (emissive, material), and only for the classes the level has (#121: every line took a slot on every
+// level, and with Anya-Thoughtmane's batches 2 and 3 the slots ran out)
 void classes_apply() {
-    size_t ne = 0, nm = 0;
+    size_t ne = 0, nm = 0, skipped = 0;
+    g_global_classes = level_moby_classes();
+    auto on_level = [&](int o_class) { return std::binary_search(g_global_classes.begin(), g_global_classes.end(), o_class); };
     for (size_t i = 0; i < g_global.size(); ++i) {
         GlobalLine& g = g_global[i];
         g.shown = false;
+        if ((g.kind == 'e' || g.kind == 'm') && !on_level(g.kind == 'e' ? g.cl.o_class : g.es.o_class)) {
+            ++skipped;
+            continue;
+        }
         if (g.kind == 'e') {
             const bool own = std::any_of(g_class_lights.begin(), g_class_lights.end(), [&](const ClassLight& c) { return !c.global && c.moby && c.o_class == g.cl.o_class; });
             if (own) continue;
@@ -3523,6 +3542,15 @@ void classes_apply() {
         }
     }
     if (ne + nm > 0) std::printf("[lights] %s: %zu emit and %zu emissive / material lines for every level\n", g_global_path.c_str(), ne, nm);
+    static const bool trace = std::getenv("RAC1_LIGHTS_TRACE") != nullptr;
+    if (trace)
+        std::printf("[lights] %s: skipped %zu, class not on level (%zu moby classes registered)\n", g_global_path.c_str(), skipped, g_global_classes.size());
+}
+// orig: (host) the file's lines taken out of the level's lists (classes_apply puts them back): its own entries stay, in their order
+void classes_unapply() {
+    g_class_lights.erase(std::remove_if(g_class_lights.begin(), g_class_lights.end(), [](const ClassLight& c) { return c.global; }), g_class_lights.end());
+    g_emissive_list.erase(std::remove_if(g_emissive_list.begin(), g_emissive_list.end(), [](const EmissiveSurface& e) { return e.global; }),
+                          g_emissive_list.end());
 }
 // orig: (host) the file written when its lines changed: the level's global entries (edited, deleted, made global or made the level's
 // own) folded into the file's list, each line in its place, a line not edited as it was read; true when written or nothing to write
@@ -3741,7 +3769,13 @@ void user_load(int level) {
 // secondary lights' setting)
 void user_ensure() {
     const int level = static_cast<int>(draw_lw(0x0015ed84));
-    if (level != g_user_level) user_load(level);
+    if (level != g_user_level) {
+        user_load(level);
+    } else if (level_moby_classes() != g_global_classes) {  // (the level's classes registered after its file was read: the lines for
+        classes_unapply();                                   // every level matched to them again)
+        classes_apply();
+        mrp_user_emissive_changed();
+    }
 }
 }  // namespace
 
@@ -3904,7 +3938,7 @@ uint32_t mrp_emissive_snapshot(std::vector<EmissiveSurface>& out, EmissiveSurfac
 }
 namespace {
 // orig: (host) the shaders' emissive slots (uEmis): [0].x on (the option and the lighting's variant), slot i + 1 the list's surface
-// i (strength, threshold; a material's glow and its type in z), slot 127 the preview (w 1, x its pulse)
+// i (strength, threshold; a material's glow and its type in z), slot 255 the preview (w 1, x its pulse)
 void emissive_uniforms(glm::vec4 out[kEmissivePreviewSlot + 1]) {
     for (int i = 0; i <= kEmissivePreviewSlot; ++i) out[i] = glm::vec4(0.0f);
     out[0].x = g_emissive != 0 ? 1.0f : 0.0f;
@@ -3915,14 +3949,14 @@ void emissive_uniforms(glm::vec4 out[kEmissivePreviewSlot + 1]) {
         out[i + 1] = e.type == MAT_EMISSIVE ? glm::vec4(e.strength, e.threshold, 0.0f, 0.0f)
                                             : glm::vec4(e.type == MAT_LAVA ? 0.0f : e.glow, e.glow_threshold, static_cast<float>(e.type), 0.0f);  // (a material: its type and its glow, uMat the rest)
     }
-    const double t = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    const double t = static_cast<double>(g_mat_frames % 60000u) / 60.0;  // (the materials' clock: one value a frame - the table sent once)
     out[kEmissivePreviewSlot] = glm::vec4(0.25f + 0.45f * static_cast<float>(0.5 + 0.5 * std::sin(t * 6.0)), 0.0f, 0.0f, 1.0f);
 }
 // orig: (host) the materials' uniforms (uMat, mrp_lighting.h): [0] Surface Detail (0 with no material), the clock (seconds, wrapped),
 // the rain, the High step's picture ready; slot i + 1 the list's surface i's parameters. The reflections' view, depth and sky
 struct MatUniforms {
     glm::vec4 mat[kEmissivePreviewSlot + 1];
-    glm::vec4 mat2[kEmissivePreviewSlot + 1];  // (the Water option's parameters per slot; [0] the hero, [127] the wind and the grass)
+    glm::vec4 mat2[kEmissivePreviewSlot + 1];  // (the Water option's parameters per slot; [0] the hero, [255] the wind and the grass)
     glm::mat4 ssr_vp{1.0f};
     glm::vec4 ssr_z{0.0f}, sky{0.0f};
 };
@@ -5203,19 +5237,51 @@ ShadowLocs mrp_lighting_locs(unsigned prog) {
     l.opaque = glGetUniformLocation(p, "uShOpaque");
     l.pt_tiles = glGetUniformLocation(p, "uPtTiles");
     l.pt_vp = glGetUniformLocation(p, "uPtVP");
-    l.emis = glGetUniformLocation(p, "uEmis");
-    l.mat = glGetUniformLocation(p, "uMat");
+    {  // (the slots' table: a storage block, RacMatTable - the lighting's variants, and the world's vertex shaders for the grass)
+        using PfnResourceIndex = GLuint (*)(GLuint, GLenum, const GLchar*);
+        static const auto resource_index = reinterpret_cast<PfnResourceIndex>(glfwGetProcAddress("glGetProgramResourceIndex"));
+        constexpr GLenum kShaderStorageBlock = 0x92E6;
+        const bool table = resource_index != nullptr && resource_index(p, kShaderStorageBlock, "RacMatTable") != GL_INVALID_INDEX;
+        l.emis = l.mat = table ? 0 : -1;
+    }
     l.ssr_vp = glGetUniformLocation(p, "uSsrVP");
     l.ssr_z = glGetUniformLocation(p, "uSsrZ");
     l.ssr_sky = glGetUniformLocation(p, "uSsrSky");
     l.ssr_col = glGetUniformLocation(p, "uSsrCol");
     l.ssr_depth = glGetUniformLocation(p, "uSsrDepth");
-    l.mat2 = glGetUniformLocation(p, "uMat2");
+    l.mat2 = l.mat;
     l.pt_aim = glGetUniformLocation(p, "uPtAim");
     return l;
 }
 
 namespace {
+// the slots' table as the OpenGL shaders read it (RacMatTable, binding kMatTableBinding): sent when it changed (a few times a frame at
+// most: the materials' clock, the reflections' picture ready), bound for every program that reads it
+struct MatTable {
+    glm::vec4 emis[kEmissivePreviewSlot + 1];
+    glm::vec4 mat[kEmissivePreviewSlot + 1];
+    glm::vec4 mat2[kEmissivePreviewSlot + 1];
+};
+GLuint g_mat_ssbo = 0;
+MatTable g_mat_sent{};
+// orig: (host) the table sent (if it changed) and bound
+void mat_table_bind(const MatTable& t) {
+    constexpr GLenum kShaderStorageBuffer = 0x90D2;
+    if (g_mat_ssbo == 0) {
+        GLint n = 0;
+        glGetIntegerv(0x90DD, &n);  // (GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS)
+        if (n <= kMatTableBinding) std::printf("[lights] OpenGL: %d storage buffer bindings, the materials' table wants binding %d\n", n, kMatTableBinding);
+        glGenBuffers(1, &g_mat_ssbo);
+        glBindBuffer(kShaderStorageBuffer, g_mat_ssbo);
+        glBufferData(kShaderStorageBuffer, sizeof(MatTable), &t, GL_DYNAMIC_DRAW);
+        g_mat_sent = t;
+    } else if (std::memcmp(&t, &g_mat_sent, sizeof(MatTable)) != 0) {
+        glBindBuffer(kShaderStorageBuffer, g_mat_ssbo);
+        glBufferData(kShaderStorageBuffer, sizeof(MatTable), &t, GL_DYNAMIC_DRAW);  // (a new store: the draws before keep the old one)
+        g_mat_sent = t;
+    }
+    glBindBufferBase(kShaderStorageBuffer, kMatTableBinding, g_mat_ssbo);
+}
 void bind_common(const ShadowLocs& l) {
     glUniformMatrix4fv(l.inv_view, 1, GL_FALSE, glm::value_ptr(g_sh.inv_view));
     glUniform2f(l.proj, g_sh.proj.x, g_sh.proj.y);
@@ -5272,19 +5338,17 @@ void mrp_lighting_bind_receiver(const ShadowLocs& l, bool sky) {
         glUniform4fv(l.pt_down, (g_sh.npts + 3) / 4, g_sh.pt_down);
         if (l.pt_aim >= 0) glUniform4fv(l.pt_aim, g_sh.npts, glm::value_ptr(g_sh.pt_aim[0]));
     }
-    if (l.emis >= 0) {  // (the lighting's variants only)
-        glm::vec4 e[kEmissivePreviewSlot + 1];
-        emissive_uniforms(e);
-        glUniform4fv(l.emis, kEmissivePreviewSlot + 1, glm::value_ptr(e[0]));
-    }
-    if (l.mat >= 0) {
+    if (l.mat >= 0) {  // (the programs that read the slots' table)
+        static MatTable t;
+        emissive_uniforms(t.emis);
         MatUniforms u;
         material_uniforms(u);
-        glUniform4fv(l.mat, kEmissivePreviewSlot + 1, glm::value_ptr(u.mat[0]));
+        std::memcpy(t.mat, u.mat, sizeof t.mat);
+        std::memcpy(t.mat2, u.mat2, sizeof t.mat2);
+        mat_table_bind(t);
         glUniformMatrix4fv(l.ssr_vp, 1, GL_FALSE, glm::value_ptr(u.ssr_vp));
         glUniform4fv(l.ssr_z, 1, glm::value_ptr(u.ssr_z));
         glUniform4fv(l.ssr_sky, 1, glm::value_ptr(u.sky));
-        if (l.mat2 >= 0) glUniform4fv(l.mat2, kEmissivePreviewSlot + 1, glm::value_ptr(u.mat2[0]));
     }
 }
 
@@ -5328,20 +5392,25 @@ struct ShadowVkUbo {
     glm::vec4 uPtPos[96]{};
     glm::vec4 uPtCol[96]{};
     glm::vec4 uPtDown[24]{};
-    glm::vec4 uEmis[kEmissivePreviewSlot + 1]{};
-    glm::vec4 uMat[kEmissivePreviewSlot + 1]{};
     glm::mat4 uSsrVP{1.0f};
     glm::vec4 uSsrZ{0.0f};
     glm::vec4 uSsrSky{0.0f};
     glm::vec4 uPtAim[96]{};
-    glm::vec4 uMat2[kEmissivePreviewSlot + 1]{};
 };
-static_assert(sizeof(ShadowVkUbo) == 11776, "ShadowVkUbo must match SHADOW_UBO_DECL in gen_vk_shaders.py");
+static_assert(sizeof(ShadowVkUbo) == 5632, "ShadowVkUbo must match SHADOW_UBO_GLSL in gen_vk_shaders.py");
+static_assert(sizeof(MatTable) == 12288, "MatTable must match RacMatTable in gen_vk_shaders.py");
 
-VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, bool is_caster) {
+// (`table` null: all zero - no slot, the materials off)
+VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, const MatTable* table, bool is_caster) {
     mrp_lighting_vk_set_layout();
     vk::RingAlloc r = vk::alloc_ring(sizeof(ShadowVkUbo), 256);
     if (r.ptr != nullptr) std::memcpy(r.ptr, &ubo, sizeof(ShadowVkUbo));
+    vk::RingAlloc rt = vk::alloc_ring(sizeof(MatTable), 256);  // (binding 7: the slots' table, a storage buffer)
+    if (rt.ptr != nullptr) {
+        if (table != nullptr) std::memcpy(rt.ptr, table, sizeof(MatTable));
+        else std::memset(rt.ptr, 0, sizeof(MatTable));
+    }
+    VkDescriptorBufferInfo dbt{rt.buffer, rt.offset, sizeof(MatTable)};
 
     VkDescriptorSet ds = vk::alloc_descriptor_set(g_vk_sh.set_layout);
     VkDescriptorBufferInfo dbi{r.buffer, r.offset, sizeof(ShadowVkUbo)};
@@ -5382,7 +5451,7 @@ VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, bool is_caster) {
         {nearest_sampler, sky_tex.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
     };
 
-    VkWriteDescriptorSet writes[7]{};
+    VkWriteDescriptorSet writes[8]{};
     writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     writes[0].dstSet = ds;
     writes[0].dstBinding = 0;
@@ -5397,7 +5466,13 @@ VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, bool is_caster) {
         writes[1 + i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         writes[1 + i].pImageInfo = &diis[i];
     }
-    vkUpdateDescriptorSets(vk::device(), 7, writes, 0, nullptr);
+    writes[7].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[7].dstSet = ds;
+    writes[7].dstBinding = 7;
+    writes[7].descriptorCount = 1;
+    writes[7].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    writes[7].pBufferInfo = &dbt;
+    vkUpdateDescriptorSets(vk::device(), 8, writes, 0, nullptr);
     return ds;
 }
 }  // namespace
@@ -5405,15 +5480,16 @@ VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, bool is_caster) {
 uint64_t mrp_lighting_vk_set_layout() {
     ensure_vk_lighting_init();
     if (g_vk_sh.set_layout == VK_NULL_HANDLE && vk::device() != VK_NULL_HANDLE) {
-        VkDescriptorSetLayoutBinding bindings[7]{};
+        VkDescriptorSetLayoutBinding bindings[8]{};
         bindings[0] = {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
         for (uint32_t i = 1; i <= 6; ++i) {  // (1 the sun's cascades, 2 the materials' last 3D, 3 the cubes, 4 the tiles, 5 its depth, 6 the sky grid)
             bindings[i] = {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
                            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
         }
+        bindings[7] = {7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};  // (the slots' table)
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        dslci.bindingCount = 7;
+        dslci.bindingCount = 8;
         dslci.pBindings = bindings;
         vkCreateDescriptorSetLayout(vk::device(), &dslci, nullptr, &g_vk_sh.set_layout);
     }
@@ -5424,7 +5500,7 @@ void mrp_lighting_vk_bind_off(uint64_t pipe_layout) {
     const uint64_t gen = (vk::frame_number() << 32) | (g_vk_sh.ubo_gen & 0xffffffffu);
     if (g_vk_sh.off_gen != gen || g_vk_sh.off_ds == VK_NULL_HANDLE) {
         ShadowVkUbo ubo{};
-        g_vk_sh.off_ds = build_lighting_vk_ds(ubo, false);
+        g_vk_sh.off_ds = build_lighting_vk_ds(ubo, nullptr, false);
         g_vk_sh.off_gen = gen;
     }
     vkCmdBindDescriptorSets(vk::cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -5465,15 +5541,16 @@ void mrp_lighting_vk_bind_receiver(uint64_t pipe_layout, bool sky, bool lit_vari
             std::memcpy(ubo.uPtDown, g_sh.pt_down, static_cast<size_t>((g_sh.npts + 3) / 4) * sizeof(glm::vec4));
             std::memcpy(ubo.uPtAim, g_sh.pt_aim, static_cast<size_t>(g_sh.npts) * sizeof(glm::vec4));
         }
-        emissive_uniforms(ubo.uEmis);
+        static MatTable table;
+        emissive_uniforms(table.emis);
         MatUniforms mu;
         material_uniforms(mu);
-        std::memcpy(ubo.uMat, mu.mat, sizeof ubo.uMat);
+        std::memcpy(table.mat, mu.mat, sizeof table.mat);
         ubo.uSsrVP = mu.ssr_vp;
         ubo.uSsrZ = mu.ssr_z;
         ubo.uSsrSky = mu.sky;
-        std::memcpy(ubo.uMat2, mu.mat2, sizeof ubo.uMat2);
-        g_vk_sh.rec_ds[1][li] = build_lighting_vk_ds(ubo, false);
+        std::memcpy(table.mat2, mu.mat2, sizeof table.mat2);
+        g_vk_sh.rec_ds[1][li] = build_lighting_vk_ds(ubo, &table, false);
         g_vk_sh.rec_gen[1][li] = gen;
     }
     vkCmdBindDescriptorSets(vk::cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -5492,7 +5569,7 @@ void mrp_lighting_vk_bind_caster(uint64_t pipe_layout, const float* light_vp, bo
         ubo.uShCam_Pass = glm::vec4(g_sh.cam, 1.0f);
         ubo.uShSun_On = glm::vec4(g_sh.sun, 0.0f);
         ubo.uShOpaque = opaque ? 1 : 0;
-        g_vk_sh.cast_ds = build_lighting_vk_ds(ubo, true);
+        g_vk_sh.cast_ds = build_lighting_vk_ds(ubo, nullptr, true);
         g_vk_sh.cast_gen = gen;
         g_vk_sh.cast_opaque = opaque;
         std::memcpy(g_vk_sh.cast_vp, light_vp, 64);
