@@ -197,6 +197,16 @@ extern void (*g_advanced_audio_reopen)(int channels);
 void audio_out_set_channels(int channels);
 void audio_out_set_alone(bool ok);
 uint64_t audio_out_alone_total();
+// orig: (host) a level started: the sound's mirror not left alone through the host's preparation of it (the MRP's classes,
+// textures and world built on its first frames, seconds on the Wii U - the level's music ran on alone meanwhile, ahead of the
+// landing or the cutscene it opens) nor the host frames after (orig_main's main loop: g_level_hold)
+int g_level_hold = 0;
+void level_started_hold_sound() {
+    static const bool hold = std::getenv("RAC1_SCENE_NO_ALONE") == nullptr || std::atoi(std::getenv("RAC1_SCENE_NO_ALONE")) != 0;
+    if (!hold) return;
+    audio_out_set_alone(false);
+    g_level_hold = 3;
+}
 void audio_out_step(bool in_step);
 namespace rac1 {
 void gs_texture_cache_clear();  // runtime/gs/gs_renderer.cpp (its header clashes with gs_emu.h)
@@ -1482,6 +1492,7 @@ bool level_enter(bool files_read) {
         overlay_entry_start();
     }
     std::printf("[orig] level %d started: mode %d, mobys %08x..%08x\n", level, lw(OV(0x0015f5c4)), lwu(OV(0x0015ffd8)), lwu(OV(0x0015ffdc)));
+    level_started_hold_sound();
     return true;
 }
 
@@ -2858,6 +2869,7 @@ int main(int argc, char** argv) {
                 std::printf("[camera] %u type %d (id %d) trigger %u prio %u pos %.1f %.1f %.1f\n", i, lh(c + 0x8c), lh(c + 0x86), lwu(c + 0x74), lbu(c + 0x7c), lwc1(c + 0x30), lwc1(c + 0x34), lwc1(c + 0x38));
         }
     std::printf("[orig] level %d started: mode %d, mobys %08x..%08x\n", level, lw(OV(0x0015f5c4)), lwu(OV(0x0015ffd8)), lwu(OV(0x0015ffdc)));
+    level_started_hold_sound();
     if (std::getenv("RAC1_MUSIC_ON") != nullptr) {  // testing: the music's pause lifted at once (0x265860), as a menu
         music_volumes_default();                      // closing or the end of a landing (0x290960) does
         std::printf("[orig] RAC1_MUSIC_ON: the music unpaused (0x265860)\n");
@@ -3053,11 +3065,16 @@ int main(int argc, char** argv) {
             // landing (game mode 6 but the level exit's flight) - the IOP's mirror does not play on alone while the game is late. A
             // stall there (the level's first frames, the load after a skipped movie) had the music and the dialogue run ahead of the
             // scene's pictures for the rest of the scene, the alone frames never run again (on the Wii U by seconds). The stall is a
-            // short silence instead, the sound and the pictures kept together. =0: alone as in gameplay)
+            // short silence instead, the sound and the pictures kept together; so is a level's preparation (level_started_hold_sound).
+            // =0: alone as in gameplay)
             static const bool scene_no_alone = std::getenv("RAC1_SCENE_NO_ALONE") == nullptr || std::atoi(std::getenv("RAC1_SCENE_NO_ALONE")) != 0;
             {
                 const int32_t md = lw(OV(0x0015f5c4));
                 if (scene_no_alone && (md == 2 || (md == 6 && !exiting))) iop_alone = false;
+            }
+            if (g_level_hold > 0) {  // (a level's first host frames: its preparation, level_started_hold_sound)
+                iop_alone = false;
+                --g_level_hold;
             }
             host_paused = paused;
             if (paused) {
