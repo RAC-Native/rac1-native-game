@@ -16,10 +16,11 @@ comes from the disc: the kinds, their looks and where they are are our art choic
 | Rilgar | rain | a very light rain (Anya-Thoughtmane's experiment, #102 batch 1, after Ratchet & Clank 2016's Rilgar) |
 | Umbris | embers | rising from the lava itself, only near it: the Snagglebeast's lava cave (Anya-Thoughtmane's suggestion; denser and slower since #102 batch 1) |
 | Batalia | rain | slanted by the wind (with its gusts), splashes on the ground; drawn with the game's own rain (`keep`, since #102 batch 1) |
-| Gaspar | embers, ash | rising from the lava sea itself, higher than Umbris's (it lies deep below the platforms); none indoors or away from the lava; a second, orange line of embers since #102 batch 1 |
+| Gaspar | embers, ash | the embers rising from the lava sea itself, higher than Umbris's (it lies deep below the platforms), none indoors or away from the lava, a second, orange line since #102 batch 1; a grey ash falling everywhere, denser (Anya-Thoughtmane's, #120 batch 2: it rose from the lava before) |
 | Orxon | ash, embers, snow | a dark green ash, green embers rising from the toxic pools, a little dark snow (Anya-Thoughtmane's, #102 batch 1; a green dust before) |
-| Pokitaru | fireflies | brighter in the shade and at night |
-| Hoven | snow, motes | a calm, light snowfall, a gentle steady drift; it replaces the game's own snow (below); faint motes beside it, ice glittering in the air (Anya-Thoughtmane's, #102 batch 1) |
+| Hoven | snow, ash | a calm, light snowfall, a gentle steady drift; it replaces the game's own snow (below); beside it a white ash, ice glittering in the air (Anya-Thoughtmane's: motes in #102 batch 1, ash in #120 batch 2, which keeps out of the water cave) |
+| Gemlik | ash | a slight brown ash on the wind (Anya-Thoughtmane's, #120 batch 3) |
+| Oltanis | rain, snow | a torrential rain with gusts, drawn with the game's own, and a little dark snow (Anya-Thoughtmane's, #120 batch 3) |
 
 The other levels have none: a line in their file adds some (the [editor](#the-editor)).
 

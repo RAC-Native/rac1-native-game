@@ -945,7 +945,10 @@ camera**: the view's direction taken into the frame of the moby of that class un
 A moby class is the same on every level (a gold bolt, a vendor, a Versa-Target, Clank), so its lines can live in one file,
 `data/lights/classes.txt` (next to the levels' files; `RAC1_LIGHTS_DIR` moves both): `emit moby ...`, `emissive moby ...` and
 `material moby ...` lines, written as a level's file writes them. They are read with each level's file and added after the level's
-own entries, on every level where that class appears. A level's own line wins: a level's `emit moby` line for a class leaves out
+own entries, on every level where that class appears: the level's moby classes as the game registers them (its class table,
+`level_moby_classes`), matched again when they are registered after the level's file was read; a line for a class the level does not
+have takes no slot (until #121 every line took one on every level; `RAC1_LIGHTS_TRACE=1` prints "skipped N, class not on level").
+A level's own line wins: a level's `emit moby` line for a class leaves out
 every line of that class in `classes.txt` on that level, a level's `emissive` / `material` line for a moby class and texture leaves
 out the one for the same class and texture. Other lines in the file (comments, tie or shrub lines: those classes differ per level)
 are kept as they are and not used.
@@ -1002,21 +1005,24 @@ emissive <tfrag|tie|shrub|moby|surface> <class> tex <n> [strength] [threshold]
   makes it darker: `max(lit, original x strength)`. In daylight a lamp in the sun looks as before; in shade or at night it keeps
   its painted brightness. A threshold keeps a lamp's dark frame lit normally while its bright glass glows. Point lights still add,
   and fog applies after it.
-- **How.** `emissive_refresh` (`mrp_world_renderer.cpp`) maps each marked tfrag, tie or shrub texture to a shader slot (1 to 126),
-  and the slot goes into the draw's texture word (bits 25 to 31) when the texture is looked up (`GsFront::key_now`); the mobys'
+- **How.** `emissive_refresh` (`mrp_world_renderer.cpp`) maps each marked tfrag, tie or shrub texture to a shader slot (1 to 254),
+  and the slot goes into the draw's texture word (bits 24 to 31) when the texture is looked up (`GsFront::key_now`); the mobys'
   draws carry theirs in the draw command's fourth word, by class and local texture (`moby_emissive_refresh`, `mrp_moby_renderer.cpp`;
-  until #102's batch 1 the world's bits 25 to 29 and the mobys' texture word's 27 to 31: 30 slots). The
-  lighting's shader variants (`SH_POINTS`, `SH_SPLIT`, OpenGL and Vulkan) read the slot's strength and threshold from `uEmis[128]`
-  (a uniform array; in Vulkan part of the lighting's uniform buffer) in `sh_emissive`. Nothing changes with Lighting on Original:
+  until #102's batch 1 the world's bits 25 to 29 and the mobys' texture word's 27 to 31: 30 slots; until #121 the world's bits 25
+  to 31: 126). The lighting's shader variants (`SH_POINTS`, `SH_SPLIT`, OpenGL and Vulkan) read the slot's strength and threshold
+  from `uEmis[256]` in `sh_emissive`: the slots' table, a storage buffer of 12 KB with `uMat` and `uMat2` (OpenGL binding 12,
+  Vulkan binding 7 of the lighting's set; until #121 uniform arrays of 128, in Vulkan part of the lighting's uniform buffer, which
+  at 256 would have passed the 16 KB a uniform buffer is guaranteed). Nothing changes with Lighting on Original:
   the bits are not set and the original programs do not read them.
-- **Limits.** At most 126 surfaces and materials per level, the `classes.txt` lines included. The ambient occlusion, drawn after the world, still darkens an emissive texel
+- **Limits.** At most 254 surfaces and materials per level, the `classes.txt` lines for the level's classes included (the log says
+  so when there are more). The ambient occlusion, drawn after the world, still darkens an emissive texel
   where surfaces meet. There is no bloom (glow around the bright pixels).
 
 `RAC1_EMISSIVE=0` (testing) turns them all off.
 
 The same mechanism gives a texture a **material** instead (a `material` line: metal, wet, puddle, lava, water, mud, quicksand), drawn
 with Options > Graphics > Surface Detail: see [Materials](materials.md). An `emissive` line is the same as `material ... emissive`; the
-two kinds share the 126 slots. A material can glow besides (`glow <strength> [threshold]` at the end of its line, or an `emissive`
+two kinds share the 254 slots. A material can glow besides (`glow <strength> [threshold]` at the end of its line, or an `emissive`
 line for the same texture in the same file, read as one entry): [Materials](materials.md#tagging-a-texture).
 
 **In the editor** (Lights tab, "Emissive surfaces and materials"): the target's surface (the crosshair's or the clicked point's) - the

@@ -16,3 +16,44 @@ interior 205.0 128.0 54.0  236.0 166.0 75.0
 particles ash 2.71  0.269 0.355 0.097  wind 0.8 0.44
 particles embers 1.47  0.574 1 0.096  source lava
 particles snow 0.43  0.157 0.157 0.157  wind 0.69 0
+emit shrub 379  -0.000 -0.606 0.170  0.657 1.000 0.000  1.839 8.000 0.000  0.00
+material tie 1429 tex 0 metal 0.46 1
+emissive shrub 379 tex 0  1.65 0.00
+emit moby 252  0.198 -0.014 0.011  0.000 1.000 0.065  1.000 3.476 0.000  0.00  joint 13
+emit shrub 380  -0.454 0.717 23.970  0.503 1.000 0.000  1.777 1.937 0.000  0.00
+emit moby 1855  0.451 -0.100 -0.501  0.477 1.000 0.000  1.000 8.000 0.000  0.00
+material tfrag 0 tex 10 metal 0.35 1
+material tfrag 0 tex 3 metal 0.35 1
+emissive tfrag 0 tex 41  2.71 0.79
+material tfrag 0 tex 31 metal 0.35 1
+material tfrag 0 tex 32 metal 0.35 1
+material tfrag 0 tex 11 metal 0.35 1
+material tie 1198 tex 0 metal 0.35 1
+material tie 1436 tex 3 metal 0.35 1
+material shrub 560 tex 0 metal 0.35 1
+material tie 1383 tex 0 metal 0.35 1
+material tie 1286 tex 0 metal 0.35 1
+material tfrag 0 tex 28 metal 0.35 1
+material tfrag 0 tex 15 metal 0.35 1
+material tfrag 0 tex 27 metal 0.35 1.58
+emissive moby 1855 tex 0  2.43 0.00
+material moby 1856 tex 1 metal 0.35 1
+material moby 1856 tex 0 metal 0.35 1
+material moby 1856 tex 3 metal 0.35 1
+material moby 1856 tex 2 metal 0.35 1
+emissive tie 1259 tex 0  2.64 0.79
+material tie 1405 tex 0 metal 0.35 1
+material tfrag 0 tex 8 metal 0.35 1.32
+material shrub 560 tex 1 metal 0.35 1
+material tfrag 0 tex 35 metal 0.35 1
+material shrub 322 tex 0 metal 0.35 1.45  glow 1.11 0.64
+material tfrag 0 tex 26 wet 1 0.05
+material tie 1244 tex 0 wet 1 0.45
+material moby 1100 tex 0 metal 0.35 1
+material moby 1100 tex 2 wet 0.6 0.45
+material moby 1100 tex 3 wet 0.6 0.45
+emissive moby 1100 tex 4  2.24 0.00
+emissive moby 1100 tex 5  1.90 0.50
+emissive moby 1100 tex 1  1.52 0.97
+emissive shrub 231 tex 1  1.89 0.00
+emissive shrub 231 tex 0  1.80 0.00

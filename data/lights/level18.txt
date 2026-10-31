@@ -2,3 +2,58 @@
 # light x y z  r g b  intensity radius flicker on
 # Veldin (finale): the sun from Anya-Thoughtmane's lighting pass (#90, #101).
 sun -6.0 23.0
+emissive tie 2039 tex 0  3.01 0.00
+emissive shrub 556 tex 3  2.95 0.63
+material moby 638 tex 0 metal 0.29 1.27
+emissive tfrag 0 tex 25  2.81 0.46
+material tfrag 0 tex 26 metal 0.35 1
+material tfrag 0 tex 18 metal 0.35 1
+material tfrag 0 tex 79 metal 0.35 1
+material tfrag 0 tex 78 metal 0.35 1
+light 406.282 747.436 96.499  0.350 1.000 0.862  1.593 13.284 0.000 1
+light 403.202 739.988 96.482  0.350 1.000 0.862  1.593 13.284 0.000 1
+light 406.303 732.467 96.587  0.350 1.000 0.862  1.593 13.284 0.000 1
+light 413.704 729.386 96.453  0.350 1.000 0.862  1.593 13.284 0.000 1
+light 421.313 732.490 96.489  0.350 1.000 0.862  1.593 13.284 0.000 1
+material tie 2217 tex 0 metal 0.41 1
+material tie 2217 tex 1 metal 0.42 1
+material tfrag 0 tex 63 metal 0.35 1
+material tfrag 0 tex 45 metal 0.35 1
+material tie 2259 tex 0 metal 0.49 1
+emissive tfrag 0 tex 22  2.38 0.61
+emissive tfrag 0 tex 23  2.54 0.69
+material tie 2032 tex 0 metal 0.44 1
+material shrub 556 tex 1 metal 0.49 1
+material shrub 556 tex 0 metal 0.45 1
+material tie 2037 tex 0 metal 0.71 1
+material tie 2026 tex 10 metal 0.71 1
+emit tie 2050  1.398 10.870 22.201  0.307 0.914 1.000  1.000 15.860 0.000  0.00
+emissive tie 2132 tex 0  1.80 0.00
+emissive tie 2033 tex 0  1.79 0.00
+material tie 2126 tex 0 metal 0.35 1
+material tfrag 0 tex 7 metal 0.47 1.13
+emit moby 587  0.113 -0.097 -0.055  1.000 0.491 0.000  1.392 8.000 0.000  0.00  joint 0
+material tfrag 0 tex 4 metal 0.35 1
+emissive moby 587 tex 0  2.52 0.00
+emissive moby 587 tex 1  2.29 0.00
+material moby 587 tex 2 metal 0.35 1
+material moby 587 tex 3 metal 0.35 1
+material moby 587 tex 4 metal 0.35 1
+emissive moby 587 tex 5  2.48 0.57
+material moby 587 tex 6 metal 0.35 1
+material moby 587 tex 7 metal 0.35 1
+emissive tfrag 0 tex 0  1.99 0.88
+material tfrag 0 tex 3 metal 0.86 1
+material moby 1452 tex 1 metal 0.35 1
+material moby 1452 tex 2 metal 0.35 1
+material moby 1356 tex 1 metal 0.35 1
+emissive tfrag 0 tex 11  2.66 0.58
+material tfrag 0 tex 53 metal 0.7 1
+material shrub 548 tex 1 metal 0.35 1
+material shrub 548 tex 3 metal 0.35 1
+material shrub 548 tex 0 metal 0.35 1
+emissive tfrag 0 tex 21  3.12 0.62
+material tfrag 0 tex 20 metal 0.35 1
+material moby 1454 tex 0 metal 0.71 1
+material tfrag 0 tex 77 metal 0.46 1
+material tfrag 0 tex 128 metal 0.46 1

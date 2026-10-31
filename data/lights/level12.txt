@@ -8,8 +8,54 @@ sun_rays off
 # own while the option is on (the game still makes its own: its state is the same). A calm, light snowfall (after Daino's
 # playtest): fewer flakes, slow, a gentle steady drift, no gusts.
 particles snow 0.55  wind 0.3 0.1
-# Beside the snow, Anya-Thoughtmane's motes (#102 batch 1; their ash, white, read as bigger snowflakes): fine ice glittering in
-# the air, faint.
-particles motes 4  wind 0.43 0.02
+# Beside the snow, Anya-Thoughtmane's white ash (#120 batch 2, in place of their motes of batch 1): fine ice glittering in the air,
+# faint, a little bigger than the snowflakes.
+particles ash 4  1 1 1  wind 0.43 0.02
+material tie 14 tex 4 metal 0.35 1
+material tie 149 tex 0 metal 0.35 1
+material tie 149 tex 1 metal 0.35 1
+material moby 339 tex 0 metal 0.35 1
+material moby 339 tex 3 metal 0.35 1
+material moby 339 tex 2 metal 0.35 1
+emissive moby 240 tex 5  4.00 0.00
+emissive moby 240 tex 4  1.54 0.53
+material moby 240 tex 6 metal 0.35 1
+material moby 240 tex 7 metal 0.35 1
+material moby 240 tex 8 metal 0.35 1
+material moby 296 tex 0 metal 0.35 1
+material moby 296 tex 1 metal 0.35 1
+material moby 296 tex 2 metal 0.35 1
+material moby 296 tex 3 metal 0.35 1
+material moby 296 tex 4 metal 0.56 0.23
+material shrub 14 tex 2 metal 0.35 1
+material shrub 14 tex 1 metal 0.5 1
+material shrub 26 tex 0 metal 0.35 1
+material shrub 26 tex 2 metal 0.35 1
+emissive shrub 23 tex 1  2.01 0.00
+emissive shrub 24 tex 1  2.02 0.00
+material tie 188 tex 0 metal 0.49 0.34
+material tie 194 tex 0 metal 0.51 1
+material tie 116 tex 3 metal 0.35 1
+material tie 84 tex 0 metal 0.49 1
+material tie 215 tex 5 metal 0.35 1
+emissive tfrag 0 tex 133  2.33 0.36
+emissive tfrag 0 tex 78  1.54 0.00
+emissive tfrag 0 tex 48  2.17 0.00
+material tfrag 0 tex 101 metal 0.35 1
+material tfrag 0 tex 103 metal 0.35 1
+material tfrag 0 tex 102 metal 0.35 1
+emissive tfrag 0 tex 108  1.00 0.00
+emissive tfrag 0 tex 107  1.00 0.00
+material moby 1217 tex 0 metal 0.35 1
+emissive tfrag 0 tex 140  2.52 0.67
+material moby 1205 tex 0 metal 0.35 1
+material moby 1205 tex 13 metal 0.35 1
+material moby 1205 tex 12 metal 0.35 1
+material moby 1205 tex 11 metal 0.35 1
+material moby 1205 tex 10 metal 0.35 1
+emissive moby 1205 tex 9  3.28 0.38
+material moby 1205 tex 8 metal 0.35 1
+emissive moby 1205 tex 7  2.17 0.00
+emissive moby 1205 tex 6  2.25 0.00
 # Options > Graphics > Water (docs/materials.md): the cold water under the town
 material surface 1901 tex 13323 water 1 1  depth 4

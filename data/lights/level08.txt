@@ -6,14 +6,69 @@ sun_rays off
 # and the reflections' sky the storm's grey-blue.
 rain on
 sky 0.36 0.39 0.46
-# The landing platform's steel deck (tie 391, the level's texture 108: its other prims use it too), the railings' posts (tie 338)
-# and the military buildings' walls (tie 297): metal, the storm's sky in their sheen.
-material tie 391 tex 2 metal 0.3 1.5
+# The railings' posts (tie 338) and the military buildings' walls (tie 297): metal, the storm's sky in their sheen (the landing
+# platform's deck, tie 391, and the paved ground below it, tfrag texture 11, are Anya-Thoughtmane's metal lines below since #120;
+# the ground's puddles before).
 material tie 338 tex 2 metal 0.25 1.5
 material tie 297 tex 5 metal 0.4 1
-# The paved ground of the base below the platform (tfrag texture 11): soaked, with puddles.
-material tfrag 0 tex 11 puddle 0.45 0.3 0.6
+emissive tie 1464 tex 0  2.26 0.00
+emissive tie 1463 tex 0  2.50 0.36
 # Batalia: our ambient particles (Options > Graphics > Ambient Particles, off by default): the rain, slanted by the wind, with
 # splashes on the ground, drawn in place of the game's own while the option is on (the game still makes its own: its state
 # is the same). Rain only (the ash line removed after Daino's playtest); the wind with its gusts, as before.
 particles rain 1.43  wind 2.5 1.5  gust 1  keep
+material tie 300 tex 0 metal 0.35 1
+material tie 404 tex 0 metal 0.35 1
+material tie 391 tex 3 metal 0.35 1
+material moby 565 tex 0 metal 0.49 1
+material moby 565 tex 1 metal 0.43 1
+material tie 298 tex 0 metal 0.61 1
+material tie 317 tex 0 metal 0.63 1
+material tie 311 tex 0 metal 0.52 0.61
+emissive moby 579 tex 4  2.25 0.33
+material moby 579 tex 0 metal 0.35 1
+material moby 579 tex 1 metal 0.35 1
+material moby 579 tex 2 metal 0.35 1
+material moby 579 tex 3 metal 0.45 1
+material tie 312 tex 0 metal 0.63 0.53
+material tfrag 0 tex 32 metal 0.35 1
+material tfrag 0 tex 33 metal 0.35 1
+material tfrag 0 tex 31 metal 0.35 0.74
+material tfrag 0 tex 11 metal 0.46 1
+material tfrag 0 tex 28 metal 0.35 1
+light 168.974 269.163 45.535  1.000 0.556 0.000  3.000 8.000 0.000 1
+light 207.911 327.470 50.319  1.000 0.556 0.000  3.000 8.000 0.000 1
+material tie 375 tex 0 metal 0.5 0.87
+material tie 411 tex 0 metal 0.41 1
+material tie 296 tex 0 metal 0.43 0.86
+material tie 305 tex 0 metal 0.41 0.86
+material tfrag 0 tex 8 metal 0.46 1
+material tfrag 0 tex 9 metal 0.46 1
+material tie 309 tex 0 metal 0.41 0.75
+material tfrag 0 tex 7 metal 0.48 0.78
+material moby 468 tex 0 metal 0.41 1
+material moby 468 tex 4 metal 0.46 1
+material moby 469 tex 0 metal 0.41 1
+material moby 469 tex 3 metal 0.41 1
+material moby 468 tex 2 metal 0.35 1
+material moby 468 tex 3 metal 0.48 0.9
+material tfrag 0 tex 1 wet 0.57 0.45
+material tie 326 tex 0 metal 0.81 1
+material tie 418 tex 0 metal 0.81 1
+material tie 419 tex 0 metal 0.91 1
+material tie 1377 tex 0 metal 0.35 1
+material tie 323 tex 0 metal 0.51 0.73
+material tfrag 0 tex 4 metal 0.46 1
+material moby 472 tex 0 metal 0.35 1
+emissive moby 472 tex 1  1.81 0.00
+material moby 462 tex 2 metal 0.35 1
+material moby 462 tex 1 metal 0.35 1
+emissive moby 445 tex 0  3.00 0.00
+material tie 336 tex 2 metal 0.32 1
+material moby 440 tex 1 metal 0.51 1
+material moby 440 tex 0 metal 0.5 1
+material moby 440 tex 9 metal 0.35 1
+material moby 440 tex 8 metal 0.35 1
+material moby 440 tex 7 metal 0.71 1
+material moby 440 tex 6 metal 0.85 1
+material moby 440 tex 5 metal 0.85 1

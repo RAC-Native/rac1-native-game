@@ -29,14 +29,14 @@ layout(std140, set = 1, binding = 0) uniform ShadowUbo {
     vec4 uPtPos[96];
     vec4 uPtCol[96];
     vec4 uPtDown[24];
-    vec4 uEmis[128];
-    vec4 uMat[128];
     mat4 uSsrVP;
     vec4 uSsrZ;
     vec4 uSsrSky;
     vec4 uPtAim[96];
-    vec4 uMat2[128];
 };
+// the slots' table (mrp_lighting.h kEmissiveSlots): uEmis the emissive surfaces, uMat the materials, uMat2 the Water option's - 12 KB, a
+// storage buffer of its own (in the UBO it would pass the 16 KB a uniform buffer is guaranteed); MatTable in mrp_lighting.cpp
+layout(std430, set = 1, binding = 7) readonly buffer RacMatTable { vec4 uEmis[256]; vec4 uMat[256]; vec4 uMat2[256]; };
 #define uShCam (uShCam_Pass.xyz)
 #define uShPass (int(uShCam_Pass.w + 0.5))
 #define uShSun (uShSun_On.xyz)
@@ -1523,7 +1523,7 @@ void main() {
         vec2 st = vStq.xy / vStq.z;
         vec2 st_dx = dFdx(st), st_dy = dFdy(st);  // (in uniform control flow: the texture level below)
 #ifdef SH_SPLIT
-        st = sh_mat_uv(st, vCmd.w & 127u);
+        st = sh_mat_uv(st, vCmd.w & 255u);
 #endif
         vec4 t;
         if ((w & 1u) != 0u) {
@@ -1555,8 +1555,8 @@ void main() {
         else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_SPLIT
-        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, vCmd.w & 127u);
-        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), vCmd.w & 127u);
+        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, vCmd.w & 255u);
+        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), vCmd.w & 255u);
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }
@@ -1777,7 +1777,7 @@ void main() {
     vec4 c = uIip != 0 ? vColor : vFlat;
 #ifdef SH_POINTS
     vec3 c_game = c.rgb;
-    float gk = uShell > 0 ? sm_grass((vTex.x >> 25) & 127u, uShell & 255, uShell >> 8) : 1.0;  // (Grass: a shell's blade, -1 none)
+    float gk = uShell > 0 ? sm_grass((vTex.x >> 24) & 255u, uShell & 255, uShell >> 8) : 1.0;  // (Grass: a shell's blade, -1 none)
     if (uShell >= 0 && gk >= 0.0) {
         c.rgb = sh_apply(c.rgb);
         c.rgb = sh_points(c.rgb);
@@ -1792,13 +1792,13 @@ void main() {
         vec2 st = vStq.xy / vStq.z;
         vec2 st_dx = dFdx(st), st_dy = dFdy(st);  // (in uniform control flow: the texture level below)
 #ifdef SH_POINTS
-        st = sh_mat_uv(st, (w >> 25) & 127u);
+        st = sh_mat_uv(st, (w >> 24) & 255u);
 #endif
         vec4 t;
         if ((w & 1u) != 0u) {
             t = vec4(128.0 / 255.0);
         } else {
-            int mips = int((w >> 22) & 7u) + 1;
+            int mips = int((w >> 22) & 3u) + 1;
             t = vec4(0.0);
             for (uint wl = 0u; wl < 16u; ++wl) {  // (16 units at most: bounded, a driver that runs it wrong cannot hang the GPU, #113)
                 uint u = subgroupBroadcastFirst(unit);
@@ -1826,8 +1826,8 @@ void main() {
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_POINTS
         if (uShell >= 0) {
-            o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 25) & 127u);
-            o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 25) & 127u);
+            o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 24) & 255u);
+            o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 24) & 255u);
         }
         if (uShell > 0) {
             if (gk < 0.0) discard;
@@ -1837,7 +1837,7 @@ void main() {
         if (uShade == 2) o.rgb = t.rgb;
     }
 #ifdef SH_POINTS
-    if (uShell < 0 && !sm_grass_probe((w >> 25) & 127u, min(o.a * (255.0 / 128.0), 1.0), uShell)) discard;  // (the grass's stencil)
+    if (uShell < 0 && !sm_grass_probe((w >> 24) & 255u, min(o.a * (255.0 / 128.0), 1.0), uShell)) discard;  // (the grass's stencil)
 #endif
     if (uShade == 1) o.rgb = c.rgb;
     else if (uShade == 3) o.rgb = vec3(0.8);
