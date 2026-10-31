@@ -1192,6 +1192,182 @@ MRP_AO_FS = map_depth_taps(MRP_AO_FS).replace("vec2 texel = 1.0 / vec2(textureSi
 MRP_AO_BLUR_FS = map_depth_taps(MRP_AO_BLUR_FS)
 MRP_AO_BLUR_SEP_FS = map_depth_taps(MRP_AO_BLUR_SEP_FS)
 
+# MXAO (mrp_lighting.cpp kMxaoPrepFs / kMxaoFs, the same bodies): the pyramid's level 0 (the face's normal, its distance), then the
+# occlusion from the pyramid
+MRP_MXAO_PREP_FS = """#version 450
+layout(location = 0) in vec2 vUv;
+layout(location = 0) out vec4 FragPyr;
+layout(set = 0, binding = 0) uniform sampler2D uDepth;
+// (a uniform buffer, as the occlusion's: 192 bytes, past the push constants' 128)
+layout(std140, set = 0, binding = 1) uniform MxaoUbo {
+    mat4 uInvVP;
+    mat4 uVP;
+    vec4 uCam_Pad;
+    vec4 uParam;   // radius (units), strength, bias (the cosine a tap must pass), mode
+    vec4 uDMap;    // the view's place in uDepth: uv * zw + xy (mrp_lighting.cpp)
+    vec4 uParam2;  // the bounce (0 to 1), the pyramid's last level, its level 0's texel (1 / width, 1 / height)
+};
+#define uCam (uCam_Pad.xyz)
+vec3 world(vec2 uv, float d) {
+    vec4 p = uInvVP * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+    return p.xyz / p.w;
+}
+// the camera's rays: the eye from the inverted view-projection (its point at infinity along the view), the ray through a point of
+// the view affine on the screen (to a plane of one depth), scaled so that the view's centre has length 1 - a point is eye + ray * t,
+// t about its depth along the view's axis (what the pyramid keeps: affine, so the mips' averages stay on the rays)
+vec3 g_eye, g_r0, g_rx, g_ry;
+void rays_init() {
+    g_eye = uInvVP[2].xyz / uInvVP[2].w;
+    vec3 a = world(vec2(0.0), 0.9) - g_eye;
+    vec3 bx = world(vec2(1.0, 0.0), 0.9) - g_eye, by = world(vec2(0.0, 1.0), 0.9) - g_eye;
+    float s = 1.0 / length(world(vec2(0.5), 0.9) - g_eye);
+    g_r0 = a * s;
+    g_rx = (bx - a) * s;
+    g_ry = (by - a) * s;
+}
+vec3 ray(vec2 uv) { return g_r0 + uv.x * g_rx + uv.y * g_ry; }
+void main() {
+    rays_init();
+    // (the depth's texel under this pixel, at its centre: at half resolution the pixel's centre is a corner of four)
+    vec2 texel = 1.0 / vec2(textureSize(uDepth, 0));
+    vec2 uv = (floor(vUv / texel) + 0.5) * texel;
+    float d = texture(uDepth, uv).r;
+    vec3 P = world(uv, d);
+    vec3 dPdx = dFdx(P), dPdy = dFdy(P);  // (before any return: derivatives in non-uniform control flow are undefined)
+    if (d >= 1.0) { FragPyr = vec4(0.0, 0.0, 0.0, 60000.0); return; }  // (the sky: no normal, far away)
+    // the face's normal from the depth: per axis the neighbour with the smaller depth step (as SSAO+: no false ridges at silhouettes)
+    float dr = texture(uDepth, uv + vec2(texel.x, 0.0)).r;
+    float dl = texture(uDepth, uv - vec2(texel.x, 0.0)).r;
+    float du = texture(uDepth, uv + vec2(0.0, texel.y)).r;
+    float dd = texture(uDepth, uv - vec2(0.0, texel.y)).r;
+    vec3 dPx = (abs(dr - d) < abs(d - dl) && dr < 1.0) ? (world(uv + vec2(texel.x, 0.0), dr) - P)
+                                                        : (dl < 1.0 ? (P - world(uv - vec2(texel.x, 0.0), dl)) : dPdx);
+    vec3 dPy = (abs(du - d) < abs(d - dd) && du < 1.0) ? (world(uv + vec2(0.0, texel.y), du) - P)
+                                                        : (dd < 1.0 ? (P - world(uv - vec2(0.0, texel.y), dd)) : dPdy);
+    vec3 N = cross(dPx, dPy);
+    if (dot(N, N) < 1e-12) { FragPyr = vec4(0.0, 0.0, 0.0, 60000.0); return; }
+    N = normalize(N);
+    vec3 r = ray(uv);
+    if (dot(N, r) > 0.0) N = -N;  // (toward the camera)
+    FragPyr = vec4(N, dot(P - g_eye, r) / dot(r, r));
+}
+"""
+
+MRP_MXAO_FS = """#version 450
+layout(location = 0) in vec2 vUv;
+layout(location = 0) out float FragAo;
+layout(set = 0, binding = 0) uniform sampler2D uPyr;  // (rgb the face's normal, a its distance from the camera; the mips their averages)
+// (a uniform buffer, as the occlusion's: 192 bytes, past the push constants' 128)
+layout(std140, set = 0, binding = 1) uniform MxaoUbo {
+    mat4 uInvVP;
+    mat4 uVP;
+    vec4 uCam_Pad;
+    vec4 uParam;   // radius (units), strength, bias (the cosine a tap must pass), mode
+    vec4 uDMap;    // the view's place in uDepth: uv * zw + xy (mrp_lighting.cpp)
+    vec4 uParam2;  // the bounce (0 to 1), the pyramid's last level, its level 0's texel (1 / width, 1 / height)
+};
+#define uCam (uCam_Pad.xyz)
+vec3 world(vec2 uv, float d) {
+    vec4 p = uInvVP * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+    return p.xyz / p.w;
+}
+// the camera's rays: the eye from the inverted view-projection (its point at infinity along the view), the ray through a point of
+// the view affine on the screen (to a plane of one depth), scaled so that the view's centre has length 1 - a point is eye + ray * t,
+// t about its depth along the view's axis (what the pyramid keeps: affine, so the mips' averages stay on the rays)
+vec3 g_eye, g_r0, g_rx, g_ry;
+void rays_init() {
+    g_eye = uInvVP[2].xyz / uInvVP[2].w;
+    vec3 a = world(vec2(0.0), 0.9) - g_eye;
+    vec3 bx = world(vec2(1.0, 0.0), 0.9) - g_eye, by = world(vec2(0.0, 1.0), 0.9) - g_eye;
+    float s = 1.0 / length(world(vec2(0.5), 0.9) - g_eye);
+    g_r0 = a * s;
+    g_rx = (bx - a) * s;
+    g_ry = (by - a) * s;
+}
+vec3 ray(vec2 uv) { return g_r0 + uv.x * g_rx + uv.y * g_ry; }
+#define uBias (uParam.z)
+void main() {
+    rays_init();
+    vec4 c0 = textureLod(uPyr, vUv, 0.0);
+    float dist = c0.a;
+    if (dist > 50000.0 || dot(c0.rgb, c0.rgb) < 0.25) { FragAo = 1.0; return; }
+    vec3 Nf = normalize(c0.rgb);  // (the face's own normal)
+    vec3 dir0 = ray(vUv);
+    vec3 P = g_eye + dir0 * dist;
+    dir0 = normalize(dir0);
+    float R = uParam.x * mix(1.0, 2.0, clamp(dist / 120.0, 0.0, 1.0));  // (the reach in world units, wider far away)
+    vec2 tx = uParam2.zw;  // (one texel of the pyramid's level 0)
+
+    // the reach on the screen, in pixels of the pyramid's level 0 (capped: 12 % of the view's height)
+    vec3 side = normalize(cross(dir0, abs(dir0.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0)));
+    vec4 a0 = uVP * vec4(P, 1.0), a1 = uVP * vec4(P + side * R, 1.0);
+    float rpx = a1.w > 0.0 ? length((a1.xy / a1.w - a0.xy / a0.w) * 0.5 / tx) : 0.0;
+    rpx = min(rpx, 0.12 / tx.y);
+    if (rpx < 1.5) { FragAo = 1.0; return; }
+    // The smooth normal: the face's normal averaged with the pyramid's coarser levels around the point (4 diagonal taps at a
+    // quarter of the reach on the screen, 4 straight ones at half of it, each from a level whose texel is about half that distance:
+    // a wider footprint up close, where a low-poly surface's facets are large), each weighted by how well it continues this
+    // surface - its normal within about 60 degrees of the face's, its point near the face's plane and within the reach - so a
+    // low-poly shrub's or terrain's facets blend into one curved surface while a box's corner or an object in front stays apart.
+    float s1 = clamp(rpx * 0.25, 4.0, 64.0);
+    float lod1 = clamp(floor(log2(s1)) - 1.0, 0.0, max(uParam2.y - 1.0, 0.0));
+    vec3 Ns = Nf;
+    for (int i = 0; i < 8; ++i) {
+        float lod = i < 4 ? lod1 : lod1 + 1.0;
+        float o1 = i < 4 ? s1 * 0.7071 : s1 * 2.0;
+        vec2 o = i < 4 ? vec2((i & 1) != 0 ? o1 : -o1, (i & 2) != 0 ? o1 : -o1)
+                       : vec2(i == 4 ? o1 : i == 5 ? -o1 : 0.0, i == 6 ? o1 : i == 7 ? -o1 : 0.0);
+        vec2 uv = vUv + o * tx;
+        vec4 s = textureLod(uPyr, uv, lod);
+        float ls = length(s.rgb);
+        if (ls < 0.3 || s.a > 50000.0) continue;
+        vec3 n = s.rgb / ls;
+        vec3 v = g_eye + ray(uv) * s.a - P;
+        float lv = length(v);
+        float off_plane = abs(dot(v, Nf)) / max(lv, 1e-4);
+        float w = smoothstep(0.45, 0.85, dot(n, Nf)) * (1.0 - smoothstep(0.35, 0.6, off_plane)) * step(lv, R) * ls;
+        Ns += n * w;
+    }
+    Ns = normalize(Ns);
+
+    // more taps for a reach that covers more of the view (near), fewer far: 4 to 12 (by its share of the view's height, so a higher
+    // resolution does not take more taps)
+    int K = clamp(int(rpx * tx.y * 135.0), 4, 12);
+    float rot = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    float inv_r2 = 1.0 / (R * R);
+    // a surface seen edge-on (a far ceiling or floor) carries the depth buffer's steps, which would read as rows of small ridges: a
+    // higher bias there
+    float bias = mix(uBias, 0.65, smoothstep(0.3, 0.05, abs(dot(Ns, dir0))));
+    float occ = 0.0, wsum = 0.0;
+    for (int i = 0; i < 12; ++i) {
+        if (i >= K) break;
+        // a Vogel disc: the i-th tap at the golden angle from the last, its distance the square root of its share (even over the
+        // disc's area), the whole disc turned per pixel
+        float r = sqrt((float(i) + 0.5) / float(K)) * rpx;
+        float a = float(i) * 2.3999632 + rot;
+        vec2 uv = vUv + vec2(cos(a), sin(a)) * r * tx;
+        if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) continue;
+        // the pyramid's level by the tap's distance on the screen: one level per doubling past 4 pixels (far taps read averages)
+        float lod = clamp(log2(r) - 2.0, 0.0, uParam2.y);
+        float sd = textureLod(uPyr, uv, lod).a;
+        wsum += 1.0;
+        if (sd > 50000.0) continue;
+        vec3 v = g_eye + ray(uv) * sd - P;
+        float l2 = dot(v, v);
+        float il = inversesqrt(max(l2, 1e-6));
+        // occluded by the cosine of the tap's direction to the smooth normal past a bias (the smooth surface's own gentle bends,
+        // its facets and its depth noise occlude nothing), fading out to the reach
+        occ += clamp((dot(v, Ns) * il - bias) / (1.0 - bias), 0.0, 1.0) * clamp(1.0 - l2 * inv_r2, 0.0, 1.0);
+    }
+    float vis = clamp(1.0 - uParam.y * occ / max(wsum, 1.0), 0.0, 1.0);
+    // the optional bounce: the light the surroundings send back (a grey approximation, as GTAO's), off unless RAC1_AO_BOUNCE
+    vis = mix(vis, vis / (vis * 0.6 + 0.4), uParam2.x);
+    FragAo = vis;
+}
+"""
+MRP_MXAO_PREP_FS = map_depth_taps(MRP_MXAO_PREP_FS).replace("vec2 texel = 1.0 / vec2(textureSize(uDepth, 0));",
+                                                            "vec2 texel = 1.0 / (vec2(textureSize(uDepth, 0)) * uDMap.zw);")
+
 MRP_RAYS_MASK_FS = """#version 450
 layout(location = 0) in vec2 vUv;
 layout(location = 0) out vec4 FragColor;
@@ -2114,6 +2290,8 @@ SHADERS = [
     ("kMrpAoFs", "frag", MRP_AO_FS),
     ("kMrpAoBlurFs", "frag", MRP_AO_BLUR_FS),
     ("kMrpAoBlurSepFs", "frag", MRP_AO_BLUR_SEP_FS),
+    ("kMrpMxaoPrepFs", "frag", MRP_MXAO_PREP_FS),
+    ("kMrpMxaoFs", "frag", MRP_MXAO_FS),
     ("kMrpRaysMaskFs", "frag", MRP_RAYS_MASK_FS),
     ("kMrpRaysBlurFs", "frag", MRP_RAYS_BLUR_FS),
     ("kMrpRaysSplitFs", "frag", MRP_RAYS_SPLIT_FS),
