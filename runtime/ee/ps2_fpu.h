@@ -46,6 +46,16 @@ inline void enter_ee_rounding() {
 #if defined(__SSE__) || defined(__x86_64__)
     _mm_setcsr(_mm_getcsr() | 0x8040u);  // MXCSR FTZ (bit 15) | DAZ (bit 6)
 #endif
+#if defined(__aarch64__)
+    // The FPCR's FZ bit (bit 24) is AArch64's flush-to-zero: a result that would be denormal
+    // comes back as zero, and a denormal input is treated as zero too (AArch64 has no separate
+    // DAZ bit: FZ covers both). fesetround above has just set the FPCR's rounding bits, so the
+    // register is read, modified and written back to preserve them.
+    uint64_t fpcr;
+    __asm__ volatile("mrs %0, fpcr" : "=r"(fpcr));
+    fpcr |= (1ull << 24);
+    __asm__ volatile("msr fpcr, %0" ::"r"(fpcr));
+#endif
     g_ee_chop = true;
 }
 

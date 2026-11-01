@@ -1,6 +1,7 @@
 // The building blocks of the fast ported micro programs: the same VU
 // float rules as vu_native.h's lane-by-lane helpers (operands clamped, results through the MAC
-// flag update), done on the four lanes at once with SSE2 integer / float ops -- the results are
+// flag update), done on the four lanes at once with SSE2 integer / float ops on x86 (NEON twins
+// on ARM, runtime/vu/vu_simd_shim.h) -- the results are
 // bit-identical (IEEE single rounding, no fused multiply-add, no flush-to-zero mode); the flags
 // come out of the lane masks of the result as 4-bit sets instead of per-lane branches.
 #ifndef RAC1_RUNTIME_VU_VU_NATIVE_FAST_H
@@ -8,7 +9,14 @@
 
 #include <runtime/vu/vu_native.h>
 
+// The fast port uses SSE2 integer / float ops on x86; on ARM NEON the same call
+// sites map to NEON twins, keeping the x86 path byte-identical
+// (runtime/vu/vu_simd_shim.h).
+#if defined(__ARM_NEON) || defined(__aarch64__)
+#include <runtime/vu/vu_simd_shim.h>
+#else
 #include <emmintrin.h>
+#endif
 
 namespace rac1::vun {
 

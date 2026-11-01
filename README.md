@@ -204,7 +204,7 @@ For players:
   the update check, where settings are kept, the debug tools.
 - [Input](docs/input.md): controllers, keyboard and mouse, rebinding.
 - [Saves](docs/saves.md): where your saves are. Saving and loading work, but the save files may still change: they have not been checked by hand yet.
-- [Platforms](docs/platforms.md): Windows, ARM64 and Android in progress, macOS later.
+- [Platforms](docs/platforms.md): Windows, macOS (Metal), ARM64 and Android in progress.
 - [Advanced options](docs/advanced.md): the optional gameplay changes, including Ratchet & Clank 3
   movement and modern aiming.
 - [Enhancements](docs/enhancements.md): the optional improvements, those available now and those
@@ -227,6 +227,7 @@ For contributors, and for reverse-engineering and decompilation people:
 - [Game logic](docs/game-logic.md): the main loop, levels, mobys, the hero, the camera, cutscenes.
 - [Rendering](docs/rendering.md): how a frame is drawn by the native renderer (the MRP).
 - [Vulkan](docs/vulkan.md): the experimental Vulkan backend of the same renderer.
+- [Metal](docs/metal.md): macOS's renderer, the Vulkan backend's code on a Metal layer.
 - [Performance](docs/performance.md): where a frame's CPU time goes, the threads beside the game's, the switches to compare,
   how to measure and how a speed-up is proved to leave the game as it was.
 - [Lighting](docs/lighting.md): the original lighting and the optional modern lighting.

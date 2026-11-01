@@ -88,3 +88,8 @@ add_library(imgui STATIC
 target_include_directories(imgui SYSTEM PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
 target_link_libraries(imgui PUBLIC glad glfw volk)
 target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_LOADER_GLAD=1 IMGUI_IMPL_VULKAN_USE_VOLK=1)
+if(APPLE)  # (the Metal renderer's ImGui backend: docs/metal.md)
+    target_sources(imgui PRIVATE ${imgui_SOURCE_DIR}/backends/imgui_impl_metal.mm)
+    set_source_files_properties(${imgui_SOURCE_DIR}/backends/imgui_impl_metal.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(imgui PUBLIC "-framework Metal" "-framework QuartzCore")
+endif()

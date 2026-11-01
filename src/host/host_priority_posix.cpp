@@ -1,6 +1,17 @@
 // The host's thread priorities through rtkit (see host_priority.h): Linux. Host code.
 #include "host_priority.h"
 
+#if defined(__APPLE__)
+// (macOS: no rtkit; the threads keep the priorities the system gives them)
+namespace rac1 {
+// orig: (host) host_priority.h, on macOS: nothing to raise
+bool host_priority_enabled() { return false; }
+void host_priority_set_enabled(bool) {}
+bool host_priority_realtime(std::uint64_t, int) { return false; }
+int host_priority_raise_all(int) { return 0; }
+}  // namespace rac1
+#else
+
 #include <dirent.h>
 #include <dlfcn.h>
 #include <sched.h>
@@ -132,3 +143,5 @@ int host_priority_raise_all(int nice) {
 }
 
 }  // namespace rac1
+
+#endif  // !__APPLE__
