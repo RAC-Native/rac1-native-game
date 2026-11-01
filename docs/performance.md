@@ -160,6 +160,20 @@ All together (headless, Radeon 890M, a shared machine: two runs each, the last 6
 Veldin 0.46 to 0.20 ms, Novalis 1.17-1.33 to 0.45-0.54, Rilgar 1.07-1.25 to 0.56, Pokitaru 1.74-2.0 to 0.91-1.04; the world's GPU
 time Veldin 1.56 to 1.45 ms, Novalis 1.03 to 0.83, Rilgar 1.85 to 1.40, Pokitaru 1.94 to 1.34 (OpenGL; Vulkan alike).
 
+### Second round
+
+Found the same way, each with a `RAC1_PERF_*=0` switch: the game's own code where a host form gives the same values (proved by
+`RAC1_RAMHASH` on the levels that run it and by the oracle batches of the hand-ported functions), and the sky drawn after the
+terrain.
+
+- **The palette blend** (`RAC1_PERF_PALETTE_BLEND`, `src/game/ovl/palette_blend.cpp`, hooked by `tools/codegen/hooks.glue` into the
+  six overlays' copies of the routine: Kerwan 0x23c428, Rilgar 0x277b20, Umbris 0x2762e0, Batalia 0x257d40, Gaspar 0x26d240, Oltanis
+  0x255ce0, NTSC-U): its texel loop weighted both palettes' entries (VMULbc) for each of 4096 texels; each entry's product is now
+  made once (256 per palette) and the texels add the two they index, leaving the VU0 registers as the loop does (not its ops' flags,
+  which nothing reads after). `RAC1_RAMHASH` identical on and off on levels 3, 5, 7, 8, 9 and 14 (3000 frames each, the routine
+  running on all six). Kerwan, the routine's call (the palettes' DMA and conversion included): 0.124 to 0.035 ms, about one call a
+  frame. The PAL build runs the loop as transliterated. No oracle batch: the routine's scratchpad DMA is not in the interpreter.
+
 ## Switches to compare
 
 These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
@@ -179,6 +193,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_OPAQUE=0` | every world draw in both alpha-test passes, with the discard's late depth test |
 | `RAC1_PERF_GS_MEM=0`, `RAC1_PERF_VU1_LOOKUP=0`, `RAC1_PERF_XGKICK=0` | the chain reader's GS memory, VU1 port lookups and kicks as before |
 | `RAC1_PERF_TEXTABLE=0`, `RAC1_PERF_TFRAG_ALLOC=0`, `RAC1_PERF_VU7=0`, `RAC1_PERF_PKT_MEMO=0` | the scene's and the effects' preparation as before |
+| `RAC1_PERF_PALETTE_BLEND=0` | the six levels' palette blend as the game's loop |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
