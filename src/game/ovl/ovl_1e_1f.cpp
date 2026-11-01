@@ -1,8 +1,12 @@
 // Ported overlay code 0x001e0000..0x001fffff (excluding the math library, see game/math/vecmath.cpp).
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <platform/per_thread.h>
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <vector>
 
 namespace rac1 {
 
@@ -134,6 +138,23 @@ static float hsum(const L3& v) { return qmadd(qadd(v.x, v.y), 1.0f, v.z); }     
 static float hsum_y(const L3& v) { return qmadd(qadd(v.y, v.x), 1.0f, v.z); }    // vaddax.y + vmaddz.y
 static bool neg(float f) { return (fbits(f) & 0x80000000u) != 0; }
 static void sq3(uint32_t a, const L3& v, uint32_t w) { swc1(a, v.x); swc1(a + 4, v.y); swc1(a + 8, v.z); sw(a + 0xc, w); }
+// The same lane arithmetic for operands known to be clamped already (a VU result, a small integer's float): vuc(x) is x for those,
+// so only the result is clamped - the same values as the q* forms above.
+static float cadd(float a, float b) { return vuc(a + b); }
+static float csub(float a, float b) { return vuc(a - b); }
+static float cmul(float a, float b) { return vuc(a * b); }
+static float cmadd(float acc, float a, float b) { return vuc(acc + a * b); }
+static float cmsub(float acc, float a, float b) { return vuc(acc - a * b); }
+static L3 cl3(uint32_t a) { return L3{vuc(lwc1(a)), vuc(lwc1(a + 4)), vuc(lwc1(a + 8))}; }
+static L3 cadd3(const L3& a, const L3& b) { return L3{cadd(a.x, b.x), cadd(a.y, b.y), cadd(a.z, b.z)}; }
+static L3 csub3(const L3& a, const L3& b) { return L3{csub(a.x, b.x), csub(a.y, b.y), csub(a.z, b.z)}; }
+static L3 cmul3(const L3& a, const L3& b) { return L3{cmul(a.x, b.x), cmul(a.y, b.y), cmul(a.z, b.z)}; }
+static L3 cmuls(const L3& a, float s) { return L3{cmul(a.x, s), cmul(a.y, s), cmul(a.z, s)}; }
+static L3 cmadds(const L3& acc, const L3& a, float s) { return L3{cmadd(acc.x, a.x, s), cmadd(acc.y, a.y, s), cmadd(acc.z, a.z, s)}; }
+static L3 copm(const L3& a, const L3& b) {
+    return L3{cmsub(cmul(a.y, b.z), b.y, a.z), cmsub(cmul(a.z, b.x), b.z, a.x), cmsub(cmul(a.x, b.y), b.x, a.y)};
+}
+static float chsum(const L3& v) { return cmadd(cadd(v.x, v.y), 1.0f, v.z); }
 // vf25..vf29 of VU0: the collision routines keep their nearest contact there and store it from
 // there, so a contact that sets only some of them (a primitive in sphere_collide) stores the
 // others as the previous contact left them. Kept here across calls, as the registers are.
@@ -1408,6 +1429,44 @@ int32_t capsule_collide(uint32_t pos, float radius, float height, uint32_t flags
     return capsule_collide_v(V(pos), radius, height, flags, ignore);
 }
 
+namespace {
+// ((2026-11-01, the Wii U's game step) RAC1_COLL_MESH_CACHE, the Wii U's default 1, the PC's 0) a moby's collision mesh turned into
+// the world by segment_collide_v (each vertex: the rows scaled, three VU0 multiply-adds) is a function of the rows', the scale's
+// bits and the vertex words alone: the result kept per moby with those bits and a copy of the words, and used again while all of
+// them are the same (most mobys do not move; floor probes and sound lines test the same ones every frame). The outcodes, which
+// depend on the segment, are still made per call.
+struct MeshCacheEntry {
+    uint32_t m = 0, vbase = 0, nb = 0;
+    uint32_t key[10] = {};
+    std::vector<uint32_t> raw;
+    std::vector<L3> w;
+};
+struct MeshCache {
+    static constexpr uint32_t kN = 128;
+    MeshCacheEntry e[kN];
+};
+bool mesh_cache_on() {
+    static const bool on = [] {
+        const char* e = std::getenv("RAC1_COLL_MESH_CACHE");
+#if defined(__WIIU__) && !defined(RAC1_VU0_EXACT)
+        return e == nullptr || std::atoi(e) != 0;
+#else
+        return e != nullptr && std::atoi(e) != 0;
+#endif
+    }();
+    return on;
+}
+MeshCache& mesh_cache() {
+#if defined(__WIIU__)
+    static platform::PerThread<MeshCache, 4> c;
+    return c.get();
+#else
+    static thread_local MeshCache c{};
+    return c;
+#endif
+}
+}  // namespace
+
 // Nearest hit of the segment start -> end with the level collision and the mobys (hand-written VU0
 // macro code). The 4-unit cells the segment passes are listed in order (per-axis crossings at
 // SPR + 0x3000/0x3200/0x3400 merged into (t, packed cell) at SPR + 0x3800, ending with t = 1);
@@ -1534,20 +1593,21 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
             tri += 4;
             if ((lwu(a0 + 0xc) & lwu(a1 + 0xc) & lwu(a2 + 0xc)) != 0) continue;
             if ((flags & 0x80 & tf) != 0) continue;
-            const L3 v1 = l3(a0);
-            const L3 e2 = sub3(l3(a1), v1), e3 = sub3(l3(a2), v1);
+            // (the vertices clamped once as they are read; seg, a, b, org, best are VU results: every operand below clean)
+            const L3 v1 = cl3(a0);
+            const L3 e2 = csub3(cl3(a1), v1), e3 = csub3(cl3(a2), v1);
             if ((flags & 0x20) != 0 && (((flags >> 8) ^ tf) & 0x1f) == 0) continue;
-            const L3 n = opm(e3, e2);
-            const float sn = hsum(mul3(seg, n));
-            const float ds = hsum(mul3(sub3(v1, a), n)), de = hsum(mul3(sub3(v1, b), n));
+            const L3 n = copm(e3, e2);
+            const float sn = chsum(cmul3(seg, n));
+            const float ds = chsum(cmul3(csub3(v1, a), n)), de = chsum(cmul3(csub3(v1, b), n));
             const float q = qdiv(ds, sn);
             if ((flags & 0x10) == 0 && (!neg(ds) || static_cast<int32_t>(fbits(de)) <= 0)) continue;
             if (!neg(u2f(fbits(ds) ^ fbits(de)))) continue;
-            const L3 hp = madds(muls(sub3(a, v1), 1.0f), seg, q);
-            const L3 wv1 = add3(v1, org);
-            const float s7 = hsum(mul3(opm(hp, e2), n)), s8 = hsum(mul3(opm(e3, hp), n));
-            const float s9 = hsum(mul3(opm(sub3(hp, e2), sub3(e3, e2)), n));
-            const float gain = qsub(best, q);
+            const L3 hp = cmadds(cmuls(csub3(a, v1), 1.0f), seg, q);
+            const L3 wv1 = cadd3(v1, org);
+            const float s7 = chsum(cmul3(copm(hp, e2), n)), s8 = chsum(cmul3(copm(e3, hp), n));
+            const float s9 = chsum(cmul3(copm(csub3(hp, e2), csub3(e3, e2)), n));
+            const float gain = csub(best, q);
             if (neg(s7) || neg(s8) || neg(s9) || static_cast<int32_t>(fbits(gain)) <= 0) continue;
             s6 = tf + 0x1000;
             s5 = obj;
@@ -1699,6 +1759,49 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
                 const uint32_t vbase = col + lwu(col + 4) + 0x10;
                 uint32_t dst = SPR + 0x1fe0;
                 int32_t k = 0;
+                const uint32_t nb = (vbytes + 0xf) & ~0xfu;   // the bytes the loop below reads (vbytes as a count > 0)
+                const MeshCacheEntry* ce = nullptr;
+                if (mesh_cache_on() && static_cast<int32_t>(vbytes) > 0 && nb <= 0x1000 && (vbase & 3) == 0) {
+                    const uint32_t key[10] = {fbits(R0.x), fbits(R0.y), fbits(R0.z), fbits(R1.x), fbits(R1.y), fbits(R1.z),
+                                              fbits(R2.x), fbits(R2.y), fbits(R2.z), fbits(sc)};
+                    const void* rp = ee_ram_ptr_read(vbase);
+                    MeshCacheEntry& e = mesh_cache().e[(m >> 8) & (MeshCache::kN - 1)];
+                    static const bool stats = std::getenv("RAC1_COLL_MESH_STATS") != nullptr;
+                    static uint32_t n_call = 0, n_miss = 0;
+                    if (stats && ++n_call % 20000 == 0) std::fprintf(stderr, "[meshcache] %u uses, %u made\n", n_call, n_miss);
+                    if (!(e.m == m && e.vbase == vbase && e.nb == nb && std::memcmp(e.key, key, sizeof key) == 0 &&
+                          std::memcmp(e.raw.data(), rp, nb) == 0)) {
+                        ++n_miss;
+                        e.m = m;
+                        e.vbase = vbase;
+                        e.nb = nb;
+                        std::memcpy(e.key, key, sizeof key);
+                        e.raw.resize(nb / 4);
+                        std::memcpy(e.raw.data(), rp, nb);
+                        e.w.resize(nb / 8);
+                        for (uint32_t i = 0; i < nb / 8; ++i) {
+                            const uint32_t va = vbase + i * 8;
+                            const L3 v = L3{static_cast<float>(lh(va)), static_cast<float>(lh(va + 2)), static_cast<float>(lh(va + 4))};
+                            e.w[i] = madds(madds(muls(S0, v.x), S1, v.y), S2, v.z);
+                        }
+                    }
+                    ce = &e;
+                }
+                if (ce != nullptr) {
+                    for (uint32_t i = 0; i < nb / 8; ++i) {
+                        if ((i & 1) == 0) dst += 0x20;
+                        const L3& w = ce->w[i];
+                        const L3 bl = sub3(w, vlo), ab = sub3(vhi, w);
+                        uint32_t oc = 0;
+                        if (neg(bl.x)) oc |= 1u;
+                        if (neg(ab.x)) oc |= 2u;
+                        if (neg(bl.y)) oc |= 1u << 8;
+                        if (neg(ab.y)) oc |= 2u << 8;
+                        if (neg(bl.z)) oc |= 1u << 16;
+                        if (neg(ab.z)) oc |= 2u << 16;
+                        sq3(dst + (i & 1) * 0x10, w, oc);
+                    }
+                } else
                 for (int32_t left = static_cast<int32_t>(vbytes); left > 0; left -= 0x10, ++k) {
                     dst += 0x20;
                     for (uint32_t hh = 0; hh < 2; ++hh) {

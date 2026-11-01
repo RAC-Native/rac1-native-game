@@ -99,28 +99,29 @@ void direct_parts(uint32_t mi, const MobyDrawPart* dp, uint32_t n, std::vector<M
     bool have_last[2] = {false, false};
     for (uint32_t k = 0; k < n; ++k) {
         const MobyDrawPart& d = dp[k];
-        MrpPart cur;
+        uint16_t dest;
+        if (d.matrix_dest != 0) {
+            const int bi = d.matrix_dest == 0x28d ? 1 : 0;
+            std::memcpy(&last_mat[bi], d.matrix, sizeof last_mat[bi]);
+            if (!have_matrix) {
+                model_to_view = last_mat[bi];
+                have_matrix = true;
+            }
+            have_last[bi] = true;
+            dest = d.matrix_dest;
+        } else if (k >= 2) {
+            dest = parts[parts.size() - 2].matrix_dest;
+        } else if (k == 1) {
+            dest = parts.back().matrix_dest == 0x129 ? 0x28d : 0x129;
+        } else {
+            dest = 0x129;
+        }
+        // (made in its place in the list, not built aside and copied in)
+        MrpPart& cur = parts.emplace_back();
         cur.moby_index = mi;
         cur.unpack_first = unpack_first;
         cur.mscal = d.mscal;
-        if (d.matrix_dest != 0) {
-            MrpMat4 mm;
-            std::memcpy(&mm, d.matrix, sizeof mm);
-            if (!have_matrix) {
-                model_to_view = mm;
-                have_matrix = true;
-            }
-            const int bi = d.matrix_dest == 0x28d ? 1 : 0;
-            last_mat[bi] = mm;
-            have_last[bi] = true;
-            cur.matrix_dest = d.matrix_dest;
-        } else if (k >= 2) {
-            cur.matrix_dest = parts[parts.size() - 2].matrix_dest;
-        } else if (k == 1) {
-            cur.matrix_dest = parts.back().matrix_dest == 0x129 ? 0x28d : 0x129;
-        } else {
-            cur.matrix_dest = 0x129;
-        }
+        cur.matrix_dest = dest;
         const int bi = cur.matrix_dest == 0x28d ? 1 : 0;
         if (have_last[bi]) cur.model_to_view = last_mat[bi];
         if (d.gs_qwc != 0) {
@@ -130,7 +131,6 @@ void direct_parts(uint32_t mi, const MobyDrawPart* dp, uint32_t n, std::vector<M
         gs_resolve(cur, d.gs_qwc, [&d](uint32_t i, uint32_t w[4]) {
             for (uint32_t j = 0; j < 4; ++j) w[j] = i < 2 ? d.gs[4 * i + j] : 0u;
         });
-        parts.push_back(cur);
     }
 }
 
@@ -151,7 +151,10 @@ void on_draw(uint32_t moby, uint32_t chain_begin, uint32_t chain_end, uint32_t r
         f.view_trans = vec4_at(OV(0x00166cf0));
         g_have_camera = true;
     }
-    MrpMoby m;
+    // (made in its place in the frame's list: a moby is ~650 bytes, built aside and copied in it was a third of the observers' time
+    // on the Wii U's game thread)
+    const uint32_t mi = static_cast<uint32_t>(f.mobys.size());
+    MrpMoby& m = f.mobys.emplace_back();
     if (!rt) {  // (the view the loop uses now against the frame's)
         auto same = [](const MrpVec4& a, const MrpVec4& b, size_t n) { return std::memcmp(&a, &b, n) == 0; };
         bool s = same(f.cam_pos, vec4_at(OV(0x00166dc0)), 12);
@@ -189,7 +192,6 @@ void on_draw(uint32_t moby, uint32_t chain_begin, uint32_t chain_end, uint32_t r
         std::memcpy(&f.records[m.record_first + i], &w, 4);
     }
     if (parts != nullptr) {  // the MRP-only pass: its parts as the chain would have had them (with the verify: kept aside)
-        const uint32_t mi = static_cast<uint32_t>(f.mobys.size());
         if (g_moby_pass_mrp_verify) {
             direct_parts(mi, parts, nparts, f.check_parts, 0, m.check_first, m.check_model_to_view);
             m.check_count = nparts;
@@ -199,7 +201,6 @@ void on_draw(uint32_t moby, uint32_t chain_begin, uint32_t chain_end, uint32_t r
             m.part_count = nparts;
         }
     }
-    f.mobys.push_back(m);
     if (g_prof) g_prof_obs_ms += now_ms() - t0;
 }
 

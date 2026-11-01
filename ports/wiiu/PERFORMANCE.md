@@ -1197,3 +1197,31 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
 - **Next:** world_tfrag_lighting's vertex loop on the host (the VU0 rules where the data needs them; Nebula G34, Veldin Orb), Kerwan's
   moby mesh transforms in segment_collide_v (per probe, the same every probe of a frame), the palette blend's lanes.
 
+
+### Kerwan's collisions: the moby meshes kept, the clamps once per operand (2026-11-01, evening)
+
+- **The reference** (the same deterministic measure, rac1-scratch/wiiu/lv/dserl.sh, 1500 steps not in real time, ms of game code a
+  step): level 1 (Novalis) 14.5, level 2 (Aridia) 21.3, Kerwan 17.7 before this.
+- **The moby collision meshes kept** (ovl_1e_1f.cpp segment_collide_v; RAC1_COLL_MESH_CACHE, the Wii U's default 1, the PC's 0): a
+  moby's mesh turned into the world (each vertex: the rows times the scale, three VU0 multiply-adds) is a function of the rows', the
+  scale's bits and the vertex words alone: kept per moby with those bits and a copy of the words, used again while all are the same
+  (91% of the uses on Kerwan: floor probes and sound lines test the same standing mobys every frame). The outcodes, which depend on
+  the segment, still made per call. Those lines were ~36% of segment_collide_v. **17.59 -> 17.21 ms a step** (A/B on the console).
+- **The clamps once per operand** (exact, unconditional): vuc(x) is x for a clamped x, so where every operand is already a VU result
+  (or is clamped once as it is read) only the result needs the clamp. segment_collide_v's triangle test (the vertices clamped as
+  read from the scratchpad; seg, a, b, org, best are results) and moby_transform_core's position (the rows, offset, scale and
+  position clamped once, then the multiply-adds): the same values as the q* / vmul / vmadd forms. -ffp-contract=off keeps every
+  product rounded on its own. **17.21 -> 16.88 ms a step.**
+- Small, kept: the EE journal's page appended as it is (it was zero-filled, then copied over: a third of the game thread's memset);
+  the moby pass's observer builds each MrpMoby (~650 bytes) and MrpPart in their place in the frame's lists instead of building them
+  aside and copying them in. Together within the noise: **16.84 ms a step.**
+- **Tried, not kept:** ee_read / ee_write's common case inline (the slow path and the throw out of line): the rpx 20.4 -> 22.1 MB
+  and **slower**, 17.30 against 16.88 - the 750's 32 KB instruction cache again (as the inlined float helpers).
+- **Exact:** RAMHASH with the cache on against the build before (cache off) identical on levels 3 / 6 / 0 (the Wii U's path) and 3 /
+  8 / 5 (the PC's); pc_check (the three references, RAMHASH = main's), gt_check green; RAC1_MOBY_PASS_MRP=verify on Kerwan: 2585
+  mobys, 35,975 parts, none differ.
+- What is left on Kerwan's game thread (core 2 samples): the moby pass 15% (draw loop, its VU0 ops ~5%, the observers' copies), class
+  75's update 11% (Kerwan's flying traffic: ~50 cars a frame, ~38 us each, translated code), segment_collide_v 9%, the draw lists 10%
+  (class 994's palette blend 4%), moby_transform_core 6% (the Euler rows of the moving cars: vu_sin_kernel, rot_row ~3.7%), the
+  generated code's EE loads / stores ~10% (calls; inline was slower), the EE journal of widen_real ~2% (9 pages a call, 2 calls a
+  step: projection_setup's and render_view_setup's writes).

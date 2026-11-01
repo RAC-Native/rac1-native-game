@@ -1922,19 +1922,22 @@ static void moby_transform_core(uint32_t m, bool keep_rows) {
     V(m + 0xc0) = r0;
     V(m + 0xd0) = r1;
     V(m + 0xe0) = r2;
+    // (each operand clamped once as it is read, then the lanes' arithmetic with the result's clamp alone: vuc(x) is x for a
+    // clamped x - the same values as vmul / vmadd)
+    const float csc = vuc(scale);
     Vec4 o;
-    for (int k = 0; k < 4; ++k) (&o.x)[k] = vmul((&off.x)[k], scale);
+    for (int k = 0; k < 4; ++k) (&o.x)[k] = vuc(vuc((&off.x)[k]) * csc);
     Vec4 p = V(m + 0x10);
-    p.x = vmul(p.x, 1024.0f);
-    p.y = vmul(p.y, 1024.0f);
-    p.z = vmul(p.z, 1024.0f);
+    p.x = vuc(vuc(p.x) * 1024.0f);
+    p.y = vuc(vuc(p.y) * 1024.0f);
+    p.z = vuc(vuc(p.z) * 1024.0f);
     const int32_t radius = vftoi0(o.w);
     Vec4 w = o;
     for (int k = 0; k < 3; ++k) {
-        float acc = vmul((&r0.x)[k], o.x);
-        acc = vmadd(acc, (&r1.x)[k], o.y);
-        acc = vmadd(acc, (&r2.x)[k], o.z);
-        (&w.x)[k] = vmadd(acc, (&p.x)[k], 1.0f);
+        float acc = vuc(vuc((&r0.x)[k]) * o.x);
+        acc = vuc(acc + vuc((&r1.x)[k]) * o.y);
+        acc = vuc(acc + vuc((&r2.x)[k]) * o.z);
+        (&w.x)[k] = vuc(acc + (&p.x)[k] * 1.0f);
     }
     const int32_t ix = vftoi0(w.x), iy = vftoi0(w.y);
     V(m + 0) = w;

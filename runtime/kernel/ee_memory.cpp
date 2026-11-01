@@ -113,9 +113,8 @@ void journal_touch(u32 phys, u32 size) {
         if (g_journal_seen[p] != 0) continue;
         g_journal_seen[p] = 1;
         g_journal_pages.push_back(p);
-        const size_t at = g_journal_data.size();
-        g_journal_data.resize(at + JPAGE);
-        std::memcpy(g_journal_data.data() + at, g_ram_buffer.data() + static_cast<size_t>(p) * JPAGE, JPAGE);
+        const u8* src = g_ram_buffer.data() + static_cast<size_t>(p) * JPAGE;
+        g_journal_data.insert(g_journal_data.end(), src, src + JPAGE);  // (appended as it is: no zero fill first)
     }
 }
 }  // namespace
