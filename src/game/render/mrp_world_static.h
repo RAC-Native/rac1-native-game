@@ -67,6 +67,8 @@ void relight_visible_clear();
 void relight_visible_mark(int kind, uint32_t index);
 // -1: no marks for the kind, 0 not drawn, 1 drawn
 int relight_visible(int kind, uint32_t index);
+// (2026-11-01) the kind's drawn indices in increasing order (each once), or nullptr when it has no marks (all visible)
+const std::vector<uint32_t>* relight_visible_list(int kind);
 
 // ---- Stage 2: the ties and shrubs at LOD > 0 / widened, without the passes' shadow runs ---------------------------------------
 //

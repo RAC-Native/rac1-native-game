@@ -388,23 +388,21 @@ uint32_t relight_flagged(void (*light)(uint32_t), uint32_t table, int32_t count,
     const uint8_t* tp = nullptr;
     if ((table & 3u) == 0 && table < 0x02000000u && ee_is_valid_addr(table, static_cast<uint32_t>(count) * stride))
         tp = static_cast<const uint8_t*>(ee_ram_ptr_read(table));
+    // one entry: listed and relit when flagged and drawn; true when the frame's share is done (the Wii U's)
 #if defined(__WIIU__)
     static uint32_t s_cursor[3] = {0, 0, 0};
     constexpr uint32_t kMaxPerFrame = 64;
     const uint32_t ucount = static_cast<uint32_t>(count);
     const uint32_t start = s_cursor[kind] < ucount ? s_cursor[kind] : 0;
     uint32_t next_cursor = 0;
-    for (uint32_t step = 0; step < ucount; ++step) {
-        const uint32_t i = (start + step) % ucount;
-#else
-    for (uint32_t i = 0; i < static_cast<uint32_t>(count); ++i) {
 #endif
+    auto visit = [&](uint32_t i) {
         const uint32_t e = table + i * stride;
         if (tp != nullptr ? tp[ee_byte_addr(i * stride + dirty)] == 0 && *reinterpret_cast<const uint16_t*>(tp + ee_half_addr(i * stride + nib)) == 0xffffu
                           : lbu(e + dirty) == 0 && lhu(e + nib) == 0xffffu)
-            continue;
+            return false;
         const uint32_t index = index_at != 0 ? lhu(e + index_at) : i;
-        if (mrpw::relight_visible(kind, index) == 0) continue;
+        if (mrpw::relight_visible(kind, index) == 0) return false;
         sh(list + n * 2, index);
         if (touch >= 0) mrpw::resident_colours_touch(touch == 1, index);
 #if defined(__WIIU__)
@@ -418,13 +416,31 @@ uint32_t relight_flagged(void (*light)(uint32_t), uint32_t table, int32_t count,
         }
 #if defined(__WIIU__)
         if (total == kMaxPerFrame) {
-            next_cursor = (i + 1) % ucount;
-            break;
+            next_cursor = i + 1 == ucount ? 0 : i + 1;
+            return true;
         }
 #endif
-    }
+        return false;
+    };
 #if defined(__WIIU__)
+    // ((2026-11-01) an entry whose index is its place (tfrags, ties) and a kind with marks: only the drawn ones visited, in the scan's
+    // order - from the cursor up, then from 0 - the rest of the table never read: the same entries, the same order, the same share.
+    // The scan read every entry's flags every frame: ~1 ms a frame on Kerwan, each entry a cache miss. Else the whole table, the
+    // cursor's wrap without a division per entry. RAC1_WIIU_RELIGHT_VISLIST=0: always the whole table, to compare)
+    static const bool vislist = std::getenv("RAC1_WIIU_RELIGHT_VISLIST") == nullptr || std::atoi(std::getenv("RAC1_WIIU_RELIGHT_VISLIST")) != 0;
+    const std::vector<uint32_t>* vis = vislist && index_at == 0 ? mrpw::relight_visible_list(kind) : nullptr;
+    if (vis != nullptr) {
+        const auto mid = std::lower_bound(vis->begin(), vis->end(), start);
+        bool done = false;
+        for (auto it = mid; !done && it != vis->end() && *it < ucount; ++it) done = visit(*it);
+        for (auto it = vis->begin(); !done && it != mid && *it < ucount; ++it) done = visit(*it);
+    } else {
+        for (uint32_t step = 0, i = start; step < ucount; ++step, i = i + 1 == ucount ? 0 : i + 1)
+            if (visit(i)) break;
+    }
     s_cursor[kind] = next_cursor;
+#else
+    for (uint32_t i = 0; i < static_cast<uint32_t>(count); ++i) visit(i);
 #endif
     if (n != 0) {
         sh(list + n * 2, 0xffff);

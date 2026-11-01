@@ -90,6 +90,8 @@ bool g_touch_over = false;
 // (the Wii U port) the host's last drawn entries by kind (relight_visible_mark)
 std::vector<uint8_t> g_vis[3];
 bool g_vis_have[3] = {};
+std::vector<uint32_t> g_vis_list[3];  // (the marked indices as marked; sorted and made unique at the first relight_visible_list)
+bool g_vis_sorted[3] = {};
 }  // namespace
 
 // orig: (host) see mrp_world_static.h
@@ -97,6 +99,8 @@ void relight_visible_clear() {
     for (int k = 0; k < 3; ++k) {
         std::fill(g_vis[k].begin(), g_vis[k].end(), uint8_t{0});
         g_vis_have[k] = false;
+        g_vis_list[k].clear();
+        g_vis_sorted[k] = true;
     }
 }
 
@@ -108,12 +112,26 @@ void relight_visible_mark(int kind, uint32_t index) {
     std::vector<uint8_t>& v = g_vis[kind];
     if (v.size() <= index) v.resize(index + 1, 0);
     v[index] = 1;
+    g_vis_list[kind].push_back(index);
+    g_vis_sorted[kind] = false;
 }
 
 // orig: (host) see mrp_world_static.h
 int relight_visible(int kind, uint32_t index) {
     if (kind < 0 || kind > 2 || !g_vis_have[kind]) return -1;
     return index < g_vis[kind].size() ? g_vis[kind][index] : 0;
+}
+
+// orig: (host) see mrp_world_static.h
+const std::vector<uint32_t>* relight_visible_list(int kind) {
+    if (kind < 0 || kind > 2 || !g_vis_have[kind]) return nullptr;
+    std::vector<uint32_t>& l = g_vis_list[kind];
+    if (!g_vis_sorted[kind]) {
+        std::sort(l.begin(), l.end());
+        l.erase(std::unique(l.begin(), l.end()), l.end());
+        g_vis_sorted[kind] = true;
+    }
+    return &l;
 }
 
 // orig: (host) see mrp_world_static.h

@@ -1177,3 +1177,23 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
 - **Next:** segment_collide_v (its float helpers: floor_probe_v from class 574, sound_line_blocked_v), Kerwan's class 75; the same
   measure on Nebula G34, Batalia, Veldin Orb.
 
+### The relighting's scan over the drawn entries alone; what did not help (2026-11-01, afternoon)
+
+- **relight_flagged** (overlay_entry.cpp) read every tfrag's and tie's flags every frame - each entry a cache miss (stride 0x40 /
+  0x20): ~1 ms a frame on Kerwan with nothing relit. Now, for the kinds whose index is the entry's place (tfrags, ties) and that have
+  the host's marks, only the drawn indices are visited (mrpw::relight_visible_list: the marks sorted, once), in the scan's order (from
+  the cursor up, then from 0) - the same entries, the same order, the same 64 a frame. The cursor's wrap without a division per entry.
+  RAC1_WIIU_RELIGHT_VISLIST=0 the whole table. **Exact:** a temporary check on the console computed both orders' first 64 flagged and
+  drawn entries every call - Nebula G34 2100 calls / 29,339 entries, Novalis 2100 / 3,968: none differ; the relit counts on Nebula G34
+  the same on and off. Kerwan's scan 1000 -> 190-280 us a frame, Veldin's 469 -> 263; **Kerwan 18.5 -> 17.7 ms a step.**
+- No gain, not kept: segment_collide_v's float helpers forced inline (18.65 against 18.48); dcbt ahead in the relighting's scan (slower:
+  1000 -> 1550 us) and in the moby pass's loop (2.83 -> 2.85 ms); vu0nf's ops specialised on their mask (no change: an op's cost is its
+  clamps, not its mask loop).
+- **Nebula G34** (not in real time): 24.6 ms a step, the GPU ~39 ms a frame. The relighting itself (a flickering light holds its
+  tfrags: 64 relit a frame) **11 ms a frame**: world_tfrag_lighting 20.5% of core 2 - its blended light sets' vertex loop
+  (L_2955f4 / L_2956dc) 10.3%, the point lights' (L_295834) 4.4% (line samples with that file built -g).
+- Tools: rac1-scratch/wiiu/lv/lines2.py <elf> <samples.bin> <function> - a function's samples by its own source line (the inlined
+  helpers folded into the caller's line); samples.py --under <name> - a zone's breakdown.
+- **Next:** world_tfrag_lighting's vertex loop on the host (the VU0 rules where the data needs them; Nebula G34, Veldin Orb), Kerwan's
+  moby mesh transforms in segment_collide_v (per probe, the same every probe of a frame), the palette blend's lanes.
+
