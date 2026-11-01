@@ -103,6 +103,12 @@ What changed in each release. Releases are source only: you build the game with 
   picture's reflection faded to the sky's where a pixel covers more than about half a unit of water, Surface Detail's ripples and
   the Water option's normal maps faded wave by wave where finer than the pixel (the glint widened instead), the far foam faded;
   still camera at the start's dock, 32:9: the far sea's flashing pixels 14 533 -> 1 578 (Surface Detail Off: 1 889).
+- Water (Options > Graphics, Low and High): the tagged seas are our own water, not our shading over the game's texture: their
+  texture's average colour (the level's palette kept), calm normal maps in world space faded by the pixel's size, the sky's
+  reflection, a soft edge and a steady foam band at the shore, opaque where nothing lies under them and far away (no more
+  hard-edged trapezoids around Pokitaru's islands); a flat sea drawn at one height, not bobbing with the game's (the picture
+  only); the other blended layers of the same seas drawn flat; Surface Detail's ripples left off them. Water Off is the game's
+  water, as before (Daino's playtest of 2026-11-01).
 - Options > Graphics > Monitor: two monitors with the same name ("Generic PnP Monitor" twice) are told apart by their place on
   the desktop ("Generic PnP Monitor (at 1920,0)"), so the one chosen is the one the game opens on after a restart (#111).
 - Vulkan: the world's push constants are 128 bytes, not 144, and the ambient occlusion's 176 bytes of parameters are in a

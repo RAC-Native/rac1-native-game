@@ -175,46 +175,66 @@ keep the nearest hit, with its class and texture. The Textures tab lists every s
 
 Two more options of Options > Graphics, each Off (the default), Low or High, each on the textures a level's file tags, each with
 Lighting not Original only (`water`, `grass` in the preferences; items 52, 54 of a save's block; `RAC1_WATER`, `RAC1_GRASS` for
-testing). They start from the game's own textures - their colours stay the texture's - and add
-relief and motion; a texture pack replacing those textures later gets the same treatment. Nothing of the game's state changes (proved
+testing). Grass, lava and quicksand start from the game's own textures - their colours stay the texture's - and add relief and
+motion; a texture pack replacing those textures later gets the same treatment. Water replaces the game's water with our own (below). Nothing of the game's state changes (proved
 with `RAC1_RAMHASH`: Novalis and Pokitaru with all of them on, OpenGL and Vulkan, the same hashes as with them off).
 
 ### Water
 
-The `water` material (and `lava`, `quicksand`) with Water on, Surface Detail whatever it is:
+The `water` material (and `lava`, `quicksand`) with Water on, Surface Detail whatever it is. **The water is our own** (since
+Daino's playtest of 2026-11-01: our shading layered over the game's texture and its motion - its scrolling UVs, its additive layers -
+flashed where the water met the shore and shimmered far away; Water Off is the game's water, untouched):
 
-- **Two procedural normal maps** (value noise with its gradient, two octaves each) scroll across each other over the texture, the game's
-  own water animation kept under them. `waves <scale> <speed>` (1 1) sets their size and speed; `b` (ripples) their height.
+- **Its colour is the texture's average**, not the texture: a program-7 sea whose slot is `water` is drawn with one texel, the
+  average of its texture weighted by the alpha (as the blend shows it: the opaque crests count more than the see-through texels),
+  times the game's vertex colour and the light, so each level keeps its palette (Pokitaru's turquoise, Novalis's blue, Hoven's grey).
+  The host computes it once per decoded texture (`tex_average` in `mrp_fx.cpp`) and sends it in the vertex's layer word (flag 27 of
+  the flags; `kV7Fs` and `MRP_VU7_FS` read it instead of the atlas). The game's scrolling UV, and with it its texture's motion, is gone.
+- **The other blended layers of the same class**, the ones the level's file does not tag - Pokitaru's additive highlights (textures
+  40 and 41 of class 1111), Novalis's tiles' second layers (40 and 42 of 751), Hoven's (48 of 1901) - are drawn the same way, flat:
+  their brightness and their vertices' alpha (the game fades them with the distance) kept, their texture's motion gone. Ratchet's wake,
+  splashes and ripples are other effects, drawn as the game draws them.
+- **Calm normal maps in world space**: two procedural normal maps (value noise with its gradient, two octaves each) drift slowly across
+  each other in world space (the game's UV scroll plays no part), low (two thirds of the earlier height, `b` - ripples - scaling it)
+  and slower (0.6 of the earlier speed), each octave faded where its cells are finer than about two pixels: far away the water is
+  smooth, not sparkling. `waves <scale> <speed>` (1 1) sets their size and speed.
 - **The depth under the surface**: the 3D under the water is copied (colour and depth, as Surface Detail High's reflections do) right
   before the seas are drawn - with Water on the program-7 seas that write depth are drawn just after that copy, as the ambient particles
   already asked for, those the game draws before its mobys too (Rilgar's harbour, Hoven's, Gaspar's and Umbris's seas: once, after
   the mobys) - so a sea knows, per pixel, how much water lies under it. Shallow water is lighter and more transparent, deep
-  water darker (toward `tint r g b` when given, else a deeper shade of the texture's own colour) and as opaque as the game draws it; how
-  deep is "deep" is `depth d` (water 2.5 units). The water is never made more opaque than the game's own alpha: where the game drew it
-  translucent it stays at most that.
-- **Foam**: a thin, broken band where the water meets the shore (the depth near 0), `foam f` (water 0.6), white as bright as the place;
-  softer right at the contact (40 %), full a third of the band out.
-- **Fresnel and the sky's reflection**; the **sun's and the lamps' glints** (a sharp specular on the waves); with **High** the scene's
-  reflection from the copy (the same ray march as the puddles') and a slight **refraction** of what is under the water (the copy read
-  bent by the waves, only where what it shows lies behind the water).
-- **With Surface Detail on too** (Low or High) the water's look is Surface Detail's `water` (its ripples, Fresnel, reflection and
-  glint), the Water option adding its normal maps under those ripples, the depth's colour, the foam and the composite over the 3D under
-  it; with Surface Detail Off, the Water option's own shading above. One draw of each sea either way.
+  water darker (toward `tint r g b` when given, else a deeper shade of its own colour) and as opaque as the game draws it; how
+  deep is "deep" is `depth d` (water 2.5 units). Where nothing lies under it (the sky, off the picture: the open sea past Pokitaru's
+  skirts of sand around its islands) it is opaque: seen through, the skirts' edges showed as hard-edged trapezoids around the islands.
+- **A soft edge**: right where the water meets the shore, a post or a rock it is see-through, opaque a tenth of a unit or so of depth
+  out (the band below): the waterline moves with the game's waves, and drawn hard it flashed.
+- **Foam**: a thin band where the water meets the shore, `foam f` (water 0.6), white as bright as the place; softer at the contact
+  (40 %, full a third of the band out), broken by a world-space noise drifting slowly - no pulse - and faded where it is under a pixel.
+- **Fresnel and the sky's reflection** (the level's sky colour, as bright as the place is lit), the **sun's and the lamps' glints**;
+  with **High** the picture's reflection near the camera (faded to the sky's where a pixel covers more than half a unit of water) and a
+  slight **refraction** of what is under the water. **Low**: no picture's reflection, no refraction.
+- Surface Detail does not change it: with Water on, Surface Detail's `water` ripples are not drawn on the seas (the Water option's
+  look is the whole look); with Water Off, Surface Detail's `water` is as before - its ripples, Fresnel and glint over the game's
+  own water.
 - How it reaches the picture: a sea whose blending is the GS's alpha blend (0x44), its fixed-alpha blend (0x64: (Cs - Cd) FIX + Cd,
   drawn as the alpha blend it is with FIX for its alpha) or none is composited by our shader over the copy (its colour, the water's,
   over the bent 3D under it, with the game's alpha scaled by the depth); a sea with another blend keeps its own, its colour shaded and,
-  when drawn before the copy, its alpha scaled. The 0x64 seas - all of Novalis's water, Rilgar's harbour and canals, Hoven's - were
-  among the latter until playtest round 2: their alpha is FIX, not the pixel's, so the depth's transparency and the composite never
-  reached them, and only their colour changed a little (with Novalis's water, untagged, little more than nothing).
-- **Water Off is not the game's water** when Surface Detail is on: the `water` material is Surface Detail's too (its ripples, Fresnel,
-  sky or picture reflection and glint stay); Water adds the normal maps, the depth's colour and transparency, the foam and the
-  composite. The world's water (tfrag, tie) draws the waves, the glints and the
-  reflections only: it is in the copy itself, so it has no depth under it.
+  when drawn before the copy, its alpha scaled.
+- **A flat sea is drawn at one height**: the game moves Pokitaru's whole sea up and down (222.75 to 223.25, a quarter of a unit
+  either side), and the near-flat skirts of sand at its islands' feet came through it and went under again, its waterline on the
+  beaches and the rocks moving a pixel row at a time. A sea of our water whose vertices all lie at one height is drawn at the middle
+  of the heights its class has been seen at since the level started (`build_vu7`, with the view's depth); a class seen over more than a
+  unit (Novalis's tiles, at many heights) or a sea that is not flat (a river, a waterfall) keeps the game's. The picture only: the
+  game's sea, its collision and Ratchet's swimming keep the game's height (so Ratchet bobs a little against the still water).
+- **Far away it is opaque** (where a pixel covers more than half a unit of water): what lies under the far water is a thin sliver - the
+  skirts at the far islands' feet, a hair under the surface - and the water seen through it flashed as the far ground's pieces came
+  and went from one frame to the next.
 - **Lava** with Water on: the crust's relief lit by the sun from slow normal maps, a hotter seam where it meets the shore (`foam`), the
-  tint; on High the heat shimmer. **Quicksand**: the slow normal maps under a dull sheen, a darker wet band at its edge (`foam`).
+  tint; on High the heat shimmer. **Quicksand**: the slow normal maps under a dull sheen, a darker wet band at its edge (`foam`). Both
+  keep the game's texture.
 
-The additive overlays some seas draw over their water (Pokitaru's 13155 and 13223, Hoven's 13391: ALPHA 0x48 / 0x68, highlights) are
-best left untagged: `RAC1_LIGHTS_TRACE=1` prints each sea's blend (`ABE 1 ALPHA 44`) and a point of it (`near x y z`).
+The additive overlays some seas draw over their water (Pokitaru's textures 40 and 41, Hoven's 48: ALPHA 0x48 / 0x68, highlights) are
+best left untagged (with Water on they are drawn flat, above): `RAC1_LIGHTS_TRACE=1` prints each sea's blend (`ABE 1 ALPHA 44`) and a
+point of it (`near x y z`).
 
 **Rilgar's flicker.** Daino saw Rilgar's harbour change from frame to frame with Water on: the far water dark and right in one
 frame, a grey, speckled sheet of the sky's colour with a hard edge in the next. The harbour (surface 879) is drawn by the chain before
@@ -271,6 +291,22 @@ drifts, 12 frames, the second difference over 8 less the same with Surface Detai
 bolts spinning with their metal.) Local main (f976533) flashed as the test branch: the water and the performance branches did not
 cause it, nor did the seas' depth order (no change with the ambient particles off). Left: with Water on, the contact line itself
 at the far islands' feet (a pixel row where the water turns see-through) moves with the game's waves.
+
+**Our own water (playtest of 2026-11-01).** Daino: after two rounds the water still flashed where it met the terrain (Pokitaru
+worst, Rilgar less), its ripples aliased and shimmered. The water is now our own (above). Still camera, 12 frames, pixels whose
+second difference is over 8 beyond Water Off + Surface Detail Off's (before: the earlier rounds' code; Vulkan, OpenGL alike):
+
+| | Water Low + SD Low | Water High + SD High |
+|---|---|---|
+| Pokitaru's dock, 32:9 (the far islands' feet: the band 350..1050 x 205..265) | 6825 -> 8404 (band 3271 -> 3224) | 10207 -> 9087 (band 3331 -> 3224) |
+| Pokitaru's shore and posts | 325 -> 727 | 3330 -> 875 |
+| Pokitaru, the game's camera following Ratchet swimming among the posts | 3166 -> 3122 | 56972 -> 17247 |
+| Rilgar's harbour | 5936 -> 984 | 8348 -> 1847 |
+
+The islands' feet no longer flash (2520 pixels there before, 25 after, Water Low); what the dock's count keeps is the flying ships'
+shadows moving across the now even water (about 1750 pixels: motion, sharper on a flat sea than on the game's texture) and the rock's
+waterline on the right, where every few frames the 3D under the water changes for a frame (in the earlier code too, less visible
+through its more opaque water: not found). The shore's Low count is a few hundred pixels of the posts' waterline.
 
 ### Grass
 
@@ -368,6 +404,12 @@ the widened view filling the window). Water: Pokitaru, Ratchet swimming among th
 | Grass High (Grass shells, 4), first version | 2.65 | 3.86 | 2.60 | 3.82 |
 | Grass High, the stencil and 40 units (Grass shells) | 2.43 (2.13 before this change, measured alongside) | 4.30 (3.62) | | |
 | Grass High on Novalis's start meadow (Grass shells) | 2.25 (2.28 before) | 3.20 (3.16) | 2.20 (2.22) | 3.65 (3.25) |
+
+Since the water is our own (playtest of 2026-11-01), the same spot at 2560 x 1440, Surface Detail High, GPU ms in "Water" (the seas and
+the copy) plus "Effects": Vulkan Off 4.25, Low 7.34 -> 3.28, High 6.80 -> 4.17; OpenGL Off 4.26, Low 8.08 -> 3.29, High 8.59 -> 4.44
+(before -> after; the machine shared with another run: a millisecond of noise). One draw of a flat texel instead of the texture's,
+one ray march where Surface Detail's water added a second, and the far water's reflection not marched: Water High now costs about what
+the game's own seas do.
 
 The machine was shared while measuring (the OpenGL numbers moved by a millisecond between runs). Water Low costs about 1.3 ms at
 2560 x 1440 and 2.7 at 5120 x 1440 (the normal maps, the depth, the copy); High twice that more (the reflection's ray march over the

@@ -290,43 +290,38 @@
     "float sm_w_alpha = 1.0, sm_w_add = 0.0;\n"                                                                                                          \
     "vec3 sm_w_refr = vec3(0.0);\n"                                                                                                                      \
     "vec3 sm_tint(float w) { return vec3(floor(w / 65536.0), mod(floor(w / 256.0), 256.0), mod(w, 256.0)) * (2.0 / 255.0); }\n"                          \
+    "/* The Water option's shading. Water: with it on, the program-7 seas tagged `water` are our own water - their texel is the texture's\n"             \
+    "   average colour (mrp_fx.cpp, flag 27), not the game's scrolling texture, so `lit` is a flat colour of the level's palette (the\n"                 \
+    "   game's vertex colour and the light on it) and every detail is ours: calm normal maps scrolling in world space, faded by the pixel's\n"           \
+    "   footprint; Fresnel, the sky's reflection (High: the picture's, near only), the sun's and the lamps' glints; the depth under the\n"               \
+    "   surface (colour, transparency, a soft edge where it meets the shore and a thin, steady foam band); on High a slight refraction.\n"               \
+    "   Lava and quicksand: the game's texture kept, relief and a seam added */\n"                                                                       \
     "vec3 sm_water2(vec3 lit, vec3 orig, vec3 tex, vec3 L, uint s, int ty) {\n"                                                                          \
     "    vec4 m = uMat[s], m2 = uMat2[s];\n"                                                                                                             \
     "    float t = uMat[0].y;\n"                                                                                                                         \
     "    vec3 P = vShWorld, V = normalize(uShCam - P);\n"                                                                                                \
     "    float up = smoothstep(0.3, 0.7, sh_n.z);\n"                                                                                                     \
-    "    float spd = ty == 5 ? 1.0 : ty == 4 ? 0.12 : 0.05;\n"                                                                                           \
+    "    float spd = ty == 5 ? 0.6 : ty == 4 ? 0.12 : 0.05;\n"                                                                                           \
     "    /* the pixel's size on the water in world units: the normal maps' and the foam's finest detail faded where a pixel holds about a cell of\n"     \
     "       it - finer, it only sparkles from one frame to the next as it scrolls (far away, at grazing angles) */\n"                                    \
     "    vec2 fwp = fwidth(P.xy);\n"                                                                                                                     \
     "    float px = max(fwp.x, fwp.y);\n"                                                                                                                \
-    "    float amp = ty == 5 ? 0.09 * m.y : 0.1;\n"                                                                                                      \
+    "    float amp = ty == 5 ? 0.06 * m.y : 0.1;\n"                                                                                                      \
     "    vec3 gw = sm_wgrad(P.xy * (m2.x * 1.5), t * spd * m2.y, px * m2.x * 1.5);\n"                                                                    \
-    "    vec2 g = gw.xy;\n"                                                                                                                              \
     "    /* the base normal: up where the water lies flat, the face's where it stands (a waterfall) - the game's waves move the seas' triangles\n"       \
     "       every frame, and their faces' normals, at a grazing view, turned the reflection and the Fresnel from one frame to the next */\n"             \
     "    vec3 nb = normalize(mix(sh_n, vec3(0.0, 0.0, 1.0), up));\n"                                                                                     \
-    "    vec3 N = normalize(nb - vec3(g * amp, 0.0) * up);\n"                                                                                            \
+    "    vec3 N = normalize(nb - vec3(gw.xy * amp, 0.0) * up);\n"                                                                                        \
     "    if (ty == 5 && uMat[0].z > 0.0) N = sm_rain(N, P, t, uMat[0].z * 0.5 * sm_sky(P));\n"                                                           \
     "    vec2 uv;\n"                                                                                                                                     \
     "    float depth = sm_under(P, uv);\n"                                                                                                               \
     "    float dv = depth * clamp(abs(V.z) * 1.2, 0.1, 1.0);  /* (along the view: about the water's height there) */\n"                                  \
     "    float deep = 1.0 - exp(-dv / max(m2.w, 0.05));\n"                                                                                               \
     "    /* the shore: a thin band (the depth's tenth or so), its edge widened to two pixels' change of the depth (at most twice the band) so\n"         \
-    "       that it does not step or flash where the depth changes fast across the picture */\n"                                                         \
+    "       that it does not step or flash where the depth changes fast across the picture; softer right at the contact (40 %, full a third\n"           \
+    "       of the band out: the line where the water meets a post moves with the game's waves) */\n"                                                    \
     "    float bw = 0.1 + 0.05 * m2.w;\n"                                                                                                                \
-    "    float shore = 1.0 - smoothstep(0.0, bw + min(2.0 * fwidth(dv), bw), dv);\n"                                                                     \
-    "    /* (and softer right at the contact - 40 %, full a third of the band out: the line where the water meets a post moves with the game's\n"        \
-    "       waves, and full foam there made it a bright edge jumping from frame to frame) */\n"                                                          \
-    "    shore *= 0.4 + 0.6 * smoothstep(0.0, 0.35 * bw, dv);\n"                                                                                         \
-    "    /* the foam's breaking: a world-space noise drifting slowly, and a slow pulse out from the shore - 8 radians a unit of depth (25\n"             \
-    "       before: the game's waves lifting the water a few hundredths a frame turned it on and off at the posts and the rocks) -, each\n"              \
-    "       flattened where it is finer than the pixel */\n"                                                                                             \
-    "    float fn = mix(0.5, sm_noise(P.xy * (3.0 * m2.x) + vec2(t * 0.4, -t * 0.3)), 1.0 - smoothstep(0.25, 0.8, px * 3.0 * m2.x));\n"                  \
-    "    float brk = fn + 0.3 * sin(dv * 8.0 - t * 1.5) * (1.0 - smoothstep(0.3, 1.0, fwidth(dv) * 8.0));\n"                                             \
-    "    /* (and faded where a pixel covers more than half a unit of the water: the band is under a pixel there, and the game's waves moving\n"          \
-    "       the waterline turned it on and off at the far islands' feet) */\n"                                                                           \
-    "    float foam = m2.z * shore * smoothstep(0.25, 0.6, brk) * (1.0 - smoothstep(0.35, 0.9, px));\n"                                                  \
+    "    float shore = (1.0 - smoothstep(0.0, bw + min(2.0 * fwidth(dv), bw), dv)) * (0.4 + 0.6 * smoothstep(0.0, 0.35 * bw, dv));\n"                    \
     "    if (ty == 4) {  /* lava: the crust's relief lit by the sun, a hotter seam where it meets the shore; then the emissive */\n"                     \
     "        float pulse = 1.0 + m.y * sin(t * 0.8 + sm_noise(P.xy * 0.08) * 6.2832);\n"                                                                 \
     "        float v = max(tex.r, max(tex.g, tex.b)), th = m.z;\n"                                                                                       \
@@ -340,33 +335,40 @@
     "    float ndv = max(dot(N, V), 0.0);\n"                                                                                                             \
     "    float F = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);\n"                                                                                                 \
     "    vec3 R = reflect(-V, N);\n"                                                                                                                     \
-    "    sm_ssr_water = uMat[255].x >= 1.5;\n"                                                                                                           \
     "    if (ty == 7) {  /* quicksand: a dull wet sheen over the slow drift, a darker wet band at its edge */\n"                                         \
     "        vec3 c = lit * (1.0 - 0.25 * m2.z * shore);\n"                                                                                              \
     "        if (m.w >= 0.0) c *= mix(vec3(1.0), sm_tint(m.w), 0.5);\n"                                                                                  \
     "        return c * (1.0 - 0.2 * m.y) + m.y * (sm_spec(N, V, 0.45, vec3(0.04)) * 0.8 + sm_env(R, 0.5) * L * (F * 0.6));\n"                           \
     "    }\n"                                                                                                                                            \
-    "    /* water: lighter where shallow, toward the tint (or a deeper shade of its own colour) where deep; the sky's reflection (High: the\n"           \
-    "       3D's), Fresnel, the sun's and the lamps' glints, the foam at the shore */\n"                                                                 \
+    "    /* water: lighter where shallow, toward the tint (or a deeper shade of its own colour) where deep */\n"                                         \
     "    vec3 dcol = m.w >= 0.0 ? mix(lit, sm_tint(m.w) * max(dot(L, vec3(0.3333)), 0.15), 0.6) : lit * 0.85;\n"                                         \
     "    vec3 wcol = mix(lit * 1.05, dcol, deep * 0.6);\n"                                                                                               \
+    "    /* the foam: the shore's band broken by a world-space noise drifting slowly (flattened where finer than the pixel) - no pulse, nothing\n"       \
+    "       that turns on and off with the game's waves -, faded where a pixel covers more than half a unit of the water (the band is under a\n"         \
+    "       pixel there: the waves moving the waterline turned it on and off at the far islands' feet) */\n"                                             \
+    "    float fn = mix(0.5, sm_noise(P.xy * (3.0 * m2.x) + vec2(t * 0.15, -t * 0.1)), 1.0 - smoothstep(0.25, 0.8, px * 3.0 * m2.x));\n"                 \
+    "    float foam = m2.z * shore * smoothstep(0.2, 0.6, fn) * (1.0 - smoothstep(0.35, 0.9, px));\n"                                                    \
+    "    /* the reflection: the sky's; High: the picture's near the camera, faded to the sky's far away (sm_ssr_water_far) - Low never marches\n"        \
+    "       it, whatever Surface Detail is. The glint wider where the maps are faded (a sheen far away, not a sparkle) */\n"                             \
     "    R.z = max(R.z, 0.03);  /* (a wave's normal never shows the water the ground's shade below the horizon) */\n"                                    \
-    "    vec3 sky = sm_env(R, 0.05) * L;\n"                                                                                                              \
-    "    vec3 refl = sm_ssr_water_far(P + sh_n * 0.03, R, sky, px);\n"                                                                                   \
-    "    vec3 spec = sm_spec(N, V, 0.05 + 0.2 * gw.z, vec3(0.02)) * 2.0;  /* (wider where the maps are faded: a sheen far away, not a sparkle) */\n"     \
+    "    sm_ssr_water = uMat[255].x >= 1.5;\n"                                                                                                           \
+    "    /* (the sky itself - the level's sky colour, the horizon a little dimmer than the zenith - as bright as the place is lit: the light's\n"        \
+    "       brightest channel, not its colour - the sea's vertex colour is its own tint -; sm_env's dark ground below the horizon left out:\n"           \
+    "       the water reflects the sky only, and with it the far water, where the Fresnel is most of it, was a third darker than the game's) */\n"       \
+    "    vec3 sky = uSsrSky.rgb * (0.85 + 0.15 * R.z) * clamp(max(L.r, max(L.g, L.b)) * 1.6, 0.3, 1.0);\n"                                               \
+    "    vec3 refl = sm_ssr_water ? sm_ssr_water_far(P + nb * 0.03, R, sky, px) : sky;\n"                                                                \
+    "    vec3 spec = sm_spec(N, V, 0.05 + 0.2 * gw.z, vec3(0.02)) * 2.0;\n"                                                                              \
     "    vec3 fcol = vec3(0.9, 0.95, 1.0) * clamp(dot(lit, vec3(0.3333)) * 2.2, 0.4, 1.0);  /* (white, as bright as the place) */\n"                     \
-    "    vec3 S = mix(wcol * (1.0 - F * 0.7) + refl * (F * 0.7 * m.x), fcol, clamp(foam, 0.0, 1.0)) + spec * m.x;\n"                                     \
-    "    if (uMat[0].x > 0.5) {  /* Surface Detail on too: its water is the look (sh_material's ty 5: its ripples over the normal maps, its\n"           \
-    "       Fresnel, reflection and glint), over the depth's colour, with the foam; the composite over the 3D under it as below */\n"                    \
-    "        vec4 wa = sm_waves_aa(N, P, m.y, t, px);  /* (its ripples faded as the maps where too fine) */\n"                                           \
-    "        vec3 Nw = wa.xyz;\n"                                                                                                                        \
-    "        vec3 Rw = reflect(-V, Nw);\n"                                                                                                               \
-    "        float Fs = mix(0.15, 1.0, 0.02 + 0.98 * pow(1.0 - max(dot(Nw, V), 0.0), 5.0));\n"                                                           \
-    "        vec3 rs = sm_ssr_water_far(P + sh_n * 0.03, Rw, sm_env(Rw, 0.05) * L, px);\n"                                                               \
-    "        vec3 base = wcol * (1.0 - 0.35 * Fs * m.x) + m.x * (rs * (Fs * 0.7) + sm_spec(Nw, V, 0.07 + 0.18 * max(wa.w, gw.z), vec3(0.02)) * 1.5);\n"  \
-    "        S = mix(base, fcol, clamp(foam, 0.0, 1.0));\n"                                                                                              \
-    "    }\n"                                                                                                                                            \
-    "    float ak = mix(0.7, 1.0, deep), aa = F * 0.35 + foam;\n"                                                                                        \
+    "    vec3 S = mix(wcol * (1.0 - F * 0.5) + refl * (F * 0.5 * m.x), fcol, clamp(foam, 0.0, 1.0)) + spec * m.x;\n"                                     \
+    "    /* the alpha (the game's times this): more where deep, the Fresnel's share; none right at the contact - the soft edge: the line where\n"        \
+    "       the water meets a post or a rock moves with the game's waves, and drawn hard it flashed */\n"                                                \
+    "    float edge = smoothstep(0.0, bw, dv);\n"                                                                                                        \
+    "    sm_w_alpha = mix(0.7, 1.0, deep) * edge;\n"                                                                                                     \
+    "    /* (and opaque far away, where a pixel covers more than half a unit of the water: there what lies under it is a thin sliver - the\n"            \
+    "       skirts of sand at Pokitaru's far islands' feet, a hair under the surface - that came and went from one frame to the next as the\n"           \
+    "       far ground's pieces were drawn or not, and the water seen through it flashed with it) */\n"                                                  \
+    "    float far = smoothstep(0.35, 0.9, px);\n"                                                                                                       \
+    "    sm_w_add = F * 0.35 * edge + foam + far;\n"                                                                                                     \
     "    if (depth < 1e3 && uMat[255].w != 0.0) {  /* the 3D under it, this frame's: seen through, bent by the waves on High */\n"                       \
     "        vec3 under = textureLod(uSsrCol, uv, 0.0).rgb;\n"                                                                                           \
     "        if (uMat[255].x >= 1.5) {  /* (the bent sample mixed in only where what it shows lies behind the water - not an object in front -,\n"       \
@@ -377,13 +379,18 @@
     "            float k = d < 1.0 ? smoothstep(fw + 0.02, fw + 0.3, uSsrZ.y / ((d * 2.0 - 1.0) - uSsrZ.x)) * smoothstep(0.05, 0.3, dv) : 0.0;\n"        \
     "            under = mix(under, textureLod(uSsrCol, o, 0.0).rgb, k);\n"                                                                              \
     "        }\n"                                                                                                                                        \
-    "        sm_w_refr = under * mix(vec3(1.0), wcol / max(max(lit.r, max(lit.g, lit.b)), 0.05), 0.15 + 0.25 * deep);\n"                                 \
+    "        /* (tinted by the water's colour the deeper it is, none at the contact: tinted there, the sand the game's waves covered and uncovered\n"    \
+    "           a pixel row at a time stepped by that tint) */\n"                                                                                        \
+    "        sm_w_refr = under * mix(vec3(1.0), wcol / max(max(lit.r, max(lit.g, lit.b)), 0.05), (0.15 + 0.25 * deep) * edge);\n"                        \
     "        sm_w_mode = 1;\n"                                                                                                                           \
     "    } else if (depth < 1e3) {\n"                                                                                                                    \
     "        sm_w_mode = 2;\n"                                                                                                                           \
+    "    } else if (uMat[0].w != 0.0) {  /* (nothing under it in the picture - the sky, the void past Pokitaru's skirts of sand around its\n"            \
+    "        islands: the open sea, as deep as water gets - opaque; seen through there, the skirts' edges showed as hard-edged trapezoids, the\n"        \
+    "        3D under the water on one side and what the game draws behind the sea on the other) */\n"                                                   \
+    "        sm_w_mode = 2;\n"                                                                                                                           \
+    "        sm_w_alpha = 1e3;\n"                                                                                                                        \
     "    }\n"                                                                                                                                            \
-    "    sm_w_alpha = ak;\n"                                                                                                                             \
-    "    sm_w_add = aa;\n"                                                                                                                               \
     "    return S;\n"                                                                                                                                    \
     "}\n"                                                                                                                                                \
     "/* ---- Options > Graphics > Grass on the tfrags with the `grass` material: Low's relief (sm_grass_detail) and High's shells (sm_grass;\n"          \
