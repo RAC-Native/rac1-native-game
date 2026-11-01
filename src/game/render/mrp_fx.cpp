@@ -1233,7 +1233,7 @@ std::vector<V7> g_v7;
 std::vector<Batch> g_b7;
 
 struct Vu7Stats {
-    uint64_t batches = 0, tris = 0, world = 0, general = 0, no_tex = 0, mip = 0, bad_type = 0, clip_path = 0;
+    uint64_t batches = 0, tris = 0, world = 0, general = 0, no_tex = 0, mip = 0, bad_type = 0, clip_path = 0, water_flat = 0;
 } g_s7;
 
 // the emissive surfaces of kind 4 ("surface", mrp_lighting.h): (the callback's moby class, TEX0's TBP) -> the shader's slot
@@ -1242,6 +1242,14 @@ struct Vu7Emissive {
     std::unordered_map<uint64_t, uint32_t> slot;
     std::set<uint64_t> seen;  // (RAC1_LIGHTS_TRACE: the surfaces drawn, listed once)
     bool on = false;
+    // Options > Graphics > Water: the slots whose material is `water` (their seas drawn as our own water) and the classes that have one
+    std::vector<uint8_t> water_slot = std::vector<uint8_t>(kEmissivePreviewSlot + 1, 0);
+    std::set<uint32_t> water_cls;
+    // (the heights its flat seas have been seen at, per class, since the level started (mrp_fx_clear_caches): drawn at the middle -
+    // build_vu7. Not emptied with the slots: they are made again whenever the level's list changes, every few seconds on Pokitaru, and
+    // the sea drawn at the height of that frame then jumped)
+    std::mutex z_m;
+    std::unordered_map<uint32_t, std::pair<float, float>> z_range;
 } g_e7;
 uint64_t e7_key(uint32_t cls, uint32_t tbp) { return static_cast<uint64_t>(cls) << 32 | tbp; }
 // the debug menu's pick (mrp_fx_surface_pick): the ray asked for, the frame's nearest hit, the last answer; the surfaces the level drew
@@ -1263,9 +1271,41 @@ void vu7_emissive_refresh() {
     if (gen == g_e7.gen) return;
     g_e7.gen = gen;
     g_e7.slot.clear();
+    std::fill(g_e7.water_slot.begin(), g_e7.water_slot.end(), 0);
+    g_e7.water_cls.clear();
     for (size_t i = 0; i < list.size() && i < static_cast<size_t>(kEmissiveSlots); ++i)
-        if (list[i].kind == 4) g_e7.slot[e7_key(static_cast<uint32_t>(list[i].o_class), static_cast<uint32_t>(list[i].tex))] = static_cast<uint32_t>(i + 1);
+        if (list[i].kind == 4) {
+            g_e7.slot[e7_key(static_cast<uint32_t>(list[i].o_class), static_cast<uint32_t>(list[i].tex))] = static_cast<uint32_t>(i + 1);
+            if (list[i].type == MAT_WATER) {
+                g_e7.water_slot[i + 1] = 1;
+                g_e7.water_cls.insert(static_cast<uint32_t>(list[i].o_class));
+            }
+        }
     if (has_pv && pv.kind == 4) g_e7.slot[e7_key(static_cast<uint32_t>(pv.o_class), static_cast<uint32_t>(pv.tex))] = static_cast<uint32_t>(kEmissivePreviewSlot);
+}
+
+// orig: (host) a texture's average colour (RGBA8, as its texels), for the seas the Water option draws as its own water: one flat colour
+// of the level's palette instead of the game's scrolling texture (docs/materials.md, Water). Kept per decoded texture
+uint32_t tex_average(const gs::TexImage& t) {
+    thread_local std::unordered_map<uint64_t, uint32_t> cache;
+    if (auto it = cache.find(t.id); it != cache.end()) return it->second;
+    if (cache.size() > 256) cache.clear();
+    // (the colour weighted by the alpha: blended over what is under it, the texture's mean is that of its colour times its alpha - its
+    // opaque texels, the light crests, count more than its see-through ones; the plain mean made the seas a third darker)
+    uint64_t sum[3] = {0, 0, 0}, sa = 0;
+    const size_t n = std::min(t.px.size(), static_cast<size_t>(std::max(t.w, 0)) * static_cast<size_t>(std::max(t.h, 0)));
+    for (size_t i = 0; i < n; ++i) {
+        const uint32_t a = t.px[i] >> 24;
+        sa += a;
+        for (int c = 0; c < 3; ++c) sum[c] += ((t.px[i] >> (8 * c)) & 0xffu) * a;
+    }
+    uint32_t avg = 0;
+    if (n > 0) {
+        for (int c = 0; c < 3; ++c) avg |= static_cast<uint32_t>(sa > 0 ? (sum[c] + sa / 2) / sa : 0) << (8 * c);
+        avg |= static_cast<uint32_t>((sa + n / 2) / n) << 24;
+    }
+    cache[t.id] = avg;
+    return avg;
 }
 
 // The program's own vertex (shadows_vu1.cpp, 0x010..): X Y Z = (M p).xyz x Q + vf30.xyz, Q = vf31.w / w, F = clamp(w + vf30.w,
@@ -1331,6 +1371,21 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
                             fld(st.zbuf, 32, 1) == 0 ? 1u : 0u, cls, static_cast<uint32_t>(key & 0xffffffffu));
         }
         key_and_flags(st, false, S.k, S.flags);
+        if (tme && g_water > 0) {
+            // (Options > Graphics > Water: a sea tagged `water` drawn as our own water - its texel the texture's average colour, flag 27
+            // with the colour in the layer's place; the shader's normal maps, reflection, depth and foam do the rest, sm_water2. The
+            // game's other blended layers of the same class, untagged - Pokitaru's additive highlights (textures 40 and 41 of class
+            // 1111), Novalis's tiles' second layers (40 and 42 of 751) - drawn flat the same way: their colour and brightness kept, faded
+            // by their vertices' alpha as the game fades them, without their scrolling texture; Ratchet's wake and splashes are other
+            // effects, kept)
+            const uint32_t cls = static_cast<uint32_t>(S.key >> 32);
+            const bool sea = S.emis != 0 && g_e7.water_slot[S.emis] != 0;
+            if (sea || (S.emis == 0 && fld(st.prim, 6, 1) != 0 && g_e7.water_cls.count(cls) != 0)) {
+                S.flags |= 1u << 27;
+                S.layer = static_cast<int>(tex_average(*tex));
+                if (!sea) ++g_s7.water_flat;
+            }
+        }
         // (a sea of the Water option's whose blend is the GS's fixed alpha - ALPHA 0x64, (Cs - Cd) FIX + Cd: Novalis's water, Rilgar's,
         // Hoven's - drawn as the alpha blend it is, with FIX for its alpha (flag 26, FIX in the fog colour's top byte), so that the
         // shader can put it over the 3D under it as it does the 0x44 seas; the same picture as the GS's blend when it does not)
@@ -1403,6 +1458,29 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
         pre.resize(b.n);
         for (uint32_t i = 0; i < b.n; ++i) vert_pre(i, pre[i]);
     }
+    // Options > Graphics > Water: a flat sea of our own water drawn at one height, the middle of the heights it has been seen at - the
+    // game moves Pokitaru's whole sea up and down a quarter of a unit, and the near-flat skirts of sand around its islands came through
+    // it and went under it again (hard-edged trapezoids, flashing), its waterline on the beaches moving a pixel row at a time. The
+    // picture only: the game's sea, its collision and Ratchet's swimming keep the game's height. A class seen over more than a unit
+    // (Novalis's tiles at many heights) or a sea not flat (a river, a waterfall) keeps its own
+    float flat_dz = 0.0f;
+    bool flat = false;
+    if (g_water > 0 && pre_on && b.n > 0 && ((strip.flags >> 27) & 1u) != 0) {
+        const float z0 = pre[0].wp[2];
+        bool level = std::isfinite(z0);
+        for (uint32_t i = 1; i < b.n && level; ++i) level = std::fabs(pre[i].wp[2] - z0) < 1e-3f;
+        if (level) {
+            std::lock_guard<std::mutex> lg(g_e7.z_m);
+            auto [it, fresh] = g_e7.z_range.try_emplace(b.tag & 0xffffu, z0, z0);
+            auto& r = it->second;
+            r.first = std::min(r.first, z0);
+            r.second = std::max(r.second, z0);
+            if (r.second - r.first < 1.0f) {
+                flat = true;
+                flat_dz = 0.5f * (r.first + r.second) - z0;
+            }
+        }
+    }
     auto vert = [&](uint32_t i, const State& S, bool gs_z) {
         const gs::Vu7Vertex& s = vin[b.first + i];
         Pre own;
@@ -1411,7 +1489,7 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
         V7 v{};
         v.wp[0] = P.wp[0];
         v.wp[1] = P.wp[1];
-        v.wp[2] = P.wp[2];
+        v.wp[2] = P.wp[2] + flat_dz;
         if (S.fst) {  // (UV in texels: with FST the GS reads the UV register, not kicked here)
             v.stq[0] = s.st[0] / static_cast<float>(S.tw);
             v.stq[1] = s.st[1] / static_cast<float>(S.th);
@@ -1434,7 +1512,7 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
         v.emis = S.emis;
         {  // the depth: the program's Z (its integer part, FTOI4) through the replica's map (render_gs_depth)
             const double Z = P.Z;
-            v.depth = g_v7_depth && gs_z ? static_cast<float>(2.0 * (g_v7_da + g_v7_db * Z) - 1.0) : 2.0f;
+            v.depth = g_v7_depth && gs_z && !flat ? static_cast<float>(2.0 * (g_v7_da + g_v7_db * Z) - 1.0) : 2.0f;  // (a flattened sea: the view's)
         }
         g_v7.push_back(v);
     };
@@ -1657,7 +1735,9 @@ void main() {
         vec2 uv = sh_mat_uv(vStq.xy / vStq.z, vEmis) * vec2(sz);  // (lava, mud, quicksand: the materials' slow flow)
         int layer = int(vTex.x);
         vec4 t;
-        if (lin) {
+        if (((fl >> 27) & 1u) != 0u) {  // (Options > Graphics > Water: a sea drawn as our own water - its texture's average colour, sm_water2)
+            t = unpackUnorm4x8(vTex.x);
+        } else if (lin) {
             vec2 p = uv - 0.5;
             ivec2 i0 = ivec2(floor(p));
             vec2 f = p - vec2(i0);
@@ -1934,6 +2014,10 @@ size_t mrp_fx_clear_caches() {
     {
         std::lock_guard<std::mutex> lg(g_p7.m);
         g_p7.level.clear();
+    }
+    {
+        std::lock_guard<std::mutex> lg(g_e7.z_m);
+        g_e7.z_range.clear();
     }
     const size_t n = static_cast<size_t>(g_atlas.used + g_vk_atlas.used);
     if (g_atlas.tex != 0) glDeleteTextures(1, &g_atlas.tex);
@@ -2483,6 +2567,8 @@ void mrp_fx_report() {
                     static_cast<unsigned long long>(g_s7.batches), static_cast<unsigned long long>(g_s7.clip_path), static_cast<unsigned long long>(g_s7.tris),
                     static_cast<unsigned long long>(g_s7.world), static_cast<unsigned long long>(g_s7.general), static_cast<unsigned long long>(g_s7.no_tex),
                     static_cast<unsigned long long>(g_s7.mip), static_cast<unsigned long long>(g_s7.bad_type));
+    if (g_s7.water_flat != 0)
+        std::printf("[mrp-fx] program 7 surfaces: %llu batches of other layers over the Water option's seas drawn flat\n", static_cast<unsigned long long>(g_s7.water_flat));
     if (g_st.kc_starts != 0)
         std::printf("[mrp-fx] kick check: %llu particle program starts, %llu kicks, %llu quadwords against the VU interpreter on the uploaded microcode: "
                     "%llu starts and %llu quadwords differ\n",
@@ -2516,3 +2602,4 @@ void mrp_fx_report() {
 }
 
 }  // namespace rac1
+

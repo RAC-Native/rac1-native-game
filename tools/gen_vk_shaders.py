@@ -551,7 +551,9 @@ void main() {
         vec2 uv = sh_mat_uv(vStq.xy / vStq.z, vEmis) * vec2(sz);  // (lava, mud, quicksand: the materials' slow flow)
         int layer = int(vTex.x);
         vec4 t;
-        if (lin) {
+        if (((fl >> 27) & 1u) != 0u) {  // (Options > Graphics > Water: a sea drawn as our own water - its texture's average colour, sm_water2)
+            t = unpackUnorm4x8(vTex.x);
+        } else if (lin) {
             vec2 p = uv - 0.5;
             ivec2 i0 = ivec2(floor(p));
             vec2 f = p - vec2(i0);
