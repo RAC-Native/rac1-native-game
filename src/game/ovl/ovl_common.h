@@ -35,11 +35,11 @@ inline uint32_t f2u(float f) { uint32_t u; std::memcpy(&u, &f, 4); return u; }
 // (rounded to nearest, PCSX2's FPUDiv setting), VU code vuc(). Game data stays in range.
 // orig: (helper) an EE FPU operand: exponent 255 is an ordinary number (up to 2^129, the PS2
 // has no Inf / NaN, game data uses 0x7f800000 as "very large"), denormals read as signed zero.
-#if (defined(__WIIU__) && !defined(RAC1_VU0_EXACT)) || defined(RAC1_VU0_NF)
+#if defined(RAC1_VUC_FPU)
 [[gnu::noinline, gnu::cold]] inline double fpu_in_rare(float f);
 inline double fpu_in(float f) {
-    // ((2026-11-01) the Wii U: a normal number or a zero decided on the FPU - returned as it is, as below; the rest out of line, the
-    // same rules. No float -> integer trip through memory on the 750. RAC1_VU0_NF: the PC's check)
+    // (RAC1_VUC_FPU, testing - off: measured slower on the console, see vuc below: a normal number or a zero decided on the FPU,
+    // returned as it is, as below; the rest out of line, the same rules)
     const float a = __builtin_fabsf(f);
     if (__builtin_expect(a <= 3.40282347e+38f && (a >= 1.17549435e-38f || a == 0.0f), 1)) return static_cast<double>(f);
     return fpu_in_rare(f);
@@ -63,8 +63,8 @@ inline double fpu_in(float f) {
 inline float fpu_out(double r) {
     if (__builtin_expect(std::fabs(r) > static_cast<double>(FLT_MAX), 0)) return std::signbit(r) ? -FLT_MAX : FLT_MAX;
     const float f = static_cast<float>(r);
-#if (defined(__WIIU__) && !defined(RAC1_VU0_EXACT)) || defined(RAC1_VU0_NF)
-    {  // ((2026-11-01) as fpu_in: a normal result or a zero decided on the FPU, kept)
+#if defined(RAC1_VUC_FPU)
+    {  // (RAC1_VUC_FPU, as fpu_in: a normal result or a zero decided on the FPU, kept)
         const float a = __builtin_fabsf(f);
         if (__builtin_expect(a <= 3.40282347e+38f && (a >= 1.17549435e-38f || a == 0.0f), 1)) return f;
     }
@@ -101,10 +101,11 @@ inline float vuc_bits(float f) {
     }
     return f;
 }
-#if (defined(__WIIU__) && !defined(RAC1_VU0_EXACT)) || defined(RAC1_VU0_NF)
-// ((2026-11-01) the Wii U: the common case decided on the FPU - a normal finite number is returned as it is, as vuc_bits does; the
-// rest (zeros, denormals, infinities, NaNs: any comparison of a NaN is false) by vuc_bits, out of line. The same value always; no
-// float -> integer trip through memory (the 750 has no move between its float and integer registers). RAC1_VU0_NF: the PC's check)
+#if defined(RAC1_VUC_FPU)
+// (RAC1_VUC_FPU, testing: the common case decided on the FPU - a normal finite number is returned as it is, as vuc_bits does; the
+// rest (zeros, denormals, infinities, NaNs: any comparison of a NaN is false) by vuc_bits, out of line. The same value always. Off:
+// on the console (2026-11-01, Kerwan, 1500 steps not in real time) the game's code 22.9 ms a step with it, 20.6 without - the 750's
+// trip through memory is cheap, the zeros' (common) call out of line is not)
 [[gnu::noinline, gnu::cold]] inline float vuc_rare(float f) { return vuc_bits(f); }
 inline float vuc(float f) {
     const float a = __builtin_fabsf(f);

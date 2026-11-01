@@ -33,6 +33,7 @@ uint64_t g_resyncs = 0;
 
 // the mirror's thread
 OSThread g_iop;
+int g_iop_core = 0;
 alignas(16) unsigned char g_iop_stack[256 * 1024];
 std::atomic<bool> g_iop_run{false};
 std::atomic<bool> g_alone_ok{true};
@@ -152,15 +153,23 @@ bool audio_out_start(int) {
     g_on = true;
     if (rac1::snd989_mirror_enabled()) {
         g_iop_run.store(true);
-        if (OSCreateThread(&g_iop, iop_main, 0, nullptr, g_iop_stack + sizeof g_iop_stack, sizeof g_iop_stack, 10, OS_THREAD_ATTRIB_AFFINITY_CPU2)) {
+        // (its core: RAC1_WIIU_IOP_CORE, default 0 - the workers' core, idle most of a frame; 2 was the game thread's, 13% of it on
+        // Kerwan)
+        const char* ce = std::getenv("RAC1_WIIU_IOP_CORE");
+        g_iop_core = ce != nullptr ? std::atoi(ce) : 0;
+        if (g_iop_core < 0 || g_iop_core > 2) g_iop_core = 0;
+        if (OSCreateThread(&g_iop, iop_main, 0, nullptr, g_iop_stack + sizeof g_iop_stack, sizeof g_iop_stack, 10,
+                           static_cast<OSThreadAttributes>(OS_THREAD_ATTRIB_AFFINITY_CPU0 << g_iop_core))) {
             OSSetThreadName(&g_iop, "rac1 IOP mirror");
             OSResumeThread(&g_iop);
         } else {
             g_iop_run.store(false);
         }
     }
-    std::printf("[wiiu] audio: AX at 48 kHz, two voices, %u samples ahead; %s\n", kAhead,
-                g_iop_run.load() ? "the IOP's mirror on core 2" : "the game's thread pushes its IOP's output");
+    if (g_iop_run.load())
+        std::printf("[wiiu] audio: AX at 48 kHz, two voices, %u samples ahead; the IOP's mirror on core %d\n", kAhead, g_iop_core);
+    else
+        std::printf("[wiiu] audio: AX at 48 kHz, two voices, %u samples ahead; the game's thread pushes its IOP's output\n", kAhead);
     return true;
 }
 

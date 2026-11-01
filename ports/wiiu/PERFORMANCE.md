@@ -1148,3 +1148,32 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   Novalis (1500 frames each); the earlier vu0nf check covered levels 0-18. **Not measured on the console yet** (it was switched off).
 - **Next:** the A/B on the console (build-wiiu-ex, configured -DRAC1_VU0_EXACT=1, against build-wiiu-mt); the IOP mirror off the game
   thread's core; segment_collide_v and Kerwan's classes 75 / 574.
+
+### The A/B on the console: the FPU-decided clamp off, the sound off the game's core, the palette blend on the host (2026-11-01, day)
+
+- **Measuring:** Kerwan in real time varies with the path the explore run takes at that speed (the windows' game-thread ms went
+  11 -> 15.6 between two builds that differ by 8% in game steps a second). The A/B now runs RAC1_REALTIME=0 (one step a host frame,
+  the same work every run; rac1-scratch/wiiu/lv/dser.sh: 1500 steps, the [game] code ms a step over 40 windows); two runs of one build
+  differ by ~0.3 ms. The sound on the game's core (below) was the other noise: with it on core 0 a build's repeats agree.
+- **The FPU-decided clamp was slower** (game code ms a step, Kerwan, the IOP mirror on core 2): exact ops and bit clamp (build-wiiu-ex)
+  21.2; vu0nf + bit clamp 20.6; vu0m ops + FPU clamp 21.7; vu0nf + FPU clamp (last night's build) 22.9. On the 750 the bits' trip
+  through memory is cheap; the FPU form sent every zero (common: w lanes, null axes) to an out-of-line call. vuc / vuclamp / fpu_in /
+  fpu_out keep their bit rules by default; the FPU form only with -DRAC1_VUC_FPU (testing). vu0nf's lanes use vuc itself.
+- **The IOP's mirror on core 0** (RAC1_WIIU_IOP_CORE, default 0; 2 the old place): the workers' core, idle most of a Kerwan frame
+  (the chain reader and the world's job end ~16 ms into a 30-90 ms cycle). Kerwan 22.0 -> 20.8 ms a step, 25.8 -> 27.7 steps a second.
+- **vu0nf + RAC1_EULER_CACHE against the exact build** (both with the sound on core 0): 21.6 -> 20.9 ms a step (~3%); the cache alone
+  ~0.4 (22.4 -> 22.0 with the sound on core 2). Kept.
+- **The palette blend on the host** (src/game/ovl/palette_blend.cpp, hooked by tools/codegen/hooks.glue into the six overlays that carry
+  the routine: Kerwan 0x23c428, Rilgar 0x277b20, Umbris 0x2762e0, Batalia 0x257d40, Gaspar 0x26d240, Oltanis 0x255ce0;
+  RAC1_PALETTE_BLEND_FAST, the Wii U's default 1, the PC's 0): the routine (class 994's draw on Kerwan, through 0x291918 / 0x291218)
+  blends two 256-colour palettes per texel - 4096 texels a call, each 16 VU0 ops (8 VMULbc, 4 VADD, 4 VFTOI0) - 11.9% of core 2. The
+  host loop computes each palette entry's product once (the same VMULbc value) and per texel the sum, the clamp and the integer; the
+  VU0 registers left as the loop leaves them. **Exact:** RAMHASH with it on and off identical on levels 3 (PC and Wii U paths), 5, 7,
+  8, 9, 14 (the routine run > 1000 times on each). Kerwan **20.9 -> 18.5 ms a step**.
+- **Kerwan now** (all of the above, real time, explore 1800 steps): host frame **72.6 -> 43.8 ms** (11.3 -> 18.1 frames a second), 42.2
+  -> 46.4 game steps a second, GPU busy 27.5. Not run in real time it is the GPU's frame (host 28.9, GPU ~29): the game step 18.5 ms.
+- The samples (core 2, RAC1_REALTIME=0) after the clamp's fix, before the palette blend: the draw lists 13.9% (class 994's blend 11.9),
+  moby updates 20.9 (segment_collide_v 7.3, class 75 6.8, class 574 4.4, moby_transform_core 4.3), relight_flagged 3.3, memcpy 2.4.
+- **Next:** segment_collide_v (its float helpers: floor_probe_v from class 574, sound_line_blocked_v), Kerwan's class 75; the same
+  measure on Nebula G34, Batalia, Veldin Orb.
+

@@ -4,8 +4,8 @@
 // masked lanes only, ACC written by the ACC forms - but the MAC and status flags not set. An op whose destination is vf0 is kept for
 // its flags alone (vf0 does not change): it runs as vu0_regs.h's, flags and all, so a CFC2 after it reads what it would.
 // Why: on the Wii U (no SSE) vu0_regs.h's ops run on the SSE2 shim - every operand and result clamped with integer masks through
-// memory, the flag words built lane by lane, ~150 instructions an op; moby_draw_fast.inc measured the draw loop so. Here a lane's
-// clamp is decided on the FPU (|x| a normal number: kept; the rest through vuc), an op a few instructions a lane.
+// memory, the flag words built lane by lane, ~150 instructions an op; moby_draw_fast.inc measured the draw loop so. Here a lane is
+// clamped by vuc, an op a few instructions a lane.
 // A file uses them with `using namespace vu0nf;` in place of `using namespace vu0m;` (tools/codegen/vu0_nf_pass.py puts it in the
 // generated files that may: their CFC2 of the status / MAC flags only after an op into vf0).
 // orig: (host)
@@ -21,15 +21,8 @@ namespace rac1::vu0nf {
 using namespace vu0m;
 
 namespace detail {
-// orig: (helper) vuc's rare cases (zeros, denormals, infinities, NaNs), out of line
-[[gnu::noinline, gnu::cold]] inline float vuc_rare(float x) { return vuc(x); }
-// orig: (helper) vuc, its common case decided on the FPU: a normal finite number is returned as it is (vuc does too); the rest
-// (any comparison of a NaN is false) by vuc itself - so always vuc's value
-[[gnu::always_inline]] inline float fvuc(float x) {
-    const float a = __builtin_fabsf(x);
-    if (__builtin_expect(a >= 1.17549435e-38f && a <= 3.40282347e+38f, 1)) return x;
-    return vuc_rare(x);
-}
+// orig: (helper) vuc (ovl_common.h's: its bits, the console's fastest - RAC1_VUC_FPU its FPU-decided form)
+[[gnu::always_inline]] inline float fvuc(float x) { return vuc(x); }
 enum Op { kAdd, kSub, kMul, kMadd };
 // orig: (helper) the op on the masked lanes of `d`: `bv` the second operand's lanes or `bs` a broadcast (not yet clamped), `c` ACC
 // (kMadd); the lanes computed from the operands first, then written

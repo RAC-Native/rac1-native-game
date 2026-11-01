@@ -22,6 +22,7 @@
 #include <game/ovl/hero_l1.h>
 #include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/palette_blend.h>
 #include <game/ovl/variants_l8.h>
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>

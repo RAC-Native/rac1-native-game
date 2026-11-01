@@ -245,3 +245,13 @@ L16 PAL:0x00211dd4: if (advanced_strafe_flip_active()) { approach_f(0x13f350u + 
 L16 PAL:0x002121d4: if (advanced_rac3_movement()) { fr[12] = v0.w() == 0 ? fr[4] * 8.0f : fr[4] * 11.0f; goto L_PAL_2121ec; }  // enhancement (J)
 L18 PAL:0x0021c0fc: if (advanced_strafe_flip_active()) { approach_f(0x13f350u + 0x458, advanced_strafe_flip_speed(), lwc1(0x0015ed70) * 47.0f); set32(s0, s2.w() + -0xcb0); goto L_PAL_21c190; }  // enhancement (I)
 L18 PAL:0x0021c4fc: if (advanced_rac3_movement()) { fr[12] = v0.w() == 0 ? fr[4] * 8.0f : fr[4] * 11.0f; goto L_PAL_21c514; }  // enhancement (J)
+
+# ---- The palette blend (one routine in six overlays: Kerwan 0x23c428, Rilgar 0x277b20, Umbris 0x2762e0, Batalia 0x257d40, Gaspar 0x26d240,
+# Oltanis 0x255ce0): its texel loop on the host (src/game/ovl/palette_blend.h; RAC1_PALETTE_BLEND_FAST, the Wii U's default), at the loop's
+# setup after the two palettes' conversions. Off: the loop as transliterated.
+L3 0x0023c620: { uint32_t pb_v0 = 0; if (palette_blend_loop(a0.w(), a1.w(), a3.w(), t1.w(), &pb_v0)) return TrRet{pb_v0, fr[0]}; }  // palette blend
+L5 0x00277d18: { uint32_t pb_v0 = 0; if (palette_blend_loop(a0.w(), a1.w(), a3.w(), t1.w(), &pb_v0)) return TrRet{pb_v0, fr[0]}; }  // palette blend
+L7 0x002764d8: { uint32_t pb_v0 = 0; if (palette_blend_loop(a0.w(), a1.w(), a3.w(), t1.w(), &pb_v0)) return TrRet{pb_v0, fr[0]}; }  // palette blend
+L8 0x00257f38: { uint32_t pb_v0 = 0; if (palette_blend_loop(a0.w(), a1.w(), a3.w(), t1.w(), &pb_v0)) return TrRet{pb_v0, fr[0]}; }  // palette blend
+L9 0x0026d438: { uint32_t pb_v0 = 0; if (palette_blend_loop(a0.w(), a1.w(), a3.w(), t1.w(), &pb_v0)) return TrRet{pb_v0, fr[0]}; }  // palette blend
+L14 0x00255ed8: { uint32_t pb_v0 = 0; if (palette_blend_loop(a0.w(), a1.w(), a3.w(), t1.w(), &pb_v0)) return TrRet{pb_v0, fr[0]}; }  // palette blend

@@ -553,9 +553,9 @@ inline float vuclamp_bits(float f) {
     else if (e == 0x7f800000u) u = (u & 0x80000000u) | 0x7f7fffffu;
     return std::bit_cast<float>(u);
 }
-#if (defined(__WIIU__) && !defined(RAC1_VU0_EXACT)) || defined(RAC1_VU0_NF)
-// ((2026-11-01) the Wii U: a normal finite number decided on the FPU and returned as it is - vuclamp_bits's value; the rest by it, out
-// of line: no float -> integer trip through memory on the 750. RAC1_VU0_NF: the PC's check)
+#if defined(RAC1_VUC_FPU)
+// (RAC1_VUC_FPU, testing - off, slower on the console: ovl_common.h's vuc: a normal finite number decided on the FPU and returned as
+// it is - vuclamp_bits's value; the rest by it, out of line)
 [[gnu::noinline, gnu::cold]] float vuclamp_rare(float f) { return vuclamp_bits(f); }
 inline float vuclamp(float f) {
     const float a = __builtin_fabsf(f);
