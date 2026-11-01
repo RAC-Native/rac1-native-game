@@ -859,10 +859,14 @@ Options > Graphics > Ambient Occlusion "MXAO" and "MXAO 1/2" (Anya-Thoughtmane's
 low-poly shrubs, terrain and Drek's Fleet looked jagged under the other modes). Written for this game from the published
 idea of MXAO (no other project's shader used); the parts:
 
-- **A pyramid.** A first pass writes, per pixel of the occlusion's size (the view's, or half of it), the face's normal (as SSAO+:
-  per axis the neighbour with the smaller depth step) and its depth along the view's axis, in an RGBA16F texture; its four
-  mips are averages (`glGenerateMipmap`; on Vulkan a chain of linear blits). A point is the eye plus its ray times that
-  depth, the rays affine on the screen, so the mips' averages stay on the rays and a tap costs no matrix.
+- **A pyramid.** Per pixel of the occlusion's size (the view's, or half of it: "level 0"), the face's normal (as SSAO+: per
+  axis the neighbour with the smaller depth step) and its depth along the view's axis; levels 1 to 4 are their averages over
+  2 x 2, 4 x 4 ... pixels, in an RGBA16F texture (a first pass writes level 1 from the four level-0 pixels under each of its
+  texels, then `glGenerateMipmap` or, on Vulkan, a chain of linear blits). Level 0 itself is never stored: the occlusion
+  computes its own pixel's normal and the depths its nearest taps need from the depth buffer (two and one gathers), which
+  costs less than writing and reading back 8 bytes a pixel. A point is the eye plus its ray times that depth, the rays
+  affine on the screen (taken once a frame from the inverted view-projection), so the averages stay on the rays and a tap
+  costs no matrix.
 - **Smooth normals.** The normal the occlusion uses is the face's averaged with 8 taps of the pyramid's coarser levels around
   the point (4 diagonal at a quarter of the reach on the screen, 4 straight at half of it, each from a level whose texel is
   about half that distance: a wider footprint up close, where the facets are large), each weighted by how well it continues
@@ -894,11 +898,17 @@ tenths):
 | SSAO+ | 4.1 ms | 1.6 ms | 5.5 ms | 1.7 ms |
 | GTAO | 4.1 to 4.4 ms | 2.3 ms | 7.2 ms | 2.8 ms |
 | GTAO 1/2 | 2.9 ms | 0.9 ms | 4.4 ms | 1.1 ms |
-| MXAO | 6.1 to 7.6 ms | 3.2 ms | 9.8 ms | 2.8 ms |
-| MXAO 1/2 | 2.6 to 3.3 ms | 1.1 ms | 5.1 ms | 1.3 ms |
+| MXAO | 4.8 ms (was 6.5) | 1.6 ms (was 2.1) | 6.2 ms (was 8.2) | 2.3 ms (was 2.6) |
+| MXAO 1/2 | 2.4 ms (was 2.7) | 0.8 ms | 3.9 ms (was 4.1) | 1.3 ms |
 
-MXAO 1/2 costs about what GTAO 1/2 does and is the one to use at a wide resolution; the full MXAO is the most expensive mode
-(its pyramid's 8 bytes a pixel written and read, and the smooth normal's 8 taps).
+(The MXAO rows: `RAC1_AO_PROF`'s GPU timestamps of the whole pass, the same walk, after the pyramid lost its level 0; "was":
+the first version. Per pass at 5120 x 1440 on Vulkan: the pyramid 1.2 -> 0.4 ms, its mips 1.2 -> 0.3, the occlusion 3.1, the
+two blur passes 1.0, unchanged. OpenGL adds 0.8 ms for its copy of the depth, which every mode pays.)
+
+MXAO 1/2 costs about what GTAO 1/2 does and is the one to use at a wide resolution: a quarter of the pixels for the pyramid and
+the occlusion, the blur and the upsample at full size (about half of its cost), a slightly softer and less detailed occlusion.
+The full MXAO is still the most expensive mode: its occlusion pass (the smooth normal's 8 taps and the 4 to 12 of the disc per
+pixel) is bound by its arithmetic, not by memory.
 
 Not done (issue #75's further items): bent normals (directional occlusion fed into the lighting), a normal G-buffer from the
 MRP's passes (the true smooth normals instead of the depth's), ray-traced AO.
