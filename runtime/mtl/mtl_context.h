@@ -125,6 +125,9 @@ void imgui_shutdown();
 void end_frame();
 void flush_cmd();  // (the frame's commands so far run and are waited for; the frame goes on)
 void submit_immediate(const std::function<void()>& fn);  // (fn's commands run now and are waited for)
+// fn's commands in a command buffer of their own, waited for (inside a frame: the frame's commands before them committed
+// first, as flush_cmd), and their GPU time in ms (the command buffer's GPUEndTime - GPUStartTime); < 0 when not known
+double timed_submit(const std::function<void()>& fn);
 
 void* device();         // id<MTLDevice>
 void* command_queue();  // id<MTLCommandQueue>

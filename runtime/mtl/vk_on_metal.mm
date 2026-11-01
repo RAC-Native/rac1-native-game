@@ -353,6 +353,8 @@ RenderTarget vk_target(const mtl::GpuImage& c, const mtl::GpuImage& d) {
 
 // orig: (host) — the tfrag compute shader's doubles: on Metal 64-bit integers, bit for bit (tools/gen_metal_shaders.py)
 bool has_float64() { return true; }
+// orig: (host) — only Intel Gen9 and older are flagged on Vulkan (issue #113); Apple GPUs run the doubles as 64-bit integers
+bool float64_slow() { return false; }
 
 bool init(GLFWwindow* window, bool vsync, bool headless) {
     if (mtl::is_active()) return true;
@@ -396,6 +398,10 @@ void end_frame() { mtl::end_frame(); }
 void flush_cmd() { mtl::flush_cmd(); }
 void submit_immediate(const std::function<void(VkCommandBuffer)>& fn) {
     mtl::submit_immediate([&] { fn(kCmd); });
+}
+// orig: (host) see vk_context.h — the tfrag compute's first dispatches of a level timed (issue #113)
+double timed_submit(const std::function<void(VkCommandBuffer)>& record) {
+    return mtl::timed_submit([&] { record(kCmd); });
 }
 
 VkInstance instance() { return kInstance; }

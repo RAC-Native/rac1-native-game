@@ -1228,6 +1228,30 @@ void submit_immediate(const std::function<void()>& fn) {
     fn();
 }
 
+double timed_submit(const std::function<void()>& fn) {
+    if (g.dev == nil) return -1.0;
+    if (!g.in_frame && g.imm_depth > 0) {  // (inside another immediate scope: its command buffer, not timed alone)
+        fn();
+        return -1.0;
+    }
+    if (g.in_frame) {  // (the frame's commands so far: a command buffer of their own)
+        end_encoder();
+        [g.cmd commit];
+        [g.cmd waitUntilCompleted];
+    }
+    id<MTLCommandBuffer> cb = [g.queue commandBuffer];
+    g.cmd = cb;
+    fn();
+    end_encoder();
+    [cb commit];
+    [cb waitUntilCompleted];
+    g.cmd = g.in_frame ? [g.queue commandBuffer] : nil;
+    if (cb.status != MTLCommandBufferStatusCompleted) return -1.0;
+    const CFTimeInterval t0 = cb.GPUStartTime, t1 = cb.GPUEndTime;
+    if (t0 <= 0.0 || t1 < t0) return -1.0;
+    return (t1 - t0) * 1000.0;
+}
+
 void* device() { return (__bridge void*)g.dev; }
 void* command_queue() { return (__bridge void*)g.queue; }
 VkFormat color_format() { return VK_FORMAT_R8G8B8A8_UNORM; }
