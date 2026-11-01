@@ -1225,3 +1225,24 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   (class 994's palette blend 4%), moby_transform_core 6% (the Euler rows of the moving cars: vu_sin_kernel, rot_row ~3.7%), the
   generated code's EE loads / stores ~10% (calls; inline was slower), the EE journal of widen_real ~2% (9 pages a call, 2 calls a
   step: projection_setup's and render_view_setup's writes).
+
+### world_tfrag_lighting's vertex loops native (2026-11-01, night)
+
+- **src/game/ovl/world_lighting_fast.cpp** (RAC1_WTL_FAST, the Wii U's default 1, the PC's 0; called at the head of the generated
+  world_tfrag_lighting through its skeleton, tools/codegen/gen/skel/game/ovl/world_lighting.cpp.skel): the same routine with its
+  three vertex loops (one light set: two vertices an iteration; a set per vertex, one or two blended by the vertex's weight; the
+  point lights over the entry's vertices again) on a local copy of the VU0 registers - the same lane ops with the same rules (vuc on
+  the operands and the result, the masked lanes, ACC and Q), the MMI unpacks (pextlb / pextlh / pext5 / padduw / ppach / ppacb) done
+  on words - written back at its end. The same memory reads and writes in the same order (the s registers' spill, the (cos, sin)
+  table's DMA toSPR, the normals in the scratchpad, the colour words, the fromSPR DMA per entry). The point lights' range test reads
+  the MAC flags: that op runs as the routine's own (vu0m, flags and all) on the real registers. Not taken while a VU0 micro program
+  runs (RAC1_WTL_STATS=1 counts). The upper halves of the 128-bit registers the routine leaves in vf1.z / .w for one op are never
+  read before vf1 is written whole.
+- **Exact:** RAMHASH RAC1_WTL_FAST=1 against 0 identical on levels 6 / 1 / 3 / 0 / 8 / 12 / 17 (the Wii U's path: the relighting from
+  the flags) and 6 / 2 / 9 / 14 (the PC's path); the level load lights every tfrag through it. pc_check / gt_check green.
+- **Operands clean, one clamp per op:** the routine's raw inputs - the (cos, sin) table in the scratchpad, vf21, the light set an
+  entry uses (or the 16 a vertex may name), each point light - are checked VU-clean once (a normal number or a zero: vuc leaves it
+  as it is); then every operand is either such data or a VU result, and the ops clamp the result alone (templates <C, mask>; the
+  full rules otherwise, and always for vf1 read back from the scratchpad in the point lights' loop). The same values.
+- **Nebula G34** (deterministic, 1500 steps): **24.57 -> 21.23 ms a step** (native loops), **-> 20.38** (one clamp per op). The
+  relighting 5.9 -> 3.6 ms a frame with the first form (the same entries relit: tfrag 9224, tie 962 in 600 frames).

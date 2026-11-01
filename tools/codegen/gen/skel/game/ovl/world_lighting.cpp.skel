@@ -24,6 +24,7 @@ using namespace vu0m;
 // Called by the level load for every entry (gameplay_load) and by the render pass for the visible ones (list 0x1c5400).
 // orig: 0x00295350
 void world_tfrag_lighting(uint32_t list) {
+    if (world_tfrag_lighting_fast(list)) return;  // (the host form, world_lighting_fast.cpp: the same routine)
     Q128 zero, at, v0, v1, a0, a1, a2, a3, t0, t1, t2, t3, t4, t5, t6, t7, s0, s1, s2, s3, s4, s5, s6, s7, t8, t9, gp, sp, s8, ra, lo, hi;
     (void)t7; (void)s7; (void)t8; (void)t9; (void)sp; (void)ra; (void)lo; (void)hi; (void)gp; (void)t0; (void)t1; (void)t2; (void)t3; (void)t4; (void)t5; (void)t6;
     set32(a0, list);
