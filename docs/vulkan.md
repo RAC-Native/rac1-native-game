@@ -31,8 +31,11 @@ Windows the first frame of Novalis lost the device (Windows resets a GPU whose w
 2 s, #113). Elsewhere a level's first tfrag dispatch goes in chunks of 64 pieces, each its own
 submit, waited for and timed; when its cost per piece puts a big level's frame (1500 pieces) past
 12 ms, the tfrags are made on the CPU for the rest of the session. The log has a line for each
-(`[mrpw tfrag] ...`). `RAC1_TFRAG_CPU=1` asks for the CPU, `=0` for the GPU whatever the device. Counted
-are full chunks only (a few pieces' time is mostly the GPU starting up).
+(`[mrpw tfrag] ...`). `RAC1_TFRAG_CPU=1` asks for the CPU, `=0` for the GPU whatever the device. Every
+chunk is full: a frame's last one, or a frame of fewer than 64 pieces (most levels start on their arrival's
+few tfrags, 10 to 56 pieces), is filled up with the same frame's pieces again, which write the same vertices,
+so its time is 64 pieces' work and not mostly the GPU starting up. The timing ends after 512 pieces (8 frames
+at most) or 30 frames, and the frames after it go as one dispatch.
 The world's fragment shader picks its texture unit in a loop over the units its subgroup holds;
 the loop stops after 16 rounds (there are 16 units), so a driver that runs it wrong cannot hang
 the GPU.

@@ -102,6 +102,10 @@ What changed in each release. Releases are source only: you build the game with 
   pick takes the joint that carries the surface at the point and the moby whose surface is nearest; Anya-Thoughtmane's joint lines
   were converted (Clank's eyes now on Clank, moby 601 joint 4; the dogs' on their eyes, joints 53 and 54; the vendor's light on
   joint 30, Aridia's spot lamps on joint 3, the rest unchanged in place).
+- Vulkan and Metal: the timing of a level's first tfrag dispatches now decides on every level: the chunks of a frame of
+  fewer than 64 tfrags (the first frames of most levels: Kerwan, Rilgar, Hoven, Drek's Fleet...) are filled up with the
+  frame's own tfrags again instead of left out, so the slow-GPU fallback to the CPU (`RAC1_TFRAG_CPU`) is no longer
+  skipped there (#113, found in #116).
 - OpenGL: the ties, foliage and mobys (Ratchet too) no longer vanish or turn into floating pieces of terrain and dark shapes from
   one frame to the next on some integrated GPUs (an Intel UHD 620 under Windows, #113): each draw now finds its data through an
   instanced vertex attribute instead of `gl_BaseInstance`. The same picture elsewhere.
