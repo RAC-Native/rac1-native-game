@@ -1297,8 +1297,18 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   windows **40.9-44.1 -> 37.8-39.9 ms**; main: the moby recording 13.8 -> 19.3, the world join -> 27.4, TV drawn 38.1. Shots at 300 / 700:
   the differences are an animated effect on the ground present in some shots and not others, in both versions (also with the game thread
   off): no difference of the change's.
-- **Left:** the main thread still waits ~8 ms for the second half (build_triangles, the tfrags' block, the plan); the GX2 calls ~3.5 us a
-  draw (the world's 1075, the mobys' 1700 in the wide view): the GPU idles while they are made.
+- **Tried, not kept (2026-11-02):** (1) the merged items written as raw command words (SET_RESOURCE / SET_CONTEXT_REG of the VS constant
+  buffer, SET_CTL_CONST base vertex, VGT_PRIMITIVE_TYPE, INDEX_TYPE 9, NUM_INSTANCES, DRAW_INDEX_2 - read back from a display list,
+  RAC1_WIIU_DL_PROBE; 4000 items identical to GX2's words, GX2 pads only a list's end with a NOP) and called as display lists between the
+  state's GX2 calls: it ran on the GPU, but the items' section 0.92 -> 1.39 ms (GX2's own calls cost ~0.8 us an item; the cost is the
+  blocks, not the calls). (2) The merged blocks, run table and own indices written by the second half's core too (three areas, the GPU's
+  caches invalidated by the main thread): 3.06 ms there against 2.8 on the main thread - it lengthens the chain the frame waits for.
+- **The world call by section** (the log's "sections" line, the wide view, ~9 ms): the merged plan's sync (its blocks) 2.8, the late
+  sky 1.4, the merged items 0.9, the tfrag draws 0.3, the rest 3.0 (the tfrag vertex shader's tables 1.2 of it).
+- **Left:** the frame is the world job's chain: its first half 7.4 ms on core 2, the second 16 on core 0 (build_triangles 10.3 in the
+  wide view - RAC1_WIIU_PREP_TIME=1 -, the tfrags' block 1.1, the plan 3.6), then the main thread's ~8 ms of draws; the main thread idle
+  ~11 ms meanwhile (the swap's wait, the world's join). build_triangles split by packet ranges between core 0 and the waiting main
+  thread is the next lever.
 
 ### Veldin -> Novalis: the black screen (2026-11-02)
 

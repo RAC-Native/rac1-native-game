@@ -1174,8 +1174,8 @@ void mrp_moby_gx2_dl_probe() {
     done = true;
     auto* buf = static_cast<uint32_t*>(MEMAllocFromDefaultHeapEx(4096, 0x100));
     if (buf == nullptr) return;
-    std::memset(buf, 0, 4096);
     auto dump = [&](const char* what, uint32_t n) {
+        DCInvalidateRange(buf, 4096);  // (GX2 writes the list through the write-gather pipe: the CPU's cache does not see it)
         std::printf("[wiiu] dl probe: %s, %u bytes:", what, n);
         for (uint32_t i = 0; i < n / 4; ++i) std::printf(" %08x", buf[i]);
         std::printf("\n");

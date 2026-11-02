@@ -657,6 +657,15 @@ struct TfragCache {
 } g_tcache;
 
 uint64_t g_tris = 0;
+// ((2026-11-02) the world call's CPU by section, the log's "sections" line: the merged plan's sync - its blocks written -, the tfrags'
+// draws, the late sky, the merged items' draws, the shaders' changes; the rest: the frame's tfrag data and blocks, the state)
+double g_sec[5] = {};
+struct SecTimer {
+    int s;
+    std::chrono::steady_clock::time_point t = std::chrono::steady_clock::now();
+    explicit SecTimer(int k) : s(k) {}
+    ~SecTimer() { g_sec[s] += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t).count(); }
+};
 uint32_t g_draws_this_call = 0;
 uint64_t g_calls = 0, g_draws = 0, g_batches = 0, g_refused = 0, g_skipped = 0;
 uint64_t g_cmds = 0, g_blocks = 0, g_merged_calls = 0;  // (the log's: the draw commands drawn, the uniform blocks written, the merged calls)
@@ -723,6 +732,7 @@ void plan_ahead() {
 // table's), per lone draw command (its record, flag 0: as the per-draw path), per instanced item its instances' slots in a row (the
 // previous item's reused when its instances are the same)
 bool merged_sync(const mrpwb::FrameView& F, int kinds, bool swap) {
+    SecTimer sec_(0);
     Merged& G = g_mg;
     if (G.ok && G.serial == F.serial && G.pwraps == g_pring_wraps && G.mode == g_merge && G.kinds == kinds && G.loads == g_geo.loads && G.swap == swap) return true;
     const auto t0 = std::chrono::steady_clock::now();
@@ -2481,6 +2491,7 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
     bool sky_drew_world = false;  // (a batch drawn before it: the log's late / early)
     auto sky_flush = [&] {
         if (!g_sky_late.pending) return;
+        SecTimer sec_(2);
         g_sky_late.pending = false;
         ++(sky_drew_world ? g_sky_late.late : g_sky_late.early);
         sky_draw_impl(g_sky_late.cb, g_sky_late.db, g_sky_late.vp, true);
@@ -2584,6 +2595,7 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
     // kInstancedByUnit: the item's unit bound), one GX2DrawIndexedEx - absolute indices (the level's or the frame's own) and its
     // instances, or a lone command's relative ones from its template's first vertex
     auto draw_items = [&](const mrpwb::Batch& b, size_t bi, bool pass2_only, auto&& set_p1_at) {
+        SecTimer sec_(3);
         const mrpwm::Plan& P = g_mg.plan;
         if (bi + 1 >= P.batch_items.size()) return;
         for (uint32_t k = P.batch_items[bi]; k < P.batch_items[bi + 1]; ++k) {
@@ -2624,6 +2636,7 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
     // first range's texture)
     uint32_t tdraws_this_call = 0;
     auto draw_tfrag = [&](const mrpwb::Batch& b, size_t bi, size_t r0, bool pass2_only, auto&& set_p1_at, bool prepass = false) {
+        SecTimer sec_(1);
         const bool whole = (g_tdebug & 4) != 0 && !prepass;
         for (size_t r = r0; r < tranges.size() && tranges[r].batch == bi; ++r) {
             const mrpwb::TfragRange& R = tranges[r];
@@ -2781,6 +2794,7 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
         const int sp = (b.tfrag || cpu_batch) ? 1 : 0;
         const GX2VertexShader* own_vs = (b.tfrag || cpu_batch) ? g_tsh.vertexShader : g_sh.vertexShader;
         auto use_shaders = [&](bool at) {
+            SecTimer sec_(4);
             if (b.tfrag && tvs) {  // ((2026-10-30) the tfrags' vertex shader's pairs: without the alpha test when Gx2Perf::nokill says so)
                 const int o = g_tvx.one;
                 const WHBGfxShaderGroup& p = g_tvx.sh[o + (!at && g_gx2_perf.nokill && g_tvx.ok[o + 1] ? 1 : 0)];
@@ -2914,6 +2928,11 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
                     static_cast<unsigned long long>(g_ahead.made), g_ahead.made > 0 ? g_ahead.ms / static_cast<double>(g_ahead.made) : 0.0,
                     static_cast<unsigned long long>(g_ahead.used), static_cast<unsigned long long>(g_ahead.main),
                     g_ahead.main > 0 ? g_ahead.main_ms / static_cast<double>(g_ahead.main) : 0.0);
+        std::printf("[wiiu] mrp_world_gx2: sections, ms a call: the merged plan's sync %.2f, tfrag draws %.2f, the late sky %.2f, merged items %.2f "
+                    "(the shaders' changes %.2f, inside the others), the rest %.2f\n",
+                    g_sec[0] / 120.0, g_sec[1] / 120.0, g_sec[2] / 120.0, g_sec[3] / 120.0, g_sec[4] / 120.0,
+                    (g_cpu_ms - g_sec[0] - g_sec[1] - g_sec[2] - g_sec[3]) / 120.0);
+        for (double& v : g_sec) v = 0.0;
         g_ahead.made = g_ahead.used = g_ahead.main = 0;
         g_ahead.ms = g_ahead.main_ms = 0.0;
         if (g_tready)
