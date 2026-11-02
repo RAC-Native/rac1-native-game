@@ -6,6 +6,9 @@ What changed in each release. Releases are source only: you build the game with 
 ## Unreleased
 
 ### Controls and gameplay
+- Advanced > Voice (Same as Text, the default; English, French, German, Spanish, Italian; Japanese with the Japanese data
+  disc): the spoken language apart from the text's, for the dialogue, the scenes, the Vendor, the movies and Ratchet's
+  efforts (`voice_language` in the preferences, `RAC1_VOICE_LANGUAGE`; docs/settings.md, "Voice").
 - Mouse: a Direct mode, the new default (Options > Controls > Mouse Mode): the mouse turns the camera, and the aim while
   strafing or aiming, by an angle proportional to its movement (raw motion where the system has it), with no stick
   simulation, acceleration or speed cap; its own Aim Sensitivity while aiming; Stick keeps the earlier simulated right

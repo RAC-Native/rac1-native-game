@@ -148,8 +148,38 @@ the machine's, kept in `controls.txt`, not with the saves, and no New Game mode 
 | Vibration | Off, Low, High |
 | Adaptive Triggers | Off, On (shown only when the pad in use is a DualSense) |
 | Skip Cutscenes | Original, Always |
+| Voice | Same as Text, English, French, German, Spanish, Italian, Japanese (only with the Japanese data disc); see [Voice](#voice) |
 
 See [Advanced options](advanced.md) for what each one does and how it is built.
+
+### Voice
+
+The game has one language setting (Options > Language), which picks both its texts and its voices. The
+**Voice** row on the Advanced page sets the voices apart: the game's own Language row keeps choosing the texts
+(the game's language, `0x15ed88`), and Voice chooses the spoken language. **Same as Text**, the default, is the
+original: the voices follow the texts, and nothing of the game changes. Any other value is an enhancement.
+
+- **English, French, German, Spanish, Italian**: the North American disc (and the PAL one, the same recordings)
+  carries all five, so any voice goes with any text.
+- **Japanese**: offered only when the Japanese disc was given to the setup as a data disc
+  ([Setup](setup.md#data-discs)). Its voices are read from that disc: the scenes' and the levels' dialogue, the
+  Vendor's lines, the lines of the table of contents' two dialogue tables (the game's 30000 and 50000 lines), the movies' sound (the Japanese disc's movie of
+  the same row, its pictures still the game's disc's), and Ratchet's own efforts (the wrench, jumps, falls: each
+  level's sound bank is the Japanese disc's, where about ten of his samples differ). A line the Japanese disc lacks
+  plays in the text language; a line the game's disc lacks is not added. A level's sound bank is read when the level
+  loads: changing Voice to or from Japanese changes Ratchet's efforts from the next level (or a reload), the rest at
+  once.
+- The texts and the subtitles stay in the text language. The Japanese scenes' lines were recorded to the same scenes:
+  their lengths match the North American ones within 0.05 s, except one Kalebo III scene (level 16, scene 2), whose
+  Japanese line runs 1.5 s longer and is cut by the scene's end, as the game's own code ends it. Six lines Nebula
+  G34 plays during play (not in a scene) are 1.5 to 4 s longer in Japanese, and the Japanese lines of the two tables
+  are longer on average (a third longer for the 30000 lines): nothing cuts those, but a long one may still be
+  speaking when the next starts.
+
+The choice belongs to the machine, not to a save: `voice_language` in `advanced_options.txt` (`same`, `en`, `fr`,
+`de`, `es`, `it`, `ja`). `RAC1_VOICE_LANGUAGE` (the same names) overrides it, also in a headless run. The code is
+`src/game/enhance/voice_language.cpp`: every place the game picks a voice by its language asks it which sector to
+play.
 
 ### Updates (main menu)
 

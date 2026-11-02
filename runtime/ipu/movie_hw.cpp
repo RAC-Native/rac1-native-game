@@ -258,17 +258,27 @@ bool movie_hw_available() {
 // start is there (its first picture's header), a worker thread after it (load_rest). Before, the open read the whole file,
 // demultiplexed it and decoded the whole sound track (0.1 .. 0.45 s on the game's thread). The pictures and samples handed
 // to the game are the same: movie_hw_next_picture and movie_hw_audio_take wait for the bytes they need.
+// The sound from another file (movie_hw_open's `audio`: the same movie of another release's disc): read and demultiplexed
+// beside the movie's own file, its tracks taken instead of the movie's, its pictures dropped.
+struct AudioFile {
+    uint32_t lba = 0, bytes = 0;  // (bytes 0: none, the movie's own sound)
+    std::vector<uint8_t> d;
+    size_t got = 0;
+    Demux dx;
+    bool complete(bool ok) const { return got >= bytes || !ok; }
+};
 struct Load {
     uint32_t lba = 0, bytes = 0;
     int track = 0;
     std::vector<uint8_t> d;  // the file, read so far
     size_t got = 0;          // bytes read
     Demux dx;
+    AudioFile audio;
     std::vector<std::vector<uint8_t>> tracks;
     int chosen = -1;  // the sound track decoded (the asked one when it has data, else the first that has; decided when known)
     TrackDecoder dec;
     bool ok = true;  // the disc read
-    bool complete() const { return got >= bytes || !ok; }
+    bool complete() const { return (got >= bytes && audio.complete(ok)) || !ok; }
 };
 Load g_load;
 
@@ -276,24 +286,39 @@ constexpr size_t kChunk = 256 * 1024;  // bytes read at a time
 
 // orig: (host) the next part of the file read and demultiplexed, the sound decoded as far as it goes
 void load_step(Load& L, Movie& m) {
-    if (!L.complete()) {
+    if (L.got < L.bytes && L.ok) {
         const size_t n = std::min<size_t>(kChunk, L.d.size() - L.got);
         if (!disc_read(L.lba + static_cast<uint32_t>(L.got / 2048), static_cast<uint32_t>(n / 2048), L.d.data() + L.got)) L.ok = false;
         else L.got += n;
     }
-    const bool complete = L.complete();
+    AudioFile& A = L.audio;
+    if (A.bytes != 0 && A.got < A.bytes && L.ok) {
+        const size_t n = std::min<size_t>(kChunk, A.d.size() - A.got);
+        if (!disc_read(A.lba + static_cast<uint32_t>(A.got / 2048), static_cast<uint32_t>(n / 2048), A.d.data() + A.got)) L.ok = false;
+        else A.got += n;
+    }
+    const bool complete = L.got >= L.bytes || !L.ok;
     const size_t avail = std::min<size_t>(L.got, L.bytes);
+    auto track = [&L](int t, const uint8_t* p, size_t n) {
+        if (L.tracks.size() <= static_cast<size_t>(t)) L.tracks.resize(static_cast<size_t>(t) + 1);
+        L.tracks[static_cast<size_t>(t)].insert(L.tracks[static_cast<size_t>(t)].end(), p, p + n);
+    };
     L.dx.step(L.d.data(), avail, complete,
               [&m](const uint8_t* p, size_t n) {
                   const size_t at = m.video_len.load(std::memory_order_relaxed);
                   std::memcpy(m.video.data() + at, p, n);
                   m.video_len.store(at + n, std::memory_order_release);
               },
-              [&L](int t, const uint8_t* p, size_t n) {
-                  if (L.tracks.size() <= static_cast<size_t>(t)) L.tracks.resize(static_cast<size_t>(t) + 1);
-                  L.tracks[static_cast<size_t>(t)].insert(L.tracks[static_cast<size_t>(t)].end(), p, p + n);
+              [&](int t, const uint8_t* p, size_t n) {
+                  if (A.bytes == 0) track(t, p, n);
               });
-    const bool all = complete && L.dx.ended;  // (the demux's end is the file's: every track is whole)
+    bool audio_ended = true;
+    if (A.bytes != 0) {
+        const bool a_complete = A.complete(L.ok);
+        A.dx.step(A.d.data(), std::min<size_t>(A.got, A.bytes), a_complete, [](const uint8_t*, size_t) {}, track);
+        audio_ended = a_complete && A.dx.ended;
+    }
+    const bool all = complete && L.dx.ended && audio_ended;  // (the demux's end is the file's: every track is whole)
     if (L.chosen < 0) {
         if (static_cast<size_t>(L.track) < L.tracks.size() && !L.tracks[static_cast<size_t>(L.track)].empty()) L.chosen = L.track;
         else if (all)
@@ -326,7 +351,7 @@ void load_rest(Movie& m) {
     while (!m.stop.load(std::memory_order_relaxed) && !m.video_done.load(std::memory_order_relaxed)) load_step(g_load, m);
 }
 
-bool movie_hw_open(uint32_t lba, uint32_t bytes, int track) {
+bool movie_hw_open(uint32_t lba, uint32_t bytes, int track, uint32_t audio_lba, uint32_t audio_bytes) {
     LoadProf prof_all("movie_hw_open");
     movie_hw_close();
     if (!movie_hw_available()) {
@@ -342,6 +367,12 @@ bool movie_hw_open(uint32_t lba, uint32_t bytes, int track) {
     L.track = track;
     L.d.resize((static_cast<size_t>(bytes) + 2047) / 2048 * 2048);
     if (L.d.empty()) return false;
+    if (audio_bytes != 0) {
+        L.audio.lba = audio_lba;
+        L.audio.bytes = audio_bytes;
+        L.audio.d.resize((static_cast<size_t>(audio_bytes) + 2047) / 2048 * 2048);
+        std::printf("[movie] its sound from sector %#x (%u bytes), track %d\n", audio_lba, audio_bytes, track);
+    }
     m.video.resize(bytes);
     m.video_len.store(0);
     m.stop.store(false);

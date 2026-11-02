@@ -15,6 +15,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace rac1 {
 
@@ -34,6 +35,10 @@ void snd989_movie_add_multi(int16_t* multi, int channels, const int16_t* movie, 
 // and the voices playing.
 extern float g_snd989_gain;
 extern bool g_snd989_trace;
+// Host: a bank the EE hands the loader (its bytes, as the IOP read them from EE memory) may be replaced before both
+// copies load it (src/game/enhance/voice_language.h: a level's bank of the Japanese disc for the Japanese voices); null:
+// none. The EE's memory is not touched.
+extern void (*g_snd989_bank_filter)(std::vector<uint8_t>& bank);
 int snd989_iop_active_sounds();
 
 // The host's mirror (see above). Enabled before the first command (snd989_iop_start), when an audio device plays it.

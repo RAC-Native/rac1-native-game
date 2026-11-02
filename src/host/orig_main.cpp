@@ -135,6 +135,7 @@
 #include <runtime/gs/static_geom_cache.h>
 #include <runtime/vk/vk_context.h>
 #include <runtime/iop/snd989_iop.h>
+#include <game/enhance/voice_language.h>
 #include <runtime/iop/snd989_stream.h>
 #include <runtime/iop/stash_iop.h>
 #include <runtime/ipu/movie_hw.h>
@@ -2644,6 +2645,7 @@ int main(int argc, char** argv) {
     rac1::host_priority_set_enabled(!headless);  // (rtkit's priorities in a window; RAC1_PRIORITY=0 / 1 decides)
     if (want_audio && !audio_out_start(advanced_audio_channels())) snd989_mirror_disable();
     g_advanced_audio_reopen = audio_out_set_channels;  // (Options > Sound: 5.1 / 7.1 / stereo)
+    g_snd989_bank_filter = voice_level_bank;            // (the Japanese voices' level banks: voice_language.h)
     if (!boot) {
         if (!boot_loader_run([&] {
                 if (!toc_read() || !level_header_read(level) || !level_files_read()) return false;
