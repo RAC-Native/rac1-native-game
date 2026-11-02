@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 365 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 366 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 276 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 277 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 68 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -216,6 +216,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_PARTICLES_SKY` | 0 = off; default 1 | 0: rain, snow and ash are kept out only by the level's interior boxes, not by the roofs of its collision, and the materials' rain rings fall under roofs too (the behaviour before; for comparing). See [Ambient particles](particles.md#under-a-roof). |
 | `RAC1_PARTICLES_TRACE` | any value = on; default off | Every 120 game frames, prints the ambient particles' draws, count, light and whether the game's rain or snow is hidden, and whether the camera is under a roof; once per level, its lava and its sky grid as read. |
 | `RAC1_PART_TRACE` | any value = on; default off | Every 30 frames prints the live particles counted by type. |
+| `RAC1_PERF_COLL_MESH` | 0 = off, 1 = on, 2 = on and its reuse printed every 5000 uses; default 0 | The collision segment test (segment_collide) keeps each moby's collision mesh turned into the world, keyed by the moby's rotation rows, scale and a copy of its vertex words, and uses it again while they are unchanged. The same game state; off by default: on this PC it saves about 2 microseconds a use, a few uses a frame. |
 | `RAC1_PERF_GS_MEM` | 0 = off; default 1 | The GS local memory's addressing by in-page tables for the 16, 8 and 4-bit formats, the 8 / 4-bit and 16-bit stores writing their bytes at once, an indexed texture's CLUT decoded once per texture, the last 16 images of each texture key kept (an effect's or the HUD's textures taking turns at one address keep their image and GPU texture), and the MRP chain reader's DMA tags read in place; 0: as before, to compare. The same picture and game state. See [Performance](performance.md#found-while-profiling-a-low-end-target). |
 | `RAC1_PERF_OPAQUE` | 0 = off, 1 = on, 2 = on with a check; default 1 | The MRP world's draws whose pixels cannot fail the alpha test (every texel sampled and every vertex colour with an alpha of at least 0x80, the test GEQUAL or GREATER below that) drawn in their first pass with early depth testing and left out of the second pass, on OpenGL and Vulkan; 0: every draw in both passes, as before. 2 (OpenGL) also draws each such run again counting its failing pixels and prints the totals at the end of a run (they must be 0). The same picture. See [Performance](performance.md#found-while-profiling-a-low-end-target). |
 | `RAC1_PERF_P2_LESS` | 1 = on; default off | With the original lighting too, the second pass of an alpha-tested world batch is depth-tested LESS, as `RAC1_MRPW_P2_LESS` does with the modern lighting: a few pixels differ (a failing pixel lying exactly on another surface's depth is lost). |

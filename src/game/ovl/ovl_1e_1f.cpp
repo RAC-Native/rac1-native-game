@@ -2,8 +2,10 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 namespace rac1 {
 
@@ -1428,6 +1430,32 @@ int32_t capsule_collide(uint32_t pos, float radius, float height, uint32_t flags
     return capsule_collide_v(V(pos), radius, height, flags, ignore);
 }
 
+namespace {
+// (host) RAC1_PERF_COLL_MESH (default off: about 2 us saved a use, a few uses a frame on the PC; 1 on, 2 on and the reuse printed
+// every 5000 uses): a moby's collision mesh turned into the world by segment_collide_v (each vertex: the rows scaled, three VU0
+// multiply-adds) is a function of the rows', the scale's bits and the vertex words alone: the result kept per moby with those bits
+// and a copy of the words, and used again while all of them are the same (most mobys do not move; floor probes and sound lines
+// test the same ones every frame) - the same values. The outcodes, which depend on the segment, are still made per call.
+struct MeshCacheEntry {
+    uint32_t m = 0, vbase = 0, nb = 0;
+    uint32_t key[10] = {};
+    std::vector<uint32_t> raw;
+    std::vector<L3> w;
+};
+struct MeshCache {
+    static constexpr uint32_t kN = 128;
+    MeshCacheEntry e[kN];
+};
+int mesh_cache_mode() {
+    static const int on = std::getenv("RAC1_PERF_COLL_MESH") != nullptr ? std::atoi(std::getenv("RAC1_PERF_COLL_MESH")) : 0;
+    return on;
+}
+MeshCache& mesh_cache() {
+    static thread_local MeshCache c{};
+    return c;
+}
+}  // namespace
+
 // Nearest hit of the segment start -> end with the level collision and the mobys (hand-written VU0
 // macro code). The 4-unit cells the segment passes are listed in order (per-axis crossings at
 // SPR + 0x3000/0x3200/0x3400 merged into (t, packed cell) at SPR + 0x3800, ending with t = 1);
@@ -1721,6 +1749,49 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
                 const uint32_t vbase = col + lwu(col + 4) + 0x10;
                 uint32_t dst = SPR + 0x1fe0;
                 int32_t k = 0;
+                const uint32_t nb = (vbytes + 0xf) & ~0xfu;   // the bytes the loop below reads (vbytes as a count > 0)
+                const MeshCacheEntry* ce = nullptr;
+                if (mesh_cache_mode() != 0 && static_cast<int32_t>(vbytes) > 0 && nb <= 0x1000 && (vbase & 3) == 0) {
+                    const uint32_t key[10] = {fbits(R0.x), fbits(R0.y), fbits(R0.z), fbits(R1.x), fbits(R1.y), fbits(R1.z),
+                                              fbits(R2.x), fbits(R2.y), fbits(R2.z), fbits(sc)};
+                    const void* rp = ee_ram_ptr_read(vbase);
+                    MeshCacheEntry& e = mesh_cache().e[(m >> 8) & (MeshCache::kN - 1)];
+                    static const bool stats = mesh_cache_mode() == 2;
+                    static thread_local uint32_t n_call = 0, n_miss = 0;
+                    if (stats && ++n_call % 5000 == 0) std::fprintf(stderr, "[meshcache] %u uses, %u made\n", n_call, n_miss);
+                    if (!(e.m == m && e.vbase == vbase && e.nb == nb && std::memcmp(e.key, key, sizeof key) == 0 &&
+                          std::memcmp(e.raw.data(), rp, nb) == 0)) {
+                        ++n_miss;
+                        e.m = m;
+                        e.vbase = vbase;
+                        e.nb = nb;
+                        std::memcpy(e.key, key, sizeof key);
+                        e.raw.resize(nb / 4);
+                        std::memcpy(e.raw.data(), rp, nb);
+                        e.w.resize(nb / 8);
+                        for (uint32_t i = 0; i < nb / 8; ++i) {
+                            const uint32_t va = vbase + i * 8;
+                            const L3 v = L3{static_cast<float>(lh(va)), static_cast<float>(lh(va + 2)), static_cast<float>(lh(va + 4))};
+                            e.w[i] = madds(madds(muls(S0, v.x), S1, v.y), S2, v.z);
+                        }
+                    }
+                    ce = &e;
+                }
+                if (ce != nullptr) {
+                    for (uint32_t i = 0; i < nb / 8; ++i) {
+                        if ((i & 1) == 0) dst += 0x20;
+                        const L3& w = ce->w[i];
+                        const L3 bl = sub3(w, vlo), ab = sub3(vhi, w);
+                        uint32_t oc = 0;
+                        if (neg(bl.x)) oc |= 1u;
+                        if (neg(ab.x)) oc |= 2u;
+                        if (neg(bl.y)) oc |= 1u << 8;
+                        if (neg(ab.y)) oc |= 2u << 8;
+                        if (neg(bl.z)) oc |= 1u << 16;
+                        if (neg(ab.z)) oc |= 2u << 16;
+                        sq3(dst + (i & 1) * 0x10, w, oc);
+                    }
+                } else
                 for (int32_t left = static_cast<int32_t>(vbytes); left > 0; left -= 0x10, ++k) {
                     dst += 0x20;
                     for (uint32_t hh = 0; hh < 2; ++hh) {

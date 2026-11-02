@@ -178,6 +178,12 @@ terrain.
   rules; where every operand is already a VU result, a small integer's float or a value clamped as it is read, `vuc(x)` is `x`, so
   only the result is clamped. Exact by construction; `RAC1_RAMHASH` identical (levels 0, 1, 3, 5, 8) and the oracle batches 38, 41,
   43, 89 (`moby_update_transform`, `_kept`, `segment_collide`) and the level batches that run them pass.
+- **The moby collision mesh cache** (`RAC1_PERF_COLL_MESH`, off by default; `ovl_1e_1f.cpp` `segment_collide_v`): a moby's collision
+  vertices turned into the world (three VU0 multiply-adds each) depend only on its rows', its scale's bits and the vertex words, so they
+  are kept per moby with those bits and a copy of the words and used again while all are the same (the outcodes, which depend on the
+  segment, are still made per call). Exact (`RAC1_RAMHASH` identical on levels 0, 1, 3, 5, 8 and the four-level chain with it on), and
+  95% reuse on Kerwan, but the moby part of the segment test runs about four times a frame here: 5.2 to 3.1 microseconds a use, about
+  0.01 ms a frame. Left off; worth it only where the game thread is much slower.
 
 ## Switches to compare
 
@@ -200,6 +206,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_TEXTABLE=0`, `RAC1_PERF_TFRAG_ALLOC=0`, `RAC1_PERF_VU7=0`, `RAC1_PERF_PKT_MEMO=0` | the scene's and the effects' preparation as before |
 | `RAC1_PERF_PALETTE_BLEND=0` | the six levels' palette blend as the game's loop |
 | `RAC1_PERF_VU_CLAMP=0` | the collision triangle test and the moby transform clamping every operand at each op |
+| `RAC1_PERF_COLL_MESH=1` | the collision segment test's moby meshes kept between calls (off by default) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
