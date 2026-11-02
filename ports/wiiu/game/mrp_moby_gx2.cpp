@@ -1130,6 +1130,10 @@ bool mrp_moby_gx2_record(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs:
             ++g_dl_not;
             return false;
         }
+        // (GX2 writes a list through the write-gather pipe, around the CPU's cache: the heap's memory may still have lines in the cache,
+        // dirty ones written back later over the recorded commands - the GPU running garbage, a hang. Out of the cache once, here; the
+        // CPU never touches the buffer again)
+        DCFlushRange(buf, kDlBytes);
         std::printf("[wiiu] mrp_moby_gx2: display list buffer %d: %u KB\n", g_dl_slot, kDlBytes >> 10);
     }
     const uint64_t draws0 = g_draws, calls0 = g_calls;
@@ -1147,8 +1151,7 @@ bool mrp_moby_gx2_record(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs:
         g_dl_size[1] = GX2EndDisplayList(buf + off);
         used = off + g_dl_size[1];
     }
-    g_recording = false;
-    DCFlushRange(buf, used);
+    g_recording = false;  // (no DCFlushRange: the list is not in the CPU's cache - see the allocation)
     ++g_dl_calls;
     if (g_calls / 120 == calls0 / 120) g_dl_draws += g_draws - draws0;  // (the draws' count not cleared by the log meanwhile)
     g_dl_bytes += used;
@@ -1174,6 +1177,7 @@ void mrp_moby_gx2_dl_probe() {
     done = true;
     auto* buf = static_cast<uint32_t*>(MEMAllocFromDefaultHeapEx(4096, 0x100));
     if (buf == nullptr) return;
+    DCFlushRange(buf, 4096);  // (no dirty line of the heap's left to be written over the lists: see mrp_moby_gx2_record)
     auto dump = [&](const char* what, uint32_t n) {
         DCInvalidateRange(buf, 4096);  // (GX2 writes the list through the write-gather pipe: the CPU's cache does not see it)
         std::printf("[wiiu] dl probe: %s, %u bytes:", what, n);

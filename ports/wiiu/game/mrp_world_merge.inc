@@ -241,8 +241,10 @@ inline void plan_build(const mrpwb::FrameView& F, const Level& M, int kinds, int
             if (c.instances != 1 || (static_cast<uint64_t>(c.base_instance) + 1) * 8 > cmds.size()) continue;  // (the caller refuses the batch)
             const uint32_t* rec = &cmds[8 * static_cast<size_t>(c.base_instance)];
             if (rec[0] >= insts.size()) continue;
-            const uint32_t kind = insts[rec[0]].info[3] & 1u;
-            if ((kinds & (kind != 0 ? 2 : 1)) == 0) continue;
+            if (kinds != 3) {  // (the debug modes' ties / shrubs alone: the instance's kind read - 160 bytes away, a cache miss a command - only then)
+                const uint32_t kind = insts[rec[0]].info[3] & 1u;
+                if ((kinds & (kind != 0 ? 2 : 1)) == 0) continue;
+            }
             ++P.cmds;
             const uint32_t unit = (rec[3] >> 16) & 15u;
             const bool pass2 = rec[6] != 0;

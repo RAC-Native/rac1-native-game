@@ -1289,6 +1289,9 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   blocks' ring wrapped first when the call may not fit (per draw command its block and a terms block, per joints' range 8 KB); a wrap that
   would still wait inside the recording gives no block (ring_alloc: GX2DrawDone's flush would land in the list - a hang). The log's
   "display lists" line every 120 recorded frames. (Probe, RAC1_WIIU_DL_PROBE=1: the words GX2 writes for a block and a draw, printed once.)
+  **The cache (fixed the same day, after a hang at a level's third frame):** GX2 writes a list through the write-gather pipe, around the
+  CPU's cache; the buffers came from the heap with lines possibly still dirty in the cache, and a DCFlushRange after each recording wrote
+  them back over the commands - the GPU ran garbage. Now the buffer is flushed once at its allocation and never after a recording.
 - **RAC1_WIIU_PLAN_AHEAD (default 1; mrpw g_wiiu_tail_hook, mrp_world_gx2.cpp plan_ahead):** mrpwm::plan_build at the second half's end
   on its core (the commands, records and instances still in its cache): 3.7 ms there in the wide view, against ~5 on the main thread; the
   draws' first call takes it when made for the same frame, mode, kinds and level. Alone it lengthens the second half as much as it saves
