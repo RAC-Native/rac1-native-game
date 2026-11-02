@@ -57,6 +57,7 @@ vec4 sh_clip(vec4 clip) {
     if (uShPass == 0 && uShOn == 0) return clip;
     vec4 wp = uShInvView * vec4(clip.x / uShProj.x, clip.y / uShProj.y, -clip.w, 1.0);
     vShWorld = wp.xyz;
+    if (uShPass == 3) return uShLight * vec4(wp.xyz - uShInvView[3].xyz, 0.0);  // (the water's reflections' sky: a direction)
     if (uShPass != 0) {
         gl_ClipDistance[0] = uShCut.w - dot(wp.xyz, uShCut.xyz);
         return uShLight * vec4(wp.xyz, 1.0);
@@ -116,7 +117,7 @@ vec4 sh_state;
 vec3 sh_n = vec3(0.0, 0.0, 1.0);
 void sh_prepare() {
     sh_state = vec4(1.0, 0.0, -1.0, 0.0);
-    if (uShPass != 0 || uShOn == 0) return;
+    if (uShPass == 1 || uShOn == 0) return;
     vec3 dx = dFdx(vShWorld), dy = dFdy(vShWorld);
     vec3 n = cross(dx, dy);
     float nl = length(n);
@@ -211,7 +212,7 @@ vec3 sh_glow(vec3 lit, vec3 orig, vec3 tex, vec4 e) {
     return mix(lit, max(lit, orig * e.x), m);
 }
 vec3 sh_emissive(vec3 lit, vec3 orig, vec3 tex, uint s) {
-    if (s == 0u || uShOn == 0 || uShPass != 0 || uEmis[0].x == 0.0) return lit;
+    if (s == 0u || uShOn == 0 || uShPass == 1 || uEmis[0].x == 0.0) return lit;
     vec4 e = uEmis[s];
     if (e.w > 0.0) return mix(lit, vec3(1.0, 0.0, 1.0), e.x);
     if (e.z > 0.0 && uMat[0].x != 0.0) return lit;
@@ -1775,7 +1776,7 @@ void main() {
         else if (uAtst == 5) pass = a >= float(uAref);
         else if (uAtst == 6) pass = a > float(uAref);
         else if (uAtst == 7) pass = abs(a - float(uAref)) >= 0.5;
-        if (!pass && uShPass != 0) discard;
+        if (!pass && uShPass == 1) discard;
         if (!pass && uPass == 0 && (uAfail == 0 || uAfail == 2)) discard;
         if (!pass && uPass == 1 && uAfail != 2) discard;
     }
@@ -1970,7 +1971,7 @@ void main() {
     int uTme = int(fl & 1u), uIip = int((fl >> 1) & 1u), uAte = int((fl >> 3) & 1u), uAtst = int((fl >> 4) & 7u), uAref = int((fl >> 8) & 0xffu);
     uint unit = (fl >> 16) & 15u;
 #ifdef SH_POINTS
-    if (uShPass != 0 && uAte == 0) return;
+    if (uShPass == 1 && uAte == 0) return;
 #endif
     vec4 c = uIip != 0 ? vColor : vFlat;
 #ifdef SH_POINTS
@@ -2054,7 +2055,7 @@ void main() {
         else if (uAtst == 5) pass = a >= float(uAref);
         else if (uAtst == 6) pass = a > float(uAref);
         else if (uAtst == 7) pass = abs(a - float(uAref)) >= 0.5;
-        if (uShPass != 0 && !pass) discard;
+        if (uShPass == 1 && !pass) discard;
         if (uAtPass == 1 && !pass) discard;
         if (uAtPass == 2 && pass) discard;
     }

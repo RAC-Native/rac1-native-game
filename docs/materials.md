@@ -20,7 +20,9 @@ Options > Graphics > Surface Detail (`surface_detail` in the preferences, item 5
 |---|---|
 | Off (default) | nothing: the tagged textures are drawn as before (emissive surfaces still glow) |
 | Low | every material: specular, wetness, puddles, ripples, rain, the lava's pulse, the slow flow |
-| High | Low, plus the reflections of puddles and water taken from the last frame's picture, and the lava's heat shimmer |
+| High | Low, plus the reflections of puddles and polished metal taken from the last frame's picture, and the lava's heat shimmer |
+
+What the water mirrors is a row of its own, Water Reflections ([below](#water-reflections)): no longer the last frame's picture.
 
 It works only with Graphics: Enhanced (Options > Graphics), like the rest of the modern lighting. `RAC1_SURFACE_DETAIL=0|1|2`
 (testing) overrides the row.
@@ -48,7 +50,7 @@ sky <r> <g> <b>
 | `wet` | wetness 0.6 (0..1) | roughness 0.45 (0.05..1) | | darker (up to 40 %), a broad glossy specular, a little sky |
 | `puddle` | coverage 0.4 (0..1) | scale 0.3 (0.02..4) | wetness 0.6 (0..1) | `wet`, and on the flat ground facing up (normal within some 15 degrees of up) puddles where a world-space noise (its frequency `scale` per unit) is above 1 - coverage: they stay in place whatever the camera does, the same with OpenGL and Vulkan on any GPU (an integer noise). In a puddle: dark, a near mirror (Fresnel from 15 % looking down to 90 % at grazing), small waves; rain rings when the level rains |
 | `lava` | strength 1.3 (0..4) | pulse 0.15 (0..1) | threshold 0 (0..1) | emissive (the original's colour x strength, as an emissive surface; texels whose brightest channel is under the threshold lit as before), a slow brightness pulse whose phase changes across the world, the texture pushed slowly to and fro, the crust's slow relief lit by the sun (two normal maps drifting slowly in world space); High: the heat shimmer |
-| `water` | strength 1 (0..2) | ripples 1 (0..3) | | a sharp sun / lamp glint, Fresnel, procedural ripples (three crossing wave trains and a fine noise, animated) and, when it rains, rain rings; the reflection is the sky (Low) or the last frame's picture (High). Added on top of the game's water: its scrolling and its tints are its own. A sea (`surface`) is drawn still, without the game's rise and fall, and opaque where nothing lies under it ([below](#the-water-held-still)) |
+| `water` | strength 1 (0..2) | ripples 1 (0..3) | | a sharp sun / lamp glint, Fresnel, procedural ripples (three crossing wave trains and a fine noise, animated) and, when it rains, rain rings; the reflection is Water Reflections' ([below](#water-reflections)). Added on top of the game's water: its scrolling and its tints are its own. A sea (`surface`) is drawn still, without the game's rise and fall, and opaque where nothing lies under it ([below](#the-water-held-still)) |
 | `mud` | wetness 0.5 (0..1) | drift 1 (0..3) | | a wet glossy sheen and a very slow, viscous drift of the texture |
 | `quicksand` | drift 1 (0..3) | gloss 0.3 (0..1) | | the drift, a dull sheen over a slow relief (lava's normal maps, slower) |
 | `grass` | height 0.05 (0.01..0.3) | density 18 (2..40) | bend 0.6 (0..2) | Options > Graphics > Grass, tfrag textures only: the blades ([below](#grass)) |
@@ -107,11 +109,12 @@ red ones for lava, and so on).
   scales every reflection (a puddle in a dark room stays dark). The flow of lava, mud and quicksand moves the
   texture coordinates (`sh_mat_uv`) by two broad waves across the world, bounded (a few texels): a
   texture's clamping is never reached.
-- **High: the last frame's picture.** After the world, the mobys, the ambient occlusion and the sun rays
+- **High: the last frame's picture** (the puddles', the polished metals', the lava's shimmer; the water's reflections are
+  [Water Reflections](#water-reflections)' since 2026-11-03 and read only the depth under it). After the world, the mobys, the ambient occlusion and the sun rays
   (`mrp_lighting_material_capture`, at the end of `mrp_lighting_ao_pass`), the 3D's colour and depth are copied
   (OpenGL: a blit; Vulkan: an image copy), with the view they were drawn with, only when the level has a
   puddle, water, lava or a polished metal (roughness under 0.45; 0.6 before #102's batch 1) and Surface Detail is High - or Low too
-  when the level has water: the depth under it ([the water held still](#the-water-held-still)). The next frame's puddles and water march their
+  when the level has water: the depth under it ([the water held still](#the-water-held-still)). The next frame's puddles march their
   reflected ray through that depth in world space (20 steps, growing), reprojected with the old view; a hit
   shows the old picture there (faded near its edges), a miss the sky colour. The lava's shimmer reads the old
   picture around the pixel, displaced by a rising noise. The copy is used only the frame right after it.
@@ -242,6 +245,106 @@ of the pixels (the waterlines), Hoven's in 2 % (its far waterline, held higher t
 trapezoids gone, the far sea even) and Pokitaru swimming among the posts in 5 to 8 % (the waterline on the posts); OpenGL and Vulkan
 the same. `RAC1_RAMHASH` through Novalis, Rilgar, Pokitaru and Hoven with Surface Detail High: the same hashes.
 
+## Water reflections
+
+Options > Graphics > Water Reflections (Low, Medium; `water_reflections` in the preferences, item 57 of a save's block;
+`RAC1_WATER_REFLECTIONS=1|2` for testing, 0 none) is what Surface Detail's water mirrors, with Surface Detail on and Graphics:
+Enhanced. Until 2026-11-03 the water took the last frame's picture along its reflected ray (Surface Detail High, the sky colour on
+Low): pretty while standing still, broken as soon as anything moved - in Daino's words at Rilgar's harbour, by the Vendor, "belle
+solo se stai immobile, appena ti muovi tra lampeggio e glitch la magia si rompe": under Ratchet, and under every object in front of
+the water, a hole with no reflection (the ray passing behind him found no picture), worst in a jump, and the reflection flashing as
+the camera moved (hits turning to misses). The water no longer reads that picture for its reflection (Surface Detail High keeps it
+for the puddles, the polished metals and the lava's shimmer; the water reads its depth for [what lies under it](#the-water-held-still)).
+The code: `src/game/render/mrp_reflect.cpp`, the shading in `sm_water_refl` (`mrp_materials_glsl.inc`).
+
+| Value | The reflection |
+|---|---|
+| Low | a cube map of the sky and the shores (no mobys: nothing that moves), stable |
+| Medium | the planar view: the frame's world, sky and mobys mirrored about the water - Ratchet reflected, moving with him -, the cube map where the planar view has nothing |
+
+No High: it is kept for a ray-traced mode. The presets: Low in Low, Medium in Medium and High ([Settings](settings.md#presets)).
+A row of its own rather than Surface Detail's levels: Surface Detail High is the puddles' and metals' picture (and its cost), and the
+water's reflections are wanted without it, or the other way round.
+
+**The planar view (Medium).** After the world is drawn (`mrp_reflect_pass`, `orig_main.cpp`), when a sea tagged `water` was drawn
+still and flat the frame before (`build_vu7` notes each such batch's height and its share of the view: `mrp_reflect_note_water`) and
+the camera is above it: the frame is drawn again into a target of half the 3D's size, through the view times the mirror about the
+plane z = h (the flat height with the largest share of the view; one plane a frame), cut at the water (a clip plane 0.02 below it:
+the posts' feet meet their reflection). It is the shadow pass's way (`sh_clip`): the world point is taken back from the view's clip
+coordinates and drawn through another matrix, `uShPass` 2 (the sky's directions 3, drawn at infinity), so the same batches - tfrag,
+tie, shrub, the sky and the mobys, with the modern lighting, its sun shadows, point lights and emissive surfaces, lit as seen from the
+mirrored eye - are drawn again without being made again (`mrp_world_draw_reflect`, `mrp_moby_draw_reflect`; no materials, no grass
+shells in it). The water reads it at its own pixel - the mirror makes the reflection of a point of the plane fall on that point's own
+pixel - moved by the ripples (a gentler slope than the glint's: the finer trains glittered over the reflected lights), less far away,
+over six taps of the half-size picture. Where the water does not lie at the plane (another body, a stream's slope: over 0.08 to 0.35
+units off it, or a face not flat) or the planar view drew nothing there, the cube map.
+
+**The cube map (Low, and Medium's fallback).** Six faces of 256 x 256 (a 2D array, `sm_refl_cube` picks the face), drawn from the
+camera (at least a unit above the water), the world above the water and the sky, no mobys: at the first frame the water is seen, and
+again over itself when the view has turned more than 40 degrees or moved more than 25 units (4 up or down) since: the game's view holds
+only what it sees, the rest of the faces keeps what earlier views left there (alpha 0 where none did: the level's sky colour, `sky` in
+its file). Started anew at a new level or another body of water (2 units away). Between redraws it does not change.
+
+**What the game's culling leaves out.** The game culls the world, the sky and the mobys by its own camera: the mirrored view can only
+draw what the frame holds. Measured with `RAC1_REFLECT_DEBUG=1` (the water green where the planar view gave it, red where the planar
+view had nothing, blue the cube map), 25 frames 8 apart while Ratchet walks and jumps (`RAC1_SIM_INPUT=shipwalk`), 1280 x 360:
+
+| Place | Planar view | Planar view empty | Cube map (not at the plane) |
+|---|---|---|---|
+| Rilgar's beach by the start (338, 111, 63) | 96.6 % | 3.3 % | 0.0 % |
+| Rilgar's harbour by the Vendor | 88.0 % | 10.9 % | 1.1 % |
+| Pokitaru's dock, looking down at the sea | 65.9 % | 34.1 % | 0.0 % |
+| Novalis's stream (not flat) | 1.2 % | 5.0 % | 93.9 % |
+What is missing is the part of the mirrored view above the top of the game's view (a camera looking down sees, in the near water, the
+reflection of what is high above): at all three places the sky - the sky's shells are drawn only where the game's view sees them.
+Adding the world the shadow maps alone draw (outside the view, `RAC1_REFLECT_CASTERS=1`) filled none of it (10.86 -> 10.86 %, 34.13 ->
+33.95 %): it is not the world that is missing there. Those pixels show the cube map, or the level's sky colour. Drawing them would
+need the game's sky and world passes run again for the mirrored view (as the LOD slider's and the widened view's shadow runs do,
+`mrp_lod.cpp`, on a journal of the game's memory): not done.
+
+**Measured.**
+The flicker metric (the second difference of each pixel over 60 consecutive frames, 1280 x 360, the pixels where it exceeds a
+baseline's by more than 8), OpenGL, Surface Detail High; SSR the binary before (6826450), "plain" the water with no reflection but
+the sky colour (`RAC1_WATER_REFLECTIONS=0`), Off Surface Detail Off:
+
+| Rilgar's harbour by the Vendor | SSR | Low | Medium |
+|---|---|---|---|
+| Ratchet jumping in front of the water (`RAC1_SIM_INPUT=jump`), against plain water | 564 | 11 | 2 |
+| the same, against Off | 881 | 324 | 291 |
+| walking along the harbour, the camera panning (`seq:2330-2470:lx=-1;2350+5:x;2410+5:x`), against plain water | 3758 | 10327 | 6214 |
+| the same: pixels flashing (up then down by more than 16) a frame, in the whole picture (plain water 15568) | 16140 | 16681 | 16190 |
+
+Standing still and jumping, the hole under Ratchet and its flashing are gone. With the camera moving, the metric counts the
+reflection itself moving with the view: there the SSR found almost nothing (its rays left the picture: the water showed the sky
+colour), Low and Medium show the city; the pixels that flash are as many as with the SSR (Medium) or a few more (Low, whose cube map
+sampled with the ripples glittered: 16219 before the gentler slope, 10327 after). The pictures: OpenGL and Vulkan the same.
+
+GPU time of the Water reflections stage (the profiler's mean over 120 frames, `RAC1_PROFILER_DUMP=120`; integrated Radeon 890M),
+and the frame's GPU time against the SSR before:
+
+| | Low | Medium | GPU busy SSR -> Low / Medium |
+|---|---|---|---|
+| Rilgar's harbour, Vulkan 5120 x 1440 | 0.02 | 1.13 | 8.02 -> 6.23 / 7.32 |
+| Rilgar's harbour, Vulkan 1920 x 1080 | 0.01 | 0.59 | 3.36 -> 3.07 / 3.58 |
+| Rilgar's harbour, OpenGL 5120 x 1440 | 0.02 | 1.92 | 12.16 -> 7.09 / 11.05 |
+| Rilgar's harbour, OpenGL 1920 x 1080 | 0.01 | 0.78 | 3.62 -> 3.35 / 4.12 |
+| Pokitaru's dock, Vulkan 5120 x 1440 | 0.02 | 0.63 | 6.19 -> 5.51 / 6.37 |
+| Pokitaru's dock, Vulkan 1920 x 1080 | 0.01 | 0.28 | 2.86 -> 2.74 / 3.07 |
+| Pokitaru's dock, OpenGL 5120 x 1440 | 0.12 | 1.55 | 9.27 -> 8.26 / 8.84 |
+| Pokitaru's dock, OpenGL 1920 x 1080 | 0.08 | 0.25 | 3.39 -> 3.26 / 3.41 |
+
+The water's own shading got cheaper (its 20 steps through the picture gone: the effects stage 2.5 -> 1.1 ms at Rilgar, 5120 x 1440),
+so Medium costs about what the SSR did and Low less. A frame that draws the cube map again costs a few ms once (the stage's maximum:
+2 to 9 ms).
+
+`RAC1_RAMHASH` through Novalis, Rilgar, Pokitaru and Hoven with Surface Detail High, Low and Medium, OpenGL and Vulkan: the same
+hashes as the binary before.
+
+**Limits.** One plane a frame (the flat water covering the most of the view; other bodies at other heights get the cube map); no
+reflection of the effects and particles (drawn after it) or of the water itself; a stream or a sloping sea (Novalis's stream, its
+waterfalls) gets the cube map; the cube map is the camera's view of things, not the water's (near shores are off by the camera's
+height); under the water, the cube map.
+
 ## Grass
 
 An option of Options > Graphics, Off (the default), Low or High, on the tfrag textures a level's file tags `grass`, with Graphics:
@@ -302,8 +405,8 @@ same water in another block.) Novalis's waterfalls are part of their water's str
 ## Limits
 
 - Normals are the faces' (flat): a highlight is one facet's, coarse on round low-polygon objects.
-- The reflections are of the last frame (one frame late when the camera turns fast) and of what is on
-  screen; off it, the sky colour.
+- The puddles' and the metals' reflections are of the last frame (one frame late when the camera turns fast) and of what is on
+  screen; off it, the sky colour. The water's: [Water Reflections](#water-reflections).
 - No reflections of the effects and particles drawn after the world (the copy is taken before them).
 - At most 254 emissive surfaces and materials a level, the `classes.txt` lines for the level's classes included (the log says so
   when there are more).

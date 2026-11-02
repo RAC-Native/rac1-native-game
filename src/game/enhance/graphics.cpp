@@ -40,6 +40,7 @@
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_particles.h>
+#include <game/render/mrp_reflect.h>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
@@ -107,7 +108,7 @@ enum : uint32_t { PIC_ORIGINAL = 2, PIC_MODERN = 3, PIC_EXPERIMENTAL = 5 };  // 
 // The settings
 // (S_GFX: Graphics, 0 Original, 1 Enhanced; S_PRESET: no value of its own, the rows' match with PRESETS; S_LIGHTING: 0 Low,
 // 1 Medium, 2 High - until the switch, 0 was Original and 1..3 Low..High)
-enum Setting : uint32_t { S_DISPLAY, S_MONITOR, S_WINDOW, S_SCALE, S_ASPECT, S_FIT, S_LOD, S_FOV, S_VSYNC, S_CAP, S_LIGHTING, S_DYN_SHADOWS, S_SEC_LIGHTS, S_SHADOW_DIST, S_AO, S_MIPS, S_SHADOW_STR, S_SUN_RAYS, S_AO_STR, S_HUD, S_RENDERER, S_SURFACE, S_PARTICLES, S_GRASS, S_GFX, S_PRESET, S_COUNT };
+enum Setting : uint32_t { S_DISPLAY, S_MONITOR, S_WINDOW, S_SCALE, S_ASPECT, S_FIT, S_LOD, S_FOV, S_VSYNC, S_CAP, S_LIGHTING, S_DYN_SHADOWS, S_SEC_LIGHTS, S_SHADOW_DIST, S_AO, S_MIPS, S_SHADOW_STR, S_SUN_RAYS, S_AO_STR, S_HUD, S_RENDERER, S_SURFACE, S_PARTICLES, S_GRASS, S_WREFL, S_GFX, S_PRESET, S_COUNT };
 static_assert(S_COUNT <= 0x20, "the settings' values end where the step bytes begin");
 constexpr float SHADOW_DISTS[] = {40.0f, 80.0f, 140.0f, 0.0f};  // Low, Medium, High, Maximum (0: as far as the cascades reach)
 constexpr int SHADOW_STRS[] = {50, 60, 70, 80, 90, 100};  // the sun's shadows' strength, percent of the key light they hide
@@ -130,14 +131,15 @@ constexpr uint32_t SIZE_COUNT = sizeof(SIZES) / sizeof(Size);
 // The presets: the rows under Graphics they set (by index into each row's values), Low, Medium, High. Chosen for their cost at
 // 5120 x 1440 (docs/settings.md#presets): Low the sun's shadows at 1024 with cheap materials, no occlusion or rays; Medium the maps
 // at 2048, all the lights, GTAO at half resolution, Low rays; High the maps at 4096, dynamic shadows, MXAO, Low rays (High's were
-// too strong: Daino, 2026-11-02 - stronger by hand), High materials, grass and particles
-constexpr Setting PRESET_ROWS[] = {S_LIGHTING, S_SHADOW_STR, S_SHADOW_DIST, S_DYN_SHADOWS, S_SEC_LIGHTS, S_AO, S_AO_STR, S_SUN_RAYS, S_SURFACE, S_GRASS, S_PARTICLES};
+// too strong: Daino, 2026-11-02 - stronger by hand), High materials, grass and particles. Water Reflections: Low the cube map, Medium
+// and High the planar view (its cost: docs/materials.md#water-reflections)
+constexpr Setting PRESET_ROWS[] = {S_LIGHTING, S_SHADOW_STR, S_SHADOW_DIST, S_DYN_SHADOWS, S_SEC_LIGHTS, S_AO, S_AO_STR, S_SUN_RAYS, S_SURFACE, S_GRASS, S_PARTICLES, S_WREFL};
 constexpr int PRESET_COUNT = 3;  // (and Custom, 3: the rows match none)
 constexpr int PRESETS[PRESET_COUNT][sizeof(PRESET_ROWS) / sizeof(Setting)] = {
-    // light  strength  distance       dynamic  secondary   AO           AO int.  rays     surface  grass  particles
-    {0,       2,        1,  /* 80 */   0,       1,          0,           2,       0,       1,       0,     1},  // Low
-    {1,       2,        2,  /* 140 */  0,       2,          5,  /* GTAO 1/2 */ 2, 1,     1,       1,     2},  // Medium
-    {2,       2,        3,  /* max */  1,       2,          9,  /* MXAO */     2, 1,     2,       2,     2},  // High
+    // light  strength  distance       dynamic  secondary   AO           AO int.  rays     surface  grass  particles  reflections
+    {0,       2,        1,  /* 80 */   0,       1,          0,           2,       0,       1,       0,     1,         0},  // Low
+    {1,       2,        2,  /* 140 */  0,       2,          5,  /* GTAO 1/2 */ 2, 1,     1,       1,     2,         1},  // Medium
+    {2,       2,        3,  /* max */  1,       2,          9,  /* MXAO */     2, 1,     2,       2,     2,         1},  // High
 };
 constexpr int PRESET_DEFAULT = 2;  // (the rows' values before any choice: High, what Graphics: Enhanced first shows)
 
@@ -146,8 +148,8 @@ constexpr int PRESET_DEFAULT = 2;  // (the rows' values before any choice: High,
 constexpr int32_t TEXT_FIRST = 0x7f40;
 enum : int32_t {
     T_GRAPHICS, T_OPTIONS_HELP, T_DISPLAY_PAGE, H_DISPLAY_PAGE,
-    T_DISPLAY, T_MONITOR, T_WINDOW_SIZE, T_SCALE, T_ASPECT, T_FIT, T_LOD, T_FOV, T_VSYNC, T_CAP, T_LIGHTING, T_DYN_SHADOWS, T_SEC_LIGHTS, T_SHADOW_DIST, T_AO, T_MIPS, T_SHADOW_STR, T_SUN_RAYS, T_AO_STR, T_HUD, T_RENDERER, T_SURFACE, T_PARTICLES, T_GRASS, T_PRESET,
-    H_DISPLAY, H_MONITOR, H_WINDOW_SIZE, H_SCALE, H_ASPECT, H_FIT, H_LOD, H_FOV, H_VSYNC, H_CAP, H_LIGHTING, H_DYN_SHADOWS, H_SEC_LIGHTS, H_SHADOW_DIST, H_AO, H_MIPS, H_SHADOW_STR, H_SUN_RAYS, H_AO_STR, H_HUD, H_RENDERER, H_SURFACE, H_PARTICLES, H_GRASS, H_GFX, H_PRESET,
+    T_DISPLAY, T_MONITOR, T_WINDOW_SIZE, T_SCALE, T_ASPECT, T_FIT, T_LOD, T_FOV, T_VSYNC, T_CAP, T_LIGHTING, T_DYN_SHADOWS, T_SEC_LIGHTS, T_SHADOW_DIST, T_AO, T_MIPS, T_SHADOW_STR, T_SUN_RAYS, T_AO_STR, T_HUD, T_RENDERER, T_SURFACE, T_PARTICLES, T_GRASS, T_WREFL, T_PRESET,
+    H_DISPLAY, H_MONITOR, H_WINDOW_SIZE, H_SCALE, H_ASPECT, H_FIT, H_LOD, H_FOV, H_VSYNC, H_CAP, H_LIGHTING, H_DYN_SHADOWS, H_SEC_LIGHTS, H_SHADOW_DIST, H_AO, H_MIPS, H_SHADOW_STR, H_SUN_RAYS, H_AO_STR, H_HUD, H_RENDERER, H_SURFACE, H_PARTICLES, H_GRASS, H_WREFL, H_GFX, H_PRESET,
     T_WINDOW, T_FULLSCREEN, T_43, T_169, T_FILL, T_BARS, T_STRETCH, T_219, T_329, T_HUD_FIT,
     T_ORIGINAL, T_LOW, T_MEDIUM, T_HIGH, T_MAXIMUM, T_OFF, T_ON, T_UNLIMITED, T_SEC_GAME, T_SEC_ALL, T_FULL, T_ENHANCED, T_CUSTOM,
     T_MODE_ORIGINAL, T_MODE_MODERN, T_MODE_EXPERIMENTAL, H_MODE_ORIGINAL, H_MODE_MODERN, H_MODE_EXPERIMENTAL,
@@ -158,7 +160,7 @@ enum : int32_t {
 constexpr int32_t VALUE_FIRST = 0x7e80;
 constexpr const char* TEXTS[4][T_COUNT] = {
     {"Graphics", "The original picture, or our lighting, water and effects", "Display", "Window, picture shape, detail and view of the PC version",
-     "Display Mode", "Monitor", "Window Size", "Render Resolution", "Aspect Ratio", "Fit to Screen", "Level of Detail", "Field of View", "V-Sync", "Frame Rate Cap", "Lighting", "Dynamic Shadows", "Secondary Lights", "Shadow Distance", "Ambient Occlusion", "Texture Detail", "Shadow Strength", "Sun Rays", "AO Intensity", "HUD", "Renderer", "Surface Detail", "Ambient Particles", "Grass", "Preset",
+     "Display Mode", "Monitor", "Window Size", "Render Resolution", "Aspect Ratio", "Fit to Screen", "Level of Detail", "Field of View", "V-Sync", "Frame Rate Cap", "Lighting", "Dynamic Shadows", "Secondary Lights", "Shadow Distance", "Ambient Occlusion", "Texture Detail", "Shadow Strength", "Sun Rays", "AO Intensity", "HUD", "Renderer", "Surface Detail", "Ambient Particles", "Grass", "Water Reflections", "Preset",
      "In a window or on the whole screen.", "Which screen the window is put on.", "The window's size (in window mode).", "The 3D's resolution, times the screen's. The HUD stays sharp.",
      "4:3 as the original, 16:9, or the view widened to fill the screen.", "When the picture's shape is not the screen's: black bars, or stretched.",
      "How far objects keep their detail and stay drawn.", "x1.00 is the original's view.", "Waits for the screen's refresh: no tearing.",
@@ -177,6 +179,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Shiny metal, wet ground, water and lava with the new lighting. High: reflections.",
      "Dust, embers, fireflies, rain and snow of our own. Not in the PS2 game.",
      "Blades of grass on the marked ground near the camera. Costs more.",
+     "What the water mirrors. Low: sky and shores, still. Medium: everything, Ratchet too.",
      "Original: the PS2's picture. Enhanced: our lighting, water and effects below.",
      "Sets every row below at once. Changing one of them shows Custom.",
      "Window", "Fullscreen", "4:3 Original", "16:9", "Fill Screen", "Black Bars", "Stretch", "21:9", "32:9", "Fit Screen",
@@ -186,7 +189,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Widescreen, more detail, modern aiming and movement. All can be changed in Options.",
      "Modern plus Graphics Enhanced, High: shadows, lights, water. Experimental, heavy."},
     {"Grafik", "Das Originalbild oder unsere Beleuchtung, Wasser und Effekte", "Anzeige", "Fenster, Bildformat, Details und Sicht der PC-Version",
-     "Anzeigemodus", "Bildschirm", "Fenstergrosse", "Renderauflosung", "Seitenverhaltnis", "Bildanpassung", "Detailstufe", "Sichtfeld", "V-Sync", "Bildratenlimit", "Beleuchtung", "Dynamische Schatten", "Zusatzlichter", "Schattendistanz", "Umgebungsverdeckung", "Texturdetail", "Schattenstarke", "Sonnenstrahlen", "Verdeckungsstarke", "HUD", "Renderer", "Oberflachendetail", "Umgebungspartikel", "Gras", "Voreinstellung",
+     "Anzeigemodus", "Bildschirm", "Fenstergrosse", "Renderauflosung", "Seitenverhaltnis", "Bildanpassung", "Detailstufe", "Sichtfeld", "V-Sync", "Bildratenlimit", "Beleuchtung", "Dynamische Schatten", "Zusatzlichter", "Schattendistanz", "Umgebungsverdeckung", "Texturdetail", "Schattenstarke", "Sonnenstrahlen", "Verdeckungsstarke", "HUD", "Renderer", "Oberflachendetail", "Umgebungspartikel", "Gras", "Wasserspiegelung", "Voreinstellung",
      "Im Fenster oder im Vollbild.", "Auf welchem Bildschirm das Fenster liegt.", "Die Grosse des Fensters (im Fenstermodus).", "Die Auflosung der 3D-Grafik, mal die des Bildschirms. Das HUD bleibt scharf.",
      "4:3 wie im Original, 16:9 oder auf den Bildschirm erweitert.", "Wenn das Bildformat nicht passt: schwarze Balken oder gestreckt.",
      "Wie weit Objekte ihre Details behalten und gezeichnet werden.", "x1.00 ist die Sicht des Originals.", "Wartet auf den Bildaufbau: kein Tearing.",
@@ -205,6 +208,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Glanzendes Metall, nasser Boden, Wasser und Lava mit der neuen Beleuchtung. Hoch: Spiegelungen.",
      "Eigener Staub, Glut, Gluhwurmchen, Regen und Schnee. Nicht im PS2-Spiel.",
      "Grashalme auf dem markierten Boden nahe der Kamera. Aufwendiger.",
+     "Was das Wasser spiegelt. Niedrig: Himmel und Ufer, starr. Mittel: alles, auch Ratchet.",
      "Original: das Bild der PS2. Verbessert: unsere Beleuchtung, Wasser und Effekte.",
      "Setzt alle Zeilen darunter auf einmal. Eine Anderung zeigt Eigene.",
      "Fenster", "Vollbild", "4:3 Original", "16:9", "Fullen", "Balken", "Strecken", "21:9", "32:9", "Ganze Breite",
@@ -214,7 +218,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Breitbild, mehr Details, modernes Zielen und Bewegen. Alles in Optionen anderbar.",
      "Modern plus Grafik Verbessert, Hoch: Schatten, Lichter, Wasser. Experimentell, aufwendig."},
     {"Graficos", "La imagen original, o nuestra iluminacion, agua y efectos", "Pantalla", "Ventana, formato, detalle y vista de la version PC",
-     "Modo de pantalla", "Monitor", "Tamano de ventana", "Resolucion 3D", "Relacion de aspecto", "Ajuste", "Nivel de detalle", "Campo de vision", "V-Sync", "Limite de FPS", "Iluminacion", "Sombras dinamicas", "Luces secundarias", "Distancia de sombras", "Oclusion ambiental", "Detalle de texturas", "Intensidad de sombras", "Rayos de sol", "Intensidad de oclusion", "HUD", "Renderizador", "Detalle de superficies", "Particulas ambientales", "Hierba", "Preajuste",
+     "Modo de pantalla", "Monitor", "Tamano de ventana", "Resolucion 3D", "Relacion de aspecto", "Ajuste", "Nivel de detalle", "Campo de vision", "V-Sync", "Limite de FPS", "Iluminacion", "Sombras dinamicas", "Luces secundarias", "Distancia de sombras", "Oclusion ambiental", "Detalle de texturas", "Intensidad de sombras", "Rayos de sol", "Intensidad de oclusion", "HUD", "Renderizador", "Detalle de superficies", "Particulas ambientales", "Hierba", "Reflejos del agua", "Preajuste",
      "En una ventana o a pantalla completa.", "En que pantalla se abre la ventana.", "El tamano de la ventana (en modo ventana).", "La resolucion del 3D, por la de la pantalla. El HUD sigue nitido.",
      "4:3 como el original, 16:9 o la vista ampliada a la pantalla.", "Si el formato no es el de la pantalla: bandas negras o estirado.",
      "Hasta donde los objetos conservan su detalle y se dibujan.", "x1.00 es la vista del original.", "Espera al refresco de la pantalla: sin cortes.",
@@ -233,6 +237,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Metal brillante, suelo mojado, agua y lava con la nueva iluminacion. Alto: reflejos.",
      "Polvo, brasas, luciernagas, lluvia y nieve propios. No en el juego de PS2.",
      "Briznas de hierba en el suelo marcado cerca de la camara. Mas pesado.",
+     "Lo que refleja el agua. Bajo: cielo y orillas, fijos. Medio: todo, Ratchet tambien.",
      "Original: la imagen de PS2. Mejorado: nuestra iluminacion, agua y efectos.",
      "Ajusta todas las filas de abajo a la vez. Cambiar una muestra Personal.",
      "Ventana", "Completa", "4:3 Original", "16:9", "Llenar", "Bandas", "Estirar", "21:9", "32:9", "Todo el ancho",
@@ -242,7 +247,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Panoramico, mas detalle, apuntado y movimiento modernos. Todo cambia en Opciones.",
      "Moderno con Graficos Mejorado, Alto: sombras, luces, agua. Experimental, pesado."},
     {"Grafica", "L'immagine originale, o la nostra illuminazione, acqua ed effetti", "Schermo", "Finestra, formato, dettaglio e visuale della versione PC",
-     "Modalita schermo", "Monitor", "Finestra", "Risoluzione 3D", "Formato", "Adattamento", "Livello di dettaglio", "Campo visivo", "V-Sync", "Limite FPS", "Illuminazione", "Ombre dinamiche", "Luci secondarie", "Distanza ombre", "Occlusione ambientale", "Dettaglio texture", "Intensita ombre", "Raggi di sole", "Intensita occlusione", "HUD", "Renderer", "Dettaglio superfici", "Particelle ambientali", "Erba", "Preset",
+     "Modalita schermo", "Monitor", "Finestra", "Risoluzione 3D", "Formato", "Adattamento", "Livello di dettaglio", "Campo visivo", "V-Sync", "Limite FPS", "Illuminazione", "Ombre dinamiche", "Luci secondarie", "Distanza ombre", "Occlusione ambientale", "Dettaglio texture", "Intensita ombre", "Raggi di sole", "Intensita occlusione", "HUD", "Renderer", "Dettaglio superfici", "Particelle ambientali", "Erba", "Riflessi dell'acqua", "Preset",
      "In una finestra o a schermo intero.", "Su quale schermo va la finestra.", "La dimensione della finestra (in modalita finestra).", "La risoluzione del 3D, per quella dello schermo. L'HUD resta nitido.",
      "4:3 come l'originale, 16:9 o la visuale allargata allo schermo.", "Se il formato non e quello dello schermo: bande nere o stirato.",
      "Fin dove gli oggetti tengono il dettaglio e restano disegnati.", "x1.00 e la visuale dell'originale.", "Attende il refresh dello schermo: niente tearing.",
@@ -261,6 +266,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Metallo lucido, terreno bagnato, acqua e lava con la nuova illuminazione. Alto: riflessi.",
      "Polvere, braci, lucciole, pioggia e neve nostre. Non nel gioco PS2.",
      "Fili d'erba sul terreno marcato vicino alla camera. Piu pesante.",
+     "Cosa riflette l'acqua. Basso: cielo e rive, fissi. Medio: tutto, anche Ratchet.",
      "Originale: l'immagine della PS2. Migliorata: la nostra illuminazione, acqua, effetti.",
      "Imposta tutte le righe sotto in una volta. Cambiarne una mostra Personale.",
      "Finestra", "Intero", "4:3 Originale", "16:9", "Riempi", "Bande nere", "Stira", "21:9", "32:9", "Tutta la larghezza",
@@ -291,6 +297,7 @@ constexpr Row GRAPHICS_ROWS[] = {
     {S_LIGHTING, T_LIGHTING, H_LIGHTING},    {S_SHADOW_STR, T_SHADOW_STR, H_SHADOW_STR},       {S_SHADOW_DIST, T_SHADOW_DIST, H_SHADOW_DIST},     {S_DYN_SHADOWS, T_DYN_SHADOWS, H_DYN_SHADOWS},
     {S_SEC_LIGHTS, T_SEC_LIGHTS, H_SEC_LIGHTS},   {S_AO, T_AO, H_AO},   {S_AO_STR, T_AO_STR, H_AO_STR},   {S_SUN_RAYS, T_SUN_RAYS, H_SUN_RAYS},
     {S_SURFACE, T_SURFACE, H_SURFACE},
+    {S_WREFL, T_WREFL, H_WREFL},
     {S_GRASS, T_GRASS, H_GRASS},
     {S_PARTICLES, T_PARTICLES, H_PARTICLES},
 };
@@ -349,7 +356,7 @@ struct State {
     bool live_enh = false;
     bool stash_ok = false;
     bool installed = false;  // (the pages built: their rows follow the switch)
-    int stash[7] = {};
+    int stash[8] = {};
     int win_w = 960, win_h = 720;                      // the window mode's size
     bool host_fullscreen = false;
     uint32_t mode = GAME_MODE_NONE;
@@ -378,6 +385,7 @@ uint32_t value_count(Setting s) {
         case S_SURFACE: return 3;   // Off, Low, High (the materials, mrp_lighting.h g_surface_detail)
         case S_PARTICLES: return 3;  // Off, Low, High (mrp_particles.h)
         case S_GRASS: return 3;  // Off, Low, High (mrp_lighting.h g_grass)
+        case S_WREFL: return 2;  // Low, Medium (mrp_reflect.h g_water_reflections: 1, 2; High left for a ray-traced mode)
         case S_AO_STR: return sizeof(AO_STRS) / sizeof(int);
         case S_LIGHTING: return 3;  // Low, Medium, High (mrp_lighting.h: the maps at 1024 / 2048 / 4096)
         case S_FOV: return sizeof(FOVS) / sizeof(int);
@@ -431,10 +439,10 @@ void preset_set(int* v, int p) {
 
 // The renderer's switches of the additions (each one's Off is the original's picture)
 struct Additions {
-    int modern, dyn, ao, rays, surface, particles, grass;
+    int modern, dyn, ao, rays, surface, particles, grass, refl;
 };
 // orig: (none) — enhancement: the renderer's switches as they are now
-Additions additions_now() { return {g_modern_shadows, g_point_shadows, g_ao, g_sun_rays, g_surface_detail, g_ambient_particles, g_grass}; }
+Additions additions_now() { return {g_modern_shadows, g_point_shadows, g_ao, g_sun_rays, g_surface_detail, g_ambient_particles, g_grass, g_water_reflections}; }
 // orig: (none) — enhancement: the renderer's switches set
 void additions_set(const Additions& a) {
     g_modern_shadows = a.modern;
@@ -444,6 +452,7 @@ void additions_set(const Additions& a) {
     g_surface_detail = a.surface;
     g_ambient_particles = a.particles;
     g_grass = a.grass;
+    g_water_reflections = a.refl;
 }
 
 // orig: (none) — enhancement: THE GATE. The renderer's switches of the additions set from the rows `v`, every one off unless `on`
@@ -464,6 +473,7 @@ void additions_apply(const int* v, bool on, bool env) {
     if (ours("RAC1_SURFACE_DETAIL")) g_surface_detail = on ? v[S_SURFACE] : 0;
     if (ours("RAC1_PARTICLES")) g_ambient_particles = on ? v[S_PARTICLES] : 0;
     if (ours("RAC1_GRASS")) g_grass = on ? v[S_GRASS] : 0;
+    if (ours("RAC1_WATER_REFLECTIONS")) g_water_reflections = on ? v[S_WREFL] + 1 : 0;
     if (ours("RAC1_SHADOW_STRENGTH")) g_shadow_strength = SHADOW_STRS[v[S_SHADOW_STR]];
     if (ours("RAC1_AO_INTENSITY")) g_ao_intensity = AO_STRS[v[S_AO_STR]];
     gs_.live_enh = on;
@@ -482,6 +492,7 @@ void rows_from_live(int* v, const Additions& a) {
     v[S_SURFACE] = std::clamp(a.surface, 0, 2);
     v[S_PARTICLES] = std::clamp(a.particles, 0, 2);
     v[S_GRASS] = std::clamp(a.grass, 0, 2);
+    v[S_WREFL] = std::clamp(a.refl - 1, 0, 1);
     v[S_SHADOW_STR] = nearest(SHADOW_STRS, g_shadow_strength);
     v[S_AO_STR] = nearest(AO_STRS, g_ao_intensity);
 }
@@ -525,7 +536,7 @@ void values_to_ee() {
     for (uint32_t i = 0; i < S_GFX; ++i) {
         int v = gs_.value[i];
         if (i == S_LIGHTING) v = on ? v + 1 : 0;
-        else if (!on && (i == S_DYN_SHADOWS || i == S_AO || i == S_SUN_RAYS || i == S_SURFACE || i == S_PARTICLES || i == S_GRASS)) v = 0;
+        else if (!on && (i == S_DYN_SHADOWS || i == S_AO || i == S_SUN_RAYS || i == S_SURFACE || i == S_PARTICLES || i == S_GRASS || i == S_WREFL)) v = 0;
         sb(VALUES + i, static_cast<uint32_t>(v));
     }
 }
@@ -605,6 +616,7 @@ bool prefs_read(const std::filesystem::path& path) {
         else if (std::strcmp(key, "ambient_particles") == 0 && a >= 0 && a < 3) gs_.value[S_PARTICLES] = a;
         // ("foliage" and "water", the Foliage and Water rows' until they were removed: read like any other key and ignored)
         else if (std::strcmp(key, "grass") == 0 && a >= 0 && a < 3) gs_.value[S_GRASS] = a;
+        else if (std::strcmp(key, "water_reflections") == 0 && a >= 0 && a < 2) gs_.value[S_WREFL] = a;
         // ("overscan", the Overscan row's until 0.4: read like any other key and ignored, the full frame always shown)
         else if (std::strcmp(key, "mode") == 0 && a >= 0 && a <= 3) gs_.mode = static_cast<uint32_t>(a);
     }
@@ -661,12 +673,12 @@ void prefs_write() {
     {
         const int* v = gs_.value;
         static constexpr const char* kFormat =
-            "display %d\nmonitor %s\nwindow %d %d\nrender_scale %d\naspect %d\nfit %d\nlod %d\nfov %d\nvsync %d\nfps_cap %d\nlighting %d\ndynamic_shadows %d\nsecondary_lights %d\nshadow_distance %d\nambient_occlusion %d\ntexture_detail %d\nshadow_strength %d\nsun_rays_quality %d\nao_intensity %d\nambient_particles %d\nhud %d\nrenderer %s\nsurface_detail %d\ngrass %d\nmode %u\ngraphics %d\nlighting_quality %d\n";
+            "display %d\nmonitor %s\nwindow %d %d\nrender_scale %d\naspect %d\nfit %d\nlod %d\nfov %d\nvsync %d\nfps_cap %d\nlighting %d\ndynamic_shadows %d\nsecondary_lights %d\nshadow_distance %d\nambient_occlusion %d\ntexture_detail %d\nshadow_strength %d\nsun_rays_quality %d\nao_intensity %d\nambient_particles %d\nhud %d\nrenderer %s\nsurface_detail %d\ngrass %d\nwater_reflections %d\nmode %u\ngraphics %d\nlighting_quality %d\n";
         // (`lighting` as the versions before the switch read it: 0 Original, 1..3 Low..High)
         const int old_lighting = v[S_GFX] != 0 ? v[S_LIGHTING] + 1 : 0;
         auto format = [&](char* out, size_t n) {
             return std::snprintf(out, n, kFormat, v[S_DISPLAY], gs_.monitor_name.c_str(), gs_.win_w, gs_.win_h, SCALES[v[S_SCALE]], v[S_ASPECT], v[S_FIT], v[S_LOD], FOVS[v[S_FOV]], v[S_VSYNC], CAPS[v[S_CAP]], old_lighting, v[S_DYN_SHADOWS],
-                     v[S_SEC_LIGHTS], v[S_SHADOW_DIST], v[S_AO], v[S_MIPS], SHADOW_STRS[v[S_SHADOW_STR]], v[S_SUN_RAYS], AO_STRS[v[S_AO_STR]], v[S_PARTICLES], v[S_HUD], v[S_RENDERER] != 0 ? "vulkan" : "opengl", v[S_SURFACE], v[S_GRASS], gs_.mode,
+                     v[S_SEC_LIGHTS], v[S_SHADOW_DIST], v[S_AO], v[S_MIPS], SHADOW_STRS[v[S_SHADOW_STR]], v[S_SUN_RAYS], AO_STRS[v[S_AO_STR]], v[S_PARTICLES], v[S_HUD], v[S_RENDERER] != 0 ? "vulkan" : "opengl", v[S_SURFACE], v[S_GRASS], v[S_WREFL], gs_.mode,
                      v[S_GFX], v[S_LIGHTING]);
         };
         // (through a temporary file: a crash or a full disk never leaves the preferences half written)
@@ -731,6 +743,7 @@ std::string value_text(Setting s) {
         case S_SURFACE: return t[v == 0 ? T_OFF : v == 1 ? T_LOW : T_HIGH];
         case S_PARTICLES: return t[v == 0 ? T_OFF : v == 1 ? T_LOW : T_HIGH];
         case S_GRASS: return t[v == 0 ? T_OFF : v == 1 ? T_LOW : T_HIGH];
+        case S_WREFL: return t[v == 0 ? T_LOW : T_MEDIUM];
         case S_SHADOW_STR: std::snprintf(b, sizeof b, "%d", SHADOW_STRS[v]); return b;  // (the font's '%' is a button)
         case S_AO_STR: std::snprintf(b, sizeof b, "%d", AO_STRS[v]); return b;
         case S_AO: {
@@ -1140,6 +1153,7 @@ void graphics_save_items(std::vector<uint8_t>& d, uint32_t& count) {
         {38, gs_.value[S_GFX] != 0 ? gs_.value[S_LIGHTING] + 1 : 0}, {39, gs_.value[S_DYN_SHADOWS]}, {40, gs_.value[S_SEC_LIGHTS]},
         {41, gs_.value[S_SHADOW_DIST]}, {42, gs_.value[S_AO]}, {43, gs_.value[S_MIPS]}, {45, gs_.value[S_SHADOW_STR]}, {47, gs_.value[S_AO_STR]}, {48, gs_.value[S_HUD]}, {49, gs_.value[S_SUN_RAYS]},
         {50, gs_.value[S_PARTICLES]}, {51, gs_.value[S_SURFACE]}, {54, gs_.value[S_GRASS]},  // (52 the Water row's until it was removed: kept unused)
+        {57, gs_.value[S_WREFL]},
         {55, gs_.value[S_GFX]}, {56, gs_.value[S_LIGHTING]},  // (after 38, which the versions before the switch read: theirs)
     };
     for (const auto& it : items) {
@@ -1154,7 +1168,7 @@ void graphics_save_items(std::vector<uint8_t>& d, uint32_t& count) {
 
 // orig: (none) — enhancement (graphics.h)
 bool graphics_save_item(uint32_t id, const uint8_t* data, uint32_t size) {
-    if (id < 32 || id > 56) return false;
+    if (id < 32 || id > 57) return false;
     if (size < 1) return true;
     const int v = data[0];
     switch (id) {
@@ -1188,6 +1202,7 @@ bool graphics_save_item(uint32_t id, const uint8_t* data, uint32_t size) {
         case 52: return true;  // (the Water row's until it was removed, Surface Detail's water kept: ignored)
         case 53: return true;  // (the Foliage row's until it was removed: ignored)
         case 54: if (v < 3) gs_.value[S_GRASS] = v; break;
+        case 57: if (v < 2) gs_.value[S_WREFL] = v; break;
         default: break;
     }
     changed();

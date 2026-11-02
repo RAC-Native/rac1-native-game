@@ -96,7 +96,7 @@ ship selector and Clank's movement, removed) are ignored when read. Ids 32 to 51
 Graphics page's picture settings, the New Game mode, the lighting rows, Texture Detail, Shadow Strength (45), AO Intensity (47), HUD (48), Sun Rays (49: Off, Low, Medium, High), Ambient Particles (50: Off, Low, High) and Surface Detail (51: Off, Low, High)
 (`graphics_save_items` in `graphics.cpp`; id 44, the Overscan row removed after 0.4, is no longer written and is ignored when read;
 id 46, Sun Rays until 0.4.x - Off, Low, High -, is no longer written and is read as Off, Medium, High). Grass is 54 (52, Water until the row was
-removed, is no longer written and is ignored when read; it stays reserved); the Graphics switch is 55 (0 Original, 1 Enhanced) and the Lighting row 56 (0 Low .. 2 High). Id 38, the Lighting row before the
+removed, is no longer written and is ignored when read; it stays reserved); the Graphics switch is 55 (0 Original, 1 Enhanced), the Lighting row 56 (0 Low .. 2 High) and Water Reflections 57 (0 Low, 1 Medium). Id 38, the Lighting row before the
 switch (0 Original, 1..3 Low..High), is still written that way for older versions and read as Graphics Original (Lighting High) or
 Enhanced with that Lighting when 55 and 56 are missing (see [Settings](settings.md#before-the-switch-the-preferences-and-the-saves)). A reader skips ids it does not know and keeps its current value for ids that are
 missing, so older and newer versions read each other's files. A save without a `.pc` file keeps the

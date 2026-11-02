@@ -391,6 +391,17 @@ bool mrp_lighting_vk_ao_marking();
 // (`view` the shadow view - 0..2 a cascade, 3 + i point light slot i's cube: the world draws the casters sorted into it;
 // `sphere` (x, y, z, r) the mobys near a point light alone)
 void mrp_world_draw_casters(const float* light_vp, int view);
+// orig: (host) Water Reflections (mrp_reflect.h): the world and the mobys of the frame drawn again into the bound target, through the
+// view mrp_lighting_reflect_begin set (`casters`: the world's batches made for the shadow maps alone - outside the view - drawn too)
+void mrp_world_draw_reflect(bool casters);
+void mrp_moby_draw_reflect();
+// orig: (host) Water Reflections: while on, every receiver's and the sky's uniforms (OpenGL, Vulkan) draw through `light_vp` (the
+// world point taken back from the view's clip coordinates, as the shadow pass does: uShPass 2, the sky's directions 3), cut by the
+// plane `cut` (x, y, z, w: kept where dot(p, xyz) <= w), lit as seen from `cam`; the reflections' own textures not bound
+void mrp_lighting_reflect_begin(const float* light_vp, const float cut[4], const float cam[3]);
+void mrp_lighting_reflect_end();
+// orig: (host) the frame's camera (the lighting's: false before its shadow pass ran)
+bool mrp_lighting_camera(float cam[3]);
 // (`within` - x, y, z, distance - the parts within that distance of that point alone: the shadows' distance)
 void mrp_moby_draw_casters(const float* light_vp, const float* sphere = nullptr, const float* within = nullptr);
 // the distance from a point to the nearest moby part the frame draws (a large value when none)
@@ -420,6 +431,7 @@ bool mrp_moby_caster_rect(const float* light_vp, float rect[4], const float* wit
     "    if (uShPass == 0 && uShOn == 0) return clip;\n"                                                \
     "    vec4 wp = uShInvView * vec4(clip.x / uShProj.x, clip.y / uShProj.y, -clip.w, 1.0);\n"          \
     "    vShWorld = wp.xyz;\n"                                                                          \
+    "    if (uShPass == 3) return uShLight * vec4(wp.xyz - uShInvView[3].xyz, 0.0);\n" /* the water's reflections' sky: a direction */ \
     "    if (uShPass != 0) {\n"                                                                         \
     "        gl_ClipDistance[0] = uShCut.w - dot(wp.xyz, uShCut.xyz);\n"                                \
     "        return uShLight * vec4(wp.xyz, 1.0);\n"                                                    \
@@ -481,7 +493,7 @@ bool mrp_moby_caster_rect(const float* light_vp, float rect[4], const float* wit
     "vec3 sh_n = vec3(0.0, 0.0, 1.0);\n"                                                                \
     "void sh_prepare() {\n" /* (in uniform control flow: the derivatives) */                           \
     "    sh_state = vec4(1.0, 0.0, -1.0, 0.0);\n"                                                       \
-    "    if (uShPass != 0 || uShOn == 0) return;\n"                                                     \
+    "    if (uShPass == 1 || uShOn == 0) return;\n"                                                     \
     "    vec3 dx = dFdx(vShWorld), dy = dFdy(vShWorld);\n"                                              \
     "    vec3 n = cross(dx, dy);\n"                                                                     \
     "    float nl = length(n);\n"                                                                       \
@@ -581,7 +593,7 @@ bool mrp_moby_caster_rect(const float* light_vp, float rect[4], const float* wit
     "    return mix(lit, max(lit, orig * e.x), m);\n"                                                  \
     "}\n"                                                                                              \
     "vec3 sh_emissive(vec3 lit, vec3 orig, vec3 tex, uint s) {\n"                                      \
-    "    if (s == 0u || uShOn == 0 || uShPass != 0 || uEmis[0].x == 0.0) return lit;\n"                \
+    "    if (s == 0u || uShOn == 0 || uShPass == 1 || uEmis[0].x == 0.0) return lit;\n"                \
     "    vec4 e = uEmis[s];\n"                                                                         \
     "    if (e.w > 0.0) return mix(lit, vec3(1.0, 0.0, 1.0), e.x);\n" /* the debug menu's preview */    \
     /* a material's slot (z its type): drawn by sh_material, its glow after it; with Surface Detail Off (uMat[0].x 0) its glow alone */ \

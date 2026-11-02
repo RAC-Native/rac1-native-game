@@ -1,6 +1,7 @@
 // The MRP's modern lighting: the sun's cascaded shadow maps (see mrp_lighting.h). Host code, an enhancement: none of it is the game's.
 #include <game/render/mrp_lighting.h>
 #include <game/render/mrp_fx.h>
+#include <game/render/mrp_reflect.h>
 
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -620,6 +621,9 @@ struct VkLighting {
     float cast_vp[16] = {};
     bool cast_opaque = false;
     VkDescriptorSet cast_ds = VK_NULL_HANDLE;
+    uint64_t refl_gen[4] = {};  // (Water Reflections' views: off, the sky, lit by each variant)
+    VkDescriptorSet refl_ds[4] = {};
+    int rec_vp[4] = {};  // (the viewport the receivers' sets were made for: the materials' uMat2[254])
 
     // AO & Sun Rays Vulkan state
     VkShaderModule vs_mod = VK_NULL_HANDLE;
@@ -4517,6 +4521,15 @@ void material_uniforms(MatUniforms& u) {
             break;
         }
     u.mat2[kEmissivePreviewSlot] = glm::vec4(wind, g_grass_distance, static_cast<float>(shells));
+    {  // Water Reflections (mrp_reflect.h): [253] the mode, the planar view's plane and readiness, [254] the 3D's rectangle drawn into now
+        int v[4] = {};
+        if (vk::is_active()) vk::get_viewport(v);
+        else glGetIntegerv(GL_VIEWPORT, v);
+        float a[4], b[4];
+        mrp_reflect_uniforms(v, a, b);
+        u.mat2[253] = glm::vec4(a[0], a[1], a[2], a[3]);
+        u.mat2[254] = glm::vec4(b[0], b[1], b[2], b[3]);
+    }
     const bool ready = mat_ssr_ready();
     u.mat[0] = glm::vec4(any ? static_cast<float>(g_surface_detail) : 0.0f, static_cast<float>(g_mat_frames % 60000u) / 60.0f, g_rain ? 1.0f : 0.0f, ready ? 1.0f : 0.0f);
     u.sky = g_sky_file ? glm::vec4(g_sky[0], g_sky[1], g_sky[2], 0.0f) : glm::vec4(kSkyDefault[0], kSkyDefault[1], kSkyDefault[2], 0.0f);
@@ -5812,18 +5825,37 @@ void bind_units(const ShadowLocs& l) {
 }
 }  // namespace
 
+namespace {
+// Water Reflections' view while it draws (mrp_lighting_reflect_begin): every receiver's, caster-less, and the sky's uniforms through it
+struct ReflBind {
+    bool on = false;
+    glm::mat4 light{1.0f};
+    glm::vec4 cut{0.0f};
+    glm::vec3 cam{0.0f};
+    uint64_t gen = 0;
+} g_refl;
+// orig: (host) OpenGL: the reflections' view's uniforms (the program bound)
+void refl_uniforms(const ShadowLocs& l) {
+    bind_common(l);
+    glUniformMatrix4fv(l.light, 1, GL_FALSE, glm::value_ptr(g_refl.light));
+    glUniform4f(l.cut, g_refl.cut.x, g_refl.cut.y, g_refl.cut.z, g_refl.cut.w);
+}
+}  // namespace
+
 // orig: (host) see mrp_lighting.h
 void mrp_lighting_bind_receiver(const ShadowLocs& l, bool sky) {
     const bool on = mrp_lighting_active() && !sky;
-    glUniform1i(l.pass, 0);
+    glUniform1i(l.pass, g_refl.on ? (sky ? 3 : 2) : 0);
     glUniform1i(l.on, on ? 1 : 0);
     bind_units(l);
+    if (g_refl.on) refl_uniforms(l);
     if (!on) return;
     bind_common(l);
     glm::mat4 m[kCascades];
     for (int k = 0; k < kCascades; ++k) m[k] = g_sh.casc[k].tex;
     glUniformMatrix4fv(l.casc, kCascades, GL_FALSE, glm::value_ptr(m[0]));
-    glUniform3f(l.cam, g_sh.cam.x, g_sh.cam.y, g_sh.cam.z);
+    const glm::vec3 cam = g_refl.on ? g_refl.cam : g_sh.cam;  // (Water Reflections: the faces turned to the mirrored eye)
+    glUniform3f(l.cam, cam.x, cam.y, cam.z);
     glUniform3f(l.sun, g_sh.sun.x, g_sh.sun.y, g_sh.sun.z);
     // (x: the share fallback's strength - the lighting's variants apply the strength to the visibility, uShStrength)
     glUniform4f(l.param, l.strength >= 0 ? 1.0f : static_cast<float>(g_shadow_strength) / 100.0f, g_has_sun.load() ? static_cast<float>(kCascades) : 0.0f, 0.08f, 1.0f);
@@ -5876,10 +5908,35 @@ void mrp_lighting_bind_caster(const ShadowLocs& l, const float* light_vp) {
 
 // orig: (host) see mrp_lighting.h
 void mrp_lighting_bind_off(const ShadowLocs& l) {
-    glUniform1i(l.pass, 0);
+    glUniform1i(l.pass, g_refl.on ? 2 : 0);
     glUniform1i(l.on, 0);
     glUniform1i(l.pt_n, -1);
     bind_units(l);
+    if (g_refl.on) refl_uniforms(l);
+}
+
+// orig: (host) see mrp_lighting.h
+void mrp_lighting_reflect_begin(const float* light_vp, const float cut[4], const float cam[3]) {
+    g_refl.on = true;
+    g_refl.light = glm::make_mat4(light_vp);
+    g_refl.cut = glm::vec4(cut[0], cut[1], cut[2], cut[3]);
+    g_refl.cam = glm::vec3(cam[0], cam[1], cam[2]);
+    ++g_refl.gen;
+}
+
+// orig: (host) see mrp_lighting.h
+void mrp_lighting_reflect_end() {
+    g_refl.on = false;
+    ++g_vk_sh.ubo_gen;  // (Vulkan: the receivers' sets made again - the materials' uniforms say the reflections are ready)
+}
+
+// orig: (host) see mrp_lighting.h
+bool mrp_lighting_camera(float cam[3]) {
+    if (!g_sh.on) return false;
+    cam[0] = g_sh.cam.x;
+    cam[1] = g_sh.cam.y;
+    cam[2] = g_sh.cam.z;
+    return true;
 }
 
 namespace {
@@ -5963,7 +6020,14 @@ VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, const MatTable* tab
         {nearest_sampler, sky_tex.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
     };
 
-    VkWriteDescriptorSet writes[8]{};
+    // (Water Reflections: its planar view and cube map - not while it draws them, nor in a caster's set)
+    const vk::GpuImage* rp = is_caster || g_refl.on ? nullptr : mrp_reflect_vk_planar();
+    const vk::GpuImage* rc = is_caster || g_refl.on ? nullptr : mrp_reflect_vk_cube();
+    const VkDescriptorImageInfo drefl[2] = {
+        {linear_sampler, rp != nullptr ? rp->view : vk::white_texture().view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+        {linear_sampler, rc != nullptr ? rc->view : vk::white_texture_array().view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+    };
+    VkWriteDescriptorSet writes[10]{};
     writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     writes[0].dstSet = ds;
     writes[0].dstBinding = 0;
@@ -5984,7 +6048,15 @@ VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, const MatTable* tab
     writes[7].descriptorCount = 1;
     writes[7].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     writes[7].pBufferInfo = &dbt;
-    vkUpdateDescriptorSets(vk::device(), 8, writes, 0, nullptr);
+    for (uint32_t i = 0; i < 2; ++i) {
+        writes[8 + i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[8 + i].dstSet = ds;
+        writes[8 + i].dstBinding = 8 + i;
+        writes[8 + i].descriptorCount = 1;
+        writes[8 + i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[8 + i].pImageInfo = &drefl[i];
+    }
+    vkUpdateDescriptorSets(vk::device(), 10, writes, 0, nullptr);
     return ds;
 }
 }  // namespace
@@ -5992,23 +6064,87 @@ VkDescriptorSet build_lighting_vk_ds(const ShadowVkUbo& ubo, const MatTable* tab
 uint64_t mrp_lighting_vk_set_layout() {
     ensure_vk_lighting_init();
     if (g_vk_sh.set_layout == VK_NULL_HANDLE && vk::device() != VK_NULL_HANDLE) {
-        VkDescriptorSetLayoutBinding bindings[8]{};
+        VkDescriptorSetLayoutBinding bindings[10]{};
         bindings[0] = {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
         for (uint32_t i = 1; i <= 6; ++i) {  // (1 the sun's cascades, 2 the materials' last 3D, 3 the cubes, 4 the tiles, 5 its depth, 6 the sky grid)
             bindings[i] = {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
                            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
         }
         bindings[7] = {7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};  // (the slots' table)
+        for (uint32_t i = 8; i <= 9; ++i)  // (Water Reflections: 8 the planar view, 9 the cube map's faces)
+            bindings[i] = {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
         VkDescriptorSetLayoutCreateInfo dslci{};
         dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        dslci.bindingCount = 8;
+        dslci.bindingCount = 10;
         dslci.pBindings = bindings;
         vkCreateDescriptorSetLayout(vk::device(), &dslci, nullptr, &g_vk_sh.set_layout);
     }
     return reinterpret_cast<uint64_t>(g_vk_sh.set_layout);
 }
 
+namespace {
+// orig: (host) Vulkan: the lit receivers' uniforms and the slots' table (`lit_variant`: the lighting's own variants)
+void receiver_ubo(ShadowVkUbo& ubo, MatTable& table, bool lit_variant) {
+    ubo.uShInvView = g_sh.inv_view;
+    ubo.uShProj = g_sh.proj;
+    for (int k = 0; k < kCascades; ++k) ubo.uShCasc[k] = g_sh.casc[k].tex;
+    ubo.uShCam_Pass = glm::vec4(g_sh.cam, 0.0f);
+    ubo.uShSun_On = glm::vec4(g_sh.sun, 1.0f);
+    ubo.uShParam = glm::vec4(lit_variant ? 1.0f : static_cast<float>(g_shadow_strength) / 100.0f,
+                             g_has_sun.load() ? static_cast<float>(kCascades) : 0.0f, 0.08f, 1.0f);
+    ubo.uShTexel_SunK = glm::vec4(g_sh.casc[0].texel, g_sh.casc[1].texel, g_sh.casc[2].texel, g_sh.sun_k);
+    ubo.uShPart_Near = glm::vec4(g_sh.casc[0].part, g_sh.casc[1].part, g_sh.casc[2].part, kPtNear);
+    ubo.uShKeyDir_Str = glm::vec4(g_sh.key_dir, static_cast<float>(g_shadow_strength) / 100.0f);
+    static const bool share = std::getenv("RAC1_WORLD_SHADOW") != nullptr &&
+                              std::strcmp(std::getenv("RAC1_WORLD_SHADOW"), "share") == 0;
+    const glm::vec4& k = g_sh.key;
+    if (share || !(k.x + k.y + k.z > 0.0f)) ubo.uShKey = glm::vec4(0.0f, 0.0f, 0.0f, -1.0f);
+    else ubo.uShKey = glm::vec4(k.x * (128.0f / 255.0f), k.y * (128.0f / 255.0f), k.z * (128.0f / 255.0f), k.w);
+    ubo.uShDebug = g_shadow_debug;
+    ubo.uPtN = g_modern_points != 0 ? g_sh.npts : -1;
+    ubo.uPtVP = g_sh.view_proj;
+    if (g_sh.npts > 0) {
+        std::memcpy(ubo.uPtPos, g_sh.pt_pos, static_cast<size_t>(g_sh.npts) * sizeof(glm::vec4));
+        std::memcpy(ubo.uPtCol, g_sh.pt_col, static_cast<size_t>(g_sh.npts) * sizeof(glm::vec4));
+        std::memcpy(ubo.uPtDown, g_sh.pt_down, static_cast<size_t>((g_sh.npts + 3) / 4) * sizeof(glm::vec4));
+        std::memcpy(ubo.uPtAim, g_sh.pt_aim, static_cast<size_t>(g_sh.npts) * sizeof(glm::vec4));
+    }
+    emissive_uniforms(table.emis);
+    MatUniforms mu;
+    material_uniforms(mu);
+    std::memcpy(table.mat, mu.mat, sizeof table.mat);
+    ubo.uSsrVP = mu.ssr_vp;
+    ubo.uSsrZ = mu.ssr_z;
+    ubo.uSsrSky = mu.sky;
+    std::memcpy(table.mat2, mu.mat2, sizeof table.mat2);
+}
+// orig: (host) Vulkan: Water Reflections' view while it draws (kind 0 the lighting off, 1 the sky, 2 / 3 lit: the base / the lighting's
+// variants): the view's own uniforms, its pass (2; the sky's directions 3), its plane and its eye
+void refl_bind_vk(uint64_t pipe_layout, int kind) {
+    const uint64_t gen = (vk::frame_number() << 40) ^ (g_refl.gen << 20) ^ (g_vk_sh.ubo_gen & 0xfffffu);
+    if (g_vk_sh.refl_gen[kind] != gen || g_vk_sh.refl_ds[kind] == VK_NULL_HANDLE) {
+        ShadowVkUbo ubo{};
+        static MatTable table;
+        if (kind >= 2) receiver_ubo(ubo, table, kind == 3);
+        ubo.uShInvView = g_sh.inv_view;
+        ubo.uShProj = g_sh.proj;
+        ubo.uShLight = g_refl.light;
+        ubo.uShCut = g_refl.cut;
+        ubo.uShCam_Pass = glm::vec4(g_refl.cam, kind == 1 ? 3.0f : 2.0f);
+        ubo.uShSun_On = glm::vec4(g_sh.sun, kind >= 2 ? 1.0f : 0.0f);
+        g_vk_sh.refl_ds[kind] = build_lighting_vk_ds(ubo, kind >= 2 ? &table : nullptr, false);
+        g_vk_sh.refl_gen[kind] = gen;
+    }
+    vkCmdBindDescriptorSets(vk::cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS, reinterpret_cast<VkPipelineLayout>(pipe_layout), 1, 1,
+                            &g_vk_sh.refl_ds[kind], 0, nullptr);
+}
+}  // namespace
+
 void mrp_lighting_vk_bind_off(uint64_t pipe_layout) {
+    if (g_refl.on) {
+        refl_bind_vk(pipe_layout, 0);
+        return;
+    }
     const uint64_t gen = (vk::frame_number() << 32) | (g_vk_sh.ubo_gen & 0xffffffffu);
     if (g_vk_sh.off_gen != gen || g_vk_sh.off_ds == VK_NULL_HANDLE) {
         ShadowVkUbo ubo{};
@@ -6021,47 +6157,26 @@ void mrp_lighting_vk_bind_off(uint64_t pipe_layout) {
 
 void mrp_lighting_vk_bind_receiver(uint64_t pipe_layout, bool sky, bool lit_variant) {
     const bool on = mrp_lighting_active() && !sky;
+    if (g_refl.on) {
+        refl_bind_vk(pipe_layout, sky ? 1 : !on ? 0 : lit_variant ? 3 : 2);
+        return;
+    }
     if (!on) {
         mrp_lighting_vk_bind_off(pipe_layout);
         return;
+    }
+    int vpn[4];
+    vk::get_viewport(vpn);
+    if (std::memcmp(vpn, g_vk_sh.rec_vp, sizeof vpn) != 0) {  // (the materials' uMat2[254]: the sets made again for another rectangle)
+        std::memcpy(g_vk_sh.rec_vp, vpn, sizeof vpn);
+        ++g_vk_sh.ubo_gen;
     }
     const uint64_t gen = (vk::frame_number() << 32) | (g_vk_sh.ubo_gen & 0xffffffffu);
     const int li = lit_variant ? 1 : 0;
     if (g_vk_sh.rec_gen[1][li] != gen || g_vk_sh.rec_ds[1][li] == VK_NULL_HANDLE) {
         ShadowVkUbo ubo{};
-        ubo.uShInvView = g_sh.inv_view;
-        ubo.uShProj = g_sh.proj;
-        for (int k = 0; k < kCascades; ++k) ubo.uShCasc[k] = g_sh.casc[k].tex;
-        ubo.uShCam_Pass = glm::vec4(g_sh.cam, 0.0f);
-        ubo.uShSun_On = glm::vec4(g_sh.sun, 1.0f);
-        ubo.uShParam = glm::vec4(lit_variant ? 1.0f : static_cast<float>(g_shadow_strength) / 100.0f,
-                                 g_has_sun.load() ? static_cast<float>(kCascades) : 0.0f, 0.08f, 1.0f);
-        ubo.uShTexel_SunK = glm::vec4(g_sh.casc[0].texel, g_sh.casc[1].texel, g_sh.casc[2].texel, g_sh.sun_k);
-        ubo.uShPart_Near = glm::vec4(g_sh.casc[0].part, g_sh.casc[1].part, g_sh.casc[2].part, kPtNear);
-        ubo.uShKeyDir_Str = glm::vec4(g_sh.key_dir, static_cast<float>(g_shadow_strength) / 100.0f);
-        static const bool share = std::getenv("RAC1_WORLD_SHADOW") != nullptr &&
-                                  std::strcmp(std::getenv("RAC1_WORLD_SHADOW"), "share") == 0;
-        const glm::vec4& k = g_sh.key;
-        if (share || !(k.x + k.y + k.z > 0.0f)) ubo.uShKey = glm::vec4(0.0f, 0.0f, 0.0f, -1.0f);
-        else ubo.uShKey = glm::vec4(k.x * (128.0f / 255.0f), k.y * (128.0f / 255.0f), k.z * (128.0f / 255.0f), k.w);
-        ubo.uShDebug = g_shadow_debug;
-        ubo.uPtN = g_modern_points != 0 ? g_sh.npts : -1;
-        ubo.uPtVP = g_sh.view_proj;
-        if (g_sh.npts > 0) {
-            std::memcpy(ubo.uPtPos, g_sh.pt_pos, static_cast<size_t>(g_sh.npts) * sizeof(glm::vec4));
-            std::memcpy(ubo.uPtCol, g_sh.pt_col, static_cast<size_t>(g_sh.npts) * sizeof(glm::vec4));
-            std::memcpy(ubo.uPtDown, g_sh.pt_down, static_cast<size_t>((g_sh.npts + 3) / 4) * sizeof(glm::vec4));
-            std::memcpy(ubo.uPtAim, g_sh.pt_aim, static_cast<size_t>(g_sh.npts) * sizeof(glm::vec4));
-        }
         static MatTable table;
-        emissive_uniforms(table.emis);
-        MatUniforms mu;
-        material_uniforms(mu);
-        std::memcpy(table.mat, mu.mat, sizeof table.mat);
-        ubo.uSsrVP = mu.ssr_vp;
-        ubo.uSsrZ = mu.ssr_z;
-        ubo.uSsrSky = mu.sky;
-        std::memcpy(table.mat2, mu.mat2, sizeof table.mat2);
+        receiver_ubo(ubo, table, lit_variant);
         g_vk_sh.rec_ds[1][li] = build_lighting_vk_ds(ubo, &table, false);
         g_vk_sh.rec_gen[1][li] = gen;
     }

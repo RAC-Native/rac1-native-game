@@ -60,6 +60,12 @@ What changed in each release. Releases are source only: you build the game with 
   islands (its sea drawn over its texture's average where nothing lies under it, and far away). The seas tagged `water` on Rilgar,
   Pokitaru, Hoven and Novalis (the gorge's water and its waterfall, the river of the first walk, the stream and pools by the landing
   pad, the basins, the cave's water columns) get Surface Detail's water. Lava and quicksand get a slow relief with Surface Detail.
+- Water Reflections (Options > Graphics, Low or Medium; Low in the preset Low, Medium in Medium and High): Surface Detail's water no
+  longer mirrors the screen's last picture (pretty standing still, broken as soon as anything moved: a hole under Ratchet, worst in
+  a jump, flashing - Daino at Rilgar's harbour). Low: a cube map of the sky and the shores, drawn from the camera when the water is
+  first seen and again only when the view has turned or moved well away; Medium: the frame's world, sky and mobys drawn again
+  mirrored about the water's plane at half resolution, Ratchet reflected, the cube map where the water is not flat or the mirrored
+  view has nothing (the sky above the game's view, which it never draws). OpenGL and Vulkan; `water_reflections`, save item 57.
 - Grass (Options > Graphics, off by default): the ground tagged as grass gets a fine relief of blades (Low, no geometry) and a few very
   low layers of blades near the camera (High), in the texture's colours, bending with the wind and away from Ratchet. Seeded on Veldin,
   Novalis and Kerwan.

@@ -772,7 +772,7 @@ void main() {
     int uTme = int(fl & 1u), uIip = int((fl >> 1) & 1u), uAte = int((fl >> 3) & 1u), uAtst = int((fl >> 4) & 7u), uAref = int((fl >> 8) & 0xffu);
     uint unit = (fl >> 16) & 15u;  // (the CPU path's 0, the GPU path's from its draw command: one per primitive, not per wave)
 #ifdef SH_POINTS
-    if (uShPass != 0 && uAte == 0) return;  // (a caster without the alpha test: its depth alone, no texture read)
+    if (uShPass == 1 && uAte == 0) return;  // (a caster without the alpha test: its depth alone, no texture read)
 #endif
     vec4 c = uIip != 0 ? vColor : vFlat;
 #ifdef SH_POINTS
@@ -856,7 +856,7 @@ void main() {
         else if (uAtst == 5) pass = a >= float(uAref);
         else if (uAtst == 6) pass = a > float(uAref);
         else if (uAtst == 7) pass = abs(a - float(uAref)) >= 0.5;
-        if (uShPass != 0 && !pass) discard;  // (the shadow map: the cut-outs' passing pixels cast)
+        if (uShPass == 1 && !pass) discard;  // (the shadow map: the cut-outs' passing pixels cast)
         if (uAtPass == 1 && !pass) discard;  // (uAte: the draw's mode - the test on and its failing pixels treated apart)
         if (uAtPass == 2 && pass) discard;
     }
@@ -2831,7 +2831,8 @@ const char* batch_refused(const Frame& F, const Level& L, const Batch& b) {
 // point light slot i's cube - the casters near it alone)
 // orig: (host) Options > Graphics > Grass: the shells drawn this frame (High, the lighting, a tfrag texture with the grass material;
 // Low draws none: the detail relief alone), and how many (4, or RAC1_GRASS_SHELLS / the debug menu's count)
-bool grass_shells_now() { return g_grass >= 2 && g_emis.grass && mrp_lighting_active() && g_mrp_world_projection == 0 && g_render_tfrag; }
+bool g_reflect_draw = false, g_reflect_casters = false;  // (Water Reflections' views: mrp_world_draw_reflect)
+bool grass_shells_now() { return !g_reflect_draw && g_grass >= 2 && g_emis.grass && mrp_lighting_active() && g_mrp_world_projection == 0 && g_render_tfrag; }
 int grass_shell_count() { return std::clamp(g_grass_shells > 0 ? g_grass_shells : 4, 1, 32); }
 // orig: (host) Options > Graphics > Grass: a tfrag batch's probe for the stencil under the shells (sm_grass_probe; its grass, or its
 // other textures): -1 / -3 drawn opaque, -2 / -4 blended with the GS's usual alpha blend (ALPHA 0x44: its alpha is how much it covers);
@@ -3080,7 +3081,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
             if (b.sky && !with_sky) continue;
             if (caster && (b.sky || b.rk.zwrite == 0)) continue;
             static const bool show_casters = std::getenv("RAC1_SHADOW_SHOW_CASTERS") != nullptr;
-            if (!caster && b.rk.shadow != show_casters && (b.gpu || b.rk.shadow)) continue;
+            if (!caster && b.rk.shadow != show_casters && (b.gpu || b.rk.shadow) && !(g_reflect_casters && b.rk.shadow)) continue;
             if (caster && b.rk.view_only) continue;
             if (caster && (b.rk.shadow ? ((b.rk.views >> view) & 1u) == 0 : view >= 3)) continue;
             static const int part = std::getenv("RAC1_SHADOW_REF_PART") != nullptr ? std::atoi(std::getenv("RAC1_SHADOW_REF_PART")) : 0;
@@ -3456,7 +3457,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         if (b.sky && !with_sky) continue;
         if (caster && (b.sky || b.rk.zwrite == 0)) continue;  // (the casters: what writes depth, not the sky)
         static const bool show_casters = std::getenv("RAC1_SHADOW_SHOW_CASTERS") != nullptr;  // (testing: the casters' set drawn in the view instead)
-        if (!caster && b.rk.shadow != show_casters && (b.gpu || b.rk.shadow)) continue;  // (the casters outside the view, the shadow maps' only)
+        if (!caster && b.rk.shadow != show_casters && (b.gpu || b.rk.shadow) && !(g_reflect_casters && b.rk.shadow)) continue;  // (the casters outside the view, the shadow maps' only - and Water Reflections' views, RAC1_REFLECT_CASTERS)
         if (caster && b.rk.view_only) continue;  // (the frame's shrubs: the casters' own models cast)
         if (caster && (b.rk.shadow ? ((b.rk.views >> view) & 1u) == 0 : view >= 3)) continue;  // (the view's own casters)
         static const int part = std::getenv("RAC1_SHADOW_REF_PART") != nullptr ? std::atoi(std::getenv("RAC1_SHADOW_REF_PART")) : 0;  // (testing: 1 the frame's casters, 2 the added ones)
@@ -4626,6 +4627,15 @@ void mrp_world_draw(int win_w, int win_h, const gs::Viewport* vp) {
 void mrp_world_draw_casters(const float* light_vp, int view) {
     if (!g_frame.active) return;
     draw_frame(nullptr, false, light_vp, view);
+}
+
+// orig: (host) see mrp_lighting.h
+void mrp_world_draw_reflect(bool casters) {
+    if (!g_frame.active || g_mrp_world_projection != 0) return;
+    g_reflect_draw = true;
+    g_reflect_casters = casters;
+    draw_frame(nullptr);
+    g_reflect_draw = g_reflect_casters = false;
 }
 
 // orig: (host) see mrp_lighting.h

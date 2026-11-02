@@ -1136,7 +1136,8 @@ The defaults below are the rows' own (the preset High); with Graphics: Original 
 | Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2, SSAO 1/2, SSAO+ 1/2, HBAO 1/2, MXAO, MXAO 1/2 | MXAO | see [Ambient occlusion](#ambient-occlusion) |
 | AO Intensity | 25 to 125 % | 75 % | the occlusion's darkness: each mode's strength scaled (`ao_intensity` in the preferences, item 47 of a save's block); see [Ambient occlusion](#ambient-occlusion) |
 | Sun Rays | Off, Low, Medium, High | Low | light shafts from the sun through openings, each step more quality and strength (`sun_rays_quality`, item 49; `sun_rays` and item 46 until 0.4.x read with Low as Medium); see [Sun rays](#sun-rays) |
-| Surface Detail | Off, Low, High | High | the surfaces' materials (metal, wet, puddle, lava, water - held still -, mud, quicksand) tagged in the level's file; High adds the reflections and the lava's heat shimmer (`surface_detail`, item 51); see [Materials](materials.md) |
+| Surface Detail | Off, Low, High | High | the surfaces' materials (metal, wet, puddle, lava, water - held still -, mud, quicksand) tagged in the level's file; High adds the puddles' and metals' reflections and the lava's heat shimmer (`surface_detail`, item 51); see [Materials](materials.md) |
+| Water Reflections | Low, Medium | Medium | what Surface Detail's water mirrors: Low a cube map made from the camera, Medium the scene drawn mirrored about the water (`water_reflections`, item 57); see [Materials](materials.md#water-reflections) |
 | Grass | Off, Low, High | High | the tagged ground's blades: a detail relief (Low), and a few very low shells near the camera (High) (`grass`, item 54) |
 
 Every row takes effect only with Graphics: Enhanced. The debug menu's **Enhancements** tab has the same switch and preset at

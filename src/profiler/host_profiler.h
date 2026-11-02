@@ -58,6 +58,7 @@ enum Stage : int {
     kAo,                // the ambient occlusion (and the sun's cover probe)
     kSunRays,           // the sun's rays
     kParticles,         // the ambient particles (our own: dust, embers, rain, snow ...)
+    kWaterRefl,         // Options > Graphics > Water Reflections: the planar view, the cube map (mrp_reflect.h)
     kGrass,             // Options > Graphics > Grass: the grass shells over the tfrags
     kScaleResolve,      // the render scale's buffer put on the window
     kEffects,           // the MRP's 3D effects (particles ...), before and after the mobys
