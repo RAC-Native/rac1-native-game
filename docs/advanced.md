@@ -1,6 +1,9 @@
 # Advanced options
 
-Options > Advanced holds the settings that change how the game plays. They are different in kind
+Options > Advanced holds the settings that change how the game plays. The pause menu's page holds a playthrough's
+settings (the rows below, set first by New Game's Original / Modern and kept with the save); the main menu's holds only
+the global ones, settings of the whole game rather than of a playthrough (none yet: the main menu then has no Advanced
+entry). They are different in kind
 from the PS2 compromises the port removes (see [Overview](overview.md#faithful-to-the-games-code-not-to-the-ps2s-limits)):
 
 - **A removed compromise** keeps the game's behaviour and state exactly the original's and only drops
@@ -40,7 +43,8 @@ the port does not use since its kernel is the host). It then writes its own rows
 inserts Language (`language.cpp`, the same way: its block 0xfa200 to 0xfa600, its texts 0x7fc0 and up), Graphics,
 Controls and Advanced into the Options list before Quit Game; in the main menu the game's own Language entry opens our
 Language page instead of the game's list. The main menu gets
-the same pages (`title_menu_page_start`). The game's text lookup (0x203ad8) asks `advanced_text`
+the same pages (`title_menu_page_start`), but its Advanced page is built with the global rows only (a row's `global`
+flag in `SETTINGS_ROWS`), and its Options list gets the Advanced entry only when there is one (`advanced_main_page`). The game's text lookup (0x203ad8) asks `advanced_text`
 first for the page's own text ids (0x7f00 and up), in English, German, Spanish and Italian (French
 shows English for now).
 
@@ -72,10 +76,10 @@ A preferences file or a `save<N>.pc` written by an earlier build may hold a sett
 removed (`ship` and `clank`, the ship selector and Clank's movement, ids 7 and 8): it loads, and those
 lines are ignored.
 
-**The New Game choice.** Picking "Modern mode" or "Experimental" at New Game turns Quick Select, Aiming
+**The New Game choice.** Picking "Modern" in New Game's first window turns Quick Select, Aiming
 (Modern), Movement (RAC 3), Buy All Ammo, Vibration (High), Skip Cutscenes (Always) and, when the pad in use is a
-DualSense, Adaptive Triggers on; "Original mode" turns them all off
-(`advanced_apply_mode`). Fades is left as it is. Every setting can be changed at any time
+DualSense, Adaptive Triggers on; "Original" turns them all off
+(`advanced_apply_mode`). Fades and the global rows are left as they are. Every setting can be changed at any time
 afterwards. The Controls page's mouse settings are the machine's and no mode changes them.
 
 **Linked settings.** Modern aiming is built on the strafe, so turning Aiming to Modern when Movement
@@ -99,7 +103,7 @@ gamepad answers what happens, in the spirit of *Ratchet & Clank 2* and *3*. Each
 with a crisp end: held at its strength for about half its length, then brought down to 0 in a few
 frames. The strong, low-frequency motor (the left one) takes impacts and explosions; the weak,
 high-frequency one (the right one) takes shots and ticks. Low is a little under half of High. Vibration
-is off by default and in Original mode; Modern and Experimental set it to High.
+is off by default and in Original mode; Modern sets it to High.
 
 | Event | Low motor | High motor | Length | Felt from its side (DualSense) |
 |---|---|---|---|---|
@@ -150,8 +154,8 @@ to a quarter turn), so in the centre both sides have the full strength and to on
 out. On the **other pads** the two motors are the low and the high frequencies, not left and right, so
 the pulses stay centred there.
 
-**Adaptive Triggers** (shown only when the pad in use is a DualSense; off by default; Modern and
-Experimental turn it on when a DualSense is in use) works with Aiming = Modern, where L2 aims and R2 fires,
+**Adaptive Triggers** (shown only when the pad in use is a DualSense; off by default; Modern
+turns it on when a DualSense is in use) works with Aiming = Modern, where L2 aims and R2 fires,
 in gameplay on foot:
 - L2: a soft resistance from a quarter of its travel;
 - R2, by the item in hand: the Blaster, the Pyrocitor and the Tesla Claw a light resistance that rattles

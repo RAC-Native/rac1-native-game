@@ -1,10 +1,11 @@
 // The "Advanced" options: settings of this PC version that the original does not have. Each one is off by default, so the
 // game plays as the original unless
-// the player turns it on. They are shown as a page of the pause menu's Options (Options >
-// Advanced), built from the original's own widgets: the page, its title and its settings widget
-// are copies of the Camera page's, kept in a block of EE RAM the game never uses. The settings
-// are kept with the saves (save<N>.pc next to the game's save<N>.bin, which stays untouched) and
-// as the player's preferences (~/.config/rac1-native/advanced_options.txt).
+// the player turns it on. They are shown as a page of Options (Options > Advanced), built from the original's own
+// widgets: the page, its title and its settings widget are copies of the Camera page's, kept in a block of EE RAM the
+// game never uses. Two kinds of rows: a playthrough's settings (the gameplay rows: the pause menu's page; New Game's
+// Original / Modern sets them; kept with the saves, save<N>.pc next to the game's save<N>.bin, which stays untouched)
+// and the global ones (settings of the whole game: the main menu's page). Both are kept as the player's preferences
+// (~/.config/rac1-native/advanced_options.txt).
 // (Fades, is a console compromise removed rather than an enhancement: its default, 0, is
 // the port's fast fade; 1 the original's.)
 #ifndef RAC1_GAME_ENHANCE_ADVANCED_H
@@ -72,6 +73,9 @@ void advanced_update_skip(const std::string& id);
 // id (the main menu's Options list)
 uint32_t advanced_page();
 int32_t advanced_title_text();
+// orig: (none) — enhancement: the main menu's Advanced page (the global rows) when the main menu is up and it has rows,
+// else 0 (no Advanced entry in the main menu's Options)
+uint32_t advanced_main_page();
 
 // orig: (none) — enhancement: once a gameplay frame (0x297f78): the settings saved when changed
 void advanced_frame();

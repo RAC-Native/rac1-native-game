@@ -1,13 +1,13 @@
-// The "Display" and "Graphics" options pages and the new game's "Original mode / Modern mode / Experimental" choice (//
-// ROADMAP Milestone 1 items 3 and 4). Not a port: settings of the PC version's renderer, shown as two
+// The "Display" and "Graphics" options pages and New Game's two windows, the mode (Original / Modern) and the graphics
+// preset (Current / Original / Low / Medium / High) (ROADMAP Milestone 1 items 3 and 4). Not a port: settings of the PC version's renderer, shown as two
 // pages of Options (pause menu and main menu) built from the game's own widgets, as the Advanced page
 // (advanced.h). Render side only: none of these settings
 // changes the game's state (the view is widened, scaled and drawn by the host; proved by RAC1_RAMHASH
 // runs).
 //
-// Kept as the player's preferences (~/.config/rac1-native/graphics_options.txt) and, for the
-// picture settings and the mode chosen, in the saves' save<N>.pc (advanced.cpp). The window's own
-// settings (display mode, window size, v-sync, frame cap) belong to the machine: preferences only.
+// The machine's settings: kept as the player's preferences (~/.config/rac1-native/graphics_options.txt) only, set from the
+// main menu and the pause menu, never taken from a save nor changed by loading one (the saves' save<N>.pc held the picture
+// settings until 2026-11-02, items 32..56: read and ignored, advanced.cpp).
 #ifndef RAC1_GAME_ENHANCE_GRAPHICS_H
 #define RAC1_GAME_ENHANCE_GRAPHICS_H
 
@@ -74,6 +74,9 @@ uint32_t graphics_display_page();
 // whose first frames are those pages' parents' boxes, not ours' parent's (the main menu's Options, the
 // root page): played back as the game plays a page's own, they ended on the wrong boxes
 void graphics_menu_back(uint32_t cur, uint32_t to, uint32_t mobys);
+// orig: (none) — enhancement: the menu goes forward from page `cur` to `to`: from New Game's first window to its second,
+// the boxes held as they are (both windows are the same boxes; played from their first frames they jumped)
+void graphics_menu_forward(uint32_t cur, uint32_t to, uint32_t mobys);
 // orig: (none) — enhancement: a text of ours (the Graphics page's, the mode popup's), 0 for others
 uint32_t graphics_text(int32_t id);
 // orig: (none) — enhancement: the ids of the pages' titles and of their Options help texts (Graphics, Display)
@@ -96,24 +99,21 @@ void graphics_frame();
 // (lighting, shadows, lights, occlusion, rays, materials, particles, grass) taken as the player's preferences ("Save as my
 // settings"), written at the next frame
 void graphics_take_live();
-// orig: (none) — enhancement: the saves' items (save<N>.pc, advanced.cpp's format): ours added /
-// one applied (false: not ours)
-void graphics_save_items(std::vector<uint8_t>& d, uint32_t& count);
-bool graphics_save_item(uint32_t id, const uint8_t* data, uint32_t size);
 
 // --- the main menu (the boot module) ---
 // orig: (none) — enhancement: the main menu's start (front:0x218f98): the Options pages of ours
-// (Display, Graphics, Advanced) and the New Game popup's page built, New Game pointed at the popup
+// (Display, Graphics, Advanced) and New Game's two windows built, New Game pointed at the first
 void graphics_main_menu_install();
 // orig: (none) — enhancement: the main menu's Options list `w` just got its entries (front:0x21a1b0):
 // Display, Graphics, Controls and Advanced added
 void graphics_main_options_entries(uint32_t w);
-// orig: (none) — enhancement: the list `w` runs its entry's action 4 (New Game): when it is the
-// popup's, the mode of its selected entry applied
+// orig: (none) — enhancement: the list `w` runs its entry's action 4 (New Game): when it is New Game's second window's,
+// the mode chosen in the first (advanced_apply_mode) and the preset of its selected entry applied
 void graphics_new_game_choice(uint32_t w);
-// The modes (the popup's entries; 0 none chosen yet)
-enum : uint32_t { GAME_MODE_NONE = 0, GAME_MODE_ORIGINAL = 1, GAME_MODE_MODERN = 2, GAME_MODE_EXPERIMENTAL = 3 };
-// orig: (none) — enhancement: the Advanced settings set for a mode (advanced.cpp)
+// The modes (the first window's entries; 0 none known). 3 was Experimental (Modern plus Graphics Enhanced, High) until
+// 2026-11-02: an older save's 3 is read as Modern
+enum : uint32_t { GAME_MODE_NONE = 0, GAME_MODE_ORIGINAL = 1, GAME_MODE_MODERN = 2 };
+// orig: (none) — enhancement: the Advanced page's gameplay rows set for a mode (advanced.cpp)
 void advanced_apply_mode(uint32_t mode);
 
 }  // namespace rac1

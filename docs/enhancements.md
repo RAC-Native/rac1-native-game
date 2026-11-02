@@ -98,12 +98,12 @@ Options > Sound's Mono / Stereo row also offers 5.1 and 7.1: the world's sounds 
 direction, the dialogue from the centre. The game itself still plays in Stereo. See
 [Settings](settings.md#sound-51-and-71).
 
-### Original, Modern or Experimental mode
+### New Game: Original or Modern, then the graphics
 
-At New Game the game asks which set of defaults to start with: Original (the PS2's picture and
-controls), Modern (widescreen, higher level of detail, the Advanced options on) or Experimental
-(Modern plus the modern lighting at the preset High: Lighting High, Dynamic Shadows On, Ambient Occlusion MXAO, Sun Rays
-Low). Everything can be changed later. See [Settings](settings.md#original-modern-or-experimental-mode).
+At New Game the game asks how to play, Original (the PS2's controls, cutscenes and Vendor) or Modern (the gameplay
+enhancements of the Advanced page on), then which graphics to use: the Graphics page as it is (Current), Original, or our
+lighting at the preset Low, Medium or High. The Display page is never changed there. Everything can be changed later. See
+[Settings](settings.md#new-game-original-or-modern-then-the-graphics).
 
 ## Planned
 

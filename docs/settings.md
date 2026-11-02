@@ -1,7 +1,7 @@
 # Settings
 
 The port's own settings: the Language page and four pages added to the game's Options (Display, Graphics, Controls, Advanced), the
-Original, Modern or Experimental choice at New Game, the update check, where settings are kept, and the debug tools.
+New Game choices (Original or Modern, then a graphics preset), the update check, where settings are kept, and the debug tools.
 
 ## Removed compromises and enhancements
 
@@ -21,6 +21,14 @@ The port keeps two kinds of settings apart (see
 The four pages are added to Options in both the pause menu and the main menu, before Quit Game.
 They are built from the game's own menu widgets and data (a copy of the Camera page), so they look
 and behave like the game's own pages. Left and right change a row's value; Cross steps it forward.
+
+Two kinds of settings, kept apart:
+
+- **The machine's**: Display, Graphics, Controls, Language, Sound's 5.1 / 7.1, the update check, and the main menu's
+  Advanced rows (the global ones). They are the player's preferences, set from the main menu and the pause menu,
+  never taken from a save and never changed by loading one.
+- **A playthrough's**: the gameplay rows of the pause menu's Advanced page. New Game's Original / Modern sets them, they
+  are kept with each save and loading a save brings them back.
 
 ### Sound: 5.1 and 7.1
 
@@ -128,8 +136,8 @@ every addition. None of them changes the game's state.
 | AO Intensity | 25, 50, 75, 100, 125 (%) | 75 |
 | Sun Rays | Off, Low, Medium, High (more quality, strength and cost each step; Low has the strength of 0.4.x's Low, High of its High) | Low |
 | Surface Detail | Off, Low, High (materials: shiny metal, wet ground and puddles, water - held still, without the game's rise and fall -, lava, mud; High adds reflections and the lava's heat shimmer; see [Materials](materials.md)) | High |
-| Grass | Off, Low, High: the ground a level's light file tags as grass gets a fine relief of blades (Low, no geometry), and on High also a few very low layers of blades near the camera (`grass`, id 54) | High |
-| Ambient Particles | Off, Low, High: our own dust, embers, fireflies, rain and snow on some levels, not in the original (see [Ambient particles](particles.md); `ambient_particles` in the preferences, id 50 in `save<N>.pc`) | High |
+| Grass | Off, Low, High: the ground a level's light file tags as grass gets a fine relief of blades (Low, no geometry), and on High also a few very low layers of blades near the camera (`grass` in the preferences) | High |
+| Ambient Particles | Off, Low, High: our own dust, embers, fireflies, rain and snow on some levels, not in the original (see [Ambient particles](particles.md); `ambient_particles` in the preferences) | High |
 
 - **Graphics: Original** draws the original's picture, byte for byte the same as with every addition off, whatever the rows
   under it hold: they are hidden (the page shows the switch alone) and ignored, not reset. **Enhanced** shows them and they
@@ -143,7 +151,7 @@ every addition. None of them changes the game's state.
 - **Grass and Ambient Particles** were outside the lighting's control before the switch: with Lighting Original,
   Ambient Particles still drew. Now every addition follows the one switch.
 - **Water** (Off, Low, High: our own water over or in place of the game's) was a row until 2026-11-02: Surface Detail's water
-  over the game's own looked better. Its `water` key and save item 52 are read and ignored (52 stays reserved); what it fixed is
+  over the game's own looked better. Its `water` key is read and ignored; what it fixed is
   Surface Detail's now (the water held still, Pokitaru's clear trapezoids: [Materials](materials.md#the-water-held-still)).
 
 #### Presets
@@ -165,23 +173,24 @@ Chosen for their cost at 5120 x 1440 (the GPU times in [Lighting](lighting.md): 
 | Grass | Off | Low | High |
 | Ambient Particles | Low | High | High |
 
-High (also the Experimental mode's): Lighting High, Dynamic Shadows, all the lights, Shadow Distance Maximum, MXAO, Sun Rays
+High: Lighting High, Dynamic Shadows, all the lights, Shadow Distance Maximum, MXAO, Sun Rays
 Low, Surface Detail, Grass and Ambient Particles High. Until 2026-11-02 it had GTAO and Sun Rays High (Daino: the rays too strong;
 stronger ones are picked by hand); rows set to that old High now show Custom.
 
-#### Before the switch: the preferences and the saves
+#### Before the switch: the preferences
 
 Until the switch, the Lighting row had a fourth value, Original, which turned the modern lighting off; Water, Grass and Ambient
 Particles did not follow it. Old files are read this way:
 
-- `lighting 0` (Original) in `graphics_options.txt`, or item 38 = 0 in a save's `save<N>.pc`: Graphics Original, the Lighting row
-  at its default (High), every other row kept.
-- `lighting 1` .. `3` (Low .. High), or item 38 = 1 .. 3: Graphics Enhanced, Lighting Low .. High, every other row kept.
+- `lighting 0` (Original) in `graphics_options.txt`: Graphics Original, the Lighting row at its default (High), every other
+  row kept.
+- `lighting 1` .. `3` (Low .. High): Graphics Enhanced, Lighting Low .. High, every other row kept.
 
-The new keys are `graphics` (0 Original, 1 Enhanced) and `lighting_quality` (0 Low, 1 Medium, 2 High); in the saves, items 55
-(Graphics) and 56 (Lighting, 0 Low .. 2 High). Both still write the old `lighting` key and item 38 (0 when Original, else the
-Lighting row + 1) for the versions before the switch, which read only those; a version with the switch reads the old key only
-when the new one is missing. A preferences file without `graphics` is written again in the new form at the first frame.
+The new keys are `graphics` (0 Original, 1 Enhanced) and `lighting_quality` (0 Low, 1 Medium, 2 High). The preferences still
+write the old `lighting` key (0 when Original, else the Lighting row + 1) for the versions before the switch, which read only
+that; a version with the switch reads the old key only when the new one is missing. A preferences file without `graphics` is
+written again in the new form at the first frame. (The saves held the same as items 38, 55 and 56 until the graphics became
+the machine's, 2026-11-02: read and ignored now.)
 
 ### Controls
 
@@ -193,16 +202,22 @@ the machine's, kept in `controls.txt`, not with the saves, and no New Game mode 
 
 ### Advanced
 
-| Row | Values (default first) |
-|---|---|
-| Quick Select | Normal, Pause |
-| Aiming | Original, Modern, Modern, No Zoom |
-| Movement | Original, Strafing, RAC 3 |
-| Fades | Fast, Original |
-| Buy All Ammo | Off, On |
-| Vibration | Off, Low, High |
-| Adaptive Triggers | Off, On (shown only when the pad in use is a DualSense) |
-| Skip Cutscenes | Original, Always |
+Two pages of the same name. **The pause menu's** holds a playthrough's settings, the gameplay rows:
+
+| Row | Values (default first) | Kept |
+|---|---|---|
+| Quick Select | Normal, Pause | with the save |
+| Aiming | Original, Modern, Modern, No Zoom | with the save |
+| Movement | Original, Strafing, RAC 3 | with the save |
+| Fades | Fast, Original | with the save |
+| Buy All Ammo | Off, On | with the save |
+| Vibration | Off, Low, High | the preferences (the machine's pad) |
+| Adaptive Triggers | Off, On (shown only when the pad in use is a DualSense) | the preferences (the machine's pad) |
+| Skip Cutscenes | Original, Always | with the save |
+
+**The main menu's** holds the global settings, those of the whole game rather than of a playthrough, kept in the
+preferences only. While there are none, the main menu's Options has no Advanced entry. All of the rows above are changed
+in the pause menu (New Game's Original / Modern sets them first).
 
 See [Advanced options](advanced.md) for what each one does and how it is built.
 
@@ -274,26 +289,40 @@ On the title screen's main menu (below New Game, Load Game and Options), **Updat
 
 Those settings belong to the machine: they are kept in the preferences only, not with the saves.
 
-## Original, Modern or Experimental mode
+## New Game: Original or Modern, then the graphics
 
-New Game opens a choice between three modes before the game starts
-(`graphics_new_game_choice`). Each says that every setting can be changed at any time in Options.
+New Game opens two windows before the game starts, in the game's own style (copies of its Options page).
 
-| | Original | Modern | Experimental |
-|---|---|---|---|
-| Aspect Ratio | 4:3 Original | Fill Screen | Fill Screen |
-| Level of Detail | Original | High | High |
-| Texture Detail | Original (PS2) | Full | Full |
-| Quick Select, Aiming, Movement | Normal, Original, Original | Pause, Modern, RAC 3 | Pause, Modern, RAC 3 |
-| Graphics (the modern lighting, surface detail, grass, ambient particles) | Original (the rows under it kept as they are) | Original (the rows under it kept as they are) | Enhanced, the preset High |
-| Buy All Ammo (the Vendor) | Off | On | On |
-| Vibration | Off | High | High |
-| Adaptive Triggers (a DualSense in use) | Off | On | On |
-| Skip Cutscenes | Original | Always | Always |
+**The first: Original or Modern.** Only the gameplay rows (the pause menu's Advanced page) are set:
 
-Experimental is Modern plus Graphics: Enhanced at the preset High: the [modern lighting](lighting.md) and every addition, which
-are experimental (until the switch, Experimental left Water and Grass off and Shadow Strength and AO Intensity as they were; the
-preset High sets them too). No mode changes the window settings or Fades. The mode chosen is kept with the save.
+| | Original | Modern |
+|---|---|---|
+| Quick Select | Normal | Pause |
+| Aiming | Original | Modern |
+| Movement | Original | RAC 3 |
+| Buy All Ammo (the Vendor) | Off | On |
+| Vibration | Off | High |
+| Adaptive Triggers (a DualSense in use) | Off | On |
+| Skip Cutscenes | Original | Always |
+
+Fades is left as it is. The mode is kept with the save (item 37 of `save<N>.pc`).
+
+**The second: the graphics preset.** It sets the Graphics page alone:
+
+| Choice | The Graphics page |
+|---|---|
+| Current (selected first) | left as it is |
+| Original | Graphics: Original (the rows under it kept, hidden) |
+| Low, Medium, High | Graphics: Enhanced, that [preset](#presets) |
+
+The Display page (aspect ratio, level of detail, texture detail, the window) is never touched by New Game. Triangle on the
+second window goes back to the first. Both are built in `graphics_main_menu_install` and applied by
+`graphics_new_game_choice` (`src/game/enhance/graphics.cpp`).
+
+Until 2026-11-02 there was one window with three modes: Original and Modern also set the Display page (Original: 4:3,
+original detail and textures; Modern: Fill Screen, LOD High, full textures) and a third, Experimental, was Modern plus
+Graphics: Enhanced at the preset High. A save made in Experimental mode loads as Modern (its gameplay rows are Modern's)
+and leaves the graphics alone.
 
 ## The update check
 
@@ -343,7 +372,7 @@ To try the panel without a new release: `RAC1_UPDATE_FAKE=0.9.0` (or `dev:12`) w
 | Advanced page, the Language page's Voice and Subtitles (and the update check's Skip Version, the Sound page's 5.1 / 7.1) | `~/.config/rac1-native/advanced_options.txt` |
 | The update check's last answer | `~/.config/rac1-native/update_check.txt` |
 | Controls | `~/.config/rac1-native/controls.txt` (see [Input](input.md#the-bindings-file-controlstxt)) |
-| The picture settings, the Advanced settings and the mode, per save | `save<N>.pc` next to each save (see [Saves](saves.md#the-pc-settings-next-to-each-save)) |
+| The pause menu's Advanced settings (the gameplay rows) and the mode, per save | `save<N>.pc` next to each save (see [Saves](saves.md#the-pc-settings-next-to-each-save)) |
 | The game's own options | the game's own settings file on the memory card, as on the PS2 |
 | The language | `~/.config/rac1-native/console.txt` (see below) |
 
@@ -351,11 +380,11 @@ To try the panel without a new release: `RAC1_UPDATE_FAKE=0.9.0` (or `dev:12`) w
 `%APPDATA%\rac1-native\`. `RAC1_GRAPHICS_FILE`, `RAC1_ADVANCED_FILE` and `RAC1_CONTROLS_FILE` point
 to other files.
 
-The window's own settings (display mode, window size, v-sync, frame-rate cap) belong to the machine
-and are kept only in the preferences. The picture settings (render resolution, aspect ratio, fit, HUD,
-field of view, level of detail, texture detail, the Graphics switch and every row under it) and the Advanced settings are also written into
-each save's `save<N>.pc`, so loading a save brings back the settings it was played with. A save
-without that file (an older one) keeps the current settings.
+The Display and Graphics pages belong to the machine and are kept only in the preferences: loading a save never changes
+them. The pause menu's Advanced settings (the gameplay rows but Vibration and Adaptive Triggers) and the New Game mode are
+also written into each save's `save<N>.pc`, so loading a save brings back the way it was played. A save without that file
+(an older one) keeps the current settings. Saves written before 2026-11-02 also hold the picture settings and every
+Graphics row (items 32 to 56): they are read and ignored, the graphics stay the machine's.
 
 **The language.** As on the PS2, the game doesn't keep its language in its save: at the start it
 takes the console's language. The port has no console, so it keeps one for it: the language last

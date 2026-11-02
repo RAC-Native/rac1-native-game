@@ -110,7 +110,8 @@ static_assert(6 * T_COUNT * STRING_SIZE <= 0x3000, "the Advanced page's texts fi
 // the byte, the name's text, the values' texts (the byte's value is the index; value 0 is the
 // default: the original's behaviour, or for a console compromise removed ("faithful
 // to the game's code, not to the PS2's limits") the port's - Fades: 0 fast, 1 the original's),
-// and whether the row is kept with the saves
+// whether the row is kept with the saves, and whether it is global: a setting of the whole game, not of a playthrough,
+// shown on the main menu's Advanced page (the others, a playthrough's settings, on the pause menu's)
 struct Row {
     const char* key;
     uint16_t id;
@@ -118,6 +119,7 @@ struct Row {
     int32_t name;
     int32_t values[4];
     bool in_saves = true;
+    bool global = false;
 };
 constexpr Row SETTINGS_ROWS[] = {
     {"quick_select_pause", 1, QS_PAUSE, T_QUICK_SELECT, {T_NORMAL, T_PAUSE, -1, -1}},
@@ -131,15 +133,23 @@ constexpr Row SETTINGS_ROWS[] = {
 };
 // (ids 7 and 8, keys "ship" and "clank": the ship selector and Clank's movement, removed; a settings file or a save
 // that has them loads, the values ignored. Id 11, key "voice_step": the Voice row, now on the Language page
-// (language.cpp), never written with the saves. Never reused)
+// (language.cpp), never written with the saves. Ids 32..56: the Display and Graphics pages' settings and the mode, written
+// by graphics.cpp until those became the machine's (2026-11-02): read and ignored, except 37, the mode, ours now. Never
+// reused)
 constexpr uint32_t ROW_COUNT = sizeof(SETTINGS_ROWS) / sizeof(Row);
 
 // orig: (none) — enhancement: a row on the page (Adaptive Triggers only when the pad is a DualSense: the host's
 // vibration_set_dualsense; the page is made again at each overlay load)
 bool row_shown(const Row& r) { return r.byte != TRIGGERS || vibration_dualsense(); }
 
+// The mode a new game was started in (GAME_MODE_ORIGINAL / GAME_MODE_MODERN; 0 none known): kept with the saves (item 37),
+// nothing reads it but a later version (a save's record of how its playthrough began)
+uint32_t g_game_mode = GAME_MODE_NONE;
+constexpr uint16_t MODE_ITEM = 37;
+
 bool g_loaded = false;
 uint8_t g_saved[ROW_COUNT] = {};
+uint32_t g_page_rows = 0;  // the rows on the page as built (the main menu's: the global rows; none: no Advanced entry there)
 
 // orig: (none) — enhancement: RAC1_FADES=original|fast: -1 unset, else the Fades value
 int fades_env() {
@@ -287,7 +297,13 @@ std::vector<uint8_t> save_file_make() {
         d.push_back(lbu(r.byte));
         ++count;
     }
-    graphics_save_items(d, count);  // (the Graphics page's picture settings and the mode, ids 32..)
+    // the mode (37; the ids 32..56 around it were the Display and Graphics pages' settings, the machine's now: not written)
+    if (g_game_mode != GAME_MODE_NONE) {
+        u16(MODE_ITEM);
+        u16(1);
+        d.push_back(static_cast<uint8_t>(g_game_mode));
+        ++count;
+    }
     d[6] = static_cast<uint8_t>(count);
     d[7] = static_cast<uint8_t>(count >> 8);
     return d;
@@ -299,13 +315,16 @@ bool save_file_apply(const std::vector<uint8_t>& d) {
     auto u16 = [&d](size_t at) { return static_cast<uint32_t>(d[at] | (d[at + 1] << 8)); };
     const uint32_t count = u16(6);
     size_t at = 8;
+    g_game_mode = GAME_MODE_NONE;  // (a save of before the mode: none known)
     for (uint32_t i = 0; i < count && at + 4 <= d.size(); ++i) {
         const uint32_t id = u16(at), size = u16(at + 2);
         at += 4;
         if (at + size > d.size()) break;
         for (const Row& r : SETTINGS_ROWS)
             if (r.in_saves && r.id == id && size >= 1 && d[at] < row_values(r)) sb(r.byte, d[at]);
-        graphics_save_item(id, d.data() + at, size);
+        // the mode: an older save's Experimental (3: Modern plus Graphics Enhanced, High) is Modern, its gameplay rows
+        // are Modern's; the Display and Graphics items (32..56) are the machine's settings now: never applied
+        if (id == MODE_ITEM && size >= 1 && d[at] >= GAME_MODE_ORIGINAL && d[at] <= 3) g_game_mode = d[at] == 3 ? GAME_MODE_MODERN : d[at];
         at += size;
     }
     return true;
@@ -338,14 +357,18 @@ void advanced_menu_install() {
             s[STRING_SIZE - 1] = 0;
         }
 
-    // the page: Camera's with our title and rows, its parent the Options page
+    // the page: Camera's with our title and rows, its parent the Options page. The main menu's (the boot module) holds the
+    // global rows, the settings of the whole game; the pause menu's the playthrough's (kept with the saves)
+    const bool front = ovl_reloc_level() == OVL_FRONT;
     ee_copy(PAGE, CAMERA_PAGE, 0x84);
     ee_copy(TITLE, CAMERA_TITLE, 0x50);
     ee_copy(ROWS_WIDGET, CAMERA_SETTINGS, 0x50);
     sw(TITLE + 0x34, TEXT_FIRST + T_ADVANCED);
     uint32_t row = ROWS;
+    g_page_rows = 0;
     for (const Row& r : SETTINGS_ROWS) {
-        if (!row_shown(r)) continue;
+        if (!row_shown(r) || r.global != front) continue;
+        ++g_page_rows;
         sw(row, static_cast<uint32_t>(TEXT_FIRST + r.name));
         sw(row + 4, r.byte);
         for (uint32_t k = 0; k < 4; ++k) sw(row + 8 + k * 4, r.values[k] >= 0 ? static_cast<uint32_t>(TEXT_FIRST + r.values[k]) : 0u);
@@ -355,7 +378,6 @@ void advanced_menu_install() {
     sw(ROWS_WIDGET + 0x34, ROWS);
     sw(ROWS_WIDGET + 0x38, 0);
     // its parent: the Options page it is opened from (the main menu's in the boot module)
-    const bool front = ovl_reloc_level() == OVL_FRONT;
     sw(PAGE + 0x38, front ? static_cast<uint32_t>(MAIN_OPTIONS_PAGE) : static_cast<uint32_t>(OPTIONS_PAGE));
     const uint32_t graphics_page = graphics_page_install(front ? static_cast<uint32_t>(MAIN_OPTIONS_PAGE) : static_cast<uint32_t>(OPTIONS_PAGE));
     const uint32_t controls = controls_page_install(front ? static_cast<uint32_t>(MAIN_OPTIONS_PAGE) : static_cast<uint32_t>(OPTIONS_PAGE));
@@ -566,7 +588,8 @@ void advanced_save_loaded(int32_t slot) {
     if (!mc_card_file_read(save_file_path(slot), d)) return;  // an older save: the settings kept
     if (save_file_apply(d)) {
         if (lbu(CONTROLS) != 0 && lbu(MOVEMENT) == 0) sb(MOVEMENT, 1);  // (Aiming = Modern needs the strafe)
-        std::printf("[advanced] settings loaded with save %d\n", slot);
+        std::printf("[advanced] settings loaded with save %d (mode %s)\n", slot,
+                    g_game_mode == GAME_MODE_ORIGINAL ? "Original" : g_game_mode == GAME_MODE_MODERN ? "Modern" : "unknown");
     }
 }
 
@@ -1628,21 +1651,24 @@ int32_t advanced_sound_output_text(int32_t stereo_text) {
 // orig: (none) — enhancement (advanced.h)
 uint32_t advanced_page() { return PAGE; }
 // orig: (none) — enhancement (advanced.h)
+uint32_t advanced_main_page() { return ovl_reloc_level() == OVL_FRONT && g_page_rows != 0 ? PAGE : 0u; }
+// orig: (none) — enhancement (advanced.h)
 int32_t advanced_title_text() { return TEXT_FIRST + T_ADVANCED; }
 
-// orig: (none) — enhancement (graphics.h): Original: every Advanced setting off; Modern: on. Fades is
-// not an enhancement but a console compromise removed (its 0 is the port's fast fade): left as it is
+// orig: (none) — enhancement (graphics.h): Original: every gameplay row off; Modern: on. Fades is not an enhancement but
+// a console compromise removed (its 0 is the port's fast fade): left as it is; the global rows (the main menu's) too
 void advanced_apply_mode(uint32_t mode) {
     if (g_advanced_disabled) return;
     settings_load();
-    const uint32_t v = mode == GAME_MODE_MODERN || mode == GAME_MODE_EXPERIMENTAL ? 1u : 0u;
+    g_game_mode = mode == GAME_MODE_MODERN ? GAME_MODE_MODERN : GAME_MODE_ORIGINAL;
+    const uint32_t v = mode == GAME_MODE_MODERN ? 1u : 0u;
     sb(QS_PAUSE, v);
     sb(CONTROLS, v);
     sb(MOVEMENT, v != 0 ? 2u : 0u);
     sb(VENDOR_ALL, v);
-    sb(VIBRATION, v != 0 ? 2u : 0u);  // (Modern, Experimental: High)
+    sb(VIBRATION, v != 0 ? 2u : 0u);  // (Modern: High)
     sb(TRIGGERS, v != 0 && vibration_dualsense() ? 1u : 0u);  // (and the adaptive triggers when the pad is a DualSense)
-    sb(SKIP_SCENES, v);               // (Modern, Experimental: Always)
+    sb(SKIP_SCENES, v);               // (Modern: Always)
     settings_save();
 }
 
