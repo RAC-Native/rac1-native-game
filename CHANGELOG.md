@@ -70,6 +70,8 @@ What changed in each release. Releases are source only: you build the game with 
   (`RAC1_PERF_PALETTE_BLEND`).
 - The collision segment test's triangle loop and the moby transform clamp each VU operand once instead of at every op (the same
   values; `RAC1_PERF_VU_CLAMP`).
+- The generated game code's VU0 operations skip building the VU0 flags in the routines that never read them (176 of the
+  generated files): the game code about 5% less time a frame (Veldin 1.25 to 1.18 ms); the same game state (`RAC1_PERF_VU0_NF`).
 
 ### Launcher and setup
 - Launcher: a new launcher is downloaded only once the player says yes, and checked against the SHA-256 the release lists for

@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 368 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 369 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 279 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 280 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 68 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -226,6 +226,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_PERF_PKT_MEMO` | 0 = off, 1 = on, 2 = on with a check; default 1 | A host tie / shrub packet repeated for the next instance of its class reuses the previous packet's runs (keys, texture units, batch decisions) when the GS state it reads is unchanged, and the view-projection times the view is kept per view; 0: every packet replayed in full, as before. 2 compares every reuse with the full replay and prints the count of differences at the end of a run (it must be 0). The same picture. |
 | `RAC1_PERF_TEXTABLE` | 0 = off; default 1 | The static level's texture table kept at the start of the MRP scene's table over the frames instead of copied for the ties, the shrubs and the shadow casters every frame; 0: copied, as before. The same picture. |
 | `RAC1_PERF_TFRAG_ALLOC` | 0 = off; default 1 | The frame's tfrag lists emptied with their storage kept, and the tfrag CPU form's working memory kept per thread, instead of allocated again; 0: as before. The same picture. |
+| `RAC1_PERF_VU0_NF` | 0 = off; default 1 | The generated routines that read no VU0 status or MAC flag (but after an op into vf0) run their VU0 macro ops without making the flags (src/game/ovl/vu0_nf.h, given to them by tools/codegen/vu0_nf_pass.py: 176 files); 0: every op with its flags, as before, to compare. The same game state. |
 | `RAC1_PERF_VU1_LOOKUP` | 0 = off; default 1 | A VU1 program start whose port must be found again (the micro memory written since) compares each port's range with the last four images it hashed instead of hashing it again (about 470 KB a frame on Novalis); 0: hashed, as before. The same game state. |
 | `RAC1_PERF_VU7` | 0 = off; default 1 | Program 7's batches (water, seas, lava, the level's shadow meshes): a vertex's world point, fog and depth made once instead of once per triangle corner, the batch's lists kept between batches; the effects' Q from the view-projection's w row alone (the same doubles); 0: as before. The same picture. |
 | `RAC1_PERF_VU_CLAMP` | 0 = off; default 1 | The collision segment test's triangle loop (segment_collide) and the moby transform (moby_update_transform) clamp each VU operand once, as it is read, and then only each result (a clamped value clamps to itself); 0: every operand clamped again at each op, as before, to compare. The same game state. |

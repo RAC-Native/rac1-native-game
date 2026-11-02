@@ -193,6 +193,15 @@ terrain.
   the three angles' bits, so a 512-entry table per thread returns them again for a moby whose rotation did not change. Exact
   (`RAC1_RAMHASH` identical with it on, levels 0, 1, 3, 5, 8 and the chain), but on this PC a conversion is already about 0.1
   microseconds: Kerwan ~400 calls a frame, 0.112 to 0.096 microseconds each (the timer included), a few microseconds a frame. Left off.
+- **VU0 ops without their flags** (`RAC1_PERF_VU0_NF`, `src/game/ovl/vu0_nf.h`, `tools/codegen/vu0_nf_pass.py` run by `generate_all.py`):
+  a `vu0_regs.h` op builds the MAC and status flags of every result (the larger part of its work). The pass gives `vu0nf`'s ops -
+  the same lanes, clamps and ACC, no flags - to every generated file whose CFC2 reads of the status / MAC flags all follow, in
+  straight-line code, an op into vf0 (those ops keep their flags: `vu0nf` sends a vf0 destination to `vu0m`): 176 of the generated
+  files (the world's lighting, the levels' program-7 surfaces, `sky_ee`, `world_cull`, the transliterated classes). A build
+  defining `RAC1_VU0_EXACT` keeps `vu0m`'s ops. `RAC1_RAMHASH` identical on and off on every level 0-18 (2000 frames each) and the
+  chain; the oracle batches 79, 101, 102, 110, 113, 126 (L1), 112, 138, 190, 192 (L3), 140 (L5), 180 pass. The game code a frame
+  (main thread, the last 600 of 1860 frames, three runs each): Veldin 1.25-1.26 to 1.17-1.19 ms, Kerwan 1.82-1.83 to 1.72-1.83,
+  Rilgar 1.43-1.46 to 1.35-1.51.
 
 ## Switches to compare
 
@@ -218,6 +227,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_COLL_MESH=1` | the collision segment test's moby meshes kept between calls (off by default) |
 | `RAC1_PERF_COPIES=0` | the EE journal's pages zero-filled then copied, the moby observer's record built aside and copied |
 | `RAC1_PERF_EULER_CACHE=1` | the Euler conversion's rows kept per angles (off by default) |
+| `RAC1_PERF_VU0_NF=0` | the generated code's VU0 ops with their flags |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
