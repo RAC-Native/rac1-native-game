@@ -191,14 +191,15 @@ struct Build {
     std::vector<std::pair<uint32_t, uint8_t>> tchk;
     void push(Kicked&& k, Program prog, uint32_t start, int view, int table, bool state = false) {
         ScenePacket p;
+        PacketCpu& c = p.cpu.get();
         if (scr_scale != nullptr) {
             for (int l = 0; l < 3; ++l) {
-                p.scr_scale[l] = scr_scale[l];
-                p.scr_off[l] = scr_off[l];
+                c.scr_scale[l] = scr_scale[l];
+                c.scr_off[l] = scr_off[l];
             }
-            p.scr_k = 1;
+            c.scr_k = 1;
         }
-        p.k = std::move(k);
+        c.k = std::move(k);
         p.prog = prog;
         p.start = static_cast<uint16_t>(start);
         p.seq = f.draw_starts;
@@ -601,7 +602,7 @@ void state_packet(SceneFrame& f, const std::array<uint32_t, 4>& tag, const std::
     s.want_hp = true;
     s.hp.assign(2, std::array<float, 4>{});
     ScenePacket p;
-    p.k = std::move(s);
+    p.cpu.get().k = std::move(s);
     p.prog = Program::TieA;
     p.start = 0x000;
     p.seq = f.draw_starts;
@@ -807,12 +808,15 @@ void tfrag_add(SceneFrame& f, int cls, int lod, uint32_t start, bool isb, const 
     p.seq = f.draw_starts;
     p.view = wview;
     p.table = 0;
-    for (int l = 0; l < 3; ++l) {  // (the screen formula, as draw_tfrag's packets: X = P.x C0.x / P.w + C5.x)
-        p.scr_scale[l] = 1.0f;
-        uint32_t u = consts[4 * 5 + static_cast<uint32_t>(l)];
-        std::memcpy(&p.scr_off[l], &u, 4);
+    if (p.cpu.has()) {  // (the screen formula, as draw_tfrag's packets: X = P.x C0.x / P.w + C5.x; read with the reference's kicks alone)
+        PacketCpu& c = p.cpu.get();
+        for (int l = 0; l < 3; ++l) {
+            c.scr_scale[l] = 1.0f;
+            uint32_t u = consts[4 * 5 + static_cast<uint32_t>(l)];
+            std::memcpy(&c.scr_off[l], &u, 4);
+        }
+        c.scr_k = 1;
     }
-    p.scr_k = 1;
     p.tfrag = static_cast<int32_t>(T.draws.size());
     T.draws.push_back(d);
     f.packets.push_back(std::move(p));
@@ -851,12 +855,13 @@ bool tfrag_gpu_draw(Build& b, const uint8_t* mem, uint32_t base, Program prog, u
         std::vector<Kicked> ks;
         if (isb) tfrag_b_kick(mem, base, ks, true);
         else tfrag_kick(mem, base, start, ks, true);
-        p.k.want_hp = true;
+        Kicked& pk = p.cpu.get().k;
+        pk.want_hp = true;
         for (Kicked& k : ks) {
-            p.k.q.insert(p.k.q.end(), k.q.begin(), k.q.end());
-            p.k.part.insert(p.k.part.end(), k.part.begin(), k.part.end());
-            p.k.clip.insert(p.k.clip.end(), k.clip.begin(), k.clip.end());
-            p.k.hp.insert(p.k.hp.end(), k.hp.begin(), k.hp.end());
+            pk.q.insert(pk.q.end(), k.q.begin(), k.q.end());
+            pk.part.insert(pk.part.end(), k.part.begin(), k.part.end());
+            pk.clip.insert(pk.clip.end(), k.clip.begin(), k.clip.end());
+            pk.hp.insert(pk.hp.end(), k.hp.begin(), k.hp.end());
         }
     }
     tfrag_add(b.f, cls, lod, start, isb, view, consts, b.last_tfrag_view, std::move(p));
@@ -1997,7 +2002,7 @@ void scene_check_frame(const SceneFrame& f, CheckStats& stats) {
     std::vector<uint32_t> mstart(f.draw_starts, 0);
     for (const ScenePacket& p : f.packets)
         if (p.seq < f.draw_starts) {
-            mine[p.seq].push_back(p.k);
+            mine[p.seq].push_back(p.cpu.view().k);
             mprog[p.seq] = p.prog;
             mstart[p.seq] = p.start;
         }

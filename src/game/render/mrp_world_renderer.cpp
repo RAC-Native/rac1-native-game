@@ -2073,7 +2073,7 @@ struct GsFront {
     // a vertex kick (XYZF2 / XYZ2 PACKED): the GPU vertex, the GS's primitive assembly (gs_emu.cpp vertex_kick)
     void vertex(const ScenePacket& p, size_t qi, const std::array<uint32_t, 4>& q, bool xyzf) {
         GpuV v{};
-        const std::array<float, 4> hp = qi < p.k.hp.size() ? p.k.hp[qi] : std::array<float, 4>{};
+        const std::array<float, 4> hp = qi < p.cpu.view().k.hp.size() ? p.cpu.view().k.hp[qi] : std::array<float, 4>{};
         const float W = hp[3];
         if (p.view >= 0 && static_cast<size_t>(p.view) < S.views.size()) {
             const std::array<double, 16>& m = S.views[static_cast<size_t>(p.view)];
@@ -2090,12 +2090,12 @@ struct GsFront {
                             static_cast<double>(stq[2]), q[0], q[1], q[2], q[3], static_cast<double>(v.wp[0]), static_cast<double>(v.wp[1]), static_cast<double>(v.wp[2]),
                             static_cast<double>(v.wp[3]));
         }
-        const bool flagged = qi < p.k.clip.size() && p.k.clip[qi] != 0;
+        const bool flagged = qi < p.cpu.view().k.clip.size() && p.cpu.view().k.clip[qi] != 0;
         const bool clipping = p.prog == Program::TfragB || p.prog == Program::TieB || p.prog == Program::ShrubB;
         // the program's screen formula X = (hp.x k scale.x + offset.x hp.w) / hp.w (k: 1, or the vertex's Q x hp.w: tfrag C0.x, shrub B h,
         // tie B q); in front of the camera where Q > 0, i.e. hp.w k > 0: the homogeneous point taken with the sign that makes its w
         // positive (the tfrag view's w is negative, C0.x too)
-        const float k = p.scr_k != 0 ? stq[2] * W : 1.0f;
+        const float k = p.cpu.view().scr_k != 0 ? stq[2] * W : 1.0f;
         const float sgn = k < 0.0f ? -1.0f : 1.0f;
         const float Wg = W * sgn;
         if (Wg > 0.0f && !(clipping && flagged)) {  // (the GS's coordinates as kicked: the 1/16 px snap)
@@ -2105,7 +2105,7 @@ struct GsFront {
             v.vu[3] = Wg;
         } else {  // a clipping program's vertex outside its volume (its 16-bit coordinates wrap; behind the camera): the linear form of
                   // the program's screen formula, which the GPU clips as the program does
-            for (int l = 0; l < 3; ++l) v.vu[l] = sgn * (hp[static_cast<size_t>(l)] * k * p.scr_scale[l] + p.scr_off[l] * W);
+            for (int l = 0; l < 3; ++l) v.vu[l] = sgn * (hp[static_cast<size_t>(l)] * k * p.cpu.view().scr_scale[l] + p.cpu.view().scr_off[l] * W);
             v.vu[3] = Wg;
         }
         // (STQ undivided: x the positive w, the GPU's perspective interpolation then gives the GS's S / Q)
@@ -2139,7 +2139,7 @@ struct GsFront {
         else queue.erase(queue.begin() + 1);
     }
     void packet(const ScenePacket& p) {
-        const auto& pk = p.k.q;
+        const auto& pk = p.cpu.view().k.q;
         size_t i = 0;
         while (i < pk.size()) {
             const uint64_t lo = static_cast<uint64_t>(pk[i][0]) | static_cast<uint64_t>(pk[i][1]) << 32;
@@ -2733,7 +2733,7 @@ void build_triangles(Frame& F) {
         }
         const ScenePacket& p = F.scene.packets[pi];
         // ((2026-10-31) RAC1_MRPW_PKT_MEMO: a packet not the GPU path's may set the registers otherwise - the kept packet dropped)
-        if (p.sky || p.gif || p.tfrag >= 0 || (p.tie == nullptr && p.shrub == nullptr) || (no_gpu && !p.k.q.empty())) g_pkt_memo.valid = false;
+        if (p.sky || p.gif || p.tfrag >= 0 || (p.tie == nullptr && p.shrub == nullptr) || (no_gpu && !p.cpu.view().k.q.empty())) g_pkt_memo.valid = false;
         // with the lighting's casters made (g_shframe), the frame's shrubs - their far variants camera-facing quads, the
         // faded ones without depth writes - are the view's only: the casters' full shrub models cast instead
         // ... and so are the clipping programs' draws (tie B, tfrag B: their triangles cut to the view): the casters' whole instances cast instead
@@ -2768,9 +2768,9 @@ void build_triangles(Frame& F) {
             g.queue.clear();
             F.shadow_casters = true;
         } else if (p.tfrag >= 0) {
-            if (g_tfrag_verify && !p.k.q.empty()) tfrag_expect(g, F, p, F.tf.nverts);
+            if (g_tfrag_verify && !p.cpu.view().k.q.empty()) tfrag_expect(g, F, p, F.tf.nverts);
             tfrag_packet(g, F, p);
-        } else if ((p.tie != nullptr || p.shrub != nullptr) && !(no_gpu && !p.k.q.empty())) {
+        } else if ((p.tie != nullptr || p.shrub != nullptr) && !(no_gpu && !p.cpu.view().k.q.empty())) {
             const int kind = p.tie != nullptr ? 0 : 1;
             if (!cast_have[kind] && p.view >= 0) {  // (the GS state and view the casters' packets of that kind start from)
                 cast_have[kind] = true;

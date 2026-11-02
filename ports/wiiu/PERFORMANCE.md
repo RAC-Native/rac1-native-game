@@ -1266,3 +1266,12 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   view's windows **55-57 -> 46-47 ms**, the others 1-3 ms less, nothing longer. Left there (ms from the prepare's start): the first
   half 5 -> 16 on core 2, the second 16 -> 28.6 on core 0, the main thread waiting 16.6 -> 28.6, then its draws to 46 (the world's
   GX2 CPU 9.5 ms a call, the merge's plan and writing 5.8).
+- **ScenePacket 148 -> ~70 bytes (mrp_world_scene.h PacketCpu / PacketCpuBox):** the CPU reference's kicked packet and screen formula
+  held apart, made at the first write (a deep copy when the packet is copied, as the member was): the GPU path's packets never make it.
+  The tfrag packets' screen formula written only with the reference's kicks (read only then). PC: the three references, RAMHASH against
+  main's and RAC1_MRPW_CPU / RAC1_MRPW_TFRAG_VERIFY / RAC1_MRPW_STATIC_CHECK shots and check lines the same as main's binary. Console (two
+  A/B pairs, the old and new ELF alternated, the windows right after the placement - the console's runs drift apart later, the
+  enemies): **46.6-47.9 -> 42.8-43.8 ms**; the first half 11 -> 8 ms, the second 12.5 -> 11.
+- **Left:** the main thread waits for the second half ~10 ms, then draws ~18 ms (the world's GX2 9.4 ms CPU: mrpwm::plan_build and the
+  blocks' writing 5.8 - GX2-thread bound: plan_alloc's ring may GX2DrawDone; the mobys' ~3 ms). Recording the mobys' draws in a display
+  list during the wait: their block ring may GX2DrawDone at a wrap inside the recording - not done.

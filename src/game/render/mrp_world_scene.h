@@ -27,19 +27,49 @@
 
 namespace rac1::mrpw {
 
-// A GIF packet a world program kicks, as the CPU reference makes it (Kicked::hp: the positions before the projection).
-struct ScenePacket {
+// What the CPU reference keeps of a packet (the GPU path's packets have none): the kicked packet and the program's screen formula
+// as linear in hp (for a vertex behind the camera): X w = hp.x k scale.x + offset.x hp.w, k = 1 or (scr_k) the vertex's STQ q x hp.w
+// (tfrag: C0.x; shrub B: h; tie B: q)
+struct PacketCpu {
     Kicked k;
+    float scr_scale[3] = {1, 1, 1}, scr_off[3] = {0, 0, 0};
+    uint8_t scr_k = 0;
+};
+// ((2026-11-02) a ScenePacket's PacketCpu held apart, made at its first write - a value as a member was: copied whole -: the GPU path's
+// packets, thousands a frame, 148 -> ~70 bytes on the Wii U, ~1.2 MB less made and read a frame in a wide view)
+class PacketCpuBox {
+public:
+    PacketCpuBox() = default;
+    PacketCpuBox(const PacketCpuBox& o) : p_(o.p_ ? std::make_unique<PacketCpu>(*o.p_) : nullptr) {}
+    PacketCpuBox(PacketCpuBox&&) noexcept = default;
+    PacketCpuBox& operator=(const PacketCpuBox& o) {
+        if (this != &o) p_ = o.p_ ? std::make_unique<PacketCpu>(*o.p_) : nullptr;
+        return *this;
+    }
+    PacketCpuBox& operator=(PacketCpuBox&&) noexcept = default;
+    PacketCpu& get() {
+        if (!p_) p_ = std::make_unique<PacketCpu>();
+        return *p_;
+    }
+    const PacketCpu& view() const { return p_ ? *p_ : empty(); }
+    bool has() const { return p_ != nullptr; }
+private:
+    static const PacketCpu& empty() {
+        static const PacketCpu e;
+        return e;
+    }
+    std::unique_ptr<PacketCpu> p_;
+};
+
+// A GIF packet a world program kicks, as the CPU reference makes it (Kicked::hp: the positions before the projection; cpu.view()).
+struct ScenePacket {
+    PacketCpuBox cpu;
     Program prog = Program::None;
     uint16_t start = 0;
     uint32_t seq = 0;    // the draw start it belongs to (in the frame's order)
     int32_t view = -1;   // SceneFrame::views: the matrix from hp to the world (homogeneous)
     int32_t table = 0;   // the texture table its CLAMP's texture index names: 0 tfrag, 1 tie, 2 shrub
     bool state = false;  // a tie A alpha-test state packet (A+D only)
-    // the program's screen formula as linear in hp (for a vertex behind the camera): X w = hp.x k scale.x + offset.x hp.w, k = 1
-    // or (scr_k) the vertex's STQ q x hp.w (tfrag: C0.x; shrub B: h; tie B: q)
-    float scr_scale[3] = {1, 1, 1}, scr_off[3] = {0, 0, 0};
-    uint8_t scr_k = 0;
     // the GPU path (tie A; shrub A but the packets whose colours read the output buffers): `k` left empty (unless the check asked
     // for the kicks), the asset packet, the instance (SceneFrame::insts), its texture prims' A+D qwords as VU1 memory holds them
     // (SceneFrame::tex: 5 per tie slot, 4 per shrub prim)
