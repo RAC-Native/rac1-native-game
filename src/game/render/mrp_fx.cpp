@@ -1245,13 +1245,20 @@ struct Vu7Emissive {
     // Options > Graphics > Water: the slots whose material is `water` (their seas drawn as our own water) and the classes that have one
     std::vector<uint8_t> water_slot = std::vector<uint8_t>(kEmissivePreviewSlot + 1, 0);
     std::set<uint32_t> water_cls;
-    // (the heights its flat seas have been seen at, per class, since the level started (mrp_fx_clear_caches): drawn at the middle -
-    // build_vu7. Not emptied with the slots: they are made again whenever the level's list changes, every few seconds on Pokitaru, and
-    // the sea drawn at the height of that frame then jumped)
+    // (the heights our water has been seen at since the level started (mrp_fx_clear_caches), drawn at the middle - build_vu7: a flat
+    // sea's per class (z_key(cls)), another sea's per point (z_key(cls, x, y)). Not emptied with the slots: they are made again whenever
+    // the level's list changes, every few seconds on Pokitaru, and the sea drawn at the height of that frame then jumped)
     std::mutex z_m;
-    std::unordered_map<uint32_t, std::pair<float, float>> z_range;
+    std::unordered_map<uint64_t, std::pair<float, float>> z_range;
 } g_e7;
 uint64_t e7_key(uint32_t cls, uint32_t tbp) { return static_cast<uint64_t>(cls) << 32 | tbp; }
+// orig: (host) the key of a class's flat sea in z_range
+uint64_t z_key(uint32_t cls) { return static_cast<uint64_t>(cls) << 48 | 0xffffffffffffull; }
+// orig: (host) the key of a point of a class's other sea in z_range (its place to a 16th of a unit)
+uint64_t z_key(uint32_t cls, float x, float y) {
+    const auto q = [](float v) { return static_cast<uint64_t>(static_cast<int64_t>(std::lround(v * 16.0f)) & 0xffffff); };
+    return static_cast<uint64_t>(cls) << 48 | q(x) << 24 | q(y);
+}
 // the debug menu's pick (mrp_fx_surface_pick): the ray asked for, the frame's nearest hit, the last answer; the surfaces the level drew
 struct Vu7Pick {
     std::mutex m;
@@ -1284,27 +1291,35 @@ void vu7_emissive_refresh() {
     if (has_pv && pv.kind == 4) g_e7.slot[e7_key(static_cast<uint32_t>(pv.o_class), static_cast<uint32_t>(pv.tex))] = static_cast<uint32_t>(kEmissivePreviewSlot);
 }
 
-// orig: (host) a texture's average colour (RGBA8, as its texels), for the seas the Water option draws as its own water: one flat colour
-// of the level's palette instead of the game's scrolling texture (docs/materials.md, Water). Kept per decoded texture
-uint32_t tex_average(const gs::TexImage& t) {
+// orig: (host) a texture's average colour (RGBA8, as its texels), for the seas the Water option draws as its own water: what the water's
+// texture fades to where a pixel covers more than a texel of it (kV7Fs: far away it never sparkles). `alpha`: the texture's alpha is
+// its blend's (TCC 1): the colour weighted by it - blended over what is under it, the mean of the colour times its alpha is what shows, its
+// opaque texels, the light crests, counting more than its see-through ones. Else the plain mean: Rilgar's harbour is a 24-bit texture
+// with no alpha (its blend the GS's fixed alpha), and weighted by its alpha of 0 its colour was black - the whole sea dark with Water on
+// (Daino's playtest of 2026-11-02). Kept per decoded texture
+uint32_t tex_average(const gs::TexImage& t, bool alpha) {
     thread_local std::unordered_map<uint64_t, uint32_t> cache;
-    if (auto it = cache.find(t.id); it != cache.end()) return it->second;
+    const uint64_t key = t.id << 1 | (alpha ? 1u : 0u);
+    if (auto it = cache.find(key); it != cache.end()) return it->second;
     if (cache.size() > 256) cache.clear();
-    // (the colour weighted by the alpha: blended over what is under it, the texture's mean is that of its colour times its alpha - its
-    // opaque texels, the light crests, count more than its see-through ones; the plain mean made the seas a third darker)
-    uint64_t sum[3] = {0, 0, 0}, sa = 0;
+    uint64_t sum[3] = {0, 0, 0}, plain[3] = {0, 0, 0}, sa = 0;
     const size_t n = std::min(t.px.size(), static_cast<size_t>(std::max(t.w, 0)) * static_cast<size_t>(std::max(t.h, 0)));
     for (size_t i = 0; i < n; ++i) {
         const uint32_t a = t.px[i] >> 24;
         sa += a;
-        for (int c = 0; c < 3; ++c) sum[c] += ((t.px[i] >> (8 * c)) & 0xffu) * a;
+        for (int c = 0; c < 3; ++c) {
+            const uint32_t v = (t.px[i] >> (8 * c)) & 0xffu;
+            sum[c] += v * a;
+            plain[c] += v;
+        }
     }
     uint32_t avg = 0;
     if (n > 0) {
-        for (int c = 0; c < 3; ++c) avg |= static_cast<uint32_t>(sa > 0 ? (sum[c] + sa / 2) / sa : 0) << (8 * c);
+        const bool w = alpha && sa > 0;
+        for (int c = 0; c < 3; ++c) avg |= static_cast<uint32_t>(w ? (sum[c] + sa / 2) / sa : (plain[c] + n / 2) / n) << (8 * c);
         avg |= static_cast<uint32_t>((sa + n / 2) / n) << 24;
     }
-    cache[t.id] = avg;
+    cache[key] = avg;
     return avg;
 }
 
@@ -1331,7 +1346,7 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
         bool ok = false, fst = false;
         int layer = 0, tw = 1, th = 1;
         BKey k;
-        uint32_t flags = 0, emis = 0, fix = 0;
+        uint32_t flags = 0, emis = 0, fix = 0, avg = 0;
         uint64_t key = 0;
     };
     auto state = [&](const gs::DrawState& st, const std::shared_ptr<const gs::TexImage>& tex) {
@@ -1372,17 +1387,16 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
         }
         key_and_flags(st, false, S.k, S.flags);
         if (tme && g_water > 0) {
-            // (Options > Graphics > Water: a sea tagged `water` drawn as our own water - its texel the texture's average colour, flag 27
-            // with the colour in the layer's place; the shader's normal maps, reflection, depth and foam do the rest, sm_water2. The
-            // game's other blended layers of the same class, untagged - Pokitaru's additive highlights (textures 40 and 41 of class
-            // 1111), Novalis's tiles' second layers (40 and 42 of 751) - drawn flat the same way: their colour and brightness kept, faded
-            // by their vertices' alpha as the game fades them, without their scrolling texture; Ratchet's wake and splashes are other
-            // effects, kept)
+            // (Options > Graphics > Water: a sea tagged `water` drawn as our own water, flag 27 - its texture filtered and faded to its
+            // average colour where a pixel covers more than a texel (the average packed with the layer and the size, kV7Fs), drawn
+            // still (below); the shader's normal maps, reflection and foam over it, sm_water2. The game's other blended layers of the
+            // same class, untagged - Pokitaru's additive highlights (textures 40 and 41 of class 1111), Novalis's tiles' second layers
+            // (40 and 42 of 751) - the same way, their own blend kept; Ratchet's wake and splashes are other effects, kept)
             const uint32_t cls = static_cast<uint32_t>(S.key >> 32);
             const bool sea = S.emis != 0 && g_e7.water_slot[S.emis] != 0;
             if (sea || (S.emis == 0 && fld(st.prim, 6, 1) != 0 && g_e7.water_cls.count(cls) != 0)) {
                 S.flags |= 1u << 27;
-                S.layer = static_cast<int>(tex_average(*tex));
+                S.avg = tex_average(*tex, fld(st.tex0, 34, 1) != 0);
                 if (!sea) ++g_s7.water_flat;
             }
         }
@@ -1458,28 +1472,44 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
         pre.resize(b.n);
         for (uint32_t i = 0; i < b.n; ++i) vert_pre(i, pre[i]);
     }
-    // Options > Graphics > Water: a flat sea of our own water drawn at one height, the middle of the heights it has been seen at - the
-    // game moves Pokitaru's whole sea up and down a quarter of a unit, and the near-flat skirts of sand around its islands came through
-    // it and went under it again (hard-edged trapezoids, flashing), its waterline on the beaches moving a pixel row at a time. The
-    // picture only: the game's sea, its collision and Ratchet's swimming keep the game's height. A class seen over more than a unit
-    // (Novalis's tiles at many heights) or a sea not flat (a river, a waterfall) keeps its own
-    float flat_dz = 0.0f;
-    bool flat = false;
+    // Options > Graphics > Water: our water drawn still, without the game's rise and fall - at the middle of the heights it has been
+    // seen at. The game moves Pokitaru's and Rilgar's seas up and down half a unit (a sine of 6 seconds) and the rivers' points with
+    // its waves; drawn with the GS's depth, whose integer steps are a tenth of a unit and more far away, the waterline on the shores
+    // moved in steps (Daino's "flashing"), and Pokitaru's near-flat skirts of sand came through the sea and went under it again. A flat
+    // sea as a whole (its pieces drift sideways: Pokitaru's), another sea point by point; a class (a point) seen over more than a unit
+    // keeps the game's height (Novalis's tiles, a waterfall's foot and top). Its depth: a flat sea's the view's, another's the GS's of
+    // its still points (vert). The picture only: the game's sea, its collision and Ratchet's swimming keep the game's heights (Ratchet
+    // bobs a little against the still water)
+    bool still = false, still_flat = false;
+    thread_local std::vector<float> still_z;
     if (g_water > 0 && pre_on && b.n > 0 && ((strip.flags >> 27) & 1u) != 0) {
+        const uint32_t cls = b.tag & 0xffffu;
         const float z0 = pre[0].wp[2];
-        bool level = std::isfinite(z0);
-        for (uint32_t i = 1; i < b.n && level; ++i) level = std::fabs(pre[i].wp[2] - z0) < 1e-3f;
-        if (level) {
-            std::lock_guard<std::mutex> lg(g_e7.z_m);
-            auto [it, fresh] = g_e7.z_range.try_emplace(b.tag & 0xffffu, z0, z0);
-            auto& r = it->second;
-            r.first = std::min(r.first, z0);
-            r.second = std::max(r.second, z0);
-            if (r.second - r.first < 1.0f) {
-                flat = true;
-                flat_dz = 0.5f * (r.first + r.second) - z0;
+        bool level = true;
+        for (uint32_t i = 0; i < b.n && level; ++i) level = std::isfinite(pre[i].wp[2]) && std::fabs(pre[i].wp[2] - z0) < 1e-3f;
+        still_z.resize(b.n);
+        std::lock_guard<std::mutex> lg(g_e7.z_m);
+        if (g_e7.z_range.size() > 500000) g_e7.z_range.clear();  // (a sea whose points wander: not kept for ever)
+        const auto mid = [](std::pair<float, float>& r, float z) {
+            r.first = std::min(r.first, z);
+            r.second = std::max(r.second, z);
+            return r.second - r.first < 1.0f ? 0.5f * (r.first + r.second) : z;
+        };
+        for (uint32_t i = 0; i < b.n; ++i) {
+            const float z = pre[i].wp[2];
+            if (!std::isfinite(z)) {
+                still_z[i] = z;
+                continue;
+            }
+            const uint64_t k = level ? z_key(cls) : z_key(cls, pre[i].wp[0], pre[i].wp[1]);
+            still_z[i] = mid(g_e7.z_range.try_emplace(k, z, z).first->second, z);
+            if (level) {
+                std::fill(still_z.begin() + 1, still_z.end(), still_z[0]);
+                break;
             }
         }
+        still = true;
+        still_flat = level;
     }
     auto vert = [&](uint32_t i, const State& S, bool gs_z) {
         const gs::Vu7Vertex& s = vin[b.first + i];
@@ -1489,7 +1519,7 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
         V7 v{};
         v.wp[0] = P.wp[0];
         v.wp[1] = P.wp[1];
-        v.wp[2] = P.wp[2] + flat_dz;
+        v.wp[2] = still ? still_z[i] : P.wp[2];
         if (S.fst) {  // (UV in texels: with FST the GS reads the UV register, not kicked here)
             v.stq[0] = s.st[0] / static_cast<float>(S.tw);
             v.stq[1] = s.st[1] / static_cast<float>(S.th);
@@ -1503,16 +1533,30 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
         const float fw = std::min(std::max(static_cast<float>(P.cw) + b.off[3], b.fog[0]), b.fog[1]);
         v.fogw = std::isfinite(fw) ? std::floor(fw) : 0.0f;
         for (int l = 0; l < 4; ++l) v.rgba[l] = s.rgba[l];
-        v.tex[0] = static_cast<uint32_t>(S.layer);
-        v.tex[1] = static_cast<uint32_t>(S.tw) | static_cast<uint32_t>(S.th) << 16;
+        if ((S.flags >> 27) & 1u) {  // (the Water option's water: the texture's average colour packed with its layer and size, kV7Fs)
+            v.tex[0] = static_cast<uint32_t>(S.layer) | (S.avg & 0xffu) << 16 | ((S.avg >> 8) & 0xffu) << 24;
+            v.tex[1] = static_cast<uint32_t>(S.tw - 1) | static_cast<uint32_t>(S.th - 1) << 8 | ((S.avg >> 16) & 0xffu) << 16 | (S.avg >> 24) << 24;
+        } else {
+            v.tex[0] = static_cast<uint32_t>(S.layer);
+            v.tex[1] = static_cast<uint32_t>(S.tw) | static_cast<uint32_t>(S.th) << 16;
+        }
         v.tex[2] = S.flags;
         v.tex[3] = static_cast<uint32_t>(S.st->fogcol & 0xffffff) | S.fix << 24;
         v.fogc[0] = b.fog[0];
         v.fogc[1] = b.fog[1];
         v.emis = S.emis;
         {  // the depth: the program's Z (its integer part, FTOI4) through the replica's map (render_gs_depth)
-            const double Z = P.Z;
-            v.depth = g_v7_depth && gs_z && !flat ? static_cast<float>(2.0 * (g_v7_da + g_v7_db * Z) - 1.0) : 2.0f;  // (a flattened sea: the view's)
+            double Z = P.Z;
+            if (still && !still_flat && std::isfinite(still_z[i]) && still_z[i] != P.wp[2]) {
+                // (our still water, a sea held point by point - a river -: the GS's depth of the still point, so that it meets the
+                // shore and the bed where the game's does - with the view's depth the thin film over Novalis's stream bed came through
+                // it - without moving with the game's waves)
+                const glm::dvec4 c = M * glm::dvec4(s.xyz[0], s.xyz[1], static_cast<double>(s.xyz[2]) + (still_z[i] - P.wp[2]), 1.0);
+                Z = std::floor(c.z * (static_cast<double>(b.k) / c.w) + static_cast<double>(b.off[2]));
+            }
+            // (a flat sea held still - Pokitaru's, Rilgar's harbour -: the view's depth; the GS's integer steps are a tenth of a unit of
+            // height and more far away)
+            v.depth = g_v7_depth && gs_z && !still_flat ? static_cast<float>(2.0 * (g_v7_da + g_v7_db * Z) - 1.0) : 2.0f;
         }
         g_v7.push_back(v);
     };
@@ -1731,13 +1775,13 @@ void main() {
     c.rgb = sh_points(sh_apply_split(c.rgb, c.rgb * 0.45));
     vec4 o = c;
     if (tme) {
-        ivec2 sz = ivec2(int(vTex.y & 0xffffu), int(vTex.y >> 16));
+        // (Options > Graphics > Water, flag 27: our water - the texture filtered, its average colour and its size packed with the layer)
+        bool wat = ((fl >> 27) & 1u) != 0u;
+        ivec2 sz = wat ? ivec2(int(vTex.y & 0xffu) + 1, int((vTex.y >> 8) & 0xffu) + 1) : ivec2(int(vTex.y & 0xffffu), int(vTex.y >> 16));
         vec2 uv = sh_mat_uv(vStq.xy / vStq.z, vEmis) * vec2(sz);  // (lava, mud, quicksand: the materials' slow flow)
-        int layer = int(vTex.x);
+        int layer = wat ? int(vTex.x & 0xffffu) : int(vTex.x);
         vec4 t;
-        if (((fl >> 27) & 1u) != 0u) {  // (Options > Graphics > Water: a sea drawn as our own water - its texture's average colour, sm_water2)
-            t = unpackUnorm4x8(vTex.x);
-        } else if (lin) {
+        if (lin || wat) {
             vec2 p = uv - 0.5;
             ivec2 i0 = ivec2(floor(p));
             vec2 f = p - vec2(i0);
@@ -1749,12 +1793,21 @@ void main() {
         } else {
             t = texelFetch(uAtlas, ivec3(wrapc(ivec2(floor(uv)), sz, rs, rt), layer), 0);
         }
+        vec4 avg = vec4(0.0);
+        if (wat) {  // (our water: its texels faded to their average where a pixel covers more than about a texel - far away, at grazing angles - so that it never sparkles as it flows)
+            avg = vec4(float((vTex.x >> 16) & 0xffu), float(vTex.x >> 24), float((vTex.y >> 16) & 0xffu), float(vTex.y >> 24)) / 255.0;
+            vec2 fu = fwidth(uv);
+            t = mix(t, avg, smoothstep(0.4, 1.3, max(fu.x, fu.y)));
+        }
         if (tfx == 0u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0); o.a = tcc != 0u ? t.a * c.a * (255.0 / 128.0) : c.a; }
         else if (tfx == 1u) { o.rgb = t.rgb; o.a = tcc != 0u ? t.a : c.a; }
         else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
         o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, vEmis);
         o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), vEmis);
+        // (our water where nothing lies under it, drawn opaque - sm_water2 -: its texture's average for the texel, not the texel - an
+        // opaque texel of a see-through texture is its dark, unblended colour)
+        if (wat && sm_w_mode == 2 && sm_w_alpha > 100.0) o.rgb += (avg.rgb - t.rgb) * (tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0));
         if (uShade == 2) o.rgb = t.rgb;
     }
     if (uShade == 1) o.rgb = c.rgb;
@@ -1767,11 +1820,8 @@ void main() {
         o.rgb = o.rgb * f + fogcol * (1.0 - f);
     }
     float a = o.a * 255.0;
-    uint bk0 = (fl >> 24) & 3u;
-    bool wcomp = sm_w_mode == 1 && (bk0 == 0u || bk0 == 2u);  // (Options > Graphics > Water: the 3D under it, sm_water2)
     float ga = ((fl >> 26) & 1u) != 0u ? min(float(vTex.w >> 24) / 128.0, 1.0) : min(o.a * (255.0 / 128.0), 1.0);  /* (FIX: a fixed alpha) */
     float wa = clamp(ga * sm_w_alpha + sm_w_add, 0.0, 1.0);
-    if (wcomp) o.rgb = mix(sm_w_refr, o.rgb, wa);
     if (ate) {
         bool pass = true;
         if (atst == 0u) pass = false;
@@ -1785,8 +1835,7 @@ void main() {
         if (!pass && uPass == 1 && afail != 2u) discard;
     }
     float as = ga;
-    if (wcomp) as = 1.0;
-    else if (sm_w_mode == 2) as = wa;
+    if (sm_w_mode == 2) as = wa;
     uint bk = (fl >> 24) & 3u;
     if (bk == 1u || bk == 2u) {
         FragColor = vec4(o.rgb * as, as);
@@ -2568,7 +2617,7 @@ void mrp_fx_report() {
                     static_cast<unsigned long long>(g_s7.world), static_cast<unsigned long long>(g_s7.general), static_cast<unsigned long long>(g_s7.no_tex),
                     static_cast<unsigned long long>(g_s7.mip), static_cast<unsigned long long>(g_s7.bad_type));
     if (g_s7.water_flat != 0)
-        std::printf("[mrp-fx] program 7 surfaces: %llu batches of other layers over the Water option's seas drawn flat\n", static_cast<unsigned long long>(g_s7.water_flat));
+        std::printf("[mrp-fx] program 7 surfaces: %llu batches of other layers over the Water option's seas drawn as its water\n", static_cast<unsigned long long>(g_s7.water_flat));
     if (g_st.kc_starts != 0)
         std::printf("[mrp-fx] kick check: %llu particle program starts, %llu kicks, %llu quadwords against the VU interpreter on the uploaded microcode: "
                     "%llu starts and %llu quadwords differ\n",

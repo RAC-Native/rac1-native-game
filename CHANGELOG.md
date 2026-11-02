@@ -116,6 +116,14 @@ What changed in each release. Releases are source only: you build the game with 
   hard-edged trapezoids around Pokitaru's islands); a flat sea drawn at one height, not bobbing with the game's (the picture
   only); the other blended layers of the same seas drawn flat; Surface Detail's ripples left off them. Water Off is the game's
   water, as before (Daino's playtest of 2026-11-01).
+- Water Low and High (Daino's playtest of 2026-11-02: "a huge step back", Rilgar's harbour almost black): the water is the
+  game's texture again, flowing with its own UVs (Novalis's stream flows), filtered and faded to its average colour where finer
+  than the pixel (no sparkle far away), blended as the game blends it, with Surface Detail's Fresnel, reflection and glint on our
+  calm normal maps - as bright as Water Off or brighter. The black: Rilgar's harbour texture has no alpha, and its average weighted
+  by the alpha was black (now the plain mean for a texture without its alpha). The water no longer rises and falls (the game's
+  half-unit swell, drawn with the GS's integer depth, stepped at the shores - the "flashing"): every sea of our water drawn still
+  at the middle of its heights, a flat sea as a whole, a river point by point (the picture only). No refraction: the composite over
+  the 3D under the water covered the seas' other layers. The foam only at a waterline (none on thin films: Novalis's blotches).
 - Options > Graphics > Monitor: two monitors with the same name ("Generic PnP Monitor" twice) are told apart by their place on
   the desktop ("Generic PnP Monitor (at 1920,0)"), so the one chosen is the one the game opens on after a restart (#111).
 - Vulkan: the world's push constants are 128 bytes, not 144, and the ambient occlusion's 176 bytes of parameters are in a
