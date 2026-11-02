@@ -14,10 +14,13 @@ struct KnownDisc {
     const char* boot_file;     // the boot executable in the disc's root directory, e.g. "SCUS_971.99"
     const char* serial;        // as printed on the case, e.g. "SCUS-97199"
     const char* region;        // "NTSC-U", "PAL", "NTSC-J"
+    const char* version;       // SYSTEM.CNF's VER ("1.00"; the PAL disc 2.00 boots the same executable as 1.00)
     uint64_t redump_size;      // a good dump's size in bytes (0: unknown)
-    bool supported;
+    bool supported;            // as the game's disc (the others only as data discs, setup.py --data-iso)
 };
-const KnownDisc* find_known_disc(const std::string& boot_file);
+// The release by its boot executable and SYSTEM.CNF's version; without a version, the first release with that boot
+// executable (its serial and region are the same for each). Null when it is not one the setup knows.
+const KnownDisc* find_known_disc(const std::string& boot_file, const std::string& version = "");
 
 struct IsoValidation {
     bool valid = false;

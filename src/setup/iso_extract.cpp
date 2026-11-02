@@ -113,13 +113,33 @@ std::vector<std::string> iso9660_list_root(std::span<const std::byte> iso) {
     return names;
 }
 
-// Ratchet & Clank's releases. The port's addresses are the North American build's; the European PAL disc
-// is supported through its region table (data/regions/SCES-50916.txt; see find_known_disc).
+// Ratchet & Clank's releases, by boot executable and version (SYSTEM.CNF's VER: both PAL discs boot SCES_509.16). The
+// port's addresses are the North American build's; the European PAL disc 1.00 is supported through its region table
+// (data/regions/SCES-50916.txt; see find_known_disc). The Japanese disc and the PAL disc 2.00 (the "Platinum" one) are
+// a later build (1.02, whose core moved): not supported as the game's disc, only as data discs (setup.py --data-iso).
+// The same table as KNOWN_DISCS in tools/setup.py.
 constexpr KnownDisc KNOWN_DISCS[] = {
-    {"SCUS_971.99", "SCUS-97199", "NTSC-U", 4214095872ULL, true},
-    {"SCES_509.16", "SCES-50916", "PAL", 4213997568ULL, true},
-    {"SCPS_150.55", "SCPS-15055", "NTSC-J", 0, false},
+    {"SCUS_971.99", "SCUS-97199", "NTSC-U", "1.00", 4214095872ULL, true},
+    {"SCES_509.16", "SCES-50916", "PAL", "1.00", 4213997568ULL, true},
+    {"SCES_509.16", "SCES-50916", "PAL", "2.00", 4214784000ULL, false},
+    {"SCPS_150.37", "SCPS-15037", "NTSC-J", "1.02", 1807187968ULL, false},
 };
+
+// SYSTEM.CNF's "VER = x.yy" ("" when it cannot be read)
+std::string iso9660_version(std::span<const std::byte> iso) {
+    uint32_t lba = 0, size = 0;
+    if (!iso9660_find_file(iso, "SYSTEM.CNF", lba, size) || size > 4096 || static_cast<size_t>(lba) * SECTOR + size > iso.size()) return "";
+    const std::string cnf(reinterpret_cast<const char*>(iso.data() + static_cast<size_t>(lba) * SECTOR), size);
+    const size_t at = cnf.find("VER");
+    if (at == std::string::npos) return "";
+    size_t b = cnf.find('=', at);
+    if (b == std::string::npos) return "";
+    ++b;
+    while (b < cnf.size() && cnf[b] == ' ') ++b;
+    size_t e = b;
+    while (e < cnf.size() && cnf[e] != '\r' && cnf[e] != '\n' && cnf[e] != ' ' && cnf[e] != ';') ++e;
+    return cnf.substr(b, e - b);
+}
 
 struct LevelRange {
     int id;
@@ -164,10 +184,14 @@ std::vector<LevelRange> read_level_headers(std::span<const std::byte> iso) {
 
 } // namespace
 
-const KnownDisc* find_known_disc(const std::string& boot_file) {
-    for (const auto& d : KNOWN_DISCS)
-        if (boot_file == d.boot_file) return &d;
-    return nullptr;
+const KnownDisc* find_known_disc(const std::string& boot_file, const std::string& version) {
+    const KnownDisc* first = nullptr;
+    for (const auto& d : KNOWN_DISCS) {
+        if (boot_file != d.boot_file) continue;
+        if (version == d.version) return &d;
+        if (first == nullptr) first = &d;
+    }
+    return version.empty() ? first : nullptr;
 }
 
 IsoValidation validate_iso(const std::string& iso_path) {
@@ -198,15 +222,20 @@ IsoValidation validate_iso(const std::string& iso_path) {
             if (find_known_disc(fn) != nullptr) break;
         }
     }
-    res.disc = find_known_disc(res.serial);
+    const std::string version = iso9660_version(iso);
+    res.disc = find_known_disc(res.serial, version);
     if (res.disc == nullptr) {
-        res.message = res.serial.empty() ? "This is not a PlayStation 2 game disc (no boot executable found)."
-                                         : "This is another game (" + res.serial + "), not Ratchet & Clank.";
+        res.message = res.serial.empty()                   ? "This is not a PlayStation 2 game disc (no boot executable found)."
+                      : find_known_disc(res.serial) == nullptr ? "This is another game (" + res.serial + "), not Ratchet & Clank."
+                                                           : "This is a release of Ratchet & Clank the setup does not know (" + res.serial +
+                                                                 ", version " + version + ").";
         return res;
     }
     if (!res.disc->supported) {
-        res.message = std::string("This is Ratchet & Clank's ") + res.disc->region + " disc (" + res.disc->serial +
-                      "). Only the North American disc, SCUS-97199, and the European PAL disc, SCES-50916, are supported for now.";
+        res.message = std::string("This is Ratchet & Clank's ") + res.disc->region + " disc (" + res.disc->serial + ", version " +
+                      res.disc->version +
+                      "). Only the North American disc, SCUS-97199, and the European PAL disc, SCES-50916 version 1.00, are supported "
+                      "as the game's disc for now; this one can be added as a data disc (setup --data-iso).";
         return res;
     }
 

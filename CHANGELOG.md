@@ -63,6 +63,10 @@ What changed in each release. Releases are source only: you build the game with 
   my settings" keeps them. The light editor has an Aim for the lights per class; the profiler has Water and Grass stages.
 
 ### Launcher and setup
+- Data discs: `./setup.sh --data-iso <image>` (repeatable, kept for the next setups; `--no-data-discs` forgets them) adds
+  another release's disc as a source of data only; the Japanese disc (SCPS-15037) is extracted into its own folder and
+  gives the Japanese voices (docs/setup.md, "Data discs"). Discs are told apart by their boot executable's sha1: the PAL
+  disc 2.00 is no longer taken for 1.00, and the Japanese disc's serial is SCPS-15037 (not SCPS-15055).
 - Launcher: a new launcher is downloaded only once the player says yes, and checked against the SHA-256 the release lists for
   it before it replaces the running one; the Windows launcher's file properties name its company, product and description, and
   each release has a `.sha256` file beside each launcher. docs/launcher.md says how to check the file and report an

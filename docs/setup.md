@@ -21,7 +21,9 @@ source code, the files that are a mechanical translation of the game's own code 
 - An unmodified ISO image of the disc. A good dump is 4,214,095,872 bytes for the North American
   disc and 4,213,997,568 bytes for the PAL one; a smaller image is accepted with a warning (it is
   checked fully later).
-- Other releases (the Japanese one, `SCPS-15055`) are not supported.
+- Other releases (the Japanese one, `SCPS-15037`, and the European PAL disc version 2.00, the "Platinum"
+  one, which boots the same `SCES_509.16` as version 1.00) are not supported as the game's disc. The
+  Japanese one can be added beside it as a data disc, for its Japanese voices: see [Data discs](#data-discs).
 
 ### A Linux system with
 
@@ -204,6 +206,36 @@ not supported yet.
   enhancement hook points as the North American code (R&C 3 movement's air braking and the strafe flip's
   speed), placed at the matching instructions of the PAL code (`PAL:` lines in `tools/codegen/hooks.glue`).
 
+## Data discs
+
+The game's disc (`--iso`) gives the game its code and data. Other releases' discs can be added beside it
+as **data discs**, sources of data only: their own code never runs (Ratchet & Clank 3's port does the
+same, its decision 14). For now that gives one thing: the **Japanese voices**, from the Japanese disc.
+
+```bash
+./setup.sh --iso rac1-ntsc-u.iso --data-iso rac1-ntsc-j.iso
+```
+
+- Each disc is told apart by its boot executable and that executable's sha1 (the two PAL discs boot the
+  same `SCES_509.16`; `SYSTEM.CNF`'s version says which), as the game's disc is. The setup stops with
+  a message when a data disc is not Ratchet & Clank, is a release it does not know, is incomplete, or is
+  the same release as the game's disc.
+- The Japanese disc (`SCPS-15037`, version 1.02) is extracted as the game's disc is, by
+  `tools/disc_extract.py`, into its own folder, `assets/disc-SCPS-15037-1.02/` (about 1.7 GB: its
+  movies have one sound track and are not there twice, its dialogue is in one language), and listed in
+  `assets/data-discs.txt`, which the game reads. Its image is not needed afterwards.
+- A PAL disc (1.00 or 2.00) is accepted and noted, but not extracted: the North American disc (and the
+  PAL disc 1.00) already carries all five European voices, the same recordings, so a PAL disc gives
+  nothing the game's disc lacks.
+- The data discs are kept in `assets/setup-state.json` (`data_discs`): a later `./setup.sh` keeps them
+  without `--data-iso`, and extracts one again only when its folder is incomplete or the extractor
+  changed. `--no-data-discs` forgets them and removes their folders.
+
+The game reads a data disc's sectors as it reads its own disc's, through the same disc layer
+(`runtime/kernel/disc.cpp`): data disc *k* is seen at the sectors `(k + 1) x 0x400000` and up, past
+the game's disc, so a sector number names one disc's sector. Which of its data the game reads is
+the voice language's business ([Settings](settings.md#voice)); without a data disc, nothing changes.
+
 ## Running it again
 
 - **Run `./setup.sh` again at any time**, for example after a `git pull`. It rebuilds only what
@@ -241,6 +273,8 @@ not supported yet.
 | Option | Meaning |
 |---|---|
 | `--iso <path>` | your disc image (otherwise `$RAC1_ISO`, then `assets/iso/rac1-ntsc-u.iso` or `rac1-pal.iso`, then it asks) |
+| `--data-iso <path>` | another release's disc, as a data disc (repeatable; kept for the next setups): see [Data discs](#data-discs) |
+| `--no-data-discs` | forget the data discs and remove their extracted files |
 | `--update` | fetch the latest release (or `main` on the Development channel), then rebuild what changed; on failure the previous build is kept |
 | `--channel stable\|development` | with `--update`: override Main menu > Updates > Update Channel |
 | `--force [steps]` | regenerate even if up to date: everything, or the steps given (`disc,elf,overlay,code,moby,world,flight`; `disc` extracts the disc again) |
