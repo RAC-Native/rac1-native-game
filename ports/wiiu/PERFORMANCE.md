@@ -1246,3 +1246,23 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   full rules otherwise, and always for vf1 read back from the scratchpad in the point lights' loop). The same values.
 - **Nebula G34** (deterministic, 1500 steps): **24.57 -> 21.23 ms a step** (native loops), **-> 20.38** (one clamp per op). The
   relighting 5.9 -> 3.6 ms a frame with the first form (the same entries relit: tfrag 9224, tie 962 in 600 frames).
+
+### The world's first half at once on the game thread's core (2026-11-02)
+
+- **What Daino saw:** Veldin at ~14 fps in a wide view (hero 171 147 30 looking north-west over the canyon: ~8000 draw commands,
+  ~780 tie / shrub instances, ~185k triangles a frame; a normal view 1400-1900 commands). The live UDP log: the host frame 69 ms,
+  the GPU waited for 0 ms; the main thread prepared 14 ms, ran the world's first half itself at the drawing's join (12 ms), waited for
+  the second half on core 0 (19 ms), drew (22 ms). Core 2 idle until the game thread's update starts at the drawing.
+- **The world job's samples** (RAC1_WIIU_PREP_ON_MAIN=0 RAC1_WIIU_PREP_CORE=2 RAC1_WIIU_GAME_CORE=0, core 2 sampled - the safe core):
+  memset 19% (84% of it static_draws' ScenePacket made in place: 148 bytes a packet, ~1.2 MB a frame written cold), memcpy 16%
+  (gpu_packet, its vectors' inserts; static_draws' SceneInst), gpu_packet 30% inclusive, build_triangles 10% self, scene_reset 6%,
+  static_frame_build_at 12%, tfrag_decide_at 4%, the effects' prepare (side job) 7%.
+- **RAC1_WIIU_HEAD_CORE (default 2; -1 off; mrp_world_renderer.cpp HeadHelper):** with the split the first half is posted at the
+  prepare to a thread of its own on core 2 (priority 16, above the game thread's 25) and hands the second half to the worker itself;
+  the drawing's join waits for it. It reads what the prepare copied alone (HeadIn, the pages). orig_main.cpp: the world's prepare
+  now before the mobys', so the first half runs while the main thread prepares the mobys. RAC1_HERO_AT now also on the Wii U's frame
+  path (game_frames, before the update), for benches at a place.
+- **Measured** (deterministic: RAC1_REALTIME=0, RAC1_HERO_AT=-1@200,171.44,147.63,30.48,2.062, idle; the same build -1 / 2): the wide
+  view's windows **55-57 -> 46-47 ms**, the others 1-3 ms less, nothing longer. Left there (ms from the prepare's start): the first
+  half 5 -> 16 on core 2, the second 16 -> 28.6 on core 0, the main thread waiting 16.6 -> 28.6, then its draws to 46 (the world's
+  GX2 CPU 9.5 ms a call, the merge's plan and writing 5.8).

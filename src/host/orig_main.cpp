@@ -3011,6 +3011,56 @@ int main(int argc, char** argv) {
     int display_settle = 0;  // (frames after a change before the window's size is reported back: the window manager answers late)
     bool unlock_done = false;  // RAC1_UNLOCK_PLANETS done
     int hero_at_done = 0;  // RAC1_HERO_AT: the entries placed (several, '/'-separated, in order)
+    // testing: RAC1_HERO_AT, between two game frames (the PC: the host frame's testing hooks; the Wii U: game_frames, its own
+    // frame path not reaching those hooks)
+    auto hero_at_step = [&]() {
+        // testing: RAC1_HERO_AT=<class>@<frame>[,dx,dy,dz]: at that game frame, in game mode 0,
+        // the hero put by the game's own placement (0x216f90, as a respawn does) next to the first
+        // moby of that class (its position + the offset, default 3 0 1), facing it. Only a place:
+        // no flag of the story is touched (e.g. 834 = Veldin's ship on its pad, 531 = Ratchet's ship).
+        const char* ha = std::getenv("RAC1_HERO_AT");
+        for (int k = 0; ha != nullptr && k < hero_at_done; ++k) ha = std::strchr(ha, '/') != nullptr ? std::strchr(ha, '/') + 1 : nullptr;
+        if (ha != nullptr && !exiting && !ee_thread_suspended() && lw(OV(0x0015f5c4)) == 0) {
+            int cls = 0;
+            unsigned long long hf = 0;
+            float off[3] = {3.0f, 0.0f, 1.0f};
+            float yaw = 1e9f;  // (an optional 6th value, the hero's yaw itself)
+            if (const int nf = std::sscanf(ha, "%d@%llu,%f,%f,%f,%f", &cls, &hf, &off[0], &off[1], &off[2], &yaw); nf >= 2 && frame >= hf) {
+                // (class -1 = the offset is the position itself)
+                // (class -2 = the level's ship *(0x13e030), spawned by the level's load past the placed mobys; without
+                // an offset the hero is put at its hatch)
+                for (uint32_t m = cls == -2 ? lwu(0x0013e030) : cls < 0 ? 0u : lwu(OV(0x0015ffd8)); cls < 0 || (m <= lwu(OV(0x0015ffe0)) && lbu(m + 0x20) != 0xff); m += 0x100) {  // (the spawned mobys too)
+                    if (cls == -2) {
+                        if (m == 0) break;
+                        cls = lh(m + 0xa6);
+                        if (nf == 2) {  // (no offset: the ship's hatch, the point its boarding prompt measures, 0x1bd880[variant] through its rotation)
+                            Vec4 h;
+                            mat3_transform(h, V(OV(0x001bd880) + static_cast<uint32_t>(lh(0x0013e056)) * 0x10), M(m + 0xc0));
+                            off[0] = h.x;
+                            off[1] = h.y;
+                            off[2] = h.z;
+                        }
+                    }
+                    else if (cls >= 0 && (lh(m + 0xa6) != cls || static_cast<int8_t>(lbu(m + 0x20)) < 0)) continue;
+                    const uint32_t buf = ee_stack_alloc(0x20);
+                    swc1(buf, (cls < 0 ? 0.0f : lwc1(m + 0x10)) + off[0]);
+                    swc1(buf + 4, (cls < 0 ? 0.0f : lwc1(m + 0x14)) + off[1]);
+                    swc1(buf + 8, (cls < 0 ? 0.0f : lwc1(m + 0x18)) + off[2]);
+                    swc1(buf + 0xc, 0.0f);
+                    sw(buf + 0x10, 0);
+                    sw(buf + 0x14, 0);
+                    swc1(buf + 0x18, yaw != 1e9f ? yaw : std::atan2(-off[1], -off[0]) + 1.5707963f);
+                    sw(buf + 0x1c, 0);
+                    rac1::hero_place(buf, buf + 0x10, -1, 1);
+                    ee_stack_free(0x20);
+                    std::printf("[orig] RAC1_HERO_AT: the hero placed at %.1f %.1f %.1f next to moby %08x of class %d at frame %llu\n", lwc1(0x0013f3d0), lwc1(0x0013f3d4), lwc1(0x0013f3d8), m, cls,
+                                static_cast<unsigned long long>(frame));
+                    ++hero_at_done;
+                    break;
+                }
+            }
+        }
+    };
     // (testing, RAC1_REALTIME) the game's speed over the run, 60 = real time
     const auto run_t0 = std::chrono::steady_clock::now();
     uint64_t run_host_frames = 0;
@@ -3328,6 +3378,9 @@ int main(int argc, char** argv) {
                 // 0x1f9838) suspends it, this host frame shows that frame and the next one resumes it (the lambda not called again)
                 if (!ee_thread_suspended()) g_mode_at_update = boot_active() ? -100 : lw(OV(0x0015f5c4));
                 rac1::host_language::note(lwu(0x0015ed88));  // (a language chosen in the game: kept as the console's)
+#if defined(__WIIU__)
+                hero_at_step();  // (testing: its frame path does not reach the host frame's testing hooks)
+#endif
                 const int prof_code = rac1::prof::begin(rac1::prof::kGameCode);
                 ee_thread_run([&] {
                     if (exiting) {  // the level exit's loops (the loading screen, the load), then the new level
@@ -3736,18 +3789,19 @@ int main(int argc, char** argv) {
 #if defined(__WIIU__)
                 {  // the MRP's mobys (ports/wiiu/game/mrp_moby_gx2.h): the frame prepared for the picture (begin_frame ran before mrp_chain_start)
                     rac1::gs::Viewport mgv;
-                    const auto tm0 = std::chrono::steady_clock::now();
-                    if (mrp_moby_active()) mrp_moby_prepare(&mgv);
-                    const auto tm1 = std::chrono::steady_clock::now();
-                    rac1_wiiu_time(1, std::chrono::duration<double, std::milli>(tm1 - tm0).count());
                     // the MRP world's ties / shrubs (ports/wiiu/game/mrp_world_gx2.h): the host-made static path's frame, on a frame
-                    // whose world is drawn (mrp_world_begin_frame_async's condition on the PC)
+                    // whose world is drawn (mrp_world_begin_frame_async's condition on the PC). ((2026-11-02) before the mobys': its first
+                    // half then runs on the game thread's idle core meanwhile, RAC1_WIIU_HEAD_CORE)
+                    const auto tm0 = std::chrono::steady_clock::now();
                     const bool wiiu_world_on = !wiiu_movie && (wiiu_flight || ((wiiu_title ? boot_in_title() : !wiiu_menu_mode) && !exiting)) && !fade && !wiiu_vendor_pic;
                     if (wiiu_world_on && g_mrp_shadows) mrp_shadows_snapshot();
                     else mrp_shadows_clear_snapshot();
                     mrp_world_wiiu_prepare(wiiu_world_on);
+                    const auto tm1 = std::chrono::steady_clock::now();
+                    rac1_wiiu_time(2, std::chrono::duration<double, std::milli>(tm1 - tm0).count());
+                    if (mrp_moby_active()) mrp_moby_prepare(&mgv);
                     rac1::ctl::mark(rac1::ctl::kPrepEnd);
-                    rac1_wiiu_time(2, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tm1).count());
+                    rac1_wiiu_time(1, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tm1).count());
                 }
                 const int screen_fbp = static_cast<int>(lwu(0x0013cf20) & 0x1ff);
                 rac1_wiiu_picture_frame(replica ? &gs : nullptr, static_cast<float>(lhu(0x001518d0)), static_cast<float>(lhu(0x001518d2)), screen_fbp, fade ? screen_fbp : -1,
@@ -4158,52 +4212,7 @@ int main(int argc, char** argv) {
                     std::printf("[equip] frame %llu item %u\n", static_cast<unsigned long long>(frame), it);
                 }
             }
-            // testing: RAC1_HERO_AT=<class>@<frame>[,dx,dy,dz]: at that game frame, in game mode 0,
-            // the hero put by the game's own placement (0x216f90, as a respawn does) next to the first
-            // moby of that class (its position + the offset, default 3 0 1), facing it. Only a place:
-            // no flag of the story is touched (e.g. 834 = Veldin's ship on its pad, 531 = Ratchet's ship).
-            const char* ha = std::getenv("RAC1_HERO_AT");
-            for (int k = 0; ha != nullptr && k < hero_at_done; ++k) ha = std::strchr(ha, '/') != nullptr ? std::strchr(ha, '/') + 1 : nullptr;
-            if (ha != nullptr && !exiting && !ee_thread_suspended() && lw(OV(0x0015f5c4)) == 0) {
-                int cls = 0;
-                unsigned long long hf = 0;
-                float off[3] = {3.0f, 0.0f, 1.0f};
-                float yaw = 1e9f;  // (an optional 6th value, the hero's yaw itself)
-                if (const int nf = std::sscanf(ha, "%d@%llu,%f,%f,%f,%f", &cls, &hf, &off[0], &off[1], &off[2], &yaw); nf >= 2 && frame >= hf) {
-                    // (class -1 = the offset is the position itself)
-                    // (class -2 = the level's ship *(0x13e030), spawned by the level's load past the placed mobys; without
-                    // an offset the hero is put at its hatch)
-                    for (uint32_t m = cls == -2 ? lwu(0x0013e030) : cls < 0 ? 0u : lwu(OV(0x0015ffd8)); cls < 0 || (m <= lwu(OV(0x0015ffe0)) && lbu(m + 0x20) != 0xff); m += 0x100) {  // (the spawned mobys too)
-                        if (cls == -2) {
-                            if (m == 0) break;
-                            cls = lh(m + 0xa6);
-                            if (nf == 2) {  // (no offset: the ship's hatch, the point its boarding prompt measures, 0x1bd880[variant] through its rotation)
-                                Vec4 h;
-                                mat3_transform(h, V(OV(0x001bd880) + static_cast<uint32_t>(lh(0x0013e056)) * 0x10), M(m + 0xc0));
-                                off[0] = h.x;
-                                off[1] = h.y;
-                                off[2] = h.z;
-                            }
-                        }
-                        else if (cls >= 0 && (lh(m + 0xa6) != cls || static_cast<int8_t>(lbu(m + 0x20)) < 0)) continue;
-                        const uint32_t buf = ee_stack_alloc(0x20);
-                        swc1(buf, (cls < 0 ? 0.0f : lwc1(m + 0x10)) + off[0]);
-                        swc1(buf + 4, (cls < 0 ? 0.0f : lwc1(m + 0x14)) + off[1]);
-                        swc1(buf + 8, (cls < 0 ? 0.0f : lwc1(m + 0x18)) + off[2]);
-                        swc1(buf + 0xc, 0.0f);
-                        sw(buf + 0x10, 0);
-                        sw(buf + 0x14, 0);
-                        swc1(buf + 0x18, yaw != 1e9f ? yaw : std::atan2(-off[1], -off[0]) + 1.5707963f);
-                        sw(buf + 0x1c, 0);
-                        rac1::hero_place(buf, buf + 0x10, -1, 1);
-                        ee_stack_free(0x20);
-                        std::printf("[orig] RAC1_HERO_AT: the hero placed at %.1f %.1f %.1f next to moby %08x of class %d at frame %llu\n", lwc1(0x0013f3d0), lwc1(0x0013f3d4), lwc1(0x0013f3d8), m, cls,
-                                    static_cast<unsigned long long>(frame));
-                        ++hero_at_done;
-                        break;
-                    }
-                }
-            }
+            hero_at_step();
             // testing: RAC1_UNLOCK_PLANETS=<l>,<l>..: at the first gameplay frame those planets made reachable by
             // the ship (the game's own 0x2607d0, as a level's infobot does: 0x13dd40[l], the list 0x13d510 the galactic map shows)
             if (const char* up = std::getenv("RAC1_UNLOCK_PLANETS"); up != nullptr && !unlock_done && !exiting && !ee_thread_suspended() && lw(OV(0x0015f5c4)) == 0) {

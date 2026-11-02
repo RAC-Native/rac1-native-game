@@ -5997,6 +5997,73 @@ void tfrag_drain_draws(Frame& F, int slot, bool stop_when_chain_idle = false) {
 
 void ensure_prep_worker_started(PrepWorker& w);
 
+// ((2026-11-02) RAC1_WIIU_HEAD_CORE, default 2; -1: off) with the split (RAC1_WIIU_PREP_SPLIT) the first half run at once by a thread of
+// its own on the game thread's core - idle until the game thread's next update starts, at the drawing -, above its priority, instead
+// of by the main thread at the drawing's join: it reads only what the prepare copied (HeadIn, the pages), the main thread meanwhile
+// prepares the mobys; then it hands the second half to the worker as the join did. The drawing's join waits for it.
+struct HeadHelper {
+    std::mutex m;
+    std::condition_variable cv;
+    PinnedThread th;
+    bool job = false, done = true, quit = false;
+    ~HeadHelper() {
+        {
+            std::lock_guard<std::mutex> lk(m);
+            quit = true;
+        }
+        cv.notify_all();
+        if (th.joinable()) th.join();
+    }
+};
+HeadHelper g_head;
+bool g_head_posted = false;
+int head_core() {
+    static const int core = std::getenv("RAC1_WIIU_HEAD_CORE") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_HEAD_CORE")) : 2;
+    return core;
+}
+// the second half handed to the worker (the first half done: by the main thread at the drawing's join, or by the head's thread)
+void tail_post() {
+    PrepWorker& w = g_prep;
+    std::lock_guard<std::mutex> lk(w.m);
+    ensure_prep_worker_started(w);
+    w.fpscr = g_prep_on_main_fpscr;
+    g_tail_state.store(1, std::memory_order_release);
+    w.tfrag_only = false;
+    w.tail_only = true;
+    w.busy = true;
+    w.job = true;
+    w.cv.notify_all();
+}
+void head_post() {
+    HeadHelper& h = g_head;
+    std::lock_guard<std::mutex> lk(h.m);
+    if (!h.th.joinable()) {
+        h.th.start(head_core(), 16, "MRP world head", [&h] {
+            std::printf("[mrpw] the world's first half on core %u (RAC1_WIIU_HEAD_CORE %d)\n", OSGetCoreId(), head_core());
+            std::unique_lock<std::mutex> l(h.m);
+            for (;;) {
+                h.cv.wait(l, [&h] { return h.job || h.quit; });
+                if (h.quit) return;
+                h.job = false;
+                l.unlock();
+                __asm__ volatile("mtfsf 0xff, %0" : : "f"(g_prep_on_main_fpscr));
+                if (wiiu_prep_head()) tail_post();
+                l.lock();
+                h.done = true;
+                h.cv.notify_all();
+            }
+        }, 512u * 1024u);
+    }
+    h.done = false;
+    h.job = true;
+    h.cv.notify_all();
+}
+void head_wait() {
+    HeadHelper& h = g_head;
+    std::unique_lock<std::mutex> lk(h.m);
+    h.cv.wait(lk, [&h] { return h.done; });
+}
+
 void tfrag_kick_worker_if_needed() {
     if (!g_tfrag_pending) return;
     const size_t n = std::min(g_frame.tf.draws.size(), g_frame.tf_cpu.size());
@@ -6152,6 +6219,11 @@ void wiiu_prep_dispatch() {
         // (run on Core 1 at the start of wiiu_gfx_frame before mrp_chain_join, so Core 1 builds the world in parallel with Core 0's
         // mrp_chain worker and Core 2's game_thread instead of queuing behind mrp_chain on Core 0)
         __asm__ volatile("mffs %0" : "=f"(g_prep_on_main_fpscr));
+        if (prep_split_on() && g_job_head && head_core() >= 0) {  // (RAC1_WIIU_HEAD_CORE: the first half at once on its thread)
+            g_head_posted = true;
+            head_post();
+            return;
+        }
         g_prep_on_main_pending = true;
         return;
     }
@@ -6238,6 +6310,11 @@ void mrp_world_wiiu_chain_joined() {
 
 // orig: (host) see mrp_world_renderer.h
 void mrp_world_wiiu_join() {
+    if (g_head_posted) {  // (RAC1_WIIU_HEAD_CORE: the first half done by its thread, the second handed to the worker, as below)
+        g_head_posted = false;
+        head_wait();
+        return;
+    }
     if (g_prep_on_main_pending) {
         g_prep_on_main_pending = false;
         double prev_fpscr = 0.0;
@@ -6247,16 +6324,7 @@ void mrp_world_wiiu_join() {
             const bool ok = wiiu_prep_head();
             __asm__ volatile("mtfsf 0xff, %0" : : "f"(prev_fpscr));
             if (!ok) return;
-            PrepWorker& w = g_prep;
-            std::lock_guard<std::mutex> lk(w.m);
-            ensure_prep_worker_started(w);
-            w.fpscr = g_prep_on_main_fpscr;
-            g_tail_state.store(1, std::memory_order_release);
-            w.tfrag_only = false;
-            w.tail_only = true;
-            w.busy = true;
-            w.job = true;
-            w.cv.notify_all();
+            tail_post();
             return;
         }
         if (!g_job_head || wiiu_prep_head()) wiiu_prep_tail();
