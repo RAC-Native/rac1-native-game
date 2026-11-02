@@ -185,6 +185,11 @@ terrain.
   95% reuse on Kerwan, but the moby part of the segment test runs about four times a frame here: 5.2 to 3.1 microseconds a use, about
   0.01 ms a frame. Left off; worth it only where the game thread is much slower.
 
+- Smaller ones (`RAC1_PERF_COPIES`): the EE memory journal appends a saved 4 KB page as it is instead of zero-filling it first and
+  copying over it (`ee_memory.cpp` `journal_touch`), and the MRP moby observer builds its ~650-byte record in place in the frame's
+  list (`mrp_scene.cpp` `on_draw`). Below the noise here (the journal now saves few pages, the observer sees a moby or two a frame);
+  the same picture and game state.
+
 ## Switches to compare
 
 These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
@@ -207,6 +212,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_PALETTE_BLEND=0` | the six levels' palette blend as the game's loop |
 | `RAC1_PERF_VU_CLAMP=0` | the collision triangle test and the moby transform clamping every operand at each op |
 | `RAC1_PERF_COLL_MESH=1` | the collision segment test's moby meshes kept between calls (off by default) |
+| `RAC1_PERF_COPIES=0` | the EE journal's pages zero-filled then copied, the moby observer's record built aside and copied |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
