@@ -2842,6 +2842,71 @@ int grass_probe(const RKey& rk, bool grass) {
     if (blended < 0) return 0;
     return grass ? -1 - blended : -3 - blended;
 }
+// ---- (host) the sky after the terrain's first pass (RAC1_PERF_SKY_LATE; found while profiling a low-end target) ----------------
+// The sky's batches come first in the frame and are drawn without a depth test over the whole screen: its shells (five on Veldin and
+// Novalis) shade and blend every pixel the terrain then covers. With it on, the frame's leading tfrag batches whose first pass should
+// write the source alone - every run held opaque (RAC1_PERF_OPAQUE's state 1: the texels' and the vertex colours' alpha >= 0x80, and
+// blended as ALPHA 0x44, (Cs - Cd) As + Cd; or not blended), the depth tested LEQUAL / LESS and written - are drawn first; then the
+// sky with the depth test LEQUAL at depth 1.0 (the depth range [1, 1]): it passes where nothing was drawn (the cleared depth), and
+// the early depth test drops it under the terrain; then the rest of the frame as before. The sky writes no depth.
+// Not exact, so off by default: the opaque state is decided from the tfrag entries' colour words, but the vertex alphas the tfrag
+// programs make from them (an LOD's blended colours, rounded toward zero) can end just below 0x80, and such a pixel's As just below 1
+// lets a trace of what lay behind through - the sky before, the cleared colour now (on Veldin's reference frame 51 pixels on the
+// terrain's edge at the horizon, one level of one channel). 0 off (default: the sky first), 1 on, 2 on and the frames that used it
+// counted (printed every 600).
+// orig: (host)
+int perf_sky_late() {
+    static const int m = std::getenv("RAC1_PERF_SKY_LATE") != nullptr ? std::atoi(std::getenv("RAC1_PERF_SKY_LATE")) : 0;
+    return m;
+}
+// orig: (host) a batch that may be drawn before the sky (see above)
+bool sky_late_lead(const Frame& F, const Level& L, const Batch& b) {
+    if (b.sky || !b.tfrag || b.rk.shadow || b.rn == 0 || !b.runs_ok || batch_refused(F, L, b) != nullptr) return false;
+    const uint32_t ztst = fld(b.key.test, 17, 2);
+    if (fld(b.key.test, 16, 1) == 0 || (ztst != 2 && ztst != 3) || b.rk.zwrite == 0) return false;
+    const bool blend = b.rk.abe != 0;
+    if (blend && (b.rk.alpha & 0xffu) != 0x44u) return false;
+    for (uint32_t r = b.r0; r < b.r0 + b.rn; ++r) {
+        const uint8_t st = F.p2runs[r].state;
+        if (st == 2 || (blend && st != 1)) return false;
+    }
+    return true;
+}
+// The frame's batches in the order they are drawn: with the late sky, the leading batches [n_sky, n_sky + n_lead) first, then the
+// sky's [0, n_sky), then the rest; else as they are
+struct SkyLate {
+    uint32_t n_sky = 0, n_lead = 0;
+    bool on() const { return n_lead != 0; }
+    size_t at(size_t i) const {
+        if (n_lead == 0) return i;
+        if (i < n_lead) return n_sky + i;
+        if (i < n_lead + n_sky) return i - n_lead;
+        return i;
+    }
+};
+// orig: (host) the frame's late sky (none: the sky first, as before): the view's draw with its sky, the early programs there
+// (`early_ok`: the leading batches drawn by their runs, no second pass)
+SkyLate sky_late_plan(const Frame& F, const Level& L, bool caster, bool with_sky, bool early_ok) {
+    SkyLate s;
+    if (caster || !with_sky || !early_ok || perf_sky_late() == 0 || perf_opaque() == 0) return s;
+    uint32_t n = 0;
+    while (n < F.batches.size() && F.batches[n].sky) ++n;
+    if (n == 0) return s;
+    uint32_t j = n;
+    while (j < F.batches.size() && sky_late_lead(F, L, F.batches[j])) ++j;
+    s.n_sky = n;
+    s.n_lead = j - n;
+    if (perf_sky_late() == 2) {
+        static uint64_t frames = 0, used = 0, lead = 0;
+        ++frames;
+        if (s.on()) ++used, lead += s.n_lead;
+        if (frames % 600 == 0)
+            std::printf("[perf] late sky: %llu of %llu frames, %.1f leading batches a frame\n", static_cast<unsigned long long>(used),
+                        static_cast<unsigned long long>(frames), used != 0 ? static_cast<double>(lead) / static_cast<double>(used) : 0.0);
+    }
+    return s;
+}
+
 void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caster_vp = nullptr, int view = 0) {
     Frame& F = g_frame;
     Level& L = g_level;
@@ -2999,7 +3064,20 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
             pend.on = false;
         };
 
-        for (const Batch& b : F.batches) {
+        // (RAC1_PERF_SKY_LATE) the sky after the leading tfrag batches' first pass, at depth 1.0 (the viewport's depth range [1, 1])
+        const SkyLate late = sky_late_plan(F, L, caster, with_sky, g_vk_world.fs_early_base != VK_NULL_HANDLE && g_vk_world.fs_early != VK_NULL_HANDLE);
+        int late_vp = 0;  // (the viewport's depth range [1, 1] set)
+        int vp_rect[4] = {};
+        auto late_depth = [&](bool on) {
+            if (static_cast<int>(on) == late_vp) return;
+            if (on) vk::get_viewport(vp_rect);
+            vk::set_viewport(vp_rect[0], vp_rect[1], vp_rect[2], vp_rect[3], on ? 1.0f : 0.0f, 1.0f);
+            late_vp = on ? 1 : 0;
+        };
+        for (size_t bi = 0; bi < F.batches.size(); ++bi) {
+            const Batch& b = F.batches[late.at(bi)];
+            const bool late_sky = late.on() && b.sky;
+            if (late.on()) late_depth(late_sky);
             if (b.sky && !with_sky) continue;
             if (caster && (b.sky || b.rk.zwrite == 0)) continue;
             static const bool show_casters = std::getenv("RAC1_SHADOW_SHOW_CASTERS") != nullptr;
@@ -3088,9 +3166,9 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
             push.uFge = (rk.fogcol >> 24) & 1 ? 1 : 0;
 
             const uint32_t ztst = fld(k.test, 17, 2);
-            const bool ztest = caster ? true : (fld(k.test, 16, 1) != 0 && ztst != 1);
-            const VkCompareOp zcmp = caster ? VK_COMPARE_OP_LESS_OR_EQUAL
-                                            : (ztst == 0 ? VK_COMPARE_OP_NEVER : ztst == 2 ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_LESS);
+            const bool ztest = caster || late_sky ? true : (fld(k.test, 16, 1) != 0 && ztst != 1);
+            const VkCompareOp zcmp = caster || late_sky ? VK_COMPARE_OP_LESS_OR_EQUAL
+                                                        : (ztst == 0 ? VK_COMPARE_OP_NEVER : ztst == 2 ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_LESS);
             const bool zwrite = rk.zwrite != 0;
 
             WorldVkPipeKey pk{};
@@ -3111,7 +3189,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
                 push.set_at_pass(pass);
                 pk.depth_write = dmask;
                 static const bool p2_less_orig = std::getenv("RAC1_PERF_P2_LESS") != nullptr && std::atoi(std::getenv("RAC1_PERF_P2_LESS")) != 0;
-                pk.depth_compare = (g_p2_less && (lit_prog || p2_less_orig) && pass == 2 && !dmask && zcmp == VK_COMPARE_OP_LESS_OR_EQUAL) ? VK_COMPARE_OP_LESS : zcmp;
+                pk.depth_compare = (g_p2_less && (lit_prog || p2_less_orig) && pass == 2 && !dmask && zcmp == VK_COMPARE_OP_LESS_OR_EQUAL && !late_sky) ? VK_COMPARE_OP_LESS : zcmp;
                 pk.color_mask = cmask == 0 ? 0xF : cmask == 2 ? 0 : 0x7;
                 vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, get_world_vk_pipeline(pk));
                 vkCmdPushConstants(cb, g_vk_world.pipe_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
@@ -3195,6 +3273,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
             have = true;
         }
         flush();
+        late_depth(false);
         // Options > Graphics > Grass: the shells over the tfrags' grass (after the world, before the occlusion: shadowed, occluded)
         if (!caster && lit_prog && grass_shells_now()) {
             RAC1_PROF_ZONE(kGrass);
@@ -3328,13 +3407,16 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
     int clamp_on = -1;  // (the VU projection; the sky's directions in the world projection: at the far plane)
     // (RAC1_FRAME_PROF: the sky's batches, first in the frame, timed on the GPU by a timer query)
     static GLuint sky_query = 0;
-    bool sky_timing = false;
+    bool sky_timing = false, sky_timed = false;
     static const bool sky_prof = g_env_prof && std::atoi(std::getenv("RAC1_FRAME_PROF")) <= 1;  // (RAC1_FRAME_PROF=2 times whole stages)
-    if (sky_prof && with_sky && !F.batches.empty() && F.batches.front().sky) {
-        if (sky_query == 0) glGenQueries(1, &sky_query);
-        glBeginQuery(GL_TIME_ELAPSED, sky_query);
-        sky_timing = true;
-    }
+    // (RAC1_PERF_SKY_LATE) the sky after the leading tfrag batches' first pass, at depth 1.0 (the depth range [1, 1])
+    const SkyLate late = sky_late_plan(F, L, caster, with_sky, g_prog_o != 0 && g_prog_gpu_o != 0);
+    int late_dr = 0;  // (the depth range [1, 1] set)
+    auto late_depth = [&](bool on) {
+        if (static_cast<int>(on) == late_dr) return;
+        glDepthRange(on ? 1.0 : 0.0, 1.0);
+        late_dr = on ? 1 : 0;
+    };
     const int mm = g_mrp_world_mip != 0 ? 1 : 0;
     // the GL state of the batch key (RKey) set when it changes; the textures: unit 0 the CPU path's batch's, units 1. the GPU
     // path's epoch's
@@ -3350,6 +3432,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         glBindSampler(u, g_samplers[mm][sampler & 15]);
     };
     int cur_sky = -1;
+    bool cur_late = false;  // (the depth test set for the late sky: RAC1_PERF_SKY_LATE)
     // (the shadow pass merges consecutive batches whose draws are contiguous and share what a depth-only draw needs - the path,
     // the texture units / texture: the depth state is one; the per-batch GL state of the view - blending, depth tests - not needed)
     struct Pending {
@@ -3367,7 +3450,10 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
             glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(pend.count), GL_UNSIGNED_INT, reinterpret_cast<const void*>(static_cast<uintptr_t>(pend.first) * sizeof(uint32_t)));
         pend.on = false;
     };
-    for (const Batch& b : F.batches) {
+    for (size_t bi = 0; bi < F.batches.size(); ++bi) {
+        const Batch& b = F.batches[late.at(bi)];
+        const bool late_sky = late.on() && b.sky;
+        if (late.on()) late_depth(late_sky);
         if (b.sky && !with_sky) continue;
         if (caster && (b.sky || b.rk.zwrite == 0)) continue;  // (the casters: what writes depth, not the sky)
         static const bool show_casters = std::getenv("RAC1_SHADOW_SHOW_CASTERS") != nullptr;  // (testing: the casters' set drawn in the view instead)
@@ -3412,6 +3498,12 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
                 continue;
             }
             flush();
+        }
+        if (sky_prof && b.sky && !sky_timing && !sky_timed) {  // (the sky's batches timed: the first one starts the query)
+            if (sky_query == 0) glGenQueries(1, &sky_query);
+            glBeginQuery(GL_TIME_ELAPSED, sky_query);
+            sky_timing = true;
+            sky_timed = true;
         }
         if (sky_timing && !b.sky) {
             glEndQuery(GL_TIME_ELAPSED);
@@ -3477,9 +3569,10 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         };
         set_fog();
         (void)lc;
-        if (!caster && (!have || rk.ztest != cur.ztest)) {
-            const uint32_t ztst = fld(k.test, 17, 2);
-            if (fld(k.test, 16, 1) != 0 && ztst != 1) {  // the GS's GEQUAL / GREATER on the host's depth: LEQUAL / LESS
+        if (!caster && (!have || rk.ztest != cur.ztest || late_sky != cur_late)) {
+            cur_late = late_sky;
+            const uint32_t ztst = late_sky ? 2u : fld(k.test, 17, 2);  // (the late sky: LEQUAL at depth 1.0)
+            if (late_sky || (fld(k.test, 16, 1) != 0 && ztst != 1)) {  // the GS's GEQUAL / GREATER on the host's depth: LEQUAL / LESS
                 glEnable(GL_DEPTH_TEST);
                 glDepthFunc(ztst == 0 ? GL_NEVER : ztst == 2 ? GL_LEQUAL : GL_LESS);
             } else {
@@ -3559,7 +3652,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         if (rk.pass2 != 0 && !one_pass && !all_opq) {
             const uint32_t afail = rk.pass2;
             static const bool p2_less_orig = std::getenv("RAC1_PERF_P2_LESS") != nullptr && std::atoi(std::getenv("RAC1_PERF_P2_LESS")) != 0;
-            const bool less = g_p2_less && (variant.on || p2_less_orig) && !(afail == 2 && zwrite) && fld(k.test, 16, 1) != 0 && fld(k.test, 17, 2) == 2;  // (as the Vulkan path: g_p2_less)
+            const bool less = g_p2_less && (variant.on || p2_less_orig) && !(afail == 2 && zwrite) && fld(k.test, 16, 1) != 0 && fld(k.test, 17, 2) == 2 && !late_sky;  // (as the Vulkan path: g_p2_less)
             if (by_runs) {
                 use_path(path_of(false));
                 set_fog();
@@ -3603,12 +3696,13 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
                 }
             }
             const uint32_t ztst = fld(k.test, 17, 2);  // (the batch's depth test back)
-            if (fld(k.test, 16, 1) != 0 && ztst != 1) glEnable(GL_DEPTH_TEST);
+            if (late_sky || (fld(k.test, 16, 1) != 0 && ztst != 1)) glEnable(GL_DEPTH_TEST);
         }
         cur = rk;
         have = true;
     }
     flush();  // (the shadow pass's last merged draw)
+    late_depth(false);
     // Options > Graphics > Grass: the shells over the tfrags' grass (after the world, before the occlusion: shadowed, occluded)
     if (!caster && variant.on && grass_shells_now()) {
         RAC1_PROF_ZONE(kGrass);

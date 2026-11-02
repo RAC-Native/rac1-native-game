@@ -202,6 +202,20 @@ terrain.
   chain; the oracle batches 79, 101, 102, 110, 113, 126 (L1), 112, 138, 190, 192 (L3), 140 (L5), 180 pass. The game code a frame
   (main thread, the last 600 of 1860 frames, three runs each): Veldin 1.25-1.26 to 1.17-1.19 ms, Kerwan 1.82-1.83 to 1.72-1.83,
   Rilgar 1.43-1.46 to 1.35-1.51.
+- **The sky after the terrain** (`RAC1_PERF_SKY_LATE`, off by default; `mrp_world_renderer.cpp`, OpenGL and Vulkan): the sky's shells
+  come first in the frame and cover the screen, so every pixel the terrain then covers is shaded and blended for nothing. With it on,
+  the frame's leading tfrag batches whose first pass should write the source alone (every run held opaque by `RAC1_PERF_OPAQUE`,
+  blended as ALPHA 0x44 or not at all, the depth tested and written) are drawn first, then the sky with the depth test LEQUAL at depth
+  1.0 (the depth range [1, 1]: it passes only where nothing was drawn), then the rest as before. Used on most frames (Veldin 1536 of
+  1800, 6 leading batches; Novalis, Kerwan, Eudora alike). Not exact: the opaque state comes from the tfrag entries' colour words, but
+  the vertex alphas the tfrag programs make from them can end just below 0x80 (a run held opaque still never fails the alpha test,
+  GEQUAL 0x60, but its As can be just below 1), and there a trace of what lay behind shows through - the sky before, the cleared
+  colour now: on Veldin's reference frame 51 pixels on the terrain's edge at the horizon, one level of one channel (the reference
+  md5s change with it on). Nor measurably faster on this GPU (headless, the last 600 of 1860 frames, world GPU ms off / on): 1920x1080
+  Veldin 1.28 / 1.20 (OpenGL), 1.22 / 1.31 (Vulkan), Novalis 1.30 / 1.01, 1.03 / 1.03, Kerwan 1.68 / 1.70, 1.69 / 1.71, Eudora 1.38 /
+  1.37, 1.30 / 1.38; 5120x1440 (Fill Screen) Veldin 3.04-3.28 / 2.93-3.11 and 3.30-3.34 / 3.29-3.35, Novalis 2.62-2.83 / 2.62-2.80
+  and 2.72-2.74 / 2.72-2.75, Kerwan 3.06 / 3.07 and 3.30 / 3.29, Eudora 3.58 / 3.57 and 3.89 / 3.94. Left off, for a GPU where the
+  sky's fill rate costs.
 
 ## Switches to compare
 
@@ -228,6 +242,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_COPIES=0` | the EE journal's pages zero-filled then copied, the moby observer's record built aside and copied |
 | `RAC1_PERF_EULER_CACHE=1` | the Euler conversion's rows kept per angles (off by default) |
 | `RAC1_PERF_VU0_NF=0` | the generated code's VU0 ops with their flags |
+| `RAC1_PERF_SKY_LATE=1` | the sky after the leading opaque tfrag batches (off by default: not exact) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
