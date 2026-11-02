@@ -1,4 +1,4 @@
-// The voice language, apart from the text language (an enhancement: Options > Advanced > Voice, `voice_language` in the
+// The voice language, apart from the text language (an enhancement: Options > Language > Voice, `voice_language` in the
 // preferences, RAC1_VOICE_LANGUAGE). Not a port.
 //
 // The game has one language, 0x15ed88 (0 English, 2 French, 3 German, 4 Spanish, 5 Italian; 1 is in no menu), read by
@@ -31,7 +31,7 @@ namespace rac1 {
 // 5 Italian). RAC1_VOICE_LANGUAGE (same, en, ja, fr, de, es, it) over the setting.
 // orig: (none)
 int32_t voice_choice();
-// orig: (none) — the setting (Options > Advanced > Voice, the preferences)
+// orig: (none) — the setting (Options > Language > Voice, the preferences)
 void voice_choice_set(int32_t choice);
 // orig: (none) — the setting's name in the preferences ("same", "en", "ja"...) and back (-2: not a name)
 const char* voice_choice_name(int32_t choice);

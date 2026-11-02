@@ -21,6 +21,9 @@ extern bool g_advanced_disabled;
 // orig: (none) — enhancement: the preferences read, once (for a setting read before the pages are made or a gameplay
 // frame ran: the Voice row's, voice_language.h); nothing while every enhancement is off
 void advanced_prefs_load();
+// orig: (none) — enhancement: the preferences written now (a setting changed off the Advanced page's rows: the Language
+// page's); nothing before they are read or while every enhancement is off
+void advanced_prefs_save();
 
 // orig: (none) — enhancement: called by menu_open (0x276190): the Advanced page put in the
 // Options page of the current overlay (the entry before Quit Game, its help text), the settings

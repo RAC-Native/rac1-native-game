@@ -27,6 +27,7 @@
 
 #include <game/enhance/advanced.h>
 #include <game/enhance/controls.h>
+#include <game/enhance/language.h>
 #include <game/enhance/update_notice.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -800,7 +801,7 @@ void graphics_menu_back(uint32_t cur, uint32_t to, uint32_t mobys) {
         moby_set_anim(m5, 0x13, static_cast<int32_t>(lbu(seq5 + 0x10)) - 1);
         swc1(m5 + 0x58, -1.0f);
     }
-    if (cur != PAGE && cur != POP_PAGE && cur != advanced_page() && cur != controls_page() && cur != update_notice_page() && cur != updates_page()) return;
+    if (cur != PAGE && cur != POP_PAGE && cur != advanced_page() && cur != controls_page() && cur != language_page() && cur != update_notice_page() && cur != updates_page()) return;
     // `to`'s boxes as the game leaves them: a page entered forward ends on its animations' last frame; a root page
     // (no parent: the menu's first page) is opened by its animations played back to their first frame
     const bool root = lwu(to + 0x38) == 0;
@@ -1006,6 +1007,7 @@ void graphics_main_options_entries(uint32_t w) {
     uint32_t n = 0;
     while (n < 6 && lh(src + n * 0xc) != 0) ++n;
     ee_copy(MAIN_ENTRIES, src, n * 0xc);
+    language_main_entries(MAIN_ENTRIES, n);  // (the game's Language entry: our Language page)
     uint32_t d = MAIN_ENTRIES + n * 0xc;
     const uint32_t gp = PAGE, ap = advanced_page();
     const struct { int32_t text; uint32_t page; } ours[] = {{TEXT_FIRST + T_GRAPHICS, gp}, {controls_title_text(), controls_page()}, {advanced_title_text(), ap}};

@@ -6,6 +6,7 @@
 // status, ...) and the menus' card state 0x15eeb0 (handlers 0x184538; its flags 0x15eeb4: 1 / 2 /
 // 4 the main menu's operations, 0x20 / 0x40 / 0x80 / 0x100 the screens' answers), which the memory
 // card screens (game mode 4, kind 3) show and answer.
+#include <game/enhance/language.h>
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/math/vecmath.h>
@@ -499,6 +500,7 @@ void new_game_state() {
     disc_read_wait(lwu(out), lwu(0x00137b80 + 0x10), lwu(0x00137b80 + 0x14));
     const uint32_t buf = lwu(out);
     save_blocks_read(buf + lwu(buf + 0x10));
+    language_game_state_read();  // enhancement: the Subtitles choice (Options > Language) over the default save's
     ee_stack_free(0x10);
     sw(0x0015ed84, 0);
 }
