@@ -1133,9 +1133,9 @@ The defaults below are the rows' own (the preset High); with Graphics: Original 
 | Shadow Distance | Low, Medium, High, Maximum | Maximum | how far mobys cast sun shadows (40, 80, 140 units, or as far as the cascades reach) |
 | Dynamic Shadows | Off, On | On | point-light cube shadows |
 | Secondary Lights | Off, Game's, All | All | Game's: the game's point lights per pixel; All: also automatic emitters and hand-placed lights |
-| Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2, SSAO 1/2, SSAO+ 1/2, HBAO 1/2, MXAO, MXAO 1/2 | GTAO | see [Ambient occlusion](#ambient-occlusion) |
+| Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2, SSAO 1/2, SSAO+ 1/2, HBAO 1/2, MXAO, MXAO 1/2 | MXAO | see [Ambient occlusion](#ambient-occlusion) |
 | AO Intensity | 25 to 125 % | 75 % | the occlusion's darkness: each mode's strength scaled (`ao_intensity` in the preferences, item 47 of a save's block); see [Ambient occlusion](#ambient-occlusion) |
-| Sun Rays | Off, Low, Medium, High | High | light shafts from the sun through openings, each step more quality and strength (`sun_rays_quality`, item 49; `sun_rays` and item 46 until 0.4.x read with Low as Medium); see [Sun rays](#sun-rays) |
+| Sun Rays | Off, Low, Medium, High | Low | light shafts from the sun through openings, each step more quality and strength (`sun_rays_quality`, item 49; `sun_rays` and item 46 until 0.4.x read with Low as Medium); see [Sun rays](#sun-rays) |
 | Surface Detail | Off, Low, High | High | the surfaces' materials (metal, wet, puddle, lava, water - held still -, mud, quicksand) tagged in the level's file; High adds the reflections and the lava's heat shimmer (`surface_detail`, item 51); see [Materials](materials.md) |
 | Grass | Off, Low, High | High | the tagged ground's blades: a detail relief (Low), and a few very low shells near the camera (High) (`grass`, item 54) |
 

@@ -35,6 +35,8 @@ What changed in each release. Releases are source only: you build the game with 
   and Ambient Particles, which before stayed on with Lighting Original. Old preferences and saves: Lighting Original reads as
   Graphics Original (Lighting High), Low to High as Enhanced with that value. Experimental mode: Graphics Enhanced, the preset High
   (Grass High too). The debug menu's Enhancements tab has the same switch and preset at its top.
+- Options > Graphics, the preset High (and so New Game > Experimental): Ambient Occlusion MXAO instead of GTAO, Sun Rays Low
+  instead of High (too strong; stronger ones by hand). Rows set to the old High now show Custom.
 - Options (pause menu): Display has a picture of its own, the game's Help menu picture for Moves (Ratchet gliding over a city),
   no longer Graphics' "GFX". The main menu's Options list shows no pictures.
 - Lights: Anya-Thoughtmane's lighting batch 1 (#102) merged line by line: metal for the vendor, the bolts, the OmniWrench, the

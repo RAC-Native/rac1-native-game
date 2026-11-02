@@ -102,7 +102,8 @@ direction, the dialogue from the centre. The game itself still plays in Stereo. 
 
 At New Game the game asks which set of defaults to start with: Original (the PS2's picture and
 controls), Modern (widescreen, higher level of detail, the Advanced options on) or Experimental
-(Modern plus the modern lighting: Lighting High, Dynamic Shadows On, Ambient Occlusion SSAO). Everything can be changed later. See [Settings](settings.md#original-modern-or-experimental-mode).
+(Modern plus the modern lighting at the preset High: Lighting High, Dynamic Shadows On, Ambient Occlusion MXAO, Sun Rays
+Low). Everything can be changed later. See [Settings](settings.md#original-modern-or-experimental-mode).
 
 ## Planned
 

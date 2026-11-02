@@ -129,15 +129,15 @@ constexpr uint32_t SIZE_COUNT = sizeof(SIZES) / sizeof(Size);
 
 // The presets: the rows under Graphics they set (by index into each row's values), Low, Medium, High. Chosen for their cost at
 // 5120 x 1440 (docs/settings.md#presets): Low the sun's shadows at 1024 with cheap materials, no occlusion or rays; Medium the maps
-// at 2048, all the lights, GTAO at half resolution, Low rays; High what Experimental had (4096, dynamic shadows, GTAO, High rays,
-// High materials and particles), grass High too
+// at 2048, all the lights, GTAO at half resolution, Low rays; High the maps at 4096, dynamic shadows, MXAO, Low rays (High's were
+// too strong: Daino, 2026-11-02 - stronger by hand), High materials, grass and particles
 constexpr Setting PRESET_ROWS[] = {S_LIGHTING, S_SHADOW_STR, S_SHADOW_DIST, S_DYN_SHADOWS, S_SEC_LIGHTS, S_AO, S_AO_STR, S_SUN_RAYS, S_SURFACE, S_GRASS, S_PARTICLES};
 constexpr int PRESET_COUNT = 3;  // (and Custom, 3: the rows match none)
 constexpr int PRESETS[PRESET_COUNT][sizeof(PRESET_ROWS) / sizeof(Setting)] = {
     // light  strength  distance       dynamic  secondary   AO           AO int.  rays     surface  grass  particles
     {0,       2,        1,  /* 80 */   0,       1,          0,           2,       0,       1,       0,     1},  // Low
     {1,       2,        2,  /* 140 */  0,       2,          5,  /* GTAO 1/2 */ 2, 1,     1,       1,     2},  // Medium
-    {2,       2,        3,  /* max */  1,       2,          4,  /* GTAO */     2, 3,     2,       2,     2},  // High
+    {2,       2,        3,  /* max */  1,       2,          9,  /* MXAO */     2, 1,     2,       2,     2},  // High
 };
 constexpr int PRESET_DEFAULT = 2;  // (the rows' values before any choice: High, what Graphics: Enhanced first shows)
 
@@ -1278,8 +1278,7 @@ void graphics_new_game_choice(uint32_t w) {
     const uint32_t mode = sel <= 0 ? GAME_MODE_ORIGINAL : sel == 1 ? GAME_MODE_MODERN : GAME_MODE_EXPERIMENTAL;
     gs_.mode = mode;
     // Graphics: Original in Original and Modern (the rows under it kept as they are), Enhanced at the preset High in Experimental
-    // (what Experimental set before the switch - Lighting High, Dynamic Shadows, all the lights, GTAO, Sun Rays, Surface Detail and
-    // Ambient Particles High - with Grass High too)
+    // (Lighting High, Dynamic Shadows, all the lights, MXAO, Sun Rays Low, Surface Detail, Grass and Ambient Particles High)
     const bool experimental = mode == GAME_MODE_EXPERIMENTAL;
     gs_.value[S_GFX] = experimental ? 1 : 0;
     if (experimental) preset_set(gs_.value, 2);
