@@ -1288,3 +1288,17 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
 - **Seen on the way, for the loading work:** the movies are read whole into memory (the third, 38 MB: 22 MB left free while it plays,
   7.5 MB between two); Novalis's start a 11.4 s hitch on the main thread - the mobys' level data 3.5 s, the world's 5.3 s (geometry,
   texture arrays, the tfrag vertex shader's tables), the first draws 1.2 s.
+
+### The flight between planets at full speed (2026-11-02)
+
+- **Daino:** the flight to Kerwan at a quarter of its speed or less. On the console (RAC1_LEVEL=0 RAC1_GOTO=3@300 RAC1_STALL_LOG=40):
+  after the load's first reads (steps of 643 / 1339 / 492 ms) every flight step took ~80 ms, the IOP's mirror playing 4 frames alone
+  each (taken off the game's debt): one step a host frame, ~11 game frames a second.
+- **The PC's samples** of the flight's steps (the Wii U-like path, RAC1_SAMPLE_PROF under level_exit_frame): flight_draw 97%, of it
+  moby_pass_end -> moby_skin_all 89% (the VU0 skinning of the ship's frames, moby_vu0_skin_fast / moby_skin). The MRP draws the
+  flight's mobys from its own assets, but g_moby_mrp_skip was off in any level exit.
+- **Fix (orig_main.cpp, the Wii U's branch):** the skip on in the level exit's flight too (exiting && level_exit_loading_screen()), as
+  in gameplay - a record the MRP's scene does not know is skinned as before. The flight's steps now at 16.7 ms a host frame (60 fps);
+  the test run (1500 steps through the flight) 84.4 -> 40.8 s.
+- **Left:** the first load steps' synchronous reads (0.4 - 1.3 s each, the loading screen frozen) and Kerwan's start, a 7.0 s hitch
+  (the level's setup and its MRP data on the main thread).

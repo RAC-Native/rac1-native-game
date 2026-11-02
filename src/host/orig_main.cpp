@@ -3296,7 +3296,10 @@ int main(int argc, char** argv) {
                     int mw0 = 0, mh0 = 0;
                     // (not on the Vendor's screens, game mode 5 once the picture is stored: their frames over it are drawn by the GS path)
 #if defined(__WIIU__)
-                    g_moby_mrp_skip = s_mrp_skip_mode != 0 && (mrp_moby_ready() || no_graphics_skip) && (!boot_active() || boot_in_title()) && !exiting &&
+                    // ((2026-11-02) and the level exit's flight: the MRP draws its mobys from the flight's assets - the VU0 skinning of the
+                    // ship's frames was 89% of a flight step, ~80 ms on the console: the flight at ~11 game frames a second)
+                    const bool flight_now = exiting && level_exit_loading_screen();
+                    g_moby_mrp_skip = s_mrp_skip_mode != 0 && (mrp_moby_ready() || no_graphics_skip) && (!boot_active() || boot_in_title()) && (!exiting || flight_now) &&
                                       movie_hw_shown(mw0, mh0) == nullptr && (lw(OV(0x0015f5c4)) != 5 || (lw(OV(0x001ca4c8)) == 0 && !ee_thread_suspended()));
 #else
                     g_moby_mrp_skip = s_mrp_skip_mode != 0 && (mrp_moby_ready() || no_graphics_skip) && !boot_active() && !exiting && movie_hw_shown(mw0, mh0) == nullptr &&
