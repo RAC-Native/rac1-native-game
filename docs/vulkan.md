@@ -1,6 +1,6 @@
 # The Vulkan renderer (experimental)
 
-An opt-in second backend for the same renderer: Options > Graphics > **Renderer** (OpenGL, the
+An opt-in second backend for the same renderer: Options > Display > **Renderer** (OpenGL, the
 default, or Vulkan), or `RAC1_RENDERER=vulkan` for one run. It draws exactly what the OpenGL path
 draws - the [MRP](rendering.md) world, sky, mobys, particles, effects, VU1 program 7's water and
 lava surfaces and drop shadows, the [modern lighting](lighting.md) (sun cascades, point lights and

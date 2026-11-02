@@ -22,7 +22,7 @@ Options > Graphics > Surface Detail (`surface_detail` in the preferences, item 5
 | Low | every material: specular, wetness, puddles, ripples, rain, the lava's pulse, the slow flow |
 | High | Low, plus the reflections of puddles and water taken from the last frame's picture, and the lava's heat shimmer |
 
-It works only with Lighting not Original, like the rest of the modern lighting. `RAC1_SURFACE_DETAIL=0|1|2`
+It works only with Graphics: Enhanced (Options > Graphics), like the rest of the modern lighting. `RAC1_SURFACE_DETAIL=0|1|2`
 (testing) overrides the row.
 
 ## Tagging a texture
@@ -174,7 +174,7 @@ keep the nearest hit, with its class and texture. The Textures tab lists every s
 ## Water and grass
 
 Two more options of Options > Graphics, each Off (the default), Low or High, each on the textures a level's file tags, each with
-Lighting not Original only (`water`, `grass` in the preferences; items 52, 54 of a save's block; `RAC1_WATER`, `RAC1_GRASS` for
+Graphics: Enhanced only (`water`, `grass` in the preferences; items 52, 54 of a save's block; `RAC1_WATER`, `RAC1_GRASS` for
 testing). Grass, lava and quicksand start from the game's own textures - their colours stay the texture's - and add relief and
 motion; a texture pack replacing those textures later gets the same treatment. Water replaces the game's water with our own (below). Nothing of the game's state changes (proved
 with `RAC1_RAMHASH`: Novalis and Pokitaru with all of them on, OpenGL and Vulkan, the same hashes as with them off).

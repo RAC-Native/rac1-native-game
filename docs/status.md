@@ -123,7 +123,7 @@ nothing, so an object whose class is not ported stands still or does not appear.
 | Pause menu (with its 3D models), HUD, Vendor, the ship's planet menu, the loading screen's flight | Ported. Known issue: the planet menu's information panels draw empty. |
 | Sound and music (989snd), dialogue streams, movies; 5.1 and 7.1 output | Working; see [Audio](audio.md). The sound mirror keeps music and sounds playing through loads, on by default (`RAC1_IOP_MIRROR=0` turns it off; see [Decisions](decisions.md#13-the-iops-sound-runs-twice)). |
 | Rendering (the MRP) | The default renderer; it draws the whole game itself: all of the 3D in play, the levels' water, lava and sand seas included, and the 2D (HUD, text, menus, fades), with the GS replica no longer running beside it (it stays the faithful reference, `RAC1_MRP=0`); see [Rendering](rendering.md). |
-| The Vulkan renderer (Options > Graphics > Renderer) | Experimental, opt-in: the same picture as OpenGL, which stays the default and takes over when Vulkan cannot start; see [Vulkan](vulkan.md). |
+| The Vulkan renderer (Options > Display > Renderer) | Experimental, opt-in: the same picture as OpenGL, which stays the default and takes over when Vulkan cannot start; see [Vulkan](vulkan.md). |
 | Modern lighting (optional) | Working, off by default, experimental; with surface materials (Surface Detail) and emissive surfaces; see [Lighting](lighting.md) and [Materials](materials.md). |
 | Ambient particles (optional) | Working, off by default, on seven levels; see [Ambient particles](particles.md). |
 | Options > Graphics (including Texture Detail and the widescreen HUD), Controls, Advanced; the Original / Modern / Experimental choice at New Game | Implemented, known issues may remain; see [Settings](settings.md). |
@@ -149,7 +149,7 @@ nothing, so an object whose class is not ported stands still or does not appear.
 - **One approximation kept on purpose.** With the modern lighting, the world's second alpha-tested pass skips the
   pixels its first pass drew, for about 0.5 to 1.5 ms of GPU a frame; a few single pixels on foliage differ. It stays on
   until it shows worse effects (see [Performance](performance.md#gpu-round-3)).
-- **Widescreen menus.** Options > Graphics > HUD spreads the HUD over a widened view; the menus, the
+- **Widescreen menus.** Options > Display > HUD spreads the HUD over a widened view; the menus, the
   pause screen and the Vendor stay 4:3 in the middle (see [Settings](settings.md#graphics)).
 - **Platforms.** Linux x86-64; Windows x86-64 (see [Platforms](platforms.md)). A port
   to ARM64 and Android is in progress on the `port/android` branch (#78); the CI has a Linux ARM64

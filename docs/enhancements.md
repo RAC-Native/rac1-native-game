@@ -44,9 +44,12 @@ See [Advanced options](advanced.md).
 All four work on every level. The page also has **Fades** (Fast by default, Original as an option),
 which is a removed compromise rather than an enhancement.
 
-### Graphics: Options > Graphics
+### Display and Graphics: Options > Display, Options > Graphics
 
-See [Settings](settings.md#graphics) and [Rendering](rendering.md).
+See [Settings](settings.md#display) and [Rendering](rendering.md). The Display page holds the removed compromises (the first
+items below); the Graphics page holds our additions behind one switch, **Graphics: Original / Enhanced** (Original, the
+default, is the original's picture whatever the rows under it hold), with a preset (Low, Medium, High) for all of them: see
+[Settings](settings.md#graphics).
 
 - **Widescreen**: 16:9 or the window's own shape for the 3D, with black bars or stretched when the
   shape differs. The game itself still sees its own 4:3 view, so its state is unchanged.
@@ -63,13 +66,13 @@ See [Settings](settings.md#graphics) and [Rendering](rendering.md).
   V-Sync.
 - **The renderer**: OpenGL, the default, or [Vulkan](vulkan.md) (experimental, from the next start),
   the same picture.
-- **Ambient particles** (off by default): our own dust, ash, embers, fireflies, light dust in the sunlight, rain and snow
+- **Ambient particles** (Graphics: Enhanced): our own dust, ash, embers, fireflies, light dust in the sunlight, rain and snow
   on some levels, purely visual; Batalia's rain and Hoven's snow drawn in place of the game's own while on. See
   [Ambient particles](particles.md).
 
 ### Modern lighting
 
-See [Lighting](lighting.md). Off by default (Lighting: Original).
+See [Lighting](lighting.md). Off by default (Options > Graphics > Graphics: Original; Enhanced turns it on with every other addition).
 
 - The sun's shadows, cast and received by the world and the objects (the levels' water, lava and
   sand seas too), with a Shadow Strength setting; the world lit by the sun, which a level's own file
