@@ -2,8 +2,8 @@
 
 Options > Advanced holds the settings that change how the game plays. The pause menu's page holds a playthrough's
 settings (the rows below, set first by New Game's Original / Modern and kept with the save); the main menu's holds only
-the global ones, settings of the whole game rather than of a playthrough (none yet: the main menu then has no Advanced
-entry). They are different in kind
+the global ones, settings of the whole game rather than of a playthrough: [Cut Content](#cut-content). They are different
+in kind
 from the PS2 compromises the port removes (see [Overview](overview.md#faithful-to-the-games-code-not-to-the-ps2s-limits)):
 
 - **A removed compromise** keeps the game's behaviour and state exactly the original's and only drops
@@ -64,7 +64,8 @@ port's fast fades). Left and right on a row step the value (`advanced_settings_d
 
 The ids in `save<N>.pc`: Quick Select 1, Aiming 2, Movement 3, Fades 4, Buy All Ammo 5, Skip Cutscenes 10 (Vibration 6,
 Adaptive Triggers 9 have ids but are not written with the saves; 7 and 8 are removed rows, and 11 was the Voice row,
-now on the Language page, never written with the saves: none reused).
+now on the Language page, never written with the saves; 12, Cut Content, is global and never written with the saves
+either: none reused).
 
 **The Language page's rows** have more values than the widget's four: each byte is a step byte with two values whose
 texts are both the row's value, made at each lookup (as the Graphics page's rows); when Cross or left / right step it,
@@ -463,6 +464,40 @@ reticle is not hidden by him. It is the Aiming byte's third value (2): everythin
 
 In the project's automated runs: top running speed 6.17 units/s (Original 5.7), 95 % of
 it in 12 frames (46), a stop in 8 frames (29), lift-off 3 frames after the press (7).
+
+## Cut Content
+
+The main menu's Advanced page has one row, **Cut Content: Off / On** (off by default). It is a global setting: kept in
+the preferences only (`cut_content 0|1` in `advanced_options.txt`), never with a save, and New Game leaves it as it is.
+With it on, things the retail game carries on the disc but never shows come back. Each one's own code in the game is a
+stub, so its behaviour is reconstructed (`src/game/enhance/cut_content.{h,cpp}`, `// orig: (none)` functions chosen where
+the game calls the original's): with the row off, the faithful port runs, and the game's memory is the same frame by
+frame (RAC1_RAMHASH). The row is read when a level's mobys first update, right after its load: a change shows at the next
+level load. `RAC1_CUT_CONTENT=fred,...` turns single items on for testing ([Environment variables](env-vars.md)).
+
+| Item | Level | What comes back |
+|---|---|---|
+| `fred`: Kerwan's citizens "Fred 1 / 2 / 3" | Kerwan | classes 915, 916, 917, 14 placements in the streets, on stairs and in a tunnel (x 204 to 350, y 130 to 202) |
+
+**Kerwan's citizens.** Their shared update (L3:0x2dc310, `fred_update_l3`) measures the distance to Ratchet and the
+heading towards him against its own, throws both away and retires the moby on its first frame; the prototype build already
+has the stub. With the item on, a host update replaces it (`cut_content_fred_dispatch_l3`, registered at that address):
+the citizen stays, its sequence 0 is played in a loop, and within 15 units it turns to face Ratchet
+(`yaw_turn_damped`, the game's turn, slow). What was learnt bringing them back:
+
+- Each of the three models has one sequence of **one frame**: the rest pose, arms held out. They stand still in that
+  pose; the game's data has nothing else for them.
+- They have **no collision**: Ratchet dropped on each one's spot lands where he lands without them, so none of the 14
+  blocks a path, even those standing on a path, a stair or in the tunnel.
+- Their turn's spin is kept in the last word of their pvars (448 bytes of placement data no code of the game reads);
+  the state byte (+0x20) marks a citizen kept. No save data is touched: over a run through Novalis, Kerwan, Rilgar and
+  Batalia, the game's memory differs only from the citizens' first update on Kerwan, in Kerwan's level data and moby
+  pages; after the next level's load only pages of Kerwan's data the next level does not overwrite differ, and the game's
+  state (the hero, the items, the save's blocks) stays the same.
+
+Left out for now: Orxon's five Fred 1 (class 915 by Clank's start: the same retire stub, L10:0x2d7fe8, not a turning
+citizen as once thought - speculative), Eudora's Transport Ships (484: the beta's update would have to be ported), and
+the rest of the candidates in [Port inventory](port-inventory.md#what-the-development-repository-already-knew).
 
 ## Limits
 

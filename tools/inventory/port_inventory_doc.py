@@ -417,23 +417,32 @@ KNOWN_CUT = """### What the development repository already knew
 From `docs/reversing/cut_content.md` of the development repository (the details and the evidence are there), in short:
 
 - **Kerwan's citizens "Fred 1 / 2 / 3"** (classes 915..917, 14 placements): their shared update (`L3:0x2dc310`) computes the
-  distance and the angle to Ratchet, throws them away and deletes the moby on its first frame (ported as such). On Orxon
-  class 915 is placed 5 times and only turns towards the hero.
+  distance and the angle to Ratchet, throws them away and deletes the moby on its first frame (ported as such; brought back
+  by the Cut Content option, [Advanced options](advanced.md#cut-content)). On Orxon class 915 is placed 5 times, by Clank's
+  start, with the same stub (L10:0x2d7fe8 is Veldin's 0x24eb68, the retire): it does not turn towards the hero, as once
+  written.
 - **A table of movie file names** in the boot module's data (114 rows, most a placeholder): the game plays its movies from
   the table of contents' sectors; no code builds the table's address.
 - **Veldin's ship scenes for the other planets**: Veldin's data holds ten ship scenes, the game's control flow plays four;
   the landing plays only through the planet map's "same planet" case (`RAC1_ARRIVE=1`), its camera never authored to be seen.
   Level 0 also has a talker slot without a script.
-- **Items whose hand / pickup class no level registers**: eight rows of the item table (0x179ac0) name classes absent from
-  every level's class table; the Drone Device's class runs no code anywhere.
+- **The item table** (0x179ac0; a row: +0 the name, +4 the upgraded name, +8 the slot, +0x10 the hand / pickup class): the
+  eight classes once listed as "never registered" are real items' hand classes (the packs, the boots, the PDA, the
+  Map-o-matic, the Persuader), not cut. Rows 0x02..0x23 are the real items; the oddities are rows 0x00, 0x01 (a pack slot,
+  class 0x259, no name) and 0x24 (a copy of the Devastator's). The Drone Device's class runs no code anywhere.
 - **Classes with no code, empty, or never placed**, level by level (Novalis, Aridia, Eudora, Kerwan, Rilgar, Nebula G34,
-  Umbris, Gaspar, Batalia, Orxon, Pokitaru): the Hologuise rows (483, 634) hold no function on every level; empty updates
-  (a bare `jr ra`) such as the Green Ship (531), the "Lamp (Damaged)" replacement models, the hoverboard boost pads (they do
-  nothing on their own); Eudora's self-deleting Transport Ships (484, as Fred); classes with code that nothing places or
-  spawns (Aridia's Sand Mouse 437 and Sandshark Egg 755, Eudora's 161 and 437, Nebula G34's 156 / 1085..1089 / 1633,
-  Umbris's 848 / 1221 / 1222, Pokitaru's Jet Fighter health crate 1220 and others).
-- **The oxygen element on Aridia and Nebula G34**: both overlays carry their own build of the oxygen indicator, which
-  nothing requests on those levels.
+  Umbris, Gaspar, Batalia, Orxon, Pokitaru): empty updates (a bare `jr ra`), the "Lamp (Damaged)" replacement models, the
+  hoverboard boost pads (they do nothing on their own); Eudora's self-deleting Transport Ships (484, as Fred: the retail
+  update is the retire, the beta and prototype builds keep a real one of about 1.8 KB); classes with code that nothing
+  places (Aridia's Sand Mouse 437 and Sandshark Egg 755, Eudora's 161 and 437, Nebula G34's 156 / 1085..1089 / 1633,
+  Umbris's 848 / 1221 / 1222 and others; "never spawned" is known only from the immediates, no data table was scanned).
+  Not cut, once listed so: 483 is the hand class of items 0x18 / 0x1f (no model), 634 is spawned by Veldin (at
+  0x2217e4), 531..533 (the Green Ship) are the ship variants of game mode 6 (0x213 + the variant), and Pokitaru's Jet
+  Fighter health crate 1220 is spawned by class 1319 (L11:0x30f5a8, at 0x319a64 and 0x31a140).
+- **Not the oxygen element on Aridia and Nebula G34**: the HUD element those overlays carry is the Morph-o-Ray's ammo
+  element (slot 4, key 0x7533), which class 185's update requests (L2:0x2bc5dc, L6:0x2c9dd4); Veldin's 0x236458 and
+  0x236d00 are the same code (the overlay map pairs both with L2:0x2399c0 / L6:0x246228). Levels 2, 6 and 14 have no
+  oxygen draw (0x2365a8) at all. L6:0x246d78, unreferenced, is not identified.
 - **Levels' cutscene extras**: most levels' `cutscene_level_extras` is a bare `jr ra`.
 
 The class-level findings (classes never placed) are not visible to the call graph, which sees every class table row as a

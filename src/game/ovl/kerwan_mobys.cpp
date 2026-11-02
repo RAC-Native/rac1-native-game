@@ -1,4 +1,5 @@
 // Kerwan's own moby classes: the registration table. The ports are in kerwan_*.cpp.
+#include <game/enhance/cut_content.h>
 #include <game/ovl/kerwan_classes_tr.h>
 #include <game/ovl/kerwan_mobys.h>
 #include <game/ovl/kerwan_part2_tr.h>
@@ -15,7 +16,8 @@ void kerwan_moby_fns_register() {
     // class 605 the zone marker: the same code, its counter at gp - 0x5270
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002cbc38), zone_marker_update_l3);
     // the props, citizens and mechanisms (kerwan_props.cpp)
-    ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002dc310), fred_update_l3);
+    // (Fred: through the Cut Content option's choice, cut_content.h; with it off the faithful fred_update_l3 runs)
+    ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002dc310), cut_content_fred_dispatch_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002e2948), lightpost_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002d3cd8), statue_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002d3e58), robo_shack_sign_update_l3);

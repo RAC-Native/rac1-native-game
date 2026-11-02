@@ -216,8 +216,14 @@ Two pages of the same name. **The pause menu's** holds a playthrough's settings,
 | Skip Cutscenes | Original, Always | with the save |
 
 **The main menu's** holds the global settings, those of the whole game rather than of a playthrough, kept in the
-preferences only. While there are none, the main menu's Options has no Advanced entry. All of the rows above are changed
-in the pause menu (New Game's Original / Modern sets them first).
+preferences only:
+
+| Row | Values (default first) | Kept |
+|---|---|---|
+| Cut Content | Off, On: things the game has on the disc but never shows, brought back (Kerwan's citizens so far); read at a level's load | the preferences |
+
+All of the pause menu's rows are changed in the pause menu (New Game's Original / Modern sets them first); the main
+menu's Options has an Advanced entry only while there is a global row.
 
 See [Advanced options](advanced.md) for what each one does and how it is built.
 

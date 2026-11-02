@@ -110,7 +110,7 @@ front:00232ce0 host the boot module's copy of 0x293af8 (a kernel step of the sta
 front:0021ca98 review P7 the boot module's help page focus-in (other data than Veldin's)
 
 # ---- not connected: what we know (cut content) ---------------------------------------------------------------------
-L8:002e3870 cut a 5.4 KB function after the Bolt Thief's (class 452) update, with its own state switch: nothing points to it; its callees (0x26a0f8, 0x2e4db8, 0x2e4e90) and the draw 0x2e5188 (ported, registered) are reached only from it. A second, unused behaviour of the class?
+L8:002e3870 cut a 5.4 KB update after the Bolt Thief's (class 452), not a second behaviour of it: it switches on classes 633 / 773 / 988 / 989, which have no model and no registration in any build. A hopping "bolt critter" (wanders, hops, bounces, spins; on death 1 / 5 / 10 bolts, class 773 a gold bolt), its states a jump table at 0x1fbfe0; its callees (0x26a0f8, 0x2e4db8, 0x2e4e90) and the draw 0x2e5188 (ported, registered) are reached only from it
 L8:002e4db8 cut a helper only the unused 0x2e3870 calls
 L8:002e4e90 cut a helper only the unused 0x2e3870 calls
 L8:0026a0f8 cut a camera-like helper only the unused 0x2e3870 calls
@@ -123,8 +123,8 @@ V:00203e00 cut a level's copy of the unused group at 0x202d78..0x2046c8 (a shrub
 V:002040e0 cut a level's copy of the unused group at 0x202d78..0x2046c8
 V:002043b0 cut a level's copy of the unused group at 0x202d78..0x2046c8
 V:00204428 cut a level's copy of the unused group at 0x202d78..0x2046c8
-L7:0030dcf0 cut a draw of the Snagglebeast's class 1046 that nothing references (ported anyway: umb_class1046_draw_l7)
-L18:002ea1f8 cut a 924-byte function of the Veldin finale that nothing references
+L7:0030dcf0 cut the draw of the Snagglebeast's class 1046, referenced after all: its update builds the address (lui 0x30e2f0 / addiu 0x30e30c in a jal's delay slot), a pair the scan misses. Used, not cut (ported: umb_class1046_draw_l7)
+L18:002ea1f8 cut the draw of class 983, referenced after all: queued by its update L18:0x2e9e70 (at 0x2ea0c4), a pair the scan misses; class 983 has no model and no placement: dead, not cut content
 L9:00303fc8 cut a 516-byte function of Gaspar's class code that nothing references
 front:0022ab98 cut a 724-byte function of the title's sky that nothing references
 front:00218a60 cut a 688-byte function of the boot module that nothing references

@@ -12,6 +12,11 @@ What changed in each release. Releases are source only: you build the game with 
   Graphics page only. The Display page is never touched. Experimental is gone: its saves load as Modern, graphics left alone.
 - Options > Advanced: the main menu's page holds only the global settings (none yet: no entry until there is one); the
   gameplay rows are a playthrough's, on the pause menu's page and kept with the save.
+- Main menu > Options > Advanced > Cut Content (Off by default; global, kept in the preferences, read at a level's load):
+  Kerwan's citizens "Fred 1 / 2 / 3" (classes 915..917, 14 placements) stay instead of retiring on their first frame and
+  turn to face Ratchet near them (they hold their one-frame rest pose; no collision). `RAC1_CUT_CONTENT=fred` for testing
+  (docs/advanced.md, "Cut Content"). Port inventory: the Bolt Thief's "second behaviour", the Snagglebeast's unreferenced
+  draw, L18:0x2ea1f8, the oxygen element, Orxon's turning citizen and the unregistered item classes corrected.
 - Options > Language > Voice (Same as Text, the default; English, French, German, Spanish, Italian; Japanese with the
   Japanese data disc): the spoken language apart from the text's, for the dialogue, the scenes, the Vendor, the movies
   and Ratchet's efforts (`voice_language` in the preferences, `RAC1_VOICE_LANGUAGE`; docs/settings.md, "Voice").
