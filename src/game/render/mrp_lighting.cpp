@@ -61,7 +61,6 @@ int g_ao = env_int("RAC1_AO", 0);
 int g_sun_rays = env_int("RAC1_SUN_RAYS", 0);
 int g_emissive = env_int("RAC1_EMISSIVE", 1);
 int g_surface_detail = std::clamp(env_int("RAC1_SURFACE_DETAIL", 0), 0, 2);
-int g_water = std::clamp(env_int("RAC1_WATER", 0), 0, 2);
 int g_grass = std::clamp(env_int("RAC1_GRASS", 0), 0, 2);
 int g_grass_shells = std::clamp(env_int("RAC1_GRASS_SHELLS", 0), 0, 32);
 float g_grass_distance = [] {
@@ -3192,9 +3191,10 @@ struct MatSsr {
 } g_mssr;
 uint64_t g_mat_frames = 0;  // (the materials' clock: frames drawn with the lighting, 60 a second)
 std::atomic<bool> g_mat_ssr_wanted{false};  // (this level has a water, puddle or lava surface: kept by the uniforms' fill)
-std::atomic<bool> g_mat_water_wanted{false};  // (this level has a water, lava or quicksand surface: the Water option's depth)
-// orig: (host) the High step's picture wanted now (Surface Detail High, or the Water option: the depth under the water)
-bool mat_ssr_now() { return ((g_surface_detail >= 2 && g_mat_ssr_wanted.load()) || (g_water > 0 && g_mat_water_wanted.load())) && g_sh.on; }
+std::atomic<bool> g_mat_water_wanted{false};  // (this level has a water surface: the depth under it, Surface Detail Low too)
+// orig: (host) the High step's picture wanted now (Surface Detail High; Low too on a level with water: where nothing lies under the
+// water it is drawn over its own colour, sm_material)
+bool mat_ssr_now() { return ((g_surface_detail >= 2 && g_mat_ssr_wanted.load()) || (g_surface_detail >= 1 && g_mat_water_wanted.load())) && g_sh.on; }
 // orig: (host) the picture usable by this frame's draws: captured the frame before (the world, the mobys) or this frame already (the
 // seas, drawn after the capture - the 3D under them, seen with this frame's view), at the same size
 bool mat_ssr_ready() { return mat_ssr_now() && (g_mssr.frame + 1 == g_mat_frames || g_mssr.frame == g_mat_frames) && g_mssr.w > 0; }
@@ -3212,12 +3212,6 @@ void mrp_lighting_material_capture(const int vp[4]) {
     if (!mat_ssr_now()) return;
     const int w = vp[2], h = vp[3];
     if (w <= 0 || h <= 0) return;
-    // (the profiler: the copy counted as the Water option's when it is what asks for it)
-    struct WaterZone {
-        int z = -1;
-        ~WaterZone() { rac1::prof::end(z); }
-    } wz;
-    if (g_water > 0 && g_mat_water_wanted.load() && !(g_surface_detail >= 2 && g_mat_ssr_wanted.load())) wz.z = rac1::prof::begin(rac1::prof::kWater);
     float vpf[16];
     mrp_world_view_proj(vpf);
     if (vk::is_active()) {
@@ -3910,28 +3904,6 @@ bool emis_parse(const char* line, EmissiveSurface& out) {
     es.type = ty;
     const MatParam* mp = mrp_material_params(ty);
     for (int i = 0; i < 3; ++i) es.p[i] = mp[i].name == nullptr ? 0.0f : std::clamp(got >= 5 + i ? a[i] : mp[i].def, mp[i].lo, mp[i].hi);
-    if (at > 0 && (ty == MAT_WATER || ty == MAT_LAVA || ty == MAT_QUICKSAND)) {  // (Options > Graphics > Water: its keywords, any order)
-        const char* q = line + at;
-        if (const char* k = std::strstr(q, " tint "); k != nullptr) {
-            float c[3];
-            if (std::sscanf(k, " tint %f %f %f", &c[0], &c[1], &c[2]) == 3)
-                for (int i = 0; i < 3; ++i) es.tint[i] = std::clamp(c[i], 0.0f, 2.0f);
-        }
-        if (const char* k = std::strstr(q, " waves "); k != nullptr) {
-            float w[2] = {1.0f, 1.0f};
-            const int n = std::sscanf(k, " waves %f %f", &w[0], &w[1]);
-            if (n >= 1) es.waves[0] = std::clamp(w[0], 0.1f, 8.0f);
-            if (n >= 2) es.waves[1] = std::clamp(w[1], 0.0f, 8.0f);
-        }
-        if (const char* k = std::strstr(q, " foam "); k != nullptr) {
-            float f = 0.0f;
-            if (std::sscanf(k, " foam %f", &f) == 1) es.foam = std::clamp(f, 0.0f, 2.0f);
-        }
-        if (const char* k = std::strstr(q, " depth "); k != nullptr) {
-            float d = 0.0f;
-            if (std::sscanf(k, " depth %f", &d) == 1) es.depth = std::clamp(d, 0.1f, 100.0f);
-        }
-    }
     if (ty == MAT_EMISSIVE) {  // ("material ... emissive [strength] [threshold]": the emissive line's numbers)
         es.strength = es.p[0];
         es.threshold = es.p[1];
@@ -3982,24 +3954,6 @@ std::string emis_line(const EmissiveSurface& es) {
             std::snprintf(b, sizeof b, " %g", static_cast<double>(es.p[i]));
             out += b;
         }
-    if (es.type == MAT_WATER || es.type == MAT_LAVA || es.type == MAT_QUICKSAND) {  // (the Water option's keywords: those set alone)
-        if (es.tint[0] >= 0.0f) {
-            std::snprintf(b, sizeof b, "  tint %.2f %.2f %.2f", static_cast<double>(es.tint[0]), static_cast<double>(es.tint[1]), static_cast<double>(es.tint[2]));
-            out += b;
-        }
-        if (es.waves[0] != 1.0f || es.waves[1] != 1.0f) {
-            std::snprintf(b, sizeof b, "  waves %g %g", static_cast<double>(es.waves[0]), static_cast<double>(es.waves[1]));
-            out += b;
-        }
-        if (es.foam >= 0.0f) {
-            std::snprintf(b, sizeof b, "  foam %g", static_cast<double>(es.foam));
-            out += b;
-        }
-        if (es.depth >= 0.0f) {
-            std::snprintf(b, sizeof b, "  depth %g", static_cast<double>(es.depth));
-            out += b;
-        }
-    }
     if (es.glow > 0.0f && es.type != MAT_LAVA) {
         std::snprintf(b, sizeof b, "  glow %.2f %.2f", static_cast<double>(es.glow), static_cast<double>(es.glow_threshold));
         out += b;
@@ -4013,8 +3967,7 @@ bool same_emit(const ClassLight& a, const ClassLight& b) {
 }
 bool same_emis(const EmissiveSurface& a, const EmissiveSurface& b) {
     return a.kind == b.kind && a.o_class == b.o_class && a.tex == b.tex && a.strength == b.strength && a.threshold == b.threshold && a.type == b.type &&
-           std::memcmp(a.p, b.p, sizeof a.p) == 0 && a.glow == b.glow && a.glow_threshold == b.glow_threshold && std::memcmp(a.tint, b.tint, sizeof a.tint) == 0 &&
-           std::memcmp(a.waves, b.waves, sizeof a.waves) == 0 && a.foam == b.foam && a.depth == b.depth;
+           std::memcmp(a.p, b.p, sizeof a.p) == 0 && a.glow == b.glow && a.glow_threshold == b.glow_threshold;
 }
 
 // ---- the lines for every level: data/lights/classes.txt (moby classes: the same on every level) ----
@@ -4487,20 +4440,19 @@ uint32_t mrp_emissive_snapshot(std::vector<EmissiveSurface>& out, EmissiveSurfac
         g_emis_preview_on = false;
         ++g_emis_gen;
     }
-    static int detail = -1;  // (Surface Detail, Water or Grass changed: the slots made again)
+    static int detail = -1;  // (Surface Detail or Grass changed: the slots made again)
     const int d = g_surface_detail != 0 ? 1 : 0;
-    const int key = d | (g_water != 0 ? 2 : 0) | (g_grass != 0 ? 8 : 0);
+    const int key = d | (g_grass != 0 ? 8 : 0);
     if (key != detail) {
         detail = key;
         ++g_emis_gen;
     }
     out = g_emis_copy;
     // (a material whose option is Off gets no slot: the original's draw - its glow alone if it has one. Surface Detail draws the first
-    // materials; Water also the water, lava and quicksand; Grass its own alone)
+    // materials; Grass its own alone)
     for (EmissiveSurface& e : out) {
         if (e.type == MAT_EMISSIVE || (e.glow > 0.0f && e.type != MAT_LAVA && e.type != MAT_GRASS)) continue;
         bool on = d != 0 && e.type < MAT_GRASS;
-        if (e.type == MAT_WATER || e.type == MAT_LAVA || e.type == MAT_QUICKSAND) on = on || g_water != 0;
         if (e.type == MAT_GRASS) on = g_grass != 0;
         if (!on) e.kind = -1;
     }
@@ -4528,7 +4480,7 @@ void emissive_uniforms(glm::vec4 out[kEmissivePreviewSlot + 1]) {
 // the rain, the High step's picture ready; slot i + 1 the list's surface i's parameters. The reflections' view, depth and sky
 struct MatUniforms {
     glm::vec4 mat[kEmissivePreviewSlot + 1];
-    glm::vec4 mat2[kEmissivePreviewSlot + 1];  // (the Water option's parameters per slot; [0] the hero, [255] the wind and the grass)
+    glm::vec4 mat2[kEmissivePreviewSlot + 1];  // ([0] the hero, [255] the wind and the grass)
     glm::mat4 ssr_vp{1.0f};
     glm::vec4 ssr_z{0.0f}, sky{0.0f};
 };
@@ -4543,26 +4495,14 @@ void material_uniforms(MatUniforms& u) {
         any = true;
         ssr = ssr || e.type == MAT_PUDDLE || e.type == MAT_WATER || e.type == MAT_LAVA || (e.type == MAT_METAL && e.p[0] < 0.45f);  // (a polished metal mirrors too: roughness under 0.45, sh_material)
         u.mat[i + 1] = glm::vec4(e.p[0], e.p[1], e.p[2], 0.0f);
-        if (e.type == MAT_WATER || e.type == MAT_LAVA || e.type == MAT_QUICKSAND) {
-            water = true;
-            // (w: the tint as three bytes of 0..2 in one float - exact below 2^24 -, -1 the texture's own)
-            if (e.tint[0] >= 0.0f) {
-                auto q = [](float c) { return std::floor(std::clamp(c * 0.5f, 0.0f, 1.0f) * 255.0f + 0.5f); };
-                u.mat[i + 1].w = q(e.tint[0]) * 65536.0f + q(e.tint[1]) * 256.0f + q(e.tint[2]);
-            } else {
-                u.mat[i + 1].w = -1.0f;
-            }
-            const float foam = e.foam >= 0.0f ? e.foam : e.type == MAT_WATER ? 0.6f : e.type == MAT_LAVA ? 0.8f : 0.3f;
-            const float depth = e.depth >= 0.0f ? e.depth : e.type == MAT_WATER ? 2.5f : 1.0f;
-            u.mat2[i + 1] = glm::vec4(e.waves[0], e.waves[1], foam, depth);
-        }
+        water = water || e.type == MAT_WATER;
     }
     g_mat_ssr_wanted = ssr;
     g_mat_water_wanted = water;
     // the options (sm_type), the picture's time; the hero (the grass bends away from him); the level's wind (its particles' first
     // line with one; else a breeze) and the grass's distance and shells
     const int shells = g_grass_shells > 0 ? g_grass_shells : 4;
-    u.mat[kEmissivePreviewSlot] = glm::vec4(static_cast<float>(g_water), 0.0f, static_cast<float>(g_grass), mat_ssr_this_frame() ? 1.0f : 0.0f);
+    u.mat[kEmissivePreviewSlot] = glm::vec4(0.0f, 0.0f, static_cast<float>(g_grass), mat_ssr_this_frame() ? 1.0f : 0.0f);
     {
         constexpr uint32_t kHeroPos = 0x0013f350u + 0x80u;  // (the player's position, as the debug menu reads it)
         const glm::vec3 h(draw_lwc1(kHeroPos), draw_lwc1(kHeroPos + 4), draw_lwc1(kHeroPos + 8));

@@ -43,5 +43,5 @@ material tie 1506 tex 2 metal 0.35 0.68
 material tie 1493 tex 0 metal 0.35 1
 material tie 1488 tex 0 metal 0.35 1
 emissive tfrag 0 tex 15  2.17 0.60
-# Options > Graphics > Water (docs/materials.md): the sea around the island
-material surface 1111 tex 22 water 1 1  depth 5
+# Surface Detail's water (docs/materials.md): the sea around the island
+material surface 1111 tex 22 water 1 1

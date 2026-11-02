@@ -14,7 +14,7 @@ The port keeps two kinds of settings apart (see
   page.
 - **Enhancements**, which change the game's behaviour: the quick-select pause, modern aiming,
   Ratchet & Clank 3 movement, and, on the picture side, our additions on the Graphics page (the modern
-  lighting, water, grass, ambient particles). They are optional, off by default, and labelled as changes.
+  lighting, surface detail, grass, ambient particles). They are optional, off by default, and labelled as changes.
 
 ## The pages
 
@@ -121,11 +121,10 @@ every addition. None of them changes the game's state.
 | Shadow Distance | Low, Medium, High, Maximum | Maximum |
 | Dynamic Shadows | Off, On | On |
 | Secondary Lights | Off, Game's, All | All |
-| Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2, SSAO 1/2, SSAO+ 1/2, HBAO 1/2, MXAO, MXAO 1/2 (the 1/2 ones at half resolution; MXAO with smooth normals, see [Lighting](lighting.md#mxao)) | GTAO |
+| Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2, SSAO 1/2, SSAO+ 1/2, HBAO 1/2, MXAO, MXAO 1/2 (the 1/2 ones at half resolution; MXAO with smooth normals, see [Lighting](lighting.md#mxao)) | MXAO |
 | AO Intensity | 25, 50, 75, 100, 125 (%) | 75 |
-| Sun Rays | Off, Low, Medium, High (more quality, strength and cost each step; Low has the strength of 0.4.x's Low, High of its High) | High |
-| Surface Detail | Off, Low, High (materials: shiny metal, wet ground and puddles, water, lava, mud; High adds reflections and the lava's heat shimmer; see [Materials](materials.md)) | High |
-| Water | Off, Low, High: the water a level's light file tags drawn as our own calm water in place of the game's (its texture flowing as in the game but filtered, held still - no rise and fall -, slow normal maps, Fresnel, the sky and the sun's glints, a soft edge and a thin foam at the shore; never darker than Off), its lava and quicksand given relief; High adds the scene's reflection; Off is the game's water (see [Materials](materials.md#water-and-grass); `water`, id 52) | High |
+| Sun Rays | Off, Low, Medium, High (more quality, strength and cost each step; Low has the strength of 0.4.x's Low, High of its High) | Low |
+| Surface Detail | Off, Low, High (materials: shiny metal, wet ground and puddles, water - held still, without the game's rise and fall -, lava, mud; High adds reflections and the lava's heat shimmer; see [Materials](materials.md)) | High |
 | Grass | Off, Low, High: the ground a level's light file tags as grass gets a fine relief of blades (Low, no geometry), and on High also a few very low layers of blades near the camera (`grass`, id 54) | High |
 | Ambient Particles | Off, Low, High: our own dust, embers, fireflies, rain and snow on some levels, not in the original (see [Ambient particles](particles.md); `ambient_particles` in the preferences, id 50 in `save<N>.pc`) | High |
 
@@ -138,14 +137,16 @@ every addition. None of them changes the game's state.
   stepping the preset from Custom goes to Low (right) or High (left). The preset is not kept: it is what the rows match.
 - **The defaults** of the rows under the switch are the preset High: what Graphics: Enhanced first shows. They do not matter
   while Graphics is Original (the default).
-- **Water, Grass and Ambient Particles** were outside the lighting's control before the switch: with Lighting Original,
-  Water and Ambient Particles still drew. Now every addition follows the one switch.
+- **Grass and Ambient Particles** were outside the lighting's control before the switch: with Lighting Original,
+  Ambient Particles still drew. Now every addition follows the one switch.
+- **Water** (Off, Low, High: our own water over or in place of the game's) was a row until 2026-11-02: Surface Detail's water
+  over the game's own looked better. Its `water` key and save item 52 are read and ignored (52 stays reserved); what it fixed is
+  Surface Detail's now (the water held still, Pokitaru's clear trapezoids: [Materials](materials.md#the-water-held-still)).
 
 #### Presets
 
 Chosen for their cost at 5120 x 1440 (the GPU times in [Lighting](lighting.md): a sun cascade about 0.5 ms each, GTAO about
-3 to 4 ms, GTAO 1/2 about 2 to 3 ms, Sun Rays Low about 0.5 ms and High about 1.4 ms; the particles and the water's Low step
-cost little).
+3 to 4 ms, GTAO 1/2 about 2 to 3 ms, Sun Rays Low about 0.5 ms and High about 1.4 ms; the particles cost little).
 
 | Row | Low | Medium | High |
 |---|---|---|---|
@@ -154,16 +155,16 @@ cost little).
 | Shadow Distance | Medium | High | Maximum |
 | Dynamic Shadows | Off | Off | On |
 | Secondary Lights | Game's | All | All |
-| Ambient Occlusion | Off | GTAO 1/2 | GTAO |
+| Ambient Occlusion | Off | GTAO 1/2 | MXAO |
 | AO Intensity | 75 | 75 | 75 |
-| Sun Rays | Off | Low | High |
+| Sun Rays | Off | Low | Low |
 | Surface Detail | Low | Low | High |
-| Water | Low | Low | High |
 | Grass | Off | Low | High |
 | Ambient Particles | Low | High | High |
 
-High is what the Experimental mode set before the switch (Lighting High, Dynamic Shadows, all the lights, Shadow Distance
-Maximum, GTAO, Sun Rays, Surface Detail and Ambient Particles High), with Water and Grass High too.
+High (also the Experimental mode's): Lighting High, Dynamic Shadows, all the lights, Shadow Distance Maximum, MXAO, Sun Rays
+Low, Surface Detail, Grass and Ambient Particles High. Until 2026-11-02 it had GTAO and Sun Rays High (Daino: the rays too strong;
+stronger ones are picked by hand); rows set to that old High now show Custom.
 
 #### Before the switch: the preferences and the saves
 
@@ -225,7 +226,7 @@ New Game opens a choice between three modes before the game starts
 | Level of Detail | Original | High | High |
 | Texture Detail | Original (PS2) | Full | Full |
 | Quick Select, Aiming, Movement | Normal, Original, Original | Pause, Modern, RAC 3 | Pause, Modern, RAC 3 |
-| Graphics (the modern lighting, water, grass, ambient particles) | Original (the rows under it kept as they are) | Original (the rows under it kept as they are) | Enhanced, the preset High |
+| Graphics (the modern lighting, surface detail, grass, ambient particles) | Original (the rows under it kept as they are) | Original (the rows under it kept as they are) | Enhanced, the preset High |
 | Buy All Ammo (the Vendor) | Off | On | On |
 | Vibration | Off | High | High |
 | Adaptive Triggers (a DualSense in use) | Off | On | On |

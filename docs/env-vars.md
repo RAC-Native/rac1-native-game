@@ -6,7 +6,7 @@ total, in three groups.
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 283 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 282 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 68 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -96,7 +96,6 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_GL_SINGLE_DRAWS` | 1 = on, 0 = off; default on with Intel's Windows OpenGL driver, else off | With OpenGL, issues the MRP world's and mobys' multi-draws (glMultiDrawElementsIndirect) as one glDrawElementsInstancedBaseVertexBaseInstance per command, for drivers whose multi-draws draw the ties, shrubs and mobys with the wrong records (#113). The same picture. See [Rendering](rendering.md). |
 | `RAC1_MRPW_BUILD_THREAD` | 0 = off; default on (off when `RAC1_MRPW_THREAD=0`, a check mode, `RAC1_MRPW_CPU` or `RAC1_MRPW_TFRAG_VERIFY`) | The MRP world's frame triangles and batches (build_triangles) made on the scene's worker after its scene, the new textures' images made by the main thread when it takes the frame; 0 makes them on the main thread when the frame is drawn, as before, for comparison (the same output). |
 | `RAC1_SURFACE_DETAIL` | 0, 1 or 2; default: Options > Graphics > Surface Detail (Off) | With the modern lighting, the materials of the level files' `material` lines: 0 off, 1 Low, 2 High (also the reflections and the lava's heat shimmer), whatever the option says. |
-| `RAC1_WATER` | 0, 1 or 2; default: Options > Graphics > Water (Off) | With the modern lighting, the `water`, `lava` and `quicksand` materials of the level files with the Water option's shading (the `water` seas drawn as our own water in place of the game's): 0 off, 1 Low (normal maps, Fresnel, glints, depth, foam), 2 High (also the scene's reflection and the refraction), whatever the option says. See [Materials](materials.md#water-and-grass). |
 | `RAC1_GRASS` | 0, 1 or 2; default: Options > Graphics > Grass (Off) | With the modern lighting, the `grass` material on tfrags: 0 off, 1 Low (a detail relief of blades, no geometry), 2 High (also very low shells of blades near the camera), whatever the option says. |
 | `RAC1_GRASS_SHELLS` | 1 to 32; default 0 (4) | The Grass option High's number of shells (the debug menu's Enhancements tab sets it too). |
 | `RAC1_GRASS_DIST` | units, 4 to 200; default 40 | How far from the camera the Grass option's blades are drawn (Low faded out over the last 40 %, the shells from 30 % of it on). |
@@ -251,7 +250,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_RENDER_SHADE` | integer; 1 = vertex colours alone; default 0 | Debug view that shades with the vertex colours alone. |
 | `RAC1_SAMPLE_FROM` | frame number; default 0 (sample from the start) | Used with RAC1_SAMPLE_PROF: sampling starts at this frame. |
 | `RAC1_SAMPLE_PROF` | output file path; unset = off | Turns on a built-in sampling profiler of the main thread (every 0.5 ms) and writes the samples to the given file at exit. Use a build without `RAC1_NATIVE_ARCH`: with it, the unwinder (glibc's `backtrace` in the signal) can crash in an AVX function's realigned frame. |
-| `RAC1_SHADOWS` | 0 = off, 1 = on; default 0 (Options > Graphics > Graphics: Enhanced turns it on unless this is set) | Forces the modern shadows and lighting on or off, overriding the Graphics switch (like every variable of an addition: RAC1_WATER, RAC1_GRASS, RAC1_PARTICLES... act whatever the switch says). |
+| `RAC1_SHADOWS` | 0 = off, 1 = on; default 0 (Options > Graphics > Graphics: Enhanced turns it on unless this is set) | Forces the modern shadows and lighting on or off, overriding the Graphics switch (like every variable of an addition: RAC1_SURFACE_DETAIL, RAC1_GRASS, RAC1_PARTICLES... act whatever the switch says). |
 | `RAC1_SHADOW_CACHE` | 0 = off, 1 = on; default 1 | Switches the static shadow cache off or on, to compare speed and look. |
 | `RAC1_SHADOW_CAST_KINDS` | bit mask: 1 ties, 2 shrubs, 4 tfrags; default 7 in the world renderer and 3 in the static caster code | Chooses which kinds of world geometry cast shadows, to find which one causes a problem. |
 | `RAC1_SHADOW_CAST_TRACE` | any value = on; default off | Prints which tie classes are chosen as shadow casters. |

@@ -1281,7 +1281,7 @@ void tab_sun() {
 // orig: (host) the Enhancements tab (Daino's request: every enhancement switched on and off at once, to compare and to profile): the
 // global switch Graphics: Original / Enhanced and the preset (as Options > Graphics, graphics.h), then the
 // live switches of the modern lighting, the shadows, the lights, the occlusion, the rays, the materials, the emissive surfaces, the
-// ambient particles (by kind) and the water and grass, each with its profiler stage's GPU / CPU time beside it (the last 60
+// ambient particles (by kind) and the grass, each with its profiler stage's GPU / CPU time beside it (the last 60
 // frames; the tab keeps the profiler recording while it is shown). For this run only: "Save as my settings" makes them the player's
 // preferences (Options > Graphics)
 void tab_enhancements() {
@@ -1379,9 +1379,6 @@ void tab_enhancements() {
         if (ImGui::Checkbox("Emissive surfaces##en", &on)) g_emissive = on ? 1 : 0;
         in_world();
     }
-    combo("Water##en", &g_water, olh, 3);
-    ms(prof::kWater);
-    ImGui::TextDisabled("   Low: normal maps, Fresnel, glints, depth, foam; High: + the scene's reflection, refraction (the material \"water\", \"lava\", \"quicksand\")");
     combo("Grass##en", &g_grass, olh, 3);
     ms(prof::kGrass);
     if (g_grass != 0) {
@@ -1728,39 +1725,11 @@ void emis_in_hand() {
                         if (e.glow > 0.0f) ch |= ImGui::SliderFloat("Glow threshold##matglow", &e.glow_threshold, 0.0f, 1.0f, "%.2f");
                         if (had != (e.glow > 0.0f)) mrp_user_emissive_changed();  // (a glowing material keeps its slot with Surface Detail Off)
                     }
-                    if (e.type == MAT_WATER || e.type == MAT_LAVA || e.type == MAT_QUICKSAND) {  // (Options > Graphics > Water: its keywords)
-                        ImGui::SeparatorText("With Options > Graphics > Water");
-                        bool tint = e.tint[0] >= 0.0f;
-                        if (ImGui::Checkbox("Tint##wat", &tint)) {
-                            for (float& c : e.tint) c = tint ? 0.25f : -1.0f;
-                            if (tint) e.tint[2] = 0.45f, e.tint[1] = 0.4f;
-                            ch = true;
-                        }
-                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("\"tint r g b\" (0..2): the deep water's colour; off: a deeper shade of the texture's own");
-                        if (tint) {
-                            ImGui::SameLine();
-                            ch |= ImGui::DragFloat3("##wtint", e.tint, 0.01f, 0.0f, 2.0f, "%.2f");
-                        }
-                        ch |= ImGui::DragFloat2("Waves: scale, speed##wat", e.waves, 0.01f, 0.0f, 8.0f, "%.2f");
-                        float foam = e.foam;
-                        if (ImGui::SliderFloat("Foam##wat", &foam, -0.01f, 2.0f, foam < 0.0f ? "the type's" : "%.2f")) {
-                            e.foam = foam < 0.0f ? -1.0f : foam;
-                            ch = true;
-                        }
-                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("\"foam f\": the water's foam at the shore (lava: its hot seam; quicksand: its wet band)");
-                        float depth = e.depth;
-                        if (ImGui::SliderFloat("Depth##wat", &depth, 0.0f, 20.0f, depth < 0.1f ? "the type's" : "%.1f units")) {
-                            e.depth = depth < 0.1f ? -1.0f : depth;
-                            ch = true;
-                        }
-                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("\"depth d\": how many units of water before it is opaque and dark");
-                        if (g_water == 0) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Water is Off (Options > Graphics, or the Enhancements tab; Graphics: Original turns it off): these are not drawn.");
-                    }
                     if (e.type == MAT_GRASS && g_grass == 0)
                         ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Grass is Off (Options > Graphics, or the Enhancements tab; Graphics: Original turns it off): the material is not drawn.");
                     else if (e.type == MAT_GRASS && e.kind != 0)
                         ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Grass grows on tfrag textures only (the terrain).");
-                    else if (g_surface_detail == 0 && e.type < MAT_GRASS && !(g_water > 0 && (e.type == MAT_WATER || e.type == MAT_LAVA || e.type == MAT_QUICKSAND)))
+                    else if (g_surface_detail == 0 && e.type < MAT_GRASS)
                         ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Surface Detail is Off: the material is not drawn.");
                 }
                 if (ch) g_light_dirty = true;

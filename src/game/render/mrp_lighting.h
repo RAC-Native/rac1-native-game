@@ -226,12 +226,6 @@ struct EmissiveSurface {
     int type = MAT_EMISSIVE;
     float p[3] = {0.0f, 0.0f, 0.0f};  // a material's parameters (as in its line; MatParam names them)
     float glow = 0.0f, glow_threshold = 0.0f;  // a material's glow: as an emissive line's strength and threshold (0: none)
-    // water, lava, quicksand with Options > Graphics > Water (docs/materials.md): "tint r g b" the deep colour (-1: the texture's
-    // own), "waves <scale> <speed>" the normal maps' size and speed (1 1), "foam <f>" the shore's foam (-1: the type's default),
-    // "depth <d>" the units of water before it is opaque (-1: the type's default)
-    float tint[3] = {-1.0f, -1.0f, -1.0f};
-    float waves[2] = {1.0f, 1.0f};
-    float foam = -1.0f, depth = -1.0f;
     bool global = false;  // (a moby's line of data/lights/classes.txt, every level's: as ClassLight::global)
     int gidx = -1;
 };
@@ -251,10 +245,6 @@ extern int g_emissive;
 // (lit and animated: specular, wet, ripples, flow), 2 High (also the reflections from the last frame's picture and the lava's heat
 // shimmer). Only with Lighting not Original (RAC1_SURFACE_DETAIL overrides it, testing)
 extern int g_surface_detail;
-// orig: (host) Options > Graphics > Water: 0 Off (default), 1 Low (two scrolling normal maps, Fresnel, glints, the depth's tint and the
-// shore's foam), 2 High (also the scene's reflection and the refraction); the `water`, `lava` and `quicksand` materials and the seas.
-// Lighting not Original only (RAC1_WATER overrides it, testing)
-extern int g_water;
 // orig: (host) Options > Graphics > Grass: 0 Off (default), 1 Low (the blades as a detail relief of the ground, no geometry), 2 High
 // (also 4 very low shells) over the tfrags with the `grass` material (RAC1_GRASS); g_grass_shells > 0 the shells' count instead
 // (RAC1_GRASS_SHELLS, the debug menu), g_grass_distance how far they are drawn (units; RAC1_GRASS_DIST)
@@ -378,7 +368,7 @@ struct ShadowLocs {
     int strength = -1;                       // (the shadows' strength)
     int emis = -1;                           // (the emissive surfaces' slots: strength, threshold, preview)
     int mat = -1, ssr_vp = -1, ssr_z = -1, ssr_sky = -1, ssr_col = -1, ssr_depth = -1;  // (the materials)
-    int mat2 = -1, pt_aim = -1;  // (the water's parameters; the lights' aim)
+    int mat2 = -1, pt_aim = -1;  // (the grass's and the hero's; the lights' aim)
 };
 // orig: (host) the locations of a linked program
 ShadowLocs mrp_lighting_locs(unsigned prog);
@@ -454,7 +444,7 @@ bool mrp_moby_caster_rect(const float* light_vp, float rect[4], const float* wit
     "float sh_vis = 1.0;\n"              /* the sun's visibility (the strength applied), the zone's weight not applied */ \
     /* the slots' table (kMatTableBinding): uEmis the emissive surfaces ([0].x on; per slot strength, threshold, material type, preview -  \
        x the pulse), uMat the materials ([0] Surface Detail, time, rain, the reflections' picture ready; per slot a, b, c), uMat2 the  \
-       Water option's (mrp_materials_glsl.inc) */                                                                                     \
+       grass's ([0] the hero, [255] the wind; mrp_materials_glsl.inc) */                                                             \
     "layout(std430, binding = 12) readonly buffer RacMatTable { vec4 uEmis[256]; vec4 uMat[256]; vec4 uMat2[256]; };\n"              \
     "uniform mat4 uSsrVP;\n"             /* the reflections' picture (the last frame's 3D): its view-projection */ \
     "uniform vec4 uSsrZ;\n"              /* its depth's linearisation (clip z = x w + y); z, w - */      \
