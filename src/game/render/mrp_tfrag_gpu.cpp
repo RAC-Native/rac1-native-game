@@ -458,7 +458,17 @@ bool tfrag_exec_cpu(const TfragEntryGpu& e, const TfragPlan& p, int lod, const u
                     std::vector<TfragCpuVertex>& out, std::vector<uint8_t>* adc_out) {
     out.clear();
     const std::vector<uint8_t>& img = e.image[static_cast<size_t>(lod)];
-    Mem m;
+    // (host) the image's copy and the vertices' positions / flags in vectors kept by the thread, not allocated at each call
+    // (RAC1_PERF_TFRAG_ALLOC=0: allocated each time)
+    static const bool keep = std::getenv("RAC1_PERF_TFRAG_ALLOC") == nullptr || std::atoi(std::getenv("RAC1_PERF_TFRAG_ALLOC")) != 0;
+    thread_local Mem kept_m;
+    thread_local std::vector<V4> kept_p;
+    thread_local std::vector<uint8_t> kept_f6;
+    Mem own_m;
+    std::vector<V4> own_p;
+    std::vector<uint8_t> own_f6;
+    Mem& m = keep ? kept_m : own_m;
+    m.k = {};
     m.q.resize(img.size() / 16);
     std::memcpy(m.q.data(), img.data(), m.q.size() * 16);
     for (uint32_t r = 0; r < 4; ++r)
@@ -485,8 +495,10 @@ bool tfrag_exec_cpu(const TfragEntryGpu& e, const TfragPlan& p, int lod, const u
         c6[l] = m.kf(0x296, l);
     }
     const size_t nv = p.verts.size();
-    std::vector<V4> P(nv);
-    std::vector<uint8_t> f6(nv, 0);
+    std::vector<V4>& P = keep ? kept_p : own_p;
+    std::vector<uint8_t>& f6 = keep ? kept_f6 : own_f6;
+    P.assign(nv, V4{});
+    f6.assign(nv, 0);
     for (size_t j = 0; j < nv; ++j) {  // phase 1: the positions and the guard band's flags
         const uint32_t rec = m.u16(p.verts[j].via, 3);
         P[j] = form <= 1 ? ld(m, rec) : xform(m, itof0(m, rec));

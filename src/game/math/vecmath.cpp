@@ -11,6 +11,7 @@
 #include <bit>
 #include <cfloat>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 
 namespace rac1 {
@@ -642,10 +643,44 @@ float fpu_sin_kernel(float x) {
 float cos_vu(float a) { return vu_sin_kernel(a + VU_HALF_PI); }
 float sin_vu(float a) { return vu_sin_kernel(a); }
 
+namespace {
+// (host) RAC1_PERF_EULER_CACHE (default off): euler_vu is a function of the three angles' bits alone (its constants, nothing else
+// read; a thread's rounding mode does not change once set): its rows kept per angles in a small table per thread, a moby whose
+// rotation did not change (most of them, every frame) found there - the same rows.
+struct EulerCache {
+    static constexpr uint32_t kN = 512;
+    uint32_t key[kN][3];
+    Vec4 rows[kN][3];
+    bool used[kN];
+};
+bool euler_cache_on() {
+    static const bool on = std::getenv("RAC1_PERF_EULER_CACHE") != nullptr && std::atoi(std::getenv("RAC1_PERF_EULER_CACHE")) != 0;
+    return on;
+}
+EulerCache& euler_cache() {
+    static thread_local EulerCache c{};
+    return c;
+}
+}  // namespace
+
 // orig: 0x001ffa50
 void euler_to_mat3_vu(Mat4& d, const Vec4& angles) {
     Vec4 r0, r1, r2;
-    euler_vu(angles, r0, r1, r2);
+    if (euler_cache_on()) {
+        const uint32_t ax = std::bit_cast<uint32_t>(angles.x), ay = std::bit_cast<uint32_t>(angles.y), az = std::bit_cast<uint32_t>(angles.z);
+        const uint32_t i = ((ax * 0x9e3779b1u) ^ (ay * 0x85ebca77u) ^ (az * 0xc2b2ae3du)) >> 23;  // (0 .. 511)
+        EulerCache& c = euler_cache();
+        if (c.used[i] && c.key[i][0] == ax && c.key[i][1] == ay && c.key[i][2] == az) {
+            d.r[0] = c.rows[i][0]; d.r[1] = c.rows[i][1]; d.r[2] = c.rows[i][2];
+            return;
+        }
+        euler_vu(angles, r0, r1, r2);
+        c.used[i] = true;
+        c.key[i][0] = ax, c.key[i][1] = ay, c.key[i][2] = az;
+        c.rows[i][0] = r0, c.rows[i][1] = r1, c.rows[i][2] = r2;
+    } else {
+        euler_vu(angles, r0, r1, r2);
+    }
     d.r[0] = r0; d.r[1] = r1; d.r[2] = r2;
 }
 

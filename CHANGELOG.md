@@ -33,34 +33,77 @@ What changed in each release. Releases are source only: you build the game with 
   with Homebrew's FFmpeg. The game state over a five-level run hashes the same as on Linux. See [Metal](docs/metal.md).
 
 ### Graphics
-- Options > Graphics: Aspect Ratio and HUD step only over the values the display shows differently: 16:9 on a 16:9 screen is
+- Options > Display: Aspect Ratio and HUD step only over the values the display shows differently: 16:9 on a 16:9 screen is
   Fill Screen's picture (a 16:10 screen still has it, with bars), and a HUD as wide as the view or wider is Fit Screen's. 4:3 Original and Fill Screen /
   Fit Screen are always there, so a HUD narrower than the view can always be picked (16:9 or 21:9 on a 32:9 view, 4:3 on 16:9).
+- Options: the Graphics page split in two. **Display** (Renderer, Display Mode, Monitor, Window Size, V-Sync, Frame Rate Cap,
+  Render Resolution, Aspect Ratio, Fit to Screen, HUD, Field of View, Level of Detail, Texture Detail) and **Graphics**: one switch
+  **Graphics: Original / Enhanced** (Original, the default, is the original's picture whatever the rows under it hold; switching
+  keeps every row, so A/B is one press), a **Preset** (Low, Medium, High; Custom when the rows match none), then every addition:
+  Lighting (Low, Medium, High: no Original value any more), the shadows, lights, occlusion, sun rays, Surface Detail, Grass
+  and Ambient Particles, which before stayed on with Lighting Original. Old preferences and saves: Lighting Original reads as
+  Graphics Original (Lighting High), Low to High as Enhanced with that value. Experimental mode: Graphics Enhanced, the preset High
+  (Grass High too). The debug menu's Enhancements tab has the same switch and preset at its top.
+- Options > Graphics, the preset High (and so New Game > Experimental): Ambient Occlusion MXAO instead of GTAO, Sun Rays Low
+  instead of High (too strong; stronger ones by hand). Rows set to the old High now show Custom.
+- Options (pause menu): Display has a picture of its own, the game's Help menu picture for Moves (Ratchet gliding over a city),
+  no longer Graphics' "GFX". The main menu's Options list shows no pictures.
 - Lights: Anya-Thoughtmane's lighting batch 1 (#102) merged line by line: metal for the vendor, the bolts, the OmniWrench, the
   Magneboots and the pilot's helmet on every level, materials and lamps on Veldin, Novalis (the waterworks, the bridge), Aridia
   (most of its metal, the spot lamps, their sun 38.6 / 16.7), Kerwan (the gold surfaces, the landing pad's lamps, the street lamps
   a little dimmer, its motes taken out), Eudora and Rilgar (a light experimental rain), Umbris's, Batalia's and Gaspar's particles,
   Orxon's ash, embers and snow (in place of its dust), and on Hoven no Sun Rays and faint motes beside the snow.
+- Lights: Anya-Thoughtmane's lighting batches 2 and 3 and their Test 3 tweaks (#102, #120) merged line by line: metals, emissive
+  surfaces and lamps from Blarg to Veldin's finale, more moby classes for every level (crates, teleporters, foot switches, robo-birds),
+  Ratchet's own roughness (on every level, in `classes.txt`) and the stone-like 100 roughness surfaces on Veldin and Novalis, Al's shop on Kerwan, Batalia's deck and
+  ground as metal (no puddles), Gaspar's ash falling, Hoven's white ash in place of the motes, Pokitaru's fireflies off, ash on
+  Gemlik and rain on Oltanis; our water, grass, particles and aimed lines kept.
 - Materials: a material can glow too (`glow <strength> [threshold]` on its line, or an emissive line for the same texture): a metal
   with a lit bulb in its texture is both, not emissive alone.
 - Debug menu: the levels' seas (water, lava, sand) can be picked and given a material (Lights tab, aimed or clicked; Textures tab,
   "Seas drawn"); a distant surface can be picked; the ambient particles have a tab of their own, with Solo per line.
-- Water (Options > Graphics, off by default): the tagged water gets two scrolling normal maps, Fresnel, the sun's glints, depth
-  (lighter where shallow, darker where deep) and a thin foam at the shore; High adds the scene's reflection and a slight refraction.
-  Lava and quicksand get slow relief and a seam at their shore. Seeded on Rilgar, Pokitaru, Hoven and Novalis (the gorge's water
-  and its waterfall, the river of the first walk, the stream and pools by the landing pad, the basins, the cave's water columns).
+- Water: no Water row any more (Daino after Novalis and Rilgar: Surface Detail's water over the game's own looks better); old
+  preferences' `water` and saves' item 52 are read and ignored. Kept from its four rounds, under Surface Detail (Low or High): the
+  tagged seas drawn still, at the middle of the heights the game's swell gives them - drawn with the GS's integer depth, the
+  waterline stepped up and down at the shores, the "lampeggio" (the picture only) -, and no clear trapezoids around Pokitaru's
+  islands (its sea drawn over its texture's average where nothing lies under it, and far away). The seas tagged `water` on Rilgar,
+  Pokitaru, Hoven and Novalis (the gorge's water and its waterfall, the river of the first walk, the stream and pools by the landing
+  pad, the basins, the cave's water columns) get Surface Detail's water. Lava and quicksand get a slow relief with Surface Detail.
 - Grass (Options > Graphics, off by default): the ground tagged as grass gets a fine relief of blades (Low, no geometry) and a few very
   low layers of blades near the camera (High), in the texture's colours, bending with the wind and away from Ratchet. Seeded on Veldin,
   Novalis and Kerwan.
 - Grass High: no blades through the dirt paths laid over the meadow (a stencil of where the grass is the ground seen), no straight
   edge where they end, faded per pixel out to 40 units instead of 24 (no visible boundary while walking), and subtler: Low's own tufts
   grown into narrow blades with lighter tips.
-- Materials: the `grass` type, and the water's `tint`, `waves`, `foam` and `depth` keywords (docs/materials.md).
+- Materials: the `grass` type (docs/materials.md).
 - Lights: an `emit` line can be aimed (`aim dx dy dz cone`): a spot lighting only what is in front of it. Clank's eye lights on Novalis
   shine forward from his eyes and no longer light Ratchet's head behind him (also dimmed: intensity 0.35, radius 0.45).
 - Debug menu: an Enhancements tab switches the lighting, the shadows, the lights, the occlusion, the sun rays, the materials, the
-  emissive surfaces, the ambient particles (by kind) and the water and grass live, with each one's profiler time; "Save as
-  my settings" keeps them. The light editor has an Aim for the lights per class; the profiler has Water and Grass stages.
+  emissive surfaces, the ambient particles (by kind) and the grass live, with each one's profiler time; "Save as
+  my settings" keeps them. The light editor has an Aim for the lights per class; the profiler has a Grass stage.
+- Ambient Occlusion: MXAO and MXAO 1/2 (Options > Graphics), Anya-Thoughtmane's suggestion (#101, #118, #120): smooth normals over a
+  wider footprint so low-poly shrubs, terrain and Drek's Fleet get soft creases instead of jagged lines, a Vogel disc of taps over
+  a depth pyramid (OpenGL and Vulkan).
+
+### Performance
+- The world's draws that cannot fail the alpha test (opaque textures and vertex colours) drawn with early depth testing and
+  without the alpha test's second pass, OpenGL and Vulkan: the world's GPU time about a fifth to a third less (Novalis 0.97 to
+  0.81 ms, Pokitaru 1.85 to 1.36 headless); the same picture (`RAC1_PERF_OPAQUE`). See [Performance](docs/performance.md).
+- The MRP chain reader: the GS memory's 16 / 8 / 4-bit addressing by tables, an indexed texture's palette decoded once, an
+  effect's textures taking turns at one address keeping their GPU texture, the DMA data read in place, and the VU1 program
+  ports found without hashing their code again after each upload: its time a frame about halved (Novalis 1.2 to 0.5 ms); the
+  same game state (`RAC1_PERF_GS_MEM`, `RAC1_PERF_VU1_LOOKUP`, `RAC1_PERF_XGKICK`).
+- The world's preparation: the level's texture table no longer copied three times a frame, a tie / shrub packet repeated for
+  the next instance reusing the previous one's work, the tfrag lists' and program 7's working memory kept, program 7's
+  vertices made once instead of once per triangle corner (`RAC1_PERF_TEXTABLE`, `RAC1_PERF_PKT_MEMO`, `RAC1_PERF_TFRAG_ALLOC`,
+  `RAC1_PERF_VU7`); the same picture.
+- Kerwan, Rilgar, Umbris, Batalia, Gaspar and Oltanis: the levels' palette blend (two palettes mixed into a texture each frame)
+  works out each palette entry once instead of once per texel: about 0.12 to 0.035 ms a call on Kerwan; the same game state
+  (`RAC1_PERF_PALETTE_BLEND`).
+- The collision segment test's triangle loop and the moby transform clamp each VU operand once instead of at every op (the same
+  values; `RAC1_PERF_VU_CLAMP`).
+- The generated game code's VU0 operations skip building the VU0 flags in the routines that never read them (176 of the
+  generated files): the game code about 5% less time a frame (Veldin 1.25 to 1.18 ms); the same game state (`RAC1_PERF_VU0_NF`).
 
 ### Launcher and setup
 - Launcher: a new launcher is downloaded only once the player says yes, and checked against the SHA-256 the release lists for
@@ -69,13 +112,19 @@ What changed in each release. Releases are source only: you build the game with 
   antivirus false positive (F-Secure's `Drop.Win64.APC.HEUR`, #115).
 
 ### Fixes
-- Water: Rilgar's harbour (and Hoven's, Gaspar's and Umbris's seas) no longer flickers between a dark sea and a grey, speckled
-  sheet with Water on: a sea the game draws before its mobys was drawn before the copy of the 3D under the water, and read the
-  last frame's, which held the sea itself. With Surface Detail on too, its `water` look is kept and the Water option adds its
-  normal maps, the depth's colour, the foam and the see-through over it, in one draw.
+- Materials: a level takes 254 emissive surfaces and materials, not 126, and a `classes.txt` line takes a slot only on the levels
+  that have its class: with Anya-Thoughtmane's batches 2 and 3 seven levels ran out and dropped lines (Gemlik 76 of 202, its bolts
+  among them). The slots' table is a storage buffer now (OpenGL and Vulkan), the Vulkan lighting uniform buffer 5632 bytes.
 - The levels' seas near the camera: on OpenGL a clipped triangle reaching behind the eye was drawn through it in some frames
   (Pokitaru, swimming among the posts: the near water white or dark every few frames, with any lighting and any option); it is
   now cut at the near plane, as Vulkan did, and Vulkan draws the near water it had left out.
+- Water: Novalis's water gets its material every frame and after any save's load: a sea's `surface` line now names its effect
+  texture, not the GS block it is given that frame (which moved with what was drawn before it; the river lost its material a
+  quarter of the time, Rilgar's canals a third). The level files' lines re-derived; a line naming a block still works as before.
+- Water: Pokitaru's sea no longer flashes at the far islands' and the rocks' feet with Surface Detail High: the picture's
+  reflection faded to the sky's where a pixel covers more than about half a unit of water, Surface Detail's ripples faded wave by
+  wave where finer than the pixel (the glint widened instead);
+  still camera at the start's dock, 32:9: the far sea's flashing pixels 14 533 -> 1 578 (Surface Detail Off: 1 889).
 - Options > Graphics > Monitor: two monitors with the same name ("Generic PnP Monitor" twice) are told apart by their place on
   the desktop ("Generic PnP Monitor (at 1920,0)"), so the one chosen is the one the game opens on after a restart (#111).
 - Vulkan: the world's push constants are 128 bytes, not 144, and the ambient occlusion's 176 bytes of parameters are in a

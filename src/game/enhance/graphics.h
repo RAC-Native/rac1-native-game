@@ -1,6 +1,6 @@
-// The "Graphics" options page and the new game's "Original mode / Modern mode / Experimental" choice (// ROADMAP Milestone
-// 1 items 3 and 4). Not a port: settings of the PC version's renderer, shown as a
-// page of Options (pause menu and main menu) built from the game's own widgets, as the Advanced page
+// The "Display" and "Graphics" options pages and the new game's "Original mode / Modern mode / Experimental" choice (//
+// ROADMAP Milestone 1 items 3 and 4). Not a port: settings of the PC version's renderer, shown as two
+// pages of Options (pause menu and main menu) built from the game's own widgets, as the Advanced page
 // (advanced.h). Render side only: none of these settings
 // changes the game's state (the view is widened, scaled and drawn by the host; proved by RAC1_RAMHASH
 // runs).
@@ -49,10 +49,25 @@ float graphics_render_scale();
 // orig: (none) — enhancement: testing / env overrides (RAC1_RENDER_SCALE)
 void graphics_set_render_scale_percent(int pct);
 
+// --- the global switch: Graphics Original / Enhanced ---
+// orig: (none) — enhancement: true when the renderer's additions (the modern lighting and every row of the Graphics page under
+// the switch: shadows, lights, occlusion, sun rays, surface detail, grass, ambient particles) are drawn now; false: the
+// original's picture whatever those rows hold. The one gate: the settings (and the debug menu's live switch) set the renderer's
+// switches through it
+bool graphics_enhanced();
+// orig: (none) — enhancement: the debug menu's live switch (this run only, the preferences kept): Original stops every addition
+// (their live values kept aside), Enhanced brings them back
+void graphics_set_enhanced_live(bool on);
+// orig: (none) — enhancement: the Graphics page's presets (0 Low, 1 Medium, 2 High; 3 Custom: none of them): the one the
+// renderer's live switches match, and one set live (the debug menu; this run only)
+int graphics_live_preset();
+void graphics_set_live_preset(int preset);
+
 // --- the menu's side (advanced.cpp, the ported widgets' enhancement hooks) ---
-// orig: (none) — enhancement: the Graphics page (re)built, its parent the Options page `parent`
-// (the pause menu's or the main menu's); returns the page's address
+// orig: (none) — enhancement: the Display and Graphics pages (re)built, their parent the Options page `parent`
+// (the pause menu's or the main menu's); returns the Graphics page's address (graphics_display_page: the Display page's)
 uint32_t graphics_page_install(uint32_t parent);
+uint32_t graphics_display_page();
 // orig: (none) — enhancement: the menu leaves page `cur` for its parent `to` (back): when `cur` is one of
 // our pages (Graphics, Advanced, the New Game popup), the 14 menu mobys `mobys` (their addresses) put on
 // `to`'s boxes at once. Our pages borrow their boxes' animations from other pages (Camera, Options...),
@@ -61,9 +76,11 @@ uint32_t graphics_page_install(uint32_t parent);
 void graphics_menu_back(uint32_t cur, uint32_t to, uint32_t mobys);
 // orig: (none) — enhancement: a text of ours (the Graphics page's, the mode popup's), 0 for others
 uint32_t graphics_text(int32_t id);
-// orig: (none) — enhancement: the ids of the page's title and of its Options help text
+// orig: (none) — enhancement: the ids of the pages' titles and of their Options help texts (Graphics, Display)
 int32_t graphics_title_text();
 int32_t graphics_help_text();
+int32_t graphics_display_title_text();
+int32_t graphics_display_help_text();
 // orig: (none) — enhancement: the settings widget (0x27ef00) changed `byte`: a Graphics row
 // stepped (+1); true when it was one of ours
 bool graphics_setting_changed(uint32_t byte);
@@ -75,8 +92,9 @@ bool graphics_settings_dpad(uint32_t w, uint32_t e, uint32_t pressed);
 void graphics_mips_apply();
 // orig: (none) — enhancement: once a game frame: the preferences written when changed
 void graphics_frame();
-// orig: (none) — enhancement: the debug menu's Enhancements tab: the renderer's live switches (lighting, shadows, lights, occlusion,
-// rays, materials, particles, water, grass) taken as the player's preferences ("Save as my settings"), written at the next frame
+// orig: (none) — enhancement: the debug menu's Enhancements tab: the live switch (Original / Enhanced) and the renderer's live values
+// (lighting, shadows, lights, occlusion, rays, materials, particles, grass) taken as the player's preferences ("Save as my
+// settings"), written at the next frame
 void graphics_take_live();
 // orig: (none) — enhancement: the saves' items (save<N>.pc, advanced.cpp's format): ours added /
 // one applied (false: not ours)
@@ -85,10 +103,10 @@ bool graphics_save_item(uint32_t id, const uint8_t* data, uint32_t size);
 
 // --- the main menu (the boot module) ---
 // orig: (none) — enhancement: the main menu's start (front:0x218f98): the Options pages of ours
-// (Graphics, Advanced) and the New Game popup's page built, New Game pointed at the popup
+// (Display, Graphics, Advanced) and the New Game popup's page built, New Game pointed at the popup
 void graphics_main_menu_install();
 // orig: (none) — enhancement: the main menu's Options list `w` just got its entries (front:0x21a1b0):
-// Graphics, Controls and Advanced added
+// Display, Graphics, Controls and Advanced added
 void graphics_main_options_entries(uint32_t w);
 // orig: (none) — enhancement: the list `w` runs its entry's action 4 (New Game): when it is the
 // popup's, the mode of its selected entry applied

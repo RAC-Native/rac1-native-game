@@ -41,6 +41,8 @@ public:
 
     // A texel of the texture TEX0 `tex0` (CLUT applied, TEXA for 16/24 bit): RGBA, alpha raw (0x80 = 1).
     uint32_t texel(uint64_t tex0, uint64_t texa, int x, int y) const;
+    // (host) the CLUT's colour of index `raw` of the indexed texture TEX0 `tex0` (texel's lookup)
+    uint32_t texel_clut(uint64_t tex0, uint64_t texa, uint32_t raw) const;
     // The texture TEX0 / TEXA as the memory holds it now, decoded once: the same image while the bytes it read (its pixels and
     // its CLUT) are unchanged (an upload that writes the bytes already there changes nothing, so a texture the game loads
     // again each frame is decoded once).
@@ -98,6 +100,12 @@ private:
         std::shared_ptr<const TexImage> img;
         uint64_t seq = 0;
         uint32_t rd_lo[2] = {0, 0}, rd_hi[2] = {0, 0};  // the texture's bytes, and its CLUT's
+        // (host) the last images decoded for this key (textures of at most kRingPixels), by a hash of a sample of their pixels: an
+        // image decoded again is the one kept, its id with it (RAC1_PERF_GS_MEM)
+        static constexpr size_t kRing = 16, kRingPixels = 256 * 256;
+        std::shared_ptr<const TexImage> ring[kRing];
+        uint64_t ring_hash[kRing] = {};
+        uint32_t ring_next = 0;
     };
     bool snap_stale(const TexSnap& s) const;
     bool changed_since(uint64_t seq, uint32_t lo, uint32_t hi) const;

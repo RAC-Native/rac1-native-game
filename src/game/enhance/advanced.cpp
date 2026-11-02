@@ -82,6 +82,7 @@ constexpr OvConst<0x001b4950u> OPTIONS_PAGE{};
 constexpr OvConst<0x001b4af8u> OPTIONS_LIST{};
 constexpr OvConst<0x001b4b68u> OPTIONS_HELP{};
 constexpr OvConst<0x001b4a30u> OPTIONS_PICTURE{};  // its image is the list's selected entry's (+0x30)
+constexpr OvConst<0x001b3a20u> HELP_PICTURE{};  // the Help menu's picture: its table's third image, Moves' (Ratchet gliding over a city), is Display's
 constexpr OvConst<0x001b5a60u> CAMERA_PAGE{};
 constexpr OvConst<0x001b5ae8u> CAMERA_TITLE{};
 constexpr OvConst<0x001b5ba0u> CAMERA_SETTINGS{};
@@ -357,7 +358,7 @@ void advanced_menu_install() {
     sw(PAGE + 0xc, lwu(TALL_PAGE + 0xc));
     sw(PAGE + 0x80, 0);
 
-    // the Options list: our entries (Graphics, Controls, then Advanced) before the last one (Quit
+    // the Options list: our entries (Display, Graphics, Controls, then Advanced) before the last one (Quit
     // Game), once per overlay load
     const uint32_t list = OPTIONS_LIST, help = OPTIONS_HELP;
     if (lwu(list + 0x34) != ENTRIES) {
@@ -368,7 +369,25 @@ void advanced_menu_install() {
         uint32_t d = ENTRIES, h = HELP, pic = PICTURES;
         for (int32_t i = 0; i < n; ++i) {
             if (i == n - 1) {
-                sh(d, static_cast<uint32_t>(graphics_title_text()));
+                sh(d, static_cast<uint32_t>(graphics_display_title_text()));  // (Display)
+                sh(d + 2, 3);
+                sw(d + 4, graphics_display_page());
+                sh(d + 8, 0);
+                sh(d + 0xa, 0);
+                d += 0xc;
+                sw(h, static_cast<uint32_t>(graphics_display_help_text()));
+                h += 4;
+                // (Display's picture: the game's own view of a level, the Help menu's Moves picture - not Graphics' "GFX", which it
+                // shared until Daino found the two confusing; Graphics' if that table is not there)
+                const uint32_t help_pictures = lwu(HELP_PICTURE + 0x30);
+                if (help_pictures != 0 && lwu(help_pictures + 0x10) != 0) {
+                    ee_copy(pic, help_pictures + 0x10, 8);
+                } else {
+                    sw(pic, PICTURE_SECTOR + PIC_GRAPHICS);
+                    sw(pic + 4, 1);
+                }
+                pic += 8;
+                sh(d, static_cast<uint32_t>(graphics_title_text()));  // (Graphics)
                 sh(d + 2, 3);  // action 3: the page +4
                 sw(d + 4, graphics_page);
                 sh(d + 8, 0);

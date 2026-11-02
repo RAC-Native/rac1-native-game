@@ -66,7 +66,8 @@ emissive tie 977 tex 0  2.50 0.00
 emissive shrub 192 tex 0  2.56 0.00
 material tie 814 tex 1 metal 0.61 1
 material tie 810 tex 0 metal 0.61 1
-# Options > Graphics > Water (docs/materials.md): the harbour's sea; the canals by the start
-material surface 879 tex 13040 water 1 1  depth 4
-material surface 831 tex 13052 water 1 1
-material surface 831 tex 13120 water 1 1
+# Surface Detail's water (docs/materials.md): the harbour's sea (its texture a level texture: its GS block, 13040); the canals by
+# the start (their two effect textures, 42 and 41)
+material surface 879 tex 13040 water 1 1
+material surface 831 tex 42 water 1 1
+material surface 831 tex 41 water 1 1

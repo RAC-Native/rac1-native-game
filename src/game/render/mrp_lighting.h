@@ -205,8 +205,11 @@ std::vector<EmitterClass> mrp_world_emitter_classes();
 // A `surface` is one of VU1 program 7's surfaces the MRP draws (the levels' water, lava and sand sea, mrp_fx.h kMrpFxVu7): its class
 // the moby class whose draw-list callback draws it (0: a callback without a moby), its texture the GS memory block it is read from
 // (TEX0's TBP, as the RAC1_LIGHTS_TRACE report lists them).
-// Shader slots 1..126 (uEmis), 127 the debug menu's preview (a pulsing magenta); 30 until batch 1 of #102 (five bits of the texture word:
-// a level's own lines and the classes.txt ones filled them, and the rest were dropped)
+// Shader slots 1..254 (uEmis), 255 the debug menu's preview (a pulsing magenta), 0 none: a byte per texture (the world's texture word
+// bits 24..31, the mobys' command's fourth word, the seas' vertex). 30 until batch 1 of #102 (five bits of the texture word), 126 until
+// #121 (seven bits, the table in the lighting's uniforms): a level's own lines and the classes.txt ones filled them, and the rest were
+// dropped. The table (uEmis, uMat, uMat2: 12 KB) is a storage buffer of its own (kMatTableBinding), not uniforms: in the Vulkan UBO it
+// would pass the 16 KB every device must give a uniform buffer
 // The same entry is a surface's material ("material <kind> <class> tex <n> <type> [a] [b] [c]", Options > Graphics > Surface
 // Detail): `type` 0 is the emissive line above (strength, threshold); the others are the materials (MatType, docs/materials.md)
 // with their own parameters a, b, c (0: the type's default, kMatDefaults). One entry per surface: a surface is emissive or one
@@ -223,16 +226,11 @@ struct EmissiveSurface {
     int type = MAT_EMISSIVE;
     float p[3] = {0.0f, 0.0f, 0.0f};  // a material's parameters (as in its line; MatParam names them)
     float glow = 0.0f, glow_threshold = 0.0f;  // a material's glow: as an emissive line's strength and threshold (0: none)
-    // water, lava, quicksand with Options > Graphics > Water (docs/materials.md): "tint r g b" the deep colour (-1: the texture's
-    // own), "waves <scale> <speed>" the normal maps' size and speed (1 1), "foam <f>" the shore's foam (-1: the type's default),
-    // "depth <d>" the units of water before it is opaque (-1: the type's default)
-    float tint[3] = {-1.0f, -1.0f, -1.0f};
-    float waves[2] = {1.0f, 1.0f};
-    float foam = -1.0f, depth = -1.0f;
     bool global = false;  // (a moby's line of data/lights/classes.txt, every level's: as ClassLight::global)
     int gidx = -1;
 };
-constexpr int kEmissiveSlots = 126, kEmissivePreviewSlot = 127;
+constexpr int kEmissiveSlots = 254, kEmissivePreviewSlot = 255;
+constexpr int kMatTableBinding = 12;  // (OpenGL: the table's storage buffer binding; Vulkan: binding 7 of the lighting's set)
 // orig: (host) the material types' names as the level's file writes them ("emissive" for type 0), their parameters' names and defaults
 const char* mrp_material_name(int type);
 int mrp_material_type(const char* name);  // -1: not a type
@@ -247,10 +245,6 @@ extern int g_emissive;
 // (lit and animated: specular, wet, ripples, flow), 2 High (also the reflections from the last frame's picture and the lava's heat
 // shimmer). Only with Lighting not Original (RAC1_SURFACE_DETAIL overrides it, testing)
 extern int g_surface_detail;
-// orig: (host) Options > Graphics > Water: 0 Off (default), 1 Low (two scrolling normal maps, Fresnel, glints, the depth's tint and the
-// shore's foam), 2 High (also the scene's reflection and the refraction); the `water`, `lava` and `quicksand` materials and the seas.
-// Lighting not Original only (RAC1_WATER overrides it, testing)
-extern int g_water;
 // orig: (host) Options > Graphics > Grass: 0 Off (default), 1 Low (the blades as a detail relief of the ground, no geometry), 2 High
 // (also 4 very low shells) over the tfrags with the `grass` material (RAC1_GRASS); g_grass_shells > 0 the shells' count instead
 // (RAC1_GRASS_SHELLS, the debug menu), g_grass_distance how far they are drawn (units; RAC1_GRASS_DIST)
@@ -268,7 +262,7 @@ void mrp_user_emissive_changed();
 void mrp_lighting_material_capture(const int vp[4]);
 // orig: (host) the debug menu's preview (kind -1: none): that texture pulses magenta
 void mrp_emissive_preview(int kind, int o_class, int tex);
-// orig: (host) the renderers' copy (any thread): the surfaces by slot (index i: slot i + 1; the preview, when on, in slot 127 -
+// orig: (host) the renderers' copy (any thread): the surfaces by slot (index i: slot i + 1; the preview, when on, in slot 255 -
 // `preview` set), and a generation that changes with the list or the level
 uint32_t mrp_emissive_snapshot(std::vector<EmissiveSurface>& out, EmissiveSurface* preview, bool* has_preview);
 const char* mrp_emissive_kind_name(int kind);
@@ -374,7 +368,7 @@ struct ShadowLocs {
     int strength = -1;                       // (the shadows' strength)
     int emis = -1;                           // (the emissive surfaces' slots: strength, threshold, preview)
     int mat = -1, ssr_vp = -1, ssr_z = -1, ssr_sky = -1, ssr_col = -1, ssr_depth = -1;  // (the materials)
-    int mat2 = -1, pt_aim = -1;  // (the water's parameters; the lights' aim)
+    int mat2 = -1, pt_aim = -1;  // (the grass's and the hero's; the lights' aim)
 };
 // orig: (host) the locations of a linked program
 ShadowLocs mrp_lighting_locs(unsigned prog);
@@ -448,8 +442,10 @@ bool mrp_moby_caster_rect(const float* light_vp, float rect[4], const float* wit
     "uniform vec3 uShKeyDir;\n"          /* toward the key light as the game lights with it (the sun may be turned) */ \
     "uniform float uShStrength;\n"       /* the shadows' strength: the share of the key light a shadow hides (Options) */ \
     "float sh_vis = 1.0;\n"              /* the sun's visibility (the strength applied), the zone's weight not applied */ \
-    "uniform vec4 uEmis[128];\n"          /* the emissive surfaces: [0].x on; per slot strength, threshold, material type, preview (x the pulse) */ \
-    "uniform vec4 uMat[128];\n"           /* the materials: [0] Surface Detail, time, rain, the reflections' picture ready; per slot a, b, c */ \
+    /* the slots' table (kMatTableBinding): uEmis the emissive surfaces ([0].x on; per slot strength, threshold, material type, preview -  \
+       x the pulse), uMat the materials ([0] Surface Detail, time, rain, the reflections' picture ready; per slot a, b, c), uMat2 the  \
+       grass's ([0] the hero, [255] the wind; mrp_materials_glsl.inc) */                                                             \
+    "layout(std430, binding = 12) readonly buffer RacMatTable { vec4 uEmis[256]; vec4 uMat[256]; vec4 uMat2[256]; };\n"              \
     "uniform mat4 uSsrVP;\n"             /* the reflections' picture (the last frame's 3D): its view-projection */ \
     "uniform vec4 uSsrZ;\n"              /* its depth's linearisation (clip z = x w + y); z, w - */      \
     "uniform vec4 uSsrSky;\n"            /* the sky's colour (rgb): what a reflection shows where its ray finds nothing */ \

@@ -1,6 +1,6 @@
 # Settings
 
-The port's own settings: three pages added to the game's Options (Graphics, Controls, Advanced), the
+The port's own settings: four pages added to the game's Options (Display, Graphics, Controls, Advanced), the
 Original, Modern or Experimental choice at New Game, the update check, where settings are kept, and the debug tools.
 
 ## Removed compromises and enhancements
@@ -10,15 +10,15 @@ The port keeps two kinds of settings apart (see
 
 - **PS2 compromises removed**, such as the 4:3 frame, short draw distances, small textures and
   fades that hid disc loading. Removing them changes the picture, not the game's state, and the
-  original's way stays available. Most of these are on the Graphics page; Fades is on the Advanced
+  original's way stays available. Most of these are on the Display page; Fades is on the Advanced
   page.
 - **Enhancements**, which change the game's behaviour: the quick-select pause, modern aiming,
-  Ratchet & Clank 3 movement, and, on the picture side, the modern lighting. They are optional, off by
-  default, and labelled as changes.
+  Ratchet & Clank 3 movement, and, on the picture side, our additions on the Graphics page (the modern
+  lighting, surface detail, grass, ambient particles). They are optional, off by default, and labelled as changes.
 
 ## The pages
 
-The three pages are added to Options in both the pause menu and the main menu, before Quit Game.
+The four pages are added to Options in both the pause menu and the main menu, before Quit Game.
 They are built from the game's own menu widgets and data (a copy of the Camera page), so they look
 and behave like the game's own pages. Left and right change a row's value; Cross steps it forward.
 
@@ -33,14 +33,15 @@ opened again with 6 or 8 channels (7.1 at most, PCM); the world's sounds come fr
 the centre, the music from the front (see [Audio](audio.md#surround-51-and-71)). With every enhancement off (the
 headless runs) the row is the game's own Mono / Stereo.
 
-### Graphics
+### Display
 
-`src/game/enhance/graphics.cpp`. Every row changes only what the host draws, never the game's state.
+`src/game/enhance/graphics.cpp`. The window, the picture's shape, the view and the detail: the PS2's compromises removed. Every
+row changes only what the host draws, never the game's state.
 
 | Row | Values | Default |
 |---|---|---|
 | Renderer | OpenGL, Vulkan (experimental; from the next start, see [Vulkan](vulkan.md)); on macOS Metal only ([Metal](metal.md)) | OpenGL (macOS: Metal) |
-| Display | Window, Fullscreen | Window |
+| Display Mode | Window, Fullscreen | Window |
 | Monitor | the connected monitors by name (DP-1, HDMI-A-1, ...) | the first one |
 | Window Size | 640x480 (the original's) to 3840x2160 (16 sizes, 4:3 and 16:9 among them) | 960x720 |
 | V-Sync | Off, On | On |
@@ -51,18 +52,6 @@ headless runs) the row is the game's own Mono / Stereo.
 | HUD | 4:3 Original, 16:9, 21:9, 32:9, Fit Screen | 4:3 Original |
 | Field of View | x0.75 to x1.50 of the original's | x1.00 |
 | Level of Detail | Original, Low, Medium, High, Maximum | Original |
-| Lighting | Original, Low, Medium, High | Original |
-| Shadow Strength | 50, 60, 70, 80, 90, 100 (%) | 70 |
-| Shadow Distance | Low, Medium, High, Maximum | Maximum |
-| Dynamic Shadows | Off, On | Off |
-| Secondary Lights | Off, Game's, All | All |
-| Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2, SSAO 1/2, SSAO+ 1/2, HBAO 1/2 (the 1/2 ones at half resolution) | Off |
-| AO Intensity | 25, 50, 75, 100, 125 (%) | 75 |
-| Sun Rays | Off, Low, Medium, High (more quality, strength and cost each step; Low has the strength of 0.4.x's Low, High of its High) | Off |
-| Surface Detail | Off, Low, High (materials: shiny metal, wet ground and puddles, water, lava, mud; High adds reflections and the lava's heat shimmer; with Lighting not Original, see [Materials](materials.md)) | Off |
-| Ambient Particles | Off, Low, High: our own dust, embers, fireflies, rain and snow on some levels, not in the original (see [Ambient particles](particles.md); `ambient_particles` in the preferences, id 50 in `save<N>.pc`) | Off |
-| Water | Off, Low, High: the water, lava and quicksand a level's light file tags - two scrolling normal maps, Fresnel, the sun's glints, lighter where shallow and darker where deep, a thin foam at the shore; High adds the scene's reflection and the refraction (see [Materials](materials.md#water-and-grass); `water`, id 52) | Off |
-| Grass | Off, Low, High: the ground a level's light file tags as grass gets a fine relief of blades (Low, no geometry), and on High also a few very low layers of blades near the camera (`grass`, id 54) | Off |
 | Texture Detail | Full, Original (PS2) | Full |
 
 - **The frame-rate cap** only paces the picture. The game itself always runs at 60 frames a second,
@@ -119,14 +108,80 @@ headless runs) the row is the game's own Mono / Stereo.
   older saves are read and ignored.
 - **Level of Detail** draws more detail further away, without changing the game's own decisions. See
   [Rendering](rendering.md#level-of-detail).
-- **Lighting and the eight rows after it** (Shadow Strength to Surface Detail) are the optional modern
-  lighting; the eight only act when Lighting is not Original. See [Lighting](lighting.md) and, for
-  Surface Detail, [Materials](materials.md).
-- **Water and Grass** are optional too, off in every mode (Experimental included: they draw only on the textures a level's
-  file tags), and act only when Lighting is not Original. The debug menu's Enhancements tab switches them live. See
-  [Materials](materials.md#water-and-grass).
-- **Ambient Particles** works with any Lighting: our own particles, drawn over the world in play, never
-  changing the game's state. See [Ambient particles](particles.md).
+- **Display Mode** was called Display until the page of that name came (the `display` key of the preferences).
+
+### Graphics
+
+`src/game/enhance/graphics.cpp`. One switch between the original's picture and the renderer with our additions, a preset, then
+every addition. None of them changes the game's state.
+
+| Row | Values | Default |
+|---|---|---|
+| Graphics | Original, Enhanced | Original |
+| Preset | Low, Medium, High (Custom is shown when the rows below match none) | High |
+| Lighting | Low, Medium, High: the modern lighting's sun shadows, their maps at 1024, 2048, 4096 (see [Lighting](lighting.md)) | High |
+| Shadow Strength | 50, 60, 70, 80, 90, 100 (%) | 70 |
+| Shadow Distance | Low, Medium, High, Maximum | Maximum |
+| Dynamic Shadows | Off, On | On |
+| Secondary Lights | Off, Game's, All | All |
+| Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2, SSAO 1/2, SSAO+ 1/2, HBAO 1/2, MXAO, MXAO 1/2 (the 1/2 ones at half resolution; MXAO with smooth normals, see [Lighting](lighting.md#mxao)) | MXAO |
+| AO Intensity | 25, 50, 75, 100, 125 (%) | 75 |
+| Sun Rays | Off, Low, Medium, High (more quality, strength and cost each step; Low has the strength of 0.4.x's Low, High of its High) | Low |
+| Surface Detail | Off, Low, High (materials: shiny metal, wet ground and puddles, water - held still, without the game's rise and fall -, lava, mud; High adds reflections and the lava's heat shimmer; see [Materials](materials.md)) | High |
+| Grass | Off, Low, High: the ground a level's light file tags as grass gets a fine relief of blades (Low, no geometry), and on High also a few very low layers of blades near the camera (`grass`, id 54) | High |
+| Ambient Particles | Off, Low, High: our own dust, embers, fireflies, rain and snow on some levels, not in the original (see [Ambient particles](particles.md); `ambient_particles` in the preferences, id 50 in `save<N>.pc`) | High |
+
+- **Graphics: Original** draws the original's picture, byte for byte the same as with every addition off, whatever the rows
+  under it hold: they are hidden (the page shows the switch alone) and ignored, not reset. **Enhanced** shows them and they
+  apply. Switching keeps every row's value, so comparing the two is one press. The one gate in the code is
+  `graphics_enhanced()` (`src/game/enhance/graphics.h`): the settings set the renderer's switches through it, and the debug menu's
+  live switch is the same one. The Display page's rows apply in both.
+- **Preset** sets every row under it at once (Shadow Strength and AO Intensity included). Changing any row by hand shows Custom;
+  stepping the preset from Custom goes to Low (right) or High (left). The preset is not kept: it is what the rows match.
+- **The defaults** of the rows under the switch are the preset High: what Graphics: Enhanced first shows. They do not matter
+  while Graphics is Original (the default).
+- **Grass and Ambient Particles** were outside the lighting's control before the switch: with Lighting Original,
+  Ambient Particles still drew. Now every addition follows the one switch.
+- **Water** (Off, Low, High: our own water over or in place of the game's) was a row until 2026-11-02: Surface Detail's water
+  over the game's own looked better. Its `water` key and save item 52 are read and ignored (52 stays reserved); what it fixed is
+  Surface Detail's now (the water held still, Pokitaru's clear trapezoids: [Materials](materials.md#the-water-held-still)).
+
+#### Presets
+
+Chosen for their cost at 5120 x 1440 (the GPU times in [Lighting](lighting.md): a sun cascade about 0.5 ms each, GTAO about
+3 to 4 ms, GTAO 1/2 about 2 to 3 ms, Sun Rays Low about 0.5 ms and High about 1.4 ms; the particles cost little).
+
+| Row | Low | Medium | High |
+|---|---|---|---|
+| Lighting | Low (1024) | Medium (2048) | High (4096) |
+| Shadow Strength | 70 | 70 | 70 |
+| Shadow Distance | Medium | High | Maximum |
+| Dynamic Shadows | Off | Off | On |
+| Secondary Lights | Game's | All | All |
+| Ambient Occlusion | Off | GTAO 1/2 | MXAO |
+| AO Intensity | 75 | 75 | 75 |
+| Sun Rays | Off | Low | Low |
+| Surface Detail | Low | Low | High |
+| Grass | Off | Low | High |
+| Ambient Particles | Low | High | High |
+
+High (also the Experimental mode's): Lighting High, Dynamic Shadows, all the lights, Shadow Distance Maximum, MXAO, Sun Rays
+Low, Surface Detail, Grass and Ambient Particles High. Until 2026-11-02 it had GTAO and Sun Rays High (Daino: the rays too strong;
+stronger ones are picked by hand); rows set to that old High now show Custom.
+
+#### Before the switch: the preferences and the saves
+
+Until the switch, the Lighting row had a fourth value, Original, which turned the modern lighting off; Water, Grass and Ambient
+Particles did not follow it. Old files are read this way:
+
+- `lighting 0` (Original) in `graphics_options.txt`, or item 38 = 0 in a save's `save<N>.pc`: Graphics Original, the Lighting row
+  at its default (High), every other row kept.
+- `lighting 1` .. `3` (Low .. High), or item 38 = 1 .. 3: Graphics Enhanced, Lighting Low .. High, every other row kept.
+
+The new keys are `graphics` (0 Original, 1 Enhanced) and `lighting_quality` (0 Low, 1 Medium, 2 High); in the saves, items 55
+(Graphics) and 56 (Lighting, 0 Low .. 2 High). Both still write the old `lighting` key and item 38 (0 when Original, else the
+Lighting row + 1) for the versions before the switch, which read only those; a version with the switch reads the old key only
+when the new one is missing. A preferences file without `graphics` is written again in the new form at the first frame.
 
 ### Controls
 
@@ -174,14 +229,15 @@ New Game opens a choice between three modes before the game starts
 | Level of Detail | Original | High | High |
 | Texture Detail | Original (PS2) | Full | Full |
 | Quick Select, Aiming, Movement | Normal, Original, Original | Pause, Modern, RAC 3 | Pause, Modern, RAC 3 |
-| Modern lighting and graphics enhancements (Lighting, Dynamic Shadows, Secondary Lights, Shadow Distance, Ambient Occlusion, Sun Rays, Surface Detail, Ambient Particles) | off (the defaults) | off (the defaults) | Lighting High, Dynamic Shadows On, Secondary Lights All, Shadow Distance Maximum, Ambient Occlusion GTAO, Sun Rays High, Surface Detail High, Ambient Particles High (Shadow Strength and AO Strength left as they are) |
+| Graphics (the modern lighting, surface detail, grass, ambient particles) | Original (the rows under it kept as they are) | Original (the rows under it kept as they are) | Enhanced, the preset High |
 | Buy All Ammo (the Vendor) | Off | On | On |
 | Vibration | Off | High | High |
 | Adaptive Triggers (a DualSense in use) | Off | On | On |
 | Skip Cutscenes | Original | Always | Always |
 
-Experimental is Modern plus the [modern lighting](lighting.md) and every graphics enhancement, which are experimental. No mode changes
-the window settings or Fades. The mode chosen is kept with the save.
+Experimental is Modern plus Graphics: Enhanced at the preset High: the [modern lighting](lighting.md) and every addition, which
+are experimental (until the switch, Experimental left Water and Grass off and Shadow Strength and AO Intensity as they were; the
+preset High sets them too). No mode changes the window settings or Fades. The mode chosen is kept with the save.
 
 ## The update check
 
@@ -227,7 +283,7 @@ To try the panel without a new release: `RAC1_UPDATE_FAKE=0.9.0` (or `dev:12`) w
 
 | What | Where |
 |---|---|
-| Graphics page | `~/.config/rac1-native/graphics_options.txt` |
+| Display and Graphics pages | `~/.config/rac1-native/graphics_options.txt` |
 | Advanced page (and the update check's Skip Version, the Sound page's 5.1 / 7.1) | `~/.config/rac1-native/advanced_options.txt` |
 | The update check's last answer | `~/.config/rac1-native/update_check.txt` |
 | Controls | `~/.config/rac1-native/controls.txt` (see [Input](input.md#the-bindings-file-controlstxt)) |
@@ -241,7 +297,7 @@ to other files.
 
 The window's own settings (display mode, window size, v-sync, frame-rate cap) belong to the machine
 and are kept only in the preferences. The picture settings (render resolution, aspect ratio, fit, HUD,
-field of view, level of detail, the lighting rows, texture detail) and the Advanced settings are also written into
+field of view, level of detail, texture detail, the Graphics switch and every row under it) and the Advanced settings are also written into
 each save's `save<N>.pc`, so loading a save brings back the settings it was played with. A save
 without that file (an older one) keeps the current settings.
 
@@ -269,6 +325,7 @@ The debug tools are for development and testing. They are off unless asked for w
 | Moving Ratchet by hand (F2, or L3) | not available; L3 is the game's | on/off |
 | Renderer choice (MRP or the faithful VU path), layer toggles, textures' mip choice | the MRP, everything drawn | in the debug menu's Rendering tab |
 | The light editor | not available | the debug menu's Lights tab |
+| Every graphics addition switched live, with its cost (Graphics: Original / Enhanced and the preset at the top, as the Graphics page; "Save as my settings") | not available | the debug menu's Enhancements tab |
 | The Profiler (frame time, CPU and GPU per stage, threads, memory, exports) | not available | the debug menu's Profiler tab, and its overlay |
 | Giving and taking back items, goodies, weapons and ammo, gold bolts and gold weapons, skill points, cheats (unlocked and switched on), the Challenge Mode (the pause menu's Goodies), the planets on the ship's map; "Unlock everything" | not available | the debug menu's Unlocks tab |
 | Hoverboard anywhere (the race's hoverboard ridden away from the race on Rilgar and Kalebo III; a free board on every other level) | not available | the debug menu's Player tab |

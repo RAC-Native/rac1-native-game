@@ -74,7 +74,7 @@ object class, sun rays, six ambient occlusion modes); the sound driver closer to
 and 7.1 output; the full frame always shown; fixes from the reports. The repository moved to the
 [RAC-Native](https://github.com/RAC-Native) organization, and Windows is no longer experimental.
 Then: an experimental [Vulkan](vulkan.md) renderer, opt-in beside OpenGL; a widescreen HUD
-(Options > Graphics > HUD); the Visibomb's view and the sand sea right in wide views; the frame-rate
+(Options > Display > HUD); the Visibomb's view and the sand sea right in wide views; the frame-rate
 cap's pacing; the game's own update 12 to 15 % cheaper on the CPU, the same state bit for bit (about
 8 % more with `./setup.sh --native-arch on`); the debug menu's Profiler and Unlocks tabs.
 

@@ -272,11 +272,18 @@ public:
                 }
                 // the tag's VIF codes (its upper 64 bits; its lower half, not sent to the VIF, as two NOPs), then its data from
                 // the next quadword, one stream
-                buf_.assign(16, 0);
-                std::memcpy(buf_.data() + 8, t + 8, 8);
-                if (d != nullptr) buf_.insert(buf_.end(), d, d + static_cast<size_t>(qwc) * 16);
                 t_moby_state = skip >= 0 && in.skips[static_cast<size_t>(skip)].moby;  // (dry here is false)
-                vif_stream(buf_.data(), static_cast<uint32_t>(buf_.size()));
+                // (host) the tag and its data read where they are when the data follows the tag (a CNT / NEXT...): the stream from
+                // the tag's upper half, its quadwords as the copy's (RAC1_PERF_GS_MEM=0: always copied)
+                static const bool in_place = std::getenv("RAC1_PERF_GS_MEM") == nullptr || std::atoi(std::getenv("RAC1_PERF_GS_MEM")) != 0;
+                if (in_place && (d == nullptr || d == t + 16)) {
+                    vif_stream(t, 16u + (d != nullptr ? qwc * 16u : 0u), 8u);
+                } else {
+                    buf_.assign(16, 0);
+                    std::memcpy(buf_.data() + 8, t + 8, 8);
+                    if (d != nullptr) buf_.insert(buf_.end(), d, d + static_cast<size_t>(qwc) * 16);
+                    vif_stream(buf_.data(), static_cast<uint32_t>(buf_.size()));
+                }
                 t_moby_state = false;
             });
         if (scr_prim_ >= 0) screen_picture();
@@ -350,7 +357,7 @@ private:
     }
 
     std::vector<uint8_t> buf_;
-    void vif_stream(const uint8_t* p, uint32_t n);
+    void vif_stream(const uint8_t* p, uint32_t n, uint32_t i = 0);  // (from byte i)
     void gif(const uint8_t* p, uint32_t qwc);
     void packed(const uint8_t* q, uint32_t reg);
     void write_reg(uint32_t reg, uint64_t v);
@@ -361,8 +368,7 @@ private:
 };
 
 // orig: (host)
-void Reader::vif_stream(const uint8_t* p, uint32_t n) {
-    uint32_t i = 0;
+void Reader::vif_stream(const uint8_t* p, uint32_t n, uint32_t i) {
     while (i + 4 <= n) {
         const uint32_t code = r32(p + i);
         i += 4;

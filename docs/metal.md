@@ -2,7 +2,7 @@
 
 On macOS the game draws with Metal. OpenGL stops at 4.1 there (no compute shaders), and the
 [Vulkan](vulkan.md) renderer was never tried through MoltenVK, so Metal is the macOS renderer and
-the only one: Options > Graphics > Renderer shows "Metal", and `RAC1_RENDERER` is ignored. If Metal
+the only one: Options > Display > Renderer shows "Metal", and `RAC1_RENDERER` is ignored. If Metal
 cannot start, the game says so and exits (there is no OpenGL to fall back to).
 
 The OpenGL and Vulkan renderers are unchanged: Linux and Windows build and run as before.
