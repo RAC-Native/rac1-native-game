@@ -181,6 +181,18 @@ def main():
             failed.remove(unit)
         else:
             print('   ' + err.replace('\n', '\n   '))
+    # the VU0 ops without their flags where a file reads none (tools/codegen/vu0_nf_pass.py)
+    sys.path.insert(0, HERE)
+    import vu0_nf_pass
+    nf = 0
+    for u in sel:
+        if u in failed:
+            continue
+        for f in us[u]:
+            path = os.path.join(root, f)
+            if path.endswith('.cpp') and os.path.exists(path) and vu0_nf_pass.apply(path):
+                nf += 1
+    print('%d files with the VU0 ops without their flags (vu0_nf_pass.py)' % nf)
     nfiles = sum(len(us[u]) for u in sel)
     print('%d units, %d files, %.1f s%s' % (len(sel), nfiles, time.time() - t0, '' if not failed else ', FAILED: ' + ' '.join(failed)))
     rc = 1 if failed else 0

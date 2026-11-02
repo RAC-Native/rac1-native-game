@@ -160,6 +160,63 @@ All together (headless, Radeon 890M, a shared machine: two runs each, the last 6
 Veldin 0.46 to 0.20 ms, Novalis 1.17-1.33 to 0.45-0.54, Rilgar 1.07-1.25 to 0.56, Pokitaru 1.74-2.0 to 0.91-1.04; the world's GPU
 time Veldin 1.56 to 1.45 ms, Novalis 1.03 to 0.83, Rilgar 1.85 to 1.40, Pokitaru 1.94 to 1.34 (OpenGL; Vulkan alike).
 
+### Second round
+
+Found the same way, each with a `RAC1_PERF_*=0` switch: the game's own code where a host form gives the same values (proved by
+`RAC1_RAMHASH` on the levels that run it and by the oracle batches of the hand-ported functions), and the sky drawn after the
+terrain.
+
+- **The palette blend** (`RAC1_PERF_PALETTE_BLEND`, `src/game/ovl/palette_blend.cpp`, hooked by `tools/codegen/hooks.glue` into the
+  six overlays' copies of the routine: Kerwan 0x23c428, Rilgar 0x277b20, Umbris 0x2762e0, Batalia 0x257d40, Gaspar 0x26d240, Oltanis
+  0x255ce0, NTSC-U): its texel loop weighted both palettes' entries (VMULbc) for each of 4096 texels; each entry's product is now
+  made once (256 per palette) and the texels add the two they index, leaving the VU0 registers as the loop does (not its ops' flags,
+  which nothing reads after). `RAC1_RAMHASH` identical on and off on levels 3, 5, 7, 8, 9 and 14 (3000 frames each, the routine
+  running on all six). Kerwan, the routine's call (the palettes' DMA and conversion included): 0.124 to 0.035 ms, about one call a
+  frame. The PAL build runs the loop as transliterated. No oracle batch: the routine's scratchpad DMA is not in the interpreter.
+- **The VU clamp once per operand** (`RAC1_PERF_VU_CLAMP`, `ovl_1e_1f.cpp` `segment_collide_v`'s triangle test, `ovl_24_25.cpp`
+  `moby_transform_core`): the hand ports' `q*` / `vmul` / `vmadd` helpers clamp both operands and the result of every op by the VU
+  rules; where every operand is already a VU result, a small integer's float or a value clamped as it is read, `vuc(x)` is `x`, so
+  only the result is clamped. Exact by construction; `RAC1_RAMHASH` identical (levels 0, 1, 3, 5, 8) and the oracle batches 38, 41,
+  43, 89 (`moby_update_transform`, `_kept`, `segment_collide`) and the level batches that run them pass.
+- **The moby collision mesh cache** (`RAC1_PERF_COLL_MESH`, off by default; `ovl_1e_1f.cpp` `segment_collide_v`): a moby's collision
+  vertices turned into the world (three VU0 multiply-adds each) depend only on its rows', its scale's bits and the vertex words, so they
+  are kept per moby with those bits and a copy of the words and used again while all are the same (the outcodes, which depend on the
+  segment, are still made per call). Exact (`RAC1_RAMHASH` identical on levels 0, 1, 3, 5, 8 and the four-level chain with it on), and
+  95% reuse on Kerwan, but the moby part of the segment test runs about four times a frame here: 5.2 to 3.1 microseconds a use, about
+  0.01 ms a frame. Left off; worth it only where the game thread is much slower.
+
+- Smaller ones (`RAC1_PERF_COPIES`): the EE memory journal appends a saved 4 KB page as it is instead of zero-filling it first and
+  copying over it (`ee_memory.cpp` `journal_touch`), and the MRP moby observer builds its ~650-byte record in place in the frame's
+  list (`mrp_scene.cpp` `on_draw`). Below the noise here (the journal now saves few pages, the observer sees a moby or two a frame);
+  the same picture and game state.
+- **The Euler conversion cache** (`RAC1_PERF_EULER_CACHE`, off by default; `vecmath.cpp` `euler_to_mat3_vu`): its rows depend only on
+  the three angles' bits, so a 512-entry table per thread returns them again for a moby whose rotation did not change. Exact
+  (`RAC1_RAMHASH` identical with it on, levels 0, 1, 3, 5, 8 and the chain), but on this PC a conversion is already about 0.1
+  microseconds: Kerwan ~400 calls a frame, 0.112 to 0.096 microseconds each (the timer included), a few microseconds a frame. Left off.
+- **VU0 ops without their flags** (`RAC1_PERF_VU0_NF`, `src/game/ovl/vu0_nf.h`, `tools/codegen/vu0_nf_pass.py` run by `generate_all.py`):
+  a `vu0_regs.h` op builds the MAC and status flags of every result (the larger part of its work). The pass gives `vu0nf`'s ops -
+  the same lanes, clamps and ACC, no flags - to every generated file whose CFC2 reads of the status / MAC flags all follow, in
+  straight-line code, an op into vf0 (those ops keep their flags: `vu0nf` sends a vf0 destination to `vu0m`): 176 of the generated
+  files (the world's lighting, the levels' program-7 surfaces, `sky_ee`, `world_cull`, the transliterated classes). A build
+  defining `RAC1_VU0_EXACT` keeps `vu0m`'s ops. `RAC1_RAMHASH` identical on and off on every level 0-18 (2000 frames each) and the
+  chain; the oracle batches 79, 101, 102, 110, 113, 126 (L1), 112, 138, 190, 192 (L3), 140 (L5), 180 pass. The game code a frame
+  (main thread, the last 600 of 1860 frames, three runs each): Veldin 1.25-1.26 to 1.17-1.19 ms, Kerwan 1.82-1.83 to 1.72-1.83,
+  Rilgar 1.43-1.46 to 1.35-1.51.
+- **The sky after the terrain** (`RAC1_PERF_SKY_LATE`, off by default; `mrp_world_renderer.cpp`, OpenGL and Vulkan): the sky's shells
+  come first in the frame and cover the screen, so every pixel the terrain then covers is shaded and blended for nothing. With it on,
+  the frame's leading tfrag batches whose first pass should write the source alone (every run held opaque by `RAC1_PERF_OPAQUE`,
+  blended as ALPHA 0x44 or not at all, the depth tested and written) are drawn first, then the sky with the depth test LEQUAL at depth
+  1.0 (the depth range [1, 1]: it passes only where nothing was drawn), then the rest as before. Used on most frames (Veldin 1536 of
+  1800, 6 leading batches; Novalis, Kerwan, Eudora alike). Not exact: the opaque state comes from the tfrag entries' colour words, but
+  the vertex alphas the tfrag programs make from them can end just below 0x80 (a run held opaque still never fails the alpha test,
+  GEQUAL 0x60, but its As can be just below 1), and there a trace of what lay behind shows through - the sky before, the cleared
+  colour now: on Veldin's reference frame 51 pixels on the terrain's edge at the horizon, one level of one channel (the reference
+  md5s change with it on). Nor measurably faster on this GPU (headless, the last 600 of 1860 frames, world GPU ms off / on): 1920x1080
+  Veldin 1.28 / 1.20 (OpenGL), 1.22 / 1.31 (Vulkan), Novalis 1.30 / 1.01, 1.03 / 1.03, Kerwan 1.68 / 1.70, 1.69 / 1.71, Eudora 1.38 /
+  1.37, 1.30 / 1.38; 5120x1440 (Fill Screen) Veldin 3.04-3.28 / 2.93-3.11 and 3.30-3.34 / 3.29-3.35, Novalis 2.62-2.83 / 2.62-2.80
+  and 2.72-2.74 / 2.72-2.75, Kerwan 3.06 / 3.07 and 3.30 / 3.29, Eudora 3.58 / 3.57 and 3.89 / 3.94. Left off, for a GPU where the
+  sky's fill rate costs.
+
 ## Switches to compare
 
 These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
@@ -179,6 +236,13 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_OPAQUE=0` | every world draw in both alpha-test passes, with the discard's late depth test |
 | `RAC1_PERF_GS_MEM=0`, `RAC1_PERF_VU1_LOOKUP=0`, `RAC1_PERF_XGKICK=0` | the chain reader's GS memory, VU1 port lookups and kicks as before |
 | `RAC1_PERF_TEXTABLE=0`, `RAC1_PERF_TFRAG_ALLOC=0`, `RAC1_PERF_VU7=0`, `RAC1_PERF_PKT_MEMO=0` | the scene's and the effects' preparation as before |
+| `RAC1_PERF_PALETTE_BLEND=0` | the six levels' palette blend as the game's loop |
+| `RAC1_PERF_VU_CLAMP=0` | the collision triangle test and the moby transform clamping every operand at each op |
+| `RAC1_PERF_COLL_MESH=1` | the collision segment test's moby meshes kept between calls (off by default) |
+| `RAC1_PERF_COPIES=0` | the EE journal's pages zero-filled then copied, the moby observer's record built aside and copied |
+| `RAC1_PERF_EULER_CACHE=1` | the Euler conversion's rows kept per angles (off by default) |
+| `RAC1_PERF_VU0_NF=0` | the generated code's VU0 ops with their flags |
+| `RAC1_PERF_SKY_LATE=1` | the sky after the leading opaque tfrag batches (off by default: not exact) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's

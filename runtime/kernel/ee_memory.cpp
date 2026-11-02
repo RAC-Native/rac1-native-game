@@ -104,9 +104,16 @@ void journal_touch(u32 phys, u32 size) {
         if (g_journal_seen[p] != 0) continue;
         g_journal_seen[p] = 1;
         g_journal_pages.push_back(p);
-        const size_t at = g_journal_data.size();
-        g_journal_data.resize(at + JPAGE);
-        std::memcpy(g_journal_data.data() + at, g_ram_buffer.data() + static_cast<size_t>(p) * JPAGE, JPAGE);
+        const u8* src = g_ram_buffer.data() + static_cast<size_t>(p) * JPAGE;
+        // (host, RAC1_PERF_COPIES) the page appended as it is, not zero-filled first and copied over (=0: as before)
+        static const bool append = std::getenv("RAC1_PERF_COPIES") == nullptr || std::atoi(std::getenv("RAC1_PERF_COPIES")) != 0;
+        if (append) {
+            g_journal_data.insert(g_journal_data.end(), src, src + JPAGE);
+        } else {
+            const size_t at = g_journal_data.size();
+            g_journal_data.resize(at + JPAGE);
+            std::memcpy(g_journal_data.data() + at, src, JPAGE);
+        }
     }
 }
 }  // namespace

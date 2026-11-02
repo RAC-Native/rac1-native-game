@@ -73,6 +73,13 @@ What changed in each release. Releases are source only: you build the game with 
   the next instance reusing the previous one's work, the tfrag lists' and program 7's working memory kept, program 7's
   vertices made once instead of once per triangle corner (`RAC1_PERF_TEXTABLE`, `RAC1_PERF_PKT_MEMO`, `RAC1_PERF_TFRAG_ALLOC`,
   `RAC1_PERF_VU7`); the same picture.
+- Kerwan, Rilgar, Umbris, Batalia, Gaspar and Oltanis: the levels' palette blend (two palettes mixed into a texture each frame)
+  works out each palette entry once instead of once per texel: about 0.12 to 0.035 ms a call on Kerwan; the same game state
+  (`RAC1_PERF_PALETTE_BLEND`).
+- The collision segment test's triangle loop and the moby transform clamp each VU operand once instead of at every op (the same
+  values; `RAC1_PERF_VU_CLAMP`).
+- The generated game code's VU0 operations skip building the VU0 flags in the routines that never read them (176 of the
+  generated files): the game code about 5% less time a frame (Veldin 1.25 to 1.18 ms); the same game state (`RAC1_PERF_VU0_NF`).
 
 ### Launcher and setup
 - Launcher: a new launcher is downloaded only once the player says yes, and checked against the SHA-256 the release lists for
