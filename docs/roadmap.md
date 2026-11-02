@@ -114,7 +114,9 @@ off by default when it changes the game):
   60 Hz);
 - HD textures, generated on the player's own machine from their own disc, never distributed;
 - post-processing effects;
-- a language switch with all the languages on the disc;
+- a language switch with all the languages on the disc (begun: the voice language apart from the text, and the Japanese
+  voices from the Japanese disc given as a data disc); the Japanese text, and the Japanese and Platinum discs as the
+  game's disc;
 - optional revival of content the game carries but never shows;
 - macOS builds (the plan: [Platforms](platforms.md));
 - the PAL release's 50 Hz mode (the PAL disc already runs, in its 60 Hz mode), once the NTSC-U

@@ -16,9 +16,11 @@
 A native PC port of **Ratchet & Clank** (PlayStation 2, 2002), for Linux and Windows.
 
 The game's own code is ported to C++, function by function, from the original North American release
-(`SCUS-97199`), and each port is proved against the original code. Support for the
-European PAL release (`SCES-50916`) is supported too (the Platinum re-releases are not yet, #64): it goes through a table of where the PAL
-build put the same code (see [Setup](docs/setup.md#the-european-pal-disc)). It is not an emulator: all of the game's
+(`SCUS-97199`), and each port is proved against the original code. The European PAL release
+(`SCES-50916`) is supported too: it goes through a table of where the PAL build put the same code (see
+[Setup](docs/setup.md#the-european-pal-disc)). The Japanese release (`SCPS-15037`) and the PAL Platinum
+re-release can be given as data discs beside the game's disc: the Japanese one adds the Japanese voices
+(see [Setup](docs/setup.md)); as the game's disc they are not supported yet (#64). It is not an emulator: all of the game's
 code, the PS2's vector-unit microcode included, runs as native C++ while you play. The 3D is drawn by
 a native renderer (OpenGL, or Vulkan as an experimental option) from the game's own decisions, which
 makes widescreen, high resolutions, full-detail textures and longer draw distances possible without

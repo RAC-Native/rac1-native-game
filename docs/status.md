@@ -126,7 +126,8 @@ nothing, so an object whose class is not ported stands still or does not appear.
 | The Vulkan renderer (Options > Display > Renderer) | Experimental, opt-in: the same picture as OpenGL, which stays the default and takes over when Vulkan cannot start; see [Vulkan](vulkan.md). |
 | Modern lighting (optional) | Working, off by default, experimental; with surface materials (Surface Detail) and emissive surfaces; see [Lighting](lighting.md) and [Materials](materials.md). |
 | Ambient particles (optional) | Working, off by default, on seven levels; see [Ambient particles](particles.md). |
-| Options > Graphics (including Texture Detail and the widescreen HUD), Controls, Advanced; the Original / Modern / Experimental choice at New Game | Implemented, known issues may remain; see [Settings](settings.md). |
+| Options > Display (including Texture Detail and the widescreen HUD), Graphics (one Original / Enhanced switch and a preset over every addition), Controls, Advanced; the Original / Modern / Experimental choice at New Game | Implemented, known issues may remain; see [Settings](settings.md). |
+| Data discs (`--data-iso`): the Japanese disc's voices beside the game's disc, and a voice language apart from the text (Advanced > Voice) | New, experimental; the Japanese efforts of Ratchet only partly checked; see [Setup](setup.md) and [Settings](settings.md). |
 | Keyboard, mouse and controller mapping, remapping in Options > Controls | Implemented, known issues may remain; see [Input](input.md). |
 | Debug tools behind `--debug-tools` (with the Profiler and Unlocks tabs) | Implemented; see [Settings](settings.md#debug-tools). |
 | The launcher (Windows and Linux x86-64): install, update, play, saves | New in 0.5.0; on the Steam Deck, Bazzite and other immutable Linux systems it builds the game in a container (new in 0.6.0); see [The launcher](launcher.md). |
