@@ -82,6 +82,7 @@ constexpr OvConst<0x001b4950u> OPTIONS_PAGE{};
 constexpr OvConst<0x001b4af8u> OPTIONS_LIST{};
 constexpr OvConst<0x001b4b68u> OPTIONS_HELP{};
 constexpr OvConst<0x001b4a30u> OPTIONS_PICTURE{};  // its image is the list's selected entry's (+0x30)
+constexpr OvConst<0x001b3a20u> HELP_PICTURE{};  // the Help menu's picture: its table's third image, Moves' (Ratchet gliding over a city), is Display's
 constexpr OvConst<0x001b5a60u> CAMERA_PAGE{};
 constexpr OvConst<0x001b5ae8u> CAMERA_TITLE{};
 constexpr OvConst<0x001b5ba0u> CAMERA_SETTINGS{};
@@ -376,8 +377,15 @@ void advanced_menu_install() {
                 d += 0xc;
                 sw(h, static_cast<uint32_t>(graphics_display_help_text()));
                 h += 4;
-                sw(pic, PICTURE_SECTOR + PIC_GRAPHICS);
-                sw(pic + 4, 1);
+                // (Display's picture: the game's own view of a level, the Help menu's Moves picture - not Graphics' "GFX", which it
+                // shared until Daino found the two confusing; Graphics' if that table is not there)
+                const uint32_t help_pictures = lwu(HELP_PICTURE + 0x30);
+                if (help_pictures != 0 && lwu(help_pictures + 0x10) != 0) {
+                    ee_copy(pic, help_pictures + 0x10, 8);
+                } else {
+                    sw(pic, PICTURE_SECTOR + PIC_GRAPHICS);
+                    sw(pic + 4, 1);
+                }
                 pic += 8;
                 sh(d, static_cast<uint32_t>(graphics_title_text()));  // (Graphics)
                 sh(d + 2, 3);  // action 3: the page +4

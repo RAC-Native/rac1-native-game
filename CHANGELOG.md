@@ -35,6 +35,8 @@ What changed in each release. Releases are source only: you build the game with 
   and Ambient Particles, which before stayed on with Lighting Original. Old preferences and saves: Lighting Original reads as
   Graphics Original (Lighting High), Low to High as Enhanced with that value. Experimental mode: Graphics Enhanced, the preset High
   (Water and Grass High too). The debug menu's Enhancements tab has the same switch and preset at its top.
+- Options (pause menu): Display has a picture of its own, the game's Help menu picture for Moves (Ratchet gliding over a city),
+  no longer Graphics' "GFX". The main menu's Options list shows no pictures.
 - Lights: Anya-Thoughtmane's lighting batch 1 (#102) merged line by line: metal for the vendor, the bolts, the OmniWrench, the
   Magneboots and the pilot's helmet on every level, materials and lamps on Veldin, Novalis (the waterworks, the bridge), Aridia
   (most of its metal, the spot lamps, their sun 38.6 / 16.7), Kerwan (the gold surfaces, the landing pad's lamps, the street lamps
