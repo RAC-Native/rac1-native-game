@@ -283,19 +283,16 @@
     "    if (uMat[255].w == 0.0 && d < 0.03) return 1e4;\n"                                                                                              \
     "    return max(d, 0.0);\n"                                                                                                                          \
     "}\n"                                                                                                                                                \
-    "/* what the seas' shaders do with the water after the fog (mrp_fx.cpp kV7Fs, gen_vk_shaders.py MRP_VU7_FS): 0 nothing; 1 their colour\n"            \
-    "   put over the 3D under them (sm_w_refr) - the picture is this frame's -, 2 their own blending: both with the game's own alpha times\n"            \
-    "   sm_w_alpha (the depth: less where shallow, more where deep) plus sm_w_add (Fresnel, foam) */\n"                                                  \
+    "/* what the seas' shaders do with the water after the fog (mrp_fx.cpp kV7Fs, gen_vk_shaders.py MRP_VU7_FS): 0 nothing; 2 their own\n"               \
+    "   blending with the game's own alpha times sm_w_alpha (the soft edge) plus sm_w_add (foam, far away) */\n"                                         \
     "int sm_w_mode = 0;\n"                                                                                                                               \
     "float sm_w_alpha = 1.0, sm_w_add = 0.0;\n"                                                                                                          \
-    "vec3 sm_w_refr = vec3(0.0);\n"                                                                                                                      \
     "vec3 sm_tint(float w) { return vec3(floor(w / 65536.0), mod(floor(w / 256.0), 256.0), mod(w, 256.0)) * (2.0 / 255.0); }\n"                          \
-    "/* The Water option's shading. Water: with it on, the program-7 seas tagged `water` are our own water - their texel is the texture's\n"             \
-    "   average colour (mrp_fx.cpp, flag 27), not the game's scrolling texture, so `lit` is a flat colour of the level's palette (the\n"                 \
-    "   game's vertex colour and the light on it) and every detail is ours: calm normal maps scrolling in world space, faded by the pixel's\n"           \
-    "   footprint; Fresnel, the sky's reflection (High: the picture's, near only), the sun's and the lamps' glints; the depth under the\n"               \
-    "   surface (colour, transparency, a soft edge where it meets the shore and a thin, steady foam band); on High a slight refraction.\n"               \
-    "   Lava and quicksand: the game's texture kept, relief and a seam added */\n"                                                                       \
+    "/* The Water option's shading. Water: with it on, the program-7 seas tagged `water` are our own water - the game's texture flowing with its\n"      \
+    "   UVs, filtered and faded to its average colour where finer than the pixel (mrp_fx.cpp, flag 27), drawn still (no rise and fall: the\n"            \
+    "   host), with the game's vertex colour and blend; on it ours: calm normal maps scrolling in world space, faded by the pixel's footprint;\n"        \
+    "   Fresnel, the sky's reflection (High: the picture's, near only), the sun's and the lamps' glints; the depth under the surface (a soft\n"          \
+    "   edge where it meets the shore and a thin, steady foam band). Lava and quicksand: the game's texture kept, relief and a seam added */\n"          \
     "vec3 sm_water2(vec3 lit, vec3 orig, vec3 tex, vec3 L, uint s, int ty) {\n"                                                                          \
     "    vec4 m = uMat[s], m2 = uMat2[s];\n"                                                                                                             \
     "    float t = uMat[0].y;\n"                                                                                                                         \
@@ -316,7 +313,6 @@
     "    vec2 uv;\n"                                                                                                                                     \
     "    float depth = sm_under(P, uv);\n"                                                                                                               \
     "    float dv = depth * clamp(abs(V.z) * 1.2, 0.1, 1.0);  /* (along the view: about the water's height there) */\n"                                  \
-    "    float deep = 1.0 - exp(-dv / max(m2.w, 0.05));\n"                                                                                               \
     "    /* the shore: a thin band (the depth's tenth or so), its edge widened to two pixels' change of the depth (at most twice the band) so\n"         \
     "       that it does not step or flash where the depth changes fast across the picture; softer right at the contact (40 %, full a third\n"           \
     "       of the band out: the line where the water meets a post moves with the game's waves) */\n"                                                    \
@@ -340,50 +336,47 @@
     "        if (m.w >= 0.0) c *= mix(vec3(1.0), sm_tint(m.w), 0.5);\n"                                                                                  \
     "        return c * (1.0 - 0.2 * m.y) + m.y * (sm_spec(N, V, 0.45, vec3(0.04)) * 0.8 + sm_env(R, 0.5) * L * (F * 0.6));\n"                           \
     "    }\n"                                                                                                                                            \
-    "    /* water: lighter where shallow, toward the tint (or a deeper shade of its own colour) where deep */\n"                                         \
-    "    vec3 dcol = m.w >= 0.0 ? mix(lit, sm_tint(m.w) * max(dot(L, vec3(0.3333)), 0.15), 0.6) : lit * 0.85;\n"                                         \
-    "    vec3 wcol = mix(lit * 1.05, dcol, deep * 0.6);\n"                                                                                               \
+    "    /* water: the game's own colour - its texture flowing as its UVs move (faded to the texture's average where finer than the pixel,\n"            \
+    "       kV7Fs), its vertex colour, the place's light - with Surface Detail's look over it (its Fresnel, reflection and glint, as Water Off\n"        \
+    "       with Surface Detail on, its weights) on our calm normal maps */\n"                                                                           \
+    "    float Fs = mix(0.15, 1.0, F);\n"                                                                                                                \
     "    /* the foam: the shore's band broken by a world-space noise drifting slowly (flattened where finer than the pixel) - no pulse, nothing\n"       \
-    "       that turns on and off with the game's waves -, faded where a pixel covers more than half a unit of the water (the band is under a\n"         \
-    "       pixel there: the waves moving the waterline turned it on and off at the far islands' feet) */\n"                                             \
+    "       that turns on and off with the game's waves -, faded where a pixel covers more than half a unit of the water */\n"                           \
     "    float fn = mix(0.5, sm_noise(P.xy * (3.0 * m2.x) + vec2(t * 0.15, -t * 0.1)), 1.0 - smoothstep(0.25, 0.8, px * 3.0 * m2.x));\n"                 \
-    "    float foam = m2.z * shore * smoothstep(0.2, 0.6, fn) * (1.0 - smoothstep(0.35, 0.9, px));\n"                                                    \
-    "    /* the reflection: the sky's; High: the picture's near the camera, faded to the sky's far away (sm_ssr_water_far) - Low never marches\n"        \
-    "       it, whatever Surface Detail is. The glint wider where the maps are faded (a sheen far away, not a sparkle) */\n"                             \
+    "    /* (and only at a waterline: where the band is wider than some 40 pixels on the screen - the depth under the water changing\n"                  \
+    "       slowly, a thin film of water over a slope, Novalis's stream over its bed - it is no shore, and the foam drew white blotches) */\n"           \
+    "    float film = 1.0 - smoothstep(24.0, 64.0, bw / max(fwidth(dv), 1e-4));\n"                                                                       \
+    "    float foam = m2.z * shore * film * smoothstep(0.2, 0.6, fn) * (1.0 - smoothstep(0.35, 0.9, px));\n"                                             \
+    "    /* the reflection: the sky's (sm_env: the level's sky colour, times the water's light - its vertex colour lit -, as Surface Detail's);\n"       \
+    "       High: the picture's near the camera - the lights of Rilgar's city on its harbour -, faded to the sky's far away; Low never\n"                \
+    "       marches it */\n"                                                                                                                             \
     "    R.z = max(R.z, 0.03);  /* (a wave's normal never shows the water the ground's shade below the horizon) */\n"                                    \
     "    sm_ssr_water = uMat[255].x >= 1.5;\n"                                                                                                           \
-    "    /* (the sky itself - the level's sky colour, the horizon a little dimmer than the zenith - as bright as the place is lit: the light's\n"        \
-    "       brightest channel, not its colour - the sea's vertex colour is its own tint -; sm_env's dark ground below the horizon left out:\n"           \
-    "       the water reflects the sky only, and with it the far water, where the Fresnel is most of it, was a third darker than the game's) */\n"       \
-    "    vec3 sky = uSsrSky.rgb * (0.85 + 0.15 * R.z) * clamp(max(L.r, max(L.g, L.b)) * 1.6, 0.3, 1.0);\n"                                               \
-    "    vec3 refl = sm_ssr_water ? sm_ssr_water_far(P + nb * 0.03, R, sky, px) : sky;\n"                                                                \
-    "    vec3 spec = sm_spec(N, V, 0.05 + 0.2 * gw.z, vec3(0.02)) * 2.0;\n"                                                                              \
+    "    vec3 sky = sm_env(R, 0.05) * L;\n"                                                                                                              \
+    "    /* (the picture's read softened - sm_ssr's blur, four more taps: the posts' reflections' edges, marched through the last frame,\n"              \
+    "       stepped from frame to frame as the camera moved; faded to the sky's far away as sm_ssr_water_far does) */\n"                                 \
+    "    float kf = sm_ssr_water ? 1.0 - smoothstep(0.35, 0.9, px) : 0.0;\n"                                                                             \
+    "    vec3 refl = kf > 0.0 ? mix(sky, sm_ssr(P + nb * 0.03, R, sky, 1.0, false), kf) : sky;\n"                                                        \
+    "    vec3 spec = sm_spec(N, V, 0.07 + 0.2 * gw.z, vec3(0.02)) * 1.5;\n"                                                                              \
     "    vec3 fcol = vec3(0.9, 0.95, 1.0) * clamp(dot(lit, vec3(0.3333)) * 2.2, 0.4, 1.0);  /* (white, as bright as the place) */\n"                     \
-    "    vec3 S = mix(wcol * (1.0 - F * 0.5) + refl * (F * 0.5 * m.x), fcol, clamp(foam, 0.0, 1.0)) + spec * m.x;\n"                                     \
-    "    /* the alpha (the game's times this): more where deep, the Fresnel's share; none right at the contact - the soft edge: the line where\n"        \
-    "       the water meets a post or a rock moves with the game's waves, and drawn hard it flashed */\n"                                                \
+    "    /* (Surface Detail's mix - the colour dimmed by a third of the Fresnel, 70 % of the reflection added - but the sky's share never\n"             \
+    "       darker than the water's own colour: under a bright sky colour of its own, Pokitaru's turquoise came out a few % darker than Water\n"         \
+    "       Off) */\n"                                                                                                                                   \
+    "    vec3 S = lit + m.x * (max(sky * 0.7 - lit * 0.35, 0.0) * Fs + (refl - sky) * (Fs * 0.7) + spec);\n"                                             \
+    "    S = mix(S, fcol, clamp(foam, 0.0, 1.0));\n"                                                                                                     \
+    "    /* the alpha: the game's, softer right at the contact - the soft edge (a post's or a rock's waterline): 60 % there, the game's a\n"             \
+    "       tenth of a unit of depth out (none there, the thin film of Novalis's stream over its slopes was gone, its dark bed showing; the\n"           \
+    "       waterline no longer moves with the game's waves) -, the foam opaque; and\n"                                                                  \
+    "       opaque far away, where a pixel covers more than half a unit of the water: there what lies under it is a thin sliver - the skirts\n"          \
+    "       of sand at Pokitaru's far islands' feet, a hair under the surface - that came and went from one frame to the next as the far\n"              \
+    "       ground's pieces were drawn or not, and the water seen through it flashed with it */\n"                                                       \
     "    float edge = smoothstep(0.0, bw, dv);\n"                                                                                                        \
-    "    sm_w_alpha = mix(0.7, 1.0, deep) * edge;\n"                                                                                                     \
-    "    /* (and opaque far away, where a pixel covers more than half a unit of the water: there what lies under it is a thin sliver - the\n"            \
-    "       skirts of sand at Pokitaru's far islands' feet, a hair under the surface - that came and went from one frame to the next as the\n"           \
-    "       far ground's pieces were drawn or not, and the water seen through it flashed with it) */\n"                                                  \
-    "    float far = smoothstep(0.35, 0.9, px);\n"                                                                                                       \
-    "    sm_w_add = F * 0.35 * edge + foam + far;\n"                                                                                                     \
-    "    if (depth < 1e3 && uMat[255].w != 0.0) {  /* the 3D under it, this frame's: seen through, bent by the waves on High */\n"                       \
-    "        vec3 under = textureLod(uSsrCol, uv, 0.0).rgb;\n"                                                                                           \
-    "        if (uMat[255].x >= 1.5) {  /* (the bent sample mixed in only where what it shows lies behind the water - not an object in front -,\n"       \
-    "           by how far behind, and not at the shore: a smooth weight, not a choice that flips as the waves move) */\n"                               \
-    "            vec2 o = clamp(uv + (N.xy - nb.xy) * (0.03 * min(dv, 1.5)), vec2(0.0), vec2(1.0));\n"                                                   \
-    "            float d = textureLod(uSsrDepth, o, 0.0).r;\n"                                                                                           \
-    "            float fw = (uSsrVP * vec4(P, 1.0)).w;\n"                                                                                                \
-    "            float k = d < 1.0 ? smoothstep(fw + 0.02, fw + 0.3, uSsrZ.y / ((d * 2.0 - 1.0) - uSsrZ.x)) * smoothstep(0.05, 0.3, dv) : 0.0;\n"        \
-    "            under = mix(under, textureLod(uSsrCol, o, 0.0).rgb, k);\n"                                                                              \
-    "        }\n"                                                                                                                                        \
-    "        /* (tinted by the water's colour the deeper it is, none at the contact: tinted there, the sand the game's waves covered and uncovered\n"    \
-    "           a pixel row at a time stepped by that tint) */\n"                                                                                        \
-    "        sm_w_refr = under * mix(vec3(1.0), wcol / max(max(lit.r, max(lit.g, lit.b)), 0.05), (0.15 + 0.25 * deep) * edge);\n"                        \
-    "        sm_w_mode = 1;\n"                                                                                                                           \
-    "    } else if (depth < 1e3) {\n"                                                                                                                    \
+    "    sm_w_alpha = mix(0.6, 1.0, edge);\n"                                                                                                            \
+    "    sm_w_add = foam + smoothstep(0.35, 0.9, px);\n"                                                                                                 \
+    "    /* how it reaches the picture: blended over it as the game blends it, with that alpha (no refraction: put over the copy of the 3D\n"            \
+    "       under it, as the first version of our water was, a sea covered the water drawn before it - its other layers - and Novalis's\n"               \
+    "       stream came out several % darker than Water Off) */\n"                                                                                       \
+    "    if (depth < 1e3) {\n"                                                                                                                           \
     "        sm_w_mode = 2;\n"                                                                                                                           \
     "    } else if (uMat[0].w != 0.0) {  /* (nothing under it in the picture - the sky, the void past Pokitaru's skirts of sand around its\n"            \
     "        islands: the open sea, as deep as water gets - opaque; seen through there, the skirts' edges showed as hard-edged trapezoids, the\n"        \
@@ -562,7 +555,7 @@
 #define RAC1_NATURE_VS \
     "/* the vertices' side of the Options' grass (docs/materials.md): the world's vertex shaders, the lighting's variant */\n"                           \
     "#ifndef VULKAN\n"                                                                                                                                   \
-    "layout(std430, binding = 12) readonly buffer RacMatTable { vec4 uEmis[256]; vec4 uMat[256]; vec4 uMat2[256]; };\n"                                \
+    "layout(std430, binding = 12) readonly buffer RacMatTable { vec4 uEmis[256]; vec4 uMat[256]; vec4 uMat2[256]; };\n"                                  \
     "uniform vec3 uShCam;\n"                                                                                                                             \
     "#endif\n"                                                                                                                                           \
     "/* Grass: a shell's vertex (uShell = k + 256 n: shell k of n) - a tfrag vertex of a `grass` texture lifted k / n of the blades' height,\n"          \

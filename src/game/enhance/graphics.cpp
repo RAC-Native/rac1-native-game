@@ -176,7 +176,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "The graphics API. Vulkan is experimental. Takes effect at the next start.",
      "Shiny metal, wet ground, water and lava with the new lighting. High: reflections.",
      "Dust, embers, fireflies, rain and snow of our own. Not in the PS2 game.",
-     "Our own calm water in place of the game's. High: reflections, refraction.",
+     "Our own calm water in place of the game's. High: reflections.",
      "Blades of grass on the marked ground near the camera. Costs more.",
      "Original: the PS2's picture. Enhanced: our lighting, water and effects below.",
      "Sets every row below at once. Changing one of them shows Custom.",
