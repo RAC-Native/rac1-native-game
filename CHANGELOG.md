@@ -6,6 +6,9 @@ What changed in each release. Releases are source only: you build the game with 
 ## Unreleased
 
 ### Controls and gameplay
+- Advanced > Voice (Same as Text, the default; English, French, German, Spanish, Italian; Japanese with the Japanese data
+  disc): the spoken language apart from the text's, for the dialogue, the scenes, the Vendor, the movies and Ratchet's
+  efforts (`voice_language` in the preferences, `RAC1_VOICE_LANGUAGE`; docs/settings.md, "Voice").
 - Mouse: a Direct mode, the new default (Options > Controls > Mouse Mode): the mouse turns the camera, and the aim while
   strafing or aiming, by an angle proportional to its movement (raw motion where the system has it), with no stick
   simulation, acceleration or speed cap; its own Aim Sensitivity while aiming; Stick keeps the earlier simulated right
@@ -106,6 +109,10 @@ What changed in each release. Releases are source only: you build the game with 
   generated files): the game code about 5% less time a frame (Veldin 1.25 to 1.18 ms); the same game state (`RAC1_PERF_VU0_NF`).
 
 ### Launcher and setup
+- Data discs: `./setup.sh --data-iso <image>` (repeatable, kept for the next setups; `--no-data-discs` forgets them) adds
+  another release's disc as a source of data only; the Japanese disc (SCPS-15037) is extracted into its own folder and
+  gives the Japanese voices (docs/setup.md, "Data discs"). Discs are told apart by their boot executable's sha1: the PAL
+  disc 2.00 is no longer taken for 1.00, and the Japanese disc's serial is SCPS-15037 (not SCPS-15055).
 - Launcher: a new launcher is downloaded only once the player says yes, and checked against the SHA-256 the release lists for
   it before it replaces the running one; the Windows launcher's file properties name its company, product and description, and
   each release has a `.sha256` file beside each launcher. docs/launcher.md says how to check the file and report an

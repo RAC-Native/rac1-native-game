@@ -26,7 +26,9 @@ bool movie_hw_enabled();
 // Opens a movie: `bytes` bytes of PSS from sector `lba` of the disc; `track` the sound track to
 // play (the PSS of R&C1 carry one per language: 0 English, 2 French, 3 German, 4 Spanish, 5
 // Italian; a missing track falls back to the first). False if it cannot be read or decoded.
-bool movie_hw_open(uint32_t lba, uint32_t bytes, int track);
+// `audio_bytes` not 0: the sound from that PSS instead (`audio_bytes` bytes from sector `audio_lba`: the same movie of a
+// data disc, runtime/kernel/disc.h), its track `track`; the pictures always from the first.
+bool movie_hw_open(uint32_t lba, uint32_t bytes, int track, uint32_t audio_lba = 0, uint32_t audio_bytes = 0);
 bool movie_hw_is_open();
 // The pictures' size and rate (frames per second).
 int movie_hw_width();

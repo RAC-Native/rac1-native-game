@@ -22,9 +22,10 @@ The Advanced page has these rows:
 | Vibration | Off, Low, High | enhancement (kept as the machine's preference, not with the saves) |
 | Adaptive Triggers | Off, On | enhancement, shown only when the pad in use is a DualSense (kept as the machine's preference) |
 | Skip Cutscenes | Original, Always | enhancement |
+| Voice | Same as Text, English, French, German, Spanish, Italian, Japanese (with the Japanese data disc) | enhancement (kept as the machine's preference, not with the saves) |
 
 All of it is in `src/game/enhance/advanced.{h,cpp}` (Buy All Ammo's Vendor entry in
-`src/game/enhance/vendor_buy_all.{h,cpp}`). None of it is a port: every function there is annotated
+`src/game/enhance/vendor_buy_all.{h,cpp}`, the Voice's sites in `src/game/enhance/voice_language.{h,cpp}`). None of it is a port: every function there is annotated
 `// orig: (none) — enhancement`.
 
 ## How the page is built
@@ -54,8 +55,13 @@ port's fast fades). Left and right on a row step the value (`advanced_settings_d
   `update_channel`, and `update_skip`, the version the update notice's Skip Version chose), nor are
   Vibration and Adaptive Triggers (the machine's pad).
 
-The ids in `save<N>.pc`: Quick Select 1, Aiming 2, Movement 3, Fades 4, Buy All Ammo 5, Skip Cutscenes 10 (Vibration 6
-and Adaptive Triggers 9 have ids but are not written with the saves; 7 and 8 are removed rows, never reused).
+The ids in `save<N>.pc`: Quick Select 1, Aiming 2, Movement 3, Fades 4, Buy All Ammo 5, Skip Cutscenes 10 (Vibration 6,
+Adaptive Triggers 9 and Voice 11 have ids but are not written with the saves; 7 and 8 are removed rows, never reused).
+
+**The Voice row** has more values than the widget's four: its byte is a step byte with two values whose texts are both
+the row's value, made at each lookup from the choice (as the Graphics page's rows); when Cross or left / right step it,
+the choice moves on and the byte goes back to 0. The choice is kept as `voice_language same|en|fr|de|es|it|ja` in the
+preferences. What it changes is in [Settings](settings.md#voice); New Game's modes leave it as it is.
 
 A preferences file or a `save<N>.pc` written by an earlier build may hold a setting that has since been
 removed (`ship` and `clank`, the ship selector and Clank's movement, ids 7 and 8): it loads, and those

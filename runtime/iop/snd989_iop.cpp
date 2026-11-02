@@ -46,6 +46,7 @@ namespace rac1 {
 
 float g_snd989_gain = 1.0f;
 bool g_snd989_trace = std::getenv("RAC1_SND_TRACE") != nullptr;
+void (*g_snd989_bank_filter)(std::vector<uint8_t>& bank) = nullptr;
 
 namespace {
 constexpr uint32_t CMD_SERVER = 0x123456, LOADER_SERVER = 0x123457;
@@ -362,6 +363,7 @@ void loader_server(uint32_t fno, uint32_t send, uint32_t ssize, uint32_t recv, u
         for (uint32_t i = 0; i < chunks && i < 8; ++i) end = std::max(end, word(addr + 8 + i * 8) + word(addr + 12 + i * 8));
         std::vector<u8> d(end);
         for (uint32_t i = 0; i < end; ++i) d[i] = ee_read<uint8_t>(addr + i);
+        if (g_snd989_bank_filter != nullptr) g_snd989_bank_filter(d);  // (the host's: another release's bank)
         handle = bank_load(d, "EE", addr);
     } else if (game().reported.insert(0x10000 | fno).second) {
         std::fprintf(stderr, "[989snd] loader function 0x%x not handled\n", fno);

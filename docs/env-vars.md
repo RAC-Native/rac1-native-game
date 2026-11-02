@@ -7,7 +7,7 @@ total, in three groups.
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
 | [Debugging](#debugging-variables) | 282 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 68 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Automated testing](#automated-testing-variables) | 69 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -413,4 +413,5 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_VENDOR_OPEN` | button bitmask (decimal or 0x hex); default 0x10 (triangle) | With the RAC1_SIM_INPUT vendor script, the button press used to open the vendor screens (for example 0x20 for circle). |
 | `RAC1_VENDOR_TRACE` | integer n; default 0 (off) | Every n frames of the Vendor's screens prints their state, the cursor, the bolts, the price of Buy All Ammo's entry and each entry of the list (`ALL(<weapon>)` for Buy All Ammo's, each weapon with its ammo, its most and its price a round; `[vendor]`), to check a purchase from EE memory. |
 | `RAC1_VU_SELFCHECK` | any value = on; default off | Runs each fast VU1 port and the exact port side by side and reports on stderr when their results differ; a progress line every 5000 programs. |
+| `RAC1_VOICE_LANGUAGE` | `same`, `en`, `fr`, `de`, `es`, `it`, `ja`; unset = Options > Advanced > Voice (the same as the text in headless runs) | Sets the voice language apart from the text language (0x15ed88), also in headless runs; `ja` needs the Japanese data disc (setup `--data-iso`), else the voices stay the text's. See [Settings](settings.md#voice). |
 | `RAC1_WORLD_MRP_CHECK` | any value = on; default off | Verification mode for the modern world renderer: it compares the triangles it builds against the CPU reference and also disables the GPU fast paths. |

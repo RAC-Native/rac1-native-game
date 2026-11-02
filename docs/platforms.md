@@ -36,7 +36,7 @@ compiles one of them. `src/game/` and `runtime/` call the interface and stay sta
 | The FPU mode in the coroutine ([Decisions](decisions.md), 11) | the coroutine's start | the new context's frame copies the thread's (MXCSR and the x87 control word, or FPCR), and each switch saves and restores them, as `getcontext` / `swapcontext` do | the fiber copies the host thread's (`fegetenv` and MXCSR), and each fiber keeps its own (`FIBER_FLAG_FLOAT_SWITCH`) |
 | Float rounding toward zero ([Decisions](decisions.md), 11) | `runtime/ee/ps2_fpu.h` | `fesetround` and MXCSR | the same calls (MinGW-w64 has both) |
 | Memory-mapped files | `src/io/mapped_file.h` (the setup) | `mmap` | `CreateFileMapping` / `MapViewOfFile` |
-| Reads of the disc at an offset | `runtime/kernel/disc.cpp` (the disc's files in `assets/disc/`, or the image with `RAC1_READ_ISO=1`) | `pread`, `posix_fadvise` | `ReadFile` with an offset; a file past 240 characters opened with the `\\?\` prefix |
+| Reads of the disc at an offset | `runtime/kernel/disc.cpp` (the disc's files in `assets/disc/`, or the image with `RAC1_READ_ISO=1`; a data disc's in `assets/disc-<serial>-<version>/`, through the same reads) | `pread`, `posix_fadvise` | `ReadFile` with an offset; a file past 240 characters opened with the `\\?\` prefix |
 | Settings and saves folders | the options pages, the controls, the memory card | `~/.config/rac1-native/`, `~/.local/share/rac1-native/` (or `XDG_*`) | `%APPDATA%\rac1-native\` |
 | Files by path | the settings files | `fopen` | `_wfopen` (any characters) |
 | The local time | the memory card's dates, the CDVD clock | `localtime_r` | `localtime_s` |
@@ -49,6 +49,7 @@ compiles one of them. `src/game/` and `runtime/` call the interface and stay sta
 | Thread priority | `src/host/host_priority_{posix,win32}.cpp` | rtkit over D-Bus | `SetThreadPriority` |
 | The disc image's link | the setup, `runtime/kernel/disc.cpp` (`RAC1_READ_ISO=1`) | a symbolic link | a link if allowed, else the path in `assets/iso/disc-path.txt` |
 | The disc's extraction | `tools/disc_extract.py` (the setup) | plain files | plain files (no links); a path past 240 characters with the `\\?\` prefix |
+| The data discs (`--data-iso`) | `tools/setup.py`, `assets/data-discs.txt` | plain files, as the disc's | plain files, as the disc's; `setup.cmd` passes `--data-iso` on (a disc image dropped on it is the game's disc) |
 
 The Linux side behaves as before: the three reference images are unchanged.
 

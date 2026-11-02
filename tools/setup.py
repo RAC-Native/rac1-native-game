@@ -13,6 +13,8 @@ SCES-50916) to the game:
   6. generates the game's data into assets/ (`rac1-native --setup`, one step at a time), and makes the
      setup find the disc again (assets/iso/rac1-ntsc-u.iso, or assets/iso/rac1-pal.iso for the PAL disc);
   7. offers to start the game.
+With --data-iso <image> (repeatable), other releases' discs as sources of data only (the Japanese disc: the Japanese
+voices), each extracted into assets/disc-<serial>-<version>/ and listed in assets/data-discs.txt (data_discs_step).
 
 Re-runnable: the build only recompiles what changed, and each step is redone only when the sources
 that make its output (or the disc) changed since it last ran, when its output is missing (deleted since: a quick
@@ -554,14 +556,69 @@ def looks_like_ps2_disc(path):
     return None
 
 
-# Ratchet & Clank's releases, by their boot executable: (serial, region, supported, a good dump's size). The same table as
-# KNOWN_DISCS in src/setup/iso_extract.cpp (the full check, after the build); this copy only lets the
-# setup stop before the build when the disc is the wrong one. Add a release to both.
-KNOWN_DISCS = {
-    "SCUS_971.99": ("SCUS-97199", "NTSC-U", True, 4214095872),
-    "SCES_509.16": ("SCES-50916", "PAL", True, 4213997568),
-    "SCPS_150.55": ("SCPS-15055", "NTSC-J", False, 0),
-}
+# Ratchet & Clank's releases: the boot executable, its sha1 (both PAL discs boot SCES_509.16; the Japanese disc and the
+# PAL disc 2.00, the "Platinum" one, are a later build, 1.02, with the core moved), the serial, the region, SYSTEM.CNF's
+# VER, a good dump's size, whether it is supported as the game's disc, and what it gives as a data disc (--data-iso) to
+# the game's disc: "voice-ja", the Japanese voices. KNOWN_DISCS in src/setup/iso_extract.cpp is the same table (the full
+# check, after the build); this copy lets the setup stop before the build when the disc is the wrong one, and tells the
+# data discs apart. Add a release to both.
+class Release:
+    def __init__(self, boot, sha1, serial, region, version, good_size, supported, gives):
+        self.boot, self.sha1, self.serial, self.region, self.version = boot, sha1, serial, region, version
+        self.good_size, self.supported, self.gives = good_size, supported, gives
+
+    @property
+    def name(self):
+        return f"{self.region} {self.serial} version {self.version}"
+
+
+KNOWN_DISCS = [
+    Release("SCUS_971.99", "72fd1de379dafd8f243dceeb3be50980f3fd3cd5", "SCUS-97199", "NTSC-U", "1.00", 4214095872, True, ()),
+    Release("SCES_509.16", "553a7f6c2c7a004d384d77b7139accbc52242149", "SCES-50916", "PAL", "1.00", 4213997568, True, ()),
+    Release("SCES_509.16", "79956931bd62fafd8d20fa2eae796dbaf2e15e83", "SCES-50916", "PAL", "2.00", 4214784000, False, ()),
+    Release("SCPS_150.37", "0df83877d53e19d69ec82038e2aaa227f643178f", "SCPS-15037", "NTSC-J", "1.02", 1807187968, False,
+            ("voice-ja",)),
+]
+GIVES = {"voice-ja": "the Japanese voices"}
+
+
+def release_by_boot(boot):
+    """The release the game's disc is by its boot executable alone (the supported ones are one per boot executable)."""
+    return next((r for r in KNOWN_DISCS if r.boot == boot and r.supported), None) or \
+        next((r for r in KNOWN_DISCS if r.boot == boot), None)
+
+
+def system_cnf_version(iso):
+    """SYSTEM.CNF's VER ("1.00"), or ""."""
+    found = iso_root_file(iso, "SYSTEM.CNF")
+    if found is None or found[1] > 4096:
+        return ""
+    with open(iso, "rb") as f:
+        f.seek(found[0])
+        m = re.search(rb"VER\s*=\s*([0-9.]+)", f.read(found[1]))
+    return m.group(1).decode() if m else ""
+
+
+def identify_disc(iso):
+    """(the release, its boot executable, its VER, how sure): the release by its boot executable's sha1 ("exact"), else
+    by the boot executable and VER ("version": a known release whose executable is not a good dump's), else None."""
+    boot = looks_like_ps2_disc(iso)
+    if boot is None:
+        return None, None, "", ""
+    version = system_cnf_version(iso)
+    found = iso_root_file(iso, boot)
+    sha1 = ""
+    if found is not None and found[0] + found[1] <= iso.stat().st_size:
+        with open(iso, "rb") as f:
+            f.seek(found[0])
+            sha1 = hashlib.sha1(f.read(found[1])).hexdigest()
+    for r in KNOWN_DISCS:
+        if r.boot == boot and r.sha1 == sha1:
+            return r, boot, version, "exact"
+    for r in KNOWN_DISCS:
+        if r.boot == boot and r.version == version:
+            return r, boot, version, "version"
+    return None, boot, version, ""
 
 
 def known_iso():
@@ -703,7 +760,8 @@ def boot_elf(iso):
 
 def region_table(iso):
     """The region table of another region's disc (data/regions/<serial>.txt), None for the NTSC-U disc."""
-    serial, region = KNOWN_DISCS[disc_boot(iso)][:2]
+    rel = release_by_boot(disc_boot(iso))
+    serial, region = rel.serial, rel.region
     if region == "NTSC-U":
         return None
     table = REGIONS / f"{serial}.txt"
@@ -1266,6 +1324,7 @@ def setup_due():
     if disc is None:
         return ["the disc image is not set up"]
     due = disc_steps_due(iso, disc)
+    due += [f"the data disc {n}'s files" for n in data_discs_due()]
     if newest_mtime(BUILD_INPUTS) > EXE.stat().st_mtime:
         due.append("the game's program (its sources are newer)")
     return due
@@ -1747,21 +1806,156 @@ def check_disc(arg):
     iso = find_iso(arg)
     if not iso.is_file():
         fail(f"File not found: {iso}")
-    boot = looks_like_ps2_disc(iso)
+    rel, boot, version, how = identify_disc(iso)
     if boot is None:
         fail(f"{iso} is not a PlayStation 2 disc image (an ISO 9660 image).\n"
              "         Use a plain .iso dump of your disc, not a compressed one (.chd, .cso, .gz) or a .bin/.cue pair.")
-    if boot not in KNOWN_DISCS:
-        fail(f"{iso} is another game ({boot}), not Ratchet & Clank.")
-    serial, region, supported, good_size = KNOWN_DISCS[boot]
-    if not supported:
-        fail(f"This is Ratchet & Clank's {region} disc ({serial}). "
-             "Only the North American disc, SCUS-97199, and the European PAL disc, SCES-50916, are supported for now.")
-    if iso.stat().st_size < good_size:  # (cut short, or trimmed: checked fully after the build)
-        warn(f"The image is smaller than a good dump ({iso.stat().st_size} bytes, not {good_size}): "
+    if rel is None:
+        if release_by_boot(boot) is None:
+            fail(f"{iso} is another game ({boot}), not Ratchet & Clank.")
+        fail(f"{iso} is a release of Ratchet & Clank the setup does not know ({boot}, version {version or '?'}).")
+    if not rel.supported:
+        fail(f"This is Ratchet & Clank's {rel.name} disc. Only the North American disc, SCUS-97199, and the European PAL "
+             "disc, SCES-50916 version 1.00, are supported as the game's disc for now."
+             + (f"\n         It can be added as a data disc ({SETUP_CMD} --iso <your NTSC-U or PAL disc> --data-iso {iso}): "
+                f"it gives {', '.join(GIVES[g] for g in rel.gives)}." if rel.gives else ""))
+    if how != "exact":
+        warn(f"Its boot executable is not the one of a good dump of {rel.name}: the disc may be modified.")
+    if iso.stat().st_size < rel.good_size:  # (cut short, or trimmed: checked fully after the build)
+        warn(f"The image is smaller than a good dump ({iso.stat().st_size} bytes, not {rel.good_size}): "
              "it may be incomplete.")
-    ok(f"Ratchet & Clank, {region} ({serial}): {iso}")
+    ok(f"Ratchet & Clank, {rel.region} ({rel.serial}): {iso}")
     return iso
+
+
+# --- 2c. Data discs (--data-iso) ----------------------------------------------------------------
+# Other releases' discs, as sources of data only (docs/setup.md, "Data discs"; rac3-native's decision 14): the game's
+# code always comes from the game's disc (--iso). Each data disc is checked (which release), then extracted with
+# tools/disc_extract.py into its own folder, assets/disc-<serial>-<version>/ (the same files and layout.txt as
+# assets/disc/), and listed in assets/data-discs.txt, which the game reads (runtime/kernel/disc.cpp). A data disc that
+# gives nothing the game's disc lacks (a PAL disc beside the North American one: the same five voices) is noted, not
+# extracted. setup-state.json keeps them ("data_discs"), so a later setup keeps them without --data-iso again.
+
+DATA_DISCS_FILE = ASSETS_DIR / "data-discs.txt"
+
+
+def data_disc_dir(rel):
+    return ASSETS_DIR / f"disc-{rel.serial}-{rel.version}"
+
+
+def check_data_disc(path, base_boot):
+    """A data disc given with --data-iso: its release, or the setup stops with what is wrong."""
+    iso = Path(path).expanduser().resolve()
+    if not iso.is_file():
+        fail(f"Data disc: file not found: {iso}")
+    rel, boot, version, how = identify_disc(iso)
+    if boot is None:
+        fail(f"Data disc {iso} is not a PlayStation 2 disc image (an ISO 9660 image).")
+    if rel is None:
+        if release_by_boot(boot) is None:
+            fail(f"Data disc {iso} is not a release of Ratchet & Clank the setup knows (its boot executable is {boot}).")
+        fail(f"Data disc {iso} is a release of Ratchet & Clank the setup does not know ({boot}, version {version or '?'}).")
+    if rel.boot == base_boot and rel.supported:
+        fail(f"Data disc {iso} is the same release as the game's disc ({rel.name}): give another release with --data-iso.")
+    if how != "exact":
+        warn(f"Data disc {iso}: its boot executable is not the one of a good dump of {rel.name}: the disc may be modified.")
+    if iso.stat().st_size < rel.good_size:
+        fail(f"Data disc {iso} is smaller than a good dump of {rel.name} ({iso.stat().st_size} bytes, not "
+             f"{rel.good_size}): it is incomplete. Dump the disc again.")
+    return iso, rel
+
+
+def data_discs_step(base_iso, new_paths, forced, drop):
+    """The data discs: the state's and the new ones (--data-iso) checked and extracted, assets/data-discs.txt written.
+    `drop` (--no-data-discs): every data disc forgotten and its files removed."""
+    state = load_state()
+    known = state.get("data_discs", [])
+    if drop:
+        for d in known:
+            if d.get("dir"):
+                shutil.rmtree(disc_extract.long_path(ROOT / d["dir"]), ignore_errors=True)
+        if DATA_DISCS_FILE.exists():
+            DATA_DISCS_FILE.unlink()
+        state.pop("data_discs", None)
+        save_state(state)
+        if known:
+            ok(f"Data discs removed ({len(known)})")
+        known = []
+        if not new_paths:
+            return
+    if not known and not new_paths:
+        if DATA_DISCS_FILE.exists():
+            DATA_DISCS_FILE.unlink()
+        return
+    base_boot = disc_boot(base_iso)
+    entries = {}  # by release (serial, version): the last one given wins
+    for d in known:
+        entries[(d["serial"], d["version"])] = dict(d)
+    for path in new_paths:
+        iso, rel = check_data_disc(path, base_boot)
+        entries[(rel.serial, rel.version)] = {"iso": str(iso), "serial": rel.serial, "region": rel.region,
+                                              "version": rel.version, "boot": rel.boot, "gives": list(rel.gives)}
+    listed = []
+    for key, d in entries.items():
+        rel = next((r for r in KNOWN_DISCS if (r.serial, r.version) == key), None)
+        if rel is None:
+            continue
+        if rel.boot == base_boot and rel.supported:  # (the game's disc changed to this release since)
+            warn(f"Data disc {rel.name}: now the game's disc, no longer a data disc")
+            if d.get("dir"):
+                shutil.rmtree(disc_extract.long_path(ROOT / d["dir"]), ignore_errors=True)
+            continue
+        if not rel.gives:
+            ok(f"Data disc {rel.name}: it gives nothing the game's disc lacks (the same voices), not extracted")
+            d["dir"] = ""
+            listed.append(d)
+            continue
+        out = data_disc_dir(rel)
+        d["dir"] = out.relative_to(ROOT).as_posix()
+        iso = Path(d["iso"])
+        have = iso.is_file()
+        fingerprint = f"{disc_fingerprint(iso)}:{sources_fingerprint(DISC_STEP[2])}" if have else d.get("fingerprint")
+        current = "disc" not in forced and d.get("fingerprint") == fingerprint
+        missing = disc_extract.layout_missing(out)
+        if missing is None and (current or not have):
+            ok(f"Data disc {rel.name} ({', '.join(GIVES[g] for g in rel.gives)}): up to date in {d['dir']}{os.sep}")
+            listed.append(d)
+            continue
+        if not have:
+            fail(f"The data disc {rel.name} must be extracted again ({missing}), and its image is gone ({iso}).\n"
+                 f"         Give it again with --data-iso, or forget it with --no-data-discs.")
+        print(f"  Extracting the data disc {rel.name} into {d['dir']}{os.sep}...", flush=True)
+        t = time.time()
+
+        def show(done, total):
+            progress(done, total)
+
+        try:
+            plan = disc_extract.extract(iso, out, show)
+        except (disc_extract.DiscError, OSError) as e:
+            fail(f"Extracting the data disc {rel.name} failed: {e}")
+        d["fingerprint"] = fingerprint
+        ok(f"Data disc {rel.name}: {len(plan.files)} files ({plan.total / 2**30:.2f} GB) in {d['dir']}{os.sep} in "
+           f"{time.time() - t:.0f} s ({', '.join(GIVES[g] for g in rel.gives)})")
+        listed.append(d)
+        state = load_state()
+        state["data_discs"] = list(entries.values())  # (kept at once: an interrupted setup does not extract it again)
+        save_state(state)
+    state = load_state()
+    state["data_discs"] = listed
+    save_state(state)
+    lines = [f"{d['dir']} {d['serial']} {d['region']} {d['version']} {d['boot']}\n" for d in listed if d.get("dir")]
+    if lines:
+        DATA_DISCS_FILE.write_text("# the data discs (written by the setup, --data-iso): folder, serial, region, version, "
+                                   "boot executable\n" + "".join(lines), encoding="ascii")
+    elif DATA_DISCS_FILE.exists():
+        DATA_DISCS_FILE.unlink()
+
+
+def data_discs_due():
+    """The data discs whose files are missing or not complete (their names)."""
+    return [d["serial"] + " " + d["version"] for d in load_state().get("data_discs", [])
+            if d.get("dir") and disc_extract.layout_missing(ROOT / d["dir"]) is not None]
 
 
 def print_code_inputs():
@@ -1790,6 +1984,10 @@ def main():
     ap = argparse.ArgumentParser(description="Sets up rac1-native: checks the system and your disc image, generates "
                                              "the game's code from it, builds the game and generates the game's data.")
     ap.add_argument("--iso", help="your disc image (Ratchet & Clank: NTSC-U SCUS-97199, or PAL SCES-50916)")
+    ap.add_argument("--data-iso", action="append", default=[], metavar="ISO",
+                    help="another release's disc, as a source of data only (the Japanese disc SCPS-15037: the Japanese "
+                         "voices); repeatable, kept for the next setups")
+    ap.add_argument("--no-data-discs", action="store_true", help="forget the data discs and remove their files")
     ap.add_argument("--update", action="store_true",
                     help="update to the latest release (or main on the development channel), then rebuild what changed")
     ap.add_argument("--channel", choices=("stable", "development"), default=None,
@@ -1825,6 +2023,8 @@ def main():
                 and not disc_steps_due(None, disc))
     if no_image:
         need_disc = False
+    for i, d in enumerate(args.data_iso):
+        args.data_iso[i] = str(Path(d).expanduser().resolve())
     total = 2 if no_image else 6 if not args.build_only else (4 if need_disc else 2)
     n = 0
 
@@ -1842,14 +2042,18 @@ def main():
         if not args.iso and known is None and disc is not None:
             warn("Something made from your disc must be made again (after an update): the setup needs your disc image.")
         iso = check_disc(args.iso)
+        for d in args.data_iso:  # (a wrong data disc stops the setup before anything is made)
+            check_data_disc(d, disc_boot(iso))
         if not args.build_only:
             next_step("Extracting your disc's files")
             extract_disc(iso, args.force)
+            data_discs_step(iso, args.data_iso, args.force, args.no_data_discs)
         next_step("Generating the game's code from your disc")
         prepare_code(iso, args.force, jobs)
     elif no_image:
         ok(f"Your disc image is not needed: everything made from it is up to date ({DISC_DIR.relative_to(ROOT)}{os.sep} "
            "and the rest).")
+        data_discs_step(None, args.data_iso, args.force, args.no_data_discs)
 
     next_step("Building the game")
     if args.no_build:

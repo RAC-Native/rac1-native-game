@@ -14,6 +14,7 @@
 #include <game/enhance/graphics.h>
 #include <game/enhance/update_notice.h>
 #include <game/enhance/vibration.h>
+#include <game/enhance/voice_language.h>
 
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -61,6 +62,9 @@ constexpr uint32_t VENDOR_ALL = SETTINGS + 6;  // 1: the Vendor's "All Ammo" ent
 constexpr uint32_t VIBRATION = SETTINGS + 7;   // the controller's vibration: 0 off, 1 low, 2 high (vibration.h, #10)
 constexpr uint32_t TRIGGERS = SETTINGS + 8;    // 1: a DualSense's adaptive triggers and light bar (vibration.h, #10)
 constexpr uint32_t SKIP_SCENES = SETTINGS + 9; // 1: Start skips every cutscene and movie (advanced_skip_cutscenes)
+constexpr uint32_t VOICE_STEP = SETTINGS + 10; // the Voice row's step byte: the widget steps it, voice_step moves the
+                                               // voice language (voice_language.h: Same as Text, the five, Japanese) and
+                                               // puts it back to 0 (more values than the widget's 4, as graphics.cpp)
 constexpr uint32_t ENTRIES = ADV + 0x680;      // the Options list's entries, ours added (0x100 before ten rows overflowed into HELP)
 constexpr uint32_t HELP = ADV + 0x180;         // the Options help label's texts, ours added
 constexpr uint32_t PICTURES = ADV + 0x600;     // the Options picture's images (sector, count), ours added (0x1c0 before two more rows did not fit)
@@ -91,16 +95,16 @@ constexpr OvConst<0x001b6678u> TALL_PAGE{};          // a page whose slot 3 box 
 
 // Our text ids, after the game's (0x4e00..0x5300 in the level text tables)
 constexpr int32_t TEXT_FIRST = 0x7f00;
-enum : int32_t { T_ADVANCED, T_HELP, T_QUICK_SELECT, T_NORMAL, T_PAUSE, T_CONTROLS, T_CLASSIC, T_MODERN, T_MOVEMENT, T_ORIGINAL, T_STRAFING, T_RAC3, T_FADES, T_FAST, T_FADES_ORIGINAL, T_SOUND_51, T_SOUND_71, T_BUY_ALL, T_OFF, T_ON, T_NO_ZOOM, T_VIBRATION, T_LOW, T_HIGH, T_TRIGGERS, T_SKIP_SCENES, T_ALWAYS, T_COUNT };
+enum : int32_t { T_ADVANCED, T_HELP, T_QUICK_SELECT, T_NORMAL, T_PAUSE, T_CONTROLS, T_CLASSIC, T_MODERN, T_MOVEMENT, T_ORIGINAL, T_STRAFING, T_RAC3, T_FADES, T_FAST, T_FADES_ORIGINAL, T_SOUND_51, T_SOUND_71, T_BUY_ALL, T_OFF, T_ON, T_NO_ZOOM, T_VIBRATION, T_LOW, T_HIGH, T_TRIGGERS, T_SKIP_SCENES, T_ALWAYS, T_VOICE, T_VOICE_VALUE, T_COUNT };
 // per language (0x15ed88: 0 English, 2 French, 3 German, 4 Spanish, 5 Italian; French in English
 // for now, the font's accented letters not looked at yet)
 constexpr const char* TEXTS[6][T_COUNT] = {
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always"},
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always"},
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always"},
-    {"Erweitert", "Extra-Einstellungen der PC-Version", "Schnellwahl", "Normal", "Pause", "Zielen", "Original", "Modern", "Bewegung", "Original", "Strafing", "RAC 3", "Blenden", "Schnell", "Original", "5.1", "7.1", "Alle Munition", "Aus", "An", "Modern, ohne Zoom", "Vibration", "Schwach", "Stark", "Adaptive Trigger", "Szenen ueberspringen", "Immer"},
-    {"Avanzado", "Ajustes extra de la version PC", "Seleccion rapida", "Normal", "Pausa", "Apuntado", "Original", "Moderno", "Movimiento", "Original", "Strafing", "RAC 3", "Fundidos", "Rapidos", "Originales", "5.1", "7.1", "Toda la municion", "No", "Si", "Moderno, sin zoom", "Vibracion", "Baja", "Alta", "Gatillos adaptativos", "Saltar escenas", "Siempre"},
-    {"Avanzate", "Impostazioni extra della versione PC", "Scelta rapida", "Normale", "Pausa", "Mira", "Originale", "Moderna", "Movimento", "Originale", "Strafing", "RAC 3", "Dissolvenze", "Rapide", "Originali", "5.1", "7.1", "Tutte le munizioni", "No", "Si", "Moderna, senza zoom", "Vibrazione", "Bassa", "Alta", "Grilletti adattivi", "Salta filmati", "Sempre"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Voice", ""},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Voice", ""},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Voice", ""},
+    {"Erweitert", "Extra-Einstellungen der PC-Version", "Schnellwahl", "Normal", "Pause", "Zielen", "Original", "Modern", "Bewegung", "Original", "Strafing", "RAC 3", "Blenden", "Schnell", "Original", "5.1", "7.1", "Alle Munition", "Aus", "An", "Modern, ohne Zoom", "Vibration", "Schwach", "Stark", "Adaptive Trigger", "Szenen ueberspringen", "Immer", "Stimmen", ""},
+    {"Avanzado", "Ajustes extra de la version PC", "Seleccion rapida", "Normal", "Pausa", "Apuntado", "Original", "Moderno", "Movimiento", "Original", "Strafing", "RAC 3", "Fundidos", "Rapidos", "Originales", "5.1", "7.1", "Toda la municion", "No", "Si", "Moderno, sin zoom", "Vibracion", "Baja", "Alta", "Gatillos adaptativos", "Saltar escenas", "Siempre", "Voces", ""},
+    {"Avanzate", "Impostazioni extra della versione PC", "Scelta rapida", "Normale", "Pausa", "Mira", "Originale", "Moderna", "Movimento", "Originale", "Strafing", "RAC 3", "Dissolvenze", "Rapide", "Originali", "5.1", "7.1", "Tutte le munizioni", "No", "Si", "Moderna, senza zoom", "Vibrazione", "Bassa", "Alta", "Grilletti adattivi", "Salta filmati", "Sempre", "Voci", ""},
 };
 constexpr uint32_t STRING_SIZE = 0x30;
 static_assert(6 * T_COUNT * STRING_SIZE <= 0x3000, "the Advanced page's texts fit in 0xfb000..0xfe000");
@@ -127,6 +131,7 @@ constexpr Row SETTINGS_ROWS[] = {
     {"vibration", 6, VIBRATION, T_VIBRATION, {T_OFF, T_LOW, T_HIGH, -1}, false},  // (the machine's pad: not with the saves)
     {"adaptive_triggers", 9, TRIGGERS, T_TRIGGERS, {T_OFF, T_ON, -1, -1}, false},  // (shown only with a DualSense: row_shown)
     {"skip_cutscenes", 10, SKIP_SCENES, T_SKIP_SCENES, {T_ORIGINAL, T_ALWAYS, -1, -1}},
+    {"voice_step", 11, VOICE_STEP, T_VOICE, {T_VOICE_VALUE, T_VOICE_VALUE, -1, -1}, false},  // (kept as voice_language: voice_step)
 };
 // (ids 7 and 8, keys "ship" and "clank": the ship selector and Clank's movement, removed; a settings file or a save
 // that has them loads, the values ignored. Never reused)
@@ -175,6 +180,7 @@ std::filesystem::path prefs_path() {
 }
 
 int g_audio_channels = 0;   // Options > Sound's 5.1 / 7.1 (6 / 8), else 2; 0: not read yet (advanced_audio_channels)
+int32_t g_voice_choice = -1;  // the Voice row's choice as kept in the preferences (voice_language.h; RAC1_VOICE_LANGUAGE over it)
 std::string g_update_skip;  // the update "Skip Version" chose (update_notice.h): a release's tag, or main's commit
 
 // orig: (none) — enhancement: a preferences file's "name value" lines, each given to `line`; false when none
@@ -197,6 +203,15 @@ bool prefs_read(const std::filesystem::path& path) {
             return;
         }
         if (std::strcmp(name, "audio_channels") == 0) return;  // (advanced_audio_channels)
+        if (std::strcmp(name, "voice_language") == 0) {        // (the Voice row: voice_language.h)
+            const int32_t c = voice_choice_from_name(value);
+            if (c >= -1) {
+                g_voice_choice = c;
+                voice_choice_set(c);
+            }
+            return;
+        }
+        if (std::strcmp(name, "voice_step") == 0) return;
         char* end = nullptr;
         const unsigned long v = std::strtoul(value, &end, 10);
         if (end == value || *end != 0) return;
@@ -235,7 +250,9 @@ void settings_save() {
     std::error_code ec;
     if (path.has_parent_path()) std::filesystem::create_directories(path.parent_path(), ec);
     std::string text;
-    for (const Row& r : SETTINGS_ROWS) text += std::string(r.key) + " " + std::to_string(lbu(r.byte)) + "\n";
+    for (const Row& r : SETTINGS_ROWS)
+        if (r.byte != VOICE_STEP) text += std::string(r.key) + " " + std::to_string(lbu(r.byte)) + "\n";
+    text += std::string("voice_language ") + voice_choice_name(g_voice_choice) + "\n";
     text += "update_check_off " + std::to_string(lbu(UPDATE_OFF)) + "\n";
     text += "update_channel " + std::to_string(lbu(UPDATE_DEV)) + "\n";
     if (!g_update_skip.empty()) text += "update_skip " + g_update_skip + "\n";
@@ -311,7 +328,42 @@ bool save_file_apply(const std::vector<uint8_t>& d) {
 void ee_copy(uint32_t dst, uint32_t src, uint32_t n) {
     for (uint32_t i = 0; i < n; i += 4) sw(dst + i, lwu(src + i));
 }
+
+// --- The Voice row (voice_language.h) ---
+// The voice languages' names in each text language (0x15ed88; French in English as the page's other texts), by the
+// game's codes (0 English, 1 Japanese, 2 French, 3 German, 4 Spanish, 5 Italian), and "the same as the text"
+constexpr const char* VOICE_NAMES[6][7] = {
+    {"English", "Japanese", "French", "German", "Spanish", "Italian", "Same as Text"},
+    {"English", "Japanese", "French", "German", "Spanish", "Italian", "Same as Text"},
+    {"English", "Japanese", "French", "German", "Spanish", "Italian", "Same as Text"},
+    {"Englisch", "Japanisch", "Franzoesisch", "Deutsch", "Spanisch", "Italienisch", "Wie der Text"},
+    {"Ingles", "Japones", "Frances", "Aleman", "Espanol", "Italiano", "Como el texto"},
+    {"Inglese", "Giapponese", "Francese", "Tedesco", "Spagnolo", "Italiano", "Come il testo"},
+};
+
+// orig: (none) — enhancement: the Voice row's value text in the text language `lang`
+const char* voice_value_text(uint32_t lang) {
+    const int32_t c = g_voice_choice == 1 && !voice_japanese_available() ? -1 : g_voice_choice;  // (the disc gone: the text's)
+    return VOICE_NAMES[lang < 6 ? lang : 0][c >= 0 && c < 6 ? c : 6];
+}
+
+// orig: (none) — enhancement: the Voice row stepped (`dir` +1 / -1) through voice_choices(), the step byte put back,
+// the choice kept
+void voice_step(int32_t dir) {
+    const std::vector<int32_t> c = voice_choices();
+    int32_t at = 0;
+    for (size_t i = 0; i < c.size(); ++i)
+        if (c[i] == g_voice_choice) at = static_cast<int32_t>(i);
+    const int32_t n = static_cast<int32_t>(c.size());
+    g_voice_choice = c[static_cast<size_t>(((at + dir) % n + n) % n)];
+    voice_choice_set(g_voice_choice);
+    sb(VOICE_STEP, 0);
+    std::printf("[advanced] Voice: %s\n", voice_choice_name(g_voice_choice));
+}
 }  // namespace
+
+// orig: (none) — enhancement (advanced.h)
+void advanced_prefs_load() { settings_load(); }
 
 // orig: (none) — enhancement (advanced.h)
 void advanced_menu_install() {
@@ -444,7 +496,13 @@ uint32_t advanced_text(int32_t id) {
     if (id < TEXT_FIRST || id >= TEXT_FIRST + T_COUNT) return 0;
     uint32_t lang = lwu(0x0015ed88);
     if (lang >= 6) lang = 0;
-    return STRINGS + (lang * T_COUNT + static_cast<uint32_t>(id - TEXT_FIRST)) * STRING_SIZE;
+    const uint32_t at = STRINGS + (lang * T_COUNT + static_cast<uint32_t>(id - TEXT_FIRST)) * STRING_SIZE;
+    if (id == TEXT_FIRST + T_VOICE_VALUE) {  // (the Voice row's value, made at each lookup)
+        char* str = static_cast<char*>(ee_ram_ptr(at));
+        std::strncpy(str, voice_value_text(lang), STRING_SIZE - 1);
+        str[STRING_SIZE - 1] = 0;
+    }
+    return at;
 }
 
 namespace {
@@ -1504,6 +1562,11 @@ void advanced_setting_changed(uint32_t byte) {
         if (!g_advanced_disabled && g_loaded) settings_save();
         return;
     }
+    if (byte == VOICE_STEP) {  // (the Voice row: cross steps it forward)
+        if (lbu(VOICE_STEP) != 0) voice_step(1);
+        if (!g_advanced_disabled && g_loaded) settings_save();
+        return;
+    }
     // Aiming = Modern needs a strafe (Strafing or RAC 3): turning it on when Movement is Original
     // turns Strafing on; turning Movement back to Original turns Aiming off
     if (byte == CONTROLS && lbu(CONTROLS) != 0 && lbu(MOVEMENT) == 0) sb(MOVEMENT, 1);
@@ -1628,6 +1691,11 @@ bool advanced_settings_dpad(uint32_t w, uint32_t e) {
     if (w != ROWS_WIDGET || (pressed & 0xa000u) == 0) return false;
     // our Advanced rows: left / right step the value back / forward (the widget's cross steps it forward)
     const uint32_t b = lwu(e + 4);
+    if (b == VOICE_STEP) {
+        voice_step((pressed & 0x8000u) != 0 ? -1 : 1);
+        if (!g_advanced_disabled && g_loaded) settings_save();
+        return true;
+    }
     for (const Row& r : SETTINGS_ROWS)
         if (r.byte == b) {
             const uint32_t n = row_values(r);
