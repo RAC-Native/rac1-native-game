@@ -3,6 +3,7 @@
 // Camera (a list of settings, each a byte cycled through its texts), Subtitles and Help Desk
 // (on / off switches), Quit Game.
 #include <game/enhance/advanced.h>
+#include <game/enhance/language.h>
 #include <game/ovl/memory_card.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/lib/libc.h>
@@ -306,6 +307,7 @@ int32_t menu_switches_update(uint32_t w) {
         } else {
             const uint32_t b = lwu(e + 4);
             if (b != 0) sb(b, lbu(b) == 0 ? 1u : 0u);
+            language_switch_changed(b);  // enhancement: the Subtitles switch kept as the choice (Options > Language)
         }
     }
     if (lw(w + 0x38) != old) moby_sound_start(1, 0x11, lwu(w + 0x14));

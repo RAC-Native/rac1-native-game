@@ -1,6 +1,6 @@
 # Settings
 
-The port's own settings: four pages added to the game's Options (Display, Graphics, Controls, Advanced), the
+The port's own settings: the Language page and four pages added to the game's Options (Display, Graphics, Controls, Advanced), the
 Original, Modern or Experimental choice at New Game, the update check, where settings are kept, and the debug tools.
 
 ## Removed compromises and enhancements
@@ -203,16 +203,42 @@ the machine's, kept in `controls.txt`, not with the saves, and no New Game mode 
 | Vibration | Off, Low, High |
 | Adaptive Triggers | Off, On (shown only when the pad in use is a DualSense) |
 | Skip Cutscenes | Original, Always |
-| Voice | Same as Text, English, French, German, Spanish, Italian, Japanese (only with the Japanese data disc); see [Voice](#voice) |
 
 See [Advanced options](advanced.md) for what each one does and how it is built.
 
+### Language
+
+Everything about language is on one page, **Options > Language**, in the main menu (the game's own Language entry
+opens it) and in the pause menu (after Subtitles). Its rows step with left and right, as the other pages' rows:
+
+| Row | Values | Where |
+|---|---|---|
+| Text | English, French, German, Spanish, Italian | main menu only |
+| Voice | Same as Text (the default), English, French, German, Spanish, Italian, Japanese (only with the Japanese data disc); see [Voice](#voice) | both |
+| Subtitles | Off, On | both |
+
+- **Text** is the game's own language (`0x15ed88`): the menus, the HUD, the help and the subtitles' texts. It is
+  what the game's own Language page chose (a list of the five with a tick), now a row; it is kept as the console's
+  language (`console.txt`, below). As in the game, it is only in the main menu: a level's texts are copied for the
+  language when the level loads, so it cannot change in the pause menu.
+- **Voice** is the spoken language (below). It was the Advanced page's last row before.
+- **Subtitles** is the game's own Subtitles switch (the pause menu's Options > Subtitles, one of the game's options,
+  kept in its save), offered in the main menu too, before a game exists. The choice is kept in the preferences
+  (`subtitles on` / `off` in `advanced_options.txt`) and put in the game's switch whenever the game reads a state: a
+  New Game (the disc's default save, where they are off), a loaded save (its own value is replaced, also in a save
+  from before this page), the title's. So what was chosen last, on this page or on the game's own Subtitles page
+  (which changes the preference too), is what every game gets. Until it is chosen once, the preferences have no
+  `subtitles` line and the game's own value stays (off for a new game, the save's for a load).
+
+The page is `src/game/enhance/language.{h,cpp}`. With every enhancement off (the headless runs) the game's own
+Language page and Subtitles switch are there as they are.
+
 ### Voice
 
-The game has one language setting (Options > Language), which picks both its texts and its voices. The
-**Voice** row on the Advanced page sets the voices apart: the game's own Language row keeps choosing the texts
-(the game's language, `0x15ed88`), and Voice chooses the spoken language. **Same as Text**, the default, is the
-original: the voices follow the texts, and nothing of the game changes. Any other value is an enhancement.
+The game has one language, which picks both its texts and its voices. The **Voice** row of the Language page sets
+the voices apart: the Text row keeps choosing the texts (the game's language, `0x15ed88`), and Voice chooses the
+spoken language. **Same as Text**, the default, is the original: the voices follow the texts, and nothing of the game
+changes. Any other value is an enhancement.
 
 - **English, French, German, Spanish, Italian**: the North American disc (and the PAL one, the same recordings)
   carries all five, so any voice goes with any text.
@@ -314,7 +340,7 @@ To try the panel without a new release: `RAC1_UPDATE_FAKE=0.9.0` (or `dev:12`) w
 | What | Where |
 |---|---|
 | Display and Graphics pages | `~/.config/rac1-native/graphics_options.txt` |
-| Advanced page (and the update check's Skip Version, the Sound page's 5.1 / 7.1) | `~/.config/rac1-native/advanced_options.txt` |
+| Advanced page, the Language page's Voice and Subtitles (and the update check's Skip Version, the Sound page's 5.1 / 7.1) | `~/.config/rac1-native/advanced_options.txt` |
 | The update check's last answer | `~/.config/rac1-native/update_check.txt` |
 | Controls | `~/.config/rac1-native/controls.txt` (see [Input](input.md#the-bindings-file-controlstxt)) |
 | The picture settings, the Advanced settings and the mode, per save | `save<N>.pc` next to each save (see [Saves](saves.md#the-pc-settings-next-to-each-save)) |
@@ -334,7 +360,8 @@ without that file (an older one) keeps the current settings.
 **The language.** As on the PS2, the game doesn't keep its language in its save: at the start it
 takes the console's language. The port has no console, so it keeps one for it: the language last
 chosen in the game's Options is kept in `console.txt` and is the console's language at the next
-start, as if the player had set their PS2 to it. The first time, it is the system's language when
+start, as if the player had set their PS2 to it (the Language page's Text row, or the game's own page with every
+enhancement off). The first time, it is the system's language when
 the disc has it (English, French, German, Spanish or Italian), else English. A headless run always
 starts in English and keeps nothing; `RAC1_LANGUAGE` (testing) sets the language for one run.
 

@@ -22,11 +22,12 @@ The Advanced page has these rows:
 | Vibration | Off, Low, High | enhancement (kept as the machine's preference, not with the saves) |
 | Adaptive Triggers | Off, On | enhancement, shown only when the pad in use is a DualSense (kept as the machine's preference) |
 | Skip Cutscenes | Original, Always | enhancement |
-| Voice | Same as Text, English, French, German, Spanish, Italian, Japanese (with the Japanese data disc) | enhancement (kept as the machine's preference, not with the saves) |
 
 All of it is in `src/game/enhance/advanced.{h,cpp}` (Buy All Ammo's Vendor entry in
-`src/game/enhance/vendor_buy_all.{h,cpp}`, the Voice's sites in `src/game/enhance/voice_language.{h,cpp}`). None of it is a port: every function there is annotated
-`// orig: (none) — enhancement`.
+`src/game/enhance/vendor_buy_all.{h,cpp}`). None of it is a port: every function there is annotated
+`// orig: (none) — enhancement`. The Voice row that was last on this page is now on the Language page, with the text
+language and the subtitles ([Settings](settings.md#language)); its line `voice_language` stays in the same
+preferences file.
 
 ## How the page is built
 
@@ -36,7 +37,9 @@ original's Camera page (0x1b5a60), its title and its "settings" widget (the widg
 rows are a name, the byte it sets and up to four value texts; Cross cycles the value) into a block
 of EE memory the game never uses (0xf0000 to 0xf2000, its texts at 0xfb000 to 0xfe000, inside the PS2 kernel's first megabyte, which
 the port does not use since its kernel is the host). It then writes its own rows and texts there and
-inserts Graphics, Controls and Advanced into the Options list before Quit Game. The main menu gets
+inserts Language (`language.cpp`, the same way: its block 0xfa200 to 0xfa600, its texts 0x7fc0 and up), Graphics,
+Controls and Advanced into the Options list before Quit Game; in the main menu the game's own Language entry opens our
+Language page instead of the game's list. The main menu gets
 the same pages (`title_menu_page_start`). The game's text lookup (0x203ad8) asks `advanced_text`
 first for the page's own text ids (0x7f00 and up), in English, German, Spanish and Italian (French
 shows English for now).
@@ -56,12 +59,14 @@ port's fast fades). Left and right on a row step the value (`advanced_settings_d
   Vibration and Adaptive Triggers (the machine's pad).
 
 The ids in `save<N>.pc`: Quick Select 1, Aiming 2, Movement 3, Fades 4, Buy All Ammo 5, Skip Cutscenes 10 (Vibration 6,
-Adaptive Triggers 9 and Voice 11 have ids but are not written with the saves; 7 and 8 are removed rows, never reused).
+Adaptive Triggers 9 have ids but are not written with the saves; 7 and 8 are removed rows, and 11 was the Voice row,
+now on the Language page, never written with the saves: none reused).
 
-**The Voice row** has more values than the widget's four: its byte is a step byte with two values whose texts are both
-the row's value, made at each lookup from the choice (as the Graphics page's rows); when Cross or left / right step it,
-the choice moves on and the byte goes back to 0. The choice is kept as `voice_language same|en|fr|de|es|it|ja` in the
-preferences. What it changes is in [Settings](settings.md#voice); New Game's modes leave it as it is.
+**The Language page's rows** have more values than the widget's four: each byte is a step byte with two values whose
+texts are both the row's value, made at each lookup (as the Graphics page's rows); when Cross or left / right step it,
+the setting moves on and the byte goes back to 0. Voice is kept as `voice_language same|en|fr|de|es|it|ja`, Subtitles as
+`subtitles on|off` (only once chosen) in the preferences, the text language as the console's (`console.txt`). What they
+change is in [Settings](settings.md#language); New Game's modes leave them as they are.
 
 A preferences file or a `save<N>.pc` written by an earlier build may hold a setting that has since been
 removed (`ship` and `clank`, the ship selector and Clank's movement, ids 7 and 8): it loads, and those
