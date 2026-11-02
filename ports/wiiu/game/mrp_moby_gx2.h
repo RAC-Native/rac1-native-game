@@ -63,6 +63,11 @@ bool mrp_moby_gx2_ready();
 // ((2026-10-30) `part`: 0 every moby, 1 the draw loop's first chain alone (not Key::deferred), 2 the deferred mobys alone - drawn after the
 // drop shadows, mrp_world_gx2_draw_shadows: the casters over their own shadow, as the game chains them)
 void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp, int part = 0);
+// ((2026-11-02) RAC1_WIIU_MOBY_DL, default 1) the TV's mobys recorded into a display list ahead of their place (the parts 1 and 2 with
+// `two_parts`, else part 0): false when not recorded (drawn directly then). mrp_moby_gx2_call: the list of `part` (0 / 1 the first, 2 the
+// second) called; false when there is none
+bool mrp_moby_gx2_record(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp, bool two_parts);
+bool mrp_moby_gx2_call(int part);
 
 // (testing, RAC1_WIIU_MRP_DEBUG=<m>[,<m>...]: the debug modes in turn, each for 50 game frames from game frame
 // RAC1_WIIU_MRP_DEBUG_AT (default 125) on, the last one kept; a mode's bits: 1 no depth test, 2 a plain grey (no texture, blending or alpha

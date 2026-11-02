@@ -1276,6 +1276,30 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   blocks' writing 5.8 - GX2-thread bound: plan_alloc's ring may GX2DrawDone; the mobys' ~3 ms). Recording the mobys' draws in a display
   list during the wait: their block ring may GX2DrawDone at a wrap inside the recording - not done.
 
+### Less CPU per draw on the main thread: the mobys' display lists, the world's plan ahead (2026-11-02)
+
+- **Measured first** (RAC1_WIIU_GPU_TIME=2, Veldin's wide view, 43 ms frames): the world's GPU pass 27.7 ms, of it the CP's gaps (the GPU
+  done, the next commands not there) 10.4 in the tfrag pass and 13.2 in the ties' - the GPU waits for the CPU's commands; the mobys' pass
+  9.2 with the CP's lead 0. The main thread: the draws' world join 15.2 -> 24.7 (the second half on core 0), then 18 ms of draws (the
+  world's GX2 10 ms - 8000 commands into 1075 GX2 draws, the plan and blocks 6 -, the mobys' ~8 - ~1700 draws in two calls).
+- **RAC1_WIIU_MOBY_DL (default 1; mrp_moby_gx2_record / _call, wiiu_gfx.cpp draw_frame):** the TV's mobys (both parts when the drop
+  shadows go between them) recorded into GX2 display lists before the draws' world join, called where they were drawn - the GPU's order
+  the same. Recorded only when nothing inside can wait for the GPU: the level's textures and geometry ready (geo_sync's appends before the
+  recording), the estimate within the buffer (2 x 1.5 MB; measured 155-164 bytes a draw, 320 counted, the split's pass counted), the
+  blocks' ring wrapped first when the call may not fit (per draw command its block and a terms block, per joints' range 8 KB); a wrap that
+  would still wait inside the recording gives no block (ring_alloc: GX2DrawDone's flush would land in the list - a hang). The log's
+  "display lists" line every 120 recorded frames. (Probe, RAC1_WIIU_DL_PROBE=1: the words GX2 writes for a block and a draw, printed once.)
+- **RAC1_WIIU_PLAN_AHEAD (default 1; mrpw g_wiiu_tail_hook, mrp_world_gx2.cpp plan_ahead):** mrpwm::plan_build at the second half's end
+  on its core (the commands, records and instances still in its cache): 3.7 ms there in the wide view, against ~5 on the main thread; the
+  draws' first call takes it when made for the same frame, mode, kinds and level. Alone it lengthens the second half as much as it saves
+  the main thread; with the mobys recorded in the longer wait the frame gains both.
+- **Measured** (the same build, both on / both off, RAC1_REALTIME=0 RAC1_HERO_AT=-1@200,171.44,147.63,30.48,2.062 idle): the wide view's
+  windows **40.9-44.1 -> 37.8-39.9 ms**; main: the moby recording 13.8 -> 19.3, the world join -> 27.4, TV drawn 38.1. Shots at 300 / 700:
+  the differences are an animated effect on the ground present in some shots and not others, in both versions (also with the game thread
+  off): no difference of the change's.
+- **Left:** the main thread still waits ~8 ms for the second half (build_triangles, the tfrags' block, the plan); the GX2 calls ~3.5 us a
+  draw (the world's 1075, the mobys' 1700 in the wide view): the GPU idles while they are made.
+
 ### Veldin -> Novalis: the black screen (2026-11-02)
 
 - **Daino:** Novalis never came after Veldin (a black screen). On the console (RAC1_LEVEL=0 RAC1_GOTO=1@300, the story's cards and three

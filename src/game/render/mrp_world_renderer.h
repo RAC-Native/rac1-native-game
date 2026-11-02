@@ -67,6 +67,10 @@ extern bool g_wiiu_sky_at_prepare;
 // orig: (host) the Wii U: the frame's chain read (its reader joined, ports/wiiu/game/wiiu_gfx.cpp): its GS registers at the first world
 // pass kept for the next frame's preparation, which then does not wait for the reader (RAC1_WIIU_REGS_LAST=0: it waits, as before)
 void mrp_world_wiiu_chain_joined();
+// ((2026-11-02) the Wii U) called at the end of the preparation's second half, on the core that ran it, once the frame is readable
+// (frame_view): the backend's CPU work on the frame done there while its data is in that core's cache (mrp_world_gx2.cpp: the merged
+// draws' plan). nullptr: none
+extern void (*g_wiiu_tail_hook)();
 #endif
 // orig: (host) the same in two halves: _async starts the scene's build (on a worker thread, RAC1_MRPW_THREAD=0 not),
 // after it mrp_world_skip_ranges() is known; the host may then read the frame's chain (it only reads EE memory) and must

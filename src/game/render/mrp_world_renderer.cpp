@@ -6202,6 +6202,7 @@ void wiiu_prep_tail() {
     g_ms_head = 0.0;
     ++g_wiiu_serial;
     F.active = true;
+    if (g_wiiu_tail_hook != nullptr) g_wiiu_tail_hook();
     ctl::mark(ctl::kPrep1);
 }
 
@@ -6237,6 +6238,8 @@ void wiiu_prep_dispatch() {
     w.cv.notify_all();
 }
 }  // namespace
+
+void (*g_wiiu_tail_hook)() = nullptr;
 
 // orig: (host) see mrp_world_backend.inc
 void mrp_world_wiiu_tfrag_join(double* out_ms) {

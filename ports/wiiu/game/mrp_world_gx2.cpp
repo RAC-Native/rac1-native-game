@@ -682,6 +682,41 @@ struct Merged {
     void* own = nullptr;        // the frame's own indices
 } g_mg;
 
+// ((2026-11-02) RAC1_WIIU_PLAN_AHEAD, default 1) the frame's plan (mrpwm::plan_build) made at the end of the world's second half, on its
+// core (mrpw's g_wiiu_tail_hook): the frame's draw commands, records and instances were just written there and are still in its cache -
+// the main thread read them cold (~5 ms of a wide view's frame). The draws' first call takes it when it was made for the same frame,
+// mode, kinds and level; else plans as before. (g_mg.plan is the main thread's only between the join and the frame's last call: the
+// next prepare's second half starts after them)
+struct Ahead {
+    uint64_t serial = ~0ull, loads = ~0ull;
+    int mode = -1, kinds = -1;
+    bool ok = false;
+    double ms = 0.0, main_ms = 0.0;  // (the log's: the plans made ahead, those made by the main thread)
+    uint64_t made = 0, used = 0, main = 0;
+} g_ahead;
+bool plan_ahead_on() {
+    static const bool on = std::getenv("RAC1_WIIU_PLAN_AHEAD") == nullptr || std::atoi(std::getenv("RAC1_WIIU_PLAN_AHEAD")) != 0;
+    return on;
+}
+void plan_ahead() {
+    g_ahead.ok = false;
+    if (!g_ready || g_merge <= 0 || (g_debug & (256 | 32)) != 0 || g_mlevel.loads == ~0ull || g_mlevel.loads != g_geo.loads) return;
+    mrpwb::FrameView F;
+    if (!mrpwb::frame_view(F)) return;
+    int kinds = 3;
+    if ((g_debug & 64) != 0) kinds &= 1;
+    if ((g_debug & 8) != 0) kinds &= 2;
+    const auto t0 = std::chrono::steady_clock::now();
+    mrpwm::plan_build(F, g_mlevel, kinds, g_merge, g_mg.plan);
+    g_ahead.serial = F.serial;
+    g_ahead.loads = g_mlevel.loads;
+    g_ahead.mode = g_merge;
+    g_ahead.kinds = kinds;
+    g_ahead.ok = true;
+    ++g_ahead.made;
+    g_ahead.ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+}
+
 // orig: (host) the frame's merged draws made and written (once per frame: false, none - the per-draw path draws this call): the plan
 // (mrpwm::plan_build), the run table (the runs drawn: their 4 words, swapped as the resident colours' - the same R32UI reads -), the
 // frame's own indices, the uniform blocks in one allocation: a slot per instance drawn alone (its InstGpu, the record's flag 1: the run
@@ -699,7 +734,15 @@ bool merged_sync(const mrpwb::FrameView& F, int kinds, bool swap) {
     G.swap = swap;
     const uint64_t wraps0 = g_pring_wraps;
     mrpwm::Plan& P = G.plan;
-    mrpwm::plan_build(F, g_mlevel, kinds, g_merge, P);
+    if (g_ahead.ok && g_ahead.serial == F.serial && g_ahead.mode == g_merge && g_ahead.kinds == kinds && g_ahead.loads == g_geo.loads && P.serial == F.serial) {
+        ++g_ahead.used;
+    } else {
+        const auto tp = std::chrono::steady_clock::now();
+        mrpwm::plan_build(F, g_mlevel, kinds, g_merge, P);
+        g_ahead.main_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tp).count();
+        ++g_ahead.main;
+    }
+    g_ahead.ok = false;
     const std::vector<mrpwb::InstGpu>& insts = *F.insts;
     const std::vector<uint32_t>& cmds = *F.cmds;
     const std::vector<mrpwb::DrawCmd>& draws = *F.draws;
@@ -1994,6 +2037,7 @@ bool mrp_world_gx2_init() {
     const char* pj = std::getenv("RAC1_WIIU_WORLD_PROJ");
     g_mrp_world_projection = pj != nullptr && std::strcmp(pj, "vu") == 0 ? 1 : 0;
     g_ready = true;
+    if (plan_ahead_on()) g_wiiu_tail_hook = plan_ahead;  // ((2026-11-02) the merged draws' plan at the second half's end)
     gx2_perf_init();
     if (!variant) variants_load(0, g_sh);  // (its pixel shader's other builds, Gx2Perf; not for another build of the shaders)
     if (!variant) fast_load(0, g_sh);      // (the fast pixel shader's pairs, Gx2Perf::fast)
@@ -2008,6 +2052,7 @@ bool mrp_world_gx2_init() {
 // orig: (host) see mrp_world_gx2.h
 void mrp_world_gx2_shutdown() {
     if (!g_ready) return;
+    g_wiiu_tail_hook = nullptr;
     GX2DrawDone();
     tex_free();
     geo_free();
@@ -2864,6 +2909,13 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
                     static_cast<double>(g_tris) / 120.0, static_cast<double>(g_blocks) / 120.0, static_cast<double>(g_batches) / 120.0, g_cpu_ms / 120.0,
                     g_plan_ms / 120.0, static_cast<unsigned long long>(g_refused), static_cast<unsigned long long>(g_skipped), insts.size(), g_mg.plan.items.size(),
                     g_mg.plan.instanced, g_mg.plan.instanced_insts, g_mg.plan.conflicts + g_mg.plan.unmatched, g_mg.plan.conflicts, g_mg.plan.copied);
+        std::printf("[wiiu] mrp_world_gx2: the merged draws' plan (RAC1_WIIU_PLAN_AHEAD): %llu made by the second half's core (%.2f ms each), %llu of them "
+                    "used; %llu made by the main thread (%.2f ms each)\n",
+                    static_cast<unsigned long long>(g_ahead.made), g_ahead.made > 0 ? g_ahead.ms / static_cast<double>(g_ahead.made) : 0.0,
+                    static_cast<unsigned long long>(g_ahead.used), static_cast<unsigned long long>(g_ahead.main),
+                    g_ahead.main > 0 ? g_ahead.main_ms / static_cast<double>(g_ahead.main) : 0.0);
+        g_ahead.made = g_ahead.used = g_ahead.main = 0;
+        g_ahead.ms = g_ahead.main_ms = 0.0;
         if (g_tready)
             std::printf("[wiiu] mrp_world_gx2: tfrag, last 120 calls: %.1f draws, %.1f triangles, %.1f batches; %llu frames: %.0f vertices, the CPU route %.2f ms "
                         "(the most %.2f ms); geometry ring wraps %llu\n",

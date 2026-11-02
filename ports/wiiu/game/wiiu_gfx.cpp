@@ -1180,6 +1180,15 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
         g_tm[slot] += ms_since(dt);
         dt = std::chrono::steady_clock::now();
     };
+    // ((2026-11-02) RAC1_WIIU_MOBY_DL) the TV's mobys recorded into display lists before the world's join - the main thread's wait for the
+    // world's second half -, called below where they are drawn (mrp_moby_gx2_record: the GPU's order the same; not recorded: drawn there)
+    bool moby_dl = false, moby_dl_shadows = false;
+    if (g_world_ready && g_mobys_ready && g_menu_draw_mobys && cb == WHBGfxGetTVColourBuffer()) {
+        rac1::mrp_moby_gx2_debug_frame(g_2d.game_frame);
+        moby_dl_shadows = db3 != nullptr && rac1::mrp_world_gx2_shadows_wanted();
+        moby_dl = rac1::mrp_moby_gx2_record(cb3, db3, vp3, moby_dl_shadows);
+        dlap(kTmMobys);
+    }
     if (g_world_ready) {
         if (g_tm_draw) rac1::ctl::mark(rac1::ctl::kDJoin0);  // ((2026-10-30) the cores' timeline: the TV's call)
         rac1::mrp_world_wiiu_join();  // (the frame's preparation's second half, on its worker core)
@@ -1197,16 +1206,16 @@ void draw_frame(const GX2ColorBuffer* cb, GX2DepthBuffer* db, bool targets) {
         dlap(kTmWorld);
     }
     if (g_mobys_ready && g_menu_draw_mobys) {
-        rac1::mrp_moby_gx2_debug_frame(g_2d.game_frame);
+        if (!moby_dl) rac1::mrp_moby_gx2_debug_frame(g_2d.game_frame);
         // ((2026-10-30) RAC1_WIIU_SHADOWS_GPU: the drop shadows drawn by the GPU between the first chain's mobys and the deferred ones,
         // as the game chains them - the casters drawn over their own shadow)
-        const bool shadows = g_world_ready && db3 != nullptr && rac1::mrp_world_gx2_shadows_wanted();
-        rac1::mrp_moby_gx2_draw(cb3, db3, vp3, shadows ? 1 : 0);
+        const bool shadows = moby_dl ? moby_dl_shadows : g_world_ready && db3 != nullptr && rac1::mrp_world_gx2_shadows_wanted();
+        if (!moby_dl || !rac1::mrp_moby_gx2_call(shadows ? 1 : 0)) rac1::mrp_moby_gx2_draw(cb3, db3, vp3, shadows ? 1 : 0);
         if (g_tm_draw) gpu_mark(kGmMobys);
         if (shadows) {
             const bool drew = rac1::mrp_world_gx2_draw_shadows(cb3, db3, vp3);
             if (g_tm_draw && drew) gpu_mark(kGmShadows);
-            rac1::mrp_moby_gx2_draw(cb3, db3, vp3, 2);
+            if (!moby_dl || !rac1::mrp_moby_gx2_call(2)) rac1::mrp_moby_gx2_draw(cb3, db3, vp3, 2);
             if (g_tm_draw) gpu_mark(kGmMobys2);
         }
         rac1::gx2_flush(1);

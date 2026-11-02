@@ -38,6 +38,7 @@
 #include <coreinit/cache.h>
 #include <coreinit/memdefaultheap.h>
 #include <gx2/clear.h>
+#include <gx2/displaylist.h>
 #include <gx2/draw.h>
 #include <gx2/enum.h>
 #include <gx2/event.h>
@@ -202,10 +203,19 @@ uint32_t g_ring_off = 0;
 Gx2RingUse g_ring_use;  // (Gx2RingUse: this host frame's bytes and the frame before's)
 uint64_t g_ring_wraps = 0;
 bool g_ring_stale = false;  // (Gx2Perf::ub_bulk: the ring wrapped since its GPU caches were last invalidated)
+// ((2026-11-02) RAC1_WIIU_MOBY_DL) the draws being recorded into a display list: a wrap that must wait for the GPU gives no block
+// instead (GX2DrawDone would write its flush into the list and wait for a list nothing has sent: the console hangs)
+bool g_recording = false;
+uint64_t g_rec_nowrap = 0;  // (blocks refused so)
 void* ring_alloc(uint32_t bytes) {
     uint32_t off = (g_ring_off + GX2_UNIFORM_BLOCK_ALIGNMENT - 1) & ~(GX2_UNIFORM_BLOCK_ALIGNMENT - 1);
     if (bytes > kRingBytes) return nullptr;
     if (off + bytes > kRingBytes) {
+        if (g_recording && (!g_ring_nowait || g_ring_use.must_wait(kRingBytes) ||
+                            g_ring_use.cur + (kRingBytes - g_ring_off) + bytes + (g_gx2_in_flight > 1 ? g_ring_use.prev : 0u) > (kRingBytes >> 1))) {
+            ++g_rec_nowrap;
+            return nullptr;
+        }
         g_ring_use.cur += (kRingBytes - g_ring_off) + bytes;
         if (!g_ring_nowait || g_ring_use.must_wait(kRingBytes)) {
             GX2DrawDone();
@@ -1028,6 +1038,176 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
         g_draws = g_batches = g_tris = 0;
         g_cpu_ms = 0.0;
     }
+}
+
+// ---- (2026-11-02) RAC1_WIIU_MOBY_DL: the mobys' draws recorded into a display list ahead of their place ----------------------------
+// wiiu_gfx.cpp's draw_frame records the TV's mobys (both parts when the drop shadows go between them) while the main thread would wait
+// for the world's second half, and calls the lists where the mobys are drawn: the GPU runs the same commands in the same place, the CPU
+// makes them earlier. Recorded only when nothing in the call can wait for the GPU: the level's textures and geometry ready (the first
+// frames of a level draw directly), the blocks' ring with room for the call (wrapped before the recording when it lacks it; a wrap that
+// must still wait inside it gives no block: ring_alloc), the list's estimate within its buffer. Two buffers (frames in flight: the one
+// the GPU may still read is the other one)
+namespace {
+constexpr uint32_t kDlBytes = 3u << 19;  // (1.5 MB: ~2200 draw commands)
+constexpr int kDlSlots = 2;
+uint8_t* g_dl_buf[kDlSlots] = {};
+int g_dl_slot = 0;
+const uint8_t* g_dl_at[2] = {};
+uint32_t g_dl_size[2] = {};
+uint64_t g_dl_calls = 0, g_dl_draws = 0, g_dl_bytes = 0, g_dl_big = 0, g_dl_not = 0, g_dl_empty = 0;
+uint32_t g_dl_max = 0;
+}  // namespace
+
+void mrp_moby_gx2_dl_probe();
+
+bool mrp_moby_gx2_record(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::Viewport& vp, bool two_parts) {
+    g_dl_size[0] = g_dl_size[1] = 0;
+    static const bool on = std::getenv("RAC1_WIIU_MOBY_DL") == nullptr || std::atoi(std::getenv("RAC1_WIIU_MOBY_DL")) != 0;
+    static const int stage = std::getenv("RAC1_WIIU_MRP_STAGE") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_MRP_STAGE")) : 4;
+    if (!on || !g_ready || cb == nullptr || stage < 4 || g_ring == nullptr) return false;
+    mrpm::FrameView F;
+    mrpm::LevelView L;
+    if (!mrpm::frame_view(F) || !mrpm::level_view(L) || F.batches->empty()) {
+        ++g_dl_empty;
+        return false;
+    }
+    if (L.loads != g_tex.loads || L.loads != g_geo.loads) {  // (a new level: drawn directly, its waits outside any list)
+        ++g_dl_not;
+        return false;
+    }
+    geo_sync(L);  // (the level's appended vertices: copied here, a larger buffer's wait outside the list)
+    mrp_moby_gx2_dl_probe();
+    if (g_geo.vb == nullptr || g_geo.ib == nullptr) return false;
+    // (the draw commands drawn - each one twice in a batch with the alpha test's split, counted twice here whatever the split -: measured
+    // on the console 155-161 bytes each - three blocks and the draw -, 320 counted; a batch's state and pixel block: 1 KB counted)
+    size_t nd = 0, nb = 0;
+    for (const mrpm::Batch& b : *F.batches) {
+        if (b.key.caster_only || b.key.rt != 0) continue;
+        nd += b.count;
+        ++nb;
+    }
+    const uint64_t est = static_cast<uint64_t>(nd) * 2 * 320 + static_cast<uint64_t>(nb) * 1024 + (64u << 10);
+    if (est > kDlBytes) {
+        ++g_dl_big;
+        return false;
+    }
+    // (the ring: per draw command its block and a terms block, per batch two pixel blocks, per moby - its joints' range - one joints'
+    // block of 8 KB: the ranges counted)
+    static std::vector<uint32_t> jfs;
+    jfs.clear();
+    for (const mrpm::Batch& b : *F.batches) {
+        if (b.key.caster_only || b.key.rt != 0 || static_cast<uint64_t>(b.first) + b.count > F.draws->size()) continue;
+        for (uint32_t i = b.first; i < b.first + b.count; ++i) {
+            const uint32_t ci = (*F.draws)[i].base_instance;
+            if ((static_cast<uint64_t>(ci) + 1) * 4 > F.cmds->size()) continue;
+            const uint32_t pi = (*F.cmds)[4 * ci];
+            if (pi < F.parts->size()) jfs.push_back(static_cast<uint32_t>(std::max(0, (*F.parts)[pi].info[0])));
+        }
+    }
+    std::sort(jfs.begin(), jfs.end());
+    const size_t nj = static_cast<size_t>(std::unique(jfs.begin(), jfs.end()) - jfs.begin()) + 1;
+    const uint64_t ring_need = static_cast<uint64_t>(nd) * (g_draw_loc.size + 2 * GX2_UNIFORM_BLOCK_ALIGNMENT) + static_cast<uint64_t>(nj) * g_joints_loc.size +
+                               static_cast<uint64_t>(nb) * 2 * GX2_UNIFORM_BLOCK_ALIGNMENT + (64u << 10);
+    if (ring_need > kRingBytes / 4) {
+        ++g_dl_big;
+        return false;
+    }
+    {  // (the ring wrapped now, waiting as it would, when the call may not fit before its end)
+        const uint32_t off = (g_ring_off + GX2_UNIFORM_BLOCK_ALIGNMENT - 1) & ~(GX2_UNIFORM_BLOCK_ALIGNMENT - 1);
+        if (off + ring_need > kRingBytes) {
+            const auto need = static_cast<uint32_t>(ring_need);
+            if (void* p = ring_alloc(need); p != nullptr) {
+                g_ring_off = static_cast<uint32_t>(static_cast<uint8_t*>(p) - g_ring);
+                g_ring_use.cur -= need;
+            }
+        }
+    }
+    g_dl_slot = (g_dl_slot + 1) % kDlSlots;
+    uint8_t*& buf = g_dl_buf[g_dl_slot];
+    if (buf == nullptr) {
+        buf = static_cast<uint8_t*>(MEMAllocFromDefaultHeapEx(kDlBytes, 0x100));
+        if (buf == nullptr) {
+            ++g_dl_not;
+            return false;
+        }
+        std::printf("[wiiu] mrp_moby_gx2: display list buffer %d: %u KB\n", g_dl_slot, kDlBytes >> 10);
+    }
+    const uint64_t draws0 = g_draws, calls0 = g_calls;
+    g_recording = true;
+    GX2BeginDisplayListEx(buf, kDlBytes, FALSE);
+    mrp_moby_gx2_draw(cb, db, vp, two_parts ? 1 : 0);
+    g_dl_size[0] = GX2EndDisplayList(buf);
+    g_dl_at[0] = buf;
+    uint32_t used = g_dl_size[0];
+    if (two_parts) {
+        const uint32_t off = (used + 0xff) & ~0xffu;
+        g_dl_at[1] = buf + off;
+        GX2BeginDisplayListEx(buf + off, kDlBytes - off, FALSE);
+        mrp_moby_gx2_draw(cb, db, vp, 2);
+        g_dl_size[1] = GX2EndDisplayList(buf + off);
+        used = off + g_dl_size[1];
+    }
+    g_recording = false;
+    DCFlushRange(buf, used);
+    ++g_dl_calls;
+    if (g_calls / 120 == calls0 / 120) g_dl_draws += g_draws - draws0;  // (the draws' count not cleared by the log meanwhile)
+    g_dl_bytes += used;
+    g_dl_max = std::max(g_dl_max, used);
+    if (g_dl_calls % 120 == 0) {
+        std::printf("[wiiu] mrp_moby_gx2: display lists, last 120 recorded frames: %.1f draws, %.1f KB a frame (most %u KB, %.0f bytes a draw); %llu not recorded "
+                    "(too large %llu, no frame %llu), %llu blocks refused at a wrap\n",
+                    static_cast<double>(g_dl_draws) / 120.0, static_cast<double>(g_dl_bytes) / 120.0 / 1024.0, g_dl_max >> 10,
+                    g_dl_draws > 0 ? static_cast<double>(g_dl_bytes) / static_cast<double>(g_dl_draws) : 0.0,
+                    static_cast<unsigned long long>(g_dl_not + g_dl_big), static_cast<unsigned long long>(g_dl_big), static_cast<unsigned long long>(g_dl_empty), static_cast<unsigned long long>(g_rec_nowrap));
+        std::fflush(stdout);
+        g_dl_draws = g_dl_bytes = 0;
+        g_dl_max = 0;
+    }
+    return true;
+}
+
+// (testing, RAC1_WIIU_DL_PROBE=1: the words GX2 writes for a uniform block and an indexed draw, recorded into a display list - never run
+// - and printed once: what a hand-written command stream would have to match)
+void mrp_moby_gx2_dl_probe() {
+    static bool done = false;
+    if (done || std::getenv("RAC1_WIIU_DL_PROBE") == nullptr) return;
+    done = true;
+    auto* buf = static_cast<uint32_t*>(MEMAllocFromDefaultHeapEx(4096, 0x100));
+    if (buf == nullptr) return;
+    std::memset(buf, 0, 4096);
+    auto dump = [&](const char* what, uint32_t n) {
+        std::printf("[wiiu] dl probe: %s, %u bytes:", what, n);
+        for (uint32_t i = 0; i < n / 4; ++i) std::printf(" %08x", buf[i]);
+        std::printf("\n");
+    };
+    void* blk = g_ring;
+    GX2BeginDisplayListEx(buf, 4096, FALSE);
+    dump("an empty list", GX2EndDisplayList(buf));
+    GX2BeginDisplayListEx(buf, 4096, FALSE);
+    GX2SetVertexUniformBlock(1, 256, blk);
+    dump("GX2SetVertexUniformBlock(1, 256, ring)", GX2EndDisplayList(buf));
+    GX2BeginDisplayListEx(buf, 4096, FALSE);
+    GX2SetVertexUniformBlock(2, 304, static_cast<uint8_t*>(blk) + 0x100);
+    GX2SetPixelUniformBlock(3, 64, static_cast<uint8_t*>(blk) + 0x200);
+    dump("vertex block 2 (304, ring+0x100), pixel block 3 (64, ring+0x200)", GX2EndDisplayList(buf));
+    GX2BeginDisplayListEx(buf, 4096, FALSE);
+    GX2DrawIndexedEx(GX2_PRIMITIVE_MODE_TRIANGLES, 36, GX2_INDEX_TYPE_U32, static_cast<const uint32_t*>(g_geo.ib) + 12, 0, 1);
+    dump("GX2DrawIndexedEx(triangles, 36, u32, ib + 12, 0, 1)", GX2EndDisplayList(buf));
+    GX2BeginDisplayListEx(buf, 4096, FALSE);
+    GX2DrawIndexedEx(GX2_PRIMITIVE_MODE_TRIANGLES, 36, GX2_INDEX_TYPE_U32, static_cast<const uint32_t*>(g_geo.ib) + 12, 0, 1);
+    GX2DrawIndexedEx(GX2_PRIMITIVE_MODE_TRIANGLES, 99, GX2_INDEX_TYPE_U32, static_cast<const uint32_t*>(g_geo.ib) + 40, 7, 5);
+    dump("two draws (36 at 12, base 0, 1 instance; 99 at 40, base 7, 5 instances)", GX2EndDisplayList(buf));
+    std::printf("[wiiu] dl probe: ring %p, ib %p\n", blk, g_geo.ib);
+    std::fflush(stdout);
+    MEMFreeToDefaultHeap(buf);
+}
+
+bool mrp_moby_gx2_call(int part) {
+    const int k = part == 2 ? 1 : 0;
+    if (g_dl_size[k] == 0) return false;
+    GX2CallDisplayList(g_dl_at[k], g_dl_size[k]);
+    g_dl_size[k] = 0;
+    return true;
 }
 
 }  // namespace rac1
