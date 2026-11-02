@@ -126,7 +126,7 @@ follows from that.
   static world already sits on the GPU. OpenGL 4.6 covers what the renderer needs, compute shaders
   included, and it runs on every desktop GPU and Linux driver in use. The renderer is kept apart
   from the game code, so another graphics API can be added beside it: a
-  [Vulkan](docs/vulkan.md) backend now is, experimental and opt-in (Options > Graphics > Renderer),
+  [Vulkan](docs/vulkan.md) backend now is, experimental and opt-in (Options > Display > Renderer),
   drawing the same picture. OpenGL stays the default.
 - **Other platforms and graphics APIs, later.** Direct3D or Metal renderers may come in the future.
   The code is portable C++, but other devices need more than a renderer:

@@ -27,6 +27,14 @@ What changed in each release. Releases are source only: you build the game with 
 - Advanced > Aiming: Modern, No Zoom, Modern aiming at the normal camera distance, as Ratchet & Clank 3's lock-strafe (#70).
 
 ### Graphics
+- Options: the Graphics page split in two. **Display** (Renderer, Display Mode, Monitor, Window Size, V-Sync, Frame Rate Cap,
+  Render Resolution, Aspect Ratio, Fit to Screen, HUD, Field of View, Level of Detail, Texture Detail) and **Graphics**: one switch
+  **Graphics: Original / Enhanced** (Original, the default, is the original's picture whatever the rows under it hold; switching
+  keeps every row, so A/B is one press), a **Preset** (Low, Medium, High; Custom when the rows match none), then every addition:
+  Lighting (Low, Medium, High: no Original value any more), the shadows, lights, occlusion, sun rays, Surface Detail, Water, Grass
+  and Ambient Particles, which before stayed on with Lighting Original. Old preferences and saves: Lighting Original reads as
+  Graphics Original (Lighting High), Low to High as Enhanced with that value. Experimental mode: Graphics Enhanced, the preset High
+  (Water and Grass High too). The debug menu's Enhancements tab has the same switch and preset at its top.
 - Lights: Anya-Thoughtmane's lighting batch 1 (#102) merged line by line: metal for the vendor, the bolts, the OmniWrench, the
   Magneboots and the pilot's helmet on every level, materials and lamps on Veldin, Novalis (the waterworks, the bridge), Aridia
   (most of its metal, the spot lamps, their sun 38.6 / 16.7), Kerwan (the gold surfaces, the landing pad's lamps, the street lamps

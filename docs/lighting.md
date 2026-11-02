@@ -5,7 +5,7 @@ point lights per pixel, cascaded sun shadows, sun rays, ambient occlusion and an
 
 > **The modern lighting is EXPERIMENTAL.** It is off by default and will stay off by default.
 > It is not yet fully usable on some planets, and it is not a porting priority: it will be
-> worked on later. With Options > Graphics > Lighting on Original (the default) the picture is
+> worked on later. With Options > Graphics > Graphics on Original (the default) the picture is
 > the original's lighting, pixel for pixel, and nothing here has any effect. The modern lighting
 > only changes the picture, never the game: it reads the game's memory and does not write to it,
 > so the game's state is the same with it on or off. It is a labelled enhancement (see
@@ -126,7 +126,7 @@ GS. **Drop shadows** are shadow volumes counted in the frame's alpha channel.
 
 ### How the MRP reproduces it
 
-By default (Options > Graphics > Lighting > Original) the MRP draws exactly this:
+By default (Options > Graphics > Graphics: Original) the MRP draws exactly this:
 
 - **Mobys:** `mrp_scene` captures each moby's 8-row light record from the ported moby pass, and the
   moby vertex shader (`mrp_moby_renderer.cpp`) evaluates the formula above per vertex, including the
@@ -156,7 +156,7 @@ adding even inactive code to them changed the rounding of a few pixels.
 | Emissive surfaces | Textures marked in a level's file keep the original's brightness, not darkened by shadows | the world and mobys |
 | Materials | Textures tagged in a level's file shine, get wet, ripple, flow (Surface Detail; [Materials](materials.md)) | the world and mobys |
 
-The whole module is active only when Lighting is not Original, the MRP draws both the world and the
+The whole module is active only with Graphics: Enhanced, when the MRP draws both the world and the
 mobys, and the shared projection is in use: in practice during gameplay, not on the title screen, in
 menus or during fades (`mrp_lighting_shadow_pass`).
 
@@ -1118,26 +1118,31 @@ cannot tell them apart), the teleporters (moby 1135, six textures, not yet looke
 
 ## Settings
 
-All on Options > Graphics (`src/game/enhance/graphics.cpp`). They are kept in the graphics
+All on Options > Graphics (`src/game/enhance/graphics.cpp`), under its first row **Graphics: Original / Enhanced**: Original
+(the default) is the original's lighting whatever the rows hold, Enhanced turns the module on with the rows below; a **Preset**
+row (Low, Medium, High) sets them all (see [Settings](settings.md#graphics)). They are kept in the graphics
 preferences and in each save's `save<N>.pc` (see [Settings](settings.md)). The New Game's Modern mode
-does not turn the lighting on; Experimental does (Lighting High, Dynamic Shadows On, Ambient Occlusion SSAO).
+does not turn the lighting on; Experimental does (Graphics Enhanced, the preset High).
+
+The defaults below are the rows' own (the preset High); with Graphics: Original none of them acts.
 
 | Row | Values | Default | Controls |
 |---|---|---|---|
-| Lighting | Original, Low, Medium, High | Original | the whole module; the sun shadow maps' resolution (1024, 2048, 4096) |
+| Lighting | Low, Medium, High (until the switch also Original, now Graphics: Original) | High | the sun shadow maps' resolution (1024, 2048, 4096) (`lighting_quality`, item 56) |
 | Shadow Strength | 50 to 100 % | 70 % | how much of the sun's light a shadow hides (`shadow_strength` in the preferences, item 45 of a save's block) |
 | Shadow Distance | Low, Medium, High, Maximum | Maximum | how far mobys cast sun shadows (40, 80, 140 units, or as far as the cascades reach) |
-| Dynamic Shadows | Off, On | Off | point-light cube shadows |
+| Dynamic Shadows | Off, On | On | point-light cube shadows |
 | Secondary Lights | Off, Game's, All | All | Game's: the game's point lights per pixel; All: also automatic emitters and hand-placed lights |
-| Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2, SSAO 1/2, SSAO+ 1/2, HBAO 1/2 | Off | SSAO |
+| Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2, SSAO 1/2, SSAO+ 1/2, HBAO 1/2, MXAO, MXAO 1/2 | GTAO | see [Ambient occlusion](#ambient-occlusion) |
 | AO Intensity | 25 to 125 % | 75 % | the occlusion's darkness: each mode's strength scaled (`ao_intensity` in the preferences, item 47 of a save's block); see [Ambient occlusion](#ambient-occlusion) |
-| Sun Rays | Off, Low, Medium, High | Off | light shafts from the sun through openings, each step more quality and strength (`sun_rays_quality`, item 49; `sun_rays` and item 46 until 0.4.x read with Low as Medium); see [Sun rays](#sun-rays) |
-| Surface Detail | Off, Low, High | Off | the surfaces' materials (metal, wet, puddle, lava, water, mud, quicksand) tagged in the level's file; High adds the reflections and the lava's heat shimmer (`surface_detail`, item 51); see [Materials](materials.md) |
-| Water | Off, Low, High | Off | the tagged water, lava and quicksand: normal maps, Fresnel, glints, depth, foam; High: the scene's reflection and the refraction (`water`, item 52); see [Materials](materials.md#water-and-grass) |
-| Grass | Off, Low, High | Off | the tagged ground's blades: a detail relief (Low), and a few very low shells near the camera (High) (`grass`, item 54) |
+| Sun Rays | Off, Low, Medium, High | High | light shafts from the sun through openings, each step more quality and strength (`sun_rays_quality`, item 49; `sun_rays` and item 46 until 0.4.x read with Low as Medium); see [Sun rays](#sun-rays) |
+| Surface Detail | Off, Low, High | High | the surfaces' materials (metal, wet, puddle, lava, water, mud, quicksand) tagged in the level's file; High adds the reflections and the lava's heat shimmer (`surface_detail`, item 51); see [Materials](materials.md) |
+| Water | Off, Low, High | High | the tagged water, lava and quicksand: normal maps, Fresnel, glints, depth, foam; High: the scene's reflection and the refraction (`water`, item 52); see [Materials](materials.md#water-and-grass) |
+| Grass | Off, Low, High | High | the tagged ground's blades: a detail relief (Low), and a few very low shells near the camera (High) (`grass`, item 54) |
 
-The other rows take effect only when Lighting is not Original. The debug menu's **Enhancements** tab switches all of them live
-(for the run; "Save as my settings" makes them the preferences), each with its profiler stage's GPU / CPU time beside it.
+Every row takes effect only with Graphics: Enhanced. The debug menu's **Enhancements** tab has the same switch and preset at
+its top and switches all of them live (for the run; "Save as my settings" makes them the preferences), each with its profiler
+stage's GPU / CPU time beside it.
 
 For testing, environment variables override each of these (they need `--debug-tools`):
 `RAC1_SHADOWS`, `RAC1_SHADOW_RES`, `RAC1_SHADOW_MOBY_DIST`, `RAC1_POINT_SHADOWS`, `RAC1_POINTS`,

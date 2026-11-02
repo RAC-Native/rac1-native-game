@@ -1,8 +1,13 @@
-// The Graphics page and the new game's mode popup (see graphics.h). Not a port: everything here is
+// The Display and Graphics pages and the new game's mode popup (see graphics.h). Not a port: everything here is
 // new, written on top of the original's menu data
 // so that the pages look and behave like the game's own.
 //
-// The Graphics page is a copy of the Camera page (0x1b5a60), as the Advanced page: its title and
+// Two pages of the same make: Display (the window, the picture's shape, the view, the detail: the PS2's compromises
+// removed) and Graphics (the switch Original / Enhanced, a preset, then every addition of ours: the modern lighting, water,
+// grass, ambient particles). Graphics: Original draws the original's picture whatever the rows under it hold (they are
+// hidden and kept); the one gate is graphics_enhanced(), through which apply() sets the renderer's switches.
+//
+// Each page is a copy of the Camera page (0x1b5a60), as the Advanced page: its title and
 // its settings widget (0x27ef00 / 0x27f0a8: rows of a name, the byte it sets and up to 4 value
 // texts, cross cycling the byte modulo their count). Our rows have more values than 4 (levels of
 // detail, sizes, percents): each row's byte is a "step" byte with two values whose texts are both
@@ -53,7 +58,8 @@ namespace rac1 {
 namespace {
 constexpr uint32_t GFX = 0x000f2000u;
 constexpr uint32_t VALUES = GFX;              // the settings' real values, one byte each (by Setting)
-constexpr uint32_t STEPS = GFX + 0x20;        // the shown rows' step bytes (the settings widget writes them)
+constexpr uint32_t STEPS = GFX + 0x20;        // the Graphics page's shown rows' step bytes (the settings widget writes them)
+constexpr uint32_t DSTEPS = GFX + 0x30;       // the Display page's
 constexpr uint32_t POP_ENTRIES = GFX + 0x100;  // the popup's list entries (0xc each)
 constexpr uint32_t POP_HELP = GFX + 0x140;    // its help label's texts
 constexpr uint32_t POP_PICTURES = GFX + 0x160;  // its picture's images (sector, count)
@@ -69,7 +75,13 @@ constexpr uint32_t POP_TITLE = GFX + 0x690;
 constexpr uint32_t POP_LIST = GFX + 0x6e0;
 constexpr uint32_t POP_LABEL = GFX + 0x730;
 constexpr uint32_t POP_PICTURE = GFX + 0x780;
-constexpr uint32_t MAIN_ENTRIES = GFX + 0x800;  // the main menu's Options entries, ours added
+constexpr uint32_t MAIN_ENTRIES = GFX + 0x800;  // the main menu's Options entries, ours added (..0x884)
+constexpr uint32_t DPAGE = GFX + 0x900;       // the Display page (a copy of Camera's), as the Graphics page's above
+constexpr uint32_t DTITLE = GFX + 0x990;
+constexpr uint32_t DROWS_WIDGET = GFX + 0x9e0;
+constexpr uint32_t DHELP_WIDGET = GFX + 0xa30;
+constexpr uint32_t DROWS = GFX + 0xb00;
+constexpr uint32_t DROW_HELP = GFX + 0xc40;
 constexpr uint32_t STRINGS = GFX + 0x1000;    // the texts, made at each lookup (0xa0 each; the Controls page from 0xf6000)
 constexpr uint32_t STRING_SIZE = 0x80;  // (0xa0 until the Water, Foliage and Grass rows: the longest text is under 0x60)
 constexpr int VISIBLE = 10;  // the rows the box shows at once
@@ -93,7 +105,10 @@ constexpr uint32_t PICTURE_SECTOR = 0xadf00000u;
 enum : uint32_t { PIC_ORIGINAL = 2, PIC_MODERN = 3, PIC_EXPERIMENTAL = 5 };  // (advanced.cpp's PIC_ ids)
 
 // The settings
-enum Setting : uint32_t { S_DISPLAY, S_MONITOR, S_WINDOW, S_SCALE, S_ASPECT, S_FIT, S_LOD, S_FOV, S_VSYNC, S_CAP, S_LIGHTING, S_DYN_SHADOWS, S_SEC_LIGHTS, S_SHADOW_DIST, S_AO, S_MIPS, S_SHADOW_STR, S_SUN_RAYS, S_AO_STR, S_HUD, S_RENDERER, S_SURFACE, S_PARTICLES, S_WATER, S_GRASS, S_COUNT };
+// (S_GFX: Graphics, 0 Original, 1 Enhanced; S_PRESET: no value of its own, the rows' match with PRESETS; S_LIGHTING: 0 Low,
+// 1 Medium, 2 High - until the switch, 0 was Original and 1..3 Low..High)
+enum Setting : uint32_t { S_DISPLAY, S_MONITOR, S_WINDOW, S_SCALE, S_ASPECT, S_FIT, S_LOD, S_FOV, S_VSYNC, S_CAP, S_LIGHTING, S_DYN_SHADOWS, S_SEC_LIGHTS, S_SHADOW_DIST, S_AO, S_MIPS, S_SHADOW_STR, S_SUN_RAYS, S_AO_STR, S_HUD, S_RENDERER, S_SURFACE, S_PARTICLES, S_WATER, S_GRASS, S_GFX, S_PRESET, S_COUNT };
+static_assert(S_COUNT <= 0x20, "the settings' values end where the step bytes begin");
 constexpr float SHADOW_DISTS[] = {40.0f, 80.0f, 140.0f, 0.0f};  // Low, Medium, High, Maximum (0: as far as the cascades reach)
 constexpr int SHADOW_STRS[] = {50, 60, 70, 80, 90, 100};  // the sun's shadows' strength, percent of the key light they hide
 constexpr int SHADOW_STR_DEFAULT = 2;
@@ -112,27 +127,43 @@ constexpr Size SIZES[] = {{640, 480}, {854, 480}, {800, 600}, {1024, 576}, {960,
                           {1366, 768}, {1600, 900}, {1600, 1200}, {1920, 1080}, {2560, 1080}, {2560, 1440}, {3440, 1440}, {3840, 2160}};
 constexpr uint32_t SIZE_COUNT = sizeof(SIZES) / sizeof(Size);
 
+// The presets: the rows under Graphics they set (by index into each row's values), Low, Medium, High. Chosen for their cost at
+// 5120 x 1440 (docs/settings.md#presets): Low the sun's shadows at 1024 with cheap materials, no occlusion or rays; Medium the maps
+// at 2048, all the lights, GTAO at half resolution, Low rays; High what Experimental had (4096, dynamic shadows, GTAO, High rays,
+// High materials and particles), water and grass High too
+constexpr Setting PRESET_ROWS[] = {S_LIGHTING, S_SHADOW_STR, S_SHADOW_DIST, S_DYN_SHADOWS, S_SEC_LIGHTS, S_AO, S_AO_STR, S_SUN_RAYS, S_SURFACE, S_WATER, S_GRASS, S_PARTICLES};
+constexpr int PRESET_COUNT = 3;  // (and Custom, 3: the rows match none)
+constexpr int PRESETS[PRESET_COUNT][sizeof(PRESET_ROWS) / sizeof(Setting)] = {
+    // light  strength  distance       dynamic  secondary   AO           AO int.  rays     surface  water  grass  particles
+    {0,       2,        1,  /* 80 */   0,       1,          0,           2,       0,       1,       1,     0,     1},  // Low
+    {1,       2,        2,  /* 140 */  0,       2,          5,  /* GTAO 1/2 */ 2, 1,     1,       1,     1,     2},  // Medium
+    {2,       2,        3,  /* max */  1,       2,          4,  /* GTAO */     2, 3,     2,       2,     2,     2},  // High
+};
+constexpr int PRESET_DEFAULT = 2;  // (the rows' values before any choice: High, what Graphics: Enhanced first shows)
+
 // The texts. Ids from TEXT_FIRST (after the Advanced page's 0x7f00..); per language (0x15ed88: 0
 // English, 2 French (in English for now), 3 German, 4 Spanish, 5 Italian)
 constexpr int32_t TEXT_FIRST = 0x7f40;
 enum : int32_t {
-    T_GRAPHICS, T_OPTIONS_HELP,
-    T_DISPLAY, T_MONITOR, T_WINDOW_SIZE, T_SCALE, T_ASPECT, T_FIT, T_LOD, T_FOV, T_VSYNC, T_CAP, T_LIGHTING, T_DYN_SHADOWS, T_SEC_LIGHTS, T_SHADOW_DIST, T_AO, T_MIPS, T_SHADOW_STR, T_SUN_RAYS, T_AO_STR, T_HUD, T_RENDERER, T_SURFACE, T_PARTICLES, T_WATER, T_GRASS,
-    H_DISPLAY, H_MONITOR, H_WINDOW_SIZE, H_SCALE, H_ASPECT, H_FIT, H_LOD, H_FOV, H_VSYNC, H_CAP, H_LIGHTING, H_DYN_SHADOWS, H_SEC_LIGHTS, H_SHADOW_DIST, H_AO, H_MIPS, H_SHADOW_STR, H_SUN_RAYS, H_AO_STR, H_HUD, H_RENDERER, H_SURFACE, H_PARTICLES, H_WATER, H_GRASS,
+    T_GRAPHICS, T_OPTIONS_HELP, T_DISPLAY_PAGE, H_DISPLAY_PAGE,
+    T_DISPLAY, T_MONITOR, T_WINDOW_SIZE, T_SCALE, T_ASPECT, T_FIT, T_LOD, T_FOV, T_VSYNC, T_CAP, T_LIGHTING, T_DYN_SHADOWS, T_SEC_LIGHTS, T_SHADOW_DIST, T_AO, T_MIPS, T_SHADOW_STR, T_SUN_RAYS, T_AO_STR, T_HUD, T_RENDERER, T_SURFACE, T_PARTICLES, T_WATER, T_GRASS, T_PRESET,
+    H_DISPLAY, H_MONITOR, H_WINDOW_SIZE, H_SCALE, H_ASPECT, H_FIT, H_LOD, H_FOV, H_VSYNC, H_CAP, H_LIGHTING, H_DYN_SHADOWS, H_SEC_LIGHTS, H_SHADOW_DIST, H_AO, H_MIPS, H_SHADOW_STR, H_SUN_RAYS, H_AO_STR, H_HUD, H_RENDERER, H_SURFACE, H_PARTICLES, H_WATER, H_GRASS, H_GFX, H_PRESET,
     T_WINDOW, T_FULLSCREEN, T_43, T_169, T_FILL, T_BARS, T_STRETCH, T_219, T_329, T_HUD_FIT,
-    T_ORIGINAL, T_LOW, T_MEDIUM, T_HIGH, T_MAXIMUM, T_OFF, T_ON, T_UNLIMITED, T_SEC_GAME, T_SEC_ALL, T_FULL,
+    T_ORIGINAL, T_LOW, T_MEDIUM, T_HIGH, T_MAXIMUM, T_OFF, T_ON, T_UNLIMITED, T_SEC_GAME, T_SEC_ALL, T_FULL, T_ENHANCED, T_CUSTOM,
     T_MODE_ORIGINAL, T_MODE_MODERN, T_MODE_EXPERIMENTAL, H_MODE_ORIGINAL, H_MODE_MODERN, H_MODE_EXPERIMENTAL,
-    T_COUNT,
-    V_FIRST = T_COUNT  // the shown rows' value texts (made from the values): V_FIRST + slot
+    T_COUNT
 };
+// The rows' value texts (made from the values at each lookup): VALUE_FIRST + page * VISIBLE + slot (0x7e80..: free ids between
+// the Updates page's 0x7e10.. and the Advanced page's 0x7f00..)
+constexpr int32_t VALUE_FIRST = 0x7e80;
 constexpr const char* TEXTS[4][T_COUNT] = {
-    {"Graphics", "Display, picture shape, detail and view of the PC version",
-     "Display", "Monitor", "Window Size", "Render Resolution", "Aspect Ratio", "Fit to Screen", "Level of Detail", "Field of View", "V-Sync", "Frame Rate Cap", "Lighting", "Dynamic Shadows", "Secondary Lights", "Shadow Distance", "Ambient Occlusion", "Texture Detail", "Shadow Strength", "Sun Rays", "AO Intensity", "HUD", "Renderer", "Surface Detail", "Ambient Particles", "Water", "Grass",
+    {"Graphics", "The original picture, or our lighting, water and effects", "Display", "Window, picture shape, detail and view of the PC version",
+     "Display Mode", "Monitor", "Window Size", "Render Resolution", "Aspect Ratio", "Fit to Screen", "Level of Detail", "Field of View", "V-Sync", "Frame Rate Cap", "Lighting", "Dynamic Shadows", "Secondary Lights", "Shadow Distance", "Ambient Occlusion", "Texture Detail", "Shadow Strength", "Sun Rays", "AO Intensity", "HUD", "Renderer", "Surface Detail", "Ambient Particles", "Water", "Grass", "Preset",
      "In a window or on the whole screen.", "Which screen the window is put on.", "The window's size (in window mode).", "The 3D's resolution, times the screen's. The HUD stays sharp.",
      "4:3 as the original, 16:9, or the view widened to fill the screen.", "When the picture's shape is not the screen's: black bars, or stretched.",
      "How far objects keep their detail and stay drawn.", "x1.00 is the original's view.", "Waits for the screen's refresh: no tearing.",
      "The most frames a second. The game makes 60: more shows nothing new.",
-     "Real sun shadows, light per pixel. Original: as on the PS2.",
+     "Real sun shadows, light per pixel: the shadow maps' size.",
      "Shadows of explosions, weapons and lamps. Costs more.",
      "Explosions' and weapons' light; All: lamps too.",
      "How far characters and objects cast shadows.",
@@ -147,19 +178,21 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Dust, embers, fireflies, rain and snow of our own. Not in the PS2 game.",
      "Our own calm water in place of the game's. High: reflections, refraction.",
      "Blades of grass on the marked ground near the camera. Costs more.",
+     "Original: the PS2's picture. Enhanced: our lighting, water and effects below.",
+     "Sets every row below at once. Changing one of them shows Custom.",
      "Window", "Fullscreen", "4:3 Original", "16:9", "Fill Screen", "Black Bars", "Stretch", "21:9", "32:9", "Fit Screen",
-     "Original", "Low", "Medium", "High", "Maximum", "Off", "On", "Unlimited", "Game's", "All", "Full",
+     "Original", "Low", "Medium", "High", "Maximum", "Off", "On", "Unlimited", "Game's", "All", "Full", "Enhanced", "Custom",
      "Original", "Modern", "Experimental",
      "As on the PS2: 4:3, original detail and controls. All can be changed in Options.",
      "Widescreen, more detail, modern aiming and movement. All can be changed in Options.",
-     "Modern plus all the new lighting: shadows, lights, occlusion. Experimental, heavy."},
-    {"Grafik", "Anzeige, Bildformat, Details und Sicht der PC-Version",
-     "Anzeige", "Bildschirm", "Fenstergrosse", "Renderauflosung", "Seitenverhaltnis", "Bildanpassung", "Detailstufe", "Sichtfeld", "V-Sync", "Bildratenlimit", "Beleuchtung", "Dynamische Schatten", "Zusatzlichter", "Schattendistanz", "Umgebungsverdeckung", "Texturdetail", "Schattenstarke", "Sonnenstrahlen", "Verdeckungsstarke", "HUD", "Renderer", "Oberflachendetail", "Umgebungspartikel", "Wasser", "Gras",
+     "Modern plus Graphics Enhanced, High: shadows, lights, water. Experimental, heavy."},
+    {"Grafik", "Das Originalbild oder unsere Beleuchtung, Wasser und Effekte", "Anzeige", "Fenster, Bildformat, Details und Sicht der PC-Version",
+     "Anzeigemodus", "Bildschirm", "Fenstergrosse", "Renderauflosung", "Seitenverhaltnis", "Bildanpassung", "Detailstufe", "Sichtfeld", "V-Sync", "Bildratenlimit", "Beleuchtung", "Dynamische Schatten", "Zusatzlichter", "Schattendistanz", "Umgebungsverdeckung", "Texturdetail", "Schattenstarke", "Sonnenstrahlen", "Verdeckungsstarke", "HUD", "Renderer", "Oberflachendetail", "Umgebungspartikel", "Wasser", "Gras", "Voreinstellung",
      "Im Fenster oder im Vollbild.", "Auf welchem Bildschirm das Fenster liegt.", "Die Grosse des Fensters (im Fenstermodus).", "Die Auflosung der 3D-Grafik, mal die des Bildschirms. Das HUD bleibt scharf.",
      "4:3 wie im Original, 16:9 oder auf den Bildschirm erweitert.", "Wenn das Bildformat nicht passt: schwarze Balken oder gestreckt.",
      "Wie weit Objekte ihre Details behalten und gezeichnet werden.", "x1.00 ist die Sicht des Originals.", "Wartet auf den Bildaufbau: kein Tearing.",
      "Hochstens so viele Bilder pro Sekunde. Das Spiel macht 60: mehr zeigt nichts Neues.",
-     "Echte Sonnenschatten, Licht pro Pixel. Original: wie PS2.",
+     "Echte Sonnenschatten, Licht pro Pixel: Grosse der Schattenkarten.",
      "Schatten von Explosionen, Waffen, Lampen. Aufwendiger.",
      "Licht von Explosionen und Waffen; Alle: auch Lampen.",
      "Wie weit Figuren und Objekte Schatten werfen.",
@@ -174,19 +207,21 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Eigener Staub, Glut, Gluhwurmchen, Regen und Schnee. Nicht im PS2-Spiel.",
      "Tiefe, Schaum und Wellen; Hoch: Brechung. Aus: der Glanz von Oberflachendetail bleibt.",
      "Grashalme auf dem markierten Boden nahe der Kamera. Aufwendiger.",
+     "Original: das Bild der PS2. Verbessert: unsere Beleuchtung, Wasser und Effekte.",
+     "Setzt alle Zeilen darunter auf einmal. Eine Anderung zeigt Eigene.",
      "Fenster", "Vollbild", "4:3 Original", "16:9", "Fullen", "Balken", "Strecken", "21:9", "32:9", "Ganze Breite",
-     "Original", "Niedrig", "Mittel", "Hoch", "Maximum", "Aus", "An", "Unbegrenzt", "Des Spiels", "Alle", "Voll",
+     "Original", "Niedrig", "Mittel", "Hoch", "Maximum", "Aus", "An", "Unbegrenzt", "Des Spiels", "Alle", "Voll", "Verbessert", "Eigene",
      "Original", "Modern", "Experimentell",
      "Wie auf der PS2: 4:3, Original-Details und -Steuerung. Alles in Optionen anderbar.",
      "Breitbild, mehr Details, modernes Zielen und Bewegen. Alles in Optionen anderbar.",
-     "Modern plus die neue Beleuchtung: Schatten, Lichter, Verdeckung. Experimentell, aufwendig."},
-    {"Graficos", "Pantalla, formato, detalle y vista de la version PC",
-     "Pantalla", "Monitor", "Tamano de ventana", "Resolucion 3D", "Relacion de aspecto", "Ajuste", "Nivel de detalle", "Campo de vision", "V-Sync", "Limite de FPS", "Iluminacion", "Sombras dinamicas", "Luces secundarias", "Distancia de sombras", "Oclusion ambiental", "Detalle de texturas", "Intensidad de sombras", "Rayos de sol", "Intensidad de oclusion", "HUD", "Renderizador", "Detalle de superficies", "Particulas ambientales", "Agua", "Hierba",
+     "Modern plus Grafik Verbessert, Hoch: Schatten, Lichter, Wasser. Experimentell, aufwendig."},
+    {"Graficos", "La imagen original, o nuestra iluminacion, agua y efectos", "Pantalla", "Ventana, formato, detalle y vista de la version PC",
+     "Modo de pantalla", "Monitor", "Tamano de ventana", "Resolucion 3D", "Relacion de aspecto", "Ajuste", "Nivel de detalle", "Campo de vision", "V-Sync", "Limite de FPS", "Iluminacion", "Sombras dinamicas", "Luces secundarias", "Distancia de sombras", "Oclusion ambiental", "Detalle de texturas", "Intensidad de sombras", "Rayos de sol", "Intensidad de oclusion", "HUD", "Renderizador", "Detalle de superficies", "Particulas ambientales", "Agua", "Hierba", "Preajuste",
      "En una ventana o a pantalla completa.", "En que pantalla se abre la ventana.", "El tamano de la ventana (en modo ventana).", "La resolucion del 3D, por la de la pantalla. El HUD sigue nitido.",
      "4:3 como el original, 16:9 o la vista ampliada a la pantalla.", "Si el formato no es el de la pantalla: bandas negras o estirado.",
      "Hasta donde los objetos conservan su detalle y se dibujan.", "x1.00 es la vista del original.", "Espera al refresco de la pantalla: sin cortes.",
      "Los cuadros por segundo como maximo. El juego hace 60: mas no muestra nada nuevo.",
-     "Sombras reales del sol, luz por pixel. Original: como PS2.",
+     "Sombras reales del sol, luz por pixel: tamano de los mapas de sombras.",
      "Sombras de explosiones, armas y lamparas. Mas pesado.",
      "Luz de explosiones y armas; Todas: tambien lamparas.",
      "Hasta donde personajes y objetos dan sombra.",
@@ -201,19 +236,21 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Polvo, brasas, luciernagas, lluvia y nieve propios. No en el juego de PS2.",
      "Profundidad, espuma, olas; Alto: refraccion. Apagado: queda el brillo de Detalle de superficies.",
      "Briznas de hierba en el suelo marcado cerca de la camara. Mas pesado.",
+     "Original: la imagen de PS2. Mejorado: nuestra iluminacion, agua y efectos.",
+     "Ajusta todas las filas de abajo a la vez. Cambiar una muestra Personal.",
      "Ventana", "Completa", "4:3 Original", "16:9", "Llenar", "Bandas", "Estirar", "21:9", "32:9", "Todo el ancho",
-     "Original", "Bajo", "Medio", "Alto", "Maximo", "No", "Si", "Sin limite", "Del juego", "Todas", "Completo",
+     "Original", "Bajo", "Medio", "Alto", "Maximo", "No", "Si", "Sin limite", "Del juego", "Todas", "Completo", "Mejorado", "Personal",
      "Original", "Moderno", "Experimental",
      "Como en PS2: 4:3, detalle y controles originales. Todo cambia en Opciones.",
      "Panoramico, mas detalle, apuntado y movimiento modernos. Todo cambia en Opciones.",
-     "Moderno y la nueva iluminacion al maximo: sombras, luces, oclusion. Experimental, pesado."},
-    {"Grafica", "Schermo, formato, dettaglio e visuale della versione PC",
-     "Schermo", "Monitor", "Finestra", "Risoluzione 3D", "Formato", "Adattamento", "Livello di dettaglio", "Campo visivo", "V-Sync", "Limite FPS", "Illuminazione", "Ombre dinamiche", "Luci secondarie", "Distanza ombre", "Occlusione ambientale", "Dettaglio texture", "Intensita ombre", "Raggi di sole", "Intensita occlusione", "HUD", "Renderer", "Dettaglio superfici", "Particelle ambientali", "Acqua", "Erba",
+     "Moderno con Graficos Mejorado, Alto: sombras, luces, agua. Experimental, pesado."},
+    {"Grafica", "L'immagine originale, o la nostra illuminazione, acqua ed effetti", "Schermo", "Finestra, formato, dettaglio e visuale della versione PC",
+     "Modalita schermo", "Monitor", "Finestra", "Risoluzione 3D", "Formato", "Adattamento", "Livello di dettaglio", "Campo visivo", "V-Sync", "Limite FPS", "Illuminazione", "Ombre dinamiche", "Luci secondarie", "Distanza ombre", "Occlusione ambientale", "Dettaglio texture", "Intensita ombre", "Raggi di sole", "Intensita occlusione", "HUD", "Renderer", "Dettaglio superfici", "Particelle ambientali", "Acqua", "Erba", "Preset",
      "In una finestra o a schermo intero.", "Su quale schermo va la finestra.", "La dimensione della finestra (in modalita finestra).", "La risoluzione del 3D, per quella dello schermo. L'HUD resta nitido.",
      "4:3 come l'originale, 16:9 o la visuale allargata allo schermo.", "Se il formato non e quello dello schermo: bande nere o stirato.",
      "Fin dove gli oggetti tengono il dettaglio e restano disegnati.", "x1.00 e la visuale dell'originale.", "Attende il refresh dello schermo: niente tearing.",
      "I fotogrammi al secondo al massimo. Il gioco ne fa 60: di piu non mostra nulla di nuovo.",
-     "Ombre reali del sole, luce per pixel. Originale: come PS2.",
+     "Ombre reali del sole, luce per pixel: dimensione delle mappe d'ombra.",
      "Ombre di esplosioni, armi e lampade. Piu pesante.",
      "Luce di esplosioni e armi; Tutte: anche le lampade.",
      "Fin dove personaggi e oggetti fanno ombra.",
@@ -228,12 +265,14 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Polvere, braci, lucciole, pioggia e neve nostre. Non nel gioco PS2.",
      "Profondita, schiuma, onde; Alto: rifrazione. Spento: resta il lucido di Dettaglio superfici.",
      "Fili d'erba sul terreno marcato vicino alla camera. Piu pesante.",
+     "Originale: l'immagine della PS2. Migliorata: la nostra illuminazione, acqua, effetti.",
+     "Imposta tutte le righe sotto in una volta. Cambiarne una mostra Personale.",
      "Finestra", "Intero", "4:3 Originale", "16:9", "Riempi", "Bande nere", "Stira", "21:9", "32:9", "Tutta la larghezza",
-     "Originale", "Basso", "Medio", "Alto", "Massimo", "No", "Si", "Illimitato", "Del gioco", "Tutte", "Pieno",
+     "Originale", "Basso", "Medio", "Alto", "Massimo", "No", "Si", "Illimitato", "Del gioco", "Tutte", "Pieno", "Migliorata", "Personale",
      "Originale", "Moderno", "Sperimentale",
      "Come su PS2: 4:3, dettaglio e controlli originali. Tutto si cambia in Opzioni.",
      "Panoramico, piu dettaglio, mira e movimento moderni. Tutto si cambia in Opzioni.",
-     "Moderno e la nuova illuminazione al massimo: ombre, luci, occlusione. Sperimentale, pesante."},
+     "Moderno con Grafica Migliorata, Alto: ombre, luci, acqua. Sperimentale, pesante."},
 };
 
 // The page's rows: the setting, its name, its help, the preferences' key
@@ -241,21 +280,39 @@ struct Row {
     Setting s;
     int32_t name, help;
 };
-// (grouped: the renderer, the window, the picture, the view, the light)
-constexpr Row ROWS_DEF[] = {
+// The Display page (0): the renderer, the window, the picture, the view, the detail
+constexpr Row DISPLAY_ROWS[] = {
     {S_RENDERER, T_RENDERER, H_RENDERER},
     {S_DISPLAY, T_DISPLAY, H_DISPLAY},       {S_MONITOR, T_MONITOR, H_MONITOR},                {S_WINDOW, T_WINDOW_SIZE, H_WINDOW_SIZE},          {S_VSYNC, T_VSYNC, H_VSYNC},
     {S_CAP, T_CAP, H_CAP},                   {S_SCALE, T_SCALE, H_SCALE},                       {S_ASPECT, T_ASPECT, H_ASPECT},
     {S_FIT, T_FIT, H_FIT},                   {S_HUD, T_HUD, H_HUD},                             {S_FOV, T_FOV, H_FOV},                             {S_LOD, T_LOD, H_LOD},
+    {S_MIPS, T_MIPS, H_MIPS},
+};
+// The Graphics page (1): the switch, the preset, then the additions (the light, the surfaces, the particles). With Graphics:
+// Original only the switch is shown
+constexpr Row GRAPHICS_ROWS[] = {
+    {S_GFX, T_GRAPHICS, H_GFX},              {S_PRESET, T_PRESET, H_PRESET},
     {S_LIGHTING, T_LIGHTING, H_LIGHTING},    {S_SHADOW_STR, T_SHADOW_STR, H_SHADOW_STR},       {S_SHADOW_DIST, T_SHADOW_DIST, H_SHADOW_DIST},     {S_DYN_SHADOWS, T_DYN_SHADOWS, H_DYN_SHADOWS},
     {S_SEC_LIGHTS, T_SEC_LIGHTS, H_SEC_LIGHTS},   {S_AO, T_AO, H_AO},   {S_AO_STR, T_AO_STR, H_AO_STR},   {S_SUN_RAYS, T_SUN_RAYS, H_SUN_RAYS},
     {S_SURFACE, T_SURFACE, H_SURFACE},
-    {S_PARTICLES, T_PARTICLES, H_PARTICLES},
     {S_WATER, T_WATER, H_WATER},             {S_GRASS, T_GRASS, H_GRASS},
-    {S_MIPS, T_MIPS, H_MIPS},
+    {S_PARTICLES, T_PARTICLES, H_PARTICLES},
 };
-constexpr int ROW_COUNT = static_cast<int>(sizeof(ROWS_DEF) / sizeof(Row));
-static_assert(T_COUNT + VISIBLE <= 0x60, "the Graphics page's text ids end where the Controls page's begin (0x7fa0)");
+enum : int { P_DISPLAY, P_GRAPHICS, PAGE_COUNT };
+// A page's EE blocks and rows
+struct PageDef {
+    uint32_t page, title, rows_widget, help_widget, rows, row_help, steps;
+    int32_t title_text;
+    const Row* def;
+    int count;
+};
+constexpr PageDef PAGES[PAGE_COUNT] = {
+    {DPAGE, DTITLE, DROWS_WIDGET, DHELP_WIDGET, DROWS, DROW_HELP, DSTEPS, T_DISPLAY_PAGE, DISPLAY_ROWS, static_cast<int>(sizeof(DISPLAY_ROWS) / sizeof(Row))},
+    {PAGE, TITLE, ROWS_WIDGET, HELP_WIDGET, ROWS, ROW_HELP, STEPS, T_GRAPHICS, GRAPHICS_ROWS, static_cast<int>(sizeof(GRAPHICS_ROWS) / sizeof(Row))},
+};
+static_assert(T_COUNT <= 0x60, "the Graphics page's text ids end where the Controls page's begin (0x7fa0)");
+static_assert(VALUE_FIRST + PAGE_COUNT * VISIBLE <= 0x7f00, "the value texts' ids end where the Advanced page's begin");
+static_assert(DROWS + (VISIBLE + 1) * 0x18 <= DROW_HELP && ROWS + (VISIBLE + 1) * 0x18 <= ROW_HELP, "a page's rows end before its help texts");
 // orig: (none) — enhancement: every text fits its string with its end
 constexpr bool texts_fit() {
     for (const auto& lang : TEXTS)
@@ -267,19 +324,36 @@ constexpr bool texts_fit() {
     return true;
 }
 static_assert(texts_fit(), "a Graphics page text is longer than its string");
-// the value words (T_WINDOW..T_HUD_FIT) are never asked for by id (value_text puts them in the rows' value texts): no string of
-// their own; the ids after them take their strings' places
-constexpr int32_t WORDS = T_HUD_FIT - T_WINDOW + 1;
-constexpr int32_t string_slot(int32_t k) { return k > T_HUD_FIT ? k - WORDS : k; }
-static_assert(0x1000 + (T_COUNT - WORDS + VISIBLE) * STRING_SIZE <= 0x4000, "the Graphics page's texts end where the Controls page's block begins");
+// the value words (T_WINDOW..T_CUSTOM) are never asked for by id (value_text puts them in the rows' value texts): no string of
+// their own; the ids after them take their strings' places, and the value texts come after all of them
+constexpr int32_t WORDS = T_CUSTOM - T_WINDOW + 1;
+constexpr int32_t string_slot(int32_t k) { return k > T_CUSTOM ? k - WORDS : k; }
+constexpr int32_t VALUE_SLOT = T_COUNT - WORDS;  // (the value texts' first string)
+static_assert(0x1000 + (VALUE_SLOT + PAGE_COUNT * VISIBLE) * STRING_SIZE <= 0x4000, "the Graphics page's texts end where the Controls page's block begins");
 
 // The state the host reads (C++ side: the window is not the game's)
 struct State {
-    // (the defaults: window, 100 %, 4:3 with bars, original LOD, 100 %, v-sync, 60, original lighting, no dynamic shadows, all secondary lights)
-    int value[S_COUNT] = {0, 0, 0, 2, 0, 0, 0, 5, 1, 1, 0, 0, 2, 3, 0, 0, SHADOW_STR_DEFAULT, 0, AO_STR_DEFAULT};  // (the monitor: the first of the host's list; shadow distance: Maximum; no ambient occlusion; full textures; shadow strength 70 %; AO intensity 75 %)
+    // (the defaults: window, 100 %, 4:3 with bars, original LOD, 100 %, v-sync, 60, Graphics: Original with the rows under it
+    // at the preset High; the monitor: the first of the host's list; full textures)
+    int value[S_COUNT] = {};
+    State() {
+        value[S_SCALE] = 2;
+        value[S_FOV] = 5;
+        value[S_VSYNC] = 1;
+        value[S_CAP] = 1;
+        for (size_t i = 0; i < sizeof(PRESET_ROWS) / sizeof(Setting); ++i) value[PRESET_ROWS[i]] = PRESETS[PRESET_DEFAULT][i];
+    }
     std::vector<std::string> monitors;  // the host's monitors as it named them (graphics_set_monitors), GLFW's order
     std::string monitor_name;           // the monitor chosen, by name: what the preferences keep (the order is not stable)
-    int top = 0, prev_sel = 0;  // the page's window: the first row shown; the selection the last frame
+    int top[PAGE_COUNT] = {}, prev_sel[PAGE_COUNT] = {};  // each page's window: the first row shown; the selection the last frame
+    int shown[PAGE_COUNT][32] = {};  // each page's rows shown (indexes into its PageDef's rows), and their count
+    int shown_count[PAGE_COUNT] = {};
+    // the switch as it acts now (graphics_enhanced): the setting, or the debug menu's live choice; the renderer's live switches
+    // kept aside while the debug menu holds Original
+    bool live_enh = false;
+    bool stash_ok = false;
+    bool installed = false;  // (the pages built: their rows follow the switch)
+    int stash[8] = {};
     int win_w = 960, win_h = 720;                      // the window mode's size
     bool host_fullscreen = false;
     uint32_t mode = GAME_MODE_NONE;
@@ -293,7 +367,8 @@ struct State {
 // orig: (none) — enhancement: the number of values of a setting
 uint32_t value_count(Setting s) {
     switch (s) {
-        case S_DISPLAY: case S_FIT: case S_VSYNC: case S_DYN_SHADOWS: case S_MIPS: case S_RENDERER: return 2;
+        case S_DISPLAY: case S_FIT: case S_VSYNC: case S_DYN_SHADOWS: case S_MIPS: case S_RENDERER: case S_GFX: return 2;
+        case S_PRESET: return PRESET_COUNT;  // (Custom is shown, never chosen)
         case S_AO: return 11;  // Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2, SSAO 1/2, SSAO+ 1/2, HBAO 1/2, MXAO, MXAO 1/2 (the new ones after the old: the saves' values kept)
         case S_SEC_LIGHTS: return 3;
         case S_SHADOW_DIST: return 4;  // Off, the game's (its point lights per pixel), all (the automatic emitters too)
@@ -308,7 +383,7 @@ uint32_t value_count(Setting s) {
         case S_PARTICLES: return 3;  // Off, Low, High (mrp_particles.h)
         case S_WATER: case S_GRASS: return 3;  // Off, Low, High (mrp_lighting.h g_water, g_grass)
         case S_AO_STR: return sizeof(AO_STRS) / sizeof(int);
-        case S_LIGHTING: return 4;  // Original, Low, Medium, High (mrp_lighting.h: off, the maps at 1024 / 2048 / 4096)
+        case S_LIGHTING: return 3;  // Low, Medium, High (mrp_lighting.h: the maps at 1024 / 2048 / 4096)
         case S_FOV: return sizeof(FOVS) / sizeof(int);
         case S_CAP: return sizeof(CAPS) / sizeof(int);
         case S_MONITOR: return static_cast<uint32_t>(gs_.monitors.size());  // (the host's list; one before GLFW is up: the row shows '?')
@@ -334,6 +409,90 @@ void mips_apply() {
     gs_.mips_seen[1] = g_mrp_moby_mip;
 }
 
+// orig: (none) — enhancement: a value's index in a list (the nearest)
+template <typename T, size_t N>
+int nearest(const T (&list)[N], T v) {
+    int best = 0;
+    for (size_t i = 1; i < N; ++i)
+        if (std::abs(list[i] - v) < std::abs(list[best] - v)) best = static_cast<int>(i);
+    return best;
+}
+
+constexpr size_t PRESET_ROW_COUNT = sizeof(PRESET_ROWS) / sizeof(Setting);
+// orig: (none) — enhancement: the preset the rows `v` match (PRESET_COUNT: none of them, Custom)
+int preset_of(const int* v) {
+    for (int p = 0; p < PRESET_COUNT; ++p) {
+        bool same = true;
+        for (size_t i = 0; i < PRESET_ROW_COUNT && same; ++i) same = v[PRESET_ROWS[i]] == PRESETS[p][i];
+        if (same) return p;
+    }
+    return PRESET_COUNT;
+}
+// orig: (none) — enhancement: a preset's values written into the rows `v`
+void preset_set(int* v, int p) {
+    for (size_t i = 0; i < PRESET_ROW_COUNT; ++i) v[PRESET_ROWS[i]] = PRESETS[p][i];
+}
+
+// The renderer's switches of the additions (each one's Off is the original's picture)
+struct Additions {
+    int modern, dyn, ao, rays, surface, particles, water, grass;
+};
+// orig: (none) — enhancement: the renderer's switches as they are now
+Additions additions_now() { return {g_modern_shadows, g_point_shadows, g_ao, g_sun_rays, g_surface_detail, g_ambient_particles, g_water, g_grass}; }
+// orig: (none) — enhancement: the renderer's switches set
+void additions_set(const Additions& a) {
+    g_modern_shadows = a.modern;
+    g_point_shadows = a.dyn;
+    g_ao = a.ao;
+    g_sun_rays = a.rays;
+    g_surface_detail = a.surface;
+    g_ambient_particles = a.particles;
+    g_water = a.water;
+    g_grass = a.grass;
+}
+
+// orig: (none) — enhancement: THE GATE. The renderer's switches of the additions set from the rows `v`, every one off unless `on`
+// (Graphics: Original draws the original's picture whatever the rows hold; their parameters - the maps' size, the lights' choice,
+// the strengths, the shadows' reach - act only with the modern lighting on). `env`: the testing variables keep their choice
+void additions_apply(const int* v, bool on, bool env) {
+    auto ours = [env](const char* name) { return !env || std::getenv(name) == nullptr; };
+    if (ours("RAC1_SHADOWS")) {
+        g_modern_shadows = on ? 1 : 0;
+        g_shadow_quality = v[S_LIGHTING];
+    }
+    if (ours("RAC1_POINT_SHADOWS")) g_point_shadows = on ? v[S_DYN_SHADOWS] : 0;
+    if (ours("RAC1_POINTS")) g_modern_points = v[S_SEC_LIGHTS] != 0 ? 1 : 0;
+    if (ours("RAC1_AUTO_LIGHTS")) g_auto_lights = v[S_SEC_LIGHTS] == 2 ? 1 : 0;
+    if (ours("RAC1_SHADOW_MOBY_DIST")) g_shadow_moby_dist = SHADOW_DISTS[v[S_SHADOW_DIST]];
+    if (ours("RAC1_AO")) g_ao = on ? v[S_AO] : 0;
+    if (ours("RAC1_SUN_RAYS")) g_sun_rays = on ? v[S_SUN_RAYS] : 0;
+    if (ours("RAC1_SURFACE_DETAIL")) g_surface_detail = on ? v[S_SURFACE] : 0;
+    if (ours("RAC1_PARTICLES")) g_ambient_particles = on ? v[S_PARTICLES] : 0;
+    if (ours("RAC1_WATER")) g_water = on ? v[S_WATER] : 0;
+    if (ours("RAC1_GRASS")) g_grass = on ? v[S_GRASS] : 0;
+    if (ours("RAC1_SHADOW_STRENGTH")) g_shadow_strength = SHADOW_STRS[v[S_SHADOW_STR]];
+    if (ours("RAC1_AO_INTENSITY")) g_ao_intensity = AO_STRS[v[S_AO_STR]];
+    gs_.live_enh = on;
+    gs_.stash_ok = false;
+}
+
+// orig: (none) — enhancement: the rows under the switch `v` taken from the renderer's live values (the switches `a`)
+void rows_from_live(int* v, const Additions& a) {
+    v[S_LIGHTING] = std::clamp(g_shadow_quality, 0, 2);
+    v[S_DYN_SHADOWS] = a.dyn != 0 ? 1 : 0;
+    v[S_SEC_LIGHTS] = g_modern_points == 0 ? 0 : g_auto_lights != 0 ? 2 : 1;
+    const float dist = g_shadow_moby_dist;  // (SHADOW_DISTS: 40, 80, 140, 0 the cascades' reach)
+    v[S_SHADOW_DIST] = dist <= 0.0f ? 3 : dist < 60.0f ? 0 : dist < 110.0f ? 1 : 2;
+    v[S_AO] = std::clamp(a.ao, 0, static_cast<int>(value_count(S_AO)) - 1);
+    v[S_SUN_RAYS] = std::clamp(a.rays, 0, 3);
+    v[S_SURFACE] = std::clamp(a.surface, 0, 2);
+    v[S_PARTICLES] = std::clamp(a.particles, 0, 2);
+    v[S_WATER] = std::clamp(a.water, 0, 2);
+    v[S_GRASS] = std::clamp(a.grass, 0, 2);
+    v[S_SHADOW_STR] = nearest(SHADOW_STRS, g_shadow_strength);
+    v[S_AO_STR] = nearest(AO_STRS, g_ao_intensity);
+}
+
 // orig: (none) — enhancement: the settings applied to the renderer and the window's request
 void apply() {
     const int* v = gs_.value;
@@ -343,23 +502,7 @@ void apply() {
         g_view_fov_scale = static_cast<float>(FOVS[v[S_FOV]]) / 100.0f;
         if (std::getenv("RAC1_HUD") == nullptr) g_hud_aspect = HUD_ASPECTS[v[S_HUD]];
         g_mrp_lod = LODS[v[S_LOD]];
-        // (the environment's choices kept: testing)
-        if (std::getenv("RAC1_SHADOWS") == nullptr) {
-            g_modern_shadows = v[S_LIGHTING] != 0 ? 1 : 0;
-            if (v[S_LIGHTING] != 0) g_shadow_quality = v[S_LIGHTING] - 1;
-        }
-        if (std::getenv("RAC1_POINT_SHADOWS") == nullptr) g_point_shadows = v[S_DYN_SHADOWS];
-        if (std::getenv("RAC1_POINTS") == nullptr) g_modern_points = v[S_SEC_LIGHTS] != 0 ? 1 : 0;
-        if (std::getenv("RAC1_AUTO_LIGHTS") == nullptr) g_auto_lights = v[S_SEC_LIGHTS] == 2 ? 1 : 0;
-        if (std::getenv("RAC1_SHADOW_MOBY_DIST") == nullptr) g_shadow_moby_dist = SHADOW_DISTS[v[S_SHADOW_DIST]];
-        if (std::getenv("RAC1_AO") == nullptr) g_ao = v[S_AO];
-        if (std::getenv("RAC1_SUN_RAYS") == nullptr) g_sun_rays = v[S_SUN_RAYS];
-        if (std::getenv("RAC1_SURFACE_DETAIL") == nullptr) g_surface_detail = v[S_SURFACE];
-        if (std::getenv("RAC1_PARTICLES") == nullptr) g_ambient_particles = v[S_PARTICLES];
-        if (std::getenv("RAC1_WATER") == nullptr) g_water = v[S_WATER];
-        if (std::getenv("RAC1_GRASS") == nullptr) g_grass = v[S_GRASS];
-        if (std::getenv("RAC1_SHADOW_STRENGTH") == nullptr) g_shadow_strength = SHADOW_STRS[v[S_SHADOW_STR]];
-        if (std::getenv("RAC1_AO_INTENSITY") == nullptr) g_ao_intensity = AO_STRS[v[S_AO_STR]];
+        additions_apply(v, v[S_GFX] != 0, true);  // (the Graphics page: through the switch)
         mips_apply();
     }
     GraphicsDisplay d;
@@ -382,8 +525,16 @@ void apply() {
 }
 
 // orig: (none) — enhancement: the real values written where the page shows them (EE)
+// The values as they act, in the layout before the switch (the bytes the same as then - the headless runs' RAM hashes): the
+// Lighting byte 0 Original, 1..3 Low..High; the switches under it 0 with Graphics: Original; S_GFX and S_PRESET not written
 void values_to_ee() {
-    for (uint32_t i = 0; i < S_COUNT; ++i) sb(VALUES + i, static_cast<uint32_t>(gs_.value[i]));
+    const bool on = gs_.value[S_GFX] != 0;
+    for (uint32_t i = 0; i < S_GFX; ++i) {
+        int v = gs_.value[i];
+        if (i == S_LIGHTING) v = on ? v + 1 : 0;
+        else if (!on && (i == S_DYN_SHADOWS || i == S_AO || i == S_SUN_RAYS || i == S_SURFACE || i == S_PARTICLES || i == S_WATER || i == S_GRASS)) v = 0;
+        sb(VALUES + i, static_cast<uint32_t>(v));
+    }
 }
 
 // --- the preferences: $RAC1_GRAPHICS_FILE, else the Advanced settings' directory /graphics_options.txt
@@ -394,20 +545,13 @@ std::filesystem::path prefs_path() {
     return "graphics_options.txt";
 }
 
-// orig: (none) — enhancement: a percent's index in a list (the nearest)
-template <size_t N>
-int nearest(const int (&list)[N], int v) {
-    int best = 0;
-    for (size_t i = 1; i < N; ++i)
-        if (std::abs(list[i] - v) < std::abs(list[best] - v)) best = static_cast<int>(i);
-    return best;
-}
-
 // orig: (none) — enhancement: the preferences read; false when there are none
 bool prefs_read(const std::filesystem::path& path) {
     FILE* f = platform::open_file(path, "r");
     if (f == nullptr) return false;
     char key[64];
+    int old_lighting = -1;
+    bool seen_graphics = false, seen_quality = false;
     while (std::fscanf(f, "%63s", key) == 1) {
         int a = 0, b = 0;
         if (std::strcmp(key, "renderer") == 0) {  // (a name: opengl / vulkan)
@@ -447,7 +591,14 @@ bool prefs_read(const std::filesystem::path& path) {
         else if (std::strcmp(key, "fov") == 0) gs_.value[S_FOV] = nearest(FOVS, a);
         else if (std::strcmp(key, "vsync") == 0) gs_.value[S_VSYNC] = a != 0;
         else if (std::strcmp(key, "fps_cap") == 0) gs_.value[S_CAP] = nearest(CAPS, a);
-        else if ((std::strcmp(key, "lighting") == 0 || std::strcmp(key, "shadows") == 0) && a >= 0 && a < 4) gs_.value[S_LIGHTING] = a;  // ("shadows": before)
+        else if ((std::strcmp(key, "lighting") == 0 || std::strcmp(key, "shadows") == 0) && a >= 0 && a < 4) old_lighting = a;  // ("shadows": before; below)
+        else if (std::strcmp(key, "graphics") == 0) {
+            gs_.value[S_GFX] = a != 0;
+            seen_graphics = true;
+        } else if (std::strcmp(key, "lighting_quality") == 0 && a >= 0 && a < 3) {
+            gs_.value[S_LIGHTING] = a;
+            seen_quality = true;
+        }
         else if (std::strcmp(key, "dynamic_shadows") == 0) gs_.value[S_DYN_SHADOWS] = a != 0;
         else if (std::strcmp(key, "secondary_lights") == 0 && a >= 0 && a < 3) gs_.value[S_SEC_LIGHTS] = a;
         else if (std::strcmp(key, "shadow_distance") == 0 && a >= 0 && a < 4) gs_.value[S_SHADOW_DIST] = a;
@@ -466,6 +617,16 @@ bool prefs_read(const std::filesystem::path& path) {
         else if (std::strcmp(key, "mode") == 0 && a >= 0 && a <= 3) gs_.mode = static_cast<uint32_t>(a);
     }
     std::fclose(f);
+    // the preferences of before the switch (no `graphics` key): their `lighting` (0 Original, 1..3 Low..High) is the switch and
+    // the Lighting row - Original: Graphics Original, the row at its default (High); Low..High: Enhanced with that value. (Ours
+    // write `lighting` too, the same way, for the versions before: theirs is read only when `graphics` is not there)
+    if (!seen_graphics) {
+        if (old_lighting >= 0) {
+            gs_.value[S_GFX] = old_lighting != 0 ? 1 : 0;
+            if (old_lighting != 0 && !seen_quality) gs_.value[S_LIGHTING] = old_lighting - 1;
+        }
+        gs_.dirty = true;  // (written again in the new form at the first frame)
+    }
     return true;
 }
 
@@ -508,10 +669,13 @@ void prefs_write() {
     {
         const int* v = gs_.value;
         static constexpr const char* kFormat =
-            "display %d\nmonitor %s\nwindow %d %d\nrender_scale %d\naspect %d\nfit %d\nlod %d\nfov %d\nvsync %d\nfps_cap %d\nlighting %d\ndynamic_shadows %d\nsecondary_lights %d\nshadow_distance %d\nambient_occlusion %d\ntexture_detail %d\nshadow_strength %d\nsun_rays_quality %d\nao_intensity %d\nambient_particles %d\nhud %d\nrenderer %s\nsurface_detail %d\nwater %d\ngrass %d\nmode %u\n";
+            "display %d\nmonitor %s\nwindow %d %d\nrender_scale %d\naspect %d\nfit %d\nlod %d\nfov %d\nvsync %d\nfps_cap %d\nlighting %d\ndynamic_shadows %d\nsecondary_lights %d\nshadow_distance %d\nambient_occlusion %d\ntexture_detail %d\nshadow_strength %d\nsun_rays_quality %d\nao_intensity %d\nambient_particles %d\nhud %d\nrenderer %s\nsurface_detail %d\nwater %d\ngrass %d\nmode %u\ngraphics %d\nlighting_quality %d\n";
+        // (`lighting` as the versions before the switch read it: 0 Original, 1..3 Low..High)
+        const int old_lighting = v[S_GFX] != 0 ? v[S_LIGHTING] + 1 : 0;
         auto format = [&](char* out, size_t n) {
-            return std::snprintf(out, n, kFormat, v[S_DISPLAY], gs_.monitor_name.c_str(), gs_.win_w, gs_.win_h, SCALES[v[S_SCALE]], v[S_ASPECT], v[S_FIT], v[S_LOD], FOVS[v[S_FOV]], v[S_VSYNC], CAPS[v[S_CAP]], v[S_LIGHTING], v[S_DYN_SHADOWS],
-                     v[S_SEC_LIGHTS], v[S_SHADOW_DIST], v[S_AO], v[S_MIPS], SHADOW_STRS[v[S_SHADOW_STR]], v[S_SUN_RAYS], AO_STRS[v[S_AO_STR]], v[S_PARTICLES], v[S_HUD], v[S_RENDERER] != 0 ? "vulkan" : "opengl", v[S_SURFACE], v[S_WATER], v[S_GRASS], gs_.mode);
+            return std::snprintf(out, n, kFormat, v[S_DISPLAY], gs_.monitor_name.c_str(), gs_.win_w, gs_.win_h, SCALES[v[S_SCALE]], v[S_ASPECT], v[S_FIT], v[S_LOD], FOVS[v[S_FOV]], v[S_VSYNC], CAPS[v[S_CAP]], old_lighting, v[S_DYN_SHADOWS],
+                     v[S_SEC_LIGHTS], v[S_SHADOW_DIST], v[S_AO], v[S_MIPS], SHADOW_STRS[v[S_SHADOW_STR]], v[S_SUN_RAYS], AO_STRS[v[S_AO_STR]], v[S_PARTICLES], v[S_HUD], v[S_RENDERER] != 0 ? "vulkan" : "opengl", v[S_SURFACE], v[S_WATER], v[S_GRASS], gs_.mode,
+                     v[S_GFX], v[S_LIGHTING]);
         };
         // (through a temporary file: a crash or a full disk never leaves the preferences half written)
         const int len = format(nullptr, 0);
@@ -523,6 +687,8 @@ void prefs_write() {
     gs_.dirty = false;
 }
 
+void rows_write(int p);
+
 // orig: (none) — enhancement: a value changed by the page (or a mode, or a save): applied, the
 // preferences to be written
 void changed() {
@@ -530,6 +696,8 @@ void changed() {
     apply();
     values_to_ee();
     gs_.dirty = true;
+    // (the Graphics page's rows: the switch alone with Original, all of them with Enhanced)
+    if (gs_.installed && (gs_.value[S_GFX] != 0) != (gs_.shown_count[P_GRAPHICS] > 1)) rows_write(P_GRAPHICS);
 }
 
 // orig: (none) — enhancement: the language's texts (French in English for now: the font's accented
@@ -558,7 +726,12 @@ std::string value_text(Setting s) {
         case S_FIT: return t[v != 0 ? T_STRETCH : T_BARS];
         case S_HUD: return t[v == 0 ? T_43 : v == 1 ? T_169 : v == 2 ? T_219 : v == 3 ? T_329 : T_HUD_FIT];
         case S_LOD: return t[T_ORIGINAL + v];
-        case S_LIGHTING: return t[T_ORIGINAL + v];
+        case S_LIGHTING: return t[T_LOW + v];
+        case S_GFX: return t[v != 0 ? T_ENHANCED : T_ORIGINAL];
+        case S_PRESET: {
+            const int p = preset_of(gs_.value);
+            return t[p >= PRESET_COUNT ? T_CUSTOM : T_LOW + p];
+        }
         case S_DYN_SHADOWS: return t[v != 0 ? T_ON : T_OFF];
         case S_SEC_LIGHTS: return t[v == 0 ? T_OFF : v == 1 ? T_SEC_GAME : T_SEC_ALL];
         case S_SHADOW_DIST: return t[T_LOW + v];
@@ -602,6 +775,12 @@ void step(Setting s, int d) {
         changed();
         return;
     }
+    if (s == S_PRESET) {  // the presets in turn (from Custom: the first forward, the last back), every row under it set
+        const int p = preset_of(gs_.value);
+        preset_set(gs_.value, p >= PRESET_COUNT ? (d > 0 ? 0 : PRESET_COUNT - 1) : (p + d + PRESET_COUNT) % PRESET_COUNT);
+        changed();
+        return;
+    }
     const int n = static_cast<int>(value_count(s));
     if (n <= 0) return;  // (the monitor row before GLFW is up: nothing to step through)
     gs_.value[s] = (gs_.value[s] + d + n) % n;
@@ -618,25 +797,125 @@ void slot_replace(uint32_t page, uint32_t from, uint32_t to) {
         if (lwu(page + 0x44 + i * 4) == from) sw(page + 0x44 + i * 4, to);
 }
 
-// orig: (none) — enhancement: the widget's rows for the window from gs_.top (their names and helps; the values by slot)
-void rows_write() {
-    uint32_t row = ROWS;
-    const int shown = std::min(VISIBLE, ROW_COUNT);
+// orig: (none) — enhancement: page `p`'s rows shown (the Graphics page with Graphics: Original: the switch alone)
+void rows_shown(int p) {
+    const PageDef& pd = PAGES[p];
+    int n = 0;
+    for (int i = 0; i < pd.count; ++i) {
+        if (p == P_GRAPHICS && gs_.value[S_GFX] == 0 && pd.def[i].s != S_GFX) continue;
+        gs_.shown[p][n++] = i;
+    }
+    gs_.shown_count[p] = n;
+    gs_.top[p] = std::clamp(gs_.top[p], 0, std::max(0, n - VISIBLE));
+}
+
+// orig: (none) — enhancement: page `p`'s widget's rows for the window from its top (their names and helps; the values by slot)
+void rows_write(int p) {
+    const PageDef& pd = PAGES[p];
+    rows_shown(p);
+    uint32_t row = pd.rows;
+    const int shown = std::min(VISIBLE, gs_.shown_count[p]);
     for (int i = 0; i < shown; ++i, row += 0x18) {
-        const Row& r = ROWS_DEF[gs_.top + i];
-        const uint32_t vt = static_cast<uint32_t>(TEXT_FIRST + V_FIRST + i);
+        const Row& r = pd.def[gs_.shown[p][gs_.top[p] + i]];
+        const uint32_t vt = static_cast<uint32_t>(VALUE_FIRST + p * VISIBLE + i);
         sw(row, static_cast<uint32_t>(TEXT_FIRST + r.name));
-        sw(row + 4, STEPS + static_cast<uint32_t>(i));
+        sw(row + 4, pd.steps + static_cast<uint32_t>(i));
         sw(row + 8, vt);  // (two values, both the value's text: cross steps the byte, graphics_setting_changed the setting)
         sw(row + 0xc, vt);
         sw(row + 0x10, 0);
         sw(row + 0x14, 0);
-        sb(STEPS + static_cast<uint32_t>(i), 0);
-        sw(ROW_HELP + static_cast<uint32_t>(i) * 4, static_cast<uint32_t>(TEXT_FIRST + r.help));
+        sb(pd.steps + static_cast<uint32_t>(i), 0);
+        sw(pd.row_help + static_cast<uint32_t>(i) * 4, static_cast<uint32_t>(TEXT_FIRST + r.help));
     }
     for (uint32_t i = 0; i < 0x18; i += 4) sw(row + i, 0);
 }
+
+// orig: (none) — enhancement: the setting of page `p`'s shown slot `slot` (S_COUNT: none)
+Setting slot_setting(int p, int slot) {
+    const int k = gs_.top[p] + slot;
+    if (slot < 0 || k >= gs_.shown_count[p]) return S_COUNT;
+    return PAGES[p].def[gs_.shown[p][k]].s;
+}
+
+// orig: (none) — enhancement: a row of page `p` stepped (the switch shows or hides the rows under it: changed)
+void page_step(int, Setting s, int d) { step(s, d); }
+
+// orig: (none) — enhancement: one of the two pages built from Camera's, its parent `parent`
+void page_install(int p, uint32_t parent) {
+    const PageDef& pd = PAGES[p];
+    ee_copy(pd.page, CAMERA_PAGE, 0x84);
+    ee_copy(pd.title, CAMERA_TITLE, 0x50);
+    ee_copy(pd.rows_widget, CAMERA_SETTINGS, 0x50);
+    ee_copy(pd.help_widget, OPTIONS_HELP, 0x50);
+    sw(pd.title + 0x34, static_cast<uint32_t>(TEXT_FIRST + pd.title_text));
+    gs_.top[p] = 0;
+    gs_.prev_sel[p] = 0;
+    rows_write(p);
+    sw(pd.rows_widget + 0x34, pd.rows);
+    sw(pd.rows_widget + 0x38, 0);
+    sw(pd.rows_widget + 0x40, 0);
+    // the help label: the focused widget's +0x40 (the settings widget's selection, mirrored) as
+    // the index into its texts (flag 0x80); its box is the Options page's help box (slot 1)
+    sw(pd.help_widget + 0x30, 0x80);
+    sw(pd.help_widget + 0x34, pd.row_help);
+    sw(pd.page + 0x38, parent);
+    sw(pd.page + 0x40, pd.rows_widget);
+    slot_replace(pd.page, CAMERA_TITLE, pd.title);
+    slot_replace(pd.page, CAMERA_SETTINGS, pd.rows_widget);
+    // the boxes (the menu mobys' animations): Camera's settings box holds 4 or 5 rows, ours are 10 shown: the
+    // settings in the taller box of page 0x1b6678 (its slot 3), the help in the Options page's help box
+    // (its slot 1), left of it (chosen by trying the game's boxes)
+    sw(pd.page + 0xc, lwu(TALL_PAGE + 0xc));
+    sw(pd.page + 4, lwu(OPTIONS_PAGE + 4));
+    sw(pd.page + 0x44 + 4, pd.help_widget);
+    sw(pd.page + 0x80, 0);
+    gs_.installed = true;
+}
 }  // namespace
+
+// orig: (none) — enhancement (graphics.h)
+bool graphics_enhanced() { return gs_.live_enh; }
+
+// orig: (none) — enhancement (graphics.h)
+void graphics_set_enhanced_live(bool on) {
+    if (on == gs_.live_enh) return;
+    if (!on) {  // (the live values kept aside, every addition off)
+        const Additions a = additions_now();
+        static_assert(sizeof(Additions) == sizeof(gs_.stash), "the stash holds the switches");
+        std::memcpy(gs_.stash, &a, sizeof a);
+        additions_set(Additions{});
+        gs_.live_enh = false;
+        gs_.stash_ok = true;
+        return;
+    }
+    if (gs_.stash_ok) {
+        Additions a;
+        std::memcpy(&a, gs_.stash, sizeof a);
+        additions_set(a);
+        gs_.live_enh = true;
+        gs_.stash_ok = false;
+    } else {
+        additions_apply(gs_.value, true, false);  // (Original since the start: the player's rows)
+    }
+}
+
+// orig: (none) — enhancement (graphics.h)
+int graphics_live_preset() {
+    int v[S_COUNT];
+    std::memcpy(v, gs_.value, sizeof v);
+    rows_from_live(v, additions_now());
+    return preset_of(v);
+}
+
+// orig: (none) — enhancement (graphics.h)
+void graphics_set_live_preset(int preset) {
+    if (preset < 0 || preset >= PRESET_COUNT) return;
+    int v[S_COUNT];
+    std::memcpy(v, gs_.value, sizeof v);
+    rows_from_live(v, additions_now());  // (the rows the preset does not set: as they are live)
+    preset_set(v, preset);
+    additions_apply(v, gs_.live_enh, false);
+}
 
 // orig: (none) — enhancement (graphics.h)
 void graphics_load() {
@@ -650,6 +929,8 @@ void graphics_load() {
     }
     apply();
     values_to_ee();
+    // (every enhancement off - the tests: the renderer's own switches, the testing variables', are what acts)
+    if (g_advanced_disabled) gs_.live_enh = g_modern_shadows != 0 || g_point_shadows != 0 || g_ao != 0 || g_sun_rays != 0 || g_surface_detail != 0 || g_ambient_particles != 0 || g_water != 0 || g_grass != 0;
 }
 
 // orig: (none) — enhancement (graphics.h)
@@ -684,44 +965,30 @@ void graphics_set_render_scale_percent(int pct) { gs_.scale_override = std::clam
 uint32_t graphics_page_install(uint32_t parent) {
     graphics_load();
     values_to_ee();
-    ee_copy(PAGE, CAMERA_PAGE, 0x84);
-    ee_copy(TITLE, CAMERA_TITLE, 0x50);
-    ee_copy(ROWS_WIDGET, CAMERA_SETTINGS, 0x50);
-    ee_copy(HELP_WIDGET, OPTIONS_HELP, 0x50);
-    sw(TITLE + 0x34, TEXT_FIRST + T_GRAPHICS);
-    gs_.top = 0;
-    gs_.prev_sel = 0;
-    rows_write();
-    sw(ROWS_WIDGET + 0x34, ROWS);
-    sw(ROWS_WIDGET + 0x38, 0);
-    sw(ROWS_WIDGET + 0x40, 0);
-    // the help label: the focused widget's +0x40 (the settings widget's selection, mirrored) as
-    // the index into its texts (flag 0x80); its box is the Options page's help box (slot 1)
-    sw(HELP_WIDGET + 0x30, 0x80);
-    sw(HELP_WIDGET + 0x34, ROW_HELP);
-    sw(PAGE + 0x38, parent);
-    sw(PAGE + 0x40, ROWS_WIDGET);
-    slot_replace(PAGE, CAMERA_TITLE, TITLE);
-    slot_replace(PAGE, CAMERA_SETTINGS, ROWS_WIDGET);
-    // the boxes (the menu mobys' animations): Camera's settings box holds 4 or 5 rows, ours are 10 shown: the
-    // settings in the taller box of page 0x1b6678 (its slot 3), the help in the Options page's help box
-    // (its slot 1), left of it (chosen by trying the game's boxes)
-    sw(PAGE + 0xc, lwu(TALL_PAGE + 0xc));
-    sw(PAGE + 4, lwu(OPTIONS_PAGE + 4));
-    sw(PAGE + 0x44 + 4, HELP_WIDGET);
-    sw(PAGE + 0x80, 0);
+    page_install(P_DISPLAY, parent);
+    page_install(P_GRAPHICS, parent);
     return PAGE;
 }
+// orig: (none) — enhancement (graphics.h)
+uint32_t graphics_display_page() { return DPAGE; }
 
 // orig: (none) — enhancement (graphics.h)
 uint32_t graphics_text(int32_t id) {
-    if (id < TEXT_FIRST || id >= TEXT_FIRST + V_FIRST + VISIBLE) return 0;
-    const int32_t k = id - TEXT_FIRST;
     std::string s;
-    if (k < V_FIRST) s = texts()[k];
-    else if (gs_.top + (k - V_FIRST) < ROW_COUNT) s = value_text(ROWS_DEF[gs_.top + (k - V_FIRST)].s);
-    if (k >= T_WINDOW && k <= T_HUD_FIT) return 0;  // (a value word: never asked for, see string_slot)
-    const uint32_t at = STRINGS + static_cast<uint32_t>(string_slot(k)) * STRING_SIZE;
+    int32_t slot = 0;  // (the string's)
+    if (id >= VALUE_FIRST && id < VALUE_FIRST + PAGE_COUNT * VISIBLE) {  // a shown row's value
+        const int p = (id - VALUE_FIRST) / VISIBLE, i = (id - VALUE_FIRST) % VISIBLE;
+        const Setting st = slot_setting(p, i);
+        if (st != S_COUNT) s = value_text(st);
+        slot = VALUE_SLOT + (id - VALUE_FIRST);
+    } else {
+        if (id < TEXT_FIRST || id >= TEXT_FIRST + T_COUNT) return 0;
+        const int32_t k = id - TEXT_FIRST;
+        if (k >= T_WINDOW && k <= T_CUSTOM) return 0;  // (a value word: never asked for, see string_slot)
+        s = texts()[k];
+        slot = string_slot(k);
+    }
+    const uint32_t at = STRINGS + static_cast<uint32_t>(slot) * STRING_SIZE;
     char* p = static_cast<char*>(ee_ram_ptr(at));
     std::strncpy(p, s.c_str(), STRING_SIZE - 1);
     p[STRING_SIZE - 1] = 0;
@@ -771,7 +1038,7 @@ void graphics_menu_back(uint32_t cur, uint32_t to, uint32_t mobys) {
         moby_set_anim(m5, 0x13, static_cast<int32_t>(lbu(seq5 + 0x10)) - 1);
         swc1(m5 + 0x58, -1.0f);
     }
-    if (cur != PAGE && cur != POP_PAGE && cur != advanced_page() && cur != controls_page() && cur != update_notice_page() && cur != updates_page()) return;
+    if (cur != PAGE && cur != DPAGE && cur != POP_PAGE && cur != advanced_page() && cur != controls_page() && cur != update_notice_page() && cur != updates_page()) return;
     // `to`'s boxes as the game leaves them: a page entered forward ends on its animations' last frame; a root page
     // (no parent: the menu's first page) is opened by its animations played back to their first frame
     const bool root = lwu(to + 0x38) == 0;
@@ -789,37 +1056,49 @@ void graphics_menu_back(uint32_t cur, uint32_t to, uint32_t mobys) {
 int32_t graphics_title_text() { return TEXT_FIRST + T_GRAPHICS; }
 // orig: (none) — enhancement (graphics.h)
 int32_t graphics_help_text() { return TEXT_FIRST + T_OPTIONS_HELP; }
+// orig: (none) — enhancement (graphics.h)
+int32_t graphics_display_title_text() { return TEXT_FIRST + T_DISPLAY_PAGE; }
+// orig: (none) — enhancement (graphics.h)
+int32_t graphics_display_help_text() { return TEXT_FIRST + H_DISPLAY_PAGE; }
 
 // orig: (none) — enhancement (graphics.h)
 bool graphics_setting_changed(uint32_t byte) {
-    if (byte < STEPS || byte >= STEPS + static_cast<uint32_t>(VISIBLE)) return false;
-    sb(byte, 0);
-    const int r = gs_.top + static_cast<int>(byte - STEPS);
-    if (r < ROW_COUNT) step(ROWS_DEF[r].s, 1);
-    return true;
+    for (int p = 0; p < PAGE_COUNT; ++p) {
+        const uint32_t steps = PAGES[p].steps;
+        if (byte < steps || byte >= steps + static_cast<uint32_t>(VISIBLE)) continue;
+        sb(byte, 0);
+        const Setting s = slot_setting(p, static_cast<int>(byte - steps));
+        if (s != S_COUNT) page_step(p, s, 1);
+        return true;
+    }
+    return false;
 }
 
 // orig: (none) — enhancement (graphics.h)
 bool graphics_settings_dpad(uint32_t w, uint32_t e, uint32_t pressed) {
-    if (w != ROWS_WIDGET) return false;
+    int p = 0;
+    while (p < PAGE_COUNT && PAGES[p].rows_widget != w) ++p;
+    if (p == PAGE_COUNT) return false;
     // the window moved when up / down go past its ends (the widget stops there: its rows end), as the Controls page
     int sel = lw(w + 0x38);
-    if ((pressed & 0x4000u) != 0 && gs_.prev_sel == VISIBLE - 1 && sel == VISIBLE - 1 && gs_.top + VISIBLE < ROW_COUNT) {
-        ++gs_.top;
-        rows_write();
+    if ((pressed & 0x4000u) != 0 && gs_.prev_sel[p] == VISIBLE - 1 && sel == VISIBLE - 1 && gs_.top[p] + VISIBLE < gs_.shown_count[p]) {
+        ++gs_.top[p];
+        rows_write(p);
         moby_sound_start(1, 0x11, lwu(w + 0x14));
-    } else if ((pressed & 0x1000u) != 0 && gs_.prev_sel == 0 && sel == 0 && gs_.top > 0) {
-        --gs_.top;
-        rows_write();
+    } else if ((pressed & 0x1000u) != 0 && gs_.prev_sel[p] == 0 && sel == 0 && gs_.top[p] > 0) {
+        --gs_.top[p];
+        rows_write(p);
         moby_sound_start(1, 0x11, lwu(w + 0x14));
     }
     sel = lw(w + 0x38);
-    gs_.prev_sel = sel;
+    gs_.prev_sel[p] = sel;
     sw(w + 0x40, static_cast<uint32_t>(sel));  // (the help label's index)
     if ((pressed & 0xa000u) == 0) return false;
-    const uint32_t b = lwu(e + 4);
-    if (b >= STEPS && b < STEPS + static_cast<uint32_t>(VISIBLE) && gs_.top + static_cast<int>(b - STEPS) < ROW_COUNT) {
-        step(ROWS_DEF[gs_.top + static_cast<int>(b - STEPS)].s, (pressed & 0x8000u) != 0 ? -1 : 1);
+    const uint32_t b = lwu(e + 4), steps = PAGES[p].steps;
+    if (b >= steps && b < steps + static_cast<uint32_t>(VISIBLE)) {
+        const Setting s = slot_setting(p, static_cast<int>(b - steps));
+        if (s == S_COUNT) return false;
+        page_step(p, s, (pressed & 0x8000u) != 0 ? -1 : 1);
         return true;
     }
     return false;
@@ -848,15 +1127,16 @@ void graphics_frame() {
 void graphics_take_live() {
     if (g_advanced_disabled) return;
     int* v = gs_.value;
-    v[S_LIGHTING] = g_modern_shadows != 0 ? std::clamp(g_shadow_quality + 1, 1, 3) : 0;
-    v[S_DYN_SHADOWS] = g_point_shadows != 0 ? 1 : 0;
-    v[S_SEC_LIGHTS] = g_modern_points == 0 ? 0 : g_auto_lights != 0 ? 2 : 1;
-    v[S_AO] = std::clamp(g_ao, 0, static_cast<int>(value_count(S_AO)) - 1);
-    v[S_SUN_RAYS] = std::clamp(g_sun_rays, 0, 3);
-    v[S_SURFACE] = std::clamp(g_surface_detail, 0, 2);
-    v[S_PARTICLES] = std::clamp(g_ambient_particles, 0, 2);
-    v[S_WATER] = std::clamp(g_water, 0, 2);
-    v[S_GRASS] = std::clamp(g_grass, 0, 2);
+    v[S_GFX] = gs_.live_enh ? 1 : 0;
+    // the rows from the live values: Enhanced's, or those kept aside by the live Original (none kept: Original since the start,
+    // the rows as they are)
+    if (gs_.live_enh) {
+        rows_from_live(v, additions_now());
+    } else if (gs_.stash_ok) {
+        Additions a;
+        std::memcpy(&a, gs_.stash, sizeof a);
+        rows_from_live(v, a);
+    }
     changed();
 }
 
@@ -865,9 +1145,10 @@ void graphics_take_live() {
 void graphics_save_items(std::vector<uint8_t>& d, uint32_t& count) {
     const struct { uint16_t id; int value; } items[] = {
         {32, gs_.value[S_SCALE]}, {33, gs_.value[S_ASPECT]}, {34, gs_.value[S_FIT]}, {35, gs_.value[S_LOD]}, {36, gs_.value[S_FOV]}, {37, static_cast<int>(gs_.mode)},
-        {38, gs_.value[S_LIGHTING]}, {39, gs_.value[S_DYN_SHADOWS]}, {40, gs_.value[S_SEC_LIGHTS]},
+        {38, gs_.value[S_GFX] != 0 ? gs_.value[S_LIGHTING] + 1 : 0}, {39, gs_.value[S_DYN_SHADOWS]}, {40, gs_.value[S_SEC_LIGHTS]},
         {41, gs_.value[S_SHADOW_DIST]}, {42, gs_.value[S_AO]}, {43, gs_.value[S_MIPS]}, {45, gs_.value[S_SHADOW_STR]}, {47, gs_.value[S_AO_STR]}, {48, gs_.value[S_HUD]}, {49, gs_.value[S_SUN_RAYS]},
         {50, gs_.value[S_PARTICLES]}, {51, gs_.value[S_SURFACE]}, {52, gs_.value[S_WATER]}, {54, gs_.value[S_GRASS]},
+        {55, gs_.value[S_GFX]}, {56, gs_.value[S_LIGHTING]},  // (after 38, which the versions before the switch read: theirs)
     };
     for (const auto& it : items) {
         d.push_back(static_cast<uint8_t>(it.id));
@@ -881,7 +1162,7 @@ void graphics_save_items(std::vector<uint8_t>& d, uint32_t& count) {
 
 // orig: (none) — enhancement (graphics.h)
 bool graphics_save_item(uint32_t id, const uint8_t* data, uint32_t size) {
-    if (id < 32 || id > 54) return false;
+    if (id < 32 || id > 56) return false;
     if (size < 1) return true;
     const int v = data[0];
     switch (id) {
@@ -891,7 +1172,14 @@ bool graphics_save_item(uint32_t id, const uint8_t* data, uint32_t size) {
         case 35: if (v < 5) gs_.value[S_LOD] = v; break;
         case 36: if (v < static_cast<int>(value_count(S_FOV))) gs_.value[S_FOV] = v; break;
         case 37: if (v <= 3) gs_.mode = static_cast<uint32_t>(v); break;
-        case 38: if (v < 4) gs_.value[S_LIGHTING] = v; break;
+        case 38:  // (Lighting before the switch: 0 Original - Graphics Original, the row at its default -, 1..3 Low..High - Enhanced)
+            if (v < 4) {
+                gs_.value[S_GFX] = v != 0 ? 1 : 0;
+                gs_.value[S_LIGHTING] = v != 0 ? v - 1 : PRESETS[PRESET_DEFAULT][0];
+            }
+            break;
+        case 55: if (v < 2) gs_.value[S_GFX] = v; break;
+        case 56: if (v < 3) gs_.value[S_LIGHTING] = v; break;
         case 39: if (v < 2) gs_.value[S_DYN_SHADOWS] = v; break;
         case 40: if (v < 3) gs_.value[S_SEC_LIGHTS] = v; break;
         case 41: if (v < 4) gs_.value[S_SHADOW_DIST] = v; break;
@@ -979,7 +1267,7 @@ void graphics_main_options_entries(uint32_t w) {
     ee_copy(MAIN_ENTRIES, src, n * 0xc);
     uint32_t d = MAIN_ENTRIES + n * 0xc;
     const uint32_t gp = PAGE, ap = advanced_page();
-    const struct { int32_t text; uint32_t page; } ours[] = {{TEXT_FIRST + T_GRAPHICS, gp}, {controls_title_text(), controls_page()}, {advanced_title_text(), ap}};
+    const struct { int32_t text; uint32_t page; } ours[] = {{TEXT_FIRST + T_DISPLAY_PAGE, DPAGE}, {TEXT_FIRST + T_GRAPHICS, gp}, {controls_title_text(), controls_page()}, {advanced_title_text(), ap}};
     for (const auto& o : ours) {
         sh(d, static_cast<uint32_t>(o.text));
         sh(d + 2, 3);  // action 3: the page +4
@@ -997,20 +1285,12 @@ void graphics_new_game_choice(uint32_t w) {
     const int32_t sel = lw(w + 0x40);
     const uint32_t mode = sel <= 0 ? GAME_MODE_ORIGINAL : sel == 1 ? GAME_MODE_MODERN : GAME_MODE_EXPERIMENTAL;
     gs_.mode = mode;
-    // the modern lighting and the graphics enhancements: off in Original and Modern (their defaults: State), every one
-    // at its top in Experimental (lighting High, dynamic shadows on, secondary lights All, shadow distance Maximum,
-    // ambient occlusion GTAO, sun rays High, surface detail High, ambient particles High)
+    // Graphics: Original in Original and Modern (the rows under it kept as they are), Enhanced at the preset High in Experimental
+    // (what Experimental set before the switch - Lighting High, Dynamic Shadows, all the lights, GTAO, Sun Rays, Surface Detail and
+    // Ambient Particles High - with Water and Grass High too)
     const bool experimental = mode == GAME_MODE_EXPERIMENTAL;
-    gs_.value[S_LIGHTING] = experimental ? static_cast<int>(value_count(S_LIGHTING)) - 1 : 0;
-    gs_.value[S_DYN_SHADOWS] = experimental ? 1 : 0;
-    gs_.value[S_SEC_LIGHTS] = static_cast<int>(value_count(S_SEC_LIGHTS)) - 1;  // (All: the default, also the top)
-    gs_.value[S_SHADOW_DIST] = static_cast<int>(value_count(S_SHADOW_DIST)) - 1;  // (Maximum: the default, also the top)
-    gs_.value[S_AO] = experimental ? 4 : 0;  // (GTAO: the best of the full resolution's)
-    gs_.value[S_SUN_RAYS] = experimental ? static_cast<int>(value_count(S_SUN_RAYS)) - 1 : 0;
-    gs_.value[S_SURFACE] = experimental ? static_cast<int>(value_count(S_SURFACE)) - 1 : 0;
-    gs_.value[S_PARTICLES] = experimental ? static_cast<int>(value_count(S_PARTICLES)) - 1 : 0;
-    // (Water and Grass: off in every mode - they draw only on the textures a level's light file tags, chosen in Options)
-    gs_.value[S_WATER] = gs_.value[S_GRASS] = 0;
+    gs_.value[S_GFX] = experimental ? 1 : 0;
+    if (experimental) preset_set(gs_.value, 2);
     if (mode == GAME_MODE_ORIGINAL) {
         gs_.value[S_ASPECT] = 0;
         gs_.value[S_LOD] = 0;

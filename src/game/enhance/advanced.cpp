@@ -357,7 +357,7 @@ void advanced_menu_install() {
     sw(PAGE + 0xc, lwu(TALL_PAGE + 0xc));
     sw(PAGE + 0x80, 0);
 
-    // the Options list: our entries (Graphics, Controls, then Advanced) before the last one (Quit
+    // the Options list: our entries (Display, Graphics, Controls, then Advanced) before the last one (Quit
     // Game), once per overlay load
     const uint32_t list = OPTIONS_LIST, help = OPTIONS_HELP;
     if (lwu(list + 0x34) != ENTRIES) {
@@ -368,7 +368,18 @@ void advanced_menu_install() {
         uint32_t d = ENTRIES, h = HELP, pic = PICTURES;
         for (int32_t i = 0; i < n; ++i) {
             if (i == n - 1) {
-                sh(d, static_cast<uint32_t>(graphics_title_text()));
+                sh(d, static_cast<uint32_t>(graphics_display_title_text()));  // (Display)
+                sh(d + 2, 3);
+                sw(d + 4, graphics_display_page());
+                sh(d + 8, 0);
+                sh(d + 0xa, 0);
+                d += 0xc;
+                sw(h, static_cast<uint32_t>(graphics_display_help_text()));
+                h += 4;
+                sw(pic, PICTURE_SECTOR + PIC_GRAPHICS);
+                sw(pic + 4, 1);
+                pic += 8;
+                sh(d, static_cast<uint32_t>(graphics_title_text()));  // (Graphics)
                 sh(d + 2, 3);  // action 3: the page +4
                 sw(d + 4, graphics_page);
                 sh(d + 8, 0);

@@ -84,9 +84,9 @@ How each compromise is removed in practice:
 |---|---|---|
 | Frame-rate drops and load shedding. The game measures each frame's load with the EE's timer 1 and drops particles, lights and explosion effects when the frame is heavy. | The host's timer 1 only moves when a vsync passes (`runtime/ee/ee_timer.h`), so every frame reads as unloaded: an ideal PS2 that never misses a vsync. | Not selectable: an overloaded PS2 cannot be reproduced on a PC. |
 | Screen fades that hide disc loading | The fade's loop still runs whole, with the same memory writes and frame counter, but inside one host frame: the screen cuts. | Options > Advanced > Fades > Original |
-| Level of detail and draw distance | A Level of Detail setting draws more detail further away. The game's own decisions are not changed (see [Rendering](rendering.md#level-of-detail)). | Options > Graphics > Level of Detail > Original |
+| Level of detail and draw distance | A Level of Detail setting draws more detail further away. The game's own decisions are not changed (see [Rendering](rendering.md#level-of-detail)). | Options > Display > Level of Detail > Original |
 | Texture resolution | The MRP keeps every mip level of every texture, so distant objects are not drawn from the small mip the PS2 had room for. | Debug tools only: `RAC1_MRP_MIP=faithful` and `RAC1_MRPW_MIP=faithful`, or the debug menu |
-| The 4:3 frame | The 3D can be widened to fill the screen, and the HUD spread over it; the game itself still sees its 4:3 view. | Options > Graphics > Aspect Ratio > 4:3 Original, HUD > 4:3 Original |
+| The 4:3 frame | The 3D can be widened to fill the screen, and the HUD spread over it; the game itself still sees its 4:3 view. | Options > Display > Aspect Ratio > 4:3 Original, HUD > 4:3 Original |
 
 The enhancements (quick-select pause, modern aiming, Ratchet & Clank 3 movement, modern lighting)
 are described in [Advanced options](advanced.md) and [Lighting](lighting.md).

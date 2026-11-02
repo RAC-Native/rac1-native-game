@@ -58,7 +58,7 @@ The MRP does not re-derive any of them.
 
 ## Two backends
 
-The renderer has two backends, chosen at Options > Graphics > Renderer and read when the window is
+The renderer has two backends, chosen at Options > Display > Renderer and read when the window is
 made: **OpenGL 4.6**, the default, and **Vulkan 1.3**, experimental and opt-in (`RAC1_RENDERER=vulkan`
 for one run). Each rendering module keeps its OpenGL code and has a Vulkan branch beside it
 (`vk::is_active()`); the shaders are the same GLSL, made Vulkan's by `tools/gen_vk_shaders.py` and
@@ -162,7 +162,7 @@ details and the measurements: [Performance](performance.md#a-host-frame) and
 
 The draw step, in order, during play:
 
-1. the modern lighting's shadow pass, when Lighting is not Original (the sun's cascades, the
+1. the modern lighting's shadow pass, with Graphics: Enhanced (the sun's cascades, the
    point-light cubes, the lights per screen tile);
 2. the sky and the world's batches (the tfrag compute shader dispatched with the frame's first world
    draw);
@@ -352,7 +352,7 @@ The MRP draws them itself (`RAC1_MRP_SEAS`, on by default; `mrp_fx.cpp`, "progra
   eye in some frames and not others as the camera moved by a hair: on Pokitaru, the camera at the water while swimming, the near
   sea turned white (Lighting Original) or dark (modern) for a frame every few, the posts under the water hidden; Vulkan did not
   show it, and now draws the same triangles as OpenGL (the part of the near sea it left out, too).
-- **The modern lighting** (Lighting not Original): the sun's shadows (the surface's colour taken as 55 % sun, our choice), the point
+- **The modern lighting** (Graphics: Enhanced): the sun's shadows (the surface's colour taken as 55 % sun, our choice), the point
   lights per pixel, the emissive surfaces and the materials (Surface Detail) by texture: an `emissive surface` or `material surface`
   line names the callback's moby class and the texture's GS block ([Emissive surfaces](lighting.md#emissive-surfaces),
   [Materials](materials.md#the-levels-seas-and-pools)). OpenGL and Vulkan.
@@ -371,7 +371,7 @@ level). The ship's flight (`flight_draw`) and the Vendor's screens were not cove
 
 ## The modern lighting, in the frame
 
-Optional, off by default (Options > Graphics > Lighting: Original), and only in play, with the MRP
+Optional, off by default (Options > Graphics > Graphics: Original), and only in play, with the MRP
 drawing both the world and the mobys. It changes the picture, never the game's state. Its parts, in
 the order a frame meets them (each one's page has the details):
 
@@ -402,7 +402,7 @@ The game's effects and the 2D are drawn after all of it, as the game drew them.
 
 ## Level of detail
 
-The original decides levels of detail and draw distances for a 4:3 PS2. Options > Graphics > Level of
+The original decides levels of detail and draw distances for a 4:3 PS2. Options > Display > Level of
 Detail offers Original, Low, Medium, High and Maximum (`mrp_lod.cpp`: 0, 25, 50, 75 and 100 on a
 slider).
 
@@ -427,7 +427,7 @@ at Maximum on Veldin, Novalis and Kerwan.
 
 ## Widescreen and render scale
 
-`src/game/render/render_view.cpp` sets the host's view from Options > Graphics:
+`src/game/render/render_view.cpp` sets the host's view from Options > Display:
 
 - **Aspect Ratio**: 4:3 Original, 16:9, or Fill Screen (the 3D widened to the window's shape).
 - **Fit to Screen**: when the picture's shape is not the window's, black bars or stretched.
@@ -473,7 +473,7 @@ state): one of Rilgar's water patches (class 79), the ships' cockpit glass.
 
 ### The 2D in a widened view
 
-The HUD (unless Options > Graphics > HUD spreads it, below) and the menus stay 4:3 in the middle of the
+The HUD (unless Options > Display > HUD spreads it, below) and the menus stay 4:3 in the middle of the
 screen. Full-screen 2D reaches the edges:
 
 - **Full-span primitives**: a 2D primitive covering the frame's whole width or height has its vertices
@@ -497,7 +497,7 @@ screen. Full-screen 2D reaches the edges:
 
 ### The HUD in a widened view
 
-Options > Graphics > HUD (4:3 Original, 16:9, 21:9, 32:9, Fit Screen; `RAC1_HUD` for tests) spreads the
+Options > Display > HUD (4:3 Original, 16:9, 21:9, 32:9, Fit Screen; `RAC1_HUD` for tests) spreads the
 HUD over a box wider than the 4:3 frame: its width is the chosen shape (21:9 is 64:27) but never wider
 than the view's (`min(choice, the view's aspect)`; Fit Screen is the view's), centred. 4:3 Original
 changes nothing (the default: the same pictures and the same game state as before). The game's state
@@ -537,7 +537,7 @@ fleet 0x2eaae0 / 0x2eb9a8; not looked at in a fight yet).
 
 ### Render scale
 
-Options > Graphics > Render Resolution, 50 % to 200 %: the MRP's 3D (the world, the sky, the mobys, the
+Options > Display > Render Resolution, 50 % to 200 %: the MRP's 3D (the world, the sky, the mobys, the
 drop shadows, the ambient occlusion, the sun rays and the ambient particles) is drawn into an off-screen
 buffer at that fraction of the window's resolution, then put on the window, its colour scaled
 (linear) and its depth copied (nearest); the effects and the 2D are then drawn at the window's
@@ -547,7 +547,7 @@ resolution, tested against that depth.
 
 The PS2 kept only what fitted in 4 MB, so distant objects were drawn from their small mip. The MRP
 keeps every mip of every texture resident and chooses the mip from the screen as a modern GPU does,
-so objects stay sharp at any distance ("full texture"). This is the default. Options > Graphics >
+so objects stay sharp at any distance ("full texture"). This is the default. Options > Display >
 Texture Detail: Original (PS2) brings back the GS's own mip choice (`RAC1_MRP_MIP=faithful` for the
 mobys and `RAC1_MRPW_MIP=faithful` for the world do the same with `--debug-tools`).
 

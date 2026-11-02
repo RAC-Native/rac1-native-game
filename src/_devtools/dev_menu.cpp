@@ -1178,7 +1178,7 @@ void tab_sun() {
         g_sun_dirty = false;
     }
     if (level < 0 || g_modern_shadows == 0) {
-        ImGui::TextWrapped("The sun is the modern lighting's: Options > Graphics > Lighting (not Original).");
+        ImGui::TextWrapped("The sun is the modern lighting's: Options > Graphics > Graphics: Enhanced.");
         if (level < 0) return;
     }
     float az = 0.0f, el = 45.0f, gaz = 0.0f, gel = 0.0f;
@@ -1279,6 +1279,7 @@ void tab_sun() {
     ImGui::TextDisabled("The level's ambient particles: the Particles tab.");
 }
 // orig: (host) the Enhancements tab (Daino's request: every enhancement switched on and off at once, to compare and to profile): the
+// global switch Graphics: Original / Enhanced and the preset (as Options > Graphics, graphics.h), then the
 // live switches of the modern lighting, the shadows, the lights, the occlusion, the rays, the materials, the emissive surfaces, the
 // ambient particles (by kind) and the water and grass, each with its profiler stage's GPU / CPU time beside it (the last 60
 // frames; the tab keeps the profiler recording while it is shown). For this run only: "Save as my settings" makes them the player's
@@ -1312,44 +1313,34 @@ void tab_enhancements() {
     };
     static const char* olh[] = {"Off", "Low", "High"};
     ImGui::TextWrapped("Live, for this run (the player's Options > Graphics are kept): switch an enhancement to compare and to see its cost. "
-                       "Everything here but Lighting needs Lighting not Original.");
+                       "Graphics: Original is the original's picture, every addition below off (their values kept for Enhanced).");
     if (ImGui::Button("Save as my settings")) graphics_take_live();
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("These values become the player's preferences (Options > Graphics), written now");
-    ImGui::SameLine();
-    if (ImGui::Button("All off")) {
-        g_point_shadows = 0;
-        g_ao = 0;
-        g_sun_rays = 0;
-        g_surface_detail = 0;
-        g_ambient_particles = 0;
-        g_water = g_grass = 0;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("All on (High)")) {
-        if (g_modern_shadows == 0) {
-            g_modern_shadows = 1;
-            g_shadow_quality = 2;
-        }
-        g_point_shadows = 1;
-        g_modern_points = 1;
-        g_auto_lights = 1;
-        g_ao = 4;
-        g_sun_rays = 3;
-        g_surface_detail = 2;
-        g_emissive = 1;
-        g_ambient_particles = 2;
-        g_water = g_grass = 2;
-    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("These values (the switch and the rows) become the player's preferences (Options > Graphics), written now");
     ImGui::SameLine();
     ImGui::TextDisabled(sum.gpu_frames > 0 ? "frame: GPU %.2f ms" : "frame: -", sum.gpu_busy);
+    // the global switch and the preset, as the Graphics page's first rows
+    const bool enhanced = graphics_enhanced();
+    {
+        int v = enhanced ? 1 : 0;
+        ImGui::TextUnformatted("Graphics");
+        ImGui::SameLine(150.0f);
+        if (ImGui::RadioButton("Original##engfx", &v, 0)) graphics_set_enhanced_live(false);
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Enhanced##engfx", &v, 1)) graphics_set_enhanced_live(true);
+    }
+    ImGui::BeginDisabled(!enhanced);
+    {
+        static const char* names[] = {"Low", "Medium", "High", "Custom"};
+        int p = std::clamp(graphics_live_preset(), 0, 3);
+        ImGui::SetNextItemWidth(150.0f);
+        if (ImGui::Combo("Preset##en", &p, names, 4) && p < 3) graphics_set_live_preset(p);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Every row below at once, as Options > Graphics > Preset (docs/settings.md#presets)");
+    }
     ImGui::SeparatorText("Lighting");
     {
-        static const char* names[] = {"Original", "Low (1024)", "Medium (2048)", "High (4096)"};
-        int v = g_modern_shadows != 0 ? std::clamp(g_shadow_quality + 1, 1, 3) : 0;
-        if (combo("Lighting##en", &v, names, 4)) {
-            g_modern_shadows = v != 0 ? 1 : 0;
-            if (v != 0) g_shadow_quality = v - 1;
-        }
+        static const char* names[] = {"Low (1024)", "Medium (2048)", "High (4096)"};
+        int v = std::clamp(g_shadow_quality, 0, 2);
+        if (combo("Lighting##en", &v, names, 3)) g_shadow_quality = v;
         ms(prof::kShadowCascades);
     }
     {
@@ -1413,6 +1404,7 @@ void tab_enhancements() {
         bool game = g_particles_show_game != 0;
         if (ImGui::Checkbox("The game's own rain / snow drawn as well (as \"keep\")##en", &game)) g_particles_show_game = game ? 1 : 0;
     }
+    ImGui::EndDisabled();
     ImGui::TextDisabled("The level's particle lines: the Particles tab. The tags (materials) of the textures: the Lights and Textures tabs.");
 }
 // orig: (host) the Particles tab (a tester's request, #102 batch 1: the ambient particles were at the bottom of the Sun tab): the
@@ -1762,10 +1754,10 @@ void emis_in_hand() {
                             ch = true;
                         }
                         if (ImGui::IsItemHovered()) ImGui::SetTooltip("\"depth d\": how many units of water before it is opaque and dark");
-                        if (g_water == 0) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Water is Off (Options > Graphics, or the Enhancements tab): these are not drawn.");
+                        if (g_water == 0) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Water is Off (Options > Graphics, or the Enhancements tab; Graphics: Original turns it off): these are not drawn.");
                     }
                     if (e.type == MAT_GRASS && g_grass == 0)
-                        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Grass is Off (Options > Graphics, or the Enhancements tab): the material is not drawn.");
+                        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Grass is Off (Options > Graphics, or the Enhancements tab; Graphics: Original turns it off): the material is not drawn.");
                     else if (e.type == MAT_GRASS && e.kind != 0)
                         ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Grass grows on tfrag textures only (the terrain).");
                     else if (g_surface_detail == 0 && e.type < MAT_GRASS && !(g_water > 0 && (e.type == MAT_WATER || e.type == MAT_LAVA || e.type == MAT_QUICKSAND)))
@@ -1794,7 +1786,7 @@ void tab_emissive() {
         return;
     }
     std::vector<EmissiveSurface>& E = mrp_user_emissive();
-    if (g_modern_shadows == 0) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Shown only with Lighting not Original.");
+    if (g_modern_shadows == 0) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Shown only with Graphics: Enhanced.");
     {  // (Options > Graphics > Surface Detail, here too: the materials are drawn only when it is not Off)
         static const char* steps[] = {"Off", "Low", "High"};
         ImGui::SetNextItemWidth(120.0f);
@@ -1906,12 +1898,12 @@ void tab_lights() {
         g_light_dirty = false;
     }
     if (level < 0) {
-        ImGui::TextWrapped("The lights load with the modern lighting: Options > Graphics > Lighting (not Original), Secondary Lights: All.");
+        ImGui::TextWrapped("The lights load with the modern lighting: Options > Graphics > Graphics: Enhanced, Secondary Lights: All.");
         return;
     }
     ImGui::Text("Level %d: %zu lights%s   %s", level, L.size(), g_light_dirty ? " (not saved)" : "", mrp_user_lights_path());
     if (g_modern_shadows == 0 || g_modern_points == 0 || g_auto_lights == 0)
-        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Shown only with Lighting not Original and Secondary Lights: All.");
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Shown only with Graphics: Enhanced and Secondary Lights: All.");
     ImGui::Checkbox("Markers", &g_light_markers);
     ImGui::SameLine();
     aim_update();  // (the target: the crosshair or the point clicked on the picture)
@@ -2259,7 +2251,7 @@ void tab_textures() {
     if (level != g_tex.level || ImGui::Button("Refresh")) tex_page_build(level);
     ImGui::SameLine();
     ImGui::Text("Level %d: %zu textures", level, g_tex.list.size());
-    if (g_modern_shadows == 0) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Emissive surfaces and materials show only with Lighting not Original.");
+    if (g_modern_shadows == 0) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Emissive surfaces and materials show only with Graphics: Enhanced.");
     static const char* kn[4] = {"tfrag", "tie", "shrub", "moby"};
     for (int k = 0; k < 4; ++k) {
         if (k > 0) ImGui::SameLine();
