@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 364 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 365 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 275 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 276 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 68 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -225,6 +225,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_PERF_TFRAG_ALLOC` | 0 = off; default 1 | The frame's tfrag lists emptied with their storage kept, and the tfrag CPU form's working memory kept per thread, instead of allocated again; 0: as before. The same picture. |
 | `RAC1_PERF_VU1_LOOKUP` | 0 = off; default 1 | A VU1 program start whose port must be found again (the micro memory written since) compares each port's range with the last four images it hashed instead of hashing it again (about 470 KB a frame on Novalis); 0: hashed, as before. The same game state. |
 | `RAC1_PERF_VU7` | 0 = off; default 1 | Program 7's batches (water, seas, lava, the level's shadow meshes): a vertex's world point, fog and depth made once instead of once per triangle corner, the batch's lists kept between batches; the effects' Q from the view-projection's w row alone (the same doubles); 0: as before. The same picture. |
+| `RAC1_PERF_VU_CLAMP` | 0 = off; default 1 | The collision segment test's triangle loop (segment_collide) and the moby transform (moby_update_transform) clamp each VU operand once, as it is read, and then only each result (a clamped value clamps to itself); 0: every operand clamped again at each op, as before, to compare. The same game state. |
 | `RAC1_PERF_XGKICK` | 0 = off; default 1 | A VU1 XGKICK's GIF packet read in place in the VU1 data memory when it does not wrap past its end, instead of copied into a new buffer; 0: always copied, as before. The same picture and game state. |
 | `RAC1_PICKUP_LOG` | integer period in frames; unset = off | Every given number of frames prints the live item pickups and crates within 15 units of the hero (class, state, item, amount, timer, velocity). |
 | `RAC1_PIPELINE` | 0 = off, any other integer = on; unset = the saved setting | Forces the host's pipelining setting on or off, for comparison. |

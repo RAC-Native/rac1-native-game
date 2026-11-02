@@ -68,6 +68,8 @@ What changed in each release. Releases are source only: you build the game with 
 - Kerwan, Rilgar, Umbris, Batalia, Gaspar and Oltanis: the levels' palette blend (two palettes mixed into a texture each frame)
   works out each palette entry once instead of once per texel: about 0.12 to 0.035 ms a call on Kerwan; the same game state
   (`RAC1_PERF_PALETTE_BLEND`).
+- The collision segment test's triangle loop and the moby transform clamp each VU operand once instead of at every op (the same
+  values; `RAC1_PERF_VU_CLAMP`).
 
 ### Launcher and setup
 - Launcher: a new launcher is downloaded only once the player says yes, and checked against the SHA-256 the release lists for

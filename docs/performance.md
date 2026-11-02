@@ -173,6 +173,11 @@ terrain.
   which nothing reads after). `RAC1_RAMHASH` identical on and off on levels 3, 5, 7, 8, 9 and 14 (3000 frames each, the routine
   running on all six). Kerwan, the routine's call (the palettes' DMA and conversion included): 0.124 to 0.035 ms, about one call a
   frame. The PAL build runs the loop as transliterated. No oracle batch: the routine's scratchpad DMA is not in the interpreter.
+- **The VU clamp once per operand** (`RAC1_PERF_VU_CLAMP`, `ovl_1e_1f.cpp` `segment_collide_v`'s triangle test, `ovl_24_25.cpp`
+  `moby_transform_core`): the hand ports' `q*` / `vmul` / `vmadd` helpers clamp both operands and the result of every op by the VU
+  rules; where every operand is already a VU result, a small integer's float or a value clamped as it is read, `vuc(x)` is `x`, so
+  only the result is clamped. Exact by construction; `RAC1_RAMHASH` identical (levels 0, 1, 3, 5, 8) and the oracle batches 38, 41,
+  43, 89 (`moby_update_transform`, `_kept`, `segment_collide`) and the level batches that run them pass.
 
 ## Switches to compare
 
@@ -194,6 +199,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_GS_MEM=0`, `RAC1_PERF_VU1_LOOKUP=0`, `RAC1_PERF_XGKICK=0` | the chain reader's GS memory, VU1 port lookups and kicks as before |
 | `RAC1_PERF_TEXTABLE=0`, `RAC1_PERF_TFRAG_ALLOC=0`, `RAC1_PERF_VU7=0`, `RAC1_PERF_PKT_MEMO=0` | the scene's and the effects' preparation as before |
 | `RAC1_PERF_PALETTE_BLEND=0` | the six levels' palette blend as the game's loop |
+| `RAC1_PERF_VU_CLAMP=0` | the collision triangle test and the moby transform clamping every operand at each op |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's

@@ -2,6 +2,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 
 namespace rac1 {
@@ -134,6 +135,25 @@ static float hsum(const L3& v) { return qmadd(qadd(v.x, v.y), 1.0f, v.z); }     
 static float hsum_y(const L3& v) { return qmadd(qadd(v.y, v.x), 1.0f, v.z); }    // vaddax.y + vmaddz.y
 static bool neg(float f) { return (fbits(f) & 0x80000000u) != 0; }
 static void sq3(uint32_t a, const L3& v, uint32_t w) { swc1(a, v.x); swc1(a + 4, v.y); swc1(a + 8, v.z); sw(a + 0xc, w); }
+// (host) RAC1_PERF_VU_CLAMP (default on): the lane arithmetic below for operands known to be clamped already (a VU result, a small
+// integer's float, a value clamped as it is read): vuc(x) is x for those, so only the result is clamped - the same values as the q*
+// forms above, which clamp every operand again (RAC1_PERF_VU_CLAMP=0: those, to compare).
+static const bool g_clamp_once = std::getenv("RAC1_PERF_VU_CLAMP") == nullptr || std::atoi(std::getenv("RAC1_PERF_VU_CLAMP")) != 0;
+static float cadd(float a, float b) { return g_clamp_once ? vuc(a + b) : qadd(a, b); }
+static float csub(float a, float b) { return g_clamp_once ? vuc(a - b) : qsub(a, b); }
+static float cmul(float a, float b) { return g_clamp_once ? vuc(a * b) : qmul(a, b); }
+static float cmadd(float acc, float a, float b) { return g_clamp_once ? vuc(acc + a * b) : qmadd(acc, a, b); }
+static float cmsub(float acc, float a, float b) { return g_clamp_once ? vuc(acc - a * b) : qmsub(acc, a, b); }
+static L3 cl3(uint32_t a) { return g_clamp_once ? L3{vuc(lwc1(a)), vuc(lwc1(a + 4)), vuc(lwc1(a + 8))} : l3(a); }
+static L3 cadd3(const L3& a, const L3& b) { return L3{cadd(a.x, b.x), cadd(a.y, b.y), cadd(a.z, b.z)}; }
+static L3 csub3(const L3& a, const L3& b) { return L3{csub(a.x, b.x), csub(a.y, b.y), csub(a.z, b.z)}; }
+static L3 cmul3(const L3& a, const L3& b) { return L3{cmul(a.x, b.x), cmul(a.y, b.y), cmul(a.z, b.z)}; }
+static L3 cmuls(const L3& a, float s) { return L3{cmul(a.x, s), cmul(a.y, s), cmul(a.z, s)}; }
+static L3 cmadds(const L3& acc, const L3& a, float s) { return L3{cmadd(acc.x, a.x, s), cmadd(acc.y, a.y, s), cmadd(acc.z, a.z, s)}; }
+static L3 copm(const L3& a, const L3& b) {
+    return L3{cmsub(cmul(a.y, b.z), b.y, a.z), cmsub(cmul(a.z, b.x), b.z, a.x), cmsub(cmul(a.x, b.y), b.x, a.y)};
+}
+static float chsum(const L3& v) { return cmadd(cadd(v.x, v.y), 1.0f, v.z); }
 // vf25..vf29 of VU0: the collision routines keep their nearest contact there and store it from
 // there, so a contact that sets only some of them (a primitive in sphere_collide) stores the
 // others as the previous contact left them. Kept here across calls, as the registers are.
@@ -1534,20 +1554,22 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
             tri += 4;
             if ((lwu(a0 + 0xc) & lwu(a1 + 0xc) & lwu(a2 + 0xc)) != 0) continue;
             if ((flags & 0x80 & tf) != 0) continue;
-            const L3 v1 = l3(a0);
-            const L3 e2 = sub3(l3(a1), v1), e3 = sub3(l3(a2), v1);
+            // (RAC1_PERF_VU_CLAMP: the vertices clamped once as they are read; seg, a, b, best are VU results, org a cell's integer
+            // coordinates: every operand below clean)
+            const L3 v1 = cl3(a0);
+            const L3 e2 = csub3(cl3(a1), v1), e3 = csub3(cl3(a2), v1);
             if ((flags & 0x20) != 0 && (((flags >> 8) ^ tf) & 0x1f) == 0) continue;
-            const L3 n = opm(e3, e2);
-            const float sn = hsum(mul3(seg, n));
-            const float ds = hsum(mul3(sub3(v1, a), n)), de = hsum(mul3(sub3(v1, b), n));
+            const L3 n = copm(e3, e2);
+            const float sn = chsum(cmul3(seg, n));
+            const float ds = chsum(cmul3(csub3(v1, a), n)), de = chsum(cmul3(csub3(v1, b), n));
             const float q = qdiv(ds, sn);
             if ((flags & 0x10) == 0 && (!neg(ds) || static_cast<int32_t>(fbits(de)) <= 0)) continue;
             if (!neg(u2f(fbits(ds) ^ fbits(de)))) continue;
-            const L3 hp = madds(muls(sub3(a, v1), 1.0f), seg, q);
-            const L3 wv1 = add3(v1, org);
-            const float s7 = hsum(mul3(opm(hp, e2), n)), s8 = hsum(mul3(opm(e3, hp), n));
-            const float s9 = hsum(mul3(opm(sub3(hp, e2), sub3(e3, e2)), n));
-            const float gain = qsub(best, q);
+            const L3 hp = cmadds(cmuls(csub3(a, v1), 1.0f), seg, q);
+            const L3 wv1 = cadd3(v1, org);
+            const float s7 = chsum(cmul3(copm(hp, e2), n)), s8 = chsum(cmul3(copm(e3, hp), n));
+            const float s9 = chsum(cmul3(copm(csub3(hp, e2), csub3(e3, e2)), n));
+            const float gain = csub(best, q);
             if (neg(s7) || neg(s8) || neg(s9) || static_cast<int32_t>(fbits(gain)) <= 0) continue;
             s6 = tf + 0x1000;
             s5 = obj;
