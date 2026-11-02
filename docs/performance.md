@@ -189,6 +189,10 @@ terrain.
   copying over it (`ee_memory.cpp` `journal_touch`), and the MRP moby observer builds its ~650-byte record in place in the frame's
   list (`mrp_scene.cpp` `on_draw`). Below the noise here (the journal now saves few pages, the observer sees a moby or two a frame);
   the same picture and game state.
+- **The Euler conversion cache** (`RAC1_PERF_EULER_CACHE`, off by default; `vecmath.cpp` `euler_to_mat3_vu`): its rows depend only on
+  the three angles' bits, so a 512-entry table per thread returns them again for a moby whose rotation did not change. Exact
+  (`RAC1_RAMHASH` identical with it on, levels 0, 1, 3, 5, 8 and the chain), but on this PC a conversion is already about 0.1
+  microseconds: Kerwan ~400 calls a frame, 0.112 to 0.096 microseconds each (the timer included), a few microseconds a frame. Left off.
 
 ## Switches to compare
 
@@ -213,6 +217,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_VU_CLAMP=0` | the collision triangle test and the moby transform clamping every operand at each op |
 | `RAC1_PERF_COLL_MESH=1` | the collision segment test's moby meshes kept between calls (off by default) |
 | `RAC1_PERF_COPIES=0` | the EE journal's pages zero-filled then copied, the moby observer's record built aside and copied |
+| `RAC1_PERF_EULER_CACHE=1` | the Euler conversion's rows kept per angles (off by default) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
