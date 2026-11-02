@@ -34,7 +34,7 @@ layout(std140, set = 1, binding = 0) uniform ShadowUbo {
     vec4 uSsrSky;
     vec4 uPtAim[96];
 };
-// the slots' table (mrp_lighting.h kEmissiveSlots): uEmis the emissive surfaces, uMat the materials, uMat2 the Water option's - 12 KB, a
+// the slots' table (mrp_lighting.h kEmissiveSlots): uEmis the emissive surfaces, uMat the materials, uMat2 the grass's - 12 KB, a
 // storage buffer of its own (in the UBO it would pass the 16 KB a uniform buffer is guaranteed); MatTable in mrp_lighting.cpp
 layout(std430, set = 1, binding = 7) readonly buffer RacMatTable { vec4 uEmis[256]; vec4 uMat[256]; vec4 uMat2[256]; };
 #define uShCam (uShCam_Pass.xyz)
@@ -546,14 +546,16 @@ void main() {
     vec3 c_game = c.rgb;
     c.rgb = sh_points(sh_apply_split(c.rgb, c.rgb * 0.45));
     vec4 o = c;
+    // (flag 27: Surface Detail's water put over its texture's average colour where it stands for what lies under it - the average and
+    // the texture's size packed with the layer; dav the change of the colour with the average for the texel)
+    bool wat = ((fl >> 27) & 1u) != 0u;
+    vec3 dav = vec3(0.0);
     if (tme) {
-        // (Options > Graphics > Water, flag 27: our water - the texture filtered, its average colour and its size packed with the layer)
-        bool wat = ((fl >> 27) & 1u) != 0u;
         ivec2 sz = wat ? ivec2(int(vTex.y & 0xffu) + 1, int((vTex.y >> 8) & 0xffu) + 1) : ivec2(int(vTex.y & 0xffffu), int(vTex.y >> 16));
         vec2 uv = sh_mat_uv(vStq.xy / vStq.z, vEmis) * vec2(sz);  // (lava, mud, quicksand: the materials' slow flow)
         int layer = wat ? int(vTex.x & 0xffffu) : int(vTex.x);
         vec4 t;
-        if (lin || wat) {
+        if (lin) {
             vec2 p = uv - 0.5;
             ivec2 i0 = ivec2(floor(p));
             vec2 f = p - vec2(i0);
@@ -565,21 +567,13 @@ void main() {
         } else {
             t = texelFetch(uAtlas, ivec3(wrapc(ivec2(floor(uv)), sz, rs, rt), layer), 0);
         }
-        vec4 avg = vec4(0.0);
-        if (wat) {  // (our water: its texels faded to their average where a pixel covers more than about a texel - far away, at grazing angles - so that it never sparkles as it flows)
-            avg = vec4(float((vTex.x >> 16) & 0xffu), float(vTex.x >> 24), float((vTex.y >> 16) & 0xffu), float(vTex.y >> 24)) / 255.0;
-            vec2 fu = fwidth(uv);
-            t = mix(t, avg, smoothstep(0.4, 1.3, max(fu.x, fu.y)));
-        }
         if (tfx == 0u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0); o.a = tcc != 0u ? t.a * c.a * (255.0 / 128.0) : c.a; }
         else if (tfx == 1u) { o.rgb = t.rgb; o.a = tcc != 0u ? t.a : c.a; }
         else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
         o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, vEmis);
         o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), vEmis);
-        // (our water where nothing lies under it, drawn opaque - sm_water2 -: its texture's average for the texel, not the texel - an
-        // opaque texel of a see-through texture is its dark, unblended colour)
-        if (wat && sm_w_mode == 2 && sm_w_alpha > 100.0) o.rgb += (avg.rgb - t.rgb) * (tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0));
+        if (wat) dav = (vec3(float((vTex.x >> 16) & 0xffu), float(vTex.x >> 24), float((vTex.y >> 16) & 0xffu)) / 255.0 - t.rgb) * (tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0));
         if (uShade == 2) o.rgb = t.rgb;
     }
     if (uShade == 1) o.rgb = c.rgb;
@@ -590,10 +584,9 @@ void main() {
         float fw = min(max(vFogW, vFogC.x), vFogC.y);
         float f = float(uint(max(fw, 0.0)) & 0xffu) / 255.0;
         o.rgb = o.rgb * f + fogcol * (1.0 - f);
+        dav *= f;
     }
     float a = o.a * 255.0;
-    float ga = ((fl >> 26) & 1u) != 0u ? min(float(vTex.w >> 24) / 128.0, 1.0) : min(o.a * (255.0 / 128.0), 1.0);  /* (FIX: a fixed alpha) */
-    float wa = clamp(ga * sm_w_alpha + sm_w_add, 0.0, 1.0);
     if (ate) {
         bool pass = true;
         if (atst == 0u) pass = false;
@@ -606,11 +599,15 @@ void main() {
         if (!pass && uPass == 0 && (afail == 0u || afail == 2u)) discard;
         if (!pass && uPass == 1 && afail != 2u) discard;
     }
-    float as = ga;
-    if (sm_w_mode == 2) as = wa;
+    float as = min(o.a * (255.0 / 128.0), 1.0);
     uint bk = (fl >> 24) & 3u;
     if (bk == 1u || bk == 2u) {
-        FragColor = vec4(o.rgb * as, as);
+        vec3 pm = o.rgb * as;
+        if (bk == 2u && wat && sm_w_open > 0.0) {  /* (Surface Detail's water standing for what lies under it: over its own average) */
+            pm += clamp(o.rgb + dav, 0.0, 1.0) * ((1.0 - as) * sm_w_open);
+            as += (1.0 - as) * sm_w_open;
+        }
+        FragColor = vec4(pm, as);
         FragFactor = vec4(bk == 1u ? 1.0 : 1.0 - as);
     } else {
         FragColor = vec4(o.rgb, as);

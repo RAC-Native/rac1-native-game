@@ -51,7 +51,7 @@ void graphics_set_render_scale_percent(int pct);
 
 // --- the global switch: Graphics Original / Enhanced ---
 // orig: (none) — enhancement: true when the renderer's additions (the modern lighting and every row of the Graphics page under
-// the switch: shadows, lights, occlusion, sun rays, surface detail, water, grass, ambient particles) are drawn now; false: the
+// the switch: shadows, lights, occlusion, sun rays, surface detail, grass, ambient particles) are drawn now; false: the
 // original's picture whatever those rows hold. The one gate: the settings (and the debug menu's live switch) set the renderer's
 // switches through it
 bool graphics_enhanced();
@@ -93,7 +93,7 @@ void graphics_mips_apply();
 // orig: (none) — enhancement: once a game frame: the preferences written when changed
 void graphics_frame();
 // orig: (none) — enhancement: the debug menu's Enhancements tab: the live switch (Original / Enhanced) and the renderer's live values
-// (lighting, shadows, lights, occlusion, rays, materials, particles, water, grass) taken as the player's preferences ("Save as my
+// (lighting, shadows, lights, occlusion, rays, materials, particles, grass) taken as the player's preferences ("Save as my
 // settings"), written at the next frame
 void graphics_take_live();
 // orig: (none) — enhancement: the saves' items (save<N>.pc, advanced.cpp's format): ours added /

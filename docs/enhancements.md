@@ -89,9 +89,8 @@ See [Lighting](lighting.md). Off by default (Options > Graphics > Graphics: Orig
 - Surface Detail (Off, Low, High): materials for the textures a level's file tags - shiny metal, wet
   ground with puddles and rain ripples, water, lava, mud - the PS2 textures kept, lit and animated;
   High adds reflections. See [Materials](materials.md).
-- Water and Grass (each Off, Low, High): on the textures a level's file tags, waves, depth, foam and reflections on the water; a
-  fine relief of grass blades on the ground (High: a few very low layers of blades). The textures' colours are kept. See
-  [Materials](materials.md#water-and-grass).
+- Grass (Off, Low, High): on the ground a level's file tags, a fine relief of grass blades (High: a few very low layers of
+  blades). The textures' colours are kept. See [Materials](materials.md#grass).
 
 ### Sound: 5.1 and 7.1
 
