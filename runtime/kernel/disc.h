@@ -49,6 +49,9 @@ bool disc_read_ee(uint32_t ee_dst, uint32_t lba, uint32_t sectors);
 // The host asks its OS to read these sectors ahead (into its page cache, in the background): a load about
 // to read them (a level's files at the level exit's start). Nothing is read into the game's memory.
 void disc_will_need(uint32_t lba, uint32_t sectors);
+// the disc's files kept open closed (each once no read still holds it): for an open elsewhere that found no handle left (the Wii U's file
+// system has few), to be tried again
+void disc_close_kept();
 // Whether `level` (0..18) has a level header in the disc's table of contents (sector 1500).
 bool disc_has_level(int level);
 // Reads `level`'s sectors straight from the disc into `out`, with the 48-byte level header sector in front

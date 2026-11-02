@@ -6,8 +6,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <map>
 #include <mutex>
@@ -147,8 +149,15 @@ void ovl_reloc_set_level(int level) {
     const std::string path = level == OVL_FRONT ? std::string("assets/generated/overlay_map/front_reloc.txt")
                                                 : "assets/generated/overlay_map/level" + std::to_string(level) + ".txt";
     std::ifstream in(path);
+    if (!in) {  // (no handle left - the Wii U's file system has few -: the disc's kept files closed and the open tried again)
+        const int err = errno;
+        disc_close_kept();
+        in.clear();
+        in.open(path);
+        if (in) std::fprintf(stderr, "[ovl_reloc] %s: opened once the disc's kept files were closed (%s)\n", path.c_str(), std::strerror(err));
+    }
     if (!in) {
-        std::fprintf(stderr, "[ovl_reloc] %s missing (setup.sh): level %d kept on Veldin's addresses\n", path.c_str(), level);
+        std::fprintf(stderr, "[ovl_reloc] %s missing (setup.sh): level %d kept on Veldin's addresses (%s)\n", path.c_str(), level, std::strerror(errno));
         g_level = 0;
         g_identity = true;
         return;

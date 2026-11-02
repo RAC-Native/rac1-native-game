@@ -37,7 +37,9 @@ std::atomic<int> g_source{-1};  // -1: not decided yet, 0: the files, 1: the ima
 // a mods folder in front of assets/disc/ would change only which path a piece's file opens (files_load).
 constexpr const char* kLayoutMagic = "rac1-native disc layout 1";
 #if defined(__WIIU__)
-constexpr size_t kOpenFiles = 16;  // the files kept open at once (the oldest closed past that; the Wii U's file system has few handles)
+// ((2026-11-02) 16 -> 8: after Veldin's three story movies the 16 kept with the game's other files left no handle for Novalis's overlay
+// map - the level kept on Veldin's addresses, an exception at its start)
+constexpr size_t kOpenFiles = 8;  // the files kept open at once (the oldest closed past that; the Wii U's file system has few handles)
 #else
 constexpr size_t kOpenFiles = 64;  // the files kept open at once (the oldest closed past that)
 #endif
@@ -422,6 +424,14 @@ bool disc_read(uint32_t lba, uint32_t sectors, void* dst) {
     static const int delay = std::getenv("RAC1_DISC_DELAY_MS") != nullptr ? std::atoi(std::getenv("RAC1_DISC_DELAY_MS")) : 0;
     if (delay > 0) std::this_thread::sleep_for(std::chrono::milliseconds(delay));
     return disc_read_from(disc_source(), lba, sectors, dst);
+}
+
+void disc_close_kept() {
+    if (disc_source() != DiscSource::Files) return;
+    DiscFiles& d = files();
+    std::scoped_lock lock(d.lock);
+    for (uint32_t k : d.opened) d.handles[k].reset();
+    d.opened.clear();
 }
 
 void disc_will_need(uint32_t lba, uint32_t sectors) {

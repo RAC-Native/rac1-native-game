@@ -1275,3 +1275,16 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
 - **Left:** the main thread waits for the second half ~10 ms, then draws ~18 ms (the world's GX2 9.4 ms CPU: mrpwm::plan_build and the
   blocks' writing 5.8 - GX2-thread bound: plan_alloc's ring may GX2DrawDone; the mobys' ~3 ms). Recording the mobys' draws in a display
   list during the wait: their block ring may GX2DrawDone at a wrap inside the recording - not done.
+
+### Veldin -> Novalis: the black screen (2026-11-02)
+
+- **Daino:** Novalis never came after Veldin (a black screen). On the console (RAC1_LEVEL=0 RAC1_GOTO=1@300, the story's cards and three
+  movies): at the level change "[ovl_reloc] assets/generated/overlay_map/level1.txt missing", the level kept on Veldin's addresses, then
+  "St12out_of_range: Pointer resolution out of bounds" - the file on the SD all along. The PC's same path had 44 asset files open at
+  that point (the table of contents' rows, both levels' files, the three .pss): the disc's 16 kept open with the game's others left the
+  Wii U's file system no handle.
+- **Fix:** the disc's kept files 16 -> 8 on the Wii U (runtime/kernel/disc.cpp); disc_close_kept(), and ovl_reloc's open tried again
+  after it (with the error on the log). Novalis now starts (its arrival scene; the retry not even needed with 8).
+- **Seen on the way, for the loading work:** the movies are read whole into memory (the third, 38 MB: 22 MB left free while it plays,
+  7.5 MB between two); Novalis's start a 11.4 s hitch on the main thread - the mobys' level data 3.5 s, the world's 5.3 s (geometry,
+  texture arrays, the tfrag vertex shader's tables), the first draws 1.2 s.
