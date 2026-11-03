@@ -1339,3 +1339,20 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   the test run (1500 steps through the flight) 84.4 -> 40.8 s.
 - **Left:** the first load steps' synchronous reads (0.4 - 1.3 s each, the loading screen frozen) and Kerwan's start, a 7.0 s hitch
   (the level's setup and its MRP data on the main thread).
+
+### The ties' pixels: the merged draws by texture unit (2026-11-03)
+
+- **Daino:** Veldin mostly at 30 fps or more, lower toward the end; what for a fixed 60? The wide view again.
+- **The normal views are the GPU's pixels:** a normal view at 18.4-18.8 ms (GPU wait 3, swap wait 6); RAC1_WIIU_PIXELS_OFF=1 or
+  RAC1_WIIU_3D_SCALE=0.5: 16.6-17.4 ms, the vsync's 60. Without pixels the ties' first pass 6.5 -> 0.9 ms: its "CP gap" was the pixels'
+  backpressure, not the CPU's commands late (so was much of the wide view's, read as the CPU's pace before).
+- **The cause, the merged draws' mode 3:** the batch's 15 texture units bound, the pixel shader picks the triangle's (the unit tree) - the
+  ties' pixels ~3x the tfrags'. Mode 1 (an item one unit, bound by the CPU; no instancing) and mode 4 (as 3 split by unit) sample one
+  texture. Veldin, the same deterministic run: mode 3 normal 19-20 / wide 39-41 ms; **mode 1 16.7-17.8 / 26-29.5**; mode 4 16.7-17.8 /
+  23-27.6. Novalis / Kerwan exploring: modes 1 and 3 the same (their frames bound elsewhere).
+- **Mode 4 not taken:** its fast pixel shader samples a wrong texture on a few triangles (a bright spot on a tower's band at Veldin's
+  start, 408 pixels; gone with RAC1_WIIU_FASTPS=0, absent in modes 1 and 3). Against the per-draw path (MERGE=0, the reference) at the
+  same frame (game thread off, deterministic): mode 1 1789 pixels differ (foliage's edges), mode 3 1859, mode 4 2623.
+- **RAC1_WIIU_WORLD_MERGE default 3 -> 1.** RAC1_WIIU_REUSE_STAT=1 (the static draws found again in the next frame: 97-100% while moving)
+  and RAC1_WIIU_PREP_TIME's gpu_packet line (the instances' data, the replays, the full packets) kept for the next steps.
+

@@ -2293,7 +2293,39 @@ uint64_t g_memo_hits = 0, g_memo_packets = 0, g_memo_checked = 0, g_memo_bad = 0
 
 // orig: (host) a GPU path packet (tie A / shrub A): its instance record, its template's runs as draw commands with the GS state
 // at each (its texture prims' A+D from the instance's VU1 memory applied to the registers as the GS would)
+#if defined(__WIIU__)
+bool part_time_on();
+// ((2026-11-03) RAC1_WIIU_PREP_TIME) gpu_packet's time by part: the instance's data made (its first packet in the frame), the replays of the
+// packet before's runs, the full packets; their counts
+struct PktTime {
+    double inst = 0, replay = 0, full = 0;
+    uint64_t n_inst = 0, n_replay = 0, n_full = 0, n_runs = 0;
+} g_pkt_time;
+#endif
 void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp) {
+#if defined(__WIIU__)
+    const bool timed = part_time_on();
+    const double pt0 = timed ? now_ms() : 0.0;
+    double pt1 = pt0;
+    struct PktTimeEnd {
+        bool on;
+        const double& t1;
+        bool* replayed;
+        ~PktTimeEnd() {
+            if (!on) return;
+            const double d = now_ms() - t1;
+            if (*replayed) {
+                g_pkt_time.replay += d;
+                ++g_pkt_time.n_replay;
+            } else {
+                g_pkt_time.full += d;
+                ++g_pkt_time.n_full;
+            }
+        }
+    };
+    bool pt_replayed = false;
+    PktTimeEnd pt_end{timed, pt1, &pt_replayed};
+#endif
     const Level& L = g_level;
     const void* key = p.tie != nullptr ? static_cast<const void*>(p.tie) : static_cast<const void*>(p.shrub);
     const int memo_mode = pkt_memo_mode();
@@ -2341,6 +2373,13 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
     inst = static_cast<uint32_t>(F.insts.size());
     F.inst_of[p.inst] = inst;
     F.insts.push_back(ig);
+#if defined(__WIIU__)
+    if (timed) {
+        pt1 = now_ms();
+        g_pkt_time.inst += pt1 - pt0;
+        ++g_pkt_time.n_inst;
+    }
+#endif
     }
     // ((2026-10-31) RAC1_MRPW_PKT_MEMO) the kept runs appended, when this packet's inputs are the kept one's
     const bool memo_hit = memo_mode != 0 && M.valid && M.key == key && M.table == p.table && M.tex == p.tex && M.ntex == p.ntex && M.shadow == g_shadow_emit &&
@@ -2376,6 +2415,9 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
     if (memo_hit) {
         ++g_memo_hits;
         if (memo_mode != 2) {
+#if defined(__WIIU__)
+            pt_replayed = true;
+#endif
             replay();
             return;
         }
@@ -5856,6 +5898,39 @@ namespace {
 // orig: (host) ((2026-10-28) RAC1_WIIU_PREP_ALL) the first half's computing part, on the worker - nothing of it reads EE memory: the ties' /
 // shrubs' frame from the snapshot's copy and the pages (static_frame_build_at), the tfrags' decisions (tfrag_decide_at), the scene
 // (scene_from_static_k), and the sky's packets put first; the relighting's marks kept for the next prepare (g_vis_pending). false: no scene
+// (testing, RAC1_WIIU_REUSE_STAT=1, 2026-11-03: how much of the frame's static draws - a packet of an instance - the frame before had:
+// the share of draws found again, and the frames whose whole list came out the same, in the same order; the log every 120 frames)
+void reuse_stat(const StaticFrame& f) {
+    static const bool on = std::getenv("RAC1_WIIU_REUSE_STAT") != nullptr && std::atoi(std::getenv("RAC1_WIIU_REUSE_STAT")) != 0;
+    if (!on) return;
+    static std::vector<uint64_t> prev, cur, sorted_prev;
+    static uint64_t draws = 0, found = 0, same = 0, frames = 0, lod_moves = 0;
+    cur.clear();
+    for (int k = 0; k < 2; ++k)
+        for (const StaticDraw& d : f.draws[k]) {
+            const StaticInst& si = f.insts[d.inst];  // (its colours' slot: the instance's own, frame after frame; its rows move with the camera)
+            uint64_t h = reinterpret_cast<uintptr_t>(d.pk) * 0x9e3779b97f4a7c15ull;
+            h = (h ^ (si.slot * 2u + static_cast<uint32_t>(k))) * 0x100000001b3ull;
+            cur.push_back(h);
+        }
+    ++frames;
+    draws += cur.size();
+    if (cur == prev) ++same;
+    std::vector<uint64_t> sc = cur;
+    std::sort(sc.begin(), sc.end());
+    for (uint64_t h : sc) found += std::binary_search(sorted_prev.begin(), sorted_prev.end(), h) ? 1 : 0;
+    lod_moves += sc.size() > sorted_prev.size() ? sc.size() - sorted_prev.size() : sorted_prev.size() - sc.size();
+    prev.swap(cur);
+    sorted_prev.swap(sc);
+    if (frames % 120 == 0) {
+        std::printf("[mrpw] reuse: last 120 frames %.0f static draws a frame, %.1f%% of them in the frame before, %llu frames the same list in the same order, "
+                    "%.1f draws a frame of count change\n",
+                    static_cast<double>(draws) / 120.0, draws > 0 ? 100.0 * static_cast<double>(found) / static_cast<double>(draws) : 0.0,
+                    static_cast<unsigned long long>(same), static_cast<double>(lod_moves) / 120.0);
+        draws = found = same = lod_moves = 0;
+    }
+}
+
 bool wiiu_prep_head() {
     Frame& F = g_frame;
     const HeadIn& in = g_head_in;
@@ -5871,6 +5946,7 @@ bool wiiu_prep_head() {
         tp = t;
     };
     static_frame_build_at(g_slevel, g_rcols, g_sframe, false, in.snap, &g_pages);
+    reuse_stat(g_sframe);
     VisPending& v = g_vis_pending;
     for (int k = 0; k < 3; ++k) {
         v.kind[k] = false;
@@ -6194,6 +6270,10 @@ void wiiu_prep_tail() {
         if (++n == 120) {
             std::printf("[mrpw] the prepare's second half, ms a call: the triangles (build_triangles) %.2f, the tfrags (%s, this thread's share) %.2f\n", tri_ms / 120,
                         F.tvs ? "the vertex shader's block" : "the CPU route", tf_ms / 120);
+            const PktTime& T = g_pkt_time;
+            std::printf("[mrpw] gpu_packet, ms a call: the instances' data %.2f (%.0f), the replays %.2f (%.0f), the full packets %.2f (%.0f)\n", T.inst / 120,
+                        static_cast<double>(T.n_inst) / 120, T.replay / 120, static_cast<double>(T.n_replay) / 120, T.full / 120, static_cast<double>(T.n_full) / 120);
+            g_pkt_time = PktTime{};
             n = 0;
             tri_ms = tf_ms = 0.0;
         }

@@ -134,10 +134,14 @@ uint32_t g_tex_loc = 0, g_cols_loc = 0, g_runs_loc = 0;
 bool g_tex_ok = false, g_cols_ok = false, g_runs_ok = false;
 uint32_t g_unit_loc[16] = {};  // (the merged draws' texture units: uTex, uT1..uT15)
 bool g_units_ok = false;
-// RAC1_WIIU_WORLD_MERGE (mrpwm::Mode): 0 one GX2 draw per draw command (as before), 1 an instance's consecutive commands of one texture
-// unit one draw, 2 of any unit (the batch's units bound at once), 3 (the default) and consecutive instances drawing the same commands
-// one instanced draw, 4 (2026-10-28) as 3 split by texture unit (one sampler: the pixel shader's unit tree not run)
-int g_merge = mrpwm::kInstanced;
+// RAC1_WIIU_WORLD_MERGE (mrpwm::Mode): 0 one GX2 draw per draw command (as before), 1 (the default since 2026-11-03) an instance's
+// consecutive commands of one texture unit one draw, 2 of any unit (the batch's units bound at once), 3 (the default before) and
+// consecutive instances drawing the same commands one instanced draw, 4 (2026-10-28) as 3 split by texture unit (one sampler: the pixel
+// shader's unit tree not run). (2026-11-03, Veldin on the console: the units' tree of modes 2 / 3 made the ties' pixels ~3x dearer - the
+// ties' first pass 6.5 -> ~2.5 ms at 1080p in a normal view by mode 1; the frames 19-20 -> 16.7-17.8 ms, the wide view 39-41 -> 26-29.5.
+// Mode 4 is as fast but its fast pixel shader samples a wrong texture on a few triangles - a bright spot on a tower's band, absent with
+// RAC1_WIIU_FASTPS=0 and in modes 1 / 3: not the default until found)
+int g_merge = mrpwm::kByUnit;
 GX2Sampler g_samplers[16];  // [TEX1 / CLAMP bits: 0 MMAG linear, 1 MMIN linear, 2 wrap s, 3 wrap t] (mip mode 0: the GS's level, textureLod)
 GX2Sampler g_cols_sampler;  // (the colours' texture: point, clamped)
 // the tfrags' shaders (shaders/mrp_tfrag.gsh): their fetch shaders by the 32-bit attributes' byte order ([0] swapped, the default; [1] as
