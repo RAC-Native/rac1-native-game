@@ -545,6 +545,16 @@ void main() {
     bool lin = ((fl >> 18) & 1u) != 0u, rs = ((fl >> 19) & 1u) != 0u, rt = ((fl >> 20) & 1u) != 0u;
     vec4 c = iip ? vColor : vFlat;
     vec3 c_game = c.rgb;
+#ifdef RAC1_RT
+    // (RAC1_RT's half-resolution trace: no surface the 3D hides - its own depth is the seas' alone - and no lighting, the reflection alone)
+    bool rt_half = ((uRtMode >> 6) & 3) == 1;
+    if (rt_half && uMat[0].w != 0.0) {
+        vec2 ouv;
+        float odz = sm_ssr_dz(vShWorld, ouv);
+        if (ouv.x >= 0.0 && odz > 0.5 + 0.03 * length(uShCam - vShWorld)) discard;  // (clearly behind: an edge's own pixels kept)
+    }
+    if (!rt_half)
+#endif
     c.rgb = sh_points(sh_apply_split(c.rgb, c.rgb * 0.45));
     vec4 o = c;
     // (flag 27: Surface Detail's water put over its texture's average colour where it stands for what lies under it - the average and
@@ -629,6 +639,13 @@ void main() {
 # (sm_water_rt) against the level's top level and shades the hit (set 2); GLSL 4.60 for GL_EXT_ray_query, the textures' array indexed
 # per pixel (GL_EXT_nonuniform_qualifier)
 MRP_VU7_FS_RT = MRP_VU7_FS.replace("#version 450\n", "#version 460\n#extension GL_EXT_ray_query : require\n#extension GL_EXT_nonuniform_qualifier : require\n#define RAC1_RT 1\n", 1)
+# its half-resolution trace's variant (mrp_fx.cpp): the depth tested before the shader (the trace pass only shades the nearest sea
+# surface a depth pass left - pass 3 returns at once: that depth pass)
+MRP_VU7_FS_RT_HALF = MRP_VU7_FS_RT.replace("void main() {\n    sh_prepare();",
+                                           "layout(early_fragment_tests) in;\nvoid main() {\n    if (((uRtMode >> 6) & 3) == 3) return;\n    sh_prepare();", 1)
+assert MRP_VU7_FS_RT_HALF != MRP_VU7_FS_RT
+# and the variant reading that trace (RAC1_RT_UPSAMPLE: no ray query left in it, the sea's own registers)
+MRP_VU7_FS_RT_UP = MRP_VU7_FS_RT.replace("#define RAC1_RT 1\n", "#define RAC1_RT 1\n#define RAC1_RT_UPSAMPLE 1\n", 1)
 
 # ---------------------------------------------------------------------------
 # 3. mrp_shadows.cpp shaders
@@ -2317,6 +2334,8 @@ SHADERS = [
     ("kMrpVu7Vs", "vert", MRP_VU7_VS),
     ("kMrpVu7Fs", "frag", MRP_VU7_FS),
     ("kMrpVu7FsRt", "frag", MRP_VU7_FS_RT),
+    ("kMrpVu7FsRtHalf", "frag", MRP_VU7_FS_RT_HALF),
+    ("kMrpVu7FsRtUp", "frag", MRP_VU7_FS_RT_UP),
     ("kMrpShadowsFaceVs", "vert", MRP_SHADOWS_FACE_VS),
     ("kMrpShadowsFaceFs", "frag", MRP_SHADOWS_FACE_FS),
     ("kMrpShadowsDarkVs", "vert", MRP_SHADOWS_DARK_VS),

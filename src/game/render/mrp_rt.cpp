@@ -486,7 +486,9 @@ struct State {
     // stand-in for it
     vk::GpuBuffer inst_buf{}, tri_buf{};
     std::array<vk::GpuBuffer, vk::kFramesInFlight> rcol_buf{}, tcol_buf{}, frame_buf{};
-    float fog[8] = {};  // (the frame's: the fog's four constants; FOGCOL's r, g, b, whether on - binding 7, RtFrame)
+    // (the frame's constants, binding 7 RtFrame: the fog's four; FOGCOL's r, g, b, whether on; the ripples' spread of the reflection - radians
+    // added to the pixel's cone: RAC1_RT_CONE x 0.001; the upsample's taps' distance in half texels: RAC1_RT_BLUR x 0.1)
+    float fog[12] = {};
     std::array<uint64_t, vk::kFramesInFlight> col_gen{};
     std::vector<uint32_t> rcols, tcols;
     uint64_t rcol_changes = ~0ull, tcol_changes = ~0ull, col_generation = 1;
@@ -938,6 +940,10 @@ void mrp_rt_note_fog(const float fog[4], uint32_t fogcol, bool on) {
     for (int k = 0; k < 4; ++k) g_rt.fog[k] = fog[k];
     for (int k = 0; k < 3; ++k) g_rt.fog[4 + k] = static_cast<float>((fogcol >> (8 * k)) & 0xff) / 255.0f;
     g_rt.fog[7] = on ? 1.0f : 0.0f;
+    static const float spread = static_cast<float>(env_int("RAC1_RT_CONE", 20)) * 0.001f;
+    g_rt.fog[8] = spread;
+    static const float blur = static_cast<float>(env_int("RAC1_RT_BLUR", 10)) * 0.1f;  // (the half-resolution trace's taps, half texels apart)
+    g_rt.fog[9] = blur;
 }
 
 // orig: (host) see mrp_rt.h

@@ -1942,7 +1942,7 @@ static_assert(sizeof(V7VkPush) == 80);
 VkShaderModule g7_vk_vs = VK_NULL_HANDLE, g7_vk_fs = VK_NULL_HANDLE;
 VkPipelineLayout g7_vk_layout = VK_NULL_HANDLE;
 // (RAC1_RT, testing: the ray-traced variant - its fragment shader, its layout with set 2 the top level, mrp_rt.h)
-VkShaderModule g7_vk_fs_rt = VK_NULL_HANDLE;
+VkShaderModule g7_vk_fs_rt = VK_NULL_HANDLE, g7_vk_fs_rt_half = VK_NULL_HANDLE, g7_vk_fs_rt_up = VK_NULL_HANDLE;  // (the half-resolution trace's: early depth tests; the seas reading it)
 VkPipelineLayout g7_vk_layout_rt = VK_NULL_HANDLE;
 
 void shutdown_vk_vu7() {
@@ -1954,9 +1954,11 @@ void shutdown_vk_vu7() {
         if (g7_vk_vs != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g7_vk_vs, nullptr);
         if (g7_vk_fs != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g7_vk_fs, nullptr);
         if (g7_vk_fs_rt != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g7_vk_fs_rt, nullptr);
+        if (g7_vk_fs_rt_half != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g7_vk_fs_rt_half, nullptr);
+        if (g7_vk_fs_rt_up != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g7_vk_fs_rt_up, nullptr);
     }
     g7_vk_layout = g7_vk_layout_rt = VK_NULL_HANDLE;
-    g7_vk_vs = g7_vk_fs = g7_vk_fs_rt = VK_NULL_HANDLE;
+    g7_vk_vs = g7_vk_fs = g7_vk_fs_rt = g7_vk_fs_rt_half = g7_vk_fs_rt_up = VK_NULL_HANDLE;
 }
 
 // orig: (host) the surfaces' Vulkan shaders and pipeline layout (set 0 the effects' atlas, set 1 the lighting's)
@@ -1982,6 +1984,8 @@ bool init_vk_vu7() {
     if (mrp_rt_active()) {  // (RAC1_RT: the ray-traced variant, set 2 the top level)
         VkDescriptorSetLayout sets_rt[3] = {sets[0], sets[1], reinterpret_cast<VkDescriptorSetLayout>(mrp_rt_vk_set_layout())};
         g7_vk_fs_rt = vk::create_shader_module(vk::shaders::kMrpVu7FsRt, sizeof(vk::shaders::kMrpVu7FsRt));
+        g7_vk_fs_rt_half = vk::create_shader_module(vk::shaders::kMrpVu7FsRtHalf, sizeof(vk::shaders::kMrpVu7FsRtHalf));
+        g7_vk_fs_rt_up = vk::create_shader_module(vk::shaders::kMrpVu7FsRtUp, sizeof(vk::shaders::kMrpVu7FsRtUp));
         plci.setLayoutCount = 3;
         plci.pSetLayouts = sets_rt;
         if (g7_vk_fs_rt == VK_NULL_HANDLE || sets_rt[2] == VK_NULL_HANDLE || vkCreatePipelineLayout(dev, &plci, nullptr, &g7_vk_layout_rt) != VK_SUCCESS)
@@ -2046,7 +2050,7 @@ void gl_draw_batches(const std::vector<Batch>& bs, size_t from, size_t to, GLint
 // orig: (host) the batches [from, to) of `bs` drawn on Vulkan: `base` the pipeline (shaders, layout, vertex input), `push` the push
 // constants of `push_size` bytes whose int at `pass_at` is uPass
 void vk_draw_batches(const std::vector<Batch>& bs, size_t from, size_t to, const vk::GraphicsPipelineDesc& base, VkPipelineLayout layout, void* push,
-                     uint32_t push_size, size_t pass_at, bool trace) {
+                     uint32_t push_size, size_t pass_at, int trace) {
     VkCommandBuffer cb = vk::cmd();
     auto set_pass = [&](int32_t v) {
         std::memcpy(static_cast<uint8_t*>(push) + pass_at, &v, 4);
@@ -2075,12 +2079,13 @@ void vk_draw_batches(const std::vector<Batch>& bs, size_t from, size_t to, const
         }
         const float bc[4] = {0.0f, 0.0f, 0.0f, fix};
         vkCmdSetBlendConstants(cb, bc);
-        if (trace) {  // (RAC1_RT's half-resolution trace: every surface written, the nearest kept - no blending, the GS's tests left out)
+        if (trace != 0) {  // (RAC1_RT's half-resolution trace: 1 its depth pass - the seas' nearest surface -, 2 that surface traced; no
+                           // blending, the GS's tests left out)
             desc.blend_enable = false;
             desc.depth_test = true;
-            desc.depth_compare = VK_COMPARE_OP_LESS_OR_EQUAL;
-            desc.depth_write = true;
-            desc.color_write_mask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+            desc.depth_compare = trace == 1 ? VK_COMPARE_OP_LESS : VK_COMPARE_OP_EQUAL;
+            desc.depth_write = trace == 1;
+            desc.color_write_mask = trace == 1 ? 0 : VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
             vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, vk_fx_pipeline(desc));
             set_pass(0);
             vkCmdDraw(cb, b.count, 1, b.first, 0);
@@ -2436,7 +2441,7 @@ void mrp_fx_draw(const MrpChainFrame& gs, int win_w, int win_h, const gs::Viewpo
                 vk::GpuImage *half = nullptr, *half_depth = nullptr;
                 VkDescriptorSet trace_set = VK_NULL_HANDLE;
                 if (rt_set != VK_NULL_HANDLE && mrp_rt_res() == 0) {
-                    half = mrp_rt_half_target(vk::current_target_width(), vk::current_target_height(), &half_depth);
+                    if (g7_vk_fs_rt_half != VK_NULL_HANDLE && g7_vk_fs_rt_up != VK_NULL_HANDLE) half = mrp_rt_half_target(vk::current_target_width(), vk::current_target_height(), &half_depth);
                     trace_set = reinterpret_cast<VkDescriptorSet>(mrp_rt_vk_set_trace());
                     if (half == nullptr || trace_set == VK_NULL_HANDLE) half = nullptr;
                 }
@@ -2490,8 +2495,11 @@ void mrp_fx_draw(const MrpChainFrame& gs, int win_w, int win_h, const gs::Viewpo
                     td.color_format = half->format;
                     td.depth_format = half_depth->format;
                     td.shading_rate = 1;
+                    td.fs = g7_vk_fs_rt_half;
+                    pc.uRtMode = mrp_rt_shader_mode(1) | 3 << 6;
+                    vk_draw_batches(g_b7, sp.from, sp.to, td, lay, &pc, sizeof(pc), offsetof(V7VkPush, uPass), 1);
                     pc.uRtMode = mrp_rt_shader_mode(1);
-                    vk_draw_batches(g_b7, sp.from, sp.to, td, lay, &pc, sizeof(pc), offsetof(V7VkPush, uPass), true);
+                    vk_draw_batches(g_b7, sp.from, sp.to, td, lay, &pc, sizeof(pc), offsetof(V7VkPush, uPass), 2);
                     vk::pop_target();
                     vk::transition_image(cb, *half, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
                     vk::ensure_rendering();
@@ -2499,8 +2507,9 @@ void mrp_fx_draw(const MrpChainFrame& gs, int win_w, int win_h, const gs::Viewpo
                     vk::set_scissor(false);
                     vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, lay, 2, 1, &rt_set, 0, nullptr);
                     pc.uRtMode = mrp_rt_shader_mode(2);
+                    base.fs = g7_vk_fs_rt_up;
                 }
-                vk_draw_batches(g_b7, sp.from, sp.to, base, lay, &pc, sizeof(pc), offsetof(V7VkPush, uPass), false);
+                vk_draw_batches(g_b7, sp.from, sp.to, base, lay, &pc, sizeof(pc), offsetof(V7VkPush, uPass), 0);
                 continue;
             }
             if (!init_gl_vu7()) continue;
@@ -2585,7 +2594,7 @@ void mrp_fx_draw(const MrpChainFrame& gs, int win_w, int win_h, const gs::Viewpo
                 {5, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(FV, vu))},
             };
             base_desc.cull_mode = VK_CULL_MODE_NONE;
-            vk_draw_batches(g_batches, sp.from, sp.to, base_desc, g_vk_pipe_layout, &pc, sizeof(pc), offsetof(FxVkPush, uPass), false);
+            vk_draw_batches(g_batches, sp.from, sp.to, base_desc, g_vk_pipe_layout, &pc, sizeof(pc), offsetof(FxVkPush, uPass), 0);
             continue;
         }
         // the GL state
