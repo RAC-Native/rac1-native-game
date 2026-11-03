@@ -548,6 +548,17 @@ again. No need to reinstall anything by hand.
 the parallel jobs, not the generator. Since 0.5.0 a unit that crashes is run once more on its own;
 if it still fails, run `setup.cmd -j 1` (or, in the launcher, Settings > Parallel jobs > 1).
 
+**Windows: "clang.exe is still missing after installing it again"**, after pacman's warnings "could not get file
+information for clang64/bin/clang.exe" and "Can't create '/clang64/bin/clang.exe'" (#126, #88): the game's folder is on
+a drive that is not NTFS (exFAT or FAT32: an external drive or a USB stick, often). MSYS2's clang package holds
+`clang.exe`, `clang-cpp.exe`, `x86_64-w64-mingw32-clang.exe` and `x86_64-w64-mingw32-clang++.exe` as hard links to
+`clang++.exe`, and those drives cannot hold hard links, so pacman leaves them out. The setup (`tools\windows\toolchain.ps1`,
+and the launcher before it runs it) now copies `clang++.exe` to the missing names (clang picks C or C++ by its own file
+name, so a copy works the same), and does the same for the other packages' linked programs (`lld.exe`, `llvm-cov.exe`,
+`unzip.exe`, `libdeflate-gzip.exe`); it says when the folder is not on an NTFS drive. Run `setup.cmd` (or the
+launcher's Set up) again. If clang.exe is still missing after that, an antivirus may be removing it: see below. Moving
+the game's folder to an NTFS drive (the one Windows is on) avoids the copies.
+
 **Windows: "... rac1-native.exe is missing after the build, although the build finished"**: an
 antivirus (Windows Security too) removed the newly built program, which it does not know. Look in
 its protection history, allow the file (or exclude the game's folder), and run the setup again.

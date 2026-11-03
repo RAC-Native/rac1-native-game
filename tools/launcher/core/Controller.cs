@@ -455,6 +455,7 @@ namespace Rac1Launcher
 
         bool PrepareWindowsTools(Runner r, GameDir g)
         {
+            RepairLinkedFiles(g);  // (first: an older release's toolchain.ps1 stops when clang.exe is missing)
             view.Step("Preparing the tools that build the game");
             view.StepDetail("Preparing the tools that build the game (the first time: about 1 GB to download, several minutes)");
             string ps = Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe");
@@ -468,8 +469,39 @@ namespace Rac1Launcher
                            });
             if (r.Cancelled) return false;
             if (rc != 0) { Fail(LastError() ?? "Preparing the tools failed."); return false; }
+            RepairLinkedFiles(g);
             RepairCertificates(g);
             return true;
+        }
+
+        // The files MSYS2's packages hold as hard links to another of their files, which a drive that is not NTFS (exFAT,
+        // FAT32: an external drive) cannot hold: pacman leaves them out, clang.exe among them (GitHub issue #126). The same
+        // table as toolchain.ps1's ($LinkedFiles), which copies them too: here also for an older release's script, which
+        // stops when clang.exe is missing before the update that brings the new one can run.
+        static readonly string[,] LinkedFiles =
+        {
+            { "clang.exe", "clang++.exe" }, { "clang-cpp.exe", "clang++.exe" },
+            { "x86_64-w64-mingw32-clang.exe", "clang++.exe" }, { "x86_64-w64-mingw32-clang++.exe", "clang++.exe" },
+            { "lld.exe", "ld.exe" }, { "llvm-cov.exe", "gcov.exe" }, { "unzip.exe", "bsdunzip.exe" },
+            { "libdeflate-gzip.exe", "libdeflate-gunzip.exe" },
+        };
+
+        /// <summary>The linked files missing from the private MSYS2, copied from their target (clang picks C or C++ by its
+        /// own file name, so a copy works the same).</summary>
+        void RepairLinkedFiles(GameDir g)
+        {
+            string bin = g.P(".toolchain", "msys64", "clang64", "bin");
+            for (int i = 0; i < LinkedFiles.GetLength(0); i++)
+            {
+                string file = Path.Combine(bin, LinkedFiles[i, 0]), target = Path.Combine(bin, LinkedFiles[i, 1]);
+                if (File.Exists(file) || !File.Exists(target)) continue;
+                try
+                {
+                    File.Copy(target, file);
+                    Log($"Copied {LinkedFiles[i, 1]} to {LinkedFiles[i, 0]} (MSYS2's package has it as a hard link, which this drive cannot hold)");
+                }
+                catch (Exception e) { Log($"Could not copy {LinkedFiles[i, 1]} to {LinkedFiles[i, 0]}: {e.Message}"); }
+            }
         }
 
         /// <summary>The certificates the build downloads with, for a release whose toolchain.ps1 does not make them

@@ -147,6 +147,11 @@ What changed in each release. Releases are source only: you build the game with 
   antivirus false positive (F-Secure's `Drop.Win64.APC.HEUR`, #115).
 
 ### Fixes
+- Windows: a game folder on a drive that is not NTFS (exFAT, FAT32: an external drive) lost `clang.exe` (#126, #88): MSYS2's
+  clang package has it, `clang-cpp.exe` and the two `x86_64-w64-mingw32-clang*.exe` as hard links to `clang++.exe`, which
+  those drives cannot hold. `toolchain.ps1` (and the launcher, before it runs an older one) copies the missing linked files
+  from their target (`lld.exe`, `llvm-cov.exe`, `unzip.exe`, `libdeflate-gzip.exe` too), says when the drive is not NTFS,
+  and names the drive's file system in the antivirus message when it is still missing.
 - Materials: a level takes 254 emissive surfaces and materials, not 126, and a `classes.txt` line takes a slot only on the levels
   that have its class: with Anya-Thoughtmane's batches 2 and 3 seven levels ran out and dropped lines (Gemlik 76 of 202, its bolts
   among them). The slots' table is a storage buffer now (OpenGL and Vulkan), the Vulkan lighting uniform buffer 5632 bytes.
