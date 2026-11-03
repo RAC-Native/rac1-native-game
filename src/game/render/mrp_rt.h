@@ -21,11 +21,30 @@
 
 namespace rac1 {
 
-// A cluster: triangles (float3 positions, 32-bit indices) in its own space.
+namespace vk {
+struct GpuImage;
+}
+
+// A triangle's shading (phase 2: the hit shaded from it), 12 words in the shader's order (RtTri, sm_water_rt): its three vertices'
+// texture coordinates (s, t as the GS divides them), the texture (bucket | layer << 8; 0xff in the bucket: none), log2 of
+// sqrt(its texture area / its area in its cluster's space) (the texture's level at a hit: a ray cone), its three vertices' colour
+// indices (ties / shrubs: in their instance's resident colours, tfrags: in the level's tfrag colours), the texture word as the
+// world's draws have it (bit 0 no texture, 1..2 TFX, 3 TCC, 22..23 the mip levels - 1; bit 4 here: every texel opaque)
+struct RtTri {
+    float uv[6] = {};
+    uint32_t tex = 0xffu;
+    float density = 0.0f;
+    uint32_t col[3] = {};
+    uint32_t word = 1;
+};
+static_assert(sizeof(RtTri) == 48);
+// A cluster: triangles (float3 positions, 32-bit indices) in its own space, and per triangle its shading.
 struct RtCluster {
     std::vector<float> pos;
     std::vector<uint32_t> idx;
+    std::vector<RtTri> tri;  // (one per triangle of idx; phase 2)
     uint8_t kind = 0;  // 0 tie packet, 1 shrub packet, 2 tfrag entry (or one of the merged forms: a class, a zone cell's entries)
+    bool opaque = true;  // (no triangle whose texture has a texel the alpha test can fail: a candidate's alpha is not looked at)
 };
 // An instance of a cluster: its 3x4 row-major transform (world = M (x, y, z, 1)), its partition, its zone (`zmask` & the zones' byte
 // at `zcell`: visible; zcell >= 0x80: always).
@@ -34,7 +53,7 @@ struct RtInstance {
     float xform[12] = {};
     uint16_t partition = 0;
     uint8_t zmask = 0xff, zcell = 0xff;
-    uint32_t custom = 0;  // (the instance's custom index: its kind << 22 | its number - the hit's shading, phase 2)
+    uint32_t colour = 0;  // (its first colour in the resident tie / shrub colours; tfrags: 0, their triangles' indices are the level's)
 };
 struct RtLevelGeometry {
     int level = -1;
@@ -42,6 +61,7 @@ struct RtLevelGeometry {
     std::vector<RtInstance> instances;
     uint32_t partitions = 0;  // (the static ones: the zone cells' and the unzoned one; the dynamic one comes after)
     std::string source;       // (what went in: the report)
+    std::vector<uint64_t> textures;  // (the world's texture arrays, RtTri::tex's buckets: their VkImageView)
 };
 
 // orig: (host) RAC1_RT=1 and the device has ray queries (Vulkan): the water's ray-traced reflection on
@@ -53,14 +73,30 @@ int mrp_rt_cluster_mode();
 void mrp_rt_level(RtLevelGeometry&& g);
 // orig: (host) the frame's zones' mask (0x173d00, 0x80 bytes: read on the host's thread while the game's state is frozen)
 void mrp_rt_note_zones(const uint8_t* zone);
+// orig: (host) the lit colours the world renderer keeps (the resident tie / shrub ones, the tfrags'; their counts of changes: copied
+// again when they differ) - the host's thread, before the frame's scene is captured
+void mrp_rt_note_colours(const std::vector<uint32_t>& resident, uint64_t resident_changes, const std::vector<uint32_t>& tfrag, uint64_t tfrag_changes);
+// orig: (host) the world's fog this frame (the ties' pass: F = clamp(fog[1] + depth x fog[0], fog[3], fog[2]), 0x16cc60; FOGCOL; whether
+// the world draws its fog): the hit's colour fogged by the reflection's path as the world's draws fog theirs
+void mrp_rt_note_fog(const float fog[4], uint32_t fogcol, bool on);
 // orig: (host) once a frame before the seas are drawn, outside a rendering pass: the changed partitions written, the top level updated
 void mrp_rt_frame();
 // orig: (host) Vulkan: the descriptor set (set 2: binding 0 the top level) of this frame, its layout (0: none)
 uint64_t mrp_rt_vk_set();
 uint64_t mrp_rt_vk_set_layout();
-// orig: (host) the push constant's mode for the seas' ray-traced variant (1 on, + RAC1_RT_DEBUG x 2) and the shading rate (RAC1_RT_RES)
-int mrp_rt_shader_mode();
+// orig: (host) the push constant's mode for the seas' ray-traced variant: 1 on, + RAC1_RT_DEBUG x 2, + RAC1_RT_SHADE x 16, + the pass x 64
+// (0 the trace in the sea's own shader, 1 the half-resolution trace into its image, 2 the sea reading that image); the shading rate (RAC1_RT_RES)
+int mrp_rt_shader_mode(int pass = 0);
 uint32_t mrp_rt_shading_rate();
+// orig: (host) RAC1_RT_RES: 0 the trace at half resolution, upsampled in the sea's shader (default), 1 in every pixel, 2 the whole sea
+// shaded once per 2 x 2 pixels (VK_KHR_fragment_shading_rate)
+int mrp_rt_res();
+// orig: (host) Vulkan, the half-resolution trace: its target for a `w` x `h` 3D (half each way; made, or made again at a new size before
+// the frame binds a set - mrp_fx's first seas of a frame): the colour (RGBA16F: the reflection, its distance) and the depth; null when
+// it cannot be made
+vk::GpuImage* mrp_rt_half_target(int w, int h, vk::GpuImage** depth);
+// orig: (host) Vulkan: this frame's set for the half-resolution trace's own pass (its binding 6 a stand-in: the half image is its target)
+uint64_t mrp_rt_vk_set_trace();
 
 }  // namespace rac1
 

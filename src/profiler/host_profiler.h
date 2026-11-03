@@ -60,6 +60,7 @@ enum Stage : int {
     kParticles,         // the ambient particles (our own: dust, embers, rain, snow ...)
     kWaterRefl,         // Options > Graphics > Water Reflections: the planar view, the cube map (mrp_reflect.h)
     kRtBuild,           // RAC1_RT (testing): the ray tracing's top level written and built (mrp_rt.h)
+    kRtTrace,           // RAC1_RT (testing): the half-resolution trace of the seas' reflection (inside the seas' stage)
     kGrass,             // Options > Graphics > Grass: the grass shells over the tfrags
     kScaleResolve,      // the render scale's buffer put on the window
     kEffects,           // the MRP's 3D effects (particles ...), before and after the mobys

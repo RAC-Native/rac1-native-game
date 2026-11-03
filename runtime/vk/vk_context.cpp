@@ -671,9 +671,10 @@ bool check_device(VkPhysicalDevice pd, const HasExt& has_ext) {
         const bool exts = has_ext(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) && has_ext(VK_KHR_RAY_QUERY_EXTENSION_NAME) &&
                           has_ext(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
         if (exts) vkGetPhysicalDeviceFeatures2(pd, &rf2);
-        g_ctx.rt_on = exts && asf.accelerationStructure == VK_TRUE && rq.rayQuery == VK_TRUE && f12.bufferDeviceAddress == VK_TRUE;
+        g_ctx.rt_on = exts && asf.accelerationStructure == VK_TRUE && rq.rayQuery == VK_TRUE && f12.bufferDeviceAddress == VK_TRUE &&
+                      f12.shaderSampledImageArrayNonUniformIndexing == VK_TRUE;  // (the hit's texture: an array indexed per pixel)
         g_ctx.has_shading_rate = g_ctx.rt_on && has_ext(VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME) && fsr.pipelineFragmentShadingRate == VK_TRUE;
-        if (!g_ctx.rt_on) off += "RAC1_RT: no VK_KHR_acceleration_structure + VK_KHR_ray_query + bufferDeviceAddress (no ray tracing); ";
+        if (!g_ctx.rt_on) off += "RAC1_RT: no VK_KHR_acceleration_structure + VK_KHR_ray_query + bufferDeviceAddress + non-uniform sampled image indexing (no ray tracing); ";
         // (the cluster / partitioned acceleration structures, DirectX's CLAS / PTLAS on Vulkan: noted, not used - phase 0)
         std::fprintf(stderr, "[rt] cluster acceleration structures: VK_NV_cluster_acceleration_structure %s, VK_NV_partitioned_acceleration_structure %s "
                              "(not used: the clusters and partitions are made of plain KHR acceleration structures)\n",
@@ -975,6 +976,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     v12_feat.hostQueryReset = g_ctx.has_host_query_reset ? VK_TRUE : VK_FALSE;
     if (g_ctx.rt_on) {  // (the acceleration structures' features after the others in the chain)
         v12_feat.bufferDeviceAddress = VK_TRUE;
+        v12_feat.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
         VkBaseOutStructure* last = reinterpret_cast<VkBaseOutStructure*>(&v13_feat);
         while (last->pNext != nullptr) last = last->pNext;
         last->pNext = reinterpret_cast<VkBaseOutStructure*>(g_ctx.has_shading_rate ? static_cast<void*>(&fsr_feat) : static_cast<void*>(&as_feat));

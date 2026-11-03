@@ -600,6 +600,14 @@ void main() {
         if (!pass && uPass == 0 && (afail == 0u || afail == 2u)) discard;
         if (!pass && uPass == 1 && afail != 2u) discard;
     }
+#ifdef RAC1_RT
+    if (((uRtMode >> 6) & 3) == 1) {  // (RAC1_RT's half-resolution trace: the reflection and its distance, the water's pixels alone)
+        if (sm_rt_out_d < 0.0) discard;
+        FragColor = vec4(sm_rt_out, sm_rt_out_d);
+        FragFactor = vec4(0.0);
+        return;
+    }
+#endif
     float as = min(o.a * (255.0 / 128.0), 1.0);
     uint bk = (fl >> 24) & 3u;
     if (bk == 1u || bk == 2u) {
@@ -617,9 +625,10 @@ void main() {
 }
 """
 
-# RAC1_RT=1 (testing, ray tracing phase 0: src/game/render/mrp_rt.h): the surfaces' fragment shader whose water traces its reflection
-# (sm_water_rt) against the level's top level (set 2, binding 0); GLSL 4.60 for GL_EXT_ray_query
-MRP_VU7_FS_RT = MRP_VU7_FS.replace("#version 450\n", "#version 460\n#extension GL_EXT_ray_query : require\n#define RAC1_RT 1\n", 1)
+# RAC1_RT=1 (testing, ray tracing: src/game/render/mrp_rt.h): the surfaces' fragment shader whose water traces its reflection
+# (sm_water_rt) against the level's top level and shades the hit (set 2); GLSL 4.60 for GL_EXT_ray_query, the textures' array indexed
+# per pixel (GL_EXT_nonuniform_qualifier)
+MRP_VU7_FS_RT = MRP_VU7_FS.replace("#version 450\n", "#version 460\n#extension GL_EXT_ray_query : require\n#extension GL_EXT_nonuniform_qualifier : require\n#define RAC1_RT 1\n", 1)
 
 # ---------------------------------------------------------------------------
 # 3. mrp_shadows.cpp shaders

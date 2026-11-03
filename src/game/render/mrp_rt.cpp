@@ -114,7 +114,7 @@ public:
             VkAccelerationStructureGeometryKHR& g = geo[i];
             g.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
             g.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
-            g.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+            g.flags = cl[i].opaque ? VK_GEOMETRY_OPAQUE_BIT_KHR : 0;  // (alpha-tested textures: its candidates looked at, sm_water_rt)
             auto& t = g.geometry.triangles;
             t.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
             t.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
@@ -350,10 +350,10 @@ public:
             const RtInstance& i = inst[k];
             VkAccelerationStructureInstanceKHR& o = recs_[first_[p] + k];
             std::memcpy(&o.transform, i.xform, sizeof i.xform);
-            o.instanceCustomIndex = i.custom & 0xffffffu;
+            o.instanceCustomIndex = (first_[p] + k) & 0xffffffu;  // (its record in the instances' shading table, RtInsts)
             o.mask = visible[k] != 0 && i.cluster < blas_.size() && blas_[i.cluster].addr != 0 ? 0xffu : 0u;
             o.instanceShaderBindingTableRecordOffset = 0;
-            o.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR | VK_GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_KHR;
+            o.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;  // (opaque: its cluster's geometry says)
             o.accelerationStructureReference = i.cluster < blas_.size() ? blas_[i.cluster].addr : 0;
         }
         ++gen_[p];
@@ -480,13 +480,27 @@ struct State {
     bool zone_seen = false, zone_changed = false;
     VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
     VkDescriptorPool pool = VK_NULL_HANDLE;
-    std::array<VkDescriptorSet, vk::kFramesInFlight> sets{};
+    std::array<VkDescriptorSet, vk::kFramesInFlight> sets{}, sets_trace{};  // (the sea's; the half-resolution trace's own pass)
+    // the hit's shading (phase 2): the instances' table (first triangle, first colour, kind), the triangles' (RtTri), per frame in flight
+    // the lit colours (the resident tie / shrub ones, the tfrags'), the textures' sampler, the half-resolution trace's target, a
+    // stand-in for it
+    vk::GpuBuffer inst_buf{}, tri_buf{};
+    std::array<vk::GpuBuffer, vk::kFramesInFlight> rcol_buf{}, tcol_buf{}, frame_buf{};
+    float fog[8] = {};  // (the frame's: the fog's four constants; FOGCOL's r, g, b, whether on - binding 7, RtFrame)
+    std::array<uint64_t, vk::kFramesInFlight> col_gen{};
+    std::vector<uint32_t> rcols, tcols;
+    uint64_t rcol_changes = ~0ull, tcol_changes = ~0ull, col_generation = 1;
+    std::vector<VkImageView> textures;
+    VkSampler sampler = VK_NULL_HANDLE;
+    vk::GpuImage half{}, half_depth{}, stand_in{};
+    uint64_t tri_bytes = 0;
     std::array<uint64_t, vk::kFramesInFlight> built_frame{};
     bool ready = false;
     // the run's numbers: frames committed, partitions / records written, updates, rebuilds
     uint64_t frames = 0, parts = 0, recs = 0, updates = 0, rebuilds = 0, kept = 0;
 } g_rt;
 
+constexpr uint32_t kRtTextures = 32;  // (the world's texture arrays the hit can read, uRtTex: 3 to 5 a level)
 const int g_tlas_mode = std::clamp(env_int("RAC1_RT_TLAS", 2), 0, 2);  // (0 whole rebuild, 1 partitioned rebuild, 2 partitioned update)
 const bool g_zones = env_int("RAC1_RT_ZONES", 1) != 0;
 
@@ -497,6 +511,18 @@ void shutdown_rt() {
     g_rt.frames = 0;
     if (g_rt.accel) g_rt.accel->release();
     g_rt.accel.reset();
+    vk::destroy_buffer_now(g_rt.inst_buf);
+    vk::destroy_buffer_now(g_rt.tri_buf);
+    for (uint32_t k = 0; k < vk::kFramesInFlight; ++k) {
+        vk::destroy_buffer_now(g_rt.rcol_buf[k]);
+        vk::destroy_buffer_now(g_rt.tcol_buf[k]);
+        vk::destroy_buffer_now(g_rt.frame_buf[k]);
+    }
+    vk::destroy_image_now(g_rt.half);
+    vk::destroy_image_now(g_rt.half_depth);
+    vk::destroy_image_now(g_rt.stand_in);
+    if (g_rt.sampler != VK_NULL_HANDLE) vkDestroySampler(vk::device(), g_rt.sampler, nullptr);
+    g_rt.sampler = VK_NULL_HANDLE;
     if (g_rt.pool != VK_NULL_HANDLE) vkDestroyDescriptorPool(vk::device(), g_rt.pool, nullptr);
     if (g_rt.set_layout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(vk::device(), g_rt.set_layout, nullptr);
     g_rt.pool = VK_NULL_HANDLE;
@@ -508,41 +534,135 @@ bool ensure_sets() {
     if (g_rt.pool != VK_NULL_HANDLE) return true;
     VkDevice dev = vk::device();
     mrp_rt_vk_set_layout();
-    VkDescriptorPoolSize ps{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, vk::kFramesInFlight};
+    constexpr uint32_t n = 2 * vk::kFramesInFlight;
+    const VkDescriptorPoolSize ps[3] = {{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, n},
+                                        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5 * n},
+                                        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (kRtTextures + 1) * n}};
     VkDescriptorPoolCreateInfo pci{};
     pci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pci.maxSets = vk::kFramesInFlight;
-    pci.poolSizeCount = 1;
-    pci.pPoolSizes = &ps;
+    pci.maxSets = n;
+    pci.poolSizeCount = 3;
+    pci.pPoolSizes = ps;
     if (vkCreateDescriptorPool(dev, &pci, nullptr, &g_rt.pool) != VK_SUCCESS) return false;
-    std::array<VkDescriptorSetLayout, vk::kFramesInFlight> ls;
+    std::array<VkDescriptorSetLayout, n> ls;
     ls.fill(g_rt.set_layout);
+    std::array<VkDescriptorSet, n> all{};
     VkDescriptorSetAllocateInfo ai{};
     ai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     ai.descriptorPool = g_rt.pool;
-    ai.descriptorSetCount = vk::kFramesInFlight;
+    ai.descriptorSetCount = n;
     ai.pSetLayouts = ls.data();
-    if (vkAllocateDescriptorSets(dev, &ai, g_rt.sets.data()) != VK_SUCCESS) return false;
+    if (vkAllocateDescriptorSets(dev, &ai, all.data()) != VK_SUCCESS) return false;
+    for (uint32_t k = 0; k < vk::kFramesInFlight; ++k) {
+        g_rt.sets[k] = all[k];
+        g_rt.sets_trace[k] = all[vk::kFramesInFlight + k];
+    }
+    VkSamplerCreateInfo sci{};  // (the hit's texel: bilinear, between the levels the nearest, repeated as the GS's REPEAT)
+    sci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    sci.magFilter = sci.minFilter = VK_FILTER_LINEAR;
+    sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    sci.addressModeU = sci.addressModeV = sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sci.maxLod = 16.0f;
+    if (vkCreateSampler(dev, &sci, nullptr, &g_rt.sampler) != VK_SUCCESS) return false;
+    // (the stand-in for the half image: a texel, never read)
+    vk::create_image(1, 1, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT, g_rt.stand_in);
+    vk::submit_immediate([](VkCommandBuffer cb) { vk::transition_image(cb, g_rt.stand_in, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL); });
     vk::register_shutdown_callback(shutdown_rt);
     return true;
 }
 
-void write_sets() {
-    for (uint32_t s = 0; s < vk::kFramesInFlight; ++s) {
-        VkAccelerationStructureKHR t = g_rt.accel->tlas(s);
-        VkWriteDescriptorSetAccelerationStructureKHR wa{};
-        wa.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
-        wa.accelerationStructureCount = 1;
-        wa.pAccelerationStructures = &t;
-        VkWriteDescriptorSet w{};
-        w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        w.pNext = &wa;
-        w.dstSet = g_rt.sets[s];
-        w.dstBinding = 0;
-        w.descriptorCount = 1;
-        w.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-        vkUpdateDescriptorSets(vk::device(), 1, &w, 0, nullptr);
+// orig: (host) frame slot `s`'s two sets written (`what`: 1 the top level, 2 the shading's tables and textures, 4 the colours, 8 the
+// half image)
+void write_slot(uint32_t s, uint32_t what) {
+    std::vector<VkWriteDescriptorSet> ws;
+    std::vector<VkDescriptorBufferInfo> bi;
+    std::vector<VkDescriptorImageInfo> ii;
+    bi.reserve(12);
+    ii.reserve(2 * (kRtTextures + 1));
+    VkAccelerationStructureKHR t = g_rt.accel ? g_rt.accel->tlas(s) : VK_NULL_HANDLE;
+    VkWriteDescriptorSetAccelerationStructureKHR wa{};
+    wa.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+    wa.accelerationStructureCount = 1;
+    wa.pAccelerationStructures = &t;
+    for (VkDescriptorSet set : {g_rt.sets[s], g_rt.sets_trace[s]}) {
+        auto buffer = [&](uint32_t binding, const vk::GpuBuffer& b) {
+            bi.push_back({b.buffer, 0, VK_WHOLE_SIZE});
+            VkWriteDescriptorSet w{};
+            w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            w.dstSet = set;
+            w.dstBinding = binding;
+            w.descriptorCount = 1;
+            w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            w.pBufferInfo = &bi.back();
+            ws.push_back(w);
+        };
+        if ((what & 1) != 0 && t != VK_NULL_HANDLE) {
+            VkWriteDescriptorSet w{};
+            w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            w.pNext = &wa;
+            w.dstSet = set;
+            w.dstBinding = 0;
+            w.descriptorCount = 1;
+            w.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+            ws.push_back(w);
+        }
+        if ((what & 2) != 0) {
+            buffer(1, g_rt.inst_buf);
+            buffer(2, g_rt.tri_buf);
+            const size_t first = ii.size();
+            for (uint32_t k = 0; k < kRtTextures; ++k) {
+                VkImageView v = g_rt.textures.empty() ? g_rt.stand_in.view : g_rt.textures[k < g_rt.textures.size() ? k : 0];
+                ii.push_back({g_rt.sampler, v, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL});
+            }
+            VkWriteDescriptorSet w{};
+            w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            w.dstSet = set;
+            w.dstBinding = 5;
+            w.descriptorCount = kRtTextures;
+            w.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            w.pImageInfo = &ii[first];
+            ws.push_back(w);
+        }
+        if ((what & 4) != 0) {
+            buffer(3, g_rt.rcol_buf[s]);
+            buffer(4, g_rt.tcol_buf[s]);
+            buffer(7, g_rt.frame_buf[s]);
+        }
+        if ((what & 8) != 0) {
+            const bool real = set == g_rt.sets[s] && g_rt.half.view != VK_NULL_HANDLE;
+            ii.push_back({g_rt.sampler, real ? g_rt.half.view : g_rt.stand_in.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL});
+            VkWriteDescriptorSet w{};
+            w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            w.dstSet = set;
+            w.dstBinding = 6;
+            w.descriptorCount = 1;
+            w.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            w.pImageInfo = &ii.back();
+            ws.push_back(w);
+        }
     }
+    if (!ws.empty()) vkUpdateDescriptorSets(vk::device(), static_cast<uint32_t>(ws.size()), ws.data(), 0, nullptr);
+}
+
+// orig: (host) a host-visible storage buffer holding at least `bytes` (made again when smaller; true when it was)
+bool fit_buffer(vk::GpuBuffer& b, VkDeviceSize bytes) {
+    bytes = std::max<VkDeviceSize>(bytes, 16);
+    if (b.buffer != VK_NULL_HANDLE && b.size >= bytes) return false;
+    vk::destroy_buffer(b);
+    vk::create_buffer(bytes + bytes / 4, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, b, true);
+    return true;
+}
+
+// orig: (host) frame slot `s`'s colours copied from the kept ones when they changed since (its sets written again when a buffer grew)
+void copy_colours(uint32_t s) {
+    if (g_rt.col_gen[s] == g_rt.col_generation && g_rt.rcol_buf[s].buffer != VK_NULL_HANDLE) return;
+    bool grew = fit_buffer(g_rt.rcol_buf[s], g_rt.rcols.size() * 4);
+    grew = fit_buffer(g_rt.frame_buf[s], sizeof g_rt.fog) || grew;
+    grew = fit_buffer(g_rt.tcol_buf[s], g_rt.tcols.size() * 4) || grew;
+    if (g_rt.rcol_buf[s].mapped != nullptr && !g_rt.rcols.empty()) std::memcpy(g_rt.rcol_buf[s].mapped, g_rt.rcols.data(), g_rt.rcols.size() * 4);
+    if (g_rt.tcol_buf[s].mapped != nullptr && !g_rt.tcols.empty()) std::memcpy(g_rt.tcol_buf[s].mapped, g_rt.tcols.data(), g_rt.tcols.size() * 4);
+    if (grew) write_slot(s, 4);
+    g_rt.col_gen[s] = g_rt.col_generation;
 }
 
 // orig: (host) partition p's instances' visibility from the zones (cell >= 0x80: always) and written
@@ -579,11 +699,21 @@ int mrp_rt_cluster_mode() {
 // orig: (host) see mrp_rt.h
 uint64_t mrp_rt_vk_set_layout() {
     if (g_rt.set_layout == VK_NULL_HANDLE && mrp_rt_active()) {
-        VkDescriptorSetLayoutBinding b{0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+        // (0 the top level; 1 the instances' shading table, 2 the triangles', 3 the resident tie / shrub colours, 4 the tfrags'; 5 the
+        // world's texture arrays; 6 the half-resolution trace; 7 the frame's constants: the fog)
+        const VkShaderStageFlags st = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+        const VkDescriptorSetLayoutBinding b[8] = {{0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, st, nullptr},
+                                                   {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, st, nullptr},
+                                                   {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, st, nullptr},
+                                                   {3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, st, nullptr},
+                                                   {4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, st, nullptr},
+                                                   {5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kRtTextures, st, nullptr},
+                                                   {6, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, st, nullptr},
+                                                   {7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, st, nullptr}};
         VkDescriptorSetLayoutCreateInfo ci{};
         ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        ci.bindingCount = 1;
-        ci.pBindings = &b;
+        ci.bindingCount = 8;
+        ci.pBindings = b;
         vkCreateDescriptorSetLayout(vk::device(), &ci, nullptr, &g_rt.set_layout);
         vk::register_shutdown_callback(shutdown_rt);
     }
@@ -630,7 +760,48 @@ void mrp_rt_level(RtLevelGeometry&& g) {
     }
     for (uint32_t p = 0; p + 1 < np; ++p) write_partition(p);
     g_rt.accel->partition_write(np - 1, nullptr, 0, nullptr);
-    write_sets();
+    // the hit's shading: the triangles' table (the clusters' in order), the instances' (by their records: the custom index)
+    std::vector<uint32_t> tri_first(G.clusters.size(), 0);
+    uint64_t ntri = 0;
+    bool tri_ok = true;
+    for (size_t c = 0; c < G.clusters.size(); ++c) {
+        tri_first[c] = static_cast<uint32_t>(ntri);
+        tri_ok = tri_ok && G.clusters[c].tri.size() == G.clusters[c].idx.size() / 3;
+        ntri += G.clusters[c].tri.size();
+    }
+    vk::destroy_buffer_now(g_rt.tri_buf);
+    vk::destroy_buffer_now(g_rt.inst_buf);
+    fit_buffer(g_rt.tri_buf, ntri * sizeof(RtTri));
+    fit_buffer(g_rt.inst_buf, G.instances.size() * 16);
+    g_rt.tri_bytes = ntri * sizeof(RtTri);
+    for (size_t c = 0; c < G.clusters.size() && g_rt.tri_buf.mapped != nullptr; ++c)
+        if (!G.clusters[c].tri.empty())
+            std::memcpy(static_cast<uint8_t*>(g_rt.tri_buf.mapped) + static_cast<size_t>(tri_first[c]) * sizeof(RtTri), G.clusters[c].tri.data(),
+                        G.clusters[c].tri.size() * sizeof(RtTri));
+    if (g_rt.inst_buf.mapped != nullptr) {
+        auto* o = static_cast<uint32_t*>(g_rt.inst_buf.mapped);
+        for (size_t k = 0; k < G.instances.size(); ++k) {
+            const RtInstance& i = G.instances[k];
+            const bool ok = i.cluster < G.clusters.size();
+            o[4 * k + 0] = ok ? tri_first[i.cluster] : 0u;
+            o[4 * k + 1] = i.colour;
+            o[4 * k + 2] = ok ? G.clusters[i.cluster].kind : 0u;
+            o[4 * k + 3] = 0;
+        }
+    }
+    g_rt.textures.clear();
+    for (uint64_t v : G.textures) g_rt.textures.push_back(reinterpret_cast<VkImageView>(v));
+    if (g_rt.textures.size() > kRtTextures) std::printf("[rt] level %d: %zu texture arrays, the hit reads the first %u\n", G.level, g_rt.textures.size(), kRtTextures);
+    if (!tri_ok) std::printf("[rt] level %d: a cluster without its triangles' shading\n", G.level);
+    g_rt.rcols.clear();  // (the new level's colours: from its first frame's, mrp_rt_note_colours; the shader reads none past the buffers)
+    g_rt.tcols.clear();
+    g_rt.rcol_changes = g_rt.tcol_changes = ~0ull;
+    ++g_rt.col_generation;
+    g_rt.col_gen.fill(0);
+    for (uint32_t s = 0; s < vk::kFramesInFlight; ++s) {
+        copy_colours(s);
+        write_slot(s, 1 | 2 | 4 | 8);
+    }
     // the top level's cost: a whole rebuild (every record written, built) against a partition's change (one zone's records written,
     // the top level rebuilt / updated), timed on the GPU (each in a submit of its own, waited for: three of each, the best kept)
     double t_whole = 1e9, t_part = 1e9, t_upd = 1e9, c_whole = 1e9, c_part = 1e9;
@@ -672,6 +843,13 @@ void mrp_rt_level(RtLevelGeometry&& g) {
                 "+ update %.3f ms GPU\n",
                 G.level, G.instances.size(), static_cast<unsigned long long>(ntri_inst), used_p, np - 2, g_rt.count[busiest],
                 static_cast<double>(g_rt.accel->tlas_bytes()) / 1048576.0, t_whole, c_whole, t_part, c_part, t_upd);
+    {
+        uint32_t nonopq = 0;
+        for (const RtCluster& c : G.clusters) nonopq += c.opaque ? 0 : 1;
+        std::printf("[rt] level %d shading: %llu triangles' records (%.1f MB), %zu instances' (%.1f MB), %zu texture arrays; %u clusters alpha-tested\n", G.level,
+                    static_cast<unsigned long long>(ntri), static_cast<double>(g_rt.tri_bytes) / 1048576.0, G.instances.size(),
+                    static_cast<double>(G.instances.size() * 16) / 1048576.0, g_rt.textures.size(), nonopq);
+    }
     std::fflush(stdout);
     g_rt.ready = true;
 }
@@ -704,6 +882,8 @@ void mrp_rt_frame() {
     g_rt.accel->partition_write(static_cast<uint32_t>(g_rt.first.size() - 1), nullptr, 0, nullptr);
     CommitReport r;
     const uint32_t slot = vk::frame_index();
+    copy_colours(slot % vk::kFramesInFlight);  // (the lit colours, when they changed: this slot's copy)
+    if (g_rt.frame_buf[slot % vk::kFramesInFlight].mapped != nullptr) std::memcpy(g_rt.frame_buf[slot % vk::kFramesInFlight].mapped, g_rt.fog, sizeof g_rt.fog);
     if (!g_rt.accel->commit(vk::cmd(), slot, g_tlas_mode, r)) return;
     g_rt.built_frame[slot % vk::kFramesInFlight] = vk::frame_number();
     ++g_rt.frames;
@@ -723,15 +903,68 @@ uint64_t mrp_rt_vk_set() {
 }
 
 // orig: (host) see mrp_rt.h
-int mrp_rt_shader_mode() {
-    static const int dbg = std::clamp(env_int("RAC1_RT_DEBUG", 0), 0, 3);
-    return 1 + 2 * dbg;
+int mrp_rt_shader_mode(int pass) {
+    static const int dbg = std::clamp(env_int("RAC1_RT_DEBUG", 0), 0, 5);
+    static const int shade = std::clamp(env_int("RAC1_RT_SHADE", 1), 0, 2);
+    return 1 | dbg << 1 | shade << 4 | std::clamp(pass, 0, 2) << 6;
+}
+
+// orig: (host) see mrp_rt.h
+int mrp_rt_res() {
+    static const int r = std::clamp(env_int("RAC1_RT_RES", 0), 0, 2);
+    return r;
 }
 
 // orig: (host) see mrp_rt.h
 uint32_t mrp_rt_shading_rate() {
-    static const uint32_t r = env_int("RAC1_RT_RES", 1) >= 2 && vk::has_shading_rate() ? 2u : 1u;
+    static const uint32_t r = mrp_rt_res() == 2 && vk::has_shading_rate() ? 2u : 1u;
     return r;
+}
+
+// orig: (host) see mrp_rt.h
+void mrp_rt_note_colours(const std::vector<uint32_t>& resident, uint64_t resident_changes, const std::vector<uint32_t>& tfrag, uint64_t tfrag_changes) {
+    if (!g_rt.ready) return;
+    if (resident_changes == g_rt.rcol_changes && tfrag_changes == g_rt.tcol_changes && resident.size() == g_rt.rcols.size() && tfrag.size() == g_rt.tcols.size())
+        return;
+    g_rt.rcol_changes = resident_changes;
+    g_rt.tcol_changes = tfrag_changes;
+    g_rt.rcols = resident;
+    g_rt.tcols = tfrag;
+    ++g_rt.col_generation;
+}
+
+// orig: (host) see mrp_rt.h
+void mrp_rt_note_fog(const float fog[4], uint32_t fogcol, bool on) {
+    for (int k = 0; k < 4; ++k) g_rt.fog[k] = fog[k];
+    for (int k = 0; k < 3; ++k) g_rt.fog[4 + k] = static_cast<float>((fogcol >> (8 * k)) & 0xff) / 255.0f;
+    g_rt.fog[7] = on ? 1.0f : 0.0f;
+}
+
+// orig: (host) see mrp_rt.h
+vk::GpuImage* mrp_rt_half_target(int w, int h, vk::GpuImage** depth) {
+    if (!g_rt.ready || w <= 0 || h <= 0) return nullptr;
+    const uint32_t hw = static_cast<uint32_t>(w + 1) / 2, hh = static_cast<uint32_t>(h + 1) / 2;
+    if (g_rt.half.image == VK_NULL_HANDLE || g_rt.half.width != hw || g_rt.half.height != hh) {
+        if (g_rt.half.image != VK_NULL_HANDLE) vk::wait_idle();
+        vk::destroy_image_now(g_rt.half);
+        vk::destroy_image_now(g_rt.half_depth);
+        vk::create_image(hw, hh, VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, g_rt.half);
+        vk::create_image(hw, hh, vk::depth_stencil_format(), VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+                         g_rt.half_depth);
+        if (g_rt.half.image == VK_NULL_HANDLE || g_rt.half_depth.image == VK_NULL_HANDLE) return nullptr;
+        vk::end_rendering();
+        vk::transition_image(vk::cmd(), g_rt.half, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        for (uint32_t s = 0; s < vk::kFramesInFlight; ++s) write_slot(s, 8);
+        std::printf("[rt] the half-resolution trace's target: %ux%u\n", hw, hh);
+    }
+    *depth = &g_rt.half_depth;
+    return &g_rt.half;
+}
+
+// orig: (host) see mrp_rt.h
+uint64_t mrp_rt_vk_set_trace() {
+    if (mrp_rt_vk_set() == 0) return 0;
+    return reinterpret_cast<uint64_t>(g_rt.sets_trace[vk::frame_index() % vk::kFramesInFlight]);
 }
 
 }  // namespace rac1

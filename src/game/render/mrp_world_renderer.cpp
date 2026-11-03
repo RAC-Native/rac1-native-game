@@ -530,175 +530,8 @@ void build_templates(Level& L) {
             });
 }
 
-// orig: (host) RAC1_RT (testing, ray tracing phase 0: mrp_rt.h): the level's static world as clusters and instances - every tie
-// instance (its class's finest LOD's packets), every shrub instance (its packets; not the far billboards), every tfrag entry (its near
-// image's raw records, unmorphed: the start 0x014 / tfrag B on a view of their own); the partitions by zone cell (ties, tfrags), the
-// shrubs in one of their own. The instances' matrices as the tie / shrub passes read them (data +0 .. +0x30, the scale +0x3c: world =
-// position + M p / 1024), no wind
-RtLevelGeometry rt_gather(const Level& L) {
-    RtLevelGeometry g;
-    g.level = L.id;
-    const int merged = mrp_rt_cluster_mode();
-    constexpr uint32_t kUnzoned = 0x80;  // (the shrubs' partition; the zone cells' are 0 .. 0x7f)
-    g.partitions = kUnzoned + 1;
-    auto tpl_cluster = [&L](const void* key, RtCluster& c) {  // (a packet template's triangles appended to `c`)
-        const auto it = L.tpl.find(key);
-        if (it == L.tpl.end()) return;
-        const Tpl& t = it->second;
-        uint32_t ni = 0;
-        for (const TplRun& r : t.runs) ni = std::max(ni, r.first + r.count);
-        uint32_t nv = 0;
-        for (uint32_t k = 0; k < ni; ++k) nv = std::max(nv, L.tidx[t.first_index + k] + 1);
-        const uint32_t base = static_cast<uint32_t>(c.pos.size() / 3);
-        for (uint32_t v = 0; v < nv; ++v)
-            for (int l = 0; l < 3; ++l) c.pos.push_back(static_cast<float>(L.tverts[t.first_vertex + v].pos[l]));
-        for (uint32_t k = 0; k < ni; ++k) c.idx.push_back(base + L.tidx[t.first_index + k]);
-    };
-    auto inst_xform = [](uint32_t data, float x[12]) {  // (rows: world axis l = pos[l] + sum_r m[r][l] P[r] / 1024)
-        float m[3][3], pos[4];
-        for (uint32_t l = 0; l < 4; ++l) pos[l] = lwc1(data + 0x30 + 4 * l);
-        for (uint32_t r = 0; r < 3; ++r)
-            for (uint32_t l = 0; l < 3; ++l) m[r][l] = lwc1(data + 0x10 * r + 4 * l) * pos[3];
-        for (int l = 0; l < 3; ++l) {
-            for (int r = 0; r < 3; ++r) x[4 * l + r] = m[r][l] / 1024.0f;
-            x[4 * l + 3] = pos[l];
-        }
-    };
-    std::unordered_map<const void*, uint32_t> by_packet;
-    uint32_t n_tie = 0, n_shrub = 0, n_tfrag = 0, n_tfrag_fail = 0;
-    // the ties
-    for (const StaticTieClass& tc : g_slevel.ties) {
-        if (tc.lod[0].empty()) continue;
-        const uint32_t flags = lhu(tc.rec + 0x24);
-        if ((flags & 9) != 0) continue;
-        std::vector<uint32_t> cl;  // (the clusters of an instance)
-        if (merged != 0) {
-            RtCluster c;
-            for (const StaticPacket& pk : tc.lod[0]) tpl_cluster(pk.tie, c);
-            if (c.idx.empty()) continue;
-            cl.push_back(static_cast<uint32_t>(g.clusters.size()));
-            g.clusters.push_back(std::move(c));
-        } else {
-            for (const StaticPacket& pk : tc.lod[0]) {
-                auto it = by_packet.find(pk.tie);
-                if (it == by_packet.end()) {
-                    RtCluster c;
-                    tpl_cluster(pk.tie, c);
-                    it = by_packet.emplace(pk.tie, c.idx.empty() ? ~0u : static_cast<uint32_t>(g.clusters.size())).first;
-                    if (!c.idx.empty()) g.clusters.push_back(std::move(c));
-                }
-                if (it->second != ~0u) cl.push_back(it->second);
-            }
-        }
-        const uint32_t bounds = lwu(tc.rec + 0x28), n = lhu(tc.rec + 0x26);
-        for (uint32_t i = 0; i < n; ++i) {
-            const uint32_t b = bounds + 0x20 * i;
-            RtInstance ri;
-            inst_xform(lwu(b + 0x10), ri.xform);
-            ri.zmask = static_cast<uint8_t>(lbu(b + 0x18));
-            ri.zcell = static_cast<uint8_t>(lbu(b + 0x19));
-            ri.partition = ri.zcell < 0x80 ? ri.zcell : kUnzoned;
-            ++n_tie;
-            for (uint32_t c : cl) {
-                ri.cluster = c;
-                ri.custom = (0u << 22) | (c & 0x3fffffu);
-                g.instances.push_back(ri);
-            }
-        }
-    }
-    // the shrubs (their instance data *(0x16049c) + 0x40 x the bounds' index)
-    const uint32_t shrub_data = lwu(OV(0x0016049cu));
-    for (const StaticShrubClass& sc : g_slevel.shrubs) {
-        if (sc.packets.empty()) continue;
-        const uint32_t flags = lhu(sc.rec + 0x14);
-        if ((flags & 1) != 0) continue;
-        std::vector<uint32_t> cl;
-        for (size_t k = 0; k < sc.packets.size(); ++k) {
-            const StaticPacket& pk = sc.packets[k];
-            if (merged != 0) {
-                if (k == 0) {
-                    RtCluster c;
-                    c.kind = 1;
-                    for (const StaticPacket& q : sc.packets) tpl_cluster(q.shrub, c);
-                    if (c.idx.empty()) break;
-                    cl.push_back(static_cast<uint32_t>(g.clusters.size()));
-                    g.clusters.push_back(std::move(c));
-                }
-                break;
-            }
-            auto it = by_packet.find(pk.shrub);
-            if (it == by_packet.end()) {
-                RtCluster c;
-                c.kind = 1;
-                tpl_cluster(pk.shrub, c);
-                it = by_packet.emplace(pk.shrub, c.idx.empty() ? ~0u : static_cast<uint32_t>(g.clusters.size())).first;
-                if (!c.idx.empty()) g.clusters.push_back(std::move(c));
-            }
-            if (it->second != ~0u) cl.push_back(it->second);
-        }
-        const uint32_t bounds = lwu(sc.rec + 0x18), n = lhu(sc.rec + 0x16);
-        for (uint32_t i = 0; i < n; ++i) {
-            const uint32_t b = bounds + 0x20 * i;
-            RtInstance ri;
-            inst_xform(shrub_data + 0x40 * lhu(b + 0x18), ri.xform);
-            ri.partition = kUnzoned;
-            ++n_shrub;
-            for (uint32_t c : cl) {
-                ri.cluster = c;
-                ri.custom = (1u << 22) | (c & 0x3fffffu);
-                g.instances.push_back(ri);
-            }
-        }
-    }
-    // the tfrags: the near image's raw records (the start 0x014: no morph, no steps) on the identity view - the records' world x 1024
-    // integer positions - their strips' triangles (each vertex at strip position >= 2 closes one); world space (an identity instance)
-    std::map<uint32_t, uint32_t> by_cell;  // (merged: the zone cell's cluster)
-    const float ident[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
-    const uint32_t consts[4 * 14] = {};
-    std::vector<TfragCpuVertex> out;
-    for (const TfragEntryGpu& e : g_tlevel.entries) {
-        if (!e.ok) continue;
-        const TfragPlan* p = e.plan(2, 0x014, false);
-        if (p == nullptr) p = e.plan(2, 0x002, true);
-        if (p == nullptr || !tfrag_exec_cpu(e, *p, 2, nullptr, ident, consts, out) || out.size() != p->verts.size()) {
-            ++n_tfrag_fail;
-            continue;
-        }
-        const uint8_t zmask = static_cast<uint8_t>(lbu(e.ee + 0x3a)), zcell = static_cast<uint8_t>(lbu(e.ee + 0x3b));
-        const uint32_t key = zcell < 0x80 ? (zcell << 8 | zmask) : 0xffffu;
-        uint32_t ci;
-        bool fresh = true;
-        if (merged != 0 && by_cell.count(key) != 0) {
-            ci = by_cell[key];
-            fresh = false;
-        } else {
-            ci = static_cast<uint32_t>(g.clusters.size());
-            g.clusters.emplace_back();
-            g.clusters.back().kind = 2;
-            if (merged != 0) by_cell[key] = ci;
-        }
-        RtCluster& c = g.clusters[ci];
-        const uint32_t base = static_cast<uint32_t>(c.pos.size() / 3);
-        for (const TfragCpuVertex& v : out)
-            for (int l = 0; l < 3; ++l) c.pos.push_back(v.hp[static_cast<size_t>(l)] / 1024.0f);
-        for (size_t j = 2; j < p->verts.size(); ++j)
-            if (p->verts[j].pos >= 2) c.idx.insert(c.idx.end(), {base + static_cast<uint32_t>(j - 2), base + static_cast<uint32_t>(j - 1), base + static_cast<uint32_t>(j)});
-        ++n_tfrag;
-        if (!fresh) continue;
-        RtInstance ri;
-        ri.cluster = ci;
-        ri.xform[0] = ri.xform[5] = ri.xform[10] = 1.0f;
-        ri.zmask = zmask;
-        ri.zcell = zcell;
-        ri.partition = zcell < 0x80 ? zcell : kUnzoned;
-        ri.custom = (2u << 22) | (ci & 0x3fffffu);
-        g.instances.push_back(ri);
-    }
-    char buf[256];
-    std::snprintf(buf, sizeof buf, "%u tie instances, %u shrub instances, %u tfrag entries (%u without a near image)", n_tie, n_shrub, n_tfrag, n_tfrag_fail);
-    g.source = buf;
-    return g;
-}
+// (RAC1_RT, testing: the static world as clusters and instances; below, after the GS state replay it uses)
+RtLevelGeometry rt_gather(const Level& L);
 
 // orig: (host) the level's world asset, its index, its textures, the GL buffers
 void load_level(int id) {
@@ -2619,6 +2452,286 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
         }
         if (!same && g_memo_bad++ < 5) std::printf("[perf] packet memo: a replay differs from the full one (packet %p, instance %u)\n", key, inst);
     }
+}
+
+// orig: (host) RAC1_RT (testing, ray tracing: mrp_rt.h): the level's static world as clusters and instances - every tie
+// instance (its class's finest LOD's packets), every shrub instance (its packets; not the far billboards), every tfrag entry (its near
+// image's raw records, unmorphed: the start 0x014 / tfrag B on a view of their own); the partitions by zone cell (ties, tfrags), the
+// shrubs in one of their own. The instances' matrices as the tie / shrub passes read them (data +0 .. +0x30, the scale +0x3c: world =
+// position + M p / 1024), no wind. Phase 2: per triangle its shading (RtTri) - the texture its run's GS state names (the GS state
+// replayed as the draws do: a tie / shrub packet's texture slots from the level's class tables, a tfrag run's texture prims from
+// its image), its vertices' texture coordinates and colour indices
+RtLevelGeometry rt_gather(const Level& L) {
+    RtLevelGeometry g;
+    g.level = L.id;
+    for (const Bucket& b : L.buckets) g.textures.push_back(reinterpret_cast<uint64_t>(b.vk_tex.view));
+    const int merged = mrp_rt_cluster_mode();
+    constexpr uint32_t kUnzoned = 0x80;  // (the shrubs' partition; the zone cells' are 0 .. 0x7f)
+    g.partitions = kUnzoned + 1;
+    static Frame gs_frame;  // (the GS state's replay: key_now's texture lookups only)
+    GsFront gs(gs_frame);
+    gs.regs[0x1a] = 1;  // (PRMODECONT: PRIM's own attributes)
+    // a triangle's texture from the replay's state (`table`: 0 tfrag, 1 tie, 2 shrub)
+    auto tri_tex = [&](int table, RtTri& t) {
+        const Key k = gs.key_now(table);
+        if (fld(k.prim, 4, 1) == 0 || k.bucket < 0 || (k.word & 1u) != 0) {
+            t.tex = 0xffu;
+            t.word = 1u;
+            return true;
+        }
+        t.tex = static_cast<uint32_t>(k.bucket & 0xff) | (k.layer << 8);
+        t.word = (k.word & 0x00c0000eu) | (k.opaque ? 0x10u : 0u);
+        return k.opaque;
+    };
+    // the density (RtTri::density) from the triangle's corners in its cluster's space
+    auto tri_density = [](const float* a, const float* b, const float* c, RtTri& t) {
+        const float e1[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]}, e2[3] = {c[0] - a[0], c[1] - a[1], c[2] - a[2]};
+        const float cx = e1[1] * e2[2] - e1[2] * e2[1], cy = e1[2] * e2[0] - e1[0] * e2[2], cz = e1[0] * e2[1] - e1[1] * e2[0];
+        const float area = std::sqrt(cx * cx + cy * cy + cz * cz);
+        const float uarea = std::fabs((t.uv[2] - t.uv[0]) * (t.uv[5] - t.uv[1]) - (t.uv[4] - t.uv[0]) * (t.uv[3] - t.uv[1]));
+        t.density = area > 1e-12f && uarea > 1e-12f ? 0.5f * std::log2(uarea / area) : -30.0f;
+    };
+    // a packet template's triangles appended to `c`, each shaded from the run it is in (`slots`: the class's texture qwords, `n` a slot's)
+    auto tpl_cluster = [&](const void* key, const StaticPacket& pk, int table, RtCluster& c) {
+        const auto it = L.tpl.find(key);
+        if (it == L.tpl.end()) return;
+        const Tpl& t = it->second;
+        uint32_t ni = 0;
+        for (const TplRun& r : t.runs) ni = std::max(ni, r.first + r.count);
+        uint32_t nv = 0;
+        for (uint32_t k = 0; k < ni; ++k) nv = std::max(nv, L.tidx[t.first_index + k] + 1);
+        const uint32_t base = static_cast<uint32_t>(c.pos.size() / 3);
+        for (uint32_t v = 0; v < nv; ++v)
+            for (int l = 0; l < 3; ++l) c.pos.push_back(static_cast<float>(L.tverts[t.first_vertex + v].pos[l]));
+        for (uint32_t k = 0; k < ni; ++k) c.idx.push_back(base + L.tidx[t.first_index + k]);
+        const uint32_t n = table == 1 ? 5u : 4u;  // (the A+D qwords of a tie texture slot / a shrub prim, as gpu_packet)
+        c.tri.resize(c.idx.size() / 3);
+        const uint32_t t0 = static_cast<uint32_t>(c.tri.size()) - ni / 3;
+        int applied = -1;
+        for (const TplRun& run : t.runs) {
+            if (run.slot >= 0 && run.slot != applied) {
+                for (uint32_t r = 0; r < n; ++r) {
+                    const uint32_t at = static_cast<uint32_t>(run.slot) * n + r;
+                    if (at >= pk.ntex || pk.tex_first + at >= g_slevel.tex.size()) break;
+                    const auto& q = g_slevel.tex[pk.tex_first + at];
+                    gs.write(q[2] & 0xff, static_cast<uint64_t>(q[0]) | static_cast<uint64_t>(q[1]) << 32);
+                }
+                applied = run.slot;
+            }
+            gs.regs[0] = run.prim;
+            RtTri proto;
+            if (!tri_tex(table, proto)) c.opaque = false;
+            for (uint32_t k = run.first; k + 2 < run.first + run.count; k += 3) {
+                RtTri tr = proto;
+                const uint32_t* vi = &L.tidx[t.first_index + k];
+                for (int j = 0; j < 3; ++j) {
+                    const TVert& v = L.tverts[t.first_vertex + vi[j]];
+                    const float q = v.uv[2] != 0 ? static_cast<float>(v.uv[2]) : 4096.0f;
+                    tr.uv[2 * j] = static_cast<float>(v.uv[0]) / q;
+                    tr.uv[2 * j + 1] = static_cast<float>(v.uv[1]) / q;
+                    tr.col[j] = v.col[0];
+                }
+                const float* P = c.pos.data();
+                tri_density(P + 3 * (base + vi[0]), P + 3 * (base + vi[1]), P + 3 * (base + vi[2]), tr);
+                c.tri[t0 + k / 3] = tr;
+            }
+        }
+    };
+    auto inst_xform = [](uint32_t data, float x[12]) {  // (rows: world axis l = pos[l] + sum_r m[r][l] P[r] / 1024)
+        float m[3][3], pos[4];
+        for (uint32_t l = 0; l < 4; ++l) pos[l] = lwc1(data + 0x30 + 4 * l);
+        for (uint32_t r = 0; r < 3; ++r)
+            for (uint32_t l = 0; l < 3; ++l) m[r][l] = lwc1(data + 0x10 * r + 4 * l) * pos[3];
+        for (int l = 0; l < 3; ++l) {
+            for (int r = 0; r < 3; ++r) x[4 * l + r] = m[r][l] / 1024.0f;
+            x[4 * l + 3] = pos[l];
+        }
+    };
+    const ColourSource cs = colour_source();  // (the resident colours' slots: ResidentColours::tie_slot / shrub_slot)
+    std::unordered_map<const void*, uint32_t> by_packet;
+    uint32_t n_tie = 0, n_shrub = 0, n_tfrag = 0, n_tfrag_fail = 0;
+    // the ties
+    for (const StaticTieClass& tc : g_slevel.ties) {
+        if (tc.lod[0].empty()) continue;
+        const uint32_t flags = lhu(tc.rec + 0x24);
+        if ((flags & 9) != 0) continue;
+        std::vector<uint32_t> cl;  // (the clusters of an instance)
+        if (merged != 0) {
+            RtCluster c;
+            for (const StaticPacket& pk : tc.lod[0]) tpl_cluster(pk.tie, pk, 1, c);
+            if (c.idx.empty()) continue;
+            cl.push_back(static_cast<uint32_t>(g.clusters.size()));
+            g.clusters.push_back(std::move(c));
+        } else {
+            for (const StaticPacket& pk : tc.lod[0]) {
+                auto it = by_packet.find(pk.tie);
+                if (it == by_packet.end()) {
+                    RtCluster c;
+                    tpl_cluster(pk.tie, pk, 1, c);
+                    it = by_packet.emplace(pk.tie, c.idx.empty() ? ~0u : static_cast<uint32_t>(g.clusters.size())).first;
+                    if (!c.idx.empty()) g.clusters.push_back(std::move(c));
+                }
+                if (it->second != ~0u) cl.push_back(it->second);
+            }
+        }
+        const uint32_t bounds = lwu(tc.rec + 0x28), n = lhu(tc.rec + 0x26);
+        for (uint32_t i = 0; i < n; ++i) {
+            const uint32_t b = bounds + 0x20 * i;
+            const uint32_t data = lwu(b + 0x10);
+            RtInstance ri;
+            inst_xform(data, ri.xform);
+            ri.zmask = static_cast<uint8_t>(lbu(b + 0x18));
+            ri.zcell = static_cast<uint8_t>(lbu(b + 0x19));
+            ri.partition = ri.zcell < 0x80 ? ri.zcell : kUnzoned;
+            {
+                const uint32_t a = data + kTieColourOffset;
+                const bool in = cs.tie_count != 0 && a >= cs.tie_data + kTieColourOffset && (a - cs.tie_data - kTieColourOffset) % kTieDataStride == 0 &&
+                                (a - cs.tie_data - kTieColourOffset) / kTieDataStride < cs.tie_count;
+                ri.colour = in ? (a - cs.tie_data - kTieColourOffset) / kTieDataStride * kTieColours : 0u;
+            }
+            ++n_tie;
+            for (uint32_t c : cl) {
+                ri.cluster = c;
+                g.instances.push_back(ri);
+            }
+        }
+    }
+    // the shrubs (their instance data *(0x16049c) + 0x40 x the bounds' index; their colours *(0x1604a0) + 0x60 x the same)
+    const uint32_t shrub_data = lwu(OV(0x0016049cu));
+    for (const StaticShrubClass& sc : g_slevel.shrubs) {
+        if (sc.packets.empty()) continue;
+        const uint32_t flags = lhu(sc.rec + 0x14);
+        if ((flags & 1) != 0) continue;
+        std::vector<uint32_t> cl;
+        for (size_t k = 0; k < sc.packets.size(); ++k) {
+            const StaticPacket& pk = sc.packets[k];
+            if (merged != 0) {
+                if (k == 0) {
+                    RtCluster c;
+                    c.kind = 1;
+                    for (const StaticPacket& q : sc.packets) tpl_cluster(q.shrub, q, 2, c);
+                    if (c.idx.empty()) break;
+                    cl.push_back(static_cast<uint32_t>(g.clusters.size()));
+                    g.clusters.push_back(std::move(c));
+                }
+                break;
+            }
+            auto it = by_packet.find(pk.shrub);
+            if (it == by_packet.end()) {
+                RtCluster c;
+                c.kind = 1;
+                tpl_cluster(pk.shrub, pk, 2, c);
+                it = by_packet.emplace(pk.shrub, c.idx.empty() ? ~0u : static_cast<uint32_t>(g.clusters.size())).first;
+                if (!c.idx.empty()) g.clusters.push_back(std::move(c));
+            }
+            if (it->second != ~0u) cl.push_back(it->second);
+        }
+        const uint32_t bounds = lwu(sc.rec + 0x18), n = lhu(sc.rec + 0x16);
+        for (uint32_t i = 0; i < n; ++i) {
+            const uint32_t b = bounds + 0x20 * i;
+            const uint32_t idx = lhu(b + 0x18);
+            RtInstance ri;
+            inst_xform(shrub_data + 0x40 * idx, ri.xform);
+            ri.partition = kUnzoned;
+            ri.colour = idx < cs.shrub_count ? cs.tie_count * kTieColours + idx * kShrubColours : 0u;
+            ++n_shrub;
+            for (uint32_t c : cl) {
+                ri.cluster = c;
+                g.instances.push_back(ri);
+            }
+        }
+    }
+    // the tfrags: the near image's raw records (the start 0x014: no morph, no steps) on the identity view - the records' world x 1024
+    // integer positions - their strips' triangles (each vertex at strip position >= 2 closes one); world space (an identity instance).
+    // The colours given as their own indices (the raw records' colour is the colour table's entry: its index comes out), the constant
+    // 0x290.x 1 (the texture coordinates divided by the records' w, as the draw's)
+    std::map<uint32_t, uint32_t> by_cell;  // (merged: the zone cell's cluster)
+    const float ident[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+    uint32_t consts[4 * 14] = {};
+    {
+        const float one = 1.0f;
+        std::memcpy(&consts[0], &one, 4);
+    }
+    std::vector<uint32_t> cindex(4096);
+    for (uint32_t k = 0; k < cindex.size(); ++k) cindex[k] = k;
+    std::vector<TfragCpuVertex> out;
+    for (const TfragEntryGpu& e : g_tlevel.entries) {
+        if (!e.ok) continue;
+        const TfragPlan* p = e.plan(2, 0x014, false);
+        if (p == nullptr) p = e.plan(2, 0x002, true);
+        if (p == nullptr || e.colour_count[2] > cindex.size() || !tfrag_exec_cpu(e, *p, 2, cindex.data(), ident, consts, out) || out.size() != p->verts.size()) {
+            ++n_tfrag_fail;
+            continue;
+        }
+        const uint8_t zmask = static_cast<uint8_t>(lbu(e.ee + 0x3a)), zcell = static_cast<uint8_t>(lbu(e.ee + 0x3b));
+        const uint32_t key = zcell < 0x80 ? (zcell << 8 | zmask) : 0xffffu;
+        uint32_t ci;
+        bool fresh = true;
+        if (merged != 0 && by_cell.count(key) != 0) {
+            ci = by_cell[key];
+            fresh = false;
+        } else {
+            ci = static_cast<uint32_t>(g.clusters.size());
+            g.clusters.emplace_back();
+            g.clusters.back().kind = 2;
+            if (merged != 0) by_cell[key] = ci;
+        }
+        RtCluster& c = g.clusters[ci];
+        const uint32_t base = static_cast<uint32_t>(c.pos.size() / 3);
+        for (const TfragCpuVertex& v : out)
+            for (int l = 0; l < 3; ++l) c.pos.push_back(v.hp[static_cast<size_t>(l)] / 1024.0f);
+        // the runs' textures (tfrag_packet: run r's texture prims at event r's qword), the triangles in emission order
+        std::vector<RtTri> run_tri(p->runs.size());
+        const std::vector<uint8_t>& img = e.image[2];
+        for (size_t r = 0; r < p->runs.size() && r < p->events.size(); ++r) {
+            const uint32_t at = p->events[r].at;
+            for (uint32_t k = 0; k < 5; ++k) {
+                uint32_t q[4] = {};
+                if (16u * (at + k) + 16u <= img.size()) std::memcpy(q, img.data() + 16u * (at + k), 16);
+                gs.write(q[2] & 0xff, static_cast<uint64_t>(q[0]) | static_cast<uint64_t>(q[1]) << 32);
+            }
+            gs.regs[0] = 0x1c;  // (a textured, Gouraud strip: the tag 0x292's PRIM)
+            if (!tri_tex(0, run_tri[r])) c.opaque = false;
+        }
+        auto vtx = [&](size_t j, RtTri& tr, int s) {
+            const TfragCpuVertex& v = out[j];
+            float st[3];
+            for (int l = 0; l < 3; ++l) std::memcpy(&st[l], &v.stq[static_cast<size_t>(l)], 4);
+            const float q = st[2] != 0.0f ? st[2] : 1.0f;
+            tr.uv[2 * s] = st[0] / q;
+            tr.uv[2 * s + 1] = st[1] / q;
+            const uint32_t k = (v.rgba[0] & 0xff) | (v.rgba[1] & 0xff) << 8;
+            tr.col[s] = e.colour_slot + (k < e.colour_n ? k : 0u);
+        };
+        uint32_t tri = 0;
+        size_t run = 0;
+        for (size_t j = 2; j < p->verts.size(); ++j) {
+            if (p->verts[j].pos < 2) continue;
+            c.idx.insert(c.idx.end(), {base + static_cast<uint32_t>(j - 2), base + static_cast<uint32_t>(j - 1), base + static_cast<uint32_t>(j)});
+            while (run + 1 < p->runs.size() && tri >= p->runs[run].first_tri + p->runs[run].ntri) ++run;
+            RtTri tr = run < run_tri.size() ? run_tri[run] : RtTri{};
+            vtx(j - 2, tr, 0);
+            vtx(j - 1, tr, 1);
+            vtx(j, tr, 2);
+            const float* P = c.pos.data();
+            tri_density(P + 3 * (base + j - 2), P + 3 * (base + j - 1), P + 3 * (base + j), tr);
+            c.tri.push_back(tr);
+            ++tri;
+        }
+        ++n_tfrag;
+        if (!fresh) continue;
+        RtInstance ri;
+        ri.cluster = ci;
+        ri.xform[0] = ri.xform[5] = ri.xform[10] = 1.0f;
+        ri.zmask = zmask;
+        ri.zcell = zcell;
+        ri.partition = zcell < 0x80 ? zcell : kUnzoned;
+        g.instances.push_back(ri);
+    }
+    char buf[256];
+    std::snprintf(buf, sizeof buf, "%u tie instances, %u shrub instances, %u tfrag entries (%u without a near image)", n_tie, n_shrub, n_tfrag, n_tfrag_fail);
+    g.source = buf;
+    return g;
 }
 
 // orig: (host) a GPU path tfrag draw (mrp_tfrag_gpu.h): its vertices / triangles laid out in the compute program's buffers;
@@ -4667,6 +4780,11 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
         uint8_t zone[0x80];
         for (uint32_t k = 0; k < 0x80; ++k) zone[k] = static_cast<uint8_t>(lbu(OV(0x00173d00u) + k));
         mrp_rt_note_zones(zone);
+        // (the lit colours the hits are shaded with: the last capture's - the worker is not running here)
+        mrp_rt_note_colours(g_rcols.mirror, g_rcols.instances_changed, g_tcols.mirror, g_tcols.entries_changed);
+        float fog[4];
+        for (uint32_t k = 0; k < 4; ++k) fog[k] = lwc1(OV(0x0016cc60u) + 4 * k);
+        mrp_rt_note_fog(fog, static_cast<uint32_t>(mrp_chain_gs_reg(0x3d) & 0xffffff), g_mrp_world_fog != 0);
     }
     {  // build_triangles' inputs from the host's state (Frame::BuildInputs)
         mrp_world_view_proj(F.in.vp);
