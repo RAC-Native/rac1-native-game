@@ -309,6 +309,19 @@ std::string disc_path() {
     // text file beside it instead
     const std::string link = "assets/iso/rac1-ntsc-u.iso", pal_link = "assets/iso/rac1-pal.iso";
     std::error_code ec;
+    if (std::filesystem::exists(link, ec) && std::filesystem::exists(pal_link, ec)) {
+        // (both discs kept in assets/iso/: the one the disc's files were extracted from, by the image's size that
+        // layout.txt records)
+        std::ifstream lf(std::string(disc_files_dir()) + "/layout.txt");
+        std::string line;
+        for (int i = 0; i < 4 && std::getline(lf, line); ++i) {
+            if (line.rfind("image ", 0) != 0) continue;
+            const auto size = std::strtoull(line.c_str() + 6, nullptr, 10);
+            if (size != 0 && std::filesystem::file_size(pal_link, ec) == size) return pal_link;
+            break;
+        }
+        return link;
+    }
     if (std::filesystem::exists(link, ec)) return link;
     if (std::filesystem::exists(pal_link, ec)) return pal_link;
     std::ifstream f(disc_path_file());

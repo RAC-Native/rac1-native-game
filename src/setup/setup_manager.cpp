@@ -80,14 +80,16 @@ void print_status(const fs::path& root) {
 
 // Makes the setup find the disc again: assets/iso/rac1-ntsc-u.iso (rac1-pal.iso for the PAL disc), a link to the
 // image when it is elsewhere (the game reads the disc's files; the image only with RAC1_READ_ISO=1). A file the
-// player put there is never replaced. The other region's link is removed: assets/ holds one disc's data. Where a
-// link cannot be made (Windows, without Developer Mode or the administrator's right), the image's path goes into
-// assets/iso/disc-path.txt instead, which the setup and RAC1_READ_ISO read (runtime/kernel/disc.cpp).
+// player put there is never replaced. The other region's link is removed when it is broken; a live one stays (the
+// setup picks among every image in assets/iso/, tools/setup.py pick_discs; disc_path() takes the one the disc's files
+// were extracted from). Where a link cannot be made (Windows, without Developer Mode or the administrator's right),
+// the image's path goes into assets/iso/disc-path.txt instead, which the setup and RAC1_READ_ISO read
+// (runtime/kernel/disc.cpp).
 bool link_iso(const fs::path& assets, const fs::path& iso, const KnownDisc* disc) {
     const fs::path dest = assets / game_iso(disc);
     std::error_code ec;
     const fs::path other = assets / (game_iso(disc) == GAME_ISO ? GAME_ISO_PAL : GAME_ISO);
-    if (fs::is_symlink(fs::symlink_status(other, ec))) fs::remove(other, ec);
+    if (fs::is_symlink(fs::symlink_status(other, ec)) && !fs::exists(other, ec)) fs::remove(other, ec);
     const fs::path target = fs::absolute(iso);
     if (fs::exists(dest, ec) && fs::equivalent(dest, target, ec)) return true;
     if (fs::is_symlink(fs::symlink_status(dest, ec))) {

@@ -14,7 +14,8 @@ What changed in each release. Releases are source only: you build the game with 
   gameplay rows are a playthrough's, on the pause menu's page and kept with the save.
 - Main menu > Options > Advanced > Cut Content (Off by default; global, kept in the preferences, read at a level's load):
   Kerwan's citizens "Fred 1 / 2 / 3" (classes 915..917, 14 placements) stay instead of retiring on their first frame and
-  turn to face Ratchet near them (they hold their one-frame rest pose; no collision). `RAC1_CUT_CONTENT=fred` for testing
+  turn to face Ratchet near them (they hold their one-frame rest pose; no collision); each is put on the ground under its
+  placement at its first update (seven stood 0.03 to 0.25 above it). `RAC1_CUT_CONTENT=fred` for testing
   (docs/advanced.md, "Cut Content"). Port inventory: the Bolt Thief's "second behaviour", the Snagglebeast's unreferenced
   draw, L18:0x2ea1f8, the oxygen element, Orxon's turning citizen and the unregistered item classes corrected.
 - Options > Language > Voice (Same as Text, the default; English, French, German, Spanish, Italian; Japanese with the
@@ -125,6 +126,17 @@ What changed in each release. Releases are source only: you build the game with 
   generated files): the game code about 5% less time a frame (Veldin 1.25 to 1.18 ms); the same game state (`RAC1_PERF_VU0_NF`).
 
 ### Launcher and setup
+- Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
+  identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
+  1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs
+  beside the game's disc, the PAL disc 2.00, the pre-release builds, a second image of a release). An image added later is
+  picked up by the next setup (`--check` says so); `--iso` / `--data-iso` still win; `--remove-data-disc` forgets one data
+  disc, `--discs` prints the choice. The setup no longer removes the other region's live link in `assets/iso/`
+  (docs/setup.md, "Which disc images").
+- Launcher: Settings > Disc images lists the disc images the setup finds and what each one is for (game disc, data disc,
+  not used and why); **Add a disc image...** adds one where it is (its path in `assets/iso/more-discs.txt`, nothing
+  copied), **Remove the data disc** removes one (`--remove-data-disc`). With no image chosen, the setup picks the game's
+  disc itself (docs/launcher.md, "Settings").
 - Data discs: `./setup.sh --data-iso <image>` (repeatable, kept for the next setups; `--no-data-discs` forgets them) adds
   another release's disc as a source of data only; the Japanese disc (SCPS-15037) is extracted into its own folder and
   gives the Japanese voices (docs/setup.md, "Data discs"). Discs are told apart by their boot executable's sha1: the PAL
@@ -135,6 +147,11 @@ What changed in each release. Releases are source only: you build the game with 
   antivirus false positive (F-Secure's `Drop.Win64.APC.HEUR`, #115).
 
 ### Fixes
+- Windows: a game folder on a drive that is not NTFS (exFAT, FAT32: an external drive) lost `clang.exe` (#126, #88): MSYS2's
+  clang package has it, `clang-cpp.exe` and the two `x86_64-w64-mingw32-clang*.exe` as hard links to `clang++.exe`, which
+  those drives cannot hold. `toolchain.ps1` (and the launcher, before it runs an older one) copies the missing linked files
+  from their target (`lld.exe`, `llvm-cov.exe`, `unzip.exe`, `libdeflate-gzip.exe` too), says when the drive is not NTFS,
+  and names the drive's file system in the antivirus message when it is still missing.
 - Materials: a level takes 254 emissive surfaces and materials, not 126, and a `classes.txt` line takes a slot only on the levels
   that have its class: with Anya-Thoughtmane's batches 2 and 3 seven levels ran out and dropped lines (Gemlik 76 of 202, its bolts
   among them). The slots' table is a storage buffer now (OpenGL and Vulkan), the Vulkan lighting uniform buffer 5632 bytes.

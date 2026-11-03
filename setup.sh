@@ -2,6 +2,7 @@
 # rac1-native's guided setup: checks your system, builds the game, checks your disc image and
 # generates the game's data. The work is done by tools/setup.py, which needs Python 3.8 or newer.
 # Usage: ./setup.sh [--iso <path-to-your-iso>] [--force [steps]] [-j N]  (./setup.sh --help)
+# Without --iso it picks the disc images in assets/iso/ by itself (docs/setup.md, "Which disc images").
 
 case "${BASH_SOURCE[0]}" in
     */*) DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)" ;;

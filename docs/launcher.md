@@ -65,7 +65,19 @@ the Recycle Bin, or to the trash on Linux.
   `C:\rac1-native` when that path has spaces or non-ASCII letters), `~/.local/share/rac1-native/game`
   on Linux. Choose a folder that already has the game (a clone, or a zip set up with `setup.cmd` or
   `./setup.sh`) to use it from the launcher.
-- **Disc image**: the `.iso` the setup uses.
+- **Disc image**: the `.iso` the setup uses as the game's disc. When none is chosen here, the setup
+  picks it itself among the disc images it finds (see **Disc images** below), and the launcher asks for
+  one only when there is none.
+- **Disc images**: every disc image the setup finds, and what each one is for: **Game disc**, **Data disc**
+  (it adds something the game's disc lacks: today the Japanese disc, its voices) or **Not used**, with why
+  (a PAL disc beside the game's disc gives nothing it lacks, the prototype and the beta cannot be used...).
+  It lists what `tools/setup.py --discs` prints: the images in the game folder's `assets/iso` folder and
+  the ones added here (see [Setup](setup.md#which-disc-images)). **Add a disc image...** adds an image
+  where it is (nothing is copied: its path goes into `assets/iso/more-discs.txt`); a new data disc then
+  makes the **Play** page show **Set up**, which adds it. **Remove the data disc** (select one first)
+  deletes its files from the game folder (`tools/setup.py --remove-data-disc`; your image is kept), and
+  the setup no longer takes it, until it is added here again. The list shows once the game is installed
+  (on Windows, after the first setup has made its tools).
 - **Update channel**: **Stable** gets the releases; **Development** gets the newest changes on
   `main`, before they are released (new fixes sooner, and new bugs too). It is the same setting as
   the game's Main menu > Updates > Update Channel (the `update_channel` line of
@@ -120,8 +132,9 @@ The launcher does what `setup.cmd` and `./setup.sh` do, without a console window
 
 1. On Windows, `tools\windows\toolchain.ps1`: the private MSYS2 in `.toolchain\` (see
    [Setup](setup.md#on-windows)).
-2. `tools/setup.py --no-play --iso <your image>` (with `--update --channel ...` to update, `--force`
-   to set up again from scratch), with `RAC1_LAUNCHER=1`: the setup then also prints `@step` and
+2. `tools/setup.py --no-play --iso <your image>` (without `--iso` when no image is chosen in Settings and the
+   setup finds the game's disc itself; with `--update --channel ...` to update, `--force` to set up again
+   from scratch), with `RAC1_LAUNCHER=1`: the setup then also prints `@step` and
    `@progress` lines, which the launcher shows as its progress bar. On Linux it runs with the system's
    `python3`.
 

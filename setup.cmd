@@ -4,7 +4,8 @@ rem and generates the game's data. The work is done by tools\setup.py; the tools
 rem Ninja) come from a private MSYS2 that tools\windows\toolchain.ps1 downloads into .toolchain\ on the first run.
 rem From an MSYS2 CLANG64 / UCRT64 shell, that shell's own tools are used instead (see docs\setup.md).
 rem Usage: setup.cmd [--iso <path-to-your-iso>] [--force [steps]] [-j N]  (setup.cmd --help)
-rem Double-clicking it works too (it asks for the disc image), and so does dropping the disc image on it.
+rem Without --iso it picks the disc images in assets\iso\ by itself (docs\setup.md, "Which disc images").
+rem Double-clicking it works too (with no image in assets\iso\ it asks for one), and so does dropping the disc image on it.
 setlocal
 set "DIR=%~dp0"
 set "WAIT="

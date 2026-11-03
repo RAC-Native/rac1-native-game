@@ -14,6 +14,13 @@ namespace Rac1Launcher
 {
     enum GameState { Checking, NotInstalled, NeedsSetup, Ready }
 
+    /// <summary>A disc image the setup found (tools/setup.py --discs): its role ("game", "data" or "unused"), the image,
+    /// what it is, and why (why not, for one not used).</summary>
+    sealed class DiscEntry
+    {
+        public string Role, Path, What, Why;
+    }
+
     /// <summary>The window, as the work sees it. Called from the work's thread: the window passes it to its own.</summary>
     interface IView
     {
@@ -248,7 +255,7 @@ namespace Rac1Launcher
         }
 
         /// <summary>What setup.cmd / setup.sh do: on Windows the tools (tools\windows\toolchain.ps1), then tools/setup.py
-        /// with extra ("", "--force", "--update --channel ...").</summary>
+        /// with extra ("", "--force", "--update --channel ..."). iso "": the setup picks the disc images itself (Discs).</summary>
         public bool Setup(Runner r, string iso, string extra)
         {
             var g = Game;
@@ -269,14 +276,15 @@ namespace Rac1Launcher
                 if (UsesContainer)
                 {
                     // (Linux, an immutable system: the setup runs in the build container, its packages are there)
-                    var argv = new List<string> { "python3", g.P("tools", "setup.py"), "--no-play", "--iso", iso };
+                    var argv = new List<string> { "python3", g.P("tools", "setup.py"), "--no-play" };
+                    if (iso != "") argv.AddRange(new[] { "--iso", iso });
                     if (jobs > 0) argv.AddRange(new[] { "-j", jobs.ToString() });
                     if (extra != "") argv.AddRange(extra.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
                     rc = RunInContainer(r, argv, OnSetupLine);
                 }
                 else
                 {
-                    string args = Platform.Quote(g.P("tools", "setup.py")) + " --no-play --iso " + Platform.Quote(iso)
+                    string args = Platform.Quote(g.P("tools", "setup.py")) + " --no-play" + (iso != "" ? " --iso " + Platform.Quote(iso) : "")
                                 + (jobs > 0 ? " -j " + jobs : "") + (extra != "" ? " " + extra : "");
                     Log("> python " + args);
                     rc = r.Run(Platform.Python(g), args, g.Dir, Platform.PythonEnv(g), OnSetupLine, Encoding.UTF8);
@@ -447,6 +455,7 @@ namespace Rac1Launcher
 
         bool PrepareWindowsTools(Runner r, GameDir g)
         {
+            RepairLinkedFiles(g);  // (first: an older release's toolchain.ps1 stops when clang.exe is missing)
             view.Step("Preparing the tools that build the game");
             view.StepDetail("Preparing the tools that build the game (the first time: about 1 GB to download, several minutes)");
             string ps = Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe");
@@ -460,8 +469,39 @@ namespace Rac1Launcher
                            });
             if (r.Cancelled) return false;
             if (rc != 0) { Fail(LastError() ?? "Preparing the tools failed."); return false; }
+            RepairLinkedFiles(g);
             RepairCertificates(g);
             return true;
+        }
+
+        // The files MSYS2's packages hold as hard links to another of their files, which a drive that is not NTFS (exFAT,
+        // FAT32: an external drive) cannot hold: pacman leaves them out, clang.exe among them (GitHub issue #126). The same
+        // table as toolchain.ps1's ($LinkedFiles), which copies them too: here also for an older release's script, which
+        // stops when clang.exe is missing before the update that brings the new one can run.
+        static readonly string[,] LinkedFiles =
+        {
+            { "clang.exe", "clang++.exe" }, { "clang-cpp.exe", "clang++.exe" },
+            { "x86_64-w64-mingw32-clang.exe", "clang++.exe" }, { "x86_64-w64-mingw32-clang++.exe", "clang++.exe" },
+            { "lld.exe", "ld.exe" }, { "llvm-cov.exe", "gcov.exe" }, { "unzip.exe", "bsdunzip.exe" },
+            { "libdeflate-gzip.exe", "libdeflate-gunzip.exe" },
+        };
+
+        /// <summary>The linked files missing from the private MSYS2, copied from their target (clang picks C or C++ by its
+        /// own file name, so a copy works the same).</summary>
+        void RepairLinkedFiles(GameDir g)
+        {
+            string bin = g.P(".toolchain", "msys64", "clang64", "bin");
+            for (int i = 0; i < LinkedFiles.GetLength(0); i++)
+            {
+                string file = Path.Combine(bin, LinkedFiles[i, 0]), target = Path.Combine(bin, LinkedFiles[i, 1]);
+                if (File.Exists(file) || !File.Exists(target)) continue;
+                try
+                {
+                    File.Copy(target, file);
+                    Log($"Copied {LinkedFiles[i, 1]} to {LinkedFiles[i, 0]} (MSYS2's package has it as a hard link, which this drive cannot hold)");
+                }
+                catch (Exception e) { Log($"Could not copy {LinkedFiles[i, 1]} to {LinkedFiles[i, 0]}: {e.Message}"); }
+            }
         }
 
         /// <summary>The certificates the build downloads with, for a release whose toolchain.ps1 does not make them
@@ -640,6 +680,94 @@ namespace Rac1Launcher
                 : "If it keeps happening, try Settings > Set up again from scratch, or report it (Settings > Report a problem).";
             return $"The game closed right after starting (exit code {code}). {why}" + (tail != "" ? "\n\nIts last messages:\n" + tail : "");
         }
+
+        // --- The disc images ------------------------------------------------------------------------------------
+
+        /// <summary>The disc images the setup finds and what each one is for (tools/setup.py --discs, with the disc image
+        /// chosen in the settings as --iso when there is one); null when the setup cannot tell (not downloaded yet, no
+        /// Python yet on Windows, or a setup.py from before --discs). Off the window's thread.</summary>
+        public List<DiscEntry> Discs()
+        {
+            var g = Game;
+            if (!g.Downloaded || !Platform.CanRunSetup(g)) return null;
+            var lines = new List<string>();
+            string iso = File.Exists(Settings.Iso) ? " --iso " + Platform.Quote(Settings.Iso) : "";
+            int rc;
+            try
+            {
+                using (var r = new Runner())
+                    rc = r.Run(Platform.Python(g), Platform.Quote(g.P("tools", "setup.py")) + " --discs" + iso, g.Dir,
+                               Platform.PythonEnv(g), l => lines.Add(l), Encoding.UTF8);
+            }
+            catch (Exception) { return null; }
+            if (rc != 0) return null;
+            var list = new List<DiscEntry>();
+            foreach (var l in lines)
+            {
+                var f = l.Split('\t');
+                if (f.Length >= 4 && (f[0] == "game" || f[0] == "data" || f[0] == "unused"))
+                    list.Add(new DiscEntry { Role = f[0], Path = f[1], What = f[2], Why = f[3] });
+            }
+            // (the game's disc first, then the data discs, then the others, each in the setup's order)
+            return list.OrderBy(d => d.Role == "game" ? 0 : d.Role == "data" ? 1 : 2).ToList();
+        }
+
+        /// <summary>assets/iso/more-discs.txt: images elsewhere the setup also looks at, one path a line (docs/setup.md,
+        /// "Which disc images").</summary>
+        string MoreDiscsFile => Game.P("assets", "iso", "more-discs.txt");
+
+        /// <summary>A disc image the player added: its path listed in more-discs.txt (nothing is copied or linked); the next
+        /// setup picks what it is for (a data disc removed before is taken again). Null when done, else what is wrong.</summary>
+        public string AddDisc(string file)
+        {
+            if (!Game.Downloaded) return "Install the game first.";
+            string problem = IsoProblem(file);
+            if (problem != null) return problem;
+            try
+            {
+                // (listed even when it is in assets/iso already: a data disc removed before is taken again when listed)
+                string full = Path.GetFullPath(file);
+                var listed = File.Exists(MoreDiscsFile) ? File.ReadAllLines(MoreDiscsFile, Encoding.UTF8).ToList() : new List<string>();
+                if (listed.Any(l => string.Equals(l.Trim(), full, Platform.Windows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)))
+                    return null;
+                Directory.CreateDirectory(Path.GetDirectoryName(MoreDiscsFile));
+                if (listed.Count == 0) listed.Add("# disc images the setup also looks at, one path a line (added by the launcher)");
+                listed.Add(full);
+                File.WriteAllLines(MoreDiscsFile, listed, new UTF8Encoding(false));
+                Log("Disc image added: " + full);
+                return null;
+            }
+            catch (Exception e) { return "The disc image could not be added: " + e.Message; }
+        }
+
+        /// <summary>A data disc removed: tools/setup.py --remove-data-disc (its files deleted, not taken again from the
+        /// images found), and its path out of more-discs.txt.</summary>
+        public bool RemoveDataDisc(Runner r, DiscEntry d)
+        {
+            var g = Game;
+            var m = Regex.Match(d.What, @"\b([A-Z]{4}-\d{5})\b");
+            string which = m.Success ? m.Groups[1].Value : d.Path;
+            Log("Removing the data disc " + d.What);
+            int rc = r.Run(Platform.Python(g), Platform.Quote(g.P("tools", "setup.py")) + " --remove-data-disc " + Platform.Quote(which),
+                           g.Dir, Platform.PythonEnv(g), OnSetupLine, Encoding.UTF8);
+            if (r.Cancelled) return false;
+            if (rc != 0) { Fail(LastError() ?? "The data disc could not be removed."); return false; }
+            try
+            {
+                if (File.Exists(MoreDiscsFile) && d.Path != "")
+                {
+                    string full = Path.GetFullPath(d.Path);
+                    var kept = File.ReadAllLines(MoreDiscsFile, Encoding.UTF8)
+                                   .Where(l => !string.Equals(l.Trim(), full, Platform.Windows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
+                    File.WriteAllLines(MoreDiscsFile, kept, new UTF8Encoding(false));
+                }
+            }
+            catch (Exception e) { Log("more-discs.txt could not be changed: " + e.Message); }
+            return true;
+        }
+
+        /// <summary>A disc image's role as the window shows it.</summary>
+        public static string RoleText(DiscEntry d) => d.Role == "game" ? "Game disc" : d.Role == "data" ? "Data disc" : "Not used";
 
         // --- Choices the window checks -------------------------------------------------------------------------
 

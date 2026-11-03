@@ -28,6 +28,20 @@ constexpr float FRED_RANGE = 15.0f;
 constexpr float FRED_ACCEL = 0.02f, FRED_DAMP = 0.3f, FRED_VMAX = 0.05f;
 constexpr uint32_t FRED_KEPT = 1;  // the state byte (+0x20) of a citizen kept: 0 on its first update
 constexpr uint32_t FRED_SPIN = 0x1bc;  // the turn's spin, in its pvars
+// Their placements stand some of them in the air (never seen in the retail game: they retire at once): three (at x 314
+// to 323, y 139 to 146) 0.25 above the ground, four more up to 0.1. At the first update each one is
+// put on the ground under it: the collision met by a segment from FRED_SNAP_UP above its placement down to
+// FRED_SNAP_DOWN below it (the game's own segment test, segment_collide: the level's triangles and the mobys that
+// collide); with nothing there it stays where it was placed.
+constexpr float FRED_SNAP_UP = 1.0f, FRED_SNAP_DOWN = 8.0f;
+
+// orig: (none) — enhancement: a kept citizen put on the ground under its placement (above)
+void fred_snap_to_ground(uint32_t m) {
+    Vec4 from = V(m + 0x10), to = V(m + 0x10);
+    from.z = from.z + FRED_SNAP_UP;
+    to.z = to.z - FRED_SNAP_DOWN;
+    if (segment_collide_v(from, to, 2, m, nullptr) != 0) swc1(m + 0x18, lwc1(OV(0x00173e60) + 8));  // (the hit point)
+}
 }  // namespace
 
 // orig: (none) — enhancement (cut_content.h)
@@ -56,6 +70,7 @@ void cut_content_fred_dispatch_l3(uint32_t m) {
 void cut_content_fred_update_l3(uint32_t m) {
     if (lbu(m + 0x20) != FRED_KEPT) {
         sb(m + 0x20, FRED_KEPT);
+        fred_snap_to_ground(m);
         moby_anim_set(m, 0, 0, 0);
     } else if ((lbu(m + 0x70) & 2) != 0) {
         moby_anim_set(m, 0, 0, 0);  // (the sequence ended: again)

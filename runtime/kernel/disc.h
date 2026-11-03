@@ -12,8 +12,9 @@
 namespace rac1 {
 
 // The image's path (the setup reads it; the game only with RAC1_READ_ISO=1): $RAC1_ISO, else the setup's link to
-// the image (assets/iso/rac1-ntsc-u.iso, or assets/iso/rac1-pal.iso for the PAL disc), else the path written in
-// disc_path_file() (where the setup could not make the link: Windows).
+// the image (assets/iso/rac1-ntsc-u.iso, or assets/iso/rac1-pal.iso for the PAL disc; with both, the one the disc's
+// files were extracted from), else the path written in disc_path_file() (where the setup could not make the link:
+// Windows).
 std::string disc_path();
 // assets/iso/disc-path.txt: the image's path, one line, written by the setup when it cannot link it.
 const char* disc_path_file();
