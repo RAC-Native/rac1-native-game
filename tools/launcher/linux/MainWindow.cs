@@ -44,6 +44,9 @@ namespace Rac1Launcher
         // Settings
         readonly TextBox txtDir = new TextBox(), txtIso = new TextBox();
         readonly ComboBox cmbJobs = new ComboBox(), cmbChannel = new ComboBox();
+        readonly ListBox lstDiscs = new ListBox();
+        readonly TextBlock lblDiscs = new TextBlock();
+        List<DiscEntry> discs = new List<DiscEntry>();
         readonly TabControl tabs = new TabControl();
         readonly List<Control> busyDisabled = new List<Control>();
 
@@ -98,7 +101,12 @@ namespace Rac1Launcher
             tabs.Items.Add(new TabItem { Header = "Saves", Content = SavesPage() });
             tabs.Items.Add(new TabItem { Header = "Settings", Content = SettingsPage() });
             tabs.Margin = new Thickness(8, 4, 8, 8);
-            tabs.SelectionChanged += (s, e) => { if (ReferenceEquals(e.Source, tabs) && tabs.SelectedIndex == 1) RefreshSaves(); };
+            tabs.SelectionChanged += (s, e) =>
+            {
+                if (!ReferenceEquals(e.Source, tabs)) return;
+                if (tabs.SelectedIndex == 1) RefreshSaves();
+                if (tabs.SelectedIndex == 2) RefreshDiscs();
+            };
 
             var dock = new DockPanel();
             DockPanel.SetDock(header, Dock.Top);
@@ -256,6 +264,23 @@ namespace Rac1Launcher
             cmbJobs.SelectionChanged += (s, e) => { ctl.Settings.Jobs = jobValues[Math.Max(0, cmbJobs.SelectedIndex)]; ctl.Settings.Save(); };
             AddRow(t, "Parallel jobs", cmbJobs, Note("(for the setup: fewer is slower, but uses less memory)"));
 
+            var discsPanel = new StackPanel { Margin = new Thickness(0, 14, 0, 0) };
+            discsPanel.Children.Add(new TextBlock { Text = "Disc images", FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, 4) });
+            lblDiscs.TextWrapping = TextWrapping.Wrap;
+            lblDiscs.Foreground = Gray;
+            lblDiscs.Margin = new Thickness(0, 0, 0, 6);
+            discsPanel.Children.Add(lblDiscs);
+            discsPanel.Children.Add(DiscRow("Use", "Disc", "Image", heading: true));
+            lstDiscs.SelectionMode = SelectionMode.Single;
+            lstDiscs.MaxHeight = 340;
+            discsPanel.Children.Add(lstDiscs);
+            var discButtons = Row();
+            discButtons.Margin = new Thickness(0, 6, 0, 0);
+            discButtons.Children.Add(Btn("Add a disc image...", () => AddDisc(), true));
+            discButtons.Children.Add(Btn("Remove the data disc", () => RemoveDisc(), true));
+            discButtons.Children.Add(Btn("Refresh", () => RefreshDiscs()));
+            discsPanel.Children.Add(discButtons);
+
             var actions = new WrapPanel { Margin = new Thickness(0, 18, 0, 0) };
             actions.Children.Add(Btn("Check for updates", () => CheckUpdates(true), true));
             actions.Children.Add(Btn("Update now", () => DoUpdate(), true));
@@ -273,6 +298,7 @@ namespace Rac1Launcher
             };
             var outer = new StackPanel();
             outer.Children.Add(t);
+            outer.Children.Add(discsPanel);
             outer.Children.Add(actions);
             outer.Children.Add(note);
             return new ScrollViewer { Content = outer };
@@ -451,6 +477,9 @@ namespace Rac1Launcher
             if (!always && File.Exists(ctl.Settings.Iso)) return ctl.Settings.Iso;
             if (!always)
             {
+                // (the setup picks the game's disc itself among the images it finds: no --iso)
+                var found = await Task.Run(() => ctl.Discs());
+                if (found != null && found.Any(d => d.Role == "game")) return "";
                 string known = Game.KnownIso();
                 if (known != null) return known;
             }
@@ -708,6 +737,87 @@ namespace Rac1Launcher
             if (shown.Length > 1 << 20) shown.Remove(0, shown.Length - (512 << 10));
             txtLog.Text = shown.ToString();
             txtLog.CaretIndex = txtLog.Text.Length;  // (scrolled to the end)
+        }
+
+        // --- Disc images -------------------------------------------------------------------------------------
+
+        static Control DiscRow(string use, string what, string image, string why = null, bool heading = false)
+        {
+            var g = new Grid { ColumnDefinitions = new ColumnDefinitions("100,290,*"), Margin = heading ? new Thickness(12, 0, 0, 4) : new Thickness(0) };
+            string[] cells = { use, what, image };
+            for (int i = 0; i < 3; i++)
+            {
+                var tb = new TextBlock { Text = cells[i], FontWeight = heading || (i == 0 && use != "Not used") ? FontWeight.SemiBold : FontWeight.Normal,
+                                         TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 8, 0) };
+                if (!heading && use == "Not used") tb.Foreground = Gray;
+                Grid.SetColumn(tb, i);
+                g.Children.Add(tb);
+            }
+            if (why == null) return g;
+            var both = new StackPanel();
+            both.Children.Add(g);
+            both.Children.Add(new TextBlock { Text = why, Foreground = Gray, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(100, 0, 0, 0) });
+            return both;
+        }
+
+        /// <summary>The disc images the setup finds (tools/setup.py --discs), and what each one is for.</summary>
+        void RefreshDiscs()
+        {
+            var g = Game;
+            lblDiscs.Text = "Looking at the disc images...";
+            Task.Run(() =>
+            {
+                var list = ctl.Discs();
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (g != Game) return;
+                    discs = list ?? new List<DiscEntry>();
+                    lstDiscs.ItemsSource = discs.Select(d => DiscRow(Controller.RoleText(d), d.What, d.Path == "" ? "(its image is gone)" : Path.GetFileName(d.Path),
+                                                                     d.Why + (d.Path == "" ? "" : "\n" + d.Path))).ToList();
+                    lblDiscs.Text = list == null
+                        ? "The list shows once the game is installed (and, on a game folder set up by hand, its setup can run)."
+                        : "The setup picks the game's disc and the data discs among the images in the game folder's assets/iso "
+                          + "folder and the ones added here (nothing is copied). A data disc adds something the game's disc lacks: "
+                          + "the Japanese disc, its voices." + (discs.Count == 0 ? " No disc image found yet." : "");
+                });
+            });
+        }
+
+        async void AddDisc()
+        {
+            if (!Game.Downloaded) { await Say("Install the game first.", "Disc images"); return; }
+            string file = await PickFile("Add a Ratchet & Clank disc image (.iso)", "Disc images", new[] { "*.iso", "*.ISO" }, null);
+            if (file == null) return;
+            if (!File.Exists(file)) { await Say("File not found: " + file, "Disc images"); return; }
+            string problem = ctl.AddDisc(file);
+            if (problem != null) { await Say(problem, "Disc images"); return; }
+            var list = await Task.Run(() => ctl.Discs());
+            RefreshDiscs();
+            RefreshState();
+            string full = Path.GetFullPath(file);
+            var d = list?.FirstOrDefault(x => x.Path == full);
+            await Say(d == null ? "Added: the next setup looks at it."
+                      : d.Role == "data" ? $"{d.What}: a data disc ({d.Why}). The setup adds it at its next run: click Set up on the Play page."
+                      : d.Role == "game" ? $"{d.What}: the game's disc." : $"{d.What}: not used ({d.Why}).", "Disc images");
+        }
+
+        async void RemoveDisc()
+        {
+            if (runner != null) return;
+            var d = lstDiscs.SelectedIndex >= 0 && lstDiscs.SelectedIndex < discs.Count ? discs[lstDiscs.SelectedIndex] : null;
+            if (d == null || d.Role != "data") { await Say("Select a data disc in the list first.", "Disc images"); return; }
+            if (!await Yes($"Remove the data disc {d.What}? Its files in the game folder are deleted (your disc image is kept), "
+                           + "and the setup no longer takes it, until it is added again here.", "Disc images"))
+                return;
+            foreach (var c in busyDisabled) c.IsEnabled = false;
+            ctl.BeginTask("Removing a data disc");
+            bool ok = await Task.Run(() => { using (var r = new Runner()) return ctl.RemoveDataDisc(r, d); });
+            ctl.EndTask();
+            foreach (var c in busyDisabled) c.IsEnabled = true;
+            FlushLog();
+            if (!ok) await Say(ctl.Failure ?? "The data disc could not be removed.", "Disc images");
+            RefreshDiscs();
+            RefreshState();
         }
 
         // --- Saves ------------------------------------------------------------------------------------------

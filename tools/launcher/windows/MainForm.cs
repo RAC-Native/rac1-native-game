@@ -38,6 +38,9 @@ namespace Rac1Launcher
         // Settings
         readonly TextBox txtDir = new TextBox(), txtIso = new TextBox();
         readonly ComboBox cmbJobs = new ComboBox(), cmbChannel = new ComboBox();
+        readonly ListView lstDiscs = new ListView();
+        readonly Label lblDiscs = new Label();
+        List<DiscEntry> discs = new List<DiscEntry>();
         readonly TabControl tabs = new TabControl();
         readonly List<Control> busyDisabled = new List<Control>();
 
@@ -97,7 +100,11 @@ namespace Rac1Launcher
             tabs.TabPages.Add(PlayPage());
             tabs.TabPages.Add(SavesPage());
             tabs.TabPages.Add(SettingsPage());
-            tabs.SelectedIndexChanged += (s, e) => { if (tabs.SelectedIndex == 1) RefreshSaves(); };
+            tabs.SelectedIndexChanged += (s, e) =>
+            {
+                if (tabs.SelectedIndex == 1) RefreshSaves();
+                if (tabs.SelectedIndex == 2) RefreshDiscs();
+            };
             Controls.Add(tabs);
             Controls.Add(header);
         }
@@ -261,6 +268,32 @@ namespace Rac1Launcher
                 ForeColor = SystemColors.GrayText,
             });
 
+            var discsPanel = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Margin = Pd(0, 14, 0, 0) };
+            discsPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            discsPanel.Controls.Add(new Label { Text = "Disc images", AutoSize = true, Font = new Font(Font, FontStyle.Bold), Margin = Pd(0, 0, 0, 4) }, 0, 0);
+            lblDiscs.AutoSize = true;
+            lblDiscs.MaximumSize = new Size(S(760), 0);
+            lblDiscs.ForeColor = SystemColors.GrayText;
+            lblDiscs.Margin = Pd(0, 0, 0, 6);
+            discsPanel.Controls.Add(lblDiscs, 0, 1);
+            lstDiscs.View = View.Details;
+            lstDiscs.FullRowSelect = true;
+            lstDiscs.MultiSelect = false;
+            lstDiscs.HideSelection = false;
+            lstDiscs.ShowItemToolTips = true;
+            lstDiscs.Dock = DockStyle.Fill;
+            lstDiscs.Height = S(150);
+            lstDiscs.Columns.Add("Use", S(80));
+            lstDiscs.Columns.Add("Disc", S(230));
+            lstDiscs.Columns.Add("Why", S(300));
+            lstDiscs.Columns.Add("Image", S(300));
+            discsPanel.Controls.Add(lstDiscs, 0, 2);
+            var discButtons = new FlowLayoutPanel { AutoSize = true, Margin = Pd(0, 6, 0, 0) };
+            discButtons.Controls.Add(Btn("Add a disc image...", (s, e) => AddDisc(), true));
+            discButtons.Controls.Add(Btn("Remove the data disc", (s, e) => RemoveDisc(), true));
+            discButtons.Controls.Add(Btn("Refresh", (s, e) => RefreshDiscs()));
+            discsPanel.Controls.Add(discButtons, 0, 3);
+
             var actions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Margin = Pd(0, 18, 0, 0) };
             actions.Controls.Add(Btn("Check for updates", (s, e) => CheckUpdates(true), true));
             actions.Controls.Add(Btn("Update now", (s, e) => DoUpdate(), true));
@@ -281,9 +314,11 @@ namespace Rac1Launcher
             outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             outer.Controls.Add(t, 0, 0);
-            outer.Controls.Add(actions, 0, 1);
-            outer.Controls.Add(note, 0, 2);
+            outer.Controls.Add(discsPanel, 0, 1);
+            outer.Controls.Add(actions, 0, 2);
+            outer.Controls.Add(note, 0, 3);
             page.Controls.Add(outer);
             return page;
         }
@@ -470,6 +505,11 @@ namespace Rac1Launcher
             if (!always && File.Exists(ctl.Settings.Iso)) return ctl.Settings.Iso;
             if (!always)
             {
+                // (the setup picks the game's disc itself among the images it finds: no --iso)
+                Cursor = Cursors.WaitCursor;
+                var found = ctl.Discs();
+                Cursor = Cursors.Default;
+                if (found != null && found.Any(x => x.Role == "game")) return "";
                 string known = Game.KnownIso();
                 if (known != null) return known;
             }
@@ -689,6 +729,85 @@ namespace Rac1Launcher
         }
 
         // --- Saves ------------------------------------------------------------------------------------------
+
+        // --- Disc images -------------------------------------------------------------------------------------
+
+        /// <summary>The disc images the setup finds (tools/setup.py --discs), and what each one is for.</summary>
+        void RefreshDiscs()
+        {
+            var g = Game;
+            lblDiscs.Text = "Looking at the disc images...";
+            Task.Run(() =>
+            {
+                var list = ctl.Discs();
+                BeginInvoke((Action)(() =>
+                {
+                    if (g != Game) return;
+                    discs = list ?? new List<DiscEntry>();
+                    lstDiscs.BeginUpdate();
+                    lstDiscs.Items.Clear();
+                    foreach (var d in discs)
+                    {
+                        var it = new ListViewItem(new[] { Controller.RoleText(d), d.What, d.Why, d.Path == "" ? "(its image is gone)" : d.Path });
+                        it.ToolTipText = d.What + (d.Why != "" ? ": " + d.Why : "") + (d.Path != "" ? "\n" + d.Path : "");
+                        if (d.Role == "unused") it.ForeColor = SystemColors.GrayText;
+                        lstDiscs.Items.Add(it);
+                    }
+                    lstDiscs.EndUpdate();
+                    lblDiscs.Text = list == null
+                        ? "The list shows once the game is installed and its tools are ready (after the first setup)."
+                        : "The setup picks the game's disc and the data discs among the images in the game folder's assets\\iso "
+                          + "folder and the ones added here (nothing is copied). A data disc adds something the game's disc lacks: "
+                          + "the Japanese disc, its voices." + (discs.Count == 0 ? " No disc image found yet." : "");
+                }));
+            });
+        }
+
+        void AddDisc()
+        {
+            if (!Game.Downloaded) { Say("Install the game first.", "Disc images"); return; }
+            string file;
+            using (var dlg = new OpenFileDialog
+            {
+                Title = "Add a Ratchet & Clank disc image (.iso)",
+                Filter = "Disc images (*.iso)|*.iso|All files (*.*)|*.*",
+                CheckFileExists = true,
+            })
+            {
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                file = dlg.FileName;
+            }
+            string problem = ctl.AddDisc(file);
+            if (problem != null) { Say(problem, "Disc images", MessageBoxIcon.Warning); return; }
+            Cursor = Cursors.WaitCursor;
+            var list = ctl.Discs();
+            Cursor = Cursors.Default;
+            RefreshDiscs();
+            RefreshState();
+            string full = Path.GetFullPath(file);
+            var d = list?.FirstOrDefault(x => string.Equals(x.Path, full, StringComparison.OrdinalIgnoreCase));
+            Say(d == null ? "Added: the next setup looks at it."
+                : d.Role == "data" ? $"{d.What}: a data disc ({d.Why}). The setup adds it at its next run: click Set up on the Play page."
+                : d.Role == "game" ? $"{d.What}: the game's disc." : $"{d.What}: not used ({d.Why}).", "Disc images");
+        }
+
+        async void RemoveDisc()
+        {
+            if (runner != null) return;
+            var d = lstDiscs.SelectedIndices.Count == 1 && lstDiscs.SelectedIndices[0] < discs.Count ? discs[lstDiscs.SelectedIndices[0]] : null;
+            if (d == null || d.Role != "data") { Say("Select a data disc in the list first.", "Disc images"); return; }
+            if (!Yes($"Remove the data disc {d.What}? Its files in the game folder are deleted (your disc image is kept), "
+                     + "and the setup no longer takes it, until it is added again here.", "Disc images"))
+                return;
+            foreach (var c in busyDisabled) c.Enabled = false;
+            ctl.BeginTask("Removing a data disc");
+            bool ok = await Task.Run(() => { using (var r = new Runner()) return ctl.RemoveDataDisc(r, d); });
+            ctl.EndTask();
+            foreach (var c in busyDisabled) c.Enabled = true;
+            if (!ok) Say(ctl.Failure ?? "The data disc could not be removed.", "Disc images", MessageBoxIcon.Warning);
+            RefreshDiscs();
+            RefreshState();
+        }
 
         void RefreshSaves()
         {

@@ -132,6 +132,10 @@ What changed in each release. Releases are source only: you build the game with 
   picked up by the next setup (`--check` says so); `--iso` / `--data-iso` still win; `--remove-data-disc` forgets one data
   disc, `--discs` prints the choice. The setup no longer removes the other region's live link in `assets/iso/`
   (docs/setup.md, "Which disc images").
+- Launcher: Settings > Disc images lists the disc images the setup finds and what each one is for (game disc, data disc,
+  not used and why); **Add a disc image...** adds one where it is (its path in `assets/iso/more-discs.txt`, nothing
+  copied), **Remove the data disc** removes one (`--remove-data-disc`). With no image chosen, the setup picks the game's
+  disc itself (docs/launcher.md, "Settings").
 - Data discs: `./setup.sh --data-iso <image>` (repeatable, kept for the next setups; `--no-data-discs` forgets them) adds
   another release's disc as a source of data only; the Japanese disc (SCPS-15037) is extracted into its own folder and
   gives the Japanese voices (docs/setup.md, "Data discs"). Discs are told apart by their boot executable's sha1: the PAL
