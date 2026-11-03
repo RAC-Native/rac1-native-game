@@ -1355,4 +1355,10 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   same frame (game thread off, deterministic): mode 1 1789 pixels differ (foliage's edges), mode 3 1859, mode 4 2623.
 - **RAC1_WIIU_WORLD_MERGE default 3 -> 1.** RAC1_WIIU_REUSE_STAT=1 (the static draws found again in the next frame: 97-100% while moving)
   and RAC1_WIIU_PREP_TIME's gpu_packet line (the instances' data, the replays, the full packets) kept for the next steps.
+- **Mode 4's wrong texture, narrowed (not found):** RAC1_WIIU_MAX_INSTANCED (new, testing: the instances an item may hold) =1 in mode 4:
+  the bright spot gone; so it needs instanced draws, the fast pair and one texture an item (mode 3: instanced and fast, the units' tree,
+  right; mode 1: fast, one texture, not instanced, right; mode 4 with RAC1_WIIU_FASTPS=0, right). Not the sampler's place (the pairs'
+  are checked at load), not a per-draw terms block (the world's fast pair has none).
+- **The wide view in mode 1 is the CPU's chain:** RAC1_WIIU_PIXELS_OFF=1 there gives 26-28 ms as with the pixels - the GPU's "busy" ~28
+  counts its waits for the main thread's commands (the draws' world join ~18.6 ms into the cycle, the draws to ~26.9).
 

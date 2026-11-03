@@ -136,6 +136,7 @@ inline bool mode_by_unit(int mode) { return mode == kByUnit || mode == kInstance
 inline bool mode_units(int mode) { return mode == kUnits || mode == kInstanced; }
 inline bool mode_instanced(int mode) { return mode == kInstanced || mode == kInstancedByUnit; }
 constexpr uint32_t kMaxInstanced = 256;  // (an item's instances in one uniform block: 256 B each, 64 KB)
+inline uint32_t g_max_instanced = kMaxInstanced;  // (testing, RAC1_WIIU_MAX_INSTANCED: fewer an item)
 
 struct Plan {
     uint64_t serial = ~0ull;
@@ -200,7 +201,7 @@ inline void plan_build(const mrpwb::FrameView& F, const Level& M, int kinds, int
             const Plan::Group& g = groups[k];
             size_t e = k + 1;
             if (mode_instanced(mode))
-                while (e < groups.size() && e - k < kMaxInstanced && groups[e].unit == g.unit && groups[e].pass2 == g.pass2 && groups[e].nseg == g.nseg &&
+                while (e < groups.size() && e - k < g_max_instanced && groups[e].unit == g.unit && groups[e].pass2 == g.pass2 && groups[e].nseg == g.nseg &&
                        std::equal(segs.begin() + groups[e].seg0, segs.begin() + groups[e].seg0 + groups[e].nseg, segs.begin() + g.seg0))
                     ++e;
             Item it;

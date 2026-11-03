@@ -2001,6 +2001,7 @@ bool mrp_world_gx2_init() {
     }
     // (testing, RAC1_WIIU_WORLD_MERGE=<n>: the ties' / shrubs' draws merged as mrpwm::Mode says - 0 one draw per draw command, as before)
     if (const char* e = std::getenv("RAC1_WIIU_WORLD_MERGE")) g_merge = std::clamp(std::atoi(e), 0, 4);
+    if (const char* e = std::getenv("RAC1_WIIU_MAX_INSTANCED")) mrpwm::g_max_instanced = std::clamp<uint32_t>(static_cast<uint32_t>(std::atoi(e)), 1, mrpwm::kMaxInstanced);
     if (g_merge > 0 && (!g_runs_ok || g_draw_loc.size < 2 * kSlot)) {
         std::printf("[wiiu] mrp_world_gx2: the merged draws off: no run table / instance slots in the shaders\n");
         g_merge = 0;
