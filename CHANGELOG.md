@@ -125,6 +125,13 @@ What changed in each release. Releases are source only: you build the game with 
   generated files): the game code about 5% less time a frame (Veldin 1.25 to 1.18 ms); the same game state (`RAC1_PERF_VU0_NF`).
 
 ### Launcher and setup
+- Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
+  identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
+  1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs
+  beside the game's disc, the PAL disc 2.00, the pre-release builds, a second image of a release). An image added later is
+  picked up by the next setup (`--check` says so); `--iso` / `--data-iso` still win; `--remove-data-disc` forgets one data
+  disc, `--discs` prints the choice. The setup no longer removes the other region's live link in `assets/iso/`
+  (docs/setup.md, "Which disc images").
 - Data discs: `./setup.sh --data-iso <image>` (repeatable, kept for the next setups; `--no-data-discs` forgets them) adds
   another release's disc as a source of data only; the Japanese disc (SCPS-15037) is extracted into its own folder and
   gives the Japanese voices (docs/setup.md, "Data discs"). Discs are told apart by their boot executable's sha1: the PAL

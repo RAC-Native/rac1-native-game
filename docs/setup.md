@@ -72,19 +72,24 @@ sudo pacman -S --needed cmake base-devel pkgconf mesa libx11 libxrandr libxinera
    cd rac1-native-game
    ```
 
-2. **Run the setup, with the path to your disc image:**
+2. **Put your disc image in `assets/iso/` and run the setup:**
 
    ```bash
-   ./setup.sh --iso /path/to/your/ratchet.iso
+   mkdir -p assets/iso
+   ln -s /path/to/your/ratchet.iso assets/iso/   # (a link; moving or copying the image there works too)
+   ./setup.sh
    ```
 
-   (Without `--iso` it asks for the path.) It goes through six steps:
+   The setup looks at every disc image in `assets/iso/` and picks the game's disc and the data discs by itself
+   (see [Which disc images](#which-disc-images)). Or give the image where it is: `./setup.sh --iso
+   /path/to/your/ratchet.iso`. (With neither, it asks for the path.) It goes through six steps:
 
    1. **Checks your system** and lists anything missing, with the install command for your
       distribution. It offers to run that command for you (it asks for your password); say no to
       run it yourself.
-   2. **Checks your disc image**: that it is Ratchet & Clank's North American or European (PAL)
-      disc, and not smaller than a good dump.
+   2. **Checks your disc image**: lists the images it found and what each one is for, then checks
+      that the game's disc is Ratchet & Clank's North American or European (PAL) disc, and not smaller
+      than a good dump.
    3. **Extracts your disc** into `assets/disc/`: every file on it, about 4 GB (see
       [The disc's files](#the-discs-files)). The game reads these files while it runs, not the image.
       Each file is checked after it is written: its size, and its bytes against the image. This takes
@@ -206,14 +211,60 @@ not supported yet.
   enhancement hook points as the North American code (R&C 3 movement's air braking and the strafe flip's
   speed), placed at the matching instructions of the PAL code (`PAL:` lines in `tools/codegen/hooks.glue`).
 
+## Which disc images
+
+Without `--iso`, the setup looks at every disc image it can find, tells each one apart by its boot
+executable and that executable's sha1, and picks what to use. It looks at:
+
+- every `.iso` file in `assets/iso/` (whatever its name; links count, and the setup's own links
+  `rac1-ntsc-u.iso` / `rac1-pal.iso` are among them);
+- the path in `assets/iso/disc-path.txt` (written on Windows when the setup cannot make a link);
+- the paths listed in `assets/iso/more-discs.txt`, one a line (what the launcher's **Add a disc image**
+  writes, so an image elsewhere is used where it is: nothing is copied; a data disc listed there is taken even
+  after a removal, so remove its line too);
+- the data discs' images the setup already recorded (`--data-iso`).
+
+It then picks:
+
+- **The game's disc**: the one already set up, when its image is still there (an image added later
+  does not make the setup extract and generate everything again from another disc); else the North
+  American disc (`SCUS-97199`); else the PAL disc 1.00 (`SCES-50916`). The PAL disc 2.00 and the
+  Japanese disc are not the game's disc yet: with only those, the setup stops and says so.
+- **The data discs**: each image that gives something the game's disc lacks, today the Japanese disc
+  (its voices: see [Data discs](#data-discs)).
+- **Not used**, with one line saying why: a PAL disc beside the game's disc (it gives nothing the game's
+  disc lacks), the pre-release builds (the June 2002 prototype, the August 2002 beta: they boot a
+  development executable, `SCPS_000.00`), another game, an image smaller than a good dump, one whose
+  boot executable is not a good dump's (a modified disc), and a second image of a release already
+  taken (the first one by name is used, the line names it).
+
+The choice is printed at step 2, for example:
+
+```
+  Disc images found (assets/iso/ and the ones the setup knows):
+    not used   assets/iso/Ratchet & Clank (Europe).iso: PAL SCES-50916 version 1.00 (as a data disc it gives nothing the game's disc lacks: the same voices)
+    data disc  assets/iso/Ratchet & Clank (Japan).iso: NTSC-J SCPS-15037 version 1.02 (the Japanese voices)
+    game disc  assets/iso/Ratchet & Clank (USA).iso: NTSC-U SCUS-97199 version 1.00
+```
+
+An image added to `assets/iso/` later is picked up by the next setup (`./setup.sh --check`, and the
+launcher's Play page, say so: "a new data disc"). Explicit options always win: `--iso <image>` (or
+`RAC1_ISO`) is the game's disc whatever else is there, `--data-iso <image>` a data disc.
+To switch the game's disc to another one found there, give it with `--iso` once; the setup keeps it.
+`./setup.sh --discs` prints the choice without doing anything (one image a line, tab-separated: game,
+data or unused; the image; what it is; why).
+
 ## Data discs
 
 The game's disc (`--iso`) gives the game its code and data. Other releases' discs can be added beside it
 as **data discs**, sources of data only: their own code never runs (Ratchet & Clank 3's port does the
 same, its decision 14). For now that gives one thing: the **Japanese voices**, from the Japanese disc.
 
+The setup takes the Japanese disc by itself when its image is in `assets/iso/` (see
+[Which disc images](#which-disc-images)); or give it where it is:
+
 ```bash
-./setup.sh --iso rac1-ntsc-u.iso --data-iso rac1-ntsc-j.iso
+./setup.sh --data-iso /path/to/rac1-ntsc-j.iso
 ```
 
 - Each disc is told apart by its boot executable and that executable's sha1 (the two PAL discs boot the
@@ -224,12 +275,14 @@ same, its decision 14). For now that gives one thing: the **Japanese voices**, f
   `tools/disc_extract.py`, into its own folder, `assets/disc-SCPS-15037-1.02/` (about 1.7 GB: its
   movies have one sound track and are not there twice, its dialogue is in one language), and listed in
   `assets/data-discs.txt`, which the game reads. Its image is not needed afterwards.
-- A PAL disc (1.00 or 2.00) is accepted and noted, but not extracted: the North American disc (and the
-  PAL disc 1.00) already carries all five European voices, the same recordings, so a PAL disc gives
-  nothing the game's disc lacks.
+- A PAL disc (1.00 or 2.00) given with `--data-iso` is accepted and noted, but not extracted (and one in
+  `assets/iso/` is not taken): the North American disc (and the PAL disc 1.00) already carries all five
+  European voices, the same recordings, so a PAL disc gives nothing the game's disc lacks.
 - The data discs are kept in `assets/setup-state.json` (`data_discs`): a later `./setup.sh` keeps them
   without `--data-iso`, and extracts one again only when its folder is incomplete or the extractor
-  changed. `--no-data-discs` forgets them and removes their folders.
+  changed. `--remove-data-disc SCPS-15037` (its serial, or its image) forgets one and removes its
+  folder; `--no-data-discs` forgets them all. A disc removed so is not taken from `assets/iso/` again
+  (`data_discs_removed` in `assets/setup-state.json`) until it is given with `--data-iso`.
 
 The game reads a data disc's sectors as it reads its own disc's, through the same disc layer
 (`runtime/kernel/disc.cpp`): data disc *k* is seen at the sectors `(k + 1) x 0x400000` and up, past
@@ -244,7 +297,7 @@ the voice language's business ([Settings](settings.md#voice)); without a data di
   only when the code that makes it changed, or when that step did not finish. A step whose files were deleted since
   (all of `assets/generated`, or part of it) is redone too: the setup says which files are missing, and the game says
   at start when the modern renderer's assets are missing. A step added by an update (such as the
-  flight between planets) runs on its own, without redoing the others. It remembers the disc image's path.
+  flight between planets) runs on its own, without redoing the others. It finds the disc image again (see [Which disc images](#which-disc-images)).
   It extracts the disc again only when the disc image changes (another disc, or another size), or when
   `assets/disc/` is incomplete; a new extraction first removes the old one.
   What was generated, and from which code, is recorded in `assets/setup-state.json`.
@@ -272,9 +325,11 @@ the voice language's business ([Settings](settings.md#voice)); without a data di
 
 | Option | Meaning |
 |---|---|
-| `--iso <path>` | your disc image (otherwise `$RAC1_ISO`, then `assets/iso/rac1-ntsc-u.iso` or `rac1-pal.iso`, then it asks) |
+| `--iso <path>` | your disc image (otherwise `$RAC1_ISO`, then the one picked among those found, see [Which disc images](#which-disc-images); then it asks) |
 | `--data-iso <path>` | another release's disc, as a data disc (repeatable; kept for the next setups): see [Data discs](#data-discs) |
-| `--no-data-discs` | forget the data discs and remove their extracted files |
+| `--no-data-discs` | forget the data discs and remove their extracted files; the images found are not taken as data discs again until given with `--data-iso` |
+| `--remove-data-disc <disc>` | forget one data disc (its serial, `SCPS-15037`, or its image) and remove its files, then stop |
+| `--discs` | print the disc images found and what each one is for, then stop |
 | `--update` | fetch the latest release (or `main` on the Development channel), then rebuild what changed; on failure the previous build is kept |
 | `--channel stable\|development` | with `--update`: override Main menu > Updates > Update Channel |
 | `--force [steps]` | regenerate even if up to date: everything, or the steps given (`disc,elf,overlay,code,moby,world,flight`; `disc` extracts the disc again) |
@@ -379,9 +434,11 @@ The Windows build is made with **clang** (or GCC) from **MSYS2**, not with Visua
 the steps below by itself, in a window. See [The launcher](launcher.md). What follows is the same by
 hand.
 
-1. Get the repository (with git, or as a zip) and **double-click `setup.cmd`** in its folder (or drop
-   your disc image on it, or run `setup.cmd --iso "C:\Users\you\Games\ratchet.iso"`; the quotes are
-   needed when the path has spaces or characters such as `&`).
+1. Get the repository (with git, or as a zip), put your disc image in its `assets\iso\` folder, and
+   **double-click `setup.cmd`** in its folder: the setup picks the disc images there as on Linux (see
+   [Which disc images](#which-disc-images)). Or drop your disc image on `setup.cmd`, or run
+   `setup.cmd --iso "C:\Users\you\Games\ratchet.iso"` (the quotes are needed when the path has spaces
+   or characters such as `&`).
 
    Nothing needs to be installed first. The first time, the setup downloads the tools that build the
    game (about 1 GB, a few minutes): a private copy of [MSYS2](https://www.msys2.org) in the
@@ -424,8 +481,10 @@ What differs from Linux:
 
 ## Troubleshooting
 
-**"This is Ratchet & Clank's NTSC-J disc"**: only the North American disc, `SCUS-97199`, and the
-European PAL disc, `SCES-50916`, are supported for now.
+**"This is Ratchet & Clank's NTSC-J disc"**, or **"None of the disc images found can be the game's
+disc"**: only the North American disc, `SCUS-97199`, and the European PAL disc, `SCES-50916` version
+1.00, are supported as the game's disc for now. The message lists each image found and why it is not
+used.
 
 **"... is missing: the PAL disc needs it"**: the region table `data/regions/SCES-50916.txt` is part of
 the repository; restore it (`git checkout data/regions`).

@@ -4,7 +4,7 @@
 From a fresh clone and your own disc image (Ratchet & Clank: the North American disc SCUS-97199 or the European PAL disc
 SCES-50916) to the game:
   1. checks the system and says what to install;
-  2. checks your disc image;
+  2. checks your disc image: without --iso, the one it picks among those it finds (assets/iso/ and the rest: pick_discs);
   3. extracts the whole disc into assets/disc/ (tools/disc_extract.py): the game reads those files, not the image;
   4. generates the part of the game's code that is made from the game's own code on the disc
      (Python only, before the build): the boot executable and the overlay maps it needs, then
@@ -14,7 +14,8 @@ SCES-50916) to the game:
      setup find the disc again (assets/iso/rac1-ntsc-u.iso, or assets/iso/rac1-pal.iso for the PAL disc);
   7. offers to start the game.
 With --data-iso <image> (repeatable), other releases' discs as sources of data only (the Japanese disc: the Japanese
-voices), each extracted into assets/disc-<serial>-<version>/ and listed in assets/data-discs.txt (data_discs_step).
+voices), each extracted into assets/disc-<serial>-<version>/ and listed in assets/data-discs.txt (data_discs_step); the
+images found that give something the game's disc lacks are taken as data discs too (pick_discs).
 
 Re-runnable: the build only recompiles what changed, and each step is redone only when the sources
 that make its output (or the disc) changed since it last ran, when its output is missing (deleted since: a quick
@@ -622,17 +623,8 @@ def identify_disc(iso):
 
 
 def known_iso():
-    """The disc image the game already uses (RAC1_ISO, the link in assets/iso/, or its path there), or None."""
-    if os.environ.get("RAC1_ISO"):
-        return Path(os.environ["RAC1_ISO"]).expanduser().resolve()
-    for p in GAME_ISOS.values():
-        if p.exists():
-            return p
-    if GAME_ISO_PATH_FILE.is_file():  # (where the setup could not link the image: its path)
-        lines = GAME_ISO_PATH_FILE.read_text(encoding="utf-8").splitlines()
-        if lines and Path(lines[0].strip()).is_file():
-            return Path(lines[0].strip())
-    return None
+    """The game's disc image: RAC1_ISO, else the one the auto-pick chooses among the images found (pick_discs), or None."""
+    return pick_discs().game_path
 
 
 def find_iso(arg):
@@ -642,7 +634,8 @@ def find_iso(arg):
     if iso is not None:
         return iso
     if not sys.stdin.isatty():
-        fail(f"No disc image given. Run {SETUP_CMD} --iso <path-to-your-iso>")
+        fail(f"No disc image found. Put your Ratchet & Clank disc image (NTSC-U SCUS-97199, or PAL SCES-50916) in "
+             f"{ISO_DIR.relative_to(ROOT)}{os.sep}, or run {SETUP_CMD} --iso <path-to-your-iso>")
     print("  Where is your Ratchet & Clank disc image (NTSC-U SCUS-97199, or PAL SCES-50916)?")
     while True:
         try:
@@ -655,6 +648,283 @@ def find_iso(arg):
             if p.is_file():
                 return p
             print(f"  File not found: {p}")
+
+
+# --- 2a. Which disc images: picked from those found ---------------------------------------------
+# Without --iso, the setup looks at every disc image it can find (disc_candidates: the .iso files in assets/iso/, its own
+# links there among them, the paths in assets/iso/disc-path.txt and assets/iso/more-discs.txt, the data discs' images
+# it recorded), tells each apart (identify_disc: the boot executable and its sha1), and picks (pick_discs):
+# - the game's disc: the one already set up when it is still there (an image added later does not make the setup
+#   extract and generate everything again from another disc), else the North American disc, else the PAL disc 1.00;
+# - the data discs: those that give something the game's disc lacks (today the Japanese disc: its voices), unless the
+#   player removed that release (--remove-data-disc, --no-data-discs: "data_discs_removed" in setup-state.json);
+# - every other image is not used, with why (a pre-release build, a PAL disc beside the game's disc, a second image of a
+#   release...). Explicit options win: --iso (or RAC1_ISO) is the game's disc, --data-iso a data disc.
+# `tools/setup.py --discs` prints the choice for the launcher, one image a line.
+
+ISO_DIR = ASSETS_DIR / "iso"
+# more images, wherever they are, one path a line (UTF-8; "#" starts a comment): what the launcher's "Add a disc image"
+# writes, so nothing is copied or linked. A data disc listed there is taken even when it was removed before (added
+# again); the launcher's removal takes its line out.
+MORE_DISCS_FILE = ISO_DIR / "more-discs.txt"
+# the development discs, which boot a placeholder executable (SCPS_000.00), by its sha1: never the game's disc nor a
+# data disc (their files are not laid out as a release's), named in the setup's note only
+PRE_RELEASES = {
+    "fe344b335aa197d630484fc28ed98d97b842bc48": "the June 2002 prototype",
+    "61eeb96769ebef3b0e4044534f7915eb1df85ea6": "the August 2002 beta",
+}
+DEV_BOOT = "SCPS_000.00"
+
+
+class FoundDisc:
+    """An image the setup found, what it is, and what the pick made of it: role "game", "data" or "unused", and why."""
+    def __init__(self, path, origin):
+        self.path, self.origin = path, origin
+        self.rel, self.boot, self.version, self.how, self.sha1 = None, None, "", "", ""
+        self.size = 0
+        self.role, self.why = "unused", ""
+
+    @property
+    def what(self):
+        if self.rel is not None:
+            return f"{self.rel.region} {self.rel.serial} version {self.rel.version}"
+        if self.sha1 in PRE_RELEASES:
+            return f"Ratchet & Clank, {PRE_RELEASES[self.sha1]}"
+        if self.boot == DEV_BOOT:
+            return f"a development disc ({DEV_BOOT})"
+        if self.boot is None:
+            return "not a PS2 disc image"
+        if release_by_boot(self.boot) is not None:
+            return f"Ratchet & Clank, an unknown release ({self.boot}, version {self.version or '?'})"
+        return f"another game ({self.boot})"
+
+    @property
+    def key(self):  # (the release, as data_discs_removed records it)
+        return f"{self.rel.serial} {self.rel.version}" if self.rel is not None else ""
+
+
+class DiscPick:
+    def __init__(self):
+        self.found = []        # every image found, in the order looked at
+        self.game = None       # the FoundDisc that is the game's disc, or None
+        self.explicit = ""     # "--iso" or "RAC1_ISO" when the game's disc was given
+        self.kept = []         # the data discs in setup-state.json whose image is not found (their files are kept)
+
+    @property
+    def game_path(self):
+        return self.game.path if self.game is not None else None
+
+    @property
+    def data(self):
+        return [d for d in self.found if d.role == "data"]
+
+
+def shown_path(path):
+    """A path as the setup prints it: relative to the repository when it is inside it."""
+    try:
+        return str(Path(path).relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
+def read_path_list(path):
+    """The paths a text file lists, one a line ("#" comments), or []."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, ValueError):
+        return []
+    return [ln.strip().strip('"') for ln in lines if ln.strip() and not ln.strip().startswith("#")]
+
+
+def file_id(path):
+    """What tells one file from another: its device and inode (a link, a hard link and the file are one), else its path."""
+    try:
+        st = os.stat(path)
+        if st.st_ino:
+            return st.st_dev, st.st_ino
+    except (OSError, ValueError):
+        pass
+    return os.path.normcase(os.path.realpath(path))
+
+
+def disc_candidates():
+    """(path, where it was found) for every disc image the setup looks at, each image once (links and the same file under
+    two names are one)."""
+    out, seen = [], set()
+
+    def add(path, origin):
+        try:
+            p = Path(path).expanduser()
+            if not p.is_absolute():
+                p = ROOT / p
+            if not p.is_file():
+                return
+            real = file_id(p)
+        except (OSError, ValueError):
+            return
+        if real not in seen:
+            seen.add(real)
+            out.append((p if p.is_absolute() else p.resolve(), origin))
+
+    if ISO_DIR.is_dir():
+        # (the setup's own links first, then the player's files by name: a second image of a release is the one noted)
+        names = sorted((e for e in ISO_DIR.iterdir() if e.suffix.lower() == ".iso"),
+                       key=lambda e: (e not in GAME_ISOS.values(), e.name.lower()))
+        for e in names:
+            add(e, "folder")
+    for p in read_path_list(GAME_ISO_PATH_FILE)[:1]:
+        add(p, "disc-path.txt")
+    for p in read_path_list(MORE_DISCS_FILE):
+        add(p, "more-discs.txt")
+    for d in load_state().get("data_discs", []):
+        if d.get("iso"):
+            add(d["iso"], "data disc")
+    return out
+
+
+def identify_found(path, origin):
+    d = FoundDisc(path, origin)
+    try:
+        d.size = path.stat().st_size
+        d.rel, d.boot, d.version, d.how = identify_disc(path)
+        if d.boot is not None and (d.rel is None or d.how != "exact"):
+            found = iso_root_file(path, d.boot)
+            if found is not None and found[0] + found[1] <= d.size and found[1] <= 64 << 20:
+                with open(path, "rb") as f:
+                    f.seek(found[0])
+                    d.sha1 = hashlib.sha1(f.read(found[1])).hexdigest()
+    except (OSError, struct.error):
+        d.rel, d.boot = None, None
+    return d
+
+
+def not_usable_why(d):
+    """Why an image cannot be the game's disc nor a data disc whatever the other images are, or ""."""
+    if d.boot is None:
+        return "not a PS2 disc image (a plain .iso dump is needed, not .chd, .cso, .bin/.cue...)"
+    if d.sha1 in PRE_RELEASES or d.boot == DEV_BOOT:
+        return "a pre-release build, which the setup cannot use"
+    if d.rel is None:
+        return ("not a release the setup knows" if release_by_boot(d.boot) is not None
+                else "another game, not Ratchet & Clank")
+    if d.how != "exact":
+        return ("its boot executable is not a good dump's (a modified disc?): give it with --iso or --data-iso to use it "
+                "anyway")
+    if d.size < d.rel.good_size:
+        return f"smaller than a good dump ({d.size} bytes, not {d.rel.good_size}): incomplete"
+    return ""
+
+
+def pick_discs(iso_arg=None, given_data=(), state=None, no_data=False):
+    """The disc images found and what each one is for (DiscPick). iso_arg: --iso; given_data: the --data-iso images;
+    no_data: --no-data-discs (none taken as a data disc but those given)."""
+    state = load_state() if state is None else state
+    pick = DiscPick()
+    explicit = iso_arg or os.environ.get("RAC1_ISO")
+    cands = disc_candidates()
+    reals = {file_id(c[0]) for c in cands}
+    for g in given_data:
+        gp = Path(g).expanduser().resolve()
+        if gp.is_file() and file_id(gp) not in reals:
+            cands.append((gp, "--data-iso"))
+    given_data = {file_id(g) for g in given_data}
+    if explicit:
+        ep = Path(explicit).expanduser().resolve()
+        real = file_id(ep)
+        cands = [(ep, "--iso" if iso_arg else "RAC1_ISO")] + \
+            [c for c in cands if file_id(c[0]) != real]
+    pick.found = [identify_found(p, o) for p, o in cands]
+
+    # the game's disc
+    if explicit:
+        pick.game, pick.explicit = pick.found[0], ("--iso" if iso_arg else "RAC1_ISO")
+        pick.game.role, pick.game.why = "game", f"given with {pick.explicit}"
+    else:
+        bases = [d for d in pick.found if d.rel is not None and d.rel.supported and not not_usable_why(d)]
+        current = state.get("disc_image", "")
+        kept = [d for d in bases if current and f"{d.boot}:{d.size}" == current]
+        if kept:
+            pick.game, why = kept[0], "the disc already set up"
+        else:
+            order = [r for r in KNOWN_DISCS if r.supported]  # (the North American disc first, then the PAL one)
+            bases.sort(key=lambda d: order.index(d.rel))
+            pick.game, why = (bases[0], "") if bases else (None, "")
+        if pick.game is not None:
+            pick.game.role, pick.game.why = "game", why
+    base_rel = pick.game.rel if pick.game is not None else None
+    if base_rel is None and state.get("disc_image"):  # (the image gone since: the release that was set up)
+        boot = state["disc_image"].split(":")[0]
+        base_rel = next((r for r in KNOWN_DISCS if r.boot == boot and r.supported), None)
+
+    # the others: data discs, or not used and why
+    removed = set(state.get("data_discs_removed", []))
+    listed = {file_id(ROOT / Path(m).expanduser()) for m in read_path_list(MORE_DISCS_FILE)}  # (added again after a removal)
+    taken = {}  # release -> the image used for it
+    if pick.game is not None and pick.game.rel is not None:
+        taken[pick.game.key] = pick.game
+    for d in pick.found:
+        if d is pick.game:
+            continue
+        real = file_id(d.path)
+        why = not_usable_why(d)
+        if why and real in given_data and d.rel is not None:
+            why = ""  # (--data-iso: check_data_disc says what is wrong, or takes it)
+        if why:
+            d.why = why
+        elif d.key in taken:
+            d.why = f"the same release as {shown_path(taken[d.key].path)}: one image of a release is enough"
+        elif base_rel is not None and d.rel.boot == base_rel.boot and d.rel.supported:
+            d.why = "the same release as the game's disc"
+        elif not d.rel.gives:
+            d.why = "as a data disc it gives nothing the game's disc lacks: the same voices"
+            if not d.rel.supported:
+                d.why = "not a game's disc yet, being a later build; " + d.why
+        elif (no_data or d.key in removed and real not in listed) and real not in given_data:
+            d.why = "removed as a data disc: give it with --data-iso to use it again"
+        elif base_rel is None:
+            d.why = ("not a game's disc yet; it can be a data disc beside the North American or PAL disc ("
+                     + ", ".join(GIVES[g] for g in d.rel.gives) + ")")
+        else:
+            d.role, d.why = "data", ", ".join(GIVES[g] for g in d.rel.gives)
+            if real in given_data:
+                d.why += ", given with --data-iso"
+        if d.rel is not None and d.key not in taken and (d.role == "data" or not why):
+            taken[d.key] = d
+    seen = {d.key for d in pick.found if d.rel is not None}
+    pick.kept = [] if no_data else [k for k in state.get("data_discs", [])
+                                    if k.get("dir") and f"{k['serial']} {k['version']}" not in seen]
+    return pick
+
+
+def print_pick(pick):
+    """The images found and what each one is for: one line each."""
+    if not pick.found:
+        return
+    print(f"  Disc images found ({ISO_DIR.relative_to(ROOT)}{os.sep} and the ones the setup knows):")
+    label = {"game": "game disc", "data": "data disc", "unused": "not used"}
+    for d in pick.found:
+        print(f"    {label[d.role]:<10} {shown_path(d.path)}: {d.what}" + (f" ({d.why})" if d.why else ""))
+    for k in pick.kept:
+        print(f"    {'data disc':<10} {k['region']} {k['serial']} version {k['version']}: its image is not found, its files "
+              f"in {k['dir']}{os.sep} are kept")
+
+
+def print_discs_for_launcher(iso_arg):
+    """`--discs`: the choice, one image a line, tab-separated: role (game, data, unused), path, what it is, why."""
+    pick = pick_discs(iso_arg)
+    for d in pick.found:
+        print("\t".join((d.role, str(d.path), d.what, d.why)))
+    for k in pick.kept:
+        print("\t".join(("data", k.get("iso", ""), f"{k['region']} {k['serial']} version {k['version']}",
+                         f"its image is not found; its files in {k['dir']} are kept")))
+
+
+def no_game_disc(pick):
+    """The setup stops: images were found, none can be the game's disc."""
+    lines = "".join(f"\n           {shown_path(d.path)}: {d.what} ({d.why})" for d in pick.found)
+    fail("None of the disc images found can be the game's disc:" + lines +
+         "\n         The game's disc is the North American one (SCUS-97199) or the European PAL one (SCES-50916 version "
+         f"1.00): put it in {ISO_DIR.relative_to(ROOT)}{os.sep}, or give it with --iso <path>.")
 
 
 def disc_fingerprint(iso):
@@ -1325,6 +1595,8 @@ def setup_due():
         return ["the disc image is not set up"]
     due = disc_steps_due(iso, disc)
     due += [f"the data disc {n}'s files" for n in data_discs_due()]
+    have = {f"{d['serial']} {d['version']}" for d in load_state().get("data_discs", [])}
+    due += [f"a new data disc, {shown_path(d.path)}: {d.what} ({d.why})" for d in pick_discs().data if d.key not in have]
     if newest_mtime(BUILD_INPUTS) > EXE.stat().st_mtime:
         due.append("the game's program (its sources are newer)")
     return due
@@ -1802,7 +2074,9 @@ def parse_force(value):
     return set(groups)
 
 
-def check_disc(arg):
+def check_disc(arg, pick=None):
+    if arg is None and pick is not None and pick.game is None and pick.found and not sys.stdin.isatty():
+        no_game_disc(pick)
     iso = find_iso(arg)
     if not iso.is_file():
         fail(f"File not found: {iso}")
@@ -1870,7 +2144,11 @@ def data_discs_step(base_iso, new_paths, forced, drop):
     `drop` (--no-data-discs): every data disc forgotten and its files removed."""
     state = load_state()
     known = state.get("data_discs", [])
+    removed = set(state.get("data_discs_removed", []))
     if drop:
+        # (and not taken from the images found again: --data-iso takes one back)
+        removed |= {f"{d['serial']} {d['version']}" for d in known} | {d.key for d in pick_discs(base_iso).data}
+        state["data_discs_removed"] = sorted(removed)
         for d in known:
             if d.get("dir"):
                 shutil.rmtree(disc_extract.long_path(ROOT / d["dir"]), ignore_errors=True)
@@ -1893,6 +2171,7 @@ def data_discs_step(base_iso, new_paths, forced, drop):
         entries[(d["serial"], d["version"])] = dict(d)
     for path in new_paths:
         iso, rel = check_data_disc(path, base_boot)
+        removed.discard(f"{rel.serial} {rel.version}")
         entries[(rel.serial, rel.version)] = {"iso": str(iso), "serial": rel.serial, "region": rel.region,
                                               "version": rel.version, "boot": rel.boot, "gives": list(rel.gives)}
     listed = []
@@ -1943,7 +2222,59 @@ def data_discs_step(base_iso, new_paths, forced, drop):
         save_state(state)
     state = load_state()
     state["data_discs"] = listed
+    state["data_discs_removed"] = sorted(removed)
+    if not removed:
+        state.pop("data_discs_removed")
     save_state(state)
+    write_data_discs_file(listed)
+
+
+def auto_data_discs(pick, args):
+    """The data discs the pick found (not given with --data-iso): none with --no-data-discs."""
+    if args.no_data_discs:
+        return []
+    given = {file_id(g) for g in args.data_iso}
+    return [str(d.path) for d in pick.data if file_id(d.path) not in given]
+
+
+def remove_data_discs(which):
+    """--remove-data-disc: each data disc named (its serial, "serial version", or its image) forgotten, its files removed,
+    and its release recorded as removed so that the pick does not take it again (--data-iso takes it back)."""
+    state = load_state()
+    known = state.get("data_discs", [])
+    removed = set(state.get("data_discs_removed", []))
+    for w in which:
+        image = Path(w).expanduser()
+        real = file_id(image) if image.is_file() else None
+        name = w.strip().upper().replace(" ", "-")
+        hits = [d for d in known if name in (d["serial"], f"{d['serial']}-{d['version']}")
+                or real and d.get("iso") and file_id(d["iso"]) == real]
+        if not hits and real:  # (an image not set up as a data disc: its release is not taken from now on)
+            f = identify_found(image.resolve(), "")
+            if f.rel is not None:
+                removed.add(f.key)
+                ok(f"{f.what}: not used as a data disc from now on")
+                continue
+        if not hits:
+            fail(f"No data disc {w}. The data discs: "
+                 + (", ".join(f"{d['serial']} {d['version']}" for d in known) or "none"))
+        for d in hits:
+            if d.get("dir"):
+                shutil.rmtree(disc_extract.long_path(ROOT / d["dir"]), ignore_errors=True)
+            known.remove(d)
+            removed.add(f"{d['serial']} {d['version']}")
+            ok(f"Data disc {d['region']} {d['serial']} version {d['version']} removed"
+               + (f" ({d['dir']}{os.sep} deleted)" if d.get("dir") else ""))
+    state["data_discs"] = known
+    state["data_discs_removed"] = sorted(removed)
+    if not known:
+        state.pop("data_discs", None)
+    save_state(state)
+    write_data_discs_file(known)
+
+
+def write_data_discs_file(listed):
+    """assets/data-discs.txt, which the game reads (runtime/kernel/disc.cpp): the data discs extracted."""
     lines = [f"{d['dir']} {d['serial']} {d['region']} {d['version']} {d['boot']}\n" for d in listed if d.get("dir")]
     if lines:
         DATA_DISCS_FILE.write_text("# the data discs (written by the setup, --data-iso): folder, serial, region, version, "
@@ -1987,7 +2318,14 @@ def main():
     ap.add_argument("--data-iso", action="append", default=[], metavar="ISO",
                     help="another release's disc, as a source of data only (the Japanese disc SCPS-15037: the Japanese "
                          "voices); repeatable, kept for the next setups")
-    ap.add_argument("--no-data-discs", action="store_true", help="forget the data discs and remove their files")
+    ap.add_argument("--no-data-discs", action="store_true",
+                    help="forget the data discs and remove their files; the images found are not used as data discs again "
+                         "until given with --data-iso")
+    ap.add_argument("--remove-data-disc", action="append", default=[], metavar="DISC",
+                    help="forget one data disc and remove its files (its serial, SCPS-15037, or its image), then stop; "
+                         "not used again until given with --data-iso")
+    ap.add_argument("--discs", action="store_true",
+                    help="print the disc images found and what each one is for (game, data or unused), then stop")
     ap.add_argument("--update", action="store_true",
                     help="update to the latest release (or main on the development channel), then rebuild what changed")
     ap.add_argument("--channel", choices=("stable", "development"), default=None,
@@ -2010,6 +2348,12 @@ def main():
     os.chdir(ROOT)
     if args.update:
         run_update(args)
+        return
+    if args.discs:
+        print_discs_for_launcher(args.iso)
+        return
+    if args.remove_data_disc:
+        remove_data_discs(args.remove_data_disc)
         return
     jobs = args.jobs or default_jobs()
 
@@ -2041,19 +2385,23 @@ def main():
         next_step("Checking your disc image")
         if not args.iso and known is None and disc is not None:
             warn("Something made from your disc must be made again (after an update): the setup needs your disc image.")
-        iso = check_disc(args.iso)
+        pick = pick_discs(args.iso, args.data_iso, no_data=args.no_data_discs)
+        print_pick(pick)
+        iso = check_disc(args.iso or pick.game_path, pick)
         for d in args.data_iso:  # (a wrong data disc stops the setup before anything is made)
             check_data_disc(d, disc_boot(iso))
         if not args.build_only:
             next_step("Extracting your disc's files")
             extract_disc(iso, args.force)
-            data_discs_step(iso, args.data_iso, args.force, args.no_data_discs)
+            data_discs_step(iso, args.data_iso + auto_data_discs(pick, args), args.force, args.no_data_discs)
         next_step("Generating the game's code from your disc")
         prepare_code(iso, args.force, jobs)
     elif no_image:
         ok(f"Your disc image is not needed: everything made from it is up to date ({DISC_DIR.relative_to(ROOT)}{os.sep} "
            "and the rest).")
-        data_discs_step(None, args.data_iso, args.force, args.no_data_discs)
+        pick = pick_discs(None, args.data_iso, no_data=args.no_data_discs)
+        print_pick(pick)
+        data_discs_step(None, args.data_iso + auto_data_discs(pick, args), args.force, args.no_data_discs)
 
     next_step("Building the game")
     if args.no_build:
