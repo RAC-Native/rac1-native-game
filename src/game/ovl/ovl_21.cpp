@@ -1,5 +1,6 @@
 // Ported overlay code 0x00210000..0x0021ffff.
 #include <game/enhance/advanced.h>
+#include <game/enhance/fixes102.h>
 #include <game/lib/libvu0.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/hero_l1.h>
@@ -911,6 +912,7 @@ void hero_vertical_velocity() {
         float boost = lwc1(0x0015ed6c) * 7.0f;
         bool pack = false;
         if (lbu(0x0013d4c2) != 0 && lh(P + 0x22d8) == 0) pack = sub_0020d498(3) == 3;
+        if (lbu(0x0013d4c2) != 0) fixes102_thruster_jump_sound();  // (1.02 Fixes, fix 5: the 1.02 build, 0x2147c0)
         Vec4 d;
         vec3_sub(d, V(P + 0x80), V(P + 0x400));
         const float h = sub_00233a78_v(d);
@@ -1000,6 +1002,9 @@ void hero_vertical_velocity() {
 // (wall jump: +0x458 along +0x438 plus +0x454 sideways), 0x11 (dive along +0x470), 0x2d
 // (turn in place), else ground steering; then velocity damping (+0x150 = +0x920) and drag.
 void hero_horizontal_velocity() {
+    // (1.02 Fixes, fix 5: the 1.02 build, 0x214d60, starts the long / wall jumps' branch, states 0xb / 0xc, with the
+    // Thruster-Pack's jump sound; here before the levels' own copies, nothing before that branch having made a sound)
+    if (static_cast<uint32_t>(lw(g::HERO_STATE) - 0xb) < 2u) fixes102_thruster_jump_sound();
     if (on_blarg()) { blg_call(blg_hero_horizontal_velocity_u); return; }  // (level 6's own: L6:0x0022b438)
     if (on_batalia()) { bat_call(bat_hero_horizontal_velocity_u); return; }  // (level 8's own: L8:0x00225ed0)
     if (on_pokitaru()) { pok_call(pok_hero_horizontal_velocity_u); return; }  // (level 11's own: L11:0x00244560)

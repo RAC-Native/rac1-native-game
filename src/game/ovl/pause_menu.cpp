@@ -4,6 +4,7 @@
 // pages' functions,
 // the frame capture, the planet map / ship screens).
 #include <game/enhance/advanced.h>
+#include <game/enhance/fixes102.h>
 #include <game/enhance/graphics.h>
 #include <game/enhance/update_notice.h>
 #include <game/boot/title_menu.h>
@@ -300,6 +301,8 @@ void menu_page_start() {
         sw(MS, static_cast<uint32_t>(s));
         if (s == 0xb || s == 0xf) {
             sw(OV(0x001841f0) + 0x224, lwu(MS + 0xe4));
+            // (1.02 Fixes, fix 16: the 1.02 build, 0x277208, updates the goals on the way back to the page)
+            if (fixes102_on(16)) goals_update();
             hires = true;
         }
         sw(MS + 0xf4, 0);
@@ -628,6 +631,8 @@ int32_t menu_button_update(uint32_t w) {
 void menu_update() {
     const int32_t st0 = lw(MS);
     sw(MS + 0x110, lwu(MS + 0x110) + 1);
+    // (1.02 Fixes, fix 16: the 1.02 build, 0x277a88, holds the counter at 32000)
+    if (fixes102_on(16) && 0x7d00 < lw(MS + 0x110)) sw(MS + 0x110, 0x7d00);
     if (st0 == 2 || st0 == 0x1a || st0 == 0x1e || st0 == 0x1f) sw(OV(0x0015f5ac), 1);
     const int32_t st = lw(MS);
     if (st == 0x14) {

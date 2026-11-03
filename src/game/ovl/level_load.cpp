@@ -1,5 +1,6 @@
 // Ported overlay code: the gameplay data loader of the level setup (0x241940).
 #include <game/enhance/corrected_texts.h>
+#include <game/enhance/fixes102.h>
 #include <game/ovl/world_lighting.h>
 #include <game/ovl/moby_pass.h>
 #include <game/ovl/ovl_reloc.h>
@@ -204,6 +205,7 @@ uint32_t gameplay_load(int32_t level) {
         corrected_texts_patch(lwu(OV(0x0015f660)), lw(OV(0x0017943c)), lw(0x0015ed88));  // enhancement (off: nothing)
         s8 = align64(s8 + size);
     }
+    fixes102_level_load();  // enhancement: 1.02 Fixes' Glove of Doom ring cleared (off: nothing)
     {  // the tie instances: 0x20-byte bounds at 0x160fc0, 0x1c0-byte data at 0x160fc8
         uint32_t s4 = H + lwu(H + 0x34);
         const uint32_t nt = lwu(s4);

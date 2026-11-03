@@ -20,6 +20,10 @@ What changed in each release. Releases are source only: you build the game with 
   disc 2.00, the PAL disc 1.00 or the Japanese disc has them. Those discs give "the corrected texts" as data discs: a PAL
   disc beside the North American one is now taken, only its levels' gameplay files extracted (about 11 MB).
 - The setup no longer extracts again, at every run, a data disc it finds again in `assets/iso/`.
+- 1.02 Fixes (main menu > Options > Advanced, Off by default, global; RAC1_FIXES102=<n>,... for testing): the later
+  build's own fixes ported onto the North American code, first batch: New Game keeps the sound settings, explosions leave
+  moby slots free, at most 20 Glove of Doom agents, the Thruster-Pack's jump sound, an animation's next frame kept in its
+  sequence, Ratchet's colour pulse in cutscenes, the talk prompt, the pause menu's goals and counter.
 
 ### Controls and gameplay
 - New Game: two windows in the game's style. The first, **Original / Modern**, sets the gameplay rows only (Modern: Quick

@@ -6,6 +6,7 @@
 // status, ...) and the menus' card state 0x15eeb0 (handlers 0x184538; its flags 0x15eeb4: 1 / 2 /
 // 4 the main menu's operations, 0x20 / 0x40 / 0x80 / 0x100 the screens' answers), which the memory
 // card screens (game mode 4, kind 3) show and answer.
+#include <game/enhance/fixes102.h>
 #include <game/enhance/language.h>
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
@@ -491,7 +492,8 @@ void save_blocks_read(uint32_t p) {
 
 // A new game: the disc's default save (table of contents 0x137b90 / 0x137b94: its sectors) read
 // into a buffer at the top of the level's area and its blocks read into the game's state; the
-// current level 0.
+// current level 0. (1.02 Fixes, fix 1: the 1.02 build keeps the sound settings over the default save's: the effects'
+// volume 0x15edf0, the music's 0x15edec, mono 0x15ede8.)
 // orig: 0x0024b628
 void new_game_state() {
     const uint32_t out = ee_stack_alloc(0x10);
@@ -499,7 +501,14 @@ void new_game_state() {
     disc_read_sync(1);
     disc_read_wait(lwu(out), lwu(0x00137b80 + 0x10), lwu(0x00137b80 + 0x14));
     const uint32_t buf = lwu(out);
+    const bool keep_sound = fixes102_on(1);  // (1.02: 0x24c260)
+    const uint32_t effects = lwu(0x0015edf0), music = lwu(0x0015edec), mono = lwu(0x0015ede8);
     save_blocks_read(buf + lwu(buf + 0x10));
+    if (keep_sound) {
+        sw(0x0015edf0, effects);
+        sw(0x0015edec, music);
+        sw(0x0015ede8, mono);
+    }
     language_game_state_read();  // enhancement: the Subtitles choice (Options > Language) over the default save's
     ee_stack_free(0x10);
     sw(0x0015ed84, 0);

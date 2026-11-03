@@ -1,5 +1,6 @@
 // Ported overlay code 0x00200000..0x0020ffff.
 #include <game/enhance/advanced.h>
+#include <game/enhance/fixes102.h>
 #include <game/ovl/hero_l1.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -2691,10 +2692,28 @@ void hero_gadget_glow() {
             }
         }
     }
-    const float ph = angle_add(lwc1(P + 0x1628), lwc1(0x0015ed6c) * u2f(0x4011361eu));
-    swc1(P + 0x1628, ph);
-    const float t = sin_vu(ph) * 0.5f + 0.5f;
-    sw(lwu(P + 0x2080) + 0x90, rgba_lerp(0x806e8c6eu, 0x805a3232u, t));
+    if (!fixes102_on(7)) {
+        const float ph = angle_add(lwc1(P + 0x1628), lwc1(0x0015ed6c) * u2f(0x4011361eu));
+        swc1(P + 0x1628, ph);
+        const float t = sin_vu(ph) * 0.5f + 0.5f;
+        sw(lwu(P + 0x2080) + 0x90, rgba_lerp(0x806e8c6eu, 0x805a3232u, t));
+    } else if (lw(OV(0x0015f5c4)) == 0) {
+        // (1.02 Fixes, fix 7: the 1.02 build, 0x2086c8, pulses the hero only in play (game mode 0x15f5c4 0: in a
+        // cutscene hero_ship_update pulses the scene's Ratchet), and while 0x179410 is set and not 8 the phase runs on
+        // faster, between the second pair of colours)
+        float ph = angle_add(lwc1(P + 0x1628), lwc1(0x0015ed6c) * u2f(0x4011361eu));
+        swc1(P + 0x1628, ph);
+        uint32_t c0 = 0x806e8c6eu, c1 = 0x805a3232u;
+        const int32_t v = lw(OV(0x00179410));
+        if (v != 0 && v != 8) {
+            ph = angle_add(ph, lwc1(0x0015ed6c) * u2f(0x40b2b8c2u));
+            swc1(P + 0x1628, ph);
+            c0 = 0x806eaafau;
+            c1 = 0x80326e5au;
+        }
+        const float t = sin_vu(lwc1(P + 0x1628)) * 0.5f + 0.5f;
+        sw(lwu(P + 0x2080) + 0x90, rgba_lerp(c0, c1, t));
+    }
     const uint32_t g = lwu(P + 0x1090);
     if (g == 0 || (lhu(g + 0x34) & 1) != 0) return;
     const uint32_t kind = lwu(P + 0x10b8) - 0xd;

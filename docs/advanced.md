@@ -2,8 +2,8 @@
 
 Options > Advanced holds the settings that change how the game plays. The pause menu's page holds a playthrough's
 settings (the rows below, set first by New Game's Original / Modern and kept with the save); the main menu's holds only
-the global ones, settings of the whole game rather than of a playthrough: [Cut Content](#cut-content) and
-[Corrected Texts](#corrected-texts). They are different
+the global ones, settings of the whole game rather than of a playthrough: [Cut Content](#cut-content),
+[Corrected Texts](#corrected-texts) and [1.02 Fixes](#102-fixes). They are different
 in kind
 from the PS2 compromises the port removes (see [Overview](overview.md#faithful-to-the-games-code-not-to-the-ps2s-limits)):
 
@@ -65,8 +65,8 @@ port's fast fades). Left and right on a row step the value (`advanced_settings_d
 
 The ids in `save<N>.pc`: Quick Select 1, Aiming 2, Movement 3, Fades 4, Buy All Ammo 5, Skip Cutscenes 10 (Vibration 6,
 Adaptive Triggers 9 have ids but are not written with the saves; 7 and 8 are removed rows, and 11 was the Voice row,
-now on the Language page, never written with the saves; 12, Cut Content, and 13, Corrected Texts, are global and never
-written with the saves either: none reused).
+now on the Language page, never written with the saves; 12, Cut Content, 13, Corrected Texts, and 14, 1.02 Fixes, are
+global and never written with the saves either: none reused).
 
 **The Language page's rows** have more values than the widget's four: each byte is a step byte with two values whose
 texts are both the row's value, made at each lookup (as the Graphics page's rows); when Cross or left / right step it,
@@ -545,6 +545,37 @@ read them as any other string. Details:
 The row is read when a text table is loaded, and a change on the main menu acts on the main menu's texts at once (their
 original strings put back when it is turned off); a level's texts follow at its load. `RAC1_CORRECTED_TEXTS=1` / `0`
 overrides the row for testing ([Environment variables](env-vars.md)).
+
+## 1.02 Fixes
+
+The main menu's Advanced page has a row **1.02 Fixes: Off / On** (off by default), a global setting kept in the
+preferences only (`fixes_102 0|1` in `advanced_options.txt`), never with a save. The game's later build, 1.02 (the
+Japanese disc and the PAL disc 2.00, the "Platinum"), changed about a hundred functions of each level's copy of the
+engine; most of it is the memory card, the Japanese text layouts and recompiled code, and some of it fixes the game.
+With the row on, the first batch of those fixes runs on the North American build's code: each one is the 1.02 build's
+own change, read from its code (its addresses taken back to the North American ones through
+`data/regions/SCES-50916-2.00.txt`) and written into the North American port at the same place, behind its own test
+(`fixes102_on(n)`, `src/game/enhance/fixes102.{h,cpp}`; a `(1.02 Fixes, fix n: ...)` note at each site, naming the 1.02
+build's function). With the row off the North American port runs, and the game's memory is the same frame by frame
+(RAC1_RAMHASH). The fixes that change how the game plays (the RYNO's targets, the Visibomb's steering, the deadly ground,
+the interaction guards, two that are not understood yet) will be a row of their own, later.
+
+| Fix | What the 1.02 build changed | Where (North American) |
+|---|---|---|
+| 1 | New Game keeps the sound settings: the effects' and the music's volume and mono / stereo (0x15edf0, 0x15edec, 0x15ede8), which the disc's default save otherwise puts back to its own | `new_game_state` 0x24b628 |
+| 2 | Explosions leave moby slots free (0x15ffbc, the free slots): a bomb's ten debris only while 51 slots or more are free, its four others only while 21 are; the generic blast's debris mobys at most the free slots less 10 | `bomb_update` 0x2adb30, `explosion_effect` 0x25e450 |
+| 3 | At most 20 Glove of Doom agents: the last 20 kept in a ring, and the agent spawned 20 before, when still an agent and not already dying, goes to its state 4 (it leaves); the ring cleared at each level's load (1.02: 0x1dd400 and 0x16190c; here the EE block 0xffc00, as nothing of the game or the runtime is there) | `doom_agent_spawn` 0x2c8218, `gameplay_load` 0x241940 |
+| 5 | The Thruster-Pack's sound on jumps: at frame 5 of a jump (state 0xe) and of the long and wall jumps (0xb, 0xc), with the Thruster-Pack on Ratchet's back, its sound (`hero_sound_start(1, 0)`); not on Oltanis | `hero_vertical_velocity` 0x214108, `hero_horizontal_velocity` 0x214658 (before the levels' own copies) |
+| 6 | An animation's next frame (+0x51) kept in its sequence: at most the sequence's frame count less 1 | `hero_anim_set` 0x2325a0 |
+| 7 | Ratchet's colour pulse (his moby's +0x90, the light on his wrist; the phase 0x13f350+0x1628) in the cutscenes too: the scene's Ratchet pulses, slower; in play only in game mode 0, and faster, between a second pair of colours, while 0x179410 is set and not 8; in Veldin's opening scene, frames 835 to 1080, the second pair too | `hero_ship_update` 0x234b38, `hero_gadget_glow` 0x2080b0 |
+| 11 | The talk prompt: a character's record that waits for the button advances (`talk_step`) only once Ratchet faces it and it faces him, not every frame he is within twice its reach | `talk_update` 0x266448 |
+| 16 | The pause menu: the goals updated when the menu comes back to its goals pages; the menu's open counter (MS+0x110) held at 32000 | `menu_page_start` 0x276368, `menu_update` 0x276bd0 |
+
+What the 1.02 build changed but is not ported: the memory card's code and screens (the 1.02 build rewrote them for its
+own card library), the Japanese text layouts, the pad's reads (the host's input replaces them), the PAL disc 2.00's
+movie code, the credits (two more lines), and changes that show nothing (recompiled code, a development timing display
+removed). The row is read where each fix runs; it is changed on the main menu only, so a playthrough sees it from its
+start. `RAC1_FIXES102=<n>,<n>...` (`all`, `none`) turns single fixes on for testing ([Environment variables](env-vars.md)).
 
 ## Limits
 

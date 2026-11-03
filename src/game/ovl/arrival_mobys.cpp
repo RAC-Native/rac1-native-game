@@ -2,6 +2,7 @@
 // it, the shadow probe of the scene's mobys, the scripted camera, Ratchet put back on the ground
 // at the end.
 #include <game/ovl/arrival.h>
+#include <game/enhance/fixes102.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
@@ -230,6 +231,23 @@ void hero_ship_update(uint32_t m) {
             if (cls == 0x1b1 || cls == 0x50a || cls == 0x509) swc1(a0 + 0x2c, lwc1(lwu(a0 + 0x24) + 0x24) * f20);
         }
     }
+    if (fixes102_on(7)) {
+        // (1.02 Fixes, fix 7: the 1.02 build, 0x2353b8, pulses the scene's Ratchet as hero_gadget_glow pulses him in
+        // play, slower; on Veldin, the scene's frames 835 to 1080 (+0x34, scene +0x30 0) faster, between the second pair)
+        const uint32_t PL = P;
+        float ph = angle_add(lwc1(PL + 0x1628), lwc1(0x0015ed6c) * u2f(0x40060a92u));
+        swc1(PL + 0x1628, ph);
+        uint32_t c0 = 0x806e8c6eu, c1 = 0x805a3232u;
+        if (lw(0x0015ed84) == 0 && lw(SC + 0x30) == 0 && !(lw(SC + 0x34) < frame_scale_i(0x343)) &&
+            !(frame_scale_i(0x438) < lw(SC + 0x34))) {
+            ph = angle_add(ph, lwc1(0x0015ed6c) * u2f(0x40bde44eu));
+            swc1(PL + 0x1628, ph);
+            c0 = 0x806eaafau;
+            c1 = 0x80326e5au;
+        }
+        const float t = sin_vu(lwc1(PL + 0x1628)) * 0.5f + 0.5f;
+        sw(m + 0x90, rgba_lerp(c0, c1, t));
+    }
     hero_ship_parts(m);
 }
 
@@ -298,10 +316,16 @@ void hero_hold_clear() {
 }
 
 // The hero moby's animation: sequence `seq`, frames `frame` / `frame` + 1, blend 0.
+// (1.02 Fixes, fix 6: the 1.02 build, 0x232df8, keeps the next frame +0x51 within the sequence: at most its frame
+// count, the class's sequence `seq` (+0x24, +0x48 + seq * 4) +0x10, less 1)
 // orig: 0x002325a0
 void hero_anim_set(uint32_t seq, uint32_t frame) {
     const uint32_t v1 = lwu(P + 0x2080);
     sb(v1 + 0x51, frame + 1);
+    if (fixes102_on(6)) {
+        const int32_t last = static_cast<int32_t>(lbu(lwu(lwu(v1 + 0x24) + seq * 4 + 0x48) + 0x10)) - 1;
+        if (last < static_cast<int32_t>((frame + 1) & 0xffu)) sb(v1 + 0x51, static_cast<uint32_t>(last));
+    }
     sb(v1 + 0x53, seq);
     sb(v1 + 0x50, frame);
     sb(v1 + 0x52, seq);
