@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 379 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 385 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 289 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 295 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 70 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -255,6 +255,12 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_REFLECT_STATS` | set (any value) = on; default off | Water Reflections: prints each time a probe (cube map) is made or filled in, and at the end the passes, planar views, probes made and filled in, the planes chosen, the planar views' drawn share and the tie and shrub draws drawn and left out. |
 | `RAC1_RENDER_SCALE` | integer percent; unset = the Options setting | Overrides the 3D render scale, as a percentage of the window. |
 | `RAC1_RENDER_SHADE` | integer; 1 = vertex colours alone; default 0 | Debug view that shades with the vertex colours alone. |
+| `RAC1_RT` | 1 = on; default off | Vulkan only, testing (ray tracing phase 0, [Rendering](rendering.md#ray-tracing-phase-0)): the seas' water traces its reflection through the level's static world (ties, shrubs, tfrags) with a ray query and colours the hit from the frame's own picture, else the cube map or the sky; the planar view is not drawn. Needs VK_KHR_acceleration_structure and VK_KHR_ray_query (else a log line and nothing changes); ignored on OpenGL. Logs the acceleration structures' counts, memory and build times per level (`[rt]`). |
+| `RAC1_RT_CLUSTERS` | 0 or 1; default 0 | With RAC1_RT: 0 a bottom-level structure per tie / shrub packet and per tfrag entry (clusters), 1 merged per class (ties, shrubs) and per zone cell (tfrags), to compare the trace's cost. |
+| `RAC1_RT_DEBUG` | 1, 2 or 3; default off | With RAC1_RT: the water shows 1 where its colour comes from (green the picture, red a hit the picture does not hold, blue no hit), 2 the hit's distance, 3 what was hit (red a tie, green a shrub, blue a tfrag). |
+| `RAC1_RT_RES` | 1 or 2; default 1 | With RAC1_RT: 2 shades the seas once per 2 x 2 pixels (VK_KHR_fragment_shading_rate): a half-resolution trace's cost. |
+| `RAC1_RT_TLAS` | 0, 1 or 2; default 2 | With RAC1_RT: the top level each frame - 0 every instance written again and rebuilt, 1 the partitions (zone cells) that changed written and rebuilt, 2 those written and the top level updated. |
+| `RAC1_RT_ZONES` | 0 or 1; default 1 | With RAC1_RT: 1 the instances of the zones the game hides are left out of the trace, 0 every one is kept. |
 | `RAC1_SAMPLE_FROM` | frame number; default 0 (sample from the start) | Used with RAC1_SAMPLE_PROF: sampling starts at this frame. |
 | `RAC1_SAMPLE_PROF` | output file path; unset = off | Turns on a built-in sampling profiler of the main thread (every 0.5 ms) and writes the samples to the given file at exit. Use a build without `RAC1_NATIVE_ARCH`: with it, the unwinder (glibc's `backtrace` in the signal) can crash in an AVX function's realigned frame. |
 | `RAC1_SHADOWS` | 0 = off, 1 = on; default 0 (Options > Graphics > Graphics: Enhanced turns it on unless this is set) | Forces the modern shadows and lighting on or off, overriding the Graphics switch (like every variable of an addition: RAC1_SURFACE_DETAIL, RAC1_GRASS, RAC1_PARTICLES... act whatever the switch says). |

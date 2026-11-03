@@ -111,6 +111,10 @@ What changed in each release. Releases are source only: you build the game with 
 - Debug menu, Enhancements: a Water reflections row (Off, Low, Medium) next to Surface Detail, live, with its cost; "Save as my
   settings" and the preset combo take it (Off is saved as Low: the Graphics page has Low and Medium); under it, with Medium, the
   planar view's resolution (1/2, 1/3, 1/4; this run only).
+- Ray tracing, phase 0 (testing, hidden: `RAC1_RT=1`, Vulkan with ray queries only): the seas' water traces its reflection through the
+  level's static world (ties, shrubs, tfrags; acceleration structures built per packet / tfrag entry at the level's load, the top
+  level partitioned by zone cell) and takes the hit's colour from the frame's picture, else the cube map or the sky; the profiler's
+  Seas and Ray tracing stages ([Rendering](docs/rendering.md#ray-tracing-phase-0)).
 - Grass (Options > Graphics, off by default): the ground tagged as grass gets a fine relief of blades (Low, no geometry) and a few very
   low layers of blades near the camera (High), in the texture's colours, bending with the wind and away from Ratchet. Seeded on Veldin,
   Novalis and Kerwan.

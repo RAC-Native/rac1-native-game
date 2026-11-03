@@ -110,6 +110,7 @@
 #include <game/render/mrp_lighting.h>
 #include <game/render/mrp_particles.h>
 #include <game/render/mrp_reflect.h>
+#include <game/render/mrp_rt.h>
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_shadows.h>
 #include <game/render/mrp_2d.h>
@@ -3797,6 +3798,7 @@ int main(int argc, char** argv) {
                     if (world_3d) {  // (Options > Graphics > Water Reflections: the planar view, the cube map; nothing unless the water asks)
                         const int rvp[4] = {wv.x, wv.y, wv.w, wv.h};
                         mrp_reflect_pass(rvp);
+                        mrp_rt_frame();  // (RAC1_RT, testing: the ray tracing's top level for the seas' reflections)
                     }
                 } else if (!g_world_faithful && !rac1::vk::is_active()) {
                     tfrag_render_update();  // (g_world_faithful: the world comes from the frame's VU1 chain)

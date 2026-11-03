@@ -138,6 +138,10 @@ struct Context {
     bool has_float64 = false;       // (shaderFloat64: the tfrag compute's doubles; without it the tfrags are made on the CPU)
     bool has_anisotropy = false;    // (samplerAnisotropy: without it every sampler is isotropic)
     bool device_lost = false;       // (VK_ERROR_DEVICE_LOST seen: said once in the log)
+    // (RAC1_RT=1, testing: ray-traced water reflections, phase 0) the device's acceleration structures and ray queries, turned on
+    // only when asked and present (with bufferDeviceAddress and deferred host operations); the pipelines' 2x2 shading rate
+    bool rt_asked = false, rt_on = false, has_shading_rate = false;
+    VkPhysicalDeviceAccelerationStructurePropertiesKHR as_props{};
     VkQueryPool timed_pool = VK_NULL_HANDLE;  // (timed_submit's two timestamps)
 } g_ctx;
 
@@ -652,6 +656,30 @@ bool check_device(VkPhysicalDevice pd, const HasExt& has_ext) {
     g_ctx.has_anisotropy = f.samplerAnisotropy == VK_TRUE;
     if (!g_ctx.has_anisotropy) off += "samplerAnisotropy (no anisotropic filtering); ";
     if (!has_ext(VK_EXT_PROVOKING_VERTEX_EXTENSION_NAME)) off += "VK_EXT_provoking_vertex; ";
+    if (g_ctx.rt_asked) {  // (RAC1_RT=1: ray queries, their acceleration structures; testing)
+        VkPhysicalDeviceRayQueryFeaturesKHR rq{};
+        rq.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
+        VkPhysicalDeviceAccelerationStructureFeaturesKHR asf{};
+        asf.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+        asf.pNext = &rq;
+        VkPhysicalDeviceFragmentShadingRateFeaturesKHR fsr{};
+        fsr.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_FEATURES_KHR;
+        fsr.pNext = &asf;
+        VkPhysicalDeviceFeatures2 rf2{};
+        rf2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        rf2.pNext = &fsr;
+        const bool exts = has_ext(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) && has_ext(VK_KHR_RAY_QUERY_EXTENSION_NAME) &&
+                          has_ext(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+        if (exts) vkGetPhysicalDeviceFeatures2(pd, &rf2);
+        g_ctx.rt_on = exts && asf.accelerationStructure == VK_TRUE && rq.rayQuery == VK_TRUE && f12.bufferDeviceAddress == VK_TRUE;
+        g_ctx.has_shading_rate = g_ctx.rt_on && has_ext(VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME) && fsr.pipelineFragmentShadingRate == VK_TRUE;
+        if (!g_ctx.rt_on) off += "RAC1_RT: no VK_KHR_acceleration_structure + VK_KHR_ray_query + bufferDeviceAddress (no ray tracing); ";
+        // (the cluster / partitioned acceleration structures, DirectX's CLAS / PTLAS on Vulkan: noted, not used - phase 0)
+        std::fprintf(stderr, "[rt] cluster acceleration structures: VK_NV_cluster_acceleration_structure %s, VK_NV_partitioned_acceleration_structure %s "
+                             "(not used: the clusters and partitions are made of plain KHR acceleration structures)\n",
+                     has_ext("VK_NV_cluster_acceleration_structure") ? "present" : "absent",
+                     has_ext("VK_NV_partitioned_acceleration_structure") ? "present" : "absent");
+    }
     if (!has_ext(VK_EXT_DEPTH_CLIP_CONTROL_EXTENSION_NAME)) off += "VK_EXT_depth_clip_control; ";
 
     std::fprintf(stderr, "[vk] %s, Vulkan %u.%u.%u, driver 0x%x (vendor 0x%04x, device 0x%04x): push constants %u bytes, subgroup %u\n",
@@ -682,6 +710,19 @@ void check_lost(VkResult r, const char* where) {
 
 // orig: (host)
 bool has_float64() { return g_ctx.has_float64; }
+// orig: (host)
+bool rt_enabled() { return g_ctx.rt_on && g_ctx.device != VK_NULL_HANDLE; }
+// orig: (host)
+bool has_shading_rate() { return g_ctx.has_shading_rate; }
+// orig: (host)
+uint32_t as_scratch_alignment() { return std::max<uint32_t>(g_ctx.as_props.minAccelerationStructureScratchOffsetAlignment, 256u); }
+// orig: (host)
+VkDeviceAddress buffer_address(VkBuffer b) {
+    VkBufferDeviceAddressInfo bai{};
+    bai.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    bai.buffer = b;
+    return vkGetBufferDeviceAddress(g_ctx.device, &bai);
+}
 
 // orig: (host) by the PCI device ID's high byte, the families Intel's own tables (and Mesa's) give generations 7 to 9.5:
 // Ivy Bridge 0x01, Haswell 0x04 / 0x0a / 0x0c / 0x0d, Bay Trail 0x0f, Broadwell 0x16, Cherry / Braswell 0x22, Skylake 0x19,
@@ -876,9 +917,39 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
         g_ctx.has_host_query_reset = f12.hostQueryReset == VK_TRUE;
     }
 
+    {  // (RAC1_RT=1, testing: ray-traced water reflections; check_device says whether the device can)
+        const char* e = std::getenv("RAC1_RT");
+        g_ctx.rt_asked = e != nullptr && std::atoi(e) != 0;
+    }
     if (!check_device(g_ctx.phys_dev, has_ext)) {
         shutdown();
         return false;
+    }
+    VkPhysicalDeviceRayQueryFeaturesKHR rq_feat{};
+    rq_feat.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
+    rq_feat.rayQuery = VK_TRUE;
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR as_feat{};
+    as_feat.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+    as_feat.accelerationStructure = VK_TRUE;
+    as_feat.pNext = &rq_feat;
+    VkPhysicalDeviceFragmentShadingRateFeaturesKHR fsr_feat{};
+    fsr_feat.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_FEATURES_KHR;
+    fsr_feat.pipelineFragmentShadingRate = VK_TRUE;
+    if (g_ctx.rt_on) {
+        enabled_dexts.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+        enabled_dexts.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
+        enabled_dexts.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+        if (g_ctx.has_shading_rate) {
+            enabled_dexts.push_back(VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME);
+            fsr_feat.pNext = &as_feat;
+        }
+        VkPhysicalDeviceProperties2 pp{};
+        pp.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+        g_ctx.as_props.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR;
+        pp.pNext = &g_ctx.as_props;
+        vkGetPhysicalDeviceProperties2(g_ctx.phys_dev, &pp);
+    } else if (g_ctx.rt_asked) {
+        std::fprintf(stderr, "[rt] RAC1_RT=1 ignored: the device has no ray queries\n");
     }
 
     VkPhysicalDeviceProvokingVertexFeaturesEXT prov_feat{};
@@ -902,6 +973,12 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     v12_feat.pNext = &v13_feat;
     v12_feat.scalarBlockLayout = VK_TRUE;
     v12_feat.hostQueryReset = g_ctx.has_host_query_reset ? VK_TRUE : VK_FALSE;
+    if (g_ctx.rt_on) {  // (the acceleration structures' features after the others in the chain)
+        v12_feat.bufferDeviceAddress = VK_TRUE;
+        VkBaseOutStructure* last = reinterpret_cast<VkBaseOutStructure*>(&v13_feat);
+        while (last->pNext != nullptr) last = last->pNext;
+        last->pNext = reinterpret_cast<VkBaseOutStructure*>(g_ctx.has_shading_rate ? static_cast<void*>(&fsr_feat) : static_cast<void*>(&as_feat));
+    }
 
     VkPhysicalDeviceFeatures2 feat2{};
     feat2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
@@ -1638,6 +1715,10 @@ bool create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryProperty
     mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     mai.allocationSize = mr.size;
     mai.memoryTypeIndex = find_memory_type(mr.memoryTypeBits, props);
+    VkMemoryAllocateFlagsInfo mafi{};  // (a buffer read by its address: the acceleration structures' inputs and storage, RAC1_RT)
+    mafi.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+    mafi.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+    if ((usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0) mai.pNext = &mafi;
     if (vkAllocateMemory(g_ctx.device, &mai, nullptr, &out.memory) != VK_SUCCESS) {
         vkDestroyBuffer(g_ctx.device, out.buffer, nullptr);
         out.buffer = VK_NULL_HANDLE;
@@ -1645,6 +1726,8 @@ bool create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryProperty
     }
     vkBindBufferMemory(g_ctx.device, out.buffer, out.memory, 0);
     alloc_note(out.memory, size == kRingBufferSize ? "frame rings (vertices, uniforms, uploads)"
+                           : (usage & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR) != 0 ? "ray tracing: acceleration structures"
+                           : (usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0 ? "ray tracing: inputs, scratch, instances"
                            : usage == VK_BUFFER_USAGE_TRANSFER_SRC_BIT || usage == VK_BUFFER_USAGE_TRANSFER_DST_BIT ? "staging, readbacks"
                            : (props & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) ? "buffers (meshes, tables)" : "buffers in system memory",
                false, mr.size);
@@ -2195,6 +2278,11 @@ VkPipeline create_graphics_pipeline(const GraphicsPipelineDesc& desc) {
     prci.depthAttachmentFormat = dfmt;
     prci.stencilAttachmentFormat = sfmt;
 
+    VkPipelineFragmentShadingRateStateCreateInfoKHR fsr{};  // (RAC1_RT_RES=2: the ray-traced water shaded once per 2x2 pixels)
+    fsr.sType = VK_STRUCTURE_TYPE_PIPELINE_FRAGMENT_SHADING_RATE_STATE_CREATE_INFO_KHR;
+    fsr.fragmentSize = {desc.shading_rate, desc.shading_rate};
+    fsr.combinerOps[0] = fsr.combinerOps[1] = VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR;
+    if (desc.shading_rate > 1 && g_ctx.has_shading_rate) prci.pNext = &fsr;
     VkGraphicsPipelineCreateInfo gpci{};
     gpci.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     gpci.pNext = &prci;
