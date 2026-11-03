@@ -223,12 +223,60 @@
     "    vec2 uv = vec2(dot(R, Rt), dot(R, Up)) / max(dot(R, F), 1e-4) * 0.5 + 0.5;\n"                                                                    \
     "    return textureLod(uReflCube, vec3(clamp(uv, vec2(0.0), vec2(1.0)), layer), 0.0);\n"                                                              \
     "}\n"                                                                                                                                                 \
+    "#ifdef RAC1_RT\n"                                                                                                                                    \
+    "/* RAC1_RT=1 (testing, ray tracing phase 0: mrp_rt.h; the seas' Vulkan variant alone): the reflection's ray traced through the level's\n"            \
+    "   static world (ties, shrubs, tfrags at their finest; no mobys yet) from the water along the reflection of a gentle normal;\n"                      \
+    "   the hit coloured from the frame's own picture (the 3D before the seas: uSsrCol, uSsrDepth, its view uSsrVP; five taps) where it lies in it - the\n"\
+    "   picture's depth there within 0.05 + 1 % of the distance - else the cube map or the sky (`miss`): the hit itself is not shaded yet\n"              \
+    "   (phase 2). uRtMode 1 on; 3 where the colour comes from (green the picture, red a hit the picture does not hold, blue no hit), 5 the\n"            \
+    "   hit's distance, 7 what was hit (red a tie, green a shrub, blue a tfrag) */\n"                                                                     \
+    "layout(set = 2, binding = 0) uniform accelerationStructureEXT uRtTlas;\n"                                                                            \
+    "vec3 sm_water_rt(vec3 P, vec3 N, vec3 Nw, vec3 miss) {\n"                                                                                            \
+    "    vec4 r = uMat2[253];\n"                                                                                                                          \
+    "    vec3 V = normalize(uShCam - P);\n"                                                                                                               \
+    "    vec3 R = reflect(-V, normalize(mix(N, Nw, 0.2)));  /* (the ripples' half slope of the cube map's: sharper, less sparkle) */\n"                   \
+    "    R = normalize(vec3(R.xy, max(R.z, 0.002)));  /* (never into the water) */\n"                                                                     \
+    "    vec4 c = r.w > 0.5 ? sm_refl_cube(R) : vec4(0.0);\n"                                                                                             \
+    "    vec3 env = mix(miss, c.rgb, c.a);\n"                                                                                                             \
+    "    int dbg = uRtMode >> 1;\n"                                                                                                                       \
+    "    rayQueryEXT q;\n"                                                                                                                                \
+    "    rayQueryInitializeEXT(q, uRtTlas, gl_RayFlagsOpaqueEXT, 0xffu, P + N * 0.02, 0.02, R, 4000.0);\n"                                                \
+    "    while (rayQueryProceedEXT(q)) {}\n"                                                                                                              \
+    "    if (rayQueryGetIntersectionTypeEXT(q, true) == gl_RayQueryCommittedIntersectionNoneEXT) return dbg == 1 ? vec3(0.0, 0.0, 1.0) : dbg >= 2 ? vec3(0.0) : env;\n"\
+    "    float t = rayQueryGetIntersectionTEXT(q, true);\n"                                                                                               \
+    "    if (dbg == 2) return vec3(fract(t / 8.0), clamp(t / 150.0, 0.0, 1.0), 0.2);\n"                                                                   \
+    "    if (dbg == 3) {\n"                                                                                                                               \
+    "        int kind = rayQueryGetIntersectionInstanceCustomIndexEXT(q, true) >> 22;\n"                                                                  \
+    "        return kind == 0 ? vec3(1.0, 0.2, 0.2) : kind == 1 ? vec3(0.2, 1.0, 0.2) : vec3(0.2, 0.3, 1.0);\n"                                           \
+    "    }\n"                                                                                                                                             \
+    "    vec3 H = P + R * t;\n"                                                                                                                           \
+    "    float k = 0.0;\n"                                                                                                                                \
+    "    vec3 col = vec3(0.0);\n"                                                                                                                         \
+    "    if (uMat[0].w != 0.0) {\n"                                                                                                                       \
+    "        vec2 uv;\n"                                                                                                                                  \
+    "        float dz = sm_ssr_dz(H, uv);\n"                                                                                                              \
+    "        if (uv.x >= 0.0 && dz > -1e8) {\n"                                                                                                           \
+    "            float tol = 0.05 + 0.01 * (uSsrVP * vec4(H, 1.0)).w;\n"                                                                                  \
+    "            vec2 e = smoothstep(vec2(0.0), vec2(0.03), uv) * smoothstep(vec2(0.0), vec2(0.03), 1.0 - uv);\n"                                         \
+    "            k = e.x * e.y * (1.0 - smoothstep(tol, 2.0 * tol, abs(dz)));\n"                                                                          \
+    "            vec2 o = 3.0 / vec2(textureSize(uSsrCol, 0));  /* (over a few pixels, as the planar view: the lit windows sparkled) */\n"                \
+    "            col = (textureLod(uSsrCol, uv, 0.0).rgb * 2.0 + textureLod(uSsrCol, uv + o, 0.0).rgb + textureLod(uSsrCol, uv - o, 0.0).rgb\n"           \
+    "                   + textureLod(uSsrCol, uv + vec2(o.x, -o.y), 0.0).rgb + textureLod(uSsrCol, uv - vec2(o.x, -o.y), 0.0).rgb) / 6.0;\n"              \
+    "        }\n"                                                                                                                                         \
+    "    }\n"                                                                                                                                             \
+    "    if (dbg == 1) return vec3(1.0 - k, k, 0.0);\n"                                                                                                   \
+    "    return mix(env, col, k);\n"                                                                                                                      \
+    "}\n"                                                                                                                                                 \
+    "#endif\n"                                                                                                                                            \
     "/* the water's reflection: `miss` (the level's sky colour) where the cube map has nothing; on Medium the planar view where the water lies\n"         \
     "   at its plane (faded out over a few tenths of a unit off it, and where the surface is not flat - a stream's slope), read at the pixel's\n"         \
     "   own place moved by the ripples (Nw, a gentle slope, against the face's N: less far away), over a few of its texels (the ripples moving the read over the\n"        \
     "   lit windows of a city sparkled), kept inside its edges; the cube map where it drew nothing, along the reflection of a gentler normal yet\n"           \
     "   (the ripples' whole slope swept the cube's texels: a sparkle) */\n"                                                                               \
     "vec3 sm_water_refl(vec3 P, vec3 N, vec3 Nw, vec3 miss) {\n"                                                                                          \
+    "#ifdef RAC1_RT\n"                                                                                                                                    \
+    "    if (uRtMode > 0) return sm_water_rt(P, N, Nw, miss);\n"                                                                                          \
+    "#endif\n"                                                                                                                                            \
     "    vec4 r = uMat2[253];\n"                                                                                                                          \
     "    bool dbg = r.x > 7.5, raw = r.x > 15.5;\n"                                                                                                       \
     "    float mode = raw ? r.x - 16.0 : dbg ? r.x - 8.0 : r.x;\n"                                                                                        \

@@ -66,6 +66,10 @@ What changed in each release. Releases are source only: you build the game with 
   first seen and again only when the view has turned or moved well away; Medium: the frame's world, sky and mobys drawn again
   mirrored about the water's plane at half resolution, Ratchet reflected, the cube map where the water is not flat or the mirrored
   view has nothing (the sky above the game's view, which it never draws). OpenGL and Vulkan; `water_reflections`, save item 57.
+- Ray tracing, phase 0 (testing, hidden: `RAC1_RT=1`, Vulkan with ray queries only): the seas' water traces its reflection through the
+  level's static world (ties, shrubs, tfrags; acceleration structures built per packet / tfrag entry at the level's load, the top
+  level partitioned by zone cell) and takes the hit's colour from the frame's picture, else the cube map or the sky; the profiler's
+  Seas and Ray tracing stages ([Rendering](docs/rendering.md#ray-tracing-phase-0)).
 - Grass (Options > Graphics, off by default): the ground tagged as grass gets a fine relief of blades (Low, no geometry) and a few very
   low layers of blades near the camera (High), in the texture's colours, bending with the wind and away from Ratchet. Seeded on Veldin,
   Novalis and Kerwan.

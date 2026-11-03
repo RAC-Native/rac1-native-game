@@ -1,5 +1,6 @@
 // orig: (host) Options > Graphics > Water Reflections (see mrp_reflect.h; docs/materials.md#water-reflections)
 #include <game/render/mrp_reflect.h>
+#include <game/render/mrp_rt.h>
 
 #include <game/render/mrp_lighting.h>
 #include <game/render/mrp_moby_renderer.h>
@@ -428,7 +429,7 @@ void mrp_reflect_pass(const int vp[4]) {
     const bool again = !fresh && (std::acos(std::clamp(glm::dot(fwd, g_r.cube_fwd), -1.0f, 1.0f)) > kCubeTurn ||
                                   glm::length(glm::vec2(at.x - g_r.cube_at.x, at.y - g_r.cube_at.y)) > kCubeMove || std::fabs(at.z - g_r.cube_at.z) > kCubeRise);
     if (fresh || again) cube_capture(at, water_h, fwd, fresh);
-    if (g_water_reflections >= 2 && have_plane && cam.z > plane + 0.05f) {
+    if (g_water_reflections >= 2 && have_plane && cam.z > plane + 0.05f && !mrp_rt_active()) {  // (RAC1_RT: the reflection traced instead)
         planar_draw(vp, plane, cam);
         ++g_r.n_planar;
         ++g_r.planes[static_cast<int>(std::lround(plane * 4.0f))];

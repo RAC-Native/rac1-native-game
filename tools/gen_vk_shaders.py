@@ -487,7 +487,7 @@ layout(push_constant) uniform Push {
     mat4 uVP;
     int uShade;
     int uPass;
-    int _pad0;
+    int uRtMode;  // (RAC1_RT: the ray-traced variant's mode, mrp_rt.h; 0 elsewhere)
     int _pad1;
 };
 """
@@ -616,6 +616,10 @@ void main() {
     }
 }
 """
+
+# RAC1_RT=1 (testing, ray tracing phase 0: src/game/render/mrp_rt.h): the surfaces' fragment shader whose water traces its reflection
+# (sm_water_rt) against the level's top level (set 2, binding 0); GLSL 4.60 for GL_EXT_ray_query
+MRP_VU7_FS_RT = MRP_VU7_FS.replace("#version 450\n", "#version 460\n#extension GL_EXT_ray_query : require\n#define RAC1_RT 1\n", 1)
 
 # ---------------------------------------------------------------------------
 # 3. mrp_shadows.cpp shaders
@@ -2303,6 +2307,7 @@ SHADERS = [
     ("kMrpFxFs", "frag", MRP_FX_FS),
     ("kMrpVu7Vs", "vert", MRP_VU7_VS),
     ("kMrpVu7Fs", "frag", MRP_VU7_FS),
+    ("kMrpVu7FsRt", "frag", MRP_VU7_FS_RT),
     ("kMrpShadowsFaceVs", "vert", MRP_SHADOWS_FACE_VS),
     ("kMrpShadowsFaceFs", "frag", MRP_SHADOWS_FACE_FS),
     ("kMrpShadowsDarkVs", "vert", MRP_SHADOWS_DARK_VS),

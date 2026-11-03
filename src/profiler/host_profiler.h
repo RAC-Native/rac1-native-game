@@ -59,9 +59,11 @@ enum Stage : int {
     kSunRays,           // the sun's rays
     kParticles,         // the ambient particles (our own: dust, embers, rain, snow ...)
     kWaterRefl,         // Options > Graphics > Water Reflections: the planar view, the cube map (mrp_reflect.h)
+    kRtBuild,           // RAC1_RT (testing): the ray tracing's top level written and built (mrp_rt.h)
     kGrass,             // Options > Graphics > Grass: the grass shells over the tfrags
     kScaleResolve,      // the render scale's buffer put on the window
     kEffects,           // the MRP's 3D effects (particles ...), before and after the mobys
+    kSeas,              // program 7's surfaces (the seas, lava, sand) inside the effects: their water's reflection
     kGs2d,              // the 2D: the HUD, text, menus, fades (mrp_2d.h; the GS replica's drawing on the faithful path)
     kFrameCapture,      // the frame kept (the pause menu's background, the screen fades')
     kDebugMenu,         // the debug menu (ImGui) and this profiler's own view

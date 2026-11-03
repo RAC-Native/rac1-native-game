@@ -83,6 +83,7 @@ struct GraphicsPipelineDesc {
     bool has_depth_attachment = true;
     bool has_stencil_attachment = true;
     std::vector<VkDynamicState> extra_dynamic_states;
+    uint32_t shading_rate = 1;  // (RAC1_RT_RES=2: 2 = one fragment per 2x2 pixels, when the device can; testing)
 };
 
 // Lifecycle
@@ -108,6 +109,12 @@ bool has_float64();             // shaderFloat64: the tfrag compute shader's dou
 // an Intel GPU of generation 9 (Skylake .. Comet Lake, the UHD 620) or older: its doubles are slow (the tfrags made on the CPU
 // unless RAC1_TFRAG_CPU=0; issue #113)
 bool float64_slow();
+// RAC1_RT=1 (testing: ray-traced water reflections, phase 0): acceleration structures and ray queries turned on (asked, and the device
+// has VK_KHR_acceleration_structure, VK_KHR_ray_query, deferred host operations and bufferDeviceAddress)
+bool rt_enabled();
+bool has_shading_rate();             // (with RAC1_RT: a pipeline's fragment shading rate, VK_KHR_fragment_shading_rate)
+uint32_t as_scratch_alignment();     // (an acceleration structure build's scratch offset alignment)
+VkDeviceAddress buffer_address(VkBuffer b);  // (a buffer made with VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT)
 
 // Core handles
 VkInstance instance();

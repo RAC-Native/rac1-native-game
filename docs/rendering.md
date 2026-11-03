@@ -688,6 +688,72 @@ All of these come from the project's own measurements during development:
 Not bit-exact by design: GPU rasterisation, perspective-correct interpolation on clipped pieces and
 sub-pixel edges differ from the GS.
 
+## Ray tracing, phase 0
+
+Testing only, hidden behind `RAC1_RT=1` (Vulkan; ignored with a log line on OpenGL or on a device without
+VK_KHR_acceleration_structure + VK_KHR_ray_query + bufferDeviceAddress). The seas' water (program 7's surfaces with
+Surface Detail's water) traces its reflection through the level's static world with an inline ray query instead of
+reading Water Reflections' planar view; the hit is not shaded: its colour is the frame's own picture (the 3D before
+the seas, the picture the materials already capture) where the hit projects into it with a matching depth, else
+the cube map (Low's, still made) or the sky. Mobys are not in it (phase 3), so Ratchet has no reflection.
+Code: `src/game/render/mrp_rt.cpp` (acceleration structures), `rt_gather` in `mrp_world_renderer.cpp` (what goes in),
+`sm_water_rt` in `mrp_materials_glsl.inc` (the trace), the variant `kMrpVu7FsRt` (`tools/gen_vk_shaders.py`).
+
+The acceleration structures follow DirectX's clustered geometry and partitioned top level (CLAS / PTLAS) with plain
+KHR structures (the cluster / partition extensions are NVIDIA's alone; their presence is logged, not used), behind an
+interface of our own (`RtAccel`) that another back end can implement:
+
+- **Clusters**: each tie / shrub packet template (its finest LOD; float copies of the int16 positions) and each tfrag
+  entry (its near image's raw records, start 0x014, run once on the CPU with an identity view: no morph) is a small
+  bottom-level structure (about 45 triangles), built once at the level's load and compacted. The instances' transforms
+  are the passes' matrices (instance data +0..+0x30, the scale +0x3c: world = position + M p / 1024); no wind sway.
+  `RAC1_RT_CLUSTERS=1` merges them per class (ties, shrubs) and per zone cell (tfrags) instead.
+- **Partitions**: the top level's instances grouped by zone cell (ties, tfrags; shrubs in one unzoned group), and a
+  dynamic group for moving instances (empty now). Each frame only the groups whose zone byte (0x173d00) changed are
+  written again; when nothing changed the frame in flight's top level is kept, else it is updated (`RAC1_RT_TLAS`).
+  A KHR top level is built or updated whole: the partitions save the CPU's writes and the frames with no change,
+  not the GPU's build when anything changes.
+
+Measured on the Radeon 890M (RADV, Mesa 26), the levels' load (`[rt]` lines; per-packet clusters):
+
+| Level | Clusters | Triangles | BLAS compacted | GPU build | Top level instances | Top level rebuild / update |
+|---|---|---|---|---|---|---|
+| Veldin (0) | 1758 | 77 k | 8.2 MB | 16 ms | 19.6 k | 0.61 / 0.62 ms |
+| Novalis (1) | 3524 | 162 k | 17.2 MB | 28 ms | 28.9 k | 0.87 / 0.89 ms |
+| Rilgar (5) | 3424 | 171 k | 18.0 MB | 26-35 ms | 39.3 k | 0.97-1.25 / 0.97-1.25 ms |
+| Blarg (6) | 4948 | 235 k | 25.5 MB | 39 ms | 32.3 k | 0.98 ms |
+| Pokitaru (11) | 2862 | 123 k | 13.5 MB | 24 ms | 26.5 k | 0.76 / 0.76 ms |
+| Rilgar, clusters merged | 473 | 171 k | 17.3 MB | 15 ms | 3.4 k | 0.29 / 0.29 ms |
+
+About 110 bytes a triangle after compaction (two thirds of the size before). The top level is kept on about 97 % of
+the frames (a zone changes now and then). RADV's update of a top level costs what a rebuild costs.
+
+The seas' GPU time (profiler stages Seas + Effects; Medium's planar view and the ray tracing's top level are stages of
+their own, added after a +), Rilgar's harbour / Pokitaru's dock:
+
+| | Rilgar 1080p | Rilgar 5120x1440 | Pokitaru 1080p | Pokitaru 5120x1440 |
+|---|---|---|---|---|
+| Screen-space (before Water Reflections) | 0.79 | 2.98 | 0.84 | 2.15 |
+| Low (cube map) | 0.33 | 1.07 | 0.69 | 1.40 |
+| Medium (planar view) | 0.36 + 0.65 | 1.11 + 1.24 | 0.70 + 0.29 | 1.41 + 0.66 |
+| Ray traced, per-packet clusters | 2.72 | 7.96 | 1.77 | 4.26 |
+| Ray traced, merged clusters | 1.91 | 4.75 | 1.50 | 3.59 |
+| Ray traced, 2x2 shading (`RAC1_RT_RES=2`) | 0.95 | 2.92 | 0.70 | 1.39 |
+| Ray traced, 2x2 shading, merged | 0.73 | 1.49 | 0.62 | 1.17 |
+
+(ms.) The top level costs nothing on a frame where it is kept (0.01 ms); rebuilt every frame (`RAC1_RT_TLAS=0`) it is
+0.5 ms at Rilgar (39 k instances), 0.25 ms merged. `RAC1_RT_RES=2` shades the whole sea once per 2 x 2 pixels
+(VK_KHR_fragment_shading_rate): the cost of a half resolution trace, not its look. The many tiny structures cost the
+trace: merged clusters trace 15 to 40 % faster.
+
+How it looks: the hit is the right one (no screen-space false hits, no hole), but its colour is only the picture's
+where the picture holds it. From a low camera (Ratchet swimming at Rilgar) most reflected buildings are above the
+screen's top: their colour is the cube map's, and where a hit moves in and out of the picture the colour changes
+source. Flicker over plain water (pixels whose frame-to-frame second difference exceeds 8 / 16, 60 frames of
+`RAC1_SIM_INPUT=shipwalk`, 1280x360): Rilgar's harbour Low 1526 / 0, Medium 281 / 0, ray traced 1894 / 150; Pokitaru's
+dock Low 113 / 0, Medium 122 / 0, ray traced 953 / 1. Screen-space reflections at Pokitaru's dock walking forward:
+4389 / 70 (ray traced 1667 / 0). Shading the hit itself (phase 2) is what removes the change of source.
+
 ## Performance
 
 From the project's measurements while the MRP was built, on a shared development machine with an

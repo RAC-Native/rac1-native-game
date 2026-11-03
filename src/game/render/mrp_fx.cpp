@@ -9,6 +9,7 @@
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_reflect.h>
+#include <game/render/mrp_rt.h>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
@@ -1915,22 +1916,28 @@ struct V7VkPush {
     float uVP[16];
     int32_t uShade;
     int32_t uPass;
-    int32_t _pad[2];
+    int32_t uRtMode;  // (RAC1_RT: the ray-traced variant's mode, mrp_rt.h)
+    int32_t _pad;
 };
 static_assert(sizeof(V7VkPush) == 80);
 VkShaderModule g7_vk_vs = VK_NULL_HANDLE, g7_vk_fs = VK_NULL_HANDLE;
 VkPipelineLayout g7_vk_layout = VK_NULL_HANDLE;
+// (RAC1_RT, testing: the ray-traced variant - its fragment shader, its layout with set 2 the top level, mrp_rt.h)
+VkShaderModule g7_vk_fs_rt = VK_NULL_HANDLE;
+VkPipelineLayout g7_vk_layout_rt = VK_NULL_HANDLE;
 
 void shutdown_vk_vu7() {
     vk_fx_pipes_destroy();
     VkDevice dev = vk::device();
     if (dev != VK_NULL_HANDLE) {
         if (g7_vk_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(dev, g7_vk_layout, nullptr);
+        if (g7_vk_layout_rt != VK_NULL_HANDLE) vkDestroyPipelineLayout(dev, g7_vk_layout_rt, nullptr);
         if (g7_vk_vs != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g7_vk_vs, nullptr);
         if (g7_vk_fs != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g7_vk_fs, nullptr);
+        if (g7_vk_fs_rt != VK_NULL_HANDLE) vkDestroyShaderModule(dev, g7_vk_fs_rt, nullptr);
     }
-    g7_vk_layout = VK_NULL_HANDLE;
-    g7_vk_vs = g7_vk_fs = VK_NULL_HANDLE;
+    g7_vk_layout = g7_vk_layout_rt = VK_NULL_HANDLE;
+    g7_vk_vs = g7_vk_fs = g7_vk_fs_rt = VK_NULL_HANDLE;
 }
 
 // orig: (host) the surfaces' Vulkan shaders and pipeline layout (set 0 the effects' atlas, set 1 the lighting's)
@@ -1953,6 +1960,14 @@ bool init_vk_vu7() {
     plci.pushConstantRangeCount = 1;
     plci.pPushConstantRanges = &pcr;
     if (vkCreatePipelineLayout(dev, &plci, nullptr, &g7_vk_layout) != VK_SUCCESS) return false;
+    if (mrp_rt_active()) {  // (RAC1_RT: the ray-traced variant, set 2 the top level)
+        VkDescriptorSetLayout sets_rt[3] = {sets[0], sets[1], reinterpret_cast<VkDescriptorSetLayout>(mrp_rt_vk_set_layout())};
+        g7_vk_fs_rt = vk::create_shader_module(vk::shaders::kMrpVu7FsRt, sizeof(vk::shaders::kMrpVu7FsRt));
+        plci.setLayoutCount = 3;
+        plci.pSetLayouts = sets_rt;
+        if (g7_vk_fs_rt == VK_NULL_HANDLE || sets_rt[2] == VK_NULL_HANDLE || vkCreatePipelineLayout(dev, &plci, nullptr, &g7_vk_layout_rt) != VK_SUCCESS)
+            g7_vk_layout_rt = VK_NULL_HANDLE;
+    }
     vk::register_shutdown_callback(shutdown_vk_vu7);
     return true;
 }
@@ -2367,6 +2382,7 @@ void mrp_fx_draw(const MrpChainFrame& gs, int win_w, int win_h, const gs::Viewpo
         if (g_env_hide) continue;  // (testing)
         if (sp.kind == kStepVu7) {  // program 7's surfaces
             if (g_v7.empty() || sp.from >= sp.to) continue;
+            RAC1_PROF_ZONE(kSeas);
             if (vk::is_active()) {
                 if (!init_vk_vu7()) continue;
                 if (!uploaded7) {
@@ -2381,17 +2397,24 @@ void mrp_fx_draw(const MrpChainFrame& gs, int win_w, int win_h, const gs::Viewpo
                 vk::set_scissor(false);
                 VkCommandBuffer cb = vk::cmd();
                 vkCmdBindVertexBuffers(cb, 0, 1, &vk_vbo7_alloc.buffer, &vk_vbo7_alloc.offset);
-                vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g7_vk_layout, 0, 1, &vk_ds, 0, nullptr);
-                const uint64_t pl = reinterpret_cast<uint64_t>(g7_vk_layout);
+                // (RAC1_RT: the ray-traced variant when this frame's top level is built and the lighting is on)
+                const VkDescriptorSet rt_set = g7_vk_layout_rt != VK_NULL_HANDLE && mrp_lighting_active() ? reinterpret_cast<VkDescriptorSet>(mrp_rt_vk_set())
+                                                                                                         : VK_NULL_HANDLE;
+                const VkPipelineLayout lay = rt_set != VK_NULL_HANDLE ? g7_vk_layout_rt : g7_vk_layout;
+                vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, lay, 0, 1, &vk_ds, 0, nullptr);
+                const uint64_t pl = reinterpret_cast<uint64_t>(lay);
                 if (mrp_lighting_active()) mrp_lighting_vk_bind_receiver(pl, false, true);
                 else mrp_lighting_vk_bind_off(pl);
+                if (rt_set != VK_NULL_HANDLE) vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, lay, 2, 1, &rt_set, 0, nullptr);
                 V7VkPush pc{};
                 std::memcpy(pc.uVP, vpm, sizeof(pc.uVP));
                 pc.uShade = g_render_shade;
+                pc.uRtMode = rt_set != VK_NULL_HANDLE ? mrp_rt_shader_mode() : 0;
                 vk::GraphicsPipelineDesc base{};
-                base.layout = g7_vk_layout;
+                base.layout = lay;
                 base.vs = g7_vk_vs;
-                base.fs = g7_vk_fs;
+                base.fs = rt_set != VK_NULL_HANDLE ? g7_vk_fs_rt : g7_vk_fs;
+                base.shading_rate = rt_set != VK_NULL_HANDLE ? mrp_rt_shading_rate() : 1;
                 base.vertex_bindings = {{0, sizeof(V7), VK_VERTEX_INPUT_RATE_VERTEX}};
                 base.vertex_attribs = {
                     {0, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(V7, wp))},
@@ -2405,7 +2428,7 @@ void mrp_fx_draw(const MrpChainFrame& gs, int win_w, int win_h, const gs::Viewpo
                 };
                 base.cull_mode = VK_CULL_MODE_NONE;
                 base.depth_clamp = true;  // (as the OpenGL path)
-                vk_draw_batches(g_b7, sp.from, sp.to, base, g7_vk_layout, &pc, sizeof(pc), offsetof(V7VkPush, uPass));
+                vk_draw_batches(g_b7, sp.from, sp.to, base, lay, &pc, sizeof(pc), offsetof(V7VkPush, uPass));
                 continue;
             }
             if (!init_gl_vu7()) continue;
