@@ -10,6 +10,7 @@
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_view.h>
 #include <profiler/host_profiler.h>
+#include <runtime/kernel/disc.h>
 #include <runtime/kernel/ee_copy.h>
 #include <runtime/vk/vk_context.h>
 #include <runtime/vk/vk_shaders.h>
@@ -3757,6 +3758,7 @@ int g_user_level = -1;
 std::string g_user_path;
 // orig: (host) the level's lights file
 std::string user_path(int level) {
+    if (custom_level_active(level)) return custom_level_dir() + "/lights.txt";  // (a custom level: not Veldin's file)
     const char* dir = std::getenv("RAC1_LIGHTS_DIR");
     char name[32];
     std::snprintf(name, sizeof name, "level%02d.txt", level);

@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 385 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 387 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 295 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 296 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 70 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -86,6 +86,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_BEAM_LIGHTS` | integer; 0 = off; default on | With the modern lighting and Secondary Lights on All, `0` leaves out the lights of Veldin's plasma beams (#102), to compare. |
 | `RAC1_CAM_TRACE` | set (any value) = on; default off | Prints every camera switch to stderr. |
 | `RAC1_CARD_LOG` | set (any value) = on; default off | Prints a line whenever the memory card screens or machines change state (UI state, flags, level, slot, owned items, bolts). |
+| `RAC1_CUSTOM_LEVEL` | folder; unset = off | Local experiment (`experiment/custom-level-maktar`, never released): level 0's data file and gameplay files are read from `<folder>/data.wad` and `<folder>/gameplay.bin` (each the size of the file it stands for; `tools/custom_level/maktar.py` writes them from RAC2's disc) instead of Veldin's, in Veldin's slot; the MRP world from `<folder>/mrp/world/level0/` (`rac1-native --setup --custom-level <folder>` writes it) and the lights file from `<folder>/lights.txt` instead of Veldin's. Not with RAC1_READ_ISO=1. |
 | `RAC1_COROUTINE` | `ucontext`; default the hand-written switch | Linux: the game frame's coroutine switches with `swapcontext` (the switch before the hand-written one, `src/platform/ctx_switch.h`) instead, to compare; the game's state is the same with both. CMake's `-DRAC1_UCONTEXT=ON` compiles only that one. |
 | `RAC1_CHAIN_LOG` | set (any value) = on; default off | Every host frame prints the address range of the graphics DMA chain that is walked and whether it runs. |
 | `RAC1_DEVICE_DUMP` | file path; unset = no dump | Writes what the audio device is given, as played (raw 48 kHz signed 16-bit PCM, the device's channels): the queue's skips, underruns and the IOP's frames played alone are in it, to look for clicks; unlike RAC1_AUDIO_DUMP (the game's IOP's output). |

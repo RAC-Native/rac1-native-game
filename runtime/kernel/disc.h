@@ -58,6 +58,17 @@ bool disc_read_level_wad(int level, std::vector<std::byte>& out);
 // Reads only `level`'s data header and overlay executable from the disc into `out`.
 bool disc_read_level_overlay(int level, std::vector<std::byte>& out);
 
+// ---- A custom level (testing, local experiment) ----
+// RAC1_CUSTOM_LEVEL=<dir>: level 0's data file and gameplay files (levels/level00/data.wad, gameplay_ntsc.bin,
+// gameplay_pal.bin of the disc's files) read from <dir>/data.wad and <dir>/gameplay.bin instead; each the size of the
+// file it stands for. The game's table of contents, level header and sectors stay Veldin's: the same slot. The host's
+// per-level data for level 0 (lights, materials, water, ray tracing, MRP world assets) is Veldin's and is gated off
+// with custom_level_active(). Not with RAC1_READ_ISO=1 (the image itself).
+// The folder ("" when none).
+const std::string& custom_level_dir();
+// Whether `level` is the custom level (level 0 with RAC1_CUSTOM_LEVEL set).
+bool custom_level_active(int level);
+
 // ---- Data discs ----
 // Other releases' discs given to the setup with --data-iso (docs/setup.md, "Data discs"): sources of data only (another
 // release's voices), never of code. The setup extracts each into its own folder (assets/disc-<serial>-<version>/, the

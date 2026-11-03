@@ -152,6 +152,8 @@ What changed in each release. Releases are source only: you build the game with 
   generated files): the game code about 5% less time a frame (Veldin 1.25 to 1.18 ms); the same game state (`RAC1_PERF_VU0_NF`).
 
 ### Launcher and setup
+- Local experiment (not for release): a custom level in level 0's slot, `RAC1_CUSTOM_LEVEL=<folder>` (Maktar's arena from RAC2's
+  disc, `tools/custom_level/`), its world assets by `--setup --custom-level <folder>`.
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

@@ -106,6 +106,17 @@ void files_load(DiscFiles& d) {
         d.pieces.push_back(p);
     }
     for (const std::string& n : names) d.paths.push_back(files_host_path(d.dir, n));
+    if (d.dir == disc_files_dir() && !custom_level_dir().empty()) {  // (a custom level: level 0's two files replaced)
+        for (size_t i = 0; i < names.size(); ++i) {
+            const char* with = names[i] == "levels/level00/data.wad"                 ? "data.wad"
+                               : names[i] == "levels/level00/gameplay_ntsc.bin" ||
+                                         names[i] == "levels/level00/gameplay_pal.bin" ? "gameplay.bin"
+                                                                                       : nullptr;
+            if (with == nullptr) continue;
+            d.paths[i] = std::filesystem::path(custom_level_dir()) / with;
+            std::printf("[disc] custom level: %s read from %s\n", names[i].c_str(), d.paths[i].string().c_str());
+        }
+    }
     d.handles.resize(d.paths.size());
     d.ok = true;
 }
@@ -490,6 +501,18 @@ const DataDisc* disc_data_disc(const std::string& region) {
         if (e.disc.ok && e.disc.region == region) return &e.disc;
     return nullptr;
 }
+
+// orig: (host)
+const std::string& custom_level_dir() {
+    static const std::string dir = [] {
+        const char* e = std::getenv("RAC1_CUSTOM_LEVEL");
+        return std::string(e != nullptr ? e : "");
+    }();
+    return dir;
+}
+
+// orig: (host)
+bool custom_level_active(int level) { return level == 0 && !custom_level_dir().empty(); }
 
 bool disc_has_level(int level) { return get_disc_level(level) != nullptr; }
 

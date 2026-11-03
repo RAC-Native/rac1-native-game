@@ -24,6 +24,7 @@
 #include <profiler/host_profiler.h>
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
+#include <runtime/kernel/disc.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/vk/vk_context.h>
 #include <runtime/vk/vk_shaders.h>
@@ -77,6 +78,9 @@ std::string asset_root() {
     const char* r = std::getenv("RAC1_MRPW_DIR");
     return r != nullptr ? r : "assets/generated/mrp/world";
 }
+// orig: (host) the folder of level `id`'s assets' level folders: a custom level's own (RAC1_CUSTOM_LEVEL: <dir>/mrp/world,
+// rac1-native --setup --custom-level <dir> writes it), else asset_root()
+std::string level_root(int id) { return custom_level_active(id) ? custom_level_dir() + "/mrp/world" : asset_root(); }
 
 // the assets' level: the level 0x15ed84 names, or the boot module's title level while the boot runs (the title loop
 // sets 0x15ed84 to 0, its scene is its own level)
@@ -343,7 +347,7 @@ void load_textures(Level& L) {
     static const char* names[3] = {"tfrag", "tie", "shrub"};
     std::map<std::pair<uint32_t, uint32_t>, int> by_size;
     for (int k = 0; k < 3; ++k) {
-        const std::string path = asset_root() + "/" + level_dir_name(L.id) + "/textures_" + names[k] + ".mrpt";
+        const std::string path = level_root(L.id) + "/" + level_dir_name(L.id) + "/textures_" + names[k] + ".mrpt";
         if (!mrp::read_textures(path, L.tex[k])) std::fprintf(stderr, "[mrpw] no %s textures %s\n", names[k], path.c_str());
         L.ref[k].assign(L.tex[k].size(), TexRef{});
         for (size_t i = 0; i < L.tex[k].size(); ++i) {
@@ -708,8 +712,8 @@ void load_level(int id) {
     L.tried = true;
     const double t0 = now_ms();
     L.world = std::make_unique<World>();
-    if (!load_world(asset_root(), id, *L.world)) {
-        std::fprintf(stderr, "[mrpw] no MRP world asset for level %d (%s/%s/world.mrpw): run setup.sh\n", id, asset_root().c_str(), level_dir_name(id).c_str());
+    if (!load_world(level_root(id), id, *L.world)) {
+        std::fprintf(stderr, "[mrpw] no MRP world asset for level %d (%s/%s/world.mrpw): run setup.sh\n", id, level_root(id).c_str(), level_dir_name(id).c_str());
         L.world.reset();
         return;
     }

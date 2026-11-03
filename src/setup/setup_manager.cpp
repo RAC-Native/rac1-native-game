@@ -47,6 +47,8 @@ void print_usage(const char* prog) {
               << "  --compare-disc     read every sector through the image and through the disc's files (assets/disc/),\n"
               << "                     and compare\n"
               << "  --status           show which parts of the data are present\n"
+              << "  --custom-level <dir>  testing: export the world of a custom level (<dir>/data.wad, RAC1_CUSTOM_LEVEL)\n"
+              << "                     into <dir>/mrp/world/level0\n"
               << "  --help, -h         show this help\n";
 }
 
@@ -224,6 +226,7 @@ int run_setup(int argc, char** argv) {
     bool status_only = false;
     bool check_only = false;
     bool compare = false;
+    std::string custom_level;  // testing: a custom level's folder (RAC1_CUSTOM_LEVEL), its world exported
 
     if (const char* env_iso = std::getenv("RAC1_ISO")) iso_path = env_iso;
 
@@ -245,6 +248,8 @@ int run_setup(int argc, char** argv) {
             check_only = true;
         } else if (a == "--compare-disc") {
             compare = true;
+        } else if (a == "--custom-level" && i + 1 < argc) {
+            custom_level = argv[++i];
         } else if (a == "--help" || a == "-h") {
             print_usage(argv[0]);
             return 0;
@@ -260,6 +265,10 @@ int run_setup(int argc, char** argv) {
         return 1;
     }
 
+    if (!custom_level.empty()) {  // (no disc: the custom level's own data file)
+        std::cout << "[setup] The custom level's world (" << custom_level << "/mrp/world/level0)...\n";
+        return export_mrp_world_custom(custom_level) ? 0 : 1;
+    }
     const fs::path assets_path = fs::absolute(assets_dir);
     if (status_only) {
         print_status(assets_path);
