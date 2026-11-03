@@ -1371,4 +1371,11 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
 - **Measured** (Veldin, deterministic, the same build =1 / =0): the wide view's windows 27.9-29.7 -> **24.5-27.9 ms**, the heavy middle
   ones 52-62 -> 45-55; the cycle: the first half 3.4 -> 8.9, the second -> 15.3 (was 18.9), TV drawn 23.8 (27.3), now a swap wait of
   ~3 ms (the GPU) in it. Shot at the start against mode 1's: 674 pixels (the foliage's run-to-run noise, ~600). Novalis starts and runs.
+- **Mode 4 again (2026-11-04):** RAC1_WIIU_EARLYZ=0 made mode 4 the fastest (Veldin 16.7 normal / 22.2-26.9 wide, Kerwan 24-27 against
+  26-29.6), but the tower band's bright spot is intermittent: frame-300 shots of mode 4 show it in 2 of 6 runs (with and without the early
+  depth test), modes 1 / 3 in none of 5. Not the default: an intermittent wrong-geometry or wrong-texture case of instanced draws.
+- **Intermittent artifacts in every mode:** repeated deterministic runs (game thread off) show, now and then and at different places,
+  dark spots where the bars meet the pipes and a green-black streak on the ground near Ratchet's arm (mode 1 too, and the per-draw path:
+  smudges) - a run-to-run difference, so GPU-side timing (stale data read?), not the merge. To find: rep.sh / repcmp.py in the bench
+  scripts compare runs shot by shot (the smoke's randomness also differs).
 
