@@ -1572,22 +1572,41 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
         float m[16];
         mrp_world_view_proj(m);
         double area = 0.0, zsum = 0.0;
+        float box[4] = {2.0f, 2.0f, -2.0f, -2.0f};  // (the clip square's rectangle its triangles cover, cut at the eye's plane)
+        auto widen = [&](double x, double y) {
+            box[0] = std::min(box[0], static_cast<float>(std::clamp(x, -1.5, 1.5)));
+            box[1] = std::min(box[1], static_cast<float>(std::clamp(y, -1.5, 1.5)));
+            box[2] = std::max(box[2], static_cast<float>(std::clamp(x, -1.5, 1.5)));
+            box[3] = std::max(box[3], static_cast<float>(std::clamp(y, -1.5, 1.5)));
+        };
         for (const auto& T : tris) {
             glm::dvec2 q[3];
-            bool front = true;
-            for (int k = 0; k < 3 && front; ++k) {
+            glm::dvec3 c[3];  // (clip x, y, w)
+            int nfront = 0;
+            for (int k = 0; k < 3; ++k) {
                 const uint32_t i = T[static_cast<size_t>(k)];
                 const double x = pre[i].wp[0], y = pre[i].wp[1], z = std::isfinite(still_z[i]) ? still_z[i] : pre[i].wp[2];
-                const double cx = m[0] * x + m[4] * y + m[8] * z + m[12], cy = m[1] * x + m[5] * y + m[9] * z + m[13];
-                const double cw = m[3] * x + m[7] * y + m[11] * z + m[15];
-                front = cw > 0.1;
-                if (front) q[k] = glm::clamp(glm::dvec2(cx / cw, cy / cw), glm::dvec2(-1.5), glm::dvec2(1.5));
+                c[k] = glm::dvec3(m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[3] * x + m[7] * y + m[11] * z + m[15]);
+                if (c[k].z > 0.1) {
+                    q[k] = glm::clamp(glm::dvec2(c[k].x / c[k].z, c[k].y / c[k].z), glm::dvec2(-1.5), glm::dvec2(1.5));
+                    ++nfront;
+                }
             }
-            if (!front) continue;
+            if (nfront == 0) continue;
+            for (int k = 0; k < 3; ++k) {  // (the rectangle: the points in front, and where the edges cross w = 0.1)
+                const glm::dvec3 &A = c[k], &B = c[(k + 1) % 3];
+                if (A.z > 0.1) widen(A.x / A.z, A.y / A.z);
+                if ((A.z > 0.1) != (B.z > 0.1)) {
+                    const double t = (0.1 - A.z) / (B.z - A.z);
+                    const glm::dvec3 P = A + (B - A) * t;
+                    widen(P.x / 0.1, P.y / 0.1);
+                }
+            }
+            if (nfront < 3) continue;  // (the share of the view: the triangles wholly in front, as before)
             area += 0.5 * std::fabs((q[1].x - q[0].x) * (q[2].y - q[0].y) - (q[2].x - q[0].x) * (q[1].y - q[0].y));
         }
         for (uint32_t i = 0; i < b.n; ++i) zsum += std::isfinite(still_z[i]) ? still_z[i] : pre[i].wp[2];
-        mrp_reflect_note_water(still_flat ? still_z[0] : static_cast<float>(zsum / std::max<uint32_t>(b.n, 1u)), static_cast<float>(area), still_flat);
+        mrp_reflect_note_water(still_flat ? still_z[0] : static_cast<float>(zsum / std::max<uint32_t>(b.n, 1u)), static_cast<float>(area), still_flat, box);
     }
     enum : uint8_t { kNone = 0, kStrip = 1, kFan = 2 };
     thread_local std::vector<uint8_t> how;

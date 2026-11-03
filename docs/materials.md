@@ -259,7 +259,7 @@ The code: `src/game/render/mrp_reflect.cpp`, the shading in `sm_water_refl` (`mr
 
 | Value | The reflection |
 |---|---|
-| Low | a cube map of the sky and the shores (no mobys: nothing that moves), stable |
+| Low | cube maps from fixed probes, one per zone of the level and body of water, of the sky and the far scenery (no mobys: nothing that moves); they never move on their own |
 | Medium | the planar view: the frame's world, sky and mobys mirrored about the water - Ratchet reflected, moving with him -, the cube map where the planar view has nothing |
 
 No High: it is kept for a ray-traced mode. The presets: Low in Low, Medium in Medium and High ([Settings](settings.md#presets)).
@@ -272,18 +272,51 @@ the camera is above it: the frame is drawn again into a target of half the 3D's 
 plane z = h (the flat height with the largest share of the view; one plane a frame), cut at the water (a clip plane 0.02 below it:
 the posts' feet meet their reflection). It is the shadow pass's way (`sh_clip`): the world point is taken back from the view's clip
 coordinates and drawn through another matrix, `uShPass` 2 (the sky's directions 3, drawn at infinity), so the same batches - tfrag,
-tie, shrub, the sky and the mobys, with the modern lighting, its sun shadows, point lights and emissive surfaces, lit as seen from the
-mirrored eye - are drawn again without being made again (`mrp_world_draw_reflect`, `mrp_moby_draw_reflect`; no materials, no grass
-shells in it). The water reads it at its own pixel - the mirror makes the reflection of a point of the plane fall on that point's own
+tie, shrub, the sky and the mobys - are drawn again without being made again (`mrp_world_draw_reflect`, `mrp_moby_draw_reflect`; no
+materials, no grass shells in it). Lighter since 2026-11-03 (Daino: Medium "very nice, but a bit heavy"), at the same look:
+- it is drawn unlit (the game's own colours, no modern lighting: blurred in the water the two could not be told apart at Rilgar's
+  harbour, Pokitaru or Rilgar's dock; the shadows and point lights alone cost nothing measurable there, the lighting as a whole a
+  quarter of the stage);
+- only the rectangle of the view the plane's water covers (its batches' triangles, cut at the eye's plane, this frame's and the frame
+  before's, 0.12 of the view wider) is drawn - the projection cropped to it, the rest of the target left empty; about 40 % of the view
+  at Rilgar's harbour and Pokitaru's dock;
+- the ties' and shrubs' instances outside that cropped mirrored view, or wholly under the water, are left out (each instance's world
+  box: its packets' templates' vertex boxes through its rows; the same culling for the probes' faces) - a quarter to a third of their
+  draws.
+Each of these pictures is the same as before to the pixel except the lighting (`RAC1_REFLECT_CULL=0` draws the whole view and every
+instance, to compare). The water reads the planar view as a premultiplied picture (its empty texels weigh in as nothing). The water reads it at its own pixel - the mirror makes the reflection of a point of the plane fall on that point's own
 pixel - moved by the ripples (a gentler slope than the glint's: the finer trains glittered over the reflected lights), less far away,
 over six taps of the half-size picture. Where the water does not lie at the plane (another body, a stream's slope: over 0.08 to 0.35
 units off it, or a face not flat) or the planar view drew nothing there, the cube map.
 
-**The cube map (Low, and Medium's fallback).** Six faces of 256 x 256 (a 2D array, `sm_refl_cube` picks the face), drawn from the
-camera (at least a unit above the water), the world above the water and the sky, no mobys: at the first frame the water is seen, and
-again over itself when the view has turned more than 40 degrees or moved more than 25 units (4 up or down) since: the game's view holds
-only what it sees, the rest of the faces keeps what earlier views left there (alpha 0 where none did: the level's sky colour, `sky` in
-its file). Started anew at a new level or another body of water (2 units away). Between redraws it does not change.
+**The cube maps (Low, and Medium's fallback): fixed probes.** Until 2026-11-03 the cube map was drawn from the camera and drawn
+again over itself as the view turned or moved. Daino at Rilgar's dock by the harbour (the yellow sign post beside Ratchet, looking out):
+"not bad on its own, but it moves and is built wrong" - a cube map seen from the camera holds the post a few units away, and the water
+reads it as if it were as far as the sky: the yellow post lay on the water far out, left of the post itself; and each new drawing, from
+another place, moved the whole reflection at once. Now:
+
+- **Where a probe is: the level's own grid, not the camera.** The ground plan is cut into zones of 128 x 128 units (the world's
+  coordinates: zone `floor(x / 128)`, `floor(y / 128)`), and each body of water is its held-still height (`build_vu7`'s notes, the flat
+  water covering the most of the view, as the planar view's plane). A probe sits at the middle of its zone, 6 units above that height.
+  The zone the camera is in picks the probe (kept until the camera is 16 units past the zone's edge: no back and forth on a border; a
+  body 3 units higher or lower is another probe). Eight probes are kept (the least recently used one is made anew), so walking back into
+  a zone draws nothing again; a new level starts with none.
+- **What a probe holds: the far scenery.** Each face is drawn with its near plane 48 units out, so nothing within a cube of 48 units
+  around the probe is in it - posts, crates, the dock, Ratchet's surroundings; no mobys. The sky has six faces of its own (the sky
+  lies at no distance: one for every probe), read along the reflected ray itself.
+- **When it is drawn: once, then filled in, never drawn over.** A probe is made the first time its zone is the camera's (the world
+  above its water, as the frame holds it). The game's view holds only what it sees, so when the view has turned more than 40 degrees or
+  moved more than 25 units since the probe's last drawing (20 frames apart at least) the frame's world is drawn into it again with its
+  depth kept and the new depth pushed 3 % further back: it lands only where the probe held nothing (or something farther), so what is
+  there never changes - the reflection does not move by itself; it can only gain what was not seen yet. The sky's faces take the
+  frame's sky at the same moments.
+- **How the water reads it** (`sm_refl_probe`, `sm_refl_cube`): the reflected ray from the water's point is met with a sphere of 160
+  units around the probe, and the probe is read toward that point - the scenery is taken as lying at that distance, so it stays in its
+  place on the water as the camera moves, instead of following the camera. Where the probe has nothing, the sky's faces; where they have
+  nothing, the level's sky colour (`sky` in its file), as before.
+
+Cost: nothing a frame (the stage's 0.01 to 0.02 ms: picking the probe); a frame that makes or fills in a probe draws the world five or
+six times at 256 x 256 (a few ms, once). Its 54 faces of 256 x 256 (eight probes' and the sky's), colour and depth: 27 MB of video memory.
 
 **What the game's culling leaves out.** The game culls the world, the sky and the mobys by its own camera: the mirrored view can only
 draw what the frame holds. Measured with `RAC1_REFLECT_DEBUG=1` (the water green where the planar view gave it, red where the planar
@@ -340,10 +373,41 @@ so Medium costs about what the SSR did and Low less. A frame that draws the cube
 `RAC1_RAMHASH` through Novalis, Rilgar, Pokitaru and Hoven with Surface Detail High, Low and Medium, OpenGL and Vulkan: the same
 hashes as the binary before.
 
+**Medium made lighter (2026-11-03).** Where the planar view's time went, Vulkan 5120 x 1440 (the stage's mean, ms; each part left
+out in turn): at Rilgar's harbour of 1.15, the ties and shrubs 0.69, the mobys 0.16, the sky 0.08, the tfrags almost nothing, the sun's
+shadows and the point lights nothing measurable; at Pokitaru's dock of 0.63, the ties and shrubs 0.25, the sky 0.23, the mobys 0.07.
+Half the pixels again (1/4) took 0.41 off at Rilgar, so about half is per pixel. Each change, Vulkan 5120 x 1440:
+
+| Change | Rilgar's harbour | Pokitaru's dock |
+|---|---|---|
+| before | 1.15 | 0.62 |
+| the water's rectangle alone and the instances outside it or under the water left out (the same picture) | 1.11 | 0.58 |
+| drawn unlit | 0.85 | 0.48 |
+| (not done: the planar view at 1/3 - the debug menu's Enhancements tab, `RAC1_REFLECT_SCALE=3`; the same look at Rilgar's dock and harbour) | 0.68 | |
+
+The sky was not taken out of the planar view (read from the probes' sky faces instead it changed Pokitaru's near water). Before
+(2aea13d) and after, the stage and the frame's GPU time (the profiler's mean over 120 frames; another program used the GPU at times
+during these runs, so the frame's time is noisy):
+
+| | Medium: the stage | Medium: GPU busy | Low: the stage | Low: GPU busy |
+|---|---|---|---|---|
+| Rilgar's harbour, Vulkan 5120 x 1440 | 1.15 -> 0.85 (-26 %) | 7.74 -> 7.62 | 0.02 -> 0.00 | 6.64 -> 6.74 |
+| Rilgar's harbour, Vulkan 1920 x 1080 | 0.70 -> 0.52 (-25 %) | 3.87 -> 3.57 | 0.01 -> 0.00 | 3.37 -> 3.29 |
+| Rilgar's harbour, OpenGL 5120 x 1440 | 1.35 -> 0.99 (-27 %) | 9.25 -> 10.84 | 0.02 -> 0.01 | 9.38 -> 7.52 |
+| Rilgar's harbour, OpenGL 1920 x 1080 | 0.73 -> 0.56 (-24 %) | 4.23 -> 4.08 | 0.02 -> 0.01 | 4.88 -> 4.91 |
+| Pokitaru's dock, Vulkan 5120 x 1440 | 0.65 -> 0.48 (-26 %) | 6.47 -> 6.29 | 0.02 -> 0.00 | 5.84 -> 5.89 |
+| Pokitaru's dock, Vulkan 1920 x 1080 | 0.28 -> 0.28 | 3.09 -> 3.76 | 0.01 -> 0.00 | 3.07 -> 3.42 |
+| Pokitaru's dock, OpenGL 5120 x 1440 | 1.25 -> 0.96 (-23 %) | 8.47 -> 8.25 | 0.02 -> 0.05 | 7.76 -> 7.81 |
+| Pokitaru's dock, OpenGL 1920 x 1080 | 0.65 -> 0.49 (-25 %) | 4.73 -> 5.07 | 0.01 -> 0.01 | 3.44 -> 3.89 |
+
+A quarter off, not the third asked: what is left is mostly the visible ties' own drawing at half resolution.
+
 **Limits.** One plane a frame (the flat water covering the most of the view; other bodies at other heights get the cube map); no
 reflection of the effects and particles (drawn after it) or of the water itself; a stream or a sloping sea (Novalis's stream, its
-waterfalls) gets the cube map; the cube map is the camera's view of things, not the water's (near shores are off by the camera's
-height); under the water, the cube map.
+waterfalls) gets the cube map; the probes hold the far scenery alone (a shore within 48 units of a probe is not in it: on Low the water
+near it shows the sky there) and read it as if it lay 160 units away (nearer or farther scenery sits a little off on the water); a
+probe gains what the game's view had not seen as the view turns (the water there turns from the sky to that scenery once); passing
+into another zone changes the probe at once; under the water, the cube map. The planar view is unlit.
 
 ## Grass
 

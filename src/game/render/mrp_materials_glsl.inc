@@ -211,9 +211,9 @@
     "layout(binding = 23) uniform sampler2DArray uReflCube;\n"                                                                                            \
     "#endif\n"                                                                                                                                            \
     "vec3 sm_refl_dbg = vec3(-1.0);\n"                                                                                                                    \
-    "/* the cube map along R: its six faces are layers 0..5 (+x, -x, +y, -y, +z, -z), each drawn looking along its axis F with the up U (z; y\n"          \
+    "/* the cube map along R: its six faces are layers 0..5 (+x, -x, +y, -y, +z, -z; from `base`: the probe's first, uMat2[251].x, or the sky's, .y), each drawn looking along its axis F with the up U (z; y\n"          \
     "   for the faces up and down) as glm::lookAt makes the view, through a square projection of 90 degrees; alpha 0 where no view drew */\n"             \
-    "vec4 sm_refl_cube(vec3 R) {\n"                                                                                                                       \
+    "vec4 sm_refl_cube(vec3 R, float base) {\n"                                                                                                                       \
     "    vec3 a = abs(R), F, U;\n"                                                                                                                        \
     "    float layer;\n"                                                                                                                                  \
     "    if (a.x >= a.y && a.x >= a.z) { F = vec3(sign(R.x), 0.0, 0.0); U = vec3(0.0, 0.0, 1.0); layer = R.x > 0.0 ? 0.0 : 1.0; }\n"                      \
@@ -221,8 +221,17 @@
     "    else { F = vec3(0.0, 0.0, sign(R.z)); U = vec3(0.0, 1.0, 0.0); layer = R.z > 0.0 ? 4.0 : 5.0; }\n"                                               \
     "    vec3 Rt = normalize(cross(F, U)), Up = cross(Rt, F);\n"                                                                                          \
     "    vec2 uv = vec2(dot(R, Rt), dot(R, Up)) / max(dot(R, F), 1e-4) * 0.5 + 0.5;\n"                                                                    \
-    "    return textureLod(uReflCube, vec3(clamp(uv, vec2(0.0), vec2(1.0)), layer), 0.0);\n"                                                              \
+    "    return textureLod(uReflCube, vec3(clamp(uv, vec2(0.0), vec2(1.0)), layer + base), 0.0);\n"                                                              \
     "}\n"                                                                                                                                                 \
+    "/* the probe's direction for the ray from P along R: where it meets the sphere of uMat2[252].w around the probe (uMat2[252].xyz) -\n"   \
+    "   the scenery taken as lying there, so it stays put on the water as the camera moves; R itself outside the sphere */\n"                   \
+    "vec3 sm_refl_probe(vec3 P, vec3 R) {\n"                                                                                                     \
+    "    vec4 q = uMat2[252];\n"                                                                                                                 \
+    "    vec3 o = P - q.xyz;\n"                                                                                                                  \
+    "    float b = dot(o, R), c = dot(o, o) - q.w * q.w;\n"                                                                                      \
+    "    if (q.w <= 0.0 || c >= 0.0) return R;\n"                                                                                               \
+    "    return o + (sqrt(b * b - c) - b) * R;\n"                                                                                               \
+    "}\n"                                                                                                                                       \
     "/* the water's reflection: `miss` (the level's sky colour) where the cube map has nothing; on Medium the planar view where the water lies\n"         \
     "   at its plane (faded out over a few tenths of a unit off it, and where the surface is not flat - a stream's slope), read at the pixel's\n"         \
     "   own place moved by the ripples (Nw, a gentle slope, against the face's N: less far away), over a few of its texels (the ripples moving the read over the\n"        \
@@ -233,8 +242,10 @@
     "    bool dbg = r.x > 7.5, raw = r.x > 15.5;\n"                                                                                                       \
     "    float mode = raw ? r.x - 16.0 : dbg ? r.x - 8.0 : r.x;\n"                                                                                        \
     "    vec3 V = normalize(uShCam - P);\n"                                                                                                               \
-    "    vec4 c = r.w > 0.5 ? sm_refl_cube(reflect(-V, normalize(mix(N, Nw, 0.4)))) : vec4(0.0);\n"                                                       \
-    "    vec3 env = mix(miss, c.rgb, c.a);\n"                                                                                                             \
+    "    vec3 Rc = reflect(-V, normalize(mix(N, Nw, 0.4)));\n"                                                                                    \
+    "    vec4 c = r.w > 0.5 ? sm_refl_cube(sm_refl_probe(P, Rc), uMat2[251].x) : vec4(0.0);\n"                                                     \
+    "    vec4 sky = r.w > 0.5 && uMat2[251].y >= 0.0 ? sm_refl_cube(Rc, uMat2[251].y) : vec4(0.0);  /* (the sky's own faces: at no distance) */\n" \
+    "    vec3 env = mix(mix(miss, sky.rgb, sky.a), c.rgb, c.a);\n"                                                                                                             \
     "    float k = 0.0;\n"                                                                                                                                \
     "    vec4 p = vec4(0.0);\n"                                                                                                                           \
     "    if (mode > 1.5 && r.z > 0.5) {\n"                                                                                                                \
@@ -251,8 +262,8 @@
     "    }\n"                                                                                                                                             \
     "    /* (testing: green the planar view, red the planar view without anything there, blue the cube map, black neither - the sky colour;\n"            \
     "       or the reflection alone) */\n"                                                                                                                \
-    "    if (dbg) sm_refl_dbg = raw ? mix(env, p.rgb, k * p.a) : mode > 1.5 ? vec3(k * (1.0 - p.a), k * p.a, (1.0 - k) * c.a) : vec3(0.0, 0.0, c.a);\n"   \
-    "    return mix(env, p.rgb, k * p.a);\n"                                                                                                              \
+    "    if (dbg) sm_refl_dbg = raw ? env * (1.0 - k * p.a) + k * p.rgb : mode > 1.5 ? vec3(k * (1.0 - p.a), k * p.a, (1.0 - k) * c.a) : vec3(0.0, 0.0, c.a);\n"   \
+    "    return env * (1.0 - k * p.a) + k * p.rgb;  /* (its taps over the empty texels - alpha 0, black - weigh in as nothing: no dark rim) */\n"                                                                                                              \
     "}\n"                                                                                                                                                 \
     "/* High: lava's heat shimmer - the last frame's picture around the pixel, displaced by a rising noise */\n"                                         \
     "vec3 sm_shimmer(vec3 c, vec3 P, float t) {\n"                                                                                                       \

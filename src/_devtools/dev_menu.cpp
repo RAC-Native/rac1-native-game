@@ -24,6 +24,7 @@
 #include <game/render/mrp_lighting.h>
 #include <game/render/mrp_particles.h>
 #include <game/enhance/graphics.h>
+#include <game/render/mrp_reflect.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/mrp_shadows.h>
@@ -1374,6 +1375,21 @@ void tab_enhancements() {
     ImGui::SeparatorText("Surfaces");
     combo("Surface Detail (materials)##en", &g_surface_detail, olh, 3);
     in_world();
+    {
+        static const char* names[] = {"Off", "Low", "Medium"};
+        int v = std::clamp(g_water_reflections, 0, 2);
+        if (combo("Water reflections##en", &v, names, 3)) g_water_reflections = v;
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Low: fixed cube maps of the sky and the far scenery; Medium: the planar view (the cube maps where it has nothing).\n"
+                              "With Surface Detail on. Off is for comparing here: the Graphics page has Low and Medium, so saved as Low.");
+        ms(prof::kWaterRefl);
+        if (g_water_reflections >= 2) {
+            static const char* scales[] = {"1/2 (default)", "1/3", "1/4"};
+            int sv = std::clamp(g_reflect_scale - 2, 0, 2);
+            if (combo("Planar view's resolution##en", &sv, scales, 3)) g_reflect_scale = sv + 2;
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Medium's mirrored view, a share of the 3D's size (this run only, not saved)");
+        }
+    }
     {
         bool on = g_emissive != 0;
         if (ImGui::Checkbox("Emissive surfaces##en", &on)) g_emissive = on ? 1 : 0;

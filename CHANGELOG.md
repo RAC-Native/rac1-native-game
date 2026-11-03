@@ -62,10 +62,17 @@ What changed in each release. Releases are source only: you build the game with 
   pad, the basins, the cave's water columns) get Surface Detail's water. Lava and quicksand get a slow relief with Surface Detail.
 - Water Reflections (Options > Graphics, Low or Medium; Low in the preset Low, Medium in Medium and High): Surface Detail's water no
   longer mirrors the screen's last picture (pretty standing still, broken as soon as anything moved: a hole under Ratchet, worst in
-  a jump, flashing - Daino at Rilgar's harbour). Low: a cube map of the sky and the shores, drawn from the camera when the water is
-  first seen and again only when the view has turned or moved well away; Medium: the frame's world, sky and mobys drawn again
-  mirrored about the water's plane at half resolution, Ratchet reflected, the cube map where the water is not flat or the mirrored
-  view has nothing (the sky above the game's view, which it never draws). OpenGL and Vulkan; `water_reflections`, save item 57.
+  a jump, flashing - Daino at Rilgar's harbour). Low: cube maps of the sky and the far scenery from fixed probes, one per zone of
+  the level (128 units) and body of water, never drawn over (filled in only where they hold nothing), read along the reflected ray met
+  with a sphere around the probe: nothing near (the yellow sign post on Rilgar's dock no longer lies on the water far out) and nothing
+  that moves on its own; Medium: the frame's world, sky and mobys drawn again mirrored about the water's plane at half resolution,
+  Ratchet reflected, the cube maps where the water is not flat or the mirrored view has nothing (the sky above the game's view, which
+  it never draws). OpenGL and Vulkan; `water_reflections`, save item 57.
+- Water Reflections Medium lighter at the same look: the mirrored view drawn unlit (the game's own colours), only over the rectangle
+  the water covers, and without the ties and shrubs outside it or under the water.
+- Debug menu, Enhancements: a Water reflections row (Off, Low, Medium) next to Surface Detail, live, with its cost; "Save as my
+  settings" and the preset combo take it (Off is saved as Low: the Graphics page has Low and Medium); under it, with Medium, the
+  planar view's resolution (1/2, 1/3, 1/4; this run only).
 - Grass (Options > Graphics, off by default): the ground tagged as grass gets a fine relief of blades (Low, no geometry) and a few very
   low layers of blades near the camera (High), in the texture's colours, bending with the wind and away from Ratchet. Seeded on Veldin,
   Novalis and Kerwan.

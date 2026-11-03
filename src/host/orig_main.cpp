@@ -13,7 +13,7 @@
 //   RAC1_LEVEL=N (testing: start on level N)  RAC1_GOTO=N@F[,N2@F2..] (testing: the game's level change to N at frame F,
 //   as the debug menu's Levels tab asks it; during the boot (RAC1_BOOT=1):
 //   its title left for level N, the debug menu's skip)
-//   RAC1_LANGUAGE=0|2|3|4|5 (testing: the language)  RAC1_HEADLESS=1  RAC1_FRAMES=N  RAC1_SIM_INPUT=forward|jump|dive|turn|attack|throw|hud|quick|fire|shoot|hold|holdwalk|look|start|menu:<keys>|title:<keys>|ship|shipskip|shipwalk|vendor|seq:<script> (sim_script.h)   (testing)
+//   RAC1_LANGUAGE=0|2|3|4|5 (testing: the language)  RAC1_HEADLESS=1  RAC1_FRAMES=N  RAC1_SIM_INPUT=forward|jump|dive|turn|attack|throw|hud|quick|fire|shoot|hold|holdwalk|look|start|menu:<keys>|title:<keys>|ship|shipskip|shipwalk|shipturn|vendor|seq:<script> (sim_script.h)   (testing)
 //   RAC1_AUDIO_DUMP=file.raw (the sound output, 48 kHz stereo s16; RAC1_AUDIO_CHANNELS=6 / 8: 5.1 / 7.1, interleaved)  RAC1_NO_AUDIO=1  RAC1_SND_TRACE=1
 // RAC1_FADES=original|fast (the screen fade shown frame by frame as on the PS2, or run in one host frame: the default)
 // RAC1_HOST_DELAY_MS=n, RAC1_STEPS=n, RAC1_AUDIO_DEVICE=1 (testing: each host frame n ms longer; n game frames
@@ -1916,7 +1916,10 @@ void pad_packet(GLFWwindow* win, uint64_t frame, int pre = -1) {
             // (game mode 2 before frame 1000); "shipskip": Start also skips every later cutscene, the movies and the level exit's story
             // (every game mode but 0 and 3)
             const int32_t md = lw(OV(0x0015f5c4));
-            const bool all = std::strcmp(sim, "shipskip") == 0 || std::strcmp(sim, "shipwalk") == 0;
+            const bool all = std::strcmp(sim, "shipskip") == 0 || std::strcmp(sim, "shipwalk") == 0 || std::strcmp(sim, "shipturn") == 0;
+            // "shipturn": shipskip, then from game frame 2340 the camera turns (the right stick at half) while Ratchet stands (testing: the
+            // water's reflections with the view turning)
+            if (std::strcmp(sim, "shipturn") == 0 && frame >= 2340 && md == 0) rx = 0.5f;
             // "shipwalk": shipskip, then from game frame 2340 Ratchet walks forward, turning a little, and jumps every 60 frames
             // (testing: the water's reflections with Ratchet moving past it)
             if (std::strcmp(sim, "shipwalk") == 0 && frame >= 2340 && md == 0) {

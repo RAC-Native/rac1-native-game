@@ -621,8 +621,8 @@ struct VkLighting {
     float cast_vp[16] = {};
     bool cast_opaque = false;
     VkDescriptorSet cast_ds = VK_NULL_HANDLE;
-    uint64_t refl_gen[4] = {};  // (Water Reflections' views: off, the sky, lit by each variant)
-    VkDescriptorSet refl_ds[4] = {};
+    uint64_t refl_gen[2] = {};  // (Water Reflections' views: the world, unlit; the sky)
+    VkDescriptorSet refl_ds[2] = {};
     int rec_vp[4] = {};  // (the viewport the receivers' sets were made for: the materials' uMat2[254])
 
     // AO & Sun Rays Vulkan state
@@ -4521,14 +4521,17 @@ void material_uniforms(MatUniforms& u) {
             break;
         }
     u.mat2[kEmissivePreviewSlot] = glm::vec4(wind, g_grass_distance, static_cast<float>(shells));
-    {  // Water Reflections (mrp_reflect.h): [253] the mode, the planar view's plane and readiness, [254] the 3D's rectangle drawn into now
+    {  // Water Reflections (mrp_reflect.h): [253] the mode, the planar view's plane and readiness, [254] the 3D's rectangle drawn into now,
+       // [252] the probe in use and its sphere, [251] its first layer
         int v[4] = {};
         if (vk::is_active()) vk::get_viewport(v);
         else glGetIntegerv(GL_VIEWPORT, v);
-        float a[4], b[4];
-        mrp_reflect_uniforms(v, a, b);
+        float a[4], b[4], c[4], d[4];
+        mrp_reflect_uniforms(v, a, b, c, d);
         u.mat2[253] = glm::vec4(a[0], a[1], a[2], a[3]);
         u.mat2[254] = glm::vec4(b[0], b[1], b[2], b[3]);
+        u.mat2[252] = glm::vec4(c[0], c[1], c[2], c[3]);
+        u.mat2[251] = glm::vec4(d[0], d[1], d[2], d[3]);
     }
     const bool ready = mat_ssr_ready();
     u.mat[0] = glm::vec4(any ? static_cast<float>(g_surface_detail) : 0.0f, static_cast<float>(g_mat_frames % 60000u) / 60.0f, g_rain ? 1.0f : 0.0f, ready ? 1.0f : 0.0f);
@@ -5844,7 +5847,9 @@ void refl_uniforms(const ShadowLocs& l) {
 
 // orig: (host) see mrp_lighting.h
 void mrp_lighting_bind_receiver(const ShadowLocs& l, bool sky) {
-    const bool on = mrp_lighting_active() && !sky;
+    // (Water Reflections' views drawn without the modern lighting - the game's own colours: blurred in the water it looked the same
+    // (Rilgar's harbour, Pokitaru), and a quarter of the planar view's cost - Daino, 2026-11-03: Medium "a bit heavy")
+    const bool on = mrp_lighting_active() && !sky && !g_refl.on;
     glUniform1i(l.pass, g_refl.on ? (sky ? 3 : 2) : 0);
     glUniform1i(l.on, on ? 1 : 0);
     bind_units(l);
@@ -6118,21 +6123,19 @@ void receiver_ubo(ShadowVkUbo& ubo, MatTable& table, bool lit_variant) {
     ubo.uSsrSky = mu.sky;
     std::memcpy(table.mat2, mu.mat2, sizeof table.mat2);
 }
-// orig: (host) Vulkan: Water Reflections' view while it draws (kind 0 the lighting off, 1 the sky, 2 / 3 lit: the base / the lighting's
-// variants): the view's own uniforms, its pass (2; the sky's directions 3), its plane and its eye
+// orig: (host) Vulkan: Water Reflections' view while it draws (kind 0 the lighting off - its views are drawn unlit -, 1 the sky): the
+// view's own uniforms, its pass (2; the sky's directions 3), its plane and its eye
 void refl_bind_vk(uint64_t pipe_layout, int kind) {
     const uint64_t gen = (vk::frame_number() << 40) ^ (g_refl.gen << 20) ^ (g_vk_sh.ubo_gen & 0xfffffu);
     if (g_vk_sh.refl_gen[kind] != gen || g_vk_sh.refl_ds[kind] == VK_NULL_HANDLE) {
         ShadowVkUbo ubo{};
-        static MatTable table;
-        if (kind >= 2) receiver_ubo(ubo, table, kind == 3);
         ubo.uShInvView = g_sh.inv_view;
         ubo.uShProj = g_sh.proj;
         ubo.uShLight = g_refl.light;
         ubo.uShCut = g_refl.cut;
         ubo.uShCam_Pass = glm::vec4(g_refl.cam, kind == 1 ? 3.0f : 2.0f);
-        ubo.uShSun_On = glm::vec4(g_sh.sun, kind >= 2 ? 1.0f : 0.0f);
-        g_vk_sh.refl_ds[kind] = build_lighting_vk_ds(ubo, kind >= 2 ? &table : nullptr, false);
+        ubo.uShSun_On = glm::vec4(g_sh.sun, 0.0f);
+        g_vk_sh.refl_ds[kind] = build_lighting_vk_ds(ubo, nullptr, false);
         g_vk_sh.refl_gen[kind] = gen;
     }
     vkCmdBindDescriptorSets(vk::cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS, reinterpret_cast<VkPipelineLayout>(pipe_layout), 1, 1,
@@ -6156,11 +6159,11 @@ void mrp_lighting_vk_bind_off(uint64_t pipe_layout) {
 }
 
 void mrp_lighting_vk_bind_receiver(uint64_t pipe_layout, bool sky, bool lit_variant) {
-    const bool on = mrp_lighting_active() && !sky;
     if (g_refl.on) {
-        refl_bind_vk(pipe_layout, sky ? 1 : !on ? 0 : lit_variant ? 3 : 2);
+        refl_bind_vk(pipe_layout, sky ? 1 : 0);  // (unlit: see mrp_lighting_bind_receiver)
         return;
     }
+    const bool on = mrp_lighting_active() && !sky;
     if (!on) {
         mrp_lighting_vk_bind_off(pipe_layout);
         return;

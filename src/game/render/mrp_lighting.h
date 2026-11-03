@@ -392,12 +392,17 @@ bool mrp_lighting_vk_ao_marking();
 // `sphere` (x, y, z, r) the mobys near a point light alone)
 void mrp_world_draw_casters(const float* light_vp, int view);
 // orig: (host) Water Reflections (mrp_reflect.h): the world and the mobys of the frame drawn again into the bound target, through the
-// view mrp_lighting_reflect_begin set (`casters`: the world's batches made for the shadow maps alone - outside the view - drawn too)
-void mrp_world_draw_reflect(bool casters);
+// view mrp_lighting_reflect_begin set (`casters`: the world's batches made for the shadow maps alone - outside the view - drawn too;
+// `with_sky` false: the sky left out; `with_world` false: the sky alone; `cull_vp` (column-major): the ties' and shrubs' instances
+// outside that view's frustum, or wholly under z = `cut_z`, left out)
+void mrp_world_draw_reflect(bool casters, bool with_sky = true, bool with_world = true, const float* cull_vp = nullptr, float cut_z = -1e30f);
+// orig: (host) Water Reflections: the GPU path's draws in its views so far, drawn [0] and left out [1]
+void mrp_world_reflect_counts(uint64_t out[2]);
 void mrp_moby_draw_reflect();
 // orig: (host) Water Reflections: while on, every receiver's and the sky's uniforms (OpenGL, Vulkan) draw through `light_vp` (the
 // world point taken back from the view's clip coordinates, as the shadow pass does: uShPass 2, the sky's directions 3), cut by the
-// plane `cut` (x, y, z, w: kept where dot(p, xyz) <= w), lit as seen from `cam`; the reflections' own textures not bound
+// plane `cut` (x, y, z, w: kept where dot(p, xyz) <= w), `cam` its eye (the modern lighting off: the views are drawn unlit); the
+// reflections' own textures not bound
 void mrp_lighting_reflect_begin(const float* light_vp, const float cut[4], const float cam[3]);
 void mrp_lighting_reflect_end();
 // orig: (host) the frame's camera (the lighting's: false before its shadow pass ran)
