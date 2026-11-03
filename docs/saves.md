@@ -90,14 +90,16 @@ The format is small and forward compatible, all little-endian:
 | 6 | 2 | item count |
 | 8 | ... | items: a 2-byte id, a 2-byte size, then the data |
 
-Ids 1 to 5 and 10 are the Advanced page's rows kept with the saves (Quick Select, Aiming, Movement, Fades, Buy All Ammo;
-Skip Cutscenes 10). Ids 6 and 9 (Vibration, Adaptive Triggers) belong to the machine and are not written; 7 and 8 (the
-ship selector and Clank's movement, removed) are ignored when read. Ids 32 to 51 are the
-Graphics page's picture settings, the New Game mode, the lighting rows, Texture Detail, Shadow Strength (45), AO Intensity (47), HUD (48), Sun Rays (49: Off, Low, Medium, High), Ambient Particles (50: Off, Low, High) and Surface Detail (51: Off, Low, High)
-(`graphics_save_items` in `graphics.cpp`; id 44, the Overscan row removed after 0.4, is no longer written and is ignored when read;
-id 46, Sun Rays until 0.4.x - Off, Low, High -, is no longer written and is read as Off, Medium, High). Grass is 54 (52, Water until the row was
-removed, is no longer written and is ignored when read; it stays reserved); the Graphics switch is 55 (0 Original, 1 Enhanced) and the Lighting row 56 (0 Low .. 2 High). Id 38, the Lighting row before the
-switch (0 Original, 1..3 Low..High), is still written that way for older versions and read as Graphics Original (Lighting High) or
-Enhanced with that Lighting when 55 and 56 are missing (see [Settings](settings.md#before-the-switch-the-preferences-and-the-saves)). A reader skips ids it does not know and keeps its current value for ids that are
-missing, so older and newer versions read each other's files. A save without a `.pc` file keeps the
-settings as they are.
+Ids 1 to 5 and 10 are the pause menu's Advanced rows kept with the saves (Quick Select, Aiming, Movement, Fades, Buy All
+Ammo; Skip Cutscenes 10); id 37 is the New Game mode (1 Original, 2 Modern; an older save's 3, Experimental, is read as
+Modern). Ids 6 and 9 (Vibration, Adaptive Triggers) belong to the machine and are not written; 7 and 8 (the ship selector
+and Clank's movement, removed) and 11 (the Voice row, now on the Language page) are ignored when read; 12 (Cut Content,
+a global setting of the main menu) is never written.
+
+Ids 32 to 56 but 37 held the Display and Graphics pages' settings (render resolution, aspect ratio, fit, level of detail,
+field of view, the lighting rows, Texture Detail, Shadow Strength, AO Intensity, HUD, Sun Rays, Ambient Particles, Surface
+Detail, Grass, the Graphics switch) until 2026-11-02, when the graphics became the machine's settings: they are no longer
+written, and a save that has them loads with them read and ignored, the graphics left as they are. None of these ids is
+reused. A reader skips ids it does not know and keeps its current value for ids that are missing, so older and newer
+versions read each other's files (an older version loading a new save keeps its graphics, as there are none in it). A
+save without a `.pc` file keeps the settings as they are.

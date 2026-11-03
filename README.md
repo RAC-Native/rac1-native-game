@@ -202,7 +202,7 @@ For players:
 
 - [Setup](docs/setup.md): requirements, step by step, troubleshooting.
 - [The launcher](docs/launcher.md): the one-file installer, updater and save manager, for Windows and Linux.
-- [Settings](docs/settings.md): the Graphics, Controls and Advanced pages, the Original, Modern and Experimental modes,
+- [Settings](docs/settings.md): the Graphics, Controls and Advanced pages, New Game's Original / Modern choice and graphics preset,
   the update check, where settings are kept, the debug tools.
 - [Input](docs/input.md): controllers, keyboard and mouse, rebinding.
 - [Saves](docs/saves.md): where your saves are. Saving and loading work, but the save files may still change: they have not been checked by hand yet.

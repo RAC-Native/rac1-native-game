@@ -1,6 +1,9 @@
 # Advanced options
 
-Options > Advanced holds the settings that change how the game plays. They are different in kind
+Options > Advanced holds the settings that change how the game plays. The pause menu's page holds a playthrough's
+settings (the rows below, set first by New Game's Original / Modern and kept with the save); the main menu's holds only
+the global ones, settings of the whole game rather than of a playthrough: [Cut Content](#cut-content). They are different
+in kind
 from the PS2 compromises the port removes (see [Overview](overview.md#faithful-to-the-games-code-not-to-the-ps2s-limits)):
 
 - **A removed compromise** keeps the game's behaviour and state exactly the original's and only drops
@@ -22,11 +25,12 @@ The Advanced page has these rows:
 | Vibration | Off, Low, High | enhancement (kept as the machine's preference, not with the saves) |
 | Adaptive Triggers | Off, On | enhancement, shown only when the pad in use is a DualSense (kept as the machine's preference) |
 | Skip Cutscenes | Original, Always | enhancement |
-| Voice | Same as Text, English, French, German, Spanish, Italian, Japanese (with the Japanese data disc) | enhancement (kept as the machine's preference, not with the saves) |
 
 All of it is in `src/game/enhance/advanced.{h,cpp}` (Buy All Ammo's Vendor entry in
-`src/game/enhance/vendor_buy_all.{h,cpp}`, the Voice's sites in `src/game/enhance/voice_language.{h,cpp}`). None of it is a port: every function there is annotated
-`// orig: (none) — enhancement`.
+`src/game/enhance/vendor_buy_all.{h,cpp}`). None of it is a port: every function there is annotated
+`// orig: (none) — enhancement`. The Voice row that was last on this page is now on the Language page, with the text
+language and the subtitles ([Settings](settings.md#language)); its line `voice_language` stays in the same
+preferences file.
 
 ## How the page is built
 
@@ -36,8 +40,11 @@ original's Camera page (0x1b5a60), its title and its "settings" widget (the widg
 rows are a name, the byte it sets and up to four value texts; Cross cycles the value) into a block
 of EE memory the game never uses (0xf0000 to 0xf2000, its texts at 0xfb000 to 0xfe000, inside the PS2 kernel's first megabyte, which
 the port does not use since its kernel is the host). It then writes its own rows and texts there and
-inserts Graphics, Controls and Advanced into the Options list before Quit Game. The main menu gets
-the same pages (`title_menu_page_start`). The game's text lookup (0x203ad8) asks `advanced_text`
+inserts Language (`language.cpp`, the same way: its block 0xfa200 to 0xfa600, its texts 0x7fc0 and up), Graphics,
+Controls and Advanced into the Options list before Quit Game; in the main menu the game's own Language entry opens our
+Language page instead of the game's list. The main menu gets
+the same pages (`title_menu_page_start`), but its Advanced page is built with the global rows only (a row's `global`
+flag in `SETTINGS_ROWS`), and its Options list gets the Advanced entry only when there is one (`advanced_main_page`). The game's text lookup (0x203ad8) asks `advanced_text`
 first for the page's own text ids (0x7f00 and up), in English, German, Spanish and Italian (French
 shows English for now).
 
@@ -56,21 +63,24 @@ port's fast fades). Left and right on a row step the value (`advanced_settings_d
   Vibration and Adaptive Triggers (the machine's pad).
 
 The ids in `save<N>.pc`: Quick Select 1, Aiming 2, Movement 3, Fades 4, Buy All Ammo 5, Skip Cutscenes 10 (Vibration 6,
-Adaptive Triggers 9 and Voice 11 have ids but are not written with the saves; 7 and 8 are removed rows, never reused).
+Adaptive Triggers 9 have ids but are not written with the saves; 7 and 8 are removed rows, and 11 was the Voice row,
+now on the Language page, never written with the saves; 12, Cut Content, is global and never written with the saves
+either: none reused).
 
-**The Voice row** has more values than the widget's four: its byte is a step byte with two values whose texts are both
-the row's value, made at each lookup from the choice (as the Graphics page's rows); when Cross or left / right step it,
-the choice moves on and the byte goes back to 0. The choice is kept as `voice_language same|en|fr|de|es|it|ja` in the
-preferences. What it changes is in [Settings](settings.md#voice); New Game's modes leave it as it is.
+**The Language page's rows** have more values than the widget's four: each byte is a step byte with two values whose
+texts are both the row's value, made at each lookup (as the Graphics page's rows); when Cross or left / right step it,
+the setting moves on and the byte goes back to 0. Voice is kept as `voice_language same|en|fr|de|es|it|ja`, Subtitles as
+`subtitles on|off` (only once chosen) in the preferences, the text language as the console's (`console.txt`). What they
+change is in [Settings](settings.md#language); New Game's modes leave them as they are.
 
 A preferences file or a `save<N>.pc` written by an earlier build may hold a setting that has since been
 removed (`ship` and `clank`, the ship selector and Clank's movement, ids 7 and 8): it loads, and those
 lines are ignored.
 
-**The New Game choice.** Picking "Modern mode" or "Experimental" at New Game turns Quick Select, Aiming
+**The New Game choice.** Picking "Modern" in New Game's first window turns Quick Select, Aiming
 (Modern), Movement (RAC 3), Buy All Ammo, Vibration (High), Skip Cutscenes (Always) and, when the pad in use is a
-DualSense, Adaptive Triggers on; "Original mode" turns them all off
-(`advanced_apply_mode`). Fades is left as it is. Every setting can be changed at any time
+DualSense, Adaptive Triggers on; "Original" turns them all off
+(`advanced_apply_mode`). Fades and the global rows are left as they are. Every setting can be changed at any time
 afterwards. The Controls page's mouse settings are the machine's and no mode changes them.
 
 **Linked settings.** Modern aiming is built on the strafe, so turning Aiming to Modern when Movement
@@ -94,7 +104,7 @@ gamepad answers what happens, in the spirit of *Ratchet & Clank 2* and *3*. Each
 with a crisp end: held at its strength for about half its length, then brought down to 0 in a few
 frames. The strong, low-frequency motor (the left one) takes impacts and explosions; the weak,
 high-frequency one (the right one) takes shots and ticks. Low is a little under half of High. Vibration
-is off by default and in Original mode; Modern and Experimental set it to High.
+is off by default and in Original mode; Modern sets it to High.
 
 | Event | Low motor | High motor | Length | Felt from its side (DualSense) |
 |---|---|---|---|---|
@@ -145,8 +155,8 @@ to a quarter turn), so in the centre both sides have the full strength and to on
 out. On the **other pads** the two motors are the low and the high frequencies, not left and right, so
 the pulses stay centred there.
 
-**Adaptive Triggers** (shown only when the pad in use is a DualSense; off by default; Modern and
-Experimental turn it on when a DualSense is in use) works with Aiming = Modern, where L2 aims and R2 fires,
+**Adaptive Triggers** (shown only when the pad in use is a DualSense; off by default; Modern
+turns it on when a DualSense is in use) works with Aiming = Modern, where L2 aims and R2 fires,
 in gameplay on foot:
 - L2: a soft resistance from a quarter of its travel;
 - R2, by the item in hand: the Blaster, the Pyrocitor and the Tesla Claw a light resistance that rattles
@@ -454,6 +464,40 @@ reticle is not hidden by him. It is the Aiming byte's third value (2): everythin
 
 In the project's automated runs: top running speed 6.17 units/s (Original 5.7), 95 % of
 it in 12 frames (46), a stop in 8 frames (29), lift-off 3 frames after the press (7).
+
+## Cut Content
+
+The main menu's Advanced page has one row, **Cut Content: Off / On** (off by default). It is a global setting: kept in
+the preferences only (`cut_content 0|1` in `advanced_options.txt`), never with a save, and New Game leaves it as it is.
+With it on, things the retail game carries on the disc but never shows come back. Each one's own code in the game is a
+stub, so its behaviour is reconstructed (`src/game/enhance/cut_content.{h,cpp}`, `// orig: (none)` functions chosen where
+the game calls the original's): with the row off, the faithful port runs, and the game's memory is the same frame by
+frame (RAC1_RAMHASH). The row is read when a level's mobys first update, right after its load: a change shows at the next
+level load. `RAC1_CUT_CONTENT=fred,...` turns single items on for testing ([Environment variables](env-vars.md)).
+
+| Item | Level | What comes back |
+|---|---|---|
+| `fred`: Kerwan's citizens "Fred 1 / 2 / 3" | Kerwan | classes 915, 916, 917, 14 placements in the streets, on stairs and in a tunnel (x 204 to 350, y 130 to 202) |
+
+**Kerwan's citizens.** Their shared update (L3:0x2dc310, `fred_update_l3`) measures the distance to Ratchet and the
+heading towards him against its own, throws both away and retires the moby on its first frame; the prototype build already
+has the stub. With the item on, a host update replaces it (`cut_content_fred_dispatch_l3`, registered at that address):
+the citizen stays, its sequence 0 is played in a loop, and within 15 units it turns to face Ratchet
+(`yaw_turn_damped`, the game's turn, slow). What was learnt bringing them back:
+
+- Each of the three models has one sequence of **one frame**: the rest pose, arms held out. They stand still in that
+  pose; the game's data has nothing else for them.
+- They have **no collision**: Ratchet dropped on each one's spot lands where he lands without them, so none of the 14
+  blocks a path, even those standing on a path, a stair or in the tunnel.
+- Their turn's spin is kept in the last word of their pvars (448 bytes of placement data no code of the game reads);
+  the state byte (+0x20) marks a citizen kept. No save data is touched: over a run through Novalis, Kerwan, Rilgar and
+  Batalia, the game's memory differs only from the citizens' first update on Kerwan, in Kerwan's level data and moby
+  pages; after the next level's load only pages of Kerwan's data the next level does not overwrite differ, and the game's
+  state (the hero, the items, the save's blocks) stays the same.
+
+Left out for now: Orxon's five Fred 1 (class 915 by Clank's start: the same retire stub, L10:0x2d7fe8, not a turning
+citizen as once thought - speculative), Eudora's Transport Ships (484: the beta's update would have to be ported), and
+the rest of the candidates in [Port inventory](port-inventory.md#what-the-development-repository-already-knew).
 
 ## Limits
 

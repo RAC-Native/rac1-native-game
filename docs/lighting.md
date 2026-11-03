@@ -1120,9 +1120,9 @@ cannot tell them apart), the teleporters (moby 1135, six textures, not yet looke
 
 All on Options > Graphics (`src/game/enhance/graphics.cpp`), under its first row **Graphics: Original / Enhanced**: Original
 (the default) is the original's lighting whatever the rows hold, Enhanced turns the module on with the rows below; a **Preset**
-row (Low, Medium, High) sets them all (see [Settings](settings.md#graphics)). They are kept in the graphics
-preferences and in each save's `save<N>.pc` (see [Settings](settings.md)). The New Game's Modern mode
-does not turn the lighting on; Experimental does (Graphics Enhanced, the preset High).
+row (Low, Medium, High) sets them all (see [Settings](settings.md#graphics)). They are the machine's settings, kept in the
+graphics preferences only (see [Settings](settings.md#where-settings-are-kept)). New Game's second window sets them: Current
+leaves them, Original turns the lighting off, Low / Medium / High turn it on at that preset.
 
 The defaults below are the rows' own (the preset High); with Graphics: Original none of them acts.
 

@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 372 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 373 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
 | [Debugging](#debugging-variables) | 282 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 69 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Automated testing](#automated-testing-variables) | 70 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -353,6 +353,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_BOLTS` | integer (decimal or 0x hex); unset = unchanged | Sets the bolt count at the item-giving frame (RAC1_GIVE_FRAME), for scripted runs. |
 | `RAC1_BOOT` | 0 or 1; default depends on the start mode (the game's boot sequence with intro and menu runs in a normal window, not in headless runs or with a level request) | 1 forces the full game boot (title, main menu, New Game) even headless; 0 skips it and starts directly on the level. |
 | `RAC1_CLOCK` | integer Unix time (decimal or 0x hex); default fixed 1700000000 in headless, real clock otherwise | Fixes the clock the game sees to this time so runs are reproducible. |
+| `RAC1_CUT_CONTENT` | comma-separated items (`fred`); `none` or empty = none; unset = the Cut Content row (main menu > Options > Advanced) | Brings back the listed cut content items whatever the row holds, for one run (`fred`: Kerwan's citizens, classes 915..917). Needs the settings kept in a headless run (`RAC1_ADVANCED=1`): with every enhancement off (the headless default, the oracle) nothing comes back. See [Advanced options](advanced.md#cut-content). |
 | `RAC1_DEVMENU_SHOT` | name of a debug-menu tab; unset = off | Opens the debug menu on the named tab even in a headless run, so a screenshot can capture it. |
 | `RAC1_DIE_AT` | game frame number; default off | At that game frame Ratchet is killed through the game's own death state. |
 | `RAC1_DJ_AT` | game frame number; default 216 | Only in the scripted "ship" input sequence: the frame at which the second double-jump press starts (a 12-frame hold). |
@@ -413,5 +414,5 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_VENDOR_OPEN` | button bitmask (decimal or 0x hex); default 0x10 (triangle) | With the RAC1_SIM_INPUT vendor script, the button press used to open the vendor screens (for example 0x20 for circle). |
 | `RAC1_VENDOR_TRACE` | integer n; default 0 (off) | Every n frames of the Vendor's screens prints their state, the cursor, the bolts, the price of Buy All Ammo's entry and each entry of the list (`ALL(<weapon>)` for Buy All Ammo's, each weapon with its ammo, its most and its price a round; `[vendor]`), to check a purchase from EE memory. |
 | `RAC1_VU_SELFCHECK` | any value = on; default off | Runs each fast VU1 port and the exact port side by side and reports on stderr when their results differ; a progress line every 5000 programs. |
-| `RAC1_VOICE_LANGUAGE` | `same`, `en`, `fr`, `de`, `es`, `it`, `ja`; unset = Options > Advanced > Voice (the same as the text in headless runs) | Sets the voice language apart from the text language (0x15ed88), also in headless runs; `ja` needs the Japanese data disc (setup `--data-iso`), else the voices stay the text's. See [Settings](settings.md#voice). |
+| `RAC1_VOICE_LANGUAGE` | `same`, `en`, `fr`, `de`, `es`, `it`, `ja`; unset = Options > Language > Voice (the same as the text in headless runs) | Sets the voice language apart from the text language (0x15ed88), also in headless runs; `ja` needs the Japanese data disc (setup `--data-iso`), else the voices stay the text's. See [Settings](settings.md#voice). |
 | `RAC1_WORLD_MRP_CHECK` | any value = on; default off | Verification mode for the modern world renderer: it compares the triangles it builds against the CPU reference and also disables the GPU fast paths. |

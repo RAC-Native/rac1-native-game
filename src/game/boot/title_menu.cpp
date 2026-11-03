@@ -181,6 +181,7 @@ void title_menu_update() {
             }
         }
         if (back) graphics_menu_back(cur, to, MOBYS);  // enhancement: leaving our pages, the parent's boxes
+        else graphics_menu_forward(cur, to, MOBYS);    // enhancement: New Game's second window, the boxes held
         const uint32_t shown = lwu(MS + 4);
         sw(MS, 1);
         sw(MS + 0x14, 0xc);

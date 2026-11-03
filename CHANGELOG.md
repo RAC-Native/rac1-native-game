@@ -6,9 +6,23 @@ What changed in each release. Releases are source only: you build the game with 
 ## Unreleased
 
 ### Controls and gameplay
-- Advanced > Voice (Same as Text, the default; English, French, German, Spanish, Italian; Japanese with the Japanese data
-  disc): the spoken language apart from the text's, for the dialogue, the scenes, the Vendor, the movies and Ratchet's
-  efforts (`voice_language` in the preferences, `RAC1_VOICE_LANGUAGE`; docs/settings.md, "Voice").
+- New Game: two windows in the game's style. The first, **Original / Modern**, sets the gameplay rows only (Modern: Quick
+  Select Pause, Aiming Modern, Movement RAC 3, Buy All Ammo, Vibration High, Adaptive Triggers, Skip Cutscenes Always;
+  Original: all off); the second, the **graphics preset** (Current, preselected; Original; Low; Medium; High), sets the
+  Graphics page only. The Display page is never touched. Experimental is gone: its saves load as Modern, graphics left alone.
+- Options > Advanced: the main menu's page holds only the global settings (none yet: no entry until there is one); the
+  gameplay rows are a playthrough's, on the pause menu's page and kept with the save.
+- Main menu > Options > Advanced > Cut Content (Off by default; global, kept in the preferences, read at a level's load):
+  Kerwan's citizens "Fred 1 / 2 / 3" (classes 915..917, 14 placements) stay instead of retiring on their first frame and
+  turn to face Ratchet near them (they hold their one-frame rest pose; no collision). `RAC1_CUT_CONTENT=fred` for testing
+  (docs/advanced.md, "Cut Content"). Port inventory: the Bolt Thief's "second behaviour", the Snagglebeast's unreferenced
+  draw, L18:0x2ea1f8, the oxygen element, Orxon's turning citizen and the unregistered item classes corrected.
+- Options > Language > Voice (Same as Text, the default; English, French, German, Spanish, Italian; Japanese with the
+  Japanese data disc): the spoken language apart from the text's, for the dialogue, the scenes, the Vendor, the movies
+  and Ratchet's efforts (`voice_language` in the preferences, `RAC1_VOICE_LANGUAGE`; docs/settings.md, "Voice").
+- Options > Language, in the main menu and the pause menu: Text (the game's language, main menu only, as the game's own
+  page), Voice and Subtitles as left / right rows; Subtitles can be set before New Game, is kept in the preferences and
+  put in every new or loaded game (docs/settings.md, "Language").
 - Mouse: a Direct mode, the new default (Options > Controls > Mouse Mode): the mouse turns the camera, and the aim while
   strafing or aiming, by an angle proportional to its movement (raw motion where the system has it), with no stick
   simulation, acceleration or speed cap; its own Aim Sensitivity while aiming; Stick keeps the earlier simulated right
@@ -36,6 +50,8 @@ What changed in each release. Releases are source only: you build the game with 
   with Homebrew's FFmpeg. The game state over a five-level run hashes the same as on Linux. See [Metal](docs/metal.md).
 
 ### Graphics
+- Options > Display and Graphics are the machine's settings: kept in the preferences only, set from the main menu and the
+  pause menu, never written to a save nor changed by loading one (older saves' picture and Graphics items are read and ignored).
 - Options > Display: Aspect Ratio and HUD step only over the values the display shows differently: 16:9 on a 16:9 screen is
   Fill Screen's picture (a 16:10 screen still has it, with bars), and a HUD as wide as the view or wider is Fit Screen's. 4:3 Original and Fill Screen /
   Fit Screen are always there, so a HUD narrower than the view can always be picked (16:9 or 21:9 on a 32:9 view, 4:3 on 16:9).

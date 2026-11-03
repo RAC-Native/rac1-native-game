@@ -163,6 +163,8 @@ add_library(rac1_game STATIC
     enhance/vendor_buy_all.cpp
     enhance/vibration.cpp
     enhance/voice_language.cpp
+    enhance/language.cpp
+    enhance/cut_content.cpp
     ovl/bomb_glove.cpp
     ovl/pyrocitor.cpp
     ovl/blaster.cpp

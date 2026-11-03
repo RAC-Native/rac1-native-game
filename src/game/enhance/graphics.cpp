@@ -20,11 +20,13 @@
 // once (the widget spreads them over its height): the widget is given a window of VISIBLE of them,
 // moved when up / down go past its ends (as the Controls page, controls.cpp).
 //
-// The popup is a copy of the pause menu's Options page (0x1b4950: its title, list, help label and
-// picture) with three entries, Original mode / Modern mode / Experimental, each with the original New Game entry's
-// action (4) and page: picking one runs New Game as the original does, after the mode is applied
-// (graphics_new_game_choice, a hook in the list's action 4). The main menu's New Game entry points
-// at the popup (action 3).
+// New Game opens two windows, each a copy of the pause menu's Options page (0x1b4950: its title, list, help label and
+// picture). The first, the mode: Original / Modern (the gameplay rows of the Advanced page, advanced_apply_mode), each
+// entry going to the second window (action 3). The second, the graphics preset: Current / Original / Low / Medium / High
+// (the Graphics page only; the Display page is never touched), each with the original New Game entry's action (4) and
+// page: picking one runs New Game as the original does, after the mode and the preset are applied
+// (graphics_new_game_choice, a hook in the list's action 4). The main menu's New Game entry points at the first window
+// (action 3).
 //
 // EE RAM block GFX (0xf2000..0xf8000), in the PS2 kernel's first megabyte as the Advanced block
 // (0xf0000..0xf2000): nothing of the game or the runtime lives there.
@@ -32,6 +34,7 @@
 
 #include <game/enhance/advanced.h>
 #include <game/enhance/controls.h>
+#include <game/enhance/language.h>
 #include <game/enhance/update_notice.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -65,6 +68,7 @@ constexpr uint32_t POP_ENTRIES = GFX + 0x100;  // the popup's list entries (0xc 
 constexpr uint32_t POP_HELP = GFX + 0x140;    // its help label's texts
 constexpr uint32_t POP_PICTURES = GFX + 0x160;  // its picture's images (sector, count)
 constexpr uint32_t ROOT_ENTRY = GFX + 0x180;  // the main menu's New Game entry, pointed at the popup
+constexpr uint32_t NG_ENTRY = GFX + 0x1a0;    // the game's own New Game entry, kept (..0x1b8)
 constexpr uint32_t PAGE = GFX + 0x200;        // the Graphics page (a copy of Camera's)
 constexpr uint32_t TITLE = GFX + 0x290;       // its title (a copy of Camera's label)
 constexpr uint32_t ROWS_WIDGET = GFX + 0x2e0;  // its settings widget (a copy of Camera's)
@@ -83,6 +87,15 @@ constexpr uint32_t DROWS_WIDGET = GFX + 0x9e0;
 constexpr uint32_t DHELP_WIDGET = GFX + 0xa30;
 constexpr uint32_t DROWS = GFX + 0xb00;
 constexpr uint32_t DROW_HELP = GFX + 0xc40;
+constexpr uint32_t POP2_PAGE = GFX + 0xd00;   // the New Game's second window, the graphics preset (a copy of the popup's page)
+constexpr uint32_t POP2_TITLE = GFX + 0xd90;
+constexpr uint32_t POP2_LIST = GFX + 0xde0;
+constexpr uint32_t POP2_LABEL = GFX + 0xe30;
+constexpr uint32_t POP2_PICTURE = GFX + 0xe80;
+// (the picture widget keeps state past the 0x50 bytes copied: up to +0x80 - entries right after it were overwritten)
+constexpr uint32_t POP2_ENTRIES = GFX + 0xf00;  // its list entries (5 and the end, 0xc each)
+constexpr uint32_t POP2_HELP = GFX + 0xf50;     // its help label's texts
+constexpr uint32_t POP2_PICTURES = GFX + 0xf70;  // its picture's images (..0xf98)
 constexpr uint32_t STRINGS = GFX + 0x1000;    // the texts, made at each lookup (0xa0 each; the Controls page from 0xf6000)
 constexpr uint32_t STRING_SIZE = 0x80;  // (0xa0 until the Water, Foliage and Grass rows: the longest text is under 0x60)
 constexpr int VISIBLE = 10;  // the rows the box shows at once
@@ -103,7 +116,7 @@ constexpr int32_t TEXT_NEW_GAME = 0x4f2a;        // the game's "New Game"
 
 // Our menu pictures (advanced.cpp makes them: sectors past the end of the disc)
 constexpr uint32_t PICTURE_SECTOR = 0xadf00000u;
-enum : uint32_t { PIC_ORIGINAL = 2, PIC_MODERN = 3, PIC_EXPERIMENTAL = 5 };  // (advanced.cpp's PIC_ ids)
+enum : uint32_t { PIC_GFX = 1, PIC_ORIGINAL = 2, PIC_MODERN = 3 };  // (advanced.cpp's PIC_ ids)
 
 // The settings
 // (S_GFX: Graphics, 0 Original, 1 Enhanced; S_PRESET: no value of its own, the rows' match with PRESETS; S_LIGHTING: 0 Low,
@@ -151,7 +164,8 @@ enum : int32_t {
     H_DISPLAY, H_MONITOR, H_WINDOW_SIZE, H_SCALE, H_ASPECT, H_FIT, H_LOD, H_FOV, H_VSYNC, H_CAP, H_LIGHTING, H_DYN_SHADOWS, H_SEC_LIGHTS, H_SHADOW_DIST, H_AO, H_MIPS, H_SHADOW_STR, H_SUN_RAYS, H_AO_STR, H_HUD, H_RENDERER, H_SURFACE, H_PARTICLES, H_GRASS, H_GFX, H_PRESET,
     T_WINDOW, T_FULLSCREEN, T_43, T_169, T_FILL, T_BARS, T_STRETCH, T_219, T_329, T_HUD_FIT,
     T_ORIGINAL, T_LOW, T_MEDIUM, T_HIGH, T_MAXIMUM, T_OFF, T_ON, T_UNLIMITED, T_SEC_GAME, T_SEC_ALL, T_FULL, T_ENHANCED, T_CUSTOM,
-    T_MODE_ORIGINAL, T_MODE_MODERN, T_MODE_EXPERIMENTAL, H_MODE_ORIGINAL, H_MODE_MODERN, H_MODE_EXPERIMENTAL,
+    T_MODE_ORIGINAL, T_MODE_MODERN, H_MODE_ORIGINAL, H_MODE_MODERN,
+    T_NG_CURRENT, T_NG_ORIGINAL, T_NG_LOW, T_NG_MEDIUM, T_NG_HIGH, H_NG_CURRENT, H_NG_ORIGINAL, H_NG_LOW, H_NG_MEDIUM, H_NG_HIGH,
     T_COUNT
 };
 // The rows' value texts (made from the values at each lookup): VALUE_FIRST + page * VISIBLE + slot (0x7e80..: free ids between
@@ -182,10 +196,15 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Sets every row below at once. Changing one of them shows Custom.",
      "Window", "Fullscreen", "4:3 Original", "16:9", "Fill Screen", "Black Bars", "Stretch", "21:9", "32:9", "Fit Screen",
      "Original", "Low", "Medium", "High", "Maximum", "Off", "On", "Unlimited", "Game's", "All", "Full", "Enhanced", "Custom",
-     "Original", "Modern", "Experimental",
-     "As on the PS2: 4:3, original detail and controls. All can be changed in Options.",
-     "Widescreen, more detail, modern aiming and movement. All can be changed in Options.",
-     "Modern plus Graphics Enhanced, High: shadows, lights, water. Experimental, heavy."},
+     "Original", "Modern",
+     "As on the PS2: the original controls, cutscenes and Vendor. Changed in the pause menu.",
+     "Quick select pause, modern aiming, RAC 3 movement, Buy All Ammo, cutscenes skipped.",
+     "Current", "Original", "Low", "Medium", "High",
+     "The Graphics page as it is now (Options > Graphics).",
+     "The PS2's picture: Graphics Original.",
+     "Our lighting and effects at the preset Low: the lightest.",
+     "Our lighting and effects at the preset Medium.",
+     "Our lighting and effects at the preset High: the heaviest."},
     {"Grafik", "Das Originalbild oder unsere Beleuchtung, Wasser und Effekte", "Anzeige", "Fenster, Bildformat, Details und Sicht der PC-Version",
      "Anzeigemodus", "Bildschirm", "Fenstergrosse", "Renderauflosung", "Seitenverhaltnis", "Bildanpassung", "Detailstufe", "Sichtfeld", "V-Sync", "Bildratenlimit", "Beleuchtung", "Dynamische Schatten", "Zusatzlichter", "Schattendistanz", "Umgebungsverdeckung", "Texturdetail", "Schattenstarke", "Sonnenstrahlen", "Verdeckungsstarke", "HUD", "Renderer", "Oberflachendetail", "Umgebungspartikel", "Gras", "Voreinstellung",
      "Im Fenster oder im Vollbild.", "Auf welchem Bildschirm das Fenster liegt.", "Die Grosse des Fensters (im Fenstermodus).", "Die Auflosung der 3D-Grafik, mal die des Bildschirms. Das HUD bleibt scharf.",
@@ -210,10 +229,15 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Setzt alle Zeilen darunter auf einmal. Eine Anderung zeigt Eigene.",
      "Fenster", "Vollbild", "4:3 Original", "16:9", "Fullen", "Balken", "Strecken", "21:9", "32:9", "Ganze Breite",
      "Original", "Niedrig", "Mittel", "Hoch", "Maximum", "Aus", "An", "Unbegrenzt", "Des Spiels", "Alle", "Voll", "Verbessert", "Eigene",
-     "Original", "Modern", "Experimentell",
-     "Wie auf der PS2: 4:3, Original-Details und -Steuerung. Alles in Optionen anderbar.",
-     "Breitbild, mehr Details, modernes Zielen und Bewegen. Alles in Optionen anderbar.",
-     "Modern plus Grafik Verbessert, Hoch: Schatten, Lichter, Wasser. Experimentell, aufwendig."},
+     "Original", "Modern",
+     "Wie auf der PS2: Original-Steuerung, -Szenen und -Handler. Im Pausemenu anderbar.",
+     "Schnellwahl-Pause, modernes Zielen, RAC-3-Bewegung, alle Munition, Szenen ubersprungen.",
+     "Aktuell", "Original", "Niedrig", "Mittel", "Hoch",
+     "Die Grafik-Seite, wie sie jetzt ist (Optionen > Grafik).",
+     "Das Bild der PS2: Grafik Original.",
+     "Unsere Beleuchtung und Effekte, Voreinstellung Niedrig: die leichteste.",
+     "Unsere Beleuchtung und Effekte, Voreinstellung Mittel.",
+     "Unsere Beleuchtung und Effekte, Voreinstellung Hoch: die aufwendigste."},
     {"Graficos", "La imagen original, o nuestra iluminacion, agua y efectos", "Pantalla", "Ventana, formato, detalle y vista de la version PC",
      "Modo de pantalla", "Monitor", "Tamano de ventana", "Resolucion 3D", "Relacion de aspecto", "Ajuste", "Nivel de detalle", "Campo de vision", "V-Sync", "Limite de FPS", "Iluminacion", "Sombras dinamicas", "Luces secundarias", "Distancia de sombras", "Oclusion ambiental", "Detalle de texturas", "Intensidad de sombras", "Rayos de sol", "Intensidad de oclusion", "HUD", "Renderizador", "Detalle de superficies", "Particulas ambientales", "Hierba", "Preajuste",
      "En una ventana o a pantalla completa.", "En que pantalla se abre la ventana.", "El tamano de la ventana (en modo ventana).", "La resolucion del 3D, por la de la pantalla. El HUD sigue nitido.",
@@ -238,10 +262,15 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Ajusta todas las filas de abajo a la vez. Cambiar una muestra Personal.",
      "Ventana", "Completa", "4:3 Original", "16:9", "Llenar", "Bandas", "Estirar", "21:9", "32:9", "Todo el ancho",
      "Original", "Bajo", "Medio", "Alto", "Maximo", "No", "Si", "Sin limite", "Del juego", "Todas", "Completo", "Mejorado", "Personal",
-     "Original", "Moderno", "Experimental",
-     "Como en PS2: 4:3, detalle y controles originales. Todo cambia en Opciones.",
-     "Panoramico, mas detalle, apuntado y movimiento modernos. Todo cambia en Opciones.",
-     "Moderno con Graficos Mejorado, Alto: sombras, luces, agua. Experimental, pesado."},
+     "Original", "Moderno",
+     "Como en PS2: controles, escenas y Vendedor originales. Cambia en el menu de pausa.",
+     "Pausa en seleccion, apuntado moderno, movimiento RAC 3, toda la municion, saltar escenas.",
+     "Actual", "Original", "Bajo", "Medio", "Alto",
+     "La pagina Graficos tal como esta ahora (Opciones > Graficos).",
+     "La imagen de PS2: Graficos Original.",
+     "Nuestra iluminacion y efectos, preajuste Bajo: el mas ligero.",
+     "Nuestra iluminacion y efectos, preajuste Medio.",
+     "Nuestra iluminacion y efectos, preajuste Alto: el mas pesado."},
     {"Grafica", "L'immagine originale, o la nostra illuminazione, acqua ed effetti", "Schermo", "Finestra, formato, dettaglio e visuale della versione PC",
      "Modalita schermo", "Monitor", "Finestra", "Risoluzione 3D", "Formato", "Adattamento", "Livello di dettaglio", "Campo visivo", "V-Sync", "Limite FPS", "Illuminazione", "Ombre dinamiche", "Luci secondarie", "Distanza ombre", "Occlusione ambientale", "Dettaglio texture", "Intensita ombre", "Raggi di sole", "Intensita occlusione", "HUD", "Renderer", "Dettaglio superfici", "Particelle ambientali", "Erba", "Preset",
      "In una finestra o a schermo intero.", "Su quale schermo va la finestra.", "La dimensione della finestra (in modalita finestra).", "La risoluzione del 3D, per quella dello schermo. L'HUD resta nitido.",
@@ -266,10 +295,15 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Imposta tutte le righe sotto in una volta. Cambiarne una mostra Personale.",
      "Finestra", "Intero", "4:3 Originale", "16:9", "Riempi", "Bande nere", "Stira", "21:9", "32:9", "Tutta la larghezza",
      "Originale", "Basso", "Medio", "Alto", "Massimo", "No", "Si", "Illimitato", "Del gioco", "Tutte", "Pieno", "Migliorata", "Personale",
-     "Originale", "Moderno", "Sperimentale",
-     "Come su PS2: 4:3, dettaglio e controlli originali. Tutto si cambia in Opzioni.",
-     "Panoramico, piu dettaglio, mira e movimento moderni. Tutto si cambia in Opzioni.",
-     "Moderno con Grafica Migliorata, Alto: ombre, luci, acqua. Sperimentale, pesante."},
+     "Originale", "Moderno",
+     "Come su PS2: controlli, filmati e Venditore originali. Si cambia nel menu di pausa.",
+     "Pausa nella scelta rapida, mira moderna, movimento RAC 3, tutte le munizioni, salta filmati.",
+     "Attuale", "Originale", "Basso", "Medio", "Alto",
+     "La pagina Grafica com'e ora (Opzioni > Grafica).",
+     "L'immagine della PS2: Grafica Originale.",
+     "La nostra illuminazione ed effetti, preset Basso: il piu leggero.",
+     "La nostra illuminazione ed effetti, preset Medio.",
+     "La nostra illuminazione ed effetti, preset Alto: il piu pesante."},
 };
 
 // The page's rows: the setting, its name, its help, the preferences' key
@@ -353,7 +387,6 @@ struct State {
     int stash[7] = {};
     int win_w = 960, win_h = 720;                      // the window mode's size
     bool host_fullscreen = false;
-    uint32_t mode = GAME_MODE_NONE;
     GraphicsDisplay display;
     uint32_t serial = 0;
     bool loaded = false, dirty = false;
@@ -611,7 +644,8 @@ bool prefs_read(const std::filesystem::path& path) {
         // ("foliage" and "water", the Foliage and Water rows' until they were removed: read like any other key and ignored)
         else if (std::strcmp(key, "grass") == 0 && a >= 0 && a < 3) gs_.value[S_GRASS] = a;
         // ("overscan", the Overscan row's until 0.4: read like any other key and ignored, the full frame always shown)
-        else if (std::strcmp(key, "mode") == 0 && a >= 0 && a <= 3) gs_.mode = static_cast<uint32_t>(a);
+        // ("mode", the New Game mode until it became a playthrough's, kept with the saves alone: read like any other key
+        // and ignored)
     }
     std::fclose(f);
     // the preferences of before the switch (no `graphics` key): their `lighting` (0 Original, 1..3 Low..High) is the switch and
@@ -666,12 +700,12 @@ void prefs_write() {
     {
         const int* v = gs_.value;
         static constexpr const char* kFormat =
-            "display %d\nmonitor %s\nwindow %d %d\nrender_scale %d\naspect %d\nfit %d\nlod %d\nfov %d\nvsync %d\nfps_cap %d\nlighting %d\ndynamic_shadows %d\nsecondary_lights %d\nshadow_distance %d\nambient_occlusion %d\ntexture_detail %d\nshadow_strength %d\nsun_rays_quality %d\nao_intensity %d\nambient_particles %d\nhud %d\nrenderer %s\nsurface_detail %d\ngrass %d\nmode %u\ngraphics %d\nlighting_quality %d\n";
+            "display %d\nmonitor %s\nwindow %d %d\nrender_scale %d\naspect %d\nfit %d\nlod %d\nfov %d\nvsync %d\nfps_cap %d\nlighting %d\ndynamic_shadows %d\nsecondary_lights %d\nshadow_distance %d\nambient_occlusion %d\ntexture_detail %d\nshadow_strength %d\nsun_rays_quality %d\nao_intensity %d\nambient_particles %d\nhud %d\nrenderer %s\nsurface_detail %d\ngrass %d\ngraphics %d\nlighting_quality %d\n";
         // (`lighting` as the versions before the switch read it: 0 Original, 1..3 Low..High)
         const int old_lighting = v[S_GFX] != 0 ? v[S_LIGHTING] + 1 : 0;
         auto format = [&](char* out, size_t n) {
             return std::snprintf(out, n, kFormat, v[S_DISPLAY], gs_.monitor_name.c_str(), gs_.win_w, gs_.win_h, SCALES[v[S_SCALE]], v[S_ASPECT], v[S_FIT], v[S_LOD], FOVS[v[S_FOV]], v[S_VSYNC], CAPS[v[S_CAP]], old_lighting, v[S_DYN_SHADOWS],
-                     v[S_SEC_LIGHTS], v[S_SHADOW_DIST], v[S_AO], v[S_MIPS], SHADOW_STRS[v[S_SHADOW_STR]], v[S_SUN_RAYS], AO_STRS[v[S_AO_STR]], v[S_PARTICLES], v[S_HUD], v[S_RENDERER] != 0 ? "vulkan" : "opengl", v[S_SURFACE], v[S_GRASS], gs_.mode,
+                     v[S_SEC_LIGHTS], v[S_SHADOW_DIST], v[S_AO], v[S_MIPS], SHADOW_STRS[v[S_SHADOW_STR]], v[S_SUN_RAYS], AO_STRS[v[S_AO_STR]], v[S_PARTICLES], v[S_HUD], v[S_RENDERER] != 0 ? "vulkan" : "opengl", v[S_SURFACE], v[S_GRASS],
                      v[S_GFX], v[S_LIGHTING]);
         };
         // (through a temporary file: a crash or a full disk never leaves the preferences half written)
@@ -686,7 +720,7 @@ void prefs_write() {
 
 void rows_write(int p);
 
-// orig: (none) — enhancement: a value changed by the page (or a mode, or a save): applied, the
+// orig: (none) — enhancement: a value changed by the page (or New Game's preset): applied, the
 // preferences to be written
 void changed() {
     if (gs_.value[S_MONITOR] >= 0 && static_cast<size_t>(gs_.value[S_MONITOR]) < gs_.monitors.size()) gs_.monitor_name = gs_.monitors[gs_.value[S_MONITOR]];  // (the row's choice kept by name)
@@ -1048,18 +1082,9 @@ void graphics_set_monitors(std::vector<std::string> names) {
 // orig: (none) — enhancement (graphics.h)
 void graphics_set_vulkan(bool vulkan) { gs_.display.vulkan = vulkan; }
 
-// orig: (none) — enhancement (graphics.h)
-void graphics_menu_back(uint32_t cur, uint32_t to, uint32_t mobys) {
-    if (cur == 0 || to == 0) return;
-    // (the Updates button in slot 5 of the root page, when it is there: not with the enhancements off, where slot 5 is
-    // the original's and the game's own code alone moves its moby)
-    if (to == ROOT_PAGE && lwu(ROOT_PAGE + 0x44 + 5 * 4) == updates_root_widget() && lwu(mobys + 5 * 4) != 0) {
-        const uint32_t m5 = lwu(mobys + 5 * 4);
-        const uint32_t seq5 = lwu(lwu(m5 + 0x24) + 0x48 + 0x13 * 4);
-        moby_set_anim(m5, 0x13, static_cast<int32_t>(lbu(seq5 + 0x10)) - 1);
-        swc1(m5 + 0x58, -1.0f);
-    }
-    if (cur != PAGE && cur != DPAGE && cur != POP_PAGE && cur != advanced_page() && cur != controls_page() && cur != update_notice_page() && cur != updates_page()) return;
+namespace {
+// orig: (none) — enhancement: the 14 menu mobys `mobys` put on page `to`'s boxes at once (graphics_menu_back / _forward)
+void boxes_hold(uint32_t to, uint32_t mobys) {
     // `to`'s boxes as the game leaves them: a page entered forward ends on its animations' last frame; a root page
     // (no parent: the menu's first page) is opened by its animations played back to their first frame
     const bool root = lwu(to + 0x38) == 0;
@@ -1071,6 +1096,27 @@ void graphics_menu_back(uint32_t cur, uint32_t to, uint32_t mobys) {
         moby_set_anim(m, set, root ? 0 : static_cast<int32_t>(lbu(seq + 0x10)) - 1);
         swc1(m + 0x58, root ? -1.0f : 1.0f);  // (held there: already at the end it plays to)
     }
+}
+}  // namespace
+
+// orig: (none) — enhancement (graphics.h)
+void graphics_menu_back(uint32_t cur, uint32_t to, uint32_t mobys) {
+    if (cur == 0 || to == 0) return;
+    // (the Updates button in slot 5 of the root page, when it is there: not with the enhancements off, where slot 5 is
+    // the original's and the game's own code alone moves its moby)
+    if (to == ROOT_PAGE && lwu(ROOT_PAGE + 0x44 + 5 * 4) == updates_root_widget() && lwu(mobys + 5 * 4) != 0) {
+        const uint32_t m5 = lwu(mobys + 5 * 4);
+        const uint32_t seq5 = lwu(lwu(m5 + 0x24) + 0x48 + 0x13 * 4);
+        moby_set_anim(m5, 0x13, static_cast<int32_t>(lbu(seq5 + 0x10)) - 1);
+        swc1(m5 + 0x58, -1.0f);
+    }
+    if (cur != PAGE && cur != DPAGE && cur != POP_PAGE && cur != POP2_PAGE && cur != advanced_page() && cur != controls_page() && cur != language_page() && cur != update_notice_page() && cur != updates_page()) return;
+    boxes_hold(to, mobys);
+}
+
+// orig: (none) — enhancement (graphics.h)
+void graphics_menu_forward(uint32_t cur, uint32_t to, uint32_t mobys) {
+    if (cur == POP_PAGE && to == POP2_PAGE) boxes_hold(to, mobys);
 }
 
 // orig: (none) — enhancement (graphics.h)
@@ -1161,115 +1207,80 @@ void graphics_take_live() {
     changed();
 }
 
-// orig: (none) — enhancement (graphics.h): the picture settings and the mode, ids 32.. (1 byte each;
-// the window's own settings are the machine's: not in the saves)
-void graphics_save_items(std::vector<uint8_t>& d, uint32_t& count) {
-    const struct { uint16_t id; int value; } items[] = {
-        {32, gs_.value[S_SCALE]}, {33, gs_.value[S_ASPECT]}, {34, gs_.value[S_FIT]}, {35, gs_.value[S_LOD]}, {36, gs_.value[S_FOV]}, {37, static_cast<int>(gs_.mode)},
-        {38, gs_.value[S_GFX] != 0 ? gs_.value[S_LIGHTING] + 1 : 0}, {39, gs_.value[S_DYN_SHADOWS]}, {40, gs_.value[S_SEC_LIGHTS]},
-        {41, gs_.value[S_SHADOW_DIST]}, {42, gs_.value[S_AO]}, {43, gs_.value[S_MIPS]}, {45, gs_.value[S_SHADOW_STR]}, {47, gs_.value[S_AO_STR]}, {48, gs_.value[S_HUD]}, {49, gs_.value[S_SUN_RAYS]},
-        {50, gs_.value[S_PARTICLES]}, {51, gs_.value[S_SURFACE]}, {54, gs_.value[S_GRASS]},  // (52 the Water row's until it was removed: kept unused)
-        {55, gs_.value[S_GFX]}, {56, gs_.value[S_LIGHTING]},  // (after 38, which the versions before the switch read: theirs)
-    };
-    for (const auto& it : items) {
-        d.push_back(static_cast<uint8_t>(it.id));
-        d.push_back(static_cast<uint8_t>(it.id >> 8));
-        d.push_back(1);
-        d.push_back(0);
-        d.push_back(static_cast<uint8_t>(it.value));
-        ++count;
-    }
-}
-
-// orig: (none) — enhancement (graphics.h)
-bool graphics_save_item(uint32_t id, const uint8_t* data, uint32_t size) {
-    if (id < 32 || id > 56) return false;
-    if (size < 1) return true;
-    const int v = data[0];
-    switch (id) {
-        case 32: if (v < static_cast<int>(value_count(S_SCALE))) gs_.value[S_SCALE] = v; break;
-        case 33: if (v < 3) gs_.value[S_ASPECT] = v; break;
-        case 34: if (v < 2) gs_.value[S_FIT] = v; break;
-        case 35: if (v < 5) gs_.value[S_LOD] = v; break;
-        case 36: if (v < static_cast<int>(value_count(S_FOV))) gs_.value[S_FOV] = v; break;
-        case 37: if (v <= 3) gs_.mode = static_cast<uint32_t>(v); break;
-        case 38:  // (Lighting before the switch: 0 Original - Graphics Original, the row at its default -, 1..3 Low..High - Enhanced)
-            if (v < 4) {
-                gs_.value[S_GFX] = v != 0 ? 1 : 0;
-                gs_.value[S_LIGHTING] = v != 0 ? v - 1 : PRESETS[PRESET_DEFAULT][0];
-            }
-            break;
-        case 55: if (v < 2) gs_.value[S_GFX] = v; break;
-        case 56: if (v < 3) gs_.value[S_LIGHTING] = v; break;
-        case 39: if (v < 2) gs_.value[S_DYN_SHADOWS] = v; break;
-        case 40: if (v < 3) gs_.value[S_SEC_LIGHTS] = v; break;
-        case 41: if (v < 4) gs_.value[S_SHADOW_DIST] = v; break;
-        case 42: if (v < 11) gs_.value[S_AO] = v; break;
-        case 43: if (v < 2) gs_.value[S_MIPS] = v; break;
-        case 44: return true;  // (the Overscan row's until 0.4: ignored, the full frame always shown)
-        case 46: if (v < 3) gs_.value[S_SUN_RAYS] = v == 0 ? 0 : v + 1; break;  // (until 0.4.x: Off, Low, High - Low is Medium now)
-        case 49: if (v < 4) gs_.value[S_SUN_RAYS] = v; break;
-        case 45: if (v < static_cast<int>(value_count(S_SHADOW_STR))) gs_.value[S_SHADOW_STR] = v; break;
-        case 47: if (v < static_cast<int>(value_count(S_AO_STR))) gs_.value[S_AO_STR] = v; break;
-        case 48: if (v < 5) gs_.value[S_HUD] = v; break;
-        case 50: if (v < 3) gs_.value[S_PARTICLES] = v; break;
-        case 51: if (v < 3) gs_.value[S_SURFACE] = v; break;
-        case 52: return true;  // (the Water row's until it was removed, Surface Detail's water kept: ignored)
-        case 53: return true;  // (the Foliage row's until it was removed: ignored)
-        case 54: if (v < 3) gs_.value[S_GRASS] = v; break;
-        default: break;
-    }
-    changed();
-    return true;
-}
-
 // --- the main menu -------------------------------------------------------------------------------
+
+namespace {
+// orig: (none) — enhancement: one of New Game's windows built at `page` from the boot module's copy of the pause menu's
+// Options page `opt`: its title (text `title_text`), help label, picture and list (its blocks at page + 0x90 / + 0x130 /
+// + 0x180 / + 0xe0, as both windows lay them out), the `n` entries copied from `entry` (the root's New Game entry) with
+// action `action` to page `to` (0: the entry's own, New Game's), the names, helps and pictures given; its parent `parent`
+void window_build(uint32_t page, uint32_t opt, int32_t title_text, uint32_t entries, uint32_t helps, uint32_t pictures, uint32_t n,
+                  const int32_t* names, const int32_t* help_texts, const uint32_t* pics, uint32_t entry, uint32_t action, uint32_t to,
+                  uint32_t parent) {
+    const uint32_t title = lwu(opt + 0x44), label = lwu(opt + 0x48), picture = lwu(opt + 0x4c), list = lwu(opt + 0x50);
+    const uint32_t ptitle = page + 0x90, plist = page + 0xe0, plabel = page + 0x130, ppicture = page + 0x180;
+    ee_copy(page, opt, 0x84);
+    ee_copy(ptitle, title, 0x50);
+    ee_copy(plabel, label, 0x50);
+    ee_copy(ppicture, picture, 0x50);
+    ee_copy(plist, list, 0x50);
+    sw(ptitle + 0x34, static_cast<uint32_t>(title_text));
+    for (uint32_t i = 0; i < n; ++i) {
+        const uint32_t e = entries + i * 0xc;
+        ee_copy(e, entry, 0xc);
+        sh(e, static_cast<uint32_t>(TEXT_FIRST + names[i]));
+        if (to != 0) {
+            sh(e + 2, action);
+            sw(e + 4, to);
+        }
+        sh(e + 0xa, 0);
+        sw(helps + i * 4, static_cast<uint32_t>(TEXT_FIRST + help_texts[i]));
+        sw(pictures + i * 8, PICTURE_SECTOR + pics[i]);
+        sw(pictures + i * 8 + 4, 1);
+    }
+    for (uint32_t i = 0; i < 0xc; i += 4) sw(entries + n * 0xc + i, 0);
+    sw(helps + n * 4, 0);
+    sw(plist + 0x34, entries);
+    sw(plist + 0x40, 0);  // (the first entry selected: Original, Current)
+    sw(plist + 0x38, 0);
+    sw(plist + 0x3c, 0);
+    sw(plabel + 0x34, helps);
+    sw(ppicture + 0x30, pictures);
+    sw(page + 0x38, parent);
+    sw(page + 0x40, plist);
+    slot_replace(page, title, ptitle);
+    slot_replace(page, label, plabel);
+    slot_replace(page, picture, ppicture);
+    slot_replace(page, list, plist);
+    sw(page + 5 * 4, 0x13);  // (slot 5: the root page's Updates button, held as the root leaves it)
+    sw(page + 0x80, 0);
+}
+static_assert(POP_TITLE == POP_PAGE + 0x90 && POP_LIST == POP_PAGE + 0xe0 && POP_LABEL == POP_PAGE + 0x130 && POP_PICTURE == POP_PAGE + 0x180 &&
+                  POP2_TITLE == POP2_PAGE + 0x90 && POP2_LIST == POP2_PAGE + 0xe0 && POP2_LABEL == POP2_PAGE + 0x130 && POP2_PICTURE == POP2_PAGE + 0x180,
+              "New Game's windows lay out their widgets alike");
+}  // namespace
 
 // orig: (none) — enhancement (graphics.h)
 void graphics_main_menu_install() {
     if (g_advanced_disabled) return;
     graphics_load();
-    // the popup: the pause menu's Options page (its copy in the boot module), our list, help, pictures
+    // the two windows: the pause menu's Options page (its copy in the boot module), our lists, helps, pictures
     const uint32_t opt = OPTIONS_PAGE;
-    ee_copy(POP_PAGE, opt, 0x84);
-    const uint32_t title = lwu(opt + 0x44), label = lwu(opt + 0x48), picture = lwu(opt + 0x4c), list = lwu(opt + 0x50);
-    ee_copy(POP_TITLE, title, 0x50);
-    ee_copy(POP_LABEL, label, 0x50);
-    ee_copy(POP_PICTURE, picture, 0x50);
-    ee_copy(POP_LIST, list, 0x50);
-    sw(POP_TITLE + 0x34, TEXT_NEW_GAME);
-    const uint32_t ng = lwu(ROOT_NEW_GAME + 0x34);  // the root's New Game entry (action 4, its page)
-    constexpr uint32_t MODES = 3;
-    static constexpr int32_t NAMES[MODES] = {T_MODE_ORIGINAL, T_MODE_MODERN, T_MODE_EXPERIMENTAL};
-    static constexpr int32_t HELPS[MODES] = {H_MODE_ORIGINAL, H_MODE_MODERN, H_MODE_EXPERIMENTAL};
-    static constexpr uint32_t PICS[MODES] = {PIC_ORIGINAL, PIC_MODERN, PIC_EXPERIMENTAL};
-    for (uint32_t i = 0; i < MODES; ++i) {
-        const uint32_t e = POP_ENTRIES + i * 0xc;
-        ee_copy(e, ng, 0xc);
-        sh(e, static_cast<uint32_t>(TEXT_FIRST + NAMES[i]));
-        sh(e + 0xa, 0);
-        sw(POP_HELP + i * 4, static_cast<uint32_t>(TEXT_FIRST + HELPS[i]));
-        sw(POP_PICTURES + i * 8, PICTURE_SECTOR + PICS[i]);
-        sw(POP_PICTURES + i * 8 + 4, 1);
-    }
-    for (uint32_t i = 0; i < 0xc; i += 4) sw(POP_ENTRIES + MODES * 0xc + i, 0);
-    sw(POP_HELP + MODES * 4, 0);
-    sw(POP_LIST + 0x34, POP_ENTRIES);
-    sw(POP_LIST + 0x40, 0);  // (Original selected first)
-    sw(POP_LIST + 0x38, 0);
-    sw(POP_LIST + 0x3c, 0);
-    sw(POP_LABEL + 0x34, POP_HELP);
-    sw(POP_PICTURE + 0x30, POP_PICTURES);
-    sw(POP_PAGE + 0x38, ROOT_PAGE);
-    sw(POP_PAGE + 0x40, POP_LIST);
-    slot_replace(POP_PAGE, title, POP_TITLE);
-    slot_replace(POP_PAGE, label, POP_LABEL);
-    slot_replace(POP_PAGE, picture, POP_PICTURE);
-    slot_replace(POP_PAGE, list, POP_LIST);
-    sw(POP_PAGE + 5 * 4, 0x13);
-    sw(POP_PAGE + 0x80, 0);
-    // the root's New Game: our entry, action 3 to the popup (its list's entries copied)
-    if (ng != ROOT_ENTRY) {
+    // the root's New Game entry (action 4, its page), kept: the main menu started again finds ours there
+    if (lwu(ROOT_NEW_GAME + 0x34) != ROOT_ENTRY) ee_copy(NG_ENTRY, lwu(ROOT_NEW_GAME + 0x34), 0x18);
+    const uint32_t ng = NG_ENTRY;
+    // 1. the mode (Original, Modern), each entry to the second window (action 3)
+    static constexpr int32_t MODE_NAMES[] = {T_MODE_ORIGINAL, T_MODE_MODERN};
+    static constexpr int32_t MODE_HELPS[] = {H_MODE_ORIGINAL, H_MODE_MODERN};
+    static constexpr uint32_t MODE_PICS[] = {PIC_ORIGINAL, PIC_MODERN};
+    window_build(POP_PAGE, opt, TEXT_NEW_GAME, POP_ENTRIES, POP_HELP, POP_PICTURES, 2, MODE_NAMES, MODE_HELPS, MODE_PICS, ng, 3, POP2_PAGE, ROOT_PAGE);
+    // 2. the graphics preset (Current, Original, Low, Medium, High), each entry New Game's own (action 4, its page)
+    static constexpr int32_t PRESET_NAMES[] = {T_NG_CURRENT, T_NG_ORIGINAL, T_NG_LOW, T_NG_MEDIUM, T_NG_HIGH};
+    static constexpr int32_t PRESET_HELPS[] = {H_NG_CURRENT, H_NG_ORIGINAL, H_NG_LOW, H_NG_MEDIUM, H_NG_HIGH};
+    static constexpr uint32_t PRESET_PICS[] = {PIC_GFX, PIC_ORIGINAL, PIC_GFX, PIC_GFX, PIC_GFX};
+    window_build(POP2_PAGE, opt, TEXT_FIRST + T_GRAPHICS, POP2_ENTRIES, POP2_HELP, POP2_PICTURES, 5, PRESET_NAMES, PRESET_HELPS, PRESET_PICS, ng, 4, 0, POP_PAGE);
+    // the root's New Game: our entry, action 3 to the first window (its list's entries copied)
+    if (lwu(ROOT_NEW_GAME + 0x34) != ROOT_ENTRY) {
         ee_copy(ROOT_ENTRY, ng, 0x18);
         sh(ROOT_ENTRY + 2, 3);
         sw(ROOT_ENTRY + 4, POP_PAGE);
@@ -1286,10 +1297,12 @@ void graphics_main_options_entries(uint32_t w) {
     uint32_t n = 0;
     while (n < 6 && lh(src + n * 0xc) != 0) ++n;
     ee_copy(MAIN_ENTRIES, src, n * 0xc);
+    language_main_entries(MAIN_ENTRIES, n);  // (the game's Language entry: our Language page)
     uint32_t d = MAIN_ENTRIES + n * 0xc;
-    const uint32_t gp = PAGE, ap = advanced_page();
+    const uint32_t gp = PAGE, ap = advanced_main_page();  // (Advanced: the global rows, when there are any)
     const struct { int32_t text; uint32_t page; } ours[] = {{TEXT_FIRST + T_DISPLAY_PAGE, DPAGE}, {TEXT_FIRST + T_GRAPHICS, gp}, {controls_title_text(), controls_page()}, {advanced_title_text(), ap}};
     for (const auto& o : ours) {
+        if (o.page == 0) continue;
         sh(d, static_cast<uint32_t>(o.text));
         sh(d + 2, 3);  // action 3: the page +4
         sw(d + 4, o.page);
@@ -1302,27 +1315,24 @@ void graphics_main_options_entries(uint32_t w) {
 
 // orig: (none) — enhancement (graphics.h)
 void graphics_new_game_choice(uint32_t w) {
-    if (w != POP_LIST) return;
-    const int32_t sel = lw(w + 0x40);
-    const uint32_t mode = sel <= 0 ? GAME_MODE_ORIGINAL : sel == 1 ? GAME_MODE_MODERN : GAME_MODE_EXPERIMENTAL;
-    gs_.mode = mode;
-    // Graphics: Original in Original and Modern (the rows under it kept as they are), Enhanced at the preset High in Experimental
-    // (Lighting High, Dynamic Shadows, all the lights, MXAO, Sun Rays Low, Surface Detail, Grass and Ambient Particles High)
-    const bool experimental = mode == GAME_MODE_EXPERIMENTAL;
-    gs_.value[S_GFX] = experimental ? 1 : 0;
-    if (experimental) preset_set(gs_.value, 2);
-    if (mode == GAME_MODE_ORIGINAL) {
-        gs_.value[S_ASPECT] = 0;
-        gs_.value[S_LOD] = 0;
-        gs_.value[S_MIPS] = 1;  // (the original's mips, like its detail)
-    } else {
-        gs_.value[S_ASPECT] = 2;
-        gs_.value[S_LOD] = 3;
-        gs_.value[S_MIPS] = 0;
+    if (w != POP2_LIST) return;
+    // the first window's choice (its list keeps its selection), then the second's
+    const uint32_t mode = lw(POP_LIST + 0x40) == 1 ? GAME_MODE_MODERN : GAME_MODE_ORIGINAL;
+    const int32_t preset = lw(POP2_LIST + 0x40);  // 0 Current, 1 Original, 2..4 Low, Medium, High
+    // the Graphics page alone: Current leaves it as it is, Original is Graphics Original (the rows under it kept), Low /
+    // Medium / High Graphics Enhanced at that preset. The Display page is never touched
+    if (preset == 1) {
+        gs_.value[S_GFX] = 0;
+        changed();
+    } else if (preset >= 2 && preset <= 4) {
+        gs_.value[S_GFX] = 1;
+        preset_set(gs_.value, preset - 2);
+        changed();
     }
-    changed();
     advanced_apply_mode(mode);
-    std::printf("[graphics] new game: %s mode\n", mode == GAME_MODE_ORIGINAL ? "Original" : mode == GAME_MODE_MODERN ? "Modern" : "Experimental");
+    static constexpr const char* PRESETS_NAMED[] = {"Current", "Original", "Low", "Medium", "High"};
+    std::printf("[graphics] new game: %s mode, graphics %s\n", mode == GAME_MODE_ORIGINAL ? "Original" : "Modern",
+                PRESETS_NAMED[preset >= 0 && preset <= 4 ? preset : 0]);
 }
 
 }  // namespace rac1
