@@ -828,8 +828,8 @@ the least flicker of all walking), at about 1 ms more of the 890M's frame at 512
 would need: the mobys (phase 3, below: without them Ratchet has no reflection, which Medium has); the row in Options > Graphics
 shown only on Vulkan with ray queries and non-uniform sampled-image indexing (a saved High played as Medium elsewhere, logged), the
 `water_reflections` preference's value 3; `RAC1_RT` kept as the override; the variables above folded into the row's one setting
-(half resolution, merged clusters, pure shading); a validation-layer run (none was available here: no device lost over a five-level
-run, see the branch's report); the profiler's stages as they are. The Metal backend has no ray queries yet.
+(half resolution, merged clusters, pure shading); a validation-layer run (none was available here; no device lost over a run through
+six levels, the game's state (RAMHASH) the same as an OpenGL run's without it); the profiler's stages as they are. The Metal backend has no ray queries yet.
 
 **Phase 3, the mobys (design)**: the moby renderer skins in the vertex shader; a compute pass doing the same skinning per drawn moby
 (and per moby kept by the sun shadows' off-screen cache: last pose, alive, same class, still) would write world-space positions into a
