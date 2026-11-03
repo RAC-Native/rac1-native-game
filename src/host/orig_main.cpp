@@ -3629,6 +3629,16 @@ int main(int argc, char** argv) {
                 // g_frame.active and g_level are updated before the chain worker on Core 0 reads mrp_moby_active().
                 mrp_chain_join();
                 rac1_wiiu_cycle();  // ((2026-10-30) the cores' timeline: the cycle before closed, this one's start - the chain's reader joined)
+                bool wiiu_world_prepared = false;  // (RAC1_WIIU_WORLD_FIRST: done after the sky's capture)
+                auto wiiu_world_first = [] {
+                    static const bool on = std::getenv("RAC1_WIIU_WORLD_FIRST") == nullptr || std::atoi(std::getenv("RAC1_WIIU_WORLD_FIRST")) != 0;
+                    return on;
+                };
+                auto wiiu_world_prepare_now = [](bool world_on) {  // (the drop shadows' snapshot, the world's prepare: its first half posted)
+                    if (world_on && g_mrp_shadows) mrp_shadows_snapshot();
+                    else mrp_shadows_clear_snapshot();
+                    mrp_world_wiiu_prepare(world_on);
+                };
                 const bool wiiu_title = boot_active();
                 const bool title_view = wiiu_title && mrp_title_view_swap_in();
                 const bool wiiu_flight = exiting && level_exit_loading_screen();
@@ -3725,8 +3735,16 @@ int main(int argc, char** argv) {
                         }
                         const auto ts = std::chrono::steady_clock::now();
                         mrp_world_wiiu_sky_capture(!prev_chain && !fade);
+                        const auto tc0 = std::chrono::steady_clock::now();
+                        rac1_wiiu_time(3, std::chrono::duration<double, std::milli>(tc0 - ts).count());
+                        // ((2026-11-03) RAC1_WIIU_WORLD_FIRST, default 1: the world's prepare here, right after the sky's capture it reads -
+                        // before the chain's start, the mobys' skips and prepare -: its first half starts on core 2 ~3-4 ms sooner, and so its
+                        // second half and the game thread behind it. It reads the frame before's GS registers and its own copies alone)
+                        if (wiiu_world_first()) {
+                            wiiu_world_prepare_now(!wiiu_movie && (wiiu_flight || ((wiiu_title ? boot_in_title() : !wiiu_menu_mode) && !exiting)) && !fade && !wiiu_vendor_pic);
+                            wiiu_world_prepared = true;
+                        }
                         const auto tc = std::chrono::steady_clock::now();
-                        rac1_wiiu_time(3, std::chrono::duration<double, std::milli>(tc - ts).count());
 #endif
                         mrp_chain_start(std::move(ci), chain_async);
 #if defined(__WIIU__)
@@ -3797,9 +3815,7 @@ int main(int argc, char** argv) {
                     // half then runs on the game thread's idle core meanwhile, RAC1_WIIU_HEAD_CORE)
                     const auto tm0 = std::chrono::steady_clock::now();
                     const bool wiiu_world_on = !wiiu_movie && (wiiu_flight || ((wiiu_title ? boot_in_title() : !wiiu_menu_mode) && !exiting)) && !fade && !wiiu_vendor_pic;
-                    if (wiiu_world_on && g_mrp_shadows) mrp_shadows_snapshot();
-                    else mrp_shadows_clear_snapshot();
-                    mrp_world_wiiu_prepare(wiiu_world_on);
+                    if (!wiiu_world_prepared) wiiu_world_prepare_now(wiiu_world_on);
                     const auto tm1 = std::chrono::steady_clock::now();
                     rac1_wiiu_time(2, std::chrono::duration<double, std::milli>(tm1 - tm0).count());
                     if (mrp_moby_active()) mrp_moby_prepare(&mgv);

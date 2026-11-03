@@ -1362,3 +1362,13 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
 - **The wide view in mode 1 is the CPU's chain:** RAC1_WIIU_PIXELS_OFF=1 there gives 26-28 ms as with the pixels - the GPU's "busy" ~28
   counts its waits for the main thread's commands (the draws' world join ~18.6 ms into the cycle, the draws to ~26.9).
 
+### The world's prepare first (2026-11-03)
+
+- **RAC1_WIIU_WORLD_FIRST (default 1; orig_main.cpp):** the drop shadows' snapshot and mrp_world_wiiu_prepare right after the sky's
+  capture (which they read), before the chain's start, the mobys' skips and the mobys' prepare: the world's first half posted to core 2
+  ~1 ms into the cycle instead of ~4.3 - its second half, the draws' join and the game thread (behind the first half on core 2) as much
+  sooner. It reads the frame before's GS registers and its own copies alone.
+- **Measured** (Veldin, deterministic, the same build =1 / =0): the wide view's windows 27.9-29.7 -> **24.5-27.9 ms**, the heavy middle
+  ones 52-62 -> 45-55; the cycle: the first half 3.4 -> 8.9, the second -> 15.3 (was 18.9), TV drawn 23.8 (27.3), now a swap wait of
+  ~3 ms (the GPU) in it. Shot at the start against mode 1's: 674 pixels (the foliage's run-to-run noise, ~600). Novalis starts and runs.
+
