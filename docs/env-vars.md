@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 373 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 379 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 282 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 289 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 70 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -97,6 +97,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_MRPW_BUILD_THREAD` | 0 = off; default on (off when `RAC1_MRPW_THREAD=0`, a check mode, `RAC1_MRPW_CPU` or `RAC1_MRPW_TFRAG_VERIFY`) | The MRP world's frame triangles and batches (build_triangles) made on the scene's worker after its scene, the new textures' images made by the main thread when it takes the frame; 0 makes them on the main thread when the frame is drawn, as before, for comparison (the same output). |
 | `RAC1_SURFACE_DETAIL` | 0, 1 or 2; default: Options > Graphics > Surface Detail (Off) | With the modern lighting, the materials of the level files' `material` lines: 0 off, 1 Low, 2 High (also the reflections and the lava's heat shimmer), whatever the option says. |
 | `RAC1_GRASS` | 0, 1 or 2; default: Options > Graphics > Grass (Off) | With the modern lighting, the `grass` material on tfrags: 0 off, 1 Low (a detail relief of blades, no geometry), 2 High (also very low shells of blades near the camera), whatever the option says. |
+| `RAC1_WATER_REFLECTIONS` | 0, 1 or 2; default: Options > Graphics > Water Reflections (Medium) | With Surface Detail on, what the water mirrors: 1 Low (the cube map), 2 Medium (the planar view, the cube map where it has nothing), 0 none (the level's sky colour), whatever the option says ([Materials](materials.md#water-reflections)). |
 | `RAC1_GRASS_SHELLS` | 1 to 32; default 0 (4) | The Grass option High's number of shells (the debug menu's Enhancements tab sets it too). |
 | `RAC1_GRASS_DIST` | units, 4 to 200; default 40 | How far from the camera the Grass option's blades are drawn (Low faded out over the last 40 %, the shells from 30 % of it on). |
 | `RAC1_EMISSIVE` | integer; 0 = off; default on | With the modern lighting, `0` leaves out the level files' emissive surfaces (`emissive` lines: textures that keep the original's brightness in shade), to compare. |
@@ -246,6 +247,12 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_PROFILER_OVERLAY` | 1 = on; default off | With the debug tools (or RAC1_DEVMENU_SHOT), the debug menu's profiler overlay is on from the start (fps, CPU / GPU, the bottleneck, a small graph and the stages' bars), as its Overlay box does. |
 | `RAC1_PROFILER_TRACE` | `file[,from[,frames]]`, from a host frame number (default 120), frames (default 300); unset = off | Records a Chrome trace (chrome://tracing, ui.perfetto.dev) of that many host frames: the main thread's stages (the game code's sub-stages among them), the GPU's (its timestamps on the CPU's time line), the GS chain and MRP scene workers' jobs, the job pool's workers' jobs (a track each), the host frames; written when done (and at exit). |
 | `RAC1_READ_ISO` | 1 = on; default off | The game reads the disc image itself (`RAC1_ISO`, else the setup's link in assets/iso/) instead of the disc's files the setup extracted into assets/disc/, to compare the two (they give the same bytes for every sector: `rac1-native --setup --compare-disc`). Also a way to play with the image while assets/disc/ is missing. |
+| `RAC1_REFLECT_CASTERS` | 1 = on; default off | Water Reflections: the world's batches made for the shadow maps alone (outside the view) drawn into the planar view and the cube map too; their fog is not made for them (far ones come out in the fog's colour). |
+| `RAC1_REFLECT_CULL` | 0 = off; default on | Water Reflections: 0 draws the planar view over the whole view (not only the water's rectangle) and every tie and shrub instance of the frame into the planar view and the cube maps (none left out for lying outside the view or under the water): the same picture, slower, to compare. |
+| `RAC1_REFLECT_DEBUG` | 1 or 2; default off | Water Reflections: 1 the water shows where its reflection comes from (green the planar view, red the planar view with nothing there, blue the cube map, black neither), 2 the reflection alone. |
+| `RAC1_REFLECT_DUMP` | pass number; default off | Water Reflections (OpenGL): at that pass writes the planar view (`reflect_planar.ppm`) and the cube maps' faces (`reflect_cube.ppm`: the sky's six side by side above, the probe in use's six below) in the working directory. |
+| `RAC1_REFLECT_SCALE` | integer 1-8; default 2 | Water Reflections: the planar view drawn at 1 / n of the 3D's size (also the debug menu's Enhancements tab, 1/2 to 1/4, not saved). |
+| `RAC1_REFLECT_STATS` | set (any value) = on; default off | Water Reflections: prints each time a probe (cube map) is made or filled in, and at the end the passes, planar views, probes made and filled in, the planes chosen, the planar views' drawn share and the tie and shrub draws drawn and left out. |
 | `RAC1_RENDER_SCALE` | integer percent; unset = the Options setting | Overrides the 3D render scale, as a percentage of the window. |
 | `RAC1_RENDER_SHADE` | integer; 1 = vertex colours alone; default 0 | Debug view that shades with the vertex colours alone. |
 | `RAC1_SAMPLE_FROM` | frame number; default 0 (sample from the start) | Used with RAC1_SAMPLE_PROF: sampling starts at this frame. |
@@ -399,7 +406,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_SHOTS` | comma-separated list of frame numbers, e.g. 100,300; default none | Saves a screenshot shot_<frame>.ppm in the current directory when each listed game frame is shown, and prints a line with the game state at that frame. |
 | `RAC1_SIM_DELAY` | integer N frames; default 0 | Delays the RAC1_SIM_INPUT script by N frames (for example to skip a level's arrival scene). |
 | `RAC1_SIM_HOST` | comma-separated host input names (keys, mouse buttons, mouse axes); unset = none | Supplies the host-device inputs that the "h" keys of a menu: or title: RAC1_SIM_INPUT script press, in order. Unrecognised names are reported and skipped. |
-| `RAC1_SIM_INPUT` | script name: forward, jump, dive, turn, attack, throw, hud, quick, fire, shoot, hold, holdwalk, look, start, ship, shipskip, vendor, menu:<keys>, title:<keys> or seq:<script>; default unset = real input | Simulates the pad with a scripted input pattern. Also makes the run ignore physical gamepads so it is deterministic. |
+| `RAC1_SIM_INPUT` | script name: forward, jump, dive, turn, attack, throw, hud, quick, fire, shoot, hold, holdwalk, look, start, ship, shipskip, shipwalk (shipskip, then from frame 2340 walking forward, turning a little, jumping every 60 frames), shipturn (shipskip, then from frame 2340 the camera turning while Ratchet stands), vendor, menu:<keys>, title:<keys> or seq:<script>; default unset = real input | Simulates the pad with a scripted input pattern. Also makes the run ignore physical gamepads so it is deterministic. |
 | `RAC1_SIM_ITEM` | <frame>:<n or p>[;...]; unset = none | Presses the PC's Next Weapon (n) or Previous Weapon (p) action at that game frame, as the mouse wheel would (headless or simulated runs). |
 | `RAC1_SIM_MOUSE` | <from>:<to>:<dx>:<dy>[;...]; unset = none | Moves the mouse dx, dy pixels each game frame from frame `from` to `to - 1`, as the default bindings take it: the Direct mouse when the game takes it, else the simulated right stick (headless or simulated runs). |
 | `RAC1_STEPS` | integer >= 1; default 1 | In a headless run, the number of game frames run per host frame (exercises the catch-up path of a windowed run). Ignored in windowed runs. |

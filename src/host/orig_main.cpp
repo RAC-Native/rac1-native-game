@@ -13,7 +13,7 @@
 //   RAC1_LEVEL=N (testing: start on level N)  RAC1_GOTO=N@F[,N2@F2..] (testing: the game's level change to N at frame F,
 //   as the debug menu's Levels tab asks it; during the boot (RAC1_BOOT=1):
 //   its title left for level N, the debug menu's skip)
-//   RAC1_LANGUAGE=0|2|3|4|5 (testing: the language)  RAC1_HEADLESS=1  RAC1_FRAMES=N  RAC1_SIM_INPUT=forward|jump|dive|turn|attack|throw|hud|quick|fire|shoot|hold|holdwalk|look|start|menu:<keys>|title:<keys>|ship|shipskip|vendor|seq:<script> (sim_script.h)   (testing)
+//   RAC1_LANGUAGE=0|2|3|4|5 (testing: the language)  RAC1_HEADLESS=1  RAC1_FRAMES=N  RAC1_SIM_INPUT=forward|jump|dive|turn|attack|throw|hud|quick|fire|shoot|hold|holdwalk|look|start|menu:<keys>|title:<keys>|ship|shipskip|shipwalk|shipturn|vendor|seq:<script> (sim_script.h)   (testing)
 //   RAC1_AUDIO_DUMP=file.raw (the sound output, 48 kHz stereo s16; RAC1_AUDIO_CHANNELS=6 / 8: 5.1 / 7.1, interleaved)  RAC1_NO_AUDIO=1  RAC1_SND_TRACE=1
 // RAC1_FADES=original|fast (the screen fade shown frame by frame as on the PS2, or run in one host frame: the default)
 // RAC1_HOST_DELAY_MS=n, RAC1_STEPS=n, RAC1_AUDIO_DEVICE=1 (testing: each host frame n ms longer; n game frames
@@ -109,6 +109,7 @@
 #include <game/render/mrp_scene.h>
 #include <game/render/mrp_lighting.h>
 #include <game/render/mrp_particles.h>
+#include <game/render/mrp_reflect.h>
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_shadows.h>
 #include <game/render/mrp_2d.h>
@@ -1917,7 +1918,17 @@ void pad_packet(GLFWwindow* win, uint64_t frame, int pre = -1) {
             // (game mode 2 before frame 1000); "shipskip": Start also skips every later cutscene, the movies and the level exit's story
             // (every game mode but 0 and 3)
             const int32_t md = lw(OV(0x0015f5c4));
-            const bool all = std::strcmp(sim, "shipskip") == 0;
+            const bool all = std::strcmp(sim, "shipskip") == 0 || std::strcmp(sim, "shipwalk") == 0 || std::strcmp(sim, "shipturn") == 0;
+            // "shipturn": shipskip, then from game frame 2340 the camera turns (the right stick at half) while Ratchet stands (testing: the
+            // water's reflections with the view turning)
+            if (std::strcmp(sim, "shipturn") == 0 && frame >= 2340 && md == 0) rx = 0.5f;
+            // "shipwalk": shipskip, then from game frame 2340 Ratchet walks forward, turning a little, and jumps every 60 frames
+            // (testing: the water's reflections with Ratchet moving past it)
+            if (std::strcmp(sim, "shipwalk") == 0 && frame >= 2340 && md == 0) {
+                ly = -1.0f;
+                lx = 0.25f;
+                if ((frame - 2340) % 60 < 5) held |= 0x0040;
+            }
             if (all) {
                 if (md != 0 && md != 3 && frame % 20 == 0) held |= 0x0800;  // one frame a press, never in gameplay (the pause menu)
             } else if (md == 2 && frame < 1000 && frame % 20 < 4) {
@@ -3778,9 +3789,15 @@ int main(int argc, char** argv) {
                         if (mrp_moby_active()) mrp_moby_prepare(&fd.gv);  // (the modern lighting: the mobys cast too)
                     }
                     mrp_lighting_shadow_pass();
-                    RAC1_PROF_ZONE(kWorld);
-                    mrp_world_draw(w, h, &wv);
+                    {
+                        RAC1_PROF_ZONE(kWorld);
+                        mrp_world_draw(w, h, &wv);
+                    }
                     world_3d = !fd.exiting && !story;
+                    if (world_3d) {  // (Options > Graphics > Water Reflections: the planar view, the cube map; nothing unless the water asks)
+                        const int rvp[4] = {wv.x, wv.y, wv.w, wv.h};
+                        mrp_reflect_pass(rvp);
+                    }
                 } else if (!g_world_faithful && !rac1::vk::is_active()) {
                     tfrag_render_update();  // (g_world_faithful: the world comes from the frame's VU1 chain)
                 }
@@ -4115,6 +4132,7 @@ int main(int argc, char** argv) {
             mrp_world_report();
             mrp_lod_report();
             mrp_fx_report();
+            mrp_reflect_report();
             if (s_mrp_skip_mode != 0)
                 std::printf("[mrp-skip] mode %d: chain tags walked dry %llu; verify: skipped skinning's next record equal %llu, different %llu\n", s_mrp_skip_mode,
                             static_cast<unsigned long long>(rac1::gs::gs_global().skipped_tags()), static_cast<unsigned long long>(g_moby_mrp_skip_next_ok),

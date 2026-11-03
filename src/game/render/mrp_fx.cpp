@@ -8,6 +8,7 @@
 #include <game/render/mrp_lighting.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_moby_renderer.h>
+#include <game/render/mrp_reflect.h>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
@@ -1565,6 +1566,48 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
     // draws the triangle mirrored through the eye, off the screen - so the MRP leaves it out too (drawn rightly, Gaspar's lava glow
     // covered the lava far away where the PS2 shows none). A triangle it did not kick whole was clipped - drawn as a fan of the fans'
     // state - unless all three points lie past one plane of the guard band (not drawn).
+    if (still && strip.emis != 0 && g_e7.water_slot[strip.emis] != 0) {
+        // (Water Reflections, mrp_reflect.h: a tagged sea's height - flat, or its mean - and its share of the view, the clip square's
+        // area its triangles in front of the eye cover, for the next frame's planar view)
+        float m[16];
+        mrp_world_view_proj(m);
+        double area = 0.0, zsum = 0.0;
+        float box[4] = {2.0f, 2.0f, -2.0f, -2.0f};  // (the clip square's rectangle its triangles cover, cut at the eye's plane)
+        auto widen = [&](double x, double y) {
+            box[0] = std::min(box[0], static_cast<float>(std::clamp(x, -1.5, 1.5)));
+            box[1] = std::min(box[1], static_cast<float>(std::clamp(y, -1.5, 1.5)));
+            box[2] = std::max(box[2], static_cast<float>(std::clamp(x, -1.5, 1.5)));
+            box[3] = std::max(box[3], static_cast<float>(std::clamp(y, -1.5, 1.5)));
+        };
+        for (const auto& T : tris) {
+            glm::dvec2 q[3];
+            glm::dvec3 c[3];  // (clip x, y, w)
+            int nfront = 0;
+            for (int k = 0; k < 3; ++k) {
+                const uint32_t i = T[static_cast<size_t>(k)];
+                const double x = pre[i].wp[0], y = pre[i].wp[1], z = std::isfinite(still_z[i]) ? still_z[i] : pre[i].wp[2];
+                c[k] = glm::dvec3(m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[3] * x + m[7] * y + m[11] * z + m[15]);
+                if (c[k].z > 0.1) {
+                    q[k] = glm::clamp(glm::dvec2(c[k].x / c[k].z, c[k].y / c[k].z), glm::dvec2(-1.5), glm::dvec2(1.5));
+                    ++nfront;
+                }
+            }
+            if (nfront == 0) continue;
+            for (int k = 0; k < 3; ++k) {  // (the rectangle: the points in front, and where the edges cross w = 0.1)
+                const glm::dvec3 &A = c[k], &B = c[(k + 1) % 3];
+                if (A.z > 0.1) widen(A.x / A.z, A.y / A.z);
+                if ((A.z > 0.1) != (B.z > 0.1)) {
+                    const double t = (0.1 - A.z) / (B.z - A.z);
+                    const glm::dvec3 P = A + (B - A) * t;
+                    widen(P.x / 0.1, P.y / 0.1);
+                }
+            }
+            if (nfront < 3) continue;  // (the share of the view: the triangles wholly in front, as before)
+            area += 0.5 * std::fabs((q[1].x - q[0].x) * (q[2].y - q[0].y) - (q[2].x - q[0].x) * (q[1].y - q[0].y));
+        }
+        for (uint32_t i = 0; i < b.n; ++i) zsum += std::isfinite(still_z[i]) ? still_z[i] : pre[i].wp[2];
+        mrp_reflect_note_water(still_flat ? still_z[0] : static_cast<float>(zsum / std::max<uint32_t>(b.n, 1u)), static_cast<float>(area), still_flat, box);
+    }
     enum : uint8_t { kNone = 0, kStrip = 1, kFan = 2 };
     thread_local std::vector<uint8_t> how;
     how.assign(tris.size(), kStrip);
@@ -2056,6 +2099,7 @@ size_t mrp_fx_clear_caches() {
         std::lock_guard<std::mutex> lg(g_e7.z_m);
         g_e7.z_range.clear();
     }
+    mrp_reflect_level_reset();  // (Water Reflections: the cube map made again)
     const size_t n = static_cast<size_t>(g_atlas.used + g_vk_atlas.used);
     if (g_atlas.tex != 0) glDeleteTextures(1, &g_atlas.tex);
     g_atlas = Atlas{};

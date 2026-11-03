@@ -166,6 +166,8 @@ The draw step, in order, during play:
    point-light cubes, the lights per screen tile);
 2. the sky and the world's batches (the tfrag compute shader dispatched with the frame's first world
    draw);
+   then, with Surface Detail's water in view, Water Reflections: the cube map when it is due, and on Medium the world, the sky and
+   the mobys drawn again mirrored about the water into the planar view ([Materials](materials.md#water-reflections));
 3. the effects the chain draws before the moby pass (Hoven's water), with the 2D between them;
 4. the mobys, with the drop shadows (stencil) and the mobys deferred after them;
 5. the ambient occlusion, the sun rays, the copy of the picture kept for the next frame's reflections
@@ -386,7 +388,8 @@ the order a frame meets them (each one's page has the details):
 3. **Emissive surfaces**: marked textures keep the original lighting's brightness where the modern
    lighting would darken them ([Emissive surfaces](lighting.md#emissive-surfaces)).
 4. **Materials** (Surface Detail): metal, wet ground, puddles, water, lava, mud, shaded after the
-   emissive step in the same world and moby shaders ([Materials](materials.md)).
+   emissive step in the same world and moby shaders ([Materials](materials.md)). The water mirrors Water Reflections' cube map or planar view, drawn
+   after the world ([Water reflections](materials.md#water-reflections)).
 5. **Ambient occlusion**, over the 3D after the mobys, gentler on the mobys (AO Intensity)
    ([Ambient occlusion](lighting.md#ambient-occlusion)).
 6. **Sun rays**, after the occlusion; off on a level whose file says so, and in the ship's flights

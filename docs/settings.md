@@ -135,7 +135,8 @@ every addition. None of them changes the game's state.
 | Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2, SSAO 1/2, SSAO+ 1/2, HBAO 1/2, MXAO, MXAO 1/2 (the 1/2 ones at half resolution; MXAO with smooth normals, see [Lighting](lighting.md#mxao)) | MXAO |
 | AO Intensity | 25, 50, 75, 100, 125 (%) | 75 |
 | Sun Rays | Off, Low, Medium, High (more quality, strength and cost each step; Low has the strength of 0.4.x's Low, High of its High) | Low |
-| Surface Detail | Off, Low, High (materials: shiny metal, wet ground and puddles, water - held still, without the game's rise and fall -, lava, mud; High adds reflections and the lava's heat shimmer; see [Materials](materials.md)) | High |
+| Surface Detail | Off, Low, High (materials: shiny metal, wet ground and puddles, water - held still, without the game's rise and fall -, lava, mud; High adds the puddles' and polished metals' reflections and the lava's heat shimmer; see [Materials](materials.md)) | High |
+| Water Reflections | Low, Medium: what Surface Detail's water mirrors. Low cube maps of the sky and the far scenery from fixed probes (one per zone of the level and body of water; nothing near, nothing that moves, never moving on its own); Medium the scene drawn again mirrored about the water at half resolution each frame (unlit, only where the water is), Ratchet and every moving object in it, the cube maps where it has nothing (see [Materials](materials.md#water-reflections); `water_reflections` in the preferences). No High: it is kept for a ray-traced mode | Medium |
 | Grass | Off, Low, High: the ground a level's light file tags as grass gets a fine relief of blades (Low, no geometry), and on High also a few very low layers of blades near the camera (`grass` in the preferences) | High |
 | Ambient Particles | Off, Low, High: our own dust, embers, fireflies, rain and snow on some levels, not in the original (see [Ambient particles](particles.md); `ambient_particles` in the preferences) | High |
 
@@ -150,6 +151,9 @@ every addition. None of them changes the game's state.
   while Graphics is Original (the default).
 - **Grass and Ambient Particles** were outside the lighting's control before the switch: with Lighting Original,
   Ambient Particles still drew. Now every addition follows the one switch.
+- **Water Reflections** is a row of its own, not Surface Detail's levels: Surface Detail's High still gives the puddles and the
+  polished metals the last frame's picture (and the lava its shimmer), which the water no longer uses, and a player may want the water's
+  reflections without that cost or the other way round; it acts only with Surface Detail on (its water material draws them).
 - **Water** (Off, Low, High: our own water over or in place of the game's) was a row until 2026-11-02: Surface Detail's water
   over the game's own looked better. Its `water` key is read and ignored; what it fixed is
   Surface Detail's now (the water held still, Pokitaru's clear trapezoids: [Materials](materials.md#the-water-held-still)).
@@ -172,9 +176,10 @@ Chosen for their cost at 5120 x 1440 (the GPU times in [Lighting](lighting.md): 
 | Surface Detail | Low | Low | High |
 | Grass | Off | Low | High |
 | Ambient Particles | Low | High | High |
+| Water Reflections | Low | Medium | Medium |
 
 High: Lighting High, Dynamic Shadows, all the lights, Shadow Distance Maximum, MXAO, Sun Rays
-Low, Surface Detail, Grass and Ambient Particles High. Until 2026-11-02 it had GTAO and Sun Rays High (Daino: the rays too strong;
+Low, Surface Detail, Grass and Ambient Particles High, Water Reflections Medium. Until 2026-11-02 it had GTAO and Sun Rays High (Daino: the rays too strong;
 stronger ones are picked by hand); rows set to that old High now show Custom.
 
 #### Before the switch: the preferences

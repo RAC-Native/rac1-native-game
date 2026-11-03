@@ -264,6 +264,7 @@ add_library(rac1_game STATIC
     render/mrp_shadows.cpp
     render/mrp_lighting.cpp
     render/mrp_particles.cpp
+    render/mrp_reflect.cpp
     render/tie_render.cpp
     render/shrub_render.cpp
     render/title_scene_host.cpp

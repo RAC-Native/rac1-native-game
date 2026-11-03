@@ -1122,7 +1122,7 @@ void main() {
         else if (uAtst == 5) pass = a >= float(uAref);
         else if (uAtst == 6) pass = a > float(uAref);
         else if (uAtst == 7) pass = abs(a - float(uAref)) >= 0.5;
-        if (!pass && uShPass != 0) discard;  // (the shadow map: the cut-outs' passing pixels cast)
+        if (!pass && uShPass == 1) discard;  // (the shadow map: the cut-outs' passing pixels cast)
         if (!pass && uPass == 0 && (uAfail == 0 || uAfail == 2)) discard;
         if (!pass && uPass == 1 && uAfail != 2) discard;
     }
@@ -3196,6 +3196,12 @@ void mrp_moby_draw_target(uint32_t moby, uint64_t xyoffset, uint64_t zbuf, int w
     g_rt_draw = &r;
     draw_batches(w, h, nullptr, false, moby);
     g_rt_draw = nullptr;
+}
+
+// orig: (host) see mrp_lighting.h
+void mrp_moby_draw_reflect() {
+    if (!g_frame.active || !g_frame.built || g_frame.mode != 0) return;
+    draw_batches(0, 0, nullptr, false);
 }
 
 // orig: (host) see mrp_lighting.h
