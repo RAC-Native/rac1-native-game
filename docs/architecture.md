@@ -403,6 +403,14 @@ looks like a core address, two halfwords such as 0x00130001, is not one). Then:
   differs: the card's initial slot state, which the runtime sets to the North American value, as the
   North American card port stands in for the 1.02 one).
 
+The 1.02 build changed many more functions, so the table finds more of their entries: between two code runs
+the North American and the disc's function starts are paired in order when there are as many of each, and an
+address the ports or the generators name inside such a stretch is placed by its masked words (`entry n p
+inner`). An entry that starts no function of the disc's (a `case` of a jump table) is not written: a stand-in's
+labels are its North American entry plus the offset in the disc's function, so `lvl_key` (`region_to_ntsc`)
+takes an address inside a changed function back that way, from the nearest entry below that starts one; the
+`inner` entries are only translated forward.
+
 The table of a disc is the one whose `disc` line names its boot executable's sha1 (the two PAL discs boot
 the same `SCES_509.16`).
 

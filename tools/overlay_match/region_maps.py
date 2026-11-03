@@ -405,7 +405,8 @@ def named_addresses():
 def gap_window_entries(V, L, cr, ent, named, k=8):
     """More entries of changed functions: an address inside a stretch the build changed that the ports or the generators
     name (an entry no function start heuristic finds, a callback in the middle of a function), paired with the one place
-    of the disc's stretch whose k masked words are the NTSC-U address's."""
+    of the disc's stretch whose k masked words are the NTSC-U address's. Written `entry n p inner`: the runtime does not
+    take them as the start of a stand-in's code (ovl_reloc.cpp's region_to_ntsc)."""
     out = {}
     runs = sorted(cr)
     edges = [(V.code_base, L.code_base)] + [(hi, hi + d) for _lo, hi, d in runs]
@@ -577,14 +578,25 @@ def cmd_table(a):
                 pts = {x: y for x, y in pts.items() if x >= CORE_END}
             cr, dr = code_runs(fmap, sizes), data_runs(pts)
             ent = changed_entries(V, L, fmap, sizes, pts, cr)
+            inner = {}
             if core:  # (the 1.02 build changed many functions no matched code names)
                 ent.update(gap_entries(V, L, cr, ent))
-                ent.update(gap_window_entries(V, L, cr, ent, named))
+                inner = gap_window_entries(V, L, cr, ent, named)
+                ent.update(inner)
+                # (an entry that starts no function of the disc's, a `case` of a jump table the data holds: inside a
+                # stand-in, whose labels are its NTSC-U entry plus the offset in the disc's function (the runtime's
+                # region_to_ntsc finds them so); kept, as `inner`, when the ports or the generators name it)
+                lstarts = set(L.function_starts())
+                for x in [x for x, y in ent.items() if y not in lstarts and x not in inner]:
+                    if x in named:
+                        inner[x] = ent[x]
+                    else:
+                        del ent[x]
             lines.append(f"overlay {name} code {V.code_base:08x} {V.code_end:08x} -> {L.code_base:08x} {L.code_end:08x}"
                          f" entry {V.entry:08x} -> {L.entry:08x}")
             lines += ["code %08x %08x %+x" % r for r in cr]
             lines += ["data %08x %08x %+x" % r for r in dr]
-            lines += ["entry %08x %08x" % e for e in sorted(ent.items())]
+            lines += [("entry %08x %08x inner" if core and e[0] in inner else "entry %08x %08x") % e for e in sorted(ent.items())]
             kmsg = ""
             if core:
                 ptrs, cnt = core_pointers(core, sec_words(L.secs), L.data_word, V.data_word, data_back_runs(dr),
@@ -615,7 +627,7 @@ class Region:
     """One overlay's runs: NTSC-U -> the disc's, and back."""
 
     def __init__(self):
-        self.code, self.data, self.entry, self.ptr = [], [], {}, []
+        self.code, self.data, self.entry, self.ptr, self.inner = [], [], {}, [], set()
         self.code_base = self.code_end = 0
 
     def code_fwd(self, n):
@@ -669,6 +681,8 @@ def read_table(path):
             getattr(cur, f[0]).append((int(f[1], 16), int(f[2], 16), int(f[3], 16)))
         elif f[0] == "entry":
             cur.entry[int(f[1], 16)] = int(f[2], 16)
+            if f[3:4] == ["inner"]:
+                cur.inner.add(int(f[1], 16))
         elif f[0] == "ptr":
             cur.ptr.append(int(f[1], 16))
     return disc, units
@@ -761,7 +775,8 @@ def cmd_apply(a):
         (out / fname).write_text("base %08x %08x\n" % (R.code_base, R.code_end)
                                  + "".join("code %08x %08x %+x\n" % r for r in R.code)
                                  + "".join("data %08x %08x %+x\n" % r for r in R.data)
-                                 + "".join("entry %08x %08x\n" % e for e in sorted(R.entry.items()))
+                                 + "".join(("entry %08x %08x inner\n" if e[0] in R.inner else "entry %08x %08x\n") % e
+                                           for e in sorted(R.entry.items()))
                                  + "".join("ptr %08x\n" % q for q in R.ptr))
     if not core:
         (out / "region_core.txt").unlink(missing_ok=True)

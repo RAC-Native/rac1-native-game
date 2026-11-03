@@ -10,7 +10,9 @@ What changed in each release. Releases are source only: you build the game with 
   its own region table `data/regions/SCES-50916-2.00.txt` (chosen by the boot executable's sha1), with a unit for the base
   executable's core, which that build moved (loaded back at the North American addresses when the game starts:
   `src/game/ovl/region_core.cpp`); its changed functions run the North American ports (the 1.02 fixes are not ported yet).
-  New `tools/overlay_match/region_maps.py check-core`.
+  New `tools/overlay_match/region_maps.py check-core`. Its stand-ins' jump tables find their `case` labels (on Rilgar
+  a stand-in's switch fell through to its default every frame, leaking its stack frame until the EE stack reached the
+  level's data: the crash on arrival).
 
 ### Controls and gameplay
 - New Game: two windows in the game's style. The first, **Original / Modern**, sets the gameplay rows only (Modern: Quick
