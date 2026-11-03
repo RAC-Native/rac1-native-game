@@ -14,7 +14,8 @@ What changed in each release. Releases are source only: you build the game with 
   gameplay rows are a playthrough's, on the pause menu's page and kept with the save.
 - Main menu > Options > Advanced > Cut Content (Off by default; global, kept in the preferences, read at a level's load):
   Kerwan's citizens "Fred 1 / 2 / 3" (classes 915..917, 14 placements) stay instead of retiring on their first frame and
-  turn to face Ratchet near them (they hold their one-frame rest pose; no collision). `RAC1_CUT_CONTENT=fred` for testing
+  turn to face Ratchet near them (they hold their one-frame rest pose; no collision); each is put on the ground under its
+  placement at its first update (seven stood 0.03 to 0.25 above it). `RAC1_CUT_CONTENT=fred` for testing
   (docs/advanced.md, "Cut Content"). Port inventory: the Bolt Thief's "second behaviour", the Snagglebeast's unreferenced
   draw, L18:0x2ea1f8, the oxygen element, Orxon's turning citizen and the unregistered item classes corrected.
 - Options > Language > Voice (Same as Text, the default; English, French, German, Spanish, Italian; Japanese with the

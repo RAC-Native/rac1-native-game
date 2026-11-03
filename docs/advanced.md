@@ -489,6 +489,10 @@ the citizen stays, its sequence 0 is played in a loop, and within 15 units it tu
   pose; the game's data has nothing else for them.
 - They have **no collision**: Ratchet dropped on each one's spot lands where he lands without them, so none of the 14
   blocks a path, even those standing on a path, a stair or in the tunnel.
+- Some **placements stand in the air**: three (x 314 to 323, y 139 to 146) 0.25 above the ground, four more 0.03 to 0.1
+  (the game never showed them). At its first update each citizen is put on the ground under it: the game's own segment
+  test (`segment_collide`) from 1 above its placement down to 8 below, the citizen's height set to the hit point; with
+  nothing hit it stays as placed (all 14 hit). With the item off nothing changes (the faithful stub runs).
 - Their turn's spin is kept in the last word of their pvars (448 bytes of placement data no code of the game reads);
   the state byte (+0x20) marks a citizen kept. No save data is touched: over a run through Novalis, Kerwan, Rilgar and
   Batalia, the game's memory differs only from the citizens' first update on Kerwan, in Kerwan's level data and moby
