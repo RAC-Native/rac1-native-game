@@ -197,6 +197,7 @@ add_library(rac1_game STATIC
     ovl/moby_vu1_run.cpp
     ovl/world_vu1.cpp
     ovl/ovl_reloc.cpp
+    ovl/region_core.cpp
     ovl/moby_vu0_reg.cpp
     ovl/palette_blend.cpp
     ovl/particles_vu1.cpp

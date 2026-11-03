@@ -1,5 +1,7 @@
 // See front_image.h.
 #include <game/boot/front_image.h>
+#include <game/ovl/ovl_reloc.h>
+#include <game/ovl/region_core.h>
 
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/ee_memory.h>
@@ -39,6 +41,7 @@ bool front_image_load() {
         } else {
             if (static_cast<size_t>(off) + size > elf.size()) return false;
             std::memcpy(dst, &elf[off], size);
+            if (name != ".text") region_core_fix(OVL_FRONT, addr, size);  // (another build's core: its pointers into it, at NTSC-U's)
         }
         ++found;
     }
