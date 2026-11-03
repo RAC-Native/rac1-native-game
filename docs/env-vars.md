@@ -6,7 +6,7 @@ total, in three groups.
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 295 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 298 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 70 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -255,10 +255,13 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_REFLECT_STATS` | set (any value) = on; default off | Water Reflections: prints each time a probe (cube map) is made or filled in, and at the end the passes, planar views, probes made and filled in, the planes chosen, the planar views' drawn share and the tie and shrub draws drawn and left out. |
 | `RAC1_RENDER_SCALE` | integer percent; unset = the Options setting | Overrides the 3D render scale, as a percentage of the window. |
 | `RAC1_RENDER_SHADE` | integer; 1 = vertex colours alone; default 0 | Debug view that shades with the vertex colours alone. |
-| `RAC1_RT` | 1 = on; default off | Vulkan only, testing (ray tracing phase 0, [Rendering](rendering.md#ray-tracing-phase-0)): the seas' water traces its reflection through the level's static world (ties, shrubs, tfrags) with a ray query and colours the hit from the frame's own picture, else the cube map or the sky; the planar view is not drawn. Needs VK_KHR_acceleration_structure and VK_KHR_ray_query (else a log line and nothing changes); ignored on OpenGL. Logs the acceleration structures' counts, memory and build times per level (`[rt]`). |
-| `RAC1_RT_CLUSTERS` | 0 or 1; default 0 | With RAC1_RT: 0 a bottom-level structure per tie / shrub packet and per tfrag entry (clusters), 1 merged per class (ties, shrubs) and per zone cell (tfrags), to compare the trace's cost. |
-| `RAC1_RT_DEBUG` | 1, 2 or 3; default off | With RAC1_RT: the water shows 1 where its colour comes from (green the picture, red a hit the picture does not hold, blue no hit), 2 the hit's distance, 3 what was hit (red a tie, green a shrub, blue a tfrag). |
-| `RAC1_RT_RES` | 1 or 2; default 1 | With RAC1_RT: 2 shades the seas once per 2 x 2 pixels (VK_KHR_fragment_shading_rate): a half-resolution trace's cost. |
+| `RAC1_RT` | 1 = on; default off | Vulkan only, testing (ray tracing, [Rendering](rendering.md#ray-tracing-phase-2)): the seas' water traces its reflection through the level's static world (ties, shrubs, tfrags) with a ray query and shades the hit from its own triangle (texture, lit colours, fog), at half resolution; the planar view is not drawn. Needs VK_KHR_acceleration_structure, VK_KHR_ray_query and non-uniform sampled-image indexing (else a log line and nothing changes); ignored on OpenGL. Logs the acceleration structures' counts, memory and build times and the shading tables per level (`[rt]`). |
+| `RAC1_RT_BLUR` | integer tenths of a half-resolution texel; default 10 | With RAC1_RT and the half-resolution trace: how far apart the upsample's four outer taps are read (0 the pixel's place alone: sharper, flickers more). |
+| `RAC1_RT_CLUSTERS` | 0 or 1; default 1 | With RAC1_RT: 0 a bottom-level structure per tie / shrub packet and per tfrag entry (clusters), 1 merged per class (ties, shrubs) and per zone cell (tfrags): 30 to 40 % cheaper to trace. |
+| `RAC1_RT_CONE` | integer milliradians; default 20 | With RAC1_RT: the ripples' spread added to the pixel's ray cone, which picks the hit's texture level. |
+| `RAC1_RT_DEBUG` | 1 to 5; default off | With RAC1_RT: the water shows 1 where its colour comes from (green the picture, red the hit's own shading, blue no hit; with the half-resolution trace yellow a nearby tap, magenta nothing near), 2 the hit's distance, 3 what was hit (red a tie, green a shrub, blue a tfrag), 4 the hit's own shading everywhere (full resolution), 5 the reflection alone (as RAC1_REFLECT_DEBUG=2 shows Medium's). |
+| `RAC1_RT_RES` | 0, 1 or 2; default 0 | With RAC1_RT: 0 the reflection traced at half resolution into its own image and upsampled in the seas' shader, 1 traced in every pixel, 2 the seas shaded once per 2 x 2 pixels (VK_KHR_fragment_shading_rate). |
+| `RAC1_RT_SHADE` | 0, 1 or 2; default 2 | With RAC1_RT: the hit's colour - 0 the frame's picture where the hit lies in it, else the cube map or the sky (phase 0); 1 the picture there, else the hit's own shading; 2 the hit's own shading always. |
 | `RAC1_RT_TLAS` | 0, 1 or 2; default 2 | With RAC1_RT: the top level each frame - 0 every instance written again and rebuilt, 1 the partitions (zone cells) that changed written and rebuilt, 2 those written and the top level updated. |
 | `RAC1_RT_ZONES` | 0 or 1; default 1 | With RAC1_RT: 1 the instances of the zones the game hides are left out of the trace, 0 every one is kept. |
 | `RAC1_SAMPLE_FROM` | frame number; default 0 (sample from the start) | Used with RAC1_SAMPLE_PROF: sampling starts at this frame. |

@@ -1,4 +1,4 @@
-// orig: (host) Ray tracing, phase 0 (see mrp_rt.h): the acceleration structures of the level's static world (Vulkan, RAC1_RT=1).
+// orig: (host) Ray tracing, phases 0 and 2 (see mrp_rt.h): the acceleration structures of the level's static world, the hit's shading tables (Vulkan, RAC1_RT=1).
 #include <game/render/mrp_rt.h>
 
 #include <profiler/host_profiler.h>
@@ -694,7 +694,7 @@ bool mrp_rt_active() { return vk::is_active() && vk::rt_enabled(); }
 
 // orig: (host) see mrp_rt.h
 int mrp_rt_cluster_mode() {
-    static const int m = std::clamp(env_int("RAC1_RT_CLUSTERS", 0), 0, 1);
+    static const int m = std::clamp(env_int("RAC1_RT_CLUSTERS", 1), 0, 1);
     return m;
 }
 
@@ -907,7 +907,7 @@ uint64_t mrp_rt_vk_set() {
 // orig: (host) see mrp_rt.h
 int mrp_rt_shader_mode(int pass) {
     static const int dbg = std::clamp(env_int("RAC1_RT_DEBUG", 0), 0, 5);
-    static const int shade = std::clamp(env_int("RAC1_RT_SHADE", 1), 0, 2);
+    static const int shade = std::clamp(env_int("RAC1_RT_SHADE", 2), 0, 2);
     return 1 | dbg << 1 | shade << 4 | std::clamp(pass, 0, 2) << 6;
 }
 

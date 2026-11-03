@@ -115,6 +115,10 @@ What changed in each release. Releases are source only: you build the game with 
   level's static world (ties, shrubs, tfrags; acceleration structures built per packet / tfrag entry at the level's load, the top
   level partitioned by zone cell) and takes the hit's colour from the frame's picture, else the cube map or the sky; the profiler's
   Seas and Ray tracing stages ([Rendering](docs/rendering.md#ray-tracing-phase-0)).
+- Ray tracing, phase 2 (testing, `RAC1_RT=1`): the reflection's hit shaded from its own triangle (its texture at a ray cone's level,
+  the world's lit colours, the world's fog; alpha-tested leaves with holes) instead of the frame's picture, traced at half resolution
+  and upsampled by distance in the seas' shader; clusters merged by default; `RAC1_RT_SHADE`, `RAC1_RT_BLUR`, `RAC1_RT_CONE`, the
+  profiler's Ray tracing: half-res trace stage ([Rendering](docs/rendering.md#ray-tracing-phase-2)).
 - Grass (Options > Graphics, off by default): the ground tagged as grass gets a fine relief of blades (Low, no geometry) and a few very
   low layers of blades near the camera (High), in the texture's colours, bending with the wind and away from Ratchet. Seeded on Veldin,
   Novalis and Kerwan.

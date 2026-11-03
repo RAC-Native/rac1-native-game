@@ -707,7 +707,7 @@ interface of our own (`RtAccel`) that another back end can implement:
   entry (its near image's raw records, start 0x014, run once on the CPU with an identity view: no morph) is a small
   bottom-level structure (about 45 triangles), built once at the level's load and compacted. The instances' transforms
   are the passes' matrices (instance data +0..+0x30, the scale +0x3c: world = position + M p / 1024); no wind sway.
-  `RAC1_RT_CLUSTERS=1` merges them per class (ties, shrubs) and per zone cell (tfrags) instead.
+  `RAC1_RT_CLUSTERS=1` merges them per class (ties, shrubs) and per zone cell (tfrags) instead (phase 2's default).
 - **Partitions**: the top level's instances grouped by zone cell (ties, tfrags; shrubs in one unzoned group), and a
   dynamic group for moving instances (empty now). Each frame only the groups whose zone byte (0x173d00) changed are
   written again; when nothing changed the frame in flight's top level is kept, else it is updated (`RAC1_RT_TLAS`).
@@ -753,6 +753,91 @@ source. Flicker over plain water (pixels whose frame-to-frame second difference 
 `RAC1_SIM_INPUT=shipwalk`, 1280x360): Rilgar's harbour Low 1526 / 0, Medium 281 / 0, ray traced 1894 / 150; Pokitaru's
 dock Low 113 / 0, Medium 122 / 0, ray traced 953 / 1. Screen-space reflections at Pokitaru's dock walking forward:
 4389 / 70 (ray traced 1667 / 0). Shading the hit itself (phase 2) is what removes the change of source.
+
+## Ray tracing, phase 2
+
+Still testing, behind `RAC1_RT=1` (Vulkan with ray queries and non-uniform indexing of sampled images). Phase 2 shades the
+reflection's hit itself, so the colour no longer depends on whether the frame's picture holds the hit: the change of source that
+flickered in phase 0 (a low camera at Rilgar, the buildings above the screen's top) is gone. Code: `rt_gather` in
+`mrp_world_renderer.cpp` (each triangle's texture and its vertices' texture coordinates and colour indices), `mrp_rt.cpp` (the tables,
+the sets, the half-resolution target), `sm_water_rt` / `sm_rt_surface` in `mrp_materials_glsl.inc`, the half-resolution passes in
+`mrp_fx.cpp` and the variants `kMrpVu7FsRtHalf` / `kMrpVu7FsRtUp` (`tools/gen_vk_shaders.py`).
+
+- **What a hit knows**: per triangle 48 bytes (`RtTri`): the texture coordinates of its corners, its texture (the world's texture
+  array and layer, the TFX / TCC bits, the mip count, whether every texel is opaque), its density (texture area against its own area:
+  the texture's level by a ray cone) and its three colour indices. The texture comes from the same GS state the draws replay (a
+  tie / shrub packet's texture slots from the class tables, a tfrag run's texture prims from its image); a tfrag's colour indices are
+  the CPU form of its program run with the colours replaced by their own indices. Per instance its first triangle, its first resident
+  colour and its kind. About 7 to 8 MB a level (Rilgar 171 k triangles: 7.8 MB).
+- **The shading**: the texel (at the level a ray cone - the pixel's footprint over the whole path, plus 0.02 radians of the ripples'
+  spread - gives, within the texture's own levels) times the vertices' lit colours (the resident tie / shrub colours and the tfrags',
+  the same ones the world draws with, copied per frame in flight when they change), combined by TFX / TCC as the world's fragment
+  shader does, then the world's fog (the ties' constants at 0x16cc60 and FOGCOL) by the reflection's whole path length. No sun term
+  and no point lights: the vertex colours carry the level's lighting, and with the fog the reflection's average colour matches
+  Medium's planar view (Rilgar's harbour: RGB 34 / 40 / 44 against 33 / 39 / 42; without the fog 40 / 41 / 40).
+- **Alpha-tested foliage**: a cluster with any texture that has a texel under the alpha test's reference is not opaque; its
+  candidates are shaded in the ray query's loop and kept where the texel passes the world's test (GEQUAL 0x60), so palm leaves have
+  holes. Rilgar has 4 such clusters (merged), Pokitaru 100, Novalis 108.
+- **Half resolution** (the default, `RAC1_RT_RES=0`): the seas are drawn first into a target of half the 3D's size (RGBA16F: the
+  reflection and its distance from the camera): a depth pass of the seas alone, then the nearest sea surface traced with early depth
+  tests, the water the 3D's picture shows hidden left out, no lighting. The seas are then drawn as before with a shader without the
+  ray query (its registers are the sea's own: with the trace in it the full-resolution seas cost twice as much) that reads the half
+  image at the pixel and at four places one half texel away (`RAC1_RT_BLUR`), keeping the taps within a few percent of the pixel's
+  distance, any water tap near it else, the cube map last. `RAC1_RT_RES=1` traces in every pixel, `2` shades the seas once per 2 x 2
+  pixels (phase 0's shading rate).
+- **The picture**: `RAC1_RT_SHADE=1` takes phase 0's picture colour where the hit lies in it and the hit's own shading elsewhere,
+  `0` is phase 0 (the cube map elsewhere). The pure hit shading (2, the default) costs no more, matches Medium's brightness better
+  (the picture's five taps darkened and flattened it) and flickers less at Novalis (5 against 339 pixels).
+- Clusters merged per class / zone cell (`RAC1_RT_CLUSTERS=1`) are now the default: the trace is 30 to 40 % cheaper with them.
+
+The reflection's GPU time (the planar view, the top level, the half-resolution trace and the seas; ms, the last 120 frames, profiler
+stages) and the frame's GPU busy time, on the Radeon 890M (RADV, Mesa 26):
+
+| | Rilgar 1080p | Rilgar 5120x1440 | Pokitaru 1080p | Pokitaru 5120x1440 | Novalis 1080p | Novalis 5120x1440 |
+|---|---|---|---|---|---|---|
+| Medium (planar view) | 0.85 | 2.06 | 1.05 | 1.97 | 0.68 | 1.04 |
+| Phase 2, default (half resolution, merged) | 1.01 | 2.91 | 1.52 | 3.11 | 1.24 | 2.10 |
+| the same, per-packet clusters | 1.30 | 3.70 | 1.63 | 3.19 | 1.61 | 2.38 |
+| the same, picture where it holds the hit (`RAC1_RT_SHADE=1`) | 1.04 | 3.14 | 1.51 | 3.10 | 1.27 | 2.17 |
+| full resolution (`RAC1_RT_RES=1`) | 2.24 | 5.13 | 1.84 | 4.02 | 2.38 | 3.98 |
+| 2 x 2 shading rate (`RAC1_RT_RES=2`) | 1.01 | 1.70 | 0.83 | 1.45 | 1.08 | 1.70 |
+| Frame's GPU busy, Medium / default | 3.5 / 3.7 | 7.9 / 8.9 | 3.4 / 3.8 | 6.6 / 7.8 | 4.5 / 4.8 | 7.8 / 8.9 |
+
+Of the default's cost at 5120x1440 the half-resolution pass is 1.1 to 1.8 ms and the seas 1.0 to 1.5 ms (Medium's seas alone 1.0 to
+1.5 ms). Another program on the shared GPU makes single runs vary by some 0.5 ms.
+
+Flicker over the water (pixels whose frame-to-frame second difference exceeds Off's sky-only picture's by 8 / 16, 60 frames, 1280x360):
+
+| | Medium | Phase 0 | Phase 2 (default) | 2 x 2 shading rate |
+|---|---|---|---|---|
+| Rilgar, swimming at the harbour (`shipwalk`) | 215 / 0 | 651 / 82 | 95 / 0 | 7566 / 121 |
+| Rilgar, walking on the shore (`shipwalk`) | 5193 / 24 | 4680 / 0 | 1464 / 0 | - |
+| Pokitaru's dock (`shipwalk`) | 1113 / 33 | 5123 / 1199 | 485 / 144 | 459 / 5 |
+| Novalis (`shipwalk`) | 13 / 0 | 2 / 0 | 5 / 0 | 352 / 1 |
+
+Full resolution without the upsample's spread flickers far more (Rilgar swimming 9548 / 220): every ripple moves a sharp reflection
+of lit windows. Pokitaru's 144 pixels over 16 are a thin line under the far islands (the far water's distance changes quickly from
+one half texel to the next).
+
+What is still missing against Medium: the mobys (Ratchet, the ships, Pokitaru's airships: phase 3), the reflection a little softer
+(half resolution and its spread) and calmer (the ripples bend the ray by a fifth of their slope), and lit textures' own glow (the
+emissive slots).
+
+**Water Reflections High.** It is better than Medium where Medium is weakest (no planar view's hole or cut, no source change,
+the least flicker of all walking), at about 1 ms more of the 890M's frame at 5120x1440 (0.2 to 0.5 ms at 1080p). To become High it
+would need: the mobys (phase 3, below: without them Ratchet has no reflection, which Medium has); the row in Options > Graphics
+shown only on Vulkan with ray queries and non-uniform sampled-image indexing (a saved High played as Medium elsewhere, logged), the
+`water_reflections` preference's value 3; `RAC1_RT` kept as the override; the variables above folded into the row's one setting
+(half resolution, merged clusters, pure shading); a validation-layer run (none was available here: no device lost over a five-level
+run, see the branch's report); the profiler's stages as they are. The Metal backend has no ray queries yet.
+
+**Phase 3, the mobys (design)**: the moby renderer skins in the vertex shader; a compute pass doing the same skinning per drawn moby
+(and per moby kept by the sun shadows' off-screen cache: last pose, alive, same class, still) would write world-space positions into a
+buffer, one bottom-level structure per moby built or refitted (refit while the class and LOD stay, rebuilt otherwise), its instance
+in the top level's dynamic partition (reserved, 1024 records, empty today; the top level updated each frame once it holds them, about
+0.1 to 0.3 ms with the merged static instances). The hit's shading needs per moby triangle its texture (the moby texture array, one
+more binding) and per vertex its texture coordinates and colour from the skinning's record; the moby's own lighting per vertex is in
+that record already.
 
 ## Performance
 

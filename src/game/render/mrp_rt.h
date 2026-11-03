@@ -1,7 +1,9 @@
-// Ray tracing, phase 0 (testing: RAC1_RT=1, Vulkan only; docs/rendering.md#ray-tracing-phase-0): the water's reflection found by a
-// ray query against the level's static world (ties, shrubs, tfrags) instead of the cube map / planar view, its colour taken from the
-// frame's own picture where the hit lies in it (its depth matching), else the cube map / the sky. No hit shading yet (phase 2), no
-// mobys in it (phase 3). Host code: it reads the level's static data and the zones' mask, never writes the game's state.
+// Ray tracing, phases 0 and 2 (testing: RAC1_RT=1, Vulkan only; docs/rendering.md#ray-tracing-phase-2): the water's reflection found by a
+// ray query against the level's static world (ties, shrubs, tfrags) instead of the cube map / planar view. Phase 2: the hit shaded
+// from its own triangle (its texture, its vertices' lit colours as the world's draws combine them, the world's fog along the
+// reflection's path; alpha-tested textures' texels looked at), traced at half resolution and upsampled in the sea's shader; the
+// frame's picture where the hit lies in it (phase 0's colour) is RAC1_RT_SHADE=1 / 0. No mobys in it (phase 3). Host code: it reads
+// the level's static data, the zones' mask, the lit colours and the fog's constants, never writes the game's state.
 //
 // The acceleration structures are organised as DirectX's clustered geometry and partitioned TLAS (CLAS / PTLAS) are, with the plain
 // KHR acceleration structures (the real cluster / partition extensions are NVIDIA's alone, VK_NV_cluster_acceleration_structure and
@@ -66,7 +68,7 @@ struct RtLevelGeometry {
 
 // orig: (host) RAC1_RT=1 and the device has ray queries (Vulkan): the water's ray-traced reflection on
 bool mrp_rt_active();
-// orig: (host) RAC1_RT_CLUSTERS: 0 a cluster per packet / tfrag entry (default), 1 merged per class (ties, shrubs) and zone cell (tfrags)
+// orig: (host) RAC1_RT_CLUSTERS: 0 a cluster per packet / tfrag entry, 1 merged per class (ties, shrubs) and zone cell (tfrags; default)
 int mrp_rt_cluster_mode();
 // orig: (host) at a new level (the world renderer's load, the host's thread): the clusters built and compacted, the partitions written,
 // the first top level built; the counts, the memory and the times in the log
