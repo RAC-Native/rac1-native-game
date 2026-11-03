@@ -16,14 +16,14 @@ source code, the files that are a mechanical translation of the game's own code 
 ### Your game disc, as an ISO image
 
 - **Ratchet & Clank**, North American release (NTSC-U), serial **`SCUS-97199`**, or the European
-  release (PAL), serial **`SCES-50916`**. Either disc alone is enough. PAL support is new and still
-  being tested: see [The European PAL disc](#the-european-pal-disc).
+  release (PAL), serial **`SCES-50916`**: version 1.00, or version 2.00 (the "Platinum" re-release).
+  Any of these discs alone is enough. PAL support is new and still being tested, the Platinum's most:
+  see [The European PAL disc](#the-european-pal-disc).
 - An unmodified ISO image of the disc. A good dump is 4,214,095,872 bytes for the North American
-  disc and 4,213,997,568 bytes for the PAL one; a smaller image is accepted with a warning (it is
-  checked fully later).
-- Other releases (the Japanese one, `SCPS-15037`, and the European PAL disc version 2.00, the "Platinum"
-  one, which boots the same `SCES_509.16` as version 1.00) are not supported as the game's disc. The
-  Japanese one can be added beside it as a data disc, for its Japanese voices: see [Data discs](#data-discs).
+  disc, 4,213,997,568 bytes for the PAL disc 1.00 and 4,214,784,000 for the Platinum; a smaller image is
+  accepted with a warning (it is checked fully later).
+- The Japanese release, `SCPS-15037`, is not supported as the game's disc. It can be added beside it as a
+  data disc, for its Japanese voices: see [Data discs](#data-discs).
 
 ### A Linux system with
 
@@ -138,7 +138,7 @@ All of it goes into `assets/`, which git ignores:
 | `assets/generated/mrp/moby/` | the moby models and textures for the renderer, per level |
 | `assets/generated/mrp/world/` | the world's geometry and textures for the renderer, per level |
 | `assets/generated/mrp/{moby,world}/flight/` | the loading screen's scene: the ship's flight between planets |
-| `assets/generated/overlay_map/` | the per-level address maps (made by `tools/overlay_match/`; for the PAL disc also `region_level<n>.txt`, `region_boot.txt` and `codegen/`, see below) |
+| `assets/generated/overlay_map/` | the per-level address maps (made by `tools/overlay_match/`; for the PAL disc also `region_level<n>.txt`, `region_boot.txt` and `codegen/`, and for the Platinum `region_core.txt`, see below) |
 | `assets/setup-state.json` | what the setup generated, and from which code (so a re-run redoes only what changed) |
 
 How these are made is described in [Rendering](rendering.md) and
@@ -184,6 +184,28 @@ the game's bytes. With it, from the PAL disc alone:
 
 The game runs in the PAL game's own 60 Hz mode (its Options offer 50 Hz or 60 Hz). The 50 Hz mode is
 not supported yet.
+
+**The Platinum disc (version 2.00).** Both PAL discs boot the same `SCES_509.16`; the setup tells them
+apart by that executable's sha1 and uses the Platinum's own table, `data/regions/SCES-50916-2.00.txt`.
+The Platinum is a later build of the game (1.02, the Japanese release's engine with the PAL data): besides
+moving the overlays' code, it moved the base executable's core, which the port reads at the North American
+addresses. The game loads that core back at those addresses when it starts, and takes the disc's pointers
+into it back too ([Architecture](architecture.md#the-region-layer)). Then, as for version 1.00:
+
+- The build's changed functions (about a hundred in each level's copy of the engine: the hero's states and
+  velocities, several weapons, the memory card and the save screens, the pause menu and the planet map, the
+  text wrapping, the pad's reads...) run the North American port where the port has one by hand: the 1.02
+  fixes in them are not there. What each fix is has not been established yet; they are to come one by one, as an
+  option of their own.
+- The generated ones are translated from the Platinum's own code, as stand-ins (`STAND-IN` in the generated
+  sources): on Veldin the credits, the end menu's page, the vendor's screens and the Morph-o-Ray's chicken,
+  and per level the same engine functions (the hero's horizontal velocity, the HUD counters...). The stand-ins of the
+  hero's velocity have no enhancement hook points from this disc (the `PAL:` lines of `hooks.glue` are version
+  1.00's), so R&C 3 movement's air braking and the strafe flip's speed do not act on the levels where it is a stand-in.
+- The save folder is the same as version 1.00's (`BESCES-50916RATCHET`), as on a console. The saves are the
+  port's, as from the other discs.
+- The disc's Italian vendor lines (the voice language Italian) are the Japanese ones: the Platinum was mastered
+  that way, and the game plays what the disc has.
 
 **What differs from the North American disc.**
 
@@ -482,16 +504,16 @@ What differs from Linux:
 ## Troubleshooting
 
 **"This is Ratchet & Clank's NTSC-J disc"**, or **"None of the disc images found can be the game's
-disc"**: only the North American disc, `SCUS-97199`, and the European PAL disc, `SCES-50916` version
-1.00, are supported as the game's disc for now. The message lists each image found and why it is not
-used.
+disc"**: only the North American disc, `SCUS-97199`, and the European PAL discs, `SCES-50916` (versions
+1.00 and 2.00), are supported as the game's disc for now. The message lists each image found and why it
+is not used.
 
 **"... is missing: the PAL disc needs it"**: the region table `data/regions/SCES-50916.txt` is part of
 the repository; restore it (`git checkout data/regions`).
 
 **"... is not the build the table was made from (sha1 differs)"**: the PAL disc image is not the
-release the region table describes (another PAL edition, such as a Platinum re-release, or a damaged
-dump). Only the original PAL release is supported.
+release the region table describes (another PAL edition, or a damaged dump). The PAL discs 1.00 and
+2.00 (the Platinum) are supported, each with its own table.
 
 **"not a PlayStation 2 disc image"** or **"This is not a disc image (ISO 9660)"**: the file is not a
 plain ISO. Use an unmodified `.iso` dump, not a compressed format (`.chd`, `.cso`, `.gz`) or a

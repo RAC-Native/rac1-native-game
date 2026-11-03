@@ -558,7 +558,8 @@ def looks_like_ps2_disc(path):
 
 
 # Ratchet & Clank's releases: the boot executable, its sha1 (both PAL discs boot SCES_509.16; the Japanese disc and the
-# PAL disc 2.00, the "Platinum" one, are a later build, 1.02, with the core moved), the serial, the region, SYSTEM.CNF's
+# PAL disc 2.00, the "Platinum" one, are a later build, 1.02, with the core moved: each region table names its build's
+# sha1, data/regions/SCES-50916-2.00.txt the Platinum's), the serial, the region, SYSTEM.CNF's
 # VER, a good dump's size, whether it is supported as the game's disc, and what it gives as a data disc (--data-iso) to
 # the game's disc: "voice-ja", the Japanese voices. KNOWN_DISCS in src/setup/iso_extract.cpp is the same table (the full
 # check, after the build); this copy lets the setup stop before the build when the disc is the wrong one, and tells the
@@ -576,7 +577,7 @@ class Release:
 KNOWN_DISCS = [
     Release("SCUS_971.99", "72fd1de379dafd8f243dceeb3be50980f3fd3cd5", "SCUS-97199", "NTSC-U", "1.00", 4214095872, True, ()),
     Release("SCES_509.16", "553a7f6c2c7a004d384d77b7139accbc52242149", "SCES-50916", "PAL", "1.00", 4213997568, True, ()),
-    Release("SCES_509.16", "79956931bd62fafd8d20fa2eae796dbaf2e15e83", "SCES-50916", "PAL", "2.00", 4214784000, False, ()),
+    Release("SCES_509.16", "79956931bd62fafd8d20fa2eae796dbaf2e15e83", "SCES-50916", "PAL", "2.00", 4214784000, True, ()),
     Release("SCPS_150.37", "0df83877d53e19d69ec82038e2aaa227f643178f", "SCPS-15037", "NTSC-J", "1.02", 1807187968, False,
             ("voice-ja",)),
 ]
@@ -584,7 +585,8 @@ GIVES = {"voice-ja": "the Japanese voices"}
 
 
 def release_by_boot(boot):
-    """The release the game's disc is by its boot executable alone (the supported ones are one per boot executable)."""
+    """The release the game's disc is by its boot executable alone (the first supported one: both PAL discs boot
+    SCES_509.16, and are told apart by identify_disc)."""
     return next((r for r in KNOWN_DISCS if r.boot == boot and r.supported), None) or \
         next((r for r in KNOWN_DISCS if r.boot == boot), None)
 
@@ -1029,12 +1031,13 @@ def boot_elf(iso):
 
 
 def region_table(iso):
-    """The region table of another region's disc (data/regions/<serial>.txt), None for the NTSC-U disc."""
-    rel = release_by_boot(disc_boot(iso))
+    """The region table of another region's disc (data/regions/<serial>.txt, <serial>-<version>.txt for a later version
+    of the same serial: SCES-50916-2.00.txt), None for the NTSC-U disc."""
+    rel = identify_disc(iso)[0] or release_by_boot(disc_boot(iso))
     serial, region = rel.serial, rel.region
     if region == "NTSC-U":
         return None
-    table = REGIONS / f"{serial}.txt"
+    table = REGIONS / (f"{serial}.txt" if rel.version == "1.00" else f"{serial}-{rel.version}.txt")
     if not table.is_file():
         fail(f"{table.relative_to(ROOT)} is missing: the {region} disc needs it (it is part of the repository).")
     return table
@@ -2090,7 +2093,7 @@ def check_disc(arg, pick=None):
         fail(f"{iso} is a release of Ratchet & Clank the setup does not know ({boot}, version {version or '?'}).")
     if not rel.supported:
         fail(f"This is Ratchet & Clank's {rel.name} disc. Only the North American disc, SCUS-97199, and the European PAL "
-             "disc, SCES-50916 version 1.00, are supported as the game's disc for now."
+             "discs, SCES-50916 versions 1.00 and 2.00, are supported as the game's disc for now."
              + (f"\n         It can be added as a data disc ({SETUP_CMD} --iso <your NTSC-U or PAL disc> --data-iso {iso}): "
                 f"it gives {', '.join(GIVES[g] for g in rel.gives)}." if rel.gives else ""))
     if how != "exact":

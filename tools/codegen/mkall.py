@@ -67,11 +67,13 @@ FORCE = {int(x, 16) for x in os.environ.get('MKALL_FORCE', '').split(',') if x}
 def standin_hooks(ad):
     """A hooks file for the stand-in at `ad` (tools/codegen/ovlist.py): the `L<n> PAL:0x...` lines of hooks.glue inside the PAL
     function it is made from, their addresses and `L_PAL_<addr>` labels moved to the stand-in's (its NTSC-U entry + the
-    offset in the PAL function)."""
+    offset in the PAL function). The `PAL:` addresses are the PAL disc 1.00's (data/regions/SCES-50916.txt): on another
+    build (PAL 2.00) its stand-ins get none."""
     pal, end, n = ovlist.overlay(LVL).standin(ad).local
     move = lambda a: n + (a - pal)
     out = []
-    for line in open(os.environ['MIPS2CPP_HOOKS']):
+    table = ovlist.rv.disc_of(ovlist.rv.disc_path(ovlist.ASSETS))[2]
+    for line in open(os.environ['MIPS2CPP_HOOKS']) if table is not None and os.path.basename(table) == 'SCES-50916.txt' else []:
         m = re.match(r'^L(\d+)\s+PAL:(0x[0-9a-fA-F]+)(.*)$', line.rstrip('\n'))
         if m and int(m.group(1)) == LVL and pal <= int(m.group(2), 16) < end:
             rest = re.sub(r'L_PAL_([0-9a-f]+)', lambda x: 'L_%x' % move(int(x.group(1), 16)), m.group(3))

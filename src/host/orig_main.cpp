@@ -87,6 +87,7 @@
 #include <game/ovl/arrival.h>
 #include <game/ovl/cutscene.h>
 #include <game/ovl/level_change.h>
+#include <game/ovl/region_core.h>
 #include <game/ovl/movie_mode.h>
 #include <game/ovl/veldin_mobys.h>
 #include <game/ovl/ovl.h>
@@ -2306,6 +2307,7 @@ int main(int argc, char** argv) {
     // EE memory with the base ELF image; the level overlay's image (what the base ELF's loader
     // reads from the disc).
     init_memory();
+    rac1::region_core_load();  // (another build's core, the PAL disc 2.00's: at the NTSC-U addresses the ports read; game/ovl/region_core.h)
     g_ee_null_is_ram = true;
     g_view_from_game = true;
     g_legacy_host_writes = false;

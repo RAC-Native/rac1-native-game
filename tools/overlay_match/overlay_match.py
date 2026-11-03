@@ -89,7 +89,7 @@ MEM = {0x1a, 0x1b, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0
 ADDI = {0x09, 0x19}  # addiu, daddiu
 ADDI_TRAP = {0x08, 0x18}  # addi, daddi: not masked (the same offset in both), but a base + offset address all the same
 SP, GP = 29, 28
-GP_VALUE = 0x00166C00  # the base ELF's $gp (its .reginfo), the same for every overlay
+GP_VALUE = 0x00166C00  # the base ELF's $gp (its .reginfo), the same for every overlay of a build (the 1.02 core's: 0x166d00)
 
 
 def mask(w):
@@ -108,6 +108,13 @@ def sx16(v):
 
 
 class Overlay:
+    # The build's $gp, the end of its core (the boot executable below the overlays) and the core's addresses back to
+    # NTSC-U's (None: not the same core): the NTSC-U build's by default; another build's core (the 1.02 one, moved) is
+    # set by tools/overlay_match/region_maps.py
+    gp = GP_VALUE
+    core_end = 0x15EF00
+    core_back = staticmethod(lambda a: a)
+
     def __init__(self, secs, entry):
         self.secs, self.entry = secs, entry
         self.code_base, _, code = secs[6]
@@ -195,6 +202,12 @@ BASE_END = 0x15EF00  # the boot executable's core and globals: the same addresse
 DROP_COLLISIONS = False  # (set by front_match.py)
 
 
+def _core_ne(V, a, L, b):
+    """Two addresses into the boot executable's core (or one of them) that are not the same object: a != b on the same
+    core (each build's back to NTSC-U's when one core moved)."""
+    return a != b if V.core_back is L.core_back else V.core_back(a) != L.core_back(b)
+
+
 def same_strict(V, i, L, j, n):
     """Two bodies with the same masked words alike beyond the mask (the tie-break between copies that differ only in a
     masked field, e.g. two flag tests, or a structure's field): the offsets of the loads / stores / addiu whose base
@@ -210,21 +223,21 @@ def same_strict(V, i, L, j, n):
         op, rs, rt = x >> 26, (x >> 21) & 31, (x >> 16) & 31
         if op == 3:
             tx, ty = (x & 0x3FFFFFF) << 2, (y & 0x3FFFFFF) << 2
-            if (tx < BASE_END or ty < BASE_END) and tx != ty:
+            if (tx < V.core_end or ty < L.core_end) and _core_ne(V, tx, L, ty):
                 return False
         elif op == 0x0F:
             hv[rt], hl[rt] = (x & 0xFFFF) << 16, (y & 0xFFFF) << 16
             continue
         elif (op in MEM or op in ADDI) and rs != SP:
             if rs == GP:
-                ax, ay = (GP_VALUE + sx16(x)) & 0xFFFFFFFF, (GP_VALUE + sx16(y)) & 0xFFFFFFFF
+                ax, ay = (V.gp + sx16(x)) & 0xFFFFFFFF, (L.gp + sx16(y)) & 0xFFFFFFFF
             elif rs in hv and rs in hl:
                 ax, ay = (hv[rs] + sx16(x)) & 0xFFFFFFFF, (hl[rs] + sx16(y)) & 0xFFFFFFFF
             elif (x & 0xFFFF) != (y & 0xFFFF):
                 return False
             else:
                 ax = ay = None
-            if ax is not None and (ax < BASE_END or ay < BASE_END) and ax != ay:
+            if ax is not None and (ax < V.core_end or ay < L.core_end) and _core_ne(V, ax, L, ay):
                 return False
         d = gpr_written(x)
         if d is not None:
@@ -382,7 +395,7 @@ def data_pairs(V, L, fmap, sizes):
                 tv, tl = (wv & 0x3FFFFFF) << 2, (wl & 0x3FFFFFF) << 2
                 if tv in fmap and fmap[tv] != tl:
                     jal_bad += 1
-            pairs_k(pairs, wv, wl, op, rs, rt, hv, hl)
+            pairs_k(pairs, wv, wl, op, rs, rt, hv, hl, V.gp, L.gp)
             if self_delay:
                 _, tk, unc = branch_at
                 if k < tk < n:
@@ -408,7 +421,7 @@ def unconditional(w):
     return w >> 26 == 2 or (w >> 26 == 4 and (w >> 16) & 0x3FF == 0)
 
 
-def pairs_k(pairs, wv, wl, op, rs, rt, hv, hl):
+def pairs_k(pairs, wv, wl, op, rs, rt, hv, hl, gpv=GP_VALUE, gpl=GP_VALUE):
     """One instruction of a matched pair: the address it builds (recorded), the registers' state."""
     if op == 0x0F:
         hv[rt], hl[rt] = (wv & 0xFFFF) << 16, (wl & 0xFFFF) << 16
@@ -420,7 +433,7 @@ def pairs_k(pairs, wv, wl, op, rs, rt, hv, hl):
             return
     if (op in MEM or op in ADDI or op in ADDI_TRAP) and rs != SP:
         if rs == GP:
-            av, al = GP_VALUE + sx16(wv), GP_VALUE + sx16(wl)
+            av, al = gpv + sx16(wv), gpl + sx16(wl)
         elif rs in hv:
             av, al = (hv[rs] + sx16(wv)) & 0xFFFFFFFF, (hl[rs] + sx16(wl)) & 0xFFFFFFFF
         else:

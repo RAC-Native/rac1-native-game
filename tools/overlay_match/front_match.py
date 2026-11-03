@@ -58,17 +58,18 @@ def boot_module(elf):
 
 def boot_entry(elf):
     """The boot module's entry, read where the core's `main` builds it (lui v0,hi at 0x12d9ec, addiu s0,v0,lo at
-    0x12d9f0: SCUS_971.99 0x1e9658, the PAL SCES_509.16 0x1e9558)."""
+    0x12d9f0: SCUS_971.99 0x1e9658, the PAL SCES_509.16 1.00 0x1e9558; the 1.02 core, NTSC-J and PAL 2.00, has its
+    `main` 0x140 bytes further: 0x12db2c, 0x1e99d8 on PAL 2.00)."""
     shoff = struct.unpack_from("<I", elf, 0x20)[0]
     shnum = struct.unpack_from("<H", elf, 0x30)[0]
-    for i in range(shnum):
-        _n, typ, _flags, addr, off, size = struct.unpack_from("<IIIIII", elf, shoff + i * 40)
-        if typ == 1 and addr <= 0x12D9EC and 0x12D9F4 <= addr + size:
-            hi, lo = struct.unpack_from("<II", elf, off + 0x12D9EC - addr)
-            if hi >> 16 != 0x3C02 or lo >> 16 != 0x2450:  # lui v0 / addiu s0,v0
-                raise SystemExit("[front_match] the core's main does not build the boot module's entry at 0x12d9ec")
-            return ((hi & 0xFFFF) << 16) + om.sx16(lo)
-    raise SystemExit("[front_match] the core's main (0x12d9ec) not in the ELF")
+    for at in (0x12D9EC, 0x12DB2C):
+        for i in range(shnum):
+            _n, typ, _flags, addr, off, size = struct.unpack_from("<IIIIII", elf, shoff + i * 40)
+            if typ == 1 and addr <= at and at + 8 <= addr + size:
+                hi, lo = struct.unpack_from("<II", elf, off + at - addr)
+                if hi >> 16 == 0x3C02 and lo >> 16 == 0x2450:  # lui v0 / addiu s0,v0
+                    return ((hi & 0xFFFF) << 16) + om.sx16(lo)
+    raise SystemExit("[front_match] the core's main does not build the boot module's entry (at 0x12d9ec, or 0x12db2c)")
 
 
 def main():

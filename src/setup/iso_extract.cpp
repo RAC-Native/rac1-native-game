@@ -114,14 +114,14 @@ std::vector<std::string> iso9660_list_root(std::span<const std::byte> iso) {
 }
 
 // Ratchet & Clank's releases, by boot executable and version (SYSTEM.CNF's VER: both PAL discs boot SCES_509.16). The
-// port's addresses are the North American build's; the European PAL disc 1.00 is supported through its region table
-// (data/regions/SCES-50916.txt; see find_known_disc). The Japanese disc and the PAL disc 2.00 (the "Platinum" one) are
-// a later build (1.02, whose core moved): not supported as the game's disc, only as data discs (setup.py --data-iso).
+// port's addresses are the North American build's; the European PAL discs are supported through their region tables
+// (data/regions/SCES-50916.txt for 1.00, SCES-50916-2.00.txt for 2.00, the "Platinum" one: a later build, 1.02, whose core
+// moved; see find_known_disc). The Japanese disc (the 1.02 build too) only as a data disc (setup.py --data-iso).
 // The same table as KNOWN_DISCS in tools/setup.py.
 constexpr KnownDisc KNOWN_DISCS[] = {
     {"SCUS_971.99", "SCUS-97199", "NTSC-U", "1.00", 4214095872ULL, true},
     {"SCES_509.16", "SCES-50916", "PAL", "1.00", 4213997568ULL, true},
-    {"SCES_509.16", "SCES-50916", "PAL", "2.00", 4214784000ULL, false},
+    {"SCES_509.16", "SCES-50916", "PAL", "2.00", 4214784000ULL, true},
     {"SCPS_150.37", "SCPS-15037", "NTSC-J", "1.02", 1807187968ULL, false},
 };
 
@@ -234,8 +234,8 @@ IsoValidation validate_iso(const std::string& iso_path) {
     if (!res.disc->supported) {
         res.message = std::string("This is Ratchet & Clank's ") + res.disc->region + " disc (" + res.disc->serial + ", version " +
                       res.disc->version +
-                      "). Only the North American disc, SCUS-97199, and the European PAL disc, SCES-50916 version 1.00, are supported "
-                      "as the game's disc for now; this one can be added as a data disc (setup --data-iso).";
+                      "). Only the North American disc, SCUS-97199, and the European PAL discs, SCES-50916 versions 1.00 and 2.00, are "
+                      "supported as the game's disc for now; this one can be added as a data disc (setup --data-iso).";
         return res;
     }
 

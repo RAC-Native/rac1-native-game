@@ -17,10 +17,11 @@ A native PC port of **Ratchet & Clank** (PlayStation 2, 2002), for Linux and Win
 
 The game's own code is ported to C++, function by function, from the original North American release
 (`SCUS-97199`), and each port is proved against the original code. The European PAL release
-(`SCES-50916`) is supported too: it goes through a table of where the PAL build put the same code (see
-[Setup](docs/setup.md#the-european-pal-disc)). The Japanese release (`SCPS-15037`) and the PAL Platinum
-re-release can be given as data discs beside the game's disc: the Japanese one adds the Japanese voices
-(see [Setup](docs/setup.md)); as the game's disc they are not supported yet (#64). It is not an emulator: all of the game's
+(`SCES-50916`) is supported too, both its first version and the Platinum re-release (version 2.00): each
+goes through a table of where its build put the same code (see
+[Setup](docs/setup.md#the-european-pal-disc)). The Japanese release (`SCPS-15037`) can be given as a data
+disc beside the game's disc, for the Japanese voices (see [Setup](docs/setup.md)); as the game's disc it is
+not supported yet (#64). It is not an emulator: all of the game's
 code, the PS2's vector-unit microcode included, runs as native C++ while you play. The 3D is drawn by
 a native renderer (OpenGL, or Vulkan as an experimental option) from the game's own decisions, which
 makes widescreen, high resolutions, full-detail textures and longer draw distances possible without
@@ -146,11 +147,12 @@ follows from that.
 - This repository contains **no game assets and none of the game's code**: no executable, no
   levels, textures, models, sounds or movies.
 - To play, you need **your own copy** of the game, as an ISO image you made yourself: the North
-  American PS2 disc `SCUS-97199`, or the European PAL disc `SCES-50916`. Either disc alone is enough.
+  American PS2 disc `SCUS-97199`, or the European PAL disc `SCES-50916` (version 1.00 or the Platinum's
+  2.00). Any of them alone is enough.
   The setup extracts and converts everything from it on your machine, including the part of the port
   that is a mechanical translation of the game's own code.
-- One kind of file about the game is committed: the region table, `data/regions/SCES-50916.txt`.
-  It lists where the PAL build put the code and data of the North American build the port is written
+- One kind of file about the game is committed: the region tables, `data/regions/SCES-50916.txt` (and
+  `SCES-50916-2.00.txt` for the Platinum). Each lists where a PAL build put the code and data of the North American build the port is written
   against. The rule (Daino's decision): addresses, and the shifts between two builds' addresses, may
   be committed like `orig:` annotations (the region table); never bytes of code, data or text. The
   table holds addresses, shifts and the PAL executable's checksum, nothing else.
