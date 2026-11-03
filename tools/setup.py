@@ -561,7 +561,9 @@ def looks_like_ps2_disc(path):
 # PAL disc 2.00, the "Platinum" one, are a later build, 1.02, with the core moved: each region table names its build's
 # sha1, data/regions/SCES-50916-2.00.txt the Platinum's), the serial, the region, SYSTEM.CNF's
 # VER, a good dump's size, whether it is supported as the game's disc, and what it gives as a data disc (--data-iso) to
-# the game's disc: "voice-ja", the Japanese voices. KNOWN_DISCS in src/setup/iso_extract.cpp is the same table (the full
+# the game's disc: "voice-ja", the Japanese voices; "texts", the corrected texts (the European texts as the later discs
+# carry them, fixed; main menu > Options > Advanced > Corrected Texts), only beside the North American disc, the one whose
+# texts they correct (gives_beside). KNOWN_DISCS in src/setup/iso_extract.cpp is the same table (the full
 # check, after the build); this copy lets the setup stop before the build when the disc is the wrong one, and tells the
 # data discs apart. Add a release to both.
 class Release:
@@ -576,12 +578,44 @@ class Release:
 
 KNOWN_DISCS = [
     Release("SCUS_971.99", "72fd1de379dafd8f243dceeb3be50980f3fd3cd5", "SCUS-97199", "NTSC-U", "1.00", 4214095872, True, ()),
-    Release("SCES_509.16", "553a7f6c2c7a004d384d77b7139accbc52242149", "SCES-50916", "PAL", "1.00", 4213997568, True, ()),
-    Release("SCES_509.16", "79956931bd62fafd8d20fa2eae796dbaf2e15e83", "SCES-50916", "PAL", "2.00", 4214784000, True, ()),
+    Release("SCES_509.16", "553a7f6c2c7a004d384d77b7139accbc52242149", "SCES-50916", "PAL", "1.00", 4213997568, True,
+            ("texts",)),
+    Release("SCES_509.16", "79956931bd62fafd8d20fa2eae796dbaf2e15e83", "SCES-50916", "PAL", "2.00", 4214784000, True,
+            ("texts",)),
     Release("SCPS_150.37", "0df83877d53e19d69ec82038e2aaa227f643178f", "SCPS-15037", "NTSC-J", "1.02", 1807187968, False,
-            ("voice-ja",)),
+            ("voice-ja", "texts")),
 ]
-GIVES = {"voice-ja": "the Japanese voices"}
+GIVES = {"voice-ja": "the Japanese voices", "texts": "the corrected texts"}
+
+
+def gives_beside(rel, base_rel):
+    """What the release `rel` gives as a data disc beside the game's disc `base_rel` (None: not known): the corrected
+    texts only beside the North American disc (a PAL disc carries them already)."""
+    return tuple(g for g in rel.gives if g != "texts" or base_rel is None or base_rel.region == "NTSC-U")
+
+
+def texts_only(gives):
+    """A data disc that gives the corrected texts alone: only its levels' gameplay files are extracted (about 11 MB)."""
+    return tuple(gives) == ("texts",)
+
+
+def extract_texts_only(iso, out, progress):
+    """tools/disc_extract.py's extraction cut down to the levels' PAL gameplay files (levels/levelNN/gameplay_pal.bin,
+    where the game's texts are; the NTSC ones hold the same texts): layout.txt lists them alone, and the disc layer reads
+    every other sector of that disc as zero. (Done here, around disc_extract's plan, so that disc_extract.py itself, whose
+    sources make the fingerprint of every extracted disc, stays as it is.)"""
+    whole = disc_extract.plan_disc
+
+    def plan(img):
+        p = whole(img)
+        return disc_extract.Plan(p.image_size, [x for x in p.pieces
+                                                if x[3].startswith("levels/") and x[3].endswith("/gameplay_pal.bin")])
+
+    disc_extract.plan_disc = plan
+    try:
+        return disc_extract.extract(iso, out, progress)
+    finally:
+        disc_extract.plan_disc = whole
 
 
 def release_by_boot(boot):
@@ -877,8 +911,8 @@ def pick_discs(iso_arg=None, given_data=(), state=None, no_data=False):
             d.why = f"the same release as {shown_path(taken[d.key].path)}: one image of a release is enough"
         elif base_rel is not None and d.rel.boot == base_rel.boot and d.rel.supported:
             d.why = "the same release as the game's disc"
-        elif not d.rel.gives:
-            d.why = "as a data disc it gives nothing the game's disc lacks: the same voices"
+        elif not gives_beside(d.rel, base_rel):
+            d.why = "as a data disc it gives nothing the game's disc lacks: the same voices and texts"
             if not d.rel.supported:
                 d.why = "not a game's disc yet, being a later build; " + d.why
         elif (no_data or d.key in removed and real not in listed) and real not in given_data:
@@ -887,7 +921,7 @@ def pick_discs(iso_arg=None, given_data=(), state=None, no_data=False):
             d.why = ("not a game's disc yet; it can be a data disc beside the North American or PAL disc ("
                      + ", ".join(GIVES[g] for g in d.rel.gives) + ")")
         else:
-            d.role, d.why = "data", ", ".join(GIVES[g] for g in d.rel.gives)
+            d.role, d.why = "data", ", ".join(GIVES[g] for g in gives_beside(d.rel, base_rel))
             if real in given_data:
                 d.why += ", given with --data-iso"
         if d.rel is not None and d.key not in taken and (d.role == "data" or not why):
@@ -2169,14 +2203,18 @@ def data_discs_step(base_iso, new_paths, forced, drop):
             DATA_DISCS_FILE.unlink()
         return
     base_boot = disc_boot(base_iso)
+    base_rel = release_by_boot(base_boot)
     entries = {}  # by release (serial, version): the last one given wins
     for d in known:
         entries[(d["serial"], d["version"])] = dict(d)
     for path in new_paths:
         iso, rel = check_data_disc(path, base_boot)
         removed.discard(f"{rel.serial} {rel.version}")
+        old = entries.get((rel.serial, rel.version), {})
         entries[(rel.serial, rel.version)] = {"iso": str(iso), "serial": rel.serial, "region": rel.region,
                                               "version": rel.version, "boot": rel.boot, "gives": list(rel.gives)}
+        if old.get("iso") == str(iso) and old.get("fingerprint"):  # (the same image, found again: extracted already)
+            entries[(rel.serial, rel.version)]["fingerprint"] = old["fingerprint"]
     listed = []
     for key, d in entries.items():
         rel = next((r for r in KNOWN_DISCS if (r.serial, r.version) == key), None)
@@ -2187,8 +2225,12 @@ def data_discs_step(base_iso, new_paths, forced, drop):
             if d.get("dir"):
                 shutil.rmtree(disc_extract.long_path(ROOT / d["dir"]), ignore_errors=True)
             continue
-        if not rel.gives:
-            ok(f"Data disc {rel.name}: it gives nothing the game's disc lacks (the same voices), not extracted")
+        gives = gives_beside(rel, base_rel)
+        d["gives"] = list(gives)
+        if not gives:
+            ok(f"Data disc {rel.name}: it gives nothing the game's disc lacks (the same voices and texts), not extracted")
+            if d.get("dir"):
+                shutil.rmtree(disc_extract.long_path(ROOT / d["dir"]), ignore_errors=True)
             d["dir"] = ""
             listed.append(d)
             continue
@@ -2196,11 +2238,12 @@ def data_discs_step(base_iso, new_paths, forced, drop):
         d["dir"] = out.relative_to(ROOT).as_posix()
         iso = Path(d["iso"])
         have = iso.is_file()
-        fingerprint = f"{disc_fingerprint(iso)}:{sources_fingerprint(DISC_STEP[2])}" if have else d.get("fingerprint")
+        part = ":texts" if texts_only(gives) else ""  # (only the texts' files: another extraction than the whole disc's)
+        fingerprint = f"{disc_fingerprint(iso)}:{sources_fingerprint(DISC_STEP[2])}{part}" if have else d.get("fingerprint")
         current = "disc" not in forced and d.get("fingerprint") == fingerprint
         missing = disc_extract.layout_missing(out)
         if missing is None and (current or not have):
-            ok(f"Data disc {rel.name} ({', '.join(GIVES[g] for g in rel.gives)}): up to date in {d['dir']}{os.sep}")
+            ok(f"Data disc {rel.name} ({', '.join(GIVES[g] for g in gives)}): up to date in {d['dir']}{os.sep}")
             listed.append(d)
             continue
         if not have:
@@ -2213,12 +2256,12 @@ def data_discs_step(base_iso, new_paths, forced, drop):
             progress(done, total)
 
         try:
-            plan = disc_extract.extract(iso, out, show)
+            plan = (extract_texts_only if texts_only(gives) else disc_extract.extract)(iso, out, show)
         except (disc_extract.DiscError, OSError) as e:
             fail(f"Extracting the data disc {rel.name} failed: {e}")
         d["fingerprint"] = fingerprint
         ok(f"Data disc {rel.name}: {len(plan.files)} files ({plan.total / 2**30:.2f} GB) in {d['dir']}{os.sep} in "
-           f"{time.time() - t:.0f} s ({', '.join(GIVES[g] for g in rel.gives)})")
+           f"{time.time() - t:.0f} s ({', '.join(GIVES[g] for g in gives)})")
         listed.append(d)
         state = load_state()
         state["data_discs"] = list(entries.values())  # (kept at once: an interrupted setup does not extract it again)

@@ -2,7 +2,8 @@
 
 Options > Advanced holds the settings that change how the game plays. The pause menu's page holds a playthrough's
 settings (the rows below, set first by New Game's Original / Modern and kept with the save); the main menu's holds only
-the global ones, settings of the whole game rather than of a playthrough: [Cut Content](#cut-content). They are different
+the global ones, settings of the whole game rather than of a playthrough: [Cut Content](#cut-content) and
+[Corrected Texts](#corrected-texts). They are different
 in kind
 from the PS2 compromises the port removes (see [Overview](overview.md#faithful-to-the-games-code-not-to-the-ps2s-limits)):
 
@@ -64,8 +65,8 @@ port's fast fades). Left and right on a row step the value (`advanced_settings_d
 
 The ids in `save<N>.pc`: Quick Select 1, Aiming 2, Movement 3, Fades 4, Buy All Ammo 5, Skip Cutscenes 10 (Vibration 6,
 Adaptive Triggers 9 have ids but are not written with the saves; 7 and 8 are removed rows, and 11 was the Voice row,
-now on the Language page, never written with the saves; 12, Cut Content, is global and never written with the saves
-either: none reused).
+now on the Language page, never written with the saves; 12, Cut Content, and 13, Corrected Texts, are global and never
+written with the saves either: none reused).
 
 **The Language page's rows** have more values than the widget's four: each byte is a step byte with two values whose
 texts are both the row's value, made at each lookup (as the Graphics page's rows); when Cross or left / right step it,
@@ -502,6 +503,48 @@ the citizen stays, its sequence 0 is played in a loop, and within 15 units it tu
 Left out for now: Orxon's five Fred 1 (class 915 by Clank's start: the same retire stub, L10:0x2d7fe8, not a turning
 citizen as once thought - speculative), Eudora's Transport Ships (484: the beta's update would have to be ported), and
 the rest of the candidates in [Port inventory](port-inventory.md#what-the-development-repository-already-knew).
+
+## Corrected Texts
+
+The main menu's Advanced page has a row **Corrected Texts: Off / On** (off by default), shown only when the game's disc is
+the North American one and a data disc gives the corrected texts: the PAL disc 1.00, the PAL disc 2.00 or the Japanese disc
+(see [Setup](setup.md#data-discs)); without one the row is not on the page. It is a global setting: kept in the
+preferences only (`corrected_texts 0|1` in `advanced_options.txt`), never with a save. With it on, the strings the later
+discs correct are shown as those discs have them, in every language the game shows (English, French, German, Spanish,
+Italian). The North American disc's own European tables carry mistakes the PAL disc fixed (described here, not quoted),
+for example:
+
+- Italian: the 15 memory card messages name the card's slot in the French wording; the PAL disc names it the Italian
+  way, says first that no card is inserted when there is none, and the Load Game prompt's cancel is reworded. Also two
+  weapon slogans each shifted to the next weapon, typos, a word's gender, the triangle button spelled out as its glyph.
+- Spanish: the map's legend for the sticks is in Italian (the PAL disc shows the sticks' glyphs), and several messages
+  join the two names with the Italian conjunction instead of the Spanish one; a card message's English article.
+- French: the ammo messages for one unit in the singular, two weapons renamed (the Devastator, the glove), grammar.
+- German: a card message that said the wrong thing, a weapon's name in one word, shortened lines.
+- English: the Heli-Pack hint names the cross button as its glyph instead of in words; a credits line's breaks.
+
+How (`src/game/enhance/corrected_texts.{h,cpp}`, `// orig: (none)`): at the first text table the game relocates with the
+row on, each level's gameplay file of the data disc (`levels/levelNN/gameplay_pal.bin`) is compared with the North
+American disc's, string by string by id, in the order PAL 2.00, PAL 1.00, Japanese disc (the first disc that has a
+string gives it). About 75 strings differ (6 KB); they are written to an EE block the game never uses (0xfe000 to
+0xffc00), and after the game relocates a text table (the title's eight in `title_load`, the level's in `gameplay_load`,
+the title's again for the pause menu's help log) the records of those ids point at them. The game's own lookups then
+read them as any other string. Details:
+
+- The PAL disc 2.00 added five credits lines (the ids after each one are one higher): its ids are taken back to the North
+  American ones, and its credits are not taken (they would need that build's credits code); with only that disc, the
+  credits stay the North American ones, with the PAL disc 1.00 or the Japanese disc beside it they get the English line
+  breaks fix.
+- Spanish 20172: the PAL disc 1.00 broke it (a copy of the line before it), 2.00 fixed it again; it is taken only from
+  2.00.
+- Still wrong on every disc, so not corrected: a German credits line in English; two Italian misspellings (a weapon's
+  name, a word in a hint); two new typos the PAL disc brought in its fixes (one French, one German).
+- With the row off nothing is read or changed: the game's memory is the same frame by frame (RAC1_RAMHASH). With it on,
+  only the corrected records' string pointers and the block 0xfe000 differ.
+
+The row is read when a text table is loaded, and a change on the main menu acts on the main menu's texts at once (their
+original strings put back when it is turned off); a level's texts follow at its load. `RAC1_CORRECTED_TEXTS=1` / `0`
+overrides the row for testing ([Environment variables](env-vars.md)).
 
 ## Limits
 

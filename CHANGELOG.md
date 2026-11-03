@@ -14,6 +14,13 @@ What changed in each release. Releases are source only: you build the game with 
   a stand-in's switch fell through to its default every frame, leaking its stack frame until the EE stack reached the
   level's data: the crash on arrival).
 
+- Corrected Texts (main menu > Options > Advanced, Off by default, global; RAC1_CORRECTED_TEXTS for testing): with the
+  North American disc, the European and English strings the later discs correct (the Italian memory card messages' French
+  wording, the Spanish map legend in Italian, French ammo messages, a German card message...: 73 strings) shown as the PAL
+  disc 2.00, the PAL disc 1.00 or the Japanese disc has them. Those discs give "the corrected texts" as data discs: a PAL
+  disc beside the North American one is now taken, only its levels' gameplay files extracted (about 11 MB).
+- The setup no longer extracts again, at every run, a data disc it finds again in `assets/iso/`.
+
 ### Controls and gameplay
 - New Game: two windows in the game's style. The first, **Original / Modern**, sets the gameplay rows only (Modern: Quick
   Select Pause, Aiming Modern, Movement RAC 3, Buy All Ammo, Vibration High, Adaptive Triggers, Skip Cutscenes Always;

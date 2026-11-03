@@ -1,4 +1,5 @@
 // Ported overlay code: the gameplay data loader of the level setup (0x241940).
+#include <game/enhance/corrected_texts.h>
 #include <game/ovl/world_lighting.h>
 #include <game/ovl/moby_pass.h>
 #include <game/ovl/ovl_reloc.h>
@@ -200,6 +201,7 @@ uint32_t gameplay_load(int32_t level) {
             uint32_t e = base;
             for (int32_t i = 0; i < lw(OV(0x0017943c)); ++i, e += 0x10) sw(e, lwu(e) + base - 8);
         }
+        corrected_texts_patch(lwu(OV(0x0015f660)), lw(OV(0x0017943c)), lw(0x0015ed88));  // enhancement (off: nothing)
         s8 = align64(s8 + size);
     }
     {  // the tie instances: 0x20-byte bounds at 0x160fc0, 0x1c0-byte data at 0x160fc8

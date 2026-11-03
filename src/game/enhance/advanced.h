@@ -91,6 +91,9 @@ bool advanced_vendor_buy_all();
 // orig: (none) — enhancement: main menu > Options > Advanced > Cut Content is On (a global row: the preferences only; what it
 // brings back and RAC1_CUT_CONTENT, cut_content.h)
 bool advanced_cut_content();
+// orig: (none) — enhancement: main menu > Options > Advanced > Corrected Texts is On (a global row: the preferences only;
+// shown with a data disc that gives the texts; RAC1_CORRECTED_TEXTS, corrected_texts.h)
+bool advanced_corrected_texts();
 
 // orig: (none) — enhancement: Options > Advanced > Skip Cutscenes is Always: the game's own skip tests (the scenes'
 // cutscene_update 0x298f90, the movies' 0x2eddd0) take Start alone, as they do on Veldin and in Challenge Mode, on

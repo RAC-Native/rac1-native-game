@@ -23,7 +23,7 @@ source code, the files that are a mechanical translation of the game's own code 
   disc, 4,213,997,568 bytes for the PAL disc 1.00 and 4,214,784,000 for the Platinum; a smaller image is
   accepted with a warning (it is checked fully later).
 - The Japanese release, `SCPS-15037`, is not supported as the game's disc. It can be added beside it as a
-  data disc, for its Japanese voices: see [Data discs](#data-discs).
+  data disc, for its Japanese voices and the corrected texts: see [Data discs](#data-discs).
 
 ### A Linux system with
 
@@ -252,10 +252,11 @@ It then picks:
   does not make the setup extract and generate everything again from another disc); else the North
   American disc (`SCUS-97199`); else the PAL disc 1.00 (`SCES-50916`). The PAL disc 2.00 and the
   Japanese disc are not the game's disc yet: with only those, the setup stops and says so.
-- **The data discs**: each image that gives something the game's disc lacks, today the Japanese disc
-  (its voices: see [Data discs](#data-discs)).
-- **Not used**, with one line saying why: a PAL disc beside the game's disc (it gives nothing the game's
-  disc lacks), the pre-release builds (the June 2002 prototype, the August 2002 beta: they boot a
+- **The data discs**: each image that gives something the game's disc lacks: the Japanese disc (its voices, and
+  beside the North American disc the corrected texts), the PAL discs 1.00 and 2.00 beside the North American disc (the
+  corrected texts): see [Data discs](#data-discs).
+- **Not used**, with one line saying why: a PAL disc beside the PAL game's disc (the same release, or one that gives
+  nothing it lacks), the pre-release builds (the June 2002 prototype, the August 2002 beta: they boot a
   development executable, `SCPS_000.00`), another game, an image smaller than a good dump, one whose
   boot executable is not a good dump's (a modified disc), and a second image of a release already
   taken (the first one by name is used, the line names it).
@@ -264,8 +265,8 @@ The choice is printed at step 2, for example:
 
 ```
   Disc images found (assets/iso/ and the ones the setup knows):
-    not used   assets/iso/Ratchet & Clank (Europe).iso: PAL SCES-50916 version 1.00 (as a data disc it gives nothing the game's disc lacks: the same voices)
-    data disc  assets/iso/Ratchet & Clank (Japan).iso: NTSC-J SCPS-15037 version 1.02 (the Japanese voices)
+    data disc  assets/iso/Ratchet & Clank (Europe).iso: PAL SCES-50916 version 1.00 (the corrected texts)
+    data disc  assets/iso/Ratchet & Clank (Japan).iso: NTSC-J SCPS-15037 version 1.02 (the Japanese voices, the corrected texts)
     game disc  assets/iso/Ratchet & Clank (USA).iso: NTSC-U SCUS-97199 version 1.00
 ```
 
@@ -280,9 +281,15 @@ data or unused; the image; what it is; why).
 
 The game's disc (`--iso`) gives the game its code and data. Other releases' discs can be added beside it
 as **data discs**, sources of data only: their own code never runs (Ratchet & Clank 3's port does the
-same, its decision 14). For now that gives one thing: the **Japanese voices**, from the Japanese disc.
+same, its decision 14). For now that gives two things:
 
-The setup takes the Japanese disc by itself when its image is in `assets/iso/` (see
+- the **Japanese voices**, from the Japanese disc;
+- the **corrected texts** (main menu > Options > Advanced > Corrected Texts: [Advanced options](advanced.md#corrected-texts)),
+  beside the North American disc only: its European texts as the later discs carry them, fixed. The PAL disc 1.00, the PAL
+  disc 2.00 and the Japanese disc (whose European tables are the PAL disc 1.00's) each give them; with several, the
+  PAL disc 2.00 comes first, then 1.00, then the Japanese disc.
+
+The setup takes these discs by itself when their images are in `assets/iso/` (see
 [Which disc images](#which-disc-images)); or give it where it is:
 
 ```bash
@@ -297,19 +304,23 @@ The setup takes the Japanese disc by itself when its image is in `assets/iso/` (
   `tools/disc_extract.py`, into its own folder, `assets/disc-SCPS-15037-1.02/` (about 1.7 GB: its
   movies have one sound track and are not there twice, its dialogue is in one language), and listed in
   `assets/data-discs.txt`, which the game reads. Its image is not needed afterwards.
-- A PAL disc (1.00 or 2.00) given with `--data-iso` is accepted and noted, but not extracted (and one in
-  `assets/iso/` is not taken): the North American disc (and the PAL disc 1.00) already carries all five
-  European voices, the same recordings, so a PAL disc gives nothing the game's disc lacks.
+- A PAL disc (1.00 or 2.00) beside the North American disc gives only the corrected texts (the North American disc
+  already carries all five European voices, the same recordings): only its levels' gameplay files are extracted, the
+  19 `levels/levelNN/gameplay_pal.bin` (about 11 MB), into `assets/disc-SCES-50916-1.00/` or `-2.00/`; its
+  `layout.txt` lists them alone, and the game reads every other sector of that disc as zero. Beside the PAL disc 1.00
+  as the game's disc, a PAL disc gives nothing (its texts are the game's own) and is noted, not extracted; so is the
+  Japanese disc's texts part (it is still taken for its voices).
 - The data discs are kept in `assets/setup-state.json` (`data_discs`): a later `./setup.sh` keeps them
   without `--data-iso`, and extracts one again only when its folder is incomplete or the extractor
-  changed. `--remove-data-disc SCPS-15037` (its serial, or its image) forgets one and removes its
-  folder; `--no-data-discs` forgets them all. A disc removed so is not taken from `assets/iso/` again
+  changed (an image found again in `assets/iso/` is not extracted again). `--remove-data-disc SCPS-15037` (its serial,
+  `SCES-50916-2.00` for one of the two PAL discs, or its image) forgets one and removes its folder; `--no-data-discs` forgets them all. A disc removed so is not taken from `assets/iso/` again
   (`data_discs_removed` in `assets/setup-state.json`) until it is given with `--data-iso`.
 
 The game reads a data disc's sectors as it reads its own disc's, through the same disc layer
 (`runtime/kernel/disc.cpp`): data disc *k* is seen at the sectors `(k + 1) x 0x400000` and up, past
 the game's disc, so a sector number names one disc's sector. Which of its data the game reads is
-the voice language's business ([Settings](settings.md#voice)); without a data disc, nothing changes.
+the voice language's business ([Settings](settings.md#voice)); the corrected texts are read from the data discs'
+gameplay files directly. Without a data disc, nothing changes.
 
 ## Running it again
 

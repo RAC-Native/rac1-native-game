@@ -4,6 +4,7 @@
 // (ovl_reloc_set_level(OVL_FRONT)). The addresses below are the boot module's. See
 
 #include <game/boot/title.h>
+#include <game/enhance/corrected_texts.h>
 
 #include <game/lib/libgraph.h>
 #include <game/math/vecmath.h>
@@ -439,6 +440,7 @@ void title_load() {
                 uint32_t e = b;
                 for (int32_t i = 0; i < lw(FR(0x001996d0) + 0x2c); ++i, e += 0x10) sw(e, lwu(e) + (b - 8));
             }
+            corrected_texts_title_patch(lwu(FR(0x0015f6a0)), lw(FR(0x001996d0) + 0x2c), lang);  // enhancement (off: nothing)
         }
         title_texts(0);
     }

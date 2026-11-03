@@ -226,6 +226,7 @@ preferences only:
 | Row | Values (default first) | Kept |
 |---|---|---|
 | Cut Content | Off, On: things the game has on the disc but never shows, brought back (Kerwan's citizens so far); read at a level's load | the preferences |
+| Corrected Texts | Off, On: the texts as the later discs correct them (shown only with a data disc that gives them: the PAL or the Japanese disc, beside the North American one); at once on the main menu | the preferences |
 
 All of the pause menu's rows are changed in the pause menu (New Game's Original / Modern sets them first); the main
 menu's Options has an Advanced entry only while there is a global row.
