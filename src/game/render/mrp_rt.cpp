@@ -1,5 +1,7 @@
 // orig: (host) Ray tracing, phases 0 and 2 (see mrp_rt.h): the acceleration structures of the level's static world, the hit's shading tables (Vulkan, RAC1_RT=1).
 #include <game/render/mrp_rt.h>
+#include <game/render/mrp_lighting.h>
+#include <game/render/mrp_reflect.h>
 
 #include <profiler/host_profiler.h>
 #include <runtime/vk/vk_context.h>
@@ -449,9 +451,10 @@ private:
     static void as_barrier(VkCommandBuffer cb) {
         VkMemoryBarrier2 mb{};
         mb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
-        mb.srcStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR;
+        // (the compaction's copies run in the build stage: the copy stage is VK_KHR_ray_tracing_maintenance1's, not asked for)
+        mb.srcStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
         mb.srcAccessMask = VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
-        mb.dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR;
+        mb.dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
         mb.dstAccessMask = VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR | VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
         VkDependencyInfo di{};
         di.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
@@ -498,6 +501,7 @@ struct State {
     uint64_t tri_bytes = 0;
     std::array<uint64_t, vk::kFramesInFlight> built_frame{};
     bool ready = false;
+    int tried_level = -1;  // (the level mrp_rt_level last ran for: made, or nothing to trace)
     // the run's numbers: frames committed, partitions / records written, updates, rebuilds
     uint64_t frames = 0, parts = 0, recs = 0, updates = 0, rebuilds = 0, kept = 0;
 } g_rt;
@@ -690,7 +694,35 @@ void report_run() {
 }  // namespace
 
 // orig: (host) see mrp_rt.h
-bool mrp_rt_active() { return vk::is_active() && vk::rt_enabled(); }
+bool mrp_rt_supported() { return vk::is_active() && vk::rt_enabled(); }
+
+// orig: (host) see mrp_rt.h
+bool mrp_rt_active() {
+    static const int env = env_int("RAC1_RT", -1);  // (testing: 1 the trace whatever the row, 0 never; unset: the row)
+    if (!mrp_rt_supported()) return false;
+    return env >= 0 ? env != 0 : g_water_reflections >= 3 && g_surface_detail > 0;  // (the water's material draws the reflection)
+}
+
+// orig: (host) see mrp_rt.h
+bool mrp_rt_tracing() { return g_rt.ready && g_rt.accel != nullptr && mrp_rt_active(); }
+
+// orig: (host) see mrp_rt.h
+int mrp_rt_level_id() { return g_rt.tried_level; }
+
+// orig: (host) see mrp_rt.h
+void mrp_rt_level_drop() {
+    if (g_rt.tried_level < 0 || vk::device() == VK_NULL_HANDLE) return;
+    report_run();
+    g_rt.frames = 0;
+    vk::wait_idle();
+    if (g_rt.accel) g_rt.accel->release();
+    g_rt.accel.reset();
+    g_rt.ready = false;
+    g_rt.geo = RtLevelGeometry{};
+    vk::destroy_buffer_now(g_rt.inst_buf);
+    vk::destroy_buffer_now(g_rt.tri_buf);
+    g_rt.tried_level = -1;
+}
 
 // orig: (host) see mrp_rt.h
 int mrp_rt_cluster_mode() {
@@ -700,7 +732,7 @@ int mrp_rt_cluster_mode() {
 
 // orig: (host) see mrp_rt.h
 uint64_t mrp_rt_vk_set_layout() {
-    if (g_rt.set_layout == VK_NULL_HANDLE && mrp_rt_active()) {
+    if (g_rt.set_layout == VK_NULL_HANDLE && mrp_rt_supported()) {
         // (0 the top level; 1 the instances' shading table, 2 the triangles', 3 the resident tie / shrub colours, 4 the tfrags'; 5 the
         // world's texture arrays; 6 the half-resolution trace; 7 the frame's constants: the fog)
         const VkShaderStageFlags st = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
@@ -725,6 +757,7 @@ uint64_t mrp_rt_vk_set_layout() {
 // orig: (host) see mrp_rt.h
 void mrp_rt_level(RtLevelGeometry&& g) {
     if (!mrp_rt_active()) return;
+    g_rt.tried_level = g.level;
     report_run();
     vk::wait_idle();
     if (g_rt.accel) g_rt.accel->release();
@@ -877,7 +910,7 @@ void mrp_rt_note_zones(const uint8_t* zone) {
 
 // orig: (host) see mrp_rt.h
 void mrp_rt_frame() {
-    if (!g_rt.ready || !g_rt.accel) return;
+    if (!g_rt.ready || !g_rt.accel || !mrp_rt_active()) return;  // (the row off an RT value: the structures kept until the next level)
     RAC1_PROF_ZONE(kRtBuild);
     vk::end_rendering();
     // the dynamic partition: rewritten every frame (empty: the mobys come in phase 3)

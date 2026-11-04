@@ -1981,7 +1981,7 @@ bool init_vk_vu7() {
     plci.pushConstantRangeCount = 1;
     plci.pPushConstantRanges = &pcr;
     if (vkCreatePipelineLayout(dev, &plci, nullptr, &g7_vk_layout) != VK_SUCCESS) return false;
-    if (mrp_rt_active()) {  // (RAC1_RT: the ray-traced variant, set 2 the top level)
+    if (mrp_rt_supported()) {  // (Water Reflections (RT): the ray-traced variant, set 2 the top level)
         VkDescriptorSetLayout sets_rt[3] = {sets[0], sets[1], reinterpret_cast<VkDescriptorSetLayout>(mrp_rt_vk_set_layout())};
         g7_vk_fs_rt = vk::create_shader_module(vk::shaders::kMrpVu7FsRt, sizeof(vk::shaders::kMrpVu7FsRt));
         g7_vk_fs_rt_half = vk::create_shader_module(vk::shaders::kMrpVu7FsRtHalf, sizeof(vk::shaders::kMrpVu7FsRtHalf));

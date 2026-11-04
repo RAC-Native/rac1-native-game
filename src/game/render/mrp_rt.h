@@ -1,4 +1,5 @@
-// Ray tracing, phases 0 and 2 (testing: RAC1_RT=1, Vulkan only; docs/rendering.md#ray-tracing-phase-2): the water's reflection found by a
+// Ray tracing, phases 0 and 2 (Options > Graphics > Water Reflections: Medium (RT); RAC1_RT=1 testing; Vulkan only;
+// docs/rendering.md#ray-tracing-phase-2): the water's reflection found by a
 // ray query against the level's static world (ties, shrubs, tfrags) instead of the cube map / planar view. Phase 2: the hit shaded
 // from its own triangle (its texture, its vertices' lit colours as the world's draws combine them, the world's fog along the
 // reflection's path; alpha-tested textures' texels looked at), traced at half resolution and upsampled in the sea's shader; the
@@ -66,8 +67,19 @@ struct RtLevelGeometry {
     std::vector<uint64_t> textures;  // (the world's texture arrays, RtTri::tex's buckets: their VkImageView)
 };
 
-// orig: (host) RAC1_RT=1 and the device has ray queries (Vulkan): the water's ray-traced reflection on
+// orig: (host) the renderer can trace: Vulkan, and the device has ray queries and non-uniform sampled-image indexing (Options > Graphics >
+// Water Reflections shows its RT values only then)
+bool mrp_rt_supported();
+// orig: (host) the water's ray-traced reflection on: supported, and Water Reflections on an RT value (g_water_reflections 3, Medium (RT));
+// RAC1_RT=1 / 0 overrides the row (testing)
 bool mrp_rt_active();
+// orig: (host) active, and the level's acceleration structures made: the seas trace this frame's reflection (the planar view not drawn)
+bool mrp_rt_tracing();
+// orig: (host) the level the acceleration structures were made (or tried) for; -1: none (the world renderer makes them when the row
+// turns an RT value on during a level)
+int mrp_rt_level_id();
+// orig: (host) at a new level with the trace off: the last level's acceleration structures and tables freed
+void mrp_rt_level_drop();
 // orig: (host) RAC1_RT_CLUSTERS: 0 a cluster per packet / tfrag entry, 1 merged per class (ties, shrubs) and zone cell (tfrags; default)
 int mrp_rt_cluster_mode();
 // orig: (host) at a new level (the world renderer's load, the host's thread): the clusters built and compacted, the partitions written,

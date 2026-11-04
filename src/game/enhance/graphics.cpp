@@ -44,6 +44,7 @@
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_particles.h>
 #include <game/render/mrp_reflect.h>
+#include <game/render/mrp_rt.h>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
@@ -194,7 +195,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Shiny metal, wet ground, water and lava with the new lighting. High: reflections.",
      "Dust, embers, fireflies, rain and snow of our own. Not in the PS2 game.",
      "Blades of grass on the marked ground near the camera. Costs more.",
-     "What the water mirrors. Low: sky and shores, still. Medium: everything, Ratchet too.",
+     "What the water mirrors. Low: sky, shores. Medium: everything. RT: ray traced, no characters.",
      "Original: the PS2's picture. Enhanced: our lighting, water and effects below.",
      "Sets every row below at once. Changing one of them shows Custom.",
      "Window", "Fullscreen", "4:3 Original", "16:9", "Fill Screen", "Black Bars", "Stretch", "21:9", "32:9", "Fit Screen",
@@ -228,7 +229,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Glanzendes Metall, nasser Boden, Wasser und Lava mit der neuen Beleuchtung. Hoch: Spiegelungen.",
      "Eigener Staub, Glut, Gluhwurmchen, Regen und Schnee. Nicht im PS2-Spiel.",
      "Grashalme auf dem markierten Boden nahe der Kamera. Aufwendiger.",
-     "Was das Wasser spiegelt. Niedrig: Himmel und Ufer, starr. Mittel: alles, auch Ratchet.",
+     "Was das Wasser spiegelt. Niedrig: Himmel, Ufer. Mittel: alles. RT: Raytracing, ohne Figuren.",
      "Original: das Bild der PS2. Verbessert: unsere Beleuchtung, Wasser und Effekte.",
      "Setzt alle Zeilen darunter auf einmal. Eine Anderung zeigt Eigene.",
      "Fenster", "Vollbild", "4:3 Original", "16:9", "Fullen", "Balken", "Strecken", "21:9", "32:9", "Ganze Breite",
@@ -262,7 +263,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Metal brillante, suelo mojado, agua y lava con la nueva iluminacion. Alto: reflejos.",
      "Polvo, brasas, luciernagas, lluvia y nieve propios. No en el juego de PS2.",
      "Briznas de hierba en el suelo marcado cerca de la camara. Mas pesado.",
-     "Lo que refleja el agua. Bajo: cielo y orillas, fijos. Medio: todo, Ratchet tambien.",
+     "Lo que refleja el agua. Bajo: cielo, orillas. Medio: todo. RT: trazado de rayos, sin personajes.",
      "Original: la imagen de PS2. Mejorado: nuestra iluminacion, agua y efectos.",
      "Ajusta todas las filas de abajo a la vez. Cambiar una muestra Personal.",
      "Ventana", "Completa", "4:3 Original", "16:9", "Llenar", "Bandas", "Estirar", "21:9", "32:9", "Todo el ancho",
@@ -296,7 +297,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Metallo lucido, terreno bagnato, acqua e lava con la nuova illuminazione. Alto: riflessi.",
      "Polvere, braci, lucciole, pioggia e neve nostre. Non nel gioco PS2.",
      "Fili d'erba sul terreno marcato vicino alla camera. Piu pesante.",
-     "Cosa riflette l'acqua. Basso: cielo e rive, fissi. Medio: tutto, anche Ratchet.",
+     "Cosa riflette l'acqua. Basso: cielo, rive. Medio: tutto. RT: in ray tracing, senza personaggi.",
      "Originale: l'immagine della PS2. Migliorata: la nostra illuminazione, acqua, effetti.",
      "Imposta tutte le righe sotto in una volta. Cambiarne una mostra Personale.",
      "Finestra", "Intero", "4:3 Originale", "16:9", "Riempi", "Bande nere", "Stira", "21:9", "32:9", "Tutta la larghezza",
@@ -311,6 +312,10 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "La nostra illuminazione ed effetti, preset Medio.",
      "La nostra illuminazione ed effetti, preset Alto: il piu pesante."},
 };
+
+// Water Reflections' ray-traced values (value_text's words, not texts asked for by id - no id moved): Medium (RT), High (RT), per language
+// as TEXTS ("(RT)" kept in every one)
+constexpr const char* RT_WORDS[4][2] = {{"Medium (RT)", "High (RT)"}, {"Mittel (RT)", "Hoch (RT)"}, {"Medio (RT)", "Alto (RT)"}, {"Media (RT)", "Alto (RT)"}};
 
 // The page's rows: the setting, its name, its help, the preferences' key
 struct Row {
@@ -420,7 +425,7 @@ uint32_t value_count(Setting s) {
         case S_SURFACE: return 3;   // Off, Low, High (the materials, mrp_lighting.h g_surface_detail)
         case S_PARTICLES: return 3;  // Off, Low, High (mrp_particles.h)
         case S_GRASS: return 3;  // Off, Low, High (mrp_lighting.h g_grass)
-        case S_WREFL: return 2;  // Low, Medium (mrp_reflect.h g_water_reflections: 1, 2; High left for a ray-traced mode)
+        case S_WREFL: return 3;  // Low, Medium, Medium (RT) (mrp_reflect.h g_water_reflections: 1, 2, 3; the RT one where the renderer can trace)
         case S_AO_STR: return sizeof(AO_STRS) / sizeof(int);
         case S_LIGHTING: return 3;  // Low, Medium, High (mrp_lighting.h: the maps at 1024 / 2048 / 4096)
         case S_FOV: return sizeof(FOVS) / sizeof(int);
@@ -527,7 +532,7 @@ void rows_from_live(int* v, const Additions& a) {
     v[S_SURFACE] = std::clamp(a.surface, 0, 2);
     v[S_PARTICLES] = std::clamp(a.particles, 0, 2);
     v[S_GRASS] = std::clamp(a.grass, 0, 2);
-    v[S_WREFL] = std::clamp(a.refl - 1, 0, 1);
+    v[S_WREFL] = std::clamp(a.refl - 1, 0, 2);
     v[S_SHADOW_STR] = nearest(SHADOW_STRS, g_shadow_strength);
     v[S_AO_STR] = nearest(AO_STRS, g_ao_intensity);
 }
@@ -654,7 +659,7 @@ bool prefs_read(const std::filesystem::path& path) {
         else if (std::strcmp(key, "ambient_particles") == 0 && a >= 0 && a < 3) gs_.value[S_PARTICLES] = a;
         // ("foliage" and "water", the Foliage and Water rows' until they were removed: read like any other key and ignored)
         else if (std::strcmp(key, "grass") == 0 && a >= 0 && a < 3) gs_.value[S_GRASS] = a;
-        else if (std::strcmp(key, "water_reflections") == 0 && a >= 0 && a < 2) gs_.value[S_WREFL] = a;
+        else if (std::strcmp(key, "water_reflections") == 0 && a >= 0 && a < 3) gs_.value[S_WREFL] = a;  // (0 Low, 1 Medium, 2 Medium (RT))
         // ("overscan", the Overscan row's until 0.4: read like any other key and ignored, the full frame always shown)
         // ("mode", the New Game mode until it became a playthrough's, kept with the saves alone: read like any other key
         // and ignored)
@@ -786,7 +791,7 @@ std::string value_text(Setting s) {
         case S_SURFACE: return t[v == 0 ? T_OFF : v == 1 ? T_LOW : T_HIGH];
         case S_PARTICLES: return t[v == 0 ? T_OFF : v == 1 ? T_LOW : T_HIGH];
         case S_GRASS: return t[v == 0 ? T_OFF : v == 1 ? T_LOW : T_HIGH];
-        case S_WREFL: return t[v == 0 ? T_LOW : T_MEDIUM];
+        case S_WREFL: return v >= 2 ? RT_WORDS[t == TEXTS[1] ? 1 : t == TEXTS[2] ? 2 : t == TEXTS[3] ? 3 : 0][v - 2] : t[v == 0 ? T_LOW : T_MEDIUM];
         case S_SHADOW_STR: std::snprintf(b, sizeof b, "%d", SHADOW_STRS[v]); return b;  // (the font's '%' is a button)
         case S_AO_STR: std::snprintf(b, sizeof b, "%d", AO_STRS[v]); return b;
         case S_AO: {
@@ -810,6 +815,7 @@ std::string value_text(Setting s) {
 // be picked; a value chosen before (another display) stays, shown as it is
 bool value_supported(Setting s, int v) {
     constexpr float kSlack = 0.01f;
+    if (s == S_WREFL && v >= 2) return mrp_rt_supported();  // (the RT values: Vulkan with ray queries; a saved one elsewhere plays as Medium)
     if (gs_.out_w <= 0 || gs_.out_h <= 0) return true;
     if (s == S_ASPECT && v == 1) return std::fabs(static_cast<float>(gs_.out_w) / static_cast<float>(gs_.out_h) - 16.0f / 9.0f) > kSlack;
     if (s == S_HUD && v >= 1 && v <= 3) return HUD_ASPECTS[v] < 4.0f / 3.0f * g_view_widen - kSlack;

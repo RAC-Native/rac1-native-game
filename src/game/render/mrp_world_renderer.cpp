@@ -603,7 +603,8 @@ void load_level(int id) {
     static_level_build(g_slevel, *L.world);  // (the classes as the passes find them in EE memory)
     tfrag_level_build(g_tlevel, *L.world);   // (the tfrag images / plans from EE memory)
     g_tcols = TfragColours{};
-    if (mrp_rt_active()) mrp_rt_level(rt_gather(L));  // (RAC1_RT, testing: the static world's acceleration structures)
+    if (mrp_rt_active()) mrp_rt_level(rt_gather(L));  // (Water Reflections (RT): the static world's acceleration structures)
+    else mrp_rt_level_drop();                          // (the last level's freed; made at the frame the row turns an RT value on)
     L.reset_walker = true;
     size_t ns = 0, nt = 0;
     for (const auto& c : L.world->shrubs) ns += c.packets.size();
@@ -4776,7 +4777,8 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
     }
     if (!g_level.loaded) return;
     g_t_begin = now_ms();
-    if (mrp_rt_active()) {  // (RAC1_RT: the zones' mask - the ray tracing's partitions by zone cell, mrp_rt.h)
+    if (mrp_rt_active()) {  // (Water Reflections (RT): the zones' mask - the ray tracing's partitions by zone cell, mrp_rt.h)
+        if (mrp_rt_level_id() != g_level.id) mrp_rt_level(rt_gather(g_level));  // (the row turned to an RT value during the level)
         uint8_t zone[0x80];
         for (uint32_t k = 0; k < 0x80; ++k) zone[k] = static_cast<uint8_t>(lbu(OV(0x00173d00u) + k));
         mrp_rt_note_zones(zone);

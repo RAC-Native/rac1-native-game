@@ -690,7 +690,7 @@ sub-pixel edges differ from the GS.
 
 ## Ray tracing, phase 0
 
-Testing only, hidden behind `RAC1_RT=1` (Vulkan; ignored with a log line on OpenGL or on a device without
+Testing only (phase 2 became Water Reflections' Medium (RT)), hidden behind `RAC1_RT=1` (Vulkan; ignored with a log line on OpenGL or on a device without
 VK_KHR_acceleration_structure + VK_KHR_ray_query + bufferDeviceAddress). The seas' water (program 7's surfaces with
 Surface Detail's water) traces its reflection through the level's static world with an inline ray query instead of
 reading Water Reflections' planar view; the hit is not shaded: its colour is the frame's own picture (the 3D before
@@ -756,7 +756,8 @@ dock Low 113 / 0, Medium 122 / 0, ray traced 953 / 1. Screen-space reflections a
 
 ## Ray tracing, phase 2
 
-Still testing, behind `RAC1_RT=1` (Vulkan with ray queries and non-uniform indexing of sampled images). Phase 2 shades the
+Options > Graphics > Water Reflections > Medium (RT) since 2026-11-04 ([below](#water-reflections-medium-rt); `RAC1_RT=1` the testing
+override; Vulkan with ray queries and non-uniform indexing of sampled images). Phase 2 shades the
 reflection's hit itself, so the colour no longer depends on whether the frame's picture holds the hit: the change of source that
 flickered in phase 0 (a low camera at Rilgar, the buildings above the screen's top) is gone. Code: `rt_gather` in
 `mrp_world_renderer.cpp` (each triangle's texture and its vertices' texture coordinates and colour indices), `mrp_rt.cpp` (the tables,
@@ -823,14 +824,6 @@ What is still missing against Medium: the mobys (Ratchet, the ships, Pokitaru's 
 (half resolution and its spread) and calmer (the ripples bend the ray by a fifth of their slope), and lit textures' own glow (the
 emissive slots).
 
-**Water Reflections High.** It is better than Medium where Medium is weakest (no planar view's hole or cut, no source change,
-the least flicker of all walking), at about 1 ms more of the 890M's frame at 5120x1440 (0.2 to 0.5 ms at 1080p). To become High it
-would need: the mobys (phase 3, below: without them Ratchet has no reflection, which Medium has); the row in Options > Graphics
-shown only on Vulkan with ray queries and non-uniform sampled-image indexing (a saved High played as Medium elsewhere, logged), the
-`water_reflections` preference's value 3; `RAC1_RT` kept as the override; the variables above folded into the row's one setting
-(half resolution, merged clusters, pure shading); a validation-layer run (none was available here; no device lost over a run through
-six levels, the game's state (RAMHASH) the same as an OpenGL run's without it); the profiler's stages as they are. The Metal backend has no ray queries yet.
-
 **Phase 3, the mobys (design)**: the moby renderer skins in the vertex shader; a compute pass doing the same skinning per drawn moby
 (and per moby kept by the sun shadows' off-screen cache: last pose, alive, same class, still) would write world-space positions into a
 buffer, one bottom-level structure per moby built or refitted (refit while the class and LOD stay, rebuilt otherwise), its instance
@@ -838,6 +831,34 @@ in the top level's dynamic partition (reserved, 1024 records, empty today; the t
 0.1 to 0.3 ms with the merged static instances). The hit's shading needs per moby triangle its texture (the moby texture array, one
 more binding) and per vertex its texture coordinates and colour from the skinning's record; the moby's own lighting per vertex is in
 that record already.
+
+### Water Reflections Medium (RT)
+
+Phase 2 was judged better than Medium where Medium is weakest (no planar view's hole or cut, no
+source change, the least flicker of all walking), at about 1 ms more of the 890M's frame at 5120x1440 (0.2 to 0.5 ms at 1080p); Daino,
+playing it at Rilgar (2026-11-04): a value of the row as it is, "Medium (RT)" (the mobys - Ratchet's reflection - come with phase 3's
+"High (RT)"):
+
+- The `water_reflections` preference: 0 Low, 1 Medium (as before), 2 Medium (RT); `g_water_reflections` 3 (`RAC1_WATER_REFLECTIONS=3`).
+- Shown only where the renderer can trace: Vulkan, a device with VK_KHR_acceleration_structure, VK_KHR_ray_query, deferred host
+  operations, bufferDeviceAddress and non-uniform sampled-image indexing (`mrp_rt_supported`). The device's ray tracing features are
+  now turned on whenever it has them (`RAC1_RT=0` never), so the value works as soon as it is picked: the level's acceleration
+  structures and tables are made at that frame (`mrp_rt_level_id`, the world renderer's frame) and kept until the next level, where
+  they are made again only if the value is still on (else freed: `mrp_rt_level_drop`). A saved RT value on OpenGL, on a device without
+  them or with `RAC1_RT=0` plays as Medium (the planar view), said once (`[reflect] Water Reflections Medium (RT): ... played as Medium`).
+- `RAC1_RT` stays the testing override (1 the trace whatever the row, 0 never); the phase's testing variables keep their defaults,
+  which are Medium (RT)'s: half resolution (`RAC1_RT_RES=0`), merged clusters (`RAC1_RT_CLUSTERS=1`), the hit's own shading
+  (`RAC1_RT_SHADE=2`).
+- With the row on another value and no `RAC1_RT`, nothing changes: the reference images, Vulkan's and the game's state (RAMHASH) are
+  the same as before.
+
+Checked with the Khronos validation layer (1.4.341, `RAC1_VK_VALIDATION=1`) over a run through six levels (Veldin, Novalis, Kerwan,
+Rilgar, Batalia, Pokitaru) with Medium (RT) picked through the preferences, and over a pick of it in the middle of Rilgar's harbour:
+no device lost; the one error of the ray tracing's own (a barrier naming the acceleration structure copy stage, which needs
+VK_KHR_ray_tracing_maintenance1: the compaction's copies run in the build stage) fixed. The messages left are the Vulkan renderer's,
+the same with `RAC1_RT=0` and Medium: a dynamic depth bias never set, colour attachments of another format than a pipeline's
+(R8_UNORM and RGBA16F targets drawn with RGBA8 pipelines), a depth image cleared without its transfer usage, shaders using
+demote-to-helper without the feature asked for, a few objects left at the device's end.
 
 ## Performance
 

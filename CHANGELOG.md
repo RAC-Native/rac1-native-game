@@ -119,6 +119,12 @@ What changed in each release. Releases are source only: you build the game with 
   the world's lit colours, the world's fog; alpha-tested leaves with holes) instead of the frame's picture, traced at half resolution
   and upsampled by distance in the seas' shader; clusters merged by default; `RAC1_RT_SHADE`, `RAC1_RT_BLUR`, `RAC1_RT_CONE`, the
   profiler's Ray tracing: half-res trace stage ([Rendering](docs/rendering.md#ray-tracing-phase-2)).
+- Water Reflections Medium (RT) (Options > Graphics; Italian "Media (RT)"): phase 2's ray-traced reflection as a value of the row,
+  shown only on Vulkan with ray queries and non-uniform sampled-image indexing (a saved one elsewhere plays as Medium, logged);
+  `water_reflections 2` in the preferences (0 Low and 1 Medium unchanged). The device's ray tracing is turned on whenever it has it,
+  so the value works when picked during play (the level's structures made then); `RAC1_RT=1` / `0` stays the testing override. The
+  acceleration structures' compaction barrier no longer names the copy stage (a validation error without ray tracing maintenance 1)
+  ([Rendering](docs/rendering.md#water-reflections-medium-rt)).
 - Grass (Options > Graphics, off by default): the ground tagged as grass gets a fine relief of blades (Low, no geometry) and a few very
   low layers of blades near the camera (High), in the texture's colours, bending with the wind and away from Ratchet. Seeded on Veldin,
   Novalis and Kerwan.

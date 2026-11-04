@@ -11,7 +11,9 @@
 //    rectangle the water covers alone, the ties and shrubs outside it or under the water left out - read at the
 //    water's own pixel, moved a little by its ripples. Where the water does not lie at that plane (another body, a sloping stream),
 //    or the planar view drew nothing there, the cube map.
-// High is left for a ray-traced mode (none yet). Host code: it draws what the frame holds again, the game's state is not read for it
+//  - Medium (RT): the reflection ray traced through the level's static world and shaded from the hit's own triangle (mrp_rt.h,
+//    docs/rendering.md#ray-tracing-phase-2), shown only where the renderer can trace (Vulkan with ray queries).
+// Host code: it draws what the frame holds again, the game's state is not read for it
 // beyond the frame's own drawing and never written.
 #ifndef RAC1_GAME_RENDER_MRP_REFLECT_H
 #define RAC1_GAME_RENDER_MRP_REFLECT_H
@@ -21,8 +23,9 @@ namespace vk {
 struct GpuImage;
 }
 
-// orig: (host) 0 none (Graphics: Original), 1 Low (the cube map), 2 Medium (the planar view and the cube map): the Graphics page's
-// row (RAC1_WATER_REFLECTIONS=1|2 overrides it, testing). Only with Surface Detail on (its water material draws them)
+// orig: (host) 0 none (Graphics: Original), 1 Low (the cube map), 2 Medium (the planar view and the cube map), 3 Medium (RT) (the
+// reflection ray traced through the static world, mrp_rt.h: Vulkan with ray queries only, else played as Medium): the Graphics page's
+// row (RAC1_WATER_REFLECTIONS=1..3 overrides it, testing). Only with Surface Detail on (its water material draws them)
 extern int g_water_reflections;
 // orig: (host) the planar view drawn at 1 / this of the 3D's size (2, half: the default; RAC1_REFLECT_SCALE, the debug menu's
 // Enhancements tab - not saved: 3 looked the same at Rilgar's dock and harbour for 40 % less)

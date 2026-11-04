@@ -28,7 +28,7 @@ namespace rac1 {
 // orig: (host) see mrp_reflect.h
 int g_water_reflections = [] {
     const char* e = std::getenv("RAC1_WATER_REFLECTIONS");
-    return e != nullptr ? std::clamp(std::atoi(e), 0, 2) : 2;
+    return e != nullptr ? std::clamp(std::atoi(e), 0, 3) : 2;
 }();
 
 // orig: (host) see mrp_reflect.h
@@ -570,7 +570,15 @@ void mrp_reflect_pass(const int vp[4]) {
     fwd = glm::length(fwd) > 0.0f ? glm::normalize(fwd) : glm::vec3(0.0f, 1.0f, 0.0f);
     g_r.active = probe_for(cam, fwd, water_h);
     g_r.cube_ok = g_r.active >= 0;
-    if (g_water_reflections >= 2 && have_plane && cam.z > plane + 0.05f && !mrp_rt_active()) {  // (RAC1_RT: the reflection traced instead)
+    if (g_water_reflections >= 3 && !mrp_rt_active()) {  // (an RT value the renderer cannot trace: played as Medium, said once)
+        static bool said = false;
+        if (!said) {
+            said = true;
+            std::printf("[reflect] Water Reflections %s: %s - played as Medium\n", "Medium (RT)",
+                        mrp_rt_supported() ? "RAC1_RT=0" : "no ray queries here (Vulkan with ray queries and non-uniform sampled-image indexing)");
+        }
+    }
+    if (g_water_reflections >= 2 && have_plane && cam.z > plane + 0.05f && !mrp_rt_tracing()) {  // (Medium (RT): the reflection traced instead)
         planar_draw(vp, plane, cam, box);
         ++g_r.n_planar;
         ++g_r.planes[static_cast<int>(std::lround(plane * 4.0f))];
@@ -618,7 +626,8 @@ void mrp_reflect_uniforms(const int vp[4], float a[4], float b[4], float c[4], f
     const bool on = g_water_reflections > 0 && g_r.water_frame == g_r.frame && g_r.water_frame != 0;
     // (testing, RAC1_REFLECT_DEBUG: 1 the water shows where its reflection comes from, 2 the reflection alone)
     static const int debug = std::getenv("RAC1_REFLECT_DEBUG") != nullptr ? std::atoi(std::getenv("RAC1_REFLECT_DEBUG")) : 0;
-    a[0] = on ? static_cast<float>(g_water_reflections) + (debug == 1 ? 8.0f : debug == 2 ? 16.0f : 0.0f) : 0.0f;
+    // (the shader's modes: 1 Low, 2 Medium - an RT value where the seas do not trace reads as Medium)
+    a[0] = on ? static_cast<float>(std::min(g_water_reflections, 2)) + (debug == 1 ? 8.0f : debug == 2 ? 16.0f : 0.0f) : 0.0f;
     a[1] = g_r.plane_h;
     a[2] = on && g_r.planar_on ? 1.0f : 0.0f;
     a[3] = on && g_r.cube_ok ? 1.0f : 0.0f;
