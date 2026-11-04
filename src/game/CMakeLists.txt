@@ -165,6 +165,7 @@ add_library(rac1_game STATIC
     enhance/voice_language.cpp
     enhance/language.cpp
     enhance/cut_content.cpp
+    enhance/custom_waves.cpp
     ovl/bomb_glove.cpp
     ovl/pyrocitor.cpp
     ovl/blaster.cpp

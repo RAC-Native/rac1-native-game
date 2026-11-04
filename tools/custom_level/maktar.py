@@ -13,14 +13,16 @@ for level 0 when RAC1_CUSTOM_LEVEL=<out> is set (runtime/kernel/disc.cpp):
                       ship, Maktar's seven directional light sets as RAC2 has them (the arena's tfrags name set 0, a faint
                       blue: the terrain is its painted colours), one light zone over the arena (the hero lit as RAC2 lights
                       the arena's mobys: set 6, a white key light from above, and the ambient 27 40 40), Veldin's generic
-                      cameras (types 0, 4..7), no sound instances, no ties, no shrubs, only the hero (class 0) at the
-                      arena's centre, no volumes, paths or grind lines, no occlusion. Veldin's help text, moby class list,
+                      cameras (types 0, 4..7), no sound instances, no ties, no shrubs, the hero (class 0) at the
+                      arena's centre and the wave challenge's enemies (copies of Veldin's class 749 and 1440 records,
+                      hidden until their wave), no moby groups, volumes, paths or grind lines, no occlusion. Veldin's help text, moby class list,
                       pvars (the hero's own, the cameras') and the two 0x4010 grids (empty on Veldin and on Maktar) kept.
                       Same size as Veldin's.
   <out>/ties.mrpc     the arena's ties (205 instances of 13 RAC2 classes, their 45 textures), drawn by the host
                       (src/formats/custom_ties.h; `rac1-native --setup --custom-level <out>` puts them in the MRP world).
                       With them, the arena's static mobys (RAC2's moby classes in their bind pose, rac2moby.py: the
                       monitors round the floor, the stands' crowd cards, the floor's fittings) as more such classes.
+  <out>/waves.txt     the wave challenge: per wave its enemies' uids (src/game/enhance/custom_waves.cpp shows them).
   <out>/lights.txt    the modern lighting's file for the custom level (our choices): point lights at the arena's gates,
                       lamps and screens, emissive surfaces for its screens and neon.
   <out>/manifest.txt  what was built (sizes, offsets): no game data.
@@ -542,6 +544,54 @@ def build_ties(r2, out, say, colour_scale, colour_min, mobys=True):
     write_lights(out, insts, say)
 
 
+# step 4c: RAC1 enemies in the arena, in waves. Veldin's own enemies (their classes, code and textures are in Veldin's data
+# file and overlay, which the custom level keeps): class 749 (16 on Veldin) and 1440 (9). Each one placed is a copy of one of
+# Veldin's records of its class with that record's pvars (its own block: no two share one), its kill-save uid, its light set
+# 6 and the arena's ambient; flags 0 (always spawned), no group, hidden (+0x60 bits 0 and 1, OR'd into the moby's +0x34
+# flags: not drawn, not updated) until our wave hook (src/game/custom_waves.cpp, <out>/waves.txt) shows its wave. Not the two whose pvars name
+# another moby (749 pvar 189, 1440 pvar 231).
+WAVE_SKIP_PVARS = (189, 231)
+
+
+def wave_enemies(g, mo, spec, say):
+    """(the enemies' records, per wave their uids) from `spec`: waves separated by ';', each `<class>x<count>` by ','."""
+    import math
+    n1 = i32(g, mo)
+    p = mo + 0x10
+    pool = {}
+    for _ in range(n1):
+        sz = i32(g, p)
+        cid = i32(g, p + 0x18)
+        if cid in (749, 1440) and i32(g, p + 0x58) not in WAVE_SKIP_PVARS:
+            pool.setdefault(cid, []).append(bytes(g[p:p + sz]))
+        p += sz
+    recs, waves = [], []
+    for wi, wave in enumerate(x for x in spec.split(";") if x.strip()):
+        group = []
+        for part in wave.split(","):
+            cid, n = (int(v) for v in part.strip().split("x"))
+            for _ in range(n):
+                if not pool.get(cid):
+                    raise SystemExit("--waves: no more of Veldin's class %d records to copy" % cid)
+                group.append((cid, bytearray(pool[cid].pop(0))))
+        uids = []
+        for k, (cid, r) in enumerate(group):
+            ang = 2 * math.pi * (k + 0.5 * wi) / len(group)
+            rad = 13.0 if cid == 749 else 17.0
+            x, y = 500.0 + rad * math.cos(ang), 600.0 + rad * math.sin(ang)
+            struct.pack_into("<i", r, 0x08, 0)  # flags: always spawned
+            struct.pack_into("<3f", r, 0x30, x, y, 500.0)
+            struct.pack_into("<3f", r, 0x3c, 0.0, 0.0, math.atan2(600.0 - y, 500.0 - x))  # (facing the centre)
+            r[0x48] = 0xff  # no group
+            struct.pack_into("<i", r, 0x60, i32(r, 0x60) | 3)  # hidden (+0x34 bit 1: not updated, bit 0: not drawn)
+            struct.pack_into("<4i", r, 0x64, 27, 40, 40, 6)  # the arena mobys' ambient and light set
+            uids.append(i32(r, 0x0c))
+            recs.append(bytes(r))
+        waves.append(uids)
+    say("waves: %s (uids %s)" % (spec, waves))
+    return recs, waves
+
+
 def build(a):
     log = []
     say = lambda s: (log.append(s), print(s))  # noqa: E731
@@ -784,7 +834,17 @@ def build(a):
         p += sz
     struct.pack_into("<3f", hero, 0x30, *a.hero)
     struct.pack_into("<3f", hero, 0x3c, 0.0, 0.0, a.hero_yaw)
-    blocks[0x44] = struct.pack("<2i8x", 1, n2) + bytes(hero)
+    enemies, waves = wave_enemies(g, mo, a.waves, say)
+    # their pvars: a class-1440 enemy with a path (pvars +0x1b8 >= 0) flies in along it, and retires itself when the path
+    # is not there (the custom level has none): its path made -1, it then starts on the spot (e1440_update's state 3)
+    pdata = bytearray(block(0x58))
+    ptab = G[0x54 // 4]
+    for r in enemies:
+        if i32(r, 0x18) == 1440:
+            struct.pack_into("<i", pdata, i32(g, ptab + 8 * i32(r, 0x58)) + 0x1b8, -1)
+    blocks[0x58] = bytes(pdata)
+    blocks[0x44] = struct.pack("<2i8x", 1 + len(enemies), n2) + bytes(hero) + b"".join(enemies)
+    blocks[0x48] = struct.pack("<4i", 0, 0, 0, 0)  # (no moby groups: Veldin's name its own records)
     for f in range(0, 0x90, 4):
         if f not in blocks:
             blocks[f] = block(f)
@@ -810,6 +870,11 @@ def build(a):
 
     os.makedirs(a.out, exist_ok=True)
     open(os.path.join(a.out, "data.wad"), "wb").write(bytes(out))
+    with open(os.path.join(a.out, "waves.txt"), "w") as f:
+        f.write("# rac1-native: the custom level's wave challenge (tools/custom_level/maktar.py; src/game/custom_waves.h)\n"
+                "# wave <the uids of its enemies (moby +0xb2), hidden until the wave starts>\n")
+        for w in waves:
+            f.write("wave %s\n" % " ".join(str(u) for u in w))
     open(os.path.join(a.out, "gameplay.bin"), "wb").write(gp + bytes(gsize - len(gp)))
     if a.dump_core:
         open(os.path.join(a.out, "core.bin"), "wb").write(bytes(core.buf))
@@ -835,6 +900,8 @@ def main():
     ap.add_argument("--light-set0", type=int, default=0, help="Maktar's light set swapped into set 0 (the terrain's; 0: RAC2's sets as they are)")
     ap.add_argument("--hero-light-set", type=int, default=6, help="the arena's light zone's set: the hero's light (RAC2's arena mobys: 6)")
     ap.add_argument("--hero-ambient", type=int, nargs=3, default=(27, 40, 40), help="the light zone's ambient (RAC2's arena mobys: 27 40 40)")
+    ap.add_argument("--waves", default="749x2;749x3,1440x1;749x4,1440x2",
+                    help="the wave challenge's enemies: waves by ';', each <class>x<count> by ',' (Veldin's 749 and 1440); '' none")
     ap.add_argument("--no-ties", action="store_true", help="no ties.mrpc (the arena without its ties)")
     ap.add_argument("--no-mobys", action="store_true", help="the arena's static mobys not drawn (ties.mrpc without them)")
     ap.add_argument("--tie-colour-scale", type=float, default=1.25, help="the ties' instance colours scaled")

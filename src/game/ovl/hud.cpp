@@ -4,6 +4,7 @@
 // the textures, +0x28 the palettes) comes from the level; its textures go into the GS memory on
 // demand (the upload queue 0x16cd80). Sprites and text are GS packets (REGLIST) in the frame
 // packet; positions in 1/16 pixels from the screen area origin 0x13e510 / 0x13e514.
+#include <host/custom_waves.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/lib/libgraph.h>
@@ -401,6 +402,7 @@ void hud_draw() {
             ovl_call_moby_fn(lwu(e + 0x18), e);
             if (side != 0) render_view_hud_note(at, lwu(CUR), side);  // (host)
         }
+    custom_waves_hud();  // (host, testing: a custom level's wave challenge, custom_waves.h; nothing otherwise)
     const int32_t t = lw(OV(0x0015f640));
     if ((t == 0 && lw(OV(0x0015f644)) == 0) || lw(OV(0x0015f5c4)) != 0) {
         sw(OV(0x0015f648), 100);
