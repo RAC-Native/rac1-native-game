@@ -194,9 +194,9 @@ into it back too ([Architecture](architecture.md#the-region-layer)). Then, as fo
 
 - The build's changed functions (about a hundred in each level's copy of the engine: the hero's states and
   velocities, several weapons, the memory card and the save screens, the pause menu and the planet map, the
-  text wrapping, the pad's reads...) run the North American port where the port has one by hand: the 1.02
-  fixes in them are not there. What each fix is has not been established yet; they are to come one by one, as an
-  option of their own.
+  text wrapping, the pad's reads...) run the North American port where the port has one by hand. The 1.02
+  changes ported so far reach those functions through main menu > Options > Advanced > [1.02 Fixes](advanced.md#102-fixes)
+  and [1.02 Gameplay](advanced.md#102-gameplay), as on the other discs; the rest are to come one by one.
 - The generated ones are translated from the Platinum's own code, as stand-ins (`STAND-IN` in the generated
   sources): on Veldin the credits, the end menu's page, the vendor's screens and the Morph-o-Ray's chicken,
   and per level the same engine functions (the hero's horizontal velocity, the HUD counters...). The stand-ins of the

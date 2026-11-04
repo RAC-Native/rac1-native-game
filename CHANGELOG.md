@@ -32,10 +32,9 @@ is still experimental.
   keeps every row, so A/B is one press), a **Preset** (Low, Medium, High; Custom when the rows match none), then every addition:
   Lighting (Low, Medium, High: no Original value any more), the shadows, lights, occlusion, sun rays, Surface Detail, Grass
   and Ambient Particles, which before stayed on with Lighting Original. Old preferences and saves: Lighting Original reads as
-  Graphics Original (Lighting High), Low to High as Enhanced with that value. Experimental mode: Graphics Enhanced, the preset High
-  (Grass High too). The debug menu's Enhancements tab has the same switch and preset at its top.
-- Options > Graphics, the preset High (and so New Game > Experimental): Ambient Occlusion MXAO instead of GTAO, Sun Rays Low
-  instead of High (too strong; stronger ones by hand). Rows set to the old High now show Custom.
+  Graphics Original (Lighting High), Low to High as Enhanced with that value. The preset High has Grass High too. The debug menu's Enhancements tab has the same switch and preset at its top.
+- Options > Graphics, the preset High (also offered by New Game's graphics window): Ambient Occlusion MXAO instead of GTAO, Sun
+  Rays Low instead of High (too strong; stronger ones by hand). Rows set to the old High now show Custom.
 - Options (pause menu): Display has a picture of its own, the game's Help menu picture for Moves (Ratchet gliding over a city),
   no longer Graphics' "GFX". The main menu's Options list shows no pictures.
 - Water: no Water row any more (Daino after Novalis and Rilgar: Surface Detail's water over the game's own looks better); old
@@ -60,19 +59,13 @@ is still experimental.
   `water_reflections 2` in the preferences (0 Low and 1 Medium unchanged). The device's ray tracing is turned on whenever it has it,
   so the value works when picked during play (the level's structures made then); `RAC1_RT=1` / `0` stays the testing override. The
   acceleration structures' compaction barrier no longer names the copy stage (a validation error without ray tracing maintenance 1)
-  ([Rendering](docs/rendering.md#water-reflections-medium-rt)).
+  ([Rendering](docs/rendering.md#water-reflections-medium-rt)). Before it became a value it was tested behind `RAC1_RT=1`: phase 0
+  traced the static world (ties, shrubs, tfrags) and took the hit's colour from the frame's picture, phase 2 shaded the hit from its
+  own triangle at half resolution ([Rendering](docs/rendering.md#ray-tracing-phase-2); `RAC1_RT_SHADE`, `RAC1_RT_BLUR`, `RAC1_RT_CONE`).
 - Water Reflections High (RT) (Italian "Alto (RT)"; `water_reflections 3`), RT phase 3: the mobys in the trace too - skinned by a
   compute pass into world space, a bottom-level structure per moby kept / refitted / rebuilt, their instances in the top level's
   dynamic partition, shaded from the moby's texture and lit colours; about 0.4 to 0.7 ms more than Medium (RT) on a Radeon 890M;
   `RAC1_RT_MOBYS`, the profiler's Ray tracing: mobys stage ([Rendering](docs/rendering.md#ray-tracing-phase-3-the-mobys)).
-- Ray tracing, phase 0 (testing, hidden: `RAC1_RT=1`, Vulkan with ray queries only): the seas' water traces its reflection through the
-  level's static world (ties, shrubs, tfrags; acceleration structures built per packet / tfrag entry at the level's load, the top
-  level partitioned by zone cell) and takes the hit's colour from the frame's picture, else the cube map or the sky; the profiler's
-  Seas and Ray tracing stages ([Rendering](docs/rendering.md#ray-tracing-phase-0)).
-- Ray tracing, phase 2 (testing, `RAC1_RT=1`): the reflection's hit shaded from its own triangle (its texture at a ray cone's level,
-  the world's lit colours, the world's fog; alpha-tested leaves with holes) instead of the frame's picture, traced at half resolution
-  and upsampled by distance in the seas' shader; clusters merged by default; `RAC1_RT_SHADE`, `RAC1_RT_BLUR`, `RAC1_RT_CONE`, the
-  profiler's Ray tracing: half-res trace stage ([Rendering](docs/rendering.md#ray-tracing-phase-2)).
 - Grass (Options > Graphics, off by default): the ground tagged as grass gets a fine relief of blades (Low, no geometry) and a few very
   low layers of blades near the camera (High), in the texture's colours, bending with the wind and away from Ratchet. Seeded on Veldin,
   Novalis and Kerwan.
@@ -134,7 +127,7 @@ is still experimental.
   crouches, and the mouse wheel (a new kind of binding on the Controls page) goes through the weapons (#117, #61).
 - Next Weapon / Previous Weapon: two new actions (the wheel and X by default, bindable on the pad too) that put the
   quick select's next or previous weapon in hand without opening it, or move its ring's selection while it is open (#61).
-- Advanced > Vibration (Off, Low, High; High in Modern and Experimental): the gamepad vibrates for damage, death, hard
+- Advanced > Vibration (Off, Low, High; High with New Game's Modern): the gamepad vibrates for damage, death, hard
   landings, nearby explosions, each weapon's shot (by weapon), the wrench's hits, bolts and the ship's flight, through the
   kernel's force feedback on Linux and XInput on Windows, with no new library; the game's state is only read (#10).
 - Vibration: each event a short pulse with a crisp end (the motors used to keep the last, weakest strength of a fade
@@ -144,7 +137,7 @@ is still experimental.
 - Advanced > Adaptive Triggers (Off, On; a row shown only when the pad in use is a DualSense, kept as the machine's preference;
   On in Modern): L2 and R2's resistance by weapon with Modern aiming, the light bar by health; on Linux the pad's hidraw node
   needs a udev rule, else the kernel's force feedback is used and the log says so (docs/input.md) (#10).
-- Advanced > Skip Cutscenes (Original, Always; Always in Modern and Experimental): Start skips every in-engine scene and
+- Advanced > Skip Cutscenes (Original, Always; Always with New Game's Modern): Start skips every in-engine scene and
   movie on every planet, through the game's own skip, as on Veldin and in Challenge Mode.
 - Advanced > Aiming: Modern, No Zoom, Modern aiming at the normal camera distance, as Ratchet & Clank 3's lock-strafe (#70).
 
@@ -152,7 +145,9 @@ is still experimental.
 - The European PAL disc version 2.00 (the "Platinum" re-release, a later build, 1.02) is supported as the game's disc:
   its own region table `data/regions/SCES-50916-2.00.txt` (chosen by the boot executable's sha1), with a unit for the base
   executable's core, which that build moved (loaded back at the North American addresses when the game starts:
-  `src/game/ovl/region_core.cpp`); its changed functions run the North American ports (the 1.02 fixes are not ported yet).
+  `src/game/ovl/region_core.cpp`). Its changed functions that the port generates are translated from its own code (stand-ins), so
+  they carry the 1.02 build's behaviour; those the port has by hand run the North American port, where the 1.02 Fixes and 1.02
+  Gameplay rows bring the 1.02 changes ported so far, as on the other discs.
   New `tools/overlay_match/region_maps.py check-core`. Its stand-ins' jump tables find their `case` labels (on Rilgar
   a stand-in's switch fell through to its default every frame, leaking its stack frame until the EE stack reached the
   level's data: the crash on arrival) (#64, #127).
@@ -173,8 +168,9 @@ is still experimental.
   American build's functions only (`host_ntsc`, `tools/codegen/gen_asm.py`).
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
-  1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs
-  beside the game's disc, the PAL disc 2.00, the pre-release builds, a second image of a release). An image added later is
+  1.00, else PAL 2.00), the data discs that give something (the Japanese disc; a PAL disc beside the North American one),
+  the others not used with one line saying why (a PAL disc beside the PAL game's disc, the pre-release builds, a second
+  image of a release). An image added later is
   picked up by the next setup (`--check` says so); `--iso` / `--data-iso` still win; `--remove-data-disc` forgets one data
   disc, `--discs` prints the choice. The setup no longer removes the other region's live link in `assets/iso/`
   (docs/setup.md, "Which disc images").
@@ -267,11 +263,10 @@ is still experimental.
   reflection faded to the sky's where a pixel covers more than about half a unit of water, Surface Detail's ripples faded wave by
   wave where finer than the pixel (the glint widened instead);
   still camera at the start's dock, 32:9: the far sea's flashing pixels 14 533 -> 1 578 (Surface Detail Off: 1 889).
-- Materials: a level now takes 126 emissive surfaces and materials, not 30 - with the lines for every level, the lines past the
-  30th were dropped ("metal rendering gives up after a set number of marked metals", #102).
-- Materials: a level takes 254 emissive surfaces and materials, not 126, and a `classes.txt` line takes a slot only on the levels
-  that have its class: with Anya-Thoughtmane's batches 2 and 3 seven levels ran out and dropped lines (Gemlik 76 of 202, its bolts
-  among them). The slots' table is a storage buffer now (OpenGL and Vulkan), the Vulkan lighting uniform buffer 5632 bytes.
+- Materials: a level takes 254 emissive surfaces and materials, not 30: past the 30th the lines were dropped ("metal rendering
+  gives up after a set number of marked metals", #102), and with Anya-Thoughtmane's batches 2 and 3 seven levels ran out (Gemlik 76
+  of 202, its bolts among them). A `classes.txt` line takes a slot only on the levels that have its class; the slots' table is a
+  storage buffer now (OpenGL and Vulkan), the Vulkan lighting uniform buffer 5632 bytes.
 - Materials: a polished metal (roughness under about 0.4) no longer shows a sharp, jumping mirror of the last frame: the picture
   is mixed in less and blurred, a hit is tested more tightly, and a moby never mirrors its own last pose (#102).
 - Materials: a metal's mirror is dimmed in the sun's shadow and on the faces turned from the sun (#102).

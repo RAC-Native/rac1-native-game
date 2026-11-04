@@ -172,7 +172,8 @@ nothing, so an object whose class is not ported stands still or does not appear.
 - **Regions.** The North American disc (`SCUS-97199`) is the reference. The European PAL disc
   (`SCES-50916`) can now be used on its own, through its region table: the setup, the generated code
   and the game run from it, in the PAL game's 60 Hz mode. The Platinum re-release (version 2.00, a later
-  build) is supported as the game's disc too, through its own table (#64, #127); its changed functions run
-  the North American ports. The Japanese disc is not a game's disc yet, only a data disc. Still to do
+  build) is supported as the game's disc too, through its own table (#64, #127); its changed functions that the
+  port generates carry the 1.02 behaviour, and those ported by hand run the North American port, with
+  the 1.02 rows' fixes as on the other discs. The Japanese disc is not a game's disc yet, only a data disc. Still to do
   for PAL: the functions the PAL build changed run as the North American port, or, for ten generated ones, as stand-ins translated from the PAL code that are not yet proved; the 50 Hz mode; the
   levels after Umbris have not been tried. See [Setup](setup.md#the-european-pal-disc).
