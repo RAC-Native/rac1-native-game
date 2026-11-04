@@ -545,6 +545,16 @@ void main() {
     bool lin = ((fl >> 18) & 1u) != 0u, rs = ((fl >> 19) & 1u) != 0u, rt = ((fl >> 20) & 1u) != 0u;
     vec4 c = iip ? vColor : vFlat;
     vec3 c_game = c.rgb;
+#ifdef RAC1_RT
+    // (RAC1_RT's half-resolution trace: no surface the 3D hides - its own depth is the seas' alone - and no lighting, the reflection alone)
+    bool rt_half = ((uRtMode >> 6) & 3) == 1;
+    if (rt_half && uMat[0].w != 0.0) {
+        vec2 ouv;
+        float odz = sm_ssr_dz(vShWorld, ouv);
+        if (ouv.x >= 0.0 && odz > 0.5 + 0.03 * length(uShCam - vShWorld)) discard;  // (clearly behind: an edge's own pixels kept)
+    }
+    if (!rt_half)
+#endif
     c.rgb = sh_points(sh_apply_split(c.rgb, c.rgb * 0.45));
     vec4 o = c;
     // (flag 27: Surface Detail's water put over its texture's average colour where it stands for what lies under it - the average and
@@ -600,6 +610,14 @@ void main() {
         if (!pass && uPass == 0 && (afail == 0u || afail == 2u)) discard;
         if (!pass && uPass == 1 && afail != 2u) discard;
     }
+#ifdef RAC1_RT
+    if (((uRtMode >> 6) & 3) == 1) {  // (RAC1_RT's half-resolution trace: the reflection and its distance, the water's pixels alone)
+        if (sm_rt_out_d < 0.0) discard;
+        FragColor = vec4(sm_rt_out, sm_rt_out_d);
+        FragFactor = vec4(0.0);
+        return;
+    }
+#endif
     float as = min(o.a * (255.0 / 128.0), 1.0);
     uint bk = (fl >> 24) & 3u;
     if (bk == 1u || bk == 2u) {
@@ -617,9 +635,17 @@ void main() {
 }
 """
 
-# RAC1_RT=1 (testing, ray tracing phase 0: src/game/render/mrp_rt.h): the surfaces' fragment shader whose water traces its reflection
-# (sm_water_rt) against the level's top level (set 2, binding 0); GLSL 4.60 for GL_EXT_ray_query
-MRP_VU7_FS_RT = MRP_VU7_FS.replace("#version 450\n", "#version 460\n#extension GL_EXT_ray_query : require\n#define RAC1_RT 1\n", 1)
+# RAC1_RT=1 (testing, ray tracing: src/game/render/mrp_rt.h): the surfaces' fragment shader whose water traces its reflection
+# (sm_water_rt) against the level's top level and shades the hit (set 2); GLSL 4.60 for GL_EXT_ray_query, the textures' array indexed
+# per pixel (GL_EXT_nonuniform_qualifier)
+MRP_VU7_FS_RT = MRP_VU7_FS.replace("#version 450\n", "#version 460\n#extension GL_EXT_ray_query : require\n#extension GL_EXT_nonuniform_qualifier : require\n#define RAC1_RT 1\n", 1)
+# its half-resolution trace's variant (mrp_fx.cpp): the depth tested before the shader (the trace pass only shades the nearest sea
+# surface a depth pass left - pass 3 returns at once: that depth pass)
+MRP_VU7_FS_RT_HALF = MRP_VU7_FS_RT.replace("void main() {\n    sh_prepare();",
+                                           "layout(early_fragment_tests) in;\nvoid main() {\n    if (((uRtMode >> 6) & 3) == 3) return;\n    sh_prepare();", 1)
+assert MRP_VU7_FS_RT_HALF != MRP_VU7_FS_RT
+# and the variant reading that trace (RAC1_RT_UPSAMPLE: no ray query left in it, the sea's own registers)
+MRP_VU7_FS_RT_UP = MRP_VU7_FS_RT.replace("#define RAC1_RT 1\n", "#define RAC1_RT 1\n#define RAC1_RT_UPSAMPLE 1\n", 1)
 
 # ---------------------------------------------------------------------------
 # 3. mrp_shadows.cpp shaders
@@ -2298,6 +2324,145 @@ MRP_WORLD_EARLY_BASE_FS = "#version 460\n" + MRP_WORLD_FS_HEADER + "\nlayout(ear
 MRP_2D_VS = GS_DRAW_VS
 MRP_2D_FS = GS_DRAW_FS
 
+# ---------------------------------------------------------------------------
+# mrp_rt.cpp: the ray tracing's moby pass (Water Reflections High (RT)): the frame's moby draws skinned as the moby vertex shader skins
+# them (mrp_moby_renderer.cpp kVs: the VU0 matrix of <= 3 weighted joints, the s16 truncation, the record's lighting and the EE's
+# colour step), each triangle written in world space (the part's model -> world matrix) for its bottom-level structure, with its
+# shading record (mrp_rt.h RtTri: the corners' texture coordinates, the texture, its density, the corners' lit colours, the word)
+# ---------------------------------------------------------------------------
+MRP_RT_MOBY_CS = """#version 460
+layout(local_size_x = 64) in;
+struct Part {
+    vec4 clip[4];
+    vec4 rows[4];
+    vec4 light[8];
+    vec4 sub;
+    ivec4 info;
+};
+layout(std430, set = 0, binding = 0) readonly buffer Joints { vec4 J[]; };
+layout(std430, set = 0, binding = 1) readonly buffer Parts { Part parts[]; };
+layout(std430, set = 0, binding = 2) readonly buffer Cmds { uvec4 cmds[]; };
+layout(std430, set = 0, binding = 3) readonly buffer Normals { vec2 normals[]; };
+layout(std430, set = 0, binding = 4) readonly buffer Verts { uint V[]; };    /* GpuVertex, 10 words */
+layout(std430, set = 0, binding = 5) readonly buffer Indices { uint I[]; };
+layout(std430, set = 0, binding = 6) readonly buffer Runs { uvec4 runs[]; };  /* first index, triangles, draw command | texture array << 24, first triangle out */
+layout(std430, set = 0, binding = 7) readonly buffer World { mat4 world[]; };
+layout(std430, set = 0, binding = 8) writeonly buffer OutPos { float opos[]; };
+layout(std430, set = 0, binding = 9) writeonly buffer OutTri { uvec4 otri[]; };
+layout(push_constant) uniform Push { uint uTris; uint uRuns; };
+
+vec4 joint_row(uint j, int r, int first, int count) {
+    return int(j) < count ? J[(first + int(j)) * 4 + r] : vec4(0.0);
+}
+void matrix_of(uvec4 jt, uvec4 wt, int first, int count, out vec4 m[4]) {
+    if (jt.w == 1u) {
+        for (int r = 0; r < 4; ++r) m[r] = joint_row(jt.x, r, first, count);
+        return;
+    }
+    if (jt.w == 0u) {
+        for (int r = 0; r < 4; ++r) m[r] = vec4(0.0);
+        return;
+    }
+    float w0 = float(wt.x) * (1.0 / 4096.0) * 16.0, w1 = float(wt.y) * (1.0 / 4096.0) * 16.0, w2 = float(wt.z) * (1.0 / 4096.0) * 16.0;
+    for (int r = 0; r < 4; ++r) {
+        precise vec4 a = joint_row(jt.x, r, first, count) * w0;
+        a = a + joint_row(jt.y, r, first, count) * w1;
+        if (jt.w == 3u) a = a + joint_row(jt.z, r, first, count) * w2;
+        m[r] = a;
+    }
+}
+ivec3 skin_pos(vec4 m[4], ivec3 p) {
+    ivec3 q;
+    for (int l = 0; l < 3; ++l) {
+        precise float a = m[0][l] * float(p.x);
+        a = a + m[1][l] * float(p.y);
+        a = a + m[2][l] * float(p.z);
+        a = a + m[3][l];
+        int i = int(clamp(a, -2147483648.0, 2147483520.0));
+        q[l] = (i << 16) >> 16;
+    }
+    return q;
+}
+int s16(uint w, int hi) { return hi != 0 ? int(w) >> 16 : (int(w << 16) >> 16); }
+/* one vertex: its world position, its lit colour (RGBA8), its texture coordinates */
+void vertex(uint vi, Part P, mat4 W, out vec3 wp, out uint rgba, out vec2 uv) {
+    uint b = vi * 10u;
+    uint w0 = V[b], w1 = V[b + 1u], w2 = V[b + 2u], w3 = V[b + 3u], w4 = V[b + 4u], w5 = V[b + 5u];
+    ivec3 pos = ivec3(s16(w0, 0), s16(w0, 1), s16(w1, 0));
+    uint nb = w1 >> 16;
+    uvec4 jt = uvec4(w2 & 255u, (w2 >> 8) & 255u, (w2 >> 16) & 255u, w2 >> 24);
+    uvec4 wt = uvec4(w3 & 255u, (w3 >> 8) & 255u, (w3 >> 16) & 255u, w3 >> 24);
+    uvec4 rgb = uvec4(w4 & 255u, (w4 >> 8) & 255u, (w4 >> 16) & 255u, w4 >> 24);
+    int first = P.info.x, count = P.info.y;
+    vec4 m[4];
+    matrix_of(jt, wt, first, count, m);
+    ivec3 q = skin_pos(m, pos);
+    vec2 ta = normals[nb & 0xffu], te = normals[(nb >> 8) & 0xffu];
+    precise float nx = ta.x * te.x;
+    precise float ny = ta.y * te.x;
+    float nw = te.y;
+    precise vec4 n = m[0] * nx;
+    n = n + m[1] * ny;
+    n = n + m[2] * nw;
+    precise float len2 = n.x * n.x + n.y * n.y;
+    len2 = len2 + n.z * n.z;
+    float qn = len2 > 0.0 ? 1.0 / sqrt(len2) : 3.4028235e38;
+    precise vec4 d = P.light[0] * n.x;
+    d = d + P.light[1] * n.y;
+    d = d + P.light[2] * n.z;
+    precise vec4 dk = d * (-abs(P.light[6]));
+    d = max(d, dk);
+    precise vec4 a = P.light[3] * d.x;
+    a = a + P.light[4] * d.y;
+    a = a + P.light[5] * d.z;
+    ivec4 col;
+    for (int l = 0; l < 4; ++l) {
+        precise float c = (a[l] == 0.0 ? 0.0 : a[l] * qn) + P.light[7][l] * 1.0;
+        int h = int(floatBitsToUint(c) << 16) >> 16;
+        int pr = clamp(h * int(rgb[l]), -32768, 32767);
+        col[l] = (pr >> 7) & 0xff;
+    }
+    if ((P.info.z & 1) != 0) col = ivec4(P.sub);
+    rgba = uint(col.x & 255) | uint(col.y & 255) << 8 | uint(col.z & 255) << 16 | uint(col.w & 255) << 24;
+    wp = (W * vec4(vec3(q), 1.0)).xyz;
+    uv = vec2(float(s16(w5, 0)), float(s16(w5, 1))) * (1.0 / 4096.0);
+}
+void main() {
+    uint t = gl_GlobalInvocationID.x;
+    if (t >= uTris) return;
+    /* the draw this triangle is of: the last whose first triangle out is <= t */
+    uint lo = 0u, hi = uRuns - 1u;
+    while (lo < hi) {
+        uint mid = (lo + hi + 1u) >> 1;
+        if (runs[mid].w <= t) lo = mid; else hi = mid - 1u;
+    }
+    uvec4 R = runs[lo];
+    uint k = t - R.w;
+    uvec4 cmd = cmds[R.z & 0xffffffu];
+    Part P = parts[cmd.x];
+    mat4 W = world[cmd.x];
+    vec3 p[3];
+    uint c[3];
+    vec2 uv[3];
+    for (int i = 0; i < 3; ++i) vertex(I[R.x + 3u * k + uint(i)], P, W, p[i], c[i], uv[i]);
+    for (int i = 0; i < 3; ++i) {
+        opos[9u * t + 3u * uint(i)] = p[i].x;
+        opos[9u * t + 3u * uint(i) + 1u] = p[i].y;
+        opos[9u * t + 3u * uint(i) + 2u] = p[i].z;
+    }
+    /* the texture's density: log2 sqrt(texture area / area) (the hit's texture level by a ray cone, as the world's clusters' RtTri) */
+    float ta = abs((uv[1].x - uv[0].x) * (uv[2].y - uv[0].y) - (uv[2].x - uv[0].x) * (uv[1].y - uv[0].y));
+    float wa = length(cross(p[1] - p[0], p[2] - p[0]));
+    float dens = ta > 0.0 && wa > 0.0 ? 0.5 * log2(ta / wa) : 0.0;
+    uint bucket = R.z >> 24, w = cmd.y;
+    /* the word in RtTri's form: no texture (bit 0), TFX, TCC; the mip levels - 1 at 22..24 (a moby texture's three bits) */
+    uint word = (w & 15u) | (w & (7u << 22)) | (bucket == 255u ? 1u : 0u);
+    otri[3u * t] = uvec4(floatBitsToUint(uv[0].x), floatBitsToUint(uv[0].y), floatBitsToUint(uv[1].x), floatBitsToUint(uv[1].y));
+    otri[3u * t + 1u] = uvec4(floatBitsToUint(uv[2].x), floatBitsToUint(uv[2].y), bucket | (cmd.z << 8), floatBitsToUint(dens));
+    otri[3u * t + 2u] = uvec4(c[0], c[1], c[2], word);
+}
+"""
+
 SHADERS = [
     ("kGsDrawVs", "vert", GS_DRAW_VS),
     ("kGsDrawFs", "frag", GS_DRAW_FS),
@@ -2308,11 +2473,14 @@ SHADERS = [
     ("kMrpVu7Vs", "vert", MRP_VU7_VS),
     ("kMrpVu7Fs", "frag", MRP_VU7_FS),
     ("kMrpVu7FsRt", "frag", MRP_VU7_FS_RT),
+    ("kMrpVu7FsRtHalf", "frag", MRP_VU7_FS_RT_HALF),
+    ("kMrpVu7FsRtUp", "frag", MRP_VU7_FS_RT_UP),
     ("kMrpShadowsFaceVs", "vert", MRP_SHADOWS_FACE_VS),
     ("kMrpShadowsFaceFs", "frag", MRP_SHADOWS_FACE_FS),
     ("kMrpShadowsDarkVs", "vert", MRP_SHADOWS_DARK_VS),
     ("kMrpShadowsDarkFs", "frag", MRP_SHADOWS_DARK_FS),
     ("kMrpTfragCs", "comp", MRP_TFRAG_CS),
+    ("kMrpRtMobyCs", "comp", MRP_RT_MOBY_CS),
     ("kMrpAoVs", "vert", MRP_AO_VS),
     ("kMrpAoFs", "frag", MRP_AO_FS),
     ("kMrpAoBlurFs", "frag", MRP_AO_BLUR_FS),

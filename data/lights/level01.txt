@@ -144,3 +144,17 @@ material shrub 141 tex 1 metal 0.35 1
 emit moby 531  -0.887 -1.586 -0.533  0.557 0.933 1.000  1.631 1.000 0.000  0.00  joint 3
 material moby 11 tex 1 metal 0.35 1
 material surface 761 tex 13347 water 1 1  foam -0
+# Surface Detail's water (docs/materials.md), put back: the lighting batches' reformat (2a468fe) left these lines out. Novalis's
+# water, VU1 program 7's strips and tiles (novalis_water.cpp), named by their effect textures (44 the strips' water, 43 and 41 the
+# tiles' two base layers); the river (761) is the line above.
+# The water at the bottom of the gorge below the start's cliffs (class 676: x 22..178, y 137..297, z 38.5; Ratchet swims in it),
+# with its waterfall at the north-west end (x 28..41, y 275..295, from z 59 down)
+material surface 676 tex 44 water 1 1
+# The stream and the pools of water tiles south-west of the pad (class 751: x 119..164, y 45..132, z 56..66)
+material surface 751 tex 43 water 1 1
+material surface 751 tex 41 water 1 1
+# The waterworks: the basins at z 82 behind the railings (class 678, x 260..309, y 138..184), still water
+material surface 678 tex 44 water 0.8 0.7
+# The three round water columns in the blue cave south-west of the start (class 1225, x 93..120, y 60..86; their wave height the
+# game's): mostly upright, gentle ripples
+material surface 1225 tex 43 water 0.8 0.6

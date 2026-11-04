@@ -3798,7 +3798,7 @@ int main(int argc, char** argv) {
                     if (world_3d) {  // (Options > Graphics > Water Reflections: the planar view, the cube map; nothing unless the water asks)
                         const int rvp[4] = {wv.x, wv.y, wv.w, wv.h};
                         mrp_reflect_pass(rvp);
-                        mrp_rt_frame();  // (RAC1_RT, testing: the ray tracing's top level for the seas' reflections)
+                        mrp_rt_frame();  // (Water Reflections (RT): the ray tracing's top level for the seas' reflections)
                     }
                 } else if (!g_world_faithful && !rac1::vk::is_active()) {
                     tfrag_render_update();  // (g_world_faithful: the world comes from the frame's VU1 chain)

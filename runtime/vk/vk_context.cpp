@@ -138,8 +138,8 @@ struct Context {
     bool has_float64 = false;       // (shaderFloat64: the tfrag compute's doubles; without it the tfrags are made on the CPU)
     bool has_anisotropy = false;    // (samplerAnisotropy: without it every sampler is isotropic)
     bool device_lost = false;       // (VK_ERROR_DEVICE_LOST seen: said once in the log)
-    // (RAC1_RT=1, testing: ray-traced water reflections, phase 0) the device's acceleration structures and ray queries, turned on
-    // only when asked and present (with bufferDeviceAddress and deferred host operations); the pipelines' 2x2 shading rate
+    // (Water Reflections' RT values) the device's acceleration structures and ray queries, turned on when present (with
+    // bufferDeviceAddress, deferred host operations, non-uniform sampled-image indexing) unless RAC1_RT=0; the pipelines' 2x2 shading rate
     bool rt_asked = false, rt_on = false, has_shading_rate = false;
     VkPhysicalDeviceAccelerationStructurePropertiesKHR as_props{};
     VkQueryPool timed_pool = VK_NULL_HANDLE;  // (timed_submit's two timestamps)
@@ -656,7 +656,7 @@ bool check_device(VkPhysicalDevice pd, const HasExt& has_ext) {
     g_ctx.has_anisotropy = f.samplerAnisotropy == VK_TRUE;
     if (!g_ctx.has_anisotropy) off += "samplerAnisotropy (no anisotropic filtering); ";
     if (!has_ext(VK_EXT_PROVOKING_VERTEX_EXTENSION_NAME)) off += "VK_EXT_provoking_vertex; ";
-    if (g_ctx.rt_asked) {  // (RAC1_RT=1: ray queries, their acceleration structures; testing)
+    if (g_ctx.rt_asked) {  // (ray queries, their acceleration structures: Water Reflections' RT values; RAC1_RT=0 leaves them off)
         VkPhysicalDeviceRayQueryFeaturesKHR rq{};
         rq.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
         VkPhysicalDeviceAccelerationStructureFeaturesKHR asf{};
@@ -671,14 +671,18 @@ bool check_device(VkPhysicalDevice pd, const HasExt& has_ext) {
         const bool exts = has_ext(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) && has_ext(VK_KHR_RAY_QUERY_EXTENSION_NAME) &&
                           has_ext(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
         if (exts) vkGetPhysicalDeviceFeatures2(pd, &rf2);
-        g_ctx.rt_on = exts && asf.accelerationStructure == VK_TRUE && rq.rayQuery == VK_TRUE && f12.bufferDeviceAddress == VK_TRUE;
+        g_ctx.rt_on = exts && asf.accelerationStructure == VK_TRUE && rq.rayQuery == VK_TRUE && f12.bufferDeviceAddress == VK_TRUE &&
+                      f12.shaderSampledImageArrayNonUniformIndexing == VK_TRUE;  // (the hit's texture: an array indexed per pixel)
         g_ctx.has_shading_rate = g_ctx.rt_on && has_ext(VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME) && fsr.pipelineFragmentShadingRate == VK_TRUE;
-        if (!g_ctx.rt_on) off += "RAC1_RT: no VK_KHR_acceleration_structure + VK_KHR_ray_query + bufferDeviceAddress (no ray tracing); ";
+        if (!g_ctx.rt_on)
+            off += "ray queries (VK_KHR_acceleration_structure + VK_KHR_ray_query + bufferDeviceAddress + non-uniform sampled image indexing: "
+                   "no Water Reflections (RT)); ";
         // (the cluster / partitioned acceleration structures, DirectX's CLAS / PTLAS on Vulkan: noted, not used - phase 0)
-        std::fprintf(stderr, "[rt] cluster acceleration structures: VK_NV_cluster_acceleration_structure %s, VK_NV_partitioned_acceleration_structure %s "
-                             "(not used: the clusters and partitions are made of plain KHR acceleration structures)\n",
-                     has_ext("VK_NV_cluster_acceleration_structure") ? "present" : "absent",
-                     has_ext("VK_NV_partitioned_acceleration_structure") ? "present" : "absent");
+        if (g_ctx.rt_on)
+            std::fprintf(stderr, "[rt] cluster acceleration structures: VK_NV_cluster_acceleration_structure %s, VK_NV_partitioned_acceleration_structure %s "
+                                 "(not used: the clusters and partitions are made of plain KHR acceleration structures)\n",
+                         has_ext("VK_NV_cluster_acceleration_structure") ? "present" : "absent",
+                         has_ext("VK_NV_partitioned_acceleration_structure") ? "present" : "absent");
     }
     if (!has_ext(VK_EXT_DEPTH_CLIP_CONTROL_EXTENSION_NAME)) off += "VK_EXT_depth_clip_control; ";
 
@@ -917,9 +921,9 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
         g_ctx.has_host_query_reset = f12.hostQueryReset == VK_TRUE;
     }
 
-    {  // (RAC1_RT=1, testing: ray-traced water reflections; check_device says whether the device can)
+    {  // (ray-traced water reflections, Water Reflections' RT values: check_device says whether the device can; RAC1_RT=0, testing: never)
         const char* e = std::getenv("RAC1_RT");
-        g_ctx.rt_asked = e != nullptr && std::atoi(e) != 0;
+        g_ctx.rt_asked = e == nullptr || *e == '\0' || std::atoi(e) != 0;
     }
     if (!check_device(g_ctx.phys_dev, has_ext)) {
         shutdown();
@@ -948,7 +952,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
         g_ctx.as_props.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR;
         pp.pNext = &g_ctx.as_props;
         vkGetPhysicalDeviceProperties2(g_ctx.phys_dev, &pp);
-    } else if (g_ctx.rt_asked) {
+    } else if (g_ctx.rt_asked && std::getenv("RAC1_RT") != nullptr && std::atoi(std::getenv("RAC1_RT")) != 0) {
         std::fprintf(stderr, "[rt] RAC1_RT=1 ignored: the device has no ray queries\n");
     }
 
@@ -975,6 +979,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     v12_feat.hostQueryReset = g_ctx.has_host_query_reset ? VK_TRUE : VK_FALSE;
     if (g_ctx.rt_on) {  // (the acceleration structures' features after the others in the chain)
         v12_feat.bufferDeviceAddress = VK_TRUE;
+        v12_feat.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
         VkBaseOutStructure* last = reinterpret_cast<VkBaseOutStructure*>(&v13_feat);
         while (last->pNext != nullptr) last = last->pNext;
         last->pNext = reinterpret_cast<VkBaseOutStructure*>(g_ctx.has_shading_rate ? static_cast<void*>(&fsr_feat) : static_cast<void*>(&as_feat));

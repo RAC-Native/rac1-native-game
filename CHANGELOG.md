@@ -132,6 +132,20 @@ What changed in each release. Releases are source only: you build the game with 
   level's static world (ties, shrubs, tfrags; acceleration structures built per packet / tfrag entry at the level's load, the top
   level partitioned by zone cell) and takes the hit's colour from the frame's picture, else the cube map or the sky; the profiler's
   Seas and Ray tracing stages ([Rendering](docs/rendering.md#ray-tracing-phase-0)).
+- Ray tracing, phase 2 (testing, `RAC1_RT=1`): the reflection's hit shaded from its own triangle (its texture at a ray cone's level,
+  the world's lit colours, the world's fog; alpha-tested leaves with holes) instead of the frame's picture, traced at half resolution
+  and upsampled by distance in the seas' shader; clusters merged by default; `RAC1_RT_SHADE`, `RAC1_RT_BLUR`, `RAC1_RT_CONE`, the
+  profiler's Ray tracing: half-res trace stage ([Rendering](docs/rendering.md#ray-tracing-phase-2)).
+- Water Reflections Medium (RT) (Options > Graphics; Italian "Medio (RT)"): phase 2's ray-traced reflection as a value of the row,
+  shown only on Vulkan with ray queries and non-uniform sampled-image indexing (a saved one elsewhere plays as Medium, logged);
+  `water_reflections 2` in the preferences (0 Low and 1 Medium unchanged). The device's ray tracing is turned on whenever it has it,
+  so the value works when picked during play (the level's structures made then); `RAC1_RT=1` / `0` stays the testing override. The
+  acceleration structures' compaction barrier no longer names the copy stage (a validation error without ray tracing maintenance 1)
+  ([Rendering](docs/rendering.md#water-reflections-medium-rt)).
+- Water Reflections High (RT) (Italian "Alto (RT)"; `water_reflections 3`), RT phase 3: the mobys in the trace too - skinned by a
+  compute pass into world space, a bottom-level structure per moby kept / refitted / rebuilt, their instances in the top level's
+  dynamic partition, shaded from the moby's texture and lit colours; about 0.4 to 0.7 ms more than Medium (RT) on a Radeon 890M;
+  `RAC1_RT_MOBYS`, the profiler's Ray tracing: mobys stage ([Rendering](docs/rendering.md#ray-tracing-phase-3-the-mobys)).
 - Grass (Options > Graphics, off by default): the ground tagged as grass gets a fine relief of blades (Low, no geometry) and a few very
   low layers of blades near the camera (High), in the texture's colours, bending with the wind and away from Ratchet. Seeded on Veldin,
   Novalis and Kerwan.
@@ -190,6 +204,8 @@ What changed in each release. Releases are source only: you build the game with 
   antivirus false positive (F-Secure's `Drop.Win64.APC.HEUR`, #115).
 
 ### Fixes
+- Surface Detail's water put back where the lighting batches' reformat (2a468fe) left its lines out: Rilgar's harbour and canals,
+  Novalis's gorge, stream, waterworks and cave columns, Hoven's water under the town (they drew as the game's water, no reflection).
 - Windows: a game folder on a drive that is not NTFS (exFAT, FAT32: an external drive) lost `clang.exe` (#126, #88): MSYS2's
   clang package has it, `clang-cpp.exe` and the two `x86_64-w64-mingw32-clang*.exe` as hard links to `clang++.exe`, which
   those drives cannot hold. `toolchain.ps1` (and the launcher, before it runs an older one) copies the missing linked files
