@@ -406,6 +406,7 @@ void hero_place(uint32_t pos, uint32_t rot, int32_t state, int32_t cam) {
     vec_clear(V(S1 + 0x20));
     sw(P + 0x184, 0);
     sb(P + 0x22ca, 0);
+    if (gameplay102_on(13)) sh(P + 0x22de, 0);  // (1.02 Gameplay, fix 13: the 1.02 build, 0x217718, stops the Hologuise's countdown)
     sub_00266d48();
     hero_hold_release();
     sub_00205538();

@@ -542,9 +542,15 @@ void sub_002163f0() {
     if (lbu(g::PLAYER + 0x20b3) == 1) {
         if (lh(g::PLAYER + 0x30e) < frame_scale_i(10) || lwc1(g::PLAYER + 0x2dc) < 1.0f) up = V(g::PLAYER + 0x270);
     }
-    if (lh(g::PLAYER + 0x30e) != 0 && lh(g::PLAYER + 0x1f8) != 0) k = lwc1(0x0015ed64) * u2f(0x3a83126fu);
+    // (1.02 Gameplay, fix 12: the 1.02 build, 0x216b40, in the ground modes 1 / 2 (the hoverboard's among them) springs
+    // the tilt stiffer, 0.8 of 0x15ed64 instead of 0.3 (the damping kept at 0.3), and caps its speed at 1.0046 x 0x15ed6c
+    // (the original's 0: no cap); with +0x30e and +0x1f8 both set, both 0.001 x 0x15ed64 as before)
+    const bool fix12 = gameplay102_on(12);
+    float d = k;
+    if (fix12) k = lwc1(0x0015ed64) * u2f(0x3f4ccccdu);
+    if (lh(g::PLAYER + 0x30e) != 0 && lh(g::PLAYER + 0x1f8) != 0) k = d = lwc1(0x0015ed64) * u2f(0x3a83126fu);
     Mat4 m;
-    align_to_up_v(up, m, 0, k, k, 0.0f);
+    align_to_up_v(up, m, 0, k, d, fix12 ? lwc1(0x0015ed6c) * u2f(0x3f8096c7u) : 0.0f);
     if (lbu(g::PLAYER + 0x20b3) != 1) return;
     if (lh(g::PLAYER + 0x30e) == 0) return;
     mat4_transform(top2, top2, m);

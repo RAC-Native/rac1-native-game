@@ -2,6 +2,7 @@
 // build (L1:0x00242930), without the states and features Novalis does not have. Addresses in the
 // block comments are Novalis's.
 #include <game/enhance/advanced.h>
+#include <game/enhance/fixes102.h>
 #include <initializer_list>
 
 #include <game/ovl/ovl_reloc.h>
@@ -1128,6 +1129,10 @@ void state53_input() {
             hero_anim_set(5, 0, static_cast<float>(frame_scale_i(8)));
         }
     }
+    if (gameplay102_deadly_ground()) {  // (1.02 Gameplay, fix 9: the 1.02 build's Novalis)
+        set(0x58);
+        return;
+    }
     if ((buttons() & 5) != 0) {
         set(1);
         return;
@@ -1154,6 +1159,10 @@ void state53_input() {
 void walk53_input() {
     const int32_t air = lh(P + 0x30e);
     swc1(P + 0xa90, lwc1(P + 0x160) * 54.0f);
+    if (gameplay102_deadly_ground_near(u2f(0x3e4ccccdu))) {  // (1.02 Gameplay, fix 9: the 1.02 build's Novalis)
+        set(0x58);
+        return;
+    }
     if (!(air < frame_scale_i(5)) && (0.8f < lwc1(P + 0x2dc) || u2f(0x3f5f66f3u) < lwc1(P + 0x2e0))) {
         set(0x55);
         return;
@@ -1257,13 +1266,21 @@ void board_ready_input() {
     sh(P + 0x1f8, static_cast<uint32_t>(frame_scale_i(0x28)));
     const float q = u2f(0x3f490fdbu);
     if (q < abs_f(lwc1(P + 0x94)) || q < abs_f(lwc1(P + 0x90))) sh(P + 0x1b0, static_cast<uint32_t>(frame_scale_i(0x28)));
-    if (lw(P + 0x300) != 0 && lbu(P + 0x12e7) == 0) {
-        set(2);
-        return;
-    }
-    if (frame_scale_i(7) < lh(P + 0x30e) && 1.0f < lwc1(P + 0x2dc)) {
-        set(2);
-        return;
+    // (1.02 Gameplay, fix 9: the 1.02 build's Aridia, 0x232968, as Veldin's hero_input_update)
+    if (const int r = gameplay102_board_ride_off(); r != 0) {
+        if (r == 1) {
+            set(2);
+            return;
+        }
+    } else {
+        if (lw(P + 0x300) != 0 && lbu(P + 0x12e7) == 0) {
+            set(2);
+            return;
+        }
+        if (frame_scale_i(7) < lh(P + 0x30e) && 1.0f < lwc1(P + 0x2dc)) {
+            set(2);
+            return;
+        }
     }
     if (lbu(lwu(P + 0x2080) + 0x53) != 0x5b) hero_anim_set(0x5b, 0, static_cast<float>(frame_scale_i(8)));
     if (lw(PAD + 0x1d4) == 0 || lw(P + 0x198) < frame_scale_i(0x1e)) return;
@@ -1546,6 +1563,10 @@ bool transitions(uint32_t state, uint32_t hm0) {
         set(lh(P + 0x30e) != 0 ? 0x55u : 0x53u);
         return false;
     case 0x59:  // the 0x53 set's 0x59: after 45 frames with circle released, standing in animation 0
+        if (gameplay102_deadly_ground_near(u2f(0x3e99999au))) {  // (1.02 Gameplay, fix 9: the 1.02 build's Novalis)
+            set(0x58);
+            return false;
+        }
         if (!(frame_scale_i(0x2d) < lw(P + 0x198)) || (buttons() & 0x20) != 0) return false;
         hero_set_state(0x53, 0);
         hero_anim_set(0, 0, static_cast<float>(frame_scale_i(0x14)));

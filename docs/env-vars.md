@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 387 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 389 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
 | [Debugging](#debugging-variables) | 295 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 72 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Automated testing](#automated-testing-variables) | 73 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -376,6 +376,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_EQUIP_CYCLE` | <item>,<item>,...@<period>; unset = off | From ten frames after the item-giving frame, puts the next listed item in hand every <period> frames, round and round. |
 | `RAC1_FADES` | original or fast; default fast (screen fades run in a single host frame) | Chooses whether screen fades are shown frame by frame as on the PS2 (original) or completed instantly in one host frame; sets the Fades setting over the saved preference. |
 | `RAC1_FIXES102` | comma-separated fix numbers (1, 2, 3, 5, 6, 7, 11, 16; `f1` also accepted), `all`; `none` or empty = none; unset = the 1.02 Fixes row (main menu > Options > Advanced) | Turns the listed 1.02 fixes on whatever the row holds, for one run (each fix: [Advanced options](advanced.md#102-fixes)). Needs the settings kept in a headless run (`RAC1_ADVANCED=1`): with every enhancement off (the headless default, the oracle) none runs. |
+| `RAC1_GAMEPLAY102` | comma-separated fix numbers (4, 8, 9, 10, 12, 13; `f4` also accepted), `all`; `none` or empty = none; unset = the 1.02 Gameplay row (main menu > Options > Advanced) | Turns the listed 1.02 Gameplay fixes on whatever the row holds, for one run (each fix: [Advanced options](advanced.md#102-gameplay)). Needs the settings kept in a headless run (`RAC1_ADVANCED=1`): with every enhancement off (the headless default, the oracle) none runs. |
 | `RAC1_FRAMES` | integer N; default 300 headless, 0 = run until closed in a window | Number of game frames to run before the program exits (screenshot.ppm is written at the last frame of a headless run). |
 | `RAC1_GIVE_FRAME` | game frame number; default 60 | The frame at which RAC1_GIVE_ITEMS, RAC1_BOLTS and the related item or ammo settings are applied (counted after a RAC1_GOTO level change). |
 | `RAC1_GIVE_ITEMS` | comma-separated item ids; unset = none | Gives Ratchet those items at the item-giving frame (RAC1_GIVE_FRAME), through the game's own item function. |

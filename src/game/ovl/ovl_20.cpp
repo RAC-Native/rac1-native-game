@@ -781,12 +781,21 @@ void sub_0020fde0(int32_t kind) {
     }
 }
 
+// Whether the Hologuise (item kind 0x1f) can be put on: sub_00233f38 0, the game mode 0, on foot (+0x20a4 0), the
+// sub-state (+0x208c) 0..2 or 4, out of water (+0x12e4 0).
+// (1.02 Gameplay, fix 13: the 1.02 build, 0x2104c8, takes beyond the sub-states 0..2 the hero states 4, 9 and 0xe
+// (+0x2084) instead of the sub-state 4)
 // orig: 0x0020fe30
 int32_t sub_0020fe30() {
     if (sub_00233f38() != 0) return 0;
     if (lw(OV(0x0015f5c4)) != 0) return 0;
     if (lbu(g::PLAYER + 0x20a4) != 0) return 0;
     const uint32_t s = lwu(g::PLAYER + 0x208c);
+    if (gameplay102_on(13)) {
+        const uint32_t st = lwu(g::HERO_STATE);
+        if (s < 3u || st == 4u || st == 9u || st == 0xeu) return lbu(g::PLAYER + 0x12e4) == 0 ? 1 : 0;
+        return 0;
+    }
     if (s < 3u || s == 4u) return lbu(g::PLAYER + 0x12e4) == 0 ? 1 : 0;
     return 0;
 }

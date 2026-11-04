@@ -24,6 +24,12 @@ What changed in each release. Releases are source only: you build the game with 
   build's own fixes ported onto the North American code, first batch: New Game keeps the sound settings, explosions leave
   moby slots free, at most 20 Glove of Doom agents, the Thruster-Pack's jump sound, an animation's next frame kept in its
   sequence, Ratchet's colour pulse in cutscenes, the talk prompt, the pause menu's goals and counter.
+- 1.02 Gameplay (main menu > Options > Advanced, Off by default, global; RAC1_GAMEPLAY102=<n>,... for testing): the later
+  build's fixes that change how the game plays, ported onto the North American code (the levels' own copies too): the
+  RYNO's targets from the target list, the Visibomb's steering ending in the talk / vendor state, deadly ground for
+  Ratchet in the Hologuise, the hoverboard's ride-off and quicksand in a vehicle, the guards of the characters that take
+  Ratchet's input, his tilt to the ground, the Hologuise's use. The weapons' generated code takes host calls on the North
+  American build's functions only (`host_ntsc`, `tools/codegen/gen_asm.py`).
 
 ### Controls and gameplay
 - New Game: two windows in the game's style. The first, **Original / Modern**, sets the gameplay rows only (Modern: Quick

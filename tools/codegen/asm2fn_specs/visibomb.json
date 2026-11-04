@@ -6,7 +6,8 @@
   "game/ovl/weapons.h",
   "game/ovl/visibomb.h",
   "game/ovl/pause_menu.h",
-  "game/enhance/advanced.h"
+  "game/enhance/advanced.h",
+  "game/enhance/fixes102.h"
  ],
  "functions": [
   {
@@ -66,6 +67,9 @@
    "params": "uint32_t m",
    "host": {
     "2b32c0": "if (advanced_aim_angles(s1.w() + 0x10, fr[20], fr[21])) fr[14] = -fr[21];  // enhancement: the modern aim's yaw / pitch (advanced.h), the original's level launch otherwise"
+   },
+   "host_ntsc": {
+    "2b315c": "if (gameplay102_on(8) && v1.w() == 0x32) goto L_2b33f0;  // enhancement: 1.02 Gameplay, fix 8 (the 1.02 build, 0x2b4440): the steering ends in the hero state 0x32 too (fixes102.h)"
    }
   }
  ],

@@ -3,7 +3,7 @@
 Options > Advanced holds the settings that change how the game plays. The pause menu's page holds a playthrough's
 settings (the rows below, set first by New Game's Original / Modern and kept with the save); the main menu's holds only
 the global ones, settings of the whole game rather than of a playthrough: [Cut Content](#cut-content),
-[Corrected Texts](#corrected-texts) and [1.02 Fixes](#102-fixes). They are different
+[Corrected Texts](#corrected-texts), [1.02 Fixes](#102-fixes) and [1.02 Gameplay](#102-gameplay). They are different
 in kind
 from the PS2 compromises the port removes (see [Overview](overview.md#faithful-to-the-games-code-not-to-the-ps2s-limits)):
 
@@ -65,8 +65,8 @@ port's fast fades). Left and right on a row step the value (`advanced_settings_d
 
 The ids in `save<N>.pc`: Quick Select 1, Aiming 2, Movement 3, Fades 4, Buy All Ammo 5, Skip Cutscenes 10 (Vibration 6,
 Adaptive Triggers 9 have ids but are not written with the saves; 7 and 8 are removed rows, and 11 was the Voice row,
-now on the Language page, never written with the saves; 12, Cut Content, 13, Corrected Texts, and 14, 1.02 Fixes, are
-global and never written with the saves either: none reused).
+now on the Language page, never written with the saves; 12, Cut Content, 13, Corrected Texts, 14, 1.02 Fixes, and 15,
+1.02 Gameplay, are global and never written with the saves either: none reused).
 
 **The Language page's rows** have more values than the widget's four: each byte is a step byte with two values whose
 texts are both the row's value, made at each lookup (as the Graphics page's rows); when Cross or left / right step it,
@@ -558,7 +558,7 @@ own change, read from its code (its addresses taken back to the North American o
 (`fixes102_on(n)`, `src/game/enhance/fixes102.{h,cpp}`; a `(1.02 Fixes, fix n: ...)` note at each site, naming the 1.02
 build's function). With the row off the North American port runs, and the game's memory is the same frame by frame
 (RAC1_RAMHASH). The fixes that change how the game plays (the RYNO's targets, the Visibomb's steering, the deadly ground,
-the interaction guards, two that are not understood yet) will be a row of their own, later.
+the interaction guards...) are a row of their own: [1.02 Gameplay](#102-gameplay).
 
 | Fix | What the 1.02 build changed | Where (North American) |
 |---|---|---|
@@ -576,6 +576,39 @@ own card library), the Japanese text layouts, the pad's reads (the host's input 
 movie code, the credits (two more lines), and changes that show nothing (recompiled code, a development timing display
 removed). The row is read where each fix runs; it is changed on the main menu only, so a playthrough sees it from its
 start. `RAC1_FIXES102=<n>,<n>...` (`all`, `none`) turns single fixes on for testing ([Environment variables](env-vars.md)).
+
+## 1.02 Gameplay
+
+The main menu's Advanced page has a third row of the later build's fixes, **1.02 Gameplay: Off / On** (off by default), a
+global setting kept in the preferences only (`gameplay_102 0|1` in `advanced_options.txt`), never with a save: the 1.02
+build's fixes that change how the game plays, most of them closing a way round the game (an exploit), which stays
+possible with the row off. It is built as [1.02 Fixes](#102-fixes): each fix is the 1.02 build's own change, read from
+its code (the PAL disc 2.00's, its addresses taken back through `data/regions/SCES-50916-2.00.txt`; the Japanese disc has
+the same code), written into the North American port at the same place behind its own test (`gameplay102_on(n)`,
+`src/game/enhance/fixes102.{h,cpp}`; a `(1.02 Gameplay, fix n: ...)` note at each site). The numbers are the analysis's
+(F4, F8...), the ones `RAC1_GAMEPLAY102` takes. Where the change is in code the port transliterates from the disc (the
+weapons' `*_asm.cpp`, the levels' own copies of the hero's functions and moby classes), the generators put a call there:
+`host_ntsc` / `entry_host_ntsc` in `tools/codegen/asm2fn_specs/` (the North American build's code only: another region's
+changed function, a stand-in, gets none) and `tools/codegen/hooks.glue` (each level's instruction, found by aligning the
+level's copy with Veldin's and checked against the 1.02 build's copy of that level). With the row off each of those is a
+test that fails, and the game's memory is the same frame by frame (RAC1_RAMHASH).
+
+| Fix | What the 1.02 build changed | The way round it closes | Where (North American) |
+|---|---|---|---|
+| 4 | The RYNO's lock-on looks for its targets in the target list 0x1aba00 (the mobys of flag 0x1000 that moby_update queues each frame) instead of the whole moby list 0x15ffe4; and a target whose line from the shot is cut by a moby of type 5 (the targets' type) or 0xf is taken all the same | Probably: locking onto mobys the game does not queue as targets that frame (the original walks every moby), and a target hidden behind another one | `ryno_2cc360` 0x2cc360 (its 1.02 version in `fixes102_ryno_targets`, `ryno_asm.cpp` calling it) |
+| 8 | The Visibomb's steering (the missile and its camera) ends in the hero state 0x32 too, the state a vendor or a character's talk puts Ratchet in | Probably: steering a Visibomb on while Ratchet is at a vendor or in a talk | `visibomb_update` 0x2b3058, `visibomb_ball_update` 0x2b6140 |
+| 9 | Deadly ground (collision kinds 8 and 0xc, +0x12ea; the original takes Ratchet off it to the states 0x52 / 0x79, lost after 300 frames) now also for Ratchet in the Hologuise: its stand 0x53 and walk 0x54 go to its own 0x58 (lost after 300 frames) on it, as entering them does on the ground, and its 0x59 within 0.3 of it, 0x54 within 0.2; the hoverboard's ready stance (0x3f) rides off (2) only on its ground contact (+0x300), out of deep water (+0x12e7) and tilted less than pi/4 (+0x90 / +0x94), the original's height test gone; quicksand (+0x12eb) in a vehicle mode (+0x20a4 1 or 2) makes Ratchet lost (`hero_lost`) instead of sinking him | Probably: walking in the Hologuise over deadly ground (out-of-bounds floor) without being lost, riding the hoverboard off from over deep water, sinking a vehicle in quicksand | `hero_input_update` 0x229b70 (states 0x3f, 0x53, 0x54, 0x59), `hero_set_state` 0x2223f8 (0x53, 0x54), `hero_surface_update` 0x20b960; the same in Novalis's build (the hand ports `*_l1.cpp`, `hero_l2_small.cpp`: levels 1, 2, 3) and in the levels' own copies (5, 6, 8, 11, 12, 14, 15, 16, 17, 18: `hooks.glue`; the quicksand only in Rilgar's, Quartu's and Veldin's finale's, the others have none) |
+| 10 | The characters that take Ratchet's input: a prompted one (the triangle's "talk" message: Pokitaru's class at 0x313290, Gemlik's 69, Drek's fleet's 1379) is not offered while Ratchet is already in the state 0x32 or 0x1d or in a vehicle mode, and its press puts him in 0x32 at once (the 1.02 build moved that call from the character's next step); Rilgar's 918 and Kalebo III's 1455 are not talked to (`talk_update`) while he is in 0x1d, and they lock his input (+0x20ac) as their scene starts; the card's screen (the flag 1 of 0x15eeb4) waits while he is in 0x1d | Probably: starting a talk from inside another talk, a vendor or a vehicle; a frame of free input between the press and the scene | `gameplay_frame` 0x297f78; `hooks.glue` at L11:0x313290, L13:0x2bb068, L17:0x2ed018, L5:0x316ab8, L16:0x2e6808 |
+| 12 | Ratchet's tilt to the ground where he follows it (the ground mode +0x20b3, sub_00233440: on the hoverboard, states 0x3f / 0x70 / 0x71; in deep water with 0x13d4dc set; on the ground +0x308 marks): align_to_up's spring stiffer (0.8 of the frame time 0x15ed64 instead of 0.3, the damping kept at 0.3) and its speed capped at 1.0046 x 0x15ed6c (the original's cap 0: none) | Not understood: probably a tilt that runs away on the hoverboard over steep or broken ground | `sub_002163f0` 0x2163f0 |
+| 13 | The Hologuise (item kind 0x1f): put on beyond the sub-states 0..2 in the hero states 4, 9 and 0xe (+0x2084) instead of the sub-state 4 (+0x208c); hero_place stops its countdown (+0x22de: putting it on or off 18 frames after the press); and a state forced on Ratchet in the Hologuise (hero_set_state, which takes him out of it first, `hero_mode3_exit`) stays his state | Not understood in full: the disguise put on or off across a teleport or a forced state | `sub_0020fe30` 0x20fe30, `hero_place` 0x216f90, `hero_set_state` 0x2223f8 (and its copies) |
+
+The 1.02 build changed more in the same places that is not ported here: in Novalis's and Veldin's crouch under a low
+ceiling (0x81) Ratchet stands up after 20 frames without the Thruster-Pack on his back; Rilgar's class 918 has calls of
+its own (a camera, a help message), part of the level objects' changes not looked at yet; the card's 0x400 flag and the
+save block's checks in `gameplay_frame` are the 1.02 build's memory card. On the PAL disc 2.00 as the game's disc the
+changed functions already are the 1.02 build's (its stand-ins), so the row adds nothing there except in the hand ports
+(the shared hero code, `gameplay_frame`). The row is read where each fix runs; it is changed on the main menu only.
+`RAC1_GAMEPLAY102=<n>,<n>...` (`all`, `none`) turns single fixes on for testing ([Environment variables](env-vars.md)).
 
 ## Limits
 
