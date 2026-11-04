@@ -2,7 +2,8 @@
 # light x y z  r g b  intensity radius flicker on
 # Pokitaru: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
 sun -145.5 80.5
-# Pokitaru: no ambient particles (our fireflies, turned off in Anya-Thoughtmane's batch 2, #120).
+# Pokitaru: our ambient particles (Options > Graphics > Ambient Particles, off by default): fireflies, brighter in the shade
+# and at night.
 emit shrub 283  1.210 -2.527 6.048  0.850 0.920 1.000  1.000 1.000 0.000  0.00
 emit tie 1375  -0.618 22.342 -12.799  0.850 0.920 1.000  1.000 4.393 0.000  0.00
 material tfrag 0 tex 42 metal 0.66 1
@@ -13,7 +14,7 @@ material tie 1499 tex 1 metal 0.35 1
 material tie 1500 tex 2 metal 0.46 1
 light 593.422 480.837 152.488  0.550 0.933 1.000  1.000 30.000 0.000 1
 emit moby 1859  0.239 0.167 -1.519  0.976 1.000 0.850  1.000 4.454 0.000  0.00  joint 0
-material shrub 165 tex 0 metal 0.46 1
+material shrub 165 tex 0 metal 0.45 1
 emissive shrub 359 tex 0  2.10 0.00
 material shrub 359 tex 3 metal 0.35 1
 material shrub 359 tex 2 metal 0.35 1
@@ -43,5 +44,5 @@ material tie 1506 tex 2 metal 0.35 0.68
 material tie 1493 tex 0 metal 0.35 1
 material tie 1488 tex 0 metal 0.35 1
 emissive tfrag 0 tex 15  2.17 0.60
-# Surface Detail's water (docs/materials.md): the sea around the island
-material surface 1111 tex 22 water 1 1
+material surface 1111 tex 13135 water 1 1
+material tie 949 tex 0 metal 0.48 0.89

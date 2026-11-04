@@ -66,5 +66,4 @@ material moby 817 tex 1 metal 0.35 1.25
 material moby 817 tex 0 metal 0.35 1.26
 light 295.376 244.015 39.868  0.716 0.663 0.282  0.581 11.496 0.000 1
 material moby 909 tex 0 metal 1 0
-# Options > Graphics > Grass (docs/materials.md): the garden at the start's lawn
-material tfrag 0 tex 23 grass
+emit shrub 283  0.566 -1.975 5.979  0.850 0.920 1.000  1.000 4.380 0.000  0.00

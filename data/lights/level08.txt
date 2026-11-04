@@ -6,12 +6,12 @@ sun_rays off
 # and the reflections' sky the storm's grey-blue.
 rain on
 sky 0.36 0.39 0.46
-# The railings' posts (tie 338) and the military buildings' walls (tie 297): metal, the storm's sky in their sheen (the landing
-# platform's deck, tie 391, and the paved ground below it, tfrag texture 11, are Anya-Thoughtmane's metal lines below since #120;
-# the ground's puddles before).
+# The landing platform's steel deck (tie 391, the level's texture 108: its other prims use it too), the railings' posts (tie 338)
+# and the military buildings' walls (tie 297): metal, the storm's sky in their sheen.
 material tie 338 tex 2 metal 0.25 1.5
 material tie 297 tex 5 metal 0.4 1
 emissive tie 1464 tex 0  2.26 0.00
+# The paved ground of the base below the platform (tfrag texture 11): soaked, with puddles.
 emissive tie 1463 tex 0  2.50 0.36
 # Batalia: our ambient particles (Options > Graphics > Ambient Particles, off by default): the rain, slanted by the wind, with
 # splashes on the ground, drawn in place of the game's own while the option is on (the game still makes its own: its state
@@ -35,7 +35,7 @@ material tfrag 0 tex 32 metal 0.35 1
 material tfrag 0 tex 33 metal 0.35 1
 material tfrag 0 tex 31 metal 0.35 0.74
 material tfrag 0 tex 11 metal 0.46 1
-material tfrag 0 tex 28 metal 0.35 1
+material tfrag 0 tex 28 metal 0.41 0.8
 light 168.974 269.163 45.535  1.000 0.556 0.000  3.000 8.000 0.000 1
 light 207.911 327.470 50.319  1.000 0.556 0.000  3.000 8.000 0.000 1
 material tie 375 tex 0 metal 0.5 0.87

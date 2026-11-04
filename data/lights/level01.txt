@@ -27,7 +27,7 @@ emit shrub 231  0.000 52.000 0.000  1.000 0.150 0.100  1.200 3.000 0.000  0.00
 # The Large Amoeboid's eyes (moby class 572): green.
 emit moby 572  0.000 0.000 2.000  0.500 1.000 0.300  0.800 3.500 0.000  0.00
 # The yellow soldier bots (moby class 459): their green eyes and the thruster on their back.
-emit moby 459  0.000 0.000 2.000  0.400 1.000 0.400  0.600 3.000 0.000  0.00
+emit moby 459  0.000 0.000 2.000  0.400 1.000 0.400  1.546 3.000 0.000  0.00
 emit moby 459  0.000 0.000 1.300  1.000 0.600 0.250  0.800 3.000 0.400  0.00
 # The bomb glove's bombs (moby class 121): a warm, flickering glow.
 emit moby 121  0.000 0.000 0.000  1.000 0.450 0.150  0.800 3.000 0.300  0.00
@@ -59,9 +59,8 @@ material moby 703 tex 7 metal 0.35 1
 material moby 703 tex 9 metal 0.35 1
 # Clank's green eyes on Ratchet's back (Anya's two lines, saved as moby 0 joint 62 - one of Ratchet's fingers - before the editor's
 # joint fix): Clank there is moby class 601, his head its joint 4; each light just in front of one eye.
-# Aimed forward along the head's x (the eyes' side): they light what Clank looks at, not Ratchet's head behind him (Daino)
-emit moby 601  0.125 -0.030 0.050  0.090 1.000 0.000  0.350 0.450 0.000  0.00  aim 1.000 0.000 0.000 40.0  joint 4
-emit moby 601  0.125 0.030 0.050  0.115 1.000 0.000  0.350 0.450 0.000  0.00  aim 1.000 0.000 0.000 40.0  joint 4
+emit moby 601  0.125 -0.030 0.050  0.090 1.000 0.000  0.350 0.450 0.000  0.00  joint 4
+emit moby 601  0.125 0.030 0.050  0.115 1.000 0.000  0.350 0.450 0.000  0.00  joint 4
 material moby 703 tex 10 metal 0.35 1
 material moby 703 tex 11 metal 0.35 1
 material moby 703 tex 5 metal 0.35 1
@@ -110,7 +109,7 @@ material moby 815 tex 0 wet 1 0.45
 material moby 815 tex 2 wet 1 0.45
 material tfrag 0 tex 76 metal 0.35 1
 material moby 641 tex 0 metal 0.35 1
-material moby 641 tex 10 metal 0.42 1.22
+material moby 641 tex 10 metal 0.41 1.22
 material moby 641 tex 9 metal 0.35 1
 material moby 641 tex 8 metal 0.35 1
 material moby 641 tex 7 metal 0.35 1
@@ -143,21 +142,5 @@ material tie 439 tex 0 metal 0.35 1
 material tie 581 tex 0 metal 0.35 1
 material shrub 141 tex 1 metal 0.35 1
 emit moby 531  -0.887 -1.586 -0.533  0.557 0.933 1.000  1.631 1.000 0.000  0.00  joint 3
-# Options > Graphics > Grass (docs/materials.md): the meadows' grass
-material tfrag 0 tex 8 grass
-# Surface Detail's water (docs/materials.md): Novalis's water, VU1 program 7's strips and tiles (novalis_water.cpp), named by their
-# effect textures (44 the strips' water, 43 and 41 the tiles' two base layers; 42 and 40, the tiles' second layers, left as the game
-# draws them). Not the landing area: the program-7 surfaces of class 0 there are the shadow meshes under Ratchet and the pads.
-# The water at the bottom of the gorge below the start's cliffs (class 676: x 22..178, y 137..297, z 38.5; Ratchet swims in it),
-# with its waterfall at the north-west end (x 28..41, y 275..295, from z 59 down)
-material surface 676 tex 44 water 1 1
-# The river along the first walk, from beside the landing pad east to x 323 (class 761, z 59.7 rising to 80): shallow, quick ripples
-material surface 761 tex 44 water 1 1.2
-# The stream and the pools of water tiles south-west of the pad (class 751: x 119..164, y 45..132, z 56..66)
-material surface 751 tex 43 water 1 1
-material surface 751 tex 41 water 1 1
-# The waterworks: the basins at z 82 behind the railings (class 678, x 260..309, y 138..184), still water
-material surface 678 tex 44 water 0.8 0.7
-# The three round water columns in the blue cave south-west of the start (class 1225, x 93..120, y 60..86; their wave height the
-# game's): mostly upright, gentle ripples
-material surface 1225 tex 43 water 0.8 0.6
+material moby 11 tex 1 metal 0.35 1
+material surface 761 tex 13347 water 1 1  foam -0

@@ -154,3 +154,4 @@ emissive shrub 468 tex 2  2.26 0.00
 emit moby 69  -1.249 1.510 -0.458  0.243 1.000 0.449  1.000 4.625 0.000  0.00  joint 8
 emit moby 69  0.072 1.518 -0.440  0.243 1.000 0.447  1.000 5.078 0.000  0.00  joint 8
 material tie 1976 tex 1 metal 0.35 1
+material tfrag 0 tex 21 metal 0.35 1

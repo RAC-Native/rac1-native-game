@@ -57,3 +57,5 @@ emissive moby 1100 tex 5  1.90 0.50
 emissive moby 1100 tex 1  1.52 0.97
 emissive shrub 231 tex 1  1.89 0.00
 emissive shrub 231 tex 0  1.80 0.00
+material moby 1015 tex 1 metal 0.35 1
+material moby 1015 tex 3 metal 0.35 1

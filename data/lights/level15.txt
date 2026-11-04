@@ -74,3 +74,5 @@ material tfrag 0 tex 55 metal 0.35 1
 material shrub 390 tex 1 metal 0.35 1
 material shrub 391 tex 1 metal 0.35 1
 material shrub 390 tex 4 metal 0.35 1
+emissive tie 1595 tex 3  2.62 0.29
+emissive tie 1595 tex 0  2.65 0.31

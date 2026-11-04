@@ -89,3 +89,18 @@ material tie 1575 tex 0 metal 0.46 1
 material tie 1529 tex 1 metal 0.35 1
 emissive tie 1621 tex 0  2.10 0.40
 emissive tfrag 0 tex 51  2.12 0.38
+material tie 22 tex 0 metal 1 1
+material tie 129 tex 0 metal 1 1
+material tie 24 tex 0 metal 1 1
+material tie 121 tex 0 metal 1 1
+material tie 1533 tex 0 metal 1 1
+material tie 1526 tex 0 metal 1 1
+material tie 120 tex 0 metal 1 1
+material tfrag 0 tex 0 metal 1 0.37
+material tfrag 0 tex 4 metal 1 0.36
+material tfrag 0 tex 1 metal 1 0.36
+material tfrag 0 tex 2 metal 1 0.36
+material tfrag 0 tex 3 metal 1 0.36
+material tfrag 0 tex 7 metal 1 0.36
+material tfrag 0 tex 6 metal 1 0.36
+material tie 1524 tex 1 metal 0.44 1
