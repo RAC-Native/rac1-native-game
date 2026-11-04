@@ -565,9 +565,10 @@ def looks_like_ps2_disc(path):
 # check, after the build); this copy lets the setup stop before the build when the disc is the wrong one, and tells the
 # data discs apart. Add a release to both.
 class Release:
-    def __init__(self, boot, sha1, serial, region, version, good_size, supported, gives):
+    def __init__(self, boot, sha1, serial, region, version, good_size, supported, gives, link=False):
         self.boot, self.sha1, self.serial, self.region, self.version = boot, sha1, serial, region, version
         self.good_size, self.supported, self.gives = good_size, supported, gives
+        self.link = link  # (a data disc read from its image as it is, no files extracted: data_disc_link)
 
     @property
     def name(self):
@@ -580,8 +581,21 @@ KNOWN_DISCS = [
     Release("SCES_509.16", "79956931bd62fafd8d20fa2eae796dbaf2e15e83", "SCES-50916", "PAL", "2.00", 4214784000, True, ()),
     Release("SCPS_150.37", "0df83877d53e19d69ec82038e2aaa227f643178f", "SCPS-15037", "NTSC-J", "1.02", 1807187968, False,
             ("voice-ja",)),
+    # Ratchet & Clank 2 (Going Commando / Locked and Loaded / Gagaga! Ginga no Commando ssu): never the game's disc; a
+    # data disc for the custom planets (local experiment, src/host/custom_planet.h: Maktar's arena, its sounds, music
+    # and announcer), read from its image as it is (no files extracted). The region "RAC2-..." keeps it apart from
+    # Ratchet & Clank's own data discs (the game's Japanese voices look for "NTSC-J"). The PAL disc gives the languages
+    # the North American one lacks, the Japanese disc the Japanese voices.
+    Release("SCUS_972.68", "bacda860cbd6723142e86db56f197e47e728970f", "SCUS-97268", "RAC2-NTSC-U", "1.01", 3828350976, False,
+            ("custom-levels",), link=True),
+    Release("SCES_516.07", "cb59ce5396ddebb8aa539b0847f8bf66d6a47fe0", "SCES-51607", "RAC2-PAL", "1.00", 3548545024, False,
+            ("custom-levels", "custom-levels-eu"), link=True),
+    Release("SCPS_150.56", "5498d1d9845bace046cdfa5fecc9f5136de897b3", "SCPS-15056", "RAC2-NTSC-J", "1.00", 3683680256, False,
+            ("custom-levels", "custom-levels-ja"), link=True),
 ]
-GIVES = {"voice-ja": "the Japanese voices"}
+GIVES = {"voice-ja": "the Japanese voices", "custom-levels": "the custom planets (Ratchet & Clank 2's data)",
+         "custom-levels-eu": "their French, German, Spanish and Italian voices",
+         "custom-levels-ja": "their Japanese voices"}
 
 
 def release_by_boot(boot):
@@ -2196,6 +2210,15 @@ def data_discs_step(base_iso, new_paths, forced, drop):
         d["dir"] = out.relative_to(ROOT).as_posix()
         iso = Path(d["iso"])
         have = iso.is_file()
+        if rel.link:  # (read from its image as it is: a layout naming the image, nothing copied)
+            if not have:
+                fail(f"The data disc {rel.name}'s image is gone ({iso}). Give it again with --data-iso, or forget it with "
+                     f"--no-data-discs.")
+            disc_extract.link_image(iso, out)
+            d["fingerprint"] = disc_fingerprint(iso)
+            ok(f"Data disc {rel.name} ({', '.join(GIVES[g] for g in rel.gives)}): read from its image, {shown_path(iso)}")
+            listed.append(d)
+            continue
         fingerprint = f"{disc_fingerprint(iso)}:{sources_fingerprint(DISC_STEP[2])}" if have else d.get("fingerprint")
         current = "disc" not in forced and d.get("fingerprint") == fingerprint
         missing = disc_extract.layout_missing(out)

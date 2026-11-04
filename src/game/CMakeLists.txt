@@ -167,6 +167,7 @@ add_library(rac1_game STATIC
     enhance/cut_content.cpp
     enhance/custom_waves.cpp
     enhance/custom_planet.cpp
+    enhance/custom_planet_audio.cpp
     ovl/bomb_glove.cpp
     ovl/pyrocitor.cpp
     ovl/blaster.cpp

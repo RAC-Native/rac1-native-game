@@ -85,6 +85,24 @@ bool custom_planet_pc_item(uint32_t id, const uint8_t* p, uint32_t size);
 // orig: (none) — a save loaded (the card's blocks read, then its .pc): whether the planet's state came with it
 void custom_planet_save_loaded(bool pc_read);
 
+// ---- Sound and music (custom_planet_audio.cpp) ----
+// From Ratchet & Clank 2's disc, a data disc the setup links (tools/setup.py: the North American, PAL and Japanese
+// discs; region "RAC2-..."), read where they are. The disc chosen by the voice language (voice_language.h): Japanese
+// from the Japanese disc, French / German / Spanish / Italian from the PAL disc, English from the North American one;
+// else whichever is there. planet.txt says what to use: "rac2_level <n>", "rac2_banks <header offsets>" (LEVELn.WAD's
+// sound banks, loaded beside the level's own while the planet is on), "music <intro> <loop>" (AUDIOn.WAD's entries,
+// the left channels; the right ones follow: stereo, runtime/iop/snd989_stream.cpp).
+// orig: (none) — level_header_read read a header: on the planet its music (level 0's tracks 0 and 1) made the planet's
+void custom_planet_level_header_read(int32_t level);
+// orig: (none) — the music streams (music_streams.cpp): the right channel's sector of the planet's music at `lsn`, else 0
+uint32_t custom_planet_music_right(uint32_t lsn);
+// orig: (none) — the level's sound bank loaded (the loader's step 7): the planet's banks loaded too
+void custom_planet_banks_load();
+// orig: (none) — a level's banks unloaded (the loader's step 3): the planet's too
+void custom_planet_banks_unload();
+// orig: (none) — the planet's banks' handles (empty: none loaded)
+const std::vector<uint32_t>& custom_planet_banks();
+
 // orig: (none) — testing: once per game frame (the host's frame loop): RAC1_PLANET_SAVE_IMAGE's save images
 void custom_planet_test_frame(uint64_t frame);
 

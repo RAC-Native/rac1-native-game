@@ -300,6 +300,14 @@ The setup takes the Japanese disc by itself when its image is in `assets/iso/` (
 - A PAL disc (1.00 or 2.00) given with `--data-iso` is accepted and noted, but not extracted (and one in
   `assets/iso/` is not taken): the North American disc (and the PAL disc 1.00) already carries all five
   European voices, the same recordings, so a PAL disc gives nothing the game's disc lacks.
+- Local experiment (branch `feat/custom-levels-experiment`): Ratchet & Clank 2's discs, the North American
+  (`SCUS-97268`, Going Commando), PAL (`SCES-51607`, Locked and Loaded) and Japanese (`SCPS-15056`) ones, are
+  data discs for the custom planets (`src/host/custom_planet.h`: Maktar's arena, its sounds and music). They are
+  read from their images as they are, nothing extracted: their folder, `assets/disc-<serial>-<version>/`, holds
+  only a `layout.txt` naming the image (so the image must stay where it is). Their region in
+  `assets/data-discs.txt` is `RAC2-NTSC-U`, `RAC2-PAL`, `RAC2-NTSC-J`. The planet reads the one for the voice
+  language: Japanese from the Japanese disc, French, German, Spanish and Italian from the PAL one, English from
+  the North American one, else whichever is there.
 - The data discs are kept in `assets/setup-state.json` (`data_discs`): a later `./setup.sh` keeps them
   without `--data-iso`, and extracts one again only when its folder is incomplete or the extractor
   changed. `--remove-data-disc SCPS-15037` (its serial, or its image) forgets one and removes its

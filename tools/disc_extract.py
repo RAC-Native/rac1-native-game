@@ -385,12 +385,30 @@ def extract(iso, out, progress=None, log=print):
         img.close()
 
 
+def link_image(iso, out):
+    """A data disc read from its image as it is (another game's disc: the custom planets' Ratchet & Clank 2): `out`
+    (replaced) holds only a layout.txt whose one piece is the whole image, at its absolute path; nothing is copied."""
+    out = Path(out)
+    iso = Path(iso).resolve()
+    size = iso.stat().st_size
+    if out.is_symlink() or out.is_file():
+        out.unlink()
+    elif out.exists():
+        shutil.rmtree(long_path(out))
+    out.mkdir(parents=True)
+    with open(long_path(out / LAYOUT), "w", encoding="utf-8", newline="\n") as f:
+        f.write(f"{LAYOUT_MAGIC}\n")
+        f.write(f"image {size}\n")
+        f.write("# the disc read from its image as it is (no files extracted): one piece, the whole image\n")
+        f.write(f"0 {size} 0 - {iso.as_posix()}\n")
+
+
 def read_layout(directory):
     """The layout of an extracted disc: (image size, [(first, size, foff, sha1, path)]); None when it is not there or
     not complete (the files it names missing or of the wrong size)."""
     d = Path(directory)
     try:
-        lines = (d / LAYOUT).read_text(encoding="ascii").splitlines()
+        lines = (d / LAYOUT).read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError):
         return None
     if not lines or lines[0] != LAYOUT_MAGIC or not lines[1].startswith("image "):

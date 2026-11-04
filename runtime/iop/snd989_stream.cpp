@@ -2,7 +2,8 @@
 // (989snd.irx from the ISO's globals/irx.bin, analysed by disassembly):
 //   - 0x2a (0xacc -> 0xe1f0): `n` streams, a buffer of `size` bytes each (a multiple of 0x1000,
 //     read in halves of size / 2), the reader threads; answers non-zero when up.
-//   - 0x2c (0xb18 -> 0xeacc): play the VAG at sector loc (+ offset): a stream record (0x50 bytes)
+//   - 0x2c (0xb18 -> 0xeacc): play the VAG at sector loc (+ offset; a second sector: a stereo pair, the right
+//     channel's VAG; only a custom planet's music gives one): a stream record (0x50 bytes)
 //     with the handle 0x04000000 | index << 16 | serial, volume vol * 127 >> 10, the volume group;
 //     flag 1 starts it paused, 4 loops it, `queue` != 0 appends it to that stream (the answer 1);
 //     the reader reads the 0x30-byte "VAGp" header (big endian: +0xc the data size, +0x10 the
@@ -62,6 +63,10 @@ struct Stream {
     uint64_t played = 0;                     // ADPCM bytes played (whole halves)
     uint64_t copied = 0, decoded_samples = 0;
     std::shared_ptr<snd::Voice> voice;
+    // (host, local experiment: a custom planet's music from Ratchet & Clank 2's disc) a stereo stream, 0x2c's second
+    // sector: the right channel's VAG, read and played alongside by a second voice (its record: no handle; this one
+    // plays the left channel only). Ratchet & Clank's own game never gives a second sector: its streams stay mono.
+    std::shared_ptr<Stream> right;
 };
 
 }  // namespace
@@ -153,14 +158,21 @@ void voice_apply(Stream& s) {
     if (s.paused || s.group_paused) {
         s.voice->SetVolume(0, 0);
         s.voice->SetPitch(0);
+        if (s.right && s.right->voice) s.right->voice->SetVolume(0, 0), s.right->voice->SetPitch(0);
         return;
     }
     const snd::VolPair v = stream_volume(s);
-    s.voice->SetVolume(static_cast<uint16_t>(v.left), static_cast<uint16_t>(v.right));
+    Stream* r = s.right.get();
+    s.voice->SetVolume(static_cast<uint16_t>(v.left), r != nullptr ? 0 : static_cast<uint16_t>(v.right));
     // (host) in 5.1 / 7.1 the dialogue (group 2) on the centre speaker, its pan towards the front left / right; the
     // others (the music) on the front left / right
     s.voice->SetPlace(s.group == 2 ? snd::Voice::Place::Centre : snd::Voice::Place::Front, s.pan);
     s.voice->SetPitch(static_cast<uint16_t>(s.pitch));
+    if (r != nullptr && r->voice) {  // (a stereo stream: the left voice's VOLL the left volume, the right voice's VOLR the right one)
+        r->voice->SetVolume(0, static_cast<uint16_t>(v.right));
+        r->voice->SetPlace(s.group == 2 ? snd::Voice::Place::Centre : snd::Voice::Place::Front, s.pan);
+        r->voice->SetPitch(static_cast<uint16_t>(r->pitch));
+    }
 }
 
 // The part's 0x30-byte header: "VAGp", big endian size (+0xc) and rate (+0x10); the pitch as
@@ -250,6 +262,10 @@ Stream* find(uint32_t h) {
 void stream_free(Stream& s, const char* why) {
     if (s.voice) s.voice->Stop();
     s.voice.reset();
+    if (s.right) {
+        if (s.right->voice) s.right->voice->Stop();
+        s.right.reset();
+    }
     if (s.handle != 0 && !quiet())
         std::fprintf(stderr, "[989snd] stream %08x freed (%s): %llu ADPCM bytes queued, %llu played\n", s.handle, why,
                      static_cast<unsigned long long>(s.copied), static_cast<unsigned long long>(s.played));
@@ -266,7 +282,6 @@ int32_t stream_play(snd::Player& p, const uint32_t* args) {
     const int32_t vol = static_cast<int16_t>(w2 >> 16), pan = static_cast<int16_t>(w3 >> 16);
     const Part part = {loc1, w2 & 0xffff, (flags & 4) != 0};
     if (!st().up) return 0;
-    if (loc2 != 0 && !quiet()) std::fprintf(stderr, "[989snd] stream: a second channel (sector 0x%x) not played (host: mono only)\n", loc2);
     if (queue != 0) {
         Stream* s = find(queue);
         if (s == nullptr && (flags & 0x10) != 0) return 0;  // 0xeb7c: else it starts as a new stream
@@ -274,6 +289,7 @@ int32_t stream_play(snd::Player& p, const uint32_t* args) {
     if (queue != 0 && find(queue) != nullptr) {
         Stream* s = find(queue);
         s->queue.push_back(part);
+        if (s->right) s->right->queue.push_back({loc2 != 0 ? loc2 : loc1, part.offset, part.loop});
         if (g_snd989_trace && !quiet()) std::fprintf(stderr, "[989snd] stream %08x: sector 0x%x queued (flags %x)\n", queue, loc1, flags);
         return 1;
     }
@@ -298,23 +314,37 @@ int32_t stream_play(snd::Player& p, const uint32_t* args) {
         s->handle = 0;
         return 0;
     }
-    s->spu.assign(st().size / 2 / 2, 0);  // half the stream's buffer, in 16-bit words
-    fill_half(*s, 0);
-    fill_half(*s, 1);
-    s->half = 0;
-    s->voice = std::make_shared<snd::Voice>();
-    s->voice->SetAsdr1(0x000f);  // the IRX's stream voices (0xa3d8 / 0xa430)
-    s->voice->SetAsdr2(0x1fc0);
-    s->voice->SetSample(s->spu.data());
-    s->voice->SetReverb((flags & 2) != 0);  // (the record's 0x100: the voice's VMIXE, 0xef8c / 0x1372c)
-    p.AllocVoice(*s->voice, group, 0x7f);   // (its SPU2 voice, 0xe948: the group's range; its core)
-    s->voice->KeyOn();
+    s->right.reset();
+    if (loc2 != 0) {
+        auto r = std::make_shared<Stream>();
+        r->handle = s->handle;  // (for the log: it is not in the stream table, so never found by it)
+        if (part_open(*r, {loc2, part.offset, part.loop})) s->right = r;
+    }
+    auto start = [&p, group, flags](Stream& x) {
+        x.spu.assign(st().size / 2 / 2, 0);  // half the stream's buffer, in 16-bit words
+        fill_half(x, 0);
+        fill_half(x, 1);
+        x.half = 0;
+        x.voice = std::make_shared<snd::Voice>();
+        x.voice->SetAsdr1(0x000f);  // the IRX's stream voices (0xa3d8 / 0xa430)
+        x.voice->SetAsdr2(0x1fc0);
+        x.voice->SetSample(x.spu.data());
+        x.voice->SetReverb((flags & 2) != 0);  // (the record's 0x100: the voice's VMIXE, 0xef8c / 0x1372c)
+        p.AllocVoice(*x.voice, group, 0x7f);   // (its SPU2 voice, 0xe948: the group's range; its core)
+        x.voice->KeyOn();
+    };
+    start(*s);
+    if (s->right) start(*s->right);
     voice_apply(*s);
     std::shared_ptr<snd::Voice> v = s->voice;
     p.SubmitVoice(v);
+    if (s->right) {
+        std::shared_ptr<snd::Voice> rv = s->right->voice;
+        p.SubmitVoice(rv);
+    }
     s->started = true;  // the first buffer is in (host: at once)
-    if (!quiet()) std::fprintf(stderr, "[989snd] stream %08x play: sector 0x%x vol %d pan %d group %d flags %x%s\n", s->handle, loc1, s->vol, s->pan, group,
-                 flags, s->paused ? " (paused)" : "");
+    if (!quiet()) std::fprintf(stderr, "[989snd] stream %08x play: sector 0x%x%s vol %d pan %d group %d flags %x%s\n", s->handle, loc1,
+                 s->right ? " (stereo)" : "", s->vol, s->pan, group, flags, s->paused ? " (paused)" : "");
     return static_cast<int32_t>(s->handle);
 }
 
@@ -488,6 +518,7 @@ void snd989_stream_update(Snd989Streams* io) {
         const int h = s.voice->GetNax() >= half_words ? 1 : 0;
         if (h != s.half) {
             fill_half(s, s.half);
+            if (s.right) fill_half(*s.right, s.half);  // (keyed on together, the same rate: the same half)
             s.played += half_words * 2;
             s.half = h;
         }

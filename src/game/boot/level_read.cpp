@@ -37,6 +37,7 @@ bool level_header_read(int32_t level) {
     std::vector<uint8_t> buf(5 * 2048);
     if (!disc_read(rd(0x0013a448 + static_cast<uint32_t>(level) * 8), 5, buf.data())) return false;
     for (uint32_t i = 0; i < 0x2434; ++i) ee_write<uint8_t>(0x0013a4e0 + i, buf[i]);
+    custom_planet_level_header_read(level);  // (host, local experiment: the custom planet's music, custom_planet.h)
     return true;
 }
 
@@ -75,6 +76,7 @@ int32_t level_bank_step() {
     switch (step) {
     case 3:
         if (ee_read<int16_t>(0x0015ee4a) != 0) return 0;
+        custom_planet_banks_unload();  // (host, local experiment: the custom planet's sound banks, custom_planet.h)
         snd_cmd_18();
         if (rd(0x0015ed5c) == 0) {
             ee_write<uint16_t>(0x0015ee48, 6);
@@ -99,6 +101,7 @@ int32_t level_bank_step() {
         if (snd_flush() != 0) return 0;
         if (rd(0x0015ed5c) != 0xffffffffu) {
             snd_cmd_08();
+            custom_planet_banks_load();  // (host, local experiment: the custom planet's sound banks, custom_planet.h)
             return 1;
         }
         return 0;

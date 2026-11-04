@@ -120,6 +120,7 @@ int32_t level_load_step() {
         return 0;
     case 3:
         if (lh(0x0015ee4a) != 0) return 0;
+        custom_planet_banks_unload();  // (host, local experiment: the custom planet's sound banks, custom_planet.h)
         snd_cmd_18();
         if (lw(0x0015ed5c) != 0) next();
         else sh(0x0015ee48, 6);
@@ -147,6 +148,7 @@ int32_t level_load_step() {
         if (snd_flush() != 0) return 0;
         if (lw(0x0015ed5c) == -1) return 0;
         snd_cmd_08();
+        custom_planet_banks_load();  // (host, local experiment: the custom planet's sound banks, custom_planet.h)
         return 1;
     default:
         return 0;

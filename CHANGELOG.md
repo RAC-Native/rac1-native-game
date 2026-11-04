@@ -167,6 +167,10 @@ What changed in each release. Releases are source only: you build the game with 
   `planet.txt`: its name, region, death height and ship), the flight there and back by ship (its take-off path), its own level
   records (kills, map...) swapped with Veldin's while it is played (a temporary "shadow slot" on level 0, `src/host/custom_planet.h`),
   its progress in the save's `.pc` file only: the memory card's saves keep Veldin's real records.
+- Local experiment, planet P2: Ratchet & Clank 2's three discs recognised by the setup as data discs for the custom planets
+  (read from their images, nothing extracted); on the planet, RAC2's level and arena sound banks loaded beside Veldin's and
+  the arena's music (`rat2_l02_arena_a`, then `_b` looped) played in stereo from the disc of the voice language (the IOP's
+  streams play a second sector as the right channel; the game's own streams stay mono).
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

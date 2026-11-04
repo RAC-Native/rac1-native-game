@@ -123,6 +123,10 @@ constexpr KnownDisc KNOWN_DISCS[] = {
     {"SCES_509.16", "SCES-50916", "PAL", "1.00", 4213997568ULL, true},
     {"SCES_509.16", "SCES-50916", "PAL", "2.00", 4214784000ULL, true},
     {"SCPS_150.37", "SCPS-15037", "NTSC-J", "1.02", 1807187968ULL, false},
+    // Ratchet & Clank 2: only a data disc, for the custom planets (local experiment, tools/setup.py)
+    {"SCUS_972.68", "SCUS-97268", "RAC2-NTSC-U", "1.01", 3828350976ULL, false},
+    {"SCES_516.07", "SCES-51607", "RAC2-PAL", "1.00", 3548545024ULL, false},
+    {"SCPS_150.56", "SCPS-15056", "RAC2-NTSC-J", "1.00", 3683680256ULL, false},
 };
 
 // SYSTEM.CNF's "VER = x.yy" ("" when it cannot be read)

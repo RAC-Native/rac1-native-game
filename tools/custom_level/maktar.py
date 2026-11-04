@@ -616,7 +616,13 @@ def write_planet(out, a):
     with open(os.path.join(out, "planet.txt"), "w") as f:
         f.write("# A custom planet (rac1-native, local experiment): see src/host/custom_planet.h\n"
                 "name %s\nname.it %s\nregion %s\nregion.it %s\ndeath_height %.1f\nship %.2f %.2f %.2f %.4f\n" % (
-                    a.name, a.name_it, a.region, a.region_it, a.death_height, *a.ship))
+                    a.name, a.name_it, a.region, a.region_it, a.death_height, *a.ship)
+                + "# its sounds and music, read from Ratchet & Clank 2's disc (a data disc: setup), custom_planet.h\n"
+                  "rac2_level 2\n"
+                  "# LEVEL2.WAD's sound banks (header offsets): the level's, the arena chunk's\n"
+                  "rac2_banks 0x18 0x50\n"
+                  "# AUDIO2.WAD's entries (left channels): rat2_l02_arena_a then rat2_l02_arena_b looped\n"
+                  "music 4 6\n")
 
 
 def build(a):

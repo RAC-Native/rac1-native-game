@@ -2,6 +2,7 @@
 #include <game/ovl/music_streams.h>
 
 #include <game/enhance/voice_language.h>
+#include <host/custom_planet.h>
 
 #include <game/ovl/ovl_reloc.h>
 #include <game/lib/snd989.h>
@@ -31,7 +32,7 @@ void dialog_start(uint32_t lsn, int32_t id, int32_t a, int32_t vol) {
     sh(B + 8, static_cast<uint32_t>(a));
     sh(B + 6, static_cast<uint32_t>(vol));
     sh(B + 0x10, 0);
-    snd_stream_play(lsn, 0, 0, 0, static_cast<int16_t>(vol), 0, 2, 0, 0x21, OVF(0x002661d8), B);
+    snd_stream_play(lsn, custom_planet_music_right(lsn), 0, 0, static_cast<int16_t>(vol), 0, 2, 0, 0x21, OVF(0x002661d8), B);
 }
 }  // namespace
 
@@ -215,7 +216,7 @@ void music_start(int32_t track, int32_t flags, int32_t vol) {
     sh(A + 8, static_cast<uint32_t>(flags));
     sh(A + 6, static_cast<uint32_t>(vol));
     sh(A + 0x10, 0);
-    snd_stream_play(lsn, 0, 0, 0, static_cast<int16_t>(vol), 0, 1, 0, 0x20, OVF(0x00266340), A);
+    snd_stream_play(lsn, custom_planet_music_right(lsn), 0, 0, static_cast<int16_t>(vol), 0, 1, 0, 0x20, OVF(0x00266340), A);
 }
 
 // The same, the stream started paused (flags 0x21; continued by the sequence), reply 0x266238.
@@ -232,7 +233,7 @@ void music_preload(int32_t track, int32_t flags, int32_t vol) {
     sh(A + 8, static_cast<uint32_t>(flags));
     sh(A + 6, static_cast<uint32_t>(vol));
     sh(A + 0x10, 0);
-    snd_stream_play(lsn, 0, 0, 0, static_cast<int16_t>(vol), 0, 1, 0, 0x21, OVF(0x00266238), A);
+    snd_stream_play(lsn, custom_planet_music_right(lsn), 0, 0, static_cast<int16_t>(vol), 0, 1, 0, 0x21, OVF(0x00266238), A);
 }
 
 // The track's next part (the table's next entry) queued after the playing music stream, looped
@@ -251,7 +252,7 @@ void music_queue_next(int32_t track, int32_t flags, int32_t vol) {
     sw(A + 0x18, 0xbb80);
     sh(A + 6, static_cast<uint32_t>(vol));
     sh(A + 0x10, 0);
-    snd_stream_play(lsn, 0, 0, 0, static_cast<int16_t>(vol), 0, 1, h, (flags & 1) != 0 ? 0x24u : 0x20u, OVF(0x002662e8), A);
+    snd_stream_play(lsn, custom_planet_music_right(lsn), 0, 0, static_cast<int16_t>(vol), 0, 1, h, (flags & 1) != 0 ? 0x24u : 0x20u, OVF(0x002662e8), A);
 }
 
 // The second music slot's track `track` started (state 1, +0x10 set: the sequence follows it),
@@ -269,7 +270,7 @@ int32_t music2_start(int32_t a, int32_t track, int32_t b, int32_t vol) {
     sh(C + 0x10, 1);
     sh(C + 0xa, 1);
     sh(C + 6, static_cast<uint32_t>(vol));
-    snd_stream_play(lsn, 0, 0, 0, static_cast<int16_t>(vol), 0, 1, 0, 0x20, OVF(0x00266298), C);
+    snd_stream_play(lsn, custom_planet_music_right(lsn), 0, 0, static_cast<int16_t>(vol), 0, 1, 0, 0x20, OVF(0x00266298), C);
     return 1;
 }
 
@@ -326,7 +327,7 @@ void dialog_play_30000(int32_t id, int32_t a, int32_t vol) {
     sh(B + 0x10, 0);
     sh(B + 6, static_cast<uint32_t>(vol));
     const int32_t v = lbu(0x0015ee1c) != 0 ? static_cast<int16_t>(vol) : 0;
-    snd_stream_play(lsn, 0, 0, 0, v, 0, 2, 0, 0x21, OVF(0x002661d8), B);
+    snd_stream_play(lsn, custom_planet_music_right(lsn), 0, 0, v, 0, 2, 0, 0x21, OVF(0x002661d8), B);
 }
 // orig: 0x00264fa8
 void dialog_play_20000(int32_t id, int32_t a, int32_t vol) {
