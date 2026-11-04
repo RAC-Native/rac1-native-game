@@ -14,6 +14,8 @@
 //   - Subtitles: Off / On, kept in the preferences (`subtitles`) and put in the game's switch 0x15ee40 whenever the game
 //     reads a state (a new game, a loaded save, the title's): what the player chose last, on this page or on the game's
 //     own Subtitles page, is what every game gets. Without the key (never chosen) the game's own value stays.
+//   - Movie Subtitles: Off / On (`movie_subtitles` in the preferences, off by default): our own subtitles over the movies,
+//     made at the setup with speech to text (movie_subtitles.h); in the text language, none where the setup made no file.
 // With every enhancement off (the headless runs, the oracle) nothing here runs.
 #ifndef RAC1_GAME_ENHANCE_LANGUAGE_H
 #define RAC1_GAME_ENHANCE_LANGUAGE_H

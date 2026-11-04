@@ -7,7 +7,7 @@ total, in three groups.
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
 | [Debugging](#debugging-variables) | 299 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 73 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Automated testing](#automated-testing-variables) | 75 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -398,6 +398,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_MENU_AT` | integer frame number; default 120 | In a scripted menu input run (simulated keys), the frame at which the simulated button press happens instead of the default, with Start also pressed at frame 120 to skip the arrival scene. |
 | `RAC1_MIRROR_DUMP` | file path; default none | With RAC1_IOP_MIRROR_TEST, writes the mirror's output (48 kHz stereo 16-bit) to the file. |
 | `RAC1_MOVIE_AT` | [h]<n>@<frame>; unset = off | At that game frame (in play) starts the game's movie n in its movie mode: the story movie n, as the pause menu plays them, or with `h` the level's help movie n, as a help desk plays them; with RAC1_GOTO later, it tests a level change in the middle of a movie. |
+| `RAC1_MOVIE_SUBTITLES` | on / off (or 1 / 0); unset = the player's setting (Options > Language > Movie Subtitles; off in headless runs) | Shows or hides the movie subtitles (the files in `assets/movie-subtitles/`, docs/movie-subtitles.md), also in headless runs, in the text language (RAC1_LANGUAGE). |
+| `RAC1_MOVIE_SUBTITLES_DIR` | folder path; default `assets/movie-subtitles` | Where the movie subtitles are read from (the tests of missing, empty or broken files). |
 | `RAC1_MRP_CHECK` | any value = on; default off | Checks the modern moby renderer's triangles against the CPU reference (slots and textures, in order); also turns the moby skip optimisation off. |
 | `RAC1_MRP_DIFF` | any value = on; default off | Renders the faithful image offscreen first and compares the modern pipeline's mobys against it, accumulating pixel difference statistics; the moby skip optimisation is turned off. |
 | `RAC1_MRP_LOD_KEEP_REAL` | 0 = off; default on (any other value or unset keeps it on) | Testing switch for the modern renderer's level-of-detail handling: setting it to 0 turns off the step that keeps the real scene's objects in the drawn scene, so that the drops they prevent can be seen. |

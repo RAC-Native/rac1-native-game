@@ -543,6 +543,38 @@ void movie_hw_close() {
     m.video_ended = false;
 }
 
+namespace {
+// orig: (host) a whole PSS file demultiplexed: its sound tracks' bytes by number
+std::vector<std::vector<uint8_t>> file_tracks(const uint8_t* pss, size_t bytes) {
+    std::vector<std::vector<uint8_t>> tracks;
+    Demux dx;
+    dx.step(pss, bytes, true, [](const uint8_t*, size_t) {}, [&tracks](int t, const uint8_t* p, size_t n) {
+        if (tracks.size() <= static_cast<size_t>(t)) tracks.resize(static_cast<size_t>(t) + 1);
+        tracks[static_cast<size_t>(t)].insert(tracks[static_cast<size_t>(t)].end(), p, p + n);
+    });
+    return tracks;
+}
+}  // namespace
+
+// orig: (host)
+std::vector<int> movie_hw_file_tracks(const uint8_t* pss, size_t bytes) {
+    std::vector<int> out;
+    const auto tracks = file_tracks(pss, bytes);
+    for (size_t k = 0; k < tracks.size(); ++k)
+        if (!tracks[k].empty()) out.push_back(static_cast<int>(k));
+    return out;
+}
+
+// orig: (host)
+bool movie_hw_file_track(const uint8_t* pss, size_t bytes, int track, std::vector<int16_t>& pcm48) {
+    pcm48.clear();
+    const auto tracks = file_tracks(pss, bytes);
+    if (track < 0 || static_cast<size_t>(track) >= tracks.size() || tracks[static_cast<size_t>(track)].empty()) return false;
+    TrackDecoder dec;
+    dec.step(tracks[static_cast<size_t>(track)], true, [&pcm48](const int16_t* pcm, size_t frames) { pcm48.insert(pcm48.end(), pcm, pcm + frames * 2); });
+    return !pcm48.empty();
+}
+
 void movie_hw_show(const std::vector<uint8_t>& rgba, int w, int h) {
     g_shown = rgba;
     g_shown_w = w;

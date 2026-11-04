@@ -61,6 +61,13 @@ void movie_hw_show(const std::vector<uint8_t>& rgba, int w, int h);
 const std::vector<uint8_t>* movie_hw_shown(int& w, int& h);
 void movie_hw_show_clear();
 
+// The setup's movie subtitles (tools/movie_subtitles.py, `rac1-native --setup --movie-audio`): the sound tracks a PSS file
+// carries (their numbers: 0 English, 2 French, 3 German, 4 Spanish, 5 Italian on the North American and PAL discs, 0
+// Japanese on the Japanese one), and one of them decoded whole, 48 kHz stereo s16 as the game plays it. False when the
+// file has no such track (or it cannot be decoded). Nothing of a movie being played is touched.
+std::vector<int> movie_hw_file_tracks(const uint8_t* pss, size_t bytes);
+bool movie_hw_file_track(const uint8_t* pss, size_t bytes, int track, std::vector<int16_t>& pcm48);
+
 // The SPU2's ADPCM: one 16-byte block (shift / filter, flags, 14 bytes of 4-bit samples) to 28
 // samples, with the channel's two previous samples.
 void spu2_adpcm_block(const uint8_t* block, int16_t* out, int32_t& h1, int32_t& h2);

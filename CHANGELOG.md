@@ -3,6 +3,18 @@
 What changed in each release. Releases are source only: you build the game with `./setup.sh`
 (`setup.cmd` on Windows) from your own disc. Issue numbers refer to this repository's issues.
 
+## Unreleased
+
+- Movie subtitles (Options > Language > Movie Subtitles, Off by default; RAC1_MOVIE_SUBTITLES for testing): the original
+  shows none over its movies; the game shows SubRip files from `assets/movie-subtitles/` in the game's subtitle look, in
+  the text language. The setup makes them on request with speech to text from the disc's own sound tracks
+  (`./setup.sh --movie-subtitles [all|en,it,...]`, asked once by an interactive setup; Whisper in `assets/stt/`, or an
+  OpenAI-compatible server with `--stt-url`): names given as hotwords, cues cut at
+  sentences; an edited file, or one the setup did not make, is never written again. A missing or broken file shows
+  nothing and logs a line. See docs/movie-subtitles.md.
+- Launcher, Settings: Movie subtitles (the languages, for every setup), Make movie subtitles, Install subtitle pack (the
+  .srt files of a .zip into `assets/movie-subtitles/`), and Enable debug tools (the game started with `--debug-tools`).
+
 ## 0.7.0
 
 New discs and new ways to use them: the European Platinum re-release (PAL 2.00) runs as the game's

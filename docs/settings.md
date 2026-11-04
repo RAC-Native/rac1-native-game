@@ -245,6 +245,7 @@ opens it) and in the pause menu (after Subtitles). Its rows step with left and r
 | Text | English, French, German, Spanish, Italian | main menu only |
 | Voice | Same as Text (the default), English, French, German, Spanish, Italian, Japanese (only with the Japanese data disc); see [Voice](#voice) | both |
 | Subtitles | Off, On | both |
+| Movie Subtitles | Off (the default), On; see [Movie subtitles](movie-subtitles.md) | both |
 
 - **Text** is the game's own language (`0x15ed88`): the menus, the HUD, the help and the subtitles' texts. It is
   what the game's own Language page chose (a list of the five with a tick), now a row; it is kept as the console's
@@ -258,6 +259,12 @@ opens it) and in the pause menu (after Subtitles). Its rows step with left and r
   from before this page), the title's. So what was chosen last, on this page or on the game's own Subtitles page
   (which changes the preference too), is what every game gets. Until it is chosen once, the preferences have no
   `subtitles` line and the game's own value stays (off for a new game, the save's for a load).
+
+- **Movie Subtitles** is ours: the original never shows text over its movies. On, the movies show the subtitle files in
+  `assets/movie-subtitles/`, in the text language: the ones the setup makes from your disc with speech to text when you
+  ask for them (`./setup.sh --movie-subtitles`, or the launcher's Settings), or a subtitles pack's, or files you write
+  yourself. A language without files shows none. Kept as `movie_subtitles on|off` in `advanced_options.txt`;
+  `RAC1_MOVIE_SUBTITLES` overrides it. See [Movie subtitles](movie-subtitles.md).
 
 The page is `src/game/enhance/language.{h,cpp}`. With every enhancement off (the headless runs) the game's own
 Language page and Subtitles switch are there as they are.
@@ -412,7 +419,8 @@ starts in English and keeps nothing; `RAC1_LANGUAGE` (testing) sets the language
 
 The debug tools are for development and testing. They are off unless asked for with
 `--debug-tools` on the command line or `RAC1_DEBUG_TOOLS=1` in the environment (the gate is
-`debug_tools_gate` in `src/host/orig_main.cpp`, which runs before anything else):
+`debug_tools_gate` in `src/host/orig_main.cpp`, which runs before anything else), or from the launcher with
+Settings > **Enable debug tools** ([The launcher](launcher.md)):
 
 ```bash
 ./build/rac1-native --debug-tools

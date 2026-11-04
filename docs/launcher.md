@@ -87,9 +87,21 @@ the Recycle Bin, or to the trash on Linux.
   development`). Back on Stable, the next Update goes to the latest release.
 - **Parallel jobs**: how many jobs the setup runs at once. Automatic is fine; 1 is the slowest and
   uses the least memory.
+- **Movie subtitles** (off until ticked): whether the setup makes subtitles for the movies with speech to text on this
+  computer, and in which languages (English, French, German, Spanish, Italian: all ticked makes every language the disc's
+  movies have). The choice goes to every setup the launcher runs (`--movie-subtitles en,it`, or `--no-movie-subtitles`
+  once unticked); the first time it installs about 470 MB of software and a 1.6 GB model into `assets/stt/` and takes
+  about half an hour. See [Movie subtitles](movie-subtitles.md).
+- **Debug tools** (off by default): **Enable debug tools** starts the game with `--debug-tools`, its debug menu and
+  overlays ([Settings](settings.md#debug-tools)), for testing and bug reports.
 - **Check for updates** and **Update now**: the same as the Play page's check and Update, at once.
 - **Set up again from scratch**: generates everything again from the disc and rebuilds (the setup's
   `--force`).
+- **Make movie subtitles**: after a confirmation, the setup with `--movie-subtitles` in the languages ticked above
+  (all of them when none is): makes the subtitles now; the next setups make only what is missing.
+- **Install subtitle pack**: choose a movie subtitle pack (a .zip): its subtitle files (`row_XXXX.<lang>.srt`) go
+  into `assets/movie-subtitles/`, anything else in the zip is left out; a different file already there is kept as
+  `.srt.bak`. See [Movie subtitles](movie-subtitles.md).
 - **Create the shortcuts** (Windows): puts the shortcuts on the desktop and in the Start menu again.
 - **Open the setup's logs**: the game folder's `build` folder, with `launcher.log` (everything the
   launcher ran and what it printed), `setup-build.log`, `setup-codegen.log` and `game.log`. Attach

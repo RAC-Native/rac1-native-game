@@ -8,8 +8,11 @@
 
 #include <io/mapped_file.h>
 #include <platform/platform.h>
+#include <runtime/ipu/movie_hw.h>
 #include <runtime/kernel/disc.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -47,6 +50,9 @@ void print_usage(const char* prog) {
               << "  --compare-disc     read every sector through the image and through the disc's files (assets/disc/),\n"
               << "                     and compare\n"
               << "  --status           show which parts of the data are present\n"
+              << "  --movie-tracks <pss>        print the sound tracks of a movie file (tools/movie_subtitles.py)\n"
+              << "  --movie-audio <pss> --track <n> --wav <out.wav>\n"
+              << "                     one sound track of a movie file as a 16 kHz mono WAV (for speech to text)\n"
               << "  --help, -h         show this help\n";
 }
 
@@ -214,6 +220,91 @@ int compare_disc() {
     return 0;
 }
 
+// orig: (host) a file read whole (empty when it cannot be read)
+std::vector<uint8_t> read_file(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return {};
+    return std::vector<uint8_t>((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+}
+
+// orig: (host) --movie-tracks: the sound tracks of a movie file, "tracks 0 2 3 4 5" (none: "tracks")
+int movie_tracks(const std::string& pss) {
+    const std::vector<uint8_t> d = read_file(pss);
+    if (d.empty()) {
+        std::cerr << "[setup] Error: cannot read " << pss << "\n";
+        return 1;
+    }
+    std::cout << "tracks";
+    for (const int t : movie_hw_file_tracks(d.data(), d.size())) std::cout << " " << t;
+    std::cout << "\n";
+    return 0;
+}
+
+// orig: (host) --movie-audio: sound track `track` of a movie file to `wav`, 16 kHz mono s16 (the two channels mixed, a
+// windowed-sinc low-pass at 7 kHz, every third sample of 48 kHz): what speech to text takes
+int movie_audio(const std::string& pss, int track, const std::string& wav) {
+    const std::vector<uint8_t> d = read_file(pss);
+    if (d.empty()) {
+        std::cerr << "[setup] Error: cannot read " << pss << "\n";
+        return 1;
+    }
+    std::vector<int16_t> pcm48;
+    if (!movie_hw_file_track(d.data(), d.size(), track, pcm48)) {
+        std::cerr << "[setup] Error: " << pss << " has no sound track " << track << "\n";
+        return 3;
+    }
+    const size_t n48 = pcm48.size() / 2;
+    std::vector<float> mono(n48);
+    for (size_t i = 0; i < n48; ++i) mono[i] = (static_cast<float>(pcm48[i * 2]) + static_cast<float>(pcm48[i * 2 + 1])) * 0.5f;
+    constexpr int kTaps = 47;  // (odd: centred)
+    float taps[kTaps];
+    float sum = 0.0f;
+    for (int k = 0; k < kTaps; ++k) {
+        const double x = k - (kTaps - 1) / 2.0, fc = 7000.0 / 48000.0;
+        const double sinc = x == 0.0 ? 2.0 * fc : std::sin(2.0 * 3.14159265358979 * fc * x) / (3.14159265358979 * x);
+        const double win = 0.42 - 0.5 * std::cos(2.0 * 3.14159265358979 * k / (kTaps - 1)) + 0.08 * std::cos(4.0 * 3.14159265358979 * k / (kTaps - 1));
+        taps[k] = static_cast<float>(sinc * win);
+        sum += taps[k];
+    }
+    std::vector<int16_t> out(n48 / 3);
+    for (size_t o = 0; o < out.size(); ++o) {
+        const long c = static_cast<long>(o * 3);
+        float acc = 0.0f;
+        for (int k = 0; k < kTaps; ++k) {
+            const long j = c + k - (kTaps - 1) / 2;
+            if (j >= 0 && j < static_cast<long>(n48)) acc += mono[static_cast<size_t>(j)] * taps[k];
+        }
+        out[o] = static_cast<int16_t>(std::clamp(acc / sum, -32768.0f, 32767.0f));
+    }
+    std::ofstream f(wav, std::ios::binary);
+    if (!f) {
+        std::cerr << "[setup] Error: cannot write " << wav << "\n";
+        return 1;
+    }
+    auto u32 = [&f](uint32_t v) { f.write(reinterpret_cast<const char*>(&v), 4); };
+    auto u16 = [&f](uint16_t v) { f.write(reinterpret_cast<const char*>(&v), 2); };
+    const uint32_t data = static_cast<uint32_t>(out.size() * 2);
+    f.write("RIFF", 4);
+    u32(36 + data);
+    f.write("WAVEfmt ", 8);
+    u32(16);
+    u16(1);
+    u16(1);
+    u32(16000);
+    u32(32000);
+    u16(2);
+    u16(16);
+    f.write("data", 4);
+    u32(data);
+    f.write(reinterpret_cast<const char*>(out.data()), static_cast<std::streamsize>(data));
+    if (!f) {
+        std::cerr << "[setup] Error: cannot write " << wav << "\n";
+        return 1;
+    }
+    std::cout << "[setup] " << wav << ": track " << track << ", " << static_cast<double>(out.size()) / 16000.0 << " s\n";
+    return 0;
+}
+
 } // namespace
 
 int run_setup(int argc, char** argv) {
@@ -224,6 +315,8 @@ int run_setup(int argc, char** argv) {
     bool status_only = false;
     bool check_only = false;
     bool compare = false;
+    std::string movie_tracks_of, movie_audio_of, wav;
+    int track = -1;
 
     if (const char* env_iso = std::getenv("RAC1_ISO")) iso_path = env_iso;
 
@@ -245,6 +338,14 @@ int run_setup(int argc, char** argv) {
             check_only = true;
         } else if (a == "--compare-disc") {
             compare = true;
+        } else if (a == "--movie-tracks" && i + 1 < argc) {
+            movie_tracks_of = argv[++i];
+        } else if (a == "--movie-audio" && i + 1 < argc) {
+            movie_audio_of = argv[++i];
+        } else if (a == "--track" && i + 1 < argc) {
+            track = std::atoi(argv[++i]);
+        } else if (a == "--wav" && i + 1 < argc) {
+            wav = argv[++i];
         } else if (a == "--help" || a == "-h") {
             print_usage(argv[0]);
             return 0;
@@ -260,6 +361,14 @@ int run_setup(int argc, char** argv) {
         return 1;
     }
 
+    if (!movie_tracks_of.empty()) return movie_tracks(movie_tracks_of);
+    if (!movie_audio_of.empty()) {
+        if (track < 0 || wav.empty()) {
+            std::cerr << "--movie-audio needs --track <n> and --wav <out.wav>\n";
+            return 1;
+        }
+        return movie_audio(movie_audio_of, track, wav);
+    }
     const fs::path assets_path = fs::absolute(assets_dir);
     if (status_only) {
         print_status(assets_path);

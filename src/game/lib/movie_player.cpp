@@ -3,6 +3,7 @@
 // runs at 60 frames a second, NTSC); the game's skip test runs each frame as in the original loop.
 #include <game/lib/movie_player.h>
 
+#include <game/enhance/movie_subtitles.h>
 #include <game/enhance/voice_language.h>
 #include <game/lib/snd989.h>
 #include <game/ovl/movies.h>
@@ -35,6 +36,7 @@ bool movie_player_open(uint32_t lsn, uint32_t size, int32_t lang) {
         if (movie_hw_enabled()) std::printf("Can't Open movie\n");  // (the original's debug message, 0x1e9700)
         return false;
     }
+    movie_subtitles_open(lsn);  // (an enhancement: our own subtitles, when on and the movie has a file)
     return true;
 }
 
@@ -66,7 +68,10 @@ bool movie_player_loop_frame() {
             }
             ++p.shown;
         }
-        if (!p.picture.empty()) movie_hw_show(p.picture, movie_hw_width(), movie_hw_height());
+        if (!p.picture.empty()) {
+            const double at = static_cast<double>(p.shown - 1) / fps;  // (the picture's time in the movie)
+            movie_hw_show(movie_subtitles_picture(p.picture, movie_hw_width(), movie_hw_height(), at), movie_hw_width(), movie_hw_height());
+        }
         if (!p.stopping) return false;
     }
     std::printf("[movie] end after %llu frames, %llu pictures%s\n", static_cast<unsigned long long>(p.frame), static_cast<unsigned long long>(p.shown),
@@ -86,6 +91,7 @@ void movie_player_stop() {
 
 // orig: (host) stands in for 0x002ee3d8
 void movie_player_close() {
+    movie_subtitles_close();
     movie_hw_close();
     movie_hw_show_clear();
     g_player = Player{};
