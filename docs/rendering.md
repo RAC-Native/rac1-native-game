@@ -824,13 +824,7 @@ What is still missing against Medium: the mobys (Ratchet, the ships, Pokitaru's 
 (half resolution and its spread) and calmer (the ripples bend the ray by a fifth of their slope), and lit textures' own glow (the
 emissive slots).
 
-**Phase 3, the mobys (design)**: the moby renderer skins in the vertex shader; a compute pass doing the same skinning per drawn moby
-(and per moby kept by the sun shadows' off-screen cache: last pose, alive, same class, still) would write world-space positions into a
-buffer, one bottom-level structure per moby built or refitted (refit while the class and LOD stay, rebuilt otherwise), its instance
-in the top level's dynamic partition (reserved, 1024 records, empty today; the top level updated each frame once it holds them, about
-0.1 to 0.3 ms with the merged static instances). The hit's shading needs per moby triangle its texture (the moby texture array, one
-more binding) and per vertex its texture coordinates and colour from the skinning's record; the moby's own lighting per vertex is in
-that record already.
+Phase 3, the mobys: [below](#ray-tracing-phase-3-the-mobys).
 
 ### Water Reflections Medium (RT)
 
@@ -859,6 +853,58 @@ VK_KHR_ray_tracing_maintenance1: the compaction's copies run in the build stage)
 the same with `RAC1_RT=0` and Medium: a dynamic depth bias never set, colour attachments of another format than a pipeline's
 (R8_UNORM and RGBA16F targets drawn with RGBA8 pipelines), a depth image cleared without its transfer usage, shaders using
 demote-to-helper without the feature asked for, a few objects left at the device's end.
+
+## Ray tracing, phase 3: the mobys
+
+Options > Graphics > Water Reflections > High (RT) (Italian "Alto (RT)"; `water_reflections 3` in the preferences, `g_water_reflections`
+4; `RAC1_RT_MOBYS=1` / `0` the testing override): Medium (RT) with the frame's mobys in the trace too - Ratchet, the ships, Pokitaru's
+airships, every moving object. Shown, and played as Medium elsewhere, as Medium (RT). Code: `moby_pass` in `mrp_rt.cpp`,
+`mrp_moby_rt_frame` in `mrp_moby_renderer.cpp`, the compute shader `kMrpRtMobyCs` (`tools/gen_vk_shaders.py`), the moby branch of
+`sm_rt_surface` (`mrp_materials_glsl.inc`).
+
+- **Which mobys**: the draws the moby renderer made this frame in the world's view - on screen, and the off-screen shadow casters it keeps
+  (alive, still, of the same class, within 400 units) -, not the menus' render targets nor the title menu's boxes. Draws blended other
+  than the usual Cs As + Cd (1 - As) or Cs alone (additive glows) are left out; the usual blend's see-through texels are left out as the
+  world's alpha test does (the moby geometry is not opaque: a candidate's texel is looked at, kept from 0x60).
+- **Skinning**: a compute pass (one thread a triangle) skins the draws' vertices as the moby vertex shader does (the VU0 matrix of <= 3
+  weighted joints, the s16 truncation, the record's lighting and the EE's colour step: the same lit colour) and writes each triangle in
+  world space (the part's model -> world matrix) with its shading record (`RtTri`: the corners' texture coordinates, the moby texture
+  array after the world's in the trace's array of 64, the texture's density, the corners' RGBA, the word). The vertex and index
+  buffers the moby draws use are read as they are (storage usage added to them).
+- **Structures**: one bottom-level structure per moby (fast build, updatable), its triangles not indexed; kept as it is when the moby's
+  pose (its parts' world matrices and joints, hashed) and draws are the frame before's, refitted when they changed, built again when its
+  triangle count changes or after 60 refits; freed some frames after the moby is gone. Their instances (identity transform, custom index
+  bit 23 + the moby's first triangle) are the top level's dynamic partition (1024 at most): the top level is updated or rebuilt every
+  frame with mobys in it (with Medium (RT) it is kept on about 97 % of the frames).
+- **Shading**: the texel times the corners' lit colours by the draw's TFX / TCC, the world's fog by the path length: what the static world
+  has; `RAC1_RT_DEBUG=3` shows the mobys' hits yellow.
+
+The reflection's GPU time (the planar view or the top level, the moby pass, the half-resolution trace and the seas) and the frame's GPU
+time (the sum of the profiler's stages), ms, the best of two runs of the last 120 frames, Radeon 890M (RADV, Mesa 26):
+
+| | Rilgar 1080p | Rilgar 5120x1440 | Pokitaru 1080p | Pokitaru 5120x1440 | Novalis 1080p | Novalis 5120x1440 |
+|---|---|---|---|---|---|---|
+| Medium | 0.82 | 1.94 | 0.93 | 1.92 | 0.72 | 1.11 |
+| Medium (RT) | 1.06 | 2.66 | 1.44 | 2.91 | 1.21 | 2.17 |
+| High (RT) | 1.66 | 3.35 | 1.79 | 3.37 | 1.69 | 2.80 |
+| of which the moby pass / the top level | 0.31 / 0.24 | 0.35 / 0.22 | 0.18 / 0.24 | 0.22 / 0.23 | 0.25 / 0.27 | 0.32 / 0.26 |
+| Frame, Medium / Medium (RT) / High (RT) | 3.7 / 4.3 / 5.1 | 8.7 / 9.5 / 10.4 | 3.5 / 4.2 / 4.3 | 7.7 / 8.8 / 9.1 | 4.8 / 5.3 / 5.4 | 9.3 / 10.3 / 10.9 |
+
+About 60 to 80 mobys and 34 to 38 thousand triangles a frame at those places (up to 213 mobys, 66 thousand triangles on Novalis). Keeping
+the still mobys' structures took the moby pass from 0.31 / 0.38 / 0.58 ms to 0.22 / 0.35 / 0.32 (Pokitaru / Rilgar / Novalis, 5120 x
+1440); refits are most of what is left. Another program on the shared GPU moves single runs by some 0.5 ms.
+
+Flicker over the water (as in phase 2: 60 frames, 1280x360, pixels over 8 / 16): Rilgar swimming 215 / 0 Medium, 95 / 0 Medium (RT),
+81 / 0 High (RT); Rilgar on the shore 5193 / 24, 1464 / 0, 1464 / 0; Pokitaru's dock 1112 / 34, 487 / 144, 487 / 144; Novalis 13 / 0,
+5 / 0, 5 / 0. The mobys add none.
+
+Checked: the reference images, Vulkan's (Veldin, Rilgar) and the RAMHASH run identical with the row on another value; the Khronos
+validation layer over the six levels with High (RT) from the preferences: no device lost, no message of the ray tracing's own (the
+renderer's others as with Medium).
+
+Limits: mobys the moby renderer did not draw (outside the view and not kept as casters) are not reflected; the mobys' fog is the
+world's; their textures are sampled with the trace's one sampler (repeating; a clamped texture's edge may differ); a moby's
+structure is a frame's pose, the reflection of a fast animation the frame's own.
 
 ## Performance
 

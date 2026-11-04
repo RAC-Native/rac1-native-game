@@ -57,6 +57,7 @@ const StageInfo kStages[kStageCount] = {
     {"Sun rays", false, true, rgb(250, 230, 120)},
     {"Ambient particles", false, true, rgb(170, 220, 250)},
     {"Water reflections", false, true, rgb(60, 150, 230)},
+    {"Ray tracing: mobys", false, true, rgb(20, 70, 170)},
     {"Ray tracing: top level", false, true, rgb(30, 90, 200)},
     {"Ray tracing: half-res trace", false, true, rgb(60, 120, 230)},
     {"Grass shells", false, true, rgb(120, 200, 60)},

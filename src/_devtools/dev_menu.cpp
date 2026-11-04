@@ -1379,12 +1379,12 @@ void tab_enhancements() {
     combo("Surface Detail (materials)##en", &g_surface_detail, olh, 3);
     in_world();
     {
-        static const char* names[] = {"Off", "Low", "Medium", "Medium (RT)"};
-        int v = std::clamp(g_water_reflections, 0, 3);
-        if (combo("Water reflections##en", &v, names, 4)) g_water_reflections = v;
+        static const char* names[] = {"Off", "Low", "Medium", "Medium (RT)", "High (RT)"};
+        int v = std::clamp(g_water_reflections, 0, 4);
+        if (combo("Water reflections##en", &v, names, 5)) g_water_reflections = v;
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Low: fixed cube maps of the sky and the far scenery; Medium: the planar view (the cube maps where it has nothing);\n"
-                              "Medium (RT): ray traced through the static world (Vulkan with ray queries; else played as Medium).\n"
+                              "Medium (RT): ray traced through the static world (Vulkan with ray queries; else played as Medium); High (RT): the mobys too.\n"
                               "With Surface Detail on. Off is for comparing here: the Graphics page has Low, Medium and the RT values, so saved as Low.");
         ms(prof::kWaterRefl);
         if (g_water_reflections >= 2) {

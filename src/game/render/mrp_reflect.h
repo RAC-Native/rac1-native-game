@@ -13,6 +13,7 @@
 //    or the planar view drew nothing there, the cube map.
 //  - Medium (RT): the reflection ray traced through the level's static world and shaded from the hit's own triangle (mrp_rt.h,
 //    docs/rendering.md#ray-tracing-phase-2), shown only where the renderer can trace (Vulkan with ray queries).
+//  - High (RT): the same with the frame's mobys in the trace - Ratchet, the ships - (docs/rendering.md#ray-tracing-phase-3-the-mobys).
 // Host code: it draws what the frame holds again, the game's state is not read for it
 // beyond the frame's own drawing and never written.
 #ifndef RAC1_GAME_RENDER_MRP_REFLECT_H
@@ -24,8 +25,9 @@ struct GpuImage;
 }
 
 // orig: (host) 0 none (Graphics: Original), 1 Low (the cube map), 2 Medium (the planar view and the cube map), 3 Medium (RT) (the
-// reflection ray traced through the static world, mrp_rt.h: Vulkan with ray queries only, else played as Medium): the Graphics page's
-// row (RAC1_WATER_REFLECTIONS=1..3 overrides it, testing). Only with Surface Detail on (its water material draws them)
+// reflection ray traced through the static world, mrp_rt.h: Vulkan with ray queries only, else played as Medium), 4 High (RT) (the
+// mobys in the trace too): the Graphics page's row (RAC1_WATER_REFLECTIONS=1..4 overrides it, testing). Only with Surface Detail on
+// (its water material draws them)
 extern int g_water_reflections;
 // orig: (host) the planar view drawn at 1 / this of the 3D's size (2, half: the default; RAC1_REFLECT_SCALE, the debug menu's
 // Enhancements tab - not saved: 3 looked the same at Rilgar's dock and harbour for 40 % less)

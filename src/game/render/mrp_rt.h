@@ -1,10 +1,12 @@
-// Ray tracing, phases 0 and 2 (Options > Graphics > Water Reflections: Medium (RT); RAC1_RT=1 testing; Vulkan only;
-// docs/rendering.md#ray-tracing-phase-2): the water's reflection found by a
-// ray query against the level's static world (ties, shrubs, tfrags) instead of the cube map / planar view. Phase 2: the hit shaded
-// from its own triangle (its texture, its vertices' lit colours as the world's draws combine them, the world's fog along the
-// reflection's path; alpha-tested textures' texels looked at), traced at half resolution and upsampled in the sea's shader; the
-// frame's picture where the hit lies in it (phase 0's colour) is RAC1_RT_SHADE=1 / 0. No mobys in it (phase 3). Host code: it reads
-// the level's static data, the zones' mask, the lit colours and the fog's constants, never writes the game's state.
+// Ray tracing, phases 0, 2 and 3 (Options > Graphics > Water Reflections: Medium (RT), High (RT); RAC1_RT=1 testing; Vulkan only;
+// docs/rendering.md#ray-tracing-phase-2): the water's reflection found by a ray query against the level's static world (ties, shrubs,
+// tfrags) instead of the cube map / planar view. Phase 2: the hit shaded from its own triangle (its texture, its vertices' lit colours
+// as the world's draws combine them, the world's fog along the reflection's path; alpha-tested textures' texels looked at), traced at
+// half resolution and upsampled in the sea's shader; the frame's picture where the hit lies in it (phase 0's colour) is
+// RAC1_RT_SHADE=1 / 0. Phase 3 (High (RT), RAC1_RT_MOBYS): the frame's mobys in the trace too - skinned by a compute pass into world
+// space as their vertex shader skins them, a bottom-level structure per moby refitted or rebuilt each frame, their instances in the
+// top level's dynamic partition, the hit shaded from the moby's texture and lit vertex colours. Host code: it reads the level's static
+// data, the zones' mask, the lit colours, the fog's constants and the moby renderer's frame, never writes the game's state.
 //
 // The acceleration structures are organised as DirectX's clustered geometry and partitioned TLAS (CLAS / PTLAS) are, with the plain
 // KHR acceleration structures (the real cluster / partition extensions are NVIDIA's alone, VK_NV_cluster_acceleration_structure and
@@ -12,7 +14,7 @@
 //  - clusters: the game's geometry is cluster-sized already: each tie / shrub packet template (its finest LOD) and each tfrag entry
 //    (its near image) is a small bottom-level structure built once at the level's load and compacted; the instances reuse them.
 //  - partitions: the static instances grouped by the game's zone cell (ties, tfrags; shrubs have none: a partition of their own), a
-//    dynamic partition for the moving instances (empty: the mobys are phase 3). Per frame only the partitions whose zone visibility
+//    dynamic partition for the moving instances (the mobys, phase 3). Per frame only the partitions whose zone visibility
 //    changed (and the dynamic one) are written again, and the top level is updated (or rebuilt: RAC1_RT_TLAS).
 //  - behind an interface (RtAccel, mrp_rt.cpp) so that a real cluster / partitioned extension can be added as another back end.
 #ifndef RAC1_GAME_RENDER_MRP_RT_H
@@ -70,8 +72,8 @@ struct RtLevelGeometry {
 // orig: (host) the renderer can trace: Vulkan, and the device has ray queries and non-uniform sampled-image indexing (Options > Graphics >
 // Water Reflections shows its RT values only then)
 bool mrp_rt_supported();
-// orig: (host) the water's ray-traced reflection on: supported, and Water Reflections on an RT value (g_water_reflections 3, Medium (RT));
-// RAC1_RT=1 / 0 overrides the row (testing)
+// orig: (host) the water's ray-traced reflection on: supported, and Water Reflections on an RT value (g_water_reflections 3 Medium (RT),
+// 4 High (RT): the mobys too); RAC1_RT=1 / 0 overrides the row (testing)
 bool mrp_rt_active();
 // orig: (host) active, and the level's acceleration structures made: the seas trace this frame's reflection (the planar view not drawn)
 bool mrp_rt_tracing();
@@ -93,7 +95,8 @@ void mrp_rt_note_colours(const std::vector<uint32_t>& resident, uint64_t residen
 // orig: (host) the world's fog this frame (the ties' pass: F = clamp(fog[1] + depth x fog[0], fog[3], fog[2]), 0x16cc60; FOGCOL; whether
 // the world draws its fog): the hit's colour fogged by the reflection's path as the world's draws fog theirs
 void mrp_rt_note_fog(const float fog[4], uint32_t fogcol, bool on);
-// orig: (host) once a frame before the seas are drawn, outside a rendering pass: the changed partitions written, the top level updated
+// orig: (host) once a frame before the seas are drawn, outside a rendering pass: with High (RT) the frame's mobys skinned and their
+// structures built / refitted (mrp_moby_rt_frame) into the dynamic partition; the changed partitions written, the top level updated
 void mrp_rt_frame();
 // orig: (host) Vulkan: the descriptor set (set 2: binding 0 the top level) of this frame, its layout (0: none)
 uint64_t mrp_rt_vk_set();

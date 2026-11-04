@@ -247,8 +247,8 @@ the same. `RAC1_RAMHASH` through Novalis, Rilgar, Pokitaru and Hoven with Surfac
 
 ## Water reflections
 
-Options > Graphics > Water Reflections (Low, Medium, Medium (RT); `water_reflections` in the preferences;
-`RAC1_WATER_REFLECTIONS=1|2|3` for testing, 0 none) is what Surface Detail's water mirrors, with Surface Detail on and Graphics:
+Options > Graphics > Water Reflections (Low, Medium, Medium (RT), High (RT); `water_reflections` in the preferences;
+`RAC1_WATER_REFLECTIONS=1..4` for testing, 0 none) is what Surface Detail's water mirrors, with Surface Detail on and Graphics:
 Enhanced. Until 2026-11-03 the water took the last frame's picture along its reflected ray (Surface Detail High, the sky colour on
 Low): pretty while standing still, broken as soon as anything moved - in Daino's words at Rilgar's harbour, by the Vendor, "belle
 solo se stai immobile, appena ti muovi tra lampeggio e glitch la magia si rompe": under Ratchet, and under every object in front of
@@ -261,14 +261,14 @@ The code: `src/game/render/mrp_reflect.cpp`, the shading in `sm_water_refl` (`mr
 |---|---|
 | Low | cube maps from fixed probes, one per zone of the level and body of water, of the sky and the far scenery (no mobys: nothing that moves); they never move on their own |
 | Medium | the planar view: the frame's world, sky and mobys mirrored about the water - Ratchet reflected, moving with him -, the cube map where the planar view has nothing |
-| Medium (RT) | the reflection ray traced (an inline ray query) through the level's static world - ties, shrubs, tfrags - and shaded from the hit's own triangle (its texture, its lit vertex colours, the world's fog), at half resolution; no mobys yet. Vulkan with ray queries only: [Rendering](rendering.md#ray-tracing-phase-2) |
+| Medium (RT) | the reflection ray traced (an inline ray query) through the level's static world - ties, shrubs, tfrags - and shaded from the hit's own triangle (its texture, its lit vertex colours, the world's fog), at half resolution; no mobys. Vulkan with ray queries only: [Rendering](rendering.md#ray-tracing-phase-2) |
+| High (RT) | Medium (RT) with the frame's mobys in the trace too - Ratchet, the ships, Pokitaru's airships, every moving object the frame drew in the world's view or kept as a shadow caster -, shaded from the moby's texture and its lit vertex colours; see-through texels left out, additive glows not in it: [Rendering](rendering.md#ray-tracing-phase-3-the-mobys) |
 
-Medium (RT) is shown only where the renderer can trace (Vulkan, a device with VK_KHR_acceleration_structure, VK_KHR_ray_query,
-bufferDeviceAddress and non-uniform sampled-image indexing); a saved Medium (RT) played on OpenGL or another GPU plays as Medium, said
-once in the log (`[reflect] Water Reflections Medium (RT): ... played as Medium`). The device's ray queries are turned on whenever
+Medium (RT) and High (RT) are shown only where the renderer can trace (Vulkan, a device with VK_KHR_acceleration_structure, VK_KHR_ray_query,
+bufferDeviceAddress and non-uniform sampled-image indexing); a saved RT value played on OpenGL or another GPU plays as Medium, said
+once in the log (`[reflect] Water Reflections High (RT): ... played as Medium`). The device's ray queries are turned on whenever
 it has them, so the value can be picked during play: the level's acceleration structures are made at the frame it is picked (some
-tens of milliseconds) and kept until the next level; a level loaded with another value makes none. No High yet: High (RT) will add
-the mobys to the trace. The presets: Low in Low, Medium in Medium and High ([Settings](settings.md#presets)).
+tens of milliseconds) and kept until the next level; a level loaded with another value makes none. The presets: Low in Low, Medium in Medium and High ([Settings](settings.md#presets)).
 A row of its own rather than Surface Detail's levels: Surface Detail High is the puddles' and metals' picture (and its cost), and the
 water's reflections are wanted without it, or the other way round.
 

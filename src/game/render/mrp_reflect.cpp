@@ -28,7 +28,7 @@ namespace rac1 {
 // orig: (host) see mrp_reflect.h
 int g_water_reflections = [] {
     const char* e = std::getenv("RAC1_WATER_REFLECTIONS");
-    return e != nullptr ? std::clamp(std::atoi(e), 0, 3) : 2;
+    return e != nullptr ? std::clamp(std::atoi(e), 0, 4) : 2;
 }();
 
 // orig: (host) see mrp_reflect.h
@@ -574,7 +574,7 @@ void mrp_reflect_pass(const int vp[4]) {
         static bool said = false;
         if (!said) {
             said = true;
-            std::printf("[reflect] Water Reflections %s: %s - played as Medium\n", "Medium (RT)",
+            std::printf("[reflect] Water Reflections %s: %s - played as Medium\n", g_water_reflections >= 4 ? "High (RT)" : "Medium (RT)",
                         mrp_rt_supported() ? "RAC1_RT=0" : "no ray queries here (Vulkan with ray queries and non-uniform sampled-image indexing)");
         }
     }

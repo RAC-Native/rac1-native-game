@@ -125,6 +125,10 @@ What changed in each release. Releases are source only: you build the game with 
   so the value works when picked during play (the level's structures made then); `RAC1_RT=1` / `0` stays the testing override. The
   acceleration structures' compaction barrier no longer names the copy stage (a validation error without ray tracing maintenance 1)
   ([Rendering](docs/rendering.md#water-reflections-medium-rt)).
+- Water Reflections High (RT) (Italian "Alto (RT)"; `water_reflections 3`), RT phase 3: the mobys in the trace too - skinned by a
+  compute pass into world space, a bottom-level structure per moby kept / refitted / rebuilt, their instances in the top level's
+  dynamic partition, shaded from the moby's texture and lit colours; about 0.4 to 0.7 ms more than Medium (RT) on a Radeon 890M;
+  `RAC1_RT_MOBYS`, the profiler's Ray tracing: mobys stage ([Rendering](docs/rendering.md#ray-tracing-phase-3-the-mobys)).
 - Grass (Options > Graphics, off by default): the ground tagged as grass gets a fine relief of blades (Low, no geometry) and a few very
   low layers of blades near the camera (High), in the texture's colours, bending with the wind and away from Ratchet. Seeded on Veldin,
   Novalis and Kerwan.

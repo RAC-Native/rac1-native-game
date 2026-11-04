@@ -234,7 +234,7 @@
     "}\n"                                                                                                                                       \
     "#ifdef RAC1_RT\n"                                                                                                                                                    \
     "/* RAC1_RT=1 (testing, ray tracing: mrp_rt.h; the seas' Vulkan variant alone): the reflection's ray traced through the level's static\n"                                                                                                                                                    \
-    "   world (ties, shrubs, tfrags at their finest; no mobys yet) from the water along the reflection of a gentle normal. uRtMode: bit 0 on;\n"                                                                                                                                                    \
+    "   world (ties, shrubs, tfrags at their finest; High (RT): the frame's mobys too) from the water along the reflection of a gentle normal. uRtMode: bit 0 on;\n"                                                                                                                                                    \
     "   bits 1..3 RAC1_RT_DEBUG (1 where the colour comes from: green the picture, red the hit's own shading, blue no hit; 2 the hit's\n"                                                                                                                                                    \
     "   distance; 3 what was hit: red a tie, green a shrub, blue a tfrag; 4 the hit's own shading everywhere, the picture left out; 5 the reflection alone);\n"                                                                                                                                                    \
     "   bits 4..5 RAC1_RT_SHADE (0 the picture where the hit lies in it, else the cube map / the sky - phase 0; 1 the picture there, else\n"                                                                                                                                                    \
@@ -244,9 +244,10 @@
     "layout(set = 2, binding = 0) uniform accelerationStructureEXT uRtTlas;\n"                                                                                                                                                    \
     "layout(std430, set = 2, binding = 1) readonly buffer RtInsts { uvec4 rt_inst[]; };  /* per instance: its first triangle, its first colour, its kind */\n"                                                                                                                                                    \
     "layout(std430, set = 2, binding = 2) readonly buffer RtTris { uvec4 rt_tri[]; };    /* per triangle three: mrp_rt.h RtTri */\n"                                                                                                                                                    \
+    "layout(std430, set = 2, binding = 8) readonly buffer RtMTris { uvec4 rt_mtri[]; };  /* the frame's mobys' triangles (High (RT)): RtTri, the colours RGBA8 */\n"        \
     "layout(std430, set = 2, binding = 3) readonly buffer RtRCols { uint rt_rcol[]; };   /* the resident tie / shrub colours */\n"                                                                                                                                                    \
     "layout(std430, set = 2, binding = 4) readonly buffer RtTCols { uint rt_tcol[]; };   /* the tfrags' */\n"                                                                                                                                                    \
-    "layout(set = 2, binding = 5) uniform sampler2DArray uRtTex[32];                      /* the world's texture arrays */\n"                                                                                                                                                    \
+    "layout(set = 2, binding = 5) uniform sampler2DArray uRtTex[64];                      /* the world's texture arrays, the mobys' after them */\n"                                                                                                                                                    \
     "layout(std430, set = 2, binding = 7) readonly buffer RtFrame { vec4 rt_fog; vec4 rt_fogcol; vec4 rt_par; };  /* rt_par: the ripples' spread, the upsample's */  /* the world's fog (mrp_rt_note_fog) */\n" \
     "layout(set = 2, binding = 6) uniform sampler2D uRtHalf;                              /* the half-resolution trace */\n"                                                                                                                                                    \
     "vec3 sm_rt_out = vec3(0.0);\n"                                                                                                                                                    \
@@ -259,18 +260,20 @@
     "/* the surface of triangle `prim` of instance `ii` at the barycentrics `bc`: the texel at the level a footprint of `foot` (in the\n"                                                                                                                                                    \
     "   instance's own units) gives, times the vertices' lit colours as the world's draws combine them (TFX, TCC); alpha 255-based */\n"                                                                                                                                                    \
     "vec4 sm_rt_surface(uint ii, uint prim, vec2 bc, float foot) {\n"                                                                                                                                                    \
-    "    uvec4 I = rt_inst[ii];\n"                                                                                                                                                    \
-    "    uint tr = 3u * (I.x + prim);\n"                                                                                                                                                    \
-    "    uvec4 A = rt_tri[tr], B = rt_tri[tr + 1u], C = rt_tri[tr + 2u];\n"                                                                                                                                                    \
-    "    vec3 w = vec3(1.0 - bc.x - bc.y, bc.x, bc.y);\n"                                                                                                                                                    \
-    "    vec2 st = uintBitsToFloat(A.xy) * w.x + uintBitsToFloat(A.zw) * w.y + uintBitsToFloat(B.xy) * w.z;\n"                                                                                                                                                    \
-    "    vec4 c;\n"                                                                                                                                                    \
-    "    if (I.z == 2u) c = sm_rt_col(true, C.x) * w.x + sm_rt_col(true, C.y) * w.y + sm_rt_col(true, C.z) * w.z;\n"                                                                                                                                                    \
-    "    else c = sm_rt_col(false, I.y + C.x) * w.x + sm_rt_col(false, I.y + C.y) * w.y + sm_rt_col(false, I.y + C.z) * w.z;\n"                                                                                                                                                    \
-    "    if (I.z == 1u) c.a = 128.0 / 255.0;\n"                                                                                                                                                    \
+    "    bool mob = (ii & 0x800000u) != 0u;  /* (a moby: its custom index the first of its triangles in rt_mtri, bit 23 set) */\n"        \
+    "    uvec4 I = mob ? uvec4(ii & 0x7fffffu, 0u, 3u, 0u) : rt_inst[ii];\n"        \
+    "    uint tr = 3u * (I.x + prim);\n"        \
+    "    uvec4 A = mob ? rt_mtri[tr] : rt_tri[tr], B = mob ? rt_mtri[tr + 1u] : rt_tri[tr + 1u], C = mob ? rt_mtri[tr + 2u] : rt_tri[tr + 2u];\n"        \
+    "    vec3 w = vec3(1.0 - bc.x - bc.y, bc.x, bc.y);\n"        \
+    "    vec2 st = uintBitsToFloat(A.xy) * w.x + uintBitsToFloat(A.zw) * w.y + uintBitsToFloat(B.xy) * w.z;\n"        \
+    "    vec4 c;\n"        \
+    "    if (mob) c = unpackUnorm4x8(C.x) * w.x + unpackUnorm4x8(C.y) * w.y + unpackUnorm4x8(C.z) * w.z;\n"        \
+    "    else if (I.z == 2u) c = sm_rt_col(true, C.x) * w.x + sm_rt_col(true, C.y) * w.y + sm_rt_col(true, C.z) * w.z;\n"        \
+    "    else c = sm_rt_col(false, I.y + C.x) * w.x + sm_rt_col(false, I.y + C.y) * w.y + sm_rt_col(false, I.y + C.z) * w.z;\n"        \
+    "    if (I.z == 1u) c.a = 128.0 / 255.0;\n"        \
     "    uint tex = B.z, word = C.w, b = tex & 0xffu;\n"                                                                                                                                                    \
     "    if (b == 0xffu || (word & 1u) != 0u) return vec4(c.rgb, c.a * 255.0);\n"                                                                                                                                                    \
-    "    int mips = int((word >> 22) & 3u) + 1;\n"                                                                                                                                                    \
+    "    int mips = int((word >> 22) & (mob ? 7u : 3u)) + 1;\n"        \
     "    vec2 tsz = vec2(textureSize(uRtTex[nonuniformEXT(b)], 0).xy);\n"                                                                                                                                                    \
     "    float lod = log2(max(foot, 1e-6)) + uintBitsToFloat(B.w) + log2(max(tsz.x, tsz.y));\n"                                                                                                                                                    \
     "    vec4 t = textureLod(uRtTex[nonuniformEXT(b)], vec3(st, float(tex >> 8)), clamp(lod, 0.0, float(mips - 1)));\n"                                                                                                                                                    \
@@ -333,7 +336,7 @@
     "        float t = rayQueryGetIntersectionTEXT(q, true);\n"                                                                                                                                                    \
     "        uint ii = uint(rayQueryGetIntersectionInstanceCustomIndexEXT(q, true));\n"                                                                                                                                                    \
     "        if (dbg == 2) col = vec3(fract(t / 8.0), clamp(t / 150.0, 0.0, 1.0), 0.2);\n"                                                                                                                                                    \
-    "        else if (dbg == 3) { uint kind = rt_inst[ii].z; col = kind == 0u ? vec3(1.0, 0.2, 0.2) : kind == 1u ? vec3(0.2, 1.0, 0.2) : vec3(0.2, 0.3, 1.0); }\n"                                                                                                                                                    \
+    "        else if (dbg == 3) { uint kind = (ii & 0x800000u) != 0u ? 3u : rt_inst[ii].z; col = kind == 0u ? vec3(1.0, 0.2, 0.2) : kind == 1u ? vec3(0.2, 1.0, 0.2) : kind == 2u ? vec3(0.2, 0.3, 1.0) : vec3(1.0, 1.0, 0.2); }\n"        \
     "        else {\n"                                                                                                                                                    \
     "            vec3 H = P + R * t;\n"                                                                                                                                                    \
     "            float k = 0.0;\n"                                                                                                                                                    \

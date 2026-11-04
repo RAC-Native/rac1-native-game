@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 385 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 386 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 298 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 299 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 70 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -97,7 +97,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_MRPW_BUILD_THREAD` | 0 = off; default on (off when `RAC1_MRPW_THREAD=0`, a check mode, `RAC1_MRPW_CPU` or `RAC1_MRPW_TFRAG_VERIFY`) | The MRP world's frame triangles and batches (build_triangles) made on the scene's worker after its scene, the new textures' images made by the main thread when it takes the frame; 0 makes them on the main thread when the frame is drawn, as before, for comparison (the same output). |
 | `RAC1_SURFACE_DETAIL` | 0, 1 or 2; default: Options > Graphics > Surface Detail (Off) | With the modern lighting, the materials of the level files' `material` lines: 0 off, 1 Low, 2 High (also the reflections and the lava's heat shimmer), whatever the option says. |
 | `RAC1_GRASS` | 0, 1 or 2; default: Options > Graphics > Grass (Off) | With the modern lighting, the `grass` material on tfrags: 0 off, 1 Low (a detail relief of blades, no geometry), 2 High (also very low shells of blades near the camera), whatever the option says. |
-| `RAC1_WATER_REFLECTIONS` | 0 to 3; default: Options > Graphics > Water Reflections (Medium) | With Surface Detail on, what the water mirrors: 1 Low (the cube map), 2 Medium (the planar view, the cube map where it has nothing), 3 Medium (RT) (ray traced: Vulkan with ray queries, else Medium), 0 none (the level's sky colour), whatever the option says ([Materials](materials.md#water-reflections)). |
+| `RAC1_WATER_REFLECTIONS` | 0 to 4; default: Options > Graphics > Water Reflections (Medium) | With Surface Detail on, what the water mirrors: 1 Low (the cube map), 2 Medium (the planar view, the cube map where it has nothing), 3 Medium (RT) (ray traced: Vulkan with ray queries, else Medium), 4 High (RT) (the mobys traced too), 0 none (the level's sky colour), whatever the option says ([Materials](materials.md#water-reflections)). |
 | `RAC1_GRASS_SHELLS` | 1 to 32; default 0 (4) | The Grass option High's number of shells (the debug menu's Enhancements tab sets it too). |
 | `RAC1_GRASS_DIST` | units, 4 to 200; default 40 | How far from the camera the Grass option's blades are drawn (Low faded out over the last 40 %, the shells from 30 % of it on). |
 | `RAC1_EMISSIVE` | integer; 0 = off; default on | With the modern lighting, `0` leaves out the level files' emissive surfaces (`emissive` lines: textures that keep the original's brightness in shade), to compare. |
@@ -259,7 +259,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_RT_BLUR` | integer tenths of a half-resolution texel; default 10 | With the trace (Medium (RT) or RAC1_RT) at half resolution: how far apart the upsample's four outer taps are read (0 the pixel's place alone: sharper, flickers more). |
 | `RAC1_RT_CLUSTERS` | 0 or 1; default 1 | With the trace (Medium (RT) or RAC1_RT): 0 a bottom-level structure per tie / shrub packet and per tfrag entry (clusters), 1 merged per class (ties, shrubs) and per zone cell (tfrags): 30 to 40 % cheaper to trace. |
 | `RAC1_RT_CONE` | integer milliradians; default 20 | With the trace (Medium (RT) or RAC1_RT): the ripples' spread added to the pixel's ray cone, which picks the hit's texture level. |
-| `RAC1_RT_DEBUG` | 1 to 5; default off | With the trace (Medium (RT) or RAC1_RT): the water shows 1 where its colour comes from (green the picture, red the hit's own shading, blue no hit; with the half-resolution trace yellow a nearby tap, magenta nothing near), 2 the hit's distance, 3 what was hit (red a tie, green a shrub, blue a tfrag), 4 the hit's own shading everywhere (full resolution), 5 the reflection alone (as RAC1_REFLECT_DEBUG=2 shows Medium's). |
+| `RAC1_RT_DEBUG` | 1 to 5; default off | With the trace (Medium (RT) or RAC1_RT): the water shows 1 where its colour comes from (green the picture, red the hit's own shading, blue no hit; with the half-resolution trace yellow a nearby tap, magenta nothing near), 2 the hit's distance, 3 what was hit (red a tie, green a shrub, blue a tfrag, yellow a moby), 4 the hit's own shading everywhere (full resolution), 5 the reflection alone (as RAC1_REFLECT_DEBUG=2 shows Medium's). |
+| `RAC1_RT_MOBYS` | 0 or 1; default: Options > Graphics > Water Reflections (1 with High (RT)) | With the trace (Medium (RT) / High (RT) or RAC1_RT): 1 the frame's mobys in it too (phase 3: skinned by a compute pass, a bottom-level structure per moby refitted each frame, their instances in the top level's dynamic partition), 0 the static world alone ([Rendering](rendering.md#ray-tracing-phase-3-the-mobys)). |
 | `RAC1_RT_RES` | 0, 1 or 2; default 0 | With the trace (Medium (RT) or RAC1_RT): 0 the reflection traced at half resolution into its own image and upsampled in the seas' shader, 1 traced in every pixel, 2 the seas shaded once per 2 x 2 pixels (VK_KHR_fragment_shading_rate). |
 | `RAC1_RT_SHADE` | 0, 1 or 2; default 2 | With the trace (Medium (RT) or RAC1_RT): the hit's colour - 0 the frame's picture where the hit lies in it, else the cube map or the sky (phase 0); 1 the picture there, else the hit's own shading; 2 the hit's own shading always. |
 | `RAC1_RT_TLAS` | 0, 1 or 2; default 2 | With the trace (Medium (RT) or RAC1_RT): the top level each frame - 0 every instance written again and rebuilt, 1 the partitions (zone cells) that changed written and rebuilt, 2 those written and the top level updated. |
