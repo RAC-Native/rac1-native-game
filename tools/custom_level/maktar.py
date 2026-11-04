@@ -21,8 +21,13 @@ src/host/custom_planet.h):
                       Same size as Veldin's.
   <out>/ties.mrpc     the arena's ties (205 instances of 13 RAC2 classes, their 45 textures), drawn by the host
                       (src/formats/custom_ties.h; `rac1-native --setup --custom-level <out>` puts them in the MRP world).
-                      With them, the arena's static mobys (RAC2's moby classes in their bind pose, rac2moby.py: the
-                      monitors round the floor, the stands' crowd cards, the floor's fittings) as more such classes.
+                      With --no-rac2-classes, the arena's static mobys (RAC2's moby classes in their bind pose, rac2moby.py:
+                      the monitors round the floor, the stands' crowd cards, the floor's fittings) as more such classes.
+                      With --rac2-classes (the default), RAC2's moby classes of the arena's crowd, monitors, jointed arms and
+                      floor fittings converted into RAC1 classes in the core (rac2classes.py: their vertex data's header,
+                      their textures added to the moby texture table, their sound lists), and their placements as RAC1
+                      moby records: drawn and animated by RAC1's engine, their behaviour our host code
+                      (src/game/enhance/custom_classes.cpp, planet.txt's "class" lines).
   <out>/waves.txt     the wave challenge: per wave its enemies' uids (src/game/enhance/custom_waves.cpp shows them).
   <out>/lights.txt    the modern lighting's file for the custom level (our choices): point lights at the arena's gates,
                       lamps and screens, emissive surfaces for its screens and neon.
@@ -301,13 +306,25 @@ def tie_colour(g, at, n):
     return tuple(sum(((w >> (5 * c)) & 31) << 3 for w in words) / len(words) for c in range(3))
 
 
-# the arena's mobys drawn as static objects (step 4b): the classes RAC2 places in the arena that stand still there (the
+# the arena's mobys drawn as static objects (step 4b; with --no-rac2-classes only, else they are real mobys, RAC2_CLASSES): the classes RAC2 places in the arena that stand still there (the
 # monitors on posts round the floor 4697, the stands' crowd cards 3734, the floor's fittings 2563 and 3276), in their
 # bind pose (rac2moby.py). Not the six jointed arms 2581 at the floor's edge (in their bind pose they stand up as big pods
 # across the walkway: RAC2 poses them by their animation), nor the crates (501, 511), nor the challenges' mobys, which wait
 # in a block above the arena (z ~520: 2506, 2850, 3131, 3134 ...); 805, 2905, 2953 and 3950 have no mesh in the level.
 STATIC_MOBYS = (4697, 3734, 2563, 3276)
-MOBY_COLOUR = (0x60, 0x66, 0x6a, 0x80)  # (their flat colour: RAC2 lights them with set 6 and the ambient 27 40 40; ours a grey)
+MOBY_COLOUR = (0x60, 0x66, 0x6a, 0x80)
+
+# P3: the RAC2 classes converted into the custom core (rac2classes.py) instead of drawn static: RAC2 class -> (its role for
+# the host's behaviour, src/game/enhance/custom_classes.cpp; the RAC1 class id it gets). RAC1's class ids index a
+# 2048-byte table (0x197bc0), so RAC2's own (> 2048) cannot be kept: ours are above every RAC1 level's (the highest 1973).
+RAC2_CLASSES = {
+    3734: ("crowd", 2032),    # the crowd cards in the stands: 5 loops of 8 frames
+    4697: ("monitor", 2033),  # the monitors on posts round the floor: 3 single-frame poses
+    2581: ("arm", 2034),      # the jointed arms at the floor's edge: lower, drop, wait, rise
+    2563: ("prop", 2035),     # the floor's fittings (a hazard of the challenges, idle here)
+    3276: ("prop", 2036),     # (a prop / item of the challenges, idle here)
+}
+CLASS_PVARS = {"crowd": 0x20, "monitor": 0x40, "arm": 0x40, "prop": 0x10}  # (our behaviour's own pvars, custom_classes.cpp)  # (their flat colour: RAC2 lights them with set 6 and the ambient 27 40 40; ours a grey)
 
 
 def euler_rows(rx, ry, rz, s):
@@ -320,7 +337,7 @@ def euler_rows(rx, ry, rz, s):
     return [[m[0][c] * s, m[1][c] * s, m[2][c] * s] for c in range(3)]
 
 
-def build_mobys(r2, say, texture, classes):
+def build_mobys(r2, say, texture, classes, skip=()):
     """Appends the static mobys' classes to `classes` (as the ties' entries); returns their placements (class index among
     the ones appended, rows, position, colour)."""
     import rac2moby
@@ -339,12 +356,12 @@ def build_mobys(r2, say, texture, classes):
         sz = i32(g, p)
         cid = i32(g, p + 0x28)
         pos = struct.unpack_from("<3f", g, p + 0x40)
-        if cid in STATIC_MOBYS and all(ARENA_BOX[j][0] <= pos[j] <= ARENA_BOX[j][1] for j in range(3)):
+        if cid in STATIC_MOBYS and cid not in skip and all(ARENA_BOX[j][0] <= pos[j] <= ARENA_BOX[j][1] for j in range(3)):
             places.append((cid, struct.unpack_from("<f", g, p + 0x2c)[0], pos, struct.unpack_from("<3f", g, p + 0x4c)))
         p += sz
     order, insts, ntris = [], [], 0
     for cid in STATIC_MOBYS:
-        if not any(pl[0] == cid for pl in places):
+        if cid in skip or not any(pl[0] == cid for pl in places):
             continue
         o, remap = recs[cid]
         cls = rac2moby.decode_class(core, o, remap)
@@ -379,7 +396,8 @@ def build_mobys(r2, say, texture, classes):
         order.append(cid)
     for cid, s, pos, rot in places:
         insts.append((order.index(cid), euler_rows(rot[0], rot[1], rot[2], s), list(pos), MOBY_COLOUR))
-    say("mobys drawn static (bind pose): classes %s, %d placements, %d triangles" % (order, len(insts), ntris))
+    say("mobys drawn static (bind pose): classes %s, %d placements, %d triangles%s" % (
+        order, len(insts), ntris, " (the converted classes %s left out)" % list(skip) if skip else ""))
     return insts
 
 
@@ -426,7 +444,7 @@ def write_lights(out, insts, say):
     say("lights.txt: %d point lights, %d emissive surfaces" % (n, len(ARENA_EMISSIVE)))
 
 
-def build_ties(r2, out, say, colour_scale, colour_min, mobys=True):
+def build_ties(r2, out, say, colour_scale, colour_min, mobys=True, skip=()):
     MH = r2.H
     core, idx, g = r2.core, r2.index, r2.gameplay
     G = struct.unpack_from("<40I", g)
@@ -500,7 +518,7 @@ def build_ties(r2, out, say, colour_scale, colour_min, mobys=True):
                 npk += 1
         classes.append((cid, scale, sphere, prims, packets))
     tie_classes = len(classes)
-    moby_insts = build_mobys(r2, say, texture, classes) if mobys else []
+    moby_insts = build_mobys(r2, say, texture, classes, skip) if mobys else []
     say("ties: %d instances of %d classes (%s), %d packets (3 LODs), %d vertices, %d tie textures" % (
         len(insts), len(ids), ", ".join(str(c) for c in ids), npk, nverts, len(textures)))
 
@@ -611,6 +629,110 @@ def flight_path(ship, n=12):
     return head + path
 
 
+class Rac2Classes:
+    """The RAC2 classes converted (P3, rac2classes.py) and what they bring: their textures (RAC2's moby texture indices ->
+    ours, after Veldin's), their sound lists, their placements in the arena (RAC2's 0x88-byte moby records)."""
+
+    def __init__(self, r2, vram_page, say, first_texture):
+        import rac2classes
+        MH, idx, core = r2.H, r2.index, r2.core
+        ids = [i32(idx, MH[7] + 32 * k + 4) for k in range(MH[6])]
+        starts = [i32(idx, MH[7] + 32 * k) for k in range(MH[6])] + [i32(idx, MH[9] + 32 * k) for k in range(MH[8])]
+        starts += [i32(idx, MH[11] + 0x30 * k) for k in range(MH[10])] + [x for x in MH if 0x1000 < x < len(core)]
+        ends = rac2classes.class_ends(core, [x for x in starts if x > 0])
+        sounds = rac2classes.sound_lists(idx, MH)
+        self.textures = []  # (record words without the texels' offset, texels)
+        tex_of = {}
+        self.classes = []  # (RAC2 id, role, RAC1 id, class bytes, remap 16 bytes, bank selector, sound ids)
+        for rac2_id, (role, rac1_id) in RAC2_CLASSES.items():
+            k = ids.index(rac2_id)
+            start = i32(idx, MH[7] + 32 * k)
+            blob, largest = rac2classes.convert_class(core, start, ends[start])
+            remap = bytearray(idx[MH[7] + 32 * k + 16:MH[7] + 32 * k + 32])
+            for j in range(16):
+                t = remap[j]
+                if t == 0xff:
+                    continue
+                if t not in tex_of:
+                    texels, w, h, mips, pal, m1, m2 = tex_record(idx, MH, t, 14)
+                    ee = w * h + ((w // 2) * (h // 2) if mips >= 2 else 0)
+                    rec = [w, h, mips, vram_page(pal, "moby palette"), 0, 0]
+                    if mips >= 3 and m1 > 0:
+                        rec[4] = vram_page(m1, "moby mip 2")
+                    if mips >= 4 and m2 > 0:
+                        rec[5] = vram_page(m2, "moby mip 3")
+                    tex_of[t] = first_texture + len(self.textures)
+                    self.textures.append((rec, core[MH[24] + texels:MH[24] + texels + ee]))
+                remap[j] = tex_of[t]
+            sel, snd = sounds.get(k, (0xffff, []))
+            if len(snd) != blob[0xd]:
+                raise SystemExit("RAC2 class %d: %d sounds in its list, %d in its header" % (rac2_id, len(snd), blob[0xd]))
+            self.classes.append((rac2_id, role, rac1_id, blob, bytes(remap), sel, snd))
+            say("RAC2 class %d (%s) -> RAC1 class %d: %#x -> %#x bytes, largest vertex data %d qwords, textures %s, sounds %s (bank %s)" % (
+                rac2_id, role, rac1_id, ends[start] - start, len(blob), largest, [x for x in remap if x != 0xff], snd,
+                "level" if sel == 0xffff else "chunk %d" % sel))
+        if len(self.textures) + first_texture > 255:
+            raise SystemExit("more than 255 moby textures")
+        # the placements in the arena (gameplay +0x4c: count, then records of their own size: +0x10 the uid, +0x28 the
+        # class, +0x58.. as RAC1's +0x48..)
+        g = r2.gameplay
+        mo = struct.unpack_from("<40I", g)[0x4c // 4]
+        p = mo + 0x10
+        self.records = []  # (RAC1 id, role, RAC2 record)
+        role_of = {c[0]: (c[1], c[2]) for c in self.classes}
+        for _ in range(i32(g, mo)):
+            sz = i32(g, p)
+            cid = i32(g, p + 0x28)
+            pos = struct.unpack_from("<3f", g, p + 0x40)
+            if cid in role_of and all(ARENA_BOX[j][0] <= pos[j] <= ARENA_BOX[j][1] for j in range(3)):
+                self.records.append((role_of[cid][1], role_of[cid][0], bytes(g[p:p + sz])))
+            p += sz
+        say("RAC2 classes: %d textures added, %d placements %s" % (len(self.textures), len(self.records), {
+            r: sum(1 for x in self.records if x[1] == r) for r in sorted({x[1] for x in self.records})}))
+
+    @staticmethod
+    def rac1_record(rac2, rac1_id, pvar):
+        """A RAC2 moby record (0x88 bytes) as RAC1's (0x78, level_load.cpp's spawn pass): RAC2's +0x28..+0x88 are RAC1's
+        +0x18..+0x78 (class, scale, draw distances, position, rotation, group, the ground probe, pvars, flags, colour,
+        light set, slot); RAC2's first 0x28 bytes hold its uid at +0x10; RAC1's {size, -1, flags, uid, 0, 0}."""
+        r = bytearray(0x78)
+        struct.pack_into("<6i", r, 0, 0x78, -1, 0, i32(rac2, 0x10), 0, 0)
+        r[0x18:0x78] = rac2[0x28:0x88]
+        struct.pack_into("<i", r, 0x18, rac1_id)
+        struct.pack_into("<i", r, 0x48, -1)  # (no group: RAC2's groups are its controller's)
+        struct.pack_into("<i", r, 0x58, pvar)
+        struct.pack_into("<i", r, 0x60, 0)  # (flags: shown, updated)
+        return bytes(r)
+
+
+def sound_block(idx, H, extra):
+    """The index's class sound block (+0x70: {defs' offset, count}, {the defs' id table's offset, count}, per class
+    {list's offset, count}, then the defs, the table and the lists; level_setup.cpp's class sound pass) again with a list
+    per class of `extra` (each a list of sound ids) after the old ones: everything after the per-class entries moved."""
+    s6 = H[0x70 // 4]
+    defs_at, nd, tab_at, nt = struct.unpack_from("<4h", idx, s6)
+    n = H[6]
+    entries = [struct.unpack_from("<2h", idx, s6 + 8 + 4 * k) for k in range(n)]
+    end = max([defs_at + 32 * nd, tab_at + 4 * nt] + [o + 4 * c for o, c in entries])
+    shift = 4 * len(extra)
+    b = bytearray(struct.pack("<4h", defs_at + shift, nd, tab_at + shift, nt))
+    tail = bytearray(idx[s6 + 8 + 4 * n:s6 + end])
+    lists = bytearray()
+    new_entries = []
+    for ids in extra:
+        new_entries.append((end + shift + len(lists), len(ids)))
+        for i in ids:
+            lists += struct.pack("<2H", i, 0)
+    for o, c in entries:
+        b += struct.pack("<2h", o + shift, c)
+    for o, c in new_entries:
+        b += struct.pack("<2h", o, c)
+    b += tail + lists
+    if len(b) >= 0x8000:
+        raise SystemExit("the class sound block is too big")
+    return bytes(b)
+
+
 def write_planet(out, a):
     """planet.txt: our own small settings file of the custom planet (src/host/custom_planet.h reads it)."""
     with open(os.path.join(out, "planet.txt"), "w") as f:
@@ -623,6 +745,11 @@ def write_planet(out, a):
                   "rac2_banks 0x18 0x50\n"
                   "# AUDIO2.WAD's entries (left channels): rat2_l02_arena_a then rat2_l02_arena_b looped\n"
                   "music 4 6\n")
+        if getattr(a, "class_lines", None):
+            f.write("# the RAC2 classes converted (rac2classes.py): class <role> <RAC1 class id> <its sounds' bank: rac2_banks' index, -1 none>;\n"
+                    "# their behaviour by role: src/game/enhance/custom_classes.cpp\n")
+        for role, rac1_id, bank in getattr(a, "class_lines", []):
+            f.write("class %s %d %d\n" % (role, rac1_id, bank))
 
 
 def build(a):
@@ -701,6 +828,7 @@ def build(a):
         arena_tex.append((rec, r2.core[px:px + ee]))
         say("  texture %d (RAC2 %d): %dx%d mips %d, RAC2 pages pal %d mip %d/%d -> pal %d mip %d/%d" % (
             len(arena_tex) - 1, t, w, h, mips, pal, m1, m2, rec[3], rec[4], rec[5]))
+    conv = Rac2Classes(r2, vram_page, say, VH[14]) if a.rac2_classes else None
     say("VRAM image %#x -> %#x bytes, rows %d -> %d" % (len(v.vram), len(new_vram), len(v_rows), len(new_rows)))
 
     # --- the core
@@ -715,6 +843,7 @@ def build(a):
     tex_off = []
     for rec, ee in arena_tex:
         tex_off.append(core.put(ee) - o_texel)
+    moby_tex_off = [core.put(ee) - o_texel for _, ee in (conv.textures if conv else [])]
     core.put(bytes(0x400))  # (the exporter reads two mip levels whatever the count)
     # Veldin's parts after its texel block: particle and effect banks, the +0x74 / +0xa0 blocks, the moby classes
     # [particle_block, first tie class); the hero's sequences and the gadgets [+0x7c, end). Ties and shrubs dropped.
@@ -722,6 +851,7 @@ def build(a):
     shrub_hi = VH[31]
     core.keep(v.core, VH[25], tie_lo)
     core.keep(v.core, shrub_hi, len(v.core))
+    class_at = [core.put(c[3]) for c in (conv.classes if conv else [])]
     say("core: tfrag %#x, sky %#x, collision %#x, texel block %#x (moby texels %#x..%#x of Veldin's), kept %s, %#x bytes" % (
         o_tfrag, o_sky, o_coll, o_texel, m_lo, m_hi, [(hex(lo), hex(hi), hex(at)) for lo, hi, at in core.segs], len(core.buf)))
 
@@ -756,6 +886,19 @@ def build(a):
     set_h(0x34, tt_at)
     for k in range(VH[14]):  # moby textures: texels from the new texel block
         struct.pack_into("<i", idx, VH[15] + 16 * k, mtex[k][0] - m_lo)
+    if conv:  # the converted classes and their textures after Veldin's (both tables moved to the index's end)
+        mt = bytes(idx[VH[15]:VH[15] + 16 * VH[14]]) + b"".join(
+            struct.pack("<i6h", moby_tex_off[k], *rec) for k, (rec, _) in enumerate(conv.textures))
+        set_h(0x3c, put_index(mt))
+        set_h(0x38, VH[14] + len(conv.textures))
+        mc = bytes(idx[VH[7]:VH[7] + 32 * VH[6]]) + b"".join(
+            struct.pack("<4i", class_at[k], c[2], 0, 0) + c[4] for k, c in enumerate(conv.classes))
+        sb = sound_block(idx, VH, [c[6] for c in conv.classes])
+        set_h(0x1c, put_index(mc))
+        set_h(0x18, VH[6] + len(conv.classes))
+        set_h(0x70, put_index(sb))
+        if VH[6] + len(conv.classes) > 224:
+            raise SystemExit("more than 224 moby classes")
     set_h(0x40, 0)
     set_h(0x48, 0)
     set_h(0x60, o_texel)
@@ -879,8 +1022,37 @@ def build(a):
     for r in enemies:
         if i32(r, 0x18) == 1440:
             struct.pack_into("<i", pdata, i32(g, ptab + 8 * i32(r, 0x58)) + 0x1b8, -1)
+    ptable = bytearray(block(0x54))
+    placed = []
+    if conv:  # the converted classes' placements, each with its own pvars (our behaviour's, zeroed)
+        taken = {i32(r, 0x0c) for r in enemies} | {i32(hero, 0x0c)}
+        n_pv = len(ptable) // 8
+        rac2_uids = {i32(rec, 0x10) for _, _, rec in conv.records}
+        renumbered = 0
+        for rac1_id, role, rec in conv.records:
+            size = CLASS_PVARS[role]
+            at = align(len(pdata), 0x10)
+            pdata.extend(bytes(at + size - len(pdata)))
+            ptable += struct.pack("<2i", at, size)
+            r = bytearray(Rac2Classes.rac1_record(rec, rac1_id, n_pv))
+            n_pv += 1
+            # its uid: RAC2's own, but where the wave's enemies (Veldin's uids) took it already: a free one from 2047 down
+            # (the kill-save bitmaps hold 2048)
+            uid = i32(r, 0x0c)
+            if uid in taken or not 0 <= uid < 2048:
+                uid = max(u for u in range(2048) if u not in taken and u not in rac2_uids)
+                renumbered += 1
+            struct.pack_into("<i", r, 0x0c, uid)
+            taken.add(uid)
+            placed.append(bytes(r))
+        say("the converted classes' mobys: %d records (%d with a new uid), pvars %d .. %d" % (
+            len(placed), renumbered, n_pv - len(placed), n_pv - 1))
+        a.class_lines = []
+        for _, role, rac1_id, _, _, sel, snd in conv.classes:
+            a.class_lines.append((role, rac1_id, -1 if not snd else 0 if sel == 0xffff else sel))
+    blocks[0x54] = bytes(ptable)
     blocks[0x58] = bytes(pdata)
-    blocks[0x44] = struct.pack("<2i8x", 1 + len(enemies), n2) + bytes(hero) + b"".join(enemies)
+    blocks[0x44] = struct.pack("<2i8x", 1 + len(enemies) + len(placed), n2) + bytes(hero) + b"".join(enemies) + b"".join(placed)
     blocks[0x48] = struct.pack("<4i", 0, 0, 0, 0)  # (no moby groups: Veldin's name its own records)
     for f in range(0, 0x90, 4):
         if f not in blocks:
@@ -919,7 +1091,8 @@ def build(a):
         open(os.path.join(a.out, "index.bin"), "wb").write(bytes(idx))
         open(os.path.join(a.out, "gameplay_unpacked.bin"), "wb").write(bytes(ng))
     if not a.no_ties:
-        build_ties(r2, a.out, say, a.tie_colour_scale, a.tie_colour_min, mobys=not a.no_mobys)
+        build_ties(r2, a.out, say, a.tie_colour_scale, a.tie_colour_min, mobys=not a.no_mobys,
+                   skip=tuple(RAC2_CLASSES) if a.rac2_classes else ())
     open(os.path.join(a.out, "manifest.txt"), "w").write("\n".join(log) + "\n")
     print("wrote", a.out)
 
@@ -949,6 +1122,8 @@ def main():
     ap.add_argument("--no-mobys", action="store_true", help="the arena's static mobys not drawn (ties.mrpc without them)")
     ap.add_argument("--tie-colour-scale", type=float, default=1.25, help="the ties' instance colours scaled")
     ap.add_argument("--tie-colour-min", type=float, default=80.0, help="the ties' instance colours brightened to at least this grey")
+    ap.add_argument("--no-rac2-classes", dest="rac2_classes", action="store_false",
+                    help="RAC2's moby classes not converted (the arena's crowd, monitors and fittings drawn static, as step 4b)")
     ap.add_argument("--literal-only", action="store_true", help="WAD-encode with literal runs only")
     ap.add_argument("--dump-core", action="store_true", help="also write the unpacked core, index and gameplay")
     build(ap.parse_args())

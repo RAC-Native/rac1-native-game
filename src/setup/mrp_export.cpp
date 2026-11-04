@@ -206,6 +206,105 @@ int export_world_title(std::span<const std::byte> iso, const std::string& out_di
 
 } // namespace
 
+namespace {
+
+// One level's moby classes (<class>.mrpm) and moby textures (textures.mrpt) from its data file `wad`, into `dir`; the
+// count of what failed.
+// orig: (host)
+int export_moby_level(std::span<const std::byte> wad, int level, const std::filesystem::path& dir) {
+    int failed = 0;
+    std::vector<uint8_t> core_index, core_data;
+    if (!rac1::extract_core_from_level_wad(wad, core_index, core_data)) {
+        std::cerr << "level " << level << ": no core\n";
+        return 1;
+    }
+    const auto decoded = rac1::decode_level_core_index(
+        std::span<const std::byte>(reinterpret_cast<const std::byte*>(core_index.data()), core_index.size()),
+        std::span<const std::byte>(reinterpret_cast<const std::byte*>(core_data.data()), core_data.size()));
+    std::filesystem::create_directories(dir);
+    const auto entries = table<rac1::ClassRecord>(core_index, decoded.header.moby_classes);
+    for (const auto& asset : decoded.sub_assets) {
+        if (asset.kind != "moby_class" && asset.kind != "gadget") continue;
+        const bool gadget = asset.kind == "gadget";
+        const rac1::ClassRecord* entry = nullptr;
+        for (const auto& e : entries)
+            if (gadget ? e.class_id == asset.id : static_cast<uint32_t>(e.data) == asset.offset) {
+                entry = &e;
+                break;
+            }
+        std::vector<uint8_t> bytes(core_data.begin() + asset.offset, core_data.begin() + asset.offset + asset.size);
+        if (asset.packed) {
+            std::vector<uint8_t> un;
+            if (!rac1::decompress_wad(std::span<const std::byte>(reinterpret_cast<const std::byte*>(bytes.data()), bytes.size()), un)) {
+                std::cerr << "level " << level << " class " << asset.id << ": cannot decompress\n";
+                ++failed;
+                continue;
+            }
+            bytes = std::move(un);
+        }
+        rac1::mrp::MobyClass c;
+        c.level = level;
+        c.o_class = asset.id;
+        c.gadget = gadget;
+        if (entry != nullptr) c.texture_remap = entry->texture_remap;
+        std::span<const uint8_t> tex_table;
+        if (!gadget && decoded.header.moby_textures.count > 0)
+            tex_table = std::span<const uint8_t>(core_index.data() + decoded.header.moby_textures.offset, static_cast<size_t>(decoded.header.moby_textures.count) * 16);
+        std::string err;
+        if (!rac1::mrp::decode_class(bytes, 0, c, err, tex_table)) {
+            std::cerr << "level " << level << " class " << asset.id << ": " << err << "\n";
+            ++failed;
+            continue;
+        }
+        for (auto& pk : c.packets) {
+            std::string note;
+            if (pk.lod != 2 && !rac1::mrp::trace_kicks(pk, note)) {
+                // trace note
+            }
+        }
+        if (!rac1::mrp::write_class((dir / (std::to_string(asset.id) + ".mrpm")).string(), c)) ++failed;
+    }
+
+    // moby textures
+    rac1::LevelFileHeader wh{};
+    std::memcpy(&wh, wad.data(), sizeof wh);
+    const auto gs = std::span<const std::byte>(wad.data() + wh.vram_image.offset, static_cast<size_t>(wh.vram_image.size));
+    const auto texs = table<rac1::TextureRecord>(core_index, decoded.header.moby_textures);
+    std::vector<rac1::mrp::Texture> out;
+    for (size_t i = 0; i < texs.size(); ++i) {
+        const auto& te = texs[i];
+        rac1::mrp::Texture t;
+        t.index = static_cast<uint32_t>(i);
+        t.width = static_cast<uint32_t>(te.width);
+        t.height = static_cast<uint32_t>(te.height);
+        const size_t pal = static_cast<size_t>(te.palette) * 256;
+        if (pal + 1024 <= gs.size()) std::memcpy(t.palette.data(), gs.data() + pal, 1024);
+        size_t px = static_cast<size_t>(decoded.header.texel_block) + static_cast<size_t>(te.texels);
+        uint32_t w = t.width, h = t.height;
+        for (int m = 0; m < 2 && w > 0 && h > 0; ++m) {
+            if (px + static_cast<size_t>(w) * h > core_data.size()) break;
+            t.mips.emplace_back(core_data.begin() + static_cast<long>(px), core_data.begin() + static_cast<long>(px + static_cast<size_t>(w) * h));
+            px += static_cast<size_t>(w) * h;
+            w /= 2;
+            h /= 2;
+        }
+        const int16_t at2[2] = {te.mip1_page, te.mip2_page};
+        for (int m = 0; m < 2 && t.mips.size() == static_cast<size_t>(2 + m) && w > 0 && h > 0 && at2[m] > 0; ++m) {
+            const size_t o = static_cast<size_t>(at2[m]) * 256;
+            if (o + static_cast<size_t>(w) * h > gs.size()) break;
+            const auto* g = reinterpret_cast<const uint8_t*>(gs.data()) + o;
+            t.mips.emplace_back(g, g + static_cast<size_t>(w) * h);
+            w /= 2;
+            h /= 2;
+        }
+        out.push_back(std::move(t));
+    }
+    if (!rac1::mrp::write_textures((dir / "textures.mrpt").string(), out)) ++failed;
+    return failed;
+}
+
+}  // namespace
+
 bool export_mrp_mobys(std::span<const std::byte> iso, const std::string& out_dir, const std::string& level_arg, bool force) {
     if (level_arg == "title") {
         return export_moby_title(iso, out_dir, force) == 0;
@@ -224,94 +323,7 @@ bool export_mrp_mobys(std::span<const std::byte> iso, const std::string& out_dir
         const size_t at = static_cast<size_t>(lv.data_lba) * SECTOR, size = static_cast<size_t>(lv.data_sectors) * SECTOR;
         if (at + size > iso.size()) continue;
         const std::span<const std::byte> wad(iso.data() + at, size);
-        std::vector<uint8_t> core_index, core_data;
-        if (!rac1::extract_core_from_level_wad(wad, core_index, core_data)) {
-            std::cerr << "level " << lv.id << ": no core\n";
-            ++failed;
-            continue;
-        }
-        const auto decoded = rac1::decode_level_core_index(
-            std::span<const std::byte>(reinterpret_cast<const std::byte*>(core_index.data()), core_index.size()),
-            std::span<const std::byte>(reinterpret_cast<const std::byte*>(core_data.data()), core_data.size()));
-        std::filesystem::create_directories(dir);
-        const auto entries = table<rac1::ClassRecord>(core_index, decoded.header.moby_classes);
-        for (const auto& asset : decoded.sub_assets) {
-            if (asset.kind != "moby_class" && asset.kind != "gadget") continue;
-            const bool gadget = asset.kind == "gadget";
-            const rac1::ClassRecord* entry = nullptr;
-            for (const auto& e : entries)
-                if (gadget ? e.class_id == asset.id : static_cast<uint32_t>(e.data) == asset.offset) {
-                    entry = &e;
-                    break;
-                }
-            std::vector<uint8_t> bytes(core_data.begin() + asset.offset, core_data.begin() + asset.offset + asset.size);
-            if (asset.packed) {
-                std::vector<uint8_t> un;
-                if (!rac1::decompress_wad(std::span<const std::byte>(reinterpret_cast<const std::byte*>(bytes.data()), bytes.size()), un)) {
-                    std::cerr << "level " << lv.id << " class " << asset.id << ": cannot decompress\n";
-                    ++failed;
-                    continue;
-                }
-                bytes = std::move(un);
-            }
-            rac1::mrp::MobyClass c;
-            c.level = lv.id;
-            c.o_class = asset.id;
-            c.gadget = gadget;
-            if (entry != nullptr) c.texture_remap = entry->texture_remap;
-            std::span<const uint8_t> tex_table;
-            if (!gadget && decoded.header.moby_textures.count > 0)
-                tex_table = std::span<const uint8_t>(core_index.data() + decoded.header.moby_textures.offset, static_cast<size_t>(decoded.header.moby_textures.count) * 16);
-            std::string err;
-            if (!rac1::mrp::decode_class(bytes, 0, c, err, tex_table)) {
-                std::cerr << "level " << lv.id << " class " << asset.id << ": " << err << "\n";
-                ++failed;
-                continue;
-            }
-            for (auto& pk : c.packets) {
-                std::string note;
-                if (pk.lod != 2 && !rac1::mrp::trace_kicks(pk, note)) {
-                    // trace note
-                }
-            }
-            if (!rac1::mrp::write_class((dir / (std::to_string(asset.id) + ".mrpm")).string(), c)) ++failed;
-        }
-
-        // moby textures
-        rac1::LevelFileHeader wh{};
-        std::memcpy(&wh, wad.data(), sizeof wh);
-        const auto gs = std::span<const std::byte>(wad.data() + wh.vram_image.offset, static_cast<size_t>(wh.vram_image.size));
-        const auto texs = table<rac1::TextureRecord>(core_index, decoded.header.moby_textures);
-        std::vector<rac1::mrp::Texture> out;
-        for (size_t i = 0; i < texs.size(); ++i) {
-            const auto& te = texs[i];
-            rac1::mrp::Texture t;
-            t.index = static_cast<uint32_t>(i);
-            t.width = static_cast<uint32_t>(te.width);
-            t.height = static_cast<uint32_t>(te.height);
-            const size_t pal = static_cast<size_t>(te.palette) * 256;
-            if (pal + 1024 <= gs.size()) std::memcpy(t.palette.data(), gs.data() + pal, 1024);
-            size_t px = static_cast<size_t>(decoded.header.texel_block) + static_cast<size_t>(te.texels);
-            uint32_t w = t.width, h = t.height;
-            for (int m = 0; m < 2 && w > 0 && h > 0; ++m) {
-                if (px + static_cast<size_t>(w) * h > core_data.size()) break;
-                t.mips.emplace_back(core_data.begin() + static_cast<long>(px), core_data.begin() + static_cast<long>(px + static_cast<size_t>(w) * h));
-                px += static_cast<size_t>(w) * h;
-                w /= 2;
-                h /= 2;
-            }
-            const int16_t at2[2] = {te.mip1_page, te.mip2_page};
-            for (int m = 0; m < 2 && t.mips.size() == static_cast<size_t>(2 + m) && w > 0 && h > 0 && at2[m] > 0; ++m) {
-                const size_t o = static_cast<size_t>(at2[m]) * 256;
-                if (o + static_cast<size_t>(w) * h > gs.size()) break;
-                const auto* g = reinterpret_cast<const uint8_t*>(gs.data()) + o;
-                t.mips.emplace_back(g, g + static_cast<size_t>(w) * h);
-                w /= 2;
-                h /= 2;
-            }
-            out.push_back(std::move(t));
-        }
-        if (!rac1::mrp::write_textures((dir / "textures.mrpt").string(), out)) ++failed;
+        if (export_moby_level(wad, lv.id, dir) != 0) ++failed;
     }
 
     // Hero armor classes
@@ -475,6 +487,14 @@ bool export_mrp_world_custom(const std::string& custom_dir) {
     const std::span<const std::byte> wad(reinterpret_cast<const std::byte*>(bytes.data()), bytes.size());
     const std::filesystem::path dir = std::filesystem::path(custom_dir) / "mrp" / "world" / "level0";
     if (!export_world_level(wad, 0, dir)) return false;
+    // its moby classes and textures (the RAC2 classes the tools converted are among them): <dir>/mrp/moby/level0, which the
+    // moby renderer reads instead of Veldin's while the planet is on
+    const std::filesystem::path mdir = std::filesystem::path(custom_dir) / "mrp" / "moby" / "level0";
+    if (export_moby_level(wad, 0, mdir) != 0) {
+        std::cerr << "[setup] the custom level's moby classes: some not exported\n";
+        return false;
+    }
+    std::cout << "[setup] the custom level's moby classes and textures (" << mdir.string() << ")\n";
     // the ties no EE data stands for (<dir>/ties.mrpc, src/formats/custom_ties.h): their classes added to the world, their textures
     // the level's tie textures
     const std::filesystem::path ties = std::filesystem::path(custom_dir) / "ties.mrpc";

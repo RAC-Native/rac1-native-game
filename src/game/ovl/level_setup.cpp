@@ -4,6 +4,7 @@
 #include <game/lib/libgraph.h>
 #include <game/math/vecmath.h>
 #include <game/port_stubs.h>
+#include <host/custom_classes.h>
 
 #include <cstdlib>
 
@@ -156,6 +157,8 @@ void moby_class_register(uint32_t hdr, uint32_t tex, uint32_t remap, uint32_t cl
     }
     sw(OV(0x0019a280) + idx * 4, lwu(hdr + 0x2c));
     class_update_fn_set(static_cast<int32_t>(cls));
+    // (host, local experiment: a custom planet's own class gets our behaviour, custom_classes.h)
+    if (const uint32_t fn = custom_classes_update_fn(static_cast<int32_t>(cls)); fn != 0) sw(OV(0x00197680) + idx * 4, fn);
     sw(OV(0x0015ffc0), lwu(OV(0x0015ffc0)) + 1);
     moby_class_relocate(hdr, tex, remap, cls);
 }

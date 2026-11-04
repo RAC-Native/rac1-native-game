@@ -171,6 +171,12 @@ What changed in each release. Releases are source only: you build the game with 
   (read from their images, nothing extracted); on the planet, RAC2's level and arena sound banks loaded beside Veldin's and
   the arena's music (`rat2_l02_arena_a`, then `_b` looped) played in stereo from the disc of the voice language (the IOP's
   streams play a second sector as the right channel; the game's own streams stay mono).
+- Local experiment, planet P3: RAC2's moby classes of the arena converted into the planet's core as RAC1 classes
+  (`tools/custom_level/rac2classes.py`: the vertex data's header, the textures, the sound lists; ids 2032..2036) and placed
+  as RAC1 mobys, drawn and animated by RAC1's engine (MRP, the VU1 path, Vulkan) in place of the host-drawn stand-ins: the
+  crowd (cheers after a wave, does the wave while waiting), the monitors on posts (swaying), the gates' arms (open and close
+  at each wave, with their RAC2 sounds), the floor's fittings; their behaviour hand-written in `src/game/enhance/custom_classes.cpp`
+  (`planet.txt`'s `class` lines); `--setup --custom-level` also exports the planet's moby classes and textures.
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

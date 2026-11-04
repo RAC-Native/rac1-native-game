@@ -37,7 +37,11 @@ struct Waves {
     int kills = 0;
     bool done = false;
     uint64_t started = 0;       // the frame the running wave showed
+    uint64_t now = 0;           // the last frame stepped
+    uint64_t cleared_at = 0;    // the frame the last wave was cleared (0: none yet)
 } g_w;
+
+constexpr uint64_t kCheer = 150;  // (game frames: the crowd cheers that long after a wave is cleared)
 
 bool level_on() {
     return custom_level_active(0) && lw(0x0015ed84) == 0 && lwu(OV(0x0015ffd8)) != 0;
@@ -108,6 +112,7 @@ void custom_waves_frame(uint64_t frame) {
         if (g_w.on) std::printf("[waves] %zu waves (%s/waves.txt)\n", g_w.waves.size(), custom_level_dir().c_str());
     }
     if (!g_w.on) return;
+    g_w.now = frame;
     if (g_w.done) {
         if (g_w.end_at != 0 && frame > g_w.end_at + kEndShown) g_w.end_at = 0;  // (the end's line shown for a while)
         return;
@@ -144,6 +149,7 @@ void custom_waves_frame(uint64_t frame) {
         }
     }
     if (alive(wave) == 0 && g_w.next_at == 0) {
+        g_w.cleared_at = frame;
         if (static_cast<size_t>(g_w.wave) + 1 < g_w.waves.size()) {
             g_w.next_at = frame + kBetween;
             // the reward: the nanotech filled (as nanotech.cpp hero_health_max: Clank's 4, else *(0x15eda0))
@@ -156,6 +162,17 @@ void custom_waves_frame(uint64_t frame) {
         }
     }
 }
+
+// orig: (none) — see custom_waves.h
+WavesMood custom_waves_mood() {
+    if (!g_w.on || !level_on()) return WavesMood::Waiting;
+    if (g_w.cleared_at != 0 && g_w.now < g_w.cleared_at + kCheer) return WavesMood::Cheering;
+    if (g_w.done || g_w.wave < 0) return WavesMood::Waiting;
+    return WavesMood::Fighting;
+}
+
+// orig: (none) — see custom_waves.h
+uint32_t custom_waves_started() { return g_w.on && level_on() ? static_cast<uint32_t>(g_w.wave + 1) : 0u; }
 
 // orig: (none) — see custom_waves.h
 void custom_waves_hud() {

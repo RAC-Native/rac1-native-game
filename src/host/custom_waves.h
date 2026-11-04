@@ -19,6 +19,14 @@ namespace rac1 {
 // orig: (none) — testing: once per game frame (the host's frame loop, between frames): the challenge's state stepped
 void custom_waves_frame(uint64_t frame);
 
+// The arena's crowd and arms follow the challenge (custom_classes.cpp):
+enum class WavesMood { Waiting, Fighting, Cheering };
+// orig: (none) — the challenge's mood: Waiting before the first wave and once the round is long over (or no challenge),
+// Fighting while a wave runs, Cheering for a while after a wave is cleared or the round won
+WavesMood custom_waves_mood();
+// orig: (none) — how many waves have shown since the level loaded (the arms lower and drop at each)
+uint32_t custom_waves_started();
+
 // orig: (none) — testing: the HUD's draw (hud_draw, after the elements): the challenge's line, when one runs
 void custom_waves_hud();
 

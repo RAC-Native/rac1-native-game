@@ -611,7 +611,10 @@ void guest_textures(Level& L) {
 // orig: (host) the level's moby textures (textures.mrpt) decoded to RGBA (palette[CSM1 index], the GS's
 // 0..0x80 alpha kept) into one texture array per size, every mip
 void load_textures(Level& L) {
-    const std::string path = asset_root() + "/" + mrpw::level_dir_name(L.id) + "/textures.mrpt";
+    std::string path = asset_root() + "/" + mrpw::level_dir_name(L.id) + "/textures.mrpt";
+    // (a custom planet: its own textures with its own classes, as load_level's directory)
+    if (custom_level_active(L.id) && std::filesystem::exists(custom_level_dir() + "/mrp/moby/" + mrpw::level_dir_name(L.id) + "/textures.mrpt"))
+        path = custom_level_dir() + "/mrp/moby/" + mrpw::level_dir_name(L.id) + "/textures.mrpt";
     if (!mrp::read_textures(path, L.textures)) {
         std::fprintf(stderr, "[mrp] no moby textures %s\n", path.c_str());
         return;
@@ -729,7 +732,7 @@ void load_level(int id) {
     L.id = id;
     L.custom_gen = custom_level_generation();
     std::string dir = asset_root() + "/" + mrpw::level_dir_name(id);
-    // (a custom planet: its own classes' assets, <dir>/mrp/moby/level00 that --setup --custom-level writes, when there)
+    // (a custom planet: its own classes' assets, <dir>/mrp/moby/level0 that --setup --custom-level writes, when there)
     if (custom_level_active(id) && std::filesystem::is_directory(custom_level_dir() + "/mrp/moby/" + mrpw::level_dir_name(id)))
         dir = custom_level_dir() + "/mrp/moby/" + mrpw::level_dir_name(id);
     if (!std::filesystem::is_directory(dir)) {
