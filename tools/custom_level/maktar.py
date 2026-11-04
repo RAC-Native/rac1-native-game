@@ -758,7 +758,12 @@ ANNOUNCER = (
 )
 # RAC2's four regular enemies (the wave records' columns 0..3, its controller 0x3faaa4..0x3faba8) and their RAC1 stand-ins
 # (Veldin's classes, whose code and data the planet keeps): the shooter 2506 by the 1440, the others by the 749
-STAND_FOR = ((2506, 1440), (2850, 749), (3131, 749), (3134, 749))
+# with a scale and a health factor each (custom_arena.cpp's StandFor), as each one's role in RAC2's code suggests (its calls:
+# 2506 fires projectiles 2520 through 0x32b468, the others hit with damage spheres 0x3201e0; their sizes, the classes'
+# scale +0x24 and joints): 2506 the ranged one (Veldin's gun walker 1440), 2850 the heavy (57 joints, its own effect 2722:
+# a big, tough 749), 3131 the mid-sized fighter (a 749 a quarter bigger, twice its health), 3134 the small swarming one (a
+# smaller 749, scale 0.074 in RAC2)
+STAND_FOR = ((2506, 1440, 1.0, 1.0), (2850, 749, 1.7, 4.0), (3131, 749, 1.25, 2.0), (3134, 749, 0.8, 1.0))
 
 # RAC2's level 2 code: the challenge table (14 pointers, its .lit at gp + 0x21a0), each record {waves, the wave records,
 # the challenge to win first (-1 none, guess), the prize in bolts, 1, 0}, a wave 10 halfwords; the name function's jump
@@ -954,9 +959,9 @@ def write_planet(out, a):
                   "# German, Spanish, Italian: the voice language's), by what the arena's controller says (custom_arena.cpp)\n"
                   + "".join("announce %s %s\n" % (k, " ".join(str(e) for e in v)) for k, v in ANNOUNCER)
                   + "# the challenges' stand-in enemies (src/game/enhance/custom_arena.cpp): standin <RAC1 class> <its hidden\n"
-                    "# template's uid> <its pvars' size>; stand_for <RAC2 class> <RAC1 class>\n"
+                    "# template's uid> <its pvars' size>; stand_for <RAC2 class> <RAC1 class> <scale> <health factor>\n"
                   + "".join("standin %d %d %d\n" % t for t in getattr(a, "standin_lines", []))
-                  + "".join("stand_for %d %d\n" % t for t in STAND_FOR))
+                  + "".join("stand_for %d %d %.2f %.2f\n" % t for t in STAND_FOR))
         if getattr(a, "hazard_lines", None):
             f.write("# the hazards and items (P5, src/game/enhance/custom_arena.cpp): vent <x y z> <damage> (RAC2's 2953: a column\n"
                     "# of flames, wave column c5), tile_damage <n> (RAC2's 2563 tiles, column c4), items <class for c6> <class for c7>\n"

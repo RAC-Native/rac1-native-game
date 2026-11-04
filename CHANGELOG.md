@@ -201,6 +201,9 @@ What changed in each release. Releases are source only: you build the game with 
   over to their blades and hurt whoever comes near (column c4), the vents (RAC2's 2953, from the planet's `planet.txt`) warn
   twice and then burn in a column of flames (c5), and the floor's lifts (RAC2's 3276) bring the wave's crates up (c6 / c7:
   RAC1's crates 501 / 511, as RAC2's are of those ids); the hero hit through RAC1's own hit protocol.
+- Local experiment, the arena's enemies: a stand-in of its own for each of RAC2's four (planet.txt's `stand_for` with a size
+  and a health factor): the ranged 2506 Veldin's gun walker 1440, the heavy 2850 a big 749 with four times its health, the
+  mid-sized 3131 a 749 a quarter bigger with twice its health, the small 3134 a smaller 749.
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

@@ -38,6 +38,8 @@ constexpr uint32_t kMaxAlive = 24;         // (enemies on the floor at once: the
 constexpr uint32_t kLineGap = 300;         // (frames at least between two of the announcer's remarks)
 constexpr uint32_t PC_ITEM = 0x201, PC_VERSION = 1;
 constexpr int kBossColumn = 8, kGatesColumn = 9;
+constexpr uint32_t kScale = 0x2c;   // (a moby's draw scale)
+constexpr uint32_t kHealth = 0x20;  // (the health in the pvars of Veldin's walkers 749 and 1440: enemy_749.cpp, enemy_1440.cpp)
 
 // RAC2's four regular enemies, in the order of the wave records' columns 0..3
 constexpr int32_t kRac2Enemies[4] = {2506, 2850, 3131, 3134};
@@ -71,6 +73,14 @@ struct Challenge {
     Rule rule{};
     std::string missing;  // (empty: playable)
 };
+// A RAC2 enemy's stand-in (planet.txt's "stand_for <RAC2 class> <RAC1 class> [scale] [health]"): a RAC1 class whose code
+// the base slot runs (Veldin's: the walker 749, the gun walker 1440), drawn at `scale` times its size, with `health` times the
+// health its own setup gives it, so that each of RAC2's four enemies has its own: the role it plays, as near as these two
+// classes can play it
+struct StandFor {
+    int32_t rac1 = 0;
+    float scale = 1.0f, health = 1.0f;
+};
 struct Standin {
     int32_t uid = -1;
     uint32_t pv_size = 0;
@@ -91,7 +101,7 @@ struct Settings {
     uint32_t gen = 0xffffffffu;
     std::vector<Challenge> challenges;
     std::map<int32_t, Standin> standins;  // by RAC1 class
-    std::map<int32_t, int32_t> stand_for; // RAC2 class -> RAC1 class
+    std::map<int32_t, StandFor> stand_for; // RAC2 class -> its stand-in
     std::vector<PathCamera> cameras;      // cameras.txt's, in its order (RAC2's records 1, 2, 3 on Maktar)
     std::vector<std::pair<Vec3, int32_t>> vents;  // planet.txt's "vent": RAC2's 2953 (place, damage)
     int32_t tile_damage = 1;              // planet.txt's "tile_damage" (RAC2's 2563 pvars +0x14)
@@ -102,6 +112,10 @@ struct Enemy {
     uint32_t m = 0, pvars = 0;
     int32_t cls = 0;
     uint32_t dropped = 0;  // the level frame it dropped
+    float health = 1.0f;   // (its stand-in's health and size factors: applied once its own setup has given it its health
+    float scale = 1.0f;    //  and size, the size then kept, as its setup and its update set it again)
+    bool set = true;
+    float size = 0.0f;     // (the size it is kept at; 0: its own)
 };
 struct Gate {
     uint32_t m = 0;
@@ -116,7 +130,7 @@ struct Arena {
     int chosen = 0;               // the menu's challenge
     int running = -1;             // the challenge running
     int wave = 0;
-    std::vector<int32_t> queue;   // the wave's enemies still to drop (RAC1 classes)
+    std::vector<int32_t> queue;   // the wave's enemies still to drop (RAC2's classes)
     std::vector<Enemy> alive;
     std::vector<Gate> gates;
     int kills = 0;
@@ -205,7 +219,13 @@ const Settings& settings() {
         int32_t a = 0, b = 0;
         uint32_t size = 0;
         if (key == "standin" && in >> a >> b >> size) g_cfg.standins[a] = Standin{b, size, 0};
-        else if (key == "stand_for" && in >> a >> b) g_cfg.stand_for[a] = b;
+        else if (key == "stand_for" && in >> a >> b) {
+            StandFor f{b, 1.0f, 1.0f};
+            float sc = 0.0f, hp = 0.0f;
+            if (in >> sc && sc > 0.0f) f.scale = sc;
+            if (in >> hp && hp > 0.0f) f.health = hp;
+            g_cfg.stand_for[a] = f;
+        }
         else if (key == "tile_damage" && in >> a) g_cfg.tile_damage = a;
         else if (key == "items" && in >> a >> b) {
             g_cfg.items[0] = a;
@@ -293,9 +313,9 @@ void wave_queue(const Wave& w) {
     for (int col : {3, 1, 2, 0}) {
         const auto f = g_cfg.stand_for.find(kRac2Enemies[col]);
         if (f == g_cfg.stand_for.end()) continue;
-        const auto s = g_cfg.standins.find(f->second);
+        const auto s = g_cfg.standins.find(f->second.rac1);
         if (s == g_cfg.standins.end() || s->second.tmpl == 0) continue;
-        for (int k = 0; k < w.c[col]; ++k) g_a.queue.push_back(f->second);
+        for (int k = 0; k < w.c[col]; ++k) g_a.queue.push_back(kRac2Enemies[col]);  // (RAC2's class: its stand-in at the drop)
     }
     // (spread over the drops: the classes mixed as RAC2's gates mix them)
     for (size_t i = g_a.queue.size(); i > 1; --i) std::swap(g_a.queue[i - 1], g_a.queue[static_cast<size_t>(rand_below(static_cast<int32_t>(i)))]);
@@ -448,9 +468,18 @@ void enemies_step() {
             moby_kill(e.m);
             gone = true;
         }
+        if (!gone && !e.set && lbu(e.m + moby::kState) != 0) {
+            // (its own setup, state 0, gave it its health, pvars +0x20 for both of Veldin's walkers, and its size: now its
+            // stand-in's share)
+            swc1(e.pvars + kHealth, lwc1(e.pvars + kHealth) * e.health);
+            if (e.scale != 1.0f) e.size = lwc1(e.m + kScale) * e.scale;
+            e.set = true;
+        }
+        if (!gone && e.size > 0.0f) swc1(e.m + kScale, e.size);
         if (!gone) {
             if (trace() && (level_frame() % 120) == 0)
-                std::printf("[arena] frame %u: enemy %d at %.1f %.1f %.1f state %d flags %04x\n", level_frame(), e.cls,
+                std::printf("[arena] frame %u: enemy %d (scale %.2f, health %.1f) at %.1f %.1f %.1f state %d flags %04x\n", level_frame(), e.cls,
+                            static_cast<double>(lwc1(e.m + kScale)), static_cast<double>(lwc1(e.pvars + kHealth)),
                             static_cast<double>(lwc1(e.m + moby::kPos)), static_cast<double>(lwc1(e.m + moby::kPos + 4)),
                             static_cast<double>(lwc1(e.m + moby::kPos + 8)), lbu(e.m + moby::kState), lhu(e.m + moby::kFlags));
             ++i;
@@ -826,15 +855,16 @@ void custom_arena_gate_drop(int gate, uint32_t m) {
         return false;
     };
     for (uint32_t k = 0; k < kPerDrop && !g_a.queue.empty() && g_a.alive.size() < kMaxAlive; ++k) {
-        const int32_t cls = g_a.queue.back();
-        const Standin& s = g_cfg.standins[cls];
+        const int32_t rac2_cls = g_a.queue.back();
+        const StandFor& f = g_cfg.stand_for[rac2_cls];
+        const Standin& s = g_cfg.standins[f.rac1];
         Vec3 p;
         if (!free_spot(p)) break;
         const uint32_t e = standin_spawn(s.tmpl, s.pv_size, p, yaw);
         if (e == 0) break;
         g_a.queue.pop_back();
-        g_a.alive.push_back(Enemy{e, lwu(e + moby::kPvars), cls, level_frame()});
-        if (trace()) std::printf("[arena] frame %u: gate %d drops a %d at %.1f %.1f\n", level_frame(), gate, cls, static_cast<double>(p.x), static_cast<double>(p.y));
+        g_a.alive.push_back(Enemy{e, lwu(e + moby::kPvars), f.rac1, level_frame(), f.health, f.scale, f.health == 1.0f && f.scale == 1.0f, 0.0f});
+        if (trace()) std::printf("[arena] frame %u: gate %d drops a %d (for RAC2's %d) at %.1f %.1f\n", level_frame(), gate, f.rac1, rac2_cls, static_cast<double>(p.x), static_cast<double>(p.y));
     }
 }
 
