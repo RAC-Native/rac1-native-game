@@ -48,7 +48,7 @@ row changes only what the host draws, never the game's state.
 
 | Row | Values | Default |
 |---|---|---|
-| Renderer | OpenGL, Vulkan (experimental; from the next start, see [Vulkan](vulkan.md)); on macOS Metal only ([Metal](metal.md)) | OpenGL (macOS: Metal) |
+| Renderer | OpenGL, Vulkan (optional; from the next start, see [Vulkan](vulkan.md)); on macOS Metal only ([Metal](metal.md)) | OpenGL (macOS: Metal) |
 | Display Mode | Window, Fullscreen | Window |
 | Monitor | the connected monitors by name (DP-1, HDMI-A-1, ...) | the first one |
 | Window Size | 640x480 (the original's) to 3840x2160 (16 sizes, 4:3 and 16:9 among them) | 960x720 |
@@ -136,7 +136,7 @@ every addition. None of them changes the game's state.
 | AO Intensity | 25, 50, 75, 100, 125 (%) | 75 |
 | Sun Rays | Off, Low, Medium, High (more quality, strength and cost each step; Low has the strength of 0.4.x's Low, High of its High) | Low |
 | Surface Detail | Off, Low, High (materials: shiny metal, wet ground and puddles, water - held still, without the game's rise and fall -, lava, mud; High adds the puddles' and polished metals' reflections and the lava's heat shimmer; see [Materials](materials.md)) | High |
-| Water Reflections | Low, Medium: what Surface Detail's water mirrors. Low cube maps of the sky and the far scenery from fixed probes (one per zone of the level and body of water; nothing near, nothing that moves, never moving on its own); Medium the scene drawn again mirrored about the water at half resolution each frame (unlit, only where the water is), Ratchet and every moving object in it, the cube maps where it has nothing (see [Materials](materials.md#water-reflections); `water_reflections` in the preferences). No High: it is kept for a ray-traced mode | Medium |
+| Water Reflections | Low, Medium, Medium (RT), High (RT): what Surface Detail's water mirrors. Low cube maps of the sky and the far scenery from fixed probes (one per zone of the level and body of water; nothing near, nothing that moves, never moving on its own); Medium the scene drawn again mirrored about the water at half resolution each frame (unlit, only where the water is), Ratchet and every moving object in it, the cube maps where it has nothing; Medium (RT) the reflection ray traced through the level's static world (ties, shrubs, terrain) and shaded from what it hits, at half resolution: no planar view's hole or cut and the least flicker, but no characters or objects, about 1 ms more than Medium at 5120 x 1440 on a Radeon 890M; High (RT) the same with Ratchet, the ships and every moving object traced too (see [Materials](materials.md#water-reflections), [Rendering](rendering.md#ray-tracing-phase-3-the-mobys); `water_reflections` in the preferences: 0 Low, 1 Medium, 2 Medium (RT), 3 High (RT)). The RT values are shown only with the Vulkan renderer on a GPU with ray queries and non-uniform sampled-image indexing; saved and played elsewhere (OpenGL, another GPU) they play as Medium, said once in the log | Medium |
 | Grass | Off, Low, High: the ground a level's light file tags as grass gets a fine relief of blades (Low, no geometry), and on High also a few very low layers of blades near the camera (`grass` in the preferences) | High |
 | Ambient Particles | Off, Low, High: our own dust, embers, fireflies, rain and snow on some levels, not in the original (see [Ambient particles](particles.md); `ambient_particles` in the preferences) | High |
 
@@ -216,8 +216,8 @@ Two pages of the same name. **The pause menu's** holds a playthrough's settings,
 | Movement | Original, Strafing, RAC 3 | with the save |
 | Fades | Fast, Original | with the save |
 | Buy All Ammo | Off, On | with the save |
-| Vibration | Off, Low, High | the preferences (the machine's pad) |
-| Adaptive Triggers | Off, On (shown only when the pad in use is a DualSense) | the preferences (the machine's pad) |
+| Vibration (experimental) | Off, Low, High | the preferences (the machine's pad) |
+| Adaptive Triggers (experimental) | Off, On (shown only when the pad in use is a DualSense) | the preferences (the machine's pad) |
 | Skip Cutscenes | Original, Always | with the save |
 
 **The main menu's** holds the global settings, those of the whole game rather than of a playthrough, kept in the
@@ -375,7 +375,7 @@ Details:
 - **The channel:** Main menu > Updates > Update Channel. Players can switch between **Stable** (the
   latest release) and **Development** (`main`) at any time. A developer clone on a branch other than
   `main` stays on its branch.
-- **The installed version** is printed at start (`[orig] rac1-native 0.6.0 (v0.6.0-12-g1a2b3c4, main)`):
+- **The installed version** is printed at start (`[orig] rac1-native 0.7.0 (v0.7.0-12-g1a2b3c4, main)`):
   the release's version and, for a git clone, `git describe` and the branch, recorded by the build
   (`cmake/version.cmake`).
 - **Skip Version** is kept in `advanced_options.txt` (`update_skip <tag or commit>`); remove the

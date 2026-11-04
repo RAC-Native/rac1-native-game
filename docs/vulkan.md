@@ -1,4 +1,4 @@
-# The Vulkan renderer (experimental)
+# The Vulkan renderer (optional)
 
 An opt-in second backend for the same renderer: Options > Display > **Renderer** (OpenGL, the
 default, or Vulkan), or `RAC1_RENDERER=vulkan` for one run. It draws exactly what the OpenGL path

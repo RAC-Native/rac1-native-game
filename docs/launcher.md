@@ -147,7 +147,7 @@ setup prints (`sudo apt install ...`, `sudo dnf install ...`, `sudo pacman -S --
 and runs it as root with `pkexec` (the desktop's password window; without one, `pkexec` fails at
 once and the launcher shows the command to run in a terminal). Then it runs the setup again.
 
-The experimental [Vulkan](vulkan.md) renderer is built only when `glslc` is there (an optional
+The optional [Vulkan](vulkan.md) renderer is built only when `glslc` is there (an optional
 package; the game is otherwise built with OpenGL only). On Linux the setup's install command lists it
 with the other missing packages, so the launcher installs it only when a required package is missing
 too: install it yourself first (`glslc`; `shaderc` on Arch) to have the renderer. On Windows the
@@ -234,9 +234,9 @@ The launcher's code is in `tools/launcher/`: what it does in `core/` (shared), t
 
 ```bash
 # Windows: rac1-launcher.exe (any .NET SDK 6 or newer; the result needs only .NET Framework 4.8)
-dotnet build tools/launcher/windows/Launcher.csproj -c Release -p:LauncherVersion=0.6.0 -o out
+dotnet build tools/launcher/windows/Launcher.csproj -c Release -p:LauncherVersion=0.7.0 -o out
 # Linux: one self-contained file, rac1-launcher (.NET SDK 8 or newer, on Linux or Windows)
-dotnet publish tools/launcher/linux/Launcher.Linux.csproj -c Release -p:LauncherVersion=0.6.0 -o out
+dotnet publish tools/launcher/linux/Launcher.Linux.csproj -c Release -p:LauncherVersion=0.7.0 -o out
 ```
 
 The [launcher workflow](../.github/workflows/launcher.yml) builds both whenever the launcher's code changes, and attaches

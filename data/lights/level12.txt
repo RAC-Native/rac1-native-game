@@ -58,3 +58,6 @@ material moby 1205 tex 8 metal 0.35 1
 emissive moby 1205 tex 7  2.17 0.00
 emissive moby 1205 tex 6  2.25 0.00
 material tie 190 tex 0 metal 0.35 1
+# Surface Detail's water (docs/materials.md), put back: the lighting batches' reformat (2a468fe) left this line out. The cold
+# water under the town
+material surface 1901 tex 47 water 1 1

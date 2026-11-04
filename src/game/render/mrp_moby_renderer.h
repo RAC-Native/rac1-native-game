@@ -20,6 +20,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace rac1 {
 
@@ -75,6 +76,26 @@ void mrp_moby_diff(int win_w, int win_h, const gs::Viewport* vp, const gs::Gs& g
 void mrp_moby_diff_program(size_t primitives);
 // orig: (host) the totals of the checks (diff, shader check) at the run's end
 void mrp_moby_report();
+
+// The frame's mobys for the ray tracing's moby pass (Options > Graphics > Water Reflections High (RT): mrp_rt.cpp; Vulkan): the GPU
+// buffers the moby draws read (the level's vertices and indices; the frame's joints, parts, draw commands, normal table: their
+// VkBuffer, offset, size) and the draws of the mobys drawn in the world's view (on screen, and the shadows' off-screen casters; not
+// the menus' render targets nor the title menu's boxes), in the frame's order: a moby's parts follow one another
+struct MrpMobyRtBuf {
+    uint64_t buffer = 0, offset = 0, size = 0;
+};
+struct MrpMobyRtFrame {
+    MrpMobyRtBuf verts, indices, joints, parts, cmds, normals;
+    std::vector<uint32_t> runs;        // 4 words a draw: its first index, its index count, its draw command, its part
+    std::vector<int32_t> run_bucket;   // per draw its texture array (-1: none)
+    std::vector<float> part_world;     // 16 a part: its model -> world matrix (column-major)
+    std::vector<uint32_t> part_moby;   // per part the moby it is of
+    std::vector<uint64_t> part_pose;   // per part a hash of its pose (its world matrix, its joints): the same when its triangles are
+    std::vector<uint64_t> buckets;     // the texture arrays' VkImageView (sampler2DArray, every mip)
+};
+// orig: (host) the frame's mobys as above (the frame's buffers uploaded if they are not yet); false when the MRP draws no mobys in the
+// world's view this frame (OpenGL, a menu, the title)
+bool mrp_moby_rt_frame(MrpMobyRtFrame& out);
 
 }  // namespace rac1
 

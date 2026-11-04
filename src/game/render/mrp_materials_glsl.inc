@@ -232,52 +232,147 @@
     "    if (q.w <= 0.0 || c >= 0.0) return R;\n"                                                                                               \
     "    return o + (sqrt(b * b - c) - b) * R;\n"                                                                                               \
     "}\n"                                                                                                                                       \
-    "#ifdef RAC1_RT\n"                                                                                                                                    \
-    "/* RAC1_RT=1 (testing, ray tracing phase 0: mrp_rt.h; the seas' Vulkan variant alone): the reflection's ray traced through the level's\n"            \
-    "   static world (ties, shrubs, tfrags at their finest; no mobys yet) from the water along the reflection of a gentle normal;\n"                      \
-    "   the hit coloured from the frame's own picture (the 3D before the seas: uSsrCol, uSsrDepth, its view uSsrVP; five taps) where it lies in it - the\n"\
-    "   picture's depth there within 0.05 + 1 % of the distance - else the cube map or the sky (`miss`): the hit itself is not shaded yet\n"              \
-    "   (phase 2). uRtMode 1 on; 3 where the colour comes from (green the picture, red a hit the picture does not hold, blue no hit), 5 the\n"            \
-    "   hit's distance, 7 what was hit (red a tie, green a shrub, blue a tfrag) */\n"                                                                     \
-    "layout(set = 2, binding = 0) uniform accelerationStructureEXT uRtTlas;\n"                                                                            \
-    "vec3 sm_water_rt(vec3 P, vec3 N, vec3 Nw, vec3 miss) {\n"                                                                                            \
-    "    vec4 r = uMat2[253];\n"                                                                                                                          \
-    "    vec3 V = normalize(uShCam - P);\n"                                                                                                               \
-    "    vec3 R = reflect(-V, normalize(mix(N, Nw, 0.2)));  /* (the ripples' half slope of the cube map's: sharper, less sparkle) */\n"                   \
-    "    R = normalize(vec3(R.xy, max(R.z, 0.002)));  /* (never into the water) */\n"                                                                     \
-    "    vec4 c = r.w > 0.5 ? sm_refl_cube(sm_refl_probe(P, R), uMat2[251].x) : vec4(0.0);\n"                                                                                             \
-    "    vec4 sky = r.w > 0.5 && uMat2[251].y >= 0.0 ? sm_refl_cube(R, uMat2[251].y) : vec4(0.0);\n"                                                \
-    "    vec3 env = mix(mix(miss, sky.rgb, sky.a), c.rgb, c.a);\n"                                                                                                             \
-    "    int dbg = uRtMode >> 1;\n"                                                                                                                       \
-    "    rayQueryEXT q;\n"                                                                                                                                \
-    "    rayQueryInitializeEXT(q, uRtTlas, gl_RayFlagsOpaqueEXT, 0xffu, P + N * 0.02, 0.02, R, 4000.0);\n"                                                \
-    "    while (rayQueryProceedEXT(q)) {}\n"                                                                                                              \
-    "    if (rayQueryGetIntersectionTypeEXT(q, true) == gl_RayQueryCommittedIntersectionNoneEXT) return dbg == 1 ? vec3(0.0, 0.0, 1.0) : dbg >= 2 ? vec3(0.0) : env;\n"\
-    "    float t = rayQueryGetIntersectionTEXT(q, true);\n"                                                                                               \
-    "    if (dbg == 2) return vec3(fract(t / 8.0), clamp(t / 150.0, 0.0, 1.0), 0.2);\n"                                                                   \
-    "    if (dbg == 3) {\n"                                                                                                                               \
-    "        int kind = rayQueryGetIntersectionInstanceCustomIndexEXT(q, true) >> 22;\n"                                                                  \
-    "        return kind == 0 ? vec3(1.0, 0.2, 0.2) : kind == 1 ? vec3(0.2, 1.0, 0.2) : vec3(0.2, 0.3, 1.0);\n"                                           \
-    "    }\n"                                                                                                                                             \
-    "    vec3 H = P + R * t;\n"                                                                                                                           \
-    "    float k = 0.0;\n"                                                                                                                                \
-    "    vec3 col = vec3(0.0);\n"                                                                                                                         \
-    "    if (uMat[0].w != 0.0) {\n"                                                                                                                       \
-    "        vec2 uv;\n"                                                                                                                                  \
-    "        float dz = sm_ssr_dz(H, uv);\n"                                                                                                              \
-    "        if (uv.x >= 0.0 && dz > -1e8) {\n"                                                                                                           \
-    "            float tol = 0.05 + 0.01 * (uSsrVP * vec4(H, 1.0)).w;\n"                                                                                  \
-    "            vec2 e = smoothstep(vec2(0.0), vec2(0.03), uv) * smoothstep(vec2(0.0), vec2(0.03), 1.0 - uv);\n"                                         \
-    "            k = e.x * e.y * (1.0 - smoothstep(tol, 2.0 * tol, abs(dz)));\n"                                                                          \
-    "            vec2 o = 3.0 / vec2(textureSize(uSsrCol, 0));  /* (over a few pixels, as the planar view: the lit windows sparkled) */\n"                \
-    "            col = (textureLod(uSsrCol, uv, 0.0).rgb * 2.0 + textureLod(uSsrCol, uv + o, 0.0).rgb + textureLod(uSsrCol, uv - o, 0.0).rgb\n"           \
-    "                   + textureLod(uSsrCol, uv + vec2(o.x, -o.y), 0.0).rgb + textureLod(uSsrCol, uv - vec2(o.x, -o.y), 0.0).rgb) / 6.0;\n"              \
-    "        }\n"                                                                                                                                         \
-    "    }\n"                                                                                                                                             \
-    "    if (dbg == 1) return vec3(1.0 - k, k, 0.0);\n"                                                                                                   \
-    "    return mix(env, col, k);\n"                                                                                                                      \
-    "}\n"                                                                                                                                                 \
-    "#endif\n"                                                                                                                                            \
+    "#ifdef RAC1_RT\n"                                                                                                                                                    \
+    "/* RAC1_RT=1 (testing, ray tracing: mrp_rt.h; the seas' Vulkan variant alone): the reflection's ray traced through the level's static\n"                                                                                                                                                    \
+    "   world (ties, shrubs, tfrags at their finest; High (RT): the frame's mobys too) from the water along the reflection of a gentle normal. uRtMode: bit 0 on;\n"                                                                                                                                                    \
+    "   bits 1..3 RAC1_RT_DEBUG (1 where the colour comes from: green the picture, red the hit's own shading, blue no hit; 2 the hit's\n"                                                                                                                                                    \
+    "   distance; 3 what was hit: red a tie, green a shrub, blue a tfrag; 4 the hit's own shading everywhere, the picture left out; 5 the reflection alone);\n"                                                                                                                                                    \
+    "   bits 4..5 RAC1_RT_SHADE (0 the picture where the hit lies in it, else the cube map / the sky - phase 0; 1 the picture there, else\n"                                                                                                                                                    \
+    "   the hit shaded from its own triangle - phase 2; 2 the hit's own shading always); bits 6..7 the pass (0 traced here, 1 the\n"                                                                                                                                                    \
+    "   half-resolution trace: the colour and its distance into its image, 2 that image upsampled - its texels at this pixel's distance -,\n"                                                                                                                                                    \
+    "   traced here where none is) */\n"                                                                                                                                                    \
+    "layout(set = 2, binding = 0) uniform accelerationStructureEXT uRtTlas;\n"                                                                                                                                                    \
+    "layout(std430, set = 2, binding = 1) readonly buffer RtInsts { uvec4 rt_inst[]; };  /* per instance: its first triangle, its first colour, its kind */\n"                                                                                                                                                    \
+    "layout(std430, set = 2, binding = 2) readonly buffer RtTris { uvec4 rt_tri[]; };    /* per triangle three: mrp_rt.h RtTri */\n"                                                                                                                                                    \
+    "layout(std430, set = 2, binding = 8) readonly buffer RtMTris { uvec4 rt_mtri[]; };  /* the frame's mobys' triangles (High (RT)): RtTri, the colours RGBA8 */\n"        \
+    "layout(std430, set = 2, binding = 3) readonly buffer RtRCols { uint rt_rcol[]; };   /* the resident tie / shrub colours */\n"                                                                                                                                                    \
+    "layout(std430, set = 2, binding = 4) readonly buffer RtTCols { uint rt_tcol[]; };   /* the tfrags' */\n"                                                                                                                                                    \
+    "layout(set = 2, binding = 5) uniform sampler2DArray uRtTex[64];                      /* the world's texture arrays, the mobys' after them */\n"                                                                                                                                                    \
+    "layout(std430, set = 2, binding = 7) readonly buffer RtFrame { vec4 rt_fog; vec4 rt_fogcol; vec4 rt_par; };  /* rt_par: the ripples' spread, the upsample's */  /* the world's fog (mrp_rt_note_fog) */\n" \
+    "layout(set = 2, binding = 6) uniform sampler2D uRtHalf;                              /* the half-resolution trace */\n"                                                                                                                                                    \
+    "vec3 sm_rt_out = vec3(0.0);\n"                                                                                                                                                    \
+    "float sm_rt_out_d = -1.0;\n"                                                                                                                                                    \
+    "/* a lit colour (the tfrags' or the resident ones; none past the buffer - a level's first frame: grey) */\n" \
+    "vec4 sm_rt_col(bool tf, uint i) {\n" \
+    "    uint n = uint(tf ? rt_tcol.length() : rt_rcol.length());\n" \
+    "    return i < n ? unpackUnorm4x8(tf ? rt_tcol[i] : rt_rcol[i]) : vec4(0.5);\n" \
+    "}\n" \
+    "/* the surface of triangle `prim` of instance `ii` at the barycentrics `bc`: the texel at the level a footprint of `foot` (in the\n"                                                                                                                                                    \
+    "   instance's own units) gives, times the vertices' lit colours as the world's draws combine them (TFX, TCC); alpha 255-based */\n"                                                                                                                                                    \
+    "vec4 sm_rt_surface(uint ii, uint prim, vec2 bc, float foot) {\n"                                                                                                                                                    \
+    "    bool mob = (ii & 0x800000u) != 0u;  /* (a moby: its custom index the first of its triangles in rt_mtri, bit 23 set) */\n"        \
+    "    uvec4 I = mob ? uvec4(ii & 0x7fffffu, 0u, 3u, 0u) : rt_inst[ii];\n"        \
+    "    uint tr = 3u * (I.x + prim);\n"        \
+    "    uvec4 A = mob ? rt_mtri[tr] : rt_tri[tr], B = mob ? rt_mtri[tr + 1u] : rt_tri[tr + 1u], C = mob ? rt_mtri[tr + 2u] : rt_tri[tr + 2u];\n"        \
+    "    vec3 w = vec3(1.0 - bc.x - bc.y, bc.x, bc.y);\n"        \
+    "    vec2 st = uintBitsToFloat(A.xy) * w.x + uintBitsToFloat(A.zw) * w.y + uintBitsToFloat(B.xy) * w.z;\n"        \
+    "    vec4 c;\n"        \
+    "    if (mob) c = unpackUnorm4x8(C.x) * w.x + unpackUnorm4x8(C.y) * w.y + unpackUnorm4x8(C.z) * w.z;\n"        \
+    "    else if (I.z == 2u) c = sm_rt_col(true, C.x) * w.x + sm_rt_col(true, C.y) * w.y + sm_rt_col(true, C.z) * w.z;\n"        \
+    "    else c = sm_rt_col(false, I.y + C.x) * w.x + sm_rt_col(false, I.y + C.y) * w.y + sm_rt_col(false, I.y + C.z) * w.z;\n"        \
+    "    if (I.z == 1u) c.a = 128.0 / 255.0;\n"        \
+    "    uint tex = B.z, word = C.w, b = tex & 0xffu;\n"                                                                                                                                                    \
+    "    if (b == 0xffu || (word & 1u) != 0u) return vec4(c.rgb, c.a * 255.0);\n"                                                                                                                                                    \
+    "    int mips = int((word >> 22) & (mob ? 7u : 3u)) + 1;\n"        \
+    "    vec2 tsz = vec2(textureSize(uRtTex[nonuniformEXT(b)], 0).xy);\n"                                                                                                                                                    \
+    "    float lod = log2(max(foot, 1e-6)) + uintBitsToFloat(B.w) + log2(max(tsz.x, tsz.y));\n"                                                                                                                                                    \
+    "    vec4 t = textureLod(uRtTex[nonuniformEXT(b)], vec3(st, float(tex >> 8)), clamp(lod, 0.0, float(mips - 1)));\n"                                                                                                                                                    \
+    "    uint tfx = (word >> 1) & 3u, tcc = (word >> 3) & 1u;\n"                                                                                                                                                    \
+    "    vec4 o;\n"                                                                                                                                                    \
+    "    if (tfx == 0u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0); o.a = tcc != 0u ? t.a * c.a * (255.0 / 128.0) : c.a; }\n"                                                                                                                                                    \
+    "    else if (tfx == 1u) { o.rgb = t.rgb; o.a = tcc != 0u ? t.a : c.a; }\n"                                                                                                                                                    \
+    "    else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }\n"                                                                                                                                                    \
+    "    return vec4(clamp(o.rgb, 0.0, 1.0), o.a * 255.0);\n"                                                                                                                                                    \
+    "}\n"                                                                                                                                                    \
+    "vec3 sm_water_rt(vec3 P, vec3 N, vec3 Nw, vec3 miss) {\n"                                                                                                                                                    \
+    "    vec4 r = uMat2[253];\n"                                                                                                                                                    \
+    "    int dbg = (uRtMode >> 1) & 7, shade = (uRtMode >> 4) & 3, pass = (uRtMode >> 6) & 3;\n"                                                                                                                                                    \
+    "    float d0 = length(uShCam - P);\n"                                                                                                                                                    \
+        "    if (pass == 2) {  /* the half-resolution trace read around the pixel (its own place twice, four more rt_par.y half texels away -\n" \
+    "                         the planar view's spread: Medium reads its view so), each tap kept where its distance is the pixel's */\n" \
+    "        vec2 hs = 1.0 / vec2(textureSize(uRtHalf, 0)), c0 = gl_FragCoord.xy * 0.5 * hs, o = rt_par.y * hs;\n" \
+    "        vec4 sum = vec4(0.0), any = vec4(0.0);\n" \
+    "        for (int k = 0; k < 5; ++k) {\n" \
+    "            vec2 d = k == 0 ? vec2(0.0) : vec2((k & 1) != 0 ? 1.0 : -1.0, k < 3 ? 1.0 : -1.0);\n" \
+    "            vec4 v = textureLod(uRtHalf, c0 + d * o, 0.0);\n" \
+    "            float wd = v.a > 0.0 ? 1.0 - smoothstep(0.04, 0.12, abs(v.a - d0) / d0) : 0.0;  /* (the water's own slope: some percent a texel at a low angle) */\n" \
+    "            sum += vec4(v.rgb, 1.0) * (wd * (k == 0 ? 2.0 : 1.0));\n" \
+    "            any += v.a > 0.0 ? vec4(v.rgb, 1.0) * (1.0 - smoothstep(0.1, 0.4, abs(v.a - d0) / d0)) : vec4(0.0);\n" \
+    "        }\n" \
+    "        if (sum.w > 0.05) {\n" \
+    "            if (dbg == 5) sm_refl_dbg = sum.rgb / sum.w;\n" \
+    "            return sum.rgb / sum.w;\n" \
+    "        }\n" \
+    "        /* (else any tap of water near the pixel's distance - an edge, the far water's quick change of distance: a pixel traced alone\n" \
+    "           costs its whole wave the trace) */\n" \
+    "        if (any.w > 0.05) return dbg == 1 ? vec3(1.0, 1.0, 0.0) : any.rgb / any.w;\n" \
+    "        if (dbg == 1) return vec3(1.0, 0.0, 1.0);  /* (magenta: the half image had nothing here, traced in the pixel) */\n" \
+    "    }\n" \
+"    vec3 V = (uShCam - P) / d0;\n"                                                                                                                                                    \
+    "    vec3 R = reflect(-V, normalize(mix(N, Nw, 0.2)));  /* (the ripples' half slope of the cube map's: sharper, less sparkle) */\n"                                                                                                                                                    \
+    "    R = normalize(vec3(R.xy, max(R.z, 0.002)));  /* (never into the water) */\n"                                                                                                                                                    \
+    "    vec4 c = r.w > 0.5 ? sm_refl_cube(sm_refl_probe(P, R), uMat2[251].x) : vec4(0.0);\n"                                                                                                                                                    \
+    "    vec4 sky = r.w > 0.5 && uMat2[251].y >= 0.0 ? sm_refl_cube(R, uMat2[251].y) : vec4(0.0);\n"                                                                                                                                                    \
+    "    vec3 env = mix(mix(miss, sky.rgb, sky.a), c.rgb, c.a);\n"                                                                                                                                                    \
+    "    /* the footprint of a pixel per unit of distance (the 3D's pixel; twice that at half resolution) and the ripples' spread (rt_par.x, radians): the hit's texture level */\n"                                                                                                                                                    \
+    "#ifdef RAC1_RT_UPSAMPLE  /* (the seas reading the half-resolution trace: no ray query in this variant - its registers are the sea's) */\n" \
+    "    return env;\n" \
+    "#else\n" \
+    "    float pix = 2.0 / (uShProj.y * float(textureSize(uSsrDepth, 0).y)) * (pass == 1 ? 2.0 : 1.0);\n"                                                                                                                                                    \
+    "    rayQueryEXT q;\n"                                                                                                                                                    \
+    "    rayQueryInitializeEXT(q, uRtTlas, gl_RayFlagsNoneEXT, 0xffu, P + N * 0.02, 0.02, R, 4000.0);\n"                                                                                                                                                    \
+    "    while (rayQueryProceedEXT(q)) {  /* (a candidate: a triangle of a cluster with alpha-tested textures - kept where its texel passes the world's test) */\n"                                                                                                                                                    \
+    "        if (rayQueryGetIntersectionTypeEXT(q, false) != gl_RayQueryCandidateIntersectionTriangleEXT) continue;\n"                                                                                                                                                    \
+    "        mat4x3 m = rayQueryGetIntersectionObjectToWorldEXT(q, false);\n"                                                                                                                                                    \
+    "        float tc = rayQueryGetIntersectionTEXT(q, false);\n"                                                                                                                                                    \
+    "        vec4 s = sm_rt_surface(uint(rayQueryGetIntersectionInstanceCustomIndexEXT(q, false)), uint(rayQueryGetIntersectionPrimitiveIndexEXT(q, false)),\n"                                                                                                                                                    \
+    "                               rayQueryGetIntersectionBarycentricsEXT(q, false), ((d0 + tc) * pix + tc * rt_par.x) / max(length(m[0]), 1e-6));\n"                                                                                                                                                    \
+    "        if (s.a >= 96.0) rayQueryConfirmIntersectionEXT(q);\n"                                                                                                                                                    \
+    "    }\n"                                                                                                                                                    \
+    "    vec3 col;\n"                                                                                                                                                    \
+    "    if (rayQueryGetIntersectionTypeEXT(q, true) == gl_RayQueryCommittedIntersectionNoneEXT) {\n"                                                                                                                                                    \
+    "        col = dbg == 1 ? vec3(0.0, 0.0, 1.0) : dbg == 2 || dbg == 3 ? vec3(0.0) : env;\n"                                                                                                                                                    \
+    "    } else {\n"                                                                                                                                                    \
+    "        float t = rayQueryGetIntersectionTEXT(q, true);\n"                                                                                                                                                    \
+    "        uint ii = uint(rayQueryGetIntersectionInstanceCustomIndexEXT(q, true));\n"                                                                                                                                                    \
+    "        if (dbg == 2) col = vec3(fract(t / 8.0), clamp(t / 150.0, 0.0, 1.0), 0.2);\n"                                                                                                                                                    \
+    "        else if (dbg == 3) { uint kind = (ii & 0x800000u) != 0u ? 3u : rt_inst[ii].z; col = kind == 0u ? vec3(1.0, 0.2, 0.2) : kind == 1u ? vec3(0.2, 1.0, 0.2) : kind == 2u ? vec3(0.2, 0.3, 1.0) : vec3(1.0, 1.0, 0.2); }\n"        \
+    "        else {\n"                                                                                                                                                    \
+    "            vec3 H = P + R * t;\n"                                                                                                                                                    \
+    "            float k = 0.0;\n"                                                                                                                                                    \
+    "            vec3 pic = vec3(0.0);\n"                                                                                                                                                    \
+    "            if (uMat[0].w != 0.0 && shade < 2 && dbg != 4) {\n"                                                                                                                                                    \
+    "                vec2 uv;\n"                                                                                                                                                    \
+    "                float dz = sm_ssr_dz(H, uv);\n"                                                                                                                                                    \
+    "                if (uv.x >= 0.0 && dz > -1e8) {\n"                                                                                                                                                    \
+    "                    float tol = 0.05 + 0.01 * (uSsrVP * vec4(H, 1.0)).w;\n"                                                                                                                                                    \
+    "                    vec2 e = smoothstep(vec2(0.0), vec2(0.03), uv) * smoothstep(vec2(0.0), vec2(0.03), 1.0 - uv);\n"                                                                                                                                                    \
+    "                    k = e.x * e.y * (1.0 - smoothstep(tol, 2.0 * tol, abs(dz)));\n"                                                                                                                                                    \
+    "                    vec2 o = 3.0 / vec2(textureSize(uSsrCol, 0));  /* (over a few pixels, as the planar view: the lit windows sparkled) */\n"                                                                                                                                                    \
+    "                    pic = (textureLod(uSsrCol, uv, 0.0).rgb * 2.0 + textureLod(uSsrCol, uv + o, 0.0).rgb + textureLod(uSsrCol, uv - o, 0.0).rgb\n"                                                                                                                                                    \
+    "                           + textureLod(uSsrCol, uv + vec2(o.x, -o.y), 0.0).rgb + textureLod(uSsrCol, uv - vec2(o.x, -o.y), 0.0).rgb) / 6.0;\n"                                                                                                                                                    \
+    "                }\n"                                                                                                                                                    \
+    "            }\n"                                                                                                                                                    \
+    "            vec3 own = env;\n"                                                                                                                                                    \
+    "            if ((shade > 0 || dbg == 4) && k < 1.0) {\n"                                                                                                                                                    \
+    "                mat4x3 m = rayQueryGetIntersectionObjectToWorldEXT(q, true);\n"                                                                                                                                                    \
+    "                own = sm_rt_surface(ii, uint(rayQueryGetIntersectionPrimitiveIndexEXT(q, true)), rayQueryGetIntersectionBarycentricsEXT(q, true),\n"                                                                                                                                                    \
+    "                                    ((d0 + t) * pix + t * rt_par.x) / max(length(m[0]), 1e-6)).rgb;\n" \
+    "                /* the world's fog, by the reflection's whole path (the ties' F: clamp(fog.y + depth x fog.x, fog.w, fog.z)) */\n" \
+    "                if (rt_fogcol.w > 0.5) own = mix(rt_fogcol.rgb, own, clamp(rt_fog.y + (d0 + t) * rt_fog.x, rt_fog.w, rt_fog.z) / 255.0);\n"                                                                                                                                                    \
+    "            }\n"                                                                                                                                                    \
+    "            col = dbg == 1 ? vec3(0.0, k, (1.0 - k) * (shade > 0 ? 0.0 : 1.0)) + vec3((1.0 - k) * (shade > 0 ? 1.0 : 0.0), 0.0, 0.0) : mix(own, pic, k);\n"                                                                                                                                                    \
+    "        }\n"                                                                                                                                                    \
+    "    }\n"                                                                                                                                                    \
+    "    if (dbg == 5) sm_refl_dbg = col;  /* (5: the reflection alone, as RAC1_REFLECT_DEBUG=2 shows Medium's) */\n" \
+    "    if (pass == 1) {\n"                                                                                                                                                    \
+    "        sm_rt_out = col;\n"                                                                                                                                                    \
+    "        sm_rt_out_d = d0;\n"                                                                                                                                                    \
+    "    }\n"                                                                                                                                                    \
+    "    return col;\n"                                                                                                                                                    \
+    "#endif\n" \
+    "}\n"                                                                                                                                                    \
+    "#endif\n"                                                                                                                                                    \
     "/* the water's reflection: `miss` (the level's sky colour) where the cube map has nothing; on Medium the planar view where the water lies\n"         \
     "   at its plane (faded out over a few tenths of a unit off it, and where the surface is not flat - a stream's slope), read at the pixel's\n"         \
     "   own place moved by the ripples (Nw, a gentle slope, against the face's N: less far away), over a few of its texels (the ripples moving the read over the\n"        \

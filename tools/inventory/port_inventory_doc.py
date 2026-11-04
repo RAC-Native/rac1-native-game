@@ -433,7 +433,8 @@ From `docs/reversing/cut_content.md` of the development repository (the details 
 - **Classes with no code, empty, or never placed**, level by level (Novalis, Aridia, Eudora, Kerwan, Rilgar, Nebula G34,
   Umbris, Gaspar, Batalia, Orxon, Pokitaru): empty updates (a bare `jr ra`), the "Lamp (Damaged)" replacement models, the
   hoverboard boost pads (they do nothing on their own); Eudora's self-deleting Transport Ships (484, as Fred: the retail
-  update is the retire, the beta and prototype builds keep a real one of about 1.8 KB); classes with code that nothing
+  update is the retire, the beta and prototype builds keep a real one of about 1.8 KB: brought back from the beta by the
+  Cut Content option); classes with code that nothing
   places (Aridia's Sand Mouse 437 and Sandshark Egg 755, Eudora's 161 and 437, Nebula G34's 156 / 1085..1089 / 1633,
   Umbris's 848 / 1221 / 1222 and others; "never spawned" is known only from the immediates, no data table was scanned).
   Not cut, once listed so: 483 is the hand class of items 0x18 / 0x1f (no model), 634 is spawned by Veldin (at

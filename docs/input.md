@@ -174,7 +174,7 @@ the new actions (the weapons) get their defaults.
 
 The game drives the pad last used (the one the Controls page names): its motors for Advanced >
 Vibration, and on a DualSense its adaptive triggers and light bar for Advanced > Adaptive Triggers (a
-row shown only when that pad is a DualSense). What makes the pulses, and how each system's pad is
+row shown only when that pad is a DualSense). Both are an experiment, our own, and may still change. What makes the pulses, and how each system's pad is
 reached, is in [Advanced options](advanced.md#vibration-10). In short:
 
 - A DualSense is written its own output report (`src/host/dualsense.cpp`): on Linux through its

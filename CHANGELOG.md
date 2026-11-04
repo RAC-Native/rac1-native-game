@@ -5,84 +5,29 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
-- Movie subtitles of our own (Options > Language > Movie Subtitles, Off by default; RAC1_MOVIE_SUBTITLES for testing): the
-  original shows none over its movies; `./setup.sh --movie-subtitles` (or the launcher's Make movie subtitles) makes them
-  on the player's machine with Whisper (faster-whisper in `assets/stt/`, or an OpenAI-compatible server with `--stt-url`)
-  from each movie's own sound track, English and Italian by default, as hand-editable SubRip files in
-  `assets/movie-subtitles/` (an edited file is never written again); drawn in the game's subtitle look, in the text
-  language; a missing or broken file shows nothing and logs a line. `rac1-native --setup --movie-audio` decodes a movie's
-  track for it. See docs/movie-subtitles.md.
+- Movie subtitles (Options > Language > Movie Subtitles, Off by default; RAC1_MOVIE_SUBTITLES for testing): the original
+  shows none over its movies; the game now shows SubRip files from `assets/movie-subtitles/` (a fan-made subtitle pack,
+  installed with the launcher's Install subtitle pack or unzipped by hand, never in the repository) in the game's
+  subtitle look, in the text language; a missing or broken file shows nothing and logs a line. For the pack's makers:
+  `tools/movie_subtitles.py` (Whisper) and `rac1-native --setup --movie-audio`. See docs/movie-subtitles.md.
 
-### Discs
-- The European PAL disc version 2.00 (the "Platinum" re-release, a later build, 1.02) is supported as the game's disc:
-  its own region table `data/regions/SCES-50916-2.00.txt` (chosen by the boot executable's sha1), with a unit for the base
-  executable's core, which that build moved (loaded back at the North American addresses when the game starts:
-  `src/game/ovl/region_core.cpp`); its changed functions run the North American ports (the 1.02 fixes are not ported yet).
-  New `tools/overlay_match/region_maps.py check-core`. Its stand-ins' jump tables find their `case` labels (on Rilgar
-  a stand-in's switch fell through to its default every frame, leaking its stack frame until the EE stack reached the
-  level's data: the crash on arrival).
+## 0.7.0
 
-- Corrected Texts (main menu > Options > Advanced, Off by default, global; RAC1_CORRECTED_TEXTS for testing): with the
-  North American disc, the European and English strings the later discs correct (the Italian memory card messages' French
-  wording, the Spanish map legend in Italian, French ammo messages, a German card message...: 73 strings) shown as the PAL
-  disc 2.00, the PAL disc 1.00 or the Japanese disc has them. Those discs give "the corrected texts" as data discs: a PAL
-  disc beside the North American one is now taken, only its levels' gameplay files extracted (about 11 MB).
-- The setup no longer extracts again, at every run, a data disc it finds again in `assets/iso/`.
-- 1.02 Fixes (main menu > Options > Advanced, Off by default, global; RAC1_FIXES102=<n>,... for testing): the later
-  build's own fixes ported onto the North American code, first batch: New Game keeps the sound settings, explosions leave
-  moby slots free, at most 20 Glove of Doom agents, the Thruster-Pack's jump sound, an animation's next frame kept in its
-  sequence, Ratchet's colour pulse in cutscenes, the talk prompt, the pause menu's goals and counter.
-- 1.02 Gameplay (main menu > Options > Advanced, Off by default, global; RAC1_GAMEPLAY102=<n>,... for testing): the later
-  build's fixes that change how the game plays, ported onto the North American code (the levels' own copies too): the
-  RYNO's targets from the target list, the Visibomb's steering ending in the talk / vendor state, deadly ground for
-  Ratchet in the Hologuise, the hoverboard's ride-off and quicksand in a vehicle, the guards of the characters that take
-  Ratchet's input, his tilt to the ground, the Hologuise's use. The weapons' generated code takes host calls on the North
-  American build's functions only (`host_ntsc`, `tools/codegen/gen_asm.py`).
-
-### Controls and gameplay
-- New Game: two windows in the game's style. The first, **Original / Modern**, sets the gameplay rows only (Modern: Quick
-  Select Pause, Aiming Modern, Movement RAC 3, Buy All Ammo, Vibration High, Adaptive Triggers, Skip Cutscenes Always;
-  Original: all off); the second, the **graphics preset** (Current, preselected; Original; Low; Medium; High), sets the
-  Graphics page only. The Display page is never touched. Experimental is gone: its saves load as Modern, graphics left alone.
-- Options > Advanced: the main menu's page holds only the global settings (none yet: no entry until there is one); the
-  gameplay rows are a playthrough's, on the pause menu's page and kept with the save.
-- Main menu > Options > Advanced > Cut Content (Off by default; global, kept in the preferences, read at a level's load):
-  Kerwan's citizens "Fred 1 / 2 / 3" (classes 915..917, 14 placements) stay instead of retiring on their first frame and
-  turn to face Ratchet near them (they hold their one-frame rest pose; no collision); each is put on the ground under its
-  placement at its first update (seven stood 0.03 to 0.25 above it). `RAC1_CUT_CONTENT=fred` for testing
-  (docs/advanced.md, "Cut Content"). Port inventory: the Bolt Thief's "second behaviour", the Snagglebeast's unreferenced
-  draw, L18:0x2ea1f8, the oxygen element, Orxon's turning citizen and the unregistered item classes corrected.
-- Options > Language > Voice (Same as Text, the default; English, French, German, Spanish, Italian; Japanese with the
-  Japanese data disc): the spoken language apart from the text's, for the dialogue, the scenes, the Vendor, the movies
-  and Ratchet's efforts (`voice_language` in the preferences, `RAC1_VOICE_LANGUAGE`; docs/settings.md, "Voice").
-- Options > Language, in the main menu and the pause menu: Text (the game's language, main menu only, as the game's own
-  page), Voice and Subtitles as left / right rows; Subtitles can be set before New Game, is kept in the preferences and
-  put in every new or loaded game (docs/settings.md, "Language").
-- Mouse: a Direct mode, the new default (Options > Controls > Mouse Mode): the mouse turns the camera, and the aim while
-  strafing or aiming, by an angle proportional to its movement (raw motion where the system has it), with no stick
-  simulation, acceleration or speed cap; its own Aim Sensitivity while aiming; Stick keeps the earlier simulated right
-  stick (#117).
-- Keyboard and mouse defaults: the right mouse button aims (L2), the thumb button and F swing the wrench, Left Ctrl also
-  crouches, and the mouse wheel (a new kind of binding on the Controls page) goes through the weapons (#117, #61).
-- Next Weapon / Previous Weapon: two new actions (the wheel and X by default, bindable on the pad too) that put the
-  quick select's next or previous weapon in hand without opening it, or move its ring's selection while it is open (#61).
-- Advanced > Vibration (Off, Low, High; High in Modern and Experimental): the gamepad vibrates for damage, death, hard
-  landings, nearby explosions, each weapon's shot (by weapon), the wrench's hits, bolts and the ship's flight, through the
-  kernel's force feedback on Linux and XInput on Windows, with no new library; the game's state is only read (#10).
-- Vibration: each event a short pulse with a crisp end (the motors used to keep the last, weakest strength of a fade
-  until the next event on Linux: the kernel's ff-memless ignored a stop right after an upload); a DualSense driven
-  through its own output report (Linux hidraw, Windows HID): its two actuators as left and right, so explosions, hits,
-  the thrown wrench and flying enemies are felt from their side; Advanced > Adaptive Triggers (with a DualSense: L2 and
-  R2's resistance by weapon with Modern aiming, the light bar by health) (#10).
-- Advanced > Skip Cutscenes (Original, Always; Always in Modern and Experimental): Start skips every in-engine scene and
-  movie on every planet, through the game's own skip, as on Veldin and in Challenge Mode.
-- Advanced > Aiming: Modern, No Zoom, Modern aiming at the normal camera distance, as Ratchet & Clank 3's lock-strafe (#70).
-
-### Platforms
-- macOS on Apple Silicon (#119): a Metal renderer, the Vulkan renderer's code on a Metal layer, its shaders made from the
-  Vulkan GLSL at build time (glslc and SPIRV-Cross: `brew install shaderc spirv-cross`, which the setup asks for); NEON for the
-  vector units' SIMD, checked bit for bit against SSE (`tests/neon/vu_neon_equiv.cpp`); the POSIX layer on macOS; the movies
-  with Homebrew's FFmpeg. The game state over a five-level run hashes the same as on Linux. See [Metal](docs/metal.md).
+New discs and new ways to use them: the European Platinum re-release (PAL 2.00) runs as the game's
+disc, the setup finds the disc images in `assets/iso/` by itself and lists them in the launcher, and
+other releases' discs can be added as data discs, for the Japanese voices (Options > Language >
+Voice) and the later discs' corrected texts. Three optional Advanced rows bring the later build's
+own fixes (1.02 Fixes, 1.02 Gameplay) and the corrected texts to the North American disc, and Cut
+Content brings back Kerwan's citizens and Eudora's Transport Ships. Options are reorganised (Display
+and Graphics as the machine's settings, one Original / Enhanced switch with a preset, Language, a
+two-step New Game). Also new: Water Reflections (Low, Medium, and on Vulkan with ray queries Medium
+(RT) and High (RT)), grass, MXAO, Anya-Thoughtmane's lighting batches 1 to 3, a direct mouse, the
+mouse wheel and weapon cycling, an experimental controller vibration (with the DualSense's
+triggers), Skip Cutscenes, macOS on Apple Silicon (a contributor's Metal renderer), a cheaper frame
+on the CPU and the GPU, and the fixes from the 0.6.0 reports. The modern lighting and the other
+graphics additions are optional and off by default (Graphics: Original). The Vulkan renderer is no
+longer experimental: it is an optional renderer, OpenGL still the default; the ray-traced
+reflections need it on a GPU with ray queries. Playtested on Linux.
 
 ### Graphics
 - Options > Display and Graphics are the machine's settings: kept in the preferences only, set from the main menu and the
@@ -96,26 +41,11 @@ What changed in each release. Releases are source only: you build the game with 
   keeps every row, so A/B is one press), a **Preset** (Low, Medium, High; Custom when the rows match none), then every addition:
   Lighting (Low, Medium, High: no Original value any more), the shadows, lights, occlusion, sun rays, Surface Detail, Grass
   and Ambient Particles, which before stayed on with Lighting Original. Old preferences and saves: Lighting Original reads as
-  Graphics Original (Lighting High), Low to High as Enhanced with that value. Experimental mode: Graphics Enhanced, the preset High
-  (Grass High too). The debug menu's Enhancements tab has the same switch and preset at its top.
-- Options > Graphics, the preset High (and so New Game > Experimental): Ambient Occlusion MXAO instead of GTAO, Sun Rays Low
-  instead of High (too strong; stronger ones by hand). Rows set to the old High now show Custom.
+  Graphics Original (Lighting High), Low to High as Enhanced with that value. The preset High has Grass High too. The debug menu's Enhancements tab has the same switch and preset at its top.
+- Options > Graphics, the preset High (also offered by New Game's graphics window): Ambient Occlusion MXAO instead of GTAO, Sun
+  Rays Low instead of High (too strong; stronger ones by hand). Rows set to the old High now show Custom.
 - Options (pause menu): Display has a picture of its own, the game's Help menu picture for Moves (Ratchet gliding over a city),
   no longer Graphics' "GFX". The main menu's Options list shows no pictures.
-- Lights: Anya-Thoughtmane's lighting batch 1 (#102) merged line by line: metal for the vendor, the bolts, the OmniWrench, the
-  Magneboots and the pilot's helmet on every level, materials and lamps on Veldin, Novalis (the waterworks, the bridge), Aridia
-  (most of its metal, the spot lamps, their sun 38.6 / 16.7), Kerwan (the gold surfaces, the landing pad's lamps, the street lamps
-  a little dimmer, its motes taken out), Eudora and Rilgar (a light experimental rain), Umbris's, Batalia's and Gaspar's particles,
-  Orxon's ash, embers and snow (in place of its dust), and on Hoven no Sun Rays and faint motes beside the snow.
-- Lights: Anya-Thoughtmane's lighting batches 2 and 3 and their Test 3 tweaks (#102, #120) merged line by line: metals, emissive
-  surfaces and lamps from Blarg to Veldin's finale, more moby classes for every level (crates, teleporters, foot switches, robo-birds),
-  Ratchet's own roughness (on every level, in `classes.txt`) and the stone-like 100 roughness surfaces on Veldin and Novalis, Al's shop on Kerwan, Batalia's deck and
-  ground as metal (no puddles), Gaspar's ash falling, Hoven's white ash in place of the motes, Pokitaru's fireflies off, ash on
-  Gemlik and rain on Oltanis; our water, grass, particles and aimed lines kept.
-- Materials: a material can glow too (`glow <strength> [threshold]` on its line, or an emissive line for the same texture): a metal
-  with a lit bulb in its texture is both, not emissive alone.
-- Debug menu: the levels' seas (water, lava, sand) can be picked and given a material (Lights tab, aimed or clicked; Textures tab,
-  "Seas drawn"); a distant surface can be picked; the ambient particles have a tab of their own, with Solo per line.
 - Water: no Water row any more (Daino after Novalis and Rilgar: Surface Detail's water over the game's own looks better); old
   preferences' `water` and saves' item 52 are read and ignored. Kept from its four rounds, under Surface Detail (Low or High): the
   tagged seas drawn still, at the middle of the heights the game's swell gives them - drawn with the GS's integer depth, the
@@ -133,28 +63,147 @@ What changed in each release. Releases are source only: you build the game with 
   it never draws). OpenGL and Vulkan; `water_reflections` in the preferences.
 - Water Reflections Medium lighter at the same look: the mirrored view drawn unlit (the game's own colours), only over the rectangle
   the water covers, and without the ties and shrubs outside it or under the water.
-- Debug menu, Enhancements: a Water reflections row (Off, Low, Medium) next to Surface Detail, live, with its cost; "Save as my
-  settings" and the preset combo take it (Off is saved as Low: the Graphics page has Low and Medium); under it, with Medium, the
-  planar view's resolution (1/2, 1/3, 1/4; this run only).
-- Ray tracing, phase 0 (testing, hidden: `RAC1_RT=1`, Vulkan with ray queries only): the seas' water traces its reflection through the
-  level's static world (ties, shrubs, tfrags; acceleration structures built per packet / tfrag entry at the level's load, the top
-  level partitioned by zone cell) and takes the hit's colour from the frame's picture, else the cube map or the sky; the profiler's
-  Seas and Ray tracing stages ([Rendering](docs/rendering.md#ray-tracing-phase-0)).
+- Water Reflections Medium (RT) (Options > Graphics; Italian "Medio (RT)"): phase 2's ray-traced reflection as a value of the row,
+  shown only on Vulkan with ray queries and non-uniform sampled-image indexing (a saved one elsewhere plays as Medium, logged);
+  `water_reflections 2` in the preferences (0 Low and 1 Medium unchanged). The device's ray tracing is turned on whenever it has it,
+  so the value works when picked during play (the level's structures made then); `RAC1_RT=1` / `0` stays the testing override. The
+  acceleration structures' compaction barrier no longer names the copy stage (a validation error without ray tracing maintenance 1)
+  ([Rendering](docs/rendering.md#water-reflections-medium-rt)). Before it became a value it was tested behind `RAC1_RT=1`: phase 0
+  traced the static world (ties, shrubs, tfrags) and took the hit's colour from the frame's picture, phase 2 shaded the hit from its
+  own triangle at half resolution ([Rendering](docs/rendering.md#ray-tracing-phase-2); `RAC1_RT_SHADE`, `RAC1_RT_BLUR`, `RAC1_RT_CONE`).
+- Water Reflections High (RT) (Italian "Alto (RT)"; `water_reflections 3`), RT phase 3: the mobys in the trace too - skinned by a
+  compute pass into world space, a bottom-level structure per moby kept / refitted / rebuilt, their instances in the top level's
+  dynamic partition, shaded from the moby's texture and lit colours; about 0.4 to 0.7 ms more than Medium (RT) on a Radeon 890M;
+  `RAC1_RT_MOBYS`, the profiler's Ray tracing: mobys stage ([Rendering](docs/rendering.md#ray-tracing-phase-3-the-mobys)).
 - Grass (Options > Graphics, off by default): the ground tagged as grass gets a fine relief of blades (Low, no geometry) and a few very
   low layers of blades near the camera (High), in the texture's colours, bending with the wind and away from Ratchet. Seeded on Veldin,
   Novalis and Kerwan.
 - Grass High: no blades through the dirt paths laid over the meadow (a stencil of where the grass is the ground seen), no straight
   edge where they end, faded per pixel out to 40 units instead of 24 (no visible boundary while walking), and subtler: Low's own tufts
   grown into narrow blades with lighter tips.
-- Materials: the `grass` type (docs/materials.md).
+
+### Lighting (the optional modern lighting)
+- Lights: Anya-Thoughtmane's lighting batch 1 (#102) merged line by line: metal for the vendor, the bolts, the OmniWrench, the
+  Magneboots and the pilot's helmet on every level, materials and lamps on Veldin, Novalis (the waterworks, the bridge), Aridia
+  (most of its metal, the spot lamps, their sun 38.6 / 16.7), Kerwan (the gold surfaces, the landing pad's lamps, the street lamps
+  a little dimmer, its motes taken out), Eudora and Rilgar (a light experimental rain), Umbris's, Batalia's and Gaspar's particles,
+  Orxon's ash, embers and snow (in place of its dust), and on Hoven no Sun Rays and faint motes beside the snow.
+- Lights: Anya-Thoughtmane's lighting batches 2 and 3 and their Test 3 tweaks (#102, #120) merged line by line: metals, emissive
+  surfaces and lamps from Blarg to Veldin's finale, more moby classes for every level (crates, teleporters, foot switches, robo-birds),
+  Ratchet's own roughness (on every level, in `classes.txt`) and the stone-like 100 roughness surfaces on Veldin and Novalis, Al's shop on Kerwan, Batalia's deck and
+  ground as metal (no puddles), Gaspar's ash falling, Hoven's white ash in place of the motes, Pokitaru's fireflies off, ash on
+  Gemlik and rain on Oltanis; our water, grass, particles and aimed lines kept.
+- Lights: Eudora's ambient particles, fireflies and motes (Daino's).
 - Lights: an `emit` line can be aimed (`aim dx dy dz cone`): a spot lighting only what is in front of it. Clank's eye lights on Novalis
   shine forward from his eyes and no longer light Ratchet's head behind him (also dimmed: intensity 0.35, radius 0.45).
-- Debug menu: an Enhancements tab switches the lighting, the shadows, the lights, the occlusion, the sun rays, the materials, the
-  emissive surfaces, the ambient particles (by kind) and the grass live, with each one's profiler time; "Save as
-  my settings" keeps them. The light editor has an Aim for the lights per class; the profiler has a Grass stage.
+- Materials: a material can glow too (`glow <strength> [threshold]` on its line, or an emissive line for the same texture): a metal
+  with a lit bulb in its texture is both, not emissive alone.
+- Materials: the `grass` type (docs/materials.md).
 - Ambient Occlusion: MXAO and MXAO 1/2 (Options > Graphics), Anya-Thoughtmane's suggestion (#101, #118, #120): smooth normals over a
   wider footprint so low-poly shrubs, terrain and Drek's Fleet get soft creases instead of jagged lines, a Vogel disc of taps over
   a depth pyramid (OpenGL and Vulkan).
+
+### Gameplay
+- New Game: two windows in the game's style. The first, **Original / Modern**, sets the gameplay rows only (Modern: Quick
+  Select Pause, Aiming Modern, Movement RAC 3, Buy All Ammo, Vibration High, Adaptive Triggers, Skip Cutscenes Always;
+  Original: all off); the second, the **graphics preset** (Current, preselected; Original; Low; Medium; High), sets the
+  Graphics page only. The Display page is never touched. Experimental is gone: its saves load as Modern, graphics left alone.
+- Options > Advanced: the main menu's page holds only the global settings (none yet: no entry until there is one); the
+  gameplay rows are a playthrough's, on the pause menu's page and kept with the save.
+- Main menu > Options > Advanced > Cut Content (Off by default; global, kept in the preferences, read at a level's load):
+  Kerwan's citizens "Fred 1 / 2 / 3" (classes 915..917, 14 placements) stay instead of retiring on their first frame and
+  turn to face Ratchet near them (no collision); each is put on the ground under its
+  placement at its first update (seven stood 0.03 to 0.25 above it). `RAC1_CUT_CONTENT=fred` for testing
+  (docs/advanced.md, "Cut Content"). Port inventory: the Bolt Thief's "second behaviour", the Snagglebeast's unreferenced
+  draw, L18:0x2ea1f8, the oxygen element, Orxon's turning citizen and the unregistered item classes corrected.
+- Cut Content: Kerwan's citizens no longer stand in their rest pose with the arms out (#128): they play the idle of
+  Nebula G34's citizen (class 1105, the same skeleton), read from the player's disc at the level's load and put in their
+  classes' sequence slot from host memory; without it they keep the rest pose (docs/advanced.md, "Cut Content").
+- Cut Content: Eudora's Transport Ships (class 484, `RAC1_CUT_CONTENT=ships`): their update ported from the beta build
+  (retail's retires them): hidden until Ratchet enters their box, they fly their path and drop the enemies placed for
+  them (Circular Saw Enemies, Blarg Troopers), two with a short scripted camera (docs/advanced.md, "Cut Content").
+- Options > Language > Voice (Same as Text, the default; English, French, German, Spanish, Italian; Japanese with the
+  Japanese data disc): the spoken language apart from the text's, for the dialogue, the scenes, the Vendor, the movies
+  and Ratchet's efforts (`voice_language` in the preferences, `RAC1_VOICE_LANGUAGE`; docs/settings.md, "Voice").
+- Options > Language, in the main menu and the pause menu: Text (the game's language, main menu only, as the game's own
+  page), Voice and Subtitles as left / right rows; Subtitles can be set before New Game, is kept in the preferences and
+  put in every new or loaded game (docs/settings.md, "Language").
+- Mouse: a Direct mode, the new default (Options > Controls > Mouse Mode): the mouse turns the camera, and the aim while
+  strafing or aiming, by an angle proportional to its movement (raw motion where the system has it), with no stick
+  simulation, acceleration or speed cap; its own Aim Sensitivity while aiming; Stick keeps the earlier simulated right
+  stick (#117).
+- Keyboard and mouse defaults: the right mouse button aims (L2), the thumb button and F swing the wrench, Left Ctrl also
+  crouches, and the mouse wheel (a new kind of binding on the Controls page) goes through the weapons (#117, #61).
+- Next Weapon / Previous Weapon: two new actions (the wheel and X by default, bindable on the pad too) that put the
+  quick select's next or previous weapon in hand without opening it, or move its ring's selection while it is open (#61).
+- Advanced > Vibration (experimental; Off, Low, High; High with New Game's Modern): the gamepad vibrates for damage, death, hard
+  landings, nearby explosions, each weapon's shot (by weapon), the wrench's hits, bolts and the ship's flight, through the
+  kernel's force feedback on Linux and XInput on Windows, with no new library; the game's state is only read (#10).
+- Vibration: each event a short pulse with a crisp end (the motors used to keep the last, weakest strength of a fade
+  until the next event on Linux: the kernel's ff-memless ignored a stop right after an upload); a DualSense driven
+  through its own output report (Linux hidraw, Windows HID): its two actuators as left and right, so explosions, hits,
+  the thrown wrench and flying enemies are felt from their side (#10).
+- Advanced > Adaptive Triggers (experimental; Off, On; a row shown only when the pad in use is a DualSense, kept as the machine's preference;
+  On in Modern): L2 and R2's resistance by weapon with Modern aiming, the light bar by health; on Linux the pad's hidraw node
+  needs a udev rule, else the kernel's force feedback is used and the log says so (docs/input.md) (#10).
+- Advanced > Skip Cutscenes (Original, Always; Always with New Game's Modern): Start skips every in-engine scene and
+  movie on every planet, through the game's own skip, as on Veldin and in Challenge Mode.
+- Advanced > Aiming: Modern, No Zoom, Modern aiming at the normal camera distance, as Ratchet & Clank 3's lock-strafe (#70).
+
+### Discs
+- The European PAL disc version 2.00 (the "Platinum" re-release, a later build, 1.02) is supported as the game's disc:
+  its own region table `data/regions/SCES-50916-2.00.txt` (chosen by the boot executable's sha1), with a unit for the base
+  executable's core, which that build moved (loaded back at the North American addresses when the game starts:
+  `src/game/ovl/region_core.cpp`). Its changed functions that the port generates are translated from its own code (stand-ins), so
+  they carry the 1.02 build's behaviour; those the port has by hand run the North American port, where the 1.02 Fixes and 1.02
+  Gameplay rows bring the 1.02 changes ported so far, as on the other discs.
+  New `tools/overlay_match/region_maps.py check-core`. Its stand-ins' jump tables find their `case` labels (on Rilgar
+  a stand-in's switch fell through to its default every frame, leaking its stack frame until the EE stack reached the
+  level's data: the crash on arrival) (#64, #127).
+- Corrected Texts (main menu > Options > Advanced, Off by default, global; RAC1_CORRECTED_TEXTS for testing): with the
+  North American disc, the European and English strings the later discs correct (the Italian memory card messages' French
+  wording, the Spanish map legend in Italian, French ammo messages, a German card message...: 73 strings) shown as the PAL
+  disc 2.00, the PAL disc 1.00 or the Japanese disc has them. Those discs give "the corrected texts" as data discs: a PAL
+  disc beside the North American one is now taken, only its levels' gameplay files extracted (about 11 MB).
+- 1.02 Fixes (main menu > Options > Advanced, Off by default, global; RAC1_FIXES102=<n>,... for testing): the later
+  build's own fixes ported onto the North American code, first batch: New Game keeps the sound settings, explosions leave
+  moby slots free, at most 20 Glove of Doom agents, the Thruster-Pack's jump sound, an animation's next frame kept in its
+  sequence, Ratchet's colour pulse in cutscenes, the talk prompt, the pause menu's goals and counter.
+- 1.02 Gameplay (main menu > Options > Advanced, Off by default, global; RAC1_GAMEPLAY102=<n>,... for testing): the later
+  build's fixes that change how the game plays, ported onto the North American code (the levels' own copies too): the
+  RYNO's targets from the target list, the Visibomb's steering ending in the talk / vendor state, deadly ground for
+  Ratchet in the Hologuise, the hoverboard's ride-off and quicksand in a vehicle, the guards of the characters that take
+  Ratchet's input, his tilt to the ground, the Hologuise's use. The weapons' generated code takes host calls on the North
+  American build's functions only (`host_ntsc`, `tools/codegen/gen_asm.py`).
+- Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
+  identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
+  1.00, else PAL 2.00), the data discs that give something (the Japanese disc; a PAL disc beside the North American one),
+  the others not used with one line saying why (a PAL disc beside the PAL game's disc, the pre-release builds, a second
+  image of a release). An image added later is
+  picked up by the next setup (`--check` says so); `--iso` / `--data-iso` still win; `--remove-data-disc` forgets one data
+  disc, `--discs` prints the choice. The setup no longer removes the other region's live link in `assets/iso/`
+  (docs/setup.md, "Which disc images").
+- Data discs: `./setup.sh --data-iso <image>` (repeatable, kept for the next setups; `--no-data-discs` forgets them) adds
+  another release's disc as a source of data only; the Japanese disc (SCPS-15037) is extracted into its own folder and
+  gives the Japanese voices (docs/setup.md, "Data discs"). Discs are told apart by their boot executable's sha1: the PAL
+  disc 2.00 is no longer taken for 1.00, and the Japanese disc's serial is SCPS-15037 (not SCPS-15055).
+- The setup no longer extracts again, at every run, a data disc it finds again in `assets/iso/`.
+
+### Launcher and setup
+- Launcher: Settings > Disc images lists the disc images the setup finds and what each one is for (game disc, data disc,
+  not used and why); **Add a disc image...** adds one where it is (its path in `assets/iso/more-discs.txt`, nothing
+  copied), **Remove the data disc** removes one (`--remove-data-disc`). With no image chosen, the setup picks the game's
+  disc itself (docs/launcher.md, "Settings").
+- Launcher: a new launcher is downloaded only once the player says yes, and checked against the SHA-256 the release lists for
+  it before it replaces the running one; the Windows launcher's file properties name its company, product and description, and
+  each release has a `.sha256` file beside each launcher. docs/launcher.md says how to check the file and report an
+  antivirus false positive (F-Secure's `Drop.Win64.APC.HEUR`, #115).
+
+### Platforms
+- macOS on Apple Silicon (#119): a Metal renderer, the Vulkan renderer's code on a Metal layer, its shaders made from the
+  Vulkan GLSL at build time (glslc and SPIRV-Cross: `brew install shaderc spirv-cross`, which the setup asks for); NEON for the
+  vector units' SIMD, checked bit for bit against SSE (`tests/neon/vu_neon_equiv.cpp`); the POSIX layer on macOS; the movies
+  with Homebrew's FFmpeg. The game state over a five-level run hashes the same as on Linux. See [Metal](docs/metal.md).
 
 ### Performance
 - The world's draws that cannot fail the alpha test (opaque textures and vertex colours) drawn with early depth testing and
@@ -175,37 +224,44 @@ What changed in each release. Releases are source only: you build the game with 
   values; `RAC1_PERF_VU_CLAMP`).
 - The generated game code's VU0 operations skip building the VU0 flags in the routines that never read them (176 of the
   generated files): the game code about 5% less time a frame (Veldin 1.25 to 1.18 ms); the same game state (`RAC1_PERF_VU0_NF`).
-
-### Launcher and setup
-- Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
-  identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
-  1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs
-  beside the game's disc, the PAL disc 2.00, the pre-release builds, a second image of a release). An image added later is
-  picked up by the next setup (`--check` says so); `--iso` / `--data-iso` still win; `--remove-data-disc` forgets one data
-  disc, `--discs` prints the choice. The setup no longer removes the other region's live link in `assets/iso/`
-  (docs/setup.md, "Which disc images").
-- Launcher: Settings > Disc images lists the disc images the setup finds and what each one is for (game disc, data disc,
-  not used and why); **Add a disc image...** adds one where it is (its path in `assets/iso/more-discs.txt`, nothing
-  copied), **Remove the data disc** removes one (`--remove-data-disc`). With no image chosen, the setup picks the game's
-  disc itself (docs/launcher.md, "Settings").
-- Data discs: `./setup.sh --data-iso <image>` (repeatable, kept for the next setups; `--no-data-discs` forgets them) adds
-  another release's disc as a source of data only; the Japanese disc (SCPS-15037) is extracted into its own folder and
-  gives the Japanese voices (docs/setup.md, "Data discs"). Discs are told apart by their boot executable's sha1: the PAL
-  disc 2.00 is no longer taken for 1.00, and the Japanese disc's serial is SCPS-15037 (not SCPS-15055).
-- Launcher: a new launcher is downloaded only once the player says yes, and checked against the SHA-256 the release lists for
-  it before it replaces the running one; the Windows launcher's file properties name its company, product and description, and
-  each release has a `.sha256` file beside each launcher. docs/launcher.md says how to check the file and report an
-  antivirus false positive (F-Secure's `Drop.Win64.APC.HEUR`, #115).
+- Ambient Occlusion MXAO lighter (no stored level 0: the pyramid from level 1, the face's normal and the near taps from the
+  depth's gathers): 5120 x 1440 on a Radeon 890M, Vulkan 6.5 to 4.8 ms, OpenGL 8.2 to 6.2 ms; MXAO 1/2 a little less; the other
+  modes unchanged (`RAC1_AO_PROF` times each pass).
+- The EE journal's pages appended without a zero fill, and the moby observer's record made in place (`RAC1_PERF_COPIES`); the same
+  picture and game state.
+- Tried and left off by default, the gain too small to measure here (each exact or nearly so; docs/performance.md): the sky drawn
+  after the leading opaque tfrag batches (`RAC1_PERF_SKY_LATE=1`), a cache of the Euler conversion's rows
+  (`RAC1_PERF_EULER_CACHE=1`), a cache of the mobys' collision meshes for the segment test (`RAC1_PERF_COLL_MESH=1`).
 
 ### Fixes
+- Surface Detail's water put back where the lighting batches' reformat (2a468fe) left its lines out: Rilgar's harbour and canals,
+  Novalis's gorge, stream, waterworks and cave columns, Hoven's water under the town (they drew as the game's water, no reflection).
 - Windows: a game folder on a drive that is not NTFS (exFAT, FAT32: an external drive) lost `clang.exe` (#126, #88): MSYS2's
   clang package has it, `clang-cpp.exe` and the two `x86_64-w64-mingw32-clang*.exe` as hard links to `clang++.exe`, which
   those drives cannot hold. `toolchain.ps1` (and the launcher, before it runs an older one) copies the missing linked files
   from their target (`lld.exe`, `llvm-cov.exe`, `unzip.exe`, `libdeflate-gzip.exe` too), says when the drive is not NTFS,
   and names the drive's file system in the antivirus message when it is still missing.
-- Materials: a level takes 254 emissive surfaces and materials, not 126, and a `classes.txt` line takes a slot only on the levels
-  that have its class: with Anya-Thoughtmane's batches 2 and 3 seven levels ran out and dropped lines (Gemlik 76 of 202, its bolts
-  among them). The slots' table is a storage buffer now (OpenGL and Vulkan), the Vulkan lighting uniform buffer 5632 bytes.
+- Options > Graphics > Monitor: two monitors with the same name ("Generic PnP Monitor" twice) are told apart by their place on
+  the desktop ("Generic PnP Monitor (at 1920,0)"), so the one chosen is the one the game opens on after a restart (#111).
+- Vulkan: the world's push constants are 128 bytes, not 144, and the ambient occlusion's 176 bytes of parameters are in a
+  uniform buffer: past the 128 bytes some drivers (Intel's) have, which can draw a level black (#113). At the start the log
+  names the device and checks every feature, limit and target format the renderer relies on: a missing one is named and the
+  game opens with OpenGL; without `shaderFloat64` the tfrags are made on the CPU, and a lost device is said in the log (#113).
+- OpenGL: the ties, foliage and mobys (Ratchet too) no longer vanish or turn into floating pieces of terrain and dark shapes from
+  one frame to the next on some integrated GPUs (an Intel UHD 620 under Windows, #113): each draw now finds its data through an
+  instanced vertex attribute instead of `gl_BaseInstance`. The same picture elsewhere.
+- Intel GPUs (a UHD 620 under Windows, #113): with Vulkan the tfrags (the terrain) are made on the CPU on an Intel GPU of
+  generation 9 or older, whose doubles are slow, and elsewhere a level's first tfrag dispatch is split into short submits and
+  timed (too slow: the CPU from then on; `RAC1_TFRAG_CPU`); the world's texture loop is bounded so a driver cannot hang on it.
+  With Intel's Windows OpenGL driver the world's and mobys' multi-draws go as single draws (`RAC1_GL_SINGLE_DRAWS`, the same
+  picture); the log names the OpenGL driver and its uniform limits, and a world or moby program that does not link says so.
+- Vulkan and Metal: the timing of a level's first tfrag dispatches now decides on every level: the chunks of a frame of
+  fewer than 64 tfrags (the first frames of most levels: Kerwan, Rilgar, Hoven, Drek's Fleet...) are filled up with the
+  frame's own tfrags again instead of left out, so the slow-GPU fallback to the CPU (`RAC1_TFRAG_CPU`) is no longer
+  skipped there (#113, found in #116).
+- Setup: a build folder configured for a compiler that a system update has since replaced is configured afresh, and a build
+  that fails in a kept build folder is tried once more from a fresh configuration before the update gives up: an update no
+  longer needs a new game folder (#114).
 - The levels' seas near the camera: on OpenGL a clipped triangle reaching behind the eye was drawn through it in some frames
   (Pokitaru, swimming among the posts: the near water white or dark every few frames, with any lighting and any option); it is
   now cut at the near plane, as Vulkan did, and Vulkan draws the near water it had left out.
@@ -216,22 +272,10 @@ What changed in each release. Releases are source only: you build the game with 
   reflection faded to the sky's where a pixel covers more than about half a unit of water, Surface Detail's ripples faded wave by
   wave where finer than the pixel (the glint widened instead);
   still camera at the start's dock, 32:9: the far sea's flashing pixels 14 533 -> 1 578 (Surface Detail Off: 1 889).
-- Options > Graphics > Monitor: two monitors with the same name ("Generic PnP Monitor" twice) are told apart by their place on
-  the desktop ("Generic PnP Monitor (at 1920,0)"), so the one chosen is the one the game opens on after a restart (#111).
-- Vulkan: the world's push constants are 128 bytes, not 144, and the ambient occlusion's 176 bytes of parameters are in a
-  uniform buffer: past the 128 bytes some drivers (Intel's) have, which can draw a level black (#113). At the start the log
-  names the device and checks every feature, limit and target format the renderer relies on: a missing one is named and the
-  game opens with OpenGL; without `shaderFloat64` the tfrags are made on the CPU, and a lost device is said in the log (#113).
-- Setup: a build folder configured for a compiler that a system update has since replaced is configured afresh, and a build
-  that fails in a kept build folder is tried once more from a fresh configuration before the update gives up: an update no
-  longer needs a new game folder (#114).
-- Debug menu: changing level (the Levels tab, `RAC1_GOTO`) during a movie stops the movie first, as its skip does: its sound
-  no longer plays on and its last picture no longer stays on the screen over the next level (#101). Testing: `RAC1_MOVIE_AT`.
-- Debug menu: the free hoverboard's jump plays once (take-off, in the air, landing) and goes back to riding, as the race board's
-  on Kalebo III: before, the riding played the jump's animation on a loop. Every jump is the same, 0.93 up and 0.6 s long, as
-  the race board's, whatever the frame's length; a held cross does not jump again (#101).
-- Materials: a level now takes 126 emissive surfaces and materials, not 30 - with the lines for every level, the lines past the
-  30th were dropped ("metal rendering gives up after a set number of marked metals", #102).
+- Materials: a level takes 254 emissive surfaces and materials, not 30: past the 30th the lines were dropped ("metal rendering
+  gives up after a set number of marked metals", #102), and with Anya-Thoughtmane's batches 2 and 3 seven levels ran out (Gemlik 76
+  of 202, its bolts among them). A `classes.txt` line takes a slot only on the levels that have its class; the slots' table is a
+  storage buffer now (OpenGL and Vulkan), the Vulkan lighting uniform buffer 5632 bytes.
 - Materials: a polished metal (roughness under about 0.4) no longer shows a sharp, jumping mirror of the last frame: the picture
   is mixed in less and blurred, a hit is tested more tightly, and a moby never mirrors its own last pose (#102).
 - Materials: a metal's mirror is dimmed in the sun's shadow and on the faces turned from the sun (#102).
@@ -242,18 +286,21 @@ What changed in each release. Releases are source only: you build the game with 
   pick takes the joint that carries the surface at the point and the moby whose surface is nearest; Anya-Thoughtmane's joint lines
   were converted (Clank's eyes now on Clank, moby 601 joint 4; the dogs' on their eyes, joints 53 and 54; the vendor's light on
   joint 30, Aridia's spot lamps on joint 3, the rest unchanged in place).
-- Vulkan and Metal: the timing of a level's first tfrag dispatches now decides on every level: the chunks of a frame of
-  fewer than 64 tfrags (the first frames of most levels: Kerwan, Rilgar, Hoven, Drek's Fleet...) are filled up with the
-  frame's own tfrags again instead of left out, so the slow-GPU fallback to the CPU (`RAC1_TFRAG_CPU`) is no longer
-  skipped there (#113, found in #116).
-- OpenGL: the ties, foliage and mobys (Ratchet too) no longer vanish or turn into floating pieces of terrain and dark shapes from
-  one frame to the next on some integrated GPUs (an Intel UHD 620 under Windows, #113): each draw now finds its data through an
-  instanced vertex attribute instead of `gl_BaseInstance`. The same picture elsewhere.
-- Intel GPUs (a UHD 620 under Windows, #113): with Vulkan the tfrags (the terrain) are made on the CPU on an Intel GPU of
-  generation 9 or older, whose doubles are slow, and elsewhere a level's first tfrag dispatch is split into short submits and
-  timed (too slow: the CPU from then on; `RAC1_TFRAG_CPU`); the world's texture loop is bounded so a driver cannot hang on it.
-  With Intel's Windows OpenGL driver the world's and mobys' multi-draws go as single draws (`RAC1_GL_SINGLE_DRAWS`, the same
-  picture); the log names the OpenGL driver and its uniform limits, and a world or moby program that does not link says so.
+- Debug menu: changing level (the Levels tab, `RAC1_GOTO`) during a movie stops the movie first, as its skip does: its sound
+  no longer plays on and its last picture no longer stays on the screen over the next level (#101). Testing: `RAC1_MOVIE_AT`.
+- Debug menu: the free hoverboard's jump plays once (take-off, in the air, landing) and goes back to riding, as the race board's
+  on Kalebo III: before, the riding played the jump's animation on a loop. Every jump is the same, 0.93 up and 0.6 s long, as
+  the race board's, whatever the frame's length; a held cross does not jump again (#101).
+
+### Debug tools (`--debug-tools`)
+- Debug menu: an Enhancements tab switches the lighting, the shadows, the lights, the occlusion, the sun rays, the materials, the
+  emissive surfaces, the ambient particles (by kind) and the grass live, with each one's profiler time; "Save as
+  my settings" keeps them. The light editor has an Aim for the lights per class; the profiler has a Grass stage.
+- Debug menu, Enhancements: a Water reflections row (Off, Low, Medium) next to Surface Detail, live, with its cost; "Save as my
+  settings" and the preset combo take it (Off is saved as Low: the Graphics page has Low and Medium); under it, with Medium, the
+  planar view's resolution (1/2, 1/3, 1/4; this run only).
+- Debug menu: the levels' seas (water, lava, sand) can be picked and given a material (Lights tab, aimed or clicked; Textures tab,
+  "Seas drawn"); a distant surface can be picked; the ambient particles have a tab of their own, with Solo per line.
 
 ## 0.6.0
 
