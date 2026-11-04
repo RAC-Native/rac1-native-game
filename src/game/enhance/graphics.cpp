@@ -315,7 +315,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
 
 // Water Reflections' ray-traced values (value_text's words, not texts asked for by id - no id moved): Medium (RT), High (RT), per language
 // as TEXTS ("(RT)" kept in every one)
-constexpr const char* RT_WORDS[4][2] = {{"Medium (RT)", "High (RT)"}, {"Mittel (RT)", "Hoch (RT)"}, {"Medio (RT)", "Alto (RT)"}, {"Media (RT)", "Alto (RT)"}};
+constexpr const char* RT_WORDS[4][2] = {{"Medium (RT)", "High (RT)"}, {"Mittel (RT)", "Hoch (RT)"}, {"Medio (RT)", "Alto (RT)"}, {"Medio (RT)", "Alto (RT)"}};
 
 // The page's rows: the setting, its name, its help, the preferences' key
 struct Row {
