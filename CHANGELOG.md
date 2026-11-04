@@ -177,6 +177,8 @@ What changed in each release. Releases are source only: you build the game with 
   antivirus false positive (F-Secure's `Drop.Win64.APC.HEUR`, #115).
 
 ### Fixes
+- Surface Detail's water put back where the lighting batches' reformat (2a468fe) left its lines out: Rilgar's harbour and canals,
+  Novalis's gorge, stream, waterworks and cave columns, Hoven's water under the town (they drew as the game's water, no reflection).
 - Windows: a game folder on a drive that is not NTFS (exFAT, FAT32: an external drive) lost `clang.exe` (#126, #88): MSYS2's
   clang package has it, `clang-cpp.exe` and the two `x86_64-w64-mingw32-clang*.exe` as hard links to `clang++.exe`, which
   those drives cannot hold. `toolchain.ps1` (and the launcher, before it runs an older one) copies the missing linked files
