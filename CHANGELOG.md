@@ -44,6 +44,9 @@ What changed in each release. Releases are source only: you build the game with 
   placement at its first update (seven stood 0.03 to 0.25 above it). `RAC1_CUT_CONTENT=fred` for testing
   (docs/advanced.md, "Cut Content"). Port inventory: the Bolt Thief's "second behaviour", the Snagglebeast's unreferenced
   draw, L18:0x2ea1f8, the oxygen element, Orxon's turning citizen and the unregistered item classes corrected.
+- Cut Content: Eudora's Transport Ships (class 484, `RAC1_CUT_CONTENT=ships`): their update ported from the beta build
+  (retail's retires them): hidden until Ratchet enters their box, they fly their path and drop the enemies placed for
+  them (Circular Saw Enemies, Blarg Troopers), two with a short scripted camera (docs/advanced.md, "Cut Content").
 - Options > Language > Voice (Same as Text, the default; English, French, German, Spanish, Italian; Japanese with the
   Japanese data disc): the spoken language apart from the text's, for the dialogue, the scenes, the Vendor, the movies
   and Ratchet's efforts (`voice_language` in the preferences, `RAC1_VOICE_LANGUAGE`; docs/settings.md, "Voice").

@@ -471,14 +471,15 @@ it in 12 frames (46), a stop in 8 frames (29), lift-off 3 frames after the press
 The main menu's Advanced page has one row, **Cut Content: Off / On** (off by default). It is a global setting: kept in
 the preferences only (`cut_content 0|1` in `advanced_options.txt`), never with a save, and New Game leaves it as it is.
 With it on, things the retail game carries on the disc but never shows come back. Each one's own code in the game is a
-stub, so its behaviour is reconstructed (`src/game/enhance/cut_content.{h,cpp}`, `// orig: (none)` functions chosen where
-the game calls the original's): with the row off, the faithful port runs, and the game's memory is the same frame by
+stub, so its behaviour is reconstructed, or ported from an earlier build that still has it
+(`src/game/enhance/cut_content.{h,cpp}`, functions chosen where the game calls the original's): with the row off, the faithful port runs, and the game's memory is the same frame by
 frame (RAC1_RAMHASH). The row is read when a level's mobys first update, right after its load: a change shows at the next
 level load. `RAC1_CUT_CONTENT=fred,...` turns single items on for testing ([Environment variables](env-vars.md)).
 
 | Item | Level | What comes back |
 |---|---|---|
 | `fred`: Kerwan's citizens "Fred 1 / 2 / 3" | Kerwan | classes 915, 916, 917, 14 placements in the streets, on stairs and in a tunnel (x 204 to 350, y 130 to 202) |
+| `ships`: Eudora's Transport Ships | Eudora | class 484, 3 placements; each brings in the enemies placed for it (4 + 3 Circular Saw Enemies, 3 Blarg Troopers) |
 
 **Kerwan's citizens.** Their shared update (L3:0x2dc310, `fred_update_l3`) measures the distance to Ratchet and the
 heading towards him against its own, throws both away and retires the moby on its first frame; the prototype build already
@@ -500,9 +501,43 @@ the citizen stays, its sequence 0 is played in a loop, and within 15 units it tu
   pages; after the next level's load only pages of Kerwan's data the next level does not overwrite differ, and the game's
   state (the hero, the items, the save's blocks) stays the same.
 
+**Eudora's Transport Ships.** Retail's update for class 484 (L4:0x2ce060) is `moby_retire`: the three ships placed on
+Eudora go on their first frame, and the enemies placed for them stand where they were put. The beta (August 2002) and
+prototype (June 2002) builds keep the real update, 1872 / 1896 bytes; with the item on it runs, ported from the beta
+(`cut_content_ships_update_l4`, `// orig: beta 2002-08 L4:0x002a18e8`, registered at the retail address through
+`cut_content_ships_dispatch_l4`). What it does, from its code and the placements' data (their pvars have the beta's
+layout, 384 bytes):
+
+- Each ship waits hidden, with the enemies it carries (up to four, moby indexes in its pvars +0x140..+0x14c) hidden
+  under it, until Ratchet enters its trigger box (`point_in_box`, pvars +0x150). If the level's collected-things row
+  (0x14c050, the ship's entry +0xb0) already marks it done, the ship and what it carries retire at once.
+- Then it shows and flies its path (pvars +0x74) through the shared ship update of the other Eudora ships
+  (L4:0x2ca420, `eud_class466_update_l4`: retail's still has its class 484 case), the enemies held at four places in its
+  frame (a table retail still has, L4:0x1dc320, read there). From the first point of its path whose w is 1 it drops
+  them one by one, every 5 to 8 frames, facing Ratchet, in their own drop state (state 2 for the Circular Saw Enemy 340,
+  4 for the Blarg Trooper 427: retail's updates still have both); two points before its path's end it retires.
+- Two of the three start a short scripted camera when they come (a camera box of the level, pvars +0x160, for +0x168
+  seconds; the camera turns to follow the ship within +0x170 degrees), Ratchet held still meanwhile (hero state 0x1f,
+  back to idle after).
+
+| Ship | Placed at | Trigger box | Path, drop point | Carries | Camera |
+|---|---|---|---|---|---|
+| 1 | 237, 249, 61 | 12 (260, 243, 58) | path 8, drops from point 5 near (255, 257) | 4 Circular Saw Enemies (placed at 252..263, 254..258) | box 19, 4 s, 20 degrees |
+| 2 | 324, 306, 67 | 35 (292, 289, 67) | path 73, from point 6 near (311, 277) | 3 Circular Saw Enemies (305..312, 274..277) | box 34, 3 s |
+| 3 | 288, 274, 65 | 35, the same | path 72, from point 3 near (303, 282) | 3 Blarg Troopers (300..308, 283..287) | none |
+
+What retail lacks and how it is covered: the beta's callees are all in retail, matched by the overlay maps or by their
+code (`hero_set_state` 0x2223f8, `camera_scripted_set` 0x2eaaa0, `uid5_set_pvar_90` 0x2eaa30, `moby_anim_advance`
+0x250480, the beta's 0x200730 / 0x2bcf38 / 0x2bce68 / 0x2282d8); no sound of its own; the paths, boxes and camera boxes
+are retail's level data. One field moved: the Blarg Trooper's gun moby, which the ship retires while it carries the
+trooper, is at the trooper's pvars +0xf8 in retail (+0x98 in the beta; the same code around it in both builds' class
+427 update). With the item off nothing changes (the faithful retire runs). With it on, until Ratchet comes, the game's
+memory differs only in the three ships' mobys and pvars and in the engine's moby lists they stay in; after the next
+level's load, which moby slots that level's own spawned mobys take can differ (the ships are left alive instead of
+retired, as any Eudora moby left in another state would do).
+
 Left out for now: Orxon's five Fred 1 (class 915 by Clank's start: the same retire stub, L10:0x2d7fe8, not a turning
-citizen as once thought - speculative), Eudora's Transport Ships (484: the beta's update would have to be ported), and
-the rest of the candidates in [Port inventory](port-inventory.md#what-the-development-repository-already-knew).
+citizen as once thought - speculative), and the rest of the candidates in [Port inventory](port-inventory.md#what-the-development-repository-already-knew).
 
 ## Corrected Texts
 

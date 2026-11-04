@@ -4,6 +4,8 @@
 // while the played level's overlay is Eudora's (RAC1_OWN_OVERLAY=1 RAC1_LEVEL=4).
 #include <game/ovl/eudora_mobys.h>
 
+#include <game/enhance/cut_content.h>
+
 #include <initializer_list>
 
 #include <game/ovl/ovl_reloc.h>
@@ -28,7 +30,9 @@ void eudora_moby_fns_register() {
     ovl_register_level_moby_fn(EUDORA, L4_ADDR(0x002c6bb8), eud_class434_update_l4);
     ovl_register_level_moby_fn(EUDORA, L4_ADDR(0x002ca420), eud_class466_update_l4);
     ovl_register_level_moby_fn(EUDORA, L4_ADDR(0x002cdda0), eud_class481_update_l4);
-    ovl_register_level_moby_fn(EUDORA, L4_ADDR(0x002ce060), eud_class484_update_l4);
+    // (the Transport Ship: through the Cut Content option's choice, cut_content.h; with it off the faithful
+    // eud_class484_update_l4 runs)
+    ovl_register_level_moby_fn(EUDORA, L4_ADDR(0x002ce060), cut_content_ships_dispatch_l4);
     ovl_register_level_moby_fn(EUDORA, L4_ADDR(0x002d16b8), eud_class563_update_l4);
     ovl_register_level_moby_fn(EUDORA, L4_ADDR(0x002d3580), eud_class584_update_l4);
     ovl_register_level_moby_fn(EUDORA, L4_ADDR(0x002d4ae0), eud_class615_update_l4);

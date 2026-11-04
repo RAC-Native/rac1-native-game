@@ -128,8 +128,8 @@ In no fixed order. Each one is optional, and off by default if it changes the ga
 ### Game
 
 - **Cut content, optionally brought back**: things the game carries on the disc but never shows. Started: main menu >
-  Options > Advanced > Cut Content brings back Kerwan's citizens ([Advanced options](advanced.md#cut-content)); next,
-  Eudora's Transport Ships from the beta's code.
+  Options > Advanced > Cut Content brings back Kerwan's citizens and Eudora's Transport Ships, ported from the beta's
+  code ([Advanced options](advanced.md#cut-content)).
 - **A language switch** offering every language on the disc, without the console's system setting.
 - **Quality of life**: a level select and similar conveniences for players.
 - **Mods**: a mods folder in front of the disc's files the setup now extracts (`assets/disc/`, see
