@@ -250,8 +250,8 @@ It then picks:
 
 - **The game's disc**: the one already set up, when its image is still there (an image added later
   does not make the setup extract and generate everything again from another disc); else the North
-  American disc (`SCUS-97199`); else the PAL disc 1.00 (`SCES-50916`). The PAL disc 2.00 and the
-  Japanese disc are not the game's disc yet: with only those, the setup stops and says so.
+  American disc (`SCUS-97199`); else the PAL disc 1.00 (`SCES-50916`); else the PAL disc 2.00 (the
+  Platinum). The Japanese disc is not a game's disc yet: with only that, the setup stops and says so.
 - **The data discs**: each image that gives something the game's disc lacks: the Japanese disc (its voices, and
   beside the North American disc the corrected texts), the PAL discs 1.00 and 2.00 beside the North American disc (the
   corrected texts): see [Data discs](#data-discs).

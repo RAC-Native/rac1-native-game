@@ -1,6 +1,7 @@
 # The approach
 
-rac1-native runs Ratchet & Clank (PS2, NTSC-U, `SCUS-97199`) as a native Linux and Windows program. It does
+rac1-native runs Ratchet & Clank (PS2, NTSC-U, `SCUS-97199`; the European PAL discs too) as a native Linux, Windows
+and macOS program. It does
 this by porting the game's own code to C++, one function at a time, and proving each port against
 the original. This page explains what that means, how it differs from emulation and from
 decompilation projects, and how a port is checked.
@@ -88,8 +89,9 @@ How each compromise is removed in practice:
 | Texture resolution | The MRP keeps every mip level of every texture, so distant objects are not drawn from the small mip the PS2 had room for. | Debug tools only: `RAC1_MRP_MIP=faithful` and `RAC1_MRPW_MIP=faithful`, or the debug menu |
 | The 4:3 frame | The 3D can be widened to fill the screen, and the HUD spread over it; the game itself still sees its 4:3 view. | Options > Display > Aspect Ratio > 4:3 Original, HUD > 4:3 Original |
 
-The enhancements (quick-select pause, modern aiming, Ratchet & Clank 3 movement, modern lighting)
-are described in [Advanced options](advanced.md) and [Lighting](lighting.md).
+The enhancements (quick-select pause, modern aiming, Ratchet & Clank 3 movement, vibration, Skip
+Cutscenes, the later build's fixes, cut content, the modern lighting and the other graphics additions)
+are described in [Advanced options](advanced.md), [Settings](settings.md) and [Lighting](lighting.md).
 
 ## How a function is ported and proved
 

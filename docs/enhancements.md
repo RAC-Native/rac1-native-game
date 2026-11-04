@@ -122,23 +122,27 @@ In no fixed order. Each one is optional, and off by default if it changes the ga
   texture's fingerprint and fall back to the original.
 - **Antialiasing and post-processing**: bloom, colour grading, depth of field, motion blur, each a
   separate toggle.
-- **More modern lighting**: more lights placed by hand where the automatic ones fall short (so far
-  only Novalis and Aridia have some), labelled as our own art choices.
+- **More modern lighting**: more lights placed by hand where the automatic ones fall short (most
+  levels now have them, from Anya-Thoughtmane's lighting batches), labelled as our own art choices.
 
 ### Game
 
 - **Cut content, optionally brought back**: things the game carries on the disc but never shows. Started: main menu >
   Options > Advanced > Cut Content brings back Kerwan's citizens and Eudora's Transport Ships, ported from the beta's
   code ([Advanced options](advanced.md#cut-content)).
-- **A language switch** offering every language on the disc, without the console's system setting.
+- **A language switch** offering every language on the disc, without the console's system setting. Started:
+  Options > Language sets the text, the voice and the subtitles apart ([Settings](settings.md#language)).
 - **Quality of life**: a level select and similar conveniences for players.
 - **Mods**: a mods folder in front of the disc's files the setup now extracts (`assets/disc/`, see
   [Setup](setup.md#the-discs-files)), and a Mods menu in the game (see [Roadmap](roadmap.md)).
 
 ### Platforms
 
-- **macOS builds** (Windows is supported), and other graphics back ends behind the renderer, beside
-  OpenGL and the experimental Vulkan one.
+- **macOS builds**: done, on Apple Silicon with a [Metal](metal.md) renderer (a contributor's port);
+  other graphics back ends (Direct3D) may follow behind the renderer, beside OpenGL, the experimental
+  Vulkan one and Metal.
 - **ARM64 and Android**: in progress on the `port/android` branch, not on `main` (#78); the CI has a
   Linux ARM64 job, not blocking yet.
-- **Other releases of the game** (such as the European one) once the North American one is complete.
+- **Other releases of the game**: the European PAL discs 1.00 and 2.00 (the Platinum) run as the game's
+  disc, and the Japanese disc gives its voices as a data disc; the Japanese disc as the game's disc, and
+  the PAL 50 Hz mode, once the North American one is complete.

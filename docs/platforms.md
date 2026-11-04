@@ -1,7 +1,8 @@
 # Other platforms
 
 rac1-native runs on Linux x86-64, and on Windows x86-64; Windows is no longer experimental: players
-have played through the game on it. This page is the state of the Windows port, what remains, and
+have played through the game on it. It also runs on macOS on Apple Silicon, with a Metal renderer (a
+contributor's port, #116, #119). This page is the state of the Windows port, what remains, and
 notes on macOS and other devices (ARM64 and Android, in progress on a branch).
 
 The goal is one codebase that builds on Linux and Windows and behaves identically on both: same

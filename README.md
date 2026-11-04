@@ -1,19 +1,20 @@
 # rac1-native
 
-> **Current state (0.6.0):** every planet of the game is ported, from Veldin to the final fight with
+> **Current state (0.7.0):** every planet of the game is ported, from Veldin to the final fight with
 > Drek, the credits and the end menu, and of the game's code the game runs, one function is left to
-> port. **The whole game has been played through to the end** on 0.4.0. 0.6.0 brings the native
-> renderer drawing the whole game itself (the HUD, the menus and the levels' seas included), the
-> whole disc extracted by the setup (the game no longer reads the disc image), Anya-Thoughtmane's
-> lighting passes with emissive surfaces, surface materials and the mobys lit by the point lights,
-> optional ambient particles (rain, snow, embers, dust), the Vendor's Buy All Ammo option, a faster
-> frame on the CPU and the GPU, the setup on the Steam Deck and other immutable Linux systems, and
-> the fixes from the 0.5.0 reports: see the [Changelog](CHANGELOG.md#060). It has been playtested on
-> Linux; Windows is no longer experimental: players have played through the game on it. Expect some
-> bugs and glitches.
+> port. **The whole game has been played through to the end** on 0.4.0. 0.7.0 brings the European
+> Platinum disc (PAL 2.00) as the game's disc, the disc images found by the setup itself and listed in
+> the launcher, data discs for the Japanese voices and the later discs' corrected texts, the later
+> build's own fixes as options (1.02 Fixes, 1.02 Gameplay), Cut Content (Kerwan's citizens, Eudora's
+> Transport Ships), reorganised Options (Display, Graphics, Language), Water Reflections (with
+> ray-traced values on Vulkan), grass, Anya-Thoughtmane's lighting batches, a direct mouse and
+> controller vibration, macOS on Apple Silicon, a faster frame, and the fixes from the 0.6.0 reports:
+> see the [Changelog](CHANGELOG.md#070). Windows is no longer experimental: players have played
+> through the game on it. Expect some bugs and glitches.
 > See [Status](docs/status.md).
 
-A native PC port of **Ratchet & Clank** (PlayStation 2, 2002), for Linux and Windows.
+A native PC port of **Ratchet & Clank** (PlayStation 2, 2002), for Linux and Windows, and macOS on
+Apple Silicon.
 
 The game's own code is ported to C++, function by function, from the original North American release
 (`SCUS-97199`), and each port is proved against the original code. The European PAL release
@@ -68,11 +69,13 @@ to the end** on 0.4.0, from Veldin to the final fight with Drek, the credits and
 the start of a New Game+ checked too. Veldin to Orxon have been played through many times; the
 planets after Orxon have had one full playthrough so far (on Linux), so more playtesting by players
 is welcome. 0.5.0 added the launcher, the experimental Vulkan renderer, the widescreen HUD, a
-reworked modern lighting and 5.1 / 7.1 sound. 0.6.0 (see the [Changelog](CHANGELOG.md)) has the
-native renderer draw the whole game, the GS replica no longer running beside it; the setup extracts
-the whole disc, which the game reads instead of the image; and it adds emissive surfaces, surface
-materials and ambient particles to the optional modern graphics, the Vendor's Buy All Ammo option, a
-faster frame, and the fixes for the bugs reported on 0.5.0. It has been playtested on Linux. Of the
+reworked modern lighting and 5.1 / 7.1 sound. 0.6.0 had the native renderer draw the whole game,
+the GS replica no longer running beside it, and the setup extract the whole disc, which the game reads
+instead of the image. 0.7.0 (see the [Changelog](CHANGELOG.md)) adds the European Platinum disc as
+the game's disc, data discs (the Japanese voices, the corrected texts), the later build's fixes as
+options, Cut Content, reorganised Options, Water Reflections, grass, more of Anya-Thoughtmane's
+lighting, a direct mouse and controller vibration, macOS on Apple Silicon (a contributor's Metal
+renderer), a faster frame, and the fixes for the bugs reported on 0.6.0. Of the
 code the game runs, one function is left to port (see the [Port inventory](docs/port-inventory.md)).
 The port as a whole still needs polishing. See [Status](docs/status.md) (which also maps the names
 the code uses for the levels to the names in the game), the [Roadmap](docs/roadmap.md) and the
@@ -99,16 +102,15 @@ the launcher installs and updates it with a double-click. Linux remains the main
 so a bug that only Windows shows is still possible: reports are welcome. See
 [Setup](docs/setup.md#on-windows) and [Platforms](docs/platforms.md).
 
-### Modern lighting is experimental
+### Modern lighting is optional
 
-The optional modern lighting (sun shadows, per-pixel lights, ambient occlusion, sun rays, emissive
-surfaces and surface materials) is **EXPERIMENTAL**.
-It is off by default, and with it off the picture is the original's lighting, unchanged. It is not
-yet fully usable on some planets: Nebula G34 (Blarg's station) is still a mess, with some zones
-pitch dark. That is not a porting priority and will be dealt with later. Every level runs with it,
-with varying results. The sun is the light the game itself lights Ratchet with in his current zone,
-turned by the level's own file where needed; the glowing objects are found automatically. See
-[Lighting](docs/lighting.md), which lists how well it works on each level.
+The modern lighting and the other graphics additions (sun shadows, per-pixel lights, ambient
+occlusion, sun rays, emissive surfaces, surface materials, water reflections, grass, ambient
+particles) are **optional**: Options > Graphics > Graphics is Original by default, and on Original
+the picture is the original's, unchanged. Every level runs with them; most have been lit by hand,
+level by level, in Anya-Thoughtmane's lighting batches, and a few still need a playtest. The sun is
+the light the game itself lights Ratchet with in his current zone, turned by the level's own file
+where needed. See [Lighting](docs/lighting.md), which lists how well it works on each level.
 
 ## Why C++ and OpenGL
 
@@ -131,7 +133,8 @@ follows from that.
   from the game code, so another graphics API can be added beside it: a
   [Vulkan](docs/vulkan.md) backend now is, experimental and opt-in (Options > Display > Renderer),
   drawing the same picture. OpenGL stays the default.
-- **Other platforms and graphics APIs, later.** Direct3D or Metal renderers may come in the future.
+- **Other platforms and graphics APIs.** A [Metal](docs/metal.md) renderer runs the game on macOS
+  (Apple Silicon), a contributor's port; Direct3D may come in the future.
   The code is portable C++, but other devices need more than a renderer:
   - **Graphics API.** Phones and handhelds speak OpenGL ES or their own APIs, not desktop OpenGL 4.6.
   - **Processor.** The game's memory is little-endian, like the PS2 and the PC.
@@ -162,11 +165,12 @@ follows from that.
 ## Quick start
 
 You need Linux or [Windows](#windows) (x86-64), a GPU with OpenGL 4.6, and your ISO of the game
-(the North American or the European PAL disc). On the Steam Deck (SteamOS), Bazzite and other
+(the North American or the European PAL disc, 1.00 or the Platinum's 2.00). On the Steam Deck (SteamOS), Bazzite and other
 immutable Linux systems the game is built in a distrobox container, which the launcher sets up: see
 [Setup](docs/setup.md#steam-deck-bazzite-and-other-immutable-systems). The experimental Vulkan renderer, optional, needs a
 Vulkan 1.3 driver, and `glslc` when the game is built (the setup lists it as optional): see
-[Vulkan](docs/vulkan.md).
+[Vulkan](docs/vulkan.md). On macOS (13 or later, Apple Silicon) the game is built from the source and
+draws with Metal; there is no launcher for it: see [Metal](docs/metal.md).
 
 **The easiest way, on Windows and Linux, is the launcher**: download `rac1-launcher.exe` (Windows) or
 `rac1-launcher-linux-x64` (Linux, x86-64) from the
@@ -204,13 +208,13 @@ For players:
 
 - [Setup](docs/setup.md): requirements, step by step, troubleshooting.
 - [The launcher](docs/launcher.md): the one-file installer, updater and save manager, for Windows and Linux.
-- [Settings](docs/settings.md): the Graphics, Controls and Advanced pages, New Game's Original / Modern choice and graphics preset,
-  the update check, where settings are kept, the debug tools.
+- [Settings](docs/settings.md): the Display, Graphics, Language, Controls and Advanced pages, New Game's Original / Modern
+  choice and graphics preset, the update check, where settings are kept, the debug tools.
 - [Input](docs/input.md): controllers, keyboard and mouse, rebinding.
 - [Saves](docs/saves.md): where your saves are. Saving and loading work, but the save files may still change: they have not been checked by hand yet.
 - [Platforms](docs/platforms.md): Windows, macOS (Metal), ARM64 and Android in progress.
 - [Advanced options](docs/advanced.md): the optional gameplay changes, including Ratchet & Clank 3
-  movement and modern aiming.
+  movement, modern aiming, vibration, Skip Cutscenes, the later build's fixes and Cut Content.
 - [Enhancements](docs/enhancements.md): the optional improvements, those available now and those
   planned after the faithful port.
 - [Status](docs/status.md) (with the table of level names), [Roadmap](docs/roadmap.md) and

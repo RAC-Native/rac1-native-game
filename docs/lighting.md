@@ -3,9 +3,9 @@
 The game's own lighting, how the MRP reproduces it, and the optional modern lighting on top of it:
 point lights per pixel, cascaded sun shadows, sun rays, ambient occlusion and an in-game light editor.
 
-> **The modern lighting is EXPERIMENTAL.** It is off by default and will stay off by default.
-> It is not yet fully usable on some planets, and it is not a porting priority: it will be
-> worked on later. With Options > Graphics > Graphics on Original (the default) the picture is
+> **The modern lighting is optional.** It is off by default and will stay off by default.
+> Every level runs with it, most of them lit by hand in Anya-Thoughtmane's lighting batches; a few
+> rows below still need a playtest. With Options > Graphics > Graphics on Original (the default) the picture is
 > the original's lighting, pixel for pixel, and nothing here has any effect. The modern lighting
 > only changes the picture, never the game: it reads the game's memory and does not write to it,
 > so the game's state is the same with it on or off. It is a labelled enhancement (see
@@ -40,7 +40,8 @@ differs a lot between planets. Where each part comes from is described in
   When a level loads they are found automatically and turned into small point lights. This is
   our own heuristic, not game data, and it can be wrong (see the table below).
 - **Lights placed by hand** with the [light editor](#the-light-editor) cover what the automatic
-  search can't find. The project ships a few hand-placed lights (Novalis and Aridia); otherwise its
+  search can't find. The project ships hand-placed lights from Anya-Thoughtmane's lighting batches on most levels (#102,
+  #120) and a few of its own (Novalis and Aridia); otherwise its
   level files turn off an automatic class the search got wrong (Gaspar, Orxon), turn the sun (every level but Rilgar, Blarg
   and Batalia, most of them from Anya-Thoughtmane's lighting pass, #90), turn the sun rays off (Blarg,
   Rilgar, Batalia, Oltanis), mark interiors (Blarg, Orxon), mark emissive surfaces and
@@ -65,7 +66,7 @@ seen, and every one of them still needs a playtest.
 | Kerwan | Works. Few automatic lights; the street lamps (moby class 1827) are lights from the level's file. The sun comes low through the first tunnel's mouth, the city backlit. |
 | Eudora | Works. The heaviest level for the lighting (its forest has many shadow casters; roughly twice the frame time of the lighting off in the survey, on an integrated GPU). Trees and woodwork glow bright orange in the textures: they are recognised as materials and not turned into lights. Need some works. |
 | Rilgar | Works. Same warm-material handling as Eudora. Needs some works, some automatic lights are a bit non-sense |
-| Blarg (Nebula G34, Blarg's station) | **Still a mess, possibly better.** Playtesting found some zones pitch dark: the station's closed zones are lit by a light that reaches the floor only through the geometry above it, so the sun's shadow covered the whole zone. Closed zones are marked [interiors](#interiors) in `data/lights/level06.txt` (light set 6 so far, a closed room the old covered-view check found); the lounges with large windows keep their shadows. Other closed zones: to mark while playing. The hangar has only a faint, low blue sun. |
+| Blarg (Nebula G34, Blarg's station) | **Works** (Daino, 4 November 2026, after Anya-Thoughtmane's batches 2 and 3 lit its metals, lamps and emissive surfaces, #102, #120). Before, playtesting found some zones pitch dark: the station's closed zones are lit by a light that reaches the floor only through the geometry above it, so the sun's shadow covered the whole zone. Closed zones are marked [interiors](#interiors) in `data/lights/level06.txt` (light set 6 so far, a closed room the old covered-view check found); the lounges with large windows keep their shadows. Other closed zones: to mark while playing. The hangar has only a faint, low blue sun. |
 | Umbris | Works outdoors: the dead trees cast long shadows. Near the lava the zone's light comes from below, so there is no sun there and the shadows fade out. No automatic lights are found on this level. |
 | Batalia | Works outdoors: a low warm sun (15 degrees) gives long shadows across the decks in the rain. No automatic lights: the towers' cyan bands are thin strips on their objects' textures (2 or 3 of a triangle's 7 samples, under the objects' 4-of-7 rule), so they cast no light. |
 | Gaspar | Works outdoors (sun at 40 degrees). Inside the buildings the view is covered from the sun and the picture is the original's. The tanks' gold band (tie class 1558, paint) was taken for a lamp and lit their corner gold: turned off in `data/lights/level09.txt`. The robots' shots, the game's own lights, light the floor and pillars per pixel, strongly. |

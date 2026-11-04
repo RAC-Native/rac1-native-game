@@ -48,6 +48,8 @@ See [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) for versions and licen
   the experimental Vulkan renderer's function loader and the API's headers.
 - [shaderc](https://github.com/google/shaderc)'s `glslc`, or [glslang](https://github.com/KhronosGroup/glslang)'s
   `glslangValidator`, optional, from the system: they compile the Vulkan renderer's shaders when the game is built.
+- [SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross), from the system (Homebrew) on macOS: it turns the Vulkan
+  renderer's compiled shaders into Metal's shading language for the [Metal](metal.md) renderer when the game is built.
 - [SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB): the community's database of
   controller mappings.
 - [FFmpeg](https://ffmpeg.org/) (`libavcodec`, `libavutil`), optional, from the system: the movies'
