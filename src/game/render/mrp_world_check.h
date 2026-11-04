@@ -34,6 +34,8 @@ public:
     // tfrag: the entry image (`lod` 0 far, 1 mid, 2 near) the VU1 memory holds at buffer base `base` (the lists' qwords, the
     // colours' qwords excluded)
     bool find_tfrag(const uint8_t* mem, uint32_t base, int lod, Hit& hit) const;
+    // (testing, a custom level) the world whose World::custom_ties the scene draws itself (null: none)
+    const World* custom = nullptr;
 
 private:
     std::multimap<uint64_t, Hit> shrub_, tie_, tfrag_;  // (tfrag: Hit::packet = the lod)

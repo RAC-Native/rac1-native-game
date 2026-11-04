@@ -2,6 +2,7 @@
 #include "kick_trace.h"
 #include "world_trace.h"
 
+#include <formats/custom_ties.h>
 #include <formats/iso_toc.h>
 #include <formats/level_core.h>
 #include <formats/level_textures.h>
@@ -472,7 +473,37 @@ bool export_mrp_world_custom(const std::string& custom_dir) {
     }
     const std::vector<char> bytes((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
     const std::span<const std::byte> wad(reinterpret_cast<const std::byte*>(bytes.data()), bytes.size());
-    return export_world_level(wad, 0, std::filesystem::path(custom_dir) / "mrp" / "world" / "level0");
+    const std::filesystem::path dir = std::filesystem::path(custom_dir) / "mrp" / "world" / "level0";
+    if (!export_world_level(wad, 0, dir)) return false;
+    // the ties no EE data stands for (<dir>/ties.mrpc, src/formats/custom_ties.h): their classes added to the world, their textures
+    // the level's tie textures
+    const std::filesystem::path ties = std::filesystem::path(custom_dir) / "ties.mrpc";
+    if (!std::filesystem::exists(ties)) return true;
+    rac1::mrpw::CustomTies ct;
+    std::string err;
+    if (!rac1::mrpw::read_custom_ties(ties.string(), ct, err)) {
+        std::cerr << "[setup] " << err << "\n";
+        return false;
+    }
+    rac1::mrpw::World w;
+    if (!rac1::mrpw::read_world((dir / "world.mrpw").string(), w)) {
+        std::cerr << "[setup] " << (dir / "world.mrpw").string() << " cannot be read back\n";
+        return false;
+    }
+    if (!w.ties.empty()) {
+        std::cerr << "[setup] the custom level's data file has tie classes of its own: ties.mrpc not added\n";
+        return false;
+    }
+    w.ties = std::move(ct.classes);
+    size_t packets = 0;
+    for (const auto& c : w.ties) packets += c.packets.size();
+    if (!rac1::mrpw::write_world((dir / "world.mrpw").string(), w) || !rac1::mrp::write_textures((dir / "textures_tie.mrpt").string(), ct.textures)) {
+        std::cerr << "[setup] cannot write the custom level's ties\n";
+        return false;
+    }
+    std::cout << "[setup] ties.mrpc: " << w.ties.size() << " tie classes (" << packets << " packets), " << ct.textures.size() << " tie textures, "
+              << ct.instances.size() << " instances (drawn by the host)\n";
+    return true;
 }
 
 } // namespace rac1::setup

@@ -10,9 +10,13 @@ for level 0 when RAC1_CUSTOM_LEVEL=<out> is set (runtime/kernel/disc.cpp):
                       classes, moby textures, hero sequences, gadgets, particle and effect banks kept; no occlusion, no
                       ties, no shrubs. The overlay, the sound bank and the HUD are Veldin's. Same size as Veldin's file.
   <out>/gameplay.bin  Veldin's gameplay with: Maktar's background / fog colours and fog range, death height 480, no
-                      ship, Maktar's directional lights, no cameras, no sound instances, no ties, no shrubs, only the
-                      hero (class 0) at the arena's centre, no volumes, paths or grind lines, no occlusion. Veldin's help
-                      text, moby class list, pvars (the hero's own) and the two 0x4010 grids kept. Same size as Veldin's.
+                      ship, Maktar's directional lights (its set 6, a white key light from above, swapped into set 0:
+                      the terrain's and the hero's), Veldin's generic cameras (types 0, 4..7), no sound instances, no
+                      ties, no shrubs, only the hero (class 0) at the arena's centre, no volumes, paths or grind lines,
+                      no occlusion. Veldin's help text, moby class list, pvars (the hero's own, the cameras') and the two
+                      0x4010 grids (empty on Veldin and on Maktar) kept. Same size as Veldin's.
+  <out>/ties.mrpc     the arena's ties (205 instances of 13 RAC2 classes, their 45 textures), drawn by the host
+                      (src/formats/custom_ties.h; `rac1-native --setup --custom-level <out>` puts them in the MRP world).
   <out>/manifest.txt  what was built (sizes, offsets): no game data.
 
 Nothing here is game data; the outputs are, and stay local (never committed). The core is WAD-encoded by wadlz.py, whose
@@ -191,6 +195,215 @@ class Core:
             if lo <= off < hi or (off == hi and hi == self.segs[-1][1]):
                 return at + off - lo
         raise ValueError("core offset %#x is in no part kept" % off)
+
+
+# ---------------------------------------------------------------- the ties (host side: <out>/ties.mrpc)
+# RAC2's tie classes are not RAC1's (FINDINGS "Ties"): they are not put in the data file. The arena's classes and instances
+# go to <out>/ties.mrpc, our own container that `rac1-native --setup --custom-level <out>` turns into the MRP world's tie
+# classes (world.mrpw) and tie textures (textures_tie.mrpt); the renderer draws them at their placements
+# (src/formats/custom_ties.h: the layout). Nothing of it reaches EE memory.
+#
+# A class's packet as RAC2's tie program has it (the RAC2 port's src/formats/tie_class.cpp, docs/formats/level-core.md
+# "Tie classes"): four vertex lists (singles, duals: 2 qwords each, s16 x y z slot | s t q slot2; morphing singles and
+# duals: 3 qwords, s16 delta x y z slot | base x y z | s t q slot2), each up to the vertex whose slot is its end marker plus
+# those the program's pipeline has loaded then (3 singles, 2 duals); strips at +0x2c (count, 0, GIF tag qword, flags), a
+# strip's vertex i the one whose slot is tag + 1 + 3 i; the textures: the first ad-gif at the packet's start (+0x10 its
+# source, 0x50 a texture), one more at each destination (+0x00..). Singles and duals become RAC1's dinky vertices, the
+# morphing ones its fat ones (delta, base, s t q), in the lists' order.
+MRPC_MAGIC = 0x4350524d  # "MRPC"
+ARENA_BOX = ((400.0, 600.0), (500.0, 700.0), (450.0, 600.0))
+
+
+def rac2_tie_packet(b, table, entry):
+    e = table + entry * 16
+    d = table + i32(b, e)
+    vert_ofs, vert_size = b[e + 8], b[e + 9]
+    nstrips = b[d + 0x23]
+    marker = b[d + 0x24:d + 0x28]
+    size, in_flight = (16, 16, 24, 24), (3, 2, 0, 0)
+    v0 = d + vert_ofs * 16
+    v1 = v0 + vert_size * 16
+    v = v0
+    count = [0, 0, 0, 0]
+    for l in range(4):
+        if l > 0 and marker[l] == 0:
+            continue
+        n = 0
+        while True:
+            if v + size[l] > v1:
+                raise SystemExit("a RAC2 tie packet's vertex list does not end")
+            slot = struct.unpack_from("<h", b, v + 6)[0]
+            v += size[l]
+            n += 1
+            if slot == marker[l]:
+                break
+        n += in_flight[l]
+        v += in_flight[l] * size[l]
+        count[l] = n
+    dinky, fat, slots_d, slots_f = [], [], [], []
+    v = v0
+    for l in range(4):
+        for _ in range(count[l]):
+            if l < 2:
+                x, y, z, s0 = struct.unpack_from("<4h", b, v)
+                s, t, q, s1 = struct.unpack_from("<4h", b, v + 8)
+                dinky.append((x, y, z, 0, s, t, q, 0))
+                slots_d.append((s0, s1))
+            else:
+                dx, dy, dz, s0 = struct.unpack_from("<4h", b, v)
+                bx, by, bz, _ = struct.unpack_from("<4h", b, v + 8)
+                s, t, q, s1 = struct.unpack_from("<4h", b, v + 16)
+                fat.append((dx, dy, dz, 0, bx, by, bz, 0, s, t, q, 0))
+                slots_f.append((s0, s1))
+            v += size[l]
+    # GS packet slot -> vertex (dinky 0.., fat after them); a slot several vertices write is the last's in the lists' order
+    at = {}
+    for i, (s0, s1) in enumerate(slots_d + slots_f):
+        at[s0] = i
+        if s1 != 0 and s1 != s0:
+            at[s1] = i
+    dest = struct.unpack_from("<4i", b, d)
+    src = struct.unpack_from("<4i", b, d + 0x10)
+    strips = []
+    for k in range(nstrips):
+        r = d + 0x2c + 4 * k
+        nv, tag = b[r], b[r + 2]
+        tex = 0
+        for j in range(3):
+            if dest[j] != 0 and dest[j] < tag:
+                tex = j + 1
+        try:
+            vidx = [at[tag + 1 + 3 * i] for i in range(nv)]
+        except KeyError:
+            raise SystemExit("a RAC2 tie strip's vertex has no vertex")
+        strips.append((src[tex] // 0x50, vidx))
+    return dinky, fat, strips
+
+
+def tie_colour(g, at, n):
+    """An instance's flat colour (RGB, 0x80 = 1.0): the mean of the non-zero RGB 5:5:5 words of its colour list (RAC2
+    keeps one list per instance; how its words map to the vertices is not worked out: the 4 bytes before them skipped)."""
+    words = [struct.unpack_from("<H", g, at + 2 * k)[0] for k in range(2, n)]
+    words = [w for w in words if w & 0x7fff]
+    if not words:
+        return (0x80, 0x80, 0x80)
+    return tuple(sum(((w >> (5 * c)) & 31) << 3 for w in words) / len(words) for c in range(3))
+
+
+def build_ties(r2, out, say, colour_scale, colour_min):
+    MH = r2.H
+    core, idx, g = r2.core, r2.index, r2.gameplay
+    G = struct.unpack_from("<40I", g)
+    # the instances in the arena's box (gameplay +0x34: count, then 0x60 each: +0 the class, +0x10 the matrix's rows)
+    ti = G[0x34 // 4]
+    insts = []
+    for k in range(i32(g, ti)):
+        r = ti + 0x10 + 0x60 * k
+        m = struct.unpack_from("<16f", g, r + 0x10)
+        if all(ARENA_BOX[j][0] <= m[12 + j] <= ARENA_BOX[j][1] for j in range(3)):
+            insts.append((k, i32(g, r), m))
+    # their colour lists (gameplay +0x94: {s16 instance, u16 words} and the words, until a negative instance)
+    cols = {}
+    p, end = G[0x94 // 4], G[0x98 // 4]
+    while p + 4 <= end:
+        inst, cnt = struct.unpack_from("<hH", g, p)
+        if inst < 0:
+            break
+        cols[inst] = (p + 4, cnt)
+        p += 4 + 2 * cnt
+    # the classes (index +0x20: 32-byte records {core offset, id, 0, 0, the local textures' remap})
+    recs = {}
+    for k in range(MH[8]):
+        r = MH[9] + 32 * k
+        recs[i32(idx, r + 4)] = (i32(idx, r), idx[r + 16:r + 32])
+    ids = []
+    for _, c, _ in insts:
+        if c not in ids:
+            ids.append(c)
+    gs_rows = {addr: off for _, _, addr, off in vram_rows(idx, MH)}
+    tex_of, textures = {}, []
+
+    def texture(t):
+        if t not in tex_of:
+            texels, w, h, mips, pal, m1, _ = tex_record(idx, MH, t, 16)
+            px = MH[24] + texels
+            levels = [core[px:px + w * h]]
+            if mips >= 2:
+                levels.append(core[px + w * h:px + w * h + (w // 2) * (h // 2)])
+            if mips >= 3 and m1 > 0 and m1 * 0x100 in gs_rows:
+                off = gs_rows[m1 * 0x100]
+                levels.append(r2.gs_ram[off:off + (w // 4) * (h // 4)])
+            off = gs_rows[pal * 0x100]
+            textures.append((w, h, r2.gs_ram[off:off + 0x400], levels))
+            tex_of[t] = len(textures) - 1
+        return tex_of[t]
+
+    classes = []
+    nverts = npk = 0
+    for cid in ids:
+        o, remap = recs[cid]
+        scale = struct.unpack_from("<f", core, o + 0x40)[0]
+        sphere = struct.unpack_from("<4f", core, o + 0x50)
+        adgif = o + i32(core, o + 0x1c)
+        prims = []  # per local texture: (our texture, CLAMP's wrap bits, ALPHA_1)
+        for lt in range(16):
+            if remap[lt] == 0xff:
+                break
+            regs = {}
+            for q in range(5):
+                dv, rg = struct.unpack_from("<QQ", core, adgif + 0x50 * lt + 16 * q)
+                regs[rg & 0xff] = dv
+            prims.append((texture(remap[lt]), regs.get(0x08, 0) & 0xf, regs.get(0x42, 0x44)))
+        packets = []
+        for lod in range(3):
+            table = o + i32(core, o + 4 * lod)
+            for k in range(core[o + 0x0c + lod]):
+                dinky, fat, strips = rac2_tie_packet(core, table, k)
+                packets.append((lod, k, dinky, fat, strips))
+                nverts += len(dinky) + len(fat)
+                npk += 1
+        classes.append((cid, scale, sphere, prims, packets))
+    say("ties: %d instances of %d classes (%s), %d packets (3 LODs), %d vertices, %d tie textures" % (
+        len(insts), len(ids), ", ".join(str(c) for c in ids), npk, nverts, len(textures)))
+
+    b = bytearray(struct.pack("<2I", MRPC_MAGIC, 1))
+    b += struct.pack("<I", len(textures))
+    for w, h, pal, levels in textures:
+        b += struct.pack("<2I", w, h) + pal + struct.pack("<I", len(levels))
+        for lv in levels:
+            b += struct.pack("<I", len(lv)) + lv
+    b += struct.pack("<I", len(classes))
+    for cid, scale, sphere, prims, packets in classes:
+        b += struct.pack("<if4fI", cid, scale, *sphere, len(prims))
+        for t, wrap, alpha in prims:
+            b += struct.pack("<IIQ", t, wrap, alpha)
+        b += struct.pack("<I", len(packets))
+        for lod, k, dinky, fat, strips in packets:
+            b += struct.pack("<BBH2I", lod, k, 0, len(dinky), len(fat))
+            for v in dinky:
+                b += struct.pack("<8h", *v)
+            for v in fat:
+                b += struct.pack("<12h", *v)
+            b += struct.pack("<I", len(strips))
+            for lt, vidx in strips:
+                b += struct.pack("<2I", lt, len(vidx)) + struct.pack("<%dH" % len(vidx), *vidx)
+                if len(vidx) & 1:
+                    b += bytes(2)
+    b += struct.pack("<I", len(insts))
+    shade = []
+    for k, c, m in insts:
+        at, cnt = cols.get(k, (0, 0))
+        rgb = tie_colour(g, at, cnt) if cnt > 2 else (0x80, 0x80, 0x80)
+        rgb = [x * colour_scale for x in rgb]
+        grey = sum(rgb) / 3.0
+        if 0 < grey < colour_min:  # (the lists of the dark ones are mostly their shaded sides: a flat colour that dark reads as a hole)
+            rgb = [x * colour_min / grey for x in rgb]
+        rgba = tuple(min(255, int(round(x))) for x in rgb) + (0x80,)
+        shade.append(sum(rgba[:3]) / 3.0)
+        b += struct.pack("<I12f4B", ids.index(c), m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10], m[12], m[13], m[14], *rgba)
+    say("ties: instance colours (each one's list's mean, x %.2f, at least grey %.0f): grey %.0f..%.0f, mean %.0f (0x80 = 1.0)" % (
+        colour_scale, colour_min, min(shade), max(shade), sum(shade) / len(shade)))
+    open(os.path.join(out, "ties.mrpc"), "wb").write(bytes(b))
 
 
 def build(a):
@@ -391,10 +604,22 @@ def build(a):
     struct.pack_into("<4f", st, 0x2c, 0.0, 0.0, 0.0, 0.0)  # no ship (its x <= 0)
     blocks[0x00] = bytes(st)
     nl = u32(r2.gameplay, M[1])
-    blocks[0x04] = r2.gameplay[M[1]:M[1] + 0x10 + 0x40 * nl]
+    # Maktar's directional light sets; the arena's tfrags (and the hero, with no light regions) are lit with set 0, which on
+    # Maktar is a faint blue (0.04 0.12 0.13): the terrain's light term ~8 of 255 over its base ~70, against ~70 on Veldin. Set
+    # `--light-set0` (6: a white key light from above, 45 degrees, with a blue-grey fill from below) is swapped into slot 0.
+    lights = [r2.gameplay[M[1] + 0x10 + 0x40 * k:M[1] + 0x50 + 0x40 * k] for k in range(nl)]
+    if 0 < a.light_set0 < nl:
+        lights[0], lights[a.light_set0] = lights[a.light_set0], lights[0]
+    blocks[0x04] = r2.gameplay[M[1]:M[1] + 0x10] + b"".join(lights)
     empty = bytes(0x10)
     for f in (0x08, 0x0c, 0x30, 0x34, 0x38, 0x3c, 0x60, 0x64, 0x68, 0x6c, 0x80, 0x88):
         blocks[f] = empty
+    # the cameras: Veldin's generic ones (the follow camera, type 0, and types 4..7, which no place holds: zero position; their
+    # pvars, +0x1c, Veldin's kept), not its scripted ones (types 23 / 17, whose boxes are Veldin's cuboids, dropped)
+    cb = block(0x08)
+    cams = [cb[0x10 + 0x20 * k:0x30 + 0x20 * k] for k in range(i32(cb, 0))]
+    cams = [c for c in cams if i32(c, 0) in (0, 4, 5, 6, 7) and c[4:16] == bytes(12)]
+    blocks[0x08] = struct.pack("<4I", len(cams), 0, 0, 0) + b"".join(cams)
     blocks[0x70] = struct.pack("<4I", 0, 0x10, 0, 0)  # paths
     blocks[0x74] = struct.pack("<4I", 0, 0x10, 0, 0)  # grind lines
     # the hero only: Veldin's class 0 record, at the arena's centre
@@ -431,8 +656,8 @@ def build(a):
     gsize = len(v.gameplay_file)
     if len(gp) > gsize:
         raise SystemExit("the gameplay (%#x packed) does not fit in Veldin's %#x" % (len(gp), gsize))
-    say("gameplay %#x -> packed %#x (Veldin's file %#x); lights %d, hero at %s yaw %.2f, death height %.0f" % (
-        len(ng), len(gp), gsize, nl, a.hero, a.hero_yaw, a.death_height))
+    say("gameplay %#x -> packed %#x (Veldin's file %#x); lights %d (set 0 Maktar's %d), hero at %s yaw %.2f, death height %.0f, cameras %s" % (
+        len(ng), len(gp), gsize, nl, a.light_set0, a.hero, a.hero_yaw, a.death_height, [i32(c, 0) for c in cams]))
 
     os.makedirs(a.out, exist_ok=True)
     open(os.path.join(a.out, "data.wad"), "wb").write(bytes(out))
@@ -441,6 +666,8 @@ def build(a):
         open(os.path.join(a.out, "core.bin"), "wb").write(bytes(core.buf))
         open(os.path.join(a.out, "index.bin"), "wb").write(bytes(idx))
         open(os.path.join(a.out, "gameplay_unpacked.bin"), "wb").write(bytes(ng))
+    if not a.no_ties:
+        build_ties(r2, a.out, say, a.tie_colour_scale, a.tie_colour_min)
     open(os.path.join(a.out, "manifest.txt"), "w").write("\n".join(log) + "\n")
     print("wrote", a.out)
 
@@ -456,6 +683,10 @@ def main():
     ap.add_argument("--hero", type=float, nargs=3, default=(500.0, 600.0, 502.0))
     ap.add_argument("--hero-yaw", type=float, default=1.5708)
     ap.add_argument("--death-height", type=float, default=480.0)
+    ap.add_argument("--light-set0", type=int, default=6, help="Maktar's light set swapped into set 0 (the terrain's; 0: as it is)")
+    ap.add_argument("--no-ties", action="store_true", help="no ties.mrpc (the arena without its ties)")
+    ap.add_argument("--tie-colour-scale", type=float, default=1.25, help="the ties' instance colours scaled")
+    ap.add_argument("--tie-colour-min", type=float, default=80.0, help="the ties' instance colours brightened to at least this grey")
     ap.add_argument("--literal-only", action="store_true", help="WAD-encode with literal runs only")
     ap.add_argument("--dump-core", action="store_true", help="also write the unpacked core, index and gameplay")
     build(ap.parse_args())

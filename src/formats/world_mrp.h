@@ -138,11 +138,21 @@ struct TfragEntry {
     std::vector<TexturePrim> textures;     // the entry's texture prims (5 qwords each, at +tex_ofs; TEX0's word: the tfrag texture)
 };
 
+// A custom level's tie placement (testing, RAC1_CUSTOM_LEVEL: src/formats/custom_ties.h): ties no EE data stands for, drawn by
+// the host at these placements. Not in world.mrpw: filled when the level's world is loaded.
+struct CustomTieInstance {
+    uint32_t cls = 0;            // World::ties
+    float rot[3][3] = {};        // the rotation's rows (unit)
+    float pos[3] = {};           // the position (world units)
+    uint8_t rgba[4] = {0x80, 0x80, 0x80, 0x80};  // its colour (0x80 = 1.0), every vertex's
+};
+
 struct World {
     int32_t level = -1;
     std::vector<ShrubClass> shrubs;
     std::vector<TieClass> ties;
     std::vector<TfragEntry> tfrags;
+    std::vector<CustomTieInstance> custom_ties;  // (not in the file: a custom level's, see CustomTieInstance)
 };
 
 bool write_world(const std::string& path, const World& w);

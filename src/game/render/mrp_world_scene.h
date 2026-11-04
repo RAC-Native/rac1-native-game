@@ -192,6 +192,8 @@ struct SceneInput {
     std::vector<std::array<uint32_t, 3>> seen;  // (a small hash table: address, length, offset + 1)
     std::array<float, 16> a{}, a_clip{};          // the projections A 0x166d00, 0x166d40
     std::array<float, 3> camera{};                // 0x166dc0
+    std::array<float, 12> rot{};                  // 0x166c80: the camera's rotation (3 qwords; a custom level's ties' culling)
+    std::array<float, 4> tie_fog{};               // 0x16cc60: the tie pass's fog (scale, offset, ceiling, floor; a custom level's ties)
     bool has_sky = false;
     uint32_t sky_asset = 0;
     std::vector<std::pair<uint64_t, uint32_t>> sky_tex;
@@ -230,6 +232,7 @@ void scene_capture(uint32_t chain_start, uint32_t chain_end, SceneInput& in);
 // capture from them (any thread, while the game's state does not change; the passes' notes and shadow chains are not touched meanwhile)
 struct SceneAddrs {
     uint32_t a = 0, a_clip = 0, camera = 0, sky_asset = 0;
+    uint32_t rot = 0, tie_fog = 0;  // (a custom level's ties: the camera's rotation 0x166c80, the tie pass's fog 0x16cc60)
 };
 SceneAddrs scene_addrs();
 void scene_capture(uint32_t chain_start, uint32_t chain_end, SceneInput& in, const SceneAddrs& ad);

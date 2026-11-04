@@ -25,6 +25,7 @@
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
 #include <runtime/kernel/disc.h>
+#include <formats/custom_ties.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/vk/vk_context.h>
 #include <runtime/vk/vk_shaders.h>
@@ -719,6 +720,22 @@ void load_level(int id) {
     }
     L.idx = std::make_unique<WorldIndex>();
     L.idx->add(L.world.get());
+    if (custom_level_active(id)) {  // (a custom level's ties no EE data stands for: their placements, drawn by the scene itself)
+        const std::string path = custom_level_dir() + "/ties.mrpc";
+        CustomTies ct;
+        std::string err;
+        if (!std::filesystem::exists(path)) {
+        } else if (!read_custom_ties(path, ct, err)) {
+            std::fprintf(stderr, "[mrpw] %s\n", err.c_str());
+        } else if (ct.classes.size() != L.world->ties.size()) {
+            std::fprintf(stderr, "[mrpw] %s: %zu classes, the world %zu tie classes (run rac1-native --setup --custom-level again)\n", path.c_str(), ct.classes.size(),
+                         L.world->ties.size());
+        } else {
+            L.world->custom_ties = std::move(ct.instances);
+            L.idx->custom = L.world.get();
+            std::printf("[mrpw] custom level: %zu tie instances drawn by the host\n", L.world->custom_ties.size());
+        }
+    }
     load_textures(L);
     // the GPU path's templates (static)
     build_templates(L);
