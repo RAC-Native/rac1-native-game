@@ -326,6 +326,7 @@ RAC2_CLASSES = {
     2563: ("prop", 2035),     # the floor's fittings (a hazard of the challenges, idle here)
     3276: ("prop", 2036),     # (a prop / item of the challenges, idle here)
 }
+HIT_ROLES = ("monitor",)  # (the roles whose collision is kept: they break when shot, custom_classes.cpp)
 CLASS_PVARS = {"crowd": 0x20, "monitor": 0x40, "arm": 0x40, "prop": 0x10}  # (our behaviour's own pvars, custom_classes.cpp)  # (their flat colour: RAC2 lights them with set 6 and the ambient 27 40 40; ours a grey)
 
 
@@ -649,7 +650,7 @@ class Rac2Classes:
         for rac2_id, (role, rac1_id) in RAC2_CLASSES.items():
             k = ids.index(rac2_id)
             start = i32(idx, MH[7] + 32 * k)
-            blob, largest = rac2classes.convert_class(core, start, ends[start])
+            blob, largest = rac2classes.convert_class(core, start, ends[start], keep_collision=role in HIT_ROLES)
             remap = bytearray(idx[MH[7] + 32 * k + 16:MH[7] + 32 * k + 32])
             for j in range(16):
                 t = remap[j]

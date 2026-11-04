@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 392 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 394 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
 | [Debugging](#debugging-variables) | 299 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 73 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Automated testing](#automated-testing-variables) | 74 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -365,6 +365,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 |---|---|---|
 | `RAC1_ADVANCED` | set (any value) = keep the player's Advanced settings in a headless run; unset = a headless run ignores them (all enhancements off) | Headless runs normally ignore the Advanced settings file and save-stored settings so tests stay deterministic; setting this keeps them, to test an enhancement headlessly. |
 | `RAC1_AMMO` | <item>:<n>,<item>:<n>,...; unset = nothing changed | Sets the ammo of the listed weapons (item id and count) a few frames after the item-giving frame (RAC1_GIVE_FRAME + 5); used by scripted runs. |
+| `RAC1_ARENA_MONITOR_HIT` | `<level frame>[:<monitor>]`; unset = off | Local experiment (on the custom planet): at that level frame a blast (a bomb's sphere test carrying the blaster's hit record) on each of the arena's monitors, or only the n-th to update in that frame: they take the hit through RAC1's own moby collision and hit records and break as when shot (`src/game/enhance/custom_classes.cpp`). |
 | `RAC1_ARENA_SCRIPT` | `<level frame>:<challenge>`; unset = off | Local experiment (on the custom planet): the arena's challenge of that index (0..13, `challenges.txt`) started at that level frame, as from its "Select Your Challenge" menu (`src/host/custom_arena.h`). |
 | `RAC1_ARRIVE` | set (any value) = on; default off | Starts the game as if the ship's map had just chosen the starting planet, so the run begins with the landing cutscene; also counts as asking for a specific level start. |
 | `RAC1_AUTOPILOT` | <first>-<last>:class:<c>[:<n>] or <first>-<last>:wp:x,y[,j]/x,y... ; several separated by | ; unset = off\|Steers the left stick automatically during the given frame range, either toward the n-th live moby of a class or along a closed line of waypoints (j = also jump); used for scripted hoverboard-race runs. |

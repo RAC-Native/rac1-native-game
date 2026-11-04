@@ -16,7 +16,10 @@ the packet's entry pointed at the new data (written at the class's end) with its
 The header's other differences (what RAC1 reads otherwise):
   +0x06       RAC2's metal packets (a shiny second layer drawn over the first), RAC1's shadow packets: 0, the metal
               packets left out (their look is lost: 3276's one)
-  +0x10       the moby's collision (RAC1 copies it to moby +0x94): 0, RAC2's layout of it not checked
+  +0x10       the moby's collision (RAC1 copies it to moby +0x94): RAC1's layout (the same header {joints, primitives' bytes,
+              triangles' bytes, vertices' bytes}, primitives, 8-byte vertices in 1024ths, 4-byte triangles), kept for the
+              classes that take hits (keep_collision: the monitors), else 0 (RAC1 would test the others against weapons and
+              the hero too)
   +0x2c       RAC1 copies the word to the moby pass's far distance: its low halfword kept (RAC2 has more in the upper)
   +0x46       RAC1's class kind (5 enemies, 9 crates ...): -1, none of RAC1's kinds
 The textures: a class's 16 remap bytes index the level's moby texture table; the caller gives each RAC2 texture used a
@@ -63,8 +66,9 @@ def widen_vertex_data(vd):
     return out
 
 
-def convert_class(core, start, end):
-    """RAC2's class at core [start, end) as a RAC1 class: (the bytes, the largest packet's vertex data in qwords)."""
+def convert_class(core, start, end, keep_collision=False):
+    """RAC2's class at core [start, end) as a RAC1 class: (the bytes, the largest packet's vertex data in qwords). Its
+    collision kept with keep_collision (it stays where it was in the class: the new vertex data goes after it)."""
     c = bytearray(core[start:end])
     table = i32(c, 0)
     largest = 0
@@ -82,12 +86,13 @@ def convert_class(core, start, end):
             c[e + 12] = len(vd) // 16
             largest = max(largest, len(vd) // 16)
     c[6] = 0
-    struct.pack_into("<i", c, 0x10, 0)
+    if not keep_collision:
+        struct.pack_into("<i", c, 0x10, 0)
     struct.pack_into("<I", c, 0x2c, struct.unpack_from("<I", c, 0x2c)[0] & 0xffff)
     struct.pack_into("<h", c, 0x46, -1)
     c += bytes(align(len(c), 16) - len(c))
     # every pointer the relocation follows must stay inside the class
-    for f in (0x00, 0x14, 0x18, 0x1c, 0x20, 0x28):
+    for f in (0x00, 0x10, 0x14, 0x18, 0x1c, 0x20, 0x28):
         if not 0 <= i32(c, f) < len(c):
             raise ValueError("class at %#x: header +%#x points outside it" % (start, f))
     for s in range(c[0xc]):

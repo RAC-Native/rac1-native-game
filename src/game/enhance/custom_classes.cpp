@@ -5,6 +5,7 @@
 #include <host/custom_planet.h>
 #include <host/custom_arena.h>
 
+#include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -13,6 +14,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <utility>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -88,6 +91,12 @@ int32_t rand_below(int32_t n) { return n <= 1 ? 0 : static_cast<int32_t>(rnd(g_r
 float rand_unit() { return static_cast<float>(rnd(g_rng) & 0xffffff) / 16777216.0f; }
 // orig: (none) — lo .. hi
 float rand_range(float lo, float hi) { return lo + (hi - lo) * rand_unit(); }
+
+// orig: (none) — RAC1_CUSTOM_TRACE
+bool trace() {
+    static const bool t = std::getenv("RAC1_CUSTOM_TRACE") != nullptr;
+    return t;
+}
 
 // orig: (none) — the level's frame count (0x15f5cc)
 uint32_t level_frame() { return lwu(OV(0x0015f5cc)); }
@@ -191,20 +200,125 @@ void update(uint32_t m) {
 }
 }  // namespace crowd
 
-// ---- the monitors on posts (RAC2 4697, its update 0x43f4c8): screens swaying slowly on their posts ----
+// ---- the monitors on posts (RAC2 4697, its update 0x43f4c8): screens swaying slowly on their posts, breaking when shot ----
 // Sequences 0..2: three single-frame poses (RAC2 picks 1 or 2). Each sways about x and y by 0.05 radians at its own slow
-// rates (RAC2: random phases, rates of 20..40 and 40..60 times 2.9e-4 a frame). RAC2's monitors also break when shot (a
-// hit through its damage test, a fall with sparks and their sound 0, an explosion with debris, bolts and sound 1):
-// that needs RAC1's hit protocol for these mobys, the engine layer's (PLANET_PLAN.md P4), not here.
+// rates (RAC2: random phases, rates of 20..40 and 40..60 times 2.9e-4 a frame).
+// Shot (RAC2: its hit test 0x320d48 with the mask 0x4210000; ours RAC1's: the class keeps its collision, rac2classes.py,
+// the moby takes hits (flag 0x4000) and the weapons' hit record reaches it as a lightpost's does, mask 0x10000 with some
+// damage), it comes off its post: it flies on along the shot's push at 0.25 a frame for 30..60 frames, turning by how far
+// from its middle it was hit (about y: 0.0698 x the hit's height, about z: 0.0524 x its side, each clamped to 1), giving off
+// sparks (one frame in two) with its sound 0. If the flight would end in a wall it breaks at once. It breaks: an explosion
+// with its sound 1, debris, its bolts (RAC2: 15 x 3 - 1 = 44 on Maktar, thrown at the hero within 7 units), and it is gone
+// until the level loads again (RAC2 keeps no record of it either).
 namespace monitor {
 constexpr uint32_t kState = 0x0, kPhaseX = 0x4, kPhaseY = 0x8, kRateX = 0xc, kRateY = 0x10, kBaseX = 0x14, kBaseY = 0x18;
+constexpr uint32_t kTimer = 0x1c, kVel = 0x20, kSpinY = 0x30, kSpinZ = 0x34;  // (kVel: a vector, 16 bytes)
 constexpr float kRateUnit = 2.908882e-4f, kAmplitude = 0.05f;
+constexpr float kFlySpeed = 0.25f, kSpinYRate = 0.0697f, kSpinZRate = 0.0524f;
+constexpr int32_t kBolts = 44;
+constexpr uint32_t kTakesHits = 0x4000, kHitMask = 0x10000;
+enum : int32_t { SetUp = 0, Swaying = 1, Flying = 2, Breaking = 3 };
+
+// orig: (none) — (testing) RAC1_ARENA_MONITOR_HIT=<level frame>[:<monitor>]: at that frame a blast (a bomb's sphere test with
+// the blaster's hit record) on the monitors (each, or the n-th to update in that frame): the hit through RAC1's own
+// collision and hit records, as a weapon's
+void test_blast(uint32_t m) {
+    static const std::pair<uint32_t, int32_t> at = [] {
+        const char* e = std::getenv("RAC1_ARENA_MONITOR_HIT");
+        if (e == nullptr) return std::pair<uint32_t, int32_t>{0, -2};
+        char* end = nullptr;
+        const uint32_t f = static_cast<uint32_t>(std::strtoul(e, &end, 10));
+        return std::pair<uint32_t, int32_t>{f, *end == ':' ? std::atoi(end + 1) : -1};
+    }();
+    static uint32_t frame = 0;
+    static int32_t nth = 0;
+    if (at.second == -2) return;
+    if (frame != level_frame()) {
+        frame = level_frame();
+        nth = 0;
+    }
+    const int32_t k = nth++;
+    if (frame != at.first || (at.second >= 0 && k != at.second)) return;
+    uint32_t rec[9] = {};
+    Vec4 push = V(m + moby::kPos);
+    push.x -= lwc1(0x0013f3d0);  // (away from the hero, as the blaster's)
+    push.y -= lwc1(0x0013f3d4);
+    push.z = 0.0f;
+    vec2_set_length(push, push, 1.0f);
+    std::memcpy(rec, &push, 16);
+    rec[5] = 0x00010001u;  // (+0x14: the hit's kinds, RAC1's mask word)
+    const float damage = 0.25f;
+    std::memcpy(&rec[7], &damage, 4);
+    rec[8] = 1;
+    const int32_t n = mobys_in_sphere_v(V(m + moby::kPos), 1.0f, 0x10, 0, rec);
+    std::printf("[classes] frame %u: test blast on monitor %d (uid %d): %d moby(s) touched\n", level_frame(), k, lh(m + moby::kUid), n);
+}
+
+// orig: (none) — the shot that took it off its post: its flight (velocity, turn rates, frames)
+void hit_taken(uint32_t m, const Pvars& pv, uint32_t hit) {
+    Vec4 push = V(hit + 0x10);
+    push.w = 0.0f;
+    if (vec3_length(push) < 1e-4f) {  // (no push: away from the hero)
+        push = V(m + moby::kPos);
+        push.x -= lwc1(0x0013f3d0);
+        push.y -= lwc1(0x0013f3d4);
+        push.z = 0.0f;
+    }
+    vec3_set_length(push, push, kFlySpeed);
+    push.w = 0.0f;
+    V(pv.base + kVel) = push;
+    // where it was hit, in its own axes (the contact point when the record has one, else its near side)
+    Vec4 at = V(hit);
+    Vec4 rel{at.x - lwc1(m + moby::kPos), at.y - lwc1(m + moby::kPos + 4), at.z - lwc1(m + moby::kPos + 8), 0.0f};
+    if (vec3_length(rel) > 20.0f || (at.x == 0.0f && at.y == 0.0f && at.z == 0.0f)) {
+        Vec4 back;
+        vec3_set_length(back, push, -1.0f);
+        rel = back;
+    }
+    float local[3];
+    for (uint32_t r = 0; r < 3; ++r)
+        local[r] = rel.x * lwc1(m + moby::kMatrix + 0x10 * r) + rel.y * lwc1(m + moby::kMatrix + 0x10 * r + 4) + rel.z * lwc1(m + moby::kMatrix + 0x10 * r + 8);
+    auto clamp1 = [](float v) { return v < -1.0f ? -1.0f : (v > 1.0f ? 1.0f : v); };
+    pv.f(kSpinY, -clamp1(local[2]) * kSpinYRate);
+    pv.f(kSpinZ, clamp1(local[1]) * kSpinZRate);
+    pv.i(kTimer, 30 + rand_below(31));
+    sh(m + 0x34, lhu(m + 0x34) & ~kTakesHits);
+    // (RAC2: a wall before the flight's end: it breaks at once)
+    Vec4 end = V(m + moby::kPos);
+    end.x += push.x * static_cast<float>(pv.i(kTimer));
+    end.y += push.y * static_cast<float>(pv.i(kTimer));
+    end.z += push.z * static_cast<float>(pv.i(kTimer));
+    const bool wall = segment_collide_v(V(m + moby::kPos), end, 0, m, nullptr) != 0;
+    pv.i(kState, wall ? Breaking : Flying);
+    if (!wall) moby_sound_start(0, 0, m);
+    if (trace()) std::printf("[classes] frame %u: monitor uid %d hit: flies %d frames%s\n", level_frame(), lh(m + moby::kUid), pv.i(kTimer), wall ? " (a wall: breaks)" : "");
+}
+
+// orig: (none) — a spark off the falling monitor (RAC2: one frame in two, drifting up from half a unit below it)
+void spark(uint32_t m) {
+    if (rand_below(2) != 0) return;
+    Vec4 at = V(m + moby::kPos);
+    at.z -= 0.5f;
+    const Vec4 up{0.0f, 0.0f, 0.0667f, 0.0f};
+    spawn_particle_0b_v(at, up, 0x40f0f0f0u, 0x40f0f0f0u, 15, 25, 0, 0, 60000.0f, 1.0f);
+}
+
+// orig: (none) — it breaks: the explosion and its sound 1, debris, the bolts; gone
+void break_up(uint32_t m) {
+    explosion_burst(m, m + moby::kPos, 1, 1.0f, 8.0f);
+    debris_burst(m, 0x7ab, 1, 0x7ab, 1, 4, 0);  // (RAC1's: the debris of Veldin's walkers, 0x7ab, in place of RAC2's own pieces)
+    const uint32_t near = vec3_distance(V(m + moby::kPos), V(0x0013f3d0)) < 7.0f ? 2u : 0u;
+    bolts_drop(m, kBolts, kBolts, near, -1);
+    if (trace()) std::printf("[classes] frame %u: monitor uid %d breaks\n", level_frame(), lh(m + moby::kUid));
+    moby_retire(m);
+}
 
 // orig: (none)
 void update(uint32_t m) {
     const Pvars pv{lwu(m + moby::kPvars)};
     if (pv.base == 0) return;
-    if (pv.i(kState) == 0) {
+    switch (pv.i(kState)) {
+    case SetUp:
         pv.f(kPhaseX, rand_unit() * 6.2831853f);
         pv.f(kPhaseY, rand_unit() * 6.2831853f);
         pv.f(kRateX, rand_range(20.0f, 40.0f) * kRateUnit);
@@ -212,13 +326,32 @@ void update(uint32_t m) {
         pv.f(kBaseX, lwc1(m + moby::kRot));
         pv.f(kBaseY, lwc1(m + moby::kRot + 4));
         play(m, static_cast<uint32_t>(1 + rand_below(2)), 5);
-        pv.i(kState, 1);
+        if (lwu(m + 0x94) != 0) sh(m + 0x34, lhu(m + 0x34) | kTakesHits);  // (with its collision: weapons reach it)
+        pv.i(kState, Swaying);
+        break;
+    case Swaying: {
+        const float px = std::fmod(pv.f(kPhaseX) + pv.f(kRateX), 6.2831853f), py = std::fmod(pv.f(kPhaseY) + pv.f(kRateY), 6.2831853f);
+        pv.f(kPhaseX, px);
+        pv.f(kPhaseY, py);
+        swc1(m + moby::kRot, pv.f(kBaseX) + kAmplitude * std::sin(px));
+        swc1(m + moby::kRot + 4, pv.f(kBaseY) + kAmplitude * std::sin(py));
+        test_blast(m);
+        const uint32_t hit = sub_0025a420(m, kHitMask, 0);
+        if (hit != 0 && 0.0f < lwc1(hit + 0x2c)) hit_taken(m, pv, hit);
+        break;
     }
-    const float px = std::fmod(pv.f(kPhaseX) + pv.f(kRateX), 6.2831853f), py = std::fmod(pv.f(kPhaseY) + pv.f(kRateY), 6.2831853f);
-    pv.f(kPhaseX, px);
-    pv.f(kPhaseY, py);
-    swc1(m + moby::kRot, pv.f(kBaseX) + kAmplitude * std::sin(px));
-    swc1(m + moby::kRot + 4, pv.f(kBaseY) + kAmplitude * std::sin(py));
+    case Flying: {
+        spark(m);
+        swc1(m + moby::kRot + 4, lwc1(m + moby::kRot + 4) + pv.f(kSpinY));
+        swc1(m + moby::kRot + 8, lwc1(m + moby::kRot + 8) + pv.f(kSpinZ));
+        for (uint32_t k = 0; k < 3; ++k) swc1(m + moby::kPos + 4 * k, lwc1(m + moby::kPos + 4 * k) + lwc1(pv.base + kVel + 4 * k));
+        pv.i(kTimer, pv.i(kTimer) - 1);
+        if (pv.i(kTimer) <= 0) pv.i(kState, Breaking);
+        break;
+    }
+    case Breaking: break_up(m); break;
+    default: pv.i(kState, SetUp);
+    }
 }
 }  // namespace monitor
 
@@ -330,11 +463,6 @@ void prop_update(uint32_t) {}
 const ClassLine* line_of_moby(uint32_t m) { return line_of(lh(m + moby::kClassId)); }
 
 // orig: (none) — every class's update: its sounds' bank, then its behaviour
-// orig: (none) — RAC1_CUSTOM_TRACE
-bool trace() {
-    static const bool t = std::getenv("RAC1_CUSTOM_TRACE") != nullptr;
-    return t;
-}
 
 template <void (*Behaviour)(uint32_t)>
 void with_sounds(uint32_t m) {
