@@ -1395,3 +1395,11 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
 - **Measured** (Novalis exploring, =1 against =0): "effects draw, draw lists" 8.9 -> 6.5 ms a host frame; the windows 33.2-35.8 ->
   30.9-34.9 ms.
 
+### Tried at night (2026-11-04)
+
+- **ee_read / ee_write's error path out of line** (to let the compiler inline the accessors: ~11% of the game thread's samples as calls
+  on Kerwan): the RPX +0.5 MB, Novalis and Kerwan the same (A/B against the build before) - not kept.
+- **RAC1_MAX_STEPS=<n> (new option, off by default; orig_main.cpp):** at most n game frames a host frame, the time owed beyond them
+  dropped. Kerwan's busy street (the game logic ~14-15 ms a game frame on core 2): with the catch-up 4 game frames a host frame,
+  44-68 ms frames; RAC1_MAX_STEPS=2: 40-45 ms, the game there at ~80% speed (as the PS2 slowed). A choice for Daino.
+

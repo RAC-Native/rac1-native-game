@@ -3197,6 +3197,15 @@ int main(int argc, char** argv) {
                 steps = static_cast<int>(std::floor(game_time + 0.5));
                 game_time -= steps;
                 steps = std::min(steps, movie_hw_is_open() ? 2 : 8);
+                // ((2026-11-04, testing / an option) RAC1_MAX_STEPS=<n>: at most n game frames a host frame, the time owed beyond them
+                // dropped - a scene too heavy for the host then runs slower, as the PS2 did, instead of catching up: the catch-up
+                // makes the next host frame longer still (Kerwan's busy streets on the Wii U: 4 game frames a host frame, ~15 fps).
+                // Unset: 8, the time kept, as before)
+                static const int max_steps = std::getenv("RAC1_MAX_STEPS") != nullptr ? std::max(1, std::atoi(std::getenv("RAC1_MAX_STEPS"))) : 0;
+                if (max_steps > 0 && steps >= max_steps) {
+                    steps = max_steps;
+                    game_time = std::min(game_time, 0.0);
+                }
             }
         }
         audio_out_set_alone(iop_alone);
