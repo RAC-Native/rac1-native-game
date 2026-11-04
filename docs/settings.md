@@ -48,7 +48,7 @@ row changes only what the host draws, never the game's state.
 
 | Row | Values | Default |
 |---|---|---|
-| Renderer | OpenGL, Vulkan (experimental; from the next start, see [Vulkan](vulkan.md)); on macOS Metal only ([Metal](metal.md)) | OpenGL (macOS: Metal) |
+| Renderer | OpenGL, Vulkan (optional; from the next start, see [Vulkan](vulkan.md)); on macOS Metal only ([Metal](metal.md)) | OpenGL (macOS: Metal) |
 | Display Mode | Window, Fullscreen | Window |
 | Monitor | the connected monitors by name (DP-1, HDMI-A-1, ...) | the first one |
 | Window Size | 640x480 (the original's) to 3840x2160 (16 sizes, 4:3 and 16:9 among them) | 960x720 |
@@ -216,8 +216,8 @@ Two pages of the same name. **The pause menu's** holds a playthrough's settings,
 | Movement | Original, Strafing, RAC 3 | with the save |
 | Fades | Fast, Original | with the save |
 | Buy All Ammo | Off, On | with the save |
-| Vibration | Off, Low, High | the preferences (the machine's pad) |
-| Adaptive Triggers | Off, On (shown only when the pad in use is a DualSense) | the preferences (the machine's pad) |
+| Vibration (experimental) | Off, Low, High | the preferences (the machine's pad) |
+| Adaptive Triggers (experimental) | Off, On (shown only when the pad in use is a DualSense) | the preferences (the machine's pad) |
 | Skip Cutscenes | Original, Always | with the save |
 
 **The main menu's** holds the global settings, those of the whole game rather than of a playthrough, kept in the
@@ -369,7 +369,7 @@ Details:
 - **The channel:** Main menu > Updates > Update Channel. Players can switch between **Stable** (the
   latest release) and **Development** (`main`) at any time. A developer clone on a branch other than
   `main` stays on its branch.
-- **The installed version** is printed at start (`[orig] rac1-native 0.6.0 (v0.6.0-12-g1a2b3c4, main)`):
+- **The installed version** is printed at start (`[orig] rac1-native 0.7.0 (v0.7.0-12-g1a2b3c4, main)`):
   the release's version and, for a git clone, `git describe` and the branch, recorded by the build
   (`cmake/version.cmake`).
 - **Skip Version** is kept in `advanced_options.txt` (`update_skip <tag or commit>`); remove the

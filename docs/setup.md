@@ -38,13 +38,13 @@ source code, the files that are a mechanical translation of the game's own code 
   in Python; no extra modules);
 - optionally **FFmpeg** development files (`libavcodec`, `libavutil`), to play the game's movies.
   Without them the game runs and skips the movies;
-- optionally **glslc** (shaderc), to build the experimental [Vulkan renderer](vulkan.md)'s shaders
+- optionally **glslc** (shaderc), to build the optional [Vulkan renderer](vulkan.md)'s shaders
   (`glslangValidator` works too); without it the game is built with OpenGL only;
 - an internet connection for the first build (CMake downloads GLFW, GLM, Dear ImGui, TinyGLTF,
   miniaudio, Vulkan-Headers and volk);
 - about 5 GB of free disk for the game's data and generated code (4 GB of it the disc's files, which the
   game reads instead of the image), besides the disc image, plus about 2 GB for the build;
-- a GPU and driver with **OpenGL 4.6** (and **Vulkan 1.3** for the experimental Vulkan renderer,
+- a GPU and driver with **OpenGL 4.6** (and **Vulkan 1.3** for the optional Vulkan renderer,
   which is optional: OpenGL is the default).
 
 The setup tool checks all of this and tells you what is missing, with the command to install it on
@@ -194,9 +194,9 @@ into it back too ([Architecture](architecture.md#the-region-layer)). Then, as fo
 
 - The build's changed functions (about a hundred in each level's copy of the engine: the hero's states and
   velocities, several weapons, the memory card and the save screens, the pause menu and the planet map, the
-  text wrapping, the pad's reads...) run the North American port where the port has one by hand: the 1.02
-  fixes in them are not there. What each fix is has not been established yet; they are to come one by one, as an
-  option of their own.
+  text wrapping, the pad's reads...) run the North American port where the port has one by hand. The 1.02
+  changes ported so far reach those functions through main menu > Options > Advanced > [1.02 Fixes](advanced.md#102-fixes)
+  and [1.02 Gameplay](advanced.md#102-gameplay), as on the other discs; the rest are to come one by one.
 - The generated ones are translated from the Platinum's own code, as stand-ins (`STAND-IN` in the generated
   sources): on Veldin the credits, the end menu's page, the vendor's screens and the Morph-o-Ray's chicken,
   and per level the same engine functions (the hero's horizontal velocity, the HUD counters...). The stand-ins of the
@@ -250,8 +250,8 @@ It then picks:
 
 - **The game's disc**: the one already set up, when its image is still there (an image added later
   does not make the setup extract and generate everything again from another disc); else the North
-  American disc (`SCUS-97199`); else the PAL disc 1.00 (`SCES-50916`). The PAL disc 2.00 and the
-  Japanese disc are not the game's disc yet: with only those, the setup stops and says so.
+  American disc (`SCUS-97199`); else the PAL disc 1.00 (`SCES-50916`); else the PAL disc 2.00 (the
+  Platinum). The Japanese disc is not a game's disc yet: with only that, the setup stops and says so.
 - **The data discs**: each image that gives something the game's disc lacks: the Japanese disc (its voices, and
   beside the North American disc the corrected texts), the PAL discs 1.00 and 2.00 beside the North American disc (the
   corrected texts): see [Data discs](#data-discs).
@@ -484,7 +484,7 @@ hand.
    `setup.cmd`): it then uses that shell's tools and tells you which packages to install.
 
    The private MSYS2 does not include `glslc`, so a game built this way has OpenGL only (the
-   Renderer row's Vulkan falls back to OpenGL). The experimental [Vulkan renderer](vulkan.md) needs
+   Renderer row's Vulkan falls back to OpenGL). The optional [Vulkan renderer](vulkan.md) needs
    `mingw-w64-clang-x86_64-shaderc` installed in the MSYS2 the game is built with.
 
 2. **Play**: double-click **`play.cmd`** in the repository's folder. (The game must start from the

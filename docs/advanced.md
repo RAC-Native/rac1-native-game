@@ -23,8 +23,8 @@ The Advanced page has these rows:
 | Movement | Original, Strafing, RAC 3 | enhancement |
 | Fades | Fast, Original | a removed compromise: Fast is the port's default, Original the PS2's |
 | Buy All Ammo | Off, On | enhancement |
-| Vibration | Off, Low, High | enhancement (kept as the machine's preference, not with the saves) |
-| Adaptive Triggers | Off, On | enhancement, shown only when the pad in use is a DualSense (kept as the machine's preference) |
+| Vibration | Off, Low, High | enhancement, experimental (kept as the machine's preference, not with the saves) |
+| Adaptive Triggers | Off, On | enhancement, experimental, shown only when the pad in use is a DualSense (kept as the machine's preference) |
 | Skip Cutscenes | Original, Always | enhancement |
 
 All of it is in `src/game/enhance/advanced.{h,cpp}` (Buy All Ammo's Vendor entry in
@@ -100,8 +100,11 @@ the mobys, the particles and the camera for that frame, and the play-time statis
 
 ## Vibration (#10)
 
-The original has no vibration (it came with *Going Commando*). With **Vibration = Low** or **High**, the
-gamepad answers what happens, in the spirit of *Ratchet & Clank 2* and *3*. Each event is a short pulse
+> **Vibration and Adaptive Triggers are an experiment**: our own choice of events and strengths, which may still change a
+> lot. They do not reproduce any other game's vibration.
+
+The original has no vibration. With **Vibration = Low** or **High**, the
+gamepad answers what happens: our own pulses for the game's events. Each event is a short pulse
 with a crisp end: held at its strength for about half its length, then brought down to 0 in a few
 frames. The strong, low-frequency motor (the left one) takes impacts and explosions; the weak,
 high-frequency one (the right one) takes shots and ticks. Low is a little under half of High. Vibration
@@ -156,7 +159,7 @@ to a quarter turn), so in the centre both sides have the full strength and to on
 out. On the **other pads** the two motors are the low and the high frequencies, not left and right, so
 the pulses stay centred there.
 
-**Adaptive Triggers** (shown only when the pad in use is a DualSense; off by default; Modern
+**Adaptive Triggers** (experimental, like Vibration; shown only when the pad in use is a DualSense; off by default; Modern
 turns it on when a DualSense is in use) works with Aiming = Modern, where L2 aims and R2 fires,
 in gameplay on foot:
 - L2: a soft resistance from a quarter of its travel;

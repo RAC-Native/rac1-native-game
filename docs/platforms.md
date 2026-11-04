@@ -1,7 +1,8 @@
 # Other platforms
 
 rac1-native runs on Linux x86-64, and on Windows x86-64; Windows is no longer experimental: players
-have played through the game on it. This page is the state of the Windows port, what remains, and
+have played through the game on it. It also runs on macOS on Apple Silicon, with a Metal renderer (a
+contributor's port, #116, #119). This page is the state of the Windows port, what remains, and
 notes on macOS and other devices (ARM64 and Android, in progress on a branch).
 
 The goal is one codebase that builds on Linux and Windows and behaves identically on both: same
@@ -12,7 +13,7 @@ game state, same oracle results, same reference images.
 - **The libraries.**
   - GLFW: window, input, gamepads.
   - glad and OpenGL 4.6.
-  - volk and Vulkan-Headers, for the experimental [Vulkan](vulkan.md) renderer: volk finds the
+  - volk and Vulkan-Headers, for the optional [Vulkan](vulkan.md) renderer: volk finds the
     system's Vulkan loader when the game starts, so nothing of Vulkan is needed to build.
   - Dear ImGui, the debug menu's widgets.
   - miniaudio: audio output.
