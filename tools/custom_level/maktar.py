@@ -15,8 +15,8 @@ src/host/custom_planet.h):
                       blue: the terrain is its painted colours), one light zone over the arena (the hero lit as RAC2 lights
                       the arena's mobys: set 6, a white key light from above, and the ambient 27 40 40), Veldin's generic
                       cameras (types 0, 4..7), no sound instances, no ties, no shrubs, the hero (class 0) at the
-                      arena's centre and the wave challenge's enemies (copies of Veldin's class 749 and 1440 records,
-                      hidden until their wave), no moby groups, volumes or grind lines, no occlusion. Veldin's help text, moby class list,
+                      arena's centre and the challenges' stand-in enemies' templates (a copy of a Veldin record of class
+                      749 and of 1440, hidden: the arena copies them), no moby groups, volumes or grind lines, no occlusion. Veldin's help text, moby class list,
                       pvars (the hero's own, the cameras') and the two 0x4010 grids (empty on Veldin and on Maktar) kept.
                       Same size as Veldin's.
   <out>/ties.mrpc     the arena's ties (205 instances of 13 RAC2 classes, their 45 textures), drawn by the host
@@ -28,7 +28,8 @@ src/host/custom_planet.h):
                       their textures added to the moby texture table, their sound lists), and their placements as RAC1
                       moby records: drawn and animated by RAC1's engine, their behaviour our host code
                       (src/game/enhance/custom_classes.cpp, planet.txt's "class" lines).
-  <out>/waves.txt     the wave challenge: per wave its enemies' uids (src/game/enhance/custom_waves.cpp shows them).
+  <out>/challenges.txt the arena's 14 challenges, read from RAC2's level code on the disc (its challenge table, each
+                      challenge's name text, waves, prize; src/host/custom_arena.h).
   <out>/lights.txt    the modern lighting's file for the custom level (our choices): point lights at the arena's gates,
                       lamps and screens, emissive surfaces for its screens and neon.
   <out>/planet.txt    the planet's name on the ship's list, its death height and ship (our own settings file).
@@ -74,6 +75,7 @@ class Rac2Level:
         sys.path.insert(0, rac2_tools)
         import rac2disc
         iso = rac2disc.Iso(iso_path)
+        self.iso_path = iso_path
         lba, _ = iso.files["G/LEVEL%d.WAD" % level]
         h = rac2disc.level_header(iso.read(lba, 0x800))
         dsec, dn = h["data"]
@@ -569,7 +571,7 @@ def build_ties(r2, out, say, colour_scale, colour_min, mobys=True, skip=()):
 # file and overlay, which the custom level keeps): class 749 (16 on Veldin) and 1440 (9). Each one placed is a copy of one of
 # Veldin's records of its class with that record's pvars (its own block: no two share one), its kill-save uid, its light set
 # 6 and the arena's ambient; flags 0 (always spawned), no group, hidden (+0x60 bits 0 and 1, OR'd into the moby's +0x34
-# flags: not drawn, not updated) until our wave hook (src/game/custom_waves.cpp, <out>/waves.txt) shows its wave. Not the two whose pvars name
+# flags: not drawn, not updated): the templates the arena's controller copies (src/game/enhance/custom_arena.cpp). Not the two whose pvars name
 # another moby (749 pvar 189, 1440 pvar 231).
 WAVE_SKIP_PVARS = (189, 231)
 
@@ -733,6 +735,64 @@ def sound_block(idx, H, extra):
     return bytes(b)
 
 
+# The announcer's lines (AUDIO2.WAD of RAC2's level 2: groups of five entries, one a language), what our controller says
+# when: the menu opens, a challenge starts, a wave is cleared, the round won, the prize, a kill, the hero hurt.
+ANNOUNCER = (
+    ("menu", (33,)),                # l2_choose_and_win
+    ("start", (38,)),               # l2_choose_battle
+    ("start_mega", (73,)),          # l2_mega_challenge
+    ("start_ultimate", (78,)),      # l2_ultimate_challenge
+    ("winner", (43, 48, 53)),       # l2_we_have_winner, l2_winner, l2_you_are_winner
+    ("prize", (58, 63)),            # l2_prize_goes_to, l2_won_prize
+    ("unlocked", (88, 93, 98)),     # l2_unlocked_challenge, l2_challenge_unlocked
+    ("kill", (173, 178, 183, 188, 193, 198, 203, 213, 218)),  # l2_gotta_hurt .. l2_see_you_later
+    ("hurt", (163, 168, 208)),      # l2_ouch, l2_feeling_that, l2_looking_bad
+    ("goodbye", (223,)),            # l2_goodbye
+)
+# RAC2's four regular enemies (the wave records' columns 0..3, its controller 0x3faaa4..0x3faba8) and their RAC1 stand-ins
+# (Veldin's classes, whose code and data the planet keeps): the shooter 2506 by the 1440, the others by the 749
+STAND_FOR = ((2506, 1440), (2850, 749), (3131, 749), (3134, 749))
+
+# RAC2's level 2 code: the challenge table (14 pointers, its .lit at gp + 0x21a0), each record {waves, the wave records,
+# the challenge to win first (-1 none, guess), the prize in bolts, 1, 0}, a wave 10 halfwords; the name function's jump
+# table (0x3fe1b0: index -> `li v0, <text id>` in each case's delay slot)
+CHALLENGE_TABLE, CHALLENGES, NAME_JUMPS = 0x1b1190, 14, 0x2a5600
+
+
+def rac2_challenges(r2, rac2_tools, say):
+    """challenges.txt's lines from RAC2's level 2 code image (the RAC2 port's tools/recomp images.load) and its texts."""
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(rac2_tools)), "recomp"))
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(rac2_tools)), "codegen"))
+    import images
+    im = images.load(r2.iso_path, ["level02"])[0]
+
+    def rd(addr, n):
+        for sg in im.all_segments():
+            if sg.addr <= addr and addr + n <= sg.end:
+                return sg.data[addr - sg.addr:addr - sg.addr + n]
+        raise SystemExit("RAC2 level 2: %#x not in its image" % addr)
+    # the texts (the gameplay's +0x10 block: count, then {offset, id, 2 words} records)
+    g = r2.gameplay
+    base = i32(g, 0x10)
+    texts = {}
+    for k in range(i32(g, base)):
+        off, tid = struct.unpack_from("<ii", g, base + 8 + 16 * k)
+        texts[tid] = g[base + off:g.index(b"\0", base + off)].decode("latin1")
+    lines = []
+    for c, rec in enumerate(struct.unpack("<%dI" % CHALLENGES, rd(CHALLENGE_TABLE, 4 * CHALLENGES))):
+        n, waves, first, prize = struct.unpack("<iIii", rd(rec, 16))
+        insn = struct.unpack("<I", rd(struct.unpack("<I", rd(NAME_JUMPS + 4 * c, 4))[0] + 4, 4))[0]
+        if insn >> 16 != 0x2402:
+            raise SystemExit("RAC2 level 2: challenge %d's name case is not `li v0, <id>`" % c)
+        tid = insn & 0xffff
+        name = " ".join(texts.get(tid, "?").replace("\n", " ").split())
+        lines.append("challenge %d %#x %d %d %s" % (c, tid, first, prize, name))
+        for w in range(n):
+            lines.append("wave " + " ".join(str(x) for x in struct.unpack("<10h", rd(waves + 20 * w, 20))))
+    say("challenges: %d read from RAC2's level 2 code" % CHALLENGES)
+    return lines
+
+
 def write_planet(out, a):
     """planet.txt: our own small settings file of the custom planet (src/host/custom_planet.h reads it)."""
     with open(os.path.join(out, "planet.txt"), "w") as f:
@@ -743,8 +803,16 @@ def write_planet(out, a):
                   "rac2_level 2\n"
                   "# LEVEL2.WAD's sound banks (header offsets): the level's, the arena chunk's\n"
                   "rac2_banks 0x18 0x50\n"
-                  "# AUDIO2.WAD's entries (left channels): rat2_l02_arena_a then rat2_l02_arena_b looped\n"
-                  "music 4 6\n")
+                  "# AUDIO2.WAD's entries (left channels, the right ones follow): the level's (rat2_l03_main a, b looped),\n"
+                  "# the challenges' (rat2_l02_arena a, b: RAC2's controller asks for track 4), the bosses' (rc2_l02_arenaboss)\n"
+                  "music 0 2\nmusic_challenge 4 6\nmusic_boss 230 232\n"
+                  "# the announcer's lines: AUDIO2.WAD's first entry of each group of five (English or Japanese, French,\n"
+                  "# German, Spanish, Italian: the voice language's), by what the arena's controller says (custom_arena.cpp)\n"
+                  + "".join("announce %s %s\n" % (k, " ".join(str(e) for e in v)) for k, v in ANNOUNCER)
+                  + "# the challenges' stand-in enemies (src/game/enhance/custom_arena.cpp): standin <RAC1 class> <its hidden\n"
+                    "# template's uid> <its pvars' size>; stand_for <RAC2 class> <RAC1 class>\n"
+                  + "".join("standin %d %d %d\n" % t for t in getattr(a, "standin_lines", []))
+                  + "".join("stand_for %d %d\n" % t for t in STAND_FOR))
         if getattr(a, "class_lines", None):
             f.write("# the RAC2 classes converted (rac2classes.py): class <role> <RAC1 class id> <its sounds' bank: rac2_banks' index, -1 none>;\n"
                     "# their behaviour by role: src/game/enhance/custom_classes.cpp\n")
@@ -1014,7 +1082,7 @@ def build(a):
         p += sz
     struct.pack_into("<3f", hero, 0x30, *a.hero)
     struct.pack_into("<3f", hero, 0x3c, 0.0, 0.0, a.hero_yaw)
-    enemies, waves = wave_enemies(g, mo, a.waves, say)
+    enemies, waves = wave_enemies(g, mo, a.standins, say)
     # their pvars: a class-1440 enemy with a path (pvars +0x1b8 >= 0) flies in along it, and retires itself when the path
     # is not there (the custom level has none): its path made -1, it then starts on the spot (e1440_update's state 3)
     pdata = bytearray(block(0x58))
@@ -1023,6 +1091,7 @@ def build(a):
         if i32(r, 0x18) == 1440:
             struct.pack_into("<i", pdata, i32(g, ptab + 8 * i32(r, 0x58)) + 0x1b8, -1)
     ptable = bytearray(block(0x54))
+    a.standin_lines = [(i32(r, 0x18), i32(r, 0x0c), i32(ptable, 8 * i32(r, 0x58) + 4)) for r in enemies]
     placed = []
     if conv:  # the converted classes' placements, each with its own pvars (our behaviour's, zeroed)
         taken = {i32(r, 0x0c) for r in enemies} | {i32(hero, 0x0c)}
@@ -1079,11 +1148,13 @@ def build(a):
 
     os.makedirs(a.out, exist_ok=True)
     open(os.path.join(a.out, "data.wad"), "wb").write(bytes(out))
-    with open(os.path.join(a.out, "waves.txt"), "w") as f:
-        f.write("# rac1-native: the custom level's wave challenge (tools/custom_level/maktar.py; src/game/custom_waves.h)\n"
-                "# wave <the uids of its enemies (moby +0xb2), hidden until the wave starts>\n")
-        for w in waves:
-            f.write("wave %s\n" % " ".join(str(u) for u in w))
+    with open(os.path.join(a.out, "challenges.txt"), "w") as f:
+        f.write("# rac1-native: Maktar's arena's challenges, from RAC2's disc (tools/custom_level/maktar.py; src/host/custom_arena.h)\n"
+                "# challenge <index> <name text id> <the challenge to win first, -1 none> <prize bolts> <name>\n"
+                "# wave <the four enemies' counts (2506 2850 3131 3134)> <hazards 2563> <hazards 2953> <items> <items>\n"
+                "#      <bosses: 1 Chainblade, 256 B2 Brawler> <gates open>\n")
+        for line in rac2_challenges(r2, a.rac2_tools, say):
+            f.write(line + "\n")
     open(os.path.join(a.out, "gameplay.bin"), "wb").write(gp + bytes(gsize - len(gp)))
     write_planet(a.out, a)
     if a.dump_core:
@@ -1116,8 +1187,8 @@ def main():
     ap.add_argument("--light-set0", type=int, default=0, help="Maktar's light set swapped into set 0 (the terrain's; 0: RAC2's sets as they are)")
     ap.add_argument("--hero-light-set", type=int, default=6, help="the arena's light zone's set: the hero's light (RAC2's arena mobys: 6)")
     ap.add_argument("--hero-ambient", type=int, nargs=3, default=(27, 40, 40), help="the light zone's ambient (RAC2's arena mobys: 27 40 40)")
-    ap.add_argument("--waves", default="749x2;749x3,1440x1;749x4,1440x2",
-                    help="the wave challenge's enemies: waves by ';', each <class>x<count> by ',' (Veldin's 749 and 1440); '' none")
+    ap.add_argument("--standins", default="749x1,1440x1",
+                    help="the challenges' stand-in enemies' hidden templates: <class>x<count> by ',' (Veldin's 749 and 1440)")
     ap.add_argument("--no-ties", action="store_true", help="no ties.mrpc (the arena without its ties)")
     ap.add_argument("--no-mobys", action="store_true", help="the arena's static mobys not drawn (ties.mrpc without them)")
     ap.add_argument("--tie-colour-scale", type=float, default=1.25, help="the ties' instance colours scaled")

@@ -36,6 +36,14 @@ void dialog_start(uint32_t lsn, int32_t id, int32_t a, int32_t vol) {
 }
 }  // namespace
 
+// orig: (none) — custom_planet.h: a custom planet's announcer line at `lsn` (a data disc's sectors), as the level's dialog
+// lines play (the dialog slot, volume 0x400); false when a line plays already
+bool custom_dialog_play(uint32_t lsn) {
+    if (lsn == 0 || lw(B) != 0) return false;
+    dialog_start(lsn, 0, 0, 0x400);
+    return true;
+}
+
 // The streams' frame: the music slot's restart (flag 1, no next track) or its looped part
 // queued (state 8); every 7 s a change of track (+0x22) faded over to (+0x23) or taken; a
 // dialog line asked for (+0x1c) started (an old one stopped first); the music's sequence

@@ -177,6 +177,14 @@ What changed in each release. Releases are source only: you build the game with 
   crowd (cheers after a wave, does the wave while waiting), the monitors on posts (swaying), the gates' arms (open and close
   at each wave, with their RAC2 sounds), the floor's fittings; their behaviour hand-written in `src/game/enhance/custom_classes.cpp`
   (`planet.txt`'s `class` lines); `--setup --custom-level` also exports the planet's moby classes and textures.
+- Local experiment, planet P4: Maktar's arena controller (RAC2's class 2905 written again by behaviour,
+  `src/game/enhance/custom_arena.cpp`, its engine services `rac2_compat.cpp`) in place of the 3-wave hook: at the arena's
+  centre Triangle opens "Select Your Challenge" (the 14 challenges read from RAC2's level code into the planet's
+  `challenges.txt`: names, waves, prizes, the order they open in); a challenge plays the challenge music and the
+  announcer's lines (the voice language's, from RAC2's disc), its waves' enemies (RAC1 stand-ins for RAC2's four, copies of
+  hidden templates) handed out by the gates' arms three at a time, the time limits and the Wrench Expert's rules; won, the
+  prize in bolts (x 0.3 per earlier victory, at least 500) and the victory kept in the save's `.pc`. The boss challenges
+  and those needing RAC2 weapons are listed, not yet playable. `RAC1_ARENA_SCRIPT` (testing).
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

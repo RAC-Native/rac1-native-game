@@ -3,7 +3,7 @@
 // after what RAC2's level code does (its update functions read as the reference: their states, sequences, timings).
 #include <host/custom_classes.h>
 #include <host/custom_planet.h>
-#include <host/custom_waves.h>
+#include <host/custom_arena.h>
 
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -126,7 +126,7 @@ struct Pvars {
 // Sequences: 0 / 1 idle, 2 / 3 cheering, 4 standing up as a wave goes round the stands. RAC2's crowd follows the challenge
 // controller's excitement (its pvars +0x6c): above 4 it starts cheering, under 3 it calms down, under 2 it gets bored and
 // does the wave, above 3 again it stops; each change at a 1-in-60 chance a frame, so the stands change gradually. Ours
-// follows our wave challenge (custom_waves.h): waiting 1, a wave on 2.5, a wave just cleared 5.
+// follows our arena controller (custom_arena.h): waiting 1, a wave on 2.5, a wave just cleared or a challenge won 5.
 namespace crowd {
 constexpr uint32_t kState = 0x0, kEntered = 0x4;
 constexpr uint32_t kWavePeriod = 600;        // (frames for the wave to go round the stands once)
@@ -136,9 +136,9 @@ constexpr float kPi = 3.14159265f;
 
 // orig: (none) — RAC2's controller's excitement, from our challenge's mood
 float excitement() {
-    switch (custom_waves_mood()) {
-    case WavesMood::Cheering: return 5.0f;
-    case WavesMood::Fighting: return 2.5f;
+    switch (custom_arena_mood()) {
+    case ArenaMood::Cheering: return 5.0f;
+    case ArenaMood::Fighting: return 2.5f;
     default: return 1.0f;
     }
 }
@@ -225,10 +225,10 @@ void update(uint32_t m) {
 // ---- the jointed arms at the floor's edge (RAC2 2581, its update 0x3d7330) ----
 // Sequences: 0 lowering, 1 dropping (letting go of what it holds), 2 pulling back, 3 rising. Set up, an arm stands raised
 // 2 units along its own up axis (its matrix's second row), its animation stopped. Told to drop (RAC2: its controller, with
-// the enemies to drop; ours: each wave of our challenge), it comes down those 2 units over 19 frames while it plays its
+// the enemies to drop; ours: the arena controller, custom_arena.h, with the enemies it hands out), it comes down those 2 units over 19 frames while it plays its
 // lowering, drops, waits 90 frames, pulls back and rises again. Its sounds are its sequences' own sound events.
 namespace arm {
-constexpr uint32_t kState = 0x0, kTimer = 0x4, kEntered = 0x8, kWaves = 0xc, kHome = 0x10;  // (kHome: a vector, 16 bytes)
+constexpr uint32_t kState = 0x0, kTimer = 0x4, kEntered = 0x8, kGate = 0xc, kHome = 0x10;  // (kHome: a vector, 16 bytes)
 constexpr float kTravel = 2.0f;
 constexpr int32_t kTravelFrames = 19, kWait = 90;
 
@@ -258,14 +258,12 @@ void update(uint32_t m) {
     if (pv.base == 0) return;
     const bool entering = pv.i(kEntered) == 0;
     pv.i(kEntered, 1);
-    const uint32_t waves = custom_waves_started();
     switch (pv.i(kState)) {
     case 0:  // set up: raised, still
         play(m, 0, 0);
         swc1(m + moby::kSpeed, 0.0f);
         move_up(m, kTravel);
         for (uint32_t k = 0; k < 4; ++k) sw(pv.base + kHome + 4 * k, lwu(m + moby::kPos + 4 * k));
-        pv.i(kWaves, static_cast<int32_t>(waves));
         set_state(pv, 2);
         break;
     case 1:  // rising
@@ -276,14 +274,12 @@ void update(uint32_t m) {
             set_state(pv, 2);
         }
         break;
-    case 2:  // raised, waiting for a wave
-        if (static_cast<int32_t>(waves) != pv.i(kWaves)) {
-            pv.i(kWaves, static_cast<int32_t>(waves));
-            if (waves != 0) {
-                swc1(m + moby::kSpeed, 1.0f);
-                play(m, 0, 0);
-                set_state(pv, 3);
-            }
+    case 2:  // raised, waiting for the controller to give it enemies (RAC2: 0x3d7868 assigns them, 0x3d78a8 lowers it)
+        pv.i(kGate, custom_arena_gate_register(m));
+        if (custom_arena_gate_wanted(pv.i(kGate))) {
+            swc1(m + moby::kSpeed, 1.0f);
+            play(m, 0, 0);
+            set_state(pv, 3);
         }
         break;
     case 3:  // lowering
@@ -293,7 +289,8 @@ void update(uint32_t m) {
             set_state(pv, 4);
         }
         break;
-    case 4:  // the drop
+    case 4:  // the drop (RAC2: 0x3d7900 lets its enemies go)
+        custom_arena_gate_drop(pv.i(kGate), m);
         swc1(m + moby::kSpeed, 1.0f);
         play(m, 1, 0);
         set_state(pv, 5);

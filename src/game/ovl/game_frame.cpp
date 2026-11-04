@@ -1,6 +1,7 @@
 // Ported overlay code: the gameplay frame (0x297f78) and the overlay's empty debug hooks.
 //. Callees not ported (or not yet proven with the oracle) are TODO_PORT.
 #include <game/enhance/advanced.h>
+#include <host/custom_arena.h>
 #include <game/ovl/memory_card.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl_reloc.h>
@@ -54,6 +55,7 @@ void level_stat(uint32_t s) {
 void gameplay_frame() {
     RAC1_PROF_ZONE(kGameLogic);  // (host: the profiler's sub-stages of the game code, nothing of the game's)
     advanced_frame();
+    custom_arena_frame();  // (host: a custom planet's arena, custom_arena.h; nothing otherwise)
     g_world_paused = false;
     if (lw(C + 0xec) != 0) {
         const int32_t v = lw(C + 0xec) - 1;

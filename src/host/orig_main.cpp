@@ -78,7 +78,6 @@
 
 #include <game/enhance/advanced.h>
 #include <game/enhance/controls.h>
-#include <host/custom_waves.h>
 #include <host/custom_planet.h>
 #include <game/enhance/graphics.h>
 #include <game/enhance/vibration.h>
@@ -3631,7 +3630,6 @@ int main(int argc, char** argv) {
             }
             // testing: RAC1_KILL_UIDS=<frame>:<uid>,..: at that game frame those mobys' state set to 0xfe (the
             // state a dead moby's watchers test, e.g. Novalis's Blarg dropship 790 for its troopers 325..327); no other effect
-            if (!exiting && !ee_thread_suspended()) rac1::custom_waves_frame(frame);  // (testing: a custom level's wave challenge, custom_waves.h)
             if (!exiting && !ee_thread_suspended()) rac1::custom_planet_test_frame(game_frame);  // (testing: RAC1_PLANET_SAVE_IMAGE, custom_planet.h)
             if (const char* ku = std::getenv("RAC1_KILL_UIDS"); ku != nullptr && !exiting) {
                 char* e = nullptr;

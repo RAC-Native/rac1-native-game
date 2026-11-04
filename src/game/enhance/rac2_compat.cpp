@@ -1,0 +1,169 @@
+// See rac2_compat.h: the engine services RAC2's arena behaviours ask for, said with RAC1's engine.
+#include <host/rac2_compat.h>
+
+#include <game/ovl/ovl.h>
+#include <game/ovl/ovl_common.h>
+#include <game/ovl/ovl_reloc.h>
+
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+
+namespace rac1::rac2 {
+
+namespace {
+
+constexpr uint32_t PAD = 0x0013c940;   // pad 1: +0x1a0 held, +0x1a4 pressed, +0x1a8 released, +0x100..+0x10c the sticks
+constexpr uint32_t HERO = 0x0013f350;  // the player: +0x2080 the hero's moby, +0x10b8 the item in hand, +0x20a4 Clank
+constexpr uint32_t NANOTECH = 0x001415f8, NANOTECH_MAX = 0x0015eda0, BOLTS = 0x0015ed98;
+
+constexpr uint32_t kPool = 0x000c0000, kBlock = 0x280, kBlocks = 64;  // (the stand-ins' pvars: rac2_compat.h)
+bool g_taken[kBlocks] = {};
+
+uint32_t g_rng = 0x9e3779b9u;
+
+}  // namespace
+
+// orig: (none)
+uint32_t level_frame() { return lwu(OV(0x0015f5cc)); }
+
+// orig: (none)
+bool in_play() { return lw(OV(0x0015f5c4)) == 0; }
+
+// orig: (none)
+Vec3 moby_pos(uint32_t m) { return Vec3{lwc1(m + moby::kPos), lwc1(m + moby::kPos + 4), lwc1(m + moby::kPos + 8)}; }
+
+// orig: (none) — the list from *(0x15ffd8) to its end marker (state 0xff)
+uint32_t moby_by_uid(int32_t uid) {
+    const uint32_t first = lwu(OV(0x0015ffd8));
+    if (first == 0) return 0;
+    for (uint32_t m = first; lbu(m + moby::kState) != 0xff; m += 0x100)
+        if (static_cast<int8_t>(lbu(m + moby::kState)) >= 0 && lh(m + moby::kUid) == uid) return m;
+    return 0;
+}
+
+// orig: (none)
+void moby_show(uint32_t m, bool shown) {
+    const uint32_t f = lhu(m + moby::kFlags);
+    sh(m + moby::kFlags, shown ? f & ~moby::kHidden : f | moby::kHidden);
+}
+
+// orig: (none)
+bool moby_gone(uint32_t m, int32_t cls, uint32_t pvars) {
+    return static_cast<int8_t>(lbu(m + moby::kState)) < 0 || lh(m + moby::kClassId) != cls || lwu(m + moby::kPvars) != pvars;
+}
+
+// orig: (none)
+void moby_kill(uint32_t m) { sb(m + moby::kState, 0xfe); }
+
+// orig: (none) — RAC2's controller hands its recycled enemies over to their class's activate function, which starts them
+// from their first state; ours copies a template that was never updated, so the copy starts as a freshly loaded one
+uint32_t standin_spawn(uint32_t tmpl, uint32_t pv_size, Vec3 at, float yaw) {
+    if (tmpl == 0 || pv_size > kBlock) return 0;
+    uint32_t k = 0;
+    while (k < kBlocks && g_taken[k]) ++k;
+    if (k == kBlocks) return 0;
+    const uint32_t m = moby_spawn(static_cast<uint32_t>(lh(tmpl + moby::kClassId)));
+    if (m == 0) return 0;
+    g_taken[k] = true;
+    const uint32_t pv = kPool + k * kBlock;
+    // the template's record, but the new slot's own index words and pvars
+    const uint32_t slot = lwu(m + moby::kSlot), index = lwu(m + moby::kSlotIndex);
+    for (uint32_t o = 0; o < 0x100; o += 4) sw(m + o, lwu(tmpl + o));
+    sw(m + moby::kSlot, slot);
+    sw(m + moby::kSlotIndex, index);
+    const uint32_t tpv = lwu(tmpl + moby::kPvars);
+    for (uint32_t o = 0; o < kBlock; o += 4) sw(pv + o, o < pv_size && tpv != 0 ? lwu(tpv + o) : 0u);
+    sw(m + moby::kPvars, pv);
+    swc1(m + moby::kPos, at.x);
+    swc1(m + moby::kPos + 4, at.y);
+    swc1(m + moby::kPos + 8, at.z);
+    swc1(m + moby::kRot + 8, yaw);
+    moby_show(m, true);
+    if (lw(m + moby::kClass) != 0) moby_update_transform(m);
+    return m;
+}
+
+// orig: (none)
+void standin_release(uint32_t pvars) {
+    if (pvars < kPool || pvars >= kPool + kBlocks * kBlock) return;
+    g_taken[(pvars - kPool) / kBlock] = false;
+}
+
+// orig: (none)
+void standin_reset() { std::memset(g_taken, 0, sizeof g_taken); }
+
+// orig: (none)
+uint32_t standin_count() {
+    uint32_t n = 0;
+    for (bool t : g_taken) n += t ? 1 : 0;
+    return n;
+}
+
+// orig: (none)
+Vec3 hero_pos() {
+    const uint32_t m = lwu(HERO + 0x2080);
+    return m != 0 ? moby_pos(m) : Vec3{};
+}
+
+// orig: (none)
+int32_t hero_health() { return lw(NANOTECH); }
+
+// orig: (none) — as nanotech.cpp's hero_health_max: Clank's 4, else *(0x15eda0)
+int32_t hero_health_max() { return lbu(HERO + 0x20a4) == 1 ? 4 : lw(NANOTECH_MAX); }
+
+// orig: (none)
+uint32_t hero_item() { return lwu(HERO + 0x10b8); }
+
+// orig: (none)
+void bolts_give(int32_t n) { sw(BOLTS, static_cast<uint32_t>(lw(BOLTS) + n)); }
+
+// orig: (none)
+uint32_t pad_pressed() { return lwu(PAD + 0x1a4); }
+
+// orig: (none)
+void pad_take(uint32_t mask) {
+    for (uint32_t o : {0x1a0u, 0x1a4u, 0x1a8u}) sw(PAD + o, lwu(PAD + o) & ~mask);
+}
+
+// orig: (none)
+void pad_block() {
+    pad_take(0xffffffffu);
+    for (uint32_t o = 0x100; o < 0x110; o += 4) swc1(PAD + o, 0.0f);
+}
+
+// orig: (none) — as hud_message_box, several lines: a box (alpha 0x50) and each line centred, with its shadow
+void hud_lines(int32_t y, const std::vector<Line>& lines) {
+    if (lines.empty()) return;
+    constexpr int32_t kStep = 18;
+    size_t widest = 0;
+    for (const Line& l : lines) widest = std::max(widest, l.text.size());
+    const int32_t half = std::min<int32_t>(0xf0, static_cast<int32_t>(widest) * 5 + 0x20);
+    hud_box(0x100 - half, y - 8, half * 2, kStep * static_cast<int32_t>(lines.size()) + 14, 0x50);
+    for (size_t i = 0; i < lines.size(); ++i) {
+        const std::string& t = lines[i].text;
+        const uint32_t len = static_cast<uint32_t>(t.size());
+        const uint32_t s = ee_stack_alloc(len + 1);
+        for (uint32_t k = 0; k < len; ++k) sb(s + k, static_cast<uint8_t>(t[k]));
+        sb(s + len, 0);
+        const int32_t ly = y + kStep * static_cast<int32_t>(i);
+        const uint32_t rgb = lines[i].rgb, bgr = (rgb & 0xff00u) | (rgb >> 16 & 0xffu) | (rgb & 0xffu) << 16;  // (the GS's order)
+        const uint64_t col = static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>((0x80u << 24) + bgr)));
+        text_centered(0x101, ly + 1, col & 0xffffffffff000000ull, s, -1);
+        text_centered(0x100, ly, col, s, -1);
+        ee_stack_free(len + 1);
+    }
+}
+
+// orig: (none)
+int32_t rand_below(int32_t n) {
+    g_rng ^= g_rng << 13;
+    g_rng ^= g_rng >> 17;
+    g_rng ^= g_rng << 5;
+    return n <= 1 ? 0 : static_cast<int32_t>(g_rng % static_cast<uint32_t>(n));
+}
+
+// orig: (none)
+float rand_unit() { return static_cast<float>(rand_below(0x1000000)) / 16777216.0f; }
+
+}  // namespace rac1::rac2

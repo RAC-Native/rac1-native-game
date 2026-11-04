@@ -94,6 +94,16 @@ void custom_planet_save_loaded(bool pc_read);
 // the left channels; the right ones follow: stereo, runtime/iop/snd989_stream.cpp).
 // orig: (none) — level_header_read read a header: on the planet its music (level 0's tracks 0 and 1) made the planet's
 void custom_planet_level_header_read(int32_t level);
+// orig: (none) — the planet's music made `which` (0 its own, 1 a challenge's, 2 a boss's: planet.txt's "music",
+// "music_challenge", "music_boss"), started again from its intro; nothing when it plays already or the planet has none
+void custom_planet_music_select(int which);
+// orig: (none) — the announcer: planet.txt's "announce <event>" line's entry `pick` (modulo their count) said, in the voice
+// language (the group's slot); false when there is none or a line is still playing
+bool custom_planet_announce(const char* event, uint32_t pick);
+// orig: (none) — how many lines planet.txt gives the event
+uint32_t custom_planet_announce_count(const char* event);
+// orig: (none) — music_streams.cpp: a line at the data disc's sector `lsn` started in the dialog slot; false when busy
+bool custom_dialog_play(uint32_t lsn);
 // orig: (none) — the music streams (music_streams.cpp): the right channel's sector of the planet's music at `lsn`, else 0
 uint32_t custom_planet_music_right(uint32_t lsn);
 // orig: (none) — the level's sound bank loaded (the loader's step 7): the planet's banks loaded too

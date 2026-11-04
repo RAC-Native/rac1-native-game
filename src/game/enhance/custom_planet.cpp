@@ -1,5 +1,6 @@
 // See custom_planet.h.
 #include <host/custom_planet.h>
+#include <host/custom_arena.h>
 
 #include <game/ovl/level_change.h>
 #include <game/ovl/ovl.h>
@@ -264,6 +265,7 @@ void custom_planet_block_read(uint32_t list, int32_t index) {
 // orig: (none)
 void custom_planet_new_game() {
     if (!custom_planet_exists()) return;
+    custom_arena_new_game();
     g_s.wanted = false;
     g_s.saved_on = false;
     g_s.planet.clear();
@@ -275,7 +277,8 @@ uint32_t custom_planet_pc_items(std::vector<uint8_t>& d) {
     // the planet's records: in EE memory while it is played, else the copy (none yet: no item)
     std::vector<uint8_t> rec = g_s.swapped ? records_read(g_s.records) : g_s.planet;
     const bool on = g_s.wanted || custom_level_on();
-    if (rec.empty() && !on) return 0;
+    const uint32_t arena = custom_arena_pc_items(d);  // (the arena's victories: our item 0x201)
+    if (rec.empty() && !on) return arena;
     std::vector<uint8_t> item;
     auto u32 = [&item](uint32_t v) {
         for (int i = 0; i < 4; ++i) item.push_back(static_cast<uint8_t>(v >> (8 * i)));
@@ -287,18 +290,19 @@ uint32_t custom_planet_pc_items(std::vector<uint8_t>& d) {
     item.insert(item.end(), name.begin(), name.end());
     u32(static_cast<uint32_t>(rec.size()));
     item.insert(item.end(), rec.begin(), rec.end());
-    if (item.size() > 0xffff) return 0;
+    if (item.size() > 0xffff) return arena;
     d.push_back(static_cast<uint8_t>(PC_ITEM));
     d.push_back(static_cast<uint8_t>(PC_ITEM >> 8));
     d.push_back(static_cast<uint8_t>(item.size()));
     d.push_back(static_cast<uint8_t>(item.size() >> 8));
     d.insert(d.end(), item.begin(), item.end());
     if (trace()) std::printf("[planet] .pc item: on %d, %zu record bytes\n", on ? 1 : 0, rec.size());
-    return 1;
+    return 1 + arena;
 }
 
 // orig: (none)
 bool custom_planet_pc_item(uint32_t id, const uint8_t* p, uint32_t size) {
+    if (custom_arena_pc_item(id, p, size)) return true;
     if (id != PC_ITEM) return false;
     if (!custom_planet_exists()) return true;
     auto u32 = [p, size](uint32_t at) { return at + 4 <= size ? static_cast<uint32_t>(p[at] | p[at + 1] << 8 | p[at + 2] << 16 | static_cast<uint32_t>(p[at + 3]) << 24) : 0u; };
