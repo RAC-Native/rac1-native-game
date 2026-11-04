@@ -17,7 +17,7 @@ material moby 347 tex 0 metal 0.5 1.42  glow 0.81 0.00
 material tie 2341 tex 0 metal 0.45 0.6
 material tie 2060 tex 1 metal 0.35 1
 material tie 2093 tex 0 metal 0.45 0.67
-material tfrag 0 tex 18 metal 0.48 0.53
+material tfrag 0 tex 18 metal 0.47 0.53
 material moby 1843 tex 0 metal 0.52 0.63
 emit tie 2342  -0.015 0.067 9.219  0.535 0.930 1.000  1.000 8.000 0.000  0.00
 material tfrag 0 tex 80 metal 0.35 1

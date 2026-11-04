@@ -120,3 +120,20 @@ material tie 1125 tex 4 metal 0.35 1
 material shrub 240 tex 2 metal 0.35 1
 material shrub 239 tex 1 metal 0.35 1
 material shrub 239 tex 3 metal 0.35 1
+emissive moby 1103 tex 1  2.57 0.00
+material moby 1103 tex 2 metal 0.45 1
+material moby 1103 tex 3 metal 0.35 1
+material moby 1103 tex 4 metal 0.35 1
+material moby 1103 tex 5 metal 0.35 1
+emissive moby 1091 tex 1  2.45 0.00
+material moby 1095 tex 0 metal 0.35 1
+emissive moby 1095 tex 4  2.55 0.71
+emissive moby 1095 tex 1  2.33 0.00
+emissive moby 1095 tex 7  4.00 0.00
+emissive moby 1092 tex 11  2.96 0.00
+emissive moby 1103 tex 12  2.82 0.00
+emissive moby 1091 tex 5  2.96 0.00
+emissive moby 1096 tex 3  3.05 0.00
+emissive moby 1097 tex 3  2.22 0.00
+emissive moby 1098 tex 10  2.61 0.00
+emissive moby 1098 tex 6  2.58 0.66

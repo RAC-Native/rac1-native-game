@@ -75,5 +75,8 @@ material tfrag 0 tex 2 metal 1 1
 material tfrag 0 tex 14 metal 1 1
 material tfrag 0 tex 22 metal 0.35 1
 material tie 2044 tex 0 metal 0.44 1
-# Options > Graphics > Grass (docs/materials.md): the dry grass of the start's plain
-material tfrag 0 tex 3 grass
+material moby 0 tex 0 metal 1 0.26
+emissive moby 0 tex 3  2.91 0.37
+material moby 0 tex 2 metal 1 1
+material moby 0 tex 1 wet 0.71 0.46
+material shrub 556 tex 6 metal 0.46 1

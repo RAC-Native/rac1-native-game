@@ -57,3 +57,4 @@ material tfrag 0 tex 20 metal 0.35 1
 material moby 1454 tex 0 metal 0.71 1
 material tfrag 0 tex 77 metal 0.46 1
 material tfrag 0 tex 128 metal 0.46 1
+emissive shrub 561 tex 3  2.48 0.00

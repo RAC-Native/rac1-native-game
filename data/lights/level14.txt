@@ -13,10 +13,10 @@ emissive tie 2220 tex 0  2.86 0.00
 particles rain 4  gust 1.05  keep
 particles snow 0.09  0.109 0.109 0.109
 emit shrub 346  -22.352 -1.253 -1.420  0.346 0.919 1.000  1.812 2.510 0.000  0.00
-emissive shrub 346 tex 2  2.59 0.00
+emissive shrub 346 tex 2  2.58 0.00
 emit shrub 231  -3.040 -2.088 22.246  1.000 0.000 0.000  1.843 1.000 0.000  0.00
 material tfrag 0 tex 36 metal 0.35 1
-material tfrag 0 tex 37 metal 0.35 1
+material tfrag 0 tex 37 metal 0.37 1
 emissive tie 1414 tex 0  2.65 0.00
 material tie 1637 tex 0 metal 0.35 1
 light 212.770 255.981 59.758  1.000 0.639 0.187  2.290 17.564 0.000 1

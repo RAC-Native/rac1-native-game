@@ -8,8 +8,8 @@ sun_rays off
 # own while the option is on (the game still makes its own: its state is the same). A calm, light snowfall (after Daino's
 # playtest): fewer flakes, slow, a gentle steady drift, no gusts.
 particles snow 0.55  wind 0.3 0.1
-# Beside the snow, Anya-Thoughtmane's white ash (#120 batch 2, in place of their motes of batch 1): fine ice glittering in the air,
-# faint, a little bigger than the snowflakes.
+# Beside the snow, Anya-Thoughtmane's motes (#102 batch 1; their ash, white, read as bigger snowflakes): fine ice glittering in
+# the air, faint.
 particles ash 4  1 1 1  wind 0.43 0.02
 material tie 14 tex 4 metal 0.35 1
 material tie 149 tex 0 metal 0.35 1
@@ -57,5 +57,4 @@ emissive moby 1205 tex 9  3.28 0.38
 material moby 1205 tex 8 metal 0.35 1
 emissive moby 1205 tex 7  2.17 0.00
 emissive moby 1205 tex 6  2.25 0.00
-# Surface Detail's water (docs/materials.md): the cold water under the town
-material surface 1901 tex 47 water 1 1
+material tie 190 tex 0 metal 0.35 1

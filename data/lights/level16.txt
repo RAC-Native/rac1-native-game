@@ -53,3 +53,5 @@ material tie 2003 tex 0 metal 0.35 1
 material tie 2261 tex 0 metal 0.35 1
 material tie 2002 tex 0 metal 0.35 1
 material shrub 461 tex 0 metal 0.35 1
+emissive moby 552 tex 7  2.71 0.00
+emissive surface 1943 tex 13303  0.44 0.00
