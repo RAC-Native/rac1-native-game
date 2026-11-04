@@ -8,6 +8,7 @@
 //     "wave <c0..c9>": c0..c3 how many of RAC2's enemies 2506, 2850, 3131, 3134 (its controller's order, read in its code),
 //     c4 / c5 hazards 2563 / 2953, c6 / c7 crates and items, c8 the bosses (1 Chainblade, 256 the B2 Brawler), c9 the
 //     gates open (low byte);
+//   hud.txt: the HUD's shapes and texts (custom_arena_hud.h);
 //   planet.txt: "standin <RAC1 class> <template uid> <pvars size>" (a hidden template the arena copies),
 //     "stand_for <RAC2 class> <RAC1 class>", "announce <event> <entries>", the music (custom_planet.h).
 //
@@ -36,7 +37,8 @@ namespace rac1 {
 // taken from the game
 void custom_arena_frame();
 
-// orig: (none) — the HUD's draw (hud_draw, after the elements): the prompt, the menu, the challenge's lines
+// orig: (none) — the HUD's draw (hud_draw, after the elements): the prompt, the menu, the fight's panels, the result, in
+// RAC2's layout (custom_arena_hud.h)
 void custom_arena_hud();
 
 // orig: (none) — the camera's update (camera_update, the view taken from the active camera): while one of the arena's path

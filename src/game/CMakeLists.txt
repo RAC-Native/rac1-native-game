@@ -166,6 +166,7 @@ add_library(rac1_game STATIC
     enhance/language.cpp
     enhance/cut_content.cpp
     enhance/custom_arena.cpp
+    enhance/custom_arena_hud.cpp
     enhance/rac2_compat.cpp
     enhance/custom_planet.cpp
     enhance/custom_planet_audio.cpp

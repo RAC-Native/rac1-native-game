@@ -1,6 +1,7 @@
 // See custom_arena.h: Maktar's arena controller, after RAC2's class 2905 (its update 0x3f9c10, the menu 0x3fd8b8, the waves'
 // hand-out 0x3faaa4.., the prize 0x3fcdf8, the names 0x3fe1b0), written for RAC1's engine with rac2_compat.h's services.
 #include <host/custom_arena.h>
+#include <host/custom_arena_hud.h>
 #include <host/custom_planet.h>
 #include <host/rac2_compat.h>
 
@@ -118,7 +119,9 @@ struct Arena {
     int kills = 0;
     uint32_t started = 0;         // the level frame the first wave came (the time limits run from it)
     int32_t prize = 0;
-    std::string reason;           // (lost: why)
+    std::string reason;           // (lost: why, our words)
+    std::string reason_key;       // (and RAC2's text for it, hud.txt's key: empty none)
+    bool electrolyzer = false;    // (won: the first victory of challenge 0, RAC2's Electrolyzer line)
     int32_t health = 0;           // the nanotech last seen
     uint32_t last_line = 0;       // the level frame of the announcer's last remark
     std::vector<std::pair<std::string, uint32_t>> lines;  // the announcer's lines waiting for the dialog slot
@@ -315,6 +318,7 @@ void enemies_clear() {
 void challenge_end(bool won) {
     if (won) {
         g_wins[static_cast<size_t>(g_a.running)] = static_cast<uint8_t>(std::min(255, g_wins[static_cast<size_t>(g_a.running)] + 1));
+        g_a.electrolyzer = running().index == 0 && g_wins[static_cast<size_t>(g_a.running)] == 1;
         bolts_give(g_a.prize);
         say("winner");
         say("prize");
@@ -371,12 +375,18 @@ void fight_step() {
     enemies_step();
     const int32_t h = hero_health();
     if (h < g_a.health) {
-        if (ch.rule.wrench_only) g_a.reason = "you took a hit";
+        if (ch.rule.wrench_only) {
+            g_a.reason = "you took a hit";
+            g_a.reason_key = "been_hit";
+        }
         remark("hurt");
     }
     g_a.health = h;
     if (ch.rule.wrench_only && hero_item() != 8 && hero_item() != 0) g_a.reason = "the wrench only";
-    if (ch.rule.seconds != 0 && level_frame() - g_a.started > ch.rule.seconds * 60u) g_a.reason = "time's up";
+    if (ch.rule.seconds != 0 && level_frame() - g_a.started > ch.rule.seconds * 60u) {
+        g_a.reason = "time's up";
+        g_a.reason_key = "time_out";
+    }
     if (!g_a.reason.empty()) {
         challenge_end(false);
         return;
@@ -440,6 +450,7 @@ void step() {
         if (sm.frames() >= kIntro) {
             wave_queue(running().waves[0]);
             g_a.reason.clear();
+            g_a.reason_key.clear();
             g_a.started = level_frame();
             camera_want(-1);
             sm.set(Fight);
@@ -461,13 +472,20 @@ void step() {
         }
         break;
     }
-    case Won:
+    case Won: {
+        // (RAC2's victory screen: Triangle leaves, Cross goes on fighting: here the same challenge again, for its smaller prize)
         sm.first();
-        if (sm.frames() >= kWonShown) {
+        const uint32_t p = sm.frames() > 60 ? pad_pressed() : 0;
+        if ((p & kCross) != 0) {
+            pad_take(kCross);
+            challenge_start(g_a.running);
+        } else if ((p & kTriangle) != 0 || sm.frames() >= kWonShown) {
+            pad_take(kTriangle);
             camera_want(-1);
             sm.set(Idle);
         }
         break;
+    }
     case Lost:
         sm.first();
         if (sm.frames() >= kLostShown) {
@@ -591,71 +609,53 @@ void custom_arena_frame() {
     step();
 }
 
-// orig: (none) — see custom_arena.h
+// orig: (none) — see custom_arena.h: RAC2's arena HUD (custom_arena_hud.h) for the controller's state
 void custom_arena_hud() {
     if (!level_on() || !in_play() || g_a.base == 0) return;
     const Settings& cfg = settings();
-    char buf[160];
-    std::vector<Line> lines;
     switch (g_a.sm.state) {
-    case Idle:
+    case Idle: {
         if (g_a.sm.frames() <= kCooldown) return;
-        {
-            const Vec3 hp = hero_pos();
-            if (std::hypot(hp.x - kCentreX, hp.y - kCentreY) >= kEntryRadius || std::fabs(hp.z - kFloorZ) >= 6.0f) return;
-        }
-        lines.push_back({"Press TRIANGLE: Enter the Battle Arena", 0xf0f0f0});
-        hud_lines(0x150, lines);
+        const Vec3 hp = hero_pos();
+        if (std::hypot(hp.x - kCentreX, hp.y - kCentreY) >= kEntryRadius || std::fabs(hp.z - kFloorZ) >= 6.0f) return;
+        arena_hud::prompt();
         return;
+    }
     case Menu: {
         const Challenge& ch = cfg.challenges[static_cast<size_t>(g_a.chosen)];
-        lines.push_back({"Select Your Challenge:", 0xf0d060});
-        std::snprintf(buf, sizeof buf, "<  %d / %zu  >", g_a.chosen + 1, cfg.challenges.size());
-        lines.push_back({buf, 0xc0c0c0});
-        lines.push_back({ch.name, 0xf0f0f0});
-        std::snprintf(buf, sizeof buf, "Victories: %d     Waves: %zu", g_wins[static_cast<size_t>(ch.index)], ch.waves.size());
-        lines.push_back({buf, 0xc0c0c0});
-        if (!ch.missing.empty()) {
-            lines.push_back({"Not yet: " + ch.missing, 0xf07060});
-        } else if (!unlocked(ch)) {
-            lines.push_back({"Win \"" + cfg.challenges[static_cast<size_t>(ch.first)].name + "\" first", 0xf07060});
-        } else {
-            std::snprintf(buf, sizeof buf, "Prize: %d bolts", prize_of(ch));
-            lines.push_back({buf, 0x60f060});
-        }
-        lines.push_back({"LEFT/RIGHT: choose   X: start   TRIANGLE: exit", 0xa0a0a0});
-        hud_lines(0x60, lines);
+        arena_hud::Menu m;
+        m.name = ch.name;
+        m.index = g_a.chosen;
+        m.count = static_cast<int>(cfg.challenges.size());
+        m.victories = g_wins[static_cast<size_t>(ch.index)];
+        m.prize = prize_of(ch);
+        if (!ch.missing.empty()) m.blocked = "Not yet: " + ch.missing;
+        else if (!unlocked(ch)) m.blocked = "Win \"" + cfg.challenges[static_cast<size_t>(ch.first)].name + "\" first";
+        arena_hud::menu(m);
         return;
     }
     case Intro:
-        lines.push_back({running().name, 0xf0d060});
-        lines.push_back({"Get ready!", 0xf0f0f0});
-        hud_lines(0x60, lines);
+        arena_hud::intro(running().name);
         return;
     case Fight:
     case Between: {
         const Challenge& ch = running();
-        size_t left = g_a.queue.size() + g_a.alive.size();
-        if (g_a.sm.state == Between) std::snprintf(buf, sizeof buf, "Wave %d of %zu cleared!", g_a.wave + 1, ch.waves.size());
-        else std::snprintf(buf, sizeof buf, "Wave %d of %zu   Enemies: %zu   Kills: %d", g_a.wave + 1, ch.waves.size(), left, g_a.kills);
-        lines.push_back({buf, 0xf0f0f0});
+        arena_hud::Fight f;
+        f.wave = g_a.wave;
+        f.waves = static_cast<int>(ch.waves.size());
+        f.kills = g_a.kills;
         if (ch.rule.seconds != 0) {
             const int32_t s = static_cast<int32_t>(ch.rule.seconds) - static_cast<int32_t>((level_frame() - g_a.started) / 60);
-            std::snprintf(buf, sizeof buf, "Time: %d", std::max(0, s));
-            lines.push_back({buf, s <= 5 ? 0xf06060u : 0xf0f0f0u});
+            f.seconds_left = std::max(0, s);
         }
-        hud_lines(0x30, lines);
+        arena_hud::fight(f);
         return;
     }
     case Won:
-        lines.push_back({"Congratulations!", 0xf0d060});
-        std::snprintf(buf, sizeof buf, "Prize: %d bolts", g_a.prize);
-        lines.push_back({buf, 0x60f060});
-        hud_lines(0x60, lines);
+        arena_hud::won(g_a.prize, g_a.electrolyzer);
         return;
     case Lost:
-        lines.push_back({"Challenge failed: " + g_a.reason, 0xf07060});
-        hud_lines(0x60, lines);
+        arena_hud::lost(g_a.reason_key, g_a.reason);
         return;
     default: return;
     }

@@ -30,6 +30,7 @@ src/host/custom_planet.h):
                       (src/game/enhance/custom_classes.cpp, planet.txt's "class" lines).
   <out>/challenges.txt the arena's 14 challenges, read from RAC2's level code on the disc (its challenge table, each
                       challenge's name text, waves, prize; src/host/custom_arena.h).
+  <out>/hud.txt       the arena HUD's panels (vector shapes of HUD.WAD's 2D set) and its texts (src/host/custom_arena_hud.h).
   <out>/lights.txt    the modern lighting's file for the custom level (our choices): point lights at the arena's gates,
                       lamps and screens, emissive surfaces for its screens and neon.
   <out>/planet.txt    the planet's name on the ship's list, its death height and ship (our own settings file).
@@ -75,6 +76,7 @@ class Rac2Level:
         sys.path.insert(0, rac2_tools)
         import rac2disc
         iso = rac2disc.Iso(iso_path)
+        self.iso = iso
         self.iso_path = iso_path
         lba, _ = iso.files["G/LEVEL%d.WAD" % level]
         h = rac2disc.level_header(iso.read(lba, 0x800))
@@ -760,6 +762,17 @@ STAND_FOR = ((2506, 1440), (2850, 749), (3131, 749), (3134, 749))
 CHALLENGE_TABLE, CHALLENGES, NAME_JUMPS = 0x1b1190, 14, 0x2a5600
 
 
+def rac2_texts(r2):
+    """RAC2's level 2 texts by id (the gameplay's +0x10 block: count, then {offset, id, 2 words} records)."""
+    g = r2.gameplay
+    base = i32(g, 0x10)
+    texts = {}
+    for k in range(i32(g, base)):
+        off, tid = struct.unpack_from("<ii", g, base + 8 + 16 * k)
+        texts[tid] = g[base + off:g.index(b"\0", base + off)].decode("latin1")
+    return texts
+
+
 def rac2_challenges(r2, rac2_tools, say):
     """challenges.txt's lines from RAC2's level 2 code image (the RAC2 port's tools/recomp images.load) and its texts."""
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(rac2_tools)), "recomp"))
@@ -772,13 +785,7 @@ def rac2_challenges(r2, rac2_tools, say):
             if sg.addr <= addr and addr + n <= sg.end:
                 return sg.data[addr - sg.addr:addr - sg.addr + n]
         raise SystemExit("RAC2 level 2: %#x not in its image" % addr)
-    # the texts (the gameplay's +0x10 block: count, then {offset, id, 2 words} records)
-    g = r2.gameplay
-    base = i32(g, 0x10)
-    texts = {}
-    for k in range(i32(g, base)):
-        off, tid = struct.unpack_from("<ii", g, base + 8 + 16 * k)
-        texts[tid] = g[base + off:g.index(b"\0", base + off)].decode("latin1")
+    texts = rac2_texts(r2)
     lines = []
     for c, rec in enumerate(struct.unpack("<%dI" % CHALLENGES, rd(CHALLENGE_TABLE, 4 * CHALLENGES))):
         n, waves, first, prize = struct.unpack("<iIii", rd(rec, 16))
@@ -791,6 +798,81 @@ def rac2_challenges(r2, rac2_tools, say):
         for w in range(n):
             lines.append("wave " + " ".join(str(x) for x in struct.unpack("<10h", rd(waves + 20 * w, 20))))
     say("challenges: %d read from RAC2's level 2 code" % CHALLENGES)
+    return lines
+
+
+# The arena's HUD (RAC2's controller 2905 draws it: the fight's panels 0x3fe8b8, the victory 0x3ff6e8, the menu 0x3fe250).
+# Its panels are vector shapes of the pause menu's 2D set (HUD.WAD: a "BE_HW3D" block, {id, offset} records from +0x1c,
+# count +0x18; a shape {+0 vertices, +2 quads, +0xc scale, +0x10 / +0x14 the vertices' and quads' offsets from the
+# shape, +0x24 1: compact vertices}; a compact vertex a word: x its bits 0..13 times 4, y its bits 12..27, both signed; a
+# quad four vertex indices, the word 0xffffffXX a texture switch (none here: the panels are flat colours). The game scales
+# the shape's +0xc by 0x3b5279bc at load (0x3878f8). Its texts: the level's, by id.
+HUD_SHAPES = (0x4c, 0x4d, 0x4e, 0x4f, 0x50)
+HUD_TEXTS = (
+    ("enter", 0x2f3c), ("select_challenge", 0x2f3d), ("victories", 0x2f3e), ("select", 0x2f3f), ("prev", 0x2f40),
+    ("next", 0x2f41), ("exit", 0x2f42), ("prize", 0x2f44), ("congratulations", 0x2f45), ("electrolyzer", 0x2f46),
+    ("exit_or_continue", 0x2f47), ("bolts", 0x2f5e), ("round", 0x2f60), ("enemies_killed", 0x2f61),
+    ("you_have_won", 0x2f62), ("time_left", 0x2f63), ("you_lose", 0x3267), ("failed", 0x3268), ("time_out", 0x3269),
+    ("been_hit", 0x326a),
+)
+
+
+def rac2_hud(r2, say):
+    """hud.txt's lines: the arena HUD's shapes from HUD.WAD's 2D set and its texts (the player's RAC2 disc)."""
+    lba, size = r2.iso.files["G/HUD.WAD"]
+    blob = None
+    with open(r2.iso_path, "rb") as f:
+        for sec in range(0, (size + SECTOR - 1) // SECTOR):
+            f.seek((lba + sec) * SECTOR)
+            if f.read(8) != b"BE_HW3D\0":
+                continue
+            f.seek((lba + sec) * SECTOR)
+            head = f.read(0x1c)
+            n = struct.unpack_from("<I", head, 0x18)[0]
+            if not 0 < n < 0x1000:
+                continue
+            f.seek((lba + sec) * SECTOR)
+            b = f.read(0x1c + 8 * n)
+            ids = {struct.unpack_from("<i", b, 0x1c + 8 * k)[0] for k in range(n)}
+            if all(i in ids for i in HUD_SHAPES):
+                end = max(struct.unpack_from("<I", b, 0x1c + 8 * k + 4)[0] for k in range(n)) + 0x1000
+                f.seek((lba + sec) * SECTOR)
+                blob = f.read(end)
+                break
+    if blob is None:
+        raise SystemExit("RAC2's HUD.WAD: no 2D set with the arena's shapes")
+    n = struct.unpack_from("<I", blob, 0x18)[0]
+    at = {struct.unpack_from("<i", blob, 0x1c + 8 * k)[0]: struct.unpack_from("<I", blob, 0x1c + 8 * k + 4)[0] for k in range(n)}
+    lines = []
+    for sid in HUD_SHAPES:
+        o = at[sid]
+        nv, nq = struct.unpack_from("<hh", blob, o)
+        scale = struct.unpack_from("<f", blob, o + 0xc)[0] * struct.unpack("<f", struct.pack("<I", 0x3b5279bc))[0]
+        pv, pq = (x + o for x in struct.unpack_from("<II", blob, o + 0x10))
+        if struct.unpack_from("<I", blob, o + 0x24)[0] == 0:
+            raise SystemExit("RAC2's HUD shape %#x: not compact vertices" % sid)
+        vs = []
+        for k in range(nv):
+            w = struct.unpack_from("<I", blob, pv + 4 * k)[0]
+            x = ((w << 18) & 0xffffffff) >> 16
+            y = ((w << 4) & 0xffffffff) >> 16
+            vs.append((x - 0x10000 if x >= 0x8000 else x, y - 0x10000 if y >= 0x8000 else y))
+        qs = []
+        k = 0
+        while len(qs) < nq:
+            q = struct.unpack_from("<4B", blob, pq + 4 * k)
+            k += 1
+            if q[1:] != (255, 255, 255):
+                qs.append(q)
+        lines.append("shape %#x %.9g %s ; %s" % (sid, scale, " ".join("%d %d" % v for v in vs),
+                                                  " ".join("%d %d %d %d" % q for q in qs)))
+    texts = rac2_texts(r2)
+    for key, tid in HUD_TEXTS:
+        t = texts.get(tid)
+        if t is None:
+            continue
+        lines.append("text %s %s" % (key, "".join(c if " " <= c < "\x7f" else "\\x%02x" % ord(c) for c in t)))
+    say("hud: %d shapes from HUD.WAD's 2D set, %d texts" % (len(HUD_SHAPES), len(lines) - len(HUD_SHAPES)))
     return lines
 
 
@@ -1185,6 +1267,12 @@ def build(a):
                 "# wave <the four enemies' counts (2506 2850 3131 3134)> <hazards 2563> <hazards 2953> <items> <items>\n"
                 "#      <bosses: 1 Chainblade, 256 B2 Brawler> <gates open>\n")
         for line in rac2_challenges(r2, a.rac2_tools, say):
+            f.write(line + "\n")
+    with open(os.path.join(a.out, "hud.txt"), "w") as f:
+        f.write("# rac1-native: Maktar's arena's HUD, from RAC2's disc (tools/custom_level/maktar.py; src/host/custom_arena.h)\n"
+                "# shape <id> <scale> <vertices: x y ...> ; <quads: four vertex indices each>\n"
+                "# text <key> <the text, \\xNN a control byte: 0x10.. the pad's buttons>\n")
+        for line in rac2_hud(r2, say):
             f.write(line + "\n")
     with open(os.path.join(a.out, "cameras.txt"), "w") as f:
         f.write("# rac1-native: Maktar's arena's path cameras, from RAC2's disc (tools/custom_level/maktar.py; src/host/custom_arena.h)\n"

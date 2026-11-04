@@ -193,6 +193,10 @@ What changed in each release. Releases are source only: you build the game with 
 - Local experiment, planet P4: the arena's path cameras (RAC2's type 19, its three circling the floor's centre, read into the
   planet's `cameras.txt`): faded to as RAC2 fades, the wide one for a challenge's start, the close one for a victory, the
   middle one for a defeat, the game's camera faded back after.
+- Local experiment, the arena's HUD as RAC2's (`src/game/enhance/custom_arena_hud.cpp`): its bottom panels (RAC2's vector
+  shapes from the RAC2 disc's HUD.WAD, read into the planet's `hud.txt` with its texts) with the kills and the time left in
+  the time challenges and the round in the others, the challenge menu in RAC2's places, the victory ("Congratulations!",
+  the prize, Triangle to leave or Cross to fight on) and the defeat ("Challenge Failed!", "Time Out!"), in RAC1's fonts.
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs
