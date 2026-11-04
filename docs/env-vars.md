@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 393 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 394 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 299 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 300 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 73 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -352,6 +352,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_WIDEN_REF` | integer; nonzero = on; default off | Uses the reference (unwidened) culling and level-of-detail distances in the modern renderer, as a baseline to compare against the widened ones. |
 | `RAC1_WIDE_FILL` | 0 or 1; default 1 (on) | Whether the widescreen sides of the picture are filled with extra scene instead of left empty; 0 turns it off to compare. |
 | `RAC1_WORLD_CHAIN` | any value = on; default off | Keeps the world's draw chain (instead of letting the original VU1 world programs run) so a host world renderer can draw it; forced on automatically when the modern or faithful world renderer is active. |
+| `RAC1_WORLD_CULL_FAST` | 0, 1 or 2; default 1 | The world passes' three culls (tfrag 0x294368, tie 0x295fa0, shrub 0x286f10) as written by hand (src/game/ovl/world_cull_tfrag.cpp, world_cull_tie.cpp, world_cull_shrub.cpp: the VU0 registers in a local copy, the scratchpad as a byte view) or, with 0, as transliterated (world_cull.cpp's `*_tr`, the reference), as before. 2 runs both at every call, the hand-written one inside a journal of EE memory, and compares the EE RAM, the scratchpad, the VU0 registers and flags, the DMA registers and the visible lists, prints the first differences and their count at the end of the run (it must be 0); the game goes on with the transliteration's. The same game state. |
 | `RAC1_WORLD_FAITHFUL` | 0 or 1; default 0 | 1 draws the world with the faithful GS-replica path (the reference) instead of the modern renderer, to compare. |
 | `RAC1_WORLD_MRP` | 0 or 1; unset = on, following the modern pipeline default | Switches the modern GPU world (terrain, TIE, shrub) and sky renderer on or off independently of the other parts of the modern pipeline. |
 | `RAC1_WORLD_MRP_DEBUG` | any value = on; default off | Prints extra diagnostics from the modern world renderer (per-draw and texture information). |

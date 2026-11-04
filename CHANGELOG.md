@@ -9,6 +9,10 @@ What changed in each release. Releases are source only: you build the game with 
 - The memory accessors and the VU0 macro ops forced inline in the ported and generated code (CMake `RAC1_INLINE_HELPERS`, on
   by default; off: the code as before): the world passes' time 15 to 37 % less, the game code as a whole about the same, a
   bigger program and a longer build; the same game state. See [Performance](docs/performance.md).
+- The world passes' three culls (tfrag, tie, shrub) written by hand from the original routines, organised by what they do, the
+  VU0 registers kept in a local copy: the world passes' time 30 to 45 % less (10 to 24 % with the helpers inline); the same
+  game state, proved by an oracle batch (480) and by a check mode (`RAC1_WORLD_CULL_FAST=2`); `RAC1_WORLD_CULL_FAST=0` runs
+  the transliterations as before.
 
 ## 0.7.0
 

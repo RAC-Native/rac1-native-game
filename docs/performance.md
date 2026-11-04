@@ -56,6 +56,18 @@ the world passes' culls (the profiler's `Game: world passes`).
   37 to 95 MB, and a full build with three jobs from about 10 to 22 minutes.
   Off (`-DRAC1_INLINE_HELPERS=OFF`): the code as before, for a target with a small instruction cache, where more inlining
   measured slower.
+- **The three culls by hand** (`world_cull_tfrag.cpp`, `world_cull_tie.cpp`, `world_cull_shrub.cpp`; `RAC1_WORLD_CULL_FAST`):
+  the same arithmetic and the same memory written, organised by what the routines do (the view test, the LOD and its morph,
+  the chain's records), the VU0 registers in a local copy (`vu0_local.h`) written back at the end, the scratchpad as a byte
+  view. The transliterations stay as the reference (`world_*_cull_tr`) and as the fallback (a VU0 program running,
+  `RAC1_PERF_VU0_NF=0`). Proved by oracle batch 480 against each level's original on dumps of seven levels, by
+  `RAC1_WORLD_CULL_FAST=2` (both run at every call and compared: memory, VU0 registers and flags, the visible lists) over the
+  19 levels, and by RAMHASH. On top of the helpers inline, `Game: world passes` 10 to 24 % less (Veldin 1.13 to 0.93 ms, Rilgar 0.74
+  to 0.56, Nebula G34 0.82 to 0.73, Pokitaru 0.73 to 0.59, Hoven 1.14 to 0.95); with the helpers not inline
+  (`RAC1_INLINE_HELPERS=OFF`) 30 to 45 % less (Veldin 1.39 to 0.91, Rilgar 1.06 to 0.67, Nebula G34 1.19 to 0.83, Pokitaru
+  1.00 to 0.66, Hoven 1.97 to 1.08) and the game code 12 to 26 % less. The stage also holds the passes' packets and the LOD
+  slider's re-run of each pass. In the sampler the culls went from 19-30 % of the main thread to 14-21 % (helpers inline),
+  then 10-16 %: they still clamp every operand of every op as the VU0 does.
 
 ## The frame's chain
 

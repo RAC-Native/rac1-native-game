@@ -181,6 +181,7 @@ uint64_t audio_out_alone_total();
 void audio_out_step(bool in_step);
 namespace rac1 {
 void gs_texture_cache_clear();  // runtime/gs/gs_renderer.cpp (its header clashes with gs_emu.h)
+void world_cull_check_report();  // src/game/ovl/world_cull_fast.cpp (testing: RAC1_WORLD_CULL_FAST=2's counts)
 }
 void audio_out_stop();
 
@@ -4239,6 +4240,7 @@ int main(int argc, char** argv) {
     if (rac1::vuprof::enabled()) rac1::vuprof::report();  // (testing: RAC1_VU_PROF)
     rac1::vu0::fallback_report();  // (testing: RAC1_VU_FALLBACK)
     rac1::vu1::fallback_report();
+    rac1::world_cull_check_report();  // (testing: RAC1_WORLD_CULL_FAST=2)
     if (std::getenv("RAC1_VU0_CHAIN") != nullptr) std::fprintf(stderr, "[vu0-chain] %016llx\n", static_cast<unsigned long long>(rac1::vu0::chain_hash()));
     rac1::progress::finish();  // (the launcher's progress.json: the time played since its last write)
     rac1::platform::process_end();  // (std::_Exit runs no atexit handler)
