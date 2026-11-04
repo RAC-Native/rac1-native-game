@@ -6,7 +6,8 @@
   "game/ovl/weapons.h",
   "game/ovl/ryno.h",
   "game/ovl/pause_menu.h",
-  "game/enhance/advanced.h"
+  "game/enhance/advanced.h",
+  "game/enhance/fixes102.h"
  ],
  "functions": [
   {
@@ -19,7 +20,8 @@
    "addr": "2cc360",
    "name": "ryno_2cc360",
    "ret": "int32_t",
-   "params": "uint32_t p0, uint32_t p1, uint32_t p2, float pf12, float pf13, float pf14"
+   "params": "uint32_t p0, uint32_t p1, uint32_t p2, float pf12, float pf13, float pf14",
+   "entry_host_ntsc": "if (gameplay102_on(4)) return fixes102_ryno_targets(p0, p1, p2, pf12, pf13, pf14);  // enhancement: 1.02 Gameplay, fix 4: the 1.02 build's target search (fixes102.h)"
   },
   {
    "addr": "2cc608",

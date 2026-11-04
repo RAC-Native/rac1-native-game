@@ -5,14 +5,18 @@
  "includes": [
   "game/ovl/weapons.h",
   "game/ovl/visibomb_ball.h",
-  "game/ovl/pause_menu.h"
+  "game/ovl/pause_menu.h",
+  "game/enhance/fixes102.h"
  ],
  "functions": [
   {
    "addr": "2b6140",
    "name": "visibomb_ball_update",
    "ret": "void",
-   "params": "uint32_t m"
+   "params": "uint32_t m",
+   "host_ntsc": {
+    "2b628c": "if (gameplay102_on(8) && a0.w() == 0x32) goto L_2b6934;  // enhancement: 1.02 Gameplay, fix 8 (the 1.02 build, 0x2b7578): the steering ends in the hero state 0x32 too (fixes102.h)"
+   }
   },
   {
    "addr": "2b57f0",

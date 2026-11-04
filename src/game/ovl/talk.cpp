@@ -7,6 +7,7 @@
 // and per level index a state 0x13d5b0 + i * 0x10 (+0xc: talked to once). The Veldin ship moby
 // (class 834) opens the first visit with its script's scene 4.
 #include <game/ovl/cutscene.h>
+#include <game/enhance/fixes102.h>
 #include <game/ovl/veldin_mobys.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/lib/libc.h>
@@ -83,12 +84,16 @@ int32_t talk_update(uint32_t m, uint32_t t) {
     const float d = vec3_distance(V(m + 0x10), V(P + 0x80));
     const float reach = lwc1(t + 0xc);
     if (reach + reach < d) return 0;
-    talk_step(m, t, 0);
+    // (1.02 Fixes, fix 11: the 1.02 build, 0x267290, calls talk_step only for a record that waits for the button, +8
+    // 0, once the hero faces the moby and it faces him: not every frame within twice the reach)
+    const bool step_late = fixes102_on(11);
+    if (!step_late) talk_step(m, t, 0);
     if (lbu(t + 8) == 0) {
         const float a = atan2_f(lwc1(P + 0x80) - lwc1(m + 0x10), lwc1(P + 0x84) - lwc1(m + 0x14));
         if (lwc1(t + 0xc) < angle_dist(a, lwc1(m + 0x48))) return 0;
         const float b = atan2_f(lwc1(m + 0x10) - lwc1(P + 0x80), lwc1(m + 0x14) - lwc1(P + 0x84));
         if (u2f(0x3fc8f5c3u) < angle_dist(b, lwc1(P + 0x98))) return 0;
+        if (step_late) talk_step(m, t, 0);
     }
     if (lw(OV(0x0015f5cc)) < lw(TK + 0x10)) return 0;
     if (lbu(t + 8) == 0 && (lwu(0x0013cae4) & 0x10) == 0) {

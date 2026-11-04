@@ -255,3 +255,127 @@ L7 0x002764d8: { uint32_t pb_v0 = 0; if (palette_blend_loop(a0.w(), a1.w(), a3.w
 L8 0x00257f38: { uint32_t pb_v0 = 0; if (palette_blend_loop(a0.w(), a1.w(), a3.w(), t1.w(), &pb_v0)) return TrRet{pb_v0, fr[0]}; }  // palette blend
 L9 0x0026d438: { uint32_t pb_v0 = 0; if (palette_blend_loop(a0.w(), a1.w(), a3.w(), t1.w(), &pb_v0)) return TrRet{pb_v0, fr[0]}; }  // palette blend
 L14 0x00255ed8: { uint32_t pb_v0 = 0; if (palette_blend_loop(a0.w(), a1.w(), a3.w(), t1.w(), &pb_v0)) return TrRet{pb_v0, fr[0]}; }  // palette blend
+
+# ---- 1.02 Gameplay, fix 10 (src/game/enhance/fixes102.h): the later build's (1.02: the Japanese disc, the PAL disc 2.00) guards on
+# the characters that take the hero's input. A prompted character (hud_message_request(7, ...), then the triangle: Pokitaru's
+# class at 0x313290, Gemlik's 69 at 0x2bb068, Drek's fleet's 1379 at 0x2ed018): the prompt not offered while the hero is in the
+# state 0x32 or 0x1d or in a vehicle mode (gameplay102_talk_blocked: to the test of the press, its flag still clear), and the hero
+# put in 0x32 at once when it is pressed (the 1.02 build moved that hero_set_state(0x32, 1) there from the character's next
+# step, whose call is skipped). Rilgar's 918 (0x316ab8) and Kalebo III's 1455 (0x2e6808): talk_update not run while the hero is
+# in 0x1d (gameplay102_talk_held: on to what follows it, a0 the moby as the 1.02 build's branch leaves it), and the hero's input
+# locked (+0x20ac) as the scene starts (gameplay102_talk_lock). With the fix off each statement is a test that fails.
+# The 1.02 build's points: Pokitaru 0x314b34 / 0x314c68, Gemlik 0x2bc910 / 0x2bc95c, Drek's fleet 0x2eeff4 / 0x2ef044, Rilgar
+# 0x3180a8 / 0x318150, Kalebo III 0x2e7dc0 / 0x2e7f70.
+L11 0x003136e8: if (gameplay102_talk_blocked()) goto L_313804;  // enhancement: 1.02 Gameplay, fix 10 (guard)
+L11 0x003137fc: if (gameplay102_on(10)) hero_set_state(0x32, 1);  // enhancement: 1.02 Gameplay, fix 10 (0x32 at the press)
+L11 0x00313854: if (gameplay102_on(10)) goto L_313860;  // enhancement: 1.02 Gameplay, fix 10 (the later 0x32 skipped)
+L11 0x00313860 label
+L13 0x002bb6a8: if (gameplay102_talk_blocked()) goto L_2bb6cc;  // enhancement: 1.02 Gameplay, fix 10 (guard)
+L13 0x002bb6d4: if (gameplay102_on(10)) hero_set_state(0x32, 1);  // enhancement: 1.02 Gameplay, fix 10 (0x32 at the press)
+L13 0x002bb83c: if (gameplay102_on(10)) goto L_2bb848;  // enhancement: 1.02 Gameplay, fix 10 (the later 0x32 skipped)
+L13 0x002bb848 label
+L17 0x002ed508: if (gameplay102_talk_blocked()) goto L_2ed524;  // enhancement: 1.02 Gameplay, fix 10 (guard)
+L17 0x002ed534: if (gameplay102_on(10)) hero_set_state(0x32, 1);  // enhancement: 1.02 Gameplay, fix 10 (0x32 at the press)
+L17 0x002ed6c4: if (gameplay102_on(10)) goto L_2ed6d0;  // enhancement: 1.02 Gameplay, fix 10 (the later 0x32 skipped)
+L17 0x002ed6d0 label
+L5 0x00316be0: if (gameplay102_talk_held()) { a0.lo = s1.lo + zero.lo; goto L_316c84; }  // enhancement: 1.02 Gameplay, fix 10 (no talk in 0x1d)
+L5 0x00316c78: gameplay102_talk_lock();  // enhancement: 1.02 Gameplay, fix 10 (+0x20ac)
+L16 0x002e6958: if (gameplay102_talk_held()) { a0.lo = s1.lo + zero.lo; goto L_2e6988; }  // enhancement: 1.02 Gameplay, fix 10 (no talk in 0x1d)
+L16 0x002e6af8: gameplay102_talk_lock();  // enhancement: 1.02 Gameplay, fix 10 (+0x20ac)
+
+# ---- 1.02 Gameplay, fixes 9 and 13 (src/game/enhance/fixes102.h) in the levels' own hero_input_update / hero_set_state /
+# hero_surface_update: the 1.02 build's changes to those functions (each level's copy changed as Veldin's), at the instruction of
+# the level's code that corresponds to Veldin's point (the alignment of the two instruction streams; the 1.02 build's own copies
+# read for each level). Veldin's points (the hand ports: hero_transitions.cpp, hero_state.cpp, hero_update.cpp):
+#   P9a 0x22c0c8  hero_input_update, state 0x3f (the hoverboard's ready stance): gameplay102_board_ride_off: 2 at the common
+#                 hero_set_state(a0, 1) of 0x231c10, else on to 0x22c118 (s0 the player block on both, as it is here)
+#   P9c 0x231650  state 0x53: on deadly ground 0x58 (gameplay102_deadly_ground), at 0x231c10
+#   P9d 0x23173c  state 0x59: 0x58 within 0.3 of deadly ground
+#   P9e 0x231894  state 0x54: +0xa90 from the speed (the case's first store), then 0x58 within 0.2 of deadly ground
+#   P9f 0x226f54  hero_set_state, state 0x53: on deadly ground, on the ground: 0x58 (gameplay102_deadly_landing(0)), return 0
+#                 at the epilogue (0x2275fc, the target of the redirects' `b`)
+#   P9g 0x227074  state 0x54: the same with the sub-state 1
+#   P13 0x2225d8  hero_set_state, after hero_mode3_exit: the entered state stored again (gameplay102_mode3_left; a0_in the
+#                 state, the function's first argument)
+#   P9i 0x20be9c  hero_surface_update, quicksand: in a vehicle mode hero_lost, to the epilogue 0x20beb4 (Rilgar, Quartu and
+#                 Veldin's finale only: the other copies have no quicksand and the 1.02 build left them as they were)
+# With the fixes off each statement is a test that fails.
+
+L5 0x0025a9f8: if (gameplay102_deadly_ground()) { set32(a0, 0x58); goto L_25afb4; }  // enhancement: 1.02 Gameplay, fix 9 (P9c)
+L5 0x0025aae4: if (gameplay102_deadly_ground_near(u2f(0x3e99999au))) { set32(a0, 0x58); goto L_25afb4; }  // enhancement: 1.02 Gameplay, fix 9 (P9d)
+L5 0x0025ac38: if (gameplay102_deadly_ground_near(u2f(0x3e4ccccdu))) { swc1(0x13f350u + 0xa90, fpu_mul(lwc1(0x13f350u + 0x160), 54.0f)); set32(a0, 0x58); goto L_25afb4; }  // enhancement: 1.02 Gameplay, fix 9 (P9e)
+L5 0x00250c14: if (gameplay102_deadly_landing(0)) { set32(v0, 0); goto L_251244; }  // enhancement: 1.02 Gameplay, fix 9 (P9f)
+L5 0x00250d34: if (gameplay102_deadly_landing(1)) { set32(v0, 0); goto L_251244; }  // enhancement: 1.02 Gameplay, fix 9 (P9g)
+L5 0x0024d0c8: gameplay102_mode3_left(a0_in);  // enhancement: 1.02 Gameplay, fix 13 (P13)
+L5 0x0023a4c8: if (gameplay102_quicksand_lost()) goto L_23a4e0;  // enhancement: 1.02 Gameplay, fix 9 (P9i)
+
+L6 0x00241410: if (gameplay102_deadly_ground()) { set32(a0, 0x58); goto L_2419d0; }  // enhancement: 1.02 Gameplay, fix 9 (P9c)
+L6 0x002414fc: if (gameplay102_deadly_ground_near(u2f(0x3e99999au))) { set32(a0, 0x58); goto L_2419d0; }  // enhancement: 1.02 Gameplay, fix 9 (P9d)
+L6 0x00241654: if (gameplay102_deadly_ground_near(u2f(0x3e4ccccdu))) { swc1(0x13f350u + 0xa90, fpu_mul(lwc1(0x13f350u + 0x160), 54.0f)); set32(a0, 0x58); goto L_2419d0; }  // enhancement: 1.02 Gameplay, fix 9 (P9e)
+L6 0x00238eb0: if (gameplay102_deadly_landing(0)) { set32(v0, 0); goto L_2394e4; }  // enhancement: 1.02 Gameplay, fix 9 (P9f)
+L6 0x00238fd0: if (gameplay102_deadly_landing(1)) { set32(v0, 0); goto L_2394e4; }  // enhancement: 1.02 Gameplay, fix 9 (P9g)
+L6 0x00235884: gameplay102_mode3_left(a0_in);  // enhancement: 1.02 Gameplay, fix 13 (P13)
+
+L8 0x00239078: if (const int r = gameplay102_board_ride_off(); r != 0) { if (r == 1) { set32(a0, 2); goto L_23cec4; } goto L_2390c8; }  // enhancement: 1.02 Gameplay, fix 9 (P9a)
+L8 0x0023c908: if (gameplay102_deadly_ground()) { set32(a0, 0x58); goto L_23cec4; }  // enhancement: 1.02 Gameplay, fix 9 (P9c)
+L8 0x0023c9f4: if (gameplay102_deadly_ground_near(u2f(0x3e99999au))) { set32(a0, 0x58); goto L_23cec4; }  // enhancement: 1.02 Gameplay, fix 9 (P9d)
+L8 0x0023cb48: if (gameplay102_deadly_ground_near(u2f(0x3e4ccccdu))) { swc1(0x13f350u + 0xa90, fpu_mul(lwc1(0x13f350u + 0x160), 54.0f)); set32(a0, 0x58); goto L_23cec4; }  // enhancement: 1.02 Gameplay, fix 9 (P9e)
+L8 0x00234530: if (gameplay102_deadly_landing(0)) { set32(v0, 0); goto L_234bd4; }  // enhancement: 1.02 Gameplay, fix 9 (P9f)
+L8 0x00234650: if (gameplay102_deadly_landing(1)) { set32(v0, 0); goto L_234bd4; }  // enhancement: 1.02 Gameplay, fix 9 (P9g)
+L8 0x00230d18: gameplay102_mode3_left(a0_in);  // enhancement: 1.02 Gameplay, fix 13 (P13)
+
+L11 0x002580dc: if (gameplay102_deadly_ground()) { set32(a0, 0x58); goto L_258698; }  // enhancement: 1.02 Gameplay, fix 9 (P9c)
+L11 0x002581c8: if (gameplay102_deadly_ground_near(u2f(0x3e99999au))) { set32(a0, 0x58); goto L_258698; }  // enhancement: 1.02 Gameplay, fix 9 (P9d)
+L11 0x0025831c: if (gameplay102_deadly_ground_near(u2f(0x3e4ccccdu))) { swc1(0x13f350u + 0xa90, fpu_mul(lwc1(0x13f350u + 0x160), 54.0f)); set32(a0, 0x58); goto L_258698; }  // enhancement: 1.02 Gameplay, fix 9 (P9e)
+L11 0x00250ee4: if (gameplay102_deadly_landing(0)) { set32(v0, 0); goto L_251514; }  // enhancement: 1.02 Gameplay, fix 9 (P9f)
+L11 0x00251004: if (gameplay102_deadly_landing(1)) { set32(v0, 0); goto L_251514; }  // enhancement: 1.02 Gameplay, fix 9 (P9g)
+L11 0x0024dd30: gameplay102_mode3_left(a0_in);  // enhancement: 1.02 Gameplay, fix 13 (P13)
+
+L12 0x00248580: if (const int r = gameplay102_board_ride_off(); r != 0) { if (r == 1) { set32(a0, 2); goto L_24b4d8; } goto L_2485d0; }  // enhancement: 1.02 Gameplay, fix 9 (P9a)
+L12 0x0024af1c: if (gameplay102_deadly_ground()) { set32(a0, 0x58); goto L_24b4d8; }  // enhancement: 1.02 Gameplay, fix 9 (P9c)
+L12 0x0024b008: if (gameplay102_deadly_ground_near(u2f(0x3e99999au))) { set32(a0, 0x58); goto L_24b4d8; }  // enhancement: 1.02 Gameplay, fix 9 (P9d)
+L12 0x0024b15c: if (gameplay102_deadly_ground_near(u2f(0x3e4ccccdu))) { swc1(0x13f350u + 0xa90, fpu_mul(lwc1(0x13f350u + 0x160), 54.0f)); set32(a0, 0x58); goto L_24b4d8; }  // enhancement: 1.02 Gameplay, fix 9 (P9e)
+L12 0x00243690: if (gameplay102_deadly_landing(0)) { set32(v0, 0); goto L_243cc0; }  // enhancement: 1.02 Gameplay, fix 9 (P9f)
+L12 0x002437b0: if (gameplay102_deadly_landing(1)) { set32(v0, 0); goto L_243cc0; }  // enhancement: 1.02 Gameplay, fix 9 (P9g)
+L12 0x002402b0: gameplay102_mode3_left(a0_in);  // enhancement: 1.02 Gameplay, fix 13 (P13)
+
+L14 0x002371cc: if (const int r = gameplay102_board_ride_off(); r != 0) { if (r == 1) { set32(a0, 2); goto L_23af54; } goto L_23721c; }  // enhancement: 1.02 Gameplay, fix 9 (P9a)
+L14 0x0023a998: if (gameplay102_deadly_ground()) { set32(a0, 0x58); goto L_23af54; }  // enhancement: 1.02 Gameplay, fix 9 (P9c)
+L14 0x0023aa84: if (gameplay102_deadly_ground_near(u2f(0x3e99999au))) { set32(a0, 0x58); goto L_23af54; }  // enhancement: 1.02 Gameplay, fix 9 (P9d)
+L14 0x0023abd8: if (gameplay102_deadly_ground_near(u2f(0x3e4ccccdu))) { swc1(0x13f350u + 0xa90, fpu_mul(lwc1(0x13f350u + 0x160), 54.0f)); set32(a0, 0x58); goto L_23af54; }  // enhancement: 1.02 Gameplay, fix 9 (P9e)
+L14 0x00233068: if (gameplay102_deadly_landing(0)) { set32(v0, 0); goto L_233698; }  // enhancement: 1.02 Gameplay, fix 9 (P9f)
+L14 0x00233188: if (gameplay102_deadly_landing(1)) { set32(v0, 0); goto L_233698; }  // enhancement: 1.02 Gameplay, fix 9 (P9g)
+L14 0x00230138: gameplay102_mode3_left(a0_in);  // enhancement: 1.02 Gameplay, fix 13 (P13)
+
+L15 0x002222a0: if (gameplay102_deadly_ground()) { set32(a0, 0x58); goto L_22285c; }  // enhancement: 1.02 Gameplay, fix 9 (P9c)
+L15 0x0022238c: if (gameplay102_deadly_ground_near(u2f(0x3e99999au))) { set32(a0, 0x58); goto L_22285c; }  // enhancement: 1.02 Gameplay, fix 9 (P9d)
+L15 0x002224e0: if (gameplay102_deadly_ground_near(u2f(0x3e4ccccdu))) { swc1(0x13f350u + 0xa90, fpu_mul(lwc1(0x13f350u + 0x160), 54.0f)); set32(a0, 0x58); goto L_22285c; }  // enhancement: 1.02 Gameplay, fix 9 (P9e)
+L15 0x0021a47c: if (gameplay102_deadly_landing(0)) { set32(v0, 0); goto L_21ab20; }  // enhancement: 1.02 Gameplay, fix 9 (P9f)
+L15 0x0021a59c: if (gameplay102_deadly_landing(1)) { set32(v0, 0); goto L_21ab20; }  // enhancement: 1.02 Gameplay, fix 9 (P9g)
+L15 0x00216e18: gameplay102_mode3_left(a0_in);  // enhancement: 1.02 Gameplay, fix 13 (P13)
+L15 0x00204894: if (gameplay102_quicksand_lost()) goto L_2048ac;  // enhancement: 1.02 Gameplay, fix 9 (P9i)
+
+L16 0x00229068: if (const int r = gameplay102_board_ride_off(); r != 0) { if (r == 1) { set32(a0, 2); goto L_22d6b4; } goto L_2290b8; }  // enhancement: 1.02 Gameplay, fix 9 (P9a)
+L16 0x0022d0f8: if (gameplay102_deadly_ground()) { set32(a0, 0x58); goto L_22d6b4; }  // enhancement: 1.02 Gameplay, fix 9 (P9c)
+L16 0x0022d1e4: if (gameplay102_deadly_ground_near(u2f(0x3e99999au))) { set32(a0, 0x58); goto L_22d6b4; }  // enhancement: 1.02 Gameplay, fix 9 (P9d)
+L16 0x0022d338: if (gameplay102_deadly_ground_near(u2f(0x3e4ccccdu))) { swc1(0x13f350u + 0xa90, fpu_mul(lwc1(0x13f350u + 0x160), 54.0f)); set32(a0, 0x58); goto L_22d6b4; }  // enhancement: 1.02 Gameplay, fix 9 (P9e)
+L16 0x0022230c: if (gameplay102_deadly_landing(0)) { set32(v0, 0); goto L_2229b0; }  // enhancement: 1.02 Gameplay, fix 9 (P9f)
+L16 0x0022242c: if (gameplay102_deadly_landing(1)) { set32(v0, 0); goto L_2229b0; }  // enhancement: 1.02 Gameplay, fix 9 (P9g)
+L16 0x0021e578: gameplay102_mode3_left(a0_in);  // enhancement: 1.02 Gameplay, fix 13 (P13)
+
+L17 0x00227e00: if (const int r = gameplay102_board_ride_off(); r != 0) { if (r == 1) { set32(a0, 2); goto L_22cef8; } goto L_227e50; }  // enhancement: 1.02 Gameplay, fix 9 (P9a)
+L17 0x0022c938: if (gameplay102_deadly_ground()) { set32(a0, 0x58); goto L_22cef8; }  // enhancement: 1.02 Gameplay, fix 9 (P9c)
+L17 0x0022ca24: if (gameplay102_deadly_ground_near(u2f(0x3e99999au))) { set32(a0, 0x58); goto L_22cef8; }  // enhancement: 1.02 Gameplay, fix 9 (P9d)
+L17 0x0022cb7c: if (gameplay102_deadly_ground_near(u2f(0x3e4ccccdu))) { swc1(0x13f350u + 0xa90, fpu_mul(lwc1(0x13f350u + 0x160), 54.0f)); set32(a0, 0x58); goto L_22cef8; }  // enhancement: 1.02 Gameplay, fix 9 (P9e)
+L17 0x00222c98: if (gameplay102_deadly_landing(0)) { set32(v0, 0); goto L_223340; }  // enhancement: 1.02 Gameplay, fix 9 (P9f)
+L17 0x00222db8: if (gameplay102_deadly_landing(1)) { set32(v0, 0); goto L_223340; }  // enhancement: 1.02 Gameplay, fix 9 (P9g)
+L17 0x0021e710: gameplay102_mode3_left(a0_in);  // enhancement: 1.02 Gameplay, fix 13 (P13)
+
+L18 0x0023099c: if (const int r = gameplay102_board_ride_off(); r != 0) { if (r == 1) { set32(a0, 2); goto L_235230; } goto L_2309ec; }  // enhancement: 1.02 Gameplay, fix 9 (P9a)
+L18 0x00234c74: if (gameplay102_deadly_ground()) { set32(a0, 0x58); goto L_235230; }  // enhancement: 1.02 Gameplay, fix 9 (P9c)
+L18 0x00234d60: if (gameplay102_deadly_ground_near(u2f(0x3e99999au))) { set32(a0, 0x58); goto L_235230; }  // enhancement: 1.02 Gameplay, fix 9 (P9d)
+L18 0x00234eb4: if (gameplay102_deadly_ground_near(u2f(0x3e4ccccdu))) { swc1(0x13f350u + 0xa90, fpu_mul(lwc1(0x13f350u + 0x160), 54.0f)); set32(a0, 0x58); goto L_235230; }  // enhancement: 1.02 Gameplay, fix 9 (P9e)
+L18 0x0022bd30: if (gameplay102_deadly_landing(0)) { set32(v0, 0); goto L_22c3d4; }  // enhancement: 1.02 Gameplay, fix 9 (P9f)
+L18 0x0022be50: if (gameplay102_deadly_landing(1)) { set32(v0, 0); goto L_22c3d4; }  // enhancement: 1.02 Gameplay, fix 9 (P9g)
+L18 0x00227fb0: gameplay102_mode3_left(a0_in);  // enhancement: 1.02 Gameplay, fix 13 (P13)
+L18 0x00213f24: if (gameplay102_quicksand_lost()) goto L_213f3c;  // enhancement: 1.02 Gameplay, fix 9 (P9i)

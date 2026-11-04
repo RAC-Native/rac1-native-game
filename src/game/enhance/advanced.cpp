@@ -11,6 +11,7 @@
 // kernel is the host's, so nothing of the game or the runtime lives there.
 #include <game/enhance/advanced.h>
 #include <game/enhance/controls.h>
+#include <game/enhance/corrected_texts.h>
 #include <game/enhance/graphics.h>
 #include <game/enhance/language.h>
 #include <game/enhance/update_notice.h>
@@ -63,6 +64,9 @@ constexpr uint32_t VIBRATION = SETTINGS + 7;   // the controller's vibration: 0 
 constexpr uint32_t TRIGGERS = SETTINGS + 8;    // 1: a DualSense's adaptive triggers and light bar (vibration.h, #10)
 constexpr uint32_t SKIP_SCENES = SETTINGS + 9; // 1: Start skips every cutscene and movie (advanced_skip_cutscenes)
 constexpr uint32_t CUT_CONTENT = SETTINGS + 10; // 1: the cut content brought back (cut_content.h; global: the main menu's page)
+constexpr uint32_t CORRECTED_TEXTS = SETTINGS + 11;  // 1: the later discs' corrected texts (corrected_texts.h; global)
+constexpr uint32_t FIXES102 = SETTINGS + 12;  // 1: the 1.02 build's fixes, first batch (fixes102.h; global)
+constexpr uint32_t GAMEPLAY102 = SETTINGS + 13;  // 1: the 1.02 build's fixes that change how the game plays (fixes102.h; global)
 constexpr uint32_t ENTRIES = ADV + 0x680;      // the Options list's entries, ours added (0x100 before ten rows overflowed into HELP)
 constexpr uint32_t HELP = ADV + 0x180;         // the Options help label's texts, ours added
 constexpr uint32_t PICTURES = ADV + 0x600;     // the Options picture's images (sector, count), ours added (0x1c0 before two more rows did not fit)
@@ -93,16 +97,16 @@ constexpr OvConst<0x001b6678u> TALL_PAGE{};          // a page whose slot 3 box 
 
 // Our text ids, after the game's (0x4e00..0x5300 in the level text tables)
 constexpr int32_t TEXT_FIRST = 0x7f00;
-enum : int32_t { T_ADVANCED, T_HELP, T_QUICK_SELECT, T_NORMAL, T_PAUSE, T_CONTROLS, T_CLASSIC, T_MODERN, T_MOVEMENT, T_ORIGINAL, T_STRAFING, T_RAC3, T_FADES, T_FAST, T_FADES_ORIGINAL, T_SOUND_51, T_SOUND_71, T_BUY_ALL, T_OFF, T_ON, T_NO_ZOOM, T_VIBRATION, T_LOW, T_HIGH, T_TRIGGERS, T_SKIP_SCENES, T_ALWAYS, T_CUT_CONTENT, T_COUNT };
+enum : int32_t { T_ADVANCED, T_HELP, T_QUICK_SELECT, T_NORMAL, T_PAUSE, T_CONTROLS, T_CLASSIC, T_MODERN, T_MOVEMENT, T_ORIGINAL, T_STRAFING, T_RAC3, T_FADES, T_FAST, T_FADES_ORIGINAL, T_SOUND_51, T_SOUND_71, T_BUY_ALL, T_OFF, T_ON, T_NO_ZOOM, T_VIBRATION, T_LOW, T_HIGH, T_TRIGGERS, T_SKIP_SCENES, T_ALWAYS, T_CUT_CONTENT, T_CORRECTED_TEXTS, T_FIXES102, T_GAMEPLAY102, T_COUNT };
 // per language (0x15ed88: 0 English, 2 French, 3 German, 4 Spanish, 5 Italian; French in English
 // for now, the font's accented letters not looked at yet)
 constexpr const char* TEXTS[6][T_COUNT] = {
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Cut Content"},
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Cut Content"},
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Cut Content"},
-    {"Erweitert", "Extra-Einstellungen der PC-Version", "Schnellwahl", "Normal", "Pause", "Zielen", "Original", "Modern", "Bewegung", "Original", "Strafing", "RAC 3", "Blenden", "Schnell", "Original", "5.1", "7.1", "Alle Munition", "Aus", "An", "Modern, ohne Zoom", "Vibration", "Schwach", "Stark", "Adaptive Trigger", "Szenen ueberspringen", "Immer", "Entfernte Inhalte"},
-    {"Avanzado", "Ajustes extra de la version PC", "Seleccion rapida", "Normal", "Pausa", "Apuntado", "Original", "Moderno", "Movimiento", "Original", "Strafing", "RAC 3", "Fundidos", "Rapidos", "Originales", "5.1", "7.1", "Toda la municion", "No", "Si", "Moderno, sin zoom", "Vibracion", "Baja", "Alta", "Gatillos adaptativos", "Saltar escenas", "Siempre", "Contenido eliminado"},
-    {"Avanzate", "Impostazioni extra della versione PC", "Scelta rapida", "Normale", "Pausa", "Mira", "Originale", "Moderna", "Movimento", "Originale", "Strafing", "RAC 3", "Dissolvenze", "Rapide", "Originali", "5.1", "7.1", "Tutte le munizioni", "No", "Si", "Moderna, senza zoom", "Vibrazione", "Bassa", "Alta", "Grilletti adattivi", "Salta filmati", "Sempre", "Contenuti tagliati"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Cut Content", "Corrected Texts", "1.02 Fixes", "1.02 Gameplay"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Cut Content", "Corrected Texts", "1.02 Fixes", "1.02 Gameplay"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Cut Content", "Corrected Texts", "1.02 Fixes", "1.02 Gameplay"},
+    {"Erweitert", "Extra-Einstellungen der PC-Version", "Schnellwahl", "Normal", "Pause", "Zielen", "Original", "Modern", "Bewegung", "Original", "Strafing", "RAC 3", "Blenden", "Schnell", "Original", "5.1", "7.1", "Alle Munition", "Aus", "An", "Modern, ohne Zoom", "Vibration", "Schwach", "Stark", "Adaptive Trigger", "Szenen ueberspringen", "Immer", "Entfernte Inhalte", "Korrigierte Texte", "Korrekturen 1.02", "Spielablauf 1.02"},
+    {"Avanzado", "Ajustes extra de la version PC", "Seleccion rapida", "Normal", "Pausa", "Apuntado", "Original", "Moderno", "Movimiento", "Original", "Strafing", "RAC 3", "Fundidos", "Rapidos", "Originales", "5.1", "7.1", "Toda la municion", "No", "Si", "Moderno, sin zoom", "Vibracion", "Baja", "Alta", "Gatillos adaptativos", "Saltar escenas", "Siempre", "Contenido eliminado", "Textos corregidos", "Correcciones 1.02", "Jugabilidad 1.02"},
+    {"Avanzate", "Impostazioni extra della versione PC", "Scelta rapida", "Normale", "Pausa", "Mira", "Originale", "Moderna", "Movimento", "Originale", "Strafing", "RAC 3", "Dissolvenze", "Rapide", "Originali", "5.1", "7.1", "Tutte le munizioni", "No", "Si", "Moderna, senza zoom", "Vibrazione", "Bassa", "Alta", "Grilletti adattivi", "Salta filmati", "Sempre", "Contenuti tagliati", "Testi corretti", "Correzioni 1.02", "Giocabilita 1.02"},
 };
 constexpr uint32_t STRING_SIZE = 0x30;
 static_assert(6 * T_COUNT * STRING_SIZE <= 0x3000, "the Advanced page's texts fit in 0xfb000..0xfe000");
@@ -132,6 +136,10 @@ constexpr Row SETTINGS_ROWS[] = {
     {"adaptive_triggers", 9, TRIGGERS, T_TRIGGERS, {T_OFF, T_ON, -1, -1}, false},  // (shown only with a DualSense: row_shown)
     {"skip_cutscenes", 10, SKIP_SCENES, T_SKIP_SCENES, {T_ORIGINAL, T_ALWAYS, -1, -1}},
     {"cut_content", 12, CUT_CONTENT, T_CUT_CONTENT, {T_OFF, T_ON, -1, -1}, false, true},  // (global: the main menu's page)
+    {"corrected_texts", 13, CORRECTED_TEXTS, T_CORRECTED_TEXTS, {T_OFF, T_ON, -1, -1}, false, true},  // (shown with a data disc
+                                                                                                       // that gives the texts)
+    {"fixes_102", 14, FIXES102, T_FIXES102, {T_OFF, T_ON, -1, -1}, false, true},  // (global)
+    {"gameplay_102", 15, GAMEPLAY102, T_GAMEPLAY102, {T_OFF, T_ON, -1, -1}, false, true},  // (global)
 };
 // (ids 7 and 8, keys "ship" and "clank": the ship selector and Clank's movement, removed; a settings file or a save
 // that has them loads, the values ignored. Id 11, key "voice_step": the Voice row, now on the Language page
@@ -141,8 +149,13 @@ constexpr Row SETTINGS_ROWS[] = {
 constexpr uint32_t ROW_COUNT = sizeof(SETTINGS_ROWS) / sizeof(Row);
 
 // orig: (none) — enhancement: a row on the page (Adaptive Triggers only when the pad is a DualSense: the host's
-// vibration_set_dualsense; the page is made again at each overlay load)
-bool row_shown(const Row& r) { return r.byte != TRIGGERS || vibration_dualsense(); }
+// vibration_set_dualsense; Corrected Texts only with a data disc that gives them, beside the North American disc; the
+// page is made again at each overlay load)
+bool row_shown(const Row& r) {
+    if (r.byte == TRIGGERS) return vibration_dualsense();
+    if (r.byte == CORRECTED_TEXTS) return corrected_texts_available();
+    return true;
+}
 
 // The mode a new game was started in (GAME_MODE_ORIGINAL / GAME_MODE_MODERN; 0 none known): kept with the saves (item 37),
 // nothing reads it but a later version (a save's record of how its playthrough began)
@@ -640,6 +653,27 @@ bool advanced_cut_content() {
     if (g_advanced_disabled) return false;
     settings_load();
     return lbu(CUT_CONTENT) != 0;
+}
+
+// orig: (none) — enhancement (advanced.h)
+bool advanced_corrected_texts() {
+    if (g_advanced_disabled) return false;
+    settings_load();
+    return lbu(CORRECTED_TEXTS) != 0;
+}
+
+// orig: (none) — enhancement (advanced.h)
+bool advanced_fixes102() {
+    if (g_advanced_disabled) return false;
+    settings_load();
+    return lbu(FIXES102) != 0;
+}
+
+// orig: (none) — enhancement (advanced.h)
+bool advanced_gameplay102() {
+    if (g_advanced_disabled) return false;
+    settings_load();
+    return lbu(GAMEPLAY102) != 0;
 }
 
 // orig: (none) — enhancement (advanced.h)
@@ -1567,6 +1601,7 @@ void advanced_setting_changed(uint32_t byte) {
     // turns Strafing on; turning Movement back to Original turns Aiming off
     if (byte == CONTROLS && lbu(CONTROLS) != 0 && lbu(MOVEMENT) == 0) sb(MOVEMENT, 1);
     if (byte == MOVEMENT && lbu(MOVEMENT) == 0) sb(CONTROLS, 0);
+    if (byte == CORRECTED_TEXTS) corrected_texts_row_changed();  // (the main menu's texts changed at once)
     // saved now: a row changed at the title's main menu would otherwise wait for the next gameplay frame
     // (advanced_frame), and be lost by quitting from the menu (the preferences are loaded by then: the page's
     // install reads them)

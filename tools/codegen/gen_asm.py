@@ -4,6 +4,8 @@
 # The asm2fn.py transliterations (tools/codegen/asm2fn_specs/<name>.json -> the spec's `out`, src/game/ovl/<name>_asm.cpp), generated whole
 # from the ISO: each function's listing straight from its level's overlay (tools/codegen/ovlist.py), then tools/codegen/asm2fn_batch.py. The spec
 # (ours: names, signatures, jump / call tables, the file's head) is the only other input. --no-insn-comments as in gen_mkall.py.
+# A function's "host_ntsc" / "entry_host_ntsc" (as "host" / "entry_host", asm2fn.py) apply to the NTSC-U build's code only: another
+# region's disc whose build of the function differs gets that build's stand-in (tools/codegen/ovlist.py) without them.
 import glob
 import json
 import os
@@ -29,12 +31,26 @@ def gen(name, out_root, strip, tmp):
     lvl = d.get('level', 0)
     lst = os.path.join(tmp, name)
     os.makedirs(lst, exist_ok=True)
+    funcs = []
     for f in d['functions']:
+        f = dict(f)
+        funcs.append(f)
         if f.get('hand'):
             continue
         lv = f.get('level', lvl)  # (a function's own "level" overrides the spec's)
+        n0 = len(ovlist.STANDINS)
         open(os.path.join(lst, 'lst_%s.s' % f['addr']), 'w').write('\n'.join(ovlist.listing(lv, int(f['addr'], 16))) + '\n')
+        # "host_ntsc" / "entry_host_ntsc": host code at the NTSC-U build's addresses only (its own labels): merged into "host" /
+        # "entry_host" for the disc's own build of the function, left out of another region's stand-in (that build's code)
+        standin = len(ovlist.STANDINS) > n0
+        hn, en = f.pop('host_ntsc', {}), f.pop('entry_host_ntsc', None)
+        if not standin:
+            if hn:
+                f['host'] = dict(f.get('host', {}), **hn)
+            if en:
+                f['entry_host'] = en
     d2 = dict(d)
+    d2['functions'] = funcs
     d2['listings'] = lst
     d2['out'] = os.path.join(lst, 'out.cpp')
     sp = os.path.join(lst, name + '.json')

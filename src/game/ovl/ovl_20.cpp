@@ -1,5 +1,6 @@
 // Ported overlay code 0x00200000..0x0020ffff.
 #include <game/enhance/advanced.h>
+#include <game/enhance/fixes102.h>
 #include <game/ovl/hero_l1.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -780,12 +781,21 @@ void sub_0020fde0(int32_t kind) {
     }
 }
 
+// Whether the Hologuise (item kind 0x1f) can be put on: sub_00233f38 0, the game mode 0, on foot (+0x20a4 0), the
+// sub-state (+0x208c) 0..2 or 4, out of water (+0x12e4 0).
+// (1.02 Gameplay, fix 13: the 1.02 build, 0x2104c8, takes beyond the sub-states 0..2 the hero states 4, 9 and 0xe
+// (+0x2084) instead of the sub-state 4)
 // orig: 0x0020fe30
 int32_t sub_0020fe30() {
     if (sub_00233f38() != 0) return 0;
     if (lw(OV(0x0015f5c4)) != 0) return 0;
     if (lbu(g::PLAYER + 0x20a4) != 0) return 0;
     const uint32_t s = lwu(g::PLAYER + 0x208c);
+    if (gameplay102_on(13)) {
+        const uint32_t st = lwu(g::HERO_STATE);
+        if (s < 3u || st == 4u || st == 9u || st == 0xeu) return lbu(g::PLAYER + 0x12e4) == 0 ? 1 : 0;
+        return 0;
+    }
     if (s < 3u || s == 4u) return lbu(g::PLAYER + 0x12e4) == 0 ? 1 : 0;
     return 0;
 }
@@ -2691,10 +2701,28 @@ void hero_gadget_glow() {
             }
         }
     }
-    const float ph = angle_add(lwc1(P + 0x1628), lwc1(0x0015ed6c) * u2f(0x4011361eu));
-    swc1(P + 0x1628, ph);
-    const float t = sin_vu(ph) * 0.5f + 0.5f;
-    sw(lwu(P + 0x2080) + 0x90, rgba_lerp(0x806e8c6eu, 0x805a3232u, t));
+    if (!fixes102_on(7)) {
+        const float ph = angle_add(lwc1(P + 0x1628), lwc1(0x0015ed6c) * u2f(0x4011361eu));
+        swc1(P + 0x1628, ph);
+        const float t = sin_vu(ph) * 0.5f + 0.5f;
+        sw(lwu(P + 0x2080) + 0x90, rgba_lerp(0x806e8c6eu, 0x805a3232u, t));
+    } else if (lw(OV(0x0015f5c4)) == 0) {
+        // (1.02 Fixes, fix 7: the 1.02 build, 0x2086c8, pulses the hero only in play (game mode 0x15f5c4 0: in a
+        // cutscene hero_ship_update pulses the scene's Ratchet), and while 0x179410 is set and not 8 the phase runs on
+        // faster, between the second pair of colours)
+        float ph = angle_add(lwc1(P + 0x1628), lwc1(0x0015ed6c) * u2f(0x4011361eu));
+        swc1(P + 0x1628, ph);
+        uint32_t c0 = 0x806e8c6eu, c1 = 0x805a3232u;
+        const int32_t v = lw(OV(0x00179410));
+        if (v != 0 && v != 8) {
+            ph = angle_add(ph, lwc1(0x0015ed6c) * u2f(0x40b2b8c2u));
+            swc1(P + 0x1628, ph);
+            c0 = 0x806eaafau;
+            c1 = 0x80326e5au;
+        }
+        const float t = sin_vu(lwc1(P + 0x1628)) * 0.5f + 0.5f;
+        sw(lwu(P + 0x2080) + 0x90, rgba_lerp(c0, c1, t));
+    }
     const uint32_t g = lwu(P + 0x1090);
     if (g == 0 || (lhu(g + 0x34) & 1) != 0) return;
     const uint32_t kind = lwu(P + 0x10b8) - 0xd;

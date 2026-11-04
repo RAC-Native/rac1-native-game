@@ -119,10 +119,10 @@ std::vector<std::string> iso9660_list_root(std::span<const std::byte> iso) {
 // moved; see find_known_disc). The Japanese disc (the 1.02 build too) only as a data disc (setup.py --data-iso).
 // The same table as KNOWN_DISCS in tools/setup.py.
 constexpr KnownDisc KNOWN_DISCS[] = {
-    {"SCUS_971.99", "SCUS-97199", "NTSC-U", "1.00", 4214095872ULL, true},
-    {"SCES_509.16", "SCES-50916", "PAL", "1.00", 4213997568ULL, true},
-    {"SCES_509.16", "SCES-50916", "PAL", "2.00", 4214784000ULL, true},
-    {"SCPS_150.37", "SCPS-15037", "NTSC-J", "1.02", 1807187968ULL, false},
+    {"SCUS_971.99", "SCUS-97199", "NTSC-U", "1.00", 4214095872ULL, true, ""},
+    {"SCES_509.16", "SCES-50916", "PAL", "1.00", 4213997568ULL, true, "the corrected texts"},
+    {"SCES_509.16", "SCES-50916", "PAL", "2.00", 4214784000ULL, true, "the corrected texts"},
+    {"SCPS_150.37", "SCPS-15037", "NTSC-J", "1.02", 1807187968ULL, false, "the Japanese voices and the corrected texts"},
 };
 
 // SYSTEM.CNF's "VER = x.yy" ("" when it cannot be read)
@@ -235,7 +235,8 @@ IsoValidation validate_iso(const std::string& iso_path) {
         res.message = std::string("This is Ratchet & Clank's ") + res.disc->region + " disc (" + res.disc->serial + ", version " +
                       res.disc->version +
                       "). Only the North American disc, SCUS-97199, and the European PAL discs, SCES-50916 versions 1.00 and 2.00, are "
-                      "supported as the game's disc for now; this one can be added as a data disc (setup --data-iso).";
+                      "supported as the game's disc for now; this one can be added as a data disc (setup --data-iso)" +
+                      (*res.disc->gives != 0 ? std::string(": it gives ") + res.disc->gives + "." : std::string("."));
         return res;
     }
 

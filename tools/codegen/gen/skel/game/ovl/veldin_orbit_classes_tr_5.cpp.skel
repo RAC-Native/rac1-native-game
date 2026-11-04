@@ -2,6 +2,7 @@
 // Transliterated instruction by instruction from level 17's own overlay with tools/codegen/mips2cpp.py (tools/codegen/mkall.py:
 // the original's control flow and PS2 float rules by construction), not rewritten
 // by hand: the names are the entries', the helpers `vo_<addr>_l17` (uniform ABI: TrRet).
+#include <game/enhance/fixes102.h>
 #include <game/lib/libc.h>
 #include <game/ovl/veldin_orbit_mobys.h>
 #include <game/ovl/quad_draw.h>

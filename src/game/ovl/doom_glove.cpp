@@ -4,6 +4,7 @@
 // throw (state 3 of the glove), sets the agent flying (0x2c82f0) on the arc 0x2c7320 computes. The
 // glove's pvars: +0x40 the agent's place in the hand, +0x50 the agent held, +0x54 the throw timer.
 #include <game/enhance/advanced.h>
+#include <game/enhance/fixes102.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl.h>
@@ -77,6 +78,15 @@ uint32_t doom_agent_spawn(uint32_t hand, uint32_t pos, uint32_t vel) {
     sw(pv + 0x34, 0);
     swc1(a + 0x2c, lwc1(lwu(a + 0x24) + 0x24) * u2f(0x3c23d70au));
     if (lbu(P + 0x20a5) != 0 || lbu(P + 0x20af) != 0) sh(a + 0x34, lhu(a + 0x34) | 0x41u);
+    // (1.02 Fixes, fix 3: the 1.02 build, 0x2c9578, keeps the last 20 agents in a ring, 1.02's 0x1dd400 / index
+    // 0x16190c, here FIX_RING: the agent 20 spawns ago, when still an agent and not dying, 0xfd / 0xfe, goes to state 4)
+    if (fixes102_on(3)) {
+        const int32_t next = lw(FIX_RING_NEXT);
+        const uint32_t old = lwu(FIX_RING + static_cast<uint32_t>(next) * 4);
+        if (old != 0 && lh(old + 0xa6) == 0xe6 && lbu(old + 0x20) != 0xfe && lbu(old + 0x20) != 0xfd) sb(old + 0x20, 4);
+        sw(FIX_RING + static_cast<uint32_t>(next) * 4, a);
+        sw(FIX_RING_NEXT, static_cast<uint32_t>(ee_rem(next + 1, 0x14)));
+    }
     return a;
 }
 

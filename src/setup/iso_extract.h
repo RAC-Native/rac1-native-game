@@ -17,6 +17,8 @@ struct KnownDisc {
     const char* version;       // SYSTEM.CNF's VER ("1.00"; the PAL disc 2.00 boots the same executable as 1.00)
     uint64_t redump_size;      // a good dump's size in bytes (0: unknown)
     bool supported;            // as the game's disc (the others only as data discs, setup.py --data-iso)
+    const char* gives;         // what it gives as a data disc, in words ("" nothing; setup.py's GIVES): the Japanese voices,
+                               // the corrected texts (those only beside the North American disc)
 };
 // The release by its boot executable and SYSTEM.CNF's version; without a version, the first release with that boot
 // executable (its serial and region are the same for each). Null when it is not one the setup knows.
