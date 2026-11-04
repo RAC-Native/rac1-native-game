@@ -6,11 +6,12 @@
 // rows): cross steps it, language_setting_changed moves the setting on and puts the byte back to 0. Left / right step
 // back / forward (language_settings_dpad).
 //
-// EE RAM block LNG (0xfa200..0xfa600): past the Vendor's 0xfa000..0xfa100 (vendor_buy_all.cpp), before the Advanced
+// EE RAM block LNG (0xfa200..0xfa800): past the Vendor's 0xfa000..0xfa100 (vendor_buy_all.cpp), before the Advanced
 // page's texts at 0xfb000, in the PS2 kernel's first megabyte: nothing of the game or the runtime lives there.
 #include <game/enhance/language.h>
 
 #include <game/enhance/advanced.h>
+#include <game/enhance/movie_subtitles.h>
 #include <game/enhance/voice_language.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -28,7 +29,7 @@ constexpr uint32_t TITLE = LNG + 0x90;         // its title (a copy of Camera's 
 constexpr uint32_t ROWS_WIDGET = LNG + 0xe0;   // its settings widget (a copy of Camera's)
 constexpr uint32_t STEPS = LNG + 0x130;        // the rows' step bytes (by Row: the settings widget writes them)
 constexpr uint32_t ROWS = LNG + 0x140;         // the widget's rows (0x18 bytes, ended by text 0)
-constexpr uint32_t STRINGS = LNG + 0x200;      // the texts, made at each lookup (..0xfa600)
+constexpr uint32_t STRINGS = LNG + 0x200;      // the texts, made at each lookup (..0xfa800)
 constexpr uint32_t STRING_SIZE = 0x80;
 
 constexpr uint32_t LANGUAGE = 0x0015ed88u;   // the game's language: the text's
@@ -39,21 +40,22 @@ constexpr OvConst<0x001b5a60u> CAMERA_PAGE{};
 constexpr OvConst<0x001b5ae8u> CAMERA_TITLE{};
 constexpr OvConst<0x001b5ba0u> CAMERA_SETTINGS{};
 
-enum Row : uint32_t { R_TEXT, R_VOICE, R_SUBTITLES, ROW_COUNT };
+enum Row : uint32_t { R_TEXT, R_VOICE, R_SUBTITLES, R_MOVIE_SUBTITLES, ROW_COUNT };
 
 // The texts' ids (after the Controls page's 0x7fa0..0x7fb6), each made at its lookup into its string
 constexpr int32_t TEXT_FIRST = 0x7fc0;
 enum : int32_t { I_TITLE, I_HELP, I_NAME, I_VALUE = I_NAME + ROW_COUNT, I_COUNT = I_VALUE + ROW_COUNT };
-static_assert(I_COUNT * STRING_SIZE <= 0x400, "the Language page's texts end at 0xfa600");
+static_assert(I_COUNT * STRING_SIZE <= 0x600, "the Language page's texts end at 0xfa800");
 
 // per language (0x15ed88: 0 English, 2 French (in English for now, as the other pages: the font's accented letters not
 // looked at yet), 3 German, 4 Spanish, 5 Italian)
-enum : int32_t { T_TITLE, T_HELP, T_TEXT, T_VOICE, T_SUBTITLES, T_OFF, T_ON, T_SAME, T_COUNT };
+// (Movie Subtitles: our own, made at the setup with speech to text, movie_subtitles.h; off by default)
+enum : int32_t { T_TITLE, T_HELP, T_TEXT, T_VOICE, T_SUBTITLES, T_MOVIE_SUBTITLES, T_OFF, T_ON, T_SAME, T_COUNT };
 constexpr const char* TEXTS[4][T_COUNT] = {
-    {"Language", "The language of the texts, of the voices and the subtitles", "Text", "Voice", "Subtitles", "Off", "On", "Same as Text"},
-    {"Sprache", "Die Sprache der Texte, der Stimmen und die Untertitel", "Text", "Stimmen", "Untertitel", "Aus", "An", "Wie der Text"},
-    {"Idioma", "El idioma de los textos, de las voces y los subtitulos", "Texto", "Voces", "Subtitulos", "No", "Si", "Como el texto"},
-    {"Lingua", "La lingua dei testi, delle voci e i sottotitoli", "Testo", "Voci", "Sottotitoli", "No", "Si", "Come il testo"},
+    {"Language", "The language of the texts, of the voices and the subtitles", "Text", "Voice", "Subtitles", "Movie Subtitles", "Off", "On", "Same as Text"},
+    {"Sprache", "Die Sprache der Texte, der Stimmen und die Untertitel", "Text", "Stimmen", "Untertitel", "Film-Untertitel", "Aus", "An", "Wie der Text"},
+    {"Idioma", "El idioma de los textos, de las voces y los subtitulos", "Texto", "Voces", "Subtitulos", "Subtitulos de videos", "No", "Si", "Como el texto"},
+    {"Lingua", "La lingua dei testi, delle voci e i sottotitoli", "Testo", "Voci", "Sottotitoli", "Sottotitoli filmati", "No", "Si", "Come il testo"},
 };
 // The languages' names in each of those, by the game's codes (0 English, 1 Japanese, 2 French, 3 German, 4 Spanish,
 // 5 Italian)
@@ -91,6 +93,7 @@ const char* value_text(uint32_t row) {
         const int32_t c = g_voice == 1 && !voice_japanese_available() ? -1 : g_voice;  // (the disc gone: the text's)
         return c >= 0 && c < 6 ? NAMES[t][c] : TEXTS[t][T_SAME];
     }
+    if (row == R_MOVIE_SUBTITLES) return TEXTS[t][movie_subtitles_choice() ? T_ON : T_OFF];
     return TEXTS[t][lbu(SUBTITLES) != 0 ? T_ON : T_OFF];
 }
 
@@ -129,6 +132,9 @@ void row_step(uint32_t row, int32_t dir) {
         g_voice = c[wrap(at, dir, static_cast<uint32_t>(c.size()))];
         voice_choice_set(g_voice);
         std::printf("[language] Voice: %s\n", voice_choice_name(g_voice));
+    } else if (row == R_MOVIE_SUBTITLES) {
+        movie_subtitles_set(!movie_subtitles_choice());
+        std::printf("[language] Movie Subtitles: %s\n", movie_subtitles_choice() ? "on" : "off");
     } else {
         g_subtitles = lbu(SUBTITLES) != 0 ? 0 : 1;
         sb(SUBTITLES, static_cast<uint32_t>(g_subtitles));
@@ -229,6 +235,10 @@ bool language_pref_read(const char* name, const char* value) {
         }
         return true;
     }
+    if (std::strcmp(name, "movie_subtitles") == 0) {
+        movie_subtitles_set(std::strcmp(value, "on") == 0);
+        return true;
+    }
     if (std::strcmp(name, "subtitles") == 0) {
         if (std::strcmp(value, "on") == 0) g_subtitles = 1;
         else if (std::strcmp(value, "off") == 0) g_subtitles = 0;
@@ -241,6 +251,7 @@ bool language_pref_read(const char* name, const char* value) {
 std::string language_prefs_text() {
     std::string s = std::string("voice_language ") + voice_choice_name(g_voice) + "\n";
     if (g_subtitles >= 0) s += std::string("subtitles ") + (g_subtitles != 0 ? "on" : "off") + "\n";
+    s += std::string("movie_subtitles ") + (movie_subtitles_choice() ? "on" : "off") + "\n";
     return s;
 }
 
