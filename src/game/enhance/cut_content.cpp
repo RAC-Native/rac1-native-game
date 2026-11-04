@@ -1,6 +1,7 @@
 // Cut content brought back (see cut_content.h): behaviours reconstructed, or ported from the beta build.
 #include <game/enhance/cut_content.h>
 
+#include <formats/level_core.h>
 #include <game/enhance/advanced.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>
@@ -11,9 +12,17 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 
+#include <runtime/kernel/disc.h>
+#include <runtime/kernel/ee_memory.h>
+#include <runtime/level/host_layout.h>
+
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
+#include <span>
 #include <string>
+#include <vector>
 
 namespace rac1 {
 
@@ -47,6 +56,107 @@ void fred_snap_to_ground(uint32_t m) {
     if (segment_collide_v(from, to, 2, m, nullptr) != 0) swc1(m + 0x18, lwc1(OV(0x00173e60) + 8));  // (the hit point)
 }
 
+// Kerwan's citizens' idle (#128: they held their rest pose, arms out). Nebula G34's citizen "Fred" (level 6, class 1105)
+// has Fred 3's skeleton (65 joints, the same hierarchy; Fred 1 and 2 have the same with six more joints, 55..60, under
+// the head) and the same rest rotations but for the arms (its bones are longer: the rotations carry over, the lengths
+// stay each model's own). Its sequence 0 is a standing idle, arms lowered: 50 frames at 0.25 a game frame (200 game
+// frames), a closed loop. It is read from the player's disc (level 6's core), once a run, and given to each Fred class in
+// place of its one-frame sequence (the class's slot 0), from host memory above the game's 32 MB
+// (host_layout::CUT_CONTENT_SEQS): the game's own animation code plays it. Nothing of it is in the repository.
+constexpr int IDLE_LEVEL = 6, IDLE_CLASS = 1105, IDLE_SEQ = 0;
+constexpr uint32_t IDLE_JOINTS = 65;
+constexpr uint32_t IDLE_CLASS_ROOM = 0x10000;  // one Fred class's sequence: the head, the frame table, 50 frames of 0x250
+
+struct IdleSource {
+    bool tried = false;
+    uint32_t rate = 0;                             // the sequence's frame rate (+0x18, a float's bits)
+    std::vector<std::vector<uint64_t>> rotations;  // a frame's joints' rotations (quaternions, 4 x s16)
+} g_idle;
+
+// orig: (none) — enhancement: the idle's rotations read from level 6's core on the disc (once a run; none: the citizens
+// keep their rest pose)
+void fred_idle_read() {
+    if (g_idle.tried) return;
+    g_idle.tried = true;
+    std::vector<std::byte> wad;
+    std::vector<uint8_t> index, data;
+    if (!disc_read_level_wad(IDLE_LEVEL, wad) || !extract_core_from_level_wad(wad, index, data)) {
+        std::printf("[cut content] level %d's core not read: Kerwan's citizens keep their rest pose\n", IDLE_LEVEL);
+        return;
+    }
+    try {
+        const DecodedLevelCoreIndex ix = decode_level_core_index(std::as_bytes(std::span(index)), std::as_bytes(std::span(data)));
+        for (const LevelCoreSubAsset& a : ix.sub_assets) {
+            if (a.kind != "moby_class" || a.id != IDLE_CLASS || a.packed || a.offset >= data.size()) continue;
+            const uint8_t* c = data.data() + a.offset;
+            const size_t room = data.size() - a.offset;
+            auto rd32 = [&](size_t o) {
+                uint32_t v = 0;
+                if (o + 4 <= room) std::memcpy(&v, c + o, 4);
+                return v;
+            };
+            const uint32_t seq = rd32(0x48 + 4 * IDLE_SEQ);
+            if (room < 0x48 || c[8] != IDLE_JOINTS || seq == 0 || seq + 0x1c > room) break;
+            g_idle.rate = rd32(seq + 0x18);
+            for (uint32_t f = 0, n = c[seq + 0x10]; f < n; ++f) {
+                const uint32_t fo = rd32(seq + 0x1c + 4 * f) & 0x0fffffffu;  // (a plain frame: no flag in the top bits)
+                uint16_t rot_bytes = 0;
+                if (fo == 0 || fo + 0x10 + IDLE_JOINTS * 8 > room) break;
+                std::memcpy(&rot_bytes, c + fo + 8, 2);
+                if (rot_bytes != IDLE_JOINTS * 8) break;
+                std::vector<uint64_t> r(IDLE_JOINTS);
+                std::memcpy(r.data(), c + fo + 0x10, IDLE_JOINTS * 8);
+                g_idle.rotations.push_back(std::move(r));
+            }
+            if (g_idle.rotations.size() != c[seq + 0x10]) g_idle.rotations.clear();
+            break;
+        }
+    } catch (const std::exception& e) {  // (a damaged core: the rest pose, not the game stopped)
+        std::printf("[cut content] level %d's core not decoded (%s)\n", IDLE_LEVEL, e.what());
+        g_idle.rotations.clear();
+    }
+    if (g_idle.rotations.empty()) std::printf("[cut content] class %d's idle not found: Kerwan's citizens keep their rest pose\n", IDLE_CLASS);
+}
+
+// orig: (none) — enhancement: Fred class `cls` (915..917) given the idle in place of its one-frame sequence (slot 0),
+// built at host_layout::CUT_CONTENT_SEQS on the class's own joints: Fred 3's 65 are the idle's; Fred 1 and 2's six more
+// (55..60, under the head) keep their rest rotations, their 61..70 take the idle's 55..64. Each frame keeps the class's
+// own frame head (its sizes) and the sequence the class's own head (its bounding sphere) but for the frame count and the
+// rate. True when the class plays it (already, or now).
+bool fred_idle_hook(uint32_t m) {
+    const int32_t id = lh(m + 0xa6);
+    const uint32_t cls = lwu(m + 0x24);
+    if (id < 915 || id > 917 || cls == 0) return false;
+    const uint32_t at = host_layout::CUT_CONTENT_SEQS + static_cast<uint32_t>(id - 915) * IDLE_CLASS_ROOM;
+    const uint32_t slot = cls + 0x48;
+    if (lwu(slot) == at) return true;
+    fred_idle_read();
+    const uint32_t joints = lbu(cls + 8);
+    const uint32_t seq = lwu(slot);
+    const size_t n = g_idle.rotations.size();
+    if (n == 0 || seq == 0 || lbu(seq + 0x10) != 1 || (joints != IDLE_JOINTS && joints != IDLE_JOINTS + 6)) return false;
+    const uint32_t rest = lwu(seq + 0x1c);  // (its one frame: the rest pose)
+    const uint32_t size = 0x10 + lhu(rest + 6) * 16u;
+    if (lhu(rest + 8) != joints * 8 || 0x1c + 4 * n + n * size > IDLE_CLASS_ROOM) return false;
+    for (uint32_t q = 0; q < 0x1c; q += 4) ee_write<uint32_t>(at + q, lwu(seq + q));
+    ee_write<uint8_t>(at + 0x10, static_cast<uint8_t>(n));
+    ee_write<uint32_t>(at + 0x18, g_idle.rate);
+    const uint32_t frames = (at + 0x1c + 4 * static_cast<uint32_t>(n) + 0xf) & ~0xfu;
+    for (size_t f = 0; f < n; ++f) {
+        const uint32_t fr = frames + static_cast<uint32_t>(f) * size;
+        ee_write<uint32_t>(at + 0x1c + 4 * static_cast<uint32_t>(f), fr);
+        for (uint32_t q = 0; q < size; q += 4) ee_write<uint32_t>(fr + q, lwu(rest + q));
+        ee_write<uint32_t>(fr, g_idle.rate);  // (the frame's own rate, word 0)
+        for (uint32_t j = 0; j < joints; ++j) {
+            if (joints != IDLE_JOINTS && j >= 55 && j < 61) continue;  // (Fred 1 / 2's own joints under the head)
+            const uint32_t src = joints != IDLE_JOINTS && j >= 61 ? j - 6 : j;
+            ee_write<uint64_t>(fr + 0x10 + j * 8, g_idle.rotations[f][src]);
+        }
+    }
+    sw(slot, at);
+    return true;
+}
+
 // Eudora's Transport Ships (class 484): the beta's update keeps its own state in the pvars (+0x154: 0 the first update,
 // 1 waiting for Ratchet, 2 flying); a ship kept by the item is one past its first update
 constexpr uint32_t SHIP_STATE = 0x154;
@@ -74,16 +184,24 @@ void cut_content_fred_dispatch_l3(uint32_t m) {
 
 // orig: (none) — cut content restored (cut_content.h). The game's own stub measures what a citizen needs to face the hero
 // - the distance to him (0x13f3d0) and the heading towards his moby (0x13ff80 +0x80) against its own (+0x48) - and then
-// retires it; here it is kept: its one sequence (set 0) looped, and the heading turned towards Ratchet within FRED_RANGE.
-// (That sequence is one frame long in the three models: the rest pose, the arms held out. No collision: Ratchet walks
-// through them)
+// retires it; here it is kept: its sequence 0 looped, and the heading turned towards Ratchet within FRED_RANGE. (That
+// sequence is one frame long in the three models: the rest pose, the arms held out; it is replaced by Nebula G34's
+// citizen's idle when the disc gives it, fred_idle_hook. No collision: Ratchet walks through them)
 void cut_content_fred_update_l3(uint32_t m) {
     if (lbu(m + 0x20) != FRED_KEPT) {
         sb(m + 0x20, FRED_KEPT);
         fred_snap_to_ground(m);
-        moby_anim_set(m, 0, 0, 0);
-    } else if ((lbu(m + 0x70) & 2) != 0) {
-        moby_anim_set(m, 0, 0, 0);  // (the sequence ended: again)
+        if (fred_idle_hook(m)) {
+            // the idle, each citizen from its own frame (they do not breathe in step); the game's animation loops it
+            const uint32_t n = lbu(lwu(lwu(m + 0x24) + 0x48) + 0x10);
+            moby_anim_set(m, 0, static_cast<int32_t>(((m >> 8) * 17u) % n), 1);
+        } else {
+            moby_anim_set(m, 0, 0, 0);
+        }
+    } else if (lbu(lwu(lwu(m + 0x24) + 0x48) + 0x10) == 1) {
+        if ((lbu(m + 0x70) & 2) != 0) moby_anim_set(m, 0, 0, 0);  // (the one-frame rest pose ended: again)
+    } else if ((lhu(m + 0x34) & 0x40) != 0) {
+        moby_anim_advance(m);  // (their placements' flags (+0x34 0x40) keep the game's moby loop from advancing it)
     }
     // the turn's spin: the last word of its 448 bytes of pvars (placement data no code of the game reads)
     const uint32_t pv = lwu(m + 0x78);

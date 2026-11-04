@@ -8,8 +8,8 @@
 // Items (their names for RAC1_CUT_CONTENT):
 // - fred: Kerwan's citizens "Fred 1 / 2 / 3" (classes 915, 916, 917; 14 placements on level 3). Their update (L3:0x2dc310)
 //   measures the distance and the angle to Ratchet, throws both away and retires the moby on its first frame: with the
-//   item on they stay, hold their one sequence (one frame: the models' rest pose, arms out) and turn to face Ratchet
-//   when he comes near. They have no collision.
+//   item on they stay, play an idle (Nebula G34's citizen's, class 1105, the same skeleton: their own sequence is one
+//   frame, the rest pose with the arms out) and turn to face Ratchet when he comes near. They have no collision.
 // - ships: Eudora's Transport Ships (class 484, 3 placements on level 4). Their update (L4:0x2ce060) is moby_retire; the
 //   beta (2002-08) and prototype (2002-06) builds keep the real one, ported here: hidden until Ratchet enters its box,
 //   the ship flies its path with the enemies it carries (Circular Saw Enemies 340, Blarg Troopers 427), drops them one

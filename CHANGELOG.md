@@ -40,10 +40,13 @@ What changed in each release. Releases are source only: you build the game with 
   gameplay rows are a playthrough's, on the pause menu's page and kept with the save.
 - Main menu > Options > Advanced > Cut Content (Off by default; global, kept in the preferences, read at a level's load):
   Kerwan's citizens "Fred 1 / 2 / 3" (classes 915..917, 14 placements) stay instead of retiring on their first frame and
-  turn to face Ratchet near them (they hold their one-frame rest pose; no collision); each is put on the ground under its
+  turn to face Ratchet near them (no collision); each is put on the ground under its
   placement at its first update (seven stood 0.03 to 0.25 above it). `RAC1_CUT_CONTENT=fred` for testing
   (docs/advanced.md, "Cut Content"). Port inventory: the Bolt Thief's "second behaviour", the Snagglebeast's unreferenced
   draw, L18:0x2ea1f8, the oxygen element, Orxon's turning citizen and the unregistered item classes corrected.
+- Cut Content: Kerwan's citizens no longer stand in their rest pose with the arms out (#128): they play the idle of
+  Nebula G34's citizen (class 1105, the same skeleton), read from the player's disc at the level's load and put in their
+  classes' sequence slot from host memory; without it they keep the rest pose (docs/advanced.md, "Cut Content").
 - Cut Content: Eudora's Transport Ships (class 484, `RAC1_CUT_CONTENT=ships`): their update ported from the beta build
   (retail's retires them): hidden until Ratchet enters their box, they fly their path and drop the enemies placed for
   them (Circular Saw Enemies, Blarg Troopers), two with a short scripted camera (docs/advanced.md, "Cut Content").
