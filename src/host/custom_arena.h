@@ -39,6 +39,11 @@ void custom_arena_frame();
 // orig: (none) — the HUD's draw (hud_draw, after the elements): the prompt, the menu, the challenge's lines
 void custom_arena_hud();
 
+// orig: (none) — the camera's update (camera_update, the view taken from the active camera): while one of the arena's path
+// cameras runs (RAC2's type 19, custom_arena.cpp) the view's position `pos` and rows `rows` made its; false (nothing
+// written) otherwise, and always without a custom planet
+bool custom_arena_camera(uint32_t pos, uint32_t rows);
+
 // The arena's crowd follows the controller (custom_classes.cpp):
 enum class ArenaMood { Waiting, Fighting, Cheering };
 // orig: (none)

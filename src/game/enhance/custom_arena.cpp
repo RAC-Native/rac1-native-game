@@ -4,6 +4,7 @@
 #include <host/custom_planet.h>
 #include <host/rac2_compat.h>
 
+#include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -74,11 +75,23 @@ struct Standin {
     uint32_t pv_size = 0;
     uint32_t tmpl = 0;  // its moby (found at the level's start)
 };
+// RAC2's path camera (its type 19: the camera code 0x4548b8 / 0x454c80 of its level 2): it fades the screen out (0.05 a
+// frame), cuts to its path's first point, fades back in and runs along the path at its speed (units a second), looking at
+// a moby (on Maktar: the hero); released, it fades out again and the game's camera comes back as the screen fades in.
+// Maktar's three circle the floor's centre: record 1 wide and high (radius 43, 26 up, 50 a second), 2 at the stands'
+// height (27, 3 up, 30), 3 close to the floor (6, 0.3 up, 5). How RAC2 picks them is not traced (no call from its
+// controller); ours: 1 for a challenge's start, 3 for a victory, 2 for a defeat.
+struct PathCamera {
+    float speed = 0.0f;           // (units a second)
+    std::vector<Vec3> points;
+};
+
 struct Settings {
     uint32_t gen = 0xffffffffu;
     std::vector<Challenge> challenges;
     std::map<int32_t, Standin> standins;  // by RAC1 class
     std::map<int32_t, int32_t> stand_for; // RAC2 class -> RAC1 class
+    std::vector<PathCamera> cameras;      // cameras.txt's, in its order (RAC2's records 1, 2, 3 on Maktar)
 } g_cfg;
 
 struct Enemy {
@@ -113,6 +126,27 @@ struct Arena {
 } g_a;
 
 std::vector<uint8_t> g_wins;  // victories per challenge (the .pc's)
+
+// The path camera running (PathCamera)
+struct CameraRun {
+    enum Phase { Off, FadingOut, Running, Leaving } phase = Off;
+    int which = -1;      // (cameras.txt's index)
+    int want = -1;       // (asked for: another path camera, or -1 the game's camera)
+    size_t segment = 0;  // (the path's segment it is on, and how far along it)
+    float along = 0.0f;
+    float fade = 0.0f;   // (the screen's fade, 0x15f3fc: 0 clear .. 1 black)
+    Vec3 pos;
+} g_cam;
+constexpr float kFadeStep = 0.05f;
+const Settings& settings();
+void camera_step();
+constexpr uint32_t FADE = 0x0015f3fc;
+
+// orig: (none) — the path camera `which` (cameras.txt's index; -1 none: the game's camera back), faded to as RAC2's does
+void camera_want(int which) {
+    if (which >= static_cast<int>(settings().cameras.size())) which = -1;
+    g_cam.want = which;
+}
 
 // orig: (none) — RAC1_CUSTOM_TRACE
 bool trace() {
@@ -161,8 +195,19 @@ const Settings& settings() {
         if (key == "standin" && in >> a >> b >> size) g_cfg.standins[a] = Standin{b, size, 0};
         else if (key == "stand_for" && in >> a >> b) g_cfg.stand_for[a] = b;
     }
+    std::ifstream cams(custom_level_dir() + "/cameras.txt");
+    while (cams && std::getline(cams, line)) {
+        std::istringstream in(line);
+        std::string key;
+        int record = 0;
+        PathCamera pc;
+        if (!(in >> key) || key != "camera" || !(in >> record >> pc.speed)) continue;
+        Vec3 v;
+        while (in >> v.x >> v.y >> v.z) pc.points.push_back(v);
+        if (pc.points.size() >= 2 && pc.speed > 0.0f) g_cfg.cameras.push_back(pc);
+    }
     if (g_wins.size() < g_cfg.challenges.size()) g_wins.resize(g_cfg.challenges.size(), 0);
-    if (trace()) std::printf("[arena] %zu challenges, %zu stand-ins\n", g_cfg.challenges.size(), g_cfg.standins.size());
+    if (trace()) std::printf("[arena] %zu challenges, %zu stand-ins, %zu path cameras\n", g_cfg.challenges.size(), g_cfg.standins.size(), g_cfg.cameras.size());
     return g_cfg;
 }
 
@@ -210,6 +255,7 @@ void lines_step() {
 void reset(uint32_t base, uint32_t tick) {
     const std::vector<uint8_t> keep = g_wins;
     g_a = Arena{};
+    g_cam = CameraRun{};
     g_a.base = base;
     g_a.tick = tick;
     g_wins = keep;
@@ -250,6 +296,7 @@ void challenge_start(int index) {
     g_a.prize = prize_of(running());
     custom_planet_music_select(1);
     say(running().text == 0x2f4c ? "start_mega" : running().text == 0x2f51 ? "start_ultimate" : "start");
+    camera_want(0);
     g_a.sm.set(Intro);
     std::printf("[arena] challenge %d \"%s\": %zu waves, prize %d\n", index, running().name.c_str(), running().waves.size(), g_a.prize);
 }
@@ -271,9 +318,11 @@ void challenge_end(bool won) {
         bolts_give(g_a.prize);
         say("winner");
         say("prize");
+        camera_want(2);
         g_a.sm.set(Won);
     } else {
         enemies_clear();
+        camera_want(1);
         g_a.sm.set(Lost);
     }
     custom_planet_music_select(0);
@@ -392,6 +441,7 @@ void step() {
             wave_queue(running().waves[0]);
             g_a.reason.clear();
             g_a.started = level_frame();
+            camera_want(-1);
             sm.set(Fight);
             std::printf("[arena] frame %u: wave 1 of %zu, %zu enemies\n", level_frame(), running().waves.size(), g_a.queue.size());
         }
@@ -413,23 +463,125 @@ void step() {
     }
     case Won:
         sm.first();
-        if (sm.frames() >= kWonShown) sm.set(Idle);
+        if (sm.frames() >= kWonShown) {
+            camera_want(-1);
+            sm.set(Idle);
+        }
         break;
     case Lost:
         sm.first();
-        if (sm.frames() >= kLostShown) sm.set(Idle);
+        if (sm.frames() >= kLostShown) {
+            camera_want(-1);
+            sm.set(Idle);
+        }
         break;
     default: sm.set(Idle);
     }
     lines_step();
+    camera_step();
+}
+
+// orig: (none) — the path camera's frame (see PathCamera): its phase, the fade, its place along the path
+void camera_step() {
+    CameraRun& c = g_cam;
+    const std::vector<PathCamera>& cams = settings().cameras;
+    auto fade_to = [&](float target) {
+        c.fade = target > c.fade ? std::min(target, c.fade + kFadeStep) : std::max(target, c.fade - kFadeStep);
+        swc1(OV(FADE), c.fade);
+        return c.fade == target;
+    };
+    switch (c.phase) {
+    case CameraRun::Off:
+        if (c.want < 0) return;
+        c.phase = CameraRun::FadingOut;
+        [[fallthrough]];
+    case CameraRun::FadingOut:  // (the game's camera, or the last path camera, fading out)
+        if (!fade_to(1.0f)) return;
+        if (c.want < 0) {
+            c.phase = CameraRun::Leaving;
+            c.which = -1;
+            return;
+        }
+        c.which = c.want;
+        c.segment = 0;
+        c.along = 0.0f;
+        c.pos = cams[static_cast<size_t>(c.which)].points[0];
+        c.phase = CameraRun::Running;
+        if (trace()) std::printf("[arena] frame %u: path camera %d\n", level_frame(), c.which);
+        return;
+    case CameraRun::Running: {
+        if (c.want != c.which) {
+            c.phase = CameraRun::FadingOut;
+            return;
+        }
+        fade_to(0.0f);
+        const std::vector<Vec3>& pts = cams[static_cast<size_t>(c.which)].points;
+        float left = cams[static_cast<size_t>(c.which)].speed / 60.0f;
+        for (int guard = 0; guard < 64 && left > 0.0f; ++guard) {
+            const Vec3& a = pts[c.segment];
+            const Vec3& b = pts[(c.segment + 1) % pts.size()];
+            const float len = std::max(1e-4f, std::sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y) + (b.z - a.z) * (b.z - a.z)));
+            if (c.along + left < len) {
+                c.along += left;
+                left = 0.0f;
+            } else {
+                left -= len - c.along;
+                c.along = 0.0f;
+                c.segment = (c.segment + 1) % (pts.size() - 1);  // (the paths are closed: the last point is the first)
+            }
+        }
+        const Vec3& a = pts[c.segment];
+        const Vec3& b = pts[(c.segment + 1) % pts.size()];
+        const float len = std::max(1e-4f, std::sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y) + (b.z - a.z) * (b.z - a.z)));
+        const float t = c.along / len;
+        c.pos = Vec3{a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t};
+        return;
+    }
+    case CameraRun::Leaving:  // (the game's camera back, the screen fading in)
+        if (c.want >= 0) {
+            c.phase = CameraRun::FadingOut;
+            return;
+        }
+        if (fade_to(0.0f)) c.phase = CameraRun::Off;
+        return;
+    }
 }
 
 }  // namespace
 
 // orig: (none) — see custom_arena.h
+bool custom_arena_camera(uint32_t pos, uint32_t rows) {
+    if (g_cam.phase != CameraRun::Running && !(g_cam.phase == CameraRun::FadingOut && g_cam.which >= 0)) return false;
+    if (!level_on() || g_a.base == 0) return false;
+    const Vec3 h = hero_pos();
+    const Vec3& c = g_cam.pos;
+    // (RAC1's camera angles: x 0, y the pitch down to the target, z the yaw towards it; the rows from them as its camera
+    // types make theirs)
+    const float dx = c.x - h.x, dy = c.y - h.y, dz = c.z - h.z;
+    Vec4 ang{0.0f, std::atan2(dz, std::max(1e-4f, std::hypot(dx, dy))), std::atan2(dy, dx) + 3.14159265f, 0.0f};
+    Mat4 m;
+    euler_to_mat4_vu(m, ang);
+    Mat4 out;
+    mat3_copy(out, m);
+    for (uint32_t r = 0; r < 3; ++r) {
+        swc1(rows + 0x10 * r, out.r[r].x);
+        swc1(rows + 0x10 * r + 4, out.r[r].y);
+        swc1(rows + 0x10 * r + 8, out.r[r].z);
+        swc1(rows + 0x10 * r + 0xc, 0.0f);
+    }
+    swc1(pos, c.x);
+    swc1(pos + 4, c.y);
+    swc1(pos + 8, c.z);
+    swc1(pos + 0xc, 1.0f);
+    return true;
+}
+
+
+// orig: (none) — see custom_arena.h
 void custom_arena_frame() {
     if (!level_on()) {
         if (g_a.base != 0) g_a = Arena{};
+        g_cam = CameraRun{};
         return;
     }
     if (!in_play()) return;

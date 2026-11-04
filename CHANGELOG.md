@@ -190,6 +190,9 @@ What changed in each release. Releases are source only: you build the game with 
 - Local experiment, planet P4: the arena's monitors break when shot (RAC2's 4697 by behaviour, RAC1's hit protocol: the class
   keeps its collision, the weapons' hit records reach it): off its post along the shot, turning and sparking, then an
   explosion, debris and 44 bolts. `RAC1_ARENA_MONITOR_HIT` (testing).
+- Local experiment, planet P4: the arena's path cameras (RAC2's type 19, its three circling the floor's centre, read into the
+  planet's `cameras.txt`): faded to as RAC2 fades, the wide one for a challenge's start, the close one for a victory, the
+  middle one for a defeat, the game's camera faded back after.
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

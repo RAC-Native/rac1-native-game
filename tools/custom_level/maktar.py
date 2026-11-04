@@ -794,6 +794,36 @@ def rac2_challenges(r2, rac2_tools, say):
     return lines
 
 
+def rac2_path_cameras(r2, say):
+    """cameras.txt's lines: RAC2's path cameras (type 19) placed in the arena (the gameplay's camera records, +0x08 of its
+    header: {type, position, angles, pvars}; their pvars, header +0x5c / +0x60: +0x20 the path the camera follows, +0x24
+    the path it looks along (-1: none), +0x28 the moby it looks at (0 the hero), +0x2c an offset, +0x3a frames (0: by the
+    speed), +0x3c the speed in units a second; the paths, header +0x78: count, the data's offset, then each path's offset,
+    a path: its count, 12 bytes, 16-byte points). Read by the camera code of 0x4548b8 / 0x454c80 in RAC2's level 2."""
+    g = r2.gameplay
+    H = struct.unpack_from("<40I", g)
+    cams, ptab, pdata, paths = H[0x08 // 4], H[0x5c // 4], H[0x60 // 4], H[0x78 // 4]
+    pdoff = i32(g, paths + 4)
+    lines = []
+    for k in range(i32(g, cams)):
+        rec = cams + 0x10 + 0x20 * k
+        kind, pos, pv = i32(g, rec), struct.unpack_from("<3f", g, rec + 4), i32(g, rec + 0x1c)
+        if kind != 19 or not all(ARENA_BOX[j][0] <= pos[j] <= ARENA_BOX[j][1] for j in range(3)):
+            continue
+        off = i32(g, ptab + 8 * pv)
+        b = pdata + off
+        path, look_path, moby = struct.unpack_from("<3i", g, b + 0x20)
+        speed = struct.unpack_from("<f", g, b + 0x3c)[0]
+        if path < 0 or look_path >= 0 or moby != 0:
+            say("RAC2 camera %d: path %d, look path %d, moby %d: not one we follow (a path looking at the hero)" % (k, path, look_path, moby))
+            continue
+        at = paths + pdoff + i32(g, paths + 0x10 + 4 * path)
+        pts = [struct.unpack_from("<3f", g, at + 0x10 + 16 * j) for j in range(i32(g, at))]
+        lines.append("camera %d %.3f %s" % (k, speed, " ".join("%.3f %.3f %.3f" % p for p in pts)))
+        say("RAC2 camera %d (type 19): path %d of %d points, %.0f units a second, looking at the hero" % (k, path, len(pts), speed))
+    return lines
+
+
 def write_planet(out, a):
     """planet.txt: our own small settings file of the custom planet (src/host/custom_planet.h reads it)."""
     with open(os.path.join(out, "planet.txt"), "w") as f:
@@ -1155,6 +1185,11 @@ def build(a):
                 "# wave <the four enemies' counts (2506 2850 3131 3134)> <hazards 2563> <hazards 2953> <items> <items>\n"
                 "#      <bosses: 1 Chainblade, 256 B2 Brawler> <gates open>\n")
         for line in rac2_challenges(r2, a.rac2_tools, say):
+            f.write(line + "\n")
+    with open(os.path.join(a.out, "cameras.txt"), "w") as f:
+        f.write("# rac1-native: Maktar's arena's path cameras, from RAC2's disc (tools/custom_level/maktar.py; src/host/custom_arena.h)\n"
+                "# camera <RAC2 record> <speed, units a second> <the path's points: x y z ...> (each looks at the hero)\n")
+        for line in rac2_path_cameras(r2, say):
             f.write(line + "\n")
     open(os.path.join(a.out, "gameplay.bin"), "wb").write(gp + bytes(gsize - len(gp)))
     write_planet(a.out, a)

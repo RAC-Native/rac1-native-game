@@ -33,6 +33,8 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include <host/custom_arena.h>
+
 namespace rac1 {
 
 namespace {
@@ -837,6 +839,7 @@ void camera_update() {
         lq_sq(OV(0x00166fe0), cam + 0x10);
         lq_sq(OV(0x00166ff0), cam + 0x20);
     }
+    if (view) custom_arena_camera(OV(0x00166dc0), OV(0x00166fd0));  // (host: a custom planet's path camera; nothing otherwise)
     if (view && lw(OV(0x0016c06c)) == 0) {
         Mat4 m;
         mat3_copy_affine(m, M(OV(0x00166fd0)));
