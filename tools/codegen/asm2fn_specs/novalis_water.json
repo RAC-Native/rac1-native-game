@@ -49,7 +49,8 @@
    "name": "nov_water_grid_light_l1",
    "ret": "void",
    "params": "uint32_t tile",
-   "doc": "The water grid's colours and uvs (VU0 macro / MMI): per vertex its normal from the four neighbours' heights (two cross products, normalized by RSQRT), a colour from it and the vector at 0x167100 (rgba to 0x70001088, 4 bytes a vertex) and its uvs (to 0x70000780, 8 bytes); constants 0x1cad00.."
+   "doc": "The water grid's colours and uvs (VU0 macro / MMI): per vertex its normal from the four neighbours' heights (two cross products, normalized by RSQRT), a colour from it and the vector at 0x167100 (rgba to 0x70001088, 4 bytes a vertex) and its uvs (to 0x70000780, 8 bytes); constants 0x1cad00..",
+   "entry_host": "if (nov_water_grid_light_fast(tile)) return;  // (the host form, novalis_water_fast.cpp: the same routine)"
   },
   {
    "addr": "2b8c08",

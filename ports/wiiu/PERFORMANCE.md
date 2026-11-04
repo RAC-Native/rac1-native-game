@@ -1379,3 +1379,19 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   smudges) - a run-to-run difference, so GPU-side timing (stale data read?), not the merge. To find: rep.sh / repcmp.py in the bench
   scripts compare runs shot by shot (the smoke's randomness also differs).
 
+### Novalis's water grid native (2026-11-04)
+
+- **The game thread's samples** (Novalis exploring, core 2): nov_water_751_draw_l1 -> nov_water_grid_light_l1 (L1:0x261df8, the water's
+  grid: per vertex of a 17 x 17 tile two cross products of the neighbours' heights, RSQRT, the colour and the uvs) ~14% inclusive -
+  every VU0 lane op a call on the shared register file. Kerwan's samples: the game logic (class 75 / 574 updates with their floor probes,
+  segment_collide_v ~11%) - not touched.
+- **RAC1_NWG_FAST (the Wii U's default 1, the PC's 0; src/game/ovl/novalis_water_fast.cpp, hooked by the spec's entry_host):** the same
+  routine with the VU0 registers in a local copy as words, the same ops and rules (vu0_nf.h's on the Wii U: VOPMULA / VOPMSUB's MAC and
+  status flags only), the GPR at followed whole (its high half reaches vf25..vf29), all written back. =2 checks every call against the
+  transliterated routine (the colours, the uvs, every VU0 register, ACC, Q, the flags).
+- **Proved:** the console (=2, 800 calls): no difference at all, flags included. The PC (=2): the data the same in every call, the flags
+  differ as expected (the PC's generated file sets them on every op, vu0m's). PC RAMHASH, Novalis exploring 3000 frames (the water drawn),
+  =0 against =1: identical. pc_check green.
+- **Measured** (Novalis exploring, =1 against =0): "effects draw, draw lists" 8.9 -> 6.5 ms a host frame; the windows 33.2-35.8 ->
+  30.9-34.9 ms.
+

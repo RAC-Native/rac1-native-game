@@ -29,6 +29,8 @@ void nov_strip_verts_l1(uint32_t rec);                       // orig: L1:0x00262
 void nov_strips_draw_l1(int32_t n, uint32_t recs);           // orig: L1:0x002b96e0
 void nov_water_grid_in_l1(uint32_t grid, uint32_t tile);     // orig: L1:0x00261c10
 void nov_water_grid_light_l1(uint32_t tile);                 // orig: L1:0x00261df8
+// orig: L1:0x00261df8 (the host form, novalis_water_fast.cpp; RAC1_NWG_FAST, the Wii U's default) - false when not taken
+bool nov_water_grid_light_fast(uint32_t tile);
 void nov_water_grid_xyz_l1(uint32_t tile);                   // orig: L1:0x002b8c08
 void nov_water_uv_scroll_l1(uint32_t tile);                  // orig: L1:0x002b80d0
 void nov_water_cell_packet_l1(uint32_t mscal, int32_t cell); // orig: L1:0x00262388

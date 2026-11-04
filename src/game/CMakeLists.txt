@@ -197,6 +197,7 @@ add_library(rac1_game STATIC
     ovl/moby_vu0_reg.cpp
     ovl/palette_blend.cpp
     ovl/world_lighting_fast.cpp
+    ovl/novalis_water_fast.cpp
     ovl/particles_vu1.cpp
     ovl/shadows.cpp
     ovl/shadows_vu1.cpp
