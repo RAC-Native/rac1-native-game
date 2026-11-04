@@ -200,6 +200,7 @@ void remark(const char* event) {
 
 // orig: (none) — the lines waiting started, one at a time
 void lines_step() {
+    custom_planet_announce_step();
     if (g_a.lines.empty()) return;
     if (custom_planet_announce(g_a.lines.front().first.c_str(), g_a.lines.front().second) || level_frame() - g_a.last_line > 600)
         g_a.lines.erase(g_a.lines.begin());

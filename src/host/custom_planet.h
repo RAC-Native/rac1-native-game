@@ -102,6 +102,10 @@ void custom_planet_music_select(int which);
 bool custom_planet_announce(const char* event, uint32_t pick);
 // orig: (none) — how many lines planet.txt gives the event
 uint32_t custom_planet_announce_count(const char* event);
+// orig: (none) — once a frame while the announcer is on: a line of ours started (the dialog slot's stream is started paused,
+// flags 0x21, and the game's own lines are continued by their HUD message's code, 0x2652e8, once the IOP has it ready:
+// state 3) is continued the same way, or it would sit paused until the IOP frees it unplayed
+void custom_planet_announce_step();
 // orig: (none) — music_streams.cpp: a line at the data disc's sector `lsn` started in the dialog slot; false when busy
 bool custom_dialog_play(uint32_t lsn);
 // orig: (none) — the music streams (music_streams.cpp): the right channel's sector of the planet's music at `lsn`, else 0

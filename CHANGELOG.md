@@ -185,6 +185,8 @@ What changed in each release. Releases are source only: you build the game with 
   hidden templates) handed out by the gates' arms three at a time, the time limits and the Wrench Expert's rules; won, the
   prize in bolts (x 0.3 per earlier victory, at least 500) and the victory kept in the save's `.pc`. The boss challenges
   and those needing RAC2 weapons are listed, not yet playable. `RAC1_ARENA_SCRIPT` (testing).
+- Local experiment, planet P4: the arena's announcer heard: its lines (started paused in the dialog slot, as the game's) are
+  continued once the sound driver has them ready, as the game's HUD messages continue theirs; they sat paused and were freed unplayed.
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

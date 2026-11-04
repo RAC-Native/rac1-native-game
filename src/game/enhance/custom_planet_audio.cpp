@@ -5,6 +5,7 @@
 #include <game/enhance/voice_language.h>
 #include <game/lib/snd989.h>
 #include <game/ovl/music_streams.h>
+#include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/ee_memory.h>
@@ -20,6 +21,9 @@
 namespace rac1 {
 
 namespace {
+
+uint32_t g_line_frames = 0;  // (our announcer's line waiting to be continued: frames left to watch it)
+
 
 constexpr uint32_t MUSIC = 0x0013a628;  // the level header's music sectors (a word a track: music_streams.cpp)
 
@@ -227,6 +231,16 @@ uint32_t custom_planet_announce_count(const char* event) {
 }
 
 // orig: (none)
+void custom_planet_announce_step() {
+    if (g_line_frames == 0) return;
+    --g_line_frames;
+    if (dialog_stream_stop() != 0) {  // (0x2652e8: the slot in state 3 continued, state 4; named for the HUD's use)
+        if (trace()) std::printf("[planet] announcer: line continued\n");
+        g_line_frames = 0;
+    }
+}
+
+// orig: (none)
 bool custom_planet_announce(const char* event, uint32_t pick) {
     const Rac2Disc* d = rac2_disc();
     if (d == nullptr || !custom_level_active(lw(0x0015ed84))) return false;
@@ -238,6 +252,7 @@ bool custom_planet_announce(const char* event, uint32_t pick) {
         if (e + 1 >= d->audio_table.size() || d->audio_table[e + 1] == 0) return false;
         const uint32_t lsn = d->base + d->audio_lba + d->audio_table[e];
         if (!custom_dialog_play(lsn)) return false;
+        g_line_frames = 600;
         if (trace()) std::printf("[planet] announcer: %s, AUDIO%d.WAD entry %zu (%s)\n", event, sounds().level, e / 2, d->region.c_str());
         return true;
     }
