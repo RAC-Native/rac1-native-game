@@ -1,29 +1,29 @@
 #!/usr/bin/env python3
-"""Movie subtitles of our own (an enhancement; docs/movie-subtitles.md): the movies' speech turned into subtitle files
-with Whisper, on the player's own machine, from the player's own disc. The game shows them over the movies when
-Options > Language > Movie Subtitles is on (src/game/enhance/movie_subtitles.cpp); the original never shows any.
+"""Movie subtitles (docs/movie-subtitles.md): the movies' speech turned into subtitle files with Whisper, on the
+player's own machine, from the player's own disc, when they ask for them (./setup.sh --movie-subtitles, the launcher's
+Settings; tools/setup.py runs this). Also a first draft for a subtitles pack, to correct by hand. The game shows the
+files over the movies when Options > Language > Movie Subtitles is on (src/game/enhance/movie_subtitles.cpp).
 
 For each movie (assets/disc/toc/row_XXXX.pss, the extracted disc) and each language asked, the movie's sound track in
 that language (0 English, 2 French, 3 German, 4 Spanish, 5 Italian: `rac1-native --setup --movie-audio` decodes it to a
 16 kHz WAV) goes to speech to text, and its timed segments become one SubRip file:
 
-    assets/movie-subtitles/row_XXXX.<lang>.srt      (UTF-8; one file per movie and language)
+    assets/movie-subtitles/row_XXXX.<lang>.srt      (UTF-8; one file per movie and language; --out DIR elsewhere)
 
-The files are the player's to edit (the text, the timings, the line breaks). The tool keeps the SHA-256 of every file it
-wrote in assets/movie-subtitles/generated.txt: a file whose bytes differ from it was edited and is never written again
-(not even with --force; --force-edited does, keeping the edited one as .srt.bak). A movie already done is skipped, so
-the tool can be stopped and run again.
+The tool keeps the SHA-256 of every file it wrote in generated.txt beside them: a file whose bytes differ was edited by
+hand and is never written again (not even with --force; --force-edited does, keeping the edited one as .srt.bak). A
+movie already done is skipped, so the tool can be stopped and run again.
 
-Back ends (only when asked: the setup installs nothing for this unless the player opts in):
+Back ends:
   - local (the default): faster-whisper (CTranslate2) in its own virtual environment, assets/stt/venv, made by --install;
     the models are downloaded into assets/stt/models the first time. CPU by default (int8), CUDA when there is one.
   - --stt-url URL: an OpenAI-compatible server (POST URL/audio/transcriptions, response_format verbose_json), e.g. a
     local Whisper server; nothing is installed then.
 
-Usage (from the repository's root; ./setup.sh --movie-subtitles runs it for you):
+Usage (from the repository's root, after ./setup.sh):
     python3 tools/movie_subtitles.py --install                 # once: the virtual environment and faster-whisper
-    python3 tools/movie_subtitles.py                           # English and Italian, model large-v3-turbo
-    python3 tools/movie_subtitles.py --languages it --model small --force
+    python3 tools/movie_subtitles.py --out ../pack-draft       # English and Italian, model large-v3-turbo
+    python3 tools/movie_subtitles.py --languages it --model large-v3 --movies row_1978 --force
     python3 tools/movie_subtitles.py --stt-url http://127.0.0.1:8000/v1
     python3 tools/movie_subtitles.py --list                    # what is there
 """
@@ -61,10 +61,20 @@ DEFAULT_LANGUAGES = "en,it"
 DEFAULT_MODEL = "large-v3-turbo"  # (measured: docs/movie-subtitles.md; small takes half the time and is worse in Italian)
 FASTER_WHISPER = "faster-whisper==1.2.1"  # (what --install puts in the virtual environment)
 
-# Proper nouns the speech to text would not know (Whisper's initial prompt): the names only, no game text
+# Proper nouns the speech to text would not know: the names only, no game text. They go to Whisper as its "hotwords",
+# which faster-whisper puts before every 30-second window (an initial prompt reaches only the first one when
+# condition_on_previous_text is off): without them it wrote "Quark", "Darla Gretsch", "Joe Y. Resort", "HoloGuys".
 NAMES = ("Ratchet, Clank, Captain Qwark, Chairman Drek, Blarg, Gadgetron, Veldin, Novalis, Aridia, Kerwan, Eudora, "
          "Rilgar, Blackwater City, Umbris, Batalia, Gaspar, Orxon, Pokitaru, Hoven, Gemlik, Oltanis, Quartu, Kalebo, "
-         "Big Al, Skid McMarx, Helga, Bolts.")
+         "Big Al, Al's RoboShack, Metropolis, Gorda City, Jowai Resort, Darla Gratch, Steve McQwark, Skid McMarx, Helga, "
+         "Snagglebeast, Hologuise, Deplanetizer, Infobot, Hoverboard, Bolts.")
+# (the names a dub changed: the Italian one says these)
+NAMES_LANG = {"it": "Olomaschera, Deplanetizzatore."}
+
+
+def hint(lang):
+    return NAMES + (" " + NAMES_LANG[lang] if lang in NAMES_LANG else "")
+
 
 # The cues: as many characters as two lines of the game's subtitle box hold (432 pixels of the small font, about
 # 45 characters a line), at most this long on screen, at least this long
@@ -111,7 +121,7 @@ def install():
         r = subprocess.run([sys.executable, "-m", "venv", str(VENV)])
         if r.returncode:
             fail("python3 -m venv failed (on Debian / Ubuntu: sudo apt install python3-venv)")
-    say(f"Installing {FASTER_WHISPER} into it (about 500 MB) ...")
+    say(f"Installing {FASTER_WHISPER} into it (about 470 MB) ...")
     r = subprocess.run([str(venv_python()), "-m", "pip", "install", "--disable-pip-version-check", "-q", FASTER_WHISPER])
     if r.returncode:
         fail("pip could not install faster-whisper (no network? the output above says why)")
@@ -178,8 +188,9 @@ def movie_wav(pss, track, wav):
 class Local:
     """faster-whisper in this process (the tool runs in assets/stt/venv's Python for it)."""
 
-    def __init__(self, model, device, threads):
+    def __init__(self, model, device, threads, beam=5):
         from faster_whisper import WhisperModel
+        self.beam = beam
         MODELS.mkdir(parents=True, exist_ok=True)
         if device == "auto":
             try:
@@ -201,11 +212,11 @@ class Local:
             if w.getframerate() != 16000 or w.getnchannels() != 1 or w.getsampwidth() != 2:
                 raise RuntimeError(f"{wav.name}: not 16 kHz mono 16-bit")
             audio = numpy.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype(numpy.float32) / 32768.0
-        segs, _ = self.model.transcribe(audio, language=lang, beam_size=5, vad_filter=True, word_timestamps=True,
-                                        condition_on_previous_text=False, initial_prompt=NAMES)
+        segs, _ = self.model.transcribe(audio, language=lang, beam_size=self.beam, vad_filter=True, word_timestamps=True,
+                                        condition_on_previous_text=False, hotwords=hint(lang))
         out = []
         for s in segs:
-            words = [(w.start, w.end, w.word) for w in (s.words or [])]
+            words = [(w.start, w.end, w.word, w.probability) for w in (s.words or [])]
             out.append({"start": s.start, "end": s.end, "text": s.text, "words": words,
                         "no_speech": s.no_speech_prob, "logprob": s.avg_logprob})
         return out
@@ -226,7 +237,7 @@ class Remote:
         boundary = uuid.uuid4().hex
         fields = [("model", self.model), ("language", lang), ("response_format", "verbose_json"),
                   ("timestamp_granularities[]", "segment"), ("timestamp_granularities[]", "word"),
-                  ("prompt", NAMES), ("temperature", "0")]
+                  ("prompt", hint(lang)), ("temperature", "0")]
         body = b""
         for k, v in fields:
             body += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n").encode()
@@ -262,6 +273,9 @@ class Remote:
 
 # ---- the cues ---------------------------------------------------------------------------------------------------
 
+AND = {"en": "and", "fr": "et", "de": "und", "es": "y", "it": "e"}
+
+
 def clean(text, lang):
     t = " ".join(text.replace("…", "...").split())
     t = t.replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
@@ -271,6 +285,8 @@ def clean(text, lang):
         t = re.sub(r"(\w) '(\w)", r"\1'\2", t)  # ("l 'impianto", "d 'accensione": the elision written together)
     if lang == "it":
         t = re.sub(r"(^|(?<=[\s\"(]))E' ", "È ", t)  # ("E' ora": the capital E with its grave accent)
+    # (the game's small font has no "&": "Ratchet & Clank" would show as "Ratchet  Clank")
+    t = t.replace(" & ", " " + AND.get(lang, "and") + " ")
     return t.strip()
 
 
@@ -280,48 +296,89 @@ def hallucination(text):
     return key in HALLUCINATIONS or not key
 
 
-def split_cue(start, end, text, words):
-    """One segment as cues of at most MAX_CHARS characters and MAX_SECONDS: split at the words (their own times when
-    the back end gave them, else by the characters), the cut preferred after a sentence's or a clause's end."""
-    if len(text) <= MAX_CHARS and end - start <= MAX_SECONDS:
-        return [(start, end, text)]
-    toks = text.split()
-    if words and len(words) >= 2:
-        wt = [(float(a), float(b), w.strip()) for a, b, w in words if w.strip()]
-    else:  # (no word times: each word gets the segment's time in proportion to its characters)
+def segment_words(s, text, lang):
+    """A segment's words as (start, end, word): the back end's own times, or (without them) the segment's time shared by
+    the characters. A piece Whisper gives as a word of its own ("l" "'invasione", "snot" "-nosed") is joined to the
+    word before it, so that no cue can end between them."""
+    start, end = float(s["start"]), float(s["end"])
+    raw = [(float(w[0]), float(w[1]), w[2].strip()) for w in s.get("words") or [] if w[2].strip()]
+    if len(raw) < 2:
+        toks = text.split()  # (no word times: the segment's time shared by the characters)
         total = sum(len(w) + 1 for w in toks) or 1
-        t, wt = start, []
+        t, raw = start, []
         for w in toks:
             d = (end - start) * (len(w) + 1) / total
-            wt.append((t, t + d, w))
+            raw.append((t, t + d, w))
             t += d
-    cues, cur = [], []
-    for i, w in enumerate(wt):
-        cur.append(w)
-        line = " ".join(x[2] for x in cur)
-        nxt = wt[i + 1][2] if i + 1 < len(wt) else None
-        if nxt is None:
-            break
-        over = len(line) + 1 + len(nxt) > MAX_CHARS or wt[i + 1][1] - cur[0][0] > MAX_SECONDS
-        stop = line.endswith((".", "!", "?")) and len(line) >= MAX_CHARS // 3
-        clause = line.endswith((",", ";", ":")) and len(line) >= MAX_CHARS * 2 // 3
-        if over or stop or clause:
-            cues.append((cur[0][0], cur[-1][1], line))
-            cur = []
-    if cur:
-        cues.append((cur[0][0], cur[-1][1], " ".join(x[2] for x in cur)))
-    return cues
+    out = []
+    for a, b, w in raw:
+        if out and (w[0] in "'-" or out[-1][2].endswith(("'", "-"))) and len(w) > 1:
+            out[-1] = (out[-1][0], b, out[-1][2] + w)
+        else:
+            out.append((a, b, w))
+    return [(a, b, clean(w, lang)) for a, b, w in out]
+
+
+def fits(words):
+    return len(" ".join(w[2] for w in words)) <= MAX_CHARS and words[-1][1] - words[0][0] <= MAX_SECONDS
+
+
+def split_words(words):
+    """Words as cues of at most MAX_CHARS characters and MAX_SECONDS: cut where it costs least (after a sentence's end,
+    then a clause's, then where the two sides are the most even; never leaving a word or two alone), then each side
+    again until each fits."""
+    for k in range(1, len(words)):  # (a long silence inside a segment: two cues, whatever the lengths)
+        if words[k][0] - words[k - 1][1] >= 1.5:
+            return split_words(words[:k]) + split_words(words[k:])
+    if fits(words):
+        return [words]
+    n = len(words)
+    total = len(" ".join(w[2] for w in words))
+    best, cut = None, n // 2
+    for k in range(1, n):
+        left = " ".join(w[2] for w in words[:k])
+        cost = abs(len(left) - (total - len(left) - 1)) / max(total, 1)  # (0: even, 1: all on one side)
+        if left.endswith((".", "!", "?", "...")):
+            cost -= 0.6
+        elif left.endswith((",", ";", ":")):
+            cost -= 0.3
+        if k < 3 or n - k < 3:  # (an orphan: "sopravvivenza." alone for a second)
+            cost += 0.8
+        if words[k][0] - words[k - 1][1] > 0.4:  # (a pause: a good place)
+            cost -= 0.2
+        if len(words[k - 1][2]) <= 3 and words[k - 1][2][-1:].isalpha():  # (not after "di", "the", "il", "non"...
+            cost += 0.3
+        elif len(words[k][2]) <= 3:  # (...but before them: a phrase starts there)
+            cost -= 0.1
+        if best is None or cost < best:
+            best, cut = cost, k
+    return split_words(words[:cut]) + split_words(words[cut:])
 
 
 def make_cues(segments, lang):
-    cues = []
+    """The segments as cues: Whisper's phantom lines dropped; a segment of a word or two that stops in the middle of a
+    sentence joined to the next one when it follows at once and both fit in one cue; each then cut to the cue limits
+    (split_words). A segment is otherwise a cue of its own or more: Whisper's segments follow the speakers, and its
+    punctuation is not always there to say where a sentence ends."""
+    groups = []
     for s in segments:
         text = clean(s["text"], lang)
         if hallucination(text):
             continue
         if s.get("no_speech", 0.0) > 0.6 and s.get("logprob", 0.0) < -1.0:
             continue
-        cues += [(a, b, clean(t, lang)) for a, b, t in split_cue(float(s["start"]), float(s["end"]), text, s.get("words") or [])]
+        words = segment_words(s, text, lang)
+        if not words:
+            continue
+        prev = groups[-1] if groups else None
+        if (prev and len(prev) <= 2 and not prev[-1][2].endswith((".", "!", "?", "...")) and words[0][0] - prev[-1][1] < 0.6
+                and fits(prev + words)):
+            groups[-1] += words  # (a word or two left alone by Whisper's window, and the sentence they begin)
+        else:
+            groups.append(words)
+    cues = []
+    for g in groups:
+        cues += [(w[0][0], w[-1][1], " ".join(x[2] for x in w)) for w in split_words(g)]
     out = []
     for i, (a, b, t) in enumerate(cues):  # (each at least MIN_SECONDS where the next one leaves room)
         nxt = cues[i + 1][0] if i + 1 < len(cues) else b + MIN_SECONDS
@@ -359,7 +416,7 @@ def list_files(languages):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Movie subtitles of our own: the movies' speech to subtitle files "
+    ap = argparse.ArgumentParser(description="Movie subtitles: the movies' speech to subtitle files "
                                              "(assets/movie-subtitles/), with Whisper. docs/movie-subtitles.md")
     ap.add_argument("--languages", default=DEFAULT_LANGUAGES,
                     help=f"comma-separated: en, fr, de, es, it, or all (default {DEFAULT_LANGUAGES})")
@@ -368,6 +425,7 @@ def main():
                          "with --stt-url, the name the server wants, default whisper-1)")
     ap.add_argument("--device", default="auto", choices=("auto", "cpu", "cuda"), help="local back end: where it runs")
     ap.add_argument("--threads", type=int, default=0, help="local back end: CPU threads (0: its default)")
+    ap.add_argument("--beam", type=int, default=5, help="local back end: Whisper's beam size (default 5)")
     ap.add_argument("--stt-url", default=None, help="an OpenAI-compatible server's base URL (e.g. http://127.0.0.1:8000/v1) "
                                                     "instead of the local back end")
     ap.add_argument("--timeout", type=float, default=600.0, help="--stt-url: seconds to wait for one movie")
@@ -435,7 +493,7 @@ def main():
         return
 
     model = args.model or ("whisper-1" if args.stt_url else DEFAULT_MODEL)
-    stt = Remote(args.stt_url, model, args.timeout) if args.stt_url else Local(model, args.device, args.threads)
+    stt = Remote(args.stt_url, model, args.timeout) if args.stt_url else Local(model, args.device, args.threads, args.beam)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix="movie-subs-", dir=str(STT_DIR if STT_DIR.exists() else OUT_DIR)))
     report = []
