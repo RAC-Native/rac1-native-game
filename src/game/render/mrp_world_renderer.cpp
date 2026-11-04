@@ -6077,6 +6077,10 @@ void ensure_prep_worker_started(PrepWorker& w);
 // its own on the game thread's core - idle until the game thread's next update starts, at the drawing -, above its priority, instead
 // of by the main thread at the drawing's join: it reads only what the prepare copied (HeadIn, the pages), the main thread meanwhile
 // prepares the mobys; then it hands the second half to the worker as the join did. The drawing's join waits for it.
+// ((2026-11-04) RAC1_WIIU_HEAD_CORE=3, auto, the default since (=2 as before): two such threads, on core 2 (as =2) and on core 1 one below the main thread's priority -
+// run in the main thread's waits, the game thread's core left to the game alone -, the first half posted to one or the other frame by
+// frame: core 1 while the main thread waits for the game thread at its join (the game logic the frame's longest: Kerwan's ~14 ms
+// steps), core 2 again once the game thread idles before the join for more than the first half's time (the drawing the longest))
 struct HeadHelper {
     std::mutex m;
     std::condition_variable cv;
@@ -6091,10 +6095,14 @@ struct HeadHelper {
         if (th.joinable()) th.join();
     }
 };
-HeadHelper g_head;
+HeadHelper g_head[2];  // (0: RAC1_WIIU_HEAD_CORE's core; 1: auto's core 1)
 bool g_head_posted = false;
+int g_head_at = 0;  // (the helper posted)
+std::atomic<double> g_head_last_ms{0.0};
+double g_gt_wait_ema = 0.0, g_gt_idle_ema = 0.0;
+uint32_t g_head_frames[2] = {0, 0};
 int head_core() {
-    static const int core = std::getenv("RAC1_WIIU_HEAD_CORE") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_HEAD_CORE")) : 2;
+    static const int core = std::getenv("RAC1_WIIU_HEAD_CORE") != nullptr ? std::atoi(std::getenv("RAC1_WIIU_HEAD_CORE")) : 3;
     return core;
 }
 // the second half handed to the worker (the first half done: by the main thread at the drawing's join, or by the head's thread)
@@ -6111,19 +6119,41 @@ void tail_post() {
     w.cv.notify_all();
 }
 void head_post() {
-    HeadHelper& h = g_head;
+    const bool autom = head_core() == 3;
+    if (autom) {  // (the choice: hysteresis on the game thread's wait / idle, smoothed over ~4 frames)
+        const int was = g_head_at;
+        if (g_head_at == 0 && g_gt_wait_ema > 2.0) g_head_at = 1;
+        else if (g_head_at == 1 && g_gt_idle_ema > g_head_last_ms.load(std::memory_order_relaxed) + 2.0) g_head_at = 0;
+        if (g_head_at != was) {  // (the other helper's job done first: never two first halves at once)
+            HeadHelper& o = g_head[was];
+            std::unique_lock<std::mutex> lk(o.m);
+            o.cv.wait(lk, [&o] { return o.done; });
+        }
+    }
+    ++g_head_frames[g_head_at];
+    if (autom && (g_head_frames[0] + g_head_frames[1]) % 600 == 0)
+        std::printf("[mrpw] the world's first half: core 2 %u frames, core 1 %u (the game thread's wait %.1f ms, idle %.1f, the half %.1f)\n", g_head_frames[0],
+                    g_head_frames[1], g_gt_wait_ema, g_gt_idle_ema, g_head_last_ms.load(std::memory_order_relaxed));
+    HeadHelper& h = g_head[g_head_at];
     std::lock_guard<std::mutex> lk(h.m);
     if (!h.th.joinable()) {
-        h.th.start(head_core(), 16, "MRP world head", [&h] {
-            std::printf("[mrpw] the world's first half on core %u (RAC1_WIIU_HEAD_CORE %d)\n", OSGetCoreId(), head_core());
+        int core = autom ? 2 : head_core(), prio = 16;
+        if (g_head_at == 1) {
+            core = 1;
+            prio = std::min(31, OSGetThreadPriority(OSGetCurrentThread()) + 1);  // (below the main thread: in its waits)
+        }
+        h.th.start(core, prio, "MRP world head", [&h, prio] {
+            std::printf("[mrpw] the world's first half on core %u, priority %d (RAC1_WIIU_HEAD_CORE %d)\n", OSGetCoreId(), prio, head_core());
             std::unique_lock<std::mutex> l(h.m);
             for (;;) {
                 h.cv.wait(l, [&h] { return h.job || h.quit; });
                 if (h.quit) return;
                 h.job = false;
                 l.unlock();
+                const auto t0 = std::chrono::steady_clock::now();
                 __asm__ volatile("mtfsf 0xff, %0" : : "f"(g_prep_on_main_fpscr));
                 if (wiiu_prep_head()) tail_post();
+                g_head_last_ms.store(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count(), std::memory_order_relaxed);
                 l.lock();
                 h.done = true;
                 h.cv.notify_all();
@@ -6135,7 +6165,7 @@ void head_post() {
     h.cv.notify_all();
 }
 void head_wait() {
-    HeadHelper& h = g_head;
+    HeadHelper& h = g_head[g_head_at];
     std::unique_lock<std::mutex> lk(h.m);
     h.cv.wait(lk, [&h] { return h.done; });
 }
@@ -6389,6 +6419,12 @@ void mrp_world_wiiu_chain_joined() {
     g_regs_last_ok = f.regs_at_ok;
     if (f.regs_at_ok) std::memcpy(g_regs_last, f.regs_at, sizeof g_regs_last);
     tfrag_kick_worker_if_needed();
+}
+
+// orig: (host) see mrp_world_renderer.h
+void mrp_world_wiiu_game_timing(double wait_ms, double idle_ms) {
+    g_gt_wait_ema = 0.75 * g_gt_wait_ema + 0.25 * wait_ms;
+    g_gt_idle_ema = 0.75 * g_gt_idle_ema + 0.25 * idle_ms;
 }
 
 // orig: (host) see mrp_world_renderer.h

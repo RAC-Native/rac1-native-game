@@ -1403,3 +1403,33 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
   dropped. Kerwan's busy street (the game logic ~14-15 ms a game frame on core 2): with the catch-up 4 game frames a host frame,
   44-68 ms frames; RAC1_MAX_STEPS=2: 40-45 ms, the game there at ~80% speed (as the PS2 slowed). A choice for Daino.
 
+
+### The game thread's core left to the game; one call a quadword; the Euler rows without identity clamps (2026-11-04, evening)
+
+The console was off: built, proved exact on the PC, not measured yet.
+
+- **Why:** Kerwan and Novalis are bound by the game thread (~14 ms a game step on core 2), and the world's first half (RAC1_WIIU_HEAD_CORE=2)
+  ran on that core above its priority - the game's steps waited for it, ~3-9 ms a cycle. Kerwan's host frame needs two steps plus the half
+  plus the prepare: past 33 ms, and the catch-up spiral follows.
+- **RAC1_WIIU_HEAD_CORE=3 (auto; the default now, =2 as before; mrp_world_renderer.cpp head_post):** two helper threads, the core-2 one as
+  before and one on core 1 at the main thread's priority + 1 (it runs in the main thread's waits - never above it: the trap of section 4
+  in STATO_LAVORI.md). orig_main.cpp hands the game thread's join to mrp_world_wiiu_game_timing: the main thread's wait for the game thread,
+  and the game thread's idle time before the join. Smoothed (0.75 / 0.25): core 1 once the wait passes 2 ms; core 2 again once the idle
+  passes the half's own time + 2 ms. Switching waits for the other helper's job first. "[mrpw] the world's first half: core 2 N frames,
+  core 1 M" every 600 frames.
+- **lq / sq in one call (ee_regs.h, the Wii U or -DRAC1_QUAD_ONE_CALL):** the address resolved once, four words copied; the same words,
+  place, journal page and null check. ~58,000 sites in the generated code (every function's register saves / restores): half the calls.
+  noinline (the 750's 32 KB instruction cache).
+- **RAC1_EULER_FAST (vecmath.cpp, the Wii U's default 1, the PC's 0):** vu_sin_kernel without vuclamp for 2^-11 <= |x| <= 4 after the
+  fold (every power, term and partial sum normal or an exact zero, where vuclamp is the identity); rot_row without it when every operand
+  is 0 or within 2^-40..2^40 (products >= 2^-80, multiples of 2^-103: no denormal, no overflow). On the console the Euler rows were ~4-5%
+  of core 2 (rot_row 1.9, vu_sin_kernel 1.9 self: Kerwan's moving cars miss RAC1_EULER_CACHE).
+- **Exact:** rac1-scratch/wiiu/lv/sin_exhaustive.cpp (rounding toward zero): the sine's two forms on all 2^32 inputs, 0 differ; rot_row's
+  on 200 M random / edge cases (67 M on the fast form), 0 differ. RAMHASH (lv/hc.sh, 1800 frames explore, the PC's and the Wii U's
+  headless paths, levels 3 / 0 / 1 / 6 / 8): RAC1_EULER_FAST=1 against 0 and the -DRAC1_QUAD_ONE_CALL build against the plain one,
+  all 10 identical (the final pointer form of lq / sq again on 3 and 1). pc_check: the three references, RAMHASH = main's.
+- **lq / sq's first form** (the whole quadword returned by the out-of-line call) made the RPX 20.48 -> 21.12 MB: the 32-bit ABI returns
+  a 128-bit value through memory, so every caller kept its registers on its stack. Now the call returns the pointer alone and the four
+  words are read / written inline: **20.21 MB**.
+- **Not done:** class 75 natively - the PC's profile spreads it over ~10 translated helpers (particles spawned, chain points, group walks)
+  that mostly call host code: the generated code's overhead there is its memory accesses and register moves, not a hot loop. Left.

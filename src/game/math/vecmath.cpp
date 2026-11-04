@@ -580,10 +580,26 @@ inline float vu_min(float a, float b) {
 // subroutine at 0x1c4: fold x into [-pi/2, pi/2] with MINI/MAX against
 // (pi - x) and (-pi - x), then the degree-9 odd polynomial.
 // orig: 0x001ff800 (VU0 micro 0x192 / subroutine 0x1c4)
+bool euler_fast_on();
 float vu_sin_kernel(float x) {
     constexpr float VPI = f32(0x40490fda), VNPI = f32(0xc0490fda);
     const float pi = 0.0f + VPI, npi = 0.0f + VNPI;
     x = vu_max(vu_min(x, vuclamp(pi - x)), vuclamp(npi - x));
+    // ((2026-11-04) RAC1_EULER_FAST, the Wii U's default 1, the PC's 0) for 2^-11 <= |x| <= 4 every power, term and partial sum below
+    // is a normal number or an exact zero (x^9 * c9 >= 2^-118; a partial sum near a zero crossing has operands of order 1), for which
+    // vuclamp is the identity: the same operations without it - the same value (checked against the form below for every float input,
+    // rac1-scratch/wiiu/lv/sin_exhaustive.cpp)
+    if (euler_fast_on()) {
+        const float a = __builtin_fabsf(x);
+        if (a >= 0x1p-11f && a <= 4.0f) {
+            const float x2 = x * x, x3 = x * x2, x5 = x3 * x2, x7 = x5 * x2, x9 = x7 * x2;
+            float acc = x * 1.0f;
+            acc = acc + x3 * f32(0xbe2aaaa4);
+            acc = acc + x5 * f32(0x3c08873e);
+            acc = acc + x7 * f32(0xb94fb21d);
+            return acc + x9 * f32(0x362e9c14);
+        }
+    }
     // (each VU result clamps to +-max: a huge unfolded angle gives +-max, never inf or NaN)
     const float x2 = vuclamp(x * x), x3 = vuclamp(x * x2), x5 = vuclamp(x3 * x2), x7 = vuclamp(x5 * x2), x9 = vuclamp(x7 * x2);
     float acc = vuclamp(x * 1.0f);
@@ -604,10 +620,22 @@ void vu_sincos(float x, float& s, float& c) {
 
 // Subroutine 0x1e5: rows r = R0 * r.x + R1 * r.y + R2 * r.z (all four lanes).
 // orig: 0x001ffa50 (VU0 micro subroutine 0x1e5)
+// ((2026-11-04) RAC1_EULER_FAST) an operand whose products and sums with others of its kind stay normal or exact zeros: 0, or 2^-40 <=
+// |v| <= 2^40 (a product then >= 2^-80, a multiple of 2^-103, and so every sum of them: never a denormal, never an overflow)
+inline bool rot_safe(float v) {
+    const float a = __builtin_fabsf(v);
+    return a == 0.0f || (a >= 0x1p-40f && a <= 0x1p40f);
+}
 inline Vec4 rot_row(const Vec4& r, const Vec4& a, const Vec4& b, const Vec4& c) {
     auto lane = [](float ar, float br, float cr, float x, float y, float z) {
         return vuclamp(vuclamp(vuclamp(ar * x) + vuclamp(br * y)) + vuclamp(cr * z));
     };
+    if (euler_fast_on() && rot_safe(r.x) && rot_safe(r.y) && rot_safe(r.z) && rot_safe(a.x) && rot_safe(a.y) && rot_safe(a.z) && rot_safe(a.w) &&
+        rot_safe(b.x) && rot_safe(b.y) && rot_safe(b.z) && rot_safe(b.w) && rot_safe(c.x) && rot_safe(c.y) && rot_safe(c.z) && rot_safe(c.w)) {
+        auto fast = [](float ar, float br, float cr, float x, float y, float z) { return ((ar * x) + (br * y)) + (cr * z); };  // (vuclamp the identity)
+        return Vec4{fast(a.x, b.x, c.x, r.x, r.y, r.z), fast(a.y, b.y, c.y, r.x, r.y, r.z), fast(a.z, b.z, c.z, r.x, r.y, r.z),
+                    fast(a.w, b.w, c.w, r.x, r.y, r.z)};
+    }
     return Vec4{lane(a.x, b.x, c.x, r.x, r.y, r.z), lane(a.y, b.y, c.y, r.x, r.y, r.z),
                 lane(a.z, b.z, c.z, r.x, r.y, r.z), lane(a.w, b.w, c.w, r.x, r.y, r.z)};
 }
@@ -669,6 +697,17 @@ struct EulerCache {
 bool euler_cache_on() {
     static const bool on = [] {
         const char* e = std::getenv("RAC1_EULER_CACHE");
+#if defined(__WIIU__) && !defined(RAC1_VU0_EXACT)
+        return e == nullptr || std::atoi(e) != 0;
+#else
+        return e != nullptr && std::atoi(e) != 0;
+#endif
+    }();
+    return on;
+}
+bool euler_fast_on() {
+    static const bool on = [] {
+        const char* e = std::getenv("RAC1_EULER_FAST");
 #if defined(__WIIU__) && !defined(RAC1_VU0_EXACT)
         return e == nullptr || std::atoi(e) != 0;
 #else

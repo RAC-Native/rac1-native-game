@@ -71,6 +71,9 @@ void mrp_world_wiiu_chain_joined();
 // (frame_view): the backend's CPU work on the frame done there while its data is in that core's cache (mrp_world_gx2.cpp: the merged
 // draws' plan). nullptr: none
 extern void (*g_wiiu_tail_hook)();
+// ((2026-11-04) RAC1_WIIU_HEAD_CORE=3, auto) the host frame's game thread measured by orig_main.cpp at its join: the main thread's wait
+// for it (`wait_ms`: the game thread the frame's longest) and the game thread's idle time before the join (`idle_ms`: the drawing's)
+void mrp_world_wiiu_game_timing(double wait_ms, double idle_ms);
 #endif
 // orig: (host) the same in two halves: _async starts the scene's build (on a worker thread, RAC1_MRPW_THREAD=0 not),
 // after it mrp_world_skip_ranges() is known; the host may then read the frame's chain (it only reads EE memory) and must

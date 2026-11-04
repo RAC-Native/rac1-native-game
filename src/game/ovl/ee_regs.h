@@ -74,6 +74,40 @@ inline void sw_(uint32_t a, uint32_t v) {
 inline void sh_(uint32_t a, uint32_t v) { sh(a, v); }
 inline void sb_(uint32_t a, uint32_t v) { sb(a, v); }
 inline void sd_(uint32_t a, uint64_t v) { sd(a, v); }
+#if defined(__WIIU__) || defined(RAC1_QUAD_ONE_CALL)
+// ((2026-11-04) the Wii U - a PC built with -DRAC1_QUAD_ONE_CALL for the check -: one call a quadword - its address resolved once, out of
+// line, the four words read or written in place - instead of two doublewords' calls, each with its own resolution and check: the
+// generated code's register saves and restores, a function's prologue and epilogue. The same words, the same place, the same journal
+// page, the same null check. The call returns the pointer alone: the 32-bit ABI returns a 128-bit value through memory, which would
+// put the caller's registers on its stack)
+[[gnu::noinline]] inline const uint8_t* lq_ptr(uint32_t a) {
+    const void* p = ee_ram_ptr_read(a);
+    if (p == nullptr) {
+        ee_debug_backtrace();
+        throw std::runtime_error("Attempted read from null pointer");
+    }
+    return static_cast<const uint8_t*>(p);
+}
+[[gnu::noinline]] inline uint8_t* sq_ptr(uint32_t a) {
+    void* p = ee_ram_ptr_write(a, 16);
+    if (p == nullptr) throw std::runtime_error("Attempted write to null pointer");
+    return static_cast<uint8_t*>(p);
+}
+inline Q128 lq(uint32_t a) {
+    const uint8_t* p = lq_ptr(a & ~15u);
+    uint32_t w[4];
+    std::memcpy(w, p, 16);
+    Q128 r;
+    r.lo = (static_cast<uint64_t>(w[1]) << 32) | w[0];
+    r.hi = (static_cast<uint64_t>(w[3]) << 32) | w[2];
+    return r;
+}
+inline void sq(uint32_t a, const Q128& v) {
+    uint8_t* p = sq_ptr(a & ~15u);
+    const uint32_t w[4] = {static_cast<uint32_t>(v.lo), static_cast<uint32_t>(v.lo >> 32), static_cast<uint32_t>(v.hi), static_cast<uint32_t>(v.hi >> 32)};
+    std::memcpy(p, w, 16);
+}
+#else
 inline Q128 lq(uint32_t a) {
     Q128 r;
     r.lo = ld(a & ~15u);
@@ -84,6 +118,7 @@ inline void sq(uint32_t a, const Q128& v) {
     sd(a & ~15u, v.lo);
     sd((a & ~15u) + 8, v.hi);
 }
+#endif
 // orig: (helper) SDL / SDR (little-endian: the doubleword's high / low part at an unaligned address)
 inline void sdl(uint32_t a, const Q128& r) {
     const uint32_t s = (a & 7) * 8;

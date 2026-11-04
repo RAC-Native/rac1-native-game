@@ -3531,6 +3531,7 @@ int main(int argc, char** argv) {
             const bool wiiu_overlap = wiiu_pend.plain && steps > 0 && running && !host_paused && !exiting && (!boot_active() || boot_in_title()) && !ee_thread_suspended() &&
                                       wiiu_pend.level == lw(0x0015ed84);
             double gt_steps_ms = 0.0;
+            std::chrono::steady_clock::time_point gt_end{};
             if (wiiu_overlap) {
                 // (the chain's bytes were already copied out of EE RAM into g_capture by mrp_chain_start at the end of the previous
                 // host frame, and libgraph's GS transfers join gs::memory_join() before touching gs::local_memory(), while wiiu_gfx_frame
@@ -3555,7 +3556,8 @@ int main(int argc, char** argv) {
 #if defined(__WIIU__)
                         rac1::ctl::mark(rac1::ctl::kGt1);
 #endif
-                        gt_steps_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+                        gt_end = std::chrono::steady_clock::now();
+                        gt_steps_ms = std::chrono::duration<double, std::milli>(gt_end - t0).count();
                     },
                     false);
             }
@@ -3572,7 +3574,10 @@ int main(int argc, char** argv) {
                 rac1::game_thread::finish();  // (its exception rethrown here)
 #if defined(__WIIU__)
                 rac1::ctl::mark(rac1::ctl::kGtJoin1);
-                rac1_wiiu_time(15, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tw).count());
+                const double gt_wait_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tw).count();
+                rac1_wiiu_time(15, gt_wait_ms);
+                // (RAC1_WIIU_HEAD_CORE=3: the world's first half's core chosen from these)
+                rac1::mrp_world_wiiu_game_timing(gt_wait_ms, std::max(0.0, std::chrono::duration<double, std::milli>(tw - gt_end).count()));
                 rac1_wiiu_time(16, gt_steps_ms);
                 debug_menu_flush();
 #endif
