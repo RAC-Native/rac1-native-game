@@ -115,6 +115,25 @@ int32_t hero_health_max() { return lbu(HERO + 0x20a4) == 1 ? 4 : lw(NANOTECH_MAX
 // orig: (none)
 uint32_t hero_item() { return lwu(HERO + 0x10b8); }
 
+// orig: (none) — see rac2_compat.h: the record moby_hit_record_v keeps (+0x00 the push, +0x10 the attacker, +0x14 the
+// kinds, +0x1c the strength, +0x20 1: the push given)
+void hero_hit(uint32_t by, Vec3 push, float damage) {
+    const uint32_t hm = lwu(HERO + 0x2080);
+    if (hm == 0) return;
+    alignas(16) uint8_t rec[0x24] = {};
+    const float w = 5627.95f;  // (0x45afdf66: RAC1's and RAC2's mark of a push given with the hit)
+    std::memcpy(rec + 0x0, &push.x, 4);
+    std::memcpy(rec + 0x4, &push.y, 4);
+    std::memcpy(rec + 0x8, &push.z, 4);
+    std::memcpy(rec + 0xc, &w, 4);
+    std::memcpy(rec + 0x10, &by, 4);
+    const uint32_t kinds = 0x00010001u, given = 1;
+    std::memcpy(rec + 0x14, &kinds, 4);
+    std::memcpy(rec + 0x1c, &damage, 4);
+    std::memcpy(rec + 0x20, &given, 4);
+    moby_hit_record_v(hm, rec);
+}
+
 // orig: (none)
 void bolts_give(int32_t n) { sw(BOLTS, static_cast<uint32_t>(lw(BOLTS) + n)); }
 

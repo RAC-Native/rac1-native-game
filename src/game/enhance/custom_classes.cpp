@@ -4,6 +4,7 @@
 #include <host/custom_classes.h>
 #include <host/custom_planet.h>
 #include <host/custom_arena.h>
+#include <host/rac2_compat.h>
 
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
@@ -25,7 +26,7 @@ namespace rac1 {
 
 namespace {
 
-enum class Role { Crowd, Monitor, Arm, Prop };
+enum class Role { Crowd, Monitor, Arm, Prop, Tile, Lift };
 
 // planet.txt's "class <role> <id> <bank>"
 struct ClassLine {
@@ -56,6 +57,8 @@ const std::vector<ClassLine>& lines() {
         if (role == "crowd") c.role = Role::Crowd;
         else if (role == "monitor") c.role = Role::Monitor;
         else if (role == "arm") c.role = Role::Arm;
+        else if (role == "tile") c.role = Role::Tile;
+        else if (role == "lift") c.role = Role::Lift;
         else if (role != "prop") continue;
         g_lines.push_back(c);
     }
@@ -455,9 +458,143 @@ void update(uint32_t m) {
 }
 }  // namespace arm
 
-// ---- the floor's fittings (RAC2 2563, 3276): the challenges' hazards and props, idle until the challenges come (P5) ----
+// ---- a prop: idle ----
 // orig: (none)
 void prop_update(uint32_t) {}
+
+// ---- the floor's tiles (RAC2 2563, its update 0x3d6bc0) ----
+// Set up off (state 2). Turned on by the controller (its pvars +0xbc, the wave's column c4): it turns over about its own x
+// axis, 180 degrees in 60 frames (3 a frame: RAC2's 180 a second, 0x1390), its sound 1 as it starts and 0 while it turns,
+// then stays over (state 1) hurting what comes within 1.5 of it (0x3d7140: the hero and the mobys that take hits, knocked
+// along its turn: a push of 2 across, 1 up; its pvars' damage), sparking now and then (0x3d7040); turned off it turns back
+// (state 4) and is off again. It hurts while it turns too.
+namespace tile {
+constexpr uint32_t kState = 0x0, kTimer = 0x4, kIndex = 0x8, kAngle = 0xc, kBaseX = 0x10;
+enum : int32_t { SetUp, Off, Turning, Over, TurningBack };
+constexpr int32_t kTurnFrames = 60;
+constexpr float kPi = 3.14159265f, kHurtRadius = 1.5f;
+
+// orig: (none) — RAC2's 0x3d7140 for the hero: within its radius, knocked across (the push at right angles to the line
+// from the tile to the hero, 2 long, 1 up)
+void hurt(uint32_t m) {
+    const rac2::Vec3 h = rac2::hero_pos();
+    const float dx = h.x - lwc1(m + moby::kPos), dy = h.y - lwc1(m + moby::kPos + 4);
+    const float d = std::hypot(dx, dy);
+    if (d >= kHurtRadius || std::fabs(h.z - lwc1(m + moby::kPos + 8)) > 2.0f) return;
+    const float ux = d > 1e-3f ? dx / d : 1.0f, uy = d > 1e-3f ? dy / d : 0.0f;
+    rac2::hero_hit(m, rac2::Vec3{-uy * 2.0f, ux * 2.0f, 1.0f}, static_cast<float>(custom_arena_tile_damage()));
+    if (trace()) std::printf("[classes] frame %u: tile uid %d hits the hero (nanotech %d)\n", level_frame(), lh(m + moby::kUid), rac2::hero_health());
+}
+
+// orig: (none) — a spark off it now and then (RAC2's 0x3d7040: a 1-in-2 pick of its effect, near its top)
+void spark(uint32_t m) {
+    if (rand_below(8) != 0) return;
+    const Vec4 at{lwc1(m + moby::kPos) + rand_range(-0.5f, 0.5f), lwc1(m + moby::kPos + 4) + rand_range(-0.5f, 0.5f), lwc1(m + moby::kPos + 8) + 0.5f, 1.0f};
+    spawn_particle_0b_v(at, Vec4{0.0f, 0.0f, 0.0667f, 0.0f}, 0x40f0f0f0u, 0x40f0f0f0u, 15, 25, 0, 0, 60000.0f, 1.0f);
+}
+
+// orig: (none)
+void update(uint32_t m) {
+    const Pvars pv{lwu(m + moby::kPvars)};
+    if (pv.base == 0) return;
+    const int32_t me = pv.i(kIndex);
+    switch (pv.i(kState)) {
+    case SetUp:
+        pv.f(kBaseX, lwc1(m + moby::kRot));
+        pv.f(kAngle, 0.0f);
+        pv.i(kIndex, custom_arena_tile_register(m));
+        pv.i(kState, Off);
+        return;
+    case Off:
+        if (!custom_arena_tile_on(me)) return;
+        pv.i(kState, Turning);
+        pv.i(kTimer, kTurnFrames);
+        moby_sound_start(1, 0, m);
+        moby_sound_start(0, 0, m);
+        return;
+    case Turning:
+    case TurningBack: {
+        const bool back = pv.i(kState) == TurningBack;
+        pv.f(kAngle, pv.f(kAngle) + (back ? -kPi : kPi) / static_cast<float>(kTurnFrames));
+        pv.i(kTimer, pv.i(kTimer) - 1);
+        if (pv.i(kTimer) <= 0) {
+            pv.f(kAngle, back ? 0.0f : kPi);
+            pv.i(kState, back ? Off : Over);
+        }
+        hurt(m);
+        break;
+    }
+    case Over:
+        hurt(m);
+        spark(m);
+        if (!custom_arena_tile_on(me)) {
+            pv.i(kState, TurningBack);
+            pv.i(kTimer, kTurnFrames);
+            moby_sound_start(1, 0, m);
+            moby_sound_start(0, 0, m);
+        }
+        break;
+    default: pv.i(kState, SetUp); return;
+    }
+    swc1(m + moby::kRot, pv.f(kBaseX) + pv.f(kAngle));
+}
+}  // namespace tile
+
+// ---- the floor's lifts (RAC2 3276, its update 0x4164a8) ----
+// Each holds a crate below the floor and brings it up when the controller hands it one (0x3fd228 -> 0x416720: the wave's
+// columns c6 / c7, a lift ready at a 1-in-6 chance a frame): its sequence 1 as it rises, the crate riding up with it, then
+// 2 as it goes down again, the crate left on the floor. Ours: the crate a copy of the planet's hidden template
+// (custom_arena.cpp) spawned on the lift below the floor and carried up to it.
+namespace lift {
+constexpr uint32_t kState = 0x0, kTimer = 0x4, kIndex = 0x8, kCrate = 0xc;
+enum : int32_t { SetUp, Down, Rising, Lowering };
+constexpr int32_t kRiseFrames = 40, kLowerFrames = 40;
+constexpr float kBelow = 1.9f, kAbove = 0.15f;  // (the crate's start under the lift's top, and its end over it: RAC2's crates
+                                                //  wait at z 498 in lifts whose top is at 499.86)
+
+// orig: (none)
+void update(uint32_t m) {
+    const Pvars pv{lwu(m + moby::kPvars)};
+    if (pv.base == 0) return;
+    const float x = lwc1(m + moby::kPos), y = lwc1(m + moby::kPos + 4), z = lwc1(m + moby::kPos + 8);
+    switch (pv.i(kState)) {
+    case SetUp:
+        pv.i(kIndex, custom_arena_lift_register(m));
+        play(m, 0, 1);
+        pv.i(kState, Down);
+        return;
+    case Down: {
+        const uint32_t c = custom_arena_lift_crate(pv.i(kIndex), x, y, z - kBelow);
+        if (c == 0) return;
+        pv.i(kCrate, static_cast<int32_t>(c));
+        pv.i(kTimer, kRiseFrames);
+        pv.i(kState, Rising);
+        play(m, 1, 4);
+        return;
+    }
+    case Rising: {
+        const uint32_t c = static_cast<uint32_t>(pv.i(kCrate));
+        pv.i(kTimer, pv.i(kTimer) - 1);
+        const float t = 1.0f - static_cast<float>(pv.i(kTimer)) / static_cast<float>(kRiseFrames);
+        if (c != 0 && static_cast<int8_t>(lbu(c + 0x20)) >= 0) swc1(c + moby::kPos + 8, z - kBelow + (kBelow + kAbove) * t);
+        if (pv.i(kTimer) <= 0) {
+            pv.i(kTimer, kLowerFrames);
+            pv.i(kState, Lowering);
+            play(m, 2, 4);
+        }
+        return;
+    }
+    case Lowering:
+        pv.i(kTimer, pv.i(kTimer) - 1);
+        if (pv.i(kTimer) <= 0) {
+            pv.i(kState, Down);
+            play(m, 0, 4);
+        }
+        return;
+    default: pv.i(kState, SetUp); return;
+    }
+}
+}  // namespace lift
 
 // orig: (none)
 const ClassLine* line_of_moby(uint32_t m) { return line_of(lh(m + moby::kClassId)); }
@@ -484,6 +621,8 @@ constexpr Registered kFns[] = {
     {Role::Monitor, with_sounds<monitor::update>},
     {Role::Arm, with_sounds<arm::update>},
     {Role::Prop, with_sounds<prop_update>},
+    {Role::Tile, with_sounds<tile::update>},
+    {Role::Lift, with_sounds<lift::update>},
 };
 
 }  // namespace

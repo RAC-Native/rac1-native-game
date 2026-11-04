@@ -93,6 +93,9 @@ struct Settings {
     std::map<int32_t, Standin> standins;  // by RAC1 class
     std::map<int32_t, int32_t> stand_for; // RAC2 class -> RAC1 class
     std::vector<PathCamera> cameras;      // cameras.txt's, in its order (RAC2's records 1, 2, 3 on Maktar)
+    std::vector<std::pair<Vec3, int32_t>> vents;  // planet.txt's "vent": RAC2's 2953 (place, damage)
+    int32_t tile_damage = 1;              // planet.txt's "tile_damage" (RAC2's 2563 pvars +0x14)
+    int32_t items[2] = {0, 0};            // planet.txt's "items": the crate classes of columns c6 and c7
 } g_cfg;
 
 struct Enemy {
@@ -126,6 +129,12 @@ struct Arena {
     uint32_t last_line = 0;       // the level frame of the announcer's last remark
     std::vector<std::pair<std::string, uint32_t>> lines;  // the announcer's lines waiting for the dialog slot
     bool script_done = false;
+    // P5: the hazards and the items
+    std::vector<uint32_t> tiles, lifts;  // (in the order they set up: RAC2's groups' order)
+    size_t tiles_on = 0, vents_on = 0;    // (how many the wave wants: its columns c4, c5)
+    std::vector<int32_t> crates_queued;   // (the wave's crates still to come up: columns c6, c7)
+    std::vector<Enemy> crates;            // (the crates up, ours to clear)
+    std::vector<uint32_t> vent_phase;     // (each vent's frame in its cycle, Vent)
 } g_a;
 
 std::vector<uint8_t> g_wins;  // victories per challenge (the .pc's)
@@ -197,6 +206,14 @@ const Settings& settings() {
         uint32_t size = 0;
         if (key == "standin" && in >> a >> b >> size) g_cfg.standins[a] = Standin{b, size, 0};
         else if (key == "stand_for" && in >> a >> b) g_cfg.stand_for[a] = b;
+        else if (key == "tile_damage" && in >> a) g_cfg.tile_damage = a;
+        else if (key == "items" && in >> a >> b) {
+            g_cfg.items[0] = a;
+            g_cfg.items[1] = b;
+        } else if (key == "vent") {
+            Vec3 v;
+            if (in >> v.x >> v.y >> v.z >> a) g_cfg.vents.emplace_back(v, a);
+        }
     }
     std::ifstream cams(custom_level_dir() + "/cameras.txt");
     while (cams && std::getline(cams, line)) {
@@ -257,7 +274,7 @@ void lines_step() {
 // orig: (none) — the level (re)loaded: the arena from its start, the templates found
 void reset(uint32_t base, uint32_t tick) {
     const std::vector<uint8_t> keep = g_wins;
-    g_a = Arena{};
+    g_a = Arena{};  // (the level loaded again: its mobys, the crates' copies among them, are new)
     g_cam = CameraRun{};
     g_a.base = base;
     g_a.tick = tick;
@@ -283,6 +300,88 @@ void wave_queue(const Wave& w) {
     // (spread over the drops: the classes mixed as RAC2's gates mix them)
     for (size_t i = g_a.queue.size(); i > 1; --i) std::swap(g_a.queue[i - 1], g_a.queue[static_cast<size_t>(rand_below(static_cast<int32_t>(i)))]);
     for (Gate& g : g_a.gates) g.pending = false;
+}
+
+// ---- the hazards and items (P5) ----
+// RAC2's 2953 (its update 0x401ed8, code only): turned on (0x4024b0), it waits 60 frames, warns twice (two 120-frame
+// pulses, its warning drawn the first 60 of each), then burns 60 frames: a column 5 units up from it (the hero's nearest
+// point on it, 0x320098) hurting what is within 1 of it (0x3201e0, its pvars' damage), flames rising (0x342b98) and its
+// sound; then waits again. Turned off, it ends its cycle and stays idle. Ours: the same cycle and hurt, RAC1's particles,
+// no sound yet (RAC2's sound 0x11 of its global bank).
+namespace vent {
+constexpr uint32_t kWait = 60, kPulse = 120, kWarn = 60, kBurn = 60, kCycle = kWait + 2 * kPulse + kBurn;
+constexpr float kHeight = 5.0f, kRadius = 1.0f;
+
+// orig: (none) — vent `k`'s frame: its phase stepped, its particles, its hurt
+void step(size_t k) {
+    const Vec3 at = g_cfg.vents[k].first;
+    uint32_t& ph = g_a.vent_phase[k];
+    if (ph == 0 && k >= g_a.vents_on) return;  // (off, idle)
+    ph = (ph + 1) % kCycle;
+    if (ph <= kWait) return;
+    if (ph <= kWait + 2 * kPulse) {
+        if ((ph - kWait - 1) % kPulse < kWarn && rand_below(2) == 0) {  // (the warning: glows flickering at its foot)
+            const Vec4 p{at.x + (rand_unit() - 0.5f) * 0.8f, at.y + (rand_unit() - 0.5f) * 0.8f, at.z + 0.15f, 1.0f};
+            spawn_particle_3c_v(p, Vec4{0.0f, 0.0f, 0.02f, 0.0f}, 0x803090f0u, 12, 0, 0, 0.5f);
+        }
+        return;
+    }
+    for (int n = 0; n < 3; ++n) {  // (the column of flames: RAC1's moving glows, rising)
+        const Vec4 p{at.x + (rand_unit() - 0.5f) * 0.6f, at.y + (rand_unit() - 0.5f) * 0.6f, at.z + rand_unit() * kHeight * 0.4f, 1.0f};
+        spawn_particle_3c_v(p, Vec4{0.0f, 0.0f, 0.1f + rand_unit() * 0.05f, 0.0f}, 0x802070f0u, 24, 0, 0, 1.2f + rand_unit() * 0.6f);
+    }
+    const Vec3 h = hero_pos();
+    const float dx = h.x - at.x, dy = h.y - at.y, d = std::hypot(dx, dy);
+    if (d < kRadius && h.z > at.z - 0.5f && h.z < at.z + kHeight) {
+        const float ux = d > 1e-3f ? dx / d : 1.0f, uy = d > 1e-3f ? dy / d : 0.0f;
+        hero_hit(0, Vec3{ux * 1.5f, uy * 1.5f, 1.0f}, static_cast<float>(g_cfg.vents[k].second));
+        if (trace()) std::printf("[arena] frame %u: vent %zu hits the hero (nanotech %d)\n", level_frame(), k, hero_health());
+    }
+}
+}  // namespace vent
+
+// orig: (none) — the wave's hazards and crates (RAC2: 0x3fc518 the tiles, 0x3fc268 the vents, 0x3fd228 the crates, at a
+// wave's start)
+void hazards_set(const Wave& w) {
+    g_a.tiles_on = static_cast<size_t>(std::max<int16_t>(0, w.c[4]));
+    g_a.vents_on = std::min(g_cfg.vents.size(), static_cast<size_t>(std::max<int16_t>(0, w.c[5])));
+    g_a.crates_queued.clear();
+    for (int col : {6, 7}) {
+        const int32_t cls = g_cfg.items[col - 6];
+        const auto t = g_cfg.standins.find(cls);
+        if (cls == 0 || t == g_cfg.standins.end() || t->second.tmpl == 0) continue;
+        for (int k = 0; k < w.c[col]; ++k) g_a.crates_queued.push_back(cls);
+    }
+    for (size_t i = g_a.crates_queued.size(); i > 1; --i)
+        std::swap(g_a.crates_queued[i - 1], g_a.crates_queued[static_cast<size_t>(rand_below(static_cast<int32_t>(i)))]);
+    if (trace()) std::printf("[arena] frame %u: tiles %zu, vents %zu, crates %zu\n", level_frame(), g_a.tiles_on, g_a.vents_on, g_a.crates_queued.size());
+}
+
+// orig: (none) — no hazards; the crates still up cleared (a challenge over)
+void hazards_off() {
+    g_a.tiles_on = 0;
+    g_a.vents_on = 0;
+    g_a.crates_queued.clear();
+    for (const Enemy& c : g_a.crates) {
+        if (!moby_gone(c.m, c.cls, c.pvars)) moby_kill(c.m);
+        standin_release(c.pvars);
+    }
+    g_a.crates.clear();
+}
+
+// orig: (none) — the frame's hazards: the vents, the crates broken (their blocks given back)
+void hazards_step() {
+    if (g_a.vent_phase.size() != g_cfg.vents.size()) g_a.vent_phase.assign(g_cfg.vents.size(), 0);
+    for (size_t k = 0; k < g_cfg.vents.size(); ++k) vent::step(k);
+    for (size_t i = 0; i < g_a.crates.size();) {
+        const Enemy& c = g_a.crates[i];
+        if (!moby_gone(c.m, c.cls, c.pvars)) {
+            ++i;
+            continue;
+        }
+        standin_release(c.pvars);
+        g_a.crates.erase(g_a.crates.begin() + static_cast<std::ptrdiff_t>(i));
+    }
 }
 
 // orig: (none)
@@ -316,6 +415,7 @@ void enemies_clear() {
 
 // orig: (none) — the challenge over
 void challenge_end(bool won) {
+    hazards_off();
     if (won) {
         g_wins[static_cast<size_t>(g_a.running)] = static_cast<uint8_t>(std::min(255, g_wins[static_cast<size_t>(g_a.running)] + 1));
         g_a.electrolyzer = running().index == 0 && g_wins[static_cast<size_t>(g_a.running)] == 1;
@@ -449,6 +549,7 @@ void step() {
         sm.first();
         if (sm.frames() >= kIntro) {
             wave_queue(running().waves[0]);
+            hazards_set(running().waves[0]);
             g_a.reason.clear();
             g_a.reason_key.clear();
             g_a.started = level_frame();
@@ -467,6 +568,7 @@ void step() {
         if (sm.frames() >= kBetween) {
             ++g_a.wave;
             wave_queue(running().waves[static_cast<size_t>(g_a.wave)]);
+            hazards_set(running().waves[static_cast<size_t>(g_a.wave)]);
             sm.set(Fight);
             std::printf("[arena] frame %u: wave %d of %zu, %zu enemies\n", level_frame(), g_a.wave + 1, running().waves.size(), g_a.queue.size());
         }
@@ -495,6 +597,7 @@ void step() {
         break;
     default: sm.set(Idle);
     }
+    hazards_step();
     lines_step();
     camera_step();
 }
@@ -733,6 +836,46 @@ void custom_arena_gate_drop(int gate, uint32_t m) {
         g_a.alive.push_back(Enemy{e, lwu(e + moby::kPvars), cls, level_frame()});
         if (trace()) std::printf("[arena] frame %u: gate %d drops a %d at %.1f %.1f\n", level_frame(), gate, cls, static_cast<double>(p.x), static_cast<double>(p.y));
     }
+}
+
+// orig: (none) — see custom_arena.h
+int custom_arena_tile_register(uint32_t m) {
+    for (size_t k = 0; k < g_a.tiles.size(); ++k)
+        if (g_a.tiles[k] == m) return static_cast<int>(k);
+    g_a.tiles.push_back(m);
+    return static_cast<int>(g_a.tiles.size()) - 1;
+}
+
+// orig: (none) — see custom_arena.h
+bool custom_arena_tile_on(int tile) {
+    return level_on() && tile >= 0 && static_cast<size_t>(tile) < g_a.tiles_on;
+}
+
+// orig: (none) — see custom_arena.h: the tiles' hurt, said once for all (RAC2's 0x3d7140: within 1.5 of a tile, knocked
+// along its turn, its damage)
+int32_t custom_arena_tile_damage() { return g_cfg.tile_damage; }
+
+// orig: (none) — see custom_arena.h
+int custom_arena_lift_register(uint32_t m) {
+    for (size_t k = 0; k < g_a.lifts.size(); ++k)
+        if (g_a.lifts[k] == m) return static_cast<int>(k);
+    g_a.lifts.push_back(m);
+    return static_cast<int>(g_a.lifts.size()) - 1;
+}
+
+// orig: (none) — see custom_arena.h: RAC2's 0x3fd228 hands each crate to a lift ready for it at a 1-in-6 chance a frame
+uint32_t custom_arena_lift_crate(int lift, float x, float y, float z) {
+    constexpr size_t kMaxCrates = 12;  // (crates up at once: the pvars pool's share, rac2_compat.h)
+    if (!level_on() || lift < 0 || g_a.sm.state != Fight || g_a.crates_queued.empty() || g_a.crates.size() >= kMaxCrates) return 0;
+    if (rand_below(6) != 0) return 0;
+    const int32_t cls = g_a.crates_queued.back();
+    const Standin& s = g_cfg.standins[cls];
+    const uint32_t c = standin_spawn(s.tmpl, s.pv_size, Vec3{x, y, z}, rand_unit() * 6.2831853f);
+    if (c == 0) return 0;
+    g_a.crates_queued.pop_back();
+    g_a.crates.push_back(Enemy{c, lwu(c + moby::kPvars), cls, level_frame()});
+    if (trace()) std::printf("[arena] frame %u: lift %d brings a crate %d up\n", level_frame(), lift, cls);
+    return c;
 }
 
 // orig: (none) — see custom_arena.h: {version, count, a byte a challenge}

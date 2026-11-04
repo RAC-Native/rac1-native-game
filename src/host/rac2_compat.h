@@ -92,6 +92,11 @@ int32_t hero_health_max();
 // orig: (none) — the item in hand (8 the wrench)
 uint32_t hero_item();
 
+// orig: (none) — the hero hit by `by` (a moby, or 0: none), RAC1's hit protocol as its enemies and the Novalis fans hit
+// him (a contact record in the hero moby's ring: the kinds 0x10001, a push `push` (x, y, z; RAC2's knock-back mark
+// 5627.95 in w), `damage` the hit's strength); his own code then hurts him (hero_hurt), not while he cannot be hurt
+void hero_hit(uint32_t by, Vec3 push, float damage);
+
 // orig: (none) — bolts given (the HUD's counter shows them)
 void bolts_give(int32_t n);
 

@@ -33,7 +33,8 @@ src/host/custom_planet.h):
   <out>/hud.txt       the arena HUD's panels (vector shapes of HUD.WAD's 2D set) and its texts (src/host/custom_arena_hud.h).
   <out>/lights.txt    the modern lighting's file for the custom level (our choices): point lights at the arena's gates,
                       lamps and screens, emissive surfaces for its screens and neon.
-  <out>/planet.txt    the planet's name on the ship's list, its death height and ship (our own settings file).
+  <out>/planet.txt    the planet's name on the ship's list, its death height and ship (our own settings file); the arena's
+                      vents (RAC2's 2953: places and damage), the tiles' damage and the crate classes of its waves.
   <out>/manifest.txt  what was built (sizes, offsets): no game data.
 
 Nothing here is game data; the outputs are, and stay local (never committed). The core is WAD-encoded by wadlz.py, whose
@@ -325,11 +326,11 @@ RAC2_CLASSES = {
     3734: ("crowd", 2032),    # the crowd cards in the stands: 5 loops of 8 frames
     4697: ("monitor", 2033),  # the monitors on posts round the floor: 3 single-frame poses
     2581: ("arm", 2034),      # the jointed arms at the floor's edge: lower, drop, wait, rise
-    2563: ("prop", 2035),     # the floor's fittings (a hazard of the challenges, idle here)
-    3276: ("prop", 2036),     # (a prop / item of the challenges, idle here)
+    2563: ("tile", 2035),     # the floor's tiles that turn over in the hazard challenges (wave column c4)
+    3276: ("lift", 2036),     # the floor's lifts that bring crates up (wave columns c6 / c7)
 }
 HIT_ROLES = ("monitor",)  # (the roles whose collision is kept: they break when shot, custom_classes.cpp)
-CLASS_PVARS = {"crowd": 0x20, "monitor": 0x40, "arm": 0x40, "prop": 0x10}  # (our behaviour's own pvars, custom_classes.cpp)  # (their flat colour: RAC2 lights them with set 6 and the ambient 27 40 40; ours a grey)
+CLASS_PVARS = {"crowd": 0x20, "monitor": 0x40, "arm": 0x40, "prop": 0x10, "tile": 0x20, "lift": 0x20}  # (our behaviour's own pvars, custom_classes.cpp)  # (their flat colour: RAC2 lights them with set 6 and the ambient 27 40 40; ours a grey)
 
 
 def euler_rows(rx, ry, rz, s):
@@ -577,6 +578,9 @@ def build_ties(r2, out, say, colour_scale, colour_min, mobys=True, skip=()):
 # flags: not drawn, not updated): the templates the arena's controller copies (src/game/enhance/custom_arena.cpp). Not the two whose pvars name
 # another moby (749 pvar 189, 1440 pvar 231).
 WAVE_SKIP_PVARS = (189, 231)
+# the classes the arena copies: the stand-in enemies, and the crates its lifts bring up (P5: RAC2's 501 / 511 crates are
+# RAC1's classes of the same ids, Veldin has both)
+TEMPLATE_CLASSES = (749, 1440, 501, 511)
 
 
 def wave_enemies(g, mo, spec, say):
@@ -588,7 +592,7 @@ def wave_enemies(g, mo, spec, say):
     for _ in range(n1):
         sz = i32(g, p)
         cid = i32(g, p + 0x18)
-        if cid in (749, 1440) and i32(g, p + 0x58) not in WAVE_SKIP_PVARS:
+        if cid in TEMPLATE_CLASSES and i32(g, p + 0x58) not in WAVE_SKIP_PVARS:
             pool.setdefault(cid, []).append(bytes(g[p:p + sz]))
         p += sz
     recs, waves = [], []
@@ -906,6 +910,33 @@ def rac2_path_cameras(r2, say):
     return lines
 
 
+# P5: the arena's hazards and items, from RAC2's gameplay (its moby records: +0x10 uid, +0x28 class, +0x40 position, +0x68
+# pvars; the pvars' byte +0x14 the damage a hazard does, read by their update code 0x3d6bc0 / 0x401ed8)
+VENT_CLASS, TILE_CLASS = 2953, 2563
+
+
+def rac2_hazards(r2, say):
+    """planet.txt's hazard lines: the vents (RAC2's 2953, code only: their places and damage) and the tiles' damage."""
+    g = r2.gameplay
+    G = struct.unpack_from("<40I", g)
+    ptab, pdata, mo = G[0x5c // 4], G[0x60 // 4], G[0x4c // 4]
+    p = mo + 0x10
+    vents, tile_damage = [], None
+    for _ in range(i32(g, mo)):
+        sz, cid = i32(g, p), i32(g, p + 0x28)
+        pos = struct.unpack_from("<3f", g, p + 0x40)
+        if cid in (VENT_CLASS, TILE_CLASS) and all(ARENA_BOX[j][0] <= pos[j] <= ARENA_BOX[j][1] for j in range(3)):
+            pv = i32(g, p + 0x68)
+            damage = g[pdata + i32(g, ptab + 8 * pv) + 0x14] if pv >= 0 else 1
+            if cid == VENT_CLASS:
+                vents.append("vent %.3f %.3f %.3f %d" % (pos + (damage,)))
+            elif tile_damage is None:
+                tile_damage = damage
+        p += sz
+    say("hazards: %d vents (RAC2 %d), the tiles' damage %s" % (len(vents), VENT_CLASS, tile_damage))
+    return vents + ["tile_damage %d" % (tile_damage or 1), "items 501 511"]
+
+
 def write_planet(out, a):
     """planet.txt: our own small settings file of the custom planet (src/host/custom_planet.h reads it)."""
     with open(os.path.join(out, "planet.txt"), "w") as f:
@@ -926,6 +957,12 @@ def write_planet(out, a):
                     "# template's uid> <its pvars' size>; stand_for <RAC2 class> <RAC1 class>\n"
                   + "".join("standin %d %d %d\n" % t for t in getattr(a, "standin_lines", []))
                   + "".join("stand_for %d %d\n" % t for t in STAND_FOR))
+        if getattr(a, "hazard_lines", None):
+            f.write("# the hazards and items (P5, src/game/enhance/custom_arena.cpp): vent <x y z> <damage> (RAC2's 2953: a column\n"
+                    "# of flames, wave column c5), tile_damage <n> (RAC2's 2563 tiles, column c4), items <class for c6> <class for c7>\n"
+                    "# (the crates the lifts bring up)\n")
+            for line in a.hazard_lines:
+                f.write(line + "\n")
         if getattr(a, "class_lines", None):
             f.write("# the RAC2 classes converted (rac2classes.py): class <role> <RAC1 class id> <its sounds' bank: rac2_banks' index, -1 none>;\n"
                     "# their behaviour by role: src/game/enhance/custom_classes.cpp\n")
@@ -1280,6 +1317,7 @@ def build(a):
         for line in rac2_path_cameras(r2, say):
             f.write(line + "\n")
     open(os.path.join(a.out, "gameplay.bin"), "wb").write(gp + bytes(gsize - len(gp)))
+    a.hazard_lines = rac2_hazards(r2, say)
     write_planet(a.out, a)
     if a.dump_core:
         open(os.path.join(a.out, "core.bin"), "wb").write(bytes(core.buf))
@@ -1311,8 +1349,8 @@ def main():
     ap.add_argument("--light-set0", type=int, default=0, help="Maktar's light set swapped into set 0 (the terrain's; 0: RAC2's sets as they are)")
     ap.add_argument("--hero-light-set", type=int, default=6, help="the arena's light zone's set: the hero's light (RAC2's arena mobys: 6)")
     ap.add_argument("--hero-ambient", type=int, nargs=3, default=(27, 40, 40), help="the light zone's ambient (RAC2's arena mobys: 27 40 40)")
-    ap.add_argument("--standins", default="749x1,1440x1",
-                    help="the challenges' stand-in enemies' hidden templates: <class>x<count> by ',' (Veldin's 749 and 1440)")
+    ap.add_argument("--standins", default="749x1,1440x1,501x1,511x1",
+                    help="the arena's hidden templates: <class>x<count> by ',' (Veldin's enemies 749 and 1440, its crates 501 and 511)")
     ap.add_argument("--no-ties", action="store_true", help="no ties.mrpc (the arena without its ties)")
     ap.add_argument("--no-mobys", action="store_true", help="the arena's static mobys not drawn (ties.mrpc without them)")
     ap.add_argument("--tie-colour-scale", type=float, default=1.25, help="the ties' instance colours scaled")

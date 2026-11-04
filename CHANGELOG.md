@@ -197,6 +197,10 @@ What changed in each release. Releases are source only: you build the game with 
   shapes from the RAC2 disc's HUD.WAD, read into the planet's `hud.txt` with its texts) with the kills and the time left in
   the time challenges and the round in the others, the challenge menu in RAC2's places, the victory ("Congratulations!",
   the prize, Triangle to leave or Cross to fight on) and the defeat ("Challenge Failed!", "Time Out!"), in RAC1's fonts.
+- Local experiment, planet P5: the arena's hazards and items from RAC2's wave columns: the floor's tiles (RAC2's 2563) turn
+  over to their blades and hurt whoever comes near (column c4), the vents (RAC2's 2953, from the planet's `planet.txt`) warn
+  twice and then burn in a column of flames (c5), and the floor's lifts (RAC2's 3276) bring the wave's crates up (c6 / c7:
+  RAC1's crates 501 / 511, as RAC2's are of those ids); the hero hit through RAC1's own hit protocol.
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

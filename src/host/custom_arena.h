@@ -20,7 +20,7 @@
 // prize x 0.3^victories, at least 500), the victory counted, the planet's music back. The time challenges' limit, and
 // the Wrench Expert's rules (the wrench only, no hit), lose it. A death reloads the level: the arena from its start.
 // Left out for now (listed in the menu with the reason): the boss challenges and waves (the bosses: P7), the challenges
-// needing RAC2 weapons (the Lancer's, the Mini-Nuke's). The hazards' and items' columns wait for P5.
+// needing RAC2 weapons (the Lancer's, the Mini-Nuke's).
 // The victories are kept in the save's .pc (custom_planet.h: our item 0x201).
 // (testing) RAC1_ARENA_SCRIPT=<frame>:<challenge>[,...]: that challenge started at that level frame, as from the menu;
 // RAC1_WAVES_AUTOKILL=<frames>: each enemy killed that many frames after it drops (a headless run through a challenge).
@@ -58,6 +58,20 @@ int custom_arena_gate_register(uint32_t m);
 bool custom_arena_gate_wanted(int gate);
 // orig: (none) — gate `gate` drops now (its moby `m`): its enemies spawned below it
 void custom_arena_gate_drop(int gate, uint32_t m);
+
+// The hazards and items (P5): the floor's tiles (RAC2's 2563) turn over while their wave wants them (column c4: how
+// many, the first ones to set up), the lifts (RAC2's 3276) bring the wave's crates up (columns c6 / c7, planet.txt's
+// "items"); the vents (RAC2's 2953, code only: planet.txt's "vent" lines) are the controller's own (column c5).
+// orig: (none) — a tile set up: its number
+int custom_arena_tile_register(uint32_t m);
+// orig: (none) — whether tile `tile` should be turned over (its hazard side up)
+bool custom_arena_tile_on(int tile);
+// orig: (none) — the tiles' damage (planet.txt's tile_damage)
+int32_t custom_arena_tile_damage();
+// orig: (none) — a lift set up: its number
+int custom_arena_lift_register(uint32_t m);
+// orig: (none) — a crate for lift `lift` (idle, down) to bring up now: the crate spawned on it (at `at`), 0 none
+uint32_t custom_arena_lift_crate(int lift, float x, float y, float z);
 
 // The victories in the save's .pc (custom_planet.cpp's items):
 // orig: (none) — our item appended to `d` (id, size, bytes); its count
