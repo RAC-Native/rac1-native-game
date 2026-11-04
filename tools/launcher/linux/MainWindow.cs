@@ -54,7 +54,6 @@ namespace Rac1Launcher
 
         static readonly IBrush Accent = new SolidColorBrush(Color.FromRgb(232, 120, 24));
         static readonly IBrush HeaderBack = new SolidColorBrush(Color.FromRgb(28, 36, 64));
-        static readonly IBrush Gray = new SolidColorBrush(Color.FromRgb(120, 120, 128));
 
         public MainWindow()
         {
@@ -64,7 +63,6 @@ namespace Rac1Launcher
             MinWidth = 660;
             MinHeight = 540;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            RequestedThemeVariant = Avalonia.Styling.ThemeVariant.Light;
             try
             {
                 using (var s = typeof(MainWindow).Assembly.GetManifestResourceStream("launcher.png"))
@@ -73,6 +71,7 @@ namespace Rac1Launcher
             catch (Exception) { }
 
             ctl = new Controller(this, RunningExe);
+            ApplyTheme(ctl.Settings.Theme);
             Content = BuildUi();
 
             var flush = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
@@ -136,7 +135,7 @@ namespace Rac1Launcher
             lblDetail.TextWrapping = TextWrapping.Wrap;
             lblDetail.Margin = new Thickness(0, 0, 0, 12);
 
-            updatePanel.Background = new SolidColorBrush(Color.FromRgb(255, 244, 214));
+            Themed(updatePanel, Border.BackgroundProperty, "LauncherNotice");
             updatePanel.Padding = new Thickness(10, 6);
             updatePanel.Margin = new Thickness(0, 0, 0, 12);
             updatePanel.CornerRadius = new CornerRadius(4);
@@ -287,11 +286,21 @@ namespace Rac1Launcher
             var chkDebug = new CheckBox { Content = "Enable debug tools", IsChecked = ctl.Settings.DebugTools };
             chkDebug.IsCheckedChanged += (s, e) => { ctl.Settings.DebugTools = chkDebug.IsChecked == true; ctl.Settings.Save(); };
             AddRow(t, "Debug tools", chkDebug, Note("(the game starts with --debug-tools: its debug menu and overlays)"));
+            var cmbTheme = new ComboBox { ItemsSource = new[] { "Follow the system", "Light", "Dark" }, Width = 220,
+                                          HorizontalAlignment = HorizontalAlignment.Left };
+            cmbTheme.SelectedIndex = Math.Max(0, Array.IndexOf(Themes, ctl.Settings.Theme));
+            cmbTheme.SelectionChanged += (s, e) =>
+            {
+                ctl.Settings.Theme = Themes[Math.Max(0, cmbTheme.SelectedIndex)];
+                ctl.Settings.Save();
+                ApplyTheme(ctl.Settings.Theme);
+            };
+            AddRow(t, "Theme", cmbTheme, Note("(the launcher's colours: light or dark)"));
 
             var discsPanel = new StackPanel { Margin = new Thickness(0, 14, 0, 0) };
             discsPanel.Children.Add(new TextBlock { Text = "Disc images", FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, 4) });
             lblDiscs.TextWrapping = TextWrapping.Wrap;
-            lblDiscs.Foreground = Gray;
+            Gray(lblDiscs);
             lblDiscs.Margin = new Thickness(0, 0, 0, 6);
             discsPanel.Children.Add(lblDiscs);
             discsPanel.Children.Add(DiscRow("Use", "Disc", "Image", heading: true));
@@ -315,13 +324,13 @@ namespace Rac1Launcher
             actions.Children.Add(Btn("Open the setup's logs", () => Platform.OpenFolder(Game.P("build"))));
             actions.Children.Add(Btn("Report a problem", () => Platform.OpenUrl(GitHub.Page + "/issues")));
 
-            var note = new TextBlock
+            var note = Gray(new TextBlock
             {
-                TextWrapping = TextWrapping.Wrap, Foreground = Gray, Margin = new Thickness(0, 18, 0, 0),
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 18, 0, 0),
                 Text = "The game's own options (graphics, controls) are in the game's Options menu. Your settings are in "
                      + Platform.ConfigDir + " and your saves in " + Platform.DataDir + ", not in the game folder: "
                      + "setting the game up again never touches them.",
-            };
+            });
             var outer = new StackPanel();
             outer.Children.Add(t);
             outer.Children.Add(discsPanel);
@@ -330,11 +339,31 @@ namespace Rac1Launcher
             return new ScrollViewer { Content = outer };
         }
 
-        static TextBlock Note(string text) => new TextBlock
+        static TextBlock Note(string text) => Gray(new TextBlock
         {
-            Text = text, Foreground = Gray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+            Text = text, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
             TextWrapping = TextWrapping.Wrap, MaxWidth = 260,
-        };
+        });
+
+        /// <summary>A property following one of the launcher's colours (App.Initialize): the light or the dark theme's.</summary>
+        static T Themed<T>(T c, AvaloniaProperty property, string key) where T : Control
+        {
+            c.Bind(property, c.GetResourceObservable(key));
+            return c;
+        }
+
+        static TextBlock Gray(TextBlock t) => Themed(t, TextBlock.ForegroundProperty, "LauncherGray");
+
+        static readonly string[] Themes = { "", "light", "dark" };
+
+        /// <summary>Settings > Theme: "" follows the system's light or dark setting (and its changes), else "light" or "dark";
+        /// set on the application, so that the small windows (Dialogs) follow it too.</summary>
+        static void ApplyTheme(string theme)
+        {
+            Application.Current.RequestedThemeVariant = theme == "dark" ? Avalonia.Styling.ThemeVariant.Dark
+                                                      : theme == "light" ? Avalonia.Styling.ThemeVariant.Light
+                                                      : Avalonia.Styling.ThemeVariant.Default;
+        }
 
         static void AddRow(Grid t, string label, Control field, Control right)
         {
@@ -822,14 +851,14 @@ namespace Rac1Launcher
             {
                 var tb = new TextBlock { Text = cells[i], FontWeight = heading || (i == 0 && use != "Not used") ? FontWeight.SemiBold : FontWeight.Normal,
                                          TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 8, 0) };
-                if (!heading && use == "Not used") tb.Foreground = Gray;
+                if (!heading && use == "Not used") Gray(tb);
                 Grid.SetColumn(tb, i);
                 g.Children.Add(tb);
             }
             if (why == null) return g;
             var both = new StackPanel();
             both.Children.Add(g);
-            both.Children.Add(new TextBlock { Text = why, Foreground = Gray, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(100, 0, 0, 0) });
+            both.Children.Add(Gray(new TextBlock { Text = why, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(100, 0, 0, 0) }));
             return both;
         }
 
