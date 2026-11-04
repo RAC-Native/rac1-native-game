@@ -10,13 +10,17 @@ for level 0 when RAC1_CUSTOM_LEVEL=<out> is set (runtime/kernel/disc.cpp):
                       classes, moby textures, hero sequences, gadgets, particle and effect banks kept; no occlusion, no
                       ties, no shrubs. The overlay, the sound bank and the HUD are Veldin's. Same size as Veldin's file.
   <out>/gameplay.bin  Veldin's gameplay with: Maktar's background / fog colours and fog range, death height 480, no
-                      ship, Maktar's directional lights (its set 6, a white key light from above, swapped into set 0:
-                      the terrain's and the hero's), Veldin's generic cameras (types 0, 4..7), no sound instances, no
-                      ties, no shrubs, only the hero (class 0) at the arena's centre, no volumes, paths or grind lines,
-                      no occlusion. Veldin's help text, moby class list, pvars (the hero's own, the cameras') and the two
-                      0x4010 grids (empty on Veldin and on Maktar) kept. Same size as Veldin's.
+                      ship, Maktar's seven directional light sets as RAC2 has them (the arena's tfrags name set 0, a faint
+                      blue: the terrain is its painted colours), one light zone over the arena (the hero lit as RAC2 lights
+                      the arena's mobys: set 6, a white key light from above, and the ambient 27 40 40), Veldin's generic
+                      cameras (types 0, 4..7), no sound instances, no ties, no shrubs, only the hero (class 0) at the
+                      arena's centre, no volumes, paths or grind lines, no occlusion. Veldin's help text, moby class list,
+                      pvars (the hero's own, the cameras') and the two 0x4010 grids (empty on Veldin and on Maktar) kept.
+                      Same size as Veldin's.
   <out>/ties.mrpc     the arena's ties (205 instances of 13 RAC2 classes, their 45 textures), drawn by the host
                       (src/formats/custom_ties.h; `rac1-native --setup --custom-level <out>` puts them in the MRP world).
+  <out>/lights.txt    the modern lighting's file for the custom level (our choices): point lights at the arena's gates,
+                      lamps and screens, emissive surfaces for its screens and neon.
   <out>/manifest.txt  what was built (sizes, offsets): no game data.
 
 Nothing here is game data; the outputs are, and stay local (never committed). The core is WAD-encoded by wadlz.py, whose
@@ -290,6 +294,49 @@ def tie_colour(g, at, n):
     return tuple(sum(((w >> (5 * c)) & 31) << 3 for w in words) / len(words) for c in range(3))
 
 
+# the modern lighting's file for the arena (<out>/lights.txt, the level's file while the custom level is on: mrp_lighting.cpp
+# user_path): point lights at the arena's lamps and screens, emissive surfaces for the screens and neon (our choices, after
+# RAC2's look of Maktar: a dark blue night, cyan neon, warm lamps). Per tie class: (instances: a range of the class's
+# placements in their order, None all; the light's colour, intensity, radius; how far toward the arena's centre and up)
+ARENA_LIGHTS = [
+    (2718, slice(0, 6), (0.40, 0.85, 1.00), 2.2, 16.0, 3.0, 0.0, "the six round cyan gates in the outer wall"),
+    (2720, None, (0.45, 1.00, 0.35), 1.0, 5.0, 1.0, 0.0, "the green lamps on the pillars"),
+    (2721, None, (1.00, 0.55, 0.20), 0.9, 8.0, 1.5, 0.0, "the orange M screens above the stands"),
+    (4154, slice(0, 1), (0.60, 0.90, 1.00), 2.0, 18.0, 0.0, -3.0, "the jumbotron's screens over the centre"),
+]
+# (class, its texture (the class's local index, as ties.mrpc lists them), strength): the screens and neon keep the
+# original's brightness in shade
+ARENA_EMISSIVE = [
+    ("tie", 2721, 0, 1.6), ("tie", 4154, 0, 1.6), ("tie", 2718, 8, 1.6), ("tie", 2718, 9, 1.4), ("tie", 2701, 5, 1.6),
+    ("tie", 2718, 0, 1.4), ("tie", 2720, 2, 1.4), ("tie", 2701, 7, 1.4), ("tie", 2723, 3, 1.4),
+    ("tfrag", 0, 8, 1.4), ("tfrag", 0, 5, 1.3),
+]
+
+
+def write_lights(out, insts, say):
+    """<out>/lights.txt from the tie placements (k, class, matrix)."""
+    cx, cy = 500.0, 600.0
+    lines = ["# rac1-native: the modern lighting of the custom level Maktar's arena (tools/custom_level/maktar.py; our choices)",
+             "# light x y z  r g b  intensity radius flicker on"]
+    n = 0
+    for cid, which, rgb, inten, rad, inward, up, what in ARENA_LIGHTS:
+        mine = [m for _, c, m in insts if c == cid]
+        mine = mine[which] if which is not None else mine
+        lines.append("# %s (tie class %d, %d)" % (what, cid, len(mine)))
+        for m in mine:
+            x, y, z = m[12], m[13], m[14]
+            d = ((cx - x) ** 2 + (cy - y) ** 2) ** 0.5
+            if d > 1e-3:
+                x, y = x + (cx - x) / d * inward, y + (cy - y) / d * inward
+            lines.append("light %.3f %.3f %.3f  %.3f %.3f %.3f  %.3f %.3f 0.000 1" % (x, y, z + up, *rgb, inten, rad))
+            n += 1
+    lines.append("# emissive surfaces: the screens, the gates, the lamps' glass, the neon")
+    for kind, cid, tex, strength in ARENA_EMISSIVE:
+        lines.append("emissive %s %d tex %d  %.2f 0.00" % (kind, cid, tex, strength))
+    open(os.path.join(out, "lights.txt"), "w").write("\n".join(lines) + "\n")
+    say("lights.txt: %d point lights, %d emissive surfaces" % (n, len(ARENA_EMISSIVE)))
+
+
 def build_ties(r2, out, say, colour_scale, colour_min):
     MH = r2.H
     core, idx, g = r2.core, r2.index, r2.gameplay
@@ -323,9 +370,9 @@ def build_ties(r2, out, say, colour_scale, colour_min):
     gs_rows = {addr: off for _, _, addr, off in vram_rows(idx, MH)}
     tex_of, textures = {}, []
 
-    def texture(t):
-        if t not in tex_of:
-            texels, w, h, mips, pal, m1, _ = tex_record(idx, MH, t, 16)
+    def texture(t, table=16):  # (a level texture of the table: 16 the ties', 14 the mobys')
+        if (table, t) not in tex_of:
+            texels, w, h, mips, pal, m1, _ = tex_record(idx, MH, t, table)
             px = MH[24] + texels
             levels = [core[px:px + w * h]]
             if mips >= 2:
@@ -335,8 +382,8 @@ def build_ties(r2, out, say, colour_scale, colour_min):
                 levels.append(r2.gs_ram[off:off + (w // 4) * (h // 4)])
             off = gs_rows[pal * 0x100]
             textures.append((w, h, r2.gs_ram[off:off + 0x400], levels))
-            tex_of[t] = len(textures) - 1
-        return tex_of[t]
+            tex_of[(table, t)] = len(textures) - 1
+        return tex_of[(table, t)]
 
     classes = []
     nverts = npk = 0
@@ -404,6 +451,7 @@ def build_ties(r2, out, say, colour_scale, colour_min):
     say("ties: instance colours (each one's list's mean, x %.2f, at least grey %.0f): grey %.0f..%.0f, mean %.0f (0x80 = 1.0)" % (
         colour_scale, colour_min, min(shade), max(shade), sum(shade) / len(shade)))
     open(os.path.join(out, "ties.mrpc"), "wb").write(bytes(b))
+    write_lights(out, insts, say)
 
 
 def build(a):
@@ -604,13 +652,26 @@ def build(a):
     struct.pack_into("<4f", st, 0x2c, 0.0, 0.0, 0.0, 0.0)  # no ship (its x <= 0)
     blocks[0x00] = bytes(st)
     nl = u32(r2.gameplay, M[1])
-    # Maktar's directional light sets; the arena's tfrags (and the hero, with no light regions) are lit with set 0, which on
-    # Maktar is a faint blue (0.04 0.12 0.13): the terrain's light term ~8 of 255 over its base ~70, against ~70 on Veldin. Set
-    # `--light-set0` (6: a white key light from above, 45 degrees, with a blue-grey fill from below) is swapped into slot 0.
+    # Maktar's directional light sets, as RAC2 has them. The arena's tfrags name their sets per vertex (mostly set 0, on Maktar
+    # a faint blue, 0.04 0.12 0.13: the terrain is its painted base colour, as in RAC2); its mobys all name set 6 (a white key
+    # light from above, 45 degrees, a blue-grey fill from below) and the ambient 27 40 40. `--light-set0 <n>` swaps set n into
+    # slot 0 (step 3's look, set 6: the terrain lit by the key light too); 0, the default, keeps RAC2's sets.
     lights = [r2.gameplay[M[1] + 0x10 + 0x40 * k:M[1] + 0x50 + 0x40 * k] for k in range(nl)]
     if 0 < a.light_set0 < nl:
         lights[0], lights[a.light_set0] = lights[a.light_set0], lights[0]
     blocks[0x04] = r2.gameplay[M[1]:M[1] + 0x10] + b"".join(lights)
+    # the light zones (+0x80; level_load.cpp "the light grid", sub_00256de0 / moby_update_light): one zone over the arena, so the
+    # hero (whose light the zone sets each frame) is lit as RAC2 lights the arena's mobys: sets A = B = `--hero-light-set`, the
+    # ambient `--hero-ambient`. A zone: a sphere {x y z, radius^2} (tested in x y), then 0x80 bytes: the box's matrix (world ->
+    # -1..1, rows as the VU0 code multiplies them), +0x40 / +0x44 the ambients (RGBA bytes) blended across the box's x, +0x48 /
+    # +0x4c the light sets, +0x50 flags (1 the light, 2 the fog), +0x54.. the fog (not used: flag 2 off)
+    cx, cy, cz = a.hero[0], a.hero[1], 520.0
+    half = 90.0
+    amb = a.hero_ambient[0] | (a.hero_ambient[1] << 8) | (a.hero_ambient[2] << 16)
+    zone = struct.pack("<16f", 1.0 / half, 0, 0, 0, 0, 1.0 / half, 0, 0, 0, 0, 1.0 / half, 0, -cx / half, -cy / half, -cz / half, 1.0)
+    zone += struct.pack("<IIiiI", amb, amb, a.hero_light_set, a.hero_light_set, 1)
+    zone += bytes(0x80 - len(zone))
+    blocks[0x80] = struct.pack("<4i", 1, 0, 0, 0) + struct.pack("<4f", cx, cy, cz, half * half) + zone
     empty = bytes(0x10)
     for f in (0x08, 0x0c, 0x30, 0x34, 0x38, 0x3c, 0x60, 0x64, 0x68, 0x6c, 0x80, 0x88):
         blocks[f] = empty
@@ -683,7 +744,9 @@ def main():
     ap.add_argument("--hero", type=float, nargs=3, default=(500.0, 600.0, 502.0))
     ap.add_argument("--hero-yaw", type=float, default=1.5708)
     ap.add_argument("--death-height", type=float, default=480.0)
-    ap.add_argument("--light-set0", type=int, default=6, help="Maktar's light set swapped into set 0 (the terrain's; 0: as it is)")
+    ap.add_argument("--light-set0", type=int, default=0, help="Maktar's light set swapped into set 0 (the terrain's; 0: RAC2's sets as they are)")
+    ap.add_argument("--hero-light-set", type=int, default=6, help="the arena's light zone's set: the hero's light (RAC2's arena mobys: 6)")
+    ap.add_argument("--hero-ambient", type=int, nargs=3, default=(27, 40, 40), help="the light zone's ambient (RAC2's arena mobys: 27 40 40)")
     ap.add_argument("--no-ties", action="store_true", help="no ties.mrpc (the arena without its ties)")
     ap.add_argument("--tie-colour-scale", type=float, default=1.25, help="the ties' instance colours scaled")
     ap.add_argument("--tie-colour-min", type=float, default=80.0, help="the ties' instance colours brightened to at least this grey")
