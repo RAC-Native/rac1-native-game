@@ -372,6 +372,9 @@ gameplay files directly. Without a data disc, nothing changes.
 | `--play` | start the game when the setup finishes without asking |
 | `--no-play` | do not offer to start the game at the end |
 | `--check-system` | only check the system (step 1): exit status 0 when everything is there, 1 when something is missing, 20 when it is missing on an immutable system (build in a container, see [below](#steam-deck-bazzite-and-other-immutable-systems)) |
+| `--movie-subtitles [languages]` | also make subtitles for the movies with speech to text on this machine (English and Italian, or `en,fr,de,es,it` as given): installs the speech to text in `assets/stt/` the first time; kept for the next setups, which make only what is missing; see [Movie subtitles](movie-subtitles.md) |
+| `--no-movie-subtitles` | stop making movie subtitles at each setup (the files made are kept) |
+| `--stt-url <url>`, `--stt-model <name>` | with `--movie-subtitles`: an OpenAI-compatible speech to text server instead of the local one, the Whisper model (default `large-v3-turbo`) |
 | `--native-arch on\|off` | compile the game for this machine's CPU (`on`: AVX2 / AVX-512 where it has them, the game's own update about 8 % faster, its state the same bit for bit; the build then runs on this CPU only) or for any x86-64 CPU (`off`, the default); kept for the next builds, a change rebuilds everything |
 
 `./build/rac1-native --setup` (the data generation on its own, run from the repository's root):
@@ -385,6 +388,8 @@ gameplay files directly. Without a data disc, nothing changes.
 | `--check-iso` | only check the disc image, and make the setup find it |
 | `--compare-disc` | read every sector through the disc image and through the disc's files (`assets/disc/`), and compare |
 | `--status` | show what is present |
+| `--movie-tracks <pss>` | print a movie file's sound tracks (for `tools/movie_subtitles.py`) |
+| `--movie-audio <pss> --track <n> --wav <out>` | one sound track of a movie file as a 16 kHz mono WAV (for speech to text) |
 
 On its own, `--setup` skips a file that exists without checking whether it is up to date; that is
 what `./setup.sh` adds. `./setup.sh` makes the boot executable and the overlay maps itself, before

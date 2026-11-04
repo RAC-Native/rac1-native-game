@@ -5,6 +5,14 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Movie subtitles of our own (Options > Language > Movie Subtitles, Off by default; RAC1_MOVIE_SUBTITLES for testing): the
+  original shows none over its movies; `./setup.sh --movie-subtitles` (or the launcher's Make movie subtitles) makes them
+  on the player's machine with Whisper (faster-whisper in `assets/stt/`, or an OpenAI-compatible server with `--stt-url`)
+  from each movie's own sound track, English and Italian by default, as hand-editable SubRip files in
+  `assets/movie-subtitles/` (an edited file is never written again); drawn in the game's subtitle look, in the text
+  language; a missing or broken file shows nothing and logs a line. `rac1-native --setup --movie-audio` decodes a movie's
+  track for it. See docs/movie-subtitles.md.
+
 ### Discs
 - The European PAL disc version 2.00 (the "Platinum" re-release, a later build, 1.02) is supported as the game's disc:
   its own region table `data/regions/SCES-50916-2.00.txt` (chosen by the boot executable's sha1), with a unit for the base

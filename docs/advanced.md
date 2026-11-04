@@ -71,7 +71,7 @@ now on the Language page, never written with the saves; 12, Cut Content, 13, Cor
 **The Language page's rows** have more values than the widget's four: each byte is a step byte with two values whose
 texts are both the row's value, made at each lookup (as the Graphics page's rows); when Cross or left / right step it,
 the setting moves on and the byte goes back to 0. Voice is kept as `voice_language same|en|fr|de|es|it|ja`, Subtitles as
-`subtitles on|off` (only once chosen) in the preferences, the text language as the console's (`console.txt`). What they
+`subtitles on|off` (only once chosen), Movie Subtitles as `movie_subtitles on|off` in the preferences, the text language as the console's (`console.txt`). What they
 change is in [Settings](settings.md#language); New Game's modes leave them as they are.
 
 A preferences file or a `save<N>.pc` written by an earlier build may hold a setting that has since been

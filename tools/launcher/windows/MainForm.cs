@@ -298,6 +298,7 @@ namespace Rac1Launcher
             actions.Controls.Add(Btn("Check for updates", (s, e) => CheckUpdates(true), true));
             actions.Controls.Add(Btn("Update now", (s, e) => DoUpdate(), true));
             actions.Controls.Add(Btn("Set up again from scratch", (s, e) => DoRepair(), true));
+            actions.Controls.Add(Btn("Make movie subtitles", (s, e) => DoMovieSubtitles(), true));
             actions.Controls.Add(Btn("Create the shortcuts", (s, e) => CreateShortcuts(true), true));
             actions.Controls.Add(Btn("Open the setup's logs", (s, e) => Platform.OpenFolder(Game.P("build"))));
             actions.Controls.Add(Btn("Report a problem", (s, e) => Platform.OpenUrl(GitHub.Page + "/issues")));
@@ -567,6 +568,21 @@ namespace Rac1Launcher
                 return;
             tabs.SelectedIndex = 0;
             DoSetup("--force");
+        }
+
+        /// <summary>Our own movie subtitles (tools/setup.py --movie-subtitles, docs/movie-subtitles.md): speech to text
+        /// installed and run on the player's machine; the setup remembers it and makes only what is missing later.</summary>
+        void DoMovieSubtitles()
+        {
+            if (!Game.Downloaded) { DoInstall(); return; }
+            if (!Yes("This makes subtitles for the movies with speech to text (Whisper), on this computer, from your disc: English "
+                     + "and Italian. The first time it installs the speech to text (about 2 GB with its model); then it "
+                     + "takes a while (about half an hour on a fast CPU). The next setups make only what is missing; "
+                     + "files you edited are never written again. They show with Options > Language > Movie Subtitles."
+                     + "\n\nMake them now?", "Movie subtitles"))
+                return;
+            tabs.SelectedIndex = 0;
+            DoSetup("--movie-subtitles");
         }
 
         void DoUpdate()

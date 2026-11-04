@@ -90,6 +90,9 @@ the Recycle Bin, or to the trash on Linux.
 - **Check for updates** and **Update now**: the same as the Play page's check and Update, at once.
 - **Set up again from scratch**: generates everything again from the disc and rebuilds (the setup's
   `--force`).
+- **Make movie subtitles**: after a confirmation, the setup with `--movie-subtitles`: installs the speech to text and
+  makes English and Italian subtitles for the movies ([Movie subtitles](movie-subtitles.md)); the next setups make
+  only what is missing.
 - **Create the shortcuts** (Windows): puts the shortcuts on the desktop and in the Start menu again.
 - **Open the setup's logs**: the game folder's `build` folder, with `launcher.log` (everything the
   launcher ran and what it printed), `setup-build.log`, `setup-codegen.log` and `game.log`. Attach
