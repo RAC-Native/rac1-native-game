@@ -7,6 +7,7 @@
 #ifndef RAC1_RUNTIME_VU_VU0_H
 #define RAC1_RUNTIME_VU_VU0_H
 
+#include <runtime/kernel/hot_inline.h>
 #include <runtime/vu/vu_interpreter.h>
 
 #include <array>
@@ -36,7 +37,11 @@ void call(uint32_t addr);
 void run_until_blocked();
 // The EE waits for the program's end (interlocked transfers, macro ops while it runs).
 void drain();
+#if defined(RAC1_INLINE_HELPERS) && RAC1_INLINE_HELPERS
+inline bool running() { return global().run.running(); }  // (every macro op asks: inline, a load and a test)
+#else
 bool running();
+#endif
 // Testing (RAC1_VU0_CHAIN=1): the hash of the VU0 state at the points where the program stopped (see vu0.cpp).
 uint64_t chain_hash();
 // Testing (RAC1_VU_FALLBACK=1): the programs that ran on the interpreter (no port for their code), per start and micro image (stderr).

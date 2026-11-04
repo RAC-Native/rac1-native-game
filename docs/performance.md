@@ -40,6 +40,23 @@ thread's rounding (toward zero, no denormals). On a CPU with AVX2 (chosen when t
 chains share nothing but ACC, which each one's first op overwrites, and the flags, whose sticky bits are an OR. About a
 quarter less time for the joints and skinning stage (Rilgar 1.9 to 1.4 ms a game frame, Kerwan 1.5 to 1.1).
 
+## The generated code's helpers and the world culls
+
+Profiled with a sampler in November 2026, the transliterated (generated) code was 30 to 43 % of the main thread's CPU, and most
+of that was not its own work but calls to small helpers GCC kept out of line at `-O2`: the memory accessors (`ee_read` /
+`ee_write`, the routines' `lw_` / `sw_` / `lq` / `sq`) and the VU0 macro ops (`vu0_nf.h`). Two thirds of it was three routines,
+the world passes' culls (the profiler's `Game: world passes`).
+
+- **The helpers inline** (CMake `RAC1_INLINE_HELPERS`, on by default): the accessors' and the VU0 ops' fast paths are forced
+  inline (`runtime/kernel/hot_inline.h`), their rare paths (a null address, a flagged op, a DMA register) out of line and cold,
+  and `vu0::running()` an inline load. The same C++, so the same game state (RAMHASH on the 19 levels, the reference images).
+  Measured headless (`forward`, the profiler's medians, three interleaved runs per build on a shared machine): `Game: world
+  passes` 15 to 37 % less (Veldin 1.10 to 0.93 ms a frame, Rilgar 0.67 to 0.54, Nebula G34 0.83 to 0.65, Pokitaru 0.66 to
+  0.53, Hoven 1.22 to 0.77), but the game code as a whole within the noise (-5 % to +1 %): the program's code grows from
+  37 to 95 MB, and a full build with three jobs from about 10 to 22 minutes.
+  Off (`-DRAC1_INLINE_HELPERS=OFF`): the code as before, for a target with a small instruction cache, where more inlining
+  measured slower.
+
 ## The frame's chain
 
 The MRP chain worker reads each frame's chain beside the main thread (`mrp_chain.cpp`: the 2D, the effects' VU1 programs, the
@@ -242,6 +259,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_COPIES=0` | the EE journal's pages zero-filled then copied, the moby observer's record built aside and copied |
 | `RAC1_PERF_EULER_CACHE=1` | the Euler conversion's rows kept per angles (off by default) |
 | `RAC1_PERF_VU0_NF=0` | the generated code's VU0 ops with their flags |
+| `RAC1_WORLD_CULL_FAST=0` | the world passes' three culls as transliterated (`=2`: both, compared at every call) |
 | `RAC1_PERF_SKY_LATE=1` | the sky after the leading opaque tfrag batches (off by default: not exact) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 

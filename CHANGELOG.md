@@ -3,6 +3,13 @@
 What changed in each release. Releases are source only: you build the game with `./setup.sh`
 (`setup.cmd` on Windows) from your own disc. Issue numbers refer to this repository's issues.
 
+## Unreleased
+
+### Performance
+- The memory accessors and the VU0 macro ops forced inline in the ported and generated code (CMake `RAC1_INLINE_HELPERS`, on
+  by default; off: the code as before): the world passes' time 15 to 37 % less, the game code as a whole about the same, a
+  bigger program and a longer build; the same game state. See [Performance](docs/performance.md).
+
 ## 0.7.0
 
 New discs and new ways to use them: the European Platinum re-release (PAL 2.00) runs as the game's

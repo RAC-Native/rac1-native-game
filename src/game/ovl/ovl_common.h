@@ -9,25 +9,26 @@
 
 #include <cfloat>
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 
 namespace rac1 {
-inline uint8_t lbu(uint32_t a) { return ee_read<uint8_t>(a); }
-inline int16_t lh(uint32_t a) { return ee_read<int16_t>(a); }
-inline uint16_t lhu(uint32_t a) { return ee_read<uint16_t>(a); }
-inline int32_t lw(uint32_t a) { return ee_read<int32_t>(a); }
-inline uint32_t lwu(uint32_t a) { return ee_read<uint32_t>(a); }
-inline uint64_t ld(uint32_t a) { return ee_read<uint64_t>(a); }
-inline float lwc1(uint32_t a) { return ee_read<float>(a); }
-inline void sb(uint32_t a, uint32_t v) { ee_write<uint8_t>(a, static_cast<uint8_t>(v)); }
-inline void sh(uint32_t a, uint32_t v) { ee_write<uint16_t>(a, static_cast<uint16_t>(v)); }
-inline void sw(uint32_t a, uint32_t v) { ee_write<uint32_t>(a, v); }
-inline void sd(uint32_t a, uint64_t v) { ee_write<uint64_t>(a, v); }
-inline void swc1(uint32_t a, float v) { ee_write<float>(a, v); }
-inline float u2f(uint32_t u) { float f; std::memcpy(&f, &u, 4); return f; }
-inline uint32_t f2u(float f) { uint32_t u; std::memcpy(&u, &f, 4); return u; }
+RAC1_HOT_INLINE uint8_t lbu(uint32_t a) { return ee_read<uint8_t>(a); }
+RAC1_HOT_INLINE int16_t lh(uint32_t a) { return ee_read<int16_t>(a); }
+RAC1_HOT_INLINE uint16_t lhu(uint32_t a) { return ee_read<uint16_t>(a); }
+RAC1_HOT_INLINE int32_t lw(uint32_t a) { return ee_read<int32_t>(a); }
+RAC1_HOT_INLINE uint32_t lwu(uint32_t a) { return ee_read<uint32_t>(a); }
+RAC1_HOT_INLINE uint64_t ld(uint32_t a) { return ee_read<uint64_t>(a); }
+RAC1_HOT_INLINE float lwc1(uint32_t a) { return ee_read<float>(a); }
+RAC1_HOT_INLINE void sb(uint32_t a, uint32_t v) { ee_write<uint8_t>(a, static_cast<uint8_t>(v)); }
+RAC1_HOT_INLINE void sh(uint32_t a, uint32_t v) { ee_write<uint16_t>(a, static_cast<uint16_t>(v)); }
+RAC1_HOT_INLINE void sw(uint32_t a, uint32_t v) { ee_write<uint32_t>(a, v); }
+RAC1_HOT_INLINE void sd(uint32_t a, uint64_t v) { ee_write<uint64_t>(a, v); }
+RAC1_HOT_INLINE void swc1(uint32_t a, float v) { ee_write<float>(a, v); }
+RAC1_HOT_INLINE float u2f(uint32_t u) { return std::bit_cast<float>(u); }
+RAC1_HOT_INLINE uint32_t f2u(float f) { return std::bit_cast<uint32_t>(f); }
 // Floating point: the ports run with the host FPU rounding toward zero, the EE's mode
 // (runtime/ee/ps2_fpu.h: set once by the host and the oracle), so plain float arithmetic and
 // fpu_add / fpu_sub / fpu_mul round as the PS2 does; outside the normal range the PS2 rules apply
@@ -35,7 +36,7 @@ inline uint32_t f2u(float f) { uint32_t u; std::memcpy(&u, &f, 4); return u; }
 // (rounded to nearest, PCSX2's FPUDiv setting), VU code vuc(). Game data stays in range.
 // orig: (helper) an EE FPU operand: exponent 255 is an ordinary number (up to 2^129, the PS2
 // has no Inf / NaN, game data uses 0x7f800000 as "very large"), denormals read as signed zero.
-inline double fpu_in(float f) {
+RAC1_HOT_INLINE double fpu_in(float f) {
     const uint32_t u = f2u(f);
     const uint32_t m = u & 0x7fffffffu;
     if (__builtin_expect(m >= 0x7f800000u || (m - 1u < 0x007fffffu), 0)) {
@@ -48,7 +49,7 @@ inline double fpu_in(float f) {
     return static_cast<double>(f);
 }
 // orig: (helper) an EE FPU result: beyond the range clamps to +-FLT_MAX, denormals flush.
-inline float fpu_out(double r) {
+RAC1_HOT_INLINE float fpu_out(double r) {
     if (__builtin_expect(std::fabs(r) > static_cast<double>(FLT_MAX), 0)) return std::signbit(r) ? -FLT_MAX : FLT_MAX;
     const float f = static_cast<float>(r);
     const uint32_t u = f2u(f), m = u & 0x7fffffffu;
@@ -64,29 +65,25 @@ inline float fpu_div(float s, float t) {
     return fpu_out(ps2fpu::div_nearest(a, b));
 }
 // orig: (helper) EE FPU MUL.S — an overflowing product clamps to +-FLT_MAX, denormals flush.
-inline float fpu_mul(float s, float t) { return fpu_out(fpu_in(s) * fpu_in(t)); }
+RAC1_HOT_INLINE float fpu_mul(float s, float t) { return fpu_out(fpu_in(s) * fpu_in(t)); }
 // orig: (helper) EE FPU ADD.S / SUB.S with the PS2 operand and result rules.
-inline float fpu_add(float s, float t) { return fpu_out(fpu_in(s) + fpu_in(t)); }
-inline float fpu_sub(float s, float t) { return fpu_out(fpu_in(s) - fpu_in(t)); }
+RAC1_HOT_INLINE float fpu_add(float s, float t) { return fpu_out(fpu_in(s) + fpu_in(t)); }
+RAC1_HOT_INLINE float fpu_sub(float s, float t) { return fpu_out(fpu_in(s) - fpu_in(t)); }
 // orig: (helper) R5900 DIV quotient (LO): x/0 gives -1 (x >= 0) or 1, INT_MIN/-1 gives INT_MIN; no trap.
 inline int32_t ee_div(int32_t a, int32_t b) { return b == 0 ? (a >= 0 ? -1 : 1) : (b == -1 ? static_cast<int32_t>(0u - static_cast<uint32_t>(a)) : a / b); }
 // orig: (helper) R5900 DIV remainder (HI): x/0 leaves HI = x, INT_MIN/-1 gives 0.
 inline int32_t ee_rem(int32_t a, int32_t b) { return b == 0 ? a : (b == -1 ? 0 : a % b); }
 // orig: (helper) VU0 float operand/result rule — denormals are signed zero, Inf/NaN are +-max.
-inline float vuc(float f) {
-    uint32_t u;
-    std::memcpy(&u, &f, 4);
+RAC1_HOT_INLINE float vuc(float f) {
+    const uint32_t u = std::bit_cast<uint32_t>(f);
     const uint32_t m = u & 0x7fffffffu;
-    if (__builtin_expect(m >= 0x7f800000u || (m - 1u < 0x007fffffu), 0)) {
-        u = (u & 0x80000000u) | (m >= 0x7f800000u ? 0x7f7fffffu : 0u);
-        std::memcpy(&f, &u, 4);
-    }
+    if (__builtin_expect(m >= 0x7f800000u || (m - 1u < 0x007fffffu), 0)) return std::bit_cast<float>((u & 0x80000000u) | (m >= 0x7f800000u ? 0x7f7fffffu : 0u));
     return f;
 }
 // Views of EE RAM as the math library's vector / matrix types.
-inline Vec4& V(uint32_t a) { return *static_cast<Vec4*>(ee_ram_ptr(a)); }
-inline Mat4& M(uint32_t a) { return *static_cast<Mat4*>(ee_ram_ptr(a)); }
-inline void lq_sq(uint32_t dst, uint32_t src) {  // 128-bit aligned copy
+RAC1_HOT_INLINE Vec4& V(uint32_t a) { return *static_cast<Vec4*>(ee_ram_ptr(a)); }
+RAC1_HOT_INLINE Mat4& M(uint32_t a) { return *static_cast<Mat4*>(ee_ram_ptr(a)); }
+RAC1_HOT_INLINE void lq_sq(uint32_t dst, uint32_t src) {  // 128-bit aligned copy
     struct Qw { uint64_t lo, hi; };
     ee_write<Qw>(dst & ~15u, ee_read<Qw>(src & ~15u));
 }

@@ -19,12 +19,12 @@ namespace rac1::vu0m {
 
 enum : int { X = 1, Y = 2, Z = 4, W = 8, XY = 3, XZ = 5, YZ = 6, XYZ = 7, XYZW = 15 };
 
-inline Vf* vf() { return regs().vf.data(); }
-inline Vf& acc() { return regs().acc; }
-inline float& q() { return regs().q; }
+RAC1_HOT_INLINE Vf* vf() { return regs().vf.data(); }
+RAC1_HOT_INLINE Vf& acc() { return regs().acc; }
+RAC1_HOT_INLINE float& q() { return regs().q; }
 
-inline __m128i ld4(const Vf& v) { return _mm_load_si128(reinterpret_cast<const __m128i*>(&v)); }
-inline void st4_m(Vf& d, __m128i x, int m) {
+RAC1_HOT_INLINE __m128i ld4(const Vf& v) { return _mm_load_si128(reinterpret_cast<const __m128i*>(&v)); }
+RAC1_HOT_INLINE void st4_m(Vf& d, __m128i x, int m) {
     __m128i* dp = reinterpret_cast<__m128i*>(&d);
     if (m == 15) {
         _mm_store_si128(dp, x);
@@ -33,7 +33,7 @@ inline void st4_m(Vf& d, __m128i x, int m) {
         _mm_store_si128(dp, _mm_or_si128(_mm_and_si128(k, x), _mm_andnot_si128(k, _mm_load_si128(dp))));
     }
 }
-inline __m128i cop4(__m128i x) {
+RAC1_HOT_INLINE __m128i cop4(__m128i x) {
     const __m128i expm = _mm_set1_epi32(0x7f800000);
     const __m128i e = _mm_and_si128(x, expm);
     const __m128i isz = _mm_cmpeq_epi32(e, _mm_setzero_si128());
@@ -42,10 +42,10 @@ inline __m128i cop4(__m128i x) {
     const __m128i big = _mm_or_si128(_mm_and_si128(x, _mm_set1_epi32(static_cast<int>(0x80000000u))), _mm_set1_epi32(0x7f7fffff));
     return _mm_or_si128(_mm_andnot_si128(isi, r), _mm_and_si128(isi, big));
 }
-inline __m128i bc4(float b) { return _mm_set1_epi32(static_cast<int>(f2u(vuc(b)))); }
-inline __m128i vadd4(__m128i a, __m128i b) { return _mm_castps_si128(_mm_add_ps(_mm_castsi128_ps(a), _mm_castsi128_ps(b))); }
-inline __m128i vsub4(__m128i a, __m128i b) { return _mm_castps_si128(_mm_sub_ps(_mm_castsi128_ps(a), _mm_castsi128_ps(b))); }
-inline __m128i vmul4(__m128i a, __m128i b) { return _mm_castps_si128(_mm_mul_ps(_mm_castsi128_ps(a), _mm_castsi128_ps(b))); }
+RAC1_HOT_INLINE __m128i bc4(float b) { return _mm_set1_epi32(static_cast<int>(f2u(vuc(b)))); }
+RAC1_HOT_INLINE __m128i vadd4(__m128i a, __m128i b) { return _mm_castps_si128(_mm_add_ps(_mm_castsi128_ps(a), _mm_castsi128_ps(b))); }
+RAC1_HOT_INLINE __m128i vsub4(__m128i a, __m128i b) { return _mm_castps_si128(_mm_sub_ps(_mm_castsi128_ps(a), _mm_castsi128_ps(b))); }
+RAC1_HOT_INLINE __m128i vmul4(__m128i a, __m128i b) { return _mm_castps_si128(_mm_mul_ps(_mm_castsi128_ps(a), _mm_castsi128_ps(b))); }
 // orig: (helper) the status flag's four current bits (Z S U O: any lane's) from the MAC flags
 inline uint32_t status_bits(uint32_t mac) {
     const uint32_t t = (mac | (mac >> 1) | (mac >> 2) | (mac >> 3)) & 0x1111u;
@@ -143,7 +143,7 @@ inline void fmac4_acc(int m, __m128i raw) { fmac4_acc(regs(), m, raw); }
 
 // orig: (helper) a lane-masked VU0 op: the lanes computed from the operands first, then written
 template <class F>
-inline void lanes(Vf& d, int m, F f) {
+RAC1_HOT_INLINE void lanes(Vf& d, int m, F f) {
     float r[4];
     for (int i = 0; i < 4; ++i) r[i] = (m >> i & 1) != 0 ? f(i) : d.v[i];
     for (int i = 0; i < 4; ++i) d.v[i] = r[i];
@@ -245,7 +245,7 @@ template <FlagSink F> [[gnu::always_inline]] inline void transform(F& fl, Vf& d,
 }
 inline void transform(Vf& d, int r0, const Vf& p, float w) { transform(regs(), d, r0, p, w); }
 // orig: (helper) VMAX on float bits (both negative: the smaller word)
-inline float vmax(float a, float b) {
+RAC1_HOT_INLINE float vmax(float a, float b) {
     const int32_t x = static_cast<int32_t>(f2u(a)), y = static_cast<int32_t>(f2u(b));
     return u2f(static_cast<uint32_t>((x < 0 && y < 0) ? (x < y ? x : y) : (x > y ? x : y)));
 }
@@ -254,7 +254,7 @@ inline void ftoi0(Vf& d, int m) {
     lanes(d, m, [&](int i) { return bits(ftoi(d.v[i], 1.0f)); });
 }
 // orig: (helper) VITOFn of one lane
-inline float itof(float bits, float scale) { return static_cast<float>(static_cast<int32_t>(f2u(bits))) * scale; }
+RAC1_HOT_INLINE float itof(float bits, float scale) { return static_cast<float>(static_cast<int32_t>(f2u(bits))) * scale; }
 // orig: (helper) VSQRT Q = sqrt(|t|)
 inline float vsqrt(float t) { return vuc(std::sqrt(std::fabs(vuc(t)))); }
 // orig: (helper) VRSQRT Q = s / sqrt(|t|) (by zero: the signed largest float, 0 / 0 a signed 0)
@@ -301,7 +301,7 @@ inline void msubabc(const Vf& a, float b, int m) {
     fmac4_acc(m, vsub4(cop4(ld4(acc())), vmul4(cop4(ld4(a)), bc4(b))));
 }
 // orig: (helper) VMINI on float bits (both negative: the larger word)
-inline float vmini(float a, float b) {
+RAC1_HOT_INLINE float vmini(float a, float b) {
     const int32_t x = static_cast<int32_t>(f2u(a)), y = static_cast<int32_t>(f2u(b));
     return u2f(static_cast<uint32_t>((x < 0 && y < 0) ? (x > y ? x : y) : (x < y ? x : y)));
 }
@@ -321,16 +321,16 @@ template <FlagSink F> [[gnu::always_inline]] inline void opmsub(F& fl, Vf& d, co
 inline void opmula(const Vf& a, const Vf& b) { opmula(regs(), a, b); }
 inline void opmsub(Vf& d, const Vf& a, const Vf& b) { opmsub(regs(), d, a, b); }
 // orig: (helper) VITOFn / VFTOIn on the masked lanes
-inline void itofv(Vf& d, const Vf& s, int m, float scale) {
+RAC1_HOT_INLINE void itofv(Vf& d, const Vf& s, int m, float scale) {
     const Vf t = s;
     lanes(d, m, [&](int i) { return itof(t.v[i], scale); });
 }
-inline void ftoiv(Vf& d, const Vf& s, int m, float scale) {
+RAC1_HOT_INLINE void ftoiv(Vf& d, const Vf& s, int m, float scale) {
     const Vf t = s;
     lanes(d, m, [&](int i) { return bits(ftoi(t.v[i], scale)); });
 }
 // orig: (helper) VCLIPw.xyz into the clip flags
-inline void vclip(const Vf& p, float w) { clipw(regs().clipflag, p, w); }
+RAC1_HOT_INLINE void vclip(const Vf& p, float w) { clipw(regs().clipflag, p, w); }
 
 }  // namespace rac1::vu0m
 
