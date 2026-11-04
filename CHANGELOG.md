@@ -158,6 +158,8 @@ What changed in each release. Releases are source only: you build the game with 
   placements (GL and Vulkan); the arena's light set 0, cameras and tie colours from `maktar.py`.
 - Local experiment: the arena lit as RAC2 lights it (Maktar's light sets as they are, a light zone giving the hero set 6 and
   the arena mobys' ambient) and its own `lights.txt` for the modern lighting (point lights at its gates, lamps and screens; emissive screens).
+- Local experiment: the arena's standing mobys (RAC2 moby classes in their bind pose, `tools/custom_level/rac2moby.py`) drawn by the
+  host like its ties: the monitors round the floor, the crowd in the stands, the floor's fittings.
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

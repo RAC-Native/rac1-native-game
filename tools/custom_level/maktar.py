@@ -19,6 +19,8 @@ for level 0 when RAC1_CUSTOM_LEVEL=<out> is set (runtime/kernel/disc.cpp):
                       Same size as Veldin's.
   <out>/ties.mrpc     the arena's ties (205 instances of 13 RAC2 classes, their 45 textures), drawn by the host
                       (src/formats/custom_ties.h; `rac1-native --setup --custom-level <out>` puts them in the MRP world).
+                      With them, the arena's static mobys (RAC2's moby classes in their bind pose, rac2moby.py: the
+                      monitors round the floor, the stands' crowd cards, the floor's fittings) as more such classes.
   <out>/lights.txt    the modern lighting's file for the custom level (our choices): point lights at the arena's gates,
                       lamps and screens, emissive surfaces for its screens and neon.
   <out>/manifest.txt  what was built (sizes, offsets): no game data.
@@ -294,6 +296,88 @@ def tie_colour(g, at, n):
     return tuple(sum(((w >> (5 * c)) & 31) << 3 for w in words) / len(words) for c in range(3))
 
 
+# the arena's mobys drawn as static objects (step 4b): the classes RAC2 places in the arena that stand still there (the
+# monitors on posts round the floor 4697, the stands' crowd cards 3734, the floor's fittings 2563 and 3276), in their
+# bind pose (rac2moby.py). Not the six jointed arms 2581 at the floor's edge (in their bind pose they stand up as big pods
+# across the walkway: RAC2 poses them by their animation), nor the crates (501, 511), nor the challenges' mobys, which wait
+# in a block above the arena (z ~520: 2506, 2850, 3131, 3134 ...); 805, 2905, 2953 and 3950 have no mesh in the level.
+STATIC_MOBYS = (4697, 3734, 2563, 3276)
+MOBY_COLOUR = (0x60, 0x66, 0x6a, 0x80)  # (their flat colour: RAC2 lights them with set 6 and the ambient 27 40 40; ours a grey)
+
+
+def euler_rows(rx, ry, rz, s):
+    """A moby's rotation (x, then y, then z) as the three rows the tie path takes (the axes' images), times its scale."""
+    import math
+    cx, sx, cy, sy, cz, sz = math.cos(rx), math.sin(rx), math.cos(ry), math.sin(ry), math.cos(rz), math.sin(rz)
+    m = [[cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx],
+         [sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx],
+         [-sy, cy * sx, cy * cx]]
+    return [[m[0][c] * s, m[1][c] * s, m[2][c] * s] for c in range(3)]
+
+
+def build_mobys(r2, say, texture, classes):
+    """Appends the static mobys' classes to `classes` (as the ties' entries); returns their placements (class index among
+    the ones appended, rows, position, colour)."""
+    import rac2moby
+    MH, idx, core, g = r2.H, r2.index, r2.core, r2.gameplay
+    G = struct.unpack_from("<40I", g)
+    recs = {}
+    for k in range(MH[6]):
+        r = MH[7] + 32 * k
+        recs[i32(idx, r + 4)] = (i32(idx, r), idx[r + 16:r + 32])
+    # the placements (gameplay +0x4c: {count, ...}, then records of their own size: +0x28 the class, +0x2c the scale,
+    # +0x40 the position, +0x4c the rotation)
+    mo = G[0x4c // 4]
+    p = mo + 0x10
+    places = []
+    for _ in range(i32(g, mo)):
+        sz = i32(g, p)
+        cid = i32(g, p + 0x28)
+        pos = struct.unpack_from("<3f", g, p + 0x40)
+        if cid in STATIC_MOBYS and all(ARENA_BOX[j][0] <= pos[j] <= ARENA_BOX[j][1] for j in range(3)):
+            places.append((cid, struct.unpack_from("<f", g, p + 0x2c)[0], pos, struct.unpack_from("<3f", g, p + 0x4c)))
+        p += sz
+    order, insts, ntris = [], [], 0
+    for cid in STATIC_MOBYS:
+        if not any(pl[0] == cid for pl in places):
+            continue
+        o, remap = recs[cid]
+        cls = rac2moby.decode_class(core, o, remap)
+        prim_of, prims, packets = {}, [], []
+        for k, (pk, tris) in enumerate(rac2moby.triangles(cls)):
+            used = sorted({s for _, vs in tris for s in range(3)})  # (unused: the slots are the vertices)
+            del used
+            dinky, strips = [], []
+            vid = {}
+            for prim, vs in tris:
+                pr = pk.prims[prim] if prim < len(pk.prims) else None
+                if pr is None or pr["texture"] < 0:
+                    continue
+                key = (pr["texture"], pr["clamp"])
+                if key not in prim_of:
+                    prims.append((texture(pr["texture"], 14), pr["clamp"], 0x44))
+                    prim_of[key] = len(prims) - 1
+                idxs = []
+                for (x, y, z), (s, t) in vs:
+                    kv = (x, y, z, s, t)
+                    if kv not in vid:
+                        vid[kv] = len(dinky)
+                        dinky.append((x, y, z, 0, s, t, 4096, 0))
+                    idxs.append(vid[kv])
+                strips.append((prim_of[key], idxs))
+                ntris += 1
+            if strips:
+                strips.sort(key=lambda st: st[0])  # (one texture change per texture)
+                packets.append((0, len(packets), dinky, [], strips))
+        sph = list(cls["sphere"])
+        classes.append((cid, cls["scale"], sph, prims, packets))
+        order.append(cid)
+    for cid, s, pos, rot in places:
+        insts.append((order.index(cid), euler_rows(rot[0], rot[1], rot[2], s), list(pos), MOBY_COLOUR))
+    say("mobys drawn static (bind pose): classes %s, %d placements, %d triangles" % (order, len(insts), ntris))
+    return insts
+
+
 # the modern lighting's file for the arena (<out>/lights.txt, the level's file while the custom level is on: mrp_lighting.cpp
 # user_path): point lights at the arena's lamps and screens, emissive surfaces for the screens and neon (our choices, after
 # RAC2's look of Maktar: a dark blue night, cyan neon, warm lamps). Per tie class: (instances: a range of the class's
@@ -337,7 +421,7 @@ def write_lights(out, insts, say):
     say("lights.txt: %d point lights, %d emissive surfaces" % (n, len(ARENA_EMISSIVE)))
 
 
-def build_ties(r2, out, say, colour_scale, colour_min):
+def build_ties(r2, out, say, colour_scale, colour_min, mobys=True):
     MH = r2.H
     core, idx, g = r2.core, r2.index, r2.gameplay
     G = struct.unpack_from("<40I", g)
@@ -410,6 +494,8 @@ def build_ties(r2, out, say, colour_scale, colour_min):
                 nverts += len(dinky) + len(fat)
                 npk += 1
         classes.append((cid, scale, sphere, prims, packets))
+    tie_classes = len(classes)
+    moby_insts = build_mobys(r2, say, texture, classes) if mobys else []
     say("ties: %d instances of %d classes (%s), %d packets (3 LODs), %d vertices, %d tie textures" % (
         len(insts), len(ids), ", ".join(str(c) for c in ids), npk, nverts, len(textures)))
 
@@ -436,7 +522,7 @@ def build_ties(r2, out, say, colour_scale, colour_min):
                 b += struct.pack("<2I", lt, len(vidx)) + struct.pack("<%dH" % len(vidx), *vidx)
                 if len(vidx) & 1:
                     b += bytes(2)
-    b += struct.pack("<I", len(insts))
+    b += struct.pack("<I", len(insts) + len(moby_insts))
     shade = []
     for k, c, m in insts:
         at, cnt = cols.get(k, (0, 0))
@@ -448,6 +534,8 @@ def build_ties(r2, out, say, colour_scale, colour_min):
         rgba = tuple(min(255, int(round(x))) for x in rgb) + (0x80,)
         shade.append(sum(rgba[:3]) / 3.0)
         b += struct.pack("<I12f4B", ids.index(c), m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10], m[12], m[13], m[14], *rgba)
+    for ci, rows, pos, rgba in moby_insts:
+        b += struct.pack("<I12f4B", tie_classes + ci, *(rows[0] + rows[1] + rows[2] + pos), *rgba)
     say("ties: instance colours (each one's list's mean, x %.2f, at least grey %.0f): grey %.0f..%.0f, mean %.0f (0x80 = 1.0)" % (
         colour_scale, colour_min, min(shade), max(shade), sum(shade) / len(shade)))
     open(os.path.join(out, "ties.mrpc"), "wb").write(bytes(b))
@@ -728,7 +816,7 @@ def build(a):
         open(os.path.join(a.out, "index.bin"), "wb").write(bytes(idx))
         open(os.path.join(a.out, "gameplay_unpacked.bin"), "wb").write(bytes(ng))
     if not a.no_ties:
-        build_ties(r2, a.out, say, a.tie_colour_scale, a.tie_colour_min)
+        build_ties(r2, a.out, say, a.tie_colour_scale, a.tie_colour_min, mobys=not a.no_mobys)
     open(os.path.join(a.out, "manifest.txt"), "w").write("\n".join(log) + "\n")
     print("wrote", a.out)
 
@@ -748,6 +836,7 @@ def main():
     ap.add_argument("--hero-light-set", type=int, default=6, help="the arena's light zone's set: the hero's light (RAC2's arena mobys: 6)")
     ap.add_argument("--hero-ambient", type=int, nargs=3, default=(27, 40, 40), help="the light zone's ambient (RAC2's arena mobys: 27 40 40)")
     ap.add_argument("--no-ties", action="store_true", help="no ties.mrpc (the arena without its ties)")
+    ap.add_argument("--no-mobys", action="store_true", help="the arena's static mobys not drawn (ties.mrpc without them)")
     ap.add_argument("--tie-colour-scale", type=float, default=1.25, help="the ties' instance colours scaled")
     ap.add_argument("--tie-colour-min", type=float, default=80.0, help="the ties' instance colours brightened to at least this grey")
     ap.add_argument("--literal-only", action="store_true", help="WAD-encode with literal runs only")
