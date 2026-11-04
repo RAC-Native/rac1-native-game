@@ -218,8 +218,8 @@ texts, and the setup began finding the disc images by itself. The Platinum disc 
 build moved the executable's core, became a game's disc (#64, TriplaDi; #127, SoraKazooie24), and its
 build's own fixes were ported onto the North American code as options (1.02 Fixes, 1.02 Gameplay).
 The first cut content came back as an option: Kerwan's citizens, then Eudora's Transport Ships from
-the beta build and the citizens' idle (#128, Anya-Thoughtmane). It was released as 0.7.0 on
-4 November.
+the beta build and the citizens' idle (#128, Anya-Thoughtmane). After a playtest on Linux it was
+released as 0.7.0 on 4 November.
 
 ## What came of it
 

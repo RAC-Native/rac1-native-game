@@ -13,7 +13,7 @@ game state, same oracle results, same reference images.
 - **The libraries.**
   - GLFW: window, input, gamepads.
   - glad and OpenGL 4.6.
-  - volk and Vulkan-Headers, for the experimental [Vulkan](vulkan.md) renderer: volk finds the
+  - volk and Vulkan-Headers, for the optional [Vulkan](vulkan.md) renderer: volk finds the
     system's Vulkan loader when the game starts, so nothing of Vulkan is needed to build.
   - Dear ImGui, the debug menu's widgets.
   - miniaudio: audio output.

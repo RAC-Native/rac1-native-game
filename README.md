@@ -3,14 +3,14 @@
 > **Current state (0.7.0):** every planet of the game is ported, from Veldin to the final fight with
 > Drek, the credits and the end menu, and of the game's code the game runs, one function is left to
 > port. **The whole game has been played through to the end** on 0.4.0. 0.7.0 brings the European
-> Platinum disc (PAL 2.00) as the game's disc, the disc images found by the setup itself and listed in
-> the launcher, data discs for the Japanese voices and the later discs' corrected texts, the later
-> build's own fixes as options (1.02 Fixes, 1.02 Gameplay), Cut Content (Kerwan's citizens, Eudora's
-> Transport Ships), reorganised Options (Display, Graphics, Language), Water Reflections (with
-> ray-traced values on Vulkan), grass, Anya-Thoughtmane's lighting batches, a direct mouse and
-> controller vibration, macOS on Apple Silicon, a faster frame, and the fixes from the 0.6.0 reports:
-> see the [Changelog](CHANGELOG.md#070). Windows is no longer experimental: players have played
-> through the game on it. Expect some bugs and glitches.
+> Platinum disc (PAL 2.00) as the game's disc, the disc images found by the setup itself and listed
+> in the launcher, data discs for the Japanese voices and the later discs' corrected texts, the
+> later build's own fixes as options (1.02 Fixes, 1.02 Gameplay), Cut Content (Kerwan's citizens,
+> Eudora's Transport Ships), reorganised Options (Display, Graphics, Language), Water Reflections
+> (with ray-traced values on Vulkan), grass, Anya-Thoughtmane's lighting batches, a direct mouse and
+> experimental controller vibration, macOS on Apple Silicon, a faster frame, and the fixes from the
+> 0.6.0 reports: see the [Changelog](CHANGELOG.md#070). It has been playtested on Linux. Windows is
+> no longer experimental: players have played through the game on it. Expect some bugs and glitches.
 > See [Status](docs/status.md).
 
 A native PC port of **Ratchet & Clank** (PlayStation 2, 2002), for Linux and Windows, and macOS on
@@ -24,7 +24,7 @@ goes through a table of where its build put the same code (see
 disc beside the game's disc, for the Japanese voices (see [Setup](docs/setup.md)); as the game's disc it is
 not supported yet (#64). It is not an emulator: all of the game's
 code, the PS2's vector-unit microcode included, runs as native C++ while you play. The 3D is drawn by
-a native renderer (OpenGL, or Vulkan as an experimental option) from the game's own decisions, which
+a native renderer (OpenGL, or Vulkan as an option) from the game's own decisions, which
 makes widescreen, high resolutions, full-detail textures and longer draw distances possible without
 changing how the game behaves.
 
@@ -68,13 +68,13 @@ code is ported and proved against the original code, and **the whole game has be
 to the end** on 0.4.0, from Veldin to the final fight with Drek, the credits and the end menu, with
 the start of a New Game+ checked too. Veldin to Orxon have been played through many times; the
 planets after Orxon have had one full playthrough so far (on Linux), so more playtesting by players
-is welcome. 0.5.0 added the launcher, the experimental Vulkan renderer, the widescreen HUD, a
+is welcome. 0.5.0 added the launcher, the Vulkan renderer (experimental then), the widescreen HUD, a
 reworked modern lighting and 5.1 / 7.1 sound. 0.6.0 had the native renderer draw the whole game,
 the GS replica no longer running beside it, and the setup extract the whole disc, which the game reads
 instead of the image. 0.7.0 (see the [Changelog](CHANGELOG.md)) adds the European Platinum disc as
 the game's disc, data discs (the Japanese voices, the corrected texts), the later build's fixes as
 options, Cut Content, reorganised Options, Water Reflections, grass, more of Anya-Thoughtmane's
-lighting, a direct mouse and controller vibration, macOS on Apple Silicon (a contributor's Metal
+lighting, a direct mouse and an experimental controller vibration, macOS on Apple Silicon (a contributor's Metal
 renderer), a faster frame, and the fixes for the bugs reported on 0.6.0. Of the
 code the game runs, one function is left to port (see the [Port inventory](docs/port-inventory.md)).
 The port as a whole still needs polishing. See [Status](docs/status.md) (which also maps the names
@@ -131,7 +131,7 @@ follows from that.
   static world already sits on the GPU. OpenGL 4.6 covers what the renderer needs, compute shaders
   included, and it runs on every desktop GPU and Linux driver in use. The renderer is kept apart
   from the game code, so another graphics API can be added beside it: a
-  [Vulkan](docs/vulkan.md) backend now is, experimental and opt-in (Options > Display > Renderer),
+  [Vulkan](docs/vulkan.md) backend now is, optional (Options > Display > Renderer),
   drawing the same picture. OpenGL stays the default.
 - **Other platforms and graphics APIs.** A [Metal](docs/metal.md) renderer runs the game on macOS
   (Apple Silicon), a contributor's port; Direct3D may come in the future.
@@ -167,7 +167,7 @@ follows from that.
 You need Linux or [Windows](#windows) (x86-64), a GPU with OpenGL 4.6, and your ISO of the game
 (the North American or the European PAL disc, 1.00 or the Platinum's 2.00). On the Steam Deck (SteamOS), Bazzite and other
 immutable Linux systems the game is built in a distrobox container, which the launcher sets up: see
-[Setup](docs/setup.md#steam-deck-bazzite-and-other-immutable-systems). The experimental Vulkan renderer, optional, needs a
+[Setup](docs/setup.md#steam-deck-bazzite-and-other-immutable-systems). The optional Vulkan renderer needs a
 Vulkan 1.3 driver, and `glslc` when the game is built (the setup lists it as optional): see
 [Vulkan](docs/vulkan.md). On macOS (13 or later, Apple Silicon) the game is built from the source and
 draws with Metal; there is no launcher for it: see [Metal](docs/metal.md).
@@ -234,7 +234,7 @@ For contributors, and for reverse-engineering and decompilation people:
   port and its oracle batches, and the host code that stands in for the PS2's hardware and libraries.
 - [Game logic](docs/game-logic.md): the main loop, levels, mobys, the hero, the camera, cutscenes.
 - [Rendering](docs/rendering.md): how a frame is drawn by the native renderer (the MRP).
-- [Vulkan](docs/vulkan.md): the experimental Vulkan backend of the same renderer.
+- [Vulkan](docs/vulkan.md): the optional Vulkan backend of the same renderer.
 - [Metal](docs/metal.md): macOS's renderer, the Vulkan backend's code on a Metal layer.
 - [Performance](docs/performance.md): where a frame's CPU time goes, the threads beside the game's, the switches to compare,
   how to measure and how a speed-up is proved to leave the game as it was.

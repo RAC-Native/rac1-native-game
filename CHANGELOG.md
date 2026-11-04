@@ -8,17 +8,18 @@ What changed in each release. Releases are source only: you build the game with 
 New discs and new ways to use them: the European Platinum re-release (PAL 2.00) runs as the game's
 disc, the setup finds the disc images in `assets/iso/` by itself and lists them in the launcher, and
 other releases' discs can be added as data discs, for the Japanese voices (Options > Language >
-Voice) and the later discs' corrected texts. Three optional Advanced rows bring the later build's own
-fixes (1.02 Fixes, 1.02 Gameplay) and the corrected texts to the North American disc, and Cut
+Voice) and the later discs' corrected texts. Three optional Advanced rows bring the later build's
+own fixes (1.02 Fixes, 1.02 Gameplay) and the corrected texts to the North American disc, and Cut
 Content brings back Kerwan's citizens and Eudora's Transport Ships. Options are reorganised (Display
 and Graphics as the machine's settings, one Original / Enhanced switch with a preset, Language, a
 two-step New Game). Also new: Water Reflections (Low, Medium, and on Vulkan with ray queries Medium
 (RT) and High (RT)), grass, MXAO, Anya-Thoughtmane's lighting batches 1 to 3, a direct mouse, the
-mouse wheel and weapon cycling, controller vibration (with the DualSense's triggers), Skip Cutscenes,
-macOS on Apple Silicon (a contributor's Metal renderer), a cheaper frame on the CPU and the GPU, and
-the fixes from the 0.6.0 reports. The modern lighting and the other graphics additions are optional
-and off by default (Graphics: Original); the Vulkan renderer, and with it the ray-traced reflections,
-is still experimental.
+mouse wheel and weapon cycling, an experimental controller vibration (with the DualSense's
+triggers), Skip Cutscenes, macOS on Apple Silicon (a contributor's Metal renderer), a cheaper frame
+on the CPU and the GPU, and the fixes from the 0.6.0 reports. The modern lighting and the other
+graphics additions are optional and off by default (Graphics: Original). The Vulkan renderer is no
+longer experimental: it is an optional renderer, OpenGL still the default; the ray-traced
+reflections need it on a GPU with ray queries. Playtested on Linux.
 
 ### Graphics
 - Options > Display and Graphics are the machine's settings: kept in the preferences only, set from the main menu and the
@@ -127,14 +128,14 @@ is still experimental.
   crouches, and the mouse wheel (a new kind of binding on the Controls page) goes through the weapons (#117, #61).
 - Next Weapon / Previous Weapon: two new actions (the wheel and X by default, bindable on the pad too) that put the
   quick select's next or previous weapon in hand without opening it, or move its ring's selection while it is open (#61).
-- Advanced > Vibration (Off, Low, High; High with New Game's Modern): the gamepad vibrates for damage, death, hard
+- Advanced > Vibration (experimental; Off, Low, High; High with New Game's Modern): the gamepad vibrates for damage, death, hard
   landings, nearby explosions, each weapon's shot (by weapon), the wrench's hits, bolts and the ship's flight, through the
   kernel's force feedback on Linux and XInput on Windows, with no new library; the game's state is only read (#10).
 - Vibration: each event a short pulse with a crisp end (the motors used to keep the last, weakest strength of a fade
   until the next event on Linux: the kernel's ff-memless ignored a stop right after an upload); a DualSense driven
   through its own output report (Linux hidraw, Windows HID): its two actuators as left and right, so explosions, hits,
   the thrown wrench and flying enemies are felt from their side (#10).
-- Advanced > Adaptive Triggers (Off, On; a row shown only when the pad in use is a DualSense, kept as the machine's preference;
+- Advanced > Adaptive Triggers (experimental; Off, On; a row shown only when the pad in use is a DualSense, kept as the machine's preference;
   On in Modern): L2 and R2's resistance by weapon with Modern aiming, the light bar by health; on Linux the pad's hidraw node
   needs a udev rule, else the kernel's force feedback is used and the log says so (docs/input.md) (#10).
 - Advanced > Skip Cutscenes (Original, Always; Always with New Game's Modern): Start skips every in-engine scene and

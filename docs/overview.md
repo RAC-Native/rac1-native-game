@@ -49,7 +49,7 @@ and Daxter:
    game talks to (EE memory, timers, the IOP's sound driver, the GS for 2D) are provided by a small
    hardware layer, `runtime/`.
 4. The 3D is not drawn through an emulated GS. A native renderer, the MRP, draws what the game's own
-   render code decided to draw, with OpenGL, or with Vulkan as an experimental option (see
+   render code decided to draw, with OpenGL, or with Vulkan as an option (see
    [Rendering](rendering.md) and [Vulkan](vulkan.md)).
 
 It is not an emulator: no MIPS code runs while you play. Everything that runs is C++ compiled for

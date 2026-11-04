@@ -144,7 +144,7 @@ setup prints (`sudo apt install ...`, `sudo dnf install ...`, `sudo pacman -S --
 and runs it as root with `pkexec` (the desktop's password window; without one, `pkexec` fails at
 once and the launcher shows the command to run in a terminal). Then it runs the setup again.
 
-The experimental [Vulkan](vulkan.md) renderer is built only when `glslc` is there (an optional
+The optional [Vulkan](vulkan.md) renderer is built only when `glslc` is there (an optional
 package; the game is otherwise built with OpenGL only). On Linux the setup's install command lists it
 with the other missing packages, so the launcher installs it only when a required package is missing
 too: install it yourself first (`glslc`; `shaderc` on Arch) to have the renderer. On Windows the

@@ -59,7 +59,7 @@ The MRP does not re-derive any of them.
 ## Two backends
 
 The renderer has two backends, chosen at Options > Display > Renderer and read when the window is
-made: **OpenGL 4.6**, the default, and **Vulkan 1.3**, experimental and opt-in (`RAC1_RENDERER=vulkan`
+made: **OpenGL 4.6**, the default, and **Vulkan 1.3**, optional (`RAC1_RENDERER=vulkan`
 for one run). Each rendering module keeps its OpenGL code and has a Vulkan branch beside it
 (`vk::is_active()`); the shaders are the same GLSL, made Vulkan's by `tools/gen_vk_shaders.py` and
 compiled at build time. Both draw the same picture from the same scene, the modern lighting, the
@@ -944,4 +944,4 @@ thread): see [Performance](performance.md).
 - A moby whose class logic reads its own "drawn" flag behaves as in 4:3 when it is only visible in
   the widened side bands: that flag is game state, and the port does not change it.
 - With the HUD spread, the 2D the space fights draw from draw-list callbacks stays on the 4:3 frame.
-- OpenGL 4.6 by default; the Vulkan 1.3 backend is experimental and opt-in ([Vulkan](vulkan.md)).
+- OpenGL 4.6 by default; the Vulkan 1.3 backend is optional ([Vulkan](vulkan.md)).

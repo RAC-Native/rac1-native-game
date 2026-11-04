@@ -38,13 +38,13 @@ source code, the files that are a mechanical translation of the game's own code 
   in Python; no extra modules);
 - optionally **FFmpeg** development files (`libavcodec`, `libavutil`), to play the game's movies.
   Without them the game runs and skips the movies;
-- optionally **glslc** (shaderc), to build the experimental [Vulkan renderer](vulkan.md)'s shaders
+- optionally **glslc** (shaderc), to build the optional [Vulkan renderer](vulkan.md)'s shaders
   (`glslangValidator` works too); without it the game is built with OpenGL only;
 - an internet connection for the first build (CMake downloads GLFW, GLM, Dear ImGui, TinyGLTF,
   miniaudio, Vulkan-Headers and volk);
 - about 5 GB of free disk for the game's data and generated code (4 GB of it the disc's files, which the
   game reads instead of the image), besides the disc image, plus about 2 GB for the build;
-- a GPU and driver with **OpenGL 4.6** (and **Vulkan 1.3** for the experimental Vulkan renderer,
+- a GPU and driver with **OpenGL 4.6** (and **Vulkan 1.3** for the optional Vulkan renderer,
   which is optional: OpenGL is the default).
 
 The setup tool checks all of this and tells you what is missing, with the command to install it on
@@ -484,7 +484,7 @@ hand.
    `setup.cmd`): it then uses that shell's tools and tells you which packages to install.
 
    The private MSYS2 does not include `glslc`, so a game built this way has OpenGL only (the
-   Renderer row's Vulkan falls back to OpenGL). The experimental [Vulkan renderer](vulkan.md) needs
+   Renderer row's Vulkan falls back to OpenGL). The optional [Vulkan renderer](vulkan.md) needs
    `mingw-w64-clang-x86_64-shaderc` installed in the MSYS2 the game is built with.
 
 2. **Play**: double-click **`play.cmd`** in the repository's folder. (The game must start from the

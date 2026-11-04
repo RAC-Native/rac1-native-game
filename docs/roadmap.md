@@ -104,8 +104,9 @@ text, and New Game in two steps. The graphics gained Water Reflections (Low, Med
 with ray queries Medium (RT) and High (RT): the first ray tracing), grass, MXAO and
 Anya-Thoughtmane's lighting batches 1 to 3 on every level (#102, #120); the controls a direct mouse,
 the mouse wheel and weapon cycling (#117, #61), aiming without the zoom (#70), controller vibration
-with the DualSense's adaptive triggers (#10) and Skip Cutscenes. A contributor ported the game to
-macOS on Apple Silicon with a Metal renderer (#116, #119). The frame got cheaper again on the CPU and
+with the DualSense's adaptive triggers (experimental, #10) and Skip Cutscenes. A contributor ported the game to
+macOS on Apple Silicon with a Metal renderer (#116, #119). The Vulkan renderer is no longer experimental:
+an optional renderer beside OpenGL, which stays the default. The frame got cheaper again on the CPU and
 the GPU, and the reports were fixed (#111, #113, #114, #115, #126).
 
 What comes next, in no fixed order:
@@ -122,6 +123,8 @@ What comes next, in no fixed order:
   shadow meshes.
 - **Mods (planned):** the setup already extracts the disc's files, which the game reads
   ([Setup](setup.md#the-discs-files)); next, a mods folder in front of them, and a Mods menu in the game.
+- **The Vulkan renderer** may become the default in a later release, once it has been tried on more
+  GPUs; OpenGL stays the default for now.
 - **Testing on more machines:** the European PAL discs (the Platinum's most), Windows (now also
   through the launcher), the Steam Deck and the other immutable Linux systems, macOS, and the Vulkan
   renderer and its ray-traced reflections (measured on one machine so far).

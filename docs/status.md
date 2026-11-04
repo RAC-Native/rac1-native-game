@@ -11,7 +11,7 @@ the game runs, one function is left to port (see the [Port inventory](port-inven
 whole game has been played through to the end on 0.4.0 (Linux), and the start of a New Game+
 checked; the planets after Orxon have had one full playthrough so far, so expect some bugs and
 glitches there; the port as a whole still needs polishing. 0.5.0 added the launcher for Windows and
-Linux, an experimental Vulkan renderer (opt-in), a widescreen HUD option, a reworked modern
+Linux, a Vulkan renderer (opt-in, experimental then), a widescreen HUD option, a reworked modern
 lighting, 5.1 / 7.1 sound and a faster game update. Windows is no longer experimental: players have
 played through the game on it. 0.6.0 (see the [Changelog](../CHANGELOG.md#060)) has the native
 renderer draw the whole game itself, the HUD and menus and the levels' water, lava and sand seas
@@ -31,8 +31,10 @@ and for Cut Content (Kerwan's citizens, Eudora's Transport Ships, #128); reorgan
 apart from the text); Water Reflections, with ray-traced values on Vulkan; grass, MXAO and
 Anya-Thoughtmane's lighting batches 1 to 3 (#102, #120); a direct mouse, the mouse wheel and weapon
 cycling (#117, #61), aiming without the zoom (#70), controller vibration with the DualSense's
-adaptive triggers (#10) and Skip Cutscenes; macOS on Apple Silicon with a Metal renderer, a
-contributor's port (#116, #119); a cheaper frame; and fixes (#111, #113, #114, #115, #126).
+adaptive triggers (experimental, #10) and Skip Cutscenes; macOS on Apple Silicon with a Metal renderer, a
+contributor's port (#116, #119); a cheaper frame; and fixes (#111, #113, #114, #115, #126). The Vulkan
+renderer is no longer experimental: it is an optional renderer, OpenGL still the default. 0.7.0
+has been playtested on Linux.
 
 Every planet of the milestone has its own classes ported and proved against the original code, and
 runs on its own overlay. The gaps that remain on them are listed below as **known issues**; they are
@@ -133,9 +135,9 @@ nothing, so an object whose class is not ported stands still or does not appear.
 | Pause menu (with its 3D models), HUD, Vendor, the ship's planet menu, the loading screen's flight | Ported. Known issue: the planet menu's information panels draw empty. |
 | Sound and music (989snd), dialogue streams, movies; 5.1 and 7.1 output | Working; see [Audio](audio.md). The sound mirror keeps music and sounds playing through loads, on by default (`RAC1_IOP_MIRROR=0` turns it off; see [Decisions](decisions.md#13-the-iops-sound-runs-twice)). |
 | Rendering (the MRP) | The default renderer; it draws the whole game itself: all of the 3D in play, the levels' water, lava and sand seas included, and the 2D (HUD, text, menus, fades), with the GS replica no longer running beside it (it stays the faithful reference, `RAC1_MRP=0`); see [Rendering](rendering.md). |
-| The Vulkan renderer (Options > Display > Renderer) | Experimental, opt-in: the same picture as OpenGL, which stays the default and takes over when Vulkan cannot start; see [Vulkan](vulkan.md). |
+| The Vulkan renderer (Options > Display > Renderer) | Optional, no longer experimental: the same picture as OpenGL, which stays the default for now (Vulkan may become the default in a later release) and takes over when Vulkan cannot start; see [Vulkan](vulkan.md). |
 | Modern lighting and the graphics additions (Options > Graphics: Enhanced) | Working, optional, off by default (Graphics: Original); with surface materials (Surface Detail), emissive surfaces, water reflections and grass; see [Lighting](lighting.md) and [Materials](materials.md). |
-| Water Reflections Medium (RT) and High (RT) | New, shown only with the Vulkan renderer on a GPU with ray queries; measured on one GPU so far; see [Rendering](rendering.md#water-reflections-medium-rt). |
+| Water Reflections Medium (RT) and High (RT) | New, optional; they need the Vulkan renderer on a GPU with ray queries; measured on one GPU so far; see [Rendering](rendering.md#water-reflections-medium-rt). |
 | Ambient particles (optional) | Working, off by default, on seven levels; see [Ambient particles](particles.md). |
 | Options > Display (including Texture Detail and the widescreen HUD), Graphics (one Original / Enhanced switch and a preset over every addition), Controls, Advanced; New Game's Original / Modern choice and graphics preset | Implemented, known issues may remain; see [Settings](settings.md). |
 | Data discs (found in `assets/iso/`, or `--data-iso`): the Japanese disc's voices beside the game's disc, and a voice language apart from the text (Options > Language > Voice); the later discs' corrected texts | New, experimental; the Japanese efforts of Ratchet only partly checked. Known issue: with the Japanese voices the intro movie's sound is out of sync (the Japanese disc's movie sound over the North American picture: later sound heard early, and the sound ends before the picture); minor, being fixed. See [Setup](setup.md#data-discs) and [Settings](settings.md). |
@@ -168,7 +170,7 @@ nothing, so an object whose class is not ported stands still or does not appear.
   from the source (a contributor's port, #116, #119; no launcher; see [Metal](metal.md) and
   [Platforms](platforms.md)). A port to ARM64 and Android is in progress on the `port/android`
   branch (#78); the CI has a Linux ARM64 job, not blocking yet. A Vulkan renderer is in,
-  experimental and opt-in ([Vulkan](vulkan.md)); Direct3D may come later.
+  optional ([Vulkan](vulkan.md)); Direct3D may come later.
 - **Regions.** The North American disc (`SCUS-97199`) is the reference. The European PAL disc
   (`SCES-50916`) can now be used on its own, through its region table: the setup, the generated code
   and the game run from it, in the PAL game's 60 Hz mode. The Platinum re-release (version 2.00, a later
