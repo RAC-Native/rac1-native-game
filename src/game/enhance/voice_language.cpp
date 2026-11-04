@@ -5,6 +5,7 @@
 #include <game/enhance/advanced.h>
 #include <game/ovl/ovl_common.h>
 
+#include <runtime/ipu/movie_hw.h>
 #include <runtime/kernel/disc.h>
 
 #include <algorithm>
@@ -236,6 +237,15 @@ void voice_movie(uint32_t lsn, uint32_t bytes, int32_t& track, uint32_t& audio_l
         if (jl == 0 || jb < 2048 || jl >= kDataDiscWindow || !disc_read(jp->disc->base + jl, 1, s) ||
             std::memcmp(s, "\x00\x00\x01\xba", 4) != 0) {
             std::printf("[voice] movie at sector %#x (row %#x): none on the Japanese disc, the text language's sound\n", lsn, o);
+            return;
+        }
+        // the same cut of the movie only: the Japanese disc's logos (row 0x17f8, 8.8 s against the 14.5 s here) and its
+        // credits (row 0x1a40) are other edits, their sound would run ahead of the pictures and end before them
+        const int32_t tc = movie_hw_last_time_code(lsn, bytes), jtc = movie_hw_last_time_code(jp->disc->base + jl, jb);
+        if (tc < 0 || tc != jtc) {
+            std::printf("[voice] movie at sector %#x (row %#x): the Japanese disc's is another cut (its last pictures' time code %#x, "
+                        "here %#x), the text language's sound\n",
+                        lsn, o, static_cast<uint32_t>(jtc), static_cast<uint32_t>(tc));
             return;
         }
         audio_lsn = jp->disc->base + jl;

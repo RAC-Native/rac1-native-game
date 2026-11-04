@@ -190,6 +190,10 @@ What changed in each release. Releases are source only: you build the game with 
   antivirus false positive (F-Secure's `Drop.Win64.APC.HEUR`, #115).
 
 ### Fixes
+- Japanese voices: the boot's logo movie played the Japanese disc's own logo movie's sound, another edit (8.8 s against
+  the 14.5 s pictures): its later part early, then silence before the pictures ended. A movie takes the Japanese disc's
+  sound only when it is the same cut (the last group of pictures' time code the same on both discs); the logos and the
+  credits (16 s shorter in Japan) keep the text language's sound.
 - Windows: a game folder on a drive that is not NTFS (exFAT, FAT32: an external drive) lost `clang.exe` (#126, #88): MSYS2's
   clang package has it, `clang-cpp.exe` and the two `x86_64-w64-mingw32-clang*.exe` as hard links to `clang++.exe`, which
   those drives cannot hold. `toolchain.ps1` (and the launcher, before it runs an older one) copies the missing linked files
