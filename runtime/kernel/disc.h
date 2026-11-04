@@ -58,15 +58,24 @@ bool disc_read_level_wad(int level, std::vector<std::byte>& out);
 // Reads only `level`'s data header and overlay executable from the disc into `out`.
 bool disc_read_level_overlay(int level, std::vector<std::byte>& out);
 
-// ---- A custom level (testing, local experiment) ----
-// RAC1_CUSTOM_LEVEL=<dir>: level 0's data file and gameplay files (levels/level00/data.wad, gameplay_ntsc.bin,
-// gameplay_pal.bin of the disc's files) read from <dir>/data.wad and <dir>/gameplay.bin instead; each the size of the
-// file it stands for. The game's table of contents, level header and sectors stay Veldin's: the same slot. The host's
-// per-level data for level 0 (lights, materials, water, ray tracing, MRP world assets) is Veldin's and is gated off
-// with custom_level_active(). Not with RAC1_READ_ISO=1 (the image itself).
-// The folder ("" when none).
+// ---- A custom planet (local experiment, branch feat/custom-levels-experiment) ----
+// A "shadow slot" (TEMPORARY: a true level slot 19 is to replace it, see src/host/custom_planet.h): the custom planet
+// runs in level 0's slot (Veldin's overlay, index and sectors), and while it is on, level 0's data file and gameplay
+// files (levels/level00/data.wad, gameplay_ntsc.bin, gameplay_pal.bin of the disc's files) are read from
+// <dir>/data.wad and <dir>/gameplay.bin instead (each the size of the file it stands for). Off, level 0 is Veldin's.
+// The host's per-level data for level 0 (lights, materials, water, ray tracing, MRP world assets) is Veldin's and is
+// gated off with custom_level_active(). Not with RAC1_READ_ISO=1 (the image itself).
+// The planet's folder ("" when none): RAC1_CUSTOM_LEVEL=<dir> (the developer's way: on for every load of level 0),
+// else the first folder of assets/custom/ (RAC1_CUSTOM_PLANETS=<dir> instead) holding a planet.txt and a data.wad.
 const std::string& custom_level_dir();
-// Whether `level` is the custom level (level 0 with RAC1_CUSTOM_LEVEL set).
+// Whether the folder came from RAC1_CUSTOM_LEVEL (then level 0 is always the custom planet).
+bool custom_level_sticky();
+// The custom planet on or off (src/host/custom_planet.h decides: the ship's list, the level loads, the saves).
+void custom_level_set_on(bool on);
+bool custom_level_on();
+// Changes each time the planet goes on or off: the host's caches of level 0's assets compare it.
+uint32_t custom_level_generation();
+// Whether `level` is the custom planet (level 0 while it is on).
 bool custom_level_active(int level);
 
 // ---- Data discs ----

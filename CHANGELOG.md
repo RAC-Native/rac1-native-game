@@ -163,6 +163,10 @@ What changed in each release. Releases are source only: you build the game with 
 - Local experiment: the arena's wave challenge: Veldin's enemies (classes 749 and 1440) placed hidden by `maktar.py`, shown wave by
   wave by a host hook (`<folder>/waves.txt`, `src/game/enhance/custom_waves.cpp`) that counts the kills, fills the nanotech
   between waves and says the wave, the enemies left and the kills on the HUD (3 waves).
+- Local experiment, planet P1: the custom level is a planet of its own: a row on the ship's planet list (`assets/custom/<name>/`,
+  `planet.txt`: its name, region, death height and ship), the flight there and back by ship (its take-off path), its own level
+  records (kills, map...) swapped with Veldin's while it is played (a temporary "shadow slot" on level 0, `src/host/custom_planet.h`),
+  its progress in the save's `.pc` file only: the memory card's saves keep Veldin's real records.
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

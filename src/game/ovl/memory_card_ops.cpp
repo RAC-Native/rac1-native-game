@@ -11,6 +11,7 @@
 // asked for (its port +0xe0), +0xe4 / +0xe8 the last error and its port, +0xec / +0xf0 the data
 // to write and its size, +0xf4 a save pending.
 #include <game/ovl/memory_card_ops.h>
+#include <host/custom_planet.h>
 
 #include <game/enhance/advanced.h>
 #include <game/lib/libc.h>
@@ -565,6 +566,7 @@ void card_step(uint32_t st, uint32_t sp) {
                     if (mc_close(lw(S + 0xd0)) != 0) return;
                     if (lw(S + 0xd4) != 0x17) {
                         advanced_save_loaded(lw(rec(0x14)));  // enhancement: the PC settings of this save (save<N>.pc)
+                        custom_planet_save_loaded(true);      // (host, local experiment: whether it was made on the custom planet)
                         sw(S + 0xc4, 0);
                         sw(S + 0xd4, 0);
                         return;

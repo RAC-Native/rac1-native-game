@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 """A custom level for RAC1 from RAC2's disc: the arena of Maktar Nebula (LEVEL2.WAD, chunk 1), in the slot of level 0.
 
-LOCAL EXPERIMENT (experiment/custom-level-maktar). Writes, from the player's own discs, the two files the game reads
-for level 0 when RAC1_CUSTOM_LEVEL=<out> is set (runtime/kernel/disc.cpp):
+LOCAL EXPERIMENT (feat/custom-levels-experiment). Writes, from the player's own discs, the files of a custom planet: the
+game reads them for level 0 while the planet is on (the ship's list row, or RAC1_CUSTOM_LEVEL=<out>: runtime/kernel/disc.h,
+src/host/custom_planet.h):
 
   <out>/data.wad      Veldin's data file with a new core: the arena's tfrags (chunk 1), its collision (types 1 and 63
                       made 31), the sky (Maktar's, or Veldin's with --sky veldin), the arena's tfrag textures (texels in
                       the core, palettes and the third mip in the VRAM image, added after Veldin's rows); Veldin's moby
                       classes, moby textures, hero sequences, gadgets, particle and effect banks kept; no occlusion, no
                       ties, no shrubs. The overlay, the sound bank and the HUD are Veldin's. Same size as Veldin's file.
-  <out>/gameplay.bin  Veldin's gameplay with: Maktar's background / fog colours and fog range, death height 480, no
-                      ship, Maktar's seven directional light sets as RAC2 has them (the arena's tfrags name set 0, a faint
+  <out>/gameplay.bin  Veldin's gameplay with: Maktar's background / fog colours and fog range, death height 480, the
+                      ship on the arena's floor with its take-off path (the only path), Maktar's seven directional light sets as RAC2 has them (the arena's tfrags name set 0, a faint
                       blue: the terrain is its painted colours), one light zone over the arena (the hero lit as RAC2 lights
                       the arena's mobys: set 6, a white key light from above, and the ambient 27 40 40), Veldin's generic
                       cameras (types 0, 4..7), no sound instances, no ties, no shrubs, the hero (class 0) at the
                       arena's centre and the wave challenge's enemies (copies of Veldin's class 749 and 1440 records,
-                      hidden until their wave), no moby groups, volumes, paths or grind lines, no occlusion. Veldin's help text, moby class list,
+                      hidden until their wave), no moby groups, volumes or grind lines, no occlusion. Veldin's help text, moby class list,
                       pvars (the hero's own, the cameras') and the two 0x4010 grids (empty on Veldin and on Maktar) kept.
                       Same size as Veldin's.
   <out>/ties.mrpc     the arena's ties (205 instances of 13 RAC2 classes, their 45 textures), drawn by the host
@@ -25,6 +26,7 @@ for level 0 when RAC1_CUSTOM_LEVEL=<out> is set (runtime/kernel/disc.cpp):
   <out>/waves.txt     the wave challenge: per wave its enemies' uids (src/game/enhance/custom_waves.cpp shows them).
   <out>/lights.txt    the modern lighting's file for the custom level (our choices): point lights at the arena's gates,
                       lamps and screens, emissive surfaces for its screens and neon.
+  <out>/planet.txt    the planet's name on the ship's list, its death height and ship (our own settings file).
   <out>/manifest.txt  what was built (sizes, offsets): no game data.
 
 Nothing here is game data; the outputs are, and stay local (never committed). The core is WAD-encoded by wadlz.py, whose
@@ -34,6 +36,7 @@ Formats: src/formats/level_file.h (data file, asset index, texture records), lev
 level_collision.cpp (collision), src/game/ovl/level_setup.cpp / level_load.cpp (how the game reads them).
 """
 import argparse
+import math
 import os
 import struct
 import sys
@@ -592,6 +595,30 @@ def wave_enemies(g, mo, spec, say):
     return recs, waves
 
 
+def flight_path(ship, n=12):
+    """The paths block with one path, the ship's flight after its take-off (arrival.cpp's step 3 follows it; its last six
+    points fade the screen out): from above the ship up and ahead along its heading, out through the dome. The block: count,
+    the data's offset and size, then the paths' offsets in the data; a path: its point count, 12 bytes, then 16-byte points
+    (x y z, the turn the game computes)."""
+    x, y, z, yaw = ship
+    dx, dy = math.cos(yaw), math.sin(yaw)
+    pts = []
+    for k in range(n):
+        ahead = 6.0 * k * k / 4.0 + 4.0 * k
+        pts.append(struct.pack("<4f", x + dx * ahead, y + dy * ahead, z + 6.0 + 9.0 * k, 0.0))
+    path = struct.pack("<4i", n, 0, 0, 0) + b"".join(pts)
+    head = struct.pack("<4I", 1, 0x20, len(path), 0) + struct.pack("<4I", 0, 0, 0, 0)
+    return head + path
+
+
+def write_planet(out, a):
+    """planet.txt: our own small settings file of the custom planet (src/host/custom_planet.h reads it)."""
+    with open(os.path.join(out, "planet.txt"), "w") as f:
+        f.write("# A custom planet (rac1-native, local experiment): see src/host/custom_planet.h\n"
+                "name %s\nname.it %s\nregion %s\nregion.it %s\ndeath_height %.1f\nship %.2f %.2f %.2f %.4f\n" % (
+                    a.name, a.name_it, a.region, a.region_it, a.death_height, *a.ship))
+
+
 def build(a):
     log = []
     say = lambda s: (log.append(s), print(s))  # noqa: E731
@@ -787,7 +814,11 @@ def build(a):
     ms = r2.gameplay[M[0]:M[0] + 0x80]
     st[0x00:0x20] = ms[0x00:0x20]  # background and fog colours, fog near / far (same layout to +0x20)
     struct.pack_into("<f", st, 0x28, a.death_height)
-    struct.pack_into("<4f", st, 0x2c, 0.0, 0.0, 0.0, 0.0)  # no ship (its x <= 0)
+    # the ship (the custom planet's way out: planet.txt's "ship" line puts it there again, src/host/custom_planet.h) and its
+    # take-off: +0x3c the path the flight follows (ours, below), +0x40 / +0x44 the two level cameras the view blends between
+    # (none: the take-off scene's last view stays)
+    struct.pack_into("<4f", st, 0x2c, *a.ship)
+    struct.pack_into("<3i", st, 0x3c, 0, -1, -1)
     blocks[0x00] = bytes(st)
     nl = u32(r2.gameplay, M[1])
     # Maktar's directional light sets, as RAC2 has them. The arena's tfrags name their sets per vertex (mostly set 0, on Maktar
@@ -819,7 +850,7 @@ def build(a):
     cams = [cb[0x10 + 0x20 * k:0x30 + 0x20 * k] for k in range(i32(cb, 0))]
     cams = [c for c in cams if i32(c, 0) in (0, 4, 5, 6, 7) and c[4:16] == bytes(12)]
     blocks[0x08] = struct.pack("<4I", len(cams), 0, 0, 0) + b"".join(cams)
-    blocks[0x70] = struct.pack("<4I", 0, 0x10, 0, 0)  # paths
+    blocks[0x70] = flight_path(a.ship)  # paths: the ship's take-off
     blocks[0x74] = struct.pack("<4I", 0, 0x10, 0, 0)  # grind lines
     # the hero only: Veldin's class 0 record, at the arena's centre
     mo = G[0x44 // 4]
@@ -876,6 +907,7 @@ def build(a):
         for w in waves:
             f.write("wave %s\n" % " ".join(str(u) for u in w))
     open(os.path.join(a.out, "gameplay.bin"), "wb").write(gp + bytes(gsize - len(gp)))
+    write_planet(a.out, a)
     if a.dump_core:
         open(os.path.join(a.out, "core.bin"), "wb").write(bytes(core.buf))
         open(os.path.join(a.out, "index.bin"), "wb").write(bytes(idx))
@@ -897,6 +929,11 @@ def main():
     ap.add_argument("--hero", type=float, nargs=3, default=(500.0, 600.0, 502.0))
     ap.add_argument("--hero-yaw", type=float, default=1.5708)
     ap.add_argument("--death-height", type=float, default=480.0)
+    ap.add_argument("--ship", type=float, nargs=4, default=(500.0, 578.0, 500.5, -1.5708), help="the ship: x y z yaw (x <= 0: none)")
+    ap.add_argument("--name", default="Maktar", help="the planet's row on the ship's list")
+    ap.add_argument("--name-it", default="Maktar")
+    ap.add_argument("--region", default="Battle Arena", help="the line under the name")
+    ap.add_argument("--region-it", default="Arena")
     ap.add_argument("--light-set0", type=int, default=0, help="Maktar's light set swapped into set 0 (the terrain's; 0: RAC2's sets as they are)")
     ap.add_argument("--hero-light-set", type=int, default=6, help="the arena's light zone's set: the hero's light (RAC2's arena mobys: 6)")
     ap.add_argument("--hero-ambient", type=int, nargs=3, default=(27, 40, 40), help="the light zone's ambient (RAC2's arena mobys: 27 40 40)")

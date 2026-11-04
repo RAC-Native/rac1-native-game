@@ -1,5 +1,6 @@
 // Ported overlay code 0x00200000..0x0020ffff.
 #include <game/enhance/advanced.h>
+#include <host/custom_planet.h>
 #include <game/ovl/hero_l1.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -793,6 +794,7 @@ int32_t sub_0020fe30() {
 // orig: 0x00203ad8 — the record for v (sub_00203a68), or the default record 0x1796a8.
 uint32_t sub_00203ad8(int32_t v) {
     if (const uint32_t s = advanced_text(v)) return s;  // enhancement: the Advanced page's texts
+    if (const uint32_t s = custom_planet_text(v)) return s;  // (host, local experiment: a custom planet's name, custom_planet.h)
     const int32_t i = sub_00203a68(v);
     if (i >= 0) return lwu(lwu(OV(0x0015f660)) + static_cast<uint32_t>(i << 4));
     {  // (host: testing) RAC1_TEXT_TRACE=1: a text id the table lacks

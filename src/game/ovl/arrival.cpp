@@ -3,6 +3,7 @@
 // from the ship 0x28ecd8 and the planet chosen on the ship's map 0x28ed58.
 
 #include <game/ovl/arrival.h>
+#include <host/custom_planet.h>
 #include <game/ovl/flight_draw.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/level_change.h>
@@ -608,7 +609,8 @@ void planet_travel(int32_t planet) {
     sw(SC + 0x5c, lwu(OV(0x00173e08)) + base);
     sw(SC + 0x58, lwu(OV(0x00173e04)) + base);
     sw(OV(0x001611cc), base);
-    if (lw(0x0015ed84) == planet) {
+    const bool reload = custom_planet_travel(planet);  // (host, local experiment: the custom planet's row, custom_planet.h)
+    if (lw(0x0015ed84) == planet && !reload) {
         ship_sequence_start(8);
         const int32_t s0 = lw(0x0015ed80) != 0 ? 0x50 : 0x60;
         const int32_t v = frame_scale_i(lw(OV(0x00160570) + static_cast<uint32_t>(lh(G + 0x26)) * 4));

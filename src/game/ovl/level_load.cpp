@@ -1,5 +1,6 @@
 // Ported overlay code: the gameplay data loader of the level setup (0x241940).
 #include <game/ovl/world_lighting.h>
+#include <host/custom_planet.h>
 #include <game/ovl/moby_pass.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
@@ -74,6 +75,7 @@ int32_t disc_read_wait(uint32_t dst, uint32_t lba, uint32_t n) {
 // and returns the end.
 // orig: 0x00241940
 uint32_t gameplay_load(int32_t level) {
+    custom_planet_level_start(lw(0x0015ed84));  // (host, local experiment: the custom planet's level records in or out, custom_planet.h)
     const uint32_t H = lwu(OV(0x00173e04));
     uint32_t s8 = lwu(OV(0x00173e18));
     if (level == 0) {
@@ -106,6 +108,7 @@ uint32_t gameplay_load(int32_t level) {
     // the level's settings
     constexpr OvConst<0x0016ca40u> S{};
     const uint32_t st = H + lwu(H);
+    custom_planet_settings(st);  // (host, local experiment: planet.txt's death height and ship, custom_planet.h)
     sw(S + 0x23c, lwu(st));
     sw(S + 0x240, lwu(st + 4));
     sw(S + 0x244, lwu(st + 8));

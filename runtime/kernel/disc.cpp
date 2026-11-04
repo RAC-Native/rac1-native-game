@@ -51,6 +51,7 @@ struct DiscFiles {
     std::mutex lock;                           // (the handles: the game's thread and the audio thread read at once)
     std::vector<std::shared_ptr<std::FILE>> handles;
     std::deque<uint32_t> opened;               // the files open, oldest first
+    std::vector<uint32_t> alt;                 // per file: the custom planet's file read instead while it is on (UINT32_MAX none)
 };
 
 // a file of the layout on the host: <dir>/<path> (assets/disc/<path> for the game's disc); on Windows a long one (past
@@ -106,15 +107,18 @@ void files_load(DiscFiles& d) {
         d.pieces.push_back(p);
     }
     for (const std::string& n : names) d.paths.push_back(files_host_path(d.dir, n));
-    if (d.dir == disc_files_dir() && !custom_level_dir().empty()) {  // (a custom level: level 0's two files replaced)
+    d.alt.assign(d.paths.size(), UINT32_MAX);
+    if (d.dir == disc_files_dir() && !custom_level_dir().empty()) {  // (a custom planet: level 0's two files, while it is on)
         for (size_t i = 0; i < names.size(); ++i) {
             const char* with = names[i] == "levels/level00/data.wad"                 ? "data.wad"
                                : names[i] == "levels/level00/gameplay_ntsc.bin" ||
                                          names[i] == "levels/level00/gameplay_pal.bin" ? "gameplay.bin"
                                                                                        : nullptr;
             if (with == nullptr) continue;
-            d.paths[i] = std::filesystem::path(custom_level_dir()) / with;
-            std::printf("[disc] custom level: %s read from %s\n", names[i].c_str(), d.paths[i].string().c_str());
+            d.alt[i] = static_cast<uint32_t>(d.paths.size());
+            d.paths.push_back(std::filesystem::path(custom_level_dir()) / with);
+            d.sizes.push_back(d.sizes[i]);
+            std::printf("[disc] custom planet: %s read from %s while it is on\n", names[i].c_str(), d.paths.back().string().c_str());
         }
     }
     d.handles.resize(d.paths.size());
@@ -183,7 +187,8 @@ bool files_read(DiscFiles& d, uint64_t offset, size_t n, char* dst) {
     if (!d.ok || offset + n > d.image_bytes) return false;
     std::memset(dst, 0, n);  // (what no piece holds)
     return files_find(d, offset, n, [&](const DiscPiece& p, uint64_t a, uint64_t b) {
-        const std::shared_ptr<std::FILE> f = files_handle(d, p.file);
+        const uint32_t file = p.file < d.alt.size() && d.alt[p.file] != UINT32_MAX && custom_level_on() ? d.alt[p.file] : p.file;
+        const std::shared_ptr<std::FILE> f = files_handle(d, file);
         return f && read_full(f.get(), p.file_offset + (a - p.first), dst + (a - offset), static_cast<size_t>(b - a));
     });
 }
@@ -502,17 +507,48 @@ const DataDisc* disc_data_disc(const std::string& region) {
     return nullptr;
 }
 
+namespace {
+std::atomic<bool> g_custom_on{false};
+std::atomic<uint32_t> g_custom_generation{0};
+}  // namespace
+
 // orig: (host)
 const std::string& custom_level_dir() {
     static const std::string dir = [] {
-        const char* e = std::getenv("RAC1_CUSTOM_LEVEL");
-        return std::string(e != nullptr ? e : "");
+        if (const char* e = std::getenv("RAC1_CUSTOM_LEVEL"); e != nullptr && *e != 0) return std::string(e);
+        // (the planets the setup made: the first folder of assets/custom/ with a planet.txt, by name)
+        const char* root = std::getenv("RAC1_CUSTOM_PLANETS");
+        const std::filesystem::path base = root != nullptr ? root : "assets/custom";
+        std::error_code ec;
+        std::vector<std::string> found;
+        for (const auto& e : std::filesystem::directory_iterator(base, ec))
+            if (std::filesystem::exists(e.path() / "planet.txt", ec) && std::filesystem::exists(e.path() / "data.wad", ec)) found.push_back(e.path().string());
+        std::sort(found.begin(), found.end());
+        return found.empty() ? std::string() : found.front();
     }();
     return dir;
 }
 
 // orig: (host)
-bool custom_level_active(int level) { return level == 0 && !custom_level_dir().empty(); }
+bool custom_level_sticky() { return std::getenv("RAC1_CUSTOM_LEVEL") != nullptr && !custom_level_dir().empty(); }
+
+// orig: (host)
+void custom_level_set_on(bool on) {
+    on = on && !custom_level_dir().empty();
+    if (g_custom_on.exchange(on) != on) {
+        g_custom_generation.fetch_add(1);
+        std::printf("[disc] custom planet %s\n", on ? "on (level 0's files are its own)" : "off (level 0 is Veldin)");
+    }
+}
+
+// orig: (host)
+bool custom_level_on() { return g_custom_on.load(std::memory_order_relaxed); }
+
+// orig: (host)
+uint32_t custom_level_generation() { return g_custom_generation.load(std::memory_order_relaxed); }
+
+// orig: (host)
+bool custom_level_active(int level) { return level == 0 && custom_level_on(); }
 
 bool disc_has_level(int level) { return get_disc_level(level) != nullptr; }
 

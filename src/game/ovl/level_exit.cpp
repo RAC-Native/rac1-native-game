@@ -6,6 +6,8 @@
 // host frame: level_exit_start / level_exit_frame / level_exit_finish.
 
 #include <game/ovl/memory_card.h>
+#include <host/custom_planet.h>
+#include <runtime/kernel/disc.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/boot/level_read.h>
 #include <game/input/pad_build.h>
@@ -625,7 +627,7 @@ bool steps_run() {
 // orig: (helper) a part of 0x00292e08
 void exit_to_loading_screen() {
     const int32_t cur = lw(0x0015ed84);
-    if (static_cast<uint32_t>(cur) < 0x13) {
+    if (static_cast<uint32_t>(cur) < 0x13 && !(cur == 0 && custom_level_on())) {  // (host: not Veldin's flag for the custom planet)
         bool done = true;
         if (cur == 7) done = lbu(0x0013dd48) != 0;
         if (cur == 0xe) done = lbu(0x0013dd4f) != 0;
@@ -702,7 +704,7 @@ LevelExit level_exit_start() {
     }
     const int32_t next = lw(OV(0x0015f5c0));
     const int32_t cur = lw(0x0015ed84);
-    if (next == 0 && lbu(0x0013dd58) == 0) {
+    if (next == 0 && lbu(0x0013dd58) == 0 && !custom_planet_skip_story()) {  // (host: not to the custom planet, custom_planet.h)
         fade(frame_scale_i(6));
         card(lang, 0, 1, frame_scale_i(0xf0), 0);
         movie(0);
@@ -715,7 +717,7 @@ LevelExit level_exit_start() {
         movie(2);
         return LevelExit::Movie;
     }
-    if (cur == 0 && next == 1 && lbu(0x0013dd59) == 0) {
+    if (cur == 0 && next == 1 && lbu(0x0013dd59) == 0 && !custom_level_on()) {  // (host: not from the custom planet)
         fade(frame_scale_i(6));
         card(lang, 5, 6, frame_scale_i(0xf0), 0);
         movie(3);

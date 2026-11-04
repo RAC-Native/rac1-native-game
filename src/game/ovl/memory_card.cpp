@@ -7,6 +7,7 @@
 // 4 the main menu's operations, 0x20 / 0x40 / 0x80 / 0x100 the screens' answers), which the memory
 // card screens (game mode 4, kind 3) show and answer.
 #include <game/enhance/language.h>
+#include <host/custom_planet.h>
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/math/vecmath.h>
@@ -404,6 +405,7 @@ bool save_block_check(uint32_t p) {
 // orig: 0x0024d1d8
 int32_t save_block_read(uint32_t src, int32_t index, uint32_t list) {
     if (!save_block_check(src)) return 1;
+    custom_planet_block_read(list, index);  // (host, local experiment: the save's records, not the custom planet's, custom_planet.h)
     uint32_t p = src + 8;
     int32_t bad = 0;
     uint32_t done = 8;
@@ -501,6 +503,7 @@ void new_game_state() {
     const uint32_t buf = lwu(out);
     save_blocks_read(buf + lwu(buf + 0x10));
     language_game_state_read();  // enhancement: the Subtitles choice (Options > Language) over the default save's
+    custom_planet_new_game();  // (host, local experiment: no custom planet progress, custom_planet.h)
     ee_stack_free(0x10);
     sw(0x0015ed84, 0);
 }

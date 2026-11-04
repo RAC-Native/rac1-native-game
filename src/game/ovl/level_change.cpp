@@ -5,6 +5,7 @@
 // loop left: the next level made current, its header and files read, back to the base ELF's
 // overlay load).
 #include <game/lib/libcdvd.h>
+#include <host/custom_planet.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/level_change.h>
@@ -54,7 +55,8 @@ int32_t save_block_write(uint32_t dst, int32_t index, uint32_t list) {
             sw(out, lwu(e + 8));
             sw(out + 4, lwu(e + 4));
             out += 8;
-            mem_copy(out, src + static_cast<uint32_t>(index * size), lw(e + 4));
+            if (!custom_planet_save_record(list, index, e, out))  // (host, local experiment: Veldin's records while the custom planet's are in memory)
+                mem_copy(out, src + static_cast<uint32_t>(index * size), lw(e + 4));
             const uint32_t n = lwu(e + 4);
             e += 0x10;
             out += n;

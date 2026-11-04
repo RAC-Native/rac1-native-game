@@ -3755,6 +3755,7 @@ struct FileLine {
 };
 std::vector<FileLine> g_user_layout;
 int g_user_level = -1;
+uint32_t g_user_custom_gen = 0;  // (custom_level_generation() when the file was read: level 0 another level with a custom planet on / off)
 std::string g_user_path;
 // orig: (host) the level's lights file
 std::string user_path(int level) {
@@ -4183,6 +4184,7 @@ void user_load(int level) {
     g_user_layout.clear();
     g_sun_rays_off = false;
     g_user_level = level;
+    g_user_custom_gen = custom_level_generation();
     g_user_path = user_path(level);
     g_user_light_selected = -1;
     FILE* f = std::fopen(g_user_path.c_str(), "r");
@@ -4300,7 +4302,7 @@ void user_load(int level) {
 // secondary lights' setting)
 void user_ensure() {
     const int level = static_cast<int>(draw_lw(0x0015ed84));
-    if (level != g_user_level) {
+    if (level != g_user_level || g_user_custom_gen != custom_level_generation()) {
         user_load(level);
     } else if (level_moby_classes() != g_global_classes) {  // (the level's classes registered after its file was read: the lines for
         classes_unapply();                                   // every level matched to them again)
@@ -5302,7 +5304,7 @@ void mrp_lighting_shadow_pass() {
     g_sh.ngame = g_sh.npts;
     if (g_modern_points != 0 && g_auto_lights != 0) {  // (step 3) the lights placed by hand, before the emitters
         const int level = static_cast<int>(draw_lw(0x0015ed84));
-        if (level != g_user_level) user_load(level);
+        if (level != g_user_level || g_user_custom_gen != custom_level_generation()) user_load(level);
         const double t = static_cast<double>(g_sh.frame) / 60.0;
         for (size_t i = 0; i < g_user.size() && g_sh.npts < kMaxPts; ++i) {
             const UserLight& l = g_user[i];

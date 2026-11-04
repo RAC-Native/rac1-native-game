@@ -126,6 +126,7 @@ struct Tpl {
 
 struct Level {
     int id = -1;
+    uint32_t custom_gen = 0;  // (custom_level_generation() at its load: level 0 is another level when a custom planet goes on / off)
     bool loaded = false, tried = false;
     std::unique_ptr<World> world;
     std::unique_ptr<WorldIndex> idx;
@@ -705,12 +706,16 @@ RtLevelGeometry rt_gather(const Level& L) {
     return g;
 }
 
+void level_caches_forget();  // (below)
+
 // orig: (host) the level's world asset, its index, its textures, the GL buffers
 void load_level(int id) {
     free_level(g_level);
     Level& L = g_level;
     L.id = id;
+    L.custom_gen = custom_level_generation();
     L.tried = true;
+    level_caches_forget();  // (the same id may be another level: a custom planet, disc.h)
     const double t0 = now_ms();
     L.world = std::make_unique<World>();
     if (!load_world(level_root(id), id, *L.world)) {
@@ -4134,6 +4139,11 @@ struct Emitter {
 std::vector<Emitter> g_emitters;
 std::vector<EmitterClass> g_emitter_classes;  // (mrp_world_emitter_classes)
 int g_emitters_level = -2;
+// orig: (host) the caches made from the level's world (its emissive slots, its emitters) built again: a new load
+void level_caches_forget() {
+    g_emis.level = -2;
+    g_emitters_level = -2;
+}
 
 bool emissive_rgba(uint32_t c) {
     const float r = static_cast<float>(c & 0xff) / 255.0f, g = static_cast<float>((c >> 8) & 0xff) / 255.0f, b = static_cast<float>((c >> 16) & 0xff) / 255.0f;
@@ -4678,7 +4688,7 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
     if (!init_gl()) return;
     const int id = world_level_id();
     // (a level without its asset is not read again every frame: tried, and no world)
-    if (g_level.id != id || !g_level.tried || (g_level.world != nullptr && (vk::is_active() ? g_level.vk_tvbo.buffer == VK_NULL_HANDLE : g_level.vao == 0))) {
+    if (g_level.id != id || g_level.custom_gen != custom_level_generation() || !g_level.tried || (g_level.world != nullptr && (vk::is_active() ? g_level.vk_tvbo.buffer == VK_NULL_HANDLE : g_level.vao == 0))) {
         load_level(id);
         g_rcols.all_dirty = true;
     }

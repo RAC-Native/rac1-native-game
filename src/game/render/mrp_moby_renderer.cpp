@@ -16,6 +16,7 @@
 #include <game/render/mrp_world_assets.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
+#include <runtime/kernel/disc.h>
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
 #include <runtime/vk/vk_context.h>
@@ -178,6 +179,7 @@ struct Bucket {
 
 struct Level {
     int id = -1;
+    uint32_t custom_gen = 0;  // (custom_level_generation() at its load: level 0 is another level with a custom planet on / off)
     bool loaded = false;
     bool gl_loaded = false;
     bool vk_loaded = false;
@@ -725,7 +727,11 @@ void load_level(int id) {
     free_level(g_level);
     Level& L = g_level;
     L.id = id;
-    const std::string dir = asset_root() + "/" + mrpw::level_dir_name(id);
+    L.custom_gen = custom_level_generation();
+    std::string dir = asset_root() + "/" + mrpw::level_dir_name(id);
+    // (a custom planet: its own classes' assets, <dir>/mrp/moby/level00 that --setup --custom-level writes, when there)
+    if (custom_level_active(id) && std::filesystem::is_directory(custom_level_dir() + "/mrp/moby/" + mrpw::level_dir_name(id)))
+        dir = custom_level_dir() + "/mrp/moby/" + mrpw::level_dir_name(id);
     if (!std::filesystem::is_directory(dir)) {
         std::fprintf(stderr, "[mrp] no MRP moby assets for level %d (%s): run setup.sh\n", id, dir.c_str());
         L.missing = true;
@@ -1745,7 +1751,7 @@ void mrp_moby_begin_frame(bool title, bool menu_mode, bool title_menu) {
     const int id = moby_level_id();
     const int guest = g_mrp_guest_class.load();  // (the free hoverboard's class asked for after the level's load: loaded again with it)
     const bool guest_new = guest >= 0 && guest != g_level.guest_key && guest / 10000 != id;
-    if (g_level.id != id || (!g_level.missing && ((vk::is_active() && !g_level.vk_loaded) || (!vk::is_active() && !g_level.gl_loaded))) || guest_new) load_level(id);
+    if (g_level.id != id || g_level.custom_gen != custom_level_generation() || (!g_level.missing && ((vk::is_active() && !g_level.vk_loaded) || (!vk::is_active() && !g_level.gl_loaded))) || guest_new) load_level(id);
     // the level's loaded classes (0x197300 / 0x197a00, count 0x15ffc0): a new set (the level entered
     // again, a class loaded) forgets the classes resolved by header address
     uint64_t h = 1469598103934665603ull;

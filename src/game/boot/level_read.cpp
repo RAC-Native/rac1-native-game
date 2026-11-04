@@ -3,6 +3,8 @@
 // driver: 0x121450 / 0x216728 and their waits).
 #include <game/boot/level_read.h>
 
+#include <host/custom_planet.h>
+
 #include <game/lib/snd989.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/ee_memory.h>
@@ -31,6 +33,7 @@ bool toc_read() {
 // NTSC (0x13a4f0) / PAL (0x13a4f8), occlusion, ...
 // orig: 0x0012f368
 bool level_header_read(int32_t level) {
+    custom_planet_level_header(level);  // (host, local experiment: level 0 the custom planet or Veldin, custom_planet.h)
     std::vector<uint8_t> buf(5 * 2048);
     if (!disc_read(rd(0x0013a448 + static_cast<uint32_t>(level) * 8), 5, buf.data())) return false;
     for (uint32_t i = 0; i < 0x2434; ++i) ee_write<uint8_t>(0x0013a4e0 + i, buf[i]);

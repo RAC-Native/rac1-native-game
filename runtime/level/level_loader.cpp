@@ -62,13 +62,14 @@ struct Prefetched {
 };
 std::mutex g_pf_lock;
 int g_pf_level = -1;
+uint32_t g_pf_custom_gen = 0;  // (custom_level_generation() when it was read: level 0's files differ with a custom planet on)
 std::shared_future<std::shared_ptr<Prefetched>> g_pf;
 
 std::shared_ptr<Prefetched> take_prefetched_level(int level) {
     std::shared_future<std::shared_ptr<Prefetched>> f;
     {
         std::scoped_lock lock(g_pf_lock);
-        if (!g_pf.valid() || g_pf_level != level) return nullptr;
+        if (!g_pf.valid() || g_pf_level != level || g_pf_custom_gen != custom_level_generation()) return nullptr;
         f = g_pf;
         g_pf = {};
         g_pf_level = -1;
@@ -81,8 +82,9 @@ std::shared_ptr<Prefetched> take_prefetched_level(int level) {
 // orig: (host) see level_loader.h
 void LevelLoader::prefetch(int level) {
     std::scoped_lock lock(g_pf_lock);
-    if (g_pf.valid() && g_pf_level == level) return;
+    if (g_pf.valid() && g_pf_level == level && g_pf_custom_gen == custom_level_generation()) return;
     g_pf_level = level;
+    g_pf_custom_gen = custom_level_generation();
     g_pf = std::async(std::launch::async, [level] {
                auto p = std::make_shared<Prefetched>();
                LoadProf prof("(worker) the level's sectors read from the disc and its core decompressed ahead");

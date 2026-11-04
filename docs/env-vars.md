@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 389 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 392 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 297 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 71 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Debugging](#debugging-variables) | 299 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Automated testing](#automated-testing-variables) | 72 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -86,7 +86,9 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_BEAM_LIGHTS` | integer; 0 = off; default on | With the modern lighting and Secondary Lights on All, `0` leaves out the lights of Veldin's plasma beams (#102), to compare. |
 | `RAC1_CAM_TRACE` | set (any value) = on; default off | Prints every camera switch to stderr. |
 | `RAC1_CARD_LOG` | set (any value) = on; default off | Prints a line whenever the memory card screens or machines change state (UI state, flags, level, slot, owned items, bolts). |
-| `RAC1_CUSTOM_LEVEL` | folder; unset = off | Local experiment (`experiment/custom-level-maktar`, never released): level 0's data file and gameplay files are read from `<folder>/data.wad` and `<folder>/gameplay.bin` (each the size of the file it stands for; `tools/custom_level/maktar.py` writes them from RAC2's disc) instead of Veldin's, in Veldin's slot; the MRP world from `<folder>/mrp/world/level0/` (`rac1-native --setup --custom-level <folder>` writes it) and the lights file from `<folder>/lights.txt` instead of Veldin's; the ties of `<folder>/ties.mrpc` (no EE data: their classes in the MRP world, `src/formats/custom_ties.h`) drawn by the host at their placements. Not with RAC1_READ_ISO=1. |
+| `RAC1_CUSTOM_LEVEL` | folder; unset = off | Local experiment (branch `feat/custom-levels-experiment`, never released): the custom planet's folder (`tools/custom_level/maktar.py` writes it from RAC2's disc), and level 0 is that planet on every load (the developer's way in; without it the planet is the first folder of `assets/custom/` with a `planet.txt` and a `data.wad`, reached from its row on the ship's planet list, `src/host/custom_planet.h`). While the planet is on, level 0's data file and gameplay files are read from `<folder>/data.wad` and `<folder>/gameplay.bin` (each the size of the file it stands for) instead of Veldin's, in Veldin's slot (a temporary "shadow slot"); the MRP world from `<folder>/mrp/world/level0/` (`rac1-native --setup --custom-level <folder>` writes it), its moby assets from `<folder>/mrp/moby/level00/` when there, and the lights file from `<folder>/lights.txt` instead of Veldin's; the ties of `<folder>/ties.mrpc` (no EE data: their classes in the MRP world, `src/formats/custom_ties.h`) drawn by the host at their placements. Not with RAC1_READ_ISO=1. |
+| `RAC1_CUSTOM_PLANETS` | folder; default `assets/custom` | Local experiment: where the custom planets are looked for (the first sub-folder holding a `planet.txt` and a `data.wad`, by name); none: no planet row on the ship's list and the game as without the experiment. |
+| `RAC1_CUSTOM_TRACE` | set (any value) = on; default off | Local experiment: prints the custom planet's level records swapped in and out (each record of the save's per-level list, sums of Veldin's and the planet's bytes) and its `.pc` item, `src/host/custom_planet.h`. |
 | `RAC1_CUSTOM_TIE_FAR` | units; 0 = none culled; default 400 | With RAC1_CUSTOM_LEVEL, the custom level's ties (drawn by the host) are left out farther than this from the camera, or behind it. |
 | `RAC1_COROUTINE` | `ucontext`; default the hand-written switch | Linux: the game frame's coroutine switches with `swapcontext` (the switch before the hand-written one, `src/platform/ctx_switch.h`) instead, to compare; the game's state is the same with both. CMake's `-DRAC1_UCONTEXT=ON` compiles only that one. |
 | `RAC1_CHAIN_LOG` | set (any value) = on; default off | Every host frame prints the address range of the graphics DMA chain that is walked and whether it runs. |
@@ -379,7 +381,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_FRAMES` | integer N; default 300 headless, 0 = run until closed in a window | Number of game frames to run before the program exits (screenshot.ppm is written at the last frame of a headless run). |
 | `RAC1_GIVE_FRAME` | game frame number; default 60 | The frame at which RAC1_GIVE_ITEMS, RAC1_BOLTS and the related item or ammo settings are applied (counted after a RAC1_GOTO level change). |
 | `RAC1_GIVE_ITEMS` | comma-separated item ids; unset = none | Gives Ratchet those items at the item-giving frame (RAC1_GIVE_FRAME), through the game's own item function. |
-| `RAC1_GOTO` | N@F[,N@F...] (level number @ game frame; the frame defaults to 60 if only N is given); unset = off | At game frame F triggers the game's own level change to level N, as the debug menu's Levels tab does; several, comma-separated, change level in turn. During a movie (game mode 1) the movie is stopped first, as its skip stops it, and the change made at the next frame. |
+| `RAC1_GOTO` | N@F[,N@F...] (level number @ game frame; the frame defaults to 60 if only N is given); unset = off | At game frame F triggers the game's own level change to level N, as the debug menu's Levels tab does; several, comma-separated, change level in turn. Local experiment: `c@F` goes to the custom planet, as its row on the ship's list does (`src/host/custom_planet.h`). During a movie (game mode 1) the movie is stopped first, as its skip stops it, and the change made at the next frame. |
 | `RAC1_HERO_AT` | <class>@<frame>[,dx,dy,dz[,yaw]] (several separated by /); unset = off | At that game frame places Ratchet through the game's own placement next to the first live moby of that class (placed by the level or spawned since) (default offset 3 0 1, class -1 = the offset is an absolute position), without changing story flags. |
 | `RAC1_HOST_DELAY_MS` | integer milliseconds; default 0 | Makes each host frame this much longer by sleeping, to check that a slow host does not change the game's state. |
 | `RAC1_HOVERBOARD_AT` | <frame>[,<frame>,...] (at most 8); unset = off | At those game frames the debug menu's Hoverboard anywhere is ticked, unticked, ticked... in turn (Ratchet gets on a hoverboard where he stands, then off: the race's board on Rilgar and Kalebo III, the free board elsewhere). |
@@ -404,6 +406,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_MUSIC_ON` | any value = on; default off | After a level starts, lifts the music pause at once, as closing a menu would, so music plays in scripted runs. |
 | `RAC1_NO_MOVIES` | any value = on; default movies on | Disables movie playback (the intro and story movies), so scripted runs do not wait on them. |
 | `RAC1_PACK` | integer item number; no default | Used with the double-jump simulated-input script: at frame 150 gives the character that pack item, so the script can test the jump physics. |
+| `RAC1_PLANET_SAVE_IMAGE` | `<frame>[,<frame>..]:<file prefix>`; unset = off | Local experiment: at those game frames writes the save's blocks as the memory card would get them (the game's block and the 20 levels', `<prefix><frame>.bin`) and the custom planet's `.pc` item (`<prefix><frame>.pc`), to check that a save made on the custom planet holds Veldin's real level records (`src/host/custom_planet.h`). |
 | `RAC1_POKE8` | frame:address=byte pairs separated by commas, numbers decimal or 0x hex, e.g. 100:0x14bec0=1; unset = none | Writes the given bytes to EE RAM at the given frames, to set game state in scripted runs. |
 | `RAC1_RAMDUMP` | frame,filename | At the given frame writes the whole 32 MB of EE RAM plus the scratchpad to the file, for offline comparison. |
 | `RAC1_RAMHASH` | file path; unset = off | After each game frame appends per-page hashes of EE RAM and scratchpad to the file, so two runs can be compared. |

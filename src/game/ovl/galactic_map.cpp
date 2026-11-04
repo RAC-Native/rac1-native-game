@@ -8,6 +8,7 @@
 //   page 0x1b63f8 (0x10): two labels, the planet's info (0x27a108 / 0x27d2d0 / 0x27a068), its map, its model (0x27cbc0),
 //     the command line (0x27f5b0 / 0x278e10).
 #include <game/ovl/galactic_map.h>
+#include <host/custom_planet.h>
 #include <game/ovl/galactic_map_tr.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -53,6 +54,7 @@ int32_t galmap_list_focus_in(uint32_t w) {
             ++n;
         }
     }
+    n = custom_planet_list_row(list, n);  // (host, local experiment: a custom planet's row, custom_planet.h; none otherwise)
     sh(list + n * 0xc, 0);
     const uint32_t order = OV(0x00166c00u - 0x6960);
     sw(w + 0x40, 0);

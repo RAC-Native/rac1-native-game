@@ -79,6 +79,7 @@
 #include <game/enhance/advanced.h>
 #include <game/enhance/controls.h>
 #include <host/custom_waves.h>
+#include <host/custom_planet.h>
 #include <game/enhance/graphics.h>
 #include <game/enhance/vibration.h>
 #include <game/boot/front_end.h>
@@ -2758,6 +2759,7 @@ int main(int argc, char** argv) {
     // testing: RAC1_GOTO=N@F: at frame F the game's level change to level N (as the debug menu's
     // Levels tab does: 0x24d430, 0x28eeb0)
     // a chain of them: RAC1_GOTO=N1@F1,N2@F2,.. (the levels a player's session goes through)
+    constexpr int kGotoCustomPlanet = 0x100;  // (RAC1_GOTO's "c": level 0 as the custom planet)
     int goto_level = -1;
     uint64_t goto_frame = 0;
     std::vector<std::pair<int, uint64_t>> goto_chain;
@@ -2765,7 +2767,12 @@ int main(int argc, char** argv) {
         for (const char* q = g; *q != 0;) {
             int l = -1;
             unsigned long long f = 60;
-            if (std::sscanf(q, "%d@%llu", &l, &f) < 1) break;
+            if (*q == 'c') {  // (local experiment: "c" the custom planet, as its row on the ship's list: custom_planet.h)
+                if (std::sscanf(q + 1, "@%llu", &f) < 0) break;
+                l = kGotoCustomPlanet;
+            } else if (std::sscanf(q, "%d@%llu", &l, &f) < 1) {
+                break;
+            }
             goto_chain.emplace_back(l, f);
             const char* c = std::strchr(q, ',');
             if (c == nullptr) break;
@@ -3056,6 +3063,10 @@ int main(int argc, char** argv) {
                 for (const auto& [gl, gf] : goto_chain)  // (the chain's next change)
                     if (game_frame == gf) goto_level = gl, goto_frame = gf;
                 if (goto_level >= 0 && game_frame == goto_frame && !exiting && !ee_thread_suspended()) {
+                    if (goto_level == kGotoCustomPlanet) {  // (local experiment: the custom planet chosen, then its level 0)
+                        rac1::custom_planet_choose();
+                        goto_level = 0;
+                    }
                     if (boot_active()) {  // the boot's title left for the level (the debug menu's skip)
                         boot_skip_to(goto_level);
                     } else if (movie_mode_stop()) {  // (a movie playing, game mode 1: ended first, the change at the next frame)
@@ -3621,6 +3632,7 @@ int main(int argc, char** argv) {
             // testing: RAC1_KILL_UIDS=<frame>:<uid>,..: at that game frame those mobys' state set to 0xfe (the
             // state a dead moby's watchers test, e.g. Novalis's Blarg dropship 790 for its troopers 325..327); no other effect
             if (!exiting && !ee_thread_suspended()) rac1::custom_waves_frame(frame);  // (testing: a custom level's wave challenge, custom_waves.h)
+            if (!exiting && !ee_thread_suspended()) rac1::custom_planet_test_frame(game_frame);  // (testing: RAC1_PLANET_SAVE_IMAGE, custom_planet.h)
             if (const char* ku = std::getenv("RAC1_KILL_UIDS"); ku != nullptr && !exiting) {
                 char* e = nullptr;
                 const uint64_t kat = std::strtoull(ku, &e, 10);
