@@ -6,10 +6,14 @@ What changed in each release. Releases are source only: you build the game with 
 ## Unreleased
 
 - Movie subtitles (Options > Language > Movie Subtitles, Off by default; RAC1_MOVIE_SUBTITLES for testing): the original
-  shows none over its movies; the game now shows SubRip files from `assets/movie-subtitles/` (a fan-made subtitle pack,
-  installed with the launcher's Install subtitle pack or unzipped by hand, never in the repository) in the game's
-  subtitle look, in the text language; a missing or broken file shows nothing and logs a line. For the pack's makers:
-  `tools/movie_subtitles.py` (Whisper) and `rac1-native --setup --movie-audio`. See docs/movie-subtitles.md.
+  shows none over its movies; the game shows SubRip files from `assets/movie-subtitles/` in the game's subtitle look, in
+  the text language. The setup makes them on request with speech to text from the disc's own sound tracks
+  (`./setup.sh --movie-subtitles [all|en,it,...]`, asked once by an interactive setup; Whisper in `assets/stt/`, or an
+  OpenAI-compatible server with `--stt-url`): names given as hotwords, cues cut at
+  sentences; an edited file, or one the setup did not make, is never written again. A missing or broken file shows
+  nothing and logs a line. See docs/movie-subtitles.md.
+- Launcher, Settings: Movie subtitles (the languages, for every setup), Make movie subtitles, Install subtitle pack (the
+  .srt files of a .zip into `assets/movie-subtitles/`), and Enable debug tools (the game started with `--debug-tools`).
 
 ## 0.7.0
 

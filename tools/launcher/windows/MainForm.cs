@@ -38,6 +38,8 @@ namespace Rac1Launcher
         // Settings
         readonly TextBox txtDir = new TextBox(), txtIso = new TextBox();
         readonly ComboBox cmbJobs = new ComboBox(), cmbChannel = new ComboBox();
+        readonly CheckBox chkSubs = new CheckBox();
+        readonly List<CheckBox> chkSubLangs = new List<CheckBox>();
         readonly ListView lstDiscs = new ListView();
         readonly Label lblDiscs = new Label();
         List<DiscEntry> discs = new List<DiscEntry>();
@@ -268,6 +270,35 @@ namespace Rac1Launcher
                 ForeColor = SystemColors.GrayText,
             });
 
+            // the movie subtitles the setup makes (docs/movie-subtitles.md) and the debug tools
+            var subsPanel = new FlowLayoutPanel { AutoSize = true, WrapContents = true, Margin = Pd(0, 0, 0, 0) };
+            chkSubs.Text = "Make them at the setup, in:";
+            chkSubs.AutoSize = true;
+            string subs = ctl.Settings.MovieSubtitles;
+            chkSubs.Checked = subs != "" && subs != "off";
+            subsPanel.Controls.Add(chkSubs);
+            for (int i = 0; i < SubtitlePack.Languages.Length; i++)
+            {
+                var b = new CheckBox { Text = SubtitlePack.LanguageNames[i], AutoSize = true, Checked = SubtitlePack.Has(subs, SubtitlePack.Languages[i]) };
+                b.CheckedChanged += (s, e) => SaveMovieSubtitles();
+                chkSubLangs.Add(b);
+                subsPanel.Controls.Add(b);
+            }
+            chkSubs.CheckedChanged += (s, e) => SaveMovieSubtitles();
+            foreach (var b in chkSubLangs) b.Enabled = chkSubs.Checked;
+            AddRow(t, "Movie subtitles", subsPanel, new Label
+            {
+                Text = "(speech to text on this computer, from your disc: about 2 GB\nthe first time, then about half an hour)", AutoSize = true,
+                Anchor = AnchorStyles.Left, ForeColor = SystemColors.GrayText,
+            });
+            var chkDebug = new CheckBox { Text = "Enable debug tools", AutoSize = true, Checked = ctl.Settings.DebugTools };
+            chkDebug.CheckedChanged += (s, e) => { ctl.Settings.DebugTools = chkDebug.Checked; ctl.Settings.Save(); };
+            AddRow(t, "Debug tools", chkDebug, new Label
+            {
+                Text = "(the game starts with --debug-tools: its debug menu and overlays)", AutoSize = true, Anchor = AnchorStyles.Left,
+                ForeColor = SystemColors.GrayText,
+            });
+
             var discsPanel = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Margin = Pd(0, 14, 0, 0) };
             discsPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             discsPanel.Controls.Add(new Label { Text = "Disc images", AutoSize = true, Font = new Font(Font, FontStyle.Bold), Margin = Pd(0, 0, 0, 4) }, 0, 0);
@@ -299,6 +330,7 @@ namespace Rac1Launcher
             actions.Controls.Add(Btn("Update now", (s, e) => DoUpdate(), true));
             actions.Controls.Add(Btn("Set up again from scratch", (s, e) => DoRepair(), true));
             actions.Controls.Add(Btn("Make movie subtitles", (s, e) => DoMovieSubtitles(), true));
+            actions.Controls.Add(Btn("Install subtitle pack", (s, e) => InstallSubtitlePack(), true));
             actions.Controls.Add(Btn("Create the shortcuts", (s, e) => CreateShortcuts(true), true));
             actions.Controls.Add(Btn("Open the setup's logs", (s, e) => Platform.OpenFolder(Game.P("build"))));
             actions.Controls.Add(Btn("Report a problem", (s, e) => Platform.OpenUrl(GitHub.Page + "/issues")));
@@ -570,19 +602,53 @@ namespace Rac1Launcher
             DoSetup("--force");
         }
 
-        /// <summary>Our own movie subtitles (tools/setup.py --movie-subtitles, docs/movie-subtitles.md): speech to text
-        /// installed and run on the player's machine; the setup remembers it and makes only what is missing later.</summary>
+        /// <summary>Settings > Movie subtitles: the choice kept, passed to the next setups (Controller.MovieSubtitlesArg).</summary>
+        void SaveMovieSubtitles()
+        {
+            foreach (var b in chkSubLangs) b.Enabled = chkSubs.Checked;
+            ctl.Settings.MovieSubtitles = SubtitlePack.Choice(chkSubs.Checked, chkSubLangs.Select(b => b.Checked).ToArray());
+            ctl.Settings.Save();
+        }
+
+        /// <summary>The movie subtitles made now (tools/setup.py --movie-subtitles, docs/movie-subtitles.md), in the
+        /// languages ticked in Settings: speech to text installed and run on the player's machine; the setup remembers
+        /// it and makes only what is missing later.</summary>
         void DoMovieSubtitles()
         {
             if (!Game.Downloaded) { DoInstall(); return; }
-            if (!Yes("This makes subtitles for the movies with speech to text (Whisper), on this computer, from your disc: English "
-                     + "and Italian. The first time it installs the speech to text (about 2 GB with its model); then it "
-                     + "takes a while (about half an hour on a fast CPU). The next setups make only what is missing; "
-                     + "files you edited are never written again. They show with Options > Language > Movie Subtitles."
-                     + "\n\nMake them now?", "Movie subtitles"))
+            string langs = SubtitlePack.Choice(true, chkSubLangs.Select(b => b.Checked).ToArray());
+            if (langs == "off") langs = "all";
+            if (!Yes("This makes subtitles for the movies with speech to text (Whisper), on this computer, from your disc, in "
+                     + (langs == "all" ? "every language of its sound tracks" : langs) + ". The first time it installs the "
+                     + "speech to text (about 470 MB, and a 1.6 GB model); then it takes a while (about half an hour on a fast "
+                     + "CPU). The next setups make only what is missing; files you edited are never written again. They show "
+                     + "with Options > Language > Movie Subtitles.\n\nMake them now?", "Movie subtitles"))
                 return;
+            chkSubs.Checked = true;
+            ctl.Settings.MovieSubtitles = langs;
+            ctl.Settings.Save();
             tabs.SelectedIndex = 0;
-            DoSetup("--movie-subtitles");
+            DoSetup("--movie-subtitles " + langs);
+        }
+
+        /// <summary>A movie subtitle pack (a zip of row_XXXX.<lang>.srt files, docs/movie-subtitles.md) unpacked into
+        /// assets/movie-subtitles/ (core/SubtitlePack.cs); Options > Language > Movie Subtitles shows them.</summary>
+        void InstallSubtitlePack()
+        {
+            if (!Game.Downloaded) { DoInstall(); return; }
+            using (var d = new OpenFileDialog { Title = "Choose a movie subtitle pack (.zip)", Filter = "Zip archive (*.zip)|*.zip" })
+            {
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                try
+                {
+                    var (n, skipped) = SubtitlePack.Install(Game, d.FileName);
+                    Say($"{n} subtitle files installed into\n{SubtitlePack.Dir(Game)}"
+                        + (skipped > 0 ? $"\n({skipped} other files in the zip left out)" : "")
+                        + "\n\nIn the game: Options > Language > Movie Subtitles: On. They follow the text language.",
+                        "Movie subtitles");
+                }
+                catch (Exception e) { Say("The pack could not be installed: " + e.Message, "Movie subtitles", MessageBoxIcon.Error); }
+            }
         }
 
         void DoUpdate()

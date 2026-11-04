@@ -2335,33 +2335,84 @@ def data_discs_due():
             if d.get("dir") and disc_extract.layout_missing(ROOT / d["dir"]) is not None]
 
 
+MOVIE_SUB_LANGS = ("en", "fr", "de", "es", "it")  # (the movies' sound tracks; tools/movie_subtitles.py TRACKS)
+
+
+def parse_movie_sub_langs(value):
+    """--movie-subtitles: "all" or a comma-separated subset of en, fr, de, es, it."""
+    v = (value or "").strip().lower()
+    if v == "all":
+        return "all"
+    langs = [x.strip() for x in v.split(",") if x.strip()]
+    bad = [x for x in langs if x not in MOVIE_SUB_LANGS]
+    if not langs or bad:
+        raise argparse.ArgumentTypeError(f"movie subtitle languages: all, or some of {', '.join(MOVIE_SUB_LANGS)} "
+                                         f"separated by commas (not {', '.join(bad) or 'nothing'})")
+    return ",".join(x for x in MOVIE_SUB_LANGS if x in langs)
+
+
+def movie_subtitles_ask(state):
+    """Once, in an interactive setup that was not told: whether to make the movie subtitles, and in which languages.
+    The answer is kept (assets/setup-state.json); --movie-subtitles / --no-movie-subtitles change it later."""
+    if state.get("movie_subtitles_asked") or LAUNCHER or not sys.stdin.isatty():
+        return state.get("movie_subtitles")
+    state["movie_subtitles_asked"] = True
+    print("\n  Optional: subtitles for the movies. The original shows none over its movies; this port can, made here from")
+    print("  your disc's own sound tracks by speech to text (Whisper, on this computer). It downloads about 470 MB of")
+    print("  software and a 1.6 GB model into assets/stt/, then takes about half an hour on a fast CPU (minutes with an")
+    print("  NVIDIA GPU). The subtitles show with Options > Language > Movie Subtitles; you can edit them as text.")
+    want = None
+    if ask("Make subtitles for the movies?", False):
+        try:
+            reply = input(f"  Languages: all (the default), or some of {', '.join(MOVIE_SUB_LANGS)}, e.g. en,it: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            reply = ""
+        try:
+            langs = parse_movie_sub_langs(reply or "all")
+        except argparse.ArgumentTypeError as e:
+            warn(f"{e}; all of them, then")
+            langs = "all"
+        want = {"languages": langs}
+        state["movie_subtitles"] = want
+    else:
+        print("  No movie subtitles (./setup.sh --movie-subtitles makes them later).")
+    save_state(state)
+    return want
+
+
 def movie_subtitles_step(args):
-    """The movie subtitles of our own (tools/movie_subtitles.py, docs/movie-subtitles.md): only when the player opted in
-    (--movie-subtitles, kept in assets/setup-state.json until --no-movie-subtitles). The local speech to text is installed
-    the first time (assets/stt/), or a server is used (--stt-url). Movies already done are skipped; a file edited by hand
-    is never written again. A failure here is reported and the setup goes on: the game shows no subtitles where there is
-    no file."""
+    """The movie subtitles (tools/movie_subtitles.py, docs/movie-subtitles.md): only when the player chose them
+    (--movie-subtitles [all | en,it...], or the setup's one question; kept in assets/setup-state.json until
+    --no-movie-subtitles). The local speech to text is installed the first time (assets/stt/), or a server is used
+    (--stt-url). Movies already done are skipped; a file edited by hand, or not made by the tool (a pack's), is never
+    written again. A failure here is reported and the setup goes on: the game shows no subtitles where there is no file."""
     state = load_state()
     want = state.get("movie_subtitles")
     if args.no_movie_subtitles:
+        state["movie_subtitles_asked"] = True
         if want is not None:
             state.pop("movie_subtitles", None)
-            save_state(state)
             ok("Movie subtitles: not made from now on (the files made are kept, assets/movie-subtitles/)")
+        save_state(state)
         return
     if args.movie_subtitles is not None or args.stt_url or args.stt_model:
         want = dict(want or {})
         if args.movie_subtitles is not None:
             want["languages"] = args.movie_subtitles
-        want.setdefault("languages", "en,it")
+        want.setdefault("languages", "all")
         if args.stt_url is not None:
             want["stt_url"] = args.stt_url
         if args.stt_model is not None:
             want["model"] = args.stt_model
         state["movie_subtitles"] = want
+        state["movie_subtitles_asked"] = True
         save_state(state)
+    else:
+        want = movie_subtitles_ask(state)
     if not want:
         return
+    print(color("1", "\nMaking the movie subtitles (speech to text)"), flush=True)
     tool = [sys.executable, str(ROOT / "tools/movie_subtitles.py")]
     if not want.get("stt_url"):
         r = subprocess.run(tool + ["--check-installed"], cwd=ROOT)
@@ -2428,11 +2479,11 @@ def main():
                     help="only build the game (and generate its code first if that is missing or out of date)")
     ap.add_argument("--play", action="store_true", help="start the game when the setup finishes without asking")
     ap.add_argument("--no-play", action="store_true", help="do not offer to start the game at the end")
-    ap.add_argument("--movie-subtitles", nargs="?", const="en,it", default=None, metavar="LANGUAGES",
+    ap.add_argument("--movie-subtitles", nargs="?", const="all", default=None, metavar="LANGUAGES", type=parse_movie_sub_langs,
                     help="also make subtitles for the movies with speech to text (Whisper) on this machine, from your disc: "
-                         "English and Italian, or the languages given (en,fr,de,es,it); installs the speech to text the "
-                         "first time (about 2 GB with its model) and takes a while (docs/movie-subtitles.md); kept for the "
-                         "next setups, which make only what is missing")
+                         "all the languages of its sound tracks (the default), or those given (en,fr,de,es,it); installs "
+                         "the speech to text the first time (about 470 MB, and a 1.6 GB model) and takes a while "
+                         "(docs/movie-subtitles.md); kept for the next setups, which make only what is missing")
     ap.add_argument("--no-movie-subtitles", action="store_true",
                     help="stop making movie subtitles at each setup (the files made are kept)")
     ap.add_argument("--stt-url", default=None, metavar="URL",
@@ -2471,9 +2522,7 @@ def main():
         need_disc = False
     for i, d in enumerate(args.data_iso):
         args.data_iso[i] = str(Path(d).expanduser().resolve())
-    subs = (not args.build_only and not args.no_movie_subtitles
-            and (args.movie_subtitles is not None or bool(load_state().get("movie_subtitles"))))
-    total = (2 if no_image else 6 if not args.build_only else (4 if need_disc else 2)) + (1 if subs else 0)
+    total = 2 if no_image else 6 if not args.build_only else (4 if need_disc else 2)
     n = 0
 
     def next_step(msg):
@@ -2524,8 +2573,6 @@ def main():
             sys.exit(1)
         generate(iso, args.force)
         check_disc_files(iso)
-    if subs:
-        next_step("Making the movie subtitles (speech to text)")
     if not args.build_only:
         movie_subtitles_step(args)
 

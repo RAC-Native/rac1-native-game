@@ -19,6 +19,10 @@ namespace Rac1Launcher
         public string Iso = "";
         public int Jobs;  // (0: the setup's own choice)
         public string Container = "";  // (Linux, an immutable system: "distrobox" or "toolbox", the game is built and run in a container)
+        public bool DebugTools;  // (the game started with --debug-tools: its debug menu and overlays)
+        // (the setup's movie subtitles, docs/movie-subtitles.md: "" never chosen here, "off", or the languages, "all" or
+        // "en,it"..., passed to every setup the launcher runs as --movie-subtitles / --no-movie-subtitles)
+        public string MovieSubtitles = "";
 
         public static string ConfigDir => Platform.ConfigDir;
         static string FilePath => Path.Combine(ConfigDir, "launcher.txt");
@@ -37,6 +41,8 @@ namespace Rac1Launcher
                     else if (k == "iso") s.Iso = v;
                     else if (k == "jobs") int.TryParse(v, out s.Jobs);
                     else if (k == "container") s.Container = v;
+                    else if (k == "debug_tools") s.DebugTools = v == "1";
+                    else if (k == "movie_subtitles") s.MovieSubtitles = v;
                 }
             }
             catch (IOException) { }
@@ -50,7 +56,10 @@ namespace Rac1Launcher
             {
                 Directory.CreateDirectory(ConfigDir);
                 File.WriteAllText(FilePath, $"game_dir {GameDir}\r\niso {Iso}\r\njobs {Jobs}\r\n"
-                                            + (string.IsNullOrEmpty(Container) ? "" : $"container {Container}\r\n"), new UTF8Encoding(false));
+                                            + (string.IsNullOrEmpty(Container) ? "" : $"container {Container}\r\n")
+                                            + (DebugTools ? "debug_tools 1\r\n" : "")
+                                            + (string.IsNullOrEmpty(MovieSubtitles) ? "" : $"movie_subtitles {MovieSubtitles}\r\n"),
+                                  new UTF8Encoding(false));
             }
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }

@@ -98,6 +98,13 @@ Options > Sound's Mono / Stereo row also offers 5.1 and 7.1: the world's sounds 
 direction, the dialogue from the centre. The game itself still plays in Stereo. See
 [Settings](settings.md#sound-51-and-71).
 
+### Movie subtitles
+
+The original shows no text over its movies. Options > Language > Movie Subtitles (Off by default) shows subtitle files
+over them, in the game's subtitle look. The setup can make them from your disc with speech to text, in the languages you
+choose (`./setup.sh --movie-subtitles`, or the launcher's Settings); they are plain text files you can correct, and a
+subtitles pack's files work the same way. See [Movie subtitles](movie-subtitles.md).
+
 ### New Game: Original or Modern, then the graphics
 
 At New Game the game asks how to play, Original (the PS2's controls, cutscenes and Vendor) or Modern (the gameplay

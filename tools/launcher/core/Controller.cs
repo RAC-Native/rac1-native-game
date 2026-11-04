@@ -263,6 +263,12 @@ namespace Rac1Launcher
             view.Step(extra.StartsWith("--update") ? "Downloading the update" : "Starting the setup");
 
             int jobs = Settings.Jobs;
+            // (the movie subtitles chosen in Settings, unless this run says itself)
+            if (!extra.Contains("movie-subtitles") && !extra.StartsWith("--update"))
+            {
+                string subs = MovieSubtitlesArg();
+                if (subs != "") extra = (extra + " " + subs).Trim();
+            }
             bool installedPackages = false, madeContainer = false;
             for (int attempt = 0; ; attempt++)
             {
@@ -653,15 +659,25 @@ namespace Rac1Launcher
                 Platform.WriteContainerPlayScript(Game, Settings.Container);
                 exe = Platform.ContainerPlayScript(Game);
             }
+            string debug = Settings.DebugTools ? " --debug-tools" : "";  // (Settings > Enable debug tools)
             var psi = Platform.Windows
                 ? new System.Diagnostics.ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "cmd.exe"),
-                      "/d /s /c \"" + Platform.Quote(Game.Exe) + " > " + Platform.Quote(GameLog) + " 2>&1\"")
+                      "/d /s /c \"" + Platform.Quote(Game.Exe) + debug + " > " + Platform.Quote(GameLog) + " 2>&1\"")
                 : new System.Diagnostics.ProcessStartInfo("/bin/sh",
-                      "-c " + Platform.Quote("exec \"$0\" > \"$1\" 2>&1") + " " + Platform.Quote(exe) + " " + Platform.Quote(GameLog));
+                      "-c " + Platform.Quote("exec \"$0\"" + debug + " > \"$1\" 2>&1") + " " + Platform.Quote(exe) + " " + Platform.Quote(GameLog));
             psi.WorkingDirectory = Game.Dir;
             psi.UseShellExecute = false;
             psi.CreateNoWindow = true;
             return System.Diagnostics.Process.Start(psi);
+        }
+
+        /// <summary>The setup's arguments for the movie subtitles chosen in Settings: "--movie-subtitles en,it",
+        /// "--no-movie-subtitles", or "" (never chosen in the launcher: the setup keeps what it has).</summary>
+        public string MovieSubtitlesArg()
+        {
+            string v = Settings.MovieSubtitles;
+            if (string.IsNullOrEmpty(v)) return "";
+            return v == "off" ? "--no-movie-subtitles" : "--movie-subtitles " + v;
         }
 
         /// <summary>What to tell the player when the game closed with an error right after starting.</summary>
