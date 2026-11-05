@@ -12,8 +12,10 @@
 // - arriving (state 3): standing (sequence 3) for its controller's wait, then into the arena.
 // - wandering (substate 2: state 4 with its shield, 5 without, 0x3d14f8): walks (3) to a spot of its controller's (ours on
 //   its side of the arena, as 2850's), stands there (0 with the shield, 1 without), now and then the other one (after 300
-//   frames, then every 0..100). With a turn to attack (0x3fc0d0) it comes at Ratchet. (Without one RAC2 pairs it with the
-//   nearest idle 2506 and the two spar, 0x3d1998 mode 2: not ported, ours wait.)
+//   frames, then every 0..100). With a turn to attack (0x3fc0d0: three for the 2506s, and every 4th frame the controller
+//   hands the 2506s' and 2850s' turns to the two of them nearest Ratchet, 0x3fbcf8) it comes at Ratchet. Without one it
+//   pairs with the nearest other 2506 without one and the two spar (0x3d1998 mode 2: each the other's target, the fight
+//   below the same; the flail hurts only Ratchet), until one gets a turn or is hurt.
 // - approaching (state 6, substate 3; 0x3d1588): guarded (sequence 2; its mover 0.0056 / 0.032 a frame) along its
 //   approach angle; farther than 14 it runs (state 7, sequence 3, top 0.103) until within 4 or 450 frames; within 4 it
 //   squares up (0x3d1610).
@@ -31,8 +33,8 @@
 //   or less, it throws the shield off (0x3d1ed0: RAC2's 0x32b468, rac2_compat's part_throw). At none it falls (state 21,
 //   substate 7, sequence 16), the shield thrown off, and after it lands (or 60 frames) it blows up (the arena's
 //   explosion, debris; the controller counts it, 0x3fc248).
-// Ours vs RAC2's: the sparring between waiting 2506s, its steering round the others and its path-finding round the
-// arena's middle (0x32f608) are left out; side-stepping turns it on the spot (RAC2's sequences 4 / 5 carry it, assumed).
+// Ours vs RAC2's: its steering round the others is a push away from them (rac2::steer_round), its path-finding round the
+// arena's middle (0x32f608) is left out; side-stepping turns it on the spot (RAC2's sequences 4 / 5 carry it, assumed).
 #include <host/rac2_enemies.h>
 #include <host/rac2_compat.h>
 
@@ -58,7 +60,7 @@ constexpr int32_t kShieldClass = 2042;     // (RAC2's 2520 converted: maktar.py 
 constexpr uint32_t kShieldPoint = 2;       // (its attachment point: 0x3d1430)
 constexpr float kPi = 3.14159265f, kDeg = kPi / 180.0f;
 constexpr float kFloor = 500.0f;           // (the arena's floor)
-constexpr float kCentreX = 500.0f, kCentreY = 600.0f;  // (the arena's middle)
+constexpr float kCentreX = 500.0f, kCentreY = 601.55f;  // (the arena's middle: its controller's point 0x3fc098, the level's cuboid 50)
 constexpr float kSpotRadius = 8.0f, kSpotSpread = 2.0f, kSpotSide = 0.7854f;
 constexpr float kClose = 4.0f, kRun = 14.0f, kCutFacing = 0.2618f, kSide = 0.01f;
 constexpr float kStop = 0.5f;
@@ -66,7 +68,7 @@ constexpr float kGravity = 0.012f;
 constexpr float kStepUp = 1.0f;            // (walker_move's probe height: it steps over the floor's rims, as 2850's)
 constexpr float kHealth = 2.0f, kDamage = 1.0f;
 constexpr uint32_t kIdleFirst = 300, kIdleNext = 100, kArriveFrames = 40, kRunMost = 450, kSparkWait = 60;
-constexpr int kTurns = 3;                  // (of its class attacking at once: ours, as for the others)
+constexpr float kKeepApart = 1.6f;         // (it steers round the other enemies nearer than this: rac2::steer_round)
 constexpr int32_t kBolts = 10;             // (our share of bolts for one)
 
 // RAC2's sequences
@@ -164,6 +166,9 @@ bool walk_to(uint32_t m, const Pv& p, const Vec3& to, bool moving) {
         p.f(pv::kPush + 4, p.f(pv::kPush + 4) * 0.85f);
         p.i(pv::kPush + 8, p.i(pv::kPush + 8) - 1);
     }
+    const Vec3 away = rac2::steer_round(m, kKeepApart);  // (round the other enemies)
+    step.x += away.x * 0.02f;
+    step.y += away.y * 0.02f;
     walker_move_v(m, step, 0, kStepUp, 0.7f, 0.0f);
     const float ground = rac2::ground_under(m, kFloor - 30.0f);
     float z = lwc1(m + rac2::moby::kPos + 8), vz = p.f(pv::kVz) - kGravity;
@@ -284,6 +289,7 @@ void hit_taken(uint32_t m, const Pv& p) {
         return;
     }
     p.f(pv::kHit, p.f(pv::kHit) - dmg);
+    rac2::spar_leave(m);
     if (trace()) std::printf("[2506] frame %u: %#x hit (damage %.2f, health %.2f)\n", rac2::level_frame(), m, static_cast<double>(dmg), static_cast<double>(p.f(pv::kHit)));
     vec3_set_length(push, push, 0.1f);
     p.f(pv::kPush, push.x);
@@ -338,15 +344,19 @@ void update(uint32_t m) {
     }
     const bool entering = p.i(pv::kEntered) == 0;
     p.i(pv::kEntered, 1);
-    const Vec3 at = rac2::moby_pos(m), hero = rac2::hero_pos();
-    const float to_hero = dist2d(at, hero);
-    const float bearing = std::atan2(hero.y - at.y, hero.x - at.x);
     rac2::test_hit(m);
     hit_taken(m, p);
     const int32_t s = p.i(pv::kState);
     const bool fighting = s >= Approaching && s <= ShieldCutting;
-    const bool turn = (s == WanderShield || s == Wander || fighting) && rac2::attack_turn_take(kRac2Class, m, kTurns);
-    if (!turn && fighting) wander(m, p);
+    const bool ready = s == WanderShield || s == Wander || fighting;
+    const bool turn = ready && rac2::attack_turn_take(kRac2Class, m);
+    // without a turn, a partner to spar with (RAC2's 0x3d1998 mode 2): the fight the same, at it instead of Ratchet
+    const uint32_t partner = ready && !turn ? rac2::spar_partner(kRac2Class, m) : 0u;
+    if (!turn && partner == 0 && fighting) wander(m, p);
+    // (`hero` below: what it fights, Ratchet or its partner; the flail's spheres test Ratchet himself)
+    const Vec3 at = rac2::moby_pos(m), hero = partner != 0 ? rac2::moby_pos(partner) : rac2::hero_pos();
+    const float to_hero = dist2d(at, hero);
+    const float bearing = std::atan2(hero.y - at.y, hero.x - at.x);
     // within reach and facing him: a cut, or one time in five a taunt (RAC2's 0x3d1698)
     auto try_cut = [&]() {
         if (to_hero >= kClose || std::fabs(angle_to(bearing, p.f(pv::kHeading))) >= kCutFacing) return false;
@@ -387,7 +397,7 @@ void update(uint32_t m) {
             rac2::seq_play(m, rac2::rand_below(2) == 0 ? StandShield : Stand, 10);
             p.i(pv::kIdleAt, static_cast<int32_t>(rac2::level_frame()) + rac2::rand_below(static_cast<int32_t>(kIdleNext)) + 60);
         }
-        if (turn) {  // (0x3d1588: guarded, at him)
+        if (turn || partner != 0) {  // (0x3d1588: guarded, at him or its partner)
             mover(p, 0.00556f, 0.0317f, 0.00698f, 0.838f);
             rac2::seq_play(m, Guarded, 10);
             set_state(m, p, Approaching);
@@ -454,7 +464,7 @@ void update(uint32_t m) {
     case ShieldCutting: {
         walk_to(m, p, at, false);
         const float t = rac2::seq_time(m);
-        if (t >= 19.0f && t <= 31.0f) cut_spheres(m, p, hero);
+        if (t >= 19.0f && t <= 31.0f) cut_spheres(m, p, rac2::hero_pos());
         if (frames(p) > 3 && rac2::seq_ended(m)) {
             if (p.i(pv::kHitHim) != 0) {
                 rac2::seq_play(m, Taunt, 10);
@@ -485,10 +495,10 @@ void update(uint32_t m) {
     }
     if (const uint32_t sh = shield_of(m, p)) rac2::part_place(sh, m, kShieldPoint, 0.0f);
     if (trace() && (rac2::level_frame() % 60) == 0)
-        std::printf("[2506] frame %u: %#x state %d seq %u time %.1f at %.1f %.1f %.1f, Ratchet %.1f away, health %.2f, turn %d, shield %d\n",
+        std::printf("[2506] frame %u: %#x state %d seq %u time %.1f at %.1f %.1f %.1f, Ratchet %.1f away, health %.2f, turn %d, partner %#x, shield %d\n",
                     rac2::level_frame(), m, p.i(pv::kState), rac2::seq_now(m), static_cast<double>(rac2::seq_time(m)), static_cast<double>(at.x),
                     static_cast<double>(at.y), static_cast<double>(at.z), static_cast<double>(to_hero), static_cast<double>(p.f(pv::kHit)), turn ? 1 : 0,
-                    shield_of(m, p) != 0 ? 1 : 0);
+                    partner, shield_of(m, p) != 0 ? 1 : 0);
 }
 
 }  // namespace

@@ -34,6 +34,27 @@ struct Turn {
 };
 std::vector<Turn> g_turns;
 
+struct Ask {  // (an enemy that asked for a turn, or to spar, in a frame)
+    int32_t rac2_cls;
+    uint32_t m, pvars;
+    int32_t cls;
+    uint32_t frame;
+    float dist;  // (from Ratchet)
+};
+std::vector<Ask> g_asks, g_spar_asks;
+uint32_t g_picked = ~0u;  // (the frame of the last 4-frame pick)
+
+struct Pair {
+    uint32_t a, b;
+};
+std::vector<Pair> g_pairs;
+
+struct Seen {  // (where an enemy was in a frame: steer_round)
+    uint32_t m, frame;
+    Vec3 at;
+};
+std::vector<Seen> g_seen;
+
 // orig: (none) — the turns of the dead (or of slots gone to another moby) taken back
 void turns_prune() {
     g_turns.erase(std::remove_if(g_turns.begin(), g_turns.end(), [](const Turn& t) { return moby_gone(t.m, t.cls, t.pvars); }), g_turns.end());
@@ -111,6 +132,11 @@ void standin_release(uint32_t pvars) {
 void standin_reset() {
     std::memset(g_taken, 0, sizeof g_taken);
     g_turns.clear();
+    g_asks.clear();
+    g_spar_asks.clear();
+    g_pairs.clear();
+    g_seen.clear();
+    g_picked = ~0u;
 }
 
 // orig: (none)
@@ -311,6 +337,16 @@ void part_update(uint32_t w) {
     if (lie <= 0) moby_kill(w);
 }
 
+// orig: (none) — RAC2's gp + 0x21d8 (2506, 2850, 3131, 3134), read from its level 2 code
+int attack_turns_start(int32_t rac2_cls) {
+    switch (rac2_cls) {
+    case 2506: return 3;
+    case 2850: return 4;
+    case 3134: return 5;
+    default: return 0;
+    }
+}
+
 // orig: (none)
 bool attack_turn_held(uint32_t m) {
     for (const Turn& t : g_turns)
@@ -318,20 +354,107 @@ bool attack_turn_held(uint32_t m) {
     return false;
 }
 
+// orig: (none) — 0x3fbcf8: every 4th frame the 2506s' and 2850s' turns taken back and given to the two of them nearest
+// Ratchet that asked (in the frame before or this one)
+void turns_pick() {
+    const uint32_t now = level_frame();
+    if ((now & 3u) != 0 || g_picked == now) return;
+    g_picked = now;
+    auto picked = [](int32_t c) { return c == 2506 || c == 2850; };
+    g_turns.erase(std::remove_if(g_turns.begin(), g_turns.end(), [&](const Turn& t) { return picked(t.rac2_cls); }), g_turns.end());
+    for (int k = 0; k < 2; ++k) {
+        const Ask* best = nullptr;
+        for (const Ask& a : g_asks) {
+            if (!picked(a.rac2_cls) || a.frame + 1 < now || moby_gone(a.m, a.cls, a.pvars) || attack_turn_held(a.m)) continue;
+            if (best == nullptr || a.dist < best->dist) best = &a;
+        }
+        if (best == nullptr) break;
+        g_turns.push_back(Turn{best->rac2_cls, best->m, best->pvars, best->cls});
+    }
+}
+
 // orig: (none)
-bool attack_turn_take(int32_t rac2_cls, uint32_t m, int most) {
+bool attack_turn_take(int32_t rac2_cls, uint32_t m) {
+    const int most = attack_turns_start(rac2_cls);
+    if (most <= 0) return false;
+    const uint32_t now = level_frame();
     turns_prune();
+    g_asks.erase(std::remove_if(g_asks.begin(), g_asks.end(), [&](const Ask& a) { return a.m == m || a.frame + 2 < now; }), g_asks.end());
+    const Vec3 at = moby_pos(m), h = hero_pos();
+    g_asks.push_back(Ask{rac2_cls, m, lwu(m + moby::kPvars), lh(m + moby::kClassId), now, std::hypot(at.x - h.x, at.y - h.y)});
+    turns_pick();
     if (attack_turn_held(m)) return true;
     int n = 0;
     for (const Turn& t : g_turns) n += t.rac2_cls == rac2_cls ? 1 : 0;
     if (n >= most) return false;
     g_turns.push_back(Turn{rac2_cls, m, lwu(m + moby::kPvars), lh(m + moby::kClassId)});
+    spar_leave(m);
     return true;
 }
 
 // orig: (none)
 void attack_turn_give(uint32_t m) {
     g_turns.erase(std::remove_if(g_turns.begin(), g_turns.end(), [m](const Turn& t) { return t.m == m; }), g_turns.end());
+}
+
+// orig: (none) — 0x3d1998's second half: the pair kept while both are alive, wait and ask; else the nearest other that
+// waits (asked this frame or the one before) and is in no pair
+uint32_t spar_partner(int32_t rac2_cls, uint32_t m) {
+    const uint32_t now = level_frame();
+    const uint32_t pv = lwu(m + moby::kPvars);
+    const int32_t cls = lh(m + moby::kClassId);
+    g_spar_asks.erase(std::remove_if(g_spar_asks.begin(), g_spar_asks.end(), [&](const Ask& a) { return a.m == m || a.frame + 2 < now; }), g_spar_asks.end());
+    g_spar_asks.push_back(Ask{rac2_cls, m, pv, cls, now, 0.0f});
+    auto waiting = [&](uint32_t o) {
+        for (const Ask& a : g_spar_asks)
+            if (a.m == o) return a.frame + 1 >= now && !moby_gone(a.m, a.cls, a.pvars) && !attack_turn_held(a.m);
+        return false;
+    };
+    g_pairs.erase(std::remove_if(g_pairs.begin(), g_pairs.end(), [&](const Pair& p) { return !waiting(p.a) || !waiting(p.b); }), g_pairs.end());
+    for (const Pair& p : g_pairs) {
+        if (p.a == m) return p.b;
+        if (p.b == m) return p.a;
+    }
+    const Vec3 at = moby_pos(m);
+    uint32_t best = 0;
+    float best_d = 1000.0f;  // (RAC2: within 1000)
+    for (const Ask& a : g_spar_asks) {
+        if (a.m == m || a.rac2_cls != rac2_cls || !waiting(a.m)) continue;
+        bool paired = false;
+        for (const Pair& p : g_pairs) paired = paired || p.a == a.m || p.b == a.m;
+        if (paired) continue;
+        const Vec3 o = moby_pos(a.m);
+        const float d = std::hypot(o.x - at.x, o.y - at.y);
+        if (d < best_d) {
+            best = a.m;
+            best_d = d;
+        }
+    }
+    if (best != 0) g_pairs.push_back(Pair{m, best});
+    return best;
+}
+
+// orig: (none)
+void spar_leave(uint32_t m) {
+    g_pairs.erase(std::remove_if(g_pairs.begin(), g_pairs.end(), [m](const Pair& p) { return p.a == m || p.b == m; }), g_pairs.end());
+}
+
+// orig: (none)
+Vec3 steer_round(uint32_t m, float radius) {
+    const uint32_t now = level_frame();
+    const Vec3 at = moby_pos(m);
+    Vec3 away{};
+    for (const Seen& s : g_seen) {
+        if (s.m == m || s.frame + 1 < now) continue;
+        const float dx = at.x - s.at.x, dy = at.y - s.at.y, d = std::hypot(dx, dy);
+        if (d >= radius || d < 1e-4f) continue;
+        const float w = 1.0f - d / radius;
+        away.x += dx / d * w;
+        away.y += dy / d * w;
+    }
+    g_seen.erase(std::remove_if(g_seen.begin(), g_seen.end(), [&](const Seen& s) { return s.m == m || s.frame + 1 < now; }), g_seen.end());
+    g_seen.push_back(Seen{m, now, at});
+    return away;
 }
 
 // orig: (none)

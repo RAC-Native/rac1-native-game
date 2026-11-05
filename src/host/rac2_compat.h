@@ -107,15 +107,34 @@ void part_throw(uint32_t part, Vec3 vel, float floor, uint32_t lie);
 // orig: (none) — every part's update: carried, gone with its carrier; thrown, its flight
 void part_update(uint32_t part);
 
-// ---- the attack turns (RAC2's controller keeps a count per enemy class, its pvars +0x50..+0x5c: 0x3fc0d0 takes one,
-// 0x3fc1b0 gives it back; an enemy without one circles and waits) ----
-// orig: (none) — a turn for `m` (an enemy of RAC2 class `rac2_cls`, at most `most` at once): true when it holds one (it
-// keeps it until it gives it back or dies: the turns of the dead are taken back here)
-bool attack_turn_take(int32_t rac2_cls, uint32_t m, int most);
+// ---- the attack turns (RAC2's controller keeps a count per enemy class, its pvars +0x50 2506, +0x54 2850, +0x58 3131,
+// +0x5c 3134: 0x3fc0d0 takes one, 0x3fc1b0 gives it back; an enemy without one waits). Their start counts, set when a
+// challenge starts (0x3fa52c: the four bytes at gp + 0x21d8), are turns_start's; 3131 takes none (its activate 0x40b868
+// sets its +0x2e2: it attacks as soon as it is in). Every 4th frame (0x3fae80 -> 0x3fbcf8) the controller takes back the
+// turns of the 2506s and 2850s and hands them to the two of them nearest Ratchet (in their fighting states) ----
+// orig: (none) — RAC2's start count of class `rac2_cls` (0: it takes no turns)
+int attack_turns_start(int32_t rac2_cls);
+// orig: (none) — a turn for `m` (an enemy of RAC2 class `rac2_cls`, ready to fight: it asks every frame it is): true when
+// it holds one (it keeps it until it gives it back, dies, or, a 2506 / 2850, the 4-frame pick passes it over: the turns of
+// the dead are taken back here)
+bool attack_turn_take(int32_t rac2_cls, uint32_t m);
 // orig: (none) — its turn given back (none held: nothing)
 void attack_turn_give(uint32_t m);
 // orig: (none) — true while `m` holds a turn
 bool attack_turn_held(uint32_t m);
+
+// ---- sparring (RAC2's 0x3d1998 mode 2: a 2506 without a turn pairs with the nearest other 2506 without one, and the two
+// fight each other, each the other's target, until one gets a turn, is hurt or dies; its pvars +0x2e0 the partner, +0x2f6
+// 2) ----
+// orig: (none) — `m`'s sparring partner (asked each frame it waits; 0: none to pair with): the pair kept while both ask
+uint32_t spar_partner(int32_t rac2_cls, uint32_t m);
+// orig: (none) — `m` out of its pair (hurt: its partner looks for another)
+void spar_leave(uint32_t m);
+
+// ---- steering round the others (RAC2's mover 0x331608 steers round what is in its way; ours: a push away from the
+// other hand-ported enemies within `radius`) ----
+// orig: (none) — `m`'s place noted for this frame, and the way away from the others near it (x, y: 0..1 each, summed)
+Vec3 steer_round(uint32_t m, float radius);
 
 // ---- a state machine (RAC2's +0x94..+0x96 kept by us) ----
 struct StateMachine {

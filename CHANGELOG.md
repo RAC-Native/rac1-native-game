@@ -230,6 +230,9 @@ What changed in each release. Releases are source only: you build the game with 
 - Local experiment, planet: RAC2's hand-ported arena enemies take hits as RAC1's own enemies do (`rac2::hit_receive`: the
   hit record through the reaction every frame, then let go): a second hit of the same weapon was often lost (the record
   left linked kept the repeat timer going round), with real weapons as with `RAC1_ARENA_ENEMY_HIT`.
+- Local experiment, planet: the arena enemies' attack turns as RAC2's controller hands them out (three 2506s, four 2850s,
+  five 3134s at once, the 2506s' and 2850s' given to the two nearest Ratchet every 4th frame; 3131s wait for none), the
+  waiting 2506s spar in pairs, 3131 wanders to RAC2's spots, and the four steer round each other.
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

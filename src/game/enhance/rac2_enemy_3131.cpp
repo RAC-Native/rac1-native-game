@@ -8,9 +8,10 @@
 // - set up (0x40b0f8, state 0): its class's size; its health from its pvars (2.0); its approach angle -40..40 degrees.
 // - arriving (state 3, from the activate 0x40b868): standing (sequence 2), then walking in (sequence 10).
 // - wandering (state 4, substate 2): walks (sequence 10; its mover 0.0044 / 0.133 a frame, turning 0.105) to a spot its
-//   controller gives it (0x40bab8: ours a random spot on the floor), stands there with an idle of its own (sequences 2,
-//   3, 5 or 6) now and then (after 300 frames, then every 0..100); it asks for its turn to attack (the controller's
-//   count of its class, 0x3fc0d0); with one it roars (state 5: sequence 1 or 4) and then chases.
+//   controller's point gives it (0x40bab8: 8 +- 2 from the arena's middle, on its side +- 45 degrees), stands there with
+//   an idle of its own (sequences 2, 3, 5 or 6) now and then (after 300 frames, then every 0..100). It waits for no turn
+//   (unlike the others: its activate sets its +0x2e2, and with it set it roars at once): it roars (state 5: sequence 1
+//   or 4) and then chases.
 // - chasing (state 7): walks at Ratchet along its approach angle (to 2.8 of him); within 15 of him and facing him within
 //   90 degrees it fires (sequence 13, its mover slowed to 0.033): a jet of flames from its attachment point 4 along its facing, and
 //   while he is within 3, three damage spheres of 0.3 along the jet (at the point, 0.85 and 1.6 out: its pvars'
@@ -45,7 +46,7 @@ using rac2::Vec3;
 constexpr int32_t kRac2Class = 3131;
 constexpr float kPi = 3.14159265f;
 constexpr float kFloor = 500.0f;           // (the arena's floor, as for 3134)
-constexpr float kCentreX = 500.0f, kCentreY = 600.0f, kWander = 12.0f;  // (where it wanders: our controller's spots)
+constexpr float kCentreX = 500.0f, kCentreY = 601.55f;  // (the arena's middle: its controller's point 0x3fc098, the level's cuboid 50)
 constexpr float kFireRange = 15.0f;        // (it fires within this, facing Ratchet within 90 degrees)
 constexpr float kCloseIn = 2.8f;           // (it walks no closer)
 constexpr float kBurnRange = 3.0f;         // (the flames hurt within this)
@@ -55,7 +56,7 @@ constexpr float kTurnRate = 0.105f;        // (radians a frame: its mover's +0x1
 constexpr float kStop = 0.5f;              // (its mover stops this short)
 constexpr float kGravity = 0.012f;         // (a frame, falling)
 constexpr uint32_t kIdleFirst = 300, kIdleNext = 100, kArriveFrames = 40;
-constexpr int kTurns = 3;                  // (of its class attacking at once: ours, as for 3134)
+constexpr float kKeepApart = 1.4f;         // (it steers round the other enemies nearer than this: rac2::steer_round)
 constexpr int32_t kBolts = 8;              // (our share of bolts for one)
 constexpr uint32_t kNozzle = 4;            // (its flamethrower's attachment point)
 
@@ -140,6 +141,9 @@ void walk_to(uint32_t m, const Pv& p, const Vec3& to, bool moving) {
         p.f(pv::kPush + 4, p.f(pv::kPush + 4) * 0.8f);
         p.i(pv::kPush + 8, p.i(pv::kPush + 8) - 1);
     }
+    const Vec3 away = rac2::steer_round(m, kKeepApart);  // (round the other enemies)
+    step.x += away.x * 0.02f;
+    step.y += away.y * 0.02f;
     walker_move_v(m, step, 0, 0.5f, 0.5f, 0.0f);
     // (falling onto the floor; RAC2's physics 0x32c938 for its substate 4)
     const float ground = rac2::ground_under(m, kFloor - 30.0f);
@@ -153,9 +157,12 @@ void walk_to(uint32_t m, const Pv& p, const Vec3& to, bool moving) {
     swc1(m + rac2::moby::kPos + 8, z);
 }
 
-// orig: (none) — a new wandering spot (RAC2's controller hands one out, 0x40bab8; ours a random one on the floor)
-void new_spot(const Pv& p) {
-    const float a = rac2::rand_unit() * 2.0f * kPi, r = 3.0f + rac2::rand_unit() * (kWander - 3.0f);
+// orig: (none) — a new wandering spot (RAC2's 0x40bab8, with its controller's point 0x3fc098, the arena's middle): the
+// bearing from the middle to it, turned up to 45 degrees either way, 8 +- 2 out
+void new_spot(uint32_t m, const Pv& p) {
+    const Vec3 at = rac2::moby_pos(m);
+    const float a = std::atan2(at.y - kCentreY, at.x - kCentreX) + (rac2::rand_unit() * 2.0f - 1.0f) * 0.7854f;
+    const float r = 8.0f + (rac2::rand_unit() * 2.0f - 1.0f) * 2.0f;
     p.f(pv::kSpot, kCentreX + r * std::cos(a));
     p.f(pv::kSpot + 4, kCentreY + r * std::sin(a));
     p.i(pv::kAtSpot, 0);
@@ -230,7 +237,7 @@ void update(uint32_t m) {
         if (lwu(m + 0x94) != 0) sh(m + rac2::moby::kFlags, lhu(m + rac2::moby::kFlags) | 0x4000u);  // (weapons reach it)
         rac2::seq_play(m, Stand, 1);
         mover(p, 0.00444f, 0.133f);
-        new_spot(p);
+        new_spot(m, p);
         set_state(m, p, Arriving);
     }
     const bool entering = p.i(pv::kEntered) == 0;
@@ -244,9 +251,9 @@ void update(uint32_t m) {
         return;
     }
     // its turn to attack, asked for each frame (RAC2's 0x40cf68 as 3134's); lost while chasing: wandering again
-    const int32_t s = p.i(pv::kState);
-    const bool turn = s >= Wandering && rac2::attack_turn_take(kRac2Class, m, kTurns);
-    if (!turn && (s == Chasing || s == Turning)) set_state(m, p, Wandering);
+    // no turn to wait for (RAC2's 3131 asks none: its activate 0x40b868 sets its +0x2e2, and wandering with it set it roars
+    // at once, 0x40a7ac; the controller's start count for it, gp + 0x21d8, is 0 too)
+    const bool turn = p.i(pv::kState) >= Wandering;
     switch (p.i(pv::kState)) {
     case Arriving:
         walk_to(m, p, at, false);
@@ -269,7 +276,7 @@ void update(uint32_t m) {
             rac2::seq_play(m, kIdles[rac2::rand_below(4)], 10);
             p.i(pv::kIdleAt, static_cast<int32_t>(rac2::level_frame()) + rac2::rand_below(static_cast<int32_t>(kIdleNext)) + 60);
             if (rac2::rand_below(3) == 0) {  // (and on to another spot)
-                new_spot(p);
+                new_spot(m, p);
                 rac2::seq_play(m, Walk, 10);
             }
         }

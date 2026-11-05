@@ -13,7 +13,8 @@
 // - wandering (state 4, substate 2): walks (sequence 11; its mover 0.0022 / 0.067 a frame) to a spot 6..10 from the arena's
 //   middle on its own side (0x3f1a88: the bearing from the middle to it, +-45 degrees), stands there with an idle (2, 3,
 //   4, 6 or 7) now and then (after 300 frames, then every 0..100). With a turn to attack (its controller's count of its
-//   class, 0x3fc0d0) it roars (state 5: sequence 1 or 5), then chases.
+//   class, 0x3fc0d0: four for the 2850s; every 4th frame the controller hands the 2506s' and 2850s' turns to the two of
+//   them nearest Ratchet, 0x3fbcf8) it roars (state 5: sequence 1 or 5), then chases.
 // - chasing (state 7): walks at Ratchet along its approach angle (sequence 11, 0.0044 / 0.133); within 7 it stalks (8,
 //   top speed 0.033), farther than 15 it walks again; within 2.8 and facing him within 22 degrees it slams (state 8).
 //   Ratchet 160 degrees off its facing: it turns round first (state 6, sequence 10, turning fast), then goes on.
@@ -54,7 +55,7 @@ constexpr int32_t kRac2Class = 2850;
 constexpr int32_t kWheelClass = 2041;      // (RAC2's 2722 converted: maktar.py RAC2_CLASSES)
 constexpr float kPi = 3.14159265f, kDeg = kPi / 180.0f;
 constexpr float kFloor = 500.0f;           // (the arena's floor)
-constexpr float kCentreX = 500.0f, kCentreY = 600.0f;  // (the arena's middle: its controller's point, 0x3fc098)
+constexpr float kCentreX = 500.0f, kCentreY = 601.55f;  // (the arena's middle: its controller's point 0x3fc098, the level's cuboid 50)
 constexpr float kSpotRadius = 8.0f, kSpotSpread = 2.0f, kSpotSide = 0.7854f;  // (0x3f1a88: 8 +- 2, +-45 degrees)
 constexpr float kSlamRange = 2.8f;         // (it slams within this, facing Ratchet within kSlamFacing)
 constexpr float kSlamFacing = 0.3842f;
@@ -67,7 +68,7 @@ constexpr float kSpinIdle = 8.0f, kSpinSlam = 25.0f;  // (its wheels: degrees a 
 constexpr float kWheelScale = 0.75f;
 constexpr float kHealth = 2.0f, kDamage = 1.0f;
 constexpr uint32_t kIdleFirst = 300, kIdleNext = 100, kArriveFrames = 40;
-constexpr int kTurns = 3;                  // (of its class attacking at once: ours, as for 3134 / 3131)
+constexpr float kKeepApart = 2.2f;         // (it steers round the other enemies nearer than this: rac2::steer_round)
 constexpr int32_t kBolts = 12;             // (our share of bolts for one)
 
 // RAC2's sequences
@@ -164,6 +165,9 @@ bool walk_to(uint32_t m, const Pv& p, const Vec3& to, bool moving) {
         p.f(pv::kPush + 4, p.f(pv::kPush + 4) * 0.85f);
         p.i(pv::kPush + 8, p.i(pv::kPush + 8) - 1);
     }
+    const Vec3 away = rac2::steer_round(m, kKeepApart);  // (round the other enemies)
+    step.x += away.x * 0.02f;
+    step.y += away.y * 0.02f;
     walker_move_v(m, step, 0, kStepUp, 0.7f, 0.0f);
     const float ground = rac2::ground_under(m, kFloor - 30.0f);
     float z = lwc1(m + rac2::moby::kPos + 8), vz = p.f(pv::kVz) - kGravity;
@@ -318,7 +322,7 @@ void update(uint32_t m) {
     }
     // its turn to attack, asked for each frame (RAC2's 0x3f16f0); lost while chasing: wandering again (RAC2: substate 4 -> 2)
     const int32_t s = p.i(pv::kState);
-    const bool turn = s >= Wandering && s != Knocked && rac2::attack_turn_take(kRac2Class, m, kTurns);
+    const bool turn = s >= Wandering && s != Knocked && rac2::attack_turn_take(kRac2Class, m);
     if (!turn && (s == Chasing || s == Roaring || (s == Turning && p.i(pv::kBack) == Chasing))) {
         rac2::seq_play(m, rac2::rand_below(2) == 0 ? Stand : Idle3, 10);
         set_state(m, p, Wandering);

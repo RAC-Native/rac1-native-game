@@ -9,7 +9,7 @@
 // - arriving (state 3, from the activate 0x40d080): slow (top 0.33 a frame) until it is in the arena, then it circles.
 // - circling (state 7): along the ring its pvars name (RAC2's path 42: 60 points 13.6..22 from the centre), the nearest
 //   point first, one way or the other at random, 1..3 above the floor (its mover 0.028 / 3.33). Each frame (0x40cf68) it
-//   asks the controller for a turn to attack (one count per enemy class, 0x3fc0d0 / 0x3fc1b0); with one it chases.
+//   asks the controller for a turn to attack (one count per enemy class, 0x3fc0d0 / 0x3fc1b0: five for the 3134s); with one it chases.
 // - chasing (state 8): towards Ratchet along its approach angle (its mover 0.0083 / 1.0), 0.7 above the floor; within 1.7 of him
 //   and at its height it stops (state 10), 45 frames later winds up (state 9, sequence 2), then attacks (state 11,
 //   sequence 3 at 1.75 x speed): closer than 1.7 it backs off, farther it creeps on (top 0.033); its first four
@@ -68,8 +68,7 @@ constexpr float kScale = 0.75f;           // (of its class's size)
 constexpr float kTurnRate = 0.1047f;      // (radians a frame it turns its heading at most: RAC2's mover +0x1c)
 constexpr float kStop = 0.5f;             // (its mover stops this short of the point it flies to: its pvars +0x94)
 constexpr uint32_t kReadyFrames = 45, kGiveUpFrames = 121, kRecoverFrames = 26, kArriveFrames = 40;
-constexpr int kTurns = 3;                 // (of its class attacking at once: RAC2's count is the controller's, its start not
-                                          //  traced; ours)
+constexpr float kKeepApart = 1.2f;        // (it steers round the other enemies nearer than this: rac2::steer_round)
 constexpr int32_t kBolts = 4;             // (our share of bolts for one)
 
 // RAC2's sequences
@@ -193,7 +192,8 @@ void fly_to(uint32_t m, const Pv& p, const Vec3& to, float height) {
     float heading = p.f(pv::kHeading);
     if (d > 1e-3f) heading += std::clamp(angle_to(std::atan2(to.y - at.y, to.x - at.x), heading), -kTurnRate, kTurnRate);
     p.f(pv::kHeading, heading);
-    Vec4 step{std::cos(heading) * speed, std::sin(heading) * speed, 0.0f, 0.0f};
+    const Vec3 away = rac2::steer_round(m, kKeepApart);
+    Vec4 step{std::cos(heading) * speed + away.x * 0.02f, std::sin(heading) * speed + away.y * 0.02f, 0.0f, 0.0f};
     walker_move_v(m, step, 0, 0.0f, 0.3f, 0.0f);
     swc1(m + rac2::moby::kRot + 8, heading);
     // its height: eased towards the wanted one (RAC2's 0x321e78, a spring), never under the floor's kLowest
@@ -300,7 +300,7 @@ void knocked(uint32_t m, const Pv& p) {
 void keep_turn(uint32_t m, const Pv& p) {
     const int32_t s = p.i(pv::kState);
     if (s < Recovering || s == Knocked) return;
-    if (rac2::attack_turn_take(kRac2Class, m, kTurns)) return;
+    if (rac2::attack_turn_take(kRac2Class, m)) return;
     if (s == Chasing || s == Attacking) set_state(m, p, ring().empty() ? Holding : Circling);
 }
 
