@@ -82,6 +82,23 @@ float ground_under(uint32_t m, float lowest);
 // sphere test with the blaster's hit record, as RAC1_ARENA_MONITOR_HIT's): the hit through RAC1's collision and hit records
 void test_hit(uint32_t m);
 
+// ---- parts: mobys an enemy spawns and carries (RAC2's 0x314170 + 0x328500: 2850's blades, 2506's shield), and a carried
+// part thrown off (RAC2's 0x32b468: it flies, falls, bounces, lies a while and goes). A part's own pvars (moby_spawn's 0x80
+// bytes) hold its carrier; its update (part_update, the role "part") keeps it no longer than its carrier lives ----
+// orig: (none) — a part of class `cls` spawned for carrier `m`, drawn as far as it is, updated, 0.75-sized as RAC2's when
+// `scale` (else its class's size times `scale`); 0 no moby slot
+uint32_t part_spawn(uint32_t m, int32_t cls, float scale);
+// orig: (none) — the part placed on the carrier's attachment point `point` (RAC1's "keep the rows" flag: the point's rows,
+// turned by `spin` radians about its own z)
+void part_place(uint32_t part, uint32_t m, uint32_t point, float spin);
+// orig: (none) — the part still the one spawned for `m` (alive, its class, carried by it)
+bool part_of(uint32_t part, uint32_t m);
+// orig: (none) — the part thrown off its carrier at `vel` (units a frame), spinning: it falls on the arena's floor at `floor`,
+// bounces, lies `lie` frames, goes
+void part_throw(uint32_t part, Vec3 vel, float floor, uint32_t lie);
+// orig: (none) — every part's update: carried, gone with its carrier; thrown, its flight
+void part_update(uint32_t part);
+
 // ---- the attack turns (RAC2's controller keeps a count per enemy class, its pvars +0x50..+0x5c: 0x3fc0d0 takes one,
 // 0x3fc1b0 gives it back; an enemy without one circles and waits) ----
 // orig: (none) — a turn for `m` (an enemy of RAC2 class `rac2_cls`, at most `most` at once): true when it holds one (it

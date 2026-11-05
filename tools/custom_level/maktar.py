@@ -332,10 +332,12 @@ RAC2_CLASSES = {
     3131: ("enemy_3131", 2038),  # P6: the mid-sized enemy, the flamethrower walker (src/game/enhance/rac2_enemy_3131.cpp)
     2850: ("enemy_2850", 2039),  # P6: the heavy enemy, the slammer with two spinning wheels (src/game/enhance/rac2_enemy_2850.cpp)
     2722: ("part", 2041),     # P6: 2850's two spinning wheels (spawned and carried by it: no placements of their own)
+    2506: ("enemy_2506", 2040),  # P6: the gladiator with a spiked flail and a round shield (src/game/enhance/rac2_enemy_2506.cpp)
+    2520: ("part", 2042),     # P6: 2506's shield (spawned and carried by it, thrown off when it is hurt)
 }
-HIT_ROLES = ("monitor", "enemy_3134", "enemy_3131", "enemy_2850")  # (the roles whose collision is kept: they take hits, custom_classes.cpp)
+HIT_ROLES = ("monitor", "enemy_3134", "enemy_3131", "enemy_2850", "enemy_2506")  # (the roles whose collision is kept: they take hits, custom_classes.cpp)
 CLASS_PVARS = {"crowd": 0x20, "monitor": 0x40, "arm": 0x40, "prop": 0x10, "tile": 0x20, "lift": 0x20, "enemy_3134": 0x100, "enemy_3131": 0x100,
-               "enemy_2850": 0x100, "part": 0x10}
+               "enemy_2850": 0x100, "enemy_2506": 0x100, "part": 0x10}
 # P6: the hand-ported enemies. RAC2 keeps 20 of each waiting above the arena (group 20) and recycles them; ours is one hidden
 # template (its first placement) the controller copies (planet.txt "standin" + "port", custom_arena.cpp). Per RAC2 class:
 # the path its pvars name (+0x180: the ring it circles while it waits for its turn to attack), read from RAC2's gameplay
@@ -784,7 +786,8 @@ ANNOUNCER = (
 # 2506 fires projectiles 2520 through 0x32b468, the others hit with damage spheres 0x3201e0; their sizes, the classes'
 # scale +0x24 and joints): 2506 the ranged one (Veldin's gun walker 1440), 2850 the heavy (57 joints, its own effect 2722:
 # a big, tough 749), 3131 the mid-sized fighter (a 749 a quarter bigger, twice its health), 3134 the small swarming one (a
-# smaller 749, scale 0.074 in RAC2)
+# smaller 749, scale 0.074 in RAC2). (P6, read in full: 2506 is a flail-and-shield fighter, 2520 its shield, which
+# 0x32b468 throws off when it is hurt; 2722 is 2850's spinning blades.)
 STAND_FOR = ((2506, 1440, 1.0, 1.0), (2850, 749, 1.7, 4.0), (3131, 749, 1.25, 2.0), (3134, 749, 0.8, 1.0))
 
 # RAC2's level 2 code: the challenge table (14 pointers, its .lit at gp + 0x21a0), each record {waves, the wave records,

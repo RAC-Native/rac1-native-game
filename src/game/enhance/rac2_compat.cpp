@@ -194,6 +194,111 @@ void test_hit(uint32_t m) {
     std::printf("[rac2] frame %u: test blast on %#x (class %d): %d moby(s) touched\n", level_frame(), m, lh(m + moby::kClassId), n);
 }
 
+namespace part {
+// a part's own pvars (moby_spawn's block, zeroed)
+constexpr uint32_t kOwner = 0x00, kOwnerPvars = 0x04, kOwnerClass = 0x08, kThrown = 0x0c, kVel = 0x10, kLie = 0x1c, kFloor = 0x20,
+                   kSpin = 0x24, kBounced = 0x28;
+}  // namespace part
+
+// orig: (none)
+uint32_t part_spawn(uint32_t m, int32_t cls, float scale) {
+    const uint32_t w = moby_spawn(static_cast<uint32_t>(cls));
+    if (w == 0) return 0;
+    swc1(w + 0x2c, lwc1(w + 0x2c) * scale);
+    // (its rows set by us: RAC1's "keep the rows"; updated: a class without sequences is spawned not updated; its draw
+    // distance and +0x30 as its carrier's: moby_spawn leaves them 0, not drawn)
+    sh(w + moby::kFlags, (lhu(w + moby::kFlags) | 0x100u) & ~2u);
+    sh(w + 0x32, lhu(m + 0x32));
+    sb(w + 0x30, lbu(m + 0x30));
+    const uint32_t pv = lwu(w + moby::kPvars);
+    if (pv != 0) {
+        sw(pv + part::kOwner, m);
+        sw(pv + part::kOwnerPvars, lwu(m + moby::kPvars));
+        sw(pv + part::kOwnerClass, static_cast<uint32_t>(lh(m + moby::kClassId)));
+    }
+    return w;
+}
+
+// orig: (none)
+bool part_of(uint32_t w, uint32_t m) {
+    if (w == 0 || static_cast<int8_t>(lbu(w + moby::kState)) < 0) return false;
+    const uint32_t pv = lwu(w + moby::kPvars);
+    return pv != 0 && lwu(pv + part::kOwner) == m && lw(pv + part::kThrown) == 0;
+}
+
+// orig: (none)
+void part_place(uint32_t w, uint32_t m, uint32_t point, float spin) {
+    Mat4 at;
+    moby_chain_world_one_v(m, point, at);
+    Vec4 r0 = at.r[0], r1 = at.r[1], r2 = at.r[2];
+    vec3_set_length(r0, r0, 1.0f);
+    vec3_set_length(r1, r1, 1.0f);
+    vec3_set_length(r2, r2, 1.0f);
+    const float c = std::cos(spin), s = std::sin(spin);
+    V(w + 0xc0) = Vec4{c * r0.x + s * r1.x, c * r0.y + s * r1.y, c * r0.z + s * r1.z, 0.0f};
+    V(w + 0xd0) = Vec4{c * r1.x - s * r0.x, c * r1.y - s * r0.y, c * r1.z - s * r0.z, 0.0f};
+    V(w + 0xe0) = Vec4{r2.x, r2.y, r2.z, 0.0f};
+    swc1(w + moby::kPos, at.r[3].x);
+    swc1(w + moby::kPos + 4, at.r[3].y);
+    swc1(w + moby::kPos + 8, at.r[3].z);
+    moby_update_transform(w);
+}
+
+// orig: (none)
+void part_throw(uint32_t w, Vec3 vel, float floor, uint32_t lie) {
+    const uint32_t pv = w != 0 ? lwu(w + moby::kPvars) : 0u;
+    if (pv == 0) return;
+    sw(pv + part::kThrown, 1);
+    swc1(pv + part::kVel, vel.x);
+    swc1(pv + part::kVel + 4, vel.y);
+    swc1(pv + part::kVel + 8, vel.z);
+    sw(pv + part::kLie, lie);
+    swc1(pv + part::kFloor, floor);
+    swc1(pv + part::kSpin, 0.0f);
+    sw(pv + part::kBounced, 0);
+}
+
+// orig: (none) — RAC2's 0x32b468 said simply: gravity 0.012 a frame, a bounce at half the speed, then it lies still
+void part_update(uint32_t w) {
+    const uint32_t pv = lwu(w + moby::kPvars);
+    if (pv == 0 || lwu(pv + part::kOwner) == 0) return;  // (a placed one: none are)
+    if (lw(pv + part::kThrown) == 0) {
+        if (moby_gone(lwu(pv + part::kOwner), lw(pv + part::kOwnerClass), lwu(pv + part::kOwnerPvars))) moby_kill(w);
+        return;
+    }
+    Vec3 v{lwc1(pv + part::kVel), lwc1(pv + part::kVel + 4), lwc1(pv + part::kVel + 8)};
+    Vec3 p = moby_pos(w);
+    const float floor = lwc1(pv + part::kFloor);
+    const bool resting = lw(pv + part::kBounced) >= 2;
+    if (!resting) {
+        v.z -= 0.012f;
+        p.x += v.x;
+        p.y += v.y;
+        p.z += v.z;
+        if (p.z <= floor) {
+            p.z = floor;
+            sw(pv + part::kBounced, lw(pv + part::kBounced) + 1);
+            v = Vec3{v.x * 0.5f, v.y * 0.5f, -v.z * 0.4f};
+        }
+        swc1(pv + part::kVel, v.x);
+        swc1(pv + part::kVel + 4, v.y);
+        swc1(pv + part::kVel + 8, v.z);
+        swc1(w + moby::kPos, p.x);
+        swc1(w + moby::kPos + 4, p.y);
+        swc1(w + moby::kPos + 8, p.z);
+        // (tumbling: its rows turned about x a little each frame)
+        const float a = 0.15f, c = std::cos(a), s = std::sin(a);
+        const Vec4 r1 = V(w + 0xd0), r2 = V(w + 0xe0);
+        V(w + 0xd0) = Vec4{c * r1.x + s * r2.x, c * r1.y + s * r2.y, c * r1.z + s * r2.z, 0.0f};
+        V(w + 0xe0) = Vec4{c * r2.x - s * r1.x, c * r2.y - s * r1.y, c * r2.z - s * r1.z, 0.0f};
+        moby_update_transform(w);
+        return;
+    }
+    const int32_t lie = lw(pv + part::kLie) - 1;
+    sw(pv + part::kLie, static_cast<uint32_t>(lie));
+    if (lie <= 0) moby_kill(w);
+}
+
 // orig: (none)
 bool attack_turn_held(uint32_t m) {
     for (const Turn& t : g_turns)

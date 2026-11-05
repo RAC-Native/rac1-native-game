@@ -29,7 +29,7 @@
 // is not drawn; its body's bump (0x3201e0 with kind 0x4000000 each frame, 1.3) is RAC1's collision with its class. Its feet
 // probe 1 up (walker_move): with RAC1's 0.5 it stopped at the rim round the floor's middle. The wheels: RAC2 copies the
 // attachment point's matrix into theirs (0x328500); ours RAC1's "keep the rows" flag with the point's rows turned by the
-// spin, their size RAC2's (0.75 of their class's), their draw distance their carrier's (moby_spawn leaves it 0).
+// spin, their size RAC2's (0.75 of their class's): rac2_compat's parts.
 #include <host/rac2_enemies.h>
 #include <host/rac2_compat.h>
 
@@ -92,11 +92,6 @@ constexpr uint32_t kSpin = 0x80, kSpinRate = 0x84;  // (its wheels' angle, degre
 constexpr uint32_t kWheels = 0x88;         // (its two wheels: mobys)
 constexpr uint32_t kLanded = 0x90, kHitHim = 0x94;
 }  // namespace pv
-
-// A wheel's own pvars (moby_spawn's block): who carries it
-namespace wheel {
-constexpr uint32_t kOwner = 0x00, kOwnerPvars = 0x04, kOwnerClass = 0x08;
-}
 
 struct Pv {
     uint32_t b;
@@ -195,31 +190,18 @@ void new_spot(uint32_t m, const Pv& p) {
     p.i(pv::kAtSpot, 0);
 }
 
-// orig: (none) — wheel k (its own pvars name its carrier)
-uint32_t wheel_of(const Pv& p, int k) {
+// orig: (none) — wheel k, while it is the one it spawned
+uint32_t wheel_of(uint32_t m, const Pv& p, int k) {
     const uint32_t w = static_cast<uint32_t>(p.i(pv::kWheels + 4 * static_cast<uint32_t>(k)));
-    if (w == 0 || static_cast<int8_t>(lbu(w + rac2::moby::kState)) < 0 || lh(w + rac2::moby::kClassId) != kWheelClass) return 0;
-    return w;
+    return rac2::part_of(w, m) ? w : 0u;
 }
 
 // orig: (none) — its two wheels spawned (RAC2's 0x3f4c88: class 2722 at 0.75 of the class's size, on attachment points 0, 1)
 void wheels_spawn(uint32_t m, const Pv& p) {
     for (int k = 0; k < 2; ++k) {
-        const uint32_t w = moby_spawn(kWheelClass);
+        const uint32_t w = rac2::part_spawn(m, kWheelClass, kWheelScale);
         p.i(pv::kWheels + 4 * static_cast<uint32_t>(k), static_cast<int32_t>(w));
-        if (trace()) std::printf("[2850] frame %u: %#x wheel %d spawned: %#x (scale %.3f, its own %.3f)\n", rac2::level_frame(), m, k, w, static_cast<double>(lwc1(w + 0x2c)), static_cast<double>(lwc1(m + 0x2c)));
-        if (w == 0) continue;
-        swc1(w + 0x2c, lwc1(w + 0x2c) * kWheelScale);
-        // (its rotation rows set by us: RAC1's "keep the rows"; updated: a class without sequences is spawned not updated)
-        sh(w + rac2::moby::kFlags, (lhu(w + rac2::moby::kFlags) | 0x100u) & ~2u);
-        sh(w + 0x32, lhu(m + 0x32));  // (its draw distance and +0x30 as its carrier's: moby_spawn leaves them 0, not drawn)
-        sb(w + 0x30, lbu(m + 0x30));
-        const uint32_t wp = lwu(w + rac2::moby::kPvars);
-        if (wp != 0) {
-            sw(wp + wheel::kOwner, m);
-            sw(wp + wheel::kOwnerPvars, p.b);
-            sw(wp + wheel::kOwnerClass, static_cast<uint32_t>(lh(m + rac2::moby::kClassId)));
-        }
+        if (trace()) std::printf("[2850] frame %u: %#x wheel %d spawned: %#x\n", rac2::level_frame(), m, k, w);
     }
 }
 
@@ -227,37 +209,21 @@ void wheels_spawn(uint32_t m, const Pv& p) {
 // point's matrix after a turn about z; a spark off one now and then, 1 in 6)
 void wheels_place(uint32_t m, const Pv& p) {
     p.f(pv::kSpin, std::fmod(p.f(pv::kSpin) + p.f(pv::kSpinRate) * kDeg, 2.0f * kPi));
-    const float c = std::cos(p.f(pv::kSpin)), s = std::sin(p.f(pv::kSpin));
     for (int k = 0; k < 2; ++k) {
-        const uint32_t w = wheel_of(p, k);
+        const uint32_t w = wheel_of(m, p, k);
         if (w == 0) continue;
-        Mat4 at;
-        moby_chain_world_one_v(m, static_cast<uint32_t>(k), at);
-        Vec4 r0 = at.r[0], r1 = at.r[1];
-        vec3_set_length(r0, r0, 1.0f);
-        vec3_set_length(r1, r1, 1.0f);
-        Vec4 r2 = at.r[2];
-        vec3_set_length(r2, r2, 1.0f);
-        const Vec4 n0{c * r0.x + s * r1.x, c * r0.y + s * r1.y, c * r0.z + s * r1.z, 0.0f};
-        const Vec4 n1{c * r1.x - s * r0.x, c * r1.y - s * r0.y, c * r1.z - s * r0.z, 0.0f};
-        V(w + 0xc0) = n0;
-        V(w + 0xd0) = n1;
-        V(w + 0xe0) = Vec4{r2.x, r2.y, r2.z, 0.0f};
-        swc1(w + rac2::moby::kPos, at.r[3].x);
-        swc1(w + rac2::moby::kPos + 4, at.r[3].y);
-        swc1(w + rac2::moby::kPos + 8, at.r[3].z);
-        moby_update_transform(w);
+        rac2::part_place(w, m, static_cast<uint32_t>(k), p.f(pv::kSpin));
         if (rac2::rand_below(6) == 0) {  // (RAC2's 0x3f49d8: ours a small red glow drifting up)
-            const Vec4 sp{at.r[3].x, at.r[3].y, at.r[3].z, 1.0f};
-            spawn_particle_3c_v(sp, Vec4{0.0f, 0.0f, 0.02f, 0.0f}, 0x803040f0u, 12, 0, 0, 0.15f);
+            const Vec3 at = rac2::moby_pos(w);
+            spawn_particle_3c_v(Vec4{at.x, at.y, at.z, 1.0f}, Vec4{0.0f, 0.0f, 0.02f, 0.0f}, 0x803040f0u, 12, 0, 0, 0.15f);
         }
     }
 }
 
 // orig: (none) — its wheels gone with it
-void wheels_kill(const Pv& p) {
+void wheels_kill(uint32_t m, const Pv& p) {
     for (int k = 0; k < 2; ++k)
-        if (const uint32_t w = wheel_of(p, k)) rac2::moby_kill(w);
+        if (const uint32_t w = wheel_of(m, p, k)) rac2::moby_kill(w);
     p.i(pv::kWheels, 0);
     p.i(pv::kWheels + 4, 0);
 }
@@ -288,7 +254,7 @@ void die(uint32_t m, const Pv& p) {
     const uint32_t near = dist2d(rac2::moby_pos(m), rac2::hero_pos()) < 7.0f ? 2u : 0u;
     bolts_drop(m, kBolts, kBolts, near, -1);
     rac2::attack_turn_give(m);
-    wheels_kill(p);
+    wheels_kill(m, p);
     if (trace()) std::printf("[2850] frame %u: %#x blows up\n", rac2::level_frame(), m);
     rac2::moby_kill(m);
 }
@@ -493,15 +459,5 @@ void update(uint32_t m) {
 
 // orig: (none) — see rac2_enemies.h
 void rac2_enemy_2850_update(uint32_t m) { update(m); }
-
-// orig: (none) — see rac2_enemies.h: its carrier placed it this frame; the carrier gone (blown up, or taken away by the
-// arena's controller), it goes too
-void rac2_part_2722_update(uint32_t m) {
-    const uint32_t wp = lwu(m + rac2::moby::kPvars);
-    if (wp == 0) return;
-    const uint32_t owner = lwu(wp + wheel::kOwner);
-    if (owner == 0) return;  // (a placed one: none are)
-    if (rac2::moby_gone(owner, lw(wp + wheel::kOwnerClass), lwu(wp + wheel::kOwnerPvars))) rac2::moby_kill(m);
-}
 
 }  // namespace rac1

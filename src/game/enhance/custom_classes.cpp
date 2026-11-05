@@ -27,7 +27,7 @@ namespace rac1 {
 
 namespace {
 
-enum class Role { Crowd, Monitor, Arm, Prop, Tile, Lift, Enemy3134, Enemy3131, Enemy2850, Part2722 };
+enum class Role { Crowd, Monitor, Arm, Prop, Tile, Lift, Enemy3134, Enemy3131, Enemy2850, Enemy2506, Part };
 
 // planet.txt's "class <role> <id> <bank>"
 struct ClassLine {
@@ -63,7 +63,8 @@ const std::vector<ClassLine>& lines() {
         else if (role == "enemy_3134") c.role = Role::Enemy3134;  // (P6: RAC2's enemies hand-ported, rac2_enemies.h)
         else if (role == "enemy_3131") c.role = Role::Enemy3131;
         else if (role == "enemy_2850") c.role = Role::Enemy2850;
-        else if (role == "part") c.role = Role::Part2722;  // (2850's wheels: carried by it)
+        else if (role == "enemy_2506") c.role = Role::Enemy2506;
+        else if (role == "part") c.role = Role::Part;  // (carried by an enemy: rac2_compat.h's parts)
         else if (role != "prop") continue;
         g_lines.push_back(c);
     }
@@ -631,7 +632,8 @@ constexpr Registered kFns[] = {
     {Role::Enemy3134, with_sounds<rac2_enemy_3134_update>},
     {Role::Enemy3131, with_sounds<rac2_enemy_3131_update>},
     {Role::Enemy2850, with_sounds<rac2_enemy_2850_update>},
-    {Role::Part2722, with_sounds<rac2_part_2722_update>},
+    {Role::Enemy2506, with_sounds<rac2_enemy_2506_update>},
+    {Role::Part, with_sounds<rac2::part_update>},
 };
 
 }  // namespace

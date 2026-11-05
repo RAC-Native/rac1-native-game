@@ -221,6 +221,12 @@ What changed in each release. Releases are source only: you build the game with 
   idles, roars when it gets its turn, stalks Ratchet and slams him with its arm (three damage spheres at the slam's own
   times), gloats when it hit him, turns round when he is behind it; a hit knocks it back, two blow it up. It carries RAC2's
   class 2722 (two red blades spinning on its arm, faster as it swings), converted too.
+- Local experiment, planet P6: RAC2's arena gladiator 2506 hand-ported (`src/game/enhance/rac2_enemy_2506.cpp`, from its update
+  0x3d0408): the alien with a spiked flail and a round shield (RAC2's class 2520, converted and carried) lands from its
+  gate, wanders, comes at Ratchet guarded (running when far), squares up to him side-stepping as he goes round it, swings
+  the flail (its damage spheres along it), taunts when it hit him; standing guard, its shield blocks hits (sparks, a
+  stagger); hurt, it throws the shield off (a thrown part: flies, bounces, lies, goes) and fights on; two hits bring it
+  down. RAC2's 2520 is its shield, not a shot: the carried and thrown parts are a small service of `rac2_compat`.
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs
