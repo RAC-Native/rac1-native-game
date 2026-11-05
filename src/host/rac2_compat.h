@@ -107,6 +107,13 @@ void part_throw(uint32_t part, Vec3 vel, float floor, uint32_t lie);
 // orig: (none) — every part's update: carried, gone with its carrier; thrown, its flight
 void part_update(uint32_t part);
 
+// ---- sounds (RAC2's 0x366b30 starts a class sound on a moby, looping with its flag 1, 0x366830 stops it, 0x366bd8 plays
+// another class's sound on it): RAC1's class sound table on the moby and its sound slots ----
+// orig: (none) — `m`'s looping class sound `idx` on (kept on while asked each frame or not; -1: stopped now)
+void sound_loop(uint32_t m, int32_t idx);
+// orig: (none) — sound `idx` of RAC1 class `cls`'s table (the class loaded on the level) played once on `m`
+void sound_of_class(uint32_t m, int32_t cls, int32_t idx);
+
 // ---- the attack turns (RAC2's controller keeps a count per enemy class, its pvars +0x50 2506, +0x54 2850, +0x58 3131,
 // +0x5c 3134: 0x3fc0d0 takes one, 0x3fc1b0 gives it back; an enemy without one waits). Their start counts, set when a
 // challenge starts (0x3fa52c: the four bytes at gp + 0x21d8), are turns_start's; 3131 takes none (its activate 0x40b868

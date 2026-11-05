@@ -27,9 +27,8 @@
 // lets it stop 0.5 short of its point, sqrt(2 a d), and changes its speed by at most a a frame: ours the same along a
 // heading turned at most 0.105 a frame (its +0x1c), without RAC2's steering round obstacles: RAC1's walker_move stops it at
 // the walls.
-// Ours vs RAC2's, on purpose: its sounds are
-// its sequences' sound events (RAC2's looping hum, sound 4 while it flies, is left out: RAC1 has no stop for a class sound
-// yet); the bolts are ours (RAC2's come from its controller's kill count).
+// Ours vs RAC2's, on purpose: its sounds are its sequences' sound events and its looping hum (sound 4 while it flies,
+// rac2::sound_loop: RAC1's moby sound word); the bolts are ours (RAC2's come from its controller's kill count).
 #include <host/rac2_enemies.h>
 #include <host/rac2_compat.h>
 
@@ -68,6 +67,7 @@ constexpr float kScale = 0.75f;           // (of its class's size)
 constexpr float kTurnRate = 0.1047f;      // (radians a frame it turns its heading at most: RAC2's mover +0x1c)
 constexpr float kStop = 0.5f;             // (its mover stops this short of the point it flies to: its pvars +0x94)
 constexpr uint32_t kReadyFrames = 45, kGiveUpFrames = 121, kRecoverFrames = 26, kArriveFrames = 40;
+constexpr int32_t kHum = 4;               // (its class's looping sound while it flies)
 constexpr float kKeepApart = 1.2f;        // (it steers round the other enemies nearer than this: rac2::steer_round)
 constexpr int32_t kBolts = 4;             // (our share of bolts for one)
 
@@ -243,6 +243,7 @@ void die(uint32_t m) {
     const uint32_t near = dist2d(rac2::moby_pos(m), rac2::hero_pos()) < 7.0f ? 2u : 0u;
     bolts_drop(m, kBolts, kBolts, near, -1);
     rac2::attack_turn_give(m);
+    rac2::sound_loop(m, -1);  // (its hum stopped: 0x40d1d0)
     if (trace()) std::printf("[3134] frame %u: %#x blows up\n", rac2::level_frame(), m);
     rac2::moby_kill(m);
 }
@@ -341,6 +342,9 @@ void update(uint32_t m) {
     rac2::test_hit(m);
     hit_taken(m, p);  // (each frame, knocked too: its repeat timer runs down)
     keep_turn(m, p);
+    // its hum (RAC2's 0x40ccc8: its sound 4 looping, flag 1, while it is up; stopped when it is not, 0x40cd1c): on while it
+    // flies, off while it tumbles
+    rac2::sound_loop(m, p.i(pv::kState) == Knocked ? -1 : kHum);
     switch (p.i(pv::kState)) {
     case Arriving:  // (from the gate, rising, then circling)
         fly_to(m, p, at, base + 1.5f);

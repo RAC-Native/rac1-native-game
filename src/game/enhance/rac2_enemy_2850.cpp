@@ -26,8 +26,8 @@
 //   and the controller counts it (0x3fc248). The floor's tiles and vents do not hurt it (RAC2 zeroes their damage; ours
 //   hurt only Ratchet anyway).
 // Ours vs RAC2's: RAC2's steering round the others (0x3f1ba8) and its path-finding round the arena's middle (0x32f608) are
-// left out (it walks straight; RAC1's walker_move stops it at walls); the arms' trail during the slam (0x3f1608 / 0x2eefb0)
-// is not drawn; its body's bump (0x3201e0 with kind 0x4000000 each frame, 1.3) is RAC1's collision with its class. Its feet
+// left out (a push away from the others, rac2::steer_round; RAC1's walker_move stops it at walls); the arms' trail during
+// the slam (0x3f1608 / 0x2eefb0, a ribbon) is a streak of glows; its body's bump (0x3201e0 with kind 0x4000000 each frame, 1.3) is RAC1's collision with its class. Its feet
 // probe 1 up (walker_move): with RAC1's 0.5 it stopped at the rim round the floor's middle. The wheels: RAC2 copies the
 // attachment point's matrix into theirs (0x328500); ours RAC1's "keep the rows" flag with the point's rows turned by the
 // spin, their size RAC2's (0.75 of their class's): rac2_compat's parts.
@@ -91,6 +91,7 @@ constexpr uint32_t kTurnW = 0x70, kTurnAcc = 0x74, kTurnTop = 0x78;  // (its tur
 constexpr uint32_t kSpin = 0x80, kSpinRate = 0x84;  // (its wheels' angle, degrees a frame)
 constexpr uint32_t kWheels = 0x88;         // (its two wheels: mobys)
 constexpr uint32_t kLanded = 0x90, kHitHim = 0x94;
+constexpr uint32_t kTrail = 0xa0;          // (its two wheels' places in the frame before, x y z each, and 1: kept)
 }  // namespace pv
 
 struct Pv {
@@ -220,6 +221,31 @@ void wheels_place(uint32_t m, const Pv& p) {
             const Vec3 at = rac2::moby_pos(w);
             spawn_particle_3c_v(Vec4{at.x, at.y, at.z, 1.0f}, Vec4{0.0f, 0.0f, 0.02f, 0.0f}, 0x803040f0u, 12, 0, 0, 0.15f);
         }
+    }
+}
+
+// orig: (none) — the arm's trail while it swings (RAC2's 0x3f1608 keeps the last four places of its arm and blades, which
+// 0x2eefb0 draws as a ribbon): ours three glows a frame along each wheel's way since the frame before, fading as they go
+void trail(uint32_t m, const Pv& p, bool on) {
+    for (int k = 0; k < 2; ++k) {
+        const uint32_t o = pv::kTrail + 0x10u * static_cast<uint32_t>(k), w = wheel_of(m, p, k);
+        if (!on || w == 0) {
+            p.i(o + 12, 0);
+            continue;
+        }
+        const Vec3 at = rac2::moby_pos(w);
+        if (p.i(o + 12) != 0) {
+            const Vec3 was{p.f(o), p.f(o + 4), p.f(o + 8)};
+            for (int n = 0; n < 3; ++n) {
+                const float t = (static_cast<float>(n) + 0.5f) / 3.0f;
+                const Vec4 q{was.x + (at.x - was.x) * t, was.y + (at.y - was.y) * t, was.z + (at.z - was.z) * t, 1.0f};
+                spawn_particle_3c_v(q, Vec4{0.0f, 0.0f, 0.0f, 0.0f}, 0x604070f0u, 10, 0, 0, 0.22f);
+            }
+        }
+        p.f(o, at.x);
+        p.f(o + 4, at.y);
+        p.f(o + 8, at.z);
+        p.i(o + 12, 1);
     }
 }
 
@@ -421,6 +447,7 @@ void update(uint32_t m) {
         const float f = rac2::seq_time(m);  // (RAC2's 0x3146d0: the sequence's own time, not its frame index)
         const bool swinging = rac2::seq_now(m) == Slam && f >= 17.0f && f <= 25.0f;
         p.f(pv::kSpinRate, swinging ? kSpinSlam : kSpinIdle);
+        trail(m, p, swinging);
         if (rac2::seq_now(m) == Slam && f >= 19.0f && f <= 25.0f) slam_spheres(m, p);
         if (frames(p) > 3 && rac2::seq_ended(m)) {
             p.f(pv::kSpinRate, kSpinIdle);

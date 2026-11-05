@@ -17,12 +17,13 @@
 //   while he is within 3, three damage spheres of 0.3 along the jet (at the point, 0.85 and 1.6 out: its pvars'
 //   damage, 1). Ratchet behind it (160 degrees off), it turns round first (state 6, sequence 9).
 // - hit (RAC2's 0x320d48 / its mover's hit reaction 0x32bbf0; ours RAC1's 0x25a420 / 0x25a478 with the enemies' mask): its
-//   health less the damage, a short push; at none it blows up (0x40b980: the arena's explosion, a flash) and the
-//   controller counts it (0x3fc248).
+//   health less the damage, a short push and its flinch (state 8, sequence 0: its hit block's, pvars +0x60 / +0x66), then
+//   it chases again; at none it blows up (0x40b980: the arena's explosion, a flash, the small 3134's sound 0, 0x40d254)
+//   and the controller counts it (0x3fc248).
 // - falling (substate 4: RAC2's physics 0x32c938): it falls to the floor; landing in a pit (the death height) it is gone.
-// Ours vs RAC2's: RAC2's mover's obstacle steering and its path-finding round the arena's middle (0x32f608, the inner
-// ring its pvars name) are left out (it walks straight; RAC1's walker_move stops it at walls); its death sound is the
-// small enemy's (RAC2 plays 3134's there; ours the explosion's own); the flames are RAC1's particles.
+// Ours vs RAC2's: RAC2's mover's obstacle steering is a push away from the others (rac2::steer_round), its path-finding
+// round the arena's middle (0x32f608, the inner ring its pvars name) is left out (RAC1's walker_move stops it at walls);
+// the flames are RAC1's particles.
 #include <host/rac2_enemies.h>
 #include <host/rac2_compat.h>
 
@@ -56,14 +57,16 @@ constexpr float kTurnRate = 0.105f;        // (radians a frame: its mover's +0x1
 constexpr float kStop = 0.5f;              // (its mover stops this short)
 constexpr float kGravity = 0.012f;         // (a frame, falling)
 constexpr uint32_t kIdleFirst = 300, kIdleNext = 100, kArriveFrames = 40;
+constexpr int32_t kSmallClass = 2037;      // (RAC2's 3134 converted: its death sound is 3131's too)
+constexpr uint32_t kFlinchFrames = 16;     // (its flinch: held while the hit's push carries it, 12 frames, and a little)
 constexpr float kKeepApart = 1.4f;         // (it steers round the other enemies nearer than this: rac2::steer_round)
 constexpr int32_t kBolts = 8;              // (our share of bolts for one)
 constexpr uint32_t kNozzle = 4;            // (its flamethrower's attachment point)
 
 // RAC2's sequences
-enum Seq : uint32_t { Roar1 = 1, Stand = 2, Idle3 = 3, Roar4 = 4, Idle5 = 5, Idle6 = 6, TurnRound = 9, Walk = 10, Fire = 13 };
+enum Seq : uint32_t { Flinch = 0, Roar1 = 1, Stand = 2, Idle3 = 3, Roar4 = 4, Idle5 = 5, Idle6 = 6, TurnRound = 9, Walk = 10, Fire = 13 };
 // RAC2's states (its numbers; 4 is its wandering, its substate 2)
-enum State : int32_t { SetUp = 0, Arriving = 3, Wandering = 4, Roaring = 5, Turning = 6, Chasing = 7 };
+enum State : int32_t { SetUp = 0, Arriving = 3, Wandering = 4, Roaring = 5, Turning = 6, Chasing = 7, Flinching = 8 };
 
 // Our pvars (a block of the stand-ins' pool), our own layout
 namespace pv {
@@ -199,6 +202,7 @@ void die(uint32_t m) {
     const uint32_t near = dist2d(rac2::moby_pos(m), rac2::hero_pos()) < 7.0f ? 2u : 0u;
     bolts_drop(m, kBolts, kBolts, near, -1);
     rac2::attack_turn_give(m);
+    rac2::sound_of_class(m, kSmallClass, 0);  // (RAC2's 0x40d254: the small 3134's sound 0, as for its own)
     if (trace()) std::printf("[3131] frame %u: %#x blows up\n", rac2::level_frame(), m);
     rac2::moby_kill(m);
 }
@@ -217,7 +221,13 @@ bool hit_taken(uint32_t m, const Pv& p) {
         p.i(pv::kPush + 8, 12);
     }
     if (trace()) std::printf("[3131] frame %u: %#x hit (damage %.2f, health %.2f)\n", rac2::level_frame(), m, static_cast<double>(dmg), static_cast<double>(p.f(pv::kHit)));
-    return p.f(pv::kHit) <= 0.0f;
+    if (p.f(pv::kHit) <= 0.0f) return true;
+    // its flinch (RAC2's mover's hit reaction 0x32bbf0 / 0x32c068 with its hit block, pvars +0x50: the hit state +0x60 = 8
+    // from its set-up 0x40b224, the reaction's sequence +0x66 = 0: a one-key pose, blended in while the push carries it)
+    rac2::seq_play(m, Flinch, 4);
+    set_state(m, p, Flinching);
+    if (trace()) std::printf("[3131] frame %u: %#x flinches\n", rac2::level_frame(), m);
+    return false;
 }
 
 // orig: (none)
@@ -321,6 +331,13 @@ void update(uint32_t m) {
         if (std::fabs(angle_to(bearing, p.f(pv::kHeading))) > kTurnRound) set_state(m, p, Turning);
         break;
     }
+    case Flinching:
+        walk_to(m, p, at, false);
+        if (frames(p) >= kFlinchFrames) {
+            rac2::seq_play(m, Walk, 10);
+            set_state(m, p, Chasing);
+        }
+        break;
     default: set_state(m, p, Wandering);
     }
     if (trace() && (rac2::level_frame() % 60) == 0)

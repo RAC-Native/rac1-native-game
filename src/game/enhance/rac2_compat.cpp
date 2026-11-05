@@ -55,6 +55,13 @@ struct Seen {  // (where an enemy was in a frame: steer_round)
 };
 std::vector<Seen> g_seen;
 
+struct Loop {  // (a looping class sound of ours: sound_loop)
+    uint32_t m;
+    int32_t idx, slot;
+    uint32_t retry;  // (the level frame it may be started again from)
+};
+std::vector<Loop> g_loops;
+
 // orig: (none) — the turns of the dead (or of slots gone to another moby) taken back
 void turns_prune() {
     g_turns.erase(std::remove_if(g_turns.begin(), g_turns.end(), [](const Turn& t) { return moby_gone(t.m, t.cls, t.pvars); }), g_turns.end());
@@ -136,6 +143,7 @@ void standin_reset() {
     g_spar_asks.clear();
     g_pairs.clear();
     g_seen.clear();
+    g_loops.clear();
     g_picked = ~0u;
 }
 
@@ -230,6 +238,59 @@ float hit_receive(uint32_t m, uint32_t hs, Vec3* push) {
     if (hit == 0 || state == 1 || !(dmg > 0.0f)) return 0.0f;
     if (push != nullptr) *push = Vec3{lwc1(hit + 0x10), lwc1(hit + 0x14), lwc1(hit + 0x18)};
     return dmg;
+}
+
+// orig: (none) — the slot `s` still playing for `m` (RAC1's 0x13e550 slots: +0x74 its state, 0 free; +0x88 its moby)
+bool slot_playing(int32_t s, uint32_t m) {
+    if (s < 0) return false;
+    const uint32_t e = 0x0013e550 + static_cast<uint32_t>(s) * 0x70u;
+    return lbu(e + 0x74) != 0 && lwu(e + 0x88) == m;
+}
+
+// orig: (none) — the converted classes' sound definitions are one-shot ones (+0x18 0: RAC1's looping start, flags 4 through
+// the moby's sound word, refuses them), so ours: started as a one-shot, started again whenever it is not playing (RAC2's
+// own loop runs in its bank's sound), stopped with RAC1's slot stop (0x28d918); the loops of mobys gone stopped too
+void sound_loop(uint32_t m, int32_t idx) {
+    for (auto it = g_loops.begin(); it != g_loops.end();) {
+        const bool gone = it->m != m && static_cast<int8_t>(lbu(it->m + moby::kState)) < 0;
+        if ((it->m == m && (idx < 0 || it->idx != idx)) || gone) {
+            if (slot_playing(it->slot, it->m)) sub_0028d918(it->slot);
+            it = g_loops.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    if (idx < 0) return;
+    for (Loop& l : g_loops) {
+        if (l.m != m) continue;
+        if (!slot_playing(l.slot, m) && level_frame() >= l.retry) {
+            // (-1: too far to hear, or no slot; or dropped by the sound system at once: again a little later)
+            l.slot = moby_sound_start(idx, 0, m);
+            l.retry = level_frame() + 30;
+            if (std::getenv("RAC1_CUSTOM_TRACE") != nullptr && l.slot >= 0)
+                std::printf("[rac2] frame %u: %#x loop sound %d again: slot %d\n", level_frame(), m, idx, l.slot);
+        }
+        return;
+    }
+    g_loops.push_back(Loop{m, idx, moby_sound_start(idx, 0, m), level_frame() + 30});
+    if (std::getenv("RAC1_CUSTOM_TRACE") != nullptr)
+        std::printf("[rac2] frame %u: %#x loop sound %d: slot %d\n", level_frame(), m, idx, g_loops.back().slot);
+}
+
+// orig: (none) — the class's header from a moby of it in the level's list (the arena's hidden templates are there)
+void sound_of_class(uint32_t m, int32_t cls, int32_t idx) {
+    const uint32_t first = lwu(OV(0x0015ffd8));
+    if (first == 0) return;
+    uint32_t c = 0;
+    for (uint32_t o = first; c == 0 && lbu(o + moby::kState) != 0xff; o += 0x100)
+        if (lh(o + moby::kClassId) == cls) c = lwu(o + moby::kClass);
+    if (c == 0 || lwu(c + 0x28) == 0 || idx >= static_cast<int32_t>(lbu(c + 0xd))) return;
+    const int32_t s = sound_start(lwu(c + 0x28) + static_cast<uint32_t>(idx) * 0x20u, 0, m, 0, 0x400);
+    if (s >= 0) {
+        const uint32_t e = 0x0013e550 + static_cast<uint32_t>(s) * 0x70u;
+        sh(e + 0x7e, static_cast<uint32_t>(idx));
+        sw(e + 0x88, m);
+    }
 }
 
 namespace part {
