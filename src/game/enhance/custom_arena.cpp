@@ -501,6 +501,7 @@ void enemies_step() {
         }
         standin_release(e.pvars);
         ++g_a.kills;
+        if (trace()) std::printf("[arena] frame %u: kill %d (class %d), nanotech %d\n", level_frame(), g_a.kills, e.cls, hero_health());
         remark("kill");
         g_a.alive.erase(g_a.alive.begin() + static_cast<std::ptrdiff_t>(i));
     }
