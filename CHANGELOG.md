@@ -14,6 +14,8 @@ What changed in each release. Releases are source only: you build the game with 
   nothing and logs a line. See docs/movie-subtitles.md.
 - Launcher, Settings: Movie subtitles (the languages, for every setup), Make movie subtitles, Install subtitle pack (the
   .srt files of a .zip into `assets/movie-subtitles/`), and Enable debug tools (the game started with `--debug-tools`).
+- Clank (Movement Strafing or RAC 3, any Aiming) plays as the original: L2 crouches him again, and the strafe / modern
+  aim no longer turns on in his jump only (#129).
 - Linux launcher: a dark theme (#99): it follows the desktop's light or dark setting (it was always light), or
   Settings > Theme chooses Light or Dark.
 
