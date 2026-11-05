@@ -680,6 +680,22 @@ namespace Rac1Launcher
             return v == "off" ? "--no-movie-subtitles" : "--movie-subtitles " + v;
         }
 
+        /// <summary>The game's "[renderer]" line in build/game.log, as a sentence for the window: it ran with OpenGL instead of
+        /// the Vulkan chosen, and why (no driver, a feature missing, the last Vulkan start crashed or lost the GPU:
+        /// docs/vulkan.md#when-vulkan-cannot-start). Null when the game ran the renderer chosen.</summary>
+        public string RendererFallback()
+        {
+            try
+            {
+                const string tag = "[renderer] ";
+                string line = File.ReadLines(GameLog).LastOrDefault(l => l.StartsWith(tag, StringComparison.Ordinal));
+                if (line == null) return null;
+                string why = line.Substring(tag.Length).Trim().TrimEnd('.');
+                return "The game ran with " + why + ".";
+            }
+            catch (Exception) { return null; }
+        }
+
         /// <summary>What to tell the player when the game closed with an error right after starting.</summary>
         public string GameClosedMessage(int code)
         {

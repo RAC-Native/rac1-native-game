@@ -23,6 +23,12 @@ What changed in each release. Releases are source only: you build the game with 
 - Setup: glslc is required on Linux and Windows (the private MSYS2 installs shaderc), the build configured with
   RAC1_VULKAN=REQUIRED; a build made without glslc is configured again once glslc is installed (it kept a renderer
   without shaders before); a warning when no Vulkan driver is installed.
+- Vulkan's safety net: every Vulkan 1.3 device is tried, best first, before OpenGL (a laptop's integrated GPU when the
+  discrete one lacks something); a Vulkan start that crashed (in its first 600 frames) or a lost GPU (#113's case) sends
+  the next starts to OpenGL until the Renderer row is chosen again; Options > Display > Renderer shows the renderer
+  running ("Vulkan (OpenGL)") and its help why, in the four languages; the launcher shows the game's reason after it closes. Fake failures
+  for testing: RAC1_VK_FAIL, RAC1_VK_MARKERS. See docs/vulkan.md#when-vulkan-cannot-start.
+- Options > Display > Renderer's help no longer calls Vulkan experimental (the four languages).
 
 ## 0.7.0
 

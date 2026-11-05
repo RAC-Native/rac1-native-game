@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <string>
 #include <vector>
 
 struct GLFWwindow;
@@ -91,6 +92,14 @@ struct GraphicsPipelineDesc {
 
 // Lifecycle
 bool init(GLFWwindow* window, bool vsync, bool headless = false);
+// Why init returned false: the kind (the Renderer row's words) and the English text (the log's [renderer] line). Init checks every
+// Vulkan 1.3 device that can show the window, best first (discrete, integrated, others), and takes the first that passes.
+// Testing: RAC1_VK_FAIL=loader|check|first|lost (docs/vulkan.md#when-vulkan-cannot-start)
+enum class InitFailure { kNone, kNoShaders, kNoDriver, kNoVulkan13, kNoDevice, kMissing, kOther };
+InitFailure init_failure();
+const std::string& init_failure_text();
+// The host's hook called once when the device is lost (VK_ERROR_DEVICE_LOST), with where it was seen
+void set_device_lost_hook(void (*fn)(const char* where));
 void shutdown();
 bool is_active();
 void wait_idle();

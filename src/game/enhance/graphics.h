@@ -30,8 +30,15 @@ struct GraphicsDisplay {
 // orig: (none) — enhancement: the host's monitors as GLFW names them, in its order, given once after GLFW is up
 // (the Monitor row's values; the list is not fixed, and its order is not stable between sessions)
 void graphics_set_monitors(std::vector<std::string> names);
-// orig: (none) — enhancement: the host's renderer when it falls back to OpenGL (no Vulkan driver)
-void graphics_set_vulkan(bool vulkan);
+// Why the renderer running is not the Renderer row's choice (the row's value says "Vulkan (OpenGL)", its help why):
+// vk::init's failures (vk_context.h InitFailure, in its order), the safety net's markers (host/vk_safety.h), RAC1_RENDERER
+enum class RendererWhy { kNone, kNoShaders, kNoDriver, kNoVulkan13, kNoDevice, kMissing, kOther, kStartFailed, kDeviceLost, kEnv };
+// orig: (none) — enhancement: the renderer the host runs, once, after making its window (OpenGL when Vulkan could not
+// start or a marker of the last run said not to try, with why)
+void graphics_set_renderer_running(bool vulkan, RendererWhy why);
+// orig: (none) — enhancement: the host's function called when the player chooses the Renderer row again (the safety net's
+// markers removed)
+void graphics_set_renderer_chosen_hook(void (*fn)());
 // orig: (none) — enhancement: the preferences read and applied to the renderer (view mode, aspect,
 // field of view, level of detail), once; nothing read while every enhancement is off (headless
 // runs, the oracle): the defaults

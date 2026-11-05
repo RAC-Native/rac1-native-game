@@ -160,6 +160,7 @@
 #include "sim_script.h"
 #include "update_check.h"
 #include "progress.h"
+#include "vk_safety.h"
 #include <_devtools/item_give_quiet.h>  // (header only: also without the dev tools)
 #ifdef RAC1_DEVTOOLS
 #include <_devtools/dev_menu.h>
@@ -2379,25 +2380,51 @@ int main(int argc, char** argv) {
     const int env_fps_cap = std::getenv("RAC1_FPS_CAP") != nullptr ? std::atoi(std::getenv("RAC1_FPS_CAP")) : -1;
     GLFWwindow* window = nullptr;
     // Options > Graphics > Renderer (RAC1_RENDERER=vulkan): the Vulkan renderer (docs/vulkan.md), read once, here; OpenGL when
-    // Vulkan cannot start (no driver, no Vulkan 1.3, the build without its shaders)
-    if (rac1::graphics_display().vulkan) {
+    // Vulkan cannot start (no driver, no Vulkan 1.3, no device with what it needs, the build without its shaders) or when the
+    // last Vulkan run crashed in its start or lost its GPU (vk_safety.h: chosen by the row only). The reason in the log's
+    // "[renderer]" line (the launcher shows it) and in the Renderer row
+    bool want_vk = rac1::graphics_display().vulkan;
+    const bool vk_by_row = want_vk && std::getenv("RAC1_RENDERER") == nullptr;
+    rac1::RendererWhy renderer_why = rac1::RendererWhy::kNone;
+    std::string renderer_text;
+    rac1::vk_safety::start(headless);
+    rac1::graphics_set_renderer_chosen_hook(rac1::vk_safety::cleared);
+    if (vk_by_row) {
+        const rac1::vk_safety::Marker m = rac1::vk_safety::found(&renderer_text);
+        if (m != rac1::vk_safety::Marker::kNone) {
+            want_vk = false;
+            renderer_why = m == rac1::vk_safety::Marker::kDeviceLost ? rac1::RendererWhy::kDeviceLost : rac1::RendererWhy::kStartFailed;
+            renderer_text += ". Options > Display > Renderer: choose Vulkan again to try it";
+        }
+    }
+    if (want_vk) {
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         window = glfwCreateWindow(win_w0, win_h0, "Ratchet & Clank - original runtime", fs_monitor, nullptr);
         const bool vsync0 = !headless && (env_vsync >= 0 ? env_vsync != 0 : rac1::graphics_display().vsync);
+        if (vk_by_row) rac1::vk_safety::starting();
         if (window != nullptr && rac1::vk::init(window, vsync0, headless)) {
             if (!headless && fs_monitor == nullptr) host_window_on_monitor(window, rac1::graphics_display().monitor);
+            if (vk_by_row) rac1::vk::set_device_lost_hook(rac1::vk_safety::device_lost);
         } else {
 #if defined(__APPLE__)
             std::fprintf(stderr, "rac1-native: Metal could not start\n");  // (no OpenGL 4.6 on macOS)
             return 1;
 #endif
-            std::fprintf(stderr, "rac1-native: Vulkan could not start, OpenGL instead\n");
+            rac1::vk_safety::start_over();  // (vk::init's own checks: they fall back at every start)
+            // (vk::InitFailure's kinds are RendererWhy's 1..6, in its order)
+            static_assert(static_cast<int>(rac1::vk::InitFailure::kNoShaders) == static_cast<int>(rac1::RendererWhy::kNoShaders) &&
+                          static_cast<int>(rac1::vk::InitFailure::kOther) == static_cast<int>(rac1::RendererWhy::kOther), "RendererWhy follows vk::InitFailure");
+            renderer_why = window == nullptr ? rac1::RendererWhy::kOther : static_cast<rac1::RendererWhy>(static_cast<int>(rac1::vk::init_failure()));
+            renderer_text = window == nullptr ? std::string("no window for Vulkan") : rac1::vk::init_failure_text();
+            if (renderer_why == rac1::RendererWhy::kNone) renderer_why = rac1::RendererWhy::kOther;
             if (window != nullptr) glfwDestroyWindow(window);
             window = nullptr;
-            rac1::graphics_set_vulkan(false);
             glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
         }
     }
+    if (renderer_why != rac1::RendererWhy::kNone)
+        std::fprintf(stderr, "[renderer] OpenGL instead of Vulkan: %s\n", renderer_text.empty() ? "Vulkan could not start" : renderer_text.c_str());
+    rac1::graphics_set_renderer_running(window != nullptr, renderer_why);
     const bool gl_host = window == nullptr;  // (the OpenGL renderer: the default)
     if (gl_host) {
         window = glfwCreateWindow(win_w0, win_h0, "Ratchet & Clank - original runtime", fs_monitor, nullptr);
@@ -4192,6 +4219,7 @@ int main(int argc, char** argv) {
             RAC1_PROF_ZONE(kPresent);
             presents.swap(window);
         }
+        if (rac1::vk::is_active()) rac1::vk_safety::frame_shown();  // (the start marker gone after 600: vk_safety.h)
         fprof.mark(8);
         fprof.end_frame();
         if (!headless && pacer.legacy) {
@@ -4209,6 +4237,7 @@ int main(int argc, char** argv) {
     }
     pace_report();
     sample_prof_stop();
+    rac1::vk_safety::start_over();  // (closed normally: not a crash of the start)
     rac1::prof::shutdown();
     fprof.report();
     if (fprof.on && !pacer.legacy)

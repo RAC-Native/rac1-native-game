@@ -416,6 +416,13 @@ VkFormat swapchain_format() { return VK_FORMAT_B8G8R8A8_UNORM; }
 VkFormat depth_stencil_format() { return mtl::depth_stencil_format(); }
 uint32_t frame_index() { return mtl::frame_index(); }
 uint64_t frame_number() { return mtl::frame_number(); }
+// (Metal: no other device to try nor OpenGL to fall back to; the host's Vulkan markers are off on macOS)
+InitFailure init_failure() { return InitFailure::kNone; }
+const std::string& init_failure_text() {
+    static const std::string none;
+    return none;
+}
+void set_device_lost_hook(void (*)(const char*)) {}
 int main_width() { return mtl::main_width(); }
 int main_height() { return mtl::main_height(); }
 int current_target_width() { return mtl::current_target_width(); }

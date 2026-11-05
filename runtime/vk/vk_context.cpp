@@ -150,6 +150,36 @@ struct Context {
     VkQueryPool timed_pool = VK_NULL_HANDLE;  // (timed_submit's two timestamps)
 } g_ctx;
 
+// Why init returned false (kept past g_ctx's reset: the host's line and the Renderer row read it after), and the host's hook
+// for a lost device (its marker: the next start on OpenGL)
+InitFailure g_fail = InitFailure::kNone;
+std::string g_fail_text;
+void (*g_lost_hook)(const char* where) = nullptr;
+
+// orig: (host) init's failure noted (the log's own line said where it happened): false, for `return fail(...)`
+bool fail(InitFailure why, std::string text) {
+    g_fail = why;
+    g_fail_text = std::move(text);
+    return false;
+}
+
+// orig: (host) testing: RAC1_VK_FAIL=<word>[,<word>...] holds `word` (fake failures, docs/vulkan.md#when-vulkan-cannot-start):
+// loader (no loader), check (every device fails the check), first (the best-scored device fails it), lost (a lost device at
+// the 120th frame); crash is the host's (vk_safety.cpp)
+bool fake_failure(const char* word) {
+    const char* e = std::getenv("RAC1_VK_FAIL");
+    if (e == nullptr) return false;
+    const size_t n = std::strlen(word);
+    for (const char* p = e; *p != 0;) {
+        const char* c = std::strchr(p, ',');
+        const size_t len = c != nullptr ? static_cast<size_t>(c - p) : std::strlen(p);
+        if (len == n && std::strncmp(p, word, n) == 0) return true;
+        if (c == nullptr) break;
+        p = c + 1;
+    }
+    return false;
+}
+
 // The renderer's allocations, by use (the profiler's memory view)
 struct AllocInfo {
     const char* use;
@@ -590,7 +620,7 @@ const prof::GpuApi kProfApi = {"Vulkan", prof_alloc, prof_slot_reset, prof_write
 // when Vulkan is not there), and the optional ones turned off (g_ctx.has_*). GitHub issue #113: a level's first frame
 // black on an Intel UHD 620, with nothing in the log to say why.
 template <typename HasExt>
-bool check_device(VkPhysicalDevice pd, const HasExt& has_ext) {
+bool check_device(VkPhysicalDevice pd, const HasExt& has_ext, bool fake_missing) {
     VkPhysicalDeviceVulkan13Features f13{};
     f13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
     VkPhysicalDeviceVulkan12Features f12{};
@@ -639,6 +669,7 @@ bool check_device(VkPhysicalDevice pd, const HasExt& has_ext) {
     std::snprintf(buf, sizeof buf, "maxComputeWorkGroupInvocations %u (64 needed)", L.maxComputeWorkGroupInvocations);
     need(L.maxComputeWorkGroupInvocations >= 64 && L.maxComputeWorkGroupSize[0] >= 64, buf);
     need(L.maxDrawIndirectCount > 1, "maxDrawIndirectCount > 1");
+    need(!fake_missing, "(RAC1_VK_FAIL: a test)");
 
     // the formats the targets are made in: colour (drawn into, blended, sampled) and depth (drawn into, sampled)
     auto fmt_ok = [&](VkFormat fmt, VkFormatFeatureFlags want) {
@@ -701,7 +732,8 @@ bool check_device(VkPhysicalDevice pd, const HasExt& has_ext) {
         std::fprintf(stderr, "[vk] not there, turned off: %s\n", off.c_str());
     }
     if (!missing.empty()) {
-        std::fprintf(stderr, "[vk] missing: %s. The Vulkan renderer needs them: OpenGL instead\n", missing.c_str());
+        std::fprintf(stderr, "[vk] %s: missing %s. The Vulkan renderer needs them\n", p2.properties.deviceName, missing.c_str());
+        g_fail_text = "the graphics device lacks " + missing;
         return false;
     }
     return true;
@@ -713,7 +745,8 @@ void check_lost(VkResult r, const char* where) {
     if (r != VK_ERROR_DEVICE_LOST || g_ctx.device_lost) return;
     g_ctx.device_lost = true;
     std::fprintf(stderr, "[vk] the graphics driver stopped the GPU's work (VK_ERROR_DEVICE_LOST, at %s): nothing more can be drawn. "
-                         "Restart the game; if it happens again, set Renderer to OpenGL\n", where);
+                         "Restart the game: the next start is on OpenGL (Options > Display > Renderer: Vulkan to try it again)\n", where);
+    if (g_lost_hook != nullptr) g_lost_hook(where);
 }
 
 }  // namespace
@@ -817,18 +850,20 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     g_ctx.window = window;
     g_ctx.vsync = vsync;
     g_ctx.headless = headless;
+    g_fail = InitFailure::kNone;
+    g_fail_text.clear();
     if (!shaders::kAvailable) {
         std::fprintf(stderr, "[vk] this build has no Vulkan shaders (no glslc / glslangValidator when it was built)\n");
-        return false;
+        return fail(InitFailure::kNoShaders, "this build has no Vulkan shaders (glslc was missing when it was built: run the setup again)");
     }
 
-    if (volkInitialize() != VK_SUCCESS) {
-        std::fprintf(stderr, "[vk] volkInitialize failed (no Vulkan loader found)\n");
-        return false;
+    if (fake_failure("loader") || volkInitialize() != VK_SUCCESS) {
+        std::fprintf(stderr, "[vk] volkInitialize failed (no Vulkan loader found)%s\n", fake_failure("loader") ? " (RAC1_VK_FAIL: a test)" : "");
+        return fail(InitFailure::kNoDriver, "no Vulkan driver (no Vulkan loader)");
     }
     if (volkGetInstanceVersion() < VK_API_VERSION_1_3) {
         std::fprintf(stderr, "[vk] Vulkan 1.3 not supported by loader\n");
-        return false;
+        return fail(InitFailure::kNoVulkan13, "the Vulkan loader is older than 1.3");
     }
 
     VkApplicationInfo app{};
@@ -845,7 +880,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
         const char** glfw_exts = glfwGetRequiredInstanceExtensions(&glfw_ext_count);
         if (glfw_exts == nullptr || glfw_ext_count == 0) {
             std::fprintf(stderr, "[vk] glfwGetRequiredInstanceExtensions failed\n");
-            return false;
+            return fail(InitFailure::kNoDriver, "no Vulkan driver for the window (glfwGetRequiredInstanceExtensions)");
         }
         for (uint32_t i = 0; i < glfw_ext_count; ++i) inst_exts.push_back(glfw_exts[i]);
     }
@@ -874,7 +909,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
 
     if (vkCreateInstance(&ici, nullptr, &g_ctx.instance) != VK_SUCCESS) {
         std::fprintf(stderr, "[vk] vkCreateInstance failed\n");
-        return false;
+        return fail(InitFailure::kNoDriver, "no Vulkan driver (vkCreateInstance failed)");
     }
     volkLoadInstance(g_ctx.instance);
 
@@ -882,7 +917,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
         if (glfwCreateWindowSurface(g_ctx.instance, window, nullptr, &g_ctx.surface) != VK_SUCCESS) {
             std::fprintf(stderr, "[vk] glfwCreateWindowSurface failed\n");
             shutdown();
-            return false;
+            return fail(InitFailure::kOther, "no Vulkan surface for the window (glfwCreateWindowSurface failed)");
         }
     }
 
@@ -891,12 +926,21 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     if (dev_count == 0) {
         std::fprintf(stderr, "[vk] no Vulkan physical devices found\n");
         shutdown();
-        return false;
+        return fail(InitFailure::kNoDriver, "no Vulkan driver (no Vulkan device)");
     }
     std::vector<VkPhysicalDevice> devs(dev_count);
     vkEnumeratePhysicalDevices(g_ctx.instance, &dev_count, devs.data());
 
-    int best_score = -1;
+    // the devices that can show the picture, best first (discrete 100, integrated 50, others 1; the driver's order between equals),
+    // each checked in turn and the first that passes taken: a hybrid laptop's discrete GPU missing something leaves the integrated one
+    struct Candidate {
+        VkPhysicalDevice pd;
+        uint32_t qf;
+        VkPhysicalDeviceProperties props;
+        int score;
+    };
+    std::vector<Candidate> cands;
+    bool old_only = true;  // (every device below 1.3)
     for (VkPhysicalDevice pd : devs) {
         VkPhysicalDeviceProperties props{};
         vkGetPhysicalDeviceProperties(pd, &props);
@@ -905,6 +949,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
                          VK_API_VERSION_MINOR(props.apiVersion));
             continue;
         }
+        old_only = false;
 
         uint32_t qf_count = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(pd, &qf_count, nullptr);
@@ -929,41 +974,57 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
         int score = 1;
         if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) score = 100;
         else if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) score = 50;
-        if (score > best_score) {
-            best_score = score;
-            g_ctx.phys_dev = pd;
-            g_ctx.queue_family = found_qf;
-            g_ctx.dev_props = props;
-        }
+        cands.push_back({pd, found_qf, props, score});
     }
+    std::stable_sort(cands.begin(), cands.end(), [](const Candidate& a, const Candidate& b) { return a.score > b.score; });
 
-    if (g_ctx.phys_dev == VK_NULL_HANDLE) {
+    if (cands.empty()) {
         std::fprintf(stderr, "[vk] no suitable Vulkan 1.3 physical device found\n");
         shutdown();
-        return false;
+        return old_only ? fail(InitFailure::kNoVulkan13, "the graphics driver has no Vulkan 1.3")
+                        : fail(InitFailure::kNoDevice, "no Vulkan 1.3 device can show the game's window");
     }
-    vkGetPhysicalDeviceMemoryProperties(g_ctx.phys_dev, &g_ctx.mem_props);
 
-    uint32_t dext_count = 0;
-    vkEnumerateDeviceExtensionProperties(g_ctx.phys_dev, nullptr, &dext_count, nullptr);
-    std::vector<VkExtensionProperties> dexts(dext_count);
-    vkEnumerateDeviceExtensionProperties(g_ctx.phys_dev, nullptr, &dext_count, dexts.data());
+    std::vector<VkExtensionProperties> dexts;
     auto has_ext = [&](const char* name) {
         for (const auto& e : dexts) {
             if (std::strcmp(e.extensionName, name) == 0) return true;
         }
         return false;
     };
+    {  // (ray-traced water reflections, Water Reflections' RT values: check_device says whether the device can; RAC1_RT=0, testing: never)
+        const char* e = std::getenv("RAC1_RT");
+        g_ctx.rt_asked = e == nullptr || *e == '\0' || std::atoi(e) != 0;
+    }
+    bool chosen = false;
+    for (size_t c = 0; c < cands.size() && !chosen; ++c) {
+        g_ctx.phys_dev = cands[c].pd;
+        g_ctx.queue_family = cands[c].qf;
+        g_ctx.dev_props = cands[c].props;
+        uint32_t dext_count = 0;
+        vkEnumerateDeviceExtensionProperties(g_ctx.phys_dev, nullptr, &dext_count, nullptr);
+        dexts.assign(dext_count, VkExtensionProperties{});
+        vkEnumerateDeviceExtensionProperties(g_ctx.phys_dev, nullptr, &dext_count, dexts.data());
+        g_ctx.rt_on = g_ctx.has_shading_rate = false;
+        if (!headless && !has_ext(VK_KHR_SWAPCHAIN_EXTENSION_NAME)) {
+            std::fprintf(stderr, "[vk] %s lacks VK_KHR_swapchain\n", cands[c].props.deviceName);
+            g_fail_text = "the graphics device lacks VK_KHR_swapchain";
+        } else {
+            chosen = check_device(g_ctx.phys_dev, has_ext, fake_failure("check") || (c == 0 && fake_failure("first")));
+        }
+        if (!chosen && c + 1 < cands.size())
+            std::fprintf(stderr, "[vk] %s cannot run the Vulkan renderer: trying %s\n", cands[c].props.deviceName, cands[c + 1].props.deviceName);
+    }
+    if (!chosen) {
+        g_ctx.phys_dev = VK_NULL_HANDLE;
+        shutdown();
+        return fail(InitFailure::kMissing, cands.size() > 1 ? g_fail_text + " (and so does every other one)" : g_fail_text);
+    }
+    if (cands.size() > 1) std::fprintf(stderr, "[vk] the device: %s (of %zu)\n", g_ctx.dev_props.deviceName, cands.size());
+    vkGetPhysicalDeviceMemoryProperties(g_ctx.phys_dev, &g_ctx.mem_props);
 
     std::vector<const char*> enabled_dexts;
-    if (!headless) {
-        if (!has_ext(VK_KHR_SWAPCHAIN_EXTENSION_NAME)) {
-            std::fprintf(stderr, "[vk] device lacks VK_KHR_swapchain\n");
-            shutdown();
-            return false;
-        }
-        enabled_dexts.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-    }
+    if (!headless) enabled_dexts.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     if (has_ext(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)) {
         enabled_dexts.push_back(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
     }
@@ -987,15 +1048,6 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
         f2.pNext = &f12;
         vkGetPhysicalDeviceFeatures2(g_ctx.phys_dev, &f2);
         g_ctx.has_host_query_reset = f12.hostQueryReset == VK_TRUE;
-    }
-
-    {  // (ray-traced water reflections, Water Reflections' RT values: check_device says whether the device can; RAC1_RT=0, testing: never)
-        const char* e = std::getenv("RAC1_RT");
-        g_ctx.rt_asked = e == nullptr || *e == '\0' || std::atoi(e) != 0;
-    }
-    if (!check_device(g_ctx.phys_dev, has_ext)) {
-        shutdown();
-        return false;
     }
     VkPhysicalDeviceRayQueryFeaturesKHR rq_feat{};
     rq_feat.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
@@ -1086,7 +1138,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     if (const VkResult r = vkCreateDevice(g_ctx.phys_dev, &dci, nullptr, &g_ctx.device); r != VK_SUCCESS) {
         std::fprintf(stderr, "[vk] vkCreateDevice failed (VkResult %d)\n", static_cast<int>(r));
         shutdown();
-        return false;
+        return fail(InitFailure::kOther, "vkCreateDevice failed (VkResult " + std::to_string(static_cast<int>(r)) + ")");
     }
     volkLoadDevice(g_ctx.device);
     vkGetDeviceQueue(g_ctx.device, g_ctx.queue_family, 0, &g_ctx.queue);
@@ -1484,6 +1536,7 @@ void end_frame() {
         si.pSignalSemaphores = &finished;
     }
     check_lost(vkQueueSubmit(g_ctx.queue, 1, &si, f.in_flight), "the frame's vkQueueSubmit");
+    if (g_ctx.frame_num == 120 && fake_failure("lost")) check_lost(VK_ERROR_DEVICE_LOST, "RAC1_VK_FAIL=lost, a test");
 
     if (g_ctx.swap_image_acquired) {
         VkPresentInfoKHR pi{};
@@ -1595,6 +1648,12 @@ VkFormat swapchain_format() { return g_ctx.swap_format; }
 VkFormat depth_stencil_format() { return g_ctx.depth_format; }
 uint32_t frame_index() { return g_ctx.frame_idx; }
 uint64_t frame_number() { return g_ctx.frame_num; }
+// orig: (host)
+InitFailure init_failure() { return g_fail; }
+// orig: (host)
+const std::string& init_failure_text() { return g_fail_text; }
+// orig: (host)
+void set_device_lost_hook(void (*fn)(const char* where)) { g_lost_hook = fn; }
 int main_width() { return static_cast<int>(g_ctx.main_color.width); }
 int main_height() { return static_cast<int>(g_ctx.main_color.height); }
 int current_target_width() {

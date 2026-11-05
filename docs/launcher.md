@@ -49,6 +49,11 @@ When the game closes with an error right after starting, the launcher shows the 
 messages (they are also in the game folder's `build/game.log`). The most common cause is a graphics
 driver without OpenGL 4.6.
 
+When the Vulkan renderer was chosen but the game ran with OpenGL (no Vulkan driver, a GPU missing a
+feature, the last Vulkan start crashed or lost the GPU), the launcher shows the game's reason under
+its status once the game has closed (the `[renderer]` line of `build/game.log`; see
+[Vulkan](vulkan.md#when-vulkan-cannot-start)).
+
 ## The pages
 
 **Play**: Install, Set up (when the setup needs to run again, for example after a setup that did not

@@ -9,21 +9,22 @@ their shadow cubes, ambient occlusion, sun rays, emissive surfaces, [materials](
 decides; only the API calls differ. Nothing of the game's state depends on it.
 
 The renderer is read once, when the window is made: a change on the Graphics page takes effect at
-the next start. When Vulkan cannot start (no Vulkan 1.3 driver, a device without the features
-below, a build without the shaders), the game says so in its log and opens with OpenGL; the saved
-choice is kept.
+the next start. When Vulkan cannot start, or the last Vulkan run went wrong, the game opens with
+OpenGL and says why (see [When Vulkan cannot start](#when-vulkan-cannot-start)); the saved choice is
+kept.
 
 At the start the log names the device (`[vk] <name>, Vulkan x.y.z, driver ...: push constants N
 bytes, subgroup S`) and checks what the renderer relies on: the features (dynamic rendering,
 synchronization2, scalar block layout, cube arrays, multi-draw indirect, depth clamp, clip
 distances, dual-source blending, subgroup ballot in fragment shaders), the limits (128 bytes of push
 constants, 24 samplers a stage) and the target formats. A missing one is listed (`[vk] missing:
-...`) and the game opens with OpenGL. A few are optional and only turned off (`[vk] not there,
+...`) and the next device is checked, then OpenGL. A few are optional and only turned off (`[vk] not there,
 turned off: ...`): without `shaderFloat64` the tfrags are made on the CPU instead of by the compute
 shader (the same picture), and without `samplerAnisotropy` there is no anisotropic filtering. Every
 pass keeps to 128 bytes of push constants, the least a device may have (the ambient occlusion's
 parameters are in a uniform buffer). When the driver stops the GPU
-(`VK_ERROR_DEVICE_LOST`), the log says so once: the picture stays black while the game runs on.
+(`VK_ERROR_DEVICE_LOST`), the log says so once: the picture stays black while the game runs on, and
+the next start is on OpenGL (below).
 
 The tfrags are also made on the CPU on an Intel GPU of generation 9 or older (Skylake to Comet
 Lake, the UHD 620 among them; by the PCI device ID), whose doubles are slow: on a UHD 620 under
@@ -39,6 +40,53 @@ at most) or 30 frames, and the frames after it go as one dispatch.
 The world's fragment shader picks its texture unit in a loop over the units its subgroup holds;
 the loop stops after 16 rounds (there are 16 units), so a driver that runs it wrong cannot hang
 the GPU.
+
+## When Vulkan cannot start
+
+Every start that asks for Vulkan passes these, each with its line in the log; when one fails the
+game opens with OpenGL:
+
+1. The build has the shaders (`glslc` was there when it was built: the setup requires it).
+2. A Vulkan loader and driver of version 1.3.
+3. A device: every Vulkan 1.3 device that can show the window is checked against the list above,
+   the best first (a discrete GPU, then an integrated one, then the others: `[vk] <name> cannot run
+   the Vulkan renderer: trying <next>`), and the first that passes is used. A laptop whose discrete
+   GPU misses something plays Vulkan on its integrated one.
+4. The last Vulkan run, by two markers in the settings' folder ($XDG_CONFIG_HOME/rac1-native,
+   %APPDATA%\rac1-native on Windows): `vk_start_pending` is written before Vulkan starts and removed
+   after 600 frames or when the game closes normally, so finding it means the last start crashed
+   (in the driver, the pipelines' making or the first frames); `vk_failed` is written when the GPU
+   is lost (`VK_ERROR_DEVICE_LOST`, as on the UHD 620 of #113). Either one sends every start to
+   OpenGL until the player chooses the Renderer row again, which removes both, so a start that
+   crashes is not tried again at every start. They count only for Vulkan chosen in the options:
+   `RAC1_RENDERER=vulkan` neither reads nor writes them, and a headless run uses them only with
+   `RAC1_VK_MARKERS=1`. Not on macOS (Metal, the one renderer there).
+
+The game then logs one line with the reason, which the [launcher](launcher.md) shows under its
+status when the game has closed:
+
+```
+[renderer] OpenGL instead of Vulkan: the graphics device lacks dynamicRendering ...
+```
+
+and Options > Display > **Renderer** shows the renderer running beside the choice, `Vulkan
+(OpenGL)`, with the reason in the row's help (in the game's language: no shaders, no driver, no
+Vulkan 1.3, no GPU, missing features, could not start, the last start crashed, the GPU stopped;
+"from the next start" after the row was changed during the session, RAC1_RENDERER when that
+variable chose).
+
+Each path can be tried headless with fake failures: `RAC1_VK_FAIL=loader` (no loader), `check`
+(every device fails the check), `first` (the best device fails it: the next one is used), `crash`
+(the game ends at the 120th Vulkan frame, as by a crash), `lost` (a lost device at the 120th
+frame); more than one with commas. The markers need the Renderer row's Vulkan (a preferences file
+with `renderer vulkan`, `RAC1_ADVANCED=1`) and `RAC1_VK_MARKERS=1`:
+
+```sh
+mkdir -p /tmp/vkt/rac1-native && printf 'renderer vulkan\n' > /tmp/vkt/prefs.txt
+export XDG_CONFIG_HOME=/tmp/vkt RAC1_GRAPHICS_FILE=/tmp/vkt/prefs.txt RAC1_ADVANCED=1 RAC1_VK_MARKERS=1 RAC1_HEADLESS=1
+RAC1_VK_FAIL=crash RAC1_FRAMES=300 ./build/rac1-native   # ends at frame 120, vk_start_pending left
+RAC1_FRAMES=300 ./build/rac1-native                      # [renderer] OpenGL instead of Vulkan: the last Vulkan start did not finish ...
+```
 
 ## How it is built
 
