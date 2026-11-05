@@ -235,6 +235,13 @@ What changed in each release. Releases are source only: you build the game with 
   waiting 2506s spar in pairs, 3131 wanders to RAC2's spots, and the four steer round each other.
 - Local experiment, planet: the arena enemies' sounds and reactions: 3134's looping hum while it flies (`rac2::sound_loop`),
   3131's flinch when hit and its death sound (the small 3134's, as RAC2's), 2850's arm trail while it slams.
+- Local experiment, planet: RAC2's boss Chainblade hand-ported (its class 2552 and its chain's five links converted; its
+  update 0x3d2de0 read as the reference): it comes in at the north end, floats down and lands with a slam, runs at Ratchet
+  and swings both blades (the camera shaken at its footfalls), taunts; after a while it roars and rises, keeps its distance
+  and throws a blade at him on its chain (the blade slams into the floor where he stood, then is pulled back), and comes
+  down again; knocked at each third of its health lost (out of the air it falls and lies), down and blown up at none. The
+  arena's boss column brings it in, its health shows in RAC2's boss bar; the Chainblade Challenge, the Mega Challenge and
+  the Timed Avoidance (2 minutes, won when the time is up) are open. `RAC1_ARENA_BOSS_HEALTH` (testing).
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

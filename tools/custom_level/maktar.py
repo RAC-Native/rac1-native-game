@@ -334,10 +334,16 @@ RAC2_CLASSES = {
     2722: ("part", 2041),     # P6: 2850's two spinning wheels (spawned and carried by it: no placements of their own)
     2506: ("enemy_2506", 2040),  # P6: the gladiator with a spiked flail and a round shield (src/game/enhance/rac2_enemy_2506.cpp)
     2520: ("part", 2042),     # P6: 2506's shield (spawned and carried by it, thrown off when it is hurt)
+    2552: ("enemy_2552", 2043),  # P7: the boss Chainblade (src/game/enhance/rac2_boss_2552.cpp)
+    2585: ("part", 2044),     # P7: Chainblade's thrown blade and its chain's links (2586..2588) and grip (2589): it spawns
+    2586: ("part", 2045),     #     the five and shows them while a blade is out (RAC2's 0x3d5570 / 0x3d5748)
+    2587: ("part", 2046),
+    2588: ("part", 2047),
+    2589: ("part", 2048),
 }
-HIT_ROLES = ("monitor", "enemy_3134", "enemy_3131", "enemy_2850", "enemy_2506")  # (the roles whose collision is kept: they take hits, custom_classes.cpp)
+HIT_ROLES = ("monitor", "enemy_3134", "enemy_3131", "enemy_2850", "enemy_2506", "enemy_2552")  # (the roles whose collision is kept: they take hits, custom_classes.cpp)
 CLASS_PVARS = {"crowd": 0x20, "monitor": 0x40, "arm": 0x40, "prop": 0x10, "tile": 0x20, "lift": 0x20, "enemy_3134": 0x100, "enemy_3131": 0x100,
-               "enemy_2850": 0x100, "enemy_2506": 0x100, "part": 0x10}
+               "enemy_2850": 0x100, "enemy_2506": 0x100, "enemy_2552": 0x100, "part": 0x10}
 # P6: the hand-ported enemies. RAC2 keeps 20 of each waiting above the arena (group 20) and recycles them; ours is one hidden
 # template (its first placement) the controller copies (planet.txt "standin" + "port", custom_arena.cpp). Per RAC2 class:
 # the path its pvars name (+0x180: the ring it circles while it waits for its turn to attack), read from RAC2's gameplay
@@ -841,7 +847,7 @@ def rac2_challenges(r2, rac2_tools, say):
 # shape, +0x24 1: compact vertices}; a compact vertex a word: x its bits 0..13 times 4, y its bits 12..27, both signed; a
 # quad four vertex indices, the word 0xffffffXX a texture switch (none here: the panels are flat colours). The game scales
 # the shape's +0xc by 0x3b5279bc at load (0x3878f8). Its texts: the level's, by id.
-HUD_SHAPES = (0x4c, 0x4d, 0x4e, 0x4f, 0x50)
+HUD_SHAPES = (0x4c, 0x4d, 0x4e, 0x4f, 0x50)  # (0x51, the boss bar itself, is textured: drawn as a flat bar, custom_arena_hud.cpp)
 HUD_TEXTS = (
     ("enter", 0x2f3c), ("select_challenge", 0x2f3d), ("victories", 0x2f3e), ("select", 0x2f3f), ("prev", 0x2f40),
     ("next", 0x2f41), ("exit", 0x2f42), ("prize", 0x2f44), ("congratulations", 0x2f45), ("electrolyzer", 0x2f46),

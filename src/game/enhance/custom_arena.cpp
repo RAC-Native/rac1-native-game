@@ -4,6 +4,7 @@
 #include <host/custom_arena_hud.h>
 #include <host/custom_planet.h>
 #include <host/rac2_compat.h>
+#include <host/rac2_enemies.h>
 
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
@@ -43,6 +44,13 @@ constexpr uint32_t kHealth = 0x20;  // (the health in the pvars of Veldin's walk
 
 // RAC2's four regular enemies, in the order of the wave records' columns 0..3
 constexpr int32_t kRac2Enemies[4] = {2506, 2850, 3131, 3134};
+// P7: RAC2's two bosses, by their bit in the wave records' boss column c8 (0x3fabb4..: the low byte Chainblade, the high
+// byte the B2 Brawler); each comes in on its own (its activate puts it at its entry point), not through a gate
+struct Boss {
+    int16_t bit;
+    int32_t rac2;
+};
+constexpr Boss kBosses[] = {{0x0001, 2552}, {0x0100, 2628}};
 
 // The challenges' rules our table adds (RAC2's controller keeps them in its code), by their name's text id
 struct Rule {
@@ -50,6 +58,7 @@ struct Rule {
     uint32_t seconds;      // a time limit (0 none)
     bool wrench_only;      // the Wrench Expert's: the wrench only, and no hit
     const char* missing;   // why it is left out for now (nullptr: playable)
+    bool survive = false;  // P7, the Timed Avoidance's: won when the time is up (the boss need not die)
 };
 constexpr Rule kRules[] = {
     {0x2f4d, 30, false, nullptr},
@@ -57,7 +66,7 @@ constexpr Rule kRules[] = {
     {0x3242, 0, true, nullptr},
     {0x2f6e, 0, false, "needs RAC2's Heavy Lancer"},
     {0x3240, 0, false, "needs RAC2's Mini-Nuke"},
-    {0x3241, 0, false, "needs Chainblade (later)"},
+    {0x3241, 120, false, nullptr, true},  // (P7: dodge Chainblade for 2 minutes)
 };
 
 struct Wave {
@@ -116,6 +125,7 @@ struct Enemy {
     float scale = 1.0f;    //  and size, the size then kept, as its setup and its update set it again)
     bool set = true;
     float size = 0.0f;     // (the size it is kept at; 0: its own)
+    int32_t boss = 0;      // (P7: a boss, its RAC2 class: the boss bar shows its health)
 };
 struct Gate {
     uint32_t m = 0;
@@ -131,6 +141,7 @@ struct Arena {
     int running = -1;             // the challenge running
     int wave = 0;
     std::vector<int32_t> queue;   // the wave's enemies still to drop (RAC2's classes)
+    std::vector<int32_t> bosses;  // P7: the wave's bosses still to come in (RAC2's classes)
     std::vector<Enemy> alive;
     std::vector<Gate> gates;
     int kills = 0;
@@ -206,11 +217,6 @@ const Settings& settings() {
             g_cfg.challenges.back().waves.push_back(w);
         }
     }
-    for (Challenge& ch : g_cfg.challenges) {
-        if (ch.rule.missing != nullptr) ch.missing = ch.rule.missing;
-        for (const Wave& w : ch.waves)
-            if (w.c[kBossColumn] != 0 && ch.missing.empty()) ch.missing = "has a boss (later)";
-    }
     std::ifstream p(custom_level_dir() + "/planet.txt");
     std::vector<std::pair<int32_t, int32_t>> ports;  // (P6: RAC2 class -> its hand-ported RAC1 class)
     while (p && std::getline(p, line)) {
@@ -248,6 +254,14 @@ const Settings& settings() {
         if (g_cfg.standins.count(rac1_cls) == 0) continue;
         g_cfg.stand_for[rac2_cls] = StandFor{rac1_cls, 1.0f, 1.0f};
         if (trace()) std::printf("[arena] RAC2's %d: its hand port (class %d)\n", rac2_cls, rac1_cls);
+    }
+    // (a challenge with a boss not hand-ported yet: left out; bosses have no stand-ins)
+    for (Challenge& ch : g_cfg.challenges) {
+        if (ch.rule.missing != nullptr) ch.missing = ch.rule.missing;
+        for (const Wave& w : ch.waves)
+            for (const Boss& b : kBosses)
+                if ((w.c[kBossColumn] & b.bit) != 0 && ch.missing.empty() && g_cfg.stand_for.count(b.rac2) == 0)
+                    ch.missing = b.rac2 == 2552 ? "needs Chainblade (later)" : "needs the B2 Brawler (later)";
     }
     std::ifstream cams(custom_level_dir() + "/cameras.txt");
     while (cams && std::getline(cams, line)) {
@@ -334,6 +348,42 @@ void wave_queue(const Wave& w) {
     // (spread over the drops: the classes mixed as RAC2's gates mix them)
     for (size_t i = g_a.queue.size(); i > 1; --i) std::swap(g_a.queue[i - 1], g_a.queue[static_cast<size_t>(rand_below(static_cast<int32_t>(i)))]);
     for (Gate& g : g_a.gates) g.pending = false;
+    g_a.bosses.clear();
+    for (const Boss& b : kBosses)
+        if ((w.c[kBossColumn] & b.bit) != 0 && g_cfg.stand_for.count(b.rac2) != 0) g_a.bosses.push_back(b.rac2);
+}
+
+// orig: (none) — P7: the wave's bosses brought in (RAC2's 0x3fabb4.. activates each boss of the wave's boss column at the
+// wave's start: Chainblade 0x3d4900 / 0x3d47b0, the B2 Brawler 0x3db6d8; the boss's own set-up puts it at its entry point)
+void bosses_step() {
+    while (!g_a.bosses.empty() && g_a.alive.size() < kMaxAlive) {
+        const int32_t rac2_cls = g_a.bosses.back();
+        const StandFor& f = g_cfg.stand_for[rac2_cls];
+        const auto s = g_cfg.standins.find(f.rac1);
+        if (s == g_cfg.standins.end() || s->second.tmpl == 0) {
+            g_a.bosses.pop_back();
+            continue;
+        }
+        const uint32_t e = standin_spawn(s->second.tmpl, s->second.pv_size, Vec3{kCentreX, kCentreY + 42.0f, kFloorZ + 10.0f}, -1.5708f);
+        if (e == 0) return;  // (no moby slot or pvars block now: the next frame)
+        g_a.bosses.pop_back();
+        Enemy en{e, lwu(e + moby::kPvars), f.rac1, level_frame()};
+        en.boss = rac2_cls;
+        g_a.alive.push_back(en);
+        std::printf("[arena] frame %u: the boss %d comes in\n", level_frame(), rac2_cls);
+    }
+}
+
+// orig: (none) — P7: the boss on the floor with the lowest health, its health as a share of its most (-1: none)
+float boss_share() {
+    float share = -1.0f;
+    for (const Enemy& e : g_a.alive) {
+        if (e.boss == 0 || moby_gone(e.m, e.cls, e.pvars)) continue;
+        float now = 0.0f, most = 0.0f;
+        if (e.boss == 2552) rac2_boss_2552_health(e.m, now, most);
+        if (most > 0.0f && (share < 0.0f || now / most < share)) share = now / most;
+    }
+    return share;
 }
 
 // ---- the hazards and items (P5) ----
@@ -428,6 +478,7 @@ void challenge_start(int index) {
     g_a.kills = 0;
     g_a.alive.clear();
     g_a.queue.clear();
+    g_a.bosses.clear();
     g_a.health = hero_health();
     g_a.prize = prize_of(running());
     custom_planet_music_select(1);
@@ -445,6 +496,7 @@ void enemies_clear() {
     }
     g_a.alive.clear();
     g_a.queue.clear();
+    g_a.bosses.clear();
 }
 
 // orig: (none) — the challenge over
@@ -528,6 +580,11 @@ void fight_step() {
     g_a.health = h;
     if (ch.rule.wrench_only && hero_item() != 8 && hero_item() != 0) g_a.reason = "the wrench only";
     if (ch.rule.seconds != 0 && level_frame() - g_a.started > ch.rule.seconds * 60u) {
+        if (ch.rule.survive) {  // (P7: the Timed Avoidance: dodged it long enough; the boss goes)
+            enemies_clear();
+            challenge_end(true);
+            return;
+        }
         g_a.reason = "time's up";
         g_a.reason_key = "time_out";
     }
@@ -535,9 +592,10 @@ void fight_step() {
         challenge_end(false);
         return;
     }
+    bosses_step();
     bool pending = false;
     for (const Gate& g : g_a.gates) pending = pending || g.pending;
-    if (g_a.queue.empty() && !pending && g_a.alive.empty()) {
+    if (g_a.queue.empty() && g_a.bosses.empty() && !pending && g_a.alive.empty()) {
         if (static_cast<size_t>(g_a.wave) + 1 < ch.waves.size()) {
             std::printf("[arena] frame %u: wave %d of %zu cleared, %d kills\n", level_frame(), g_a.wave + 1, ch.waves.size(), g_a.kills);
             g_a.sm.set(Between);
@@ -794,7 +852,9 @@ void custom_arena_hud() {
         if (ch.rule.seconds != 0) {
             const int32_t s = static_cast<int32_t>(ch.rule.seconds) - static_cast<int32_t>((level_frame() - g_a.started) / 60);
             f.seconds_left = std::max(0, s);
+            f.kills_shown = !ch.rule.survive;
         }
+        f.boss = boss_share();
         arena_hud::fight(f);
         return;
     }

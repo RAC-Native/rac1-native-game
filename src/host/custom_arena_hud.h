@@ -29,6 +29,8 @@ struct Fight {
     int wave = 0, waves = 0;  // (wave 0-based)
     int kills = 0;
     int seconds_left = -1;    // (-1: no time limit)
+    bool kills_shown = true;  // (P7: the Timed Avoidance shows its time alone)
+    float boss = -1.0f;       // (P7: a boss's health, a share of its most: the boss bar at the bottom left; -1 none)
 };
 // orig: (none)
 void fight(const Fight& f);

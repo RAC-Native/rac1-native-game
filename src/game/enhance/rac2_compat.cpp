@@ -344,6 +344,45 @@ void part_place(uint32_t w, uint32_t m, uint32_t point, float spin) {
 }
 
 // orig: (none)
+void part_put(uint32_t w, Vec3 at, Vec3 dir, bool shown) {
+    if (w == 0) return;
+    Vec4 x{dir.x, dir.y, dir.z, 0.0f};
+    if (vec3_length(x) < 1e-5f) x = Vec4{1.0f, 0.0f, 0.0f, 0.0f};
+    vec3_set_length(x, x, 1.0f);
+    // (y = up x x, then z = x x y: up as near as the x axis leaves it)
+    Vec4 y{-x.y, x.x, 0.0f, 0.0f};
+    if (vec3_length(y) < 1e-4f) y = Vec4{0.0f, 1.0f, 0.0f, 0.0f};
+    vec3_set_length(y, y, 1.0f);
+    const Vec4 z{x.y * y.z - x.z * y.y, x.z * y.x - x.x * y.z, x.x * y.y - x.y * y.x, 0.0f};
+    V(w + 0xc0) = x;
+    V(w + 0xd0) = y;
+    V(w + 0xe0) = z;
+    swc1(w + moby::kPos, at.x);
+    swc1(w + moby::kPos + 4, at.y);
+    swc1(w + moby::kPos + 8, at.z);
+    const uint32_t f = lhu(w + moby::kFlags);
+    sh(w + moby::kFlags, shown ? f & ~1u : f | 1u);  // (bit 0 only: not drawn, still updated)
+    moby_update_transform(w);
+}
+
+// orig: (none)
+void point_frame(uint32_t m, uint32_t point, Vec3& at, Vec3& x, Vec3& y, Vec3& z) {
+    Mat4 f;
+    moby_chain_world_one_v(m, point, f);
+    at = Vec3{f.r[3].x, f.r[3].y, f.r[3].z};
+    x = Vec3{f.r[0].x, f.r[0].y, f.r[0].z};
+    y = Vec3{f.r[1].x, f.r[1].y, f.r[1].z};
+    z = Vec3{f.r[2].x, f.r[2].y, f.r[2].z};
+}
+
+// orig: (none)
+void camera_shake(float strength, uint32_t frames) {
+    if (strength < lwc1(OV(0x00166de0))) return;  // (a stronger one going on: kept)
+    swc1(OV(0x00166de0), strength);
+    sw(OV(0x00166de8), frames);
+}
+
+// orig: (none)
 void part_throw(uint32_t w, Vec3 vel, float floor, uint32_t lie) {
     const uint32_t pv = w != 0 ? lwu(w + moby::kPvars) : 0u;
     if (pv == 0) return;

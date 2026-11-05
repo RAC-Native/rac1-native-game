@@ -19,8 +19,10 @@
 // recycled enemies to the arms; the next wave once a wave's enemies are all down. Won: the prize in bolts (RAC2's
 // prize x 0.3^victories, at least 500), the victory counted, the planet's music back. The time challenges' limit, and
 // the Wrench Expert's rules (the wrench only, no hit), lose it. A death reloads the level: the arena from its start.
-// Left out for now (listed in the menu with the reason): the boss challenges and waves (the bosses: P7), the challenges
-// needing RAC2 weapons (the Lancer's, the Mini-Nuke's).
+// P7: a wave's bosses (its column c8) come in on their own at the wave's start (each its own entry point: the boss's
+// set-up), their health in RAC2's boss bar; the Timed Avoidance is won when its 2 minutes are up. Left out for now (listed
+// in the menu with the reason): the challenges with a boss not hand-ported yet (rac2_enemies.h), the challenges needing
+// RAC2 weapons (the Lancer's, the Mini-Nuke's).
 // The victories are kept in the save's .pc (custom_planet.h: our item 0x201).
 // (testing) RAC1_ARENA_SCRIPT=<frame>:<challenge>[,...]: that challenge started at that level frame, as from the menu;
 // RAC1_WAVES_AUTOKILL=<frames>: each enemy killed that many frames after it drops (a headless run through a challenge).

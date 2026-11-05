@@ -20,6 +20,10 @@ void rac2_enemy_3131_update(uint32_t m);
 void rac2_enemy_2850_update(uint32_t m);
 // orig: (none) — RAC2's 2506 (the arena's gladiator, sword and shield: its update 0x3d0408)
 void rac2_enemy_2506_update(uint32_t m);
+// orig: (none) — RAC2's 2552, the boss Chainblade (its update 0x3d2de0)
+void rac2_boss_2552_update(uint32_t m);
+// orig: (none) — Chainblade's health now and most (0 / 0: none on the floor), for the arena's boss bar
+void rac2_boss_2552_health(uint32_t m, float& now, float& most);
 
 }  // namespace rac1
 

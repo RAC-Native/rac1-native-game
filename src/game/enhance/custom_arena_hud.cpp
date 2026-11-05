@@ -32,6 +32,14 @@ constexpr uint32_t kRed = 0x806070f0u, kGreen = 0x8060f060u, kGold = 0x8060d0f0u
 constexpr float kUnitX = 256.0f / 0.62f / 16.0f, kUnitY = 208.0f / 0.4805f / 16.0f;
 // the shapes (RAC2's 2D set ids): the time / kills panel (fill, edge), the round panel (fill, edge)
 constexpr int kTimeFill = 0x4c, kTimeEdge = 0x4d, kRoundFill = 0x4e, kRoundEdge = 0x4f;
+// P7, the boss bar (RAC2 0x3ff2ac..: in a boss's wave, the left panel with the frame 0x50 at +0x240c / +0x2410 (12, 407), its
+// colour +0x2430, and the bar 0x51 at +0x2404 / +0x2408 (10, 406) cut by 0x3fe768 to the health's share of x 74..191
+// (0x1b1330 / 0x1b1338; y 388..400), coloured from green (+0x2358 0x8000aa00) through yellow (0x1b134c 0x8000aaaa) at half
+// to red (0x1b1350 0x800000aa). RAC2's 0x51 is a textured shape: ours a flat bar in the cut)
+constexpr int kBossFrame = 0x50;
+constexpr float kBossFrameX = 12.0f, kBossFrameY = 407.0f;
+constexpr float kBarX0 = 74.0f, kBarX1 = 191.0f, kBarY0 = 388.0f, kBarY1 = 400.0f;
+constexpr uint32_t kBarGreen = 0x8000aa00u, kBarYellow = 0x8000aaaau, kBarRed = 0x800000aau;
 // where RAC2 puts them: the bottom corners, the right one mirrored (+0x2418 / +0x241c, +0x2420 / +0x2424, +0x2428)
 constexpr float kLeftX = 10.0f, kRightX = 502.0f, kPanelY = 407.0f;
 // RAC2's text boxes (0x2ed770's {top, bottom, left, right, anchor x, anchor y}): the number and its label in each panel
@@ -193,6 +201,16 @@ void line(const std::string& t, int32_t x, int32_t y, uint32_t rgba, bool big, A
     text_draw(x, y, col, e.s, -1, tex0, table);
 }
 
+// orig: (none) — RAC2's colour lerp (0x320c70): a to b by t, each byte
+uint32_t lerp_rgba(uint32_t a, uint32_t b, float t) {
+    uint32_t out = 0;
+    for (int k = 0; k < 32; k += 8) {
+        const float x = static_cast<float>((a >> k) & 0xff), y = static_cast<float>((b >> k) & 0xff);
+        out |= static_cast<uint32_t>(std::lround(x + (y - x) * std::clamp(t, 0.0f, 1.0f))) << k;
+    }
+    return out;
+}
+
 // orig: (none) — text in a box of RAC2's: centred on its anchor, inside its left / right
 void boxed(const std::string& t, const Box& b, bool big) {
     line(t, b.ax, b.ay - 8, kPanelText, big, Centre);
@@ -234,8 +252,18 @@ std::string text(const char* key, const char* fallback) {
 // alone, the others the round panel (and a boss's health, not here: no bosses yet)
 void fight(const Fight& f) {
     char buf[32];
-    if (f.seconds_left >= 0) {
+    if (f.boss >= 0.0f) {
         side(1, [&] {
+            shape(kTimeFill, kLeftX, kPanelY, false, kFill);
+            shape(kTimeEdge, kLeftX, kPanelY, false, kEdge);
+            shape(kBossFrame, kBossFrameX, kBossFrameY, false, kEdge);
+            const float share = std::clamp(f.boss, 0.0f, 1.0f);
+            const uint32_t c = share > 0.5f ? lerp_rgba(kBarYellow, kBarGreen, share * 2.0f - 1.0f) : lerp_rgba(kBarRed, kBarYellow, share * 2.0f);
+            if (share > 0.0f) rect(kBarX0, kBarY0, kBarX0 + (kBarX1 - kBarX0) * share, kBarY1, c);
+        });
+    }
+    if (f.seconds_left >= 0) {
+        if (f.kills_shown && f.boss < 0.0f) side(1, [&] {
             shape(kTimeFill, kLeftX, kPanelY, false, kFill);
             shape(kTimeEdge, kLeftX, kPanelY, false, kEdge);
             std::snprintf(buf, sizeof buf, "%d", f.kills);

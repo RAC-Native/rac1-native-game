@@ -106,6 +106,15 @@ bool part_of(uint32_t part, uint32_t m);
 void part_throw(uint32_t part, Vec3 vel, float floor, uint32_t lie);
 // orig: (none) — every part's update: carried, gone with its carrier; thrown, its flight
 void part_update(uint32_t part);
+// orig: (none) — the part put at `at`, its x axis along `dir` (its z as near up as that leaves), drawn or not (still updated:
+// it goes with its carrier either way); P7: Chainblade's chain links (RAC2's 0x3d5748 places each a frame)
+void part_put(uint32_t part, Vec3 at, Vec3 dir, bool shown);
+// orig: (none) — attachment point `point` of `m` in the world: its place and its matrix's rows (RAC2's 0x315578 reads its x)
+void point_frame(uint32_t m, uint32_t point, Vec3& at, Vec3& x, Vec3& y, Vec3& z);
+
+// orig: (none) — the camera shaken (RAC2's camera +0x160 strength, +0x168 frames: RAC1's 0x166de0 / 0x166de8, as its blasts
+// shake it)
+void camera_shake(float strength, uint32_t frames);
 
 // ---- sounds (RAC2's 0x366b30 starts a class sound on a moby, looping with its flag 1, 0x366830 stops it, 0x366bd8 plays
 // another class's sound on it): RAC1's class sound table on the moby and its sound slots ----
