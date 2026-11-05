@@ -194,6 +194,18 @@ void test_hit(uint32_t m) {
     std::printf("[rac2] frame %u: test blast on %#x (class %d): %d moby(s) touched\n", level_frame(), m, lh(m + moby::kClassId), n);
 }
 
+// orig: (none)
+float hit_receive(uint32_t m, uint32_t hs, Vec3* push) {
+    const uint32_t hit = sub_0025a420(m, 0x00330000u, 0);
+    float dmg = 0.0f;
+    int32_t state = 0;
+    moby_hit_react_r(m, hit, hs, 0, state, &dmg, nullptr, 4);
+    sb(m + 0xa4, 0xff);
+    if (hit == 0 || state == 1 || !(dmg > 0.0f)) return 0.0f;
+    if (push != nullptr) *push = Vec3{lwc1(hit + 0x10), lwc1(hit + 0x14), lwc1(hit + 0x18)};
+    return dmg;
+}
+
 namespace part {
 // a part's own pvars (moby_spawn's block, zeroed)
 constexpr uint32_t kOwner = 0x00, kOwnerPvars = 0x04, kOwnerClass = 0x08, kThrown = 0x0c, kVel = 0x10, kLie = 0x1c, kFloor = 0x20,

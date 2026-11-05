@@ -82,6 +82,14 @@ float ground_under(uint32_t m, float lowest);
 // sphere test with the blaster's hit record, as RAC1_ARENA_MONITOR_HIT's): the hit through RAC1's collision and hit records
 void test_hit(uint32_t m);
 
+// orig: (none) — a hit taken as RAC1's own enemies take theirs (749's 0x2d5160): EVERY frame the moby's hit record (0x25a420,
+// the enemies' mask 0x330000, or none) goes through its reaction (0x25a478) with the hit state block `hs` (0x20 bytes: +0x14
+// the last weapon, +0x1c its repeat timer: the same weapon again within 15..60 frames does not count; the timer only runs
+// down while this is called each frame), then the record is let go (+0xa4 0xff: a record left linked is met again every
+// frame and keeps the timer going round, so a later hit of the same weapon was lost). The damage that counts (0: none), the
+// hit's push in `push` (when not null and a hit came)
+float hit_receive(uint32_t m, uint32_t hs, Vec3* push);
+
 // ---- parts: mobys an enemy spawns and carries (RAC2's 0x314170 + 0x328500: 2850's blades, 2506's shield), and a carried
 // part thrown off (RAC2's 0x32b468: it flies, falls, bounces, lies a while and goes). A part's own pvars (moby_spawn's 0x80
 // bytes) hold its carrier; its update (part_update, the role "part") keeps it no longer than its carrier lives ----

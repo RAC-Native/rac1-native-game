@@ -69,7 +69,6 @@ constexpr float kHealth = 2.0f, kDamage = 1.0f;
 constexpr uint32_t kIdleFirst = 300, kIdleNext = 100, kArriveFrames = 40;
 constexpr int kTurns = 3;                  // (of its class attacking at once: ours, as for 3134 / 3131)
 constexpr int32_t kBolts = 12;             // (our share of bolts for one)
-constexpr uint32_t kHitMask = 0x00330000u; // (the enemies' hit mask)
 
 // RAC2's sequences
 enum Seq : uint32_t {
@@ -262,18 +261,13 @@ void die(uint32_t m, const Pv& p) {
 // orig: (none) — a hit taken (RAC1's hit record through its reaction): its health less the damage, knocked back and up
 // (RAC2's reaction: state 10, substate 5); true: dead
 bool hit_taken(uint32_t m, const Pv& p) {
-    const uint32_t hit = sub_0025a420(m, kHitMask, 0);
-    if (hit == 0) return false;
-    float dmg = 0.0f;
-    int32_t st = 0;
-    moby_hit_react_r(m, hit, p.b + pv::kHit, 0, st, &dmg, nullptr, 4);
-    if (dmg == 0.0f) dmg = lwc1(hit + 0x2c);
+    Vec3 from{};
+    const float dmg = rac2::hit_receive(m, p.b + pv::kHit, &from);
     if (dmg <= 0.0f) return false;
     p.f(pv::kHit, p.f(pv::kHit) - dmg);
     if (trace()) std::printf("[2850] frame %u: %#x hit (damage %.2f, health %.2f)\n", rac2::level_frame(), m, static_cast<double>(dmg), static_cast<double>(p.f(pv::kHit)));
     if (p.f(pv::kHit) <= 0.0f) return true;
-    Vec4 push = V(hit + 0x10);
-    push.z = 0.0f;
+    Vec4 push{from.x, from.y, 0.0f, 0.0f};
     if (vec3_length(push) < 1e-4f) push = Vec4{-std::cos(p.f(pv::kHeading)), -std::sin(p.f(pv::kHeading)), 0.0f, 0.0f};
     vec3_set_length(push, push, 0.1f);
     p.f(pv::kPush, push.x);

@@ -71,7 +71,6 @@ constexpr uint32_t kReadyFrames = 45, kGiveUpFrames = 121, kRecoverFrames = 26, 
 constexpr int kTurns = 3;                 // (of its class attacking at once: RAC2's count is the controller's, its start not
                                           //  traced; ours)
 constexpr int32_t kBolts = 4;             // (our share of bolts for one)
-constexpr uint32_t kHitMask = 0x00330000u;  // (the enemies' hit mask, as Veldin's walker's)
 
 // RAC2's sequences
 enum Seq : uint32_t { Hover = 0, WindUp = 2, Strike = 3, Gloat = 4, Recover = 5 };
@@ -251,16 +250,11 @@ void die(uint32_t m) {
 // orig: (none) — a hit taken (RAC1's hit record through its reaction, as Veldin's walker reads its own): knocked and
 // tumbling (state 13); true when one came
 bool hit_taken(uint32_t m, const Pv& p) {
-    const uint32_t hit = sub_0025a420(m, kHitMask, 0);
-    if (hit == 0) return false;
-    float dmg = 0.0f;
-    int32_t st = 0;
-    moby_hit_react_r(m, hit, p.b + pv::kHit, 0, st, &dmg, nullptr, 4);
-    if (dmg == 0.0f) dmg = lwc1(hit + 0x2c);
+    Vec3 from{};
+    const float dmg = rac2::hit_receive(m, p.b + pv::kHit, &from);
     if (dmg <= 0.0f || p.i(pv::kState) == Knocked) return false;
     p.f(pv::kHit, p.f(pv::kHit) - dmg);
-    Vec4 push = V(hit + 0x10);
-    push.z = 0.0f;
+    Vec4 push{from.x, from.y, 0.0f, 0.0f};
     if (vec3_length(push) < 1e-4f) {  // (no push: away from Ratchet)
         const Vec3 at = rac2::moby_pos(m), h = rac2::hero_pos();
         push = Vec4{at.x - h.x, at.y - h.y, 0.0f, 0.0f};
@@ -345,7 +339,7 @@ void update(uint32_t m) {
         p.i(pv::kHeroWas, -1);
     }
     rac2::test_hit(m);
-    if (p.i(pv::kState) != Knocked) hit_taken(m, p);
+    hit_taken(m, p);  // (each frame, knocked too: its repeat timer runs down)
     keep_turn(m, p);
     switch (p.i(pv::kState)) {
     case Arriving:  // (from the gate, rising, then circling)

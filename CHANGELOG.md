@@ -227,6 +227,9 @@ What changed in each release. Releases are source only: you build the game with 
   the flail (its damage spheres along it), taunts when it hit him; standing guard, its shield blocks hits (sparks, a
   stagger); hurt, it throws the shield off (a thrown part: flies, bounces, lies, goes) and fights on; two hits bring it
   down. RAC2's 2520 is its shield, not a shot: the carried and thrown parts are a small service of `rac2_compat`.
+- Local experiment, planet: RAC2's hand-ported arena enemies take hits as RAC1's own enemies do (`rac2::hit_receive`: the
+  hit record through the reaction every frame, then let go): a second hit of the same weapon was often lost (the record
+  left linked kept the repeat timer going round), with real weapons as with `RAC1_ARENA_ENEMY_HIT`.
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs
