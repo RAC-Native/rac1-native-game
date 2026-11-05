@@ -20,6 +20,9 @@ What changed in each release. Releases are source only: you build the game with 
   depth images' transfer usage, the particles' objects destroyed at the end).
 - Vulkan: the driver's compiled pipelines kept between starts (`vk_pipeline_cache.bin` in the settings' folder; not
   headless unless RAC1_VK_PIPELINE_CACHE=1).
+- Setup: glslc is required on Linux and Windows (the private MSYS2 installs shaderc), the build configured with
+  RAC1_VULKAN=REQUIRED; a build made without glslc is configured again once glslc is installed (it kept a renderer
+  without shaders before); a warning when no Vulkan driver is installed.
 
 ## 0.7.0
 

@@ -67,10 +67,14 @@ the GPU.
   constants and descriptor sets instead of uniforms), compiled to SPIR-V **at build time** by `glslc`
   (shaderc, part of the Vulkan SDK; the `glslc` package on Debian / Ubuntu / Fedora, `shaderc` on
   Arch, `mingw-w64-clang-x86_64-shaderc` in MSYS2) or `glslangValidator`, into the build directory
-  (`build/generated_vk/`). Nothing generated is kept in the repository. Without either compiler the
-  build still succeeds, with the renderer left out (its shaders empty: it never starts). The setup
-  lists `glslc` as optional; the private MSYS2 that `setup.cmd` and the launcher download on Windows
-  does not include it (see [Setup](setup.md#on-windows) and [The launcher](launcher.md#what-it-runs)).
+  (`build/generated_vk/`). Nothing generated is kept in the repository. The setup requires `glslc`
+  (on Linux and Windows; the private MSYS2 that `setup.cmd` and the launcher download on Windows
+  includes it) and configures the build with `-DRAC1_VULKAN=REQUIRED`, which stops at the
+  configuration when no compiler is found. A bare `cmake` (`RAC1_VULKAN=AUTO`, the default) without
+  either compiler still builds, with the renderer left out (its shaders empty: it never starts). The
+  compiler chosen is written to `build/generated_vk/compiler.txt`, which the shaders depend on: a build
+  configured again after glslc is installed makes them (the setup configures again by itself when the
+  build has none and a compiler is there now).
 - The driver's compiled pipelines are kept between starts in `vk_pipeline_cache.bin` in the settings'
   folder (a `VkPipelineCache`, read back when its header is this device's and driver's), so a start
   after the first creates them faster. Not used headless unless `RAC1_VK_PIPELINE_CACHE=1`;

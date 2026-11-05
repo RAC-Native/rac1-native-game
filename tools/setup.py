@@ -251,6 +251,47 @@ def cmake_ok():
         return False
 
 
+def glslc_ok():
+    """A GLSL to SPIR-V compiler for the Vulkan renderer's shaders (CMakeLists.txt looks for the same two)."""
+    return shutil.which("glslc") is not None or shutil.which("glslangValidator") is not None
+
+
+def vulkan_driver_ok():
+    """A Vulkan driver installed (not needed to build: without one the game starts with OpenGL). Linux: an ICD file in
+    one of the loader's folders; Windows: the loader, vulkan-1.dll, which the graphics drivers install. True when it
+    cannot tell."""
+    if WINDOWS:
+        system = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32")
+        return not os.path.isdir(system) or os.path.exists(os.path.join(system, "vulkan-1.dll"))
+    if MACOS:
+        return True
+    dirs = [os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")]
+    dirs += (os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":")
+    dirs += ["/etc", "/usr/share", "/usr/local/share"]
+    env_files = os.environ.get("VK_DRIVER_FILES") or os.environ.get("VK_ICD_FILENAMES")
+    if env_files:
+        return True
+    return any(any(Path(d, "vulkan", "icd.d").glob("*.json")) for d in dirs if d and Path(d, "vulkan", "icd.d").is_dir())
+
+
+# (the packages with a Vulkan driver, for the warning when none is installed)
+VULKAN_DRIVER_PACKAGES = {
+    "debian": "mesa-vulkan-drivers (AMD, Intel), or NVIDIA's driver",
+    "fedora": "mesa-vulkan-drivers (AMD, Intel), or NVIDIA's driver",
+    "arch": "vulkan-radeon (AMD), vulkan-intel (Intel) or nvidia-utils (NVIDIA)",
+}
+
+
+def warn_no_vulkan_driver(distro=None):
+    if vulkan_driver_ok():
+        return
+    if WINDOWS:
+        how = "update your graphics card's driver"
+    else:
+        how = "install " + VULKAN_DRIVER_PACKAGES.get(distro, "your graphics card's Vulkan driver (Mesa's, or NVIDIA's)")
+    warn(f"No Vulkan driver found: the game will start with OpenGL. For the Vulkan renderer, {how}.")
+
+
 def compiler_ok():
     """A C++20 compiler: GCC 11+ or Clang 13+ (the one CMake would pick, c++, or either by name)."""
     for name, minimum in (("c++", 0), ("g++", 11), ("clang++", 13)):
@@ -286,8 +327,8 @@ DEPENDENCIES = [
      "libwayland-dev libxkbcommon-dev", "wayland-devel libxkbcommon-devel", "wayland libxkbcommon"),
     ("FFmpeg's libavcodec (optional: plays the game's movies)", False,
      lambda: pkg_config("libavcodec", "libavutil") or pkg_config("libavcodec", "libavutil", extra_path=HOMEBREW_PKGCONFIG), "libavcodec-dev libavutil-dev", "ffmpeg-free-devel", "ffmpeg"),
-    ("glslc (optional: the experimental Vulkan renderer's shaders)", False,
-     lambda: shutil.which("glslc") is not None or shutil.which("glslangValidator") is not None, "glslc", "glslc", "shaderc"),
+    ("glslc (the Vulkan renderer's shaders; older Debian / Ubuntu without a glslc package: glslang-tools)", True,
+     glslc_ok, "glslc", "glslc", "shaderc"),
 ]
 INSTALL = {"debian": "sudo apt install", "fedora": "sudo dnf install", "arch": "sudo pacman -S --needed"}
 DISTRO_NAME = {"debian": "Debian / Ubuntu", "fedora": "Fedora", "arch": "Arch"}
@@ -403,8 +444,7 @@ WINDOWS_DEPENDENCIES = [
     ("pkg-config (finds FFmpeg)", False, lambda: shutil.which("pkg-config") is not None, "mingw-w64-clang-x86_64-pkgconf"),
     ("FFmpeg's libavcodec (optional: plays the game's movies)", False, lambda: pkg_config("libavcodec", "libavutil"),
      "mingw-w64-clang-x86_64-ffmpeg"),
-    ("glslc (optional: the experimental Vulkan renderer's shaders)", False,
-     lambda: shutil.which("glslc") is not None or shutil.which("glslangValidator") is not None, "mingw-w64-clang-x86_64-shaderc"),
+    ("glslc (the Vulkan renderer's shaders)", True, glslc_ok, "mingw-w64-clang-x86_64-shaderc"),
 ]
 
 
@@ -462,6 +502,7 @@ def check_system_windows():
             (missing_req if dep[1] else missing_opt).append(dep)
     for dep in missing_opt:
         warn(f"Not found: {dep[0]}. The game runs without it.")
+    warn_no_vulkan_driver()
     if not missing_req:
         ok("Everything needed to build the game is installed.")
     else:
@@ -495,6 +536,7 @@ def check_system(iso=None):
             (missing_req if dep[1] else missing_opt).append(dep)
     for dep in missing_opt:
         warn(f"Not found: {dep[0]}. The game runs without it.")
+    warn_no_vulkan_driver(distro)
     if not missing_req:
         ok("Everything needed to build the game is installed.")
     else:
@@ -1446,6 +1488,21 @@ def compiler_change():
     return f"the compiler changed ({ident} {version} then, {now} now)"
 
 
+def vulkan_reconfigure():
+    """True when the build folder's configuration has no Vulkan shaders the setup can now have: RAC1_VULKAN not REQUIRED
+    (a folder configured before it, or by hand) or no compiler found then while one is installed now. Not on macOS."""
+    if MACOS:
+        return False
+    try:
+        cache = (BUILD_DIR / "CMakeCache.txt").read_text(errors="replace")
+    except OSError:
+        return False
+    required = re.search(r"^RAC1_VULKAN:\w+=REQUIRED$", cache, re.M) is not None
+    glslc = re.search(r"^RAC1_GLSLC:\w+=(.*)$", cache, re.M)
+    missing = glslc is None or not glslc.group(1) or glslc.group(1).endswith("NOTFOUND")
+    return not required or (missing and glslc_ok())
+
+
 def fresh_build_config():
     """build/ without what CMake made (BUILD_PRODUCTS, _deps/*-build): the next build configures and compiles afresh,
     as in a new folder, without downloading the libraries again. Returns the game's own on / off options the cache had
@@ -1482,17 +1539,25 @@ def build(jobs, native_arch=None, retry=True, kept=()):
     # --native-arch on / off: the game compiled for this machine's CPU or not (CMakeLists.txt RAC1_NATIVE_ARCH), kept in the
     # build's CMake cache for the next builds (a change rebuilds everything)
     arch = [] if native_arch is None else [f"-DRAC1_NATIVE_ARCH={'ON' if native_arch == 'on' else 'OFF'}"]
+    # the Vulkan renderer's shaders required (CMakeLists.txt RAC1_VULKAN; macOS has Metal's own): a build without them would
+    # start with OpenGL only, and say so only in a log line
+    vulkan = [] if MACOS else ["-DRAC1_VULKAN=REQUIRED"]
     if not (BUILD_DIR / "CMakeCache.txt").exists() or not any((BUILD_DIR / f).exists() for f in ("Makefile", "build.ninja")):
         print("  Configuring (this downloads a few libraries the first time)...", flush=True)
-        cmd = ["cmake", "-S", str(ROOT), "-B", str(BUILD_DIR), "-DCMAKE_BUILD_TYPE=RelWithDebInfo"] + list(kept) + arch
+        cmd = ["cmake", "-S", str(ROOT), "-B", str(BUILD_DIR), "-DCMAKE_BUILD_TYPE=RelWithDebInfo"] + list(kept) + arch + vulkan
         if WINDOWS:  # (Ninja and clang, not Visual Studio's generator and compiler: docs/platforms.md)
             cmd += ["-G", "Ninja"] + windows_compilers()
         if not run_logged(cmd, BUILD_LOG):
             fail(f"CMake could not configure the build (see above). If a library is missing, install it and run {SETUP_CMD} again.")
-    elif arch:
-        target = "this machine's CPU" if native_arch == "on" else "any x86-64 CPU"
-        print(f"  Compiling for {target} (--native-arch {native_arch})...", flush=True)
-        if not run_logged(["cmake", "-S", str(ROOT), "-B", str(BUILD_DIR)] + arch, BUILD_LOG):
+    elif arch or vulkan_reconfigure():
+        # (--native-arch; or a build configured without the Vulkan shaders - no glslc then, or before RAC1_VULKAN - made
+        # again now: CMake looks for a compiler it did not find only when it configures, -U drops the old NOTFOUND)
+        if arch:
+            target = "this machine's CPU" if native_arch == "on" else "any x86-64 CPU"
+            print(f"  Compiling for {target} (--native-arch {native_arch})...", flush=True)
+        else:
+            print("  Configuring the build again for the Vulkan renderer's shaders...", flush=True)
+        if not run_logged(["cmake", "-S", str(ROOT), "-B", str(BUILD_DIR), "-URAC1_GLSLC"] + arch + vulkan, BUILD_LOG):
             fail(f"CMake could not configure the build (see above).")
     print(f"  Compiling with {jobs} parallel jobs (the first build takes several minutes)...", flush=True)
     if not run_logged(["cmake", "--build", str(BUILD_DIR), "-j", str(jobs)], BUILD_LOG):

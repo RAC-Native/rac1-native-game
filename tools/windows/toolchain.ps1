@@ -4,13 +4,14 @@
 # adds a package). Nothing is installed outside .toolchain: deleting the folder removes it all.
 # FFmpeg plays the game's movies: the build copies its DLLs beside the program (CMakeLists.txt), so the game also
 # starts without MSYS2.
+# shaderc (glslc) compiles the Vulkan renderer's shaders at build time.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'  # (Invoke-WebRequest's progress bar makes it very slow on PowerShell 5)
 
 $MsysRelease = '20260927'
 $MsysSha256 = 'ad336cccfda47758b5e15cda993fbba421115cb0b126697daef1ee4dfe37209f'
 $MsysUrl = "https://repo.msys2.org/distrib/x86_64/msys2-base-x86_64-$MsysRelease.sfx.exe"
-$Packages = @('python', 'cmake', 'clang', 'ninja', 'pkgconf', 'ffmpeg') | ForEach-Object { "mingw-w64-clang-x86_64-$_" }
+$Packages = @('python', 'cmake', 'clang', 'ninja', 'pkgconf', 'ffmpeg', 'shaderc') | ForEach-Object { "mingw-w64-clang-x86_64-$_" }
 
 $Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $ToolDir = Join-Path $Root '.toolchain'

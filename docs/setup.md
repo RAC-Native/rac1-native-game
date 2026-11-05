@@ -38,8 +38,8 @@ source code, the files that are a mechanical translation of the game's own code 
   in Python; no extra modules);
 - optionally **FFmpeg** development files (`libavcodec`, `libavutil`), to play the game's movies.
   Without them the game runs and skips the movies;
-- optionally **glslc** (shaderc), to build the optional [Vulkan renderer](vulkan.md)'s shaders
-  (`glslangValidator` works too); without it the game is built with OpenGL only;
+- **glslc** (shaderc), to build the [Vulkan renderer](vulkan.md)'s shaders (`glslangValidator` works
+  too: the `glslang-tools` package on Debian / Ubuntu releases without a `glslc` package);
 - an internet connection for the first build (CMake downloads GLFW, GLM, Dear ImGui, TinyGLTF,
   miniaudio, Vulkan-Headers and volk);
 - about 5 GB of free disk for the game's data and generated code (4 GB of it the disc's files, which the
@@ -488,9 +488,9 @@ hand.
    With your own MSYS2, the setup can also run from its **CLANG64** shell (`./setup.sh`, or
    `setup.cmd`): it then uses that shell's tools and tells you which packages to install.
 
-   The private MSYS2 does not include `glslc`, so a game built this way has OpenGL only (the
-   Renderer row's Vulkan falls back to OpenGL). The optional [Vulkan renderer](vulkan.md) needs
-   `mingw-w64-clang-x86_64-shaderc` installed in the MSYS2 the game is built with.
+   The private MSYS2 includes `glslc` (`mingw-w64-clang-x86_64-shaderc`, for the
+   [Vulkan renderer](vulkan.md)'s shaders); a `.toolchain\` made by an older version gets it at the
+   next setup.
 
 2. **Play**: double-click **`play.cmd`** in the repository's folder. (The game must start from the
    repository's folder, where it finds `assets\`: `build\rac1-native.exe` double-clicked on its own

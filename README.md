@@ -168,7 +168,7 @@ You need Linux or [Windows](#windows) (x86-64), a GPU with OpenGL 4.6, and your 
 (the North American or the European PAL disc, 1.00 or the Platinum's 2.00). On the Steam Deck (SteamOS), Bazzite and other
 immutable Linux systems the game is built in a distrobox container, which the launcher sets up: see
 [Setup](docs/setup.md#steam-deck-bazzite-and-other-immutable-systems). The optional Vulkan renderer needs a
-Vulkan 1.3 driver, and `glslc` when the game is built (the setup lists it as optional): see
+Vulkan 1.3 driver, and `glslc` when the game is built (the setup requires it): see
 [Vulkan](docs/vulkan.md). On macOS (13 or later, Apple Silicon) the game is built from the source and
 draws with Metal; there is no launcher for it: see [Metal](docs/metal.md).
 
