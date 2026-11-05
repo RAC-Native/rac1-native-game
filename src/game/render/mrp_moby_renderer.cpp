@@ -1436,8 +1436,9 @@ VkPipeline get_moby_vk_pipeline(const MobyVkPipeKey& key) {
         desc.stencil_back = desc.stencil_front;
     }
     if (key.caster) {
-        desc.depth_bias_enable = true;
-        desc.extra_dynamic_states.push_back(VK_DYNAMIC_STATE_DEPTH_BIAS);
+        desc.depth_bias_enable = true;  // (OpenGL's glPolygonOffset(1.5, 2.0) in mrp_lighting, as the world's casters)
+        desc.depth_bias_constant = 2.0f;
+        desc.depth_bias_slope = 1.5f;
     } else {
         gs::DrawState ds{};
         ds.prim = key.prim;

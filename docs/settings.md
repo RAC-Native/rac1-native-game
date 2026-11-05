@@ -48,7 +48,7 @@ row changes only what the host draws, never the game's state.
 
 | Row | Values | Default |
 |---|---|---|
-| Renderer | OpenGL, Vulkan (optional; from the next start, see [Vulkan](vulkan.md)); on macOS Metal only ([Metal](metal.md)) | OpenGL (macOS: Metal) |
+| Renderer | Vulkan, OpenGL (from the next start, see [Vulkan](vulkan.md)); on macOS Metal only ([Metal](metal.md)). Never chosen (`renderer auto` in the preferences, also a file of 0.5.0..0.7.x whose `renderer opengl` was the default then: those move to Vulkan once): Vulkan, OpenGL when Vulkan cannot start, the row showing the one running; a headless run stays OpenGL. When the renderer running is not the one chosen, the row says which (`Vulkan (OpenGL)`) and its help why ([When Vulkan cannot start](vulkan.md#when-vulkan-cannot-start)) | Vulkan (macOS: Metal) |
 | Display Mode | Window, Fullscreen | Window |
 | Monitor | the connected monitors by name (DP-1, HDMI-A-1, ...) | the first one |
 | Window Size | 640x480 (the original's) to 3840x2160 (16 sizes, 4:3 and 16:9 among them) | 960x720 |

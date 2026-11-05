@@ -123,8 +123,8 @@ What comes next, in no fixed order:
   shadow meshes.
 - **Mods (planned):** the setup already extracts the disc's files, which the game reads
   ([Setup](setup.md#the-discs-files)); next, a mods folder in front of them, and a Mods menu in the game.
-- **The Vulkan renderer** may become the default in a later release, once it has been tried on more
-  GPUs; OpenGL stays the default for now.
+- **The Vulkan renderer** is the default from the next release (OpenGL when it cannot start, or chosen
+  in Options > Display); it needs trying on more GPUs.
 - **Testing on more machines:** the European PAL discs (the Platinum's most), Windows (now also
   through the launcher), the Steam Deck and the other immutable Linux systems, macOS, and the Vulkan
   renderer and its ray-traced reflections (measured on one machine so far).

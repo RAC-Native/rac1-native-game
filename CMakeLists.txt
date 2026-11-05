@@ -125,8 +125,12 @@ target_include_directories(rac1_jobs PUBLIC src)
 target_link_libraries(rac1_jobs PUBLIC rac1_profiler)
 
 # ---- the Vulkan renderer's shaders (docs/vulkan.md): GLSL in tools/gen_vk_shaders.py, compiled to SPIR-V here, at build
-# time, by glslc (shaderc, the Vulkan SDK) or glslangValidator, with Python (as the setup); without a compiler they are left out and
-# the renderer does not start - the game stays on OpenGL, its default. Nothing of it is kept in the repository.
+# time, by glslc (shaderc, the Vulkan SDK) or glslangValidator, with Python (as the setup). RAC1_VULKAN: AUTO (a bare cmake)
+# builds without the shaders when there is no compiler - the renderer then does not start and the game stays on OpenGL;
+# REQUIRED (the setup passes it) stops at the configuration with the package to install. Nothing of it is kept in the
+# repository. (macOS: the Metal renderer, its own shaders, tools/gen_metal_shaders.py; RAC1_VULKAN does not apply.)
+set(RAC1_VULKAN AUTO CACHE STRING "the Vulkan renderer's shaders: AUTO (left out without glslc) or REQUIRED (no glslc: an error)")
+set_property(CACHE RAC1_VULKAN PROPERTY STRINGS AUTO REQUIRED)
 find_program(RAC1_GLSLC NAMES glslc glslangValidator DOC "the GLSL to SPIR-V compiler for the Vulkan renderer")
 find_package(Python3 COMPONENTS Interpreter QUIET)
 set(RAC1_VK_SHADERS_DIR ${CMAKE_BINARY_DIR}/generated_vk)
@@ -138,13 +142,25 @@ if(Python3_Interpreter_FOUND)
     elseif(RAC1_GLSLC)
         set(_rac1_vk_compiler ${RAC1_GLSLC})
     endif()
+    # (the compiler chosen, in a stamp the shaders depend on: a build configured without glslc, then configured again
+    # once it is installed, makes the shaders again - Make does not re-run a command only because its line changed)
+    set(RAC1_VK_COMPILER_STAMP ${RAC1_VK_SHADERS_DIR}/compiler.txt)
+    file(MAKE_DIRECTORY ${RAC1_VK_SHADERS_DIR})
+    file(CONFIGURE OUTPUT ${RAC1_VK_COMPILER_STAMP} CONTENT "${_rac1_vk_compiler}\n")
     add_custom_command(
         OUTPUT ${RAC1_VK_SHADERS_CPP} ${RAC1_VK_SHADERS_DIR}/runtime/vk/vk_shaders.h
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/gen_vk_shaders.py ${RAC1_VK_SHADERS_DIR} "${_rac1_vk_compiler}"
         DEPENDS ${CMAKE_SOURCE_DIR}/tools/gen_vk_shaders.py ${CMAKE_SOURCE_DIR}/src/game/render/mrp_materials_glsl.inc
+                ${RAC1_VK_COMPILER_STAMP}
         COMMENT "Vulkan shaders (tools/gen_vk_shaders.py)"
         VERBATIM)
     if(NOT RAC1_GLSLC AND NOT APPLE)
+        if(RAC1_VULKAN STREQUAL "REQUIRED")
+            message(FATAL_ERROR "The Vulkan renderer's shaders need glslc (or glslangValidator), not found. Install it: "
+                "Debian / Ubuntu: glslc (older releases: glslang-tools); Fedora: glslc; Arch: shaderc; openSUSE: shaderc; "
+                "Windows (MSYS2 CLANG64): mingw-w64-clang-x86_64-shaderc. Then configure again "
+                "(or -DRAC1_VULKAN=AUTO to build without them: OpenGL only).")
+        endif()
         message(STATUS "Vulkan renderer: no glslc / glslangValidator found - built without its shaders (OpenGL only)")
     endif()
     add_custom_target(rac1_vk_shaders DEPENDS ${RAC1_VK_SHADERS_CPP})
@@ -316,6 +332,7 @@ set(RAC1_HOST_SOURCES
     src/host/sim_autopilot.cpp
     src/host/update_check.cpp
     src/host/progress.cpp
+    src/host/vk_safety.cpp
 )
 if(WIN32)
     list(APPEND RAC1_HOST_SOURCES src/host/host_priority_win32.cpp src/host/gpu_preference_win32.cpp

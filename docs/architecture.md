@@ -29,7 +29,7 @@ runtime/           the PS2 hardware layer, no game logic
   ee/              EE: the coroutine, the game thread, timer 1, float rounding, the R5900 interpreter
   vu/              VU0 and VU1, the VIF, the VU interpreter, building blocks of translated programs
   gs/              the GS's local memory (game state), its blending as GPU state; the GS replica (the faithful reference)
-  vk/              the optional Vulkan backend: device, swapchain, frames, helpers
+  vk/              the Vulkan backend (the default): device, swapchain, frames, helpers
   iop/             IOP memory, the 989snd sound driver's IOP side, audio streams
   sif/             SIF RPC between the EE and the IOP's servers
   ipu/             the movie decoder

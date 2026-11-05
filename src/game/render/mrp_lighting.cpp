@@ -2317,6 +2317,7 @@ void ensure_vk_ao_pipelines() {
         d.color_format = VK_FORMAT_R8_UNORM;
         d.has_depth_attachment = false;
         d.has_stencil_attachment = false;
+        d.formats_from_desc = true;  // (made during the frame, with the 3D's RGBA8 target bound: drawn into the R8 / RGBA16F ones)
         g_vk_sh.ao_pipe = vk::create_graphics_pipeline(d);
         g_vk_sh.mx_pyr_fs_mod = vk::create_shader_module(vk::shaders::kMrpMxaoPyrFs, sizeof(vk::shaders::kMrpMxaoPyrFs));
         g_vk_sh.mx_fs_mod = vk::create_shader_module(vk::shaders::kMrpMxaoFs, sizeof(vk::shaders::kMrpMxaoFs));
@@ -2359,6 +2360,7 @@ void ensure_vk_ao_pipelines() {
         d.color_format = VK_FORMAT_R8_UNORM;
         d.has_depth_attachment = false;
         d.has_stencil_attachment = false;
+        d.formats_from_desc = true;  // (into the R8 half-way image, made during the frame)
         g_vk_sh.blur_sep_h_pipe = vk::create_graphics_pipeline(d);
     }
     {
@@ -2391,6 +2393,7 @@ void ensure_vk_ao_pipelines() {
         d.color_format = VK_FORMAT_R16G16B16A16_SFLOAT;
         d.has_depth_attachment = false;
         d.has_stencil_attachment = false;
+        d.formats_from_desc = true;  // (its RGBA16F image, made during the frame)
         g_vk_sh.rays_mask_pipe = vk::create_graphics_pipeline(d);
     }
     {
@@ -2404,6 +2407,7 @@ void ensure_vk_ao_pipelines() {
         d.color_format = VK_FORMAT_R16G16B16A16_SFLOAT;
         d.has_depth_attachment = false;
         d.has_stencil_attachment = false;
+        d.formats_from_desc = true;  // (its RGBA16F image, made during the frame)
         g_vk_sh.rays_blur_pipe = vk::create_graphics_pipeline(d);
     }
     {
@@ -2417,6 +2421,7 @@ void ensure_vk_ao_pipelines() {
         d.color_format = VK_FORMAT_R16G16B16A16_SFLOAT;
         d.has_depth_attachment = false;
         d.has_stencil_attachment = false;
+        d.formats_from_desc = true;  // (its RGBA16F image, made during the frame)
         g_vk_sh.rays_split_pipe = vk::create_graphics_pipeline(d);
     }
     {

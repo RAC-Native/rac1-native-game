@@ -131,8 +131,8 @@ follows from that.
   static world already sits on the GPU. OpenGL 4.6 covers what the renderer needs, compute shaders
   included, and it runs on every desktop GPU and Linux driver in use. The renderer is kept apart
   from the game code, so another graphics API can be added beside it: a
-  [Vulkan](docs/vulkan.md) backend now is, optional (Options > Display > Renderer),
-  drawing the same picture. OpenGL stays the default.
+  [Vulkan](docs/vulkan.md) backend now is, the default (Options > Display > Renderer),
+  drawing the same picture; OpenGL takes over when Vulkan cannot start.
 - **Other platforms and graphics APIs.** A [Metal](docs/metal.md) renderer runs the game on macOS
   (Apple Silicon), a contributor's port; Direct3D may come in the future.
   The code is portable C++, but other devices need more than a renderer:
@@ -167,8 +167,8 @@ follows from that.
 You need Linux or [Windows](#windows) (x86-64), a GPU with OpenGL 4.6, and your ISO of the game
 (the North American or the European PAL disc, 1.00 or the Platinum's 2.00). On the Steam Deck (SteamOS), Bazzite and other
 immutable Linux systems the game is built in a distrobox container, which the launcher sets up: see
-[Setup](docs/setup.md#steam-deck-bazzite-and-other-immutable-systems). The optional Vulkan renderer needs a
-Vulkan 1.3 driver, and `glslc` when the game is built (the setup lists it as optional): see
+[Setup](docs/setup.md#steam-deck-bazzite-and-other-immutable-systems). The Vulkan renderer (the default) needs a
+Vulkan 1.3 driver, and `glslc` when the game is built (the setup requires it): see
 [Vulkan](docs/vulkan.md). On macOS (13 or later, Apple Silicon) the game is built from the source and
 draws with Metal; there is no launcher for it: see [Metal](docs/metal.md).
 
@@ -235,7 +235,7 @@ For contributors, and for reverse-engineering and decompilation people:
   port and its oracle batches, and the host code that stands in for the PS2's hardware and libraries.
 - [Game logic](docs/game-logic.md): the main loop, levels, mobys, the hero, the camera, cutscenes.
 - [Rendering](docs/rendering.md): how a frame is drawn by the native renderer (the MRP).
-- [Vulkan](docs/vulkan.md): the optional Vulkan backend of the same renderer.
+- [Vulkan](docs/vulkan.md): the Vulkan backend of the same renderer, the default.
 - [Metal](docs/metal.md): macOS's renderer, the Vulkan backend's code on a Metal layer.
 - [Performance](docs/performance.md): where a frame's CPU time goes, the threads beside the game's, the switches to compare,
   how to measure and how a speed-up is proved to leave the game as it was.

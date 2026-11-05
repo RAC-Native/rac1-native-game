@@ -463,6 +463,8 @@ bool gl_copy_depth(GLint fb, const int vp[4]) {
     return glGetError() == GL_NO_ERROR;
 }
 
+void vk_shutdown();
+
 // orig: (host) the Vulkan objects (the pipelines for the target's colour format), made once
 bool vk_init() {
     const VkFormat fmt = vk::active_color_image().format != VK_FORMAT_UNDEFINED ? vk::active_color_image().format : VK_FORMAT_R8G8B8A8_UNORM;
@@ -471,6 +473,7 @@ bool vk_init() {
     if (!g_vk.tried) {
         g_vk.tried = true;
         if (!vk::shaders::kAvailable) return false;
+        vk::register_shutdown_callback(vk_shutdown);
         VkDescriptorSetLayoutBinding b[3]{};
         b[0] = {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
         b[1] = {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
@@ -860,6 +863,25 @@ GLuint sky_gl_texture() {
     return g_skywin.gl_tex;
 }
 
+// orig: (host) the Vulkan objects destroyed with the device (vk::shutdown): the pipelines, the shaders, the layouts, the sky window's image
+void vk_shutdown() {
+    VkDevice dev = vk::device();
+    for (VkPipeline* p : {&g_vk.blend, &g_vk.add, &g_vk.splash}) {
+        if (*p != VK_NULL_HANDLE) vkDestroyPipeline(dev, *p, nullptr);
+        *p = VK_NULL_HANDLE;
+    }
+    for (VkShaderModule* m : {&g_vk.vs, &g_vk.fs, &g_vk.svs, &g_vk.sfs}) {
+        if (*m != VK_NULL_HANDLE) vkDestroyShaderModule(dev, *m, nullptr);
+        *m = VK_NULL_HANDLE;
+    }
+    if (g_vk.layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(dev, g_vk.layout, nullptr);
+    if (g_vk.dsl != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(dev, g_vk.dsl, nullptr);
+    g_vk = Vk{};
+    vk::destroy_image_now(g_skywin.vk_img);
+    g_skywin.vk_img = vk::GpuImage{};
+    g_skywin.fresh = !g_skywin.texels.empty();
+}
+
 // orig: (host) Vulkan: the window's image, made the first time and uploaded when taken again (outside a pass: the upload ends the
 // one under way); null when it cannot be made
 vk::GpuImage* sky_vk_image() {
@@ -867,6 +889,7 @@ vk::GpuImage* sky_vk_image() {
         if (!vk::create_image(kSkyWin, kSkyWin + 1, VK_FORMAT_R32_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT,
                               g_skywin.vk_img))
             return nullptr;
+        vk::register_shutdown_callback(vk_shutdown);
         if (g_skywin.texels.empty()) {
             g_skywin.texels.assign(static_cast<size_t>(kSkyWin) * (kSkyWin + 1), kSkyNone);
             g_skywin.texels[static_cast<size_t>(kSkyWin) * kSkyWin + 3] = 0.0f;

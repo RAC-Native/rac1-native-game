@@ -2,6 +2,7 @@
 #include <runtime/vk/vk_context.h>
 #include <runtime/vk/vk_shaders.h>
 #include <profiler/host_profiler.h>
+#include <platform/platform.h>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -16,6 +17,8 @@
 #include <string>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <tuple>
 #include <vector>
 
@@ -123,6 +126,8 @@ struct Context {
     GpuImage dummy_dcube{};
 
     std::vector<void (*)()> shutdown_callbacks;
+    VkPipelineCache pipe_cache = VK_NULL_HANDLE;  // (the driver's compiled pipelines, kept on disk between starts)
+    std::filesystem::path pipe_cache_path;
 
     // the profiler's GPU timestamps (prof::GpuApi): one pool, `prof_per_slot` a frame slot; a timestamp asked for while no
     // command buffer records (between a frame's present and the next one's start) is written at the next one's start
@@ -144,6 +149,36 @@ struct Context {
     VkPhysicalDeviceAccelerationStructurePropertiesKHR as_props{};
     VkQueryPool timed_pool = VK_NULL_HANDLE;  // (timed_submit's two timestamps)
 } g_ctx;
+
+// Why init returned false (kept past g_ctx's reset: the host's line and the Renderer row read it after), and the host's hook
+// for a lost device (its marker: the next start on OpenGL)
+InitFailure g_fail = InitFailure::kNone;
+std::string g_fail_text;
+void (*g_lost_hook)(const char* where) = nullptr;
+
+// orig: (host) init's failure noted (the log's own line said where it happened): false, for `return fail(...)`
+bool fail(InitFailure why, std::string text) {
+    g_fail = why;
+    g_fail_text = std::move(text);
+    return false;
+}
+
+// orig: (host) testing: RAC1_VK_FAIL=<word>[,<word>...] holds `word` (fake failures, docs/vulkan.md#when-vulkan-cannot-start):
+// loader (no loader), check (every device fails the check), first (the best-scored device fails it), lost (a lost device at
+// the 120th frame); crash is the host's (vk_safety.cpp)
+bool fake_failure(const char* word) {
+    const char* e = std::getenv("RAC1_VK_FAIL");
+    if (e == nullptr) return false;
+    const size_t n = std::strlen(word);
+    for (const char* p = e; *p != 0;) {
+        const char* c = std::strchr(p, ',');
+        const size_t len = c != nullptr ? static_cast<size_t>(c - p) : std::strlen(p);
+        if (len == n && std::strncmp(p, word, n) == 0) return true;
+        if (c == nullptr) break;
+        p = c + 1;
+    }
+    return false;
+}
 
 // The renderer's allocations, by use (the profiler's memory view)
 struct AllocInfo {
@@ -426,13 +461,13 @@ void create_fallback_textures() {
                  VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                  VK_IMAGE_ASPECT_COLOR_BIT, g_ctx.black_uint_tex);
     create_image(4, 4, VK_FORMAT_D32_SFLOAT,
-                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                  VK_IMAGE_ASPECT_DEPTH_BIT, g_ctx.dummy_d2d);
     create_image(4, 4, VK_FORMAT_D32_SFLOAT,
-                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                  VK_IMAGE_ASPECT_DEPTH_BIT, g_ctx.dummy_darray, 3, 0, VK_IMAGE_VIEW_TYPE_2D_ARRAY);
     create_image(4, 4, VK_FORMAT_D32_SFLOAT,
-                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                  VK_IMAGE_ASPECT_DEPTH_BIT, g_ctx.dummy_dcube, 6, VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
                  VK_IMAGE_VIEW_TYPE_CUBE_ARRAY);
 
@@ -585,7 +620,7 @@ const prof::GpuApi kProfApi = {"Vulkan", prof_alloc, prof_slot_reset, prof_write
 // when Vulkan is not there), and the optional ones turned off (g_ctx.has_*). GitHub issue #113: a level's first frame
 // black on an Intel UHD 620, with nothing in the log to say why.
 template <typename HasExt>
-bool check_device(VkPhysicalDevice pd, const HasExt& has_ext) {
+bool check_device(VkPhysicalDevice pd, const HasExt& has_ext, bool fake_missing) {
     VkPhysicalDeviceVulkan13Features f13{};
     f13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
     VkPhysicalDeviceVulkan12Features f12{};
@@ -611,6 +646,7 @@ bool check_device(VkPhysicalDevice pd, const HasExt& has_ext) {
     const VkPhysicalDeviceFeatures& f = f2.features;
     need(f13.dynamicRendering == VK_TRUE, "dynamicRendering");
     need(f13.synchronization2 == VK_TRUE, "synchronization2");
+    need(f13.shaderDemoteToHelperInvocation == VK_TRUE, "shaderDemoteToHelperInvocation (glslc's discard)");
     need(f12.scalarBlockLayout == VK_TRUE, "scalarBlockLayout");
     need(f.imageCubeArray == VK_TRUE, "imageCubeArray (the point lights' shadows)");
     need(f.multiDrawIndirect == VK_TRUE, "multiDrawIndirect");
@@ -633,6 +669,7 @@ bool check_device(VkPhysicalDevice pd, const HasExt& has_ext) {
     std::snprintf(buf, sizeof buf, "maxComputeWorkGroupInvocations %u (64 needed)", L.maxComputeWorkGroupInvocations);
     need(L.maxComputeWorkGroupInvocations >= 64 && L.maxComputeWorkGroupSize[0] >= 64, buf);
     need(L.maxDrawIndirectCount > 1, "maxDrawIndirectCount > 1");
+    need(!fake_missing, "(RAC1_VK_FAIL: a test)");
 
     // the formats the targets are made in: colour (drawn into, blended, sampled) and depth (drawn into, sampled)
     auto fmt_ok = [&](VkFormat fmt, VkFormatFeatureFlags want) {
@@ -695,7 +732,8 @@ bool check_device(VkPhysicalDevice pd, const HasExt& has_ext) {
         std::fprintf(stderr, "[vk] not there, turned off: %s\n", off.c_str());
     }
     if (!missing.empty()) {
-        std::fprintf(stderr, "[vk] missing: %s. The Vulkan renderer needs them: OpenGL instead\n", missing.c_str());
+        std::fprintf(stderr, "[vk] %s: missing %s. The Vulkan renderer needs them\n", p2.properties.deviceName, missing.c_str());
+        g_fail_text = "the graphics device lacks " + missing;
         return false;
     }
     return true;
@@ -707,7 +745,8 @@ void check_lost(VkResult r, const char* where) {
     if (r != VK_ERROR_DEVICE_LOST || g_ctx.device_lost) return;
     g_ctx.device_lost = true;
     std::fprintf(stderr, "[vk] the graphics driver stopped the GPU's work (VK_ERROR_DEVICE_LOST, at %s): nothing more can be drawn. "
-                         "Restart the game; if it happens again, set Renderer to OpenGL\n", where);
+                         "Restart the game: the next start is on OpenGL (Options > Display > Renderer: Vulkan to try it again)\n", where);
+    if (g_lost_hook != nullptr) g_lost_hook(where);
 }
 
 }  // namespace
@@ -743,24 +782,88 @@ bool float64_slow() {
     }
 }
 
+// orig: (host) the pipeline cache: the driver's compiled pipelines of the last start, read back from the settings' folder
+// (vk_pipeline_cache.bin), so that a start after the first does not compile them again. Kept only when its header is this
+// device's and driver's (the driver checks again). Off headless unless RAC1_VK_PIPELINE_CACHE=1 (the test runs leave no
+// file); RAC1_VK_PIPELINE_CACHE=0 turns it off.
+void pipeline_cache_open() {
+    const char* env = std::getenv("RAC1_VK_PIPELINE_CACHE");
+    if (env != nullptr && std::atoi(env) == 0) return;
+    if (g_ctx.headless && env == nullptr) return;
+    const std::filesystem::path dir = platform::config_dir();
+    if (dir.empty()) return;
+    g_ctx.pipe_cache_path = dir / "vk_pipeline_cache.bin";
+    std::vector<char> data;
+    if (std::ifstream f(g_ctx.pipe_cache_path, std::ios::binary); f) {
+        data.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+    }
+    // (VkPipelineCacheHeaderVersionOne: header size, version, vendor, device, the pipeline cache UUID)
+    const VkPhysicalDeviceProperties& p = g_ctx.dev_props;
+    bool ok = data.size() >= 32;
+    if (ok) {
+        uint32_t hdr[4];
+        std::memcpy(hdr, data.data(), sizeof hdr);
+        ok = hdr[0] >= 32 && hdr[1] == VK_PIPELINE_CACHE_HEADER_VERSION_ONE && hdr[2] == p.vendorID && hdr[3] == p.deviceID &&
+             std::memcmp(data.data() + 16, p.pipelineCacheUUID, VK_UUID_SIZE) == 0;
+    }
+    if (!ok) data.clear();
+    VkPipelineCacheCreateInfo ci{};
+    ci.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+    ci.initialDataSize = data.size();
+    ci.pInitialData = data.empty() ? nullptr : data.data();
+    if (vkCreatePipelineCache(g_ctx.device, &ci, nullptr, &g_ctx.pipe_cache) != VK_SUCCESS) {
+        ci.initialDataSize = 0;  // (the driver refused the data: an empty cache)
+        ci.pInitialData = nullptr;
+        if (vkCreatePipelineCache(g_ctx.device, &ci, nullptr, &g_ctx.pipe_cache) != VK_SUCCESS) g_ctx.pipe_cache = VK_NULL_HANDLE;
+    }
+    if (g_ctx.pipe_cache != VK_NULL_HANDLE)
+        std::fprintf(stderr, "[vk] pipeline cache %s (%zu KB)\n", data.empty() ? "new" : "read", data.size() / 1024);
+}
+
+// orig: (host) the pipeline cache written back at the end (through a temporary file: a start cut short keeps the old one)
+void pipeline_cache_close() {
+    if (g_ctx.pipe_cache == VK_NULL_HANDLE) return;
+    size_t size = 0;
+    if (vkGetPipelineCacheData(g_ctx.device, g_ctx.pipe_cache, &size, nullptr) == VK_SUCCESS && size > 0) {
+        std::vector<char> data(size);
+        if (vkGetPipelineCacheData(g_ctx.device, g_ctx.pipe_cache, &size, data.data()) == VK_SUCCESS) {
+            std::error_code ec;
+            std::filesystem::create_directories(g_ctx.pipe_cache_path.parent_path(), ec);
+            std::filesystem::path tmp = g_ctx.pipe_cache_path;
+            tmp += ".tmp";
+            bool written = false;
+            if (std::ofstream f(tmp, std::ios::binary | std::ios::trunc); f) {
+                f.write(data.data(), static_cast<std::streamsize>(size));
+                written = static_cast<bool>(f);
+            }
+            if (written) std::filesystem::rename(tmp, g_ctx.pipe_cache_path, ec);
+            else std::filesystem::remove(tmp, ec);
+        }
+    }
+    vkDestroyPipelineCache(g_ctx.device, g_ctx.pipe_cache, nullptr);
+    g_ctx.pipe_cache = VK_NULL_HANDLE;
+}
+
 bool init(GLFWwindow* window, bool vsync, bool headless) {
     if (g_ctx.active) return true;
     g_ctx = Context{};
     g_ctx.window = window;
     g_ctx.vsync = vsync;
     g_ctx.headless = headless;
+    g_fail = InitFailure::kNone;
+    g_fail_text.clear();
     if (!shaders::kAvailable) {
         std::fprintf(stderr, "[vk] this build has no Vulkan shaders (no glslc / glslangValidator when it was built)\n");
-        return false;
+        return fail(InitFailure::kNoShaders, "this build has no Vulkan shaders (glslc was missing when it was built: run the setup again)");
     }
 
-    if (volkInitialize() != VK_SUCCESS) {
-        std::fprintf(stderr, "[vk] volkInitialize failed (no Vulkan loader found)\n");
-        return false;
+    if (fake_failure("loader") || volkInitialize() != VK_SUCCESS) {
+        std::fprintf(stderr, "[vk] volkInitialize failed (no Vulkan loader found)%s\n", fake_failure("loader") ? " (RAC1_VK_FAIL: a test)" : "");
+        return fail(InitFailure::kNoDriver, "no Vulkan driver (no Vulkan loader)");
     }
     if (volkGetInstanceVersion() < VK_API_VERSION_1_3) {
         std::fprintf(stderr, "[vk] Vulkan 1.3 not supported by loader\n");
-        return false;
+        return fail(InitFailure::kNoVulkan13, "the Vulkan loader is older than 1.3");
     }
 
     VkApplicationInfo app{};
@@ -777,7 +880,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
         const char** glfw_exts = glfwGetRequiredInstanceExtensions(&glfw_ext_count);
         if (glfw_exts == nullptr || glfw_ext_count == 0) {
             std::fprintf(stderr, "[vk] glfwGetRequiredInstanceExtensions failed\n");
-            return false;
+            return fail(InitFailure::kNoDriver, "no Vulkan driver for the window (glfwGetRequiredInstanceExtensions)");
         }
         for (uint32_t i = 0; i < glfw_ext_count; ++i) inst_exts.push_back(glfw_exts[i]);
     }
@@ -806,7 +909,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
 
     if (vkCreateInstance(&ici, nullptr, &g_ctx.instance) != VK_SUCCESS) {
         std::fprintf(stderr, "[vk] vkCreateInstance failed\n");
-        return false;
+        return fail(InitFailure::kNoDriver, "no Vulkan driver (vkCreateInstance failed)");
     }
     volkLoadInstance(g_ctx.instance);
 
@@ -814,7 +917,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
         if (glfwCreateWindowSurface(g_ctx.instance, window, nullptr, &g_ctx.surface) != VK_SUCCESS) {
             std::fprintf(stderr, "[vk] glfwCreateWindowSurface failed\n");
             shutdown();
-            return false;
+            return fail(InitFailure::kOther, "no Vulkan surface for the window (glfwCreateWindowSurface failed)");
         }
     }
 
@@ -823,12 +926,21 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     if (dev_count == 0) {
         std::fprintf(stderr, "[vk] no Vulkan physical devices found\n");
         shutdown();
-        return false;
+        return fail(InitFailure::kNoDriver, "no Vulkan driver (no Vulkan device)");
     }
     std::vector<VkPhysicalDevice> devs(dev_count);
     vkEnumeratePhysicalDevices(g_ctx.instance, &dev_count, devs.data());
 
-    int best_score = -1;
+    // the devices that can show the picture, best first (discrete 100, integrated 50, others 1; the driver's order between equals),
+    // each checked in turn and the first that passes taken: a hybrid laptop's discrete GPU missing something leaves the integrated one
+    struct Candidate {
+        VkPhysicalDevice pd;
+        uint32_t qf;
+        VkPhysicalDeviceProperties props;
+        int score;
+    };
+    std::vector<Candidate> cands;
+    bool old_only = true;  // (every device below 1.3)
     for (VkPhysicalDevice pd : devs) {
         VkPhysicalDeviceProperties props{};
         vkGetPhysicalDeviceProperties(pd, &props);
@@ -837,6 +949,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
                          VK_API_VERSION_MINOR(props.apiVersion));
             continue;
         }
+        old_only = false;
 
         uint32_t qf_count = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(pd, &qf_count, nullptr);
@@ -861,41 +974,57 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
         int score = 1;
         if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) score = 100;
         else if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) score = 50;
-        if (score > best_score) {
-            best_score = score;
-            g_ctx.phys_dev = pd;
-            g_ctx.queue_family = found_qf;
-            g_ctx.dev_props = props;
-        }
+        cands.push_back({pd, found_qf, props, score});
     }
+    std::stable_sort(cands.begin(), cands.end(), [](const Candidate& a, const Candidate& b) { return a.score > b.score; });
 
-    if (g_ctx.phys_dev == VK_NULL_HANDLE) {
+    if (cands.empty()) {
         std::fprintf(stderr, "[vk] no suitable Vulkan 1.3 physical device found\n");
         shutdown();
-        return false;
+        return old_only ? fail(InitFailure::kNoVulkan13, "the graphics driver has no Vulkan 1.3")
+                        : fail(InitFailure::kNoDevice, "no Vulkan 1.3 device can show the game's window");
     }
-    vkGetPhysicalDeviceMemoryProperties(g_ctx.phys_dev, &g_ctx.mem_props);
 
-    uint32_t dext_count = 0;
-    vkEnumerateDeviceExtensionProperties(g_ctx.phys_dev, nullptr, &dext_count, nullptr);
-    std::vector<VkExtensionProperties> dexts(dext_count);
-    vkEnumerateDeviceExtensionProperties(g_ctx.phys_dev, nullptr, &dext_count, dexts.data());
+    std::vector<VkExtensionProperties> dexts;
     auto has_ext = [&](const char* name) {
         for (const auto& e : dexts) {
             if (std::strcmp(e.extensionName, name) == 0) return true;
         }
         return false;
     };
+    {  // (ray-traced water reflections, Water Reflections' RT values: check_device says whether the device can; RAC1_RT=0, testing: never)
+        const char* e = std::getenv("RAC1_RT");
+        g_ctx.rt_asked = e == nullptr || *e == '\0' || std::atoi(e) != 0;
+    }
+    bool chosen = false;
+    for (size_t c = 0; c < cands.size() && !chosen; ++c) {
+        g_ctx.phys_dev = cands[c].pd;
+        g_ctx.queue_family = cands[c].qf;
+        g_ctx.dev_props = cands[c].props;
+        uint32_t dext_count = 0;
+        vkEnumerateDeviceExtensionProperties(g_ctx.phys_dev, nullptr, &dext_count, nullptr);
+        dexts.assign(dext_count, VkExtensionProperties{});
+        vkEnumerateDeviceExtensionProperties(g_ctx.phys_dev, nullptr, &dext_count, dexts.data());
+        g_ctx.rt_on = g_ctx.has_shading_rate = false;
+        if (!headless && !has_ext(VK_KHR_SWAPCHAIN_EXTENSION_NAME)) {
+            std::fprintf(stderr, "[vk] %s lacks VK_KHR_swapchain\n", cands[c].props.deviceName);
+            g_fail_text = "the graphics device lacks VK_KHR_swapchain";
+        } else {
+            chosen = check_device(g_ctx.phys_dev, has_ext, fake_failure("check") || (c == 0 && fake_failure("first")));
+        }
+        if (!chosen && c + 1 < cands.size())
+            std::fprintf(stderr, "[vk] %s cannot run the Vulkan renderer: trying %s\n", cands[c].props.deviceName, cands[c + 1].props.deviceName);
+    }
+    if (!chosen) {
+        g_ctx.phys_dev = VK_NULL_HANDLE;
+        shutdown();
+        return fail(InitFailure::kMissing, cands.size() > 1 ? g_fail_text + " (and so does every other one)" : g_fail_text);
+    }
+    if (cands.size() > 1) std::fprintf(stderr, "[vk] the device: %s (of %zu)\n", g_ctx.dev_props.deviceName, cands.size());
+    vkGetPhysicalDeviceMemoryProperties(g_ctx.phys_dev, &g_ctx.mem_props);
 
     std::vector<const char*> enabled_dexts;
-    if (!headless) {
-        if (!has_ext(VK_KHR_SWAPCHAIN_EXTENSION_NAME)) {
-            std::fprintf(stderr, "[vk] device lacks VK_KHR_swapchain\n");
-            shutdown();
-            return false;
-        }
-        enabled_dexts.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-    }
+    if (!headless) enabled_dexts.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     if (has_ext(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)) {
         enabled_dexts.push_back(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
     }
@@ -919,15 +1048,6 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
         f2.pNext = &f12;
         vkGetPhysicalDeviceFeatures2(g_ctx.phys_dev, &f2);
         g_ctx.has_host_query_reset = f12.hostQueryReset == VK_TRUE;
-    }
-
-    {  // (ray-traced water reflections, Water Reflections' RT values: check_device says whether the device can; RAC1_RT=0, testing: never)
-        const char* e = std::getenv("RAC1_RT");
-        g_ctx.rt_asked = e == nullptr || *e == '\0' || std::atoi(e) != 0;
-    }
-    if (!check_device(g_ctx.phys_dev, has_ext)) {
-        shutdown();
-        return false;
     }
     VkPhysicalDeviceRayQueryFeaturesKHR rq_feat{};
     rq_feat.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
@@ -969,6 +1089,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     v13_feat.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
     v13_feat.dynamicRendering = VK_TRUE;
     v13_feat.synchronization2 = VK_TRUE;
+    v13_feat.shaderDemoteToHelperInvocation = VK_TRUE;  // (glslc for Vulkan 1.3 compiles discard to OpDemoteToHelperInvocation)
     if (g_ctx.has_depth_clip_control) v13_feat.pNext = &clip_feat;
     else if (g_ctx.has_provoking_vertex) v13_feat.pNext = &prov_feat;
 
@@ -1017,10 +1138,11 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     if (const VkResult r = vkCreateDevice(g_ctx.phys_dev, &dci, nullptr, &g_ctx.device); r != VK_SUCCESS) {
         std::fprintf(stderr, "[vk] vkCreateDevice failed (VkResult %d)\n", static_cast<int>(r));
         shutdown();
-        return false;
+        return fail(InitFailure::kOther, "vkCreateDevice failed (VkResult " + std::to_string(static_cast<int>(r)) + ")");
     }
     volkLoadDevice(g_ctx.device);
     vkGetDeviceQueue(g_ctx.device, g_ctx.queue_family, 0, &g_ctx.queue);
+    pipeline_cache_open();
 
     // Choose depth-stencil format
     g_ctx.depth_format = VK_FORMAT_D32_SFLOAT_S8_UINT;
@@ -1137,6 +1259,7 @@ void shutdown() {
             if (fn != nullptr) fn();
         }
         g_ctx.shutdown_callbacks.clear();
+        pipeline_cache_close();
 
         for (auto& [k, s] : g_ctx.samplers) {
             if (s != VK_NULL_HANDLE) vkDestroySampler(g_ctx.device, s, nullptr);
@@ -1413,6 +1536,7 @@ void end_frame() {
         si.pSignalSemaphores = &finished;
     }
     check_lost(vkQueueSubmit(g_ctx.queue, 1, &si, f.in_flight), "the frame's vkQueueSubmit");
+    if (g_ctx.frame_num == 120 && fake_failure("lost")) check_lost(VK_ERROR_DEVICE_LOST, "RAC1_VK_FAIL=lost, a test");
 
     if (g_ctx.swap_image_acquired) {
         VkPresentInfoKHR pi{};
@@ -1524,6 +1648,12 @@ VkFormat swapchain_format() { return g_ctx.swap_format; }
 VkFormat depth_stencil_format() { return g_ctx.depth_format; }
 uint32_t frame_index() { return g_ctx.frame_idx; }
 uint64_t frame_number() { return g_ctx.frame_num; }
+// orig: (host)
+InitFailure init_failure() { return g_fail; }
+// orig: (host)
+const std::string& init_failure_text() { return g_fail_text; }
+// orig: (host)
+void set_device_lost_hook(void (*fn)(const char* where)) { g_lost_hook = fn; }
 int main_width() { return static_cast<int>(g_ctx.main_color.width); }
 int main_height() { return static_cast<int>(g_ctx.main_color.height); }
 int current_target_width() {
@@ -2238,7 +2368,7 @@ VkPipeline create_graphics_pipeline(const GraphicsPipelineDesc& desc) {
                      (dfmt == VK_FORMAT_D32_SFLOAT_S8_UINT || dfmt == VK_FORMAT_D24_UNORM_S8_UINT))
                         ? dfmt
                         : VK_FORMAT_UNDEFINED;
-    if (g_ctx.in_frame && !g_ctx.target_stack.empty()) {
+    if (g_ctx.in_frame && !g_ctx.target_stack.empty() && !desc.formats_from_desc) {
         const RenderTarget& rt = g_ctx.target_stack.back();
         cfmt = (rt.color_view != VK_NULL_HANDLE) ? rt.color_format : VK_FORMAT_UNDEFINED;
         dfmt = (rt.depth_view != VK_NULL_HANDLE) ? rt.depth_format : VK_FORMAT_UNDEFINED;
@@ -2304,7 +2434,7 @@ VkPipeline create_graphics_pipeline(const GraphicsPipelineDesc& desc) {
     gpci.layout = desc.layout;
 
     VkPipeline pipe = VK_NULL_HANDLE;
-    vkCreateGraphicsPipelines(g_ctx.device, VK_NULL_HANDLE, 1, &gpci, nullptr, &pipe);
+    vkCreateGraphicsPipelines(g_ctx.device, g_ctx.pipe_cache, 1, &gpci, nullptr, &pipe);
     return pipe;
 }
 
@@ -2317,7 +2447,7 @@ VkPipeline create_compute_pipeline(VkPipelineLayout layout, VkShaderModule cs) {
     cpci.stage.pName = "main";
     cpci.layout = layout;
     VkPipeline pipe = VK_NULL_HANDLE;
-    vkCreateComputePipelines(g_ctx.device, VK_NULL_HANDLE, 1, &cpci, nullptr, &pipe);
+    vkCreateComputePipelines(g_ctx.device, g_ctx.pipe_cache, 1, &cpci, nullptr, &pipe);
     return pipe;
 }
 

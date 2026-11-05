@@ -692,10 +692,21 @@ namespace Rac1Launcher
                 Activate();
                 btnMain.IsEnabled = true;
                 ShowState(state, "");
+                ShowRendererFallback();
                 CheckUpdates(false);  // (the channel may have changed in the game's options)
                 if (code != 0 && (DateTime.Now - started).TotalSeconds < 20)
                     await Say(ctl.GameClosedMessage(code), "Play");
             });
+        }
+
+        /// <summary>After the game: the line saying it ran with OpenGL instead of the Vulkan chosen, and why (build/game.log's
+        /// "[renderer]" line), under the status, and in the log.</summary>
+        void ShowRendererFallback()
+        {
+            string fb = ctl.RendererFallback();
+            if (fb == null) return;
+            lblDetail.Text = fb;
+            ctl.Log(fb);
         }
 
         // --- Running a task ---------------------------------------------------------------------------------

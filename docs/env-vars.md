@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 393 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 396 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 299 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 75 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Debugging](#debugging-variables) | 300 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Automated testing](#automated-testing-variables) | 77 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -51,7 +51,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_NO_AUDIO` | any value = on; default audio on | Turns the sound output off entirely. |
 | `RAC1_PRIORITY` | 0 = off, any other integer = on; default on except when headless | Requests raised host thread priority through the system's real-time kit, if available. |
 | `RAC1_PYTHON` | path to a Python interpreter; set by `tools/setup.py` | Windows: the Python the game's setup mode runs its helper scripts with (also the update check's, when the build's own Python is gone); the setup sets it to its own interpreter; unset = `python`. Elsewhere `python3` is used and the variable is not read. Kept in a windowed run. |
-| `RAC1_RENDERER` | `opengl` or `vulkan` (also `vk`; any other value = OpenGL); unset = the Options > Display Renderer setting (a headless run: OpenGL) | The graphics API for this run: `vulkan` the optional Vulkan renderer, OpenGL when it cannot start. See [Vulkan](vulkan.md). Ignored on macOS, where Metal is the one renderer ([Metal](metal.md)). |
+| `RAC1_RENDERER` | `opengl`, `vulkan` (also `vk`) or `auto` (any other value = OpenGL); unset = the Options > Display Renderer setting (default auto: Vulkan in a window; a headless run: OpenGL) | The graphics API for this run: `vulkan` the Vulkan renderer, OpenGL when it cannot start. Vulkan chosen this way ignores the safety net's markers of the last run (vk_start_pending, vk_failed). `auto` the default's path, also in a headless run: Vulkan through the safety net's markers, OpenGL when it cannot start or a marker says not to try. See [Vulkan](vulkan.md#when-vulkan-cannot-start). Ignored on macOS, where Metal is the one renderer ([Metal](metal.md)). |
 | `RAC1_VSYNC` | 0 = off, 1 = on; unset = the Options > Display setting | Forces vertical sync on or off for a windowed run, overriding the in-game display setting. |
 | `RAC1_WINDOW` | "WIDTHxHEIGHT", e.g. 1280x720; unset = the default window size | Sets the size of the game window at start. |
 
@@ -325,6 +325,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_VIEW_MODE` | integer: 0 = widescreen, 1 = 4:3 with bars, 2 = fit to the window's aspect; default 0 until the Options > Display settings override it | Sets the host's view/aspect mode at start (as the aspect and fit options do). The exact meaning of 0 is inferred from the view code, treat as approximate. |
 | `RAC1_VIBRATION_LOG` | set (any value) = on; default off | Prints the vibration (Options > Advanced > Vibration and Adaptive Triggers, #10), with or without a gamepad: each event's pulse (`[vibe] f<gameplay frame> <event>: low <l> high <h>, <n> frames (<ms> ms, held <k>), pan <p>` or `centred`, its distance), the motors and the DualSense's actuators when they change (`[vibe] f<n> motors low .. high .. \| left .. right ..`), the triggers' effects and the health when they change, the moving source followed, and what the host takes each game frame (`[vibe] host frame <n> ...`). |
 | `RAC1_VIF_TRACE` | any value = on; default off | Prints every VIF1 code word (as [VIF1] lines on stderr) as the GS emulation processes the DMA chain. |
+| `RAC1_VK_PIPELINE_CACHE` | 0 = off, 1 = on; default on, off in a headless run | With the Vulkan renderer, keeps the driver's compiled pipelines between starts in vk_pipeline_cache.bin in the settings' folder ($XDG_CONFIG_HOME/rac1-native, %APPDATA%\rac1-native on Windows), read back when its header is this device's and driver's. See [Vulkan](vulkan.md). |
 | `RAC1_VK_VALIDATION` | 1 = on; default off | With the Vulkan renderer, turns the Khronos validation layer on when it is installed (its messages on the standard output). See [Vulkan](vulkan.md). |
 | `RAC1_VU0_CAPTURE` | directory path; default off | Writes captures (code image, registers, memory) of VU0 program runs, spread over the calls, into that directory; used as inputs to prove the ported VU0 programs against the original. |
 | `RAC1_VU0_CHAIN` | any value = on; default off | At exit, prints a hash of everything VU0 computed during the run, to compare two runs for identical VU0 results. |
@@ -435,6 +436,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_UPDATE_FAKE` | x.y.z (a release) or dev:N (N new commits on main); unset = off | Offers a made-up update to the update notice instead of asking GitHub (no network), so the main menu's panel can be seen and tried: with `--debug-tools`, or headless with RAC1_ADVANCED=1 and RAC1_BOOT=1 (a headless run never checks for real). Skip Version applies to it as to a real one (`update_skip` in advanced_options.txt). |
 | `RAC1_VENDOR_OPEN` | button bitmask (decimal or 0x hex); default 0x10 (triangle) | With the RAC1_SIM_INPUT vendor script, the button press used to open the vendor screens (for example 0x20 for circle). |
 | `RAC1_VENDOR_TRACE` | integer n; default 0 (off) | Every n frames of the Vendor's screens prints their state, the cursor, the bolts, the price of Buy All Ammo's entry and each entry of the list (`ALL(<weapon>)` for Buy All Ammo's, each weapon with its ammo, its most and its price a round; `[vendor]`), to check a purchase from EE memory. |
+| `RAC1_VK_FAIL` | comma-separated words: `loader`, `check`, `first`, `crash`, `lost`; default unset = none | Fakes a Vulkan failure to test the fallback to OpenGL: `loader` no Vulkan loader, `check` every device fails the device check, `first` the best-scored device fails it (the next one is tried), `crash` the game ends at the 120th Vulkan frame as by a crash, `lost` a lost device (VK_ERROR_DEVICE_LOST) at the 120th frame. See [Vulkan](vulkan.md#when-vulkan-cannot-start). |
+| `RAC1_VK_MARKERS` | 1 = on; default off in a headless run (always on in a window) | Uses the Vulkan safety net's markers (vk_start_pending, vk_failed in the settings' folder) in a headless run, as a window does: the last Vulkan run's crash in its start or lost device sends the start to OpenGL. Needs the Renderer row's Vulkan (`RAC1_ADVANCED=1`, a preferences file with `renderer vulkan`) or `RAC1_RENDERER=auto`. See [Vulkan](vulkan.md#when-vulkan-cannot-start). |
 | `RAC1_VU_SELFCHECK` | any value = on; default off | Runs each fast VU1 port and the exact port side by side and reports on stderr when their results differ; a progress line every 5000 programs. |
 | `RAC1_VOICE_LANGUAGE` | `same`, `en`, `fr`, `de`, `es`, `it`, `ja`; unset = Options > Language > Voice (the same as the text in headless runs) | Sets the voice language apart from the text language (0x15ed88), also in headless runs; `ja` needs the Japanese data disc (setup `--data-iso`), else the voices stay the text's. See [Settings](settings.md#voice). |
 | `RAC1_WORLD_MRP_CHECK` | any value = on; default off | Verification mode for the modern world renderer: it compares the triangles it builds against the CPU reference and also disables the GPU fast paths. |

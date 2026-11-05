@@ -14,6 +14,26 @@ What changed in each release. Releases are source only: you build the game with 
   nothing and logs a line. See docs/movie-subtitles.md.
 - Launcher, Settings: Movie subtitles (the languages, for every setup), Make movie subtitles, Install subtitle pack (the
   .srt files of a .zip into `assets/movie-subtitles/`), and Enable debug tools (the game started with `--debug-tools`).
+- Vulkan: the mobys' shadow casters get OpenGL's depth bias (it was left unset, whatever the driver had: shadow acne or
+  gaps on mobys depending on the GPU); the validation layer's other errors fixed (the occlusion's and the sun rays'
+  pipelines made for their own targets' formats, discard's helper-invocation feature enabled and checked, the dummy
+  depth images' transfer usage, the particles' objects destroyed at the end).
+- Vulkan: the driver's compiled pipelines kept between starts (`vk_pipeline_cache.bin` in the settings' folder; not
+  headless unless RAC1_VK_PIPELINE_CACHE=1).
+- Setup: glslc is required on Linux and Windows (the private MSYS2 installs shaderc), the build configured with
+  RAC1_VULKAN=REQUIRED; a build made without glslc is configured again once glslc is installed (it kept a renderer
+  without shaders before); a warning when no Vulkan driver is installed.
+- Vulkan's safety net: every Vulkan 1.3 device is tried, best first, before OpenGL (a laptop's integrated GPU when the
+  discrete one lacks something); a Vulkan start that crashed (in its first 600 frames) or a lost GPU (#113's case) sends
+  the next starts to OpenGL until the Renderer row is chosen again; Options > Display > Renderer shows the renderer
+  running ("Vulkan (OpenGL)") and its help why, in the four languages; the launcher shows the game's reason after it closes. Fake failures
+  for testing: RAC1_VK_FAIL, RAC1_VK_MARKERS. See docs/vulkan.md#when-vulkan-cannot-start.
+- Options > Display > Renderer's help no longer calls Vulkan experimental (the four languages).
+- Renderer now Vulkan by default; set OpenGL in Options > Display to go back. A preferences file whose Renderer row was
+  never chosen (`renderer auto`, new; 0.5.0..0.7.x wrote `renderer opengl` as their default, read as auto once) plays
+  Vulkan in a window, OpenGL when Vulkan cannot start or the safety net says not to try, the row showing the renderer
+  running; choosing the row writes it with `renderer_set 1`, and `renderer vulkan` stays. Headless runs stay OpenGL
+  (RAC1_RENDERER=auto takes the auto path headless too). 0.7.x reads `auto` as OpenGL.
 
 ## 0.7.0
 
