@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iterator>
 #include <vector>
 
 namespace rac1::rac2 {
@@ -63,6 +64,12 @@ struct Loop {  // (a looping class sound of ours: sound_loop)
 };
 std::vector<Loop> g_loops;
 uint32_t g_hero_hit_by = 0, g_hero_hit_at = 0;  // (P8: the last hero_hit's moby and level frame)
+// P8: our joint override nodes (0x40 bytes each in EE memory) and whose they are
+constexpr uint32_t kJointNodes = 0x000fe400u;
+struct Joint {
+    uint32_t m = 0, point = 0;
+};
+Joint g_joints[16];
 
 // orig: (none) — the turns of the dead (or of slots gone to another moby) taken back
 void turns_prune() {
@@ -103,7 +110,10 @@ bool moby_gone(uint32_t m, int32_t cls, uint32_t pvars) {
 // orig: (none) — the game's own retire (0x24eb68): its state 0xfe (0xfd a level-placed one), its slot free for a spawn again
 // 2 frames later (+0x38 the frame), out of the grid. (P7: before, only the state was set and +0x38 kept its colour word, a
 // frame never reached: every killed moby's slot was lost, and a long challenge ran out of moby slots)
-void moby_kill(uint32_t m) { moby_retire(m); }
+void moby_kill(uint32_t m) {
+    joints_release(m);
+    moby_retire(m);
+}
 
 // orig: (none) — RAC2's controller hands its recycled enemies over to their class's activate function, which starts them
 // from their first state; ours copies a template that was never updated, so the copy starts as a freshly loaded one
@@ -149,6 +159,7 @@ void standin_reset() {
     g_seen.clear();
     g_loops.clear();
     g_picked = ~0u;
+    for (Joint& j : g_joints) j = Joint{};  // (the level loaded again: the mobys' lists are new)
 }
 
 // orig: (none)
@@ -418,6 +429,76 @@ void point_frame(uint32_t m, uint32_t point, Vec3& at, Vec3& x, Vec3& y, Vec3& z
 }
 
 // orig: (none)
+uint32_t point_joint(uint32_t m, uint32_t point) {
+    const uint32_t cls = lwu(m + moby::kClass);
+    if (cls == 0 || lwu(cls + 0x1c) == 0) return 0;
+    const uint32_t t = lwu(lwu(cls + 0x1c) + point * 4 + 4);
+    return t != 0 ? lbu(t + lbu(t) + 4) : 0u;
+}
+
+namespace {
+// orig: (none) — whether `node` is on `m`'s override list
+bool node_listed(uint32_t m, uint32_t node) {
+    for (uint32_t o = lwu(m + 0x64), n = 0; o != 0 && n < 64; o = lwu(o + 8), ++n)
+        if (o == node) return true;
+    return false;
+}
+
+// orig: (none) — `node` taken off `m`'s override list
+void node_unlist(uint32_t m, uint32_t node) {
+    if (lwu(m + 0x64) == node) {
+        sw(m + 0x64, lwu(node + 8));
+        return;
+    }
+    for (uint32_t o = lwu(m + 0x64), n = 0; o != 0 && n < 64; o = lwu(o + 8), ++n)
+        if (lwu(o + 8) == node) {
+            sw(o + 8, lwu(node + 8));
+            return;
+        }
+}
+}  // namespace
+
+// orig: (none)
+void joint_turn(uint32_t m, uint32_t point, Vec3 axis, float angle, Vec3 axis2, float angle2) {
+    size_t k = 0;
+    while (k < std::size(g_joints) && !(g_joints[k].m == m && g_joints[k].point == point)) ++k;
+    if (k == std::size(g_joints)) {
+        k = 0;
+        while (k < std::size(g_joints) && g_joints[k].m != 0) ++k;
+        if (k == std::size(g_joints)) return;
+        g_joints[k] = Joint{m, point};
+    }
+    const uint32_t node = kJointNodes + static_cast<uint32_t>(k) * 0x40u;
+    // (the quaternions of the two turns, the second's first: q = q1 q2)
+    const float s1 = std::sin(angle * 0.5f), c1 = std::cos(angle * 0.5f), s2 = std::sin(angle2 * 0.5f), c2 = std::cos(angle2 * 0.5f);
+    const float a[4] = {axis.x * s1, axis.y * s1, axis.z * s1, c1}, b[4] = {axis2.x * s2, axis2.y * s2, axis2.z * s2, c2};
+    const float q[4] = {a[3] * b[0] + b[3] * a[0] + (a[1] * b[2] - a[2] * b[1]), a[3] * b[1] + b[3] * a[1] + (a[2] * b[0] - a[0] * b[2]),
+                        a[3] * b[2] + b[3] * a[2] + (a[0] * b[1] - a[1] * b[0]), a[3] * b[3] - (a[0] * b[0] + a[1] * b[1] + a[2] * b[2])};
+    sw(node, 0);  // (+3 mode 0: on top of the animation)
+    sw(node + 4, 0x70000000u + point_joint(m, point) * 0x40u);
+    swc1(node + 0xc, 1.0f);
+    for (int i = 0; i < 4; ++i) {
+        swc1(node + 0x10 + 4 * i, q[i]);
+        swc1(node + 0x20 + 4 * i, 1.0f);
+        swc1(node + 0x30 + 4 * i, 0.0f);
+    }
+    if (!node_listed(m, node)) {
+        sw(node + 8, lwu(m + 0x64));
+        sw(m + 0x64, node);
+    }
+}
+
+// orig: (none)
+void joints_release(uint32_t m) {
+    for (size_t k = 0; k < std::size(g_joints); ++k) {
+        if (g_joints[k].m != m) continue;
+        const uint32_t node = kJointNodes + static_cast<uint32_t>(k) * 0x40u;
+        if (node_listed(m, node)) node_unlist(m, node);
+        g_joints[k] = Joint{};
+    }
+}
+
+// orig: (none)
 void camera_shake(float strength, uint32_t frames) {
     if (strength < lwc1(OV(0x00166de0))) return;  // (a stronger one going on: kept)
     swc1(OV(0x00166de0), strength);
@@ -479,6 +560,14 @@ void shot_step(uint32_t w, uint32_t pv) {
         const int32_t snd = lw(pv + part::kSoundHit);
         if (snd >= 0) sound_of_class(w, lh(w + moby::kClassId), snd);
         explosion_burst(0, w + moby::kPos, -1, 1.0f, 3.0f);
+        // (P8, RAC2's 0x422270: the blast's sparks thrown out round it and its smoke rising)
+        for (int k = 0; k < 10; ++k) {
+            const float a = rand_unit() * 6.2831853f, e = rand_unit() * 0.12f, r = 0.06f + rand_unit() * 0.08f;
+            spawn_particle_3c_v(Vec4{q.x, q.y, q.z, 1.0f}, Vec4{std::cos(a) * r, std::sin(a) * r, e, 0.0f}, 0x8040a0f0u, 14 + rand_below(10), 0, 0, 0.18f);
+        }
+        for (int k = 0; k < 4; ++k)
+            spawn_particle_3c_v(Vec4{q.x + (rand_unit() - 0.5f) * 0.6f, q.y + (rand_unit() - 0.5f) * 0.6f, q.z, 1.0f}, Vec4{0.0f, 0.0f, 0.02f, 0.0f},
+                                0x40505050u, 40, 0, 0, 0.9f + rand_unit() * 0.4f);
         const float d = std::hypot(std::hypot(hc.x - q.x, hc.y - q.y), hc.z - q.z);
         if (d < blast + 0.6f) {
             Vec4 push{hc.x - q.x, hc.y - q.y, 0.0f, 0.0f};
@@ -490,6 +579,9 @@ void shot_step(uint32_t w, uint32_t pv) {
         return;
     }
     part_put(w, q, v, (lhu(w + moby::kFlags) & 1u) == 0);
+    // (P8, RAC2's 0x421da0: its trail, a hot glow where it is and smoke left behind it, fading)
+    spawn_particle_3c_v(Vec4{q.x, q.y, q.z, 1.0f}, Vec4{v.x * 0.05f, v.y * 0.05f, v.z * 0.05f, 0.0f}, 0x8060c0ffu, 6, 0, 0, 0.6f);
+    spawn_particle_3c_v(Vec4{p.x, p.y, p.z, 1.0f}, Vec4{0.0f, 0.0f, 0.01f, 0.0f}, 0x50707070u, 30, 0, 0, 0.35f + rand_unit() * 0.15f);
     const int32_t life = lw(pv + part::kLie) - 1;
     sw(pv + part::kLie, static_cast<uint32_t>(life));
     if (life <= 0) moby_kill(w);  // (RAC2: a puff of smoke 0x33fe38 and gone)

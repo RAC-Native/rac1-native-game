@@ -114,6 +114,20 @@ void part_put(uint32_t part, Vec3 at, Vec3 dir, bool shown);
 // orig: (none) — attachment point `point` of `m` in the world: its place and its matrix's rows (RAC2's 0x315578 reads its x)
 void point_frame(uint32_t m, uint32_t point, Vec3& at, Vec3& x, Vec3& y, Vec3& z);
 
+// ---- joint overrides (P8: RAC2's 0x3152d0 puts a node on a moby's list for the joint of an attachment point, its rotation
+// set by the class's code each frame: the B2 Brawler's arm guns). RAC1's engine has the same list (moby +0x64, read by its
+// pose code 0x2531e0: nodes {+3 mode, +4 the joint's record on the scratchpad, +8 next, +0xc weight, +0x10 a quaternion,
+// +0x20 a scale, +0x30 a translation}; mode 0 turns the joint by the quaternion on top of its animation): ours are kept in
+// the first megabyte's unused part (0xfe400.., 16 nodes), linked while asked for, let go when the moby is killed ----
+// orig: (none) — the joint of `m`'s attachment point `point` (the class's +0x1c table, as RAC2's 0x3152d0 and RAC1's
+// 0x24f028 read it)
+uint32_t point_joint(uint32_t m, uint32_t point);
+// orig: (none) — the joint of `m`'s attachment point `point` turned by `angle` radians about `axis` (in the joint's own
+// frame, a unit vector), then by `angle2` about `axis2`, on top of its animation (0 and 0: none)
+void joint_turn(uint32_t m, uint32_t point, Vec3 axis, float angle, Vec3 axis2, float angle2);
+// orig: (none) — `m`'s joint overrides let go (moby_kill does it)
+void joints_release(uint32_t m);
+
 // ---- shots (P7: the B2 Brawler's shell 3336, RAC2's 0x4216f0 fires it, its update 0x421860 flies it): a moby of the shot's
 // class flies straight at its speed; on the level's collision, another moby or Ratchet it blows up (a small explosion, its
 // class sound), hurting him when he is within its blast; it fizzles out after its life. A part (part_update moves it) whose

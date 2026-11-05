@@ -263,6 +263,9 @@ What changed in each release. Releases are source only: you build the game with 
   takes it back for a while). The arena's two skill points (RAC2's): "Wrench Ninja: Blade to Blade" (Chainblade beaten
   with only the wrench) and "2B or not 2B hit" (the B2 Brawler beaten without a hit from it or its shells): the jingle,
   "You got a skill point!" and the skill's name on the HUD, kept in the save's `.pc`.
+- Local experiment, planet P8: the B2 Brawler's two arm guns aim at Ratchet by their joints (`rac2::joint_turn`: RAC1's own
+  per-joint override list on the moby, as RAC2 turns its arm joints), within RAC2's limits and at its pace; its shells leave
+  a hot trail and smoke and blow up in sparks and smoke; the lamps on its antennas, its muzzles and dome glow.
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

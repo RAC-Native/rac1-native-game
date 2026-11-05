@@ -101,6 +101,8 @@ constexpr uint32_t kTurret = 0x80, kPiece = 0x84, kFired = 0x88;
 constexpr uint32_t kSaved = 0x8c, kSavedSub = 0x90, kSavedTurret = 0x94;  // (RAC2's +0x28a, +0x28e, +0x28c)
 constexpr uint32_t kSounded = 0x98, kHeroLast = 0x9c, kSpinHit = 0xa0;
 constexpr uint32_t kPartner = 0xb0, kPartnerCls = 0xb4, kPartnerPv = 0xb8, kGo = 0xbc, kTurns = 0xc0, kWaitFirst = 0xc4;  // (+0x264, +0x280, +0x282)
+constexpr uint32_t kArms = 0x100;      // (P8: each arm gun's aim, 0x10 apart: its yaw and pitch now, RAC2's eased +0x180 /
+                                       // +0x1c0; past the class's 0x100, inside the pool's block, zeroed at the spawn)
 constexpr uint32_t kScratched = 0xc8;  // (P8: Ratchet hurt by it, its turret or its shells: RAC2's +0x290, its skill point lost)
 }  // namespace pv
 
@@ -275,6 +277,64 @@ void shell_fire(uint32_t m, uint32_t t, uint32_t gun) {
     if (trace()) std::printf("[2628] frame %u: %#x fires a shell from gun %u (%#x), %.1f to Ratchet\n", rac2::level_frame(), m, gun, w, static_cast<double>(len));
 }
 
+// orig: (none) — P8: the arm guns aimed (RAC2's 0x3da1f0..0x3da620): each arm's joint (the turret's attachment points 2 and 3,
+// 0x3152d0) turned so that its gun points at Ratchet: its bearing off the turret's yaw (the right arm within -8..55 degrees,
+// the left within -55..8) and its elevation, the two angles eased at most 0.01 radians a frame (0x321c30). RAC2 sets each
+// joint's rotation outright; ours turns it on top of its animation: the gun's own way measured from its joint to its muzzle
+// (points 0 / 1), the turns about the turret's up and the gun's level side, given in the joint's own frame
+void arms_aim(const Pv& p, uint32_t t, bool aiming) {
+    constexpr float kLimitIn = 0.1396f, kLimitOut = 0.9600f, kStep = 0.01f;
+    const float yaw = p.f(pv::kYaw);
+    const Vec3 fwd{std::cos(yaw), std::sin(yaw), 0.0f}, left{-std::sin(yaw), std::cos(yaw), 0.0f}, up{0.0f, 0.0f, 1.0f};
+    const Vec3 hero = rac2::hero_pos();
+    for (uint32_t a = 0; a < 2; ++a) {
+        const uint32_t o = pv::kArms + a * 0x10;
+        Vec3 j, jx, jy, jz, mz, mx, my, mzz;
+        rac2::point_frame(t, 2 + a, j, jx, jy, jz);
+        rac2::point_frame(t, a, mz, mx, my, mzz);
+        float cy = p.f(o), cp = p.f(o + 4);  // (the turns given last frame)
+        // (the gun's way now, and without our turns: its yaw / pitch in the turret's frame)
+        Vec3 g{mz.x - j.x, mz.y - j.y, mz.z - j.z};
+        const float gl = std::sqrt(g.x * g.x + g.y * g.y + g.z * g.z);
+        if (gl < 1e-3f) continue;
+        const float gyaw = std::atan2(g.x * left.x + g.y * left.y, g.x * fwd.x + g.y * fwd.y) - cy;
+        const float gpitch = std::asin(std::clamp(g.z / gl, -1.0f, 1.0f)) - cp;
+        float wy = 0.0f, wp = 0.0f;
+        if (aiming) {
+            const Vec3 d{hero.x - j.x, hero.y - j.y, hero.z + 0.8f - j.z};
+            const float lo = a == 0 ? -kLimitIn : -kLimitOut, hi = a == 0 ? kLimitOut : kLimitIn;
+            wy = std::clamp(angle_to(std::atan2(d.x * left.x + d.y * left.y, d.x * fwd.x + d.y * fwd.y), 0.0f), lo, hi) - gyaw;
+            wp = std::clamp(std::atan2(d.z, std::hypot(d.x, d.y)), -1.5708f, 1.5708f) - gpitch;
+            wy = angle_to(wy, 0.0f);
+        }
+        // (eased: the two together at most kStep a frame)
+        const float dy = wy - cy, dp = wp - cp, dl = std::hypot(dy, dp);
+        const float k = dl > kStep ? kStep / dl : 1.0f;
+        cy += dy * k;
+        cp += dp * k;
+        p.f(o, cy);
+        p.f(o + 4, cp);
+        // (the axes in the joint's own frame: its rows are its axes in the world, our turns already in them undone
+        // approximately by measuring with the gun's level side, which the yaw turn keeps level)
+        const Vec3 side{g.y * up.z - g.z * up.y, g.z * up.x - g.x * up.z, g.x * up.y - g.y * up.x};
+        const float sl = std::max(1e-4f, std::sqrt(side.x * side.x + side.y * side.y + side.z * side.z));
+        auto local = [&](const Vec3& v) { return Vec3{v.x * jx.x + v.y * jx.y + v.z * jx.z, v.x * jy.x + v.y * jy.y + v.z * jy.z, v.x * jz.x + v.y * jz.y + v.z * jz.z}; };
+        auto unit = [](Vec3 v) {
+            const float l = std::max(1e-6f, std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z));
+            return Vec3{v.x / l, v.y / l, v.z / l};
+        };
+        const Vec3 up_l = unit(local(up)), side_l = unit(local(Vec3{side.x / sl, side.y / sl, side.z / sl}));
+        rac2::joint_turn(t, 2 + a, up_l, -cy, side_l, -cp);  // (RAC1's quaternion turns the other way round)
+        if (trace() && aiming && rac2::level_frame() % 30 == 0) {
+            const Vec3 d{hero.x - j.x, hero.y - j.y, hero.z + 0.8f - j.z};
+            const float dl2 = std::max(1e-4f, std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z));
+            const float off = std::acos(std::clamp((g.x * d.x + g.y * d.y + g.z * d.z) / (gl * dl2), -1.0f, 1.0f));
+            std::printf("[2628] frame %u: arm %u aims: yaw %.3f pitch %.3f (wanted %.3f %.3f), %.1f degrees off Ratchet\n", rac2::level_frame(), a,
+                        static_cast<double>(cy), static_cast<double>(cp), static_cast<double>(wy), static_cast<double>(wp), static_cast<double>(off * 57.29578f));
+        }
+    }
+}
+
 // orig: (none) — the turret's frame (RAC2's 0x3d9e68): on the walker's attachment point 0, its yaw towards Ratchet (not
 // while gloating, knocked or falling: then it spins freely, slowing), its guns
 void turret_step(uint32_t m, const Pv& p, float to_hero) {
@@ -306,6 +366,24 @@ void turret_step(uint32_t m, const Pv& p, float to_hero) {
     p.f(pv::kYawW, w);
     rac2::part_put(t, at, Vec3{std::cos(yaw), std::sin(yaw), 0.0f}, (lhu(m + rac2::moby::kFlags) & 1u) == 0);
     if (const uint32_t piece = static_cast<uint32_t>(p.i(pv::kPiece)); rac2::part_of(piece, m)) rac2::part_place(piece, t, 4, 0.0f);
+    arms_aim(p, t, s == Walking || s == Special);
+    // (P8, RAC2's 0x3dad88: the turret's glows, at its guns' muzzles (points 0 / 1), its lamps (5 / 6) and its dome (4);
+    // RAC2 draws them as glow sprites each frame, ours are RAC1's glow particles, a new one each frame (8 frames' life). Its colour pulse (+0x250
+    // into 2635's +0x78) is left out: no RAC1 field of a moby traced to take it)
+    if ((lhu(m + rac2::moby::kFlags) & 1u) == 0 && s != Dying) {
+        static constexpr struct { uint32_t point, rgba; float size; } kGlows[] = {
+            {0, 0x80e0d0ffu, 0.6f}, {1, 0x80e0d0ffu, 0.6f}, {5, 0x80ffe0c0u, 0.4f}, {6, 0x80ffe0c0u, 0.4f}, {4, 0x80d060ffu, 1.4f}};
+        // (each pulled 0.8 towards the camera, 0x166dc0, out of the mesh it sits in: as RAC1's glow_draw pulls its own)
+        const Vec3 cam{lwc1(OV(0x00166dc0)), lwc1(OV(0x00166dc4)), lwc1(OV(0x00166dc8))};
+        for (const auto& g : kGlows) {
+            Vec3 gp, gx, gy, gz;
+            rac2::point_frame(t, g.point, gp, gx, gy, gz);
+            const Vec3 c{cam.x - gp.x, cam.y - gp.y, cam.z - gp.z};
+            const float cl = std::max(1.0f, std::sqrt(c.x * c.x + c.y * c.y + c.z * c.z));
+            gp = Vec3{gp.x + c.x / cl * 0.8f, gp.y + c.y / cl * 0.8f, gp.z + c.z / cl * 0.8f};
+            spawn_particle_3c_v(Vec4{gp.x, gp.y, gp.z, 1.0f}, Vec4{0.0f, 0.0f, 0.004f, 0.0f}, g.rgba, 8, 0, 0, g.size);  // (a still one is not drawn)
+        }
+    }
     // the guns: walking, or spinning below a fifth of its health
     const bool firing = s == Walking || (s == Special && share(p) < 0.2f);
     if (firing) {
