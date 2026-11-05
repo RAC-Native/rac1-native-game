@@ -171,6 +171,7 @@ add_library(rac1_game STATIC
     enhance/custom_planet.cpp
     enhance/custom_planet_audio.cpp
     enhance/custom_classes.cpp
+    enhance/rac2_enemy_2850.cpp
     enhance/rac2_enemy_3131.cpp
     enhance/rac2_enemy_3134.cpp
     ovl/bomb_glove.cpp

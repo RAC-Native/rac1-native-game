@@ -114,9 +114,27 @@ void standin_reset() {
 }
 
 // orig: (none)
-void seq_play(uint32_t m, uint32_t seq, int32_t blend) {
+void seq_play(uint32_t m, uint32_t seq, int32_t blend, int32_t from) {
     if (lbu(m + moby::kNextSeq) == seq) return;
-    moby_anim_set(m, seq, 0, blend > 0 ? blend : 1);  // (RAC1's takes at least one frame)
+    moby_anim_set(m, seq, from, blend > 0 ? blend : 1);  // (RAC1's takes at least one frame)
+}
+
+// orig: (none) — RAC2's 0x3146d0: each frame record's +4 halfword is its time (sixteenths); the frame's and the next one's,
+// mixed by how far the step is between them (RAC1's frame records are RAC2's: the converter keeps them)
+float seq_time(uint32_t m) {
+    const uint32_t seq = lwu(lwu(m + moby::kClass) + lbu(m + moby::kNextSeq) * 4u + 0x48);
+    if (seq == 0) return 0.0f;
+    const uint32_t n = lbu(seq + 0x10);
+    auto time_of = [&](uint32_t k) { return static_cast<float>(lh(lwu(seq + 0x1c + 4u * std::min(k, n - 1)) + 4)) * 0.0625f; };
+    if (lbu(m + 0x52) != lbu(m + moby::kNextSeq)) return time_of(lbu(m + 0x51));
+    const float t = lwc1(m + 0x54);
+    return time_of(lbu(m + 0x50)) * (1.0f - t) + time_of(lbu(m + 0x51)) * t;
+}
+
+// orig: (none) — RAC1's +0x50 the frame being left, +0x51 the next, +0x54 the way between (while a blend runs: the next)
+float seq_frame(uint32_t m) {
+    if (lbu(m + 0x52) != lbu(m + moby::kNextSeq)) return static_cast<float>(lbu(m + 0x51));
+    return static_cast<float>(lbu(m + 0x50)) + lwc1(m + 0x54);
 }
 
 // orig: (none)

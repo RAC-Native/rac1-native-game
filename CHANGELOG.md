@@ -216,6 +216,11 @@ What changed in each release. Releases are source only: you build the game with 
   within 3), turns round when he is behind it; two hits blow it up. The stand-ins chase now: the planet's gameplay has a
   path round the arena (path 1) and the templates of Veldin's walker and gun walker name it as their area (they idled
   where they landed, Ratchet being outside Veldin's areas). `RAC1_ARENA_ENEMY_HIT` (testing).
+- Local experiment, planet P6: RAC2's heavy arena enemy 2850 hand-ported (`src/game/enhance/rac2_enemy_2850.cpp`, from its
+  update 0x3f0798): the blue four-legged walker lands from its gate, wanders to spots on its side of the arena with its
+  idles, roars when it gets its turn, stalks Ratchet and slams him with its arm (three damage spheres at the slam's own
+  times), gloats when it hit him, turns round when he is behind it; a hit knocks it back, two blow it up. It carries RAC2's
+  class 2722 (two red blades spinning on its arm, faster as it swings), converted too.
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

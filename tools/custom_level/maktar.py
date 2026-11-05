@@ -330,9 +330,12 @@ RAC2_CLASSES = {
     3276: ("lift", 2036),     # the floor's lifts that bring crates up (wave columns c6 / c7)
     3134: ("enemy_3134", 2037),  # P6: the small enemy, hand-ported (src/game/enhance/rac2_enemy_3134.cpp)
     3131: ("enemy_3131", 2038),  # P6: the mid-sized enemy, the flamethrower walker (src/game/enhance/rac2_enemy_3131.cpp)
+    2850: ("enemy_2850", 2039),  # P6: the heavy enemy, the slammer with two spinning wheels (src/game/enhance/rac2_enemy_2850.cpp)
+    2722: ("part", 2041),     # P6: 2850's two spinning wheels (spawned and carried by it: no placements of their own)
 }
-HIT_ROLES = ("monitor", "enemy_3134", "enemy_3131")  # (the roles whose collision is kept: they take hits, custom_classes.cpp)
-CLASS_PVARS = {"crowd": 0x20, "monitor": 0x40, "arm": 0x40, "prop": 0x10, "tile": 0x20, "lift": 0x20, "enemy_3134": 0x100, "enemy_3131": 0x100}
+HIT_ROLES = ("monitor", "enemy_3134", "enemy_3131", "enemy_2850")  # (the roles whose collision is kept: they take hits, custom_classes.cpp)
+CLASS_PVARS = {"crowd": 0x20, "monitor": 0x40, "arm": 0x40, "prop": 0x10, "tile": 0x20, "lift": 0x20, "enemy_3134": 0x100, "enemy_3131": 0x100,
+               "enemy_2850": 0x100, "part": 0x10}
 # P6: the hand-ported enemies. RAC2 keeps 20 of each waiting above the arena (group 20) and recycles them; ours is one hidden
 # template (its first placement) the controller copies (planet.txt "standin" + "port", custom_arena.cpp). Per RAC2 class:
 # the path its pvars name (+0x180: the ring it circles while it waits for its turn to attack), read from RAC2's gameplay

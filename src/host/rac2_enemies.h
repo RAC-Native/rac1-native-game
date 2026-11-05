@@ -16,6 +16,10 @@ namespace rac1 {
 void rac2_enemy_3134_update(uint32_t m);
 // orig: (none) — RAC2's 3131 (the arena's mid-sized enemy, the flamethrower walker: its update 0x40a4a8)
 void rac2_enemy_3131_update(uint32_t m);
+// orig: (none) — RAC2's 2850 (the arena's heavy enemy, the slammer: its update 0x3f0798)
+void rac2_enemy_2850_update(uint32_t m);
+// orig: (none) — RAC2's 2722 (2850's spinning wheels, carried by it): gone with it
+void rac2_part_2722_update(uint32_t m);
 
 }  // namespace rac1
 

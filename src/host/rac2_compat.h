@@ -62,10 +62,14 @@ void standin_reset();
 uint32_t standin_count();
 
 // ---- animation, joints, the ground (RAC2's anim_seq_set 0x31e3c0, its joint points 0x315618, said with RAC1's) ----
-// orig: (none) — sequence `seq` from its first frame, blended in over `blend` frames, unless it plays already
-void seq_play(uint32_t m, uint32_t seq, int32_t blend);
+// orig: (none) — sequence `seq` from frame `from` (its first by default), blended in over `blend` frames, unless it plays already
+void seq_play(uint32_t m, uint32_t seq, int32_t blend, int32_t from = 0);
 // orig: (none) — the sequence playing (or blending in)
 uint32_t seq_now(uint32_t m);
+// orig: (none) — the frame the sequence is at (its index and fraction)
+float seq_frame(uint32_t m);
+// orig: (none) — the time the sequence is at (RAC2's 0x3146d0: its frame records' own times, in frames)
+float seq_time(uint32_t m);
 // orig: (none) — the sequence played to its end (or looped) in this frame's step
 bool seq_ended(uint32_t m);
 // orig: (none) — the class's attachment points first .. first + n - 1 (its +0x1c table: each a chain of joints, the point its
