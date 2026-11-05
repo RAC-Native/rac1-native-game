@@ -3,6 +3,7 @@
 // from the ship 0x28ecd8 and the planet chosen on the ship's map 0x28ed58.
 
 #include <game/ovl/arrival.h>
+#include <game/enhance/fixes102.h>
 #include <game/ovl/flight_draw.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/level_change.h>
@@ -125,7 +126,7 @@ void ship_sequence_start(int32_t step) {
 // 0 / 8: the scene's next frame: the camera from its frame record (position, angles, field of
 //   view) relative to the ship, its mobys at their positions (half frames blended), shadows,
 //   Clank, the hero with his backpack (levels 10 / 13), the ships drawn with their engines and
-//   their colour by the frame; X / circle (0x13cae4 & 0x50) skips once 30 frames are past; at
+//   their colour by the frame; triangle / cross (0x13cae4 & 0x50) skips once 30 frames are past; at
 //   the end the scene's mobys gone, then the take-off opens the planet map (0x276190(0)) and
 //   the landing gives the hero back (game mode 0, the music on 0x265860, 0x216f90 / 0x234d40);
 // 3: the flight along the path 0x1b04b0[*(0x13e060)] (set up the first frame: the sound, Ratchet
@@ -150,7 +151,9 @@ void ship_sequence_update() {
         if (fade0 < f20) swc1(OV(0x0015f3fc), f20);
         const int32_t s2 = lw(0x0015ed80) != 0 ? 0x50 : 0x60;
         int32_t s0 = lh(G + 0x28);
-        if ((lwu(0x0013cae4) & 0x50) != 0 && frame_scale_i(0x1e) < lw(SC + 0x34) && lwc1(OV(0x0015f3fc)) == f20) {
+        // (1.02 Fixes, fix 17: the 1.02 build's mask 0x70, circle too; off: the original's 0x50, triangle / cross)
+        const uint32_t skip_keys = fixes102_on(17) ? 0x70u : 0x50u;
+        if ((lwu(0x0013cae4) & skip_keys) != 0 && frame_scale_i(0x1e) < lw(SC + 0x34) && lwc1(OV(0x0015f3fc)) == f20) {
             if (lw(G + 0x20) == 0) {
                 const int32_t t = frame_scale_i(lw(OV(0x001605d0) + static_cast<uint32_t>(lh(G + 0x26)) * 4) - 0x1e);
                 if (lw(SC + 0x34) < t) s0 = 1;
@@ -506,7 +509,8 @@ void ship_sequence_update() {
                 const float sp0 = lwc1(G + 0x40) + u2f(0x3f4ccccdu);
                 swc1(G + 0x40, sp0);
                 if (100.0f < sp0) swc1(G + 0x40, 100.0f);
-                if ((lwu(0x0013cae4) & 0x50) != 0 && lwc1(OV(0x0015f3fc)) < 0.0625f) swc1(OV(0x0015f3fc), 0.0625f);
+                // (1.02 Fixes, fix 17: circle too, the 1.02 build's mask 0x70)
+                if ((lwu(0x0013cae4) & (fixes102_on(17) ? 0x70u : 0x50u)) != 0 && lwc1(OV(0x0015f3fc)) < 0.0625f) swc1(OV(0x0015f3fc), 0.0625f);
                 if (int_to_float(lw(path) - 6) < lwc1(G + 0x3c) && lwc1(OV(0x0015f3fc)) < 0.0625f) swc1(OV(0x0015f3fc), 0.0625f);
                 if (lh(G + 0x26) < 2) {
                     sb(lwu(G) + 0xbc, 0x32);

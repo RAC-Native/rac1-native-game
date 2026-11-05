@@ -5,7 +5,8 @@
  "includes": [
   "game/ovl/weapons.h",
   "game/ovl/decoy_obj.h",
-  "game/ovl/pause_menu.h"
+  "game/ovl/pause_menu.h",
+  "game/enhance/fixes102.h"
  ],
  "functions": [
   {
@@ -49,7 +50,10 @@
     "2c5124",
     "2c51b0",
     "2c5264"
-   ]
+   ],
+   "host_ntsc": {
+    "2c4c08": "gameplay102_decoy_push(s1.w());  // enhancement: 1.02 Gameplay, fix 14 (the 1.02 build, 0x2c5f10): the decoy pushed by Ratchet swimming into it (fixes102.h)"
+   }
   }
  ],
  "register_fn": "decoy_obj_fns_register",

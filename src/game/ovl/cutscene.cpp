@@ -20,6 +20,7 @@
 #include <game/ovl/variants_l14.h>
 #include <game/ovl/quartu_call.h>
 #include <game/enhance/advanced.h>
+#include <game/enhance/fixes102.h>
 #include <game/port_stubs.h>
 
 namespace rac1 {
@@ -62,6 +63,7 @@ bool update_on(uint32_t bit, uint32_t mask) {
 // orig: 0x00298840
 void cutscene_start(int32_t scene) {
     if (scene < 0) return;
+    if (fixes102_cutscene_refused()) return;  // enhancement: 1.02 Fixes, fix 15: none while one runs (off: never)
     if (lw(P + 0x22a8) == 0) {
         hero_lost();
         return;
@@ -87,6 +89,7 @@ void cutscene_start(int32_t scene) {
     sub_002039a0();
     swc1(OV(0x0015f3fc), 1.0f);
     sw(OV(0x0015f5c4), 2);
+    fixes102_cutscene_start();  // enhancement: 1.02 Fixes, fix 15: the underwater view put aside (off: nothing)
     sw(OV(0x0015f400), 0);
     hero_set_state(0x64, 2);
     sb(P + 0x20a5, 1);
@@ -265,6 +268,7 @@ void cutscene_end() {
     sw(OV(0x0015f5d8), 1);
     sub_002a07c8();
     screen_fade(0xc);
+    fixes102_cutscene_end();  // enhancement: 1.02 Fixes, fix 15: the draw lists emptied, the underwater view back (off: nothing)
     sw(OV(0x0015f5c4), 0);
     swc1(OV(0x0016caf0), u2f(0x3f2147aeu));
     sw(OV(0x0015f3fc), 0);

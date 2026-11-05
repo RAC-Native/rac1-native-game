@@ -17,8 +17,8 @@
 namespace rac1 {
 
 namespace {
-constexpr int FIXES[] = {1, 2, 3, 5, 6, 7, 11, 16};  // the fixes of the 1.02 Fixes row (fixes102.h)
-constexpr int GAMEPLAY[] = {4, 8, 9, 10, 12, 13};    // the fixes of the 1.02 Gameplay row (fixes102.h)
+constexpr int FIXES[] = {1, 2, 3, 5, 6, 7, 11, 15, 16, 17, 18, 19, 20, 22};  // the fixes of the 1.02 Fixes row (fixes102.h)
+constexpr int GAMEPLAY[] = {4, 8, 9, 10, 12, 13, 14, 21};  // the fixes of the 1.02 Gameplay row (fixes102.h)
 
 // orig: (none) — enhancement: a list variable's fixes (RAC1_FIXES102 / RAC1_GAMEPLAY102) as bits (bit n: fix n); -1
 // unset; `fixes` the row's
@@ -105,6 +105,101 @@ void fixes102_thruster_jump_sound() {
     if (sub_0020d498(3) != 3) return;
     if (lw(g::PLAYER + 0x198) != frame_scale_i(5)) return;
     hero_sound_start(1, 0);
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's cutscene_start (PAL disc 2.00 0x299b68): `lw 0x15f6a8` (the
+// game mode) == 2: return, before the hero's test
+bool fixes102_cutscene_refused() {
+    return fixes102_on(15) && lw(OV(0x0015f5c4)) == 2;
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's cutscene_start 0x299cd0: the underwater view's byte
+// (0x167014) kept in the scene's +0x4b, the view cleared (here in FIX_UNDERWATER: the North American scene block's
+// +0x46..+0x49 are in use)
+void fixes102_cutscene_start() {
+    if (!fixes102_on(15)) return;
+    sw(FIX_UNDERWATER, lbu(OV(0x00167014)));
+    sw(OV(0x00167014), 0);
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's cutscene_end 0x299edc: after the fade, its copy of
+// draw_lists_reset (0x299108), then the underwater view put back from the scene's +0x4b
+void fixes102_cutscene_end() {
+    if (!fixes102_on(15)) return;
+    draw_lists_reset();
+    sw(OV(0x00167014), lw(FIX_UNDERWATER));
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L2:0x2d68d0 (PAL disc 2.00): the shark's place, 0.333
+// higher, to enemy_death_burst(m, place, 0.333, 0)
+void fixes102_sand_shark_burst(uint32_t m) {
+    if (!fixes102_on(18)) return;
+    const float k = u2f(0x3eaa7efau);
+    const uint32_t at = ee_stack_alloc(0x10);
+    lq_sq(at, m + 0x10);
+    swc1(at + 8, fpu_add(lwc1(at + 8), k));
+    enemy_death_burst(m, at, k, 0.0f);
+    ee_stack_free(0x10);
+}
+
+namespace {
+// orig: (none) — enhancement: an EE string (the level's text) as a host string
+std::string ee_string(uint32_t a) {
+    std::string out;
+    for (uint8_t c = lbu(a); c != 0; c = lbu(++a)) out += static_cast<char>(c);
+    return out;
+}
+// orig: (none) — enhancement: fix 20's flag (fixes102_blarg_far_set)
+bool g_blarg_far = false;
+}  // namespace
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's Rilgar L5:0x263a64 (the poses: "x%d %s", 20855 / 20856 by
+// the count 1), L5:0x263d00 (the flips: "%s + %d %s", 20647 at 360 / 20648), L5:0x266e88 (the place: "%s", 21028 + the
+// place - 1, at most 21032) (PAL disc 2.00, its text ids 5 higher past 20695); the original's own texts (English: "x%d
+// Poses", "%s + %d Flips", "% dst".."% dth") are written first, then this one over them
+bool fixes102_race_text(uint32_t buf, int kind, uint32_t name, int32_t n) {
+    if (!fixes102_on(19)) return false;
+    std::string t;
+    if (kind == 0) {
+        t = "x" + std::to_string(n) + " " + ee_string(sub_00203ad8(n != 1 ? 20856 : 20855));
+    } else if (kind == 1) {
+        t = ee_string(name) + " + " + std::to_string(n) + " " + ee_string(sub_00203ad8(n != 360 ? 20648 : 20647));
+    } else {
+        int32_t i = n - 1;
+        if (!(i < 5)) i = 4;
+        t = ee_string(sub_00203ad8(21028 + i));
+    }
+    for (size_t i = 0; i < t.size(); ++i) sb(buf + static_cast<uint32_t>(i), static_cast<uint8_t>(t[i]));
+    sb(buf + static_cast<uint32_t>(t.size()), 0);
+    return true;
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L6:0x3011c4 (0x300278's new argument: 0 when the break is
+// the far one) and L6:0x301754 (no debris loop with it 0)
+void fixes102_blarg_far_set(bool far) { g_blarg_far = far && fixes102_on(20); }
+bool fixes102_blarg_far() { return g_blarg_far; }
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's decoy_object_update 0x2c5f10 (PAL disc 2.00): hero state
+// 0x31 (swimming at the surface) and the decoy within 1.5 of Ratchet (xy): sub_00259bc8(m, m, 0x10000, Ratchet's
+// place, the zero vector 0x15f580, 1000) before the decoy reads its events (0x30001)
+void gameplay102_decoy_push(uint32_t m) {
+    if (!gameplay102_on(14) || lw(g::HERO_STATE) != 0x31) return;
+    if (!(vec2_distance(V(m + 0x10), V(g::PLAYER + 0x80)) < 1.5f)) return;
+    sub_00259bc8(m, m, 0x10000, g::PLAYER + 0x80, OV(0x0015f580), 1000.0f);
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's Rilgar L5:0x30dedc (PAL disc 2.00): game mode 2: return
+bool gameplay102_water_held() {
+    return gameplay102_on(21) && lw(OV(0x0015f5c4)) == 2;
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's Rilgar L5:0x30e4b0, after the water's seek toward its height
+void gameplay102_water_carry(uint32_t m, float target) {
+    if (!gameplay102_on(21)) return;
+    if (!(u2f(0x3dcccccdu) < abs_f(fpu_sub(lwc1(m + 0x18), target)))) return;
+    if (lw(g::PLAYER + 0x208c) - 0x11u >= 2u) return;
+    const float z = lwc1(m + 0x18);
+    if (lwc1(g::PLAYER + 0x2f0) < z) swc1(g::PLAYER + 0x2f0, z);
 }
 
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's guard before its hud_message_request(7, ...) (Pokitaru

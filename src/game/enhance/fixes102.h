@@ -22,6 +22,21 @@
 // - 11: the talk prompt only once in range (talk_update 0x266448: talk_step after the distance and facing checks)
 // - 16: the pause menu: its goals updated when a page comes back to the goals (menu_page_start 0x276368), its open
 //   counter (MS+0x110) held at 32000 (menu_update 0x276bd0)
+// - 15: the cutscenes: none started while one runs (game mode 2), the underwater view (0x167014) put aside for the scene
+//   and back at its end (FIX_UNDERWATER), the frame's draw lists emptied at its end (cutscene_start 0x298840,
+//   cutscene_end 0x298b18)
+// - 17: the ship's landing / take-off scene skipped (and its flight hurried) with circle too, not only triangle / cross
+//   (ship_sequence_update 0x290590: the presses' mask 0x50 -> 0x70)
+// - 18: Aridia's sand shark, killed, bursts (enemy_death_burst at its place) before it dives off to its next spot
+//   (L2:0x2d3e50; tools/codegen/hooks.glue)
+// - 19: the hoverbike races' texts from the level's text table, in the game's language and with a singular: the place
+//   ("1st".. "5th"), the poses ("x1 Pose") and the flips ("+ 360 Flip") in place of English built into the code
+//   (Rilgar L5:0x262f50 / 0x266320, Kalebo III L16:0x235660 / 0x238a30; fixes102_race_text; hooks.glue)
+// - 20: Blarg's class 1083 breaking 32 units or more from Ratchet leaves no debris (its 50 pieces: moby slots)
+//   (L6:0x2ffcb0 / 0x300278; hooks.glue)
+// - 22: Rilgar's race organiser (class 918, L5:0x316ab8): the level's music back after a race ended in its state 3, and a
+//   skill point earned at the race told (its flag 0x13d411: "You just earned a Skill Point!" over the prize's message)
+//   (hooks.glue)
 //
 // 1.02 Gameplay (main menu > Options > Advanced > 1.02 Gameplay, off by default, global; docs/advanced.md "1.02 Gameplay"):
 // the 1.02 build's fixes that change how the game plays (the exploits stay possible with the row off), numbered as the
@@ -36,6 +51,10 @@
 // - 12: the tilt to the ground stiffer and its speed capped (sub_002163f0 0x2163f0)
 // - 13: the Hologuise's use test (sub_0020fe30 0x20fe30), its countdown stopped by hero_place 0x216f90, the state a forced
 //   hero_set_state leaves it with
+// - 14: the Decoy Glove's decoy pushed off by Ratchet swimming into it (state 0x31 within 1.5: decoy_object_update
+//   0x2c4380; tools/codegen/asm2fn_specs/decoy_obj.json "host_ntsc")
+// - 21: Rilgar's moving water (class 831, L5:0x30ca80): its surface carries Ratchet swimming in it as it rises (his
+//   water height +0x2f0), and it holds still in the cutscenes (hooks.glue)
 // In the generated code each hook is a test that fails with the row off; on another region's disc the transliterated
 // functions that region changed (stand-ins: on the PAL disc 2.00 the 1.02 build's own) get none.
 //
@@ -60,6 +79,45 @@ bool gameplay102_on(int fix);
 // orig: (none) — enhancement: fix 3's ring of the last 20 Glove of Doom agents (20 words, then the next slot's index)
 constexpr uint32_t FIX_RING = 0x000ffc00u;
 constexpr uint32_t FIX_RING_NEXT = FIX_RING + 20 * 4;
+// orig: (none) — enhancement: fix 15's underwater view (0x167014) kept over a cutscene (the 1.02 build: the scene's +0x4b)
+constexpr uint32_t FIX_UNDERWATER = FIX_RING_NEXT + 4;
+
+// orig: (none) — enhancement: fix 15: a cutscene's start (cutscene_start, after its `scene < 0` test): true when the
+// 1.02 build returns (a cutscene already runs: game mode 2); false with the fix off
+bool fixes102_cutscene_refused();
+// orig: (none) — enhancement: fix 15: the cutscene's state set up: the underwater view put aside and cleared; nothing with
+// the fix off
+void fixes102_cutscene_start();
+// orig: (none) — enhancement: fix 15: the cutscene's end, after its fade: the frame's draw lists emptied
+// (draw_lists_reset) and the underwater view put back; nothing with the fix off
+void fixes102_cutscene_end();
+
+// orig: (none) — enhancement: fix 18: Aridia's sand shark `m` killed: its death burst (three sparks of 0.333, the shards,
+// no blast) 0.333 over its place, as the 1.02 build's L2:0x2d68d0; nothing with the fix off
+void fixes102_sand_shark_burst(uint32_t m);
+
+// orig: (none) — enhancement: fix 19: a hoverbike race's text `kind` (0 the poses "x%d %s", 1 the flips "%s + %d %s",
+// 2 the place "%s") written into `buf` as the 1.02 build writes it (Rilgar's L5:0x2638f8 / 0x266d10 in the PAL disc 2.00):
+// `name` the first %s (the flips' trick name), `n` the count (the place 1..), the word from the level's text table (the
+// poses 20855 / 20856, the flips 20647 / 20648 at 360 / not, the places 21028 + n - 1, 5th the last); false with the fix
+// off (the original's sprintf then runs)
+bool fixes102_race_text(uint32_t buf, int kind, uint32_t name, int32_t n);
+
+// orig: (none) — enhancement: fix 20: Blarg's class 1083 breaks far from Ratchet (L6:0x2ffd94, its call of 0x300278 with
+// the 1.02 build's argument 0): `far` set over that call; fixes102_blarg_far() read by 0x300278 before its debris loop
+void fixes102_blarg_far_set(bool far);
+bool fixes102_blarg_far();
+
+// orig: (none) — enhancement: fix 14 (1.02 Gameplay): the decoy `m` in its state of 0x2c4c08 pushed (an event 0x10000 of
+// strength 1000 from Ratchet's place) when Ratchet swims (state 0x31) within 1.5 of it; nothing with the fix off
+void gameplay102_decoy_push(uint32_t m);
+
+// orig: (none) — enhancement: fix 21 (1.02 Gameplay): Rilgar's class 831 (the water) `m`: true when the 1.02 build skips
+// its update (a cutscene: game mode 2); false with the fix off
+bool gameplay102_water_held();
+// orig: (none) — enhancement: fix 21 (1.02 Gameplay): the water `m` moved toward its height `target`: while more than 0.1
+// from it, Ratchet swimming (+0x208c 0x11 / 0x12) below its surface (+0x2f0) gets its height; nothing with the fix off
+void gameplay102_water_carry(uint32_t m, float target);
 
 // orig: (none) — enhancement: a level's load (gameplay_load): fix 3's ring cleared, as the 1.02 build's gameplay_load
 // does
