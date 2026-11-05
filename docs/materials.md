@@ -320,6 +320,21 @@ another place, moved the whole reflection at once. Now:
   units around the probe, and the probe is read toward that point - the scenery is taken as lying at that distance, so it stays in its
   place on the water as the camera moves, instead of following the camera. Where the probe has nothing, the sky's faces; where they have
   nothing, the level's sky colour (`sky` in its file), as before.
+- **The far sea on Low** (2026-11-05; Daino on Pokitaru, 5120 x 1440: "Low lontano: il mare diventa una texture uniforme molto
+  brutta"). Two things made the far sea a flat, dark patchwork with stepped edges where Medium shows the sky:
+  - the sky's faces were read by their alpha, which is not what they hold: the sky's layers are blended over each other and the last
+    one's alpha is left in the face - 0 over the lower sky and the horizon's haze, partial between the clouds. The far sea mirrors
+    the sky just above the horizon, so it took the sea's own dark environment colour there. Whatever was drawn in a sky face now
+    counts as held (`sm_refl_sky`; the faces are cleared to black);
+  - past the probe's sphere the ray is read from the probe as it is, and the probe's few rows around its horizon - the islands' and
+    the shores' silhouettes seen from 6 units above the water - were spread over the whole far sea (all its reflected rays rise by a
+    hair): bands of the islands' colours, the cube's 256 texels magnified many times. Scenery the probe holds there lies nearer the
+    probe than the water point itself, and no reflection of it can reach that point: the probe is faded out from 3/4 of its sphere
+    to its edge (`sm_refl_probe_w`), the sky's faces left.
+  The reflected ray is also kept above the horizon, as the trace's is. Medium's cube map (its fallback where the planar view has
+  nothing) is read as before: Medium's picture is the same to the pixel. Medium (RT) and High (RT), where a ray hits nothing, also
+  read the cube map as before: read as Low now does, their far sea mirrored the bright sky as Medium's does, and flickered two to
+  four times as much ([Rendering](rendering.md#the-flickering-line-under-pokitarus-far-islands)).
 
 Cost: nothing a frame (the stage's 0.01 to 0.02 ms: picking the probe); a frame that makes or fills in a probe draws the world five or
 six times at 256 x 256 (a few ms, once). Its 54 faces of 256 x 256 (eight probes' and the sky's), colour and depth: 27 MB of video memory.
