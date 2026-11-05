@@ -1510,3 +1510,34 @@ Built and proved exact on the PC that evening; measured on the console 2026-11-0
   drawing's ~73 copied in, the drawing's merged back byte by byte: ~1-1.5 ms on the 750?): **~2.5-3 ms a drawn frame net** (Kerwan
   ~34 -> ~31 ms), for several days' work.
 
+### The drawing on its own image: the semantics proved on the PC, the complete read set (2026-11-05, evening; no code in the branch)
+
+- **The experiment** (rac1-scratch/wiiu/dsplit/dsplit.inc, a temporary include in overlay_entry.cpp's mode 0; ds.sh / ds1.sh / cmp2.py):
+  one thread; at each drawing point the drawing before is merged into the RAM - the bytes it changed where the logic since has not
+  changed them (the logic's bytes win) -, the RAM + scratchpad hashed, then render_frame_gate run and the RAM put back (its result kept
+  as the drawing's image; the VU0 state put back too). RAC1_DSPLIT_FWD: the drawing's changed quads of given ranges / fields forwarded
+  to the logic at once (the stand-in for a serial part).
+- **Proved:** forwarding every RAM quad the drawing changed and dropping the drawing's scratchpad (the logic keeps its own) - RAM
+  identical to the serial run at every drawing (Kerwan, 3000 frames, 1533 drawings; the scratchpad differs - leftovers). So: one copy
+  of the scratchpad each, and the VU0's state put back did not matter here. Two traps the merge has: a forwarded byte must count as
+  done (else a logic that writes the old value back loses to the drawing's); and a byte merge of a word both changed mixes bytes (a
+  divergence's sign, not a cause).
+- **Nothing forwarded:** diverges at the third drawing. The traced RAW set (gameplay_frame only, earlier) forwarded: still diverges -
+  the old tracer's "logic" missed the frame's end and start.
+- **The complete read set** (rdeps.inc, the logic phase now the whole window from one drawing's end to the next's start; 20 Kerwan
+  drawings; res4.py groups by address and the reader's chain): most of the drawing's changed quads the next window reads are the host's
+  chain capture (mrp_chain_start < capture - the packets; the drawing's side). The logic's own (quads a drawing):
+  - the moby draw loop's sb to moby +0x71 (the visibility byte) -> moby_visible_queue: ~16;
+  - particles_draw's byte +1 of each particle (0x40 apart: the "drawn" flag 0x20 - phase 2 clears it, phase 3's mark sets it) ->
+    particles_update (and nanotech_update): ~25;
+  - render_view_setup's view (0x16cdc0, 4 quads) -> class 75's point_on_screen_v;
+  - moby_pass_start's ring position 0x15ffd4 -> moby_free_slots_count; the draw loop's 0x15fff0 -> group_first (class 75);
+  - render_frame_gate's flags 0x15f3f4 -> overlay_frame_end; zones_from_camera's 0x15f610 -> sphere_mesh_collide;
+  - vendor_draw_tr's 0x161370 -> vendor_update_tr; sparkles_draw's mem_fill32 of 0x16eb70.. (a list shared with the bolts) -> bolt_update;
+  - the scratchpad: 0x70002030 (a Kerwan class draw, ovl_28c14c) -> moby_pose_matrices_masked, 0x700038b0 (moby_joints) ->
+    segment_collide_v - a scratchpad's leftovers: the logic's copy must get them;
+  - the host: the packet cursor 0x1611c0 and moby_skips_note (main) - host code of the drawing's side.
+- **Next:** the serial part - those values computed before the next step (the gate, the view setup, the zones, the ring position as
+  they are; the moby +0x71 and the particles' flags from their culling alone, without the packets), checked by the experiment with
+  nothing forwarded; then the second image, the per-thread base and the threads.
+
