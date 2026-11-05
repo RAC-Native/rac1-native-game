@@ -68,6 +68,13 @@ the world passes' culls (the profiler's `Game: world passes`).
   1.00 to 0.66, Hoven 1.97 to 1.08) and the game code 12 to 26 % less. The stage also holds the passes' packets and the LOD
   slider's re-run of each pass. In the sampler the culls went from 19-30 % of the main thread to 14-21 % (helpers inline),
   then 10-16 %: they still clamp every operand of every op as the VU0 does.
+- **The tfrag lighting by hand** (`world_lighting_tfrag.cpp`; `RAC1_WORLD_LIGHTING_FAST`): 0x295350, which relights the world
+  pieces with lights each frame (and every piece at the level's load), in the same form: the same reads and writes in the same
+  order, the MMI unpacks done on words, the VU0 registers in a local copy; as in the transliteration, only the point lights'
+  range test (an op into vf0) makes flags. Proved by oracle batch 481 on the dumps of seven levels (the frame's own relight list
+  and random ones), batch 101, `RAC1_WORLD_LIGHTING_FAST=2` over the 19 levels (6589 calls, 0 differing) and RAMHASH. It
+  matters on Nebula G34, where a flickering light relights 20-30 pieces a frame: `Game: world lighting / pass ends` 0.51 to
+  0.20 ms a frame (helpers not inline; three interleaved runs); elsewhere it runs rarely and the stage stays at 0.01-0.02 ms.
 
 ## The frame's chain
 

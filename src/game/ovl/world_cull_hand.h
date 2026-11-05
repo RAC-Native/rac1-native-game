@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <functional>
 
 namespace rac1::world_hand {
 
@@ -59,21 +60,25 @@ struct Spr {
     void set64(uint32_t a, uint64_t v) const { std::memcpy(base + (off(a) & ~7u), &v, 8); }
     void setq(uint32_t a, const Qw& v) const { std::memcpy(base + (off(a) & ~15u), &v, 16); }
     // a VF register's four lanes (LQC2 / SQC2)
-    void load_vf(vu0l::Vu& u, int r, uint32_t a) const {
+    template <class V>
+    void load_vf(V& u, int r, uint32_t a) const {
         const Qw v = q(a);
         u.set_words(r, static_cast<uint32_t>(v.lo), static_cast<uint32_t>(v.lo >> 32), static_cast<uint32_t>(v.hi), static_cast<uint32_t>(v.hi >> 32));
     }
-    void store_vf(const vu0l::Vu& u, int r, uint32_t a) const { std::memcpy(base + (off(a) & ~15u), &u.vf[r], 16); }
+    template <class V>
+    void store_vf(const V& u, int r, uint32_t a) const { std::memcpy(base + (off(a) & ~15u), &u.vf[r], 16); }
 };
 
 // orig: (host) a quadword of EE RAM (LQ / SQ) and a VF register from / to RAM (LQC2 / SQC2)
 inline Qw ram_q(uint32_t a) { return ee_read<Qw>(a & ~15u); }
 inline void ram_setq(uint32_t a, const Qw& v) { ee_write<Qw>(a & ~15u, v); }
-inline void ram_load_vf(vu0l::Vu& u, int r, uint32_t a) {
+template <class V>
+inline void ram_load_vf(V& u, int r, uint32_t a) {
     const Qw v = ram_q(a);
     u.set_words(r, static_cast<uint32_t>(v.lo), static_cast<uint32_t>(v.lo >> 32), static_cast<uint32_t>(v.hi), static_cast<uint32_t>(v.hi >> 32));
 }
-inline void ram_store_vf(const vu0l::Vu& u, int r, uint32_t a) {
+template <class V>
+inline void ram_store_vf(const V& u, int r, uint32_t a) {
     Qw v{};
     std::memcpy(&v, &u.vf[r], 16);
     ram_setq(a, v);
@@ -102,10 +107,24 @@ inline uint32_t flush_packets(uint32_t sp, uint32_t pkt, uint32_t used, uint32_t
     return (sp - used) ^ half;
 }
 
-// orig: (host) the rewritten culls (true: done; false: not usable now, the caller runs the transliteration)
+// orig: (host) the rewritten culls and lighting (true: done; false: not usable now, the caller runs the transliteration)
 bool tfrag_cull();
 bool tie_cull();
 bool shrub_cull();
+bool tfrag_lighting(uint32_t list);
+
+// orig: (host) a hand-written routine checked against its transliteration (a switch's mode 2, world_cull_fast.cpp): the
+// hand-written one runs inside a journal of EE memory, its results (the EE RAM, the scratchpad, the VU0 registers and flags, the
+// DMA registers, the world passes' visible lists) are kept, the memory put back, then the transliteration runs and its results
+// are compared; the game goes on with the transliteration's. Differences are printed (the first few) and counted; the counts are
+// printed at the end of the run (world_cull_check_report). Slow: two 32 MB copies a call.
+struct HandCheck {
+    const char* tag;   // the messages' prefix
+    const char* var;   // the switch
+    const char* name;  // the routine
+    unsigned long long calls = 0, differing = 0;
+};
+void hand_check(HandCheck& c, const std::function<bool()>& hand, const std::function<void()>& tr);
 
 }  // namespace rac1::world_hand
 

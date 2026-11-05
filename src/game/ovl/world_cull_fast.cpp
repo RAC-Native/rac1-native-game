@@ -18,8 +18,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <vector>
 
 namespace rac1 {
+
+using world_hand::HandCheck;
 
 namespace {
 
@@ -62,24 +65,13 @@ struct Side {
     }
 };
 
-struct Check {
-    const char* name;
-    unsigned long long calls = 0, differing = 0;
-};
-Check g_checks[3] = {{"tfrag"}, {"tie"}, {"shrub"}};
-
-}  // namespace
-
-// orig: (host) RAC1_WORLD_CULL_FAST=2's counts (the host's run end: it leaves with _Exit, no atexit handler runs)
-void world_cull_check_report() {
-    for (const Check& c : g_checks)
-        if (c.calls != 0) std::fprintf(stderr, "[world-cull] check (RAC1_WORLD_CULL_FAST=2): %s cull, %llu calls, %llu differing\n", c.name, c.calls, c.differing);
+std::vector<HandCheck*>& checks() {
+    static std::vector<HandCheck*> v;
+    return v;
 }
 
-namespace {
-
 // compare two byte ranges word by word; the first differences printed (limited over the run)
-size_t compare(const char* what, const char* name, uint32_t base, const uint8_t* ref, const uint8_t* fast, size_t n) {
+size_t compare(const HandCheck& c, const char* what, uint32_t base, const uint8_t* ref, const uint8_t* fast, size_t n) {
     static int printed = 0;
     size_t diffs = 0;
     for (size_t i = 0; i < n; i += 4) {
@@ -89,7 +81,7 @@ size_t compare(const char* what, const char* name, uint32_t base, const uint8_t*
         if (a == b) continue;
         if (diffs++ < 8 && printed < 200) {
             ++printed;
-            std::fprintf(stderr, "[world-cull] %s cull: %s 0x%08zx: transliteration %08x, hand-written %08x\n", name, what, base + i, a, b);
+            std::fprintf(stderr, "%s %s: %s 0x%08zx: transliteration %08x, hand-written %08x\n", c.tag, c.name, what, base + i, a, b);
         }
     }
     return diffs;
@@ -102,6 +94,51 @@ bool same_visible(const WorldVisible& a, const WorldVisible& b) {
     return true;
 }
 
+}  // namespace
+
+// orig: (host) the checks' counts (the host's run end: it leaves with _Exit, no atexit handler runs)
+void world_cull_check_report() {
+    for (const HandCheck* c : checks())
+        if (c->calls != 0) std::fprintf(stderr, "%s check (%s=2): %s, %llu calls, %llu differing\n", c->tag, c->var, c->name, c->calls, c->differing);
+}
+
+// orig: (host) see world_cull_hand.h
+void world_hand::hand_check(HandCheck& c, const std::function<bool()>& hand, const std::function<void()>& tr) {
+    if (c.calls++ == 0) checks().push_back(&c);
+    static std::unique_ptr<uint8_t[]> ram_fast(new uint8_t[RAM_BYTES]);
+    static uint8_t spr_fast[SPR_SIZE];
+    Side before, fast, ref;
+    before.take();
+    ee_journal_begin();
+    if (!hand()) std::fprintf(stderr, "%s %s: the hand-written routine did not run\n", c.tag, c.name);
+    fast.take();
+    std::memcpy(ram_fast.get(), ee_get_ram_base(), RAM_BYTES);
+    std::memcpy(spr_fast, ee_get_scratchpad_base(), SPR_SIZE);
+    ee_journal_restore();
+    before.put();
+    tr();
+    ref.take();
+    size_t d = compare(c, "RAM", 0, ee_get_ram_base(), ram_fast.get(), RAM_BYTES);
+    d += compare(c, "scratchpad", SPR_BASE, ee_get_scratchpad_base(), spr_fast, SPR_SIZE);
+    d += compare(c, "VU0 vf", 0, reinterpret_cast<const uint8_t*>(ref.vu.vf.data()), reinterpret_cast<const uint8_t*>(fast.vu.vf.data()), sizeof(ref.vu.vf));
+    d += compare(c, "VU0 acc", 0, reinterpret_cast<const uint8_t*>(&ref.vu.acc), reinterpret_cast<const uint8_t*>(&fast.vu.acc), 16);
+    const uint32_t rf[4] = {f2u(ref.vu.q), ref.vu.macflag, ref.vu.statusflag, ref.vu.clipflag};
+    const uint32_t ff[4] = {f2u(fast.vu.q), fast.vu.macflag, fast.vu.statusflag, fast.vu.clipflag};
+    d += compare(c, "VU0 q / mac / status / clip", 0, reinterpret_cast<const uint8_t*>(rf), reinterpret_cast<const uint8_t*>(ff), sizeof rf);
+    d += compare(c, "DMA registers", 0x1000d000u, reinterpret_cast<const uint8_t*>(ref.dma.data()), reinterpret_cast<const uint8_t*>(fast.dma.data()), sizeof ref.dma);
+    if (!same_visible(ref.visible, fast.visible)) {
+        ++d;
+        std::fprintf(stderr, "%s %s: the visible lists differ\n", c.tag, c.name);
+    }
+    if (d != 0) ++c.differing;
+}
+
+namespace {
+
+HandCheck g_checks[3] = {{"[world-cull]", "RAC1_WORLD_CULL_FAST", "tfrag cull"},
+                         {"[world-cull]", "RAC1_WORLD_CULL_FAST", "tie cull"},
+                         {"[world-cull]", "RAC1_WORLD_CULL_FAST", "shrub cull"}};
+
 void run(int which, bool (*hand)(), void (*tr)()) {
     const int m = cull_mode();
     if (m == 0) return tr();
@@ -111,34 +148,7 @@ void run(int which, bool (*hand)(), void (*tr)()) {
         return;
     }
     if (!vu0l::usable()) return tr();
-    Check& c = g_checks[which];
-    ++c.calls;
-    static std::unique_ptr<uint8_t[]> ram_fast(new uint8_t[RAM_BYTES]);
-    static uint8_t spr_fast[SPR_SIZE];
-    Side before, fast, ref;
-    before.take();
-    ee_journal_begin();
-    hand();
-    fast.take();
-    std::memcpy(ram_fast.get(), ee_get_ram_base(), RAM_BYTES);
-    std::memcpy(spr_fast, ee_get_scratchpad_base(), SPR_SIZE);
-    ee_journal_restore();
-    before.put();
-    tr();
-    ref.take();
-    size_t d = compare("RAM", c.name, 0, ee_get_ram_base(), ram_fast.get(), RAM_BYTES);
-    d += compare("scratchpad", c.name, SPR_BASE, ee_get_scratchpad_base(), spr_fast, SPR_SIZE);
-    d += compare("VU0 vf", c.name, 0, reinterpret_cast<const uint8_t*>(ref.vu.vf.data()), reinterpret_cast<const uint8_t*>(fast.vu.vf.data()), sizeof(ref.vu.vf));
-    d += compare("VU0 acc", c.name, 0, reinterpret_cast<const uint8_t*>(&ref.vu.acc), reinterpret_cast<const uint8_t*>(&fast.vu.acc), 16);
-    const uint32_t rf[4] = {f2u(ref.vu.q), ref.vu.macflag, ref.vu.statusflag, ref.vu.clipflag};
-    const uint32_t ff[4] = {f2u(fast.vu.q), fast.vu.macflag, fast.vu.statusflag, fast.vu.clipflag};
-    d += compare("VU0 q / mac / status / clip", c.name, 0, reinterpret_cast<const uint8_t*>(rf), reinterpret_cast<const uint8_t*>(ff), sizeof rf);
-    d += compare("DMA registers", c.name, 0x1000d000u, reinterpret_cast<const uint8_t*>(ref.dma.data()), reinterpret_cast<const uint8_t*>(fast.dma.data()), sizeof ref.dma);
-    if (!same_visible(ref.visible, fast.visible)) {
-        ++d;
-        std::fprintf(stderr, "[world-cull] %s cull: the visible lists differ\n", c.name);
-    }
-    if (d != 0) ++c.differing;
+    hand_check(g_checks[which], hand, tr);
 }
 
 }  // namespace

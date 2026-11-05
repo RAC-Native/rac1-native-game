@@ -89,8 +89,10 @@ struct Vu {
     // --- the other ops (no clamp: they work on the bits)
     // VCLIPw.xyz: p against |w| into the clip flags
     [[gnu::always_inline]] void clipw(int p) { vu0m::clipw(clip, vf[p], vf[p].v[3]); }
-    // VDIV Q = s / t
+    // VDIV Q = s / t, VSQRT Q = sqrt(|t|), VRSQRT Q = s / sqrt(|t|)
     [[gnu::always_inline]] void div(float s, float t) { q = vu0m::div(s, t); }
+    [[gnu::always_inline]] void sqrt(float t) { q = vu0m::vsqrt(t); }
+    [[gnu::always_inline]] void rsqrt(float s, float t) { q = vu0m::vrsqrt(s, t); }
     // VMAXbc / VMINIbc of one lane: d.lane = max / mini(a.lane, b)
     [[gnu::always_inline]] void max_lane(int d, int lane, float a, float b) { vf[d].v[lane] = vu0m::vmax(a, b); }
     [[gnu::always_inline]] void mini_lane(int d, int lane, float a, float b) { vf[d].v[lane] = vu0m::vmini(a, b); }

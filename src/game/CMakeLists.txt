@@ -202,6 +202,8 @@ add_library(rac1_game STATIC
     ovl/world_cull_tfrag.cpp
     ovl/world_cull_tie.cpp
     ovl/world_cull_shrub.cpp
+    ovl/world_lighting_fast.cpp
+    ovl/world_lighting_tfrag.cpp
     ovl/ovl_reloc.cpp
     ovl/region_core.cpp
     ovl/moby_vu0_reg.cpp

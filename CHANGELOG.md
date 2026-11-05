@@ -13,6 +13,10 @@ What changed in each release. Releases are source only: you build the game with 
   VU0 registers kept in a local copy: the world passes' time 30 to 45 % less (10 to 24 % with the helpers inline); the same
   game state, proved by an oracle batch (480) and by a check mode (`RAC1_WORLD_CULL_FAST=2`); `RAC1_WORLD_CULL_FAST=0` runs
   the transliterations as before.
+- The tfrag lighting (the relight of the lit world pieces each frame, and of all of them at a level's load) written by hand
+  in the same way: on Nebula G34, whose flickering light relights them every frame, its time 61 % less (0.51 to 0.20 ms a
+  frame); the same game state, proved by an oracle batch (481) and a check mode (`RAC1_WORLD_LIGHTING_FAST=2`);
+  `RAC1_WORLD_LIGHTING_FAST=0` runs the transliteration as before.
 
 ## 0.7.0
 
