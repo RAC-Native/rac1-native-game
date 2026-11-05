@@ -1493,6 +1493,9 @@ Built and proved exact on the PC that evening; measured on the console 2026-11-0
   the DMA registers, the profiler) per thread or saved / restored - not seen by this tool, an audit; (5) RAMHASH proofs as usual.
   Several days.
 - **What it would give:** Kerwan's core 2 a host frame ~2 x 10.6 + 5.4 -> ~2 x 10.6 + ~1-1.5 (the serial part, the page copies):
-  ~-4 ms. But the GPU is next: real time (lv/ab5 k_rt_new / n_rt_new / v_rt_new) **GPU busy Kerwan 27.6 ms, Novalis 21.5, Veldin
-  18.8** a frame - Kerwan would go 34 -> ~28 ms, GPU-bound; for 60 fps the GPU must be under 16.7 ms on every level.
+  ~-4 ms.
+- **The GPU is not the next wall (corrected the same day):** "[gpu] busy" is the frame's span on the GPU (wiiu_gfx.cpp: the end
+  less the first timestamp), the CP's gaps included - the GPU waiting for the CPU's commands. Real time (lv/ab5 k_rt_new / n_rt_new /
+  v_rt_new, all windows): busy Kerwan 27.6 ms, Novalis 21.5, Veldin 18.8, of which the world passes' gaps alone 15.6 / 9.7 / 8.7:
+  **the GPU's own work ~12 / ~12 / ~10 ms**, under 16.7 everywhere. The frames are bound by the CPU (the game thread).
 
