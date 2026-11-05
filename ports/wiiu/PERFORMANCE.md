@@ -1540,4 +1540,19 @@ Built and proved exact on the PC that evening; measured on the console 2026-11-0
 - **Next:** the serial part - those values computed before the next step (the gate, the view setup, the zones, the ring position as
   they are; the moby +0x71 and the particles' flags from their culling alone, without the packets), checked by the experiment with
   nothing forwarded; then the second image, the per-thread base and the threads.
+- **Later the same evening (the experiment continued):** the "stale particle data" / "no port for the microprogram" of the partial
+  forwards were the experiment's: the host's part of the frame after overlay_frame (the chain's capture, the MRP's reads) read the RAM
+  put back. With that part on the drawing's image (RAC1_DSPLIT_HOST: the RAM swapped with the drawing's around it; the audio step left
+  on the logic's) and only the listed set forwarded (the scratchpad: the logic's own, the two quads above forwarded): **RAM identical
+  for 363 drawings** on Kerwan, then one quad: 0x1410d8 one ulp apart.
+- **The cause - the merge's trap:** the item glow's drawing (glows.cpp, item 1 / 2) moves the hero's 0x13f350 + 0x1d88 by -k, draws,
+  and adds k back: not always the same float (the original's quirk). The logic then writes the field again with its value from before
+  the drawing; the byte merge sees "the logic did not change it" (A == P) and puts the drawing's value in. Not a read the tracer can
+  see (a WAW, the logic's write equal to the old value). A merge by values cannot tell; **the logic's writes have to be known** - a
+  quad bitmap set by the EE stores (ee_ram_ptr_write and the direct users) while the drawing runs beside. The sync of the drawing's
+  image needs the logic's changed places anyway (the page journal of the estimate); quad bits cost more: ~6 instructions a store, the
+  logic's stores a step not measured yet.
+- **Where it stands:** the read set and the semantics are known and checkable (hooks.patch in rac1-scratch/wiiu/dsplit: the temporary
+  includes in overlay_entry.cpp and orig_main.cpp); not yet: the logic's write bits, the serial part, the second image, the per-thread
+  base, the threads.
 
