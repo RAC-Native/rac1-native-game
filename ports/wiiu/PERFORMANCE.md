@@ -1466,3 +1466,33 @@ Built and proved exact on the PC that evening; measured on the console 2026-11-0
   runs the state-only path), but the console measured 15.99 / 16.01 off, 15.96 / 16.01 on: the envelope's per-sample step is the cost.
 - pc_check: the three references, RAMHASH = main's.
 
+
+### Study: the game's drawing (render_frame) off the game thread's core (2026-11-05, no code kept)
+
+- **Why:** render_frame is ~34% of Kerwan's game thread (lv/smp_k6: moby_pass 15%, the draw lists 10.6%, the effects 11%); the
+  catch-up steps are not drawn already (RAC1_DRAW_LAST_STEP), so it costs once a host frame (~5.4 ms on Kerwan).
+- **Tool** (rac1-scratch/wiiu/rdeps/rdeps.inc, a temporary include in overlay_entry.cpp's mode 0, Linux only): EE RAM and the
+  scratchpad page-protected, every access a fault (the page opened, one instruction single-stepped through EFLAGS.TF, closed again),
+  the reads before the phase's own write kept with their call chain, the writes as the snapshot's diff; 16-byte granule. RAW: the
+  logic of frame F + 1 reads what the drawing of F changed; WAR: the drawing of F read what the logic of F + 1 changes; WAW: both
+  change it. The Wii U-like headless path (RAC1_NO_GRAPHICS=2 ..., RAC1_JOBS=1), 20 gameplay frames each:
+  - Kerwan: RAW **44 quads a frame**, WAR 2152, WAW 774; pages (4 KB) changed: drawing 73, logic 141.
+  - Veldin: RAW 7, WAR 210, WAW 693; pages: drawing 23, logic 55. (Novalis: no gameplay in the first 3000 frames - arrival, cutscene.)
+- **The RAW readers** (what the next step needs from the drawing): moby_visible_queue (the mobys the draw loop marked), particles_update
+  (the particles' fields particles_draw writes), point_on_screen_v (class 75; the view render_view_setup makes), moby_free_slots_count,
+  vendor_update_tr, moby_pose_matrices_masked, wrench_update - and **libc_rand's seed**: on Veldin the sky pass (sky_render_tr ->
+  0x289330 -> 0x288ec0, rand_mod / rand_angle, ~15 calls a frame) draws from the game's one generator, so the next step's random
+  numbers depend on it.
+- **The WAR readers** (what a drawing beside the next step would need kept aside): the moby draw loop and on_draw (the mobys' state),
+  particles_draw (the particles), pose / skinning, the HUD.
+- **What it would take**, exact: (1) a serial part before the next step - render_view_setup, the sky's random draws, the mobys' and
+  particles' marks - the rest of the drawing beside the next step; (2) the drawing on its own copy of EE memory (a second 32 MB image:
+  the pages the logic changed copied in before each drawing, ~140 on Kerwan, ~0.6 MB; the drawing's changed pages merged back byte
+  by byte, the WAW rule: the logic's bytes win); (3) the accessors' RAM base per thread (ee_detail::g_ram is one global; on the 750 a
+  register reserved with -ffixed-r14 would cost nothing); (4) the host state both use (the VU0 register file and micro memory, g_vu,
+  the DMA registers, the profiler) per thread or saved / restored - not seen by this tool, an audit; (5) RAMHASH proofs as usual.
+  Several days.
+- **What it would give:** Kerwan's core 2 a host frame ~2 x 10.6 + 5.4 -> ~2 x 10.6 + ~1-1.5 (the serial part, the page copies):
+  ~-4 ms. But the GPU is next: real time (lv/ab5 k_rt_new / n_rt_new / v_rt_new) **GPU busy Kerwan 27.6 ms, Novalis 21.5, Veldin
+  18.8** a frame - Kerwan would go 34 -> ~28 ms, GPU-bound; for 60 fps the GPU must be under 16.7 ms on every level.
+
