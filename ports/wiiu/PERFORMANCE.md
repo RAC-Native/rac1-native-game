@@ -1406,7 +1406,7 @@ Veldin explore, everything on, the world's draws merged (one log line every 60 h
 
 ### The game thread's core left to the game; one call a quadword; the Euler rows without identity clamps (2026-11-04, evening)
 
-The console was off: built, proved exact on the PC, not measured yet.
+Built and proved exact on the PC that evening; measured on the console 2026-11-05 (below).
 
 - **Why:** Kerwan and Novalis are bound by the game thread (~14 ms a game step on core 2), and the world's first half (RAC1_WIIU_HEAD_CORE=2)
   ran on that core above its priority - the game's steps waited for it, ~3-9 ms a cycle. Kerwan's host frame needs two steps plus the half
@@ -1433,3 +1433,11 @@ The console was off: built, proved exact on the PC, not measured yet.
   words are read / written inline: **20.21 MB**.
 - **Not done:** class 75 natively - the PC's profile spreads it over ~10 translated helpers (particles spawned, chain points, group walks)
   that mostly call host code: the generated code's overhead there is its memory accesses and register moves, not a hot loop. Left.
+- **Measured on the console (2026-11-05, rac1-scratch/wiiu/lv/ab5.sh; fe06b9d against 7b02a67, one run each, 1500 frames):**
+  - Kerwan deterministic (RAC1_REALTIME=0, game code a step): 16.78 -> **16.45 ms**; with RAC1_EULER_FAST=0 16.83 - the Euler rows
+    ~0.4 ms a step, lq / sq in one call within the noise (kept: the smaller RPX).
+  - Real time, host frame: **Kerwan 37.1 -> 34.0 ms**, **Novalis 36.4 -> 35.2 ms**, Veldin 20.1 -> 20.2 (the same; GPU the same everywhere).
+  - The auto policy does what it should: Kerwan 591 of 600 frames with the half on core 1 (the main thread's wait for the game thread
+    19.1 ms), Novalis 587 (12.7 ms), Veldin 1133 of 1200 on core 2 (wait 0, idle 5.3 ms).
+  - Kerwan and Novalis are still bound by the game thread (the main thread waits 13-19 ms for it a host frame): the game step is the
+    next target.
