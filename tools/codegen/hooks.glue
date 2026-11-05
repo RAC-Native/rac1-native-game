@@ -379,3 +379,39 @@ L18 0x0022bd30: if (gameplay102_deadly_landing(0)) { set32(v0, 0); goto L_22c3d4
 L18 0x0022be50: if (gameplay102_deadly_landing(1)) { set32(v0, 0); goto L_22c3d4; }  // enhancement: 1.02 Gameplay, fix 9 (P9g)
 L18 0x00227fb0: gameplay102_mode3_left(a0_in);  // enhancement: 1.02 Gameplay, fix 13 (P13)
 L18 0x00213f24: if (gameplay102_quicksand_lost()) goto L_213f3c;  // enhancement: 1.02 Gameplay, fix 9 (P9i)
+
+# ---- 1.02 Fixes, fixes 18, 19, 20 and 1.02 Gameplay, fix 21 (src/game/enhance/fixes102.h): the later build's (1.02: the Japanese
+# disc, the PAL disc 2.00) changes to the levels' own moby classes, at the North American instruction of the same place. With the
+# fixes off each statement is a test that fails, or a call that does nothing.
+# Fix 18, Aridia's sand shark (0x2d3e50), killed (the events 0x140): after its moby_drop_bolts, its death burst 0.333 over its
+# place (the 1.02 build's L2:0x2d68d0..0x2d6920).
+L2 0x002d54e0: fixes102_sand_shark_burst(s3.w());  // enhancement: 1.02 Fixes, fix 18 (the sand shark's burst)
+# Fix 19, the hoverbike races' texts (Rilgar 0x262f50 / 0x266320, Kalebo III 0x235660 / 0x238a30: the same code): after the
+# original's sprintf of the poses ("x%d Poses", a2 the count), the flips ("%s + %d Flips", a2 the trick's name, a3 the degrees) and
+# the place ("% dst".."% dth", +0x8c0 of the player block s1), the 1.02 build's text written over it (L5:0x263a64, 0x263d00,
+# 0x266e88 in the PAL disc 2.00).
+L5 0x002630d8: fixes102_race_text(sp.w(), 0, 0, static_cast<int32_t>(a2.w()));  // enhancement: 1.02 Fixes, fix 19 (the poses)
+L5 0x00263350: fixes102_race_text(sp.w(), 1, a2.w(), static_cast<int32_t>(a3.w()));  // enhancement: 1.02 Fixes, fix 19 (the flips)
+L5 0x00266528: fixes102_race_text(sp.w(), 2, 0, static_cast<int32_t>(lw_(s1.w() + 0x8c0)));  // enhancement: 1.02 Fixes, fix 19 (the place)
+L16 0x002357e8: fixes102_race_text(sp.w(), 0, 0, static_cast<int32_t>(a2.w()));  // enhancement: 1.02 Fixes, fix 19 (the poses)
+L16 0x00235a60: fixes102_race_text(sp.w(), 1, a2.w(), static_cast<int32_t>(a3.w()));  // enhancement: 1.02 Fixes, fix 19 (the flips)
+L16 0x00238c38: fixes102_race_text(sp.w(), 2, 0, static_cast<int32_t>(lw_(s1.w() + 0x8c0)));  // enhancement: 1.02 Fixes, fix 19 (the place)
+# Fix 20, Blarg's class 1083 (0x2ffcb0) breaking 32 units or more from Ratchet: its call of 0x300278 (the broken copy, class 1084,
+# then 50 debris pieces) without the debris (the 1.02 build's new argument, 0 there: L6:0x3011c4, its test L6:0x301754); the flag
+# set over the call, read at the debris loop's head (to the epilogue).
+L6 0x002ffd94: fixes102_blarg_far_set(true);  // enhancement: 1.02 Fixes, fix 20 (the far break)
+L6 0x002ffd9c: fixes102_blarg_far_set(false);  // enhancement: 1.02 Fixes, fix 20
+L6 0x00300328: if (fixes102_blarg_far()) { ra = lq(sp.w() + 0x50); goto L_3003cc; }  // enhancement: 1.02 Fixes, fix 20 (no debris)
+L6 0x003003cc label
+# 1.02 Gameplay, fix 21, Rilgar's class 831 (0x30ca80, the water that rises and falls): not updated in a cutscene (game mode 2: the
+# 1.02 build's L5:0x30dedc); after its seek toward its height (s3's first float), Ratchet swimming below its surface carried up
+# with it (L5:0x30e4b0).
+L5 0x0030cab8: if (gameplay102_water_held()) goto L_30d584;  // enhancement: 1.02 Gameplay, fix 21 (held in a cutscene)
+L5 0x0030d584 label
+L5 0x0030d048: gameplay102_water_carry(s2.w(), u2f(lw_(s3.w())));  // enhancement: 1.02 Gameplay, fix 21 (the swimmer carried)
+# Fix 22, Rilgar's race organiser (class 918, 0x316ab8): its end of the race in its state 3 restarts the level's music as its
+# states 1 and 2 do (ril_28f5c8_l5(0, 8): the 1.02 build's L5:0x318210), and after the prize's message (5013, "You won a
+# Platinum Zoomerator!") a skill point earned (its flag 0x13d411) is told: the sound 1 and the message 21462 ("You just earned
+# a Skill Point!") over it (L5:0x318364).
+L5 0x00316d30: if (fixes102_on(22)) ril_28f5c8_l5(0, 8, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);  // enhancement: 1.02 Fixes, fix 22 (the music)
+L5 0x00316e78: if (fixes102_on(22) && lbu(0x0013d411u) != 0) { sound_play_indexed(1, 0, 0); sub_00263d40(21462, -1); }  // enhancement: 1.02 Fixes, fix 22 (the skill point)

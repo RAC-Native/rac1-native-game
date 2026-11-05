@@ -2,6 +2,7 @@
 // Transliterated instruction by instruction from Aridia's own overlay with tools/codegen/mips2cpp.py (tools/codegen/mkall.py:
 // the original's control flow and PS2 float rules by construction), not rewritten
 // by hand: the names are the class's, the helpers `lv2_<addr>_l2` (uniform ABI: TrRet).
+#include <game/enhance/fixes102.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>
