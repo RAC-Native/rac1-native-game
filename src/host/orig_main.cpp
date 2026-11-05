@@ -231,6 +231,8 @@ __attribute__((constructor(101))) void debug_tools_gate(int argc, char** argv, c
 // orig: (host) a profiler of the host's frame
 double g_prof_vu_moby_ms = 0;  // the moby VU1 programs' own time inside the GS chain stage (RAC1_FRAME_PROF)
 static int s_mrp_skip_mode = 1;  // orig: (host) RAC1_MRP_SKIP, see main()
+static bool s_mrp_skip_flight = true;  // orig: (host) RAC1_MRP_SKIP_FLIGHT: the skip also in the loading screen's flight, see main()
+static unsigned s_mrp_skip_parts = 0xf;  // orig: (host) the skip's parts asked (RAC1_MRP_SKIP_PARTS); the flight's: the skinning's alone
 
 // A vsync passed: the main loop's vsync at the end of each game frame, and each vsync wait of a blocking
 // loop (the screen fade's, shown or not; the start's: ee_thread_set_vsync_hook). What runs on the PS2's vsyncs runs
@@ -2487,6 +2489,10 @@ int main(int argc, char** argv) {
         const char* ms = std::getenv("RAC1_MRP_SKIP");
         s_mrp_skip_mode = ms == nullptr ? 1 : std::string(ms) == "verify" ? 2 : std::atoi(ms) != 0 ? 1 : 0;
         if (const char* pp = std::getenv("RAC1_MRP_SKIP_PARTS")) g_moby_mrp_skip_parts = static_cast<unsigned>(std::strtoul(pp, nullptr, 16));
+        // the loading screen's flight between the planets: its ship and planets are the MRP's (the flight/ assets), so the skip
+        // holds there too - the VU0 skinning was nearly all of the flight's frame (RAC1_MRP_SKIP_FLIGHT=0: skinned, as before)
+        if (const char* mf = std::getenv("RAC1_MRP_SKIP_FLIGHT")) s_mrp_skip_flight = std::atoi(mf) != 0;
+        s_mrp_skip_parts = g_moby_mrp_skip_parts;
         if (std::getenv("RAC1_MRP_DIFF") || std::getenv("RAC1_MRP_CHECK") || std::getenv("RAC1_MRP_SCENE_CHECK") || s_moby_diff) s_mrp_skip_mode = 0;
     }
     vu1::g_start_hook = [](vu1::Vu1& vu, uint32_t start, uint64_t hash, vu1::ProgramFn fn, const std::function<void(uint32_t)>& kick) -> bool {
@@ -3027,8 +3033,16 @@ int main(int argc, char** argv) {
                 {  // the MRP skips what only the GS / VU1 path needs: asked
                    // before the update, for a frame the MRP will draw (not the title, the level exit, a movie, the debug diffs)
                     int mw0 = 0, mh0 = 0;
-                    // (not on the Vendor's screens, game mode 5 once the picture is stored: their frames over it are drawn by the GS path)
-                    g_moby_mrp_skip = s_mrp_skip_mode != 0 && mrp_moby_ready() && !boot_active() && !exiting && movie_hw_shown(mw0, mh0) == nullptr &&
+                    // (not on the Vendor's screens, game mode 5 once the picture is stored: their frames over it are drawn by the GS path;
+                    // in the level exit only in the loading screen's flight, which the MRP draws: s_mrp_skip_flight)
+                    // In the flight only the skinning and the host's walk of its chain tags (parts 1 and 8): the sub-mesh fill and the
+                    // texture slots are cheap there and write the flight's class data, kept as they were. The game state is then the
+                    // same but for the bytes only the GS / VU1 path reads: the scratchpad and the frame's packets during the flight,
+                    // and after it the packet ring's parts that the next level's own skipped mobys leave unwritten (the flight's
+                    // skinned vertices before, older bytes now) - RAMHASH differs in those pages only.
+                    const bool skip_exit = !exiting || (s_mrp_skip_flight && level_exit_loading_screen());
+                    g_moby_mrp_skip_parts = exiting ? s_mrp_skip_parts & 9u : s_mrp_skip_parts;
+                    g_moby_mrp_skip = s_mrp_skip_mode != 0 && mrp_moby_ready() && !boot_active() && skip_exit && movie_hw_shown(mw0, mh0) == nullptr &&
                                       (lw(OV(0x0015f5c4)) != 5 || (lw(OV(0x001ca4c8)) == 0 && !ee_thread_suspended()));
                     g_moby_mrp_skip_verify = g_moby_mrp_skip && s_mrp_skip_mode == 2;
                     // the MRP's drop shadows: the shadow pass's data captured on a frame the MRP draws (whatever the skipping; the boot's title loop too)

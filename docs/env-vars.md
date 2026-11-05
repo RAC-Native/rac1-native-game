@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 395 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 396 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 301 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 302 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 73 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -196,6 +196,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_MRP_SHADOW_LOG` | any value = on; default off | Prints per frame how many marking and unmarking shadow triangles and tubes the modern shadow capture collected. |
 | `RAC1_MRP_SHADOW_SETUP` | 0 = off; default on | Setting 0 turns off giving the game's own projection back to its projection and view setup calls inside a shadow run (the fix for effects drifting in widescreen), to compare with before. |
 | `RAC1_MRP_SKIP` | 1 = skip the original GS/VU1 work the modern renderer makes redundant; 0 = off; verify = skip but also run the skinning and compare; default 1 with the modern moby renderer | Controls whether the work the original GS and VU1 path does for mobys is skipped when the modern renderer draws them. Forced to 0 when the renderer's own debug checks (diff, check, scene check) are on. |
+| `RAC1_MRP_SKIP_FLIGHT` | 0 or 1; default 1 | With the skip on (`RAC1_MRP_SKIP`), whether it also holds in the loading screen's flight between the planets, which the modern renderer draws: there only the mobys' VU0 skinning (and the host's walk of its chain tags) is skipped, not the sub-mesh fill nor the texture slots. 0: the flight's mobys skinned as before. RAMHASH differs only in the bytes the GS / VU1 path reads: the scratchpad and the packet ring during the flight, some ring pages after it. |
 | `RAC1_MRP_SKIP_PARTS` | hexadecimal bit mask; default the built-in mask | Selects which parts of the moby GS/VU1 work are skipped when skipping is on; for isolating which skipped part causes a difference. |
 | `RAC1_MRP_TRACE_MOBY` | integer, 1 = on; default 0 (off) | With value 1 prints every moby's own GS registers as the modern moby renderer draws it. |
 | `RAC1_MRP_WIDEN` | 0 = widened culling off; default on | Switches off the widening of the game's culling when the view is wider than 4:3, so the original culling can be seen. |

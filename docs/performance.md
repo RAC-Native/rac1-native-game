@@ -40,6 +40,16 @@ thread's rounding (toward zero, no denormals). On a CPU with AVX2 (chosen when t
 chains share nothing but ACC, which each one's first op overwrites, and the flags, whose sticky bits are an OR. About a
 quarter less time for the joints and skinning stage (Rilgar 1.9 to 1.4 ms a game frame, Kerwan 1.5 to 1.1).
 
+The loading screen's flight between the planets draws its ship and planets with the MRP (the `flight/` assets), but until
+November 2026 it did not skip the VU0 skinning (`moby_skin_all`), which only fills the moby chain for the VU1 path: it was
+nearly all of the flight's frame. The skip now holds there too, the skinning alone (`RAC1_MRP_SKIP_FLIGHT`; the sub-mesh fill and
+the texture slots, cheap there, still run): headless, the flight's `Game: moby joints / skinning` 2.0 to 0.02 ms a frame, the
+main thread's CPU 2.6 to 0.8 ms (helpers not inline). The pictures are the same. RAMHASH is not: what the skinning wrote is
+gone, so the frame's packets (the packet ring) and the scratchpad differ during the flight, and on 2 of the 19 levels some of
+the ring's pages stay different afterwards (the level's own mobys, skipped as always in play, leave those bytes unwritten: the
+flight's skinned vertices before, older bytes now). Nothing but the GS / VU1 path reads those bytes; every other page is the
+same at every frame.
+
 ## The generated code's helpers and the world culls
 
 Profiled with a sampler in November 2026, the transliterated (generated) code was 30 to 43 % of the main thread's CPU, and most

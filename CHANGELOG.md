@@ -17,6 +17,8 @@ What changed in each release. Releases are source only: you build the game with 
   in the same way: on Nebula G34, whose flickering light relights them every frame, its time 61 % less (0.51 to 0.20 ms a
   frame); the same game state, proved by an oracle batch (481) and a check mode (`RAC1_WORLD_LIGHTING_FAST=2`);
   `RAC1_WORLD_LIGHTING_FAST=0` runs the transliteration as before.
+- The loading screen's flight between the planets no longer runs the mobys' VU0 skinning, which the modern renderer does not
+  use there (as in play): the flight's main thread about a third of what it was (`RAC1_MRP_SKIP_FLIGHT=0`: as before).
 
 ## 0.7.0
 
