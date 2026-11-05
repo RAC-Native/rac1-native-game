@@ -795,6 +795,8 @@ ANNOUNCER = (
     ("kill", (173, 178, 183, 188, 193, 198, 203, 213, 218)),  # l2_gotta_hurt .. l2_see_you_later
     ("hurt", (163, 168, 208)),      # l2_ouch, l2_feeling_that, l2_looking_bad
     ("goodbye", (223,)),            # l2_goodbye
+    ("tag_2552", (108,)),           # l2_enter_chainblade (the controller's line 15: a tag team's swap, 0x3fc020)
+    ("tag_2628", (138,)),           # l2_enter_b2brawler (line 21)
 )
 # RAC2's four regular enemies (the wave records' columns 0..3, its controller 0x3faaa4..0x3faba8) and their RAC1 stand-ins
 # (Veldin's classes, whose code and data the planet keeps): the shooter 2506 by the 1440, the others by the 749
@@ -864,6 +866,7 @@ HUD_TEXTS = (
     ("exit_or_continue", 0x2f47), ("bolts", 0x2f5e), ("round", 0x2f60), ("enemies_killed", 0x2f61),
     ("you_have_won", 0x2f62), ("time_left", 0x2f63), ("you_lose", 0x3267), ("failed", 0x3268), ("time_out", 0x3269),
     ("been_hit", 0x326a),
+    ("skill_point", 0x1233), ("skill_2552", 0x2e29), ("skill_2628", 0x2e3b),  # (P8: the bosses' skill points)
 )
 
 

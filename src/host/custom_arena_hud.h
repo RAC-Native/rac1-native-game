@@ -55,6 +55,8 @@ void intro(const std::string& name);
 void won(int32_t prize, bool first_electrolyzer);
 // orig: (none) — the defeat: "Challenge Failed!" and why (a hud.txt key: time_out, been_hit, you_lose; or our words)
 void lost(const std::string& why_key, const std::string& why_words);
+// orig: (none) — P8: a message over the fight (RAC2's 0x32b018: "You got a skill point!") with a second line (the skill's name)
+void message(const std::string& first, const std::string& second);
 
 }  // namespace rac1::arena_hud
 

@@ -101,6 +101,7 @@ constexpr uint32_t kTurret = 0x80, kPiece = 0x84, kFired = 0x88;
 constexpr uint32_t kSaved = 0x8c, kSavedSub = 0x90, kSavedTurret = 0x94;  // (RAC2's +0x28a, +0x28e, +0x28c)
 constexpr uint32_t kSounded = 0x98, kHeroLast = 0x9c, kSpinHit = 0xa0;
 constexpr uint32_t kPartner = 0xb0, kPartnerCls = 0xb4, kPartnerPv = 0xb8, kGo = 0xbc, kTurns = 0xc0, kWaitFirst = 0xc4;  // (+0x264, +0x280, +0x282)
+constexpr uint32_t kScratched = 0xc8;  // (P8: Ratchet hurt by it, its turret or its shells: RAC2's +0x290, its skill point lost)
 }  // namespace pv
 
 struct Pv {
@@ -395,6 +396,7 @@ void set_up(uint32_t m, const Pv& p) {
         sh(p.b + o + 0x16, 0xffff);
     }
     p.f(pv::kHealthNow, health_most());
+    p.i(pv::kScratched, 0);
     p.f(pv::kSpeed, 0.0f);
     p.f(pv::kTurnW, 0.0f);
     p.v(pv::kVel, Vec3{});
@@ -463,6 +465,8 @@ void update(uint32_t m) {
     rac2::test_hit(m);
     hit_taken(m, p);
     const bool hurt = hero_hurt(p);
+    // (RAC2's 0x3d7cc4: the moby that last hurt Ratchet itself or its shell 3336: no skill point; ours its turret too)
+    if (hurt && (rac2::hero_hit_by(m) || rac2::hero_hit_by(turret_of(m, p)))) p.i(pv::kScratched, 1);
     const int32_t sub = p.i(pv::kSub);
     switch (p.i(pv::kState)) {
     case Entering:  // (state 2: on its perch, the jump, in the air, the landing)
@@ -704,6 +708,8 @@ void update(uint32_t m) {
             }
             rac2::sound_of_class(m, lh(m + rac2::moby::kClassId), 5);
             hand_over(p);
+            // (RAC2's 0x3d8cbc: beaten without a scratch, "2B or not 2B hit")
+            if (p.i(pv::kScratched) == 0) custom_arena_skill_point(kSkillBrawler);
         }
         if (frames(p) >= kDyingGone) {
             blow_up(m, p);

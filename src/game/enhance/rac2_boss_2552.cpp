@@ -117,6 +117,7 @@ constexpr uint32_t kAngle = 0xc8, kThrowAt = 0xcc, kSwingHit = 0xd0, kDownFlag =
 // (P7, the tag team: its partner (+0x310) and how to know it is still that one; its flag to come in (+0x318), the thirds of
 // its health counted at its turns (+0x31a); waiting first)
 constexpr uint32_t kPartner = 0xe0, kPartnerCls = 0xe4, kPartnerPv = 0xe8, kGo = 0xec, kTurns = 0xf0, kWaitFirst = 0xf4;
+constexpr uint32_t kWrenchOnly = 0xf8;  // (P8: hurt by the wrench only so far: RAC2's gp + 0x11f0, its skill point)
 }  // namespace pv
 
 struct Pv {
@@ -432,6 +433,8 @@ void hand_over(const Pv& p) {
 
 // orig: (none) — it blows up (RAC2's 0x40d7b8): explosions round it, its chain gone, counted by the controller
 void die(uint32_t m, const Pv& p) {
+    // (RAC2's 0x3d37d0: beaten with only the wrench, "Wrench Ninja: Blade to Blade")
+    if (p.i(pv::kWrenchOnly) != 0) custom_arena_skill_point(kSkillChainblade);
     for (int k = 0; k < 4; ++k) explosion_burst(m, m + rac2::moby::kPos, -1, 2.5f, 12.0f);
     rac2::camera_shake(0.4f, 25);
     chain_kill(m, p);
@@ -443,11 +446,15 @@ void die(uint32_t m, const Pv& p) {
 // its health less the damage; a third of it lost: knocked; none left: down
 void hit_taken(uint32_t m, const Pv& p) {
     Vec3 from{};
-    const float dmg = rac2::hit_receive(m, p.b + pv::kHit, &from);
+    int32_t weapon = -1;
+    const float dmg = rac2::hit_receive(m, p.b + pv::kHit, &from, &weapon);
+    if (dmg > 0.0f && weapon != rac2::kWrench) p.i(pv::kWrenchOnly, 0);  // (RAC2's 0x3d4588: a hit not the wrench's, class 0x47)
     const int32_t s = p.i(pv::kState);
     if (dmg <= 0.0f || s < 5 || s == Dying || (s == Knocked && p.f(pv::kHit) <= 0.0f)) return;
     p.f(pv::kHit, p.f(pv::kHit) - dmg);
-    if (trace()) std::printf("[2552] frame %u: %#x hit (damage %.2f, health %.2f)\n", rac2::level_frame(), m, static_cast<double>(dmg), static_cast<double>(p.f(pv::kHit)));
+    if (trace())
+        std::printf("[2552] frame %u: %#x hit (damage %.2f, health %.2f, weapon %#x)\n", rac2::level_frame(), m, static_cast<double>(dmg),
+                    static_cast<double>(p.f(pv::kHit)), static_cast<uint32_t>(weapon));
     const bool air = p.i(pv::kPhase) == 2;
     if (p.f(pv::kHit) <= 0.0f) {  // (down: RAC2's substate 3)
         chain_stow(m, p);
@@ -485,6 +492,7 @@ void update(uint32_t m) {
         sh(p.b + pv::kHit + 0x14, 0xffff);
         sh(p.b + pv::kHit + 0x16, 0xffff);
         p.f(pv::kHit, health_most());
+        p.i(pv::kWrenchOnly, 1);
         p.i(pv::kThirds, 0);
         p.i(pv::kRounds, 0);
         p.i(pv::kSinceHit, 0);

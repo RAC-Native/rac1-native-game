@@ -87,8 +87,10 @@ void test_hit(uint32_t m);
 // the last weapon, +0x1c its repeat timer: the same weapon again within 15..60 frames does not count; the timer only runs
 // down while this is called each frame), then the record is let go (+0xa4 0xff: a record left linked is met again every
 // frame and keeps the timer going round, so a later hit of the same weapon was lost). The damage that counts (0: none), the
-// hit's push in `push` (when not null and a hit came)
-float hit_receive(uint32_t m, uint32_t hs, Vec3* push);
+// hit's push in `push` (when not null and a hit came); P8: the hit's weapon class in `weapon` (hit +0x2a: 0x47 the wrench,
+// as RAC2's; -1 when no hit came)
+float hit_receive(uint32_t m, uint32_t hs, Vec3* push, int32_t* weapon = nullptr);
+constexpr int32_t kWrench = 0x47;
 
 // ---- parts: mobys an enemy spawns and carries (RAC2's 0x314170 + 0x328500: 2850's blades, 2506's shield), and a carried
 // part thrown off (RAC2's 0x32b468: it flies, falls, bounces, lies a while and goes). A part's own pvars (moby_spawn's 0x80
@@ -212,6 +214,10 @@ uint32_t hero_item();
 // him (a contact record in the hero moby's ring: the kinds 0x10001, a push `push` (x, y, z; RAC2's knock-back mark
 // 5627.95 in w), `damage` the hit's strength); his own code then hurts him (hero_hurt), not while he cannot be hurt
 void hero_hit(uint32_t by, Vec3 push, float damage);
+// orig: (none) — P8: whether the last hit given to Ratchet (hero_hit, within the last few frames: his own code hurts him a
+// frame or two later) was `m`'s or one of its own mobys' (a part it carries, a shot it fired: as RAC2's 0x18c2bc, the
+// moby that last hurt him)
+bool hero_hit_by(uint32_t m);
 
 // orig: (none) — bolts given (the HUD's counter shows them)
 void bolts_give(int32_t n);

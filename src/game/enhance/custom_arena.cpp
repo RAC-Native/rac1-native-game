@@ -134,6 +134,11 @@ struct Gate {
 
 enum State { Idle, Menu, Intro, Fight, Between, Won, Lost };
 constexpr int32_t kSoundMenuMove = 3, kSoundMenuTake = 4;  // (the level's sounds: custom_planet_level_sound)
+constexpr int32_t kSoundSkill = 1;                         // (a skill point's jingle: RAC2's 0x366c90(1))
+constexpr uint32_t kMessageShown = 240;                    // (frames a skill point's message stays)
+constexpr int32_t kFocusRamp = 400, kFocusHands = 640;     // (RAC2's camera focus: frames to full strength; the stick's pause)
+constexpr uint32_t PAD = 0x0013c940;                       // (pad 1: +0x100 / +0x104 the right stick)
+constexpr float kFocusTurn = 0.035f;                       // (ours: the follow camera's turn speed at full strength, radians)
 
 struct Arena {
     uint32_t base = 0, tick = 0;  // (the moby list and the level frame last seen: either changing = the level loaded again)
@@ -165,9 +170,16 @@ struct Arena {
     std::vector<uint32_t> vent_phase;     // (each vent's frame in its cycle, Vent)
     std::vector<int32_t> vent_sound;      // (each vent's burning sound's slot, -1 none: P8)
     std::vector<uint32_t> vent_retry;     // (the level frame its sound may be asked for again)
+    // P8: the camera's focus on a boss (RAC2's camera +0x284, its timer +0x288: 0x3fc020 sets it, 0x44e1a8 follows it)
+    uint32_t focus = 0;
+    int32_t focus_timer = 0;
+    // P8: a skill point's message on the HUD (RAC2's 0x32b018(0x1233)): its frames left and the skill's hud.txt key
+    uint32_t message_frames = 0;
+    std::string message_key;
 } g_a;
 
 std::vector<uint8_t> g_wins;  // victories per challenge (the .pc's)
+uint8_t g_skills = 0;         // P8: the arena's skill points earned (bits: kSkill*), the .pc's
 
 // The path camera running (PathCamera)
 struct CameraRun {
@@ -182,6 +194,7 @@ struct CameraRun {
 constexpr float kFadeStep = 0.05f;
 const Settings& settings();
 void camera_step();
+void focus_step();
 constexpr uint32_t FADE = 0x0015f3fc;
 
 // orig: (none) — the path camera `which` (cameras.txt's index; -1 none: the game's camera back), faded to as RAC2's does
@@ -534,6 +547,7 @@ void challenge_start(int index) {
     g_a.alive.clear();
     g_a.queue.clear();
     g_a.bosses.clear();
+    g_a.focus = 0;  // (RAC2's 0x3fa62c: the camera's focus let go)
     g_a.health = hero_health();
     g_a.prize = prize_of(running());
     custom_planet_music_select(1);
@@ -557,6 +571,7 @@ void enemies_clear() {
 // orig: (none) — the challenge over
 void challenge_end(bool won) {
     hazards_off();
+    g_a.focus = 0;
     if (won) {
         g_wins[static_cast<size_t>(g_a.running)] = static_cast<uint8_t>(std::min(255, g_wins[static_cast<size_t>(g_a.running)] + 1));
         g_a.electrolyzer = running().index == 0 && g_wins[static_cast<size_t>(g_a.running)] == 1;
@@ -762,6 +777,37 @@ void step() {
     hazards_step();
     lines_step();
     camera_step();
+    focus_step();
+    if (g_a.message_frames > 0) --g_a.message_frames;
+}
+
+// orig: (none) — P8: the camera's focus on a boss (RAC2's 0x44e1a8, the follow camera only): while the boss is up its
+// strength grows over 400 frames (ours: RAC1's follow camera turned toward it, cam0_turn_point, faster as it grows); the
+// right stick moved, it lets go (its timer 640, back down to 400, then from 0 again); the boss dead or gone, none
+void focus_step() {
+    if (g_a.focus == 0) return;
+    bool up = false;
+    for (const Enemy& e : g_a.alive) up = up || (e.m == g_a.focus && !moby_gone(e.m, e.cls, e.pvars));
+    if (!up) {
+        g_a.focus = 0;
+        return;
+    }
+    if (std::fabs(lwc1(PAD + 0x100)) >= 0.3f || std::fabs(lwc1(PAD + 0x104)) >= 0.3f) g_a.focus_timer = kFocusHands;
+    if (g_a.focus_timer > kFocusRamp) {
+        if (--g_a.focus_timer <= kFocusRamp) g_a.focus_timer = 0;
+        return;
+    }
+    g_a.focus_timer = std::min(g_a.focus_timer + 1, kFocusRamp);
+    if (g_cam.phase != CameraRun::Off) return;  // (a path camera of ours on)
+    const uint32_t at = ee_stack_alloc(0x10);
+    lq_sq(at, g_a.focus + moby::kPos);
+    cam0_turn_point(at, kFocusTurn * static_cast<float>(g_a.focus_timer) / static_cast<float>(kFocusRamp), 0.0f);
+    ee_stack_free(0x10);
+    if (trace() && level_frame() % 60 == 0) {
+        const uint32_t cam = lwu(OV(0x00166e00)), w = lwu(cam + 0x70);
+        std::printf("[arena] frame %u: camera focus on %#x (timer %d, camera type %d, turn %.3f speed %.3f)\n", level_frame(), g_a.focus,
+                    g_a.focus_timer, lh(cam + 0x86), static_cast<double>(lwc1(w + 0x1c4)), static_cast<double>(lwc1(w + 0x1bc)));
+    }
 }
 
 // orig: (none) — the path camera's frame (see PathCamera): its phase, the fade, its place along the path
@@ -842,8 +888,26 @@ bool is_chainblade(uint32_t m) {
 
 // orig: (none) — see custom_arena.h
 void custom_arena_boss_active(uint32_t m) {
+    // (RAC2's 0x3fc020: the camera's focus moves to the new one when it was on the one fighting, or on none; the
+    // announcer's line for it, 0x400650 with the controller's line 15 / 21: l2_enter_chainblade / l2_enter_b2brawler)
+    if (g_a.focus == g_a.active_boss || g_a.focus == 0) {
+        g_a.focus = m;
+        g_a.focus_timer = 0;
+    }
     g_a.active_boss = m;
+    say(is_chainblade(m) ? "tag_2552" : "tag_2628");
     std::printf("[arena] frame %u: the tag team: %s fights\n", level_frame(), is_chainblade(m) ? "Chainblade" : "the B2 Brawler");
+}
+
+// orig: (none) — see custom_arena.h
+bool custom_arena_skill_point(int which) {
+    if (which < 0 || which > 7 || (g_skills & (1u << which)) != 0 || !level_on()) return false;
+    g_skills = static_cast<uint8_t>(g_skills | (1u << which));
+    level_sound(kSoundSkill, 0);
+    g_a.message_frames = kMessageShown;
+    g_a.message_key = which == kSkillChainblade ? "skill_2552" : "skill_2628";
+    std::printf("[arena] frame %u: a skill point (%s)\n", level_frame(), g_a.message_key.c_str());
+    return true;
 }
 
 // orig: (none) — see rac2_enemies.h (by the boss's RAC1 class)
@@ -900,6 +964,7 @@ void custom_arena_frame() {
 // orig: (none) — see custom_arena.h: RAC2's arena HUD (custom_arena_hud.h) for the controller's state
 void custom_arena_hud() {
     if (!level_on() || !in_play() || g_a.base == 0) return;
+    if (g_a.message_frames > 0) arena_hud::message(arena_hud::text("skill_point", "You got a skill point!"), arena_hud::text(g_a.message_key.c_str(), ""));
     const Settings& cfg = settings();
     switch (g_a.sm.state) {
     case Idle: {
@@ -1074,10 +1139,10 @@ uint32_t custom_arena_lift_crate(int lift, float x, float y, float z) {
 
 // orig: (none) — see custom_arena.h: {version, count, a byte a challenge}
 uint32_t custom_arena_pc_items(std::vector<uint8_t>& d) {
-    bool any = false;
+    bool any = g_skills != 0;
     for (uint8_t w : g_wins) any = any || w != 0;
     if (!any) return 0;
-    const uint32_t size = 8 + static_cast<uint32_t>(g_wins.size());
+    const uint32_t size = 8 + static_cast<uint32_t>(g_wins.size()) + 1;  // (P8: the skill points' byte after the victories)
     d.push_back(static_cast<uint8_t>(PC_ITEM));
     d.push_back(static_cast<uint8_t>(PC_ITEM >> 8));
     d.push_back(static_cast<uint8_t>(size));
@@ -1085,6 +1150,7 @@ uint32_t custom_arena_pc_items(std::vector<uint8_t>& d) {
     for (uint32_t v : {PC_VERSION, static_cast<uint32_t>(g_wins.size())})
         for (int i = 0; i < 4; ++i) d.push_back(static_cast<uint8_t>(v >> (8 * i)));
     d.insert(d.end(), g_wins.begin(), g_wins.end());
+    d.push_back(g_skills);
     return 1;
 }
 
@@ -1096,10 +1162,14 @@ bool custom_arena_pc_item(uint32_t id, const uint8_t* p, uint32_t size) {
     if (8 + n > size) return true;
     g_wins.assign(p + 8, p + 8 + n);
     if (g_wins.size() < g_cfg.challenges.size()) g_wins.resize(g_cfg.challenges.size(), 0);
+    g_skills = 8 + n < size ? p[8 + n] : 0;  // (P8; an older item has none)
     return true;
 }
 
 // orig: (none) — see custom_arena.h
-void custom_arena_new_game() { g_wins.assign(g_wins.size(), 0); }
+void custom_arena_new_game() {
+    g_wins.assign(g_wins.size(), 0);
+    g_skills = 0;
+}
 
 }  // namespace rac1

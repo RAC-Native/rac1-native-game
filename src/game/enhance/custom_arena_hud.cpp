@@ -345,4 +345,10 @@ void lost(const std::string& why_key, const std::string& why_words) {
     lines(why, 0x100, 120, 20, kRed, true);
 }
 
+// orig: (none)
+void message(const std::string& first, const std::string& second) {
+    lines(first, 0x100, 150, 20, kGold, true);
+    if (!second.empty()) lines(second, 0x100, 172, 18, kBigText, false);
+}
+
 }  // namespace rac1::arena_hud

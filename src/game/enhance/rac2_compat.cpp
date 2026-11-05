@@ -62,6 +62,7 @@ struct Loop {  // (a looping class sound of ours: sound_loop)
     uint32_t retry;  // (the level frame it may be started again from)
 };
 std::vector<Loop> g_loops;
+uint32_t g_hero_hit_by = 0, g_hero_hit_at = 0;  // (P8: the last hero_hit's moby and level frame)
 
 // orig: (none) — the turns of the dead (or of slots gone to another moby) taken back
 void turns_prune() {
@@ -232,8 +233,9 @@ void test_hit(uint32_t m) {
 }
 
 // orig: (none)
-float hit_receive(uint32_t m, uint32_t hs, Vec3* push) {
+float hit_receive(uint32_t m, uint32_t hs, Vec3* push, int32_t* weapon) {
     const uint32_t hit = sub_0025a420(m, 0x00330000u, 0);
+    if (weapon != nullptr) *weapon = hit != 0 ? static_cast<int32_t>(lhu(hit + 0x2a)) : -1;
     float dmg = 0.0f;
     int32_t state = 0;
     moby_hit_react_r(m, hit, hs, 0, state, &dmg, nullptr, 4);
@@ -721,6 +723,14 @@ void hero_hit(uint32_t by, Vec3 push, float damage) {
     std::memcpy(rec + 0x1c, &damage, 4);
     std::memcpy(rec + 0x20, &given, 4);
     moby_hit_record_v(hm, rec);
+    g_hero_hit_by = by;
+    g_hero_hit_at = level_frame();
+}
+
+// orig: (none)
+bool hero_hit_by(uint32_t m) {
+    if (m == 0 || g_hero_hit_by == 0 || level_frame() - g_hero_hit_at > 4) return false;
+    return family(g_hero_hit_by, m);
 }
 
 // orig: (none)

@@ -79,6 +79,12 @@ uint32_t custom_arena_lift_crate(int lift, float x, float y, float z);
 // P7, the bosses (rac2_enemies.h):
 // orig: (none) — `m` the boss now fighting (RAC2's 0x3fc020, a tag team's swap): the boss bar shows its health
 void custom_arena_boss_active(uint32_t m);
+// P8: the arena's skill points (RAC2's: "Wrench Ninja: Blade to Blade", Chainblade beaten with only the wrench, its flag
+// 0x1a7a61; "2B or not 2B hit", the B2 Brawler beaten without a scratch, 0x1a7a73), kept in the save's .pc
+enum : int { kSkillChainblade = 0, kSkillBrawler = 1 };
+// orig: (none) — skill point `which` earned (RAC2: its flag set, the level's sound 1, the message 0x1233 "You got a skill
+// point!"); false when it was earned already
+bool custom_arena_skill_point(int which);
 
 // The victories in the save's .pc (custom_planet.cpp's items):
 // orig: (none) — our item appended to `d` (id, size, bytes); its count
