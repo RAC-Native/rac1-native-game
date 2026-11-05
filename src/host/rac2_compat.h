@@ -25,7 +25,7 @@ namespace rac1::rac2 {
 // RAC1's moby record, the fields RAC2's code reads at its own offsets (RAC2: update +0x64, pvars +0x68, class +0xaa)
 namespace moby {
 constexpr uint32_t kPos = 0x10, kState = 0x20, kClass = 0x24, kFlags = 0x34, kRot = 0x40, kNextSeq = 0x53, kSpeed = 0x58,
-                   kAnimFlags = 0x70, kPvars = 0x78, kSlot = 0xa8, kSlotIndex = 0xac, kClassId = 0xa6, kUid = 0xb2, kMatrix = 0xc0;
+                   kAnimFlags = 0x70, kPvars = 0x78, kGridCells = 0xa0, kSlot = 0xa8, kSlotIndex = 0xac, kClassId = 0xa6, kUid = 0xb2, kMatrix = 0xc0;
 constexpr uint32_t kHidden = 3;  // (+0x34 bits 0 and 1: not drawn, not updated)
 }  // namespace moby
 
@@ -96,6 +96,9 @@ void test_hit(uint32_t m);
 // hit's push in `push` (when not null and a hit came); P8: the hit's weapon class in `weapon` (hit +0x2a: 0x47 the wrench,
 // as RAC2's; -1 when no hit came)
 float hit_receive(uint32_t m, uint32_t hs, Vec3* push, int32_t* weapon = nullptr);
+// orig: (none) — P9: the hits' log (RAC1_ARENA_HIT_LOG=1, or RAC1_CUSTOM_TRACE): each hit record met (weapon, damage offered,
+// counted) and each class's health before / after it
+bool hit_log();
 constexpr int32_t kWrench = 0x47;
 
 // ---- parts: mobys an enemy spawns and carries (RAC2's 0x314170 + 0x328500: 2850's blades, 2506's shield), and a carried

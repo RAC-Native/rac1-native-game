@@ -273,6 +273,7 @@ void hit_taken(uint32_t m, const Pv& p) {
     Vec4 push{from.x, from.y, 0.0f, 0.0f};
     if (vec3_length(push) < 1e-4f) push = Vec4{-std::cos(p.f(pv::kHeading)), -std::sin(p.f(pv::kHeading)), 0.0f, 0.0f};
     if (guarding(m, p)) {  // (the shield takes it: sparks, a stagger)
+        if (rac2::hit_log()) std::printf("[2506] frame %u: %#x the shield takes %.2f (state %d: RAC2's 0x3d1880 guard)\n", rac2::level_frame(), m, static_cast<double>(dmg), p.i(pv::kState));
         if (rac2::level_frame() >= static_cast<uint32_t>(p.i(pv::kSparkAt))) {
             const Vec3 s = rac2::moby_pos(shield_of(m, p));
             for (int k = 0; k < 6; ++k)
@@ -288,7 +289,9 @@ void hit_taken(uint32_t m, const Pv& p) {
         set_state(m, p, Blocked);
         return;
     }
-    p.f(pv::kHit, p.f(pv::kHit) - dmg);
+    const float before = p.f(pv::kHit);
+    p.f(pv::kHit, before - dmg);
+    if (rac2::hit_log()) std::printf("[2506] frame %u: %#x health %.2f -> %.2f\n", rac2::level_frame(), m, static_cast<double>(before), static_cast<double>(p.f(pv::kHit)));
     rac2::spar_leave(m);
     if (trace()) std::printf("[2506] frame %u: %#x hit (damage %.2f, health %.2f)\n", rac2::level_frame(), m, static_cast<double>(dmg), static_cast<double>(p.f(pv::kHit)));
     vec3_set_length(push, push, 0.1f);

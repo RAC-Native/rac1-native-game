@@ -444,8 +444,12 @@ void hit_taken(uint32_t m, const Pv& p) {
     float dmg = rac2::hit_receive(m, p.b + pv::kHit, nullptr);
     if (const uint32_t t = turret_of(m, p); t != 0) dmg += rac2::hit_receive(t, p.b + pv::kTurretHit, nullptr);
     const int32_t s = p.i(pv::kState);
+    if (dmg > 0.0f && (s < Walking || s == Falling || s == Dying) && rac2::hit_log())
+        std::printf("[2628] frame %u: %#x %.2f not taken (state %d: RAC2's 0x3d91a0 takes none before it walks, nor falling)\n", rac2::level_frame(), m, static_cast<double>(dmg), s);
     if (dmg <= 0.0f || s < Walking || s == Falling || s == Dying) return;
-    p.f(pv::kHealthNow, p.f(pv::kHealthNow) - dmg);
+    const float before = p.f(pv::kHealthNow);
+    p.f(pv::kHealthNow, before - dmg);
+    if (rac2::hit_log()) std::printf("[2628] frame %u: %#x health %.2f -> %.2f\n", rac2::level_frame(), m, static_cast<double>(before), static_cast<double>(p.f(pv::kHealthNow)));
     if (trace()) std::printf("[2628] frame %u: %#x hit (damage %.2f, health %.2f)\n", rac2::level_frame(), m, static_cast<double>(dmg), static_cast<double>(p.f(pv::kHealthNow)));
     if (dmg > 3.0f && s == Special && rac2::seq_now(m) == Spin) {
         const uint32_t t = turret_of(m, p);

@@ -212,7 +212,9 @@ bool hit_taken(uint32_t m, const Pv& p) {
     Vec3 from{};
     const float dmg = rac2::hit_receive(m, p.b + pv::kHit, &from);
     if (dmg <= 0.0f) return false;
-    p.f(pv::kHit, p.f(pv::kHit) - dmg);
+    const float before = p.f(pv::kHit);
+    p.f(pv::kHit, before - dmg);
+    if (rac2::hit_log()) std::printf("[3131] frame %u: %#x health %.2f -> %.2f\n", rac2::level_frame(), m, static_cast<double>(before), static_cast<double>(p.f(pv::kHit)));
     Vec4 push{from.x, from.y, 0.0f, 0.0f};
     if (vec3_length(push) > 1e-4f) {
         vec3_set_length(push, push, 0.12f);

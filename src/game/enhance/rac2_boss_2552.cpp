@@ -450,8 +450,12 @@ void hit_taken(uint32_t m, const Pv& p) {
     const float dmg = rac2::hit_receive(m, p.b + pv::kHit, &from, &weapon);
     if (dmg > 0.0f && weapon != rac2::kWrench) p.i(pv::kWrenchOnly, 0);  // (RAC2's 0x3d4588: a hit not the wrench's, class 0x47)
     const int32_t s = p.i(pv::kState);
+    if (dmg > 0.0f && (s < 5 || s == Dying || (s == Knocked && p.f(pv::kHit) <= 0.0f)) && rac2::hit_log())
+        std::printf("[2552] frame %u: %#x %.2f not taken (state %d: RAC2 takes none while it comes in, waits or is down)\n", rac2::level_frame(), m, static_cast<double>(dmg), s);
     if (dmg <= 0.0f || s < 5 || s == Dying || (s == Knocked && p.f(pv::kHit) <= 0.0f)) return;
-    p.f(pv::kHit, p.f(pv::kHit) - dmg);
+    const float before = p.f(pv::kHit);
+    p.f(pv::kHit, before - dmg);
+    if (rac2::hit_log()) std::printf("[2552] frame %u: %#x health %.2f -> %.2f\n", rac2::level_frame(), m, static_cast<double>(before), static_cast<double>(p.f(pv::kHit)));
     if (trace())
         std::printf("[2552] frame %u: %#x hit (damage %.2f, health %.2f, weapon %#x)\n", rac2::level_frame(), m, static_cast<double>(dmg),
                     static_cast<double>(p.f(pv::kHit)), static_cast<uint32_t>(weapon));

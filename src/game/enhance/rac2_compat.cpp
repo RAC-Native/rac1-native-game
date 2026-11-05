@@ -128,10 +128,17 @@ uint32_t standin_spawn(uint32_t tmpl, uint32_t pv_size, Vec3 at, float yaw) {
     g_taken[k] = true;
     const uint32_t pv = kPool + k * kBlock;
     // the template's record, but the new slot's own index words and pvars
-    const uint32_t slot = lwu(m + moby::kSlot), index = lwu(m + moby::kSlotIndex);
+    // P9: and its own collision grid cells +0xa0 (the cells the grid holds its id in: none yet) and hit record link +0xa4.
+    // With the template's cells copied, moby_grid_move64 (in the transform) took the copy to be in them already and never
+    // added its id there: wherever its cells overlapped the template's, weapons' segment and sphere tests (which find mobys
+    // through those cells) did not see it - hits that never landed, "invincible" for as long as it stayed there
+    const uint32_t slot = lwu(m + moby::kSlot), index = lwu(m + moby::kSlotIndex), cells = lwu(m + moby::kGridCells);
+    const uint32_t link = lbu(m + 0xa4);
     for (uint32_t o = 0; o < 0x100; o += 4) sw(m + o, lwu(tmpl + o));
     sw(m + moby::kSlot, slot);
     sw(m + moby::kSlotIndex, index);
+    sw(m + moby::kGridCells, cells);
+    sb(m + 0xa4, link);
     const uint32_t tpv = lwu(tmpl + moby::kPvars);
     for (uint32_t o = 0; o < kBlock; o += 4) sw(pv + o, o < pv_size && tpv != 0 ? lwu(tpv + o) : 0u);
     sw(m + moby::kPvars, pv);
@@ -267,6 +274,52 @@ void test_hit(uint32_t m) {
         }
         return v;
     }();
+    // (testing, P9) RAC1_ARENA_SHOT_TEST=<period>: every <period> frames four bolt segments as RAC1's blaster bolt makes them
+    // (segment_collide with its hit record: kind 1, strength 1, damage 0.25 - a hit taken is a real one) from Ratchet's chest
+    // through the moby's bounding sphere's middle and 0.8 / 1.6 / 4 above its feet, each 3 past it: what each met (HIT, none,
+    // the world, another class). How the lost hits were found: a spawned enemy missing from the collision grid's cells.
+    static const uint32_t shot_period = [] {
+        const char* e = std::getenv("RAC1_ARENA_SHOT_TEST");
+        return e != nullptr ? static_cast<uint32_t>(std::max(1, std::atoi(e))) : 0u;
+    }();
+    if (shot_period != 0 && lwu(m + 0x94) == 0 && level_frame() % 600 == 0)
+        std::printf("[shot] frame %u: %#x class %d has no collision: weapons pass through it\n", level_frame(), m, lh(m + moby::kClassId));
+    if (shot_period != 0 && (level_frame() + (m >> 8)) % shot_period == 0 && lwu(m + 0x94) != 0) {
+        const uint32_t hero = lwu(HERO + 0x2080);
+        const Vec4 from{lwc1(HERO + 0x80), lwc1(HERO + 0x84), lwc1(HERO + 0x88) + 1.0f, 1.0f};
+        const Vec4 aims[4] = {Vec4{lwc1(m + 0x00) / 1024.0f, lwc1(m + 0x04) / 1024.0f, lwc1(m + 0x08) / 1024.0f, 1.0f},  // (the sphere: 1024ths)
+                              Vec4{lwc1(m + 0x10), lwc1(m + 0x14), lwc1(m + 0x18) + 0.8f, 1.0f},
+                              Vec4{lwc1(m + 0x10), lwc1(m + 0x14), lwc1(m + 0x18) + 1.6f, 1.0f},
+                              Vec4{lwc1(m + 0x10), lwc1(m + 0x14), lwc1(m + 0x18) + 4.0f, 1.0f}};
+        std::string out;
+        float len0 = 0.0f;
+        for (const Vec4& aim : aims) {
+            const Vec4 d{aim.x - from.x, aim.y - from.y, aim.z - from.z, 0.0f};
+            const float len = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+            if (len0 == 0.0f) len0 = len;
+            if (!(len > 0.01f && len < 40.0f)) continue;
+            const float k = (len + 3.0f) / len;
+            const Vec4 to{from.x + d.x * k, from.y + d.y * k, from.z + d.z * k, 1.0f};
+            uint32_t r[9] = {};
+            const Vec4 dir{d.x / len, d.y / len, 0.0f, 0.0f};
+            std::memcpy(r, &dir, 16);
+            r[3] = 0x45afdf66u;
+            r[4] = hero;
+            r[5] = 0x00010001u;
+            r[6] = 0x0f0f0101u;  // (+0x18 kind 1, +0x19 strength 1, +0x1a an arbitrary weapon id 0xf0f)
+            const float dmg = 0.25f;
+            std::memcpy(&r[7], &dmg, 4);
+            r[8] = 1;
+            const int32_t c = segment_collide_v(from, to, 0, hero, r);
+            const uint32_t who = c != 0 ? lwu(OV(0x00173e40) + 0x18) : 0u;
+            char b[48];
+            std::snprintf(b, sizeof b, " %s", who == m ? "HIT" : c == 0 ? "none" : who != 0 ? ("class" + std::to_string(lh(who + moby::kClassId))).c_str() : "world");
+            out += b;
+        }
+        std::printf("[shot] frame %u: %#x class %d (state %d, seq %u) centre/0.8/1.6/4:%s (sphere r %.2f, %.1f away)\n", level_frame(), m, lh(m + moby::kClassId),
+                    lwu(m + moby::kPvars) != 0 ? static_cast<int32_t>(lwu(lwu(m + moby::kPvars))) : -1, lbu(m + moby::kNextSeq), out.c_str(),
+                    static_cast<double>(lwc1(m + 0x0c) / 1024.0f), static_cast<double>(len0));
+    }
     if (std::find(at.begin(), at.end(), level_frame()) == at.end()) return;
     uint32_t rec[9] = {};
     Vec4 push = V(m + moby::kPos);
@@ -284,13 +337,24 @@ void test_hit(uint32_t m) {
 }
 
 // orig: (none)
+bool hit_log() {
+    static const bool on = std::getenv("RAC1_ARENA_HIT_LOG") != nullptr || std::getenv("RAC1_CUSTOM_TRACE") != nullptr;
+    return on;
+}
+
+// orig: (none)
 float hit_receive(uint32_t m, uint32_t hs, Vec3* push, int32_t* weapon) {
     const uint32_t hit = sub_0025a420(m, 0x00330000u, 0);
     if (weapon != nullptr) *weapon = hit != 0 ? static_cast<int32_t>(lhu(hit + 0x2a)) : -1;
     float dmg = 0.0f;
     int32_t state = 0;
+    const float offered = hit != 0 ? lwc1(hit + 0x2c) : 0.0f;
     moby_hit_react_r(m, hit, hs, 0, state, &dmg, nullptr, 4);
     sb(m + 0xa4, 0xff);
+    if (hit != 0 && hit_log())
+        std::printf("[hit] frame %u: %#x class %d hit by weapon %#x (kind %u strength %u): damage %.2f offered, %.2f counted%s\n", level_frame(), m,
+                    lh(m + moby::kClassId), lhu(hit + 0x2a), lbu(hit + 0x28), lbu(hit + 0x29), static_cast<double>(offered),
+                    static_cast<double>(state == 1 ? 0.0f : dmg), state == 1 ? " (the same weapon again inside RAC1's repeat window: none)" : "");
     if (hit == 0 || state == 1 || !(dmg > 0.0f)) return 0.0f;
     if (push != nullptr) *push = Vec3{lwc1(hit + 0x10), lwc1(hit + 0x14), lwc1(hit + 0x18)};
     return dmg;

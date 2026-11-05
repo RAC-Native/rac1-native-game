@@ -253,8 +253,13 @@ void die(uint32_t m) {
 bool hit_taken(uint32_t m, const Pv& p) {
     Vec3 from{};
     const float dmg = rac2::hit_receive(m, p.b + pv::kHit, &from);
-    if (dmg <= 0.0f || p.i(pv::kState) == Knocked) return false;
-    p.f(pv::kHit, p.f(pv::kHit) - dmg);
+    if (dmg <= 0.0f) return false;
+    const float before = p.f(pv::kHit);
+    p.f(pv::kHit, before - dmg);
+    if (rac2::hit_log()) std::printf("[3134] frame %u: %#x health %.2f -> %.2f\n", rac2::level_frame(), m, static_cast<double>(before), static_cast<double>(p.f(pv::kHit)));
+    // (P9: a hit while it tumbles counts - before, it was dropped, the damage lost - and does not knock it again; out of health,
+    // it blows up where the tumble ends, as knocked() has it)
+    if (p.i(pv::kState) == Knocked) return false;
     Vec4 push{from.x, from.y, 0.0f, 0.0f};
     if (vec3_length(push) < 1e-4f) {  // (no push: away from Ratchet)
         const Vec3 at = rac2::moby_pos(m), h = rac2::hero_pos();
