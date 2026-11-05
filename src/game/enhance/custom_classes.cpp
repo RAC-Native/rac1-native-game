@@ -5,6 +5,7 @@
 #include <host/custom_planet.h>
 #include <host/custom_arena.h>
 #include <host/rac2_compat.h>
+#include <host/rac2_enemies.h>
 
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
@@ -26,7 +27,7 @@ namespace rac1 {
 
 namespace {
 
-enum class Role { Crowd, Monitor, Arm, Prop, Tile, Lift };
+enum class Role { Crowd, Monitor, Arm, Prop, Tile, Lift, Enemy3134 };
 
 // planet.txt's "class <role> <id> <bank>"
 struct ClassLine {
@@ -59,6 +60,7 @@ const std::vector<ClassLine>& lines() {
         else if (role == "arm") c.role = Role::Arm;
         else if (role == "tile") c.role = Role::Tile;
         else if (role == "lift") c.role = Role::Lift;
+        else if (role == "enemy_3134") c.role = Role::Enemy3134;  // (P6: RAC2's enemies hand-ported, rac2_enemies.h)
         else if (role != "prop") continue;
         g_lines.push_back(c);
     }
@@ -623,6 +625,7 @@ constexpr Registered kFns[] = {
     {Role::Prop, with_sounds<prop_update>},
     {Role::Tile, with_sounds<tile::update>},
     {Role::Lift, with_sounds<lift::update>},
+    {Role::Enemy3134, with_sounds<rac2_enemy_3134_update>},
 };
 
 }  // namespace

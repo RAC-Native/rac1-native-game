@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <vector>
 
 namespace rac1::rac2 {
 
@@ -21,6 +22,18 @@ constexpr uint32_t kPool = 0x000c0000, kBlock = 0x280, kBlocks = 64;  // (the st
 bool g_taken[kBlocks] = {};
 
 uint32_t g_rng = 0x9e3779b9u;
+
+struct Turn {
+    int32_t rac2_cls;
+    uint32_t m, pvars;
+    int32_t cls;  // (its RAC1 class: gone when the slot holds another)
+};
+std::vector<Turn> g_turns;
+
+// orig: (none) — the turns of the dead (or of slots gone to another moby) taken back
+void turns_prune() {
+    g_turns.erase(std::remove_if(g_turns.begin(), g_turns.end(), [](const Turn& t) { return moby_gone(t.m, t.cls, t.pvars); }), g_turns.end());
+}
 
 }  // namespace
 
@@ -91,7 +104,33 @@ void standin_release(uint32_t pvars) {
 }
 
 // orig: (none)
-void standin_reset() { std::memset(g_taken, 0, sizeof g_taken); }
+void standin_reset() {
+    std::memset(g_taken, 0, sizeof g_taken);
+    g_turns.clear();
+}
+
+// orig: (none)
+bool attack_turn_held(uint32_t m) {
+    for (const Turn& t : g_turns)
+        if (t.m == m) return true;
+    return false;
+}
+
+// orig: (none)
+bool attack_turn_take(int32_t rac2_cls, uint32_t m, int most) {
+    turns_prune();
+    if (attack_turn_held(m)) return true;
+    int n = 0;
+    for (const Turn& t : g_turns) n += t.rac2_cls == rac2_cls ? 1 : 0;
+    if (n >= most) return false;
+    g_turns.push_back(Turn{rac2_cls, m, lwu(m + moby::kPvars), lh(m + moby::kClassId)});
+    return true;
+}
+
+// orig: (none)
+void attack_turn_give(uint32_t m) {
+    g_turns.erase(std::remove_if(g_turns.begin(), g_turns.end(), [m](const Turn& t) { return t.m == m; }), g_turns.end());
+}
 
 // orig: (none)
 uint32_t standin_count() {

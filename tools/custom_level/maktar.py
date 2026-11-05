@@ -328,9 +328,14 @@ RAC2_CLASSES = {
     2581: ("arm", 2034),      # the jointed arms at the floor's edge: lower, drop, wait, rise
     2563: ("tile", 2035),     # the floor's tiles that turn over in the hazard challenges (wave column c4)
     3276: ("lift", 2036),     # the floor's lifts that bring crates up (wave columns c6 / c7)
+    3134: ("enemy_3134", 2037),  # P6: the small enemy, hand-ported (src/game/enhance/rac2_enemy_3134.cpp)
 }
-HIT_ROLES = ("monitor",)  # (the roles whose collision is kept: they break when shot, custom_classes.cpp)
-CLASS_PVARS = {"crowd": 0x20, "monitor": 0x40, "arm": 0x40, "prop": 0x10, "tile": 0x20, "lift": 0x20}  # (our behaviour's own pvars, custom_classes.cpp)  # (their flat colour: RAC2 lights them with set 6 and the ambient 27 40 40; ours a grey)
+HIT_ROLES = ("monitor", "enemy_3134")  # (the roles whose collision is kept: they take hits, custom_classes.cpp)
+CLASS_PVARS = {"crowd": 0x20, "monitor": 0x40, "arm": 0x40, "prop": 0x10, "tile": 0x20, "lift": 0x20, "enemy_3134": 0x100}
+# P6: the hand-ported enemies. RAC2 keeps 20 of each waiting above the arena (group 20) and recycles them; ours is one hidden
+# template (its first placement) the controller copies (planet.txt "standin" + "port", custom_arena.cpp). Per RAC2 class:
+# the path its pvars name (+0x180: the ring it circles while it waits for its turn to attack), read from RAC2's gameplay
+ENEMY_PATHS = {3134: 42}  # (our behaviour's own pvars, custom_classes.cpp)  # (their flat colour: RAC2 lights them with set 6 and the ambient 27 40 40; ours a grey)
 
 
 def euler_rows(rx, ry, rz, s):
@@ -942,6 +947,16 @@ def rac2_hazards(r2, say):
     return vents + ["tile_damage %d" % (tile_damage or 1), "items 501 511"]
 
 
+def rac2_path(r2, n):
+    """RAC2's gameplay path `n` (+0x78: {count, the data's offset, size, 0}, then the paths' offsets in the data; a path
+    {points, 3 words}, then 16-byte points x y z w): its points."""
+    g = r2.gameplay
+    o = struct.unpack_from("<40I", g)[0x78 // 4]
+    base = o + i32(g, o + 4)
+    p = base + i32(g, o + 0x10 + 4 * n)
+    return [struct.unpack_from("<3f", g, p + 16 + 16 * k) for k in range(i32(g, p))]
+
+
 def write_planet(out, a):
     """planet.txt: our own small settings file of the custom planet (src/host/custom_planet.h reads it)."""
     with open(os.path.join(out, "planet.txt"), "w") as f:
@@ -961,7 +976,12 @@ def write_planet(out, a):
                   + "# the challenges' stand-in enemies (src/game/enhance/custom_arena.cpp): standin <RAC1 class> <its hidden\n"
                     "# template's uid> <its pvars' size>; stand_for <RAC2 class> <RAC1 class> <scale> <health factor>\n"
                   + "".join("standin %d %d %d\n" % t for t in getattr(a, "standin_lines", []))
-                  + "".join("stand_for %d %d %.2f %.2f\n" % t for t in STAND_FOR))
+                  + "".join("stand_for %d %d %.2f %.2f\n" % t for t in STAND_FOR)
+                  + "# P6, the RAC2 enemies hand-ported (src/game/enhance/rac2_enemy_*.cpp): port <RAC2 class> <its converted RAC1\n"
+                    "# class> (in place of its stand-in; RAC1_ARENA_STANDINS=all or a list of RAC2 classes, or this line removed,\n"
+                    "# brings the stand-in back); path <RAC2 class> <points x y z ...> (the ring it circles, from RAC2's gameplay)\n"
+                  + "".join("port %d %d\n" % t for t in getattr(a, "port_lines", []))
+                  + "".join("path %d %s\n" % (k, " ".join("%.3f %.3f %.3f" % p for p in v)) for k, v in getattr(a, "enemy_paths", {}).items()))
         if getattr(a, "hazard_lines", None):
             f.write("# the hazards and items (P5, src/game/enhance/custom_arena.cpp): vent <x y z> <damage> (RAC2's 2953: a column\n"
                     "# of flames, wave column c5), tile_damage <n> (RAC2's 2563 tiles, column c4), items <class for c6> <class for c7>\n"
@@ -1248,12 +1268,18 @@ def build(a):
     ptable = bytearray(block(0x54))
     a.standin_lines = [(i32(r, 0x18), i32(r, 0x0c), i32(ptable, 8 * i32(r, 0x58) + 4)) for r in enemies]
     placed = []
+    a.port_lines = []
     if conv:  # the converted classes' placements, each with its own pvars (our behaviour's, zeroed)
         taken = {i32(r, 0x0c) for r in enemies} | {i32(hero, 0x0c)}
         n_pv = len(ptable) // 8
         rac2_uids = {i32(rec, 0x10) for _, _, rec in conv.records}
         renumbered = 0
+        enemies_seen = set()
         for rac1_id, role, rec in conv.records:
+            if role.startswith("enemy"):  # (one hidden template: RAC2's first placement of the class)
+                if role in enemies_seen:
+                    continue
+                enemies_seen.add(role)
             size = CLASS_PVARS[role]
             at = align(len(pdata), 0x10)
             pdata.extend(bytes(at + size - len(pdata)))
@@ -1268,6 +1294,10 @@ def build(a):
                 renumbered += 1
             struct.pack_into("<i", r, 0x0c, uid)
             taken.add(uid)
+            if role.startswith("enemy"):
+                struct.pack_into("<i", r, 0x60, 3)  # hidden (+0x34 bit 1: not updated, bit 0: not drawn): a template
+                a.standin_lines.append((rac1_id, uid, size))
+                a.port_lines.append((int(role.split("_")[1]), rac1_id))
             placed.append(bytes(r))
         say("the converted classes' mobys: %d records (%d with a new uid), pvars %d .. %d" % (
             len(placed), renumbered, n_pv - len(placed), n_pv - 1))
@@ -1323,6 +1353,7 @@ def build(a):
             f.write(line + "\n")
     open(os.path.join(a.out, "gameplay.bin"), "wb").write(gp + bytes(gsize - len(gp)))
     a.hazard_lines = rac2_hazards(r2, say)
+    a.enemy_paths = {k: rac2_path(r2, n) for k, n in ENEMY_PATHS.items() if any(p[0] == k for p in a.port_lines)}
     write_planet(a.out, a)
     if a.dump_core:
         open(os.path.join(a.out, "core.bin"), "wb").write(bytes(core.buf))

@@ -6,7 +6,7 @@ total, in three groups.
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 299 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 300 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 74 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -74,6 +74,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_AO_DEPTH_COPY` | 1 = on; default 0 | Vulkan: the ambient occlusion's passes read a copy of the 3D's depth (and its stencil), as before, instead of the depth itself; the same picture, for comparison (the copy cost about 1.1 ms at 5053 x 1371). See [Lighting](lighting.md#ambient-occlusion). |
 | `RAC1_AO_DUMP` | set (any value) = on; default off | Writes the raw ambient occlusion of each frame to ao_<mode>.pgm (the last frame stays) and prints its mean every 60 frames. |
 | `RAC1_AO_PROF` | set (any value) = on; default off | Prints the ambient occlusion's GPU time every 120 frames, in all and per pass (the depth, MXAO's pyramid and its mips, the occlusion, the two blur passes), OpenGL and Vulkan. |
+| `RAC1_ARENA_STANDINS` | `all`, or RAC2 enemy classes separated by `,` (e.g. `3134`); unset = the hand ports | Local experiment (on the custom planet): those of RAC2's arena enemies that have a hand port (`planet.txt`'s `port` lines, `src/host/rac2_enemies.h`) dropped as their RAC1 stand-ins again (`stand_for`), to compare. |
 | `RAC1_AUDIO_CHANNELS` | 2, 6 or 8 (or 5.1 / 7.1); default unset = the Options > Sound choice (stereo in headless runs) | Overrides the output's channels: the audio device's, and RAC1_AUDIO_DUMP's (6 / 8 channels interleaved, FL FR FC LFE then SL SR / BL BR SL SR), to test 5.1 / 7.1 without the menu. |
 | `RAC1_AUDIO_DUMP` | file path; unset = no dump | Writes the game's sound output to the file as raw 48 kHz stereo signed 16-bit PCM (6 / 8 channels with RAC1_AUDIO_CHANNELS or the 5.1 / 7.1 choice at the start). |
 | `RAC1_AUDIO_LOG` | set (any value) = on; default off | Prints the audio queue's summary (underruns, skips, and so on) every 10 seconds. |

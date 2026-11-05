@@ -61,6 +61,16 @@ void standin_reset();
 // orig: (none) — blocks in use
 uint32_t standin_count();
 
+// ---- the attack turns (RAC2's controller keeps a count per enemy class, its pvars +0x50..+0x5c: 0x3fc0d0 takes one,
+// 0x3fc1b0 gives it back; an enemy without one circles and waits) ----
+// orig: (none) — a turn for `m` (an enemy of RAC2 class `rac2_cls`, at most `most` at once): true when it holds one (it
+// keeps it until it gives it back or dies: the turns of the dead are taken back here)
+bool attack_turn_take(int32_t rac2_cls, uint32_t m, int most);
+// orig: (none) — its turn given back (none held: nothing)
+void attack_turn_give(uint32_t m);
+// orig: (none) — true while `m` holds a turn
+bool attack_turn_held(uint32_t m);
+
 // ---- a state machine (RAC2's +0x94..+0x96 kept by us) ----
 struct StateMachine {
     int state = 0, previous = -1;

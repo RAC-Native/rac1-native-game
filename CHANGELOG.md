@@ -204,6 +204,12 @@ What changed in each release. Releases are source only: you build the game with 
 - Local experiment, the arena's enemies: a stand-in of its own for each of RAC2's four (planet.txt's `stand_for` with a size
   and a health factor): the ranged 2506 Veldin's gun walker 1440, the heavy 2850 a big 749 with four times its health, the
   mid-sized 3131 a 749 a quarter bigger with twice its health, the small 3134 a smaller 749.
+- Local experiment, planet P6: RAC2's small arena enemy 3134 hand-ported (`src/game/enhance/rac2_enemy_3134.cpp`, by
+  behaviour from its update 0x40be08): its class converted (mesh, animations, sounds, collision; one hidden template), it
+  circles the arena's ring (RAC2's path, read into `planet.txt`) until the controller gives it a turn to attack (three at
+  once), flies at Ratchet, winds up and strikes with its blades (its joints' damage spheres, RAC1's hit protocol), gloats
+  when it hits; hit by a weapon it tumbles away and blows up. It replaces its stand-in (`planet.txt` `port`);
+  `RAC1_ARENA_STANDINS` brings the stand-ins back.
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

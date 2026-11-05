@@ -212,6 +212,7 @@ const Settings& settings() {
             if (w.c[kBossColumn] != 0 && ch.missing.empty()) ch.missing = "has a boss (later)";
     }
     std::ifstream p(custom_level_dir() + "/planet.txt");
+    std::vector<std::pair<int32_t, int32_t>> ports;  // (P6: RAC2 class -> its hand-ported RAC1 class)
     while (p && std::getline(p, line)) {
         std::istringstream in(line);
         std::string key;
@@ -226,6 +227,7 @@ const Settings& settings() {
             if (in >> hp && hp > 0.0f) f.health = hp;
             g_cfg.stand_for[a] = f;
         }
+        else if (key == "port" && in >> a >> b) ports.emplace_back(a, b);
         else if (key == "tile_damage" && in >> a) g_cfg.tile_damage = a;
         else if (key == "items" && in >> a >> b) {
             g_cfg.items[0] = a;
@@ -234,6 +236,18 @@ const Settings& settings() {
             Vec3 v;
             if (in >> v.x >> v.y >> v.z >> a) g_cfg.vents.emplace_back(v, a);
         }
+    }
+    // P6: a RAC2 enemy hand-ported (planet.txt "port") drops in place of its stand-in, unless RAC1_ARENA_STANDINS names it
+    // ("all", or RAC2 classes separated by ','): then its stand-in again
+    static const std::string standins = [] {
+        const char* e = std::getenv("RAC1_ARENA_STANDINS");
+        return e != nullptr ? "," + std::string(e) + "," : std::string();
+    }();
+    for (const auto& [rac2_cls, rac1_cls] : ports) {
+        if (standins == ",all," || standins.find("," + std::to_string(rac2_cls) + ",") != std::string::npos) continue;
+        if (g_cfg.standins.count(rac1_cls) == 0) continue;
+        g_cfg.stand_for[rac2_cls] = StandFor{rac1_cls, 1.0f, 1.0f};
+        if (trace()) std::printf("[arena] RAC2's %d: its hand port (class %d)\n", rac2_cls, rac1_cls);
     }
     std::ifstream cams(custom_level_dir() + "/cameras.txt");
     while (cams && std::getline(cams, line)) {

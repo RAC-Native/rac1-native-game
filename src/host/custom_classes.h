@@ -7,7 +7,7 @@
 //
 // planet.txt names them, one line a class:
 //   class <role> <RAC1 class id> <bank>
-// role: crowd, monitor, arm or prop (the behaviour); bank: the index in "rac2_banks" of the sound bank their sound records
+// role: crowd, monitor, arm, tile, lift, prop or enemy_<RAC2 class> (the behaviour: an enemy's is rac2_enemies.h's); bank: the index in "rac2_banks" of the sound bank their sound records
 // play from (-1: no sounds), custom_planet.h.
 //
 // - The update function: a class of ours, registered while the planet is on (moby_class_register), gets an address of
