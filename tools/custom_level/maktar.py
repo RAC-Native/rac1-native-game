@@ -64,6 +64,10 @@ def i32(b, o):
     return struct.unpack_from("<i", b, o)[0]
 
 
+def u16(b, o):
+    return struct.unpack_from("<H", b, o)[0]
+
+
 def align(v, a):
     return (v + a - 1) & ~(a - 1)
 
@@ -979,6 +983,29 @@ def rac2_hazards(r2, say):
     return vents + ["tile_damage %d" % (tile_damage or 1), "items 501 511"]
 
 
+# P8: the level's sound definitions (RAC2's level code plays them by number: 0x366c90 one of the first `base`, 0x366d28 one
+# of the level's own, number + base; the vents' burning 0x11, the bosses' skill point 1, the challenge menu 3 / 4). The index's
+# sound block (+0x70: {the defs' offset, count}, {the id table's offset, count}); the game's load (0x3083e8) puts each def's
+# +0x1a through the id table (out of it: -1) and +0x1c (the bank slot: 0 the level's bank) to 0. `base` is the gameplay
+# settings' word after their records (0x3049e8 -> gp - 0x60e4: settings + 0x5c, then 0x20 a record, +0x68 their count)
+def rac2_level_sounds(r2, say):
+    idx, g = r2.index, r2.gameplay
+    s6 = r2.H[0x70 // 4]
+    defs_at, nd, tab_at, nt = struct.unpack_from("<4h", idx, s6)
+    lines = []
+    for k in range(nd):
+        d = bytearray(idx[s6 + defs_at + 32 * k:s6 + defs_at + 32 * k + 32])
+        sid = struct.unpack_from("<h", d, 0x1a)[0]
+        struct.pack_into("<H", d, 0x1a, u16(idx, s6 + tab_at + 4 * sid) if 0 <= sid < nt else 0xffff)
+        struct.pack_into("<I", d, 0x1c, 0)
+        lines.append("level_sound %d %s" % (k, d.hex()))
+    st = i32(g, 0)
+    n = i32(g, st + 0x68)
+    base = i32(g, st + 0x5c + 0x20 * max(n, 1))
+    say("level sounds: %d definitions, the level's own from %d" % (nd, base))
+    return ["level_sound_base %d" % base] + lines
+
+
 def rac2_path(r2, n):
     """RAC2's gameplay path `n` (+0x78: {count, the data's offset, size, 0}, then the paths' offsets in the data; a path
     {points, 3 words}, then 16-byte points x y z w): its points."""
@@ -1019,6 +1046,11 @@ def write_planet(out, a):
                     "# of flames, wave column c5), tile_damage <n> (RAC2's 2563 tiles, column c4), items <class for c6> <class for c7>\n"
                     "# (the crates the lifts bring up)\n")
             for line in a.hazard_lines:
+                f.write(line + "\n")
+        if getattr(a, "sound_lines", None):
+            f.write("# the level's sound definitions (P8, custom_planet.h): level_sound_base <the first of the level's own>;\n"
+                    "# level_sound <number> <its 32 bytes: RAC2's, +0x1a the sound in the level's bank (rac2_banks' first)>\n")
+            for line in a.sound_lines:
                 f.write(line + "\n")
         if getattr(a, "class_lines", None):
             f.write("# the RAC2 classes converted (rac2classes.py): class <role> <RAC1 class id> <its sounds' bank: rac2_banks' index, -1 none>;\n"
@@ -1387,6 +1419,7 @@ def build(a):
             f.write(line + "\n")
     open(os.path.join(a.out, "gameplay.bin"), "wb").write(gp + bytes(gsize - len(gp)))
     a.hazard_lines = rac2_hazards(r2, say)
+    a.sound_lines = rac2_level_sounds(r2, say)
     a.enemy_paths = {k: rac2_path(r2, n) for k, n in ENEMY_PATHS.items() if any(p[0] == k for p in a.port_lines)}
     write_planet(a.out, a)
     if a.dump_core:

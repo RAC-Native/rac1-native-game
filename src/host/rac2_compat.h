@@ -138,6 +138,15 @@ void camera_shake(float strength, uint32_t frames);
 void sound_loop(uint32_t m, int32_t idx);
 // orig: (none) — sound `idx` of RAC1 class `cls`'s table (the class loaded on the level) played once on `m`
 void sound_of_class(uint32_t m, int32_t cls, int32_t idx);
+// P8: the level's sound definitions (custom_planet.h's level_sound: RAC2's 0x366c90 plays definition k, 0x366d28 the level's
+// own k, k + level_sound_base): played on `m` (0: none) or at `at` (none: everywhere, as RAC2 with neither); a looping one
+// (+0x18) is started with RAC1's flag 4 and runs until level_sound_stop. The slot (-1: none).
+// orig: (none)
+int32_t level_sound(int32_t k, uint32_t m, const Vec3* at = nullptr);
+// orig: (none) — the slot `s` stopped if it still plays the level sound `k` (RAC2's 0x366830 stops a moby's)
+void level_sound_stop(int32_t s, int32_t k);
+// orig: (none) — whether the slot `s` still plays the level sound `k` (RAC2's 0x3667e8)
+bool level_sound_playing(int32_t s, int32_t k);
 
 // ---- the attack turns (RAC2's controller keeps a count per enemy class, its pvars +0x50 2506, +0x54 2850, +0x58 3131,
 // +0x5c 3134: 0x3fc0d0 takes one, 0x3fc1b0 gives it back; an enemy without one waits). Their start counts, set when a

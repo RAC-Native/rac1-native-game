@@ -116,6 +116,15 @@ void custom_planet_banks_load();
 void custom_planet_banks_unload();
 // orig: (none) — the planet's banks' handles (empty: none loaded)
 const std::vector<uint32_t>& custom_planet_banks();
+// The level's sound definitions (P8): RAC2's level code plays sounds by number from its level's definition table (the
+// index's sound block: the vents' burning, the bosses' skill point, the challenge menu's), not by class. planet.txt's
+// "level_sound_base <n>" (the first of the level's own: RAC2's 0x366d28 adds it, 0x366c90 does not) and "level_sound <k>
+// <32 bytes>" (the tools copy them: +0x18 looping, +0x1a the sound in the level's bank, the first of rac2_banks).
+// orig: (none) — definition `k` as one of RAC1's sound records (32 bytes in EE memory, its bank the planet's first), for
+// sound_start; 0 when there is none or the bank is not loaded. Its 16-byte place after it is for the caller (`place`)
+uint32_t custom_planet_level_sound(int32_t k, uint32_t* place = nullptr);
+// orig: (none) — planet.txt's level_sound_base (0: none)
+int32_t custom_planet_level_sound_base();
 
 // orig: (none) — testing: once per game frame (the host's frame loop): RAC1_PLANET_SAVE_IMAGE's save images
 void custom_planet_test_frame(uint64_t frame);

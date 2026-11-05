@@ -133,6 +133,7 @@ struct Gate {
 };
 
 enum State { Idle, Menu, Intro, Fight, Between, Won, Lost };
+constexpr int32_t kSoundMenuMove = 3, kSoundMenuTake = 4;  // (the level's sounds: custom_planet_level_sound)
 
 struct Arena {
     uint32_t base = 0, tick = 0;  // (the moby list and the level frame last seen: either changing = the level loaded again)
@@ -162,6 +163,8 @@ struct Arena {
     std::vector<int32_t> crates_queued;   // (the wave's crates still to come up: columns c6, c7)
     std::vector<Enemy> crates;            // (the crates up, ours to clear)
     std::vector<uint32_t> vent_phase;     // (each vent's frame in its cycle, Vent)
+    std::vector<int32_t> vent_sound;      // (each vent's burning sound's slot, -1 none: P8)
+    std::vector<uint32_t> vent_retry;     // (the level frame its sound may be asked for again)
 } g_a;
 
 std::vector<uint8_t> g_wins;  // victories per challenge (the .pc's)
@@ -419,11 +422,33 @@ float boss_share() {
 // RAC2's 2953 (its update 0x401ed8, code only): turned on (0x4024b0), it waits 60 frames, warns twice (two 120-frame
 // pulses, its warning drawn the first 60 of each), then burns 60 frames: a column 5 units up from it (the hero's nearest
 // point on it, 0x320098) hurting what is within 1 of it (0x3201e0, its pvars' damage), flames rising (0x342b98) and its
-// sound; then waits again. Turned off, it ends its cycle and stays idle. Ours: the same cycle and hurt, RAC1's particles,
-// no sound yet (RAC2's sound 0x11 of its global bank).
+// sound; then waits again. Turned off, it ends its cycle and stays idle. Ours: the same cycle and hurt, RAC1's particles.
+// Its sound: the level's own sound 0x11 (0x366d28: definition 0x11 + the level's base, a looping one: the level bank's
+// sound 16), started while it burns whenever it is not playing (0x3667e8 on its pvars +0x36), stopped when it ends.
 namespace vent {
 constexpr uint32_t kWait = 60, kPulse = 120, kWarn = 60, kBurn = 60, kCycle = kWait + 2 * kPulse + kBurn;
 constexpr float kHeight = 5.0f, kRadius = 1.0f;
+constexpr int32_t kSound = 0x11;  // (of the level's own sounds: custom_planet_level_sound_base() + 0x11)
+
+// orig: (none) — vent `k`'s burning sound on (or off)
+void sound(size_t k, bool on) {
+    if (g_a.vent_sound.size() != g_cfg.vents.size()) {
+        g_a.vent_sound.assign(g_cfg.vents.size(), -1);
+        g_a.vent_retry.assign(g_cfg.vents.size(), 0);
+    }
+    int32_t& s = g_a.vent_sound[k];
+    const int32_t def = custom_planet_level_sound_base() + kSound;
+    if (!on) {
+        if (s >= 0) level_sound_stop(s, def);
+        s = -1;
+        return;
+    }
+    // (RAC2 asks again each frame; a vent too far to hear has its slot dropped at once: ours asks again 15 frames later)
+    if (level_sound_playing(s, def) || level_frame() < g_a.vent_retry[k]) return;
+    const Vec3 at = g_cfg.vents[k].first;
+    s = level_sound(def, 0, &at);
+    g_a.vent_retry[k] = level_frame() + 15;
+}
 
 // orig: (none) — vent `k`'s frame: its phase stepped, its particles, its hurt
 void step(size_t k) {
@@ -431,6 +456,7 @@ void step(size_t k) {
     uint32_t& ph = g_a.vent_phase[k];
     if (ph == 0 && k >= g_a.vents_on) return;  // (off, idle)
     ph = (ph + 1) % kCycle;
+    sound(k, ph > kWait + 2 * kPulse);
     if (ph <= kWait) return;
     if (ph <= kWait + 2 * kPulse) {
         if ((ph - kWait - 1) % kPulse < kWarn && rand_below(2) == 0) {  // (the warning: glows flickering at its foot)
@@ -669,11 +695,16 @@ void step() {
         const uint32_t p = pad_pressed();
         pad_block();
         const int n = static_cast<int>(cfg.challenges.size());
+        // (RAC2's menu 0x3fd8b8: the level's sound 3 as the choice moves, 4 as a challenge is taken: P8)
+        if ((p & (kLeft | kRight)) != 0) level_sound(kSoundMenuMove, 0);
         if ((p & kLeft) != 0) g_a.chosen = (g_a.chosen + n - 1) % n;
         if ((p & kRight) != 0) g_a.chosen = (g_a.chosen + 1) % n;
         if ((p & kTriangle) != 0) sm.set(Idle);
         const Challenge& ch = cfg.challenges[static_cast<size_t>(g_a.chosen)];
-        if ((p & kCross) != 0 && ch.missing.empty() && unlocked(ch)) challenge_start(g_a.chosen);
+        if ((p & kCross) != 0 && ch.missing.empty() && unlocked(ch)) {
+            level_sound(kSoundMenuTake, 0);
+            challenge_start(g_a.chosen);
+        }
         break;
     }
     case Intro:

@@ -255,6 +255,9 @@ What changed in each release. Releases are source only: you build the game with 
 - Local experiment, planet: a moby the arena's code kills (`rac2::moby_kill`) is retired as the game retires its own (its
   slot free again two frames on): its slot was never given out again, and a long challenge (the Ultimate) ran out of moby
   slots and stopped dropping enemies.
+- Local experiment, planet P8: the arena's level sounds (RAC2's level code plays sounds by number from its level's definition
+  table, read into `planet.txt`'s `level_sound` lines; the level bank's): the vents' roar while they burn, the challenge menu's
+  sounds as the choice moves and a challenge is taken (`rac2::level_sound`). RAC2's global bank (MISC.WAD) is not needed.
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

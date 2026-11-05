@@ -1,5 +1,6 @@
 // See rac2_compat.h: the engine services RAC2's arena behaviours ask for, said with RAC1's engine.
 #include <host/rac2_compat.h>
+#include <host/custom_planet.h>
 
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
@@ -293,6 +294,41 @@ void sound_of_class(uint32_t m, int32_t cls, int32_t idx) {
         sh(e + 0x7e, static_cast<uint32_t>(idx));
         sw(e + 0x88, m);
     }
+}
+
+// orig: (none)
+int32_t level_sound(int32_t k, uint32_t m, const Vec3* at) {
+    uint32_t place = 0;
+    const uint32_t def = custom_planet_level_sound(k, &place);
+    if (def == 0) return -1;
+    if (at != nullptr) {
+        swc1(place, at->x);
+        swc1(place + 4, at->y);
+        swc1(place + 8, at->z);
+        swc1(place + 12, 1.0f);
+    }
+    const uint32_t flags = lbu(def + 0x18) != 0 ? 4u : 0u;
+    const int32_t s = sound_start(def, flags, m, at != nullptr ? place : 0, 0x400);
+    if (s >= 0) {
+        const uint32_t e = 0x0013e550 + static_cast<uint32_t>(s) * 0x70u;
+        sh(e + 0x7e, static_cast<uint32_t>(k));
+        sw(e + 0x88, m);
+    }
+    if (std::getenv("RAC1_CUSTOM_TRACE") != nullptr)
+        std::printf("[rac2] frame %u: level sound %d (record %#x): slot %d\n", level_frame(), k, def, s);
+    return s;
+}
+
+// orig: (none)
+bool level_sound_playing(int32_t s, int32_t k) {
+    if (s < 0) return false;
+    const uint32_t e = 0x0013e550 + static_cast<uint32_t>(s) * 0x70u;
+    return lbu(e + 0x74) != 0 && lh(e + 0x7e) == k && lwu(e + 0x78) == custom_planet_level_sound(k);
+}
+
+// orig: (none)
+void level_sound_stop(int32_t s, int32_t k) {
+    if (level_sound_playing(s, k)) sub_0028d918(s);
 }
 
 namespace part {

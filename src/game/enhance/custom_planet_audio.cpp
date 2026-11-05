@@ -53,6 +53,8 @@ struct Sounds {
     std::vector<uint32_t> banks;
     int music[3][2] = {{-1, -1}, {-1, -1}, {-1, -1}};  // (the planet's, a challenge's, a boss's: intro, loop)
     std::vector<std::pair<std::string, std::vector<uint32_t>>> announce;
+    int32_t level_sound_base = 0;
+    std::vector<std::pair<int32_t, std::vector<uint8_t>>> level_sounds;  // (P8: planet.txt's "level_sound": number, 32 bytes)
 };
 Sounds g_snd;
 
@@ -84,6 +86,15 @@ const Sounds& sounds() {
         } else if (key == "music" || key == "music_challenge" || key == "music_boss") {
             const int k = key == "music" ? 0 : key == "music_challenge" ? 1 : 2;
             in >> g_snd.music[k][0] >> g_snd.music[k][1];
+        } else if (key == "level_sound_base") {
+            in >> g_snd.level_sound_base;
+        } else if (key == "level_sound") {
+            int32_t k = -1;
+            std::string hex;
+            if (!(in >> k >> hex) || hex.size() != 64) continue;
+            std::vector<uint8_t> d(32);
+            for (size_t i = 0; i < 32; ++i) d[i] = static_cast<uint8_t>(std::strtoul(hex.substr(2 * i, 2).c_str(), nullptr, 16));
+            g_snd.level_sounds.emplace_back(k, d);
         } else if (key == "announce") {
             std::string event;
             std::vector<uint32_t> entries;
@@ -293,5 +304,42 @@ void custom_planet_banks_unload() {
 
 // orig: (none)
 const std::vector<uint32_t>& custom_planet_banks() { return g_loaded.banks; }
+
+namespace {
+// Our level sound records in EE memory: in the first megabyte's unused part (past custom_planet.cpp's texts 0xfe000..
+// 0xfe100), 48 bytes each (the record, then a 16-byte place for the sound's caller)
+constexpr uint32_t LEVEL_SOUNDS = 0x000fe200u;
+constexpr uint32_t LEVEL_SOUND_SIZE = 0x30;
+constexpr size_t LEVEL_SOUNDS_MAX = 16;
+std::vector<int32_t> g_level_sound_at;  // (the numbers put there, in order)
+uint32_t g_level_sound_bank = 0;        // (the bank they were bound to: a new load binds them again)
+}  // namespace
+
+// orig: (none)
+uint32_t custom_planet_level_sound(int32_t k, uint32_t* place) {
+    if (g_loaded.banks.empty() || !custom_level_active(lw(0x0015ed84))) return 0;
+    if (g_level_sound_bank != g_loaded.banks[0]) {
+        g_level_sound_bank = g_loaded.banks[0];
+        g_level_sound_at.clear();
+    }
+    size_t slot = 0;
+    while (slot < g_level_sound_at.size() && g_level_sound_at[slot] != k) ++slot;
+    const uint32_t at = LEVEL_SOUNDS + static_cast<uint32_t>(slot) * LEVEL_SOUND_SIZE;
+    if (slot == g_level_sound_at.size()) {
+        if (slot == LEVEL_SOUNDS_MAX) return 0;
+        const std::vector<uint8_t>* def = nullptr;
+        for (const auto& [n, d] : sounds().level_sounds)
+            if (n == k) def = &d;
+        if (def == nullptr || static_cast<int16_t>((*def)[0x1a] | (*def)[0x1b] << 8) < 0) return 0;
+        for (uint32_t i = 0; i < 0x1c; ++i) sb(at + i, (*def)[i]);
+        sw(at + 0x1c, g_level_sound_bank);  // (RAC2: +0x1c the bank's slot, 0 the level's; RAC1: the bank's handle)
+        g_level_sound_at.push_back(k);
+    }
+    if (place != nullptr) *place = at + 0x20;
+    return at;
+}
+
+// orig: (none)
+int32_t custom_planet_level_sound_base() { return sounds().level_sound_base; }
 
 }  // namespace rac1
