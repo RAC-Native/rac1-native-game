@@ -81,6 +81,9 @@ struct GraphicsPipelineDesc {
     VkFormat color_format = VK_FORMAT_R8G8B8A8_UNORM;
     VkFormat depth_format = VK_FORMAT_UNDEFINED;  // (0 = use depth_stencil_format() when has_depth_attachment is true)
     bool has_depth_attachment = true;
+    // (false: made inside a frame, the pipeline takes the formats of the target being drawn into, whatever the fields above
+    // say; true: always the fields' - a pipeline made in the middle of a frame for another target, as the occlusion's)
+    bool formats_from_desc = false;
     bool has_stencil_attachment = true;
     std::vector<VkDynamicState> extra_dynamic_states;
     uint32_t shading_rate = 1;  // (RAC1_RT_RES=2: 2 = one fragment per 2x2 pixels, when the device can; testing)

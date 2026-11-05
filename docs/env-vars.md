@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 393 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 394 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 299 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 300 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 75 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -325,6 +325,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_VIEW_MODE` | integer: 0 = widescreen, 1 = 4:3 with bars, 2 = fit to the window's aspect; default 0 until the Options > Display settings override it | Sets the host's view/aspect mode at start (as the aspect and fit options do). The exact meaning of 0 is inferred from the view code, treat as approximate. |
 | `RAC1_VIBRATION_LOG` | set (any value) = on; default off | Prints the vibration (Options > Advanced > Vibration and Adaptive Triggers, #10), with or without a gamepad: each event's pulse (`[vibe] f<gameplay frame> <event>: low <l> high <h>, <n> frames (<ms> ms, held <k>), pan <p>` or `centred`, its distance), the motors and the DualSense's actuators when they change (`[vibe] f<n> motors low .. high .. \| left .. right ..`), the triggers' effects and the health when they change, the moving source followed, and what the host takes each game frame (`[vibe] host frame <n> ...`). |
 | `RAC1_VIF_TRACE` | any value = on; default off | Prints every VIF1 code word (as [VIF1] lines on stderr) as the GS emulation processes the DMA chain. |
+| `RAC1_VK_PIPELINE_CACHE` | 0 = off, 1 = on; default on, off in a headless run | With the Vulkan renderer, keeps the driver's compiled pipelines between starts in vk_pipeline_cache.bin in the settings' folder ($XDG_CONFIG_HOME/rac1-native, %APPDATA%\rac1-native on Windows), read back when its header is this device's and driver's. See [Vulkan](vulkan.md). |
 | `RAC1_VK_VALIDATION` | 1 = on; default off | With the Vulkan renderer, turns the Khronos validation layer on when it is installed (its messages on the standard output). See [Vulkan](vulkan.md). |
 | `RAC1_VU0_CAPTURE` | directory path; default off | Writes captures (code image, registers, memory) of VU0 program runs, spread over the calls, into that directory; used as inputs to prove the ported VU0 programs against the original. |
 | `RAC1_VU0_CHAIN` | any value = on; default off | At exit, prints a hash of everything VU0 computed during the run, to compare two runs for identical VU0 results. |

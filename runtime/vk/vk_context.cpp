@@ -2,6 +2,7 @@
 #include <runtime/vk/vk_context.h>
 #include <runtime/vk/vk_shaders.h>
 #include <profiler/host_profiler.h>
+#include <platform/platform.h>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -16,6 +17,8 @@
 #include <string>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <tuple>
 #include <vector>
 
@@ -123,6 +126,8 @@ struct Context {
     GpuImage dummy_dcube{};
 
     std::vector<void (*)()> shutdown_callbacks;
+    VkPipelineCache pipe_cache = VK_NULL_HANDLE;  // (the driver's compiled pipelines, kept on disk between starts)
+    std::filesystem::path pipe_cache_path;
 
     // the profiler's GPU timestamps (prof::GpuApi): one pool, `prof_per_slot` a frame slot; a timestamp asked for while no
     // command buffer records (between a frame's present and the next one's start) is written at the next one's start
@@ -426,13 +431,13 @@ void create_fallback_textures() {
                  VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                  VK_IMAGE_ASPECT_COLOR_BIT, g_ctx.black_uint_tex);
     create_image(4, 4, VK_FORMAT_D32_SFLOAT,
-                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                  VK_IMAGE_ASPECT_DEPTH_BIT, g_ctx.dummy_d2d);
     create_image(4, 4, VK_FORMAT_D32_SFLOAT,
-                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                  VK_IMAGE_ASPECT_DEPTH_BIT, g_ctx.dummy_darray, 3, 0, VK_IMAGE_VIEW_TYPE_2D_ARRAY);
     create_image(4, 4, VK_FORMAT_D32_SFLOAT,
-                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                  VK_IMAGE_ASPECT_DEPTH_BIT, g_ctx.dummy_dcube, 6, VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
                  VK_IMAGE_VIEW_TYPE_CUBE_ARRAY);
 
@@ -611,6 +616,7 @@ bool check_device(VkPhysicalDevice pd, const HasExt& has_ext) {
     const VkPhysicalDeviceFeatures& f = f2.features;
     need(f13.dynamicRendering == VK_TRUE, "dynamicRendering");
     need(f13.synchronization2 == VK_TRUE, "synchronization2");
+    need(f13.shaderDemoteToHelperInvocation == VK_TRUE, "shaderDemoteToHelperInvocation (glslc's discard)");
     need(f12.scalarBlockLayout == VK_TRUE, "scalarBlockLayout");
     need(f.imageCubeArray == VK_TRUE, "imageCubeArray (the point lights' shadows)");
     need(f.multiDrawIndirect == VK_TRUE, "multiDrawIndirect");
@@ -741,6 +747,68 @@ bool float64_slow() {
     default:
         return false;
     }
+}
+
+// orig: (host) the pipeline cache: the driver's compiled pipelines of the last start, read back from the settings' folder
+// (vk_pipeline_cache.bin), so that a start after the first does not compile them again. Kept only when its header is this
+// device's and driver's (the driver checks again). Off headless unless RAC1_VK_PIPELINE_CACHE=1 (the test runs leave no
+// file); RAC1_VK_PIPELINE_CACHE=0 turns it off.
+void pipeline_cache_open() {
+    const char* env = std::getenv("RAC1_VK_PIPELINE_CACHE");
+    if (env != nullptr && std::atoi(env) == 0) return;
+    if (g_ctx.headless && env == nullptr) return;
+    const std::filesystem::path dir = platform::config_dir();
+    if (dir.empty()) return;
+    g_ctx.pipe_cache_path = dir / "vk_pipeline_cache.bin";
+    std::vector<char> data;
+    if (std::ifstream f(g_ctx.pipe_cache_path, std::ios::binary); f) {
+        data.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+    }
+    // (VkPipelineCacheHeaderVersionOne: header size, version, vendor, device, the pipeline cache UUID)
+    const VkPhysicalDeviceProperties& p = g_ctx.dev_props;
+    bool ok = data.size() >= 32;
+    if (ok) {
+        uint32_t hdr[4];
+        std::memcpy(hdr, data.data(), sizeof hdr);
+        ok = hdr[0] >= 32 && hdr[1] == VK_PIPELINE_CACHE_HEADER_VERSION_ONE && hdr[2] == p.vendorID && hdr[3] == p.deviceID &&
+             std::memcmp(data.data() + 16, p.pipelineCacheUUID, VK_UUID_SIZE) == 0;
+    }
+    if (!ok) data.clear();
+    VkPipelineCacheCreateInfo ci{};
+    ci.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+    ci.initialDataSize = data.size();
+    ci.pInitialData = data.empty() ? nullptr : data.data();
+    if (vkCreatePipelineCache(g_ctx.device, &ci, nullptr, &g_ctx.pipe_cache) != VK_SUCCESS) {
+        ci.initialDataSize = 0;  // (the driver refused the data: an empty cache)
+        ci.pInitialData = nullptr;
+        if (vkCreatePipelineCache(g_ctx.device, &ci, nullptr, &g_ctx.pipe_cache) != VK_SUCCESS) g_ctx.pipe_cache = VK_NULL_HANDLE;
+    }
+    if (g_ctx.pipe_cache != VK_NULL_HANDLE)
+        std::fprintf(stderr, "[vk] pipeline cache %s (%zu KB)\n", data.empty() ? "new" : "read", data.size() / 1024);
+}
+
+// orig: (host) the pipeline cache written back at the end (through a temporary file: a start cut short keeps the old one)
+void pipeline_cache_close() {
+    if (g_ctx.pipe_cache == VK_NULL_HANDLE) return;
+    size_t size = 0;
+    if (vkGetPipelineCacheData(g_ctx.device, g_ctx.pipe_cache, &size, nullptr) == VK_SUCCESS && size > 0) {
+        std::vector<char> data(size);
+        if (vkGetPipelineCacheData(g_ctx.device, g_ctx.pipe_cache, &size, data.data()) == VK_SUCCESS) {
+            std::error_code ec;
+            std::filesystem::create_directories(g_ctx.pipe_cache_path.parent_path(), ec);
+            std::filesystem::path tmp = g_ctx.pipe_cache_path;
+            tmp += ".tmp";
+            bool written = false;
+            if (std::ofstream f(tmp, std::ios::binary | std::ios::trunc); f) {
+                f.write(data.data(), static_cast<std::streamsize>(size));
+                written = static_cast<bool>(f);
+            }
+            if (written) std::filesystem::rename(tmp, g_ctx.pipe_cache_path, ec);
+            else std::filesystem::remove(tmp, ec);
+        }
+    }
+    vkDestroyPipelineCache(g_ctx.device, g_ctx.pipe_cache, nullptr);
+    g_ctx.pipe_cache = VK_NULL_HANDLE;
 }
 
 bool init(GLFWwindow* window, bool vsync, bool headless) {
@@ -969,6 +1037,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     v13_feat.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
     v13_feat.dynamicRendering = VK_TRUE;
     v13_feat.synchronization2 = VK_TRUE;
+    v13_feat.shaderDemoteToHelperInvocation = VK_TRUE;  // (glslc for Vulkan 1.3 compiles discard to OpDemoteToHelperInvocation)
     if (g_ctx.has_depth_clip_control) v13_feat.pNext = &clip_feat;
     else if (g_ctx.has_provoking_vertex) v13_feat.pNext = &prov_feat;
 
@@ -1021,6 +1090,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     }
     volkLoadDevice(g_ctx.device);
     vkGetDeviceQueue(g_ctx.device, g_ctx.queue_family, 0, &g_ctx.queue);
+    pipeline_cache_open();
 
     // Choose depth-stencil format
     g_ctx.depth_format = VK_FORMAT_D32_SFLOAT_S8_UINT;
@@ -1137,6 +1207,7 @@ void shutdown() {
             if (fn != nullptr) fn();
         }
         g_ctx.shutdown_callbacks.clear();
+        pipeline_cache_close();
 
         for (auto& [k, s] : g_ctx.samplers) {
             if (s != VK_NULL_HANDLE) vkDestroySampler(g_ctx.device, s, nullptr);
@@ -2238,7 +2309,7 @@ VkPipeline create_graphics_pipeline(const GraphicsPipelineDesc& desc) {
                      (dfmt == VK_FORMAT_D32_SFLOAT_S8_UINT || dfmt == VK_FORMAT_D24_UNORM_S8_UINT))
                         ? dfmt
                         : VK_FORMAT_UNDEFINED;
-    if (g_ctx.in_frame && !g_ctx.target_stack.empty()) {
+    if (g_ctx.in_frame && !g_ctx.target_stack.empty() && !desc.formats_from_desc) {
         const RenderTarget& rt = g_ctx.target_stack.back();
         cfmt = (rt.color_view != VK_NULL_HANDLE) ? rt.color_format : VK_FORMAT_UNDEFINED;
         dfmt = (rt.depth_view != VK_NULL_HANDLE) ? rt.depth_format : VK_FORMAT_UNDEFINED;
@@ -2304,7 +2375,7 @@ VkPipeline create_graphics_pipeline(const GraphicsPipelineDesc& desc) {
     gpci.layout = desc.layout;
 
     VkPipeline pipe = VK_NULL_HANDLE;
-    vkCreateGraphicsPipelines(g_ctx.device, VK_NULL_HANDLE, 1, &gpci, nullptr, &pipe);
+    vkCreateGraphicsPipelines(g_ctx.device, g_ctx.pipe_cache, 1, &gpci, nullptr, &pipe);
     return pipe;
 }
 
@@ -2317,7 +2388,7 @@ VkPipeline create_compute_pipeline(VkPipelineLayout layout, VkShaderModule cs) {
     cpci.stage.pName = "main";
     cpci.layout = layout;
     VkPipeline pipe = VK_NULL_HANDLE;
-    vkCreateComputePipelines(g_ctx.device, VK_NULL_HANDLE, 1, &cpci, nullptr, &pipe);
+    vkCreateComputePipelines(g_ctx.device, g_ctx.pipe_cache, 1, &cpci, nullptr, &pipe);
     return pipe;
 }
 

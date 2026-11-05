@@ -14,6 +14,12 @@ What changed in each release. Releases are source only: you build the game with 
   nothing and logs a line. See docs/movie-subtitles.md.
 - Launcher, Settings: Movie subtitles (the languages, for every setup), Make movie subtitles, Install subtitle pack (the
   .srt files of a .zip into `assets/movie-subtitles/`), and Enable debug tools (the game started with `--debug-tools`).
+- Vulkan: the mobys' shadow casters get OpenGL's depth bias (it was left unset, whatever the driver had: shadow acne or
+  gaps on mobys depending on the GPU); the validation layer's other errors fixed (the occlusion's and the sun rays'
+  pipelines made for their own targets' formats, discard's helper-invocation feature enabled and checked, the dummy
+  depth images' transfer usage, the particles' objects destroyed at the end).
+- Vulkan: the driver's compiled pipelines kept between starts (`vk_pipeline_cache.bin` in the settings' folder; not
+  headless unless RAC1_VK_PIPELINE_CACHE=1).
 
 ## 0.7.0
 

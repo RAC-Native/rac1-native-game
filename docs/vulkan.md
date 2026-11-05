@@ -71,13 +71,17 @@ the GPU.
   build still succeeds, with the renderer left out (its shaders empty: it never starts). The setup
   lists `glslc` as optional; the private MSYS2 that `setup.cmd` and the launcher download on Windows
   does not include it (see [Setup](setup.md#on-windows) and [The launcher](launcher.md#what-it-runs)).
+- The driver's compiled pipelines are kept between starts in `vk_pipeline_cache.bin` in the settings'
+  folder (a `VkPipelineCache`, read back when its header is this device's and driver's), so a start
+  after the first creates them faster. Not used headless unless `RAC1_VK_PIPELINE_CACHE=1`;
+  `RAC1_VK_PIPELINE_CACHE=0` turns it off.
 - The debug menu (ImGui's Vulkan backend) and the Profiler work with it: the GPU's time per stage
   from Vulkan timestamps (a query pool, read back frames later, never waited for), the GPU's memory
   from `VK_EXT_memory_budget`, and "Count Vulkan allocations" (the renderer's images and buffers by
   use) in place of the GL object count. The debug crosshair's world point (the Lighting tab) reads
   the depth two frames late, without a wait.
 
-Requirements: Vulkan 1.3 (dynamic rendering, synchronization2), with `samplerAnisotropy`,
+Requirements: Vulkan 1.3 (dynamic rendering, synchronization2, shaderDemoteToHelperInvocation: glslc compiles `discard` to it), with `samplerAnisotropy`,
 `fillModeNonSolid`, `imageCubeArray`, `multiDrawIndirect`, `drawIndirectFirstInstance`,
 `depthClamp`, `depthBiasClamp`, `shaderClipDistance`, `dualSrcBlend`, `shaderFloat64` (the tfrag
 compute shader's EE rounding), `shaderInt64` and scalar block layout; `hostQueryReset` for the
