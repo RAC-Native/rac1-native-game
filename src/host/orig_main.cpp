@@ -2383,8 +2383,12 @@ int main(int argc, char** argv) {
     // Vulkan cannot start (no driver, no Vulkan 1.3, no device with what it needs, the build without its shaders) or when the
     // last Vulkan run crashed in its start or lost its GPU (vk_safety.h: chosen by the row only). The reason in the log's
     // "[renderer]" line (the launcher shows it) and in the Renderer row
-    bool want_vk = rac1::graphics_display().vulkan;
-    const bool vk_by_row = want_vk && std::getenv("RAC1_RENDERER") == nullptr;
+    // (the row never chosen, `renderer auto`, the default: Vulkan in a window, OpenGL headless - the tests' renderer;
+    // RAC1_RENDERER=auto: the same path headless too, safety net included)
+    const char* renderer_env = std::getenv("RAC1_RENDERER");
+    const bool vk_auto = rac1::graphics_display().vulkan_auto;
+    bool want_vk = rac1::graphics_display().vulkan || (vk_auto && !headless);
+    const bool vk_by_row = want_vk && (renderer_env == nullptr || vk_auto);
     rac1::RendererWhy renderer_why = rac1::RendererWhy::kNone;
     std::string renderer_text;
     rac1::vk_safety::start(headless);
@@ -2405,6 +2409,7 @@ int main(int argc, char** argv) {
         if (window != nullptr && rac1::vk::init(window, vsync0, headless)) {
             if (!headless && fs_monitor == nullptr) host_window_on_monitor(window, rac1::graphics_display().monitor);
             if (vk_by_row) rac1::vk::set_device_lost_hook(rac1::vk_safety::device_lost);
+            if (vk_auto) std::printf("[renderer] auto: Vulkan (Options > Display > Renderer to choose)\n");
         } else {
 #if defined(__APPLE__)
             std::fprintf(stderr, "rac1-native: Metal could not start\n");  // (no OpenGL 4.6 on macOS)

@@ -20,7 +20,10 @@ namespace rac1 {
 // --- the host's side (orig_main.cpp) ---
 // The window as the settings ask for it
 struct GraphicsDisplay {
-    bool vulkan = false;  // the Graphics page's Renderer row (true: Vulkan, false: OpenGL, the default); read once, at the window's making
+    bool vulkan = false;  // the Graphics page's Renderer row chosen (true: Vulkan, false: OpenGL); read once, at the window's making
+    // the Renderer row never chosen (`renderer auto`, the default; RAC1_RENDERER=auto): Vulkan in a window, OpenGL headless
+    // (RAC1_RENDERER=auto: Vulkan headless too, `vulkan` set); OpenGL when Vulkan cannot start or the safety net says not to
+    bool vulkan_auto = false;
     bool fullscreen = false;
     int window_w = 960, window_h = 720;  // the size in window mode
     bool vsync = true;

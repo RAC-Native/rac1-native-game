@@ -44,8 +44,8 @@ source code, the files that are a mechanical translation of the game's own code 
   miniaudio, Vulkan-Headers and volk);
 - about 5 GB of free disk for the game's data and generated code (4 GB of it the disc's files, which the
   game reads instead of the image), besides the disc image, plus about 2 GB for the build;
-- a GPU and driver with **OpenGL 4.6** (and **Vulkan 1.3** for the optional Vulkan renderer,
-  which is optional: OpenGL is the default).
+- a GPU and driver with **OpenGL 4.6** and, for the Vulkan renderer (the default), **Vulkan 1.3**:
+  without it the game runs on OpenGL.
 
 The setup tool checks all of this and tells you what is missing, with the command to install it on
 Debian and Ubuntu (and their derivatives), Fedora, and Arch. It never installs anything without

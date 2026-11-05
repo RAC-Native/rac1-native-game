@@ -6,8 +6,8 @@
 //   vk_failed         written when the device is lost (VK_ERROR_DEVICE_LOST, GitHub issue #113): found at a start, the
 //                     last Vulkan run lost its GPU
 // Both stay until the player chooses the Renderer row again (Options > Display), so a start that crashes is not tried
-// at every start. Only for Vulkan chosen by the row (RAC1_RENDERER=vulkan, a test's choice, neither reads nor writes
-// them); not on macOS (Metal, no OpenGL there); never in a headless run unless RAC1_VK_MARKERS=1 (testing).
+// at every start. Only for Vulkan chosen by the row or by auto (the row never chosen, or RAC1_RENDERER=auto;
+// RAC1_RENDERER=vulkan, a test's choice, neither reads nor writes them); not on macOS (Metal, no OpenGL there); never in a headless run unless RAC1_VK_MARKERS=1 (testing).
 // Testing: RAC1_VK_FAIL=crash, the game ended at the 120th Vulkan frame as by a crash (RAC1_VK_FAIL's other words: vk_context.h).
 #ifndef RAC1_HOST_VK_SAFETY_H
 #define RAC1_HOST_VK_SAFETY_H

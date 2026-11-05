@@ -437,6 +437,10 @@ struct State {
     RendererWhy run_why = RendererWhy::kNone;
     int run_choice = 0, renderer_seen = 0;  // (renderer_seen: the row's value at the last change, for the hook)
     void (*chosen_hook)() = nullptr;
+    // the Renderer row never chosen (`renderer auto`: Vulkan in a window, OpenGL headless; the row shows the renderer running),
+    // and the row chosen by the player (`renderer_set 1`: a file without it, from 0.5.0..0.7.x whose `renderer opengl` was
+    // the default then, is read as auto once). Never in State()'s value: S_RENDERER's EE byte stays 0 (the RAM hashes)
+    bool renderer_auto = false, renderer_set = false;
 } gs_;
 
 // orig: (none) — enhancement: the number of values of a setting
@@ -583,9 +587,13 @@ void apply() {
     }
     GraphicsDisplay d;
     // (the Renderer row: read by the host once, when it makes its window - a change takes effect at the next start;
-    // a headless run keeps OpenGL unless RAC1_RENDERER asks)
-    d.vulkan = !g_advanced_disabled && v[S_RENDERER] != 0;
-    if (const char* env = std::getenv("RAC1_RENDERER")) d.vulkan = std::strcmp(env, "vulkan") == 0 || std::strcmp(env, "vk") == 0;
+    // auto is Vulkan in a window only; a headless run keeps OpenGL unless RAC1_RENDERER asks, `auto` included)
+    d.vulkan = !g_advanced_disabled && !gs_.renderer_auto && v[S_RENDERER] != 0;
+    d.vulkan_auto = !g_advanced_disabled && gs_.renderer_auto;
+    if (const char* env = std::getenv("RAC1_RENDERER")) {
+        d.vulkan_auto = std::strcmp(env, "auto") == 0;
+        d.vulkan = d.vulkan_auto || std::strcmp(env, "vulkan") == 0 || std::strcmp(env, "vk") == 0;
+    }
 #if defined(__APPLE__)
     d.vulkan = true;  // (macOS: the Vulkan renderer's code on Metal, the one renderer there: docs/metal.md)
 #endif
@@ -601,6 +609,7 @@ void apply() {
         ++gs_.serial;
     }
     gs_.display.vulkan = d.vulkan;  // (no serial: the host reads it once, at its start)
+    gs_.display.vulkan_auto = d.vulkan_auto;
 }
 
 // orig: (none) — enhancement: the real values written where the page shows them (EE)
@@ -631,11 +640,15 @@ bool prefs_read(const std::filesystem::path& path) {
     char key[64];
     int old_lighting = -1;
     bool seen_graphics = false, seen_quality = false;
+    char renderer[32] = {};  // ("" when there is no `renderer` line: a file from before 0.5.0)
     while (std::fscanf(f, "%63s", key) == 1) {
         int a = 0, b = 0;
-        if (std::strcmp(key, "renderer") == 0) {  // (a name: opengl / vulkan)
+        if (std::strcmp(key, "renderer") == 0) {  // (a name: opengl / vulkan / auto; the versions up to 0.7.x read auto as OpenGL)
             char name[32] = {};
-            if (std::fscanf(f, "%31s", name) == 1) gs_.value[S_RENDERER] = std::strcmp(name, "vulkan") == 0 ? 1 : 0;
+            if (std::fscanf(f, "%31s", name) == 1) {
+                std::memcpy(renderer, name, sizeof renderer);
+                gs_.value[S_RENDERER] = std::strcmp(name, "vulkan") == 0 ? 1 : 0;
+            }
             continue;
         }
         if (std::strcmp(key, "monitor") == 0) {  // (the name, not the index: GLFW's order is not stable)
@@ -662,6 +675,7 @@ bool prefs_read(const std::filesystem::path& path) {
             continue;
         }
         if (std::strcmp(key, "display") == 0) gs_.value[S_DISPLAY] = a != 0;
+        else if (std::strcmp(key, "renderer_set") == 0) gs_.renderer_set = a != 0;
         else if (std::strcmp(key, "render_scale") == 0) gs_.value[S_SCALE] = nearest(SCALES, a);
         else if (std::strcmp(key, "aspect") == 0 && a >= 0 && a < 3) gs_.value[S_ASPECT] = a;
         else if (std::strcmp(key, "fit") == 0) gs_.value[S_FIT] = a != 0;
@@ -697,6 +711,13 @@ bool prefs_read(const std::filesystem::path& path) {
         // and ignored)
     }
     std::fclose(f);
+    // the Renderer row: `vulkan` kept; `auto`, or a file whose row the player never chose (no `renderer_set`: the
+    // `renderer opengl` every file got as the default from 0.5.0 to 0.7.x) moves to auto once; chosen, kept
+    const bool explicit_vk = std::strcmp(renderer, "vulkan") == 0;
+    gs_.renderer_auto = std::strcmp(renderer, "auto") == 0 || (!gs_.renderer_set && !explicit_vk);
+    if (gs_.renderer_auto) gs_.value[S_RENDERER] = 0;
+    if (gs_.renderer_auto && std::strcmp(renderer, "auto") != 0)
+        std::printf("[graphics] renderer: '%s' never chosen in Options > Display: auto (Vulkan, OpenGL when it cannot start)\n", renderer[0] != 0 ? renderer : "(none)");
     // the preferences of before the switch (no `graphics` key): their `lighting` (0 Original, 1..3 Low..High) is the switch and
     // the Lighting row - Original: Graphics Original, the row at its default (High); Low..High: Enhanced with that value. (Ours
     // write `lighting` too, the same way, for the versions before: theirs is read only when `graphics` is not there)
@@ -749,12 +770,12 @@ void prefs_write() {
     {
         const int* v = gs_.value;
         static constexpr const char* kFormat =
-            "display %d\nmonitor %s\nwindow %d %d\nrender_scale %d\naspect %d\nfit %d\nlod %d\nfov %d\nvsync %d\nfps_cap %d\nlighting %d\ndynamic_shadows %d\nsecondary_lights %d\nshadow_distance %d\nambient_occlusion %d\ntexture_detail %d\nshadow_strength %d\nsun_rays_quality %d\nao_intensity %d\nambient_particles %d\nhud %d\nrenderer %s\nsurface_detail %d\ngrass %d\nwater_reflections %d\ngraphics %d\nlighting_quality %d\n";
+            "display %d\nmonitor %s\nwindow %d %d\nrender_scale %d\naspect %d\nfit %d\nlod %d\nfov %d\nvsync %d\nfps_cap %d\nlighting %d\ndynamic_shadows %d\nsecondary_lights %d\nshadow_distance %d\nambient_occlusion %d\ntexture_detail %d\nshadow_strength %d\nsun_rays_quality %d\nao_intensity %d\nambient_particles %d\nhud %d\nrenderer %s\nrenderer_set %d\nsurface_detail %d\ngrass %d\nwater_reflections %d\ngraphics %d\nlighting_quality %d\n";
         // (`lighting` as the versions before the switch read it: 0 Original, 1..3 Low..High)
         const int old_lighting = v[S_GFX] != 0 ? v[S_LIGHTING] + 1 : 0;
         auto format = [&](char* out, size_t n) {
             return std::snprintf(out, n, kFormat, v[S_DISPLAY], gs_.monitor_name.c_str(), gs_.win_w, gs_.win_h, SCALES[v[S_SCALE]], v[S_ASPECT], v[S_FIT], v[S_LOD], FOVS[v[S_FOV]], v[S_VSYNC], CAPS[v[S_CAP]], old_lighting, v[S_DYN_SHADOWS],
-                     v[S_SEC_LIGHTS], v[S_SHADOW_DIST], v[S_AO], v[S_MIPS], SHADOW_STRS[v[S_SHADOW_STR]], v[S_SUN_RAYS], AO_STRS[v[S_AO_STR]], v[S_PARTICLES], v[S_HUD], v[S_RENDERER] != 0 ? "vulkan" : "opengl", v[S_SURFACE], v[S_GRASS], v[S_WREFL],
+                     v[S_SEC_LIGHTS], v[S_SHADOW_DIST], v[S_AO], v[S_MIPS], SHADOW_STRS[v[S_SHADOW_STR]], v[S_SUN_RAYS], AO_STRS[v[S_AO_STR]], v[S_PARTICLES], v[S_HUD], gs_.renderer_auto ? "auto" : v[S_RENDERER] != 0 ? "vulkan" : "opengl", gs_.renderer_set ? 1 : 0, v[S_SURFACE], v[S_GRASS], v[S_WREFL],
                      v[S_GFX], v[S_LIGHTING]);
         };
         // (through a temporary file: a crash or a full disk never leaves the preferences half written)
@@ -772,12 +793,18 @@ void rows_write(int p);
 // orig: (none) — enhancement: a value changed by the page (or New Game's preset): applied, the
 // preferences to be written
 void changed() {
+    // (the Renderer row chosen: auto no more, written as chosen from now on)
+    const bool renderer_chosen = gs_.run_known && gs_.value[S_RENDERER] != gs_.renderer_seen;
+    if (renderer_chosen) {
+        gs_.renderer_auto = false;
+        gs_.renderer_set = true;
+    }
     if (gs_.value[S_MONITOR] >= 0 && static_cast<size_t>(gs_.value[S_MONITOR]) < gs_.monitors.size()) gs_.monitor_name = gs_.monitors[gs_.value[S_MONITOR]];  // (the row's choice kept by name)
     apply();
     values_to_ee();
     gs_.dirty = true;
     // (the Renderer row chosen again: the host's safety net markers removed, vk_safety.h)
-    if (gs_.run_known && gs_.value[S_RENDERER] != gs_.renderer_seen && gs_.chosen_hook != nullptr) gs_.chosen_hook();
+    if (renderer_chosen && gs_.chosen_hook != nullptr) gs_.chosen_hook();
     gs_.renderer_seen = gs_.value[S_RENDERER];
     // (the Graphics page's rows: the switch alone with Original, all of them with Enhanced)
     if (gs_.installed && (gs_.value[S_GFX] != 0) != (gs_.shown_count[P_GRAPHICS] > 1)) rows_write(P_GRAPHICS);
@@ -803,7 +830,7 @@ std::string value_text(Setting s) {
 #if defined(__APPLE__)
         case S_RENDERER: return "Metal";
 #else
-        case S_RENDERER: {  // (the choice; the renderer running when it is another: "Vulkan (OpenGL)"
+        case S_RENDERER: {  // (the choice; the renderer running when it is another: "Vulkan (OpenGL)"; auto: the one running, its value)
             const char* chosen = v != 0 ? "Vulkan" : "OpenGL";
             if (!gs_.run_known || gs_.run_vulkan == (v != 0)) return chosen;
             return std::string(chosen) + (gs_.run_vulkan ? " (Vulkan)" : " (OpenGL)");  // (why: the row's help, renderer_help)
@@ -853,7 +880,9 @@ std::string renderer_help() {
     const char* const* t = texts();
 #if !defined(__APPLE__)
     const int v = gs_.value[S_RENDERER];
-    if (gs_.run_known && gs_.run_vulkan != (v != 0)) {
+    // (auto fell back to OpenGL: the row says OpenGL, the help why)
+    const bool auto_fell = gs_.renderer_auto && gs_.run_known && !gs_.run_vulkan && gs_.run_why != RendererWhy::kNone && gs_.run_why != RendererWhy::kEnv;
+    if (auto_fell || (gs_.run_known && gs_.run_vulkan != (v != 0))) {
         const int why = v != gs_.run_choice ? 0 : static_cast<int>(gs_.run_why);
         return RENDERER_WHY[t == TEXTS[1] ? 1 : t == TEXTS[2] ? 2 : t == TEXTS[3] ? 3 : 0][why];
     }
@@ -1048,6 +1077,7 @@ void graphics_load() {
     if (!g_advanced_disabled) {
         if (!prefs_read(prefs_path())) {
             prefs_migrate();
+            gs_.renderer_auto = true;  // (a fresh file: `renderer auto`; State()'s S_RENDERER stays 0, the EE byte)
             gs_.dirty = true;
         }
     }
@@ -1154,6 +1184,8 @@ void graphics_set_monitors(std::vector<std::string> names) {
 void graphics_set_renderer_running(bool vulkan, RendererWhy why) {
     gs_.display.vulkan = vulkan;
     gs_.run_known = true;
+    // (auto: the row's value is the renderer running - not written to the EE byte, which only the row's changes write)
+    if (gs_.renderer_auto) gs_.value[S_RENDERER] = vulkan ? 1 : 0;
     gs_.run_vulkan = vulkan;
     gs_.run_choice = gs_.renderer_seen = gs_.value[S_RENDERER];
     gs_.run_why = why == RendererWhy::kNone && vulkan != (gs_.value[S_RENDERER] != 0) ? RendererWhy::kEnv : why;

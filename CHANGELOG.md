@@ -29,6 +29,11 @@ What changed in each release. Releases are source only: you build the game with 
   running ("Vulkan (OpenGL)") and its help why, in the four languages; the launcher shows the game's reason after it closes. Fake failures
   for testing: RAC1_VK_FAIL, RAC1_VK_MARKERS. See docs/vulkan.md#when-vulkan-cannot-start.
 - Options > Display > Renderer's help no longer calls Vulkan experimental (the four languages).
+- Renderer now Vulkan by default; set OpenGL in Options > Display to go back. A preferences file whose Renderer row was
+  never chosen (`renderer auto`, new; 0.5.0..0.7.x wrote `renderer opengl` as their default, read as auto once) plays
+  Vulkan in a window, OpenGL when Vulkan cannot start or the safety net says not to try, the row showing the renderer
+  running; choosing the row writes it with `renderer_set 1`, and `renderer vulkan` stays. Headless runs stay OpenGL
+  (RAC1_RENDERER=auto takes the auto path headless too). 0.7.x reads `auto` as OpenGL.
 
 ## 0.7.0
 

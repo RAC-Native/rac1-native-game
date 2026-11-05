@@ -64,8 +64,8 @@ default, is the original's picture whatever the rows under it hold), with a pres
   distant objects stay sharp. The PS2's own mip choice remains available.
 - **A frame-rate cap** for the picture (the game's logic always runs at 60 frames a second), and
   V-Sync.
-- **The renderer**: OpenGL, the default, or [Vulkan](vulkan.md) (optional, from the next start),
-  the same picture.
+- **The renderer**: [Vulkan](vulkan.md), the default, or OpenGL (from the next start), the same
+  picture; OpenGL when Vulkan cannot start.
 - **Ambient particles** (Graphics: Enhanced): our own dust, ash, embers, fireflies, light dust in the sunlight, rain and snow
   on some levels, purely visual; Batalia's rain and Hoven's snow drawn in place of the game's own while on. See
   [Ambient particles](particles.md).

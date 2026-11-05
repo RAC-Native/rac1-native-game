@@ -1,7 +1,7 @@
-# The Vulkan renderer (optional)
+# The Vulkan renderer
 
-An opt-in second backend for the same renderer: Options > Display > **Renderer** (OpenGL, the
-default, or Vulkan), or `RAC1_RENDERER=vulkan` for one run. It draws exactly what the OpenGL path
+The default backend of the renderer, beside OpenGL: Options > Display > **Renderer** (Vulkan or
+OpenGL), or `RAC1_RENDERER=vulkan` / `opengl` for one run. It draws exactly what the OpenGL path
 draws - the [MRP](rendering.md) world, sky, mobys, particles, effects, VU1 program 7's water and
 lava surfaces and drop shadows, the [modern lighting](lighting.md) (sun cascades, point lights and
 their shadow cubes, ambient occlusion, sun rays, emissive surfaces, [materials](materials.md)), the
@@ -12,6 +12,14 @@ The renderer is read once, when the window is made: a change on the Graphics pag
 the next start. When Vulkan cannot start, or the last Vulkan run went wrong, the game opens with
 OpenGL and says why (see [When Vulkan cannot start](#when-vulkan-cannot-start)); the saved choice is
 kept.
+
+Until the player chooses the row, the preferences say `renderer auto`: Vulkan in a window (OpenGL when
+it cannot start, as above; the row shows the renderer running), OpenGL in a headless run, so the
+tests' pictures do not move (`RAC1_RENDERER=auto` takes the auto path headless too). Choosing the row
+writes the choice (`renderer opengl` or `renderer vulkan`) with `renderer_set 1`. A preferences file
+without `renderer_set` (0.5.0 to 0.7.x wrote `renderer opengl` as their default) is read as auto: those
+players move to Vulkan once, and Options > Display > Renderer takes them back to OpenGL; `renderer
+vulkan` stays. Versions up to 0.7.x read `auto` as OpenGL.
 
 At the start the log names the device (`[vk] <name>, Vulkan x.y.z, driver ...: push constants N
 bytes, subgroup S`) and checks what the renderer relies on: the features (dynamic rendering,
@@ -58,8 +66,8 @@ game opens with OpenGL:
    (in the driver, the pipelines' making or the first frames); `vk_failed` is written when the GPU
    is lost (`VK_ERROR_DEVICE_LOST`, as on the UHD 620 of #113). Either one sends every start to
    OpenGL until the player chooses the Renderer row again, which removes both, so a start that
-   crashes is not tried again at every start. They count only for Vulkan chosen in the options:
-   `RAC1_RENDERER=vulkan` neither reads nor writes them, and a headless run uses them only with
+   crashes is not tried again at every start. They count only for Vulkan chosen in the options or
+   by auto (`RAC1_RENDERER=auto` too): `RAC1_RENDERER=vulkan` neither reads nor writes them, and a headless run uses them only with
    `RAC1_VK_MARKERS=1`. Not on macOS (Metal, the one renderer there).
 
 The game then logs one line with the reason, which the [launcher](launcher.md) shows under its
@@ -70,7 +78,7 @@ status when the game has closed:
 ```
 
 and Options > Display > **Renderer** shows the renderer running beside the choice, `Vulkan
-(OpenGL)`, with the reason in the row's help (in the game's language: no shaders, no driver, no
+(OpenGL)` (under auto, the renderer running alone: `OpenGL`), with the reason in the row's help (in the game's language: no shaders, no driver, no
 Vulkan 1.3, no GPU, missing features, could not start, the last start crashed, the GPU stopped;
 "from the next start" after the row was changed during the session, RAC1_RENDERER when that
 variable chose).
@@ -79,7 +87,7 @@ Each path can be tried headless with fake failures: `RAC1_VK_FAIL=loader` (no lo
 (every device fails the check), `first` (the best device fails it: the next one is used), `crash`
 (the game ends at the 120th Vulkan frame, as by a crash), `lost` (a lost device at the 120th
 frame); more than one with commas. The markers need the Renderer row's Vulkan (a preferences file
-with `renderer vulkan`, `RAC1_ADVANCED=1`) and `RAC1_VK_MARKERS=1`:
+with `renderer vulkan`, `RAC1_ADVANCED=1`), or `RAC1_RENDERER=auto`, and `RAC1_VK_MARKERS=1`:
 
 ```sh
 mkdir -p /tmp/vkt/rac1-native && printf 'renderer vulkan\n' > /tmp/vkt/prefs.txt
