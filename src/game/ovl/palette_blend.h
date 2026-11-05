@@ -15,7 +15,9 @@ namespace rac1 {
 // (VFTOI0), each lane's low byte packed (PPACH / PPACB) into the texel's word. The same values as the transliterated loop (each
 // palette entry's product computed once, not per texel: the same product), the same VU0 registers left (vf2..vf9 of the last
 // group); true and `*v0` (the routine's return: the last group's first word) when done, false (the loop as transliterated) when
-// off - RAC1_PALETTE_BLEND_FAST, the Wii U's default 1, the PC's 0 - or when there is nothing to do.
+// off - RAC1_PALETTE_BLEND_FAST, the Wii U's default 1, the PC's 0 - or when there is nothing to do. With
+// RAC1_PALETTE_BLEND_DIRECT (default 1) the texels go through one host pointer per stream and without the clamps, when the
+// palettes' products and the streams' places allow it (palette_blend.cpp direct_ok / safe): the same words.
 bool palette_blend_loop(uint32_t a0, uint32_t a1, uint32_t a3, uint32_t t1, uint32_t* v0);
 
 }  // namespace rac1

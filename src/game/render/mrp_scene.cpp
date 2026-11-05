@@ -49,6 +49,11 @@ double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::
 MrpVec4 vec4_at(uint32_t a) { return MrpVec4{lwc1(a), lwc1(a + 4), lwc1(a + 8), lwc1(a + 12)}; }
 MrpMat4 mat4_at(uint32_t a) {
     MrpMat4 m;
+    static_assert(sizeof(MrpMat4) == 64, "four rows of four floats");
+    if ((a & 3u) == 0 && a - SPR_BASE <= static_cast<uint32_t>(SPR_SIZE) - 64u) {  // (the scratchpad's words as lwc1 reads them)
+        std::memcpy(&m, ee_ram_ptr_read(a), 64);
+        return m;
+    }
     for (int i = 0; i < 4; ++i) m.r[i] = vec4_at(a + 16 * static_cast<uint32_t>(i));
     return m;
 }
@@ -187,9 +192,15 @@ void on_draw(uint32_t moby, uint32_t chain_begin, uint32_t chain_end, uint32_t r
     m.record_qwords = qwords;
     m.record_first = static_cast<uint32_t>(f.records.size());
     f.records.resize(f.records.size() + static_cast<size_t>(qwords) * 16);
-    for (uint32_t i = 0; i < qwords * 16; i += 4) {
-        const uint32_t w = lwu(spr_rec + i);
-        std::memcpy(&f.records[m.record_first + i], &w, 4);
+    const uint32_t nbytes = qwords * 16;
+    if ((spr_rec & 3u) == 0 && spr_rec - SPR_BASE < static_cast<uint32_t>(SPR_SIZE) && nbytes <= SPR_SIZE - (spr_rec - SPR_BASE)) {
+        // (the scratchpad's words in the host's order, as lwu reads them: one copy, the same bytes)
+        std::memcpy(&f.records[m.record_first], ee_ram_ptr_read(spr_rec), nbytes);
+    } else {
+        for (uint32_t i = 0; i < nbytes; i += 4) {
+            const uint32_t w = lwu(spr_rec + i);
+            std::memcpy(&f.records[m.record_first + i], &w, 4);
+        }
     }
     if (parts != nullptr) {  // the MRP-only pass: its parts as the chain would have had them (with the verify: kept aside)
         if (g_moby_pass_mrp_verify) {

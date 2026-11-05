@@ -1441,3 +1441,28 @@ Built and proved exact on the PC that evening; measured on the console 2026-11-0
     19.1 ms), Novalis 587 (12.7 ms), Veldin 1133 of 1200 on core 2 (wait 0, idle 5.3 ms).
   - Kerwan and Novalis are still bound by the game thread (the main thread waits 13-19 ms for it a host frame): the game step is the
     next target.
+
+
+### Kerwan's game step: the palette blend direct, the moby records in one copy; the sound's state in jumps tried (2026-11-05)
+
+- **Kerwan's core 2 now** (lv/smp_k6, 7b02a67, 1500 steps not in real time, the game thread's samples): spread thin - the palette
+  blend 4.1% self (+ its byte reads), memcpy 3.4% (the journal's pages, on_pose), the moby pass's draw loop 2.9%, moby_transform_core
+  2.5%, the VU0 lane helpers of segment_collide_v (qsub / qmul) 3.4%, the IOP's state 3.2%, memset 2.0% (on_draw's records); by
+  stage render_frame 34% (moby_pass 15%, the draw lists 10.6%), class 75 10.8%, segment_collide_v 9.4%. The effects run once (no
+  shadow run on the Wii U).
+- **RAC1_PALETTE_BLEND_DIRECT (palette_blend.cpp, default 1):** the blend loop (4096 texels a call) read the index bytes and wrote
+  the texels through ee_read / ee_write one by one, with a clamp per lane: ~300 cycles a lane. Now, when every palette product is 0
+  or 2^-40 <= |x| < 2^30 (the sum below 2^31 and never a denormal: VADD's clamp the identity, VFTOI0 the C conversion) and the three
+  streams are word aligned in RAM without the texels over the indices: the index words and the texels through one host pointer each
+  (host-order words: index t is bits 8t..8t+7), the sum and the conversion plain. **Exact:** RAMHASH DIRECT 0 against 1 identical on
+  levels 3 (PC and Wii U paths), 5, 7, 8, 9 (PC and Wii U), 14 - the direct form taken on every call (1025-2049 a run), the other never.
+  **Console (Kerwan deterministic):** 16.65 / 16.49 -> 16.21 / 16.22 ms a step (**-0.35 ms**).
+- **The moby records in one copy (mrp_scene.cpp on_draw, mat4_at):** the draw loop's record (qwords x 16 bytes) and the pose's
+  joint matrices were copied word by word through lwu / lwc1; from the scratchpad they are host-order words: one memcpy, the same
+  bytes. Console: 16.22 -> ~16.0 ms a step (with the build below, the sound's switch off and on alike).
+- **Tried, not kept: the IOP state in jumps** (Voice::RunState: the decode position moved at once over the samples that read no
+  ADPCM block, the envelope still per sample): exact (RAC1_SND_STATE_CHECK against the sample loop on a copy: ~164,000 voice ticks,
+  0 differ; RAMHASH identical on 3 / 0 / 1 / 8 with RAC1_IOP_STATE_ONLY=1 RAC1_IOP_MIRROR_TEST=1 - without the mirror the PC never
+  runs the state-only path), but the console measured 15.99 / 16.01 off, 15.96 / 16.01 on: the envelope's per-sample step is the cost.
+- pc_check: the three references, RAMHASH = main's.
+
