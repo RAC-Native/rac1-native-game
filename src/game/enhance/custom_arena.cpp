@@ -554,7 +554,9 @@ void challenge_start(int index) {
     say(running().text == 0x2f4c ? "start_mega" : running().text == 0x2f51 ? "start_ultimate" : "start");
     camera_want(0);
     g_a.sm.set(Intro);
-    std::printf("[arena] challenge %d \"%s\": %zu waves, prize %d\n", index, running().name.c_str(), running().waves.size(), g_a.prize);
+    std::printf("[arena] challenge %d \"%s\": %zu waves, prize %d; pvars blocks %u, spawned mobys %u\n", index, running().name.c_str(),
+                running().waves.size(), g_a.prize, standin_blocks_taken(), mobys_alive());
+    if (trace()) std::printf("[arena] frame %u: spawned mobys by class: %s\n", level_frame(), mobys_alive_classes(12).c_str());
 }
 
 // orig: (none) — the enemies left on the floor killed (a lost challenge)
@@ -586,8 +588,9 @@ void challenge_end(bool won) {
         g_a.sm.set(Lost);
     }
     custom_planet_music_select(0);
-    std::printf("[arena] frame %u: challenge %d %s (%d kills)%s%s\n", level_frame(), g_a.running, won ? "won" : "lost", g_a.kills,
-                won ? "" : ": ", won ? "" : g_a.reason.c_str());
+    std::printf("[arena] frame %u: challenge %d %s (%d kills)%s%s; pvars blocks %u, spawned mobys %u\n", level_frame(), g_a.running,
+                won ? "won" : "lost", g_a.kills, won ? "" : ": ", won ? "" : g_a.reason.c_str(), standin_blocks_taken(), mobys_alive());
+    if (trace()) std::printf("[arena] frame %u: spawned mobys by class: %s\n", level_frame(), mobys_alive_classes(12).c_str());
 }
 
 // orig: (none) — the enemies on the floor checked: the dead counted (and their blocks given back), the fallen killed
@@ -689,6 +692,11 @@ void step() {
         const uint32_t f = static_cast<uint32_t>(std::strtoul(e, &end, 10));
         return std::pair<uint32_t, int>{f, *end == ':' ? std::atoi(end + 1) : -1};
     }();
+    // (testing) RAC1_ARENA_GOD=1: Ratchet's nanotech kept at its most (a headless round of the challenges, P8)
+    static const bool god = std::getenv("RAC1_ARENA_GOD") != nullptr;
+    if (god && trace() && level_frame() % 600 == 0)
+        std::printf("[arena] frame %u: spawned mobys %u: %s\n", level_frame(), mobys_alive(), mobys_alive_classes(12).c_str());
+    if (god && hero_health() > 0 && hero_health() < hero_health_max()) hero_health_set(hero_health_max());
     switch (sm.state) {
     case Idle:
         sm.first();

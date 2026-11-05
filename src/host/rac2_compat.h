@@ -56,6 +56,12 @@ void moby_kill(uint32_t m);
 uint32_t standin_spawn(uint32_t tmpl, uint32_t pv_size, Vec3 at, float yaw);
 // orig: (none) — the copy's pvars block given back (the moby gone)
 void standin_release(uint32_t pvars);
+// orig: (none) — P8 (testing): the pvars blocks taken now, and the spawned mobys alive (the spawn slots), for the leak
+// checks at a challenge's end
+uint32_t standin_blocks_taken();
+uint32_t mobys_alive();
+// orig: (none) — the spawned mobys alive by class, "class x count ..." (the most first, at most `n` classes)
+std::string mobys_alive_classes(size_t n);
 // orig: (none) — every block free (the level loaded again)
 void standin_reset();
 // orig: (none) — blocks in use
@@ -221,6 +227,8 @@ Vec3 hero_pos();
 // orig: (none) — nanotech now / most
 int32_t hero_health();
 int32_t hero_health_max();
+// orig: (none) — P8 (testing): nanotech set (RAC1_ARENA_GOD)
+void hero_health_set(int32_t n);
 // orig: (none) — the item in hand (8 the wrench)
 uint32_t hero_item();
 

@@ -266,6 +266,8 @@ What changed in each release. Releases are source only: you build the game with 
 - Local experiment, planet P8: the B2 Brawler's two arm guns aim at Ratchet by their joints (`rac2::joint_turn`: RAC1's own
   per-joint override list on the moby, as RAC2 turns its arm joints), within RAC2's limits and at its pace; its shells leave
   a hot trail and smoke and blow up in sparks and smoke; the lamps on its antennas, its muzzles and dome glow.
+- Local experiment, planet P8: `RAC1_ARENA_GOD` (testing) keeps Ratchet's nanotech up for a headless round of the
+  challenges; each challenge's start and end print the pvars blocks taken and the spawned mobys alive (the leak check).
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iterator>
+#include <string>
 #include <vector>
 
 namespace rac1::rac2 {
@@ -141,6 +142,45 @@ uint32_t standin_spawn(uint32_t tmpl, uint32_t pv_size, Vec3 at, float yaw) {
     moby_show(m, true);
     if (lw(m + moby::kClass) != 0) moby_update_transform(m);
     return m;
+}
+
+// orig: (none)
+uint32_t standin_blocks_taken() {
+    uint32_t n = 0;
+    for (bool t : g_taken) n += t ? 1u : 0u;
+    return n;
+}
+
+// orig: (none)
+uint32_t mobys_alive() {
+    // (the spawn slots, 0x15ffdc .. 0x15ffe0: a slot in use has +0x20 below 0xfe, as moby_spawn reads them)
+    const uint32_t first = lwu(OV(0x0015ffdc)), end = lwu(OV(0x0015ffe0));
+    uint32_t n = 0;
+    for (uint32_t o = first; o != 0 && o < end; o += 0x100) {
+        const uint32_t b = lbu(o + 0x20);
+        if (b == 0xff) break;
+        n += b < 0xfe ? 1u : 0u;
+    }
+    return n;
+}
+
+// orig: (none)
+std::string mobys_alive_classes(size_t n) {
+    std::vector<std::pair<int32_t, int32_t>> seen;  // (count, class)
+    const uint32_t first = lwu(OV(0x0015ffdc)), end = lwu(OV(0x0015ffe0));
+    for (uint32_t o = first; o != 0 && o < end; o += 0x100) {
+        const uint32_t b = lbu(o + 0x20);
+        if (b == 0xff) break;
+        if (b >= 0xfe) continue;
+        const int32_t c = lh(o + moby::kClassId);
+        auto it = std::find_if(seen.begin(), seen.end(), [c](const auto& e) { return e.second == c; });
+        if (it == seen.end()) seen.emplace_back(1, c);
+        else ++it->first;
+    }
+    std::sort(seen.begin(), seen.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    std::string out;
+    for (size_t k = 0; k < seen.size() && k < n; ++k) out += (k ? " " : "") + std::to_string(seen[k].second) + "x" + std::to_string(seen[k].first);
+    return out;
 }
 
 // orig: (none)
@@ -791,6 +831,9 @@ Vec3 hero_pos() {
 
 // orig: (none)
 int32_t hero_health() { return lw(NANOTECH); }
+
+// orig: (none)
+void hero_health_set(int32_t n) { sw(NANOTECH, static_cast<uint32_t>(n)); }
 
 // orig: (none) — as nanotech.cpp's hero_health_max: Clank's 4, else *(0x15eda0)
 int32_t hero_health_max() { return lbu(HERO + 0x20a4) == 1 ? 4 : lw(NANOTECH_MAX); }

@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 397 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 398 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
 | [Debugging](#debugging-variables) | 300 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 76 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Automated testing](#automated-testing-variables) | 77 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -368,6 +368,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_AMMO` | <item>:<n>,<item>:<n>,...; unset = nothing changed | Sets the ammo of the listed weapons (item id and count) a few frames after the item-giving frame (RAC1_GIVE_FRAME + 5); used by scripted runs. |
 | `RAC1_ARENA_BOSS_HEALTH` | a number; unset = RAC2's (Chainblade 80, the B2 Brawler 100) | Local experiment (on the custom planet): the health RAC2's hand-ported arena bosses (`src/host/rac2_enemies.h`) start with, to see their knocks and their death in a short headless run (with `RAC1_ARENA_ENEMY_HIT`). |
 | `RAC1_ARENA_ENEMY_HIT` | `<level frame>[,<level frame>...]`; unset = off | Local experiment (on the custom planet): at those level frames a blast (a bomb's sphere test with the blaster's hit record) on each of RAC2's hand-ported arena enemies (`src/host/rac2_enemies.h`): their hit and death through RAC1's own collision and hit records, as a weapon's (RAC1's repeat rule: a blast within 15..60 frames of the one before does not count). |
+| `RAC1_ARENA_GOD` | set (any value) = on; unset = off | Local experiment (on the custom planet): Ratchet's nanotech kept at its most while the arena's controller runs (`src/host/custom_arena.h`), so a headless run goes through every challenge; with `RAC1_ARENA_SCRIPT`, `RAC1_ARENA_ENEMY_HIT` and `RAC1_ARENA_BOSS_HEALTH` the round of the challenges (each one's end prints the pvars blocks taken and the spawned mobys alive, the leak check). |
 | `RAC1_ARENA_MONITOR_HIT` | `<level frame>[:<monitor>]`; unset = off | Local experiment (on the custom planet): at that level frame a blast (a bomb's sphere test carrying the blaster's hit record) on each of the arena's monitors, or only the n-th to update in that frame: they take the hit through RAC1's own moby collision and hit records and break as when shot (`src/game/enhance/custom_classes.cpp`). |
 | `RAC1_ARENA_SCRIPT` | `<level frame>:<challenge>`; unset = off | Local experiment (on the custom planet): the arena's challenge of that index (0..13, `challenges.txt`) started at that level frame, as from its "Select Your Challenge" menu (`src/host/custom_arena.h`). |
 | `RAC1_ARRIVE` | set (any value) = on; default off | Starts the game as if the ship's map had just chosen the starting planet, so the run begins with the landing cutscene; also counts as asking for a specific level start. |
