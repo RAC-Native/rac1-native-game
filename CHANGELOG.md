@@ -242,6 +242,19 @@ What changed in each release. Releases are source only: you build the game with 
   down again; knocked at each third of its health lost (out of the air it falls and lies), down and blown up at none. The
   arena's boss column brings it in, its health shows in RAC2's boss bar; the Chainblade Challenge, the Mega Challenge and
   the Timed Avoidance (2 minutes, won when the time is up) are open. `RAC1_ARENA_BOSS_HEALTH` (testing).
+- Local experiment, planet: RAC2's boss B2 Brawler hand-ported (its walker 2628, its turret 2635, its shell 3336 and the
+  piece 2636 converted; its update 0x3d7c20 read as the reference): it jumps into the arena from its perch over the south
+  gate, walks at Ratchet (the camera shaken at its footfalls, turning on the spot when he is off to a side) while its
+  turret turns after him and fires a shell from each arm gun (`rac2::shot_fire`, a projectile service), gloats when he is
+  hurt, and now and then spins with its four limbs out, sliding at him; hurt, it spins and its turret turns faster; it falls,
+  lies and blows up at no health. The Battle the B2 Brawler and the Ultimate Challenge are open.
+- Local experiment, planet: the Tag Team Battle is open: Chainblade fights first while the B2 Brawler waits on its perch;
+  each one, a third more of its health lost, leaves the floor to the other (Chainblade floats back to its entry, the B2
+  Brawler jumps back onto its perch) and waits for its turn again; the boss bar shows the one fighting. Chainblade's chain
+  grip converted as class 2031 (2048 was past RAC1's class index table, ids 0..2047).
+- Local experiment, planet: a moby the arena's code kills (`rac2::moby_kill`) is retired as the game retires its own (its
+  slot free again two frames on): its slot was never given out again, and a long challenge (the Ultimate) ran out of moby
+  slots and stopped dropping enemies.
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

@@ -142,6 +142,8 @@ struct Arena {
     int wave = 0;
     std::vector<int32_t> queue;   // the wave's enemies still to drop (RAC2's classes)
     std::vector<int32_t> bosses;  // P7: the wave's bosses still to come in (RAC2's classes)
+    std::vector<std::pair<int32_t, uint32_t>> wave_bosses;  // (P7: the wave's bosses come in: RAC2 class, moby)
+    uint32_t active_boss = 0;     // (P7: the boss fighting, RAC2's controller +0xd0: its bar shown)
     std::vector<Enemy> alive;
     std::vector<Gate> gates;
     int kills = 0;
@@ -349,6 +351,8 @@ void wave_queue(const Wave& w) {
     for (size_t i = g_a.queue.size(); i > 1; --i) std::swap(g_a.queue[i - 1], g_a.queue[static_cast<size_t>(rand_below(static_cast<int32_t>(i)))]);
     for (Gate& g : g_a.gates) g.pending = false;
     g_a.bosses.clear();
+    g_a.wave_bosses.clear();
+    g_a.active_boss = 0;
     for (const Boss& b : kBosses)
         if ((w.c[kBossColumn] & b.bit) != 0 && g_cfg.stand_for.count(b.rac2) != 0) g_a.bosses.push_back(b.rac2);
 }
@@ -370,18 +374,43 @@ void bosses_step() {
         Enemy en{e, lwu(e + moby::kPvars), f.rac1, level_frame()};
         en.boss = rac2_cls;
         g_a.alive.push_back(en);
+        g_a.wave_bosses.emplace_back(rac2_cls, e);
         std::printf("[arena] frame %u: the boss %d comes in\n", level_frame(), rac2_cls);
+    }
+    // (both in one wave: the tag team, RAC2's 0x3fabd8..: paired, Chainblade fights first (its turn, 0x3d4990), the B2
+    // Brawler waits on its perch (its activate's second argument); before either's first update)
+    if (g_a.wave_bosses.size() == 2 && g_a.bosses.empty()) {
+        uint32_t chainblade = 0, brawler = 0;
+        for (const auto& [c, m] : g_a.wave_bosses) (c == 2552 ? chainblade : brawler) = m;
+        g_a.wave_bosses.clear();
+        if (chainblade != 0 && brawler != 0) {
+            rac2_boss_2552_pair(chainblade, brawler, false);
+            rac2_boss_2628_pair(brawler, chainblade, true);
+            rac2_boss_2552_turn(chainblade);
+            g_a.active_boss = chainblade;
+            std::printf("[arena] frame %u: the tag team: Chainblade first, the B2 Brawler waits\n", level_frame());
+        }
     }
 }
 
+// orig: (none) — P7: a boss's health (now, most) by its RAC2 class
+void boss_health(const Enemy& e, float& now, float& most) {
+    now = most = 0.0f;
+    if (e.boss == 2552) rac2_boss_2552_health(e.m, now, most);
+    else if (e.boss == 2628) rac2_boss_2628_health(e.m, now, most);
+}
+
 // orig: (none) — P7: the boss on the floor with the lowest health, its health as a share of its most (-1: none)
+// (P7: in the tag team, the one fighting)
 float boss_share() {
     float share = -1.0f;
     for (const Enemy& e : g_a.alive) {
         if (e.boss == 0 || moby_gone(e.m, e.cls, e.pvars)) continue;
         float now = 0.0f, most = 0.0f;
-        if (e.boss == 2552) rac2_boss_2552_health(e.m, now, most);
-        if (most > 0.0f && (share < 0.0f || now / most < share)) share = now / most;
+        boss_health(e, now, most);
+        if (most <= 0.0f) continue;
+        if (e.m == g_a.active_boss) return now / most;
+        if (share < 0.0f || now / most < share) share = now / most;
     }
     return share;
 }
@@ -772,6 +801,29 @@ void camera_step() {
 
 }  // namespace
 
+namespace {
+// orig: (none) — `m` Chainblade (its RAC1 class: planet.txt's "port 2552 <class>"), else the B2 Brawler
+bool is_chainblade(uint32_t m) {
+    const auto f = g_cfg.stand_for.find(2552);
+    return f != g_cfg.stand_for.end() && lh(m + moby::kClassId) == f->second.rac1;
+}
+}  // namespace
+
+// orig: (none) — see custom_arena.h
+void custom_arena_boss_active(uint32_t m) {
+    g_a.active_boss = m;
+    std::printf("[arena] frame %u: the tag team: %s fights\n", level_frame(), is_chainblade(m) ? "Chainblade" : "the B2 Brawler");
+}
+
+// orig: (none) — see rac2_enemies.h (by the boss's RAC1 class)
+void rac2_boss_turn(uint32_t m) {
+    if (is_chainblade(m)) rac2_boss_2552_turn(m);
+    else rac2_boss_2628_turn(m);
+}
+
+// orig: (none) — see rac2_enemies.h
+bool rac2_boss_fighting(uint32_t m) { return is_chainblade(m) ? rac2_boss_2552_fighting(m) : rac2_boss_2628_fighting(m); }
+
 // orig: (none) — see custom_arena.h
 bool custom_arena_camera(uint32_t pos, uint32_t rows) {
     if (g_cam.phase != CameraRun::Running && !(g_cam.phase == CameraRun::FadingOut && g_cam.which >= 0)) return false;
@@ -934,9 +986,15 @@ void custom_arena_gate_drop(int gate, uint32_t m) {
         const StandFor& f = g_cfg.stand_for[rac2_cls];
         const Standin& s = g_cfg.standins[f.rac1];
         Vec3 p;
-        if (!free_spot(p)) break;
+        if (!free_spot(p)) {
+            if (trace()) std::printf("[arena] frame %u: gate %d: no free spot below it\n", level_frame(), gate);
+            break;
+        }
         const uint32_t e = standin_spawn(s.tmpl, s.pv_size, p, yaw);
-        if (e == 0) break;
+        if (e == 0) {
+            if (trace()) std::printf("[arena] frame %u: gate %d: no moby slot or pvars block (%u blocks in use)\n", level_frame(), gate, standin_count());
+            break;
+        }
         g_a.queue.pop_back();
         g_a.alive.push_back(Enemy{e, lwu(e + moby::kPvars), f.rac1, level_frame(), f.health, f.scale, f.health == 1.0f && f.scale == 1.0f, 0.0f});
         if (trace()) std::printf("[arena] frame %u: gate %d drops a %d (for RAC2's %d) at %.1f %.1f\n", level_frame(), gate, f.rac1, rac2_cls, static_cast<double>(p.x), static_cast<double>(p.y));

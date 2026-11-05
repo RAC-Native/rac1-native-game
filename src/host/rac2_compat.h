@@ -46,7 +46,7 @@ uint32_t moby_by_uid(int32_t uid);
 void moby_show(uint32_t m, bool shown);
 // orig: (none) — the moby dead or its slot gone to another (state +0x20 >= 0xfe, another class or another pvars block)
 bool moby_gone(uint32_t m, int32_t cls, uint32_t pvars);
-// orig: (none) — the moby killed as the game's death leaves it (state 0xfe: the slot freed)
+// orig: (none) — the moby killed as the game's death leaves it (its retire 0x24eb68: state 0xfe, the slot free again 2 frames on)
 void moby_kill(uint32_t m);
 
 // ---- the stand-ins: copies of a hidden template moby ----
@@ -111,6 +111,22 @@ void part_update(uint32_t part);
 void part_put(uint32_t part, Vec3 at, Vec3 dir, bool shown);
 // orig: (none) — attachment point `point` of `m` in the world: its place and its matrix's rows (RAC2's 0x315578 reads its x)
 void point_frame(uint32_t m, uint32_t point, Vec3& at, Vec3& x, Vec3& y, Vec3& z);
+
+// ---- shots (P7: the B2 Brawler's shell 3336, RAC2's 0x4216f0 fires it, its update 0x421860 flies it): a moby of the shot's
+// class flies straight at its speed; on the level's collision, another moby or Ratchet it blows up (a small explosion, its
+// class sound), hurting him when he is within its blast; it fizzles out after its life. A part (part_update moves it) whose
+// shooter's own mobys (the shooter and the parts it carries) do not stop it ----
+struct Shot {
+    int32_t cls = 0;          // its RAC1 class
+    Vec3 at, vel;             // where it starts, its velocity (units a frame)
+    uint32_t life = 150;      // frames before it fizzles
+    float damage = 1.0f;      // what it does to Ratchet
+    float blast = 0.8f;       // its blast's radius
+    int32_t sound_fire = -1;  // its class sounds (-1 none): fired, blown up
+    int32_t sound_hit = -1;
+};
+// orig: (none) — a shot fired by `by` (0: no moby slot)
+uint32_t shot_fire(uint32_t by, const Shot& s);
 
 // orig: (none) — the camera shaken (RAC2's camera +0x160 strength, +0x168 frames: RAC1's 0x166de0 / 0x166de8, as its blasts
 // shake it)

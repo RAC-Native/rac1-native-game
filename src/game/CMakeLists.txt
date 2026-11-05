@@ -173,6 +173,7 @@ add_library(rac1_game STATIC
     enhance/custom_classes.cpp
     enhance/rac2_enemy_2506.cpp
     enhance/rac2_boss_2552.cpp
+    enhance/rac2_boss_2628.cpp
     enhance/rac2_enemy_2850.cpp
     enhance/rac2_enemy_3131.cpp
     enhance/rac2_enemy_3134.cpp

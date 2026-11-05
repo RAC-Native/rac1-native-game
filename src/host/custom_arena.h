@@ -20,7 +20,8 @@
 // prize x 0.3^victories, at least 500), the victory counted, the planet's music back. The time challenges' limit, and
 // the Wrench Expert's rules (the wrench only, no hit), lose it. A death reloads the level: the arena from its start.
 // P7: a wave's bosses (its column c8) come in on their own at the wave's start (each its own entry point: the boss's
-// set-up), their health in RAC2's boss bar; the Timed Avoidance is won when its 2 minutes are up. Left out for now (listed
+// set-up), their health in RAC2's boss bar; the Timed Avoidance is won when its 2 minutes are up; the Tag Team Battle's two
+// (one wave with both) paired, Chainblade fighting first, the bar showing the one fighting. Left out for now (listed
 // in the menu with the reason): the challenges with a boss not hand-ported yet (rac2_enemies.h), the challenges needing
 // RAC2 weapons (the Lancer's, the Mini-Nuke's).
 // The victories are kept in the save's .pc (custom_planet.h: our item 0x201).
@@ -74,6 +75,10 @@ int32_t custom_arena_tile_damage();
 int custom_arena_lift_register(uint32_t m);
 // orig: (none) — a crate for lift `lift` (idle, down) to bring up now: the crate spawned on it (at `at`), 0 none
 uint32_t custom_arena_lift_crate(int lift, float x, float y, float z);
+
+// P7, the bosses (rac2_enemies.h):
+// orig: (none) — `m` the boss now fighting (RAC2's 0x3fc020, a tag team's swap): the boss bar shows its health
+void custom_arena_boss_active(uint32_t m);
 
 // The victories in the save's .pc (custom_planet.cpp's items):
 // orig: (none) — our item appended to `d` (id, size, bytes); its count

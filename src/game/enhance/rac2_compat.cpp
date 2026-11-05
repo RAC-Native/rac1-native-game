@@ -98,8 +98,10 @@ bool moby_gone(uint32_t m, int32_t cls, uint32_t pvars) {
     return static_cast<int8_t>(lbu(m + moby::kState)) < 0 || lh(m + moby::kClassId) != cls || lwu(m + moby::kPvars) != pvars;
 }
 
-// orig: (none)
-void moby_kill(uint32_t m) { sb(m + moby::kState, 0xfe); }
+// orig: (none) — the game's own retire (0x24eb68): its state 0xfe (0xfd a level-placed one), its slot free for a spawn again
+// 2 frames later (+0x38 the frame), out of the grid. (P7: before, only the state was set and +0x38 kept its colour word, a
+// frame never reached: every killed moby's slot was lost, and a long challenge ran out of moby slots)
+void moby_kill(uint32_t m) { moby_retire(m); }
 
 // orig: (none) — RAC2's controller hands its recycled enemies over to their class's activate function, which starts them
 // from their first state; ours copies a template that was never updated, so the copy starts as a freshly loaded one
@@ -297,6 +299,8 @@ namespace part {
 // a part's own pvars (moby_spawn's block, zeroed)
 constexpr uint32_t kOwner = 0x00, kOwnerPvars = 0x04, kOwnerClass = 0x08, kThrown = 0x0c, kVel = 0x10, kLie = 0x1c, kFloor = 0x20,
                    kSpin = 0x24, kBounced = 0x28;
+// (P7: a shot, kThrown 2: its life in kLie, and these)
+constexpr uint32_t kDamage = 0x2c, kBlast = 0x30, kSoundHit = 0x34;
 }  // namespace part
 
 // orig: (none)
@@ -397,9 +401,94 @@ void part_throw(uint32_t w, Vec3 vel, float floor, uint32_t lie) {
 }
 
 // orig: (none) — RAC2's 0x32b468 said simply: gravity 0.012 a frame, a bounce at half the speed, then it lies still
+namespace {
+
+// orig: (none) — `o` one of the shooter `by`'s own mobys: itself, a part it carries, or another of its shots
+bool family(uint32_t o, uint32_t by) {
+    if (o == 0 || o == by) return o != 0;
+    const uint32_t pv = lwu(o + moby::kPvars);
+    return pv != 0 && lwu(pv + part::kOwner) == by;
+}
+
+// orig: (none) — a shot's frame (RAC2's 0x421860): its step tested against the level's collision and the mobys (RAC1's
+// segment test; its shooter's own mobys let through) and against Ratchet; a hit: the blast, else on, until its life is out
+void shot_step(uint32_t w, uint32_t pv) {
+    const uint32_t by = lwu(pv + part::kOwner);
+    const Vec3 v{lwc1(pv + part::kVel), lwc1(pv + part::kVel + 4), lwc1(pv + part::kVel + 8)};
+    const Vec3 p = moby_pos(w);
+    Vec3 q{p.x + v.x, p.y + v.y, p.z + v.z};
+    bool hit = false;
+    if (segment_collide_v(Vec4{p.x, p.y, p.z, 1.0f}, Vec4{q.x, q.y, q.z, 1.0f}, 0x10, by, nullptr) != 0 && !family(lwu(OV(0x00173e58)), by)) {
+        const Vec4 at = V(OV(0x00173e60));
+        q = Vec3{at.x, at.y, at.z};
+        hit = true;
+    }
+    // (Ratchet: the nearest point of the step to his middle, within the blast)
+    const Vec3 h = hero_pos();
+    const Vec3 hc{h.x, h.y, h.z + 0.6f};
+    const float blast = lwc1(pv + part::kBlast);
+    const float vv = v.x * v.x + v.y * v.y + v.z * v.z;
+    const float t = vv > 1e-8f ? std::clamp(((hc.x - p.x) * v.x + (hc.y - p.y) * v.y + (hc.z - p.z) * v.z) / vv, 0.0f, 1.0f) : 0.0f;
+    const Vec3 n{p.x + v.x * t, p.y + v.y * t, p.z + v.z * t};
+    if (!hit && std::hypot(std::hypot(hc.x - n.x, hc.y - n.y), hc.z - n.z) < blast + 0.5f) {
+        q = n;
+        hit = true;
+    }
+    swc1(w + moby::kPos, q.x);
+    swc1(w + moby::kPos + 4, q.y);
+    swc1(w + moby::kPos + 8, q.z);
+    if (hit) {  // (RAC2: its sound 0, the blast's sparks and smoke 0x421da0 / 0x422270, a 0.8 damage sphere)
+        const int32_t snd = lw(pv + part::kSoundHit);
+        if (snd >= 0) sound_of_class(w, lh(w + moby::kClassId), snd);
+        explosion_burst(0, w + moby::kPos, -1, 1.0f, 3.0f);
+        const float d = std::hypot(std::hypot(hc.x - q.x, hc.y - q.y), hc.z - q.z);
+        if (d < blast + 0.6f) {
+            Vec4 push{hc.x - q.x, hc.y - q.y, 0.0f, 0.0f};
+            if (vec3_length(push) < 1e-4f) push = Vec4{v.x, v.y, 0.0f, 0.0f};
+            vec3_set_length(push, push, 1.0f);
+            hero_hit(by, Vec3{push.x, push.y, 0.5f}, lwc1(pv + part::kDamage));
+        }
+        moby_kill(w);
+        return;
+    }
+    part_put(w, q, v, (lhu(w + moby::kFlags) & 1u) == 0);
+    const int32_t life = lw(pv + part::kLie) - 1;
+    sw(pv + part::kLie, static_cast<uint32_t>(life));
+    if (life <= 0) moby_kill(w);  // (RAC2: a puff of smoke 0x33fe38 and gone)
+}
+
+}  // namespace
+
+// orig: (none)
+uint32_t shot_fire(uint32_t by, const Shot& s) {
+    const uint32_t w = part_spawn(by, s.cls, 1.0f);
+    if (w == 0) return 0;
+    const uint32_t pv = lwu(w + moby::kPvars);
+    if (pv == 0) {
+        moby_kill(w);
+        return 0;
+    }
+    sw(pv + part::kThrown, 2);
+    swc1(pv + part::kVel, s.vel.x);
+    swc1(pv + part::kVel + 4, s.vel.y);
+    swc1(pv + part::kVel + 8, s.vel.z);
+    sw(pv + part::kLie, s.life);
+    swc1(pv + part::kDamage, s.damage);
+    swc1(pv + part::kBlast, s.blast);
+    sw(pv + part::kSoundHit, static_cast<uint32_t>(s.sound_hit));
+    part_put(w, s.at, s.vel, true);
+    if (s.sound_fire >= 0) sound_of_class(w, s.cls, s.sound_fire);
+    return w;
+}
+
+// orig: (none)
 void part_update(uint32_t w) {
     const uint32_t pv = lwu(w + moby::kPvars);
     if (pv == 0 || lwu(pv + part::kOwner) == 0) return;  // (a placed one: none are)
+    if (lw(pv + part::kThrown) == 2) {
+        shot_step(w, pv);
+        return;
+    }
     if (lw(pv + part::kThrown) == 0) {
         if (moby_gone(lwu(pv + part::kOwner), lw(pv + part::kOwnerClass), lwu(pv + part::kOwnerPvars))) moby_kill(w);
         return;

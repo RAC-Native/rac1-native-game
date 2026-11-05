@@ -38,8 +38,12 @@
 // Ours vs RAC2's: no path-finding round the arena's middle (0x32f608: straight at him, RAC1's walker_move stops it at the
 // walls); its floating moved by hand (no collision); the throw aimed at where Ratchet stands when the blade goes (RAC2 gets
 // there by its height and facing: the same place); the chain's links set along the line from its hand to the blade (RAC2
-// sets each from the hand's matrix the same way); its taunts, rises and slams by RAC2's numbers; the tag team's turns
-// (states 3, 4: it walks out when its partner, the B2 Brawler, should fight; 0x3d4a60 / 0x3db880) not yet.
+// sets each from the hand's matrix the same way); its taunts, rises and slams by RAC2's numbers.
+// - the tag team (challenge 9, its partner the B2 Brawler: rac2_enemies.h): a third more of its health lost while its
+//   partner is up (0x3d4a60), it rises after its swing and, in the air, floats back to its entry point (state 3, sequence
+//   9; its partner's turn, 0x3db880) and waits there (state 4, sequence 0) until its turn (0x3d4990), then comes in again;
+//   dying, its partner's turn too (0x3d4658).
+#include <host/custom_arena.h>
 #include <host/rac2_enemies.h>
 #include <host/rac2_compat.h>
 
@@ -60,8 +64,9 @@ namespace {
 
 using rac2::Vec3;
 
-constexpr int32_t kLinkClass = 2044;      // (RAC2's 2585..2589 converted, 2044..2048: maktar.py RAC2_CLASSES)
 constexpr int kLinks = 5;
+// (RAC2's 2585..2589 converted: maktar.py RAC2_CLASSES; 2589's id below 2048, RAC1's class index table's size)
+constexpr int32_t kLinkClass[kLinks] = {2044, 2045, 2046, 2047, 2031};
 constexpr float kPi = 3.14159265f, kDeg = kPi / 180.0f;
 constexpr float kFloor = 500.0f;
 constexpr Vec3 kMiddle{500.0f, 600.0f, 500.0f};  // (gp + 0x11c0)
@@ -90,7 +95,7 @@ enum Seq : uint32_t {
 };
 // RAC2's states
 enum State : int32_t {
-    SetUp = 0, Entering = 2, Chasing = 6, Swinging = 7, Knocked = 8, Dying = 9, Taunting = 10, Floating = 11, ThrowingR = 12,
+    SetUp = 0, Entering = 2, TagOut = 3, Waiting = 4, Chasing = 6, Swinging = 7, Knocked = 8, Dying = 9, Taunting = 10, Floating = 11, ThrowingR = 12,
     HoldingR = 13, PullingR = 14, ThrowingL = 15, HoldingL = 16, PullingL = 17, Falling = 18, Roaring = 19, Landing = 20
 };
 
@@ -109,6 +114,9 @@ constexpr uint32_t kSide = 0x78, kCount = 0x7c, kLength = 0x80, kStruck = 0x84; 
 constexpr uint32_t kHand = 0x88, kDir = 0x98, kImpact = 0xa8;  // (x y z each: where it went from, its way, where it lands)
 constexpr uint32_t kCarrot = 0xb8;         // (x y z: the point it floats towards)
 constexpr uint32_t kAngle = 0xc8, kThrowAt = 0xcc, kSwingHit = 0xd0, kDownFlag = 0xd4, kVx = 0xd8, kVy = 0xdc;
+// (P7, the tag team: its partner (+0x310) and how to know it is still that one; its flag to come in (+0x318), the thirds of
+// its health counted at its turns (+0x31a); waiting first)
+constexpr uint32_t kPartner = 0xe0, kPartnerCls = 0xe4, kPartnerPv = 0xe8, kGo = 0xec, kTurns = 0xf0, kWaitFirst = 0xf4;
 }  // namespace pv
 
 struct Pv {
@@ -269,7 +277,7 @@ uint32_t link_of(uint32_t m, const Pv& p, int k) {
 // orig: (none) — its chain spawned, hidden (RAC2's 0x3d5570: classes 2585..2589)
 void chain_spawn(uint32_t m, const Pv& p) {
     for (int k = 0; k < kLinks; ++k) {
-        const uint32_t w = rac2::part_spawn(m, kLinkClass + k, 1.0f);
+        const uint32_t w = rac2::part_spawn(m, kLinkClass[k], 1.0f);
         p.i(pv::kLinksAt + 4 * static_cast<uint32_t>(k), static_cast<int32_t>(w));
         if (w != 0) rac2::part_put(w, rac2::moby_pos(m), Vec3{1.0f, 0.0f, 0.0f}, false);
     }
@@ -402,6 +410,26 @@ bool round_over(uint32_t m, const Pv& p) {
     return n > last || chance <= 0 || rac2::rand_below(chance) == 0;
 }
 
+// orig: (none) — the partner (the tag team's other boss) still in it (RAC2: alive, its state 3 or more)
+bool partner_up(const Pv& p) {
+    const uint32_t q = static_cast<uint32_t>(p.i(pv::kPartner));
+    if (q == 0 || rac2::moby_gone(q, p.i(pv::kPartnerCls), static_cast<uint32_t>(p.i(pv::kPartnerPv)))) return false;
+    return rac2_boss_fighting(q);
+}
+
+// orig: (none) — time to hand over (RAC2's 0x3d4a60): the partner up and a third more of its health lost
+bool tag_due(const Pv& p) {
+    return partner_up(p) && p.f(pv::kHit) < health_most() * static_cast<float>(3 - p.i(pv::kTurns)) / 3.0f;
+}
+
+// orig: (none) — the partner's turn (RAC2's 0x3db880 on it, then 0x3fc020: the controller's one fighting)
+void hand_over(const Pv& p) {
+    const uint32_t q = static_cast<uint32_t>(p.i(pv::kPartner));
+    if (q == 0 || rac2::moby_gone(q, p.i(pv::kPartnerCls), static_cast<uint32_t>(p.i(pv::kPartnerPv)))) return;
+    rac2_boss_turn(q);
+    custom_arena_boss_active(q);
+}
+
 // orig: (none) — it blows up (RAC2's 0x40d7b8): explosions round it, its chain gone, counted by the controller
 void die(uint32_t m, const Pv& p) {
     for (int k = 0; k < 4; ++k) explosion_burst(m, m + rac2::moby::kPos, -1, 2.5f, 12.0f);
@@ -482,7 +510,11 @@ void update(uint32_t m) {
         rac2::seq_play(m, Stand, 1);
         mover(p, 0.00444f, 0.1333f, 0.00844f, 0.2094f);
         p.i(pv::kPhase, 1);
-        set_state(m, p, Entering);
+        if (p.i(pv::kWaitFirst) != 0) {
+            set_state(m, p, Waiting);
+        } else {
+            set_state(m, p, Entering);
+        }
     }
     const bool entering = p.i(pv::kEntered) == 0;
     p.i(pv::kEntered, 1);
@@ -503,6 +535,27 @@ void update(uint32_t m) {
         if (rac2::seq_now(m) != Float) rac2::seq_play(m, Float, 10);
         float_to(m, p, Vec3{kMiddle.x, kMiddle.y, kEntry.z}, std::atan2(kMiddle.y - at.y, kMiddle.x - at.x));
         if (dist2d(at, kMiddle) < kRingOut) set_state(m, p, Landing);
+        break;
+    case TagOut:  // (state 3: its partner's turn; it floats back to its entry point, facing Ratchet)
+        if (entering) {
+            rac2::seq_play(m, Float, 10);
+            p.v(pv::kCarrot, at);
+            p.f(pv::kSpeed, 0.0f);
+            p.i(pv::kGo, 0);
+            p.i(pv::kPhase, 2);
+            chain_stow(m, p);
+            hand_over(p);
+        }
+        float_to(m, p, kEntry, bearing);
+        if (dist2d(rac2::moby_pos(m), kEntry) < 0.5f) set_state(m, p, Waiting);
+        break;
+    case Waiting:  // (state 4: at its entry point until its turn, then it comes in again)
+        if (entering) rac2::seq_play(m, Stand, 15);
+        float_to(m, p, kEntry, bearing);
+        if (p.i(pv::kGo) != 0) {
+            p.i(pv::kRounds, 0);
+            set_state(m, p, Entering);
+        }
         break;
     case Landing:  // (state 20: down onto the floor, the slam)
         if (entering) {
@@ -559,7 +612,7 @@ void update(uint32_t m) {
             if (t > 32.0f && t < 36.0f) swing_hurt(m, p, 1);
         }
         if (frames(p) > 3 && rac2::seq_ended(m)) {
-            if (round_over(m, p)) {
+            if (round_over(m, p) || tag_due(p)) {  // (the tag team: it rises first, then leaves from the air)
                 rac2::seq_play(m, Roar, 10);
                 set_state(m, p, Roaring);
             } else if (rac2::rand_below(3) == 0) {
@@ -602,6 +655,10 @@ void update(uint32_t m) {
             p.f(pv::kSpeed, 0.0f);
         }
         float_to(m, p, carrot(m, p), bearing);
+        if (tag_due(p)) {  // (0x3d3a68: its partner's turn)
+            set_state(m, p, TagOut);
+            break;
+        }
         if (round_over(m, p)) {
             set_state(m, p, Landing);
             break;
@@ -687,6 +744,7 @@ void update(uint32_t m) {
         }
         break;
     case Dying:  // (state 9: 61 frames, then it blows up)
+        if (entering) hand_over(p);  // (0x3d4658: its partner's turn)
         walk_to(m, p, at, false);
         if (frames(p) >= kDyingGone) {
             die(m, p);
@@ -710,6 +768,34 @@ void update(uint32_t m) {
 
 // orig: (none) — see rac2_enemies.h
 void rac2_boss_2552_update(uint32_t m) { update(m); }
+
+// orig: (none) — see rac2_enemies.h (RAC2's 0x3d4980)
+void rac2_boss_2552_pair(uint32_t m, uint32_t partner, bool waits) {
+    const uint32_t b = lwu(m + rac2::moby::kPvars);
+    if (b == 0) return;
+    sw(b + pv::kPartner, partner);
+    sw(b + pv::kPartnerCls, partner != 0 ? static_cast<uint32_t>(lh(partner + rac2::moby::kClassId)) : 0u);
+    sw(b + pv::kPartnerPv, partner != 0 ? lwu(partner + rac2::moby::kPvars) : 0u);
+    sw(b + pv::kWaitFirst, waits ? 1u : 0u);
+}
+
+// orig: (none) — see rac2_enemies.h (RAC2's 0x3d4990: its thirds of health lost counted up to now, its flag to come in)
+void rac2_boss_2552_turn(uint32_t m) {
+    const uint32_t b = lwu(m + rac2::moby::kPvars);
+    if (b == 0 || lw(b + pv::kGo) != 0) return;
+    const float health = lw(b + pv::kState) == SetUp ? health_most() : lwc1(b + pv::kHit);
+    int32_t n = lw(b + pv::kTurns) + 1;
+    while (n < 3 && health < health_most() * static_cast<float>(3 - n) / 3.0f) ++n;
+    sw(b + pv::kTurns, static_cast<uint32_t>(n));
+    sw(b + pv::kGo, 1);
+    if (trace()) std::printf("[2552] frame %u: %#x its turn (thirds %d)\n", rac2::level_frame(), m, n);
+}
+
+// orig: (none) — see rac2_enemies.h
+bool rac2_boss_2552_fighting(uint32_t m) {
+    const uint32_t b = lwu(m + rac2::moby::kPvars);
+    return b != 0 && lw(b + pv::kState) >= TagOut;
+}
 
 // orig: (none) — see rac2_enemies.h
 void rac2_boss_2552_health(uint32_t m, float& now, float& most) {

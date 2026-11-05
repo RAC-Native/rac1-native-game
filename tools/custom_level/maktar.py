@@ -339,11 +339,16 @@ RAC2_CLASSES = {
     2586: ("part", 2045),     #     the five and shows them while a blade is out (RAC2's 0x3d5570 / 0x3d5748)
     2587: ("part", 2046),
     2588: ("part", 2047),
-    2589: ("part", 2048),
+    2589: ("part", 2031),     #     (2031, not 2048: RAC1's class index table 0x197bc0 holds ids 0..2047)
+    2628: ("enemy_2628", 2030),  # P7: the boss B2 Brawler's walker (src/game/enhance/rac2_boss_2628.cpp)
+    2635: ("part", 2029),     # P7: the B2 Brawler's turret with its two arm guns, carried on the walker (RAC2's +0x244)
+    3336: ("part", 2028),     # P7: the B2 Brawler's shell (fired from the turret's guns, RAC2's 0x4216f0 / 0x421860)
+    2636: ("part", 2027),     # P7: the B2 Brawler's piece carried on the turret, thrown off when it dies (RAC2's +0x260)
 }
-HIT_ROLES = ("monitor", "enemy_3134", "enemy_3131", "enemy_2850", "enemy_2506", "enemy_2552")  # (the roles whose collision is kept: they take hits, custom_classes.cpp)
+HIT_ROLES = ("monitor", "enemy_3134", "enemy_3131", "enemy_2850", "enemy_2506", "enemy_2552", "enemy_2628")  # (the roles whose collision is kept: they take hits, custom_classes.cpp)
+HIT_PARTS = (2635,)  # (P7: parts whose collision is kept: the B2 Brawler's turret takes hits for it)
 CLASS_PVARS = {"crowd": 0x20, "monitor": 0x40, "arm": 0x40, "prop": 0x10, "tile": 0x20, "lift": 0x20, "enemy_3134": 0x100, "enemy_3131": 0x100,
-               "enemy_2850": 0x100, "enemy_2506": 0x100, "enemy_2552": 0x100, "part": 0x10}
+               "enemy_2850": 0x100, "enemy_2506": 0x100, "enemy_2552": 0x100, "enemy_2628": 0x100, "part": 0x10}
 # P6: the hand-ported enemies. RAC2 keeps 20 of each waiting above the arena (group 20) and recycles them; ours is one hidden
 # template (its first placement) the controller copies (planet.txt "standin" + "port", custom_arena.cpp). Per RAC2 class:
 # the path its pvars name (+0x180: the ring it circles while it waits for its turn to attack), read from RAC2's gameplay
@@ -686,7 +691,7 @@ class Rac2Classes:
         for rac2_id, (role, rac1_id) in RAC2_CLASSES.items():
             k = ids.index(rac2_id)
             start = i32(idx, MH[7] + 32 * k)
-            blob, largest = rac2classes.convert_class(core, start, ends[start], keep_collision=role in HIT_ROLES)
+            blob, largest = rac2classes.convert_class(core, start, ends[start], keep_collision=role in HIT_ROLES or rac2_id in HIT_PARTS)
             remap = bytearray(idx[MH[7] + 32 * k + 16:MH[7] + 32 * k + 32])
             for j in range(16):
                 t = remap[j]
@@ -723,7 +728,8 @@ class Rac2Classes:
             sz = i32(g, p)
             cid = i32(g, p + 0x28)
             pos = struct.unpack_from("<3f", g, p + 0x40)
-            if cid in role_of and all(ARENA_BOX[j][0] <= pos[j] <= ARENA_BOX[j][1] for j in range(3)):
+            # (a part's placement left out: its carrier spawns it; RAC2 places the B2 Brawler's turret 2635 with it)
+            if cid in role_of and role_of[cid][0] != "part" and all(ARENA_BOX[j][0] <= pos[j] <= ARENA_BOX[j][1] for j in range(3)):
                 self.records.append((role_of[cid][1], role_of[cid][0], bytes(g[p:p + sz])))
             p += sz
         say("RAC2 classes: %d textures added, %d placements %s" % (len(self.textures), len(self.records), {
