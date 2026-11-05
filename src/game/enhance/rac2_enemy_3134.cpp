@@ -13,7 +13,7 @@
 // - chasing (state 8): towards Ratchet along its approach angle (its mover 0.0083 / 1.0), 0.7 above the floor; within 1.7 of him
 //   and at its height it stops (state 10), 45 frames later winds up (state 9, sequence 2), then attacks (state 11,
 //   sequence 3 at 1.75 x speed): closer than 1.7 it backs off, farther it creeps on (top 0.033); its first four
-//   joints are damage spheres of 0.5 (0x320328, its pvars' damage: 1). Ratchet hit, it gloats (state 12, sequence 4) and
+//   attachment points are damage spheres of 0.5 (0x320328, its pvars' damage: 1). Ratchet hit, it gloats (state 12, sequence 4) and
 //   chases again; farther than 4 for 2 seconds it gives up (sequence 5, state 4) and chases again after 26 frames. Its
 //   turn lost (another class's enemies take theirs), it goes back to circling.
 // - hit (0x40caf0: RAC2's hit test 0x320d48; ours RAC1's, 0x25a420 with the enemies' mask and its hit reaction 0x25a478),
@@ -38,7 +38,6 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
-#include <game/ovl/pause_menu.h>
 #include <runtime/kernel/disc.h>
 
 #include <algorithm>
@@ -166,13 +165,10 @@ void set_state(uint32_t m, const Pv& p, int32_t s) {
 // orig: (none) — frames in the state
 uint32_t frames(const Pv& p) { return rac2::level_frame() - static_cast<uint32_t>(p.i(pv::kSince)); }
 
-// orig: (none) — sequence `seq` from its first frame, blended over `blend` frames, unless it plays already (RAC2's anim_seq_set)
-void play(uint32_t m, uint32_t seq, int32_t blend) {
-    if (lbu(m + rac2::moby::kNextSeq) == seq) return;
-    moby_anim_set(m, seq, 0, blend > 0 ? blend : 1);
-}
-// orig: (none) — the sequence played to its end in this frame's step
-bool seq_done(uint32_t m) { return (lbu(m + rac2::moby::kAnimFlags) & 2u) != 0; }
+// orig: (none)
+void play(uint32_t m, uint32_t seq, int32_t blend) { rac2::seq_play(m, seq, blend); }
+// orig: (none)
+bool seq_done(uint32_t m) { return rac2::seq_ended(m); }
 
 // orig: (none) — its mover's speeds (RAC2's 0x332710: its acceleration and top speed, units a frame)
 void mover(const Pv& p, float accel, float top) {
@@ -181,12 +177,7 @@ void mover(const Pv& p, float accel, float top) {
 }
 
 // orig: (none) — the floor under it (the arena's, or what is higher under it)
-float floor_under(uint32_t m) {
-    const Vec3 at = rac2::moby_pos(m);
-    const Vec4 a{at.x, at.y, at.z + 1.0f, 1.0f}, b{at.x, at.y, kFloor - 2.0f, 1.0f};
-    if (segment_collide_v(a, b, 2, m, nullptr) != 0) return std::max(kFloor, lwc1(OV(0x00173e68)));
-    return kFloor;
-}
+float floor_under(uint32_t m) { return std::max(kFloor, rac2::ground_under(m, kFloor - 2.0f)); }
 
 // orig: (none) — a frame of flight towards `to` (its mover: speed up to its top, slower near it; its heading turned at most
 // kTurnRate towards it): the walls stop it (RAC1's walker_move), its height eased to `height`
@@ -227,21 +218,15 @@ void spread(uint32_t m) {
     }
 }
 
-// orig: (none) — Ratchet within its four damage spheres (its joints 0..3, RAC2's 0x320328): hit (RAC1's hit protocol, its
-// damage, pushed away from it)
+// orig: (none) — Ratchet within its four damage spheres (its class's attachment points 0..3, RAC2's 0x320328): hit (RAC1's
+// hit protocol, its damage, pushed away from it)
 void strike(uint32_t m, const Pv& p) {
     const Vec3 h = rac2::hero_pos();
-    const uint32_t list = ee_stack_alloc(0x10), out = ee_stack_alloc(0x40);
-    for (uint32_t k = 0; k < 4; ++k) sb(list + k, k);
-    moby_joint_positions(m, 4, list, out);
+    Vec3 j[4];
+    rac2::joints_world(m, 0, 4, j);
     bool touched = false;
-    for (uint32_t k = 0; k < 4 && !touched; ++k) {
-        const Vec3 j{lwc1(out + 0x10 * k), lwc1(out + 0x10 * k + 4), lwc1(out + 0x10 * k + 8)};
-        // (Ratchet's position is his feet: his body's middle is about 0.6 up)
-        touched = dist3d(j, Vec3{h.x, h.y, h.z + 0.6f}) < kHitRadius + 0.4f;
-    }
-    ee_stack_free(0x40);
-    ee_stack_free(0x10);
+    for (const Vec3& q : j)  // (Ratchet's position is his feet: his body's middle is about 0.6 up)
+        touched = touched || dist3d(q, Vec3{h.x, h.y, h.z + 0.6f}) < kHitRadius + 0.4f;
     if (!touched) return;
     const Vec3 at = rac2::moby_pos(m);
     float dx = h.x - at.x, dy = h.y - at.y;
@@ -359,6 +344,7 @@ void update(uint32_t m) {
         }
         p.i(pv::kHeroWas, -1);
     }
+    rac2::test_hit(m);
     if (p.i(pv::kState) != Knocked) hit_taken(m, p);
     keep_turn(m, p);
     switch (p.i(pv::kState)) {

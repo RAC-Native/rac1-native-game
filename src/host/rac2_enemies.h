@@ -14,6 +14,8 @@ namespace rac1 {
 
 // orig: (none) — RAC2's 3134 (the arena's small enemy: its update 0x40be08), the update of its converted class
 void rac2_enemy_3134_update(uint32_t m);
+// orig: (none) — RAC2's 3131 (the arena's mid-sized enemy, the flamethrower walker: its update 0x40a4a8)
+void rac2_enemy_3131_update(uint32_t m);
 
 }  // namespace rac1
 

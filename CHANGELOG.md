@@ -207,9 +207,15 @@ What changed in each release. Releases are source only: you build the game with 
 - Local experiment, planet P6: RAC2's small arena enemy 3134 hand-ported (`src/game/enhance/rac2_enemy_3134.cpp`, by
   behaviour from its update 0x40be08): its class converted (mesh, animations, sounds, collision; one hidden template), it
   circles the arena's ring (RAC2's path, read into `planet.txt`) until the controller gives it a turn to attack (three at
-  once), flies at Ratchet, winds up and strikes with its blades (its joints' damage spheres, RAC1's hit protocol), gloats
+  once), flies at Ratchet, winds up and strikes with its blades (its attachment points' damage spheres, RAC1's hit protocol), gloats
   when it hits; hit by a weapon it tumbles away and blows up. It replaces its stand-in (`planet.txt` `port`);
   `RAC1_ARENA_STANDINS` brings the stand-ins back.
+- Local experiment, planet P6: RAC2's mid-sized arena enemy 3131 hand-ported (`src/game/enhance/rac2_enemy_3131.cpp`, from its
+  update 0x40a4a8): the red walker with a flamethrower lands from its gate, wanders the floor with its idles while it waits
+  for its turn, roars, walks at Ratchet and burns him from close by (its jet from its nozzle joint, three damage spheres
+  within 3), turns round when he is behind it; two hits blow it up. The stand-ins chase now: the planet's gameplay has a
+  path round the arena (path 1) and the templates of Veldin's walker and gun walker name it as their area (they idled
+  where they landed, Ratchet being outside Veldin's areas). `RAC1_ARENA_ENEMY_HIT` (testing).
 - Setup: without `--iso`, every disc image in `assets/iso/` (whatever its name; and the ones the setup already knows) is
   identified by its boot executable's sha1 and picked: the game's disc (the one already set up, else NTSC-U, else PAL
   1.00), the data discs that give something (the Japanese disc), the others not used with one line saying why (PAL discs

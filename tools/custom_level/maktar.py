@@ -329,9 +329,10 @@ RAC2_CLASSES = {
     2563: ("tile", 2035),     # the floor's tiles that turn over in the hazard challenges (wave column c4)
     3276: ("lift", 2036),     # the floor's lifts that bring crates up (wave columns c6 / c7)
     3134: ("enemy_3134", 2037),  # P6: the small enemy, hand-ported (src/game/enhance/rac2_enemy_3134.cpp)
+    3131: ("enemy_3131", 2038),  # P6: the mid-sized enemy, the flamethrower walker (src/game/enhance/rac2_enemy_3131.cpp)
 }
-HIT_ROLES = ("monitor", "enemy_3134")  # (the roles whose collision is kept: they take hits, custom_classes.cpp)
-CLASS_PVARS = {"crowd": 0x20, "monitor": 0x40, "arm": 0x40, "prop": 0x10, "tile": 0x20, "lift": 0x20, "enemy_3134": 0x100}
+HIT_ROLES = ("monitor", "enemy_3134", "enemy_3131")  # (the roles whose collision is kept: they take hits, custom_classes.cpp)
+CLASS_PVARS = {"crowd": 0x20, "monitor": 0x40, "arm": 0x40, "prop": 0x10, "tile": 0x20, "lift": 0x20, "enemy_3134": 0x100, "enemy_3131": 0x100}
 # P6: the hand-ported enemies. RAC2 keeps 20 of each waiting above the arena (group 20) and recycles them; ours is one hidden
 # template (its first placement) the controller copies (planet.txt "standin" + "port", custom_arena.cpp). Per RAC2 class:
 # the path its pvars name (+0x180: the ring it circles while it waits for its turn to attack), read from RAC2's gameplay
@@ -639,8 +640,21 @@ def flight_path(ship, n=12):
         ahead = 6.0 * k * k / 4.0 + 4.0 * k
         pts.append(struct.pack("<4f", x + dx * ahead, y + dy * ahead, z + 6.0 + 9.0 * k, 0.0))
     path = struct.pack("<4i", n, 0, 0, 0) + b"".join(pts)
-    head = struct.pack("<4I", 1, 0x20, len(path), 0) + struct.pack("<4I", 0, 0, 0, 0)
-    return head + path
+    # path 1: the arena's area (P6: the stand-ins' area, ARENA_AREA_PATH): a ring round the floor, closed
+    ring = [struct.pack("<4f", ARENA_CENTRE[0] + ARENA_AREA_RADIUS * math.cos(2 * math.pi * k / 24),
+                        ARENA_CENTRE[1] + ARENA_AREA_RADIUS * math.sin(2 * math.pi * k / 24), ARENA_CENTRE[2], 0.0) for k in range(25)]
+    area = struct.pack("<4i", len(ring), 0, 0, 0) + b"".join(ring)
+    head = struct.pack("<4I", 2, 0x20, len(path) + len(area), 0) + struct.pack("<4I", 0, len(path), 0, 0)
+    return head + path + area
+
+
+# P6: the stand-ins chase Ratchet only while he is inside their area (Veldin's walker 749 and gun walker 1440 test him
+# against a path's polygon, target_select 0x25ff38: pvars +0x1e0 / +0x1b4 name the path); Veldin's paths are not on the
+# planet (they idled where they landed), so the planet's path 1 is a ring round the arena and their templates name it
+ARENA_CENTRE = (500.0, 600.0, 500.0)
+ARENA_AREA_RADIUS = 26.0
+ARENA_AREA_PATH = 1
+STANDIN_AREA = {749: 0x1e0, 1440: 0x1b4}
 
 
 class Rac2Classes:
@@ -1265,6 +1279,8 @@ def build(a):
     for r in enemies:
         if i32(r, 0x18) == 1440:
             struct.pack_into("<i", pdata, i32(g, ptab + 8 * i32(r, 0x58)) + 0x1b8, -1)
+        if i32(r, 0x18) in STANDIN_AREA:
+            struct.pack_into("<i", pdata, i32(g, ptab + 8 * i32(r, 0x58)) + STANDIN_AREA[i32(r, 0x18)], ARENA_AREA_PATH)
     ptable = bytearray(block(0x54))
     a.standin_lines = [(i32(r, 0x18), i32(r, 0x0c), i32(ptable, 8 * i32(r, 0x58) + 4)) for r in enemies]
     placed = []

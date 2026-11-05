@@ -1,12 +1,16 @@
 // See rac2_compat.h: the engine services RAC2's arena behaviours ask for, said with RAC1's engine.
 #include <host/rac2_compat.h>
 
+#include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/pause_menu.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -107,6 +111,69 @@ void standin_release(uint32_t pvars) {
 void standin_reset() {
     std::memset(g_taken, 0, sizeof g_taken);
     g_turns.clear();
+}
+
+// orig: (none)
+void seq_play(uint32_t m, uint32_t seq, int32_t blend) {
+    if (lbu(m + moby::kNextSeq) == seq) return;
+    moby_anim_set(m, seq, 0, blend > 0 ? blend : 1);  // (RAC1's takes at least one frame)
+}
+
+// orig: (none)
+uint32_t seq_now(uint32_t m) { return lbu(m + moby::kNextSeq); }
+
+// orig: (none) — moby_anim_advance's flags +0x70, bit 1
+bool seq_ended(uint32_t m) { return (lbu(m + moby::kAnimFlags) & 2u) != 0; }
+
+// orig: (none)
+void joints_world(uint32_t m, uint32_t first, uint32_t n, Vec3* out) {
+    n = std::min<uint32_t>(n, 8);
+    if (n == 0 || lwu(lwu(m + moby::kClass) + 0x1c) == 0) {  // (no attachment points: its position)
+        for (uint32_t k = 0; k < n; ++k) out[k] = moby_pos(m);
+        return;
+    }
+    const uint32_t list = ee_stack_alloc(0x20), pos = ee_stack_alloc(0x80);
+    for (uint32_t k = 0; k < n; ++k) sw(list + 4 * k, first + k);  // (words: the class's attachment points, +0x1c)
+    moby_joint_positions(m, static_cast<int32_t>(n), list, pos);
+    for (uint32_t k = 0; k < n; ++k) out[k] = Vec3{lwc1(pos + 0x10 * k), lwc1(pos + 0x10 * k + 4), lwc1(pos + 0x10 * k + 8)};
+    ee_stack_free(0x80);
+    ee_stack_free(0x20);
+}
+
+// orig: (none) — the collision's segment test (flags 2: the ground), its hit point's height 0x173e68
+float ground_under(uint32_t m, float lowest) {
+    const Vec3 at = moby_pos(m);
+    const Vec4 a{at.x, at.y, at.z + 1.0f, 1.0f}, b{at.x, at.y, lowest, 1.0f};
+    if (segment_collide_v(a, b, 2, m, nullptr) != 0) return std::max(lowest, lwc1(OV(0x00173e68)));
+    return lowest;
+}
+
+// orig: (none)
+void test_hit(uint32_t m) {
+    static const std::vector<uint32_t> at = [] {
+        std::vector<uint32_t> v;
+        const char* e = std::getenv("RAC1_ARENA_ENEMY_HIT");
+        for (const char* q = e; q != nullptr && *q != 0;) {
+            char* end = nullptr;
+            v.push_back(static_cast<uint32_t>(std::strtoul(q, &end, 10)));
+            q = *end == ',' ? end + 1 : nullptr;
+        }
+        return v;
+    }();
+    if (std::find(at.begin(), at.end(), level_frame()) == at.end()) return;
+    uint32_t rec[9] = {};
+    Vec4 push = V(m + moby::kPos);
+    push.x -= lwc1(HERO + 0x80);  // (away from the hero, as the blaster's)
+    push.y -= lwc1(HERO + 0x84);
+    push.z = 0.0f;
+    vec2_set_length(push, push, 1.0f);
+    std::memcpy(rec, &push, 16);
+    rec[5] = 0x00010001u;  // (+0x14: the hit's kinds)
+    const float damage = 1.0f;
+    std::memcpy(&rec[7], &damage, 4);
+    rec[8] = 1;
+    const int32_t n = mobys_in_sphere_v(V(m + moby::kPos), 1.0f, 0x10, 0, rec);
+    std::printf("[rac2] frame %u: test blast on %#x (class %d): %d moby(s) touched\n", level_frame(), m, lh(m + moby::kClassId), n);
 }
 
 // orig: (none)

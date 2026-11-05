@@ -61,6 +61,23 @@ void standin_reset();
 // orig: (none) — blocks in use
 uint32_t standin_count();
 
+// ---- animation, joints, the ground (RAC2's anim_seq_set 0x31e3c0, its joint points 0x315618, said with RAC1's) ----
+// orig: (none) — sequence `seq` from its first frame, blended in over `blend` frames, unless it plays already
+void seq_play(uint32_t m, uint32_t seq, int32_t blend);
+// orig: (none) — the sequence playing (or blending in)
+uint32_t seq_now(uint32_t m);
+// orig: (none) — the sequence played to its end (or looped) in this frame's step
+bool seq_ended(uint32_t m);
+// orig: (none) — the class's attachment points first .. first + n - 1 (its +0x1c table: each a chain of joints, the point its
+// last one; RAC2's 0x315618 takes the same) in the world (RAC1's moby_joint_positions), n at most 8
+void joints_world(uint32_t m, uint32_t first, uint32_t n, Vec3* out);
+// orig: (none) — the ground's height under `m` (a ray from 1 above it down to `lowest`), `lowest` when there is none
+float ground_under(uint32_t m, float lowest);
+
+// orig: (none) — (testing) RAC1_ARENA_ENEMY_HIT=<level frame>[,<level frame>...]: at those frames a blast on `m` (a bomb's
+// sphere test with the blaster's hit record, as RAC1_ARENA_MONITOR_HIT's): the hit through RAC1's collision and hit records
+void test_hit(uint32_t m);
+
 // ---- the attack turns (RAC2's controller keeps a count per enemy class, its pvars +0x50..+0x5c: 0x3fc0d0 takes one,
 // 0x3fc1b0 gives it back; an enemy without one circles and waits) ----
 // orig: (none) — a turn for `m` (an enemy of RAC2 class `rac2_cls`, at most `most` at once): true when it holds one (it

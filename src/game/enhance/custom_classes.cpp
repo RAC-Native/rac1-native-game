@@ -27,7 +27,7 @@ namespace rac1 {
 
 namespace {
 
-enum class Role { Crowd, Monitor, Arm, Prop, Tile, Lift, Enemy3134 };
+enum class Role { Crowd, Monitor, Arm, Prop, Tile, Lift, Enemy3134, Enemy3131 };
 
 // planet.txt's "class <role> <id> <bank>"
 struct ClassLine {
@@ -61,6 +61,7 @@ const std::vector<ClassLine>& lines() {
         else if (role == "tile") c.role = Role::Tile;
         else if (role == "lift") c.role = Role::Lift;
         else if (role == "enemy_3134") c.role = Role::Enemy3134;  // (P6: RAC2's enemies hand-ported, rac2_enemies.h)
+        else if (role == "enemy_3131") c.role = Role::Enemy3131;
         else if (role != "prop") continue;
         g_lines.push_back(c);
     }
@@ -626,6 +627,7 @@ constexpr Registered kFns[] = {
     {Role::Tile, with_sounds<tile::update>},
     {Role::Lift, with_sounds<lift::update>},
     {Role::Enemy3134, with_sounds<rac2_enemy_3134_update>},
+    {Role::Enemy3131, with_sounds<rac2_enemy_3131_update>},
 };
 
 }  // namespace
