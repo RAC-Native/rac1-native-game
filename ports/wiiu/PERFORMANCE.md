@@ -1498,4 +1498,15 @@ Built and proved exact on the PC that evening; measured on the console 2026-11-0
   less the first timestamp), the CP's gaps included - the GPU waiting for the CPU's commands. Real time (lv/ab5 k_rt_new / n_rt_new /
   v_rt_new, all windows): busy Kerwan 27.6 ms, Novalis 21.5, Veldin 18.8, of which the world passes' gaps alone 15.6 / 9.7 / 8.7:
   **the GPU's own work ~12 / ~12 / ~10 ms**, under 16.7 everywhere. The frames are bound by the CPU (the game thread).
+- **The RAW writers** (rdeps.inc with the drawing's first write's call chain; 20 frames): Kerwan - particles_draw -> particles_update
+  ~19 quads a frame, the moby draw loop (moby_draw_loop's draw_loop) -> moby_visible_queue ~17, render_view_setup -> class 75's
+  point_on_screen_v 4, moby_pass_start -> moby_free_slots_count 1, vendor_draw_tr -> vendor_update_tr 1, a draw list's class draw
+  (0x28c14c) -> moby_pose_matrices_masked 1, wrench_trail_draw -> wrench_update ~0.6, moby_joints -> segment_collide_v (rare);
+  Veldin - the draw loop -> moby_visible_queue ~5 (moby +0xb0 / +0xd0), the sky's rand 1, moby_pass_start 1. The two big ones are
+  inside the drawing's heaviest parts: a serial part before the next step would have to take their marks out of the draw loop and
+  particles_draw (host code: possible) - the next step reads them.
+- **The cost, re-estimated:** the drawing ~5.4 ms a drawn frame on Kerwan; left on the game thread: the serial part (the view, the
+  draw loop's and the particles' marks, the sky's draws: ~1-1.5 ms?) and the two images' upkeep (the logic's ~140 pages and the
+  drawing's ~73 copied in, the drawing's merged back byte by byte: ~1-1.5 ms on the 750?): **~2.5-3 ms a drawn frame net** (Kerwan
+  ~34 -> ~31 ms), for several days' work.
 
