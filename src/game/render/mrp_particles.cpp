@@ -543,12 +543,39 @@ std::mutex g_lava_mu;
 std::shared_ptr<const LavaSet> g_lava;  // (the game's thread makes it, the drawing reads it)
 std::atomic<uint32_t> g_lava_fp{0};  // (the collision index's fingerprint last read)
 std::atomic<bool> g_lava_busy{false};  // (a reading under way)
+// a slot's point: its index in the set (the static lava) or, top bit set, a moby's point's key (mrp_moby_surface_points); none
+constexpr uint64_t kNoPoint = ~0ull, kMobyPoint = 1ull << 63;
 struct LavaSlots {
     std::shared_ptr<const LavaSet> set;  // (the points the slots index)
-    int idx[kLavaSlots];
+    uint64_t idx[kLavaSlots];
+    glm::vec3 pos[kLavaSlots];  // (its point's place: a moby's moves; the last one kept while it fades out)
     float since[kLavaSlots], gone[kLavaSlots];  // (the time the slot got its point; let it go, -1 not)
     float a = 40.0f;  // (the chance's scale: a / d^2)
+    LavaSlots() {
+        std::fill(std::begin(idx), std::end(idx), kNoPoint);
+        std::fill(std::begin(gone), std::end(gone), -1.0f);
+    }
 } g_slots;
+
+// the line a level with the lava material and no "source lava" line of its own draws: "particles embers 1.5 source lava"
+constexpr int kLavaMatKind = kPartEmbers;
+constexpr float kLavaMatDensity = 1.5f;
+// The lava from the materials (#136): the textures the level's lines give the "lava" material (tfrags, ties, shrubs: points on
+// their faces turned up or down, read on the drawing's thread once per level and lines, as the collision's are; mobys: points on
+// their tagged faces as the frame poses them, each frame), added to the collision's lava (a point within a cell of 2 units of one
+// of its points left out: the same lava tagged twice). Without a "source lava" line in the level's file, a level with such a
+// material draws embers from it (kLavaMatKind, kLavaMatDensity) (the collision's lava stays the lines' alone)
+struct LavaMat {
+    int level = -2;
+    uint64_t sig = 0;                         // (the lava lines: their kind, class and texture)
+    std::vector<EmissiveSurface> statics, mobys;
+    std::vector<glm::vec3> pts;               // (the static ones' points)
+    bool read = false;                        // (the world's triangles read: the level's world was ready)
+    int retry = 0;
+    std::shared_ptr<const LavaSet> from;      // (the collision's set the merged one was made with)
+    std::shared_ptr<const LavaSet> merged;    // (the collision's and the static materials' points: the slots' set)
+    uint64_t merged_sig = 0;
+} g_lava_mat;
 
 int g_kind_hist[32];  // (testing, RAC1_PARTICLES_TRACE: the faces by surface kind)
 
@@ -903,84 +930,222 @@ vk::GpuImage* sky_vk_image() {
     return &g_skywin.vk_img;
 }
 
+// orig: (host) the static points of the lava from the materials (g_lava_mat) as the level's lines give them now, and the set the
+// slots read: the collision's (a "source lava" line) and those merged (the drawing's thread, before the draws)
+void lava_material_update() {
+    const int level = mrp_user_lights_level();
+    uint64_t sig = 1469598103934665603ull;
+    std::vector<EmissiveSurface> statics, mobys;
+    for (const EmissiveSurface& e : mrp_user_emissive()) {
+        if (e.type != MAT_LAVA || e.kind < 0 || e.kind > 3) continue;
+        (e.kind == 3 ? mobys : statics).push_back(e);
+        for (int v : {e.kind, e.o_class, e.tex}) sig = (sig ^ static_cast<uint64_t>(static_cast<uint32_t>(v))) * 1099511628211ull;
+    }
+    LavaMat& M = g_lava_mat;
+    if (level != M.level || sig != M.sig) {
+        M.level = level;
+        M.sig = sig;
+        M.statics = std::move(statics);
+        M.mobys = std::move(mobys);
+        M.pts.clear();
+        M.read = M.statics.empty();
+        M.retry = 0;
+    }
+    if (!M.read && M.retry-- <= 0) {  // (the world's triangles: once the level's world is ready - again a second later if none came)
+        static std::vector<float> tris;
+        mrp_world_surface_triangles(M.statics, tris);
+        M.retry = 60;
+        if (!tris.empty()) {
+            M.read = true;
+            uint32_t rs = 0x85ebca6bu ^ static_cast<uint32_t>(level);
+            auto rnd = [&rs]() {
+                rs = rs * 1664525u + 1013904223u;
+                return static_cast<float>(rs >> 8) * (1.0f / 16777216.0f);
+            };
+            float carry = rnd();
+            for (size_t i = 0; i + 8 < tris.size(); i += 9) {
+                const glm::vec3 a(tris[i], tris[i + 1], tris[i + 2]), b(tris[i + 3], tris[i + 4], tris[i + 5]), c(tris[i + 6], tris[i + 7], tris[i + 8]);
+                const glm::vec3 n = glm::cross(b - a, c - a);
+                const float nl = glm::length(n);
+                if (!(nl > 2e-4f) || std::abs(n.z) < 0.5f * nl) continue;  // (the lava's top: not its sides)
+                for (carry += 0.5f * nl / kLavaSpacing; carry >= 1.0f && M.pts.size() < 262144; carry -= 1.0f) {
+                    float u = rnd(), v = rnd();
+                    if (u + v > 1.0f) {
+                        u = 1.0f - u;
+                        v = 1.0f - v;
+                    }
+                    M.pts.push_back(a + u * (b - a) + v * (c - a));
+                }
+            }
+            static const bool trace = std::getenv("RAC1_PARTICLES_TRACE") != nullptr;
+            if (trace)
+                std::printf("[particles] level %d: lava from %zu static material lines: %zu triangles, %zu points; %zu moby lines\n", level, M.statics.size(), tris.size() / 9,
+                            M.pts.size(), M.mobys.size());
+        }
+    }
+    std::shared_ptr<const LavaSet> coll;
+    {
+        std::lock_guard<std::mutex> lk(g_lava_mu);
+        coll = g_lava;
+    }
+    if (coll != nullptr && coll->level != level) coll = nullptr;
+    const uint64_t msig = sig ^ (M.read ? 0x9e3779b97f4a7c15ull : 0) ^ static_cast<uint64_t>(M.pts.size());
+    if (M.pts.empty()) {  // (the collision's alone: as before the materials)
+        M.merged = coll;
+        M.from = coll;
+        M.merged_sig = msig;
+        return;
+    }
+    if (M.merged != nullptr && M.from == coll && M.merged_sig == msig && M.merged->level == level) return;
+    auto out = std::make_shared<LavaSet>();
+    out->level = level;
+    out->spacing = kLavaSpacing;
+    std::unordered_map<uint64_t, uint8_t> taken;  // (the collision's points' 2-unit cells)
+    auto cell = [](const glm::vec3& p) {
+        return static_cast<uint64_t>(static_cast<uint32_t>(static_cast<int>(std::floor(p.x / 2.0f)) & 0x1fffff)) |
+               static_cast<uint64_t>(static_cast<uint32_t>(static_cast<int>(std::floor(p.y / 2.0f)) & 0x1fffff)) << 21 |
+               static_cast<uint64_t>(static_cast<uint32_t>(static_cast<int>(std::floor(p.z / 2.0f)) & 0x1fffff)) << 42;
+    };
+    if (coll != nullptr) {
+        out->pts = coll->pts;
+        out->tree = coll->tree;
+        out->faces = coll->faces;
+        out->spacing = coll->spacing;
+        for (const glm::vec3& p : coll->pts) taken[cell(p)] = 1;
+    }
+    for (const glm::vec3& p : M.pts)
+        if (taken.find(cell(p)) == taken.end()) out->pts.push_back(p);
+    out->area = static_cast<float>(out->pts.size()) * out->spacing;
+    auto column = [](const glm::vec3& p) { return std::clamp(static_cast<int>(p.x / 16.0f), 0, 63) + 64 * std::clamp(static_cast<int>(p.y / 16.0f), 0, 63); };
+    std::stable_sort(out->pts.begin(), out->pts.end(), [&](const glm::vec3& a, const glm::vec3& b) { return column(a) < column(b); });
+    out->col.assign(64 * 64 + 1, 0);
+    for (const glm::vec3& p : out->pts) ++out->col[static_cast<size_t>(column(p)) + 1];
+    for (size_t c = 1; c < out->col.size(); ++c) out->col[c] += out->col[c - 1];
+    M.merged = std::move(out);
+    M.from = coll;
+    M.merged_sig = msig;
+}
+
 // orig: (host) the slots the frame's "source lava" draws read (uEmit): some of the level's lava points within kLavaRange of the
 // camera, the nearer the more (a point taken with the chance a / d^2, by its own fixed number: about as many on screen near as
 // far; `a` follows the count so that some 460 of the 512 slots are used; points behind the camera count as twice as far). A slot
 // keeps its point while that stays taken (a margin: no flicker at the edge); a point no longer taken lets its particles fade out
-// over 1.5 s before the slot takes another, whose particles fade in: nothing jumps. uEmit's w: the time the slot got its point
-// (>= 0), -2 - the time it was let go (fading out), -1 none
+// over 1.5 s before the slot takes another, whose particles fade in: nothing jumps. The points: the static lava's (the merged set,
+// lava_material_update) and the lava mobys' (their keys; a slot follows its moby's point as the pose moves it). uEmit's w: the
+// time the slot got its point (>= 0), -2 - the time it was let go (fading out), -1 none
 constexpr float kLavaFade = 1.5f;
 void lava_slots_update(const glm::vec3& cam, const glm::vec3& fwd, float t, float out[kLavaSlots][4], float* spread) {
-    std::shared_ptr<const LavaSet> set;
-    {
-        std::lock_guard<std::mutex> lk(g_lava_mu);
-        set = g_lava;
-    }
+    std::shared_ptr<const LavaSet> set = g_lava_mat.merged;
     if (set != nullptr && set->level != mrp_user_lights_level()) set = nullptr;
-    if (set == nullptr || g_slots.set != set) {
-        std::fill(std::begin(g_slots.idx), std::end(g_slots.idx), -1);
-        std::fill(std::begin(g_slots.gone), std::end(g_slots.gone), -1.0f);
+    if (g_slots.set != set) {
+        // (the static points' indices change with the set: those slots let go at once; the mobys' keep theirs)
+        for (int k = 0; k < kLavaSlots; ++k)
+            if (g_slots.set == nullptr || (g_slots.idx[k] & kMobyPoint) == 0 || set == nullptr) {
+                g_slots.idx[k] = kNoPoint;
+                g_slots.gone[k] = -1.0f;
+            }
+        if (g_slots.set == nullptr || set == nullptr) g_slots.a = 40.0f;
         g_slots.set = set;
-        g_slots.a = 40.0f;
+    }
+    static std::vector<MobySurfacePoint> dyn;
+    dyn.clear();
+    if (!g_lava_mat.mobys.empty()) {
+        const float c[3] = {cam.x, cam.y, cam.z};
+        mrp_moby_surface_points(g_lava_mat.mobys, c, kLavaRange, kLavaSpacing, dyn);
     }
     for (int i = 0; i < kLavaSlots; ++i) out[i][3] = -1.0f;
-    if (set == nullptr || set->pts.empty()) return;
-    *spread = 0.65f * std::sqrt(set->spacing);  // (around a point: about the lava it stands for)
-    auto chance = [](uint32_t i) { return static_cast<float>((i * 2654435761u) >> 8) * (1.0f / 16777216.0f); };  // (the point's own number)
-    static std::vector<std::pair<float, int>> near;  // (the points taken: their distance squared)
+    const bool any_static = set != nullptr && !set->pts.empty();
+    if (!any_static && dyn.empty()) {
+        for (int k = 0; k < kLavaSlots; ++k) g_slots.idx[k] = kNoPoint;
+        return;
+    }
+    *spread = 0.65f * std::sqrt(any_static ? set->spacing : kLavaSpacing);  // (around a point: about the lava it stands for)
+    auto chance = [](uint64_t i) {  // (the point's own number)
+        const uint32_t h = static_cast<uint32_t>(i) ^ static_cast<uint32_t>(i >> 29);
+        return static_cast<float>((h * 2654435761u) >> 8) * (1.0f / 16777216.0f);
+    };
+    struct Near {
+        float q;
+        uint64_t key;
+        glm::vec3 p;
+    };
+    static std::vector<Near> near;  // (the points taken: their distance squared)
     near.clear();
     const float r2 = kLavaRange * kLavaRange, a = g_slots.a;
     float expect = 0.0f;  // (the count `a` gives: steered toward the slots' share)
-    const int cx0 = std::clamp(static_cast<int>((cam.x - kLavaRange) / 16.0f), 0, 63), cx1 = std::clamp(static_cast<int>((cam.x + kLavaRange) / 16.0f), 0, 63);
-    const int cy0 = std::clamp(static_cast<int>((cam.y - kLavaRange) / 16.0f), 0, 63), cy1 = std::clamp(static_cast<int>((cam.y + kLavaRange) / 16.0f), 0, 63);
-    static std::vector<uint8_t> state;  // (by point: 1 taken now, 2 taken with the margin; cleared again below)
-    if (state.size() != set->pts.size()) state.assign(set->pts.size(), 0);
+    static std::vector<uint8_t> state;  // (by static point: 1 taken now, 2 taken with the margin; cleared again below)
     static std::vector<int> touched;
+    static std::unordered_map<uint64_t, std::pair<uint8_t, glm::vec3>> dyn_state;  // (the mobys' points: the same, and where)
     touched.clear();
-    for (int cy = cy0; cy <= cy1; ++cy)
-        for (int cx = cx0; cx <= cx1; ++cx)
-            for (uint32_t i = set->col[static_cast<size_t>(cx + 64 * cy)]; i < set->col[static_cast<size_t>(cx + 64 * cy) + 1]; ++i) {
-                const glm::vec3 d = set->pts[i] - cam;
-                float q = glm::dot(d, d);
-                if (glm::dot(d, fwd) < -0.3f * std::sqrt(q)) q *= 4.0f;  // (behind the camera: as if twice as far)
-                if (q >= r2) continue;
-                const float k = a / std::max(q, 9.0f);
-                expect += std::min(k, 1.0f);
-                const float c = chance(i);
-                if (c < k * 1.3f) {
-                    state[i] = c < k ? 1 : 2;
-                    touched.push_back(static_cast<int>(i));
-                    if (c < k) near.emplace_back(q, static_cast<int>(i));
-                }
-            }
+    dyn_state.clear();
+    auto look = [&](const glm::vec3& p, uint64_t key) -> uint8_t {
+        const glm::vec3 d = p - cam;
+        float q = glm::dot(d, d);
+        if (glm::dot(d, fwd) < -0.3f * std::sqrt(q)) q *= 4.0f;  // (behind the camera: as if twice as far)
+        if (q >= r2) return 0;
+        const float k = a / std::max(q, 9.0f);
+        expect += std::min(k, 1.0f);
+        const float c = chance(key);
+        if (c >= k * 1.3f) return 0;
+        if (c < k) near.push_back({q, key, p});
+        return c < k ? 1 : 2;
+    };
+    if (any_static) {
+        const int cx0 = std::clamp(static_cast<int>((cam.x - kLavaRange) / 16.0f), 0, 63), cx1 = std::clamp(static_cast<int>((cam.x + kLavaRange) / 16.0f), 0, 63);
+        const int cy0 = std::clamp(static_cast<int>((cam.y - kLavaRange) / 16.0f), 0, 63), cy1 = std::clamp(static_cast<int>((cam.y + kLavaRange) / 16.0f), 0, 63);
+        if (state.size() != set->pts.size()) state.assign(set->pts.size(), 0);
+        for (int cy = cy0; cy <= cy1; ++cy)
+            for (int cx = cx0; cx <= cx1; ++cx)
+                for (uint32_t i = set->col[static_cast<size_t>(cx + 64 * cy)]; i < set->col[static_cast<size_t>(cx + 64 * cy) + 1]; ++i)
+                    if (const uint8_t st = look(set->pts[i], i); st != 0) {
+                        state[i] = st;
+                        touched.push_back(static_cast<int>(i));
+                    }
+    }
+    for (const MobySurfacePoint& mp : dyn) {
+        const glm::vec3 p(mp.pos[0], mp.pos[1], mp.pos[2]);
+        const uint8_t st = look(p, mp.key);
+        dyn_state[mp.key] = {st, p};
+    }
     g_slots.a = std::clamp(a * std::pow(460.0f / std::max(expect, 1.0f), 0.1f), 0.5f, 1e5f);
     // the slots: kept while taken (with the margin), else let go; let go long enough, free
     for (int k = 0; k < kLavaSlots; ++k) {
-        const int i = g_slots.idx[k];
-        if (i < 0) continue;
+        const uint64_t i = g_slots.idx[k];
+        if (i == kNoPoint) continue;
+        uint8_t* st = nullptr;
+        if ((i & kMobyPoint) != 0) {
+            const auto it = dyn_state.find(i);
+            if (it != dyn_state.end()) {
+                st = &it->second.first;
+                g_slots.pos[k] = it->second.second;  // (where the pose took it this frame)
+            }
+        } else if (any_static && i < state.size()) {
+            st = &state[static_cast<size_t>(i)];
+        }
         if (g_slots.gone[k] >= 0.0f) {
-            if (t - g_slots.gone[k] > kLavaFade || t < g_slots.gone[k]) g_slots.idx[k] = -1;
-        } else if (state[static_cast<size_t>(i)] == 0) {
+            if (t - g_slots.gone[k] > kLavaFade || t < g_slots.gone[k]) g_slots.idx[k] = kNoPoint;
+        } else if (st == nullptr || *st == 0) {
             g_slots.gone[k] = t;
         } else {
-            state[static_cast<size_t>(i)] = 3;  // (in a slot already)
+            *st = 3;  // (in a slot already)
         }
     }
-    std::sort(near.begin(), near.end());  // (the nearest first into the free slots)
+    std::sort(near.begin(), near.end(), [](const Near& x, const Near& y) { return x.q < y.q || (x.q == y.q && x.key < y.key); });  // (the nearest first into the free slots)
     int k = 0;
-    for (const auto& [q, i] : near) {
-        if (state[static_cast<size_t>(i)] != 1) continue;
-        while (k < kLavaSlots && g_slots.idx[k] >= 0) ++k;
+    for (const Near& n : near) {
+        const uint8_t st = (n.key & kMobyPoint) != 0 ? dyn_state[n.key].first : state[static_cast<size_t>(n.key)];
+        if (st != 1) continue;
+        while (k < kLavaSlots && g_slots.idx[k] != kNoPoint) ++k;
         if (k >= kLavaSlots) break;
-        g_slots.idx[k] = i;
+        g_slots.idx[k] = n.key;
+        g_slots.pos[k] = n.p;
         g_slots.since[k] = t;
         g_slots.gone[k] = -1.0f;
     }
     for (int i : touched) state[static_cast<size_t>(i)] = 0;
     for (int s = 0; s < kLavaSlots; ++s) {
-        const int i = g_slots.idx[s];
-        if (i < 0) continue;
-        const glm::vec3& p = set->pts[static_cast<size_t>(i)];
+        if (g_slots.idx[s] == kNoPoint) continue;
+        const glm::vec3& p = g_slots.pos[s];
         out[s][0] = p.x;
         out[s][1] = p.y;
         out[s][2] = p.z;
@@ -997,7 +1162,24 @@ struct Draw {
 
 // orig: (host) the frame's draws from the level's lines (false: none)
 bool make_draws(std::vector<Draw>& out, const int vp[4], uint64_t game_frame) {
-    const std::vector<ParticleSpec>& lines = mrp_user_particles();
+    lava_material_update();
+    const std::vector<ParticleSpec>* lp = &mrp_user_particles();
+    // (a level with the lava material and no "source lava" line: the material's embers by themselves)
+    if (!g_lava_mat.statics.empty() || !g_lava_mat.mobys.empty()) {
+        bool has = false;
+        for (const ParticleSpec& ps : *lp) has = has || ps.src_lava;
+        if (!has) {
+            static std::vector<ParticleSpec> with;
+            with = *lp;
+            ParticleSpec e;
+            e.kind = kLavaMatKind;
+            e.density = kLavaMatDensity;
+            e.src_lava = true;
+            with.push_back(e);
+            lp = &with;
+        }
+    }
+    const std::vector<ParticleSpec>& lines = *lp;
     if (lines.empty()) return false;
     float vpf[16];
     mrp_world_view_proj(vpf);
@@ -1292,7 +1474,7 @@ void mrp_particles_draw(uint64_t game_frame) {
     static const bool trace = std::getenv("RAC1_PARTICLES_TRACE") != nullptr;  // (testing: what is drawn, every 120 frames)
     if (trace && game_frame % 120 == 0) {
         int used = 0;
-        for (int i : g_slots.idx) used += i >= 0 && g_slots.set != nullptr ? 1 : 0;
+        for (uint64_t i : g_slots.idx) used += i != kNoPoint ? 1 : 0;
         std::printf("[particles] frame %llu level %d: %zu draws, %d particles, light %.2f %.2f %.2f, the game's rain / snow %s; the lava's slots %d (a %.1f)\n",
                     static_cast<unsigned long long>(game_frame), mrp_user_lights_level(), draws.size(), total, draws[0].u.col[0], draws[0].u.col[1], draws[0].u.col[2],
                     g_hide_game ? "hidden" : "drawn", used, static_cast<double>(g_slots.a));

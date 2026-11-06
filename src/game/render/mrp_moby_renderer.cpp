@@ -3462,6 +3462,104 @@ bool mrp_moby_at(const float p[3], uint32_t* moby, int* o_class, float* dist) {
     return any;
 }
 
+// orig: (host) see mrp_lighting.h. Each drawn moby of a class with one of the surfaces is skinned on the CPU as surface_near does
+// (both LODs' packets, its texture prims in force along them); on each of that texture's triangles turned up or down (its normal at
+// least half up or down: not a side) floor(area / spacing + h) points, h the triangle's own fixed fraction, each at its own fixed
+// place (barycentric) on it: the same points frame after frame while the pose moves them
+void mrp_moby_surface_points(const std::vector<EmissiveSurface>& surfaces, const float cam[3], float range, float spacing, std::vector<MobySurfacePoint>& out) {
+    out.clear();
+    if (!g_frame.active || !g_frame.built || g_frame.mode != 0 || !(spacing > 0.0f)) return;
+    std::unordered_map<int, uint32_t> want;  // (class -> its local textures' mask)
+    for (const EmissiveSurface& e : surfaces)
+        if (e.kind == 3 && e.tex >= 0 && e.tex < 32) want[e.o_class] |= 1u << e.tex;
+    if (want.empty()) return;
+    const glm::vec3 C(cam[0], cam[1], cam[2]);
+    auto hash = [](uint32_t x) {
+        x ^= x >> 16;
+        x *= 0x7feb352du;
+        x ^= x >> 15;
+        x *= 0x846ca68bu;
+        x ^= x >> 16;
+        return x;
+    };
+    auto unit = [](uint32_t h) { return static_cast<float>(h >> 8) * (1.0f / 16777216.0f); };
+    static std::vector<glm::mat4> J;
+    static std::vector<glm::vec3> wp;
+    static std::vector<uint8_t> ok_v;
+    for (const Frame::MobyXf& x : g_frame.xf) {
+        const auto wi = want.find(x.class_id);
+        if (wi == want.end() || glm::length(x.centre - C) > range + x.radius) continue;
+        if (x.cg == nullptr || x.cg->asset == nullptr || x.joint_count == 0 || x.joint_first + x.joint_count > g_frame.joints_all.size()) continue;
+        J.resize(x.joint_count);
+        for (uint32_t j = 0; j < x.joint_count; ++j) J[j] = x.W * joint_mat(g_frame.joints_all[x.joint_first + j]);
+        const mrp::MobyClass& c = *x.cg->asset;
+        int local = -1;  // (the texture prim in force: a run without one keeps the one before it)
+        for (size_t pi = 0; pi < x.cg->packets.size() && pi < c.packets.size(); ++pi) {
+            if (c.packets[pi].lod > 1) continue;
+            const PacketGpu& pg = x.cg->packets[pi];
+            if (pg.first_vertex + pg.vertex_count > g_level.verts.size()) continue;
+            const int local_before = local;
+            bool wanted = false;
+            for (const Run& r : pg.runs) {
+                if (r.prim >= 0 && static_cast<size_t>(r.prim) < pg.prims.size()) local = pg.prims[static_cast<size_t>(r.prim)].local;
+                wanted = wanted || (local >= 0 && local < 32 && ((wi->second >> local) & 1u) != 0);
+            }
+            if (!wanted) continue;
+            wp.assign(pg.vertex_count, glm::vec3(0.0f));
+            ok_v.assign(pg.vertex_count, 0);
+            for (uint32_t v = 0; v < pg.vertex_count; ++v) {
+                const GpuVertex& gv = g_level.verts[pg.first_vertex + v];
+                if (gv.n == 0 || gv.n > 3) continue;
+                glm::mat4 M(0.0f);
+                bool ok = true;
+                for (uint8_t k = 0; k < gv.n && ok; ++k) {
+                    ok = gv.joint[k] < x.joint_count;
+                    if (ok) M += J[gv.joint[k]] * (gv.n == 1 ? 1.0f : static_cast<float>(gv.weight[k]) / 256.0f);
+                }
+                const glm::vec4 q = M * glm::vec4(gv.pos[0], gv.pos[1], gv.pos[2], 1.0f);
+                if (!ok || !(std::fabs(q.w) > 1e-12f)) continue;
+                wp[v] = glm::vec3(q) / q.w;
+                ok_v[v] = 1;
+            }
+            int lc = local_before;  // (the runs again, the prim in force from the packet's start)
+            for (const Run& r : pg.runs) {
+                if (r.prim >= 0 && static_cast<size_t>(r.prim) < pg.prims.size()) lc = pg.prims[static_cast<size_t>(r.prim)].local;
+                if (lc < 0 || lc >= 32 || ((wi->second >> lc) & 1u) == 0) continue;
+                for (uint32_t t = r.first_index; t + 2 < r.first_index + r.count && t + 2 < g_level.indices.size(); t += 3) {
+                    uint32_t i[3];
+                    bool ok = true;
+                    for (int k = 0; k < 3; ++k) {
+                        i[k] = g_level.indices[t + static_cast<uint32_t>(k)] - pg.first_vertex;
+                        ok = ok && i[k] < pg.vertex_count && ok_v[i[k]] != 0;
+                    }
+                    if (!ok) continue;
+                    const glm::vec3 &a = wp[i[0]], &b = wp[i[1]], &cc = wp[i[2]];
+                    const glm::vec3 n = glm::cross(b - a, cc - a);
+                    const float nl = glm::length(n), area = 0.5f * nl;
+                    if (!(area > 1e-4f) || std::fabs(n.z) < 0.5f * nl) continue;
+                    const uint32_t tri = static_cast<uint32_t>(pi) << 20 | ((t / 3) & 0xfffffu);
+                    const uint32_t h0 = hash(tri * 0x9e3779b9u ^ static_cast<uint32_t>(x.class_id));
+                    const int count = std::min(static_cast<int>(area / spacing + unit(h0)), 64);
+                    for (int s = 0; s < count; ++s) {
+                        float u = unit(hash(h0 + static_cast<uint32_t>(2 * s + 1))), w = unit(hash(h0 + static_cast<uint32_t>(2 * s + 2)));
+                        if (u + w > 1.0f) {
+                            u = 1.0f - u;
+                            w = 1.0f - w;
+                        }
+                        const glm::vec3 p = a + u * (b - a) + w * (cc - a);
+                        MobySurfacePoint mp;
+                        mp.key = (1ull << 63) | (static_cast<uint64_t>(x.moby & 0x7fffffffu) << 32) | (static_cast<uint64_t>(hash(tri) ^ static_cast<uint32_t>(s) * 0x85ebca6bu));
+                        mp.pos[0] = p.x;
+                        mp.pos[1] = p.y;
+                        mp.pos[2] = p.z;
+                        out.push_back(mp);
+                    }
+                }
+            }
+        }
+    }
+}
+
 // orig: (host) see mrp_lighting.h
 std::vector<TextureEntry> mrp_moby_texture_list(int thumb) {
     std::vector<TextureEntry> out;

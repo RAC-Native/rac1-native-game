@@ -1229,6 +1229,13 @@ void tab_sun() {
         g_sun_dirty = true;
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Saved as \"sun_rays off\" in the level's file (the Sun Rays option still sets the other levels')");
+    // the level's Sun Rays strength ("sun_rays_strength <0..2>" in its file): the option's strength scaled here
+    if (float k = mrp_user_sun_rays_strength(); ImGui::SliderFloat("Sun Rays strength on this level", &k, 0.0f, 2.0f, "%.2f")) {
+        mrp_user_sun_rays_set_strength(k);
+        g_sun_dirty = true;
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Saved as \"sun_rays_strength <k>\" in the level's file (1: the Sun Rays option's own strength; 0: none). Ctrl+click to type a value");
     if (ImGui::Button("Save")) g_sun_dirty = !lights_save();
     ImGui::SameLine();
     if (ImGui::Button("Reload")) {

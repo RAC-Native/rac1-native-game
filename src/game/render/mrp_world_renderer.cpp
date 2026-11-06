@@ -5354,6 +5354,100 @@ std::vector<TextureEntry> mrp_world_texture_list(int thumb) {
     return out;
 }
 
+// orig: (host) see mrp_lighting.h. The tfrags' triangles as the debug menu's crosshair finds them (their far image), the ties' and
+// the shrubs' of every instance (their LOD 0): a surface's texture taken wherever the level uses it, as its emissive line's slot is
+void mrp_world_surface_triangles(const std::vector<EmissiveSurface>& surfaces, std::vector<float>& out) {
+    out.clear();
+    const Level& L = g_level;
+    if (!L.loaded || L.world == nullptr || !g_slevel.ok) return;
+    std::vector<uint8_t> want[3];
+    for (int k = 0; k < 3; ++k) want[k].assign(L.tex[k].size(), 0);
+    bool any = false;
+    for (const EmissiveSurface& e : surfaces) {
+        if (e.kind < 0 || e.kind > 2) continue;
+        const int t = class_texture(L, e.kind, e.o_class, e.tex, nullptr);
+        if (t < 0 || static_cast<size_t>(t) >= want[e.kind].size()) continue;
+        want[e.kind][static_cast<size_t>(t)] = 1;
+        any = true;
+    }
+    if (!any) return;
+    auto put = [&out](const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) {
+        for (const glm::vec3* v : {&a, &b, &c}) out.insert(out.end(), {v->x, v->y, v->z});
+    };
+    if (g_tf_tris.level != L.id) tfrag_tris_build();
+    for (size_t i = 0; i < g_tf_tris.tex.size(); ++i) {
+        const int t = g_tf_tris.tex[i];
+        if (t >= 0 && static_cast<size_t>(t) < want[0].size() && want[0][static_cast<size_t>(t)] != 0) put(g_tf_tris.v[3 * i], g_tf_tris.v[3 * i + 1], g_tf_tris.v[3 * i + 2]);
+    }
+    std::unordered_map<const TiePacket*, const TieClass*> cls_of;
+    for (const TieClass& c : L.world->ties)
+        for (const TiePacket& p : c.packets) cls_of[&p] = &c;
+    std::vector<InstFrame> inst;
+    auto inst_frame = [](uint32_t data) {
+        InstFrame f;
+        const float w = lwc1(data + 0x3c);
+        f.pos = glm::vec3(lwc1(data + 0x30), lwc1(data + 0x34), lwc1(data + 0x38));
+        for (uint32_t c = 0; c < 3; ++c)
+            for (uint32_t l = 0; l < 3; ++l) f.m[static_cast<int>(c)][static_cast<int>(l)] = lwc1(data + 0x10 * c + 4 * l) * w / 1024.0f;
+        return f;
+    };
+    auto run_tris = [&](const Tpl& t, const TplRun& run) {
+        for (uint32_t k = 0; k + 2 < run.count; k += 3) {
+            glm::vec3 v[3];
+            for (int j = 0; j < 3; ++j) {
+                const TVert& tv = L.tverts[t.first_vertex + L.tidx[t.first_index + run.first + k + static_cast<uint32_t>(j)]];
+                v[j] = glm::vec3(tv.pos[0], tv.pos[1], tv.pos[2]);
+            }
+            for (const InstFrame& f : inst) put(f.pos + f.m * v[0], f.pos + f.m * v[1], f.pos + f.m * v[2]);
+        }
+    };
+    for (const StaticTieClass& sc : g_slevel.ties) {
+        if (sc.lod[0].empty() || sc.lod[0].front().tie == nullptr) continue;
+        const auto ci = cls_of.find(sc.lod[0].front().tie);
+        if (ci == cls_of.end()) continue;
+        const TieClass& tc = *ci->second;
+        bool used = false;
+        for (const TexturePrim& tp : tc.textures) used = used || (tp.texture >= 0 && static_cast<size_t>(tp.texture) < want[1].size() && want[1][static_cast<size_t>(tp.texture)] != 0);
+        if (!used) continue;
+        inst.clear();
+        const uint32_t bounds = lwu(sc.rec + 0x28), n = lhu(sc.rec + 0x26);
+        for (uint32_t i = 0; i < n; ++i) inst.push_back(inst_frame(lwu(bounds + 0x20 * i + 0x10)));
+        for (const StaticPacket& sp : sc.lod[0]) {
+            const auto ti = L.tpl.find(sp.tie);
+            if (ti == L.tpl.end()) continue;
+            for (const TplRun& run : ti->second.runs) {
+                if (run.slot < 0 || static_cast<size_t>(run.slot) >= sp.tie->prims.size()) continue;
+                const int prim = sp.tie->prims[static_cast<size_t>(run.slot)];
+                if (prim < 0 || static_cast<size_t>(prim) >= tc.textures.size()) continue;
+                const int t = tc.textures[static_cast<size_t>(prim)].texture;
+                if (t >= 0 && static_cast<size_t>(t) < want[1].size() && want[1][static_cast<size_t>(t)] != 0) run_tris(ti->second, run);
+            }
+        }
+    }
+    const uint32_t shrub_data = lwu(OV(0x0016049cu));
+    for (size_t c = 0; c < g_slevel.shrubs.size() && c < L.world->shrubs.size(); ++c) {
+        const StaticShrubClass& sc = g_slevel.shrubs[c];
+        bool used = false;
+        for (const StaticPacket& sp : sc.packets)
+            if (sp.shrub != nullptr)
+                for (const TexturePrim& tp : sp.shrub->textures) used = used || (tp.texture >= 0 && static_cast<size_t>(tp.texture) < want[2].size() && want[2][static_cast<size_t>(tp.texture)] != 0);
+        if (!used) continue;
+        inst.clear();
+        const uint32_t bounds = lwu(sc.rec + 0x18), n = lhu(sc.rec + 0x16);
+        for (uint32_t i = 0; i < n; ++i) inst.push_back(inst_frame(shrub_data + 0x40 * lhu(bounds + 0x20 * i + 0x18)));
+        for (const StaticPacket& sp : sc.packets) {
+            if (sp.shrub == nullptr) continue;
+            const auto ti = L.tpl.find(sp.shrub);
+            if (ti == L.tpl.end()) continue;
+            for (const TplRun& run : ti->second.runs) {
+                if (run.slot < 0 || static_cast<size_t>(run.slot) >= sp.shrub->textures.size()) continue;
+                const int t = sp.shrub->textures[static_cast<size_t>(run.slot)].texture;
+                if (t >= 0 && static_cast<size_t>(t) < want[2].size() && want[2][static_cast<size_t>(t)] != 0) run_tris(ti->second, run);
+            }
+        }
+    }
+}
+
 // orig: (host) see mrp_lighting.h
 std::vector<EmissiveCandidate> mrp_world_emissive_candidates() {
     std::vector<EmissiveCandidate> out;

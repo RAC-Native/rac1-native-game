@@ -30,6 +30,21 @@ What changed in each release. Releases are source only: you build the game with 
   "Mods on" line at the bottom of the title screen and the main and pause menus while any is on. The debug menu's Dump textures (or
   RAC1_TEX_DUMP) writes the textures with their hashes, to start a pack. Headless runs (the tests, the reference checks)
   never load mods unless RAC1_MODS=1; RAC1_MODS=0 turns them all off.
+- Ambient Particles: the `lava` material gives lava particles (#136): tfrags, ties and shrubs whose texture a level's line
+  marks lava (points on their faces, read once per level) and mobys marked lava (points on their posed faces each frame,
+  moving with them) add to the collision's lava of Umbris, Gaspar and Orxon; a level with the material and no `source lava`
+  line draws embers from it. Nothing changes without the material or with Ambient Particles Off (docs/particles.md, From
+  the lava material).
+- Level light files: `sun_rays_strength <0..2>` scales the Sun Rays option's strength on that level (its added light and
+  limit; 0 none, 1 without the line), set in the debug menu's Sun tab (Sun Rays strength on this level) and saved with the
+  file (#121: the tutorial's rays were too strong). See docs/lighting.md, Sun rays.
+- Debug menu, Textures tab: every tie texture is listed and can be taken in hand (#136, #121). A tie class's texture prims
+  all named the class's first texture (the world files' decoder read each prim's TEX0 word, 0 in every class, for its local
+  texture; the game gives prim t the remap's byte t): the tab listed a class under its first texture alone, the crosshair's
+  preview pulsed that texture, and a `tie <class> tex <t>` line with t above 0 marked the class's first texture. Each prim
+  now takes its own texture at the level's load (checked against the game's registers on every level). With Graphics
+  Enhanced, the 80 shipped tie lines with t above 0 now mark the texture they name, and the automatic tie emitters judge
+  each texture of a class (docs/lighting.md, the Textures tab).
 - Movie subtitles (Options > Language > Movie Subtitles, Off by default; RAC1_MOVIE_SUBTITLES for testing): the original
   shows none over its movies; the game shows SubRip files from `assets/movie-subtitles/` in the game's subtitle look, in
   the text language. The setup makes them on request with speech to text from the disc's own sound tracks

@@ -646,7 +646,8 @@ are looked for along it (`g_cull_sun`, each frame), the mobys' key light is turn
 covered views' memory of the sky does not depend on it. Nothing needs a level reload. **Sun Rays off
 on this level** turns the [sun rays](#sun-rays) off on the level whatever the Sun Rays option (saved
 as `sun_rays off`: where the rays do not suit the level, as Anya-Thoughtmane's lighting pass found
-on Blarg's station, Rilgar, Batalia and Oltanis, #101). **Save** writes the level's file (its comment
+on Blarg's station, Rilgar, Batalia and Oltanis, #101); **Sun Rays strength on this level** (0 to 2, Ctrl+click to type)
+scales their strength there (saved as `sun_rays_strength <k>`, not written at 1). **Save** writes the level's file (its comment
 lines, its lights and its `noauto` lines kept, each line in its place; the Lights tab's unsaved
 edits too), **Reload** reads it again.
 
@@ -762,7 +763,10 @@ is the showcase). Screen space, at a fraction of the 3D's resolution (`sun_rays_
 
 A level's file may turn them off there (`sun_rays off`, the [sun editor](#the-sun-editor)'s **Sun
 Rays off on this level**), whatever the option: Blarg's station, Rilgar, Batalia and Oltanis, from
-Anya-Thoughtmane's lighting pass (#101). OpenGL and Vulkan alike (`sun_rays_now`).
+Anya-Thoughtmane's lighting pass (#101). OpenGL and Vulkan alike (`sun_rays_now`). It may also scale their strength there
+(`sun_rays_strength <k>`, 0 to 2, 1 without the line; the sun editor's **Sun Rays strength on this level**, #121): the added light
+and its limit of the chosen step are multiplied by `k` (0.5 half as strong; 0 none, as `sun_rays off`), so a level where the rays
+are too much (or too little) keeps the option's look elsewhere.
 
 No rays in the ship's flights (game mode 6 but its take-off and landing scenes: leaving a planet, and
 the loading screen's flight between planets), where the sun is still the level's left behind (#66).
@@ -955,7 +959,7 @@ part of the original. The editor is in the debug menu (Lights tab), so it needs 
   `RAC1_LIGHTS_DIR` changes the directory), one light per line:
   `light x y z  r g b  intensity radius flicker on`, `noauto <class>` for an automatic class
   turned off, `emissive ...` for an [emissive surface](#emissive-surfaces), `sun <azimuth> <elevation>` for the level's own sun,
-  `sun_rays off` for no [sun rays](#sun-rays) on the level and `particles <kind> <density> ...` for the level's
+  `sun_rays off` for no [sun rays](#sun-rays) on the level, `sun_rays_strength <0..2>` for their strength there and `particles <kind> <density> ...` for the level's
   [ambient particles](particles.md#a-levels-lines), with `#` for comments. Saving from the editor keeps the file's
   own comment lines and its lines' order (an entry is written where its line was, the ones added
   after the last line), and writes the numbers it read unchanged: the game's thread rounds toward
@@ -1127,6 +1131,17 @@ other levels of detail, ties and shrubs placed far from the start, mobys spawned
 may have nothing to aim at near the start; its classes are under the thumbnail, and the preview shows where it is drawn). The thumbnails are
 one atlas of 64 x 64 pictures made on the CPU from the renderers' decoded textures when the tab is first shown on a level (or
 **Refresh**): an OpenGL texture or a Vulkan image ImGui draws; nothing of the game's drawing changes.
+
+A tie's textures: a tie class's texture prim `t` (an `emissive` / `material` line's `tex t`) is the level's tie texture at byte `t`
+of the class's 16-byte remap, as the game's level load gives it (`tie_class_register`, 0x240aa8). Until #136 the world files'
+decoder took each prim's TEX0 word for its local texture, and that word is 0 in every class of the game: every prim of a class
+named the class's first texture. So the grid listed a tie class under its first texture alone (its other textures had no class:
+left out, nothing to click), the crosshair's preview pulsed the class's first texture whatever prim was aimed at, and a line for
+`tie <class> tex <t>` with `t` above 0 marked the class's first texture (80 of the shipped files' 253 tie lines, all on another
+texture now; the automatic emitters judged a tie class by its first texture too). The load now sets each prim's texture from the
+remap (`tie_textures_from_remap`, mrp_world_assets.cpp; checked against the game's own registers in EE memory on every level: 0
+of 5 000 prims differ), so every tie texture the level draws is in the grid with its classes and prims, and a line reaches the
+texture it names. The game's drawing reads its own registers and is unchanged.
 
 Shipped (#102, strength 1.3 so that they read a little brighter than the original, and do not darken): on Veldin the domed
 building's round cyan lamps (shrub class 569, three stacked instances per column, `tex 1` their glass) and its cyan door panels (tie
