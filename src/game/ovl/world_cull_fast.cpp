@@ -6,7 +6,8 @@
 //   2  both, compared at every call: the hand-written cull runs inside a journal of EE memory, its results (the EE RAM, the
 //      scratchpad, the VU0 registers and flags, the DMA registers, the visible lists) are kept, the memory put back, then the
 //      transliteration runs and its results are compared; the game goes on with the transliteration's. Differences are printed
-//      (the first few) and counted, and the counts printed at the end of the run (they must be 0). Slow: two 32 MB copies a call.
+//      (the first few) and counted, and the counts printed at the end of the run (they must be 0). Slow: two 32 MB copies a call
+//      (RAC1_HAND_CHECK_EVERY: about one call in n).
 // orig: (host)
 #include <game/ovl/world_cull.h>
 #include <game/ovl/world_cull_hand.h>
@@ -104,6 +105,18 @@ void world_cull_check_report() {
 
 // orig: (host) see world_cull_hand.h
 void world_hand::hand_check(HandCheck& c, const std::function<bool()>& hand, const std::function<void()>& tr) {
+    // RAC1_HAND_CHECK_EVERY=n: about one call in n checked (a random pick, not every n-th: a routine called a fixed number of
+    // times a frame would be checked at the same call each frame)
+    static const uint32_t every = [] {
+        const char* e = std::getenv("RAC1_HAND_CHECK_EVERY");
+        const int n = e != nullptr ? std::atoi(e) : 1;
+        return n > 1 ? static_cast<uint32_t>(n) : 1u;
+    }();
+    static uint32_t pick = 0x2545f491u;
+    if (every > 1) {
+        pick ^= pick << 13, pick ^= pick >> 17, pick ^= pick << 5;
+        if (pick % every != 0) return tr();
+    }
     if (c.calls++ == 0) checks().push_back(&c);
     static std::unique_ptr<uint8_t[]> ram_fast(new uint8_t[RAM_BYTES]);
     static uint8_t spr_fast[SPR_SIZE];

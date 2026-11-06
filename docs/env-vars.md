@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 401 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 403 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 303 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 305 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 77 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -90,6 +90,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_CHAIN_LOG` | set (any value) = on; default off | Every host frame prints the address range of the graphics DMA chain that is walked and whether it runs. |
 | `RAC1_DEVICE_DUMP` | file path; unset = no dump | Writes what the audio device is given, as played (raw 48 kHz signed 16-bit PCM, the device's channels): the queue's skips, underruns and the IOP's frames played alone are in it, to look for clicks; unlike RAC1_AUDIO_DUMP (the game's IOP's output). |
 | `RAC1_DRAW_MEM_CHECK` | 1 = on; default off | While a pipelined frame is drawn, prints each address (by 16 bytes, the first 256) the drawing reads of the game's memory outside the copy taken at its preparation (`[draw-mem]`; runtime/kernel/ee_copy.h): the audit of what the drawing reads beside the game thread's update. |
+| `RAC1_DROP_SHADOWS_FAST` | 0, 1 or 2; default 1 | The moby drop shadows' VU0 routines (shadow_points 0x285a68, shadow_points_clip 0x286848, shadow_point_draw 0x2860a8, shadow_segment_draw 0x2861f8, shadow_quads 0x285d30, shadow_packets 0x2868c0) as written by hand (src/game/ovl/moby_shadows_hand.cpp: the VU0 registers in a local copy, their flags made as the VU0 makes them) or, with 0, as transliterated (moby_shadows_asm.cpp's `*_tr`, the reference), as before. 2 runs both at every call and compares them as `RAC1_WORLD_CULL_FAST=2` does (see `RAC1_HAND_CHECK_EVERY`), the counts printed at the end of the run (the differing ones must be 0). The same game state. |
 | `RAC1_EDGE_SLIVERS` | 0 = hidden, 1 = drawn; default hidden with the modern renderer, drawn with the faithful one (RAC1_MRP=0) | The 2D slivers the game leaves at the frame's edges: a textured 2D primitive with at most 4 frame pixels inside the frame and the rest past its left, right or top edge (the Suck Cannon's gauge and the air meter keep their 3 leftmost columns at the right edge for 16 frames as they hide, which a TV's overscan hid). Set it to 1 to see everything the game draws. |
 | `RAC1_GAME_THREAD` | 0 = off, 1 = on, 2 = also in a deterministic headless run (with `RAC1_PIPELINE=1`); unset = the debug menu's setting (Display: "Game update on its own thread", on by default) | With the pipelined frames, a host frame that draws a pipelined frame runs its game frames on the game thread while the main thread draws (runtime/ee/game_thread.h). Off: the game frames before the drawing, on the main thread, as before. 2 is for testing: its `RAC1_RAMHASH` is the same as 0's. |
 | `RAC1_GT_SERIAL` | set (any value) = on; default off | Debugging the game thread: its game frames joined before the drawing (on the game thread, but not beside the drawing), to tell a difference of the thread from one of the overlap. |
@@ -114,6 +115,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_GS_THREAD` | 0 = off; default on | Setting 0 captures and reads the frame's chain (the MRP's reader, or the GS replica on the faithful path) on the main thread instead of a worker thread, for comparison or debugging. |
 | `RAC1_GS_TRACE` | set (any value) = on; default off | Prints, once a second, a summary of the GS packet chain (primitive count, display size, offsets) and pad presses; also forces the chain to run on the main thread. |
 | `RAC1_GS_ZTRACE` | game frame number; default off | At that frame prints the depth, scissor, test and vertex state of every GS primitive; also forces the chain to run on the main thread. |
+| `RAC1_HAND_CHECK_EVERY` | integer n; default 1 | With a hand-written routine's check mode (`RAC1_WORLD_CULL_FAST=2`, `RAC1_WORLD_LIGHTING_FAST=2`, `RAC1_DROP_SHADOWS_FAST=2`), checks about one call in n, picked at random (the others run the transliteration alone): the drop shadows call their routines tens of times a frame, and a check copies the 32 MB of EE RAM twice. |
 | `RAC1_HERO_TRACE` | set (any value) = on; default off | Prints the hero's state in the drawn scene each frame. |
 | `RAC1_HUD` | 4:3, 16:9, 21:9, 32:9 or fit; unset = Options > Display > HUD (4:3 in a headless run) | The HUD's width in a widened view (Options > Display > HUD): its left and right elements moved toward the edges of a box of that shape, never wider than the view. Needs a widened view (RAC1_VIEW_MODE=2, or the 16:9 frame). |
 | `RAC1_JOBS` | integer N (1 .. 64); default about half the logical CPUs less two, at most 8 | The threads the host's job pool spreads the renderer's scene building over (the moby chains' decoding, the moby draw lists' transforms: `src/jobs`), the main thread included; 1 runs it all on the main thread, for comparison (the output is the same on any number of threads). |

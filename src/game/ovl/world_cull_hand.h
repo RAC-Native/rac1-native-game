@@ -117,12 +117,13 @@ bool tfrag_lighting(uint32_t list);
 // hand-written one runs inside a journal of EE memory, its results (the EE RAM, the scratchpad, the VU0 registers and flags, the
 // DMA registers, the world passes' visible lists) are kept, the memory put back, then the transliteration runs and its results
 // are compared; the game goes on with the transliteration's. Differences are printed (the first few) and counted; the counts are
-// printed at the end of the run (world_cull_check_report). Slow: two 32 MB copies a call.
+// printed at the end of the run (world_cull_check_report). Slow: two 32 MB copies a call; RAC1_HAND_CHECK_EVERY=n checks about one
+// call in n, chosen at random (the others run the transliteration alone), for the routines called many times a frame.
 struct HandCheck {
     const char* tag;   // the messages' prefix
     const char* var;   // the switch
     const char* name;  // the routine
-    unsigned long long calls = 0, differing = 0;
+    unsigned long long calls = 0, differing = 0;  // (the calls checked)
 };
 void hand_check(HandCheck& c, const std::function<bool()>& hand, const std::function<void()>& tr);
 

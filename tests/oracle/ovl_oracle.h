@@ -241,6 +241,7 @@ void batch_420();
 void batch_470();
 void batch_480();
 void batch_481();
+void batch_482();
 
 }  // namespace rac1::oracle
 
