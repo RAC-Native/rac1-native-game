@@ -3434,15 +3434,39 @@ int main(int argc, char** argv) {
                         if (use_replica) gs.set_chain_layers(std::move(layers));
                     }
                 // the HUD's side elements the last update drew (render_view_hud_note), for a HUD wider than 4:3; the same frames
+                // (a space fight's HUD also in the effects' shadow, HudNote::slot: the reader's substitute k is sub k + 1; the replica
+                // takes the real chain's)
+                auto sub_of = [&](int8_t slot) -> int {
+                    if (slot < 0) return 0;
+                    for (size_t i = 0; i < substituted.size(); ++i)
+                        if (substituted[i] == slot) return static_cast<int>(i + 1);
+                    return -1;
+                };
                 if (chain_runs && !prev_chain && !menu_mode)
                     if (const auto notes = render_view_hud_notes(); !notes.empty()) {
                         std::vector<rac1::gs::Gs::HudRange> hr;
                         hr.reserve(notes.size());
                         for (const HudNote& n : notes) {
-                            hr.push_back({n.first, n.last, n.side});
-                            ci.hud.push_back({n.first, n.last, n.side});
+                            const int sub = sub_of(n.slot);
+                            if (sub < 0) continue;
+                            if (sub == 0 && n.side != 3) hr.push_back({n.first, n.last, n.side});  // (the replica: sides 1 / 2)
+                            ci.hud.push_back({n.first, n.last, n.side, static_cast<uint8_t>(sub)});
                         }
                         if (use_replica) gs.set_chain_hud(std::move(hr));
+                    }
+                // a widened view's space fight HUD (render_view_proj_note): its 2D past the frame's sides, from the effects' shadow when it
+                // stands in for the real block (the real block's taken when that shadow has none)
+                if (chain_runs && !prev_chain && !menu_mode)
+                    if (const auto notes = render_view_proj_notes(); !notes.empty()) {
+                        std::vector<MrpChainInput::Proj> real, shadow;
+                        for (const ProjNote& n : notes) {
+                            const int sub = sub_of(n.slot);
+                            if (sub == 0) real.push_back({n.first, n.last, 0});
+                            else if (sub > 0) shadow.push_back({n.first, n.last, static_cast<uint8_t>(sub)});
+                        }
+                        const bool effects_sub = sub_of(kMrpLodSlotEffects) > 0;
+                        if (!effects_sub || !shadow.empty()) ci.proj = std::move(real);
+                        ci.proj.insert(ci.proj.end(), shadow.begin(), shadow.end());
                     }
                 {  // the frame: an IMAGE transfer into it a type-7 primitive, on the Vendor's screens' frames
                     const uint32_t fr = lwu(0x0013cf20);

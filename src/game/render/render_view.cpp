@@ -4,6 +4,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/debug_hooks.h>
 #include <game/ovl/ovl.h>
+#include <game/render/mrp_lod.h>
 #include <game/render/render_toggles.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/kernel/ee_journal.h>
@@ -132,6 +133,22 @@ float g_hud_aspect = 0.0f;
 namespace {
 std::vector<std::pair<uint32_t, uint32_t>> g_layers;  // render_view_layer_note's ranges (the tags' addresses, inclusive)
 std::vector<HudNote> g_hud_notes;                      // render_view_hud_note's ranges (inclusive)
+std::vector<ProjNote> g_proj_notes;                    // render_view_proj_note's ranges (inclusive)
+struct HudOpen {
+    bool on = false;
+    uint32_t at = 0;
+    uint8_t side = 0;
+    int8_t slot = -1;
+} g_hud_open;  // render_view_hud_begin's pending range
+// (the HUD's note, merged with the last one when it continues it on the same side, in the same run)
+void hud_note_add(uint32_t first, uint32_t end, uint8_t side, int8_t slot) {
+    if (end <= first || side == 0) return;
+    if (!g_hud_notes.empty() && g_hud_notes.back().last + 1 == first && g_hud_notes.back().side == side && g_hud_notes.back().slot == slot) {
+        g_hud_notes.back().last = end - 1;
+        return;
+    }
+    g_hud_notes.push_back({first, end - 1, side, slot});
+}
 }  // namespace
 
 // orig: (host) see render_view.h
@@ -141,19 +158,37 @@ float render_view_hud_shift(float fb_w) {
     const float widen = std::min(g_hud_aspect * 0.75f, g_view_widen);  // (the HUD's width over the 4:3 frame's)
     return widen > 1.0f ? fb_w * 0.5f * (widen - 1.0f) : 0.0f;
 }
-void render_view_hud_note(uint32_t first, uint32_t end, uint8_t side) {
-    if (end <= first || side == 0) return;
-    if (!g_hud_notes.empty() && g_hud_notes.back().last + 1 == first && g_hud_notes.back().side == side) {
-        g_hud_notes.back().last = end - 1;
-        return;
-    }
-    g_hud_notes.push_back({first, end - 1, side});
-}
+void render_view_hud_note(uint32_t first, uint32_t end, uint8_t side) { hud_note_add(first, end, side, -1); }
 std::vector<HudNote> render_view_hud_notes() { return g_hud_notes; }
+
+// orig: (host) see render_view.h (the packet cursor 0x1611c0)
+void render_view_hud_begin(uint8_t side) {
+    g_hud_open.on = false;
+    if (!render_view_hud_wide() || ee_read<int32_t>(OV(0x0015f5c4u)) == 5) return;
+    g_hud_open.on = true;
+    g_hud_open.at = ee_read<uint32_t>(OV(0x001611c0u));
+    g_hud_open.side = side;
+    g_hud_open.slot = static_cast<int8_t>(mrp_lod_shadow_slot());
+}
+void render_view_hud_end() {
+    if (!g_hud_open.on) return;
+    g_hud_open.on = false;
+    if (static_cast<int8_t>(mrp_lod_shadow_slot()) != g_hud_open.slot) return;  // (a begin of another run: never seen)
+    hud_note_add(g_hud_open.at, ee_read<uint32_t>(OV(0x001611c0u)), g_hud_open.side, g_hud_open.slot);
+}
+
+// orig: (host) see render_view.h
+void render_view_proj_note(uint32_t first, uint32_t end) {
+    if (end <= first) return;
+    g_proj_notes.push_back({first, end - 1, static_cast<int8_t>(mrp_lod_shadow_slot())});
+}
+std::vector<ProjNote> render_view_proj_notes() { return g_proj_notes; }
 
 void render_view_layers_begin() {
     g_layers.clear();
     g_hud_notes.clear();
+    g_proj_notes.clear();
+    g_hud_open.on = false;
 }
 void render_view_layer_note(uint32_t first, uint32_t end) {
     if (end <= first) return;

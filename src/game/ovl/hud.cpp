@@ -396,7 +396,9 @@ void hud_draw() {
     const bool wide = render_view_hud_wide() && mrp_lod_shadow_slot() < 0 && lw(OV(0x0015f5c4)) != 5;
     for (uint32_t e = OV(0x0017dc50), i = 0; i < 13; ++i, e += 0x90)
         if (lwu(e + 0x18) != 0) {
-            const uint8_t side = wide ? hud_element_side(e) : 0;
+            // (side 3: the help panel 0x237200, centred - a translated message can be wider than the 4:3 frame: drawn past its
+            // sides, gs::Primitive::hud 3)
+            const uint8_t side = !wide ? 0 : lwu(e + 0x18) == OVF(0x00237200) ? 3 : hud_element_side(e);
             const uint32_t at = side != 0 ? lwu(CUR) : 0;
             ovl_call_moby_fn(lwu(e + 0x18), e);
             if (side != 0) render_view_hud_note(at, lwu(CUR), side);  // (host)

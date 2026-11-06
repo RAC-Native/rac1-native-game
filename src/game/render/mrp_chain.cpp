@@ -309,6 +309,7 @@ private:
     uint32_t fx_id_ = 0;
     bool layer_now_ = false;
     uint8_t hud_now_ = 0;
+    bool proj_now_ = false;
     bool vu7_now_ = false;
     uint32_t vu7_tag_ = 0;
     bool vu7_drop_ = false;
@@ -350,9 +351,18 @@ private:
             }
         }
         hud_now_ = 0;
-        if (!in.hud.empty() && !in_sub) {
-            auto it = std::upper_bound(in.hud.begin(), in.hud.end(), addr, [](uint32_t a, const MrpChainInput::Hud& r) { return a < r.first; });
-            if (it != in.hud.begin() && addr <= std::prev(it)->last) hud_now_ = std::prev(it)->side;
+        if (!in.hud.empty()) {
+            auto it = std::upper_bound(in.hud.begin(), in.hud.end(), std::make_pair(sb, addr), [](const std::pair<uint8_t, uint32_t>& k, const MrpChainInput::Hud& r) {
+                return k.first != r.sub ? k.first < r.sub : k.second < r.first;
+            });
+            if (it != in.hud.begin() && std::prev(it)->sub == sb && addr <= std::prev(it)->last) hud_now_ = std::prev(it)->side;
+        }
+        proj_now_ = false;
+        if (!in.proj.empty()) {
+            auto it = std::upper_bound(in.proj.begin(), in.proj.end(), std::make_pair(sb, addr), [](const std::pair<uint8_t, uint32_t>& k, const MrpChainInput::Proj& r) {
+                return k.first != r.sub ? k.first < r.sub : k.second < r.first;
+            });
+            proj_now_ = it != in.proj.begin() && std::prev(it)->sub == sb && addr <= std::prev(it)->last;
         }
     }
 
@@ -617,6 +627,7 @@ void Reader::vertex_kick(const Vertex& vin, bool draw) {
         p.fx_id = fx_id_;
         p.layer = layer_now_;
         p.hud = hud_now_;
+        p.proj = proj_now_;
         frame.prims.push_back(std::move(p));
     }
     switch (type) {
@@ -751,7 +762,8 @@ void capture(MrpChainInput&& in, Capture& c) {
     std::sort(c.in.fx.begin(), c.in.fx.end(), [](const MrpChainInput::Fx& a, const MrpChainInput::Fx& b) { return a.sub != b.sub ? a.sub < b.sub : a.first < b.first; });
     std::sort(c.in.vu7.begin(), c.in.vu7.end(), [](const MrpChainInput::Vu7& a, const MrpChainInput::Vu7& b) { return a.sub != b.sub ? a.sub < b.sub : a.first < b.first; });
     std::sort(c.in.layers.begin(), c.in.layers.end());
-    std::sort(c.in.hud.begin(), c.in.hud.end(), [](const MrpChainInput::Hud& a, const MrpChainInput::Hud& b) { return a.first < b.first; });
+    std::sort(c.in.hud.begin(), c.in.hud.end(), [](const MrpChainInput::Hud& a, const MrpChainInput::Hud& b) { return a.sub != b.sub ? a.sub < b.sub : a.first < b.first; });
+    std::sort(c.in.proj.begin(), c.in.proj.end(), [](const MrpChainInput::Proj& a, const MrpChainInput::Proj& b) { return a.sub != b.sub ? a.sub < b.sub : a.first < b.first; });
     for (auto& u : c.in.subs) {
         u.first &= 0x01fffff0u;
         u.end &= 0x01fffff0u;

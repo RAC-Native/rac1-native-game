@@ -11,6 +11,12 @@ What changed in each release. Releases are source only: you build the game with 
   Rays need the sun: greyed with a help saying why, their values kept. Graphics: Original and the presets are unchanged
   (`lighting_quality 3` in the preferences; 0.7.x reads it as High). The debug menu's Enhancements tab switches it live.
   See docs/settings.md#lighting-original.
+- Widescreen, the space fights (Pokitaru, Gemlik Base's fight with Qwark, Drek's fleet; #82): the target reticles of ships
+  in the widened view's side bands are drawn there instead of being cut at the 4:3 frame's edge (or missing), and with
+  Options > Display > HUD wider than 4:3 the fights' radar and missiles move toward the edges as the other side elements
+  do. The game's state is unchanged; a 4:3 view is unchanged. See docs/rendering.md, "The space fights' HUD".
+- HUD wider than 4:3: a help message wider than the 4:3 frame (Spanish prompts on Gemlik's gold weapon cases, #82) is
+  drawn whole over the wider view instead of being cut at the frame's sides, as the original cuts it.
 - Movie subtitles (Options > Language > Movie Subtitles, Off by default; RAC1_MOVIE_SUBTITLES for testing): the original
   shows none over its movies; the game shows SubRip files from `assets/movie-subtitles/` in the game's subtitle look, in
   the text language. The setup makes them on request with speech to text from the disc's own sound tracks
