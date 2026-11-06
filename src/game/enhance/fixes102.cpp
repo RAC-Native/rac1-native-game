@@ -8,6 +8,7 @@
 #include <game/ovl/globals.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
+#include <game/ovl/ovl_reloc.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -161,13 +162,13 @@ bool fixes102_race_text(uint32_t buf, int kind, uint32_t name, int32_t n) {
     if (!fixes102_on(19)) return false;
     std::string t;
     if (kind == 0) {
-        t = "x" + std::to_string(n) + " " + ee_string(sub_00203ad8(n != 1 ? 20856 : 20855));
+        t = "x" + std::to_string(n) + " " + ee_string(sub_00203ad8(TXT(n != 1 ? 20856 : 20855)));
     } else if (kind == 1) {
         t = ee_string(name) + " + " + std::to_string(n) + " " + ee_string(sub_00203ad8(n != 360 ? 20648 : 20647));
     } else {
         int32_t i = n - 1;
         if (!(i < 5)) i = 4;
-        t = ee_string(sub_00203ad8(21028 + i));
+        t = ee_string(sub_00203ad8(TXT(21028 + i)));
     }
     for (size_t i = 0; i < t.size(); ++i) sb(buf + static_cast<uint32_t>(i), static_cast<uint8_t>(t[i]));
     sb(buf + static_cast<uint32_t>(t.size()), 0);

@@ -376,6 +376,7 @@ the PAL disc the game loads `SCES_509.16`, translates Veldin's addresses too, an
 | `L<n>_CASE(0x...)` with `switch (lvl_key(fn))` | a `case` label of a dispatch switch |
 | `L<n>_PAGE(0x...)` | a `lui` half, never translated |
 | `FR(0x...)` / `FrConst<0x...>` | an address of the boot module (the title) |
+| `TXT(id)` | a text id the North American code names (1.02 build: from 20695 one higher, from 20742 five higher) |
 
 On the North American disc all of these are the identity. A function the PAL build changed is found
 through its `entry` line, and its North American port runs in its place.
@@ -390,7 +391,13 @@ runs, its `gp`, the `end` of each core) and, per unit, `ptr` lines: the disc's d
 core. The table writer finds the core's code runs by comparing the two builds' code with the relocated
 fields masked, its data runs from the sections and the addresses every unit's matched code builds, and the
 `ptr` words by comparing each candidate with the North American word at the same place (a value that only
-looks like a core address, two halfwords such as 0x00130001, is not one). Then:
+looks like a core address, two halfwords such as 0x00130001, is not one). A data address only the ports
+name (no matched code reaches it: the 1.02 title code changed, so nothing votes for the title's sound lists
+0x186100 / 0x1861e0 / 0x1862b0) is placed by its bytes: of the displacements of the runs around it, the one
+under which its words equal the disc's (`literal_points`); a section's start (a bss, with no bytes: Veldin's 0x161e00, which
+every level's start clears from, and the boot module's 0x161280) goes to the disc's same section's start, whatever the
+runs would guess. The table's level 0 takes Veldin's `OV` literals too. `region_maps.py check-levels` counts a port's literal
+the table leaves untranslated as an error. Then:
 
 - `region_view.py` takes the core's addresses back too (calls into the core, the addresses built into its
   data, the `$gp` offsets from the disc's own `$gp`); `fix` lines correct the constants that only look like

@@ -58,7 +58,7 @@ void jet_fighter_update_l1(uint32_t m) {
         if (lbu(0x0013d408) == 0) {
             sb(0x0013d408, 1);
             sound_play_indexed(1, 0, 0);
-            sub_00263d40(0x53d6, -1);
+            sub_00263d40(TXT(0x53d6), -1);
         }
         vec3_sub(V(buf + 0x30), V(pv + 0xd0), V(pv + 0xe0));
         lq_sq(buf + 0x20, buf + 0x30);
@@ -366,7 +366,7 @@ void jet_bomber_update_l1(uint32_t m) {
         if (lbu(0x0013d408) == 0) {
             sb(0x0013d408, 1);
             sound_play_indexed(1, 0, 0);
-            sub_00263d40(0x53d6, -1);
+            sub_00263d40(TXT(0x53d6), -1);
         }
         vec3_sub(V(buf + 0x30), V(pv + 0xd0), V(pv + 0xe0));
         lq_sq(buf + 0x20, buf + 0x30);

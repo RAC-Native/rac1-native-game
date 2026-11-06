@@ -2560,6 +2560,8 @@ void dev_kill_hero() { g_kill_pending = true; }
 // animation ends, the input transition calls hero_lost (0x211250: counts, fades the screen, sets the respawn
 // flag +0x20b1) and the game reloads the checkpoint as after a real hit. In the ship (mode 2) only the
 // nanotech is cleared: its own death (0x5d, with the ship's teardown) is the hit path's, not reproduced here.
+// As Clank (the hero's form +0x20a4 1, his states the 0x43 set) the death is that set's own, 0x47 (the game's
+// falls in that set without nanotech: fall43_input, state 0x46); Ratchet's 0x3d crashed there (#136).
 // orig: (host) the debug menu's Kill Ratchet
 void dev_kill_apply() {
     if (!g_kill_pending) return;
@@ -2569,7 +2571,7 @@ void dev_kill_apply() {
     const uint32_t sub = ru(P + 0x208c), mode = ee_read<uint8_t>(P + 0x20a4);
     w32(HEALTH, 0);
     if (sub == 0x14 || mode == 2) return;  // already dying (0x3d, 0x47, 0x7f...) / in the ship
-    hero_set_state(0x3d, 1);
+    hero_set_state(mode == 1 ? 0x47 : 0x3d, 1);
 }
 
 // Hoverboard anywhere: the hoverboard of the races (Rilgar's, level 5, and Kalebo III's, 16) ridden anywhere on those levels.
