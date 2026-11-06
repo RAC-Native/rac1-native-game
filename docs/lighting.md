@@ -290,6 +290,24 @@ Orxon's base (its first rooms; a box), Blarg's closed room of light set 6. Drek'
 so far have windows on space and keep their shadows; its enclosed corridors and the levels' caves are
 still to be marked in playtests.
 
+### Lighting: Original
+
+Options > Graphics > Lighting: Original (Graphics: Enhanced; GitHub issue #138) is an interior everywhere: the module runs with
+its sun off on the whole level (`g_lighting_original` in `mrp_lighting.cpp`, read by `fit_cascades`: the sun's weight 0, no
+cascades drawn, no casters gathered for them). The picture is the original's lighting: the world's key-light term the game
+baked is kept (the `SH_POINTS` relight from the sun's direction is weighted by the sun's weight), the mobys' split programs show
+their full colour, and the mobys' key light is the game's own, not turned toward a sun the level's file turned
+(`mrp_lighting_sun_turn`). Checked headless on Veldin and Kerwan: with every other row off it is the Original picture but for the
+emissive surfaces (kept bright, a part of the module with no row of its own). On top of it the rest still draws: the point lights per pixel (Secondary Lights), the occlusion, the
+materials, the reflections, the grass, the ambient particles. What needs the sun does nothing: the sun rays (no sun's weight),
+the point lights' cube shadows (`point_shadows_pass` returns), the shadows' strength and reach; the Graphics page greys those rows.
+The sun's specular on materials and its light on the grass's relief go with the sun, as in an interior.
+
+Unlike an interior, the original's **drop shadows** are drawn (`mrp_moby_renderer.cpp`: with the modern lighting on they are
+never drawn, Daino 2026-10-19, unless Lighting is Original). Their counter shares the stencil with the occlusion's mobys' marks
+(bit 0, [Ambient occlusion](#ambient-occlusion)): after the shadows the stencil is cleared and the mobys drawn after them mark
+again; the mobys drawn before them (the draw loop's first chain) lose their marks and take the world's occlusion.
+
 ### Views covered from the sun (off; testing)
 
 Our choice, not the game's (`cover_probe` in `mrp_lighting.cpp`), **now off**
@@ -775,7 +793,7 @@ buffer costs a pass over all of it) and the add over the whole picture; the blur
 apart (a pass at the step's size, about 0.05 to 0.15 ms here) are the rest. The
 rays fade out as the sun leaves the screen (gone 0.6 of the view beyond its edge; nothing is drawn
 then) or goes behind the camera, and follow the sun's weight: none where the zone has no sun, in the
-level's [interiors](#interiors), with the Lighting on Original. The cascades are not used.
+level's [interiors](#interiors), with [Lighting: Original](#lighting-original). The cascades are not used.
 `RAC1_SUN_RAYS` (0 to 3) overrides the option, `RAC1_SUN_RAYS_TRACE` prints the sun's place, the
 gain, the GPU time and how open the sky around the sun is (OpenGL), `RAC1_SUN_RAYS_GAIN` scales the
 strength and `RAC1_SUN_RAYS_SHAPE` ("near,far,fall") the glare's (testing). Vulkan draws the same
@@ -1129,7 +1147,7 @@ The defaults below are the rows' own (the preset High); with Graphics: Original 
 
 | Row | Values | Default | Controls |
 |---|---|---|---|
-| Lighting | Low, Medium, High (until the switch also Original, now Graphics: Original) | High | the sun shadow maps' resolution (1024, 2048, 4096) (`lighting_quality`, item 56) |
+| Lighting | Low, Medium, High, Original (until the switch Original was the lighting off, now Graphics: Original) | High | the sun shadow maps' resolution (1024, 2048, 4096); Original: the original's lighting and drop shadows, the sun off, the effects kept ([Lighting: Original](#lighting-original)) (`lighting_quality`: 0..2, 3 Original) |
 | Shadow Strength | 50 to 100 % | 70 % | how much of the sun's light a shadow hides (`shadow_strength` in the preferences, item 45 of a save's block) |
 | Shadow Distance | Low, Medium, High, Maximum | Maximum | how far mobys cast sun shadows (40, 80, 140 units, or as far as the cascades reach) |
 | Dynamic Shadows | Off, On | On | point-light cube shadows |
@@ -1141,7 +1159,8 @@ The defaults below are the rows' own (the preset High); with Graphics: Original 
 | Water Reflections | Low, Medium | Medium | what Surface Detail's water mirrors: Low cube maps from fixed probes, Medium the scene drawn mirrored about the water (`water_reflections` in the preferences); see [Materials](materials.md#water-reflections) |
 | Grass | Off, Low, High | High | the tagged ground's blades: a detail relief (Low), and a few very low shells near the camera (High) (`grass`, item 54) |
 
-Every row takes effect only with Graphics: Enhanced. The debug menu's **Enhancements** tab has the same switch and preset at
+Every row takes effect only with Graphics: Enhanced. With Lighting: Original, Shadow Strength, Shadow Distance, Dynamic
+Shadows and Sun Rays do nothing (greyed on the page, their values kept). The debug menu's **Enhancements** tab has the same switch and preset at
 its top and switches all of them live (for the run; "Save as my settings" makes them the preferences), each with its profiler
 stage's GPU / CPU time beside it.
 

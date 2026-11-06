@@ -66,6 +66,8 @@ namespace rac1 {
 // (mrp_particles.cpp: 1 rain, snow and ash kept out from under roofs, RAC1_PARTICLES_SKY; declared here, not in mrp_particles.h - the
 // game's generated code is fingerprinted with the headers of src/game, and a debug switch must not ask for ./setup.sh again)
 extern int g_particles_sky;
+// (mrp_lighting.cpp: Lighting: Original, the modern lighting without its sun - #138; declared here for the same reason)
+extern int g_lighting_original;
 }  // namespace rac1
 
 namespace rac1::devtools {
@@ -1342,16 +1344,24 @@ void tab_enhancements() {
     }
     ImGui::SeparatorText("Lighting");
     {
-        static const char* names[] = {"Low (1024)", "Medium (2048)", "High (4096)"};
-        int v = std::clamp(g_shadow_quality, 0, 2);
-        if (combo("Lighting##en", &v, names, 3)) g_shadow_quality = v;
+        // (Original, #138: the original's lighting and drop shadows, no sun - the effects below still drawn; Options' Lighting: Original)
+        static const char* names[] = {"Low (1024)", "Medium (2048)", "High (4096)", "Original (no sun)"};
+        int v = g_lighting_original != 0 ? 3 : std::clamp(g_shadow_quality, 0, 2);
+        if (combo("Lighting##en", &v, names, 4)) {
+            g_lighting_original = v == 3 ? 1 : 0;
+            if (v < 3) g_shadow_quality = v;
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Original: the original's lighting and drop shadows, the sun off (no sun's shadows, rays, point-light shadows);\n"
+                                                      "the occlusion, materials, reflections, grass, particles and secondary lights still drawn");
         ms(prof::kShadowCascades);
     }
+    ImGui::BeginDisabled(g_lighting_original != 0);  // (they need the sun: greyed, their values kept)
     {
         bool on = g_point_shadows != 0;
         if (ImGui::Checkbox("Dynamic shadows##en", &on)) g_point_shadows = on ? 1 : 0;
         ms(prof::kPointCubes);
     }
+    ImGui::EndDisabled();
     {
         static const char* names[] = {"Off", "Game's", "All"};
         int v = g_modern_points == 0 ? 0 : g_auto_lights != 0 ? 2 : 1;
@@ -1371,9 +1381,11 @@ void tab_enhancements() {
         }
     }
     {
+        ImGui::BeginDisabled(g_lighting_original != 0);
         static const char* names[] = {"Off", "Low", "Medium", "High"};
         combo("Sun Rays##en", &g_sun_rays, names, 4);
         ms(prof::kSunRays);
+        ImGui::EndDisabled();
     }
     ImGui::SeparatorText("Surfaces");
     combo("Surface Detail (materials)##en", &g_surface_detail, olh, 3);

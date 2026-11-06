@@ -5,6 +5,12 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Graphics: Enhanced, Lighting: Original (#138): the original game's lighting and drop shadows with the modern lighting's sun
+  off everywhere (as in a level's interiors), the other rows still on top: Ambient Occlusion, Surface Detail, Water
+  Reflections (RT too), Grass, Ambient Particles, Secondary Lights. Shadow Strength, Shadow Distance, Dynamic Shadows and Sun
+  Rays need the sun: greyed with a help saying why, their values kept. Graphics: Original and the presets are unchanged
+  (`lighting_quality 3` in the preferences; 0.7.x reads it as High). The debug menu's Enhancements tab switches it live.
+  See docs/settings.md#lighting-original.
 - Movie subtitles (Options > Language > Movie Subtitles, Off by default; RAC1_MOVIE_SUBTITLES for testing): the original
   shows none over its movies; the game shows SubRip files from `assets/movie-subtitles/` in the game's subtitle look, in
   the text language. The setup makes them on request with speech to text from the disc's own sound tracks

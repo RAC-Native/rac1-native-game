@@ -127,7 +127,7 @@ every addition. None of them changes the game's state.
 |---|---|---|
 | Graphics | Original, Enhanced | Original |
 | Preset | Low, Medium, High (Custom is shown when the rows below match none) | High |
-| Lighting | Low, Medium, High: the modern lighting's sun shadows, their maps at 1024, 2048, 4096 (see [Lighting](lighting.md)) | High |
+| Lighting | Low, Medium, High: the modern lighting's sun shadows, their maps at 1024, 2048, 4096; Original: the original game's lighting and drop shadows, no sun, with the rows below still on top (see [Lighting Original](#lighting-original), [Lighting](lighting.md)) | High |
 | Shadow Strength | 50, 60, 70, 80, 90, 100 (%) | 70 |
 | Shadow Distance | Low, Medium, High, Maximum | Maximum |
 | Dynamic Shadows | Off, On | On |
@@ -149,6 +149,7 @@ every addition. None of them changes the game's state.
   stepping the preset from Custom goes to Low (right) or High (left). The preset is not kept: it is what the rows match.
 - **The defaults** of the rows under the switch are the preset High: what Graphics: Enhanced first shows. They do not matter
   while Graphics is Original (the default).
+- **Lighting: Original**: see [below](#lighting-original).
 - **Grass and Ambient Particles** were outside the lighting's control before the switch: with Lighting Original,
   Ambient Particles still drew. Now every addition follows the one switch.
 - **Water Reflections** is a row of its own, not Surface Detail's levels: Surface Detail's High still gives the puddles and the
@@ -157,6 +158,44 @@ every addition. None of them changes the game's state.
 - **Water** (Off, Low, High: our own water over or in place of the game's) was a row until 2026-11-02: Surface Detail's water
   over the game's own looked better. Its `water` key is read and ignored; what it fixed is
   Surface Detail's now (the water held still, Pokitaru's clear trapezoids: [Materials](materials.md#the-water-held-still)).
+
+#### Lighting Original
+
+GitHub issue #138 (from a YouTube comment): the original PS2 lighting with some of Enhanced's effects. Under Graphics: Enhanced
+the Lighting row's fourth value, **Original**, keeps the original game's lighting and its drop shadows and turns the modern
+lighting's sun off everywhere: no sun's shadows (no cascades drawn), no sun rays, no point-light shadows. It is what the renderer
+already did inside a level's interiors ([Lighting](lighting.md#interiors)), now everywhere. The other rows keep working on top
+of it:
+
+| Row | With Lighting: Original |
+|---|---|
+| Secondary Lights | works (Off / Game's / All: the game's point lights per pixel, the emitters and hand-placed lights) |
+| Ambient Occlusion, AO Intensity | work |
+| Surface Detail | works (metal, wet ground, puddles, water, lava); the sun's own highlights on metal and its light on the grass's relief are gone with the sun, the point lights' highlights and the reflections stay |
+| Water Reflections | works (Low, Medium and the RT values) |
+| Grass | works (Low's relief, High's shells) |
+| Ambient Particles | works |
+| Shadow Strength, Shadow Distance, Dynamic Shadows, Sun Rays | greyed: they need the sun. Their help says so, their values are kept and they cannot be stepped until Lighting is Low, Medium or High again |
+
+The name: "Original" reads the same in the four languages (Original, Original, Original, Originale) and says what the light
+is, the original game's; "Off" (Aus, No, No) would read as no light at all, a black picture. Graphics: Original is still the
+original's whole picture with nothing added; Lighting: Original is the original's light with the effects added.
+
+The presets never choose it (a manual choice): stepping the Preset row puts Lighting back at the preset's Low, Medium or High.
+In the preferences it is `lighting_quality 3` (see [Before the switch](#before-the-switch-the-preferences) for the older
+versions). The debug menu's Enhancements tab has it in its Lighting list ("Original (no sun)"), switched live, Dynamic shadows
+and Sun Rays greyed with it.
+
+What every Enhanced row's own Off is:
+
+| Row | Its Off |
+|---|---|
+| Lighting | Original (the sun off) |
+| Shadow Strength | none: a strength (50 to 100 %); Lighting: Original is the sun's shadows off |
+| Shadow Distance | none: Low (40 units) is the shortest; an Off would leave the mobys out of the sun's shadows, the world still casting (not added) |
+| Dynamic Shadows, Secondary Lights, Ambient Occlusion, Sun Rays, Surface Detail, Grass, Ambient Particles | Off |
+| AO Intensity | none: a strength; Ambient Occlusion: Off |
+| Water Reflections | none on the page (the debug menu has Off, saved as Low): Surface Detail's water without reflections (not added: a new value for `water_reflections`) |
 
 #### Presets
 
@@ -191,9 +230,10 @@ Particles did not follow it. Old files are read this way:
   row kept.
 - `lighting 1` .. `3` (Low .. High): Graphics Enhanced, Lighting Low .. High, every other row kept.
 
-The new keys are `graphics` (0 Original, 1 Enhanced) and `lighting_quality` (0 Low, 1 Medium, 2 High). The preferences still
-write the old `lighting` key (0 when Original, else the Lighting row + 1) for the versions before the switch, which read only
-that; a version with the switch reads the old key only when the new one is missing. A preferences file without `graphics` is
+The new keys are `graphics` (0 Original, 1 Enhanced) and `lighting_quality` (0 Low, 1 Medium, 2 High, 3 Original: [Lighting
+Original](#lighting-original)). The versions up to 0.7.x read `lighting_quality` only from 0 to 2: a 3 is skipped, the row
+keeps its default (High), nothing else changes. The preferences still write the old `lighting` key (0 when Graphics or Lighting
+is Original, else the Lighting row + 1) for the versions before the switch, which read only that; a version with the switch reads the old key only when the new one is missing. A preferences file without `graphics` is
 written again in the new form at the first frame. (The saves held the same as items 38, 55 and 56 until the graphics became
 the machine's, 2026-11-02: read and ignored now.)
 

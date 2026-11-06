@@ -46,6 +46,11 @@
 
 namespace rac1 {
 
+// (mrp_lighting.cpp's, declared here: the headers of src/game are the generated code's fingerprint) Lighting: Original - the modern
+// lighting without its sun, the drop shadows drawn -, and the occlusion's mobys' marking taken up again after them (OpenGL)
+extern int g_lighting_original;
+void mrp_lighting_ao_moby_restart();
+
 int g_mrp_moby_projection = 0;
 bool g_mrp_moby_keep_scissor = false;
 int g_mrp_moby_mip = 0;
@@ -2492,11 +2497,14 @@ void draw_batches(int win_w, int win_h, const gs::Viewport* vp, bool shadows = f
 
         Key cur;
         bool have = false;
-        bool shadows_done = !shadows || F.mode != 0 || g_modern_shadows != 0;
+        bool shadows_done = !shadows || F.mode != 0 || (g_modern_shadows != 0 && g_lighting_original == 0);
         auto draw_shadows = [&] {
             shadows_done = true;
             const glm::mat4 m = world_view_proj();
             if (!mrp_shadows_draw(glm::value_ptr(m))) return;
+            // (Lighting: Original with the occlusion: the shadows' counter left in the stencil the occlusion reads its mobys' marks from -
+            // cleared, the mobys after it marking again; those drawn before lose their marks, the world's occlusion on them)
+            if (mrp_lighting_vk_ao_marking()) vk::clear_attachments(false, nullptr, false, 1.0f, true, 0u);
             vk::ensure_rendering();
             VkDeviceSize vo = 0;
             vkCmdBindVertexBuffers(cb, 0, 1, &g_level.vk_vbo.buffer, &vo);
@@ -2645,13 +2653,15 @@ void draw_batches(int win_w, int win_h, const gs::Viewport* vp, bool shadows = f
     // (the drop shadows only in the world's projection and depth space; never with the modern lighting on - Daino's choice,
     // 2026-10-19 -, even where it has no sun's shadows (a zone without a sun, a view covered from it, the frames it does not
     // light): the mobys cast their own where there is a sun. The game still makes them: the frame's capture only goes undrawn)
-    bool shadows_done = !shadows || F.mode != 0 || g_modern_shadows != 0;
+    // (Lighting: Original, #138: the modern lighting without its sun - the drop shadows drawn as with the lighting off)
+    bool shadows_done = !shadows || F.mode != 0 || (g_modern_shadows != 0 && g_lighting_original == 0);
     // the drop shadows come between the draw loop's first chain and its deferred mobys (0x24fc38 chains them there): the mobys
     // of the first chain are in the depth buffer the shadows' faces test against, the deferred ones are drawn over the darkening
     auto draw_shadows = [&] {
         shadows_done = true;
         const glm::mat4 m = world_view_proj();
         if (!mrp_shadows_draw(glm::value_ptr(m))) return;
+        mrp_lighting_ao_moby_restart();  // (Lighting: Original with the occlusion: the mobys' marks after the shadows' counter, see Vulkan's)
         glUseProgram(g_prog);
         glBindVertexArray(g_level.vao);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_level.ibo);
