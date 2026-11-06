@@ -43,6 +43,7 @@
 #include <game/ovl/variants_l13.h>
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
+#include <game/render/render_view.h>  // (the space fights' HUD: tools/codegen/hooks.glue)
 #include <game/port_stubs.h>
 
 namespace rac1 {

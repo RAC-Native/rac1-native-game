@@ -415,3 +415,58 @@ L5 0x0030d048: gameplay102_water_carry(s2.w(), u2f(lw_(s3.w())));  // enhancemen
 # a Skill Point!") over it (L5:0x318364).
 L5 0x00316d30: if (fixes102_on(22)) ril_28f5c8_l5(0, 8, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);  // enhancement: 1.02 Fixes, fix 22 (the music)
 L5 0x00316e78: if (fixes102_on(22) && lbu(0x0013d411u) != 0) { sound_play_indexed(1, 0, 0); sub_00263d40(21462, -1); }  // enhancement: 1.02 Fixes, fix 22 (the skill point)
+# ---- The space fights' HUD (issue #82): with Options > Display > HUD wider than 4:3 in a widened view, the radar (the frame's right:
+# its two background sprites at x 368, its blips about x 432) and the missiles (the frame's left: x 24..) of the player's ship's
+# draw-list callback (Pokitaru L11:0x311d50, Gemlik Base L13:0x2b97f8 - Qwark's fight -, Drek's fleet L17:0x2eb9a8) move toward the
+# edges as the HUD's side elements do: each call that draws one has its chain range noted (src/game/render/render_view.h
+# render_view_hud_begin before the call, render_view_hud_end at its return address). Host bookkeeping only: the packet cursor read,
+# nothing of the game's written; with the HUD at 4:3 (the default) begin notes nothing.
+# Pokitaru: the radar's sprites (glyph_sprite), its blips (L11:0x311710), the missiles (L11:0x310ad0)
+L11 0x00311df0: render_view_hud_begin(2);  // enhancement: the HUD's width (the radar)
+L11 0x00311df8: render_view_hud_end();
+L11 0x00311e28: render_view_hud_begin(2);
+L11 0x00311e30: render_view_hud_end();
+L11 0x00311ecc: render_view_hud_begin(2);  // (a blip)
+L11 0x00311ed4: render_view_hud_end();
+L11 0x00311f58: render_view_hud_begin(1);  // (a missile)
+L11 0x00311f60: render_view_hud_end();
+L11 0x00311f98: render_view_hud_begin(1);
+L11 0x00311fa0: render_view_hud_end();
+# Gemlik Base: the missiles (L13:0x2b7b30), the radar's sprites, its blips (L13:0x2b89f8, from L13:0x2b8be0)
+L13 0x002b9a18: render_view_hud_begin(1);  // enhancement: the HUD's width (a missile)
+L13 0x002b9a20: render_view_hud_end();
+L13 0x002b9a58: render_view_hud_begin(1);
+L13 0x002b9a60: render_view_hud_end();
+L13 0x002b9d70: render_view_hud_begin(2);  // (the radar)
+L13 0x002b9d78: render_view_hud_end();
+L13 0x002b9dac: render_view_hud_begin(2);
+L13 0x002b9db4: render_view_hud_end();
+L13 0x002b8f48: render_view_hud_begin(2);  // (a blip)
+L13 0x002b8f50: render_view_hud_end();
+L13 0x002b8f70: render_view_hud_begin(2);
+L13 0x002b8f78: render_view_hud_end();
+L13 0x002b93b0: render_view_hud_begin(2);
+L13 0x002b93b8: render_view_hud_end();
+L13 0x002b948c: render_view_hud_begin(2);
+L13 0x002b9494: render_view_hud_end();
+L13 0x002b9558: render_view_hud_begin(2);
+L13 0x002b9560: render_view_hud_end();
+# Drek's fleet: the radar's sprites, its blips (L17:0x2eaae0, from L17:0x2eace8), the missiles (L17:0x2e9c28)
+L17 0x002eba48: render_view_hud_begin(2);  // enhancement: the HUD's width (the radar)
+L17 0x002eba50: render_view_hud_end();
+L17 0x002eba84: render_view_hud_begin(2);
+L17 0x002eba8c: render_view_hud_end();
+L17 0x002eb074: render_view_hud_begin(2);  // (a blip)
+L17 0x002eb07c: render_view_hud_end();
+L17 0x002eb09c: render_view_hud_begin(2);
+L17 0x002eb0a4: render_view_hud_end();
+L17 0x002eb344: render_view_hud_begin(2);
+L17 0x002eb34c: render_view_hud_end();
+L17 0x002eb490: render_view_hud_begin(2);
+L17 0x002eb498: render_view_hud_end();
+L17 0x002eb4dc: render_view_hud_begin(2);
+L17 0x002eb4e4: render_view_hud_end();
+L17 0x002ebc68: render_view_hud_begin(1);  // (a missile)
+L17 0x002ebc70: render_view_hud_end();
+L17 0x002ebca8: render_view_hud_begin(1);
+L17 0x002ebcb0: render_view_hud_end();

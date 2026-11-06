@@ -67,6 +67,10 @@ struct Primitive {
     // (host) kicked inside a HUD element's range (Gs::set_chain_hud, MrpChainInput::hud): 1 an element at the frame's left, 2 at its right; moved
     // toward the edges of a HUD wider than 4:3 (Viewport::hud_shift, gs_draw.cpp). 0: none (centred, or not the HUD)
     uint8_t hud = 0;
+    // (host) kicked inside a space fight's HUD (MrpChainInput::proj, the MRP's reader only): its 2D (the radar, the missiles, the target
+    // reticles at the targets' projections) drawn past the 4:3 frame's sides in a widened view; from a substitute (sub 1) when one
+    // stands in for its real range, whose own (sub 2) is then not drawn
+    bool proj = false;
 };
 
 // (host) one batch of VU1 program 7 (the shadow-mesh program, shadows_vu1.cpp) as the program found it in VU1 memory, before it

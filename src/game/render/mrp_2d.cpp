@@ -397,8 +397,15 @@ void build(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H,
             bool sub3d = p.vu;
             if (!sub3d && !to_rt && field(st.test, 16, 1) != 0 && ztst >= 2)
                 for (const Vertex& q : p.v) sub3d = sub3d || (q.z != 0 && q.z < 0xff0000u);
-            if ((p.sub == 1) != sub3d) continue;
+            // (a space fight's HUD, gs::Primitive::proj: its 2D the substitute's, drawn with the widened view's mobys; the real range's not)
+            if (p.proj && !sub3d) {
+                if (p.sub == 2) continue;
+            } else if ((p.sub == 1) != sub3d) {
+                continue;
+            }
         }
+        // (a space fight's HUD: its 2D at the targets' projections reaches the window's sides as the 3D does)
+        const bool proj2d = p.proj && !to_rt && !p.vu;
         const float sx = to_rt ? 1.0f : proj3d ? v.xscale_3d : v.xscale;
         verts.clear();
         if (p.type == 6) {
@@ -457,7 +464,7 @@ void build(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H,
         }
         // a 2D sprite / triangle that covers none of the GS's sample points draws nothing on the GS (pixel x covered when
         // x0 <= x < x1; GL samples at x + 0.5): not drawn (the oxygen indicator's frame parked at x = 512 lit the last column, #5)
-        if (!p.vu && !p.wide && !crop_3d && (p.type == 6 || p.type == 3)) {
+        if (!p.vu && !p.wide && !proj2d && !crop_3d && (p.type == 6 || p.type == 3)) {
             float bx0 = p.v[0].x, bx1 = bx0, by0 = p.v[0].y, by1 = by0;
             for (size_t i = 1; i < (p.type == 6 ? 2u : 3u); ++i) {
                 bx0 = std::min(bx0, p.v[i].x);
@@ -548,7 +555,7 @@ void build(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H,
         int x0 = static_cast<int>(field(st.scissor, 0, 11)), x1 = static_cast<int>(field(st.scissor, 16, 11));
         int y0 = static_cast<int>(field(st.scissor, 32, 11)), y1 = static_cast<int>(field(st.scissor, 48, 11));
         // the 2D slivers at the frame's edges (Viewport::hide_edge_slivers): at most 4 frame pixels inside, the rest outside
-        if (v.hide_edge_slivers && !to_rt && tme && !crop_3d && !p.vu && !p.wide && !(p.layer && full_span)) {
+        if (v.hide_edge_slivers && !to_rt && tme && !crop_3d && !p.vu && !p.wide && !proj2d && !(p.layer && full_span)) {
             float bx0 = verts[0].x, bx1 = bx0, by0 = verts[0].y, by1 = by0;
             for (const V& q : verts) {
                 bx0 = std::min(bx0, q.x);
@@ -560,7 +567,7 @@ void build(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H,
             if ((bx1 > FB_W + 0.5f && bx0 >= FB_W - kSliver) || (bx0 < -0.5f && bx1 <= kSliver) || (by0 < -0.5f && by1 <= kSliver)) continue;
         }
         // the overscan crop (testing: RAC1_OVERSCAN): the 2D's scissor narrowed to the area a TV showed
-        if (crop_on && !crop_3d && !p.vu && !p.wide && !full_span && !edge_fill) {
+        if (crop_on && !crop_3d && !p.vu && !p.wide && !proj2d && !full_span && !edge_fill) {
             const int cw = static_cast<int>(FB_W), ch = static_cast<int>(FB_H);
             x0 = std::max(x0, v.crop[0]);
             x1 = std::min(x1, cw - 1 - v.crop[1]);
@@ -571,7 +578,7 @@ void build(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H,
         // a HUD wider than 4:3 (Viewport::hud_shift): an element at the frame's left / right side moved toward the window's edges in
         // whole window pixels, its scissor with it
         float hud_dx = 0.0f;
-        if (v.hud_shift != 0.0f && p.hud != 0 && !to_rt && !proj3d && !p.vu && !p.wide && !p.layer && !full_span) {
+        if (v.hud_shift != 0.0f && p.hud != 0 && !to_rt && !proj3d && !p.vu && (!p.wide || proj2d) && !p.layer && !full_span) {
             const float kx = sx * static_cast<float>(v.w) / FB_W;
             hud_dx = std::round(v.hud_shift * kx) / kx * (p.hud == 1 ? -1.0f : 1.0f);
             for (V& q : verts) q.x += hud_dx;
@@ -592,7 +599,7 @@ void build(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float FB_H,
             // any projected 3D reach the window's sides
             auto wx = [&](float x) { return static_cast<float>(v.x) + ((std::clamp(x, 0.0f, FB_W) / FB_W * 2.0f - 1.0f) * sx + 1.0f) * 0.5f * static_cast<float>(v.w); };
             const float sy = static_cast<float>(v.h) / FB_H;
-            const bool wide = (p.wide || proj3d) && sx < 1.0f && !v.cut_3d;
+            const bool wide = (p.wide || proj3d || proj2d) && sx < 1.0f && !v.cut_3d;
             const int sx0 = (to_left || wide) && x0 <= 0 ? v.x : static_cast<int>(wx(static_cast<float>(x0)));
             const int sx1 = (to_right || wide) && static_cast<float>(x1 + 1) >= FB_W ? v.x + v.w : static_cast<int>(wx(static_cast<float>(x1 + 1)));
             k.sc[0] = sx0;
