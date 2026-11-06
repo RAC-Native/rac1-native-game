@@ -34,6 +34,10 @@ What changed in each release. Releases are source only: you build the game with 
   Vulkan in a window, OpenGL when Vulkan cannot start or the safety net says not to try, the row showing the renderer
   running; choosing the row writes it with `renderer_set 1`, and `renderer vulkan` stays. Headless runs stay OpenGL
   (RAC1_RENDERER=auto takes the auto path headless too). 0.7.x reads `auto` as OpenGL.
+- Japanese voices: the boot's logo movie played the Japanese disc's own logo movie's sound, another edit (8.8 s against
+  the 14.5 s pictures): its later part early, then silence before the pictures ended. A movie takes the Japanese disc's
+  sound only when it is the same cut (the last group of pictures' time code the same on both discs); the logos and the
+  credits (16 s shorter in Japan) keep the text language's sound.
 
 ## 0.7.0
 

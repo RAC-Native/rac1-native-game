@@ -419,6 +419,36 @@ bool movie_hw_open(uint32_t lba, uint32_t bytes, int track, uint32_t audio_lba, 
     return true;
 }
 
+// orig: (host) the file's last sectors demultiplexed (from the first pack at a sector's start), the last GOP header of
+// their video; more of the file when they hold none
+int32_t movie_hw_last_time_code(uint32_t lba, uint32_t bytes) {
+    if (!disc_is_open() && !disc_open()) return -1;
+    const uint32_t sectors = (bytes + 2047) / 2048;
+    for (uint32_t tail : {64u, 256u, 1024u, 4096u}) {
+        const uint32_t first = sectors > tail ? sectors - tail : 0;
+        std::vector<uint8_t> d(static_cast<size_t>(sectors - first) * 2048);
+        if (d.empty() || !disc_read(lba + first, sectors - first, d.data())) return -1;
+        d.resize(std::min<size_t>(d.size(), bytes - static_cast<size_t>(first) * 2048));
+        size_t start = 0;
+        while (start + 4 <= d.size() && !(d[start] == 0 && d[start + 1] == 0 && d[start + 2] == 1 && d[start + 3] == 0xba)) start += 2048;
+        if (start + 4 > d.size()) {
+            if (first == 0) return -1;
+            continue;
+        }
+        std::vector<uint8_t> video;
+        Demux dx;
+        dx.step(d.data() + start, d.size() - start, true, [&video](const uint8_t* p, size_t n) { video.insert(video.end(), p, p + n); },
+                [](int, const uint8_t*, size_t) {});
+        for (size_t i = video.size() >= 8 ? video.size() - 8 : 0;; --i) {
+            if (video.size() >= 8 && video[i] == 0 && video[i + 1] == 0 && video[i + 2] == 1 && video[i + 3] == 0xb8)
+                return static_cast<int32_t>(be32(&video[i + 4]) >> 7);
+            if (i == 0) break;
+        }
+        if (first == 0) return -1;
+    }
+    return -1;
+}
+
 bool movie_hw_is_open() { return g_movie.open; }
 int movie_hw_width() { return g_movie.width; }
 int movie_hw_height() { return g_movie.height; }

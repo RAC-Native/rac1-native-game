@@ -30,6 +30,11 @@ bool movie_hw_enabled();
 // data disc, runtime/kernel/disc.h), its track `track`; the pictures always from the first.
 bool movie_hw_open(uint32_t lba, uint32_t bytes, int track, uint32_t audio_lba = 0, uint32_t audio_bytes = 0);
 bool movie_hw_is_open();
+// The time code of the last group of pictures (its GOP header's 25 bits: drop flag, hours, minutes, seconds, pictures) of
+// the PSS of `bytes` bytes from sector `lba`, read from the file's end; -1 when none is found. Two PSS with the same one are
+// the same cut of a movie (another disc's sound fits the pictures); the Japanese disc's own cuts (its logos, its
+// credits) end at another.
+int32_t movie_hw_last_time_code(uint32_t lba, uint32_t bytes);
 // The pictures' size and rate (frames per second).
 int movie_hw_width();
 int movie_hw_height();

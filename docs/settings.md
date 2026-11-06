@@ -281,7 +281,9 @@ changes. Any other value is an enhancement.
 - **Japanese**: offered only when the Japanese disc was given to the setup as a data disc
   ([Setup](setup.md#data-discs)). Its voices are read from that disc: the scenes' and the levels' dialogue, the
   Vendor's lines, the lines of the table of contents' two dialogue tables (the game's 30000 and 50000 lines), the movies' sound (the Japanese disc's movie of
-  the same row, its pictures still the game's disc's), and Ratchet's own efforts (the wrench, jumps, falls: each
+  the same row, its pictures still the game's disc's, when it is the same cut: the two discs' last groups of pictures
+  carry the same time code; the boot's logo movie and the credits are other edits on the Japanese disc, 8.8 s against
+  14.5 s and 7 min 1 s against 7 min 17 s, and keep the text language's sound), and Ratchet's own efforts (the wrench, jumps, falls: each
   level's sound bank is the Japanese disc's, where about ten of his samples differ). A line the Japanese disc lacks
   plays in the text language; a line the game's disc lacks is not added. A level's sound bank is read when the level
   loads: changing Voice to or from Japanese changes Ratchet's efforts from the next level (or a reload), the rest at
