@@ -1556,3 +1556,28 @@ Built and proved exact on the PC that evening; measured on the console 2026-11-0
   includes in overlay_entry.cpp and orig_main.cpp); not yet: the logic's write bits, the serial part, the second image, the per-thread
   base, the threads.
 
+### The logic's writes marked: the merge exact for the whole Kerwan run (2026-11-06; no code in the branch)
+
+- **What the logic reaches, per step (Kerwan, the explore walk, 1,500 steps):** ~60,000 ee_write (sw / sh / sb / swc1 / sq and the
+  views on them), ~12,500 ee_ram_ptr (ee_ref, the raw sites), ~12,000 V() / M() (a Vec4 / Mat4 view), ~133,000 reads. The words it
+  changes: **~30,700 a step** (~120 KB). Nothing else writes the logic's memory: a word changed by the logic and not marked never
+  occurred (1,533 drawings).
+- **The marks:** one byte per 4-byte word of the EE RAM and the scratchpad (8 MB + 4 KB), set to the drawing's tag (a byte moved each
+  drawing: no clearing, a full clear every 255 drawings) - the write `m[a >> 2] = tag`, no read. Set in ee_ram_ptr_write (its size),
+  ee_ram_ptr (4 bytes) and V / M (16 / 64 bytes). The merge: a word the logic marked is the logic's; any other word the drawing
+  changed is the drawing's.
+- **The granule matters:** a quad (16 bytes) per mark loses the drawing's bytes next to a logic's word (the logic's sb / sw into a quad
+  the drawing also changed: diverged at the first drawing); 64 bytes from each ee_ram_ptr likewise. Words: exact.
+- **The serial prefix:** with words, exact to drawing 1,103, then moby_anim_lerp_slots_validate's slots (0x196dc0: the hero's
+  animation set reads them; written by the drawing's prefix). Run as the serial part (render_frame's prefix, from the gate flags to
+  render_static_packets, on the logic's RAM, the drawing's image taken after it; RAC1_DSPLIT_PREFIX): **RAM identical for all 1,533
+  drawings** on Kerwan (the glow's -k / +k included: the logic's write of the old value is a marked word).
+- **The marks' cost on the PC** (the logic's step alone, one core, the PC loaded by other work; 4 + 4 alternated runs): 2.43 ms
+  without the marks, 2.53 ms with them: ~4 %, within the noise's reach. The branch on the marks' pointer in every accessor (on even
+  with the marks off) not measured against a build without it. On the Wii U the step is ~16 ms: the same 4 % would be ~0.6 ms of the
+  2.5 to 3 ms the move gains. To be measured on the console.
+- **Where it stands:** hooks2.patch in rac1-scratch/wiiu/dsplit (the marks in ee_memory.h / .cpp and ovl_common.h, the prefix hook
+  in render_frame, the timings; ovl_common.h is an input of the generated code: the fingerprint in generated_sources.cmake set by hand
+  while it is applied). Next: the marks' cost on the Wii U; the forward set re-checked with the prefix serial (some of it is the
+  prefix's: the view matrix, the camera's zone) and on other levels; then the second image and the threads.
+
