@@ -4,12 +4,14 @@
 #include <game/ovl/world_vu1.h>
 #include <runtime/vu/vu1.h>
 
+#include <algorithm>
 #include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <vector>
 
 namespace rac1::mrpw {
 
@@ -204,9 +206,35 @@ bool WorldIndex::find_shrub(const uint8_t* mem, uint32_t base, Hit& hit) const {
 Program program_of(const uint64_t* micro) {
     int n = 0;
     const WorldVu1Program* p = world_vu1_programs(n);
-    for (int i = 0; i < n; ++i)
-        if (vu1::code_hash(micro, p[i].n) == p[i].hash) return static_cast<Program>(i);
-    return Program::None;
+    // (host, RAC1_PERF_VU1_LOOKUP as vu1.cpp's ports) the walker asks after every MPG (the passes upload their programs several
+    // times a frame) and the answer hashed up to six programs' code a byte at a time; now the last few micro images met (their
+    // first `span` words, every program's length) are kept with their answer and an image met again is compared (memcmp) instead
+    // of hashed: the same words, the same hashes, the same answer
+    static const bool cached = [] {
+        const char* e = std::getenv("RAC1_PERF_VU1_LOOKUP");
+        return e == nullptr || std::atoi(e) != 0;
+    }();
+    auto hashed = [&] {
+        for (int i = 0; i < n; ++i)
+            if (vu1::code_hash(micro, p[i].n) == p[i].hash) return static_cast<Program>(i);
+        return Program::None;
+    };
+    if (!cached) return hashed();
+    uint32_t span = 0;
+    for (int i = 0; i < n; ++i) span = std::max(span, p[i].n);
+    struct Seen {
+        std::vector<uint64_t> words;
+        Program prog = Program::None;
+    };
+    constexpr unsigned kSeen = 8;
+    thread_local Seen seen[kSeen];
+    thread_local unsigned next = 0;
+    for (const Seen& s : seen)
+        if (s.words.size() == span && std::memcmp(s.words.data(), micro, static_cast<size_t>(span) * 8) == 0) return s.prog;
+    Seen& s = seen[next++ % kSeen];
+    s.words.assign(micro, micro + span);
+    s.prog = hashed();
+    return s.prog;
 }
 
 std::string CheckStats::summary() const {

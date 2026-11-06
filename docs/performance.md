@@ -132,6 +132,13 @@ Exact: `RAC1_MRP_LOD_VERIFY=1` (EE RAM below the room and the scratchpad compare
 differing), RAMHASH on the 4-level route with the view widened and LOD High identical (and identical to the 4:3 one), the
 widened pictures identical (OpenGL, Vulkan).
 
+The MRP scene worker (the bottleneck there: 3.8-4.6 ms busy, the main thread waiting 2.4-3.2 ms for it) spent 7 % of its time in
+`vu1::code_hash`: after every MPG in the frame's chain the world walker asked which world program the micro memory holds
+(`program_of`, mrp_world_check.cpp), hashing up to six programs' code a byte at a time. The last eight images met are now kept
+with their answer and compared (`memcmp`) instead (`RAC1_PERF_VU1_LOOKUP=0`: as before): the hash gone from the profile, the
+worker 3.77 to 3.67 ms and the wait 2.60 to 2.36 ms (three interleaved runs). Exact by construction; the reference images,
+RAMHASH and the widened Kerwan picture identical.
+
 Two cheaper forms were measured and left (Kerwan, the same scene, a counting build): a finer journal - of the pages it still saves
 (about 230 a frame), 75 % change at all, and of their 4 KB 46 % in 256-byte blocks, 23 % in 64-byte ones: blocks of 256 bytes
 would copy half as much, about 0.08 ms a frame at best, against a seen-flag table 16 times larger on every journaled write; and
@@ -333,7 +340,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_LAZY_CAPTURE=0` | Vulkan: the last frame shown copied every frame |
 | `RAC1_MRPW_P2_LESS=0` | the lighting's second pass of an alpha-tested batch tested LEQUAL (the original's picture: see above) |
 | `RAC1_PERF_OPAQUE=0` | every world draw in both alpha-test passes, with the discard's late depth test |
-| `RAC1_PERF_GS_MEM=0`, `RAC1_PERF_VU1_LOOKUP=0`, `RAC1_PERF_XGKICK=0` | the chain reader's GS memory, VU1 port lookups and kicks as before |
+| `RAC1_PERF_GS_MEM=0`, `RAC1_PERF_VU1_LOOKUP=0`, `RAC1_PERF_XGKICK=0` | the chain reader's GS memory, VU1 port lookups (and the world walker's program lookup) and kicks as before |
 | `RAC1_PERF_TEXTABLE=0`, `RAC1_PERF_TFRAG_ALLOC=0`, `RAC1_PERF_VU7=0`, `RAC1_PERF_PKT_MEMO=0` | the scene's and the effects' preparation as before |
 | `RAC1_PERF_PALETTE_BLEND=0` | the six levels' palette blend as the game's loop |
 | `RAC1_PERF_VU_CLAMP=0` | the collision triangle test and the moby transform clamping every operand at each op |
