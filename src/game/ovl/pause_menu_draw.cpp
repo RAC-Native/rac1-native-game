@@ -5,6 +5,7 @@
 // them. The menu mobys themselves are 3D (the VU moby draw 0x24ff08 / 0x24ff88: TODO_PORT,
 // the host draws mobys). See pause_menu.h
 #include <game/lib/libgraph.h>
+#include <game/enhance/mods_menu.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/moby_pass.h>
@@ -566,6 +567,7 @@ void menu_draw(int32_t skip) {
         if (i == 6 && lw(MS + 0xd8) == 0) continue;
         menu_panel_draw(lwu(MOBYS + i * 4));
     }
+    mods_notice_draw();  // (enhancement: "Mods on" while mods are on, mods_menu.h)
     texture_block_end();
 }
 

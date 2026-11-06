@@ -35,6 +35,7 @@
 #include <game/enhance/advanced.h>
 #include <game/enhance/controls.h>
 #include <game/enhance/language.h>
+#include <game/enhance/mods_menu.h>
 #include <game/enhance/update_notice.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -61,6 +62,9 @@
 
 namespace rac1 {
 
+// (mrp_lighting.cpp's, declared here: the headers of src/game are the generated code's fingerprint) Lighting: Original
+extern int g_lighting_original;
+
 namespace {
 constexpr uint32_t GFX = 0x000f2000u;
 constexpr uint32_t VALUES = GFX;              // the settings' real values, one byte each (by Setting)
@@ -82,7 +86,7 @@ constexpr uint32_t POP_TITLE = GFX + 0x690;
 constexpr uint32_t POP_LIST = GFX + 0x6e0;
 constexpr uint32_t POP_LABEL = GFX + 0x730;
 constexpr uint32_t POP_PICTURE = GFX + 0x780;
-constexpr uint32_t MAIN_ENTRIES = GFX + 0x800;  // the main menu's Options entries, ours added (..0x884)
+constexpr uint32_t MAIN_ENTRIES = GFX + 0x800;  // the main menu's Options entries, ours added (..0x890)
 constexpr uint32_t DPAGE = GFX + 0x900;       // the Display page (a copy of Camera's), as the Graphics page's above
 constexpr uint32_t DTITLE = GFX + 0x990;
 constexpr uint32_t DROWS_WIDGET = GFX + 0x9e0;
@@ -122,9 +126,11 @@ enum : uint32_t { PIC_GFX = 1, PIC_ORIGINAL = 2, PIC_MODERN = 3 };  // (advanced
 
 // The settings
 // (S_GFX: Graphics, 0 Original, 1 Enhanced; S_PRESET: no value of its own, the rows' match with PRESETS; S_LIGHTING: 0 Low,
-// 1 Medium, 2 High - until the switch, 0 was Original and 1..3 Low..High)
+// 1 Medium, 2 High, 3 Original (LIGHTING_ORIGINAL, #138: the original's lighting under the effects) - until the switch, 0 was
+// Original and 1..3 Low..High)
 enum Setting : uint32_t { S_DISPLAY, S_MONITOR, S_WINDOW, S_SCALE, S_ASPECT, S_FIT, S_LOD, S_FOV, S_VSYNC, S_CAP, S_LIGHTING, S_DYN_SHADOWS, S_SEC_LIGHTS, S_SHADOW_DIST, S_AO, S_MIPS, S_SHADOW_STR, S_SUN_RAYS, S_AO_STR, S_HUD, S_RENDERER, S_SURFACE, S_PARTICLES, S_GRASS, S_WREFL, S_GFX, S_PRESET, S_COUNT };
 static_assert(S_COUNT <= 0x20, "the settings' values end where the step bytes begin");
+constexpr int LIGHTING_ORIGINAL = 3;  // the Lighting row's Original: the modern lighting's sun off (mrp_lighting.cpp g_lighting_original)
 constexpr float SHADOW_DISTS[] = {40.0f, 80.0f, 140.0f, 0.0f};  // Low, Medium, High, Maximum (0: as far as the cascades reach)
 constexpr int SHADOW_STRS[] = {50, 60, 70, 80, 90, 100};  // the sun's shadows' strength, percent of the key light they hide
 constexpr int SHADOW_STR_DEFAULT = 2;
@@ -181,7 +187,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "4:3 as the original, 16:9, or the view widened to fill the screen.", "When the picture's shape is not the screen's: black bars, or stretched.",
      "How far objects keep their detail and stay drawn.", "x1.00 is the original's view.", "Waits for the screen's refresh: no tearing.",
      "The most frames a second. The game makes 60: more shows nothing new.",
-     "Real sun shadows, light per pixel: the shadow maps' size.",
+     "Real sun shadows: the shadow maps' size. Original: the PS2's light, the effects kept.",
      "Shadows of explosions, weapons and lamps. Costs more.",
      "Explosions' and weapons' light; All: lamps too.",
      "How far characters and objects cast shadows.",
@@ -215,7 +221,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "4:3 wie im Original, 16:9 oder auf den Bildschirm erweitert.", "Wenn das Bildformat nicht passt: schwarze Balken oder gestreckt.",
      "Wie weit Objekte ihre Details behalten und gezeichnet werden.", "x1.00 ist die Sicht des Originals.", "Wartet auf den Bildaufbau: kein Tearing.",
      "Hochstens so viele Bilder pro Sekunde. Das Spiel macht 60: mehr zeigt nichts Neues.",
-     "Echte Sonnenschatten, Licht pro Pixel: Grosse der Schattenkarten.",
+     "Echte Sonnenschatten: Grosse der Schattenkarten. Original: Licht der PS2, mit Effekten.",
      "Schatten von Explosionen, Waffen, Lampen. Aufwendiger.",
      "Licht von Explosionen und Waffen; Alle: auch Lampen.",
      "Wie weit Figuren und Objekte Schatten werfen.",
@@ -249,7 +255,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "4:3 como el original, 16:9 o la vista ampliada a la pantalla.", "Si el formato no es el de la pantalla: bandas negras o estirado.",
      "Hasta donde los objetos conservan su detalle y se dibujan.", "x1.00 es la vista del original.", "Espera al refresco de la pantalla: sin cortes.",
      "Los cuadros por segundo como maximo. El juego hace 60: mas no muestra nada nuevo.",
-     "Sombras reales del sol, luz por pixel: tamano de los mapas de sombras.",
+     "Sombras reales del sol: tamano de los mapas. Original: la luz de PS2, con los efectos.",
      "Sombras de explosiones, armas y lamparas. Mas pesado.",
      "Luz de explosiones y armas; Todas: tambien lamparas.",
      "Hasta donde personajes y objetos dan sombra.",
@@ -283,7 +289,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "4:3 come l'originale, 16:9 o la visuale allargata allo schermo.", "Se il formato non e quello dello schermo: bande nere o stirato.",
      "Fin dove gli oggetti tengono il dettaglio e restano disegnati.", "x1.00 e la visuale dell'originale.", "Attende il refresh dello schermo: niente tearing.",
      "I fotogrammi al secondo al massimo. Il gioco ne fa 60: di piu non mostra nulla di nuovo.",
-     "Ombre reali del sole, luce per pixel: dimensione delle mappe d'ombra.",
+     "Ombre reali del sole: dimensione delle mappe. Originale: la luce PS2, effetti inclusi.",
      "Ombre di esplosioni, armi e lampade. Piu pesante.",
      "Luce di esplosioni e armi; Tutte: anche le lampade.",
      "Fin dove personaggi e oggetti fanno ombra.",
@@ -341,6 +347,18 @@ constexpr const char* RENDERER_WHY[4][10] = {
      "Scelto per questa esecuzione da RAC1_RENDERER."},
 };
 #endif
+// The Lighting row's Original (#138; not texts asked for by id - the ids end at the Controls page's): its help, and the help of the rows
+// it greys (they need the modern lighting's sun), per language as TEXTS
+constexpr const char* LIGHT_ORIGINAL_TEXTS[4][2] = {
+    {"Original: the PS2's light and drop shadows, no sun. The effects below still work.",
+     "Needs the modern sun: off with Lighting Original. Its value is kept."},
+    {"Original: Licht und Schatten der PS2, keine Sonne. Die Effekte darunter bleiben.",
+     "Braucht die moderne Sonne: aus mit Beleuchtung Original. Der Wert bleibt."},
+    {"Original: la luz y las sombras de PS2, sin sol. Los efectos de abajo siguen.",
+     "Necesita el sol moderno: no con Iluminacion Original. Su valor se guarda."},
+    {"Originale: luce e ombre della PS2, niente sole. Gli effetti sotto restano.",
+     "Serve il sole moderno: spento con Illuminazione Originale. Il valore resta."},
+};
 constexpr const char* RT_WORDS[4][2] = {{"Medium (RT)", "High (RT)"}, {"Mittel (RT)", "Hoch (RT)"}, {"Medio (RT)", "Alto (RT)"}, {"Medio (RT)", "Alto (RT)"}};
 
 // The page's rows: the setting, its name, its help, the preferences' key
@@ -438,7 +456,7 @@ struct State {
     bool live_enh = false;
     bool stash_ok = false;
     bool installed = false;  // (the pages built: their rows follow the switch)
-    int stash[8] = {};
+    int stash[9] = {};
     int win_w = 960, win_h = 720;                      // the window mode's size
     bool host_fullscreen = false;
     GraphicsDisplay display;
@@ -485,7 +503,7 @@ uint32_t value_count(Setting s) {
         case S_GRASS: return 3;  // Off, Low, High (mrp_lighting.h g_grass)
         case S_WREFL: return 4;  // Low, Medium, Medium (RT), High (RT) (mrp_reflect.h g_water_reflections: 1..4; the RT ones where the renderer can trace)
         case S_AO_STR: return sizeof(AO_STRS) / sizeof(int);
-        case S_LIGHTING: return 3;  // Low, Medium, High (mrp_lighting.h: the maps at 1024 / 2048 / 4096)
+        case S_LIGHTING: return 4;  // Low, Medium, High (mrp_lighting.h: the maps at 1024 / 2048 / 4096), Original (LIGHTING_ORIGINAL)
         case S_FOV: return sizeof(FOVS) / sizeof(int);
         case S_CAP: return sizeof(CAPS) / sizeof(int);
         case S_MONITOR: return static_cast<uint32_t>(gs_.monitors.size());  // (the host's list; one before GLFW is up: the row shows '?')
@@ -537,10 +555,12 @@ void preset_set(int* v, int p) {
 
 // The renderer's switches of the additions (each one's Off is the original's picture)
 struct Additions {
-    int modern, dyn, ao, rays, surface, particles, grass, refl;
+    int modern, dyn, ao, rays, surface, particles, grass, refl, original;
 };
 // orig: (none) — enhancement: the renderer's switches as they are now
-Additions additions_now() { return {g_modern_shadows, g_point_shadows, g_ao, g_sun_rays, g_surface_detail, g_ambient_particles, g_grass, g_water_reflections}; }
+Additions additions_now() {
+    return {g_modern_shadows, g_point_shadows, g_ao, g_sun_rays, g_surface_detail, g_ambient_particles, g_grass, g_water_reflections, g_lighting_original};
+}
 // orig: (none) — enhancement: the renderer's switches set
 void additions_set(const Additions& a) {
     g_modern_shadows = a.modern;
@@ -551,6 +571,7 @@ void additions_set(const Additions& a) {
     g_ambient_particles = a.particles;
     g_grass = a.grass;
     g_water_reflections = a.refl;
+    g_lighting_original = a.original;
 }
 
 // orig: (none) — enhancement: THE GATE. The renderer's switches of the additions set from the rows `v`, every one off unless `on`
@@ -560,8 +581,12 @@ void additions_apply(const int* v, bool on, bool env) {
     auto ours = [env](const char* name) { return !env || std::getenv(name) == nullptr; };
     if (ours("RAC1_SHADOWS")) {
         g_modern_shadows = on ? 1 : 0;
-        g_shadow_quality = v[S_LIGHTING];
+        // (Original: the sun off - its maps still bound by the receivers, at the smallest size)
+        g_shadow_quality = v[S_LIGHTING] == LIGHTING_ORIGINAL ? 0 : v[S_LIGHTING];
     }
+    // (Lighting: Original greys the rows that need the sun - Shadow Strength, Shadow Distance, Dynamic Shadows, Sun Rays -: their values
+    // set as they are, the renderer leaves them inert while g_lighting_original holds)
+    if (ours("RAC1_LIGHTING_ORIGINAL")) g_lighting_original = on && v[S_LIGHTING] == LIGHTING_ORIGINAL ? 1 : 0;
     if (ours("RAC1_POINT_SHADOWS")) g_point_shadows = on ? v[S_DYN_SHADOWS] : 0;
     if (ours("RAC1_POINTS")) g_modern_points = v[S_SEC_LIGHTS] != 0 ? 1 : 0;
     if (ours("RAC1_AUTO_LIGHTS")) g_auto_lights = v[S_SEC_LIGHTS] == 2 ? 1 : 0;
@@ -580,7 +605,7 @@ void additions_apply(const int* v, bool on, bool env) {
 
 // orig: (none) — enhancement: the rows under the switch `v` taken from the renderer's live values (the switches `a`)
 void rows_from_live(int* v, const Additions& a) {
-    v[S_LIGHTING] = std::clamp(g_shadow_quality, 0, 2);
+    v[S_LIGHTING] = a.original != 0 ? LIGHTING_ORIGINAL : std::clamp(g_shadow_quality, 0, 2);
     v[S_DYN_SHADOWS] = a.dyn != 0 ? 1 : 0;
     v[S_SEC_LIGHTS] = g_modern_points == 0 ? 0 : g_auto_lights != 0 ? 2 : 1;
     const float dist = g_shadow_moby_dist;  // (SHADOW_DISTS: 40, 80, 140, 0 the cascades' reach)
@@ -718,7 +743,7 @@ bool prefs_read(const std::filesystem::path& path) {
         else if (std::strcmp(key, "graphics") == 0) {
             gs_.value[S_GFX] = a != 0;
             seen_graphics = true;
-        } else if (std::strcmp(key, "lighting_quality") == 0 && a >= 0 && a < 3) {
+        } else if (std::strcmp(key, "lighting_quality") == 0 && a >= 0 && a < 4) {  // (3 Original: the versions before read it as no value, High)
             gs_.value[S_LIGHTING] = a;
             seen_quality = true;
         }
@@ -801,8 +826,8 @@ void prefs_write() {
         const int* v = gs_.value;
         static constexpr const char* kFormat =
             "display %d\nmonitor %s\nwindow %d %d\nrender_scale %d\naspect %d\nfit %d\nlod %d\nfov %d\nvsync %d\nfps_cap %d\nlighting %d\ndynamic_shadows %d\nsecondary_lights %d\nshadow_distance %d\nambient_occlusion %d\ntexture_detail %d\nshadow_strength %d\nsun_rays_quality %d\nao_intensity %d\nambient_particles %d\nhud %d\nrenderer %s\nrenderer_set %d\nsurface_detail %d\ngrass %d\nwater_reflections %d\ngraphics %d\nlighting_quality %d\n";
-        // (`lighting` as the versions before the switch read it: 0 Original, 1..3 Low..High)
-        const int old_lighting = v[S_GFX] != 0 ? v[S_LIGHTING] + 1 : 0;
+        // (`lighting` as the versions before the switch read it: 0 Original, 1..3 Low..High; Lighting: Original their Original)
+        const int old_lighting = v[S_GFX] != 0 && v[S_LIGHTING] != LIGHTING_ORIGINAL ? v[S_LIGHTING] + 1 : 0;
         auto format = [&](char* out, size_t n) {
             return std::snprintf(out, n, kFormat, v[S_DISPLAY], gs_.monitor_name.c_str(), gs_.win_w, gs_.win_h, SCALES[v[S_SCALE]], v[S_ASPECT], v[S_FIT], v[S_LOD], FOVS[v[S_FOV]], v[S_VSYNC], CAPS[v[S_CAP]], old_lighting, v[S_DYN_SHADOWS],
                      v[S_SEC_LIGHTS], v[S_SHADOW_DIST], v[S_AO], v[S_MIPS], SHADOW_STRS[v[S_SHADOW_STR]], v[S_SUN_RAYS], AO_STRS[v[S_AO_STR]], v[S_PARTICLES], v[S_HUD], gs_.renderer_auto ? "auto" : v[S_RENDERER] != 0 ? "vulkan" : "opengl", gs_.renderer_set ? 1 : 0, v[S_SURFACE], v[S_GRASS], v[S_WREFL],
@@ -874,7 +899,7 @@ std::string value_text(Setting s) {
         case S_FIT: return t[v != 0 ? T_STRETCH : T_BARS];
         case S_HUD: return t[v == 0 ? T_43 : v == 1 ? T_169 : v == 2 ? T_219 : v == 3 ? T_329 : T_HUD_FIT];
         case S_LOD: return t[T_ORIGINAL + v];
-        case S_LIGHTING: return t[T_LOW + v];
+        case S_LIGHTING: return t[v == LIGHTING_ORIGINAL ? T_ORIGINAL : T_LOW + v];
         case S_GFX: return t[v != 0 ? T_ENHANCED : T_ORIGINAL];
         case S_PRESET: {
             const int p = preset_of(gs_.value);
@@ -933,8 +958,16 @@ bool value_supported(Setting s, int v) {
     return true;
 }
 
+// orig: (none) — enhancement: a row greyed: Lighting: Original (Graphics: Enhanced) has no sun - its shadows' strength and reach, the
+// point lights' shadows and the sun's rays do nothing then (#138). Shown dimmed with a help saying why; its value kept, not stepped
+bool row_dimmed(Setting s) {
+    if (gs_.value[S_GFX] == 0 || gs_.value[S_LIGHTING] != LIGHTING_ORIGINAL) return false;
+    return s == S_SHADOW_STR || s == S_SHADOW_DIST || s == S_DYN_SHADOWS || s == S_SUN_RAYS;
+}
+
 // orig: (none) — enhancement: a setting stepped by d (+1 / -1), wrapping, over the values the display supports
 void step(Setting s, int d) {
+    if (row_dimmed(s)) return;
     if (s == S_WINDOW) {  // the sizes' list, the current size counted where it falls
         uint32_t i = size_index(gs_.win_w, gs_.win_h);
         if (i == SIZE_COUNT) {  // a size of its own: the next / previous of the list by area
@@ -1183,6 +1216,14 @@ uint32_t graphics_text(int32_t id) {
         const int32_t k = id - TEXT_FIRST;
         if (k >= T_WINDOW && k <= T_CUSTOM) return 0;  // (a value word: never asked for, see string_slot)
         s = k == H_RENDERER ? renderer_help() : texts()[k];
+        {  // (Lighting: Original: its own help, and why the rows it greys do nothing)
+            const char* const* t = texts();
+            const int lang = t == TEXTS[1] ? 1 : t == TEXTS[2] ? 2 : t == TEXTS[3] ? 3 : 0;
+            if (k == H_LIGHTING && gs_.value[S_LIGHTING] == LIGHTING_ORIGINAL) s = LIGHT_ORIGINAL_TEXTS[lang][0];
+            else if ((k == H_SHADOW_STR && row_dimmed(S_SHADOW_STR)) || (k == H_SHADOW_DIST && row_dimmed(S_SHADOW_DIST)) ||
+                     (k == H_DYN_SHADOWS && row_dimmed(S_DYN_SHADOWS)) || (k == H_SUN_RAYS && row_dimmed(S_SUN_RAYS)))
+                s = LIGHT_ORIGINAL_TEXTS[lang][1];
+        }
         slot = string_slot(k);
     }
     const uint32_t at = STRINGS + static_cast<uint32_t>(slot) * STRING_SIZE;
@@ -1261,7 +1302,7 @@ void graphics_menu_back(uint32_t cur, uint32_t to, uint32_t mobys) {
         moby_set_anim(m5, 0x13, static_cast<int32_t>(lbu(seq5 + 0x10)) - 1);
         swc1(m5 + 0x58, -1.0f);
     }
-    if (cur != PAGE && cur != DPAGE && cur != POP_PAGE && cur != POP2_PAGE && cur != advanced_page() && cur != controls_page() && cur != language_page() && cur != update_notice_page() && cur != updates_page()) return;
+    if (cur != PAGE && cur != DPAGE && cur != POP_PAGE && cur != POP2_PAGE && cur != advanced_page() && cur != controls_page() && cur != language_page() && cur != mods_page() && cur != update_notice_page() && cur != updates_page()) return;
     boxes_hold(to, mobys);
 }
 
@@ -1319,6 +1360,18 @@ bool graphics_settings_dpad(uint32_t w, uint32_t e, uint32_t pressed) {
         page_step(p, s, (pressed & 0x8000u) != 0 ? -1 : 1);
         return true;
     }
+    return false;
+}
+
+// orig: (none) — enhancement: row `i` of settings widget `w` drawn greyed (one of our pages' rows that does nothing now: row_dimmed);
+// false for any other widget (the game's own pages drawn as they are). Declared in pause_menu_options.cpp (the headers of src/game
+// are the generated code's fingerprint)
+bool graphics_row_dimmed(uint32_t w, int32_t i) {
+    for (int p = 0; p < PAGE_COUNT; ++p)
+        if (PAGES[p].rows_widget == w) {
+            const Setting s = slot_setting(p, i);
+            return s != S_COUNT && row_dimmed(s);
+        }
     return false;
 }
 
@@ -1453,7 +1506,7 @@ void graphics_main_options_entries(uint32_t w) {
     language_main_entries(MAIN_ENTRIES, n);  // (the game's Language entry: our Language page)
     uint32_t d = MAIN_ENTRIES + n * 0xc;
     const uint32_t gp = PAGE, ap = advanced_main_page();  // (Advanced: the global rows, when there are any)
-    const struct { int32_t text; uint32_t page; } ours[] = {{TEXT_FIRST + T_DISPLAY_PAGE, DPAGE}, {TEXT_FIRST + T_GRAPHICS, gp}, {controls_title_text(), controls_page()}, {advanced_title_text(), ap}};
+    const struct { int32_t text; uint32_t page; } ours[] = {{TEXT_FIRST + T_DISPLAY_PAGE, DPAGE}, {TEXT_FIRST + T_GRAPHICS, gp}, {controls_title_text(), controls_page()}, {advanced_title_text(), ap}, {mods_title_text(), mods_page()}};
     for (const auto& o : ours) {
         if (o.page == 0) continue;
         sh(d, static_cast<uint32_t>(o.text));

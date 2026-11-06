@@ -534,9 +534,42 @@ widening over 4:3 less one, toward their side, their scissor with them (what sli
 box's edge, as at the frame's before). Health, the help messages (0x23cf80), the help desk, subtitles,
 the cutscene letterbox, the menus, the pause screen, the Vendor, the planet cards, pictures, fades and
 the Visibomb's layer are not elements of a side and keep their places. The ship flight's planet banner
-and save icon (`flight_draw`) are not HUD slots and stay on the 4:3 frame; so does the 2D the space fights'
-levels draw from draw-list callbacks rather than HUD slots (Pokitaru 0x311d50, Gemlik 0x2b97f8, Drek's
-fleet 0x2eaae0 / 0x2eb9a8; not looked at in a fight yet).
+and save icon (`flight_draw`) are not HUD slots and stay on the 4:3 frame.
+
+### The space fights' HUD
+
+The space fights draw their HUD from a draw-list callback of the player's ship rather than from HUD
+slots (Pokitaru L11:0x311d50, Gemlik Base's fight with Qwark L13:0x2b97f8, Drek's fleet L17:0x2eb9a8,
+queued on the list 0x16d880): the radar at the frame's right (two sprites at x 368, the blips about
+x 432: L11:0x311710, L13:0x2b89f8, L17:0x2eaae0), the missiles at its left (x 24..: L11:0x310ad0,
+L13:0x2b7b30, L17:0x2e9c28), the crosshair, the lock-on reticle at the locked target's projection,
+and on Gemlik and Drek's fleet a reticle at each target's projection (L13:0x2b7d50, L17:0x2e9e48), drawn
+only for a moby the moby pass drew (+0x31, the 4:3 view's decision). In a widened view:
+
+- **The reticles follow the widened view.** `draw_list_run` notes the callback's chain range in the real
+  block and in the effects' shadow block (`render_view_proj_note`; [the shadow runs](#the-3d-in-a-widened-view)
+  set the mobys' +0x31 as the widened moby pass left them, so the shadow's callback draws the reticles
+  of the targets in the side bands too, at their 4:3 projection past the frame's sides). The chain
+  reader marks those primitives (`MrpChainInput::proj`, `gs::Primitive::proj`) and the drawing takes the
+  callback's 2D from the shadow's chain when it stands in for the real block (the real range's 2D not
+  drawn), from the real block otherwise, and does not cut it at the frame's sides. The callbacks' game
+  logic (the target's choice, the timers, the help messages) runs in both as the game's: the shadow's
+  is put back with the rest of its memory, so the game's state is the 4:3 run's.
+- **The radar and the missiles follow the HUD's width** (Options > Display > HUD wider than 4:3).
+  The generator puts host calls around the calls that draw them (`tools/codegen/hooks.glue`:
+  `render_view_hud_begin` / `render_view_hud_end`, which only read the packet cursor), so their ranges
+  are noted as hud_draw's side elements are, in the real block and in the shadow (`MrpChainInput::Hud::sub`),
+  and move toward their side by `Viewport::hud_shift`.
+
+The help panel (HUD slot 12, 0x237200: the one-line messages such as the gold weapons' "buy" prompts) centres its
+text on the frame and draws its box to the text's width; the original neither wraps nor scrolls a line wider
+than the frame, so a long translated message (Spanish on Gemlik's gold weapon cases) was cut at the frame's
+sides, in 4:3 as on the PS2. With a HUD wider than 4:3, hud_draw notes the panel's range as side 3
+(`gs::Primitive::hud` 3, the MRP's reader only): its text and box are drawn past the frame's sides at their
+own width (not stretched to the window's edges as a full-span strip), cut only at the window's.
+
+The GS replica (`RAC1_MRP=0`) moves the radar and the missiles too (the real block's ranges) but keeps
+the reticles on the 4:3 frame. Nothing changes in a 4:3 view.
 
 ### Render scale
 
@@ -1001,5 +1034,5 @@ thread): see [Performance](performance.md).
 - Drop shadows of mobys drawn only because of a higher level of detail are missing.
 - A moby whose class logic reads its own "drawn" flag behaves as in 4:3 when it is only visible in
   the widened side bands: that flag is game state, and the port does not change it.
-- With the HUD spread, the 2D the space fights draw from draw-list callbacks stays on the 4:3 frame.
+- The GS replica (`RAC1_MRP=0`) keeps the space fights' target reticles on the 4:3 frame.
 - Vulkan 1.3 by default, OpenGL 4.6 when it cannot start or when chosen ([Vulkan](vulkan.md)).

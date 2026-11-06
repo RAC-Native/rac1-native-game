@@ -5,6 +5,46 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Graphics: Enhanced, Lighting: Original (#138): the original game's lighting and drop shadows with the modern lighting's sun
+  off everywhere (as in a level's interiors), the other rows still on top: Ambient Occlusion, Surface Detail, Water
+  Reflections (RT too), Grass, Ambient Particles, Secondary Lights. Shadow Strength, Shadow Distance, Dynamic Shadows and Sun
+  Rays need the sun: greyed with a help saying why, their values kept. Graphics: Original and the presets are unchanged
+  (`lighting_quality 3` in the preferences; 0.7.x reads it as High). The debug menu's Enhancements tab switches it live.
+  See docs/settings.md#lighting-original.
+- Widescreen, the space fights (Pokitaru, Gemlik Base's fight with Qwark, Drek's fleet; #82): the target reticles of ships
+  in the widened view's side bands are drawn there instead of being cut at the 4:3 frame's edge (or missing), and with
+  Options > Display > HUD wider than 4:3 the fights' radar and missiles move toward the edges as the other side elements
+  do. The game's state is unchanged; a 4:3 view is unchanged. See docs/rendering.md, "The space fights' HUD".
+- HUD wider than 4:3: a help message wider than the 4:3 frame (Spanish prompts on Gemlik's gold weapon cases, #82) is
+  drawn whole over the wider view instead of being cut at the frame's sides, as the original cuts it.
+- Options > Sound > Mix (Original by default, High Precision): the voices, their volumes, the reverb and the master
+  volume mixed in float without the SPU2's 16-bit truncations and clamps, a look-ahead limiter at the end instead of
+  clipping, the sound device opened in 32-bit float; also in 5.1 / 7.1 and for the movies' sound. Only the output
+  samples change: the voices' states and everything the game reads are computed as before (RAC1_RAMHASH identical).
+  RAC1_AUDIO_MIX=hp for testing. See docs/audio.md.
+- Mods, a first step (docs/mods.md): a `mods/` folder next to `assets/`, one folder per mod with a `mod.json` (name,
+  author, version, description, priority). A mod's `disc/` files, laid out as the extracted disc files and of the same
+  size, are read instead of the disc's; its `textures/<hash>.png` (any size) replace the game's textures by their content
+  hash in the modern renderer (the mobys, the world, the sky, the 2D). Main menu > Options > Mods turns each one on or
+  off (from the next start; `mods.txt` in the settings' folder); conflicts go to the higher priority and are logged; a
+  "Mods on" line at the bottom of the title screen and the main and pause menus while any is on. The debug menu's Dump textures (or
+  RAC1_TEX_DUMP) writes the textures with their hashes, to start a pack. Headless runs (the tests, the reference checks)
+  never load mods unless RAC1_MODS=1; RAC1_MODS=0 turns them all off.
+- Ambient Particles: the `lava` material gives lava particles (#136): tfrags, ties and shrubs whose texture a level's line
+  marks lava (points on their faces, read once per level) and mobys marked lava (points on their posed faces each frame,
+  moving with them) add to the collision's lava of Umbris, Gaspar and Orxon; a level with the material and no `source lava`
+  line draws embers from it. Nothing changes without the material or with Ambient Particles Off (docs/particles.md, From
+  the lava material).
+- Level light files: `sun_rays_strength <0..2>` scales the Sun Rays option's strength on that level (its added light and
+  limit; 0 none, 1 without the line), set in the debug menu's Sun tab (Sun Rays strength on this level) and saved with the
+  file (#121: the tutorial's rays were too strong). See docs/lighting.md, Sun rays.
+- Debug menu, Textures tab: every tie texture is listed and can be taken in hand (#136, #121). A tie class's texture prims
+  all named the class's first texture (the world files' decoder read each prim's TEX0 word, 0 in every class, for its local
+  texture; the game gives prim t the remap's byte t): the tab listed a class under its first texture alone, the crosshair's
+  preview pulsed that texture, and a `tie <class> tex <t>` line with t above 0 marked the class's first texture. Each prim
+  now takes its own texture at the level's load (checked against the game's registers on every level). With Graphics
+  Enhanced, the 80 shipped tie lines with t above 0 now mark the texture they name, and the automatic tie emitters judge
+  each texture of a class (docs/lighting.md, the Textures tab).
 - Movie subtitles (Options > Language > Movie Subtitles, Off by default; RAC1_MOVIE_SUBTITLES for testing): the original
   shows none over its movies; the game shows SubRip files from `assets/movie-subtitles/` in the game's subtitle look, in
   the text language. The setup makes them on request with speech to text from the disc's own sound tracks
@@ -58,6 +98,17 @@ What changed in each release. Releases are source only: you build the game with 
   aim no longer turns on in his jump only (#129).
 - Linux launcher: a dark theme (#99): it follows the desktop's light or dark setting (it was always light), or
   Settings > Theme chooses Light or Dark.
+- PAL disc 2.00: the title screen's sounds are the right ones again (#137): the region table placed the title's sound
+  tables 0x100 bytes off (data/regions/SCES-50916-2.00.txt, the boot module's run from 0x186100 as on PAL 1.00), so the
+  menu played other sounds of the title's bank. The setup runs again on its own after the update.
+- PAL disc 2.00: the menus' own texts are the right ones (#137): that disc added five credits lines to its text tables,
+  so every text from them on has a higher number; the texts the port's code names by their North American number (the
+  Sound page, the save slots' "EMPTY", the memory card's and the quit dialogs' Yes / No, the skill point and Enter
+  ship messages, the races' place names) are taken to the disc's (`TXT()`, src/game/ovl/ovl_reloc.h).
+- PAL disc 2.00: a level's start clears its own variables and only them (#137's region table): the clear began where the
+  table guessed Veldin's variables start, off by up to 0x30 bytes on 2.00, so on Kerwan and Oltanis it zeroed the last
+  constants of the level's data, and on Novalis and Batalia it left a few variables from the level before.
+- Debug menu: Kill Ratchet no longer crashes the game when Clank is the hero (#136): Clank gets his own death (state 0x47).
 
 ### Performance
 - The memory accessors and the VU0 macro ops forced inline in the ported and generated code (CMake `RAC1_INLINE_HELPERS`, off
@@ -71,6 +122,11 @@ What changed in each release. Releases are source only: you build the game with 
   in the same way: on Nebula G34, whose flickering light relights them every frame, its time 61 % less (0.51 to 0.20 ms a
   frame); the same game state, proved by an oracle batch (481) and a check mode (`RAC1_WORLD_LIGHTING_FAST=2`);
   `RAC1_WORLD_LIGHTING_FAST=0` runs the transliteration as before.
+- The moby drop shadows' VU0 routines (their points, tubes, quads and packets) and the sky's (its vertices, triangles,
+  sprites and spheres) written by hand in the same way: the moby pass, where the shadows are made, 9 to 14 % less on the
+  levels with shadows, the sky about a quarter less in the sampler; the same game state, proved by oracle batches (482, 483)
+  and check modes (`RAC1_DROP_SHADOWS_FAST=2`, `RAC1_SKY_FAST=2`; `RAC1_HAND_CHECK_EVERY=n` checks one call in n); `=0` runs
+  the transliterations as before.
 - The loading screen's flight between the planets no longer runs the mobys' VU0 skinning, which the modern renderer does not
   use there (as in play): the flight's main thread about a third of what it was (`RAC1_MRP_SKIP_FLIGHT=0`: as before).
 

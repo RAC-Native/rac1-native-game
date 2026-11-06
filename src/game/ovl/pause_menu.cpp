@@ -492,7 +492,7 @@ void cheat_code_input() {
         if (lbu(a) != 0) return;
         sb(a, 1);
         sound_play_indexed(1, 0, 0);
-        sub_00263d40(0x53d6, -1);
+        sub_00263d40(TXT(0x53d6), -1);
     }
 }
 

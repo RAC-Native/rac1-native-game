@@ -135,11 +135,20 @@ void journal_touch(u32 phys, u32 size) {
 }
 }  // namespace
 
+u32 g_unsaved_lo = 0, g_unsaved_hi = 0;  // (ee_journal_unsaved: pages marked saved for good, never copied)
+void ee_journal_unsaved(u32 lo, u32 hi) {
+    g_unsaved_lo = std::min<u32>(lo / JPAGE, RAM_SIZE / JPAGE);
+    g_unsaved_hi = std::min<u32>(hi / JPAGE, RAM_SIZE / JPAGE);
+    if (!g_journal_seen.empty())
+        for (u32 p = 0; p < RAM_SIZE / JPAGE; ++p) g_journal_seen[p] = p >= g_unsaved_lo && p < g_unsaved_hi ? 1 : 0;
+}
+
 void ee_journal_begin() {
     if (g_journal_on || g_ram_buffer.empty()) return;
     if (g_journal_seen.empty()) {
         g_journal_seen.assign(RAM_SIZE / JPAGE + 1, 0);
         g_journal_seen.back() = 1;  // (past the last page: "saved", for the inline check of a page and the next)
+        for (u32 p = g_unsaved_lo; p < g_unsaved_hi; ++p) g_journal_seen[p] = 1;
     }
     g_journal_pages.clear();
     g_journal_data.clear();

@@ -184,6 +184,7 @@ add_library(rac1_runtime STATIC
     runtime/kernel/ee_copy.cpp
     runtime/kernel/ee_memory.cpp
     runtime/kernel/disc.cpp
+    runtime/kernel/mods.cpp
     runtime/kernel/bootstrap.cpp
     runtime/vu/vu_interpreter.cpp
     runtime/ee/ee_interpreter.cpp

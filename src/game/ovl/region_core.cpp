@@ -123,6 +123,13 @@ std::vector<std::array<uint32_t, 2>> boot_data_sections() {
 // orig: (host) see region_core.h
 bool region_core_moved() { return !core_runs().data.empty(); }
 
+// orig: (host) see ovl_reloc.h (the 1.02 build's text ids: its core moved, region_core_moved; the PAL disc 2.00 is the
+// only 1.02 disc the game runs from)
+int32_t region_text_id(int32_t id) {
+    if (id < 20695 || !region_core_moved()) return id;
+    return id < 20742 ? id + 1 : id + 5;
+}
+
 // orig: (host) see region_core.h
 void region_core_fix(int unit, uint32_t addr, uint32_t size) {
     if (!region_core_moved()) return;

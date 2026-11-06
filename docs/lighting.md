@@ -290,6 +290,24 @@ Orxon's base (its first rooms; a box), Blarg's closed room of light set 6. Drek'
 so far have windows on space and keep their shadows; its enclosed corridors and the levels' caves are
 still to be marked in playtests.
 
+### Lighting: Original
+
+Options > Graphics > Lighting: Original (Graphics: Enhanced; GitHub issue #138) is an interior everywhere: the module runs with
+its sun off on the whole level (`g_lighting_original` in `mrp_lighting.cpp`, read by `fit_cascades`: the sun's weight 0, no
+cascades drawn, no casters gathered for them). The picture is the original's lighting: the world's key-light term the game
+baked is kept (the `SH_POINTS` relight from the sun's direction is weighted by the sun's weight), the mobys' split programs show
+their full colour, and the mobys' key light is the game's own, not turned toward a sun the level's file turned
+(`mrp_lighting_sun_turn`). Checked headless on Veldin and Kerwan: with every other row off it is the Original picture but for the
+emissive surfaces (kept bright, a part of the module with no row of its own). On top of it the rest still draws: the point lights per pixel (Secondary Lights), the occlusion, the
+materials, the reflections, the grass, the ambient particles. What needs the sun does nothing: the sun rays (no sun's weight),
+the point lights' cube shadows (`point_shadows_pass` returns), the shadows' strength and reach; the Graphics page greys those rows.
+The sun's specular on materials and its light on the grass's relief go with the sun, as in an interior.
+
+Unlike an interior, the original's **drop shadows** are drawn (`mrp_moby_renderer.cpp`: with the modern lighting on they are
+never drawn, Daino 2026-10-19, unless Lighting is Original). Their counter shares the stencil with the occlusion's mobys' marks
+(bit 0, [Ambient occlusion](#ambient-occlusion)): after the shadows the stencil is cleared and the mobys drawn after them mark
+again; the mobys drawn before them (the draw loop's first chain) lose their marks and take the world's occlusion.
+
 ### Views covered from the sun (off; testing)
 
 Our choice, not the game's (`cover_probe` in `mrp_lighting.cpp`), **now off**
@@ -628,7 +646,8 @@ are looked for along it (`g_cull_sun`, each frame), the mobys' key light is turn
 covered views' memory of the sky does not depend on it. Nothing needs a level reload. **Sun Rays off
 on this level** turns the [sun rays](#sun-rays) off on the level whatever the Sun Rays option (saved
 as `sun_rays off`: where the rays do not suit the level, as Anya-Thoughtmane's lighting pass found
-on Blarg's station, Rilgar, Batalia and Oltanis, #101). **Save** writes the level's file (its comment
+on Blarg's station, Rilgar, Batalia and Oltanis, #101); **Sun Rays strength on this level** (0 to 2, Ctrl+click to type)
+scales their strength there (saved as `sun_rays_strength <k>`, not written at 1). **Save** writes the level's file (its comment
 lines, its lights and its `noauto` lines kept, each line in its place; the Lights tab's unsaved
 edits too), **Reload** reads it again.
 
@@ -744,7 +763,10 @@ is the showcase). Screen space, at a fraction of the 3D's resolution (`sun_rays_
 
 A level's file may turn them off there (`sun_rays off`, the [sun editor](#the-sun-editor)'s **Sun
 Rays off on this level**), whatever the option: Blarg's station, Rilgar, Batalia and Oltanis, from
-Anya-Thoughtmane's lighting pass (#101). OpenGL and Vulkan alike (`sun_rays_now`).
+Anya-Thoughtmane's lighting pass (#101). OpenGL and Vulkan alike (`sun_rays_now`). It may also scale their strength there
+(`sun_rays_strength <k>`, 0 to 2, 1 without the line; the sun editor's **Sun Rays strength on this level**, #121): the added light
+and its limit of the chosen step are multiplied by `k` (0.5 half as strong; 0 none, as `sun_rays off`), so a level where the rays
+are too much (or too little) keeps the option's look elsewhere.
 
 No rays in the ship's flights (game mode 6 but its take-off and landing scenes: leaving a planet, and
 the loading screen's flight between planets), where the sun is still the level's left behind (#66).
@@ -775,7 +797,7 @@ buffer costs a pass over all of it) and the add over the whole picture; the blur
 apart (a pass at the step's size, about 0.05 to 0.15 ms here) are the rest. The
 rays fade out as the sun leaves the screen (gone 0.6 of the view beyond its edge; nothing is drawn
 then) or goes behind the camera, and follow the sun's weight: none where the zone has no sun, in the
-level's [interiors](#interiors), with the Lighting on Original. The cascades are not used.
+level's [interiors](#interiors), with [Lighting: Original](#lighting-original). The cascades are not used.
 `RAC1_SUN_RAYS` (0 to 3) overrides the option, `RAC1_SUN_RAYS_TRACE` prints the sun's place, the
 gain, the GPU time and how open the sky around the sun is (OpenGL), `RAC1_SUN_RAYS_GAIN` scales the
 strength and `RAC1_SUN_RAYS_SHAPE` ("near,far,fall") the glare's (testing). Vulkan draws the same
@@ -937,7 +959,7 @@ part of the original. The editor is in the debug menu (Lights tab), so it needs 
   `RAC1_LIGHTS_DIR` changes the directory), one light per line:
   `light x y z  r g b  intensity radius flicker on`, `noauto <class>` for an automatic class
   turned off, `emissive ...` for an [emissive surface](#emissive-surfaces), `sun <azimuth> <elevation>` for the level's own sun,
-  `sun_rays off` for no [sun rays](#sun-rays) on the level and `particles <kind> <density> ...` for the level's
+  `sun_rays off` for no [sun rays](#sun-rays) on the level, `sun_rays_strength <0..2>` for their strength there and `particles <kind> <density> ...` for the level's
   [ambient particles](particles.md#a-levels-lines), with `#` for comments. Saving from the editor keeps the file's
   own comment lines and its lines' order (an entry is written where its line was, the ones added
   after the last line), and writes the numbers it read unchanged: the game's thread rounds toward
@@ -1110,6 +1132,17 @@ may have nothing to aim at near the start; its classes are under the thumbnail, 
 one atlas of 64 x 64 pictures made on the CPU from the renderers' decoded textures when the tab is first shown on a level (or
 **Refresh**): an OpenGL texture or a Vulkan image ImGui draws; nothing of the game's drawing changes.
 
+A tie's textures: a tie class's texture prim `t` (an `emissive` / `material` line's `tex t`) is the level's tie texture at byte `t`
+of the class's 16-byte remap, as the game's level load gives it (`tie_class_register`, 0x240aa8). Until #136 the world files'
+decoder took each prim's TEX0 word for its local texture, and that word is 0 in every class of the game: every prim of a class
+named the class's first texture. So the grid listed a tie class under its first texture alone (its other textures had no class:
+left out, nothing to click), the crosshair's preview pulsed the class's first texture whatever prim was aimed at, and a line for
+`tie <class> tex <t>` with `t` above 0 marked the class's first texture (80 of the shipped files' 253 tie lines, all on another
+texture now; the automatic emitters judged a tie class by its first texture too). The load now sets each prim's texture from the
+remap (`tie_textures_from_remap`, mrp_world_assets.cpp; checked against the game's own registers in EE memory on every level: 0
+of 5 000 prims differ), so every tie texture the level draws is in the grid with its classes and prims, and a line reaches the
+texture it names. The game's drawing reads its own registers and is unchanged.
+
 Shipped (#102, strength 1.3 so that they read a little brighter than the original, and do not darken): on Veldin the domed
 building's round cyan lamps (shrub class 569, three stacked instances per column, `tex 1` their glass) and its cyan door panels (tie
 2024 `tex 0`, threshold 0.8: the building's one texture, texture 7, holds its walls too); on Novalis the landing pad's red lamps
@@ -1129,7 +1162,7 @@ The defaults below are the rows' own (the preset High); with Graphics: Original 
 
 | Row | Values | Default | Controls |
 |---|---|---|---|
-| Lighting | Low, Medium, High (until the switch also Original, now Graphics: Original) | High | the sun shadow maps' resolution (1024, 2048, 4096) (`lighting_quality`, item 56) |
+| Lighting | Low, Medium, High, Original (until the switch Original was the lighting off, now Graphics: Original) | High | the sun shadow maps' resolution (1024, 2048, 4096); Original: the original's lighting and drop shadows, the sun off, the effects kept ([Lighting: Original](#lighting-original)) (`lighting_quality`: 0..2, 3 Original) |
 | Shadow Strength | 50 to 100 % | 70 % | how much of the sun's light a shadow hides (`shadow_strength` in the preferences, item 45 of a save's block) |
 | Shadow Distance | Low, Medium, High, Maximum | Maximum | how far mobys cast sun shadows (40, 80, 140 units, or as far as the cascades reach) |
 | Dynamic Shadows | Off, On | On | point-light cube shadows |
@@ -1141,7 +1174,8 @@ The defaults below are the rows' own (the preset High); with Graphics: Original 
 | Water Reflections | Low, Medium | Medium | what Surface Detail's water mirrors: Low cube maps from fixed probes, Medium the scene drawn mirrored about the water (`water_reflections` in the preferences); see [Materials](materials.md#water-reflections) |
 | Grass | Off, Low, High | High | the tagged ground's blades: a detail relief (Low), and a few very low shells near the camera (High) (`grass`, item 54) |
 
-Every row takes effect only with Graphics: Enhanced. The debug menu's **Enhancements** tab has the same switch and preset at
+Every row takes effect only with Graphics: Enhanced. With Lighting: Original, Shadow Strength, Shadow Distance, Dynamic
+Shadows and Sun Rays do nothing (greyed on the page, their values kept). The debug menu's **Enhancements** tab has the same switch and preset at
 its top and switches all of them live (for the run; "Save as my settings" makes them the preferences), each with its profiler
 stage's GPU / CPU time beside it.
 

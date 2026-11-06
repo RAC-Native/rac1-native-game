@@ -50,6 +50,12 @@ int env_int(const char* name, int def) {
 
 int g_modern_shadows = env_int("RAC1_SHADOWS", 0);
 int g_shadow_quality = std::clamp(env_int("RAC1_SHADOW_RES", 1), 0, 2);
+// orig: (host) Lighting: Original (Graphics: Enhanced, #138): 1 the modern lighting runs with its sun off everywhere, as in a level's
+// interiors - the original's lighting, its drop shadows drawn (mrp_moby_renderer), no sun's shadows, cascades, sun rays nor point-light
+// shadows - while the effects on top of it (occlusion, materials, reflections, grass, particles, the point lights) keep working. 0
+// (default) the modern sun (RAC1_LIGHTING_ORIGINAL). Declared where it is used (graphics.cpp, mrp_moby_renderer.cpp, the debug menu),
+// not in mrp_lighting.h: the headers of src/game are the generated code's fingerprint
+int g_lighting_original = env_int("RAC1_LIGHTING_ORIGINAL", 0);
 int g_shadow_strength = std::clamp(env_int("RAC1_SHADOW_STRENGTH", 70), 0, 100);
 int g_shadow_debug = env_int("RAC1_SHADOW_DEBUG", 0);
 int g_modern_points = env_int("RAC1_POINTS", 1);
@@ -95,6 +101,7 @@ struct SunFile {
     float az = 0.0f, el = 45.0f;
 } g_sun_file;
 bool g_sun_rays_off = false;  // (the level's file says "sun_rays off": the Sun Rays pass off on this level)
+float g_sun_rays_strength = 1.0f;  // (the level's file's "sun_rays_strength <0..2>": the Sun Rays option's strength scaled on this level)
 bool g_sun_snap = false;  // (the editor changed it: the sun turned at once, not a degree a frame)
 // the level's interiors (our data: "interior x0 y0 z0 x1 y1 z1" boxes and "interior_set <n>" light sets in its file): where the
 // camera is in one (or the hero is lit with that set), the sun is off - the original's look -, faded over kInteriorFade frames
@@ -855,11 +862,12 @@ void fit_cascades() {
             }
         }
         g_sh.sun = cur;
-        g_sh.sun_k = curw * (1.0f - g_interior_k);  // (an interior: faded out apart from the zone's own fade)
+        // (an interior: faded out apart from the zone's own fade; Lighting: Original: none anywhere, as in an interior)
+        g_sh.sun_k = g_lighting_original != 0 ? 0.0f : curw * (1.0f - g_interior_k);
         g_sh.key = curkey;
         g_sh.key_dir = curkey_dir;
         g_has_sun.store(g_sh.sun_k > 0.01f);
-        g_casc_on.store(g_sh.sun_k > 0.01f || (cover_probe_on() && zone_w > 0.01f));
+        g_casc_on.store(g_sh.sun_k > 0.01f || (g_lighting_original == 0 && cover_probe_on() && zone_w > 0.01f));
     }
     for (int i = 0; i < 3; ++i) g_cull_sun[i] = g_sh.sun[i];  // (the casters' search of the next frames: the level's sun is fixed)
     g_cull_tan[0] = 1.0f / g_sh.proj.x;
@@ -1044,7 +1052,7 @@ void point_tiles_update() {
 // cube of depth maps (6 views of 90 degrees from the light, near kPtNear, far its radius) with the frame's casters, world and mobys;
 // the light's pt_col.w names its cube (the fragment shader's sh_points compares against it). The shadow pass's framebuffer bound.
 void point_shadows_pass() {
-    if (g_point_shadows == 0 || g_modern_points == 0 || g_sh.npts == 0) return;
+    if (g_point_shadows == 0 || g_lighting_original != 0 || g_modern_points == 0 || g_sh.npts == 0) return;  // (Lighting: Original: none)
     if (vk::is_active()) {
         if (g_vk_sh.ptex.image == VK_NULL_HANDLE) {
             vk::create_image(kPtRes, kPtRes, VK_FORMAT_D32_SFLOAT,
@@ -1861,7 +1869,7 @@ GLenum depth_format(GLint fb) {
 // and landing scenes, steps 0 / 8 at 0x13e050: the flight away from the planet, 3, and the loading screen's flight between planets,
 // 4, level_exit.cpp / flight_draw.cpp), where the sun is still the level's left behind (GitHub issue #66)
 bool sun_rays_now() {
-    if (g_sun_rays <= 0 || g_sun_rays_off || !(g_sh.sun_k > 0.01f)) return false;  // (or off on this level: "sun_rays off" in its file)
+    if (g_sun_rays <= 0 || g_sun_rays_off || !(g_sun_rays_strength > 0.0f) || !(g_sh.sun_k > 0.01f)) return false;  // (or off on this level: "sun_rays off" or strength 0 in its file)
     const int32_t step = draw_lw(0x0013e050u);
     return draw_lw(OV(0x0015f5c4u)) != 6 || step == 0 || step == 8;
 }
@@ -1979,8 +1987,8 @@ void sun_rays_pass(GLint fb, const int vp[4]) {
     glDrawArrays(GL_TRIANGLES, 0, 3);
     // (4) added to the picture
     static const float gain_env = std::getenv("RAC1_SUN_RAYS_GAIN") != nullptr ? static_cast<float>(std::atof(std::getenv("RAC1_SUN_RAYS_GAIN"))) : 1.0f;  // (testing)
-    const float k = step.gain * gain_env * fade * std::min(g_sh.sun_k, 1.0f);
-    const float cap = step.cap * std::max(fade * std::min(g_sh.sun_k, 1.0f), 1e-3f);
+    const float k = step.gain * gain_env * g_sun_rays_strength * fade * std::min(g_sh.sun_k, 1.0f);  // (the level's strength: its file's sun_rays_strength)
+    const float cap = step.cap * g_sun_rays_strength * std::max(fade * std::min(g_sh.sun_k, 1.0f), 1e-3f);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(fb));
     glViewport(vp[0], vp[1], w, h);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
@@ -3114,8 +3122,8 @@ void vk_ao_and_rays_pass(const int vp[4]) {
 
                 // (4) add to scene
                 static const float gain_env = std::getenv("RAC1_SUN_RAYS_GAIN") != nullptr ? static_cast<float>(std::atof(std::getenv("RAC1_SUN_RAYS_GAIN"))) : 1.0f;
-                const float k = step.gain * gain_env * fade * std::min(g_sh.sun_k, 1.0f);
-                const float cap = step.cap * std::max(fade * std::min(g_sh.sun_k, 1.0f), 1e-3f);
+                const float k = step.gain * gain_env * g_sun_rays_strength * fade * std::min(g_sh.sun_k, 1.0f);  // (as sun_rays_pass)
+                const float cap = step.cap * g_sun_rays_strength * std::max(fade * std::min(g_sh.sun_k, 1.0f), 1e-3f);
                 if (std::getenv("RAC1_SUN_RAYS_TRACE") != nullptr) {
                     static uint64_t n = 0;
                     if (n++ % 60 == 0) std::printf("[rays] sun at %.2f %.2f of the view, fade %.2f, weight %.2f: %.2f\n", su.x, su.y, fade, g_sh.sun_k, k);
@@ -3185,6 +3193,19 @@ void mrp_lighting_ao_moby_mark(bool begin) {
     M.active = true;
     M.done = true;
     M.fb = fb;
+}
+
+// orig: (host) OpenGL: the mobys' marking taken up again after the drop shadows (Lighting: Original) used the stencil for their counter:
+// the stencil cleared, the marking's state set again (nothing when it is not marking; declared in mrp_moby_renderer.cpp)
+void mrp_lighting_ao_moby_restart() {
+    AoMark& M = g_ao_mark;
+    if (vk::is_active() || !M.active) return;
+    glStencilMask(0xff);
+    glClearStencil(0);
+    glClear(GL_STENCIL_BUFFER_BIT);
+    glEnable(GL_STENCIL_TEST);
+    glStencilFunc(GL_ALWAYS, 1, 0xff);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 }
 
 namespace {
@@ -3750,7 +3771,7 @@ bool g_sky_file = false;                       // ("sky r g b": the reflections'
 float g_sky[3] = {0.0f, 0.0f, 0.0f};
 std::vector<ParticleSpec> g_particles, g_particles_read;  // the ambient particles ("particles"): now, and as the file was read
 // the file's lines in their order, as the editor's Save writes them back: a comment (or a line not understood) by its text, an
-// entry by its kind ('s' sun, 'r' sun_rays, 'S' interior_set, 'e' emit, 'm' emissive / material, 'R' rain, 'k' sky, 'i' interior, 'o' noauto,
+// entry by its kind ('s' sun, 'r' sun_rays, 'w' sun_rays_strength, 'S' interior_set, 'e' emit, 'm' emissive / material, 'R' rain, 'k' sky, 'i' interior, 'o' noauto,
 // 'l' light, 'p' particles) - the next of
 // that kind's current list written in its place, the ones added since after the last line
 struct FileLine {
@@ -4185,6 +4206,7 @@ void user_load(int level) {
     g_sun_snap = true;  // (a level's sun, or the file read again: at once)
     g_user_layout.clear();
     g_sun_rays_off = false;
+    g_sun_rays_strength = 1.0f;
     g_user_level = level;
     g_user_path = user_path(level);
     g_user_light_selected = -1;
@@ -4206,6 +4228,11 @@ void user_load(int level) {
         auto entry = [&](char kind) { g_user_layout.push_back(FileLine{kind, {}}); };
         if (line[0] == '#') {
             g_user_layout.push_back(FileLine{'#', text});
+            continue;
+        }
+        if (float k = 1.0f; std::sscanf(line, "sun_rays_strength %f", &k) == 1) {  // the Sun Rays' strength on this level (0..2)
+            g_sun_rays_strength = std::isfinite(k) ? std::clamp(k, 0.0f, 2.0f) : 1.0f;
+            entry('w');
             continue;
         }
         if (char w[8] = {}; std::sscanf(line, "sun_rays %7s", w) == 1) {  // "sun_rays off": no Sun Rays on this level
@@ -4330,6 +4357,10 @@ void mrp_user_sun_set(bool on, float az, float el) {
 bool mrp_user_sun_rays_off() { return g_sun_rays_off; }
 // orig: (host) see mrp_lighting.h
 void mrp_user_sun_rays_set_off(bool off) { g_sun_rays_off = off; }
+// orig: (host) see mrp_lighting.h
+float mrp_user_sun_rays_strength() { return g_sun_rays_strength; }
+// orig: (host) see mrp_lighting.h
+void mrp_user_sun_rays_set_strength(float k) { g_sun_rays_strength = std::clamp(k, 0.0f, 2.0f); }
 // orig: (host) see mrp_lighting.h
 const char* mrp_particle_kind_name(int kind) { return kind >= 0 && kind < kPartKinds ? kParticleKindNames[kind] : "?"; }
 // orig: (host) see mrp_lighting.h
@@ -4567,7 +4598,8 @@ float mrp_lighting_interior(int* hero_set) {
 }
 // orig: (host) see mrp_lighting.h
 bool mrp_lighting_sun_turn(float r[9]) {
-    if (g_modern_shadows == 0 || !g_sun_known.load()) return false;
+    // (Lighting: Original: no sun - the mobys keep the game's own key light, as the world keeps its baked one)
+    if (g_modern_shadows == 0 || g_lighting_original != 0 || !g_sun_known.load()) return false;
     const glm::vec3 a = glm::normalize(g_sh.key_dir), b = glm::normalize(g_sh.sun), ax = glm::cross(a, b);
     const float cs = glm::dot(a, b), sn = glm::length(ax);
     if (sn < 1e-4f && cs > 0.0f) return false;
@@ -4614,8 +4646,10 @@ bool mrp_user_lights_save() {
     std::fprintf(f, "# rac1-native: lights placed by hand for level %d (the debug menu's Lights tab)\n", g_user_level);
     std::fprintf(f, "# light x y z  r g b  intensity radius flicker on\n");
     // each entry written in the place of the file's line of its kind (the next one of the list), the rest after the last line
-    bool sun_done = false, rays_done = false, rain_done = false, sky_done = false;
+    bool sun_done = false, rays_done = false, strength_done = false, rain_done = false, sky_done = false;
     const bool has_rays = std::any_of(g_user_layout.begin(), g_user_layout.end(), [](const FileLine& ln) { return ln.kind == 'r'; });
+    const bool has_strength = std::any_of(g_user_layout.begin(), g_user_layout.end(), [](const FileLine& ln) { return ln.kind == 'w'; });
+    const bool strength_set = g_sun_rays_strength != 1.0f;
     size_t n_set = 0, n_emit = 0, n_emis = 0, n_box = 0, n_off = 0, n_light = 0, n_part = 0;
     auto put = [&](char kind) {
         switch (kind) {
@@ -4624,10 +4658,16 @@ bool mrp_user_lights_save() {
             sun_done = true;
             if (!has_rays && !rays_done && g_sun_rays_off) std::fprintf(f, "sun_rays off\n");  // (new to the file: under the sun)
             rays_done = rays_done || !has_rays;
+            if (!has_strength && !strength_done && strength_set) std::fprintf(f, "sun_rays_strength %.2f\n", g_sun_rays_strength);  // (new to the file: under the sun)
+            strength_done = strength_done || !has_strength;
             break;
         case 'r':
             if (!rays_done && g_sun_rays_off) std::fprintf(f, "sun_rays off\n");
             rays_done = true;
+            break;
+        case 'w':
+            if (!strength_done && strength_set) std::fprintf(f, "sun_rays_strength %.2f\n", g_sun_rays_strength);
+            strength_done = true;
             break;
         case 'S':
             if (n_set < g_interior_sets.size()) std::fprintf(f, "interior_set %d\n", g_interior_sets[n_set++]);
@@ -4686,6 +4726,7 @@ bool mrp_user_lights_save() {
     }
     put('s');
     put('r');
+    put('w');
     while (n_set < g_interior_sets.size()) put('S');
     while (n_emit < g_class_lights.size()) put('e');
     put('R');
@@ -4717,7 +4758,7 @@ float mrp_lighting_caster_grow() { return g_shadow_cache != 0 ? kCacheGrow : 1.0
 void mrp_lighting_point_casters(float pts[8][4]) {
     for (uint32_t i = 0; i < 8; ++i) {
         pts[i][0] = pts[i][1] = pts[i][2] = pts[i][3] = 0.0f;
-        if (g_modern_shadows == 0 || g_modern_points == 0 || g_point_shadows == 0) continue;
+        if (g_modern_shadows == 0 || g_modern_points == 0 || g_point_shadows == 0 || g_lighting_original != 0) continue;
         const uint32_t rec = OV(0x001802c0u) + i * 0x20, use = OV(0x001804c0u) + i * 0x30;
         if (draw_lw(use + 0x10) == 0 || !(draw_lwc1(rec + 0x1c) > 0.0f) || ((g_slot_old.load() >> i) & 1u) != 0) continue;
         pts[i][0] = draw_lwc1(rec + 0x10);

@@ -148,10 +148,26 @@ std::string level_dir_name(int level) {
     return "level" + std::to_string(level);
 }
 
+// orig: 0x00240aa8 (tie_class_register's texture loop, level_setup.cpp) - a tie class's texture prim t takes the level's tie
+// texture remap[t] (its 16-byte palette, 0x1c7700 + index * 16): the prim's own TEX0 word is 0 in every class of the game, so
+// the decoder's "local texture" (that word) named remap[0] for all of a class's prims (#136: the Textures tab listed a tie
+// class's first texture alone, the other textures had no class and could not be listed or aimed at, and a line for a tie's
+// "tex N" marked its first texture). The world files (setup's decoder, world_trace.cpp) keep that word: each prim's level
+// texture is set here from its index at the load (the class's 16-byte remap: at most 16 prims; the draws read the game's own
+// registers and do not change)
+static void tie_textures_from_remap(World& w) {
+    for (TieClass& c : w.ties)
+        for (size_t t = 0; t < c.textures.size(); ++t) {
+            c.textures[t].local_texture = static_cast<int32_t>(t);
+            c.textures[t].texture = t < c.texture_remap.size() ? c.texture_remap[t] : -1;
+        }
+}
+
 // orig: (host)
 
 bool load_world(const std::string& dir, int level, World& w) {
     if (!read_world(dir + "/" + level_dir_name(level) + "/world.mrpw", w)) return false;
+    tie_textures_from_remap(w);
     derive_images(w);
     return true;
 }

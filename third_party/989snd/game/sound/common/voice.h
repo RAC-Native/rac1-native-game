@@ -18,7 +18,10 @@ class Voice {
   };
 
   Voice(AllocationType alloc = AllocationType::Managed) : mAlloc(alloc) {}
-  s16Output Run();
+  // rac1 (host): `hp` (the high-precision mix): also the voice's output in float, on the s16 scale and without its
+  // truncations and clamps (the interpolation, the envelope and the volumes multiplied exactly); the voice's state and its
+  // s16 output are the same with or without it
+  s16Output Run(float* hp = nullptr);
   // rac1 (host): `n` samples of Run's state alone, no sample made (the game's IOP while the host's mirror plays the sound,
   // RAC1_IOP_STATE_ONLY): the decode position, the block headers' loop / end flags and the envelope as Run leaves them
   // (the volumes' ramps not run: only the samples read them); false when the voice is found dead before one of them

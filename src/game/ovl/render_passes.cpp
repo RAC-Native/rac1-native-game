@@ -24,6 +24,7 @@
 #include <game/ovl/rilgar_mobys.h>
 #include <game/ovl/umbris_part2.h>
 #include <game/ovl/veldin_finale_mobys.h>
+#include <game/ovl/veldin_orbit_mobys.h>
 
 #include <cstdlib>
 
@@ -188,6 +189,14 @@ bool screen_layer_fn(uint32_t fn) {
     return false;
 }
 
+// orig: (host) whether the draw-list callback `fn` is a space fight's HUD (render_view_proj_note): the player's ship's callback on
+// Pokitaru (L11:0x311d50), Gemlik Base (Qwark's fight, L13:0x2b97f8) and Drek's fleet (L17:0x2eb9a8): its radar, its missiles, its
+// target reticles
+bool ship_hud_fn(uint32_t fn) {
+    const MobyFn f = ovl_moby_fn_resolve(fn);
+    return f != nullptr && (f == pok_cb_311d50_l11 || f == gml_cb_2b97f8_l13 || f == vo_cb_2eb9a8_l17);
+}
+
 // orig: (helper) repeated in 0x001f9430 / 0x001f94a8 / 0x001f9520 / 0x001f95e8
 void draw_list_run(uint32_t count, uint32_t fns, uint32_t args) {
     static const bool inventory = std::getenv("RAC1_MRP_FX_INVENTORY") != nullptr;  // (host: testing)
@@ -197,6 +206,7 @@ void draw_list_run(uint32_t count, uint32_t fns, uint32_t args) {
     for (int32_t i = 0; i < lw(count); ++i) {
         const uint32_t fn = lwu(fns + static_cast<uint32_t>(i) * 4);
         const bool layer = layers && screen_layer_fn(fn);
+        const bool ship = g_view_widen > 1.0f && ship_hud_fn(fn);  // (host: a space fight's HUD, in the real block and the shadows)
         const uint32_t at = lwu(CUR);  // (host: the callback's chain range: the MRP's program 7 surfaces, the notes below)
         if (inventory) mrp_fx_list_call(0, 0, 0);
         ovl_call_moby_fn(fn, lwu(args + static_cast<uint32_t>(i) * 4));
@@ -207,6 +217,7 @@ void draw_list_run(uint32_t count, uint32_t fns, uint32_t args) {
             mrp_fx_note_list(at, lwu(CUR), cls);
         }
         if (layer) render_view_layer_note(at, lwu(CUR));  // (host)
+        if (ship) render_view_proj_note(at, lwu(CUR));    // (host)
     }
     mrp_lod_draw_list_widen(false);  // (host)
 }

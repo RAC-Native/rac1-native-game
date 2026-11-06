@@ -163,7 +163,8 @@ those tables name. The setup (`tools/disc_extract.py`) cuts the whole image into
 About 6,800 files, 3.9 GB. The bytes no file holds are zero, so a read of any sector gives exactly
 what the image gives, across two files or outside every one. The extraction is checked twice: each
 file against the image as it is written (its size and sha1), and then, once, the game's own reads
-of every sector through both (`./build/rac1-native --setup --compare-disc`).
+of every sector through both (`./build/rac1-native --setup --compare-disc`). Mods can put their own files in front of
+these, by the same paths ([Mods](mods.md#disc-files)).
 
 ## The European PAL disc
 

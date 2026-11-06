@@ -1,5 +1,6 @@
 // See mrp_2d.h.
 #include <game/render/mrp_2d.h>
+#include <game/render/texture_mods.h>
 
 #include "mrp_2d_backend.inc"
 
@@ -352,13 +353,24 @@ void build_frame(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float
             bool sub3d = p.vu;
             if (!sub3d && !to_rt && field(st.test, 16, 1) != 0 && ztst >= 2)
                 for (const Vertex& q : p.v) sub3d = sub3d || (q.z != 0 && q.z < 0xff0000u);
-            if ((p.sub == 1) != sub3d) { skip(mrp2d::kSkSub); continue; }
+            // (a space fight's HUD, gs::Primitive::proj: its 2D the substitute's, drawn with the widened view's mobys; the real range's not)
+            if (p.proj && !sub3d) {
+                if (p.sub == 2) { skip(mrp2d::kSkSub); continue; }
+            } else if ((p.sub == 1) != sub3d) {
+                skip(mrp2d::kSkSub);
+                continue;
+            }
         }
         if (opt.drop_gif_3d && !p.vu && !to_rt && field(st.test, 16, 1) != 0 && ztst >= 2) {
             bool p3d = false;
             for (const Vertex& q : p.v) p3d = p3d || (q.z != 0 && q.z < 0xff0000u);
             if (p3d) { skip(mrp2d::kSkGif3d); continue; }
         }
+        // (a space fight's HUD: its 2D at the targets' projections reaches the window's sides as the 3D does)
+        const bool proj2d = p.proj && !to_rt && !p.vu;
+        // (the help panel with a HUD wider than 4:3, gs::Primitive::hud 3: a message wider than the frame drawn past its sides, its box
+        // at its own width rather than stretched to the window's edges)
+        const bool wide_msg = p.hud == 3 && !to_rt && !p.vu;
         const float sx = to_rt ? 1.0f : proj3d ? v.xscale_3d : v.xscale;
         verts.clear();
         if (p.type == 6) {
@@ -417,7 +429,7 @@ void build_frame(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float
         }
         // a 2D sprite / triangle that covers none of the GS's sample points draws nothing on the GS (pixel x covered when
         // x0 <= x < x1; GL samples at x + 0.5): not drawn (the oxygen indicator's frame parked at x = 512 lit the last column, #5)
-        if (!p.vu && !p.wide && !crop_3d && (p.type == 6 || p.type == 3)) {
+        if (!p.vu && !p.wide && !proj2d && !wide_msg && !crop_3d && (p.type == 6 || p.type == 3)) {
             float bx0 = p.v[0].x, bx1 = bx0, by0 = p.v[0].y, by1 = by0;
             for (size_t i = 1; i < (p.type == 6 ? 2u : 3u); ++i) {
                 bx0 = std::min(bx0, p.v[i].x);
@@ -438,7 +450,7 @@ void build_frame(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float
         if (!to_rt && p.layer && !proj3d && !p.vu && sx < 1.0f) {
             for (V& q : verts) q.x = FB_W * 0.5f + (q.x - FB_W * 0.5f) / sx;
             to_left = to_right = full_span = true;
-        } else if (!to_rt && (sx < 1.0f || crop_on)) {
+        } else if (!to_rt && !wide_msg && (sx < 1.0f || crop_on)) {
             float x0 = verts[0].x, x1 = x0, y0 = verts[0].y, y1 = y0;
             for (const V& q : verts) {
                 x0 = std::min(x0, q.x);
@@ -508,7 +520,7 @@ void build_frame(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float
         int x0 = static_cast<int>(field(st.scissor, 0, 11)), x1 = static_cast<int>(field(st.scissor, 16, 11));
         int y0 = static_cast<int>(field(st.scissor, 32, 11)), y1 = static_cast<int>(field(st.scissor, 48, 11));
         // the 2D slivers at the frame's edges (Viewport::hide_edge_slivers): at most 4 frame pixels inside, the rest outside
-        if (v.hide_edge_slivers && !to_rt && tme && !crop_3d && !p.vu && !p.wide && !(p.layer && full_span)) {
+        if (v.hide_edge_slivers && !to_rt && tme && !crop_3d && !p.vu && !p.wide && !proj2d && !wide_msg && !(p.layer && full_span)) {
             float bx0 = verts[0].x, bx1 = bx0, by0 = verts[0].y, by1 = by0;
             for (const V& q : verts) {
                 bx0 = std::min(bx0, q.x);
@@ -520,7 +532,7 @@ void build_frame(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float
             if ((bx1 > FB_W + 0.5f && bx0 >= FB_W - kSliver) || (bx0 < -0.5f && bx1 <= kSliver) || (by0 < -0.5f && by1 <= kSliver)) { skip(mrp2d::kSkSliver); continue; }
         }
         // the overscan crop (testing: RAC1_OVERSCAN): the 2D's scissor narrowed to the area a TV showed
-        if (crop_on && !crop_3d && !p.vu && !p.wide && !full_span && !edge_fill) {
+        if (crop_on && !crop_3d && !p.vu && !p.wide && !proj2d && !wide_msg && !full_span && !edge_fill) {
             const int cw = static_cast<int>(FB_W), ch = static_cast<int>(FB_H);
             x0 = std::max(x0, v.crop[0]);
             x1 = std::min(x1, cw - 1 - v.crop[1]);
@@ -531,7 +543,7 @@ void build_frame(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float
         // a HUD wider than 4:3 (Viewport::hud_shift): an element at the frame's left / right side moved toward the window's edges in
         // whole window pixels, its scissor with it
         float hud_dx = 0.0f;
-        if (v.hud_shift != 0.0f && p.hud != 0 && !to_rt && !proj3d && !p.vu && !p.wide && !p.layer && !full_span) {
+        if (v.hud_shift != 0.0f && (p.hud == 1 || p.hud == 2) && !to_rt && !proj3d && !p.vu && (!p.wide || proj2d) && !p.layer && !full_span) {
             const float kx = sx * static_cast<float>(v.w) / FB_W;
             hud_dx = std::round(v.hud_shift * kx) / kx * (p.hud == 1 ? -1.0f : 1.0f);
             for (V& q : verts) q.x += hud_dx;
@@ -552,7 +564,7 @@ void build_frame(const MrpChainFrame& f, int win_w, int win_h, float FB_W, float
             // any projected 3D reach the window's sides
             auto wx = [&](float x) { return static_cast<float>(v.x) + ((std::clamp(x, 0.0f, FB_W) / FB_W * 2.0f - 1.0f) * sx + 1.0f) * 0.5f * static_cast<float>(v.w); };
             const float sy = static_cast<float>(v.h) / FB_H;
-            const bool wide = (p.wide || proj3d) && sx < 1.0f && !v.cut_3d;
+            const bool wide = (p.wide || proj3d || proj2d || wide_msg) && sx < 1.0f && !v.cut_3d;
             const int sx0 = (to_left || wide) && x0 <= 0 ? v.x : static_cast<int>(wx(static_cast<float>(x0)));
             const int sx1 = (to_right || wide) && static_cast<float>(x1 + 1) >= FB_W ? v.x + v.w : static_cast<int>(wx(static_cast<float>(x1 + 1)));
             k.sc[0] = sx0;
@@ -741,31 +753,42 @@ GLuint gl_sampler(bool lin, bool wrap_s, bool wrap_t) {
     return s;
 }
 
+// orig: (none) — enhancement: a mod's replacement of the image (texture_mods.h), null for none (no mod's textures: never looked
+// at). Up to 1024 x 1024 (the GS's largest texture), dumped up to 256 x 256 (larger ones: the frame's pictures)
+std::shared_ptr<const texture_mods::Image> mod_texture(const TexImage* img) {
+    if (!texture_mods::on() || img->w <= 0 || img->h <= 0 || img->w > 1024 || img->h > 1024) return nullptr;
+    return texture_mods::find(static_cast<uint32_t>(img->w), static_cast<uint32_t>(img->h), img->px.data(), img->w <= 256 && img->h <= 256 ? "2d" : nullptr);
+}
+
 // orig: (host) the image's texture: made at its first use, from the pool when one of its size is free (filled again in place)
 GLuint gl_texture(const TexRef& r) {
     const TexImage* img = r.img;
     GlTex& e = g_gl_tex[img->id];
     e.used = g_frame_no;
     if (e.id != 0) return e.id;
-    e.w = img->w;
-    e.h = img->h;
     if (r.own != nullptr && *r.own != nullptr) {
         e.src = *r.own;
         e.owned = true;
     }
-    const auto pool = g_gl_pool.find({img->w, img->h});
+    // (a mod's replacement, texture_mods.h: its level 0, at its own size)
+    const std::shared_ptr<const texture_mods::Image> rep = mod_texture(img);
+    const int tw = rep != nullptr ? static_cast<int>(rep->w) : img->w, th = rep != nullptr ? static_cast<int>(rep->h) : img->h;
+    const uint32_t* texels = rep != nullptr ? rep->mips[0].data() : img->px.data();
+    e.w = tw;
+    e.h = th;
+    const auto pool = g_gl_pool.find({tw, th});
     if (pool != g_gl_pool.end() && !pool->second.empty()) {
         e.id = pool->second.back().id;
         pool->second.pop_back();
         glBindTexture(GL_TEXTURE_2D, e.id);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, img->w, img->h, GL_RGBA, GL_UNSIGNED_BYTE, img->px.data());
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, tw, th, GL_RGBA, GL_UNSIGNED_BYTE, texels);
         ts_made(img, true);
         return e.id;
     }
     glGenTextures(1, &e.id);
     rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &e.id, "MRP 2D: textures");
     glBindTexture(GL_TEXTURE_2D, e.id);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, img->w, img->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, img->px.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, tw, th, 0, GL_RGBA, GL_UNSIGNED_BYTE, texels);
     ts_made(img, false);
     return e.id;
 }
@@ -1252,22 +1275,26 @@ VkImageView vk_texture(const TexRef& r) {
     VkTex& e = g_vk_tex[img->id];
     e.used = g_frame_no;
     if (e.img.view != VK_NULL_HANDLE) return e.img.view;
-    e.w = img->w;
-    e.h = img->h;
     if (r.own != nullptr && *r.own != nullptr) {
         e.src = *r.own;
         e.owned = true;
     }
-    const auto pool = g_vk_pool.find({img->w, img->h});
+    // (a mod's replacement, texture_mods.h: its level 0, at its own size)
+    const std::shared_ptr<const texture_mods::Image> rep = mod_texture(img);
+    const int tw = rep != nullptr ? static_cast<int>(rep->w) : img->w, th = rep != nullptr ? static_cast<int>(rep->h) : img->h;
+    const std::vector<uint32_t>& texels = rep != nullptr ? rep->mips[0] : img->px;
+    e.w = tw;
+    e.h = th;
+    const auto pool = g_vk_pool.find({tw, th});
     const bool reused = pool != g_vk_pool.end() && !pool->second.empty();
     if (reused) {
         e.img = pool->second.back().img;
         pool->second.pop_back();
     } else {
-        vk::create_image(static_cast<uint32_t>(img->w), static_cast<uint32_t>(img->h), VK_FORMAT_R8G8B8A8_UNORM,
+        vk::create_image(static_cast<uint32_t>(tw), static_cast<uint32_t>(th), VK_FORMAT_R8G8B8A8_UNORM,
                          VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, e.img);
     }
-    vk::upload_image_2d(e.img, img->px.data(), img->px.size() * 4, 0, 0, img->w, img->h);
+    vk::upload_image_2d(e.img, texels.data(), texels.size() * 4, 0, 0, tw, th);
     ts_made(img, reused);
     return e.img.view;
 }

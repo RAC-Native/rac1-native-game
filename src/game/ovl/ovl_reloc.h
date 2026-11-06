@@ -102,6 +102,13 @@ struct OvConst {
     operator uint32_t() const { return ov_site<A>(); }
 };
 
+// orig: (host) a text id the North American build's code names (a literal of a hand port: sub_00203ad8's, a HUD
+// message's...), as the disc's text tables number it. The 1.02 build (the PAL disc 2.00, whose core moved) added five
+// credits lines to every table (ids 20695 and 20743..20746): the ids from 20695 one higher, from 20742 five higher. Ids
+// read from the disc's data (the menus' rows, the items' tables) and the 1.02 stand-ins' own are the disc's already: never
+// through here. The identity on the North American disc and the PAL disc 1.00
+int32_t region_text_id(int32_t id);
+
 }  // namespace rac1
 
 #define OV(a) (::rac1::ov_site<(a)>())
@@ -115,6 +122,8 @@ struct OvConst {
 #define LVL_ADDR(n, a) (::rac1::region_site<(n), (a)>())
 // An address of the boot module's own image (NTSC-U `front:`), on the disc's build.
 #define FR(a) (::rac1::region_site<::rac1::OVL_FRONT, (a)>())
+// A text id the North American code names, on the disc's build (region_text_id).
+#define TXT(id) (::rac1::region_text_id(id))
 // A level-only address's `lui` half (see lvl_page): the variants_l<n>.h macros L<n>_PAGE.
 #define LVL_PAGE(a) (::rac1::lvl_page(a))
 

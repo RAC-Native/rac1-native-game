@@ -112,7 +112,7 @@ int iop_main(int, const char**) {
 }
 }  // namespace
 
-bool audio_out_start(int) {
+bool audio_out_start(int, bool) {  // (stereo s16 alone: the high-precision mix not offered here)
     if (g_on) return true;
     AXInitParams p{};
     p.renderer = AX_INIT_RENDERER_48KHZ;
@@ -173,10 +173,14 @@ bool audio_out_start(int) {
     return true;
 }
 
-void audio_out_push(const int16_t* pcm, const int16_t*, int frames) {
+void audio_out_push(const int16_t* pcm, const int16_t*, int frames, int, const float*, const float*) {
     if (!g_on || frames <= 0 || g_iop_run.load(std::memory_order_relaxed)) return;
     write_frame(pcm, frames);
 }
+
+// (Options > Sound's Mix: the Wii U's output is the s16 mix alone - High Precision changes nothing here)
+bool audio_out_hp() { return false; }
+void audio_out_set_hp(bool) {}
 
 void audio_out_set_channels(int) {}
 void audio_out_set_alone(bool ok) { g_alone_ok.store(ok, std::memory_order_relaxed); }

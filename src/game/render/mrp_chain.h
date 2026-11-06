@@ -75,8 +75,16 @@ struct MrpChainInput {
     struct Hud {
         uint32_t first = 0, last = 0;
         uint8_t side = 0;
+        uint8_t sub = 0;  // 0 the real chain's, k substitute k - 1's (a space fight's HUD drawn in the effects' shadow)
     };
-    std::vector<Hud> hud;  // a HUD wider than 4:3: its side elements (gs::Primitive::hud)
+    std::vector<Hud> hud;  // a HUD wider than 4:3: its side elements (gs::Primitive::hud), sorted by (sub, first)
+    // a widened view's space fight HUD (render_view_proj_note: gs::Primitive::proj): its 2D drawn past the frame's sides, from the
+    // substitute when one stands in for the real range (the real range's then not drawn). Sorted by (sub, first)
+    struct Proj {
+        uint32_t first = 0, last = 0;
+        uint8_t sub = 0;
+    };
+    std::vector<Proj> proj;
     // the frame (block, width in 64 pixels, rows; bw 0: none): an IMAGE transfer into it is a type-7 primitive (the Vendor's
     // screens putting their stored picture back)
     uint32_t scr_bp = 0, scr_bw = 0, scr_h = 0;

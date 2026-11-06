@@ -45,6 +45,13 @@ TrRet ovl_28b1a0_tr(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t
 TrRet ovl_28b680_tr(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);  // 0x0028b680
 TrRet ovl_28b710_tr(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);  // 0x0028b710
 void sky_render_tr(uint32_t a0);  // 0x0023d968
+// orig: (host) the transliterations of 0x28bd58 / 0x28c14c / 0x28c298 / 0x28c3c0 / 0x28c680 (sky_ee.cpp), the reference of their hand-written forms (sky_hand.cpp):
+// the names above are their switches (sky_fast.cpp, RAC1_SKY_FAST)
+TrRet ovl_28c14c_ref_tr(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);
+TrRet ovl_28bd58_ref_tr(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);
+TrRet ovl_28c298_ref_tr(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);
+TrRet ovl_28c3c0_ref_tr(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);
+TrRet ovl_28c680_ref_tr(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);
 
 }  // namespace rac1
 

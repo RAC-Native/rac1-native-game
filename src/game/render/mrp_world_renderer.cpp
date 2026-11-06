@@ -1,5 +1,6 @@
 // orig: (host) The MRP world renderer (see mrp_world_renderer.h).
 #include <game/render/mrp_world_renderer.h>
+#include <game/render/texture_mods.h>
 #include <game/render/gl_draws.h>
 #include <game/render/mrp_chain.h>
 #include "mrp_world_backend.inc"
@@ -147,6 +148,7 @@ struct Level {
     std::unique_ptr<World> world;
     std::unique_ptr<WorldIndex> idx;
     std::vector<mrp::Texture> tex[3];  // tfrag, tie, shrub
+    std::vector<std::shared_ptr<const texture_mods::Image>> rep[3];  // (the mods' replacements of tex, texture_mods.h; none: nullptr)
     std::vector<TexRef> ref[3];
     std::vector<Bucket> buckets;
     GLuint vao = 0, vbo = 0, ibo = 0;
@@ -349,10 +351,16 @@ Frame g_frame;
 void bucket_texels(const Level& L, const Bucket& b, size_t layer, uint32_t l, std::vector<uint32_t>& px) {
     auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
     const mrp::Texture& t = L.tex[b.textures[layer].first][static_cast<size_t>(b.textures[layer].second)];
-    uint32_t pal[256];
-    for (uint32_t i = 0; i < 256; ++i) pal[i] = t.palette[csm1(i)];
     const uint32_t w = std::max(1u, b.w >> l), h = std::max(1u, b.h >> l);
     px.assign(static_cast<size_t>(w) * h, 0u);
+    const auto& reps = L.rep[b.textures[layer].first];
+    if (const size_t i = static_cast<size_t>(b.textures[layer].second); i < reps.size() && reps[i] != nullptr) {  // (a mod's replacement)
+        const texture_mods::Image& r = *reps[i];
+        if (l < r.mips.size() && r.mips[l].size() == px.size()) px = r.mips[l];
+        return;
+    }
+    uint32_t pal[256];
+    for (uint32_t i = 0; i < 256; ++i) pal[i] = t.palette[csm1(i)];
     if (l < t.mips.size() && t.mips[l].size() >= static_cast<size_t>(w) * h)
         for (size_t q = 0; q < px.size(); ++q) px[q] = pal[t.mips[l][q]];
 }
@@ -363,43 +371,58 @@ void load_textures(Level& L) {
     static const char* names[3] = {"tfrag", "tie", "shrub"};
     auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
     std::map<std::pair<uint32_t, uint32_t>, int> by_size;
+    // the mods' replacements (texture_mods.h), by the texture's level 0 as uploaded below; a replaced texture goes in the
+    // bucket of the replacement's size
+    auto& rep = L.rep;  // (kept: bucket_texels reads them)
     for (int k = 0; k < 3; ++k) {
         const std::string path = asset_root() + "/" + level_dir_name(L.id) + "/textures_" + names[k] + ".mrpt";
         if (!mrp::read_textures(path, L.tex[k])) std::fprintf(stderr, "[mrpw] no %s textures %s\n", names[k], path.c_str());
         L.ref[k].assign(L.tex[k].size(), TexRef{});
+        rep[k].assign(L.tex[k].size(), nullptr);
         for (size_t i = 0; i < L.tex[k].size(); ++i) {
             const mrp::Texture& t = L.tex[k][i];
             if (t.width == 0 || t.height == 0 || t.mips.empty() || t.mips[0].size() < static_cast<size_t>(t.width) * t.height) continue;
-            auto [it, fresh] = by_size.insert({{t.width, t.height}, static_cast<int>(L.buckets.size())});
+            if (texture_mods::on()) {
+                auto csm1 = [](uint32_t c) { return ((c & 0x08) != 0) != ((c & 0x10) != 0) ? c ^ 0x18u : c; };
+                std::vector<uint32_t> px(static_cast<size_t>(t.width) * t.height);
+                for (size_t q = 0; q < px.size(); ++q) px[q] = t.palette[csm1(t.mips[0][q])];
+                rep[k][i] = texture_mods::find(t.width, t.height, px.data(), names[k]);
+            }
+            const texture_mods::Image* r = rep[k][i].get();
+            const uint32_t tw = r != nullptr ? r->w : t.width, th = r != nullptr ? r->h : t.height;
+            auto [it, fresh] = by_size.insert({{tw, th}, static_cast<int>(L.buckets.size())});
             if (fresh) {
                 Bucket b;
-                b.w = t.width;
-                b.h = t.height;
+                b.w = tw;
+                b.h = th;
                 L.buckets.push_back(b);
             }
             Bucket& b = L.buckets[static_cast<size_t>(it->second)];
             L.ref[k][i].bucket = it->second;
             L.ref[k][i].layer = static_cast<uint32_t>(b.textures.size());
-            L.ref[k][i].mips = static_cast<uint32_t>(std::min<size_t>(t.mips.size(), 4));
-            bool pal_opq[256];
-            for (uint32_t p = 0; p < 256; ++p)
-                pal_opq[p] = reinterpret_cast<const uint8_t*>(&t.palette[csm1(p)])[3] >= 0x80u;
-            bool opq = true;
-            for (uint32_t l = 0; opq && l < L.ref[k][i].mips; ++l) {
-                const uint32_t lw = std::max(1u, t.width >> l), lh = std::max(1u, t.height >> l);
-                if (l >= t.mips.size() || t.mips[l].size() < static_cast<size_t>(lw) * lh) {
-                    opq = false;
-                    break;
-                }
-                const uint8_t* mip = t.mips[l].data();
-                const size_t n = static_cast<size_t>(lw) * lh;
-                for (size_t q = 0; q < n; ++q)
-                    if (!pal_opq[mip[q]]) {
+            L.ref[k][i].mips = static_cast<uint32_t>(std::min<size_t>(r != nullptr ? r->mips.size() : t.mips.size(), 4));
+            if (r != nullptr) {
+                L.ref[k][i].opaque = r->opaque;
+                b.textures.push_back({k, static_cast<int>(i)});
+                b.levels = std::max<uint32_t>(b.levels, L.ref[k][i].mips);
+                continue;
+            }
+            {  // (host, RAC1_PERF_OPAQUE) every texel of the levels sampled (the palette's CSM1 entries, as uploaded below) with alpha >= 0x80
+                auto csm1 = [](uint32_t c) { return ((c & 0x08) != 0) != ((c & 0x10) != 0) ? c ^ 0x18u : c; };
+                bool pal_opq[256];
+                for (uint32_t c = 0; c < 256; ++c) pal_opq[c] = reinterpret_cast<const uint8_t*>(&t.palette[csm1(c)])[3] >= 0x80u;  // (its bytes R, G, B, A in memory on any host)
+                bool opq = true;
+                for (uint32_t l = 0; opq && l < L.ref[k][i].mips; ++l) {
+                    const size_t n = static_cast<size_t>(std::max(1u, t.width >> l)) * std::max(1u, t.height >> l);
+                    if (l >= t.mips.size() || t.mips[l].size() < n) {
                         opq = false;
                         break;
                     }
+                    const uint8_t* mip = t.mips[l].data();
+                    for (size_t q = 0; q < n && opq; ++q) opq = pal_opq[mip[q]];
+                }
+                L.ref[k][i].opaque = opq;
             }
-            L.ref[k][i].opaque = opq;
             b.textures.push_back({k, static_cast<int>(i)});
             b.levels = std::max<uint32_t>(b.levels, L.ref[k][i].mips);
         }
@@ -1588,8 +1611,16 @@ const TexRef* sky_texture(Level& L, const SceneFrame& S, uint64_t tex0) {
         std::memcpy(&px[i], rgba, 4);
     }
     std::vector<std::vector<uint32_t>> lv;
+    uint32_t bw = w, bh = h;
+    if (texture_mods::on()) {  // (a mod's replacement, texture_mods.h: its level 0)
+        if (const auto rep = texture_mods::find(w, h, px.data(), "sky")) {
+            px = rep->mips[0];
+            bw = rep->w;
+            bh = rep->h;
+        }
+    }
     lv.push_back(std::move(px));
-    r.bucket = add_bucket(L, w, h, std::move(lv));
+    r.bucket = add_bucket(L, bw, bh, std::move(lv));
     r.layer = 0;
     r.mips = 1;
     ++g_st.sky_textures;
@@ -2282,8 +2313,12 @@ size_t g_tie_slot_opq_size = 0;
 // and the low byte is too while the bits above it do not change (checked with three colours of alpha 0xff)
 bool tie_vert_opaque(const SceneInst& si) {
     if (!si.resident) return false;
-    if (g_tie_slot_opq_updates != g_rcols.updates || g_tie_slot_opq_size != g_rcols.mirror.size()) {
-        g_tie_slot_opq_updates = g_rcols.updates;
+    // (remade when the mirror's colours changed: its count of instances changed, not of its updates - one a frame, which remade the
+    // table of every tie's lowest alpha every frame; RAC1_PERF_OPAQUE_KEEP=0: as before)
+    static const bool keep = std::getenv("RAC1_PERF_OPAQUE_KEEP") == nullptr || std::atoi(std::getenv("RAC1_PERF_OPAQUE_KEEP")) != 0;
+    const uint64_t key = keep ? g_rcols.instances_changed : g_rcols.updates;
+    if (g_tie_slot_opq_updates != key || g_tie_slot_opq_size != g_rcols.mirror.size()) {
+        g_tie_slot_opq_updates = key;
         g_tie_slot_opq_size = g_rcols.mirror.size();
         const uint32_t n = g_rcols.src.tie_count;
         g_tie_slot_amin.assign(n, 0);
@@ -7580,6 +7615,100 @@ std::vector<TextureEntry> mrp_world_texture_list(int thumb) {
             out.push_back(std::move(e));
         }
     return out;
+}
+
+// orig: (host) see mrp_lighting.h. The tfrags' triangles as the debug menu's crosshair finds them (their far image), the ties' and
+// the shrubs' of every instance (their LOD 0): a surface's texture taken wherever the level uses it, as its emissive line's slot is
+void mrp_world_surface_triangles(const std::vector<EmissiveSurface>& surfaces, std::vector<float>& out) {
+    out.clear();
+    const Level& L = g_level;
+    if (!L.loaded || L.world == nullptr || !g_slevel.ok) return;
+    std::vector<uint8_t> want[3];
+    for (int k = 0; k < 3; ++k) want[k].assign(L.tex[k].size(), 0);
+    bool any = false;
+    for (const EmissiveSurface& e : surfaces) {
+        if (e.kind < 0 || e.kind > 2) continue;
+        const int t = class_texture(L, e.kind, e.o_class, e.tex, nullptr);
+        if (t < 0 || static_cast<size_t>(t) >= want[e.kind].size()) continue;
+        want[e.kind][static_cast<size_t>(t)] = 1;
+        any = true;
+    }
+    if (!any) return;
+    auto put = [&out](const glm::vec3& a, const glm::vec3& b, const glm::vec3& c) {
+        for (const glm::vec3* v : {&a, &b, &c}) out.insert(out.end(), {v->x, v->y, v->z});
+    };
+    if (g_tf_tris.level != L.id) tfrag_tris_build();
+    for (size_t i = 0; i < g_tf_tris.tex.size(); ++i) {
+        const int t = g_tf_tris.tex[i];
+        if (t >= 0 && static_cast<size_t>(t) < want[0].size() && want[0][static_cast<size_t>(t)] != 0) put(g_tf_tris.v[3 * i], g_tf_tris.v[3 * i + 1], g_tf_tris.v[3 * i + 2]);
+    }
+    std::unordered_map<const TiePacket*, const TieClass*> cls_of;
+    for (const TieClass& c : L.world->ties)
+        for (const TiePacket& p : c.packets) cls_of[&p] = &c;
+    std::vector<InstFrame> inst;
+    auto inst_frame = [](uint32_t data) {
+        InstFrame f;
+        const float w = lwc1(data + 0x3c);
+        f.pos = glm::vec3(lwc1(data + 0x30), lwc1(data + 0x34), lwc1(data + 0x38));
+        for (uint32_t c = 0; c < 3; ++c)
+            for (uint32_t l = 0; l < 3; ++l) f.m[static_cast<int>(c)][static_cast<int>(l)] = lwc1(data + 0x10 * c + 4 * l) * w / 1024.0f;
+        return f;
+    };
+    auto run_tris = [&](const Tpl& t, const TplRun& run) {
+        for (uint32_t k = 0; k + 2 < run.count; k += 3) {
+            glm::vec3 v[3];
+            for (int j = 0; j < 3; ++j) {
+                const TVert& tv = L.tverts[t.first_vertex + L.tidx[t.first_index + run.first + k + static_cast<uint32_t>(j)]];
+                v[j] = glm::vec3(tv.pos[0], tv.pos[1], tv.pos[2]);
+            }
+            for (const InstFrame& f : inst) put(f.pos + f.m * v[0], f.pos + f.m * v[1], f.pos + f.m * v[2]);
+        }
+    };
+    for (const StaticTieClass& sc : g_slevel.ties) {
+        if (sc.lod[0].empty() || sc.lod[0].front().tie == nullptr) continue;
+        const auto ci = cls_of.find(sc.lod[0].front().tie);
+        if (ci == cls_of.end()) continue;
+        const TieClass& tc = *ci->second;
+        bool used = false;
+        for (const TexturePrim& tp : tc.textures) used = used || (tp.texture >= 0 && static_cast<size_t>(tp.texture) < want[1].size() && want[1][static_cast<size_t>(tp.texture)] != 0);
+        if (!used) continue;
+        inst.clear();
+        const uint32_t bounds = lwu(sc.rec + 0x28), n = lhu(sc.rec + 0x26);
+        for (uint32_t i = 0; i < n; ++i) inst.push_back(inst_frame(lwu(bounds + 0x20 * i + 0x10)));
+        for (const StaticPacket& sp : sc.lod[0]) {
+            const auto ti = L.tpl.find(sp.tie);
+            if (ti == L.tpl.end()) continue;
+            for (const TplRun& run : ti->second.runs) {
+                if (run.slot < 0 || static_cast<size_t>(run.slot) >= sp.tie->prims.size()) continue;
+                const int prim = sp.tie->prims[static_cast<size_t>(run.slot)];
+                if (prim < 0 || static_cast<size_t>(prim) >= tc.textures.size()) continue;
+                const int t = tc.textures[static_cast<size_t>(prim)].texture;
+                if (t >= 0 && static_cast<size_t>(t) < want[1].size() && want[1][static_cast<size_t>(t)] != 0) run_tris(ti->second, run);
+            }
+        }
+    }
+    const uint32_t shrub_data = lwu(OV(0x0016049cu));
+    for (size_t c = 0; c < g_slevel.shrubs.size() && c < L.world->shrubs.size(); ++c) {
+        const StaticShrubClass& sc = g_slevel.shrubs[c];
+        bool used = false;
+        for (const StaticPacket& sp : sc.packets)
+            if (sp.shrub != nullptr)
+                for (const TexturePrim& tp : sp.shrub->textures) used = used || (tp.texture >= 0 && static_cast<size_t>(tp.texture) < want[2].size() && want[2][static_cast<size_t>(tp.texture)] != 0);
+        if (!used) continue;
+        inst.clear();
+        const uint32_t bounds = lwu(sc.rec + 0x18), n = lhu(sc.rec + 0x16);
+        for (uint32_t i = 0; i < n; ++i) inst.push_back(inst_frame(shrub_data + 0x40 * lhu(bounds + 0x20 * i + 0x18)));
+        for (const StaticPacket& sp : sc.packets) {
+            if (sp.shrub == nullptr) continue;
+            const auto ti = L.tpl.find(sp.shrub);
+            if (ti == L.tpl.end()) continue;
+            for (const TplRun& run : ti->second.runs) {
+                if (run.slot < 0 || static_cast<size_t>(run.slot) >= sp.shrub->textures.size()) continue;
+                const int t = sp.shrub->textures[static_cast<size_t>(run.slot)].texture;
+                if (t >= 0 && static_cast<size_t>(t) < want[2].size() && want[2][static_cast<size_t>(t)] != 0) run_tris(ti->second, run);
+            }
+        }
+    }
 }
 
 // orig: (host) see mrp_lighting.h

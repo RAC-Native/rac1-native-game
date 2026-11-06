@@ -30,7 +30,11 @@ class Synth {
 
   // rac1: `multi` (host): also the voices placed on `channels` speakers (6: 5.1, 8: 7.1, the WAVE order FL FR FC LFE
   // then 5.1's SL SR / 7.1's BL BR SL SR), one frame of s16; the stereo result unchanged
-  s16Output Tick(s16* multi = nullptr, int channels = 2);
+  s16Output Tick(s16* multi = nullptr, int channels = 2, float* hp = nullptr, float* hpMulti = nullptr);
+  // rac1 (host): `hp` / `hpMulti`: also the high-precision mix (Options > Sound's Mix), one frame of float on the s16 scale
+  // (stereo / `channels`): the voices, the volumes, the reverb and the master volume in float, nothing clamped (the host
+  // limits the sum at its end). Only these outputs differ: every voice's state, the s16 mix and what the driver answers
+  // are the same with or without them.
   // rac1 (host): `samples` Ticks' state alone, no output (RAC1_IOP_STATE_ONLY: the game's IOP while the host's mirror
   // plays the sound): the voices' positions, flags and envelopes, each dead voice dropped at the sample Tick drops it
   // (the handlers see a voice end by its weak_ptr expiring). Nothing may start a voice in between: Player::TickState
@@ -50,7 +54,7 @@ class Synth {
   void AutoReverb(s16 depth, s32 delta_time, s32 channel_flags);
 
  private:
-  void StepReverb(s32 revInL, s32 revInR);
+  void StepReverb(s32 revInL, s32 revInR, const float* hpIn = nullptr);
 
   std::forward_list<std::shared_ptr<Voice>> mVoices;
 
@@ -72,5 +76,9 @@ class Synth {
   s16 mReverbOutL{0};
   s16 mReverbOutR{0};
   std::vector<s16> mReverbBuf{};
+  // rac1 (host): the high-precision mix's reverb (the same algorithm in float, unclamped; its own effect area)
+  std::vector<float> mReverbBufF{};
+  float mReverbOutLF{0};
+  float mReverbOutRF{0};
 };
 }  // namespace snd

@@ -56,6 +56,9 @@ extern float g_movie_volume;
 // IRX sets them) times g_movie_volume.
 int movie_hw_audio_take(int16_t* dst, int frames);
 void movie_hw_audio_add(int16_t* out, const int16_t* src, int frames, float gain_left, float gain_right);
+// The same added to a float output on the s16 scale (the high-precision mix: neither rounded nor clamped); `channels` the
+// output's (2, or 6 / 8: the movie on the front left / right).
+void movie_hw_audio_add_f(float* out, int channels, const int16_t* src, int frames, float gain_left, float gain_right);
 
 void movie_hw_close();
 

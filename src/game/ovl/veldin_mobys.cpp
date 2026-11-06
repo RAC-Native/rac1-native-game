@@ -346,7 +346,7 @@ void ship_update(uint32_t m) {
     }
     if ((lhu(m + 0x34) & 1u) != 0) sh(pv + 0xc, 0);
     if (lh(pv + 0xc) == 0) return;
-    const bool shown = hud_message_request(2, 0x53e4) != 0;
+    const bool shown = hud_message_request(2, TXT(0x53e4)) != 0;
     if ((lw(0x0013cae4) & 0x10) == 0) return;
     if (!shown) return;
     if (lw(0x0015ed84) == 10 && lbu(0x001413f4) == 1) {

@@ -14,6 +14,7 @@
 #include <game/enhance/corrected_texts.h>
 #include <game/enhance/graphics.h>
 #include <game/enhance/language.h>
+#include <game/enhance/mods_menu.h>
 #include <game/enhance/update_notice.h>
 #include <game/enhance/vibration.h>
 
@@ -48,6 +49,20 @@ bool advanced_sound_output_cycle(uint32_t mono_byte);
 int32_t advanced_sound_output_text(int32_t stereo_text);
 // the host's device reopened with that many channels (audio_out_set_channels, set by the host's start; none in the oracle)
 void (*g_advanced_audio_reopen)(int channels) = nullptr;
+// (enhancement, advanced.cpp) Options > Sound's Mix row: Original (the SPU2's 16-bit mix, its clamps) or High Precision
+// (the voices, volumes, reverb and master volume mixed in float, limited at the end, the device in f32: the host's,
+// runtime/iop/snd989_iop.h). Nothing the game keeps or reads changes, only the samples heard.
+// - advanced_audio_hp: High Precision chosen (RAC1_AUDIO_MIX=hp / original over the preferences; Original while every
+//   enhancement is off)
+// - advanced_sound_mix_shown: the row is on the page (not while every enhancement is off: the game's own page)
+// - advanced_sound_mix_cycle: cross / left / right on the row: the other mix (the device reopened)
+// - advanced_sound_mix_text: the row's name / its value's text / its help (0, 1, 2)
+bool advanced_audio_hp();
+bool advanced_sound_mix_shown();
+void advanced_sound_mix_cycle();
+int32_t advanced_sound_mix_text(int which);
+// the host's device reopened for the mix (audio_out_set_hp, set by the host's start; none in the oracle)
+void (*g_advanced_audio_mix)(bool hp) = nullptr;
 
 namespace {
 constexpr uint32_t ADV = 0x000f0000u;
@@ -97,16 +112,16 @@ constexpr OvConst<0x001b6678u> TALL_PAGE{};          // a page whose slot 3 box 
 
 // Our text ids, after the game's (0x4e00..0x5300 in the level text tables)
 constexpr int32_t TEXT_FIRST = 0x7f00;
-enum : int32_t { T_ADVANCED, T_HELP, T_QUICK_SELECT, T_NORMAL, T_PAUSE, T_CONTROLS, T_CLASSIC, T_MODERN, T_MOVEMENT, T_ORIGINAL, T_STRAFING, T_RAC3, T_FADES, T_FAST, T_FADES_ORIGINAL, T_SOUND_51, T_SOUND_71, T_BUY_ALL, T_OFF, T_ON, T_NO_ZOOM, T_VIBRATION, T_LOW, T_HIGH, T_TRIGGERS, T_SKIP_SCENES, T_ALWAYS, T_CUT_CONTENT, T_CORRECTED_TEXTS, T_FIXES102, T_GAMEPLAY102, T_COUNT };
+enum : int32_t { T_ADVANCED, T_HELP, T_QUICK_SELECT, T_NORMAL, T_PAUSE, T_CONTROLS, T_CLASSIC, T_MODERN, T_MOVEMENT, T_ORIGINAL, T_STRAFING, T_RAC3, T_FADES, T_FAST, T_FADES_ORIGINAL, T_SOUND_51, T_SOUND_71, T_BUY_ALL, T_OFF, T_ON, T_NO_ZOOM, T_VIBRATION, T_LOW, T_HIGH, T_TRIGGERS, T_SKIP_SCENES, T_ALWAYS, T_CUT_CONTENT, T_CORRECTED_TEXTS, T_FIXES102, T_GAMEPLAY102, T_MIX, T_MIX_HP, T_MIX_HELP, T_COUNT };
 // per language (0x15ed88: 0 English, 2 French, 3 German, 4 Spanish, 5 Italian; French in English
 // for now, the font's accented letters not looked at yet)
 constexpr const char* TEXTS[6][T_COUNT] = {
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Cut Content", "Corrected Texts", "1.02 Fixes", "1.02 Gameplay"},
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Cut Content", "Corrected Texts", "1.02 Fixes", "1.02 Gameplay"},
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Cut Content", "Corrected Texts", "1.02 Fixes", "1.02 Gameplay"},
-    {"Erweitert", "Extra-Einstellungen der PC-Version", "Schnellwahl", "Normal", "Pause", "Zielen", "Original", "Modern", "Bewegung", "Original", "Strafing", "RAC 3", "Blenden", "Schnell", "Original", "5.1", "7.1", "Alle Munition", "Aus", "An", "Modern, ohne Zoom", "Vibration", "Schwach", "Stark", "Adaptive Trigger", "Szenen ueberspringen", "Immer", "Entfernte Inhalte", "Korrigierte Texte", "Korrekturen 1.02", "Spielablauf 1.02"},
-    {"Avanzado", "Ajustes extra de la version PC", "Seleccion rapida", "Normal", "Pausa", "Apuntado", "Original", "Moderno", "Movimiento", "Original", "Strafing", "RAC 3", "Fundidos", "Rapidos", "Originales", "5.1", "7.1", "Toda la municion", "No", "Si", "Moderno, sin zoom", "Vibracion", "Baja", "Alta", "Gatillos adaptativos", "Saltar escenas", "Siempre", "Contenido eliminado", "Textos corregidos", "Correcciones 1.02", "Jugabilidad 1.02"},
-    {"Avanzate", "Impostazioni extra della versione PC", "Scelta rapida", "Normale", "Pausa", "Mira", "Originale", "Moderna", "Movimento", "Originale", "Strafing", "RAC 3", "Dissolvenze", "Rapide", "Originali", "5.1", "7.1", "Tutte le munizioni", "No", "Si", "Moderna, senza zoom", "Vibrazione", "Bassa", "Alta", "Grilletti adattivi", "Salta filmati", "Sempre", "Contenuti tagliati", "Testi corretti", "Correzioni 1.02", "Giocabilita 1.02"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Cut Content", "Corrected Texts", "1.02 Fixes", "1.02 Gameplay", "Mix", "High Precision", "16-bit like the PS2, or float: no clipping"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Cut Content", "Corrected Texts", "1.02 Fixes", "1.02 Gameplay", "Mix", "High Precision", "16-bit like the PS2, or float: no clipping"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Cut Content", "Corrected Texts", "1.02 Fixes", "1.02 Gameplay", "Mix", "High Precision", "16-bit like the PS2, or float: no clipping"},
+    {"Erweitert", "Extra-Einstellungen der PC-Version", "Schnellwahl", "Normal", "Pause", "Zielen", "Original", "Modern", "Bewegung", "Original", "Strafing", "RAC 3", "Blenden", "Schnell", "Original", "5.1", "7.1", "Alle Munition", "Aus", "An", "Modern, ohne Zoom", "Vibration", "Schwach", "Stark", "Adaptive Trigger", "Szenen ueberspringen", "Immer", "Entfernte Inhalte", "Korrigierte Texte", "Korrekturen 1.02", "Spielablauf 1.02", "Mischung", "Hohe Praezision", "16 Bit wie PS2, oder Float ohne Clipping"},
+    {"Avanzado", "Ajustes extra de la version PC", "Seleccion rapida", "Normal", "Pausa", "Apuntado", "Original", "Moderno", "Movimiento", "Original", "Strafing", "RAC 3", "Fundidos", "Rapidos", "Originales", "5.1", "7.1", "Toda la municion", "No", "Si", "Moderno, sin zoom", "Vibracion", "Baja", "Alta", "Gatillos adaptativos", "Saltar escenas", "Siempre", "Contenido eliminado", "Textos corregidos", "Correcciones 1.02", "Jugabilidad 1.02", "Mezcla", "Alta precision", "16 bits como la PS2, o float: sin saturar"},
+    {"Avanzate", "Impostazioni extra della versione PC", "Scelta rapida", "Normale", "Pausa", "Mira", "Originale", "Moderna", "Movimento", "Originale", "Strafing", "RAC 3", "Dissolvenze", "Rapide", "Originali", "5.1", "7.1", "Tutte le munizioni", "No", "Si", "Moderna, senza zoom", "Vibrazione", "Bassa", "Alta", "Grilletti adattivi", "Salta filmati", "Sempre", "Contenuti tagliati", "Testi corretti", "Correzioni 1.02", "Giocabilita 1.02", "Mix", "Alta precisione", "16 bit come la PS2, o float: senza clipping"},
 };
 constexpr uint32_t STRING_SIZE = 0x30;
 static_assert(6 * T_COUNT * STRING_SIZE <= 0x3000, "the Advanced page's texts fit in 0xfb000..0xfe000");
@@ -202,6 +217,7 @@ std::filesystem::path prefs_path() {
 }
 
 int g_audio_channels = 0;   // Options > Sound's 5.1 / 7.1 (6 / 8), else 2; 0: not read yet (advanced_audio_channels)
+int g_audio_mix = -1;       // Options > Sound's Mix: 1 High Precision, 0 Original; -1: not read yet (audio_mix_pref)
 std::string g_update_skip;  // the update "Skip Version" chose (update_notice.h): a release's tag, or main's commit
 
 // orig: (none) — enhancement: a preferences file's "name value" lines, each given to `line`; false when none
@@ -216,6 +232,17 @@ bool prefs_lines(const std::filesystem::path& path, F line) {
     return true;
 }
 
+// orig: (none) — enhancement: Options > Sound's Mix as kept in the preferences (1 High Precision, 0 Original), read once
+int audio_mix_pref() {
+    if (g_audio_mix < 0) {
+        g_audio_mix = 0;
+        prefs_lines(prefs_path(), [](const char* name, const char* value) {
+            if (std::strcmp(name, "audio_mix") == 0) g_audio_mix = std::atoi(value) == 1 ? 1 : 0;
+        });
+    }
+    return g_audio_mix;
+}
+
 // orig: (none) — enhancement: the settings from a preferences file; false when none
 bool prefs_read(const std::filesystem::path& path) {
     return prefs_lines(path, [](const char* name, const char* value) {
@@ -224,6 +251,7 @@ bool prefs_read(const std::filesystem::path& path) {
             return;
         }
         if (std::strcmp(name, "audio_channels") == 0) return;  // (advanced_audio_channels)
+        if (std::strcmp(name, "audio_mix") == 0) return;       // (audio_mix_pref)
         if (language_pref_read(name, value)) return;          // (the Language page's: voice_language, subtitles)
         char* end = nullptr;
         const unsigned long v = std::strtoul(value, &end, 10);
@@ -269,6 +297,7 @@ void settings_save() {
     text += "update_channel " + std::to_string(lbu(UPDATE_DEV)) + "\n";
     if (!g_update_skip.empty()) text += "update_skip " + g_update_skip + "\n";
     if (g_audio_channels > 2) text += "audio_channels " + std::to_string(g_audio_channels) + "\n";
+    if (audio_mix_pref() == 1) text += "audio_mix 1\n";
     // (through a temporary file: a crash or a full disk never leaves the settings half written)
     if (!platform::write_file_replace(path, text)) std::fprintf(stderr, "[advanced] cannot write %s\n", path.string().c_str());
     settings_mark_saved();
@@ -398,6 +427,7 @@ void advanced_menu_install() {
     const uint32_t graphics_page = graphics_page_install(front ? static_cast<uint32_t>(MAIN_OPTIONS_PAGE) : static_cast<uint32_t>(OPTIONS_PAGE));
     const uint32_t controls = controls_page_install(front ? static_cast<uint32_t>(MAIN_OPTIONS_PAGE) : static_cast<uint32_t>(OPTIONS_PAGE));
     const uint32_t language = language_page_install(front ? static_cast<uint32_t>(MAIN_OPTIONS_PAGE) : static_cast<uint32_t>(OPTIONS_PAGE), front);
+    if (front) mods_page_install(MAIN_OPTIONS_PAGE);  // (the main menu's alone; none without mods: mods_menu.h)
     sw(PAGE + 0x40, ROWS_WIDGET);
     for (uint32_t i = 0; i < 14; ++i) {
         const uint32_t slot = PAGE + 0x44 + i * 4;
@@ -504,6 +534,7 @@ uint32_t advanced_text(int32_t id) {
     if (const uint32_t s = controls_text(id)) return s;
     if (const uint32_t s = update_notice_text(id)) return s;
     if (const uint32_t s = language_text(id)) return s;
+    if (const uint32_t s = mods_text(id)) return s;
     if (id < TEXT_FIRST || id >= TEXT_FIRST + T_COUNT) return 0;
     uint32_t lang = lwu(0x0015ed88);
     if (lang >= 6) lang = 0;
@@ -1602,6 +1633,7 @@ void advanced_setting_changed(uint32_t byte) {
         return;
     }
     if (language_setting_changed(byte)) return;  // (a Language row: saved there)
+    if (mods_setting_changed(byte)) return;      // (a Mods row: saved there, mods.txt)
     // Aiming = Modern needs a strafe (Strafing or RAC 3): turning it on when Movement is Original
     // turns Strafing on; turning Movement back to Original turns Aiming off
     if (byte == CONTROLS && lbu(CONTROLS) != 0 && lbu(MOVEMENT) == 0) sb(MOVEMENT, 1);
@@ -1702,6 +1734,36 @@ int32_t advanced_sound_output_text(int32_t stereo_text) {
     return ch == 6 ? TEXT_FIRST + T_SOUND_51 : ch == 8 ? TEXT_FIRST + T_SOUND_71 : stereo_text;
 }
 
+// --- Options > Sound: Mix ---
+// A row of ours after the output row (the page's fourth: menu_sound_update / menu_sound_draw), the host's choice kept in
+// the preferences as audio_mix 1; nothing of the game's own.
+
+// orig: (none) — enhancement (see the top)
+bool advanced_audio_hp() {
+    if (const char* e = std::getenv("RAC1_AUDIO_MIX")) return std::strcmp(e, "hp") == 0 || std::strcmp(e, "1") == 0;  // (testing, and headless dumps)
+    if (g_advanced_disabled) return false;
+    return audio_mix_pref() == 1;
+}
+
+// orig: (none) — enhancement (see the top)
+bool advanced_sound_mix_shown() { return !g_advanced_disabled; }
+
+// orig: (none) — enhancement (see the top)
+void advanced_sound_mix_cycle() {
+    if (g_advanced_disabled) return;
+    settings_load();
+    g_audio_mix = audio_mix_pref() == 1 ? 0 : 1;
+    if (g_loaded) settings_save();
+    if (g_advanced_audio_mix != nullptr) g_advanced_audio_mix(advanced_audio_hp());  // (RAC1_AUDIO_MIX over the menu)
+}
+
+// orig: (none) — enhancement (see the top)
+int32_t advanced_sound_mix_text(int which) {
+    if (which == 0) return TEXT_FIRST + T_MIX;
+    if (which == 2) return TEXT_FIRST + T_MIX_HELP;
+    return TEXT_FIRST + (advanced_audio_hp() ? T_MIX_HP : T_ORIGINAL);
+}
+
 // orig: (none) — enhancement (advanced.h)
 uint32_t advanced_page() { return PAGE; }
 // orig: (none) — enhancement (advanced.h)
@@ -1733,6 +1795,7 @@ bool advanced_settings_dpad(uint32_t w, uint32_t e) {
     if (graphics_settings_dpad(w, e, pressed)) return true;
     if (update_menu_settings_dpad(w, e, pressed)) return true;
     if (language_settings_dpad(w, e, pressed)) return true;
+    if (mods_settings_dpad(w, e, pressed)) return true;
     if (w != ROWS_WIDGET || (pressed & 0xa000u) == 0) return false;
     // our Advanced rows: left / right step the value back / forward (the widget's cross steps it forward)
     const uint32_t b = lwu(e + 4);

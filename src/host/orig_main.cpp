@@ -15,7 +15,8 @@
 //   as the debug menu's Levels tab asks it; during the boot (RAC1_BOOT=1):
 //   its title left for level N, the debug menu's skip)
 //   RAC1_LANGUAGE=0|2|3|4|5 (testing: the language)  RAC1_HEADLESS=1  RAC1_FRAMES=N  RAC1_SIM_INPUT=forward|jump|dive|turn|attack|throw|hud|quick|fire|shoot|hold|holdwalk|look|start|menu:<keys>|title:<keys>|ship|shipskip|shipwalk|shipturn|vendor|seq:<script> (sim_script.h)   (testing)
-//   RAC1_AUDIO_DUMP=file.raw (the sound output, 48 kHz stereo s16; RAC1_AUDIO_CHANNELS=6 / 8: 5.1 / 7.1, interleaved)  RAC1_NO_AUDIO=1  RAC1_SND_TRACE=1
+//   RAC1_AUDIO_DUMP=file.raw (the sound output, 48 kHz stereo s16; RAC1_AUDIO_CHANNELS=6 / 8: 5.1 / 7.1, interleaved; with
+//   the high-precision mix, RAC1_AUDIO_MIX=hp or Options > Sound's Mix, f32 at full scale 1.0, limited as played)  RAC1_NO_AUDIO=1  RAC1_SND_TRACE=1
 // RAC1_FADES=original|fast (the screen fade shown frame by frame as on the PS2, or run in one host frame: the default)
 // RAC1_HOST_DELAY_MS=n, RAC1_STEPS=n, RAC1_AUDIO_DEVICE=1 (testing: each host frame n ms longer; n game frames
 //     per host frame in a headless run (a window's catch-up); the audio device opened in a headless run: the game's state
@@ -72,6 +73,7 @@
 #include <sanitizer/lsan_interface.h>
 #endif
 
+#include "audio_limiter.h"
 #include "host_language.h"
 #include "dualsense.h"
 #include "rumble.h"
@@ -157,6 +159,7 @@
 #include <game/ovl/vsync_callback.h>
 #include <game/ovl/vendor_frame.h>
 #include <runtime/kernel/disc.h>
+#include <runtime/kernel/mods.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/level/level_loader.h>
 #include "host_priority.h"
@@ -194,14 +197,18 @@ extern std::vector<std::pair<uint32_t, uint32_t>> g_world_pass_ranges;
 
 using namespace rac1;
 
-bool audio_out_start(int channels);  // audio_out.cpp
-void audio_out_push(const int16_t* pcm, const int16_t* multi, int frames);
+bool audio_out_start(int channels, bool hp);  // audio_out.cpp
+void audio_out_push(const int16_t* pcm, const int16_t* multi, int frames, int channels, const float* fpcm, const float* fmulti);
 int audio_out_channels();
+bool audio_out_hp();
 namespace rac1 {
 int advanced_audio_channels();  // advanced.cpp: Options > Sound's 5.1 / 7.1 (the device's channels)
 extern void (*g_advanced_audio_reopen)(int channels);
+bool advanced_audio_hp();  // advanced.cpp: Options > Sound's Mix: High Precision
+extern void (*g_advanced_audio_mix)(bool hp);
 }
 void audio_out_set_channels(int channels);
+void audio_out_set_hp(bool hp);
 void audio_out_set_alone(bool ok);
 uint64_t audio_out_alone_total();
 // orig: (host) a level started: the sound's mirror not left alone through the host's preparation of it (the MRP's classes,
@@ -236,6 +243,7 @@ constexpr const char* PLAYER_ENV[] = {
     "RAC1_RENDERER", "RAC1_WINDOW", "RAC1_FULLSCREEN", "RAC1_VSYNC", "RAC1_FPS_CAP", "RAC1_NO_AUDIO", "RAC1_AUDIO_DEVICE",
     "RAC1_AUDIO_PERIOD_MS", "RAC1_AUDIO_PERIODS", "RAC1_MOVIE_VOLUME", "RAC1_PRIORITY", "RAC1_IOP_MIRROR",
     "RAC1_PROGRESS",  // (where progress.json goes for the launcher, or 0: docs/launcher.md)
+    "RAC1_MODS", "RAC1_MODS_FILE",  // (0: every mod off; the Mods menu's choices file: docs/mods.md)
     "RAC1_PYTHON",  // (set by tools/setup.py for the setup mode: the Python it runs the overlay matcher with)
 };
 
@@ -290,6 +298,8 @@ static unsigned s_mrp_skip_parts = 0xf;  // orig: (host) the skip's parts asked 
 //   this vsync is recorded for it, with the movie's samples of these 800 frames.
 FILE* g_audio_dump = nullptr;
 int g_audio_dump_ch = 2;  // (the dump's channels: the 5.1 / 7.1 choice at the start, Options > Sound or RAC1_AUDIO_CHANNELS)
+// (the high-precision mix's end on this thread: the dump's, and the device's without the mirror; audio_limiter.h)
+rac1::AudioLimiter g_hp_limiter, g_hp_dump_limiter;
 // orig: (host) a vsync: the timer, the vsync callback, the IOP's time (the SPU2's output)
 uint64_t g_vsyncs = 0;  // (testing: the vsyncs passed, RAC1_STALL_LOG)
 // (testing) RAC1_TEST_ZERO_FB=<first>,<last>[,raw]: the host frames of the frames first..last (exclusive) see a framebuffer
@@ -349,11 +359,18 @@ void vsync_passed() {
     const int dev_ch = snd989_mirror_enabled() ? 2 : audio_out_channels();
     const int multi_ch = g_audio_dump != nullptr && g_audio_dump_ch > 2 ? g_audio_dump_ch : dev_ch;
     int16_t* const mp = multi_ch > 2 ? multi : nullptr;
-    if (g_audio_dump == nullptr && snd989_iop_state_only()) {  // (the mirror plays the sound: the game's IOP's state alone, no mix)
+    // (host) the high-precision mix of the game's IOP (Options > Sound's Mix), when it is heard (no mirror) or dumped: the
+    // same output in float; the voices' state the same with it or without (Synth::Tick)
+    const bool dev_hp = !snd989_mirror_enabled() && audio_out_hp();
+    const bool hp = (dev_hp || g_audio_dump != nullptr) && g_snd989_hp.load(std::memory_order_relaxed);
+    static float fpcm[800 * 2], fmulti[800 * 8];
+    float* const fp = hp ? fpcm : nullptr;
+    float* const fmp = hp && mp != nullptr ? fmulti : nullptr;
+    if (g_audio_dump == nullptr && !hp && snd989_iop_state_only()) {  // (the mirror plays the sound: the game's IOP's state alone, no mix)
         snd989_iop_tick_state(800);
         std::memset(pcm, 0, sizeof(pcm));
     } else {
-        snd989_iop_render(pcm, 800, mp, multi_ch);
+        snd989_iop_render(pcm, 800, mp, multi_ch, fp, fmp);
     }
     float movie_gl = 1.0f, movie_gr = 1.0f;
     snd989_movie_gain(movie_gl, movie_gr);  // (the IRX's volumes of the movie's voices, not unity)
@@ -361,8 +378,24 @@ void vsync_passed() {
     const int movie_frames = movie_hw_audio_take(movie, 800);
     if (mp != nullptr) snd989_movie_add_multi(mp, multi_ch, movie, movie_frames, movie_gl, movie_gr);
     movie_hw_audio_add(pcm, movie, movie_frames, movie_gl, movie_gr);
-    if (g_audio_dump != nullptr) {
-        if (g_audio_dump_ch > 2) std::fwrite(multi, static_cast<size_t>(800 * g_audio_dump_ch) * 2, 1, g_audio_dump);
+    if (fp != nullptr) movie_hw_audio_add_f(fp, 2, movie, movie_frames, movie_gl, movie_gr);
+    if (fmp != nullptr) movie_hw_audio_add_f(fmp, multi_ch, movie, movie_frames, movie_gl, movie_gr);
+    // the high-precision mix limited at its end (the device's, or the dump's when it is not the device's layout)
+    const bool dump_multi = g_audio_dump != nullptr && g_audio_dump_ch > 2;
+    if (hp) {
+        // (what the device plays without the mirror, its layout; none with the mirror: the IOP thread limits the mirror's)
+        float* const heard = !dev_hp ? nullptr : dev_ch > 2 ? fmp : fp;
+        if (heard != nullptr) g_hp_limiter.process(heard, 800, dev_ch > 2 ? dev_ch : 2);
+        if (g_audio_dump != nullptr) {
+            float* const dumped = dump_multi ? fmp : fp;
+            if (dumped != heard) g_hp_dump_limiter.process(dumped, 800, dump_multi ? g_audio_dump_ch : 2);
+            const int n = 800 * (dump_multi ? g_audio_dump_ch : 2);
+            float out[800 * 8];
+            for (int i = 0; i < n; ++i) out[i] = dumped[i] * (1.0f / 32768.0f);
+            std::fwrite(out, sizeof(float), static_cast<size_t>(n), g_audio_dump);
+        }
+    } else if (g_audio_dump != nullptr) {
+        if (dump_multi) std::fwrite(multi, static_cast<size_t>(800 * g_audio_dump_ch) * 2, 1, g_audio_dump);
         else std::fwrite(pcm, sizeof(pcm), 1, g_audio_dump);
     }
     if (g_mirror_test) {
@@ -370,7 +403,7 @@ void vsync_passed() {
         return;
     }
     if (snd989_mirror_enabled()) snd989_mirror_vsync(movie, movie_frames, movie_gl, movie_gr, pcm);
-    else audio_out_push(pcm, multi_ch == dev_ch ? mp : nullptr, 800);
+    else audio_out_push(pcm, multi_ch == dev_ch ? mp : nullptr, 800, multi_ch, fp, multi_ch == dev_ch ? fmp : nullptr);
 }
 
 // The chain a blocking loop sent at its last Kicked vsync (the screen fade's frames: the kick 0x2a08c8 at the wait,
@@ -2451,6 +2484,9 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "rac1-native: level %d has no host assets yet\n", level);
         return 1;
     }
+    // the mods (mods.h): looked for before the disc's first read, their disc files in front of the disc's; none in a headless run
+    // unless RAC1_MODS=1 (the tests and the reference checks are vanilla)
+    rac1::mods_start(std::getenv("RAC1_HEADLESS") != nullptr);
     std::string disc_why;
     const bool have_disc = disc_ready(disc_why);
     RAC1_WIIU_TRACE(have_disc ? "disc found" : disc_why.c_str());
@@ -2909,8 +2945,10 @@ int main(int argc, char** argv) {
     sound_callbacks_register();
     if (!boot) sound_system_init();
     rac1::host_priority_set_enabled(!headless);  // (rtkit's priorities in a window; RAC1_PRIORITY=0 / 1 decides)
-    if (want_audio && !audio_out_start(advanced_audio_channels())) snd989_mirror_disable();
+    g_snd989_hp.store(advanced_audio_hp());  // (Options > Sound's Mix, or RAC1_AUDIO_MIX: also the dump's without a device)
+    if (want_audio && !audio_out_start(advanced_audio_channels(), advanced_audio_hp())) snd989_mirror_disable();
     g_advanced_audio_reopen = audio_out_set_channels;  // (Options > Sound: 5.1 / 7.1 / stereo)
+    g_advanced_audio_mix = audio_out_set_hp;           // (Options > Sound: Mix)
     g_snd989_bank_filter = voice_level_bank;            // (the Japanese voices' level banks: voice_language.h)
     if (!boot) {
         if (!boot_loader_run([&] {
@@ -4137,15 +4175,39 @@ int main(int argc, char** argv) {
                         if (use_replica) gs.set_chain_layers(std::move(layers));
                     }
                 // the HUD's side elements the last update drew (render_view_hud_note), for a HUD wider than 4:3; the same frames
+                // (a space fight's HUD also in the effects' shadow, HudNote::slot: the reader's substitute k is sub k + 1; the replica
+                // takes the real chain's)
+                auto sub_of = [&](int8_t slot) -> int {
+                    if (slot < 0) return 0;
+                    for (size_t i = 0; i < substituted.size(); ++i)
+                        if (substituted[i] == slot) return static_cast<int>(i + 1);
+                    return -1;
+                };
                 if (chain_runs && !prev_chain && !menu_mode)
                     if (const auto notes = render_view_hud_notes(); !notes.empty()) {
                         std::vector<rac1::gs::Gs::HudRange> hr;
                         hr.reserve(notes.size());
                         for (const HudNote& n : notes) {
-                            hr.push_back({n.first, n.last, n.side});
-                            ci.hud.push_back({n.first, n.last, n.side});
+                            const int sub = sub_of(n.slot);
+                            if (sub < 0) continue;
+                            if (sub == 0 && n.side != 3) hr.push_back({n.first, n.last, n.side});  // (the replica: sides 1 / 2)
+                            ci.hud.push_back({n.first, n.last, n.side, static_cast<uint8_t>(sub)});
                         }
                         if (use_replica) gs.set_chain_hud(std::move(hr));
+                    }
+                // a widened view's space fight HUD (render_view_proj_note): its 2D past the frame's sides, from the effects' shadow when it
+                // stands in for the real block (the real block's taken when that shadow has none)
+                if (chain_runs && !prev_chain && !menu_mode)
+                    if (const auto notes = render_view_proj_notes(); !notes.empty()) {
+                        std::vector<MrpChainInput::Proj> real, shadow;
+                        for (const ProjNote& n : notes) {
+                            const int sub = sub_of(n.slot);
+                            if (sub == 0) real.push_back({n.first, n.last, 0});
+                            else if (sub > 0) shadow.push_back({n.first, n.last, static_cast<uint8_t>(sub)});
+                        }
+                        const bool effects_sub = sub_of(kMrpLodSlotEffects) > 0;
+                        if (!effects_sub || !shadow.empty()) ci.proj = std::move(real);
+                        ci.proj.insert(ci.proj.end(), shadow.begin(), shadow.end());
                     }
                 {  // the frame: an IMAGE transfer into it a type-7 primitive, on the Vendor's screens' frames
                     const uint32_t fr = lwu(0x0013cf20);

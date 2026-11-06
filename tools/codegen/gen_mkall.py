@@ -8,7 +8,9 @@
 #   tools/codegen/gen/mkall/<group>.glue   the group's own call-site glue (callee address: statement): the calls the generator cannot build
 #                                     from a port's declaration (hand-written statements, the entries / helpers of a sibling file, ...)
 #   tools/codegen/gen/skel/<path>.skel     each output file with every generated function replaced by a `//@gen <name>` line: the file's
-#                                     head (comment, includes), its split into parts, its function order and any hand-written text
+#                                     head (comment, includes), its split into parts, its function order and any hand-written text;
+#                                     `//@gen <name> as <other>` defines the function as <other> (its callers still call <name>: a
+#                                     hand-written function of that name in front of it, e.g. a rewrite and its switch)
 # `gen` runs the generator on the level's overlay read from the ISO (tools/codegen/ovlist.py) and fills the skeletons: every `//@gen` line
 # must be produced by the run and every function of the run placed (else it fails, naming them). --no-insn-comments: the trailing
 # comments carrying the original instruction (`// lw a1,0xf0(sp)`, `// jal 0x...`) are left out (tools/codegen/gen_common.py); the
@@ -117,7 +119,7 @@ def cmd_gen(name, out_root, strip, tmp):
     # does not (placed, declared first, at the first function of the unit's first file) and no longer reach some of the
     # NTSC-U code's (left out); on the NTSC-U disc both stop the generation
     other = any(any('STAND-IN' in x for x in b[:1]) for b in fns.values())
-    placed = {l[len(MARK):].strip() for rel in d['files'] for l in open(skel_path(rel)).read().split('\n') if l.startswith(MARK)}
+    placed = {l[len(MARK):].split()[0] for rel in d['files'] for l in open(skel_path(rel)).read().split('\n') if l.startswith(MARK)}
     extra_fns = [nm for nm in fns if nm not in placed] if other else []
     used = set()
     written = []
@@ -126,7 +128,9 @@ def cmd_gen(name, out_root, strip, tmp):
         out = []
         for l in sk:
             if l.startswith(MARK):
-                nm = l[len(MARK):].strip()
+                nm, *alias = l[len(MARK):].split()
+                if alias and (len(alias) != 2 or alias[0] != 'as'):
+                    sys.exit('%s: %s: bad line %r (`%s<name>` or `%s<name> as <other>`)' % (name, rel, l, MARK, MARK))
                 if extra_fns:  # (the stand-ins' own callees: their declarations, then their bodies)
                     out.append('// (the functions the stand-ins below call and the NTSC-U code does not: tools/codegen/gen_mkall.py)')
                     for x in extra_fns:
@@ -142,7 +146,11 @@ def cmd_gen(name, out_root, strip, tmp):
                         print('%s: %s: %s is not reached from this disc\'s build (left out)' % (name, rel, nm), file=sys.stderr)
                         continue
                     sys.exit('%s: %s: the run does not produce %s (remove it from the skeleton or fix the run)' % (name, rel, nm))
-                out.extend(fns[nm])
+                body = fns[nm]
+                if alias:  # (the definition renamed: its first line `<type> <name>(...) {`)
+                    i = next(k for k, x in enumerate(body) if DEF.match(x) and DEF.match(x).group(2) == nm)
+                    body = body[:i] + [body[i].replace(' %s(' % nm, ' %s(' % alias[1], 1)] + body[i + 1:]
+                out.extend(body)
                 used.add(nm)
             else:
                 out.append(l)

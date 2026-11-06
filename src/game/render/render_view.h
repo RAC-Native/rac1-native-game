@@ -98,9 +98,31 @@ void render_view_hud_note(uint32_t first, uint32_t end, uint8_t side);
 struct HudNote {
     uint32_t first, last;
     uint8_t side;
+    int8_t slot = -1;  // the run that drew it: -1 the real block, else the widened view's shadow block (mrp_lod_shadow_slot)
 };
 std::vector<HudNote> render_view_hud_notes();
 // whether the HUD's notes are wanted now (a HUD wider than 4:3 over a widened view): the callers skip their bookkeeping otherwise
 bool render_view_hud_wide();
+
+// orig: (host) the space fights' HUD (Pokitaru's L11:0x311d50, Gemlik Base's L13:0x2b97f8, Drek's fleet's L17:0x2eb9a8: the draw-list
+// callback of the player's ship, queued on the list 0x16d880) draws its radar at the frame's right, its missiles at its left, and
+// its target reticles at the targets' projections (in the 4:3 frame's coordinates: past its sides for a target in the widened
+// view's side bands; the per-target ones only for a moby the moby pass drew, +0x31). Calls the generator puts in those callbacks
+// (tools/codegen/hooks.glue) note each side element's chain range as hud_draw does (render_view_hud_note): `begin` before the
+// element's call (the packet cursor kept; side 1 left, 2 right), `end` after it (the range noted; nothing without a pending begin).
+// Noted in the real block and in the effects' shadow block (HudNote::slot), with a HUD wider than 4:3 only. Reads the packet
+// cursor, writes nothing of the game's.
+void render_view_hud_begin(uint8_t side);
+void render_view_hud_end();
+// orig: (host) the chain range [first, end) such a callback drew (render_passes.cpp draw_list_run), in a widened view, in the real
+// block or in the effects' shadow block (its slot): the drawing takes the callback's 2D from the shadow's chain when the shadow
+// stands in for the real block (the shadow's mobys +0x31 are the widened moby pass's: the reticles of the targets in the side bands
+// are there), and draws it past the 4:3 frame's sides (gs::Primitive::proj). Writes nothing of the game's.
+void render_view_proj_note(uint32_t first, uint32_t end);
+struct ProjNote {
+    uint32_t first, last;  // (inclusive)
+    int8_t slot;
+};
+std::vector<ProjNote> render_view_proj_notes();
 
 }  // namespace rac1

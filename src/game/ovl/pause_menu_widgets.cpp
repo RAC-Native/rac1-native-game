@@ -265,7 +265,7 @@ int32_t menu_label_draw(uint32_t w) {
     uint32_t f = lwu(w + 0x30);
     int32_t cx = 4, cy = 4;
     const uint32_t f0 = f;
-    if ((f0 & 0x4004) == 0x4004 && lwu(w + 0x34) == 0x523e) {
+    if ((f0 & 0x4004) == 0x4004 && lwu(w + 0x34) == TXT(0x523e)) {
         f |= 1;
         cy = 0xc;
     }

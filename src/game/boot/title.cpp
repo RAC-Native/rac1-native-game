@@ -2,6 +2,7 @@
 // image, see front_image.h) ported at its own addresses (`// orig: front:0x...`); the engine code
 // it shares with the levels is the ports' (src/game/ovl) relocated onto the boot module. The
 // addresses below are the boot module's.
+#include <game/enhance/mods_menu.h>
 #include <game/boot/title.h>
 
 #include <cstdlib>
@@ -281,6 +282,7 @@ void title_draw() {
         const uint64_t colour = static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(lwu(FR(0x0015ef54)) << 24 | 0x00808080u)));
         glyph_sprite(0xa0, lw(0x0013e504) - 0x50, 0xc0, 0x60, 0, 0, 0x100, 0x80, colour, tex);
     }
+    mods_notice_draw();  // (enhancement: "Mods on" while mods are on, under "press start" and the main menu: mods_menu.h)
     texture_block_end();
     if (0.0f < lwc1(FR(0x0015f43c))) {  // the fade
         if (1.0f < lwc1(FR(0x0015f43c))) swc1(FR(0x0015f43c), 1.0f);

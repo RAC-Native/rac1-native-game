@@ -134,6 +134,10 @@ void mrp_user_sun_set(bool on, float az, float el);
 // Sun Rays option (our data: a tester's choice where the rays do not suit the level)
 bool mrp_user_sun_rays_off();
 void mrp_user_sun_rays_set_off(bool off);
+// orig: (host) the level's Sun Rays strength ("sun_rays_strength <0..2>" in its file, 1 without it): the Sun Rays option's strength
+// (its added light and its limit) scaled on this level, 0 none (our data: where the option's rays are too much or too little)
+float mrp_user_sun_rays_strength();
+void mrp_user_sun_rays_set_strength(float k);
 // orig: (host) the rotation (column-major 3x3) taking the game's key light's direction to the sun's, true when the modern lighting is
 // on and the level's file turns the sun (the mobys' light records are turned with it: mrp_moby_renderer.cpp)
 bool mrp_lighting_sun_turn(float r[9]);
@@ -301,6 +305,18 @@ struct TextureEntry {
 };
 std::vector<TextureEntry> mrp_world_texture_list(int thumb);
 std::vector<TextureEntry> mrp_moby_texture_list(int thumb);
+// orig: (host) the ambient particles' lava from a material (mrp_particles.cpp): the world triangles (9 floats each: a, b, c) of the
+// level's tfrags, ties and shrubs whose texture is one of `surfaces` (kinds 0..2, as their lines name them; mrp_world_renderer.cpp)
+void mrp_world_surface_triangles(const std::vector<EmissiveSurface>& surfaces, std::vector<float>& out);
+// orig: (host) the same for the mobys the frame draws (mrp_moby_renderer.cpp): points on the surfaces of `surfaces` (kind 3: class,
+// local texture) as the frame poses them, about one per `spacing` square units of their faces turned up or down (not their sides),
+// only the mobys whose bounding sphere comes within `range` of `cam`; each point with a key of its own (the moby, its triangle and
+// the point's place on it: the same point the next frame, where the pose moved it)
+struct MobySurfacePoint {
+    uint64_t key = 0;
+    float pos[3] = {0.0f, 0.0f, 0.0f};
+};
+void mrp_moby_surface_points(const std::vector<EmissiveSurface>& surfaces, const float cam[3], float range, float spacing, std::vector<MobySurfacePoint>& out);
 // orig: (host) a moby the frame draws (mrp_moby_renderer.cpp): the world point of one of its joints (-1: its model's origin) and that
 // frame's axes (columns, unit length) as its pose has them this frame, false when the moby is not drawn; `joints` its pose's count
 bool mrp_moby_draw_frame(uint32_t moby, int joint, float pos[3], float axes[9], int* joints = nullptr);

@@ -31,11 +31,13 @@
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
 #include <game/render/shader_manager.h>
+#include <game/render/texture_mods.h>
 #include <runtime/iop/snd989_iop.h>
 #include <runtime/ipu/movie_hw.h>
 #include <runtime/ee/ee_thread.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/ee_memory.h>
+#include <runtime/kernel/mods.h>
 #include <runtime/vk/vk_context.h>
 #include <profiler/host_profiler.h>
 #if defined(__APPLE__)
@@ -66,6 +68,8 @@ namespace rac1 {
 // (mrp_particles.cpp: 1 rain, snow and ash kept out from under roofs, RAC1_PARTICLES_SKY; declared here, not in mrp_particles.h - the
 // game's generated code is fingerprinted with the headers of src/game, and a debug switch must not ask for ./setup.sh again)
 extern int g_particles_sky;
+// (mrp_lighting.cpp: Lighting: Original, the modern lighting without its sun - #138; declared here for the same reason)
+extern int g_lighting_original;
 }  // namespace rac1
 
 namespace rac1::devtools {
@@ -424,6 +428,17 @@ void tab_game() {
     {  // the screen fade in one host frame (the default) or shown frame by frame (Options > Advanced > Fades)
         bool original = advanced_original_fades();
         if (ImGui::Checkbox("Original fades (the screen fades shown, as on the PS2)", &original)) advanced_set_original_fades(original);
+    }
+    ImGui::Separator();
+    {  // the mods (docs/mods.md): the ones on, and the texture dump for making texture packs
+        const std::vector<const ModInfo*> on = mods_active();
+        ImGui::Text("Mods on: %zu of %zu found in %s   textures replaced: %zu", on.size(), mods_list().size(), mods_dir().string().c_str(),
+                    texture_mods::replaced_count());
+        bool dump = texture_mods::dump_on();
+        if (ImGui::Checkbox("Dump textures (for texture packs)", &dump)) texture_mods::dump_set(dump);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Every texture drawn written once as <hash>.png into %s:\nthe world's and the mobys' at the next level load, the 2D's as they are drawn",
+                              texture_mods::dump_dir().string().c_str());
     }
     ImGui::Separator();
     // the language, as the game's own Options > Language page sets it (its action 9: 0x15ed88)
@@ -1214,6 +1229,13 @@ void tab_sun() {
         g_sun_dirty = true;
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Saved as \"sun_rays off\" in the level's file (the Sun Rays option still sets the other levels')");
+    // the level's Sun Rays strength ("sun_rays_strength <0..2>" in its file): the option's strength scaled here
+    if (float k = mrp_user_sun_rays_strength(); ImGui::SliderFloat("Sun Rays strength on this level", &k, 0.0f, 2.0f, "%.2f")) {
+        mrp_user_sun_rays_set_strength(k);
+        g_sun_dirty = true;
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Saved as \"sun_rays_strength <k>\" in the level's file (1: the Sun Rays option's own strength; 0: none). Ctrl+click to type a value");
     if (ImGui::Button("Save")) g_sun_dirty = !lights_save();
     ImGui::SameLine();
     if (ImGui::Button("Reload")) {
@@ -1342,16 +1364,24 @@ void tab_enhancements() {
     }
     ImGui::SeparatorText("Lighting");
     {
-        static const char* names[] = {"Low (1024)", "Medium (2048)", "High (4096)"};
-        int v = std::clamp(g_shadow_quality, 0, 2);
-        if (combo("Lighting##en", &v, names, 3)) g_shadow_quality = v;
+        // (Original, #138: the original's lighting and drop shadows, no sun - the effects below still drawn; Options' Lighting: Original)
+        static const char* names[] = {"Low (1024)", "Medium (2048)", "High (4096)", "Original (no sun)"};
+        int v = g_lighting_original != 0 ? 3 : std::clamp(g_shadow_quality, 0, 2);
+        if (combo("Lighting##en", &v, names, 4)) {
+            g_lighting_original = v == 3 ? 1 : 0;
+            if (v < 3) g_shadow_quality = v;
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Original: the original's lighting and drop shadows, the sun off (no sun's shadows, rays, point-light shadows);\n"
+                                                      "the occlusion, materials, reflections, grass, particles and secondary lights still drawn");
         ms(prof::kShadowCascades);
     }
+    ImGui::BeginDisabled(g_lighting_original != 0);  // (they need the sun: greyed, their values kept)
     {
         bool on = g_point_shadows != 0;
         if (ImGui::Checkbox("Dynamic shadows##en", &on)) g_point_shadows = on ? 1 : 0;
         ms(prof::kPointCubes);
     }
+    ImGui::EndDisabled();
     {
         static const char* names[] = {"Off", "Game's", "All"};
         int v = g_modern_points == 0 ? 0 : g_auto_lights != 0 ? 2 : 1;
@@ -1371,9 +1401,11 @@ void tab_enhancements() {
         }
     }
     {
+        ImGui::BeginDisabled(g_lighting_original != 0);
         static const char* names[] = {"Off", "Low", "Medium", "High"};
         combo("Sun Rays##en", &g_sun_rays, names, 4);
         ms(prof::kSunRays);
+        ImGui::EndDisabled();
     }
     ImGui::SeparatorText("Surfaces");
     combo("Surface Detail (materials)##en", &g_surface_detail, olh, 3);
@@ -2560,6 +2592,8 @@ void dev_kill_hero() { g_kill_pending = true; }
 // animation ends, the input transition calls hero_lost (0x211250: counts, fades the screen, sets the respawn
 // flag +0x20b1) and the game reloads the checkpoint as after a real hit. In the ship (mode 2) only the
 // nanotech is cleared: its own death (0x5d, with the ship's teardown) is the hit path's, not reproduced here.
+// As Clank (the hero's form +0x20a4 1, his states the 0x43 set) the death is that set's own, 0x47 (the game's
+// falls in that set without nanotech: fall43_input, state 0x46); Ratchet's 0x3d crashed there (#136).
 // orig: (host) the debug menu's Kill Ratchet
 void dev_kill_apply() {
     if (!g_kill_pending) return;
@@ -2569,7 +2603,7 @@ void dev_kill_apply() {
     const uint32_t sub = ru(P + 0x208c), mode = ee_read<uint8_t>(P + 0x20a4);
     w32(HEALTH, 0);
     if (sub == 0x14 || mode == 2) return;  // already dying (0x3d, 0x47, 0x7f...) / in the ship
-    hero_set_state(0x3d, 1);
+    hero_set_state(mode == 1 ? 0x47 : 0x3d, 1);
 }
 
 // Hoverboard anywhere: the hoverboard of the races (Rilgar's, level 5, and Kalebo III's, 16) ridden anywhere on those levels.

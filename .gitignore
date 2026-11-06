@@ -5,6 +5,9 @@
 # The tools setup.cmd downloads on Windows (tools/windows/toolchain.ps1)
 /.toolchain
 
+# The player's mods (docs/mods.md) and the texture dump: never versioned
+/mods
+
 # Build output (and the launcher's, tools/launcher/)
 /tools/launcher/*/bin/
 /tools/launcher/*/obj/
