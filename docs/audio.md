@@ -77,7 +77,39 @@ updates do not click; pitch changes apply at once, as on the SPU2 (a ramp made s
 which the game polls).
 
 **The mix.** The voices are summed in 32 bits and the result clamped to 16 bits once, then the master
-volume applied: the SPU2's own output is 16-bit, and sums past full scale clip there too.
+volume applied: the SPU2's own output is 16-bit, and sums past full scale clip there too. This is the
+**Original** mix, the default; Options > Sound's **Mix** row also offers High Precision (below).
+
+**The high-precision mix** (Options > Sound > Mix: High Precision, a host setting kept in the preferences as
+`audio_mix 1`; `RAC1_AUDIO_MIX=hp` / `original` for testing). The same voices, mixed without the SPU2's 16-bit
+steps:
+
+- each voice's output in float (`Voice::Run`'s `hp`): the four interpolation taps, the envelope and the left / right
+  volumes multiplied exactly, where the SPU2 truncates each product to 16 bits and clamps the interpolation;
+- the sums in float (`Synth::Tick`'s `hp` / `hpMulti`): core 0's output not clamped before core 1, the reverb run a
+  second time in float on its own effect area (the same algorithm and presets, no clamps; a bound at 8 times full scale
+  only guards against a runaway), the reverb depth and the master volume applied in float; the 5.1 / 7.1 speakers the
+  same way; the movies' sound added in float;
+- at the end, before the device, a look-ahead peak limiter (`src/host/audio_limiter.h`): untouched below -0.2 dBFS;
+  above, the channels' gain lowered together, smoothly, reaching the needed gain by the time the loud frame comes out
+  (1 ms of look-ahead, released over ~80 ms), so nothing clips and nothing clicks. 1 ms more latency, in this mode only.
+- the device opened in miniaudio's f32 (the system's own format), not s16.
+
+Only the samples heard change. The ADPCM decoding, the envelopes, the voices' state, the end flags, the s16 mix and
+every reply to the game are computed exactly as in Original (the float outputs are computed beside them, never fed
+back), and the timing is the same 800 samples per vsync: `RAC1_RAMHASH` is identical with the option on and off
+(the reference run, and 9000 / 12000-frame runs on Batalia with the Blaster and on Orxon). Switching the row reopens the
+device (a moment of silence, as 5.1 / 7.1); the float reverb starts empty.
+
+What it changes, measured: the game's own mix keeps its headroom. On Batalia (the rain, the turrets, the Blaster fired:
+138 s) and Orxon the original's peak is -4.1 dBFS and no sample reaches full scale, so the limiter never acts there; the
+two mixes differ by the 16-bit steps' rounding only, about -67 to -81 dB under the signal (RMS), the same level in
+every band (within 0.01 dB). High Precision matters where sums pass full scale (many loud sounds at once, a loud movie
+with the game's sound), which the original clips and this mode limits. Its cost is the game's IOP's and the mirror's: the
+voices run once, the float outputs computed beside the s16 ones. Measured on Batalia (12000 frames, one IOP's render per
+vsync): stereo 233 us Original, 301 us High Precision (1.4 % / 1.8 % of a core); 7.1 374 us / 403 us.
+`RAC1_AUDIO_DUMP` with it holds f32 samples (full scale 1.0, after the limiter, delayed by its 47 frames); the exit's
+`[audio]` line gives the mirror's peak before the limiter and the frames it limited.
 
 **Timing.** Everything the game reads back from the sound must depend only on the game's own time,
 not the PC's speed. So the IOP's driver advances exactly 800 samples (1/60 s at 48 kHz) each time a
@@ -114,7 +146,8 @@ The port therefore runs **two copies** of the driver
 
 `RAC1_IOP_MIRROR=0` turns the mirror off and plays the game's IOP directly.
 
-**The audio device** (`audio_out_start`): miniaudio, 16-bit stereo (or 5.1 / 7.1, below) at 48 kHz, three periods of 10 ms
+**The audio device** (`audio_out_start`): miniaudio, 16-bit stereo (or 5.1 / 7.1, below; 32-bit float with the
+high-precision mix) at 48 kHz, three periods of 10 ms
 by default (`RAC1_AUDIO_PERIOD_MS`, `RAC1_AUDIO_PERIODS`). It always opens the system's default output device;
 `RAC1_AUDIO_DEVICE=null` uses miniaudio's null device instead (nothing is heard, for testing).
 The queue between the threads absorbs small differences in pace with a slight rate adjustment, and

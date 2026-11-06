@@ -13,6 +13,7 @@
 #ifndef RAC1_RUNTIME_IOP_SND989_IOP_H
 #define RAC1_RUNTIME_IOP_SND989_IOP_H
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -27,7 +28,12 @@ void snd989_iop_stop();   // every sound stopped and bank unloaded
 // The game's IOP's output (stereo, 48 kHz, 16 bit), `frames` frames; silence before the start. `multi` (host): also the
 // output on 5.1 / 7.1 speakers (`channels` 6 / 8 per frame, the WAVE order FL FR FC LFE, then SL SR / BL BR SL SR; the
 // voices placed by Synth::Tick), else nullptr.
-void snd989_iop_render(int16_t* out, int frames, int16_t* multi = nullptr, int channels = 2);
+void snd989_iop_render(int16_t* out, int frames, int16_t* multi = nullptr, int channels = 2, float* hp = nullptr, float* hp_multi = nullptr);
+// The high-precision mix (Options > Sound's Mix, a host setting): `hp` / `hp_multi` given to the renders above and below
+// get the same output in float on the s16 scale (stereo / `channels` per frame), the voices, volumes, reverb and master
+// volume summed without the SPU2's 16-bit clamps (Synth::Tick); nothing the game reads changes (only those outputs).
+// The host's setting, read by the audio thread and the game's thread (audio_out.cpp, orig_main.cpp).
+extern std::atomic<bool> g_snd989_hp;
 // The movie's samples (as movie_hw_audio_add) added to a 5.1 / 7.1 output's front left / right.
 void snd989_movie_add_multi(int16_t* multi, int channels, const int16_t* movie, int movie_frames, float gl, float gr);
 
@@ -57,10 +63,10 @@ bool snd989_mirror_wait(double ms);
 // The audio thread: the commands up to the next queued vsync applied and its 800 frames rendered into `out`; false
 // (nothing done) when no vsync is queued.
 // `multi`: also the 5.1 / 7.1 output (snd989_iop_render), else nullptr.
-bool snd989_mirror_next(int16_t* out, int16_t* multi = nullptr, int channels = 2);
+bool snd989_mirror_next(int16_t* out, int16_t* multi = nullptr, int channels = 2, float* hp = nullptr, float* hp_multi = nullptr);
 // The audio thread: the game's thread is stalled. The commands it already sent applied, then 800 frames rendered by the
 // mirror alone, its streams' reader run after them (the IRX's reader reads on whatever the EE does).
-void snd989_mirror_alone(int16_t* out, int16_t* multi = nullptr, int channels = 2);
+void snd989_mirror_alone(int16_t* out, int16_t* multi = nullptr, int channels = 2, float* hp = nullptr, float* hp_multi = nullptr);
 // The mirror's counters, printed at exit: vsyncs rendered, frames rendered alone, (RAC1_IOP_VERIFY) vsyncs equal / not
 // equal to the game's mix before the first frame alone.
 void snd989_mirror_report();

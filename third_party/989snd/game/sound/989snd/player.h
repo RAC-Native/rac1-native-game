@@ -87,8 +87,10 @@ class Player {
                        SFXUserData* dst);
 
  // rac1: the host's audio device pulls the output (the cubeb stream removed)
-  // `multi` (host): also `channels` (6 / 8) speakers' samples per frame (Synth::Tick)
-  void Tick(s16Output* stream, int samples, s16* multi = nullptr, int channels = 2);
+  // `multi` (host): also `channels` (6 / 8) speakers' samples per frame (Synth::Tick); `hp` / `hpMulti` (host): also the
+  // high-precision mix, stereo / `channels` floats per frame (Synth::Tick)
+  void Tick(s16Output* stream, int samples, s16* multi = nullptr, int channels = 2, float* hp = nullptr,
+            float* hpMulti = nullptr);
 
  private:
   std::recursive_mutex mTickLock;  // TODO does not need to recursive with some light restructuring

@@ -74,14 +74,19 @@ static s16 ApplyVolume(s16 sample, s32 volume) {
   return static_cast<s16>((sample * volume) >> 15);
 }
 
-void Synth::StepReverb(s32 revInL, s32 revInR) {
+void Synth::StepReverb(s32 revInL, s32 revInR, const float* hpIn) {
   if (mReverbMode <= 0 || mReverbMode >= static_cast<s32>(kReverbPresets.size())) {
     mReverbOutL = 0;
     mReverbOutR = 0;
+    mReverbOutLF = 0;
+    mReverbOutRF = 0;
     return;
   }
   if (mReverbBuf.size() < 0x10000) {
     mReverbBuf.assign(0x10000, 0);
+  }
+  if (hpIn != nullptr && mReverbBufF.size() < 0x10000) {
+    mReverbBufF.assign(0x10000, 0.0f);
   }
 
   mReverbPhase ^= 1;
@@ -147,6 +152,45 @@ void Synth::StepReverb(s32 revInL, s32 revInR) {
 
   mReverbOutL = static_cast<s16>(Lout);
   mReverbOutR = static_cast<s16>(Rout);
+
+  if (hpIn != nullptr) {
+    // rac1 (host): the high-precision mix's reverb: the same effect area's algorithm in float on the s16 scale, nothing
+    // clamped (the presets' loops are stable: every feedback gain under 1; a bound at 8 times full scale only guards the
+    // effect area against a runaway)
+    constexpr float k = 1.0f / 32768.0f, lim = 8.0f * 32768.0f;
+    auto rdf = [&](u32 off) -> float { return mReverbBufF[(mReverbPos + (off << 2)) & 0xFFFF]; };
+    auto rd1f = [&](u32 off) -> float { return mReverbBufF[(mReverbPos + (off << 2) - 1) & 0xFFFF]; };
+    auto wrf = [&](u32 off, float val) { mReverbBufF[(mReverbPos + (off << 2)) & 0xFFFF] = std::clamp(val, -lim, lim); };
+    const float iir = r.vIIR * k, wall = r.vWALL * k;
+    const float lin = hpIn[0] * (r.vLIN * k), rin = hpIn[1] * (r.vRIN * k);
+    wrf(r.mLSAME, (lin + rdf(r.dLSAME) * wall - rd1f(r.mLSAME)) * iir + rd1f(r.mLSAME));
+    wrf(r.mRSAME, (rin + rdf(r.dRSAME) * wall - rd1f(r.mRSAME)) * iir + rd1f(r.mRSAME));
+    wrf(r.mLDIFF, (lin + rdf(r.dRDIFF) * wall - rd1f(r.mLDIFF)) * iir + rd1f(r.mLDIFF));
+    wrf(r.mRDIFF, (rin + rdf(r.dLDIFF) * wall - rd1f(r.mRDIFF)) * iir + rd1f(r.mRDIFF));
+    float lo = (r.vCOMB1 * rdf(r.mLCOMB1) + r.vCOMB2 * rdf(r.mLCOMB2) + r.vCOMB3 * rdf(r.mLCOMB3) +
+                r.vCOMB4 * rdf(r.mLCOMB4)) * k;
+    float ro = (r.vCOMB1 * rdf(r.mRCOMB1) + r.vCOMB2 * rdf(r.mRCOMB2) + r.vCOMB3 * rdf(r.mRCOMB3) +
+                r.vCOMB4 * rdf(r.mRCOMB4)) * k;
+    const float apf1 = r.vAPF1 * k, apf2 = r.vAPF2 * k;
+    const float la1 = rdf(r.mLAPF1 - r.dAPF1);
+    lo = lo - apf1 * la1;
+    wrf(r.mLAPF1, lo);
+    lo = lo * apf1 + la1;
+    const float ra1 = rdf(r.mRAPF1 - r.dAPF1);
+    ro = ro - apf1 * ra1;
+    wrf(r.mRAPF1, ro);
+    ro = ro * apf1 + ra1;
+    const float la2 = rdf(r.mLAPF2 - r.dAPF2);
+    lo = lo - apf2 * la2;
+    wrf(r.mLAPF2, lo);
+    lo = lo * apf2 + la2;
+    const float ra2 = rdf(r.mRAPF2 - r.dAPF2);
+    ro = ro - apf2 * ra2;
+    wrf(r.mRAPF2, ro);
+    ro = ro * apf2 + ra2;
+    mReverbOutLF = std::clamp(lo, -lim, lim);
+    mReverbOutRF = std::clamp(ro, -lim, lim);
+  }
   mReverbPos = (mReverbPos + 1) & 0xFFFF;
 }
 
@@ -202,7 +246,7 @@ s16 Clamp16f(float v) {
 }
 }  // namespace
 
-s16Output Synth::Tick(s16* multi, int channels) {
+s16Output Synth::Tick(s16* multi, int channels, float* hp, float* hpMulti) {
   s32 dryL = 0;
   s32 dryR = 0;
   s32 core0L = 0;  // rac1: core 0's voices (its output: into core 1's input, and its reverb with 0x0d)
@@ -211,10 +255,20 @@ s16Output Synth::Tick(s16* multi, int channels) {
   s32 revInR = 0;
   const bool spatial = multi != nullptr && (channels == 6 || channels == 8);
   float spk[8] = {};
+  // rac1 (host): the high-precision mix (hp): the same sums in float, the voices' outputs exact, nothing clamped
+  const bool fmix = hp != nullptr;
+  const bool fspatial = fmix && hpMulti != nullptr && (channels == 6 || channels == 8);
+  float fdryL = 0, fdryR = 0, fcore0L = 0, fcore0R = 0, frevL = 0, frevR = 0;
+  float fspk[8] = {};
+  if (!fmix && !mReverbBufF.empty()) {  // (its effect area emptied while unused: no old tail when it is used again)
+    mReverbBufF.clear();
+    mReverbOutLF = mReverbOutRF = 0;
+  }
 
   mVoices.remove_if([](std::shared_ptr<Voice>& v) { return v->Dead(); });
   for (auto& v : mVoices) {
-    s16Output vo = v->Run();
+    float vf[2] = {0, 0};
+    s16Output vo = v->Run(fmix ? vf : nullptr);
     // rac1: the SPU2's routing. A core-1 voice reaches the reverb when its tone has the reverb flag (VMIXEL / R, set
     // from the tone's flag 1: 0x151cc). A core-0 voice's VMIXE feeds core 0's reverb, which the game never turns on
     // (0x50 / 0x10 on core mask 2), but core 0's whole output goes into core 1's reverb when the game set the mixer
@@ -224,25 +278,35 @@ s16Output Synth::Tick(s16* multi, int channels) {
       if (!v->IsReverbOnly()) {
         core0L += vo.left;
         core0R += vo.right;
+        fcore0L += vf[0];
+        fcore0R += vf[1];
       } else {
         revInL += vo.left;
         revInR += vo.right;
+        frevL += vf[0];
+        frevR += vf[1];
       }
     } else {
       if (!v->IsReverbOnly()) {
         dryL += vo.left;
         dryR += vo.right;
+        fdryL += vf[0];
+        fdryR += vf[1];
       }
       if (v->IsReverb()) {
         revInL += vo.left;
         revInR += vo.right;
+        frevL += vf[0];
+        frevR += vf[1];
       }
     }
-    if (spatial && !v->IsReverbOnly()) {
+    if ((spatial || fspatial) && !v->IsReverbOnly()) {
       const Voice::Place place = mMono ? Voice::Place::Front : v->GetPlace();
       if (place == Voice::Place::Front) {
         spk[0] += vo.left;
         spk[1] += vo.right;
+        fspk[0] += vf[0];
+        fspk[1] += vf[1];
       } else {
         if (v->mSpkPan != v->GetPan() || v->mSpkLayout != channels || v->mSpkPlace != place) {
           if (place == Voice::Place::Positional) {
@@ -260,8 +324,19 @@ s16Output Synth::Tick(s16* multi, int channels) {
         if (v->LastSample() < 0) {
           m = -m;
         }
-        for (int c = 0; c < channels; ++c) {
-          spk[c] += m * v->mSpk[c];
+        if (spatial) {
+          for (int c = 0; c < channels; ++c) {
+            spk[c] += m * v->mSpk[c];
+          }
+        }
+        if (fspatial) {
+          float fm = std::sqrt(vf[0] * vf[0] + vf[1] * vf[1]);
+          if (v->LastSample() < 0) {
+            fm = -fm;
+          }
+          for (int c = 0; c < channels; ++c) {
+            fspk[c] += fm * v->mSpk[c];
+          }
         }
       }
     }
@@ -272,22 +347,59 @@ s16Output Synth::Tick(s16* multi, int channels) {
     dryR += c0R;
     revInL += c0L;
     revInR += c0R;
+    fdryL += fcore0L;  // (the high-precision mix: not clamped)
+    fdryR += fcore0R;
+    frevL += fcore0L;
+    frevR += fcore0R;
   }
 
   s32 wetL = 0;
   s32 wetR = 0;
+  float fwetL = 0, fwetR = 0;
   if (mReverbMode > 0) {
-    StepReverb(revInL, revInR);
+    const float frev[2] = {frevL, frevR};
+    StepReverb(revInL, revInR, fmix ? frev : nullptr);
     wetL = ApplyVolume(mReverbOutL, mReverbDepth.left.GetCurrent());
     wetR = ApplyVolume(mReverbOutR, mReverbDepth.right.GetCurrent());
     dryL += wetL;
     dryR += wetR;
+    if (fmix) {
+      fwetL = mReverbOutLF * static_cast<float>(mReverbDepth.left.GetCurrent()) * (1.0f / 32768.0f);
+      fwetR = mReverbOutRF * static_cast<float>(mReverbDepth.right.GetCurrent()) * (1.0f / 32768.0f);
+      fdryL += fwetL;
+      fdryR += fwetR;
+    }
     mReverbDepth.Run();
   }
 
   s16Output out{Clamp16(dryL), Clamp16(dryR)};
   out.left = ApplyVolume(out.left, mVolume.left.GetCurrent());
   out.right = ApplyVolume(out.right, mVolume.right.GetCurrent());
+  if (fmix) {
+    hp[0] = fdryL * static_cast<float>(mVolume.left.GetCurrent()) * (1.0f / 32768.0f);
+    hp[1] = fdryR * static_cast<float>(mVolume.right.GetCurrent()) * (1.0f / 32768.0f);
+  }
+  if (fspatial) {  // (as the s16 speakers' below, in float)
+    if (fwetL != 0 || fwetR != 0) {
+      const float k = channels == 8 ? 0.57735027f : 0.70710678f;
+      const float wl = fwetL * k, wr = fwetR * k;
+      fspk[0] += wl;
+      fspk[1] += wr;
+      fspk[4] += wl;
+      fspk[5] += wr;
+      if (channels == 8) {
+        fspk[6] += wl;
+        fspk[7] += wr;
+      }
+    }
+    fspk[3] = 0.0f;
+    const float vl = static_cast<float>(mVolume.left.GetCurrent()) * (1.0f / 32768.0f);
+    const float vr = static_cast<float>(mVolume.right.GetCurrent()) * (1.0f / 32768.0f);
+    for (int c = 0; c < channels; ++c) {
+      const bool right = c == 1 || c == 5 || c == 7;
+      hpMulti[c] = fspk[c] * (right ? vr : vl);
+    }
+  }
 
   if (spatial) {
     // rac1 (host): the reverb, a diffuse sound, spread over its side's speakers at equal power (front and surround
@@ -400,6 +512,9 @@ void Synth::SetReverbMode(s32 mode, s32 delay, s32 feedback) {
     }
     mReverbOutL = 0;
     mReverbOutR = 0;
+    std::fill(mReverbBufF.begin(), mReverbBufF.end(), 0.0f);
+    mReverbOutLF = 0;
+    mReverbOutRF = 0;
   }
   mReverbDelay = delay;
   mReverbFeedback = feedback;
