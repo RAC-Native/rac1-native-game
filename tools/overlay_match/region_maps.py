@@ -434,7 +434,18 @@ def literal_points(V, L, pts, lits, window=0x40):
     R.data = data_runs(pts)
     out = {}
     for x in sorted(lits):
-        if x < CORE_END or x >= V.code_base or R.data_fwd(x) is not None:
+        if x < CORE_END or x >= V.code_base:
+            continue
+        # (a section's start, a bss one with no bytes to compare: the disc's same section's start, when the two sections
+        # are of the same kind and size, whatever the runs say: the runs' "offset into the object below" would put it
+        # there. Veldin's bss 0x161e00, which every level's start clears from: the 1.02 build's own clear changed, so no
+        # matched code names it, and the data run below, +0xd0, took it 0x30 short of the disc's bss)
+        k = next((k for k, (dest, _t, _b) in enumerate(V.secs[:6]) if dest == x), None)
+        if k is not None and k < len(L.secs) and V.secs[k][1] == L.secs[k][1] and len(V.secs[k][2]) == len(L.secs[k][2]):
+            if R.data_fwd(x) != L.secs[k][0]:
+                out[x] = L.secs[k][0]
+            continue
+        if R.data_fwd(x) is not None:
             continue
         i = bisect.bisect_right(R.data, (x, 0xFFFFFFFF, 0))
         cands = {R.data[k][2] for k in (i - 1, i) if 0 <= k < len(R.data)}
@@ -576,6 +587,7 @@ def cmd_table(a):
         core = make_core(ne, pe, units) if core_moved(ne, pe) else Core()
         named = named_addresses() if core else set()
         lits = level_literals()
+        veldin = veldin_literals()
         if core:
             # the core moved (the 1.02 core): its own unit, loaded at NTSC-U's addresses by the runtime
             lines.append("core 00100080 %08x -> 00100080 %08x moved: the unit `core`, and `ptr` lines per unit" % (CORE_END, core.end_p))
@@ -601,7 +613,7 @@ def cmd_table(a):
             if core:  # (the core's addresses: the core unit's)
                 pts = {x: y for x, y in pts.items() if x >= CORE_END}
             # (the data only the ports name, which no matched code reaches: placed by its bytes)
-            lp = literal_points(V, L, pts, lits.get(name, set()))
+            lp = literal_points(V, L, pts, lits.get(name, set()) | (veldin if name == "0" else set()))
             pts.update(lp)
             if lp:
                 print(f"[region_maps] {name}: {len(lp)} literals of the ports placed by their bytes: "
@@ -908,6 +920,13 @@ def cmd_check(a):
             print(d)
 
 
+def veldin_literals():
+    """{address}: the ports' literals of Veldin's overlay (`OV(0x...)`, `OvConst<0x...>`), the region table's level 0."""
+    out = subprocess.run(["grep", "-rhoE", r"\b(OV\(|OvConst<)0x[0-9a-fA-F]+", str(ROOT / "src/game")],
+                         capture_output=True, text=True).stdout.splitlines()
+    return {int(re.search(r"0x[0-9a-fA-F]+", t).group(0), 16) for t in out}
+
+
 def level_literals():
     """{level: {address}}: the level-only ports' literals (`L<n>_ADDR(0x...)`), and the boot module's
     (`FR(0x...)`) under 'boot'."""
@@ -952,6 +971,11 @@ def cmd_check_levels(a):
                 u, v, kind = xlate_code(dfn, dsz, dfk, ddata, x), R.code_fwd(x), "code"
             else:
                 u, v, kind = xlate_data(ddata, dk, x), R.data_fwd(x), "data"
+                # (a section's start: the disc's same section's start, as the table writer places it; the direct maps
+                # only guess it from the object below)
+                k = next((k for k, (dest, _t, _b) in enumerate(V.secs[:6]) if dest == x), None)
+                if k is not None and k < len(L.secs) and V.secs[k][1] == L.secs[k][1] and v == L.secs[k][0]:
+                    u = v
             if u == v:
                 res[kind + (" same" if u is not None else " both untranslated")] += 1
                 if u is None:

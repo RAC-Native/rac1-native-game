@@ -65,6 +65,9 @@ What changed in each release. Releases are source only: you build the game with 
   so every text from them on has a higher number; the texts the port's code names by their North American number (the
   Sound page, the save slots' "EMPTY", the memory card's and the quit dialogs' Yes / No, the skill point and Enter
   ship messages, the races' place names) are taken to the disc's (`TXT()`, src/game/ovl/ovl_reloc.h).
+- PAL disc 2.00: a level's start clears its own variables and only them (#137's region table): the clear began where the
+  table guessed Veldin's variables start, off by up to 0x30 bytes on 2.00, so on Kerwan and Oltanis it zeroed the last
+  constants of the level's data, and on Novalis and Batalia it left a few variables from the level before.
 - Debug menu: Kill Ratchet no longer crashes the game when Clank is the hero (#136): Clank gets his own death (state 0x47).
 
 ### Performance

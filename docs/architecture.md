@@ -394,7 +394,9 @@ fields masked, its data runs from the sections and the addresses every unit's ma
 looks like a core address, two halfwords such as 0x00130001, is not one). A data address only the ports
 name (no matched code reaches it: the 1.02 title code changed, so nothing votes for the title's sound lists
 0x186100 / 0x1861e0 / 0x1862b0) is placed by its bytes: of the displacements of the runs around it, the one
-under which its words equal the disc's (`literal_points`). `region_maps.py check-levels` counts a port's literal
+under which its words equal the disc's (`literal_points`); a section's start (a bss, with no bytes: Veldin's 0x161e00, which
+every level's start clears from, and the boot module's 0x161280) goes to the disc's same section's start, whatever the
+runs would guess. The table's level 0 takes Veldin's `OV` literals too. `region_maps.py check-levels` counts a port's literal
 the table leaves untranslated as an error. Then:
 
 - `region_view.py` takes the core's addresses back too (calls into the core, the addresses built into its
