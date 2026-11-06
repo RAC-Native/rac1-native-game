@@ -1110,6 +1110,17 @@ may have nothing to aim at near the start; its classes are under the thumbnail, 
 one atlas of 64 x 64 pictures made on the CPU from the renderers' decoded textures when the tab is first shown on a level (or
 **Refresh**): an OpenGL texture or a Vulkan image ImGui draws; nothing of the game's drawing changes.
 
+A tie's textures: a tie class's texture prim `t` (an `emissive` / `material` line's `tex t`) is the level's tie texture at byte `t`
+of the class's 16-byte remap, as the game's level load gives it (`tie_class_register`, 0x240aa8). Until #136 the world files'
+decoder took each prim's TEX0 word for its local texture, and that word is 0 in every class of the game: every prim of a class
+named the class's first texture. So the grid listed a tie class under its first texture alone (its other textures had no class:
+left out, nothing to click), the crosshair's preview pulsed the class's first texture whatever prim was aimed at, and a line for
+`tie <class> tex <t>` with `t` above 0 marked the class's first texture (80 of the shipped files' 253 tie lines, all on another
+texture now; the automatic emitters judged a tie class by its first texture too). The load now sets each prim's texture from the
+remap (`tie_textures_from_remap`, mrp_world_assets.cpp; checked against the game's own registers in EE memory on every level: 0
+of 5 000 prims differ), so every tie texture the level draws is in the grid with its classes and prims, and a line reaches the
+texture it names. The game's drawing reads its own registers and is unchanged.
+
 Shipped (#102, strength 1.3 so that they read a little brighter than the original, and do not darken): on Veldin the domed
 building's round cyan lamps (shrub class 569, three stacked instances per column, `tex 1` their glass) and its cyan door panels (tie
 2024 `tex 0`, threshold 0.8: the building's one texture, texture 7, holds its walls too); on Novalis the landing pad's red lamps
