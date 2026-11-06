@@ -70,6 +70,12 @@ the world passes' culls (the profiler's `Game: world passes`).
   the level's arrival): the game code -11 to +13 % (Veldin 1.77 to 1.92 ms, Kerwan 3.23 to 3.40, Rilgar 2.21 to 2.13, Nebula
   G34 2.44 to 2.75, Hoven 2.85 to 2.54), i.e. no gain beyond the noise; the program's code 37.3 to 95.5 MB (the file 170 to
   250 MB), a full build with three jobs 8.0 to 20.4 minutes (21 to 59 minutes of CPU). Still off.
+  A flat guest mapping (EE address = host base + address, no range test: what OpenRAC does over a 4 GB reservation) was
+  weighed rather than built: the accessors' fast path is already a compare and an add on two globals the L1 cache holds, and
+  forcing it inline - which removes the calls, a bigger saving - gave nothing beyond the noise. A counting build sees about
+  770,000 accesses a frame on Kerwan (260,000 writes, 510,000 reads, of them 200,000 of the scratchpad); a cycle or two saved on
+  each is at most 0.2 ms at best, unmeasurable here, while the null, scratchpad, DMA-register and journal cases would need guard
+  pages and a fault handler.
 - **The three culls by hand** (`world_cull_tfrag.cpp`, `world_cull_tie.cpp`, `world_cull_shrub.cpp`; `RAC1_WORLD_CULL_FAST`):
   the same arithmetic and the same memory written, organised by what the routines do (the view test, the LOD and its morph,
   the chain's records), the VU0 registers in a local copy (`vu0_local.h`) written back at the end, the scratchpad as a byte
@@ -125,6 +131,13 @@ pages a frame, the moby shadow 1.53 to 1.20 ms, the game thread 6.7 to 6.1 ms (t
 Exact: `RAC1_MRP_LOD_VERIFY=1` (EE RAM below the room and the scratchpad compared after each shadow run: 2999 runs, 0
 differing), RAMHASH on the 4-level route with the view widened and LOD High identical (and identical to the 4:3 one), the
 widened pictures identical (OpenGL, Vulkan).
+
+Two cheaper forms were measured and left (Kerwan, the same scene, a counting build): a finer journal - of the pages it still saves
+(about 230 a frame), 75 % change at all, and of their 4 KB 46 % in 256-byte blocks, 23 % in 64-byte ones: blocks of 256 bytes
+would copy half as much, about 0.08 ms a frame at best, against a seen-flag table 16 times larger on every journaled write; and
+guard pages (the journal's write test replaced by a page fault at a page's first write): a fault and an mprotect cost more
+(2-5 us) than copying the page (under 1 us), so it would be slower. The test itself (two byte loads on each of the ~150,000
+writes a frame inside the shadow runs) is a few hundredths of a millisecond.
 
 ## The frame's chain
 
