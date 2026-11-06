@@ -99,6 +99,9 @@ the Recycle Bin, or to the trash on Linux.
   about half an hour. See [Movie subtitles](movie-subtitles.md).
 - **Debug tools** (off by default): **Enable debug tools** starts the game with `--debug-tools`, its debug menu and
   overlays ([Settings](settings.md#debug-tools)), for testing and bug reports.
+- **Theme** (Linux): **Follow the system** (the default: light or dark as the desktop's own setting, and changing with
+  it), **Light** or **Dark**. The Windows launcher stays light for now (Windows Forms has no dark theme of its own: its
+  tabs, list headers and message boxes would have to be drawn by hand).
 - **Check for updates** and **Update now**: the same as the Play page's check and Update, at once.
 - **Set up again from scratch**: generates everything again from the disc and rebuilds (the setup's
   `--force`).
@@ -119,7 +122,7 @@ The game's other settings (graphics, controls) are in the game's Options menu.
 
 | | Windows | Linux |
 |---|---|---|
-| The launcher's settings (`launcher.txt`: game folder, disc image, parallel jobs) | `%APPDATA%\rac1-native\` | `~/.config/rac1-native/` |
+| The launcher's settings (`launcher.txt`: game folder, disc image, parallel jobs, theme) | `%APPDATA%\rac1-native\` | `~/.config/rac1-native/` |
 | The game's settings, with `advanced_options.txt` (the update channel) | `%APPDATA%\rac1-native\` | `~/.config/rac1-native/` |
 | The saves (`memcard\`) and the launcher's backups (`save-backups\`) | `%APPDATA%\rac1-native\` | `~/.local/share/rac1-native/` |
 | The shortcut | Start menu, desktop | `~/.local/share/applications/rac1-native.desktop` (and `rac1-native-play.desktop` with a build container) |

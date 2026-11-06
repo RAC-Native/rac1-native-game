@@ -309,6 +309,10 @@ held makes him strafe.
 - **Movement = RAC 3** brings UYA's full on-foot movement and wrench feel to the first game's hero
   code, together with the strafe.
 
+Both are Ratchet's: as Clank (and Giant Clank) the pad is the original's, L2 and R2 included (L2 crouches him, as
+L1), with any Movement or Aiming. Clank has no weapon to aim and no strafe in his own walk; the strafe and
+the modern aim worked only in his jump up to 0.7.0 (#129).
+
 ### How it was built: a study of UYA's code
 
 The values and rules were taken from a study of UYA's own hero code, on the project owner's own

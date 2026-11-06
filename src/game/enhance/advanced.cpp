@@ -758,6 +758,10 @@ uint32_t advanced_pad_remap(uint32_t pad, uint32_t held) {
     g_aim_button = false;
     // only with Movement = RAC 3, in gameplay (circle confirms Quit Game in the menus)
     if (lbu(MOVEMENT) == 0 || lw(OV(0x0015f5c4)) != 0) return held;
+    // and not as Clank (the hero's form +0x20a4: 1 Clank, 2 Giant Clank; #129): he has no weapon to aim, his walk and
+    // stand states (the 0x43 set) have no strafe, and his L2 is the original's (state 0x43: the crouch 1, as L1); the
+    // aim and the strafe used to work only in his jump 0x49, so he plays as the original
+    if (lbu(HERO + 0x20a4) != 0) return held;
     if (modern_aim()) {                     // Aiming = Modern: L2 aims (strafing), R2 fires
         g_aim_button = (held & 0x1u) != 0;
         if ((held & 0x2u) != 0) held |= 0x20u;  // R2: circle

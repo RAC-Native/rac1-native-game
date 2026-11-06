@@ -46,6 +46,10 @@ What changed in each release. Releases are source only: you build the game with 
   (Daino on Pokitaru at 5120x1440): the sky's cube faces were read by an alpha the sky's blended layers leave at 0 over the
   lower sky and the horizon, and the probe's horizon - the islands' silhouettes - was spread over all the water past its
   sphere. Medium's picture is unchanged.
+- Clank (Movement Strafing or RAC 3, any Aiming) plays as the original: L2 crouches him again, and the strafe / modern
+  aim no longer turns on in his jump only (#129).
+- Linux launcher: a dark theme (#99): it follows the desktop's light or dark setting (it was always light), or
+  Settings > Theme chooses Light or Dark.
 
 ## 0.7.0
 
