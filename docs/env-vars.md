@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 406 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 407 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 308 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 309 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 77 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -234,6 +234,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_PERF_SKY_LATE` | 1 = on, 2 = on and counted; default 0 | The MRP world's sky drawn after the first pass of the frame's leading opaque tfrag batches, depth-tested at depth 1.0 so it is drawn only where the terrain left the screen empty (OpenGL and Vulkan); 2 also prints every 600 frames how many frames used it. Not exact (a trace of the sky behind the terrain's edge pixels whose alpha ends just below 0x80: on Veldin's reference frame 51 pixels one level apart), so off by default. See [Performance](performance.md#second-round). |
 | `RAC1_PERF_TEXTABLE` | 0 = off; default 1 | The static level's texture table kept at the start of the MRP scene's table over the frames instead of copied for the ties, the shrubs and the shadow casters every frame; 0: copied, as before. The same picture. |
 | `RAC1_PERF_TFRAG_ALLOC` | 0 = off; default 1 | The frame's tfrag lists emptied with their storage kept, and the tfrag CPU form's working memory kept per thread, instead of allocated again; 0: as before. The same picture. |
+| `RAC1_PERF_TFRAG_FIND` | 0 or 1; default 1 | The MRP world walker looks up a tfrag draw's entry only where it is used (the CPU path, the checks), not where the host makes the tfrags; 0 looks every draw up, as before, to compare. The same pictures. |
 | `RAC1_PERF_VU0_NF` | 0 = off; default 1 | The generated routines that read no VU0 status or MAC flag (but after an op into vf0) run their VU0 macro ops without making the flags (src/game/ovl/vu0_nf.h, given to them by tools/codegen/vu0_nf_pass.py: 176 files); 0: every op with its flags, as before, to compare. The same game state. |
 | `RAC1_PERF_VU1_LOOKUP` | 0 = off; default 1 | A VU1 program start whose port must be found again (the micro memory written since) compares each port's range with the last four images it hashed instead of hashing it again (about 470 KB a frame on Novalis); 0: hashed, as before. The same game state. |
 | `RAC1_PERF_VU7` | 0 = off; default 1 | Program 7's batches (water, seas, lava, the level's shadow meshes): a vertex's world point, fog and depth made once instead of once per triangle corner, the batch's lists kept between batches; the effects' Q from the view-projection's w row alone (the same doubles); 0: as before. The same picture. |
