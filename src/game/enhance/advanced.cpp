@@ -14,6 +14,7 @@
 #include <game/enhance/corrected_texts.h>
 #include <game/enhance/graphics.h>
 #include <game/enhance/language.h>
+#include <game/enhance/mods_menu.h>
 #include <game/enhance/update_notice.h>
 #include <game/enhance/vibration.h>
 
@@ -397,6 +398,7 @@ void advanced_menu_install() {
     const uint32_t graphics_page = graphics_page_install(front ? static_cast<uint32_t>(MAIN_OPTIONS_PAGE) : static_cast<uint32_t>(OPTIONS_PAGE));
     const uint32_t controls = controls_page_install(front ? static_cast<uint32_t>(MAIN_OPTIONS_PAGE) : static_cast<uint32_t>(OPTIONS_PAGE));
     const uint32_t language = language_page_install(front ? static_cast<uint32_t>(MAIN_OPTIONS_PAGE) : static_cast<uint32_t>(OPTIONS_PAGE), front);
+    if (front) mods_page_install(MAIN_OPTIONS_PAGE);  // (the main menu's alone; none without mods: mods_menu.h)
     sw(PAGE + 0x40, ROWS_WIDGET);
     for (uint32_t i = 0; i < 14; ++i) {
         const uint32_t slot = PAGE + 0x44 + i * 4;
@@ -503,6 +505,7 @@ uint32_t advanced_text(int32_t id) {
     if (const uint32_t s = controls_text(id)) return s;
     if (const uint32_t s = update_notice_text(id)) return s;
     if (const uint32_t s = language_text(id)) return s;
+    if (const uint32_t s = mods_text(id)) return s;
     if (id < TEXT_FIRST || id >= TEXT_FIRST + T_COUNT) return 0;
     uint32_t lang = lwu(0x0015ed88);
     if (lang >= 6) lang = 0;
@@ -1601,6 +1604,7 @@ void advanced_setting_changed(uint32_t byte) {
         return;
     }
     if (language_setting_changed(byte)) return;  // (a Language row: saved there)
+    if (mods_setting_changed(byte)) return;      // (a Mods row: saved there, mods.txt)
     // Aiming = Modern needs a strafe (Strafing or RAC 3): turning it on when Movement is Original
     // turns Strafing on; turning Movement back to Original turns Aiming off
     if (byte == CONTROLS && lbu(CONTROLS) != 0 && lbu(MOVEMENT) == 0) sb(MOVEMENT, 1);
@@ -1727,6 +1731,7 @@ bool advanced_settings_dpad(uint32_t w, uint32_t e) {
     if (graphics_settings_dpad(w, e, pressed)) return true;
     if (update_menu_settings_dpad(w, e, pressed)) return true;
     if (language_settings_dpad(w, e, pressed)) return true;
+    if (mods_settings_dpad(w, e, pressed)) return true;
     if (w != ROWS_WIDGET || (pressed & 0xa000u) == 0) return false;
     // our Advanced rows: left / right step the value back / forward (the widget's cross steps it forward)
     const uint32_t b = lwu(e + 4);

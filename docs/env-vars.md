@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 401 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 405 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
-| [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 303 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 77 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Player](#player-variables) | 23 | Settings a player may want to change: files, window, audio, the ISO |
+| [Debugging](#debugging-variables) | 304 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Automated testing](#automated-testing-variables) | 78 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -47,6 +47,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_ISO` | path to the disc image; default assets/iso/rac1-ntsc-u.iso (rac1-pal.iso for the PAL disc), else the path in assets/iso/disc-path.txt | Path of the disc image the setup tools read. The game reads the disc's files the setup extracted (assets/disc/), and this image only with `RAC1_READ_ISO=1`. |
 | `RAC1_MEMCARD_DIR` | directory path; default $XDG_DATA_HOME/rac1-native/memcard, else ~/.local/share/rac1-native/memcard (%APPDATA%\rac1-native\memcard on Windows) | Directory holding the virtual memory card's save files. Setting it also makes a headless run insert the card. |
 | `RAC1_PROGRESS` | file path, or 0 = off; default $XDG_DATA_HOME/rac1-native/progress.json, else ~/.local/share/rac1-native/progress.json (%APPDATA%\rac1-native\progress.json on Windows) in a windowed run, none in a headless run | Where the game writes `progress.json` for the RAC Native launcher (the planet played, the planets reached, the share explored, the time played: see [The launcher](launcher.md#progressjson)); a headless run writes it only when this is set. |
+| `RAC1_MODS` | 0 = every mod off; 1 = a headless run loads the mods (every mod found on, the player's mods.txt not read); unset = the Mods menu's choices in a window, no mods in a headless run | The mods folder (docs/mods.md): 0 plays the original whatever the Mods menu says; a headless run (the tests, the reference checks) is vanilla unless this is 1. |
+| `RAC1_MODS_FILE` | path; default $XDG_CONFIG_HOME/rac1-native/mods.txt, else ~/.config/rac1-native/mods.txt (%APPDATA%\rac1-native\mods.txt on Windows) | Overrides the location of the file where the Mods menu's choices (`<folder> on|off`) are kept; in a headless run with RAC1_MODS=1 it is read (and written) only when set. |
 | `RAC1_MOVIE_VOLUME` | floating-point gain; default 1.0 | Volume multiplier applied to the audio of the pre-rendered movies. |
 | `RAC1_NO_AUDIO` | any value = on; default audio on | Turns the sound output off entirely. |
 | `RAC1_PRIORITY` | 0 = off, any other integer = on; default on except when headless | Requests raised host thread priority through the system's real-time kit, if available. |
@@ -314,6 +316,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_SUN_RAYS_TRACE` | set (any value) = on; default off | Every 60 frames prints the sun's place on the screen, the rays' gain, how open the sky around the sun is (OpenGL) and their GPU time. |
 | `RAC1_SUN_TRACE` | set (any value) = on; default off | Prints the light sets the hero is lit with, for the modern lighting's sun. See [Lighting](lighting.md). |
 | `RAC1_SUN_ZONE` | set (any value) = on; default off | The modern lighting's sun takes its direction from the light sets the hero is lit with, everywhere, as before #3; by default the direction is light set 0's wherever set 0 has a sun, and the hero's sets give only its weight. See [Lighting](lighting.md#the-sun). |
+| `RAC1_TEX_DUMP` | 1 = into mods/_dump/textures/, or a folder path; 0 or unset = off (the debug menu's Dump textures) | Writes every texture the modern renderer draws once as `<hash>.png` (with an index.txt line), the start of a texture pack: the level's at its load, the 2D's as they are drawn. See [Mods](mods.md#making-a-texture-pack-the-dump). |
 | `RAC1_TFRAG_CPU` | 1 = the CPU, 0 = the GPU; unset = the GPU, except under Vulkan on an Intel GPU of generation 9 or older, or when a level's first tfrag dispatch is timed too slow | Makes the tfrags (the terrain) on the CPU instead of by the compute shader, where the GPU's doubles are slow (#113); 0 keeps the GPU whatever the device. As `RAC1_MRPW_TFRAG_GPU=0`: the same picture at the default level of detail, a little different at a distance with the LOD slider raised or the view widened. See [Vulkan](vulkan.md). |
 | `RAC1_TFRAG_LIGHT_TRACE` | <every>[,x,y,z,r]; default off | Every <every> drawn frames with the modern lighting on, takes the terrain's (tfrag) lit vertex colours within r units (default 12) of the hero, or of x,y,z, apart as the game's relighting makes them: base colour, the light set's two directional terms, against the colour in EE memory; prints the means, the light sets used and the sun. See [Lighting](lighting.md). |
 | `RAC1_TF_HITS` | integer; default 3 | Testing threshold for the terrain shadow build: a candidate with fewer than this many hits is discarded. |
@@ -401,6 +404,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_LEVEL` | level number; default 0 (Veldin); same as --level | Starts directly on the given level instead of the normal start. |
 | `RAC1_MENU_AT` | integer frame number; default 120 | In a scripted menu input run (simulated keys), the frame at which the simulated button press happens instead of the default, with Start also pressed at frame 120 to skip the arrival scene. |
 | `RAC1_MIRROR_DUMP` | file path; default none | With RAC1_IOP_MIRROR_TEST, writes the mirror's output (48 kHz stereo 16-bit) to the file. |
+| `RAC1_MODS_DIR` | folder path; default `mods` | Where the mods are looked for (docs/mods.md): the tests of a sample mod. |
 | `RAC1_MOVIE_AT` | [h]<n>@<frame>; unset = off | At that game frame (in play) starts the game's movie n in its movie mode: the story movie n, as the pause menu plays them, or with `h` the level's help movie n, as a help desk plays them; with RAC1_GOTO later, it tests a level change in the middle of a movie. |
 | `RAC1_MOVIE_SUBTITLES` | on / off (or 1 / 0); unset = the player's setting (Options > Language > Movie Subtitles; off in headless runs) | Shows or hides the movie subtitles (the files in `assets/movie-subtitles/`, docs/movie-subtitles.md), also in headless runs, in the text language (RAC1_LANGUAGE). |
 | `RAC1_MOVIE_SUBTITLES_DIR` | folder path; default `assets/movie-subtitles` | Where the movie subtitles are read from (the tests of missing, empty or broken files). |

@@ -1,5 +1,6 @@
 // See mrp_2d.h.
 #include <game/render/mrp_2d.h>
+#include <game/render/texture_mods.h>
 
 #include <profiler/host_profiler.h>
 #include <runtime/gs/gs_blend.h>
@@ -779,31 +780,42 @@ GLuint gl_sampler(bool lin, bool wrap_s, bool wrap_t) {
     return s;
 }
 
+// orig: (none) — enhancement: a mod's replacement of the image (texture_mods.h), null for none (no mod's textures: never looked
+// at). Up to 1024 x 1024 (the GS's largest texture), dumped up to 256 x 256 (larger ones: the frame's pictures)
+std::shared_ptr<const texture_mods::Image> mod_texture(const TexImage* img) {
+    if (!texture_mods::on() || img->w <= 0 || img->h <= 0 || img->w > 1024 || img->h > 1024) return nullptr;
+    return texture_mods::find(static_cast<uint32_t>(img->w), static_cast<uint32_t>(img->h), img->px.data(), img->w <= 256 && img->h <= 256 ? "2d" : nullptr);
+}
+
 // orig: (host) the image's texture: made at its first use, from the pool when one of its size is free (filled again in place)
 GLuint gl_texture(const TexRef& r) {
     const TexImage* img = r.img;
     GlTex& e = g_gl_tex[img->id];
     e.used = g_frame_no;
     if (e.id != 0) return e.id;
-    e.w = img->w;
-    e.h = img->h;
     if (r.own != nullptr && *r.own != nullptr) {
         e.src = *r.own;
         e.owned = true;
     }
-    const auto pool = g_gl_pool.find({img->w, img->h});
+    // (a mod's replacement, texture_mods.h: its level 0, at its own size)
+    const std::shared_ptr<const texture_mods::Image> rep = mod_texture(img);
+    const int tw = rep != nullptr ? static_cast<int>(rep->w) : img->w, th = rep != nullptr ? static_cast<int>(rep->h) : img->h;
+    const uint32_t* texels = rep != nullptr ? rep->mips[0].data() : img->px.data();
+    e.w = tw;
+    e.h = th;
+    const auto pool = g_gl_pool.find({tw, th});
     if (pool != g_gl_pool.end() && !pool->second.empty()) {
         e.id = pool->second.back().id;
         pool->second.pop_back();
         glBindTexture(GL_TEXTURE_2D, e.id);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, img->w, img->h, GL_RGBA, GL_UNSIGNED_BYTE, img->px.data());
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, tw, th, GL_RGBA, GL_UNSIGNED_BYTE, texels);
         ts_made(img, true);
         return e.id;
     }
     glGenTextures(1, &e.id);
     rac1::prof::gl_track_n(rac1::prof::kGlTexture, 1, &e.id, "MRP 2D: textures");
     glBindTexture(GL_TEXTURE_2D, e.id);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, img->w, img->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, img->px.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, tw, th, 0, GL_RGBA, GL_UNSIGNED_BYTE, texels);
     ts_made(img, false);
     return e.id;
 }
@@ -1290,22 +1302,26 @@ VkImageView vk_texture(const TexRef& r) {
     VkTex& e = g_vk_tex[img->id];
     e.used = g_frame_no;
     if (e.img.view != VK_NULL_HANDLE) return e.img.view;
-    e.w = img->w;
-    e.h = img->h;
     if (r.own != nullptr && *r.own != nullptr) {
         e.src = *r.own;
         e.owned = true;
     }
-    const auto pool = g_vk_pool.find({img->w, img->h});
+    // (a mod's replacement, texture_mods.h: its level 0, at its own size)
+    const std::shared_ptr<const texture_mods::Image> rep = mod_texture(img);
+    const int tw = rep != nullptr ? static_cast<int>(rep->w) : img->w, th = rep != nullptr ? static_cast<int>(rep->h) : img->h;
+    const std::vector<uint32_t>& texels = rep != nullptr ? rep->mips[0] : img->px;
+    e.w = tw;
+    e.h = th;
+    const auto pool = g_vk_pool.find({tw, th});
     const bool reused = pool != g_vk_pool.end() && !pool->second.empty();
     if (reused) {
         e.img = pool->second.back().img;
         pool->second.pop_back();
     } else {
-        vk::create_image(static_cast<uint32_t>(img->w), static_cast<uint32_t>(img->h), VK_FORMAT_R8G8B8A8_UNORM,
+        vk::create_image(static_cast<uint32_t>(tw), static_cast<uint32_t>(th), VK_FORMAT_R8G8B8A8_UNORM,
                          VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, e.img);
     }
-    vk::upload_image_2d(e.img, img->px.data(), img->px.size() * 4, 0, 0, img->w, img->h);
+    vk::upload_image_2d(e.img, texels.data(), texels.size() * 4, 0, 0, tw, th);
     ts_made(img, reused);
     return e.img.view;
 }

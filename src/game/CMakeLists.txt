@@ -164,6 +164,7 @@ add_library(rac1_game STATIC
     enhance/vibration.cpp
     enhance/voice_language.cpp
     enhance/language.cpp
+    enhance/mods_menu.cpp
     enhance/movie_subtitles.cpp
     enhance/corrected_texts.cpp
     enhance/cut_content.cpp
@@ -268,6 +269,7 @@ add_library(rac1_game STATIC
     render/mrp_lod.cpp
     render/mrp_title_view.cpp
     render/mrp_2d.cpp
+    render/texture_mods.cpp
     render/mrp_chain.cpp
     render/mrp_fx.cpp
     render/mrp_shadows.cpp

@@ -121,8 +121,8 @@ What comes next, in no fixed order:
   1.02 Gameplay (see [Advanced options](advanced.md#102-fixes)).
 - **The renderer:** the level's baked shadow meshes across a widened view, the mobys' flattened
   shadow meshes.
-- **Mods (planned):** the setup already extracts the disc's files, which the game reads
-  ([Setup](setup.md#the-discs-files)); next, a mods folder in front of them, and a Mods menu in the game.
+- **Mods:** the first step is in: a mods folder in front of the disc's files, texture replacement by hash, and a Mods
+  menu in the game ([Mods](mods.md)); next, the modern renderer's models (their rig kept), audio by file, a plugin API.
 - **The Vulkan renderer** is the default from the next release (OpenGL when it cannot start, or chosen
   in Options > Display); it needs trying on more GPUs.
 - **Testing on more machines:** the European PAL discs (the Platinum's most), Windows (now also
