@@ -22,6 +22,14 @@ What changed in each release. Releases are source only: you build the game with 
   clipping, the sound device opened in 32-bit float; also in 5.1 / 7.1 and for the movies' sound. Only the output
   samples change: the voices' states and everything the game reads are computed as before (RAC1_RAMHASH identical).
   RAC1_AUDIO_MIX=hp for testing. See docs/audio.md.
+- Mods, a first step (docs/mods.md): a `mods/` folder next to `assets/`, one folder per mod with a `mod.json` (name,
+  author, version, description, priority). A mod's `disc/` files, laid out as the extracted disc files and of the same
+  size, are read instead of the disc's; its `textures/<hash>.png` (any size) replace the game's textures by their content
+  hash in the modern renderer (the mobys, the world, the sky, the 2D). Main menu > Options > Mods turns each one on or
+  off (from the next start; `mods.txt` in the settings' folder); conflicts go to the higher priority and are logged; a
+  "Mods on" line at the bottom of the title screen and the main and pause menus while any is on. The debug menu's Dump textures (or
+  RAC1_TEX_DUMP) writes the textures with their hashes, to start a pack. Headless runs (the tests, the reference checks)
+  never load mods unless RAC1_MODS=1; RAC1_MODS=0 turns them all off.
 - Movie subtitles (Options > Language > Movie Subtitles, Off by default; RAC1_MOVIE_SUBTITLES for testing): the original
   shows none over its movies; the game shows SubRip files from `assets/movie-subtitles/` in the game's subtitle look, in
   the text language. The setup makes them on request with speech to text from the disc's own sound tracks

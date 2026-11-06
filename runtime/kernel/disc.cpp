@@ -1,6 +1,7 @@
 #include "disc.h"
 
 #include "ee_memory.h"
+#include "mods.h"
 
 #include <platform/platform.h>
 
@@ -31,7 +32,7 @@ std::atomic<int> g_source{-1};  // -1: not decided yet, 0: the files, 1: the ima
 // ---- The disc's files (assets/disc/, tools/disc_extract.py) ----
 // layout.txt: "<first byte (hex)> <size> <offset in the file> <sha1> <path>" per piece, sorted by the first byte, not
 // overlapping; the bytes no piece holds are zero. One place maps the disc's bytes to the host's files (files_find):
-// a mods folder in front of assets/disc/ would change only which path a piece's file opens (files_load).
+// the mods folder in front of assets/disc/ changes only which path a piece's file opens (files_load, mods.h).
 constexpr const char* kLayoutMagic = "rac1-native disc layout 1";
 constexpr size_t kOpenFiles = 64;  // the files kept open at once (the oldest closed past that)
 
@@ -105,7 +106,12 @@ void files_load(DiscFiles& d) {
         }
         d.pieces.push_back(p);
     }
-    for (const std::string& n : names) d.paths.push_back(files_host_path(d.dir, n));
+    const bool game_disc = d.dir == disc_files_dir();
+    for (size_t i = 0; i < names.size(); ++i) {
+        // (the mods on: a mod's file of the same path and size read instead, mods.h; the game's disc only, not a data disc's)
+        std::filesystem::path p = game_disc ? mods_disc_file(names[i], d.sizes[i]) : std::filesystem::path();
+        d.paths.push_back(p.empty() ? files_host_path(d.dir, names[i]) : p);
+    }
     d.handles.resize(d.paths.size());
     d.ok = true;
 }

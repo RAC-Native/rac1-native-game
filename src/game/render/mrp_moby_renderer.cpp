@@ -16,6 +16,7 @@
 #include <game/render/mrp_world_assets.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
+#include <game/render/texture_mods.h>
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
 #include <runtime/vk/vk_context.h>
@@ -650,25 +651,37 @@ void load_textures(Level& L) {
     if (L.guest != nullptr) guest_textures(L);
     L.tex_bucket.assign(L.textures.size(), -1);
     L.tex_layer.assign(L.textures.size(), 0);
+    auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
+    std::vector<uint32_t> px;
+    // the mods' replacements (texture_mods.h), by the texture's level 0 as uploaded below; a replaced texture goes in the
+    // bucket of the replacement's size
+    std::vector<std::shared_ptr<const texture_mods::Image>> rep(L.textures.size());
+    if (texture_mods::on())
+        for (size_t i = 0; i < L.textures.size(); ++i) {
+            const mrp::Texture& t = L.textures[i];
+            if (t.width == 0 || t.height == 0 || t.mips.empty() || t.mips[0].size() < static_cast<size_t>(t.width) * t.height) continue;
+            px.resize(static_cast<size_t>(t.width) * t.height);
+            for (size_t k = 0; k < px.size(); ++k) px[k] = t.palette[csm1(t.mips[0][k])];
+            rep[i] = texture_mods::find(t.width, t.height, px.data(), "moby");
+        }
     std::map<std::pair<uint32_t, uint32_t>, int> by_size;
     for (size_t i = 0; i < L.textures.size(); ++i) {
         const mrp::Texture& t = L.textures[i];
         if (t.width == 0 || t.height == 0 || t.mips.empty() || t.mips[0].size() < static_cast<size_t>(t.width) * t.height) continue;
-        auto [it, fresh] = by_size.insert({{t.width, t.height}, static_cast<int>(L.buckets.size())});
+        const uint32_t tw = rep[i] != nullptr ? rep[i]->w : t.width, th = rep[i] != nullptr ? rep[i]->h : t.height;
+        auto [it, fresh] = by_size.insert({{tw, th}, static_cast<int>(L.buckets.size())});
         if (fresh) {
             Bucket b;
-            b.w = t.width;
-            b.h = t.height;
+            b.w = tw;
+            b.h = th;
             L.buckets.push_back(b);
         }
         Bucket& b = L.buckets[static_cast<size_t>(it->second)];
         L.tex_bucket[i] = it->second;
         L.tex_layer[i] = static_cast<int>(b.textures.size());
         b.textures.push_back(static_cast<int>(i));
-        b.levels = std::max<uint32_t>(b.levels, static_cast<uint32_t>(std::min<size_t>(t.mips.size(), 4)));
+        b.levels = std::max<uint32_t>(b.levels, static_cast<uint32_t>(std::min<size_t>(rep[i] != nullptr ? rep[i]->mips.size() : t.mips.size(), 4)));
     }
-    auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
-    std::vector<uint32_t> px;
     for (Bucket& b : L.buckets) {
         uint32_t maxl = 1;
         while ((b.w >> maxl) > 0 && (b.h >> maxl) > 0 && maxl < b.levels) ++maxl;
@@ -690,12 +703,15 @@ void load_textures(Level& L) {
         }
         for (size_t layer = 0; layer < b.textures.size(); ++layer) {
             const mrp::Texture& t = L.textures[static_cast<size_t>(b.textures[layer])];
+            const texture_mods::Image* r = rep[static_cast<size_t>(b.textures[layer])].get();
             uint32_t pal[256];
             for (uint32_t i = 0; i < 256; ++i) pal[i] = t.palette[csm1(i)];
             for (uint32_t l = 0; l < b.levels; ++l) {
                 const uint32_t w = std::max(1u, b.w >> l), h = std::max(1u, b.h >> l);
                 px.assign(static_cast<size_t>(w) * h, 0u);
-                if (l < t.mips.size() && t.mips[l].size() >= static_cast<size_t>(w) * h)
+                if (r != nullptr) {
+                    if (l < r->mips.size() && r->mips[l].size() == px.size()) px = r->mips[l];
+                } else if (l < t.mips.size() && t.mips[l].size() >= static_cast<size_t>(w) * h)
                     for (size_t k = 0; k < px.size(); ++k) px[k] = pal[t.mips[l][k]];
                 if (vk::is_active()) {
                     vk::upload_image_2d(b.vk_tex, px.data(), px.size() * 4, 0, 0, static_cast<int>(w), static_cast<int>(h), 0, static_cast<uint32_t>(layer), l);

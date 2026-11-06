@@ -443,6 +443,7 @@ To try the panel without a new release: `RAC1_UPDATE_FAKE=0.9.0` (or `dev:12`) w
 |---|---|
 | Display and Graphics pages | `~/.config/rac1-native/graphics_options.txt` |
 | Advanced page, the Language page's Voice and Subtitles (and the update check's Skip Version, the Sound page's 5.1 / 7.1 and Mix) | `~/.config/rac1-native/advanced_options.txt` |
+| The Mods page (which mods are on) | `~/.config/rac1-native/mods.txt` (see [Mods](mods.md)) |
 | The update check's last answer | `~/.config/rac1-native/update_check.txt` |
 | Controls | `~/.config/rac1-native/controls.txt` (see [Input](input.md#the-bindings-file-controlstxt)) |
 | The pause menu's Advanced settings (the gameplay rows) and the mode, per save | `save<N>.pc` next to each save (see [Saves](saves.md#the-pc-settings-next-to-each-save)) |
@@ -450,7 +451,7 @@ To try the panel without a new release: `RAC1_UPDATE_FAKE=0.9.0` (or `dev:12`) w
 | The language | `~/.config/rac1-native/console.txt` (see below) |
 
 `~/.config` stands for `$XDG_CONFIG_HOME` when it is set. On Windows the folder is
-`%APPDATA%\rac1-native\`. `RAC1_GRAPHICS_FILE`, `RAC1_ADVANCED_FILE` and `RAC1_CONTROLS_FILE` point
+`%APPDATA%\rac1-native\`. `RAC1_GRAPHICS_FILE`, `RAC1_ADVANCED_FILE`, `RAC1_CONTROLS_FILE` and `RAC1_MODS_FILE` point
 to other files.
 
 The Display and Graphics pages belong to the machine and are kept only in the preferences: loading a save never changes

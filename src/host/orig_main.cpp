@@ -152,6 +152,7 @@
 #include <game/ovl/vsync_callback.h>
 #include <game/ovl/vendor_frame.h>
 #include <runtime/kernel/disc.h>
+#include <runtime/kernel/mods.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/level/level_loader.h>
 #include "host_priority.h"
@@ -207,6 +208,7 @@ constexpr const char* PLAYER_ENV[] = {
     "RAC1_RENDERER", "RAC1_WINDOW", "RAC1_FULLSCREEN", "RAC1_VSYNC", "RAC1_FPS_CAP", "RAC1_NO_AUDIO", "RAC1_AUDIO_DEVICE",
     "RAC1_AUDIO_PERIOD_MS", "RAC1_AUDIO_PERIODS", "RAC1_MOVIE_VOLUME", "RAC1_PRIORITY", "RAC1_IOP_MIRROR",
     "RAC1_PROGRESS",  // (where progress.json goes for the launcher, or 0: docs/launcher.md)
+    "RAC1_MODS", "RAC1_MODS_FILE",  // (0: every mod off; the Mods menu's choices file: docs/mods.md)
     "RAC1_PYTHON",  // (set by tools/setup.py for the setup mode: the Python it runs the overlay matcher with)
 };
 
@@ -2315,6 +2317,9 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "rac1-native: level %d has no host assets yet\n", level);
         return 1;
     }
+    // the mods (mods.h): looked for before the disc's first read, their disc files in front of the disc's; none in a headless run
+    // unless RAC1_MODS=1 (the tests and the reference checks are vanilla)
+    rac1::mods_start(std::getenv("RAC1_HEADLESS") != nullptr);
     std::string disc_why;
     const bool have_disc = disc_ready(disc_why);
     if (!have_disc || !std::filesystem::exists(disc_boot_elf_path()) || !disc_has_level(level)) {

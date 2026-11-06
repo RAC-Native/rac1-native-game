@@ -31,11 +31,13 @@
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
 #include <game/render/shader_manager.h>
+#include <game/render/texture_mods.h>
 #include <runtime/iop/snd989_iop.h>
 #include <runtime/ipu/movie_hw.h>
 #include <runtime/ee/ee_thread.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/ee_memory.h>
+#include <runtime/kernel/mods.h>
 #include <runtime/vk/vk_context.h>
 #include <profiler/host_profiler.h>
 #if defined(__APPLE__)
@@ -426,6 +428,17 @@ void tab_game() {
     {  // the screen fade in one host frame (the default) or shown frame by frame (Options > Advanced > Fades)
         bool original = advanced_original_fades();
         if (ImGui::Checkbox("Original fades (the screen fades shown, as on the PS2)", &original)) advanced_set_original_fades(original);
+    }
+    ImGui::Separator();
+    {  // the mods (docs/mods.md): the ones on, and the texture dump for making texture packs
+        const std::vector<const ModInfo*> on = mods_active();
+        ImGui::Text("Mods on: %zu of %zu found in %s   textures replaced: %zu", on.size(), mods_list().size(), mods_dir().string().c_str(),
+                    texture_mods::replaced_count());
+        bool dump = texture_mods::dump_on();
+        if (ImGui::Checkbox("Dump textures (for texture packs)", &dump)) texture_mods::dump_set(dump);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Every texture drawn written once as <hash>.png into %s:\nthe world's and the mobys' at the next level load, the 2D's as they are drawn",
+                              texture_mods::dump_dir().string().c_str());
     }
     ImGui::Separator();
     // the language, as the game's own Options > Language page sets it (its action 9: 0x15ed88)

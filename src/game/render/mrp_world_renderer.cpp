@@ -1,5 +1,6 @@
 // orig: (host) The MRP world renderer (see mrp_world_renderer.h).
 #include <game/render/mrp_world_renderer.h>
+#include <game/render/texture_mods.h>
 #include <game/render/gl_draws.h>
 #include <game/render/mrp_chain.h>
 
@@ -342,24 +343,42 @@ Frame g_frame;
 void load_textures(Level& L) {
     static const char* names[3] = {"tfrag", "tie", "shrub"};
     std::map<std::pair<uint32_t, uint32_t>, int> by_size;
+    // the mods' replacements (texture_mods.h), by the texture's level 0 as uploaded below; a replaced texture goes in the
+    // bucket of the replacement's size
+    std::vector<std::shared_ptr<const texture_mods::Image>> rep[3];
     for (int k = 0; k < 3; ++k) {
         const std::string path = asset_root() + "/" + level_dir_name(L.id) + "/textures_" + names[k] + ".mrpt";
         if (!mrp::read_textures(path, L.tex[k])) std::fprintf(stderr, "[mrpw] no %s textures %s\n", names[k], path.c_str());
         L.ref[k].assign(L.tex[k].size(), TexRef{});
+        rep[k].assign(L.tex[k].size(), nullptr);
         for (size_t i = 0; i < L.tex[k].size(); ++i) {
             const mrp::Texture& t = L.tex[k][i];
             if (t.width == 0 || t.height == 0 || t.mips.empty() || t.mips[0].size() < static_cast<size_t>(t.width) * t.height) continue;
-            auto [it, fresh] = by_size.insert({{t.width, t.height}, static_cast<int>(L.buckets.size())});
+            if (texture_mods::on()) {
+                auto csm1 = [](uint32_t c) { return ((c & 0x08) != 0) != ((c & 0x10) != 0) ? c ^ 0x18u : c; };
+                std::vector<uint32_t> px(static_cast<size_t>(t.width) * t.height);
+                for (size_t q = 0; q < px.size(); ++q) px[q] = t.palette[csm1(t.mips[0][q])];
+                rep[k][i] = texture_mods::find(t.width, t.height, px.data(), names[k]);
+            }
+            const texture_mods::Image* r = rep[k][i].get();
+            const uint32_t tw = r != nullptr ? r->w : t.width, th = r != nullptr ? r->h : t.height;
+            auto [it, fresh] = by_size.insert({{tw, th}, static_cast<int>(L.buckets.size())});
             if (fresh) {
                 Bucket b;
-                b.w = t.width;
-                b.h = t.height;
+                b.w = tw;
+                b.h = th;
                 L.buckets.push_back(b);
             }
             Bucket& b = L.buckets[static_cast<size_t>(it->second)];
             L.ref[k][i].bucket = it->second;
             L.ref[k][i].layer = static_cast<uint32_t>(b.textures.size());
-            L.ref[k][i].mips = static_cast<uint32_t>(std::min<size_t>(t.mips.size(), 4));
+            L.ref[k][i].mips = static_cast<uint32_t>(std::min<size_t>(r != nullptr ? r->mips.size() : t.mips.size(), 4));
+            if (r != nullptr) {
+                L.ref[k][i].opaque = r->opaque;
+                b.textures.push_back({k, static_cast<int>(i)});
+                b.levels = std::max<uint32_t>(b.levels, L.ref[k][i].mips);
+                continue;
+            }
             {  // (host, RAC1_PERF_OPAQUE) every texel of the levels sampled (the palette's CSM1 entries, as uploaded below) with alpha >= 0x80
                 auto csm1 = [](uint32_t c) { return ((c & 0x08) != 0) != ((c & 0x10) != 0) ? c ^ 0x18u : c; };
                 bool pal_opq[256];
@@ -402,12 +421,15 @@ void load_textures(Level& L) {
         }
         for (size_t layer = 0; layer < b.textures.size(); ++layer) {
             const mrp::Texture& t = L.tex[b.textures[layer].first][static_cast<size_t>(b.textures[layer].second)];
+            const texture_mods::Image* r = rep[b.textures[layer].first][static_cast<size_t>(b.textures[layer].second)].get();
             uint32_t pal[256];
             for (uint32_t i = 0; i < 256; ++i) pal[i] = t.palette[csm1(i)];
             for (uint32_t l = 0; l < b.levels; ++l) {
                 const uint32_t w = std::max(1u, b.w >> l), h = std::max(1u, b.h >> l);
                 px.assign(static_cast<size_t>(w) * h, 0u);
-                if (l < t.mips.size() && t.mips[l].size() >= static_cast<size_t>(w) * h)
+                if (r != nullptr) {
+                    if (l < r->mips.size() && r->mips[l].size() == px.size()) px = r->mips[l];
+                } else if (l < t.mips.size() && t.mips[l].size() >= static_cast<size_t>(w) * h)
                     for (size_t q = 0; q < px.size(); ++q) px[q] = pal[t.mips[l][q]];
                 if (vk::is_active()) {
                     vk::upload_image_2d(b.vk_tex, px.data(), px.size() * 4, 0, 0, static_cast<int>(w), static_cast<int>(h), 0,
@@ -1530,8 +1552,16 @@ const TexRef* sky_texture(Level& L, const SceneFrame& S, uint64_t tex0) {
         std::memcpy(&px[i], clut + 4 * ci, 4);
     }
     std::vector<std::vector<uint32_t>> lv;
+    uint32_t bw = w, bh = h;
+    if (texture_mods::on()) {  // (a mod's replacement, texture_mods.h: its level 0)
+        if (const auto rep = texture_mods::find(w, h, px.data(), "sky")) {
+            px = rep->mips[0];
+            bw = rep->w;
+            bh = rep->h;
+        }
+    }
     lv.push_back(std::move(px));
-    r.bucket = add_bucket(L, w, h, std::move(lv));
+    r.bucket = add_bucket(L, bw, bh, std::move(lv));
     r.layer = 0;
     r.mips = 1;
     ++g_st.sky_textures;
