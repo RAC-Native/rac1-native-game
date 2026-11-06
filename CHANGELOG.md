@@ -58,6 +58,9 @@ What changed in each release. Releases are source only: you build the game with 
   aim no longer turns on in his jump only (#129).
 - Linux launcher: a dark theme (#99): it follows the desktop's light or dark setting (it was always light), or
   Settings > Theme chooses Light or Dark.
+- PAL disc 2.00: the title screen's sounds are the right ones again (#137): the region table placed the title's sound
+  tables 0x100 bytes off (data/regions/SCES-50916-2.00.txt, the boot module's run from 0x186100 as on PAL 1.00), so the
+  menu played other sounds of the title's bank. The setup runs again on its own after the update.
 
 ### Performance
 - The memory accessors and the VU0 macro ops forced inline in the ported and generated code (CMake `RAC1_INLINE_HELPERS`, off
