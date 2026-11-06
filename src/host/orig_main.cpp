@@ -3449,7 +3449,7 @@ int main(int argc, char** argv) {
                         for (const HudNote& n : notes) {
                             const int sub = sub_of(n.slot);
                             if (sub < 0) continue;
-                            if (sub == 0) hr.push_back({n.first, n.last, n.side});
+                            if (sub == 0 && n.side != 3) hr.push_back({n.first, n.last, n.side});  // (the replica: sides 1 / 2)
                             ci.hud.push_back({n.first, n.last, n.side, static_cast<uint8_t>(sub)});
                         }
                         if (use_replica) gs.set_chain_hud(std::move(hr));

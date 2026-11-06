@@ -561,6 +561,13 @@ only for a moby the moby pass drew (+0x31, the 4:3 view's decision). In a widene
   are noted as hud_draw's side elements are, in the real block and in the shadow (`MrpChainInput::Hud::sub`),
   and move toward their side by `Viewport::hud_shift`.
 
+The help panel (HUD slot 12, 0x237200: the one-line messages such as the gold weapons' "buy" prompts) centres its
+text on the frame and draws its box to the text's width; the original neither wraps nor scrolls a line wider
+than the frame, so a long translated message (Spanish on Gemlik's gold weapon cases) was cut at the frame's
+sides, in 4:3 as on the PS2. With a HUD wider than 4:3, hud_draw notes the panel's range as side 3
+(`gs::Primitive::hud` 3, the MRP's reader only): its text and box are drawn past the frame's sides at their
+own width (not stretched to the window's edges as a full-span strip), cut only at the window's.
+
 The GS replica (`RAC1_MRP=0`) moves the radar and the missiles too (the real block's ranges) but keeps
 the reticles on the 4:3 frame. Nothing changes in a 4:3 view.
 
