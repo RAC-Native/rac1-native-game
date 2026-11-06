@@ -17,6 +17,7 @@
 #include <game/render/mrp_world_assets.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
+#include <runtime/kernel/load_prof.h>
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
 #include <runtime/kernel/ee_memory.h>
@@ -813,6 +814,7 @@ void load_level(int id) {
     L.loaded = true;
     std::printf("[mrp] level %d: %zu moby classes, %zu armor classes, %zu textures in %zu arrays (%.0f ms)\n", id, L.files.size(), L.armor.size(), L.textures.size(),
                 L.buckets.size(), now_ms() - t0);
+    if (load_prof_on()) std::printf("[load] %s: %u MB in use\n", "the mobys' level assets", host_mem_mb());
 }
 
 // orig: (host) the class header in EE memory -> its asset: the level's loaded classes (0x197300: headers

@@ -1580,4 +1580,28 @@ Built and proved exact on the PC that evening; measured on the console 2026-11-0
   in render_frame, the timings; ovl_common.h is an input of the generated code: the fingerprint in generated_sources.cmake set by hand
   while it is applied). Next: the marks' cost on the Wii U; the forward set re-checked with the prefix serial (some of it is the
   prefix's: the view matrix, the camera's zone) and on other levels; then the second image and the threads.
+- **The marks' cost on the console** (2026-11-06; Kerwan, 1,500 steps not in real time, dser.sh, the marks on around
+  gameplay_frame alone; wmark_wiiu.patch in rac1-scratch/wiiu/dsplit): the build without the marks' code 16.41 / 16.38 ms a step, the
+  build with it and the marks off 16.41 / 16.38 (the null test in every accessor: nothing measurable), on 17.28 / 17.32: **+0.9 ms a
+  step (~5.5 %)**. Of the 2.5 to 3 ms the move gains, ~1.6 to 2 would remain.
+
+## The SD card's stalls and the app's memory (2026-11-06)
+
+- **Measured** (Veldin -> Novalis -> Kerwan in real time, RAC1_LOAD_PROF=1 RAC1_DISC_SLOWLOG=20 RAC1_WIIU_SLOW_READ=20): every first
+  access to a file of toc/ (the sound banks, the music and voice streams, the movies) took ~400 ms - its open ~250 ms, its first read
+  ~130 ms, whatever its size (45 KB as 360 KB) -, the levels' files ~10-40 ms. Daino's stutters at a landing, after a cutscene, at a
+  planet change: a bank or a stream's first read on the game's or the audio's thread.
+- **The cause:** toc/ had been laid out in sub-folders by moving its 1,581 files within it (sd_disc_layout.py); a FAT folder does
+  not shrink when its files leave, and the path's walk through toc/ scanned every entry left. Laid out again in a fresh folder that
+  takes toc/'s name (the sub-folders moved, nothing copied; the card's done through BaristaMAN's rename): **an open ~10 ms, a first
+  read ~20 ms**; a movie's open 470 -> 90-110 ms. sd_disc_layout.py now makes the fresh folder itself.
+- **What remains slow:** a level's data.wad read whole at the load (13-19 MB, 0.6-0.85 s), the game's level setup
+  (overlay_entry_start: Novalis 1.8 s, Kerwan 5.3 s), the level's assets for the renderers (mobys 2-3.5 s, world 2.5-4 s): all in the
+  load, not in play. In play: the streams' 64 KB reads at 20-28 ms each (the audio's thread, under the one lock of read_at).
+- **The memory:** the app's MEM2 is 914 MB (OSGetMemBound); malloc's heap reached ~424 MB on Kerwan (sbrk(0)), **~490 MB left**. In
+  use: ~73 MB before main (static buffers), the EE's 64 MB, Kerwan's moby assets ~34 MB and world assets ~90 MB, ~160 MB more in the
+  first frames (the GPU's rings: 58 MB; the 2D / GS texture caches: up to 112 MB; framebuffers). The old log's "5-18 MB free" was the
+  heap's own free space, not the app's. **Careful:** wut's sbrk does not refuse a block past the heap's end (a malloc of 2 GB
+  "succeeds"): an allocation past the 914 MB would not fail, it would corrupt. RAC1_WIIU_MEM_PROBE=1 prints the bounds and what is
+  left every 300 host frames.
 
