@@ -1,13 +1,13 @@
-// The "Graphics" options page and the new game's "Original mode / Modern mode / Experimental" choice (// ROADMAP Milestone
-// 1 items 3 and 4). Not a port: settings of the PC version's renderer, shown as a
-// page of Options (pause menu and main menu) built from the game's own widgets, as the Advanced page
+// The "Display" and "Graphics" options pages and New Game's two windows, the mode (Original / Modern) and the graphics
+// preset (Current / Original / Low / Medium / High) (ROADMAP Milestone 1 items 3 and 4). Not a port: settings of the PC version's renderer, shown as two
+// pages of Options (pause menu and main menu) built from the game's own widgets, as the Advanced page
 // (advanced.h). Render side only: none of these settings
 // changes the game's state (the view is widened, scaled and drawn by the host; proved by RAC1_RAMHASH
 // runs).
 //
-// Kept as the player's preferences (~/.config/rac1-native/graphics_options.txt) and, for the
-// picture settings and the mode chosen, in the saves' save<N>.pc (advanced.cpp). The window's own
-// settings (display mode, window size, v-sync, frame cap) belong to the machine: preferences only.
+// The machine's settings: kept as the player's preferences (~/.config/rac1-native/graphics_options.txt) only, set from the
+// main menu and the pause menu, never taken from a save nor changed by loading one (the saves' save<N>.pc held the picture
+// settings until 2026-11-02, items 32..56: read and ignored, advanced.cpp).
 #ifndef RAC1_GAME_ENHANCE_GRAPHICS_H
 #define RAC1_GAME_ENHANCE_GRAPHICS_H
 
@@ -20,7 +20,10 @@ namespace rac1 {
 // --- the host's side (orig_main.cpp) ---
 // The window as the settings ask for it
 struct GraphicsDisplay {
-    bool vulkan = false;  // the Graphics page's Renderer row (true: Vulkan, false: OpenGL, the default); read once, at the window's making
+    bool vulkan = false;  // the Graphics page's Renderer row chosen (true: Vulkan, false: OpenGL); read once, at the window's making
+    // the Renderer row never chosen (`renderer auto`, the default; RAC1_RENDERER=auto): Vulkan in a window, OpenGL headless
+    // (RAC1_RENDERER=auto: Vulkan headless too, `vulkan` set); OpenGL when Vulkan cannot start or the safety net says not to
+    bool vulkan_auto = false;
     bool fullscreen = false;
     int window_w = 960, window_h = 720;  // the size in window mode
     bool vsync = true;
@@ -30,8 +33,15 @@ struct GraphicsDisplay {
 // orig: (none) — enhancement: the host's monitors as GLFW names them, in its order, given once after GLFW is up
 // (the Monitor row's values; the list is not fixed, and its order is not stable between sessions)
 void graphics_set_monitors(std::vector<std::string> names);
-// orig: (none) — enhancement: the host's renderer when it falls back to OpenGL (no Vulkan driver)
-void graphics_set_vulkan(bool vulkan);
+// Why the renderer running is not the Renderer row's choice (the row's value says "Vulkan (OpenGL)", its help why):
+// vk::init's failures (vk_context.h InitFailure, in its order), the safety net's markers (host/vk_safety.h), RAC1_RENDERER
+enum class RendererWhy { kNone, kNoShaders, kNoDriver, kNoVulkan13, kNoDevice, kMissing, kOther, kStartFailed, kDeviceLost, kEnv };
+// orig: (none) — enhancement: the renderer the host runs, once, after making its window (OpenGL when Vulkan could not
+// start or a marker of the last run said not to try, with why)
+void graphics_set_renderer_running(bool vulkan, RendererWhy why);
+// orig: (none) — enhancement: the host's function called when the player chooses the Renderer row again (the safety net's
+// markers removed)
+void graphics_set_renderer_chosen_hook(void (*fn)());
 // orig: (none) — enhancement: the preferences read and applied to the renderer (view mode, aspect,
 // field of view, level of detail), once; nothing read while every enhancement is off (headless
 // runs, the oracle): the defaults
@@ -49,21 +59,41 @@ float graphics_render_scale();
 // orig: (none) — enhancement: testing / env overrides (RAC1_RENDER_SCALE)
 void graphics_set_render_scale_percent(int pct);
 
+// --- the global switch: Graphics Original / Enhanced ---
+// orig: (none) — enhancement: true when the renderer's additions (the modern lighting and every row of the Graphics page under
+// the switch: shadows, lights, occlusion, sun rays, surface detail, grass, ambient particles) are drawn now; false: the
+// original's picture whatever those rows hold. The one gate: the settings (and the debug menu's live switch) set the renderer's
+// switches through it
+bool graphics_enhanced();
+// orig: (none) — enhancement: the debug menu's live switch (this run only, the preferences kept): Original stops every addition
+// (their live values kept aside), Enhanced brings them back
+void graphics_set_enhanced_live(bool on);
+// orig: (none) — enhancement: the Graphics page's presets (0 Low, 1 Medium, 2 High; 3 Custom: none of them): the one the
+// renderer's live switches match, and one set live (the debug menu; this run only)
+int graphics_live_preset();
+void graphics_set_live_preset(int preset);
+
 // --- the menu's side (advanced.cpp, the ported widgets' enhancement hooks) ---
-// orig: (none) — enhancement: the Graphics page (re)built, its parent the Options page `parent`
-// (the pause menu's or the main menu's); returns the page's address
+// orig: (none) — enhancement: the Display and Graphics pages (re)built, their parent the Options page `parent`
+// (the pause menu's or the main menu's); returns the Graphics page's address (graphics_display_page: the Display page's)
 uint32_t graphics_page_install(uint32_t parent);
+uint32_t graphics_display_page();
 // orig: (none) — enhancement: the menu leaves page `cur` for its parent `to` (back): when `cur` is one of
 // our pages (Graphics, Advanced, the New Game popup), the 14 menu mobys `mobys` (their addresses) put on
 // `to`'s boxes at once. Our pages borrow their boxes' animations from other pages (Camera, Options...),
 // whose first frames are those pages' parents' boxes, not ours' parent's (the main menu's Options, the
 // root page): played back as the game plays a page's own, they ended on the wrong boxes
 void graphics_menu_back(uint32_t cur, uint32_t to, uint32_t mobys);
+// orig: (none) — enhancement: the menu goes forward from page `cur` to `to`: from New Game's first window to its second,
+// the boxes held as they are (both windows are the same boxes; played from their first frames they jumped)
+void graphics_menu_forward(uint32_t cur, uint32_t to, uint32_t mobys);
 // orig: (none) — enhancement: a text of ours (the Graphics page's, the mode popup's), 0 for others
 uint32_t graphics_text(int32_t id);
-// orig: (none) — enhancement: the ids of the page's title and of its Options help text
+// orig: (none) — enhancement: the ids of the pages' titles and of their Options help texts (Graphics, Display)
 int32_t graphics_title_text();
 int32_t graphics_help_text();
+int32_t graphics_display_title_text();
+int32_t graphics_display_help_text();
 // orig: (none) — enhancement: the settings widget (0x27ef00) changed `byte`: a Graphics row
 // stepped (+1); true when it was one of ours
 bool graphics_setting_changed(uint32_t byte);
@@ -75,27 +105,25 @@ bool graphics_settings_dpad(uint32_t w, uint32_t e, uint32_t pressed);
 void graphics_mips_apply();
 // orig: (none) — enhancement: once a game frame: the preferences written when changed
 void graphics_frame();
-// orig: (none) — enhancement: the debug menu's Enhancements tab: the renderer's live switches (lighting, shadows, lights, occlusion,
-// rays, materials, particles, water, grass) taken as the player's preferences ("Save as my settings"), written at the next frame
+// orig: (none) — enhancement: the debug menu's Enhancements tab: the live switch (Original / Enhanced) and the renderer's live values
+// (lighting, shadows, lights, occlusion, rays, materials, particles, grass) taken as the player's preferences ("Save as my
+// settings"), written at the next frame
 void graphics_take_live();
-// orig: (none) — enhancement: the saves' items (save<N>.pc, advanced.cpp's format): ours added /
-// one applied (false: not ours)
-void graphics_save_items(std::vector<uint8_t>& d, uint32_t& count);
-bool graphics_save_item(uint32_t id, const uint8_t* data, uint32_t size);
 
 // --- the main menu (the boot module) ---
 // orig: (none) — enhancement: the main menu's start (front:0x218f98): the Options pages of ours
-// (Graphics, Advanced) and the New Game popup's page built, New Game pointed at the popup
+// (Display, Graphics, Advanced) and New Game's two windows built, New Game pointed at the first
 void graphics_main_menu_install();
 // orig: (none) — enhancement: the main menu's Options list `w` just got its entries (front:0x21a1b0):
-// Graphics, Controls and Advanced added
+// Display, Graphics, Controls and Advanced added
 void graphics_main_options_entries(uint32_t w);
-// orig: (none) — enhancement: the list `w` runs its entry's action 4 (New Game): when it is the
-// popup's, the mode of its selected entry applied
+// orig: (none) — enhancement: the list `w` runs its entry's action 4 (New Game): when it is New Game's second window's,
+// the mode chosen in the first (advanced_apply_mode) and the preset of its selected entry applied
 void graphics_new_game_choice(uint32_t w);
-// The modes (the popup's entries; 0 none chosen yet)
-enum : uint32_t { GAME_MODE_NONE = 0, GAME_MODE_ORIGINAL = 1, GAME_MODE_MODERN = 2, GAME_MODE_EXPERIMENTAL = 3 };
-// orig: (none) — enhancement: the Advanced settings set for a mode (advanced.cpp)
+// The modes (the first window's entries; 0 none known). 3 was Experimental (Modern plus Graphics Enhanced, High) until
+// 2026-11-02: an older save's 3 is read as Modern
+enum : uint32_t { GAME_MODE_NONE = 0, GAME_MODE_ORIGINAL = 1, GAME_MODE_MODERN = 2 };
+// orig: (none) — enhancement: the Advanced page's gameplay rows set for a mode (advanced.cpp)
 void advanced_apply_mode(uint32_t mode);
 
 }  // namespace rac1

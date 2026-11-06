@@ -1,10 +1,11 @@
 // The "Advanced" options: settings of this PC version that the original does not have. Each one is off by default, so the
 // game plays as the original unless
-// the player turns it on. They are shown as a page of the pause menu's Options (Options >
-// Advanced), built from the original's own widgets: the page, its title and its settings widget
-// are copies of the Camera page's, kept in a block of EE RAM the game never uses. The settings
-// are kept with the saves (save<N>.pc next to the game's save<N>.bin, which stays untouched) and
-// as the player's preferences (~/.config/rac1-native/advanced_options.txt).
+// the player turns it on. They are shown as a page of Options (Options > Advanced), built from the original's own
+// widgets: the page, its title and its settings widget are copies of the Camera page's, kept in a block of EE RAM the
+// game never uses. Two kinds of rows: a playthrough's settings (the gameplay rows: the pause menu's page; New Game's
+// Original / Modern sets them; kept with the saves, save<N>.pc next to the game's save<N>.bin, which stays untouched)
+// and the global ones (settings of the whole game: the main menu's page). Both are kept as the player's preferences
+// (~/.config/rac1-native/advanced_options.txt).
 // (Fades, is a console compromise removed rather than an enhancement: its default, 0, is
 // the port's fast fade; 1 the original's.)
 #ifndef RAC1_GAME_ENHANCE_ADVANCED_H
@@ -17,6 +18,13 @@ namespace rac1 {
 
 // Every enhancement off and the preferences file never read (the oracle: the faithful port alone)
 extern bool g_advanced_disabled;
+
+// orig: (none) — enhancement: the preferences read, once (for a setting read before the pages are made or a gameplay
+// frame ran: the Voice row's, voice_language.h); nothing while every enhancement is off
+void advanced_prefs_load();
+// orig: (none) — enhancement: the preferences written now (a setting changed off the Advanced page's rows: the Language
+// page's); nothing before they are read or while every enhancement is off
+void advanced_prefs_save();
 
 // orig: (none) — enhancement: called by menu_open (0x276190): the Advanced page put in the
 // Options page of the current overlay (the entry before Quit Game, its help text), the settings
@@ -65,6 +73,9 @@ void advanced_update_skip(const std::string& id);
 // id (the main menu's Options list)
 uint32_t advanced_page();
 int32_t advanced_title_text();
+// orig: (none) — enhancement: the main menu's Advanced page (the global rows) when the main menu is up and it has rows,
+// else 0 (no Advanced entry in the main menu's Options)
+uint32_t advanced_main_page();
 
 // orig: (none) — enhancement: once a gameplay frame (0x297f78): the settings saved when changed
 void advanced_frame();
@@ -76,6 +87,19 @@ bool advanced_world_paused();
 // orig: (none) — enhancement: Options > Advanced > Buy All Ammo is On: the Vendor's ammo list has the "All Ammo" entry
 // first (vendor_buy_all.h)
 bool advanced_vendor_buy_all();
+
+// orig: (none) — enhancement: main menu > Options > Advanced > Cut Content is On (a global row: the preferences only; what it
+// brings back and RAC1_CUT_CONTENT, cut_content.h)
+bool advanced_cut_content();
+// orig: (none) — enhancement: main menu > Options > Advanced > Corrected Texts is On (a global row: the preferences only;
+// shown with a data disc that gives the texts; RAC1_CORRECTED_TEXTS, corrected_texts.h)
+bool advanced_corrected_texts();
+// orig: (none) — enhancement: main menu > Options > Advanced > 1.02 Fixes is On (a global row: the preferences only; the
+// fixes and RAC1_FIXES102, fixes102.h)
+bool advanced_fixes102();
+// orig: (none) — enhancement: main menu > Options > Advanced > 1.02 Gameplay is On (a global row: the preferences only;
+// the 1.02 build's fixes that change how the game plays and RAC1_GAMEPLAY102, fixes102.h)
+bool advanced_gameplay102();
 
 // orig: (none) — enhancement: Options > Advanced > Skip Cutscenes is Always: the game's own skip tests (the scenes'
 // cutscene_update 0x298f90, the movies' 0x2eddd0) take Start alone, as they do on Veldin and in Challenge Mode, on

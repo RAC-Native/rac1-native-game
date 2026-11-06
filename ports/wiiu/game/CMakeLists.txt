@@ -34,6 +34,7 @@ function(rac1_sources_of file target out)
 endfunction()
 
 rac1_sources_of(${ROOT}/CMakeLists.txt rac1_runtime RUNTIME_SRC)
+list(APPEND RUNTIME_SRC ${ROOT}/runtime/vk/vk_context.cpp)  # (listed there in a generator expression, not Darwin's: read as none above)
 rac1_sources_of(${ROOT}/CMakeLists.txt rac1_formats FORMATS_SRC)
 rac1_sources_of(${ROOT}/CMakeLists.txt rac1_setup SETUP_SRC)
 rac1_sources_of(${ROOT}/src/game/CMakeLists.txt rac1_game GAME_SRC)
@@ -59,6 +60,7 @@ set(HOST_SRC
     ${ROOT}/src/host/sim_autopilot.cpp
     ${ROOT}/src/host/update_check.cpp
     ${ROOT}/src/host/progress.cpp
+    ${ROOT}/src/host/vk_safety.cpp
     ${ROOT}/src/profiler/host_profiler.cpp
     ${ROOT}/src/jobs/job_pool.cpp
     ${ROOT}/src/platform/coroutine_ppc.S

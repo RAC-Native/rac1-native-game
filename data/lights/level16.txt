@@ -2,3 +2,56 @@
 # light x y z  r g b  intensity radius flicker on
 # Kalebo III: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
 sun -14.0 85.0
+emit tie 2008  1.671 3.711 3.956  0.238 1.000 0.701  1.000 1.000 0.000  0.00
+emissive tfrag 0 tex 69  2.90 0.73
+material shrub 546 tex 0 metal 0.35 1
+emissive tie 2157 tex 0  1.43 0.00
+material tfrag 0 tex 5 metal 0.35 1
+material tfrag 0 tex 6 metal 0.35 1
+material tie 2195 tex 0 metal 0.35 1
+material tfrag 0 tex 71 metal 0.35 1
+material tfrag 0 tex 64 metal 0.35 1
+material tfrag 0 tex 72 metal 0.35 1
+material tie 2054 tex 5 metal 0.35 1
+emit shrub 524  0.659 0.230 1.912  0.157 0.482 1.000  1.822 2.963 0.000  0.00
+emissive moby 799 tex 0  1.68 0.00
+emissive surface 1943 tex 13351  0.69 0.00
+material tie 2208 tex 0 metal 0.48 1.17
+emissive shrub 524 tex 0  1.00 0.00
+emissive shrub 524 tex 1  1.00 0.00
+emit tie 2166  0.792 1.732 2.959  1.000 0.000 0.000  1.437 2.661 0.000  0.00
+material tie 2163 tex 0 metal 0.35 1
+emissive moby 1140 tex 0  2.51 0.65
+material tie 2175 tex 0 metal 0.35 1
+material tfrag 0 tex 57 metal 0.35 1.15
+emissive moby 1441 tex 2  2.20 0.00
+emissive moby 1441 tex 9  2.10 0.00
+emissive moby 1441 tex 8  2.20 0.00
+material moby 1441 tex 4 metal 0.35 1
+material moby 1441 tex 5 metal 0.35 1
+material moby 1441 tex 6 metal 0.35 1
+material moby 1441 tex 7 metal 0.35 1
+material moby 1441 tex 10 metal 0.35 1
+material moby 1441 tex 0 metal 0.35 1
+material moby 1441 tex 1 metal 0.35 1
+material moby 1439 tex 0 metal 0.35 1
+material moby 1439 tex 1 metal 0.35 1
+emissive moby 1439 tex 2  2.38 0.00
+material moby 1439 tex 3 metal 0.35 1
+material moby 1439 tex 4 metal 0.35 1
+material moby 1439 tex 5 metal 0.35 1
+material moby 1439 tex 6 metal 0.35 1
+material moby 1439 tex 7 metal 0.35 1
+material tfrag 0 tex 59 metal 0.45 0.6
+emissive shrub 525 tex 0  1.97 0.00
+emissive shrub 525 tex 1  2.29 0.00
+material tfrag 0 tex 70 wet 0.6 0.45
+material tie 2171 tex 1 metal 0.53 0.73
+emissive moby 1891 tex 1  4.00 0.00
+material moby 1891 tex 0 metal 0.35 1
+material tie 2003 tex 0 metal 0.35 1
+material tie 2261 tex 0 metal 0.35 1
+material tie 2002 tex 0 metal 0.35 1
+material shrub 461 tex 0 metal 0.35 1
+emissive moby 552 tex 7  2.71 0.00
+emissive surface 1943 tex 13303  0.44 0.00

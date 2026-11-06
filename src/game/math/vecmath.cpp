@@ -685,7 +685,7 @@ float cos_vu(float a) { return vu_sin_kernel(a + VU_HALF_PI); }
 float sin_vu(float a) { return vu_sin_kernel(a); }
 
 namespace {
-// ((2026-11-01, the Wii U's game step) RAC1_EULER_CACHE, the Wii U's default 1, the PC's 0) euler_vu is a function of the three angles'
+// ((2026-11-01, the Wii U's game step) RAC1_PERF_EULER_CACHE, the Wii U's default 1, the PC's 0) euler_vu is a function of the three angles'
 // bits alone (its constants, nothing else read): its rows kept per angles in a small table per thread, a moby whose rotation did not
 // change (most of them, every frame) found there - the same rows. On the console (Kerwan) the conversion was ~6.6% of the game thread.
 struct EulerCache {
@@ -696,7 +696,7 @@ struct EulerCache {
 };
 bool euler_cache_on() {
     static const bool on = [] {
-        const char* e = std::getenv("RAC1_EULER_CACHE");
+        const char* e = std::getenv("RAC1_PERF_EULER_CACHE");
 #if defined(__WIIU__) && !defined(RAC1_VU0_EXACT)
         return e == nullptr || std::atoi(e) != 0;
 #else

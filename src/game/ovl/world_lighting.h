@@ -8,8 +8,7 @@ namespace rac1 {
 
 // orig: 0x00295350
 void world_tfrag_lighting(uint32_t list);
-// orig: 0x00295350 (host form: world_lighting_fast.cpp; RAC1_WTL_FAST, the Wii U's default) - false when not taken
-bool world_tfrag_lighting_fast(uint32_t list);
+void world_tfrag_lighting_tr(uint32_t list);  // orig: (host) its transliteration (world_lighting.cpp), the hand-written routine's reference
 // orig: 0x00297728
 void world_tie_lighting(uint32_t list);
 // orig: 0x00288908

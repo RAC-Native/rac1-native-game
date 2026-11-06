@@ -29,12 +29,11 @@
     "    vec2 u = f * f * (3.0 - 2.0 * f);\n"                                                                                                            \
     "    return mix(mix(sm_hash(i), sm_hash(i + vec2(1.0, 0.0)), u.x), mix(sm_hash(i + vec2(0.0, 1.0)), sm_hash(i + vec2(1.0, 1.0)), u.x), u.y);\n"      \
     "}\n"                                                                                                                                                \
-    "/* the options (uMat[127]): x Water, z Grass (y unused); w 1 when the picture of the 3D is this frame's (the seas drawn after it) */\n"             \
+    "/* the options (uMat[255]): z Grass (x, y unused); w 1 when the picture of the 3D is this frame's (the seas drawn after it) */\n"                   \
     "int sm_type(uint s) {\n"                                                                                                                            \
     "    if (s == 0u || uShOn == 0 || uShPass != 0 || uEmis[s].w > 0.0) return 0;\n"                                                                     \
     "    int ty = int(uEmis[s].z + 0.5);\n"                                                                                                              \
-    "    if (ty == 8) return uMat[127].z > 0.0 ? ty : 0;  /* grass: its own option */\n"                                                                 \
-    "    if ((ty == 4 || ty == 5 || ty == 7) && uMat[127].x > 0.0) return ty;       /* lava, water, quicksand: the Water option too */\n"                \
+    "    if (ty == 8) return uMat[255].z > 0.0 ? ty : 0;  /* grass: its own option */\n"                                                                 \
     "    if (uMat[0].x == 0.0) return 0;\n"                                                                                                              \
     "    return ty;\n"                                                                                                                                   \
     "}\n"                                                                                                                                                \
@@ -56,6 +55,20 @@
     "    g += d3 * (0.055 * cos(dot(d3, P.xy) * 3.7 + t * 3.1));\n"                                                                                      \
     "    g += vec2(sm_noise(P.xy * 2.3 + t * 0.6) - 0.5, sm_noise(P.xy * 2.3 - t * 0.5 + 9.1) - 0.5) * 0.12;\n"                                          \
     "    return normalize(n - vec3(g, 0.0) * (amt * smoothstep(0.3, 0.7, n.z)));\n"                                                                      \
+    "}\n"                                                                                                                                                \
+    "/* the same waves seen by a pixel covering px world units of the water (the point's fwidth): each train - and the noise - faded where it is\n"      \
+    "   finer than about three pixels a wave (gone at two: past it a train only sparkles from one frame to the next as it scrolls, far away and at\n"    \
+    "   grazing angles); .w the share of the waves' slope faded (the glint widened by it, so that the far water keeps a soft sheen, not a sparkle) */\n" \
+    "vec4 sm_waves_aa(vec3 n, vec3 P, float amt, float t, float px) {\n"                                                                                 \
+    "    vec2 d1 = vec2(0.8, 0.6), d2 = vec2(-0.447, 0.894), d3 = vec2(0.196, -0.981);\n"                                                                \
+    "    /* (cycles a unit: 1.3, 2.1, 3.7 radians / 2 pi; the noise's 2.3 cells a unit) */\n"                                                            \
+    "    vec4 w = 1.0 - smoothstep(vec4(0.15), vec4(0.45), px * vec4(0.207, 0.334, 0.589, 1.15));\n"                                                     \
+    "    vec2 g = d1 * (0.065 * w.x * cos(dot(d1, P.xy) * 1.3 + t * 1.7));\n"                                                                            \
+    "    g += d2 * (0.063 * w.y * cos(dot(d2, P.xy) * 2.1 - t * 2.3));\n"                                                                                \
+    "    g += d3 * (0.055 * w.z * cos(dot(d3, P.xy) * 3.7 + t * 3.1));\n"                                                                                \
+    "    if (w.w > 0.0) g += vec2(sm_noise(P.xy * 2.3 + t * 0.6) - 0.5, sm_noise(P.xy * 2.3 - t * 0.5 + 9.1) - 0.5) * (0.12 * w.w);\n"                   \
+    "    float lost = 1.0 - dot(w, vec4(0.065, 0.063, 0.055, 0.035)) / 0.218;\n"                                                                         \
+    "    return vec4(normalize(n - vec3(g, 0.0) * (amt * smoothstep(0.3, 0.7, n.z))), lost);\n"                                                          \
     "}\n"                                                                                                                                                \
     "/* the sky (the ambient particles' sky grid, docs/particles.md, Under a roof): 1 under the open sky, 0 under a roof - the rain's rings\n"           \
     "   only where it rains. Its window's heights, then a row: x, y its corner, the squares' size, 1 when on (no texture: 1) */\n"                       \
@@ -155,9 +168,8 @@
     "/* `metal`: the hit kept only where the ray passes within some 0.2 units of the old picture's surface, faded out by twice that (the\n"              \
     "   puddles' and the water's test - 0.3 + 5 % of the distance, faded to three times it - took rays passing well behind an object as hits:\n"         \
     "   on a polished metal the mirror smeared and jumped from frame to frame, #102 batch 1); `blur` (0 sharp, 1) spreads the picture read */\n"         \
-    "bool sm_ssr_water = false; /* (the Water option's High: the picture's reflection whatever Surface Detail is) */\n"                                  \
     "vec3 sm_ssr(vec3 P, vec3 R, vec3 miss, float blur, bool metal) {\n"                                                                                 \
-    "    if ((uMat[0].x < 1.5 && !sm_ssr_water) || uMat[0].w == 0.0) return miss;\n"                                                                     \
+    "    if (uMat[0].x < 1.5 || uMat[0].w == 0.0) return miss;\n"                                                                                        \
     "    float t0 = 0.0, t = 0.2;\n"                                                                                                                     \
     "    vec2 uv;\n"                                                                                                                                     \
     "    for (int i = 0; i < 24; ++i) {\n"                                                                                                               \
@@ -186,6 +198,274 @@
     "    }\n"                                                                                                                                            \
     "    return miss;\n"                                                                                                                                 \
     "}\n"                                                                                                                                                \
+    "/* Options > Graphics > Water Reflections (mrp_reflect.cpp): the water's reflection, the screen's last picture no more (it broke as soon\n"          \
+    "   as the camera moved: a hole under Ratchet and every object in front of the water, flashing - Daino at Rilgar's harbour). uMat2[253]: x\n"         \
+    "   1 Low (the cube map alone), 2 Medium (the planar view, the cube map where it has nothing; + 8: RAC1_REFLECT_DEBUG), y the planar\n"               \
+    "   view's water height, z 1 when the planar view is this frame's, w 1 when the cube map is made; uMat2[254] the 3D's rectangle in the\n"             \
+    "   framebuffer (x, y, 1 / w, 1 / h) */\n"                                                                                                            \
+    "#ifdef VULKAN\n"                                                                                                                                     \
+    "layout(set = 1, binding = 8) uniform sampler2D uReflPlanar;\n"                                                                                       \
+    "layout(set = 1, binding = 9) uniform sampler2DArray uReflCube;\n"                                                                                    \
+    "#else\n"                                                                                                                                             \
+    "layout(binding = 22) uniform sampler2D uReflPlanar;\n"                                                                                               \
+    "layout(binding = 23) uniform sampler2DArray uReflCube;\n"                                                                                            \
+    "#endif\n"                                                                                                                                            \
+    "vec3 sm_refl_dbg = vec3(-1.0);\n"                                                                                                                    \
+    "/* the cube map along R: its six faces are layers 0..5 (+x, -x, +y, -y, +z, -z; from `base`: the probe's first, uMat2[251].x, or the sky's, .y), each drawn looking along its axis F with the up U (z; y\n"          \
+    "   for the faces up and down) as glm::lookAt makes the view, through a square projection of 90 degrees; alpha 0 where no view drew */\n"             \
+    "vec4 sm_refl_cube(vec3 R, float base) {\n"                                                                                                                       \
+    "    vec3 a = abs(R), F, U;\n"                                                                                                                        \
+    "    float layer;\n"                                                                                                                                  \
+    "    if (a.x >= a.y && a.x >= a.z) { F = vec3(sign(R.x), 0.0, 0.0); U = vec3(0.0, 0.0, 1.0); layer = R.x > 0.0 ? 0.0 : 1.0; }\n"                      \
+    "    else if (a.y >= a.z) { F = vec3(0.0, sign(R.y), 0.0); U = vec3(0.0, 0.0, 1.0); layer = R.y > 0.0 ? 2.0 : 3.0; }\n"                               \
+    "    else { F = vec3(0.0, 0.0, sign(R.z)); U = vec3(0.0, 1.0, 0.0); layer = R.z > 0.0 ? 4.0 : 5.0; }\n"                                               \
+    "    vec3 Rt = normalize(cross(F, U)), Up = cross(Rt, F);\n"                                                                                          \
+    "    vec2 uv = vec2(dot(R, Rt), dot(R, Up)) / max(dot(R, F), 1e-4) * 0.5 + 0.5;\n"                                                                    \
+    "    return textureLod(uReflCube, vec3(clamp(uv, vec2(0.0), vec2(1.0)), layer + base), 0.0);\n"                                                              \
+    "}\n"                                                                                                                                                 \
+    "/* the sky's own faces along R, alpha what they hold: their alpha is not that (the sky's layers are blended over each other, the\n" \
+    "   last one's alpha left in the face: 0 over the lower sky, the horizon's haze, and between the clouds), so whatever was drawn there -\n" \
+    "   anything but the faces' cleared black - counts as held. Read by its alpha, the far sea, which mirrors the sky just above the\n" \
+    "   horizon, took `miss` (the sea's own dark environment colour) wherever the probe had nothing: a flat dark patchwork on Low, where\n" \
+    "   Medium's planar view shows the sky. Low's alone: Medium's fallback is read as it was, and the trace's misses too (its far sea,\n" \
+    "   bright, flickered more where the half-resolution reflection's edges meet the sky) */\n" \
+    "vec4 sm_refl_sky(vec3 R, float base) {\n" \
+    "    vec4 s = sm_refl_cube(R, base);\n" \
+    "    return vec4(s.rgb, max(s.a, smoothstep(0.0, 0.03, max(s.r, max(s.g, s.b)))));\n" \
+    "}\n" \
+    "/* the probe's direction for the ray from P along R: where it meets the sphere of uMat2[252].w around the probe (uMat2[252].xyz) -\n"   \
+    "   the scenery taken as lying there, so it stays put on the water as the camera moves; R itself outside the sphere */\n"                   \
+    "vec3 sm_refl_probe(vec3 P, vec3 R) {\n"                                                                                                     \
+    "    vec4 q = uMat2[252];\n"                                                                                                                 \
+    "    vec3 o = P - q.xyz;\n"                                                                                                                  \
+    "    float b = dot(o, R), c = dot(o, o) - q.w * q.w;\n"                                                                                      \
+    "    if (q.w <= 0.0 || c >= 0.0) return R;\n"                                                                                               \
+    "    return o + (sqrt(b * b - c) - b) * R;\n"                                                                                               \
+    "}\n"                                                                                                                                       \
+    "/* how much of the probe a water point at P may take: none past its sphere. There the ray is read from the probe as it is, and the\n" \
+    "   probe's few rows around its horizon - the islands' and the shores' silhouettes, seen from 6 units above the water - were spread\n" \
+    "   over the whole far sea (whose reflected rays all rise by a hair): flat bands of the islands' colours with stepped edges, the\n" \
+    "   cube's texels magnified many times, where Medium shows the sky. Scenery there lies nearer the probe than the point itself: no\n" \
+    "   reflection of it can reach the point */\n" \
+    "float sm_refl_probe_w(vec3 P) {\n" \
+    "    vec4 q = uMat2[252];\n" \
+    "    return q.w <= 0.0 ? 1.0 : 1.0 - smoothstep(0.75, 1.0, length(P - q.xyz) / q.w);\n" \
+    "}\n" \
+    "#ifdef RAC1_RT\n"                                                                                                                                                    \
+    "/* RAC1_RT=1 (testing, ray tracing: mrp_rt.h; the seas' Vulkan variant alone): the reflection's ray traced through the level's static\n"                                                                                                                                                    \
+    "   world (ties, shrubs, tfrags at their finest; High (RT): the frame's mobys too) from the water along the reflection of a gentle normal. uRtMode: bit 0 on;\n"                                                                                                                                                    \
+    "   bits 1..3 RAC1_RT_DEBUG (1 where the colour comes from: green the picture, red the hit's own shading, blue no hit; 2 the hit's\n"                                                                                                                                                    \
+    "   distance; 3 what was hit: red a tie, green a shrub, blue a tfrag; 4 the hit's own shading everywhere, the picture left out; 5 the reflection alone);\n"                                                                                                                                                    \
+    "   bits 4..5 RAC1_RT_SHADE (0 the picture where the hit lies in it, else the cube map / the sky - phase 0; 1 the picture there, else\n"                                                                                                                                                    \
+    "   the hit shaded from its own triangle - phase 2; 2 the hit's own shading always); bits 6..7 the pass (0 traced here, 1 the\n"                                                                                                                                                    \
+    "   half-resolution trace: the colour and its distance into its image, 2 that image upsampled - its texels at this pixel's distance -,\n"                                                                                                                                                    \
+    "   traced here where none is) */\n"                                                                                                                                                    \
+    "layout(set = 2, binding = 0) uniform accelerationStructureEXT uRtTlas;\n"                                                                                                                                                    \
+    "layout(std430, set = 2, binding = 1) readonly buffer RtInsts { uvec4 rt_inst[]; };  /* per instance: its first triangle, its first colour, its kind */\n"                                                                                                                                                    \
+    "layout(std430, set = 2, binding = 2) readonly buffer RtTris { uvec4 rt_tri[]; };    /* per triangle three: mrp_rt.h RtTri */\n"                                                                                                                                                    \
+    "layout(std430, set = 2, binding = 8) readonly buffer RtMTris { uvec4 rt_mtri[]; };  /* the frame's mobys' triangles (High (RT)): RtTri, the colours RGBA8 */\n"        \
+    "layout(std430, set = 2, binding = 3) readonly buffer RtRCols { uint rt_rcol[]; };   /* the resident tie / shrub colours */\n"                                                                                                                                                    \
+    "layout(std430, set = 2, binding = 4) readonly buffer RtTCols { uint rt_tcol[]; };   /* the tfrags' */\n"                                                                                                                                                    \
+    "layout(set = 2, binding = 5) uniform sampler2DArray uRtTex[64];                      /* the world's texture arrays, the mobys' after them */\n"                                                                                                                                                    \
+    "layout(std430, set = 2, binding = 7) readonly buffer RtFrame { vec4 rt_fog; vec4 rt_fogcol; vec4 rt_par; };  /* rt_par: the ripples' spread, the upsample's */  /* the world's fog (mrp_rt_note_fog) */\n" \
+    "layout(set = 2, binding = 6) uniform sampler2D uRtHalf;                              /* the half-resolution trace */\n"                                                                                                                                                    \
+    "vec3 sm_rt_out = vec3(0.0);\n"                                                                                                                                                    \
+    "float sm_rt_out_d = -1.0;\n"                                                                                                                                                    \
+    "/* a lit colour (the tfrags' or the resident ones; none past the buffer - a level's first frame: grey) */\n" \
+    "vec4 sm_rt_col(bool tf, uint i) {\n" \
+    "    uint n = uint(tf ? rt_tcol.length() : rt_rcol.length());\n" \
+    "    return i < n ? unpackUnorm4x8(tf ? rt_tcol[i] : rt_rcol[i]) : vec4(0.5);\n" \
+    "}\n" \
+    "/* the surface of triangle `prim` of instance `ii` at the barycentrics `bc`: the texel at the level a footprint of `foot` (in the\n"                                                                                                                                                    \
+    "   instance's own units) gives, times the vertices' lit colours as the world's draws combine them (TFX, TCC); alpha 255-based */\n"                                                                                                                                                    \
+    "vec4 sm_rt_surface(uint ii, uint prim, vec2 bc, float foot) {\n"                                                                                                                                                    \
+    "    bool mob = (ii & 0x800000u) != 0u;  /* (a moby: its custom index the first of its triangles in rt_mtri, bit 23 set) */\n"        \
+    "    uvec4 I = mob ? uvec4(ii & 0x7fffffu, 0u, 3u, 0u) : rt_inst[ii];\n"        \
+    "    uint tr = 3u * (I.x + prim);\n"        \
+    "    uvec4 A = mob ? rt_mtri[tr] : rt_tri[tr], B = mob ? rt_mtri[tr + 1u] : rt_tri[tr + 1u], C = mob ? rt_mtri[tr + 2u] : rt_tri[tr + 2u];\n"        \
+    "    vec3 w = vec3(1.0 - bc.x - bc.y, bc.x, bc.y);\n"        \
+    "    vec2 st = uintBitsToFloat(A.xy) * w.x + uintBitsToFloat(A.zw) * w.y + uintBitsToFloat(B.xy) * w.z;\n"        \
+    "    vec4 c;\n"        \
+    "    if (mob) c = unpackUnorm4x8(C.x) * w.x + unpackUnorm4x8(C.y) * w.y + unpackUnorm4x8(C.z) * w.z;\n"        \
+    "    else if (I.z == 2u) c = sm_rt_col(true, C.x) * w.x + sm_rt_col(true, C.y) * w.y + sm_rt_col(true, C.z) * w.z;\n"        \
+    "    else c = sm_rt_col(false, I.y + C.x) * w.x + sm_rt_col(false, I.y + C.y) * w.y + sm_rt_col(false, I.y + C.z) * w.z;\n"        \
+    "    if (I.z == 1u) c.a = 128.0 / 255.0;\n"        \
+    "    uint tex = B.z, word = C.w, b = tex & 0xffu;\n"                                                                                                                                                    \
+    "    if (b == 0xffu || (word & 1u) != 0u) return vec4(c.rgb, c.a * 255.0);\n"                                                                                                                                                    \
+    "    int mips = int((word >> 22) & (mob ? 7u : 3u)) + 1;\n"        \
+    "    vec2 tsz = vec2(textureSize(uRtTex[nonuniformEXT(b)], 0).xy);\n"                                                                                                                                                    \
+    "    float lod = log2(max(foot, 1e-6)) + uintBitsToFloat(B.w) + log2(max(tsz.x, tsz.y));\n"                                                                                                                                                    \
+    "    vec4 t = textureLod(uRtTex[nonuniformEXT(b)], vec3(st, float(tex >> 8)), clamp(lod, 0.0, float(mips - 1)));\n"                                                                                                                                                    \
+    "    uint tfx = (word >> 1) & 3u, tcc = (word >> 3) & 1u;\n"                                                                                                                                                    \
+    "    vec4 o;\n"                                                                                                                                                    \
+    "    if (tfx == 0u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0); o.a = tcc != 0u ? t.a * c.a * (255.0 / 128.0) : c.a; }\n"                                                                                                                                                    \
+    "    else if (tfx == 1u) { o.rgb = t.rgb; o.a = tcc != 0u ? t.a : c.a; }\n"                                                                                                                                                    \
+    "    else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }\n"                                                                                                                                                    \
+    "    return vec4(clamp(o.rgb, 0.0, 1.0), o.a * 255.0);\n"                                                                                                                                                    \
+    "}\n"                                                                                                                                                    \
+    "vec3 sm_water_rt(vec3 P, vec3 N, vec3 Nw, vec3 miss) {\n"                                                                                                                                                    \
+    "    vec4 r = uMat2[253];\n"                                                                                                                                                    \
+    "    int dbg = (uRtMode >> 1) & 7, shade = (uRtMode >> 4) & 3, pass = (uRtMode >> 6) & 3;\n"                                                                                                                                                    \
+    "    float d0 = length(uShCam - P);\n"                                                                                                                                                    \
+    "    if (pass == 2) {  /* the half-resolution trace read around the pixel: its texels within 1 + rt_par.y half texels (a tent: the\n" \
+    "                         planar view's spread, Medium reads its view so), each one fetched alone - never filtered: a filtered read\n" \
+    "                         mixed a texel's distance with its neighbour's or with an empty texel's 0, so that at an edge (the far islands'\n" \
+    "                         feet, a post's, a shore's) whether the taps matched hung on where the pixel fell among the texels, which changed\n" \
+    "                         with every step of the camera: a line flickering under the far islands of Pokitaru and at Hoven's posts -, and\n" \
+    "                         kept where its distance is the one the pixel's own water has at that texel (the pixel's 1 / distance carried\n" \
+    "                         over the screen by its slope: the far water changes its distance by much from one texel to the next) */\n" \
+    "        ivec2 hsz = textureSize(uRtHalf, 0);\n" \
+    "        vec2 hp = gl_FragCoord.xy * 0.5 - 0.5;  /* (the pixel in the half image's texels: texel i's centre at i) */\n" \
+    "        ivec2 i0 = ivec2(floor(hp));\n" \
+    "        float id0 = 1.0 / d0, rad = 1.0 + rt_par.y;\n" \
+    "        vec2 gi = vec2(dFdx(id0), dFdy(id0)) * 2.0;  /* (1 / distance a half texel on) */\n" \
+    "        vec4 sum = vec4(0.0);\n" \
+    "        for (int y = -1; y <= 2; ++y)\n" \
+    "            for (int x = -1; x <= 2; ++x) {\n" \
+    "                ivec2 t = i0 + ivec2(x, y);\n" \
+    "                vec2 dt = vec2(t) - hp;\n" \
+    "                float ws = max(1.0 - abs(dt.x) / rad, 0.0) * max(1.0 - abs(dt.y) / rad, 0.0);\n" \
+    "                if (ws <= 0.0 || any(lessThan(t, ivec2(0))) || any(greaterThanEqual(t, hsz))) continue;\n" \
+    "                vec4 v = texelFetch(uRtHalf, t, 0);\n" \
+    "                if (v.a <= 0.0) continue;\n" \
+    "                float e = max(id0 + dot(gi, dt), id0 * 0.25);  /* (the 1 / distance the pixel's water has there) */\n" \
+    "                float rel = abs(v.a * e - 1.0);\n" \
+    "                sum += vec4(v.rgb, 1.0) * (ws * (1.0 - smoothstep(0.03, 0.08, rel)));\n" \
+    "            }\n" \
+    "        if (sum.w > 0.02) {\n" \
+    "            if (dbg == 5) sm_refl_dbg = sum.rgb / sum.w;\n" \
+    "            return sum.rgb / sum.w;\n" \
+    "        }\n" \
+    "        /* (else the texels near the pixel's distance, more loosely, up to four texels up and down - an edge: a sliver of water at an\n" \
+    "           island's foot whose texels the island hides at half resolution, a row whose texels all lie a little off: read from the cube\n" \
+    "           map, the sky, it was a bright line under the islands every other frame; the one nearest texel alone, a dotted one) */\n" \
+    "        vec4 alt = vec4(0.0);\n" \
+    "        for (int y = -4; y <= 4; ++y)\n" \
+    "            for (int x = -1; x <= 2; ++x) {\n" \
+    "                ivec2 t = i0 + ivec2(x, y);\n" \
+    "                vec2 dt = vec2(t) - hp;\n" \
+    "                float ws = max(1.0 - abs(dt.x) / rad, 0.0) * max(1.0 - abs(dt.y) / 5.0, 0.0);\n" \
+    "                if (ws <= 0.0 || any(lessThan(t, ivec2(0))) || any(greaterThanEqual(t, hsz))) continue;\n" \
+    "                vec4 v = texelFetch(uRtHalf, t, 0);\n" \
+    "                if (v.a <= 0.0) continue;\n" \
+    "                float rel = abs(v.a * max(id0 + dot(gi, dt), id0 * 0.25) - 1.0);\n" \
+    "                alt += vec4(v.rgb, 1.0) * (ws * (1.0 - smoothstep(0.08, 0.4, rel)));\n" \
+    "            }\n" \
+    "        if (alt.w > 0.02) {\n" \
+    "            if (dbg == 5) sm_refl_dbg = alt.rgb / alt.w;\n" \
+    "            return dbg == 1 ? vec3(1.0, 1.0, 0.0) : alt.rgb / alt.w;\n" \
+    "        }\n" \
+    "        if (dbg == 1) return vec3(1.0, 0.0, 1.0);  /* (magenta: the half image had nothing here: the cube map) */\n" \
+    "    }\n" \
+"    vec3 V = (uShCam - P) / d0;\n"                                                                                                                                                    \
+    "    vec3 R = reflect(-V, normalize(mix(N, Nw, 0.2)));  /* (the ripples' half slope of the cube map's: sharper, less sparkle) */\n"                                                                                                                                                    \
+    "    R = normalize(vec3(R.xy, max(R.z, 0.002)));  /* (never into the water) */\n"                                                                                                                                                    \
+    "    vec4 c = r.w > 0.5 ? sm_refl_cube(sm_refl_probe(P, R), uMat2[251].x) : vec4(0.0);\n"                                                                                                                                                    \
+    "    vec4 sky = r.w > 0.5 && uMat2[251].y >= 0.0 ? sm_refl_cube(R, uMat2[251].y) : vec4(0.0);\n"                                                                                                                                                    \
+    "    vec3 env = mix(mix(miss, sky.rgb, sky.a), c.rgb, c.a);\n"                                                                                                                                                    \
+    "    /* the footprint of a pixel per unit of distance (the 3D's pixel; twice that at half resolution) and the ripples' spread (rt_par.x, radians): the hit's texture level */\n"                                                                                                                                                    \
+    "#ifdef RAC1_RT_UPSAMPLE  /* (the seas reading the half-resolution trace: no ray query in this variant - its registers are the sea's) */\n" \
+    "    return env;\n" \
+    "#else\n" \
+    "    float pix = 2.0 / (uShProj.y * float(textureSize(uSsrDepth, 0).y)) * (pass == 1 ? 2.0 : 1.0);\n"                                                                                                                                                    \
+    "    rayQueryEXT q;\n"                                                                                                                                                    \
+    "    rayQueryInitializeEXT(q, uRtTlas, gl_RayFlagsNoneEXT, 0xffu, P + N * 0.02, 0.02, R, 4000.0);\n"                                                                                                                                                    \
+    "    while (rayQueryProceedEXT(q)) {  /* (a candidate: a triangle of a cluster with alpha-tested textures - kept where its texel passes the world's test) */\n"                                                                                                                                                    \
+    "        if (rayQueryGetIntersectionTypeEXT(q, false) != gl_RayQueryCandidateIntersectionTriangleEXT) continue;\n"                                                                                                                                                    \
+    "        mat4x3 m = rayQueryGetIntersectionObjectToWorldEXT(q, false);\n"                                                                                                                                                    \
+    "        float tc = rayQueryGetIntersectionTEXT(q, false);\n"                                                                                                                                                    \
+    "        vec4 s = sm_rt_surface(uint(rayQueryGetIntersectionInstanceCustomIndexEXT(q, false)), uint(rayQueryGetIntersectionPrimitiveIndexEXT(q, false)),\n"                                                                                                                                                    \
+    "                               rayQueryGetIntersectionBarycentricsEXT(q, false), ((d0 + tc) * pix + tc * rt_par.x) / max(length(m[0]), 1e-6));\n"                                                                                                                                                    \
+    "        if (s.a >= 96.0) rayQueryConfirmIntersectionEXT(q);\n"                                                                                                                                                    \
+    "    }\n"                                                                                                                                                    \
+    "    vec3 col;\n"                                                                                                                                                    \
+    "    if (rayQueryGetIntersectionTypeEXT(q, true) == gl_RayQueryCommittedIntersectionNoneEXT) {\n"                                                                                                                                                    \
+    "        col = dbg == 1 ? vec3(0.0, 0.0, 1.0) : dbg == 2 || dbg == 3 ? vec3(0.0) : env;\n"                                                                                                                                                    \
+    "    } else {\n"                                                                                                                                                    \
+    "        float t = rayQueryGetIntersectionTEXT(q, true);\n"                                                                                                                                                    \
+    "        uint ii = uint(rayQueryGetIntersectionInstanceCustomIndexEXT(q, true));\n"                                                                                                                                                    \
+    "        if (dbg == 2) col = vec3(fract(t / 8.0), clamp(t / 150.0, 0.0, 1.0), 0.2);\n"                                                                                                                                                    \
+    "        else if (dbg == 3) { uint kind = (ii & 0x800000u) != 0u ? 3u : rt_inst[ii].z; col = kind == 0u ? vec3(1.0, 0.2, 0.2) : kind == 1u ? vec3(0.2, 1.0, 0.2) : kind == 2u ? vec3(0.2, 0.3, 1.0) : vec3(1.0, 1.0, 0.2); }\n"        \
+    "        else {\n"                                                                                                                                                    \
+    "            vec3 H = P + R * t;\n"                                                                                                                                                    \
+    "            float k = 0.0;\n"                                                                                                                                                    \
+    "            vec3 pic = vec3(0.0);\n"                                                                                                                                                    \
+    "            if (uMat[0].w != 0.0 && shade < 2 && dbg != 4) {\n"                                                                                                                                                    \
+    "                vec2 uv;\n"                                                                                                                                                    \
+    "                float dz = sm_ssr_dz(H, uv);\n"                                                                                                                                                    \
+    "                if (uv.x >= 0.0 && dz > -1e8) {\n"                                                                                                                                                    \
+    "                    float tol = 0.05 + 0.01 * (uSsrVP * vec4(H, 1.0)).w;\n"                                                                                                                                                    \
+    "                    vec2 e = smoothstep(vec2(0.0), vec2(0.03), uv) * smoothstep(vec2(0.0), vec2(0.03), 1.0 - uv);\n"                                                                                                                                                    \
+    "                    k = e.x * e.y * (1.0 - smoothstep(tol, 2.0 * tol, abs(dz)));\n"                                                                                                                                                    \
+    "                    vec2 o = 3.0 / vec2(textureSize(uSsrCol, 0));  /* (over a few pixels, as the planar view: the lit windows sparkled) */\n"                                                                                                                                                    \
+    "                    pic = (textureLod(uSsrCol, uv, 0.0).rgb * 2.0 + textureLod(uSsrCol, uv + o, 0.0).rgb + textureLod(uSsrCol, uv - o, 0.0).rgb\n"                                                                                                                                                    \
+    "                           + textureLod(uSsrCol, uv + vec2(o.x, -o.y), 0.0).rgb + textureLod(uSsrCol, uv - vec2(o.x, -o.y), 0.0).rgb) / 6.0;\n"                                                                                                                                                    \
+    "                }\n"                                                                                                                                                    \
+    "            }\n"                                                                                                                                                    \
+    "            vec3 own = env;\n"                                                                                                                                                    \
+    "            if ((shade > 0 || dbg == 4) && k < 1.0) {\n"                                                                                                                                                    \
+    "                mat4x3 m = rayQueryGetIntersectionObjectToWorldEXT(q, true);\n"                                                                                                                                                    \
+    "                own = sm_rt_surface(ii, uint(rayQueryGetIntersectionPrimitiveIndexEXT(q, true)), rayQueryGetIntersectionBarycentricsEXT(q, true),\n"                                                                                                                                                    \
+    "                                    ((d0 + t) * pix + t * rt_par.x) / max(length(m[0]), 1e-6)).rgb;\n" \
+    "                /* the world's fog, by the reflection's whole path (the ties' F: clamp(fog.y + depth x fog.x, fog.w, fog.z)) */\n" \
+    "                if (rt_fogcol.w > 0.5) own = mix(rt_fogcol.rgb, own, clamp(rt_fog.y + (d0 + t) * rt_fog.x, rt_fog.w, rt_fog.z) / 255.0);\n"                                                                                                                                                    \
+    "            }\n"                                                                                                                                                    \
+    "            col = dbg == 1 ? vec3(0.0, k, (1.0 - k) * (shade > 0 ? 0.0 : 1.0)) + vec3((1.0 - k) * (shade > 0 ? 1.0 : 0.0), 0.0, 0.0) : mix(own, pic, k);\n"                                                                                                                                                    \
+    "        }\n"                                                                                                                                                    \
+    "    }\n"                                                                                                                                                    \
+    "    if (dbg == 5) sm_refl_dbg = col;  /* (5: the reflection alone, as RAC1_REFLECT_DEBUG=2 shows Medium's) */\n" \
+    "    if (pass == 1) {\n"                                                                                                                                                    \
+    "        sm_rt_out = col;\n"                                                                                                                                                    \
+    "        sm_rt_out_d = d0;\n"                                                                                                                                                    \
+    "    }\n"                                                                                                                                                    \
+    "    return col;\n"                                                                                                                                                    \
+    "#endif\n" \
+    "}\n"                                                                                                                                                    \
+    "#endif\n"                                                                                                                                                    \
+    "/* the water's reflection: `miss` (the level's sky colour) where the cube map has nothing; on Medium the planar view where the water lies\n"         \
+    "   at its plane (faded out over a few tenths of a unit off it, and where the surface is not flat - a stream's slope), read at the pixel's\n"         \
+    "   own place moved by the ripples (Nw, a gentle slope, against the face's N: less far away), over a few of its texels (the ripples moving the read over the\n"        \
+    "   lit windows of a city sparkled), kept inside its edges; the cube map where it drew nothing, along the reflection of a gentler normal yet\n"           \
+    "   (the ripples' whole slope swept the cube's texels: a sparkle) */\n"                                                                               \
+    "vec3 sm_water_refl(vec3 P, vec3 N, vec3 Nw, vec3 miss) {\n"                                                                                          \
+    "#ifdef RAC1_RT\n"                                                                                                                                    \
+    "    if (uRtMode > 0) return sm_water_rt(P, N, Nw, miss);\n"                                                                                          \
+    "#endif\n"                                                                                                                                            \
+    "    vec4 r = uMat2[253];\n"                                                                                                                          \
+    "    bool dbg = r.x > 7.5, raw = r.x > 15.5;\n"                                                                                                       \
+    "    float mode = raw ? r.x - 16.0 : dbg ? r.x - 8.0 : r.x;\n"                                                                                        \
+    "    vec3 V = normalize(uShCam - P);\n"                                                                                                               \
+    "    vec3 Rc = reflect(-V, normalize(mix(N, Nw, 0.4)));\n"                                                                                    \
+    "    vec4 c, sky;\n" \
+    "    if (mode < 1.5 && r.w > 0.5) {  /* (Low: the far sea read as sm_refl_sky and sm_refl_probe_w say; Medium's fallback read as it was) */\n" \
+    "        vec3 Rl = normalize(vec3(Rc.xy, max(Rc.z, 0.002)));  /* (never into the water, as the trace's ray: the far sea's ripples tipped it under the horizon) */\n" \
+    "        c = sm_refl_cube(sm_refl_probe(P, Rl), uMat2[251].x);\n" \
+    "        c.a *= sm_refl_probe_w(P);\n" \
+    "        sky = uMat2[251].y >= 0.0 ? sm_refl_sky(Rl, uMat2[251].y) : vec4(0.0);\n" \
+    "    } else {\n" \
+    "        c = r.w > 0.5 ? sm_refl_cube(sm_refl_probe(P, Rc), uMat2[251].x) : vec4(0.0);\n" \
+    "        sky = r.w > 0.5 && uMat2[251].y >= 0.0 ? sm_refl_cube(Rc, uMat2[251].y) : vec4(0.0);  /* (the sky's own faces: at no distance) */\n" \
+    "    }\n" \
+    "    vec3 env = mix(mix(miss, sky.rgb, sky.a), c.rgb, c.a);\n"                                                                                                             \
+    "    float k = 0.0;\n"                                                                                                                                \
+    "    vec4 p = vec4(0.0);\n"                                                                                                                           \
+    "    if (mode > 1.5 && r.z > 0.5) {\n"                                                                                                                \
+    "        k = (1.0 - smoothstep(0.08, 0.35, abs(P.z - r.y))) * smoothstep(0.9, 0.97, N.z);\n"                                                          \
+    "        if (k > 0.0) {\n"                                                                                                                            \
+    "            vec4 v = uMat2[254];\n"                                                                                                                  \
+    "            float d = length(uShCam - P);\n"                                                                                                         \
+    "            vec2 uv = (gl_FragCoord.xy - v.xy) * v.zw + (Nw.xy - N.xy) * (0.18 * 8.0 / (8.0 + d));\n"                                                \
+    "            vec2 o = v.zw * 1.5;  /* (the view is drawn at half the size: some three of its texels) */\n"                                            \
+    "            uv = clamp(uv, o + 0.002, 1.0 - o - 0.002);\n"                                                                                           \
+    "            p = (textureLod(uReflPlanar, uv, 0.0) * 2.0 + textureLod(uReflPlanar, uv + vec2(o.x, o.y), 0.0) + textureLod(uReflPlanar, uv - vec2(o.x, o.y), 0.0)\n"\
+    "                 + textureLod(uReflPlanar, uv + vec2(o.x, -o.y), 0.0) + textureLod(uReflPlanar, uv - vec2(o.x, -o.y), 0.0)) / 6.0;\n"                \
+    "        }\n"                                                                                                                                         \
+    "    }\n"                                                                                                                                             \
+    "    /* (testing: green the planar view, red the planar view without anything there, blue the cube map, black neither - the sky colour;\n"            \
+    "       or the reflection alone) */\n"                                                                                                                \
+    "    if (dbg) sm_refl_dbg = raw ? env * (1.0 - k * p.a) + k * p.rgb : mode > 1.5 ? vec3(k * (1.0 - p.a), k * p.a, (1.0 - k) * c.a) : vec3(0.0, 0.0, c.a);\n"   \
+    "    return env * (1.0 - k * p.a) + k * p.rgb;  /* (its taps over the empty texels - alpha 0, black - weigh in as nothing: no dark rim) */\n"                                                                                                              \
+    "}\n"                                                                                                                                                 \
     "/* High: lava's heat shimmer - the last frame's picture around the pixel, displaced by a rising noise */\n"                                         \
     "vec3 sm_shimmer(vec3 c, vec3 P, float t) {\n"                                                                                                       \
     "    if (uMat[0].x < 1.5 || uMat[0].w == 0.0) return c;\n"                                                                                           \
@@ -199,7 +479,7 @@
     "   emitters. The game's own (the list's first uEmis[0].y) light the mobys already, per vertex in the skinning's record: left out.\n"                \
     "   No cube shadows (a moby casts into them: it would shadow itself); the face normal as the world's (sh_n) */\n"                                    \
     "vec3 sh_points_moby(vec3 c) {\n"                                                                                                                    \
-    "    if (uShOn == 0 || uShPass != 0 || uPtN <= 0) return c;\n"                                                                                       \
+    "    if (uShOn == 0 || uShPass == 1 || uPtN <= 0) return c;\n"                                                                                       \
     "    int first = int(uEmis[0].y + 0.5);\n"                                                                                                           \
     "    if (first >= uPtN) return c;\n"                                                                                                                 \
     "    vec3 add = vec3(0.0);\n"                                                                                                                        \
@@ -227,10 +507,7 @@
     "    }\n"                                                                                                                                            \
     "    return c + add;\n"                                                                                                                              \
     "}\n"                                                                                                                                                \
-    "/* ---- Options > Graphics > Water (docs/materials.md): water, lava, quicksand; uMat2[s] = wave scale, speed, foam, depth ---- */\n"                \
-    "#ifndef VULKAN\n"                                                                                                                                   \
-    "uniform vec4 uMat2[128];\n"                                                                                                                         \
-    "#endif\n"                                                                                                                                           \
+    "/* ---- Surface Detail's lava and quicksand relief, and the water's depth under it ---- */\n"                                                       \
     "/* a value noise and its gradient */\n"                                                                                                             \
     "vec3 sm_noised(vec2 p) {\n"                                                                                                                         \
     "    vec2 i = floor(p), f = fract(p);\n"                                                                                                             \
@@ -239,14 +516,19 @@
     "    float k = a - b - c + d;\n"                                                                                                                     \
     "    return vec3(a + (b - a) * u.x + (c - a) * u.y + k * u.x * u.y, du * (vec2(b - a, c - a) + k * u.yx));\n"                                        \
     "}\n"                                                                                                                                                \
-    "/* two procedural normal maps scrolling across each other (two octaves each): the surface's height's gradient in world x, y */\n"                   \
-    "vec2 sm_wgrad(vec2 p, float t) {\n"                                                                                                                 \
+    "/* two procedural normal maps scrolling across each other (two octaves each): the surface's height's gradient in world x, y; pp the pixel's\n"      \
+    "   size in p's units: each octave faded where its cells are finer than about two pixels (gone past 0.7 cells a pixel: it only sparkled from\n"      \
+    "   frame to frame as it scrolled, far away and at grazing angles), .z the share of the slope faded */\n"                                            \
+    "vec3 sm_wgrad(vec2 p, float t, float pp) {\n"                                                                                                       \
+    "    /* (cells a unit of p: 0.55, 1.265, 1.4, 2.94) */\n"                                                                                            \
+    "    vec4 w = 1.0 - smoothstep(vec4(0.3), vec4(0.7), pp * vec4(0.55, 1.265, 1.4, 2.94));\n"                                                          \
     "    vec2 q1 = p * 0.55 + vec2(0.31, 0.12) * t;\n"                                                                                                   \
-    "    vec2 g1 = sm_noised(q1).yz * 0.55 + sm_noised(q1 * 2.3 + 5.1).yz * 0.44;\n"                                                                     \
+    "    vec2 g1 = sm_noised(q1).yz * (0.55 * w.x) + (w.y > 0.0 ? sm_noised(q1 * 2.3 + 5.1).yz * (0.44 * w.y) : vec2(0.0));\n"                           \
     "    mat2 R = mat2(0.8, 0.6, -0.6, 0.8);\n"                                                                                                          \
     "    vec2 q2 = R * (p * 1.4) + vec2(-0.21, 0.33) * (t * 1.3);\n"                                                                                     \
-    "    vec2 g2 = sm_noised(q2).yz * 1.4 + sm_noised(q2 * 2.1 + 1.3).yz * 0.9;\n"                                                                       \
-    "    return g1 * 0.5 + (transpose(R) * g2) * 0.22;\n"                                                                                                \
+    "    vec2 g2 = sm_noised(q2).yz * (1.4 * w.z) + (w.w > 0.0 ? sm_noised(q2 * 2.1 + 1.3).yz * (0.9 * w.w) : vec2(0.0));\n"                             \
+    "    float lost = 1.0 - dot(w, vec4(0.275, 0.22, 0.308, 0.198)) / 1.001;\n"                                                                          \
+    "    return vec3(g1 * 0.5 + (transpose(R) * g2) * 0.22, lost);\n"                                                                                    \
     "}\n"                                                                                                                                                \
     "/* the 3D's depth under a point (the picture: its view-depth less the point's; 1e4 none - the sky, off the picture, or the\n"                       \
     "   last frame's picture holding the surface itself, the world's water) and its place in the picture */\n"                                           \
@@ -256,95 +538,18 @@
     "    float dz = sm_ssr_dz(P, uv);\n"                                                                                                                 \
     "    if (dz < -1e8) return 1e4;\n"                                                                                                                   \
     "    float d = -dz;\n"                                                                                                                               \
-    "    if (uMat[127].w == 0.0 && d < 0.03) return 1e4;\n"                                                                                              \
+    "    if (uMat[255].w == 0.0 && d < 0.03) return 1e4;\n"                                                                                              \
     "    return max(d, 0.0);\n"                                                                                                                          \
     "}\n"                                                                                                                                                \
-    "/* what the seas' shaders do with the water after the fog (mrp_fx.cpp kV7Fs, gen_vk_shaders.py MRP_VU7_FS): 0 nothing; 1 their colour\n"            \
-    "   put over the 3D under them (sm_w_refr) - the picture is this frame's -, 2 their own blending: both with the game's own alpha times\n"            \
-    "   sm_w_alpha (the depth: less where shallow, more where deep) plus sm_w_add (Fresnel, foam) */\n"                                                  \
-    "int sm_w_mode = 0;\n"                                                                                                                               \
-    "float sm_w_alpha = 1.0, sm_w_add = 0.0;\n"                                                                                                          \
-    "vec3 sm_w_refr = vec3(0.0);\n"                                                                                                                      \
-    "vec3 sm_tint(float w) { return vec3(floor(w / 65536.0), mod(floor(w / 256.0), 256.0), mod(w, 256.0)) * (2.0 / 255.0); }\n"                          \
-    "vec3 sm_water2(vec3 lit, vec3 orig, vec3 tex, vec3 L, uint s, int ty) {\n"                                                                          \
-    "    vec4 m = uMat[s], m2 = uMat2[s];\n"                                                                                                             \
-    "    float t = uMat[0].y;\n"                                                                                                                         \
-    "    vec3 P = vShWorld, V = normalize(uShCam - P);\n"                                                                                                \
-    "    float up = smoothstep(0.3, 0.7, sh_n.z);\n"                                                                                                     \
-    "    float spd = ty == 5 ? 1.0 : ty == 4 ? 0.12 : 0.05;\n"                                                                                           \
-    "    float amp = ty == 5 ? 0.09 * m.y : 0.1;\n"                                                                                                      \
-    "    vec2 g = sm_wgrad(P.xy * (m2.x * 1.5), t * spd * m2.y);\n"                                                                                      \
-    "    vec3 N = normalize(sh_n - vec3(g * amp, 0.0) * up);\n"                                                                                          \
-    "    if (ty == 5 && uMat[0].z > 0.0) N = sm_rain(N, P, t, uMat[0].z * 0.5 * sm_sky(P));\n"                                                           \
-    "    vec2 uv;\n"                                                                                                                                     \
-    "    float depth = sm_under(P, uv);\n"                                                                                                               \
-    "    float dv = depth * clamp(abs(V.z) * 1.2, 0.1, 1.0);  /* (along the view: about the water's height there) */\n"                                  \
-    "    float deep = 1.0 - exp(-dv / max(m2.w, 0.05));\n"                                                                                               \
-    "    float shore = 1.0 - smoothstep(0.0, 0.1 + 0.05 * m2.w, dv);  /* (a thin band: the depth's tenth or so) */\n"                                    \
-    "    float brk = sm_noise(P.xy * (3.0 * m2.x) + vec2(t * 0.4, -t * 0.3)) + 0.3 * sin(dv * 25.0 - t * 2.0);\n"                                        \
-    "    float foam = m2.z * shore * smoothstep(0.25, 0.6, brk);\n"                                                                                      \
-    "    if (ty == 4) {  /* lava: the crust's relief lit by the sun, a hotter seam where it meets the shore; then the emissive */\n"                     \
-    "        float pulse = 1.0 + m.y * sin(t * 0.8 + sm_noise(P.xy * 0.08) * 6.2832);\n"                                                                 \
-    "        float v = max(tex.r, max(tex.g, tex.b)), th = m.z;\n"                                                                                       \
-    "        float k = th > 0.0 ? smoothstep(th - 0.04, th + 0.04, v) : 1.0;\n"                                                                          \
-    "        vec3 c = lit * (0.85 + 0.3 * clamp(dot(N, normalize(uShSun + vec3(0.0, 0.0, 0.5))), 0.0, 1.0));\n"                                          \
-    "        c = mix(c, max(c, orig * (m.x * pulse)), k);\n"                                                                                             \
-    "        c *= 1.0 + m2.z * shore;\n"                                                                                                                 \
-    "        if (m.w >= 0.0) c *= mix(vec3(1.0), sm_tint(m.w), 0.5);\n"                                                                                  \
-    "        return uMat[127].x >= 1.5 ? sm_shimmer(c, P, t) : c;\n"                                                                                     \
-    "    }\n"                                                                                                                                            \
-    "    float ndv = max(dot(N, V), 0.0);\n"                                                                                                             \
-    "    float F = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);\n"                                                                                                 \
-    "    vec3 R = reflect(-V, N);\n"                                                                                                                     \
-    "    sm_ssr_water = uMat[127].x >= 1.5;\n"                                                                                                           \
-    "    if (ty == 7) {  /* quicksand: a dull wet sheen over the slow drift, a darker wet band at its edge */\n"                                         \
-    "        vec3 c = lit * (1.0 - 0.25 * m2.z * shore);\n"                                                                                              \
-    "        if (m.w >= 0.0) c *= mix(vec3(1.0), sm_tint(m.w), 0.5);\n"                                                                                  \
-    "        return c * (1.0 - 0.2 * m.y) + m.y * (sm_spec(N, V, 0.45, vec3(0.04)) * 0.8 + sm_env(R, 0.5) * L * (F * 0.6));\n"                           \
-    "    }\n"                                                                                                                                            \
-    "    /* water: lighter where shallow, toward the tint (or a deeper shade of its own colour) where deep; the sky's reflection (High: the\n"           \
-    "       3D's), Fresnel, the sun's and the lamps' glints, the foam at the shore */\n"                                                                 \
-    "    vec3 dcol = m.w >= 0.0 ? mix(lit, sm_tint(m.w) * max(dot(L, vec3(0.3333)), 0.15), 0.6) : lit * 0.85;\n"                                         \
-    "    vec3 wcol = mix(lit * 1.05, dcol, deep * 0.6);\n"                                                                                               \
-    "    R.z = max(R.z, 0.03);  /* (a wave's normal never shows the water the ground's shade below the horizon) */\n"                                    \
-    "    vec3 sky = sm_env(R, 0.05) * L;\n"                                                                                                              \
-    "    vec3 refl = sm_ssr(P + sh_n * 0.03, R, sky, 0.0, false);\n"                                                                                     \
-    "    vec3 spec = sm_spec(N, V, 0.05, vec3(0.02)) * 2.0;\n"                                                                                           \
-    "    vec3 fcol = vec3(0.9, 0.95, 1.0) * clamp(dot(lit, vec3(0.3333)) * 2.2, 0.4, 1.0);  /* (white, as bright as the place) */\n"                     \
-    "    vec3 S = mix(wcol * (1.0 - F * 0.7) + refl * (F * 0.7 * m.x), fcol, clamp(foam, 0.0, 1.0)) + spec * m.x;\n"                                     \
-    "    if (uMat[0].x > 0.5) {  /* Surface Detail on too: its water is the look (sh_material's ty 5: its ripples over the normal maps, its\n"           \
-    "       Fresnel, reflection and glint), over the depth's colour, with the foam; the composite over the 3D under it as below */\n"                    \
-    "        vec3 Nw = sm_waves(N, P, m.y, t);\n"                                                                                                        \
-    "        vec3 Rw = reflect(-V, Nw);\n"                                                                                                               \
-    "        float Fs = mix(0.15, 1.0, 0.02 + 0.98 * pow(1.0 - max(dot(Nw, V), 0.0), 5.0));\n"                                                           \
-    "        vec3 rs = sm_ssr(P + sh_n * 0.03, Rw, sm_env(Rw, 0.05) * L, 0.0, false);\n"                                                                 \
-    "        vec3 base = wcol * (1.0 - 0.35 * Fs * m.x) + m.x * (rs * (Fs * 0.7) + sm_spec(Nw, V, 0.07, vec3(0.02)) * 1.5);\n"                           \
-    "        S = mix(base, fcol, clamp(foam, 0.0, 1.0));\n"                                                                                              \
-    "    }\n"                                                                                                                                            \
-    "    float ak = mix(0.7, 1.0, deep), aa = F * 0.35 + foam;\n"                                                                                        \
-    "    if (depth < 1e3 && uMat[127].w != 0.0) {  /* the 3D under it, this frame's: seen through, bent by the waves on High */\n"                       \
-    "        vec2 ruv = uv;\n"                                                                                                                           \
-    "        if (uMat[127].x >= 1.5) {  /* (the bent sample kept only where what it shows lies behind the water: not an object in front) */\n"           \
-    "            vec2 o = clamp(uv + (N.xy - sh_n.xy) * (0.03 * min(dv, 1.5)), vec2(0.0), vec2(1.0));\n"                                                 \
-    "            float d = textureLod(uSsrDepth, o, 0.0).r;\n"                                                                                           \
-    "            float fw = (uSsrVP * vec4(P, 1.0)).w;\n"                                                                                                \
-    "            if (d < 1.0 && uSsrZ.y / ((d * 2.0 - 1.0) - uSsrZ.x) > fw + 0.02) ruv = o;\n"                                                           \
-    "        }\n"                                                                                                                                        \
-    "        sm_w_refr = textureLod(uSsrCol, ruv, 0.0).rgb * mix(vec3(1.0), wcol / max(max(lit.r, max(lit.g, lit.b)), 0.05), 0.15 + 0.25 * deep);\n"     \
-    "        sm_w_mode = 1;\n"                                                                                                                           \
-    "    } else if (depth < 1e3) {\n"                                                                                                                    \
-    "        sm_w_mode = 2;\n"                                                                                                                           \
-    "    }\n"                                                                                                                                            \
-    "    sm_w_alpha = ak;\n"                                                                                                                             \
-    "    sm_w_add = aa;\n"                                                                                                                               \
-    "    return S;\n"                                                                                                                                    \
-    "}\n"                                                                                                                                                \
+    "/* Surface Detail's water standing for what lies under it (0..1; kV7Fs: the sea put over its texture's average colour there, opaque at 1,\n"        \
+    "   not over what the game draws behind it): set by sm_material's water */\n"                                                                        \
+    "float sm_w_open = 0.0;\n"                                                                                                                           \
     "/* ---- Options > Graphics > Grass on the tfrags with the `grass` material: Low's relief (sm_grass_detail) and High's shells (sm_grass;\n"          \
     "   uShell k + 256 n), with the stencil's mask of where the grass is the ground seen (sm_grass_probe, uShell < 0). uMat[s]: height,\n"               \
-    "   density, bend; uMat2[127]: the wind, the distance; uMat2[0] the hero ---- */\n"                                                                  \
+    "   density, bend; uMat2[255]: the wind, the distance; uMat2[0] the hero ---- */\n"                                                                  \
     "/* the blades' field (a cell's blade: its offset, height 0.45..1; the wind's lean, Ratchet's push): the blade's height at a point (0 none) */\n"    \
     "vec2 sm_grass_bend(vec3 P, vec4 m) {\n"                                                                                                             \
-    "    vec4 w = uMat2[127], hero = uMat2[0];\n"                                                                                                        \
+    "    vec4 w = uMat2[255], hero = uMat2[0];\n"                                                                                                        \
     "    float t = uMat[0].y;\n"                                                                                                                         \
     "    vec2 bend = w.xy * (0.35 + 0.25 * sin(t * 1.7 + dot(P.xy, vec2(0.6, 0.4)))) * m.z;\n"                                                           \
     "    if (hero.w > 0.0) {  /* pushed away from Ratchet's feet */\n"                                                                                   \
@@ -360,7 +565,7 @@
     "vec3 sm_grass_detail(vec3 lit, uint s) {\n"                                                                                                         \
     "    vec4 m = uMat[s];\n"                                                                                                                            \
     "    vec3 P = vShWorld;\n"                                                                                                                           \
-    "    float fade = 1.0 - smoothstep(uMat2[127].z * 0.6, uMat2[127].z, length(uShCam - P));\n"                                                         \
+    "    float fade = 1.0 - smoothstep(uMat2[255].z * 0.6, uMat2[255].z, length(uShCam - P));\n"                                                         \
     "    if (fade <= 0.0) return lit;\n"                                                                                                                 \
     "    vec2 base = (P.xy - sm_grass_bend(P, m) * 0.15) * m.y;\n"                                                                                       \
     "    vec2 fq = fwidth(base);\n"                                                                                                                      \
@@ -393,7 +598,7 @@
     "   pixel, until none at the distance or where a blade would be under a pixel (no edge where the shells end) */\n"                                   \
     "float sm_grass(uint s, int k, int n) {\n"                                                                                                           \
     "    if (sm_type(s) != 8) return -1.0;\n"                                                                                                            \
-    "    vec4 m = uMat[s], w = uMat2[127];\n"                                                                                                            \
+    "    vec4 m = uMat[s], w = uMat2[255];\n"                                                                                                            \
     "    float h = float(k) / float(n);\n"                                                                                                               \
     "    vec3 P = vShWorld;\n"                                                                                                                           \
     "    vec2 q = (P.xy - sm_grass_bend(P, m) * (0.15 + m.x * h * h * 3.0)) * m.y;\n"                                                                    \
@@ -430,7 +635,6 @@
     "    vec3 L = clamp(light, 0.0, 1.5);\n"                                                                                                             \
     "    float ndv = max(dot(N, V), 0.0);\n"                                                                                                             \
     "    vec3 R = reflect(-V, N);\n"                                                                                                                     \
-    "    if (uMat[127].x > 0.0 && (ty == 4 || ty == 5 || ty == 7)) return sm_water2(lit, orig, tex, L, s, ty);\n"                                        \
     "    if (ty == 8) return sm_grass_detail(lit, s);  /* (Low: the blades as a detail relief of the ground; High's shells over it) */\n"                \
     "    if (ty == 1) {  /* metal: a roughness (0 a mirror .. 1 brushed), b strength */\n"                                                               \
     "        float r = clamp(m.x, 0.03, 1.0), gloss = 1.0 - r;\n"                                                                                        \
@@ -469,21 +673,46 @@
     "        vec3 pud = lit * (0.4 * (1.0 - F)) + refl * F + sm_spec(Np, V, 0.06, vec3(0.02));\n"                                                        \
     "        return mix(base, pud, mask);\n"                                                                                                             \
     "    }\n"                                                                                                                                            \
-    "    if (ty == 4) {  /* lava: a strength, b pulse, c threshold; emissive by nature, a slow pulse across the world */\n"                              \
+    "    /* the slow relief of lava's crust and of quicksand: two normal maps scrolling slowly in world space, faded where finer than the pixel\n"       \
+    "       (up where the surface lies flat) */\n"                                                                                                       \
+    "    vec2 fwp = fwidth(P.xy);\n"                                                                                                                     \
+    "    float px = max(fwp.x, fwp.y);\n"                                                                                                                \
+    "    if (ty == 4 || ty == 7) {\n"                                                                                                                    \
+    "        vec3 gw = sm_wgrad(P.xy * 1.5, t * (ty == 4 ? 0.12 : 0.05), px * 1.5);\n"                                                                   \
+    "        N = normalize(N - vec3(gw.xy * 0.1, 0.0) * smoothstep(0.3, 0.7, N.z));\n"                                                                   \
+    "        R = reflect(-V, N);\n"                                                                                                                      \
+    "        ndv = max(dot(N, V), 0.0);\n"                                                                                                               \
+    "    }\n"                                                                                                                                            \
+    "    if (ty == 4) {  /* lava: a strength, b pulse, c threshold; emissive by nature, a slow pulse across the world; its relief lit by the sun */\n"   \
     "        float pulse = 1.0 + m.y * sin(t * 0.8 + sm_noise(P.xy * 0.08) * 6.2832);\n"                                                                 \
     "        float v = max(tex.r, max(tex.g, tex.b)), th = m.z;\n"                                                                                       \
     "        float k = th > 0.0 ? smoothstep(th - 0.04, th + 0.04, v) : 1.0;\n"                                                                          \
-    "        vec3 c = mix(lit, max(lit, orig * (m.x * pulse)), k);\n"                                                                                    \
+    "        vec3 c = lit * (0.85 + 0.3 * clamp(dot(N, normalize(uShSun + vec3(0.0, 0.0, 0.5))), 0.0, 1.0));\n"                                          \
+    "        c = mix(c, max(c, orig * (m.x * pulse)), k);\n"                                                                                             \
     "        return sm_shimmer(c, P, t);\n"                                                                                                              \
     "    }\n"                                                                                                                                            \
     "    if (ty == 5) {  /* water: a strength, b ripples; on top of the game's own water (its scrolling and colours kept) */\n"                          \
-    "        vec3 Nw = sm_waves(N, P, m.y, t);\n"                                                                                                        \
+    "        /* (the ripples faded where they are finer than the pixel - far away, at grazing angles - and the glint widened by what they lost:\n"       \
+    "           drawn whole, the far sea sparkled from frame to frame, Pokitaru's patches of tagged sea around its islands worst. The\n"              \
+    "           reflection: Water Reflections' cube map or planar view, sm_water_refl - no longer the last frame's picture) */\n"                                                                                                \
+    "        vec4 wa = sm_waves_aa(N, P, m.y, t, px);\n"                                                                                                 \
+    "        vec3 Nw = wa.xyz;\n"                                                                                                                        \
     "        if (rain > 0.0) Nw = sm_rain(Nw, P, t, rain * 0.5 * sm_sky(P));\n"                                                                          \
     "        vec3 Rw = reflect(-V, Nw);\n"                                                                                                               \
     "        float F = 0.02 + 0.98 * pow(1.0 - max(dot(Nw, V), 0.0), 5.0);\n"                                                                            \
     "        F = mix(0.15, 1.0, F);\n"                                                                                                                   \
-    "        vec3 refl = sm_ssr(P + N * 0.03, Rw, sm_env(Rw, 0.05) * L, 0.0, false);\n"                                                                  \
-    "        return lit * (1.0 - 0.35 * F * m.x) + m.x * (refl * (F * 0.7) + sm_spec(Nw, V, 0.07, vec3(0.02)) * 1.5);\n"                                 \
+    "        /* (the reflection moved by a gentler slope: the waves as a pixel four times as wide sees them - with the finer trains, the noise\n"         \
+    "           and the rain, the reflected lights of a city glittered from frame to frame as the camera moved) */\n"                                     \
+    "        vec3 refl = sm_water_refl(P, N, sm_waves_aa(N, P, m.y, t, px * 4.0 + 0.1).xyz, sm_env(Rw, 0.05) * L);\n"                                     \
+    "        /* (standing for what lies under it - kV7Fs, a sea blended by its texture's alpha: over that texture's average - where nothing of\n"        \
+    "           the 3D lies under it in this frame's picture - the void past Pokitaru's skirts of sand around its islands, which seen through\n"         \
+    "           showed the skirts' edges as hard-edged clear trapezoids -, and far away, where a pixel covers more than half a unit of the\n"            \
+    "           water: there what lies under it is a thin sliver - the skirts a hair under the surface - drawn or not from frame to frame) */\n"         \
+    "        sm_w_open = smoothstep(0.35, 0.9, px);\n"                                                                                                   \
+    "        vec2 uv;\n"                                                                                                                                 \
+    "        if (uMat[255].w != 0.0 && sm_under(P, uv) > 1e3) sm_w_open = 1.0;\n"                                                                        \
+    "        if (sm_refl_dbg.x >= 0.0) { sm_w_open = 1.0; return sm_refl_dbg; }  /* (RAC1_REFLECT_DEBUG) */\n"                                            \
+    "        return lit * (1.0 - 0.35 * F * m.x) + m.x * (refl * (F * 0.7) + sm_spec(Nw, V, 0.07 + 0.18 * wa.w, vec3(0.02)) * 1.5);\n"                   \
     "    }\n"                                                                                                                                            \
     "    /* mud: a wetness, b drift; quicksand: a drift, b gloss - a sheen over the slow drift (sh_mat_uv) */\n"                                         \
     "    float g = ty == 6 ? m.x : m.y;\n"                                                                                                               \
@@ -503,9 +732,7 @@
 #define RAC1_NATURE_VS \
     "/* the vertices' side of the Options' grass (docs/materials.md): the world's vertex shaders, the lighting's variant */\n"                           \
     "#ifndef VULKAN\n"                                                                                                                                   \
-    "uniform vec4 uEmis[128];\n"                                                                                                                         \
-    "uniform vec4 uMat[128];\n"                                                                                                                          \
-    "uniform vec4 uMat2[128];\n"                                                                                                                         \
+    "layout(std430, binding = 12) readonly buffer RacMatTable { vec4 uEmis[256]; vec4 uMat[256]; vec4 uMat2[256]; };\n"                                  \
     "uniform vec3 uShCam;\n"                                                                                                                             \
     "#endif\n"                                                                                                                                           \
     "/* Grass: a shell's vertex (uShell = k + 256 n: shell k of n) - a tfrag vertex of a `grass` texture lifted k / n of the blades' height,\n"          \
@@ -513,10 +740,10 @@
     "   vertices 16 units past the grass's distance are dropped: a triangle reaching inside it is drawn whole unless it is that large (the\n"            \
     "   blades fade per pixel: no straight edge where the shells end) */\n"                                                                              \
     "bool sh_shell(inout vec4 wp, uint word, int shell) {\n"                                                                                             \
-    "    if (length(wp.xyz - uShCam) > uMat2[127].z + 16.0) return false;\n"                                                                             \
+    "    if (length(wp.xyz - uShCam) > uMat2[255].z + 16.0) return false;\n"                                                                             \
     "    if (shell < 0) return true;\n"                                                                                                                  \
-    "    uint s = (word >> 25) & 127u;\n"                                                                                                                \
-    "    if (s == 0u || uMat[127].z <= 0.0 || uEmis[s].w > 0.0 || int(uEmis[s].z + 0.5) != 8) return false;\n"                                           \
+    "    uint s = (word >> 24) & 255u;\n"                                                                                                                \
+    "    if (s == 0u || uMat[255].z <= 0.0 || uEmis[s].w > 0.0 || int(uEmis[s].z + 0.5) != 8) return false;\n"                                           \
     "    wp.z += uMat[s].x * float(shell & 255) / float(shell >> 8);\n"                                                                                  \
     "    return true;\n"                                                                                                                                 \
     "}\n"                                                                                                                                                \

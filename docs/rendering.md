@@ -58,9 +58,9 @@ The MRP does not re-derive any of them.
 
 ## Two backends
 
-The renderer has two backends, chosen at Options > Graphics > Renderer and read when the window is
-made: **OpenGL 4.6**, the default, and **Vulkan 1.3**, experimental and opt-in (`RAC1_RENDERER=vulkan`
-for one run). Each rendering module keeps its OpenGL code and has a Vulkan branch beside it
+The renderer has two backends, chosen at Options > Display > Renderer and read when the window is
+made: **Vulkan 1.3**, the default in a window, and **OpenGL 4.6**, the headless runs' and the fallback
+when Vulkan cannot start (`RAC1_RENDERER=vulkan` / `opengl` for one run). Each rendering module keeps its OpenGL code and has a Vulkan branch beside it
 (`vk::is_active()`); the shaders are the same GLSL, made Vulkan's by `tools/gen_vk_shaders.py` and
 compiled at build time. Both draw the same picture from the same scene, the modern lighting, the
 materials and the ambient particles included; when Vulkan cannot start the game opens with OpenGL.
@@ -162,10 +162,12 @@ details and the measurements: [Performance](performance.md#a-host-frame) and
 
 The draw step, in order, during play:
 
-1. the modern lighting's shadow pass, when Lighting is not Original (the sun's cascades, the
+1. the modern lighting's shadow pass, with Graphics: Enhanced (the sun's cascades, the
    point-light cubes, the lights per screen tile);
 2. the sky and the world's batches (the tfrag compute shader dispatched with the frame's first world
    draw);
+   then, with Surface Detail's water in view, Water Reflections: the cube map when it is due, and on Medium the world, the sky and
+   the mobys drawn again mirrored about the water into the planar view ([Materials](materials.md#water-reflections));
 3. the effects the chain draws before the moby pass (Hoven's water), with the 2D between them;
 4. the mobys, with the drop shadows (stencil) and the mobys deferred after them;
 5. the ambient occlusion, the sun rays, the copy of the picture kept for the next frame's reflections
@@ -213,7 +215,13 @@ colours are built.
   is done with them.
 
 **The fragment shader is the GS**: its texture function, the alpha test including its "fail" modes
-(drawn in two passes where needed), its mip-level formula, and fog with the fog colour.
+(drawn in two passes where needed), its mip-level formula, and fog with the fog colour. The world
+passes draw with the alpha test on (GEQUAL 0x60, failing pixels drawn without depth: two passes), but
+most of their draws cannot fail it: every texel they sample has an alpha of at least 0x80 (known per
+texture at the level's load), and so has every vertex colour (a shrub's instance alpha; a tie's
+resident colours, through its morph's arithmetic; a tfrag entry's colours). Those draws' first pass is
+drawn with early depth testing and their second pass is left out; the batch keeps its order
+(`RAC1_PERF_OPAQUE`, [Performance](performance.md#found-while-profiling-a-low-end-target)).
 
 ### tfrag on a compute shader, with the EE's rounding
 
@@ -346,7 +354,7 @@ The MRP draws them itself (`RAC1_MRP_SEAS`, on by default; `mrp_fx.cpp`, "progra
   eye in some frames and not others as the camera moved by a hair: on Pokitaru, the camera at the water while swimming, the near
   sea turned white (Lighting Original) or dark (modern) for a frame every few, the posts under the water hidden; Vulkan did not
   show it, and now draws the same triangles as OpenGL (the part of the near sea it left out, too).
-- **The modern lighting** (Lighting not Original): the sun's shadows (the surface's colour taken as 55 % sun, our choice), the point
+- **The modern lighting** (Graphics: Enhanced): the sun's shadows (the surface's colour taken as 55 % sun, our choice), the point
   lights per pixel, the emissive surfaces and the materials (Surface Detail) by texture: an `emissive surface` or `material surface`
   line names the callback's moby class and the texture's GS block ([Emissive surfaces](lighting.md#emissive-surfaces),
   [Materials](materials.md#the-levels-seas-and-pools)). OpenGL and Vulkan.
@@ -365,7 +373,7 @@ level). The ship's flight (`flight_draw`) and the Vendor's screens were not cove
 
 ## The modern lighting, in the frame
 
-Optional, off by default (Options > Graphics > Lighting: Original), and only in play, with the MRP
+Optional, off by default (Options > Graphics > Graphics: Original), and only in play, with the MRP
 drawing both the world and the mobys. It changes the picture, never the game's state. Its parts, in
 the order a frame meets them (each one's page has the details):
 
@@ -380,7 +388,8 @@ the order a frame meets them (each one's page has the details):
 3. **Emissive surfaces**: marked textures keep the original lighting's brightness where the modern
    lighting would darken them ([Emissive surfaces](lighting.md#emissive-surfaces)).
 4. **Materials** (Surface Detail): metal, wet ground, puddles, water, lava, mud, shaded after the
-   emissive step in the same world and moby shaders ([Materials](materials.md)).
+   emissive step in the same world and moby shaders ([Materials](materials.md)). The water mirrors Water Reflections' cube map or planar view, drawn
+   after the world ([Water reflections](materials.md#water-reflections)).
 5. **Ambient occlusion**, over the 3D after the mobys, gentler on the mobys (AO Intensity)
    ([Ambient occlusion](lighting.md#ambient-occlusion)).
 6. **Sun rays**, after the occlusion; off on a level whose file says so, and in the ship's flights
@@ -396,7 +405,7 @@ The game's effects and the 2D are drawn after all of it, as the game drew them.
 
 ## Level of detail
 
-The original decides levels of detail and draw distances for a 4:3 PS2. Options > Graphics > Level of
+The original decides levels of detail and draw distances for a 4:3 PS2. Options > Display > Level of
 Detail offers Original, Low, Medium, High and Maximum (`mrp_lod.cpp`: 0, 25, 50, 75 and 100 on a
 slider).
 
@@ -421,7 +430,7 @@ at Maximum on Veldin, Novalis and Kerwan.
 
 ## Widescreen and render scale
 
-`src/game/render/render_view.cpp` sets the host's view from Options > Graphics:
+`src/game/render/render_view.cpp` sets the host's view from Options > Display:
 
 - **Aspect Ratio**: 4:3 Original, 16:9, or Fill Screen (the 3D widened to the window's shape).
 - **Fit to Screen**: when the picture's shape is not the window's, black bars or stretched.
@@ -467,7 +476,7 @@ state): one of Rilgar's water patches (class 79), the ships' cockpit glass.
 
 ### The 2D in a widened view
 
-The HUD (unless Options > Graphics > HUD spreads it, below) and the menus stay 4:3 in the middle of the
+The HUD (unless Options > Display > HUD spreads it, below) and the menus stay 4:3 in the middle of the
 screen. Full-screen 2D reaches the edges:
 
 - **Full-span primitives**: a 2D primitive covering the frame's whole width or height has its vertices
@@ -491,7 +500,7 @@ screen. Full-screen 2D reaches the edges:
 
 ### The HUD in a widened view
 
-Options > Graphics > HUD (4:3 Original, 16:9, 21:9, 32:9, Fit Screen; `RAC1_HUD` for tests) spreads the
+Options > Display > HUD (4:3 Original, 16:9, 21:9, 32:9, Fit Screen; `RAC1_HUD` for tests) spreads the
 HUD over a box wider than the 4:3 frame: its width is the chosen shape (21:9 is 64:27) but never wider
 than the view's (`min(choice, the view's aspect)`; Fit Screen is the view's), centred. 4:3 Original
 changes nothing (the default: the same pictures and the same game state as before). The game's state
@@ -531,7 +540,7 @@ fleet 0x2eaae0 / 0x2eb9a8; not looked at in a fight yet).
 
 ### Render scale
 
-Options > Graphics > Render Resolution, 50 % to 200 %: the MRP's 3D (the world, the sky, the mobys, the
+Options > Display > Render Resolution, 50 % to 200 %: the MRP's 3D (the world, the sky, the mobys, the
 drop shadows, the ambient occlusion, the sun rays and the ambient particles) is drawn into an off-screen
 buffer at that fraction of the window's resolution, then put on the window, its colour scaled
 (linear) and its depth copied (nearest); the effects and the 2D are then drawn at the window's
@@ -541,7 +550,7 @@ resolution, tested against that depth.
 
 The PS2 kept only what fitted in 4 MB, so distant objects were drawn from their small mip. The MRP
 keeps every mip of every texture resident and chooses the mip from the screen as a modern GPU does,
-so objects stay sharp at any distance ("full texture"). This is the default. Options > Graphics >
+so objects stay sharp at any distance ("full texture"). This is the default. Options > Display >
 Texture Detail: Original (PS2) brings back the GS's own mip choice (`RAC1_MRP_MIP=faithful` for the
 mobys and `RAC1_MRPW_MIP=faithful` for the world do the same with `--debug-tools`).
 
@@ -679,6 +688,282 @@ All of these come from the project's own measurements during development:
 Not bit-exact by design: GPU rasterisation, perspective-correct interpolation on clipped pieces and
 sub-pixel edges differ from the GS.
 
+## Ray tracing, phase 0
+
+Testing only (phase 2 became Water Reflections' Medium (RT)), hidden behind `RAC1_RT=1` (Vulkan; ignored with a log line on OpenGL or on a device without
+VK_KHR_acceleration_structure + VK_KHR_ray_query + bufferDeviceAddress). The seas' water (program 7's surfaces with
+Surface Detail's water) traces its reflection through the level's static world with an inline ray query instead of
+reading Water Reflections' planar view; the hit is not shaded: its colour is the frame's own picture (the 3D before
+the seas, the picture the materials already capture) where the hit projects into it with a matching depth, else
+the cube map (Low's, still made) or the sky. Mobys are not in it (phase 3), so Ratchet has no reflection.
+Code: `src/game/render/mrp_rt.cpp` (acceleration structures), `rt_gather` in `mrp_world_renderer.cpp` (what goes in),
+`sm_water_rt` in `mrp_materials_glsl.inc` (the trace), the variant `kMrpVu7FsRt` (`tools/gen_vk_shaders.py`).
+
+The acceleration structures follow DirectX's clustered geometry and partitioned top level (CLAS / PTLAS) with plain
+KHR structures (the cluster / partition extensions are NVIDIA's alone; their presence is logged, not used), behind an
+interface of our own (`RtAccel`) that another back end can implement:
+
+- **Clusters**: each tie / shrub packet template (its finest LOD; float copies of the int16 positions) and each tfrag
+  entry (its near image's raw records, start 0x014, run once on the CPU with an identity view: no morph) is a small
+  bottom-level structure (about 45 triangles), built once at the level's load and compacted. The instances' transforms
+  are the passes' matrices (instance data +0..+0x30, the scale +0x3c: world = position + M p / 1024); no wind sway.
+  `RAC1_RT_CLUSTERS=1` merges them per class (ties, shrubs) and per zone cell (tfrags) instead (phase 2's default).
+- **Partitions**: the top level's instances grouped by zone cell (ties, tfrags; shrubs in one unzoned group), and a
+  dynamic group for moving instances (empty now). Each frame only the groups whose zone byte (0x173d00) changed are
+  written again; when nothing changed the frame in flight's top level is kept, else it is updated (`RAC1_RT_TLAS`).
+  A KHR top level is built or updated whole: the partitions save the CPU's writes and the frames with no change,
+  not the GPU's build when anything changes.
+
+Measured on the Radeon 890M (RADV, Mesa 26), the levels' load (`[rt]` lines; per-packet clusters):
+
+| Level | Clusters | Triangles | BLAS compacted | GPU build | Top level instances | Top level rebuild / update |
+|---|---|---|---|---|---|---|
+| Veldin (0) | 1758 | 77 k | 8.2 MB | 16 ms | 19.6 k | 0.61 / 0.62 ms |
+| Novalis (1) | 3524 | 162 k | 17.2 MB | 28 ms | 28.9 k | 0.87 / 0.89 ms |
+| Rilgar (5) | 3424 | 171 k | 18.0 MB | 26-35 ms | 39.3 k | 0.97-1.25 / 0.97-1.25 ms |
+| Blarg (6) | 4948 | 235 k | 25.5 MB | 39 ms | 32.3 k | 0.98 ms |
+| Pokitaru (11) | 2862 | 123 k | 13.5 MB | 24 ms | 26.5 k | 0.76 / 0.76 ms |
+| Rilgar, clusters merged | 473 | 171 k | 17.3 MB | 15 ms | 3.4 k | 0.29 / 0.29 ms |
+
+About 110 bytes a triangle after compaction (two thirds of the size before). The top level is kept on about 97 % of
+the frames (a zone changes now and then). RADV's update of a top level costs what a rebuild costs.
+
+The seas' GPU time (profiler stages Seas + Effects; Medium's planar view and the ray tracing's top level are stages of
+their own, added after a +), Rilgar's harbour / Pokitaru's dock:
+
+| | Rilgar 1080p | Rilgar 5120x1440 | Pokitaru 1080p | Pokitaru 5120x1440 |
+|---|---|---|---|---|
+| Screen-space (before Water Reflections) | 0.79 | 2.98 | 0.84 | 2.15 |
+| Low (cube map) | 0.33 | 1.07 | 0.69 | 1.40 |
+| Medium (planar view) | 0.36 + 0.65 | 1.11 + 1.24 | 0.70 + 0.29 | 1.41 + 0.66 |
+| Ray traced, per-packet clusters | 2.72 | 7.96 | 1.77 | 4.26 |
+| Ray traced, merged clusters | 1.91 | 4.75 | 1.50 | 3.59 |
+| Ray traced, 2x2 shading (`RAC1_RT_RES=2`) | 0.95 | 2.92 | 0.70 | 1.39 |
+| Ray traced, 2x2 shading, merged | 0.73 | 1.49 | 0.62 | 1.17 |
+
+(ms.) The top level costs nothing on a frame where it is kept (0.01 ms); rebuilt every frame (`RAC1_RT_TLAS=0`) it is
+0.5 ms at Rilgar (39 k instances), 0.25 ms merged. `RAC1_RT_RES=2` shades the whole sea once per 2 x 2 pixels
+(VK_KHR_fragment_shading_rate): the cost of a half resolution trace, not its look. The many tiny structures cost the
+trace: merged clusters trace 15 to 40 % faster.
+
+How it looks: the hit is the right one (no screen-space false hits, no hole), but its colour is only the picture's
+where the picture holds it. From a low camera (Ratchet swimming at Rilgar) most reflected buildings are above the
+screen's top: their colour is the cube map's, and where a hit moves in and out of the picture the colour changes
+source. Flicker over plain water (pixels whose frame-to-frame second difference exceeds 8 / 16, 60 frames of
+`RAC1_SIM_INPUT=shipwalk`, 1280x360): Rilgar's harbour Low 1526 / 0, Medium 281 / 0, ray traced 1894 / 150; Pokitaru's
+dock Low 113 / 0, Medium 122 / 0, ray traced 953 / 1. Screen-space reflections at Pokitaru's dock walking forward:
+4389 / 70 (ray traced 1667 / 0). Shading the hit itself (phase 2) is what removes the change of source.
+
+## Ray tracing, phase 2
+
+Options > Graphics > Water Reflections > Medium (RT) since 2026-11-04 ([below](#water-reflections-medium-rt); `RAC1_RT=1` the testing
+override; Vulkan with ray queries and non-uniform indexing of sampled images). Phase 2 shades the
+reflection's hit itself, so the colour no longer depends on whether the frame's picture holds the hit: the change of source that
+flickered in phase 0 (a low camera at Rilgar, the buildings above the screen's top) is gone. Code: `rt_gather` in
+`mrp_world_renderer.cpp` (each triangle's texture and its vertices' texture coordinates and colour indices), `mrp_rt.cpp` (the tables,
+the sets, the half-resolution target), `sm_water_rt` / `sm_rt_surface` in `mrp_materials_glsl.inc`, the half-resolution passes in
+`mrp_fx.cpp` and the variants `kMrpVu7FsRtHalf` / `kMrpVu7FsRtUp` (`tools/gen_vk_shaders.py`).
+
+- **What a hit knows**: per triangle 48 bytes (`RtTri`): the texture coordinates of its corners, its texture (the world's texture
+  array and layer, the TFX / TCC bits, the mip count, whether every texel is opaque), its density (texture area against its own area:
+  the texture's level by a ray cone) and its three colour indices. The texture comes from the same GS state the draws replay (a
+  tie / shrub packet's texture slots from the class tables, a tfrag run's texture prims from its image); a tfrag's colour indices are
+  the CPU form of its program run with the colours replaced by their own indices. Per instance its first triangle, its first resident
+  colour and its kind. About 7 to 8 MB a level (Rilgar 171 k triangles: 7.8 MB).
+- **The shading**: the texel (at the level a ray cone - the pixel's footprint over the whole path, plus 0.02 radians of the ripples'
+  spread - gives, within the texture's own levels) times the vertices' lit colours (the resident tie / shrub colours and the tfrags',
+  the same ones the world draws with, copied per frame in flight when they change), combined by TFX / TCC as the world's fragment
+  shader does, then the world's fog (the ties' constants at 0x16cc60 and FOGCOL) by the reflection's whole path length. No sun term
+  and no point lights: the vertex colours carry the level's lighting, and with the fog the reflection's average colour matches
+  Medium's planar view (Rilgar's harbour: RGB 34 / 40 / 44 against 33 / 39 / 42; without the fog 40 / 41 / 40).
+- **Alpha-tested foliage**: a cluster with any texture that has a texel under the alpha test's reference is not opaque; its
+  candidates are shaded in the ray query's loop and kept where the texel passes the world's test (GEQUAL 0x60), so palm leaves have
+  holes. Rilgar has 4 such clusters (merged), Pokitaru 100, Novalis 108.
+- **Half resolution** (the default, `RAC1_RT_RES=0`): the seas are drawn first into a target of half the 3D's size (RGBA16F: the
+  reflection and its distance from the camera): a depth pass of the seas alone, then the nearest sea surface traced with early depth
+  tests, the water the 3D's picture shows hidden left out, no lighting. The seas are then drawn as before with a shader without the
+  ray query (its registers are the sea's own: with the trace in it the full-resolution seas cost twice as much) that reads the half
+  image's texels around the pixel, each fetched alone (never filtered), within 1 + `RAC1_RT_BLUR` half texels of it (a tent),
+  keeping each where its distance is the one the pixel's own water has at that texel (the pixel's 1 / distance carried over the screen
+  by its slope), else, more loosely, the texels up to four rows up and down, the cube map last
+  ([below](#the-flickering-line-under-pokitarus-far-islands)). `RAC1_RT_RES=1` traces in every pixel, `2` shades the seas once per 2 x 2
+  pixels (phase 0's shading rate).
+- **The picture**: `RAC1_RT_SHADE=1` takes phase 0's picture colour where the hit lies in it and the hit's own shading elsewhere,
+  `0` is phase 0 (the cube map elsewhere). The pure hit shading (2, the default) costs no more, matches Medium's brightness better
+  (the picture's five taps darkened and flattened it) and flickers less at Novalis (5 against 339 pixels).
+- Clusters merged per class / zone cell (`RAC1_RT_CLUSTERS=1`) are now the default: the trace is 30 to 40 % cheaper with them.
+
+The reflection's GPU time (the planar view, the top level, the half-resolution trace and the seas; ms, the last 120 frames, profiler
+stages) and the frame's GPU busy time, on the Radeon 890M (RADV, Mesa 26):
+
+| | Rilgar 1080p | Rilgar 5120x1440 | Pokitaru 1080p | Pokitaru 5120x1440 | Novalis 1080p | Novalis 5120x1440 |
+|---|---|---|---|---|---|---|
+| Medium (planar view) | 0.85 | 2.06 | 1.05 | 1.97 | 0.68 | 1.04 |
+| Phase 2, default (half resolution, merged) | 1.01 | 2.91 | 1.52 | 3.11 | 1.24 | 2.10 |
+| the same, per-packet clusters | 1.30 | 3.70 | 1.63 | 3.19 | 1.61 | 2.38 |
+| the same, picture where it holds the hit (`RAC1_RT_SHADE=1`) | 1.04 | 3.14 | 1.51 | 3.10 | 1.27 | 2.17 |
+| full resolution (`RAC1_RT_RES=1`) | 2.24 | 5.13 | 1.84 | 4.02 | 2.38 | 3.98 |
+| 2 x 2 shading rate (`RAC1_RT_RES=2`) | 1.01 | 1.70 | 0.83 | 1.45 | 1.08 | 1.70 |
+| Frame's GPU busy, Medium / default | 3.5 / 3.7 | 7.9 / 8.9 | 3.4 / 3.8 | 6.6 / 7.8 | 4.5 / 4.8 | 7.8 / 8.9 |
+
+Of the default's cost at 5120x1440 the half-resolution pass is 1.1 to 1.8 ms and the seas 1.0 to 1.5 ms (Medium's seas alone 1.0 to
+1.5 ms). Another program on the shared GPU makes single runs vary by some 0.5 ms.
+
+Flicker over the water (pixels whose frame-to-frame second difference exceeds Off's sky-only picture's by 8 / 16, 60 frames, 1280x360):
+
+| | Medium | Phase 0 | Phase 2 (default) | 2 x 2 shading rate |
+|---|---|---|---|---|
+| Rilgar, swimming at the harbour (`shipwalk`) | 215 / 0 | 651 / 82 | 95 / 0 | 7566 / 121 |
+| Rilgar, walking on the shore (`shipwalk`) | 5193 / 24 | 4680 / 0 | 1464 / 0 | - |
+| Pokitaru's dock (`shipwalk`) | 1113 / 33 | 5123 / 1199 | 485 / 144 | 459 / 5 |
+| Novalis (`shipwalk`) | 13 / 0 | 2 / 0 | 5 / 0 | 352 / 1 |
+
+Full resolution without the upsample's spread flickers far more (Rilgar swimming 9548 / 220): every ripple moves a sharp reflection
+of lit windows. Pokitaru's 144 pixels over 16 are a thin line under the far islands (the far water's distance changes quickly from
+one half texel to the next; gone since, [below](#the-flickering-line-under-pokitarus-far-islands)).
+
+What is still missing against Medium: the mobys (Ratchet, the ships, Pokitaru's airships: phase 3), the reflection a little softer
+(half resolution and its spread) and calmer (the ripples bend the ray by a fifth of their slope), and lit textures' own glow (the
+emissive slots).
+
+Phase 3, the mobys: [below](#ray-tracing-phase-3-the-mobys).
+
+### Water Reflections Medium (RT)
+
+Phase 2 was judged better than Medium where Medium is weakest (no planar view's hole or cut, no
+source change, the least flicker of all walking), at about 1 ms more of the 890M's frame at 5120x1440 (0.2 to 0.5 ms at 1080p); Daino,
+playing it at Rilgar (2026-11-04): a value of the row as it is, "Medium (RT)" (the mobys - Ratchet's reflection - come with phase 3's
+"High (RT)"):
+
+- The `water_reflections` preference: 0 Low, 1 Medium (as before), 2 Medium (RT); `g_water_reflections` 3 (`RAC1_WATER_REFLECTIONS=3`).
+- Shown only where the renderer can trace: Vulkan, a device with VK_KHR_acceleration_structure, VK_KHR_ray_query, deferred host
+  operations, bufferDeviceAddress and non-uniform sampled-image indexing (`mrp_rt_supported`). The device's ray tracing features are
+  now turned on whenever it has them (`RAC1_RT=0` never), so the value works as soon as it is picked: the level's acceleration
+  structures and tables are made at that frame (`mrp_rt_level_id`, the world renderer's frame) and kept until the next level, where
+  they are made again only if the value is still on (else freed: `mrp_rt_level_drop`). A saved RT value on OpenGL, on a device without
+  them or with `RAC1_RT=0` plays as Medium (the planar view), said once (`[reflect] Water Reflections Medium (RT): ... played as Medium`).
+- `RAC1_RT` stays the testing override (1 the trace whatever the row, 0 never); the phase's testing variables keep their defaults,
+  which are Medium (RT)'s: half resolution (`RAC1_RT_RES=0`), merged clusters (`RAC1_RT_CLUSTERS=1`), the hit's own shading
+  (`RAC1_RT_SHADE=2`).
+- With the row on another value and no `RAC1_RT`, nothing changes: the reference images, Vulkan's and the game's state (RAMHASH) are
+  the same as before.
+
+Checked with the Khronos validation layer (1.4.341, `RAC1_VK_VALIDATION=1`) over a run through six levels (Veldin, Novalis, Kerwan,
+Rilgar, Batalia, Pokitaru) with Medium (RT) picked through the preferences, and over a pick of it in the middle of Rilgar's harbour:
+no device lost; the one error of the ray tracing's own (a barrier naming the acceleration structure copy stage, which needs
+VK_KHR_ray_tracing_maintenance1: the compaction's copies run in the build stage) fixed. The messages left are the Vulkan renderer's,
+the same with `RAC1_RT=0` and Medium: a dynamic depth bias never set, colour attachments of another format than a pipeline's
+(R8_UNORM and RGBA16F targets drawn with RGBA8 pipelines), a depth image cleared without its transfer usage, shaders using
+demote-to-helper without the feature asked for, a few objects left at the device's end.
+
+### The flickering line under Pokitaru's far islands
+
+Daino, playing 0.7.0 on Vulkan (Radeon 890M, 5120x1440): "I riflessi RT su Pokitaru glitchano, lampeggiano" - Medium (RT) and High
+(RT) flickered at Pokitaru, and at Hoven too, where Medium and Low did not. Not the earlier fixes to Pokitaru's water (the sea held
+still, its texture's average past the skirts and far away, the ripples faded where finer than the pixel: Medium and Low have them
+too) nor a frame drawn without the trace (`RAC1_RT_DEBUG=1` showed the trace's colours in every frame of the runs): the
+half-resolution trace's upsample - the line under the far islands was yellow in that view, "a nearby tap", every other frame.
+
+The seas read the half image through the trace's sampler, bilinear and repeating. A read between texels mixed their distances -
+a texel of the far water with its neighbour much farther, or with an empty texel's 0 (an island, a post, a shore hiding the water
+there) - into a distance no surface has, so whether a tap matched the pixel's distance hung on where the pixel fell among the
+texels, which changes with every step and turn of the camera: at the islands' feet and along every edge the colour switched from
+the tap's reflection to an average of any tap near it, a row at a time. Now (`sm_water_rt`, pass 2):
+
+- the texels around the pixel are fetched one by one (`texelFetch`, inside the image), weighted by a tent of 1 + `RAC1_RT_BLUR` half
+  texels (the same spread as before);
+- each is kept where its distance is the one the pixel's own water has at that texel: the pixel's 1 / distance carried over to it by
+  its screen slope (`dFdx`, `dFdy`), within 3 to 8 %; the far sea changes its distance by a tenth from one texel to the next, so
+  comparing with the pixel's own distance, as before, threw most far taps away;
+- where none is, the texels up to four rows up and down within 8 to 40 % (a sliver of water at an island's foot whose texels the
+  island hides at half resolution: read from the cube map it was a line of another colour every other frame; the single nearest
+  texel instead, a dotted line); the cube map last, as before.
+
+Flicker over the water, Vulkan, 60 frames, pixels whose second difference exceeds the plain water's (Water Reflections off) by
+8 / 16, before -> after; Medium for comparison (unchanged):
+
+| Place, size | Medium | Medium (RT) before | Medium (RT) after |
+|---|---|---|---|
+| Pokitaru's dock walking (`shipwalk`), 1280x360 | 1112 / 34 | 487 / 144 | 301 / 13 |
+| the same, 1920x1080 (the water's band) | 14502 / 576 | 1361 / 266 | 1061 / 143 |
+| the same, 5120x1440 (the left half of the water's band) | 56943 / 1099 | 10903 / 706 | 10919 / 277 |
+| Pokitaru's dock standing (`shipskip`), 1920x1080 | 3932 / 5 | 1257 / 57 | 455 / 28 |
+| Pokitaru's dock, the camera turning (`shipturn`), 1920x1080 | 36331 / 2948 | 3436 / 29 | 3512 / 10 |
+| Hoven, the water under the town, walking, 1280x360 | 26 / 0 | 106 / 6 | 42 / 0 |
+| the same, 1920x1080 | 14 / 1 | 74 / 0 | 79 / 0 |
+| the same, 5120x1440 | 1626 / 26 | 775 / 11 | 897 / 56 |
+| Hoven standing, 1920x1080 | 696 / 7 | 160 / 14 | 129 / 18 |
+| Hoven, the camera turning, 1920x1080 | 37718 / 65 | 17805 / 43 | 23171 / 82 |
+| Rilgar's shore walking, 1280x360 | 5193 / 24 | 1464 / 0 | 1896 / 2 |
+| Rilgar swimming at the harbour, 1280x360 | 215 / 0 | 95 / 0 | 119 / 0 |
+| Novalis, 1280x360 | 13 / 0 | 5 / 0 | 4 / 0 |
+
+High (RT) measures as Medium (RT) at these places (1280x360: Pokitaru 301 / 13, Hoven 42 / 0). Pokitaru's line under the far islands is gone
+(of its 144 pixels over 16, at 1280x360, none left under the islands); what is left at Pokitaru is Ratchet's own edge over the water.
+Hoven turning and at 5120x1440 flickers a little more, in the same places as before (the far crystals' and lamps' reflections sweeping
+across the ripples), and Rilgar's shore a little more below 16: the tent's taps read one by one are a little sharper than four bilinear
+reads.
+
+The cost: the seas' stage 0.64 -> 0.70 ms at Pokitaru 1080p, 1.33 -> 1.52 ms at 5120x1440 (Hoven 0.42 -> 0.47, 1.22 -> 1.45; the
+profiler's last 120 frames): sixteen fetches a pixel instead of five filtered reads.
+
+The trace's misses (the ray hitting nothing) still read the cube map as before. Read as Low now does
+([Materials](materials.md#water-reflections): the sky's faces whatever their alpha), the far sea mirrors the bright sky as Medium's
+does, instead of the sea's own darker colour; tried, it flickered two to four times as much (Pokitaru 1920x1080 walking 8293 / 673,
+turning 15714 / 115; 5120x1440 24720 / 1136): the bright sky meets every edge of the half-resolution reflection. Left for a choice.
+
+## Ray tracing, phase 3: the mobys
+
+Options > Graphics > Water Reflections > High (RT) (Italian "Alto (RT)"; `water_reflections 3` in the preferences, `g_water_reflections`
+4; `RAC1_RT_MOBYS=1` / `0` the testing override): Medium (RT) with the frame's mobys in the trace too - Ratchet, the ships, Pokitaru's
+airships, every moving object. Shown, and played as Medium elsewhere, as Medium (RT). Code: `moby_pass` in `mrp_rt.cpp`,
+`mrp_moby_rt_frame` in `mrp_moby_renderer.cpp`, the compute shader `kMrpRtMobyCs` (`tools/gen_vk_shaders.py`), the moby branch of
+`sm_rt_surface` (`mrp_materials_glsl.inc`).
+
+- **Which mobys**: the draws the moby renderer made this frame in the world's view - on screen, and the off-screen shadow casters it keeps
+  (alive, still, of the same class, within 400 units) -, not the menus' render targets nor the title menu's boxes. Draws blended other
+  than the usual Cs As + Cd (1 - As) or Cs alone (additive glows) are left out; the usual blend's see-through texels are left out as the
+  world's alpha test does (the moby geometry is not opaque: a candidate's texel is looked at, kept from 0x60).
+- **Skinning**: a compute pass (one thread a triangle) skins the draws' vertices as the moby vertex shader does (the VU0 matrix of <= 3
+  weighted joints, the s16 truncation, the record's lighting and the EE's colour step: the same lit colour) and writes each triangle in
+  world space (the part's model -> world matrix) with its shading record (`RtTri`: the corners' texture coordinates, the moby texture
+  array after the world's in the trace's array of 64, the texture's density, the corners' RGBA, the word). The vertex and index
+  buffers the moby draws use are read as they are (storage usage added to them).
+- **Structures**: one bottom-level structure per moby (fast build, updatable), its triangles not indexed; kept as it is when the moby's
+  pose (its parts' world matrices and joints, hashed) and draws are the frame before's, refitted when they changed, built again when its
+  triangle count changes or after 60 refits; freed some frames after the moby is gone. Their instances (identity transform, custom index
+  bit 23 + the moby's first triangle) are the top level's dynamic partition (1024 at most): the top level is updated or rebuilt every
+  frame with mobys in it (with Medium (RT) it is kept on about 97 % of the frames).
+- **Shading**: the texel times the corners' lit colours by the draw's TFX / TCC, the world's fog by the path length: what the static world
+  has; `RAC1_RT_DEBUG=3` shows the mobys' hits yellow.
+
+The reflection's GPU time (the planar view or the top level, the moby pass, the half-resolution trace and the seas) and the frame's GPU
+time (the sum of the profiler's stages), ms, the best of two runs of the last 120 frames, Radeon 890M (RADV, Mesa 26):
+
+| | Rilgar 1080p | Rilgar 5120x1440 | Pokitaru 1080p | Pokitaru 5120x1440 | Novalis 1080p | Novalis 5120x1440 |
+|---|---|---|---|---|---|---|
+| Medium | 0.82 | 1.94 | 0.93 | 1.92 | 0.72 | 1.11 |
+| Medium (RT) | 1.06 | 2.66 | 1.44 | 2.91 | 1.21 | 2.17 |
+| High (RT) | 1.66 | 3.35 | 1.79 | 3.37 | 1.69 | 2.80 |
+| of which the moby pass / the top level | 0.31 / 0.24 | 0.35 / 0.22 | 0.18 / 0.24 | 0.22 / 0.23 | 0.25 / 0.27 | 0.32 / 0.26 |
+| Frame, Medium / Medium (RT) / High (RT) | 3.7 / 4.3 / 5.1 | 8.7 / 9.5 / 10.4 | 3.5 / 4.2 / 4.3 | 7.7 / 8.8 / 9.1 | 4.8 / 5.3 / 5.4 | 9.3 / 10.3 / 10.9 |
+
+About 60 to 80 mobys and 34 to 38 thousand triangles a frame at those places (up to 213 mobys, 66 thousand triangles on Novalis). Keeping
+the still mobys' structures took the moby pass from 0.31 / 0.38 / 0.58 ms to 0.22 / 0.35 / 0.32 (Pokitaru / Rilgar / Novalis, 5120 x
+1440); refits are most of what is left. Another program on the shared GPU moves single runs by some 0.5 ms.
+
+Flicker over the water (as in phase 2: 60 frames, 1280x360, pixels over 8 / 16): Rilgar swimming 215 / 0 Medium, 95 / 0 Medium (RT),
+81 / 0 High (RT); Rilgar on the shore 5193 / 24, 1464 / 0, 1464 / 0; Pokitaru's dock 1112 / 34, 487 / 144, 487 / 144; Novalis 13 / 0,
+5 / 0, 5 / 0. The mobys add none.
+
+Checked: the reference images, Vulkan's (Veldin, Rilgar) and the RAMHASH run identical with the row on another value; the Khronos
+validation layer over the six levels with High (RT) from the preferences: no device lost, no message of the ray tracing's own (the
+renderer's others as with Medium).
+
+Limits: mobys the moby renderer did not draw (outside the view and not kept as casters) are not reflected; the mobys' fog is the
+world's; their textures are sampled with the trace's one sampler (repeating; a clamped texture's edge may differ); a moby's
+structure is a frame's pose, the reflection of a fast animation the frame's own.
+
 ## Performance
 
 From the project's measurements while the MRP was built, on a shared development machine with an
@@ -717,4 +1002,4 @@ thread): see [Performance](performance.md).
 - A moby whose class logic reads its own "drawn" flag behaves as in 4:3 when it is only visible in
   the widened side bands: that flag is game state, and the port does not change it.
 - With the HUD spread, the 2D the space fights draw from draw-list callbacks stays on the 4:3 frame.
-- OpenGL 4.6 by default; the Vulkan 1.3 backend is experimental and opt-in ([Vulkan](vulkan.md)).
+- Vulkan 1.3 by default, OpenGL 4.6 when it cannot start or when chosen ([Vulkan](vulkan.md)).

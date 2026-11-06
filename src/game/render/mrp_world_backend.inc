@@ -82,7 +82,17 @@ struct Batch {
     int epoch = -1;                 // the GPU path's texture units (Frame::epochs)
     bool tfrag = false;             // the GPU path's tfrag triangles (first / count: in the compute program's indices)
     bool ate = false;               // one of its draws has the alpha test on (the shadow pass's depth-only program not for it)
-    int32_t host = -1;              // ((2026-10-28) the host sky's: a shell's run, FrameView::sky_host[host]; first / count unused)
+    int32_t host = -1;              // ((2026-10-28) the host sky's: a shell's run, FrameView::sky_host[host]; first / count unused)    // (host, RAC1_PERF_OPAQUE) its draws as runs of the frame's p2runs [r0, r0 + rn) by whether their pixels can fail the alpha test;
+    // runs_ok: the runs cover [first, first + count) in order (else the batch is drawn whole, as before)
+    uint32_t r0 = 0, rn = 0;
+    bool runs_ok = true;
+};
+// (host, RAC1_PERF_OPAQUE) a run of a batch's draws (draw commands on the GPU path, indices otherwise): state 0 no alpha test (its mode
+// off), 1 the test on but no pixel can fail it (every texel sampled and every vertex colour has an alpha >= 0x80, the test GEQUAL /
+// GREATER below that), 2 pixels may fail it
+struct P2Run {
+    uint32_t first = 0, count = 0;
+    uint8_t state = 2;
 };
 // (2026-10-28) a run of a host sky shell's triangles (mrp_sky_host.inc: the shell drawn whole from the level's model, no game pass) drawn
 // by a Batch with `host` >= 0: its corners [first, first + count) in FrameView::sky_host_verts (three a triangle, in order: static for

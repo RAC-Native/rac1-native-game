@@ -138,14 +138,16 @@ static float hsum(const L3& v) { return qmadd(qadd(v.x, v.y), 1.0f, v.z); }     
 static float hsum_y(const L3& v) { return qmadd(qadd(v.y, v.x), 1.0f, v.z); }    // vaddax.y + vmaddz.y
 static bool neg(float f) { return (fbits(f) & 0x80000000u) != 0; }
 static void sq3(uint32_t a, const L3& v, uint32_t w) { swc1(a, v.x); swc1(a + 4, v.y); swc1(a + 8, v.z); sw(a + 0xc, w); }
-// The same lane arithmetic for operands known to be clamped already (a VU result, a small integer's float): vuc(x) is x for those,
-// so only the result is clamped - the same values as the q* forms above.
-static float cadd(float a, float b) { return vuc(a + b); }
-static float csub(float a, float b) { return vuc(a - b); }
-static float cmul(float a, float b) { return vuc(a * b); }
-static float cmadd(float acc, float a, float b) { return vuc(acc + a * b); }
-static float cmsub(float acc, float a, float b) { return vuc(acc - a * b); }
-static L3 cl3(uint32_t a) { return L3{vuc(lwc1(a)), vuc(lwc1(a + 4)), vuc(lwc1(a + 8))}; }
+// (host) RAC1_PERF_VU_CLAMP (default on): the lane arithmetic below for operands known to be clamped already (a VU result, a small
+// integer's float, a value clamped as it is read): vuc(x) is x for those, so only the result is clamped - the same values as the q*
+// forms above, which clamp every operand again (RAC1_PERF_VU_CLAMP=0: those, to compare).
+static const bool g_clamp_once = std::getenv("RAC1_PERF_VU_CLAMP") == nullptr || std::atoi(std::getenv("RAC1_PERF_VU_CLAMP")) != 0;
+static float cadd(float a, float b) { return g_clamp_once ? vuc(a + b) : qadd(a, b); }
+static float csub(float a, float b) { return g_clamp_once ? vuc(a - b) : qsub(a, b); }
+static float cmul(float a, float b) { return g_clamp_once ? vuc(a * b) : qmul(a, b); }
+static float cmadd(float acc, float a, float b) { return g_clamp_once ? vuc(acc + a * b) : qmadd(acc, a, b); }
+static float cmsub(float acc, float a, float b) { return g_clamp_once ? vuc(acc - a * b) : qmsub(acc, a, b); }
+static L3 cl3(uint32_t a) { return g_clamp_once ? L3{vuc(lwc1(a)), vuc(lwc1(a + 4)), vuc(lwc1(a + 8))} : l3(a); }
 static L3 cadd3(const L3& a, const L3& b) { return L3{cadd(a.x, b.x), cadd(a.y, b.y), cadd(a.z, b.z)}; }
 static L3 csub3(const L3& a, const L3& b) { return L3{csub(a.x, b.x), csub(a.y, b.y), csub(a.z, b.z)}; }
 static L3 cmul3(const L3& a, const L3& b) { return L3{cmul(a.x, b.x), cmul(a.y, b.y), cmul(a.z, b.z)}; }
@@ -1430,11 +1432,11 @@ int32_t capsule_collide(uint32_t pos, float radius, float height, uint32_t flags
 }
 
 namespace {
-// ((2026-11-01, the Wii U's game step) RAC1_COLL_MESH_CACHE, the Wii U's default 1, the PC's 0) a moby's collision mesh turned into
-// the world by segment_collide_v (each vertex: the rows scaled, three VU0 multiply-adds) is a function of the rows', the scale's
-// bits and the vertex words alone: the result kept per moby with those bits and a copy of the words, and used again while all of
-// them are the same (most mobys do not move; floor probes and sound lines test the same ones every frame). The outcodes, which
-// depend on the segment, are still made per call.
+// (host) RAC1_PERF_COLL_MESH (default off: about 2 us saved a use, a few uses a frame on the PC; 1 on, 2 on and the reuse printed
+// every 5000 uses): a moby's collision mesh turned into the world by segment_collide_v (each vertex: the rows scaled, three VU0
+// multiply-adds) is a function of the rows', the scale's bits and the vertex words alone: the result kept per moby with those bits
+// and a copy of the words, and used again while all of them are the same (most mobys do not move; floor probes and sound lines
+// test the same ones every frame) - the same values. The outcodes, which depend on the segment, are still made per call.
 struct MeshCacheEntry {
     uint32_t m = 0, vbase = 0, nb = 0;
     uint32_t key[10] = {};
@@ -1445,13 +1447,14 @@ struct MeshCache {
     static constexpr uint32_t kN = 128;
     MeshCacheEntry e[kN];
 };
-bool mesh_cache_on() {
-    static const bool on = [] {
-        const char* e = std::getenv("RAC1_COLL_MESH_CACHE");
+// (the Wii U's default 1 - 2026-11-01, its game step: the mobys' meshes a measurable part of the collisions -, the PC's 0)
+int mesh_cache_mode() {
+    static const int on = [] {
+        const char* e = std::getenv("RAC1_PERF_COLL_MESH");
 #if defined(__WIIU__) && !defined(RAC1_VU0_EXACT)
-        return e == nullptr || std::atoi(e) != 0;
+        return e != nullptr ? std::atoi(e) : 1;
 #else
-        return e != nullptr && std::atoi(e) != 0;
+        return e != nullptr ? std::atoi(e) : 0;
 #endif
     }();
     return on;
@@ -1593,7 +1596,8 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
             tri += 4;
             if ((lwu(a0 + 0xc) & lwu(a1 + 0xc) & lwu(a2 + 0xc)) != 0) continue;
             if ((flags & 0x80 & tf) != 0) continue;
-            // (the vertices clamped once as they are read; seg, a, b, org, best are VU results: every operand below clean)
+            // (RAC1_PERF_VU_CLAMP: the vertices clamped once as they are read; seg, a, b, best are VU results, org a cell's integer
+            // coordinates: every operand below clean)
             const L3 v1 = cl3(a0);
             const L3 e2 = csub3(cl3(a1), v1), e3 = csub3(cl3(a2), v1);
             if ((flags & 0x20) != 0 && (((flags >> 8) ^ tf) & 0x1f) == 0) continue;
@@ -1761,14 +1765,14 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
                 int32_t k = 0;
                 const uint32_t nb = (vbytes + 0xf) & ~0xfu;   // the bytes the loop below reads (vbytes as a count > 0)
                 const MeshCacheEntry* ce = nullptr;
-                if (mesh_cache_on() && static_cast<int32_t>(vbytes) > 0 && nb <= 0x1000 && (vbase & 3) == 0) {
+                if (mesh_cache_mode() != 0 && static_cast<int32_t>(vbytes) > 0 && nb <= 0x1000 && (vbase & 3) == 0) {
                     const uint32_t key[10] = {fbits(R0.x), fbits(R0.y), fbits(R0.z), fbits(R1.x), fbits(R1.y), fbits(R1.z),
                                               fbits(R2.x), fbits(R2.y), fbits(R2.z), fbits(sc)};
                     const void* rp = ee_ram_ptr_read(vbase);
                     MeshCacheEntry& e = mesh_cache().e[(m >> 8) & (MeshCache::kN - 1)];
-                    static const bool stats = std::getenv("RAC1_COLL_MESH_STATS") != nullptr;
-                    static uint32_t n_call = 0, n_miss = 0;
-                    if (stats && ++n_call % 20000 == 0) std::fprintf(stderr, "[meshcache] %u uses, %u made\n", n_call, n_miss);
+                    static const bool stats = mesh_cache_mode() == 2;
+                    static thread_local uint32_t n_call = 0, n_miss = 0;
+                    if (stats && ++n_call % 5000 == 0) std::fprintf(stderr, "[meshcache] %u uses, %u made\n", n_call, n_miss);
                     if (!(e.m == m && e.vbase == vbase && e.nb == nb && std::memcmp(e.key, key, sizeof key) == 0 &&
                           std::memcmp(e.raw.data(), rp, nb) == 0)) {
                         ++n_miss;

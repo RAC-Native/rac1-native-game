@@ -1,4 +1,5 @@
 // Ported overlay code: the hero's per-frame update root (0x2070d0) and its direct helpers.
+#include <game/enhance/fixes102.h>
 #include <game/ovl/hero_l1.h>
 #include <game/ovl/hero_l2.h>
 #include <game/ovl/hero_move_mode.h>
@@ -291,6 +292,7 @@ void hero_surface_update() {
     }
     if (lbu(P + 0x12eb) == 0 || lw(P + 0x2084) == 0x7b) return;  // quicksand
     if (!sinking_into(lwc1(P + 0x2f4)) || !(lwc1(P + 0x108) < 0.0f)) return;
+    if (gameplay102_quicksand_lost()) return;  // (1.02 Gameplay, fix 9: the 1.02 build, 0x20c514)
     hero_mode3_exit();
     set_state_forced(0x7b);
 }

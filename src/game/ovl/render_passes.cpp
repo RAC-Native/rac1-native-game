@@ -134,6 +134,7 @@ void texture_block_begin(int32_t keep) {
     sw(0x0015ee74, lwu(0x0015ee78));
     sw(OV(0x0015f418), 0);
     for (int32_t i = 0; i < lw(OV(0x0015f41c)); ++i) sd(OV(0x0016d180) + static_cast<uint32_t>(i) * 0x10, 0);
+    mrp_fx_texture_block();  // (host: the effect textures' blocks start again, mrp_fx.h)
     if (keep != 0) return;
     const uint32_t hud = OV(0x0017e4d8);
     for (int32_t i = 0; i < lw(lwu(hud + 0x18) + 0x44); ++i) {

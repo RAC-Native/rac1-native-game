@@ -2,6 +2,7 @@
 // without the states and features Novalis does not have. Addresses in the block comments are
 // Novalis's.
 #include <game/enhance/advanced.h>
+#include <game/enhance/fixes102.h>
 #include <game/ovl/hero_l1.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -1101,6 +1102,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         return 1;
     }
     case 0x53:
+        if (gameplay102_deadly_landing(0)) return 0;  // (1.02 Gameplay, fix 9: the 1.02 build's Novalis)
         sw(P + 0x2284, 0);
         sw(P + 0x208c, 0);
         if (mode != 0) anim_fs(0, 0, state == 0x5a ? 0xf : 0xe);
@@ -1127,6 +1129,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         if (mode != 0) anim_fs(6, 0, 7);
         return 1;
     case 0x54: {
+        if (gameplay102_deadly_landing(1)) return 0;  // (1.02 Gameplay, fix 9: the 1.02 build's Novalis)
         sw(P + 0x208c, 1);
         sw(P + 0x2284, 0);
         const float v = vec2_length(V(P + 0x110)), cap = lwc1(0x0015ed6c) * 1.5f;
@@ -1274,7 +1277,10 @@ int32_t hero_set_state_l1(uint32_t state, int32_t mode) {
     }
     if (lbu(P + 0x20a4) == 3) {
         const uint32_t st = lwu(P + 0x2084);
-        if (!(st - 0x53u < 7u) && !(st - 0x65u < 3u) && st != 0 && st != 1) hero_mode3_exit();
+        if (!(st - 0x53u < 7u) && !(st - 0x65u < 3u) && st != 0 && st != 1) {
+            hero_mode3_exit();
+            gameplay102_mode3_left(state);  // (1.02 Gameplay, fix 13: the 1.02 build's Novalis)
+        }
     }
     hero_layers_start(lw(P + 0x2090), lw(P + 0x2084));
     sw(P + 0xff8, 0);

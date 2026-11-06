@@ -113,6 +113,12 @@ def run(name, tmp, quiet=True):
 def cmd_gen(name, out_root, strip, tmp):
     d = load(name)
     fns = run(name, tmp)
+    # another region's disc whose build rewrote functions here (stand-ins): the run may call functions the NTSC-U code
+    # does not (placed, declared first, at the first function of the unit's first file) and no longer reach some of the
+    # NTSC-U code's (left out); on the NTSC-U disc both stop the generation
+    other = any(any('STAND-IN' in x for x in b[:1]) for b in fns.values())
+    placed = {l[len(MARK):].strip() for rel in d['files'] for l in open(skel_path(rel)).read().split('\n') if l.startswith(MARK)}
+    extra_fns = [nm for nm in fns if nm not in placed] if other else []
     used = set()
     written = []
     for rel in d['files']:
@@ -121,7 +127,20 @@ def cmd_gen(name, out_root, strip, tmp):
         for l in sk:
             if l.startswith(MARK):
                 nm = l[len(MARK):].strip()
+                if extra_fns:  # (the stand-ins' own callees: their declarations, then their bodies)
+                    out.append('// (the functions the stand-ins below call and the NTSC-U code does not: tools/codegen/gen_mkall.py)')
+                    for x in extra_fns:
+                        head = next((y for y in fns[x] if y.rstrip().endswith('{') and x + '(' in y), None)
+                        if head is not None:
+                            out.append(head.rstrip()[:-1].rstrip() + ';')
+                    for x in extra_fns:
+                        out.extend(fns[x])
+                        used.add(x)
+                    extra_fns = []
                 if nm not in fns:
+                    if other:
+                        print('%s: %s: %s is not reached from this disc\'s build (left out)' % (name, rel, nm), file=sys.stderr)
+                        continue
                     sys.exit('%s: %s: the run does not produce %s (remove it from the skeleton or fix the run)' % (name, rel, nm))
                 out.extend(fns[nm])
                 used.add(nm)

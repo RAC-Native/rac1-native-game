@@ -20,6 +20,10 @@ namespace {
 inline uint64_t prof_ticks() {
 #if defined(__x86_64__) || defined(_M_X64)
     return __builtin_ia32_rdtsc();
+#elif defined(__aarch64__)
+    uint64_t t;
+    __asm__ volatile("mrs %0, cntvct_el0" : "=r"(t));
+    return t;
 #else
     return static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
 #endif
@@ -248,7 +252,9 @@ void register_program(uint32_t addr, uint32_t n, uint64_t hash, VuNativeStep ste
     ++g_micro_gen;
 }
 
+#if !(defined(RAC1_INLINE_HELPERS) && RAC1_INLINE_HELPERS)
 bool running() { return global().run.running(); }
+#endif
 
 uint64_t chain_hash() { return g_chain; }
 

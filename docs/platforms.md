@@ -1,7 +1,8 @@
 # Other platforms
 
 rac1-native runs on Linux x86-64, and on Windows x86-64; Windows is no longer experimental: players
-have played through the game on it. This page is the state of the Windows port, what remains, and
+have played through the game on it. It also runs on macOS on Apple Silicon, with a Metal renderer (a
+contributor's port, #116, #119). This page is the state of the Windows port, what remains, and
 notes on macOS and other devices (ARM64 and Android, in progress on a branch).
 
 The goal is one codebase that builds on Linux and Windows and behaves identically on both: same
@@ -12,7 +13,7 @@ game state, same oracle results, same reference images.
 - **The libraries.**
   - GLFW: window, input, gamepads.
   - glad and OpenGL 4.6.
-  - volk and Vulkan-Headers, for the experimental [Vulkan](vulkan.md) renderer: volk finds the
+  - volk and Vulkan-Headers, for the optional [Vulkan](vulkan.md) renderer: volk finds the
     system's Vulkan loader when the game starts, so nothing of Vulkan is needed to build.
   - Dear ImGui, the debug menu's widgets.
   - miniaudio: audio output.
@@ -36,7 +37,7 @@ compiles one of them. `src/game/` and `runtime/` call the interface and stay sta
 | The FPU mode in the coroutine ([Decisions](decisions.md), 11) | the coroutine's start | the new context's frame copies the thread's (MXCSR and the x87 control word, or FPCR), and each switch saves and restores them, as `getcontext` / `swapcontext` do | the fiber copies the host thread's (`fegetenv` and MXCSR), and each fiber keeps its own (`FIBER_FLAG_FLOAT_SWITCH`) |
 | Float rounding toward zero ([Decisions](decisions.md), 11) | `runtime/ee/ps2_fpu.h` | `fesetround` and MXCSR | the same calls (MinGW-w64 has both) |
 | Memory-mapped files | `src/io/mapped_file.h` (the setup) | `mmap` | `CreateFileMapping` / `MapViewOfFile` |
-| Reads of the disc at an offset | `runtime/kernel/disc.cpp` (the disc's files in `assets/disc/`, or the image with `RAC1_READ_ISO=1`) | `pread`, `posix_fadvise` | `ReadFile` with an offset; a file past 240 characters opened with the `\\?\` prefix |
+| Reads of the disc at an offset | `runtime/kernel/disc.cpp` (the disc's files in `assets/disc/`, or the image with `RAC1_READ_ISO=1`; a data disc's in `assets/disc-<serial>-<version>/`, through the same reads) | `pread`, `posix_fadvise` | `ReadFile` with an offset; a file past 240 characters opened with the `\\?\` prefix |
 | Settings and saves folders | the options pages, the controls, the memory card | `~/.config/rac1-native/`, `~/.local/share/rac1-native/` (or `XDG_*`) | `%APPDATA%\rac1-native\` |
 | Files by path | the settings files | `fopen` | `_wfopen` (any characters) |
 | The local time | the memory card's dates, the CDVD clock | `localtime_r` | `localtime_s` |
@@ -49,6 +50,7 @@ compiles one of them. `src/game/` and `runtime/` call the interface and stay sta
 | Thread priority | `src/host/host_priority_{posix,win32}.cpp` | rtkit over D-Bus | `SetThreadPriority` |
 | The disc image's link | the setup, `runtime/kernel/disc.cpp` (`RAC1_READ_ISO=1`) | a symbolic link | a link if allowed, else the path in `assets/iso/disc-path.txt` |
 | The disc's extraction | `tools/disc_extract.py` (the setup) | plain files | plain files (no links); a path past 240 characters with the `\\?\` prefix |
+| The data discs (`--data-iso`) | `tools/setup.py`, `assets/data-discs.txt` | plain files, as the disc's | plain files, as the disc's; `setup.cmd` passes `--data-iso` on (a disc image dropped on it is the game's disc) |
 
 The Linux side behaves as before: the three reference images are unchanged.
 
@@ -134,10 +136,9 @@ Windows job compiles against.
 ## macOS
 
 macOS stops at OpenGL 4.1 (deprecated, no compute shaders), so the OpenGL renderer can't run
-there. The way there is the [Vulkan](vulkan.md) renderer, through MoltenVK, or a Metal one (see
-[Roadmap](roadmap.md)). The Vulkan renderer has not been tried on macOS: it asks for Vulkan 1.3
-features that MoltenVK may not all offer (`shaderFloat64`, for the tfrag compute shader's EE
-rounding, among them). The host-interface work above would carry over.
+there. On macOS (Apple silicon) the game draws with [Metal](metal.md): the Vulkan renderer's code on
+a layer that implements Vulkan's calls with Metal. The Vulkan renderer itself has not been tried
+through MoltenVK.
 
 ## Other devices
 

@@ -1922,23 +1922,39 @@ static void moby_transform_core(uint32_t m, bool keep_rows) {
     V(m + 0xc0) = r0;
     V(m + 0xd0) = r1;
     V(m + 0xe0) = r2;
-    // (each operand clamped once as it is read, then the lanes' arithmetic with the result's clamp alone: vuc(x) is x for a
-    // clamped x - the same values as vmul / vmadd)
-    const float csc = vuc(scale);
+    // (host, RAC1_PERF_VU_CLAMP: each operand clamped once as it is read, then the lanes' arithmetic with the result's clamp alone -
+    // vuc(x) is x for a clamped x: the same values as vmul / vmadd, which clamp every operand again; =0: those, to compare)
+    static const bool clamp_once = std::getenv("RAC1_PERF_VU_CLAMP") == nullptr || std::atoi(std::getenv("RAC1_PERF_VU_CLAMP")) != 0;
     Vec4 o;
-    for (int k = 0; k < 4; ++k) (&o.x)[k] = vuc(vuc((&off.x)[k]) * csc);
     Vec4 p = V(m + 0x10);
-    p.x = vuc(vuc(p.x) * 1024.0f);
-    p.y = vuc(vuc(p.y) * 1024.0f);
-    p.z = vuc(vuc(p.z) * 1024.0f);
-    const int32_t radius = vftoi0(o.w);
-    Vec4 w = o;
-    for (int k = 0; k < 3; ++k) {
-        float acc = vuc(vuc((&r0.x)[k]) * o.x);
-        acc = vuc(acc + vuc((&r1.x)[k]) * o.y);
-        acc = vuc(acc + vuc((&r2.x)[k]) * o.z);
-        (&w.x)[k] = vuc(acc + (&p.x)[k] * 1.0f);
+    Vec4 w;
+    if (clamp_once) {
+        const float csc = vuc(scale);
+        for (int k = 0; k < 4; ++k) (&o.x)[k] = vuc(vuc((&off.x)[k]) * csc);
+        p.x = vuc(vuc(p.x) * 1024.0f);
+        p.y = vuc(vuc(p.y) * 1024.0f);
+        p.z = vuc(vuc(p.z) * 1024.0f);
+        w = o;
+        for (int k = 0; k < 3; ++k) {
+            float acc = vuc(vuc((&r0.x)[k]) * o.x);
+            acc = vuc(acc + vuc((&r1.x)[k]) * o.y);
+            acc = vuc(acc + vuc((&r2.x)[k]) * o.z);
+            (&w.x)[k] = vuc(acc + (&p.x)[k] * 1.0f);
+        }
+    } else {
+        for (int k = 0; k < 4; ++k) (&o.x)[k] = vmul((&off.x)[k], scale);
+        p.x = vmul(p.x, 1024.0f);
+        p.y = vmul(p.y, 1024.0f);
+        p.z = vmul(p.z, 1024.0f);
+        w = o;
+        for (int k = 0; k < 3; ++k) {
+            float acc = vmul((&r0.x)[k], o.x);
+            acc = vmadd(acc, (&r1.x)[k], o.y);
+            acc = vmadd(acc, (&r2.x)[k], o.z);
+            (&w.x)[k] = vmadd(acc, (&p.x)[k], 1.0f);
+        }
     }
+    const int32_t radius = vftoi0(o.w);
     const int32_t ix = vftoi0(w.x), iy = vftoi0(w.y);
     V(m + 0) = w;
     sh(m + 0xa8, lhu(m + 0xa8) + 1);

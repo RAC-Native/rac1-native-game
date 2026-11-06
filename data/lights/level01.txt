@@ -27,7 +27,7 @@ emit shrub 231  0.000 52.000 0.000  1.000 0.150 0.100  1.200 3.000 0.000  0.00
 # The Large Amoeboid's eyes (moby class 572): green.
 emit moby 572  0.000 0.000 2.000  0.500 1.000 0.300  0.800 3.500 0.000  0.00
 # The yellow soldier bots (moby class 459): their green eyes and the thruster on their back.
-emit moby 459  0.000 0.000 2.000  0.400 1.000 0.400  0.600 3.000 0.000  0.00
+emit moby 459  0.000 0.000 2.000  0.400 1.000 0.400  1.546 3.000 0.000  0.00
 emit moby 459  0.000 0.000 1.300  1.000 0.600 0.250  0.800 3.000 0.400  0.00
 # The bomb glove's bombs (moby class 121): a warm, flickering glow.
 emit moby 121  0.000 0.000 0.000  1.000 0.450 0.150  0.800 3.000 0.300  0.00
@@ -59,9 +59,8 @@ material moby 703 tex 7 metal 0.35 1
 material moby 703 tex 9 metal 0.35 1
 # Clank's green eyes on Ratchet's back (Anya's two lines, saved as moby 0 joint 62 - one of Ratchet's fingers - before the editor's
 # joint fix): Clank there is moby class 601, his head its joint 4; each light just in front of one eye.
-# Aimed forward along the head's x (the eyes' side): they light what Clank looks at, not Ratchet's head behind him (Daino)
-emit moby 601  0.125 -0.030 0.050  0.090 1.000 0.000  0.350 0.450 0.000  0.00  aim 1.000 0.000 0.000 40.0  joint 4
-emit moby 601  0.125 0.030 0.050  0.115 1.000 0.000  0.350 0.450 0.000  0.00  aim 1.000 0.000 0.000 40.0  joint 4
+emit moby 601  0.125 -0.030 0.050  0.090 1.000 0.000  0.350 0.450 0.000  0.00  joint 4
+emit moby 601  0.125 0.030 0.050  0.115 1.000 0.000  0.350 0.450 0.000  0.00  joint 4
 material moby 703 tex 10 metal 0.35 1
 material moby 703 tex 11 metal 0.35 1
 material moby 703 tex 5 metal 0.35 1
@@ -93,7 +92,7 @@ material shrub 126 tex 0 metal 0.35 1
 emissive shrub 126 tex 7  2.42 0.00
 material shrub 126 tex 3 metal 0.35 1
 material tie 669 tex 0 metal 0.36 1
-material tie 664 tex 0 metal 0.35 1
+material tie 664 tex 0 metal 0.44 1
 material shrub 128 tex 0 metal 0.35 1
 material shrub 136 tex 0 metal 0.35 1
 material tie 581 tex 1 metal 0.35 1
@@ -101,21 +100,61 @@ material shrub 160 tex 0 metal 0.37 1
 material moby 730 tex 1 metal 0.35 1
 material moby 730 tex 2 metal 0.35 1
 material tie 655 tex 0 metal 0.46 1
-# Options > Graphics > Grass (docs/materials.md): the meadows' grass
-material tfrag 0 tex 8 grass
-# Options > Graphics > Water (docs/materials.md): Novalis's water, VU1 program 7's strips and tiles (novalis_water.cpp), each class's
-# base layer (the second layers some classes draw over it, the same water, left as the game draws them). Not the landing area: the
-# program-7 surfaces of class 0 there (13347, 13351, 13355...) are the shadow meshes under Ratchet and the pads.
+material moby 746 tex 0 metal 0.35 1
+material moby 746 tex 2 metal 0.46 1
+material moby 780 tex 0 metal 0.35 1
+material moby 780 tex 1 metal 0.46 1
+material tie 833 tex 0 wet 1 0.45
+material moby 815 tex 0 wet 1 0.45
+material moby 815 tex 2 wet 1 0.45
+material tfrag 0 tex 76 metal 0.35 1
+material moby 641 tex 0 metal 0.35 1
+material moby 641 tex 10 metal 0.41 1.22
+material moby 641 tex 9 metal 0.35 1
+material moby 641 tex 8 metal 0.35 1
+material moby 641 tex 7 metal 0.35 1
+material moby 641 tex 2 metal 0.56 1
+material tfrag 0 tex 42 metal 0.35 1
+material tfrag 0 tex 40 metal 0.35 1  glow 2.55 0.51
+material shrub 163 tex 0 metal 0.35 1
+material shrub 163 tex 4 metal 0.35 1
+material shrub 163 tex 3 metal 0.35 1
+material shrub 163 tex 5 metal 0.35 1
+material shrub 163 tex 1 metal 0.35 1
+material shrub 163 tex 2 metal 0.35 1
+emissive moby 1042 tex 1  1.92 0.00
+emissive moby 1042 tex 2  2.13 0.00
+emit moby 1042  -0.109 -0.346 1.764  0.204 1.000 0.749  0.243 8.000 0.000  0.00  joint 0
+material tie 528 tex 0 metal 1 1
+material tfrag 0 tex 17 metal 1 1
+material tfrag 0 tex 19 metal 1 1
+material moby 701 tex 0 wet 1 0.36
+material moby 701 tex 1 metal 1 1.17
+material moby 701 tex 2 metal 1 1.13
+material moby 701 tex 3 metal 1 1.25
+material tfrag 0 tex 16 mud 0.75 1.75
+material moby 774 tex 0 metal 1 1
+material tie 438 tex 0 metal 1 1
+material tie 515 tex 0 metal 1 1
+material tie 519 tex 0 metal 1 1
+material tie 537 tex 1 metal 0.45 1
+material tie 439 tex 0 metal 0.35 1
+material tie 581 tex 0 metal 0.35 1
+material shrub 141 tex 1 metal 0.35 1
+emit moby 531  -0.887 -1.586 -0.533  0.557 0.933 1.000  1.631 1.000 0.000  0.00  joint 3
+material moby 11 tex 1 metal 0.35 1
+material surface 761 tex 13347 water 1 1  foam -0
+# Surface Detail's water (docs/materials.md), put back: the lighting batches' reformat (2a468fe) left these lines out. Novalis's
+# water, VU1 program 7's strips and tiles (novalis_water.cpp), named by their effect textures (44 the strips' water, 43 and 41 the
+# tiles' two base layers); the river (761) is the line above.
 # The water at the bottom of the gorge below the start's cliffs (class 676: x 22..178, y 137..297, z 38.5; Ratchet swims in it),
-# with its waterfall at the north-west end (x 28..41, y 275..295, from z 59 down): deep, broad waves
-material surface 676 tex 13347 water 1 1  waves 0.8 0.8  depth 6
-# The river along the first walk, from beside the landing pad east to x 323 (class 761, z 59.7 rising to 80): shallow, quick ripples
-material surface 761 tex 13347 water 1 1.2  waves 1.4 1.5  foam 0.7  depth 1.5
+# with its waterfall at the north-west end (x 28..41, y 275..295, from z 59 down)
+material surface 676 tex 44 water 1 1
 # The stream and the pools of water tiles south-west of the pad (class 751: x 119..164, y 45..132, z 56..66)
-material surface 751 tex 13347 water 1 1  waves 1.4 1.2  depth 1
-material surface 751 tex 13483 water 1 1  waves 1.4 1.2  depth 1
+material surface 751 tex 43 water 1 1
+material surface 751 tex 41 water 1 1
 # The waterworks: the basins at z 82 behind the railings (class 678, x 260..309, y 138..184), still water
-material surface 678 tex 13347 water 0.8 0.7  waves 0.7 0.5  foam 0.4  depth 3
+material surface 678 tex 44 water 0.8 0.7
 # The three round water columns in the blue cave south-west of the start (class 1225, x 93..120, y 60..86; their wave height the
-# game's): mostly upright, the glints and the see-through only (the normal maps lie on the flat parts alone)
-material surface 1225 tex 13347 water 0.8 0.6  depth 2
+# game's): mostly upright, gentle ripples
+material surface 1225 tex 43 water 0.8 0.6

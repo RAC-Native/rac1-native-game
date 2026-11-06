@@ -2,6 +2,7 @@
 // source as Veldin's, built with other features, so the code differs. Addresses are Aridia's.
 // Veldin-equivalent globals go through OV (the level's own address); the player block is in the
 // base ELF (the same on every overlay).
+#include <game/enhance/fixes102.h>
 #include <game/ovl/hero_l2.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -73,6 +74,7 @@ void hero_surface_update_l2() {
     }
     if (lbu(P + 0x12eb) == 0 || lw(P + 0x2084) == 0x7b) return;  // quicksand
     if (!sinking_into(lwc1(P + 0x2f4)) || !(lwc1(P + 0x108) < 0.0f)) return;
+    if (gameplay102_quicksand_lost()) return;  // (1.02 Gameplay, fix 9: the 1.02 build's Aridia, 0x21c048)
     hero_mode3_exit();
     hero_set_state(0x7b, 1);
 }

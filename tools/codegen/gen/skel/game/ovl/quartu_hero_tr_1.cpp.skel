@@ -24,6 +24,7 @@
 #include <game/ovl/vendor_tr.h>
 #include <game/ovl/walker.h>
 #include <game/enhance/advanced.h>
+#include <game/enhance/fixes102.h>
 #include <game/port_stubs.h>
 
 namespace rac1 {

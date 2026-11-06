@@ -11,14 +11,11 @@
 namespace rac1 {
 
 namespace {
+// orig: (host) RAC1_PERF_PALETTE_BLEND=0: the loop as transliterated (A/B)
 bool enabled() {
     static const bool on = [] {
-        const char* e = std::getenv("RAC1_PALETTE_BLEND_FAST");
-#if defined(__WIIU__)
+        const char* e = std::getenv("RAC1_PERF_PALETTE_BLEND");
         return e == nullptr || std::atoi(e) != 0;
-#else
-        return e != nullptr && std::atoi(e) != 0;
-#endif
     }();
     return on;
 }
@@ -49,6 +46,7 @@ bool direct_ok(uint32_t a0, uint32_t a1, uint32_t a3, uint32_t groups) {
 }
 }  // namespace
 
+// orig: (host) see palette_blend.h
 bool palette_blend_loop(uint32_t a0, uint32_t a1, uint32_t a3, uint32_t t1, uint32_t* v0) {
     const uint32_t groups = t1 >> 2;
     if (!enabled() || groups == 0) return false;
@@ -59,7 +57,7 @@ bool palette_blend_loop(uint32_t a0, uint32_t a1, uint32_t a3, uint32_t t1, uint
     const float wa = vf[31].v[3], wb = vf[31].v[0];
     const float* pa = static_cast<const float*>(ee_ram_ptr_read(0x70000000u));
     const float* pb = static_cast<const float*>(ee_ram_ptr_read(0x70002000u));
-    static float ma[256][4], mb[256][4];
+    thread_local float ma[256][4], mb[256][4];
     const float ca = vuc(wa), cb = vuc(wb);
     for (int i = 0; i < 256; ++i)
         for (int l = 0; l < 4; ++l) {
@@ -69,36 +67,7 @@ bool palette_blend_loop(uint32_t a0, uint32_t a1, uint32_t a3, uint32_t t1, uint
     uint32_t w[4] = {};
     int ia[4] = {}, ib[4] = {};
     float s[4][4] = {};
-    bool direct = direct_on() && direct_ok(a0, a1, a3, groups);
-    for (int i = 0; i < 256 && direct; ++i)
-        for (int l = 0; l < 4; ++l) direct = direct && safe(ma[i][l]) && safe(mb[i][l]);
-    if (direct) {
-        // (host-order words: the index byte of the PS2's address a1 + t is the word's bits 8t..8t+7, the texel's lane l its
-        // byte l, on either host)
-        const uint32_t* xa = static_cast<const uint32_t*>(ee_ram_ptr_read(a1));
-        const uint32_t* xb = static_cast<const uint32_t*>(ee_ram_ptr_read(a3));
-        uint32_t* out = static_cast<uint32_t*>(ee_ram_ptr_write(a0, groups * 16));
-        for (uint32_t g = 0; g < groups; ++g) {
-            const uint32_t wa4 = xa[g], wb4 = xb[g];
-            for (int t = 0; t < 4; ++t) {
-                const float* pa4 = ma[(wa4 >> (8 * t)) & 0xffu];
-                const float* pb4 = mb[(wb4 >> (8 * t)) & 0xffu];
-                uint32_t word = 0;
-                for (int l = 0; l < 4; ++l)
-                    word |= (static_cast<uint32_t>(static_cast<int32_t>(pa4[l] + pb4[l])) & 0xffu) << (8 * l);
-                out[g * 4 + static_cast<uint32_t>(t)] = word;
-            }
-        }
-        // the last group again for the registers below (its indices still there: not overwritten)
-        const uint32_t wa4 = xa[groups - 1], wb4 = xb[groups - 1];
-        for (int t = 0; t < 4; ++t) {
-            ia[t] = static_cast<int>((wa4 >> (8 * t)) & 0xffu);
-            ib[t] = static_cast<int>((wb4 >> (8 * t)) & 0xffu);
-            for (int l = 0; l < 4; ++l) s[t][l] = vuc(ma[ia[t]][l] + mb[ib[t]][l]);
-        }
-        w[0] = out[(groups - 1) * 4];
-    }
-    for (uint32_t g = 0; g < groups && !direct; ++g) {
+    for (uint32_t g = 0; g < groups; ++g) {
         // (a group's eight indices read before its four words are written, as the loop does)
         for (int t = 0; t < 4; ++t) {
             ia[t] = static_cast<int>(lbu(a1 + static_cast<uint32_t>(t)));

@@ -11,7 +11,9 @@ the table:
     function's control flow (branch delay slots, likelies, calls clobbering the caller-saved registers);
   - $gp offsets;
   - the code pointers the generators read from the data (jump tables).
-Nothing of the NTSC-U build is read: only the PAL disc and the table's addresses and shifts.
+Nothing of the NTSC-U build is read: only the PAL disc and the table's addresses and shifts. On a disc whose core moved
+(the 1.02 core of PAL 2.00: the table's unit `core`) the core's addresses are taken back too (the jal targets into it, the
+addresses built into its data, the $gp offsets from the disc's own $gp).
 
 A few fields the analysis cannot take back alone (a `lui` half built in another function, an address two runs claim) are
 corrected by the table's `fix` lines; its `start` / `nostart` lines align the function starts with the NTSC-U build's,
@@ -52,8 +54,10 @@ CALLER = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 31)
 ISO_LINKS = ("iso/rac1-ntsc-u.iso", "iso/rac1-pal.iso")
 
 
-def table_path(serial):
-    return ROOT / "data/regions" / f"{serial}.txt"
+def table_path(serial, elf_sha1=None):
+    """The region table of a disc: the one naming its boot executable's sha1, else data/regions/<serial>.txt."""
+    t = rm.table_for(elf_sha1, serial) if elf_sha1 else None
+    return t if t is not None else ROOT / "data/regions" / f"{serial}.txt"
 
 
 def disc_path(assets):
@@ -80,7 +84,7 @@ def disc_of(iso_path):
             ser, elf = "SCUS-97199", NTSC_ELF
         tab = None
         if elf != NTSC_ELF:
-            tab = table_path(ser)
+            tab = table_path(ser, elf_sha1(iso_path, elf))
             if not tab.exists():
                 raise SystemExit(f"[region_view] {iso_path} is {ser}: no region table {tab} for it")
             tab = str(tab)
@@ -91,6 +95,16 @@ def disc_of(iso_path):
 def boot_elf_path(assets):
     """The boot ELF the setup extracted from the disc: assets/dumps/SCUS_971.99, or the PAL disc's SCES_509.16."""
     return os.path.join(assets, "dumps", disc_of(disc_path(assets))[1])
+
+
+def elf_sha1(iso_path, elf):
+    """The sha1 of the disc's boot executable (None when unreadable)."""
+    try:
+        with open(iso_path, "rb") as iso:
+            b = rm.root_file(iso, elf)
+        return rm.sha1(b) if b is not None else None
+    except OSError:
+        return None
 
 
 def disc_info(iso_path):
@@ -149,8 +163,10 @@ def read_units(path):
         if f and f[0] == "overlay":
             meta[f[1]] = int(f[9], 16)  # "overlay N code lo hi -> lo hi entry E -> E'"
     fixes = read_fixes(path)
+    core = rm.read_core(path)
     for k, r in units.items():
         r.fix, r.start, r.nostart, r.pair = fixes.get(k, ({}, set(), set(), {}))
+        r.core = core
     return {k: (r, r.code_base, r.code_end, meta[k]) for k, r in units.items()}
 
 
@@ -212,6 +228,7 @@ class Back:
 
     def __init__(self, region, pal):
         self.R, self.P = region, pal
+        self.core = getattr(region, "core", None) or rm.Core()  # (the disc's core when it moved; else NTSC-U's)
         self.code = sorted((lo + d, hi + d, d) for lo, hi, d in region.code)
         self.code_lo = [c[0] for c in self.code]
         self.entry_rev = {p: n for n, p in region.entry.items()}
@@ -244,8 +261,8 @@ class Back:
         return p - self.data[i][2]
 
     def back(self, p):
-        if p < CORE_END:
-            return p
+        if p < self.core.end_p:
+            return self.core.back(p) if self.core else p
         if self.P.code_base <= p < self.P.code_end:
             return self.code_back(p)
         n = self.data_back(p)
@@ -381,8 +398,14 @@ def _unreloc_fn(W, out, s, e, base_p, back, P):
         op = w >> 26
         if op in (2, 3):
             t = ((pc + 4) & 0xF0000000) | ((w & 0x3FFFFFF) << 2)
-            if t >= CORE_END:
+            if t >= back.core.end_p:
                 nt = back.code_back(t) if P.code_base <= t < P.code_end else None
+                if nt is None:
+                    bad += 1
+                else:
+                    out[s + i] = (w & 0xFC000000) | ((nt >> 2) & 0x3FFFFFF)
+            elif back.core:  # (a call into the disc's core, which moved: its NTSC-U address)
+                nt = back.core.back(t)
                 if nt is None:
                     bad += 1
                 else:
@@ -392,7 +415,7 @@ def _unreloc_fn(W, out, s, e, base_p, back, P):
         if rb is None or rb == 29:
             continue
         if rb == 28:
-            p = (GP + _sx(w)) & 0xFFFFFFFF
+            p = (back.core.gp + _sx(w)) & 0xFFFFFFFF
             nn = back.back(p)
             if nn is None or not -0x8000 <= nn - GP < 0x8000:
                 bad += 1
@@ -408,7 +431,7 @@ def _unreloc_fn(W, out, s, e, base_p, back, P):
             continue
         h = his.pop()
         p = ((h << 16) + _sx(w)) & 0xFFFFFFFF
-        if not CORE_END <= p < 0x01000000:
+        if not (0x00100080 if back.core else CORE_END) <= p < 0x01000000:
             continue
         nn = back.back(p)
         if nn is None:
@@ -486,7 +509,7 @@ class RegionView(om.Overlay):
 
     def _fwd(self, a):
         if a < CORE_END:
-            return a
+            return (self.back_.core.fwd(a) or a) if self.back_.core else a
         if self.code_base <= a < self.code_end:
             return self.R.code_fwd(a)
         return self.R.data_fwd(a)
@@ -595,7 +618,7 @@ def boot_view(elf_bytes, table):
 # ---- check (both discs) -----------------------------------------------------------------------
 
 def cmd_check(a):
-    table = a.table or str(table_path(disc_info(a.pal)[0]))
+    table = a.table or str(table_path(disc_info(a.pal)[0], elf_sha1(a.pal, disc_info(a.pal)[1])))
     units = read_units(table)
     names = a.units.split(",") if a.units else ["boot"] + [str(i) for i in range(19)]
     total_bad = 0
@@ -697,10 +720,10 @@ def write_fixes(table, pal, ntsc):
         f = l.split()
         if f and f[0] == "overlay":
             if cur is not None:
-                out += fixes[cur]
+                out += fixes.get(cur, [])
             cur = f[1]
         out.append(l)
-    out += fixes[cur]
+    out += fixes.get(cur, [])
     Path(table).write_text("\n".join(out) + "\n")
     print(f"[region_view] wrote {sum(len(v) for v in fixes.values())} fix / start / nostart lines into {table}")
 
@@ -731,7 +754,7 @@ def cmd_maps(a):
     on the rebuilt NTSC-U code (levelN.txt, overlay_match's format, N = 1..18)."""
     out = Path(a.o)
     out.mkdir(parents=True, exist_ok=True)
-    table = a.table or str(table_path(disc_info(a.iso)[0]))
+    table = a.table or str(table_path(disc_info(a.iso)[0], elf_sha1(a.iso, disc_info(a.iso)[1])))
     V = level_view(a.iso, 0, table)
     for lv in range(1, 19):
         L = level_view(a.iso, lv, table)

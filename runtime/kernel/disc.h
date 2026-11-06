@@ -12,8 +12,9 @@
 namespace rac1 {
 
 // The image's path (the setup reads it; the game only with RAC1_READ_ISO=1): $RAC1_ISO, else the setup's link to
-// the image (assets/iso/rac1-ntsc-u.iso, or assets/iso/rac1-pal.iso for the PAL disc), else the path written in
-// disc_path_file() (where the setup could not make the link: Windows).
+// the image (assets/iso/rac1-ntsc-u.iso, or assets/iso/rac1-pal.iso for the PAL disc; with both, the one the disc's
+// files were extracted from), else the path written in disc_path_file() (where the setup could not make the link:
+// Windows).
 std::string disc_path();
 // assets/iso/disc-path.txt: the image's path, one line, written by the setup when it cannot link it.
 const char* disc_path_file();
@@ -59,5 +60,28 @@ bool disc_has_level(int level);
 bool disc_read_level_wad(int level, std::vector<std::byte>& out);
 // Reads only `level`'s data header and overlay executable from the disc into `out`.
 bool disc_read_level_overlay(int level, std::vector<std::byte>& out);
+
+// ---- Data discs ----
+// Other releases' discs given to the setup with --data-iso (docs/setup.md, "Data discs"): sources of data only (another
+// release's voices), never of code. The setup extracts each into its own folder (assets/disc-<serial>-<version>/, the
+// same files and layout.txt as assets/disc/) and lists them in disc_data_discs_file(). The disc layer reads data disc k
+// (0, 1, ...) at the sectors base + lba, base = (k + 1) * kDataDiscWindow: windows past the game's disc, which ends
+// below the first (a DVD holds less than 0x400000 sectors), so a sector number names one disc's sector and the reads
+// (disc_read, the IOP's streams, the movies) take a data disc's sectors as they take the game's.
+constexpr uint32_t kDataDiscWindow = 0x00400000u;
+struct DataDisc {
+    std::string dir;                        // its files' folder ("assets/disc-SCPS-15037-1.02")
+    std::string serial, region, version;    // "SCPS-15037", "NTSC-J", "1.02"
+    std::string boot;                       // its boot executable ("SCPS_150.37")
+    uint32_t base = 0;                      // its sector 0 in the disc layer's sectors
+    bool ok = false;                        // its files are there and complete
+};
+// "assets/data-discs.txt": one line per data disc, "<folder> <serial> <region> <version> <boot>" (the setup writes it;
+// missing: no data disc)
+const char* disc_data_discs_file();
+// The data discs listed (read once)
+std::vector<DataDisc> disc_data_discs();
+// The first readable data disc of `region` ("NTSC-J"), else null
+const DataDisc* disc_data_disc(const std::string& region);
 
 }  // namespace rac1

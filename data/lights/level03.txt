@@ -24,10 +24,10 @@ emissive moby 627 tex 0  2.26 0.75
 # the motes taken out on purpose ("weird mote particles")
 emit shrub 283  -3.001 -1.396 5.873  0.850 0.920 1.000  1.000 2.055 0.000  0.00
 material tfrag 0 tex 37 metal 0.35 1
-material tfrag 0 tex 21 metal 0.46 1
+material tfrag 0 tex 21 metal 0.41 1.05
 material tfrag 0 tex 20 metal 0.46 1
 material tie 1024 tex 1 metal 0.45 1
-material shrub 217 tex 0 metal 0.43 1
+material shrub 217 tex 0 metal 0.39 1.06
 material tfrag 0 tex 58 metal 0.61 1
 material moby 928 tex 2 metal 0.56 1
 material moby 928 tex 1 metal 0.56 1
@@ -41,5 +41,29 @@ material tfrag 0 tex 11 metal 0.46 1
 material shrub 218 tex 0 metal 0.45 1
 material moby 71 tex 0 metal 0.35 1
 emissive shrub 283 tex 0  1.31 0.00
-# Options > Graphics > Grass (docs/materials.md): the garden at the start's lawn
-material tfrag 0 tex 23 grass
+material tie 885 tex 1 metal 0.35 1
+material moby 1210 tex 0 metal 0.35 1
+emissive moby 1210 tex 1  2.26 0.28
+emissive moby 1210 tex 2  2.26 0.27
+material moby 822 tex 2 metal 0.39 1.06
+emit moby 822  -17.376 -0.013 8.271  0.850 0.920 1.000  1.000 8.000 0.000  0.00  joint 0
+emit moby 822  -14.739 -3.276 2.329  0.850 0.920 1.000  1.000 8.000 0.000  0.00  joint 0
+emit moby 822  -14.741 3.295 2.310  0.850 0.920 1.000  1.000 8.000 0.000  0.00  joint 0
+material tfrag 0 tex 32 metal 0.41 1.06
+material moby 825 tex 0 metal 0.35 1.21
+material moby 825 tex 1 metal 0.43 0.73
+material moby 825 tex 2 metal 0.71 0.86
+material moby 825 tex 4 metal 0.35 1.16
+material tie 1029 tex 0 metal 0.45 1
+material moby 500 tex 0 metal 1 1.46
+material moby 511 tex 0 metal 1 1.46
+material tfrag 0 tex 35 metal 0.76 1
+material tie 895 tex 1 metal 0.71 1
+material tie 854 tex 0 metal 0.56 0.66
+material tie 1127 tex 0 metal 0.66 1.25
+material tie 729 tex 0 metal 0.46 1.06
+material moby 817 tex 1 metal 0.35 1.25
+material moby 817 tex 0 metal 0.35 1.26
+light 295.376 244.015 39.868  0.716 0.663 0.282  0.581 11.496 0.000 1
+material moby 909 tex 0 metal 1 0
+emit shrub 283  0.566 -1.975 5.979  0.850 0.920 1.000  1.000 4.380 0.000  0.00

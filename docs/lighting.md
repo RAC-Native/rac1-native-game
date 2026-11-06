@@ -3,9 +3,9 @@
 The game's own lighting, how the MRP reproduces it, and the optional modern lighting on top of it:
 point lights per pixel, cascaded sun shadows, sun rays, ambient occlusion and an in-game light editor.
 
-> **The modern lighting is EXPERIMENTAL.** It is off by default and will stay off by default.
-> It is not yet fully usable on some planets, and it is not a porting priority: it will be
-> worked on later. With Options > Graphics > Lighting on Original (the default) the picture is
+> **The modern lighting is optional.** It is off by default and will stay off by default.
+> Every level runs with it, most of them lit by hand in Anya-Thoughtmane's lighting batches; a few
+> rows below still need a playtest. With Options > Graphics > Graphics on Original (the default) the picture is
 > the original's lighting, pixel for pixel, and nothing here has any effect. The modern lighting
 > only changes the picture, never the game: it reads the game's memory and does not write to it,
 > so the game's state is the same with it on or off. It is a labelled enhancement (see
@@ -40,7 +40,8 @@ differs a lot between planets. Where each part comes from is described in
   When a level loads they are found automatically and turned into small point lights. This is
   our own heuristic, not game data, and it can be wrong (see the table below).
 - **Lights placed by hand** with the [light editor](#the-light-editor) cover what the automatic
-  search can't find. The project ships a few hand-placed lights (Novalis and Aridia); otherwise its
+  search can't find. The project ships hand-placed lights from Anya-Thoughtmane's lighting batches on most levels (#102,
+  #120) and a few of its own (Novalis and Aridia); otherwise its
   level files turn off an automatic class the search got wrong (Gaspar, Orxon), turn the sun (every level but Rilgar, Blarg
   and Batalia, most of them from Anya-Thoughtmane's lighting pass, #90), turn the sun rays off (Blarg,
   Rilgar, Batalia, Oltanis), mark interiors (Blarg, Orxon), mark emissive surfaces and
@@ -65,7 +66,7 @@ seen, and every one of them still needs a playtest.
 | Kerwan | Works. Few automatic lights; the street lamps (moby class 1827) are lights from the level's file. The sun comes low through the first tunnel's mouth, the city backlit. |
 | Eudora | Works. The heaviest level for the lighting (its forest has many shadow casters; roughly twice the frame time of the lighting off in the survey, on an integrated GPU). Trees and woodwork glow bright orange in the textures: they are recognised as materials and not turned into lights. Need some works. |
 | Rilgar | Works. Same warm-material handling as Eudora. Needs some works, some automatic lights are a bit non-sense |
-| Blarg (Nebula G34, Blarg's station) | **Still a mess, possibly better.** Playtesting found some zones pitch dark: the station's closed zones are lit by a light that reaches the floor only through the geometry above it, so the sun's shadow covered the whole zone. Closed zones are marked [interiors](#interiors) in `data/lights/level06.txt` (light set 6 so far, a closed room the old covered-view check found); the lounges with large windows keep their shadows. Other closed zones: to mark while playing. The hangar has only a faint, low blue sun. |
+| Blarg (Nebula G34, Blarg's station) | **Works** (Daino, 4 November 2026, after Anya-Thoughtmane's batches 2 and 3 lit its metals, lamps and emissive surfaces, #102, #120). Before, playtesting found some zones pitch dark: the station's closed zones are lit by a light that reaches the floor only through the geometry above it, so the sun's shadow covered the whole zone. Closed zones are marked [interiors](#interiors) in `data/lights/level06.txt` (light set 6 so far, a closed room the old covered-view check found); the lounges with large windows keep their shadows. Other closed zones: to mark while playing. The hangar has only a faint, low blue sun. |
 | Umbris | Works outdoors: the dead trees cast long shadows. Near the lava the zone's light comes from below, so there is no sun there and the shadows fade out. No automatic lights are found on this level. |
 | Batalia | Works outdoors: a low warm sun (15 degrees) gives long shadows across the decks in the rain. No automatic lights: the towers' cyan bands are thin strips on their objects' textures (2 or 3 of a triangle's 7 samples, under the objects' 4-of-7 rule), so they cast no light. |
 | Gaspar | Works outdoors (sun at 40 degrees). Inside the buildings the view is covered from the sun and the picture is the original's. The tanks' gold band (tie class 1558, paint) was taken for a lamp and lit their corner gold: turned off in `data/lights/level09.txt`. The robots' shots, the game's own lights, light the floor and pillars per pixel, strongly. |
@@ -126,7 +127,7 @@ GS. **Drop shadows** are shadow volumes counted in the frame's alpha channel.
 
 ### How the MRP reproduces it
 
-By default (Options > Graphics > Lighting > Original) the MRP draws exactly this:
+By default (Options > Graphics > Graphics: Original) the MRP draws exactly this:
 
 - **Mobys:** `mrp_scene` captures each moby's 8-row light record from the ported moby pass, and the
   moby vertex shader (`mrp_moby_renderer.cpp`) evaluates the formula above per vertex, including the
@@ -156,7 +157,7 @@ adding even inactive code to them changed the rounding of a few pixels.
 | Emissive surfaces | Textures marked in a level's file keep the original's brightness, not darkened by shadows | the world and mobys |
 | Materials | Textures tagged in a level's file shine, get wet, ripple, flow (Surface Detail; [Materials](materials.md)) | the world and mobys |
 
-The whole module is active only when Lighting is not Original, the MRP draws both the world and the
+The whole module is active only with Graphics: Enhanced, when the MRP draws both the world and the
 mobys, and the shared projection is in use: in practice during gameplay, not on the title screen, in
 menus or during fades (`mrp_lighting_shadow_pass`).
 
@@ -786,7 +787,7 @@ Options > Graphics > Ambient Occlusion (`mrp_lighting_ao_pass`): a screen-space 
 pass after the mobys and before the effects, the ambient particles and the 2D (so those get none). The
 depth buffer is copied to a texture; per pixel the world position comes from the inverse
 view-projection; the result (8 bits) is blurred within the surface and multiplied into the colour
-(the sky untouched). Four modes, each also at half resolution:
+(the sky untouched). Five modes, each also at half resolution:
 
 | Mode | Normal | Sampling | Reach, strength | Blur | GPU at 5053 x 1371 |
 |---|---|---|---|---|---|
@@ -796,6 +797,7 @@ view-projection; the result (8 bits) is blurred within the surface and multiplie
 | GTAO | as SSAO+ | 3 slices x 2 sides x 3 steps, the cosine-weighted visible arc over the horizons, a multi-bounce tint | 3 units, 250 % | separable | 6.9 ms |
 | GTAO 1/2 | as SSAO+ | GTAO at half resolution, upsampled by the blur | as GTAO | separable | 4.4 ms |
 | SSAO 1/2, SSAO+ 1/2, HBAO 1/2 | as their mode | their mode at half resolution, upsampled by the blur as GTAO 1/2 | as their mode | separable (SSAO 1/2 too) | see below |
+| MXAO, MXAO 1/2 | as SSAO+, then smoothed over a wider footprint ([below](#mxao)) | 4 to 12 taps on a Vogel disc, from a pyramid of the depth, cosine-weighted to the smooth normal | 2.5 units (wider far away), 280 % | separable | [below](#mxao) |
 
 (Measured on Kerwan's plaza with a Radeon 890M; noisy by a few tenths; before the change below.) The reach is capped on the
 screen: a surface close to the camera samples no further than 4 % of the view's height around it
@@ -852,9 +854,65 @@ occluder counted twice the visibility, clamped to 1, so a corner occluded on one
 nothing). Both fixed: each mode has its own reach and strength (above) and GTAO takes, per side,
 1 - the sine of the horizon's elevation.
 
-Not done (issue #75's further items): a Hi-Z depth pyramid (SAO) for large radii, bent normals
-(directional occlusion fed into the lighting), a normal G-buffer from the MRP's passes (smooth
-normals instead of the depth's faceted ones), ray-traced AO.
+### MXAO
+
+Options > Graphics > Ambient Occlusion "MXAO" and "MXAO 1/2" (Anya-Thoughtmane's suggestion in #101, #118 and #120: the
+low-poly shrubs, terrain and Drek's Fleet looked jagged under the other modes). Written for this game from the published
+idea of MXAO (no other project's shader used); the parts:
+
+- **A pyramid.** Per pixel of the occlusion's size (the view's, or half of it: "level 0"), the face's normal (as SSAO+: per
+  axis the neighbour with the smaller depth step) and its depth along the view's axis; levels 1 to 4 are their averages over
+  2 x 2, 4 x 4 ... pixels, in an RGBA16F texture (a first pass writes level 1 from the four level-0 pixels under each of its
+  texels, then `glGenerateMipmap` or, on Vulkan, a chain of linear blits). Level 0 itself is never stored: the occlusion
+  computes its own pixel's normal and the depths its nearest taps need from the depth buffer (two and one gathers), which
+  costs less than writing and reading back 8 bytes a pixel. A point is the eye plus its ray times that depth, the rays
+  affine on the screen (taken once a frame from the inverted view-projection), so the averages stay on the rays and a tap
+  costs no matrix.
+- **Smooth normals.** The normal the occlusion uses is the face's averaged with 8 taps of the pyramid's coarser levels around
+  the point (4 diagonal at a quarter of the reach on the screen, 4 straight at half of it, each from a level whose texel is
+  about half that distance: a wider footprint up close, where the facets are large), each weighted by how well it continues
+  the surface: its normal within about 60 degrees of the face's, its point near the face's plane and within the reach. A
+  shrub's or the terrain's facets blend into one curved surface; a box's corner or an object in front stays apart.
+- **The taps.** A Vogel disc on the screen (the golden angle between taps, the distance the square root of the tap's
+  share, turned per pixel), its radius the reach projected (2.5 units, up to twice that 120 units away; at most 12 % of the
+  view's height), 4 to 12 taps by that radius's share of the view (more near, fewer far, the same at any resolution). Each tap
+  reads the pyramid at the level for its distance from the centre (one level per doubling past 4 pixels: far taps read
+  averages, which is what keeps a wide reach affordable). A tap occludes by the cosine of its direction to the smooth normal
+  past a bias (30 %, `RAC1_AO_MXAO_BIAS`), fading out to the reach; the bias rises to 65 % on a surface seen edge-on, where
+  the depth's own steps would read as rows of ridges.
+- **The rest as the others.** The separable blur weighted by the depth (and at half resolution the upsample), the sky
+  untouched, the mobys' share (`RAC1_AO_MOBY`), AO Intensity, before the 2D and the effects. An optional bounce
+  (`RAC1_AO_BOUNCE`, off) lightens the occluded parts by a grey approximation of the light the surroundings send back; a
+  coloured bounce would need the occlusion in colour, which the passes do not carry.
+
+What it looks like: the broad, soft darkening of a crease or a contact (a crate on the floor, Ratchet's feet, the base of
+a shrub), with none of the thin dark lines GTAO and HBAO draw along every concave seam of a low-poly mesh (Eudora's tree
+crowns, Novalis's path banks and mountains) and none of SSAO+'s dotted rims on the leaves. Its mean darkening is close to
+GTAO's (on Novalis, Eudora, Kerwan, Veldin and Drek's Fleet the raw occlusion averages 245 to 249 of 255 against GTAO's 246
+to 249). OpenGL and Vulkan darken the same scenes by the same amount (within 0.05 of a level of 255 on average).
+
+Its cost, Radeon 890M, Kerwan's first walk (the profiler's Ambient occlusion stage, frames 1500 to 1800; noisy by a few
+tenths):
+
+| Mode | Vulkan 5120 x 1440 | Vulkan 1920 x 1080 | OpenGL 5120 x 1440 | OpenGL 1920 x 1080 |
+|---|---|---|---|---|
+| SSAO+ | 4.1 ms | 1.6 ms | 5.5 ms | 1.7 ms |
+| GTAO | 4.1 to 4.4 ms | 2.3 ms | 7.2 ms | 2.8 ms |
+| GTAO 1/2 | 2.9 ms | 0.9 ms | 4.4 ms | 1.1 ms |
+| MXAO | 4.8 ms (was 6.5) | 1.6 ms (was 2.1) | 6.2 ms (was 8.2) | 2.3 ms (was 2.6) |
+| MXAO 1/2 | 2.4 ms (was 2.7) | 0.8 ms | 3.9 ms (was 4.1) | 1.3 ms |
+
+(The MXAO rows: `RAC1_AO_PROF`'s GPU timestamps of the whole pass, the same walk, after the pyramid lost its level 0; "was":
+the first version. Per pass at 5120 x 1440 on Vulkan: the pyramid 1.2 -> 0.4 ms, its mips 1.2 -> 0.3, the occlusion 3.1, the
+two blur passes 1.0, unchanged. OpenGL adds 0.8 ms for its copy of the depth, which every mode pays.)
+
+MXAO 1/2 costs about what GTAO 1/2 does and is the one to use at a wide resolution: a quarter of the pixels for the pyramid and
+the occlusion, the blur and the upsample at full size (about half of its cost), a slightly softer and less detailed occlusion.
+The full MXAO is still the most expensive mode: its occlusion pass (the smooth normal's 8 taps and the 4 to 12 of the disc per
+pixel) is bound by its arithmetic, not by memory.
+
+Not done (issue #75's further items): bent normals (directional occlusion fed into the lighting), a normal G-buffer from the
+MRP's passes (the true smooth normals instead of the depth's), ray-traced AO.
 
 ## The light editor
 
@@ -945,7 +1003,10 @@ camera**: the view's direction taken into the frame of the moby of that class un
 A moby class is the same on every level (a gold bolt, a vendor, a Versa-Target, Clank), so its lines can live in one file,
 `data/lights/classes.txt` (next to the levels' files; `RAC1_LIGHTS_DIR` moves both): `emit moby ...`, `emissive moby ...` and
 `material moby ...` lines, written as a level's file writes them. They are read with each level's file and added after the level's
-own entries, on every level where that class appears. A level's own line wins: a level's `emit moby` line for a class leaves out
+own entries, on every level where that class appears: the level's moby classes as the game registers them (its class table,
+`level_moby_classes`), matched again when they are registered after the level's file was read; a line for a class the level does not
+have takes no slot (until #121 every line took one on every level; `RAC1_LIGHTS_TRACE=1` prints "skipped N, class not on level").
+A level's own line wins: a level's `emit moby` line for a class leaves out
 every line of that class in `classes.txt` on that level, a level's `emissive` / `material` line for a moby class and texture leaves
 out the one for the same class and texture. Other lines in the file (comments, tie or shrub lines: those classes differ per level)
 are kept as they are and not used.
@@ -993,30 +1054,34 @@ emissive <tfrag|tie|shrub|moby|surface> <class> tex <n> [strength] [threshold]
   level's texture the class names, and it glows wherever the level uses it (other classes that share it too); a moby's is
   marked for its class alone. A `surface` is one of VU1 program 7's surfaces the MRP draws (the levels' water, lava and sand seas,
   [Rendering](rendering.md#vu1-program-7s-surfaces)): its class is the moby class whose draw-list callback draws it (0 when the
-  callback's argument is not a moby), its `tex` the GS memory block its texture is read from (TEX0's TBP). `RAC1_LIGHTS_TRACE=1`
-  prints each one as it is first drawn, with the line to write (Gaspar's lava: `surface 317 tex 12811`, Rilgar's harbour water:
-  `surface 879 tex 13040`).
+  callback's argument is not a moby), its `tex` its effect texture (the index in the level's table of effect textures) when it has one, else the GS memory block its
+  texture is read from (TEX0's TBP): an effect texture's block changes with what was drawn before it ([Materials](materials.md#the-levels-seas-and-pools)).
+  `RAC1_LIGHTS_TRACE=1` prints each one as it is first drawn, with the line to write (Novalis's river: `surface 761 tex 44`, Rilgar's
+  harbour water: `surface 879 tex 13040`).
 - **What it does.** Each texel of that texture whose brightest channel (r, g or b) reaches `threshold` (0 to 1; default 0, the whole
   texture; 0.04 of softening either side) is drawn with **the colour the original lighting gives it**, the game's own vertex
   colour (no sun shadow, no relighting) times the texture, times `strength` (0 to 4; default 1), wherever the modern lighting
   makes it darker: `max(lit, original x strength)`. In daylight a lamp in the sun looks as before; in shade or at night it keeps
   its painted brightness. A threshold keeps a lamp's dark frame lit normally while its bright glass glows. Point lights still add,
   and fog applies after it.
-- **How.** `emissive_refresh` (`mrp_world_renderer.cpp`) maps each marked tfrag, tie or shrub texture to a shader slot (1 to 126),
-  and the slot goes into the draw's texture word (bits 25 to 31) when the texture is looked up (`GsFront::key_now`); the mobys'
+- **How.** `emissive_refresh` (`mrp_world_renderer.cpp`) maps each marked tfrag, tie or shrub texture to a shader slot (1 to 254),
+  and the slot goes into the draw's texture word (bits 24 to 31) when the texture is looked up (`GsFront::key_now`); the mobys'
   draws carry theirs in the draw command's fourth word, by class and local texture (`moby_emissive_refresh`, `mrp_moby_renderer.cpp`;
-  until #102's batch 1 the world's bits 25 to 29 and the mobys' texture word's 27 to 31: 30 slots). The
-  lighting's shader variants (`SH_POINTS`, `SH_SPLIT`, OpenGL and Vulkan) read the slot's strength and threshold from `uEmis[128]`
-  (a uniform array; in Vulkan part of the lighting's uniform buffer) in `sh_emissive`. Nothing changes with Lighting on Original:
+  until #102's batch 1 the world's bits 25 to 29 and the mobys' texture word's 27 to 31: 30 slots; until #121 the world's bits 25
+  to 31: 126). The lighting's shader variants (`SH_POINTS`, `SH_SPLIT`, OpenGL and Vulkan) read the slot's strength and threshold
+  from `uEmis[256]` in `sh_emissive`: the slots' table, a storage buffer of 12 KB with `uMat` and `uMat2` (OpenGL binding 12,
+  Vulkan binding 7 of the lighting's set; until #121 uniform arrays of 128, in Vulkan part of the lighting's uniform buffer, which
+  at 256 would have passed the 16 KB a uniform buffer is guaranteed). Nothing changes with Lighting on Original:
   the bits are not set and the original programs do not read them.
-- **Limits.** At most 126 surfaces and materials per level, the `classes.txt` lines included. The ambient occlusion, drawn after the world, still darkens an emissive texel
+- **Limits.** At most 254 surfaces and materials per level, the `classes.txt` lines for the level's classes included (the log says
+  so when there are more). The ambient occlusion, drawn after the world, still darkens an emissive texel
   where surfaces meet. There is no bloom (glow around the bright pixels).
 
 `RAC1_EMISSIVE=0` (testing) turns them all off.
 
 The same mechanism gives a texture a **material** instead (a `material` line: metal, wet, puddle, lava, water, mud, quicksand), drawn
 with Options > Graphics > Surface Detail: see [Materials](materials.md). An `emissive` line is the same as `material ... emissive`; the
-two kinds share the 126 slots. A material can glow besides (`glow <strength> [threshold]` at the end of its line, or an `emissive`
+two kinds share the 254 slots. A material can glow besides (`glow <strength> [threshold]` at the end of its line, or an `emissive`
 line for the same texture in the same file, read as one entry): [Materials](materials.md#tagging-a-texture).
 
 **In the editor** (Lights tab, "Emissive surfaces and materials"): the target's surface (the crosshair's or the clicked point's) - the
@@ -1054,26 +1119,31 @@ cannot tell them apart), the teleporters (moby 1135, six textures, not yet looke
 
 ## Settings
 
-All on Options > Graphics (`src/game/enhance/graphics.cpp`). They are kept in the graphics
-preferences and in each save's `save<N>.pc` (see [Settings](settings.md)). The New Game's Modern mode
-does not turn the lighting on; Experimental does (Lighting High, Dynamic Shadows On, Ambient Occlusion SSAO).
+All on Options > Graphics (`src/game/enhance/graphics.cpp`), under its first row **Graphics: Original / Enhanced**: Original
+(the default) is the original's lighting whatever the rows hold, Enhanced turns the module on with the rows below; a **Preset**
+row (Low, Medium, High) sets them all (see [Settings](settings.md#graphics)). They are the machine's settings, kept in the
+graphics preferences only (see [Settings](settings.md#where-settings-are-kept)). New Game's second window sets them: Current
+leaves them, Original turns the lighting off, Low / Medium / High turn it on at that preset.
+
+The defaults below are the rows' own (the preset High); with Graphics: Original none of them acts.
 
 | Row | Values | Default | Controls |
 |---|---|---|---|
-| Lighting | Original, Low, Medium, High | Original | the whole module; the sun shadow maps' resolution (1024, 2048, 4096) |
+| Lighting | Low, Medium, High (until the switch also Original, now Graphics: Original) | High | the sun shadow maps' resolution (1024, 2048, 4096) (`lighting_quality`, item 56) |
 | Shadow Strength | 50 to 100 % | 70 % | how much of the sun's light a shadow hides (`shadow_strength` in the preferences, item 45 of a save's block) |
 | Shadow Distance | Low, Medium, High, Maximum | Maximum | how far mobys cast sun shadows (40, 80, 140 units, or as far as the cascades reach) |
-| Dynamic Shadows | Off, On | Off | point-light cube shadows |
+| Dynamic Shadows | Off, On | On | point-light cube shadows |
 | Secondary Lights | Off, Game's, All | All | Game's: the game's point lights per pixel; All: also automatic emitters and hand-placed lights |
-| Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2, SSAO 1/2, SSAO+ 1/2, HBAO 1/2 | Off | SSAO |
+| Ambient Occlusion | Off, SSAO, SSAO+, HBAO, GTAO, GTAO 1/2, SSAO 1/2, SSAO+ 1/2, HBAO 1/2, MXAO, MXAO 1/2 | MXAO | see [Ambient occlusion](#ambient-occlusion) |
 | AO Intensity | 25 to 125 % | 75 % | the occlusion's darkness: each mode's strength scaled (`ao_intensity` in the preferences, item 47 of a save's block); see [Ambient occlusion](#ambient-occlusion) |
-| Sun Rays | Off, Low, Medium, High | Off | light shafts from the sun through openings, each step more quality and strength (`sun_rays_quality`, item 49; `sun_rays` and item 46 until 0.4.x read with Low as Medium); see [Sun rays](#sun-rays) |
-| Surface Detail | Off, Low, High | Off | the surfaces' materials (metal, wet, puddle, lava, water, mud, quicksand) tagged in the level's file; High adds the reflections and the lava's heat shimmer (`surface_detail`, item 51); see [Materials](materials.md) |
-| Water | Off, Low, High | Off | the tagged water, lava and quicksand: normal maps, Fresnel, glints, depth, foam; High: the scene's reflection and the refraction (`water`, item 52); see [Materials](materials.md#water-and-grass) |
-| Grass | Off, Low, High | Off | the tagged ground's blades: a detail relief (Low), and a few very low shells near the camera (High) (`grass`, item 54) |
+| Sun Rays | Off, Low, Medium, High | Low | light shafts from the sun through openings, each step more quality and strength (`sun_rays_quality`, item 49; `sun_rays` and item 46 until 0.4.x read with Low as Medium); see [Sun rays](#sun-rays) |
+| Surface Detail | Off, Low, High | High | the surfaces' materials (metal, wet, puddle, lava, water - held still -, mud, quicksand) tagged in the level's file; High adds the puddles' and metals' reflections and the lava's heat shimmer (`surface_detail`, item 51); see [Materials](materials.md) |
+| Water Reflections | Low, Medium | Medium | what Surface Detail's water mirrors: Low cube maps from fixed probes, Medium the scene drawn mirrored about the water (`water_reflections` in the preferences); see [Materials](materials.md#water-reflections) |
+| Grass | Off, Low, High | High | the tagged ground's blades: a detail relief (Low), and a few very low shells near the camera (High) (`grass`, item 54) |
 
-The other rows take effect only when Lighting is not Original. The debug menu's **Enhancements** tab switches all of them live
-(for the run; "Save as my settings" makes them the preferences), each with its profiler stage's GPU / CPU time beside it.
+Every row takes effect only with Graphics: Enhanced. The debug menu's **Enhancements** tab has the same switch and preset at
+its top and switches all of them live (for the run; "Save as my settings" makes them the preferences), each with its profiler
+stage's GPU / CPU time beside it.
 
 For testing, environment variables override each of these (they need `--debug-tools`):
 `RAC1_SHADOWS`, `RAC1_SHADOW_RES`, `RAC1_SHADOW_MOBY_DIST`, `RAC1_POINT_SHADOWS`, `RAC1_POINTS`,

@@ -40,17 +40,24 @@ bool sky_wanted();
 
 // The passes' parts.
 void world_tfrag_cull();   // orig: 0x00294368
+void world_tfrag_cull_tr();  // orig: (host) its transliteration (world_cull.cpp), the hand-written cull's reference
 void world_tfrag_visible_textures();  // orig: 0x00294f90
 uint32_t world_tfrag_texture_packets(uint32_t a0);  // orig: 0x00295100
 void world_tfrag_packets();  // orig: 0x00294058
 void world_tie_cull();     // orig: 0x00295fa0
+void world_tie_cull_tr();  // orig: (host) its transliteration
 uint32_t world_tie_texture_packets(uint32_t a0);  // orig: 0x00297478
 void world_tie_packets();  // orig: 0x002959f8
 void world_shrub_cull();   // orig: 0x00286f10
+void world_shrub_cull_tr();  // orig: (host) its transliteration
 uint32_t world_shrub_texture_packets(uint32_t a0);  // orig: 0x00288658
 void world_shrub_packets();  // orig: 0x00286c18
 void spr_to_ram(uint32_t dst, uint32_t spr, uint32_t qwc);  // orig: 0x001ff180
 void packet_vif_unpack(uint32_t addr, uint32_t src, uint32_t qwc);  // orig: 0x002a0ab0
+// orig: (host) the notes of what the culls keep visible (world_visible())
+void note_tfrag(uint32_t entry, uint32_t lod);
+void note_tie(uint32_t index);
+void note_shrub(uint32_t index);
 
 }  // namespace rac1
 

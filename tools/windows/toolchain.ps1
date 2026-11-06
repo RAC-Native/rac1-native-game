@@ -4,13 +4,14 @@
 # adds a package). Nothing is installed outside .toolchain: deleting the folder removes it all.
 # FFmpeg plays the game's movies: the build copies its DLLs beside the program (CMakeLists.txt), so the game also
 # starts without MSYS2.
+# shaderc (glslc) compiles the Vulkan renderer's shaders at build time.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'  # (Invoke-WebRequest's progress bar makes it very slow on PowerShell 5)
 
 $MsysRelease = '20260927'
 $MsysSha256 = 'ad336cccfda47758b5e15cda993fbba421115cb0b126697daef1ee4dfe37209f'
 $MsysUrl = "https://repo.msys2.org/distrib/x86_64/msys2-base-x86_64-$MsysRelease.sfx.exe"
-$Packages = @('python', 'cmake', 'clang', 'ninja', 'pkgconf', 'ffmpeg') | ForEach-Object { "mingw-w64-clang-x86_64-$_" }
+$Packages = @('python', 'cmake', 'clang', 'ninja', 'pkgconf', 'ffmpeg', 'shaderc') | ForEach-Object { "mingw-w64-clang-x86_64-$_" }
 
 $Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $ToolDir = Join-Path $Root '.toolchain'
@@ -105,20 +106,68 @@ if ($missing) {
     Update-Keyring
 }
 
+# The files the packages hold as hard links to another of their files (pacman unpacks them as links): the clang package's
+# clang.exe, clang-cpp.exe and the two x86_64-w64-mingw32-clang*.exe are links to clang++.exe (clang picks C, C++ or the
+# preprocessor by its own file name, so a copy works the same), lld's lld.exe to ld.exe, and a few tools'. A drive that is
+# not NTFS (exFAT or FAT32: an external drive, a USB stick) cannot hold hard links: pacman says "Can't create" for them
+# and goes on without them, so clang.exe is missing (GitHub issues #126, #88). The ones missing are copied from their
+# target. (The packages' other hard links are manual pages and time zones, which the build does not use.)
+$LinkedFiles = [ordered]@{
+    'clang.exe' = 'clang++.exe'; 'clang-cpp.exe' = 'clang++.exe'
+    'x86_64-w64-mingw32-clang.exe' = 'clang++.exe'; 'x86_64-w64-mingw32-clang++.exe' = 'clang++.exe'
+    'lld.exe' = 'ld.exe'; 'llvm-cov.exe' = 'gcov.exe'; 'unzip.exe' = 'bsdunzip.exe'
+    'libdeflate-gzip.exe' = 'libdeflate-gunzip.exe'
+}
+function Repair-LinkedFiles {
+    $bin = Join-Path $Msys 'clang64\bin'
+    $copied = @()
+    foreach ($name in $LinkedFiles.Keys) {
+        $file = Join-Path $bin $name
+        $target = Join-Path $bin $LinkedFiles[$name]
+        if (-not (Test-Path $file) -and (Test-Path $target)) {
+            try {
+                Copy-Item $target $file
+                $copied += $name
+            } catch { Step "Could not copy $($LinkedFiles[$name]) to $name ($_)" }
+        }
+    }
+    if ($copied) { Step "Copied $($copied -join ', ') (the package has them as hard links, which this drive cannot hold)" }
+}
+
+# The file system of the drive the tools are on ("NTFS", "exFAT", "FAT32", ...; "" when it cannot be known: a network
+# folder)
+function Get-DriveFormat {
+    try { return ([IO.DriveInfo]::new([IO.Path]::GetPathRoot($ToolDir))).DriveFormat } catch { return '' }
+}
+$driveFormat = Get-DriveFormat
+$notNtfs = $driveFormat -and $driveFormat -ne 'NTFS'
+if ($notNtfs) {
+    Step ("Note: $ToolDir is on a $driveFormat drive, not NTFS: exFAT and FAT32 cannot hold hard links, so the files " +
+          "MSYS2's packages have as hard links are copied instead (an NTFS drive avoids this)")
+}
+Repair-LinkedFiles
+
 # The compilers themselves: the clang package can be installed with clang.exe missing (an antivirus that removed
-# it, an unpacking stopped halfway), and pacman -T then says nothing is missing; CMake finds clang++ but not the C
-# compiler (GitHub issue #88). The package is installed again (without --needed) when one of them is missing.
+# it, an unpacking stopped halfway, a drive without hard links: above), and pacman -T then says nothing is missing;
+# CMake finds clang++ but not the C compiler (GitHub issue #88). The package is installed again (without --needed)
+# when clang++.exe itself is missing, or clang.exe could not be copied from it.
 $compilers = @('clang.exe', 'clang++.exe') | ForEach-Object { Join-Path $Msys "clang64\bin\$_" }
 if ($compilers | Where-Object { -not (Test-Path $_) }) {
     Step 'Installing the compiler again (clang.exe or clang++.exe is missing)'
     if ((Invoke-Msys 'pacman -S --noconfirm mingw-w64-clang-x86_64-clang') -ne 0) {
         Fail 'Installing the compiler failed. Check the internet connection, then run the setup again.'
     }
+    Repair-LinkedFiles
     $lost = $compilers | Where-Object { -not (Test-Path $_) }
     if ($lost) {
+        $drive = ''
+        if ($notNtfs) {
+            $drive = " The folder is on a $driveFormat drive: if this keeps happening, move the game's folder to an NTFS " +
+                     'drive (the one Windows is on is NTFS).'
+        }
         Fail ("$($lost -join ', ') is still missing after installing it again. An antivirus (Windows Security too) " +
               "may be removing it: look in its protection history, allow the file (or exclude the folder $ToolDir), " +
-              'then run the setup again.')
+              "then run the setup again.$drive")
     }
 }
 

@@ -49,6 +49,11 @@ When the game closes with an error right after starting, the launcher shows the 
 messages (they are also in the game folder's `build/game.log`). The most common cause is a graphics
 driver without OpenGL 4.6.
 
+When the Vulkan renderer was chosen but the game ran with OpenGL (no Vulkan driver, a GPU missing a
+feature, the last Vulkan start crashed or lost the GPU), the launcher shows the game's reason under
+its status once the game has closed (the `[renderer]` line of `build/game.log`; see
+[Vulkan](vulkan.md#when-vulkan-cannot-start)).
+
 ## The pages
 
 **Play**: Install, Set up (when the setup needs to run again, for example after a setup that did not
@@ -65,7 +70,19 @@ the Recycle Bin, or to the trash on Linux.
   `C:\rac1-native` when that path has spaces or non-ASCII letters), `~/.local/share/rac1-native/game`
   on Linux. Choose a folder that already has the game (a clone, or a zip set up with `setup.cmd` or
   `./setup.sh`) to use it from the launcher.
-- **Disc image**: the `.iso` the setup uses.
+- **Disc image**: the `.iso` the setup uses as the game's disc. When none is chosen here, the setup
+  picks it itself among the disc images it finds (see **Disc images** below), and the launcher asks for
+  one only when there is none.
+- **Disc images**: every disc image the setup finds, and what each one is for: **Game disc**, **Data disc**
+  (it adds something the game's disc lacks: today the Japanese disc, its voices) or **Not used**, with why
+  (a PAL disc beside the game's disc gives nothing it lacks, the prototype and the beta cannot be used...).
+  It lists what `tools/setup.py --discs` prints: the images in the game folder's `assets/iso` folder and
+  the ones added here (see [Setup](setup.md#which-disc-images)). **Add a disc image...** adds an image
+  where it is (nothing is copied: its path goes into `assets/iso/more-discs.txt`); a new data disc then
+  makes the **Play** page show **Set up**, which adds it. **Remove the data disc** (select one first)
+  deletes its files from the game folder (`tools/setup.py --remove-data-disc`; your image is kept), and
+  the setup no longer takes it, until it is added here again. The list shows once the game is installed
+  (on Windows, after the first setup has made its tools).
 - **Update channel**: **Stable** gets the releases; **Development** gets the newest changes on
   `main`, before they are released (new fixes sooner, and new bugs too). It is the same setting as
   the game's Main menu > Updates > Update Channel (the `update_channel` line of
@@ -75,9 +92,24 @@ the Recycle Bin, or to the trash on Linux.
   development`). Back on Stable, the next Update goes to the latest release.
 - **Parallel jobs**: how many jobs the setup runs at once. Automatic is fine; 1 is the slowest and
   uses the least memory.
+- **Movie subtitles** (off until ticked): whether the setup makes subtitles for the movies with speech to text on this
+  computer, and in which languages (English, French, German, Spanish, Italian: all ticked makes every language the disc's
+  movies have). The choice goes to every setup the launcher runs (`--movie-subtitles en,it`, or `--no-movie-subtitles`
+  once unticked); the first time it installs about 470 MB of software and a 1.6 GB model into `assets/stt/` and takes
+  about half an hour. See [Movie subtitles](movie-subtitles.md).
+- **Debug tools** (off by default): **Enable debug tools** starts the game with `--debug-tools`, its debug menu and
+  overlays ([Settings](settings.md#debug-tools)), for testing and bug reports.
+- **Theme** (Linux): **Follow the system** (the default: light or dark as the desktop's own setting, and changing with
+  it), **Light** or **Dark**. The Windows launcher stays light for now (Windows Forms has no dark theme of its own: its
+  tabs, list headers and message boxes would have to be drawn by hand).
 - **Check for updates** and **Update now**: the same as the Play page's check and Update, at once.
 - **Set up again from scratch**: generates everything again from the disc and rebuilds (the setup's
   `--force`).
+- **Make movie subtitles**: after a confirmation, the setup with `--movie-subtitles` in the languages ticked above
+  (all of them when none is): makes the subtitles now; the next setups make only what is missing.
+- **Install subtitle pack**: choose a movie subtitle pack (a .zip): its subtitle files (`row_XXXX.<lang>.srt`) go
+  into `assets/movie-subtitles/`, anything else in the zip is left out; a different file already there is kept as
+  `.srt.bak`. See [Movie subtitles](movie-subtitles.md).
 - **Create the shortcuts** (Windows): puts the shortcuts on the desktop and in the Start menu again.
 - **Open the setup's logs**: the game folder's `build` folder, with `launcher.log` (everything the
   launcher ran and what it printed), `setup-build.log`, `setup-codegen.log` and `game.log`. Attach
@@ -90,7 +122,7 @@ The game's other settings (graphics, controls) are in the game's Options menu.
 
 | | Windows | Linux |
 |---|---|---|
-| The launcher's settings (`launcher.txt`: game folder, disc image, parallel jobs) | `%APPDATA%\rac1-native\` | `~/.config/rac1-native/` |
+| The launcher's settings (`launcher.txt`: game folder, disc image, parallel jobs, theme) | `%APPDATA%\rac1-native\` | `~/.config/rac1-native/` |
 | The game's settings, with `advanced_options.txt` (the update channel) | `%APPDATA%\rac1-native\` | `~/.config/rac1-native/` |
 | The saves (`memcard\`) and the launcher's backups (`save-backups\`) | `%APPDATA%\rac1-native\` | `~/.local/share/rac1-native/` |
 | The shortcut | Start menu, desktop | `~/.local/share/applications/rac1-native.desktop` (and `rac1-native-play.desktop` with a build container) |
@@ -120,8 +152,9 @@ The launcher does what `setup.cmd` and `./setup.sh` do, without a console window
 
 1. On Windows, `tools\windows\toolchain.ps1`: the private MSYS2 in `.toolchain\` (see
    [Setup](setup.md#on-windows)).
-2. `tools/setup.py --no-play --iso <your image>` (with `--update --channel ...` to update, `--force`
-   to set up again from scratch), with `RAC1_LAUNCHER=1`: the setup then also prints `@step` and
+2. `tools/setup.py --no-play --iso <your image>` (without `--iso` when no image is chosen in Settings and the
+   setup finds the game's disc itself; with `--update --channel ...` to update, `--force` to set up again
+   from scratch), with `RAC1_LAUNCHER=1`: the setup then also prints `@step` and
    `@progress` lines, which the launcher shows as its progress bar. On Linux it runs with the system's
    `python3`.
 
@@ -131,11 +164,10 @@ setup prints (`sudo apt install ...`, `sudo dnf install ...`, `sudo pacman -S --
 and runs it as root with `pkexec` (the desktop's password window; without one, `pkexec` fails at
 once and the launcher shows the command to run in a terminal). Then it runs the setup again.
 
-The experimental [Vulkan](vulkan.md) renderer is built only when `glslc` is there (an optional
-package; the game is otherwise built with OpenGL only). On Linux the setup's install command lists it
-with the other missing packages, so the launcher installs it only when a required package is missing
-too: install it yourself first (`glslc`; `shaderc` on Arch) to have the renderer. On Windows the
-private MSYS2 does not include it.
+The [Vulkan](vulkan.md) renderer's shaders need `glslc` when the game is built, a required package
+(`glslc`; `shaderc` on Arch): on Linux the launcher installs it with the other missing packages; on
+Windows the private MSYS2 includes it. When no Vulkan driver is installed the setup says so (a
+warning: the game then starts with OpenGL).
 
 Cancel, or closing the launcher, ends the whole tree of programs (on Windows they all run in a job,
 on Linux the tree is killed). When the code generation fails because Python itself crashed (#72),
@@ -218,9 +250,9 @@ The launcher's code is in `tools/launcher/`: what it does in `core/` (shared), t
 
 ```bash
 # Windows: rac1-launcher.exe (any .NET SDK 6 or newer; the result needs only .NET Framework 4.8)
-dotnet build tools/launcher/windows/Launcher.csproj -c Release -p:LauncherVersion=0.6.0 -o out
+dotnet build tools/launcher/windows/Launcher.csproj -c Release -p:LauncherVersion=0.7.0 -o out
 # Linux: one self-contained file, rac1-launcher (.NET SDK 8 or newer, on Linux or Windows)
-dotnet publish tools/launcher/linux/Launcher.Linux.csproj -c Release -p:LauncherVersion=0.6.0 -o out
+dotnet publish tools/launcher/linux/Launcher.Linux.csproj -c Release -p:LauncherVersion=0.7.0 -o out
 ```
 
 The [launcher workflow](../.github/workflows/launcher.yml) builds both whenever the launcher's code changes, and attaches

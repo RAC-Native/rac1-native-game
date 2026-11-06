@@ -162,6 +162,12 @@ add_library(rac1_game STATIC
     enhance/update_notice.cpp
     enhance/vendor_buy_all.cpp
     enhance/vibration.cpp
+    enhance/voice_language.cpp
+    enhance/language.cpp
+    enhance/movie_subtitles.cpp
+    enhance/corrected_texts.cpp
+    enhance/cut_content.cpp
+    enhance/fixes102.cpp
     ovl/bomb_glove.cpp
     ovl/pyrocitor.cpp
     ovl/blaster.cpp
@@ -193,10 +199,16 @@ add_library(rac1_game STATIC
     ovl/moby_shadows.cpp
     ovl/moby_vu1_run.cpp
     ovl/world_vu1.cpp
+    ovl/world_cull_fast.cpp
+    ovl/world_cull_tfrag.cpp
+    ovl/world_cull_tie.cpp
+    ovl/world_cull_shrub.cpp
+    ovl/world_lighting_fast.cpp
+    ovl/world_lighting_tfrag.cpp
     ovl/ovl_reloc.cpp
+    ovl/region_core.cpp
     ovl/moby_vu0_reg.cpp
     ovl/palette_blend.cpp
-    ovl/world_lighting_fast.cpp
     ovl/novalis_water_fast.cpp
     ovl/particles_vu1.cpp
     ovl/shadows.cpp
@@ -262,6 +274,8 @@ add_library(rac1_game STATIC
     render/mrp_shadows.cpp
     render/mrp_lighting.cpp
     render/mrp_particles.cpp
+    render/mrp_reflect.cpp
+    render/mrp_rt.cpp
     render/tie_render.cpp
     render/shrub_render.cpp
     render/title_scene_host.cpp

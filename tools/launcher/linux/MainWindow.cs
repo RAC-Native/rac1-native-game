@@ -44,12 +44,16 @@ namespace Rac1Launcher
         // Settings
         readonly TextBox txtDir = new TextBox(), txtIso = new TextBox();
         readonly ComboBox cmbJobs = new ComboBox(), cmbChannel = new ComboBox();
+        readonly CheckBox chkSubs = new CheckBox();
+        readonly List<CheckBox> chkSubLangs = new List<CheckBox>();
+        readonly ListBox lstDiscs = new ListBox();
+        readonly TextBlock lblDiscs = new TextBlock();
+        List<DiscEntry> discs = new List<DiscEntry>();
         readonly TabControl tabs = new TabControl();
         readonly List<Control> busyDisabled = new List<Control>();
 
         static readonly IBrush Accent = new SolidColorBrush(Color.FromRgb(232, 120, 24));
         static readonly IBrush HeaderBack = new SolidColorBrush(Color.FromRgb(28, 36, 64));
-        static readonly IBrush Gray = new SolidColorBrush(Color.FromRgb(120, 120, 128));
 
         public MainWindow()
         {
@@ -59,7 +63,6 @@ namespace Rac1Launcher
             MinWidth = 660;
             MinHeight = 540;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            RequestedThemeVariant = Avalonia.Styling.ThemeVariant.Light;
             try
             {
                 using (var s = typeof(MainWindow).Assembly.GetManifestResourceStream("launcher.png"))
@@ -68,6 +71,7 @@ namespace Rac1Launcher
             catch (Exception) { }
 
             ctl = new Controller(this, RunningExe);
+            ApplyTheme(ctl.Settings.Theme);
             Content = BuildUi();
 
             var flush = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
@@ -98,7 +102,12 @@ namespace Rac1Launcher
             tabs.Items.Add(new TabItem { Header = "Saves", Content = SavesPage() });
             tabs.Items.Add(new TabItem { Header = "Settings", Content = SettingsPage() });
             tabs.Margin = new Thickness(8, 4, 8, 8);
-            tabs.SelectionChanged += (s, e) => { if (ReferenceEquals(e.Source, tabs) && tabs.SelectedIndex == 1) RefreshSaves(); };
+            tabs.SelectionChanged += (s, e) =>
+            {
+                if (!ReferenceEquals(e.Source, tabs)) return;
+                if (tabs.SelectedIndex == 1) RefreshSaves();
+                if (tabs.SelectedIndex == 2) RefreshDiscs();
+            };
 
             var dock = new DockPanel();
             DockPanel.SetDock(header, Dock.Top);
@@ -126,7 +135,7 @@ namespace Rac1Launcher
             lblDetail.TextWrapping = TextWrapping.Wrap;
             lblDetail.Margin = new Thickness(0, 0, 0, 12);
 
-            updatePanel.Background = new SolidColorBrush(Color.FromRgb(255, 244, 214));
+            Themed(updatePanel, Border.BackgroundProperty, "LauncherNotice");
             updatePanel.Padding = new Thickness(10, 6);
             updatePanel.Margin = new Thickness(0, 0, 0, 12);
             updatePanel.CornerRadius = new CornerRadius(4);
@@ -256,33 +265,105 @@ namespace Rac1Launcher
             cmbJobs.SelectionChanged += (s, e) => { ctl.Settings.Jobs = jobValues[Math.Max(0, cmbJobs.SelectedIndex)]; ctl.Settings.Save(); };
             AddRow(t, "Parallel jobs", cmbJobs, Note("(for the setup: fewer is slower, but uses less memory)"));
 
+            // the movie subtitles the setup makes (docs/movie-subtitles.md) and the debug tools
+            var subsPanel = new WrapPanel();
+            chkSubs.Content = "Make them at the setup, in:";
+            chkSubs.Margin = new Thickness(0, 0, 12, 0);
+            string subs = ctl.Settings.MovieSubtitles;
+            chkSubs.IsChecked = subs != "" && subs != "off";
+            subsPanel.Children.Add(chkSubs);
+            for (int i = 0; i < SubtitlePack.Languages.Length; i++)
+            {
+                var b = new CheckBox { Content = SubtitlePack.LanguageNames[i], Margin = new Thickness(0, 0, 10, 0),
+                                       IsChecked = SubtitlePack.Has(subs, SubtitlePack.Languages[i]) };
+                b.IsCheckedChanged += (s, e) => SaveMovieSubtitles();
+                chkSubLangs.Add(b);
+                subsPanel.Children.Add(b);
+            }
+            chkSubs.IsCheckedChanged += (s, e) => SaveMovieSubtitles();
+            foreach (var b in chkSubLangs) b.IsEnabled = chkSubs.IsChecked == true;
+            AddRow(t, "Movie subtitles", subsPanel, Note("(speech to text on this computer, from your disc: about 2 GB the first time, then about half an hour)"));
+            var chkDebug = new CheckBox { Content = "Enable debug tools", IsChecked = ctl.Settings.DebugTools };
+            chkDebug.IsCheckedChanged += (s, e) => { ctl.Settings.DebugTools = chkDebug.IsChecked == true; ctl.Settings.Save(); };
+            AddRow(t, "Debug tools", chkDebug, Note("(the game starts with --debug-tools: its debug menu and overlays)"));
+            var cmbTheme = new ComboBox { ItemsSource = new[] { "Follow the system", "Light", "Dark" }, Width = 220,
+                                          HorizontalAlignment = HorizontalAlignment.Left };
+            cmbTheme.SelectedIndex = Math.Max(0, Array.IndexOf(Themes, ctl.Settings.Theme));
+            cmbTheme.SelectionChanged += (s, e) =>
+            {
+                ctl.Settings.Theme = Themes[Math.Max(0, cmbTheme.SelectedIndex)];
+                ctl.Settings.Save();
+                ApplyTheme(ctl.Settings.Theme);
+            };
+            AddRow(t, "Theme", cmbTheme, Note("(the launcher's colours: light or dark)"));
+
+            var discsPanel = new StackPanel { Margin = new Thickness(0, 14, 0, 0) };
+            discsPanel.Children.Add(new TextBlock { Text = "Disc images", FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, 4) });
+            lblDiscs.TextWrapping = TextWrapping.Wrap;
+            Gray(lblDiscs);
+            lblDiscs.Margin = new Thickness(0, 0, 0, 6);
+            discsPanel.Children.Add(lblDiscs);
+            discsPanel.Children.Add(DiscRow("Use", "Disc", "Image", heading: true));
+            lstDiscs.SelectionMode = SelectionMode.Single;
+            lstDiscs.MaxHeight = 340;
+            discsPanel.Children.Add(lstDiscs);
+            var discButtons = Row();
+            discButtons.Margin = new Thickness(0, 6, 0, 0);
+            discButtons.Children.Add(Btn("Add a disc image...", () => AddDisc(), true));
+            discButtons.Children.Add(Btn("Remove the data disc", () => RemoveDisc(), true));
+            discButtons.Children.Add(Btn("Refresh", () => RefreshDiscs()));
+            discsPanel.Children.Add(discButtons);
+
             var actions = new WrapPanel { Margin = new Thickness(0, 18, 0, 0) };
             actions.Children.Add(Btn("Check for updates", () => CheckUpdates(true), true));
             actions.Children.Add(Btn("Update now", () => DoUpdate(), true));
             actions.Children.Add(Btn("Set up again from scratch", () => DoRepair(), true));
+            actions.Children.Add(Btn("Make movie subtitles", () => DoMovieSubtitles(), true));
+            actions.Children.Add(Btn("Install subtitle pack", () => InstallSubtitlePack(), true));
             actions.Children.Add(Btn("Add to the applications menu", () => CreateShortcuts(true), true));
             actions.Children.Add(Btn("Open the setup's logs", () => Platform.OpenFolder(Game.P("build"))));
             actions.Children.Add(Btn("Report a problem", () => Platform.OpenUrl(GitHub.Page + "/issues")));
 
-            var note = new TextBlock
+            var note = Gray(new TextBlock
             {
-                TextWrapping = TextWrapping.Wrap, Foreground = Gray, Margin = new Thickness(0, 18, 0, 0),
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 18, 0, 0),
                 Text = "The game's own options (graphics, controls) are in the game's Options menu. Your settings are in "
                      + Platform.ConfigDir + " and your saves in " + Platform.DataDir + ", not in the game folder: "
                      + "setting the game up again never touches them.",
-            };
+            });
             var outer = new StackPanel();
             outer.Children.Add(t);
+            outer.Children.Add(discsPanel);
             outer.Children.Add(actions);
             outer.Children.Add(note);
             return new ScrollViewer { Content = outer };
         }
 
-        static TextBlock Note(string text) => new TextBlock
+        static TextBlock Note(string text) => Gray(new TextBlock
         {
-            Text = text, Foreground = Gray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+            Text = text, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
             TextWrapping = TextWrapping.Wrap, MaxWidth = 260,
-        };
+        });
+
+        /// <summary>A property following one of the launcher's colours (App.Initialize): the light or the dark theme's.</summary>
+        static T Themed<T>(T c, AvaloniaProperty property, string key) where T : Control
+        {
+            c.Bind(property, c.GetResourceObservable(key));
+            return c;
+        }
+
+        static TextBlock Gray(TextBlock t) => Themed(t, TextBlock.ForegroundProperty, "LauncherGray");
+
+        static readonly string[] Themes = { "", "light", "dark" };
+
+        /// <summary>Settings > Theme: "" follows the system's light or dark setting (and its changes), else "light" or "dark";
+        /// set on the application, so that the small windows (Dialogs) follow it too.</summary>
+        static void ApplyTheme(string theme)
+        {
+            Application.Current.RequestedThemeVariant = theme == "dark" ? Avalonia.Styling.ThemeVariant.Dark
+                                                      : theme == "light" ? Avalonia.Styling.ThemeVariant.Light
+                                                      : Avalonia.Styling.ThemeVariant.Default;
+        }
 
         static void AddRow(Grid t, string label, Control field, Control right)
         {
@@ -451,6 +532,9 @@ namespace Rac1Launcher
             if (!always && File.Exists(ctl.Settings.Iso)) return ctl.Settings.Iso;
             if (!always)
             {
+                // (the setup picks the game's disc itself among the images it finds: no --iso)
+                var found = await Task.Run(() => ctl.Discs());
+                if (found != null && found.Any(d => d.Role == "game")) return "";
                 string known = Game.KnownIso();
                 if (known != null) return known;
             }
@@ -557,6 +641,53 @@ namespace Rac1Launcher
             DoSetup("--force");
         }
 
+        /// <summary>Settings > Movie subtitles: the choice kept, passed to the next setups (Controller.MovieSubtitlesArg).</summary>
+        void SaveMovieSubtitles()
+        {
+            foreach (var b in chkSubLangs) b.IsEnabled = chkSubs.IsChecked == true;
+            ctl.Settings.MovieSubtitles = SubtitlePack.Choice(chkSubs.IsChecked == true, chkSubLangs.Select(b => b.IsChecked == true).ToArray());
+            ctl.Settings.Save();
+        }
+
+        /// <summary>The movie subtitles made now (tools/setup.py --movie-subtitles, docs/movie-subtitles.md), in the
+        /// languages ticked in Settings: speech to text installed and run on the player's machine; the setup remembers
+        /// it and makes only what is missing later.</summary>
+        async void DoMovieSubtitles()
+        {
+            if (!Game.Downloaded) { DoInstall(); return; }
+            string langs = SubtitlePack.Choice(true, chkSubLangs.Select(b => b.IsChecked == true).ToArray());
+            if (langs == "off") langs = "all";
+            if (!await Yes("This makes subtitles for the movies with speech to text (Whisper), on this computer, from your disc, in "
+                     + (langs == "all" ? "every language of its sound tracks" : langs) + ". The first time it installs the "
+                     + "speech to text (about 470 MB, and a 1.6 GB model); then it takes a while (about half an hour on a fast "
+                     + "CPU). The next setups make only what is missing; files you edited are never written again. They show "
+                     + "with Options > Language > Movie Subtitles.\n\nMake them now?", "Movie subtitles"))
+                return;
+            chkSubs.IsChecked = true;
+            ctl.Settings.MovieSubtitles = langs;
+            ctl.Settings.Save();
+            tabs.SelectedIndex = 0;
+            DoSetup("--movie-subtitles " + langs);
+        }
+
+        /// <summary>A movie subtitle pack (a zip of row_XXXX.<lang>.srt files, docs/movie-subtitles.md) unpacked into
+        /// assets/movie-subtitles/ (core/SubtitlePack.cs); Options > Language > Movie Subtitles shows them.</summary>
+        async void InstallSubtitlePack()
+        {
+            if (!Game.Downloaded) { DoInstall(); return; }
+            string zip = await PickFile("Choose a movie subtitle pack (.zip)", "Zip archive", new[] { "*.zip", "*.ZIP" }, null);
+            if (zip == null) return;
+            try
+            {
+                var (n, skipped) = SubtitlePack.Install(Game, zip);
+                await Say($"{n} subtitle files installed into\n{SubtitlePack.Dir(Game)}"
+                          + (skipped > 0 ? $"\n({skipped} other files in the zip left out)" : "")
+                          + "\n\nIn the game: Options > Language > Movie Subtitles: On. They follow the text language.",
+                          "Movie subtitles");
+            }
+            catch (Exception e) { await Say("The pack could not be installed: " + e.Message, "Movie subtitles"); }
+        }
+
         async void DoUpdate()
         {
             if (!Game.Downloaded) { DoInstall(); return; }
@@ -590,10 +721,21 @@ namespace Rac1Launcher
                 Activate();
                 btnMain.IsEnabled = true;
                 ShowState(state, "");
+                ShowRendererFallback();
                 CheckUpdates(false);  // (the channel may have changed in the game's options)
                 if (code != 0 && (DateTime.Now - started).TotalSeconds < 20)
                     await Say(ctl.GameClosedMessage(code), "Play");
             });
+        }
+
+        /// <summary>After the game: the line saying it ran with OpenGL instead of the Vulkan chosen, and why (build/game.log's
+        /// "[renderer]" line), under the status, and in the log.</summary>
+        void ShowRendererFallback()
+        {
+            string fb = ctl.RendererFallback();
+            if (fb == null) return;
+            lblDetail.Text = fb;
+            ctl.Log(fb);
         }
 
         // --- Running a task ---------------------------------------------------------------------------------
@@ -708,6 +850,87 @@ namespace Rac1Launcher
             if (shown.Length > 1 << 20) shown.Remove(0, shown.Length - (512 << 10));
             txtLog.Text = shown.ToString();
             txtLog.CaretIndex = txtLog.Text.Length;  // (scrolled to the end)
+        }
+
+        // --- Disc images -------------------------------------------------------------------------------------
+
+        static Control DiscRow(string use, string what, string image, string why = null, bool heading = false)
+        {
+            var g = new Grid { ColumnDefinitions = new ColumnDefinitions("100,290,*"), Margin = heading ? new Thickness(12, 0, 0, 4) : new Thickness(0) };
+            string[] cells = { use, what, image };
+            for (int i = 0; i < 3; i++)
+            {
+                var tb = new TextBlock { Text = cells[i], FontWeight = heading || (i == 0 && use != "Not used") ? FontWeight.SemiBold : FontWeight.Normal,
+                                         TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 8, 0) };
+                if (!heading && use == "Not used") Gray(tb);
+                Grid.SetColumn(tb, i);
+                g.Children.Add(tb);
+            }
+            if (why == null) return g;
+            var both = new StackPanel();
+            both.Children.Add(g);
+            both.Children.Add(Gray(new TextBlock { Text = why, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(100, 0, 0, 0) }));
+            return both;
+        }
+
+        /// <summary>The disc images the setup finds (tools/setup.py --discs), and what each one is for.</summary>
+        void RefreshDiscs()
+        {
+            var g = Game;
+            lblDiscs.Text = "Looking at the disc images...";
+            Task.Run(() =>
+            {
+                var list = ctl.Discs();
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (g != Game) return;
+                    discs = list ?? new List<DiscEntry>();
+                    lstDiscs.ItemsSource = discs.Select(d => DiscRow(Controller.RoleText(d), d.What, d.Path == "" ? "(its image is gone)" : Path.GetFileName(d.Path),
+                                                                     d.Why + (d.Path == "" ? "" : "\n" + d.Path))).ToList();
+                    lblDiscs.Text = list == null
+                        ? "The list shows once the game is installed (and, on a game folder set up by hand, its setup can run)."
+                        : "The setup picks the game's disc and the data discs among the images in the game folder's assets/iso "
+                          + "folder and the ones added here (nothing is copied). A data disc adds something the game's disc lacks: "
+                          + "the Japanese disc, its voices." + (discs.Count == 0 ? " No disc image found yet." : "");
+                });
+            });
+        }
+
+        async void AddDisc()
+        {
+            if (!Game.Downloaded) { await Say("Install the game first.", "Disc images"); return; }
+            string file = await PickFile("Add a Ratchet & Clank disc image (.iso)", "Disc images", new[] { "*.iso", "*.ISO" }, null);
+            if (file == null) return;
+            if (!File.Exists(file)) { await Say("File not found: " + file, "Disc images"); return; }
+            string problem = ctl.AddDisc(file);
+            if (problem != null) { await Say(problem, "Disc images"); return; }
+            var list = await Task.Run(() => ctl.Discs());
+            RefreshDiscs();
+            RefreshState();
+            string full = Path.GetFullPath(file);
+            var d = list?.FirstOrDefault(x => x.Path == full);
+            await Say(d == null ? "Added: the next setup looks at it."
+                      : d.Role == "data" ? $"{d.What}: a data disc ({d.Why}). The setup adds it at its next run: click Set up on the Play page."
+                      : d.Role == "game" ? $"{d.What}: the game's disc." : $"{d.What}: not used ({d.Why}).", "Disc images");
+        }
+
+        async void RemoveDisc()
+        {
+            if (runner != null) return;
+            var d = lstDiscs.SelectedIndex >= 0 && lstDiscs.SelectedIndex < discs.Count ? discs[lstDiscs.SelectedIndex] : null;
+            if (d == null || d.Role != "data") { await Say("Select a data disc in the list first.", "Disc images"); return; }
+            if (!await Yes($"Remove the data disc {d.What}? Its files in the game folder are deleted (your disc image is kept), "
+                           + "and the setup no longer takes it, until it is added again here.", "Disc images"))
+                return;
+            foreach (var c in busyDisabled) c.IsEnabled = false;
+            ctl.BeginTask("Removing a data disc");
+            bool ok = await Task.Run(() => { using (var r = new Runner()) return ctl.RemoveDataDisc(r, d); });
+            ctl.EndTask();
+            foreach (var c in busyDisabled) c.IsEnabled = true;
+            FlushLog();
+            if (!ok) await Say(ctl.Failure ?? "The data disc could not be removed.", "Disc images");
+            RefreshDiscs();
+            RefreshState();
         }
 
         // --- Saves ------------------------------------------------------------------------------------------

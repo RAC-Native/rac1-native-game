@@ -26,8 +26,15 @@ bool movie_hw_enabled();
 // Opens a movie: `bytes` bytes of PSS from sector `lba` of the disc; `track` the sound track to
 // play (the PSS of R&C1 carry one per language: 0 English, 2 French, 3 German, 4 Spanish, 5
 // Italian; a missing track falls back to the first). False if it cannot be read or decoded.
-bool movie_hw_open(uint32_t lba, uint32_t bytes, int track);
+// `audio_bytes` not 0: the sound from that PSS instead (`audio_bytes` bytes from sector `audio_lba`: the same movie of a
+// data disc, runtime/kernel/disc.h), its track `track`; the pictures always from the first.
+bool movie_hw_open(uint32_t lba, uint32_t bytes, int track, uint32_t audio_lba = 0, uint32_t audio_bytes = 0);
 bool movie_hw_is_open();
+// The time code of the last group of pictures (its GOP header's 25 bits: drop flag, hours, minutes, seconds, pictures) of
+// the PSS of `bytes` bytes from sector `lba`, read from the file's end; -1 when none is found. Two PSS with the same one are
+// the same cut of a movie (another disc's sound fits the pictures); the Japanese disc's own cuts (its logos, its
+// credits) end at another.
+int32_t movie_hw_last_time_code(uint32_t lba, uint32_t bytes);
 // The pictures' size and rate (frames per second).
 int movie_hw_width();
 int movie_hw_height();
@@ -60,6 +67,13 @@ void movie_hw_show_swap(std::vector<uint8_t>& rgba, int w, int h);
 const std::vector<uint8_t>* movie_hw_shown(int& w, int& h);
 uint64_t movie_hw_shown_serial();
 void movie_hw_show_clear();
+
+// The setup's movie subtitles (tools/movie_subtitles.py, `rac1-native --setup --movie-audio`): the sound tracks a PSS file
+// carries (their numbers: 0 English, 2 French, 3 German, 4 Spanish, 5 Italian on the North American and PAL discs, 0
+// Japanese on the Japanese one), and one of them decoded whole, 48 kHz stereo s16 as the game plays it. False when the
+// file has no such track (or it cannot be decoded). Nothing of a movie being played is touched.
+std::vector<int> movie_hw_file_tracks(const uint8_t* pss, size_t bytes);
+bool movie_hw_file_track(const uint8_t* pss, size_t bytes, int track, std::vector<int16_t>& pcm48);
 
 // The SPU2's ADPCM: one 16-byte block (shift / filter, flags, 14 bytes of 4-bit samples) to 28
 // samples, with the channel's two previous samples.

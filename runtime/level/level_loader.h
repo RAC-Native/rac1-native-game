@@ -31,6 +31,12 @@ extern ShrubInitCallback g_shrub_init_callback;
 typedef void (*MobyInitCallback)(std::span<const std::byte> level_wad_data);
 extern MobyInitCallback g_moby_init_callback;
 
+// After each of the overlay's data sections the loader copied (contents, not .bss): the level (-1 when the caller did not
+// say), the section's address and size. Set by the game when the disc's words need a pass after the load (another
+// build's core: src/game/ovl/region_core.h); none by default.
+typedef void (*OverlaySectionCallback)(int level, std::uint32_t addr, std::uint32_t size);
+extern OverlaySectionCallback g_overlay_section_callback;
+
 extern std::uint32_t g_particle_texture_pixel_vaddrs[256];
 
 // whether a legacy host renderer is in use (LevelLoader::legacy_level_ensure); set by the host
@@ -82,7 +88,7 @@ public:
     static void prefetch(int level);
     static void register_level_textures(std::span<const std::byte> level_wad_data);
     static std::uint32_t load_level_overlay(int level);
-    static std::uint32_t load_level_overlay(std::span<const std::byte> level_wad_data);
+    static std::uint32_t load_level_overlay(std::span<const std::byte> level_wad_data, int level = -1);
 };
 
 } // namespace rac1

@@ -237,21 +237,17 @@ std::map<std::pair<uint32_t, uint64_t>, std::pair<uint64_t, uint64_t>>& vu1_fall
 }
 std::mutex g_fb_mutex;
 
-// (host, 2026-10-31) the ports' lookup without hashing the micro memory again (RAC1_VU1_LOOKUP=1, the Wii U's default; 0 the PC's): a
-// start whose memo is stale (the micro memory written since) hashed every registered port's range of it - fnv1a64 a byte at a time, up
-// to 69 KB of micro memory for program 7's starts (the ports registered before it: particles, mobys, the six world programs). On the
-// Wii U's 32-bit Espresso a 64-bit multiply a byte: ~0.5 ms a start, the chain reader's "0r 1.70 ms / 7 runs" on Novalis. Now each port
-// keeps the last kSeen micro images of its range it hashed, with the answer (the same words: the same hash - the answer is the hash's,
-// never a guess); an image met again is compared (memcmp, ~30 times cheaper there than the hash), not hashed. The memo and the MPGs as
-// before (every MPG makes the memos stale: a memo is not tied to one VU1's micro memory).
+// (host) the ports' lookup without hashing the micro memory again (RAC1_PERF_VU1_LOOKUP=0: as before): a start whose memo is stale
+// (the micro memory written since: every MPG, several times a frame where the effects' programs and program 7 take turns) hashed
+// every registered port's range holding it, fnv1a64 a byte at a time - up to ~69 KB for program 7's starts (the particles', the
+// mobys', the six world programs' ranges), ~470 KB a frame on Novalis. Now each port keeps the last kSeen images of its range it
+// hashed, with the answer; an image met again is compared (memcmp) instead of hashed: the same words, the same hash, the same answer.
+// (found while profiling a low-end target)
+// orig: (host)
 bool lookup_cache_on() {
     static const bool on = [] {
-        const char* e = std::getenv("RAC1_VU1_LOOKUP");
-#if defined(__WIIU__)
+        const char* e = std::getenv("RAC1_PERF_VU1_LOOKUP");
         return e == nullptr || std::atoi(e) != 0;
-#else
-        return e != nullptr && std::atoi(e) != 0;
-#endif
     }();
     return on;
 }
@@ -264,26 +260,26 @@ struct SeenRing {
     SeenImage img[kSeen];
     unsigned next = 0;
 };
-LookupStats g_lookup_stats;
-// orig: (host) whether port r's range of the micro memory `micro` is its code: an image of it seen before (its answer), else hashed
+LookupStats g_lookup_stats;  // (the Wii U's chain reader's report: mrp_chain.cpp)
+// orig: (host) whether port `r` (registry index `index`) is the code in its range of the micro memory `micro`: an image of the range
+// seen before gives its answer, else it is hashed (and kept)
 bool port_matches(const Registered& r, size_t index, const uint64_t* micro) {
-    // (per thread, as the memo: the Wii U build defines thread_local away - one reader of VU1 programs at a time there)
-    static thread_local std::vector<SeenRing> seen;
+    thread_local std::vector<SeenRing> seen;  // (per thread, as the start memo: the replica's VU1 and the scene walker's)
     if (seen.size() < registry().size()) seen.resize(registry().size());
     SeenRing& ring = seen[index];
     const uint64_t* w = micro + r.addr;
     const size_t bytes = static_cast<size_t>(r.n) * 8;
-    for (const SeenImage& s : ring.img)
-        if (s.words.size() == r.n && std::memcmp(s.words.data(), w, bytes) == 0) {
+    for (const SeenImage& im : ring.img)
+        if (im.words.size() == r.n && std::memcmp(im.words.data(), w, bytes) == 0) {
             ++g_lookup_stats.reused;
-            return s.match;
+            return im.match;
         }
     ++g_lookup_stats.hashed;
     g_lookup_stats.hashed_bytes += bytes;
-    SeenImage& s = ring.img[ring.next++ % kSeen];
-    s.words.assign(w, w + r.n);
-    s.match = code_hash(w, r.n) == r.hash;
-    return s.match;
+    SeenImage& im = ring.img[ring.next++ % kSeen];
+    im.words.assign(w, w + r.n);
+    im.match = code_hash(w, r.n) == r.hash;
+    return im.match;
 }
 }  // namespace
 
@@ -435,13 +431,16 @@ void start_program(Vu1& vu, uint32_t start, const KickSink& kick) {
     auto kick_at = [&vu, &kick, start](uint32_t addr) {
         const uint32_t qwc = gif_packet_qwc(vu.st, addr);
         if (trace_on()) std::fprintf(stderr, "[VU1] kick %03x qwc %u\n", addr, qwc);
+        // (host) the packet read in place in the data memory when it does not wrap past its end (nearly always), not copied to a
+        // vector allocated for each kick; RAC1_PERF_XGKICK=0: always copied, as before
+        static const bool in_place = std::getenv("RAC1_PERF_XGKICK") == nullptr || std::atoi(std::getenv("RAC1_PERF_XGKICK")) != 0;
         const uint32_t a0 = addr & 0x3ffu;
-        std::vector<uint8_t> wrap_buf;
-        const uint8_t* pkt = &vu.st.mem[a0 << 4];
-        if (a0 + qwc > 0x400u) {
-            wrap_buf.resize(static_cast<size_t>(qwc) * 16);
-            for (uint32_t q = 0; q < qwc; ++q) std::memcpy(&wrap_buf[q * 16], &vu.st.mem[((a0 + q) & 0x3ffu) << 4], 16);
-            pkt = wrap_buf.data();
+        std::vector<uint8_t> buf;
+        const uint8_t* pkt = &vu.st.mem[static_cast<size_t>(a0) << 4];
+        if (!in_place || a0 + qwc > 0x400u) {
+            buf.resize(static_cast<size_t>(qwc) * 16);
+            for (uint32_t q = 0; q < qwc; ++q) std::memcpy(&buf[q * 16], &vu.st.mem[((addr + q) & 0x3ff) << 4], 16);
+            pkt = buf.data();
         }
         static const char* const pkt_dir = std::getenv("RAC1_VU1_PKTDUMP");  // testing: kicks #20000. as files <dir>/pkt_<n>_s<start>_a<addr>.bin
         if (pkt_dir != nullptr) {
@@ -477,35 +476,31 @@ void start_program(Vu1& vu, uint32_t start, const KickSink& kick) {
         static thread_local unsigned next = 0;
         const Registered* found = nullptr;
         bool hit = false;
-        // (the generation read once: a 64-bit atomic is a library call on the Wii U's 32-bit CPU)
-        const uint64_t gen = g_micro_gen.load(std::memory_order_relaxed);
+        const bool cached = lookup_cache_on();
+        // (the generation read once for the start, not once per memo entry; RAC1_PERF_VU1_LOOKUP=0: as before)
+        const uint64_t gen0 = g_micro_gen.load(std::memory_order_relaxed);
         for (const Memo& e : memo)
-            if (e.gen == gen && e.start == start) {
+            if (e.gen == (cached ? gen0 : g_micro_gen.load(std::memory_order_relaxed)) && e.start == start) {
                 found = e.port;
                 hit = true;
                 break;
             }
         if (!hit) {
             ++g_lookup_stats.misses;
-            const bool cached = lookup_cache_on();
             const auto& reg = registry();
-            for (size_t k = 0; k < reg.size(); ++k) {
-                const Registered& r = reg[k];
+            for (size_t i = 0; i < reg.size(); ++i) {
+                const Registered& r = reg[i];
                 if (!(start >= r.addr && start < r.addr + r.n && r.addr + r.n <= vu.micro.size())) continue;
-                bool match;
-                if (cached) {
-                    match = port_matches(r, k, vu.micro.data());
-                } else {
+                if (!cached) {
                     ++g_lookup_stats.hashed;
                     g_lookup_stats.hashed_bytes += static_cast<uint64_t>(r.n) * 8;
-                    match = code_hash(vu.micro.data() + r.addr, r.n) == r.hash;
                 }
-                if (match) {
+                if (cached ? port_matches(r, i, vu.micro.data()) : code_hash(vu.micro.data() + r.addr, r.n) == r.hash) {
                     found = &r;
                     break;
                 }
             }
-            memo[next++ & 31] = Memo{start, gen, found};
+            memo[next++ & 31] = Memo{start, cached ? gen0 : g_micro_gen.load(std::memory_order_relaxed), found};
         }
         if (found != nullptr) {
             struct Observed {  // (host: the walk's observer around the start, StartObserver)

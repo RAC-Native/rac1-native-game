@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <optional>
 #include <string>
 
 namespace rac1 {
@@ -156,10 +157,12 @@ void on_draw(uint32_t moby, uint32_t chain_begin, uint32_t chain_end, uint32_t r
         f.view_trans = vec4_at(OV(0x00166cf0));
         g_have_camera = true;
     }
-    // (made in its place in the frame's list: a moby is ~650 bytes, built aside and copied in it was a third of the observers' time
-    // on the Wii U's game thread)
-    const uint32_t mi = static_cast<uint32_t>(f.mobys.size());
-    MrpMoby& m = f.mobys.emplace_back();
+    // (host, RAC1_PERF_COPIES) made in its place in the frame's list: a moby record is ~650 bytes, built aside and copied in it was a
+    // good part of the observer's time (=0: built aside and copied, as before)
+    static const bool in_place = std::getenv("RAC1_PERF_COPIES") == nullptr || std::atoi(std::getenv("RAC1_PERF_COPIES")) != 0;
+    std::optional<MrpMoby> aside;
+    MrpMoby& m = in_place ? f.mobys.emplace_back() : aside.emplace();
+    const uint32_t mi = static_cast<uint32_t>(f.mobys.size()) - (in_place ? 1u : 0u);  // (its index in the frame's list)
     if (!rt) {  // (the view the loop uses now against the frame's)
         auto same = [](const MrpVec4& a, const MrpVec4& b, size_t n) { return std::memcmp(&a, &b, n) == 0; };
         bool s = same(f.cam_pos, vec4_at(OV(0x00166dc0)), 12);
@@ -212,6 +215,7 @@ void on_draw(uint32_t moby, uint32_t chain_begin, uint32_t chain_end, uint32_t r
             m.part_count = nparts;
         }
     }
+    if (!in_place) f.mobys.push_back(m);
     if (g_prof) g_prof_obs_ms += now_ms() - t0;
 }
 

@@ -29,7 +29,7 @@ runtime/           the PS2 hardware layer, no game logic
   ee/              EE: the coroutine, the game thread, timer 1, float rounding, the R5900 interpreter
   vu/              VU0 and VU1, the VIF, the VU interpreter, building blocks of translated programs
   gs/              the GS's local memory (game state), its blending as GPU state; the GS replica (the faithful reference)
-  vk/              the experimental Vulkan backend: device, swapchain, frames, helpers
+  vk/              the Vulkan backend (the default): device, swapchain, frames, helpers
   iop/             IOP memory, the 989snd sound driver's IOP side, audio streams
   sif/             SIF RPC between the EE and the IOP's servers
   ipu/             the movie decoder
@@ -52,7 +52,7 @@ tests/
 data/
   lights/          each level's light file: its sun, lights, interiors, emissive surfaces, materials,
                    ambient particles (our own art choices, no game data)
-  regions/         the PAL disc's region table (addresses only)
+  regions/         the PAL discs' region tables (addresses only)
 cmake/             dependencies downloaded at configure time
 assets/generated/src/
                    the generated code, written by the setup from the player's disc (not in the repository)
@@ -225,7 +225,7 @@ and knows nothing about Ratchet & Clank. It provides:
   (`gs_blend.cpp`), shared by every drawer;
 - the **GS replica** (`runtime/gs/gs_emu.cpp`, `gs_draw.cpp`), the faithful reference only: the MRP reads
   the frame's chain with its own reader ([Rendering](rendering.md#the-2d));
-- the experimental **Vulkan** backend's device, frames and helpers (`runtime/vk/`, see [Vulkan](vulkan.md));
+- the optional **Vulkan** backend's device, frames and helpers (`runtime/vk/`, see [Vulkan](vulkan.md));
 - the **IOP side**: IOP memory, the SIF RPC servers the game calls, the 989snd sound driver and its
   streams (`runtime/iop/`, `runtime/sif/`);
 - the **disc** (`runtime/kernel/disc.cpp`), read by sector from the files the setup extracted from the
@@ -338,7 +338,8 @@ runs every level on Veldin's overlay image instead, for comparison.
 
 The ports carry the North American build's addresses (`SCUS-97199`). The European PAL build
 (`SCES-50916`) is the same code relinked: most of it moved by a few bytes, a few functions changed.
-The **region table**, `data/regions/SCES-50916.txt`, records where the PAL build put each piece of the
+The **region table**, `data/regions/SCES-50916.txt` (and `SCES-50916-2.00.txt` for the PAL disc 2.00, see
+below), records where the PAL build put each piece of the
 North American build: per overlay (the boot module and levels 0 to 18), `code` and `data` runs (an
 address range and its shift), the `entry` of each function the PAL build changed, and a few lines for the
 code generators (`fix`, `start`, `nostart`, `pair`, below). It holds addresses, shifts and the PAL
@@ -378,6 +379,40 @@ the PAL disc the game loads `SCES_509.16`, translates Veldin's addresses too, an
 
 On the North American disc all of these are the identity. A function the PAL build changed is found
 through its `entry` line, and its North American port runs in its place.
+
+**A build whose core moved.** Everything above assumes that the base ELF's core (0x100080..0x15ef00: the
+libraries, the table of contents' buffer, the save block, the game's globals) is the same at the same
+addresses in both builds, which holds for the PAL disc 1.00: the ports read it at those addresses and never
+translate them. The later build 1.02 (the PAL disc 2.00, the "Platinum" one, and the Japanese disc) moved
+it: its data 0x100 bytes up (the game-state block 0x13d350.. 0x108), its code by up to 0x300, its `$gp`
+0x166d00. Its table, `data/regions/SCES-50916-2.00.txt`, has a unit `core` (the core's `code` / `data`
+runs, its `gp`, the `end` of each core) and, per unit, `ptr` lines: the disc's data words that point into its
+core. The table writer finds the core's code runs by comparing the two builds' code with the relocated
+fields masked, its data runs from the sections and the addresses every unit's matched code builds, and the
+`ptr` words by comparing each candidate with the North American word at the same place (a value that only
+looks like a core address, two halfwords such as 0x00130001, is not one). Then:
+
+- `region_view.py` takes the core's addresses back too (calls into the core, the addresses built into its
+  data, the `$gp` offsets from the disc's own `$gp`); `fix` lines correct the constants that only look like
+  core addresses;
+- at run time (`src/game/ovl/region_core.cpp`, after the ELF's load) the disc's core is copied back to the
+  North American addresses run by run, and the `ptr` words are taken back: the core's own, the boot
+  module's (after the ELF's load and each `front_image_load`) and each level overlay's (as the loader copies
+  its sections). The ports then find the core where they expect it, and nothing else changes.
+  `region_maps.py check-core` compares the core loaded this way with the North American one (one word
+  differs: the card's initial slot state, which the runtime sets to the North American value, as the
+  North American card port stands in for the 1.02 one).
+
+The 1.02 build changed many more functions, so the table finds more of their entries: between two code runs
+the North American and the disc's function starts are paired in order when there are as many of each, and an
+address the ports or the generators name inside such a stretch is placed by its masked words (`entry n p
+inner`). An entry that starts no function of the disc's (a `case` of a jump table) is not written: a stand-in's
+labels are its North American entry plus the offset in the disc's function, so `lvl_key` (`region_to_ntsc`)
+takes an address inside a changed function back that way, from the nearest entry below that starts one; the
+`inner` entries are only translated forward.
+
+The table of a disc is the one whose `disc` line names its boot executable's sha1 (the two PAL discs boot
+the same `SCES_509.16`).
 
 ## Runtime files
 

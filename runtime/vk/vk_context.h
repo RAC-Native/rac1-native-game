@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <string>
 #include <vector>
 
 struct GLFWwindow;
@@ -81,12 +82,24 @@ struct GraphicsPipelineDesc {
     VkFormat color_format = VK_FORMAT_R8G8B8A8_UNORM;
     VkFormat depth_format = VK_FORMAT_UNDEFINED;  // (0 = use depth_stencil_format() when has_depth_attachment is true)
     bool has_depth_attachment = true;
+    // (false: made inside a frame, the pipeline takes the formats of the target being drawn into, whatever the fields above
+    // say; true: always the fields' - a pipeline made in the middle of a frame for another target, as the occlusion's)
+    bool formats_from_desc = false;
     bool has_stencil_attachment = true;
     std::vector<VkDynamicState> extra_dynamic_states;
+    uint32_t shading_rate = 1;  // (RAC1_RT_RES=2: 2 = one fragment per 2x2 pixels, when the device can; testing)
 };
 
 // Lifecycle
 bool init(GLFWwindow* window, bool vsync, bool headless = false);
+// Why init returned false: the kind (the Renderer row's words) and the English text (the log's [renderer] line). Init checks every
+// Vulkan 1.3 device that can show the window, best first (discrete, integrated, others), and takes the first that passes.
+// Testing: RAC1_VK_FAIL=loader|check|first|lost (docs/vulkan.md#when-vulkan-cannot-start)
+enum class InitFailure { kNone, kNoShaders, kNoDriver, kNoVulkan13, kNoDevice, kMissing, kOther };
+InitFailure init_failure();
+const std::string& init_failure_text();
+// The host's hook called once when the device is lost (VK_ERROR_DEVICE_LOST), with where it was seen
+void set_device_lost_hook(void (*fn)(const char* where));
 void shutdown();
 bool is_active();
 void wait_idle();
@@ -108,6 +121,13 @@ bool has_float64();             // shaderFloat64: the tfrag compute shader's dou
 // an Intel GPU of generation 9 (Skylake .. Comet Lake, the UHD 620) or older: its doubles are slow (the tfrags made on the CPU
 // unless RAC1_TFRAG_CPU=0; issue #113)
 bool float64_slow();
+// Water Reflections' RT values (ray-traced reflections, docs/rendering.md#ray-tracing): acceleration structures and ray queries turned on
+// whenever the device has VK_KHR_acceleration_structure, VK_KHR_ray_query, deferred host operations, bufferDeviceAddress and non-uniform
+// sampled-image indexing (RAC1_RT=0: never, testing), so the row's RT values can be picked during play
+bool rt_enabled();
+bool has_shading_rate();             // (with ray queries: a pipeline's fragment shading rate, VK_KHR_fragment_shading_rate)
+uint32_t as_scratch_alignment();     // (an acceleration structure build's scratch offset alignment)
+VkDeviceAddress buffer_address(VkBuffer b);  // (a buffer made with VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT)
 
 // Core handles
 VkInstance instance();

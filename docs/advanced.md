@@ -1,6 +1,10 @@
 # Advanced options
 
-Options > Advanced holds the settings that change how the game plays. They are different in kind
+Options > Advanced holds the settings that change how the game plays. The pause menu's page holds a playthrough's
+settings (the rows below, set first by New Game's Original / Modern and kept with the save); the main menu's holds only
+the global ones, settings of the whole game rather than of a playthrough: [Cut Content](#cut-content),
+[Corrected Texts](#corrected-texts), [1.02 Fixes](#102-fixes) and [1.02 Gameplay](#102-gameplay). They are different
+in kind
 from the PS2 compromises the port removes (see [Overview](overview.md#faithful-to-the-games-code-not-to-the-ps2s-limits)):
 
 - **A removed compromise** keeps the game's behaviour and state exactly the original's and only drops
@@ -19,13 +23,15 @@ The Advanced page has these rows:
 | Movement | Original, Strafing, RAC 3 | enhancement |
 | Fades | Fast, Original | a removed compromise: Fast is the port's default, Original the PS2's |
 | Buy All Ammo | Off, On | enhancement |
-| Vibration | Off, Low, High | enhancement (kept as the machine's preference, not with the saves) |
-| Adaptive Triggers | Off, On | enhancement, shown only when the pad in use is a DualSense (kept as the machine's preference) |
+| Vibration | Off, Low, High | enhancement, experimental (kept as the machine's preference, not with the saves) |
+| Adaptive Triggers | Off, On | enhancement, experimental, shown only when the pad in use is a DualSense (kept as the machine's preference) |
 | Skip Cutscenes | Original, Always | enhancement |
 
 All of it is in `src/game/enhance/advanced.{h,cpp}` (Buy All Ammo's Vendor entry in
 `src/game/enhance/vendor_buy_all.{h,cpp}`). None of it is a port: every function there is annotated
-`// orig: (none) — enhancement`.
+`// orig: (none) — enhancement`. The Voice row that was last on this page is now on the Language page, with the text
+language and the subtitles ([Settings](settings.md#language)); its line `voice_language` stays in the same
+preferences file.
 
 ## How the page is built
 
@@ -35,8 +41,11 @@ original's Camera page (0x1b5a60), its title and its "settings" widget (the widg
 rows are a name, the byte it sets and up to four value texts; Cross cycles the value) into a block
 of EE memory the game never uses (0xf0000 to 0xf2000, its texts at 0xfb000 to 0xfe000, inside the PS2 kernel's first megabyte, which
 the port does not use since its kernel is the host). It then writes its own rows and texts there and
-inserts Graphics, Controls and Advanced into the Options list before Quit Game. The main menu gets
-the same pages (`title_menu_page_start`). The game's text lookup (0x203ad8) asks `advanced_text`
+inserts Language (`language.cpp`, the same way: its block 0xfa200 to 0xfa600, its texts 0x7fc0 and up), Graphics,
+Controls and Advanced into the Options list before Quit Game; in the main menu the game's own Language entry opens our
+Language page instead of the game's list. The main menu gets
+the same pages (`title_menu_page_start`), but its Advanced page is built with the global rows only (a row's `global`
+flag in `SETTINGS_ROWS`), and its Options list gets the Advanced entry only when there is one (`advanced_main_page`). The game's text lookup (0x203ad8) asks `advanced_text`
 first for the page's own text ids (0x7f00 and up), in English, German, Spanish and Italian (French
 shows English for now).
 
@@ -54,17 +63,25 @@ port's fast fades). Left and right on a row step the value (`advanced_settings_d
   `update_channel`, and `update_skip`, the version the update notice's Skip Version chose), nor are
   Vibration and Adaptive Triggers (the machine's pad).
 
-The ids in `save<N>.pc`: Quick Select 1, Aiming 2, Movement 3, Fades 4, Buy All Ammo 5, Skip Cutscenes 10 (Vibration 6
-and Adaptive Triggers 9 have ids but are not written with the saves; 7 and 8 are removed rows, never reused).
+The ids in `save<N>.pc`: Quick Select 1, Aiming 2, Movement 3, Fades 4, Buy All Ammo 5, Skip Cutscenes 10 (Vibration 6,
+Adaptive Triggers 9 have ids but are not written with the saves; 7 and 8 are removed rows, and 11 was the Voice row,
+now on the Language page, never written with the saves; 12, Cut Content, 13, Corrected Texts, 14, 1.02 Fixes, and 15,
+1.02 Gameplay, are global and never written with the saves either: none reused).
+
+**The Language page's rows** have more values than the widget's four: each byte is a step byte with two values whose
+texts are both the row's value, made at each lookup (as the Graphics page's rows); when Cross or left / right step it,
+the setting moves on and the byte goes back to 0. Voice is kept as `voice_language same|en|fr|de|es|it|ja`, Subtitles as
+`subtitles on|off` (only once chosen), Movie Subtitles as `movie_subtitles on|off` in the preferences, the text language as the console's (`console.txt`). What they
+change is in [Settings](settings.md#language); New Game's modes leave them as they are.
 
 A preferences file or a `save<N>.pc` written by an earlier build may hold a setting that has since been
 removed (`ship` and `clank`, the ship selector and Clank's movement, ids 7 and 8): it loads, and those
 lines are ignored.
 
-**The New Game choice.** Picking "Modern mode" or "Experimental" at New Game turns Quick Select, Aiming
+**The New Game choice.** Picking "Modern" in New Game's first window turns Quick Select, Aiming
 (Modern), Movement (RAC 3), Buy All Ammo, Vibration (High), Skip Cutscenes (Always) and, when the pad in use is a
-DualSense, Adaptive Triggers on; "Original mode" turns them all off
-(`advanced_apply_mode`). Fades is left as it is. Every setting can be changed at any time
+DualSense, Adaptive Triggers on; "Original" turns them all off
+(`advanced_apply_mode`). Fades and the global rows are left as they are. Every setting can be changed at any time
 afterwards. The Controls page's mouse settings are the machine's and no mode changes them.
 
 **Linked settings.** Modern aiming is built on the strafe, so turning Aiming to Modern when Movement
@@ -83,12 +100,15 @@ the mobys, the particles and the camera for that frame, and the play-time statis
 
 ## Vibration (#10)
 
-The original has no vibration (it came with *Going Commando*). With **Vibration = Low** or **High**, the
-gamepad answers what happens, in the spirit of *Ratchet & Clank 2* and *3*. Each event is a short pulse
+> **Vibration and Adaptive Triggers are an experiment**: our own choice of events and strengths, which may still change a
+> lot. They do not reproduce any other game's vibration.
+
+The original has no vibration. With **Vibration = Low** or **High**, the
+gamepad answers what happens: our own pulses for the game's events. Each event is a short pulse
 with a crisp end: held at its strength for about half its length, then brought down to 0 in a few
 frames. The strong, low-frequency motor (the left one) takes impacts and explosions; the weak,
 high-frequency one (the right one) takes shots and ticks. Low is a little under half of High. Vibration
-is off by default and in Original mode; Modern and Experimental set it to High.
+is off by default and in Original mode; Modern sets it to High.
 
 | Event | Low motor | High motor | Length | Felt from its side (DualSense) |
 |---|---|---|---|---|
@@ -139,8 +159,8 @@ to a quarter turn), so in the centre both sides have the full strength and to on
 out. On the **other pads** the two motors are the low and the high frequencies, not left and right, so
 the pulses stay centred there.
 
-**Adaptive Triggers** (shown only when the pad in use is a DualSense; off by default; Modern and
-Experimental turn it on when a DualSense is in use) works with Aiming = Modern, where L2 aims and R2 fires,
+**Adaptive Triggers** (experimental, like Vibration; shown only when the pad in use is a DualSense; off by default; Modern
+turns it on when a DualSense is in use) works with Aiming = Modern, where L2 aims and R2 fires,
 in gameplay on foot:
 - L2: a soft resistance from a quarter of its travel;
 - R2, by the item in hand: the Blaster, the Pyrocitor and the Tesla Claw a light resistance that rattles
@@ -288,6 +308,10 @@ held makes him strafe.
   side flips and wrench timings stay the original's.
 - **Movement = RAC 3** brings UYA's full on-foot movement and wrench feel to the first game's hero
   code, together with the strafe.
+
+Both are Ratchet's: as Clank (and Giant Clank) the pad is the original's, L2 and R2 included (L2 crouches him, as
+L1), with any Movement or Aiming. Clank has no weapon to aim and no strafe in his own walk; the strafe and
+the modern aim worked only in his jump up to 0.7.0 (#129).
 
 ### How it was built: a study of UYA's code
 
@@ -448,6 +472,229 @@ reticle is not hidden by him. It is the Aiming byte's third value (2): everythin
 
 In the project's automated runs: top running speed 6.17 units/s (Original 5.7), 95 % of
 it in 12 frames (46), a stop in 8 frames (29), lift-off 3 frames after the press (7).
+
+## Cut Content
+
+The main menu's Advanced page has one row, **Cut Content: Off / On** (off by default). It is a global setting: kept in
+the preferences only (`cut_content 0|1` in `advanced_options.txt`), never with a save, and New Game leaves it as it is.
+With it on, things the retail game carries on the disc but never shows come back. Each one's own code in the game is a
+stub, so its behaviour is reconstructed, or ported from an earlier build that still has it
+(`src/game/enhance/cut_content.{h,cpp}`, functions chosen where the game calls the original's): with the row off, the faithful port runs, and the game's memory is the same frame by
+frame (RAC1_RAMHASH). The row is read when a level's mobys first update, right after its load: a change shows at the next
+level load. `RAC1_CUT_CONTENT=fred,...` turns single items on for testing ([Environment variables](env-vars.md)).
+
+| Item | Level | What comes back |
+|---|---|---|
+| `fred`: Kerwan's citizens "Fred 1 / 2 / 3" | Kerwan | classes 915, 916, 917, 14 placements in the streets, on stairs and in a tunnel (x 204 to 350, y 130 to 202) |
+| `ships`: Eudora's Transport Ships | Eudora | class 484, 3 placements; each brings in the enemies placed for it (4 + 3 Circular Saw Enemies, 3 Blarg Troopers) |
+
+**Kerwan's citizens.** Their shared update (L3:0x2dc310, `fred_update_l3`) measures the distance to Ratchet and the
+heading towards him against its own, throws both away and retires the moby on its first frame; the prototype build already
+has the stub. With the item on, a host update replaces it (`cut_content_fred_dispatch_l3`, registered at that address):
+the citizen stays, its sequence 0 is played in a loop, and within 15 units it turns to face Ratchet
+(`yaw_turn_damped`, the game's turn, slow). What was learnt bringing them back:
+
+- Each of the three models has one sequence of **one frame**: the rest pose, arms held out (#128, "they T-pose like
+  cryptids"); Kerwan's data has nothing else for them. They play **another citizen's idle** instead: Nebula G34's
+  "Fred" (level 6, class 1105) has Fred 3's skeleton (65 joints, the same hierarchy) and Fred 1 and 2's but for their
+  six extra joints under the head (55..60); its frames' rotations equal the Kerwan models' rest pose everywhere but the
+  arms, so they carry over (its bones are longer: each model keeps its own lengths). Its sequence 0, a standing idle with
+  the arms lowered (50 frames at 0.25 a game frame, 3.3 s, a closed loop: a slight sway of the legs, the hands and the
+  face), is read from the player's disc (level 6's core) at the first citizen kept on a level, rebuilt on each class's
+  joints (Fred 1 and 2's extra joints keep their rest rotations) in host memory above the game's 32 MB
+  (`host_layout::CUT_CONTENT_SEQS`) and put in the class's sequence slot 0; each citizen starts it at its own frame. Their
+  placements' flags keep the game's moby loop from advancing their animation (+0x34 bit 0x40), so their update advances
+  it. Nothing of the sequence is in the repository; without it (no level 6 data) they keep the rest pose. The other
+  humanoid NPCs of the game do not fit: Nebula G34's Fred and Quartu's Ultra-Mech Scientist (1446, the same 65 joints,
+  one 18-frame gesture) are the only ones with this skeleton; no NPC class is a Gadgetron engineer; the Gadgetron NPCs (the
+  CEO, 1455, 90 joints; the Help Desk Lady, 1377, 62) and the other NPCs have other skeletons (14 to 99 joints).
+- They have **no collision**: Ratchet dropped on each one's spot lands where he lands without them, so none of the 14
+  blocks a path, even those standing on a path, a stair or in the tunnel.
+- Some **placements stand in the air**: three (x 314 to 323, y 139 to 146) 0.25 above the ground, four more 0.03 to 0.1
+  (the game never showed them). At its first update each citizen is put on the ground under it: the game's own segment
+  test (`segment_collide`) from 1 above its placement down to 8 below, the citizen's height set to the hit point; with
+  nothing hit it stays as placed (all 14 hit). With the item off nothing changes (the faithful stub runs).
+- Their turn's spin is kept in the last word of their pvars (448 bytes of placement data no code of the game reads);
+  the state byte (+0x20) marks a citizen kept. With the idle, the game's memory differs besides in the three classes'
+  sequence slots (their headers) and the frame's graphics chains (the poses drawn). No save data is touched: over a run through Novalis, Kerwan, Rilgar and
+  Batalia, the game's memory differs only from the citizens' first update on Kerwan, in Kerwan's level data and moby
+  pages; after the next level's load only pages of Kerwan's data the next level does not overwrite differ, and the game's
+  state (the hero, the items, the save's blocks) stays the same.
+
+**Eudora's Transport Ships.** Retail's update for class 484 (L4:0x2ce060) is `moby_retire`: the three ships placed on
+Eudora go on their first frame, and the enemies placed for them stand where they were put. The beta (August 2002) and
+prototype (June 2002) builds keep the real update, 1872 / 1896 bytes; with the item on it runs, ported from the beta
+(`cut_content_ships_update_l4`, `// orig: beta 2002-08 L4:0x002a18e8`, registered at the retail address through
+`cut_content_ships_dispatch_l4`). What it does, from its code and the placements' data (their pvars have the beta's
+layout, 384 bytes):
+
+- Each ship waits hidden, with the enemies it carries (up to four, moby indexes in its pvars +0x140..+0x14c) hidden
+  under it, until Ratchet enters its trigger box (`point_in_box`, pvars +0x150). If the level's collected-things row
+  (0x14c050, the ship's entry +0xb0) already marks it done, the ship and what it carries retire at once.
+- Then it shows and flies its path (pvars +0x74) through the shared ship update of the other Eudora ships
+  (L4:0x2ca420, `eud_class466_update_l4`: retail's still has its class 484 case), the enemies held at four places in its
+  frame (a table retail still has, L4:0x1dc320, read there). From the first point of its path whose w is 1 it drops
+  them one by one, every 5 to 8 frames, facing Ratchet, in their own drop state (state 2 for the Circular Saw Enemy 340,
+  4 for the Blarg Trooper 427: retail's updates still have both); two points before its path's end it retires.
+- Two of the three start a short scripted camera when they come (a camera box of the level, pvars +0x160, for +0x168
+  seconds; the camera turns to follow the ship within +0x170 degrees), Ratchet held still meanwhile (hero state 0x1f,
+  back to idle after).
+
+| Ship | Placed at | Trigger box | Path, drop point | Carries | Camera |
+|---|---|---|---|---|---|
+| 1 | 237, 249, 61 | 12 (260, 243, 58) | path 8, drops from point 5 near (255, 257) | 4 Circular Saw Enemies (placed at 252..263, 254..258) | box 19, 4 s, 20 degrees |
+| 2 | 324, 306, 67 | 35 (292, 289, 67) | path 73, from point 6 near (311, 277) | 3 Circular Saw Enemies (305..312, 274..277) | box 34, 3 s |
+| 3 | 288, 274, 65 | 35, the same | path 72, from point 3 near (303, 282) | 3 Blarg Troopers (300..308, 283..287) | none |
+
+What retail lacks and how it is covered: the beta's callees are all in retail, matched by the overlay maps or by their
+code (`hero_set_state` 0x2223f8, `camera_scripted_set` 0x2eaaa0, `uid5_set_pvar_90` 0x2eaa30, `moby_anim_advance`
+0x250480, the beta's 0x200730 / 0x2bcf38 / 0x2bce68 / 0x2282d8); no sound of its own; the paths, boxes and camera boxes
+are retail's level data. One field moved: the Blarg Trooper's gun moby, which the ship retires while it carries the
+trooper, is at the trooper's pvars +0xf8 in retail (+0x98 in the beta; the same code around it in both builds' class
+427 update). With the item off nothing changes (the faithful retire runs). With it on, until Ratchet comes, the game's
+memory differs only in the three ships' mobys and pvars and in the engine's moby lists they stay in; after the next
+level's load, which moby slots that level's own spawned mobys take can differ (the ships are left alive instead of
+retired, as any Eudora moby left in another state would do).
+
+Left out for now: Orxon's five Fred 1 (class 915 by Clank's start: the same retire stub, L10:0x2d7fe8, not a turning
+citizen as once thought - speculative), and the rest of the candidates in [Port inventory](port-inventory.md#what-the-development-repository-already-knew).
+
+## Corrected Texts
+
+The main menu's Advanced page has a row **Corrected Texts: Off / On** (off by default), shown only when the game's disc is
+the North American one and a data disc gives the corrected texts: the PAL disc 1.00, the PAL disc 2.00 or the Japanese disc
+(see [Setup](setup.md#data-discs)); without one the row is not on the page. It is a global setting: kept in the
+preferences only (`corrected_texts 0|1` in `advanced_options.txt`), never with a save. With it on, the strings the later
+discs correct are shown as those discs have them, in every language the game shows (English, French, German, Spanish,
+Italian). The North American disc's own European tables carry mistakes the PAL disc fixed (described here, not quoted),
+for example:
+
+- Italian: the 15 memory card messages name the card's slot in the French wording; the PAL disc names it the Italian
+  way, says first that no card is inserted when there is none, and the Load Game prompt's cancel is reworded. Also two
+  weapon slogans each shifted to the next weapon, typos, a word's gender, the triangle button spelled out as its glyph.
+- Spanish: the map's legend for the sticks is in Italian (the PAL disc shows the sticks' glyphs), and several messages
+  join the two names with the Italian conjunction instead of the Spanish one; a card message's English article.
+- French: the ammo messages for one unit in the singular, two weapons renamed (the Devastator, the glove), grammar.
+- German: a card message that said the wrong thing, a weapon's name in one word, shortened lines.
+- English: the Heli-Pack hint names the cross button as its glyph instead of in words; a credits line's breaks.
+
+How (`src/game/enhance/corrected_texts.{h,cpp}`, `// orig: (none)`): at the first text table the game relocates with the
+row on, each level's gameplay file of the data disc (`levels/levelNN/gameplay_pal.bin`) is compared with the North
+American disc's, string by string by id, in the order PAL 2.00, PAL 1.00, Japanese disc (the first disc that has a
+string gives it). About 75 strings differ (6 KB); they are written to an EE block the game never uses (0xfe000 to
+0xffc00), and after the game relocates a text table (the title's eight in `title_load`, the level's in `gameplay_load`,
+the title's again for the pause menu's help log) the records of those ids point at them. The game's own lookups then
+read them as any other string. Details:
+
+- The PAL disc 2.00 added five credits lines (the ids after each one are one higher): its ids are taken back to the North
+  American ones, and its credits are not taken (they would need that build's credits code); with only that disc, the
+  credits stay the North American ones, with the PAL disc 1.00 or the Japanese disc beside it they get the English line
+  breaks fix.
+- Spanish 20172: the PAL disc 1.00 broke it (a copy of the line before it), 2.00 fixed it again; it is taken only from
+  2.00.
+- Still wrong on every disc, so not corrected: a German credits line in English; two Italian misspellings (a weapon's
+  name, a word in a hint); two new typos the PAL disc brought in its fixes (one French, one German).
+- With the row off nothing is read or changed: the game's memory is the same frame by frame (RAC1_RAMHASH). With it on,
+  only the corrected records' string pointers and the block 0xfe000 differ.
+
+The row is read when a text table is loaded, and a change on the main menu acts on the main menu's texts at once (their
+original strings put back when it is turned off); a level's texts follow at its load. `RAC1_CORRECTED_TEXTS=1` / `0`
+overrides the row for testing ([Environment variables](env-vars.md)).
+
+## 1.02 Fixes
+
+The main menu's Advanced page has a row **1.02 Fixes: Off / On** (off by default), a global setting kept in the
+preferences only (`fixes_102 0|1` in `advanced_options.txt`), never with a save. The game's later build, 1.02 (the
+Japanese disc and the PAL disc 2.00, the "Platinum"), changed about a hundred functions of each level's copy of the
+engine; most of it is the memory card, the Japanese text layouts and recompiled code, and some of it fixes the game.
+With the row on, those fixes run on the North American build's code: each one is the 1.02 build's
+own change, read from its code (its addresses taken back to the North American ones through
+`data/regions/SCES-50916-2.00.txt`) and written into the North American port at the same place, behind its own test
+(`fixes102_on(n)`, `src/game/enhance/fixes102.{h,cpp}`; a `(1.02 Fixes, fix n: ...)` note at each site, naming the 1.02
+build's function). With the row off the North American port runs, and the game's memory is the same frame by frame
+(RAC1_RAMHASH). The fixes that change how the game plays (the RYNO's targets, the Visibomb's steering, the deadly ground,
+the interaction guards...) are a row of their own: [1.02 Gameplay](#102-gameplay).
+
+| Fix | What the 1.02 build changed | Where (North American) |
+|---|---|---|
+| 1 | New Game keeps the sound settings: the effects' and the music's volume and mono / stereo (0x15edf0, 0x15edec, 0x15ede8), which the disc's default save otherwise puts back to its own | `new_game_state` 0x24b628 |
+| 2 | Explosions leave moby slots free (0x15ffbc, the free slots): a bomb's ten debris only while 51 slots or more are free, its four others only while 21 are; the generic blast's debris mobys at most the free slots less 10 | `bomb_update` 0x2adb30, `explosion_effect` 0x25e450 |
+| 3 | At most 20 Glove of Doom agents: the last 20 kept in a ring, and the agent spawned 20 before, when still an agent and not already dying, goes to its state 4 (it leaves); the ring cleared at each level's load (1.02: 0x1dd400 and 0x16190c; here the EE block 0xffc00, as nothing of the game or the runtime is there) | `doom_agent_spawn` 0x2c8218, `gameplay_load` 0x241940 |
+| 5 | The Thruster-Pack's sound on jumps: at frame 5 of a jump (state 0xe) and of the long and wall jumps (0xb, 0xc), with the Thruster-Pack on Ratchet's back, its sound (`hero_sound_start(1, 0)`); not on Oltanis | `hero_vertical_velocity` 0x214108, `hero_horizontal_velocity` 0x214658 (before the levels' own copies) |
+| 6 | An animation's next frame (+0x51) kept in its sequence: at most the sequence's frame count less 1 | `hero_anim_set` 0x2325a0 |
+| 7 | Ratchet's colour pulse (his moby's +0x90, the light on his wrist; the phase 0x13f350+0x1628) in the cutscenes too: the scene's Ratchet pulses, slower; in play only in game mode 0, and faster, between a second pair of colours, while 0x179410 is set and not 8; in Veldin's opening scene, frames 835 to 1080, the second pair too | `hero_ship_update` 0x234b38, `hero_gadget_glow` 0x2080b0 |
+| 11 | The talk prompt: a character's record that waits for the button advances (`talk_step`) only once Ratchet faces it and it faces him, not every frame he is within twice its reach | `talk_update` 0x266448 |
+| 15 | The cutscenes: none starts while one already runs (game mode 2); the underwater view (0x167014: the fog and the blue tint of a camera under water) is put aside as the scene starts, so a scene started from the water is not drawn as under water, and put back at its end; the frame's draw lists are emptied at its end (the 1.02 build's copy of `draw_lists_reset`). The 1.02 build keeps the view in the scene's +0x4b; the North American scene block uses +0x46..+0x49 otherwise, so here it is the EE block's word 0xffc54 | `cutscene_start` 0x298840, `cutscene_end` 0x298b18 |
+| 16 | The pause menu: the goals updated when the menu comes back to its goals pages; the menu's open counter (MS+0x110) held at 32000 | `menu_page_start` 0x276368, `menu_update` 0x276bd0 |
+| 17 | The ship's landing and take-off scenes are skipped with circle too, and its flight to the next planet hurried with circle too (the presses' mask 0x50, triangle / cross, to 0x70). The PAL disc 1.00 has the North American 0x50: a change of the 1.02 build (the Japanese disc's and the PAL disc 2.00's), not of the PAL release | `ship_sequence_update` 0x290590 |
+| 18 | Aridia: a sand shark that is killed bursts (`enemy_death_burst`: three sparks of 0.333 and two shards, no blast, 0.333 over its place) before it dives off to its next spot; the original only drops its bolts and vanishes | Aridia's class at L2:0x2d3e50 (`hooks.glue`) |
+| 19 | The hoverbike races (Rilgar, Kalebo III): the place ("1st".."5th"), the poses ("x3 Poses") and the flips ("+ 360 Flips") were English built into the code, in every language and always plural; the 1.02 build takes them from the level's text table (in the game's language: "1a", "Posizioni"...), with "Pose" for one and "flip" for a 360 (the texts 21028..21032, 20855 / 20856, 20647 / 20648, all on the North American disc). The PAL disc 1.00 has them too | Rilgar's L5:0x262f50 / 0x266320, Kalebo III's L16:0x235660 / 0x238a30 (`hooks.glue`, `fixes102_race_text`) |
+| 20 | Blarg: the class 1083 object that breaks by itself 32 units or more from Ratchet leaves its broken copy but none of its 50 debris pieces (moby slots; the 1.02 build gives the break routine an argument, 0 there). Broken near him, or by him, it is unchanged | Blarg's L6:0x2ffcb0, L6:0x300278 (`hooks.glue`) |
+| 22 | Rilgar's race organiser (class 918): a race that ends in its state 3 restarts the level's music, as its states 1 and 2 already do (the call `ril_28f5c8_l5(0, 8)` they make); and when the race earned the skill point (its flag 0x13d411), after the prize's message ("You won a Platinum Zoomerator!") the skill point's sound and "You just earned a Skill Point!" are given (the message takes the prize's place on the screen) | Rilgar's L5:0x316ab8 (`hooks.glue`) |
+
+What the 1.02 build changed but is not ported: the memory card's code and screens (the 1.02 build rewrote them for its
+own card library), the Japanese text layouts, the pad's reads (the host's input replaces them), the PAL disc 2.00's
+movie code, the credits (two more lines), and changes that show nothing (recompiled code, a development timing display
+removed). The row is read where each fix runs; it is changed on the main menu only, so a playthrough sees it from its
+start. `RAC1_FIXES102=<n>,<n>...` (`all`, `none`) turns single fixes on for testing ([Environment variables](env-vars.md)).
+
+## 1.02 Gameplay
+
+The main menu's Advanced page has a third row of the later build's fixes, **1.02 Gameplay: Off / On** (off by default), a
+global setting kept in the preferences only (`gameplay_102 0|1` in `advanced_options.txt`), never with a save: the 1.02
+build's fixes that change how the game plays, most of them closing a way round the game (an exploit), which stays
+possible with the row off. It is built as [1.02 Fixes](#102-fixes): each fix is the 1.02 build's own change, read from
+its code (the PAL disc 2.00's, its addresses taken back through `data/regions/SCES-50916-2.00.txt`; the Japanese disc has
+the same code), written into the North American port at the same place behind its own test (`gameplay102_on(n)`,
+`src/game/enhance/fixes102.{h,cpp}`; a `(1.02 Gameplay, fix n: ...)` note at each site). The numbers are the analysis's
+(F4, F8...), the ones `RAC1_GAMEPLAY102` takes. Where the change is in code the port transliterates from the disc (the
+weapons' `*_asm.cpp`, the levels' own copies of the hero's functions and moby classes), the generators put a call there:
+`host_ntsc` / `entry_host_ntsc` in `tools/codegen/asm2fn_specs/` (the North American build's code only: another region's
+changed function, a stand-in, gets none) and `tools/codegen/hooks.glue` (each level's instruction, found by aligning the
+level's copy with Veldin's and checked against the 1.02 build's copy of that level). With the row off each of those is a
+test that fails, and the game's memory is the same frame by frame (RAC1_RAMHASH).
+
+| Fix | What the 1.02 build changed | The way round it closes | Where (North American) |
+|---|---|---|---|
+| 4 | The RYNO's lock-on looks for its targets in the target list 0x1aba00 (the mobys of flag 0x1000 that moby_update queues each frame) instead of the whole moby list 0x15ffe4; and a target whose line from the shot is cut by a moby of type 5 (the targets' type) or 0xf is taken all the same | Probably: locking onto mobys the game does not queue as targets that frame (the original walks every moby), and a target hidden behind another one | `ryno_2cc360` 0x2cc360 (its 1.02 version in `fixes102_ryno_targets`, `ryno_asm.cpp` calling it) |
+| 8 | The Visibomb's steering (the missile and its camera) ends in the hero state 0x32 too, the state a vendor or a character's talk puts Ratchet in | Probably: steering a Visibomb on while Ratchet is at a vendor or in a talk | `visibomb_update` 0x2b3058, `visibomb_ball_update` 0x2b6140 |
+| 9 | Deadly ground (collision kinds 8 and 0xc, +0x12ea; the original takes Ratchet off it to the states 0x52 / 0x79, lost after 300 frames) now also for Ratchet in the Hologuise: its stand 0x53 and walk 0x54 go to its own 0x58 (lost after 300 frames) on it, as entering them does on the ground, and its 0x59 within 0.3 of it, 0x54 within 0.2; the hoverboard's ready stance (0x3f) rides off (2) only on its ground contact (+0x300), out of deep water (+0x12e7) and tilted less than pi/4 (+0x90 / +0x94), the original's height test gone; quicksand (+0x12eb) in a vehicle mode (+0x20a4 1 or 2) makes Ratchet lost (`hero_lost`) instead of sinking him | Probably: walking in the Hologuise over deadly ground (out-of-bounds floor) without being lost, riding the hoverboard off from over deep water, sinking a vehicle in quicksand | `hero_input_update` 0x229b70 (states 0x3f, 0x53, 0x54, 0x59), `hero_set_state` 0x2223f8 (0x53, 0x54), `hero_surface_update` 0x20b960; the same in Novalis's build (the hand ports `*_l1.cpp`, `hero_l2_small.cpp`: levels 1, 2, 3) and in the levels' own copies (5, 6, 8, 11, 12, 14, 15, 16, 17, 18: `hooks.glue`; the quicksand only in Rilgar's, Quartu's and Veldin's finale's, the others have none) |
+| 10 | The characters that take Ratchet's input: a prompted one (the triangle's "talk" message: Pokitaru's class at 0x313290, Gemlik's 69, Drek's fleet's 1379) is not offered while Ratchet is already in the state 0x32 or 0x1d or in a vehicle mode, and its press puts him in 0x32 at once (the 1.02 build moved that call from the character's next step); Rilgar's 918 and Kalebo III's 1455 are not talked to (`talk_update`) while he is in 0x1d, and they lock his input (+0x20ac) as their scene starts; the card's screen (the flag 1 of 0x15eeb4) waits while he is in 0x1d | Probably: starting a talk from inside another talk, a vendor or a vehicle; a frame of free input between the press and the scene | `gameplay_frame` 0x297f78; `hooks.glue` at L11:0x313290, L13:0x2bb068, L17:0x2ed018, L5:0x316ab8, L16:0x2e6808 |
+| 12 | Ratchet's tilt to the ground where he follows it (the ground mode +0x20b3, sub_00233440: on the hoverboard, states 0x3f / 0x70 / 0x71; in deep water with 0x13d4dc set; on the ground +0x308 marks): align_to_up's spring stiffer (0.8 of the frame time 0x15ed64 instead of 0.3, the damping kept at 0.3) and its speed capped at 1.0046 x 0x15ed6c (the original's cap 0: none) | Not understood: probably a tilt that runs away on the hoverboard over steep or broken ground | `sub_002163f0` 0x2163f0 |
+| 13 | The Hologuise (item kind 0x1f): put on beyond the sub-states 0..2 in the hero states 4, 9 and 0xe (+0x2084) instead of the sub-state 4 (+0x208c); hero_place stops its countdown (+0x22de: putting it on or off 18 frames after the press); and a state forced on Ratchet in the Hologuise (hero_set_state, which takes him out of it first, `hero_mode3_exit`) stays his state | Not understood in full: the disguise put on or off across a teleport or a forced state | `sub_0020fe30` 0x20fe30, `hero_place` 0x216f90, `hero_set_state` 0x2223f8 (and its copies) |
+| 14 | The Decoy Glove's decoy: while Ratchet swims at the surface (state 0x31) within 1.5 of it, the decoy gets a push from his place (the event 0x10000, strength 1000, that the game's bumps use), so it moves off instead of staying in his way | Probably: a decoy that blocks Ratchet in the water | `decoy_object_update` 0x2c4380 (`decoy_obj.json` `host_ntsc`) |
+| 21 | Rilgar's water that rises and falls (class 831): it carries Ratchet swimming in it up as it rises (his water height +0x2f0 set to its surface while it is more than 0.1 from its target and he swims, +0x208c 0x11 / 0x12), and it holds still during a cutscene (game mode 2) | Probably: Ratchet left under the surface of rising water | Rilgar's L5:0x30ca80 (`hooks.glue`) |
+
+The 1.02 build changed more in the same places that is not ported here: in Novalis's and Veldin's crouch under a low
+ceiling (0x81) Ratchet stands up after 20 frames without the Thruster-Pack on his back; Rilgar's class 918 has calls of
+its own (the music, the skill point's message: [1.02 Fixes](#102-fixes), fix 22); the card's 0x400 flag and the
+save block's checks in `gameplay_frame` are the 1.02 build's memory card. On the PAL disc 2.00 as the game's disc the
+changed functions already are the 1.02 build's (its stand-ins), so the row adds nothing there except in the hand ports
+(the shared hero code, `gameplay_frame`). The row is read where each fix runs; it is changed on the main menu only.
+`RAC1_GAMEPLAY102=<n>,<n>...` (`all`, `none`) turns single fixes on for testing ([Environment variables](env-vars.md)).
+
+### The later build's other changes to the level objects
+
+The 1.02 build changed some forty functions of the levels' own code. Fixes 18 to 22 and 10 above are the ones ported.
+The others, read in the North American and the 1.02 build's code (PAL disc 2.00, the Japanese disc the same):
+
+- No change to the game: Hoven's class 1404, Aridia's two skid classes, Eudora's 1190, Oltanis's 924 and Veldin's
+  finale's 1422 follow the 1.02 build's new cutscene block (the hero's place flag at +0x4a, a byte); Blarg's 0x302400
+  (its talking robots' lines) is recompiled; the Tesla Claw (0x2b94d0) is recompiled (its "six more calls" are the next
+  function); the text numbers 5 higher are the PAL disc 2.00's own (its credits).
+- Not on the PC: the Morph-o-Ray's chickens (0x2c97e0: start their culling countdown under load) and Gaspar's / Gemlik's
+  class 1885 (no spawn past the first while the frame is loaded) shed load by the frame's load 0x15f5d0 / 0x15f5d4,
+  which the port's timer (`runtime/ee/ee_timer.h`) keeps at 0: they would never run.
+- Understood in the code, not in what it shows (left out): the Tesla Claw's hits carry an upward direction (+0x2b8 1.0
+  instead of 0); Pokitaru's and Kalebo III's class 1111 and Pokitaru's 1158 set the underwater colours (0x161200..) when
+  0x1677c8 passes 180; Umbris's class 1106 and its helper 0x313af0 test the bits 2 / 4 of a step's result instead of its
+  value; Blarg's class 1051 keeps its 10-frame start once begun; Batalia's 467 removes its group (classes 0x24c..0x256,
+  0x1d8) when its level flag 0x13d3b6 is set and its link is gone; Gemlik's class 170 (2.7 to 2.8), 1262 (a range of
+  15), 0x2b4958 (a hit's +0x30 0.9 to 0.7) and 0x30bfb0 (+0x34 flag 0x20); Oltanis's 685 (only when Ratchet stands the
+  same way up as it, a dot product over 0); Quartu's 1451 and Veldin's finale's 1899 (the ship's pad: a leftover moby
+  removed, Quartu's own placement 0x274af8); Drek's fleet's 1448 and
+  Veldin's finale's 1381 (a counter against a random wait); Pokitaru's 0x2d14b0 / 0x312838 and Gemlik's class 63 (large
+  rewrites).
 
 ## Limits
 

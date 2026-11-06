@@ -22,9 +22,9 @@ struct Q128 {
     uint32_t w() const { return static_cast<uint32_t>(lo); }
 };
 // orig: (helper) a 32-bit result as the register holds it (sign-extended, the high half kept)
-inline void set32(Q128& d, uint32_t v) { d.lo = static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(v))); }
+RAC1_HOT_INLINE void set32(Q128& d, uint32_t v) { d.lo = static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(v))); }
 // orig: (helper) BLTZ / BGEZ
-inline bool neg(const Q128& r) { return static_cast<int64_t>(r.lo) < 0; }
+RAC1_HOT_INLINE bool neg(const Q128& r) { return static_cast<int64_t>(r.lo) < 0; }
 
 // orig: (helper) the DMA channel registers (0x10000000..0x1000ffff) the routine writes: a CHCR
 // write with STR (0x100) runs the scratchpad transfer (fromSPR 0x1000d000, toSPR 0x1000d400;
@@ -43,8 +43,8 @@ inline HwRegs& hwregs() {
     static HwRegs r;
     return r;
 }
-inline bool is_hw(uint32_t a) { return (a >> 16) == 0x1000u || (a >> 16) == 0xb000u; }  // (kseg0 / kseg1)
-inline void hw_sw(uint32_t a, uint32_t v) {
+RAC1_HOT_INLINE bool is_hw(uint32_t a) { return (a >> 16) == 0x1000u || (a >> 16) == 0xb000u; }  // (kseg0 / kseg1)
+RAC1_COLD_PATH inline void hw_sw(uint32_t a, uint32_t v) {
     a &= 0x1fffffffu;
     hwregs()[a] = v;
     if ((a == 0x1000d000u || a == 0x1000d400u) && (v & 0x100u) != 0) {
@@ -60,20 +60,20 @@ inline void hw_sw(uint32_t a, uint32_t v) {
         r[a] = v & ~0x100u;
     }
 }
-inline uint32_t hw_lw(uint32_t a) { return hwregs()[a & 0x1fffffffu]; }
+RAC1_COLD_PATH inline uint32_t hw_lw(uint32_t a) { return hwregs()[a & 0x1fffffffu]; }
 
 // orig: (helper) loads / stores (a hardware register address goes to the registers above)
-inline uint32_t lw_(uint32_t a) { return is_hw(a) ? hw_lw(a) : lwu(a); }
-inline uint32_t lbu_(uint32_t a) { return lbu(a); }
-inline uint32_t lhu_(uint32_t a) { return lhu(a); }
-inline uint64_t ld_(uint32_t a) { return ld(a); }
-inline void sw_(uint32_t a, uint32_t v) {
+RAC1_HOT_INLINE uint32_t lw_(uint32_t a) { return is_hw(a) ? hw_lw(a) : lwu(a); }
+RAC1_HOT_INLINE uint32_t lbu_(uint32_t a) { return lbu(a); }
+RAC1_HOT_INLINE uint32_t lhu_(uint32_t a) { return lhu(a); }
+RAC1_HOT_INLINE uint64_t ld_(uint32_t a) { return ld(a); }
+RAC1_HOT_INLINE void sw_(uint32_t a, uint32_t v) {
     if (is_hw(a)) hw_sw(a, v);
     else sw(a, v);
 }
-inline void sh_(uint32_t a, uint32_t v) { sh(a, v); }
-inline void sb_(uint32_t a, uint32_t v) { sb(a, v); }
-inline void sd_(uint32_t a, uint64_t v) { sd(a, v); }
+RAC1_HOT_INLINE void sh_(uint32_t a, uint32_t v) { sh(a, v); }
+RAC1_HOT_INLINE void sb_(uint32_t a, uint32_t v) { sb(a, v); }
+RAC1_HOT_INLINE void sd_(uint32_t a, uint64_t v) { sd(a, v); }
 #if defined(__WIIU__) || defined(RAC1_QUAD_ONE_CALL)
 // ((2026-11-04) the Wii U - a PC built with -DRAC1_QUAD_ONE_CALL for the check -: one call a quadword - its address resolved once, out of
 // line, the four words read or written in place - instead of two doublewords' calls, each with its own resolution and check: the
@@ -108,13 +108,13 @@ inline void sq(uint32_t a, const Q128& v) {
     std::memcpy(p, w, 16);
 }
 #else
-inline Q128 lq(uint32_t a) {
+RAC1_HOT_INLINE Q128 lq(uint32_t a) {
     Q128 r;
     r.lo = ld(a & ~15u);
     r.hi = ld((a & ~15u) + 8);
     return r;
 }
-inline void sq(uint32_t a, const Q128& v) {
+RAC1_HOT_INLINE void sq(uint32_t a, const Q128& v) {
     sd(a & ~15u, v.lo);
     sd((a & ~15u) + 8, v.hi);
 }
@@ -148,10 +148,10 @@ inline void ldr_(Q128& r, uint32_t a) {
     r.lo = (r.lo & keep) | m;
 }
 // orig: (helper) the MMI lanes
-inline uint32_t wd(const Q128& v, int i) { return static_cast<uint32_t>((i < 2 ? v.lo : v.hi) >> ((i & 1) * 32)); }
-inline uint16_t hw(const Q128& v, int i) { return static_cast<uint16_t>((i < 4 ? v.lo : v.hi) >> ((i & 3) * 16)); }
-inline uint8_t by(const Q128& v, int i) { return static_cast<uint8_t>((i < 8 ? v.lo : v.hi) >> ((i & 7) * 8)); }
-inline Q128 mkw(uint32_t a, uint32_t b, uint32_t c, uint32_t d) {
+RAC1_HOT_INLINE uint32_t wd(const Q128& v, int i) { return static_cast<uint32_t>((i < 2 ? v.lo : v.hi) >> ((i & 1) * 32)); }
+RAC1_HOT_INLINE uint16_t hw(const Q128& v, int i) { return static_cast<uint16_t>((i < 4 ? v.lo : v.hi) >> ((i & 3) * 16)); }
+RAC1_HOT_INLINE uint8_t by(const Q128& v, int i) { return static_cast<uint8_t>((i < 8 ? v.lo : v.hi) >> ((i & 7) * 8)); }
+RAC1_HOT_INLINE Q128 mkw(uint32_t a, uint32_t b, uint32_t c, uint32_t d) {
     Q128 r;
     r.lo = (static_cast<uint64_t>(b) << 32) | a;
     r.hi = (static_cast<uint64_t>(d) << 32) | c;
@@ -190,7 +190,7 @@ inline Q128 pextuh(const Q128& s, const Q128& t) {
     return mkh(h);
 }
 // orig: (helper) PEXTLW
-inline Q128 pextlw(const Q128& s, const Q128& t) { return mkw(wd(t, 0), wd(s, 0), wd(t, 1), wd(s, 1)); }
+RAC1_HOT_INLINE Q128 pextlw(const Q128& s, const Q128& t) { return mkw(wd(t, 0), wd(s, 0), wd(t, 1), wd(s, 1)); }
 // orig: (helper) PPACW: the even words of t, then of s
 inline Q128 ppacw(const Q128& s, const Q128& t) { return mkw(wd(t, 0), wd(t, 2), wd(s, 0), wd(s, 2)); }
 // orig: (helper) PPACH / PPACB: the even halfwords / bytes of t, then of s
@@ -223,7 +223,7 @@ inline Q128 padduw(const Q128& s, const Q128& t) {
     return mkw(r[0], r[1], r[2], r[3]);
 }
 // orig: (helper) PMAXW
-inline Q128 pmaxw(const Q128& s, const Q128& t) {
+RAC1_HOT_INLINE Q128 pmaxw(const Q128& s, const Q128& t) {
     uint32_t r[4];
     for (int i = 0; i < 4; ++i) {
         const int32_t a = static_cast<int32_t>(wd(s, i)), b = static_cast<int32_t>(wd(t, i));
@@ -232,7 +232,7 @@ inline Q128 pmaxw(const Q128& s, const Q128& t) {
     return mkw(r[0], r[1], r[2], r[3]);
 }
 // orig: (helper) PMINW
-inline Q128 pminw(const Q128& s, const Q128& t) {
+RAC1_HOT_INLINE Q128 pminw(const Q128& s, const Q128& t) {
     uint32_t r[4];
     for (int i = 0; i < 4; ++i) {
         const int32_t a = static_cast<int32_t>(wd(s, i)), b = static_cast<int32_t>(wd(t, i));
@@ -241,15 +241,15 @@ inline Q128 pminw(const Q128& s, const Q128& t) {
     return mkw(r[0], r[1], r[2], r[3]);
 }
 // orig: (helper) PROT3W: the three low words rotated (w1, w2, w0), w3 kept
-inline Q128 prot3w(const Q128& t) { return mkw(wd(t, 1), wd(t, 2), wd(t, 0), wd(t, 3)); }
+RAC1_HOT_INLINE Q128 prot3w(const Q128& t) { return mkw(wd(t, 1), wd(t, 2), wd(t, 0), wd(t, 3)); }
 // orig: (helper) PCPYLD / PCPYUD / PCPYH / POR
-inline Q128 pcpyld(const Q128& s, const Q128& t) {
+RAC1_HOT_INLINE Q128 pcpyld(const Q128& s, const Q128& t) {
     Q128 r;
     r.lo = t.lo;
     r.hi = s.lo;
     return r;
 }
-inline Q128 pcpyud(const Q128& s, const Q128& t) {
+RAC1_HOT_INLINE Q128 pcpyud(const Q128& s, const Q128& t) {
     Q128 r;
     r.lo = s.hi;
     r.hi = t.hi;
@@ -260,16 +260,16 @@ inline Q128 pcpyh(const Q128& t) {
     for (int i = 0; i < 4; ++i) h[i] = hw(t, 0), h[i + 4] = hw(t, 4);
     return mkh(h);
 }
-inline Q128 por(const Q128& s, const Q128& t) {
+RAC1_HOT_INLINE Q128 por(const Q128& s, const Q128& t) {
     Q128 r;
     r.lo = s.lo | t.lo;
     r.hi = s.hi | t.hi;
     return r;
 }
 // orig: (helper) PSLLW / PSRLW / PSRAW / PSRAH
-inline Q128 psllw(const Q128& t, int n) { return mkw(wd(t, 0) << n, wd(t, 1) << n, wd(t, 2) << n, wd(t, 3) << n); }
-inline Q128 psrlw(const Q128& t, int n) { return mkw(wd(t, 0) >> n, wd(t, 1) >> n, wd(t, 2) >> n, wd(t, 3) >> n); }
-inline Q128 psraw(const Q128& t, int n) {
+RAC1_HOT_INLINE Q128 psllw(const Q128& t, int n) { return mkw(wd(t, 0) << n, wd(t, 1) << n, wd(t, 2) << n, wd(t, 3) << n); }
+RAC1_HOT_INLINE Q128 psrlw(const Q128& t, int n) { return mkw(wd(t, 0) >> n, wd(t, 1) >> n, wd(t, 2) >> n, wd(t, 3) >> n); }
+RAC1_HOT_INLINE Q128 psraw(const Q128& t, int n) {
     uint32_t r[4];
     for (int i = 0; i < 4; ++i) r[i] = static_cast<uint32_t>(static_cast<int32_t>(wd(t, i)) >> n);
     return mkw(r[0], r[1], r[2], r[3]);
@@ -367,15 +367,15 @@ inline void asm_trace(uint32_t a) {
 #endif
 
 // orig: (helper) a macro-mode VU0 op waits for a running VU0 program to end
-inline void vmacro() {
-    if (vu0::running()) vu0::drain();
+RAC1_HOT_INLINE void vmacro() {
+    if (__builtin_expect(vu0::running(), 0)) vu0::drain();
 }
 // orig: (helper) COP2 transfers on the VU0 registers
-inline Q128 qmfc2(int r) {
+RAC1_HOT_INLINE Q128 qmfc2(int r) {
     const VUVector& v = vu0::global().st.vf[static_cast<size_t>(r)];
     return mkw(v.u[0], v.u[1], v.u[2], v.u[3]);
 }
-inline void qmtc2(int r, const Q128& x) {
+RAC1_HOT_INLINE void qmtc2(int r, const Q128& x) {
     if (r == 0) return;
     VUVector& v = vu0::global().st.vf[static_cast<size_t>(r)];
     for (int i = 0; i < 4; ++i) v.u[i] = wd(x, i);
@@ -387,7 +387,7 @@ inline void ctc2(int r, const Q128& x) {
     else if (r > 0 && r < 16) v.st.vi[static_cast<size_t>(r)] = static_cast<int16_t>(x.w() & 0xffff);
     if (vu0::running()) vu0::run_until_blocked();
 }
-inline uint32_t cfc2(int r) {
+RAC1_HOT_INLINE uint32_t cfc2(int r) {
     vu0::Vu0& v = vu0::global();
     if (r == 27) return v.cmsar0;
     if (r < 16) return static_cast<uint32_t>(static_cast<int32_t>(v.st.vi[static_cast<size_t>(r)]));
@@ -403,8 +403,8 @@ inline uint32_t cfc2(int r) {
     }
 }
 // orig: (helper) LQC2 / SQC2
-inline void lqc2_(int r, uint32_t a) { qmtc2(r, lq(a)); }
-inline void sqc2_(uint32_t a, int r) { sq(a, qmfc2(r)); }
+RAC1_HOT_INLINE void lqc2_(int r, uint32_t a) { qmtc2(r, lq(a)); }
+RAC1_HOT_INLINE void sqc2_(uint32_t a, int r) { sq(a, qmfc2(r)); }
 // orig: (helper) VSQI (macro): a VU0 register to its data memory at vi[it], vi[it] + 1
 inline void vsqi(int fs, int it, int dest) {
     vu0::drain();

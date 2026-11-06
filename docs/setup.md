@@ -16,12 +16,14 @@ source code, the files that are a mechanical translation of the game's own code 
 ### Your game disc, as an ISO image
 
 - **Ratchet & Clank**, North American release (NTSC-U), serial **`SCUS-97199`**, or the European
-  release (PAL), serial **`SCES-50916`**. Either disc alone is enough. PAL support is new and still
-  being tested: see [The European PAL disc](#the-european-pal-disc).
+  release (PAL), serial **`SCES-50916`**: version 1.00, or version 2.00 (the "Platinum" re-release).
+  Any of these discs alone is enough. PAL support is new and still being tested, the Platinum's most:
+  see [The European PAL disc](#the-european-pal-disc).
 - An unmodified ISO image of the disc. A good dump is 4,214,095,872 bytes for the North American
-  disc and 4,213,997,568 bytes for the PAL one; a smaller image is accepted with a warning (it is
-  checked fully later).
-- Other releases (the Japanese one, `SCPS-15055`) are not supported.
+  disc, 4,213,997,568 bytes for the PAL disc 1.00 and 4,214,784,000 for the Platinum; a smaller image is
+  accepted with a warning (it is checked fully later).
+- The Japanese release, `SCPS-15037`, is not supported as the game's disc. It can be added beside it as a
+  data disc, for its Japanese voices and the corrected texts: see [Data discs](#data-discs).
 
 ### A Linux system with
 
@@ -36,14 +38,14 @@ source code, the files that are a mechanical translation of the game's own code 
   in Python; no extra modules);
 - optionally **FFmpeg** development files (`libavcodec`, `libavutil`), to play the game's movies.
   Without them the game runs and skips the movies;
-- optionally **glslc** (shaderc), to build the experimental [Vulkan renderer](vulkan.md)'s shaders
-  (`glslangValidator` works too); without it the game is built with OpenGL only;
+- **glslc** (shaderc), to build the [Vulkan renderer](vulkan.md)'s shaders (`glslangValidator` works
+  too: the `glslang-tools` package on Debian / Ubuntu releases without a `glslc` package);
 - an internet connection for the first build (CMake downloads GLFW, GLM, Dear ImGui, TinyGLTF,
   miniaudio, Vulkan-Headers and volk);
 - about 5 GB of free disk for the game's data and generated code (4 GB of it the disc's files, which the
   game reads instead of the image), besides the disc image, plus about 2 GB for the build;
-- a GPU and driver with **OpenGL 4.6** (and **Vulkan 1.3** for the experimental Vulkan renderer,
-  which is optional: OpenGL is the default).
+- a GPU and driver with **OpenGL 4.6** and, for the Vulkan renderer (the default), **Vulkan 1.3**:
+  without it the game runs on OpenGL.
 
 The setup tool checks all of this and tells you what is missing, with the command to install it on
 Debian and Ubuntu (and their derivatives), Fedora, and Arch. It never installs anything without
@@ -70,19 +72,24 @@ sudo pacman -S --needed cmake base-devel pkgconf mesa libx11 libxrandr libxinera
    cd rac1-native-game
    ```
 
-2. **Run the setup, with the path to your disc image:**
+2. **Put your disc image in `assets/iso/` and run the setup:**
 
    ```bash
-   ./setup.sh --iso /path/to/your/ratchet.iso
+   mkdir -p assets/iso
+   ln -s /path/to/your/ratchet.iso assets/iso/   # (a link; moving or copying the image there works too)
+   ./setup.sh
    ```
 
-   (Without `--iso` it asks for the path.) It goes through six steps:
+   The setup looks at every disc image in `assets/iso/` and picks the game's disc and the data discs by itself
+   (see [Which disc images](#which-disc-images)). Or give the image where it is: `./setup.sh --iso
+   /path/to/your/ratchet.iso`. (With neither, it asks for the path.) It goes through six steps:
 
    1. **Checks your system** and lists anything missing, with the install command for your
       distribution. It offers to run that command for you (it asks for your password); say no to
       run it yourself.
-   2. **Checks your disc image**: that it is Ratchet & Clank's North American or European (PAL)
-      disc, and not smaller than a good dump.
+   2. **Checks your disc image**: lists the images it found and what each one is for, then checks
+      that the game's disc is Ratchet & Clank's North American or European (PAL) disc, and not smaller
+      than a good dump.
    3. **Extracts your disc** into `assets/disc/`: every file on it, about 4 GB (see
       [The disc's files](#the-discs-files)). The game reads these files while it runs, not the image.
       Each file is checked after it is written: its size, and its bytes against the image. This takes
@@ -131,7 +138,7 @@ All of it goes into `assets/`, which git ignores:
 | `assets/generated/mrp/moby/` | the moby models and textures for the renderer, per level |
 | `assets/generated/mrp/world/` | the world's geometry and textures for the renderer, per level |
 | `assets/generated/mrp/{moby,world}/flight/` | the loading screen's scene: the ship's flight between planets |
-| `assets/generated/overlay_map/` | the per-level address maps (made by `tools/overlay_match/`; for the PAL disc also `region_level<n>.txt`, `region_boot.txt` and `codegen/`, see below) |
+| `assets/generated/overlay_map/` | the per-level address maps (made by `tools/overlay_match/`; for the PAL disc also `region_level<n>.txt`, `region_boot.txt` and `codegen/`, and for the Platinum `region_core.txt`, see below) |
 | `assets/setup-state.json` | what the setup generated, and from which code (so a re-run redoes only what changed) |
 
 How these are made is described in [Rendering](rendering.md) and
@@ -178,6 +185,28 @@ the game's bytes. With it, from the PAL disc alone:
 The game runs in the PAL game's own 60 Hz mode (its Options offer 50 Hz or 60 Hz). The 50 Hz mode is
 not supported yet.
 
+**The Platinum disc (version 2.00).** Both PAL discs boot the same `SCES_509.16`; the setup tells them
+apart by that executable's sha1 and uses the Platinum's own table, `data/regions/SCES-50916-2.00.txt`.
+The Platinum is a later build of the game (1.02, the Japanese release's engine with the PAL data): besides
+moving the overlays' code, it moved the base executable's core, which the port reads at the North American
+addresses. The game loads that core back at those addresses when it starts, and takes the disc's pointers
+into it back too ([Architecture](architecture.md#the-region-layer)). Then, as for version 1.00:
+
+- The build's changed functions (about a hundred in each level's copy of the engine: the hero's states and
+  velocities, several weapons, the memory card and the save screens, the pause menu and the planet map, the
+  text wrapping, the pad's reads...) run the North American port where the port has one by hand. The 1.02
+  changes ported so far reach those functions through main menu > Options > Advanced > [1.02 Fixes](advanced.md#102-fixes)
+  and [1.02 Gameplay](advanced.md#102-gameplay), as on the other discs; the rest are to come one by one.
+- The generated ones are translated from the Platinum's own code, as stand-ins (`STAND-IN` in the generated
+  sources): on Veldin the credits, the end menu's page, the vendor's screens and the Morph-o-Ray's chicken,
+  and per level the same engine functions (the hero's horizontal velocity, the HUD counters...). The stand-ins of the
+  hero's velocity have no enhancement hook points from this disc (the `PAL:` lines of `hooks.glue` are version
+  1.00's), so R&C 3 movement's air braking and the strafe flip's speed do not act on the levels where it is a stand-in.
+- The save folder is the same as version 1.00's (`BESCES-50916RATCHET`), as on a console. The saves are the
+  port's, as from the other discs.
+- The disc's Italian vendor lines (the voice language Italian) are the Japanese ones: the Platinum was mastered
+  that way, and the game plays what the disc has.
+
 **What differs from the North American disc.**
 
 - The PAL disc's own data: its corrected French, German, Spanish and Italian texts, some re-exported
@@ -204,6 +233,95 @@ not supported yet.
   enhancement hook points as the North American code (R&C 3 movement's air braking and the strafe flip's
   speed), placed at the matching instructions of the PAL code (`PAL:` lines in `tools/codegen/hooks.glue`).
 
+## Which disc images
+
+Without `--iso`, the setup looks at every disc image it can find, tells each one apart by its boot
+executable and that executable's sha1, and picks what to use. It looks at:
+
+- every `.iso` file in `assets/iso/` (whatever its name; links count, and the setup's own links
+  `rac1-ntsc-u.iso` / `rac1-pal.iso` are among them);
+- the path in `assets/iso/disc-path.txt` (written on Windows when the setup cannot make a link);
+- the paths listed in `assets/iso/more-discs.txt`, one a line (what the launcher's **Add a disc image**
+  writes, so an image elsewhere is used where it is: nothing is copied; a data disc listed there is taken even
+  after a removal, so remove its line too);
+- the data discs' images the setup already recorded (`--data-iso`).
+
+It then picks:
+
+- **The game's disc**: the one already set up, when its image is still there (an image added later
+  does not make the setup extract and generate everything again from another disc); else the North
+  American disc (`SCUS-97199`); else the PAL disc 1.00 (`SCES-50916`); else the PAL disc 2.00 (the
+  Platinum). The Japanese disc is not a game's disc yet: with only that, the setup stops and says so.
+- **The data discs**: each image that gives something the game's disc lacks: the Japanese disc (its voices, and
+  beside the North American disc the corrected texts), the PAL discs 1.00 and 2.00 beside the North American disc (the
+  corrected texts): see [Data discs](#data-discs).
+- **Not used**, with one line saying why: a PAL disc beside the PAL game's disc (the same release, or one that gives
+  nothing it lacks), the pre-release builds (the June 2002 prototype, the August 2002 beta: they boot a
+  development executable, `SCPS_000.00`), another game, an image smaller than a good dump, one whose
+  boot executable is not a good dump's (a modified disc), and a second image of a release already
+  taken (the first one by name is used, the line names it).
+
+The choice is printed at step 2, for example:
+
+```
+  Disc images found (assets/iso/ and the ones the setup knows):
+    data disc  assets/iso/Ratchet & Clank (Europe).iso: PAL SCES-50916 version 1.00 (the corrected texts)
+    data disc  assets/iso/Ratchet & Clank (Japan).iso: NTSC-J SCPS-15037 version 1.02 (the Japanese voices, the corrected texts)
+    game disc  assets/iso/Ratchet & Clank (USA).iso: NTSC-U SCUS-97199 version 1.00
+```
+
+An image added to `assets/iso/` later is picked up by the next setup (`./setup.sh --check`, and the
+launcher's Play page, say so: "a new data disc"). Explicit options always win: `--iso <image>` (or
+`RAC1_ISO`) is the game's disc whatever else is there, `--data-iso <image>` a data disc.
+To switch the game's disc to another one found there, give it with `--iso` once; the setup keeps it.
+`./setup.sh --discs` prints the choice without doing anything (one image a line, tab-separated: game,
+data or unused; the image; what it is; why).
+
+## Data discs
+
+The game's disc (`--iso`) gives the game its code and data. Other releases' discs can be added beside it
+as **data discs**, sources of data only: their own code never runs (Ratchet & Clank 3's port does the
+same, its decision 14). For now that gives two things:
+
+- the **Japanese voices**, from the Japanese disc;
+- the **corrected texts** (main menu > Options > Advanced > Corrected Texts: [Advanced options](advanced.md#corrected-texts)),
+  beside the North American disc only: its European texts as the later discs carry them, fixed. The PAL disc 1.00, the PAL
+  disc 2.00 and the Japanese disc (whose European tables are the PAL disc 1.00's) each give them; with several, the
+  PAL disc 2.00 comes first, then 1.00, then the Japanese disc.
+
+The setup takes these discs by itself when their images are in `assets/iso/` (see
+[Which disc images](#which-disc-images)); or give it where it is:
+
+```bash
+./setup.sh --data-iso /path/to/rac1-ntsc-j.iso
+```
+
+- Each disc is told apart by its boot executable and that executable's sha1 (the two PAL discs boot the
+  same `SCES_509.16`; `SYSTEM.CNF`'s version says which), as the game's disc is. The setup stops with
+  a message when a data disc is not Ratchet & Clank, is a release it does not know, is incomplete, or is
+  the same release as the game's disc.
+- The Japanese disc (`SCPS-15037`, version 1.02) is extracted as the game's disc is, by
+  `tools/disc_extract.py`, into its own folder, `assets/disc-SCPS-15037-1.02/` (about 1.7 GB: its
+  movies have one sound track and are not there twice, its dialogue is in one language), and listed in
+  `assets/data-discs.txt`, which the game reads. Its image is not needed afterwards.
+- A PAL disc (1.00 or 2.00) beside the North American disc gives only the corrected texts (the North American disc
+  already carries all five European voices, the same recordings): only its levels' gameplay files are extracted, the
+  19 `levels/levelNN/gameplay_pal.bin` (about 11 MB), into `assets/disc-SCES-50916-1.00/` or `-2.00/`; its
+  `layout.txt` lists them alone, and the game reads every other sector of that disc as zero. Beside the PAL disc 1.00
+  as the game's disc, a PAL disc gives nothing (its texts are the game's own) and is noted, not extracted; so is the
+  Japanese disc's texts part (it is still taken for its voices).
+- The data discs are kept in `assets/setup-state.json` (`data_discs`): a later `./setup.sh` keeps them
+  without `--data-iso`, and extracts one again only when its folder is incomplete or the extractor
+  changed (an image found again in `assets/iso/` is not extracted again). `--remove-data-disc SCPS-15037` (its serial,
+  `SCES-50916-2.00` for one of the two PAL discs, or its image) forgets one and removes its folder; `--no-data-discs` forgets them all. A disc removed so is not taken from `assets/iso/` again
+  (`data_discs_removed` in `assets/setup-state.json`) until it is given with `--data-iso`.
+
+The game reads a data disc's sectors as it reads its own disc's, through the same disc layer
+(`runtime/kernel/disc.cpp`): data disc *k* is seen at the sectors `(k + 1) x 0x400000` and up, past
+the game's disc, so a sector number names one disc's sector. Which of its data the game reads is
+the voice language's business ([Settings](settings.md#voice)); the corrected texts are read from the data discs'
+gameplay files directly. Without a data disc, nothing changes.
+
 ## Running it again
 
 - **Run `./setup.sh` again at any time**, for example after a `git pull`. It rebuilds only what
@@ -212,7 +330,7 @@ not supported yet.
   only when the code that makes it changed, or when that step did not finish. A step whose files were deleted since
   (all of `assets/generated`, or part of it) is redone too: the setup says which files are missing, and the game says
   at start when the modern renderer's assets are missing. A step added by an update (such as the
-  flight between planets) runs on its own, without redoing the others. It remembers the disc image's path.
+  flight between planets) runs on its own, without redoing the others. It finds the disc image again (see [Which disc images](#which-disc-images)).
   It extracts the disc again only when the disc image changes (another disc, or another size), or when
   `assets/disc/` is incomplete; a new extraction first removes the old one.
   What was generated, and from which code, is recorded in `assets/setup-state.json`.
@@ -240,7 +358,11 @@ not supported yet.
 
 | Option | Meaning |
 |---|---|
-| `--iso <path>` | your disc image (otherwise `$RAC1_ISO`, then `assets/iso/rac1-ntsc-u.iso` or `rac1-pal.iso`, then it asks) |
+| `--iso <path>` | your disc image (otherwise `$RAC1_ISO`, then the one picked among those found, see [Which disc images](#which-disc-images); then it asks) |
+| `--data-iso <path>` | another release's disc, as a data disc (repeatable; kept for the next setups): see [Data discs](#data-discs) |
+| `--no-data-discs` | forget the data discs and remove their extracted files; the images found are not taken as data discs again until given with `--data-iso` |
+| `--remove-data-disc <disc>` | forget one data disc (its serial, `SCPS-15037`, or its image) and remove its files, then stop |
+| `--discs` | print the disc images found and what each one is for, then stop |
 | `--update` | fetch the latest release (or `main` on the Development channel), then rebuild what changed; on failure the previous build is kept |
 | `--channel stable\|development` | with `--update`: override Main menu > Updates > Update Channel |
 | `--force [steps]` | regenerate even if up to date: everything, or the steps given (`disc,elf,overlay,code,moby,world,flight`; `disc` extracts the disc again) |
@@ -250,6 +372,9 @@ not supported yet.
 | `--play` | start the game when the setup finishes without asking |
 | `--no-play` | do not offer to start the game at the end |
 | `--check-system` | only check the system (step 1): exit status 0 when everything is there, 1 when something is missing, 20 when it is missing on an immutable system (build in a container, see [below](#steam-deck-bazzite-and-other-immutable-systems)) |
+| `--movie-subtitles [languages]` | also make subtitles for the movies with speech to text on this machine: all the languages of the disc's movie sound tracks (`all`, the default), or those given (`en,it`; `en`, `fr`, `de`, `es`, `it`). It installs the speech to text in `assets/stt/` the first time (about 470 MB, and a 1.6 GB model) and takes about half an hour on a fast CPU; kept for the next setups, which make only what is missing; see [Movie subtitles](movie-subtitles.md). Without it, an interactive setup asks once |
+| `--no-movie-subtitles` | stop making movie subtitles at each setup (the files made are kept) |
+| `--stt-url <url>`, `--stt-model <name>` | with `--movie-subtitles`: an OpenAI-compatible speech to text server instead of the local one, the Whisper model (default `large-v3-turbo`) |
 | `--native-arch on\|off` | compile the game for this machine's CPU (`on`: AVX2 / AVX-512 where it has them, the game's own update about 8 % faster, its state the same bit for bit; the build then runs on this CPU only) or for any x86-64 CPU (`off`, the default); kept for the next builds, a change rebuilds everything |
 
 `./build/rac1-native --setup` (the data generation on its own, run from the repository's root):
@@ -263,6 +388,8 @@ not supported yet.
 | `--check-iso` | only check the disc image, and make the setup find it |
 | `--compare-disc` | read every sector through the disc image and through the disc's files (`assets/disc/`), and compare |
 | `--status` | show what is present |
+| `--movie-tracks <pss>` | print a movie file's sound tracks (for `tools/movie_subtitles.py`) |
+| `--movie-audio <pss> --track <n> --wav <out>` | one sound track of a movie file as a 16 kHz mono WAV (for speech to text) |
 
 On its own, `--setup` skips a file that exists without checking whether it is up to date; that is
 what `./setup.sh` adds. `./setup.sh` makes the boot executable and the overlay maps itself, before
@@ -345,9 +472,11 @@ The Windows build is made with **clang** (or GCC) from **MSYS2**, not with Visua
 the steps below by itself, in a window. See [The launcher](launcher.md). What follows is the same by
 hand.
 
-1. Get the repository (with git, or as a zip) and **double-click `setup.cmd`** in its folder (or drop
-   your disc image on it, or run `setup.cmd --iso "C:\Users\you\Games\ratchet.iso"`; the quotes are
-   needed when the path has spaces or characters such as `&`).
+1. Get the repository (with git, or as a zip), put your disc image in its `assets\iso\` folder, and
+   **double-click `setup.cmd`** in its folder: the setup picks the disc images there as on Linux (see
+   [Which disc images](#which-disc-images)). Or drop your disc image on `setup.cmd`, or run
+   `setup.cmd --iso "C:\Users\you\Games\ratchet.iso"` (the quotes are needed when the path has spaces
+   or characters such as `&`).
 
    Nothing needs to be installed first. The first time, the setup downloads the tools that build the
    game (about 1 GB, a few minutes): a private copy of [MSYS2](https://www.msys2.org) in the
@@ -359,9 +488,9 @@ hand.
    With your own MSYS2, the setup can also run from its **CLANG64** shell (`./setup.sh`, or
    `setup.cmd`): it then uses that shell's tools and tells you which packages to install.
 
-   The private MSYS2 does not include `glslc`, so a game built this way has OpenGL only (the
-   Renderer row's Vulkan falls back to OpenGL). The experimental [Vulkan renderer](vulkan.md) needs
-   `mingw-w64-clang-x86_64-shaderc` installed in the MSYS2 the game is built with.
+   The private MSYS2 includes `glslc` (`mingw-w64-clang-x86_64-shaderc`, for the
+   [Vulkan renderer](vulkan.md)'s shaders); a `.toolchain\` made by an older version gets it at the
+   next setup.
 
 2. **Play**: double-click **`play.cmd`** in the repository's folder. (The game must start from the
    repository's folder, where it finds `assets\`: `build\rac1-native.exe` double-clicked on its own
@@ -390,15 +519,17 @@ What differs from Linux:
 
 ## Troubleshooting
 
-**"This is Ratchet & Clank's NTSC-J disc"**: only the North American disc, `SCUS-97199`, and the
-European PAL disc, `SCES-50916`, are supported for now.
+**"This is Ratchet & Clank's NTSC-J disc"**, or **"None of the disc images found can be the game's
+disc"**: only the North American disc, `SCUS-97199`, and the European PAL discs, `SCES-50916` (versions
+1.00 and 2.00), are supported as the game's disc for now. The message lists each image found and why it
+is not used.
 
 **"... is missing: the PAL disc needs it"**: the region table `data/regions/SCES-50916.txt` is part of
 the repository; restore it (`git checkout data/regions`).
 
 **"... is not the build the table was made from (sha1 differs)"**: the PAL disc image is not the
-release the region table describes (another PAL edition, such as a Platinum re-release, or a damaged
-dump). Only the original PAL release is supported.
+release the region table describes (another PAL edition, or a damaged dump). The PAL discs 1.00 and
+2.00 (the Platinum) are supported, each with its own table.
 
 **"not a PlayStation 2 disc image"** or **"This is not a disc image (ISO 9660)"**: the file is not a
 plain ISO. Use an unmodified `.iso` dump, not a compressed format (`.chd`, `.cso`, `.gz`) or a
@@ -454,6 +585,17 @@ again. No need to reinstall anything by hand.
 **Windows: "Fatal Python error" while generating the code** (#72): Python itself crashed in one of
 the parallel jobs, not the generator. Since 0.5.0 a unit that crashes is run once more on its own;
 if it still fails, run `setup.cmd -j 1` (or, in the launcher, Settings > Parallel jobs > 1).
+
+**Windows: "clang.exe is still missing after installing it again"**, after pacman's warnings "could not get file
+information for clang64/bin/clang.exe" and "Can't create '/clang64/bin/clang.exe'" (#126, #88): the game's folder is on
+a drive that is not NTFS (exFAT or FAT32: an external drive or a USB stick, often). MSYS2's clang package holds
+`clang.exe`, `clang-cpp.exe`, `x86_64-w64-mingw32-clang.exe` and `x86_64-w64-mingw32-clang++.exe` as hard links to
+`clang++.exe`, and those drives cannot hold hard links, so pacman leaves them out. The setup (`tools\windows\toolchain.ps1`,
+and the launcher before it runs it) now copies `clang++.exe` to the missing names (clang picks C or C++ by its own file
+name, so a copy works the same), and does the same for the other packages' linked programs (`lld.exe`, `llvm-cov.exe`,
+`unzip.exe`, `libdeflate-gzip.exe`); it says when the folder is not on an NTFS drive. Run `setup.cmd` (or the
+launcher's Set up) again. If clang.exe is still missing after that, an antivirus may be removing it: see below. Moving
+the game's folder to an NTFS drive (the one Windows is on) avoids the copies.
 
 **Windows: "... rac1-native.exe is missing after the build, although the build finished"**: an
 antivirus (Windows Security too) removed the newly built program, which it does not know. Look in

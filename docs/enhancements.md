@@ -44,9 +44,12 @@ See [Advanced options](advanced.md).
 All four work on every level. The page also has **Fades** (Fast by default, Original as an option),
 which is a removed compromise rather than an enhancement.
 
-### Graphics: Options > Graphics
+### Display and Graphics: Options > Display, Options > Graphics
 
-See [Settings](settings.md#graphics) and [Rendering](rendering.md).
+See [Settings](settings.md#display) and [Rendering](rendering.md). The Display page holds the removed compromises (the first
+items below); the Graphics page holds our additions behind one switch, **Graphics: Original / Enhanced** (Original, the
+default, is the original's picture whatever the rows under it hold), with a preset (Low, Medium, High) for all of them: see
+[Settings](settings.md#graphics).
 
 - **Widescreen**: 16:9 or the window's own shape for the 3D, with black bars or stretched when the
   shape differs. The game itself still sees its own 4:3 view, so its state is unchanged.
@@ -61,15 +64,15 @@ See [Settings](settings.md#graphics) and [Rendering](rendering.md).
   distant objects stay sharp. The PS2's own mip choice remains available.
 - **A frame-rate cap** for the picture (the game's logic always runs at 60 frames a second), and
   V-Sync.
-- **The renderer**: OpenGL, the default, or [Vulkan](vulkan.md) (experimental, from the next start),
-  the same picture.
-- **Ambient particles** (off by default): our own dust, ash, embers, fireflies, light dust in the sunlight, rain and snow
+- **The renderer**: [Vulkan](vulkan.md), the default, or OpenGL (from the next start), the same
+  picture; OpenGL when Vulkan cannot start.
+- **Ambient particles** (Graphics: Enhanced): our own dust, ash, embers, fireflies, light dust in the sunlight, rain and snow
   on some levels, purely visual; Batalia's rain and Hoven's snow drawn in place of the game's own while on. See
   [Ambient particles](particles.md).
 
 ### Modern lighting
 
-See [Lighting](lighting.md). Off by default (Lighting: Original).
+See [Lighting](lighting.md). Off by default (Options > Graphics > Graphics: Original; Enhanced turns it on with every other addition).
 
 - The sun's shadows, cast and received by the world and the objects (the levels' water, lava and
   sand seas too), with a Shadow Strength setting; the world lit by the sun, which a level's own file
@@ -86,9 +89,8 @@ See [Lighting](lighting.md). Off by default (Lighting: Original).
 - Surface Detail (Off, Low, High): materials for the textures a level's file tags - shiny metal, wet
   ground with puddles and rain ripples, water, lava, mud - the PS2 textures kept, lit and animated;
   High adds reflections. See [Materials](materials.md).
-- Water and Grass (each Off, Low, High): on the textures a level's file tags, waves, depth, foam and reflections on the water; a
-  fine relief of grass blades on the ground (High: a few very low layers of blades). The textures' colours are kept. See
-  [Materials](materials.md#water-and-grass).
+- Grass (Off, Low, High): on the ground a level's file tags, a fine relief of grass blades (High: a few very low layers of
+  blades). The textures' colours are kept. See [Materials](materials.md#grass).
 
 ### Sound: 5.1 and 7.1
 
@@ -96,11 +98,19 @@ Options > Sound's Mono / Stereo row also offers 5.1 and 7.1: the world's sounds 
 direction, the dialogue from the centre. The game itself still plays in Stereo. See
 [Settings](settings.md#sound-51-and-71).
 
-### Original, Modern or Experimental mode
+### Movie subtitles
 
-At New Game the game asks which set of defaults to start with: Original (the PS2's picture and
-controls), Modern (widescreen, higher level of detail, the Advanced options on) or Experimental
-(Modern plus the modern lighting: Lighting High, Dynamic Shadows On, Ambient Occlusion SSAO). Everything can be changed later. See [Settings](settings.md#original-modern-or-experimental-mode).
+The original shows no text over its movies. Options > Language > Movie Subtitles (Off by default) shows subtitle files
+over them, in the game's subtitle look. The setup can make them from your disc with speech to text, in the languages you
+choose (`./setup.sh --movie-subtitles`, or the launcher's Settings); they are plain text files you can correct, and a
+subtitles pack's files work the same way. See [Movie subtitles](movie-subtitles.md).
+
+### New Game: Original or Modern, then the graphics
+
+At New Game the game asks how to play, Original (the PS2's controls, cutscenes and Vendor) or Modern (the gameplay
+enhancements of the Advanced page on), then which graphics to use: the Graphics page as it is (Current), Original, or our
+lighting at the preset Low, Medium or High. The Display page is never changed there. Everything can be changed later. See
+[Settings](settings.md#new-game-original-or-modern-then-the-graphics).
 
 ## Planned
 
@@ -119,21 +129,27 @@ In no fixed order. Each one is optional, and off by default if it changes the ga
   texture's fingerprint and fall back to the original.
 - **Antialiasing and post-processing**: bloom, colour grading, depth of field, motion blur, each a
   separate toggle.
-- **More modern lighting**: more lights placed by hand where the automatic ones fall short (so far
-  only Novalis and Aridia have some), labelled as our own art choices.
+- **More modern lighting**: more lights placed by hand where the automatic ones fall short (most
+  levels now have them, from Anya-Thoughtmane's lighting batches), labelled as our own art choices.
 
 ### Game
 
-- **Cut content, optionally brought back**: things the game carries on the disc but never shows.
-- **A language switch** offering every language on the disc, without the console's system setting.
+- **Cut content, optionally brought back**: things the game carries on the disc but never shows. Started: main menu >
+  Options > Advanced > Cut Content brings back Kerwan's citizens and Eudora's Transport Ships, ported from the beta's
+  code ([Advanced options](advanced.md#cut-content)).
+- **A language switch** offering every language on the disc, without the console's system setting. Started:
+  Options > Language sets the text, the voice and the subtitles apart ([Settings](settings.md#language)).
 - **Quality of life**: a level select and similar conveniences for players.
 - **Mods**: a mods folder in front of the disc's files the setup now extracts (`assets/disc/`, see
   [Setup](setup.md#the-discs-files)), and a Mods menu in the game (see [Roadmap](roadmap.md)).
 
 ### Platforms
 
-- **macOS builds** (Windows is supported), and other graphics back ends behind the renderer, beside
-  OpenGL and the experimental Vulkan one.
+- **macOS builds**: done, on Apple Silicon with a [Metal](metal.md) renderer (a contributor's port);
+  other graphics back ends (Direct3D) may follow behind the renderer, beside OpenGL, the optional
+  Vulkan one and Metal.
 - **ARM64 and Android**: in progress on the `port/android` branch, not on `main` (#78); the CI has a
   Linux ARM64 job, not blocking yet.
-- **Other releases of the game** (such as the European one) once the North American one is complete.
+- **Other releases of the game**: the European PAL discs 1.00 and 2.00 (the Platinum) run as the game's
+  disc, and the Japanese disc gives its voices as a data disc; the Japanese disc as the game's disc, and
+  the PAL 50 Hz mode, once the North American one is complete.

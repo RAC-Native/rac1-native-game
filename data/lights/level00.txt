@@ -35,5 +35,48 @@ emissive moby 1440 tex 3  1.91 0.00
 emissive moby 1440 tex 2  2.71 0.00
 # Anya-Thoughtmane's lighting batch 1 (#102): a few metals
 material tie 2217 tex 2 metal 0.45 1
-# Options > Graphics > Grass (docs/materials.md): the dry grass of the start's plain
-material tfrag 0 tex 3 grass
+emissive tie 2216 tex 0  2.84 0.00
+material tie 2127 tex 0 metal 0.59 1
+material tie 2125 tex 7 metal 0.56 1
+material shrub 556 tex 1 metal 0.35 1
+material shrub 570 tex 2 metal 0.35 1
+material shrub 570 tex 3 metal 0.35 1
+emissive tie 2142 tex 0  0.43 0.00
+emit moby 1440  0.001 0.005 0.119  1.000 0.000 0.000  1.416 1.968 0.000  0.00  joint 14
+emit moby 1440  0.081 -0.013 -0.001  0.000 1.000 0.091  1.977 1.000 0.000  0.00  joint 11
+material moby 1440 tex 1 metal 0.35 1.1
+material moby 1440 tex 0 metal 0.46 0.67
+material tie 2144 tex 0 metal 0.46 1
+material tie 2107 tex 0 metal 1 1
+material tie 2047 tex 0 metal 1 1
+material tie 2046 tex 0 metal 1 1
+material tie 2045 tex 0 metal 1 1
+emissive tie 2128 tex 0  2.71 0.00
+material tie 2048 tex 0 metal 1 1
+material shrub 475 tex 0 metal 1 1
+material shrub 475 tex 1 metal 1 1
+emissive shrub 561 tex 3  2.56 0.00
+emissive shrub 587 tex 0  1.69 0.39
+material shrub 505 tex 0 metal 1 1
+material shrub 508 tex 0 metal 1 1
+material shrub 478 tex 0 metal 0.41 1
+material shrub 478 tex 1 metal 0.44 0.76
+emissive tie 2039 tex 0  2.78 0.47
+emit tie 2039  0.180 5.808 12.924  0.363 0.987 1.000  1.000 3.203 0.000  0.00
+material tfrag 0 tex 13 metal 1 1
+material tfrag 0 tex 18 metal 1 1
+material tfrag 0 tex 21 metal 1 1
+material tfrag 0 tex 12 metal 1 1
+material tfrag 0 tex 4 metal 1 1
+material tfrag 0 tex 6 metal 1 1
+material tfrag 0 tex 5 metal 1 1
+material tfrag 0 tex 3 metal 1 1
+material tfrag 0 tex 2 metal 1 1
+material tfrag 0 tex 14 metal 1 1
+material tfrag 0 tex 22 metal 0.35 1
+material tie 2044 tex 0 metal 0.44 1
+material moby 0 tex 0 metal 1 0.26
+emissive moby 0 tex 3  2.91 0.37
+material moby 0 tex 2 metal 1 1
+material moby 0 tex 1 wet 0.71 0.46
+material shrub 556 tex 6 metal 0.46 1

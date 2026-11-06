@@ -1,6 +1,8 @@
 // Ported overlay code: the music and the dialog streams (see music_streams.h).
 #include <game/ovl/music_streams.h>
 
+#include <game/enhance/voice_language.h>
+
 #include <game/ovl/ovl_reloc.h>
 #include <game/lib/snd989.h>
 #include <game/math/vecmath.h>
@@ -290,7 +292,7 @@ void dialog_play(int32_t id, int32_t a, int32_t vol) {
         dialog_play_10000(id, a, vol);
     } else {
         const uint32_t p = static_cast<uint32_t>(id) * 0x250u + lwu(0x0015ed88) * 4 + 0x0013a664;
-        dialog_start(lwu(p), id, a, vol);
+        dialog_start(voice_level_line(id, lwu(p)), id, a, vol);  // (the voice language: voice_language.h)
     }
 }
 
@@ -300,7 +302,8 @@ void dialog_play_60000(int32_t id, int32_t a, int32_t vol) {
 }
 // orig: 0x00264cf0
 void dialog_play_50000(int32_t id, int32_t a, int32_t vol) {
-    dialog_start(lwu(0x00137b80 + lwu(0x0015ed88) * 4 + static_cast<uint32_t>(id - 50000) * 0x18 + 0xf00), id, a, vol);
+    dialog_start(voice_line_50000(id - 50000, lwu(0x00137b80 + lwu(0x0015ed88) * 4 + static_cast<uint32_t>(id - 50000) * 0x18 + 0xf00)), id, a,
+                 vol);
 }
 // orig: 0x00264dd8
 void dialog_play_40000(int32_t id, int32_t a, int32_t vol) {
@@ -311,7 +314,7 @@ void dialog_play_40000(int32_t id, int32_t a, int32_t vol) {
 // unless the option 0x15ee1c is on.
 // orig: 0x00264eb0
 void dialog_play_30000(int32_t id, int32_t a, int32_t vol) {
-    const uint32_t lsn = lwu(static_cast<uint32_t>(id) * 4 + lwu(0x0015ed88) * 0x258 + 0x0011c178);
+    const uint32_t lsn = voice_line_30000(id - 30000, lwu(static_cast<uint32_t>(id) * 4 + lwu(0x0015ed88) * 0x258 + 0x0011c178));
     if (lsn == 0) return;
     if (lw(B) != 0) return;
     sw(B, 0xffffffffu);
@@ -331,7 +334,7 @@ void dialog_play_20000(int32_t id, int32_t a, int32_t vol) {
 }
 // orig: 0x00265078
 void dialog_play_10000(int32_t id, int32_t a, int32_t vol) {
-    dialog_start(lwu(0x00137b80 + static_cast<uint32_t>(id - 10000) * 8 + 0x1a0), id, a, vol);
+    dialog_start(voice_vendor_line(id - 10000, lwu(0x00137b80 + static_cast<uint32_t>(id - 10000) * 8 + 0x1a0)), id, a, vol);
 }
 
 // A disc read through the stream system (`n` sectors from `lsn` to `buf`) unless one is going:

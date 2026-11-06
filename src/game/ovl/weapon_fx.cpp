@@ -3,6 +3,7 @@
 // light registration, and the generic explosion effect 0x25e450 (debris, smoke and spark particles,
 // shards, a camera shake and a sound, from the 18 arguments of the weapons' blasts).
 #include <game/math/vecmath.h>
+#include <game/enhance/fixes102.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/ovl.h>
@@ -181,6 +182,11 @@ void explosion_effect(uint32_t src, uint32_t a1_unused, uint32_t pos, int32_t n1
             (void)debris_7a_spawn_v(V(s5), sp20, static_cast<uint32_t>(life), 0u, 0u);
         }
         int32_t s8 = E - 1;
+        if (fixes102_on(2)) {  // (1.02 Fixes, fix 2: the 1.02 build, 0x25f4a8, leaves 10 moby slots free, 0x15ffbc)
+            const int32_t free_slots = lw(OV(0x0015ffbc));
+            if (free_slots < 0xb) s8 = 0;
+            else if (free_slots - 0xa < s8) s8 = free_slots - 0xa;
+        }
         if (s8 > 0) {
             int32_t i = 0;
             do {

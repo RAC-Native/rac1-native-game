@@ -1,6 +1,7 @@
 # The approach
 
-rac1-native runs Ratchet & Clank (PS2, NTSC-U, `SCUS-97199`) as a native Linux and Windows program. It does
+rac1-native runs Ratchet & Clank (PS2, NTSC-U, `SCUS-97199`; the European PAL discs too) as a native Linux, Windows
+and macOS program. It does
 this by porting the game's own code to C++, one function at a time, and proving each port against
 the original. This page explains what that means, how it differs from emulation and from
 decompilation projects, and how a port is checked.
@@ -48,7 +49,7 @@ and Daxter:
    game talks to (EE memory, timers, the IOP's sound driver, the GS for 2D) are provided by a small
    hardware layer, `runtime/`.
 4. The 3D is not drawn through an emulated GS. A native renderer, the MRP, draws what the game's own
-   render code decided to draw, with OpenGL, or with Vulkan as an experimental option (see
+   render code decided to draw, with OpenGL, or with Vulkan as an option (see
    [Rendering](rendering.md) and [Vulkan](vulkan.md)).
 
 It is not an emulator: no MIPS code runs while you play. Everything that runs is C++ compiled for
@@ -84,12 +85,13 @@ How each compromise is removed in practice:
 |---|---|---|
 | Frame-rate drops and load shedding. The game measures each frame's load with the EE's timer 1 and drops particles, lights and explosion effects when the frame is heavy. | The host's timer 1 only moves when a vsync passes (`runtime/ee/ee_timer.h`), so every frame reads as unloaded: an ideal PS2 that never misses a vsync. | Not selectable: an overloaded PS2 cannot be reproduced on a PC. |
 | Screen fades that hide disc loading | The fade's loop still runs whole, with the same memory writes and frame counter, but inside one host frame: the screen cuts. | Options > Advanced > Fades > Original |
-| Level of detail and draw distance | A Level of Detail setting draws more detail further away. The game's own decisions are not changed (see [Rendering](rendering.md#level-of-detail)). | Options > Graphics > Level of Detail > Original |
+| Level of detail and draw distance | A Level of Detail setting draws more detail further away. The game's own decisions are not changed (see [Rendering](rendering.md#level-of-detail)). | Options > Display > Level of Detail > Original |
 | Texture resolution | The MRP keeps every mip level of every texture, so distant objects are not drawn from the small mip the PS2 had room for. | Debug tools only: `RAC1_MRP_MIP=faithful` and `RAC1_MRPW_MIP=faithful`, or the debug menu |
-| The 4:3 frame | The 3D can be widened to fill the screen, and the HUD spread over it; the game itself still sees its 4:3 view. | Options > Graphics > Aspect Ratio > 4:3 Original, HUD > 4:3 Original |
+| The 4:3 frame | The 3D can be widened to fill the screen, and the HUD spread over it; the game itself still sees its 4:3 view. | Options > Display > Aspect Ratio > 4:3 Original, HUD > 4:3 Original |
 
-The enhancements (quick-select pause, modern aiming, Ratchet & Clank 3 movement, modern lighting)
-are described in [Advanced options](advanced.md) and [Lighting](lighting.md).
+The enhancements (quick-select pause, modern aiming, Ratchet & Clank 3 movement, vibration, Skip
+Cutscenes, the later build's fixes, cut content, the modern lighting and the other graphics additions)
+are described in [Advanced options](advanced.md), [Settings](settings.md) and [Lighting](lighting.md).
 
 ## How a function is ported and proved
 

@@ -36,6 +36,7 @@ std::uint32_t g_particle_texture_pixel_vaddrs[256] = {0};
 namespace rac1 {
 
 SkyInitCallback g_sky_init_callback = nullptr;
+OverlaySectionCallback g_overlay_section_callback = nullptr;
 TfragInitCallback g_tfrag_init_callback = nullptr;
 TieInitCallback g_tie_init_callback = nullptr;
 ShrubInitCallback g_shrub_init_callback = nullptr;
@@ -125,7 +126,7 @@ void finish_level_wad_load(std::span<const std::byte> level_wad_span,
 
     prof.emplace("  the core copied, the overlay");
     // 5. Load level overlay
-    LevelLoader::load_level_overlay(level_wad_span);
+    LevelLoader::load_level_overlay(level_wad_span, level);
 
     // 6. Write hardcoded layout pointers to virtual RAM
     if (g_legacy_host_writes) {  // the legacy host only: the game sets these itself
@@ -470,10 +471,10 @@ std::uint32_t LevelLoader::load_level_overlay(int level) {
     if (!disc_read_level_overlay(level, file_data)) {
         throw std::runtime_error("LevelLoader: failed to read level " + std::to_string(level) + " overlay from disc image");
     }
-    return load_level_overlay(std::span<const std::byte>(file_data.data(), file_data.size()));
+    return load_level_overlay(std::span<const std::byte>(file_data.data(), file_data.size()), level);
 }
 
-std::uint32_t LevelLoader::load_level_overlay(std::span<const std::byte> file_data) {
+std::uint32_t LevelLoader::load_level_overlay(std::span<const std::byte> file_data, int level) {
     // 2. Locate the inner WAD block (level_data)
     std::span<const std::byte> level_data(file_data.data(), file_data.size());
     if (file_data.size() >= 48) {
@@ -536,6 +537,7 @@ std::uint32_t LevelLoader::load_level_overlay(std::span<const std::byte> file_da
             ee_zero(dest_addr, copy_size);
         } else {
             ee_copy_in(dest_addr, section.data.data(), copy_size);
+            if (g_overlay_section_callback != nullptr && section.index < 6) g_overlay_section_callback(level, dest_addr, copy_size);
         }
     }
 

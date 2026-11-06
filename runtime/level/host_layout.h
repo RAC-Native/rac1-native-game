@@ -11,6 +11,9 @@ namespace rac1::host_layout {
 inline constexpr std::uint32_t EE_END = 0x04000000;         // the end of the host's EE memory (64 MB)
 // the debug menu's free hoverboard (src/_devtools/dev_hoverboard.cpp): the hero's board sequences of another level, 256 KB
 inline constexpr std::uint32_t DEV_BOARD_SEQS = 0x02300000;
+// Cut Content's Kerwan citizens (src/game/enhance/cut_content.cpp): the idle of another level's class, one sequence for
+// each of the three Fred classes, 64 KB each
+inline constexpr std::uint32_t CUT_CONTENT_SEQS = 0x02340000;
 inline constexpr std::uint32_t CORE = 0x024d4000;           // the level core (index + decompressed data)
 inline constexpr std::uint32_t LOADER_ANCHOR = 0x02440000;  // written to 0x1940cc by the host loader
 inline constexpr std::uint32_t CORE_TEMP = 0x024a4000;      // written to 0x1940d0 by the host loader

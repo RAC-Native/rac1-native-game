@@ -1,6 +1,7 @@
 // Ported overlay code: the gameplay frame (0x297f78) and the overlay's empty debug hooks.
 //. Callees not ported (or not yet proven with the oracle) are TODO_PORT.
 #include <game/enhance/advanced.h>
+#include <game/enhance/fixes102.h>
 #include <game/ovl/memory_card.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl_reloc.h>
@@ -75,7 +76,10 @@ void gameplay_frame() {
     auto menu = [](int32_t which) { screen_open(which, 0); };
     auto screen = [](int32_t which) { menu_open(which); };
     const int32_t state = lw(OV(0x0015f5c4));
-    if (state == 0 && (lw(0x0015eeb4) & 1) != 0 && !(lw(OV(0x0015f5c8)) < 8)) {
+    // (1.02 Gameplay, fix 10: the 1.02 build, 0x299314, leaves the card's screen for later while the hero is in the
+    // state 0x1d)
+    if (state == 0 && (lw(0x0015eeb4) & 1) != 0 && !(lw(OV(0x0015f5c8)) < 8) &&
+        !(lw(P + 0x2084) == 0x1d && gameplay102_on(10))) {
         menu(3);
         return;
     }

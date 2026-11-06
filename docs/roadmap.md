@@ -74,7 +74,7 @@ object class, sun rays, six ambient occlusion modes); the sound driver closer to
 and 7.1 output; the full frame always shown; fixes from the reports. The repository moved to the
 [RAC-Native](https://github.com/RAC-Native) organization, and Windows is no longer experimental.
 Then: an experimental [Vulkan](vulkan.md) renderer, opt-in beside OpenGL; a widescreen HUD
-(Options > Graphics > HUD); the Visibomb's view and the sand sea right in wide views; the frame-rate
+(Options > Display > HUD); the Visibomb's view and the sand sea right in wide views; the frame-rate
 cap's pacing; the game's own update 12 to 15 % cheaper on the CPU, the same state bit for bit (about
 8 % more with `./setup.sh --native-arch on`); the debug menu's Profiler and Unlocks tabs.
 
@@ -92,20 +92,42 @@ Ammo as an option; the setup works on the Steam Deck, Bazzite and other immutabl
 (#108); the game writes `progress.json` for the RAC Native launcher (#107); and the reports were fixed
 (#104, #112).
 
+**0.7.0** (see the [Changelog](../CHANGELOG.md#070)): the European Platinum disc (PAL 2.00, a later
+build whose core moved) runs as the game's disc through its own region table (#64, #127); the setup
+picks the disc images in `assets/iso/` by itself, and the launcher lists them; other releases' discs
+can be added as data discs, for the Japanese voices and the later discs' corrected texts. The later
+build's own fixes came over as options (1.02 Fixes, a first batch, and 1.02 Gameplay), and the first
+cut content came back as an option: Kerwan's citizens, with an idle, and Eudora's Transport Ships
+from the beta build (#128). Options were reorganised: Display and Graphics as the machine's settings,
+one Original / Enhanced switch with a preset, a Language page with a voice language apart from the
+text, and New Game in two steps. The graphics gained Water Reflections (Low, Medium, and on Vulkan
+with ray queries Medium (RT) and High (RT): the first ray tracing), grass, MXAO and
+Anya-Thoughtmane's lighting batches 1 to 3 on every level (#102, #120); the controls a direct mouse,
+the mouse wheel and weapon cycling (#117, #61), aiming without the zoom (#70), controller vibration
+with the DualSense's adaptive triggers (experimental, #10) and Skip Cutscenes. A contributor ported the game to
+macOS on Apple Silicon with a Metal renderer (#116, #119). The Vulkan renderer is no longer experimental:
+an optional renderer beside OpenGL, which stays the default. The frame got cheaper again on the CPU and
+the GPU, and the reports were fixed (#111, #113, #114, #115, #126).
+
 What comes next, in no fixed order:
 
 - **Playtesting and polishing** the planets after Orxon, and the fixes that come from it.
 - **ARM64 and Android:** the port is in progress on the `port/android` branch, not on `main` yet
   (#78); the CI has a Linux ARM64 job, not blocking yet.
-- **The last items of the inventory:** the one function left, and, as optional enhancements, the
-  cut content and development features it lists (see [Port inventory](port-inventory.md)).
+- **The last items of the inventory:** the one function left, and, as optional enhancements, more of
+  the cut content and development features it lists (begun: Advanced > Cut Content; see
+  [Port inventory](port-inventory.md)).
+- **The later build's fixes:** the rest of the 1.02 build's fixes, after 1.02 Fixes' first batch and
+  1.02 Gameplay (see [Advanced options](advanced.md#102-fixes)).
 - **The renderer:** the level's baked shadow meshes across a widened view, the mobys' flattened
   shadow meshes.
 - **Mods (planned):** the setup already extracts the disc's files, which the game reads
   ([Setup](setup.md#the-discs-files)); next, a mods folder in front of them, and a Mods menu in the game.
-- **Testing on more machines:** the European PAL disc, Windows (now also through the launcher), the
-  Steam Deck and the other immutable Linux systems, and the Vulkan renderer (measured on one machine
-  so far).
+- **The Vulkan renderer** is the default from the next release (OpenGL when it cannot start, or chosen
+  in Options > Display); it needs trying on more GPUs.
+- **Testing on more machines:** the European PAL discs (the Platinum's most), Windows (now also
+  through the launcher), the Steam Deck and the other immutable Linux systems, macOS, and the Vulkan
+  renderer and its ray-traced reflections (measured on one machine so far).
 
 Ideas for later, from the project's list of [enhancements](enhancements.md) (each one optional and
 off by default when it changes the game):
@@ -114,13 +136,14 @@ off by default when it changes the game):
   60 Hz);
 - HD textures, generated on the player's own machine from their own disc, never distributed;
 - post-processing effects;
-- a language switch with all the languages on the disc;
-- optional revival of content the game carries but never shows;
-- macOS builds (the plan: [Platforms](platforms.md));
+- a language switch with all the languages on the disc (begun: Options > Language with a voice language apart from
+  the text, and the Japanese voices from the Japanese disc given as a data disc); the Japanese text, and the Japanese
+  disc as the game's disc;
+- more optional revival of content the game carries but never shows (begun: Advanced > Cut Content);
 - the PAL release's 50 Hz mode (the PAL disc already runs, in its 60 Hz mode), once the NTSC-U
   version is complete;
-- other graphics backends (Metal, Direct3D) behind the renderer's interface, beside OpenGL and
-  Vulkan.
+- other graphics backends (Direct3D) behind the renderer's interface, beside OpenGL, Vulkan and
+  Metal.
 
 ## Not goals
 

@@ -85,6 +85,18 @@ void vram_w32(uint8_t* p, uint32_t v) {
 uint32_t bits(uint64_t v, int lo, int n) { return static_cast<uint32_t>((v >> lo) & ((1ull << n) - 1)); }
 
 enum Psm : uint32_t { CT32 = 0, CT24 = 1, CT16 = 2, CT16S = 0xa, T8 = 0x13, T4 = 0x14, T8H = 0x1b, T4HL = 0x24, T4HH = 0x2c };
+
+// (host) RAC1_PERF_GS_MEM=0: the local memory's addressing, stores and texture decodes as before (the in-page tables of addr16 /
+// addr8 / addr4, the direct stores of T8 / T4 / CT16, the CLUT decoded once per texture, the decoded images' ring), to compare
+// (found while profiling a low-end target)
+// orig: (host)
+bool perf_gs() {
+    static const bool on = [] {
+        const char* e = std::getenv("RAC1_PERF_GS_MEM");
+        return e == nullptr || std::atoi(e) != 0;
+    }();
+    return on;
+}
 }  // namespace
 
 LocalMemory::LocalMemory() : vram_(VRAM) {}
@@ -355,7 +367,6 @@ void LocalMemory::write_pixel_raw(uint32_t psm, uint32_t bp, uint32_t bw, uint32
 
 uint32_t LocalMemory::texel(uint64_t tex0, uint64_t texa, int x, int y) const {
     const uint32_t tbp = bits(tex0, 0, 14), tbw = bits(tex0, 14, 6), psm = bits(tex0, 20, 6);
-    const uint32_t cbp = bits(tex0, 37, 14), cpsm = bits(tex0, 51, 4), csa = bits(tex0, 56, 5);
     const uint32_t ta0 = bits(texa, 0, 8), aem = bits(texa, 15, 1), ta1 = bits(texa, 32, 8);
     auto c16 = [&](uint32_t v) {
         const uint32_t r = (v & 0x1f) << 3, g = ((v >> 5) & 0x1f) << 3, b = ((v >> 10) & 0x1f) << 3;
@@ -374,6 +385,20 @@ uint32_t LocalMemory::texel(uint64_t tex0, uint64_t texa, int x, int y) const {
     case CT16S: return c16(raw);
     default: break;
     }
+    return texel_clut(tex0, texa, raw);
+}
+
+// orig: (host) the CLUT's colour of index `raw` of an indexed texture (CSM1 from CBP; its bytes noted as the CLUT's range)
+uint32_t LocalMemory::texel_clut(uint64_t tex0, uint64_t texa, uint32_t raw) const {
+    const uint32_t psm = bits(tex0, 20, 6);
+    const uint32_t cbp = bits(tex0, 37, 14), cpsm = bits(tex0, 51, 4), csa = bits(tex0, 56, 5);
+    const uint32_t ta0 = bits(texa, 0, 8), aem = bits(texa, 15, 1), ta1 = bits(texa, 32, 8);
+    auto c16 = [&](uint32_t v) {
+        const uint32_t r = (v & 0x1f) << 3, g = ((v >> 5) & 0x1f) << 3, b = ((v >> 10) & 0x1f) << 3;
+        uint32_t a = (v & 0x8000) ? ta1 : ta0;
+        if (aem && (v & 0x7fff) == 0 && !(v & 0x8000)) a = 0;
+        return r | (g << 8) | (b << 16) | (a << 24);
+    };
     // indexed: the CLUT (CSM1) from cbp
     const bool eight = psm == T8 || psm == T8H;
     uint32_t cx, cy;

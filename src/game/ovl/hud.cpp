@@ -10,6 +10,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
+#include <game/render/mrp_fx.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/render_view.h>
 
@@ -300,6 +301,7 @@ uint64_t effect_tex0(int32_t i) {
                        (static_cast<uint64_t>(static_cast<int64_t>(pbp)) << 37) | (1ull << 34) | (1ull << 63);
     sw(0x0015ee74, static_cast<uint32_t>(a + (1 << ((wl + hl) & 31))));
     sd(e, t);
+    mrp_fx_note_effect_tex(i, static_cast<uint32_t>(tbp));  // (host: the MRP's seas keyed by the index, not by the block, mrp_fx.h)
     const int32_t n = lw(OV(0x0015f418));
     if (n < 0x40) {
         const uint32_t q = OV(0x0016cd80) + static_cast<uint32_t>(n) * 0x10;

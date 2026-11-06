@@ -30,6 +30,14 @@ u32 g_fast_last = 0;
 u32 g_read_last = 0;
 const u8* g_jseen = nullptr;
 }  // namespace ee_detail
+#if defined(RAC1_INLINE_HELPERS) && RAC1_INLINE_HELPERS
+// (ee_read / ee_write's error for a null address: the same as their inline code without the switch)
+void ee_read_null() {
+    ee_debug_backtrace();
+    throw std::runtime_error("Attempted read from null pointer");
+}
+void ee_write_null() { throw std::runtime_error("Attempted write to null pointer"); }
+#endif
 namespace {
 // the inline path's view of the buffers, after each change of them. (Each word written only when it changes: a journal's begin and
 // end change g_fast_last alone, on the game's thread, while the host's other threads - the drawing beside the game thread, the
@@ -114,7 +122,15 @@ void journal_touch(u32 phys, u32 size) {
         g_journal_seen[p] = 1;
         g_journal_pages.push_back(p);
         const u8* src = g_ram_buffer.data() + static_cast<size_t>(p) * JPAGE;
-        g_journal_data.insert(g_journal_data.end(), src, src + JPAGE);  // (appended as it is: no zero fill first)
+        // (host, RAC1_PERF_COPIES) the page appended as it is, not zero-filled first and copied over (=0: as before)
+        static const bool append = std::getenv("RAC1_PERF_COPIES") == nullptr || std::atoi(std::getenv("RAC1_PERF_COPIES")) != 0;
+        if (append) {
+            g_journal_data.insert(g_journal_data.end(), src, src + JPAGE);
+        } else {
+            const size_t at = g_journal_data.size();
+            g_journal_data.resize(at + JPAGE);
+            std::memcpy(g_journal_data.data() + at, src, JPAGE);
+        }
     }
 }
 }  // namespace

@@ -2,6 +2,7 @@
 #define RAC1_RUNTIME_EE_MEMORY_H
 
 #include <runtime/kernel/ee_types.h>
+#include <runtime/kernel/hot_inline.h>
 #include <cstring>
 #include <stdexcept>
 #include <type_traits>
@@ -33,7 +34,7 @@ extern const u8* g_jseen;     // while a journal is on: per 4 KB page, saved (on
 // (`journal` false: an access that only reads, not saved by a journal; `size` != 0: an access of that many bytes, else one
 // through a pointer that may run on into the next page)
 void* ee_ram_ptr_slow(u32 vaddr, bool journal = true, u32 size = 0);
-inline void* ee_ram_ptr(u32 vaddr) {
+RAC1_HOT_INLINE void* ee_ram_ptr(u32 vaddr) {
     if (vaddr - 1u < ee_detail::g_fast_last) return ee_detail::g_ram + vaddr;  // (1 .. 64 MB - 1)
     if (vaddr - SPR_BASE < static_cast<u32>(SPR_SIZE) && ee_detail::g_spr != nullptr) return ee_detail::g_spr + (vaddr - SPR_BASE);
     if (ee_detail::g_jseen != nullptr && vaddr - 1u < ee_detail::g_read_last) {  // (a journal on: its page and the next saved already)
@@ -43,7 +44,7 @@ inline void* ee_ram_ptr(u32 vaddr) {
     return ee_ram_ptr_slow(vaddr);
 }
 // A pointer for a write of `size` bytes (ee_write): the journal saves the pages those bytes are on
-inline void* ee_ram_ptr_write(u32 vaddr, u32 size) {
+RAC1_HOT_INLINE void* ee_ram_ptr_write(u32 vaddr, u32 size) {
     if (vaddr - 1u < ee_detail::g_fast_last) return ee_detail::g_ram + vaddr;
     if (vaddr - SPR_BASE < static_cast<u32>(SPR_SIZE) && ee_detail::g_spr != nullptr) return ee_detail::g_spr + (vaddr - SPR_BASE);
     if (ee_detail::g_jseen != nullptr && vaddr - 1u < ee_detail::g_read_last) {
@@ -53,7 +54,7 @@ inline void* ee_ram_ptr_write(u32 vaddr, u32 size) {
 }
 // A pointer for a read only (ee_read): the same as ee_ram_ptr, but the journal does not save the page (reads
 // change nothing to put back).
-inline const void* ee_ram_ptr_read(u32 vaddr) {
+RAC1_HOT_INLINE const void* ee_ram_ptr_read(u32 vaddr) {
     if (vaddr - 1u < ee_detail::g_read_last) return ee_detail::g_ram + vaddr;
     if (vaddr - SPR_BASE < static_cast<u32>(SPR_SIZE) && ee_detail::g_spr != nullptr) return ee_detail::g_spr + (vaddr - SPR_BASE);
     return ee_ram_ptr_slow(vaddr, false);
@@ -147,6 +148,31 @@ void ee_zero(u32 vaddr, size_t n);
 // host; on a big-endian one a copy, in `tmp` (valid while `tmp` lives and is not changed)
 const u8* ee_bytes_view(u32 vaddr, size_t n, std::vector<u8>& tmp);
 
+#if defined(RAC1_INLINE_HELPERS) && RAC1_INLINE_HELPERS && !defined(RAC1_EE_WORDS_BE)  // (a big-endian host: the swizzling forms below)
+// (the null address's error, out of line and cold: the accessors' inline part is the pointer and the copy)
+[[noreturn, gnu::cold, gnu::noinline]] void ee_read_null();
+[[noreturn, gnu::cold, gnu::noinline]] void ee_write_null();
+
+// Safe templated memory read.
+template <typename T>
+RAC1_HOT_INLINE T ee_read(u32 vaddr) {
+    static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
+    const void* ptr = ee_ram_ptr_read(vaddr);
+    if (__builtin_expect(ptr == nullptr, 0)) ee_read_null();
+    T val;
+    std::memcpy(&val, ptr, sizeof(T));
+    return val;
+}
+
+// Safe templated memory write.
+template <typename T>
+RAC1_HOT_INLINE void ee_write(u32 vaddr, const T& val) {
+    static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
+    void* ptr = ee_ram_ptr_write(vaddr, static_cast<u32>(sizeof(T)));
+    if (__builtin_expect(ptr == nullptr, 0)) ee_write_null();
+    std::memcpy(ptr, &val, sizeof(T));
+}
+#else
 // Safe templated memory read.
 template <typename T>
 T ee_read(u32 vaddr) {
@@ -198,6 +224,7 @@ void ee_write(u32 vaddr, const T& val) {
 #endif
     std::memcpy(ptr, &val, sizeof(T));
 }
+#endif
 
 // Get the base pointer of the RAM block (64 MB: the 32 MB of the PS2 and the host area above it) (useful for debug inspectors/tools).
 u8* ee_get_ram_base();

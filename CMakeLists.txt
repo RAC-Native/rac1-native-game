@@ -1,7 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 # the release's version (semantic): bumped at each release, with its tag vX.Y.Z (the in-game update check compares
 # it with the latest release's: docs/settings.md)
-project(rac1-native VERSION 0.6.0 LANGUAGES C CXX)
+project(rac1-native VERSION 0.7.0 LANGUAGES C CXX)
+if(APPLE)
+    enable_language(OBJC OBJCXX)  # (the Metal renderer: docs/metal.md; OBJC too, else GLFW's .m files build as C++)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -12,7 +15,7 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
 
-if(NOT CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+if(NOT CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
     message(FATAL_ERROR "rac1-native builds with GCC or clang (on Windows: clang or GCC for MinGW-w64, see docs/platforms.md); "
                         "this is ${CMAKE_CXX_COMPILER_ID}.")
 endif()
@@ -41,6 +44,17 @@ if(RAC1_NATIVE_ARCH)
         add_compile_options(-Wa,-muse-unaligned-vector-move)
     endif()
     message(STATUS "RAC1_NATIVE_ARCH: compiled for this machine's CPU (-march=native)")
+endif()
+
+# The memory accessors (ee_read / ee_write and the routines' lw_ / sw_ / lq / sq...), the VU0 macro ops (vu0_nf.h, vu0_regs.h's
+# lane helpers) and the FPU helpers are small functions called millions of times a frame by the ported and generated code. At -O2
+# GCC kept them out of line (each a call, its operands through memory); RAC1_INLINE_HELPERS=ON forces their fast paths inline
+# (always_inline) and keeps the rare paths (a null address, a flagged VU0 op, a DMA register) out of line and cold. The same C++,
+# so the same game state; faster world passes, but the game code as a whole about the same, a binary 2.5 times bigger and a
+# build twice as long (docs/performance.md), so OFF by default for now.
+option(RAC1_INLINE_HELPERS "Force the memory accessors' and the VU0 ops' fast paths inline" OFF)
+if(RAC1_INLINE_HELPERS)
+    add_compile_definitions(RAC1_INLINE_HELPERS=1)
 endif()
 
 # Windows (MinGW-w64, with clang or GCC): see docs/platforms.md
@@ -123,24 +137,42 @@ target_include_directories(rac1_jobs PUBLIC src)
 target_link_libraries(rac1_jobs PUBLIC rac1_profiler)
 
 # ---- the Vulkan renderer's shaders (docs/vulkan.md): GLSL in tools/gen_vk_shaders.py, compiled to SPIR-V here, at build
-# time, by glslc (shaderc, the Vulkan SDK) or glslangValidator, with Python (as the setup); without a compiler they are left out and
-# the renderer does not start - the game stays on OpenGL, its default. Nothing of it is kept in the repository.
+# time, by glslc (shaderc, the Vulkan SDK) or glslangValidator, with Python (as the setup). RAC1_VULKAN: AUTO (a bare cmake)
+# builds without the shaders when there is no compiler - the renderer then does not start and the game stays on OpenGL;
+# REQUIRED (the setup passes it) stops at the configuration with the package to install. Nothing of it is kept in the
+# repository. (macOS: the Metal renderer, its own shaders, tools/gen_metal_shaders.py; RAC1_VULKAN does not apply.)
+set(RAC1_VULKAN AUTO CACHE STRING "the Vulkan renderer's shaders: AUTO (left out without glslc) or REQUIRED (no glslc: an error)")
+set_property(CACHE RAC1_VULKAN PROPERTY STRINGS AUTO REQUIRED)
 find_program(RAC1_GLSLC NAMES glslc glslangValidator DOC "the GLSL to SPIR-V compiler for the Vulkan renderer")
 find_package(Python3 COMPONENTS Interpreter QUIET)
 set(RAC1_VK_SHADERS_DIR ${CMAKE_BINARY_DIR}/generated_vk)
 set(RAC1_VK_SHADERS_CPP ${RAC1_VK_SHADERS_DIR}/vk_shaders.cpp)
 if(Python3_Interpreter_FOUND)
     set(_rac1_vk_compiler "")
-    if(RAC1_GLSLC)
+    if(APPLE)  # (the Metal renderer's: runtime/mtl/vk_on_metal.mm, no SPIR-V)
+        set(_rac1_vk_compiler metal)
+    elseif(RAC1_GLSLC)
         set(_rac1_vk_compiler ${RAC1_GLSLC})
     endif()
+    # (the compiler chosen, in a stamp the shaders depend on: a build configured without glslc, then configured again
+    # once it is installed, makes the shaders again - Make does not re-run a command only because its line changed)
+    set(RAC1_VK_COMPILER_STAMP ${RAC1_VK_SHADERS_DIR}/compiler.txt)
+    file(MAKE_DIRECTORY ${RAC1_VK_SHADERS_DIR})
+    file(CONFIGURE OUTPUT ${RAC1_VK_COMPILER_STAMP} CONTENT "${_rac1_vk_compiler}\n")
     add_custom_command(
         OUTPUT ${RAC1_VK_SHADERS_CPP} ${RAC1_VK_SHADERS_DIR}/runtime/vk/vk_shaders.h
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/gen_vk_shaders.py ${RAC1_VK_SHADERS_DIR} "${_rac1_vk_compiler}"
         DEPENDS ${CMAKE_SOURCE_DIR}/tools/gen_vk_shaders.py ${CMAKE_SOURCE_DIR}/src/game/render/mrp_materials_glsl.inc
+                ${RAC1_VK_COMPILER_STAMP}
         COMMENT "Vulkan shaders (tools/gen_vk_shaders.py)"
         VERBATIM)
-    if(NOT RAC1_GLSLC)
+    if(NOT RAC1_GLSLC AND NOT APPLE)
+        if(RAC1_VULKAN STREQUAL "REQUIRED")
+            message(FATAL_ERROR "The Vulkan renderer's shaders need glslc (or glslangValidator), not found. Install it: "
+                "Debian / Ubuntu: glslc (older releases: glslang-tools); Fedora: glslc; Arch: shaderc; openSUSE: shaderc; "
+                "Windows (MSYS2 CLANG64): mingw-w64-clang-x86_64-shaderc. Then configure again "
+                "(or -DRAC1_VULKAN=AUTO to build without them: OpenGL only).")
+        endif()
         message(STATUS "Vulkan renderer: no glslc / glslangValidator found - built without its shaders (OpenGL only)")
     endif()
     add_custom_target(rac1_vk_shaders DEPENDS ${RAC1_VK_SHADERS_CPP})
@@ -174,13 +206,41 @@ add_library(rac1_runtime STATIC
     runtime/iop/iop_ram.cpp
     runtime/iop/stash_iop.cpp
     runtime/ipu/movie_hw.cpp
-    runtime/vk/vk_context.cpp
+    $<$<NOT:$<PLATFORM_ID:Darwin>>:runtime/vk/vk_context.cpp>
     ${RAC1_VK_SHADERS_CPP}
     # file I/O (hardware-adjacent, no game decisions)
     runtime/level/level_loader.cpp
 )
 target_include_directories(rac1_runtime PUBLIC ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src ${RAC1_VK_SHADERS_DIR})
 target_link_libraries(rac1_runtime PUBLIC rac1_platform rac1_profiler rac1_jobs rac1_formats glad glfw glm_headers OpenGL::GL volk imgui opengoal_989snd)
+
+# ---- the Metal renderer (macOS; docs/metal.md): its shaders are MSL made from the Vulkan renderer's GLSL at build time by
+# tools/gen_metal_shaders.py (glslc, then SPIRV-Cross: brew install shaderc spirv-cross), embedded as text and compiled
+# when the game starts (no offline Metal compiler needed). Nothing of it is kept in the repository. Vulkan itself is not
+# used on macOS.
+if(APPLE)
+    find_program(RAC1_SPIRV_CROSS NAMES spirv-cross DOC "the SPIR-V to MSL translator for the Metal renderer")
+    find_program(RAC1_GLSLC_ONLY NAMES glslc DOC "glslc (shaderc) for the Metal renderer's shaders")
+    if(NOT RAC1_GLSLC_ONLY OR NOT RAC1_SPIRV_CROSS)
+        message(FATAL_ERROR "the Metal renderer's shaders need glslc and spirv-cross: brew install shaderc spirv-cross")
+    endif()
+    set(RAC1_MTL_SHADERS_DIR ${CMAKE_BINARY_DIR}/generated_mtl)
+    set(RAC1_MTL_SHADERS_INC ${RAC1_MTL_SHADERS_DIR}/mtl_shader_sources.inc)
+    add_custom_command(
+        OUTPUT ${RAC1_MTL_SHADERS_INC} ${RAC1_MTL_SHADERS_DIR}/mtl_shader_table.inc
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/gen_metal_shaders.py ${RAC1_MTL_SHADERS_DIR} ${RAC1_GLSLC_ONLY} ${RAC1_SPIRV_CROSS}
+        DEPENDS ${CMAKE_SOURCE_DIR}/tools/gen_metal_shaders.py ${CMAKE_SOURCE_DIR}/tools/gen_vk_shaders.py
+                ${CMAKE_SOURCE_DIR}/src/game/render/mrp_materials_glsl.inc
+        COMMENT "Metal shaders (tools/gen_metal_shaders.py)"
+        VERBATIM)
+    # (on macOS the Vulkan renderer's code runs on Metal: runtime/mtl/vk_on_metal.mm in place of runtime/vk/vk_context.cpp)
+    target_sources(rac1_runtime PRIVATE runtime/mtl/mtl_context.mm runtime/mtl/vk_on_metal.mm ${RAC1_MTL_SHADERS_INC}
+        ${RAC1_MTL_SHADERS_DIR}/mtl_shader_table.inc)
+    set_source_files_properties(runtime/mtl/mtl_context.mm runtime/mtl/vk_on_metal.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_include_directories(rac1_runtime PUBLIC ${RAC1_MTL_SHADERS_DIR})
+    target_compile_definitions(rac1_runtime PUBLIC RAC1_HAVE_METAL=1)
+    target_link_libraries(rac1_runtime PUBLIC "-framework Metal" "-framework QuartzCore" "-framework Cocoa")
+endif()
 
 # The movies' MPEG-2 pictures (runtime/ipu/movie_hw.cpp, the IPU's stand-in): FFmpeg's libavcodec
 # when pkg-config finds it (optional). Without it the game runs and its movies are skipped (logged).
@@ -199,6 +259,19 @@ if(RAC1_MOVIES)
         message(STATUS "Movies: libavcodec ${RAC1_AVCODEC_libavcodec_VERSION}")
         target_link_libraries(rac1_runtime PUBLIC PkgConfig::RAC1_AVCODEC)
         target_compile_definitions(rac1_runtime PRIVATE RAC1_HAVE_AVCODEC=1)
+    elseif(APPLE)
+        # (macOS without pkg-config: Homebrew's FFmpeg found by its headers and libraries)
+        find_path(RAC1_AVCODEC_INCLUDE_DIR libavcodec/avcodec.h HINTS /opt/homebrew/include /usr/local/include)
+        find_library(RAC1_AVCODEC_LIBRARY avcodec HINTS /opt/homebrew/lib /usr/local/lib)
+        find_library(RAC1_AVUTIL_LIBRARY avutil HINTS /opt/homebrew/lib /usr/local/lib)
+        if(RAC1_AVCODEC_INCLUDE_DIR AND RAC1_AVCODEC_LIBRARY AND RAC1_AVUTIL_LIBRARY)
+            message(STATUS "Movies: libavcodec (${RAC1_AVCODEC_LIBRARY})")
+            target_include_directories(rac1_runtime SYSTEM PRIVATE ${RAC1_AVCODEC_INCLUDE_DIR})
+            target_link_libraries(rac1_runtime PUBLIC ${RAC1_AVCODEC_LIBRARY} ${RAC1_AVUTIL_LIBRARY})
+            target_compile_definitions(rac1_runtime PRIVATE RAC1_HAVE_AVCODEC=1)
+        else()
+            message(STATUS "Movies: libavcodec not found (brew install ffmpeg): the game's movies are skipped")
+        endif()
     else()
         message(STATUS "Movies: libavcodec not found (pkg-config): the game's movies are skipped")
     endif()
@@ -232,6 +305,20 @@ endif()
 add_executable(dualsense_test EXCLUDE_FROM_ALL tests/rumble/dualsense_test.cpp src/host/dualsense.cpp)
 target_include_directories(dualsense_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
+# ---- tests/neon/ : the scalar-equivalence test for the VU fast paths' NEON twins (tests/neon/vu_neon_equiv.cpp) ----
+# Off by default: ./setup.sh never builds it. It needs no generated sources and no disc: the one test that proves
+# the NEON port of the VU SIMD helpers bit-identical to the scalar rules, on x86 (the SSE path) and on AArch64.
+option(RAC1_NEON_TEST "Build the NEON equivalence test (tests/neon: build/vu_neon_equiv)" OFF)
+if(RAC1_NEON_TEST)
+    enable_testing()
+    add_executable(vu_neon_equiv tests/neon/vu_neon_equiv.cpp)
+    target_include_directories(vu_neon_equiv PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src)
+    if(NOT MSVC)
+        target_compile_options(vu_neon_equiv PRIVATE -ffp-contract=off)
+    endif()
+    add_test(NAME vu_neon_equiv COMMAND vu_neon_equiv)
+endif()
+
 # ---- src/setup/ : setup & asset extraction ----
 add_library(rac1_setup STATIC
     src/setup/kick_trace.cpp
@@ -257,6 +344,7 @@ set(RAC1_HOST_SOURCES
     src/host/sim_autopilot.cpp
     src/host/update_check.cpp
     src/host/progress.cpp
+    src/host/vk_safety.cpp
 )
 if(WIN32)
     list(APPEND RAC1_HOST_SOURCES src/host/host_priority_win32.cpp src/host/gpu_preference_win32.cpp

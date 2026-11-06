@@ -50,6 +50,7 @@ struct DiscPiece {
 };
 
 struct DiscFiles {
+    std::string dir;  // the folder the layout's paths are in (assets/disc, or a data disc's assets/disc-<name>)
     bool ok = false;
     std::string error;
     uint64_t image_bytes = 0;
@@ -61,9 +62,9 @@ struct DiscFiles {
     std::deque<uint32_t> opened;               // the files open, oldest first
 };
 
-// a file of the layout on the host: assets/disc/<path>; on Windows a long one (past the old 260 characters) through
-// the \\?\ prefix, which takes it whatever the system's long path setting
-std::filesystem::path files_host_path(const std::string& rel) {
+// a file of the layout on the host: <dir>/<path> (assets/disc/<path> for the game's disc); on Windows a long one (past
+// the old 260 characters) through the \\?\ prefix, which takes it whatever the system's long path setting
+std::filesystem::path files_host_path(const std::string& dir, const std::string& rel) {
 #if defined(__WIIU__)
     // (the Wii U: toc/'s 1,581 files in one folder made each open scan it on the SD card's FAT - 140-190 ms, a stream's start stalling
     // the game -; there they are spread in sub-folders by the name's first two hex digits, toc/row_1ac4.vag -> toc/1a/row_1ac4.vag:
@@ -71,10 +72,10 @@ std::filesystem::path files_host_path(const std::string& rel) {
     if (rel.size() > 10 && rel.compare(0, 8, "toc/row_") == 0) {
         std::string r = rel;
         r.insert(4, rel.substr(8, 2) + "/");
-        return std::filesystem::path(disc_files_dir()) / std::filesystem::path(r);
+        return std::filesystem::path(dir) / std::filesystem::path(r);
     }
 #endif
-    std::filesystem::path p = std::filesystem::path(disc_files_dir()) / std::filesystem::path(rel);
+    std::filesystem::path p = std::filesystem::path(dir) / std::filesystem::path(rel);
 #if defined(_WIN32)
     std::error_code ec;
     std::filesystem::path a = std::filesystem::absolute(p, ec);
@@ -87,7 +88,7 @@ std::filesystem::path files_host_path(const std::string& rel) {
 }
 
 void files_load(DiscFiles& d) {
-    const std::string layout = std::string(disc_files_dir()) + "/layout.txt";
+    const std::string layout = d.dir + "/layout.txt";
     std::ifstream f(layout);
     std::string line;
     if (!f || !std::getline(f, line) || line != kLayoutMagic) {
@@ -123,7 +124,7 @@ void files_load(DiscFiles& d) {
         }
         d.pieces.push_back(p);
     }
-    for (const std::string& n : names) d.paths.push_back(files_host_path(n));
+    for (const std::string& n : names) d.paths.push_back(files_host_path(d.dir, n));
     d.handles.resize(d.paths.size());
     d.ok = true;
 }
@@ -131,7 +132,10 @@ void files_load(DiscFiles& d) {
 DiscFiles& files() {
     static DiscFiles d;
     static std::once_flag once;
-    std::call_once(once, [] { files_load(d); });
+    std::call_once(once, [] {
+        d.dir = disc_files_dir();
+        files_load(d);
+    });
     return d;
 }
 
@@ -189,8 +193,7 @@ bool read_full(std::FILE* f, uint64_t at, char* dst, size_t n) {
     return true;
 }
 
-bool files_read(uint64_t offset, size_t n, char* dst) {
-    DiscFiles& d = files();
+bool files_read(DiscFiles& d, uint64_t offset, size_t n, char* dst) {
     if (!d.ok || offset + n > d.image_bytes) return false;
     std::memset(dst, 0, n);  // (what no piece holds)
     // (testing, RAC1_DISC_SLOWLOG=<ms>: a read slower than that on the log - its file, its size, the open's share)
@@ -212,6 +215,57 @@ bool files_read(uint64_t offset, size_t n, char* dst) {
                          last_file < d.paths.size() ? d.paths[last_file].string().c_str() : "?");
     }
     return ok;
+}
+
+// ---- The data discs (assets/data-discs.txt, written by the setup's --data-iso) ----
+// Each line "<folder> <serial> <region> <version> <boot executable>": another release's disc, extracted into its own
+// folder with its own layout.txt (the same tool, the same format). Read at the sectors of its window (disc.h).
+struct DataDiscFiles {
+    DataDisc disc;
+    std::unique_ptr<DiscFiles> files;
+};
+
+std::vector<DataDiscFiles>& data_discs() {
+    static std::vector<DataDiscFiles> discs;
+    static std::once_flag once;
+    std::call_once(once, [] {
+        std::ifstream f(disc_data_discs_file());
+        std::string line;
+        while (f && std::getline(f, line)) {
+            while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
+            if (line.empty() || line[0] == '#') continue;
+            DataDiscFiles e;
+            std::istringstream in(line);
+            if (!(in >> e.disc.dir >> e.disc.serial >> e.disc.region >> e.disc.version >> e.disc.boot)) {
+                std::fprintf(stderr, "[disc] %s: a line not understood: %s\n", disc_data_discs_file(), line.c_str());
+                continue;
+            }
+            e.disc.base = kDataDiscWindow * static_cast<uint32_t>(discs.size() + 1);
+            e.files = std::make_unique<DiscFiles>();
+            e.files->dir = e.disc.dir;
+            files_load(*e.files);
+            e.disc.ok = e.files->ok && e.files->image_bytes <= uint64_t{kDataDiscWindow} * kSector;
+            if (!e.disc.ok)
+                std::fprintf(stderr, "[disc] the data disc %s (%s) cannot be read: %s; run the setup again\n", e.disc.serial.c_str(),
+                             e.disc.dir.c_str(), e.files->ok ? "too large" : e.files->error.c_str());
+            else
+                std::printf("[disc] data disc %s (%s %s), sectors from %#x: %s\n", e.disc.serial.c_str(), e.disc.region.c_str(),
+                            e.disc.version.c_str(), e.disc.base, e.disc.dir.c_str());
+            discs.push_back(std::move(e));
+            if (discs.size() + 1 >= 0x100000000ull / kDataDiscWindow) break;  // (the windows fill the sector space)
+        }
+    });
+    return discs;
+}
+
+// the data disc whose window holds `lba` (past the game's disc), else null; `local` its own sector
+DataDiscFiles* data_disc_at(uint32_t lba, uint32_t& local) {
+    if (lba < kDataDiscWindow) return nullptr;
+    std::vector<DataDiscFiles>& discs = data_discs();
+    const size_t k = lba / kDataDiscWindow - 1;
+    if (k >= discs.size() || !discs[k].disc.ok) return nullptr;
+    local = lba % kDataDiscWindow;
+    return &discs[k];
 }
 
 // ---- The image ----
@@ -295,6 +349,19 @@ std::string disc_path() {
     // text file beside it instead
     const std::string link = "assets/iso/rac1-ntsc-u.iso", pal_link = "assets/iso/rac1-pal.iso";
     std::error_code ec;
+    if (std::filesystem::exists(link, ec) && std::filesystem::exists(pal_link, ec)) {
+        // (both discs kept in assets/iso/: the one the disc's files were extracted from, by the image's size that
+        // layout.txt records)
+        std::ifstream lf(std::string(disc_files_dir()) + "/layout.txt");
+        std::string line;
+        for (int i = 0; i < 4 && std::getline(lf, line); ++i) {
+            if (line.rfind("image ", 0) != 0) continue;
+            const auto size = std::strtoull(line.c_str() + 6, nullptr, 10);
+            if (size != 0 && std::filesystem::file_size(pal_link, ec) == size) return pal_link;
+            break;
+        }
+        return link;
+    }
     if (std::filesystem::exists(link, ec)) return link;
     if (std::filesystem::exists(pal_link, ec)) return pal_link;
     std::ifstream f(disc_path_file());
@@ -414,7 +481,13 @@ uint64_t disc_size(DiscSource src) {
 // audio thread (the IOP mirror's stream reader, ADR 0013) read at the same time
 bool disc_read_from(DiscSource src, uint32_t lba, uint32_t sectors, void* dst) {
     const size_t n = static_cast<size_t>(sectors) * kSector;
-    if (src == DiscSource::Files) return files_read(uint64_t{lba} * kSector, n, static_cast<char*>(dst));
+    if (lba >= kDataDiscWindow) {  // (a data disc's window: its files, whatever the game's disc is read from)
+        uint32_t local = 0;
+        DataDiscFiles* dd = data_disc_at(lba, local);
+        if (dd == nullptr || uint64_t{local} + sectors > kDataDiscWindow) return false;
+        return files_read(*dd->files, uint64_t{local} * kSector, n, static_cast<char*>(dst));
+    }
+    if (src == DiscSource::Files) return files_read(files(), uint64_t{lba} * kSector, n, static_cast<char*>(dst));
     if (g_iso == nullptr && !image_open("")) return false;
     return read_full(g_iso, uint64_t{lba} * kSector, static_cast<char*>(dst), n);
 }
@@ -435,6 +508,7 @@ void disc_close_kept() {
 }
 
 void disc_will_need(uint32_t lba, uint32_t sectors) {
+    if (lba >= kDataDiscWindow) return;  // (a data disc's: read when asked)
     const uint64_t offset = uint64_t{lba} * kSector, n = uint64_t{sectors} * kSector;
     if (disc_source() == DiscSource::Image) {
         if (g_iso == nullptr && !image_open("")) return;
@@ -454,6 +528,20 @@ bool disc_read_ee(uint32_t ee_dst, uint32_t lba, uint32_t sectors) {
     if (!disc_read(lba, sectors, buf.data())) return false;
     for (size_t i = 0; i < buf.size(); ++i) ee_write<uint8_t>(ee_dst + static_cast<uint32_t>(i), buf[i]);
     return true;
+}
+
+const char* disc_data_discs_file() { return "assets/data-discs.txt"; }
+
+std::vector<DataDisc> disc_data_discs() {
+    std::vector<DataDisc> out;
+    for (const DataDiscFiles& e : data_discs()) out.push_back(e.disc);
+    return out;
+}
+
+const DataDisc* disc_data_disc(const std::string& region) {
+    for (const DataDiscFiles& e : data_discs())
+        if (e.disc.ok && e.disc.region == region) return &e.disc;
+    return nullptr;
 }
 
 bool disc_has_level(int level) { return get_disc_level(level) != nullptr; }

@@ -2,6 +2,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_sky.h>
 #include <game/ovl/variants.h>
+#include <game/ovl/region_core.h>
 #include <runtime/kernel/disc.h>
 
 #include <algorithm>
@@ -45,6 +46,8 @@ struct RegionRuns {
     std::vector<Run> code;                // functions lo..hi (exclusive)
     std::vector<Run> data;                // mapped data addresses lo..hi (both inclusive), sorted
     std::map<uint32_t, uint32_t> entry, entry_rev;  // the entries of the functions the region changed
+    std::map<uint32_t, uint32_t> starts_rev;        // those that start a function of the disc's (not `inner`): disc -> NTSC-U
+                                                    // (entry_rev holds the same: the `inner` ones are forward only)
     uint32_t code_base = 0, code_end = 0;           // the NTSC-U code section
     // orig: (host) a code address (0: in a function the region changed, not its entry)
     uint32_t code_fwd(uint32_t a) const {
@@ -86,12 +89,17 @@ RegionRuns region_load(int unit) {
         std::string kind, d;
         uint32_t lo = 0, hi = 0;
         s >> kind >> std::hex >> lo >> hi >> d;
-        const uint32_t disp = d.empty() ? 0 : static_cast<uint32_t>(std::stoll(d, nullptr, 16));
+        const uint32_t disp = d.empty() || d == "inner" ? 0 : static_cast<uint32_t>(std::stoll(d, nullptr, 16));  // (`entry n p inner`: no displacement)
         if (kind == "code") rr.code.push_back({lo, hi, disp});
         else if (kind == "data") rr.data.push_back({lo, hi, disp});
         else if (kind == "entry") {
             rr.entry[lo] = hi;
-            rr.entry_rev[hi] = lo;
+            // (`inner`: an address inside a function the region changed that a port or a generator names. Back to
+            // NTSC-U, an address there is the stand-in's label, its NTSC-U entry plus the offset: region_to_ntsc)
+            if (d != "inner") {
+                rr.entry_rev[hi] = lo;
+                rr.starts_rev[hi] = lo;
+            }
         } else if (kind == "base") {
             rr.code_base = lo;
             rr.code_end = hi;
@@ -307,8 +315,25 @@ uint32_t region_xlate(int unit, uint32_t a) {
 // orig: (host) see ovl_reloc.h
 uint32_t region_to_ntsc(int unit, uint32_t p) {
     if (!region_other() || p < 0x0015ef00u) return p;
-    const uint32_t n = region_runs(unit).code_back(p);
-    return n != 0 ? n : p;
+    const RegionRuns& rr = region_runs(unit);
+    const uint32_t n = rr.code_back(p);
+    if (n != 0) return n;
+    // (a build whose core moved, PAL 2.00) an address inside a function the region changed: the generated stand-in of it
+    // (tools/overlay_match/region_view.py's StandIn) is the disc's code placed at the NTSC-U entry, so its labels are the
+    // NTSC-U entry plus the offset in the disc's function: a `case` of its jump table, say. The function is the nearest
+    // changed entry below, up to the next one or the next code run.
+    if (region_core_moved() && !rr.starts_rev.empty()) {
+        auto it = rr.starts_rev.upper_bound(p);
+        if (it != rr.starts_rev.begin()) {
+            --it;
+            const uint32_t q = it->first;
+            bool inside = it == std::prev(rr.starts_rev.end()) || p < std::next(it)->first;
+            for (const auto& r : rr.code)
+                if (r[0] + r[2] > q && r[0] + r[2] <= p) inside = false;
+            if (inside && p - q < 0x10000u) return it->second + (p - q);
+        }
+    }
+    return p;
 }
 
 }  // namespace rac1

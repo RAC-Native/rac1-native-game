@@ -41,6 +41,8 @@ public:
 
     // A texel of the texture TEX0 `tex0` (CLUT applied, TEXA for 16/24 bit): RGBA, alpha raw (0x80 = 1).
     uint32_t texel(uint64_t tex0, uint64_t texa, int x, int y) const;
+    // (host) the CLUT's colour of index `raw` of the indexed texture TEX0 `tex0` (texel's lookup)
+    uint32_t texel_clut(uint64_t tex0, uint64_t texa, uint32_t raw) const;
     // The texture TEX0 / TEXA as the memory holds it now, decoded once: the same image while the bytes it read (its pixels and
     // its CLUT) are unchanged (an upload that writes the bytes already there changes nothing, so a texture the game loads
     // again each frame is decoded once).

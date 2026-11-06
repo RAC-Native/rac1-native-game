@@ -20,9 +20,11 @@ Options > Graphics > Surface Detail (`surface_detail` in the preferences, item 5
 |---|---|
 | Off (default) | nothing: the tagged textures are drawn as before (emissive surfaces still glow) |
 | Low | every material: specular, wetness, puddles, ripples, rain, the lava's pulse, the slow flow |
-| High | Low, plus the reflections of puddles and water taken from the last frame's picture, and the lava's heat shimmer |
+| High | Low, plus the reflections of puddles and polished metal taken from the last frame's picture, and the lava's heat shimmer |
 
-It works only with Lighting not Original, like the rest of the modern lighting. `RAC1_SURFACE_DETAIL=0|1|2`
+What the water mirrors is a row of its own, Water Reflections ([below](#water-reflections)): no longer the last frame's picture.
+
+It works only with Graphics: Enhanced (Options > Graphics), like the rest of the modern lighting. `RAC1_SURFACE_DETAIL=0|1|2`
 (testing) overrides the row.
 
 ## Tagging a texture
@@ -30,7 +32,7 @@ It works only with Lighting not Original, like the rest of the modern lighting. 
 In the level's light file (`data/lights/level<N>.txt`):
 
 ```
-material <tfrag|tie|shrub|moby|surface> <class> tex <n> <type> [a] [b] [c] [tint r g b] [waves <scale> <speed>] [foam f] [depth d] [glow <strength> [threshold]]
+material <tfrag|tie|shrub|moby|surface> <class> tex <n> <type> [a] [b] [c] [glow <strength> [threshold]]
 rain on
 sky <r> <g> <b>
 ```
@@ -47,11 +49,14 @@ sky <r> <g> <b>
 | `metal` | roughness 0.35 (0.03..1) | strength 1 (0..2) | | roughness 0 is a polished mirror, 1 brushed. Blinn-Phong specular of the sun (where it is not in shadow) and of the point lights, energy-normalised, with an exponent from a GGX-like roughness (a small, very bright highlight when polished, a broad dull one when rough); Schlick Fresnel with the texture as the metal's colour; a mirror of the level's sky over the ground's shade, its horizon sharper (up to four times) and its share larger the lower the roughness (up to 1.5 times the Fresnel), as bright as the place is lit and dimmed to 35 % where the sun does not reach (its shadow, the faces turned from it); on High, below roughness 0.45 and not on a moby, the last frame's picture along the reflected ray, blurred above roughness 0.05 and fully mixed in only toward it; the painted colour dimmed by 25 % (rough) to 55 % (polished) |
 | `wet` | wetness 0.6 (0..1) | roughness 0.45 (0.05..1) | | darker (up to 40 %), a broad glossy specular, a little sky |
 | `puddle` | coverage 0.4 (0..1) | scale 0.3 (0.02..4) | wetness 0.6 (0..1) | `wet`, and on the flat ground facing up (normal within some 15 degrees of up) puddles where a world-space noise (its frequency `scale` per unit) is above 1 - coverage: they stay in place whatever the camera does, the same with OpenGL and Vulkan on any GPU (an integer noise). In a puddle: dark, a near mirror (Fresnel from 15 % looking down to 90 % at grazing), small waves; rain rings when the level rains |
-| `lava` | strength 1.3 (0..4) | pulse 0.15 (0..1) | threshold 0 (0..1) | emissive (the original's colour x strength, as an emissive surface; texels whose brightest channel is under the threshold lit as before), a slow brightness pulse whose phase changes across the world, the texture pushed slowly to and fro; High: the heat shimmer |
-| `water` | strength 1 (0..2) | ripples 1 (0..3) | | a sharp sun / lamp glint, Fresnel, procedural ripples (three crossing wave trains and a fine noise, animated) and, when it rains, rain rings; the reflection is the sky (Low) or the last frame's picture (High). Added on top of the game's water: its scrolling, its waves and its tints are its own |
+| `lava` | strength 1.3 (0..4) | pulse 0.15 (0..1) | threshold 0 (0..1) | emissive (the original's colour x strength, as an emissive surface; texels whose brightest channel is under the threshold lit as before), a slow brightness pulse whose phase changes across the world, the texture pushed slowly to and fro, the crust's slow relief lit by the sun (two normal maps drifting slowly in world space); High: the heat shimmer |
+| `water` | strength 1 (0..2) | ripples 1 (0..3) | | a sharp sun / lamp glint, Fresnel, procedural ripples (three crossing wave trains and a fine noise, animated) and, when it rains, rain rings; the reflection is Water Reflections' ([below](#water-reflections)). Added on top of the game's water: its scrolling and its tints are its own. A sea (`surface`) is drawn still, without the game's rise and fall, and opaque where nothing lies under it ([below](#the-water-held-still)) |
 | `mud` | wetness 0.5 (0..1) | drift 1 (0..3) | | a wet glossy sheen and a very slow, viscous drift of the texture |
-| `quicksand` | drift 1 (0..3) | gloss 0.3 (0..1) | | the drift, a dull sheen |
-| `grass` | height 0.05 (0.01..0.3) | density 18 (2..40) | bend 0.6 (0..2) | Options > Graphics > Grass, tfrag textures only: the blades ([below](#water-and-grass)) |
+| `quicksand` | drift 1 (0..3) | gloss 0.3 (0..1) | | the drift, a dull sheen over a slow relief (lava's normal maps, slower) |
+| `grass` | height 0.05 (0.01..0.3) | density 18 (2..40) | bend 0.6 (0..2) | Options > Graphics > Grass, tfrag textures only: the blades ([below](#grass)) |
+
+Until the Water row was removed, `water`, `lava` and `quicksand` lines could carry `tint r g b`, `waves <scale> <speed>`, `foam f`
+and `depth d` for it; a line that still has them is read, and they are ignored.
 
 - `rain on` (default off): the puddles' and the water's rain rings on this level, only under the open sky (none under a roof:
   the ambient particles' sky grid, [Under a roof](particles.md#under-a-roof)). Batalia's is on.
@@ -64,9 +69,11 @@ texture, applied after the material (a metal lamp whose bulb is painted in the s
 also be emissive", #102 batch 1). A level's file or `classes.txt` with an `emissive` line and a `material` line for the same texture
 is read as one entry, the glowing material (before, the later line's slot won and the other was not drawn); the editor's Save
 writes it as one line. The glow is drawn with Surface Detail Off too (the glow alone, as an emissive surface). Emissive surfaces and
-materials share the level's 126 slots, in the file's order, the level's own lines first and then the `classes.txt` ones (30 slots
-until #102's batch 1: with batch 1's lines for every level the slots were full on every level and the lines past the 30th were
-dropped - "metal rendering just gives up after a set number of marked metals"; Novalis had 71 lines, Rilgar 73).
+materials share the level's 254 slots, in the file's order, the level's own lines first and then the `classes.txt` ones for the
+classes the level has (30 slots until #102's batch 1: with batch 1's lines for every level the slots were full on every level and the
+lines past the 30th were dropped - "metal rendering just gives up after a set number of marked metals"; Novalis had 71 lines, Rilgar
+73. 126 until #121: with Anya-Thoughtmane's batches 2 and 3, `classes.txt` alone had 73 lines, each taking a slot on every level,
+and seven levels lost lines - Gemlik 76 of 202).
 
 ### How to find a texture (for Anya)
 
@@ -83,15 +90,18 @@ red ones for lava, and so on).
 
 ## How it is drawn
 
-- **The slot.** `emissive_refresh` / `moby_emissive_refresh` give each listed texture a slot (1 to 126),
-  carried in the world draw's texture word (bits 25..31), in the mobys' draw command's fourth word (until #102's batch 1 their
-  texture word's bits 27..31: five bits, 30 slots) and in the seas' vertices, as for the emissive surfaces. With Surface Detail
+- **The slot.** `emissive_refresh` / `moby_emissive_refresh` give each listed texture a slot (1 to 254, a byte: 0 none, 255 the
+  editor's preview), carried in the world draw's texture word (bits 24..31; bits 25..31 until #121), in the mobys' draw command's
+  fourth word (until #102's batch 1 their texture word's bits 27..31: five bits, 30 slots) and in the seas' vertices, as for the
+  emissive surfaces. With Surface Detail
   Off a material gets no slot (those draws are the original's), unless it glows.
-- **The uniforms.** Per slot `uEmis[s]` (strength, threshold - a material's glow -, the type in z) and `uMat[s]` (a, b, c with
-  the defaults filled in), 128 of each (127 the editor's preview); `uMat[0]` holds Surface Detail, the clock (frames / 60, so a headless run is
-  deterministic), the rain and whether the last frame's picture is ready. OpenGL: uniforms of the lighting's
-  programs; Vulkan: the lighting's uniform buffer (11776 bytes: the Water option's `uMat2` and the lights' aim `uPtAim` since 0.6.x; 8192 before, 5120 before that) and its descriptor set's bindings 2 (the
-  picture) and 5 (its depth). The rain rings' sky (`sm_sky`): the ambient particles' sky grid window, an R32F
+- **The slots' table.** Per slot `uEmis[s]` (strength, threshold - a material's glow -, the type in z), `uMat[s]` (a, b, c with
+  the defaults filled in) and `uMat2` (the grass's: [0] the hero, [255] the wind), 256 of each (255 the editor's preview and the options); `uMat[0]`
+  holds Surface Detail, the clock (frames / 60, so a headless run is deterministic), the rain and whether the last frame's picture
+  is ready. One storage buffer of 12 KB (`RacMatTable`): OpenGL binding 12, sent when it changes; Vulkan binding 7 of the lighting's
+  descriptor set. Until #121 uniforms of 128 (OpenGL: the programs' uniforms; Vulkan: in the lighting's uniform buffer, 11776 bytes,
+  5632 now - at 256 slots it would have passed the 16 KB `maxUniformBufferRange` every device must give). The
+  reflections' picture and its depth: Vulkan bindings 2 and 5. The rain rings' sky (`sm_sky`): the ambient particles' sky grid window, an R32F
   texture whose last row holds its place (OpenGL unit 30, Vulkan binding 6; none: open sky everywhere).
 - **The shading** (`sh_material`, after `sh_emissive`, in the world's `SH_POINTS` and the mobys' `SH_SPLIT`
   variants). The normal is the face normal the lighting already has (flat on each triangle); ripples and rain
@@ -99,10 +109,12 @@ red ones for lava, and so on).
   scales every reflection (a puddle in a dark room stays dark). The flow of lava, mud and quicksand moves the
   texture coordinates (`sh_mat_uv`) by two broad waves across the world, bounded (a few texels): a
   texture's clamping is never reached.
-- **High: the last frame's picture.** After the world, the mobys, the ambient occlusion and the sun rays
+- **High: the last frame's picture** (the puddles', the polished metals', the lava's shimmer; the water's reflections are
+  [Water Reflections](#water-reflections)' since 2026-11-03 and read only the depth under it). After the world, the mobys, the ambient occlusion and the sun rays
   (`mrp_lighting_material_capture`, at the end of `mrp_lighting_ao_pass`), the 3D's colour and depth are copied
   (OpenGL: a blit; Vulkan: an image copy), with the view they were drawn with, only when the level has a
-  puddle, water, lava or a polished metal (roughness under 0.45; 0.6 before #102's batch 1) and Surface Detail is High. The next frame's puddles and water march their
+  puddle, water, lava or a polished metal (roughness under 0.45; 0.6 before #102's batch 1) and Surface Detail is High - or Low too
+  when the level has water: the depth under it ([the water held still](#the-water-held-still)). The next frame's puddles march their
   reflected ray through that depth in world space (20 steps, growing), reprojected with the old view; a hit
   shows the old picture there (faded near its edges), a miss the sky colour. The lava's shimmer reads the old
   picture around the pixel, displaced by a rising noise. The copy is used only the frame right after it.
@@ -130,9 +142,9 @@ darkens all of it).
 
 ## Shipped
 
-- **Batalia (8)**, the pilot, `rain on`, a stormy sky: the landing platform's steel deck (tie 391 `tex 2`, the
-  level's texture 108), the railings' posts (tie 338 `tex 2`) and the military buildings' walls (tie 297
-  `tex 5`) as metal; the paved ground of the base below the platform (tfrag texture 11) as puddles.
+- **Batalia (8)**, the pilot, `rain on`, a stormy sky: the railings' posts (tie 338 `tex 2`) and the military
+  buildings' walls (tie 297 `tex 5`) as metal; since Anya-Thoughtmane's batch 2 (#120) the landing platform's deck
+  (tie 391 `tex 3`) and the paved ground below it (tfrag texture 11, puddles before) are metal too.
 - **Umbris (7)**: the swampy ground where the walk starts (tfrag texture 9) as mud.
 
 ## The levels' seas and pools
@@ -143,65 +155,288 @@ take a material as a `surface` line, named as an `emissive surface` line names t
 [Emissive surfaces](lighting.md#emissive-surfaces)): `RAC1_LIGHTS_TRACE=1` prints each one with its class and texture, e.g.
 
 ```
-material surface 879 tex 13040 water    # Rilgar's harbour
-material surface 317 tex 12811 lava     # Gaspar's lava sea
+material surface 761 tex 44 water       # Novalis's river: effect texture 44
+material surface 879 tex 13040 water    # Rilgar's harbour: a level texture, its GS block
 ```
 
-Their normal is the face's (the seas are mostly flat: the ripples and the glint do the rest). Rilgar, Pokitaru and Hoven ship such lines
-for the Water option ([below](#water-and-grass)).
+The `tex` of a sea is its **effect texture** (the index in the level's table of effect textures, the one `effect_tex0` takes) when
+its texture is one, as most seas' are; else the GS memory block its texture is read from (TEX0's TBP). The effect textures have no
+fixed block: a texture block gives them blocks in the order it first asks for them (from the same start each block), so the block a
+sea's texture lands in depends on what was drawn before it - on Novalis the river's water was at 13347, 13483 or 13619 depending on
+which of the level's water was in view, and after a save's load the order can be another one for good. Until playtest round 2 the
+lines named that block (`surface 761 tex 13347`): the material was there in some frames and not in others, or not at all - Daino's
+"Novalis's water looks untouched" (the river untagged a quarter of the frames of a headless walk, the cave's columns a third, Rilgar's
+canals a third). Now the host notes which effect texture each block holds (`effect_tex0`, reset by `texture_block_begin`) and keys
+the seas by it; the trace says which of the two a `tex` is. A line still naming a block (a file saved before) keeps working as it
+did, where the block happens to be the one named.
+
+Their normal is the face's (the seas are mostly flat: the ripples and the glint do the rest). Novalis, Rilgar, Pokitaru and Hoven ship
+such lines ([Tagging](#tagging-anya)).
 
 In the editor (since #102's batch 1: "couldn't target water ... as it is a particle") the seas are found along the view, not by the
 depth the pick reads: they are drawn after it, so a click on the water read the bottom under it. The menu sends the ray from the
 eye toward the picked point (`mrp_fx_surface_pick`); the next frames test the seas' triangles as they are built (`build_vu7`) and
 keep the nearest hit, with its class and texture. The Textures tab lists every sea the level has drawn (`mrp_fx_surfaces_seen`).
 
-## Water and grass
+### The water held still
 
-Two more options of Options > Graphics, each Off (the default), Low or High, each on the textures a level's file tags, each with
-Lighting not Original only (`water`, `grass` in the preferences; items 52, 54 of a save's block; `RAC1_WATER`, `RAC1_GRASS` for
-testing). They start from the game's own textures - their colours stay the texture's - and add
-relief and motion; a texture pack replacing those textures later gets the same treatment. Nothing of the game's state changes (proved
-with `RAC1_RAMHASH`: Novalis and Pokitaru with all of them on, OpenGL and Vulkan, the same hashes as with them off).
+With Surface Detail on (Low or High; Graphics: Enhanced), a sea tagged `water` - and the game's other blended layers of the same
+class, untagged (Pokitaru's additive highlights, textures 40 and 41 of class 1111; Novalis's tiles' second layers, 40 and 42 of 751;
+Hoven's 48 of 1901) - is drawn **still**. The game moves Pokitaru's and Rilgar's whole seas up and down (Pokitaru 222.75 to 223.25,
+Rilgar's harbour 59.25 to 59.75: a sine of 360 frames, smooth from frame to frame) and the rivers' points with its waves. The seas are
+drawn with the GS's depth (its integer Z), whose steps are a tenth of a unit of height some 40 units away and half a unit at 100: the
+waterline on the shores and the posts moved in steps, now and then, as the swell crossed them - the "flashing" (lampeggio) Daino
+chased through four rounds of the Water option. With Surface Detail Off the water is drawn so, as the PS2 does.
 
-### Water
+Each such sea is drawn at the middle of the heights it has been seen at since the level started (`build_vu7` in `mrp_fx.cpp`): a flat
+sea (all its points at one height) as a whole, per class - Pokitaru's pieces drift sideways with the swell -, another sea point by point
+(by its place to a 16th of a unit); a class or a point seen over more than a unit keeps the game's (Novalis's tiles at many heights, a
+waterfall's foot and top). A flat sea is drawn with the view's depth, not the GS's; another with the GS's depth of its still points
+(with the view's, the thin film of Novalis's stream came through its bed). The picture only: the game's sea, its collision and
+Ratchet's swimming keep the game's heights (`RAC1_RAMHASH` the same; Ratchet bobs a little against the still water). Surface
+Detail's ripples are the motion that is left.
 
-The `water` material (and `lava`, `quicksand`) with Water on, Surface Detail whatever it is:
+**Pokitaru's clear trapezoids.** The sea around each of Pokitaru's islands is its own pieces of class 1111 (effect texture 22, the
+tagged `water`), blended by its texture's alpha (ALPHA 0x44); past the islands' skirts of sand there is nothing under it but what the
+game draws behind the sea, so seen through, the skirts' edges showed as lighter, hard-edged trapezoids around the far islands' feet
+(the game's own: the same with Lighting Original and the GS replica). Such a tagged sea now carries its texture's average colour
+(`tex_average`: weighted by the alpha when the texture's alpha is its blend's, else the plain mean; flag 27, packed with the atlas
+layer and the texture's size, `kV7Fs` / `MRP_VU7_FS`), and is drawn over that colour instead of over what lies behind it
+(`sm_w_open` in `sm_material`):
+- where nothing of the 3D lies under it in this frame's picture (the 3D's depth copied after the mobys, as for High's reflections - on
+  a level with water also with Surface Detail Low): opaque over its average;
+- far away, where a pixel covers more than half a unit of the water (from 0.35 to 0.9): more and more so - what lies under the far
+  water is a thin sliver, the skirts a hair under the surface, drawn or not from one frame to the next.
+The seas the GS blends with a fixed alpha (Rilgar's harbour, Novalis's water, Hoven's) and those drawn before the copy are not
+changed.
 
-- **Two procedural normal maps** (value noise with its gradient, two octaves each) scroll across each other over the texture, the game's
-  own water animation kept under them. `waves <scale> <speed>` (1 1) sets their size and speed; `b` (ripples) their height.
-- **The depth under the surface**: the 3D under the water is copied (colour and depth, as Surface Detail High's reflections do) right
-  before the seas are drawn - with Water on the program-7 seas that write depth are drawn just after that copy, as the ambient particles
-  already asked for, those the game draws before its mobys too (Rilgar's harbour, Hoven's, Gaspar's and Umbris's seas: once, after
-  the mobys) - so a sea knows, per pixel, how much water lies under it. Shallow water is lighter and more transparent, deep
-  water darker (toward `tint r g b` when given, else a deeper shade of the texture's own colour) and as opaque as the game draws it; how
-  deep is "deep" is `depth d` (water 2.5 units). The water is never made more opaque than the game's own alpha: where the game drew it
-  translucent it stays at most that.
-- **Foam**: a thin, broken band where the water meets the shore (the depth near 0), `foam f` (water 0.6), white as bright as the place.
-- **Fresnel and the sky's reflection**; the **sun's and the lamps' glints** (a sharp specular on the waves); with **High** the scene's
-  reflection from the copy (the same ray march as the puddles') and a slight **refraction** of what is under the water (the copy read
-  bent by the waves, only where what it shows lies behind the water).
-- **With Surface Detail on too** (Low or High) the water's look is Surface Detail's `water` (its ripples, Fresnel, reflection and
-  glint), the Water option adding its normal maps under those ripples, the depth's colour, the foam and the composite over the 3D under
-  it; with Surface Detail Off, the Water option's own shading above. One draw of each sea either way.
-- How it reaches the picture: a sea whose blending is the GS's alpha blend (0x44) or none is composited by our shader over the copy (its
-  colour, the water's, over the bent 3D under it, with the game's alpha scaled by the depth); a sea with another blend keeps its own,
-  its colour shaded and, when drawn before the copy, its alpha scaled. The world's water (tfrag, tie) draws the waves, the glints and the
-  reflections only: it is in the copy itself, so it has no depth under it.
-- **Lava** with Water on: the crust's relief lit by the sun from slow normal maps, a hotter seam where it meets the shore (`foam`), the
-  tint; on High the heat shimmer. **Quicksand**: the slow normal maps under a dull sheen, a darker wet band at its edge (`foam`).
+**The Water option (removed).** From #118 to 2026-11-02 Options > Graphics had a Water row (Off, Low, High: our own water - normal
+maps, a depth tint, foam, a soft edge, High the scene's reflection and a refraction - over or in place of the game's, lava's and
+quicksand's relief and seam). Four rounds of playtests did not make it look better than Surface Detail's water over the game's own
+(Daino after Novalis and Rilgar: the water is nicer with Water Off). The row, its preferences key `water` and save item 52 (both
+still read and ignored; 52 stays reserved), `RAC1_WATER`, its profiler stage and its shading are gone; what it fixed that Surface
+Detail's water had too is kept above: the water held still, and Pokitaru's trapezoids. Lava's and quicksand's relief is Surface
+Detail's now (the seam at their shore, which needed the depth under them, is gone).
 
-The additive overlays some seas draw over their water (Pokitaru's 13155 and 13223, Hoven's 13391: ALPHA 0x48 / 0x68, highlights) are
-best left untagged: `RAC1_LIGHTS_TRACE=1` prints each sea's blend (`ABE 1 ALPHA 44`) and a point of it (`near x y z`).
+**Pokitaru's sea from the dock (playtest round 3).** Daino, Surface Detail High, 32:9, at the start's dock looking out to
+sea: "that ugly effect near the collisions is still there, like a flash" - lighter, hard-edged trapezoids around the far islands'
+feet and by the rock, changing from frame to frame. What flashed was our shading of the tagged pieces, far away and at a grazing
+angle (headless, the game's camera still but for the hair it drifts, 12 frames, the second difference over 8 less the same with
+Surface Detail Off):
+- the picture's reflection (High): a ray from the far water passes the islands' and the rocks' feet at a hair's height, and the game's
+  waves - lifting the sea a few thousandths a frame - and the camera's drift turned whole stretches of it from a hit (the island's
+  colour) to a miss (the sky's) and back. Tracing it along the flat water's mirror ray, finer marching, or leaving out the hits under
+  the water did not change it; the reflection is now faded to the sky's where a pixel covers more than about half a unit of the water
+  (from 0.35 to 0.9 units: the far sea; near water keeps it), and not marched where it is faded out;
+- Surface Detail's ripples (three wave trains and a noise) were drawn whole at any distance: far away they sparkled. Each train now
+  fades by the pixel's footprint (the point's `fwidth`), from 0.15 to 0.45 of a wave a pixel, the glint widened by the slope lost, so
+  far water has a soft sheen.
 
-**Rilgar's flicker.** Daino saw Rilgar's harbour change from frame to frame with Water on: the far water dark and right in one
-frame, a grey, speckled sheet of the sky's colour with a hard edge in the next. The harbour (surface 879) is drawn by the chain before
-the moby pass, and was drawn there - before the copy of the 3D under the water. It then read the last frame's copy, which held the
-harbour itself where the game's waves had put it a frame before: the depth under it was nothing (the water taken for a shore, light,
-the sky's Fresnel at a low angle) or a little (dark), as the waves went. With Water on such seas are now left out of that early pass
-and drawn with the others, after the copy; the water is the same from frame to frame (headless, the camera still: the water's change
-between frames that of the rain alone, on OpenGL and Vulkan, 16:9 and 32:9, every combination of Surface Detail and Water).
+The far sea's band (the islands' feet), pixels flashing, Vulkan / OpenGL: 14533 / 14564 -> 1578 / 1562; the whole picture, more than
+with Surface Detail Off: 21420 / 21437 -> 7623 / 7632 (the band keeps 1889 with Surface Detail Off: the flying ships' shadows; the
+whole picture about 5000 of the bolts spinning with their metal).
 
-### Grass
+**Measured (the Water row's removal, 2026-11-02).** Pokitaru's island beach, still camera, 120 consecutive frames, 1280 x 720
+(`RAC1_GOTO=11@60 RAC1_SIM_INPUT=shipskip RAC1_HERO_AT=-1@2400,495,430,231,1.98 RAC1_VIEW_AT=497,425,234,487,448,229`, frames
+2620..2739): the beach's sand pixels moved by 35.2 a frame on average before (the waterline stepping, 19519..20227 over the run) and
+by 11.2 now (23175..23246: the ships' shadows and the ripples), Surface Detail Low and High alike. Against the water as it was
+(Surface Detail's water over the game's moving sea), the pictures at Rilgar's harbour, Novalis's stream and gorge differ in under 1 %
+of the pixels (the waterlines), Hoven's in 2 % (its far waterline, held higher than in that frame), Pokitaru's dock in 4 % (the
+trapezoids gone, the far sea even) and Pokitaru swimming among the posts in 5 to 8 % (the waterline on the posts); OpenGL and Vulkan
+the same. `RAC1_RAMHASH` through Novalis, Rilgar, Pokitaru and Hoven with Surface Detail High: the same hashes.
+
+## Water reflections
+
+Options > Graphics > Water Reflections (Low, Medium, Medium (RT), High (RT); `water_reflections` in the preferences;
+`RAC1_WATER_REFLECTIONS=1..4` for testing, 0 none) is what Surface Detail's water mirrors, with Surface Detail on and Graphics:
+Enhanced. Until 2026-11-03 the water took the last frame's picture along its reflected ray (Surface Detail High, the sky colour on
+Low): pretty while standing still, broken as soon as anything moved - in Daino's words at Rilgar's harbour, by the Vendor, "belle
+solo se stai immobile, appena ti muovi tra lampeggio e glitch la magia si rompe": under Ratchet, and under every object in front of
+the water, a hole with no reflection (the ray passing behind him found no picture), worst in a jump, and the reflection flashing as
+the camera moved (hits turning to misses). The water no longer reads that picture for its reflection (Surface Detail High keeps it
+for the puddles, the polished metals and the lava's shimmer; the water reads its depth for [what lies under it](#the-water-held-still)).
+The code: `src/game/render/mrp_reflect.cpp`, the shading in `sm_water_refl` (`mrp_materials_glsl.inc`).
+
+| Value | The reflection |
+|---|---|
+| Low | cube maps from fixed probes, one per zone of the level and body of water, of the sky and the far scenery (no mobys: nothing that moves); they never move on their own |
+| Medium | the planar view: the frame's world, sky and mobys mirrored about the water - Ratchet reflected, moving with him -, the cube map where the planar view has nothing |
+| Medium (RT) | the reflection ray traced (an inline ray query) through the level's static world - ties, shrubs, tfrags - and shaded from the hit's own triangle (its texture, its lit vertex colours, the world's fog), at half resolution; no mobys. Vulkan with ray queries only: [Rendering](rendering.md#ray-tracing-phase-2) |
+| High (RT) | Medium (RT) with the frame's mobys in the trace too - Ratchet, the ships, Pokitaru's airships, every moving object the frame drew in the world's view or kept as a shadow caster -, shaded from the moby's texture and its lit vertex colours; see-through texels left out, additive glows not in it: [Rendering](rendering.md#ray-tracing-phase-3-the-mobys) |
+
+Medium (RT) and High (RT) are shown only where the renderer can trace (Vulkan, a device with VK_KHR_acceleration_structure, VK_KHR_ray_query,
+bufferDeviceAddress and non-uniform sampled-image indexing); a saved RT value played on OpenGL or another GPU plays as Medium, said
+once in the log (`[reflect] Water Reflections High (RT): ... played as Medium`). The device's ray queries are turned on whenever
+it has them, so the value can be picked during play: the level's acceleration structures are made at the frame it is picked (some
+tens of milliseconds) and kept until the next level; a level loaded with another value makes none. The presets: Low in Low, Medium in Medium and High ([Settings](settings.md#presets)).
+A row of its own rather than Surface Detail's levels: Surface Detail High is the puddles' and metals' picture (and its cost), and the
+water's reflections are wanted without it, or the other way round.
+
+**The planar view (Medium).** After the world is drawn (`mrp_reflect_pass`, `orig_main.cpp`), when a sea tagged `water` was drawn
+still and flat the frame before (`build_vu7` notes each such batch's height and its share of the view: `mrp_reflect_note_water`) and
+the camera is above it: the frame is drawn again into a target of half the 3D's size, through the view times the mirror about the
+plane z = h (the flat height with the largest share of the view; one plane a frame), cut at the water (a clip plane 0.02 below it:
+the posts' feet meet their reflection). It is the shadow pass's way (`sh_clip`): the world point is taken back from the view's clip
+coordinates and drawn through another matrix, `uShPass` 2 (the sky's directions 3, drawn at infinity), so the same batches - tfrag,
+tie, shrub, the sky and the mobys - are drawn again without being made again (`mrp_world_draw_reflect`, `mrp_moby_draw_reflect`; no
+materials, no grass shells in it). Lighter since 2026-11-03 (Daino: Medium "very nice, but a bit heavy"), at the same look:
+- it is drawn unlit (the game's own colours, no modern lighting: blurred in the water the two could not be told apart at Rilgar's
+  harbour, Pokitaru or Rilgar's dock; the shadows and point lights alone cost nothing measurable there, the lighting as a whole a
+  quarter of the stage);
+- only the rectangle of the view the plane's water covers (its batches' triangles, cut at the eye's plane, this frame's and the frame
+  before's, 0.12 of the view wider) is drawn - the projection cropped to it, the rest of the target left empty; about 40 % of the view
+  at Rilgar's harbour and Pokitaru's dock;
+- the ties' and shrubs' instances outside that cropped mirrored view, or wholly under the water, are left out (each instance's world
+  box: its packets' templates' vertex boxes through its rows; the same culling for the probes' faces) - a quarter to a third of their
+  draws.
+Each of these pictures is the same as before to the pixel except the lighting (`RAC1_REFLECT_CULL=0` draws the whole view and every
+instance, to compare). The water reads the planar view as a premultiplied picture (its empty texels weigh in as nothing). The water reads it at its own pixel - the mirror makes the reflection of a point of the plane fall on that point's own
+pixel - moved by the ripples (a gentler slope than the glint's: the finer trains glittered over the reflected lights), less far away,
+over six taps of the half-size picture. Where the water does not lie at the plane (another body, a stream's slope: over 0.08 to 0.35
+units off it, or a face not flat) or the planar view drew nothing there, the cube map.
+
+**The cube maps (Low, and Medium's fallback): fixed probes.** Until 2026-11-03 the cube map was drawn from the camera and drawn
+again over itself as the view turned or moved. Daino at Rilgar's dock by the harbour (the yellow sign post beside Ratchet, looking out):
+"not bad on its own, but it moves and is built wrong" - a cube map seen from the camera holds the post a few units away, and the water
+reads it as if it were as far as the sky: the yellow post lay on the water far out, left of the post itself; and each new drawing, from
+another place, moved the whole reflection at once. Now:
+
+- **Where a probe is: the level's own grid, not the camera.** The ground plan is cut into zones of 128 x 128 units (the world's
+  coordinates: zone `floor(x / 128)`, `floor(y / 128)`), and each body of water is its held-still height (`build_vu7`'s notes, the flat
+  water covering the most of the view, as the planar view's plane). A probe sits at the middle of its zone, 6 units above that height.
+  The zone the camera is in picks the probe (kept until the camera is 16 units past the zone's edge: no back and forth on a border; a
+  body 3 units higher or lower is another probe). Eight probes are kept (the least recently used one is made anew), so walking back into
+  a zone draws nothing again; a new level starts with none.
+- **What a probe holds: the far scenery.** Each face is drawn with its near plane 48 units out, so nothing within a cube of 48 units
+  around the probe is in it - posts, crates, the dock, Ratchet's surroundings; no mobys. The sky has six faces of its own (the sky
+  lies at no distance: one for every probe), read along the reflected ray itself.
+- **When it is drawn: once, then filled in, never drawn over.** A probe is made the first time its zone is the camera's (the world
+  above its water, as the frame holds it). The game's view holds only what it sees, so when the view has turned more than 40 degrees or
+  moved more than 25 units since the probe's last drawing (20 frames apart at least) the frame's world is drawn into it again with its
+  depth kept and the new depth pushed 3 % further back: it lands only where the probe held nothing (or something farther), so what is
+  there never changes - the reflection does not move by itself; it can only gain what was not seen yet. The sky's faces take the
+  frame's sky at the same moments.
+- **How the water reads it** (`sm_refl_probe`, `sm_refl_cube`): the reflected ray from the water's point is met with a sphere of 160
+  units around the probe, and the probe is read toward that point - the scenery is taken as lying at that distance, so it stays in its
+  place on the water as the camera moves, instead of following the camera. Where the probe has nothing, the sky's faces; where they have
+  nothing, the level's sky colour (`sky` in its file), as before.
+- **The far sea on Low** (2026-11-05; Daino on Pokitaru, 5120 x 1440: "Low lontano: il mare diventa una texture uniforme molto
+  brutta"). Two things made the far sea a flat, dark patchwork with stepped edges where Medium shows the sky:
+  - the sky's faces were read by their alpha, which is not what they hold: the sky's layers are blended over each other and the last
+    one's alpha is left in the face - 0 over the lower sky and the horizon's haze, partial between the clouds. The far sea mirrors
+    the sky just above the horizon, so it took the sea's own dark environment colour there. Whatever was drawn in a sky face now
+    counts as held (`sm_refl_sky`; the faces are cleared to black);
+  - past the probe's sphere the ray is read from the probe as it is, and the probe's few rows around its horizon - the islands' and
+    the shores' silhouettes seen from 6 units above the water - were spread over the whole far sea (all its reflected rays rise by a
+    hair): bands of the islands' colours, the cube's 256 texels magnified many times. Scenery the probe holds there lies nearer the
+    probe than the water point itself, and no reflection of it can reach that point: the probe is faded out from 3/4 of its sphere
+    to its edge (`sm_refl_probe_w`), the sky's faces left.
+  The reflected ray is also kept above the horizon, as the trace's is. Medium's cube map (its fallback where the planar view has
+  nothing) is read as before: Medium's picture is the same to the pixel. Medium (RT) and High (RT), where a ray hits nothing, also
+  read the cube map as before: read as Low now does, their far sea mirrored the bright sky as Medium's does, and flickered two to
+  four times as much ([Rendering](rendering.md#the-flickering-line-under-pokitarus-far-islands)).
+
+Cost: nothing a frame (the stage's 0.01 to 0.02 ms: picking the probe); a frame that makes or fills in a probe draws the world five or
+six times at 256 x 256 (a few ms, once). Its 54 faces of 256 x 256 (eight probes' and the sky's), colour and depth: 27 MB of video memory.
+
+**What the game's culling leaves out.** The game culls the world, the sky and the mobys by its own camera: the mirrored view can only
+draw what the frame holds. Measured with `RAC1_REFLECT_DEBUG=1` (the water green where the planar view gave it, red where the planar
+view had nothing, blue the cube map), 25 frames 8 apart while Ratchet walks and jumps (`RAC1_SIM_INPUT=shipwalk`), 1280 x 360:
+
+| Place | Planar view | Planar view empty | Cube map (not at the plane) |
+|---|---|---|---|
+| Rilgar's beach by the start (338, 111, 63) | 96.6 % | 3.3 % | 0.0 % |
+| Rilgar's harbour by the Vendor | 88.0 % | 10.9 % | 1.1 % |
+| Pokitaru's dock, looking down at the sea | 65.9 % | 34.1 % | 0.0 % |
+| Novalis's stream (not flat) | 1.2 % | 5.0 % | 93.9 % |
+What is missing is the part of the mirrored view above the top of the game's view (a camera looking down sees, in the near water, the
+reflection of what is high above): at all three places the sky - the sky's shells are drawn only where the game's view sees them.
+Adding the world the shadow maps alone draw (outside the view, `RAC1_REFLECT_CASTERS=1`) filled none of it (10.86 -> 10.86 %, 34.13 ->
+33.95 %): it is not the world that is missing there. Those pixels show the cube map, or the level's sky colour. Drawing them would
+need the game's sky and world passes run again for the mirrored view (as the LOD slider's and the widened view's shadow runs do,
+`mrp_lod.cpp`, on a journal of the game's memory): not done.
+
+**Measured.**
+The flicker metric (the second difference of each pixel over 60 consecutive frames, 1280 x 360, the pixels where it exceeds a
+baseline's by more than 8), OpenGL, Surface Detail High; SSR the binary before (6826450), "plain" the water with no reflection but
+the sky colour (`RAC1_WATER_REFLECTIONS=0`), Off Surface Detail Off:
+
+| Rilgar's harbour by the Vendor | SSR | Low | Medium |
+|---|---|---|---|
+| Ratchet jumping in front of the water (`RAC1_SIM_INPUT=jump`), against plain water | 564 | 11 | 2 |
+| the same, against Off | 881 | 324 | 291 |
+| walking along the harbour, the camera panning (`seq:2330-2470:lx=-1;2350+5:x;2410+5:x`), against plain water | 3758 | 10327 | 6214 |
+| the same: pixels flashing (up then down by more than 16) a frame, in the whole picture (plain water 15568) | 16140 | 16681 | 16190 |
+
+Standing still and jumping, the hole under Ratchet and its flashing are gone. With the camera moving, the metric counts the
+reflection itself moving with the view: there the SSR found almost nothing (its rays left the picture: the water showed the sky
+colour), Low and Medium show the city; the pixels that flash are as many as with the SSR (Medium) or a few more (Low, whose cube map
+sampled with the ripples glittered: 16219 before the gentler slope, 10327 after). The pictures: OpenGL and Vulkan the same.
+
+GPU time of the Water reflections stage (the profiler's mean over 120 frames, `RAC1_PROFILER_DUMP=120`; integrated Radeon 890M),
+and the frame's GPU time against the SSR before:
+
+| | Low | Medium | GPU busy SSR -> Low / Medium |
+|---|---|---|---|
+| Rilgar's harbour, Vulkan 5120 x 1440 | 0.02 | 1.13 | 8.02 -> 6.23 / 7.32 |
+| Rilgar's harbour, Vulkan 1920 x 1080 | 0.01 | 0.59 | 3.36 -> 3.07 / 3.58 |
+| Rilgar's harbour, OpenGL 5120 x 1440 | 0.02 | 1.92 | 12.16 -> 7.09 / 11.05 |
+| Rilgar's harbour, OpenGL 1920 x 1080 | 0.01 | 0.78 | 3.62 -> 3.35 / 4.12 |
+| Pokitaru's dock, Vulkan 5120 x 1440 | 0.02 | 0.63 | 6.19 -> 5.51 / 6.37 |
+| Pokitaru's dock, Vulkan 1920 x 1080 | 0.01 | 0.28 | 2.86 -> 2.74 / 3.07 |
+| Pokitaru's dock, OpenGL 5120 x 1440 | 0.12 | 1.55 | 9.27 -> 8.26 / 8.84 |
+| Pokitaru's dock, OpenGL 1920 x 1080 | 0.08 | 0.25 | 3.39 -> 3.26 / 3.41 |
+
+The water's own shading got cheaper (its 20 steps through the picture gone: the effects stage 2.5 -> 1.1 ms at Rilgar, 5120 x 1440),
+so Medium costs about what the SSR did and Low less. A frame that draws the cube map again costs a few ms once (the stage's maximum:
+2 to 9 ms).
+
+`RAC1_RAMHASH` through Novalis, Rilgar, Pokitaru and Hoven with Surface Detail High, Low and Medium, OpenGL and Vulkan: the same
+hashes as the binary before.
+
+**Medium made lighter (2026-11-03).** Where the planar view's time went, Vulkan 5120 x 1440 (the stage's mean, ms; each part left
+out in turn): at Rilgar's harbour of 1.15, the ties and shrubs 0.69, the mobys 0.16, the sky 0.08, the tfrags almost nothing, the sun's
+shadows and the point lights nothing measurable; at Pokitaru's dock of 0.63, the ties and shrubs 0.25, the sky 0.23, the mobys 0.07.
+Half the pixels again (1/4) took 0.41 off at Rilgar, so about half is per pixel. Each change, Vulkan 5120 x 1440:
+
+| Change | Rilgar's harbour | Pokitaru's dock |
+|---|---|---|
+| before | 1.15 | 0.62 |
+| the water's rectangle alone and the instances outside it or under the water left out (the same picture) | 1.11 | 0.58 |
+| drawn unlit | 0.85 | 0.48 |
+| (not done: the planar view at 1/3 - the debug menu's Enhancements tab, `RAC1_REFLECT_SCALE=3`; the same look at Rilgar's dock and harbour) | 0.68 | |
+
+The sky was not taken out of the planar view (read from the probes' sky faces instead it changed Pokitaru's near water). Before
+(2aea13d) and after, the stage and the frame's GPU time (the profiler's mean over 120 frames; another program used the GPU at times
+during these runs, so the frame's time is noisy):
+
+| | Medium: the stage | Medium: GPU busy | Low: the stage | Low: GPU busy |
+|---|---|---|---|---|
+| Rilgar's harbour, Vulkan 5120 x 1440 | 1.15 -> 0.85 (-26 %) | 7.74 -> 7.62 | 0.02 -> 0.00 | 6.64 -> 6.74 |
+| Rilgar's harbour, Vulkan 1920 x 1080 | 0.70 -> 0.52 (-25 %) | 3.87 -> 3.57 | 0.01 -> 0.00 | 3.37 -> 3.29 |
+| Rilgar's harbour, OpenGL 5120 x 1440 | 1.35 -> 0.99 (-27 %) | 9.25 -> 10.84 | 0.02 -> 0.01 | 9.38 -> 7.52 |
+| Rilgar's harbour, OpenGL 1920 x 1080 | 0.73 -> 0.56 (-24 %) | 4.23 -> 4.08 | 0.02 -> 0.01 | 4.88 -> 4.91 |
+| Pokitaru's dock, Vulkan 5120 x 1440 | 0.65 -> 0.48 (-26 %) | 6.47 -> 6.29 | 0.02 -> 0.00 | 5.84 -> 5.89 |
+| Pokitaru's dock, Vulkan 1920 x 1080 | 0.28 -> 0.28 | 3.09 -> 3.76 | 0.01 -> 0.00 | 3.07 -> 3.42 |
+| Pokitaru's dock, OpenGL 5120 x 1440 | 1.25 -> 0.96 (-23 %) | 8.47 -> 8.25 | 0.02 -> 0.05 | 7.76 -> 7.81 |
+| Pokitaru's dock, OpenGL 1920 x 1080 | 0.65 -> 0.49 (-25 %) | 4.73 -> 5.07 | 0.01 -> 0.01 | 3.44 -> 3.89 |
+
+A quarter off, not the third asked: what is left is mostly the visible ties' own drawing at half resolution.
+
+**Limits.** One plane a frame (the flat water covering the most of the view; other bodies at other heights get the cube map); no
+reflection of the effects and particles (drawn after it) or of the water itself; a stream or a sloping sea (Novalis's stream, its
+waterfalls) gets the cube map; the probes hold the far scenery alone (a shore within 48 units of a probe is not in it: on Low the water
+near it shows the sky there) and read it as if it lay 160 units away (nearer or farther scenery sits a little off on the water); a
+probe gains what the game's view had not seen as the view turns (the water there turns from the sky to that scenery once); passing
+into another zone changes the probe at once; under the water, the cube map. The planar view is unlit.
+
+## Grass
+
+An option of Options > Graphics, Off (the default), Low or High, on the tfrag textures a level's file tags `grass`, with Graphics:
+Enhanced only (`grass` in the preferences; item 54 of a save's block; `RAC1_GRASS` for testing). It starts from the game's own
+textures - their colours stay the texture's - and adds relief and motion; a texture pack replacing those textures later gets the same
+treatment. Nothing of the game's state changes (proved with `RAC1_RAMHASH`: Novalis with it on, OpenGL and Vulkan, the same hashes as
+with it off).
 
 The `grass` material on a tfrag texture with Grass on. Kept small, as the tester Anya-Thoughtmane and Daino asked: closer to what a
 detail or parallax map does to give the ground depth than to a field.
@@ -239,28 +474,27 @@ detail or parallax map does to give the ground depth than to a field.
 ### Tagging (Anya)
 
 As any material: the Lights tab's surface in hand (the crosshair, a click) or the Textures tab, the type in the combo (`grass`,
-`water`), its sliders live; for water, lava and quicksand also the **Tint**, **Waves**, **Foam** and **Depth** of the Water
-option. A warning says when the option that draws the type is Off. The debug menu's **Enhancements** tab switches every enhancement
-live, with its profiler stage's time (Water: "Water (seas, depth copy)"; Grass: "Grass shells").
+`water`), its sliders live. A warning says when the option that draws the type is Off. The debug menu's **Enhancements** tab switches
+every enhancement live, with its profiler stage's time (Grass: "Grass shells").
 
 Seeded: Veldin (0) the plain's dry grass (tfrag texture 3); Novalis (1) the meadow's grass (tfrag 8); Kerwan (3) the lawn of the start's
-garden (tfrag 23); Rilgar (5) the harbour (surface 879 tex 13040) and the
-canals by the start (surface 831, 13052 and 13120); Pokitaru (11) the sea (surface 1111 tex 13135); Hoven (12) the water (surface 1901
-tex 13323); Novalis (1) all its water, VU1 program 7's strips and tiles (`novalis_water.cpp`), each class's base layer: the water at
-the bottom of the gorge below the start's cliffs with its waterfall (surface 676), the river along the first walk (761), the stream
-and pools of water tiles south-west of the landing pad (751, textures 13347 and 13483), the basins behind the railings at z 82 (678)
-and the three round water columns in the blue cave (1225), all `tex 13347`. The class-0 program-7 surfaces at the landing pad
-(13347, 13351, 13355...) are shadow meshes, not water; a sea's second layer (751's 13415 and 13551, 761's 13483, 1225's 13551...)
-is the same water drawn again, left untagged. Novalis's waterfalls are part of their water's strips: upright, they get the glints,
-the Fresnel and the see-through, not the normal maps (those lie on the flat water).
+garden (tfrag 23); Rilgar (5) the harbour (surface 879 tex 13040, a level texture) and the canals by the start (surface 831, effect
+textures 42 and 41); Pokitaru (11) the sea (surface 1111 tex 22); Hoven (12) the water (surface 1901 tex 47); Novalis (1) all its water,
+VU1 program 7's strips and tiles (`novalis_water.cpp`): the water at the bottom of the gorge below the start's cliffs with its waterfall
+(surface 676), the river along the first walk (761) and the basins behind the railings at z 82 (678), all effect texture 44; the stream
+and pools of water tiles south-west of the landing pad (751: its two base layers, 43 and 41; their second layers, 42 and 40, left as the
+game draws them); the three round water columns in the blue cave (1225, tex 43). The class-0 program-7 surfaces at the landing pad are
+shadow meshes, not water. (The first lines named blocks: 761's 13483 and 13619, 1225's 13483, taken then for second layers, were the
+same water in another block.) Novalis's waterfalls are part of their water's strips.
 
 ## Limits
 
 - Normals are the faces' (flat): a highlight is one facet's, coarse on round low-polygon objects.
-- The reflections are of the last frame (one frame late when the camera turns fast) and of what is on
-  screen; off it, the sky colour.
+- The puddles' and the metals' reflections are of the last frame (one frame late when the camera turns fast) and of what is on
+  screen; off it, the sky colour. The water's: [Water Reflections](#water-reflections).
 - No reflections of the effects and particles drawn after the world (the copy is taken before them).
-- At most 126 emissive surfaces and materials a level, the `classes.txt` lines included (the log says so when there are more).
+- At most 254 emissive surfaces and materials a level, the `classes.txt` lines for the level's classes included (the log says so
+  when there are more).
 - The heat shimmer moves the picture on the lava itself (and a few pixels around its edge), not the air
   above it.
 
@@ -279,28 +513,21 @@ The machine was shared with other GPU work while measuring: the numbers move by 
 runs (Low below Off is that noise). Low costs nothing measurable; High about 0.4 to 1 ms, most of it the copies of
 the picture (colour and depth at the 3D's resolution) and the reflections' 20 steps where puddles fill the screen.
 
-### Water and grass
+### Grass
 
 GPU time per frame from the profiler's stages (`RAC1_PROFILER_DUMP=120`, the last 120 frames; integrated Radeon 890M, Lighting Medium,
-the widened view filling the window). Water: Pokitaru, Ratchet swimming among the deck's posts (the sea fills two thirds of the picture;
-`RAC1_GOTO=11@60 RAC1_SIM_INPUT=shipskip RAC1_HERO_AT=-1@2400,495,430,231,1.98`, frame 2640): with Water Off the seas are drawn in
-"Effects", with it on in "Water" (the seas and the copy of the 3D under them). Grass: Kerwan's garden at the start
-(`RAC1_GOTO=3@60 RAC1_SIM_INPUT=shipskip`, frame 2640; the lawn fills half of the picture).
+the widened view filling the window): Kerwan's garden at the start (`RAC1_GOTO=3@60 RAC1_SIM_INPUT=shipskip`, frame 2640; the lawn
+fills half of the picture).
 
 | | Vulkan 2560 x 1440 | Vulkan 5120 x 1440 | OpenGL 2560 x 1440 | OpenGL 5120 x 1440 |
 |---|---|---|---|---|
-| Seas, Water Off (Effects) | 2.76 | 4.40 | 3.96 | 4.02 |
-| Water Low (Water + Effects) | 4.03 | 7.11 | 5.43 | 6.81 |
-| Water High | 6.02 | 11.13 | 7.70 | 12.31 |
 | Grass Low (World, against Off) | about +0.4 | within the noise | within the noise | within the noise |
 | Grass High (Grass shells, 4), first version | 2.65 | 3.86 | 2.60 | 3.82 |
 | Grass High, the stencil and 40 units (Grass shells) | 2.43 (2.13 before this change, measured alongside) | 4.30 (3.62) | | |
 | Grass High on Novalis's start meadow (Grass shells) | 2.25 (2.28 before) | 3.20 (3.16) | 2.20 (2.22) | 3.65 (3.25) |
 
-The machine was shared while measuring (the OpenGL numbers moved by a millisecond between runs). Water Low costs about 1.3 ms at
-2560 x 1440 and 2.7 at 5120 x 1440 (the normal maps, the depth, the copy); High twice that more (the reflection's ray march over the
-whole sea). The grass shells cost by the pixels of grass near the camera (each shell is shaded where it covers, its cut-outs discarded) and by
-the tfrags' vertices, run again per shell (4 shells cost little less than 6 did: 3.2 ms). The stencil's two passes over the tfrags
+The machine was shared while measuring (the OpenGL numbers moved by a millisecond between runs). The grass shells cost by the
+pixels of grass near the camera (each shell is shaded where it covers, its cut-outs discarded) and by the tfrags' vertices, run again per shell (4 shells cost little less than 6 did: 3.2 ms). The stencil's two passes over the tfrags
 near the camera and the range pushed from 24 to 40 units cost about as much as skipping the lighting of the shells' empty pixels saves:
 on Novalis (`RAC1_GOTO=1@60 RAC1_SIM_INPUT=shipskip`, frame 2640, the meadow) the same as before within the noise, on Kerwan's lawn
 +0.3 ms at 2560 x 1440 and +0.7 at 5120 x 1440 (Vulkan; the OpenGL numbers of the second measure moved by more than that).

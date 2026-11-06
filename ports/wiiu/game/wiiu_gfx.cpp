@@ -438,16 +438,16 @@ void rac1_wiiu_cycle() {
     std::sort(w.prog, w.prog + w.nprog, [](const CycleWindow::Prog& x, const CycleWindow::Prog& y) { return x.ms > y.ms; });
     for (int i = 0; i < std::min(w.nprog, 10); ++i)
         std::printf(" %#x%s %.2f/%.1f,", w.prog[i].pc, w.prog[i].range ? "r" : "", w.prog[i].ms / n, w.prog[i].runs / n);
-    // ((2026-10-31) the lookups of the programs' ports (all threads: RAC1_VU1_LOOKUP), the textures' memo, program 7's kicks read without
+    // ((2026-10-31) the lookups of the programs' ports (all threads: RAC1_PERF_VU1_LOOKUP), the textures' memo, program 7's kicks read without
     // their vertices (RAC1_MRP_VU7_KICK), the fast lane rules (RAC1_VU1_FAST)
     {
         const rac1::vu1::LookupStats ls = rac1::vu1::lookup_stats();
         const uint64_t memo = rac1::gs::local_memory().texture_memo_hits();
         std::printf(" | a cycle: ports' lookups %.1f (ranges hashed %.1f, %.1f KB; images compared %.1f), textures from the memo %.1f, program 7's kicks without "
-                    "their vertices %.1f (%.0f vertices); RAC1_VU1_FAST %s, RAC1_VU1_LOOKUP %s\n",
+                    "their vertices %.1f (%.0f vertices); RAC1_VU1_FAST %s, RAC1_PERF_VU1_LOOKUP %s\n",
                     (ls.misses - g_cw_lookups.misses) / n, (ls.hashed - g_cw_lookups.hashed) / n, static_cast<double>(ls.hashed_bytes - g_cw_lookups.hashed_bytes) / 1024.0 / n,
                     (ls.reused - g_cw_lookups.reused) / n, static_cast<double>(memo - g_cw_tex_memo) / n, w.vu7_kicks / n, w.vu7_verts / n,
-                    std::getenv("RAC1_VU1_FAST") != nullptr ? std::getenv("RAC1_VU1_FAST") : "default", std::getenv("RAC1_VU1_LOOKUP") != nullptr ? std::getenv("RAC1_VU1_LOOKUP") : "default");
+                    std::getenv("RAC1_VU1_FAST") != nullptr ? std::getenv("RAC1_VU1_FAST") : "default", std::getenv("RAC1_PERF_VU1_LOOKUP") != nullptr ? std::getenv("RAC1_PERF_VU1_LOOKUP") : "default");
         g_cw_lookups = ls;
         g_cw_tex_memo = memo;
     }

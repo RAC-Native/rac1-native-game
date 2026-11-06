@@ -197,6 +197,30 @@ became as sharp as the rest, and the 2D stopped remaking its textures every fram
 an optional All Ammo entry, and New Game's Experimental choice turns every graphics enhancement on.
 After a playtest on Linux it was released as 0.6.0 on 28 October.
 
+**28 October to 4 November: 0.7.0.** The reports on 0.6.0 came first: draws that vanished on an Intel
+UHD 620 (#113, wwwyukix96-cyber), a launcher an antivirus took for a threat (#115, MrFrikki0; #122,
+AlryFireBlade), a build broken by a compiler update (#114, B-Nerd), two monitors with the same name
+(#111, Rarder44), and a game folder on an exFAT drive that lost `clang.exe` (#126, #88, EidolonEntropy).
+Anya-Thoughtmane's lighting batch 1 was merged, then batches 2 and 3 and their Test 3 tweaks, which lit
+every level from Blarg to Veldin's finale (#102, #120, #121); MXAO came from their suggestion, and their
+reports and testing went on all week. A quality-of-life round gave the mouse a direct mode and the
+wheel (#117, #61), aiming without the zoom (#70), controller vibration, later with the DualSense's
+adaptive triggers and light bar (#10, Tether1776's request), and Skip Cutscenes; a ship selector and
+Clank's modern movement were tried and taken out again. The water went through four rounds before
+Surface Detail's water was kept and Water Reflections replaced its screen-space mirror; on 3 and 4
+November the reflections were ray traced through the level on Vulkan, the static world first, then
+the mobys too, as Medium (RT) and High (RT). On 1 November mat-f96's Metal renderer for macOS on Apple
+Silicon was merged (#116, #119), and their port found a tfrag timing bug on the other renderers too.
+The options were rebuilt: Display and Graphics as the machine's settings, one Original / Enhanced
+switch with a preset, a Language page with a voice language apart from the text, New Game in two
+steps. Data discs came in: the Japanese disc for its voices, the later discs for their corrected
+texts, and the setup began finding the disc images by itself. The Platinum disc (PAL 2.00), whose
+build moved the executable's core, became a game's disc (#64, TriplaDi; #127, SoraKazooie24), and its
+build's own fixes were ported onto the North American code as options (1.02 Fixes, 1.02 Gameplay).
+The first cut content came back as an option: Kerwan's citizens, then Eudora's Transport Ships from
+the beta build and the citizens' idle (#128, Anya-Thoughtmane). After a playtest on Linux it was
+released as 0.7.0 on 4 November.
+
 ## What came of it
 
 - Five months of trying became one rule: nothing is invented, and every port is checked against the

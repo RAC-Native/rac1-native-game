@@ -29,14 +29,14 @@ layout(std140, set = 1, binding = 0) uniform ShadowUbo {
     vec4 uPtPos[96];
     vec4 uPtCol[96];
     vec4 uPtDown[24];
-    vec4 uEmis[128];
-    vec4 uMat[128];
     mat4 uSsrVP;
     vec4 uSsrZ;
     vec4 uSsrSky;
     vec4 uPtAim[96];
-    vec4 uMat2[128];
 };
+// the slots' table (mrp_lighting.h kEmissiveSlots): uEmis the emissive surfaces, uMat the materials, uMat2 the grass's - 12 KB, a
+// storage buffer of its own (in the UBO it would pass the 16 KB a uniform buffer is guaranteed); MatTable in mrp_lighting.cpp
+layout(std430, set = 1, binding = 7) readonly buffer RacMatTable { vec4 uEmis[256]; vec4 uMat[256]; vec4 uMat2[256]; };
 #define uShCam (uShCam_Pass.xyz)
 #define uShPass (int(uShCam_Pass.w + 0.5))
 #define uShSun (uShSun_On.xyz)
@@ -57,6 +57,7 @@ vec4 sh_clip(vec4 clip) {
     if (uShPass == 0 && uShOn == 0) return clip;
     vec4 wp = uShInvView * vec4(clip.x / uShProj.x, clip.y / uShProj.y, -clip.w, 1.0);
     vShWorld = wp.xyz;
+    if (uShPass == 3) return uShLight * vec4(wp.xyz - uShInvView[3].xyz, 0.0);  // (the water's reflections' sky: a direction)
     if (uShPass != 0) {
         gl_ClipDistance[0] = uShCut.w - dot(wp.xyz, uShCut.xyz);
         return uShLight * vec4(wp.xyz, 1.0);
@@ -116,7 +117,7 @@ vec4 sh_state;
 vec3 sh_n = vec3(0.0, 0.0, 1.0);
 void sh_prepare() {
     sh_state = vec4(1.0, 0.0, -1.0, 0.0);
-    if (uShPass != 0 || uShOn == 0) return;
+    if (uShPass == 1 || uShOn == 0) return;
     vec3 dx = dFdx(vShWorld), dy = dFdy(vShWorld);
     vec3 n = cross(dx, dy);
     float nl = length(n);
@@ -211,7 +212,7 @@ vec3 sh_glow(vec3 lit, vec3 orig, vec3 tex, vec4 e) {
     return mix(lit, max(lit, orig * e.x), m);
 }
 vec3 sh_emissive(vec3 lit, vec3 orig, vec3 tex, uint s) {
-    if (s == 0u || uShOn == 0 || uShPass != 0 || uEmis[0].x == 0.0) return lit;
+    if (s == 0u || uShOn == 0 || uShPass == 1 || uEmis[0].x == 0.0) return lit;
     vec4 e = uEmis[s];
     if (e.w > 0.0) return mix(lit, vec3(1.0, 0.0, 1.0), e.x);
     if (e.z > 0.0 && uMat[0].x != 0.0) return lit;
@@ -486,7 +487,7 @@ layout(push_constant) uniform Push {
     mat4 uVP;
     int uShade;
     int uPass;
-    int _pad0;
+    int uRtMode;  // (RAC1_RT: the ray-traced variant's mode, mrp_rt.h; 0 elsewhere)
     int _pad1;
 };
 """
@@ -544,12 +545,26 @@ void main() {
     bool lin = ((fl >> 18) & 1u) != 0u, rs = ((fl >> 19) & 1u) != 0u, rt = ((fl >> 20) & 1u) != 0u;
     vec4 c = iip ? vColor : vFlat;
     vec3 c_game = c.rgb;
+#ifdef RAC1_RT
+    // (RAC1_RT's half-resolution trace: no surface the 3D hides - its own depth is the seas' alone - and no lighting, the reflection alone)
+    bool rt_half = ((uRtMode >> 6) & 3) == 1;
+    if (rt_half && uMat[0].w != 0.0) {
+        vec2 ouv;
+        float odz = sm_ssr_dz(vShWorld, ouv);
+        if (ouv.x >= 0.0 && odz > 0.5 + 0.03 * length(uShCam - vShWorld)) discard;  // (clearly behind: an edge's own pixels kept)
+    }
+    if (!rt_half)
+#endif
     c.rgb = sh_points(sh_apply_split(c.rgb, c.rgb * 0.45));
     vec4 o = c;
+    // (flag 27: Surface Detail's water put over its texture's average colour where it stands for what lies under it - the average and
+    // the texture's size packed with the layer; dav the change of the colour with the average for the texel)
+    bool wat = ((fl >> 27) & 1u) != 0u;
+    vec3 dav = vec3(0.0);
     if (tme) {
-        ivec2 sz = ivec2(int(vTex.y & 0xffffu), int(vTex.y >> 16));
+        ivec2 sz = wat ? ivec2(int(vTex.y & 0xffu) + 1, int((vTex.y >> 8) & 0xffu) + 1) : ivec2(int(vTex.y & 0xffffu), int(vTex.y >> 16));
         vec2 uv = sh_mat_uv(vStq.xy / vStq.z, vEmis) * vec2(sz);  // (lava, mud, quicksand: the materials' slow flow)
-        int layer = int(vTex.x);
+        int layer = wat ? int(vTex.x & 0xffffu) : int(vTex.x);
         vec4 t;
         if (lin) {
             vec2 p = uv - 0.5;
@@ -569,6 +584,7 @@ void main() {
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
         o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, vEmis);
         o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), vEmis);
+        if (wat) dav = (vec3(float((vTex.x >> 16) & 0xffu), float(vTex.x >> 24), float((vTex.y >> 16) & 0xffu)) / 255.0 - t.rgb) * (tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0));
         if (uShade == 2) o.rgb = t.rgb;
     }
     if (uShade == 1) o.rgb = c.rgb;
@@ -579,12 +595,9 @@ void main() {
         float fw = min(max(vFogW, vFogC.x), vFogC.y);
         float f = float(uint(max(fw, 0.0)) & 0xffu) / 255.0;
         o.rgb = o.rgb * f + fogcol * (1.0 - f);
+        dav *= f;
     }
     float a = o.a * 255.0;
-    uint bk0 = (fl >> 24) & 3u;
-    bool wcomp = sm_w_mode == 1 && (bk0 == 0u || bk0 == 2u);  /* (Options > Graphics > Water: the 3D under it, sm_water2) */
-    float wa = clamp(min(o.a * (255.0 / 128.0), 1.0) * sm_w_alpha + sm_w_add, 0.0, 1.0);
-    if (wcomp) o.rgb = mix(sm_w_refr, o.rgb, wa);
     if (ate) {
         bool pass = true;
         if (atst == 0u) pass = false;
@@ -597,12 +610,23 @@ void main() {
         if (!pass && uPass == 0 && (afail == 0u || afail == 2u)) discard;
         if (!pass && uPass == 1 && afail != 2u) discard;
     }
+#ifdef RAC1_RT
+    if (((uRtMode >> 6) & 3) == 1) {  // (RAC1_RT's half-resolution trace: the reflection and its distance, the water's pixels alone)
+        if (sm_rt_out_d < 0.0) discard;
+        FragColor = vec4(sm_rt_out, sm_rt_out_d);
+        FragFactor = vec4(0.0);
+        return;
+    }
+#endif
     float as = min(o.a * (255.0 / 128.0), 1.0);
-    if (wcomp) as = 1.0;
-    else if (sm_w_mode == 2) as = wa;
     uint bk = (fl >> 24) & 3u;
     if (bk == 1u || bk == 2u) {
-        FragColor = vec4(o.rgb * as, as);
+        vec3 pm = o.rgb * as;
+        if (bk == 2u && wat && sm_w_open > 0.0) {  /* (Surface Detail's water standing for what lies under it: over its own average) */
+            pm += clamp(o.rgb + dav, 0.0, 1.0) * ((1.0 - as) * sm_w_open);
+            as += (1.0 - as) * sm_w_open;
+        }
+        FragColor = vec4(pm, as);
         FragFactor = vec4(bk == 1u ? 1.0 : 1.0 - as);
     } else {
         FragColor = vec4(o.rgb, as);
@@ -610,6 +634,18 @@ void main() {
     }
 }
 """
+
+# RAC1_RT=1 (testing, ray tracing: src/game/render/mrp_rt.h): the surfaces' fragment shader whose water traces its reflection
+# (sm_water_rt) against the level's top level and shades the hit (set 2); GLSL 4.60 for GL_EXT_ray_query, the textures' array indexed
+# per pixel (GL_EXT_nonuniform_qualifier)
+MRP_VU7_FS_RT = MRP_VU7_FS.replace("#version 450\n", "#version 460\n#extension GL_EXT_ray_query : require\n#extension GL_EXT_nonuniform_qualifier : require\n#define RAC1_RT 1\n", 1)
+# its half-resolution trace's variant (mrp_fx.cpp): the depth tested before the shader (the trace pass only shades the nearest sea
+# surface a depth pass left - pass 3 returns at once: that depth pass)
+MRP_VU7_FS_RT_HALF = MRP_VU7_FS_RT.replace("void main() {\n    sh_prepare();",
+                                           "layout(early_fragment_tests) in;\nvoid main() {\n    if (((uRtMode >> 6) & 3) == 3) return;\n    sh_prepare();", 1)
+assert MRP_VU7_FS_RT_HALF != MRP_VU7_FS_RT
+# and the variant reading that trace (RAC1_RT_UPSAMPLE: no ray query left in it, the sea's own registers)
+MRP_VU7_FS_RT_UP = MRP_VU7_FS_RT.replace("#define RAC1_RT 1\n", "#define RAC1_RT 1\n#define RAC1_RT_UPSAMPLE 1\n", 1)
 
 # ---------------------------------------------------------------------------
 # 3. mrp_shadows.cpp shaders
@@ -1169,10 +1205,10 @@ void main() {
 }
 """
 
-def map_depth_taps(src):
-    """the AO shaders' depth taps through uDMap (the view's place in the sampled depth): texture(uDepth, X) -> at X * zw + xy"""
+def map_depth_taps(src, key="texture(uDepth, "):
+    """the AO shaders' depth taps through uDMap (the view's place in the sampled depth): texture(uDepth, X) -> at X * zw + xy
+    (`key`: textureGather(uDepth, as well)"""
     out, k = [], 0
-    key = "texture(uDepth, "
     while True:
         i = src.find(key, k)
         if i < 0:
@@ -1190,6 +1226,199 @@ MRP_AO_FS = map_depth_taps(MRP_AO_FS).replace("vec2 texel = 1.0 / vec2(textureSi
                                               "vec2 texel = 1.0 / (vec2(textureSize(uDepth, 0)) * uDMap.zw);")
 MRP_AO_BLUR_FS = map_depth_taps(MRP_AO_BLUR_FS)
 MRP_AO_BLUR_SEP_FS = map_depth_taps(MRP_AO_BLUR_SEP_FS)
+
+# MXAO (mrp_lighting.cpp kMxaoHead / kMxaoCommon / kMxaoPyrBody / kMxaoBody, the same bodies): the pyramid's level 1 (the averages
+# of level 0's normals and distances, from the depth), then the occlusion from the depth and the pyramid
+MRP_MXAO_HEAD = """#version 450
+layout(location = 0) in vec2 vUv;
+layout(set = 0, binding = 0) uniform sampler2D uDepth;
+// (a uniform buffer, as the occlusion's: 192 bytes, past the push constants' 128)
+layout(std140, set = 0, binding = 1) uniform MxaoUbo {
+    mat4 uVP;
+    vec4 uEye;           // the camera's position (mxao_rays)
+    vec4 uR0, uRx, uRy;  // the camera's rays (mxao_rays)
+    vec4 uParam;   // radius (units), strength, bias (the cosine a tap must pass), mode
+    vec4 uDMap;    // the view's place in uDepth: uv * zw + xy (mrp_lighting.cpp)
+    vec4 uParam2;  // the bounce (0 to 1), the pyramid's last level, level 0's texel (1 / width, 1 / height)
+    vec4 uLin;     // a ray's length to a depth d: 1 / (y + x * (d - 1)); zw level 0's size (width, height)
+};
+"""
+MRP_MXAO_COMMON = """
+// the camera's rays: the ray through a point of the view affine on the screen, scaled so that the view's centre has length 1 - a
+// point is the eye + ray * t, t its depth along the view's axis in those units (mxao_rays: from the inverted view-projection)
+vec3 ray(vec2 uv) { return uR0.xyz + uv.x * uRx.xyz + uv.y * uRy.xyz; }
+// t from the depth: its inverse is affine in the depth (a perspective), taken from the far plane's (no cancellation near it)
+float ray_t(float d) { return 1.0 / max(uLin.y + uLin.x * (d - 1.0), 1e-7); }
+// the depth's view in texels (Vulkan: its place in a bigger image, uDMap), its texel, and its texels per pixel of level 0
+vec2 g_dsz, g_dtx, g_dpp;
+void depth_init() {
+    g_dsz = vec2(textureSize(uDepth, 0));
+    g_dtx = 1.0 / g_dsz;
+    g_dpp = g_dsz / uLin.zw;
+}
+// level 0's pixel p: the depth's texel under its centre (at half resolution the pixel's centre is a corner of four: the first of
+// them, as the rasterizer's interpolated coordinate mostly gave the earlier passes) - its depth,
+// its four neighbours' (two gathers: the texel and the ones after it, the ones before it and the texel), its uv and its point P
+// from the eye
+struct L0 { vec2 uv; float d, dr, dl, du, dd; vec3 P; };
+L0 l0_read(vec2 p) {
+    L0 s;
+    vec2 c = floor((p + 0.5) * g_dpp - 0.25);
+    vec4 g1 = textureGather(uDepth, (c + 1.0) * g_dtx), g0 = textureGather(uDepth, c * g_dtx);
+    s.d = g1.w;
+    s.dr = g1.z;
+    s.du = g1.x;
+    s.dl = g0.x;
+    s.dd = g0.z;
+    s.uv = (c + 0.5) * g_dtx;
+    s.P = ray(s.uv) * ray_t(s.d);
+    return s;
+}
+// (level 0 as RGBA16F kept it: the averages and the occlusion see the same values as from a texture)
+vec4 q16(vec4 v) { return vec4(unpackHalf2x16(packHalf2x16(v.xy)), unpackHalf2x16(packHalf2x16(v.zw))); }
+float q16(float x) { return unpackHalf2x16(packHalf2x16(vec2(x, 0.0))).x; }
+// level 0's normal and distance: the face's normal from the depth, per axis the neighbour with the smaller depth step (as SSAO+: no
+// false ridges at silhouettes; fdx / fdy the step to the pixel beside when both neighbours are sky), toward the camera. The sky and
+// a degenerate face: no normal, far away
+vec4 face(L0 s, vec3 fdx, vec3 fdy) {
+    if (s.d >= 1.0) return vec4(0.0, 0.0, 0.0, 60000.0);
+    vec2 tx = g_dtx, uv = s.uv;
+    float d = s.d;
+    // (per axis the side taken first, then its one point: the step toward it, turned to point along the axis)
+    bool r = abs(s.dr - d) < abs(d - s.dl) && s.dr < 1.0, u = abs(s.du - d) < abs(d - s.dd) && s.du < 1.0;
+    float sx = r ? 1.0 : -1.0, sy = u ? 1.0 : -1.0, nx = r ? s.dr : s.dl, ny = u ? s.du : s.dd;
+    vec3 dPx = nx < 1.0 ? (ray(uv + vec2(sx * tx.x, 0.0)) * ray_t(nx) - s.P) * sx : fdx;
+    vec3 dPy = ny < 1.0 ? (ray(uv + vec2(0.0, sy * tx.y)) * ray_t(ny) - s.P) * sy : fdy;
+    vec3 N = cross(dPx, dPy);
+    if (dot(N, N) < 1e-12) return vec4(0.0, 0.0, 0.0, 60000.0);
+    N = normalize(N);
+    if (dot(N, ray(uv)) > 0.0) N = -N;  // (toward the camera)
+    return vec4(N, ray_t(d));
+}
+"""
+MRP_MXAO_PYR_FS = MRP_MXAO_HEAD + MRP_MXAO_COMMON + """
+layout(location = 0) out vec4 FragPyr;
+void main() {
+    depth_init();
+    vec2 p = floor(vUv * floor(uLin.zw * 0.5)) * 2.0;  // (level 0's first pixel of the four)
+    L0 s[4];
+    for (int i = 0; i < 4; ++i) s[i] = l0_read(p + vec2(i & 1, i >> 1));
+    // (the steps to the pixel beside, as a fragment's derivatives within its 2 x 2: the four are one)
+    vec3 fdx0 = s[1].P - s[0].P, fdx1 = s[3].P - s[2].P, fdy0 = s[2].P - s[0].P, fdy1 = s[3].P - s[1].P;
+    FragPyr = (q16(face(s[0], fdx0, fdy0)) + q16(face(s[1], fdx0, fdy1)) + q16(face(s[2], fdx1, fdy0)) + q16(face(s[3], fdx1, fdy1))) * 0.25;
+}
+"""
+MRP_MXAO_FS = MRP_MXAO_HEAD + """layout(set = 0, binding = 2) uniform sampler2D uPyr;  // (levels 1 to 4: rgb the normals' average, a the distances')
+""" + MRP_MXAO_COMMON + """
+layout(location = 0) out float FragAo;
+// level 0's distance from a depth (as its texture held it), and bilinear at uv (as a texture's tap): at full resolution the four
+// depths one gather, at half resolution four texels apart
+float l0_dist(float d) { return d >= 1.0 ? 60000.0 : q16(ray_t(d)); }
+float l0_dist_at(vec2 uv) {
+    vec2 f = uv * uLin.zw - 0.5, i0 = floor(f), fr = f - i0;
+    vec4 g;
+    if (g_dpp.x == 1.0 && g_dpp.y == 1.0) {
+        g = textureGather(uDepth, (i0 + 1.0) * g_dtx);
+    } else {
+        vec2 hi = uLin.zw - 1.0, a = clamp(i0, vec2(0.0), hi), b = clamp(i0 + 1.0, vec2(0.0), hi);
+        a = (floor((a + 0.5) * g_dpp - 0.25) + 0.5) * g_dtx;
+        b = (floor((b + 0.5) * g_dpp - 0.25) + 0.5) * g_dtx;
+        g = vec4(texture(uDepth, vec2(a.x, b.y)).r, texture(uDepth, b).r, texture(uDepth, vec2(b.x, a.y)).r, texture(uDepth, a).r);
+    }
+    return mix(mix(l0_dist(g.w), l0_dist(g.z), fr.x), mix(l0_dist(g.x), l0_dist(g.y), fr.x), fr.y);
+}
+#define uBias (uParam.z)
+void main() {
+    depth_init();
+    // this pixel's level 0: the face's normal and its distance
+    L0 s0 = l0_read(floor(vUv * uLin.zw));
+    vec3 fdx = dFdx(s0.P), fdy = dFdy(s0.P);  // (before any return: derivatives in non-uniform control flow are undefined)
+    vec4 c0 = q16(face(s0, fdx, fdy));
+    float dist = c0.a;
+    if (dist > 50000.0 || dot(c0.rgb, c0.rgb) < 0.25) { FragAo = 1.0; return; }
+    vec3 Nf = normalize(c0.rgb);  // (the face's own normal)
+    vec3 dir0 = ray(vUv);
+    vec3 P = dir0 * dist;  // (from the eye)
+    dir0 = normalize(dir0);
+    float R = uParam.x * mix(1.0, 2.0, clamp(dist / 120.0, 0.0, 1.0));  // (the reach in world units, wider far away)
+    vec2 tx = uParam2.zw;  // (one texel of level 0)
+
+    // the reach on the screen, in pixels of level 0 (capped: 12 % of the view's height)
+    vec3 side = normalize(cross(dir0, abs(dir0.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0)));
+    vec3 Pw = uEye.xyz + P;
+    vec4 a0 = uVP * vec4(Pw, 1.0), a1 = a0 + uVP * vec4(side * R, 0.0);
+    float rpx = a1.w > 0.0 ? length((a1.xy / a1.w - a0.xy / a0.w) * 0.5 / tx) : 0.0;
+    rpx = min(rpx, 0.12 / tx.y);
+    if (rpx < 1.5) { FragAo = 1.0; return; }
+    // The smooth normal: the face's normal averaged with the pyramid's coarser levels around the point (4 diagonal taps at a
+    // quarter of the reach on the screen, 4 straight ones at half of it, each from a level whose texel is about half that distance:
+    // a wider footprint up close, where a low-poly surface's facets are large), each weighted by how well it continues this
+    // surface - its normal within about 60 degrees of the face's, its point near the face's plane and within the reach - so a
+    // low-poly shrub's or terrain's facets blend into one curved surface while a box's corner or an object in front stays apart.
+    float s1 = clamp(rpx * 0.25, 4.0, 64.0);
+    float lod1 = clamp(floor(log2(s1)) - 1.0, 1.0, max(uParam2.y - 1.0, 1.0));  // (level 1 at least: s1 is 4 pixels or more)
+    vec3 Ns = Nf;
+    float R2 = R * R;
+    for (int i = 0; i < 8; ++i) {
+        float lod = i < 4 ? lod1 : lod1 + 1.0;
+        float o1 = i < 4 ? s1 * 0.7071 : s1 * 2.0;
+        vec2 o = i < 4 ? vec2((i & 1) != 0 ? o1 : -o1, (i & 2) != 0 ? o1 : -o1)
+                       : vec2(i == 4 ? o1 : i == 5 ? -o1 : 0.0, i == 6 ? o1 : i == 7 ? -o1 : 0.0);
+        vec2 uv = vUv + o * tx;
+        // (the weight times the average's length, as the normal's: its share where the level mixed sky or other faces in; the
+        // lengths' square roots and divisions folded away)
+        vec4 s = textureLod(uPyr, uv, lod - 1.0);  // (uPyr's level 0 is level 1)
+        float ls2 = dot(s.rgb, s.rgb);
+        if (ls2 < 0.09 || s.a > 50000.0) continue;
+        vec3 v = ray(uv) * s.a - P;
+        float lv2 = dot(v, v);
+        float off_plane = abs(dot(v, Nf)) * inversesqrt(max(lv2, 1e-8));
+        float w = smoothstep(0.45, 0.85, dot(s.rgb, Nf) * inversesqrt(ls2)) * (1.0 - smoothstep(0.35, 0.6, off_plane)) * step(lv2, R2);
+        Ns += s.rgb * w;
+    }
+    Ns = normalize(Ns);
+
+    // more taps for a reach that covers more of the view (near), fewer far: 4 to 12 (by its share of the view's height, so a higher
+    // resolution does not take more taps)
+    int K = clamp(int(rpx * tx.y * 135.0), 4, 12);
+    float rot = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    float inv_r2 = 1.0 / (R * R);
+    // a surface seen edge-on (a far ceiling or floor) carries the depth buffer's steps, which would read as rows of small ridges: a
+    // higher bias there
+    float bias = mix(uBias, 0.65, smoothstep(0.3, 0.05, abs(dot(Ns, dir0))));
+    float occ = 0.0, wsum = 0.0, ib = 1.0 / (1.0 - bias);
+    for (int i = 0; i < 12; ++i) {
+        if (i >= K) break;
+        // a Vogel disc: the i-th tap at the golden angle from the last, its distance the square root of its share (even over the
+        // disc's area), the whole disc turned per pixel
+        float r = sqrt((float(i) + 0.5) / float(K)) * rpx;
+        float a = float(i) * 2.3999632 + rot;
+        vec2 uv = vUv + vec2(cos(a), sin(a)) * r * tx;
+        if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) continue;
+        // the pyramid's level by the tap's distance on the screen: one level per doubling past 4 pixels (far taps read averages),
+        // the nearest level as a texture's nearest mip would take it (level 0 from the depth)
+        float lod = clamp(log2(r) - 2.0, 0.0, uParam2.y);
+        float sd = lod <= 0.5 ? l0_dist_at(uv) : textureLod(uPyr, uv, ceil(lod + 0.5) - 2.0).a;
+        wsum += 1.0;
+        if (sd > 50000.0) continue;
+        vec3 v = ray(uv) * sd - P;
+        float l2 = dot(v, v);
+        float il = inversesqrt(max(l2, 1e-6));
+        // occluded by the cosine of the tap's direction to the smooth normal past a bias (the smooth surface's own gentle bends,
+        // its facets and its depth noise occlude nothing), fading out to the reach
+        occ += clamp((dot(v, Ns) * il - bias) * ib, 0.0, 1.0) * clamp(1.0 - l2 * inv_r2, 0.0, 1.0);
+    }
+    float vis = clamp(1.0 - uParam.y * occ / max(wsum, 1.0), 0.0, 1.0);
+    // the optional bounce: the light the surroundings send back (a grey approximation, as GTAO's), off unless RAC1_AO_BOUNCE
+    vis = mix(vis, vis / (vis * 0.6 + 0.4), uParam2.x);
+    FragAo = vis;
+}
+"""
+# (the depth's view: its rectangle in the sampled image, in whole texels)
+MRP_MXAO_PYR_FS = map_depth_taps(map_depth_taps(MRP_MXAO_PYR_FS), "textureGather(uDepth, ").replace("g_dsz = vec2(textureSize(uDepth, 0));",
+                                                          "g_dsz = floor(vec2(textureSize(uDepth, 0)) * uDMap.zw + 0.5);")
+MRP_MXAO_FS = map_depth_taps(map_depth_taps(MRP_MXAO_FS), "textureGather(uDepth, ").replace("g_dsz = vec2(textureSize(uDepth, 0));",
+                                                  "g_dsz = floor(vec2(textureSize(uDepth, 0)) * uDMap.zw + 0.5);")
 
 MRP_RAYS_MASK_FS = """#version 450
 layout(location = 0) in vec2 vUv;
@@ -1523,7 +1752,7 @@ void main() {
         vec2 st = vStq.xy / vStq.z;
         vec2 st_dx = dFdx(st), st_dy = dFdy(st);  // (in uniform control flow: the texture level below)
 #ifdef SH_SPLIT
-        st = sh_mat_uv(st, vCmd.w & 127u);
+        st = sh_mat_uv(st, vCmd.w & 255u);
 #endif
         vec4 t;
         if ((w & 1u) != 0u) {
@@ -1555,8 +1784,8 @@ void main() {
         else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_SPLIT
-        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, vCmd.w & 127u);
-        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), vCmd.w & 127u);
+        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, vCmd.w & 255u);
+        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), vCmd.w & 255u);
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }
@@ -1577,7 +1806,7 @@ void main() {
         else if (uAtst == 5) pass = a >= float(uAref);
         else if (uAtst == 6) pass = a > float(uAref);
         else if (uAtst == 7) pass = abs(a - float(uAref)) >= 0.5;
-        if (!pass && uShPass != 0) discard;
+        if (!pass && uShPass == 1) discard;
         if (!pass && uPass == 0 && (uAfail == 0 || uAfail == 2)) discard;
         if (!pass && uPass == 1 && uAfail != 2) discard;
     }
@@ -1772,12 +2001,12 @@ void main() {
     int uTme = int(fl & 1u), uIip = int((fl >> 1) & 1u), uAte = int((fl >> 3) & 1u), uAtst = int((fl >> 4) & 7u), uAref = int((fl >> 8) & 0xffu);
     uint unit = (fl >> 16) & 15u;
 #ifdef SH_POINTS
-    if (uShPass != 0 && uAte == 0) return;
+    if (uShPass == 1 && uAte == 0) return;
 #endif
     vec4 c = uIip != 0 ? vColor : vFlat;
 #ifdef SH_POINTS
     vec3 c_game = c.rgb;
-    float gk = uShell > 0 ? sm_grass((vTex.x >> 25) & 127u, uShell & 255, uShell >> 8) : 1.0;  // (Grass: a shell's blade, -1 none)
+    float gk = uShell > 0 ? sm_grass((vTex.x >> 24) & 255u, uShell & 255, uShell >> 8) : 1.0;  // (Grass: a shell's blade, -1 none)
     if (uShell >= 0 && gk >= 0.0) {
         c.rgb = sh_apply(c.rgb);
         c.rgb = sh_points(c.rgb);
@@ -1792,13 +2021,13 @@ void main() {
         vec2 st = vStq.xy / vStq.z;
         vec2 st_dx = dFdx(st), st_dy = dFdy(st);  // (in uniform control flow: the texture level below)
 #ifdef SH_POINTS
-        st = sh_mat_uv(st, (w >> 25) & 127u);
+        st = sh_mat_uv(st, (w >> 24) & 255u);
 #endif
         vec4 t;
         if ((w & 1u) != 0u) {
             t = vec4(128.0 / 255.0);
         } else {
-            int mips = int((w >> 22) & 7u) + 1;
+            int mips = int((w >> 22) & 3u) + 1;
             t = vec4(0.0);
             for (uint wl = 0u; wl < 16u; ++wl) {  // (16 units at most: bounded, a driver that runs it wrong cannot hang the GPU, #113)
                 uint u = subgroupBroadcastFirst(unit);
@@ -1826,8 +2055,8 @@ void main() {
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_POINTS
         if (uShell >= 0) {
-            o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 25) & 127u);
-            o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 25) & 127u);
+            o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, (w >> 24) & 255u);
+            o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), (w >> 24) & 255u);
         }
         if (uShell > 0) {
             if (gk < 0.0) discard;
@@ -1837,7 +2066,7 @@ void main() {
         if (uShade == 2) o.rgb = t.rgb;
     }
 #ifdef SH_POINTS
-    if (uShell < 0 && !sm_grass_probe((w >> 25) & 127u, min(o.a * (255.0 / 128.0), 1.0), uShell)) discard;  // (the grass's stencil)
+    if (uShell < 0 && !sm_grass_probe((w >> 24) & 255u, min(o.a * (255.0 / 128.0), 1.0), uShell)) discard;  // (the grass's stencil)
 #endif
     if (uShade == 1) o.rgb = c.rgb;
     else if (uShade == 3) o.rgb = vec3(0.8);
@@ -1856,7 +2085,7 @@ void main() {
         else if (uAtst == 5) pass = a >= float(uAref);
         else if (uAtst == 6) pass = a > float(uAref);
         else if (uAtst == 7) pass = abs(a - float(uAref)) >= 0.5;
-        if (uShPass != 0 && !pass) discard;
+        if (uShPass == 1 && !pass) discard;
         if (uAtPass == 1 && !pass) discard;
         if (uAtPass == 2 && pass) discard;
     }
@@ -2087,11 +2316,152 @@ MRP_WORLD_LIT_VS = "#version 460\n#define SH_POINTS 1\n" + MRP_WORLD_VS_BODY
 MRP_WORLD_GPU_LIT_VS = "#version 460\n#define SH_POINTS 1\n" + MRP_WORLD_GPU_VS_BODY
 MRP_WORLD_LIT_FS = "#version 460\n#define SH_POINTS 1\n" + MRP_WORLD_FS_HEADER + MRP_WORLD_FS_BODY
 MRP_WORLD_EARLY_FS = "#version 460\n#define SH_POINTS 1\n" + MRP_WORLD_FS_HEADER + "\nlayout(early_fragment_tests) in;\n" + MRP_WORLD_FS_BODY
+# the base program's first pass of the draws no pixel of which fails the alpha test (RAC1_PERF_OPAQUE, mrp_world_renderer.cpp)
+MRP_WORLD_EARLY_BASE_FS = "#version 460\n" + MRP_WORLD_FS_HEADER + "\nlayout(early_fragment_tests) in;\n" + MRP_WORLD_FS_BODY
 
 # the MRP's 2D (src/game/render/mrp_2d.cpp): the same pixel arithmetic as the GS replica's drawing (the GS's texture functions,
 # alpha test, fogging, the render targets' alpha), the same push block
 MRP_2D_VS = GS_DRAW_VS
 MRP_2D_FS = GS_DRAW_FS
+
+# ---------------------------------------------------------------------------
+# mrp_rt.cpp: the ray tracing's moby pass (Water Reflections High (RT)): the frame's moby draws skinned as the moby vertex shader skins
+# them (mrp_moby_renderer.cpp kVs: the VU0 matrix of <= 3 weighted joints, the s16 truncation, the record's lighting and the EE's
+# colour step), each triangle written in world space (the part's model -> world matrix) for its bottom-level structure, with its
+# shading record (mrp_rt.h RtTri: the corners' texture coordinates, the texture, its density, the corners' lit colours, the word)
+# ---------------------------------------------------------------------------
+MRP_RT_MOBY_CS = """#version 460
+layout(local_size_x = 64) in;
+struct Part {
+    vec4 clip[4];
+    vec4 rows[4];
+    vec4 light[8];
+    vec4 sub;
+    ivec4 info;
+};
+layout(std430, set = 0, binding = 0) readonly buffer Joints { vec4 J[]; };
+layout(std430, set = 0, binding = 1) readonly buffer Parts { Part parts[]; };
+layout(std430, set = 0, binding = 2) readonly buffer Cmds { uvec4 cmds[]; };
+layout(std430, set = 0, binding = 3) readonly buffer Normals { vec2 normals[]; };
+layout(std430, set = 0, binding = 4) readonly buffer Verts { uint V[]; };    /* GpuVertex, 10 words */
+layout(std430, set = 0, binding = 5) readonly buffer Indices { uint I[]; };
+layout(std430, set = 0, binding = 6) readonly buffer Runs { uvec4 runs[]; };  /* first index, triangles, draw command | texture array << 24, first triangle out */
+layout(std430, set = 0, binding = 7) readonly buffer World { mat4 world[]; };
+layout(std430, set = 0, binding = 8) writeonly buffer OutPos { float opos[]; };
+layout(std430, set = 0, binding = 9) writeonly buffer OutTri { uvec4 otri[]; };
+layout(push_constant) uniform Push { uint uTris; uint uRuns; };
+
+vec4 joint_row(uint j, int r, int first, int count) {
+    return int(j) < count ? J[(first + int(j)) * 4 + r] : vec4(0.0);
+}
+void matrix_of(uvec4 jt, uvec4 wt, int first, int count, out vec4 m[4]) {
+    if (jt.w == 1u) {
+        for (int r = 0; r < 4; ++r) m[r] = joint_row(jt.x, r, first, count);
+        return;
+    }
+    if (jt.w == 0u) {
+        for (int r = 0; r < 4; ++r) m[r] = vec4(0.0);
+        return;
+    }
+    float w0 = float(wt.x) * (1.0 / 4096.0) * 16.0, w1 = float(wt.y) * (1.0 / 4096.0) * 16.0, w2 = float(wt.z) * (1.0 / 4096.0) * 16.0;
+    for (int r = 0; r < 4; ++r) {
+        precise vec4 a = joint_row(jt.x, r, first, count) * w0;
+        a = a + joint_row(jt.y, r, first, count) * w1;
+        if (jt.w == 3u) a = a + joint_row(jt.z, r, first, count) * w2;
+        m[r] = a;
+    }
+}
+ivec3 skin_pos(vec4 m[4], ivec3 p) {
+    ivec3 q;
+    for (int l = 0; l < 3; ++l) {
+        precise float a = m[0][l] * float(p.x);
+        a = a + m[1][l] * float(p.y);
+        a = a + m[2][l] * float(p.z);
+        a = a + m[3][l];
+        int i = int(clamp(a, -2147483648.0, 2147483520.0));
+        q[l] = (i << 16) >> 16;
+    }
+    return q;
+}
+int s16(uint w, int hi) { return hi != 0 ? int(w) >> 16 : (int(w << 16) >> 16); }
+/* one vertex: its world position, its lit colour (RGBA8), its texture coordinates */
+void vertex(uint vi, Part P, mat4 W, out vec3 wp, out uint rgba, out vec2 uv) {
+    uint b = vi * 10u;
+    uint w0 = V[b], w1 = V[b + 1u], w2 = V[b + 2u], w3 = V[b + 3u], w4 = V[b + 4u], w5 = V[b + 5u];
+    ivec3 pos = ivec3(s16(w0, 0), s16(w0, 1), s16(w1, 0));
+    uint nb = w1 >> 16;
+    uvec4 jt = uvec4(w2 & 255u, (w2 >> 8) & 255u, (w2 >> 16) & 255u, w2 >> 24);
+    uvec4 wt = uvec4(w3 & 255u, (w3 >> 8) & 255u, (w3 >> 16) & 255u, w3 >> 24);
+    uvec4 rgb = uvec4(w4 & 255u, (w4 >> 8) & 255u, (w4 >> 16) & 255u, w4 >> 24);
+    int first = P.info.x, count = P.info.y;
+    vec4 m[4];
+    matrix_of(jt, wt, first, count, m);
+    ivec3 q = skin_pos(m, pos);
+    vec2 ta = normals[nb & 0xffu], te = normals[(nb >> 8) & 0xffu];
+    precise float nx = ta.x * te.x;
+    precise float ny = ta.y * te.x;
+    float nw = te.y;
+    precise vec4 n = m[0] * nx;
+    n = n + m[1] * ny;
+    n = n + m[2] * nw;
+    precise float len2 = n.x * n.x + n.y * n.y;
+    len2 = len2 + n.z * n.z;
+    float qn = len2 > 0.0 ? 1.0 / sqrt(len2) : 3.4028235e38;
+    precise vec4 d = P.light[0] * n.x;
+    d = d + P.light[1] * n.y;
+    d = d + P.light[2] * n.z;
+    precise vec4 dk = d * (-abs(P.light[6]));
+    d = max(d, dk);
+    precise vec4 a = P.light[3] * d.x;
+    a = a + P.light[4] * d.y;
+    a = a + P.light[5] * d.z;
+    ivec4 col;
+    for (int l = 0; l < 4; ++l) {
+        precise float c = (a[l] == 0.0 ? 0.0 : a[l] * qn) + P.light[7][l] * 1.0;
+        int h = int(floatBitsToUint(c) << 16) >> 16;
+        int pr = clamp(h * int(rgb[l]), -32768, 32767);
+        col[l] = (pr >> 7) & 0xff;
+    }
+    if ((P.info.z & 1) != 0) col = ivec4(P.sub);
+    rgba = uint(col.x & 255) | uint(col.y & 255) << 8 | uint(col.z & 255) << 16 | uint(col.w & 255) << 24;
+    wp = (W * vec4(vec3(q), 1.0)).xyz;
+    uv = vec2(float(s16(w5, 0)), float(s16(w5, 1))) * (1.0 / 4096.0);
+}
+void main() {
+    uint t = gl_GlobalInvocationID.x;
+    if (t >= uTris) return;
+    /* the draw this triangle is of: the last whose first triangle out is <= t */
+    uint lo = 0u, hi = uRuns - 1u;
+    while (lo < hi) {
+        uint mid = (lo + hi + 1u) >> 1;
+        if (runs[mid].w <= t) lo = mid; else hi = mid - 1u;
+    }
+    uvec4 R = runs[lo];
+    uint k = t - R.w;
+    uvec4 cmd = cmds[R.z & 0xffffffu];
+    Part P = parts[cmd.x];
+    mat4 W = world[cmd.x];
+    vec3 p[3];
+    uint c[3];
+    vec2 uv[3];
+    for (int i = 0; i < 3; ++i) vertex(I[R.x + 3u * k + uint(i)], P, W, p[i], c[i], uv[i]);
+    for (int i = 0; i < 3; ++i) {
+        opos[9u * t + 3u * uint(i)] = p[i].x;
+        opos[9u * t + 3u * uint(i) + 1u] = p[i].y;
+        opos[9u * t + 3u * uint(i) + 2u] = p[i].z;
+    }
+    /* the texture's density: log2 sqrt(texture area / area) (the hit's texture level by a ray cone, as the world's clusters' RtTri) */
+    float ta = abs((uv[1].x - uv[0].x) * (uv[2].y - uv[0].y) - (uv[2].x - uv[0].x) * (uv[1].y - uv[0].y));
+    float wa = length(cross(p[1] - p[0], p[2] - p[0]));
+    float dens = ta > 0.0 && wa > 0.0 ? 0.5 * log2(ta / wa) : 0.0;
+    uint bucket = R.z >> 24, w = cmd.y;
+    /* the word in RtTri's form: no texture (bit 0), TFX, TCC; the mip levels - 1 at 22..24 (a moby texture's three bits) */
+    uint word = (w & 15u) | (w & (7u << 22)) | (bucket == 255u ? 1u : 0u);
+    otri[3u * t] = uvec4(floatBitsToUint(uv[0].x), floatBitsToUint(uv[0].y), floatBitsToUint(uv[1].x), floatBitsToUint(uv[1].y));
+    otri[3u * t + 1u] = uvec4(floatBitsToUint(uv[2].x), floatBitsToUint(uv[2].y), bucket | (cmd.z << 8), floatBitsToUint(dens));
+    otri[3u * t + 2u] = uvec4(c[0], c[1], c[2], word);
+}
+"""
 
 SHADERS = [
     ("kGsDrawVs", "vert", GS_DRAW_VS),
@@ -2102,15 +2472,21 @@ SHADERS = [
     ("kMrpFxFs", "frag", MRP_FX_FS),
     ("kMrpVu7Vs", "vert", MRP_VU7_VS),
     ("kMrpVu7Fs", "frag", MRP_VU7_FS),
+    ("kMrpVu7FsRt", "frag", MRP_VU7_FS_RT),
+    ("kMrpVu7FsRtHalf", "frag", MRP_VU7_FS_RT_HALF),
+    ("kMrpVu7FsRtUp", "frag", MRP_VU7_FS_RT_UP),
     ("kMrpShadowsFaceVs", "vert", MRP_SHADOWS_FACE_VS),
     ("kMrpShadowsFaceFs", "frag", MRP_SHADOWS_FACE_FS),
     ("kMrpShadowsDarkVs", "vert", MRP_SHADOWS_DARK_VS),
     ("kMrpShadowsDarkFs", "frag", MRP_SHADOWS_DARK_FS),
     ("kMrpTfragCs", "comp", MRP_TFRAG_CS),
+    ("kMrpRtMobyCs", "comp", MRP_RT_MOBY_CS),
     ("kMrpAoVs", "vert", MRP_AO_VS),
     ("kMrpAoFs", "frag", MRP_AO_FS),
     ("kMrpAoBlurFs", "frag", MRP_AO_BLUR_FS),
     ("kMrpAoBlurSepFs", "frag", MRP_AO_BLUR_SEP_FS),
+    ("kMrpMxaoPyrFs", "frag", MRP_MXAO_PYR_FS),
+    ("kMrpMxaoFs", "frag", MRP_MXAO_FS),
     ("kMrpRaysMaskFs", "frag", MRP_RAYS_MASK_FS),
     ("kMrpRaysBlurFs", "frag", MRP_RAYS_BLUR_FS),
     ("kMrpRaysSplitFs", "frag", MRP_RAYS_SPLIT_FS),
@@ -2131,6 +2507,7 @@ SHADERS = [
     ("kMrpWorldGpuLitVs", "vert", MRP_WORLD_GPU_LIT_VS),
     ("kMrpWorldLitFs", "frag", MRP_WORLD_LIT_FS),
     ("kMrpWorldEarlyFs", "frag", MRP_WORLD_EARLY_FS),
+    ("kMrpWorldEarlyBaseFs", "frag", MRP_WORLD_EARLY_BASE_FS),
 ]
 
 
@@ -2170,12 +2547,15 @@ def main():
     # Usage: gen_vk_shaders.py <out_dir> [<glslc or glslangValidator>]
     # Writes <out_dir>/runtime/vk/vk_shaders.h (the arrays' declarations, with their sizes) and <out_dir>/vk_shaders.cpp
     # (their SPIR-V). Without a compiler the arrays are one word each and kAvailable is false: the renderer then does not
-    # start (vk::init fails, the game stays on OpenGL).
+    # start (vk::init fails, the game stays on OpenGL). With "metal" for the compiler (macOS, docs/metal.md): the arrays are
+    # one word each and kAvailable is true - the Metal renderer runs the same code, its shaders known by these arrays'
+    # addresses (runtime/mtl/vk_on_metal.mm), their MSL made by tools/gen_metal_shaders.py.
     if len(sys.argv) < 2:
         print("usage: gen_vk_shaders.py <out_dir> [glslc|glslangValidator]", file=sys.stderr)
         sys.exit(2)
     out_dir = sys.argv[1]
     compiler = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] and not sys.argv[2].endswith("NOTFOUND") else ""
+    metal = compiler == "metal"
     header = [
         "// Generated by tools/gen_vk_shaders.py at build time - not in the repository",
         "#pragma once",
@@ -2183,7 +2563,7 @@ def main():
         "",
         "namespace rac1::vk::shaders {",
         "",
-        f"inline constexpr bool kAvailable = {'true' if compiler else 'false'};",
+        f"inline constexpr bool kAvailable = {'true' if compiler else 'false'};",  # (metal: true)
         "",
     ]
     body = [
@@ -2194,7 +2574,7 @@ def main():
         "",
     ]
     for name, stage, src in SHADERS:
-        if compiler:
+        if compiler and not metal:
             spv = compile_shader(compiler, name, stage, src)
             assert len(spv) % 4 == 0
             words = struct.unpack(f"<{len(spv) // 4}I", spv)
@@ -2209,6 +2589,9 @@ def main():
     body += ["", "}  // namespace rac1::vk::shaders", ""]
     write_if_changed(os.path.join(out_dir, "runtime", "vk", "vk_shaders.h"), "\n".join(header))
     write_if_changed(os.path.join(out_dir, "vk_shaders.cpp"), "\n".join(body))
+    if metal:
+        print(f"[vk] {len(SHADERS)} shaders: the Metal renderer's (tools/gen_metal_shaders.py)")
+        return
     print(f"[vk] {len(SHADERS)} shaders {'compiled with ' + compiler if compiler else 'left out (no glslc / glslangValidator found): the Vulkan renderer will not start'}")
 
 

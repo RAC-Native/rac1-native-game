@@ -10,5 +10,97 @@ noauto 1558
 # slowly in the air's currents (calmer, after Daino's playtest); rising faster than Umbris's: the lava sea lies deep below the
 # platforms.
 particles embers 1.5  source lava  rise 1.6
-particles ash 0.6  source lava  rise 1
-particles embers 1  1 0.714 0.247  source lava
+particles ash 2.06  0.217 0.217 0.217  rise 1
+particles embers 1.83  1 0.714 0.247  source lava
+emit moby 1849  0.056 -0.064 5.192  0.475 0.867 1.000  2.639 3.025 0.000  0.00  joint 0
+emit moby 1151  -0.052 0.049 0.053  0.664 0.958 1.000  1.482 5.089 0.000  0.00  joint 0
+emit shrub 346  -22.468 0.915 1.032  0.484 0.889 0.991  1.000 8.000 0.000  0.00
+emissive surface 317 tex 12875  1.37 0.00
+emissive surface 317 tex 12811  1.57 0.00
+material moby 1151 tex 0 metal 0.45 1
+material moby 1151 tex 1 metal 0.45 1
+material moby 1151 tex 2 metal 0.49 1
+emissive moby 1151 tex 4  1.66 0.39
+material tie 166 tex 3 metal 0.48 0.65
+emissive tie 75 tex 0  2.81 0.41
+emissive tfrag 0 tex 21  2.49 0.43
+material tie 1560 tex 0 metal 0.35 1
+material tfrag 0 tex 20 metal 0.35 1
+material tfrag 0 tex 19 metal 0.35 1
+material tie 1538 tex 1 metal 0.46 1
+emissive shrub 339 tex 1  1.49 0.00
+emissive shrub 339 tex 0  1.54 0.00
+material tie 171 tex 5 metal 0.35 1
+material tfrag 0 tex 16 metal 0.35 1
+material tfrag 0 tex 36 metal 0.35 1
+material shrub 334 tex 2 metal 0.35 1
+material shrub 334 tex 3 metal 0.35 1
+material shrub 334 tex 1 metal 0.35 1
+material shrub 334 tex 0 metal 0.35 1
+material tfrag 0 tex 32 metal 0.5 1
+emissive shrub 333 tex 0  3.91 0.34
+material moby 664 tex 0 metal 0.75 1
+material moby 664 tex 1 metal 0.35 1
+material moby 664 tex 3 metal 0.35 1
+material moby 664 tex 6 metal 0.56 1
+material moby 664 tex 7 metal 0.35 0.49
+material moby 664 tex 8 metal 0.35 0.58
+material tie 1571 tex 1 metal 0.47 1
+material tfrag 0 tex 43 metal 0.35 1
+material tfrag 0 tex 29 metal 0.48 1
+material moby 1172 tex 0 metal 0.35 1
+material moby 1172 tex 4 metal 0.35 1
+material moby 1172 tex 6 metal 0.35 1
+material moby 1172 tex 8 metal 0.35 1
+material moby 1172 tex 10 metal 0.35 1
+material tie 66 tex 0 metal 0.35 1
+material tfrag 0 tex 22 metal 0.51 1
+material tfrag 0 tex 15 metal 0.35 1
+material tfrag 0 tex 17 metal 0.35 1
+material tie 1524 tex 5 metal 0.42 1
+emissive moby 275 tex 0  2.23 0.36
+material moby 275 tex 2 metal 0.35 1
+material moby 275 tex 4 metal 0.35 1
+material moby 275 tex 11 metal 0.35 1
+material moby 275 tex 7 metal 0.35 1
+material moby 275 tex 5 metal 0.35 1
+material tfrag 0 tex 23 metal 0.35 1
+material tfrag 0 tex 24 metal 0.35 1
+emissive shrub 346 tex 2  2.19 0.00
+material tie 63 tex 2 metal 0.35 1
+material moby 1165 tex 0 metal 0.35 1
+material moby 1162 tex 0 metal 0.35 1
+material moby 1166 tex 0 metal 0.35 1
+material tfrag 0 tex 39 metal 0.35 1
+material shrub 347 tex 0 metal 0.35 1
+material tie 1559 tex 1 metal 0.35 1
+material tfrag 0 tex 42 metal 0.35 1
+emissive moby 276 tex 3  2.58 0.00
+material moby 276 tex 2 metal 0.35 1
+material moby 276 tex 1 metal 0.35 1
+material moby 276 tex 0 metal 0.35 1
+material moby 276 tex 4 metal 0.35 1
+material moby 1201 tex 0 metal 0.35 1
+material moby 1201 tex 1 metal 0.35 1
+material moby 1201 tex 2 metal 0.35 1
+material moby 1201 tex 3 metal 0.35 1
+material tie 10 tex 2 metal 0.35 1
+material tie 1575 tex 0 metal 0.46 1
+material tie 1529 tex 1 metal 0.35 1
+emissive tie 1621 tex 0  2.10 0.40
+emissive tfrag 0 tex 51  2.12 0.38
+material tie 22 tex 0 metal 1 1
+material tie 129 tex 0 metal 1 1
+material tie 24 tex 0 metal 1 1
+material tie 121 tex 0 metal 1 1
+material tie 1533 tex 0 metal 1 1
+material tie 1526 tex 0 metal 1 1
+material tie 120 tex 0 metal 1 1
+material tfrag 0 tex 0 metal 1 0.37
+material tfrag 0 tex 4 metal 1 0.36
+material tfrag 0 tex 1 metal 1 0.36
+material tfrag 0 tex 2 metal 1 0.36
+material tfrag 0 tex 3 metal 1 0.36
+material tfrag 0 tex 7 metal 1 0.36
+material tfrag 0 tex 6 metal 1 0.36
+material tie 1524 tex 1 metal 0.44 1

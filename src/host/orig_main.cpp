@@ -14,7 +14,7 @@
 //   RAC1_LEVEL=N (testing: start on level N)  RAC1_GOTO=N@F[,N2@F2..] (testing: the game's level change to N at frame F,
 //   as the debug menu's Levels tab asks it; during the boot (RAC1_BOOT=1):
 //   its title left for level N, the debug menu's skip)
-//   RAC1_LANGUAGE=0|2|3|4|5 (testing: the language)  RAC1_HEADLESS=1  RAC1_FRAMES=N  RAC1_SIM_INPUT=forward|jump|dive|turn|attack|throw|hud|quick|fire|shoot|hold|holdwalk|look|start|menu:<keys>|title:<keys>|ship|shipskip|vendor|seq:<script> (sim_script.h)   (testing)
+//   RAC1_LANGUAGE=0|2|3|4|5 (testing: the language)  RAC1_HEADLESS=1  RAC1_FRAMES=N  RAC1_SIM_INPUT=forward|jump|dive|turn|attack|throw|hud|quick|fire|shoot|hold|holdwalk|look|start|menu:<keys>|title:<keys>|ship|shipskip|shipwalk|shipturn|vendor|seq:<script> (sim_script.h)   (testing)
 //   RAC1_AUDIO_DUMP=file.raw (the sound output, 48 kHz stereo s16; RAC1_AUDIO_CHANNELS=6 / 8: 5.1 / 7.1, interleaved)  RAC1_NO_AUDIO=1  RAC1_SND_TRACE=1
 // RAC1_FADES=original|fast (the screen fade shown frame by frame as on the PS2, or run in one host frame: the default)
 // RAC1_HOST_DELAY_MS=n, RAC1_STEPS=n, RAC1_AUDIO_DEVICE=1 (testing: each host frame n ms longer; n game frames
@@ -91,6 +91,7 @@
 #include <game/ovl/cutscene.h>
 #include <game/ovl/game_skips.h>
 #include <game/ovl/level_change.h>
+#include <game/ovl/region_core.h>
 #include <game/ovl/movie_mode.h>
 #include <game/ovl/veldin_mobys.h>
 #include <game/ovl/ovl.h>
@@ -112,6 +113,8 @@
 #include <game/render/mrp_scene.h>
 #include <game/render/mrp_lighting.h>
 #include <game/render/mrp_particles.h>
+#include <game/render/mrp_reflect.h>
+#include <game/render/mrp_rt.h>
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_shadows.h>
 #include <game/render/mrp_2d.h>
@@ -142,6 +145,7 @@
 #include <runtime/gs/static_geom_cache.h>
 #include <runtime/vk/vk_context.h>
 #include <runtime/iop/snd989_iop.h>
+#include <game/enhance/voice_language.h>
 #include <runtime/iop/snd989_stream.h>
 #include <runtime/iop/stash_iop.h>
 #include <runtime/ipu/movie_hw.h>
@@ -181,6 +185,7 @@ extern std::vector<std::pair<uint32_t, uint32_t>> g_world_pass_ranges;
 #include "sim_script.h"
 #include "update_check.h"
 #include "progress.h"
+#include "vk_safety.h"
 #include <_devtools/item_give_quiet.h>  // (header only: also without the dev tools)
 #ifdef RAC1_DEVTOOLS
 #include <_devtools/dev_menu.h>
@@ -212,6 +217,7 @@ void level_started_hold_sound() {
 void audio_out_step(bool in_step);
 namespace rac1 {
 void gs_texture_cache_clear();  // runtime/gs/gs_renderer.cpp (its header clashes with gs_emu.h)
+void world_cull_check_report();  // src/game/ovl/world_cull_fast.cpp (testing: RAC1_WORLD_CULL_FAST=2's counts)
 }
 void audio_out_stop();
 
@@ -269,6 +275,8 @@ __attribute__((constructor(101))) void debug_tools_gate(int argc, char** argv, c
 double g_prof_vu_moby_ms = 0;  // the moby VU1 programs' own time inside the GS chain stage (RAC1_FRAME_PROF)
 static int s_mrp_skip_mode = 1;  // orig: (host) RAC1_MRP_SKIP, see main()
 static int s_moby_pass_mrp_mode = 0;  // orig: (host) RAC1_MOBY_PASS_MRP (moby_pass.h g_moby_pass_mrp: 1 on, 2 verify), see main()
+static bool s_mrp_skip_flight = true;  // orig: (host) RAC1_MRP_SKIP_FLIGHT: the skip also in the loading screen's flight, see main()
+static unsigned s_mrp_skip_parts = 0xf;  // orig: (host) the skip's parts asked (RAC1_MRP_SKIP_PARTS); the flight's: the skinning's alone
 
 // A vsync passed: the main loop's vsync at the end of each game frame, and each vsync wait of a blocking
 // loop (the screen fade's, shown or not; the start's: ee_thread_set_vsync_hook). What runs on the PS2's vsyncs runs
@@ -2063,7 +2071,17 @@ void pad_packet(GLFWwindow* win, uint64_t frame, int pre = -1) {
             // (game mode 2 before frame 1000); "shipskip": Start also skips every later cutscene, the movies and the level exit's story
             // (every game mode but 0 and 3)
             const int32_t md = lw(OV(0x0015f5c4));
-            const bool all = std::strcmp(sim, "shipskip") == 0;
+            const bool all = std::strcmp(sim, "shipskip") == 0 || std::strcmp(sim, "shipwalk") == 0 || std::strcmp(sim, "shipturn") == 0;
+            // "shipturn": shipskip, then from game frame 2340 the camera turns (the right stick at half) while Ratchet stands (testing: the
+            // water's reflections with the view turning)
+            if (std::strcmp(sim, "shipturn") == 0 && frame >= 2340 && md == 0) rx = 0.5f;
+            // "shipwalk": shipskip, then from game frame 2340 Ratchet walks forward, turning a little, and jumps every 60 frames
+            // (testing: the water's reflections with Ratchet moving past it)
+            if (std::strcmp(sim, "shipwalk") == 0 && frame >= 2340 && md == 0) {
+                ly = -1.0f;
+                lx = 0.25f;
+                if ((frame - 2340) % 60 < 5) held |= 0x0040;
+            }
             if (all) {
                 if (md != 0 && md != 3 && frame % 20 == 0) held |= 0x0800;  // one frame a press, never in gameplay (the pause menu)
             } else if (md == 2 && frame < 1000 && frame % 20 < 4) {
@@ -2487,6 +2505,7 @@ int main(int argc, char** argv) {
     // reads from the disc).
     RAC1_WIIU_TRACE("init_memory");
     init_memory();
+    rac1::region_core_load();  // (another build's core, the PAL disc 2.00's: at the NTSC-U addresses the ports read; game/ovl/region_core.h)
     RAC1_WIIU_TRACE("memory");
     g_ee_null_is_ram = true;
     g_view_from_game = true;
@@ -2553,21 +2572,56 @@ int main(int argc, char** argv) {
     const int env_fps_cap = std::getenv("RAC1_FPS_CAP") != nullptr ? std::atoi(std::getenv("RAC1_FPS_CAP")) : -1;
     GLFWwindow* window = nullptr;
     // Options > Graphics > Renderer (RAC1_RENDERER=vulkan): the Vulkan renderer (docs/vulkan.md), read once, here; OpenGL when
-    // Vulkan cannot start (no driver, no Vulkan 1.3, the build without its shaders)
-    if (!no_graphics && rac1::graphics_display().vulkan) {
+    // Vulkan cannot start (no driver, no Vulkan 1.3, no device with what it needs, the build without its shaders) or when the
+    // last Vulkan run crashed in its start or lost its GPU (vk_safety.h: chosen by the row only). The reason in the log's
+    // "[renderer]" line (the launcher shows it) and in the Renderer row
+    // (the row never chosen, `renderer auto`, the default: Vulkan in a window, OpenGL headless - the tests' renderer;
+    // RAC1_RENDERER=auto: the same path headless too, safety net included)
+    const char* renderer_env = std::getenv("RAC1_RENDERER");
+    const bool vk_auto = rac1::graphics_display().vulkan_auto;
+    bool want_vk = !no_graphics && (rac1::graphics_display().vulkan || (vk_auto && !headless));
+    const bool vk_by_row = want_vk && (renderer_env == nullptr || vk_auto);
+    rac1::RendererWhy renderer_why = rac1::RendererWhy::kNone;
+    std::string renderer_text;
+    rac1::vk_safety::start(headless);
+    rac1::graphics_set_renderer_chosen_hook(rac1::vk_safety::cleared);
+    if (vk_by_row) {
+        const rac1::vk_safety::Marker m = rac1::vk_safety::found(&renderer_text);
+        if (m != rac1::vk_safety::Marker::kNone) {
+            want_vk = false;
+            renderer_why = m == rac1::vk_safety::Marker::kDeviceLost ? rac1::RendererWhy::kDeviceLost : rac1::RendererWhy::kStartFailed;
+            renderer_text += ". Options > Display > Renderer: choose Vulkan again to try it";
+        }
+    }
+    if (want_vk) {
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         window = glfwCreateWindow(win_w0, win_h0, "Ratchet & Clank - original runtime", fs_monitor, nullptr);
         const bool vsync0 = !headless && (env_vsync >= 0 ? env_vsync != 0 : rac1::graphics_display().vsync);
+        if (vk_by_row) rac1::vk_safety::starting();
         if (window != nullptr && rac1::vk::init(window, vsync0, headless)) {
             if (!headless && fs_monitor == nullptr) host_window_on_monitor(window, rac1::graphics_display().monitor);
+            if (vk_by_row) rac1::vk::set_device_lost_hook(rac1::vk_safety::device_lost);
+            if (vk_auto) std::printf("[renderer] auto: Vulkan (Options > Display > Renderer to choose)\n");
         } else {
-            std::fprintf(stderr, "rac1-native: Vulkan could not start, OpenGL instead\n");
+#if defined(__APPLE__)
+            std::fprintf(stderr, "rac1-native: Metal could not start\n");  // (no OpenGL 4.6 on macOS)
+            return 1;
+#endif
+            rac1::vk_safety::start_over();  // (vk::init's own checks: they fall back at every start)
+            // (vk::InitFailure's kinds are RendererWhy's 1..6, in its order)
+            static_assert(static_cast<int>(rac1::vk::InitFailure::kNoShaders) == static_cast<int>(rac1::RendererWhy::kNoShaders) &&
+                          static_cast<int>(rac1::vk::InitFailure::kOther) == static_cast<int>(rac1::RendererWhy::kOther), "RendererWhy follows vk::InitFailure");
+            renderer_why = window == nullptr ? rac1::RendererWhy::kOther : static_cast<rac1::RendererWhy>(static_cast<int>(rac1::vk::init_failure()));
+            renderer_text = window == nullptr ? std::string("no window for Vulkan") : rac1::vk::init_failure_text();
+            if (renderer_why == rac1::RendererWhy::kNone) renderer_why = rac1::RendererWhy::kOther;
             if (window != nullptr) glfwDestroyWindow(window);
             window = nullptr;
-            rac1::graphics_set_vulkan(false);
             glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
         }
     }
+    if (renderer_why != rac1::RendererWhy::kNone)
+        std::fprintf(stderr, "[renderer] OpenGL instead of Vulkan: %s\n", renderer_text.empty() ? "Vulkan could not start" : renderer_text.c_str());
+    rac1::graphics_set_renderer_running(window != nullptr, renderer_why);
     const bool gl_host = !no_graphics && window == nullptr;  // (the OpenGL renderer: the default)
     if (gl_host) {
         window = glfwCreateWindow(win_w0, win_h0, "Ratchet & Clank - original runtime", fs_monitor, nullptr);
@@ -2668,6 +2722,10 @@ int main(int argc, char** argv) {
         const char* ms = std::getenv("RAC1_MRP_SKIP");
         s_mrp_skip_mode = ms == nullptr ? 1 : std::string(ms) == "verify" ? 2 : std::atoi(ms) != 0 ? 1 : 0;
         if (const char* pp = std::getenv("RAC1_MRP_SKIP_PARTS")) g_moby_mrp_skip_parts = static_cast<unsigned>(std::strtoul(pp, nullptr, 16));
+        // the loading screen's flight between the planets: its ship and planets are the MRP's (the flight/ assets), so the skip
+        // holds there too - the VU0 skinning was nearly all of the flight's frame (RAC1_MRP_SKIP_FLIGHT=0: skinned, as before)
+        if (const char* mf = std::getenv("RAC1_MRP_SKIP_FLIGHT")) s_mrp_skip_flight = std::atoi(mf) != 0;
+        s_mrp_skip_parts = g_moby_mrp_skip_parts;
         if (std::getenv("RAC1_MRP_DIFF") || std::getenv("RAC1_MRP_CHECK") || std::getenv("RAC1_MRP_SCENE_CHECK") || s_moby_diff) s_mrp_skip_mode = 0;
         // the MRP-only moby pass (moby_pass.h): RAC1_MOBY_PASS_MRP=1 (a Wii U default) / 0 (off, the default) / verify (the chain written
         // too, the parts given compared with the decoded ones)
@@ -2853,6 +2911,7 @@ int main(int argc, char** argv) {
     rac1::host_priority_set_enabled(!headless);  // (rtkit's priorities in a window; RAC1_PRIORITY=0 / 1 decides)
     if (want_audio && !audio_out_start(advanced_audio_channels())) snd989_mirror_disable();
     g_advanced_audio_reopen = audio_out_set_channels;  // (Options > Sound: 5.1 / 7.1 / stereo)
+    g_snd989_bank_filter = voice_level_bank;            // (the Japanese voices' level banks: voice_language.h)
     if (!boot) {
         if (!boot_loader_run([&] {
                 if (!toc_read() || !level_header_read(level) || !level_files_read()) return false;
@@ -3303,17 +3362,22 @@ int main(int argc, char** argv) {
                 {  // the MRP skips what only the GS / VU1 path needs: asked
                    // before the update, for a frame the MRP will draw (not the title on the PC, the level exit, a movie, the debug diffs)
                     int mw0 = 0, mh0 = 0;
-                    // (not on the Vendor's screens, game mode 5 once the picture is stored: their frames over it are drawn by the GS path)
+                    // (not on the Vendor's screens, game mode 5 once the picture is stored: their frames over it are drawn by the GS path;
+                    // in the level exit only in the loading screen's flight, which the MRP draws: s_mrp_skip_flight)
+                    // In the flight only the skinning and the host's walk of its chain tags (parts 1 and 8): the sub-mesh fill and the
+                    // texture slots are cheap there and write the flight's class data, kept as they were. The game state is then the
+                    // same but for the bytes only the GS / VU1 path reads: the scratchpad and the frame's packets during the flight,
+                    // and after it the packet ring's parts that the next level's own skipped mobys leave unwritten (the flight's
+                    // skinned vertices before, older bytes now) - RAMHASH differs in those pages only.
+                    const bool skip_exit = !exiting || (s_mrp_skip_flight && level_exit_loading_screen());
+                    g_moby_mrp_skip_parts = exiting ? s_mrp_skip_parts & 9u : s_mrp_skip_parts;
 #if defined(__WIIU__)
-                    // ((2026-11-02) and the level exit's flight: the MRP draws its mobys from the flight's assets - the VU0 skinning of the
-                    // ship's frames was 89% of a flight step, ~80 ms on the console: the flight at ~11 game frames a second)
-                    const bool flight_now = exiting && level_exit_loading_screen();
-                    g_moby_mrp_skip = s_mrp_skip_mode != 0 && (mrp_moby_ready() || no_graphics_skip) && (!boot_active() || boot_in_title()) && (!exiting || flight_now) &&
-                                      movie_hw_shown(mw0, mh0) == nullptr && (lw(OV(0x0015f5c4)) != 5 || (lw(OV(0x001ca4c8)) == 0 && !ee_thread_suspended()));
+                    const bool skip_boot = !boot_active() || boot_in_title();  // (the Wii U: the title screen's too, which the MRP draws)
 #else
-                    g_moby_mrp_skip = s_mrp_skip_mode != 0 && (mrp_moby_ready() || no_graphics_skip) && !boot_active() && !exiting && movie_hw_shown(mw0, mh0) == nullptr &&
-                                      (lw(OV(0x0015f5c4)) != 5 || (lw(OV(0x001ca4c8)) == 0 && !ee_thread_suspended()));
+                    const bool skip_boot = !boot_active();
 #endif
+                    g_moby_mrp_skip = s_mrp_skip_mode != 0 && (mrp_moby_ready() || no_graphics_skip) && skip_boot && skip_exit && movie_hw_shown(mw0, mh0) == nullptr &&
+                                      (lw(OV(0x0015f5c4)) != 5 || (lw(OV(0x001ca4c8)) == 0 && !ee_thread_suspended()));
                     g_moby_mrp_skip_verify = g_moby_mrp_skip && s_mrp_skip_mode == 2;
                     // the MRP-only moby pass: with every skip on (the host's chain processing skipping the mobys' ranges)
                     g_moby_pass_mrp = s_moby_pass_mrp_mode != 0 && g_moby_mrp_skip && (g_moby_mrp_skip_parts & 0xf) == 0xf && !g_moby_mrp_skip_verify;
@@ -4431,9 +4495,16 @@ int main(int argc, char** argv) {
                         if (mrp_moby_active()) mrp_moby_prepare(&fd.gv);  // (the modern lighting: the mobys cast too)
                     }
                     mrp_lighting_shadow_pass();
-                    RAC1_PROF_ZONE(kWorld);
-                    mrp_world_draw(w, h, &wv);
+                    {
+                        RAC1_PROF_ZONE(kWorld);
+                        mrp_world_draw(w, h, &wv);
+                    }
                     world_3d = !fd.exiting && !story;
+                    if (world_3d) {  // (Options > Graphics > Water Reflections: the planar view, the cube map; nothing unless the water asks)
+                        const int rvp[4] = {wv.x, wv.y, wv.w, wv.h};
+                        mrp_reflect_pass(rvp);
+                        mrp_rt_frame();  // (Water Reflections (RT): the ray tracing's top level for the seas' reflections)
+                    }
                 } else if (!g_world_faithful && !rac1::vk::is_active()) {
                     tfrag_render_update();  // (g_world_faithful: the world comes from the frame's VU1 chain)
                 }
@@ -4512,13 +4583,8 @@ int main(int argc, char** argv) {
                     if (reader) mrp_2d_draw(cf, w, h, fd.fb_w, fd.fb_h, has_dm ? &dm : nullptr, &v, from, to);
                     else rac1::gs::draw(gs, w, h, fd.fb_w, fd.fb_h, has_dm ? &dm : nullptr, &v, prim_filt, from, to);
                 };
-                // program 7's surfaces that write Z drawn early, after the 3D's copy (below): with the ambient particles or Options > Graphics
-                // > Water. With Water on, also those the chain made before the moby pass (Rilgar's harbour, Hoven's, Gaspar's and Umbris's
-                // seas): drawn there, before the copy, a sea read the last frame's picture, which held the sea itself where the game's
-                // waves had put it a frame before - the depth under it nothing or nearly nothing from frame to frame, the water flickering
-                // between two looks (Daino on Rilgar). One draw per sea, after the copy
-                const bool water_on = g_water > 0 && mrp_lighting_active();
-                const bool surfaces_early = world_3d && (g_ambient_particles > 0 || water_on) && reader && fx_external && movie_pic == nullptr && !fd.fade_held;
+                // program 7's surfaces that write Z drawn early, after the 3D's copy (below): with the ambient particles
+                const bool surfaces_early = world_3d && g_ambient_particles > 0 && reader && fx_external && movie_pic == nullptr && !fd.fade_held;
                 size_t pre_moby = 0;
                 if (mrp_moby_active() && g_render_moby && g_render_gs2d && movie_pic == nullptr && !fd.fade_held && !menu_mode && !title) {
                     const size_t mark = moby_mark;
@@ -4526,7 +4592,7 @@ int main(int argc, char** argv) {
                         const rac1::gs::Viewport pv = g_scaled_scene.on ? g_scaled_scene.scaled(gv) : gv;
                         if (fx_external) {
                             RAC1_PROF_ZONE(kEffects);
-                            mrp_fx_draw(cf, w, h, &pv, [&](size_t from, size_t to) { draw_2d(pv, from, to); }, 0, mark, surfaces_early && water_on);
+                            mrp_fx_draw(cf, w, h, &pv, [&](size_t from, size_t to) { draw_2d(pv, from, to); }, 0, mark);
                         } else {
                             draw_2d(pv, 0, mark);
                         }
@@ -4568,13 +4634,10 @@ int main(int argc, char** argv) {
                 // program 7's surfaces that write Z (the seas, lava, sand) before our ambient particles, which write none: drawn after them,
                 // the seas covered the rain, snow and embers in front of them (Batalia's rain). Only with the particles on (the order
                 // otherwise the chain's, the translucent effects and the 2D in it still)
-                // (also with Options > Graphics > Water on: the seas right after the 3D's picture was copied - the 3D under them, mrp_lighting.h)
                 if (surfaces_early) {
                     RAC1_PROF_ZONE(kEffects);
-                    const int water_zone = water_on ? rac1::prof::begin(rac1::prof::kWater) : -1;
                     const rac1::gs::Viewport sv = g_scaled_scene.on ? g_scaled_scene.scaled(gv) : gv;
-                    mrp_fx_draw_surfaces(cf, w, h, &sv, water_on ? 0 : pre_moby);
-                    rac1::prof::end(water_zone);
+                    mrp_fx_draw_surfaces(cf, w, h, &sv, pre_moby);
                 }
                 if (world_3d && g_ambient_particles > 0) mrp_particles_draw(fd.frame);  // (our ambient particles: nothing unless asked)
                 if (g_scaled_scene.on) {  // the scaled 3D on the window; the effects and the 2D drawn over it at the window's resolution
@@ -4777,6 +4840,7 @@ int main(int argc, char** argv) {
             mrp_world_report();
             mrp_lod_report();
             mrp_fx_report();
+            mrp_reflect_report();
             if (s_mrp_skip_mode != 0)
                 std::printf("[mrp-skip] mode %d: chain tags walked dry %llu; verify: skipped skinning's next record equal %llu, different %llu\n", s_mrp_skip_mode,
                             static_cast<unsigned long long>(rac1::gs::gs_global().skipped_tags()), static_cast<unsigned long long>(g_moby_mrp_skip_next_ok),
@@ -4834,6 +4898,7 @@ int main(int argc, char** argv) {
             RAC1_PROF_ZONE(kPresent);
             presents.swap(window);
         }
+        if (rac1::vk::is_active()) rac1::vk_safety::frame_shown();  // (the start marker gone after 600: vk_safety.h)
         fprof.mark(8);
         fprof.end_frame();
         if (!headless && pacer.legacy) {
@@ -4851,6 +4916,7 @@ int main(int argc, char** argv) {
     }
     pace_report();
     sample_prof_stop();
+    rac1::vk_safety::start_over();  // (closed normally: not a crash of the start)
     rac1::prof::shutdown();
     fprof.report();
     if (fprof.on && !pacer.legacy)
@@ -4884,6 +4950,7 @@ int main(int argc, char** argv) {
     if (no_graphics_skip && s_mrp_skip_mode == 2)  // (the graphics path's own report is at its last frame)
         std::printf("[mrp-skip] verify: skipped skinning's next record equal %llu, different %llu\n", static_cast<unsigned long long>(g_moby_mrp_skip_next_ok),
                     static_cast<unsigned long long>(g_moby_mrp_skip_next_bad));
+    rac1::world_cull_check_report();  // (testing: RAC1_WORLD_CULL_FAST=2)
     if (std::getenv("RAC1_VU0_CHAIN") != nullptr) std::fprintf(stderr, "[vu0-chain] %016llx\n", static_cast<unsigned long long>(rac1::vu0::chain_hash()));
     rac1::progress::finish();  // (the launcher's progress.json: the time played since its last write)
     rac1::platform::process_end();  // (std::_Exit runs no atexit handler)

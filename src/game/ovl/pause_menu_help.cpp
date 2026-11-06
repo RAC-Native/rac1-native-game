@@ -2,6 +2,7 @@
 // read from the disc
 // into the menu's buffer and swapped in as the text table), the scrolling text lists, the
 // skill / map pictures, the weapons / gadgets help lists.
+#include <game/enhance/corrected_texts.h>
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/music_streams.h>
@@ -106,6 +107,7 @@ int32_t help_log_text_update(uint32_t w) {
         uint32_t p = base;
         for (int32_t i = 0; i < lw(OV(0x0017943c)); ++i, p += 0x10) sw(p, lwu(p) + base - 8);
     }
+    corrected_texts_patch(base, n, lw(0x0015ed88));  // enhancement (off: nothing)
     sw(w + 0x10, lwu(w + 0x10) & ~4u);
     sw(w + 0x50, 2);
     return 0;

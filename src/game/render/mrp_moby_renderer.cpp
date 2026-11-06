@@ -1097,7 +1097,7 @@ void main() {
     if (uTme != 0) {
         vec2 st = vStq.xy / vStq.z;
 #ifdef SH_SPLIT
-        st = sh_mat_uv(st, vCmd.w & 127u);  // (lava, mud, quicksand: the slow flow)
+        st = sh_mat_uv(st, vCmd.w & 255u);  // (lava, mud, quicksand: the slow flow)
 #endif
         vec4 t;
         if ((w & 1u) != 0u) {
@@ -1125,8 +1125,8 @@ void main() {
         else if (tfx == 2u) { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a + c.a : c.a; }
         else { o.rgb = t.rgb * c.rgb * (255.0 / 128.0) + c.a; o.a = tcc != 0u ? t.a : c.a; }
 #ifdef SH_SPLIT
-        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, vCmd.w & 127u);  // (the command's fourth word)
-        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), vCmd.w & 127u);
+        o.rgb = sh_emissive(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, vCmd.w & 255u);  // (the command's fourth word)
+        o.rgb = sh_material(o.rgb, tfx == 1u ? t.rgb : t.rgb * c_game * (255.0 / 128.0), t.rgb, tfx == 1u ? vec3(1.0) : c.rgb * (255.0 / 128.0), vCmd.w & 255u);
 #endif
         if (uShade == 2) o.rgb = t.rgb;
     }
@@ -1147,7 +1147,7 @@ void main() {
         else if (uAtst == 5) pass = a >= float(uAref);
         else if (uAtst == 6) pass = a > float(uAref);
         else if (uAtst == 7) pass = abs(a - float(uAref)) >= 0.5;
-        if (!pass && uShPass != 0) discard;  // (the shadow map: the cut-outs' passing pixels cast)
+        if (!pass && uShPass == 1) discard;  // (the shadow map: the cut-outs' passing pixels cast)
         if (!pass && uPass == 0 && (uAfail == 0 || uAfail == 2)) discard;
         if (!pass && uPass == 1 && uAfail != 2) discard;
     }
@@ -1461,8 +1461,9 @@ VkPipeline get_moby_vk_pipeline(const MobyVkPipeKey& key) {
         desc.stencil_back = desc.stencil_front;
     }
     if (key.caster) {
-        desc.depth_bias_enable = true;
-        desc.extra_dynamic_states.push_back(VK_DYNAMIC_STATE_DEPTH_BIAS);
+        desc.depth_bias_enable = true;  // (OpenGL's glPolygonOffset(1.5, 2.0) in mrp_lighting, as the world's casters)
+        desc.depth_bias_constant = 2.0f;
+        desc.depth_bias_slope = 1.5f;
     } else {
         gs::DrawState ds{};
         ds.prim = key.prim;
@@ -1569,6 +1570,8 @@ struct Frame {
     std::vector<glm::vec3> part_pos;    // each part's world origin (a point light's cube takes the parts near it)
     std::vector<float> part_rad;        // a radius around it holding the part (its class's bounding sphere, generous)
     std::vector<uint8_t> part_own;      // 1: a part of an own_view moby (Key::own_view: no world place, not a caster)
+    std::vector<glm::mat4> part_w;      // each part's model -> world matrix (the ray tracing's mobys: mrp_moby_rt_frame)
+    std::vector<uint32_t> part_moby;    // the moby each part is of (its address; the free hoverboard's 1)
     // the view of each moby drawn into a render target (MrpMoby::rt_proj): B+292 x, B+296, B+291 x as for the frame's
     struct RtView {
         float proj = 0, offset[4] = {}, fog_min = 0;
@@ -1903,6 +1906,8 @@ void append_guest(Frame& F, const MrpFrame& f, const ViewInverse& vinv, const gl
         F.part_pos.push_back(pre.pos);
         F.part_rad.push_back(pre.rad);
         F.part_own.push_back(0);
+        F.part_w.push_back(glm::mat4(pre.W));
+        F.part_moby.push_back(1u);
         for (const Run& run : pg.runs) {
             PrimInfo pi = cur_tex;
             if (run.prim >= 0 && static_cast<size_t>(run.prim) < pg.prims.size()) pi = pg.prims[static_cast<size_t>(run.prim)];
@@ -1940,6 +1945,8 @@ void build_frame() {
     F.part_pos.clear();
     F.part_rad.clear();
     F.part_own.clear();
+    F.part_w.clear();
+    F.part_moby.clear();
     F.cmds.clear();
     F.draws.clear();
     F.batches.clear();
@@ -2153,6 +2160,8 @@ void build_frame() {
             F.part_pos.push_back(pre.pos);
             F.part_rad.push_back(pre.rad);
             F.part_own.push_back(own_view ? 1 : 0);
+            F.part_w.push_back(glm::mat4(W));
+            F.part_moby.push_back(m.moby);
             F.refs.push_back({mi, cg, pk, part_index, tint, test, alpha});
             if (!own_view && !m.rt && (F.xf.empty() || F.xf.back().moby != m.moby)) {  // (the moby's first part: its frame for the light editor)
                 Frame::MobyXf x;
@@ -2277,6 +2286,8 @@ void build_frame() {
             F.part_pos.push_back(glm::vec3(cp.W[3]) / static_cast<float>(cp.W[3].w != 0.0 ? cp.W[3].w : 1.0));
             F.part_rad.push_back(cp.rad);
             F.part_own.push_back(0);
+            F.part_w.push_back(glm::mat4(cp.W));
+            F.part_moby.push_back(mb);
             for (const CachedRun& r : cp.runs) {
                 const uint32_t ci = static_cast<uint32_t>(F.cmds.size() / 4);
                 F.cmds.insert(F.cmds.end(), {part_index, r.word, r.layer, 0u});
@@ -2305,8 +2316,9 @@ void upload_frame() {
             const VkDeviceSize v_bytes = std::max<VkDeviceSize>(L.verts.size() * sizeof(GpuVertex), sizeof(GpuVertex));
             const void* i_ptr = L.indices.empty() ? static_cast<const void*>(&dummy_i) : L.indices.data();
             const VkDeviceSize i_bytes = std::max<VkDeviceSize>(L.indices.size() * sizeof(uint32_t), sizeof(uint32_t));
-            vk::upload_buffer(L.vk_vbo, v_ptr, v_bytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-            vk::upload_buffer(L.vk_ibo, i_ptr, i_bytes, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+            // (storage too: the ray tracing's moby pass reads them, mrp_rt.cpp)
+            vk::upload_buffer(L.vk_vbo, v_ptr, v_bytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            vk::upload_buffer(L.vk_ibo, i_ptr, i_bytes, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
             L.vk_dirty = false;
         }
         auto alloc_ssbo = [](const void* data, size_t bytes) {
@@ -3211,6 +3223,12 @@ void mrp_moby_draw_target(uint32_t moby, uint64_t xyoffset, uint64_t zbuf, int w
 }
 
 // orig: (host) see mrp_lighting.h
+void mrp_moby_draw_reflect() {
+    if (!g_frame.active || !g_frame.built || g_frame.mode != 0) return;
+    draw_batches(0, 0, nullptr, false);
+}
+
+// orig: (host) see mrp_lighting.h
 void mrp_moby_draw_casters(const float* light_vp, const float* sphere, const float* within) {
 #if defined(__WIIU__)
     return;  // (the Wii U: no modern lighting)
@@ -3982,5 +4000,70 @@ void bucket_texels(size_t bucket, uint32_t layer, uint32_t level, std::vector<ui
 }
 
 }  // namespace mrpm
+
+#if defined(__WIIU__)
+// orig: (host) see mrp_moby_renderer.h (the Wii U: no ray tracing)
+bool mrp_moby_rt_frame(MrpMobyRtFrame&) { return false; }
+#else
+// orig: (host) see mrp_moby_renderer.h
+bool mrp_moby_rt_frame(MrpMobyRtFrame& out) {
+    Frame& F = g_frame;
+    out.runs.clear();
+    out.run_bucket.clear();
+    out.part_world.clear();
+    out.part_moby.clear();
+    out.part_pose.clear();
+    out.buckets.clear();
+    if (!vk::is_active() || !F.active || !F.built || F.mode != 0 || F.menu || F.title || F.parts.empty() || F.part_w.size() != F.parts.size()) return false;
+    if (!F.uploaded) upload_frame();
+    const Level& L = g_level;
+    if (L.vk_vbo.buffer == VK_NULL_HANDLE || L.vk_ibo.buffer == VK_NULL_HANDLE) return false;
+    auto buf = [](VkBuffer b, VkDeviceSize off, size_t bytes) {
+        return MrpMobyRtBuf{reinterpret_cast<uint64_t>(b), static_cast<uint64_t>(off), static_cast<uint64_t>(std::max<size_t>(bytes, 16))};
+    };
+    out.verts = buf(L.vk_vbo.buffer, 0, L.verts.size() * sizeof(GpuVertex));
+    out.indices = buf(L.vk_ibo.buffer, 0, L.indices.size() * sizeof(uint32_t));
+    out.joints = buf(g_vk_moby.joints_alloc.buffer, g_vk_moby.joints_alloc.offset, F.joints_all.size() * sizeof(MrpMat4));
+    out.parts = buf(g_vk_moby.parts_alloc.buffer, g_vk_moby.parts_alloc.offset, F.parts.size() * sizeof(PartGpu));
+    out.cmds = buf(g_vk_moby.cmds_alloc.buffer, g_vk_moby.cmds_alloc.offset, F.cmds.size() * 4);
+    out.normals = buf(g_vk_moby.normals_alloc.buffer, g_vk_moby.normals_alloc.offset, sizeof(F.normals));
+    for (const Batch& b : F.batches) {
+        if (b.key.rt != 0 || b.key.own_view) continue;
+        // (blended other than Cs As + Cd (1 - As) or Cs alone - additive glows, ...: left out; the usual blend's see-through texels the
+        // trace leaves out as the world's alpha test does, sm_rt_surface)
+        const uint32_t al = static_cast<uint32_t>(b.key.alpha & 0xffu);
+        const uint32_t ba = al & 3u, bb = (al >> 2) & 3u, bc = (al >> 4) & 3u, bd = (al >> 6) & 3u;
+        const bool abe = ((b.key.prim >> 6) & 1u) != 0;
+        if (abe && !(ba == 0 && bb == 1 && bc == 0 && bd == 1) && !(ba == 0 && bb == 2 && bd == 2)) continue;
+        for (uint32_t d = b.first; d < b.first + b.count && d < F.draws.size(); ++d) {
+            const DrawCmd& dc = F.draws[d];
+            const uint32_t ci = dc.base_instance;
+            if (dc.count < 3 || 4 * ci + 3 >= F.cmds.size()) continue;
+            const uint32_t part = F.cmds[4 * ci];
+            if (part >= F.parts.size() || F.part_own[part] != 0) continue;
+            out.runs.insert(out.runs.end(), {dc.first_index, dc.count, ci, part});
+            out.run_bucket.push_back((F.cmds[4 * ci + 1] & 1u) != 0 ? -1 : b.key.bucket);
+        }
+    }
+    out.part_world.resize(F.part_w.size() * 16);
+    for (size_t p = 0; p < F.part_w.size(); ++p) std::memcpy(&out.part_world[p * 16], glm::value_ptr(F.part_w[p]), 16 * sizeof(float));
+    out.part_moby = F.part_moby;
+    out.part_pose.resize(F.parts.size());
+    for (size_t p = 0; p < F.parts.size(); ++p) {  // (FNV-1a over the world matrix and the joints the part is skinned with)
+        uint64_t h = 1469598103934665603ull;
+        auto mix = [&h](const void* d, size_t n) {
+            const auto* b = static_cast<const uint8_t*>(d);
+            for (size_t i = 0; i < n; ++i) h = (h ^ b[i]) * 1099511628211ull;
+        };
+        mix(glm::value_ptr(F.part_w[p]), 16 * sizeof(float));
+        const int32_t jf = F.parts[p].info[0], jn = F.parts[p].info[1];
+        if (jf >= 0 && jn > 0 && static_cast<size_t>(jf) + static_cast<size_t>(jn) <= F.joints_all.size())
+            mix(&F.joints_all[static_cast<size_t>(jf)], static_cast<size_t>(jn) * sizeof(MrpMat4));
+        out.part_pose[p] = h;
+    }
+    for (const Bucket& b : L.buckets) out.buckets.push_back(reinterpret_cast<uint64_t>(b.vk_tex.view != VK_NULL_HANDLE ? b.vk_tex.view : vk::white_texture_array().view));
+    return !out.runs.empty();
+}
+#endif
 
 }  // namespace rac1

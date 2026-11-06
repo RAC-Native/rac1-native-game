@@ -4,6 +4,45 @@
 sun -145.5 80.5
 # Pokitaru: our ambient particles (Options > Graphics > Ambient Particles, off by default): fireflies, brighter in the shade
 # and at night.
-particles fireflies 1
-# Options > Graphics > Water (docs/materials.md): the sea around the island
-material surface 1111 tex 13135 water 1 1  depth 5
+emit shrub 283  1.210 -2.527 6.048  0.850 0.920 1.000  1.000 1.000 0.000  0.00
+emit tie 1375  -0.618 22.342 -12.799  0.850 0.920 1.000  1.000 4.393 0.000  0.00
+material tfrag 0 tex 42 metal 0.66 1
+material tfrag 0 tex 64 metal 0.66 1
+emissive shrub 283 tex 0  1.14 0.00
+emissive tie 1375 tex 0  2.24 0.00
+material tie 1499 tex 1 metal 0.35 1
+material tie 1500 tex 2 metal 0.46 1
+light 593.422 480.837 152.488  0.550 0.933 1.000  1.000 30.000 0.000 1
+emit moby 1859  0.239 0.167 -1.519  0.976 1.000 0.850  1.000 4.454 0.000  0.00  joint 0
+material shrub 165 tex 0 metal 0.45 1
+emissive shrub 359 tex 0  2.10 0.00
+material shrub 359 tex 3 metal 0.35 1
+material shrub 359 tex 2 metal 0.35 1
+material tie 1574 tex 0 metal 0.28 1.31
+emissive shrub 331 tex 0  1.37 0.00
+emissive shrub 331 tex 1  1.35 0.00
+emissive tfrag 0 tex 13  2.52 0.53
+material tie 1487 tex 0 metal 0.49 0.43
+material tie 1484 tex 0 metal 0.53 0.35
+material moby 1859 tex 0 metal 0.35 1
+emissive moby 1859 tex 1  2.17 0.00
+material moby 1859 tex 2 metal 0.35 1
+material moby 1859 tex 3 metal 0.35 1
+emissive moby 1859 tex 4  1.96 0.00
+material moby 1207 tex 0 metal 0.49 0.16
+material tie 1491 tex 7 metal 0.35 1
+material tie 1503 tex 0 metal 0.35 1
+material tfrag 0 tex 46 metal 0.35 1
+material tfrag 0 tex 44 metal 0.35 1
+material moby 1075 tex 0 metal 0.35 1
+material moby 1075 tex 1 metal 0.61 0.39
+material tie 1490 tex 4 metal 0.44 1
+material shrub 358 tex 1 metal 0.35 1
+material shrub 327 tex 1 metal 0.35 1
+material shrub 327 tex 0 metal 0.39 1
+material tie 1506 tex 2 metal 0.35 0.68
+material tie 1493 tex 0 metal 0.35 1
+material tie 1488 tex 0 metal 0.35 1
+emissive tfrag 0 tex 15  2.17 0.60
+material surface 1111 tex 13135 water 1 1
+material tie 949 tex 0 metal 0.48 0.89

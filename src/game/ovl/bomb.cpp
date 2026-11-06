@@ -3,6 +3,7 @@
 // (its position, the bomb's offset from it), +0x50 the glove moby, +0x54 the frames left,
 // +0x56 the glove's lock, +0x60 the moby it stuck to, +0x64 the frames stuck there.
 #include <game/math/vecmath.h>
+#include <game/enhance/fixes102.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/ovl.h>
@@ -365,16 +366,23 @@ void bomb_update(uint32_t m) {
         moby_list_hit(m, f + 0xf0, OV(0x00177f00), n, 0, 0x00830000, 2, 1, 2.0f, 1.0f, 1.0f);
         sb(m + 0x20, 2);
     }
-    for (int32_t i = 9; i >= 0; --i) {
-        spray_dir(f, f + 0x90, 3.5f, 6.5f, big);
-        const int32_t life = rand_range(frame_scale_i(0x3c), frame_scale_i(0x78));
-        debris_7a_spawn(s8, f + 0xf0, static_cast<uint32_t>(life), 0, lbu(0x0013e52a));
+    // (1.02 Fixes, fix 2: the 1.02 build, 0x2aedd0, spawns these debris only while 51 moby slots or more are free,
+    // 0x15ffbc, and the four below only while 21 or more are)
+    const bool spare = fixes102_on(2);
+    if (!spare || 0x33 <= lw(OV(0x0015ffbc))) {
+        for (int32_t i = 9; i >= 0; --i) {
+            spray_dir(f, f + 0x90, 3.5f, 6.5f, big);
+            const int32_t life = rand_range(frame_scale_i(0x3c), frame_scale_i(0x78));
+            debris_7a_spawn(s8, f + 0xf0, static_cast<uint32_t>(life), 0, lbu(0x0013e52a));
+        }
     }
     if (lh(pv + 0x68) < frame_scale_i(0x14)) {
-        for (int32_t i = 3; i >= 0; --i) {
-            spray_dir(f, f + 0x90, 6.5f, 10.0f, big);
-            const int32_t life = rand_range(frame_scale_i(0x3c), frame_scale_i(0x5a));
-            debris_7a_spawn(s8, f + 0xf0, static_cast<uint32_t>(life), 1, lbu(0x0013e52a));
+        if (!spare || 0x15 <= lw(OV(0x0015ffbc))) {
+            for (int32_t i = 3; i >= 0; --i) {
+                spray_dir(f, f + 0x90, 6.5f, 10.0f, big);
+                const int32_t life = rand_range(frame_scale_i(0x3c), frame_scale_i(0x5a));
+                debris_7a_spawn(s8, f + 0xf0, static_cast<uint32_t>(life), 1, lbu(0x0013e52a));
+            }
         }
         // one toward the camera
         V(f + 0x100) = Vec4{0.0f, 0.0f, 0.0f, 0.0f};

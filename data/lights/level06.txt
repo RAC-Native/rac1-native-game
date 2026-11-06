@@ -7,3 +7,133 @@
 interior_set 6
 # Blarg's station: no Sun Rays, from Anya-Thoughtmane's lighting pass (#101: off to go on with the level's sun).
 sun_rays off
+emit shrub 295  -16.098 -6.815 28.491  1.000 0.941 0.389  1.000 2.713 0.000  0.00
+emit moby 1660  0.007 -0.707 0.010  1.000 0.863 0.213  1.000 8.000 0.000  0.00  joint 0
+material shrub 268 tex 3 metal 0.46 1
+material shrub 268 tex 5 metal 0.46 1
+material shrub 268 tex 0 metal 0.43 1
+material shrub 268 tex 1 metal 0.46 1
+emissive shrub 294 tex 0  2.51 0.00
+material moby 55 tex 0 metal 0.43 1
+emissive moby 55 tex 1  2.58 0.45
+material tie 1321 tex 0 metal 0.56 1
+material tfrag 0 tex 61 metal 0.41 1
+emissive tfrag 0 tex 53  2.76 0.00
+material tfrag 0 tex 60 metal 0.46 1
+material tfrag 0 tex 57 metal 0.46 1
+material tfrag 0 tex 37 metal 0.61 1
+material tfrag 0 tex 94 metal 0.61 1
+material tfrag 0 tex 41 metal 0.61 1
+emissive tfrag 0 tex 127  2.01 0.39
+emissive tfrag 0 tex 42  2.37 0.44
+material tfrag 0 tex 100 metal 0.45 1
+material tfrag 0 tex 97 metal 0.43 1
+material tfrag 0 tex 99 metal 0.44 1
+material tfrag 0 tex 104 metal 0.45 1
+material tfrag 0 tex 59 metal 0.35 1
+material tfrag 0 tex 95 metal 0.46 1
+material tfrag 0 tex 98 metal 0.35 1
+emissive tfrag 0 tex 79  2.50 0.86
+material tfrag 0 tex 80 metal 0.35 1
+material tie 1400 tex 1 metal 0.43 1
+material tfrag 0 tex 69 metal 0.43 1
+material tfrag 0 tex 114 metal 0.81 1
+material tfrag 0 tex 102 metal 0.49 1
+material tie 1219 tex 0 metal 0.71 1
+material tie 1064 tex 3 metal 0.35 1
+material tie 1072 tex 3 metal 0.35 1
+emissive moby 1655 tex 12  1.75 0.00
+material moby 1655 tex 2 metal 0.35 1
+material moby 1655 tex 3 metal 0.35 1
+material moby 1655 tex 8 metal 0.35 1
+material moby 1655 tex 10 metal 0.35 1
+material tfrag 0 tex 45 metal 0.61 1
+material tfrag 0 tex 46 metal 0.61 1
+material tfrag 0 tex 44 metal 0.61 1
+emissive moby 1038 tex 12  2.41 0.00
+emissive moby 1660 tex 0  1.76 0.00
+material tfrag 0 tex 26 metal 0.35 1
+material tfrag 0 tex 6 metal 0.45 1
+material tie 1284 tex 1 metal 0.35 1
+material tfrag 0 tex 18 metal 0.35 1
+material tfrag 0 tex 19 metal 0.35 1
+material tfrag 0 tex 17 metal 0.35 1
+emissive moby 1672 tex 0  2.31 0.41
+material moby 1672 tex 1 metal 0.35 1
+material moby 1672 tex 2 metal 0.35 1
+material moby 1672 tex 3 metal 0.35 1
+material moby 1672 tex 4 metal 0.35 1
+material moby 1672 tex 6 metal 0.45 1
+material moby 1672 tex 8 metal 0.35 1
+material moby 1672 tex 9 metal 0.35 1
+material moby 1672 tex 10 metal 0.41 1
+material tie 1193 tex 0 metal 0.35 1
+material shrub 269 tex 2 metal 0.35 1
+material shrub 269 tex 0 metal 0.46 1
+material tfrag 0 tex 9 metal 0.56 1
+material tie 1296 tex 0 metal 0.35 1
+light 355.831 267.867 138.746  0.428 1.000 0.702  1.000 14.489 0.000 1
+emit moby 1655  0.025 1.052 1.569  0.234 1.000 0.383  1.000 1.395 0.000  0.00  joint 0
+material tfrag 0 tex 39 metal 0.35 1
+emissive shrub 295 tex 0  1.78 0.00
+material tfrag 0 tex 11 metal 0.46 1
+emissive tie 1318 tex 0  2.01 0.31
+material tie 1226 tex 3 metal 0.35 1
+emissive tfrag 0 tex 12  3.32 0.58
+material tie 1227 tex 1 metal 0.35 1
+material tie 1224 tex 0 metal 0.35 1
+light 360.993 329.112 147.090  0.550 1.000 0.754  1.000 18.883 0.000 1
+emissive surface 1123 tex 12831  2.26 0.00
+emissive moby 1123 tex 0  2.61 0.35
+emissive moby 1123 tex 7  2.57 0.31
+material moby 1123 tex 6 metal 0.35 1
+material moby 1123 tex 5 metal 0.35 1
+material moby 1123 tex 4 metal 0.35 1
+material moby 1123 tex 3 metal 0.35 1
+material moby 1123 tex 1 metal 0.35 1
+emissive moby 367 tex 0  2.26 0.61
+material tie 1268 tex 0 metal 0.44 1
+emissive shrub 325 tex 1  2.25 0.00
+emissive shrub 304 tex 0  1.76 0.00
+emissive shrub 304 tex 1  2.04 0.00
+material tie 1376 tex 0 metal 0.35 1
+material moby 1021 tex 2 metal 0.35 1
+material moby 1021 tex 1 metal 0.35 1
+emissive tfrag 0 tex 56  2.14 0.52
+material tfrag 0 tex 7 metal 0.51 1
+material moby 1109 tex 1 metal 0.49 1
+material moby 1109 tex 3 metal 0.35 1
+material tfrag 0 tex 81 metal 0.41 1
+emissive tfrag 0 tex 137  1.51 0.00
+emissive moby 1302 tex 4  1.61 0.00
+emissive shrub 249 tex 1  1.26 0.00
+material tie 1066 tex 0 metal 0.66 1
+material tie 1071 tex 0 metal 0.66 1
+material tie 1424 tex 0 metal 0.66 1
+material tie 1422 tex 0 metal 0.66 1
+material tie 1067 tex 0 metal 0.66 1
+material tfrag 0 tex 131 metal 0.41 1
+material tfrag 0 tex 133 metal 0.35 1
+material tie 1114 tex 0 metal 0.35 1
+material shrub 238 tex 2 metal 0.35 1
+material tie 1125 tex 4 metal 0.35 1
+material shrub 240 tex 2 metal 0.35 1
+material shrub 239 tex 1 metal 0.35 1
+material shrub 239 tex 3 metal 0.35 1
+emissive moby 1103 tex 1  2.57 0.00
+material moby 1103 tex 2 metal 0.45 1
+material moby 1103 tex 3 metal 0.35 1
+material moby 1103 tex 4 metal 0.35 1
+material moby 1103 tex 5 metal 0.35 1
+emissive moby 1091 tex 1  2.45 0.00
+material moby 1095 tex 0 metal 0.35 1
+emissive moby 1095 tex 4  2.55 0.71
+emissive moby 1095 tex 1  2.33 0.00
+emissive moby 1095 tex 7  4.00 0.00
+emissive moby 1092 tex 11  2.96 0.00
+emissive moby 1103 tex 12  2.82 0.00
+emissive moby 1091 tex 5  2.96 0.00
+emissive moby 1096 tex 3  3.05 0.00
+emissive moby 1097 tex 3  2.22 0.00
+emissive moby 1098 tex 10  2.61 0.00
+emissive moby 1098 tex 6  2.58 0.66
