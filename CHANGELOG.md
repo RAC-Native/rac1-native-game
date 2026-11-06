@@ -61,6 +61,7 @@ What changed in each release. Releases are source only: you build the game with 
 - PAL disc 2.00: the title screen's sounds are the right ones again (#137): the region table placed the title's sound
   tables 0x100 bytes off (data/regions/SCES-50916-2.00.txt, the boot module's run from 0x186100 as on PAL 1.00), so the
   menu played other sounds of the title's bank. The setup runs again on its own after the update.
+- Debug menu: Kill Ratchet no longer crashes the game when Clank is the hero (#136): Clank gets his own death (state 0x47).
 
 ### Performance
 - The memory accessors and the VU0 macro ops forced inline in the ported and generated code (CMake `RAC1_INLINE_HELPERS`, off
