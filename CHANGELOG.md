@@ -5,6 +5,9 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Level light files: `sun_rays_strength <0..2>` scales the Sun Rays option's strength on that level (its added light and
+  limit; 0 none, 1 without the line), set in the debug menu's Sun tab (Sun Rays strength on this level) and saved with the
+  file (#121: the tutorial's rays were too strong). See docs/lighting.md, Sun rays.
 - Debug menu, Textures tab: every tie texture is listed and can be taken in hand (#136, #121). A tie class's texture prims
   all named the class's first texture (the world files' decoder read each prim's TEX0 word, 0 in every class, for its local
   texture; the game gives prim t the remap's byte t): the tab listed a class under its first texture alone, the crosshair's

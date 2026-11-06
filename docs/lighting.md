@@ -628,7 +628,8 @@ are looked for along it (`g_cull_sun`, each frame), the mobys' key light is turn
 covered views' memory of the sky does not depend on it. Nothing needs a level reload. **Sun Rays off
 on this level** turns the [sun rays](#sun-rays) off on the level whatever the Sun Rays option (saved
 as `sun_rays off`: where the rays do not suit the level, as Anya-Thoughtmane's lighting pass found
-on Blarg's station, Rilgar, Batalia and Oltanis, #101). **Save** writes the level's file (its comment
+on Blarg's station, Rilgar, Batalia and Oltanis, #101); **Sun Rays strength on this level** (0 to 2, Ctrl+click to type)
+scales their strength there (saved as `sun_rays_strength <k>`, not written at 1). **Save** writes the level's file (its comment
 lines, its lights and its `noauto` lines kept, each line in its place; the Lights tab's unsaved
 edits too), **Reload** reads it again.
 
@@ -744,7 +745,10 @@ is the showcase). Screen space, at a fraction of the 3D's resolution (`sun_rays_
 
 A level's file may turn them off there (`sun_rays off`, the [sun editor](#the-sun-editor)'s **Sun
 Rays off on this level**), whatever the option: Blarg's station, Rilgar, Batalia and Oltanis, from
-Anya-Thoughtmane's lighting pass (#101). OpenGL and Vulkan alike (`sun_rays_now`).
+Anya-Thoughtmane's lighting pass (#101). OpenGL and Vulkan alike (`sun_rays_now`). It may also scale their strength there
+(`sun_rays_strength <k>`, 0 to 2, 1 without the line; the sun editor's **Sun Rays strength on this level**, #121): the added light
+and its limit of the chosen step are multiplied by `k` (0.5 half as strong; 0 none, as `sun_rays off`), so a level where the rays
+are too much (or too little) keeps the option's look elsewhere.
 
 No rays in the ship's flights (game mode 6 but its take-off and landing scenes: leaving a planet, and
 the loading screen's flight between planets), where the sun is still the level's left behind (#66).
@@ -937,7 +941,7 @@ part of the original. The editor is in the debug menu (Lights tab), so it needs 
   `RAC1_LIGHTS_DIR` changes the directory), one light per line:
   `light x y z  r g b  intensity radius flicker on`, `noauto <class>` for an automatic class
   turned off, `emissive ...` for an [emissive surface](#emissive-surfaces), `sun <azimuth> <elevation>` for the level's own sun,
-  `sun_rays off` for no [sun rays](#sun-rays) on the level and `particles <kind> <density> ...` for the level's
+  `sun_rays off` for no [sun rays](#sun-rays) on the level, `sun_rays_strength <0..2>` for their strength there and `particles <kind> <density> ...` for the level's
   [ambient particles](particles.md#a-levels-lines), with `#` for comments. Saving from the editor keeps the file's
   own comment lines and its lines' order (an entry is written where its line was, the ones added
   after the last line), and writes the numbers it read unchanged: the game's thread rounds toward

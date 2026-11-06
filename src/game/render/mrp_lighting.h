@@ -134,6 +134,10 @@ void mrp_user_sun_set(bool on, float az, float el);
 // Sun Rays option (our data: a tester's choice where the rays do not suit the level)
 bool mrp_user_sun_rays_off();
 void mrp_user_sun_rays_set_off(bool off);
+// orig: (host) the level's Sun Rays strength ("sun_rays_strength <0..2>" in its file, 1 without it): the Sun Rays option's strength
+// (its added light and its limit) scaled on this level, 0 none (our data: where the option's rays are too much or too little)
+float mrp_user_sun_rays_strength();
+void mrp_user_sun_rays_set_strength(float k);
 // orig: (host) the rotation (column-major 3x3) taking the game's key light's direction to the sun's, true when the modern lighting is
 // on and the level's file turns the sun (the mobys' light records are turned with it: mrp_moby_renderer.cpp)
 bool mrp_lighting_sun_turn(float r[9]);
