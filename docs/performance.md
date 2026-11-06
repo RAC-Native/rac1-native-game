@@ -289,7 +289,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_EULER_CACHE=1` | the Euler conversion's rows kept per angles (off by default) |
 | `RAC1_PERF_VU0_NF=0` | the generated code's VU0 ops with their flags |
 | `RAC1_WORLD_CULL_FAST=0` | the world passes' three culls as transliterated (`=2`: both, compared at every call) |
-| `RAC1_DROP_SHADOWS_FAST=0` | the drop shadows' routines as transliterated (`=2`: both, compared; `RAC1_HAND_CHECK_EVERY` to check one call in n) |
+| `RAC1_DROP_SHADOWS_FAST=0`, `RAC1_SKY_FAST=0` | the drop shadows' and the sky's routines as transliterated (`=2`: both, compared; `RAC1_HAND_CHECK_EVERY` to check one call in n) |
 | `RAC1_PERF_SKY_LATE=1` | the sky after the leading opaque tfrag batches (off by default: not exact) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 

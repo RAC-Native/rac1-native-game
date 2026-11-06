@@ -1,7 +1,9 @@
 // The sky's EE side: the level's sky variant (0x23d968 and its 35 routines)
 // Transliterated instruction by instruction from Veldin's own overlay with tools/codegen/mips2cpp.py (tools/codegen/mkall.py:
 // the original's control flow and PS2 float rules by construction), not rewritten
-// by hand: the names are the entries', the helpers `ovl_<addr>_tr` (uniform ABI: TrRet).
+// by hand: the names are the entries', the helpers `ovl_<addr>_tr` (uniform ABI: TrRet). 0x28bd58, 0x28c14c, 0x28c298, 0x28c3c0
+// and 0x28c680 are defined as ovl_<addr>_ref_tr, the reference of their hand-written forms (sky_hand.cpp; RAC1_SKY_FAST,
+// sky_fast.cpp, defines the names the other routines call).
 #include <game/lib/libc.h>
 #include <game/ovl/sky_ee.h>
 #include <game/math/vecmath.h>
@@ -30,15 +32,15 @@ using namespace vu0m;
 
 //@gen ovl_24d698_tr
 
-//@gen ovl_28c14c_tr
+//@gen ovl_28c14c_tr as ovl_28c14c_ref_tr
 
-//@gen ovl_28c3c0_tr
+//@gen ovl_28c3c0_tr as ovl_28c3c0_ref_tr
 
-//@gen ovl_28c680_tr
+//@gen ovl_28c680_tr as ovl_28c680_ref_tr
 
 //@gen ovl_28b8a0_tr
 
-//@gen ovl_28c298_tr
+//@gen ovl_28c298_tr as ovl_28c298_ref_tr
 
 //@gen ovl_28bae0_tr
 
@@ -50,7 +52,7 @@ using namespace vu0m;
 
 //@gen ovl_289108_tr
 
-//@gen ovl_28bd58_tr
+//@gen ovl_28bd58_tr as ovl_28bd58_ref_tr
 
 //@gen ovl_289330_tr
 

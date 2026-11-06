@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 403 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 404 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 305 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 306 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 77 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -115,7 +115,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_GS_THREAD` | 0 = off; default on | Setting 0 captures and reads the frame's chain (the MRP's reader, or the GS replica on the faithful path) on the main thread instead of a worker thread, for comparison or debugging. |
 | `RAC1_GS_TRACE` | set (any value) = on; default off | Prints, once a second, a summary of the GS packet chain (primitive count, display size, offsets) and pad presses; also forces the chain to run on the main thread. |
 | `RAC1_GS_ZTRACE` | game frame number; default off | At that frame prints the depth, scissor, test and vertex state of every GS primitive; also forces the chain to run on the main thread. |
-| `RAC1_HAND_CHECK_EVERY` | integer n; default 1 | With a hand-written routine's check mode (`RAC1_WORLD_CULL_FAST=2`, `RAC1_WORLD_LIGHTING_FAST=2`, `RAC1_DROP_SHADOWS_FAST=2`), checks about one call in n, picked at random (the others run the transliteration alone): the drop shadows call their routines tens of times a frame, and a check copies the 32 MB of EE RAM twice. |
+| `RAC1_HAND_CHECK_EVERY` | integer n; default 1 | With a hand-written routine's check mode (`RAC1_WORLD_CULL_FAST=2`, `RAC1_WORLD_LIGHTING_FAST=2`, `RAC1_DROP_SHADOWS_FAST=2`, `RAC1_SKY_FAST=2`), checks about one call in n, picked at random (the others run the transliteration alone): the drop shadows and the sky call their routines tens of times a frame, and a check copies the 32 MB of EE RAM twice. |
 | `RAC1_HERO_TRACE` | set (any value) = on; default off | Prints the hero's state in the drawn scene each frame. |
 | `RAC1_HUD` | 4:3, 16:9, 21:9, 32:9 or fit; unset = Options > Display > HUD (4:3 in a headless run) | The HUD's width in a widened view (Options > Display > HUD): its left and right elements moved toward the edges of a box of that shape, never wider than the view. Needs a widened view (RAC1_VIEW_MODE=2, or the 16:9 frame). |
 | `RAC1_JOBS` | integer N (1 .. 64); default about half the logical CPUs less two, at most 8 | The threads the host's job pool spreads the renderer's scene building over (the moby chains' decoding, the moby draw lists' transforms: `src/jobs`), the main thread included; 1 runs it all on the main thread, for comparison (the output is the same on any number of threads). |
@@ -301,6 +301,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_SHADOW_ZONES` | integer; nonzero = on; default off | Testing: the shadow pass only keeps terrain entries whose zone is visible in the current zone mask. |
 | `RAC1_SKIP_DBG` | any value = on; default off | Prints to stderr, each frame, the display-list chain range and the moby skip ranges found when the mobys' draw packets are replaced by the host renderer. |
 | `RAC1_SKY_CHAIN` | any value = on; default off | Forces the sky to be drawn from the game's draw chain even when no modern or faithful world renderer is selected. |
+| `RAC1_SKY_FAST` | 0, 1 or 2; default 1 | The sky's routines 0x28c14c (a sky part's vertices to the screen), 0x28c3c0 / 0x28c298 (its triangles' packets, textured / coloured), 0x28c680 (its spheres against the view) and 0x28bd58 (its sprites) as written by hand (src/game/ovl/sky_hand.cpp: the VU0 registers in a local copy) or, with 0, as transliterated (sky_ee.cpp's `ovl_*_ref_tr`, the reference), as before. 2 runs both at every call and compares them (memory, VU0 registers, the returned value) as `RAC1_WORLD_CULL_FAST=2` does (see `RAC1_HAND_CHECK_EVERY`). The same game state. |
 | `RAC1_SKY_ONLY` | any value = on; default off | Testing: the world draw chain is taken back after the sky, so only the sky is drawn. |
 | `RAC1_SPRITE_CLAMP` | 0 = off, 1 = on; default on with the modern renderer, off with the faithful one (RAC1_MRP=0) | The font glyphs' sampling kept inside their own cell of the font texture, so the neighbouring glyphs' edges no longer show as thin lines around the letters at high resolutions (issue #76). Set it to compare with the GS's own sampling. |
 | `RAC1_SND_TRACE` | any value = on; default off | Prints a trace of the sound-bank (989snd) events the game sends to the emulated IOP sound driver. |
