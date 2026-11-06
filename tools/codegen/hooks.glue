@@ -421,6 +421,8 @@ L5 0x00316e78: if (fixes102_on(22) && lbu(0x0013d411u) != 0) { sound_play_indexe
 # edges as the HUD's side elements do: each call that draws one has its chain range noted (src/game/render/render_view.h
 # render_view_hud_begin before the call, render_view_hud_end at its return address). Host bookkeeping only: the packet cursor read,
 # nothing of the game's written; with the HUD at 4:3 (the default) begin notes nothing.
+# The PAL builds keep these callers as NTSC-U has them (their addresses inside the region tables' code runs, data/regions/;
+# checked on SCES-50916 1.00): no `PAL:` lines.
 # Pokitaru: the radar's sprites (glyph_sprite), its blips (L11:0x311710), the missiles (L11:0x310ad0)
 L11 0x00311df0: render_view_hud_begin(2);  // enhancement: the HUD's width (the radar)
 L11 0x00311df8: render_view_hud_end();
