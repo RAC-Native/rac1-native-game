@@ -204,6 +204,9 @@ int32_t menu_sound_draw(uint32_t w) {
     return 2;
 }
 
+// enhancement (graphics.cpp; declared here: the headers of src/game are the generated code's fingerprint): our pages' greyed rows
+bool graphics_row_dimmed(uint32_t w, int32_t i);
+
 // --- Camera: a list of settings ----------------------------------------------------------------
 // +0x34 the settings (0x18 bytes: text, the byte it sets, up to 4 texts of its values; ended by
 // text 0), +0x38 the selected one.
@@ -254,13 +257,18 @@ int32_t menu_settings_draw(uint32_t w) {
         uint32_t off = 0;
         do {
             const uint32_t e = lwu(w + 0x34) + off;
-            const uint64_t c = (i ^ lw(w + 0x38)) != 0 ? 0xffffffff80ffa888ull : 0xffffffff8020ffffull;
+            uint64_t c = (i ^ lw(w + 0x38)) != 0 ? 0xffffffff80ffa888ull : 0xffffffff8020ffffull;
+            uint64_t cv = 0x80ffa888ull;
+            if (graphics_row_dimmed(w, i)) {  // enhancement: a row of ours that does nothing now, greyed (its selection a dim yellow)
+                c = (i ^ lw(w + 0x38)) != 0 ? 0xffffffff80606060ull : 0xffffffff80207070ull;
+                cv = 0x80606060ull;
+            }
             off += 0x18;
             text_small(0xc, y, c, sub_00203ad8(lw(e)), -1);
             ++i;
             const int32_t xr = lw(w + 0x20) - 0xc;
             const uint32_t t = e + static_cast<uint32_t>(lbu(lwu(e + 4))) * 4;
-            text_right(xr, y, 0x80ffa888ull, sub_00203ad8(lw(t + 8)), -1);
+            text_right(xr, y, cv, sub_00203ad8(lw(t + 8)), -1);
             y += step;
         } while (lwu(lwu(w + 0x34) + off) != 0);
     }

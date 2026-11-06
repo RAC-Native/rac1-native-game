@@ -50,6 +50,12 @@ int env_int(const char* name, int def) {
 
 int g_modern_shadows = env_int("RAC1_SHADOWS", 0);
 int g_shadow_quality = std::clamp(env_int("RAC1_SHADOW_RES", 1), 0, 2);
+// orig: (host) Lighting: Original (Graphics: Enhanced, #138): 1 the modern lighting runs with its sun off everywhere, as in a level's
+// interiors - the original's lighting, its drop shadows drawn (mrp_moby_renderer), no sun's shadows, cascades, sun rays nor point-light
+// shadows - while the effects on top of it (occlusion, materials, reflections, grass, particles, the point lights) keep working. 0
+// (default) the modern sun (RAC1_LIGHTING_ORIGINAL). Declared where it is used (graphics.cpp, mrp_moby_renderer.cpp, the debug menu),
+// not in mrp_lighting.h: the headers of src/game are the generated code's fingerprint
+int g_lighting_original = env_int("RAC1_LIGHTING_ORIGINAL", 0);
 int g_shadow_strength = std::clamp(env_int("RAC1_SHADOW_STRENGTH", 70), 0, 100);
 int g_shadow_debug = env_int("RAC1_SHADOW_DEBUG", 0);
 int g_modern_points = env_int("RAC1_POINTS", 1);
@@ -855,11 +861,12 @@ void fit_cascades() {
             }
         }
         g_sh.sun = cur;
-        g_sh.sun_k = curw * (1.0f - g_interior_k);  // (an interior: faded out apart from the zone's own fade)
+        // (an interior: faded out apart from the zone's own fade; Lighting: Original: none anywhere, as in an interior)
+        g_sh.sun_k = g_lighting_original != 0 ? 0.0f : curw * (1.0f - g_interior_k);
         g_sh.key = curkey;
         g_sh.key_dir = curkey_dir;
         g_has_sun.store(g_sh.sun_k > 0.01f);
-        g_casc_on.store(g_sh.sun_k > 0.01f || (cover_probe_on() && zone_w > 0.01f));
+        g_casc_on.store(g_sh.sun_k > 0.01f || (g_lighting_original == 0 && cover_probe_on() && zone_w > 0.01f));
     }
     for (int i = 0; i < 3; ++i) g_cull_sun[i] = g_sh.sun[i];  // (the casters' search of the next frames: the level's sun is fixed)
     g_cull_tan[0] = 1.0f / g_sh.proj.x;
@@ -1044,7 +1051,7 @@ void point_tiles_update() {
 // cube of depth maps (6 views of 90 degrees from the light, near kPtNear, far its radius) with the frame's casters, world and mobys;
 // the light's pt_col.w names its cube (the fragment shader's sh_points compares against it). The shadow pass's framebuffer bound.
 void point_shadows_pass() {
-    if (g_point_shadows == 0 || g_modern_points == 0 || g_sh.npts == 0) return;
+    if (g_point_shadows == 0 || g_lighting_original != 0 || g_modern_points == 0 || g_sh.npts == 0) return;  // (Lighting: Original: none)
     if (vk::is_active()) {
         if (g_vk_sh.ptex.image == VK_NULL_HANDLE) {
             vk::create_image(kPtRes, kPtRes, VK_FORMAT_D32_SFLOAT,
@@ -3187,6 +3194,19 @@ void mrp_lighting_ao_moby_mark(bool begin) {
     M.fb = fb;
 }
 
+// orig: (host) OpenGL: the mobys' marking taken up again after the drop shadows (Lighting: Original) used the stencil for their counter:
+// the stencil cleared, the marking's state set again (nothing when it is not marking; declared in mrp_moby_renderer.cpp)
+void mrp_lighting_ao_moby_restart() {
+    AoMark& M = g_ao_mark;
+    if (vk::is_active() || !M.active) return;
+    glStencilMask(0xff);
+    glClearStencil(0);
+    glClear(GL_STENCIL_BUFFER_BIT);
+    glEnable(GL_STENCIL_TEST);
+    glStencilFunc(GL_ALWAYS, 1, 0xff);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+}
+
 namespace {
 // ---- the materials' High step: the last frame's 3D (colour, depth) for the reflections and the lava's shimmer -----------------
 struct MatSsr {
@@ -4567,7 +4587,8 @@ float mrp_lighting_interior(int* hero_set) {
 }
 // orig: (host) see mrp_lighting.h
 bool mrp_lighting_sun_turn(float r[9]) {
-    if (g_modern_shadows == 0 || !g_sun_known.load()) return false;
+    // (Lighting: Original: no sun - the mobys keep the game's own key light, as the world keeps its baked one)
+    if (g_modern_shadows == 0 || g_lighting_original != 0 || !g_sun_known.load()) return false;
     const glm::vec3 a = glm::normalize(g_sh.key_dir), b = glm::normalize(g_sh.sun), ax = glm::cross(a, b);
     const float cs = glm::dot(a, b), sn = glm::length(ax);
     if (sn < 1e-4f && cs > 0.0f) return false;
@@ -4717,7 +4738,7 @@ float mrp_lighting_caster_grow() { return g_shadow_cache != 0 ? kCacheGrow : 1.0
 void mrp_lighting_point_casters(float pts[8][4]) {
     for (uint32_t i = 0; i < 8; ++i) {
         pts[i][0] = pts[i][1] = pts[i][2] = pts[i][3] = 0.0f;
-        if (g_modern_shadows == 0 || g_modern_points == 0 || g_point_shadows == 0) continue;
+        if (g_modern_shadows == 0 || g_modern_points == 0 || g_point_shadows == 0 || g_lighting_original != 0) continue;
         const uint32_t rec = OV(0x001802c0u) + i * 0x20, use = OV(0x001804c0u) + i * 0x30;
         if (draw_lw(use + 0x10) == 0 || !(draw_lwc1(rec + 0x1c) > 0.0f) || ((g_slot_old.load() >> i) & 1u) != 0) continue;
         pts[i][0] = draw_lwc1(rec + 0x10);
