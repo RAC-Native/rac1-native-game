@@ -1580,4 +1580,8 @@ Built and proved exact on the PC that evening; measured on the console 2026-11-0
   in render_frame, the timings; ovl_common.h is an input of the generated code: the fingerprint in generated_sources.cmake set by hand
   while it is applied). Next: the marks' cost on the Wii U; the forward set re-checked with the prefix serial (some of it is the
   prefix's: the view matrix, the camera's zone) and on other levels; then the second image and the threads.
+- **The marks' cost on the console** (2026-11-06; Kerwan, 1,500 steps not in real time, dser.sh, the marks on around
+  gameplay_frame alone; wmark_wiiu.patch in rac1-scratch/wiiu/dsplit): the build without the marks' code 16.41 / 16.38 ms a step, the
+  build with it and the marks off 16.41 / 16.38 (the null test in every accessor: nothing measurable), on 17.28 / 17.32: **+0.9 ms a
+  step (~5.5 %)**. Of the 2.5 to 3 ms the move gains, ~1.6 to 2 would remain.
 
