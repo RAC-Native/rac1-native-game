@@ -57,6 +57,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <coreinit/memory.h>
+#include <unistd.h>
 #include <cstring>
 #include <vector>
 
@@ -1483,6 +1485,16 @@ void wiiu_gfx_frame() {
                     "(RAC1_WIIU_FRAMES_IN_FLIGHT %d), %llu waits for the frame before\n",
                     static_cast<unsigned long long>(g_frames), exp_free_kb + mall_free_kb, exp_free_kb, mall_free_kb, mall_used_kb, rac1::g_gx2_in_flight,
                     frames_in_flight_env(), static_cast<unsigned long long>(g_wait_before));
+        // (testing, RAC1_WIIU_MEM_PROBE=1: the app's MEM2 - the system's bounds of it - and how far malloc's heap reaches into it, sbrk(0):
+        // what is left past the heap's end. malloc itself cannot tell: wut's sbrk does not refuse a block past the end)
+        static const bool probe = std::getenv("RAC1_WIIU_MEM_PROBE") != nullptr && std::atoi(std::getenv("RAC1_WIIU_MEM_PROBE")) != 0;
+        if (probe) {
+            uint32_t m2 = 0, m2_size = 0;
+            OSGetMemBound(OS_MEM2, &m2, &m2_size);
+            const uint32_t brk = static_cast<uint32_t>(reinterpret_cast<std::uintptr_t>(sbrk(0)));
+            std::printf("[wiiu] host frame %llu: MEM2 %08x..%08x (%u MB), the heap's end %08x: %u MB past it\n", static_cast<unsigned long long>(g_frames), m2,
+                        m2 + m2_size, m2_size >> 20, brk, brk >= m2 && brk <= m2 + m2_size ? (m2 + m2_size - brk) >> 20 : 0u);
+        }
     }
     if (chain_2d && !prebuild_on) {
         rac1::mrp_chain_join();  // (the frame's chain read on the reader's worker)

@@ -27,6 +27,7 @@
 #include <platform/core_timeline.h>
 #include <platform/pinned_thread.h>
 #include <profiler/host_profiler.h>
+#include <runtime/kernel/load_prof.h>
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
 #include <runtime/kernel/ee_memory.h>
@@ -622,6 +623,7 @@ void load_level(int id) {
     for (const auto& c : L.world->ties) nt += c.packets.size();
     std::printf("[mrpw] level %d: %zu shrub classes (%zu packets), %zu tie classes (%zu packets), %zu tfrags; %zu / %zu / %zu textures in %zu arrays (%.0f ms)\n", id,
                 L.world->shrubs.size(), ns, L.world->ties.size(), nt, L.world->tfrags.size(), L.tex[0].size(), L.tex[1].size(), L.tex[2].size(), L.buckets.size(), now_ms() - t0);
+    if (load_prof_on()) std::printf("[load] %s: %u MB in use\n", "the world's level assets", host_mem_mb());
 }
 
 // ---- shaders -----------------------------------------------------------------------------------

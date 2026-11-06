@@ -2398,7 +2398,7 @@ void check_mrp_assets(bool moby, bool world) {
 }  // namespace
 
 #if defined(__WIIU__)
-#define RAC1_WIIU_TRACE(s) std::fprintf(stderr, "[wiiu-trace] %s\n", s)  // (the Wii U's bring-up: where the start stops)
+#define RAC1_WIIU_TRACE(s) std::fprintf(stderr, "[wiiu-trace] %s (%u MB in use)\n", s, rac1::host_mem_mb())  // (the Wii U's bring-up: where the start stops)
 #else
 #define RAC1_WIIU_TRACE(s) ((void)0)
 #endif
