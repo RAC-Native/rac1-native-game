@@ -65,8 +65,8 @@ void screen_open(int32_t kind, uint32_t arg) {
     switch (kind) {
         case 0:
             sw(SB + 8, static_cast<uint32_t>(sub_00203ad8(0x4f6e)));
-            sw(SB + 0xc, static_cast<uint32_t>(sub_00203ad8(0x5248)));
-            sw(SB + 0x10, static_cast<uint32_t>(sub_00203ad8(0x5249)));
+            sw(SB + 0xc, static_cast<uint32_t>(sub_00203ad8(TXT(0x5248))));
+            sw(SB + 0x10, static_cast<uint32_t>(sub_00203ad8(TXT(0x5249))));
             sw(SB + 0x28, 0);
             sw(SB + 4, 0);
             sw(SB + 0x1c, 0);
@@ -75,13 +75,13 @@ void screen_open(int32_t kind, uint32_t arg) {
             return;
         case 1:
         case 4:
-            sw(SB + 8, static_cast<uint32_t>(sub_00203ad8(0x5229)));
+            sw(SB + 8, static_cast<uint32_t>(sub_00203ad8(TXT(0x5229))));
             sw(SB + 0xc, static_cast<uint32_t>(sub_00203ad8(0x4ee0)));
-            sw(SB + 0x10, static_cast<uint32_t>(sub_00203ad8(0x524a)));
+            sw(SB + 0x10, static_cast<uint32_t>(sub_00203ad8(TXT(0x524a))));
             sw(SB + 4, 0);
             return;
         case 2:
-            sw(SB + 8, static_cast<uint32_t>(sub_00203ad8(0x524a)));
+            sw(SB + 8, static_cast<uint32_t>(sub_00203ad8(TXT(0x524a))));
             sw(SB + 4, 0);
             sw(SB + 0xc, 0);
             return;
@@ -416,13 +416,13 @@ void card_message(uint32_t buf, uint32_t& text, int32_t& a1, int32_t& a2, int32_
     switch (lw(CARD)) {
         case 2:
             plain(0x4fa6);
-            a3 = lw(SB + 4) != 0 ? 0 : 0x524a;
+            a3 = lw(SB + 4) != 0 ? 0 : TXT(0x524a);
             break;
         case 3:
         case 4:
             if (lw(FE) != 0 && (f & 2) != 0) {
-                a1 = 0x524e;
-                a2 = 0x524b;
+                a1 = TXT(0x524e);
+                a2 = TXT(0x524b);
                 plain(0x4fab);
             } else {
                 a3 = 0x4fa8;
@@ -434,8 +434,8 @@ void card_message(uint32_t buf, uint32_t& text, int32_t& a1, int32_t& a2, int32_
             text = join(0x4fb0, 0x4fa7);
             break;
         case 6:
-            a1 = 0x524f;
-            a2 = 0x524b;
+            a1 = TXT(0x524f);
+            a2 = TXT(0x524b);
             plain(0x4faf);
             break;
         case 7:
@@ -451,14 +451,14 @@ void card_message(uint32_t buf, uint32_t& text, int32_t& a1, int32_t& a2, int32_
                 a3 = 0x4fa8;
                 plain(0x4fa7);
             } else {
-                a1 = 0x524f;
-                a2 = 0x524b;
+                a1 = TXT(0x524f);
+                a2 = TXT(0x524b);
                 plain(0x4fad);
             }
             break;
         case 0xd:
-            a1 = 0x524f;
-            a2 = 0x524b;
+            a1 = TXT(0x524f);
+            a2 = TXT(0x524b);
             plain(0x4fad);
             break;
         case 0xe:
@@ -466,11 +466,11 @@ void card_message(uint32_t buf, uint32_t& text, int32_t& a1, int32_t& a2, int32_
             plain(0x4fb8);
             break;
         case 0x11:
-            a3 = 0x524a;
+            a3 = TXT(0x524a);
             plain(0x4fba);
             break;
         case 0x12:
-            a3 = 0x524a;
+            a3 = TXT(0x524a);
             plain(0x4fbc);
             break;
         case 0x13:
@@ -481,27 +481,27 @@ void card_message(uint32_t buf, uint32_t& text, int32_t& a1, int32_t& a2, int32_
                 a3 = 0x4fa8;
                 plain(0x4fa9);
             } else {
-                a1 = 0x524e;
-                a2 = 0x524b;
+                a1 = TXT(0x524e);
+                a2 = TXT(0x524b);
                 text = join(0x4fa9, 0x4faa);
             }
             break;
         case 0x14:
-            a3 = 0x524a;
+            a3 = TXT(0x524a);
             plain(0x4fbb);
             break;
         case 0x15:
-            a3 = 0x524a;
+            a3 = TXT(0x524a);
             plain(0x4fbd);
             break;
         case 0x17:
-            a1 = 0x524e;
-            a2 = 0x524b;
+            a1 = TXT(0x524e);
+            a2 = TXT(0x524b);
             plain(0x4fb1);
             break;
         case 0x18:
-            a1 = 0x524e;
-            a2 = 0x524b;
+            a1 = TXT(0x524e);
+            a2 = TXT(0x524b);
             text = join(0x4fae, 0x4faa);
             break;
         default:  // 9, 0x10, 0x16 and others: no message

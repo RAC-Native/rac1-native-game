@@ -174,7 +174,7 @@ int32_t menu_sound_draw(uint32_t w) {
     const int32_t y0 = q - 8;
     const int32_t xl = cx - 8, xf = cx + 7, xb = cx + 9;
     if (lw(w + 0x40) == 0) c = 0x8020ffffull;
-    const uint32_t s0 = sub_00203ad8(0x5212);
+    const uint32_t s0 = sub_00203ad8(TXT(0x5212));
     const int32_t yi = q - 6, xs = cx + 0x4a;
     const int32_t q2 = q << 1;
     const int32_t xb4 = xb << 4;
@@ -188,7 +188,7 @@ int32_t menu_sound_draw(uint32_t w) {
     hud_sprite_uv(hud_frame(0xe99e, 8), xb4, yi << 4, (cx + len + 8) << 4, (q + 5) << 4, 0, 0xa0, 0x1f0, 0x150, 0x80);
     uint64_t c2 = sel;
     if ((lw(w + 0x40) ^ 1) != 0) c2 = 0x80ffa888ull;
-    text_right(xl, q2 - 8, c2, sub_00203ad8(0x5213), -1);
+    text_right(xl, q2 - 8, c2, sub_00203ad8(TXT(0x5213)), -1);
     gs_flat_rect(xf, q2 - 8, lw(w + 0x20) - 0x3f, q2 + 8, 0x80696969ull, 0);
     gs_flat_rect(xb, q2 - 6, lw(w + 0x20) - 0x41, q2 + 6, 0x80383838ull, 0);
     v = (lw(w + 0x20) - xs) * lw(VOL_MUSIC);
@@ -198,8 +198,8 @@ int32_t menu_sound_draw(uint32_t w) {
     const int32_t y2 = q2 + q - 8;
     uint64_t c3 = sel;
     if ((lw(w + 0x40) ^ 2) != 0) c3 = 0x80ffa888ull;
-    text_right(xl, y2, c3, sub_00203ad8(0x5214), -1);
-    text_small(xt, y2, 0x80ffa888ull, sub_00203ad8(lw(MONO) == 0 ? 0x5215 : advanced_sound_output_text(0x5216)), -1);  // (enhancement: 5.1 / 7.1)
+    text_right(xl, y2, c3, sub_00203ad8(TXT(0x5214)), -1);
+    text_small(xt, y2, 0x80ffa888ull, sub_00203ad8(lw(MONO) == 0 ? TXT(0x5215) : advanced_sound_output_text(TXT(0x5216))), -1);  // (enhancement: 5.1 / 7.1)
     texture_block_end();
     return 2;
 }
@@ -410,12 +410,12 @@ int32_t menu_quit_draw(uint32_t w) {
     sub_002a0ba8(0x47, 0x2004b);
     text_box_small(b, 0x80ffa888ull, sub_00203ad8(0x4f6d), -1);
     text_centered_small(cx, bh - 0x40, 0x80ffa888ull, sub_00203ad8(0x4f3f), -1);
-    int32_t wd = text_width_small(sub_00203ad8(0x524b), -1);
-    const int32_t w2 = text_width_small(sub_00203ad8(0x524f), -1);
+    int32_t wd = text_width_small(sub_00203ad8(TXT(0x524b)), -1);
+    const int32_t w2 = text_width_small(sub_00203ad8(TXT(0x524f)), -1);
     if (!(w2 < wd)) wd = w2;
     const int32_t x = (lw(w + 0x20) - wd) >> 1;
-    text_small(x, bh - 0x28, 0x80ffa888ull, sub_00203ad8(0x524b), -1);
-    text_small(x, bh - 0x14, 0x80ffa888ull, sub_00203ad8(0x524f), -1);
+    text_small(x, bh - 0x28, 0x80ffa888ull, sub_00203ad8(TXT(0x524b)), -1);
+    text_small(x, bh - 0x14, 0x80ffa888ull, sub_00203ad8(TXT(0x524f)), -1);
     ee_stack_free(0x20);
     texture_block_end();
     return 2;

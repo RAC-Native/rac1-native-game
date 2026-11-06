@@ -39,7 +39,7 @@ int32_t missions_list(uint32_t texts, uint32_t done, uint32_t pics, int32_t alt)
             if (st != 2 && (fl & 2) == 0) all = false;
             if ((fl & 2) == 0 && st != 0 && !((fl & 1) != 0 && st == 2)) {
                 sw(texts, static_cast<uint32_t>(lh(r)));
-                if (alt != 0) sw(texts, static_cast<uint32_t>(lh(r + 0x24) == 2 ? 0x523e : lh(r + 0x14 + static_cast<uint32_t>(lh(r + 0x26) << 1))));
+                if (alt != 0) sw(texts, static_cast<uint32_t>(lh(r + 0x24) == 2 ? TXT(0x523e) : lh(r + 0x14 + static_cast<uint32_t>(lh(r + 0x26) << 1))));
                 if (done != 0 && lh(r + 0x24) == 2) sw(done, lwu(done) | (1u << (n & 31)));
                 texts += 4;
                 if (pics != 0) {
@@ -252,7 +252,7 @@ int32_t missions_draw(uint32_t w) {
         sh(tpl + 6, lhu(w + 0x20));
         sh(tpl + 8, static_cast<uint32_t>(lw(w + 0x24) >> 1));
         for (uint32_t o = 0; o < 0x18; o += 2) sh(sp + o, lhu(tpl + o));
-        text_box_draw(sp, 0x8020ffffull, sub_00203ad8(0x523d), -1);
+        text_box_draw(sp, 0x8020ffffull, sub_00203ad8(TXT(0x523d)), -1);
     }
     texture_block_end();
     ee_stack_free(0x50);

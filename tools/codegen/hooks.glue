@@ -414,4 +414,4 @@ L5 0x0030d048: gameplay102_water_carry(s2.w(), u2f(lw_(s3.w())));  // enhancemen
 # Platinum Zoomerator!") a skill point earned (its flag 0x13d411) is told: the sound 1 and the message 21462 ("You just earned
 # a Skill Point!") over it (L5:0x318364).
 L5 0x00316d30: if (fixes102_on(22)) ril_28f5c8_l5(0, 8, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);  // enhancement: 1.02 Fixes, fix 22 (the music)
-L5 0x00316e78: if (fixes102_on(22) && lbu(0x0013d411u) != 0) { sound_play_indexed(1, 0, 0); sub_00263d40(21462, -1); }  // enhancement: 1.02 Fixes, fix 22 (the skill point)
+L5 0x00316e78: if (fixes102_on(22) && lbu(0x0013d411u) != 0) { sound_play_indexed(1, 0, 0); sub_00263d40(TXT(21462), -1); }  // enhancement: 1.02 Fixes, fix 22 (the skill point)

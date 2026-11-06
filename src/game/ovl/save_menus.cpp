@@ -263,7 +263,7 @@ int32_t save_slots_draw(uint32_t w) {
             y += 0x30;
         } else if (lw(r) == -1) {
             y += 0x10;
-            text_centered_med(width / 2, y, 0x80ffa888u, sub_00203ad8(0x5217), -1);
+            text_centered_med(width / 2, y, 0x80ffa888u, sub_00203ad8(TXT(0x5217)), -1);
             y += 0x20;
         } else {
             const int32_t t = lw(r + 0xc);
@@ -332,7 +332,7 @@ int32_t save_slot_planet_draw(uint32_t w) {
     if (card_ready() && lw(S + 8) == 2) {
         if (level == -1) {
             const int32_t y = lw(w + 0x24) / 2 - 8;
-            text_centered_small(lw(w + 0x20) / 2, y, 0x80ffa888u, sub_00203ad8(0x5217), -1);
+            text_centered_small(lw(w + 0x20) / 2, y, 0x80ffa888u, sub_00203ad8(TXT(0x5217)), -1);
         } else {
             const uint32_t names = OV(0x001c1e40) + static_cast<uint32_t>(level * 0xc);
             text_centered_small(lw(w + 0x20) / 2, 4, 0x80ffa888u, sub_00203ad8(lw(names)), -1);

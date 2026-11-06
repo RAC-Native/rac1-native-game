@@ -61,6 +61,10 @@ What changed in each release. Releases are source only: you build the game with 
 - PAL disc 2.00: the title screen's sounds are the right ones again (#137): the region table placed the title's sound
   tables 0x100 bytes off (data/regions/SCES-50916-2.00.txt, the boot module's run from 0x186100 as on PAL 1.00), so the
   menu played other sounds of the title's bank. The setup runs again on its own after the update.
+- PAL disc 2.00: the menus' own texts are the right ones (#137): that disc added five credits lines to its text tables,
+  so every text from them on has a higher number; the texts the port's code names by their North American number (the
+  Sound page, the save slots' "EMPTY", the memory card's and the quit dialogs' Yes / No, the skill point and Enter
+  ship messages, the races' place names) are taken to the disc's (`TXT()`, src/game/ovl/ovl_reloc.h).
 - Debug menu: Kill Ratchet no longer crashes the game when Clank is the hero (#136): Clank gets his own death (state 0x47).
 
 ### Performance

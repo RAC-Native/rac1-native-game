@@ -376,6 +376,7 @@ the PAL disc the game loads `SCES_509.16`, translates Veldin's addresses too, an
 | `L<n>_CASE(0x...)` with `switch (lvl_key(fn))` | a `case` label of a dispatch switch |
 | `L<n>_PAGE(0x...)` | a `lui` half, never translated |
 | `FR(0x...)` / `FrConst<0x...>` | an address of the boot module (the title) |
+| `TXT(id)` | a text id the North American code names (1.02 build: from 20695 one higher, from 20742 five higher) |
 
 On the North American disc all of these are the identity. A function the PAL build changed is found
 through its `entry` line, and its North American port runs in its place.
