@@ -24,7 +24,7 @@ and behave like the game's own pages. Left and right change a row's value; Cross
 
 Two kinds of settings, kept apart:
 
-- **The machine's**: Display, Graphics, Controls, Language, Sound's 5.1 / 7.1, the update check, and the main menu's
+- **The machine's**: Display, Graphics, Controls, Language, Sound's 5.1 / 7.1 and Mix, the update check, and the main menu's
   Advanced rows (the global ones). They are the player's preferences, set from the main menu and the pause menu,
   never taken from a save and never changed by loading one.
 - **A playthrough's**: the gameplay rows of the pause menu's Advanced page. New Game's Original / Modern sets them, they
@@ -40,6 +40,16 @@ exactly as in Stereo, and the choice is kept in the preferences (`audio_channels
 opened again with 6 or 8 channels (7.1 at most, PCM); the world's sounds come from their direction, the dialogue from
 the centre, the music from the front (see [Audio](audio.md#surround-51-and-71)). With every enhancement off (the
 headless runs) the row is the game's own Mono / Stereo.
+
+### Sound: Mix
+
+Options > Sound has a fourth row of ours, **Mix**: **Original** (the default: the PS2's mix, summed and clamped to 16 bits
+as the SPU2 does) or **High Precision** (the voices, volumes, reverb and master volume mixed in float without the 16-bit
+steps, a limiter at the end instead of clipping, the device opened in 32-bit float). Cross, left or right switch it; the
+device is opened again (a moment of silence). It is the machine's, kept in the preferences (`audio_mix 1` in
+`advanced_options.txt`), and changes only the samples heard: the game plays exactly as with Original. With every
+enhancement off (the headless runs) the page is the game's own three rows. See [Audio](audio.md#the-iop-side) ("The
+high-precision mix").
 
 ### Display
 
@@ -432,7 +442,7 @@ To try the panel without a new release: `RAC1_UPDATE_FAKE=0.9.0` (or `dev:12`) w
 | What | Where |
 |---|---|
 | Display and Graphics pages | `~/.config/rac1-native/graphics_options.txt` |
-| Advanced page, the Language page's Voice and Subtitles (and the update check's Skip Version, the Sound page's 5.1 / 7.1) | `~/.config/rac1-native/advanced_options.txt` |
+| Advanced page, the Language page's Voice and Subtitles (and the update check's Skip Version, the Sound page's 5.1 / 7.1 and Mix) | `~/.config/rac1-native/advanced_options.txt` |
 | The update check's last answer | `~/.config/rac1-native/update_check.txt` |
 | Controls | `~/.config/rac1-native/controls.txt` (see [Input](input.md#the-bindings-file-controlstxt)) |
 | The pause menu's Advanced settings (the gameplay rows) and the mode, per save | `save<N>.pc` next to each save (see [Saves](saves.md#the-pc-settings-next-to-each-save)) |

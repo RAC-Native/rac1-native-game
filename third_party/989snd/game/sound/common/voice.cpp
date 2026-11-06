@@ -138,10 +138,12 @@ void Voice::KeyOff() {
   // fmt::print("Key Off\n");
 }
 
-s16Output Voice::Run() {
+s16Output Voice::Run(float* hp) {
   s16 sample = 0;
+  float fsample = 0.0f;  // rac1 (host): the high-precision mix's sample (hp)
   if (mNoise) {
     sample = StepNoise();
+    fsample = sample;
   } else {
     DecodeSamples();
 
@@ -153,6 +155,13 @@ s16Output Voice::Run() {
     acc += (mDecodeBuf.Peek(2) * interp_table[index][2]) >> 15;
     acc += (mDecodeBuf.Peek(3) * interp_table[index][3]) >> 15;
     sample = static_cast<s16>(std::clamp<s32>(acc, INT16_MIN, INT16_MAX));
+    if (hp != nullptr) {  // (the four taps exactly, no clamp: the interpolation may overshoot full scale a little)
+      fsample = (static_cast<float>(mDecodeBuf.Peek(0)) * interp_table[index][0] +
+                 static_cast<float>(mDecodeBuf.Peek(1)) * interp_table[index][1] +
+                 static_cast<float>(mDecodeBuf.Peek(2)) * interp_table[index][2] +
+                 static_cast<float>(mDecodeBuf.Peek(3)) * interp_table[index][3]) *
+                (1.0f / 32768.0f);
+    }
 
     s32 step = mPitch;
     step = std::min(step, 0x3FFF);
@@ -171,6 +180,11 @@ s16Output Voice::Run() {
   mLastSample = sample;
   s16 left = ApplyVolume(sample, mVolume.left.GetCurrent());
   s16 right = ApplyVolume(sample, mVolume.right.GetCurrent());
+  if (hp != nullptr) {
+    const float f = fsample * static_cast<float>(mADSR.Level()) * (1.0f / 32768.0f);
+    hp[0] = f * static_cast<float>(mVolume.left.GetCurrent()) * (1.0f / 32768.0f);
+    hp[1] = f * static_cast<float>(mVolume.right.GetCurrent()) * (1.0f / 32768.0f);
+  }
 
   mADSR.Run();
   mVolume.Run();

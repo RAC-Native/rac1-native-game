@@ -18,7 +18,10 @@ class Voice {
   };
 
   Voice(AllocationType alloc = AllocationType::Managed) : mAlloc(alloc) {}
-  s16Output Run();
+  // rac1 (host): `hp` (the high-precision mix): also the voice's output in float, on the s16 scale and without its
+  // truncations and clamps (the interpolation, the envelope and the volumes multiplied exactly); the voice's state and its
+  // s16 output are the same with or without it
+  s16Output Run(float* hp = nullptr);
 
   void KeyOn();
 

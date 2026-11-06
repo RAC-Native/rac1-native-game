@@ -39,6 +39,10 @@ Changes from upstream:
   core 1's reverb. (host) `Synth::Tick` / `Player::Tick` also render the voices on 5.1 / 7.1 speakers (`multi`): a
   voice's `Place` (front left / right, positional by its pan, or centre) set by `blocksound_handler.*` / `sfxgrain.cpp`
   (a sound played or moved with a pan is positional) and the host's streams; the stereo output unchanged.
+- `common/voice.*`, `common/synth.*`, `989snd/player.*`, (rac1, host) the high-precision mix: `Voice::Run`'s `hp`, `Synth::Tick`'s
+  and `Player::Tick`'s `hp` / `hpMulti` give the same output in float (the voice's products exact, nothing clamped, the
+  reverb a second time in float on its own effect area: `StepReverb`'s `hpIn`); the voices' state and the s16 output
+  are the same with or without them.
 - Not taken: `fakeplayer`, `sndplay` (a command-line player), `common/flava.h` (Jak 3).
 - Shims for what the code used from the rest of OpenGOAL: `common/util/Assert.h`,
   `common/log/log.h`, `fmt/format.h` (the few `fmt::format` / `fmt::print` calls),

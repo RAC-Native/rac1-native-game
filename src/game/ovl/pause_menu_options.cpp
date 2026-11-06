@@ -27,6 +27,12 @@ namespace rac1 {
 int advanced_audio_channels();
 bool advanced_sound_output_cycle(uint32_t mono_byte);
 int32_t advanced_sound_output_text(int32_t stereo_text);
+// (enhancement, advanced.cpp) Options > Sound's Mix row, a fourth row: Original / High Precision (the host's mix of the
+// sound, nothing the game reads). advanced_sound_mix_shown: the row is there (not while every enhancement is off: the
+// game's own three rows); advanced_sound_mix_cycle: the other mix; advanced_sound_mix_text: the row's name, value, help
+bool advanced_sound_mix_shown();
+void advanced_sound_mix_cycle();
+int32_t advanced_sound_mix_text(int which);
 
 namespace {
 constexpr OvConst<0x001b9cf0u> MS{};   // the menu's state
@@ -101,17 +107,25 @@ void hud_sprite_uv(int32_t frame, int32_t x0, int32_t y0, int32_t x1, int32_t y1
 
 // The sound page: up / down pick the effects volume, the music volume or the stereo switch
 // (+0x40, wrapping); left / right held move a volume by 3 (0..0x400), the volume table 0x13e550
-// set from them; cross switches mono / stereo (989snd command 0xb).
+// set from them; cross switches mono / stereo (989snd command 0xb). (Enhancement: a fourth row, the Mix: cross, left or
+// right switch it.)
 // orig: 0x0027a778
 int32_t menu_sound_update(uint32_t w) {
     int32_t r = 0;
     if (exit_keys(r)) return r;
+    const int32_t rows = advanced_sound_mix_shown() ? 4 : 3;  // (enhancement: the Mix row)
     const int32_t old = lw(w + 0x40);
-    if ((lwu(PAD + 0x1c4) & 0x1000) != 0) sw(w + 0x40, static_cast<uint32_t>(ee_rem(old + 2, 3)));
-    if ((lwu(PAD + 0x1c4) & 0x4000) != 0) sw(w + 0x40, static_cast<uint32_t>(ee_rem(lw(w + 0x40) + 1, 3)));
+    if ((lwu(PAD + 0x1c4) & 0x1000) != 0) sw(w + 0x40, static_cast<uint32_t>(ee_rem(old + rows - 1, rows)));
+    if ((lwu(PAD + 0x1c4) & 0x4000) != 0) sw(w + 0x40, static_cast<uint32_t>(ee_rem(lw(w + 0x40) + 1, rows)));
     if (lw(w + 0x40) != old || lwu(lwu(MS + 4) + 0x80) != 0) {
         moby_sound_start(1, 0x11, lwu(w + 0x14));
-        if ((lwu(w + 0x30) & 0x20) != 0) sw(OV(0x00184414), lwu(lwu(OV(0x001602a0)) + static_cast<uint32_t>(lw(w + 0x40)) * 4));
+        if ((lwu(w + 0x30) & 0x20) != 0 && lw(w + 0x40) < 3)  // (enhancement: the game's table has the three rows')
+            sw(OV(0x00184414), lwu(lwu(OV(0x001602a0)) + static_cast<uint32_t>(lw(w + 0x40)) * 4));
+    }
+    if (lw(w + 0x40) == 3 && (lwu(PAD + 0x1c4) & 0xa040) != 0) {  // (enhancement: the Mix row, cross / left / right)
+        advanced_sound_mix_cycle();
+        moby_sound_start(0, 0x11, lwu(w + 0x14));
+        return 0;
     }
     const int32_t music0 = lw(VOL_MUSIC), fx0 = lw(VOL_FX);
     if ((lwu(PAD + 0x1c0) & 0x2000) != 0) {
@@ -168,7 +182,10 @@ int32_t menu_sound_leave(uint32_t) {
 // texels as the level) and the stereo switch's state; the selected line highlighted.
 // orig: 0x0027aa48
 int32_t menu_sound_draw(uint32_t w) {
-    const int32_t cx = lw(w + 0x20) >> 1, q = lw(w + 0x24) >> 2;
+    // (enhancement: a fourth row, the Mix, and under it its help line while it is selected; the rows a sixth of the box
+    // apart)
+    const bool mix = advanced_sound_mix_shown();
+    const int32_t cx = lw(w + 0x20) >> 1, q = mix ? ee_div(lw(w + 0x24), 6) : lw(w + 0x24) >> 2;
     uint64_t c = 0x80ffa888ull;
     texture_block_begin(0);
     const int32_t y0 = q - 8;
@@ -200,6 +217,12 @@ int32_t menu_sound_draw(uint32_t w) {
     if ((lw(w + 0x40) ^ 2) != 0) c3 = 0x80ffa888ull;
     text_right(xl, y2, c3, sub_00203ad8(TXT(0x5214)), -1);
     text_small(xt, y2, 0x80ffa888ull, sub_00203ad8(lw(MONO) == 0 ? TXT(0x5215) : advanced_sound_output_text(TXT(0x5216))), -1);  // (enhancement: 5.1 / 7.1)
+    if (mix) {  // (enhancement: the Mix row, as the output row)
+        const int32_t y3 = (q << 2) - 8;
+        text_right(xl, y3, lw(w + 0x40) == 3 ? sel : 0x80ffa888ull, sub_00203ad8(advanced_sound_mix_text(0)), -1);
+        text_small(xt, y3, 0x80ffa888ull, sub_00203ad8(advanced_sound_mix_text(1)), -1);
+        if (lw(w + 0x40) == 3) text_centered_small(cx, q * 5 - 4, 0x80ffa888ull, sub_00203ad8(advanced_sound_mix_text(2)), -1);
+    }
     texture_block_end();
     return 2;
 }

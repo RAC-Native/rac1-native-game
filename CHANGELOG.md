@@ -17,6 +17,11 @@ What changed in each release. Releases are source only: you build the game with 
   do. The game's state is unchanged; a 4:3 view is unchanged. See docs/rendering.md, "The space fights' HUD".
 - HUD wider than 4:3: a help message wider than the 4:3 frame (Spanish prompts on Gemlik's gold weapon cases, #82) is
   drawn whole over the wider view instead of being cut at the frame's sides, as the original cuts it.
+- Options > Sound > Mix (Original by default, High Precision): the voices, their volumes, the reverb and the master
+  volume mixed in float without the SPU2's 16-bit truncations and clamps, a look-ahead limiter at the end instead of
+  clipping, the sound device opened in 32-bit float; also in 5.1 / 7.1 and for the movies' sound. Only the output
+  samples change: the voices' states and everything the game reads are computed as before (RAC1_RAMHASH identical).
+  RAC1_AUDIO_MIX=hp for testing. See docs/audio.md.
 - Movie subtitles (Options > Language > Movie Subtitles, Off by default; RAC1_MOVIE_SUBTITLES for testing): the original
   shows none over its movies; the game shows SubRip files from `assets/movie-subtitles/` in the game's subtitle look, in
   the text language. The setup makes them on request with speech to text from the disc's own sound tracks

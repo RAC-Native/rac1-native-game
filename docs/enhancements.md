@@ -98,6 +98,11 @@ Options > Sound's Mono / Stereo row also offers 5.1 and 7.1: the world's sounds 
 direction, the dialogue from the centre. The game itself still plays in Stereo. See
 [Settings](settings.md#sound-51-and-71).
 
+### Sound: Mix
+
+Options > Sound's Mix row: Original (the PS2's 16-bit mix) or High Precision (mixed in float, a limiter instead of
+clipping, the device in 32-bit float). Only the samples heard change. See [Settings](settings.md#sound-mix).
+
 ### Movie subtitles
 
 The original shows no text over its movies. Options > Language > Movie Subtitles (Off by default) shows subtitle files

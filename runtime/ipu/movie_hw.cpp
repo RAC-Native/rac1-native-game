@@ -547,6 +547,14 @@ void movie_hw_audio_add(int16_t* out, const int16_t* src, int frames, float gain
     }
 }
 
+void movie_hw_audio_add_f(float* out, int channels, const int16_t* src, int frames, float gain_left, float gain_right) {
+    const float gl = gain_left * g_movie_volume, gr = gain_right * g_movie_volume;
+    for (int i = 0; i < frames; ++i) {
+        out[i * channels] += static_cast<float>(src[i * 2]) * gl;
+        out[i * channels + 1] += static_cast<float>(src[i * 2 + 1]) * gr;
+    }
+}
+
 void movie_hw_close() {
     Movie& m = g_movie;
     if (m.loader.joinable()) {  // (the file's loader stopped first)

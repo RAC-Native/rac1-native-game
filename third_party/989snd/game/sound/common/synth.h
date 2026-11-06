@@ -30,7 +30,11 @@ class Synth {
 
   // rac1: `multi` (host): also the voices placed on `channels` speakers (6: 5.1, 8: 7.1, the WAVE order FL FR FC LFE
   // then 5.1's SL SR / 7.1's BL BR SL SR), one frame of s16; the stereo result unchanged
-  s16Output Tick(s16* multi = nullptr, int channels = 2);
+  s16Output Tick(s16* multi = nullptr, int channels = 2, float* hp = nullptr, float* hpMulti = nullptr);
+  // rac1 (host): `hp` / `hpMulti`: also the high-precision mix (Options > Sound's Mix), one frame of float on the s16 scale
+  // (stereo / `channels`): the voices, the volumes, the reverb and the master volume in float, nothing clamped (the host
+  // limits the sum at its end). Only these outputs differ: every voice's state, the s16 mix and what the driver answers
+  // are the same with or without them.
   void AddVoice(std::shared_ptr<Voice> voice);
   // rac1: the IRX's voice allocation (0x14d60) for the cores: the lowest free voice of the group's range (0x4e
   // snd_SetGroupVoiceRange, 0x0d snd_SetMixerMode), when none the one it would steal (the lowest priority, the
@@ -45,7 +49,7 @@ class Synth {
   void AutoReverb(s16 depth, s32 delta_time, s32 channel_flags);
 
  private:
-  void StepReverb(s32 revInL, s32 revInR);
+  void StepReverb(s32 revInL, s32 revInR, const float* hpIn = nullptr);
 
   std::forward_list<std::shared_ptr<Voice>> mVoices;
 
@@ -67,5 +71,9 @@ class Synth {
   s16 mReverbOutL{0};
   s16 mReverbOutR{0};
   std::vector<s16> mReverbBuf{};
+  // rac1 (host): the high-precision mix's reverb (the same algorithm in float, unclamped; its own effect area)
+  std::vector<float> mReverbBufF{};
+  float mReverbOutLF{0};
+  float mReverbOutRF{0};
 };
 }  // namespace snd

@@ -14,7 +14,8 @@
 //   as the debug menu's Levels tab asks it; during the boot (RAC1_BOOT=1):
 //   its title left for level N, the debug menu's skip)
 //   RAC1_LANGUAGE=0|2|3|4|5 (testing: the language)  RAC1_HEADLESS=1  RAC1_FRAMES=N  RAC1_SIM_INPUT=forward|jump|dive|turn|attack|throw|hud|quick|fire|shoot|hold|holdwalk|look|start|menu:<keys>|title:<keys>|ship|shipskip|shipwalk|shipturn|vendor|seq:<script> (sim_script.h)   (testing)
-//   RAC1_AUDIO_DUMP=file.raw (the sound output, 48 kHz stereo s16; RAC1_AUDIO_CHANNELS=6 / 8: 5.1 / 7.1, interleaved)  RAC1_NO_AUDIO=1  RAC1_SND_TRACE=1
+//   RAC1_AUDIO_DUMP=file.raw (the sound output, 48 kHz stereo s16; RAC1_AUDIO_CHANNELS=6 / 8: 5.1 / 7.1, interleaved; with
+//   the high-precision mix, RAC1_AUDIO_MIX=hp or Options > Sound's Mix, f32 at full scale 1.0, limited as played)  RAC1_NO_AUDIO=1  RAC1_SND_TRACE=1
 // RAC1_FADES=original|fast (the screen fade shown frame by frame as on the PS2, or run in one host frame: the default)
 // RAC1_HOST_DELAY_MS=n, RAC1_STEPS=n, RAC1_AUDIO_DEVICE=1 (testing: each host frame n ms longer; n game frames
 //     per host frame in a headless run (a window's catch-up); the audio device opened in a headless run: the game's state
@@ -69,6 +70,7 @@
 #include <sanitizer/lsan_interface.h>
 #endif
 
+#include "audio_limiter.h"
 #include "host_language.h"
 #include "dualsense.h"
 #include "rumble.h"
@@ -169,14 +171,18 @@
 
 using namespace rac1;
 
-bool audio_out_start(int channels);  // audio_out.cpp
-void audio_out_push(const int16_t* pcm, const int16_t* multi, int frames);
+bool audio_out_start(int channels, bool hp);  // audio_out.cpp
+void audio_out_push(const int16_t* pcm, const int16_t* multi, int frames, int channels, const float* fpcm, const float* fmulti);
 int audio_out_channels();
+bool audio_out_hp();
 namespace rac1 {
 int advanced_audio_channels();  // advanced.cpp: Options > Sound's 5.1 / 7.1 (the device's channels)
 extern void (*g_advanced_audio_reopen)(int channels);
+bool advanced_audio_hp();  // advanced.cpp: Options > Sound's Mix: High Precision
+extern void (*g_advanced_audio_mix)(bool hp);
 }
 void audio_out_set_channels(int channels);
+void audio_out_set_hp(bool hp);
 void audio_out_set_alone(bool ok);
 uint64_t audio_out_alone_total();
 void audio_out_step(bool in_step);
@@ -247,6 +253,8 @@ static unsigned s_mrp_skip_parts = 0xf;  // orig: (host) the skip's parts asked 
 //   this vsync is recorded for it, with the movie's samples of these 800 frames.
 FILE* g_audio_dump = nullptr;
 int g_audio_dump_ch = 2;  // (the dump's channels: the 5.1 / 7.1 choice at the start, Options > Sound or RAC1_AUDIO_CHANNELS)
+// (the high-precision mix's end on this thread: the dump's, and the device's without the mirror; audio_limiter.h)
+rac1::AudioLimiter g_hp_limiter, g_hp_dump_limiter;
 // orig: (host) a vsync: the timer, the vsync callback, the IOP's time (the SPU2's output)
 uint64_t g_vsyncs = 0;  // (testing: the vsyncs passed, RAC1_STALL_LOG)
 // (testing) RAC1_TEST_ZERO_FB=<first>,<last>[,raw]: the host frames of the frames first..last (exclusive) see a framebuffer
@@ -300,15 +308,38 @@ void vsync_passed() {
     const int dev_ch = snd989_mirror_enabled() ? 2 : audio_out_channels();
     const int multi_ch = g_audio_dump != nullptr && g_audio_dump_ch > 2 ? g_audio_dump_ch : dev_ch;
     int16_t* const mp = multi_ch > 2 ? multi : nullptr;
-    snd989_iop_render(pcm, 800, mp, multi_ch);
+    // (host) the high-precision mix of the game's IOP (Options > Sound's Mix), when it is heard (no mirror) or dumped: the
+    // same output in float; the voices' state the same with it or without (Synth::Tick)
+    const bool dev_hp = !snd989_mirror_enabled() && audio_out_hp();
+    const bool hp = (dev_hp || g_audio_dump != nullptr) && g_snd989_hp.load(std::memory_order_relaxed);
+    static float fpcm[800 * 2], fmulti[800 * 8];
+    float* const fp = hp ? fpcm : nullptr;
+    float* const fmp = hp && mp != nullptr ? fmulti : nullptr;
+    snd989_iop_render(pcm, 800, mp, multi_ch, fp, fmp);
     float movie_gl = 1.0f, movie_gr = 1.0f;
     snd989_movie_gain(movie_gl, movie_gr);  // (the IRX's volumes of the movie's voices, not unity)
     int16_t movie[800 * 2];
     const int movie_frames = movie_hw_audio_take(movie, 800);
     if (mp != nullptr) snd989_movie_add_multi(mp, multi_ch, movie, movie_frames, movie_gl, movie_gr);
     movie_hw_audio_add(pcm, movie, movie_frames, movie_gl, movie_gr);
-    if (g_audio_dump != nullptr) {
-        if (g_audio_dump_ch > 2) std::fwrite(multi, static_cast<size_t>(800 * g_audio_dump_ch) * 2, 1, g_audio_dump);
+    if (fp != nullptr) movie_hw_audio_add_f(fp, 2, movie, movie_frames, movie_gl, movie_gr);
+    if (fmp != nullptr) movie_hw_audio_add_f(fmp, multi_ch, movie, movie_frames, movie_gl, movie_gr);
+    // the high-precision mix limited at its end (the device's, or the dump's when it is not the device's layout)
+    const bool dump_multi = g_audio_dump != nullptr && g_audio_dump_ch > 2;
+    if (hp) {
+        // (what the device plays without the mirror, its layout; none with the mirror: the IOP thread limits the mirror's)
+        float* const heard = !dev_hp ? nullptr : dev_ch > 2 ? fmp : fp;
+        if (heard != nullptr) g_hp_limiter.process(heard, 800, dev_ch > 2 ? dev_ch : 2);
+        if (g_audio_dump != nullptr) {
+            float* const dumped = dump_multi ? fmp : fp;
+            if (dumped != heard) g_hp_dump_limiter.process(dumped, 800, dump_multi ? g_audio_dump_ch : 2);
+            const int n = 800 * (dump_multi ? g_audio_dump_ch : 2);
+            float out[800 * 8];
+            for (int i = 0; i < n; ++i) out[i] = dumped[i] * (1.0f / 32768.0f);
+            std::fwrite(out, sizeof(float), static_cast<size_t>(n), g_audio_dump);
+        }
+    } else if (g_audio_dump != nullptr) {
+        if (dump_multi) std::fwrite(multi, static_cast<size_t>(800 * g_audio_dump_ch) * 2, 1, g_audio_dump);
         else std::fwrite(pcm, sizeof(pcm), 1, g_audio_dump);
     }
     if (g_mirror_test) {
@@ -316,7 +347,7 @@ void vsync_passed() {
         return;
     }
     if (snd989_mirror_enabled()) snd989_mirror_vsync(movie, movie_frames, movie_gl, movie_gr, pcm);
-    else audio_out_push(pcm, multi_ch == dev_ch ? mp : nullptr, 800);
+    else audio_out_push(pcm, multi_ch == dev_ch ? mp : nullptr, 800, multi_ch, fp, multi_ch == dev_ch ? fmp : nullptr);
 }
 
 // The chain a blocking loop sent at its last Kicked vsync (the screen fade's frames: the kick 0x2a08c8 at the wait,
@@ -2696,8 +2727,10 @@ int main(int argc, char** argv) {
     sound_callbacks_register();
     if (!boot) sound_system_init();
     rac1::host_priority_set_enabled(!headless);  // (rtkit's priorities in a window; RAC1_PRIORITY=0 / 1 decides)
-    if (want_audio && !audio_out_start(advanced_audio_channels())) snd989_mirror_disable();
+    g_snd989_hp.store(advanced_audio_hp());  // (Options > Sound's Mix, or RAC1_AUDIO_MIX: also the dump's without a device)
+    if (want_audio && !audio_out_start(advanced_audio_channels(), advanced_audio_hp())) snd989_mirror_disable();
     g_advanced_audio_reopen = audio_out_set_channels;  // (Options > Sound: 5.1 / 7.1 / stereo)
+    g_advanced_audio_mix = audio_out_set_hp;           // (Options > Sound: Mix)
     g_snd989_bank_filter = voice_level_bank;            // (the Japanese voices' level banks: voice_language.h)
     if (!boot) {
         if (!boot_loader_run([&] {
