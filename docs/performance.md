@@ -109,6 +109,23 @@ the world passes' culls (the profiler's `Game: world passes`).
   the tie lighting is 0.2-0.5 % of the main thread (1.7 % on Hoven, a third of it its VU0 micro program, which a rewrite
   would not change), the shrub lighting 0.2 % or less, and neither shows at a level's load. At most 0.01-0.03 ms to win.
 
+## The widened view's and the LOD slider's shadow runs
+
+With the view wider than the game's 4:3 frustum (16:9 and wider, the sides filled) or the LOD slider off Original, the moby pass,
+the effects block, the draw lists and the sky run a second time each frame as a shadow inside a journal of EE memory
+(`mrp_lod.cpp`), and the MRP draws what the shadow saw. On Kerwan's plaza at 16:9 with LOD High (game thread, the profiler's
+means): the moby pass's shadow 1.1-1.5 ms a frame (282 mobys drawn against the real pass's 48: the slider's distances), the
+others 0.45 (the effects 0.27, the sky 0.08); with LOD Original 0.50 and 0.50 (57 mobys). The world's tfrag / tie / shrub
+shadows do not run: the static world culls itself.
+
+The journal saved each 4 KB page at its first write and put it back after: 668 pages a frame there (2.7 MB copied twice), two
+thirds of them the shadow runs' own room above the game's 32 MB (their packets, packet ring and work area), which nothing reads
+after the run. That room is now left out of the journal (`ee_journal_unsaved`; `RAC1_MRP_LOD_ROOM_JOURNAL=1`: as before): 227
+pages a frame, the moby shadow 1.53 to 1.20 ms, the game thread 6.7 to 6.1 ms (three interleaved runs, the sampler's scene).
+Exact: `RAC1_MRP_LOD_VERIFY=1` (EE RAM below the room and the scratchpad compared after each shadow run: 2999 runs, 0
+differing), RAMHASH on the 4-level route with the view widened and LOD High identical (and identical to the 4:3 one), the
+widened pictures identical (OpenGL, Vulkan).
+
 ## The frame's chain
 
 The MRP chain worker reads each frame's chain beside the main thread (`mrp_chain.cpp`: the 2D, the effects' VU1 programs, the
@@ -309,6 +326,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_VU_CLAMP=0` | the collision triangle test and the moby transform clamping every operand at each op |
 | `RAC1_PERF_COLL_MESH=1` | the collision segment test's moby meshes kept between calls (off by default) |
 | `RAC1_PERF_COPIES=0` | the EE journal's pages zero-filled then copied, the moby observer's record built aside and copied |
+| `RAC1_MRP_LOD_ROOM_JOURNAL=1` | the widened view's / LOD slider's shadow runs' own room saved and put back by the journal |
 | `RAC1_PERF_EULER_CACHE=1` | the Euler conversion's rows kept per angles (off by default) |
 | `RAC1_PERF_VU0_NF=0` | the generated code's VU0 ops with their flags |
 | `RAC1_WORLD_CULL_FAST=0` | the world passes' three culls as transliterated (`=2`: both, compared at every call) |

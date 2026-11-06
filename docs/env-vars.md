@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 404 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 405 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 306 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 307 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 77 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -190,6 +190,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_MRP_LOD_KEEP_FADE` | any value = on; default off | Keeps the earlier behaviour in which the LOD fade switch is not scaled, for comparison. |
 | `RAC1_MRP_LOD_PROBE` | any value = on; default off | Prints, once per pass kind, some of the game's level-of-detail state (packet cursor and limit, tfrag bands and draw distance, tie classes) the first time the world shadow pass runs. |
 | `RAC1_MRP_LOD_ROOM` | 0 = off; default on | Switches off the extra packet room the modern renderer's shadow pass reserves, to compare behaviour with and without it. |
+| `RAC1_MRP_LOD_ROOM_JOURNAL` | 0 or 1; default 0 | 1 has the EE memory journal of the widened view's / LOD slider's shadow runs save and put back their own room above the game's 32 MB (0x03c00000..0x04000000: their packets, packet ring and work area) as before; by default that room is left out of the journal (only the shadow runs write it, and the renderer takes what it needs before the restore), which was two thirds of the journal's copying. The same game state and picture. |
 | `RAC1_MRP_MIP` | faithful = the game's own mip selection; any other value or unset = modern mip selection; default modern | Chooses how the modern moby renderer picks texture mip levels, to compare against the original GS behaviour. Only read when the modern moby renderer is in use. |
 | `RAC1_MRP_MIP0` | any value = on; default off | Marks in magenta the moby textures whose largest mip level the frame did not upload, where the faithful path would sample stale GS memory. |
 | `RAC1_MRP_PROJ` | vu = project mobys with the VU1 programs' own path; anything else or unset = the modern projection; default modern | Selects how the modern moby renderer projects vertices, for comparison. Only read when the modern moby renderer is in use. |
