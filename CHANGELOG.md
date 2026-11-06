@@ -71,6 +71,11 @@ What changed in each release. Releases are source only: you build the game with 
   in the same way: on Nebula G34, whose flickering light relights them every frame, its time 61 % less (0.51 to 0.20 ms a
   frame); the same game state, proved by an oracle batch (481) and a check mode (`RAC1_WORLD_LIGHTING_FAST=2`);
   `RAC1_WORLD_LIGHTING_FAST=0` runs the transliteration as before.
+- The moby drop shadows' VU0 routines (their points, tubes, quads and packets) and the sky's (its vertices, triangles,
+  sprites and spheres) written by hand in the same way: the moby pass, where the shadows are made, 9 to 14 % less on the
+  levels with shadows, the sky about a quarter less in the sampler; the same game state, proved by oracle batches (482, 483)
+  and check modes (`RAC1_DROP_SHADOWS_FAST=2`, `RAC1_SKY_FAST=2`; `RAC1_HAND_CHECK_EVERY=n` checks one call in n); `=0` runs
+  the transliterations as before.
 - The loading screen's flight between the planets no longer runs the mobys' VU0 skinning, which the modern renderer does not
   use there (as in play): the flight's main thread about a third of what it was (`RAC1_MRP_SKIP_FLIGHT=0`: as before).
 

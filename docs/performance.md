@@ -66,6 +66,10 @@ the world passes' culls (the profiler's `Game: world passes`).
   37 to 95 MB, and a full build with three jobs from about 10 to 22 minutes.
   Off by default for now, as the whole game code does not gain enough for the size and the build time; on with
   `-DRAC1_INLINE_HELPERS=ON`. On a target with a small instruction cache more inlining measured slower.
+  Measured again on top of the hand-written culls, lighting, shadows and sky (November 2026, the same method, the walk after
+  the level's arrival): the game code -11 to +13 % (Veldin 1.77 to 1.92 ms, Kerwan 3.23 to 3.40, Rilgar 2.21 to 2.13, Nebula
+  G34 2.44 to 2.75, Hoven 2.85 to 2.54), i.e. no gain beyond the noise; the program's code 37.3 to 95.5 MB (the file 170 to
+  250 MB), a full build with three jobs 8.0 to 20.4 minutes (21 to 59 minutes of CPU). Still off.
 - **The three culls by hand** (`world_cull_tfrag.cpp`, `world_cull_tie.cpp`, `world_cull_shrub.cpp`; `RAC1_WORLD_CULL_FAST`):
   the same arithmetic and the same memory written, organised by what the routines do (the view test, the LOD and its morph,
   the chain's records), the VU0 registers in a local copy (`vu0_local.h`) written back at the end, the scratchpad as a byte
@@ -85,6 +89,25 @@ the world passes' culls (the profiler's `Game: world passes`).
   and random ones), batch 101, `RAC1_WORLD_LIGHTING_FAST=2` over the 19 levels (6589 calls, 0 differing) and RAMHASH. It
   matters on Nebula G34, where a flickering light relights 20-30 pieces a frame: `Game: world lighting / pass ends` 0.51 to
   0.20 ms a frame (helpers not inline; three interleaved runs); elsewhere it runs rarely and the stage stays at 0.01-0.02 ms.
+- **The drop shadows and the sky by hand** (`moby_shadows_hand.cpp`, `RAC1_DROP_SHADOWS_FAST`; `sky_hand.cpp`, `RAC1_SKY_FAST`):
+  the drop shadows' six VU0 routines (the mobys' shadow points, the tubes' point and segment sections, their clip, the quads,
+  the packets) and five of the sky's (its parts' vertices to the screen, their textured and coloured triangles' packets, the
+  spheres' test, the sprites), in the same form as the culls. The shadows' transliteration reads the MAC flags after ordinary
+  ops, so it runs the flagged VU0 ops: the local copy makes every op's flags too (`vu0l::VuF`, as `LocalFlags` keeps them),
+  and is written back and read again around the sine / cosine VU0 programs. Proved by oracle batches 482 (shadows, through
+  `shadow_points` and `drop_shadows_draw` on the frame's deferred mobys) and 483 (sky) on the dumps of seven levels, batch 79,
+  the check modes over the 19 levels (one call in ten, `RAC1_HAND_CHECK_EVERY=10`: 1,321 to 69,574 calls a routine, 0
+  differing), the reference images and RAMHASH. Gains are modest: the routines no longer call the helpers, but still clamp
+  every operand and, for the shadows, make every flag. In the sampler (Veldin) `shadow_quads` went from 2.5 to 1.8 % of the
+  main thread, `shadow_segment_draw` 2.8 to 2.2 %, `shadow_packets` 0.8 to 0.5 %, the sky 6.0 to 4.6 % (Nebula G34 4.7 to
+  3.7, Pokitaru 1.9 to 1.4, Hoven 1.6 to 1.4). Measured headless (`forward`, the profiler's medians over the walk after the
+  level's arrival, three interleaved runs, a shared machine): `Game: moby pass` 9 to 14 % less (Veldin 0.42 to 0.38 ms,
+  Nebula G34 0.60 to 0.52, Pokitaru 0.44 to 0.40, Hoven 0.47 to 0.43; Rilgar, with few shadows, the same); `Game: world
+  passes` within the noise but on Nebula G34 (1.00 to 0.91).
+- **Not rewritten: the tie and shrub lighting** (0x297728, 0x288908). Measured first: with the tfrag lighting done, the stage
+  that holds them and the passes' ends is 0.01-0.03 ms a frame (Nebula G34's 0.08-0.33 is the tfrag lighting); in the sampler
+  the tie lighting is 0.2-0.5 % of the main thread (1.7 % on Hoven, a third of it its VU0 micro program, which a rewrite
+  would not change), the shrub lighting 0.2 % or less, and neither shows at a level's load. At most 0.01-0.03 ms to win.
 
 ## The frame's chain
 
