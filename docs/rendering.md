@@ -783,8 +783,10 @@ the sets, the half-resolution target), `sm_water_rt` / `sm_rt_surface` in `mrp_m
   reflection and its distance from the camera): a depth pass of the seas alone, then the nearest sea surface traced with early depth
   tests, the water the 3D's picture shows hidden left out, no lighting. The seas are then drawn as before with a shader without the
   ray query (its registers are the sea's own: with the trace in it the full-resolution seas cost twice as much) that reads the half
-  image at the pixel and at four places one half texel away (`RAC1_RT_BLUR`), keeping the taps within a few percent of the pixel's
-  distance, any water tap near it else, the cube map last. `RAC1_RT_RES=1` traces in every pixel, `2` shades the seas once per 2 x 2
+  image's texels around the pixel, each fetched alone (never filtered), within 1 + `RAC1_RT_BLUR` half texels of it (a tent),
+  keeping each where its distance is the one the pixel's own water has at that texel (the pixel's 1 / distance carried over the screen
+  by its slope), else, more loosely, the texels up to four rows up and down, the cube map last
+  ([below](#the-flickering-line-under-pokitarus-far-islands)). `RAC1_RT_RES=1` traces in every pixel, `2` shades the seas once per 2 x 2
   pixels (phase 0's shading rate).
 - **The picture**: `RAC1_RT_SHADE=1` takes phase 0's picture colour where the hit lies in it and the hit's own shading elsewhere,
   `0` is phase 0 (the cube map elsewhere). The pure hit shading (2, the default) costs no more, matches Medium's brightness better
@@ -818,7 +820,7 @@ Flicker over the water (pixels whose frame-to-frame second difference exceeds Of
 
 Full resolution without the upsample's spread flickers far more (Rilgar swimming 9548 / 220): every ripple moves a sharp reflection
 of lit windows. Pokitaru's 144 pixels over 16 are a thin line under the far islands (the far water's distance changes quickly from
-one half texel to the next).
+one half texel to the next; gone since, [below](#the-flickering-line-under-pokitarus-far-islands)).
 
 What is still missing against Medium: the mobys (Ratchet, the ships, Pokitaru's airships: phase 3), the reflection a little softer
 (half resolution and its spread) and calmer (the ripples bend the ray by a fifth of their slope), and lit textures' own glow (the
@@ -853,6 +855,62 @@ VK_KHR_ray_tracing_maintenance1: the compaction's copies run in the build stage)
 the same with `RAC1_RT=0` and Medium: a dynamic depth bias never set, colour attachments of another format than a pipeline's
 (R8_UNORM and RGBA16F targets drawn with RGBA8 pipelines), a depth image cleared without its transfer usage, shaders using
 demote-to-helper without the feature asked for, a few objects left at the device's end.
+
+### The flickering line under Pokitaru's far islands
+
+Daino, playing 0.7.0 on Vulkan (Radeon 890M, 5120x1440): "I riflessi RT su Pokitaru glitchano, lampeggiano" - Medium (RT) and High
+(RT) flickered at Pokitaru, and at Hoven too, where Medium and Low did not. Not the earlier fixes to Pokitaru's water (the sea held
+still, its texture's average past the skirts and far away, the ripples faded where finer than the pixel: Medium and Low have them
+too) nor a frame drawn without the trace (`RAC1_RT_DEBUG=1` showed the trace's colours in every frame of the runs): the
+half-resolution trace's upsample - the line under the far islands was yellow in that view, "a nearby tap", every other frame.
+
+The seas read the half image through the trace's sampler, bilinear and repeating. A read between texels mixed their distances -
+a texel of the far water with its neighbour much farther, or with an empty texel's 0 (an island, a post, a shore hiding the water
+there) - into a distance no surface has, so whether a tap matched the pixel's distance hung on where the pixel fell among the
+texels, which changes with every step and turn of the camera: at the islands' feet and along every edge the colour switched from
+the tap's reflection to an average of any tap near it, a row at a time. Now (`sm_water_rt`, pass 2):
+
+- the texels around the pixel are fetched one by one (`texelFetch`, inside the image), weighted by a tent of 1 + `RAC1_RT_BLUR` half
+  texels (the same spread as before);
+- each is kept where its distance is the one the pixel's own water has at that texel: the pixel's 1 / distance carried over to it by
+  its screen slope (`dFdx`, `dFdy`), within 3 to 8 %; the far sea changes its distance by a tenth from one texel to the next, so
+  comparing with the pixel's own distance, as before, threw most far taps away;
+- where none is, the texels up to four rows up and down within 8 to 40 % (a sliver of water at an island's foot whose texels the
+  island hides at half resolution: read from the cube map it was a line of another colour every other frame; the single nearest
+  texel instead, a dotted line); the cube map last, as before.
+
+Flicker over the water, Vulkan, 60 frames, pixels whose second difference exceeds the plain water's (Water Reflections off) by
+8 / 16, before -> after; Medium for comparison (unchanged):
+
+| Place, size | Medium | Medium (RT) before | Medium (RT) after |
+|---|---|---|---|
+| Pokitaru's dock walking (`shipwalk`), 1280x360 | 1112 / 34 | 487 / 144 | 301 / 13 |
+| the same, 1920x1080 (the water's band) | 14502 / 576 | 1361 / 266 | 1061 / 143 |
+| the same, 5120x1440 (the left half of the water's band) | 56943 / 1099 | 10903 / 706 | 10919 / 277 |
+| Pokitaru's dock standing (`shipskip`), 1920x1080 | 3932 / 5 | 1257 / 57 | 455 / 28 |
+| Pokitaru's dock, the camera turning (`shipturn`), 1920x1080 | 36331 / 2948 | 3436 / 29 | 3512 / 10 |
+| Hoven, the water under the town, walking, 1280x360 | 26 / 0 | 106 / 6 | 42 / 0 |
+| the same, 1920x1080 | 14 / 1 | 74 / 0 | 79 / 0 |
+| the same, 5120x1440 | 1626 / 26 | 775 / 11 | 897 / 56 |
+| Hoven standing, 1920x1080 | 696 / 7 | 160 / 14 | 129 / 18 |
+| Hoven, the camera turning, 1920x1080 | 37718 / 65 | 17805 / 43 | 23171 / 82 |
+| Rilgar's shore walking, 1280x360 | 5193 / 24 | 1464 / 0 | 1896 / 2 |
+| Rilgar swimming at the harbour, 1280x360 | 215 / 0 | 95 / 0 | 119 / 0 |
+| Novalis, 1280x360 | 13 / 0 | 5 / 0 | 4 / 0 |
+
+High (RT) measures as Medium (RT) at these places (1280x360: Pokitaru 301 / 13, Hoven 42 / 0). Pokitaru's line under the far islands is gone
+(of its 144 pixels over 16, at 1280x360, none left under the islands); what is left at Pokitaru is Ratchet's own edge over the water.
+Hoven turning and at 5120x1440 flickers a little more, in the same places as before (the far crystals' and lamps' reflections sweeping
+across the ripples), and Rilgar's shore a little more below 16: the tent's taps read one by one are a little sharper than four bilinear
+reads.
+
+The cost: the seas' stage 0.64 -> 0.70 ms at Pokitaru 1080p, 1.33 -> 1.52 ms at 5120x1440 (Hoven 0.42 -> 0.47, 1.22 -> 1.45; the
+profiler's last 120 frames): sixteen fetches a pixel instead of five filtered reads.
+
+The trace's misses (the ray hitting nothing) still read the cube map as before. Read as Low now does
+([Materials](materials.md#water-reflections): the sky's faces whatever their alpha), the far sea mirrors the bright sky as Medium's
+does, instead of the sea's own darker colour; tried, it flickered two to four times as much (Pokitaru 1920x1080 walking 8293 / 673,
+turning 15714 / 115; 5120x1440 24720 / 1136): the bright sky meets every edge of the half-resolution reflection. Left for a choice.
 
 ## Ray tracing, phase 3: the mobys
 

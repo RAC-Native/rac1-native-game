@@ -223,6 +223,16 @@
     "    vec2 uv = vec2(dot(R, Rt), dot(R, Up)) / max(dot(R, F), 1e-4) * 0.5 + 0.5;\n"                                                                    \
     "    return textureLod(uReflCube, vec3(clamp(uv, vec2(0.0), vec2(1.0)), layer + base), 0.0);\n"                                                              \
     "}\n"                                                                                                                                                 \
+    "/* the sky's own faces along R, alpha what they hold: their alpha is not that (the sky's layers are blended over each other, the\n" \
+    "   last one's alpha left in the face: 0 over the lower sky, the horizon's haze, and between the clouds), so whatever was drawn there -\n" \
+    "   anything but the faces' cleared black - counts as held. Read by its alpha, the far sea, which mirrors the sky just above the\n" \
+    "   horizon, took `miss` (the sea's own dark environment colour) wherever the probe had nothing: a flat dark patchwork on Low, where\n" \
+    "   Medium's planar view shows the sky. Low's alone: Medium's fallback is read as it was, and the trace's misses too (its far sea,\n" \
+    "   bright, flickered more where the half-resolution reflection's edges meet the sky) */\n" \
+    "vec4 sm_refl_sky(vec3 R, float base) {\n" \
+    "    vec4 s = sm_refl_cube(R, base);\n" \
+    "    return vec4(s.rgb, max(s.a, smoothstep(0.0, 0.03, max(s.r, max(s.g, s.b)))));\n" \
+    "}\n" \
     "/* the probe's direction for the ray from P along R: where it meets the sphere of uMat2[252].w around the probe (uMat2[252].xyz) -\n"   \
     "   the scenery taken as lying there, so it stays put on the water as the camera moves; R itself outside the sphere */\n"                   \
     "vec3 sm_refl_probe(vec3 P, vec3 R) {\n"                                                                                                     \
@@ -232,6 +242,15 @@
     "    if (q.w <= 0.0 || c >= 0.0) return R;\n"                                                                                               \
     "    return o + (sqrt(b * b - c) - b) * R;\n"                                                                                               \
     "}\n"                                                                                                                                       \
+    "/* how much of the probe a water point at P may take: none past its sphere. There the ray is read from the probe as it is, and the\n" \
+    "   probe's few rows around its horizon - the islands' and the shores' silhouettes, seen from 6 units above the water - were spread\n" \
+    "   over the whole far sea (whose reflected rays all rise by a hair): flat bands of the islands' colours with stepped edges, the\n" \
+    "   cube's texels magnified many times, where Medium shows the sky. Scenery there lies nearer the probe than the point itself: no\n" \
+    "   reflection of it can reach the point */\n" \
+    "float sm_refl_probe_w(vec3 P) {\n" \
+    "    vec4 q = uMat2[252];\n" \
+    "    return q.w <= 0.0 ? 1.0 : 1.0 - smoothstep(0.75, 1.0, length(P - q.xyz) / q.w);\n" \
+    "}\n" \
     "#ifdef RAC1_RT\n"                                                                                                                                                    \
     "/* RAC1_RT=1 (testing, ray tracing: mrp_rt.h; the seas' Vulkan variant alone): the reflection's ray traced through the level's static\n"                                                                                                                                                    \
     "   world (ties, shrubs, tfrags at their finest; High (RT): the frame's mobys too) from the water along the reflection of a gentle normal. uRtMode: bit 0 on;\n"                                                                                                                                                    \
@@ -288,25 +307,55 @@
     "    vec4 r = uMat2[253];\n"                                                                                                                                                    \
     "    int dbg = (uRtMode >> 1) & 7, shade = (uRtMode >> 4) & 3, pass = (uRtMode >> 6) & 3;\n"                                                                                                                                                    \
     "    float d0 = length(uShCam - P);\n"                                                                                                                                                    \
-        "    if (pass == 2) {  /* the half-resolution trace read around the pixel (its own place twice, four more rt_par.y half texels away -\n" \
-    "                         the planar view's spread: Medium reads its view so), each tap kept where its distance is the pixel's */\n" \
-    "        vec2 hs = 1.0 / vec2(textureSize(uRtHalf, 0)), c0 = gl_FragCoord.xy * 0.5 * hs, o = rt_par.y * hs;\n" \
-    "        vec4 sum = vec4(0.0), any = vec4(0.0);\n" \
-    "        for (int k = 0; k < 5; ++k) {\n" \
-    "            vec2 d = k == 0 ? vec2(0.0) : vec2((k & 1) != 0 ? 1.0 : -1.0, k < 3 ? 1.0 : -1.0);\n" \
-    "            vec4 v = textureLod(uRtHalf, c0 + d * o, 0.0);\n" \
-    "            float wd = v.a > 0.0 ? 1.0 - smoothstep(0.04, 0.12, abs(v.a - d0) / d0) : 0.0;  /* (the water's own slope: some percent a texel at a low angle) */\n" \
-    "            sum += vec4(v.rgb, 1.0) * (wd * (k == 0 ? 2.0 : 1.0));\n" \
-    "            any += v.a > 0.0 ? vec4(v.rgb, 1.0) * (1.0 - smoothstep(0.1, 0.4, abs(v.a - d0) / d0)) : vec4(0.0);\n" \
-    "        }\n" \
-    "        if (sum.w > 0.05) {\n" \
+    "    if (pass == 2) {  /* the half-resolution trace read around the pixel: its texels within 1 + rt_par.y half texels (a tent: the\n" \
+    "                         planar view's spread, Medium reads its view so), each one fetched alone - never filtered: a filtered read\n" \
+    "                         mixed a texel's distance with its neighbour's or with an empty texel's 0, so that at an edge (the far islands'\n" \
+    "                         feet, a post's, a shore's) whether the taps matched hung on where the pixel fell among the texels, which changed\n" \
+    "                         with every step of the camera: a line flickering under the far islands of Pokitaru and at Hoven's posts -, and\n" \
+    "                         kept where its distance is the one the pixel's own water has at that texel (the pixel's 1 / distance carried\n" \
+    "                         over the screen by its slope: the far water changes its distance by much from one texel to the next) */\n" \
+    "        ivec2 hsz = textureSize(uRtHalf, 0);\n" \
+    "        vec2 hp = gl_FragCoord.xy * 0.5 - 0.5;  /* (the pixel in the half image's texels: texel i's centre at i) */\n" \
+    "        ivec2 i0 = ivec2(floor(hp));\n" \
+    "        float id0 = 1.0 / d0, rad = 1.0 + rt_par.y;\n" \
+    "        vec2 gi = vec2(dFdx(id0), dFdy(id0)) * 2.0;  /* (1 / distance a half texel on) */\n" \
+    "        vec4 sum = vec4(0.0);\n" \
+    "        for (int y = -1; y <= 2; ++y)\n" \
+    "            for (int x = -1; x <= 2; ++x) {\n" \
+    "                ivec2 t = i0 + ivec2(x, y);\n" \
+    "                vec2 dt = vec2(t) - hp;\n" \
+    "                float ws = max(1.0 - abs(dt.x) / rad, 0.0) * max(1.0 - abs(dt.y) / rad, 0.0);\n" \
+    "                if (ws <= 0.0 || any(lessThan(t, ivec2(0))) || any(greaterThanEqual(t, hsz))) continue;\n" \
+    "                vec4 v = texelFetch(uRtHalf, t, 0);\n" \
+    "                if (v.a <= 0.0) continue;\n" \
+    "                float e = max(id0 + dot(gi, dt), id0 * 0.25);  /* (the 1 / distance the pixel's water has there) */\n" \
+    "                float rel = abs(v.a * e - 1.0);\n" \
+    "                sum += vec4(v.rgb, 1.0) * (ws * (1.0 - smoothstep(0.03, 0.08, rel)));\n" \
+    "            }\n" \
+    "        if (sum.w > 0.02) {\n" \
     "            if (dbg == 5) sm_refl_dbg = sum.rgb / sum.w;\n" \
     "            return sum.rgb / sum.w;\n" \
     "        }\n" \
-    "        /* (else any tap of water near the pixel's distance - an edge, the far water's quick change of distance: a pixel traced alone\n" \
-    "           costs its whole wave the trace) */\n" \
-    "        if (any.w > 0.05) return dbg == 1 ? vec3(1.0, 1.0, 0.0) : any.rgb / any.w;\n" \
-    "        if (dbg == 1) return vec3(1.0, 0.0, 1.0);  /* (magenta: the half image had nothing here, traced in the pixel) */\n" \
+    "        /* (else the texels near the pixel's distance, more loosely, up to four texels up and down - an edge: a sliver of water at an\n" \
+    "           island's foot whose texels the island hides at half resolution, a row whose texels all lie a little off: read from the cube\n" \
+    "           map, the sky, it was a bright line under the islands every other frame; the one nearest texel alone, a dotted one) */\n" \
+    "        vec4 alt = vec4(0.0);\n" \
+    "        for (int y = -4; y <= 4; ++y)\n" \
+    "            for (int x = -1; x <= 2; ++x) {\n" \
+    "                ivec2 t = i0 + ivec2(x, y);\n" \
+    "                vec2 dt = vec2(t) - hp;\n" \
+    "                float ws = max(1.0 - abs(dt.x) / rad, 0.0) * max(1.0 - abs(dt.y) / 5.0, 0.0);\n" \
+    "                if (ws <= 0.0 || any(lessThan(t, ivec2(0))) || any(greaterThanEqual(t, hsz))) continue;\n" \
+    "                vec4 v = texelFetch(uRtHalf, t, 0);\n" \
+    "                if (v.a <= 0.0) continue;\n" \
+    "                float rel = abs(v.a * max(id0 + dot(gi, dt), id0 * 0.25) - 1.0);\n" \
+    "                alt += vec4(v.rgb, 1.0) * (ws * (1.0 - smoothstep(0.08, 0.4, rel)));\n" \
+    "            }\n" \
+    "        if (alt.w > 0.02) {\n" \
+    "            if (dbg == 5) sm_refl_dbg = alt.rgb / alt.w;\n" \
+    "            return dbg == 1 ? vec3(1.0, 1.0, 0.0) : alt.rgb / alt.w;\n" \
+    "        }\n" \
+    "        if (dbg == 1) return vec3(1.0, 0.0, 1.0);  /* (magenta: the half image had nothing here: the cube map) */\n" \
     "    }\n" \
 "    vec3 V = (uShCam - P) / d0;\n"                                                                                                                                                    \
     "    vec3 R = reflect(-V, normalize(mix(N, Nw, 0.2)));  /* (the ripples' half slope of the cube map's: sharper, less sparkle) */\n"                                                                                                                                                    \
@@ -387,8 +436,16 @@
     "    float mode = raw ? r.x - 16.0 : dbg ? r.x - 8.0 : r.x;\n"                                                                                        \
     "    vec3 V = normalize(uShCam - P);\n"                                                                                                               \
     "    vec3 Rc = reflect(-V, normalize(mix(N, Nw, 0.4)));\n"                                                                                    \
-    "    vec4 c = r.w > 0.5 ? sm_refl_cube(sm_refl_probe(P, Rc), uMat2[251].x) : vec4(0.0);\n"                                                     \
-    "    vec4 sky = r.w > 0.5 && uMat2[251].y >= 0.0 ? sm_refl_cube(Rc, uMat2[251].y) : vec4(0.0);  /* (the sky's own faces: at no distance) */\n" \
+    "    vec4 c, sky;\n" \
+    "    if (mode < 1.5 && r.w > 0.5) {  /* (Low: the far sea read as sm_refl_sky and sm_refl_probe_w say; Medium's fallback read as it was) */\n" \
+    "        vec3 Rl = normalize(vec3(Rc.xy, max(Rc.z, 0.002)));  /* (never into the water, as the trace's ray: the far sea's ripples tipped it under the horizon) */\n" \
+    "        c = sm_refl_cube(sm_refl_probe(P, Rl), uMat2[251].x);\n" \
+    "        c.a *= sm_refl_probe_w(P);\n" \
+    "        sky = uMat2[251].y >= 0.0 ? sm_refl_sky(Rl, uMat2[251].y) : vec4(0.0);\n" \
+    "    } else {\n" \
+    "        c = r.w > 0.5 ? sm_refl_cube(sm_refl_probe(P, Rc), uMat2[251].x) : vec4(0.0);\n" \
+    "        sky = r.w > 0.5 && uMat2[251].y >= 0.0 ? sm_refl_cube(Rc, uMat2[251].y) : vec4(0.0);  /* (the sky's own faces: at no distance) */\n" \
+    "    }\n" \
     "    vec3 env = mix(mix(miss, sky.rgb, sky.a), c.rgb, c.a);\n"                                                                                                             \
     "    float k = 0.0;\n"                                                                                                                                \
     "    vec4 p = vec4(0.0);\n"                                                                                                                           \

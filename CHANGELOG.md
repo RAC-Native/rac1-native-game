@@ -38,6 +38,14 @@ What changed in each release. Releases are source only: you build the game with 
   the 14.5 s pictures): its later part early, then silence before the pictures ended. A movie takes the Japanese disc's
   sound only when it is the same cut (the last group of pictures' time code the same on both discs); the logos and the
   credits (16 s shorter in Japan) keep the text language's sound.
+- Water Reflections Medium (RT) and High (RT): no more flickering line under Pokitaru's far islands, at Hoven's posts and along
+  the shores: the seas read the half-resolution trace texel by texel, each kept where its distance is the one the pixel's own
+  water has there, instead of filtered reads that mixed a texel's distance with its neighbour's or an empty texel's (whether
+  they matched hung on where the pixel fell among the texels, which changed with every step of the camera).
+- Water Reflections Low: the far sea mirrors the sky, as Medium's does, instead of a flat dark patchwork with stepped edges
+  (Daino on Pokitaru at 5120x1440): the sky's cube faces were read by an alpha the sky's blended layers leave at 0 over the
+  lower sky and the horizon, and the probe's horizon - the islands' silhouettes - was spread over all the water past its
+  sphere. Medium's picture is unchanged.
 
 ## 0.7.0
 
