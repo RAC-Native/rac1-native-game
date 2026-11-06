@@ -390,7 +390,11 @@ runs, its `gp`, the `end` of each core) and, per unit, `ptr` lines: the disc's d
 core. The table writer finds the core's code runs by comparing the two builds' code with the relocated
 fields masked, its data runs from the sections and the addresses every unit's matched code builds, and the
 `ptr` words by comparing each candidate with the North American word at the same place (a value that only
-looks like a core address, two halfwords such as 0x00130001, is not one). Then:
+looks like a core address, two halfwords such as 0x00130001, is not one). A data address only the ports
+name (no matched code reaches it: the 1.02 title code changed, so nothing votes for the title's sound lists
+0x186100 / 0x1861e0 / 0x1862b0) is placed by its bytes: of the displacements of the runs around it, the one
+under which its words equal the disc's (`literal_points`). `region_maps.py check-levels` counts a port's literal
+the table leaves untranslated as an error. Then:
 
 - `region_view.py` takes the core's addresses back too (calls into the core, the addresses built into its
   data, the `$gp` offsets from the disc's own `$gp`); `fix` lines correct the constants that only look like

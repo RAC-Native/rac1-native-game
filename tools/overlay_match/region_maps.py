@@ -424,6 +424,29 @@ def gap_window_entries(V, L, cr, ent, named, k=8):
     return out
 
 
+def literal_points(V, L, pts, lits, window=0x40):
+    """{a: b}: the ports' data literals `lits` (FR / L<n>_ADDR) that the runs of `pts` leave untranslated, placed by
+    their bytes: of the displacements of the runs below and above, the one under which the NTSC-U words a..a+window
+    equal the disc's (all of them there, not all zero, one displacement only). The objects only the ports name (the
+    title's sound lists 0x186100 / 0x1861e0 / 0x1862b0 in the boot module of the 1.02 build, whose own title code
+    changed: no matched code names them) get a point, and the run they sit in then covers them."""
+    R = Region()
+    R.data = data_runs(pts)
+    out = {}
+    for x in sorted(lits):
+        if x < CORE_END or x >= V.code_base or R.data_fwd(x) is not None:
+            continue
+        i = bisect.bisect_right(R.data, (x, 0xFFFFFFFF, 0))
+        cands = {R.data[k][2] for k in (i - 1, i) if 0 <= k < len(R.data)}
+        nw = [V.data_word(x + k) for k in range(0, window, 4)]
+        if None in nw or not any(nw):
+            continue
+        hits = [d for d in sorted(cands) if [L.data_word(x + d + k) for k in range(0, window, 4)] == nw]
+        if len(hits) == 1:
+            out[x] = x + hits[0]
+    return out
+
+
 def map_points(V, L, fmap, sizes, pairs):
     """The data lines of a map as {a: b} (overlay_match's choice: the most common pairing)."""
     pts = {a: c.most_common(1)[0][0] for a, c in pairs.items()}
@@ -552,6 +575,7 @@ def cmd_table(a):
             units.append((str(lv), om.Overlay(*om.level_overlay(ni, lv)), om.Overlay(*om.level_overlay(pi, lv))))
         core = make_core(ne, pe, units) if core_moved(ne, pe) else Core()
         named = named_addresses() if core else set()
+        lits = level_literals()
         if core:
             # the core moved (the 1.02 core): its own unit, loaded at NTSC-U's addresses by the runtime
             lines.append("core 00100080 %08x -> 00100080 %08x moved: the unit `core`, and `ptr` lines per unit" % (CORE_END, core.end_p))
@@ -576,6 +600,12 @@ def cmd_table(a):
             pts = map_points(V, L, fmap, sizes, pairs)
             if core:  # (the core's addresses: the core unit's)
                 pts = {x: y for x, y in pts.items() if x >= CORE_END}
+            # (the data only the ports name, which no matched code reaches: placed by its bytes)
+            lp = literal_points(V, L, pts, lits.get(name, set()))
+            pts.update(lp)
+            if lp:
+                print(f"[region_maps] {name}: {len(lp)} literals of the ports placed by their bytes: "
+                      + ", ".join("%08x %+x" % (x, y - x) for x, y in sorted(lp.items())))
             cr, dr = code_runs(fmap, sizes), data_runs(pts)
             ent = changed_entries(V, L, fmap, sizes, pts, cr)
             inner = {}
@@ -925,7 +955,10 @@ def cmd_check_levels(a):
             if u == v:
                 res[kind + (" same" if u is not None else " both untranslated")] += 1
                 if u is None:
-                    diffs.append(f"    {kind} {x:08x}: untranslated in both (kept)")
+                    # (an error: the runtime keeps the NTSC-U address, right only where the disc has the same bytes
+                    # there; the 1.02 boot module's title sound lists were read 0x100 early so, #137)
+                    bad_total += 1
+                    diffs.append(f"    {kind} {x:08x}: untranslated in both (kept: an error)")
             elif u is None:
                 res[kind + " direct has none"] += 1
                 diffs.append(f"    {kind} {x:08x}: direct none, region {v:08x}")
@@ -936,7 +969,7 @@ def cmd_check_levels(a):
         print(f"  {name}: {len(lits[name])} literals: " + ", ".join(f"{k} {v}" for k, v in sorted(res.items())))
         for d in diffs[: a.show]:
             print(d)
-    print(f"[region_maps] {bad_total} literals translated differently from the direct maps")
+    print(f"[region_maps] {bad_total} literals translated differently from the direct maps, or not at all")
 
 
 def load_image(elf):
