@@ -72,6 +72,9 @@ extern bool g_ee_oob_is_zero;
 void ee_journal_begin();
 size_t ee_journal_restore();
 bool ee_journal_active();
+// A host-only range of RAM (at or above the game's 32 MB) the journal does not save nor put back: what a run inside the journal
+// writes there stays after restore (the renderer's shadow runs' scratch chains, mrp_lod.cpp). Page-aligned; empty: none.
+void ee_journal_unsaved(u32 lo, u32 hi);
 
 // Debugging: with EE_BT set, prints a backtrace (where a bad EE address came from).
 void ee_debug_backtrace();

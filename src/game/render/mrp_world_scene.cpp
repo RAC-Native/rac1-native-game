@@ -908,7 +908,13 @@ void draw_tfrag(Build& b, VUState& st, Program prog, uint32_t start) {
     const int lod = tfrag_lod(prog, start);
     const uint32_t base = st.xtop & 0x3ff;
     WorldIndex::Hit hit;
-    if (!b.idx.find_tfrag(mem, base, lod, hit)) {
+    // (host, RAC1_PERF_TFRAG_FIND=0: always looked up) a pass the host makes (tfrag_discard, not checked) needs no entry: its draw is
+    // tfrag_gpu_draw's early return, the entry only its check's - the lookup (a hash of the entry's image, a map) was a tenth of the
+    // MRP scene worker
+    static const bool find_always = std::getenv("RAC1_PERF_TFRAG_FIND") != nullptr && std::atoi(std::getenv("RAC1_PERF_TFRAG_FIND")) == 0;
+    const bool need_hit = find_always || !b.tfrag_discard || b.in.tfrag_check || b.in.tfrag_level == nullptr;
+    if (!need_hit) hit.cls = -1;
+    else if (!b.idx.find_tfrag(mem, base, lod, hit)) {
         ++b.f.unknown[static_cast<int>(prog)];
         return;
     }

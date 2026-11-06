@@ -38,6 +38,19 @@ namespace rac1 {
 void collide_vu_save(float out[15]);
 void collide_vu_restore(const float in[15]);
 
+// the shadow runs' room above the game's 32 MB (shadow_packet_room): their packets, the packet ring, the work area
+constexpr uint32_t kShadowPackets = 0x03c00000u, kShadowWork = 0x03ee0000u, kShadowRing = 0x03f40000u;
+namespace {
+// (host, RAC1_MRP_LOD_ROOM_JOURNAL) the room neither saved nor put back by the shadow runs' journal: only the shadow runs write
+// there, and what the MRP takes of it is taken before the restore (=1: saved and put back, as before)
+const bool g_room_unsaved = [] {
+    const char* v = std::getenv("RAC1_MRP_LOD_ROOM_JOURNAL");
+    const bool on = v == nullptr || std::atoi(v) == 0;
+    if (on) ee_journal_unsaved(kShadowPackets, 0x04000000u);
+    return on;
+}();
+}  // namespace
+
 int g_mrp_lod = 0;
 bool g_mrp_lod_widen_off = false;
 bool g_mrp_lod_frame_drawn = true;
@@ -518,7 +531,7 @@ void mrp_lod_world_shadow(int kind, void (*pass)(), uint32_t cur) {
     }
     const auto t0 = std::chrono::steady_clock::now();
     if (verify) {
-        g_verify_ram.assign(ee_get_ram_base(), ee_get_ram_base() + 0x04000000u);
+        g_verify_ram.assign(ee_get_ram_base(), ee_get_ram_base() + (g_room_unsaved ? kShadowPackets : 0x04000000u));  // (the room: the runs' own)
         g_verify_spr.assign(ee_get_scratchpad_base(), ee_get_scratchpad_base() + 0x4000u);
     }
     // the host state the pass changes besides EE memory: the VU0 registers (macro mode), the DMA registers its scratchpad
@@ -856,13 +869,13 @@ namespace {
 // keyframe header then read back as garbage -> a pose's scratchpad address 0x700c130c, the pointer fault). The shadow's ring is
 // 0x03f40000..0x04000000 (0xc0000 bytes, above the host's texture tables; the landing used 0x2c140). Inside the journal: put back
 // after the run. RAC1_MRP_LOD_ROOM=0: off (testing).
-constexpr uint32_t kShadowPackets = 0x03c00000u, kShadowWork = 0x03ee0000u, kShadowRing = 0x03f40000u;
 void shadow_packet_room() {
     static const bool off = [] {
         const char* v = std::getenv("RAC1_MRP_LOD_ROOM");
         return v != nullptr && std::atoi(v) == 0;
     }();
     if (off) return;
+
     const uint32_t work = lwu(OV(0x0015f5fcu));
     std::memcpy(ee_ram_ptr_write(kShadowWork, 0x2000), ee_ram_ptr_read(work), 0x2000);
     sw(OV(0x0015f5fcu), kShadowWork);
@@ -905,7 +918,7 @@ void mrp_lod_moby_shadow(void (*pass)()) {
     if (!g_mrp_lod_frame_drawn) return;  // (a game frame not drawn)
     const auto t0 = std::chrono::steady_clock::now();
     if (verify) {
-        g_verify_ram.assign(ee_get_ram_base(), ee_get_ram_base() + 0x04000000u);
+        g_verify_ram.assign(ee_get_ram_base(), ee_get_ram_base() + (g_room_unsaved ? kShadowPackets : 0x04000000u));  // (the room: the runs' own)
         g_verify_spr.assign(ee_get_scratchpad_base(), ee_get_scratchpad_base() + 0x4000u);
     }
     // the host state the pass changes besides EE memory: the whole VU0 (the pass uploads its micro programs, the drop shadows run

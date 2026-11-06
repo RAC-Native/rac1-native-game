@@ -2052,8 +2052,12 @@ size_t g_tie_slot_opq_size = 0;
 // and the low byte is too while the bits above it do not change (checked with three colours of alpha 0xff)
 bool tie_vert_opaque(const SceneInst& si) {
     if (!si.resident) return false;
-    if (g_tie_slot_opq_updates != g_rcols.updates || g_tie_slot_opq_size != g_rcols.mirror.size()) {
-        g_tie_slot_opq_updates = g_rcols.updates;
+    // (remade when the mirror's colours changed: its count of instances changed, not of its updates - one a frame, which remade the
+    // table of every tie's lowest alpha every frame; RAC1_PERF_OPAQUE_KEEP=0: as before)
+    static const bool keep = std::getenv("RAC1_PERF_OPAQUE_KEEP") == nullptr || std::atoi(std::getenv("RAC1_PERF_OPAQUE_KEEP")) != 0;
+    const uint64_t key = keep ? g_rcols.instances_changed : g_rcols.updates;
+    if (g_tie_slot_opq_updates != key || g_tie_slot_opq_size != g_rcols.mirror.size()) {
+        g_tie_slot_opq_updates = key;
         g_tie_slot_opq_size = g_rcols.mirror.size();
         const uint32_t n = g_rcols.src.tie_count;
         g_tie_slot_amin.assign(n, 0);

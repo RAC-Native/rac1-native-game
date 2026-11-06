@@ -66,6 +66,16 @@ the world passes' culls (the profiler's `Game: world passes`).
   37 to 95 MB, and a full build with three jobs from about 10 to 22 minutes.
   Off by default for now, as the whole game code does not gain enough for the size and the build time; on with
   `-DRAC1_INLINE_HELPERS=ON`. On a target with a small instruction cache more inlining measured slower.
+  Measured again on top of the hand-written culls, lighting, shadows and sky (November 2026, the same method, the walk after
+  the level's arrival): the game code -11 to +13 % (Veldin 1.77 to 1.92 ms, Kerwan 3.23 to 3.40, Rilgar 2.21 to 2.13, Nebula
+  G34 2.44 to 2.75, Hoven 2.85 to 2.54), i.e. no gain beyond the noise; the program's code 37.3 to 95.5 MB (the file 170 to
+  250 MB), a full build with three jobs 8.0 to 20.4 minutes (21 to 59 minutes of CPU). Still off.
+  A flat guest mapping (EE address = host base + address, no range test: what OpenRAC does over a 4 GB reservation) was
+  weighed rather than built: the accessors' fast path is already a compare and an add on two globals the L1 cache holds, and
+  forcing it inline - which removes the calls, a bigger saving - gave nothing beyond the noise. A counting build sees about
+  770,000 accesses a frame on Kerwan (260,000 writes, 510,000 reads, of them 200,000 of the scratchpad); a cycle or two saved on
+  each is at most 0.2 ms at best, unmeasurable here, while the null, scratchpad, DMA-register and journal cases would need guard
+  pages and a fault handler.
 - **The three culls by hand** (`world_cull_tfrag.cpp`, `world_cull_tie.cpp`, `world_cull_shrub.cpp`; `RAC1_WORLD_CULL_FAST`):
   the same arithmetic and the same memory written, organised by what the routines do (the view test, the LOD and its morph,
   the chain's records), the VU0 registers in a local copy (`vu0_local.h`) written back at the end, the scratchpad as a byte
@@ -85,6 +95,67 @@ the world passes' culls (the profiler's `Game: world passes`).
   and random ones), batch 101, `RAC1_WORLD_LIGHTING_FAST=2` over the 19 levels (6589 calls, 0 differing) and RAMHASH. It
   matters on Nebula G34, where a flickering light relights 20-30 pieces a frame: `Game: world lighting / pass ends` 0.51 to
   0.20 ms a frame (helpers not inline; three interleaved runs); elsewhere it runs rarely and the stage stays at 0.01-0.02 ms.
+- **The drop shadows and the sky by hand** (`moby_shadows_hand.cpp`, `RAC1_DROP_SHADOWS_FAST`; `sky_hand.cpp`, `RAC1_SKY_FAST`):
+  the drop shadows' six VU0 routines (the mobys' shadow points, the tubes' point and segment sections, their clip, the quads,
+  the packets) and five of the sky's (its parts' vertices to the screen, their textured and coloured triangles' packets, the
+  spheres' test, the sprites), in the same form as the culls. The shadows' transliteration reads the MAC flags after ordinary
+  ops, so it runs the flagged VU0 ops: the local copy makes every op's flags too (`vu0l::VuF`, as `LocalFlags` keeps them),
+  and is written back and read again around the sine / cosine VU0 programs. Proved by oracle batches 482 (shadows, through
+  `shadow_points` and `drop_shadows_draw` on the frame's deferred mobys) and 483 (sky) on the dumps of seven levels, batch 79,
+  the check modes over the 19 levels (one call in ten, `RAC1_HAND_CHECK_EVERY=10`: 1,321 to 69,574 calls a routine, 0
+  differing), the reference images and RAMHASH. Gains are modest: the routines no longer call the helpers, but still clamp
+  every operand and, for the shadows, make every flag. In the sampler (Veldin) `shadow_quads` went from 2.5 to 1.8 % of the
+  main thread, `shadow_segment_draw` 2.8 to 2.2 %, `shadow_packets` 0.8 to 0.5 %, the sky 6.0 to 4.6 % (Nebula G34 4.7 to
+  3.7, Pokitaru 1.9 to 1.4, Hoven 1.6 to 1.4). Measured headless (`forward`, the profiler's medians over the walk after the
+  level's arrival, three interleaved runs, a shared machine): `Game: moby pass` 9 to 14 % less (Veldin 0.42 to 0.38 ms,
+  Nebula G34 0.60 to 0.52, Pokitaru 0.44 to 0.40, Hoven 0.47 to 0.43; Rilgar, with few shadows, the same); `Game: world
+  passes` within the noise but on Nebula G34 (1.00 to 0.91).
+- **Not rewritten: the tie and shrub lighting** (0x297728, 0x288908). Measured first: with the tfrag lighting done, the stage
+  that holds them and the passes' ends is 0.01-0.03 ms a frame (Nebula G34's 0.08-0.33 is the tfrag lighting); in the sampler
+  the tie lighting is 0.2-0.5 % of the main thread (1.7 % on Hoven, a third of it its VU0 micro program, which a rewrite
+  would not change), the shrub lighting 0.2 % or less, and neither shows at a level's load. At most 0.01-0.03 ms to win.
+
+## The widened view's and the LOD slider's shadow runs
+
+With the view wider than the game's 4:3 frustum (16:9 and wider, the sides filled) or the LOD slider off Original, the moby pass,
+the effects block, the draw lists and the sky run a second time each frame as a shadow inside a journal of EE memory
+(`mrp_lod.cpp`), and the MRP draws what the shadow saw. On Kerwan's plaza at 16:9 with LOD High (game thread, the profiler's
+means): the moby pass's shadow 1.1-1.5 ms a frame (282 mobys drawn against the real pass's 48: the slider's distances), the
+others 0.45 (the effects 0.27, the sky 0.08); with LOD Original 0.50 and 0.50 (57 mobys). The world's tfrag / tie / shrub
+shadows do not run: the static world culls itself.
+
+The journal saved each 4 KB page at its first write and put it back after: 668 pages a frame there (2.7 MB copied twice), two
+thirds of them the shadow runs' own room above the game's 32 MB (their packets, packet ring and work area), which nothing reads
+after the run. That room is now left out of the journal (`ee_journal_unsaved`; `RAC1_MRP_LOD_ROOM_JOURNAL=1`: as before): 227
+pages a frame, the moby shadow 1.53 to 1.20 ms, the game thread 6.7 to 6.1 ms (three interleaved runs, the sampler's scene).
+Exact: `RAC1_MRP_LOD_VERIFY=1` (EE RAM below the room and the scratchpad compared after each shadow run: 2999 runs, 0
+differing), RAMHASH on the 4-level route with the view widened and LOD High identical (and identical to the 4:3 one), the
+widened pictures identical (OpenGL, Vulkan).
+
+The MRP scene worker (the bottleneck there: 3.8-4.6 ms busy, the main thread waiting 2.4-3.2 ms for it) spent 7 % of its time in
+`vu1::code_hash`: after every MPG in the frame's chain the world walker asked which world program the micro memory holds
+(`program_of`, mrp_world_check.cpp), hashing up to six programs' code a byte at a time. The last eight images met are now kept
+with their answer and compared (`memcmp`) instead (`RAC1_PERF_VU1_LOOKUP=0`: as before): the hash gone from the profile, the
+worker 3.77 to 3.67 ms and the wait 2.60 to 2.36 ms (three interleaved runs). Exact by construction; the reference images,
+RAMHASH and the widened Kerwan picture identical.
+
+The same worker spent 4 % in `tie_vert_opaque` (RAC1_PERF_OPAQUE's per-instance test of a tie's vertex alpha): its table of
+every tie's lowest alpha was made again whenever the resident colours were updated, which is every frame; it is now made again
+only when their colours changed (the mirror's count of changed instances; `RAC1_PERF_OPAQUE_KEEP=0`: as before): the worker
+4.04 to 3.76 ms, the wait 2.70 to 2.45 ms (three interleaved runs). The same table, so the same draws; the pictures of
+Kerwan, Rilgar and Hoven widened identical, the reference images and RAMHASH too.
+
+And 7-10 % in `WorldIndex::find_tfrag` and its map: the walker looked up each tfrag draw's entry (a hash of the image VU1 memory
+holds, a map search) though, with the GPU path making the tfrags from the host's decisions, that draw only returns; the lookup is
+now made only where it is used (the CPU path, the checks; `RAC1_PERF_TFRAG_FIND=0`: always): the worker 2.71 to 2.60 ms on a
+quieter machine (three interleaved runs). The same pictures (Kerwan, Rilgar, Hoven widened, the references), RAMHASH.
+
+Two cheaper forms were measured and left (Kerwan, the same scene, a counting build): a finer journal - of the pages it still saves
+(about 230 a frame), 75 % change at all, and of their 4 KB 46 % in 256-byte blocks, 23 % in 64-byte ones: blocks of 256 bytes
+would copy half as much, about 0.08 ms a frame at best, against a seen-flag table 16 times larger on every journaled write; and
+guard pages (the journal's write test replaced by a page fault at a page's first write): a fault and an mprotect cost more
+(2-5 us) than copying the page (under 1 us), so it would be slower. The test itself (two byte loads on each of the ~150,000
+writes a frame inside the shadow runs) is a few hundredths of a millisecond.
 
 ## The frame's chain
 
@@ -280,15 +351,19 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_LAZY_CAPTURE=0` | Vulkan: the last frame shown copied every frame |
 | `RAC1_MRPW_P2_LESS=0` | the lighting's second pass of an alpha-tested batch tested LEQUAL (the original's picture: see above) |
 | `RAC1_PERF_OPAQUE=0` | every world draw in both alpha-test passes, with the discard's late depth test |
-| `RAC1_PERF_GS_MEM=0`, `RAC1_PERF_VU1_LOOKUP=0`, `RAC1_PERF_XGKICK=0` | the chain reader's GS memory, VU1 port lookups and kicks as before |
+| `RAC1_PERF_OPAQUE_KEEP=0` | the ties' lowest-alpha table made again every frame |
+| `RAC1_PERF_TFRAG_FIND=0` | the world walker's lookup of every tfrag draw's entry, also where the host makes the tfrags |
+| `RAC1_PERF_GS_MEM=0`, `RAC1_PERF_VU1_LOOKUP=0`, `RAC1_PERF_XGKICK=0` | the chain reader's GS memory, VU1 port lookups (and the world walker's program lookup) and kicks as before |
 | `RAC1_PERF_TEXTABLE=0`, `RAC1_PERF_TFRAG_ALLOC=0`, `RAC1_PERF_VU7=0`, `RAC1_PERF_PKT_MEMO=0` | the scene's and the effects' preparation as before |
 | `RAC1_PERF_PALETTE_BLEND=0` | the six levels' palette blend as the game's loop |
 | `RAC1_PERF_VU_CLAMP=0` | the collision triangle test and the moby transform clamping every operand at each op |
 | `RAC1_PERF_COLL_MESH=1` | the collision segment test's moby meshes kept between calls (off by default) |
 | `RAC1_PERF_COPIES=0` | the EE journal's pages zero-filled then copied, the moby observer's record built aside and copied |
+| `RAC1_MRP_LOD_ROOM_JOURNAL=1` | the widened view's / LOD slider's shadow runs' own room saved and put back by the journal |
 | `RAC1_PERF_EULER_CACHE=1` | the Euler conversion's rows kept per angles (off by default) |
 | `RAC1_PERF_VU0_NF=0` | the generated code's VU0 ops with their flags |
 | `RAC1_WORLD_CULL_FAST=0` | the world passes' three culls as transliterated (`=2`: both, compared at every call) |
+| `RAC1_DROP_SHADOWS_FAST=0`, `RAC1_SKY_FAST=0` | the drop shadows' and the sky's routines as transliterated (`=2`: both, compared; `RAC1_HAND_CHECK_EVERY` to check one call in n) |
 | `RAC1_PERF_SKY_LATE=1` | the sky after the leading opaque tfrag batches (off by default: not exact) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 

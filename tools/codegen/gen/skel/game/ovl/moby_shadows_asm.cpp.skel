@@ -2,6 +2,8 @@
 // transliterated instruction by instruction (tools/codegen/asm2cpp.py, reviewed) on 128-bit
 // registers (ee_regs.h), their VU0 macro ops on the shared VU0 registers, their VU0 programs
 // (0x190 / 0x192, the set the overlay's main sends) on the runtime VU0; the compiled parts as C++.
+// The transliterations, kept as the reference of the hand-written routines (moby_shadows_hand.cpp; RAC1_DROP_SHADOWS_FAST,
+// moby_shadows_fast.cpp, calls them by the routines' names).
 #include <game/ovl/moby_shadows.h>
 
 #include <game/ovl/ovl_reloc.h>
@@ -22,7 +24,7 @@ using namespace vu0m;
 // +0xf) through them -- one joint (0x20 bytes) or two (0x30, with weights) -- scaled by moby +0x2c
 // and the entry's halfword +4, into the list at 0x1ac780 (a header per moby, ended by zero).
 // orig: 0x00285a68
-void shadow_points() {
+void shadow_points_tr() {
     Q128 zero, at, v0, v1, a0, a1, a2, a3, t0, t1, t2, t3, t4, t5, t6, t7, s0, s1, s2, s3, s4, s5, s6, s7, t8, t9, gp, sp, s8, ra, lo, hi;
     float fr[32] = {};
     bool fcc = false;
@@ -35,7 +37,7 @@ void shadow_points() {
 // The scratchpad's point pairs (0x20 each, count 0x160460 - 1) moved along each pair to the z of
 // the vectors at a0 / a1.
 // orig: 0x00286848
-void shadow_points_clip(uint32_t a0_in, uint32_t a1_in) {
+void shadow_points_clip_tr(uint32_t a0_in, uint32_t a1_in) {
     Q128 zero, at, v0, v1, a0, a1, a2, a3, t0, t1, t2, t3, t4, t5, t6, t7, s0, s1, s2, s3, s4, s5, s6, s7, t8, t9, gp, sp, s8, ra, lo, hi;
     float fr[32] = {};
     bool fcc = false;
@@ -50,7 +52,7 @@ void shadow_points_clip(uint32_t a0_in, uint32_t a1_in) {
 // A one-joint entry (0x20 bytes) through the VU0 programs 0x192 / 0x190 (the set the overlay's
 // main sends).
 // orig: 0x002860a8
-void shadow_point_draw(uint32_t a0_in) {
+void shadow_point_draw_tr(uint32_t a0_in) {
     Q128 zero, at, v0, v1, a0, a1, a2, a3, t0, t1, t2, t3, t4, t5, t6, t7, s0, s1, s2, s3, s4, s5, s6, s7, t8, t9, gp, sp, s8, ra, lo, hi;
     float fr[32] = {};
     bool fcc = false;
@@ -63,7 +65,7 @@ void shadow_point_draw(uint32_t a0_in) {
 
 // A two-joint entry (0x30 bytes) through the VU0 programs 0x192 / 0x190.
 // orig: 0x002861f8
-void shadow_segment_draw(uint32_t a0_in) {
+void shadow_segment_draw_tr(uint32_t a0_in) {
     Q128 zero, at, v0, v1, a0, a1, a2, a3, t0, t1, t2, t3, t4, t5, t6, t7, s0, s1, s2, s3, s4, s5, s6, s7, t8, t9, gp, sp, s8, ra, lo, hi;
     float fr[32] = {};
     bool fcc = false;
@@ -77,7 +79,7 @@ void shadow_segment_draw(uint32_t a0_in) {
 // The scratchpad's records of layer a0 (bytes at 0x70003000) written as GS packets (0x50 bytes
 // each) into the packet buffer.
 // orig: 0x002868c0
-void shadow_packets(uint32_t a0_in, uint32_t a1_in) {
+void shadow_packets_tr(uint32_t a0_in, uint32_t a1_in) {
     Q128 zero, at, v0, v1, a0, a1, a2, a3, t0, t1, t2, t3, t4, t5, t6, t7, s0, s1, s2, s3, s4, s5, s6, s7, t8, t9, gp, sp, s8, ra, lo, hi;
     float fr[32] = {};
     bool fcc = false;
@@ -91,7 +93,7 @@ void shadow_packets(uint32_t a0_in, uint32_t a1_in) {
 
 // The scratchpad's points (a0, count a1) turned into the quads of the shadow (reads the clip flags).
 // orig: 0x00285d30
-void shadow_quads(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in) {
+void shadow_quads_tr(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in) {
     Q128 zero, at, v0, v1, a0, a1, a2, a3, t0, t1, t2, t3, t4, t5, t6, t7, s0, s1, s2, s3, s4, s5, s6, s7, t8, t9, gp, sp, s8, ra, lo, hi;
     float fr[32] = {};
     bool fcc = false;

@@ -205,6 +205,10 @@ add_library(rac1_game STATIC
     ovl/world_cull_shrub.cpp
     ovl/world_lighting_fast.cpp
     ovl/world_lighting_tfrag.cpp
+    ovl/moby_shadows_fast.cpp
+    ovl/moby_shadows_hand.cpp
+    ovl/sky_fast.cpp
+    ovl/sky_hand.cpp
     ovl/ovl_reloc.cpp
     ovl/region_core.cpp
     ovl/moby_vu0_reg.cpp
