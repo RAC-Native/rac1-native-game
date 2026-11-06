@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 405 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 406 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 307 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 308 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 77 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -227,6 +227,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_PERF_EULER_CACHE` | 1 = on; default off | The Euler-angle-to-rows conversion (euler_to_mat3_vu, 0x1ffa50) keeps its rows per angles in a 512-entry table per thread and returns them again for the same angles' bits. The same game state; off by default: on this PC it saves about 0.02 microseconds a call (a few microseconds a frame). |
 | `RAC1_PERF_GS_MEM` | 0 = off; default 1 | The GS local memory's addressing by in-page tables for the 16, 8 and 4-bit formats, the 8 / 4-bit and 16-bit stores writing their bytes at once, an indexed texture's CLUT decoded once per texture, the last 16 images of each texture key kept (an effect's or the HUD's textures taking turns at one address keep their image and GPU texture), and the MRP chain reader's DMA tags read in place; 0: as before, to compare. The same picture and game state. See [Performance](performance.md#found-while-profiling-a-low-end-target). |
 | `RAC1_PERF_OPAQUE` | 0 = off, 1 = on, 2 = on with a check; default 1 | The MRP world's draws whose pixels cannot fail the alpha test (every texel sampled and every vertex colour with an alpha of at least 0x80, the test GEQUAL or GREATER below that) drawn in their first pass with early depth testing and left out of the second pass, on OpenGL and Vulkan; 0: every draw in both passes, as before. 2 (OpenGL) also draws each such run again counting its failing pixels and prints the totals at the end of a run (they must be 0). The same picture. See [Performance](performance.md#found-while-profiling-a-low-end-target). |
+| `RAC1_PERF_OPAQUE_KEEP` | 0 or 1; default 1 | The MRP world's table of each tie's lowest vertex alpha (RAC1_PERF_OPAQUE's test of an instance) kept until the resident colours change; 0 makes it again every frame, as before, to compare. The same draws. |
 | `RAC1_PERF_P2_LESS` | 1 = on; default off | With the original lighting too, the second pass of an alpha-tested world batch is depth-tested LESS, as `RAC1_MRPW_P2_LESS` does with the modern lighting: a few pixels differ (a failing pixel lying exactly on another surface's depth is lost). |
 | `RAC1_PERF_PALETTE_BLEND` | 0 = off; default 1 | The palette blend of Kerwan, Rilgar, Umbris, Batalia, Gaspar and Oltanis (one routine in six overlays, mixing two 256-colour palettes into a texture) done on the host: each palette entry's weighted value made once instead of once per texel; 0: the routine's loop as transliterated, to compare. The same game state. |
 | `RAC1_PERF_PKT_MEMO` | 0 = off, 1 = on, 2 = on with a check; default 1 | A host tie / shrub packet repeated for the next instance of its class reuses the previous packet's runs (keys, texture units, batch decisions) when the GS state it reads is unchanged, and the view-projection times the view is kept per view; 0: every packet replayed in full, as before. 2 compares every reuse with the full replay and prints the count of differences at the end of a run (it must be 0). The same picture. |

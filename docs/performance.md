@@ -139,6 +139,12 @@ with their answer and compared (`memcmp`) instead (`RAC1_PERF_VU1_LOOKUP=0`: as 
 worker 3.77 to 3.67 ms and the wait 2.60 to 2.36 ms (three interleaved runs). Exact by construction; the reference images,
 RAMHASH and the widened Kerwan picture identical.
 
+The same worker spent 4 % in `tie_vert_opaque` (RAC1_PERF_OPAQUE's per-instance test of a tie's vertex alpha): its table of
+every tie's lowest alpha was made again whenever the resident colours were updated, which is every frame; it is now made again
+only when their colours changed (the mirror's count of changed instances; `RAC1_PERF_OPAQUE_KEEP=0`: as before): the worker
+4.04 to 3.76 ms, the wait 2.70 to 2.45 ms (three interleaved runs). The same table, so the same draws; the pictures of
+Kerwan, Rilgar and Hoven widened identical, the reference images and RAMHASH too.
+
 Two cheaper forms were measured and left (Kerwan, the same scene, a counting build): a finer journal - of the pages it still saves
 (about 230 a frame), 75 % change at all, and of their 4 KB 46 % in 256-byte blocks, 23 % in 64-byte ones: blocks of 256 bytes
 would copy half as much, about 0.08 ms a frame at best, against a seen-flag table 16 times larger on every journaled write; and
@@ -340,6 +346,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_LAZY_CAPTURE=0` | Vulkan: the last frame shown copied every frame |
 | `RAC1_MRPW_P2_LESS=0` | the lighting's second pass of an alpha-tested batch tested LEQUAL (the original's picture: see above) |
 | `RAC1_PERF_OPAQUE=0` | every world draw in both alpha-test passes, with the discard's late depth test |
+| `RAC1_PERF_OPAQUE_KEEP=0` | the ties' lowest-alpha table made again every frame |
 | `RAC1_PERF_GS_MEM=0`, `RAC1_PERF_VU1_LOOKUP=0`, `RAC1_PERF_XGKICK=0` | the chain reader's GS memory, VU1 port lookups (and the world walker's program lookup) and kicks as before |
 | `RAC1_PERF_TEXTABLE=0`, `RAC1_PERF_TFRAG_ALLOC=0`, `RAC1_PERF_VU7=0`, `RAC1_PERF_PKT_MEMO=0` | the scene's and the effects' preparation as before |
 | `RAC1_PERF_PALETTE_BLEND=0` | the six levels' palette blend as the game's loop |
