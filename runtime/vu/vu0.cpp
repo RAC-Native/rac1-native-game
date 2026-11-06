@@ -252,7 +252,9 @@ void register_program(uint32_t addr, uint32_t n, uint64_t hash, VuNativeStep ste
     ++g_micro_gen;
 }
 
+#if !(defined(RAC1_INLINE_HELPERS) && RAC1_INLINE_HELPERS)
 bool running() { return global().run.running(); }
+#endif
 
 uint64_t chain_hash() { return g_chain; }
 

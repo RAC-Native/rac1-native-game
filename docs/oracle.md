@@ -158,6 +158,8 @@ shared code every level runs:
 | 0, 2, 3, 10 and 13 | 410 (the levels' own builds of the rail search, the cutscenes' level extras and the hit record) |
 | 0 .. 18 | 411 (the pause menu's Special page widgets; the levels' copies of two shared widget functions) |
 | 0 | 440 (the main loop's pass in game mode 1, a movie playing: the host's frames of it, against 0x245c28 from its update's call to its next pass; #24) |
+| 0, 3, 5, 6, 11, 12 and 18 | 480 (the world passes' culls written by hand: 0x294368, 0x295fa0, 0x286f10, on the `world_cull/` dumps) |
+| 0, 3, 5, 6, 11, 12 and 18 | 481 (the tfrag lighting written by hand, 0x295350, on the same dumps; batch 101 checks it on Veldin and the title) |
 
 For a quick check after a small change, level 0's 63, 79, 118 and 141 are the usual minimum.
 
@@ -212,6 +214,7 @@ missing skips those checks and says which set it wanted; it does not fail.
 | `drek_veldin/` | 271 | `tools/oracle/drek_veldin_tour.sh dumps` |
 | `levels_15_16/` | 241, 242 | the command lines in the batches' headers |
 | `gamebreaking/` | 370, 371, 372 | the command lines in the batches' headers |
+| `world_cull/` | 480, 481 | the command lines in batch 480's header (levels 0, 3, 5, 6, 11, 12 and 18) |
 
 A dump is written by a headless run of the game: `RAC1_RAMDUMP=<frame>,<file>` writes the 32 MB of
 EE RAM and the 16 KB scratchpad at that frame ([Environment variables](env-vars.md)). The scripts

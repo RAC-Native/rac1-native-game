@@ -35,86 +35,115 @@ inline const bool g_on = [] {
 [[gnu::always_inline]] inline __m128i op(const Vf& a) { return vu0m::cop4(vu0m::ld4(a)); }
 }  // namespace detail
 
+// (with RAC1_INLINE_HELPERS: the ops inline, their flagged form - the switch off, or an op into vf0 - a call out of line)
+#if defined(RAC1_INLINE_HELPERS) && RAC1_INLINE_HELPERS
+namespace detail {
+RAC1_COLD_PATH inline void flagged_add(Vf& d, Vf& a, Vf& b, int m) { vu0m::add(d, a, b, m); }
+RAC1_COLD_PATH inline void flagged_sub(Vf& d, Vf& a, Vf& b, int m) { vu0m::sub(d, a, b, m); }
+RAC1_COLD_PATH inline void flagged_mul(Vf& d, Vf& a, Vf& b, int m) { vu0m::mul(d, a, b, m); }
+RAC1_COLD_PATH inline void flagged_addbc(Vf& d, Vf& a, float b, int m) { vu0m::addbc(d, a, b, m); }
+RAC1_COLD_PATH inline void flagged_subbc(Vf& d, Vf& a, float b, int m) { vu0m::subbc(d, a, b, m); }
+RAC1_COLD_PATH inline void flagged_mulbc(Vf& d, Vf& a, float b, int m) { vu0m::mulbc(d, a, b, m); }
+RAC1_COLD_PATH inline void flagged_maddbc(Vf& d, Vf& a, float b, int m) { vu0m::maddbc(d, a, b, m); }
+RAC1_COLD_PATH inline void flagged_msubbc(Vf& d, Vf& a, float b, int m) { vu0m::msubbc(d, a, b, m); }
+RAC1_COLD_PATH inline void flagged_maddv(Vf& d, Vf& a, Vf& b, int m) { vu0m::maddv(d, a, b, m); }
+RAC1_COLD_PATH inline void flagged_msubv(Vf& d, Vf& a, Vf& b, int m) { vu0m::msubv(d, a, b, m); }
+RAC1_COLD_PATH inline void flagged_addabc(Vf& a, float b, int m) { vu0m::addabc(a, b, m); }
+RAC1_COLD_PATH inline void flagged_subabc(Vf& a, float b, int m) { vu0m::subabc(a, b, m); }
+RAC1_COLD_PATH inline void flagged_mulabc(Vf& a, float b, int m) { vu0m::mulabc(a, b, m); }
+RAC1_COLD_PATH inline void flagged_maddabc(Vf& a, float b, int m) { vu0m::maddabc(a, b, m); }
+RAC1_COLD_PATH inline void flagged_msubabc(Vf& a, float b, int m) { vu0m::msubabc(a, b, m); }
+RAC1_COLD_PATH inline void flagged_addav(Vf& a, Vf& b, int m) { vu0m::addav(a, b, m); }
+RAC1_COLD_PATH inline void flagged_subav(Vf& a, Vf& b, int m) { vu0m::subav(a, b, m); }
+RAC1_COLD_PATH inline void flagged_mulav(Vf& a, Vf& b, int m) { vu0m::mulav(a, b, m); }
+RAC1_COLD_PATH inline void flagged_maddav(Vf& a, Vf& b, int m) { vu0m::maddav(a, b, m); }
+RAC1_COLD_PATH inline void flagged_msubav(Vf& a, Vf& b, int m) { vu0m::msubav(a, b, m); }
+}  // namespace detail
+#define RAC1_NF_FLAGGED(fn) detail::flagged_##fn
+#else
+#define RAC1_NF_FLAGGED(fn) vu0m::fn
+#endif
+
 // orig: (helper) VADD / VSUB / VMUL and their broadcast forms, VMADD / VMSUB (broadcast, vector), the ACC forms: vu0_regs.h's
 // without the flags (to vf0, or switched off: vu0_regs.h's own)
-inline void add(Vf& d, Vf& a, Vf& b, int m) {
-    if (detail::flagged(d)) return vu0m::add(d, a, b, m);
+RAC1_HOT_INLINE void add(Vf& d, Vf& a, Vf& b, int m) {
+    if (detail::flagged(d)) return RAC1_NF_FLAGGED(add)(d, a, b, m);
     detail::put(d, vadd4(detail::op(a), detail::op(b)), m);
 }
-inline void sub(Vf& d, Vf& a, Vf& b, int m) {
-    if (detail::flagged(d)) return vu0m::sub(d, a, b, m);
+RAC1_HOT_INLINE void sub(Vf& d, Vf& a, Vf& b, int m) {
+    if (detail::flagged(d)) return RAC1_NF_FLAGGED(sub)(d, a, b, m);
     detail::put(d, vsub4(detail::op(a), detail::op(b)), m);
 }
-inline void mul(Vf& d, Vf& a, Vf& b, int m) {
-    if (detail::flagged(d)) return vu0m::mul(d, a, b, m);
+RAC1_HOT_INLINE void mul(Vf& d, Vf& a, Vf& b, int m) {
+    if (detail::flagged(d)) return RAC1_NF_FLAGGED(mul)(d, a, b, m);
     detail::put(d, vmul4(detail::op(a), detail::op(b)), m);
 }
-inline void addbc(Vf& d, Vf& a, float b, int m) {
-    if (detail::flagged(d)) return vu0m::addbc(d, a, b, m);
+RAC1_HOT_INLINE void addbc(Vf& d, Vf& a, float b, int m) {
+    if (detail::flagged(d)) return RAC1_NF_FLAGGED(addbc)(d, a, b, m);
     detail::put(d, vadd4(detail::op(a), bc4(b)), m);
 }
-inline void subbc(Vf& d, Vf& a, float b, int m) {
-    if (detail::flagged(d)) return vu0m::subbc(d, a, b, m);
+RAC1_HOT_INLINE void subbc(Vf& d, Vf& a, float b, int m) {
+    if (detail::flagged(d)) return RAC1_NF_FLAGGED(subbc)(d, a, b, m);
     detail::put(d, vsub4(detail::op(a), bc4(b)), m);
 }
-inline void mulbc(Vf& d, Vf& a, float b, int m) {
-    if (detail::flagged(d)) return vu0m::mulbc(d, a, b, m);
+RAC1_HOT_INLINE void mulbc(Vf& d, Vf& a, float b, int m) {
+    if (detail::flagged(d)) return RAC1_NF_FLAGGED(mulbc)(d, a, b, m);
     detail::put(d, vmul4(detail::op(a), bc4(b)), m);
 }
-inline void maddbc(Vf& d, Vf& a, float b, int m) {
-    if (detail::flagged(d)) return vu0m::maddbc(d, a, b, m);
+RAC1_HOT_INLINE void maddbc(Vf& d, Vf& a, float b, int m) {
+    if (detail::flagged(d)) return RAC1_NF_FLAGGED(maddbc)(d, a, b, m);
     detail::put(d, vadd4(detail::op(acc()), vmul4(detail::op(a), bc4(b))), m);
 }
-inline void msubbc(Vf& d, Vf& a, float b, int m) {
-    if (detail::flagged(d)) return vu0m::msubbc(d, a, b, m);
+RAC1_HOT_INLINE void msubbc(Vf& d, Vf& a, float b, int m) {
+    if (detail::flagged(d)) return RAC1_NF_FLAGGED(msubbc)(d, a, b, m);
     detail::put(d, vsub4(detail::op(acc()), vmul4(detail::op(a), bc4(b))), m);
 }
-inline void maddv(Vf& d, Vf& a, Vf& b, int m) {
-    if (detail::flagged(d)) return vu0m::maddv(d, a, b, m);
+RAC1_HOT_INLINE void maddv(Vf& d, Vf& a, Vf& b, int m) {
+    if (detail::flagged(d)) return RAC1_NF_FLAGGED(maddv)(d, a, b, m);
     detail::put(d, vadd4(detail::op(acc()), vmul4(detail::op(a), detail::op(b))), m);
 }
-inline void msubv(Vf& d, Vf& a, Vf& b, int m) {
-    if (detail::flagged(d)) return vu0m::msubv(d, a, b, m);
+RAC1_HOT_INLINE void msubv(Vf& d, Vf& a, Vf& b, int m) {
+    if (detail::flagged(d)) return RAC1_NF_FLAGGED(msubv)(d, a, b, m);
     detail::put(d, vsub4(detail::op(acc()), vmul4(detail::op(a), detail::op(b))), m);
 }
-inline void addabc(Vf& a, float b, int m) {
-    if (!detail::g_on) return vu0m::addabc(a, b, m);
+RAC1_HOT_INLINE void addabc(Vf& a, float b, int m) {
+    if (!detail::g_on) return RAC1_NF_FLAGGED(addabc)(a, b, m);
     detail::put(acc(), vadd4(detail::op(a), bc4(b)), m);
 }
-inline void subabc(Vf& a, float b, int m) {
-    if (!detail::g_on) return vu0m::subabc(a, b, m);
+RAC1_HOT_INLINE void subabc(Vf& a, float b, int m) {
+    if (!detail::g_on) return RAC1_NF_FLAGGED(subabc)(a, b, m);
     detail::put(acc(), vsub4(detail::op(a), bc4(b)), m);
 }
-inline void mulabc(Vf& a, float b, int m) {
-    if (!detail::g_on) return vu0m::mulabc(a, b, m);
+RAC1_HOT_INLINE void mulabc(Vf& a, float b, int m) {
+    if (!detail::g_on) return RAC1_NF_FLAGGED(mulabc)(a, b, m);
     detail::put(acc(), vmul4(detail::op(a), bc4(b)), m);
 }
-inline void maddabc(Vf& a, float b, int m) {
-    if (!detail::g_on) return vu0m::maddabc(a, b, m);
+RAC1_HOT_INLINE void maddabc(Vf& a, float b, int m) {
+    if (!detail::g_on) return RAC1_NF_FLAGGED(maddabc)(a, b, m);
     detail::put(acc(), vadd4(detail::op(acc()), vmul4(detail::op(a), bc4(b))), m);
 }
-inline void msubabc(Vf& a, float b, int m) {
-    if (!detail::g_on) return vu0m::msubabc(a, b, m);
+RAC1_HOT_INLINE void msubabc(Vf& a, float b, int m) {
+    if (!detail::g_on) return RAC1_NF_FLAGGED(msubabc)(a, b, m);
     detail::put(acc(), vsub4(detail::op(acc()), vmul4(detail::op(a), bc4(b))), m);
 }
-inline void addav(Vf& a, Vf& b, int m) {
-    if (!detail::g_on) return vu0m::addav(a, b, m);
+RAC1_HOT_INLINE void addav(Vf& a, Vf& b, int m) {
+    if (!detail::g_on) return RAC1_NF_FLAGGED(addav)(a, b, m);
     detail::put(acc(), vadd4(detail::op(a), detail::op(b)), m);
 }
-inline void subav(Vf& a, Vf& b, int m) {
-    if (!detail::g_on) return vu0m::subav(a, b, m);
+RAC1_HOT_INLINE void subav(Vf& a, Vf& b, int m) {
+    if (!detail::g_on) return RAC1_NF_FLAGGED(subav)(a, b, m);
     detail::put(acc(), vsub4(detail::op(a), detail::op(b)), m);
 }
-inline void mulav(Vf& a, Vf& b, int m) {
-    if (!detail::g_on) return vu0m::mulav(a, b, m);
+RAC1_HOT_INLINE void mulav(Vf& a, Vf& b, int m) {
+    if (!detail::g_on) return RAC1_NF_FLAGGED(mulav)(a, b, m);
     detail::put(acc(), vmul4(detail::op(a), detail::op(b)), m);
 }
-inline void maddav(Vf& a, Vf& b, int m) {
-    if (!detail::g_on) return vu0m::maddav(a, b, m);
+RAC1_HOT_INLINE void maddav(Vf& a, Vf& b, int m) {
+    if (!detail::g_on) return RAC1_NF_FLAGGED(maddav)(a, b, m);
     detail::put(acc(), vadd4(detail::op(acc()), vmul4(detail::op(a), detail::op(b))), m);
 }
-inline void msubav(Vf& a, Vf& b, int m) {
-    if (!detail::g_on) return vu0m::msubav(a, b, m);
+RAC1_HOT_INLINE void msubav(Vf& a, Vf& b, int m) {
+    if (!detail::g_on) return RAC1_NF_FLAGGED(msubav)(a, b, m);
     detail::put(acc(), vsub4(detail::op(acc()), vmul4(detail::op(a), detail::op(b))), m);
 }
 

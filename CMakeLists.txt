@@ -46,6 +46,17 @@ if(RAC1_NATIVE_ARCH)
     message(STATUS "RAC1_NATIVE_ARCH: compiled for this machine's CPU (-march=native)")
 endif()
 
+# The memory accessors (ee_read / ee_write and the routines' lw_ / sw_ / lq / sq...), the VU0 macro ops (vu0_nf.h, vu0_regs.h's
+# lane helpers) and the FPU helpers are small functions called millions of times a frame by the ported and generated code. At -O2
+# GCC kept them out of line (each a call, its operands through memory); RAC1_INLINE_HELPERS=ON forces their fast paths inline
+# (always_inline) and keeps the rare paths (a null address, a flagged VU0 op, a DMA register) out of line and cold. The same C++,
+# so the same game state; faster world passes, but the game code as a whole about the same, a binary 2.5 times bigger and a
+# build twice as long (docs/performance.md), so OFF by default for now.
+option(RAC1_INLINE_HELPERS "Force the memory accessors' and the VU0 ops' fast paths inline" OFF)
+if(RAC1_INLINE_HELPERS)
+    add_compile_definitions(RAC1_INLINE_HELPERS=1)
+endif()
+
 # Windows (MinGW-w64, with clang or GCC): see docs/platforms.md
 if(WIN32)
     enable_language(RC)  # (the program's manifest: src/platform/win32/)

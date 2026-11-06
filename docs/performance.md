@@ -40,6 +40,52 @@ thread's rounding (toward zero, no denormals). On a CPU with AVX2 (chosen when t
 chains share nothing but ACC, which each one's first op overwrites, and the flags, whose sticky bits are an OR. About a
 quarter less time for the joints and skinning stage (Rilgar 1.9 to 1.4 ms a game frame, Kerwan 1.5 to 1.1).
 
+The loading screen's flight between the planets draws its ship and planets with the MRP (the `flight/` assets), but until
+November 2026 it did not skip the VU0 skinning (`moby_skin_all`), which only fills the moby chain for the VU1 path: it was
+nearly all of the flight's frame. The skip now holds there too, the skinning alone (`RAC1_MRP_SKIP_FLIGHT`; the sub-mesh fill and
+the texture slots, cheap there, still run): headless, the flight's `Game: moby joints / skinning` 2.0 to 0.02 ms a frame, the
+main thread's CPU 2.6 to 0.8 ms (helpers not inline). The pictures are the same. RAMHASH is not: what the skinning wrote is
+gone, so the frame's packets (the packet ring) and the scratchpad differ during the flight, and on 2 of the 19 levels some of
+the ring's pages stay different afterwards (the level's own mobys, skipped as always in play, leave those bytes unwritten: the
+flight's skinned vertices before, older bytes now). Nothing but the GS / VU1 path reads those bytes; every other page is the
+same at every frame.
+
+## The generated code's helpers and the world culls
+
+Profiled with a sampler in November 2026, the transliterated (generated) code was 30 to 43 % of the main thread's CPU, and most
+of that was not its own work but calls to small helpers GCC kept out of line at `-O2`: the memory accessors (`ee_read` /
+`ee_write`, the routines' `lw_` / `sw_` / `lq` / `sq`) and the VU0 macro ops (`vu0_nf.h`). Two thirds of it was three routines,
+the world passes' culls (the profiler's `Game: world passes`).
+
+- **The helpers inline** (CMake `RAC1_INLINE_HELPERS`, off by default): the accessors' and the VU0 ops' fast paths are forced
+  inline (`runtime/kernel/hot_inline.h`), their rare paths (a null address, a flagged op, a DMA register) out of line and cold,
+  and `vu0::running()` an inline load. The same C++, so the same game state (RAMHASH on the 19 levels, the reference images).
+  Measured headless (`forward`, the profiler's medians, three interleaved runs per build on a shared machine): `Game: world
+  passes` 15 to 37 % less (Veldin 1.10 to 0.93 ms a frame, Rilgar 0.67 to 0.54, Nebula G34 0.83 to 0.65, Pokitaru 0.66 to
+  0.53, Hoven 1.22 to 0.77), but the game code as a whole within the noise (-5 % to +1 %): the program's code grows from
+  37 to 95 MB, and a full build with three jobs from about 10 to 22 minutes.
+  Off by default for now, as the whole game code does not gain enough for the size and the build time; on with
+  `-DRAC1_INLINE_HELPERS=ON`. On a target with a small instruction cache more inlining measured slower.
+- **The three culls by hand** (`world_cull_tfrag.cpp`, `world_cull_tie.cpp`, `world_cull_shrub.cpp`; `RAC1_WORLD_CULL_FAST`):
+  the same arithmetic and the same memory written, organised by what the routines do (the view test, the LOD and its morph,
+  the chain's records), the VU0 registers in a local copy (`vu0_local.h`) written back at the end, the scratchpad as a byte
+  view. The transliterations stay as the reference (`world_*_cull_tr`) and as the fallback (a VU0 program running,
+  `RAC1_PERF_VU0_NF=0`). Proved by oracle batch 480 against each level's original on dumps of seven levels, by
+  `RAC1_WORLD_CULL_FAST=2` (both run at every call and compared: memory, VU0 registers and flags, the visible lists) over the
+  19 levels, and by RAMHASH. On top of the helpers inline, `Game: world passes` 10 to 24 % less (Veldin 1.13 to 0.93 ms, Rilgar 0.74
+  to 0.56, Nebula G34 0.82 to 0.73, Pokitaru 0.73 to 0.59, Hoven 1.14 to 0.95); with the helpers not inline
+  (`RAC1_INLINE_HELPERS=OFF`) 30 to 45 % less (Veldin 1.39 to 0.91, Rilgar 1.06 to 0.67, Nebula G34 1.19 to 0.83, Pokitaru
+  1.00 to 0.66, Hoven 1.97 to 1.08) and the game code 12 to 26 % less. The stage also holds the passes' packets and the LOD
+  slider's re-run of each pass. In the sampler the culls went from 19-30 % of the main thread to 14-21 % (helpers inline),
+  then 10-16 %: they still clamp every operand of every op as the VU0 does.
+- **The tfrag lighting by hand** (`world_lighting_tfrag.cpp`; `RAC1_WORLD_LIGHTING_FAST`): 0x295350, which relights the world
+  pieces with lights each frame (and every piece at the level's load), in the same form: the same reads and writes in the same
+  order, the MMI unpacks done on words, the VU0 registers in a local copy; as in the transliteration, only the point lights'
+  range test (an op into vf0) makes flags. Proved by oracle batch 481 on the dumps of seven levels (the frame's own relight list
+  and random ones), batch 101, `RAC1_WORLD_LIGHTING_FAST=2` over the 19 levels (6589 calls, 0 differing) and RAMHASH. It
+  matters on Nebula G34, where a flickering light relights 20-30 pieces a frame: `Game: world lighting / pass ends` 0.51 to
+  0.20 ms a frame (helpers not inline; three interleaved runs); elsewhere it runs rarely and the stage stays at 0.01-0.02 ms.
+
 ## The frame's chain
 
 The MRP chain worker reads each frame's chain beside the main thread (`mrp_chain.cpp`: the 2D, the effects' VU1 programs, the
@@ -242,6 +288,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_COPIES=0` | the EE journal's pages zero-filled then copied, the moby observer's record built aside and copied |
 | `RAC1_PERF_EULER_CACHE=1` | the Euler conversion's rows kept per angles (off by default) |
 | `RAC1_PERF_VU0_NF=0` | the generated code's VU0 ops with their flags |
+| `RAC1_WORLD_CULL_FAST=0` | the world passes' three culls as transliterated (`=2`: both, compared at every call) |
 | `RAC1_PERF_SKY_LATE=1` | the sky after the leading opaque tfrag batches (off by default: not exact) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 

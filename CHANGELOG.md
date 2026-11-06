@@ -59,6 +59,21 @@ What changed in each release. Releases are source only: you build the game with 
 - Linux launcher: a dark theme (#99): it follows the desktop's light or dark setting (it was always light), or
   Settings > Theme chooses Light or Dark.
 
+### Performance
+- The memory accessors and the VU0 macro ops forced inline in the ported and generated code (CMake `RAC1_INLINE_HELPERS`, off
+  by default for now): the world passes' time 15 to 37 % less, but the game code as a whole about the same, a program 2.5
+  times bigger and a build twice as long; the same game state. See [Performance](docs/performance.md).
+- The world passes' three culls (tfrag, tie, shrub) written by hand from the original routines, organised by what they do, the
+  VU0 registers kept in a local copy: the world passes' time 30 to 45 % less (10 to 24 % with the helpers inline); the same
+  game state, proved by an oracle batch (480) and by a check mode (`RAC1_WORLD_CULL_FAST=2`); `RAC1_WORLD_CULL_FAST=0` runs
+  the transliterations as before.
+- The tfrag lighting (the relight of the lit world pieces each frame, and of all of them at a level's load) written by hand
+  in the same way: on Nebula G34, whose flickering light relights them every frame, its time 61 % less (0.51 to 0.20 ms a
+  frame); the same game state, proved by an oracle batch (481) and a check mode (`RAC1_WORLD_LIGHTING_FAST=2`);
+  `RAC1_WORLD_LIGHTING_FAST=0` runs the transliteration as before.
+- The loading screen's flight between the planets no longer runs the mobys' VU0 skinning, which the modern renderer does not
+  use there (as in play): the flight's main thread about a third of what it was (`RAC1_MRP_SKIP_FLIGHT=0`: as before).
+
 ## 0.7.0
 
 New discs and new ways to use them: the European Platinum re-release (PAL 2.00) runs as the game's

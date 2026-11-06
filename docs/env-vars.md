@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 396 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 401 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 21 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 300 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 303 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 77 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -196,6 +196,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_MRP_SHADOW_LOG` | any value = on; default off | Prints per frame how many marking and unmarking shadow triangles and tubes the modern shadow capture collected. |
 | `RAC1_MRP_SHADOW_SETUP` | 0 = off; default on | Setting 0 turns off giving the game's own projection back to its projection and view setup calls inside a shadow run (the fix for effects drifting in widescreen), to compare with before. |
 | `RAC1_MRP_SKIP` | 1 = skip the original GS/VU1 work the modern renderer makes redundant; 0 = off; verify = skip but also run the skinning and compare; default 1 with the modern moby renderer | Controls whether the work the original GS and VU1 path does for mobys is skipped when the modern renderer draws them. Forced to 0 when the renderer's own debug checks (diff, check, scene check) are on. |
+| `RAC1_MRP_SKIP_FLIGHT` | 0 or 1; default 1 | With the skip on (`RAC1_MRP_SKIP`), whether it also holds in the loading screen's flight between the planets, which the modern renderer draws: there only the mobys' VU0 skinning (and the host's walk of its chain tags) is skipped, not the sub-mesh fill nor the texture slots. 0: the flight's mobys skinned as before. RAMHASH differs only in the bytes the GS / VU1 path reads: the scratchpad and the packet ring during the flight, some ring pages after it. |
 | `RAC1_MRP_SKIP_PARTS` | hexadecimal bit mask; default the built-in mask | Selects which parts of the moby GS/VU1 work are skipped when skipping is on; for isolating which skipped part causes a difference. |
 | `RAC1_MRP_TRACE_MOBY` | integer, 1 = on; default 0 (off) | With value 1 prints every moby's own GS registers as the modern moby renderer draws it. |
 | `RAC1_MRP_WIDEN` | 0 = widened culling off; default on | Switches off the widening of the game's culling when the view is wider than 4:3, so the original culling can be seen. |
@@ -353,6 +354,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_WIDEN_REF` | integer; nonzero = on; default off | Uses the reference (unwidened) culling and level-of-detail distances in the modern renderer, as a baseline to compare against the widened ones. |
 | `RAC1_WIDE_FILL` | 0 or 1; default 1 (on) | Whether the widescreen sides of the picture are filled with extra scene instead of left empty; 0 turns it off to compare. |
 | `RAC1_WORLD_CHAIN` | any value = on; default off | Keeps the world's draw chain (instead of letting the original VU1 world programs run) so a host world renderer can draw it; forced on automatically when the modern or faithful world renderer is active. |
+| `RAC1_WORLD_CULL_FAST` | 0, 1 or 2; default 1 | The world passes' three culls (tfrag 0x294368, tie 0x295fa0, shrub 0x286f10) as written by hand (src/game/ovl/world_cull_tfrag.cpp, world_cull_tie.cpp, world_cull_shrub.cpp: the VU0 registers in a local copy, the scratchpad as a byte view) or, with 0, as transliterated (world_cull.cpp's `*_tr`, the reference), as before. 2 runs both at every call, the hand-written one inside a journal of EE memory, and compares the EE RAM, the scratchpad, the VU0 registers and flags, the DMA registers and the visible lists, prints the first differences and their count at the end of the run (it must be 0); the game goes on with the transliteration's. The same game state. |
+| `RAC1_WORLD_LIGHTING_FAST` | 0, 1 or 2; default 1 | The tfrag entries' static lighting (0x295350, the relight of the lit entries each frame and of every entry at the level's load) as written by hand (src/game/ovl/world_lighting_tfrag.cpp: the VU0 registers in a local copy) or, with 0, as transliterated (world_lighting.cpp's `world_tfrag_lighting_tr`, the reference), as before. 2 runs both at every call and compares them as `RAC1_WORLD_CULL_FAST=2` does, the counts printed at the end of the run (the differing ones must be 0). The same game state. |
 | `RAC1_WORLD_FAITHFUL` | 0 or 1; default 0 | 1 draws the world with the faithful GS-replica path (the reference) instead of the modern renderer, to compare. |
 | `RAC1_WORLD_MRP` | 0 or 1; unset = on, following the modern pipeline default | Switches the modern GPU world (terrain, TIE, shrub) and sky renderer on or off independently of the other parts of the modern pipeline. |
 | `RAC1_WORLD_MRP_DEBUG` | any value = on; default off | Prints extra diagnostics from the modern world renderer (per-draw and texture information). |

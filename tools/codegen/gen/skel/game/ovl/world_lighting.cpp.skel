@@ -22,8 +22,9 @@ using namespace vu0m;
 // 0x70002000 (ping-pong) and from there (DMA fromSPR) to entry[+0x10] + s16 entry[+0x1e] (entry[+0x29] quadwords).
 // The caller's s registers are spilled to 0x70000800 (the vertex normals use 0x70000000.. : the list is at 0x70003000).
 // Called by the level load for every entry (gameplay_load) and by the render pass for the visible ones (list 0x1c5400).
+// The transliteration, kept as the reference of the hand-written routine (world_lighting_tfrag.cpp; RAC1_WORLD_LIGHTING_FAST).
 // orig: 0x00295350
-void world_tfrag_lighting(uint32_t list) {
+void world_tfrag_lighting_tr(uint32_t list) {
     Q128 zero, at, v0, v1, a0, a1, a2, a3, t0, t1, t2, t3, t4, t5, t6, t7, s0, s1, s2, s3, s4, s5, s6, s7, t8, t9, gp, sp, s8, ra, lo, hi;
     (void)t7; (void)s7; (void)t8; (void)t9; (void)sp; (void)ra; (void)lo; (void)hi; (void)gp; (void)t0; (void)t1; (void)t2; (void)t3; (void)t4; (void)t5; (void)t6;
     set32(a0, list);
