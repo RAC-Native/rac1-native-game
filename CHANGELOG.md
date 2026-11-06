@@ -5,6 +5,11 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Ambient Particles: the `lava` material gives lava particles (#136): tfrags, ties and shrubs whose texture a level's line
+  marks lava (points on their faces, read once per level) and mobys marked lava (points on their posed faces each frame,
+  moving with them) add to the collision's lava of Umbris, Gaspar and Orxon; a level with the material and no `source lava`
+  line draws embers from it. Nothing changes without the material or with Ambient Particles Off (docs/particles.md, From
+  the lava material).
 - Level light files: `sun_rays_strength <0..2>` scales the Sun Rays option's strength on that level (its added light and
   limit; 0 none, 1 without the line), set in the debug menu's Sun tab (Sun Rays strength on this level) and saved with the
   file (#121: the tutorial's rays were too strong). See docs/lighting.md, Sun rays.

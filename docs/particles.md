@@ -111,6 +111,25 @@ fields and arenas have them and its other places (indoors, away from the lava) n
   wandering a little; born bright, it fades in the second half of its life, and toward 60 units from the camera.
 - The particles drawn follow the slots in use: with little lava near, few of the line's count are drawn.
 
+### From the lava material
+
+The `lava` [material](materials.md) gives lava too (#136: Anya-Thoughtmane's lava on Veldin's final arena and other levels'
+surfaces gave none, only the collision's lava of Umbris, Gaspar and Orxon did). With Ambient Particles on:
+
+- **Tfrags, ties and shrubs** whose texture a level's line marks `lava` (`material tfrag|tie|shrub <class> tex <t> lava`): their
+  faces turned up or down (not their sides), every instance of a tie or shrub class, get a point every 1.5 square units with a
+  fixed seed, read once per level and lines on the drawing's thread (the tfrags as the debug menu's crosshair finds them, their
+  far image; the ties and shrubs their LOD 0), again when a line is added or removed. They join the collision's points (a point
+  within 2 units of one of them is left out: the same lava tagged twice), the same slots, the same motion.
+- **Mobys** marked `lava` (`material moby <class> tex <t> lava`): each frame, the drawn mobys of those classes within 60 units
+  are skinned on the CPU as the frame poses them and their tagged faces turned up or down get points (about one per 1.5 square
+  units, each at a fixed place on its triangle: the same points frame after frame, moving with the moby), taken into the slots
+  as the others; a slot follows its moby's point. A moby gone lets its particles fade out where it was.
+- **The line**: a level whose file has a `source lava` line draws the material's lava with it (and with the collision's). A
+  level with the material and no such line draws `particles embers 1.5 source lava` from the material's lava alone (not
+  written to the file; the collision's lava stays the lines' only). Without the material, nothing changes.
+- Surface Detail does not matter: the particles follow the lines, as the collision's lava does; Ambient Particles Off draws none.
+
 ## Rain and snow in place of the game's
 
 Batalia's rain is the game's own particles (types 0 and 1 of its particle pool, drawn by its particle program); Hoven has its
