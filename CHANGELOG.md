@@ -12,6 +12,14 @@ What changed in each release. Releases are source only: you build the game with 
   OpenAI-compatible server with `--stt-url`): names given as hotwords, cues cut at
   sentences; an edited file, or one the setup did not make, is never written again. A missing or broken file shows
   nothing and logs a line. See docs/movie-subtitles.md.
+- 1.02 Fixes, more of the later build's fixes (each its own number for RAC1_FIXES102): 15 the cutscenes (none started
+  inside one, the underwater view put aside over a scene, the draw lists emptied at its end), 17 the ship's scenes
+  skipped with circle too, 18 Aridia's sand sharks burst when killed, 19 the hoverbike races' place / poses / flips in
+  the game's language and singular, 20 Blarg's far breaking object without its debris, 22 Rilgar's race: the music back after it and its skill
+  point told. See docs/advanced.md.
+- 1.02 Gameplay, two more (RAC1_GAMEPLAY102): 14 the Decoy Glove's decoy pushed off by Ratchet swimming into it, 21
+  Rilgar's rising water carries Ratchet swimming in it. The level objects' other 1.02 changes are listed in
+  docs/advanced.md, with why each is left out.
 - Launcher, Settings: Movie subtitles (the languages, for every setup), Make movie subtitles, Install subtitle pack (the
   .srt files of a .zip into `assets/movie-subtitles/`), and Enable debug tools (the game started with `--debug-tools`).
 - Vulkan: the mobys' shadow casters get OpenGL's depth bias (it was left unset, whatever the driver had: shadow acne or

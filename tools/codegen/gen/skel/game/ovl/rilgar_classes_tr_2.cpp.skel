@@ -3,6 +3,7 @@
 // the original's control flow and PS2 float rules by construction), not rewritten by hand: the names are the entries', the
 // helpers `ril_<addr>_l5` (uniform ABI: TrRet).
 // Declarations: rilgar_mobys.h. Regenerate, do not edit.
+#include <game/enhance/fixes102.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>

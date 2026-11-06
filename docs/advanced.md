@@ -607,7 +607,7 @@ The main menu's Advanced page has a row **1.02 Fixes: Off / On** (off by default
 preferences only (`fixes_102 0|1` in `advanced_options.txt`), never with a save. The game's later build, 1.02 (the
 Japanese disc and the PAL disc 2.00, the "Platinum"), changed about a hundred functions of each level's copy of the
 engine; most of it is the memory card, the Japanese text layouts and recompiled code, and some of it fixes the game.
-With the row on, the first batch of those fixes runs on the North American build's code: each one is the 1.02 build's
+With the row on, those fixes run on the North American build's code: each one is the 1.02 build's
 own change, read from its code (its addresses taken back to the North American ones through
 `data/regions/SCES-50916-2.00.txt`) and written into the North American port at the same place, behind its own test
 (`fixes102_on(n)`, `src/game/enhance/fixes102.{h,cpp}`; a `(1.02 Fixes, fix n: ...)` note at each site, naming the 1.02
@@ -624,7 +624,13 @@ the interaction guards...) are a row of their own: [1.02 Gameplay](#102-gameplay
 | 6 | An animation's next frame (+0x51) kept in its sequence: at most the sequence's frame count less 1 | `hero_anim_set` 0x2325a0 |
 | 7 | Ratchet's colour pulse (his moby's +0x90, the light on his wrist; the phase 0x13f350+0x1628) in the cutscenes too: the scene's Ratchet pulses, slower; in play only in game mode 0, and faster, between a second pair of colours, while 0x179410 is set and not 8; in Veldin's opening scene, frames 835 to 1080, the second pair too | `hero_ship_update` 0x234b38, `hero_gadget_glow` 0x2080b0 |
 | 11 | The talk prompt: a character's record that waits for the button advances (`talk_step`) only once Ratchet faces it and it faces him, not every frame he is within twice its reach | `talk_update` 0x266448 |
+| 15 | The cutscenes: none starts while one already runs (game mode 2); the underwater view (0x167014: the fog and the blue tint of a camera under water) is put aside as the scene starts, so a scene started from the water is not drawn as under water, and put back at its end; the frame's draw lists are emptied at its end (the 1.02 build's copy of `draw_lists_reset`). The 1.02 build keeps the view in the scene's +0x4b; the North American scene block uses +0x46..+0x49 otherwise, so here it is the EE block's word 0xffc54 | `cutscene_start` 0x298840, `cutscene_end` 0x298b18 |
 | 16 | The pause menu: the goals updated when the menu comes back to its goals pages; the menu's open counter (MS+0x110) held at 32000 | `menu_page_start` 0x276368, `menu_update` 0x276bd0 |
+| 17 | The ship's landing and take-off scenes are skipped with circle too, and its flight to the next planet hurried with circle too (the presses' mask 0x50, triangle / cross, to 0x70). The PAL disc 1.00 has the North American 0x50: a change of the 1.02 build (the Japanese disc's and the PAL disc 2.00's), not of the PAL release | `ship_sequence_update` 0x290590 |
+| 18 | Aridia: a sand shark that is killed bursts (`enemy_death_burst`: three sparks of 0.333 and two shards, no blast, 0.333 over its place) before it dives off to its next spot; the original only drops its bolts and vanishes | Aridia's class at L2:0x2d3e50 (`hooks.glue`) |
+| 19 | The hoverbike races (Rilgar, Kalebo III): the place ("1st".."5th"), the poses ("x3 Poses") and the flips ("+ 360 Flips") were English built into the code, in every language and always plural; the 1.02 build takes them from the level's text table (in the game's language: "1a", "Posizioni"...), with "Pose" for one and "flip" for a 360 (the texts 21028..21032, 20855 / 20856, 20647 / 20648, all on the North American disc). The PAL disc 1.00 has them too | Rilgar's L5:0x262f50 / 0x266320, Kalebo III's L16:0x235660 / 0x238a30 (`hooks.glue`, `fixes102_race_text`) |
+| 20 | Blarg: the class 1083 object that breaks by itself 32 units or more from Ratchet leaves its broken copy but none of its 50 debris pieces (moby slots; the 1.02 build gives the break routine an argument, 0 there). Broken near him, or by him, it is unchanged | Blarg's L6:0x2ffcb0, L6:0x300278 (`hooks.glue`) |
+| 22 | Rilgar's race organiser (class 918): a race that ends in its state 3 restarts the level's music, as its states 1 and 2 already do (the call `ril_28f5c8_l5(0, 8)` they make); and when the race earned the skill point (its flag 0x13d411), after the prize's message ("You won a Platinum Zoomerator!") the skill point's sound and "You just earned a Skill Point!" are given (the message takes the prize's place on the screen) | Rilgar's L5:0x316ab8 (`hooks.glue`) |
 
 What the 1.02 build changed but is not ported: the memory card's code and screens (the 1.02 build rewrote them for its
 own card library), the Japanese text layouts, the pad's reads (the host's input replaces them), the PAL disc 2.00's
@@ -656,14 +662,39 @@ test that fails, and the game's memory is the same frame by frame (RAC1_RAMHASH)
 | 10 | The characters that take Ratchet's input: a prompted one (the triangle's "talk" message: Pokitaru's class at 0x313290, Gemlik's 69, Drek's fleet's 1379) is not offered while Ratchet is already in the state 0x32 or 0x1d or in a vehicle mode, and its press puts him in 0x32 at once (the 1.02 build moved that call from the character's next step); Rilgar's 918 and Kalebo III's 1455 are not talked to (`talk_update`) while he is in 0x1d, and they lock his input (+0x20ac) as their scene starts; the card's screen (the flag 1 of 0x15eeb4) waits while he is in 0x1d | Probably: starting a talk from inside another talk, a vendor or a vehicle; a frame of free input between the press and the scene | `gameplay_frame` 0x297f78; `hooks.glue` at L11:0x313290, L13:0x2bb068, L17:0x2ed018, L5:0x316ab8, L16:0x2e6808 |
 | 12 | Ratchet's tilt to the ground where he follows it (the ground mode +0x20b3, sub_00233440: on the hoverboard, states 0x3f / 0x70 / 0x71; in deep water with 0x13d4dc set; on the ground +0x308 marks): align_to_up's spring stiffer (0.8 of the frame time 0x15ed64 instead of 0.3, the damping kept at 0.3) and its speed capped at 1.0046 x 0x15ed6c (the original's cap 0: none) | Not understood: probably a tilt that runs away on the hoverboard over steep or broken ground | `sub_002163f0` 0x2163f0 |
 | 13 | The Hologuise (item kind 0x1f): put on beyond the sub-states 0..2 in the hero states 4, 9 and 0xe (+0x2084) instead of the sub-state 4 (+0x208c); hero_place stops its countdown (+0x22de: putting it on or off 18 frames after the press); and a state forced on Ratchet in the Hologuise (hero_set_state, which takes him out of it first, `hero_mode3_exit`) stays his state | Not understood in full: the disguise put on or off across a teleport or a forced state | `sub_0020fe30` 0x20fe30, `hero_place` 0x216f90, `hero_set_state` 0x2223f8 (and its copies) |
+| 14 | The Decoy Glove's decoy: while Ratchet swims at the surface (state 0x31) within 1.5 of it, the decoy gets a push from his place (the event 0x10000, strength 1000, that the game's bumps use), so it moves off instead of staying in his way | Probably: a decoy that blocks Ratchet in the water | `decoy_object_update` 0x2c4380 (`decoy_obj.json` `host_ntsc`) |
+| 21 | Rilgar's water that rises and falls (class 831): it carries Ratchet swimming in it up as it rises (his water height +0x2f0 set to its surface while it is more than 0.1 from its target and he swims, +0x208c 0x11 / 0x12), and it holds still during a cutscene (game mode 2) | Probably: Ratchet left under the surface of rising water | Rilgar's L5:0x30ca80 (`hooks.glue`) |
 
 The 1.02 build changed more in the same places that is not ported here: in Novalis's and Veldin's crouch under a low
 ceiling (0x81) Ratchet stands up after 20 frames without the Thruster-Pack on his back; Rilgar's class 918 has calls of
-its own (a camera, a help message), part of the level objects' changes not looked at yet; the card's 0x400 flag and the
+its own (the music, the skill point's message: [1.02 Fixes](#102-fixes), fix 22); the card's 0x400 flag and the
 save block's checks in `gameplay_frame` are the 1.02 build's memory card. On the PAL disc 2.00 as the game's disc the
 changed functions already are the 1.02 build's (its stand-ins), so the row adds nothing there except in the hand ports
 (the shared hero code, `gameplay_frame`). The row is read where each fix runs; it is changed on the main menu only.
 `RAC1_GAMEPLAY102=<n>,<n>...` (`all`, `none`) turns single fixes on for testing ([Environment variables](env-vars.md)).
+
+### The later build's other changes to the level objects
+
+The 1.02 build changed some forty functions of the levels' own code. Fixes 18 to 22 and 10 above are the ones ported.
+The others, read in the North American and the 1.02 build's code (PAL disc 2.00, the Japanese disc the same):
+
+- No change to the game: Hoven's class 1404, Aridia's two skid classes, Eudora's 1190, Oltanis's 924 and Veldin's
+  finale's 1422 follow the 1.02 build's new cutscene block (the hero's place flag at +0x4a, a byte); Blarg's 0x302400
+  (its talking robots' lines) is recompiled; the Tesla Claw (0x2b94d0) is recompiled (its "six more calls" are the next
+  function); the text numbers 5 higher are the PAL disc 2.00's own (its credits).
+- Not on the PC: the Morph-o-Ray's chickens (0x2c97e0: start their culling countdown under load) and Gaspar's / Gemlik's
+  class 1885 (no spawn past the first while the frame is loaded) shed load by the frame's load 0x15f5d0 / 0x15f5d4,
+  which the port's timer (`runtime/ee/ee_timer.h`) keeps at 0: they would never run.
+- Understood in the code, not in what it shows (left out): the Tesla Claw's hits carry an upward direction (+0x2b8 1.0
+  instead of 0); Pokitaru's and Kalebo III's class 1111 and Pokitaru's 1158 set the underwater colours (0x161200..) when
+  0x1677c8 passes 180; Umbris's class 1106 and its helper 0x313af0 test the bits 2 / 4 of a step's result instead of its
+  value; Blarg's class 1051 keeps its 10-frame start once begun; Batalia's 467 removes its group (classes 0x24c..0x256,
+  0x1d8) when its level flag 0x13d3b6 is set and its link is gone; Gemlik's class 170 (2.7 to 2.8), 1262 (a range of
+  15), 0x2b4958 (a hit's +0x30 0.9 to 0.7) and 0x30bfb0 (+0x34 flag 0x20); Oltanis's 685 (only when Ratchet stands the
+  same way up as it, a dot product over 0); Quartu's 1451 and Veldin's finale's 1899 (the ship's pad: a leftover moby
+  removed, Quartu's own placement 0x274af8); Drek's fleet's 1448 and
+  Veldin's finale's 1381 (a counter against a random wait); Pokitaru's 0x2d14b0 / 0x312838 and Gemlik's class 63 (large
+  rewrites).
 
 ## Limits
 

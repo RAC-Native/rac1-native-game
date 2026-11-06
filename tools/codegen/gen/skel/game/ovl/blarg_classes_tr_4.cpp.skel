@@ -2,6 +2,7 @@
 // Transliterated instruction by instruction from level 6's own overlay with tools/codegen/mips2cpp.py (tools/codegen/mkall.py:
 // the original's control flow and PS2 float rules by construction), not rewritten
 // by hand: the names are the entries', the helpers `blg_<addr>_l6` (uniform ABI: TrRet).
+#include <game/enhance/fixes102.h>
 #include <game/lib/libc.h>
 #include <game/ovl/blarg_mobys.h>
 #include <game/ovl/arrival.h>
