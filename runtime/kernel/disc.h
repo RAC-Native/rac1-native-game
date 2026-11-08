@@ -81,4 +81,22 @@ std::vector<DataDisc> disc_data_discs();
 // The first readable data disc of `region` ("NTSC-J"), else null
 const DataDisc* disc_data_disc(const std::string& region);
 
+// ---- Level windows (level mods: docs/mods.md, "Level mods"; src/host/level_slots.h) ----
+// A level mod's build (its data file and gameplay file, made by the setup's level composer) read as if on a disc: host
+// level slot S's window is the sectors from kLevelWindowTop - (S - kFirstLevelSlot) * kDataDiscWindow down from the
+// top of the sector space (the data discs' windows grow from the bottom), the data file at its sector 0, the gameplay
+// file after it. The game reads them at the sectors its level header names (the slot's header: the base level's,
+// pointed there, level_slots.cpp); the host's level loader reads `level`'s files from the window while the window is
+// redirected for `level` (the slot chosen for its base level).
+constexpr uint32_t kLevelWindowTop = 0xffc00000u;
+// orig: (none) — enhancement: slot `slot`'s window holds `data` and `gameplay` (false: one cannot be read)
+bool disc_level_window_set(int slot, const std::string& data, const std::string& gameplay);
+// orig: (none) — enhancement: slot `slot`'s window's ranges (sectors, absolute): its data file, its gameplay file
+bool disc_level_window_ranges(int slot, uint32_t& data_lba, uint32_t& data_n, uint32_t& gp_lba, uint32_t& gp_n);
+// orig: (none) — enhancement: `level`'s files (disc_read_level_wad, disc_has_level) read from slot `slot`'s window (-1:
+// the disc's again)
+void disc_level_redirect(int level, int slot);
+// orig: (none) — enhancement: the slot `level`'s files are redirected to (-1: none)
+int disc_level_redirected(int level);
+
 }  // namespace rac1

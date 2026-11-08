@@ -120,6 +120,8 @@ add_library(rac1_formats STATIC
     src/formats/animation.cpp
     src/formats/vif_stream.cpp
     src/formats/tie_packet.cpp
+    src/formats/wad_encode.cpp
+    src/formats/host_meshes.cpp
 )
 target_link_libraries(rac1_formats PUBLIC rac1_io)
 target_include_directories(rac1_formats PUBLIC src)
@@ -327,6 +329,7 @@ add_library(rac1_setup STATIC
     src/setup/scene_export.cpp
     src/setup/iso_extract.cpp
     src/setup/setup_manager.cpp
+    src/setup/level_compose.cpp
 )
 target_include_directories(rac1_setup PUBLIC ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(rac1_setup PUBLIC rac1_formats rac1_game rac1_runtime)

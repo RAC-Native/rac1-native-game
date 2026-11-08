@@ -138,11 +138,21 @@ struct TfragEntry {
     std::vector<TexturePrim> textures;     // the entry's texture prims (5 qwords each, at +tex_ofs; TEX0's word: the tfrag texture)
 };
 
+// A level mod's host mesh placed in the level (src/formats/host_meshes.h): a mesh no EE data stands for, drawn by the host
+// at this placement as one of the world's tie classes. Not in world.mrpw: filled when the level's world is loaded.
+struct HostMeshInstance {
+    uint32_t cls = 0;            // World::ties
+    float rot[3][3] = {};        // the rotation's rows (unit)
+    float pos[3] = {};           // the position (world units)
+    uint8_t rgba[4] = {0x80, 0x80, 0x80, 0x80};  // its colour (0x80 = 1.0), every vertex's
+};
+
 struct World {
     int32_t level = -1;
     std::vector<ShrubClass> shrubs;
     std::vector<TieClass> ties;
     std::vector<TfragEntry> tfrags;
+    std::vector<HostMeshInstance> host_meshes;  // (not in the file: a level mod's, see HostMeshInstance)
 };
 
 bool write_world(const std::string& path, const World& w);

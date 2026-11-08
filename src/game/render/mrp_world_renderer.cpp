@@ -4,6 +4,7 @@
 #include <game/render/gl_draws.h>
 #include <game/render/mrp_chain.h>
 
+#include <formats/host_meshes.h>
 #include <formats/moby_mrp.h>
 #include <formats/world_mrp.h>
 #include <game/boot/front_end.h>
@@ -22,6 +23,7 @@
 #include <game/render/mrp_world_static.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
+#include <host/level_slots.h>
 #include <profiler/host_profiler.h>
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
@@ -82,7 +84,19 @@ std::string asset_root() {
 // the assets' level: the level 0x15ed84 names, or the boot module's title level while the boot runs (the title loop
 // sets 0x15ed84 to 0, its scene is its own level)
 // (while the loading screen shows, its own scene: the flight's assets)
-int world_level_id() { return level_exit_loading_screen() ? kFlightLevel : boot_active() ? kTitleLevel : lw(0x0015ed84); }
+// (a level mod's level, src/host/level_slots.h: its host slot, 19..)
+int world_level_id() { return level_exit_loading_screen() ? kFlightLevel : boot_active() ? kTitleLevel : level_slot(); }
+
+// orig: (host) the folder of level `id`'s level folders, and the level whose folder it is: a level mod's slot's, its build's
+// (rac1-native --setup --level-mods writes it: <build>/mrp/world/level<base>), else asset_root() and `id`
+std::string world_root(int id, int& dir_level) {
+    dir_level = id;
+    if (level_slot_base(id) >= 0) {  // (a level mod's slot)
+        dir_level = std::max(level_slot_base(id), 0);
+        return level_slot_build_dir(id) + "/mrp/world";
+    }
+    return asset_root();
+}
 
 // ---- level state -------------------------------------------------------------------------------
 
@@ -347,7 +361,9 @@ void load_textures(Level& L) {
     // bucket of the replacement's size
     std::vector<std::shared_ptr<const texture_mods::Image>> rep[3];
     for (int k = 0; k < 3; ++k) {
-        const std::string path = asset_root() + "/" + level_dir_name(L.id) + "/textures_" + names[k] + ".mrpt";
+        int dir_level = L.id;
+        const std::string root = world_root(L.id, dir_level);
+        const std::string path = root + "/" + level_dir_name(dir_level) + "/textures_" + names[k] + ".mrpt";
         if (!mrp::read_textures(path, L.tex[k])) std::fprintf(stderr, "[mrpw] no %s textures %s\n", names[k], path.c_str());
         L.ref[k].assign(L.tex[k].size(), TexRef{});
         rep[k].assign(L.tex[k].size(), nullptr);
@@ -557,19 +573,38 @@ RtLevelGeometry rt_gather(const Level& L);
 
 // orig: (host) the level's world asset, its index, its textures, the GL buffers
 void load_level(int id) {
+    host_meshes_bind(nullptr, nullptr);  // (a level mod's host meshes: the world about to be freed)
     free_level(g_level);
     Level& L = g_level;
     L.id = id;
     L.tried = true;
     const double t0 = now_ms();
     L.world = std::make_unique<World>();
-    if (!load_world(asset_root(), id, *L.world)) {
-        std::fprintf(stderr, "[mrpw] no MRP world asset for level %d (%s/%s/world.mrpw): run setup.sh\n", id, asset_root().c_str(), level_dir_name(id).c_str());
+    int dir_level = id;
+    const std::string root = world_root(id, dir_level);
+    if (!load_world(root, dir_level, *L.world)) {
+        std::fprintf(stderr, "[mrpw] no MRP world asset for level %d (%s/%s/world.mrpw): run setup.sh\n", id, root.c_str(), level_dir_name(dir_level).c_str());
         L.world.reset();
         return;
     }
     L.idx = std::make_unique<WorldIndex>();
     L.idx->add(L.world.get());
+    if (level_slot_base(id) >= 0) {  // (a level mod's host meshes, src/formats/host_meshes.h: their placements, drawn by the scene itself)
+        const std::string path = level_slot_build_dir(id) + "/host_meshes.mrpc";
+        HostMeshes hm;
+        std::string err;
+        std::error_code ec;
+        if (!std::filesystem::exists(path, ec)) {
+        } else if (!read_host_meshes(path, hm, err)) {
+            std::fprintf(stderr, "[mrpw] %s\n", err.c_str());
+        } else if (hm.classes.size() != L.world->ties.size()) {
+            std::fprintf(stderr, "[mrpw] %s: %zu meshes, the world %zu tie classes (run the setup again)\n", path.c_str(), hm.classes.size(), L.world->ties.size());
+        } else {
+            L.world->host_meshes = std::move(hm.instances);
+            host_meshes_bind(L.idx.get(), L.world.get());
+            std::printf("[mrpw] level slot %d: %zu host meshes drawn by the host\n", id, L.world->host_meshes.size());
+        }
+    }
     load_textures(L);
     // the GPU path's templates (static)
     build_templates(L);

@@ -10,6 +10,7 @@
 // The block ADV (EE RAM 0xf0000..0xf2000) is in the PS2 kernel's first megabyte: the port's
 // kernel is the host's, so nothing of the game or the runtime lives there.
 #include <game/enhance/advanced.h>
+#include <host/level_slots.h>
 #include <game/enhance/controls.h>
 #include <game/enhance/corrected_texts.h>
 #include <game/enhance/graphics.h>
@@ -350,6 +351,7 @@ std::vector<uint8_t> save_file_make() {
         d.push_back(static_cast<uint8_t>(g_game_mode));
         ++count;
     }
+    count += level_slots_pc_items(d);  // the level mods' progress (src/host/level_slots.h): only when there is some
     d[6] = static_cast<uint8_t>(count);
     d[7] = static_cast<uint8_t>(count >> 8);
     return d;
@@ -366,6 +368,10 @@ bool save_file_apply(const std::vector<uint8_t>& d) {
         const uint32_t id = u16(at), size = u16(at + 2);
         at += 4;
         if (at + size > d.size()) break;
+        if (level_slots_pc_item(id, d.data() + at, size)) {  // a level mod's progress (src/host/level_slots.h)
+            at += size;
+            continue;
+        }
         for (const Row& r : SETTINGS_ROWS)
             if (r.in_saves && r.id == id && size >= 1 && d[at] < row_values(r)) sb(r.byte, d[at]);
         // the mode: an older save's Experimental (3: Modern plus Graphics Enhanced, High) is Modern, its gameplay rows
@@ -537,6 +543,7 @@ uint32_t advanced_text(int32_t id) {
     if (const uint32_t s = language_text(id)) return s;
     if (const uint32_t s = mods_text(id)) return s;
     if (const uint32_t s = exit_menu_text(id)) return s;
+    if (const uint32_t s = level_slots_text(id)) return s;
     if (id < TEXT_FIRST || id >= TEXT_FIRST + T_COUNT) return 0;
     uint32_t lang = lwu(0x0015ed88);
     if (lang >= 6) lang = 0;
@@ -633,9 +640,11 @@ void advanced_save_written(int32_t slot) {
 void advanced_save_loaded(int32_t slot) {
     settings_load();
     language_game_state_read();  // (the Subtitles choice over the save's)
+    level_slots_pc_reset();      // (the level mods' items of the save before: gone)
     std::vector<uint8_t> d;
     if (!mc_card_file_read(save_file_path(slot), d)) return;  // an older save: the settings kept
     if (save_file_apply(d)) {
+        level_slots_save_loaded();  // (a save made on a level mod's level: back there, or the planet prompt)
         if (lbu(CONTROLS) != 0 && lbu(MOVEMENT) == 0) sb(MOVEMENT, 1);  // (Aiming = Modern needs the strafe)
         std::printf("[advanced] settings loaded with save %d (mode %s)\n", slot,
                     g_game_mode == GAME_MODE_ORIGINAL ? "Original" : g_game_mode == GAME_MODE_MODERN ? "Modern" : "unknown");
