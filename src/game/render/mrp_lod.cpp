@@ -496,7 +496,11 @@ void mrp_lod_world_shadow(int kind, void (*pass)(), uint32_t cur) {
     const bool needed = mrp_lod_world_shadows_needed(kind, &widen);
     if (kind <= 2) {  // (the passes whose decisions the MRP's host code makes from the pass's inputs: no shadow run)
         const float s_req = mrp_lod_scale(g_mrp_lod), w_req = fill_widen();  // (what the slider / the widening ask, whoever makes it)
-        const bool asked = s_req != 1.0f || w_req > 1.0f;
+        // (RAC1_PERF_DIRECT_WORLD: the host makes the world's decisions at every view, the game's own 4:3 Original too - the scene
+        // then needs no walk of the world's chain, mrp_world_scene.h)
+        const bool direct = mrpw::direct_world_force() && !selftest;
+        const bool asked = s_req != 1.0f || w_req > 1.0f || direct;
+        if (kind == 0) mrpw::direct_world_note_forced(direct && !(s_req != 1.0f || w_req > 1.0f));
         if (kind == 0) {
             const bool host = asked && !selftest && mrp_world_tfrag_lod();
             if (w_req > 1.0f && mrpw::tfrag_gpu_enabled() && !vu0::running()) {  // (the widened view's values, as the shadow run's patch_widen makes them, read in a journal)
