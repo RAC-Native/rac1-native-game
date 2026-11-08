@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 412 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 420 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 23 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 311 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 78 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Debugging](#debugging-variables) | 315 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Automated testing](#automated-testing-variables) | 82 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
