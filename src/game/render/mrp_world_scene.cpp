@@ -1,6 +1,8 @@
 // The MRP world's scene: see mrp_world_scene.h. Host code.
 #include <game/render/mrp_world_scene.h>
 
+#include <formats/host_meshes.h>
+
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/world_vu1.h>
@@ -642,6 +644,89 @@ void emit_static(Build& b, VUState& st, int kind) {
     if (kind == 1) emit_variants(b);
 }
 
+// orig: (host) a level mod's host meshes (src/formats/host_meshes.h): no EE data stands for them, so the host makes their draws, after the world passes, as the GPU path's tie A packets: per instance near enough and not behind
+// the camera (its class's sphere in the view, as the tie cull's view depth), its rows as the tie pass makes them (instance_rows:
+// the projection A times the rotation x scale, (position - camera) x 1024), LOD 0 (the near path's morph: the fat vertices'
+// base), the tie pass's fog at its depth, its one colour in all 64 entries; first the tie pass's alpha-test state (TEST_1
+// 0x5340b, its constants' qword 0x3cd)
+void emit_host_meshes(Build& b) {
+    const World* w = host_meshes_bound(&b.idx);
+    if (w == nullptr || w->host_meshes.empty()) return;
+    float tie_fog[4];
+    host_meshes_fog(tie_fog);
+    const SceneInput& in = b.in;
+    const float* A = in.a.data();
+    {
+        Kicked s;
+        s.q.push_back({0x00008001u, 0x10000000u, 0x0000000eu, 0u});
+        s.q.push_back({0x0005340bu, 0u, 0x00000047u, 0u});
+        s.part = {0, 1};
+        s.clip = {0, 0};
+        s.want_hp = true;
+        s.hp.assign(2, std::array<float, 4>{});
+        b.push(std::move(s), Program::TieA, 0x000, -1, 1, true);
+    }
+    static const float far_cull = [] {
+        const char* e = std::getenv("RAC1_HOST_MESH_FAR");
+        return e != nullptr ? static_cast<float>(std::atof(e)) : 1000.0f;
+    }();  // (0: none culled)
+    const int view = b.view(false);
+    for (const HostMeshInstance& ci : w->host_meshes) {
+        const TieClass& c = w->ties[ci.cls];
+        float sph[4];
+        std::memcpy(sph, c.header.data() + 0x30, sizeof sph);
+        const float sc = c.scale;
+        float centre[3], rad = sph[3] * sc;
+        for (int l = 0; l < 3; ++l) centre[l] = ci.pos[l] + sc * (ci.rot[0][l] * sph[0] + ci.rot[1][l] * sph[1] + ci.rot[2][l] * sph[2]);
+        float d2 = 0;
+        for (int r = 0; r < 3; ++r) d2 += (centre[r] - in.camera[static_cast<size_t>(r)]) * (centre[r] - in.camera[static_cast<size_t>(r)]);
+        const float zv = std::sqrt(d2);  // (the distance: the GPU clips what is behind the view)
+        if (far_cull > 0.0f && zv - rad > far_cull) continue;
+        SceneInst x;
+        float m[3][3], p[3];
+        for (int r = 0; r < 3; ++r)
+            for (int l = 0; l < 3; ++l) m[r][l] = ci.rot[r][l] * sc;
+        for (int l = 0; l < 3; ++l) p[l] = (ci.pos[l] - in.camera[static_cast<size_t>(l)]) * 1024.0f;
+        for (int l = 0; l < 4; ++l) {
+            for (int r = 0; r < 3; ++r) {
+                float acc = A[0 + l] * m[r][0];
+                acc = acc + A[4 + l] * m[r][1];
+                x.rows[r][l] = acc + A[8 + l] * m[r][2];
+            }
+            float acc = A[0 + l] * p[0];
+            acc = acc + A[4 + l] * p[1];
+            acc = acc + A[8 + l] * p[2];
+            x.rows[3][l] = acc + A[12 + l];
+        }
+        x.morph[2] = 256.0f;  // (the near path: 0x43800000 in z)
+        float fog = tie_fog[1] + std::max(0.0f, zv) * tie_fog[0];
+        fog = std::min(fog, tie_fog[2]);
+        fog = std::max(tie_fog[3], fog);
+        x.fog = tie_fog[0] == 0.0f && tie_fog[2] == 0.0f ? 0xffu : (static_cast<uint32_t>(ftoi4(fog)) >> 4) & 0xff;
+        x.colour_first = static_cast<uint32_t>(b.f.colours.size());
+        b.f.colours.resize(b.f.colours.size() + 64);
+        for (uint32_t k = 0; k < 64; ++k)
+            for (int l = 0; l < 4; ++l) b.f.colours[x.colour_first + k][static_cast<size_t>(l)] = 0x4b000000u + ci.rgba[l];  // (2^23 + byte, as STMOD 1 leaves them)
+        const uint32_t inst = static_cast<uint32_t>(b.f.insts.size());
+        b.f.insts.push_back(x);
+        for (const TiePacket& pk : c.packets) {
+            if (pk.lod != 0) continue;
+            b.push(Kicked{}, Program::TieA, 0x000, view, 1);
+            ScenePacket& sp = b.f.packets.back();
+            sp.tie = &pk;
+            sp.inst = inst;
+            sp.tex = static_cast<uint32_t>(b.f.tex.size());
+            sp.ntex = static_cast<uint32_t>(5 * pk.prims.size());
+            for (const int32_t t : pk.prims) {
+                const TexturePrim& tp = c.textures[static_cast<size_t>(t)];
+                for (uint32_t q = 0; q < 5; ++q)
+                    b.f.tex.push_back({static_cast<uint32_t>(tp.ad[q][0]), static_cast<uint32_t>(tp.ad[q][0] >> 32), static_cast<uint32_t>(tp.ad[q][1]), 0u});
+            }
+            ++b.f.draws[static_cast<int>(Program::TieA)];
+        }
+    }
+}
+
 // orig: (host) the check (RAC1_MRPW_STATIC_CHECK=1): the walker's tie / shrub instance draws against the host's, by (colour
 // slot = instance, packet): found / missing / extra, and their morph, F, alpha (exact) and rows (relative) compared
 // (the check compares packets by their content: the asset holds the same packet in several classes / LODs, the walker's index
@@ -1181,6 +1266,11 @@ void scene_capture(uint32_t chain_start, uint32_t chain_end, SceneInput& in, con
         in.a_clip[k] = lwc1(ad.a_clip + 4 * k);
     }
     for (uint32_t k = 0; k < 3; ++k) in.camera[k] = lwc1(ad.camera + 4 * k);
+    if (host_meshes_bound_any()) {  // (a level mod's host meshes: the tie pass's fog, 0x16cc60, for their draws)
+        float fog[4];
+        for (uint32_t k = 0; k < 4; ++k) fog[k] = lwc1(OV(0x0016cc60u) + 4 * k);
+        host_meshes_fog_set(fog);
+    }
     uint32_t last_end = 0;
     for (const PassRange& r : in.passes) last_end = std::max(last_end, r.end);
     constexpr size_t kSeen = 1u << 15;
@@ -1609,6 +1699,7 @@ bool scene_build(const WorldIndex& idx, const SceneInput& in, SceneFrame& f, boo
     emit_tfrag_shadow(b, vu.st);
     emit_static(b, vu.st, 0);  // (a pass the walk ended in)
     emit_static(b, vu.st, 1);
+    emit_host_meshes(b);
     static_check(b);
     // the sky (captured with the input)
     f.has_sky = in.has_sky;

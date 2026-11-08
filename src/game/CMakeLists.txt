@@ -169,6 +169,7 @@ add_library(rac1_game STATIC
     enhance/corrected_texts.cpp
     enhance/cut_content.cpp
     enhance/fixes102.cpp
+    enhance/level_slots.cpp
     ovl/bomb_glove.cpp
     ovl/pyrocitor.cpp
     ovl/blaster.cpp

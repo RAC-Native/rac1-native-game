@@ -3,6 +3,7 @@
 // driver: 0x121450 / 0x216728 and their waits).
 #include <game/boot/level_read.h>
 
+#include <host/level_slots.h>
 #include <game/lib/snd989.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/ee_memory.h>
@@ -34,6 +35,7 @@ bool level_header_read(int32_t level) {
     std::vector<uint8_t> buf(5 * 2048);
     if (!disc_read(rd(0x0013a448 + static_cast<uint32_t>(level) * 8), 5, buf.data())) return false;
     for (uint32_t i = 0; i < 0x2434; ++i) ee_write<uint8_t>(0x0013a4e0 + i, buf[i]);
+    level_slots_header_read(level);  // enhancement: a level mod's slot: its files' ranges (src/host/level_slots.h)
     return true;
 }
 

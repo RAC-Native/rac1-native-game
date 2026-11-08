@@ -2,6 +2,7 @@
 #include <game/enhance/corrected_texts.h>
 #include <game/enhance/fixes102.h>
 #include <game/ovl/world_lighting.h>
+#include <host/level_slots.h>
 #include <game/ovl/moby_pass.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
@@ -76,6 +77,7 @@ int32_t disc_read_wait(uint32_t dst, uint32_t lba, uint32_t n) {
 // and returns the end.
 // orig: 0x00241940
 uint32_t gameplay_load(int32_t level) {
+    level_slots_level_start(lw(0x0015ed84));  // enhancement: a level mod's level records in or out (src/host/level_slots.h)
     const uint32_t H = lwu(OV(0x00173e04));
     uint32_t s8 = lwu(OV(0x00173e18));
     if (level == 0) {

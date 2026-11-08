@@ -79,6 +79,7 @@
 #include <mutex>
 
 #include <game/enhance/advanced.h>
+#include <host/level_slots.h>
 #include <game/enhance/controls.h>
 #include <game/enhance/graphics.h>
 #include <game/enhance/vibration.h>
@@ -2834,14 +2835,26 @@ int main(int argc, char** argv) {
     // testing: RAC1_GOTO=N@F: at frame F the game's level change to level N (as the debug menu's
     // Levels tab does: 0x24d430, 0x28eeb0)
     // a chain of them: RAC1_GOTO=N1@F1,N2@F2,.. (the levels a player's session goes through)
+    // a level mod's level by its level.id (src/host/level_slots.h): RAC1_GOTO=<id>@F, as its row on the ship's list
     int goto_level = -1;
     uint64_t goto_frame = 0;
     std::vector<std::pair<int, uint64_t>> goto_chain;
+    constexpr int kGotoLevelId = 0x1000;  // (a chain entry kGotoLevelId + i: the level id goto_ids[i])
+    std::vector<std::string> goto_ids;
     if (const char* g = std::getenv("RAC1_GOTO")) {
         for (const char* q = g; *q != 0;) {
             int l = -1;
             unsigned long long f = 60;
-            if (std::sscanf(q, "%d@%llu", &l, &f) < 1) break;
+            if ((*q < '0' || *q > '9') && *q != '-') {  // (a level.id)
+                const char* at = std::strchr(q, '@');
+                const char* comma = std::strchr(q, ',');
+                const char* end = at != nullptr && (comma == nullptr || at < comma) ? at : comma != nullptr ? comma : q + std::strlen(q);
+                goto_ids.emplace_back(q, end);
+                l = kGotoLevelId + static_cast<int>(goto_ids.size()) - 1;
+                if (end == at) std::sscanf(at, "@%llu", &f);
+            } else if (std::sscanf(q, "%d@%llu", &l, &f) < 1) {
+                break;
+            }
             goto_chain.emplace_back(l, f);
             const char* c = std::strchr(q, ',');
             if (c == nullptr) break;
@@ -3139,6 +3152,10 @@ int main(int argc, char** argv) {
                 }
                 for (const auto& [gl, gf] : goto_chain)  // (the chain's next change)
                     if (game_frame == gf) goto_level = gl, goto_frame = gf;
+                if (goto_level >= kGotoLevelId && game_frame == goto_frame && !exiting && !ee_thread_suspended()) {  // (a level mod's level: chosen)
+                    goto_level = rac1::level_slots_choose_id(goto_ids[static_cast<size_t>(goto_level - kGotoLevelId)]);
+                    if (goto_level < 0) goto_frame = 0;
+                }
                 if (goto_level >= 0 && game_frame == goto_frame && !exiting && !ee_thread_suspended()) {
                     if (boot_active()) {  // the boot's title left for the level (the debug menu's skip)
                         boot_skip_to(goto_level);
@@ -3726,6 +3743,7 @@ int main(int argc, char** argv) {
                 }
                 unlock_done = true;
             }
+            if (!exiting && !ee_thread_suspended()) rac1::level_slots_test_frame(game_frame);  // (testing: RAC1_LEVEL_SAVE_IMAGE, level_slots.h)
             // testing: RAC1_KILL_UIDS=<frame>:<uid>,..: at that game frame those mobys' state set to 0xfe (the
             // state a dead moby's watchers test, e.g. Novalis's Blarg dropship 790 for its troopers 325..327); no other effect
             if (const char* ku = std::getenv("RAC1_KILL_UIDS"); ku != nullptr && !exiting) {
