@@ -169,6 +169,79 @@ the main thread's wait for it Rilgar 0.44 to 0.22 ms, Gaspar 0.95 to 0.12. What 
 in the substitute (its 3D) and in the real range (the VU1 state it leaves, which the next program reads): on Gaspar 3.3 and 1.6 ms
 of the 7.5 a chain took. At 4:3 there is no substitute: a chain takes 1 to 2.5 ms.
 
+## Drawing without the chains
+
+The MRP takes the mobys from observers on the ported moby pass, but the world, the sky, the effects and the 2D it still gets by
+reading back the DMA / VIF / GIF chains the ported `render_frame` builds. The first steps of replacing those reads with the data's
+sources, each behind a `RAC1_PERF_*` switch whose `=2` runs both ways and compares them field by field:
+
+- **The workers' parts in the profiler.** The CSV's `part:` columns (and a line each in `RAC1_PROFILER_DUMP`'s summary) split the
+  workers' busy time: the chain reader's texture uploads into the GS memory model and its VU1 programs; the scene worker's host
+  decisions (the resident colours, `static_frame_build`, the casters, `tfrag_decide`), its capture, its walk (or the direct world's
+  build) and `build_triangles`. `src/profiler/perf_switch.h` holds what the switches share: the value, and a dual mode's account
+  (comparisons, differences, the first few described, the line at the end of a run).
+- **The upload memo** (`RAC1_PERF_UPLOAD_MEMO`, `runtime/gs/gs_memory.cpp`). Every frame the chain reader wrote every texture upload
+  into the 4 MB model pixel by pixel, swizzled, comparing each pixel only after computing its address: 40-55 % of the chain worker.
+  Most uploads write the same bytes as the frame before. Each piece of a transfer (its BITBLTBUF / TRXPOS / TRXREG, where in the
+  transfer it starts, its size) now keeps the bytes it wrote last, the range of the memory its pixels cover and the write log's number
+  after it; the same piece with the same bytes, its range unchanged since (`changed_since`, the log the texture snapshots already
+  use), would write every byte over itself, so it is skipped and only the transfer's position advanced. Exact by construction:
+  `=2` writes every piece and checks the skipped ones changed nothing: 0 of the 515,625 pieces it skipped over the 19 levels at 16:9,
+  32:9 and 32:9 with LOD High.
+- **The direct world** (`RAC1_PERF_DIRECT_WORLD`, `mrp_world_scene.h`). When the host makes every tie, shrub and tfrag draw (the LOD
+  slider off Original or a widened view: `mrp_world_static.h`, `mrp_tfrag_gpu.h`), the scene worker still copied the world passes'
+  chain ranges and walked them on its private VU1 - VIF unpacks, set-up programs, a packet match at every draw start - only to
+  throw the draws away. What the host's draws take from those ranges is little: the pass constants the chain leaves in VU1 memory
+  (the tfrag view at 5..8 and constants 0x290..0x29d, the tie A alpha-test state 0x3cb..0x3cd, the shrub A fog vf29 / vf30 after
+  its constants start) and the GS registers the passes' DIRECT packets set (TEX0 from 0x1c2f00, the shrubs' TEST and CLAMP, the
+  far variants' stream's TEX registers). The direct world reads them where the chain's packets put them, in place in EE memory at
+  the capture: a scan of the ranges' tags and VIF codes that skips their data (nothing copied), applies only the UNPACKs that
+  reach those constants and runs only the constants' starts, on a private VU1, and notes the DIRECT register writes in chain order.
+  The walk then stops where the world's ranges begin (it still walks the frame's set-up and the sky), and the host's draws are made
+  where the walk would have left each pass's range, with the state that pass's chain left. The game builds every chain byte as
+  before (RAMHASH identical). `=2` builds the walker's scene too, draws it, and compares the two every frame - the packets in
+  order, the register writes before each, and through their indices the views, the instances (rows, morph, F, alpha, colours),
+  the texture qwords, the tfrag draws with their view and constants, the GIF and sky writes: 0 differing frames over the 19 levels
+  at 16:9, 32:9 and 32:9 with LOD High (6515 frames each, 5.8 / 9.0 / 23.3 million packets).
+  - At the game's own 4:3 Original the host does not decide the world (the frame is walked as before): `=3` makes it decide there
+    too and draws directly, which is not the same picture (the host's draws are the widened view's kind - the guard band's GPU path
+    for what the game would clip, the host's far variants - not the decode of the game's chain): Veldin's frame 300 at 1440 x 1080,
+    1282 pixels differ (405 by more than 8 levels). `=4` compares it with the walk (every frame differs there).
+  - The CPU tfrag fallback (`RAC1_TFRAG_CPU`, no GPU path) now gets the host's decisions too: each decided entry drawn by the CPU
+    reference on the VU1 memory its chain would have left (the entry's image for its LOD from the level's data, the view and
+    constants the scan read, the lit colours from the resident mirror), instead of the tfrag shadow run and its walk. The same
+    pictures as before (Kerwan 16:9, Veldin 32:9, frames 300 and 600); against the walker's draws at 4:3 Original (`=4`
+    with `RAC1_PERF_DIRECT_WORLD_CMP=tfrag`) every vertex, colour and register write is the same but for the textures' place in
+    VRAM (TEX0's TBP0 / CBP, MIPTBP): the images keep the level load's, the chain the frame's own placement, which the world's
+    textures are not found by (CLAMP's MINV index names them).
+
+Measured as the analysis was (headless, OpenGL, `RAC1_PIPELINE=1 RAC1_GAME_THREAD=0`, forward input, 1500 frames, the medians
+of frames 600-1450; Graphics Original, LOD Original but where said, HUD 4:3; 1920 x 1080 at 16:9, 5120 x 1440 Fill Screen widened).
+The before is the same build with `RAC1_PERF_UPLOAD_MEMO=0 RAC1_PERF_DIRECT_WORLD=0`, two interleaved runs each on a shared machine
+(other builds and games ran beside it: the frame periods are not comparable, the workers' parts are), ms a frame, before -> after:
+
+| | Veldin | Kerwan | Rilgar | Hoven |
+|---|---|---|---|---|
+| Chain worker: uploads, 16:9 | 0.65-0.91 -> 0.27-0.30 | 0.74-0.76 -> 0.18-0.19 | 0.73-0.87 -> 0.56-0.73 | 1.36-1.50 -> 1.17-1.40 |
+| Chain worker: uploads, widened | 0.73-0.83 -> 0.42-0.45 | 0.81-1.04 -> 0.19-0.27 | 0.83-1.01 -> 0.55-0.64 | 1.55-1.62 -> 1.56 |
+| Scene worker: walk, 16:9 | 0.44-0.49 -> 0.14-0.15 | 1.14-1.17 -> 0.21-0.23 | 0.79-0.91 -> 0.11-0.16 | 0.69-0.77 -> 0.16 |
+| Scene worker: walk, widened | 0.74-0.80 -> 0.20-0.27 | 1.65-2.03 -> 0.35-0.39 | 0.79-1.13 -> 0.26-0.27 | 0.94-0.98 -> 0.23-0.26 |
+| Scene worker busy, 16:9 | 1.45-1.59 -> 1.30-1.31 | 3.22-3.37 -> 2.44-2.67 | 2.28-2.69 -> 1.20-1.85 | 2.33-2.80 -> 1.84-1.88 |
+| Scene worker busy, widened | 2.61-2.88 -> 1.74-2.18 | 4.87-5.44 -> 3.34-3.70 | 2.55-3.41 -> 2.28-2.37 | 3.42-3.52 -> 2.51-2.80 |
+
+Kerwan at 4:3 Original: the uploads 0.45-0.57 -> 0.10-0.12 (the walk unchanged: the host does not decide there); with `=3` the
+scene worker 5.77-7.33 -> 2.46-2.79 ms (its walk 3.69-4.99 -> 0.22-0.25). Kerwan widened with LOD High: the uploads 0.88-1.36 ->
+0.22-0.27, the walk 1.82-2.51 -> 0.68-0.77, the scene worker 5.56-6.85 -> 4.56-5.19. Both are exact: the reference images and RAMHASH are unchanged, the four-level RAMHASH route widened with LOD High is identical
+with both switches at 0 and at 1, and the pictures of Veldin, Kerwan, Rilgar and Hoven at 16:9 and widened (OpenGL and Vulkan),
+Kerwan with LOD High and Kerwan and Rilgar at 4:3 are identical (frames 300 and 600; but for a few HUD pixels at the top of
+Veldin's frame 600 with OpenGL, 4 to 15, which differ from run to run with main's own build too). The capture costs what it did (the scan,
+0.5 ms a frame on Kerwan at 16:9, replaces the copy of the ranges), so does the main thread's wait for it. Hoven's uploads change
+from frame to frame, so the memo skips little there.
+
+The other steps of that plan (the sky from its asset and the per-frame state the sky pass reads, the particles from the pool, the
+quads and prim lists from their producers' arguments, program 7's batches decoded on the EE side, not building the chains the MRP
+no longer reads) are not done. The 2D stays on the chain.
+
 ## The GPU
 
 With a wide window and the modern lighting the frame is bound by the GPU, not the CPU (a 5053 x 1371 window, about 7 million
@@ -364,6 +437,8 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_VU0_NF=0` | the generated code's VU0 ops with their flags |
 | `RAC1_WORLD_CULL_FAST=0` | the world passes' three culls as transliterated (`=2`: both, compared at every call) |
 | `RAC1_DROP_SHADOWS_FAST=0`, `RAC1_SKY_FAST=0` | the drop shadows' and the sky's routines as transliterated (`=2`: both, compared; `RAC1_HAND_CHECK_EVERY` to check one call in n) |
+| `RAC1_PERF_UPLOAD_MEMO=0` | every texture upload's piece written into the GS memory model, as before (`=2`: both, checked) |
+| `RAC1_PERF_DIRECT_WORLD=0` | the world passes' chain ranges copied and walked when the host makes the world (`=2`: both, compared; `=3`: the direct world at 4:3 Original too) |
 | `RAC1_PERF_SKY_LATE=1` | the sky after the leading opaque tfrag batches (off by default: not exact) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
@@ -374,7 +449,8 @@ moby shadows are drawn; `RAC1_MRPW_P2_LESS` a few pixels).
 
 The profiler's CSV (`RAC1_PROFILER_CSV=<file>`) has, per host frame, its period, the game frames it ran (`steps`), the main
 thread's CPU time, every stage's CPU and GPU time, and the workers' busy and CPU time (the game thread's: `busy: Game thread`;
-its stages are counted in the stage columns, the main thread's wait for it in `Wait: game thread`). Two ways to use it
+its stages are counted in the stage columns, the main thread's wait for it in `Wait: game thread`), and the workers' parts (`part:`
+columns: the chain reader's uploads and VU1 programs, the scene worker's decisions, capture, walk and triangles). Two ways to use it
 headless (the window's size and the Options as a player has them: a copy of `graphics_options.txt` in a directory given by
 `XDG_CONFIG_HOME`, with `RAC1_ADVANCED=1`):
 

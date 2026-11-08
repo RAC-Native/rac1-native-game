@@ -131,6 +131,19 @@ What changed in each release. Releases are source only: you build the game with 
   the transliterations as before.
 - The loading screen's flight between the planets no longer runs the mobys' VU0 skinning, which the modern renderer does not
   use there (as in play): the flight's main thread about a third of what it was (`RAC1_MRP_SKIP_FLIGHT=0`: as before).
+- The texture uploads written into the GS memory model (the MRP chain reader's, libgraph's) skip a piece of a transfer that
+  writes what its last identical write left into memory nothing changed since, instead of swizzling it again pixel by pixel:
+  the chain worker's uploads up to 0.6 ms a frame less (Kerwan 0.75 to 0.19 ms; Hoven, whose uploads change every frame,
+  little); exact, the same picture and game state (`RAC1_PERF_UPLOAD_MEMO`; `=2` checks every skipped piece).
+- The direct world: when the host makes every tie, shrub and tfrag draw (the LOD slider off Original or a widened view), the MRP
+  scene worker no longer copies and walks the world passes' chain ranges; the pass constants and GS registers the host's draws
+  take from them are read in place by a scan of the ranges' VIF codes: the scene worker's walk 0.3 to 1.7 ms a frame less
+  (Kerwan widened 1.65-2.03 to 0.35-0.39 ms; at 4:3 Original with `=3` 3.7-5.0 to 0.2); the same scene field by field
+  (`RAC1_PERF_DIRECT_WORLD=2`, 0 differences over the 19 levels at 16:9 and 32:9), the same picture and game state.
+  `RAC1_PERF_DIRECT_WORLD=3` does it at the game's own 4:3 Original too (the host deciding the world there: a slightly different
+  picture). The CPU tfrag fallback (`RAC1_TFRAG_CPU`) draws the host's decisions instead of running the tfrag pass a second time.
+- The profiler's CSV splits the workers' time into parts (the chain reader's uploads and VU1 programs, the scene worker's
+  decisions, capture, walk and triangles). See [Performance](docs/performance.md#drawing-without-the-chains).
 
 ## 0.7.0
 
