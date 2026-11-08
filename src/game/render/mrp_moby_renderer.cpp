@@ -16,6 +16,7 @@
 #include <game/render/mrp_world_assets.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
+#include <game/render/frame_extrap.inc>
 #include <game/render/texture_mods.h>
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
@@ -3169,10 +3170,39 @@ void shader_check(const gs::Viewport* vp) {
     glBindBuffer(kGlShaderStorageBuffer, 0);
 }
 
+// the frame extrapolation's history (g_frame_extrap only): per step, each moby drawn in the world's view, its world matrix (its first
+// part's), by its address and class; the frame's own clips, put back after the extrapolated draws
+struct MobyHistory {
+    bool ok = false;
+    uint64_t frame = 0;
+    std::unordered_map<uint64_t, glm::mat4> w;
+};
+MobyHistory g_mh_prev, g_mh_cur;
+uint64_t g_mx_build = 0, g_mx_base_build = ~0ull;
+std::vector<std::array<float, 16>> g_mx_base;
+uint64_t mx_key(uint32_t moby, int16_t cls) { return (static_cast<uint64_t>(moby) << 16) | static_cast<uint16_t>(cls); }
+// orig: (host) a build's mobys kept as the newest step (prepare_frame)
+void extrap_note_build() {
+    ++g_mx_build;
+    if (!g_frame_extrap) {
+        g_mh_prev.ok = g_mh_cur.ok = false;
+        return;
+    }
+    const Frame& F = g_frame;
+    const uint64_t frame = render_view_extrap_step_frame();
+    if (!(g_mh_cur.ok && g_mh_cur.frame == frame)) std::swap(g_mh_prev, g_mh_cur);
+    g_mh_cur.ok = F.mode == 0 && !F.menu && !F.title;
+    g_mh_cur.frame = frame;
+    g_mh_cur.w.clear();
+    if (g_mh_cur.ok)
+        for (const Frame::MobyXf& x : F.xf) g_mh_cur.w[mx_key(x.moby, x.class_id)] = x.W;
+}
+
 void prepare_frame(const gs::Viewport* vp) {
     if (g_frame.built) return;
     const double t0 = now_ms();
     build_frame();
+    extrap_note_build();
     if (!vk::is_active()) {
         upload_frame();
         if (g_env_check) shader_check(vp);
@@ -3186,6 +3216,55 @@ void prepare_frame(const gs::Viewport* vp) {
 // orig: (host) see mrp_moby_renderer.h
 void mrp_moby_prepare(const gs::Viewport* vp) {
     if (g_frame.active) prepare_frame(vp);
+}
+
+// orig: (host) see mrp_moby_renderer.h
+void mrp_moby_extrap_apply() {
+    Frame& F = g_frame;
+    if (!F.active || !F.built || F.mode != 0 || F.menu || F.title || F.part_w.size() != F.parts.size() || F.part_own.size() != F.parts.size() ||
+        F.part_moby.size() != F.parts.size())
+        return;
+    if (g_mx_base_build != g_mx_build) {  // (this build's own clips, kept before the first change)
+        g_mx_base_build = g_mx_build;
+        g_mx_base.resize(F.parts.size());
+        for (size_t i = 0; i < F.parts.size(); ++i) std::memcpy(g_mx_base[i].data(), F.parts[i].clip, sizeof F.parts[i].clip);
+    }
+    uint64_t frame = 0;
+    double ahead = 0.0;
+    const bool on = render_view_extrap_active(&frame, &ahead);
+    if (!on) {
+        for (size_t i = 0; i < F.parts.size(); ++i) std::memcpy(F.parts[i].clip, g_mx_base[i].data(), sizeof F.parts[i].clip);
+    } else {
+        // each moby's motion over the steps before: its first part's world matrix carried forward, the change applied to its parts
+        // (a moby new this step, one that jumped - more than 8 units or 90 degrees a step: a teleport, a respawn, a slot reused - stays)
+        std::unordered_map<uint32_t, glm::dmat4> delta;
+        if (g_mh_cur.ok && g_mh_prev.ok && g_mh_cur.frame == frame && g_mh_prev.frame < frame && frame - g_mh_prev.frame <= 4) {
+            const double gap = static_cast<double>(frame - g_mh_prev.frame);
+            for (const Frame::MobyXf& x : F.xf) {
+                const auto it = g_mh_prev.w.find(mx_key(x.moby, x.class_id));
+                if (it == g_mh_prev.w.end()) continue;
+                glm::dmat4 we;
+                const glm::dmat4 wc(x.W);
+                if (!render_view_extrap_affine(glm::dmat4(it->second), wc, gap, ahead, 8.0, 90.0, we)) continue;
+                if (std::fabs(glm::determinant(wc)) < 1e-18) continue;
+                delta[x.moby] = we * glm::inverse(wc);
+            }
+        }
+        const glm::dmat4 vp = glm::dmat4(world_view_proj());
+        for (size_t i = 0; i < F.parts.size(); ++i) {
+            if (F.part_own[i] != 0) {
+                std::memcpy(F.parts[i].clip, g_mx_base[i].data(), sizeof F.parts[i].clip);
+                continue;
+            }
+            glm::dmat4 W(F.part_w[i]);
+            if (!delta.empty())
+                if (const auto it = delta.find(F.part_moby[i]); it != delta.end()) W = it->second * W;
+            const glm::mat4 clip = glm::mat4(vp * W);
+            std::memcpy(F.parts[i].clip, glm::value_ptr(clip), sizeof F.parts[i].clip);
+        }
+    }
+    F.uploaded = false;
+    if (!vk::is_active()) upload_frame();
 }
 
 // orig: (host) see mrp_moby_renderer.h

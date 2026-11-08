@@ -126,6 +126,7 @@
 #include <game/render/render_toggles.h>
 #include <game/render/gl_draws.h>
 #include <game/render/render_view.h>
+#include <game/render/frame_extrap.inc>
 #include <game/render/shader_manager.h>
 #include <game/render/sky_render.h>
 #include <game/render/title_scene_host.h>
@@ -555,6 +556,130 @@ static double host_refresh_hz(GLFWwindow* w) {
     const GLFWvidmode* v = m != nullptr ? glfwGetVideoMode(m) : nullptr;
     return v != nullptr && v->refreshRate > 0 ? static_cast<double>(v->refreshRate) : 60.0;
 }
+
+// The frame extrapolation's measures (the host loop's extrap_pictures), "[extrap]" every 10 s and at the end: the steps and pictures,
+// the pictures a step chosen (k), the carried pictures left out (budget: they would have made the next step late; late: past their
+// slot), the steps held and why; the intervals between presents (in the display's refreshes: even pacing at 240 Hz and k = 4 is all
+// 1s), the step's picture late for its slot and the carried ones for theirs; the main thread's costs (the step's picture, a
+// carried one, the prepare, the wait for the game thread) and the GPU's (a step's picture, a carried one); with the present
+// feedback (Vulkan's present_wait, a window) the intervals as the display showed them and how far each carried picture's
+// fraction was from the time it was shown at
+struct ExtrapStats {
+    using clk = std::chrono::steady_clock;
+    struct Est {  // (a rolling mean and mean deviation; `hi` the mean plus 1.5 deviations)
+        double mean = 0.0, dev = 0.0;
+        bool any = false;
+        void add(double v) {
+            if (!any) {
+                mean = v;
+                dev = v * 0.25;
+                any = true;
+                return;
+            }
+            dev += 0.1 * (std::fabs(v - mean) - dev);
+            mean += 0.1 * (v - mean);
+        }
+        double hi() const { return mean + 1.5 * dev; }
+    };
+    Est cpu_step, cpu_carried, cpu_prepare, gpu_step, gpu_carried;
+    bool step_bad = false;  // (the last step's verdict for the choice of k: it waited for the GPU, was late, or left a picture out)
+    uint64_t steps = 0, pictures = 0, carried = 0, held = 0, skipped_budget = 0, skipped_late = 0;
+    uint64_t held_why[5] = {};
+    uint64_t k_count[9] = {};
+    std::vector<double> intervals, step_late, carried_late, display_intervals, fraction_err;
+    double sum_cpu_step = 0, sum_cpu_carried = 0, sum_prepare = 0, sum_join = 0, sum_gpu_step = 0, sum_gpu_carried = 0, sum_fence = 0;
+    uint64_t n_cpu_step = 0, n_cpu_carried = 0, n_prepare = 0, n_join = 0, n_gpu_step = 0, n_gpu_carried = 0;
+    uint64_t at_steps = 0, at_pictures = 0;
+    clk::time_point t0 = clk::now(), last_present{};
+    bool have_last = false;
+    double refresh_ms = 1000.0 / 240.0;
+    // (present feedback) each present's kind (-1 a step's, else its fraction) and its step's slot, until its shown time comes
+    struct Rec {
+        double fraction;
+    };
+    std::vector<Rec> recs;
+    clk::time_point last_shown{}, last_step_shown{};
+    bool have_shown = false, have_step_shown = false;
+    // vk frame number -> 1 a step's picture, 2 a carried one (the GPU times come two frames later)
+    uint8_t kind_of[16] = {};
+    // orig: (host) a present done now: its interval
+    void presented(bool step_picture, double fraction, bool feedback) {
+        const auto now = clk::now();
+        if (have_last) intervals.push_back(std::chrono::duration<double, std::milli>(now - last_present).count());
+        last_present = now;
+        have_last = true;
+        if (feedback) recs.push_back({step_picture ? -1.0 : fraction});
+    }
+    void gap() { have_last = false; }  // (a host frame not extrapolated in between: its interval not one of ours)
+    // orig: (host) the present feedback's shown times, paired with the presents in order
+    void shown(const std::vector<clk::time_point>& times) {
+        size_t n = std::min(times.size(), recs.size());
+        for (size_t i = 0; i < n; ++i) {
+            const auto t = times[i];
+            if (have_shown) display_intervals.push_back(std::chrono::duration<double, std::milli>(t - last_shown).count());
+            last_shown = t;
+            have_shown = true;
+            if (recs[i].fraction < 0.0) {
+                last_step_shown = t;
+                have_step_shown = true;
+            } else if (have_step_shown) {
+                fraction_err.push_back(std::chrono::duration<double, std::milli>(t - last_step_shown).count() / (1000.0 / 60.0) - recs[i].fraction);
+            }
+        }
+        recs.erase(recs.begin(), recs.begin() + static_cast<std::ptrdiff_t>(n));
+        if (recs.size() > 256) recs.clear();
+    }
+    static std::string dist(std::vector<double>& v, double unit, bool hist) {
+        if (v.empty()) return "none";
+        std::sort(v.begin(), v.end());
+        auto q = [&](double p) { return v[std::min(v.size() - 1, static_cast<size_t>(p * static_cast<double>(v.size())))]; };
+        char b[256];
+        std::snprintf(b, sizeof b, "p5 %.2f p50 %.2f p95 %.2f max %.2f", q(0.05), q(0.5), q(0.95), v.back());
+        std::string out = b;
+        if (hist) {  // (in refreshes of the display: 0 = under half of one, 6 = six and more)
+            int h[7] = {};
+            for (double x : v) ++h[std::clamp(static_cast<int>(x / unit + 0.5), 0, 6)];
+            out += "; refreshes 0:" + std::to_string(h[0]) + " 1:" + std::to_string(h[1]) + " 2:" + std::to_string(h[2]) + " 3:" + std::to_string(h[3]) +
+                   " 4:" + std::to_string(h[4]) + " 5:" + std::to_string(h[5]) + " 6+:" + std::to_string(h[6]);
+        }
+        v.clear();
+        return out;
+    }
+    // orig: (host)
+    void report(bool final) {
+        const double s = std::chrono::duration<double>(clk::now() - t0).count();
+        if (!final && s < 10.0) return;
+        if (steps == at_steps) return;  // (nothing since the last line: the run's end reported once)
+        auto avg = [](double sum, uint64_t n) { return n > 0 ? sum / static_cast<double>(n) : 0.0; };
+        std::printf("[extrap] %.1f s: %.1f pictures a second, %.1f steps shown a second (the game's speed: [pace], RAC1_REALTIME); k", s, static_cast<double>(pictures - at_pictures) / s,
+                    static_cast<double>(steps - at_steps) / s);
+        for (int k = 1; k <= 8; ++k)
+            if (k_count[k] != 0) std::printf(" %d:%llu", k, static_cast<unsigned long long>(k_count[k]));
+        std::printf("; carried %llu, left out %llu for the budget and %llu late; steps held %llu (no history %llu, a gap %llu, the camera moved %llu, turned %llu)\n",
+                    static_cast<unsigned long long>(carried), static_cast<unsigned long long>(skipped_budget), static_cast<unsigned long long>(skipped_late),
+                    static_cast<unsigned long long>(held), static_cast<unsigned long long>(held_why[1]), static_cast<unsigned long long>(held_why[2]),
+                    static_cast<unsigned long long>(held_why[3]), static_cast<unsigned long long>(held_why[4]));
+        std::printf("[extrap]   presents (ms): %s\n", dist(intervals, refresh_ms, true).c_str());
+        std::printf("[extrap]   the step's picture late for its slot (ms): %s; a carried one for its slot: %s\n", dist(step_late, refresh_ms, false).c_str(),
+                    dist(carried_late, refresh_ms, false).c_str());
+        std::printf("[extrap]   main thread ms: step picture %.2f, carried %.2f, prepare %.2f, game thread wait %.2f; GPU ms: step picture %.2f, carried %.2f; "
+                    "fence waits %.1f ms a second\n",
+                    avg(sum_cpu_step, n_cpu_step), avg(sum_cpu_carried, n_cpu_carried), avg(sum_prepare, n_prepare), avg(sum_join, n_join),
+                    avg(sum_gpu_step, n_gpu_step), avg(sum_gpu_carried, n_gpu_carried), sum_fence / s);
+        if (!display_intervals.empty() || !fraction_err.empty())
+            std::printf("[extrap]   shown (present feedback, ms): %s; carried pictures' fraction minus their shown time (steps): %s\n",
+                        dist(display_intervals, refresh_ms, true).c_str(), dist(fraction_err, 1.0, false).c_str());
+        sum_cpu_step = sum_cpu_carried = sum_prepare = sum_join = sum_gpu_step = sum_gpu_carried = sum_fence = 0;
+        n_cpu_step = n_cpu_carried = n_prepare = n_join = n_gpu_step = n_gpu_carried = 0;
+        carried = skipped_budget = skipped_late = held = 0;
+        for (uint64_t& h : held_why) h = 0;
+        for (uint64_t& k : k_count) k = 0;
+        at_steps = steps;
+        at_pictures = pictures;
+        t0 = clk::now();
+    }
+};
+ExtrapStats g_extrap;
 
 struct HostPacer {
     using clk = std::chrono::steady_clock;
@@ -3364,6 +3489,7 @@ int main(int argc, char** argv) {
             fd.story = exiting && level_exit_in_story();
             fd.flight = exiting && level_exit_loading_screen();
             fd.frame = frame;
+            render_view_extrap_step(frame);  // (the frame extrapolation's step: the view's and the mobys' history, when it is on)
             fd.level = lw(0x0015ed84);
             fd.scene = ee_thread_suspended() && ee_thread_frame() == rac1::EeVsyncFrame::Scene;
             fd.fade = ee_thread_suspended() && !fd.scene;
@@ -3631,6 +3757,7 @@ int main(int argc, char** argv) {
             fd.gv.xscale_3d = menu_mode ? fd.gv.xscale : 1.0f / mrp_lod_frame_widen();
             if (snapshot) {  // (a pipelined frame: what its drawing reads of the game's state, captured now; the mobys' lists built now)
                 render_view_snapshot();
+                if (g_frame_extrap) render_view_extrap_note();
                 draw_memory_take();  // (the game's memory its drawing reads: the lighting's, the particles')
                 mrp_lod_snapshot();
                 mrp_shadows_snapshot();
@@ -4202,6 +4329,248 @@ int main(int argc, char** argv) {
                 continue;
             }
         }
+        {  // the frame extrapolation asked for (RAC1_EXTRAP=1, or =k pictures a step for testing; in a window the debug menu's Display tab,
+           // with the debug tools only: a prototype)
+            static const int x_env = std::getenv("RAC1_EXTRAP") != nullptr ? std::atoi(std::getenv("RAC1_EXTRAP")) : -1;
+            bool on = x_env > 0;
+#ifdef RAC1_DEVTOOLS
+            if (!headless && x_env < 0) on = g_debug_tools && dt::dev_settings().extrapolate;
+#endif
+            g_frame_extrap = on;
+        }
+        // The frame extrapolation (prototype; render_view.h, RAC1_EXTRAP, the debug menu's Display tab): with the cap above 60, a host
+        // frame that draws its pipelined frame beside the game thread presents it at its slot, then draws it again extrap_k - 1 times,
+        // its camera and its mobys' places carried forward along the two steps before it by 1 / extrap_k of a step each, presented
+        // 1 / (60 extrap_k) s apart: extrap_k pictures a step, no latency added (the newest step's state, moved on in time). The
+        // game's frames, their state and their order are unchanged (the drawing reads only the frame's snapshot, as the first
+        // picture's). Only there: the pipelined frames of play; menus, fades, movies, loads, the debug menu open: 60 as before
+        int extrap_k = 1;  // (the most pictures a step: the cap's; extrap_pictures chooses how many it draws)
+        if (overlap && g_frame_extrap && pend.frame != 0) {
+            int cap = env_fps_cap >= 0 ? env_fps_cap : 60;
+            if (!headless) cap = env_fps_cap >= 0 ? env_fps_cap : rac1::graphics_display().fps_cap;
+            static const int k_env = std::getenv("RAC1_EXTRAP") != nullptr ? std::atoi(std::getenv("RAC1_EXTRAP")) : 0;
+            if (k_env >= 2) extrap_k = k_env;  // (testing: the pictures a step)
+            else if (cap > 60) extrap_k = cap / 60;
+            else if (cap == 0 && !headless) extrap_k = static_cast<int>(host_refresh_hz(window) / 60.0 + 0.5);  // (Unlimited: the display's refresh)
+            extrap_k = std::clamp(extrap_k, 1, 8);
+#ifdef RAC1_DEVTOOLS
+            if (!headless && dt::dev_settings().speed != 1.0f) extrap_k = 1;
+#endif
+        }
+        {  // (Vulkan: the frames' GPU times and, in a window, the present feedback while extrapolating; FIFO when asked)
+            static bool timing = false;
+            const bool want = g_frame_extrap && rac1::vk::is_active();
+            if (want != timing) {
+                timing = want;
+                rac1::vk::set_frame_timing(want);
+                rac1::vk::set_present_feedback(want && rac1::vk::present_feedback_supported());
+                if (want) std::printf("[extrap] on: present feedback %s\n", rac1::vk::present_feedback_supported() ? "on (VK_KHR_present_wait)" : "none");
+            }
+            static const int fifo_env = std::getenv("RAC1_EXTRAP_FIFO") != nullptr ? std::atoi(std::getenv("RAC1_EXTRAP_FIFO")) : -1;
+            bool fifo = fifo_env > 0;
+#ifdef RAC1_DEVTOOLS
+            if (!headless && fifo_env < 0) fifo = dt::dev_settings().extrapolate_fifo;
+#endif
+            if (rac1::vk::is_active()) rac1::vk::set_force_fifo(want && fifo);
+        }
+        // the GPU time of the frame two presents ago, to the kind of picture it was
+        auto extrap_gpu_note = [&]() {
+            if (!rac1::vk::is_active()) return;
+            uint64_t fn = 0;
+            const double ms = rac1::vk::last_frame_gpu_ms(&fn);
+            static uint64_t seen = ~0ull;
+            if (ms < 0.0 || fn == seen) return;
+            seen = fn;
+            const uint8_t kind = g_extrap.kind_of[fn & 15];
+            g_extrap.kind_of[fn & 15] = 0;
+            if (kind == 1) {
+                g_extrap.gpu_step.add(ms);
+                g_extrap.sum_gpu_step += ms;
+                ++g_extrap.n_gpu_step;
+            } else if (kind == 2) {
+                g_extrap.gpu_carried.add(ms);
+                g_extrap.sum_gpu_carried += ms;
+                ++g_extrap.n_gpu_carried;
+            }
+        };
+        // The step's picture (drawn) presented at its slot, then the carried pictures. Each one is drawn for a slot of an even grid,
+        // S + j / k of a step (S the step's slot; k = extrap_k or a divisor of it: at 240 Hz 4, 2 or 1 a step, every 1, 2 or 4
+        // refreshes), its fraction j / k: the time it will be shown at, not the time it is drawn at. The step always wins: k is the
+        // most the measured costs fit in a step - the main thread's (the step's picture, k - 1 carried ones, the prepare) and the
+        // GPU's - and a carried picture that would end past its slot is left out, as is the rest when the next step's prepare and
+        // picture would not fit after it. At worst one picture a step, as without
+        auto extrap_pictures = [&](uint64_t step, double step_cpu_ms) {
+            using clk = std::chrono::steady_clock;
+            ExtrapStats& X = g_extrap;
+            const bool paced = !headless || env_fps_cap > 0 || realtime_test;
+            const bool fb = rac1::vk::is_active() && rac1::vk::present_feedback_supported();
+            X.refresh_ms = 1000.0 / (headless ? 60.0 * extrap_k : host_refresh_hz(window));
+            X.cpu_step.add(step_cpu_ms);
+            X.sum_cpu_step += step_cpu_ms;
+            ++X.n_cpu_step;
+            const auto step_ns = std::chrono::nanoseconds(1000000000LL / 60);
+            const double T = 1000.0 / 60.0;
+            // k, the pictures this step: a divisor of extrap_k (an even grid of the display's refreshes), chosen by what the steps did.
+            // The GPU's time per picture is no guide on an integrated GPU (its clock falls when it idles: a picture measured at k = 1
+            // costs twice the one at k = 2), so the GPU's side is judged by its symptom, the frames waited for (the fence: the GPU two
+            // pictures behind), and the main thread's by its measured costs. A step is bad when it waited more than 4 ms for the GPU,
+            // its picture was more than 3 ms late for its slot, or a carried picture was left out for the budget. 10 bad steps in 60:
+            // k one down. Up: a trial of one second at the next k, kept when it had at most 6 bad steps, else undone and the next
+            // trial twice as far away (2 s, then up to 20 s)
+            static const bool adapt = std::getenv("RAC1_EXTRAP_ADAPT") == nullptr || std::atoi(std::getenv("RAC1_EXTRAP_ADAPT")) != 0;
+            struct KControl {
+                int k = 0, trial = 0, trial_steps = 0, trial_bad = 0, window_steps = 0, window_bad = 0, since = 0, backoff = 120;
+            };
+            static KControl C;
+            auto next_up = [&](int kk) {
+                int u = kk + 1;
+                while (u <= extrap_k && extrap_k % u != 0) ++u;
+                return u;
+            };
+            auto next_down = [&](int kk) {
+                int d = kk - 1;
+                while (d > 1 && extrap_k % d != 0) --d;
+                return std::max(d, 1);
+            };
+            auto main_fits = [&](int kk) {  // (the main thread's measured costs; a carried picture not measured yet: as dear as the step's)
+                const double cc = X.cpu_carried.any ? X.cpu_carried.hi() : X.cpu_step.hi();
+                return X.cpu_step.hi() + X.cpu_prepare.hi() + (kk - 1) * cc <= 0.8 * T;
+            };
+            if (C.k < 1 || C.k > extrap_k || extrap_k % C.k != 0) {
+                C = KControl{};
+                C.k = 2 <= extrap_k && extrap_k % 2 == 0 ? 2 : 1;  // (a start at 2 a step, or 1; up by trials)
+            }
+            {  // the step before's verdict
+                const bool bad = X.step_bad;
+                X.step_bad = false;
+                ++C.since;
+                if (C.trial != 0) {
+                    ++C.trial_steps;
+                    C.trial_bad += bad ? 1 : 0;
+                    if (C.trial_steps >= 60 || C.trial_bad > 6) {
+                        if (C.trial_bad <= 6) {
+                            C.k = C.trial;
+                            C.backoff = 120;
+                        } else {
+                            C.backoff = std::min(C.backoff * 2, 1200);
+                        }
+                        C.trial = 0;
+                        C.since = 0;
+                        C.window_steps = C.window_bad = 0;
+                    }
+                } else {
+                    ++C.window_steps;
+                    C.window_bad += bad ? 1 : 0;
+                    if (C.window_bad >= 10 || (C.k > 1 && !main_fits(C.k))) {
+                        C.k = next_down(C.k);
+                        C.since = 0;
+                        C.backoff = std::min(C.backoff * 2, 1200);
+                        C.window_steps = C.window_bad = 0;
+                    } else if (C.window_steps >= 60) {
+                        C.window_steps = C.window_bad = 0;
+                    }
+                    const int up = next_up(C.k);
+                    if (up <= extrap_k && C.since >= C.backoff && main_fits(up)) {
+                        C.trial = up;
+                        C.trial_steps = C.trial_bad = 0;
+                    }
+                }
+            }
+            const int k = adapt ? (C.trial != 0 ? C.trial : C.k) : extrap_k;
+            double step_fence = 0.0;
+            ++X.k_count[std::clamp(k, 1, 8)];
+            clk::time_point slot;
+            {
+                RAC1_PROF_ZONE(kPacing);
+                if (paced) pacer.wait(60.0);
+                slot = paced && pacer.have ? pacer.next : clk::now();  // (the step's slot; late: now, the slots restarted)
+            }
+            const double late_ms = std::max(0.0, std::chrono::duration<double, std::milli>(clk::now() - slot).count());
+            X.step_late.push_back(late_ms);
+            if (rac1::vk::is_active()) X.kind_of[rac1::vk::frame_number() & 15] = 1;
+            {
+                RAC1_PROF_ZONE(kPresent);
+                presents.swap(window);
+            }
+            step_fence += rac1::vk::is_active() ? rac1::vk::last_fence_wait_ms() : 0.0;
+            extrap_gpu_note();
+            X.presented(true, 0.0, fb);
+            ++X.steps;
+            ++X.pictures;
+            g_draw_from_snapshot = true;
+            rac1::ee_copy_use(true);
+            const auto step_end = slot + step_ns;
+            const double reserve_ms = X.cpu_prepare.hi() + X.cpu_step.hi() + 1.0;  // (the next step's prepare and picture, before its slot)
+            int why = kExtrapOk;
+            bool moved = false, budget_cut = false;
+            for (int j = 1; j < k; ++j) {
+                const auto due = slot + step_ns * j / k;
+                const auto t_start = clk::now();
+                const double est = X.cpu_carried.any ? X.cpu_carried.hi() : 0.0;
+                if (paced && adapt && t_start + std::chrono::duration<double, std::milli>(est + reserve_ms) > step_end) {
+                    X.skipped_budget += static_cast<uint64_t>(k - j);
+                    budget_cut = true;
+                    break;
+                }
+                if (paced && adapt && t_start + std::chrono::duration<double, std::milli>(est) > due + step_ns / (4 * k)) {  // (it would be shown a slot late)
+                    ++X.skipped_late;
+                    continue;
+                }
+                why = render_view_extrap_begin(step, static_cast<double>(j) / k);
+                if (why != kExtrapOk) break;  // (a cut, a first step: the picture held)
+                mrp_world_extrap_apply();
+                mrp_moby_extrap_apply();
+                moved = true;
+                if (rac1::vk::is_active()) X.kind_of[rac1::vk::frame_number() & 15] = 2;
+                draw(pend);
+                render_view_extrap_end();
+                const double cpu_ms = std::chrono::duration<double, std::milli>(clk::now() - t_start).count();
+                X.cpu_carried.add(cpu_ms);
+                X.sum_cpu_carried += cpu_ms;
+                ++X.n_cpu_carried;
+                {
+                    RAC1_PROF_ZONE(kPacing);
+                    if (paced && clk::now() < due) {
+                        if (due - clk::now() > std::chrono::microseconds(1000)) std::this_thread::sleep_until(due - std::chrono::microseconds(500));
+                        while (clk::now() < due) {
+                            if (fb) rac1::vk::poll_presents();
+                            std::this_thread::yield();
+                        }
+                    }
+                }
+                X.carried_late.push_back(std::max(0.0, std::chrono::duration<double, std::milli>(clk::now() - due).count()));
+                {
+                    RAC1_PROF_ZONE(kPresent);
+                    presents.swap(window);
+                }
+                step_fence += rac1::vk::is_active() ? rac1::vk::last_fence_wait_ms() : 0.0;
+                extrap_gpu_note();
+                X.presented(false, static_cast<double>(j) / k, fb);
+                ++X.pictures;
+                ++X.carried;
+            }
+            X.sum_fence += step_fence;
+            X.step_bad = step_fence > 4.0 || late_ms > 3.0 || budget_cut;
+            if (why != kExtrapOk) {
+                ++X.held;
+                ++X.held_why[std::clamp(why, 0, 4)];
+            }
+            if (moved) {
+                mrp_world_extrap_apply();  // (the frame's own clips back)
+                mrp_moby_extrap_apply();
+            }
+            rac1::ee_copy_use(false);
+            g_draw_from_snapshot = false;
+            if (fb) {
+                rac1::vk::poll_presents();
+                static std::vector<clk::time_point> shown;
+                shown.clear();
+                rac1::vk::take_present_times(shown);
+                X.shown(shown);
+            }
+            if (rac1::vk::is_active()) rac1::vk_safety::frame_shown();
+            X.report(false);
+        };
         // the pipelined frame of the last host frame: drawn now, after this host frame's game frames (its scene built meanwhile)
         bool presented = false;
         update_shown_draw = update_shown;  // (the debug menu's figure: the game thread may write update_shown meanwhile)
@@ -4213,13 +4582,24 @@ int main(int argc, char** argv) {
             if (gt_serial) rac1::game_thread::finish();
             g_draw_from_snapshot = true;
             rac1::ee_copy_use(true);
+            const auto draw_t0 = std::chrono::steady_clock::now();
             draw(pend);
+            const double draw_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - draw_t0).count();
             rac1::ee_copy_use(false);
             g_draw_from_snapshot = false;
             presented = true;
+            if (extrap_k > 1) {  // the frame extrapolation: this picture shown now, then more carried forward until the next step's
+                extrap_pictures(pend.frame, draw_ms);
+                presented = false;  // (every picture of this frame presented)
+            }
             {
                 RAC1_PROF_ZONE(kGameThreadWait);
+                const auto j0 = std::chrono::steady_clock::now();
                 rac1::game_thread::finish();  // (the game thread's GL / GS requests run here, after the drawing)
+                if (extrap_k > 1) {
+                    g_extrap.sum_join += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - j0).count();
+                    ++g_extrap.n_join;
+                }
             }
         } else if (have_pend) {
             have_pend = false;
@@ -4239,7 +4619,16 @@ int main(int argc, char** argv) {
         // the boot's title: its world passes' view in EE memory while the host prepares and draws the frame (the menu's
         // draw set its own after them), the game's bytes back after (mrp_title_view.h); a title frame is never pipelined
         const bool title_view = boot_active() && mrp_title_view_swap_in();
+        const auto prep_t0 = std::chrono::steady_clock::now();
         prepare(cur, pipelined_ok);
+        if (g_frame_extrap && overlap) {  // (the frame extrapolation's budget: the prepare that follows the carried pictures)
+            const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - prep_t0).count();
+            g_extrap.cpu_prepare.add(ms);
+            g_extrap.sum_prepare += ms;
+            ++g_extrap.n_prepare;
+        } else if (g_frame_extrap) {
+            g_extrap.gap();
+        }
         const bool pipe_this = pipelined_ok && mrp_world_pending() && !cur.menu_mode && cur.movie_pic == nullptr && !cur.title && !cur.exiting && !cur.fade && !cur.scene;
         if (pipe_this) {
             pend = cur;
@@ -4259,6 +4648,7 @@ int main(int argc, char** argv) {
             if (g_overlapped != 0) std::printf("[game-thread] %llu host frames ran their game frames on the game thread beside the drawing\n", static_cast<unsigned long long>(g_overlapped));
             rac1::game_thread::report();
             pace_report();
+            g_extrap.report(true);
             sample_prof_stop();
             mrp_scene_report();
             mrp_moby_report();
@@ -4341,6 +4731,7 @@ int main(int argc, char** argv) {
         }
     }
     pace_report();
+    g_extrap.report(true);
     sample_prof_stop();
     rac1::vk_safety::start_over();  // (closed normally: not a crash of the start)
     rac1::prof::shutdown();

@@ -1,6 +1,7 @@
 // The host renderer's view (see render_view.h). Host code: the PS2 draws with the VU from the
 // matrices of 0x1f6e48; the host builds the equivalent GL view from the same data.
 #include <game/render/render_view.h>
+#include <game/render/frame_extrap.inc>
 #include <game/ovl/ovl_reloc.h>
 #include <game/debug_hooks.h>
 #include <game/ovl/ovl.h>
@@ -10,6 +11,8 @@
 #include <runtime/kernel/ee_journal.h>
 
 #include <vector>
+
+#include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
 #include <cstdio>
@@ -50,7 +53,125 @@ void render_view_snapshot() {
 }
 
 // orig: (host) the GL view from the matrices of 0x001f6e48
-glm::mat4 render_view_matrix() { return g_draw_from_snapshot ? g_vs.view : view_matrix_live(); }
+namespace {
+// the frame extrapolation's state (render_view.h): the views of the last two pipelined steps, the view in force while a begin
+struct ExtrapView {
+    uint64_t step = 0;  // (the frame being prepared)
+    struct Step {
+        bool ok = false;
+        uint64_t frame = 0;
+        glm::mat4 view{1.0f};
+    } prev2, prev, cur;
+    bool on = false;
+    uint64_t frame = 0;
+    double fraction = 0.0;
+    glm::mat4 view{1.0f};
+} g_ex;
+}  // namespace
+
+glm::mat4 render_view_matrix() {
+    if (g_draw_from_snapshot && g_ex.on) return g_ex.view;
+    return g_draw_from_snapshot ? g_vs.view : view_matrix_live();
+}
+
+bool g_frame_extrap = false;
+// orig: (host) see render_view.h
+void render_view_extrap_step(uint64_t frame) { g_ex.step = frame; }
+uint64_t render_view_extrap_step_frame() { return g_ex.step; }
+void render_view_extrap_note() {
+    if (g_ex.cur.ok && g_ex.cur.frame == g_ex.step) {  // (the same step again: its view replaced)
+        g_ex.cur.view = g_vs.view;
+        return;
+    }
+    g_ex.prev2 = g_ex.prev;
+    g_ex.prev = g_ex.cur;
+    g_ex.cur.ok = true;
+    g_ex.cur.frame = g_ex.step;
+    g_ex.cur.view = g_vs.view;
+}
+bool render_view_extrap_affine(const glm::dmat4& prev, const glm::dmat4& cur, double gap, double ahead, double max_move, double max_turn_deg, glm::dmat4& out) {
+    out = cur;
+    if (!(gap > 0.0) || std::fabs(prev[3].w) < 1e-12 || std::fabs(cur[3].w) < 1e-12) return false;
+    const glm::dvec3 tp = glm::dvec3(prev[3]) / prev[3].w, tc = glm::dvec3(cur[3]) / cur[3].w;
+    const glm::dvec3 v = (tc - tp) / gap;  // (a step's motion)
+    if (!(glm::length(v) <= max_move)) return false;
+    // the turn from prev to cur: their rotations (the axes made orthonormal, the handedness kept), cur's times prev's inverse
+    auto ortho = [](const glm::dmat4& m, glm::dmat3& r) {
+        glm::dvec3 a(m[0]), b(m[1]), c(m[2]);
+        const double la = glm::length(a);
+        if (!(la > 1e-12)) return false;
+        a /= la;
+        b -= a * glm::dot(a, b);
+        const double lb = glm::length(b);
+        if (!(lb > 1e-12)) return false;
+        b /= lb;
+        const glm::dvec3 n = glm::cross(a, b);
+        r = glm::dmat3(a, b, glm::dot(n, c) < 0.0 ? -n : n);
+        return true;
+    };
+    glm::dmat3 rp, rc;
+    if (!ortho(prev, rp) || !ortho(cur, rc)) return false;
+    const glm::dmat3 d = rc * glm::transpose(rp);
+    if (!(glm::determinant(d) > 0.5)) return false;
+    const glm::dquat q = glm::normalize(glm::quat_cast(d));
+    double angle = 2.0 * std::acos(std::min(1.0, std::fabs(q.w)));  // (the shorter way round)
+    glm::dvec3 axis(q.x, q.y, q.z);
+    if (q.w < 0.0) axis = -axis;
+    const double al = glm::length(axis);
+    const double k = ahead / gap;  // (steps ahead in the history's steps)
+    glm::dmat3 turn(1.0);
+    if (al > 1e-12 && angle > 1e-9) {
+        if (!(angle / gap <= glm::radians(max_turn_deg))) return false;
+        turn = glm::mat3_cast(glm::angleAxis(angle * k, axis / al));
+    }
+    const glm::dmat3 m = turn * glm::dmat3(cur);
+    out = glm::dmat4(m);
+    out[3] = glm::dvec4(tc + v * ahead, 1.0);
+    return true;
+}
+int render_view_extrap_begin(uint64_t frame, double fraction) {
+    g_ex.on = false;
+    if (!g_ex.cur.ok || !g_ex.prev.ok || g_ex.cur.frame != frame || g_ex.prev.frame >= frame) return kExtrapNoHistory;
+    if (frame - g_ex.prev.frame > 4) return kExtrapGap;  // (a long hitch: the motion over it is no step's)
+    // the camera's world transform (the view's inverse) carried forward, the view its inverse again. A cut is a jump, not a fast
+    // move: more than 12 units or 75 degrees a step outright, or (with the step before known) more than 4 times the step before's
+    // motion and a unit / 15 degrees past it - a teleport, a respawn, a cutscene's cut; a quick turn of the follow camera keeps on
+    const double gap = static_cast<double>(frame - g_ex.prev.frame);
+    const glm::dmat4 cp = glm::inverse(glm::dmat4(g_ex.prev.view)), cc = glm::inverse(glm::dmat4(g_ex.cur.view));
+    auto motion = [](const glm::dmat4& a, const glm::dmat4& b, double g, double& move, double& turn) {
+        move = glm::length(glm::dvec3(b[3]) / b[3].w - glm::dvec3(a[3]) / a[3].w) / g;
+        glm::dmat3 ra(a), rb(b);
+        for (int i = 0; i < 3; ++i) {
+            ra[i] = glm::normalize(ra[i]);
+            rb[i] = glm::normalize(rb[i]);
+        }
+        const glm::dmat3 d = rb * glm::transpose(ra);
+        turn = glm::degrees(std::acos(std::clamp((d[0][0] + d[1][1] + d[2][2] - 1.0) * 0.5, -1.0, 1.0))) / g;
+    };
+    double move = 0.0, turn = 0.0;
+    motion(cp, cc, gap, move, turn);
+    if (move > 12.0) return kExtrapMove;
+    if (turn > 75.0) return kExtrapTurn;
+    if (g_ex.prev2.ok && g_ex.prev2.frame < g_ex.prev.frame && g_ex.prev.frame - g_ex.prev2.frame <= 4) {
+        double m0 = 0.0, t0 = 0.0;
+        motion(glm::inverse(glm::dmat4(g_ex.prev2.view)), cp, static_cast<double>(g_ex.prev.frame - g_ex.prev2.frame), m0, t0);
+        if (move > 4.0 * m0 + 1.0) return kExtrapMove;
+        if (turn > 4.0 * t0 + 15.0) return kExtrapTurn;
+    }
+    glm::dmat4 ce;
+    if (!render_view_extrap_affine(cp, cc, gap, fraction, 1e9, 180.0, ce)) return kExtrapMove;
+    g_ex.view = glm::mat4(glm::inverse(ce));
+    g_ex.frame = frame;
+    g_ex.fraction = fraction;
+    g_ex.on = true;
+    return kExtrapOk;
+}
+void render_view_extrap_end() { g_ex.on = false; }
+bool render_view_extrap_active(uint64_t* frame, double* fraction) {
+    if (frame != nullptr) *frame = g_ex.frame;
+    if (fraction != nullptr) *fraction = g_ex.fraction;
+    return g_ex.on;
+}
 
 namespace {
 // orig: (host) render_view_matrix from the game's state now

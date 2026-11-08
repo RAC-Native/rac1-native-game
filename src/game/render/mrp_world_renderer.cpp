@@ -1,5 +1,6 @@
 // orig: (host) The MRP world renderer (see mrp_world_renderer.h).
 #include <game/render/mrp_world_renderer.h>
+#include <game/render/frame_extrap.inc>
 #include <game/render/texture_mods.h>
 #include <game/render/gl_draws.h>
 #include <game/render/mrp_chain.h>
@@ -299,6 +300,7 @@ Stats g_st;
 CheckStats g_check;
 
 struct Frame {
+    uint64_t build_serial = 0;  // (build_triangles counts its builds: the frame extrapolation's kept clips, mrp_world_extrap_apply)
     bool active = false;
     SceneFrame scene;
     std::vector<GpuV> v;
@@ -2921,6 +2923,7 @@ void build_triangles(Frame& F) {
     F.batches.clear();
     F.p2runs.clear();
     F.insts.clear();
+    ++F.build_serial;
     F.inst_box.clear();
     F.cmds.clear();
     F.draws.clear();
@@ -5035,6 +5038,40 @@ int g_last_vp[4] = {};  // (mrp_world_last_viewport)
 bool mrp_world_last_viewport(int out[4]) {
     std::memcpy(out, g_last_vp, sizeof g_last_vp);
     return g_last_vp[2] > 0 && g_last_vp[3] > 0;
+}
+
+// orig: (host) see mrp_world_renderer.h
+void mrp_world_extrap_apply() {
+    Frame& F = g_frame;
+    if (!F.active) return;
+    static uint64_t base_serial = ~0ull;
+    static std::vector<std::array<float, 16>> base;
+    if (base_serial != F.build_serial) {  // (this build's own clips, kept before the first change)
+        base_serial = F.build_serial;
+        base.resize(F.insts.size());
+        for (size_t i = 0; i < F.insts.size(); ++i) std::memcpy(base[i].data(), F.insts[i].clip, sizeof F.insts[i].clip);
+    }
+    // the ties' and shrubs' instances: their clip matrices (the build's view-projection times the instance's) moved to the view in
+    // force, (vp now) (vp built)^-1; the rest of the world takes the view-projection at its draw (uVP)
+    glm::mat4 built;
+    std::memcpy(&built[0][0], F.in.vp, sizeof F.in.vp);
+    float now_f[16];
+    mrp_world_view_proj(now_f);
+    glm::mat4 now;
+    std::memcpy(&now[0][0], now_f, sizeof now_f);
+    const bool same = std::memcmp(&now[0][0], &built[0][0], sizeof now_f) == 0;
+    const glm::dmat4 d = same ? glm::dmat4(1.0) : glm::dmat4(now) * glm::inverse(glm::dmat4(built));
+    for (size_t i = 0; i < F.insts.size() && i < base.size(); ++i) {
+        if (same) {
+            std::memcpy(F.insts[i].clip, base[i].data(), sizeof F.insts[i].clip);
+            continue;
+        }
+        glm::mat4 c;
+        std::memcpy(&c[0][0], base[i].data(), sizeof F.insts[i].clip);
+        const glm::mat4 e = glm::mat4(d * glm::dmat4(c));
+        std::memcpy(F.insts[i].clip, &e[0][0], sizeof F.insts[i].clip);
+    }
+    F.uploaded = false;  // (uploaded again at the next draw: Vulkan's frame rings are the frame's own)
 }
 
 // orig: (host) see mrp_world_renderer.h

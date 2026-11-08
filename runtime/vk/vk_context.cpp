@@ -140,6 +140,22 @@ struct Context {
     bool has_memory_budget = false;
     VkDeviceSize ring_peak = 0;  // (the most of a frame ring a frame used: the profiler's memory view)
     bool has_host_query_reset = false;
+    // the frame extrapolation's measures (set_frame_timing / set_present_feedback): each frame's GPU time by two timestamps per
+    // frame slot, read when its fence is waited for; VK_KHR_present_id / present_wait: each present's id, polled for when shown
+    bool frame_timing = false;
+    bool force_fifo = false;  // (set_force_fifo: the frame extrapolation's vblank-paced presents, Wayland too)
+    VkQueryPool frame_pool = VK_NULL_HANDLE;
+    bool frame_ts[kFramesInFlight] = {};
+    uint64_t frame_ts_num[kFramesInFlight] = {};
+    double last_gpu_ms = -1.0;
+    uint64_t last_gpu_frame = 0;
+    double last_fence_ms = 0.0;
+    bool has_present_wait = false;  // (the extensions and features enabled at the device's making)
+    bool present_feedback = false;
+    uint64_t present_id = 0;
+    std::vector<uint64_t> present_pending;
+    std::vector<std::chrono::steady_clock::time_point> present_shown;
+    uint64_t present_seen = 0;
     bool has_float64 = false;       // (shaderFloat64: the tfrag compute's doubles; without it the tfrags are made on the CPU)
     bool has_anisotropy = false;    // (samplerAnisotropy: without it every sampler is isotropic)
     bool device_lost = false;       // (VK_ERROR_DEVICE_LOST seen: said once in the log)
@@ -222,6 +238,7 @@ void destroy_swap_semaphores() {
 }
 
 void destroy_swapchain() {
+    g_ctx.present_pending.clear();  // (the presents of that swapchain: no longer waited for)
     destroy_swap_semaphores();
     for (VkImageView v : g_ctx.swap_views) {
         if (v != VK_NULL_HANDLE) vkDestroyImageView(g_ctx.device, v, nullptr);
@@ -266,7 +283,7 @@ bool recreate_swapchain(int w, int h) {
 
     // On Wayland, FIFO blocks when the window is occluded; host_swap_interval in orig_main.cpp usesHostPacer on Wayland
     const bool wayland = glfwGetPlatform() == GLFW_PLATFORM_WAYLAND;
-    const bool want_vsync = g_ctx.vsync && !wayland;
+    const bool want_vsync = (g_ctx.vsync && !wayland) || g_ctx.force_fifo;
     VkPresentModeKHR chosen_pm = VK_PRESENT_MODE_FIFO_KHR;
     if (!want_vsync) {
         for (VkPresentModeKHR pm : pms) {
@@ -315,6 +332,7 @@ bool recreate_swapchain(int w, int h) {
     }
     g_ctx.swap_views.clear();
     if (old_swap != VK_NULL_HANDLE) vkDestroySwapchainKHR(g_ctx.device, old_swap, nullptr);
+    g_ctx.present_pending.clear();  // (the old swapchain's presents: no longer waited for)
 
     g_ctx.swapchain = new_swap;
     g_ctx.swap_w = static_cast<int>(extent.width);
@@ -1109,6 +1127,32 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     VkPhysicalDeviceFeatures2 feat2{};
     feat2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
     feat2.pNext = &v12_feat;
+    // (the frame extrapolation's present feedback: VK_KHR_present_id + present_wait when the device has both, a window only)
+    VkPhysicalDevicePresentIdFeaturesKHR pid_feat{};
+    pid_feat.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR;
+    VkPhysicalDevicePresentWaitFeaturesKHR pw_feat{};
+    pw_feat.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR;
+    if (!headless && has_ext(VK_KHR_PRESENT_ID_EXTENSION_NAME) && has_ext(VK_KHR_PRESENT_WAIT_EXTENSION_NAME) && std::getenv("RAC1_VK_NO_PRESENT_WAIT") == nullptr) {
+        VkPhysicalDevicePresentIdFeaturesKHR qi{};
+        qi.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR;
+        VkPhysicalDevicePresentWaitFeaturesKHR qw{};
+        qw.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR;
+        qw.pNext = &qi;
+        VkPhysicalDeviceFeatures2 q2{};
+        q2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        q2.pNext = &qw;
+        vkGetPhysicalDeviceFeatures2(g_ctx.phys_dev, &q2);
+        if (qi.presentId == VK_TRUE && qw.presentWait == VK_TRUE) {
+            enabled_dexts.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
+            enabled_dexts.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
+            pid_feat.presentId = VK_TRUE;
+            pw_feat.presentWait = VK_TRUE;
+            pw_feat.pNext = &pid_feat;
+            pid_feat.pNext = feat2.pNext;
+            feat2.pNext = &pw_feat;
+            g_ctx.has_present_wait = true;
+        }
+    }
     feat2.features.samplerAnisotropy = g_ctx.has_anisotropy ? VK_TRUE : VK_FALSE;
     feat2.features.imageCubeArray = VK_TRUE;
     feat2.features.multiDrawIndirect = VK_TRUE;
@@ -1281,6 +1325,8 @@ void shutdown() {
         destroy_swapchain();
         if (g_ctx.prof_pool != VK_NULL_HANDLE) vkDestroyQueryPool(g_ctx.device, g_ctx.prof_pool, nullptr);
         if (g_ctx.timed_pool != VK_NULL_HANDLE) vkDestroyQueryPool(g_ctx.device, g_ctx.timed_pool, nullptr);
+        if (g_ctx.frame_pool != VK_NULL_HANDLE) vkDestroyQueryPool(g_ctx.device, g_ctx.frame_pool, nullptr);
+        g_ctx.frame_pool = VK_NULL_HANDLE;
         g_ctx.prof_pool = VK_NULL_HANDLE;
         prof::set_gpu_api(nullptr);
 
@@ -1325,6 +1371,47 @@ void wait_idle() {
     if (g_ctx.device != VK_NULL_HANDLE) vkDeviceWaitIdle(g_ctx.device);
 }
 
+// orig: (host) see vk_context.h
+void set_frame_timing(bool on) { g_ctx.frame_timing = on; }
+double last_frame_gpu_ms(uint64_t* frame) {
+    if (frame != nullptr) *frame = g_ctx.last_gpu_frame;
+    return g_ctx.last_gpu_ms;
+}
+double last_fence_wait_ms() { return g_ctx.last_fence_ms; }
+void set_force_fifo(bool on) {
+    if (g_ctx.force_fifo != on) {
+        g_ctx.force_fifo = on;
+        g_ctx.swapchain_dirty = true;
+    }
+}
+bool present_feedback_supported() { return g_ctx.active && g_ctx.has_present_wait && !g_ctx.headless; }
+void set_present_feedback(bool on) {
+    g_ctx.present_feedback = on;
+    if (!on) g_ctx.present_pending.clear();
+}
+void poll_presents() {
+    if (!g_ctx.present_feedback || g_ctx.present_pending.empty() || g_ctx.swapchain == VK_NULL_HANDLE) return;
+    size_t done = 0;
+    while (done < g_ctx.present_pending.size()) {
+        const VkResult r = vkWaitForPresentKHR(g_ctx.device, g_ctx.swapchain, g_ctx.present_pending[done], 0);
+        if (r != VK_SUCCESS) {
+            if (r != VK_TIMEOUT) {  // (out of date, surface lost: those not waited for any more)
+                done = g_ctx.present_pending.size();
+                g_ctx.present_shown.clear();
+            }
+            break;
+        }
+        g_ctx.present_shown.push_back(std::chrono::steady_clock::now());
+        ++done;
+    }
+    g_ctx.present_pending.erase(g_ctx.present_pending.begin(), g_ctx.present_pending.begin() + static_cast<std::ptrdiff_t>(done));
+    if (g_ctx.present_pending.size() > 64) g_ctx.present_pending.erase(g_ctx.present_pending.begin(), g_ctx.present_pending.end() - 64);
+}
+void take_present_times(std::vector<std::chrono::steady_clock::time_point>& out) {
+    out.insert(out.end(), g_ctx.present_shown.begin(), g_ctx.present_shown.end());
+    g_ctx.present_shown.clear();
+}
+
 void set_vsync(bool vsync) {
     if (g_ctx.vsync != vsync) {
         g_ctx.vsync = vsync;
@@ -1344,7 +1431,17 @@ void begin_frame(int win_w, int win_h, float clear_r, float clear_g, float clear
         // (the frame slot's fence: the GPU still on the frame before last - the driver's queue full, as an OpenGL swap that
         // blocks: the profiler's Present stage, a wait)
         RAC1_PROF_ZONE(kPresent);
+        const auto fw0 = std::chrono::steady_clock::now();
         check_lost(vkWaitForFences(g_ctx.device, 1, &f.in_flight, VK_TRUE, UINT64_MAX), "the frame's fence");
+        g_ctx.last_fence_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - fw0).count();
+    }
+    if (g_ctx.frame_ts[g_ctx.frame_idx] && g_ctx.frame_pool != VK_NULL_HANDLE) {  // (the slot's last frame: its GPU time)
+        g_ctx.frame_ts[g_ctx.frame_idx] = false;
+        uint64_t ts[2] = {};
+        if (vkGetQueryPoolResults(g_ctx.device, g_ctx.frame_pool, g_ctx.frame_idx * 2, 2, sizeof ts, ts, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT) == VK_SUCCESS) {
+            g_ctx.last_gpu_ms = static_cast<double>((ts[1] - ts[0]) & g_ctx.ts_mask) * g_ctx.ts_period_ns * 1e-6;
+            g_ctx.last_gpu_frame = g_ctx.frame_ts_num[g_ctx.frame_idx];
+        }
     }
     g_ctx.ring_peak = std::max(g_ctx.ring_peak, f.ring_offset);
 
@@ -1388,6 +1485,21 @@ void begin_frame(int win_w, int win_h, float clear_r, float clear_g, float clear
     vkBeginCommandBuffer(f.cmd, &cbbi);
     for (uint32_t q : g_ctx.prof_pending) vkCmdWriteTimestamp(f.cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, g_ctx.prof_pool, q);
     g_ctx.prof_pending.clear();
+    if (g_ctx.frame_timing && g_ctx.dev_props.limits.timestampComputeAndGraphics == VK_TRUE) {
+        if (g_ctx.frame_pool == VK_NULL_HANDLE) {
+            VkQueryPoolCreateInfo qci{};
+            qci.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+            qci.queryType = VK_QUERY_TYPE_TIMESTAMP;
+            qci.queryCount = 2 * kFramesInFlight;
+            if (vkCreateQueryPool(g_ctx.device, &qci, nullptr, &g_ctx.frame_pool) != VK_SUCCESS) g_ctx.frame_pool = VK_NULL_HANDLE;
+        }
+        if (g_ctx.frame_pool != VK_NULL_HANDLE) {
+            vkCmdResetQueryPool(f.cmd, g_ctx.frame_pool, g_ctx.frame_idx * 2, 2);
+            vkCmdWriteTimestamp(f.cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, g_ctx.frame_pool, g_ctx.frame_idx * 2);
+            g_ctx.frame_ts[g_ctx.frame_idx] = true;
+            g_ctx.frame_ts_num[g_ctx.frame_idx] = g_ctx.frame_num;
+        }
+    }
 
     g_ctx.cmd = f.cmd;
     g_ctx.in_frame = true;
@@ -1517,6 +1629,8 @@ void end_frame() {
                              nullptr, 0, nullptr, 1, &b_to_pres);
     }
 
+    if (g_ctx.frame_ts[g_ctx.frame_idx] && g_ctx.frame_pool != VK_NULL_HANDLE)
+        vkCmdWriteTimestamp(g_ctx.cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, g_ctx.frame_pool, g_ctx.frame_idx * 2 + 1);
     vkEndCommandBuffer(g_ctx.cmd);
     vkResetFences(g_ctx.device, 1, &f.in_flight);
 
@@ -1546,7 +1660,17 @@ void end_frame() {
         pi.swapchainCount = 1;
         pi.pSwapchains = &g_ctx.swapchain;
         pi.pImageIndices = &g_ctx.swap_img_idx;
+        VkPresentIdKHR pid{};
+        uint64_t id = 0;
+        if (g_ctx.has_present_wait && g_ctx.present_feedback) {  // (its id, waited for by poll_presents)
+            id = ++g_ctx.present_id;
+            pid.sType = VK_STRUCTURE_TYPE_PRESENT_ID_KHR;
+            pid.swapchainCount = 1;
+            pid.pPresentIds = &id;
+            pi.pNext = &pid;
+        }
         const VkResult pres = vkQueuePresentKHR(g_ctx.queue, &pi);
+        if (id != 0 && (pres == VK_SUCCESS || pres == VK_SUBOPTIMAL_KHR)) g_ctx.present_pending.push_back(id);
         check_lost(pres, "vkQueuePresentKHR");
         if (pres == VK_ERROR_OUT_OF_DATE_KHR || pres == VK_SUBOPTIMAL_KHR) {
             g_ctx.swapchain_dirty = true;

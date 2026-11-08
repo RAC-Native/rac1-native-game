@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <chrono>
 #include <vector>
 
 struct GLFWwindow;
@@ -104,6 +105,20 @@ void shutdown();
 bool is_active();
 void wait_idle();
 void set_vsync(bool vsync);
+// The frame extrapolation's measures (orig_main.cpp): with set_frame_timing each frame's GPU time (two timestamps), read when its
+// slot comes round again: last_frame_gpu_ms gives the newest one and its frame_number (< 0: none yet); last_fence_wait_ms how
+// long begin_frame waited for the slot's fence (the GPU behind). set_force_fifo: the FIFO present mode whatever V-Sync and the
+// platform (Wayland too: a hidden window then stops the presents). With VK_KHR_present_id / present_wait (a window, the device
+// has them): set_present_feedback numbers the presents, poll_presents (no wait) notes the time each one was found shown,
+// take_present_times hands those times over (in order; a present replaced before it was shown is found with the one after it)
+void set_frame_timing(bool on);
+double last_frame_gpu_ms(uint64_t* frame = nullptr);
+double last_fence_wait_ms();
+void set_force_fifo(bool on);
+bool present_feedback_supported();
+void set_present_feedback(bool on);
+void poll_presents();
+void take_present_times(std::vector<std::chrono::steady_clock::time_point>& out);
 
 // Frame boundaries
 void begin_frame(int win_w, int win_h, float clear_r, float clear_g, float clear_b, float clear_a = 1.0f);
