@@ -5,7 +5,8 @@
 // unchanged; everything of the host that is per level asks level_slot(), which is S.
 //
 // - Its files: the level's build (assets/generated/mods/<folder>/) through the disc layer's window for S
-//   (runtime/kernel/disc.h): B's level header read, its data and gameplay ranges pointed into the window.
+//   (runtime/kernel/disc.h): B's level header read, its data and gameplay ranges pointed into the window, its music
+//   table the build's choice (another level's tracks, none, or the build's VAG files in the window).
 // - The ship's planet list: a row per level mod on after the unlocked planets (their planet B, which the list never shows;
 //   which row is selected is ours to know: level_slots_list_select). Choosing one flies to B with S chosen;
 //   RAC1_GOTO=<level.id>@<frame> chooses it too (testing).

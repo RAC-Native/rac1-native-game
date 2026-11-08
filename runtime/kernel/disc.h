@@ -85,12 +85,15 @@ const DataDisc* disc_data_disc(const std::string& region);
 // A level mod's build (its data file and gameplay file, made by the setup's level composer) read as if on a disc: host
 // level slot S's window is the sectors from kLevelWindowTop - (S - kFirstLevelSlot) * kDataDiscWindow down from the
 // top of the sector space (the data discs' windows grow from the bottom), the data file at its sector 0, the gameplay
-// file after it. The game reads them at the sectors its level header names (the slot's header: the base level's,
+// file after it, then its music files (the level's header's music table points there: level_slots.cpp). The game reads them at the sectors its level header names (the slot's header: the base level's,
 // pointed there, level_slots.cpp); the host's level loader reads `level`'s files from the window while the window is
 // redirected for `level` (the slot chosen for its base level).
 constexpr uint32_t kLevelWindowTop = 0xffc00000u;
-// orig: (none) — enhancement: slot `slot`'s window holds `data` and `gameplay` (false: one cannot be read)
-bool disc_level_window_set(int slot, const std::string& data, const std::string& gameplay);
+// orig: (none) — enhancement: slot `slot`'s window holds `files`: its data file, its gameplay file, then others (its music)
+// (false: one cannot be read)
+bool disc_level_window_set(int slot, const std::vector<std::string>& files);
+// orig: (none) — enhancement: file `file` of slot `slot`'s window: its first sector (absolute) and its sectors
+bool disc_level_window_file(int slot, size_t file, uint32_t& lba, uint32_t& sectors);
 // orig: (none) — enhancement: slot `slot`'s window's ranges (sectors, absolute): its data file, its gameplay file
 bool disc_level_window_ranges(int slot, uint32_t& data_lba, uint32_t& data_n, uint32_t& gp_lba, uint32_t& gp_n);
 // orig: (none) — enhancement: `level`'s files (disc_read_level_wad, disc_has_level) read from slot `slot`'s window (-1:

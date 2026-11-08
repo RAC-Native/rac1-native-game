@@ -220,6 +220,34 @@ void swap_out(const std::string& id) {
 
 std::string swapped_id;  // the level.id whose records are in EE memory (g_s.swapped)
 
+// orig: (none) — enhancement: the slot's music in the level's header (its music table, 15 words at +0x148: the sectors of
+// the tracks the level's code plays, an intro then its loop): the base level's (as read), none, another level's (its header
+// read from the disc), or the build's own files (in the slot's window after its data and gameplay files)
+void music_set(int slot) {
+    const ModInfo* m = slot_mod(slot);
+    if (m == nullptr || m->level_music == kLevelMusicBase) return;
+    constexpr uint32_t MUSIC = HEADER + 0x148, WORDS = 15;
+    uint32_t words[WORDS] = {};
+    if (m->level_music == kLevelMusicOwn) {
+        uint32_t lba = 0, n = 0;
+        const size_t k = m->level_music_files.size();  // (the intro, then the loop: the code plays a track, then queues the next)
+        for (size_t i = 0; i < k && i < 2; ++i)
+            if (disc_level_window_file(slot, 2 + i, lba, n)) words[i] = lba;
+        if (k == 1) words[1] = words[0];  // (no intro: the loop twice)
+    } else if (m->level_music >= 0 && m->level_music < 19) {
+        std::vector<uint8_t> h(5 * 2048);
+        if (!disc_read(lwu(0x0013a448 + static_cast<uint32_t>(m->level_music) * 8), 5, h.data())) {
+            std::fprintf(stderr, "[levels] level %d's header cannot be read: the base level's music\n", m->level_music);
+            return;
+        }
+        std::memcpy(words, h.data() + 0x148, sizeof words);
+    }
+    for (uint32_t i = 0; i < WORDS; ++i) sw(MUSIC + i * 4, words[i]);
+    std::printf("[levels] level slot %d's music: %s (sectors %#x, %#x)\n", slot,
+                m->level_music == kLevelMusicOwn ? "the mod's" : m->level_music == kLevelMusicNone ? "none" : ("level " + std::to_string(m->level_music) + "'s").c_str(),
+                words[0], words[1]);
+}
+
 // orig: (none) — enhancement: slot `slot` chosen: its base level's next load is it
 void choose(int slot) {
     const ModInfo* m = slot_mod(slot);
@@ -389,7 +417,9 @@ void level_slots_header_read(int32_t level) {
         if (!disc_level_window_ranges(slot, dl, dn, gl, gn)) {
             const ModInfo* m = slot_mod(slot);
             const std::string b = level_slot_build_dir(slot);
-            if (m == nullptr || !disc_level_window_set(slot, b + "/data.wad", b + "/gameplay.bin") || !disc_level_window_ranges(slot, dl, dn, gl, gn)) {
+            std::vector<std::string> files = {b + "/data.wad", b + "/gameplay.bin"};
+            if (m != nullptr) files.insert(files.end(), m->level_music_files.begin(), m->level_music_files.end());
+            if (m == nullptr || !disc_level_window_set(slot, files) || !disc_level_window_ranges(slot, dl, dn, gl, gn)) {
                 std::fprintf(stderr, "[levels] level slot %d's build cannot be read: level %d is the game's\n", slot, level);
                 g_s.pending = -1;
                 disc_level_redirect(level, -1);
@@ -407,6 +437,7 @@ void level_slots_header_read(int32_t level) {
         sw(HEADER + 0x1c, gn);
         sw(HEADER + 0x20, 0);  // (no occlusion)
         sw(HEADER + 0x24, 0);
+        music_set(slot);
         if (g_s.current != slot) g_s.from = g_s.pending_from >= 0 ? g_s.pending_from : g_s.last_real;
         g_s.pending_from = -1;
         g_s.current = slot;

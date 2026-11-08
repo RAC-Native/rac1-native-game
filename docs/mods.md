@@ -401,10 +401,10 @@ The line says `replaced` but it does not look right:
 ## Level mods
 
 A level mod adds a **new level** to the game: a row on the ship's planet list, under the unlocked planets, that flies
-there. The mod holds our own files only (a text file, OBJ meshes, PNG textures); the setup **composes** them with your
-own disc's files into the level's build, which never leaves your machine. This is the first step (format 1): a level of
-your own collision and meshes, Ratchet, his ship and his gadgets on it, and nothing else yet (no enemies, crates or
-scripted events: see [Level mods: limits](#level-mods-limits)).
+there. The mod holds our own files only (a text file, OBJ meshes, PNG textures, VAG music); the setup **composes** them
+with your own disc's files into the level's build, which never leaves your machine. Format 1: a level of your own
+collision and meshes, Ratchet, his ship and his gadgets on it, objects of the base level's classes (crates, ...), a
+game level's music or your own, a game level's sky; no scripted events yet (see [Level mods: limits](#level-mods-limits)).
 
 The code: `src/setup/level_compose.cpp` (the composer), `src/host/level_slots.h` and `src/game/enhance/level_slots.cpp`
 (the level's slot, its row, its saves), `src/formats/host_meshes.h` (the meshes the host draws),
@@ -418,8 +418,8 @@ python3 examples/custom-level/make_example.py mods/example-plateau
 ./build/rac1-native
 ```
 
-The first line writes the example mod (a floor, a ramp up to a platform, a few blocks and a ship pad; everything in it
-is made by the script). The second composes it with your disc (the setup does it too, as its last step). In the game,
+The first line writes the example mod (a floor, a ramp up to a platform, a few blocks, a ship pad, five crates, Kerwan's
+sky and a short tune as its music; everything in it is made by the script, the tune too). The second composes it with your disc (the setup does it too, as its last step). In the game,
 enter your ship: the planet list ends with **Custom Levels / Example Plateau**. Its log lines start with `[levels]`
 and `[compose]`.
 
@@ -434,6 +434,7 @@ mods/example-plateau/
     meshes.obj         what is drawn (with meshes.mtl and its PNG textures)
     lights.txt         optional: the modern lighting's file for the level (lights, particles, materials, as
                        data/lights/levelNN.txt; the debug menu's Lights tab writes one)
+    *.vag              optional: the level's music (level.txt's music line)
 ```
 
 `mod.json` says it is a level:
@@ -467,6 +468,25 @@ mods/example-plateau/
 | `collision_type <n>` | the surface type of the collision's faces (default 31, plain ground) |
 | `up z` or `up y` | the OBJ files' up axis: `z` (the game's, the default) or `y` (Blender's default OBJ export) |
 | `scale <s>` | the OBJ files' units to the game's (default 1; Ratchet is about 1.5 units tall) |
+| `moby <class> <x> <y> <z> [<yaw>]` | an object (below) |
+| `music <level>`, `music <loop.vag> [<intro.vag>]`, `music none` | the music: the game level's (0..18), your own (below), or none; default the base level's |
+| `sky <level>` | the sky of the game's level (0..18); default the base level's |
+
+**Objects** (`moby` lines): each is a copy of the first object of class `<class>` the base level places (its settings
+and its private values), put at `<x> <y> <z>` turned `<yaw>` radians; it drops to the ground under it when its class
+does. The class must be one the base level places: the composer says which when it is not. On Veldin these work: `500`
+a bolt crate, `501` a nanotech crate, `511` an ammo crate. Others may need what the base level's scripts give them (the
+other objects they point at, paths, missions, cutscenes) and do nothing, vanish or misbehave: the composer copies none
+of that (their pointers to other objects are none, no moby groups, no missions' spawn rules). Each object gets an id
+of our own, 1, 2, ... in the lines' order (the hero's skipped): what the game remembers of them in a save (a crate
+broken stays broken) goes by it, so add new lines at the end to keep a save's.
+
+**Music**: `music <level>` plays that game level's tracks (the base level's code picks the track: on Veldin, the
+level's first one and its loop). Your own: a **VAG** as the disc's music files (`levels/levelNN/hdr_014c.vag`): a
+0x30-byte `VAGp` header (big endian: the data's size at +0xc, the rate at +0x10, 8000 to 48000 Hz), then mono PS-ADPCM;
+`<loop.vag>` loops, `<intro.vag>` (optional) plays once before it. The composer copies them into the build (they are
+read through the level's window). The example's `make_example.py` has a small encoder (`vag()`); the PS2 tools
+(MFAudio, ...) make them too.
 
 Coordinates are the game's: z up, in game units. **Every coordinate of the collision must be above 0** (the game's
 collision grid starts at 0 and ignores what is below; the composer refuses a collision that reaches below): the example
@@ -489,7 +509,8 @@ last step. The build goes to `assets/generated/mods/<folder>/` (made from your d
   data: no terrain (tfrags), instances (ties), foliage (shrubs) or occlusion of the base level; its sky, moby classes,
   hero animations, gadgets and effects; the collision made from your `collision.obj`.
 - `gameplay.bin`: the base level's settings, lights, generic cameras and help texts; Ratchet at your start; the ship (and
-  its take-off path) or none; no other object.
+  its take-off path) or none; your objects (`moby` lines).
+- `music_loop.vag`, `music_intro.vag`: your music, when level.txt names it.
 - `host_meshes.mrpc`: your meshes, drawn by the modern renderer (not by the game's code: the faithful renderer, a debug
   choice, does not draw them).
 - `mrp/world/level0/`: the modern renderer's world of the composed level (the meshes added).
@@ -524,8 +545,11 @@ game's code is untouched.
 
 Format 1 is the first step:
 
-- no objects of their own (enemies, crates, bolts, vendors, NPCs), no scripted events, no own music or sounds (the base
-  level's play), no own sky (Veldin's);
+- objects: the base level's classes only, as copies of its own placements (see Objects above); no scripted events, no
+  objects of other levels' classes; sounds are the base level's;
+- the sky: a game level's (`sky`); a sky of your own is a later step (a texture mod can change a sky's textures in the
+  modern renderer). Another level's sky is right in the modern renderer; the faithful renderer may show it with wrong
+  colours;
 - the base level is Veldin (the ship's planet page for the level shows Veldin's planet and missions);
 - the level's size: its collision and the base level's parts must fit the PS2's memory (a level of a few hundred
   units across is far within it);
@@ -543,6 +567,7 @@ Format 1 is the first step:
 | `[mods] <folder>: level.format N ...: needs a newer game` | a format this game does not read |
 | `[levels] "<name>" chosen` | its row chosen (or `RAC1_GOTO=<id>@<frame>`) |
 | `[levels] level 0's header: level slot 19's` | the level loads |
+| `[levels] level slot 19's music: ...` | the level's music: none, a game level's, or the mod's (its sectors in the window) |
 | `[levels] the save was made on the level "<id>", whose mod is off or missing` | the planet prompt |
 | `[compose] ...` | the composer's steps; its errors name the file and line |
 

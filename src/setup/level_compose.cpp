@@ -50,7 +50,10 @@ namespace {
     "collision_type <n>                        the surface type of faces with no `usemtl type<N>` (default 31)\n"
     "meshes <file>                             the drawn meshes (default meshes.obj; optional)\n"
     "up z | up y                               the OBJ files' up axis (default z; y: Blender's default OBJ export)\n"
-    "scale <s>                                 the OBJ files' units to game units (default 1)\n";
+    "scale <s>                                 the OBJ files' units to game units (default 1)\n"
+    "moby <class> <x> <y> <z> [<yaw>]          an object of the base level's class <class>, as its first placement there\n"
+    "music <level> | music <loop.vag> [<intro.vag>] | music none   the level's music\n"
+    "sky <level>                               the sky of the game's level <level> (default: the base level's)\n";
 
 struct LevelTxt {
     float hero[4] = {0, 0, 1, 0};
@@ -65,6 +68,16 @@ struct LevelTxt {
     int collision_type = 31;
     bool y_up = false;
     float scale = 1.0f;
+    struct Moby {
+        int cls = 0;
+        float at[4] = {};  // x y z yaw
+        int line = 0;
+    };
+    std::vector<Moby> mobys;
+    int music_level = -1;               // music <level>: that level's tracks
+    bool music_none = false;            // music none
+    std::string music_loop, music_intro;  // music <loop.vag> [<intro.vag>]: the mod's own
+    int sky_level = -1;                 // sky <level>
 };
 
 struct Log {
@@ -171,6 +184,32 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
             t.y_up = a == "y";
         } else if (key == "scale") {
             if (!(in >> t.scale) || !(t.scale > 0)) return bad();
+        } else if (key == "moby") {
+            LevelTxt::Moby m;
+            if (!(in >> m.cls >> m.at[0] >> m.at[1] >> m.at[2]) || m.cls < 0) return bad();
+            if (!(in >> m.at[3])) m.at[3] = 0;
+            m.line = n;
+            t.mobys.push_back(m);
+        } else if (key == "music") {
+            std::string a, b;
+            in >> a >> b;
+            t.music_level = -1;
+            t.music_none = false;
+            t.music_loop.clear();
+            t.music_intro.clear();
+            if (a == "none") {
+                t.music_none = true;
+            } else if (!a.empty() && a.find_first_not_of("0123456789") == std::string::npos) {
+                t.music_level = std::atoi(a.c_str());
+                if (t.music_level > 18) return bad();
+            } else if (!a.empty()) {
+                t.music_loop = a;
+                t.music_intro = b;
+            } else {
+                return bad();
+            }
+        } else if (key == "sky") {
+            if (!(in >> t.sky_level) || t.sky_level < 0 || t.sky_level > 18) return bad();
         } else {
             return bad();
         }
@@ -782,6 +821,154 @@ std::vector<uint8_t> flight_path(const float ship[4]) {
     return b;
 }
 
+// the base level's moby records (0x78 bytes and more each) by class: the first of each
+std::map<int, std::vector<uint8_t>> moby_templates(const std::vector<uint8_t>& g, uint32_t mo, int n1) {
+    std::map<int, std::vector<uint8_t>> t;
+    size_t p = mo + 0x10;
+    for (int i = 0; i < n1 && p + 0x78 <= g.size(); ++i) {
+        const int sz = rd32(g, p);
+        if (sz < 0x78 || p + static_cast<size_t>(sz) > g.size()) break;
+        const int cls = rd32(g, p + 0x18);
+        if (t.count(cls) == 0) t[cls].assign(g.begin() + static_cast<std::ptrdiff_t>(p), g.begin() + static_cast<std::ptrdiff_t>(p + static_cast<size_t>(sz)));
+        p += static_cast<size_t>(sz);
+    }
+    return t;
+}
+
+// a fixup list (the pvar moby links +0x50, the pvar pointers +0x5c: 8-byte rows (pvar index, offset) up to a negative
+// index): its rows, and the end row as it was
+void fixup_rows(const std::vector<uint8_t>& b, std::vector<std::pair<int32_t, int32_t>>& rows, std::vector<uint8_t>& end) {
+    rows.clear();
+    end.assign(8, 0);
+    wr32(end, 0, -1);
+    for (size_t r = 0; r + 8 <= b.size(); r += 8) {
+        if (rd32(b, r) < 0) {
+            end.assign(b.begin() + static_cast<std::ptrdiff_t>(r), b.begin() + static_cast<std::ptrdiff_t>(r + 8));
+            return;
+        }
+        rows.emplace_back(rd32(b, r), rd32(b, r + 4));
+    }
+}
+
+std::vector<uint8_t> fixup_block(const std::vector<std::pair<int32_t, int32_t>>& rows, const std::vector<uint8_t>& end) {
+    std::vector<uint8_t> b;
+    for (const auto& [i, o] : rows) {
+        wr32(b, b.size(), i);
+        wr32(b, b.size(), o);
+    }
+    b.insert(b.end(), end.begin(), end.end());
+    b.resize(align_up(b.size(), 0x10), 0);
+    return b;
+}
+
+bool place_mobys(const std::vector<uint8_t>& g, const uint32_t G[36], uint32_t mo, int n1, int32_t hero_uid, const LevelTxt& lt, std::vector<uint8_t>& mobys,
+                 std::map<uint32_t, std::vector<uint8_t>>& blocks, Log& log, std::string& err) {
+    if (lt.mobys.empty()) return true;
+    std::vector<uint32_t> offs;
+    for (int i = 0; i < 36; ++i)
+        if (G[i] != 0) offs.push_back(G[i]);
+    offs.push_back(static_cast<uint32_t>(g.size()));
+    std::sort(offs.begin(), offs.end());
+    auto block = [&](uint32_t field) -> std::vector<uint8_t> {
+        const uint32_t o = G[field / 4];
+        if (o == 0) return {};
+        const uint32_t e = *std::upper_bound(offs.begin(), offs.end(), o);
+        return std::vector<uint8_t>(g.begin() + o, g.begin() + e);
+    };
+    const std::map<int, std::vector<uint8_t>> tmpl = moby_templates(g, mo, n1);
+    std::vector<uint8_t> table = block(0x54), data = block(0x58), shared = block(0x4c);
+    std::vector<std::pair<int32_t, int32_t>> links, ptrs;
+    std::vector<uint8_t> links_end, ptrs_end;
+    fixup_rows(block(0x50), links, links_end);
+    fixup_rows(block(0x5c), ptrs, ptrs_end);
+    // the shared pvar pointers: (data size, count, -, -), the data, then count rows (pvar index | offset << 16, the data's offset)
+    std::vector<std::pair<uint32_t, uint32_t>> shared_rows;
+    std::vector<uint8_t> shared_data;
+    if (shared.size() >= 0x10) {
+        const int32_t size = rd32(shared, 0), n = rd32(shared, 4);
+        if (size >= 0 && n >= 0 && 0x10 + static_cast<size_t>(size) + 8 * static_cast<size_t>(n) <= shared.size()) {
+            shared_data.assign(shared.begin() + 0x10, shared.begin() + 0x10 + size);
+            for (int32_t k = 0; k < n; ++k)
+                shared_rows.emplace_back(static_cast<uint32_t>(rd32(shared, 0x10 + static_cast<size_t>(size) + 8 * static_cast<size_t>(k))),
+                                         static_cast<uint32_t>(rd32(shared, 0x10 + static_cast<size_t>(size) + 8 * static_cast<size_t>(k) + 4)));
+        }
+    }
+    table.resize(align_up(table.size(), 8), 0);
+    int32_t uid = 0;
+    std::map<int, int> per_class;
+    size_t pvar_bytes = 0;
+    for (const LevelTxt::Moby& pm : lt.mobys) {
+        const auto t = tmpl.find(pm.cls);
+        if (t == tmpl.end()) {
+            std::string have;
+            for (const auto& [c, r] : tmpl)
+                if (c != 0) have += (have.empty() ? "" : " ") + std::to_string(c);
+            err = fmt("level.txt:%d: the base level has no object of class %d to copy (its classes placed: %s)", pm.line, pm.cls, have.c_str());
+            return false;
+        }
+        std::vector<uint8_t> r = t->second;
+        if (++uid == hero_uid) ++uid;
+        wr32(r, 0xc, uid);
+        for (int i = 0; i < 3; ++i) wrf(r, static_cast<size_t>(0x30 + 4 * i), pm.at[i]);
+        wrf(r, 0x3c, 0.0f);
+        wrf(r, 0x40, 0.0f);
+        wrf(r, 0x44, pm.at[3]);
+        wr32(r, 0x48, -1);  // (its moby group, the base level's (the composed level has none): none)
+        wr32(r, 0x8, rd32(r, 0x8) & 4);  // (its spawn rules: not the base level's missions' (flags 1, 2, 8, 0x10); 4, gone
+                                         // for good once destroyed, kept)
+        const int32_t pi = rd32(r, 0x58);
+        if (pi >= 0) {
+            if (static_cast<size_t>(pi) * 8 + 8 > table.size()) {
+                err = fmt("level.txt:%d: class %d's pvars are not in the base level's table", pm.line, pm.cls);
+                return false;
+            }
+            const int32_t off = rd32(table, static_cast<size_t>(pi) * 8), size = rd32(table, static_cast<size_t>(pi) * 8 + 4);
+            if (off < 0 || size < 0 || static_cast<size_t>(off) + static_cast<size_t>(size) > data.size()) {
+                err = fmt("level.txt:%d: class %d's pvars are past the base level's pvar data", pm.line, pm.cls);
+                return false;
+            }
+            std::vector<uint8_t> copy(data.begin() + off, data.begin() + off + size);
+            for (const auto& [i, o] : links)  // (another moby named: none here)
+                if (i == pi && o >= 0 && static_cast<size_t>(o) + 4 <= copy.size()) wr32(copy, static_cast<size_t>(o), -1);
+            const int32_t ni = static_cast<int32_t>(table.size() / 8);
+            data.resize(align_up(data.size(), 0x10), 0);
+            const size_t at = data.size();
+            data.insert(data.end(), copy.begin(), copy.end());
+            wr32(table, table.size(), static_cast<int32_t>(at));
+            wr32(table, table.size(), size);
+            for (const auto& [i, o] : std::vector<std::pair<int32_t, int32_t>>(ptrs))
+                if (i == pi) ptrs.emplace_back(ni, o);
+            for (const auto& [w, o] : std::vector<std::pair<uint32_t, uint32_t>>(shared_rows))
+                if (static_cast<int32_t>(w & 0xffff) == pi) shared_rows.emplace_back((w & 0xffff0000u) | static_cast<uint32_t>(ni), o);
+            wr32(r, 0x58, ni);
+            pvar_bytes += static_cast<size_t>(size);
+        }
+        mobys.insert(mobys.end(), r.begin(), r.end());
+        ++per_class[pm.cls];
+    }
+    blocks[0x54] = table;
+    data.resize(align_up(data.size(), 0x10), 0);
+    blocks[0x58] = data;
+    blocks[0x50] = fixup_block(links, links_end);
+    blocks[0x5c] = fixup_block(ptrs, ptrs_end);
+    if (!shared.empty()) {
+        std::vector<uint8_t> sb(0x10, 0);
+        wr32(sb, 0, static_cast<int32_t>(shared_data.size()));
+        wr32(sb, 4, static_cast<int32_t>(shared_rows.size()));
+        sb.insert(sb.end(), shared_data.begin(), shared_data.end());
+        for (const auto& [w, o] : shared_rows) {
+            wr32(sb, sb.size(), static_cast<int32_t>(w));
+            wr32(sb, sb.size(), static_cast<int32_t>(o));
+        }
+        sb.resize(align_up(sb.size(), 0x10), 0);
+        blocks[0x4c] = sb;
+    }
+    std::string what;
+    for (const auto& [c, k] : per_class) what += fmt("%s%d x%d", what.empty() ? "" : ", ", c, k);
+    log.say(fmt("objects: %zu placed (class x count: %s), uids 1..%d, %zu pvar bytes copied", lt.mobys.size(), what.c_str(), uid, pvar_bytes));
+    return true;
+}
+
 bool build_gameplay(const std::vector<uint8_t>& g, const LevelTxt& lt, std::vector<uint8_t>& out, Log& log, std::string& err) {
     if (g.size() < 0x90) {
         err = "the base level's gameplay file is too small";
@@ -877,9 +1064,13 @@ bool build_gameplay(const std::vector<uint8_t>& g, const LevelTxt& lt, std::vect
         wrf(hero, 0x40, 0.0f);
         wrf(hero, 0x44, lt.hero[3]);
         std::vector<uint8_t> b(0x10, 0);
-        wr32(b, 0, 1);
         wr32(b, 4, n2);
         b.insert(b.end(), hero.begin(), hero.end());
+        // the placed objects (level.txt's moby lines): each a copy of its class's first placement in the base level (its
+        // settings, its pvars copied into entries of their own), at the line's place; uids of our own, 1, 2, ... in the
+        // lines' order (the hero's skipped); their pvar words that name another moby (the moby links) none (-1), no group
+        if (!place_mobys(g, G, mo, n1, rd32(hero, 0xc), lt, b, blocks, log, err)) return false;
+        wr32(b, 0, 1 + static_cast<int32_t>(lt.mobys.size()));
         blocks[0x44] = b;
     }
     blocks[0x48] = empty;  // (no moby groups: the base level's name its own records)
@@ -919,7 +1110,33 @@ bool build_gameplay(const std::vector<uint8_t>& g, const LevelTxt& lt, std::vect
 }
 
 // ---- the data file ----
-bool build_data(const std::vector<uint8_t>& wad, const std::vector<uint8_t>& coll, std::vector<uint8_t>& out, Log& log, std::string& err) {
+// a level's data file's asset data (decompressed) and its index's first words
+bool data_core(const std::vector<uint8_t>& wad, std::vector<uint8_t>& core, int32_t H[48], std::string& err) {
+    FileSpan parts[11];
+    if (wad.size() < sizeof parts) {
+        err = "a data file too small";
+        return false;
+    }
+    std::memcpy(parts, wad.data(), sizeof parts);
+    for (const FileSpan& sp : parts)
+        if (sp.offset < 0 || sp.size < 0 || static_cast<size_t>(sp.offset) + static_cast<size_t>(sp.size) > wad.size()) {
+            err = "a data file damaged";
+            return false;
+        }
+    if (static_cast<size_t>(parts[2].size) < 48 * 4) {
+        err = "a data file's asset index too small";
+        return false;
+    }
+    std::memcpy(H, wad.data() + parts[2].offset, 48 * 4);
+    if (!decompress_wad(std::span<const std::byte>(reinterpret_cast<const std::byte*>(wad.data() + parts[10].offset), static_cast<size_t>(parts[10].size)), core)) {
+        err = "a data file's asset data cannot be decompressed";
+        return false;
+    }
+    return true;
+}
+
+bool build_data(const std::vector<uint8_t>& wad, const std::vector<uint8_t>& coll, const std::vector<uint8_t>* sky, std::vector<uint8_t>& out, Log& log,
+                std::string& err) {
     if (wad.size() < sizeof(LevelFileHeader)) {
         err = "the base level's data file is too small";
         return false;
@@ -955,7 +1172,8 @@ bool build_data(const std::vector<uint8_t>& wad, const std::vector<uint8_t>& col
     wr32(tf, 0, 0x40);
     wrf(tf, 8, 12.0f);
     const size_t o_tfrag = core.put(tf.data(), tf.size());
-    const size_t o_sky = core.put(old.data() + H[4], static_cast<size_t>(H[5] - H[4]));  // (the base level's sky: up to its collision)
+    // the sky: the base level's (up to its collision), or another level's (level.txt's sky line)
+    const size_t o_sky = sky != nullptr ? core.put(sky->data(), sky->size()) : core.put(old.data() + H[4], static_cast<size_t>(H[5] - H[4]));
     // (testing: RAC1_COMPOSE_BASE_COLLISION=1 keeps the base level's collision, to tell a collision fault from another)
     static const bool base_coll = std::getenv("RAC1_COMPOSE_BASE_COLLISION") != nullptr;
     const size_t o_coll = base_coll ? core.put(old.data() + H[5], static_cast<size_t>(H[24] - H[5])) : core.put(coll.data(), coll.size());
@@ -1106,8 +1324,19 @@ bool compose_level_mod(const std::string& folder, bool force) {
         return fail("the base level's files are missing (" + bdir.generic_string() + "): run the setup with your disc first");
     if (!decompress_wad(std::span<const std::byte>(reinterpret_cast<const std::byte*>(base_gp_file.data()), base_gp_file.size()), base_gp))
         return fail("the base level's gameplay file cannot be decompressed");
+    // another level's sky
+    std::vector<uint8_t> sky;
+    if (lt.sky_level >= 0 && lt.sky_level != m.level_base) {
+        std::vector<uint8_t> w, c;
+        int32_t SH[48];
+        const fs::path sp = fs::path("assets/disc") / fmt("levels/level%02d", lt.sky_level) / "data.wad";
+        if (!read_file(sp, w) || !data_core(w, c, SH, err)) return fail(sp.generic_string() + ": its sky cannot be read (" + err + ")");
+        if (SH[4] <= 0 || SH[5] <= SH[4] || static_cast<size_t>(SH[5]) > c.size()) return fail(fmt("level %d has no sky", lt.sky_level));
+        sky.assign(c.begin() + SH[4], c.begin() + SH[5]);
+        log.say(fmt("sky: level %d's (%zu bytes)", lt.sky_level, sky.size()));
+    }
     std::vector<uint8_t> data, gameplay;
-    if (!build_data(base_wad, coll, data, log, err)) return fail(err);
+    if (!build_data(base_wad, coll, sky.empty() ? nullptr : &sky, data, log, err)) return fail(err);
     if (!build_gameplay(base_gp, lt, gameplay, log, err)) return fail(err);
     // the host meshes
     mrpw::HostMeshFile hm;
@@ -1124,6 +1353,32 @@ bool compose_level_mod(const std::string& folder, bool force) {
     fs::remove_all(out_dir, ec);
     fs::create_directories(out_dir, ec);
     if (!write_file(out_dir / "data.wad", data) || !write_file(out_dir / "gameplay.bin", gameplay)) return fail("cannot write into " + out_dir.generic_string());
+    // the music: the build's choice (build.json's "music"), the mod's own VAG files copied into the build
+    std::string music_json;
+    if (lt.music_none) {
+        music_json = "\"none\"";
+        log.say("music: none");
+    } else if (lt.music_level >= 0) {
+        music_json = std::to_string(lt.music_level);
+        log.say(fmt("music: level %d's", lt.music_level));
+    } else if (!lt.music_loop.empty()) {
+        std::vector<std::string> names;
+        for (const auto& [src, dst] : {std::pair<std::string, std::string>{lt.music_intro, "music_intro.vag"}, {lt.music_loop, "music_loop.vag"}}) {
+            if (src.empty()) continue;
+            std::vector<uint8_t> v;
+            if (!read_file(ldir / src, v)) return fail(src + " cannot be read");
+            if (v.size() < 0x30 || std::memcmp(v.data(), "VAGp", 4) != 0) return fail(src + ": not a VAG (no \"VAGp\" header): see docs/mods.md, \"Level mods\"");
+            const uint32_t size = static_cast<uint32_t>(v[12]) << 24 | static_cast<uint32_t>(v[13]) << 16 | static_cast<uint32_t>(v[14]) << 8 | v[15];
+            const uint32_t rate = static_cast<uint32_t>(v[16]) << 24 | static_cast<uint32_t>(v[17]) << 16 | static_cast<uint32_t>(v[18]) << 8 | v[19];
+            if (size == 0 || size + 0x30 > v.size() || rate < 8000 || rate > 48000)
+                return fail(fmt("%s: its VAG header's size %u or rate %u do not fit the file (%zu bytes)", src.c_str(), size, rate, v.size()));
+            v.resize(align_up(v.size(), 2048), 0);
+            if (!write_file(out_dir / dst, v)) return fail("cannot write into " + out_dir.generic_string());
+            names.push_back("\"" + dst + "\"");
+            log.say(fmt("music: %s, %u Hz, %.1f s, as %s", src.c_str(), rate, static_cast<double>(size) / 16.0 * 28.0 / rate, dst.c_str()));
+        }
+        music_json = "[" + names[0] + (names.size() > 1 ? ", " + names[1] : std::string()) + "]";
+    }
     if (!hm.classes.empty() && !mrpw::write_host_meshes((out_dir / "host_meshes.mrpc").string(), hm, err)) return fail(err);
     // the MRP world of the composed data file, the host meshes' classes and textures added
     const fs::path wdir = out_dir / "mrp" / "world" / ("level" + std::to_string(m.level_base));
@@ -1146,7 +1401,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
     }
     std::ofstream bj(out_dir / "build.json");
     bj << "{\n  \"composer\": " << kLevelComposerVersion << ",\n  \"format\": " << m.level_format << ",\n  \"id\": \"" << m.level_id << "\",\n  \"base\": " << m.level_base
-       << ",\n  \"inputs\": \"" << stamp_hex(mods_level_inputs_stamp(m.dir)) << "\"\n}\n";
+       << (music_json.empty() ? std::string() : ",\n  \"music\": " + music_json) << ",\n  \"inputs\": \"" << stamp_hex(mods_level_inputs_stamp(m.dir)) << "\"\n}\n";
     if (!bj) return fail("cannot write build.json");
     std::cout << "[compose] " << folder << ": built into " << out_dir.generic_string() << "\n";
     return true;

@@ -238,10 +238,10 @@ DataDiscFiles* data_disc_at(uint32_t lba, uint32_t& local) {
 struct LevelWindow {
     int slot = -1;
     uint32_t base = 0;                         // its sector 0
-    std::array<std::filesystem::path, 2> path;  // the data file, the gameplay file
-    std::array<uint32_t, 2> first{}, sectors{};  // their sectors in the window
-    std::array<uint64_t, 2> size{};
-    std::array<std::shared_ptr<std::FILE>, 2> handle;
+    std::vector<std::filesystem::path> path;  // the data file, the gameplay file, then the others (its music)
+    std::vector<uint32_t> first, sectors;      // their sectors in the window
+    std::vector<uint64_t> size;
+    std::vector<std::shared_ptr<std::FILE>> handle;
 };
 std::mutex g_win_lock;
 std::vector<LevelWindow> g_windows;
@@ -258,13 +258,13 @@ bool level_window_read(uint32_t lba, uint32_t sectors, char* dst, bool& found) {
         found = true;
         const uint64_t at = uint64_t{lba - w.base} * kSector, n = uint64_t{sectors} * kSector;
         std::memset(dst, 0, static_cast<size_t>(n));
-        for (int f = 0; f < 2; ++f) {
-            const uint64_t a = uint64_t{w.first[static_cast<size_t>(f)]} * kSector, b = a + w.size[static_cast<size_t>(f)];
+        for (size_t f = 0; f < w.path.size(); ++f) {
+            const uint64_t a = uint64_t{w.first[f]} * kSector, b = a + w.size[f];
             const uint64_t lo = std::max(at, a), hi = std::min(at + n, b);
             if (lo >= hi) continue;
-            auto& h = w.handle[static_cast<size_t>(f)];
+            auto& h = w.handle[f];
             if (!h) {
-                std::FILE* raw = platform::open_file(w.path[static_cast<size_t>(f)], "rb");
+                std::FILE* raw = platform::open_file(w.path[f], "rb");
                 if (raw == nullptr) return false;
                 h = std::shared_ptr<std::FILE>(raw, [](std::FILE* x) { std::fclose(x); });
             }
@@ -608,30 +608,46 @@ bool disc_read_level_overlay(int level, std::vector<std::byte>& out) {
 }
 
 // orig: (none) — enhancement (disc.h)
-bool disc_level_window_set(int slot, const std::string& data, const std::string& gameplay) {
-    if (slot < kFirstLevelSlot || slot >= kFirstLevelSlot + kLevelSlots) return false;
+bool disc_level_window_set(int slot, const std::vector<std::string>& files) {
+    if (slot < kFirstLevelSlot || slot >= kFirstLevelSlot + kLevelSlots || files.size() < 2) return false;
     LevelWindow w;
     w.slot = slot;
     w.base = level_window_base(slot);
-    w.path = {std::filesystem::path(data), std::filesystem::path(gameplay)};
-    uint32_t at = 0;
-    for (size_t f = 0; f < 2; ++f) {
+    uint64_t at = 0;
+    for (const std::string& file : files) {
+        const std::filesystem::path p(file);
         std::error_code ec;
-        w.size[f] = std::filesystem::file_size(w.path[f], ec);
-        if (ec || w.size[f] == 0 || w.size[f] > uint64_t{kDataDiscWindow} * kSector / 2) {
-            std::fprintf(stderr, "[disc] level slot %d: %s cannot be read\n", slot, w.path[f].string().c_str());
+        const uint64_t size = std::filesystem::file_size(p, ec);
+        const uint64_t sectors = (size + kSector - 1) / kSector;
+        if (ec || size == 0 || at + sectors > kDataDiscWindow) {
+            std::fprintf(stderr, "[disc] level slot %d: %s cannot be read\n", slot, p.string().c_str());
             return false;
         }
-        w.first[f] = at;
-        w.sectors[f] = static_cast<uint32_t>((w.size[f] + kSector - 1) / kSector);
-        at += (w.sectors[f] + 15) / 16 * 16;
+        w.path.push_back(p);
+        w.size.push_back(size);
+        w.first.push_back(static_cast<uint32_t>(at));
+        w.sectors.push_back(static_cast<uint32_t>(sectors));
+        w.handle.emplace_back();
+        at += (sectors + 15) / 16 * 16;
     }
     std::scoped_lock lock(g_win_lock);
     std::erase_if(g_windows, [slot](const LevelWindow& x) { return x.slot == slot; });
     g_windows.push_back(std::move(w));
-    std::printf("[disc] level slot %d: its files in the window at sector %#x (data %u sectors, gameplay %u)\n", slot, g_windows.back().base,
-                g_windows.back().sectors[0], g_windows.back().sectors[1]);
+    std::printf("[disc] level slot %d: its files in the window at sector %#x (data %u sectors, gameplay %u, %zu more files)\n", slot,
+                g_windows.back().base, g_windows.back().sectors[0], g_windows.back().sectors[1], g_windows.back().path.size() - 2);
     return true;
+}
+
+// orig: (none) — enhancement (disc.h)
+bool disc_level_window_file(int slot, size_t file, uint32_t& lba, uint32_t& sectors) {
+    std::scoped_lock lock(g_win_lock);
+    for (const LevelWindow& w : g_windows) {
+        if (w.slot != slot || file >= w.path.size()) continue;
+        lba = w.base + w.first[file];
+        sectors = w.sectors[file];
+        return true;
+    }
+    return false;
 }
 
 // orig: (none) — enhancement (disc.h)
