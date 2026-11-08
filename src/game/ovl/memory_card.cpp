@@ -9,6 +9,7 @@
 #include <game/enhance/fixes102.h>
 #include <game/enhance/language.h>
 #include <host/level_slots.h>
+#include <host/mod_code.h>
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/math/vecmath.h>
@@ -513,6 +514,7 @@ void new_game_state() {
     }
     language_game_state_read();  // enhancement: the Subtitles choice (Options > Language) over the default save's
     level_slots_new_game();      // enhancement: no level mod's progress (src/host/level_slots.h)
+    if (g_mod_code_any) mod_code_new_game();  // enhancement: the mods' code (src/host/mod_code.h)
     ee_stack_free(0x10);
     sw(0x0015ed84, 0);
 }

@@ -212,6 +212,7 @@ For players:
   choice and graphics preset, the update check, where settings are kept, the debug tools.
 - [Input](docs/input.md): controllers, keyboard and mouse, rebinding.
 - [Mods](docs/mods.md): making a texture mod and a sound swap step by step, the limits, the log's lines, sharing a mod, the reference.
+- [Custom levels: code](docs/custom-levels.md): a mod's own code (a native plugin): its callbacks and services, building, testing.
 - [Movie subtitles](docs/movie-subtitles.md): subtitles over the movies, made by the setup from your disc (optional) or from a subtitles pack; editing them.
 - [Saves](docs/saves.md): where your saves are. Saving and loading work, but the save files may still change: they have not been checked by hand yet.
 - [Platforms](docs/platforms.md): Windows, macOS (Metal), ARM64 and Android in progress.

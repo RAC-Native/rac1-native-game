@@ -1643,22 +1643,25 @@ def generate(iso, forced):
 
 def level_mods():
     """The level mods in mods/ (docs/mods.md, "Level mods"): each one whose build is missing or old composed with the disc's
-    files into assets/generated/mods/<folder>/ (`rac1-native --setup --level-mods`: it checks their stamps itself). Not
-    fatal: the game lists a level mod with no build as needing the setup."""
+    files into assets/generated/mods/<folder>/, and the mods' plugins (their code, docs/custom-levels.md) built from their
+    source (`rac1-native --setup --level-mods`: it checks their stamps itself). Not fatal: the game lists a mod with no
+    build as needing the setup."""
     mods = ROOT / "mods"
     if not mods.is_dir():
         return
     found = False
     for d in sorted(mods.iterdir()):
         try:
-            if d.is_dir() and not d.name.startswith((".", "_")) and '"level"' in (d / "mod.json").read_text(errors="replace"):
+            if d.is_dir() and not d.name.startswith((".", "_")) and ('"level"' in (d / "mod.json").read_text(errors="replace") or
+                                                                     (d / "plugin").is_dir()):
                 found = True
         except OSError:
             pass
     if not found:
         return
     if subprocess.run([str(EXE), "--setup", "--level-mods"], cwd=ROOT, env=game_env()).returncode:
-        warn("A level mod could not be composed (see the [compose] lines above); the game lists it as needing the setup.")
+        warn("A level mod could not be composed or a mod's code built (see the [compose] / [plugin] lines above); the game lists it "
+             "as needing the setup.")
     else:
         ok("Level mods: up to date")
 

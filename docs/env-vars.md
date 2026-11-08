@@ -1,11 +1,11 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 420 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 422 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
-| [Player](#player-variables) | 23 | Settings a player may want to change: files, window, audio, the ISO |
+| [Player](#player-variables) | 25 | Settings a player may want to change: files, window, audio, the ISO |
 | [Debugging](#debugging-variables) | 315 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 82 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
@@ -47,6 +47,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_ISO` | path to the disc image; default assets/iso/rac1-ntsc-u.iso (rac1-pal.iso for the PAL disc), else the path in assets/iso/disc-path.txt | Path of the disc image the setup tools read. The game reads the disc's files the setup extracted (assets/disc/), and this image only with `RAC1_READ_ISO=1`. |
 | `RAC1_MEMCARD_DIR` | directory path; default $XDG_DATA_HOME/rac1-native/memcard, else ~/.local/share/rac1-native/memcard (%APPDATA%\rac1-native\memcard on Windows) | Directory holding the virtual memory card's save files. Setting it also makes a headless run insert the card. |
 | `RAC1_PROGRESS` | file path, or 0 = off; default $XDG_DATA_HOME/rac1-native/progress.json, else ~/.local/share/rac1-native/progress.json (%APPDATA%\rac1-native\progress.json on Windows) in a windowed run, none in a headless run | Where the game writes `progress.json` for the RAC Native launcher (the planet played, the planets reached, the share explored, the time played: see [The launcher](launcher.md#progressjson)); a headless run writes it only when this is set. |
+| `RAC1_MOD_CODE` | 1 = a headless run with RAC1_MODS=1 loads the mods' code (their plugins); unset = it does not | A mod's plugin (docs/custom-levels.md) is loaded in a test run only with this; in a window, a mod with code runs once the player has turned it on and confirmed it (Options > Mods). |
+| `RAC1_MOD_TEST` | any text; unset = off | Given to the mods' plugins' test callback once a frame of play (docs/custom-levels.md, "Testing"): the example plugin understands `log` and `ride`. |
 | `RAC1_MODS` | 0 = every mod off; 1 = a headless run loads the mods (every mod found on, the player's mods.txt not read); unset = the Mods menu's choices in a window, no mods in a headless run | The mods folder (docs/mods.md): 0 plays the original whatever the Mods menu says; a headless run (the tests, the reference checks) is vanilla unless this is 1. |
 | `RAC1_MODS_FILE` | path; default $XDG_CONFIG_HOME/rac1-native/mods.txt, else ~/.config/rac1-native/mods.txt (%APPDATA%\rac1-native\mods.txt on Windows) | Overrides the location of the file where the Mods menu's choices (`<folder> on|off`) are kept; in a headless run with RAC1_MODS=1 it is read (and written) only when set. |
 | `RAC1_MOVIE_VOLUME` | floating-point gain; default 1.0 | Volume multiplier applied to the audio of the pre-rendered movies. |

@@ -47,9 +47,25 @@ struct ModInfo {
     // none, 0..18 that level's tracks, kLevelMusicOwn the build's music files: level_music_files, the intro then the loop)
     int level_music = -2;
     std::vector<std::string> level_music_files;
+    int level_objects = 0;          // the placed objects (level.txt's moby lines): uids 1..level_objects (the hero's skipped)
+    // its code (docs/custom-levels.md, "Code"): a plugin/ folder (a native plugin the setup builds from its source into
+    // assets/generated/mods/<folder>/plugin/). A mod with code is off until the player turns it on and confirms it (Options
+    // > Mods); a headless run loads code only with RAC1_MOD_CODE=1 (RAC1_MODS=1 too)
+    bool code = false;
+    bool code_on = false;           // its plugin is to be loaded in this run (game/enhance/mod_code.cpp)
+    std::string code_wait;          // why its code cannot be loaded although chosen ("" when it can): no build, an old one
+    std::filesystem::path plugin;   // its built plugin (the library)
+    std::string code_error;         // its plugin could not be loaded or started (mods_code_failed): the rest of it runs
 };
 
 constexpr int kLevelMusicBase = -2, kLevelMusicNone = -1, kLevelMusicOwn = 100;
+
+// The plugins' file name in their build folder (sdk/rac1_mod.cmake: a CMake MODULE named rac1_mod)
+#if defined(_WIN32)
+constexpr const char* kPluginFile = "rac1_mod.dll";
+#else
+constexpr const char* kPluginFile = "rac1_mod.so";  // (CMake's MODULE suffix on macOS too)
+#endif
 
 // The level composer's version (src/setup/level_compose.cpp): a build made by another version is made again by the
 // setup, and the game does not use it ("needs setup")
@@ -99,6 +115,16 @@ uint64_t mods_level_inputs_stamp(const std::filesystem::path& mod_dir);
 // orig: (none) — enhancement: why the build of level mod `m` cannot be used ("" when it can): none, made by another
 // composer version, or from other files than the mod's
 std::string mods_level_build_check(const ModInfo& m);
+// orig: (none) — enhancement: the stamp of a mod's plugin sources (everything under plugin/), which its plugin's build records
+// (plugin.json): another stamp means the build is old
+uint64_t mods_plugin_inputs_stamp(const std::filesystem::path& mod_dir);
+// orig: (none) — enhancement: why the plugin of mod `m` cannot be loaded ("" when it can): none built, built from other
+// sources, by another SDK
+std::string mods_plugin_build_check(const ModInfo& m);
+// orig: (none) — enhancement: mod `m`'s plugin failed to load or start (`why`: Options > Mods shows it)
+void mods_code_failed(const ModInfo* m, const std::string& why);
+// orig: (none) — enhancement: the mods on in this run whose code is loaded (mod_code.cpp loads them)
+std::vector<const ModInfo*> mods_code();
 // orig: (none) — enhancement: the level mods on in this run (each with its host slot), in their load order
 std::vector<const ModInfo*> mods_levels();
 // orig: (none) — enhancement: the level mod on host slot `slot`, else null

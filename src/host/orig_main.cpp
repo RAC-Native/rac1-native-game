@@ -80,6 +80,7 @@
 
 #include <game/enhance/advanced.h>
 #include <host/level_slots.h>
+#include <host/mod_code.h>
 #include <game/enhance/controls.h>
 #include <game/enhance/graphics.h>
 #include <game/enhance/vibration.h>
@@ -2486,6 +2487,7 @@ int main(int argc, char** argv) {
     // EE memory with the base ELF image; the level overlay's image (what the base ELF's loader
     // reads from the disc).
     init_memory();
+    rac1::mod_code_start();    // (the mods' plugins loaded: their errors in Options > Mods; none without a mod with code on)
     rac1::region_core_load();  // (another build's core, the PAL disc 2.00's: at the NTSC-U addresses the ports read; game/ovl/region_core.h)
     g_ee_null_is_ram = true;
     g_view_from_game = true;
