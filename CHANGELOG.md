@@ -5,6 +5,18 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Level mods, format 1 (docs/mods.md, "Level mods"): a mod of `"kind": "level"` adds a new level the ship flies to (a
+  row under the unlocked planets). Its folder holds our own files only: `level.txt` (names per language, Ratchet's start,
+  the ship, the death height, colours), a collision mesh and drawn meshes (OBJ, PNG or colour materials). The setup
+  composes it with your disc's files (`rac1-native --setup --level-mods`, also the setup's last step) into
+  `assets/generated/mods/<folder>/`: a data file with no terrain of the base level and the collision made from the mod's
+  mesh, a gameplay file with Ratchet and the ship only, the meshes the modern renderer draws, its MRP world. The game runs
+  it on host level slot 19 over Veldin's code, its files read through a sector window of their own (no disc file
+  replaced), with its own lights file, world and state; a memory card save made there is the game's own (Veldin's
+  records), and the level's progress goes in save<N>.pc (kept and written back when the mod is off or missing; loading
+  such a save then lands on the planet flown from and opens the ship's planet map there). Options > Mods says "Needs
+  setup" for a level mod with no or an old build. `examples/custom-level/make_example.py` writes an example level. With
+  no level mod on (headless runs, RAC1_MODS=0) nothing changes. RAC1_GOTO=<level.id>@F for tests.
 - docs/mods.md, a modder's guide: a texture mod and a .vag sound swap step by step, the limits, every `[mods]` log
   line and what it means, sharing a mod.
 - Graphics: Enhanced, Lighting: Original (#138): the original game's lighting and drop shadows with the modern lighting's sun
