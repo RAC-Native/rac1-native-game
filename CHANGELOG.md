@@ -5,6 +5,11 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Windows setup: "lld: error: unable to find library -lmsvcrt" while CMake tests the compiler (#140, #88): a file of
+  MSYS2's C runtime package was missing although the package counted as installed, and the setup never installed it
+  again. `tools\windows\toolchain.ps1` now checks the runtime packages' files (`pacman -Qk`: crt, headers, winpthreads,
+  libc++, libunwind, compiler-rt) and installs again the ones missing a file; a configuration that still fails that way
+  says which library is missing and what to do. See docs/setup.md.
 - docs/mods.md, a modder's guide: a texture mod and a .vag sound swap step by step, the limits, every `[mods]` log
   line and what it means, sharing a mod.
 - Graphics: Enhanced, Lighting: Original (#138): the original game's lighting and drop shadows with the modern lighting's sun
