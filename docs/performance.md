@@ -258,6 +258,10 @@ Surface Detail, Water and Grass at High on Veldin, Novalis, Rilgar and Pokitaru,
   draws each run held opaque again counting its failing pixels: 0 in all the runs above. The world's GPU time, headless,
   `RAC1_SIM_INPUT=forward`, the last 600 frames: Novalis 0.97 to 0.81 ms (OpenGL) and 1.24 to 0.88 (Vulkan), Pokitaru 1.85 to
   1.36 and 1.94 to 1.37; the Vulkan world stage's CPU time Pokitaru 0.96 to 0.50 ms (half the second-pass draws gone).
+  Since November 2026 the first pass keeps the late depth test (the discard's), on both renderers: with the early test, on a
+  Radeon 890M (radeonsi and RADV), a few pixels of foliage over a wall came out differently from one run to the next (Veldin
+  at 16:9 and 32:9, frame 600: two or three pictures in ten runs; AMD_DEBUG=nohyperz made it stable), the late test gives
+  the picture of `RAC1_PERF_OPAQUE=0` every run. Only the second pass is left out now.
 - **The chain reader's GS memory** (`RAC1_PERF_GS_MEM`, `gs_memory.cpp`, `mrp_chain.cpp`): in-page tables for the 16, 8 and 4-bit
   addresses (as the 32-bit one had), the address made once in the 8 / 4 / 16-bit stores, an indexed texture's CLUT decoded once per
   texture instead of per texel, the last 16 images of a texture key kept (an effect's or the HUD's textures taking turns at one
