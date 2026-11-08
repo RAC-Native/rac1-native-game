@@ -170,6 +170,7 @@ add_library(rac1_game STATIC
     enhance/cut_content.cpp
     enhance/fixes102.cpp
     enhance/level_slots.cpp
+    enhance/mod_code.cpp
     ovl/bomb_glove.cpp
     ovl/pyrocitor.cpp
     ovl/blaster.cpp
@@ -291,7 +292,7 @@ add_library(rac1_game STATIC
     render/texture_loader.cpp
 )
 target_include_directories(rac1_game PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(rac1_game PUBLIC rac1_runtime tinygltf_headers)
+target_link_libraries(rac1_game PUBLIC rac1_runtime tinygltf_headers ${CMAKE_DL_LIBS})  # (dlopen: the mods' plugins, enhance/mod_code.cpp)
 
 # ---- the generated sources ----
 # Part of the game's code is generated from the game's own MIPS and VU code, read from your disc image, by the

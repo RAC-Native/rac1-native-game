@@ -2,6 +2,7 @@
 // queue it walks (0x250768).
 #include <game/debug_hooks.h>
 #include <game/ovl/ovl_reloc.h>
+#include <host/mod_code.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
@@ -116,7 +117,11 @@ void moby_update_visible() {
         if (static_cast<int8_t>(lbu(m + 0x20)) < 0) continue;
         if (g_debug_moby_frozen != nullptr && g_debug_moby_frozen(m)) continue;  // host debug menu (not in the original)
         if ((lhu(m + 0x34) & 0x40u) == 0) moby_anim_advance(m);
-        if (const uint32_t fn = lwu(m + 0x74); fn != 0) ovl_call_moby_fn(fn, m);
+        // (enhancement: a level mod's placed object a plugin updates instead, src/host/mod_code.h; else as the original)
+        if (g_mod_code_objects && mod_code_object_update(m)) {
+        } else if (const uint32_t fn = lwu(m + 0x74); fn != 0) {
+            ovl_call_moby_fn(fn, m);
+        }
         if ((lhu(m + 0x34) & 4u) == 0) moby_update_transform(m);
     }
 }

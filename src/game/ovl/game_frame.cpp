@@ -3,6 +3,7 @@
 #include <game/enhance/advanced.h>
 #include <game/enhance/fixes102.h>
 #include <host/level_slots.h>
+#include <host/mod_code.h>
 #include <game/ovl/memory_card.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl_reloc.h>
@@ -160,6 +161,7 @@ void gameplay_frame() {
         sound_emitters_update();
         wind_update();
     }
+    if (g_mod_code_any) mod_code_frame();  // enhancement: the mods' code (src/host/mod_code.h; nothing without a plugin)
     prof_mark(OV(0x00160ff8), 3);
     advanced_aim_before_hero();  // enhancement: the modern controls' aim
     if (on(1)) {
@@ -183,6 +185,7 @@ void gameplay_frame() {
         if (lw(C + 0x14) == 2) TODO_PORT(0x001f4490, "cutscene camera target")();
     }
     advanced_aim_after_camera();
+    if (g_mod_code_any) mod_code_camera();  // enhancement: the mods' code
     prof_mark(OV(0x00161028), 8);
     sound_frame();
     prof_mark(OV(0x00161038), 6);

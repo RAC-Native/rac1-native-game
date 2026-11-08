@@ -330,9 +330,14 @@ add_library(rac1_setup STATIC
     src/setup/iso_extract.cpp
     src/setup/setup_manager.cpp
     src/setup/level_compose.cpp
+    src/setup/mod_plugins.cpp
 )
 target_include_directories(rac1_setup PUBLIC ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(rac1_setup PUBLIC rac1_formats rac1_game rac1_runtime)
+# the mods' plugins (src/setup/mod_plugins.cpp) are built with the tools the game was built with
+target_compile_definitions(rac1_setup PRIVATE RAC1_PLUGIN_CMAKE="${CMAKE_COMMAND}" RAC1_PLUGIN_GENERATOR="${CMAKE_GENERATOR}"
+                                              RAC1_PLUGIN_CC="${CMAKE_C_COMPILER}" RAC1_PLUGIN_CXX="${CMAKE_CXX_COMPILER}"
+                                              RAC1_PLUGIN_MAKE="${CMAKE_MAKE_PROGRAM}")
 
 # ---- the game: one executable ----
 set(RAC1_HOST_SOURCES

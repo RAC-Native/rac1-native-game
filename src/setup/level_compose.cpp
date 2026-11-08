@@ -1447,7 +1447,9 @@ bool compose_level_mod(const std::string& folder, bool force) {
     }
     // written: into a fresh folder, build.json last (a build without it is not used)
     std::error_code ec;
-    fs::remove_all(out_dir, ec);
+    if (fs::is_directory(out_dir, ec))  // (its plugin's build, mod_plugins.cpp, kept)
+        for (const auto& e : fs::directory_iterator(out_dir, ec))
+            if (e.path().filename() != "plugin" && e.path().filename() != "plugin-build") fs::remove_all(e.path(), ec);
     fs::create_directories(out_dir, ec);
     if (!write_file(out_dir / "data.wad", data) || !write_file(out_dir / "gameplay.bin", gameplay)) return fail("cannot write into " + out_dir.generic_string());
     // the music: the build's choice (build.json's "music"), the mod's own VAG files copied into the build
@@ -1498,7 +1500,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
     }
     std::ofstream bj(out_dir / "build.json");
     bj << "{\n  \"composer\": " << kLevelComposerVersion << ",\n  \"format\": " << m.level_format << ",\n  \"id\": \"" << m.level_id << "\",\n  \"base\": " << m.level_base
-       << (music_json.empty() ? std::string() : ",\n  \"music\": " + music_json) << ",\n  \"inputs\": \"" << stamp_hex(mods_level_inputs_stamp(m.dir)) << "\"\n}\n";
+       << (music_json.empty() ? std::string() : ",\n  \"music\": " + music_json) << ",\n  \"objects\": " << lt.mobys.size() << ",\n  \"inputs\": \"" << stamp_hex(mods_level_inputs_stamp(m.dir)) << "\"\n}\n";
     if (!bj) return fail("cannot write build.json");
     std::cout << "[compose] " << folder << ": built into " << out_dir.generic_string() << "\n";
     return true;

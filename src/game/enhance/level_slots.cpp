@@ -1,6 +1,7 @@
 // See level_slots.h. Not a port: the host's level slots, written on top of the game's own level change, saves and planet
 // list (the experiment that tried a level mod on Veldin's slot first is its source for the records' swap and the row).
 #include <host/level_slots.h>
+#include <host/mod_code.h>
 
 #include <game/ovl/level_change.h>
 #include <game/ovl/ovl.h>
@@ -692,6 +693,7 @@ void level_slots_test_frame(uint64_t frame) {
     }
     std::vector<uint8_t> pc;
     level_slots_pc_items(pc);
+    mod_code_pc_items(pc);  // (the mods' code's items too, src/host/mod_code.h)
     if (std::FILE* f = std::fopen((base + ".pc").c_str(), "wb")) {
         std::fwrite(pc.data(), 1, pc.size(), f);
         std::fclose(f);
