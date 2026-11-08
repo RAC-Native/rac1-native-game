@@ -125,6 +125,7 @@
 #include <game/render/render_toggles.h>
 #include <game/render/gl_draws.h>
 #include <game/render/render_view.h>
+#include <game/render/frame_extrap.inc>
 #include <game/render/shader_manager.h>
 #include <game/render/sky_render.h>
 #include <game/render/title_scene_host.h>
@@ -553,6 +554,31 @@ static double host_refresh_hz(GLFWwindow* w) {
     const GLFWvidmode* v = m != nullptr ? glfwGetVideoMode(m) : nullptr;
     return v != nullptr && v->refreshRate > 0 ? static_cast<double>(v->refreshRate) : 60.0;
 }
+
+// The frame extrapolation's counts (the host loop's extrap_pictures): the steps shown, the pictures presented (theirs and the
+// ones carried forward), the steps whose picture was held (a cut, a jump: no extrapolation); "[extrap]" every 10 s and at the end
+struct ExtrapStats {
+    using clk = std::chrono::steady_clock;
+    uint64_t steps = 0, pictures = 0, carried = 0, held = 0;
+    uint64_t at[4] = {};
+    clk::time_point t0 = clk::now();
+    bool any = false;
+    // orig: (host)
+    void report(bool final) {
+        any = true;
+        const double s = std::chrono::duration<double>(clk::now() - t0).count();
+        if (!final && s < 10.0) return;
+        if (final && (steps == 0 || steps == at[0])) return;  // (nothing since the last line: the run's end reported once)
+        const uint64_t d[4] = {steps - at[0], pictures - at[1], carried - at[2], held - at[3]};
+        if (s > 0.0)
+            std::printf("[extrap] %.1f s: %.1f pictures a second (%.1f steps a second, %llu carried forward, %llu steps held at a cut); total %llu pictures for %llu steps\n", s,
+                        static_cast<double>(d[1]) / s, static_cast<double>(d[0]) / s, static_cast<unsigned long long>(d[2]), static_cast<unsigned long long>(d[3]),
+                        static_cast<unsigned long long>(pictures), static_cast<unsigned long long>(steps));
+        at[0] = steps, at[1] = pictures, at[2] = carried, at[3] = held;
+        t0 = clk::now();
+    }
+};
+ExtrapStats g_extrap;
 
 struct HostPacer {
     using clk = std::chrono::steady_clock;
@@ -3342,6 +3368,7 @@ int main(int argc, char** argv) {
             fd.story = exiting && level_exit_in_story();
             fd.flight = exiting && level_exit_loading_screen();
             fd.frame = frame;
+            render_view_extrap_step(frame);  // (the frame extrapolation's step: the view's and the mobys' history, when it is on)
             fd.level = lw(0x0015ed84);
             fd.scene = ee_thread_suspended() && ee_thread_frame() == rac1::EeVsyncFrame::Scene;
             fd.fade = ee_thread_suspended() && !fd.scene;
@@ -3609,6 +3636,7 @@ int main(int argc, char** argv) {
             fd.gv.xscale_3d = menu_mode ? fd.gv.xscale : 1.0f / mrp_lod_frame_widen();
             if (snapshot) {  // (a pipelined frame: what its drawing reads of the game's state, captured now; the mobys' lists built now)
                 render_view_snapshot();
+                if (g_frame_extrap) render_view_extrap_note();
                 draw_memory_take();  // (the game's memory its drawing reads: the lighting's, the particles')
                 mrp_lod_snapshot();
                 mrp_shadows_snapshot();
@@ -4179,6 +4207,82 @@ int main(int argc, char** argv) {
                 continue;
             }
         }
+        {  // the frame extrapolation asked for (RAC1_EXTRAP=1, or =k pictures a step for testing; in a window the debug menu's Display tab,
+           // with the debug tools only: a prototype)
+            static const int x_env = std::getenv("RAC1_EXTRAP") != nullptr ? std::atoi(std::getenv("RAC1_EXTRAP")) : -1;
+            bool on = x_env > 0;
+#ifdef RAC1_DEVTOOLS
+            if (!headless && x_env < 0) on = g_debug_tools && dt::dev_settings().extrapolate;
+#endif
+            g_frame_extrap = on;
+        }
+        // The frame extrapolation (prototype; render_view.h, RAC1_EXTRAP, the debug menu's Display tab): with the cap above 60, a host
+        // frame that draws its pipelined frame beside the game thread presents it at its slot, then draws it again extrap_k - 1 times,
+        // its camera and its mobys' places carried forward along the two steps before it by 1 / extrap_k of a step each, presented
+        // 1 / (60 extrap_k) s apart: extrap_k pictures a step, no latency added (the newest step's state, moved on in time). The
+        // game's frames, their state and their order are unchanged (the drawing reads only the frame's snapshot, as the first
+        // picture's). Only there: the pipelined frames of play; menus, fades, movies, loads, the debug menu open: 60 as before
+        int extrap_k = 1;
+        if (overlap && g_frame_extrap && pend.frame != 0) {
+            int cap = env_fps_cap >= 0 ? env_fps_cap : 60;
+            if (!headless) cap = env_fps_cap >= 0 ? env_fps_cap : rac1::graphics_display().fps_cap;
+            static const int k_env = std::getenv("RAC1_EXTRAP") != nullptr ? std::atoi(std::getenv("RAC1_EXTRAP")) : 0;
+            if (k_env >= 2) extrap_k = k_env;  // (testing: the pictures a step)
+            else if (cap > 60) extrap_k = cap / 60;
+            else if (cap == 0 && !headless) extrap_k = static_cast<int>(host_refresh_hz(window) / 60.0 + 0.5);  // (Unlimited: the display's refresh)
+            extrap_k = std::clamp(extrap_k, 1, 8);
+#ifdef RAC1_DEVTOOLS
+            if (!headless && dt::dev_settings().speed != 1.0f) extrap_k = 1;
+#endif
+        }
+        auto extrap_pictures = [&](uint64_t step) {
+            using clk = std::chrono::steady_clock;
+            const bool paced = !headless || env_fps_cap > 0 || realtime_test;
+            {
+                RAC1_PROF_ZONE(kPacing);
+                if (paced) pacer.wait(60.0);
+            }
+            {
+                RAC1_PROF_ZONE(kPresent);
+                presents.swap(window);
+            }
+            ++g_extrap.steps;
+            ++g_extrap.pictures;
+            const auto t0 = clk::now();
+            const auto step_ns = std::chrono::nanoseconds(1000000000LL / 60);
+            g_draw_from_snapshot = true;
+            rac1::ee_copy_use(true);
+            for (int j = 1; j < extrap_k; ++j) {
+                if (!render_view_extrap_begin(step, static_cast<double>(j) / extrap_k)) {  // (a cut, a first step: the picture held)
+                    ++g_extrap.held;
+                    break;
+                }
+                mrp_world_extrap_apply();
+                mrp_moby_extrap_apply();
+                draw(pend);
+                render_view_extrap_end();
+                {
+                    RAC1_PROF_ZONE(kPacing);
+                    const auto due = t0 + step_ns * j / extrap_k;
+                    if (paced && clk::now() < due) {
+                        if (due - clk::now() > std::chrono::microseconds(1000)) std::this_thread::sleep_until(due - std::chrono::microseconds(500));
+                        while (clk::now() < due) std::this_thread::yield();
+                    }
+                }
+                {
+                    RAC1_PROF_ZONE(kPresent);
+                    presents.swap(window);
+                }
+                ++g_extrap.pictures;
+                ++g_extrap.carried;
+            }
+            mrp_world_extrap_apply();  // (the frame's own clips back)
+            mrp_moby_extrap_apply();
+            rac1::ee_copy_use(false);
+            g_draw_from_snapshot = false;
+            if (rac1::vk::is_active()) rac1::vk_safety::frame_shown();
+            g_extrap.report(false);
+        };
         // the pipelined frame of the last host frame: drawn now, after this host frame's game frames (its scene built meanwhile)
         bool presented = false;
         update_shown_draw = update_shown;  // (the debug menu's figure: the game thread may write update_shown meanwhile)
@@ -4194,6 +4298,10 @@ int main(int argc, char** argv) {
             rac1::ee_copy_use(false);
             g_draw_from_snapshot = false;
             presented = true;
+            if (extrap_k > 1) {  // the frame extrapolation: this picture shown now, then more carried forward until the next step's
+                extrap_pictures(pend.frame);
+                presented = false;  // (every picture of this frame presented)
+            }
             {
                 RAC1_PROF_ZONE(kGameThreadWait);
                 rac1::game_thread::finish();  // (the game thread's GL / GS requests run here, after the drawing)
@@ -4236,6 +4344,7 @@ int main(int argc, char** argv) {
             if (g_overlapped != 0) std::printf("[game-thread] %llu host frames ran their game frames on the game thread beside the drawing\n", static_cast<unsigned long long>(g_overlapped));
             rac1::game_thread::report();
             pace_report();
+            g_extrap.report(true);
             sample_prof_stop();
             mrp_scene_report();
             mrp_moby_report();
@@ -4318,6 +4427,7 @@ int main(int argc, char** argv) {
         }
     }
     pace_report();
+    g_extrap.report(true);
     sample_prof_stop();
     rac1::vk_safety::start_over();  // (closed normally: not a crash of the start)
     rac1::prof::shutdown();
