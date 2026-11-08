@@ -5,6 +5,11 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Main menu > Exit: the main menu's last entry, below Updates, closes the game after a confirmation in the
+  game's own style (the pause menu's Quit Game page: Circle Yes, Triangle No), the same way as closing the window
+  (Alt+F4) does. Translated ("Esci", "Beenden", "Salir"); pad, keyboard and mouse through the bindings. Only on the PC
+  versions (none on Android or consoles); the pause menu's Quit Game still returns to the title. See
+  docs/settings.md#exit-main-menu.
 - docs/mods.md, a modder's guide: a texture mod and a .vag sound swap step by step, the limits, every `[mods]` log
   line and what it means, sharing a mod.
 - Graphics: Enhanced, Lighting: Original (#138): the original game's lighting and drop shadows with the modern lighting's sun

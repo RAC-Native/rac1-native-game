@@ -1195,6 +1195,13 @@ uint32_t graphics_text(int32_t id) {
 uint32_t updates_page();
 uint32_t updates_root_widget();
 void update_menu_main_install();
+// (exit_menu.cpp's)
+void exit_menu_install();
+void exit_menu_page_slot(uint32_t page);
+uint32_t exit_menu_page();
+uint32_t exit_menu_root_widget();
+uint32_t exit_menu_slot();
+uint32_t exit_menu_set();
 
 // orig: (none) — enhancement (graphics.h)
 void graphics_set_monitors(std::vector<std::string> names) {
@@ -1262,7 +1269,16 @@ void graphics_menu_back(uint32_t cur, uint32_t to, uint32_t mobys) {
         moby_set_anim(m5, 0x13, static_cast<int32_t>(lbu(seq5 + 0x10)) - 1);
         swc1(m5 + 0x58, -1.0f);
     }
-    if (cur != PAGE && cur != DPAGE && cur != POP_PAGE && cur != POP2_PAGE && cur != advanced_page() && cur != controls_page() && cur != language_page() && cur != mods_page() && cur != update_notice_page() && cur != updates_page()) return;
+    // (the Exit button in slot 7, as Updates' above: the pages it opens from keep the slot hidden)
+    const uint32_t xs = exit_menu_slot();
+    if (to == ROOT_PAGE && exit_menu_root_widget() != 0 && lwu(ROOT_PAGE + 0x44 + xs * 4) == exit_menu_root_widget() && lwu(mobys + xs * 4) != 0) {
+        const uint32_t mx = lwu(mobys + xs * 4);
+        const uint32_t seqx = lwu(lwu(mx + 0x24) + 0x48 + exit_menu_set() * 4);
+        moby_set_anim(mx, exit_menu_set(), static_cast<int32_t>(lbu(seqx + 0x10)) - 1);
+        swc1(mx + 0x58, -1.0f);
+    }
+    if (cur != PAGE && cur != DPAGE && cur != POP_PAGE && cur != POP2_PAGE && cur != advanced_page() && cur != controls_page() && cur != language_page() && cur != mods_page() && cur != update_notice_page() && cur != updates_page() &&
+        cur != exit_menu_page()) return;
     boxes_hold(to, mobys);
 }
 
@@ -1451,6 +1467,9 @@ void graphics_main_menu_install() {
         sw(ROOT_NEW_GAME + 0x34, ROOT_ENTRY);
     }
     update_menu_main_install();
+    exit_menu_install();  // (the main menu's Exit, below Updates)
+    exit_menu_page_slot(POP_PAGE);
+    exit_menu_page_slot(POP2_PAGE);
 }
 
 // orig: (none) — enhancement (graphics.h)

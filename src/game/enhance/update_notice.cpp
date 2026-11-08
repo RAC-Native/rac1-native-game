@@ -28,6 +28,8 @@
 
 namespace rac1 {
 
+void exit_menu_page_slot(uint32_t page);  // (exit_menu.cpp's: the headers of src/game are the generated code's fingerprint)
+
 namespace {
 constexpr uint32_t UPD = 0x000f8000u;
 constexpr uint32_t PAGE = UPD;              // the notice page (a copy of Options')
@@ -236,6 +238,7 @@ void page_build(uint32_t parent) {
     slot_replace(PAGE, picture, PICTURE);
     slot_replace(PAGE, list, LIST);
     sw(PAGE + 5 * 4, parent == ROOT_PAGE ? 0x13u : 0x5u);
+    if (parent == ROOT_PAGE) exit_menu_page_slot(PAGE);  // (the Exit button's box, as Updates')
     sw(PAGE + 0x80, 0);
 }
 }  // namespace
