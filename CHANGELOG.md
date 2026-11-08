@@ -53,6 +53,9 @@ What changed in each release. Releases are source only: you build the game with 
   Original 0.68 to 0.54 ms.
   The same game state and picture (RAC1_PERF_POSE_MEMO, RAC1_PERF_SCENE_READS, RAC1_PERF_LOD_PATCH = 0 to compare); see
   docs/performance.md.
+- Ambient Particles, the `lava` material (#136): a tagged texture's faces give embers whichever way they face, so the lava on
+  the sides of a moby (Drek's broken plateaus in Veldin's finale) or of a tfrag / tie now gives off embers too; only the faces
+  turned up or down did. The collision's lava (Umbris, Gaspar, Orxon) is unchanged; the shipped levels have no such lines.
 - HUD wider than 4:3, the hoverboard races (Rilgar, Kalebo III; #132): the bottom bar ("Lap", "Time", "Place") stays
   whole and centred as in 4:3. Its two HUD elements were moved apart as a left and a right one, so the bar split and
   "Place" was drawn over "Time".
