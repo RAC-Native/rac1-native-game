@@ -219,8 +219,9 @@ colours are built.
 passes draw with the alpha test on (GEQUAL 0x60, failing pixels drawn without depth: two passes), but
 most of their draws cannot fail it: every texel they sample has an alpha of at least 0x80 (known per
 texture at the level's load), and so has every vertex colour (a shrub's instance alpha; a tie's
-resident colours, through its morph's arithmetic; a tfrag entry's colours). Those draws' first pass is
-drawn with early depth testing and their second pass is left out; the batch keeps its order
+resident colours, through its morph's arithmetic; a tfrag entry's colours). Those draws' second pass is
+left out (their first pass keeps the late depth test: the early one was not the same picture from run to
+run on a Radeon); the batch keeps its order
 (`RAC1_PERF_OPAQUE`, [Performance](performance.md#found-while-profiling-a-low-end-target)).
 
 ### tfrag on a compute shader, with the EE's rounding

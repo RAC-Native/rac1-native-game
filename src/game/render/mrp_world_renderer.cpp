@@ -952,8 +952,8 @@ const bool g_p2_less = [] {
 GLuint g_prog = 0, g_prog_gpu = 0;
 GLuint g_prog_l = 0, g_prog_gpu_l = 0;  // the modern lighting's variants (SH_POINTS)
 GLuint g_prog_e = 0, g_prog_gpu_e = 0;  // the shadow pass's depth-only variants (early fragment tests: the opaque batches)
-// (host, RAC1_PERF_OPAQUE) the view's first pass of the draws no pixel of which fails the alpha test: early fragment tests (the base
-// program's and the modern lighting's)
+// (host, RAC1_PERF_OPAQUE) the view's first pass of the draws no pixel of which fails the alpha test (the base program's and the
+// modern lighting's; OpenGL: their late depth test, see init_gl)
 GLuint g_prog_o = 0, g_prog_gpu_o = 0, g_prog_o_l = 0, g_prog_gpu_o_l = 0;
 int perf_opaque();
 GLuint g_ssbo[3] = {}, g_indirect = 0;
@@ -1371,10 +1371,15 @@ bool init_gl() {
         g_prog_e = g_prog_gpu_e = 0;
     }
     if (perf_opaque() != 0) {  // (RAC1_PERF_OPAQUE: without them, every draw with the base programs)
-        g_prog_o = link(kVs, false, true);
-        g_prog_gpu_o = link(kVsGpu, false, true);
-        g_prog_o_l = link(kVs, true, true);
-        g_prog_gpu_o_l = link(kVsGpu, true, true);
+        // (OpenGL: the first pass of the opaque runs keeps the late depth test - the base program's code, the second pass still left
+        // out. With the early fragment tests, or with a shader without a discard that the driver tests early by itself, Mesa's radeonsi
+        // (Radeon 890M, Mesa 26.0.8) let a few pixels of a later early-tested draw through over a nearer late-tested one, by the
+        // GPU's timing: a different picture from one run to the next, a few pixels of foliage at 16:9 / 32:9 on Veldin; gone with
+        // AMD_DEBUG=nohyperz. Vulkan keeps its early variant: the same picture run after run)
+        g_prog_o = link(kVs, false);
+        g_prog_gpu_o = link(kVsGpu, false);
+        g_prog_o_l = link(kVs, true);
+        g_prog_gpu_o_l = link(kVsGpu, true);
         if (g_prog_o != 0 && g_prog_gpu_o != 0 && g_prog_o_l != 0 && g_prog_gpu_o_l != 0) {
             g_loc_o = locs(g_prog_o);
             g_loc_gpu_o = locs(g_prog_gpu_o);
@@ -1428,9 +1433,10 @@ uint32_t draw_flags(const Key& k, uint32_t unit) {
 // The world passes draw with the alpha test on (TEST_1 0x5360b: GEQUAL 0x60, AFAIL RGB_ONLY), so every tie / shrub / tfrag draw had
 // the shader's discard in its first pass (no early depth test) and a second pass for the failing pixels. Most of them cannot fail:
 // every texel the draw samples (TexRef::opaque) and every vertex colour have an alpha >= 0x80, the test GEQUAL / GREATER below
-// 0x80. Those draws' first pass is drawn with the program without the discard's effect on the depth (early fragment tests), their
-// second pass left out: the same pixels. 1 on (default), 0 off, 2 also a check (OpenGL): each such draw drawn again with the test's
-// failing pixels counted (an occlusion query, no depth test), the count reported - it must be 0.
+// 0x80. Those draws' first pass is drawn with the program without the discard's effect on the depth (early fragment tests; OpenGL:
+// the late test, as before - radeonsi's early test was not the same picture run after run, see init_gl), their second pass left
+// out: the same pixels. 1 on (default), 0 off, 2 also a check (OpenGL): each such draw drawn again with the test's failing pixels
+// counted (an occlusion query, no depth test), the count reported - it must be 0.
 // orig: (host)
 int perf_opaque() {
     static const int m = std::getenv("RAC1_PERF_OPAQUE") != nullptr ? std::atoi(std::getenv("RAC1_PERF_OPAQUE")) : 1;
@@ -3667,8 +3673,8 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
                 continue;
             }
             static const bool one_pass = std::getenv("RAC1_MRPW_ONEPASS") != nullptr;
-            // (RAC1_PERF_OPAQUE) the batch by its runs: those whose pixels cannot fail the alpha test drawn with the early fragment tests
-            // in the first pass and left out of the second (as the OpenGL path)
+            // (RAC1_PERF_OPAQUE) the batch by its runs: those whose pixels cannot fail the alpha test left out of the second pass (as the
+            // OpenGL path)
             const bool by_runs = b.rn != 0 && b.runs_ok && g_vk_world.fs_early_base != VK_NULL_HANDLE && g_vk_world.fs_early != VK_NULL_HANDLE;
             bool all_opq = by_runs, any_opq = false;
             if (by_runs)
@@ -3693,20 +3699,11 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
                 return e;
             };
             auto group_count = [&](uint32_t r, uint32_t e) { return F.p2runs[e - 1].first + F.p2runs[e - 1].count - F.p2runs[r].first; };
-            if (!by_runs || all_opq || !any_opq) {
-                pk.early = all_opq;
-                bind_pass(1, zwrite, 0);
-                draw_vk();
-            } else {
-                for (uint32_t r = b.r0; r < b.r0 + b.rn;) {
-                    const uint32_t e = group_end(r);
-                    pk.early = F.p2runs[r].state != 2;
-                    bind_pass(1, zwrite, 0);
-                    draw_range(F.p2runs[r].first, group_count(r, e));
-                    r = e;
-                }
-            }
+            // (the first pass of every run with the late depth test, as the OpenGL path's: the early variant, fs_early_base, let a few
+            // pixels of foliage through by the GPU's timing on RADV too - init_gl)
             pk.early = false;
+            bind_pass(1, zwrite, 0);
+            draw_vk();
             if (rk.pass2 != 0 && !one_pass && !all_opq) {
                 const uint32_t afail = rk.pass2;
                 bind_pass(2, afail == 2 && zwrite, afail == 2 ? 2 : afail == 3 ? 3 : 0);

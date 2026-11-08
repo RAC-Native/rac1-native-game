@@ -68,6 +68,9 @@ What changed in each release. Releases are source only: you build the game with 
   again. `tools\windows\toolchain.ps1` now checks the runtime packages' files (`pacman -Qk`: crt, headers, winpthreads,
   libc++, libunwind, compiler-rt) and installs again the ones missing a file; a configuration that still fails that way
   says which library is missing and what to do. See docs/setup.md.
+- The world's opaque draws (RAC1_PERF_OPAQUE) keep the late depth test in their first pass on OpenGL and Vulkan: with the
+  early one, a Radeon (radeonsi and RADV) drew a few pixels of foliage differently from one run to the next in a widened
+  view (Veldin at 16:9 / 32:9). The picture is now the same every run; the 4:3 reference pictures are unchanged.
 - docs/mods.md, a modder's guide: a texture mod and a .vag sound swap step by step, the limits, every `[mods]` log
   line and what it means, sharing a mod.
 - Graphics: Enhanced, Lighting: Original (#138): the original game's lighting and drop shadows with the modern lighting's sun
