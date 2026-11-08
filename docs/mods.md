@@ -523,7 +523,8 @@ Format 1 is the first step:
 
 - no objects of their own (enemies, crates, bolts, vendors, NPCs), no scripted events, no own music or sounds (the base
   level's play), no own sky (Veldin's);
-- one level mod at a time; the base level is Veldin;
+- one level mod at a time; the base level is Veldin (the ship's planet page for the level shows Veldin's planet and
+  missions);
 - the level's size: its collision and the base level's parts must fit the PS2's memory (a level of a few hundred
   units across is far within it);
 - the meshes are drawn by the modern renderer only, lit by the modern lighting, one colour per mesh (no vertex colours);

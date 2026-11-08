@@ -52,6 +52,10 @@ std::string level_slot_mod_dir(int slot);
 // bytes an entry); the count of entries after it (n or n + 1)
 uint32_t level_slots_list_rows(uint32_t list, uint32_t n);
 
+// orig: (none) — enhancement: the ship's planet list's selection when it opens (galmap_list_focus_in, `n` its rows): our row
+// while its level is current (as the game selects the current planet's), else -1 (the game's choice)
+int32_t level_slots_list_focus(uint32_t n);
+
 // orig: (none) — enhancement: the planet chosen on the ship's map (planet_travel): true when it is our row and the current level
 // is its base, so that the travel must load it again (no landing)
 bool level_slots_travel(int32_t planet);

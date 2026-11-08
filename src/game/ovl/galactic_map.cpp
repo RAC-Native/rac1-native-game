@@ -59,6 +59,10 @@ int32_t galmap_list_focus_in(uint32_t w) {
     const uint32_t order = OV(0x00166c00u - 0x6960);
     sw(w + 0x40, 0);
     sw(w + 0x30, lwu(w + 0x30) | 0x8000u);
+    if (const int32_t row = level_slots_list_focus(n); row >= 0) {  // enhancement: on a level mod's level, its row (level_slots.h)
+        sw(w + 0x40, static_cast<uint32_t>(row));
+        return 0;
+    }
     uint32_t planet = lwu(lwu(order));
     if (planet == 0) return 0;
     uint32_t i = 1;

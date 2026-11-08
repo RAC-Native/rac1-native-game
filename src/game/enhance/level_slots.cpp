@@ -262,6 +262,12 @@ uint32_t level_slots_list_rows(uint32_t list, uint32_t n) {
 }
 
 // orig: (none) — enhancement (level_slots.h)
+int32_t level_slots_list_focus(uint32_t n) {
+    if (!level_slots_on() || n == 0 || row_slot() < 0 || level_slot_current() != row_slot()) return -1;
+    return static_cast<int32_t>(n - 1);  // (our row: the list's last)
+}
+
+// orig: (none) — enhancement (level_slots.h)
 bool level_slots_travel(int32_t planet) {
     if (!level_slots_on()) return false;
     const int slot = row_slot();
