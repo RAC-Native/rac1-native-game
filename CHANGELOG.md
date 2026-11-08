@@ -53,6 +53,18 @@ What changed in each release. Releases are source only: you build the game with 
   Original 0.68 to 0.54 ms.
   The same game state and picture (RAC1_PERF_POSE_MEMO, RAC1_PERF_SCENE_READS, RAC1_PERF_LOD_PATCH = 0 to compare); see
   docs/performance.md.
+- HUD wider than 4:3, the hoverboard races (Rilgar, Kalebo III; #132): the bottom bar ("Lap", "Time", "Place") stays
+  whole and centred as in 4:3. Its two HUD elements were moved apart as a left and a right one, so the bar split and
+  "Place" was drawn over "Time".
+- Cut Content, Kerwan's citizens (#136): they play the grind boots seller's own idle (Nebula G34's "Fred Prime",
+  the sequence his update plays while he waits: crouched, the hands together, 1 s loop) instead of his stiff standing one
+  where only the head moved; they stand 0.25 lower so the crouch keeps their feet on the ground. Read from the disc as
+  before; nothing changes with the item off.
+- Windows setup: "lld: error: unable to find library -lmsvcrt" while CMake tests the compiler (#140, #88): a file of
+  MSYS2's C runtime package was missing although the package counted as installed, and the setup never installed it
+  again. `tools\windows\toolchain.ps1` now checks the runtime packages' files (`pacman -Qk`: crt, headers, winpthreads,
+  libc++, libunwind, compiler-rt) and installs again the ones missing a file; a configuration that still fails that way
+  says which library is missing and what to do. See docs/setup.md.
 - docs/mods.md, a modder's guide: a texture mod and a .vag sound swap step by step, the limits, every `[mods]` log
   line and what it means, sharing a mod.
 - Graphics: Enhanced, Lighting: Original (#138): the original game's lighting and drop shadows with the modern lighting's sun

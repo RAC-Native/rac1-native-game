@@ -171,6 +171,44 @@ if ($compilers | Where-Object { -not (Test-Path $_) }) {
     }
 }
 
+# The libraries every program is linked with (the C runtime, its headers, libc++, ...): their packages can be installed
+# with files missing (an antivirus that removed one, an update or an unpacking stopped halfway), and pacman -T then says
+# nothing is missing: CMake's first test program does not link ("lld: error: unable to find library -lmsvcrt", GitHub
+# issue #140). pacman -Qk counts each package's missing files; a package that misses one (or is not installed) is
+# installed again (without --needed). (None of these packages holds a hard link: on any drive, all their files can be
+# there.)
+$Runtime = @('crt', 'headers', 'winpthreads', 'libc++', 'libunwind', 'compiler-rt') | ForEach-Object { "mingw-w64-clang-x86_64-$_" }
+function Get-DamagedRuntime {
+    $pacman = Join-Path $Msys 'usr\bin\pacman.exe'
+    # (pacman's warnings go to stderr, which PowerShell 5 turns into errors that stop the script unless the preference
+    # is relaxed here; LC_ALL=C: its summary lines in English, "<package>: <n> total files, <m> missing files")
+    $ErrorActionPreference = 'Continue'
+    $lcAll = $env:LC_ALL
+    $env:LC_ALL = 'C'
+    try {
+        $absent = @(& $pacman -T @Runtime 2>$null)
+        $report = @(& $pacman -Qk @Runtime 2>$null) -join "`n"
+    } finally { $env:LC_ALL = $lcAll }
+    return @($Runtime | Where-Object {
+        $m = [regex]::Match($report, '(?m)^' + [regex]::Escape($_) + ': \d+ total files?, (\d+) missing files?')
+        ($absent -contains $_) -or ($m.Success -and [int]$m.Groups[1].Value -gt 0)
+    })
+}
+$damaged = Get-DamagedRuntime
+if ($damaged) {
+    Step "Installing again: $($damaged -join ', ') (some of their files are missing)"
+    if ((Invoke-Msys "pacman -S --noconfirm $($damaged -join ' ')") -ne 0) {
+        Fail 'Installing the libraries failed. Check the internet connection, then run the setup again.'
+    }
+    $damaged = Get-DamagedRuntime
+    if ($damaged) {
+        Fail ("Files of $($damaged -join ', ') are still missing after installing them again. An antivirus (Windows " +
+              "Security too) may be removing them: look in its protection history, allow the files (or exclude the " +
+              "folder $ToolDir), then run the setup again. If it keeps failing, delete the folder $ToolDir and run the " +
+              'setup again (it downloads the tools afresh).')
+    }
+}
+
 # The certificates CLANG64's programs check HTTPS with (CMake downloading GLFW, Python's update check): its
 # ca-certificates package makes them with CLANG64's p11-kit, which breaks in a folder with a space in its path (it
 # runs its trust tool by a path cut at the space) and leaves the files empty: "error adding trust anchors" at the

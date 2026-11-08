@@ -491,17 +491,20 @@ level load. `RAC1_CUT_CONTENT=fred,...` turns single items on for testing ([Envi
 **Kerwan's citizens.** Their shared update (L3:0x2dc310, `fred_update_l3`) measures the distance to Ratchet and the
 heading towards him against its own, throws both away and retires the moby on its first frame; the prototype build already
 has the stub. With the item on, a host update replaces it (`cut_content_fred_dispatch_l3`, registered at that address):
-the citizen stays, its sequence 0 is played in a loop, and within 15 units it turns to face Ratchet
+the citizen stays, an idle is played in a loop (below), and within 15 units it turns to face Ratchet
 (`yaw_turn_damped`, the game's turn, slow). What was learnt bringing them back:
 
 - Each of the three models has one sequence of **one frame**: the rest pose, arms held out (#128, "they T-pose like
   cryptids"); Kerwan's data has nothing else for them. They play **another citizen's idle** instead: Nebula G34's
   "Fred" (level 6, class 1105) has Fred 3's skeleton (65 joints, the same hierarchy) and Fred 1 and 2's but for their
   six extra joints under the head (55..60); its frames' rotations equal the Kerwan models' rest pose everywhere but the
-  arms, so they carry over (its bones are longer: each model keeps its own lengths). Its sequence 0, a standing idle with
-  the arms lowered (50 frames at 0.25 a game frame, 3.3 s, a closed loop: a slight sway of the legs, the hands and the
-  face), is read from the player's disc (level 6's core) at the first citizen kept on a level, rebuilt on each class's
-  joints (Fred 1 and 2's extra joints keep their rest rotations) in host memory above the game's 32 MB
+  arms, so they carry over (its bones are longer: each model keeps its own lengths). That citizen is the grind boots
+  seller ("Fred Prime"). Of his two sequences, 0 is a stiff standing idle (50 frames: only the head and a shoulder move;
+  it was used up to 0.7.x, #136) and 1 is the one his own update plays while he waits: crouched, the hands together at the
+  chest (15 frames at 0.25 a game frame, 1 s, a loop), with the hips' translation (joint 4) in each frame. Sequence 1
+  is used (#136): the models' root stays at their standing height, so each citizen is lowered by 0.25 to keep its feet on
+  the ground. It is read from the player's disc (level 6's core) at the first citizen kept on a level, rebuilt on each
+  class's joints (Fred 1 and 2's extra joints keep their rest rotations) in host memory above the game's 32 MB
   (`host_layout::CUT_CONTENT_SEQS`) and put in the class's sequence slot 0; each citizen starts it at its own frame. Their
   placements' flags keep the game's moby loop from advancing their animation (+0x34 bit 0x40), so their update advances
   it. Nothing of the sequence is in the repository; without it (no level 6 data) they keep the rest pose. The other

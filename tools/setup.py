@@ -1416,6 +1416,31 @@ def run_logged(cmd, log):
     return False
 
 
+def missing_runtime_hint():
+    """On Windows, when the compiler's first test program did not link for a library of the compiler's own runtime
+    ("lld: error: unable to find library -lmsvcrt", GitHub issue #140: a file of the C runtime's package missing, while
+    the package counts as installed), what to do: setup.cmd installs such a package again (tools/windows/toolchain.ps1
+    checks the runtime packages' files)."""
+    if not WINDOWS:
+        return
+    try:
+        libs = sorted(set(re.findall(r"unable to find library -l(\S+)", BUILD_LOG.read_text(errors="replace"))))
+    except OSError:
+        return
+    if not libs:
+        return
+    own = os.environ.get("MSYSTEM", "").upper() in ("CLANG64", "UCRT64")
+    names = ", ".join(f"lib{l}.a" for l in libs)
+    print(f"  The compiler's own library {names} is missing (a file of MSYS2's C runtime package).")
+    if own:
+        prefix = "mingw-w64-clang-x86_64" if os.environ.get("MSYSTEM", "").upper() == "CLANG64" else "mingw-w64-ucrt-x86_64"
+        print(f"  In your MSYS2 shell, install it again:  pacman -S {prefix}-crt {prefix}-headers")
+    else:
+        print(f"  Run {SETUP_CMD} again: it installs the packages whose files are missing. If it says they are still")
+        print("  missing, an antivirus (Windows Security too) may be removing them: look in its protection history and")
+        print("  allow them, or delete the .toolchain folder and run the setup again.")
+
+
 def windows_compilers():
     """CMake's C and C++ compilers on Windows, by their full paths: clang and clang++ (or gcc and g++), both checked.
     (clang++ alone was checked: with clang.exe missing, removed by an antivirus or left out by an unpacking stopped
@@ -1548,6 +1573,7 @@ def build(jobs, native_arch=None, retry=True, kept=()):
         if WINDOWS:  # (Ninja and clang, not Visual Studio's generator and compiler: docs/platforms.md)
             cmd += ["-G", "Ninja"] + windows_compilers()
         if not run_logged(cmd, BUILD_LOG):
+            missing_runtime_hint()
             fail(f"CMake could not configure the build (see above). If a library is missing, install it and run {SETUP_CMD} again.")
     elif arch or vulkan_reconfigure():
         # (--native-arch; or a build configured without the Vulkan shaders - no glslc then, or before RAC1_VULKAN - made
