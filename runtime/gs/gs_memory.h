@@ -9,6 +9,7 @@
 #ifndef RAC1_RUNTIME_GS_GS_MEMORY_H
 #define RAC1_RUNTIME_GS_GS_MEMORY_H
 
+#include <profiler/perf_switch.h>
 #include <runtime/gs/gs_types.h>
 
 #include <cstddef>
@@ -75,6 +76,14 @@ public:
     void undo_restore();
     void undo_end() { vundo_on_ = false; }  // (the writes no longer kept, those kept not put back)
 
+    // (host) the upload memo (RAC1_PERF_UPLOAD_MEMO, transfer_data): pieces skipped whole / written; with =2 every piece is written and
+    // the ones the memo would skip checked to change nothing (`check`: its differing count is always 0, the memo is exact)
+    struct UploadMemoStats {
+        uint64_t skipped = 0, written = 0, skipped_bytes = 0, written_bytes = 0;
+    };
+    UploadMemoStats upload_memo_stats() const { return memo_st_; }
+    const perf::DualCheck& upload_memo_check() const { return memo_chk_; }
+
     // (host) the decoded textures forgotten (a level change: the GS worker and the drawers idle). Their count before.
     size_t clear_caches();
     size_t cached_textures() const { return tex_snaps_.size(); }
@@ -118,6 +127,20 @@ private:
         uint32_t lo, hi;
     };
     std::vector<WrRange> wr_log_;
+    // (host) the upload memo: a piece of a transfer (its registers, where the transfer was, its size) -> the bytes it wrote last, the
+    // memory's range its pixels cover and the log's number after it. The same piece with the same bytes, its range unchanged since,
+    // writes what is there already: skipped whole (where the transfer ends up is kept too)
+    struct UploadMemo {
+        uint64_t bb = 0, pos = 0, rg = 0;
+        uint32_t xx0 = 0, xy0 = 0, xx1 = 0, xy1 = 0, lo = 0, hi = 0;
+        bool xfer1 = false;
+        uint64_t seq = 0;
+        std::vector<uint8_t> src;
+    };
+    std::vector<UploadMemo> memo_;       // (a hash table by the piece's key, kMemoSlots)
+    size_t memo_bytes_ = 0;
+    UploadMemoStats memo_st_;
+    perf::DualCheck memo_chk_;
     uint64_t wr_seq_ = 0;    // the last number given
     uint64_t wr_floor_ = 0;  // the log is complete after this number
     bool wr_open_ = false;   // the last entry still takes changes

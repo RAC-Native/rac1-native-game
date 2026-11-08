@@ -4277,7 +4277,10 @@ bool mrp_world_static_lod() { return g_static_on && !g_static_check && mrp_world
 
 // orig: (host) see mrp_world_renderer.h
 bool mrp_world_tfrag_lod() {
-    return tfrag_gpu_enabled() && tfrag_host_enabled() && !g_tfrag_check && mrp_world_ready() && g_tlevel.ok && tfrag_gpu_ready() && g_mrp_world_projection == 0 && !g_env_check && !g_env_diff;
+    // (the direct world makes the CPU tfrag fallback's draws from the host's decisions too, with the host's ties and shrubs: no GPU path
+    // needed, RAC1_PERF_DIRECT_WORLD)
+    return tfrag_gpu_enabled() && tfrag_host_enabled() && !g_tfrag_check && mrp_world_ready() && g_tlevel.ok &&
+           (tfrag_gpu_ready() || (direct_world_mode() != 0 && mrp_world_static_lod())) && g_mrp_world_projection == 0 && !g_env_check && !g_env_diff;
 }
 
 // orig: (host) see mrp_world_renderer.h
@@ -4706,6 +4709,40 @@ void shadow_static_build() {
     }
 }
 SceneInput g_input;  // (the frame's EE inputs of the scene, captured on the game's thread)
+// (RAC1_PERF_DIRECT_WORLD=2) the direct world's inputs and scene, built beside the walker's (drawn) and compared with it
+SceneInput g_input_direct;
+SceneFrame g_scene_direct;
+uint64_t g_direct_by_level[32] = {};  // (the scenes made by the direct world, per level: the report)
+void direct_count(const SceneInput& in) {
+    if (in.dw.ok) ++g_direct_by_level[static_cast<size_t>(g_level.id) & 31];
+}
+// orig: (host) the =2 comparison's inputs: the walker's own as the frame asked (the walk decodes the chain's draws when the host made
+// them only for the direct world), the direct world's
+void direct_compare_inputs() {
+    SceneInput& d = g_input_direct;
+    d.colours = g_input.colours;
+    d.stat = g_input.stat;
+    d.stat_level = g_input.stat_level;
+    d.stat_check = g_input.stat_check;
+    d.tfrag_level = g_input.tfrag_level;
+    d.tfrag_colours = g_input.tfrag_colours;
+    d.tfrag_kicks = g_input.tfrag_kicks;
+    d.tfrag_host = g_input.tfrag_host;
+    d.tfrag_check = g_input.tfrag_check;
+    d.tfrag_shadow = g_input.tfrag_shadow;
+    d.tfrag_shadow_views = g_input.tfrag_shadow_views;
+    d.tfrag_cpu = g_input.tfrag_cpu;
+    d.tfrag_cpu_colours = g_input.tfrag_cpu_colours;
+    d.direct = true;
+    d.dw_reset = g_input.dw_reset;
+    d.walker = 1;
+    g_input.direct = false;
+    if (direct_world_forced()) {  // (the game's own 4:3 Original: the walker's scene as without the direct world)
+        g_input.stat = nullptr;
+        g_input.stat_level = nullptr;
+        g_input.tfrag_host = nullptr;
+    }
+}
 struct SceneWorker {
     std::mutex m;
     std::condition_variable cv;
@@ -4729,16 +4766,24 @@ struct SceneWorker {
             const rac1::prof::Job prof_job(rac1::prof::kWorkerScene);  // (the debug menu's profiler: the job's time)
             try {
                 if (capture) {
-                    // (the game's point lights per pixel instead; never before the level's colours were taken once)
-                    const bool freeze = mrp_lighting_points_freeze() && g_colours_level == g_level.id;
-                    if (g_static_on) {  // (the colours alone kept while a light is in use: the instances are this frame's)
-                        if (!freeze) resident_colours_update(g_rcols, colours);
-                        static_frame_build(g_slevel, g_rcols, g_sframe, g_static_check);
+                    {
+                        const rac1::prof::PartTimer part(rac1::prof::kPartSceneDecide);
+                        // (the game's point lights per pixel instead; never before the level's colours were taken once)
+                        const bool freeze = mrp_lighting_points_freeze() && g_colours_level == g_level.id;
+                        if (g_static_on) {  // (the colours alone kept while a light is in use: the instances are this frame's)
+                            if (!freeze) resident_colours_update(g_rcols, colours);
+                            static_frame_build(g_slevel, g_rcols, g_sframe, g_static_check);
+                        }
+                        shadow_static_build();
+                        if ((g_input.tfrag_level != nullptr || g_input.tfrag_cpu != nullptr) && !freeze) tfrag_colours_update(g_tcols, g_tlevel);
+                        if (!freeze) g_colours_level = g_level.id;
+                        if (g_input.tfrag_host != nullptr) tfrag_decide(g_tlevel, tfrag_snapshot(), g_tfrag_check, g_tdecide);
                     }
-                    shadow_static_build();
-                    if (g_input.tfrag_level != nullptr && !freeze) tfrag_colours_update(g_tcols, g_tlevel);
-                    if (!freeze) g_colours_level = g_level.id;
-                    if (g_input.tfrag_host != nullptr) tfrag_decide(g_tlevel, tfrag_snapshot(), g_tfrag_check, g_tdecide);
+                    const rac1::prof::PartTimer part(rac1::prof::kPartSceneCapture);
+                    if (direct_world_compare()) {
+                        direct_compare_inputs();
+                        scene_capture(chain_start, chain_end, g_input_direct, addrs);
+                    }
                     scene_capture(chain_start, chain_end, g_input, addrs);
                     {
                         std::lock_guard<std::mutex> lg(m);
@@ -4746,9 +4791,16 @@ struct SceneWorker {
                     }
                     cv.notify_all();
                 }
-                built = scene_build(*g_level.idx, g_input, g_frame.scene, reset, kicks);
+                {
+                    const rac1::prof::PartTimer part(rac1::prof::kPartSceneWalk);
+                    built = scene_build(*g_level.idx, g_input, g_frame.scene, reset, kicks);
+                }
+                if (built && direct_world_compare() && g_input_direct.dw.ok && scene_build(*g_level.idx, g_input_direct, g_scene_direct, reset, kicks))
+                    scene_compare(g_frame.scene, g_scene_direct);  // (the direct world's scene against the walker's, which is drawn)
+                if (built) direct_count(direct_world_compare() ? g_input_direct : g_input);
                 g_frame.built_on_worker = false;
                 if (built && build) {  // the frame's triangles too, its new textures' images left to the host thread
+                    const rac1::prof::PartTimer part(rac1::prof::kPartSceneTris);
                     const double tb = now_ms();
                     g_tex_defer = true;
                     build_triangles(g_frame);
@@ -4899,12 +4951,19 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
         g_input.tfrag_colours = on ? &g_tcols : nullptr;
         g_input.tfrag_kicks = on && g_tfrag_verify;
         const TfragSnapshot& S = tfrag_snapshot();  // (the decisions: made in the capture step, from the pass's snapshot)
-        g_input.tfrag_host = on && S.valid && (g_tfrag_check || (S.handle && mrp_world_tfrag_lod())) ? &g_tdecide : nullptr;
+        // (the CPU tfrag fallback - no GPU path - with the direct world: the host's decisions drawn by the CPU reference, mrp_world_scene.h)
+        const bool cpu = !on && direct_world_mode() != 0 && tfrag_gpu_enabled() && g_tlevel.ok && g_mrp_world_projection == 0 && !g_env_check && !g_env_diff && !g_tfrag_check;
+        g_input.tfrag_cpu = cpu ? &g_tlevel : nullptr;
+        g_input.tfrag_cpu_colours = cpu ? &g_tcols : nullptr;
+        g_input.tfrag_host = (on || cpu) && S.valid && (g_tfrag_check || (S.handle && mrp_world_tfrag_lod())) ? &g_tdecide : nullptr;
         g_input.tfrag_check = g_tfrag_check;
         g_input.tfrag_shadow = g_modern_shadows != 0 && g_input.tfrag_level != nullptr ? &g_tshadow : nullptr;
         g_tfrag_shadow_on = g_input.tfrag_shadow != nullptr;
         g_input.tfrag_shadow_views = &g_tshadow_views;
     }
+    g_input.direct = direct_world_on();  // (RAC1_PERF_DIRECT_WORLD: the world's ranges scanned, not walked, when the host makes them)
+    g_input.dw_reset = g_level.reset_walker;
+    g_input.walker = 0;
     if (scene_threaded()) {  // (the capture on the worker too: the host must call mrp_world_wait_captured before the game's state changes)
         g_worker.start(chain_start, chain_end, g_level.reset_walker, kicks, true, scene_addrs(), colour_source(), build_threaded());
     } else {
@@ -4914,11 +4973,18 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
             static_frame_build(g_slevel, g_rcols, g_sframe, g_static_check);
         }
         shadow_static_build();
-        if (g_input.tfrag_level != nullptr && !freeze) tfrag_colours_update(g_tcols, g_tlevel);
+        if ((g_input.tfrag_level != nullptr || g_input.tfrag_cpu != nullptr) && !freeze) tfrag_colours_update(g_tcols, g_tlevel);
         if (!freeze) g_colours_level = g_level.id;
         if (g_input.tfrag_host != nullptr) tfrag_decide(g_tlevel, tfrag_snapshot(), g_tfrag_check, g_tdecide);
+        if (direct_world_compare()) {
+            direct_compare_inputs();
+            scene_capture(chain_start, chain_end, g_input_direct);
+        }
         scene_capture(chain_start, chain_end, g_input);
         g_worker.built = scene_build(*g_level.idx, g_input, F.scene, g_level.reset_walker, kicks);
+        if (g_worker.built && direct_world_compare() && g_input_direct.dw.ok && scene_build(*g_level.idx, g_input_direct, g_scene_direct, g_level.reset_walker, kicks))
+            scene_compare(F.scene, g_scene_direct);
+        if (g_worker.built) direct_count(direct_world_compare() ? g_input_direct : g_input);
         g_worker.ms = now_ms() - g_t_begin;
     }
     g_level.reset_walker = false;
@@ -5827,6 +5893,13 @@ void mrp_world_after_chain(int win_w, int win_h, const gs::Viewport* vp, const g
 // orig: (host) see mrp_world_renderer.h
 void mrp_world_report() {
     if (!g_world_mrp) return;
+    {  // (the GS memory model's upload memo, RAC1_PERF_UPLOAD_MEMO: runtime/gs/gs_memory.h)
+        const gs::LocalMemory::UploadMemoStats u = gs::local_memory().upload_memo_stats();
+        if (u.skipped + u.written != 0)
+            std::printf("[perf] upload memo (RAC1_PERF_UPLOAD_MEMO): upload pieces skipped %llu (%.1f MB), written %llu (%.1f MB)\n", static_cast<unsigned long long>(u.skipped),
+                        static_cast<double>(u.skipped_bytes) / 1048576.0, static_cast<unsigned long long>(u.written), static_cast<double>(u.written_bytes) / 1048576.0);
+        if (gs::local_memory().upload_memo_check().compared != 0) gs::local_memory().upload_memo_check().report("upload memo", "skipped pieces");
+    }
     if (pkt_memo_mode() != 0)
         std::printf("[perf] packet memo (RAC1_PERF_PKT_MEMO=%d): %llu GPU path packets, %llu replayed from the packet before; %llu checked against the full replay, %llu differing\n",
                     pkt_memo_mode(), static_cast<unsigned long long>(g_memo_packets), static_cast<unsigned long long>(g_memo_hits), static_cast<unsigned long long>(g_memo_checked),
@@ -5842,6 +5915,22 @@ void mrp_world_report() {
                         static_cast<unsigned long long>(g_opq_chk.pixels));
     }
     if (scene_capture_misses() != 0) std::printf("[mrpw] WARNING: %llu scene reads not captured\n", static_cast<unsigned long long>(scene_capture_misses()));
+    if (direct_world_mode() != 0) {  // (RAC1_PERF_DIRECT_WORLD: mrp_world_scene.h)
+        const DirectStats& d = direct_world_stats();
+        std::printf("[perf] direct world (RAC1_PERF_DIRECT_WORLD=%d): %llu scenes made without the world's walk, %llu scans failed (walked); scanned %llu tags, %llu VIF codes, "
+                    "%llu constants UNPACKs, %llu set-up starts; %.3f ms a scan\n",
+                    direct_world_mode(), static_cast<unsigned long long>(d.frames), static_cast<unsigned long long>(d.fallback), static_cast<unsigned long long>(d.tags),
+                    static_cast<unsigned long long>(d.codes), static_cast<unsigned long long>(d.unpacks), static_cast<unsigned long long>(d.starts),
+                    d.scans != 0 ? d.ms / static_cast<double>(d.scans) : 0.0);
+        std::printf("[perf] direct world: its scenes by level:");
+        for (int l = 0; l < 32; ++l)
+            if (g_direct_by_level[l] != 0) std::printf(" %d: %llu", l, static_cast<unsigned long long>(g_direct_by_level[l]));
+        std::printf("\n");
+        if (direct_world_compare()) {
+            std::printf("[perf] direct world check: %llu packets, %llu register writes compared\n", static_cast<unsigned long long>(d.packets), static_cast<unsigned long long>(d.regs));
+            d.check.report("direct world", "frames");
+        }
+    }
     static const char* names[6] = {"tfrag A", "tfrag B", "tie A", "tie B", "shrub A", "shrub B"};
     std::printf("[mrpw] %llu frames drawn, %llu scenes: packets %llu, vertices %llu, triangles %llu (ADC %llu, tie B flagged dropped %llu), batches %llu; set-up starts %llu, unknown programs %llu\n",
                 static_cast<unsigned long long>(g_st.frames), static_cast<unsigned long long>(g_st.scene_frames), static_cast<unsigned long long>(g_st.packets),

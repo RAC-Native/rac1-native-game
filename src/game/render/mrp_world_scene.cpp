@@ -13,12 +13,14 @@
 #include <glm/glm.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <unordered_map>
 
 namespace rac1::mrpw {
@@ -78,7 +80,7 @@ struct Walker {
     std::array<uint32_t, 0x400> unpack_src{};
     std::unordered_map<uint64_t, WorldIndex::Hit> memo;
 };
-Walker* g_walker = nullptr;
+Walker* g_walkers[2] = {};  // (1: the =2 comparison's direct build, RAC1_PERF_DIRECT_WORLD)
 
 // orig: (host) a set-up / constants start run on the ported program (its kicks, none expected, dropped)
 void run_program(VUState& st, Program prog, uint32_t start) {
@@ -988,6 +990,56 @@ void emit_tfrag_shadow(Build& b, VUState& st) {
     }
 }
 
+// orig: (host) the direct world's tfrags without the GPU path (the CPU tfrag fallback: SceneInput::tfrag_cpu): the frame's draws the host
+// decided (tfrag_decide), each by the CPU reference on the VU1 memory its chain would have left - the entry's image for its LOD from the
+// level's data, the view (5..8) and constants (0x290..) the pass's chain left, the entry's lit colours from the resident mirror (as
+// tfrag_selfcheck makes it) - pushed as draw_tfrag's CPU path pushes the walker's
+void emit_tfrag_cpu(Build& b, const VUState& st) {
+    if (b.tfrag_emitted || b.in.tfrag_host == nullptr || b.in.tfrag_cpu == nullptr || b.in.tfrag_level != nullptr) return;
+    b.tfrag_emitted = true;
+    const TfragLevel& L = *b.in.tfrag_cpu;
+    const uint8_t* vm = st.mem.data();
+    std::array<double, 16> v = view_of_tfrag(vm, 0);
+    if (b.last_tfrag_view < 0 || v != b.last_tfrag) {
+        b.last_tfrag = v;
+        b.last_tfrag_view = static_cast<int>(b.f.views.size());
+        b.f.views.push_back(v);
+    }
+    const float one[3] = {1, 1, 1}, c5[3] = {f32(vm, 0x295, 0), f32(vm, 0x295, 1), f32(vm, 0x295, 2)};
+    thread_local std::vector<uint8_t> mem;
+    std::vector<Kicked> ks;
+    for (const auto& [k, code] : *b.in.tfrag_host) {
+        if (k >= L.by_ee.size() || L.by_ee[k] < 0) continue;
+        const TfragEntryGpu& e = L.entries[static_cast<size_t>(L.by_ee[k])];
+        if (!e.ok) continue;
+        const bool isb = code == 2;
+        const int lod = isb || code >= 0x0e ? 2 : code >= 0x08 ? 1 : 0;
+        mem.assign(0x4000, 0);
+        const std::vector<uint8_t>& img = e.image[static_cast<size_t>(lod)];
+        std::memcpy(mem.data(), img.data(), std::min<size_t>(img.size(), 0x290 * 16));
+        std::memcpy(mem.data() + 5 * 16, vm + 5 * 16, 64);
+        std::memcpy(mem.data() + 0x290 * 16, vm + 0x290 * 16, 14 * 16);
+        const TfragColours* C = b.in.tfrag_cpu_colours;
+        const uint32_t* col = C != nullptr && e.colour_slot + e.colour_n <= C->mirror.size() ? C->mirror.data() + e.colour_slot : nullptr;
+        const uint32_t ca = e.colour_addr[static_cast<size_t>(lod)], cn = e.colour_count[static_cast<size_t>(lod)];
+        for (uint32_t c = 0; c < cn; ++c) {
+            const uint32_t w = col != nullptr ? col[c] : 0;
+            const uint32_t q[4] = {w & 0xff, (w >> 8) & 0xff, (w >> 16) & 0xff, w >> 24};
+            std::memcpy(mem.data() + 16 * (ca + 2 * c), q, 16);
+        }
+        ks.clear();
+        if (isb) tfrag_b_kick(mem.data(), 0, ks, true);
+        else tfrag_kick(mem.data(), 0, code, ks, true);
+        b.scr_scale = one;
+        b.scr_off = c5;
+        const Program prog = isb ? Program::TfragB : Program::TfragA;
+        for (Kicked& kk : ks) b.push(std::move(kk), prog, isb ? 0x002 : code, b.last_tfrag_view, 0);
+        b.scr_scale = b.scr_off = nullptr;
+        ++b.f.tfrag_host;
+        ++b.f.tfrag_cpu;
+    }
+}
+
 // orig: (host) tfrag A / B's LOD starts: the entry the memory holds at XTOP, its strips by the reference
 void draw_tfrag(Build& b, VUState& st, Program prog, uint32_t start) {
     const uint8_t* mem = st.mem.data();
@@ -1064,9 +1116,21 @@ struct GifPath {
     Build* build = nullptr;  // (the pass's view: Build::view)
     int table = 0;
     uint32_t open = 0xffffffffu;  // the open packet's first write (SceneFrame::sky)
+    // (the direct world's scan: the register writes and the vertices' packets noted as its events, the vertices in its writes)
+    DirectWorld* dw = nullptr;
+    std::vector<SkyWrite>& out(SceneFrame& f) { return dw != nullptr ? dw->writes : f.sky; }
     void close(SceneFrame& f) {
         if (open == 0xffffffffu) return;
-        if (f.sky.size() > open) {
+        if (dw != nullptr) {
+            if (dw->writes.size() > open) {
+                DirectEvent e;
+                e.kind = 1;
+                e.table = static_cast<uint8_t>(table);
+                e.first = open;
+                e.count = static_cast<uint32_t>(dw->writes.size()) - open;
+                dw->events.push_back(e);
+            }
+        } else if (f.sky.size() > open) {
             ScenePacket p;
             p.gif = true;
             p.table = table;
@@ -1081,6 +1145,14 @@ struct GifPath {
     }
     void reg_write(SceneFrame& f, uint8_t r, uint64_t v) {
         close(f);
+        if (dw != nullptr) {
+            DirectEvent e;
+            e.kind = 0;
+            e.reg = r;
+            e.value = v;
+            dw->events.push_back(e);
+            return;
+        }
         f.regs.push_back({static_cast<uint32_t>(f.packets.size()), r, v});
     }
     void data(const uint8_t* p, uint32_t qwc, SceneFrame& f) {
@@ -1109,8 +1181,8 @@ struct GifPath {
                 if (d == 0xe) reg_write(f, q[8], r64(q));
                 else if (d == 0x0) reg_write(f, 0x00, r64(q) & 0x7ff);
                 else if (draw && d != 0xf) {
-                    if (open == 0xffffffffu) open = static_cast<uint32_t>(f.sky.size());
-                    packed_write(d, q, f.sky);
+                    if (open == 0xffffffffu) open = static_cast<uint32_t>(out(f).size());
+                    packed_write(d, q, out(f));
                 }
                 reg = (reg + 1) % nreg;
                 --left;
@@ -1183,6 +1255,236 @@ struct SkyGif {
         }
     }
 };
+
+// ---- the direct world (RAC1_PERF_DIRECT_WORLD, mrp_world_scene.h) ---------------------------------------------------------------
+
+// The scan's private VU1 (its own: the walker's is the sky's and the set-up's; persistent as the walker's)
+struct ScanWalker {
+    vu1::Vu1 vu;
+    bool micro_dirty = true;
+    Program prog = Program::None;
+};
+ScanWalker* g_scan = nullptr;
+std::atomic<bool> g_direct_forced{false};
+DirectStats g_dstats;
+SceneFrame g_scan_dummy;  // (GifPath's frame argument: the scan's writes go to its DirectWorld)
+
+// orig: (host) the direct world can make this frame's scene: the host makes the ties, the shrubs and the tfrags (not the checks'
+// modes), no world pass ran a shadow chain
+bool direct_usable(const SceneInput& in) {
+    if (in.stat == nullptr || in.stat_level == nullptr || in.stat_check || !in.stat->on[0] || !in.stat->on[1]) return false;
+    if (in.tfrag_host == nullptr || (in.tfrag_level == nullptr && in.tfrag_cpu == nullptr) || in.tfrag_check || in.tfrag_kicks) return false;
+    for (const SceneShadow& s : in.shadows)
+        if (s.pass >= 0 && s.pass <= 2) return false;
+    return true;
+}
+
+// the tfrag pass's qwords the host's tfrag draws read (the view at 5..8 of both buffers, the constants 0x290..0x29d): an UNPACK
+// writing any of `span` qwords from `d` reaches them
+bool tfrag_window(uint32_t d, uint32_t span) {
+    if (span >= 0x400) return true;
+    auto meets = [](uint32_t lo, uint32_t hi) { return (lo < 9 && hi > 5) || (lo < 0x151 && hi > 0x14d) || (lo < 0x29e && hi > 0x290); };
+    d &= 0x3ff;
+    if (d + span <= 0x400) return meets(d, d + span);
+    return meets(d, 0x400) || meets(0, d + span - 0x400);  // (past the memory's end: from its start again)
+}
+
+// orig: (host) the VU1 state a pass's chain left, as the host's draws read it
+DirectState direct_state(const VUState& st) {
+    DirectState s;
+    for (uint32_t q = 0; q < 4; ++q) s.view[q] = q128(st.mem.data(), 5 + q);
+    for (uint32_t q = 0; q < 14; ++q) s.consts[q] = q128(st.mem.data(), 0x290 + q);
+    for (uint32_t q = 0; q < 3; ++q) s.tie[q] = q128(st.mem.data(), 0x3cb + q);
+    s.shrub_fog = {st.vf[30].f[2], st.vf[30].f[3], st.vf[29].f[0], st.vf[29].f[1]};
+    return s;
+}
+// orig: (host) the same put back into a VU1 state (the qwords and registers emit_* read)
+void direct_state_put(const DirectState& s, VUState& st) {
+    for (uint32_t q = 0; q < 4; ++q) std::memcpy(st.mem.data() + (5 + q) * 16, s.view[q].data(), 16);
+    for (uint32_t q = 0; q < 14; ++q) std::memcpy(st.mem.data() + (0x290 + q) * 16, s.consts[q].data(), 16);
+    for (uint32_t q = 0; q < 3; ++q) std::memcpy(st.mem.data() + (0x3cb + q) * 16, s.tie[q].data(), 16);
+    st.vf[30].f[2] = s.shrub_fog[0];
+    st.vf[30].f[3] = s.shrub_fog[1];
+    st.vf[29].f[0] = s.shrub_fog[2];
+    st.vf[29].f[1] = s.shrub_fog[3];
+}
+
+// orig: (host) the direct world's scan (mrp_world_scene.h): the world's ranges from their first tag `addr` (the capture's walk there,
+// its call `stack`) to the walk's end, as scene_build walks them when the host makes every draw - each pass's tie / shrub ranges with
+// only their constants (the skipped passes' rule), the tfrag range with only the UNPACKs that reach the view / constants and its
+// set-up starts, every DIRECT's register writes - but in place in EE memory (nothing copied) and the draws' data not unpacked.
+// false: a tag or its data not in memory (the capture walks the whole chain instead)
+bool scan_world(SceneInput& in, uint32_t addr, std::vector<uint32_t>& stack, uint32_t last_end, bool reset) {
+    DirectWorld& dw = in.dw;
+    dw.ok = false;
+    dw.start = addr;
+    dw.events.clear();
+    dw.writes.clear();
+    dw.states.clear();
+    dw.tags = dw.codes = dw.unpacks = dw.starts = 0;
+    static bool reset_pending = false;  // (a new level asked while no scan ran: the next scan's)
+    reset_pending = reset_pending || reset;
+    if (g_scan == nullptr || reset_pending) {
+        reset_pending = false;
+        delete g_scan;
+        g_scan = new ScanWalker();
+        g_scan->vu.st.vf[0].f[3] = 1.0f;
+    }
+    ScanWalker& S = *g_scan;
+    vu1::Vu1& vu = S.vu;
+    auto pass_of = [&in](uint32_t a) {
+        for (const PassRange& r : in.passes)
+            if (a >= r.first && a < r.end) return r.pass;
+        return -1;
+    };
+    static const bool no_gif = std::getenv("RAC1_MRPW_GIF") != nullptr && std::atoi(std::getenv("RAC1_MRPW_GIF")) == 0;
+    GifPath gif;
+    gif.dw = &dw;
+    uint32_t draw_starts = 0;
+    bool emitted[3] = {};
+    auto emit = [&](int pass) {  // (where the walk leaves a pass's range: its host draws with the state its chain left)
+        if (pass < 0 || pass > 2 || emitted[pass]) return;
+        emitted[pass] = true;
+        DirectEvent e;
+        e.kind = static_cast<uint8_t>(2 + pass);
+        e.state = static_cast<uint32_t>(dw.states.size());
+        e.draw_starts = draw_starts;
+        dw.states.push_back(direct_state(vu.st));
+        dw.events.push_back(e);
+    };
+    auto on_start = [&](uint32_t start, bool world) {
+        vu.top = vu.tops;
+        vu.itop = vu.itops;
+        vu.dbf = !vu.dbf;
+        vu.tops = (vu.base + (vu.dbf ? vu.ofst : 0)) & 0x3ff;
+        vu.st.xtop = vu.top;
+        if (!world) return;
+        if (S.micro_dirty) {
+            S.prog = program_of(vu.micro.data());
+            S.micro_dirty = false;
+        }
+        if (S.prog == Program::None) return;
+        if (!is_draw_start(S.prog, start)) {
+            ++dw.starts;
+            run_program(vu.st, S.prog, start);
+            return;
+        }
+        ++draw_starts;  // (the walk's draws: decoded but not drawn, the host's drawn)
+    };
+    int pass_prev = -1;
+    std::vector<uint8_t> span;
+    bool ok = true;
+    for (int guard = 0; guard < 400000; ++guard) {
+        if (addr == (in.chain_end & 0x01fffff0u) || addr == last_end) break;
+        const uint8_t* t = static_cast<const uint8_t*>(ee_ram_ptr_read(addr));
+        if (t == nullptr) {
+            ok = false;
+            break;
+        }
+        ++dw.tags;
+        const uint64_t lo = r64(t);
+        const uint32_t qwc = lo & 0xffff, id = (lo >> 28) & 7;
+        const uint32_t a = static_cast<uint32_t>(lo >> 32) & 0x01fffff0u;
+        uint32_t data = addr + 16, next = addr + 16 + qwc * 16;
+        bool stop = false;
+        switch (id) {
+        case 0: data = a; stop = true; break;
+        case 1: break;
+        case 2: next = a; break;
+        case 3: case 4: data = a; next = addr + 16; break;
+        case 5: stack.push_back(next); next = a; break;
+        case 6:
+            if (stack.empty()) stop = true;
+            else { next = stack.back(); stack.pop_back(); }
+            break;
+        case 7: stop = true; break;
+        }
+        uint8_t hdr[16] = {};
+        std::memcpy(hdr + 8, t + 8, 8);
+        const uint8_t* dp = hdr + 16;
+        if (qwc != 0) {
+            dp = static_cast<const uint8_t*>(ee_ram_ptr_read(data));
+            if (dp == nullptr || ee_ram_ptr_read(data + qwc * 16 - 1) == nullptr) {
+                ok = false;
+                break;
+            }
+        }
+        const uint32_t n = 16 + qwc * 16;
+        auto at = [&hdr, &dp, &span](uint32_t i, uint32_t len) -> const uint8_t* {
+            if (i >= 16) return dp + (i - 16);
+            if (i + len <= 16) return hdr + i;
+            span.assign(hdr + i, hdr + 16);
+            span.insert(span.end(), dp, dp + (i + len - 16));
+            return span.data();
+        };
+        const int pass_now = pass_of(addr);
+        if (pass_prev != pass_now) emit(pass_prev);
+        pass_prev = pass_now;
+        const bool world = pass_now >= 0 && pass_now <= 2;
+        const bool skip = pass_now == 1 || pass_now == 2;  // (the host makes the ties / shrubs: their constants alone)
+        for (uint32_t i = 0; i + 4 <= n;) {
+            const uint32_t code = i >= 16 ? r32(dp + (i - 16)) : r32(at(i, 4));
+            i += 4;
+            ++dw.codes;
+            const uint32_t cmd = (code >> 24) & 0x7f, imm = code & 0xffff;
+            switch (cmd) {  // (the VIF's state codes without data, as vif1_command sets them: the common case, inline)
+            case 0x00: case 0x10: case 0x11: case 0x13: continue;  // NOP, FLUSHE, FLUSH, FLUSHA
+            case 0x01: vu.cl = imm & 0xff; vu.wl = (imm >> 8) & 0xff; continue;
+            case 0x02: vu.ofst = imm & 0x3ff; vu.dbf = false; vu.tops = vu.base; continue;
+            case 0x03: vu.base = imm & 0x3ff; continue;
+            case 0x04: vu.itops = imm & 0x3ff; continue;
+            case 0x05: vu.mode = imm & 3; continue;
+            default: break;
+            }
+            if (cmd == 0x50 || cmd == 0x51) {  // DIRECT / DIRECTHL: the GS registers it writes (and a tfrag range's vertices, none so far)
+                const uint32_t q = imm == 0 ? 65536 : imm;
+                i = (i + 15) & ~15u;
+                const uint32_t take = std::min(q * 16, n - std::min(n, i));
+                gif.draw = world && pass_now == 0 && !no_gif;
+                gif.table = pass_now;
+                gif.data(at(i, take), take / 16, g_scan_dummy);
+                i += q * 16;
+                continue;
+            }
+            const uint32_t nb = vu1::vif_data_bytes(vu, code);
+            if (nb != 0 && i + nb > n) break;
+            auto constants_start = [&](uint32_t start) { return pass_now == 1 ? (start & 0x3ff) == 0x008 : (start & 0x3ff) == 0x000; };
+            const uint32_t dest = ((imm & 0x3ff) + ((imm & 0x8000) != 0 ? vu.tops : 0)) & 0x3ff;
+            auto constants_dest = [&]() { return pass_now == 1 ? dest >= 0x3c6 && dest < 0x3d0 : dest < 6; };
+            if (cmd == 0x14 || cmd == 0x15) {
+                on_start(imm, world && (!skip || constants_start(imm)));
+                vu.next_pc = imm;
+            } else if (cmd == 0x17) {
+                on_start(vu.next_pc, world && (!skip || constants_start(vu.next_pc)));
+            } else if (cmd == 0x4a) {  // MPG: the world's only
+                if (world) {
+                    S.micro_dirty = true;
+                    vu1::vif1_command(vu, code, at(i, nb), nullptr);
+                }
+            } else if (cmd >= 0x60) {  // UNPACK: the world's, the constants' only
+                const uint32_t num = ((code >> 16) & 0xff) == 0 ? 256 : (code >> 16) & 0xff;
+                const bool take = world && (skip ? constants_dest() : tfrag_window(dest, num * std::max({1u, vu.cl, vu.wl}) + 4));
+                if (take) {
+                    ++dw.unpacks;
+                    vu1::vif1_command(vu, code, at(i, nb), nullptr);
+                }
+            } else {
+                vu1::vif1_command(vu, code, at(i, nb), nullptr);
+            }
+            i += nb;
+        }
+        if (stop) break;
+        addr = next;
+    }
+    if (!ok) return false;
+    gif.close(g_scan_dummy);
+    emit(0);  // (the passes the walk ended in or never met: their host draws at its end, as scene_build's)
+    emit(1);
+    emit(2);
+    dw.draw_starts = draw_starts;
+    dw.ok = true;
+    return true;
+}
 
 }  // namespace
 
@@ -1302,14 +1604,40 @@ void scene_capture(uint32_t chain_start, uint32_t chain_end, SceneInput& in, con
         std::memcpy(in.bytes.data() + at, src, len);
         return in.bytes.data() + at;
     };
+    // the direct world (RAC1_PERF_DIRECT_WORLD): the host makes every world draw and no pass ran a shadow chain - the world's ranges
+    // scanned in place where the walk meets them, not copied (a scan that fails: the whole chain copied as before)
+    const bool direct = in.direct && direct_usable(in);
+    in.dw.ok = false;
     // the walk as scene_build's (the tags followed, the shadow chains' ranges read from their copies)
     std::vector<uint32_t> stack;
     const Shadow* sh = nullptr;
     auto in_sh = [&sh](uint32_t a) { return sh != nullptr && a >= sh->base && a - sh->base < sh->bytes.size(); };
     uint32_t addr = chain_start & 0x01fffff0u;
+    bool scanned = false;
     for (int guard = 0; guard < 400000; ++guard) {
         if (sh == nullptr) {
             if (addr == (chain_end & 0x01fffff0u) || addr == last_end) break;
+            if (direct && !scanned) {
+                int pass = -1;
+                for (const PassRange& r : in.passes)
+                    if (addr >= r.first && addr < r.end) pass = r.pass;
+                if (pass >= 0 && pass <= 2) {
+                    scanned = true;
+                    const auto t0 = std::chrono::steady_clock::now();
+                    std::vector<uint32_t> st2 = stack;
+                    if (scan_world(in, addr, st2, last_end, in.dw_reset)) {
+                        g_dstats.tags += in.dw.tags;
+                        g_dstats.codes += in.dw.codes;
+                        g_dstats.unpacks += in.dw.unpacks;
+                        g_dstats.starts += in.dw.starts;
+                        in.dw.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+                        g_dstats.ms += in.dw.ms;
+                        ++g_dstats.scans;
+                        break;
+                    }
+                    ++g_dstats.fallback;  // (the rest of the chain copied: the walk as before)
+                }
+            }
             for (const Shadow& sd : in.shadows)
                 if (sd.first == addr) {
                     sh = &sd;
@@ -1394,6 +1722,160 @@ void scene_capture(uint32_t chain_start, uint32_t chain_end, SceneInput& in, con
 // orig: (host) see mrp_world_scene.h
 uint64_t scene_capture_misses() { return g_capture_misses; }
 
+// orig: (host) see mrp_world_scene.h
+int direct_world_mode() {
+    static const int m = perf::switch_value("RAC1_PERF_DIRECT_WORLD", 1);
+    return m;
+}
+bool direct_world_on() { return direct_world_mode() == 1 || direct_world_mode() == 3; }
+bool direct_world_compare() { return direct_world_mode() == 2 || direct_world_mode() == 4; }
+bool direct_world_force() { return direct_world_mode() == 3 || direct_world_mode() == 4; }
+
+// orig: (host) see mrp_world_scene.h
+void direct_world_note_forced(bool forced) { g_direct_forced.store(forced, std::memory_order_relaxed); }
+bool direct_world_forced() { return g_direct_forced.load(std::memory_order_relaxed); }
+
+// orig: (host) see mrp_world_scene.h
+const DirectStats& direct_world_stats() { return g_dstats; }
+
+// orig: (host) see mrp_world_scene.h: the two scenes' packets in order, each field compared - the indices into the frames' tables
+// resolved (views, instances and their copied colours, texture qwords, tfrag draws with their view and constants, GIF / sky writes) -
+// and the register writes before each packet
+bool scene_compare(const SceneFrame& w0, const SceneFrame& d0) {
+    DirectStats& st = g_dstats;
+    // (testing, RAC1_PERF_DIRECT_WORLD_CMP=tfrag: the tfrag packets alone, in order, their `seq` and the registers left out - the CPU tfrag
+    // fallback's proof at the game's 4:3 Original, =4, where the host's ties / shrubs are not the walker's)
+    static const bool only_tfrag = std::getenv("RAC1_PERF_DIRECT_WORLD_CMP") != nullptr && std::string(std::getenv("RAC1_PERF_DIRECT_WORLD_CMP")) == "tfrag";
+    thread_local SceneFrame fw, fd;
+    auto tfrags = [](const SceneFrame& src, SceneFrame& dst) {
+        dst = src;
+        dst.packets.clear();
+        dst.regs.clear();
+        for (const ScenePacket& p : src.packets)
+            if (p.prog == Program::TfragA || p.prog == Program::TfragB) {
+                dst.packets.push_back(p);
+                dst.packets.back().seq = 0;
+            }
+    };
+    if (only_tfrag) {
+        tfrags(w0, fw);
+        tfrags(d0, fd);
+    }
+    const SceneFrame& w = only_tfrag ? fw : w0;
+    const SceneFrame& d = only_tfrag ? fd : d0;
+    std::string why;
+    auto bad = [&why](const std::string& s) {
+        if (why.empty()) why = s;
+        return false;
+    };
+    auto same_view = [&](int32_t a, int32_t b) {
+        if (a < 0 || b < 0) return a == b;
+        if (static_cast<size_t>(a) >= w.views.size() || static_cast<size_t>(b) >= d.views.size()) return false;
+        return std::memcmp(w.views[static_cast<size_t>(a)].data(), d.views[static_cast<size_t>(b)].data(), sizeof(double) * 16) == 0;
+    };
+    auto same_writes = [&](uint32_t fa, uint32_t ca, uint32_t fb, uint32_t cb) {
+        if (ca != cb || fa + ca > w.sky.size() || fb + cb > d.sky.size()) return false;
+        for (uint32_t k = 0; k < ca; ++k) {
+            const SkyWrite &x = w.sky[fa + k], &y = d.sky[fb + k];
+            if (x.v != y.v || x.q != y.q || x.reg != y.reg || x.mode != y.mode) return false;
+        }
+        return true;
+    };
+    // (the tfrag comparison: the texture A+D qwords' MIPTBP1 / 2 left out - the CPU tfrag fallback's images have the level load's, the
+    // chain the frame's VRAM placement; the world's level textures are found by CLAMP's MINV index, the placement is not read)
+    // (and TEX0's TBP0 / CBP: the frame's placement too)
+    auto vram_masked = [](const Kicked& k, size_t i) {
+        std::array<uint32_t, 4> q = k.q[i];
+        if (i >= k.part.size() || k.part[i] != 1) return q;
+        const uint32_t r = q[2] & 0xff;
+        if (r == 0x34 || r == 0x35) q[0] = q[1] = 0;
+        if (r == 0x06 || r == 0x07) {
+            q[0] &= ~0x3fffu;
+            q[1] &= ~(0x3fffu << 5);
+        }
+        return q;
+    };
+    auto same_kicked = [&](const Kicked& x, const Kicked& y) {
+        if (only_tfrag && x.q.size() == y.q.size() && x.part == y.part) {
+            for (size_t i = 0; i < x.q.size(); ++i)
+                if (vram_masked(x, i) != vram_masked(y, i)) return false;
+        } else if (x.q != y.q) {
+            return false;
+        }
+        if (x.part != y.part || x.clip != y.clip || x.hp.size() != y.hp.size()) return false;
+        for (size_t k = 0; k < x.hp.size(); ++k)
+            if (std::memcmp(x.hp[k].data(), y.hp[k].data(), 16) != 0) return false;
+        return true;
+    };
+    bool ok = true;
+    if (w.packets.size() != d.packets.size()) ok = bad("packets " + std::to_string(w.packets.size()) + " walker, " + std::to_string(d.packets.size()) + " direct");
+    // the register writes before each packet (the same packet index in both when the packets match)
+    if (w.regs.size() != d.regs.size()) ok = bad("register writes " + std::to_string(w.regs.size()) + " walker, " + std::to_string(d.regs.size()) + " direct");
+    for (size_t k = 0; ok && k < w.regs.size(); ++k) {
+        const SceneReg &x = w.regs[k], &y = d.regs[k];
+        if (x.before != y.before || x.reg != y.reg || x.value != y.value) {
+            char t[200];
+            std::snprintf(t, sizeof t, "register write %zu: walker before %u reg %02x %016llx, direct before %u reg %02x %016llx", k, x.before, x.reg, static_cast<unsigned long long>(x.value), y.before,
+                          y.reg, static_cast<unsigned long long>(y.value));
+            ok = bad(t);
+        }
+    }
+    st.regs += w.regs.size();
+    for (size_t i = 0; ok && i < w.packets.size(); ++i) {
+        const ScenePacket &x = w.packets[i], &y = d.packets[i];
+        ++st.packets;
+        const std::string at = "packet " + std::to_string(i) + ": ";
+        if (x.prog != y.prog || x.start != y.start || x.seq != y.seq || x.table != y.table || x.state != y.state || x.sky != y.sky || x.gif != y.gif || x.shadow != y.shadow ||
+            x.shadow_views != y.shadow_views || x.scr_k != y.scr_k || x.tie != y.tie || x.shrub != y.shrub || x.ntex != y.ntex || (x.tfrag < 0) != (y.tfrag < 0)) {
+            char t[240];
+            std::snprintf(t, sizeof t, "prog %d/%d start %x/%x seq %u/%u table %d/%d state %d/%d sky %d/%d gif %d/%d tfrag %d/%d tie %d/%d shrub %d/%d", static_cast<int>(x.prog), static_cast<int>(y.prog),
+                          x.start, y.start, x.seq, y.seq, x.table, y.table, x.state, y.state, x.sky, y.sky, x.gif, y.gif, x.tfrag, y.tfrag, x.tie != nullptr, y.tie != nullptr, x.shrub != nullptr,
+                          y.shrub != nullptr);
+            ok = bad(at + t);
+            break;
+        }
+        if (std::memcmp(x.scr_scale, y.scr_scale, sizeof x.scr_scale) != 0 || std::memcmp(x.scr_off, y.scr_off, sizeof x.scr_off) != 0) ok = bad(at + "screen formula");
+        if (!same_view(x.view, y.view)) ok = bad(at + "view");
+        if (!same_kicked(x.k, y.k)) {
+            size_t q = 0;
+            while (q < x.k.q.size() && q < y.k.q.size() && x.k.q[q] == y.k.q[q] && (q >= x.k.hp.size() || q >= y.k.hp.size() || std::memcmp(x.k.hp[q].data(), y.k.hp[q].data(), 16) == 0)) ++q;
+            char t[300];
+            const auto wq = q < x.k.q.size() ? x.k.q[q] : std::array<uint32_t, 4>{}, dq = q < y.k.q.size() ? y.k.q[q] : std::array<uint32_t, 4>{};
+            std::snprintf(t, sizeof t, "kicks: qwords %zu walker, %zu direct; first difference %zu (part %d): walker %08x %08x %08x %08x direct %08x %08x %08x %08x", x.k.q.size(), y.k.q.size(), q,
+                          q < x.k.part.size() ? x.k.part[q] : -1, wq[0], wq[1], wq[2], wq[3], dq[0], dq[1], dq[2], dq[3]);
+            ok = bad(at + t);
+        }
+        if ((x.sky || x.gif) && !same_writes(x.sky_first, x.sky_count, y.sky_first, y.sky_count)) ok = bad(at + "GIF / sky writes");
+        if (x.tie != nullptr || x.shrub != nullptr) {
+            if (x.inst >= w.insts.size() || y.inst >= d.insts.size()) {
+                ok = bad(at + "instance index");
+            } else {
+                const SceneInst &a = w.insts[x.inst], &b = d.insts[y.inst];
+                if (std::memcmp(a.rows, b.rows, sizeof a.rows) != 0) ok = bad(at + "instance rows");
+                else if (std::memcmp(a.morph, b.morph, sizeof a.morph) != 0) ok = bad(at + "instance morph");
+                else if (a.fog != b.fog || a.alpha != b.alpha || a.resident != b.resident) ok = bad(at + "instance F / alpha / resident");
+                else if (a.resident && a.colour_first != b.colour_first) ok = bad(at + "instance colour slot");
+                else if (!a.resident) {
+                    const uint32_t nc = x.tie != nullptr ? kTieColours : kShrubColours;
+                    if (a.colour_first + nc > w.colours.size() || b.colour_first + nc > d.colours.size() ||
+                        !std::equal(w.colours.begin() + a.colour_first, w.colours.begin() + a.colour_first + nc, d.colours.begin() + b.colour_first))
+                        ok = bad(at + "instance colours");
+                }
+            }
+            if (x.tex + x.ntex > w.tex.size() || y.tex + y.ntex > d.tex.size() || !std::equal(w.tex.begin() + x.tex, w.tex.begin() + x.tex + x.ntex, d.tex.begin() + y.tex))
+                ok = bad(at + "texture qwords");
+        }
+        if (x.tfrag >= 0) {
+            const TfragDraw &a = w.tfrag.draws[static_cast<size_t>(x.tfrag)], &b = d.tfrag.draws[static_cast<size_t>(y.tfrag)];
+            if (a.entry != b.entry || a.lod != b.lod || a.code != b.code || a.b != b.b) ok = bad(at + "tfrag draw");
+            else if (w.tfrag.views[a.view] != d.tfrag.views[b.view]) ok = bad(at + "tfrag view");
+            else if (w.tfrag.consts[a.consts] != d.tfrag.consts[b.consts]) ok = bad(at + "tfrag constants");
+        }
+    }
+    if (ok && (w.has_sky != d.has_sky || w.sky_tex != d.sky_tex || w.sky_asset != d.sky_asset || w.sky_a != d.sky_a)) ok = bad("the sky's textures / asset / projection");
+    return st.check.check(ok, why);
+}
+
 // orig: (host) see mrp_world_scene.h: the capture and the build at once (the testing modes)
 bool scene_build(const WorldIndex& idx, uint32_t chain_start, uint32_t chain_end, SceneFrame& f, bool reset, bool kicks) {
     static SceneInput in;
@@ -1450,6 +1932,7 @@ bool scene_build(const WorldIndex& idx, const SceneInput& in, SceneFrame& f, boo
     f.tchk_walker = f.tchk_found = f.tchk_missing = f.tchk_extra = f.tchk_code = 0;
     f.ok = false;
     if (!in.ok) return false;
+    Walker*& g_walker = g_walkers[in.walker != 0 ? 1 : 0];
     if (g_walker == nullptr || reset) {
         delete g_walker;
         g_walker = new Walker();
@@ -1553,6 +2036,7 @@ bool scene_build(const WorldIndex& idx, const SceneInput& in, SceneFrame& f, boo
     for (int guard = 0; guard < 400000; ++guard) {
         if (sh == nullptr) {
             if (addr == (chain_end & 0x01fffff0u) || addr == last_end) break;
+            if (in.dw.ok && addr == in.dw.start) break;  // (the direct world: the world's ranges were scanned at the capture)
             for (const Shadow& s : in.shadows)
                 if (s.first == addr) {
                     sh = &s;
@@ -1696,11 +2180,45 @@ bool scene_build(const WorldIndex& idx, const SceneInput& in, SceneFrame& f, boo
         }
         addr = next;
     }
-    emit_tfrag_host(b, vu.st);  // (the walk ended in the tfrag pass)
-    emit_tfrag_shadow(b, vu.st);
-    emit_static(b, vu.st, 0);  // (a pass the walk ended in)
-    emit_static(b, vu.st, 1);
-    emit_host_meshes(b);
+    if (in.dw.ok) {  // the direct world: the scan's register writes, GIF vertices and the host's draws, in the walk's order
+        static vu1::Vu1* tmp = new vu1::Vu1();  // (the VU1 state each pass's chain left: what emit_* read)
+        for (const DirectEvent& e : in.dw.events) {
+            if (e.kind == 0) {
+                f.regs.push_back({static_cast<uint32_t>(f.packets.size()), e.reg, e.value});
+                continue;
+            }
+            if (e.kind == 1) {
+                ScenePacket p;
+                p.gif = true;
+                p.table = e.table;
+                p.view = b.view(false);
+                p.seq = 0xffffffffu;
+                p.sky_first = static_cast<uint32_t>(f.sky.size());
+                p.sky_count = e.count;
+                f.sky.insert(f.sky.end(), in.dw.writes.begin() + e.first, in.dw.writes.begin() + e.first + e.count);
+                f.packets.push_back(std::move(p));
+                ++f.gif_packets;
+                continue;
+            }
+            direct_state_put(in.dw.states[e.state], tmp->st);
+            f.draw_starts = e.draw_starts;
+            if (e.kind == 2) {
+                emit_tfrag_host(b, tmp->st);
+                emit_tfrag_shadow(b, tmp->st);
+                emit_tfrag_cpu(b, tmp->st);  // (the CPU tfrag fallback's)
+            } else {
+                emit_static(b, tmp->st, e.kind - 3);
+            }
+        }
+        f.draw_starts = in.dw.draw_starts;
+        ++g_dstats.frames;
+    } else {
+        emit_tfrag_host(b, vu.st);  // (the walk ended in the tfrag pass)
+        emit_tfrag_shadow(b, vu.st);
+        emit_static(b, vu.st, 0);  // (a pass the walk ended in)
+        emit_static(b, vu.st, 1);
+    }
+    emit_host_meshes(b);  // (the level mods' host meshes, after the world)
     static_check(b);
     // the sky (captured with the input)
     f.has_sky = in.has_sky;

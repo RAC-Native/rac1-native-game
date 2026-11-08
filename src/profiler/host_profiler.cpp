@@ -73,6 +73,8 @@ const StageInfo kStages[kStageCount] = {
     {"Present (swap, v-sync)", true, true, rgb(230, 60, 60)},
 };
 const char* const kWorkerNames[kWorkerCount] = {"Chain worker", "MRP scene worker", "Job workers (summed)", "Game thread"};
+const char* const kPartNames[kPartCount] = {"Chain worker: texture uploads", "Chain worker: VU1 programs", "Scene worker: host decisions",
+                                            "Scene worker: capture", "Scene worker: walk / direct build", "Scene worker: triangles"};
 constexpr int kJobTrack = 10;  // (a trace's track of the job pool's worker k: kJobTrack + k)
 
 double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
@@ -159,6 +161,7 @@ State& S() {
 
 std::mutex g_jobs_mutex;  // (the trace's events from the workers; the thread names)
 std::atomic<int64_t> g_wbusy_us[kWorkerCount], g_wcpu_us[kWorkerCount];
+std::atomic<int64_t> g_part_ns[kPartCount];
 std::atomic<bool> g_trace_on{false};
 std::vector<TraceEv> g_worker_trace;
 std::unordered_map<uint64_t, std::string> g_thread_names;
@@ -178,6 +181,7 @@ void csv_header(std::FILE* f) {
     for (int i = 0; i < kStageCount; ++i)
         if (kStages[i].gpu) std::fprintf(f, ",\"gpu: %s\"", kStages[i].name);
     for (int w = 0; w < kWorkerCount; ++w) std::fprintf(f, ",\"busy: %s\",\"cpu: %s\"", kWorkerNames[w], kWorkerNames[w]);
+    for (int p = 0; p < kPartCount; ++p) std::fprintf(f, ",\"part: %s\"", kPartNames[p]);
     std::fprintf(f, "\n");
 }
 
@@ -218,6 +222,7 @@ void csv_row(std::FILE* f, const FrameRec& r) {
     for (int i = 0; i < kStageCount; ++i)
         if (kStages[i].gpu) std::fprintf(f, ",%.4f", r.gpu[i]);
     for (int w = 0; w < kWorkerCount; ++w) std::fprintf(f, ",%.4f,%.4f", r.worker_busy[w], r.worker_cpu[w]);
+    for (int p = 0; p < kPartCount; ++p) std::fprintf(f, ",%.4f", r.part[p]);
     std::fprintf(f, "\n");
 }
 
@@ -520,10 +525,14 @@ void job_end(int w, double t0, double c0, int lane) {
         g_worker_trace.push_back({w == kWorkerJobs ? "job" : kWorkerNames[w], w == kWorkerJobs ? kJobTrack + lane : 2 + w, t0, t1 - t0});
     }
 }
+
+double part_now() { return now_ms(); }
+void part_add(int p, double ms) { g_part_ns[p].fetch_add(static_cast<int64_t>(ms * 1e6), std::memory_order_relaxed); }
 }  // namespace detail
 
 const StageInfo& stage_info(int s) { return kStages[std::clamp(s, 0, kStageCount - 1)]; }
 const char* worker_name(int w) { return kWorkerNames[std::clamp(w, 0, kWorkerCount - 1)]; }
+const char* part_name(int p) { return kPartNames[std::clamp(p, 0, kPartCount - 1)]; }
 
 void game_thread_attach() { t_game = true; }
 
@@ -573,6 +582,7 @@ void frame_mark() {
             r.worker_busy[w] = static_cast<double>(g_wbusy_us[w].exchange(0)) * 1e-3;
             r.worker_cpu[w] = static_cast<double>(g_wcpu_us[w].exchange(0)) * 1e-3;
         }
+        for (int p = 0; p < kPartCount; ++p) r.part[p] = static_cast<double>(g_part_ns[p].exchange(0)) * 1e-6;
         r.steps = s.steps;
         if (s.trace_frame) s.trace.push_back({"host frame", 9, s.t_frame0, r.period});
         const bool keep = !s.frozen || s.dump_every > 0;
@@ -616,6 +626,7 @@ void frame_mark() {
         s.want_prev = false;
         s.cur = -1;
         for (int w = 0; w < kWorkerCount; ++w) g_wbusy_us[w].store(0), g_wcpu_us[w].store(0);
+        for (int p = 0; p < kPartCount; ++p) g_part_ns[p].store(0);
         return;
     }
     if (!s.want_prev) {
@@ -703,6 +714,7 @@ Summary summarize(int frames) {
             m.worker_busy[w] += r.worker_busy[w];
             m.worker_cpu[w] += r.worker_cpu[w];
         }
+        for (int p = 0; p < kPartCount; ++p) m.part[p] += r.part[p];
         if (r.gpu_ok) {
             ++m.gpu_frames;
             for (int i = 0; i < kStageCount; ++i) {
@@ -726,6 +738,7 @@ Summary summarize(int frames) {
         m.worker_busy[w] *= inv;
         m.worker_cpu[w] *= inv;
     }
+    for (int p = 0; p < kPartCount; ++p) m.part[p] *= inv;
     if (m.gpu_frames > 0) {
         const double g = 1.0 / m.gpu_frames;
         for (int i = 0; i < kStageCount; ++i) m.gpu[i] *= g;
@@ -966,6 +979,8 @@ void dump(std::FILE* f, int frames, bool with_gl_scan) {
     std::fprintf(f, "[profiler]   %-38s %8.3f %8s %8.3f\n", "(no stage)", m.cpu_other, "", m.gpu_other);
     for (int w = 0; w < kWorkerCount; ++w)
         std::fprintf(f, "[profiler]   worker %-29s busy %.3f ms/frame, CPU %.3f ms/frame\n", kWorkerNames[w], m.worker_busy[w], m.worker_cpu[w]);
+    for (int p = 0; p < kPartCount; ++p)
+        if (m.part[p] > 0.0) std::fprintf(f, "[profiler]   part %-38s %.3f ms/frame\n", kPartNames[p], m.part[p]);
     resources_sample(s, true);
     const Resources& R = s.res;
     std::fprintf(f, "[profiler]   process CPU %.0f %% of a core (%d logical CPUs);", R.process_cpu_pct, R.cpus);
