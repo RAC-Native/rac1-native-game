@@ -5,6 +5,10 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Cut Content, Kerwan's citizens (#136): they play the grind boots seller's own idle (Nebula G34's "Fred Prime",
+  the sequence his update plays while he waits: crouched, the hands together, 1 s loop) instead of his stiff standing one
+  where only the head moved; they stand 0.25 lower so the crouch keeps their feet on the ground. Read from the disc as
+  before; nothing changes with the item off.
 - Windows setup: "lld: error: unable to find library -lmsvcrt" while CMake tests the compiler (#140, #88): a file of
   MSYS2's C runtime package was missing although the package counted as installed, and the setup never installed it
   again. `tools\windows\toolchain.ps1` now checks the runtime packages' files (`pacman -Qk`: crt, headers, winpthreads,
