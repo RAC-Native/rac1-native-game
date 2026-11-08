@@ -31,9 +31,10 @@ std::filesystem::path prefs_path() {
     return "mods.txt";
 }
 
-// orig: (none) — enhancement: the player's choices ("<folder> on|off" per line; '#' a comment)
-std::map<std::string, bool> prefs_read() {
-    std::map<std::string, bool> out;
+// orig: (none) — enhancement: the player's choices ("<folder> on|off|on-code" per line, '#' a comment): 0 off, 1 on, 2 on with
+// its code confirmed (a mod with code is on only with that: one turned on before it had code asks again)
+std::map<std::string, int> prefs_read() {
+    std::map<std::string, int> out;
     std::ifstream f(prefs_path());
     std::string line;
     while (std::getline(f, line)) {
@@ -42,17 +43,18 @@ std::map<std::string, bool> prefs_read() {
         if (sp == std::string::npos || sp == 0) continue;
         std::string v = line.substr(sp + 1);
         while (!v.empty() && (v.back() == '\r' || v.back() == ' ')) v.pop_back();
-        if (v == "on" || v == "off") out[line.substr(0, sp)] = v == "on";
+        if (v == "on" || v == "off" || v == "on-code") out[line.substr(0, sp)] = v == "off" ? 0 : v == "on" ? 1 : 2;
     }
     return out;
 }
 
 // orig: (none) — enhancement: the choices written (every mod found; the lines of mods not found kept)
 void prefs_write() {
-    std::map<std::string, bool> all = prefs_read();
-    for (const ModInfo& m : g_mods) all[m.folder] = m.enabled;
-    std::string text = "# rac1-native: the mods on and off (main menu > Options > Mods); a mod not listed is on\n";
-    for (const auto& [k, v] : all) text += k + (v ? " on\n" : " off\n");
+    std::map<std::string, int> all = prefs_read();
+    for (const ModInfo& m : g_mods) all[m.folder] = !m.enabled ? 0 : m.code ? 2 : 1;
+    std::string text = "# rac1-native: the mods on and off (main menu > Options > Mods); a mod not listed is on, unless it contains code\n"
+                       "# (on-code: on, its code confirmed)\n";
+    for (const auto& [k, v] : all) text += k + (v == 0 ? " off\n" : v == 1 ? " on\n" : " on-code\n");
     const std::filesystem::path path = prefs_path();
     std::error_code ec;
     if (path.has_parent_path()) std::filesystem::create_directories(path.parent_path(), ec);
@@ -192,7 +194,7 @@ void mods_start(bool headless) {
     const std::filesystem::path root = mods_dir();
     std::error_code ec;
     if (!std::filesystem::is_directory(root, ec)) return;
-    const std::map<std::string, bool> prefs = g_read_prefs ? prefs_read() : std::map<std::string, bool>{};
+    const std::map<std::string, int> prefs = g_read_prefs ? prefs_read() : std::map<std::string, int>{};
     for (const auto& e : std::filesystem::directory_iterator(root, ec)) {
         if (!e.is_directory(ec)) continue;
         ModInfo m;
@@ -207,7 +209,8 @@ void mods_start(bool headless) {
             // (a mod with code: off when first found, the player turns it on and confirms it in Options > Mods)
             m.code = std::filesystem::is_directory(m.dir / "plugin", ec);
             const auto it = prefs.find(m.folder);
-            m.enabled = it == prefs.end() ? !m.code || !g_read_prefs : it->second;  // (a test run without preferences: every mod on)
+            // (a test run without preferences: every mod on; a mod with code: on only with its code confirmed)
+            m.enabled = it == prefs.end() ? !m.code || !g_read_prefs : m.code ? it->second == 2 : it->second != 0;
         }
         m.active = m.enabled && m.error.empty();
         m.disc_files = files_under(m.dir / "disc").size();

@@ -678,7 +678,8 @@ Off with cross or left / right; the box under the list shows the mod's descripti
 the first time is on. A change applies at the next start (the row says "On at restart" / "Off at restart" until then).
 
 The choices are kept in `mods.txt` in the settings' folder (`~/.config/rac1-native/` on Linux, `%APPDATA%\rac1-native\`
-on Windows), one `<folder> on|off` line per mod.
+on Windows), one `<folder> on|off` line per mod (`on-code` for a mod with code turned on and confirmed: a mod that gains
+code after it was turned on asks again).
 
 While any mod is on, the title screen, the main menu and the pause menu say so at the bottom ("Mods on: 2"), so that a
 screenshot or a report shows the game is not the original.
