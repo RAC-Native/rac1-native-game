@@ -558,7 +558,8 @@ Format 1 is the first step:
 - the sky: a game level's (`sky`); a sky of your own is a later step (a texture mod can change a sky's textures in the
   modern renderer). Another level's sky is right in the modern renderer; the faithful renderer may show it with wrong
   colours;
-- the base level is Veldin (the ship's planet page for the level shows Veldin's planet and missions);
+- the base level is Veldin (the ship's planet page for the level shows Veldin's planet and missions): see
+  [Other base levels](#other-base-levels-not-yet);
 - the level's size: the composed asset data (the base level's classes, sky and effects, and your collision) must not be
   larger than the base level's own (what the game's memory holds there: on Veldin 16 MB, of which the kept parts take
   about 9), the objects not more than the base level places, and the gameplay data not much larger than the base
@@ -569,6 +570,24 @@ Format 1 is the first step:
 - the meshes are drawn by the modern renderer only (the faithful renderer, a debug choice, draws what the game's code
   sends: the meshes have no EE data), lit by the modern lighting;
 - the North American disc (`SCUS-97199`); the PAL disc is not tested.
+
+### Other base levels (not yet)
+
+A level runs on its base level's code; format 1 takes Veldin's (level 0) only. Another base level (to have its
+objects' classes, its gadgets' effects, its enemies) needs three things not done yet:
+
+- **The composer's data file**: it keeps the base level's moby classes, effects, hero animations and gadgets and drops
+  its terrain, instances and foliage, by the order of the parts in the asset data, which is Veldin's. The other levels
+  have another order: Novalis's, Kerwan's and level 5's block +0x74 lies inside their texture data, before the
+  particles, where Veldin's is after them (tried: `the base level's block +0x74 is in no part kept`). Each part the
+  index names has to be kept by its own extent instead.
+- **The base level's story**: its code runs its own scripts at the level's start and on the way (arrival scenes,
+  missions, objects looked up by their ids, which the composed level does not have). Veldin's are harmless once its
+  first visit's cards and movies are left out (done); each other level's need finding and leaving out the same way,
+  level by level, and testing.
+- **The ship's list and the planet page**: the base planet is on the list itself (Veldin never is), so its own row
+  and the level's row stand for one planet (the rows are told apart already: the list's selection is ours to know),
+  and the planet page would show the base planet's picture and missions.
 
 ### Level mods: log lines
 
