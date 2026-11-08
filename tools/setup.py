@@ -1638,6 +1638,29 @@ def generate(iso, forced):
             warn(f"Generating {what} left out files ({gone}).")
         state[name] = fingerprint
         save_state(state)
+    level_mods()
+
+
+def level_mods():
+    """The level mods in mods/ (docs/mods.md, "Level mods"): each one whose build is missing or old composed with the disc's
+    files into assets/generated/mods/<folder>/ (`rac1-native --setup --level-mods`: it checks their stamps itself). Not
+    fatal: the game lists a level mod with no build as needing the setup."""
+    mods = ROOT / "mods"
+    if not mods.is_dir():
+        return
+    found = False
+    for d in sorted(mods.iterdir()):
+        try:
+            if d.is_dir() and not d.name.startswith((".", "_")) and '"level"' in (d / "mod.json").read_text(errors="replace"):
+                found = True
+        except OSError:
+            pass
+    if not found:
+        return
+    if subprocess.run([str(EXE), "--setup", "--level-mods"], cwd=ROOT, env=game_env()).returncode:
+        warn("A level mod could not be composed (see the [compose] lines above); the game lists it as needing the setup.")
+    else:
+        ok("Level mods: up to date")
 
 
 # What the build compiles (CMake's inputs): a file newer than the program means a new version (a git pull, a

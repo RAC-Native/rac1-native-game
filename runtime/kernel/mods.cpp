@@ -82,8 +82,26 @@ std::vector<std::pair<std::string, std::filesystem::path>> files_under(const std
     return out;
 }
 
-// orig: (none) — enhancement: mods/<folder>/mod.json read into `m`; false (m.error said) when it cannot be
-bool manifest_read(ModInfo& m) {
+// The disc files the mods on give: the layout's path -> the winner's file and the others' (for the size check)
+struct DiscEntry {
+    std::vector<std::pair<const ModInfo*, std::filesystem::path>> by_order;  // the load order: the first wins
+};
+std::map<std::string, DiscEntry>* g_disc = nullptr;
+
+// orig: (none) — enhancement: the mods' disc files indexed (once)
+std::map<std::string, DiscEntry>& disc_index() {
+    if (g_disc != nullptr) return *g_disc;
+    g_disc = new std::map<std::string, DiscEntry>();
+    for (const ModInfo& m : g_mods) {
+        if (!m.active) continue;
+        for (auto& [rel, path] : files_under(m.dir / "disc")) (*g_disc)[rel].by_order.emplace_back(&m, path);
+    }
+    return *g_disc;
+}
+}  // namespace
+
+// orig: (none) — enhancement (mods.h)
+bool mods_manifest_read(ModInfo& m) {
     std::ifstream f(m.dir / "mod.json", std::ios::binary);
     if (!f) {
         m.error = "no mod.json";
@@ -102,26 +120,36 @@ bool manifest_read(ModInfo& m) {
     m.description = field(j, "description", "", 200);
     const auto p = j.find("priority");
     if (p != j.end() && p->is_number_integer()) m.priority = static_cast<int>(std::clamp<int64_t>(p->get<int64_t>(), -1000000, 1000000));
+    // a level mod (docs/mods.md, "Level mods")
+    if (field(j, "kind", "", 16) == "level") {
+        m.level = true;
+        const auto l = j.find("level");
+        if (l == j.end() || !l->is_object()) {
+            m.error = "a level mod's mod.json has no \"level\" object";
+            return false;
+        }
+        m.level_id = field(*l, "id", "", 40);
+        bool id_ok = !m.level_id.empty();
+        for (char c : m.level_id) id_ok = id_ok && (std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.');
+        if (!id_ok) {
+            m.error = "level.id is missing or not letters, digits, '-', '_', '.'";
+            return false;
+        }
+        const auto fmt = l->find("format");
+        m.level_format = fmt != l->end() && fmt->is_number_integer() ? static_cast<int>(std::clamp<int64_t>(fmt->get<int64_t>(), 0, 1000)) : 0;
+        if (m.level_format != kLevelFormat) {
+            m.error = "level.format " + std::to_string(m.level_format) + " (this game reads format " + std::to_string(kLevelFormat) + "): needs a newer game";
+            return false;
+        }
+        const auto base = l->find("base");
+        m.level_base = base != l->end() && base->is_number_integer() ? static_cast<int>(std::clamp<int64_t>(base->get<int64_t>(), -1, 1000)) : 0;
+        if (m.level_base != 0) {  // (format 1: Veldin's code only, the one level the ship's list never shows)
+            m.error = "level.base " + std::to_string(m.level_base) + ": format 1 runs on level 0 (Veldin) only";
+            return false;
+        }
+    }
     return true;
 }
-
-// The disc files the mods on give: the layout's path -> the winner's file and the others' (for the size check)
-struct DiscEntry {
-    std::vector<std::pair<const ModInfo*, std::filesystem::path>> by_order;  // the load order: the first wins
-};
-std::map<std::string, DiscEntry>* g_disc = nullptr;
-
-// orig: (none) — enhancement: the mods' disc files indexed (once)
-std::map<std::string, DiscEntry>& disc_index() {
-    if (g_disc != nullptr) return *g_disc;
-    g_disc = new std::map<std::string, DiscEntry>();
-    for (const ModInfo& m : g_mods) {
-        if (!m.active) continue;
-        for (auto& [rel, path] : files_under(m.dir / "disc")) (*g_disc)[rel].by_order.emplace_back(&m, path);
-    }
-    return *g_disc;
-}
-}  // namespace
 
 // orig: (none) — enhancement (mods.h)
 std::filesystem::path mods_dir() {
@@ -152,7 +180,7 @@ void mods_start(bool headless) {
         m.folder = e.path().filename().string();
         if (m.folder.empty() || m.folder[0] == '.' || m.folder[0] == '_') continue;  // (hidden, or ours: _dump)
         m.dir = e.path();
-        if (!manifest_read(m)) {
+        if (!mods_manifest_read(m)) {
             std::fprintf(stderr, "[mods] %s: %s, not loaded\n", m.folder.c_str(), m.error.c_str());
             m.name = m.folder;
             m.enabled = false;
@@ -174,10 +202,34 @@ void mods_start(bool headless) {
         if (a.priority != b.priority) return a.priority > b.priority;
         return a.folder < b.folder;
     });
+    // the level mods: on only with their build (the setup's), each on a host level slot of its own
+    int next_slot = kFirstLevelSlot;
+    std::map<std::string, std::string> ids;  // level.id -> the folder that has it
+    for (ModInfo& m : g_mods) {
+        if (!m.level || !m.active) continue;
+        m.level_wait = mods_level_build_check(m);
+        if (m.level_wait.empty() && ids.count(m.level_id) != 0) m.level_wait = "its level.id is " + ids[m.level_id] + "'s too";
+        // (format 1: one level mod at a time, the first in load order; the ship's list has one row)
+        if (m.level_wait.empty() && !ids.empty()) m.level_wait = "one level mod at a time for now (" + ids.begin()->second + " is on)";
+        if (!m.level_wait.empty()) {
+            m.active = false;
+            continue;
+        }
+        ids[m.level_id] = m.folder;
+        m.level_slot = next_slot++;
+    }
     for (const ModInfo& m : g_mods)
         std::printf("[mods] %s: \"%s\" %s by %s, priority %d, %zu disc files, %zu textures: %s\n", m.folder.c_str(), m.name.c_str(),
                     m.version.empty() ? "-" : m.version.c_str(), m.author.empty() ? "-" : m.author.c_str(), m.priority, m.disc_files, m.textures,
-                    m.active ? "on" : (m.error.empty() ? "off" : "not loaded"));
+                    m.active ? "on" : (m.error.empty() ? (m.level_wait.empty() ? "off" : "not loaded") : "not loaded"));
+    for (const ModInfo& m : g_mods) {
+        if (!m.level) continue;
+        if (m.level_slot >= 0)
+            std::printf("[mods] %s: the level \"%s\" on host slot %d (it runs on level %d's code)\n", m.folder.c_str(), m.level_id.c_str(), m.level_slot,
+                        m.level_base);
+        else if (!m.level_wait.empty())
+            std::fprintf(stderr, "[mods] %s: the level \"%s\" is not on: %s\n", m.folder.c_str(), m.level_id.c_str(), m.level_wait.c_str());
+    }
 }
 
 // orig: (none) — enhancement (mods.h)
@@ -209,7 +261,7 @@ void mods_set_enabled(size_t i, bool on) {
 // orig: (none) — enhancement (mods.h)
 bool mods_restart_pending() {
     for (const ModInfo& m : g_mods)
-        if (m.error.empty() && m.enabled != m.active) return true;
+        if (m.error.empty() && m.level_wait.empty() && m.enabled != m.active) return true;
     return false;
 }
 
@@ -257,6 +309,79 @@ std::vector<std::pair<std::string, std::filesystem::path>> mods_files(const char
             out.emplace_back(rel, path);
         }
     return out;
+}
+
+// orig: (none) — enhancement (mods.h)
+std::filesystem::path mods_level_build_dir(const std::string& folder) { return std::filesystem::path("assets/generated/mods") / folder; }
+
+// orig: (none) — enhancement (mods.h)
+uint64_t mods_level_inputs_stamp(const std::filesystem::path& mod_dir) {
+    uint64_t h = 1469598103934665603ull;  // (FNV-1a, 64 bits)
+    auto mix = [&h](const void* p, size_t n) {
+        const auto* b = static_cast<const uint8_t*>(p);
+        for (size_t i = 0; i < n; ++i) h = (h ^ b[i]) * 1099511628211ull;
+    };
+    std::vector<std::pair<std::string, std::filesystem::path>> files = files_under(mod_dir / "level");
+    for (auto& f : files) f.first = "level/" + f.first;
+    files.emplace_back("mod.json", mod_dir / "mod.json");
+    std::sort(files.begin(), files.end());
+    std::vector<char> buf(1 << 16);
+    for (const auto& [rel, path] : files) {
+        mix(rel.data(), rel.size() + 1);
+        std::ifstream f(path, std::ios::binary);
+        uint64_t n = 0;
+        while (f) {
+            f.read(buf.data(), static_cast<std::streamsize>(buf.size()));
+            const auto got = static_cast<size_t>(f.gcount());
+            mix(buf.data(), got);
+            n += got;
+        }
+        mix(&n, sizeof n);
+    }
+    return h;
+}
+
+// orig: (none) — enhancement (mods.h)
+std::string mods_level_build_check(const ModInfo& m) {
+    const std::filesystem::path dir = mods_level_build_dir(m.folder);
+    std::ifstream f(dir / "build.json", std::ios::binary);
+    if (!f) return "needs setup (no build in " + dir.generic_string() + ": run the setup)";
+    std::stringstream ss;
+    ss << f.rdbuf();
+    const nlohmann::json j = nlohmann::json::parse(ss.str(), nullptr, false);
+    if (j.is_discarded() || !j.is_object()) return "needs setup (its build.json is damaged)";
+    const auto v = j.find("composer");
+    if (v == j.end() || !v->is_number_integer() || v->get<int64_t>() != kLevelComposerVersion) return "needs setup (built by another version)";
+    char want[24];
+    std::snprintf(want, sizeof want, "%016llx", static_cast<unsigned long long>(mods_level_inputs_stamp(m.dir)));
+    if (field(j, "inputs", "", 32) != want) return "needs setup (the mod's files changed since its build)";
+    for (const char* file : {"data.wad", "gameplay.bin"}) {
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(dir / file, ec)) return std::string("needs setup (its build has no ") + file + ")";
+    }
+    return "";
+}
+
+// orig: (none) — enhancement (mods.h)
+std::vector<const ModInfo*> mods_levels() {
+    std::vector<const ModInfo*> out;
+    for (const ModInfo& m : g_mods)
+        if (m.active && m.level && m.level_slot >= 0) out.push_back(&m);
+    return out;
+}
+
+// orig: (none) — enhancement (mods.h)
+const ModInfo* mods_level_at_slot(int slot) {
+    for (const ModInfo& m : g_mods)
+        if (m.active && m.level && m.level_slot == slot) return &m;
+    return nullptr;
+}
+
+// orig: (none) — enhancement (mods.h)
+const ModInfo* mods_level_by_id(const std::string& id) {
+    for (const ModInfo& m : g_mods)
+        if (m.active && m.level && m.level_slot >= 0 && m.level_id == id) return &m;
+    return nullptr;
 }
 
 }  // namespace rac1

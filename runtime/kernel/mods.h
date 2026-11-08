@@ -4,6 +4,9 @@
 //   mods/<folder>/disc/...                files laid out as the setup's extracted disc files (assets/disc/, its layout.txt's
 //                                         paths): each one read instead of the disc's (disc.cpp), the same size only
 //   mods/<folder>/textures/<hash>.png     a texture replaced by its content hash (game/render/texture_mods.h)
+//   mods/<folder>/level/...               a level mod's level (the manifest's "kind": "level"): the setup composes it
+//                                         with the player's disc into assets/generated/mods/<folder>/ (its build), and
+//                                         the game runs it on a host level slot (src/host/level_slots.h)
 // Which mods are on is the player's choice (main menu > Options > Mods), kept in the preferences (mods.txt in the config
 // folder: "<folder> on|off" lines; a mod never chosen is on); a change applies at the next start. When two mods give the
 // same file, the higher priority wins (ties: the folder name first in alphabetical order), and the conflict is logged.
@@ -32,7 +35,23 @@ struct ModInfo {
     size_t disc_files = 0;          // the files under disc/
     size_t textures = 0;            // the PNGs under textures/
     std::string error;              // its manifest could not be read: never active
+    // a level mod (the manifest's "kind": "level"; docs/mods.md, "Level mods"): a new level the ship flies to
+    bool level = false;
+    std::string level_id;           // the manifest's level.id: the level's stable key (its progress in save<N>.pc,
+                                    // RAC1_GOTO=<id>@F), never the folder's name
+    int level_format = 0;           // the level folder's format (level.format: 1)
+    int level_base = 0;             // the game's level it runs on (level.base: its code, its address map; 0 Veldin)
+    std::string level_wait;         // why it is not on although chosen ("" when it is): no build, an old build, ...
+    int level_slot = -1;            // the host's level slot (19, 20, ...) while it is on in this run, else -1
 };
+
+// The level composer's version (src/setup/level_compose.cpp): a build made by another version is made again by the
+// setup, and the game does not use it ("needs setup")
+constexpr int kLevelComposerVersion = 1;
+// The level folder formats this build reads (level.format)
+constexpr int kLevelFormat = 1;
+// The first host level slot (the game's levels are 0..18)
+constexpr int kFirstLevelSlot = 19;
 
 // orig: (none) — enhancement: the mods looked for (the game's start, before the disc's first read): `headless` a test run
 void mods_start(bool headless);
@@ -58,5 +77,25 @@ std::filesystem::path mods_disc_file(const std::string& rel, uint64_t size);
 // orig: (none) — enhancement: every file under `sub` ("textures") of the mods on, by its path relative to there, the
 // winner of each name (a conflict logged)
 std::vector<std::pair<std::string, std::filesystem::path>> mods_files(const char* sub);
+
+// ---- Level mods (docs/mods.md, "Level mods") ----
+// orig: (none) — enhancement: mods/<folder>/mod.json read into `m` (its folder and dir set by the caller); false (m.error
+// said) when it cannot be. The setup's level composer reads the manifests with it (it runs without mods_start).
+bool mods_manifest_read(ModInfo& m);
+// orig: (none) — enhancement: where a level mod's build is (the setup's level composer writes it there, from the player's
+// disc: never in the mod): assets/generated/mods/<folder>
+std::filesystem::path mods_level_build_dir(const std::string& folder);
+// orig: (none) — enhancement: the stamp of a level mod's own files (mod.json and everything under level/: their paths,
+// sizes and bytes), which its build records (build.json): another stamp means the build is old
+uint64_t mods_level_inputs_stamp(const std::filesystem::path& mod_dir);
+// orig: (none) — enhancement: why the build of level mod `m` cannot be used ("" when it can): none, made by another
+// composer version, or from other files than the mod's
+std::string mods_level_build_check(const ModInfo& m);
+// orig: (none) — enhancement: the level mods on in this run (each with its host slot), in their load order
+std::vector<const ModInfo*> mods_levels();
+// orig: (none) — enhancement: the level mod on host slot `slot`, else null
+const ModInfo* mods_level_at_slot(int slot);
+// orig: (none) — enhancement: the level mod on whose level.id is `id`, else null
+const ModInfo* mods_level_by_id(const std::string& id);
 
 }  // namespace rac1
