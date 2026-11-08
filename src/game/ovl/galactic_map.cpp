@@ -54,7 +54,7 @@ int32_t galmap_list_focus_in(uint32_t w) {
             ++n;
         }
     }
-    n = level_slots_list_rows(list, n);  // enhancement: a level mod's row (src/host/level_slots.h; none without one)
+    n = level_slots_list_rows(list, n);  // enhancement: the level mods' rows, the prompt's order (src/host/level_slots.h; else nothing)
     sh(list + n * 0xc, 0);
     const uint32_t order = OV(0x00166c00u - 0x6960);
     sw(w + 0x40, 0);
@@ -112,6 +112,7 @@ int32_t galmap_planet_update(uint32_t w) {
     }
     if ((b & 0x800) != 0) {
         sw(OV(0x00184414), lwu(0x0015ed84));
+        level_slots_list_back();  // enhancement: the current level again (src/host/level_slots.h; else nothing)
         return 1;
     }
     if ((b & 0x40) != 0) {

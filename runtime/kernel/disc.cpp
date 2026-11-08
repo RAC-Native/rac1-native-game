@@ -609,7 +609,7 @@ bool disc_read_level_overlay(int level, std::vector<std::byte>& out) {
 
 // orig: (none) — enhancement (disc.h)
 bool disc_level_window_set(int slot, const std::string& data, const std::string& gameplay) {
-    if (slot < kFirstLevelSlot || slot >= kFirstLevelSlot + 16) return false;
+    if (slot < kFirstLevelSlot || slot >= kFirstLevelSlot + kLevelSlots) return false;
     LevelWindow w;
     w.slot = slot;
     w.base = level_window_base(slot);

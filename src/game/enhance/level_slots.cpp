@@ -10,6 +10,7 @@
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/mods.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
@@ -24,12 +25,16 @@ namespace rac1 {
 
 namespace {
 
-// Our texts: the row's name and region (ids after the Mods page's 0x7d00.., before the update notice's 0x7e00..), their
-// strings in the mods' block of EE memory (0xe0000..0xf0000, in the PS2 kernel's first megabyte, which the port's
-// kernel leaves unused; the level mods' texts its first 0x1000 bytes)
-constexpr int32_t TEXT_NAME = 0x7dc0, TEXT_REGION = 0x7dc1;
+// Our texts: each level row's name and region (ids after the Mods page's 0x7d00.., before the update notice's 0x7e00..:
+// 0x7dc0 + 2 k the name of the k-th level mod on, + 1 its region), their strings in the mods' block of EE memory
+// (0xe0000..0xf0000, in the PS2 kernel's first megabyte, which the port's kernel leaves unused; the level mods' texts its
+// first 0x1000 bytes, 0x100 a level)
+constexpr int32_t TEXT_NAME = 0x7dc0, TEXT_REGION = 0x7dc1, TEXT_END = TEXT_NAME + 2 * kLevelSlots;
 constexpr uint32_t TEXTS = 0x000e0000u;
 constexpr uint32_t NAME_SIZE = 0x80, REGION_SIZE = 0x80;
+static_assert(TEXT_END <= 0x7e00 && (NAME_SIZE + REGION_SIZE) * kLevelSlots <= 0x1000, "the level rows' texts");
+constexpr uint32_t UNLOCKED = 0x0013d510u;       // the planets the ship can fly to (words, 0 ends)
+constexpr uint32_t ROWS_MAX = 0x14;              // the planet list's rows at most (galmap_list_focus_in)
 constexpr OvConst<0x001c1e40u> PLANET_TEXTS{};  // the planets' texts (0xc a planet: +0 the region, +4 the name)
 constexpr OvConst<0x001b9cf0u> MENU_STATE{};    // the menu's state (0xe..0x10: the ship's planet map, galactic_map.cpp)
 constexpr OvConst<0x00184414u> MENU_PLANET{};   // the planet the ship's map shows
@@ -80,8 +85,17 @@ struct State {
     std::string saved_on;      // (a save's .pc read) the level.id it was made on ("" none)
     int32_t saved_from = -1;   // ... and the level flown from
     bool prompt = false;       // the planet prompt waits (the save's level is not on)
+    bool prompt_open = false;  // the ship's planet map is open as the planet prompt (until a travel)
     std::string prompt_name;   // its name, for the log
     int prompt_frames = 0;
+    // the ship's planet list as galmap_list_focus_in last made it (our rows added): each row's planet and level slot (-1:
+    // the planet's own level); the row selected's slot (-1: none of ours)
+    struct Row {
+        int32_t planet = 0;
+        int slot = -1;
+    };
+    std::vector<Row> rows;
+    int row_sel = -1;
 } g_s;
 
 Names g_names[16];  // per slot - kFirstLevelSlot
@@ -94,11 +108,16 @@ bool trace() {
 
 const ModInfo* slot_mod(int slot) { return slot >= kFirstLevelSlot ? mods_level_at_slot(slot) : nullptr; }
 
-// the level row's slot (format 1: the first level mod on; one row)
-int row_slot() {
+// the k-th level mod on (its row's texts), -1 when none
+int slot_index(int slot) {
     const std::vector<const ModInfo*> ls = mods_levels();
-    return ls.empty() ? -1 : ls.front()->level_slot;
+    for (size_t k = 0; k < ls.size(); ++k)
+        if (ls[k]->level_slot == slot) return static_cast<int>(k);
+    return -1;
 }
+
+// our rows are on the ship's list: a level mod on, or the planet prompt's map
+bool rows_on() { return g_s.prompt_open || level_slots_on(); }
 
 int base_of(int slot) {
     const ModInfo* m = slot_mod(slot);
@@ -252,31 +271,101 @@ std::string level_slot_mod_dir(int slot) {
 
 // orig: (none) — enhancement (level_slots.h)
 uint32_t level_slots_list_rows(uint32_t list, uint32_t n) {
-    if (!level_slots_on() || n >= 0x14 || row_slot() < 0) return n;
-    const uint32_t e = list + n * 0xc;
-    sh(e, static_cast<uint32_t>(TEXT_REGION));  // (as the game's rows: the region, the level's name under it)
-    sh(e + 2, 1);
-    sw(e + 4, 0);
-    sh(e + 8, static_cast<uint32_t>(TEXT_NAME));
-    return n + 1;
+    if (!rows_on()) return n;
+    g_s.rows.clear();
+    g_s.row_sel = -1;
+    for (uint32_t i = 0; i < n; ++i) g_s.rows.push_back({lw(UNLOCKED + i * 4), -1});
+    // the planet prompt: the level flown from first (the save's unlocked planets, as the game listed them, after it)
+    if (g_s.prompt_open) {
+        const int32_t here = lw(LEVEL);
+        for (uint32_t i = 1; i < n; ++i) {
+            if (g_s.rows[i].planet != here) continue;
+            uint8_t e[0xc];
+            for (uint32_t b = 0; b < 0xc; ++b) e[b] = static_cast<uint8_t>(lbu(list + i * 0xc + b));
+            for (uint32_t k = i; k > 0; --k)
+                for (uint32_t b = 0; b < 0xc; ++b) sb(list + k * 0xc + b, lbu(list + (k - 1) * 0xc + b));
+            for (uint32_t b = 0; b < 0xc; ++b) sb(list + b, e[b]);
+            std::rotate(g_s.rows.begin(), g_s.rows.begin() + i, g_s.rows.begin() + i + 1);
+            break;
+        }
+    }
+    // a row per level mod on, in load order, after the unlocked planets (as the game's rows: the region, the name under it)
+    const std::vector<const ModInfo*> ls = level_slots_on() ? mods_levels() : std::vector<const ModInfo*>();
+    for (size_t k = 0; k < ls.size(); ++k) {
+        if (n >= ROWS_MAX) {
+            static bool said = false;
+            if (!said) std::fprintf(stderr, "[levels] the ship's planet list is full (%u rows): \"%s\" and the levels after it have no row\n", ROWS_MAX,
+                                    ls[k]->level_id.c_str());
+            said = true;
+            break;
+        }
+        const uint32_t e = list + n * 0xc;
+        sh(e, static_cast<uint32_t>(TEXT_REGION + 2 * static_cast<int32_t>(k)));
+        sh(e + 2, 1);
+        sw(e + 4, 0);
+        sh(e + 8, static_cast<uint32_t>(TEXT_NAME + 2 * static_cast<int32_t>(k)));
+        g_s.rows.push_back({ls[k]->level_base, ls[k]->level_slot});
+        ++n;
+    }
+    if (trace()) {
+        std::string t;
+        for (const State::Row& r : g_s.rows) t += " " + std::to_string(r.planet) + (r.slot >= 0 ? "/" + std::to_string(r.slot) : "");
+        std::printf("[levels] the ship's planet list:%s%s\n", t.c_str(), g_s.prompt_open ? " (the planet prompt)" : "");
+    }
+    return n;
 }
 
 // orig: (none) — enhancement (level_slots.h)
 int32_t level_slots_list_focus(uint32_t n) {
-    if (!level_slots_on() || n == 0 || row_slot() < 0 || level_slot_current() != row_slot()) return -1;
-    return static_cast<int32_t>(n - 1);  // (our row: the list's last)
+    if (!rows_on() || n == 0) return -1;
+    if (g_s.prompt_open) {  // (the prompt: the level flown from, the list's first)
+        sw(MENU_PLANET, static_cast<uint32_t>(g_s.rows.empty() ? lw(LEVEL) : g_s.rows[0].planet));
+        return 0;
+    }
+    const int cur = level_slot_current();
+    for (size_t i = 0; cur >= 0 && i < g_s.rows.size() && i < n; ++i)
+        if (g_s.rows[i].slot == cur) {
+            g_s.row_sel = cur;
+            sw(MENU_PLANET, static_cast<uint32_t>(g_s.rows[i].planet));
+            return static_cast<int32_t>(i);
+        }
+    return -1;
+}
+
+// orig: (none) — enhancement (level_slots.h)
+void level_slots_list_select(uint32_t items, int32_t sel) {
+    if (!rows_on() || items != OV(0x001ba3b8u) || sel < 0 || static_cast<size_t>(sel) >= g_s.rows.size()) return;
+    const State::Row& r = g_s.rows[static_cast<size_t>(sel)];
+    sw(MENU_PLANET, static_cast<uint32_t>(r.planet));  // (ours: the game's table has no entry for them; the prompt's order)
+    if (trace() && g_s.row_sel != r.slot) std::printf("[levels] the ship's list: row %d (planet %d, slot %d)\n", sel, r.planet, r.slot);
+    g_s.row_sel = r.slot;
+}
+
+// orig: (none) — enhancement (level_slots.h)
+void level_slots_list_back() {
+    if (!rows_on()) return;
+    g_s.row_sel = level_slot_current();  // (the map's planet is the current level's: on a slot's level, that slot)
 }
 
 // orig: (none) — enhancement (level_slots.h)
 bool level_slots_travel(int32_t planet) {
-    if (!level_slots_on()) return false;
-    const int slot = row_slot();
-    if (slot < 0 || planet != base_of(slot)) {
-        g_s.pending = -1;  // (another planet: the redirect stays until that level's header is read)
-        return false;
+    if (!rows_on()) return false;
+    const bool prompt = g_s.prompt_open;
+    g_s.prompt_open = false;
+    const int slot = g_s.row_sel;
+    g_s.row_sel = -1;
+    if (slot >= 0 && planet == base_of(slot)) {
+        choose(slot);
+        return lw(LEVEL) == planet;
     }
-    choose(slot);
-    return lw(LEVEL) == planet;
+    g_s.pending = -1;  // (another planet: the redirect stays until that level's header is read)
+    if (prompt && planet == lw(LEVEL)) {
+        // the planet prompt left for the level it was opened on (chosen, or the map closed: triangle, start): Ratchet is not
+        // in his ship there, so not the ship's landing on the level shown but the level loaded again, as from elsewhere
+        std::printf("[levels] the planet prompt: level %d chosen (loaded again)\n", planet);
+        return true;
+    }
+    return false;
 }
 
 // orig: (none) — enhancement (level_slots.h)
@@ -351,23 +440,26 @@ bool level_slots_skip_story() { return level_slots_on() && (g_s.pending >= 0 || 
 // orig: (none) — enhancement (level_slots.h)
 uint32_t level_slots_text(int32_t id) {
     if (!level_slots_on() || id < 0x100) return 0;
-    const int slot = row_slot();
-    if (slot < 0) return 0;
-    // on the ship's map, the planet it shows is our row's base level (which the list never shows otherwise): its name and
+    // on the ship's map, while one of our rows is selected the planet it shows is that level's base level: its name and
     // region (the planet page's labels) are the slot's level's
     const uint32_t ms = lwu(MENU_STATE);
-    if ((ms == 0xf || ms == 0x10) && lw(MENU_PLANET) == base_of(slot)) {
-        const uint32_t pt = PLANET_TEXTS + static_cast<uint32_t>(base_of(slot)) * 0xc;
-        if (id == static_cast<int32_t>(lhu(pt))) id = TEXT_REGION;
-        else if (id == static_cast<int32_t>(lhu(pt + 4))) id = TEXT_NAME;
+    if ((ms == 0xf || ms == 0x10) && g_s.row_sel >= 0 && lw(MENU_PLANET) == base_of(g_s.row_sel)) {
+        const uint32_t pt = PLANET_TEXTS + static_cast<uint32_t>(base_of(g_s.row_sel)) * 0xc;
+        const int32_t k = slot_index(g_s.row_sel);
+        if (k >= 0 && id == static_cast<int32_t>(lhu(pt))) id = TEXT_REGION + 2 * k;
+        else if (k >= 0 && id == static_cast<int32_t>(lhu(pt + 4))) id = TEXT_NAME + 2 * k;
     }
-    if (id != TEXT_NAME && id != TEXT_REGION) return 0;
+    if (id < TEXT_NAME || id >= TEXT_END) return 0;
+    const std::vector<const ModInfo*> ls = mods_levels();
+    const size_t k = static_cast<size_t>(id - TEXT_NAME) / 2;
+    if (k >= ls.size()) return 0;
     uint32_t lang = lwu(0x0015ed88);
     if (lang >= 6) lang = 0;
-    const bool name = id == TEXT_NAME;
-    const Names& n = names(slot);
+    const bool name = (id - TEXT_NAME) % 2 == 0;
+    const Names& n = names(ls[k]->level_slot);
     const std::string& s = name ? n.names[lang] : n.regions[lang];
-    const uint32_t at = name ? TEXTS : TEXTS + NAME_SIZE, size = name ? NAME_SIZE : REGION_SIZE;
+    const uint32_t base = TEXTS + static_cast<uint32_t>(k) * (NAME_SIZE + REGION_SIZE);
+    const uint32_t at = name ? base : base + NAME_SIZE, size = name ? NAME_SIZE : REGION_SIZE;
     for (uint32_t i = 0; i < size; ++i) {
         const char c = i < s.size() ? s[i] : 0;
         sb(at + i, i + 1 < size && c >= 0x20 && c < 0x7f ? static_cast<uint8_t>(c) : (i < s.size() && i + 1 < size ? '?' : 0u));
@@ -388,7 +480,10 @@ bool level_slots_save_record(uint32_t list, int32_t index, uint32_t e, uint32_t 
 
 // orig: (none) — enhancement (level_slots.h)
 void level_slots_block_read(uint32_t list, int32_t index) {
-    if (!level_slots_on() || list != LEVEL_LIST || row_slot() < 0 || index != base_of(row_slot())) return;
+    if (!level_slots_on() || list != LEVEL_LIST) return;
+    bool base = false;  // (the block of a level mod's base level)
+    for (const ModInfo* m : mods_levels()) base = base || index == m->level_base;
+    if (!base) return;
     // EE memory has the save's (the game's) records: nothing to swap back; the levels' state is the save's (its .pc, next)
     g_s.swapped = false;
     g_s.base.clear();
@@ -401,6 +496,8 @@ void level_slots_new_game() {
     g_s.carried.clear();
     g_s.saved_on.clear();
     g_s.prompt = false;
+    g_s.prompt_open = false;
+    g_s.row_sel = -1;
     if (!level_slots_on()) return;
     g_s.progress.clear();
     for (int l = 0; l < 19; ++l)
@@ -516,6 +613,7 @@ void level_slots_frame() {
     if (lw(OV(0x0015f5c4)) != 0) return;  // (a menu or a screen already)
     if (++g_s.prompt_frames < 30) return;
     g_s.prompt = false;
+    g_s.prompt_open = true;  // (its list: the level flown from first; leaving it for that level loads it again)
     menu_open(0);
     sw(MENU_STATE, 0xe);
     sw(OV(0x0015f5d8), 1);
@@ -527,6 +625,14 @@ void level_slots_frame() {
 // buffer 0x1506d0 and copied out) to <prefix><frame>.bin, and our .pc items to <prefix><frame>.pc: a save made on a
 // slot's level must give the same level blocks as one made elsewhere
 void level_slots_test_frame(uint64_t frame) {
+    // RAC1_LEVEL_MAP_AT=<frame>: the ship's planet map opened at that game frame, as a take-off opens it (its list, our rows)
+    static const long long map_at = std::getenv("RAC1_LEVEL_MAP_AT") != nullptr ? std::atoll(std::getenv("RAC1_LEVEL_MAP_AT")) : -1;
+    if (map_at >= 0 && frame == static_cast<uint64_t>(map_at) && lw(OV(0x0015f5c4)) == 0) {
+        menu_open(0);
+        sw(MENU_STATE, 0xe);
+        sw(OV(0x0015f5d8), 1);
+        std::printf("[levels] RAC1_LEVEL_MAP_AT: the ship's planet map opened at frame %llu\n", static_cast<unsigned long long>(frame));
+    }
     static const char* spec = std::getenv("RAC1_LEVEL_SAVE_IMAGE");
     if (spec == nullptr) return;
     const char* colon = std::strchr(spec, ':');

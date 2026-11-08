@@ -502,8 +502,10 @@ base level's code (Veldin's). Its files are read through a window of sectors of 
 replaced or padded), its lights file and world are its own, and the game's level number stays the base level's, so the
 game's code is untouched.
 
-- **The ship's list**: one row (the first level mod on, in load order: one level mod at a time in format 1; the others
-  wait, the log says so). Choosing it flies there; from it the ship flies anywhere as usual.
+- **The ship's list**: one row per level mod on, in load order, after the unlocked planets (each its own host slot: 19,
+  20, ..., 16 at most; the list's 20 rows permitting: with every planet unlocked there is room for two, the log says
+  which levels have no row). Choosing one flies there; from it the ship flies anywhere as usual, to another level mod's
+  level too. While a row is selected the planet page shows its name.
 - **Its state** (what Ratchet picked up and broke there) is its own: the save's per-level records of the base level hold
   the level's while you are on it, Veldin's are kept aside and come back when you leave.
 - **Saves**: a memory card save made on the level is the game's own save, byte for byte (Veldin's records, the level
@@ -511,9 +513,10 @@ game's code is untouched.
   whether the save was made there, the level you flew from, its records). Loading that save with the mod on brings you
   back to the level.
 - **The mod off or missing**: loading a save made on the level puts you on the level you flew there from, and opens the
-  ship's planet map there (the save's unlocked planets, that one selected: choose where to land, as from the ship; the map
-  closes by choosing): the **planet prompt**. Its progress is kept:
-  saving again writes its item back as it was, so turning the mod on later finds it.
+  ship's planet map there: the **planet prompt**. Its list is the save's unlocked planets with the level you flew from
+  first (and selected), then the other level mods on. Choose where to land, as from the ship; leaving the map
+  (triangle or start) lands you on the level you flew from (it is loaded again: Ratchet is not in his ship there). Its
+  progress is kept: saving again writes its item back as it was, so turning the mod on later finds it.
 - **Options > Mods**: the level mod is a row as any mod. "Needs setup" when its build is missing or old (the box under
   the list says why); on or off at the next start.
 
@@ -523,8 +526,7 @@ Format 1 is the first step:
 
 - no objects of their own (enemies, crates, bolts, vendors, NPCs), no scripted events, no own music or sounds (the base
   level's play), no own sky (Veldin's);
-- one level mod at a time; the base level is Veldin (the ship's planet page for the level shows Veldin's planet and
-  missions);
+- the base level is Veldin (the ship's planet page for the level shows Veldin's planet and missions);
 - the level's size: its collision and the base level's parts must fit the PS2's memory (a level of a few hundred
   units across is far within it);
 - the meshes are drawn by the modern renderer only, lit by the modern lighting, one colour per mesh (no vertex colours);
@@ -536,6 +538,8 @@ Format 1 is the first step:
 |---|---|
 | `[mods] <folder>: the level "<id>" on host slot 19` | on in this run |
 | `[mods] <folder>: the level "<id>" is not on: needs setup (...)` | no build, an old one, or the mod's files changed since: run the setup |
+| `[mods] <folder>: the level "<id>" is not on: too many level mods on (16 at most)` | more level mods on than host slots |
+| `[levels] the ship's planet list is full (20 rows): "<id>" and the levels after it have no row` | every planet unlocked: no room for more rows |
 | `[mods] <folder>: level.format N ...: needs a newer game` | a format this game does not read |
 | `[levels] "<name>" chosen` | its row chosen (or `RAC1_GOTO=<id>@<frame>`) |
 | `[levels] level 0's header: level slot 19's` | the level loads |
@@ -547,7 +551,9 @@ Format 1 is the first step:
 `RAC1_MODS=1 RAC1_GOTO=<level.id>@60` (headless: also `RAC1_HEADLESS=1`) starts on Veldin and goes to the level at
 frame 60. `RAC1_LEVEL_TRACE=1` prints the records' swaps and the `.pc` items; `RAC1_LEVEL_SAVE_IMAGE=<frame>:<prefix>`
 writes the card's save blocks and our items at that frame (a save made on the level must give the same level blocks as
-one made just before flying there). With a level mod in `mods/` and its build present but no `RAC1_MODS=1`, a headless
+one made just before flying there). `RAC1_LEVEL_MAP_AT=<frame>` opens the ship's planet map at that frame (as a take-off
+does), to choose a row with a `RAC1_SIM_INPUT=seq:` script; with `RAC1_LEVEL_TRACE=1` the list's rows and the row
+selected are printed. With a level mod in `mods/` and its build present but no `RAC1_MODS=1`, a headless
 run is the original, byte for byte.
 
 ## Reference

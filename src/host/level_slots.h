@@ -6,8 +6,9 @@
 //
 // - Its files: the level's build (assets/generated/mods/<folder>/) through the disc layer's window for S
 //   (runtime/kernel/disc.h): B's level header read, its data and gameplay ranges pointed into the window.
-// - The ship's planet list: a row after the unlocked planets (the list's end: planet B, which the list never shows).
-//   Choosing it flies to B with S chosen; RAC1_GOTO=<level.id>@<frame> chooses it too (testing).
+// - The ship's planet list: a row per level mod on after the unlocked planets (their planet B, which the list never shows;
+//   which row is selected is ours to know: level_slots_list_select). Choosing one flies to B with S chosen;
+//   RAC1_GOTO=<level.id>@<frame> chooses it too (testing).
 // - Its own state: the save's per-level records (the list 0x1848c0, per level) of B are S's while S is played; B's are
 //   kept in host memory and swapped back when another level loads. A memory card save always gets B's real records:
 //   the card's saves are byte for byte the game's (the current level in them B, as the game wrote it).
@@ -15,7 +16,8 @@
 //   it, the level flown from, its records. Items of levels whose mod is off or missing are carried over (written back
 //   as they were read).
 // - A save made on a level whose mod is off or missing: the player lands on the level flown from, and the ship's planet
-//   map opens there (the save's unlocked planets, that one first): the planet prompt.
+//   map opens there (the save's unlocked planets, that one first): the planet prompt. Leaving the map for that level
+//   (choosing it, or triangle / start) loads it again (Ratchet is not in his ship).
 // With no level mod on (headless, RAC1_MODS=0, no mods: the reference checks) nothing here does anything, except the
 // .pc items' carry-over and the prompt, which need a save that has our items.
 #ifndef RAC1_HOST_LEVEL_SLOTS_H
@@ -53,8 +55,16 @@ std::string level_slot_mod_dir(int slot);
 uint32_t level_slots_list_rows(uint32_t list, uint32_t n);
 
 // orig: (none) — enhancement: the ship's planet list's selection when it opens (galmap_list_focus_in, `n` its rows): our row
-// while its level is current (as the game selects the current planet's), else -1 (the game's choice)
+// while its level is current (as the game selects the current planet's), the first in the planet prompt (the level flown
+// from), else -1 (the game's choice)
 int32_t level_slots_list_focus(uint32_t n);
+
+// orig: (none) — enhancement: a list's selection moved (menu_button_update, `items` its entries, `sel` the row): on the ship's
+// planet list, the planet the map shows (our rows' base level) and the row's slot
+void level_slots_list_select(uint32_t items, int32_t sel);
+
+// orig: (none) — enhancement: the ship's map left for the current planet (triangle, start: the landing there again)
+void level_slots_list_back();
 
 // orig: (none) — enhancement: the planet chosen on the ship's map (planet_travel): true when it is our row and the current level
 // is its base, so that the travel must load it again (no landing)
@@ -102,7 +112,8 @@ void level_slots_save_loaded();
 // orig: (none) — enhancement: once a frame of play (game_frame): the planet prompt opened when it waits
 void level_slots_frame();
 
-// orig: (none) — enhancement: testing: once per game frame (the host's frame loop): RAC1_LEVEL_SAVE_IMAGE's save images
+// orig: (none) — enhancement: testing: once per game frame (the host's frame loop): RAC1_LEVEL_SAVE_IMAGE's save images,
+// RAC1_LEVEL_MAP_AT's ship's map
 void level_slots_test_frame(uint64_t frame);
 
 }  // namespace rac1

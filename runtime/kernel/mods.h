@@ -52,6 +52,8 @@ constexpr int kLevelComposerVersion = 1;
 constexpr int kLevelFormat = 1;
 // The first host level slot (the game's levels are 0..18)
 constexpr int kFirstLevelSlot = 19;
+// How many host level slots there are (19 .. 34: the disc layer's level windows, the ship's list's rows permitting)
+constexpr int kLevelSlots = 16;
 
 // orig: (none) — enhancement: the mods looked for (the game's start, before the disc's first read): `headless` a test run
 void mods_start(bool headless);

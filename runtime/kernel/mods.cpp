@@ -209,8 +209,9 @@ void mods_start(bool headless) {
         if (!m.level || !m.active) continue;
         m.level_wait = mods_level_build_check(m);
         if (m.level_wait.empty() && ids.count(m.level_id) != 0) m.level_wait = "its level.id is " + ids[m.level_id] + "'s too";
-        // (format 1: one level mod at a time, the first in load order; the ship's list has one row)
-        if (m.level_wait.empty() && !ids.empty()) m.level_wait = "one level mod at a time for now (" + ids.begin()->second + " is on)";
+        // (each on a slot of its own, a row of its own on the ship's list; the disc layer has kLevelSlots windows)
+        if (m.level_wait.empty() && next_slot >= kFirstLevelSlot + kLevelSlots)
+            m.level_wait = "too many level mods on (" + std::to_string(kLevelSlots) + " at most)";
         if (!m.level_wait.empty()) {
             m.active = false;
             continue;

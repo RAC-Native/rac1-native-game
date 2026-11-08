@@ -17,6 +17,9 @@ What changed in each release. Releases are source only: you build the game with 
   such a save then lands on the planet flown from and opens the ship's planet map there). Options > Mods says "Needs
   setup" for a level mod with no or an old build. `examples/custom-level/make_example.py` writes an example level. With
   no level mod on (headless runs, RAC1_MODS=0) nothing changes. RAC1_GOTO=<level.id>@F for tests.
+- Level mods: several at once, each on a host slot of its own (19, 20, ...) with a row of its own on the ship's list and
+  its own items in save<N>.pc. The planet prompt lists the level flown from first; leaving its map (triangle, start)
+  lands there. RAC1_LEVEL_MAP_AT=<frame> opens the ship's map in tests.
 - docs/mods.md, a modder's guide: a texture mod and a .vag sound swap step by step, the limits, every `[mods]` log
   line and what it means, sharing a mod.
 - Graphics: Enhanced, Lighting: Original (#138): the original game's lighting and drop shadows with the modern lighting's sun
