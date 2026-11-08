@@ -1196,11 +1196,11 @@ bool direct_usable(const SceneInput& in) {
 // the tfrag pass's qwords the host's tfrag draws read (the view at 5..8 of both buffers, the constants 0x290..0x29d): an UNPACK
 // writing any of `span` qwords from `d` reaches them
 bool tfrag_window(uint32_t d, uint32_t span) {
-    for (uint32_t k = 0; k < span; ++k) {
-        const uint32_t a = (d + k) & 0x3ff;
-        if ((a >= 5 && a < 9) || (a >= 0x14d && a < 0x151) || (a >= 0x290 && a < 0x29e)) return true;
-    }
-    return false;
+    if (span >= 0x400) return true;
+    auto meets = [](uint32_t lo, uint32_t hi) { return (lo < 9 && hi > 5) || (lo < 0x151 && hi > 0x14d) || (lo < 0x29e && hi > 0x290); };
+    d &= 0x3ff;
+    if (d + span <= 0x400) return meets(d, d + span);
+    return meets(d, 0x400) || meets(0, d + span - 0x400);  // (past the memory's end: from its start again)
 }
 
 // orig: (host) the VU1 state a pass's chain left, as the host's draws read it
@@ -1337,10 +1337,19 @@ bool scan_world(SceneInput& in, uint32_t addr, std::vector<uint32_t>& stack, uin
         const bool world = pass_now >= 0 && pass_now <= 2;
         const bool skip = pass_now == 1 || pass_now == 2;  // (the host makes the ties / shrubs: their constants alone)
         for (uint32_t i = 0; i + 4 <= n;) {
-            const uint32_t code = r32(at(i, 4));
+            const uint32_t code = i >= 16 ? r32(dp + (i - 16)) : r32(at(i, 4));
             i += 4;
             ++dw.codes;
             const uint32_t cmd = (code >> 24) & 0x7f, imm = code & 0xffff;
+            switch (cmd) {  // (the VIF's state codes without data, as vif1_command sets them: the common case, inline)
+            case 0x00: case 0x10: case 0x11: case 0x13: continue;  // NOP, FLUSHE, FLUSH, FLUSHA
+            case 0x01: vu.cl = imm & 0xff; vu.wl = (imm >> 8) & 0xff; continue;
+            case 0x02: vu.ofst = imm & 0x3ff; vu.dbf = false; vu.tops = vu.base; continue;
+            case 0x03: vu.base = imm & 0x3ff; continue;
+            case 0x04: vu.itops = imm & 0x3ff; continue;
+            case 0x05: vu.mode = imm & 3; continue;
+            default: break;
+            }
             if (cmd == 0x50 || cmd == 0x51) {  // DIRECT / DIRECTHL: the GS registers it writes (and a tfrag range's vertices, none so far)
                 const uint32_t q = imm == 0 ? 65536 : imm;
                 i = (i + 15) & ~15u;
