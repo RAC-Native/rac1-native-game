@@ -5,6 +5,14 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Mods' code (docs/custom-levels.md): a mod's `plugin/` folder, a native plugin in C against sdk/rac1_mod.h (ABI 1,
+  append-only), built by the setup on the player's machine from its source (`--setup --level-mods`, `--mod-plugins`;
+  sdk/rac1_mod.cmake's float rules). Callbacks: level start / end, frame, camera, HUD, the level's placed objects'
+  updates, new game, its bytes in save<N>.pc, test, shutdown; services: memory (journaled writes, an allocator), mobys,
+  collision, the hero, sound, music, smoke, HUD text, camera, pad, random, the port's functions by address. A mod with
+  code is off when first found, Options > Mods asks to confirm turning it on ("Contains code."), and shows why one is
+  not loaded; a headless run loads code only with RAC1_MODS=1 RAC1_MOD_CODE=1 (RAC1_MOD_TEST for its test callback).
+  The example level has a plugin: a moving platform Ratchet rides, a HUD line, a sound, a visits counter in the save.
 - Level mods, format 1 (docs/mods.md, "Level mods"): a mod of `"kind": "level"` adds a new level the ship flies to (a
   row under the unlocked planets). Its folder holds our own files only: `level.txt` (names per language, Ratchet's start,
   the ship, the death height, colours), a collision mesh and drawn meshes (OBJ, PNG or colour materials). The setup

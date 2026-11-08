@@ -404,7 +404,9 @@ A level mod adds a **new level** to the game: a row on the ship's planet list, u
 there. The mod holds our own files only (a text file, OBJ meshes, PNG textures, VAG music); the setup **composes** them
 with your own disc's files into the level's build, which never leaves your machine. Format 1: a level of your own
 collision and meshes, Ratchet, his ship and his gadgets on it, objects of the base level's classes (crates, ...), a
-game level's music or your own, a game level's sky; no scripted events yet (see [Level mods: limits](#level-mods-limits)).
+game level's music or your own, a game level's sky. Behaviour of its own (moving platforms, counters, HUD lines, rules
+for its objects) comes from **code**: a plugin in the mod, built from its source by the setup (see
+[Custom levels: code](custom-levels.md); a mod with code is off until you turn it on and confirm it).
 
 The code: `src/setup/level_compose.cpp` (the composer), `src/host/level_slots.h` and `src/game/enhance/level_slots.cpp`
 (the level's slot, its row, its saves), `src/formats/host_meshes.h` (the meshes the host draws),
@@ -420,9 +422,13 @@ python3 examples/custom-level/make_example.py mods/example-plateau
 
 The first line writes the example mod (a floor, a ramp up to a platform, a few blocks coloured per vertex, a ship pad,
 five crates, Kerwan's sky and a short tune as its music, made round (0, 0, 0) and moved by its offset; everything in it
-is made by the script, the tune too). The second composes it with your disc (the setup does it too, as its last step). In the game,
-enter your ship: the planet list ends with **Custom Levels / Example Plateau**. Its log lines start with `[levels]`
-and `[compose]`.
+is made by the script, the tune too), and copies its plugin (`examples/custom-level/plugin/`: a sixth crate that
+glides back and forth as a platform, a HUD line, a sound where it turns, a visits counter in the save). The second
+composes it with your disc and builds the plugin (the setup does it too, as its last step: CMake and the compiler the
+game was built with). In the game, the mod contains code: Options > Mods, turn **Example Plateau** on and confirm it
+(cross twice), restart. Then enter your ship: the planet list ends with **Custom Levels / Example Plateau**. Its log
+lines start with `[levels]`, `[compose]`, `[plugin]` and `[mod example-plateau]`. (A test run with `RAC1_MODS=1` but
+not `RAC1_MOD_CODE=1` has the level without its code: the sixth crate sits still.)
 
 ### The level folder (format 1)
 
@@ -744,7 +750,7 @@ Ideas for later phases, not done now:
 - **Disc files of another size** (a larger level), which needs the game's tables rewritten. (A new level of your own:
   [Level mods](#level-mods).)
 - **Audio replacement** by file (music, voices, sounds as WAV or OGG), beyond swapping the disc's own `.vag` files.
-- **A plugin API** for code (the host's hooks).
+- (Code in mods, a native plugin: done, see [Custom levels: code](custom-levels.md).)
 - **The launcher**: no Mods list there yet (the in-game menu and `mods.txt` are the way).
 - **Mods while the game runs**: a change applies at the next start; textures are not reloaded during a level.
 - **A texture's own mips**, or a replacement for one use of a shared texture.
