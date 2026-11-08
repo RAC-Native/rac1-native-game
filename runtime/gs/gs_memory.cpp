@@ -3,9 +3,12 @@
 // third_party/989snd/LICENSE).
 #include <runtime/gs/gs_memory.h>
 
+#include <profiler/perf_switch.h>
+
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -551,6 +554,17 @@ void LocalMemory::set_transfer_state(const TransferState& t) {
     xpend_ = t.pend;
 }
 
+// (host) RAC1_PERF_UPLOAD_MEMO: 1 (the default) a piece of an upload that writes the bytes its last identical write left, in a range
+// of the memory nothing changed since, is skipped (exact: the same bytes would be written over themselves); 0 every piece written
+// pixel by pixel, as before; 2 every piece written, the skipped ones checked to change nothing (LocalMemory::upload_memo_stats().bad)
+// orig: (host)
+static int upload_memo_mode() {
+    static const int m = perf::switch_value("RAC1_PERF_UPLOAD_MEMO", 1);
+    return m;
+}
+constexpr size_t kMemoSlots = 4096;
+constexpr size_t kMemoBytes = 48u << 20;  // (the memo's copies of the pieces at most: all forgotten past it)
+
 // (the pixels written in a row, their changes noted once: the same log entry the per-pixel notes made, nothing reads the log
 // in between)
 void LocalMemory::transfer_data(uint64_t bb, uint64_t pos, uint64_t rg, const uint8_t* p, uint32_t n) {
@@ -559,7 +573,32 @@ void LocalMemory::transfer_data(uint64_t bb, uint64_t pos, uint64_t rg, const ui
     const uint32_t sx = bits(pos, 32, 11), sy = bits(pos, 48, 11);
     const uint32_t w = bits(rg, 0, 12), h = bits(rg, 32, 12);
     if (w == 0 || h == 0) return;
-    uint32_t lo = 0xffffffffu, hi = 0;
+    // the memo: the piece's key (the registers, where the transfer is, the size), its last write's bytes and range
+    const int memo_mode = upload_memo_mode();
+    const bool memo_on = memo_mode != 0 && dpsm != CT24 && xpend_.empty() && xy_ < h && n != 0;
+    UploadMemo* m = nullptr;
+    bool hit = false;
+    if (memo_on) {
+        if (memo_.empty()) memo_.resize(kMemoSlots);
+        uint64_t k = bb * 0x9E3779B97F4A7C15ull ^ pos * 0xC2B2AE3D27D4EB4Full ^ rg * 0x165667B19E3779F9ull;
+        k ^= (static_cast<uint64_t>(xx_) << 40) ^ (static_cast<uint64_t>(xy_) << 20) ^ n;
+        k ^= k >> 29;
+        m = &memo_[static_cast<size_t>(k * 0xBF58476D1CE4E5B9ull >> 52) & (kMemoSlots - 1)];
+        hit = m->bb == bb && m->pos == pos && m->rg == rg && m->xx0 == xx_ && m->xy0 == xy_ && m->src.size() == n && m->hi > m->lo &&
+              std::memcmp(m->src.data(), p, n) == 0 && !changed_since(m->seq, m->lo, m->hi);
+        if (hit && memo_mode != 2) {
+            xx_ = m->xx1;
+            xy_ = m->xy1;
+            xfer_ = m->xfer1;
+            ++memo_st_.skipped;
+            memo_st_.skipped_bytes += n;
+            return;
+        }
+    }
+    const uint32_t xx0 = xx_, xy0 = xy_;
+    // (the bytes a pixel of this format occupies at the address store returns: the range the piece covers)
+    const uint32_t span = dpsm == CT32 ? 4 : (dpsm == CT16 || dpsm == CT16S) ? 2 : 1;
+    uint32_t lo = 0xffffffffu, hi = 0, alo = 0xffffffffu, ahi = 0;
     auto put = [&](uint32_t v) {
         if (xy_ >= h) return;
         uint32_t c = 0;
@@ -568,6 +607,8 @@ void LocalMemory::transfer_data(uint64_t bb, uint64_t pos, uint64_t rg, const ui
             lo = std::min(lo, a);
             hi = std::max(hi, a + c);
         }
+        alo = std::min(alo, a);
+        ahi = std::max(ahi, a + span);
         if (++xx_ == w) { xx_ = 0; ++xy_; }
     };
     if (dpsm == CT32) { for (uint32_t i = 0; i + 4 <= n; i += 4) put(r32(p + i)); }
@@ -582,6 +623,47 @@ void LocalMemory::transfer_data(uint64_t bb, uint64_t pos, uint64_t rg, const ui
     }
     if (hi > lo) note_change(lo, hi - lo);
     if (xy_ >= h) xfer_ = false;
+    if (m != nullptr) {
+        if (hit) {  // (=2: the piece the memo would have skipped, written: it must have changed nothing)
+            const bool same = !(hi > lo) && m->xx1 == xx_ && m->xy1 == xy_ && m->xfer1 == xfer_;
+            char why[160] = {};
+            if (!same)
+                std::snprintf(why, sizeof why, "a skipped piece changed the memory (BITBLTBUF %016llx, %u bytes, changed %08x..%08x)", static_cast<unsigned long long>(bb), n, lo, hi);
+            memo_chk_.check(same, why);
+            ++memo_st_.skipped;
+            memo_st_.skipped_bytes += n;
+        } else {
+            ++memo_st_.written;
+            memo_st_.written_bytes += n;
+        }
+        if (ahi > alo) {
+            memo_bytes_ += n;
+            memo_bytes_ -= m->src.size();
+            if (memo_bytes_ > kMemoBytes) {  // (too many pieces kept: all forgotten)
+                for (UploadMemo& e : memo_) {
+                    e.src.clear();
+                    e.src.shrink_to_fit();
+                    e.hi = e.lo = 0;
+                }
+                memo_bytes_ = n;
+            }
+            m->bb = bb;
+            m->pos = pos;
+            m->rg = rg;
+            m->xx0 = xx0;
+            m->xy0 = xy0;
+            m->xx1 = xx_;
+            m->xy1 = xy_;
+            m->xfer1 = xfer_;
+            m->lo = alo;
+            m->hi = ahi;
+            m->src.assign(p, p + n);
+            wr_open_ = false;  // (a change from here on is later than the memo's number)
+            m->seq = wr_seq_;
+        } else {
+            m->hi = m->lo = 0;
+        }
+    }
 }
 
 void LocalMemory::undo_begin() {

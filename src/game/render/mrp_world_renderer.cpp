@@ -5763,6 +5763,13 @@ void mrp_world_after_chain(int win_w, int win_h, const gs::Viewport* vp, const g
 // orig: (host) see mrp_world_renderer.h
 void mrp_world_report() {
     if (!g_world_mrp) return;
+    {  // (the GS memory model's upload memo, RAC1_PERF_UPLOAD_MEMO: runtime/gs/gs_memory.h)
+        const gs::LocalMemory::UploadMemoStats u = gs::local_memory().upload_memo_stats();
+        if (u.skipped + u.written != 0)
+            std::printf("[perf] upload memo (RAC1_PERF_UPLOAD_MEMO): upload pieces skipped %llu (%.1f MB), written %llu (%.1f MB)\n", static_cast<unsigned long long>(u.skipped),
+                        static_cast<double>(u.skipped_bytes) / 1048576.0, static_cast<unsigned long long>(u.written), static_cast<double>(u.written_bytes) / 1048576.0);
+        if (gs::local_memory().upload_memo_check().compared != 0) gs::local_memory().upload_memo_check().report("upload memo", "skipped pieces");
+    }
     if (pkt_memo_mode() != 0)
         std::printf("[perf] packet memo (RAC1_PERF_PKT_MEMO=%d): %llu GPU path packets, %llu replayed from the packet before; %llu checked against the full replay, %llu differing\n",
                     pkt_memo_mode(), static_cast<unsigned long long>(g_memo_packets), static_cast<unsigned long long>(g_memo_hits), static_cast<unsigned long long>(g_memo_checked),
