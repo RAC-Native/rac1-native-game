@@ -293,10 +293,15 @@ public:
 
     // vu1::StartObserver (this thread's program starts): program 7's batch in a vu7 range kept as the program finds it
     void before(vu1::Vu1& vu, uint32_t start, uint64_t hash) override;
-    void after(vu1::Vu1&, uint32_t, uint64_t) override { vu7_drop_ = false; }
+    void after(vu1::Vu1&, uint32_t, uint64_t) override {
+        vu7_drop_ = false;
+        if (vu1_t0_ >= 0.0) rac1::prof::detail::part_add(rac1::prof::kPartChainVu1, rac1::prof::detail::part_now() - vu1_t0_);
+        vu1_t0_ = -1.0;
+    }
 
 private:
     const MrpChainInput* in_ = nullptr;
+    double vu1_t0_ = -1.0;  // (the profiler's part: the program's start time)
     vu1::Vu1 vu_;
     Vertex cur_;
     std::vector<Vertex> queue_;
@@ -452,6 +457,7 @@ void Reader::gif(const uint8_t* p, uint32_t qwc) {
             }
         } else {
             const uint32_t take = std::min(tag_left_, qwc - i);
+            const rac1::prof::PartTimer part(rac1::prof::kPartChainUploads);
             gs::local_memory().transfer_data(regs[0x50], regs[0x51], regs[0x52], q, take * 16);
             tag_left_ -= take;
             i += take - 1;
@@ -666,6 +672,7 @@ void Reader::screen_picture() {
 // would have, and its place in the primitives' order (a type-9 primitive)
 // orig: (host)
 void Reader::before(vu1::Vu1& vu, uint32_t start, uint64_t hash) {
+    vu1_t0_ = rac1::prof::on() ? rac1::prof::detail::part_now() : -1.0;  // (the profiler's part: the VU1 programs)
     const MrpChainInput& in = *in_;
     if (!vu7_now_ || sub_drop_ || hash != in.vu7_hash || in.vu7_kind == 0 || (start != 0xc && start != 0xe)) return;
     const VUState& st = vu.st;

@@ -4691,16 +4691,20 @@ struct SceneWorker {
             const rac1::prof::Job prof_job(rac1::prof::kWorkerScene);  // (the debug menu's profiler: the job's time)
             try {
                 if (capture) {
-                    // (the game's point lights per pixel instead; never before the level's colours were taken once)
-                    const bool freeze = mrp_lighting_points_freeze() && g_colours_level == g_level.id;
-                    if (g_static_on) {  // (the colours alone kept while a light is in use: the instances are this frame's)
-                        if (!freeze) resident_colours_update(g_rcols, colours);
-                        static_frame_build(g_slevel, g_rcols, g_sframe, g_static_check);
+                    {
+                        const rac1::prof::PartTimer part(rac1::prof::kPartSceneDecide);
+                        // (the game's point lights per pixel instead; never before the level's colours were taken once)
+                        const bool freeze = mrp_lighting_points_freeze() && g_colours_level == g_level.id;
+                        if (g_static_on) {  // (the colours alone kept while a light is in use: the instances are this frame's)
+                            if (!freeze) resident_colours_update(g_rcols, colours);
+                            static_frame_build(g_slevel, g_rcols, g_sframe, g_static_check);
+                        }
+                        shadow_static_build();
+                        if (g_input.tfrag_level != nullptr && !freeze) tfrag_colours_update(g_tcols, g_tlevel);
+                        if (!freeze) g_colours_level = g_level.id;
+                        if (g_input.tfrag_host != nullptr) tfrag_decide(g_tlevel, tfrag_snapshot(), g_tfrag_check, g_tdecide);
                     }
-                    shadow_static_build();
-                    if (g_input.tfrag_level != nullptr && !freeze) tfrag_colours_update(g_tcols, g_tlevel);
-                    if (!freeze) g_colours_level = g_level.id;
-                    if (g_input.tfrag_host != nullptr) tfrag_decide(g_tlevel, tfrag_snapshot(), g_tfrag_check, g_tdecide);
+                    const rac1::prof::PartTimer part(rac1::prof::kPartSceneCapture);
                     scene_capture(chain_start, chain_end, g_input, addrs);
                     {
                         std::lock_guard<std::mutex> lg(m);
@@ -4708,9 +4712,13 @@ struct SceneWorker {
                     }
                     cv.notify_all();
                 }
-                built = scene_build(*g_level.idx, g_input, g_frame.scene, reset, kicks);
+                {
+                    const rac1::prof::PartTimer part(rac1::prof::kPartSceneWalk);
+                    built = scene_build(*g_level.idx, g_input, g_frame.scene, reset, kicks);
+                }
                 g_frame.built_on_worker = false;
                 if (built && build) {  // the frame's triangles too, its new textures' images left to the host thread
+                    const rac1::prof::PartTimer part(rac1::prof::kPartSceneTris);
                     const double tb = now_ms();
                     g_tex_defer = true;
                     build_triangles(g_frame);
