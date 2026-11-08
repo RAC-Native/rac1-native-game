@@ -27,6 +27,17 @@ What changed in each release. Releases are source only: you build the game with 
   such a save then lands on the planet flown from and opens the ship's planet map there). Options > Mods says "Needs
   setup" for a level mod with no or an old build. `examples/custom-level/make_example.py` writes an example level. With
   no level mod on (headless runs, RAC1_MODS=0) nothing changes. RAC1_GOTO=<level.id>@F for tests.
+- Level mods: several at once, each on a host slot of its own (19, 20, ...) with a row of its own on the ship's list and
+  its own items in save<N>.pc. The planet prompt lists the level flown from first; leaving its map (triangle, start)
+  lands there. RAC1_LEVEL_MAP_AT=<frame> opens the ship's map in tests.
+- Level mods: objects (`moby <class> x y z [yaw]`: copies of the base level's placements of that class, uids of their
+  own; Veldin's crates work), the music (`music <level>`, `music <loop.vag> [<intro.vag>]` read through the level's
+  window, `music none`) and another level's sky (`sky <level>`). The example level has five crates, Kerwan's sky and a
+  tune of its own (a small PS-ADPCM encoder in make_example.py). The composer's version 2 (builds are made again).
+- Level mods: the meshes' vertex colours (`v x y z r g b`, 64 a mesh; a textured material's Kd tints), `offset x y z` /
+  `offset auto` (a level made round (0, 0, 0) moved above the collision grid's 0), and the composer's size checks (the
+  asset data within the base level's, the objects, the gameplay data). host_meshes.mrpc version 2 (the instances'
+  palettes).
 - docs/mods.md, a modder's guide: a texture mod and a .vag sound swap step by step, the limits, every `[mods]` log
   line and what it means, sharing a mod.
 - Graphics: Enhanced, Lighting: Original (#138): the original game's lighting and drop shadows with the modern lighting's sun

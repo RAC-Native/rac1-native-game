@@ -43,15 +43,23 @@ struct ModInfo {
     int level_base = 0;             // the game's level it runs on (level.base: its code, its address map; 0 Veldin)
     std::string level_wait;         // why it is not on although chosen ("" when it is): no build, an old build, ...
     int level_slot = -1;            // the host's level slot (19, 20, ...) while it is on in this run, else -1
+    // its build's choices (build.json), read when it is on: the music (kLevelMusicBase the base level's, kLevelMusicNone
+    // none, 0..18 that level's tracks, kLevelMusicOwn the build's music files: level_music_files, the intro then the loop)
+    int level_music = -2;
+    std::vector<std::string> level_music_files;
 };
+
+constexpr int kLevelMusicBase = -2, kLevelMusicNone = -1, kLevelMusicOwn = 100;
 
 // The level composer's version (src/setup/level_compose.cpp): a build made by another version is made again by the
 // setup, and the game does not use it ("needs setup")
-constexpr int kLevelComposerVersion = 1;
+constexpr int kLevelComposerVersion = 2;
 // The level folder formats this build reads (level.format)
 constexpr int kLevelFormat = 1;
 // The first host level slot (the game's levels are 0..18)
 constexpr int kFirstLevelSlot = 19;
+// How many host level slots there are (19 .. 34: the disc layer's level windows, the ship's list's rows permitting)
+constexpr int kLevelSlots = 16;
 
 // orig: (none) — enhancement: the mods looked for (the game's start, before the disc's first read): `headless` a test run
 void mods_start(bool headless);

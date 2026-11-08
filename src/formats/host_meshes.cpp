@@ -1,6 +1,8 @@
 // See host_meshes.h. (The reader: the experiment's custom ties container, generalised.)
 #include <formats/host_meshes.h>
 
+#include <algorithm>
+
 #include <cstring>
 #include <cstdio>
 #include <fstream>
@@ -57,8 +59,9 @@ bool read_host_meshes(const std::string& path, HostMeshes& out, std::string& err
     }
     Reader r;
     r.b.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
-    if (r.get<uint32_t>() != kMagic || r.get<uint32_t>() != 1) {
-        error = path + ": not a host meshes file (version 1)";
+    const uint32_t magic = r.get<uint32_t>(), version = r.get<uint32_t>();
+    if (magic != kMagic || version < 1 || version > 2) {
+        error = path + ": not a host meshes file (version 1 or 2)";
         return false;
     }
     const uint32_t ntex = r.get<uint32_t>();
@@ -148,6 +151,7 @@ bool read_host_meshes(const std::string& path, HostMeshes& out, std::string& err
                     TieKickVertex kv;
                     kv.pos = kv.q = kv.uv = v;
                     kv.fat = v >= p.n_dinky ? 1 : 0;
+                    if (v < p.n_dinky) kv.colour = static_cast<uint16_t>(p.dinky[v][3] & 63);  // (its palette entry)
                     Op o;
                     o.kind = OpKind::Vertex;
                     o.index = static_cast<uint16_t>(p.verts.size());
@@ -171,6 +175,14 @@ bool read_host_meshes(const std::string& path, HostMeshes& out, std::string& err
             for (float& v : row) v = r.get<float>();
         for (float& v : in.pos) v = r.get<float>();
         for (uint8_t& v : in.rgba) v = r.get<uint8_t>();
+        if (version >= 2) {
+            const uint32_t n = r.get<uint32_t>();
+            if (n > 64) {
+                error = path + ": a palette of more than 64 colours";
+                return false;
+            }
+            for (uint32_t k = 0; k < n && r.ok; ++k) in.palette.push_back(r.get<std::array<uint8_t, 4>>());
+        }
         if (in.cls >= out.classes.size()) {
             error = path + ": an instance of no class";
             return false;
@@ -199,7 +211,7 @@ struct Out {
 bool write_host_meshes(const std::string& path, const HostMeshFile& f, std::string& error) {
     Out o;
     o.put(kMagic);
-    o.put(uint32_t{1});
+    o.put(uint32_t{2});
     o.put(static_cast<uint32_t>(f.textures.size()));
     for (const mrp::Texture& t : f.textures) {
         o.put(t.width);
@@ -247,6 +259,8 @@ bool write_host_meshes(const std::string& path, const HostMeshFile& f, std::stri
             for (float v : row) o.put(v);
         for (float v : in.pos) o.put(v);
         for (uint8_t v : in.rgba) o.put(v);
+        o.put(static_cast<uint32_t>(std::min<size_t>(in.palette.size(), 64)));
+        for (size_t k = 0; k < in.palette.size() && k < 64; ++k) o.put(in.palette[k]);
     }
     std::FILE* fp = std::fopen(path.c_str(), "wb");
     if (fp == nullptr || std::fwrite(o.b.data(), 1, o.b.size(), fp) != o.b.size()) {

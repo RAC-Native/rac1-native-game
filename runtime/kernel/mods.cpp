@@ -151,6 +151,24 @@ bool mods_manifest_read(ModInfo& m) {
     return true;
 }
 
+// orig: (none) — enhancement: a level mod's build's choices (build.json: its music) into `m`
+static void level_build_choices(ModInfo& m) {
+    std::ifstream f(mods_level_build_dir(m.folder) / "build.json", std::ios::binary);
+    std::stringstream ss;
+    ss << f.rdbuf();
+    const nlohmann::json j = nlohmann::json::parse(ss.str(), nullptr, false);
+    if (j.is_discarded() || !j.is_object()) return;
+    const auto mu = j.find("music");
+    if (mu == j.end()) return;
+    if (mu->is_number_integer()) m.level_music = static_cast<int>(std::clamp<int64_t>(mu->get<int64_t>(), -2, 18));
+    if (mu->is_string() && mu->get<std::string>() == "none") m.level_music = kLevelMusicNone;
+    if (mu->is_array()) {
+        for (const auto& e : *mu)
+            if (e.is_string()) m.level_music_files.push_back((mods_level_build_dir(m.folder) / e.get<std::string>()).string());
+        if (!m.level_music_files.empty()) m.level_music = kLevelMusicOwn;
+    }
+}
+
 // orig: (none) — enhancement (mods.h)
 std::filesystem::path mods_dir() {
     if (const char* d = std::getenv("RAC1_MODS_DIR"); d != nullptr && *d != 0) return d;
@@ -209,14 +227,16 @@ void mods_start(bool headless) {
         if (!m.level || !m.active) continue;
         m.level_wait = mods_level_build_check(m);
         if (m.level_wait.empty() && ids.count(m.level_id) != 0) m.level_wait = "its level.id is " + ids[m.level_id] + "'s too";
-        // (format 1: one level mod at a time, the first in load order; the ship's list has one row)
-        if (m.level_wait.empty() && !ids.empty()) m.level_wait = "one level mod at a time for now (" + ids.begin()->second + " is on)";
+        // (each on a slot of its own, a row of its own on the ship's list; the disc layer has kLevelSlots windows)
+        if (m.level_wait.empty() && next_slot >= kFirstLevelSlot + kLevelSlots)
+            m.level_wait = "too many level mods on (" + std::to_string(kLevelSlots) + " at most)";
         if (!m.level_wait.empty()) {
             m.active = false;
             continue;
         }
         ids[m.level_id] = m.folder;
         m.level_slot = next_slot++;
+        level_build_choices(m);
     }
     for (const ModInfo& m : g_mods)
         std::printf("[mods] %s: \"%s\" %s by %s, priority %d, %zu disc files, %zu textures: %s\n", m.folder.c_str(), m.name.c_str(),

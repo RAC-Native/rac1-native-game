@@ -647,7 +647,7 @@ void emit_static(Build& b, VUState& st, int kind) {
 // orig: (host) a level mod's host meshes (src/formats/host_meshes.h): no EE data stands for them, so the host makes their draws, after the world passes, as the GPU path's tie A packets: per instance near enough and not behind
 // the camera (its class's sphere in the view, as the tie cull's view depth), its rows as the tie pass makes them (instance_rows:
 // the projection A times the rotation x scale, (position - camera) x 1024), LOD 0 (the near path's morph: the fat vertices'
-// base), the tie pass's fog at its depth, its one colour in all 64 entries; first the tie pass's alpha-test state (TEST_1
+// base), the tie pass's fog at its depth, its palette (its vertices' colours) then its one colour in the 64 entries; first the tie pass's alpha-test state (TEST_1
 // 0x5340b, its constants' qword 0x3cd)
 void emit_host_meshes(Build& b) {
     const World* w = host_meshes_bound(&b.idx);
@@ -706,7 +706,8 @@ void emit_host_meshes(Build& b) {
         x.colour_first = static_cast<uint32_t>(b.f.colours.size());
         b.f.colours.resize(b.f.colours.size() + 64);
         for (uint32_t k = 0; k < 64; ++k)
-            for (int l = 0; l < 4; ++l) b.f.colours[x.colour_first + k][static_cast<size_t>(l)] = 0x4b000000u + ci.rgba[l];  // (2^23 + byte, as STMOD 1 leaves them)
+            for (int l = 0; l < 4; ++l)  // (2^23 + byte, as STMOD 1 leaves them; its palette's entries, then its one colour)
+                b.f.colours[x.colour_first + k][static_cast<size_t>(l)] = 0x4b000000u + (k < ci.palette.size() ? ci.palette[k][static_cast<size_t>(l)] : ci.rgba[l]);
         const uint32_t inst = static_cast<uint32_t>(b.f.insts.size());
         b.f.insts.push_back(x);
         for (const TiePacket& pk : c.packets) {

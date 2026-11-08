@@ -4,15 +4,17 @@
 // composed level adds their classes to its world.mrpw and their textures to its textures_tie.mrpt.
 //
 // host_meshes.mrpc (little-endian):
-//   u32 magic "MRPC", u32 version 1
+//   u32 magic "MRPC", u32 version 2 (1 read too: no palettes)
 //   u32 textures; each: u32 width, height; 1024 bytes the palette (CT32, the GS's CSM1 order, as GS RAM holds it, alpha
 //       0..0x80); u32 mips, each u32 bytes + the T8 texels (linear)
 //   u32 classes; each: i32 id; f32 scale; f32 sphere x y z r (vertex units / 1024); u32 local textures, each {u32 the
 //       texture, u32 CLAMP's wrap bits (WMS / WMT), u64 ALPHA_1}; u32 packets, each: u8 lod, u8 index in its lod, u16 0,
-//       u32 dinky, u32 fat vertices; the dinky ones s16 x y z 0 s t q 0 (s t q / 4096), the fat ones s16 delta x y z 0,
+//       u32 dinky, u32 fat vertices; the dinky ones s16 x y z c s t q 0 (s t q / 4096; c the vertex's colour, an index
+//       into its instance's palette), the fat ones s16 delta x y z 0,
 //       base x y z 0, s t q 0; u32 strips, each {u32 local texture, u32 n, n u16 vertices (dinky 0.., then fat), padded
 //       to 4 bytes}
-//   u32 instances; each: u32 the class, f32 the rotation's three rows, f32 the position, u8 RGBA
+//   u32 instances; each: u32 the class, f32 the rotation's three rows, f32 the position, u8 RGBA; (version 2) u32 palette
+//       colours (at most 64), each u8 RGBA (0x80 = 1.0): the vertices' colours (the indices past it: the RGBA)
 // A vertex's world position: position + (rotation rows) x (s16 x scale / 1024), as RAC1's tie instances (data +0x30 w
 // the scale).
 #ifndef RAC1_FORMATS_HOST_MESHES_H
@@ -70,7 +72,7 @@ struct HostMeshes {
 // orig: (host) reads `path`; false (with `error`) when it is not one. The classes' packets get the kick program of RAC1's
 // tie A (micro 0x000) with our own GIF stream: per strip an A+D tag and texture slot when its texture changes, then a
 // strip tag (PRIM 0x7c: a triangle strip, Gouraud, textured, fogged, blended; STQ, RGBAQ, XYZF2) and its vertices,
-// colour 0 each (the instance's single colour).
+// each its colour index (the instance's 64 colours: its palette, then its RGBA).
 bool read_host_meshes(const std::string& path, HostMeshes& out, std::string& error);
 
 // The world whose host meshes the MRP world's scene draws (mrp_world_renderer.cpp binds it with its index at a level's load;
