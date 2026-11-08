@@ -5,6 +5,9 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- HUD wider than 4:3, the hoverboard races (Rilgar, Kalebo III; #132): the bottom bar ("Lap", "Time", "Place") stays
+  whole and centred as in 4:3. Its two HUD elements were moved apart as a left and a right one, so the bar split and
+  "Place" was drawn over "Time".
 - Cut Content, Kerwan's citizens (#136): they play the grind boots seller's own idle (Nebula G34's "Fred Prime",
   the sequence his update plays while he waits: crouched, the hands together, 1 s loop) instead of his stiff standing one
   where only the head moved; they stand 0.25 lower so the crouch keeps their feet on the ground. Read from the disc as

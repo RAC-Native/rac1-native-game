@@ -43,6 +43,18 @@ uint8_t hud_element_side(uint32_t e) {
     const uint32_t f = lwu(e + 0x60);
     return (f & 4) != 0 ? 1 : (f & 8) != 0 ? 2 : 0;
 }
+// orig: (host) whether the element in slot `e` is a part of the hoverboard races' bottom bar (Rilgar L5:0x266320 in slot 5 and
+// L5:0x266710 in slot 7, Kalebo III's L16:0x238a30 / 0x238e20, requested together by the race's hero code): the two draw one
+// bar centred on the 4:3 frame (its background, "Lap", "Time" and "Place" across it), not a left and a right element, so they
+// keep their places in a HUD wider than 4:3 (moved, the bar's halves came apart and its texts overlapped: #132). Read only.
+bool hud_race_bar(uint32_t e) {
+    const uint32_t fn = lwu(e + 0x18);
+    switch (lw(0x0015ed84)) {  // (the current level)
+        case 5: return fn == LVL_ADDR(5, 0x00266320) || fn == LVL_ADDR(5, 0x00266710);
+        case 16: return fn == LVL_ADDR(16, 0x00238a30) || fn == LVL_ADDR(16, 0x00238e20);
+        default: return false;
+    }
+}
 }  // namespace
 
 // The HUD frame `i` of animation `key` (its first frame + i): 0 when the animation is missing,
@@ -398,7 +410,7 @@ void hud_draw() {
         if (lwu(e + 0x18) != 0) {
             // (side 3: the help panel 0x237200, centred - a translated message can be wider than the 4:3 frame: drawn past its
             // sides, gs::Primitive::hud 3)
-            const uint8_t side = !wide ? 0 : lwu(e + 0x18) == OVF(0x00237200) ? 3 : hud_element_side(e);
+            const uint8_t side = !wide || hud_race_bar(e) ? 0 : lwu(e + 0x18) == OVF(0x00237200) ? 3 : hud_element_side(e);
             const uint32_t at = side != 0 ? lwu(CUR) : 0;
             ovl_call_moby_fn(lwu(e + 0x18), e);
             if (side != 0) render_view_hud_note(at, lwu(CUR), side);  // (host)
