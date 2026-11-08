@@ -3238,7 +3238,7 @@ void mrp_moby_extrap_apply() {
         // each moby's motion over the steps before: its first part's world matrix carried forward, the change applied to its parts
         // (a moby new this step, one that jumped - more than 8 units or 90 degrees a step: a teleport, a respawn, a slot reused - stays)
         std::unordered_map<uint32_t, glm::dmat4> delta;
-        if (g_mh_cur.ok && g_mh_prev.ok && g_mh_cur.frame == frame && g_mh_prev.frame < frame && frame - g_mh_prev.frame <= 2) {
+        if (g_mh_cur.ok && g_mh_prev.ok && g_mh_cur.frame == frame && g_mh_prev.frame < frame && frame - g_mh_prev.frame <= 4) {
             const double gap = static_cast<double>(frame - g_mh_prev.frame);
             for (const Frame::MobyXf& x : F.xf) {
                 const auto it = g_mh_prev.w.find(mx_key(x.moby, x.class_id));

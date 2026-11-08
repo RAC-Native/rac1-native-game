@@ -407,6 +407,7 @@ void display_save() {
         std::fprintf(f, "pipeline %d\n", g_settings.pipeline ? 1 : 0);
         std::fprintf(f, "game_thread %d\n", g_settings.game_thread ? 1 : 0);
         std::fprintf(f, "extrapolate %d\n", g_settings.extrapolate ? 1 : 0);
+        std::fprintf(f, "extrapolate_fifo %d\n", g_settings.extrapolate_fifo ? 1 : 0);
         if (g_language >= 0) std::fprintf(f, "language %d\n", g_language);
         std::fprintf(f, "boot %d\n", g_boot);
         std::fclose(f);
@@ -849,6 +850,9 @@ void tab_display() {
     if (ImGui::Checkbox("Game update on its own thread (beside the pipelined frame's drawing)", &s.game_thread)) display_save();
     ImGui::BeginDisabled(!s.pipeline || !s.game_thread);
     if (ImGui::Checkbox("Frame extrapolation (prototype): more than 60 pictures with the cap above 60", &s.extrapolate)) display_save();
+    ImGui::BeginDisabled(!s.extrapolate);
+    if (ImGui::Checkbox("Extrapolation: FIFO presents (Vulkan; each picture on a refresh)", &s.extrapolate_fifo)) display_save();
+    ImGui::EndDisabled();
     ImGui::EndDisabled();
     ImGui::EndDisabled();
     ImGui::TextDisabled("The world of a frame is built while the next game frame runs, then drawn (RAC1_PIPELINE=0 / 1).");
@@ -2469,6 +2473,7 @@ void dev_menu_init(GLFWwindow* window, bool with_menu) {
             if (std::strcmp(key, "pipeline") == 0) { int v = 1; if (std::fscanf(f, "%d", &v) != 1) v = 1; g_settings.pipeline = v != 0; }
             else if (std::strcmp(key, "game_thread") == 0) { int v = 1; if (std::fscanf(f, "%d", &v) != 1) v = 1; g_settings.game_thread = v != 0; }
             else if (std::strcmp(key, "extrapolate") == 0) { int v = 0; if (std::fscanf(f, "%d", &v) != 1) v = 0; g_settings.extrapolate = v != 0; }
+            else if (std::strcmp(key, "extrapolate_fifo") == 0) { int v = 0; if (std::fscanf(f, "%d", &v) != 1) v = 0; g_settings.extrapolate_fifo = v != 0; }
             else if (std::strcmp(key, "language") == 0) { int v = -1; if (std::fscanf(f, "%d", &v) != 1) v = -1; g_language = language_valid(v) ? v : -1; }
             else if (std::strcmp(key, "boot") == 0) { int v = 1; if (std::fscanf(f, "%d", &v) != 1) v = 1; g_boot = v != 0 ? 1 : 0; }
         }

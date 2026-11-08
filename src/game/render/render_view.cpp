@@ -61,7 +61,7 @@ struct ExtrapView {
         bool ok = false;
         uint64_t frame = 0;
         glm::mat4 view{1.0f};
-    } prev, cur;
+    } prev2, prev, cur;
     bool on = false;
     uint64_t frame = 0;
     double fraction = 0.0;
@@ -83,6 +83,7 @@ void render_view_extrap_note() {
         g_ex.cur.view = g_vs.view;
         return;
     }
+    g_ex.prev2 = g_ex.prev;
     g_ex.prev = g_ex.cur;
     g_ex.cur.ok = true;
     g_ex.cur.frame = g_ex.step;
@@ -128,19 +129,42 @@ bool render_view_extrap_affine(const glm::dmat4& prev, const glm::dmat4& cur, do
     out[3] = glm::dvec4(tc + v * ahead, 1.0);
     return true;
 }
-bool render_view_extrap_begin(uint64_t frame, double fraction) {
+int render_view_extrap_begin(uint64_t frame, double fraction) {
     g_ex.on = false;
-    if (!g_ex.cur.ok || !g_ex.prev.ok || g_ex.cur.frame != frame || g_ex.prev.frame >= frame || frame - g_ex.prev.frame > 2) return false;
-    // the camera's world transform (the view's inverse) carried forward, the view its inverse again. A cut: more than 4 units
-    // or 30 degrees a step (the follow camera turns a few degrees a step at most; Ratchet runs ~0.2 units a step)
+    if (!g_ex.cur.ok || !g_ex.prev.ok || g_ex.cur.frame != frame || g_ex.prev.frame >= frame) return kExtrapNoHistory;
+    if (frame - g_ex.prev.frame > 4) return kExtrapGap;  // (a long hitch: the motion over it is no step's)
+    // the camera's world transform (the view's inverse) carried forward, the view its inverse again. A cut is a jump, not a fast
+    // move: more than 12 units or 75 degrees a step outright, or (with the step before known) more than 4 times the step before's
+    // motion and a unit / 15 degrees past it - a teleport, a respawn, a cutscene's cut; a quick turn of the follow camera keeps on
+    const double gap = static_cast<double>(frame - g_ex.prev.frame);
     const glm::dmat4 cp = glm::inverse(glm::dmat4(g_ex.prev.view)), cc = glm::inverse(glm::dmat4(g_ex.cur.view));
+    auto motion = [](const glm::dmat4& a, const glm::dmat4& b, double g, double& move, double& turn) {
+        move = glm::length(glm::dvec3(b[3]) / b[3].w - glm::dvec3(a[3]) / a[3].w) / g;
+        glm::dmat3 ra(a), rb(b);
+        for (int i = 0; i < 3; ++i) {
+            ra[i] = glm::normalize(ra[i]);
+            rb[i] = glm::normalize(rb[i]);
+        }
+        const glm::dmat3 d = rb * glm::transpose(ra);
+        turn = glm::degrees(std::acos(std::clamp((d[0][0] + d[1][1] + d[2][2] - 1.0) * 0.5, -1.0, 1.0))) / g;
+    };
+    double move = 0.0, turn = 0.0;
+    motion(cp, cc, gap, move, turn);
+    if (move > 12.0) return kExtrapMove;
+    if (turn > 75.0) return kExtrapTurn;
+    if (g_ex.prev2.ok && g_ex.prev2.frame < g_ex.prev.frame && g_ex.prev.frame - g_ex.prev2.frame <= 4) {
+        double m0 = 0.0, t0 = 0.0;
+        motion(glm::inverse(glm::dmat4(g_ex.prev2.view)), cp, static_cast<double>(g_ex.prev.frame - g_ex.prev2.frame), m0, t0);
+        if (move > 4.0 * m0 + 1.0) return kExtrapMove;
+        if (turn > 4.0 * t0 + 15.0) return kExtrapTurn;
+    }
     glm::dmat4 ce;
-    if (!render_view_extrap_affine(cp, cc, static_cast<double>(frame - g_ex.prev.frame), fraction, 4.0, 30.0, ce)) return false;
+    if (!render_view_extrap_affine(cp, cc, gap, fraction, 1e9, 180.0, ce)) return kExtrapMove;
     g_ex.view = glm::mat4(glm::inverse(ce));
     g_ex.frame = frame;
     g_ex.fraction = fraction;
     g_ex.on = true;
-    return true;
+    return kExtrapOk;
 }
 void render_view_extrap_end() { g_ex.on = false; }
 bool render_view_extrap_active(uint64_t* frame, double* fraction) {

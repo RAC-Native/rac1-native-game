@@ -29,9 +29,11 @@ uint64_t render_view_extrap_step_frame();
 // becomes the previous)
 void render_view_extrap_note();
 // orig: (host) the draws that follow (g_draw_from_snapshot) show the snapshot of step `frame` carried `fraction` (0..1) of a step
-// forward: render_view_matrix the view extrapolated from the previous noted step. False (nothing changed) when the history has
-// no step one or two before `frame`, or the camera jumped (a cut, a teleport: more than 4 units or 30 degrees in a step)
-bool render_view_extrap_begin(uint64_t frame, double fraction);
+// forward: render_view_matrix the view extrapolated from the previous noted step. kExtrapOk, else why not (nothing changed): no
+// step before `frame` in the history, a gap of more than 4 steps, or a camera cut - a jump in place or in direction (more than 12
+// units or 75 degrees a step, or 4 times the step before's motion and a unit / 15 degrees past it)
+enum { kExtrapOk = 0, kExtrapNoHistory = 1, kExtrapGap = 2, kExtrapMove = 3, kExtrapTurn = 4 };
+int render_view_extrap_begin(uint64_t frame, double fraction);
 void render_view_extrap_end();
 // orig: (host) whether a begin is in force, its step and fraction
 bool render_view_extrap_active(uint64_t* frame = nullptr, double* fraction = nullptr);

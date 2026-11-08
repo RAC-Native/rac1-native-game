@@ -21,6 +21,7 @@ struct DevSettings {
     bool pipeline = true;   // a frame drawn after the next game frame's update: its world built meanwhile (one frame of latency)
     bool game_thread = true;  // with the pipelined frames: the game's update on its own thread while that frame is drawn (runtime/ee/game_thread.h)
     bool extrapolate = false;  // (prototype) with the pipelined frames and the cap above 60: pictures between the steps, carried forward (render_view.h)
+    bool extrapolate_fifo = false;  // (prototype) while extrapolating: Vulkan's FIFO present mode (each picture on a refresh; a hidden window stops it)
     bool god_mode = false;
     bool infinite_ammo = false;
     bool infinite_bolts = false;
