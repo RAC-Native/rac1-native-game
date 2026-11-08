@@ -34,6 +34,8 @@
 
 namespace rac1 {
 
+uint32_t exit_menu_text(int32_t id);  // (exit_menu.cpp's: the headers of src/game are the generated code's fingerprint)
+
 bool g_advanced_disabled = false;
 
 // (enhancement, advanced.cpp) Options > Sound's output row with 5.1 / 7.1. The game's row is Mono / Stereo, its byte
@@ -534,6 +536,7 @@ uint32_t advanced_text(int32_t id) {
     if (const uint32_t s = update_notice_text(id)) return s;
     if (const uint32_t s = language_text(id)) return s;
     if (const uint32_t s = mods_text(id)) return s;
+    if (const uint32_t s = exit_menu_text(id)) return s;
     if (id < TEXT_FIRST || id >= TEXT_FIRST + T_COUNT) return 0;
     uint32_t lang = lwu(0x0015ed88);
     if (lang >= 6) lang = 0;

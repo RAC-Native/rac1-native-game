@@ -362,6 +362,19 @@ On the title screen's main menu (below New Game, Load Game and Options), **Updat
 
 Those settings belong to the machine: they are kept in the preferences only, not with the saves.
 
+### Exit (main menu)
+
+The main menu's last entry, below Updates, **Exit** ("Esci", "Beenden", "Salir") closes the game. It asks first, in
+the game's own style (a copy of the pause menu's Quit Game page): **Circle: Yes** closes the game, **Triangle: No**
+goes back to the main menu, Start closes the menu as on any of its pages. With the keyboard and mouse the buttons are
+the bound ones (by default the left mouse button is Circle, E is Triangle). Yes closes the game exactly as closing the
+window does (Alt+F4, the window's close button): the settings are already kept as they change, the audio and the
+renderer shut down and the log ends with `[orig] Exit chosen in the main menu: the window closes`.
+
+The pause menu's Quit Game is unchanged: as on the PS2, it leaves the game for the title screen. Exit is only on the
+PC versions (Linux, Windows, macOS): where the system closes the game (Android, consoles) the main menu has no Exit.
+It is not there with the enhancements off (the headless tests), so the original's menu stays as it is.
+
 ## New Game: Original or Modern, then the graphics
 
 New Game opens two windows before the game starts, in the game's own style (copies of its Options page).

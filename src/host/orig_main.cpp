@@ -181,6 +181,7 @@ int advanced_audio_channels();  // advanced.cpp: Options > Sound's 5.1 / 7.1 (th
 extern void (*g_advanced_audio_reopen)(int channels);
 bool advanced_audio_hp();  // advanced.cpp: Options > Sound's Mix: High Precision
 extern void (*g_advanced_audio_mix)(bool hp);
+bool exit_menu_take();  // exit_menu.cpp: the main menu's Exit confirmed (once)
 }
 void audio_out_set_channels(int channels);
 void audio_out_set_hp(bool hp);
@@ -2911,6 +2912,10 @@ int main(int argc, char** argv) {
         rac1::prof::frame_mark();  // (the debug menu's profiler: the frame before ends, this one starts)
         int prof_events = rac1::prof::begin(rac1::prof::kEvents);
         glfwPollEvents();
+        if (rac1::exit_menu_take()) {  // the main menu's Exit confirmed: the window closed, as by the system (the loop ends after this frame)
+            std::printf("[orig] Exit chosen in the main menu: the window closes\n");
+            glfwSetWindowShouldClose(window, GLFW_TRUE);
+        }
         if (!headless) {  // Options > Graphics: the window's settings changed there applied now; the window as it is reported
             const bool is_fs = glfwGetWindowMonitor(window) != nullptr;
             if (rac1::graphics_display_serial() != display_serial) {

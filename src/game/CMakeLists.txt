@@ -165,6 +165,7 @@ add_library(rac1_game STATIC
     enhance/voice_language.cpp
     enhance/language.cpp
     enhance/mods_menu.cpp
+    enhance/exit_menu.cpp
     enhance/movie_subtitles.cpp
     enhance/corrected_texts.cpp
     enhance/cut_content.cpp
