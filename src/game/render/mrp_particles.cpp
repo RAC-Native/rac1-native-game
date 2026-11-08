@@ -561,8 +561,8 @@ struct LavaSlots {
 constexpr int kLavaMatKind = kPartEmbers;
 constexpr float kLavaMatDensity = 1.5f;
 // The lava from the materials (#136): the textures the level's lines give the "lava" material (tfrags, ties, shrubs: points on
-// their faces turned up or down, read on the drawing's thread once per level and lines, as the collision's are; mobys: points on
-// their tagged faces as the frame poses them, each frame), added to the collision's lava (a point within a cell of 2 units of one
+// their faces, whichever way they face - a tagged texture is lava on its sides too: Drek's broken plateaus -, read on the drawing's
+// thread once per level and lines, as the collision's are; mobys: points on their tagged faces as the frame poses them, each frame), added to the collision's lava (a point within a cell of 2 units of one
 // of its points left out: the same lava tagged twice). Without a "source lava" line in the level's file, a level with such a
 // material draws embers from it (kLavaMatKind, kLavaMatDensity) (the collision's lava stays the lines' alone)
 struct LavaMat {
@@ -967,7 +967,7 @@ void lava_material_update() {
                 const glm::vec3 a(tris[i], tris[i + 1], tris[i + 2]), b(tris[i + 3], tris[i + 4], tris[i + 5]), c(tris[i + 6], tris[i + 7], tris[i + 8]);
                 const glm::vec3 n = glm::cross(b - a, c - a);
                 const float nl = glm::length(n);
-                if (!(nl > 2e-4f) || std::abs(n.z) < 0.5f * nl) continue;  // (the lava's top: not its sides)
+                if (!(nl > 2e-4f)) continue;  // (any face of a tagged texture: its sides too, #136)
                 for (carry += 0.5f * nl / kLavaSpacing; carry >= 1.0f && M.pts.size() < 262144; carry -= 1.0f) {
                     float u = rnd(), v = rnd();
                     if (u + v > 1.0f) {

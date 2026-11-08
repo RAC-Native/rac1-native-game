@@ -3463,8 +3463,8 @@ bool mrp_moby_at(const float p[3], uint32_t* moby, int* o_class, float* dist) {
 }
 
 // orig: (host) see mrp_lighting.h. Each drawn moby of a class with one of the surfaces is skinned on the CPU as surface_near does
-// (both LODs' packets, its texture prims in force along them); on each of that texture's triangles turned up or down (its normal at
-// least half up or down: not a side) floor(area / spacing + h) points, h the triangle's own fixed fraction, each at its own fixed
+// (both LODs' packets, its texture prims in force along them); on each of that texture's triangles, whichever way it faces (the
+// lava on the sides of Drek's broken plateaus too: #136; only their tops were taken before), floor(area / spacing + h) points, h the triangle's own fixed fraction, each at its own fixed
 // place (barycentric) on it: the same points frame after frame while the pose moves them
 void mrp_moby_surface_points(const std::vector<EmissiveSurface>& surfaces, const float cam[3], float range, float spacing, std::vector<MobySurfacePoint>& out) {
     out.clear();
@@ -3536,7 +3536,7 @@ void mrp_moby_surface_points(const std::vector<EmissiveSurface>& surfaces, const
                     const glm::vec3 &a = wp[i[0]], &b = wp[i[1]], &cc = wp[i[2]];
                     const glm::vec3 n = glm::cross(b - a, cc - a);
                     const float nl = glm::length(n), area = 0.5f * nl;
-                    if (!(area > 1e-4f) || std::fabs(n.z) < 0.5f * nl) continue;
+                    if (!(area > 1e-4f)) continue;  // (any face: a broken plateau's lava is its sides, #136)
                     const uint32_t tri = static_cast<uint32_t>(pi) << 20 | ((t / 3) & 0xfffffu);
                     const uint32_t h0 = hash(tri * 0x9e3779b9u ^ static_cast<uint32_t>(x.class_id));
                     const int count = std::min(static_cast<int>(area / spacing + unit(h0)), 64);
