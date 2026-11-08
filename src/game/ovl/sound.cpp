@@ -3,6 +3,7 @@
 // sound's definition (+0x1a the sound, +0x1c the bank), +0x18 the moby it follows, +0x20 the
 // position; their per-frame update 0x28cc08 sends them to 989snd.
 #include <game/lib/snd989.h>
+#include <runtime/iop/snd989_iop.h>
 #include <game/ovl/aridia_classes_tr.h>
 #include <game/ovl/blarg_call.h>
 #include <game/ovl/umbris_call.h>
@@ -33,6 +34,8 @@
 #include <game/port_stubs.h>
 
 namespace rac1 {
+
+int advanced_audio_channels();  // advanced.cpp: Options > Sound's 5.1 / 7.1 (the device's channels)
 
 // A play reply: the slot's handle; none (0) frees it, a started one is playing.
 // orig: 0x0028e108
@@ -270,6 +273,7 @@ int32_t sound_frame() {
     }
     Mat4 view = Mat4{};
     mat3_transpose(view, M(OV(0x00166fd0)));
+    const bool surround = advanced_audio_channels() > 2;  // (host: the places below, 5.1 / 7.1 only)
     for (uint32_t i = 0; i < 30; ++i) {
         const uint32_t t = todo[i];
         if (t == 0) continue;
@@ -307,12 +311,31 @@ int32_t sound_frame() {
             flags |= 8;
             pm -= 0x5f4;
         }
+        // Host (5.1 / 7.1): the places the game's pan does not give, outside the commands (the stereo mix keeps pan 0;
+        // sound_pan only reads; runtime/iop/snd989_iop.h):
+        // - a world sound played without a pan (flags bit 0) but attenuated by its distance (0x10 clear), not on the
+        //   hero (Kalebo III's class 471, Rilgar's 855, Kerwan's 574, Quartu / Drek's fleet 655): placed by its direction;
+        // - an ambience bed (a level emitter's type 4 / 5, flags 0x15: its slot moved to the camera each frame): diffuse.
+        // The menus' and HUD's sounds and the help jingle (0x11), Ratchet's own and Giant Clank's (0x31) stay on the front.
+        int place = 0, place_pan = 0;
+        if (surround && (t & 2) == 0) {
+            const uint32_t f = lbu(e + 5), mob = lwu(e + 0x18);
+            const bool hero = mob != 0 && (mob == lwu(g::PLAYER + 0x2080) || mob == lwu(g::PLAYER + 0x1090) || mob == lwu(g::PLAYER + 0xa88));
+            if ((f & 0x11) == 1 && !hero) {
+                place = 1;
+                place_pan = sound_pan(e, e + 0x20, view);
+            } else if (f == 0x15 && lwu(e + 0x1c) != 0) {
+                place = 2;
+            }
+        }
         if (lbu(e + 4) == 7) {
             sb(e + 4, 1);
             const uint32_t def = lwu(e + 8);
+            if (place != 0) snd989_host_place_next(place, place_pan);
             snd_play_sound(lwu(def + 0x1c), static_cast<uint32_t>(static_cast<int32_t>(lh(def + 0x1a))), vol[i], pan, pm, pb, OVF(0x0028e108), e);
         } else {
             snd_set_sound(h, flags, vol[i], pan, pm, pb, OVF(0x0028e150), e);
+            if (place != 0) snd989_host_place(h, place, place_pan);
         }
     }
     music_streams_frame();

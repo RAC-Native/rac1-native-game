@@ -85,8 +85,9 @@ class Voice {
   // rac1 (host): where the voice goes in a 5.1 / 7.1 output (Synth::Tick's speakers; nothing of the stereo mix):
   // Front its left / right on the front left / right (the stereo mix's), Positional its sound's direction (989snd's
   // pan in degrees: 0 ahead, 90 right, 180 behind) around the listener, Centre the centre speaker (the dialogue; a pan
-  // spreads it towards the front left / right)
-  enum class Place : u8 { Front, Positional, Centre };
+  // spreads it towards the front left / right), Diffuse its left on the left speakers and its right on the right ones at
+  // equal power (front, surround, in 7.1 also back: a bed around the listener, as the reverb)
+  enum class Place : u8 { Front, Positional, Centre, Diffuse };
   void SetPlace(Place p, s32 pan) {
     while (pan > 180) pan -= 360;
     while (pan <= -180) pan += 360;
