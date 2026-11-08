@@ -14,6 +14,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
+#include <runtime/iop/snd989_iop.h>
 #include <runtime/kernel/bootstrap.h>
 #include <runtime/sif/sif_rpc.h>
 
@@ -246,9 +247,11 @@ void snd_cmd_0d(uint32_t a, uint32_t b) { send(0xd, {a, b}); }
 // orig: 0x0012e2b8
 void snd_cmd_4e(uint32_t a, uint32_t b, uint32_t c) { send(0x4e, {a, b, c}); }
 
-// Plays sound `snd` of `bank`: the voice handle goes to `cb` with `data`.
+// Plays sound `snd` of `bank`: the voice handle goes to `cb` with `data`. (Host: the IOP's host side told, in order, for
+// the 5.1 / 7.1 place snd989_host_place_next gave it.)
 // orig: 0x0012e308
 void snd_play_sound(uint32_t bank, uint32_t snd, int32_t vol, int32_t pan, int32_t pm, int32_t pb, uint32_t cb, uint64_t data) {
+    snd989_host_play_sent(bank, snd);
     send(0x11, {bank, snd, static_cast<uint32_t>(vol), static_cast<uint32_t>(pan), static_cast<uint32_t>(pm), static_cast<uint32_t>(pb)}, cb, data);
 }
 // orig: 0x0012e368

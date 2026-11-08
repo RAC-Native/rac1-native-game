@@ -5,6 +5,11 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Sound in 5.1 / 7.1: the few world sounds the game plays without a pan (Kalebo III's class 471, Rilgar's 855, Kerwan's
+  574, Quartu's and Drek's fleet's 655) are placed around the listener by their direction like the other world sounds,
+  and the ambience beds tied to the camera (the level emitters of type 4 / 5: Batalia, Hoven, Novalis and others) are
+  spread over all the speakers instead of the front left / right. Stereo and mono are unchanged sample for sample, and
+  nothing the game reads changes (RAC1_RAMHASH identical). See docs/audio.md, "Surround: 5.1 and 7.1".
 - docs/mods.md, a modder's guide: a texture mod and a .vag sound swap step by step, the limits, every `[mods]` log
   line and what it means, sharing a mod.
 - Graphics: Enhanced, Lighting: Original (#138): the original game's lighting and drop shadows with the modern lighting's sun
