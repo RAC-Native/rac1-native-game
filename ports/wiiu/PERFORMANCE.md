@@ -1605,3 +1605,13 @@ Built and proved exact on the PC that evening; measured on the console 2026-11-0
   "succeeds"): an allocation past the 914 MB would not fail, it would corrupt. RAC1_WIIU_MEM_PROBE=1 prints the bounds and what is
   left every 300 host frames.
 
+
+## Main up to ab81f31 merged (2026-11-08)
+
+- Kerwan, deterministic (dser.sh, two runs each, alternated): game code 21.5 -> 21.7 ms a step, host 38.8 -> 44.1 ms a frame, the
+  GPU's busy 39 -> 44 ms: the ties' pass 2 2.9 -> 5.6 ms (draws 3,764 -> 3,991 a host frame).
+- **Why:** main's tie_vert_opaque checks the fat vertex's colour as the vertex shader makes it ((C1 0.5 + C2 0.5) morph.w + C0
+  morph.z on the floats 2^23 + byte, its low byte). mrp_world.vert computes the same. Mid LOD morph, z + w is not exactly 256, the
+  float's exponent drops and the low byte (the alpha) falls under 0x80: on Kerwan a third of the checks (headless, 1,500 frames). The
+  Wii U's old tie_slot_opaque looked at the colours' alpha alone and skipped pass 2 for those instances, so their pixels failing the
+  test were lost instead of drawn RGB-only. The cost is the correct picture's.
