@@ -5,6 +5,8 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- docs/mods.md, a modder's guide: a texture mod and a .vag sound swap step by step, the limits, every `[mods]` log
+  line and what it means, sharing a mod.
 - Graphics: Enhanced, Lighting: Original (#138): the original game's lighting and drop shadows with the modern lighting's sun
   off everywhere (as in a level's interiors), the other rows still on top: Ambient Occlusion, Surface Detail, Water
   Reflections (RT too), Grass, Ambient Particles, Secondary Lights. Shadow Strength, Shadow Distance, Dynamic Shadows and Sun
