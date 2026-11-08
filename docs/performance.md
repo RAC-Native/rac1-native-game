@@ -157,6 +157,50 @@ guard pages (the journal's write test replaced by a page fault at a page's first
 (2-5 us) than copying the page (under 1 us), so it would be slower. The test itself (two byte loads on each of the ~150,000
 writes a frame inside the shadow runs) is a few hundredths of a millisecond.
 
+### The second moby pass: the pose memo, the observers' reads, the distances outside the journal
+
+Measured on Kerwan's plaza at 16:9 widened (game thread, LOD High, main's build, sampler): the moby pass's shadow drew 282
+mobys a frame against the real pass's 48, and its time went to the poses 0x250fe0 (33 %), the draw loop (29 %), the MRP's
+observers of the pass (17 %), the scene's decode (10 %) and the journal (5 %; 12 % at LOD Original). Three changes, each exact
+by construction and each behind a switch with a check mode:
+
+- **The pose memo** (`render/mrp_pose_memo.cpp`, `RAC1_PERF_POSE_MEMO`). Most of the mobys LOD High adds are far and not
+  animating: their pose is the same frame after frame (a gdb count over Kerwan, Rilgar and Veldin: 95 % of the second pass's
+  posed mobys, 40-89 % of its posed joints). The memo keeps, per moby and model, every byte the pose reads (the job's 0x40
+  bytes, what its toSPR chain brings - the joints' rest data and keyframes -, the blend channels with their keys, the
+  additive layers, the bind matrices) and the joint matrices it left; when those bytes are the same again, the matrices go on
+  the scratchpad and the pose is not run. A key of the job alone would not do: 0.1-0.5 % of those poses differ through the
+  additive layers (a head turning). It works only inside the second pass, whose memory, scratchpad and VU0 are put back after
+  it, and only for a record whose skinning the MRP skips (the skinning would read the rest of the pose's state); the MRP reads
+  only the matrices. `=2` runs the pose on every hit too and compares: 628,935 hits over the 19 levels widened at LOD High,
+  0 differing. Hits on the 19 levels' walks: 40-88 % of the joints at LOD High (Umbris 8 %, Drek's fleet 23 %), 0-58 % at LOD Original.
+- **The observers' reads** (`RAC1_PERF_SCENE_READS`): the draw loop's and the pose's observers (`mrp_scene.cpp`) copied the
+  record a word at a time, the vectors a float at a time and the joint matrices 16 floats a joint through the out-of-line
+  accessors; each range is now one pointer and a memcpy (the same bytes; `=2` reads both ways and compares: 24.6 million
+  ranges over the 19 levels, 0 differing). The real pass gains too.
+- **The distances outside the journal** (`RAC1_PERF_LOD_PATCH`): `patch_moby` wrote +0x32 / +0x72 of every moby through the
+  journal, so every page of the moby list was saved and put back each frame - at LOD Original too, where it writes the same
+  values. It now writes none at a scale of 1 (`=2` checks that none would change: 0 over the 19 levels), and otherwise writes
+  the changed fields straight into RAM and puts them back after the journal's restore (a page the pass writes is saved with
+  the patched value, restored to it, then the undo puts the original back). The drawn flags (+0x31) the pass left are read
+  straight from RAM as well.
+
+On the same scene (five interleaved runs each, the profiler's means; a shared machine):
+
+| ms a frame | LOD High: before | all three | without the memo | LOD Original: before | all three |
+|---|---|---|---|---|---|
+| the moby pass's shadow (its own timer) | 2.16 | **1.52** | 1.91 | 0.68 | **0.54** |
+| profiler `moby joints / skinning` (both passes) | 1.34 | 0.55 | 1.19 | 0.32 | 0.25 |
+| game thread busy | 7.48 | **6.87** | 7.19 | 5.54 | **5.22** |
+
+The memo is about 0.4 ms of it at LOD High, the reads and the journal about 0.25. Left in the shadow: the draw loop (now the
+largest part), the decode, the misses' poses (the near, animated mobys).
+
+Proved: `RAC1_MRP_SCENE_HASH` (every drawn moby scene hashed: its mobys, models, matrices, records, poses, parts) identical
+with the three on and off on the 19 levels widened, at LOD High and at LOD Original (900 frames each); `RAC1_MRP_LOD_VERIFY=1`
+on all of those runs (the memory after each shadow run: 0 differing); the check modes above; RAMHASH on the 4-level route
+widened at LOD High identical to the 4:3 one (7abc4c2e, 733,729 lines); the reference images unchanged.
+
 ## The frame's chain
 
 The MRP chain worker reads each frame's chain beside the main thread (`mrp_chain.cpp`: the 2D, the effects' VU1 programs, the
@@ -360,6 +404,9 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_COLL_MESH=1` | the collision segment test's moby meshes kept between calls (off by default) |
 | `RAC1_PERF_COPIES=0` | the EE journal's pages zero-filled then copied, the moby observer's record built aside and copied |
 | `RAC1_MRP_LOD_ROOM_JOURNAL=1` | the widened view's / LOD slider's shadow runs' own room saved and put back by the journal |
+| `RAC1_PERF_POSE_MEMO=0` | the second moby pass poses every moby (`=2`: the memo's hits checked against the pose) |
+| `RAC1_PERF_SCENE_READS=0` | the MRP moby scene's observers read a word at a time (`=2`: both ways, compared) |
+| `RAC1_PERF_LOD_PATCH=0` | the second moby pass's distances written through the journal, every moby (`=2`: the scale-1 identity checked) |
 | `RAC1_PERF_EULER_CACHE=1` | the Euler conversion's rows kept per angles (off by default) |
 | `RAC1_PERF_VU0_NF=0` | the generated code's VU0 ops with their flags |
 | `RAC1_WORLD_CULL_FAST=0` | the world passes' three culls as transliterated (`=2`: both, compared at every call) |
