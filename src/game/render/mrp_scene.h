@@ -136,6 +136,9 @@ const MrpFrame& mrp_scene_draw();
 // read at once), keeps it as the draw scene and puts the kept frame back
 void mrp_scene_shadow_begin();
 void mrp_scene_shadow_end();
+// orig: (host) the moby whose pose the skinning record `rec` is about to get (the draw loop reported it, its pose not seen yet:
+// the one the pose observer will take, whose skinning the MRP skip then skips): its moby and model (far). false: none
+bool mrp_scene_pose_slot(uint32_t rec, uint32_t& moby, bool& far);
 // orig: (host) the totals of the check that every moby the real pass drew is in the scene the MRP draws (RAC1_MRP_LOD_DROPS=1 logs each)
 void mrp_scene_lod_drop_report();
 

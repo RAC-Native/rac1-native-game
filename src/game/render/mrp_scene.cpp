@@ -6,6 +6,7 @@
 //  - the pose observer (moby_skin.h) gives the joint matrices on the scratchpad the skinning reads;
 //  - the chain (DMA tags + VIF codes in the packet buffer) is decoded into the parts and UNPACKs.
 #include <game/render/mrp_scene.h>
+#include <game/render/mrp_pose_memo.h>
 
 #include <game/ovl/moby_draw.h>
 #include <game/ovl/moby_skin.h>
@@ -513,6 +514,7 @@ void mrp_scene_install() {
     g_moby_draw_observer = on_draw;
     g_moby_pose_observer = on_pose;
     g_moby_skip_next = skip_next;
+    mrp_pose_memo_install();  // (the second pass's pose memo: mrp_pose_memo.h)
 }
 
 const MrpFrame& mrp_scene() { return g_frame; }
@@ -525,6 +527,23 @@ void mrp_scene_shadow_begin() {
     g_next_pose = 0;
     g_last_pose = ~size_t(0);
     g_have_camera = false;
+}
+
+// orig: (host) see mrp_scene.h: the moby on_pose will take for `rec` (the same search), when skip_next will then skip its skinning
+bool mrp_scene_pose_slot(uint32_t rec, uint32_t& moby, bool& far) {
+    const MrpFrame& f = g_frame;
+    size_t idx = f.mobys.size();
+    if (g_next_pose < f.mobys.size() && f.mobys[g_next_pose].ring == rec && f.mobys[g_next_pose].joint_count == 0) idx = g_next_pose;
+    else
+        for (size_t i = f.mobys.size(); i-- > 0;)
+            if (f.mobys[i].ring == rec && f.mobys[i].joint_count == 0) {
+                idx = i;
+                break;
+            }
+    if (idx == f.mobys.size() || f.mobys[idx].record_qwords == 0) return false;
+    moby = f.mobys[idx].moby;
+    far = f.mobys[idx].far_lod;
+    return true;
 }
 
 // orig: (host) see mrp_scene.h

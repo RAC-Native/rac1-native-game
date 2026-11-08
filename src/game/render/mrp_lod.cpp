@@ -11,6 +11,7 @@
 #include <game/ovl/moby_pass.h>
 #include <game/ovl/moby_shadows.h>
 #include <game/render/mrp_moby_renderer.h>
+#include <game/render/mrp_pose_memo.h>
 #include <game/render/mrp_scene.h>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/mrp_world_scene.h>
@@ -1036,6 +1037,7 @@ void mrp_lod_moby_shadow(void (*pass)()) {
 // orig: (host)
 void mrp_lod_report() {
     mrp_scene_lod_drop_report();
+    mrp_pose_memo_report();
     if (g_patch_runs != 0)
         std::printf("[lod] moby distances (RAC1_PERF_LOD_PATCH=%d): %.1f fields written a run outside the journal; at a scale of 1, fields that would change %llu\n",
                     g_lod_patch, static_cast<double>(g_patch_written) / static_cast<double>(g_patch_runs), static_cast<unsigned long long>(g_patch_identity_bad));
