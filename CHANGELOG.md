@@ -24,6 +24,10 @@ What changed in each release. Releases are source only: you build the game with 
   own; Veldin's crates work), the music (`music <level>`, `music <loop.vag> [<intro.vag>]` read through the level's
   window, `music none`) and another level's sky (`sky <level>`). The example level has five crates, Kerwan's sky and a
   tune of its own (a small PS-ADPCM encoder in make_example.py). The composer's version 2 (builds are made again).
+- Level mods: the meshes' vertex colours (`v x y z r g b`, 64 a mesh; a textured material's Kd tints), `offset x y z` /
+  `offset auto` (a level made round (0, 0, 0) moved above the collision grid's 0), and the composer's size checks (the
+  asset data within the base level's, the objects, the gameplay data). host_meshes.mrpc version 2 (the instances'
+  palettes).
 - docs/mods.md, a modder's guide: a texture mod and a .vag sound swap step by step, the limits, every `[mods]` log
   line and what it means, sharing a mod.
 - Graphics: Enhanced, Lighting: Original (#138): the original game's lighting and drop shadows with the modern lighting's sun

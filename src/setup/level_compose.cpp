@@ -53,7 +53,8 @@ namespace {
     "scale <s>                                 the OBJ files' units to game units (default 1)\n"
     "moby <class> <x> <y> <z> [<yaw>]          an object of the base level's class <class>, as its first placement there\n"
     "music <level> | music <loop.vag> [<intro.vag>] | music none   the level's music\n"
-    "sky <level>                               the sky of the game's level <level> (default: the base level's)\n";
+    "sky <level>                               the sky of the game's level <level> (default: the base level's)\n"
+    "offset auto | offset <x> <y> <z>          moved by that much (auto: as far as the collision needs to be above 0)\n";
 
 struct LevelTxt {
     float hero[4] = {0, 0, 1, 0};
@@ -78,6 +79,8 @@ struct LevelTxt {
     bool music_none = false;            // music none
     std::string music_loop, music_intro;  // music <loop.vag> [<intro.vag>]: the mod's own
     int sky_level = -1;                 // sky <level>
+    bool offset_auto = false;           // offset auto
+    float offset[3] = {};               // offset <x> <y> <z> (or auto's): added to every coordinate (not lights.txt's)
 };
 
 struct Log {
@@ -208,6 +211,16 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
             } else {
                 return bad();
             }
+        } else if (key == "offset") {
+            std::string a;
+            in >> a;
+            if (a == "auto") {
+                t.offset_auto = true;
+            } else {
+                std::istringstream in2(line.substr(line.find(key) + key.size()));
+                if (!(in2 >> t.offset[0] >> t.offset[1] >> t.offset[2])) return bad();
+                t.offset_auto = false;
+            }
         } else if (key == "sky") {
             if (!(in >> t.sky_level) || t.sky_level < 0 || t.sky_level > 18) return bad();
         } else {
@@ -225,6 +238,7 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
 struct ObjVert {
     float p[3];
     float uv[2];
+    float col[3];  // its colour (an OBJ's "v x y z r g b"; 1 1 1 without)
 };
 struct ObjTri {
     ObjVert v[3];
@@ -289,7 +303,7 @@ bool read_obj(const fs::path& p, const LevelTxt& lt, bool with_materials, Obj& o
         err = p.generic_string() + " cannot be read";
         return false;
     }
-    std::vector<std::array<float, 3>> vs;
+    std::vector<std::array<float, 3>> vs, cols;
     std::vector<std::array<float, 2>> vts;
     std::string line;
     int material = -1, object = 0;
@@ -303,8 +317,11 @@ bool read_obj(const fs::path& p, const LevelTxt& lt, bool with_materials, Obj& o
         if (k == "v") {
             float x = 0, y = 0, z = 0;
             in >> x >> y >> z;
-            if (lt.y_up) vs.push_back({x * lt.scale, -z * lt.scale, y * lt.scale});
-            else vs.push_back({x * lt.scale, y * lt.scale, z * lt.scale});
+            if (lt.y_up) vs.push_back({x * lt.scale + lt.offset[0], -z * lt.scale + lt.offset[1], y * lt.scale + lt.offset[2]});
+            else vs.push_back({x * lt.scale + lt.offset[0], y * lt.scale + lt.offset[1], z * lt.scale + lt.offset[2]});
+            float r = 1, g = 1, b = 1;
+            if (!(in >> r >> g >> b)) r = g = b = 1;
+            cols.push_back({std::clamp(r, 0.0f, 1.0f), std::clamp(g, 0.0f, 1.0f), std::clamp(b, 0.0f, 1.0f)});
         } else if (k == "vt") {
             float u = 0, v = 0;
             in >> u >> v;
@@ -347,6 +364,7 @@ bool read_obj(const fs::path& p, const LevelTxt& lt, bool with_materials, Obj& o
                 }
                 ObjVert v{};
                 std::memcpy(v.p, vs[static_cast<size_t>(vi)].data(), sizeof v.p);
+                std::memcpy(v.col, cols[static_cast<size_t>(vi)].data(), sizeof v.col);
                 if (ti >= 0) std::memcpy(v.uv, vts[static_cast<size_t>(ti)].data(), sizeof v.uv);
                 poly.push_back(v);
             }
@@ -740,6 +758,45 @@ bool build_host_meshes(const Obj& o, mrpw::HostMeshFile& out, Log& log, std::str
                 r2 = std::max(r2, d);
             }
         c.sphere[3] = std::sqrt(r2) / c.scale;
+        // the vertices' colours (the OBJ's, times the material's Kd when it has a texture: a colour material's Kd is its
+        // texture) in the instance's palette: at most 64 (the tie's colour table), so made coarser until they fit
+        auto vcol = [&](const ObjTri* t, int i) {
+            std::array<int, 3> c{};
+            const ObjMaterial* m = t->material >= 0 ? &o.materials[static_cast<size_t>(t->material)] : nullptr;
+            for (int l = 0; l < 3; ++l) {
+                const float k = m != nullptr && !m->map.empty() ? std::clamp(m->kd[l], 0.0f, 1.0f) : 1.0f;
+                c[static_cast<size_t>(l)] = static_cast<int>(std::lround(t->v[i].col[l] * k * 128.0f));
+            }
+            return c;
+        };
+        std::map<std::array<int, 3>, uint8_t> pal;
+        int step = 1;
+        for (const int st : {1, 2, 4, 8, 16, 32, 43}) {
+            step = st;
+            pal.clear();
+            for (const ObjTri* t : tris)
+                for (int i = 0; i < 3; ++i) {
+                    std::array<int, 3> c = vcol(t, i);
+                    for (int& x : c) x = std::min(128, (x + st / 2) / st * st);
+                    pal.emplace(c, 0);
+                }
+            if (pal.size() <= 64) break;
+        }
+        const bool coloured = !(pal.size() == 1 && pal.begin()->first == std::array<int, 3>{128, 128, 128});
+        mrpw::HostMeshInstance in;
+        if (coloured) {
+            for (auto& [c, k] : pal) {
+                k = static_cast<uint8_t>(in.palette.size());
+                in.palette.push_back({static_cast<uint8_t>(c[0]), static_cast<uint8_t>(c[1]), static_cast<uint8_t>(c[2]), 0x80});
+            }
+            if (step > 1) log.say(fmt("  %s: its vertex colours made coarser (steps of %d / 128) to fit 64", o.objects[obj].c_str(), step));
+        }
+        auto vindex = [&](const ObjTri* t, int i) -> int16_t {
+            if (!coloured) return 0;
+            std::array<int, 3> c = vcol(t, i);
+            for (int& x : c) x = std::min(128, (x + step / 2) / step * step);
+            return static_cast<int16_t>(pal[c]);
+        };
         std::map<int, uint32_t> local;  // material -> local texture
         mrpw::HostMeshPacket pk;
         auto flush = [&] {
@@ -767,9 +824,11 @@ bool build_host_meshes(const Obj& o, mrpw::HostMeshFile& out, Log& log, std::str
             const float sv = std::floor(std::min({1.0f - t->v[0].uv[1], 1.0f - t->v[1].uv[1], 1.0f - t->v[2].uv[1]}));
             mrpw::HostMeshStrip strip;
             strip.local_texture = local[t->material];
-            for (const ObjVert& v : t->v) {
+            for (int vi = 0; vi < 3; ++vi) {
+                const ObjVert& v = t->v[vi];
                 std::array<int16_t, 8> d{};
                 for (int l = 0; l < 3; ++l) d[static_cast<size_t>(l)] = static_cast<int16_t>(std::clamp(std::lround((v.p[l] - centre[l]) * k), -32767l, 32767l));
+                d[3] = vindex(t, vi);
                 const float s = (v.uv[0] - su) * 4096.0f, tt = (1.0f - v.uv[1] - sv) * 4096.0f;
                 if (s > 32767.0f || tt > 32767.0f) clamped = true;
                 d[4] = static_cast<int16_t>(std::clamp(std::lround(s), -32767l, 32767l));
@@ -782,13 +841,12 @@ bool build_host_meshes(const Obj& o, mrpw::HostMeshFile& out, Log& log, std::str
         }
         flush();
         if (clamped) log.say("  " + o.objects[obj] + ": UVs spanning more than 8 repeats in one triangle were clamped");
-        mrpw::HostMeshInstance in;
         for (int r = 0; r < 3; ++r) in.rot[r][r] = 1.0f;
         for (int l = 0; l < 3; ++l) in.pos[l] = centre[l];
         in.cls = static_cast<uint32_t>(out.classes.size());
         out.instances.push_back(in);
-        log.say(fmt("  mesh \"%s\": %zu triangles, %zu packets, %zu textures, centre (%.1f %.1f %.1f), reach %.1f", o.objects[obj].c_str(), tris.size(), c.packets.size(),
-                    c.textures.size(), centre[0], centre[1], centre[2], reach));
+        log.say(fmt("  mesh \"%s\": %zu triangles, %zu packets, %zu textures, %zu vertex colours, centre (%.1f %.1f %.1f), reach %.1f", o.objects[obj].c_str(),
+                    tris.size(), c.packets.size(), c.textures.size(), in.palette.size(), centre[0], centre[1], centre[2], reach));
         total_tris += tris.size();
         out.classes.push_back(std::move(c));
     }
@@ -1096,6 +1154,16 @@ bool build_gameplay(const std::vector<uint8_t>& g, const LevelTxt& lt, std::vect
         ng.insert(ng.end(), it->second.begin(), it->second.end());
         wr32(ng, f, static_cast<int32_t>(at));
     }
+    // the budget: the base level's own gameplay data fits its memory; ours is its blocks with fewer objects (a few more
+    // bytes per placed object's pvars at most)
+    if (lt.mobys.size() + 1 > static_cast<size_t>(rd32(g, G[0x44 / 4]))) {
+        err = fmt("too many objects: %zu, the base level places %d", lt.mobys.size(), rd32(g, G[0x44 / 4]) - 1);
+        return false;
+    }
+    if (ng.size() > g.size() + 0x10000) {
+        err = fmt("the gameplay data is too large (%zu bytes, the base level's %zu)", ng.size(), g.size());
+        return false;
+    }
     out = wad_encode(ng);
     std::vector<uint8_t> back;
     std::string why;
@@ -1248,6 +1316,15 @@ bool build_data(const std::vector<uint8_t>& wad, const std::vector<uint8_t>& col
     }
     wr32(idx, 0x88, static_cast<int32_t>(packed.size()));
     wr32(idx, 0x8c, static_cast<int32_t>(core.buf.size()));
+    // the budget: the base level's code places what follows its asset data for its own, so the level's must not be larger
+    log.say(fmt("budget: asset data %.2f MB of the base level's %.2f MB (%.0f %%)", static_cast<double>(core.buf.size()) / 1048576.0,
+                static_cast<double>(old.size()) / 1048576.0, 100.0 * static_cast<double>(core.buf.size()) / static_cast<double>(old.size())));
+    if (core.buf.size() > old.size()) {
+        err = fmt("the level is too large: its asset data (%.2f MB: the base level's classes, sky and effects, and the collision, %.2f MB) is larger "
+                  "than the base level's (%.2f MB), which is what the game's memory holds there (make the collision smaller or coarser)",
+                  static_cast<double>(core.buf.size()) / 1048576.0, static_cast<double>(coll.size()) / 1048576.0, static_cast<double>(old.size()) / 1048576.0);
+        return false;
+    }
     log.say(fmt("asset data: %zu bytes (tfrags none, sky 0x%zx, collision 0x%zx, texels 0x%zx; the base level's %zu kept), packed %zu (%.0f %%)", core.buf.size(), o_sky,
                 o_coll, o_texel, old.size(), packed.size(), 100.0 * static_cast<double>(packed.size()) / static_cast<double>(core.buf.size())));
     // the data file: the base level's code, sound bank, VRAM image and HUD; the new index and asset data
@@ -1299,6 +1376,26 @@ bool compose_level_mod(const std::string& folder, bool force) {
         return false;
     };
     if (!read_level_txt(ldir / "level.txt", lt, err)) return fail(err);
+    // the offset: `offset auto` as far as the collision's lowest corner needs to be 16 units above 0 (in whole cells of 4)
+    if (lt.offset_auto) {
+        Obj probe;
+        if (!read_obj(ldir / lt.collision, lt, false, probe, err)) return fail(err);
+        float lo[3] = {1e30f, 1e30f, 1e30f};
+        for (const ObjTri& t : probe.tris)
+            for (const ObjVert& v : t.v)
+                for (int l = 0; l < 3; ++l) lo[l] = std::min(lo[l], v.p[l]);
+        for (int l = 0; l < 3; ++l) lt.offset[l] = !probe.tris.empty() && lo[l] < 16.0f ? std::ceil((16.0f - lo[l]) / 4.0f) * 4.0f : 0.0f;
+    }
+    if (lt.offset[0] != 0 || lt.offset[1] != 0 || lt.offset[2] != 0) {
+        for (int l = 0; l < 3; ++l) {
+            lt.hero[l] += lt.offset[l];
+            lt.ship_at[l] += lt.offset[l];
+            for (LevelTxt::Moby& mb : lt.mobys) mb.at[l] += lt.offset[l];
+        }
+        lt.death += lt.offset[2];
+        log.say(fmt("offset: (%g %g %g) added to every coordinate%s (lights.txt's are the game's: not moved)", lt.offset[0], lt.offset[1], lt.offset[2],
+                    lt.offset_auto ? " (auto)" : ""));
+    }
     // the collision
     Obj co;
     if (!read_obj(ldir / lt.collision, lt, false, co, err)) return fail(err);

@@ -418,8 +418,9 @@ python3 examples/custom-level/make_example.py mods/example-plateau
 ./build/rac1-native
 ```
 
-The first line writes the example mod (a floor, a ramp up to a platform, a few blocks, a ship pad, five crates, Kerwan's
-sky and a short tune as its music; everything in it is made by the script, the tune too). The second composes it with your disc (the setup does it too, as its last step). In the game,
+The first line writes the example mod (a floor, a ramp up to a platform, a few blocks coloured per vertex, a ship pad,
+five crates, Kerwan's sky and a short tune as its music, made round (0, 0, 0) and moved by its offset; everything in it
+is made by the script, the tune too). The second composes it with your disc (the setup does it too, as its last step). In the game,
 enter your ship: the planet list ends with **Custom Levels / Example Plateau**. Its log lines start with `[levels]`
 and `[compose]`.
 
@@ -467,6 +468,7 @@ mods/example-plateau/
 | `collision <file>`, `meshes <file>` | other file names (default `collision.obj`, `meshes.obj`) |
 | `collision_type <n>` | the surface type of the collision's faces (default 31, plain ground) |
 | `up z` or `up y` | the OBJ files' up axis: `z` (the game's, the default) or `y` (Blender's default OBJ export) |
+| `offset <x> <y> <z>`, `offset auto` | added to every coordinate of the OBJ files (after `up` and `scale`) and of level.txt; `auto`: as much as the collision needs (below) |
 | `scale <s>` | the OBJ files' units to the game's (default 1; Ratchet is about 1.5 units tall) |
 | `moby <class> <x> <y> <z> [<yaw>]` | an object (below) |
 | `music <level>`, `music <loop.vag> [<intro.vag>]`, `music none` | the music: the game level's (0..18), your own (below), or none; default the base level's |
@@ -489,15 +491,21 @@ read through the level's window). The example's `make_example.py` has a small en
 (MFAudio, ...) make them too.
 
 Coordinates are the game's: z up, in game units. **Every coordinate of the collision must be above 0** (the game's
-collision grid starts at 0 and ignores what is below; the composer refuses a collision that reaches below): the example
-level is around (200, 200, 20).
+collision grid starts at 0 and ignores what is below; the composer refuses a collision that reaches below). A level made
+round (0, 0, 0), as a modelling program has it, is moved with `offset`: the example is made round (0, 0, 0) and has
+`offset 200 200 20`; `offset auto` moves the level as far as its collision's lowest corner needs to be 16 units above 0
+on each axis (in whole steps of 4; the composer's log says by how much). `lights.txt`'s coordinates are the game's
+(the debug menu's Lights tab writes them so): they are not moved.
 
 `collision.obj`: triangles or polygons (`v`, `f`), faces counter-clockwise seen from where they can be walked on (an
 OBJ's usual front). `usemtl type<N>` before faces gives them surface type N. No collision of its own means no ground.
 
 `meshes.obj`: each object (`o`) is a mesh the host draws; each material (`usemtl`, in the `.mtl`) one texture: its
 `map_Kd` PNG (scaled to powers of two, at most 256 x 256, at most 256 colours), else its `Kd` colour. At most 16
-materials a mesh. A triangle's texture repeats at most 8 times across it (split larger triangles).
+materials a mesh. A triangle's texture repeats at most 8 times across it (split larger triangles). **Vertex colours**:
+`v <x> <y> <z> <r> <g> <b>` (0 to 1, as Blender exports them with colour attributes) colour the texture there (1 1 1:
+as it is); a textured material's `Kd` tints it too. At most 64 colours a mesh (the game's instance colour table): more
+are made coarser to fit (the log says so).
 
 ### How it is built: the composer
 
@@ -551,9 +559,15 @@ Format 1 is the first step:
   modern renderer). Another level's sky is right in the modern renderer; the faithful renderer may show it with wrong
   colours;
 - the base level is Veldin (the ship's planet page for the level shows Veldin's planet and missions);
-- the level's size: its collision and the base level's parts must fit the PS2's memory (a level of a few hundred
-  units across is far within it);
-- the meshes are drawn by the modern renderer only, lit by the modern lighting, one colour per mesh (no vertex colours);
+- the level's size: the composed asset data (the base level's classes, sky and effects, and your collision) must not be
+  larger than the base level's own (what the game's memory holds there: on Veldin 16 MB, of which the kept parts take
+  about 9), the objects not more than the base level places, and the gameplay data not much larger than the base
+  level's; the composer checks it (`[compose] budget: ...`) and refuses a level that is too large. A level of a few
+  hundred units across is far within it;
+- the collision is made of triangles: no quads (they would only make it smaller) and no hero collision groups (Veldin
+  has none);
+- the meshes are drawn by the modern renderer only (the faithful renderer, a debug choice, draws what the game's code
+  sends: the meshes have no EE data), lit by the modern lighting;
 - the North American disc (`SCUS-97199`); the PAL disc is not tested.
 
 ### Level mods: log lines
@@ -569,6 +583,8 @@ Format 1 is the first step:
 | `[levels] level 0's header: level slot 19's` | the level loads |
 | `[levels] level slot 19's music: ...` | the level's music: none, a game level's, or the mod's (its sectors in the window) |
 | `[levels] the save was made on the level "<id>", whose mod is off or missing` | the planet prompt |
+| `[compose] offset: (x y z) added to every coordinate` | level.txt's offset (or auto's) |
+| `[compose] budget: asset data X MB of the base level's Y MB` | how much of the base level's room the level takes |
 | `[compose] ...` | the composer's steps; its errors name the file and line |
 
 ### Testing a level mod
