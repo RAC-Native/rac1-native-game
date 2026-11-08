@@ -5,15 +5,22 @@
 #include "platform/ctx_switch.h"
 
 #include <coreinit/memdefaultheap.h>
+#include <coreinit/memory.h>
 #include <coreinit/thread.h>
 #include <coreinit/time.h>
 
+#include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <malloc.h>
+#include <memory>
 #include <map>
 #include <mutex>
 #include <string>
+#include <unistd.h>
+#include <vector>
 
 extern char** environ;
 
@@ -59,69 +66,201 @@ void coroutine_yield() { rac1_ctx_switch(&g_co.game_sp, g_co.host_sp); }
 // A file read at far apart places (the disc image: the level's data, two music streams) is read through up to four handles
 // of its own: each read takes the handle that is already just before it. The SD card's file system walks a file's cluster
 // chain from its start to seek back: a 2 KB read of a stream behind another, 3 GB into the image, took ~96 ms; ahead, ~10.
+// The calls into the card's file system one at a time (g_fs_m), as they always were, but a long read in pieces of 512 KB: the lock
+// held for the whole read had a stream's 64 KB wait behind the level's data.wad, 13-19 MB read whole (0.6-0.85 s); between two pieces
+// another read goes. A file's handles under a lock of their own.
+// The files kept in memory (keep_in_memory): read whole at once, on the caller's thread (in a level's load), then their reads served
+// from memory. Not in the background: with a thread of its own reading them (on core 0 or 2, at priority 24 or 30, with the card's calls
+// one at a time or not) the console froze 3 times in 7 runs, at a level's start, the log cut short (not found). RAC1_WIIU_PRELOAD_MB
+// (default 160; 0: none) the most kept; a file not read in when the app's memory left (MEM2 past the heap's end, and the heap's own free
+// space) would fall under 192 MB.
 namespace {
 struct Handle {
     std::FILE* f = nullptr;
     std::uint64_t pos = ~0ull;  // (where its next read starts; ~0: unknown)
     std::uint64_t used = 0;
 };
+using Bytes = std::shared_ptr<const std::vector<std::uint8_t>>;
 struct Handles {
+    std::mutex m;  // (its handles and their positions)
     std::string path;
     Handle h[4];
     int n = 0;
+    Bytes ram;  // (the file kept in memory: its reads from here)
 };
-std::mutex g_files_m;
+std::mutex g_files_m;  // (the map, and the files kept in memory)
+std::mutex g_fs_m;     // (the card: one call into its file system at a time, as before - with four threads in it at once the console hung)
 std::map<std::FILE*, Handles> g_files;  // (the files opened for reading, by their first handle)
-std::uint64_t g_reads = 0;
+std::atomic<std::uint64_t> g_reads{0};
+std::map<std::string, Bytes> g_ram;  // (the files kept in memory, by their path)
+std::map<std::string, int> g_ram_group;
+std::uint64_t g_ram_bytes = 0;
+std::uint64_t preload_cap() {
+    static const std::uint64_t mb = std::getenv("RAC1_WIIU_PRELOAD_MB") != nullptr ? std::strtoull(std::getenv("RAC1_WIIU_PRELOAD_MB"), nullptr, 10) : 160;
+    return mb << 20;
+}
+// the app's memory left: MEM2 past the heap's end and the heap's free space (wut's sbrk does not refuse past the end: see wiiu_gfx.cpp)
+std::uint64_t memory_left() {
+    std::uint32_t m2 = 0, m2_size = 0;
+    OSGetMemBound(OS_MEM2, &m2, &m2_size);
+    const auto brk = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(sbrk(0)));
+    const std::uint64_t past = brk >= m2 && brk <= m2 + m2_size ? m2 + m2_size - brk : 0;
+    return past + static_cast<std::uint32_t>(mallinfo().fordblks);
+}
 }  // namespace
 
-std::FILE* open_file(const std::filesystem::path& path, const char* mode) {
-    std::FILE* f = std::fopen(path.c_str(), mode);
-    if (f != nullptr && std::strcmp(mode, "rb") == 0) {
+void keep_in_memory(int group, const std::vector<std::filesystem::path>& paths) {
+    if (preload_cap() == 0 || group < 0 || group > 3) return;
+    static const bool log = std::getenv("RAC1_WIIU_PRELOAD_LOG") != nullptr;
+    std::vector<Bytes> dropped;  // (freed after the lock)
+    {
+        std::scoped_lock lock(g_files_m);  // (the group's earlier files dropped; a reader holding one keeps it alive)
+        for (auto it = g_ram_group.begin(); it != g_ram_group.end();) {
+            if (it->second != group) {
+                ++it;
+                continue;
+            }
+            if (auto r = g_ram.find(it->first); r != g_ram.end()) {
+                g_ram_bytes -= r->second->size();
+                dropped.push_back(std::move(r->second));
+                g_ram.erase(r);
+            }
+            for (auto& [fp, hs] : g_files)
+                if (hs.path == it->first) dropped.push_back(std::move(hs.ram));
+            it = g_ram_group.erase(it);
+        }
+    }
+    dropped.clear();
+    const OSTime t0 = OSGetTime();
+    std::uint64_t read = 0;
+    std::size_t files = 0;
+    for (const auto& p : paths) {
+        const std::string path = p.string();
+        std::uint64_t kept;
+        {
+            std::scoped_lock lock(g_files_m);
+            if (g_ram.count(path) != 0) continue;
+            kept = g_ram_bytes;
+        }
+        std::shared_ptr<std::vector<std::uint8_t>> v;
+        {
+            std::scoped_lock fs(g_fs_m);
+            std::FILE* f = std::fopen(path.c_str(), "rb");
+            if (f == nullptr) continue;
+            std::fseek(f, 0, SEEK_END);
+            const long size = std::ftell(f);
+            std::fseek(f, 0, SEEK_SET);
+            if (size > 0 && kept + static_cast<std::uint64_t>(size) <= preload_cap() && memory_left() > (192ull << 20) + static_cast<std::uint64_t>(size)) {
+                v = std::make_shared<std::vector<std::uint8_t>>(static_cast<std::size_t>(size));
+                if (std::fread(v->data(), 1, v->size(), f) != v->size()) v.reset();
+            }
+            std::fclose(f);
+        }
+        if (v == nullptr) continue;
+        read += v->size();
+        ++files;
         std::scoped_lock lock(g_files_m);
+        Bytes b = v;
+        g_ram[path] = b;
+        g_ram_group[path] = group;
+        g_ram_bytes += v->size();
+        for (auto& [fp, hs] : g_files)
+            if (hs.path == path) hs.ram = b;  // (its handles: their reads from here on)
+    }
+    if (log)
+        std::printf("[preload] group %d: %zu files, %llu KB in %.1f ms (%llu MB kept, %llu MB of memory left)\n", group, files,
+                    static_cast<unsigned long long>(read >> 10), static_cast<double>(OSTicksToMicroseconds(OSGetTime() - t0)) / 1000.0,
+                    static_cast<unsigned long long>(g_ram_bytes >> 20), static_cast<unsigned long long>(memory_left() >> 20));
+}
+
+bool read_kept(const std::filesystem::path& path, std::uint64_t offset, void* dst, std::size_t n) {
+    std::scoped_lock lock(g_files_m);
+    if (g_ram.empty()) return false;
+    const auto it = g_ram.find(path.string());
+    if (it == g_ram.end() || offset + n > it->second->size()) return false;
+    std::memcpy(dst, it->second->data() + offset, n);
+    return true;
+}
+
+std::FILE* open_file(const std::filesystem::path& path, const char* mode) {
+    std::FILE* f = std::fopen(path.c_str(), mode);  // (outside g_fs_m, as before)
+    if (f != nullptr && std::strcmp(mode, "rb") == 0) {
+        std::unique_lock lock(g_files_m);
         Handles& hs = g_files[f];  // (a handle of a file closed since: its entry and other handles replaced)
+        Bytes ram;
+        if (auto it = g_ram.find(path.string()); it != g_ram.end()) ram = it->second;
+        std::scoped_lock hl(hs.m, g_fs_m);
         for (int i = 1; i < hs.n; ++i) std::fclose(hs.h[i].f);
-        hs = Handles{};
+        for (Handle& h : hs.h) h = Handle{};
         hs.path = path.string();
         hs.h[0].f = f;
         hs.n = 1;
+        hs.ram = ram;
     }
     return f;
 }
 
-// (no pread here: a seek and a read under one lock, the game's thread and the audio's may read at once)
+// (no pread here: a seek and a read under the file's lock)
 std::int64_t read_at(std::FILE* f, std::uint64_t offset, void* dst, std::size_t n) {
-    std::scoped_lock lock(g_files_m);
     static const double slow_ms = std::getenv("RAC1_WIIU_SLOW_READ") != nullptr ? std::atof(std::getenv("RAC1_WIIU_SLOW_READ")) : -1.0;
     const OSTime t0 = OSGetTime();
-    Handle* h = nullptr;
+    Handles* hs = nullptr;
+    {
+        std::scoped_lock lock(g_files_m);
+        if (auto it = g_files.find(f); it != g_files.end()) {
+            hs = &it->second;
+            if (const Bytes ram = hs->ram) {  // (kept in memory)
+                if (offset >= ram->size()) return 0;
+                const std::size_t k = std::min<std::size_t>(n, ram->size() - offset);
+                std::memcpy(dst, ram->data() + offset, k);
+                return static_cast<std::int64_t>(k);
+            }
+        }
+    }
     Handle one{f};
-    if (auto it = g_files.find(f); it != g_files.end()) {
-        Handles& hs = it->second;
+    std::unique_lock<std::mutex> hl;
+    Handle* h = nullptr;
+    if (hs != nullptr) {
+        hl = std::unique_lock<std::mutex>(hs->m);
         // the handle just before the read (up to 4 MB: ahead within a cluster chain is cheap), else a new one, else the least used lately
-        for (int i = 0; i < hs.n; ++i)
-            if (hs.h[i].pos != ~0ull && hs.h[i].pos <= offset && offset - hs.h[i].pos <= (4u << 20) && (h == nullptr || hs.h[i].pos > h->pos)) h = &hs.h[i];
-        if (h == nullptr && hs.n < 4) {
-            if (std::FILE* g = std::fopen(hs.path.c_str(), "rb"); g != nullptr) {
-                h = &hs.h[hs.n++];
+        for (int i = 0; i < hs->n; ++i)
+            if (hs->h[i].pos != ~0ull && hs->h[i].pos <= offset && offset - hs->h[i].pos <= (4u << 20) && (h == nullptr || hs->h[i].pos > h->pos)) h = &hs->h[i];
+        if (h == nullptr && hs->n < 4) {
+            std::scoped_lock fs(g_fs_m);
+            if (std::FILE* g = std::fopen(hs->path.c_str(), "rb"); g != nullptr) {
+                h = &hs->h[hs->n++];
                 h->f = g;
             }
         }
         if (h == nullptr) {
-            h = &hs.h[0];
-            for (int i = 1; i < hs.n; ++i)
-                if (hs.h[i].used < h->used) h = &hs.h[i];
+            h = &hs->h[0];
+            for (int i = 1; i < hs->n; ++i)
+                if (hs->h[i].used < h->used) h = &hs->h[i];
         }
     } else {
         h = &one;
     }
     h->used = ++g_reads;
-    if (h->pos != offset && fseeko(h->f, static_cast<off_t>(offset), SEEK_SET) != 0) {
-        h->pos = ~0ull;
-        return -1;
+    if (h->pos != offset) {
+        std::scoped_lock fs(g_fs_m);
+        if (fseeko(h->f, static_cast<off_t>(offset), SEEK_SET) != 0) {
+            h->pos = ~0ull;
+            return -1;
+        }
     }
-    const auto r = static_cast<std::int64_t>(std::fread(dst, 1, n, h->f));
-    h->pos = r >= 0 ? offset + static_cast<std::uint64_t>(r) : ~0ull;
+    std::int64_t r = 0;
+    for (std::size_t at = 0; at < n;) {  // (in pieces: another file's read between them)
+        const std::size_t k = std::min<std::size_t>(512 * 1024, n - at);
+        std::size_t got;
+        {
+            std::scoped_lock fs(g_fs_m);
+            got = std::fread(static_cast<std::uint8_t*>(dst) + at, 1, k, h->f);
+        }
+        r += static_cast<std::int64_t>(got);
+        at += got;
+        if (got < k) break;
+    }
+    h->pos = offset + static_cast<std::uint64_t>(r);
     if (slow_ms >= 0.0) {  // (testing, RAC1_WIIU_SLOW_READ=<ms>: the reads slower than that)
         const double ms = static_cast<double>(OSTicksToMicroseconds(OSGetTime() - t0)) / 1000.0;
         if (ms > slow_ms) std::printf("[wiiu] read %llu bytes at %llu: %.1f ms\n", static_cast<unsigned long long>(n), static_cast<unsigned long long>(offset), ms);

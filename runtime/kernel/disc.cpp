@@ -56,6 +56,7 @@ struct DiscFiles {
     std::string error;
     uint64_t image_bytes = 0;
     std::vector<std::filesystem::path> paths;  // per file: where it is on the host
+    std::vector<std::string> names;            // per file: its path in the layout
     std::vector<uint64_t> sizes;               // per file: its size in the layout
     std::vector<DiscPiece> pieces;             // by their first byte
     std::mutex lock;                           // (the handles: the game's thread and the audio thread read at once)
@@ -131,6 +132,47 @@ void files_load(DiscFiles& d) {
         std::filesystem::path p = game_disc ? mods_disc_file(names[i], d.sizes[i]) : std::filesystem::path();
         d.paths.push_back(p.empty() ? files_host_path(d.dir, names[i]) : p);
     }
+#if defined(__WIIU__)
+    // (the Wii U: a level's hdr_ files read from its one pack, levels/levelNN/hdr.pack, where levels/hdr_packs.txt lists it -
+    // ports/wiiu/tools/sd_level_packs.py; a file a mod replaces, or not of the layout's size, read from its own file still)
+    if (game_disc) {
+        std::ifstream pf(d.dir + "/levels/hdr_packs.txt");
+        std::string pl;
+        if (pf && std::getline(pf, pl) && pl == "rac1-native hdr packs 1") {
+            std::unordered_map<std::string, uint32_t> packs;  // (by level)
+            std::vector<std::pair<uint32_t, uint64_t>> to(names.size(), {~0u, 0});  // (a file's pack and offset in it)
+            size_t moved = 0;
+            while (std::getline(pf, pl)) {
+                std::istringstream in(pl);
+                std::string a, b;
+                uint64_t x = 0, y = 0;
+                if (!(in >> a >> b >> x)) continue;
+                if (a == "pack") {
+                    const std::string rel = "levels/" + b + "/hdr.pack";
+                    packs[b] = static_cast<uint32_t>(names.size());
+                    names.push_back(rel);
+                    d.sizes.push_back(x);
+                    d.paths.push_back(files_host_path(d.dir, rel));
+                    continue;
+                }
+                const auto pk = packs.find(a);
+                const auto it = index.find("levels/" + a + "/" + b);
+                if (!(in >> y) || pk == packs.end() || it == index.end()) continue;
+                const uint32_t i = it->second;
+                if (d.sizes[i] != y || d.paths[i] != files_host_path(d.dir, names[i])) continue;
+                to[i] = {pk->second, x};
+                ++moved;
+            }
+            for (DiscPiece& p : d.pieces)
+                if (p.file < to.size() && to[p.file].first != ~0u) {
+                    p.file_offset += to[p.file].second;
+                    p.file = to[p.file].first;
+                }
+            std::printf("[disc] %zu levels' hdr_ files in their packs (%zu files)\n", packs.size(), moved);
+        }
+    }
+#endif
+    d.names = names;
     d.handles.resize(d.paths.size());
     d.ok = true;
 }
@@ -199,6 +241,35 @@ bool read_full(std::FILE* f, uint64_t at, char* dst, size_t n) {
     return true;
 }
 
+#if defined(__WIIU__)
+// (the Wii U) a level's first file read: its sound banks and voices (levels/levelNN/hdr_*, 30-60 MB) read into memory then, in the
+// load - their first reads in play stalled the game at a landing, after a cutscene (40-650 ms on the SD card); the level before's
+// dropped (platform::keep_in_memory)
+void level_files_kept(const DiscFiles& d, uint32_t file) {
+    const std::string& name = d.names[file];
+    if (name.compare(0, 12, "levels/level") != 0) return;
+    const size_t slash = name.find('/', 7);
+    if (slash == std::string::npos) return;
+    static std::mutex m;
+    static std::string level;
+    std::string now;
+    {
+        std::scoped_lock lock(m);
+        if (name.compare(0, slash + 1, level) == 0) return;
+        level = name.substr(0, slash + 1);
+        now = level;
+    }
+    std::vector<std::filesystem::path> keep;
+    for (size_t i = 0; i < d.names.size() && keep.empty(); ++i)  // (its pack, if it has one)
+        if (d.names[i] == now + "hdr.pack") keep.push_back(d.paths[i]);
+    const bool packed = !keep.empty();
+    for (size_t i = 0; i < d.names.size() && !packed; ++i)
+        if (d.names[i].size() > now.size() + 4 && d.names[i].compare(0, now.size(), now) == 0 && d.names[i].compare(now.size(), 4, "hdr_") == 0)
+            keep.push_back(d.paths[i]);
+    platform::keep_in_memory(0, keep);
+}
+#endif
+
 bool files_read(DiscFiles& d, uint64_t offset, size_t n, char* dst) {
     if (!d.ok || offset + n > d.image_bytes) return false;
     std::memset(dst, 0, n);  // (what no piece holds)
@@ -208,6 +279,10 @@ bool files_read(DiscFiles& d, uint64_t offset, size_t n, char* dst) {
     double open_ms = 0.0;
     uint32_t last_file = 0;
     const bool ok = files_find(d, offset, n, [&](const DiscPiece& p, uint64_t a, uint64_t b) {
+#if defined(__WIIU__)  // (a file kept in memory: no handle opened for it - its open alone 50-100 ms on the SD card)
+        if (&d == &files()) level_files_kept(d, p.file);
+        if (platform::read_kept(d.paths[p.file], p.file_offset + (a - p.first), dst + (a - offset), static_cast<size_t>(b - a))) return true;
+#endif
         const auto o0 = std::chrono::steady_clock::now();
         const std::shared_ptr<std::FILE> f = files_handle(d, p.file);
         if (slow >= 0.0) open_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - o0).count();

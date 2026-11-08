@@ -68,6 +68,16 @@ inline bool write_file_replace(const std::filesystem::path& path, const std::str
 // Reads up to `n` bytes at `offset` without moving a shared position (several threads read the same
 // file at once). Returns the bytes read, 0 at the end, -1 on an error.
 std::int64_t read_at(std::FILE* f, std::uint64_t offset, void* dst, std::size_t n);
+// These files read again and again (a level's sound banks): the Wii U reads them whole into memory now, where there is room, and serves
+// their reads from there; `group` (0..3) a set of them, its earlier files dropped. Nothing elsewhere.
+// read_kept: `n` bytes at `offset` of such a file, from memory (false: not kept, read it from the file).
+#if defined(__WIIU__)
+void keep_in_memory(int group, const std::vector<std::filesystem::path>& paths);
+bool read_kept(const std::filesystem::path& path, std::uint64_t offset, void* dst, std::size_t n);
+#else
+inline void keep_in_memory(int, const std::vector<std::filesystem::path>&) {}
+inline bool read_kept(const std::filesystem::path&, std::uint64_t, void*, std::size_t) { return false; }
+#endif
 // A hint that these bytes are read soon (nothing where the system has no such hint).
 void will_need(std::FILE* f, std::uint64_t offset, std::uint64_t bytes);
 // The whole file mapped read-only into memory. False when it cannot be opened, is empty, or cannot be mapped.

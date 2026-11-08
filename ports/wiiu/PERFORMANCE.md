@@ -1615,3 +1615,23 @@ Built and proved exact on the PC that evening; measured on the console 2026-11-0
   float's exponent drops and the low byte (the alpha) falls under 0x80: on Kerwan a third of the checks (headless, 1,500 frames). The
   Wii U's old tie_slot_opaque looked at the colours' alpha alone and skipped pass 2 for those instances, so their pixels failing the
   test were lost instead of drawn RGB-only. The cost is the correct picture's.
+
+## A level's sound files kept in memory; the card's reads in pieces (2026-11-08)
+
+- **In play:** a level's hdr_ files (its sound banks and voices, 50-440 files, 4-57 MB) were read from the card the first time the
+  game wanted each: 40-650 ms a read on the game's or the audio's thread (Veldin's hdr_0148.vag: 657 ms just after the level's start).
+  Now the whole set is read into memory in the level's load (platform::keep_in_memory, runtime/kernel/disc.cpp level_files_kept) and
+  its reads served from there; the level before's dropped. RAC1_WIIU_PRELOAD_MB (default 160; 0: off) the most kept, nothing read
+  when the app's memory left would fall under 192 MB. Measured on the route Veldin -> Novalis -> Kerwan: no hdr_ read left in play.
+- **One file a level:** read one by one, the opens cost 11-28 ms each in the level's folder (Kerwan's 441: 12.6 s; 7.6 s in a fresh
+  folder). ports/wiiu/tools/sd_level_packs.py puts them in levels/levelNN/hdr.pack, listed in levels/hdr_packs.txt; the layout's
+  pieces of a listed file point into the pack (a modded file, or one not of the layout's size, read from its own file still). Kerwan's
+  55 MB in 3.0 s, read in one go (Veldin 1.3 s, Novalis 2.0 s); the load that much longer. A kept file read with no handle opened
+  (platform::read_kept: its open alone 60-100 ms). The SD card holds the packs beside the old files (650 MB). Kerwan's steps as before
+  (21.8 ms; the route clean in 3 runs).
+- **Not in the background:** with a thread of its own reading them (at priority 30 on any core, 24 on core 2, 24 on core 0; the card's
+  calls one at a time or not) the console froze 3 times in 7 runs, at a level's start or at the boot, the log cut short with no
+  exception - the cause not found. While it read (~10 s after a load) it cost Kerwan's steps 1.3-1.9 ms on core 2, ~0.3 on core 0;
+  nothing after.
+- **The card's calls:** one at a time (g_fs_m) as before, but a read past 512 KB in pieces, the lock let go between them: a stream's
+  64 KB read no longer waits behind the level's whole data.wad (13-19 MB, 0.6-0.9 s). A file's handles under a lock of their own.
