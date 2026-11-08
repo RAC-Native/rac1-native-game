@@ -46,6 +46,13 @@ What changed in each release. Releases are source only: you build the game with 
   `offset auto` (a level made round (0, 0, 0) moved above the collision grid's 0), and the composer's size checks (the
   asset data within the base level's, the objects, the gameplay data). host_meshes.mrpc version 2 (the instances'
   palettes).
+- Faster widened view and LOD slider: the second moby pass (the one that fills the 16:9 sides and draws LOD High's farther
+  mobys) keeps the poses of mobys whose animation did not change instead of computing them again, its scene observers copy
+  what they read in one go, and it no longer saves and restores the whole moby list's memory each frame.
+  On Kerwan at 16:9 with LOD High that pass went from 2.2 to 1.5 ms a frame (the game thread 7.5 to 6.9 ms), at LOD
+  Original 0.68 to 0.54 ms.
+  The same game state and picture (RAC1_PERF_POSE_MEMO, RAC1_PERF_SCENE_READS, RAC1_PERF_LOD_PATCH = 0 to compare); see
+  docs/performance.md.
 - docs/mods.md, a modder's guide: a texture mod and a .vag sound swap step by step, the limits, every `[mods]` log
   line and what it means, sharing a mod.
 - Graphics: Enhanced, Lighting: Original (#138): the original game's lighting and drop shadows with the modern lighting's sun

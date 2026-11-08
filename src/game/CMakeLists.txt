@@ -274,6 +274,7 @@ add_library(rac1_game STATIC
     render/mrp_world_static.cpp
     render/mrp_tfrag_gpu.cpp
     render/mrp_lod.cpp
+    render/mrp_pose_memo.cpp
     render/mrp_title_view.cpp
     render/mrp_2d.cpp
     render/texture_mods.cpp
