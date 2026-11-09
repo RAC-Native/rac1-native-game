@@ -8,9 +8,12 @@
 # (docs/platforms.md, "Verification").
 name: build
 
+# (port/wiiu: only main's pushes and the pull requests into main - the Wii U branch's own pushes build nothing here)
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:

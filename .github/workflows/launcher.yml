@@ -6,12 +6,15 @@
 # launcher that cannot open its window, e.g. a library missing from the Linux file, fails here, not on a player's PC).
 name: launcher
 
+# (port/wiiu: only main's pushes, the pull requests into main and the releases)
 on:
   push:
+    branches: [main]
     paths:
       - "tools/launcher/**"
       - ".github/workflows/launcher.yml"
   pull_request:
+    branches: [main]
     paths:
       - "tools/launcher/**"
   release:
