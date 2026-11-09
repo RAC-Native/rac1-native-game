@@ -195,6 +195,8 @@ add_library(rac1_game STATIC
     ovl/empty_class_updates.cpp
     ovl/particles_draw.cpp
     ovl/moby_draw.cpp
+    ovl/moby_draw_fast.cpp
+    ovl/moby_draw_hand.cpp
     ovl/moby_pass.cpp
     ovl/moby_joints.cpp
     ovl/moby_shadows.cpp
