@@ -5,6 +5,7 @@
 //   RAC1_WIIU_USB_COPY=1   the SD card's rac1-native/assets/disc/ copied there (files already there at their size skipped), then
 //                          .complete written beside them; on the log, its progress
 //   RAC1_WIIU_USB_BENCH=1  opens and first reads of the same files on the SD card and on the USB storage, timed, on the log
+//   RAC1_WIIU_USB_DELETE=1 the copy removed (rac1-native/ on the USB storage, nothing else)
 //   RAC1_WIIU_USB=1        the disc's files read from a complete copy there (else, the default, from the SD card)
 // Not faster, measured (2026-11-09, an SSD): the route Veldin -> Novalis -> Kerwan with its reads over 40 ms logged, the SD card 13,
 // the USB storage 20; a level's sound pack read whole 3.0 / 2.76 s, Kerwan's data.wad 0.83 / 0.88 s; an open in toc/ 3-33 / 2-44 ms.
@@ -141,6 +142,25 @@ void copy_to_usb() {
         }
 }
 
+// orig: (host) a folder of ours and everything in it removed
+void remove_tree(const std::string& dir, unsigned long long& files) {
+    std::vector<std::pair<std::string, bool>> entries;
+    if (DIR* d = opendir(dir.c_str())) {
+        while (dirent* e = readdir(d))
+            if (std::strcmp(e->d_name, ".") != 0 && std::strcmp(e->d_name, "..") != 0) entries.emplace_back(e->d_name, e->d_type == DT_DIR);
+        closedir(d);
+    }
+    for (const auto& [name, sub] : entries) {
+        const std::string p = dir + "/" + name;
+        if (sub) {
+            remove_tree(p, files);
+        } else if (std::remove(p.c_str()) == 0) {
+            ++files;
+        }
+    }
+    rmdir(dir.c_str());
+}
+
 // the same files opened and their first 64 KB read on both (each set once: the second medium's reads never the first's cache)
 void bench() {
     static const char* const kFiles[] = {"toc/13/row_13b8.bin", "toc/19/row_1960.pss", "levels/level03/hdr.pack", "levels/level01/hdr.pack",
@@ -184,7 +204,9 @@ void wiiu_usb_setup() {
     const bool use = on != nullptr && std::atoi(on) != 0;
     const char* copy = std::getenv("RAC1_WIIU_USB_COPY");
     const char* bench_on = std::getenv("RAC1_WIIU_USB_BENCH");
-    if (!use && (copy == nullptr || std::atoi(copy) == 0) && (bench_on == nullptr || std::atoi(bench_on) == 0)) return;
+    const char* del = std::getenv("RAC1_WIIU_USB_DELETE");
+    const bool del_on = del != nullptr && std::atoi(del) != 0;
+    if (!use && !del_on && (copy == nullptr || std::atoi(copy) == 0) && (bench_on == nullptr || std::atoi(bench_on) == 0)) return;
     if (Mocha_InitLibrary() != MOCHA_RESULT_SUCCESS) {
         log("no Mocha: the data from the SD card");
         return;
@@ -192,6 +214,13 @@ void wiiu_usb_setup() {
     const MochaUtilsStatus m = Mocha_MountFS("rac1usb", nullptr, "/vol/storage_usb01");
     if (m != MOCHA_RESULT_SUCCESS && m != MOCHA_RESULT_ALREADY_EXISTS) {
         log("the USB storage not mounted (%s): the data from the SD card", Mocha_GetStatusStr(m));
+        return;
+    }
+    if (del_on) {
+        unsigned long long files = 0;
+        const OSTime t0 = OSGetTime();
+        remove_tree("rac1usb:/rac1-native", files);
+        log("the copy removed: %llu files in %.0f ms; rac1-native/ %s", files, ms_since(t0), exists("rac1usb:/rac1-native") ? "still there" : "gone");
         return;
     }
     if (copy != nullptr && std::atoi(copy) != 0) copy_to_usb();
