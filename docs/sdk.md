@@ -29,7 +29,8 @@ Contents:
 | ABI | Game | Added |
 |---|---|---|
 | 1 | the first with code | the callbacks level_start .. shutdown; the services log .. call_port |
-| 2 | this one | level objects of the level's own classes (`class_define` .. `object_at`, `rac1_class_def`, `rac1_spawn`), `collide_ray`, `objects_near`, `mobys_near`, `hero_damage`, `hit_send`, `hit_take`, the level's own sounds (`sfx_*`), triggers (`trigger_find`, `trigger_inside`, the `trigger` callback), `frame_count` |
+| 2 | the first with level objects | level objects of the level's own classes (`class_define` .. `object_at`, `rac1_class_def`, `rac1_spawn`), `collide_ray`, `objects_near`, `mobys_near`, `hero_damage`, `hit_send`, `hit_take`, the level's own sounds (`sfx_*`), triggers (`trigger_find`, `trigger_inside`, the `trigger` callback), `frame_count` |
+| 3 | this one | the base level's objects at run time: `base_spawn`, `base_moby`, `base_free` (level.txt's `spawn` lines) |
 
 How compatibility works:
 
@@ -46,8 +47,9 @@ How compatibility works:
   `hit_take`) set it to `sizeof` and the game fills only what fits (0 counts as the whole struct of the game's
   version); the ones the game gives you (`rac1_spawn`, `rac1_hit` in the `hit` callback) carry the game's size.
 
-The level folder's own version is `level.format` (still 1: the lines below are additions a format 1 game reads; a
-game without them refuses the level with the line's number).
+The level folder's own version is `level.format`: 1 runs on Veldin's code (level 0), 2 names another base level
+(`level.base`, [Base levels](mods.md#base-levels)). The lines below are additions both formats read; a game without them
+refuses the level with the line's number.
 
 ## Lifecycle
 
@@ -174,6 +176,16 @@ A class's own callbacks are in its `rac1_class_def` ([Objects](#objects)).
 | `void moby_remove(uint32_t moby)` | (do not use it on an object's moby: `object_remove`) |
 | `void moby_moved(uint32_t moby)` | its matrix from its position, rotation, scale |
 | `uint32_t moby_link(moby, pvar_offset)`, `void moby_set_link(moby, pvar_offset, other)` | a pvar word naming another moby |
+
+### The base level's objects (ABI 3)
+
+| Service | Does |
+|---|---|
+| `uint32_t base_spawn(int32_t cls, const float pos[3], float yaw)` | a new object of the base level's class `cls` at `pos`, turned `yaw`, as the base level's first placement of the class (its settings, its pvars, its bolts), its class's own behaviour: a handle, 0 none (no `spawn` line for the class, its room all in use) |
+| `uint32_t base_moby(uint32_t handle)` | its moby while it lives; 0 once it is gone (killed, removed with `moby_remove`, the level left): how a plugin knows it died |
+| `int32_t base_free(int32_t cls)` | how many more of class `cls` `base_spawn` can start now |
+
+See [Base level objects](#base-level-objects) below.
 
 ### Collision and queries
 
@@ -308,6 +320,37 @@ RAC1_MOD_EXPORT int rac1_mod_main(const rac1_api* game, rac1_mod* mod) {
   each time the level loads (keep what was collected or broken yourself, in `save` / `load`, and `object_remove` it
   in `level_start`).
 
+## Base level objects
+
+A level on a base level other than Veldin is there for the base level's objects, its enemies first. Two ways:
+
+- **Placed**: level.txt's `moby <class> <x> <y> <z> [<yaw>]` (docs/mods.md, Objects): there at the level's start,
+  uids 1.. in the lines' order; `moby_by_uid(uid)` is 0 once one is gone.
+- **At run time** (ABI 3): level.txt's `spawn <class> <count>` gives room for `<count>` live objects of the class at once.
+  The composer places that many copies of the base level's first placement of the class; when the level has loaded the
+  game takes them out of play, keeping each one's moby and private values (pvars) as the load left them. `base_spawn`
+  starts one of them again at the place given, exactly as loaded (its class runs from its start: it notices Ratchet,
+  attacks, takes his hits, dies, drops its bolts); `base_moby(handle)` is its moby until it is gone; its room is free
+  again then (`base_free`). They are never saved: a level loaded again starts with all of them free.
+
+```c
+static uint32_t wave[3];
+static void frame(void* user) {
+    for (int i = 0; i < 3; ++i) {
+        if (wave[i] != 0 && api->base_moby(wave[i]) == 0) wave[i] = 0;   /* died */
+        if (wave[i] == 0) {
+            float p[3] = {200.0f + 8.0f * i, 200.0f, 100.5f};
+            wave[i] = api->base_spawn(1445, p, 0.0f);                    /* Kalebo III's robot */
+        }
+    }
+}
+```
+
+What works per class is the base level's class's own business: an enemy that walks and fights on flat ground works; one
+that follows the base level's paths, waits for another object, a mission or a cutscene does not (docs/mods.md,
+[Base levels](mods.md#base-levels) lists what was tried on Kalebo III). Test with `RAC1_MODS=1 RAC1_MOD_CODE=1` and
+`RAC1_SIM_INPUT=attack` (Ratchet swinging the wrench) headless.
+
 ## Hits and damage
 
 The game keeps a ring of **hit records** (64 of 0x40 bytes): an attack writes one for the moby it reaches (its
@@ -386,6 +429,7 @@ typedef struct rac1_ray_hit {       /* (ABI 2) collide_ray */
 
 | What | Limit |
 |---|---|
+| Base level objects (`spawn` lines) | as the base level places objects: the placed ones and the pools' together at most as many as it places |
 | Level objects at once | 256, and the game's moby pool (the base level's: the objects share it with the game's own mobys) |
 | Classes a level | as many as the host meshes allow; 64 behaviours (`class_define`) a plugin |
 | A class's model | as `meshes.obj`'s meshes: 16 materials, 64 vertex colours, textures to 256 x 256 |

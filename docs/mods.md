@@ -402,9 +402,10 @@ The line says `replaced` but it does not look right:
 
 A level mod adds a **new level** to the game: a row on the ship's planet list, under the unlocked planets, that flies
 there. The mod holds our own files only (a text file, OBJ meshes, PNG textures, VAG music); the setup **composes** them
-with your own disc's files into the level's build, which never leaves your machine. Format 1: a level of your own
-collision and meshes, Ratchet, his ship and his gadgets on it, objects of the base level's classes (crates, ...), a
-game level's music or your own, a game level's sky. Behaviour of its own (moving platforms, counters, HUD lines, rules
+with your own disc's files into the level's build, which never leaves your machine: a level of your own collision and
+meshes, Ratchet, his ship and his gadgets on it, objects of the base level's classes (crates, its enemies, ...), a game
+level's music or your own, a game level's sky, on the code of a **base level** of your choice (Veldin by default;
+Kerwan, Eudora or Kalebo III: [Base levels](#base-levels)). Behaviour of its own (moving platforms, counters, HUD lines, rules
 for its objects) comes from **code**: a plugin in the mod, built from its source by the setup (see
 [Custom levels: code](custom-levels.md); a mod with code is off until you turn it on and confirm it).
 
@@ -433,7 +434,7 @@ game was built with). In the game, the mod contains code: Options > Mods, turn *
 lines start with `[levels]`, `[compose]`, `[plugin]` and `[mod example-plateau]`. (A test run with `RAC1_MODS=1` but
 not `RAC1_MOD_CODE=1` has the level without its code: the sixth crate sits still.)
 
-### The level folder (format 1)
+### The level folder
 
 ```
 mods/example-plateau/
@@ -461,8 +462,8 @@ mods/example-plateau/
 |---|---|
 | `kind` | `"level"` |
 | `level.id` | the level's key: its progress in your saves and `RAC1_GOTO=<id>@<frame>` use it, never the folder's name. Letters, digits, `-`, `_`, `.` |
-| `level.format` | `1` (the format this page describes; a newer game may read newer ones) |
-| `level.base` | the game's level whose code the level runs: `0` (Veldin) in format 1 |
+| `level.format` | `1` (the level runs on Veldin's code) or `2` (on `level.base`'s); a newer game may read newer ones |
+| `level.base` | the game's level whose code the level runs: `0` (Veldin) in format 1; in format 2 one of `0`, `3` (Kerwan), `4` (Eudora), `16` (Kalebo III): [Base levels](#base-levels) |
 
 `level.txt`, one setting a line (`#` starts a comment):
 
@@ -472,7 +473,9 @@ mods/example-plateau/
 | `region <text>`, `region.<lang> <text>` | the line above it |
 | `hero auto`, `hero <x> <y> <z> [<yaw>]` | where Ratchet starts (and comes back after a death). `auto` (the default when there is a ship): where he steps off the ship after the landing, beside it, facing away from it. A place of your own puts him there when the landing ends (as the game's planets do: the landing's last shot cuts to him there). Without a ship, a place is required |
 | `ship <x> <y> <z> <yaw>` or `ship none` | where the ship stands and lands: the landing's camera and Ratchet stepping off follow its place and yaw, so keep about 20 units round it open (none: no landing, no way out but loading a save) |
-| `death_height <z>` | below it Ratchet dies |
+| `death_height <z>` | below it Ratchet dies; default the base level's, or 8 under the collision's lowest point when the base level's is above it (the log says so) |
+| `base <level\|name>` | the base level, as mod.json's `level.base` (a number, or `veldin`, `kerwan`, `eudora`, `kalebo`, ...): the composer checks they are the same (mod.json decides) |
+| `spawn <class> <count>` | room for `<count>` objects of the base level's class `<class>` at once, for the plugin's `base_spawn` (ABI 3, [The mod SDK](sdk.md#base-level-objects)) |
 | `background <r> <g> <b>`, `fog <r> <g> <b>` | colours (0..255) |
 | `collision <file>`, `meshes <file>` | other file names (default `collision.obj`, `meshes.obj`) |
 | `collision_type <n>` | the surface type of the collision's faces (default 31, plain ground) |
@@ -500,14 +503,19 @@ alpha where nothing is to show:
 | `map_picture` | 306 x 108 | scaled to cover it, its middle kept |
 
 With no `picture` the loading screen shows the base level's planet and the ship's map no picture (no planet). With no
-`banner` the composer writes the name in a plain font in the game's blue (Latin letters; others become `?`).
+`banner` the composer writes the name in the game's own font (its big menu font, read from your disc: Veldin's data
+file's font texture and glyph table), in the game's blue; a name with letters that font has not (accented letters,
+non-Latin ones) is written in a plain bitmap font instead (Latin letters; others become `?`).
 
 **Objects** (`moby` lines): each is a copy of the first object of class `<class>` the base level places (its settings
 and its private values), put at `<x> <y> <z>` turned `<yaw>` radians; it drops to the ground under it when its class
 does. The class must be one the base level places: the composer says which when it is not. On Veldin these work: `500`
-a bolt crate, `501` a nanotech crate, `511` an ammo crate. Others may need what the base level's scripts give them (the
-other objects they point at, paths, missions, cutscenes) and do nothing, vanish or misbehave: the composer copies none
-of that (their pointers to other objects are none, no moby groups, no missions' spawn rules). Each object gets an id
+a bolt crate, `501` a nanotech crate, `511` an ammo crate; on Kalebo III its robots (`1445`): [Base levels](#base-levels).
+Others may need what the base level's scripts give them (the other objects they point at, paths, missions, cutscenes)
+and do nothing, vanish or misbehave: the composer copies none of that (their pointers to other objects are none, no
+moby groups, no missions' spawn rules). Its spawn rule: an object the base level places for good once destroyed (a
+crate) stays so; one the base level's missions place (most enemies) is gone for the visit once killed and back the
+next time; either way it drops its bolts when killed. Each object gets an id
 of our own, 1, 2, ... in the lines' order (the hero's skipped): what the game remembers of them in a save (a crate
 broken stays broken) goes by it, so add new lines at the end to keep a save's.
 
@@ -577,7 +585,7 @@ last step. The build goes to `assets/generated/mods/<folder>/` (made from your d
   choice, does not draw them), and your classes' models.
 - `level.sdk`, `sounds.bnk`: your classes, placed objects, sounds and triggers ([The mod SDK](sdk.md)); your sounds as
   one sound bank of the game's format.
-- `mrp/world/level0/`: the modern renderer's world of the composed level (the meshes added).
+- `mrp/world/level<base>/`: the modern renderer's world of the composed level (the meshes added).
 - `picture.img`, `banner[.<lang>].img`, `map.img`: the pictures (level.txt's `picture`, `banner`, `map_picture`, or
   made by the composer), in the layout of the game's own pictures.
 - `build.json` (the stamp), `compose.log` (what the composer did).
@@ -585,27 +593,27 @@ last step. The build goes to `assets/generated/mods/<folder>/` (made from your d
 ### How the game runs it: the level's slot
 
 The level is a level of its own to you and to the host: **host slot** 19 (the game's levels are 0 to 18), running on its
-base level's code (Veldin's). Its files are read through a window of sectors of their own (no file of the disc is
+base level's code (Veldin's, or `level.base`'s). Its files are read through a window of sectors of their own (no file of the disc is
 replaced or padded), its lights file and world are its own, and the game's level number stays the base level's, so the
 game's code is untouched.
 
 - **The arrival** is a planet's: the loading screen's flight (its sound, the ship and its trails, the last segment with
   the planet's picture and name), then the ship's landing at level.txt's `ship` and Ratchet stepping off (`hero auto`),
   as on any planet. The game's special cases of Veldin as the first level (no landing, the short flight "to Veldin")
-  are not used for the level, though its code is Veldin's. With `ship none` there is no landing: Ratchet starts at
+  are not used for the level, even on Veldin's code. With `ship none` there is no landing: Ratchet starts at
   `hero`.
-- **The base level's progress is left alone**: the level never counts as a visit of Veldin (its visits, its time
-  played, its visited flag), never unlocks it nor adds its gadget, and the base level's story cards and movies are
-  left out on the way there and back.
+- **The base level's progress is left alone**: the level never counts as a visit of its base planet (its visits, its
+  time played, its visited flag), never unlocks it nor adds its gadget, and the base level's story cards and movies are
+  left out on the way there and back ([Base levels](#base-levels)).
 
 - **The ship's list**: one row per level mod on, in load order, after the unlocked planets (each its own host slot: 19,
   20, ..., 16 at most; the list's 20 rows permitting: with every planet unlocked there is room for two, the log says
   which levels have no row). Choosing one flies there; from it the ship flies anywhere as usual, to another level mod's
   level too. While a row is selected the galaxy page shows the level's `map_picture`, and its planet page the level's
-  name and region and its `picture`, nothing of the base level's (no missions, no gold bolts, no Infobot: circle does
-  nothing there).
+  name (without the game's "Planet" before it) and region and its `picture`, nothing of the base level's (no missions,
+  no gold bolts, no "Play Infobot": circle does nothing there).
 - **Its state** (what Ratchet picked up and broke there) is its own: the save's per-level records of the base level hold
-  the level's while you are on it, Veldin's are kept aside and come back when you leave.
+  the level's while you are on it, the base planet's are kept aside and come back when you leave.
 - **Saves**: a memory card save made on the level is the game's own save, byte for byte (Veldin's records, the level
   number the game wrote). The level's progress goes in our `save<N>.pc` beside it, as an item of its own (its id,
   whether the save was made there, the level you flew from, its records). Loading that save with the mod on brings you
@@ -629,8 +637,7 @@ Format 1 is the first step:
 - the sky: a game level's (`sky`); a sky of your own is a later step (a texture mod can change a sky's textures in the
   modern renderer). Another level's sky is right in the modern renderer; the faithful renderer may show it with wrong
   colours;
-- the base level is Veldin: see
-  [Other base levels](#other-base-levels-not-yet);
+- the base level: Veldin, Kerwan, Eudora or Kalebo III, each with its caveats: [Base levels](#base-levels);
 - the level's size: the composed asset data (the base level's classes, sky and effects, and your collision) must not be
   larger than the base level's own (what the game's memory holds there: on Veldin 16 MB, of which the kept parts take
   about 9), the objects not more than the base level places, and the gameplay data not much larger than the base
@@ -642,25 +649,43 @@ Format 1 is the first step:
   sends: the meshes have no EE data), lit by the modern lighting;
 - the North American disc (`SCUS-97199`); the PAL disc is not tested.
 
-### Other base levels (not yet)
+### Base levels
 
-A level runs on its base level's code; format 1 takes Veldin's (level 0) only. Another base level (to have its
-objects' classes, its gadgets' effects, its enemies) needs three things not done yet:
+A level runs on its **base level**'s code: its overlay (its classes' behaviour, its hero's moves, its sky's code), its
+moby classes, its sound bank, its hero animations, its gadgets and effects. The composer keeps all of these and drops the
+base level's terrain, instances, foliage, collision and placed objects. Format 2's `level.base` chooses it, among the
+bases tested (others are refused: "not a base level this game runs a level on"):
 
-- **The composer's data file**: it keeps the base level's moby classes, effects, hero animations and gadgets and drops
-  its terrain, instances and foliage, by the order of the parts in the asset data, which is Veldin's. The other levels
-  have another order: Novalis's, Kerwan's and level 5's block +0x74 lies inside their texture data, before the
-  particles, where Veldin's is after them (tried: `the base level's block +0x74 is in no part kept`). Each part the
-  index names has to be kept by its own extent instead.
-- **The base level's story**: its code runs its own scripts at the level's start and on the way (arrival scenes,
-  missions, objects looked up by their ids, which the composed level does not have). Veldin's are harmless once its
-  first visit's cards and movies are left out (done); each other level's need finding and leaving out the same way,
-  level by level, and testing.
-- **The ship's list and the planet page**: the base planet is on the list itself (Veldin never is), so its own row
-  and the level's row stand for one planet (the rows are told apart already: the list's selection is ours to know;
-  the level's row shows its own pictures and none of the base planet's missions).
-- **The base level's progress**: on Veldin nothing to do (it is always visited); on another base, the guards that keep
-  a custom level from touching it (visits, stats, gadget, visited flag: done) and its story cards to and from it.
+| Base | `level.base` | What it brings | Caveats |
+|---|---|---|---|
+| Veldin | 0 (format 1's) | the most hero animations; bolt, nanotech, ammo crates | no enemy that works alone tried; no gold bolt class (the pause menu's and the ship's map's "Found" panel shows a plain bolt instead on the level) |
+| Kerwan | 3 | its classes | its hero code ends a fall below z 5 at once (the composer warns; `offset auto` keeps a level higher) |
+| Eudora | 4 | its classes | none found |
+| Kalebo III | 16 | its classes, its robots (enemies) | its hero code ends a fall below z 77 at once (also a fall from one of its own moves, the hero's state 0xf, with no air left): keep the level above 77 (`offset`); the composer warns |
+
+On every base the level is a planet of its own: the base planet's progress is never touched (its visits, its time,
+its visited flag, its unlock on the ship's list, its gadget added to the quick select, its kill and pickup records:
+the level has its own), and the base level's story cards and movies of a first flight there (Eudora's, Gemlik Base's,
+Kalebo III's) or of leaving it are left out on the way to and from the level. The base level's sound table is the
+SDK's `sound(index)` (its indices change with the base). The faithful renderer's look of another level's sky on a base
+is not checked.
+
+**Kalebo III's classes**, each placed twice with `moby` lines on a flat arena and watched headless (Ratchet
+standing, then swinging the wrench, `RAC1_SIM_INPUT=attack`):
+
+| Class | Placed on Kalebo III | Seen |
+|---|---|---|
+| `1445` | 52 | **the robots**: walk to Ratchet, hit him, take the wrench's hits, die (blown up), drop their bolts. Placed and with `base_spawn` |
+| `52` | 21 | small flying drones: hover where placed, did not attack in 30 seconds (they wait for their mission's group: untested further) |
+| `541`, `470`, `471`, `546`, `552`, `654`, `758`, `805`, `1135`, `1455`, `270` | | stay where placed, no attack (props, triggers, hazards that need the base level's links, or idle enemies: not identified) |
+| `638`, `556`, `1410`, `1356` | | move to (0, 0, 0) at once: they follow another object or a path of the base level's. Do not use |
+| `1826` | | drops through the floor (a path of the base level's). Do not use |
+| `1377` | | starts a cutscene of the base level's when Ratchet is near. Do not use |
+| `1401` | | gone at the start. Do not use |
+
+`spawn` lines and the SDK's `base_spawn` give the robots at run time (waves): [The mod SDK](sdk.md#base-level-objects).
+Testing another base: `RAC1_DEBUG_TOOLS=1 RAC1_LEVEL_BASE_ANY=1` lets the setup compose and the game run a level on any
+of the game's levels (every one composes; only the four above were run).
 
 ### Level mods: log lines
 
@@ -680,6 +705,11 @@ objects' classes, its gadgets' effects, its enemies) needs three things not done
 | `[compose] picture: ...`, `banner: ...`, `map picture: ...` | the pictures written (`picture.img`, `banner[.<lang>].img`, `map.img`) |
 | `[levels] the loading screen: level slot 19's planet picture the mod's, its name the mod's` | the loading screen's pictures (or the base level's when the build has none) |
 | `[compose] budget: asset data X MB of the base level's Y MB` | how much of the base level's room the level takes |
+| `[compose] death height: the base level's ... is above the collision's lowest point ...` | no `death_height` line and the base level's would kill Ratchet on the level: one under it instead |
+| `[compose] warning: the collision reaches z ..., below the base level's own kill height ...` | Kerwan's or Kalebo III's hero code's fixed kill height: keep the level above it |
+| `[compose] spawn pool: class C, N objects (uids ...)` | a `spawn` line's room |
+| `[sdk] level slot S: N objects in the spawn pools (base_spawn)` | taken out of play at the level's load, ready for `base_spawn` |
+| `[mods] <folder>: level.base N: not a base level this game runs a level on (...)` | a base not in the allow-list |
 | `[compose] ...` | the composer's steps; its errors name the file and line |
 
 ### Testing a level mod
