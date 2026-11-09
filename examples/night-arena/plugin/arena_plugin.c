@@ -250,6 +250,7 @@ static struct {
     float last_h[3];  /* Ratchet's place the frame before: a jump of it is a death (he comes back at his start) */
     int have_last;
     int placed;       /* frames the plugin's own move of him (hero_move) is not taken for a death */
+    int test_log;     /* (a test running: the obstacles' events logged) */
     int32_t t_center, t_pad;
     float points[N_POINTS][3];
     int is_drop[N_POINTS];  /* a drop zone's (a dropship lands there) */
@@ -1710,7 +1711,10 @@ static void zap_update(const float h[3]) {
 #define MINE_BOLTS 50      /* a rail mine broken with the wrench */
 #define RAIL_MINE 933      /* Kalebo III's rail mine (level.txt's spawn 933 14): it floats 0.7 over the rail */
 #define MINE_SWING 2.6f    /* the wrench's swing on the rail breaks one this near his middle */
-#define MINE_TOUCH 1.6f    /* nearer, and not swinging, it blows up on him (before its own reaction, at about 1.4) */
+#define MINE_TOUCH 2.0f    /* nearer, and not swinging, it blows up on him (before he bumps into it, at about 1.4) */
+#define MINE_HELD 4        /* the rail mine's state the plugin keeps it in once it floats: its own code off. In its own
+                              state 1 it blows up when he passes within 3 or 4 (also on the next lane), hurting him unless
+                              he swings, hides in its state 2 and comes back 50 frames later */
 
 enum { O_MINE, O_KMINE };
 
@@ -1963,16 +1967,44 @@ static void obstacles_update(const float h[3]) {
             rails.obs[i].alive = 0;
             continue;
         }
+        if ((int8_t)rac1_lb(api, m + 0x20) == 1) api->sb(m + 0x20, MINE_HELD);  /* (floating: its own code off) */
         float q[3];
         pos_of(m, q);
         const float d = dist3(mid, q);
+        /* its own code blew it up (the wrench's hit at about 1.4, or his touch, which hurt him): hidden in its state 2,
+           back 50 frames later. Taken away for good: broken when he was swinging, else his touch (no second hurt) */
+        if ((int8_t)rac1_lb(api, m + 0x20) == 2 || (rac1_lh(api, m + 0x34) & MOBY_HIDDEN) != 0) {
+            api->moby_remove(m);
+            rails.obs[i].h = 0;
+            rails.obs[i].alive = 0;
+            if (swing) {
+                ++rails.kmines_hit;
+                api->bolts_add(MINE_BOLTS);
+            }
+            if (s.test_log) {
+                char b[96];
+                snprintf(b, sizeof b, "rail mine %d blown up by itself at %.2f (%s)", i, d, swing ? "broken" : "touched");
+                api->log(b);
+            }
+            continue;
+        }
         if (swing && d < MINE_SWING) {
             obstacle_blast(i, q);
             ++rails.kmines_hit;
             api->bolts_add(MINE_BOLTS);
+            if (s.test_log) {
+                char b[96];
+                snprintf(b, sizeof b, "rail mine %d broken at %.2f", i, d);
+                api->log(b);
+            }
         } else if (!swing && d < MINE_TOUCH) {
             obstacle_blast(i, q);
             api->hero_damage(1, 0);
+            if (s.test_log) {
+                char b[96];
+                snprintf(b, sizeof b, "rail mine %d hit him at %.2f", i, d);
+                api->log(b);
+            }
         }
     }
 }
@@ -2726,12 +2758,6 @@ static void test(void* user, const char* text, uint64_t frame) {
                 api->log(b);
             }
         }
-        if (strcmp(text, "arena_mines_hit") == 0 && (frame == 620 || frame == 625)) {  /* (a hit sent to each: the player's
-                                                                                          kinds, then a prop's) */
-            const uint32_t m = api->base_moby(mh[frame == 620 ? 0 : 1]);
-            if (m != 0) api->hit_send(m, frame == 620 ? RAC1_HIT_PLAYER : RAC1_HIT_PROP, 10.0f, api->hero());
-            api->log(frame == 620 ? "mines: a player's hit sent to the 1st" : "mines: a prop's hit sent to the 2nd");
-        }
         if (frame == 640 && rails.nset > 0) {
             const float *a = rails.r[rails.set[0]].pt[2], *b = rails.r[rails.set[0]].pt[4];
             const float at[3] = {a[0], a[1], a[2] + 1.5f};
@@ -2747,8 +2773,8 @@ static void test(void* user, const char* text, uint64_t frame) {
                 const uint32_t m = api->base_moby(mh[j]);
                 float r[3] = {0, 0, 0};
                 if (m) pos_of(m, r);
-                k += snprintf(b + k, sizeof b - (size_t)k, " | %s moby 0x%x state %d at %.1f %.1f %.1f (%.1f)", j ? "2nd" : "1st", (unsigned)m,
-                              m ? (int)(int8_t)rac1_lb(api, m + 0x20) : -99, r[0], r[1], r[2], m ? dist3(r, h) : 0.0f);
+                k += snprintf(b + k, sizeof b - (size_t)k, " | %s state %d flags 0x%x z %.1f (%.1f)", j ? "2nd" : "1st",
+                              m ? (int)(int8_t)rac1_lb(api, m + 0x20) : -99, m ? (unsigned)rac1_lh(api, m + 0x34) : 0, r[2], m ? dist3(r, h) : 0.0f);
             }
             api->log(b);
         }
@@ -2766,13 +2792,22 @@ static void test(void* user, const char* text, uint64_t frame) {
             if (strcmp(CHALLENGES[i].name, want) == 0) ch = i;
         if (frame == 100) api->sb(GRIND_BOOTS, 1);  /* (a test's game has no Grindscarponi) */
         if (frame == 420 && ch >= 0) challenge_start(ch);
-        if (frame == 640 && (strcmp(text, "arena_rail") == 0 || strcmp(text, "arena_course") == 0) && rails.nset > 0) {
+        if (frame == 640 && strstr(text, "walk") == NULL && rails.nset > 0) {
             const float *a = rails.r[rails.set[0]].pt[2], *b = rails.r[rails.set[0]].pt[4];
             const float at[3] = {a[0], a[1], a[2] + 1.5f};
             hero_move(at, atan2f(b[1] - a[1], b[0] - a[0]));
             api->log("test: Ratchet dropped over the first rail's third point");
         }
-        if (frame % 30 == 0 && api->health() > 0 && api->health() < 4) api->sw(0x001415f8u, 4);
+        s.test_log = 1;
+        static int32_t hp_was = -1;  /* (arena_course_nh: his health not kept up; each change logged) */
+        if (strstr(text, "_nh") == NULL && frame % 30 == 0 && api->health() > 0 && api->health() < 4) api->sw(0x001415f8u, 4);
+        if (api->health() != hp_was) {
+            char b[96];
+            snprintf(b, sizeof b, "test %llu: health %d (was %d), state 0x%x", (unsigned long long)frame, (int)api->health(), (int)hp_was,
+                     (unsigned)rac1_lw(api, HERO_STATE));
+            if (hp_was >= 0) api->log(b);
+            hp_was = api->health();
+        }
         if (rails.phase == 2 && s.mode == FIGHT && frame % 90 == 5 && s.nen > 0) {
             const uint32_t m = api->base_moby(s.en[0].h);
             if (m != 0) api->moby_remove(m);
