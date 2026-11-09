@@ -5,6 +5,20 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- The mod SDK, ABI 2 (docs/sdk.md, a full reference: every struct, service and callback, the lifecycle, threading and
+  replays, the limits, the versions). A level mod can have **object classes of its own**: level.txt's `class` (an OBJ
+  model, a hit box or none) and `object` lines (placed, with key=value words for the plugin); the plugin gives a class
+  its behaviour (`class_define`: spawn, update, hit, remove, a state per object) and spawns, moves, shows, removes
+  objects. Each object is a moby of the game (Ratchet stands on it, his attacks hit it, the game's rays see it) drawn
+  with its model by the modern renderer (GL and Vulkan). Also: `collide_ray` (the point, the normal, the moby or object
+  hit), `objects_near`, `mobys_near`; damage both ways (`hero_damage`, `hit_send`, `hit_take`; the player's attacks
+  reach a class's `hit`); **sounds of the level's own** (`sound` lines: WAV or VAG, made into one sound bank of the
+  game's format, played through the game's own sound slots: distance, pan, walls, reverb, 5.1 / 7.1; `sfx_*`);
+  **triggers** (`trigger` boxes, the `trigger` callback); `frame_count`. ABI 1 plugins run unchanged. The example level
+  has sentries that watch and zap Ratchet and break into gems, gems to collect, seven sounds of its own and a trigger
+  (`RAC1_MOD_TEST=sdk` scripts them). `hero_place` now resets Ratchet to standing, as the game's teleports (it could
+  crash after he was hurt). The plugins' `ee_alloc` block is 54 KB (was 56). The level composer is version 3: level
+  mods are composed again by the setup.
 - Main menu > Exit: the main menu's last entry, below Updates, closes the game after a confirmation in the
   game's own style (the pause menu's Quit Game page: Circle Yes, Triangle No), the same way as closing the window
   (Alt+F4) does. Translated ("Esci", "Beenden", "Salir"); pad, keyboard and mouse through the bindings. Only on the PC

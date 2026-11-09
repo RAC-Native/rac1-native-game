@@ -12,9 +12,11 @@
  * also asks RAC1_MOD_EXPORT unsigned rac1_mod_abi(void) (RAC1_MOD_DECLARE_ABI() writes it): the ABI version the plugin was
  * built with; a plugin newer than the game is refused.
  *
+ * The full reference (every struct, service and callback, the lifecycle, the limits): docs/sdk.md.
+ *
  * Versioning: both tables only ever grow at their end (append-only). `api->size` is the game's table's size: before
  * calling a service added after version 1, check RAC1_API_HAS(api, field). `mod->size` is the plugin's: the game calls
- * only the callbacks that fit in it.
+ * only the callbacks that fit in it. Structs start with their size (set it to sizeof in the ones you fill).
  *
  * Addresses: the game's memory is the PS2's (EE RAM, 32 MB); its addresses are 32-bit numbers (uint32_t), Veldin's as the
  * game's code knows them (docs/custom-levels.md lists the useful ones). Data of the current level's overlay moves with the
@@ -73,7 +75,7 @@ typedef struct rac1_spawn {
 
 /* (ABI 2) A hit taken (the game's hit record: the player's attacks, an enemy's, hit_send's) */
 typedef struct rac1_hit {
-    uint32_t size;         /* sizeof the game's struct */
+    uint32_t size;         /* the hit callback: the game's sizeof; hit_take: the caller's (set it), filled as it fits */
     uint32_t from;         /* the attacker's moby (0: none known) */
     uint32_t kinds;        /* the record's kind bits (RAC1_HIT_*) */
     float strength;        /* the record's strength: the game's damage value */
@@ -89,7 +91,7 @@ typedef struct rac1_hit {
 
 /* (ABI 2) What a ray hit (collide_ray) */
 typedef struct rac1_ray_hit {
-    uint32_t size;         /* the caller's sizeof (set it): the game fills what fits */
+    uint32_t size;         /* the caller's sizeof (set it; 0: the game's): the game fills what fits */
     float point[3];        /* the point hit */
     float normal[3];       /* the surface's normal there (unit) */
     uint32_t moby;         /* the moby hit, 0: the level's collision */
@@ -135,7 +137,7 @@ typedef struct rac1_api {
     void (*sh)(uint32_t addr, uint32_t v);
     void (*sb)(uint32_t addr, uint32_t v);
     void (*swf)(uint32_t addr, float v);
-    /* `size` bytes of the mods' block of EE memory (16-byte aligned, zeroed), 0 when it is full (56 KB in all, shared by
+    /* `size` bytes of the mods' block of EE memory (16-byte aligned, zeroed), 0 when it is full (54 KB in all, shared by
        the plugins on, kept for the whole run: take what you need once, in rac1_mod_main or the first level_start) */
     uint32_t (*ee_alloc)(uint32_t size);
     int (*replaying)(void);  /* 1 while the renderer replays a frame (see the rules above) */
@@ -157,7 +159,7 @@ typedef struct rac1_api {
 
     /* -- the hero -- */
     uint32_t (*hero)(void);                          /* Ratchet's moby (0 when none) */
-    void (*hero_place)(const float pos[3], float yaw);  /* put him there, as the game does at a level's start */
+    void (*hero_place)(const float pos[3], float yaw);  /* put him there standing, as the game's teleports do */
     int32_t (*bolts)(void);
     void (*bolts_add)(int32_t n);
     int32_t (*health)(void);
