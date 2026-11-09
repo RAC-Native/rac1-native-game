@@ -42,7 +42,8 @@ namespace {
 [[maybe_unused]] constexpr const char* kLevelTxtHelp =
     "name <text> / name.<fr|de|es|it> <text>   the ship's list's row and the planet page's title\n"
     "region <text> / region.<lang> <text>      the line above it\n"
-    "hero <x> <y> <z> [<yaw>]                  where Ratchet starts (game units, z up; yaw in radians)\n"
+    "hero <x> <y> <z> [<yaw>] | hero auto      where Ratchet starts (game units, z up; yaw in radians); auto (the default\n"
+    "                                          with a ship): where he steps off the ship after the landing\n"
     "ship <x> <y> <z> <yaw> | ship none        where the ship stands (none: no way out but the pause menu)\n"
     "death_height <z>                          below it Ratchet dies\n"
     "background <r> <g> <b>                    the sky's colour behind everything (0..255)\n"
@@ -64,6 +65,7 @@ namespace {
 struct LevelTxt {
     float hero[4] = {0, 0, 1, 0};
     bool has_hero = false;
+    bool hero_auto = false;             // hero auto (or no hero line, with a ship): beside the ship, where the landing leaves him
     bool ship = false;
     float ship_at[4] = {};
     bool has_death = false;
@@ -194,9 +196,15 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
         };
         if (key.rfind("name", 0) == 0 || key.rfind("region", 0) == 0) continue;  // (the game's: src/game/enhance/level_slots.cpp)
         if (key == "hero") {
-            if (!(in >> t.hero[0] >> t.hero[1] >> t.hero[2])) return bad();
-            if (!(in >> t.hero[3])) t.hero[3] = 0;
+            std::string w;
+            in >> w;
             t.has_hero = true;
+            t.hero_auto = w == "auto";
+            if (!t.hero_auto) {
+                std::istringstream in2(line.substr(line.find(key) + key.size()));
+                if (!(in2 >> t.hero[0] >> t.hero[1] >> t.hero[2])) return bad();
+                if (!(in2 >> t.hero[3])) t.hero[3] = 0;
+            }
         } else if (key == "ship") {
             std::string w;
             in >> w;
@@ -335,8 +343,9 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
             return bad();
         }
     }
-    if (!t.has_hero) {
-        err = p.generic_string() + ": no \"hero <x> <y> <z>\" line (where Ratchet starts)";
+    if (!t.has_hero) t.hero_auto = t.ship;  // (no hero line: where he steps off the ship)
+    if (t.hero_auto && !t.ship) {
+        err = p.generic_string() + ": no \"hero <x> <y> <z>\" line (where Ratchet starts; \"hero auto\" needs a ship)";
         return false;
     }
     for (const LevelTxt::Object& o : t.objects) {
@@ -1776,6 +1785,17 @@ bool compose_level_mod(const std::string& folder, bool force) {
         lt.death += lt.offset[2];
         log.say(fmt("offset: (%g %g %g) added to every coordinate%s (lights.txt's are the game's: not moved)", lt.offset[0], lt.offset[1], lt.offset[2],
                     lt.offset_auto ? " (auto)" : ""));
+    }
+    // hero auto: where the landing scene leaves Ratchet (the same in every ship's scene: measured, the game's
+    // RAC1_LEVEL_TRACE "the landing's end" line), in the ship's frame (x along its yaw, y to its left), facing away from it
+    if (lt.hero_auto) {
+        constexpr float kStepX = 2.513f, kStepY = 3.526f;
+        const float yaw = lt.ship_at[3], c = std::cos(yaw), s = std::sin(yaw);
+        lt.hero[0] = lt.ship_at[0] + c * kStepX - s * kStepY;
+        lt.hero[1] = lt.ship_at[1] + s * kStepX + c * kStepY;
+        lt.hero[2] = lt.ship_at[2];
+        lt.hero[3] = std::remainder(yaw + std::atan2(kStepY, kStepX), 6.2831853f);
+        log.say(fmt("hero auto: Ratchet steps off the ship at (%g %g %g), turned %g", lt.hero[0], lt.hero[1], lt.hero[2], lt.hero[3]));
     }
     // the collision
     Obj co;

@@ -342,7 +342,7 @@ void loading_screen_setup() {
     sw(G + 0x54, 0);
     lq_sq(OV(0x001605b0), OV(0x001605a0));
     const int32_t lv = lw(0x0015ed84);
-    if (lv == 0 || (lv == 1 && lbu(0x0013dd43) == 0)) {
+    if ((lv == 0 && !level_slots_planet_arrival()) || (lv == 1 && lbu(0x0013dd43) == 0)) {  // (enhancement: a level mod's level as a planet)
         sw(G + 0x5c, 2);
         sw(G + 0x58, 4);
     }
@@ -431,7 +431,7 @@ void flight_sequence_update() {
     if (fade < 0.0f) swc1(OV(0x0015f3fc), 0.0f);
     if (total == 1) {
         const int32_t lv = lw(0x0015ed84);
-        if (lv != 0 && !(lv == 1 && lbu(0x0013dd43) == 0)) {
+        if ((lv != 0 || level_slots_planet_arrival()) && !(lv == 1 && lbu(0x0013dd43) == 0)) {  // (enhancement: the same)
             snd_hold();
             snd_play_sound(lwu(0x0015ed5c), lwu(G + 0x58), 0x400, 0, 0, 0, 0, 0x0013e5c0);
             snd_release();
@@ -449,7 +449,7 @@ void flight_sequence_update() {
             moby_retire(m);
         }
         const int32_t lv = lw(0x0015ed84);
-        if (lv != 0 && !(lv == 1 && lbu(0x0013dd43) == 0) && lh(0x0015ee48) < 3) sw(G + 0x5c, 0);
+        if ((lv != 0 || level_slots_planet_arrival()) && !(lv == 1 && lbu(0x0013dd43) == 0) && lh(0x0015ee48) < 3) sw(G + 0x5c, 0);  // (enhancement: the same)
         const int32_t seg = lw(G + 0x5c);
         if (!(seg < 2)) {
             if (lh(0x0015ee4a) != 0) sh(0x0015ee4a, 0);
@@ -547,7 +547,7 @@ void flight_sequence_update() {
             *reinterpret_cast<Vec4*>(ee_ram_ptr(slot + G + 0x2c0)) = j2.r[3];
             if (lw(G + 0x58) != 4) continue;
             const int32_t lv = lw(0x0015ed84);
-            if (lv == 0 || (lv == 1 && lbu(0x0013dd43) == 0)) {
+            if ((lv == 0 && !level_slots_planet_arrival()) || (lv == 1 && lbu(0x0013dd43) == 0)) {  // (enhancement: the same)
                 sh(m + 0x34, lhu(m + 0x34) | 1u);
                 sw(G + 0x54, 0);
             }

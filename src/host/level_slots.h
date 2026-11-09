@@ -86,6 +86,19 @@ void level_slots_level_start(int32_t level);
 // from a slot's level
 bool level_slots_skip_story();
 
+// orig: (none) — enhancement: a slot's level is the level the game loads or plays (its row chosen, its save loaded): the
+// game's tests of Veldin (level 0) as the first level (no landing, the loading screen's "to Veldin" flight, the flight's
+// sound, the ship hidden, no trails) treat it as any planet. False with no level mod on
+bool level_slots_planet_arrival();
+
+// orig: (none) — enhancement: a slot's level is current: the base level's progress is left alone (its visits, its stats,
+// its gadget in the quick select, its visited flag)
+bool level_slots_keep_base_progress();
+
+// orig: (none) — testing: the landing's end (ship_sequence_update, before the scene's mobys go; `hero` the scene's Ratchet):
+// with RAC1_LEVEL_TRACE, where the scene leaves him and where the hero is put, in the ship's frame (any level)
+void level_slots_landing_end(uint32_t hero);
+
 // orig: (none) — enhancement: the text of our ids (0x7dc0..), 0 for the others (the text lookup 0x203ad8)
 uint32_t level_slots_text(int32_t id);
 

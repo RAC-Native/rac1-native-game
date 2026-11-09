@@ -57,7 +57,7 @@ game start ──> plugins loaded (load order), rac1_mod_main(api, mod) each: re
    ├─ new game ──> new_game                          a save loaded ──> load (your bytes, or NULL)
    │
    ├─ a level loads ──> level_end (the level before) ──> [the level's load]
-   │      └─ its first frame of play:
+   │      └─ its first frame of play (with a ship: after the landing, Ratchet off the ship):
    │           sounds' bank loaded ─> placed objects spawned (each class's spawn) ─> level_start
    │
    ├─ each frame of play (not in menus, not while the renderer replays):

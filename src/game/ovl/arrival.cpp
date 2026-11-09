@@ -183,6 +183,8 @@ void ship_sequence_update() {
         }
         if (!(lw(SC + 0x34) < lh(SC + 0x40))) {  // the end of the scene
             dialog_slot_stop();
+            for (int32_t i = 0; lw(G + 0x20) == 8 && i < lh(SC + 0x44); ++i)  // (testing: RAC1_LEVEL_TRACE, the landing's end, src/host/level_slots.h)
+                if (const uint32_t m = lwu(SC + 0x178 + static_cast<uint32_t>(i) * 4); m != 0 && lh(m + 0xa6) == 0) level_slots_landing_end(m);
             sub_002a07c8();
             swc1(OV(0x0016caf0), u2f(0x3f2147aeu));
             projection_setup();

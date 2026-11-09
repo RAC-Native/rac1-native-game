@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -25,6 +26,12 @@
 namespace rac1 {
 
 namespace {
+
+float yaw_wrap(float a) {
+    while (a > 3.14159265f) a -= 6.2831853f;
+    while (a < -3.14159265f) a += 6.2831853f;
+    return a;
+}
 
 // Our texts: each level row's name and region (ids after the Mods page's 0x7d00.., before the update notice's 0x7e00..:
 // 0x7dc0 + 2 k the name of the k-th level mod on, + 1 its region), their strings in the mods' block of EE memory
@@ -468,6 +475,34 @@ void level_slots_level_start(int32_t level) {
 
 // orig: (none) — enhancement (level_slots.h)
 bool level_slots_skip_story() { return level_slots_on() && (g_s.pending >= 0 || level_slot_current() >= 0); }
+
+// orig: (none) — enhancement (level_slots.h)
+bool level_slots_planet_arrival() { return level_slots_on() && g_s.pending >= 0 && lw(LEVEL) == base_of(g_s.pending); }
+
+// orig: (none) — enhancement (level_slots.h)
+bool level_slots_keep_base_progress() { return level_slots_on() && level_slot_current() >= 0; }
+
+// orig: (none) — testing (level_slots.h): RAC1_LEVEL_TRACE: where the landing leaves the scene's Ratchet and where the hero
+// is put, both in the ship's frame (x forward along its yaw, y to its left, z up): `hero auto`'s offset (level_compose.cpp)
+void level_slots_landing_end(uint32_t hero) {
+    if (!trace() || hero == 0) return;
+    const uint32_t ship = lwu(0x0013e030u);
+    if (ship == 0) return;
+    const float yaw = u2f(lwu(ship + 0x48)), c = std::cos(yaw), s = std::sin(yaw);
+    auto rel = [&](uint32_t at, float out[3]) {
+        const float dx = u2f(lwu(at)) - u2f(lwu(ship + 0x10)), dy = u2f(lwu(at + 4)) - u2f(lwu(ship + 0x14));
+        out[0] = c * dx + s * dy;
+        out[1] = -s * dx + c * dy;
+        out[2] = u2f(lwu(at + 8)) - u2f(lwu(ship + 0x18));
+    };
+    float a[3], b[3];
+    rel(hero + 0x10, a);
+    rel(0x0013e090u, b);
+    std::printf("[levels] the landing's end (level %d, slot %d, ship variant %d): the scene's Ratchet at (%.3f %.3f %.3f) of the ship, turned %.3f; "
+                "the hero put at (%.3f %.3f %.3f), turned %.3f (the ship's yaw %.3f)\n",
+                lw(LEVEL), level_slot_current(), static_cast<int>(lh(0x0013e056u)), a[0], a[1], a[2], yaw_wrap(u2f(lwu(hero + 0x48)) - yaw), b[0], b[1], b[2],
+                yaw_wrap(u2f(lwu(0x0013e0a8u)) - yaw), yaw);
+}
 
 // orig: (none) — enhancement (level_slots.h)
 uint32_t level_slots_text(int32_t id) {

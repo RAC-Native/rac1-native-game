@@ -231,7 +231,8 @@ def main():
                 "region.es Niveles propios\n"
                 "# the OBJ files and the coordinates below are made round (0, 0, 0): moved to (200, 200, 20)\n"
                 "offset %g %g %g\n"
-                "hero %g %g %g 1.5708\n"
+                "# Ratchet steps off the ship after the landing (the default with a ship; \"hero <x> <y> <z> [<yaw>]\" puts him there)\n"
+                "hero auto\n"
                 "ship %g %g %g -1.5708\n"
                 "death_height %g\n"
                 "# the sky of level 3 (Kerwan), the music of our own (plateau.vag; \"music 3\" would play Kerwan's)\n"
@@ -264,7 +265,7 @@ def main():
                 "sound chime chime.wav\n"
                 "sound hum hum.wav loop volume 0.5 range 2 14\n"
                 "# a box round the ramp: the plugin's trigger callback\n"
-                "trigger ramp -21 -8 -1 -15 8 6\n" % (ORIGIN + (0, -6, 0.5, 0, 18, 0.2, -30) +
+                "trigger ramp -21 -8 -1 -15 8 6\n" % (ORIGIN + (0, 18, 0.2, -30) +
                                        tuple(c for x, y in ((4, 2), (6, 2), (8, 2), (-4, 2), (-6, 2), (-8, 10)) for c in (x, y, 0.5))))
     # the shapes: the floor 64 x 64 at z 0 (four objects), a ramp to a platform 4 high, three blocks
     mesh, coll = Mesh(), Mesh()

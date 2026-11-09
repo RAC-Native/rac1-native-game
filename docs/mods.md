@@ -469,8 +469,8 @@ mods/example-plateau/
 |---|---|
 | `name <text>`, `name.<fr\|de\|es\|it> <text>` | the row's name (and the planet page's title), per text language |
 | `region <text>`, `region.<lang> <text>` | the line above it |
-| `hero <x> <y> <z> [<yaw>]` | where Ratchet starts (required) |
-| `ship <x> <y> <z> <yaw>` or `ship none` | where the ship stands (none: no way out but loading a save) |
+| `hero auto`, `hero <x> <y> <z> [<yaw>]` | where Ratchet starts (and comes back after a death). `auto` (the default when there is a ship): where he steps off the ship after the landing, beside it, facing away from it. A place of your own puts him there when the landing ends (as the game's planets do: the landing's last shot cuts to him there). Without a ship, a place is required |
+| `ship <x> <y> <z> <yaw>` or `ship none` | where the ship stands and lands: the landing's camera and Ratchet stepping off follow its place and yaw, so keep about 20 units round it open (none: no landing, no way out but loading a save) |
 | `death_height <z>` | below it Ratchet dies |
 | `background <r> <g> <b>`, `fog <r> <g> <b>` | colours (0..255) |
 | `collision <file>`, `meshes <file>` | other file names (default `collision.obj`, `meshes.obj`) |
@@ -544,6 +544,15 @@ The level is a level of its own to you and to the host: **host slot** 19 (the ga
 base level's code (Veldin's). Its files are read through a window of sectors of their own (no file of the disc is
 replaced or padded), its lights file and world are its own, and the game's level number stays the base level's, so the
 game's code is untouched.
+
+- **The arrival** is a planet's: the loading screen's flight (its sound, the ship and its trails, the last segment with
+  the planet's picture and name), then the ship's landing at level.txt's `ship` and Ratchet stepping off (`hero auto`),
+  as on any planet. The game's special cases of Veldin as the first level (no landing, the short flight "to Veldin")
+  are not used for the level, though its code is Veldin's. With `ship none` there is no landing: Ratchet starts at
+  `hero`.
+- **The base level's progress is left alone**: the level never counts as a visit of Veldin (its visits, its time
+  played, its visited flag), never unlocks it nor adds its gadget, and the base level's story cards and movies are
+  left out on the way there and back.
 
 - **The ship's list**: one row per level mod on, in load order, after the unlocked planets (each its own host slot: 19,
   20, ..., 16 at most; the list's 20 rows permitting: with every planet unlocked there is room for two, the log says
@@ -619,13 +628,15 @@ objects' classes, its gadgets' effects, its enemies) needs three things not done
 | `[levels] level slot 19's music: ...` | the level's music: none, a game level's, or the mod's (its sectors in the window) |
 | `[levels] the save was made on the level "<id>", whose mod is off or missing` | the planet prompt |
 | `[compose] offset: (x y z) added to every coordinate` | level.txt's offset (or auto's) |
+| `[compose] hero auto: Ratchet steps off the ship at (x y z)` | where he starts (`hero auto`, or no `hero` line with a ship) |
 | `[compose] budget: asset data X MB of the base level's Y MB` | how much of the base level's room the level takes |
 | `[compose] ...` | the composer's steps; its errors name the file and line |
 
 ### Testing a level mod
 
 `RAC1_MODS=1 RAC1_GOTO=<level.id>@60` (headless: also `RAC1_HEADLESS=1`) starts on Veldin and goes to the level at
-frame 60. `RAC1_LEVEL_TRACE=1` prints the records' swaps and the `.pc` items; `RAC1_LEVEL_SAVE_IMAGE=<frame>:<prefix>`
+frame 60. `RAC1_LEVEL_TRACE=1` prints the records' swaps, the `.pc` items and where the landing leaves Ratchet (`the landing's
+end`, in the ship's frame); `RAC1_LEVEL_SAVE_IMAGE=<frame>:<prefix>`
 writes the card's save blocks and our items at that frame (a save made on the level must give the same level blocks as
 one made just before flying there). `RAC1_LEVEL_MAP_AT=<frame>` opens the ship's planet map at that frame (as a take-off
 does), to choose a row with a `RAC1_SIM_INPUT=seq:` script; with `RAC1_LEVEL_TRACE=1` the list's rows and the row

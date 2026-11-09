@@ -5,6 +5,12 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Level mods: a custom level is arrived at as a planet. The loading screen's full flight (its sound, the ship and its
+  trails, the planet's picture and name at the end), then the ship's landing at level.txt's `ship` and Ratchet stepping
+  off; before, the level got Veldin's arrival as the game's first level (a short flight, no landing). `hero auto` (the
+  default when there is a ship) starts Ratchet where he steps off the ship; an explicit `hero` place still wins. A
+  custom level no longer touches its base level's progress (its visits and time, its gadget in the quick select). The
+  level composer is version 4: level mods are composed again by the setup.
 - Mod SDK: angles a plugin gives (`object_place`, `object_spawn`, `hero_place`, a rotation written then `moby_moved`)
   are folded into -pi..pi. The example level's gems and sentries turn by adding to their angle every frame: after a
   few seconds the game's rotation matrix (whose sine folds an angle only once) made them huge, a flat plane across the
