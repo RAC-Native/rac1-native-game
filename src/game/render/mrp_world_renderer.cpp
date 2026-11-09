@@ -2463,6 +2463,17 @@ struct PktMemo {
     glm::dmat4 vv{1.0};
 };
 PktMemo g_pkt_memo;
+// orig: (host) a draw record's 8 words appended (the vector's initializer-list insert, generic, was ~10% of gpu_packet on the Wii U)
+inline void cmds_put(std::vector<uint32_t>& c, uint32_t a, uint32_t b, uint32_t d, uint32_t e, uint32_t f, uint32_t g) {
+    c.push_back(a);
+    c.push_back(b);
+    c.push_back(d);
+    c.push_back(e);
+    c.push_back(f);
+    c.push_back(0u);
+    c.push_back(g);
+    c.push_back(0u);
+}
 uint64_t g_memo_hits = 0, g_memo_packets = 0, g_memo_checked = 0, g_memo_bad = 0;
 
 // orig: (host) a GPU path packet (tie A / shrub A): its instance record, its template's runs as draw commands with the GS state
@@ -2595,7 +2606,7 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
     auto replay = [&] {
         for (const PktMemo::Run& r : M.runs) {
             const uint32_t cmd = static_cast<uint32_t>(F.cmds.size() / 8);
-            F.cmds.insert(F.cmds.end(), {inst, r.word, r.layer, r.fl, r.fogcol, 0u, r.p2[vert_opq ? 1 : 0] ? 1u : 0u, 0u});
+            cmds_put(F.cmds, inst, r.word, r.layer, r.fl, r.fogcol, r.p2[vert_opq ? 1 : 0] ? 1u : 0u);
             if (F.batches.empty() || F.batches.back().tfrag || !(F.batches.back().rk == r.rk) || (r.rk.pass2 != 0 && !F.merge_afail && !(F.batches.back().key == r.k)) ||
                 (r.unit != 0 && F.batches.back().epoch >= 0 && F.batches.back().epoch != r.epoch)) {
                 F.batches.push_back(Batch{r.k, true, false, static_cast<uint32_t>(F.draws.size()), 0, r.rk});
@@ -2729,7 +2740,7 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
         const uint32_t fl = draw_flags(k, unit);
         const bool pass2 = draw_needs_pass2(k, fl, vert_opq);  // (the draw record's: the Wii U's GX2 backend reads it)
         const uint8_t astate = perf_opaque() != 0 ? alpha_state(k, fl, vert_opq) : 2;
-        F.cmds.insert(F.cmds.end(), {inst, k.word, k.layer, fl, k.fogcol, 0u, pass2 ? 1u : 0u, 0u});
+        cmds_put(F.cmds, inst, k.word, k.layer, fl, k.fogcol, pass2 ? 1u : 0u);
         k.word = 0;
         k.layer = 0;
         RKey rk = batch_key(k, true, false);
@@ -3648,6 +3659,10 @@ bool tfrag_vs_frame(Frame& F) {
     if (indexed) {
         geo_cap = (T.nidx + 2u * nd + 63u) & ~63u;
         geo = mrp_world_gx2_tvs_geo(geo_cap + T.nidx);
+        // (its whole lines zeroed in the cache first, dcbz: a slot last written four frames ago is not read from memory to be
+        // overwritten - the writes below were ~70% of this function on Kerwan)
+        for (uint32_t o = 0, n = 4u * (geo_cap + T.nidx); geo != nullptr && o + 32 <= n; o += 32)
+            __asm__ volatile("dcbz 0,%0" : : "r"(reinterpret_cast<uint8_t*>(geo) + o) : "memory");
     }
 #endif
     if (geo != nullptr) {
@@ -6994,6 +7009,7 @@ struct HeadHelper {
     std::condition_variable cv;
     PinnedThread th;
     bool job = false, done = true, quit = false;
+    bool ee_only = false;  // ((2026-11-09) the job the EE reads alone: the first half the main thread's, RAC1_WIIU_HEAD_CORE=-1)
     ~HeadHelper() {
         {
             std::lock_guard<std::mutex> lk(m);
@@ -7033,11 +7049,13 @@ bool g_ee_pending = false;   // (posted, not read yet)
 bool g_ee_on_head = false;   // (the next head job reads first: set by the main thread before head_post, under its lock)
 bool g_ee_sky_fresh = false;
 void wiiu_ee_run();
-void head_post() {
-    const bool autom = head_core() == 3;
+void head_post(bool ee_only = false) {
+    const bool autom = head_core() == 3 || ee_only;
     // ((2026-11-09) with the prepare's EE reads on the head - RAC1_WIIU_EE_ON_HEAD - core 2 kept: on core 1, below the main thread, the reads
     // waited for the mobys' prepare and the game's update started later - Kerwan 41.9 ms a frame, 39.1 on core 2)
-    if (autom && !g_ee_on_head) {  // (the choice: hysteresis on the game thread's wait / idle, smoothed over ~4 frames)
+    if (ee_only) {
+        g_head_at = 0;  // (core 2's thread: the reads alone)
+    } else if (autom && !g_ee_on_head) {  // (the choice: hysteresis on the game thread's wait / idle, smoothed over ~4 frames)
         const int was = g_head_at;
         if (g_head_at == 0 && g_gt_wait_ema > 2.0) g_head_at = 1;
         else if (g_head_at == 1 && g_gt_idle_ema > g_head_last_ms.load(std::memory_order_relaxed) + 2.0) g_head_at = 0;
@@ -7047,11 +7065,15 @@ void head_post() {
             o.cv.wait(lk, [&o] { return o.done; });
         }
     }
-    ++g_head_frames[g_head_at];
-    if (autom && (g_head_frames[0] + g_head_frames[1]) % 600 == 0)
+    if (!ee_only) ++g_head_frames[g_head_at];
+    if (autom && !ee_only && (g_head_frames[0] + g_head_frames[1]) % 600 == 0)
         std::printf("[mrpw] the world's first half: core 2 %u frames, core 1 %u (the game thread's wait %.1f ms, idle %.1f, the half %.1f)\n", g_head_frames[0],
                     g_head_frames[1], g_gt_wait_ema, g_gt_idle_ema, g_head_last_ms.load(std::memory_order_relaxed));
     HeadHelper& h = g_head[g_head_at];
+    if (ee_only) {  // (the job before done: its reads were waited for, its flag read)
+        std::unique_lock<std::mutex> lk(h.m);
+        h.cv.wait(lk, [&h] { return h.done; });
+    }
     std::lock_guard<std::mutex> lk(h.m);
     if (!h.th.joinable()) {
         int core = autom ? 2 : head_core(), prio = 16;
@@ -7066,11 +7088,12 @@ void head_post() {
                 h.cv.wait(l, [&h] { return h.job || h.quit; });
                 if (h.quit) return;
                 h.job = false;
+                const bool reads_only = h.ee_only;
                 l.unlock();
                 const auto t0 = std::chrono::steady_clock::now();
                 __asm__ volatile("mtfsf 0xff, %0" : : "f"(g_prep_on_main_fpscr));
                 wiiu_ee_run();  // ((2026-11-09) RAC1_WIIU_EE_ON_HEAD: the prepare's EE reads first, when posted with them)
-                if (wiiu_prep_head()) tail_post();
+                if (!reads_only && wiiu_prep_head()) tail_post();
                 g_head_last_ms.store(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count(), std::memory_order_relaxed);
                 l.lock();
                 h.done = true;
@@ -7079,6 +7102,7 @@ void head_post() {
         }, 512u * 1024u);
     }
     h.done = false;
+    h.ee_only = ee_only;
     h.job = true;
     h.cv.notify_all();
 }
@@ -7095,8 +7119,8 @@ void head_wait() {
 // copy. Only when the head's thread takes the first half on core 2 (RAC1_WIIU_HEAD_CORE 2, or auto while it picks core 2)
 bool ee_on_head_ready() {
     static const bool on = std::getenv("RAC1_WIIU_EE_ON_HEAD") == nullptr || std::atoi(std::getenv("RAC1_WIIU_EE_ON_HEAD")) != 0;
-    return on && prep_all_on() && g_wiiu_world_async && prep_on_main_on() && prep_split_on() && head_core() >= 0 && head_core() != 1 &&
-           (head_core() != 3 || g_head_at == 0);
+    return on && prep_all_on() && g_wiiu_world_async && prep_on_main_on() && prep_split_on() && head_core() >= -1 && head_core() != 0 &&
+           head_core() != 1 && (head_core() != 3 || g_head_at == 0);
 }
 void wiiu_ee_post(bool sky_fresh) {
     {
@@ -7106,6 +7130,13 @@ void wiiu_ee_post(bool sky_fresh) {
     g_ee_sky_fresh = sky_fresh;
     g_ee_on_head = true;
     g_job_head = true;
+    if (head_core() == -1) {  // ((2026-11-09) the reads on core 2's thread, the first half the main thread's at the drawing's start: core 2 the
+                              // game's as soon as the reads are done)
+        __asm__ volatile("mffs %0" : "=f"(g_prep_on_main_fpscr));
+        g_prep_on_main_pending = true;
+        head_post(true);
+        return;
+    }
     wiiu_prep_dispatch();  // (head_post: ee_on_head_ready's conditions are its own)
 }
 void wiiu_ee_run() {

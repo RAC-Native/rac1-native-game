@@ -295,6 +295,8 @@ void words_swapped(void* p, const void* data, uint32_t bytes) {
 void* block_of(const void* data, uint32_t bytes, uint32_t size) {
     void* p = ring_alloc(size);
     if (p == nullptr) return nullptr;
+    // ((2026-11-09) the lines written zeroed in the cache first, dcbz - not read from memory to be overwritten: mrp_moby_gx2.cpp's)
+    for (uint32_t o = 0, n = std::min(bytes, size); o + 32 <= n; o += 32) __asm__ volatile("dcbz 0,%0" : : "r"(static_cast<uint8_t*>(p) + o) : "memory");
     words_swapped(p, data, std::min(bytes, size));
     if (g_gx2_perf.ub_bulk) {  // (out of the CPU's cache alone; the GPU's emptied by the call: ring_gpu_invalidate)
         DCFlushRange(p, size);

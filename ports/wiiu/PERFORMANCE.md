@@ -1635,3 +1635,49 @@ Built and proved exact on the PC that evening; measured on the console 2026-11-0
   nothing after.
 - **The card's calls:** one at a time (g_fs_m) as before, but a read past 512 KB in pieces, the lock let go between them: a stream's
   64 KB read no longer waits behind the level's whole data.wad (13-19 MB, 0.6-0.9 s). A file's handles under a lock of their own.
+
+## Kerwan toward 60: what bounds the frame, the CPU's critical paths cut (2026-11-09)
+
+Kerwan deterministic (RAC1_LEVEL=3 RAC1_FRAMES=1500 RAC1_REALTIME=0, 47 windows, timing on): **49 -> 38.5 ms a frame**; Novalis
+(RAC1_LEVEL=1, 1500 frames) 40.7 -> 33.5, Veldin (RAC1_LEVEL=0, 1200 frames) 29.8 -> 25.9 (the starting build 16f1b0c against this
+one, the same runs). The game code stays 22 ms a step on Kerwan.
+
+- **The GPU is not the wall.** "[gpu] busy" is the frame's span on the GPU, the command processor's waits included: in "[gpu-world]"
+  the world passes' time is almost all "gap" (ties' pass 1 12.1 ms, gap 12.1; tfrag pass 1 17.5, gap 16.2), and 3D_SCALE 0.75 / 1.0
+  give the same frame. The frame is the longest of the CPU's chains ("[core0]" timeline): (a) the prepare (~14 ms on the main thread,
+  9.2 of it the mobys' prepare, the world's first half on core 2) before the game thread may start, then its 23.6 ms step; (b) the
+  chain reader on core 0, then the world's second half (22 ms) and plan (4.7) on the same core, then the main thread's world draws.
+  Total CPU work ~95 ms a frame over three cores: ~33 ms is the floor without less work.
+- **gpu_packet's reflections box** (6afd19b): 8 corners in doubles a packet for the PC's Water Reflections' cull, never read on the
+  Wii U: build_triangles 22-24 -> ~11 ms (the replays 11.8 -> 3.2 ms for ~3,100 packets). 49 -> 45.0.
+- **Merged draws in mode 3 by default** (7eba871): the ties' 6,567 GX2 draws a world call -> 984 (instanced), the call's CPU 12.4 ->
+  8.0 ms. 45.0 -> 42.7. Veldin's deterministic run 27.2 -> 26.1 (its normal views within 0.5 ms: the units' tree no longer costs what
+  it did on 2026-11-03).
+- **The EE reads on the workers** (45b1127): the chain's copy made by its worker (RAC1_WIIU_CHAIN_CAPTURE_W), the world prepare's
+  reads by the first half's thread on core 2 (RAC1_WIIU_EE_ON_HEAD, the auto head core then kept on core 2); the game thread waits for
+  both (mrp_chain_wait_captured, mrp_world_wiiu_wait_ee). The reader starts at 0.7 ms of the cycle instead of 4.5. 42.6 -> 41.2.
+- **The tfrags' corners where the GPU reads them** (45b1127, RAC1_WIIU_TVS_DIRECT): the second half writes the indexed corners /
+  indices into one of four GPU-readable slots (flushed on its core); the main thread's copy into its ring - lines in core 0's cache,
+  ~2.3 ms of its draws - gone ('sending' 2.84 -> 0.06 ms). 41.2 -> 39.2 (shots at 500 / 1000 against =0: the same but an animated
+  moby's 43 / 327 pixels).
+- **Then** (this commit): the mobys' build_frame skips what only the PC's modern lighting, ray tracing and light editor read
+  (positions, radii, world matrices, owners, references, the editor's frames; g_modern_shadows 0): the mobys' prepare 8.3 -> 6.1 ms,
+  the game thread's start 11.1 -> 9.8; the draw records appended without the vector's generic insert (cmds_put); vu1::code_hash in two
+  32-bit halves at fixed shifts (the same value: 2,000 random inputs against the old one); dcbz on the uniform blocks' lines (mobys,
+  world) and the tfrag slot before they are written (the writes no longer read the lines from memory: tfrag_vs_frame ~3.0 -> ~1.5-2.5
+  ms). 39.2 -> 38.5.
+- **Tried, not kept:** the IOP mirror on core 1 (RAC1_WIIU_IOP_CORE=1: 44.0 / 39.7 against 42.7 / 39.1); the ports' lookup's images
+  ring 4 -> 16 (still "images compared 0": the effects' ranges never hold the same words twice - their immediates patched?);
+  RAC1_WIIU_HEAD_CORE=-1 (new: the EE reads on core 2's thread, the first half the main thread's at the drawing's start) - the game
+  thread starts at 7.0 ms instead of 9.8, but the second half then waits for the first: 39.3 against 38.9; kept as an option.
+- **Where it stands** (k13, the cycle's ms): main: chain kicked 0.7, mobys prepared 6.6, the first half done (core 2) 9.5, chain join
+  13.7, GPU / swap waits to 20.3, the mobys' display lists, the world's join 25.2 -> 32.0, TV drawn 37.6. Core 0: chain reader 2.5 ->
+  13.4 (VU1 effects' programs 5.0 ms, their ports' hashing ~2.7, GS uploads 2.7), second half 13.6 -> 26.8 (build_triangles ~10,
+  tfrags ~1.5-2.5), plan ~3.5, effects' prepare ~3, the IOP mirror ~4 across. Core 2: EE reads + first half 0.7 -> 9.5, game 9.8 ->
+  33.4. Three chains end within ~1 ms of each other: each further cut needs the other two cut too.
+- **60 fps:** the game's step alone is 22 ms on core 2 (> 16.7): not reachable without the game's logic itself faster or split (the
+  drawing off the game thread, 2026-11-05 study: ~-4 ms, days of work). Next levers for 30 steady (33 ms): the chain reader's VU1
+  effects programs (interpreted; their ports never match), the ports' hash (incremental from the first changed word), the GS uploads
+  (skip an image the GS memory holds already), build_triangles split by batches between core 0 and the main thread's waits (the main
+  thread idles ~10 ms a frame in its joins and the GPU / swap waits), plan_build per batch beside it, the first half split between
+  core 2 (culling) and the main thread (scene_from_static_k).

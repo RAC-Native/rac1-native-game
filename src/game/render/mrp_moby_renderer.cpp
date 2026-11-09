@@ -1827,7 +1827,7 @@ std::vector<ClassGpu*> g_frame_classes;     // the frame's mobys' classes (class
 
 // orig: (host) one part's PartPre (no state of its own: any thread)
 void part_pre(const MrpFrame& f, const MrpMoby& m, const ClassGpu* cg, const MrpPart& part, const ViewInverse& vinv, const glm::dmat4& vp, bool turned,
-              const glm::mat3& turn, PartPre& out) {
+              const glm::mat3& turn, PartPre& out, bool extras = true) {
     glm::dmat4 W(1.0);
     out.rows_ok = world_of_rows(vinv, part.model_to_view, W);
     if (!out.rows_ok) {  // (a singular view: the moby's own transform, 0x2559c0's inputs)
@@ -1849,6 +1849,7 @@ void part_pre(const MrpFrame& f, const MrpMoby& m, const ClassGpu* cg, const Mrp
         out.light[4] = static_cast<float>(t.y);
         out.light[8] = static_cast<float>(t.z);
     }
+    if (!extras) return;  // ((2026-11-09) the Wii U without the modern lighting: its position and radius read by nothing)
     out.pos = glm::vec3(W[3]) / static_cast<float>(W[3].w != 0.0 ? W[3].w : 1.0);
     out.rad = part_radius(cg, W);
 }
@@ -2044,6 +2045,14 @@ void build_frame() {
         g_part_pre_first[f.mobys.size()] = slots;
         if (g_part_pre.size() < slots) g_part_pre.resize(slots);
     }
+    // ((2026-11-09) the Wii U without the modern lighting: the parts' positions, radii, world matrices, owners, mobys, references and
+    // the light editor's frames - read by the modern lighting's casters, the PC's ray tracing, its light editor and its checks alone -
+    // not made: ~3 ms of Kerwan's mobys' prepare, which the game's update waits for)
+#if defined(__WIIU__)
+    const bool extras = g_modern_shadows != 0;
+#else
+    const bool extras = true;
+#endif
     jobs::parallel_for(f.mobys.size(), 8, [&](size_t b, size_t e) {
         for (size_t mi = b; mi < e; ++mi) {
             const MrpMoby& m = f.mobys[mi];
@@ -2053,7 +2062,7 @@ void build_frame() {
             for (uint32_t k = 0; k < nparts; ++k) {
                 const uint32_t pk = m.first_packet + k;
                 if (pk >= cg->packets.size() || cg->asset->packets[pk].lod == 2) continue;
-                part_pre(f, m, cg, f.parts[m.part_first + k], vinv, vp, turned, turn, g_part_pre[g_part_pre_first[mi] + k]);
+                part_pre(f, m, cg, f.parts[m.part_first + k], vinv, vp, turned, turn, g_part_pre[g_part_pre_first[mi] + k], extras);
             }
         }
     });
@@ -2192,13 +2201,15 @@ void build_frame() {
             P.info[3] = part.mscal == 0x00a ? 1 : 0;  // the clipping program: the fog per vertex
             const uint32_t part_index = static_cast<uint32_t>(F.parts.size());
             F.parts.push_back(P);
+            if (extras) {
             F.part_pos.push_back(pre.pos);
             F.part_rad.push_back(pre.rad);
             F.part_own.push_back(own_view ? 1 : 0);
             F.part_w.push_back(glm::mat4(W));
             F.part_moby.push_back(m.moby);
             F.refs.push_back({mi, cg, pk, part_index, tint, test, alpha});
-            if (!own_view && !m.rt && (F.xf.empty() || F.xf.back().moby != m.moby)) {  // (the moby's first part: its frame for the light editor)
+            }
+            if (extras && !own_view && !m.rt && (F.xf.empty() || F.xf.back().moby != m.moby)) {  // (the moby's first part: its frame for the light editor)
                 Frame::MobyXf x;
                 x.moby = m.moby;
                 x.class_id = m.class_id;

@@ -305,14 +305,29 @@ Vu1& vu1_global() {
     return vu;
 }
 
+// (fnv1a64 over each word's bytes from the lowest. (2026-11-09) In two 32-bit halves, the bytes taken at fixed shifts: the same value,
+// fewer instructions a byte on a 32-bit host - the Wii U's chain reader hashed ~170 KB a frame this way, ~1.5 ms of core 0. The prime
+// 2^40 + 0x1b3: h x prime = h x 0x1b3 + (the low half << 8) in the high half)
 uint64_t code_hash(const uint64_t* words, uint32_t n) {
-    uint64_t h = 0xcbf29ce484222325ull;
-    for (uint32_t i = 0; i < n; ++i)
-        for (int b = 0; b < 8; ++b) {
-            h ^= (words[i] >> (8 * b)) & 0xff;
-            h *= 0x100000001b3ull;
-        }
-    return h;
+    uint32_t hi = 0xcbf29ce4u, lo = 0x84222325u;
+    auto step = [&hi, &lo](uint32_t byte) {
+        lo ^= byte;
+        const uint64_t t = static_cast<uint64_t>(lo) * 0x1b3u;
+        hi = hi * 0x1b3u + static_cast<uint32_t>(t >> 32) + (lo << 8);
+        lo = static_cast<uint32_t>(t);
+    };
+    for (uint32_t i = 0; i < n; ++i) {
+        const uint32_t a = static_cast<uint32_t>(words[i]), b = static_cast<uint32_t>(words[i] >> 32);
+        step(a & 0xffu);
+        step((a >> 8) & 0xffu);
+        step((a >> 16) & 0xffu);
+        step(a >> 24);
+        step(b & 0xffu);
+        step((b >> 8) & 0xffu);
+        step((b >> 16) & 0xffu);
+        step(b >> 24);
+    }
+    return static_cast<uint64_t>(hi) << 32 | lo;
 }
 
 void register_program(uint32_t addr, uint32_t n, uint64_t hash, ProgramFn fn, const char* name) {

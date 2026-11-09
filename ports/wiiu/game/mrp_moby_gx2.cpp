@@ -244,6 +244,9 @@ void* block_of(const void* data, uint32_t bytes, uint32_t size, bool vertex) {
     void* p = ring_alloc(size);
     if (p == nullptr) return nullptr;
     const uint32_t n = std::min(bytes, size);
+    // ((2026-11-09) the whole lines written zeroed in the cache first (dcbz; the ring's blocks 256-byte aligned): not read from memory before
+    // being overwritten - ~2,300 draw blocks of ~300 bytes a frame on Kerwan, block_of ~3 ms of the main thread)
+    for (uint32_t o = 0; o + 32 <= n; o += 32) __asm__ volatile("dcbz 0,%0" : : "r"(static_cast<uint8_t*>(p) + o) : "memory");
     if (vertex) {
         const auto* src = static_cast<const uint8_t*>(data);
         auto* dst = static_cast<uint32_t*>(p);
