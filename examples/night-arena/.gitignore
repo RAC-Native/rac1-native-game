@@ -1,0 +1,7 @@
+# made by the scripts (make_textures.py, export_arena.py) and by Blender; local.json names your game checkout
+/textures/
+/out/
+/local.json
+*.blend
+*.blend1
+__pycache__/
