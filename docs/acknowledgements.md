@@ -43,6 +43,8 @@ See [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) for versions and licen
 - [TinyGLTF](https://github.com/syoyo/tinygltf), with [nlohmann/json](https://github.com/nlohmann/json)
   and [stb_image](https://github.com/nothings/stb): glTF loading for the older model renderer.
 - [miniaudio](https://github.com/mackron/miniaudio): audio output.
+- [stb_vorbis](https://github.com/nothings/stb): the level composer's Ogg Vorbis decoder (a level mod's `.ogg` music
+  and sounds).
 - [glad](https://github.com/Dav1dde/glad): the generated OpenGL loader.
 - [volk](https://github.com/zeux/volk) and [Vulkan-Headers](https://github.com/KhronosGroup/Vulkan-Headers):
   the optional Vulkan renderer's function loader and the API's headers.

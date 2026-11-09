@@ -6,6 +6,11 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
+
+#define STB_VORBIS_HEADER_ONLY
+#include <stb_vorbis.c>  // third_party/stb_vorbis: built as its own library
+#undef STB_VORBIS_HEADER_ONLY
 
 namespace rac1::setup {
 
@@ -139,6 +144,16 @@ bool read_wav(const std::vector<uint8_t>& b, std::vector<std::vector<float>>& ch
     return true;
 }
 
+// ---- an Ogg Vorbis file: as read_wav ----
+bool read_ogg(const std::vector<uint8_t>& b, std::vector<std::vector<float>>& ch, uint32_t& rate, std::string& desc, std::string& why) {
+    std::vector<std::vector<int16_t>> s;
+    if (!ogg_decode(b, s, rate, why)) return false;
+    ch.clear();
+    for (const std::vector<int16_t>& c : s) ch.emplace_back(c.begin(), c.end());
+    desc = fmt("%u Hz, %s", rate, ch.size() == 2 ? "stereo" : "mono");
+    return true;
+}
+
 // ---- resampling: `in` to `n_out` samples over the same time (windowed sinc, Kaiser); `periodic`: `in` is a loop (its
 // end runs on into its start), else silence round it ----
 double bessel_i0(double x) {
@@ -260,11 +275,12 @@ std::vector<uint8_t> adpcm_encode(const std::vector<int16_t>& pcm, bool loop, bo
     return out;
 }
 
-bool from_wav(const std::vector<uint8_t>& in, bool loop, int channels, uint32_t want_rate, MusicVag& out, std::string& why) {
+// a WAV or (`ogg`) an Ogg Vorbis file, decoded, as the VAG
+bool from_pcm(const std::vector<uint8_t>& in, bool ogg, bool loop, int channels, uint32_t want_rate, MusicVag& out, std::string& why) {
     std::vector<std::vector<float>> ch;
     uint32_t rate = 0;
     std::string desc;
-    if (!read_wav(in, ch, rate, desc, why)) return false;
+    if (!(ogg ? read_ogg(in, ch, rate, desc, why) : read_wav(in, ch, rate, desc, why))) return false;
     if (channels == 2 && ch.size() == 1) ch.push_back(ch[0]);
     // the rate: the WAV's (8000 .. 48000 Hz: the stream's pitch is rate * 4096 / 48000), else the nearest of those; or
     // the one asked for (an intro's and its loop's the same: the stream keeps the pitch it started with)
@@ -286,7 +302,7 @@ bool from_wav(const std::vector<uint8_t>& in, bool loop, int channels, uint32_t 
     out.channels = static_cast<int>(data.size());
     out.samples = n_out;
     out.encoded = true;
-    out.how = fmt("a WAV (%s, %zu samples), encoded%s: %u Hz, %zu samples%s", desc.c_str(), n_in,
+    out.how = fmt("%s (%s, %zu samples), encoded%s: %u Hz, %zu samples%s", ogg ? "an Ogg Vorbis file" : "a WAV", desc.c_str(), n_in,
                   rate != out_rate ? " and resampled" : n_out != n_in ? " (its length stretched to whole ADPCM blocks)" : "", out_rate, n_out,
                   channels == 2 && desc.find("mono") != std::string::npos ? ", mono made stereo" : "");
     return true;
@@ -294,11 +310,34 @@ bool from_wav(const std::vector<uint8_t>& in, bool loop, int channels, uint32_t 
 
 }  // namespace
 
+bool ogg_decode(const std::vector<uint8_t>& in, std::vector<std::vector<int16_t>>& ch, uint32_t& rate, std::string& why) {
+    if (in.size() < 4 || std::memcmp(in.data(), "OggS", 4) != 0) {
+        why = "not an Ogg file (\"OggS\")";
+        return false;
+    }
+    int channels = 0, r = 0;
+    short* pcm = nullptr;  // (stb_vorbis's, malloc'd: interleaved)
+    const int n = stb_vorbis_decode_memory(in.data(), static_cast<int>(std::min<size_t>(in.size(), 0x7fffffff)), &channels, &r, &pcm);
+    if (n <= 0 || pcm == nullptr || channels < 1 || channels > 2 || r <= 0) {
+        std::free(pcm);
+        why = n < 0 || pcm == nullptr ? "an Ogg file that is not Ogg Vorbis, or a damaged one" : n == 0 ? "an empty Ogg Vorbis file"
+                                                                                            : "an Ogg Vorbis file of another kind (mono or stereo only)";
+        return false;
+    }
+    ch.assign(channels, std::vector<int16_t>(static_cast<size_t>(n)));
+    for (size_t i = 0; i < static_cast<size_t>(n); ++i)
+        for (int c = 0; c < channels; ++c) ch[c][i] = pcm[i * channels + c];
+    std::free(pcm);
+    rate = static_cast<uint32_t>(r);
+    return true;
+}
+
 bool music_vag_make(const std::vector<uint8_t>& in, bool loop, int channels, uint32_t rate, MusicVag& out, std::string& why) {
     out = MusicVag{};
     if (in.size() >= 0x30 && std::memcmp(in.data(), "VAGp", 4) == 0) return from_vag(in, channels, out, why);
-    if (in.size() >= 12 && std::memcmp(in.data(), "RIFF", 4) == 0 && std::memcmp(in.data() + 8, "WAVE", 4) == 0) return from_wav(in, loop, channels, rate, out, why);
-    why = "neither a VAG (\"VAGp\" header) nor a WAV (RIFF / WAVE)";
+    if (in.size() >= 12 && std::memcmp(in.data(), "RIFF", 4) == 0 && std::memcmp(in.data() + 8, "WAVE", 4) == 0) return from_pcm(in, false, loop, channels, rate, out, why);
+    if (in.size() >= 4 && std::memcmp(in.data(), "OggS", 4) == 0) return from_pcm(in, true, loop, channels, rate, out, why);
+    why = "neither a VAG (\"VAGp\" header), a WAV (RIFF / WAVE) nor an Ogg Vorbis file (\"OggS\")";
     return false;
 }
 

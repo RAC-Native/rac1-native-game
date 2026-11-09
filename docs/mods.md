@@ -443,7 +443,7 @@ mods/example-plateau/
     meshes.obj         what is drawn (with meshes.mtl and its PNG textures)
     lights.txt         optional: the modern lighting's file for the level (lights, particles, materials, as
                        data/lights/levelNN.txt; the debug menu's Lights tab writes one)
-    *.wav, *.vag       optional: the level's music (level.txt's music line)
+    *.wav, *.ogg, *.vag   optional: the level's music and sounds (level.txt's music and sound lines)
 ```
 
 `mod.json` says it is a level:
@@ -479,11 +479,11 @@ mods/example-plateau/
 | `offset <x> <y> <z>`, `offset auto` | added to every coordinate of the OBJ files (after `up` and `scale`) and of level.txt; `auto`: as much as the collision needs (below) |
 | `scale <s>` | the OBJ files' units to the game's (default 1; Ratchet is about 1.5 units tall) |
 | `moby <class> <x> <y> <z> [<yaw>]` | an object (below) |
-| `music <level>`, `music <loop> [<intro>]`, `music none` | the music: the game level's (0..18), your own (a WAV or a VAG, mono or stereo: below), or none; default the base level's |
+| `music <level>`, `music <loop> [<intro>]`, `music none` | the music: the game level's (0..18), your own (a WAV, an Ogg Vorbis file or a VAG, mono or stereo: below), or none; default the base level's |
 | `sky <level>` | the sky of the game's level (0..18); default the base level's |
 | `class <name> <model.obj> [size <s>] [solid\|ghost] [scale <k>]` | a class of the level's own objects (its model, its hit box; its behaviour in the mod's plugin): [The mod SDK](sdk.md#the-levels-own-content-leveltxt) |
 | `object <class> <x> <y> <z> [<yaw>] [<key>=<value> ...]` | an object of one of the level's classes |
-| `sound <name> <file.wav\|.vag> [volume <v>] [range <near> <far>] [loop] [pitch <s>]` | a sound of the level's own (the plugin plays it) |
+| `sound <name> <file.wav\|.ogg\|.vag> [volume <v>] [range <near> <far>] [loop] [pitch <s>]` | a sound of the level's own (the plugin plays it) |
 | `trigger <name> <x0> <y0> <z0> <x1> <y1> <z1>` | a box Ratchet enters and leaves (the plugin's trigger callback) |
 
 **Objects** (`moby` lines): each is a copy of the first object of class `<class>` the base level places (its settings
@@ -497,7 +497,7 @@ broken stays broken) goes by it, so add new lines at the end to keep a save's.
 
 **Music**: `music <level>` plays that game level's tracks (the base level's code picks the track: on Veldin, the
 level's first one and its loop). Your own: `music <loop> [<intro>]`, `<loop>` looping (the whole file, end to start),
-`<intro>` (optional) played once before it, each a **WAV** or a **VAG**:
+`<intro>` (optional) played once before it, each a **WAV**, an **Ogg Vorbis** file (`.ogg`) or a **VAG**:
 
 - a **WAV** (PCM 8, 16, 24 or 32 bits or 32-bit float, mono or **stereo**, 8000 to 48000 Hz as it is, other rates
   resampled to the nearest of those): the composer encodes it, as the game wants it. Its length is made a whole number
@@ -505,6 +505,10 @@ level's first one and its loop). Your own: `music <loop> [<intro>]`, `<loop>` lo
   first block does not depend on what played before it, so the loop's end meets its start without a click: make the
   file loop well as it is (the end flowing into the start). A 44100 Hz stereo WAV stays 44100 Hz (the disc's music
   is 44100 Hz mono); about 50 KB a second of stereo.
+- an **Ogg Vorbis** file (`.ogg`, mono or stereo, any rate as a WAV's): decoded when the level is composed (by
+  [stb_vorbis](https://github.com/nothings/stb)), then encoded as a WAV is. The decoded length is the stream's own (its
+  last granule position), so a loop that is seamless as a WAV stays seamless as an `.ogg` made from it: encode it as
+  usual, for example `ffmpeg -i loop.wav -c:a libvorbis -q:a 6 loop.ogg` (about a tenth of the WAV's size).
 - a **VAG** as the disc's music files (`levels/levelNN/hdr_014c.vag`): a 0x30-byte `VAGp` header (big endian: the
   data's size at +0xc, the rate at +0x10, 8000 to 48000 Hz), then mono PS-ADPCM, copied as it is. A **stereo VAG**
   (ours): byte +0x1e of the header 2, the size at +0xc one channel's, the left and the right channel's ADPCM
@@ -515,8 +519,9 @@ level's first one and its loop). Your own: `music <loop> [<intro>]`, `<loop>` lo
 right one's on the right (as the game's own stereo, the movies' sound, is played), stepping through the file in sync;
 the stream is otherwise one, as the game's music: its music volume (Options), pauses, fades and changes of track act on
 both. A stereo intro with a mono loop (or the other way) is made stereo both (the mono one on both channels). An
-intro and its loop play at one rate: a WAV is encoded at the other's rate (the loop's when both are WAVs); two VAGs of
-different rates are refused. In 5.1 / 7.1 the music is on the front left and right speakers, as the game's.
+intro and its loop play at one rate: a WAV or an `.ogg` is encoded at the other's rate (the loop's when neither is a
+VAG); two VAGs of different rates are refused. In 5.1 / 7.1 the music is on the front left and right speakers, as the
+game's.
 
 The composer copies (or encodes) them into the build (they are read through the level's window); its log says what it
 made of each (`music: ...`).
@@ -549,7 +554,8 @@ last step. The build goes to `assets/generated/mods/<folder>/` (made from your d
   hero animations, gadgets and effects; the collision made from your `collision.obj`.
 - `gameplay.bin`: the base level's settings, lights, generic cameras and help texts; Ratchet at your start; the ship (and
   its take-off path) or none; your objects (`moby` lines).
-- `music_loop.vag`, `music_intro.vag`: your music, when level.txt names it (as the game plays it: a WAV encoded).
+- `music_loop.vag`, `music_intro.vag`: your music, when level.txt names it (as the game plays it: a WAV or an `.ogg`
+  encoded).
 - `host_meshes.mrpc`: your meshes, drawn by the modern renderer (not by the game's code: the faithful renderer, a debug
   choice, does not draw them), and your classes' models.
 - `level.sdk`, `sounds.bnk`: your classes, placed objects, sounds and triggers ([The mod SDK](sdk.md)); your sounds as

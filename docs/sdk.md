@@ -108,7 +108,7 @@ lists. The composer checks them (an error names the file and line) and writes th
 ```
 class <name> <model.obj> [size <s>] [solid | ghost] [scale <k>]
 object <class> <x> <y> <z> [<yaw>] [<key>=<value> ...]
-sound <name> <file.wav | file.vag> [volume <v>] [range <near> <far>] [loop] [pitch <semitones>]
+sound <name> <file.wav | file.ogg | file.vag> [volume <v>] [range <near> <far>] [loop] [pitch <semitones>]
 trigger <name> <x0> <y0> <z0> <x1> <y1> <z1>
 ```
 
@@ -116,7 +116,7 @@ trigger <name> <x0> <y0> <z0> <x1> <y1> <z1>
 |---|---|
 | `class` | a class of the level's own objects. `<name>`: letters, digits, `-`, `_`, `.` (31 at most); your plugin binds its behaviour to it with `class_define`. `<model.obj>`: its model, an OBJ in the level folder made **round its own origin, standing on it** (the object's position is the model's origin, and its hit box rises from there); level.txt's `up` and `scale` apply to it, its `offset` does not. The same rules as `meshes.obj` (its MTL, PNG textures or `Kd` colours, vertex colours, 16 materials, 64 colours); the whole file is one model. `size`: the hit box's edge in units (default: the model's largest extent times `scale`). `ghost`: no collision at all (nothing stands on it, bumps into it, hits it; rays miss it); `solid` (the default): a box. `scale`: the model's scale |
 | `object` | an object of a level class, placed: at `<x> <y> <z>` (level.txt's offset applies) turned `<yaw>` radians about z. The `key=value` words (no spaces; any keys you like) are for your plugin: `object_param`, `object_named` (`name=`). Placed objects are there whether or not the mod's code runs: drawn and solid, without behaviour |
-| `sound` | a sound of the level's own: a WAV (PCM, 8 or 16 bits, mono or stereo: mixed to mono) or a VAG (the music's format), 8000 to 48000 Hz. `volume` 0 .. 1 (default 1); `range`: full volume within `near` units of the camera, none past `far` (default 10, 60); `loop`: it plays until stopped (the whole file loops); `pitch`: semitones up (or down, negative), -24 .. 24 |
+| `sound` | a sound of the level's own: a WAV (PCM, 8 or 16 bits, mono or stereo: mixed to mono), an Ogg Vorbis file (`.ogg`, mono or stereo: mixed to mono; decoded when the level is composed) or a VAG (the music's format), 8000 to 48000 Hz. `volume` 0 .. 1 (default 1); `range`: full volume within `near` units of the camera, none past `far` (default 10, 60); `loop`: it plays until stopped (the whole file loops); `pitch`: semitones up (or down, negative), -24 .. 24 |
 | `trigger` | a box (its two corners; offset applies) Ratchet enters and leaves: the `trigger` callback, `trigger_inside` |
 
 The build's files: `level.sdk` (the classes, placed objects, sounds and triggers, for the game), `sounds.bnk` (one
