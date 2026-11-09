@@ -41,8 +41,9 @@
 extern "C" {
 #endif
 
-/* The ABI this header describes. 1: the first. */
-#define RAC1_MOD_ABI 1
+/* The ABI this header describes. 1: the first; 2: the level's own object classes, ray and near queries, damage both
+   ways, the mod's own sounds, triggers (docs/sdk.md lists what each version added). */
+#define RAC1_MOD_ABI 2
 
 #if defined(_WIN32)
 #define RAC1_MOD_EXPORT __declspec(dllexport)
@@ -59,6 +60,63 @@ typedef struct rac1_level_info {
     int32_t objects;       /* (mine) the placed objects (level.txt's moby lines): their uids are 1..objects (the hero's
                               uid skipped) */
 } rac1_level_info;
+
+/* (ABI 2) A level object's spawn: given to its class's spawn callback */
+typedef struct rac1_spawn {
+    uint32_t size;         /* sizeof the game's struct */
+    float pos[3];          /* where (the game's coordinates) */
+    float yaw;             /* turned (radians, about z) */
+    const char* params;    /* a placed object's key=value words as level.txt has them ("" when none: object_spawn's) */
+    int32_t placed;        /* 1: placed by level.txt's object line, 0: object_spawn */
+    int32_t index;         /* (placed) its object line's index, 0.. in the lines' order; -1 */
+} rac1_spawn;
+
+/* (ABI 2) A hit taken (the game's hit record: the player's attacks, an enemy's, hit_send's) */
+typedef struct rac1_hit {
+    uint32_t size;         /* sizeof the game's struct */
+    uint32_t from;         /* the attacker's moby (0: none known) */
+    uint32_t kinds;        /* the record's kind bits (RAC1_HIT_*) */
+    float strength;        /* the record's strength: the game's damage value */
+    float point[3];        /* where (when the attack says; else 0 0 0) */
+    float dir[3];          /* its push (may be 0 0 0) */
+} rac1_hit;
+
+/* hit kinds (the game's hit records' bits): the player's attacks reaching an object, Ratchet's own hurt */
+#define RAC1_HIT_HERO 0x00000001u     /* (a hit on Ratchet: hero_damage's) */
+#define RAC1_HIT_PLAYER 0x01b30000u   /* any of the player's attacks (weapons, the wrench, explosions) */
+#define RAC1_HIT_ENEMY 0x00330000u    /* what the game's enemies take */
+#define RAC1_HIT_PROP 0x00010000u     /* what the game's breakable props take */
+
+/* (ABI 2) What a ray hit (collide_ray) */
+typedef struct rac1_ray_hit {
+    uint32_t size;         /* the caller's sizeof (set it): the game fills what fits */
+    float point[3];        /* the point hit */
+    float normal[3];       /* the surface's normal there (unit) */
+    uint32_t moby;         /* the moby hit, 0: the level's collision */
+    uint32_t object;       /* the level object whose moby that is, 0: none */
+} rac1_ray_hit;
+
+/* collide_ray's flags (the game's segment test's) */
+#define RAC1_RAY_NO_LEVEL 0x01u       /* the mobys only (not the level's collision) */
+#define RAC1_RAY_HITTABLE 0x08u       /* only the mobys that take hits */
+#define RAC1_RAY_BACKFACES 0x10u      /* the level's triangles from behind too */
+
+/* (ABI 2) A level object class's behaviour: class_define (in rac1_mod_main), bound by name to level.txt's class line */
+typedef struct rac1_class_def {
+    uint32_t size;         /* the plugin's sizeof(rac1_class_def) */
+    const char* name;      /* level.txt's class name (copied) */
+    uint32_t state_size;   /* bytes of state per object (api->object_state), zeroed at its spawn; 0: none */
+    void* user;            /* given back to the callbacks */
+    /* an object of the class appears: placed ones at the level's start (before level_start), spawned ones in
+       object_spawn */
+    void (*spawn)(void* user, uint32_t obj, const rac1_spawn* spawn);
+    /* once a frame of play, in the objects' pass (where a moby's class runs), after hit */
+    void (*update)(void* user, uint32_t obj);
+    /* the object took a hit this frame (the player's attacks: RAC1_HIT_PLAYER, or hit_send's), before its update */
+    void (*hit)(void* user, uint32_t obj, const rac1_hit* hit);
+    /* the object goes (object_remove, or the level is left): its state is freed after */
+    void (*remove)(void* user, uint32_t obj);
+} rac1_class_def;
 
 /* The game's services. Append-only: new ones go at the end. */
 typedef struct rac1_api {
@@ -134,6 +192,66 @@ typedef struct rac1_api {
     /* calls the game's function at Veldin's address `veldin_addr` with one argument (a moby: the functions the game calls
        through a pointer, its objects' updates and the like), when the port has it: 1 called, 0 not (none such) */
     int (*call_port)(uint32_t veldin_addr, uint32_t arg);
+
+    /* ======== ABI 2 (test RAC1_API_HAS(api, class_define) to run on an ABI 1 game too) ======== */
+
+    /* -- the level's object classes and objects (docs/sdk.md, "Objects"). An object is a handle, 0 none; a removed
+          object's handle never names another. Objects exist on a level mod's level only (its level.txt's class lines) -- */
+    /* the behaviour of level.txt's class `def->name`: call in rac1_mod_main; 1 done, 0 not (no name, too many) */
+    int (*class_define)(const rac1_class_def* def);
+    int32_t (*class_find)(const char* name);  /* the current level's class of that name: its index, -1 none */
+    /* a new object of class `cls` at `pos` turned `yaw`: its handle (its class's spawn called first), 0 when none can be
+       made (no such class, the game's mobys all used) */
+    uint32_t (*object_spawn)(int32_t cls, const float pos[3], float yaw);
+    void (*object_remove)(uint32_t obj);       /* (its class's remove called) */
+    uint32_t (*object_moby)(uint32_t obj);     /* its moby (position +0x10, rotation +0x40, ...: the moby services work) */
+    uint32_t (*object_of_moby)(uint32_t moby); /* the object a moby carries, 0 none */
+    int32_t (*object_class)(uint32_t obj);     /* its class's index, -1: no such object */
+    void* (*object_state)(uint32_t obj);       /* its state (its class's state_size bytes), NULL none */
+    /* a placed object's key=value word `key`: its value into `out` (`cap` bytes); 1 found, 0 not */
+    int (*object_param)(uint32_t obj, const char* key, char* out, size_t cap);
+    uint32_t (*object_named)(const char* name);  /* the placed object whose name=<name>, 0 none */
+    /* moved: its position (NULL: kept), its rotation (x y z, radians; NULL: kept), its scale (<= 0: kept) */
+    void (*object_place)(uint32_t obj, const float pos[3], const float rot[3], float scale);
+    void (*object_show)(uint32_t obj, int on);   /* drawn or not (its collision stays) */
+    void (*object_solid)(uint32_t obj, int on);  /* collision on (stood on, bumped, hit) or off */
+    int32_t (*object_count)(void);               /* the level's objects now */
+    uint32_t (*object_at)(int32_t i);            /* the i-th (0..object_count - 1), 0 past them */
+
+    /* -- queries -- */
+    /* the segment from -> to against the level's collision and the mobys (`ignore`: a moby skipped, 0 none; `flags`:
+       RAC1_RAY_*): 1 and `out` filled (may be NULL) when something is hit, else 0 */
+    int (*collide_ray)(const float from[3], const float to[3], uint32_t ignore, uint32_t flags, rac1_ray_hit* out);
+    /* the level objects within `radius` of `pos` (their positions): at most `max` into `out`, nearest first; the count */
+    int32_t (*objects_near)(const float pos[3], float radius, uint32_t* out, int32_t max);
+    /* the live mobys within `radius` of `pos` (class `cls`, -1 any; Ratchet included): as objects_near */
+    int32_t (*mobys_near)(const float pos[3], float radius, int32_t cls, uint32_t* out, int32_t max);
+
+    /* -- damage -- */
+    /* Ratchet hurt by `amount` (health points) from moby `from` (0: none; its position gives the push): the game's own
+       hurt (his state, the knock back, a hit's grace time: 0 when he cannot be hurt now) */
+    int (*hero_damage)(int32_t amount, uint32_t from);
+    /* a hit record on `moby` (as the game's attacks write them): `kinds` (RAC1_HIT_*), `strength`, the attacker */
+    void (*hit_send)(uint32_t moby, uint32_t kinds, float strength, uint32_t from);
+    /* the hit `moby` took (one of `kinds`), into `out` (may be NULL), and consumed: 1, else 0 */
+    int (*hit_take)(uint32_t moby, uint32_t kinds, rac1_hit* out);
+
+    /* -- the mod's own sounds (level.txt's sound lines; docs/sdk.md, "Sounds") -- */
+    int32_t (*sfx_find)(const char* name);  /* the current level's sound of that name: its index, -1 none */
+    /* sound `sound` on `moby` (it follows it), else at `pos`, else (both 0 / NULL) everywhere: the game's sound slot
+       (distance, pan, occlusion as its own sounds), -1 when none (too far to be heard, all slots busy) */
+    int32_t (*sfx_play)(int32_t sound, uint32_t moby, const float pos[3]);
+    void (*sfx_stop)(int32_t slot);  /* a slot sfx_play gave (a looping sound plays until stopped) */
+    /* 1 while slot `slot` still plays the level's sound `sound` (a sound ends, a looping one far from the camera is let
+       go by the game: play it again when it is near) */
+    int (*sfx_active)(int32_t slot, int32_t sound);
+
+    /* -- triggers (level.txt's trigger lines) -- */
+    int32_t (*trigger_find)(const char* name);  /* its index, -1 none */
+    int (*trigger_inside)(int32_t index);       /* 1 while Ratchet is inside */
+
+    /* -- time -- */
+    uint64_t (*frame_count)(void);  /* the frames of play since the game started (the frame callback's count) */
 } rac1_api;
 
 #define RAC1_API_HAS(api, field) ((api)->size >= offsetof(rac1_api, field) + sizeof((api)->field))
@@ -178,6 +296,10 @@ typedef struct rac1_mod {
     /* testing: RAC1_MOD_TEST=<text> given, once a game frame */
     void (*test)(void* user, const char* text, uint64_t frame);
     void (*shutdown)(void* user);    /* the game ends */
+
+    /* ======== ABI 2 ======== */
+    /* Ratchet entered (inside 1) or left (0) level.txt's trigger `index` (its `name`), before the frame callback */
+    void (*trigger)(void* user, int32_t index, const char* name, int32_t inside);
 } rac1_mod;
 
 /* The ABI the plugin was built with (rac1_mod_abi): put RAC1_MOD_DECLARE_ABI() once in a source file */

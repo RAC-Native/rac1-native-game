@@ -444,6 +444,18 @@ void snd989_rand_use_game() { snd::RandUseGame(); }
 void snd989_host_place(uint32_t handle, int mode, int pan) { host_place(handle, mode, pan); }
 
 // orig: (none) — host, see snd989_iop.h
+uint32_t snd989_host_bank_load(const std::vector<uint8_t>& bank) { return bank_load(bank, "host", 0); }
+
+// orig: (none) — host, see snd989_iop.h
+void snd989_host_bank_unload(uint32_t handle) {
+    Op op;
+    op.id = 0x06;
+    op.w[0] = handle;
+    op.reply = command(game(), 0x06, op.w);
+    if (g_rec.on.load(std::memory_order_relaxed)) record(std::move(op));
+}
+
+// orig: (none) — host, see snd989_iop.h
 void snd989_host_place_next(int mode, int pan) {
     std::scoped_lock lock(g_play_places_m);
     g_next_mode = mode;
