@@ -8,12 +8,14 @@ built for a PC, for tests). The wire format is ../core/link_proto.h; the numbers
   rac1_link.py pair --code 123456 [--console IP]
   rac1_link.py status
   rac1_link.py send LOCAL [--dest rac1-native/...]
+  rac1_link.py adopt LOCAL [--dest rac1-native/...]
   rac1_link.py bench --mode net|net-hash|sd|both|all --mb 256
   rac1_link.py config --rcvbuf 262144 --winscale 1 --sack 1 [--somemopt 1]
 
 The PC only connects out (TCP 47199) and broadcasts (UDP 47198); it never listens.
 """
 import argparse
+import collections
 import hashlib
 import hmac
 import json
@@ -34,10 +36,15 @@ CHUNK = 1 << 20
 FILE_MAX = 0xFFFFFFFF
 
 HELLO, AUTH, AUTH_OK, ERROR, GET_MANIFEST, MANIFEST, BEGIN_FILE, READY, DATA, ACK, RESEND, END_FILE, FILE_OK, \
-    FILE_BAD, BENCH_SD, BENCH_RESULT, CONFIG, CONFIG_OK, PROGRESS, PING, PONG, CANCEL, BYE, QUIT, LAUNCH = range(1, 26)
-NAMES = {v: k for k, v in globals().items() if isinstance(v, int) and k.isupper() and 1 <= v <= 24 and k not in
+    FILE_BAD, BENCH_SD, BENCH_RESULT, CONFIG, CONFIG_OK, PROGRESS, PING, PONG, CANCEL, BYE, QUIT, LAUNCH, ADOPT, \
+    ADOPT_OK = range(1, 28)
+NAMES = {v: k for k, v in globals().items() if isinstance(v, int) and k.isupper() and 1 <= v <= 27 and k not in
          ("PROTO",)}
-F_DISCARD, F_NOHASH, F_BENCH = 1, 2, 4
+F_DISCARD, F_NOHASH, F_BENCH, F_PIPE = 1, 2, 4, 8
+PIPE_MAX = 4 << 20      # files up to this size go in a row (F_PIPE), without a round trip each
+PIPE_WINDOW = 16 << 20  # bytes of them sent and not yet answered
+PIPE_FILES = 256        # files of them sent and not yet answered
+ADOPT_BATCH = 60000     # bytes of "size\tsha1\tpath" lines per ADOPT (the console takes control payloads up to 64 KiB)
 
 MiB = 1 << 20
 
@@ -256,7 +263,12 @@ class Session:
 
     def manifest(self):
         self.send(GET_MANIFEST)
-        _, body = self.expect(MANIFEST)
+        old = self.sock.gettimeout()
+        self.sock.settimeout(max(old or 0, 600.0))  # (the console checks each committed file on the card: thousands)
+        try:
+            _, body = self.expect(MANIFEST)
+        finally:
+            self.sock.settimeout(old)
         files, parts = {}, {}
         for line in body.decode("utf-8", "replace").splitlines():
             f = line.split("\t")
@@ -265,6 +277,97 @@ class Session:
             elif f[0] == "P" and len(f) == 5:
                 parts[f[3]] = (int(f[1]), f[2], int(f[4]))
         return files, parts
+
+    def adopt(self, entries):
+        """entries: (path, size, sha1). The console records as committed the files already on its card with that size and
+        SHA-1. Returns {"had", "adopted", "missing": [paths], "differ": [paths], "hashed", "ms"}."""
+        res = {"had": 0, "adopted": 0, "missing": [], "differ": [], "hashed": 0, "ms": 0}
+        batch, size = [], 0
+        entries = list(entries)
+        for i, (path, sz, sha) in enumerate(entries):
+            line = "%d\t%s\t%s\n" % (sz, sha, path)
+            batch.append(line)
+            size += len(line)
+            if size < ADOPT_BATCH and i + 1 < len(entries):
+                continue
+            self.send(ADOPT, "".join(batch).encode())
+            batch, size = [], 0
+            while True:
+                t, _, body = self.recv()
+                if t == ACK:
+                    self.out.event("adopt_progress", hashed=res["hashed"] + int(kv_parse(body).get("offset", 0)))
+                    continue
+                if t == ERROR:
+                    raise LinkError("console: %s" % kv_parse(body).get("msg"))
+                if t != ADOPT_OK:
+                    raise LinkError("unexpected %s" % NAMES.get(t, t))
+                break
+            for line in body.decode("utf-8", "replace").splitlines():
+                if "=" in line and "\t" not in line:
+                    k, v = line.split("=", 1)
+                    if k in ("had", "adopted", "hashed", "ms"):
+                        res[k] += int(v)
+                elif line[:2] in ("M\t", "D\t"):
+                    res["missing" if line[0] == "M" else "differ"].append(line[2:])
+            self.out.event("adopt", done=i + 1, total=len(entries), **{k: res[k] if isinstance(res[k], int) else
+                                                                        len(res[k]) for k in res})
+        return res
+
+    def send_pipelined(self, items, on_done, nohash=False):
+        """Small files in a row (F_PIPE): each file's BEGIN_FILE, DATA and END_FILE sent without waiting, with at most
+        PIPE_WINDOW bytes / PIPE_FILES files unanswered. items: (path, size, sha1, read_all() -> bytes, ...).
+        on_done(item, res) in order: res is FILE_OK's dict, or {"bad": reason, "code": code}."""
+        inflight = collections.deque()
+        pending = 0
+
+        def answer(msg):
+            nonlocal pending
+            t, _, body = msg
+            if t in (ACK, PONG):
+                return
+            if t == ERROR:
+                raise LinkError("console: %s" % kv_parse(body).get("msg"))
+            if t not in (FILE_OK, FILE_BAD):
+                raise LinkError("unexpected %s" % NAMES.get(t, t))
+            if not inflight:
+                raise LinkError("an answer for no file")
+            item = inflight.popleft()
+            pending -= item[1]
+            r = kv_parse(body)
+            on_done(item, r if t == FILE_OK else {"bad": r.get("reason", "?"), "code": r.get("code", "")})
+
+        for item in items:
+            path, size, sha, read_all = item[:4]
+            if size > FILE_MAX:
+                raise LinkError("%s: over 4 GiB - 1 (FAT32)" % path)
+            while inflight and (pending + size > PIPE_WINDOW or len(inflight) >= PIPE_FILES):
+                answer(self.recv())
+            data = read_all()
+            if len(data) != size:
+                raise LinkError("%s: changed while it was sent (%d bytes, %d expected)" % (path, len(data), size))
+            kw = kv_make(path=path, size=size, **({"sha1": sha} if sha else {}))
+            frames = [struct.pack(">2sBBII", b"R1", BEGIN_FILE, F_PIPE | (F_NOHASH if nohash else 0), len(kw),
+                                  self.seq), kw]
+            self.seq += 1
+            for off in range(0, size, CHUNK):
+                chunk = data[off:off + CHUNK]
+                crc = 0 if nohash else zlib.crc32(chunk) & 0xFFFFFFFF
+                frames.append(struct.pack(">2sBBII", b"R1", DATA, 0, 12 + len(chunk), self.seq) +
+                              struct.pack(">QI", off, crc))
+                frames.append(chunk)
+                self.seq += 1
+            frames.append(struct.pack(">2sBBII", b"R1", END_FILE, 0, 0, self.seq))
+            self.seq += 1
+            inflight.append(item)
+            pending += size
+            self.sock.sendall(b"".join(frames))
+            while True:
+                m = self.poll()
+                if m is None:
+                    break
+                answer(m)
+        while inflight:
+            answer(self.recv())
 
     def progress_text(self, text):
         self.send(PROGRESS, kv_make(text=text.replace("\n", " ")[:110]))
@@ -475,7 +578,8 @@ def cmd_status(args, out):
     return 0
 
 
-def cmd_send(args, out):
+def local_items(args):
+    """(local file, path on the card) for send / adopt."""
     src = os.path.abspath(args.local)
     if os.path.isdir(src):
         dest = (args.dest or "rac1-native/" + os.path.basename(src)).rstrip("/")
@@ -493,6 +597,25 @@ def cmd_send(args, out):
         items = [(src, dest)]
     else:
         raise LinkError("%s: no such file or folder" % args.local)
+    return items
+
+
+def cmd_adopt(args, out):
+    items = local_items(args)
+    out.info("%d file(s): hashing" % len(items))
+    entries = [(d, os.path.getsize(f), sha1_file(f)) for f, d in items]
+    s = connect(args, out)
+    r = s.adopt(entries)
+    out.info("adopt: %d already recorded, %d adopted, %d missing, %d different; the console hashed %.1f MiB in %.1f s" %
+             (r["had"], r["adopted"], len(r["missing"]), len(r["differ"]), r["hashed"] / MiB, r["ms"] / 1000.0))
+    out.event("result", label="adopt", had=r["had"], adopted=r["adopted"], missing=len(r["missing"]),
+              differ=len(r["differ"]), hashed=r["hashed"], ms=r["ms"])
+    s.bye()
+    return 0
+
+
+def cmd_send(args, out):
+    items = local_items(args)
     total = sum(os.path.getsize(f) for f, _ in items)
     out.info("%d file(s), %.1f MiB: hashing" % (len(items), total / MiB))
     hashed = [(f, d, os.path.getsize(f), sha1_file(f)) for f, d in items]
@@ -505,13 +628,44 @@ def cmd_send(args, out):
     t0 = time.monotonic()
     sent = 0
     bad = 0
-    for i, (full, dpath, size, sha) in enumerate(todo):
+    done_files = 0
+    total_todo = sum(x[2] for x in todo)
+
+    def pipe_done(item, res):
+        nonlocal sent, bad, done_files
+        done_files += 1
+        if "bad" in res:
+            out.info("FAILED %s: %s" % (item[0], res["bad"]))
+            out.event("failed", file=item[0], reason=res["bad"], code=res["code"])
+            bad += 1
+            return
+        sent += item[1]
+        out.progress("%d/%d files" % (done_files, len(todo)), sent, total_todo, t0)
+
+    def reader_of(full):
+        def read_all():
+            with open(full, "rb") as f:
+                return f.read()
+        return read_all
+
+    i = 0
+    while i < len(todo):
+        j = i
+        while not args.no_pipe and j < len(todo) and todo[j][2] <= PIPE_MAX:
+            j += 1
+        if j - i >= 2:  # a run of small files: in a row
+            s.progress_text("files %d-%d of %d" % (i + 1, j, len(todo)))
+            s.send_pipelined([(d, sz, sha, reader_of(f)) for f, d, sz, sha in todo[i:j]], pipe_done)
+            i = j
+            continue
+        full, dpath, size, sha = todo[i]
+        i += 1
         with open(full, "rb") as f:
             def reader(off, n, f=f):
                 f.seek(off)
                 return f.read(n)
             if len(todo) > 1:
-                s.progress_text("file %d/%d: %s" % (i + 1, len(todo), dpath))
+                s.progress_text("file %d/%d: %s" % (i, len(todo), dpath))
             try:
                 res = s.send_stream(dpath, size, sha, reader, path=dpath, dbg=dbg_opts(args))
             except LinkError as e:
@@ -522,6 +676,7 @@ def cmd_send(args, out):
                     continue
                 raise
         sent += size - res["start"]
+        done_files += 1
         if size >= MiB or len(todo) == 1:
             report(out, dpath, res, size)
     wall = time.monotonic() - t0
@@ -633,6 +788,11 @@ def main(argv=None):
     p.add_argument("local")
     p.add_argument("--dest", help="where on the SD card, e.g. rac1-native/assets (default rac1-native/<name>)")
     p.add_argument("--force", action="store_true", help="send even files the console already has")
+    p.add_argument("--no-pipe", action="store_true", help="send small files one by one (a round trip each)")
+    p = sub.add_parser("adopt", help="record as installed the files of a local file or folder that the console's card "
+                                     "already has (copied by hand): the console reads and hashes them")
+    p.add_argument("local")
+    p.add_argument("--dest", help="where on the SD card, as for send")
     p = sub.add_parser("bench", help="measure: net (receive and discard), net-hash (+ CRC/SHA-1), sd (write "
                                      "generated bytes on the console), both (network + SD), all")
     p.add_argument("--mode", choices=["net", "net-hash", "sd", "both", "all"], default="all")
@@ -648,7 +808,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
     out = Out(args.json, args.quiet)
     try:
-        return {"discover": cmd_discover, "pair": cmd_pair, "status": cmd_status, "send": cmd_send,
+        return {"discover": cmd_discover, "pair": cmd_pair, "status": cmd_status, "send": cmd_send, "adopt": cmd_adopt,
                 "bench": cmd_bench, "config": cmd_config, "quit": cmd_quit,
                 "launch": cmd_launch}[args.cmd](args, out)
     except (LinkError, OSError) as e:

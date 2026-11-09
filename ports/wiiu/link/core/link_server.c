@@ -437,6 +437,10 @@ typedef struct sess {
     int writer_err;  // errno of a failed write
     uint64_t flushed;
     uint64_t sd_us;
+    // per-file costs kept off the small files' path: the card's free space (statvfs, refreshed every 10 s and lowered by
+    // what was written since) and the last folder made (mkdir of each component, once per folder)
+    uint64_t free_cached, free_at_us, written_since;
+    char last_dir[600];
 } sess;
 
 static void *writer_main(void *arg)
@@ -735,6 +739,57 @@ static int file_bad(sess *x, const char *reason)
     return send_kv(x, LINK_FILE_BAD, "reason=%s\n", reason);
 }
 
+// A refused BEGIN_FILE: ERROR (the PC waits for READY), or with LINK_F_PIPE (the PC sent the file's frames without
+// waiting) FILE_BAD with the code, and the file's DATA ... END_FILE dropped. 0 keeps the session.
+static int refuse(sess *x, int pipe, const char *code, const char *msg)
+{
+    if (!pipe)
+        return send_kv(x, LINK_ERROR, "code=%s\nmsg=%s\n", code, msg);
+    x->srv->st.files_bad++;
+    if (send_kv(x, LINK_FILE_BAD, "reason=%s\ncode=%s\n", msg, code) != 0)
+        return -1;
+    for (;;) {
+        hdr h;
+        if (recv_hdr(x, &h) != 0 || skip_bytes(x, h.len) != 0)
+            return -1;
+        if (h.type == LINK_END_FILE || h.type == LINK_CANCEL)
+            return 0;
+        if (h.type != LINK_DATA && h.type != LINK_PING)
+            return -1;
+    }
+}
+
+// The card's free space: statvfs at most every 10 s (on the console an FSA call per file otherwise), less what was
+// written since.
+static uint64_t sess_free(sess *x)
+{
+    uint64_t now = lp_now_us();
+    if (!x->free_at_us || now - x->free_at_us > 10000000u) {
+        x->free_cached = free_bytes(x->srv->o.sd_root);
+        x->free_at_us = now;
+        x->written_since = 0;
+    }
+    if (!x->free_cached)
+        return 0;  // unknown
+    return x->free_cached > x->written_since ? x->free_cached - x->written_since : 1;
+}
+
+// The file's folder made, unless it is the last one made.
+static int mkdirs_cached(sess *x, const char *full, size_t root_len)
+{
+    const char *slash = strrchr(full, '/');
+    size_t n = slash ? (size_t)(slash - full) : 0;
+    if (n && n < sizeof x->last_dir && strncmp(x->last_dir, full, n) == 0 && x->last_dir[n] == 0)
+        return 0;
+    if (mkdirs_for(full, root_len) != 0)
+        return -1;
+    if (n < sizeof x->last_dir) {
+        memcpy(x->last_dir, full, n);
+        x->last_dir[n] = 0;
+    }
+    return 0;
+}
+
 // BEGIN_FILE ... END_FILE. Returns 0 to keep the session, -1 to close it.
 static int do_file(sess *x, const char *body, int flags)
 {
@@ -742,11 +797,12 @@ static int do_file(sess *x, const char *body, int flags)
     const char *root = s->o.sd_root;
     char path[300], sha_hex[48];
     const int discard = flags & LINK_F_DISCARD, nohash = flags & LINK_F_NOHASH, bench = flags & LINK_F_BENCH;
+    const int pipe = flags & LINK_F_PIPE;
     if (kv_get(body, "sha1", sha_hex, sizeof sha_hex) != 0)
         sha_hex[0] = 0;
     long long sizel = kv_int(body, "size", -1);
     if (sizel < 0 || (unsigned long long)sizel > LINK_FILE_MAX)
-        return send_kv(x, LINK_ERROR, "code=size\nmsg=bad size (FAT32 limit 4 GiB - 1)\n");
+        return refuse(x, pipe, "size", "bad size (FAT32 limit 4 GiB - 1)");
     uint64_t size = (uint64_t)sizel;
     if (bench)
         snprintf(path, sizeof path, "rac1-native/.link/bench/xfer.bin");
@@ -754,10 +810,10 @@ static int do_file(sess *x, const char *body, int flags)
         snprintf(path, sizeof path, "(discard)");
     else if (kv_get(body, "path", path, sizeof path) != 0 || !link_path_ok(path)) {
         lp_log("refused path: %.120s", kv_get(body, "path", path, sizeof path) == 0 ? path : "(none)");
-        return send_kv(x, LINK_ERROR, "code=path\nmsg=path not allowed\n");
+        return refuse(x, pipe, "path", "path not allowed");
     }
     if (!nohash && strlen(sha_hex) != 40)
-        return send_kv(x, LINK_ERROR, "code=proto\nmsg=missing sha1\n");
+        return refuse(x, pipe, "proto", "missing sha1");
 
     char full[600], part[610];
     snprintf(full, sizeof full, "%s/%s", root, path);
@@ -770,19 +826,20 @@ static int do_file(sess *x, const char *body, int flags)
     if (!discard) {
         mentry *e = bench ? NULL : man_find(&s->man, path);
         struct stat st;
-        if (e && e->kind == 'P' && e->size == size && strcmp(e->sha1, sha_hex) == 0 && stat(part, &st) == 0) {
+        if (!pipe && e && e->kind == 'P' && e->size == size && strcmp(e->sha1, sha_hex) == 0 && stat(part, &st) == 0) {
             off = (uint64_t)st.st_size;
             off = off > size ? 0 : off & ~(uint64_t)(LINK_CHUNK - 1);
         }
-        uint64_t need = size - off, have = free_bytes(root);
+        uint64_t need = size - off, have = sess_free(x);
         if (have && need + need / 20 + (1u << 20) > have) {
-            char m[160];
-            snprintf(m, sizeof m, "code=space\nmsg=card full: %llu MB needed, %llu MB free\n",
-                     (unsigned long long)(need >> 20), (unsigned long long)(have >> 20));
-            return send_msg(x, LINK_ERROR, 0, m, (uint32_t)strlen(m));
+            x->free_at_us = 0;  // (measured again next time)
+            char m[120];
+            snprintf(m, sizeof m, "card full: %llu MB needed, %llu MB free", (unsigned long long)(need >> 20),
+                     (unsigned long long)(have >> 20));
+            return refuse(x, pipe, "space", m);
         }
-        if (mkdirs_for(full, strlen(root)) != 0)
-            return send_kv(x, LINK_ERROR, "code=io\nmsg=cannot create the folder\n");
+        if (mkdirs_cached(x, full, strlen(root)) != 0)
+            return refuse(x, pipe, "io", "cannot create the folder");
         if (off) {
             // Rebuild the SHA-1 state from what is on the card (before opening it for writing: FSA may refuse a
             // second handle on a file open for writing).
@@ -808,7 +865,7 @@ static int do_file(sess *x, const char *body, int flags)
         }
         fd = open(part, O_WRONLY | O_CREAT | O_BINARY | (off ? 0 : O_TRUNC), 0666);
         if (fd < 0)
-            return send_kv(x, LINK_ERROR, "code=io\nmsg=cannot open the file (card write-protected?)\n");
+            return refuse(x, pipe, "io", "cannot open the file (card write-protected?)");
         if (off) {
             if (ftruncate(fd, (off_t)off) != 0 || lseek(fd, (off_t)off, SEEK_SET) != (off_t)off) {
                 close(fd);
@@ -817,14 +874,14 @@ static int do_file(sess *x, const char *body, int flags)
             lp_log("resume %s at %llu MiB (re-hash %llu ms)", path, (unsigned long long)(off >> 20),
                    (unsigned long long)(rehash_us / 1000));
         }
-        if (!bench && size >= SMALL_FILE) {
+        if (!bench && !pipe && size >= SMALL_FILE) {
             man_set(&s->man, 'P', path, size, sha_hex);
             man_save(&s->man, root);
         }
     }
 
     status_set(s, LINK_ST_FILE, path, off, size);
-    if (send_kv(x, LINK_READY, "offset=%llu\n", (unsigned long long)off) != 0)
+    if (!pipe && send_kv(x, LINK_READY, "offset=%llu\n", (unsigned long long)off) != 0)
         goto drop;
 
     {
@@ -875,7 +932,7 @@ static int do_file(sess *x, const char *body, int flags)
                 if (!nohash) {
                     if (link_crc32(0, dst, n) != crc) {
                         lp_log("CRC mismatch at %llu (%s)", (unsigned long long)doff, path);
-                        if (++crc_fail >= 3) {
+                        if (pipe || ++crc_fail >= 3) {  // (pipelined: no RESEND, the PC sends the file again)
                             failed = 1;
                             snprintf(why, sizeof why, "crc (3 bad chunks)");
                         } else {
@@ -895,7 +952,7 @@ static int do_file(sess *x, const char *body, int flags)
                     sl->len = n;
                     sl->end_off = expected;
                     ring_push(x);
-                    if (expected >= next_flush || expected == size) {
+                    if (!pipe && (expected >= next_flush || expected == size)) {
                         ring_op(x, 1, fd, expected);
                         next_flush = expected + LINK_FLUSH_EVERY;
                     }
@@ -932,7 +989,8 @@ static int do_file(sess *x, const char *body, int flags)
                 if (h.type == LINK_END_FILE && resend_pending && !failed)
                     continue;  // sent before our RESEND reached the PC: the resent data and a new END_FILE follow
                 if (!discard) {
-                    ring_op(x, 1, fd, expected);
+                    if (!pipe)
+                        ring_op(x, 1, fd, expected);
                     ring_drain(x);
                     if (x->writer_err && !failed) {
                         failed = 1;
@@ -975,6 +1033,7 @@ static int do_file(sess *x, const char *body, int flags)
                         return file_bad(x, "rename failed") == 0 ? 0 : -1;
                     }
                     man_set(&s->man, 'F', path, size, sha_hex);
+                    x->written_since += size;
                     if (size >= SMALL_FILE || lp_now_us() - s->man.saved_us > 5000000u)
                         man_save(&s->man, root);
                 }
@@ -1012,6 +1071,116 @@ drop:
     }
     status_set(s, LINK_ST_SESSION, NULL, 0, 0);
     return -1;
+}
+
+// ADOPT: files already on the card (copied by hand, or by an older receiver) recorded as committed when their size and
+// SHA-1 match the PC's ("size\tsha1\tpath" lines; a file the manifest has with that size and SHA-1 is not read again).
+// While it reads, ACK (offset = bytes hashed so far) every 2 s keeps the PC waiting; then ADOPT_OK with the counts and a
+// "M\tpath" (not on the card) / "D\tpath" (another size, or other bytes) line for each file to send.
+static int do_adopt(sess *x, char *body)
+{
+    link_server *s = x->srv;
+    const char *root = s->o.sd_root;
+    unsigned had = 0, adopted = 0, missing = 0, differ = 0;
+    uint64_t hashed = 0, t0 = lp_now_us(), last_ack = t0;
+    size_t cap = 4096, len = 0;
+    char *out = (char *)malloc(cap);
+    if (!out)
+        return -1;
+    for (char *line = body, *next; line && *line; line = next) {
+        next = strchr(line, '\n');
+        if (next)
+            *next++ = 0;
+        char *t1 = strchr(line, '\t'), *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
+        if (!t2 || t2 - t1 - 1 != 40)
+            continue;
+        *t1 = 0, *t2 = 0;
+        const char *sha_hex = t1 + 1, *path = t2 + 1;
+        uint64_t size = strtoull(line, NULL, 10);
+        if (!link_path_ok(path))
+            continue;
+        mentry *e = man_find(&s->man, path);
+        char full[600];
+        struct stat st;
+        snprintf(full, sizeof full, "%s/%s", root, path);
+        int there = stat(full, &st) == 0 && S_ISREG(st.st_mode);
+        char kind = 0;
+        if (!there) {
+            kind = 'M';
+        } else if ((uint64_t)st.st_size != size) {
+            kind = 'D';
+        } else if (e && e->kind == 'F' && e->size == size && strcmp(e->sha1, sha_hex) == 0) {
+            had++;
+        } else {
+            int fd = open(full, O_RDONLY | O_BINARY);
+            link_sha1 sha;
+            link_sha1_init(&sha);
+            uint64_t left = size;
+            while (fd >= 0 && left) {
+                size_t n = left > LINK_CHUNK ? LINK_CHUNK : (size_t)left;
+                ssize_t r = read(fd, x->scratch, n);
+                if (r <= 0)
+                    break;
+                link_sha1_update(&sha, x->scratch, (size_t)r);
+                left -= (uint64_t)r;
+                hashed += (uint64_t)r;
+                uint64_t now = lp_now_us();
+                if (now - last_ack > 2000000u) {
+                    last_ack = now;
+                    status_set(s, LINK_ST_FILE, path, size - left, size);
+                    if (send_kv(x, LINK_ACK, "offset=%llu\n", (unsigned long long)hashed) != 0 || s->quit ||
+                        s->paused) {
+                        close(fd);
+                        free(out);
+                        return -1;
+                    }
+                }
+            }
+            if (fd >= 0)
+                close(fd);
+            uint8_t dig[20];
+            char got[41];
+            link_sha1_final(&sha, dig);
+            link_hex(dig, 20, got);
+            if (left == 0 && strcmp(got, sha_hex) == 0) {
+                man_set(&s->man, 'F', path, size, sha_hex);
+                adopted++;
+            } else {
+                kind = 'D';
+            }
+        }
+        if (kind) {
+            kind == 'M' ? missing++ : differ++;
+            size_t n = strlen(path) + 3;
+            if (len + n + 1 > cap) {
+                while (len + n + 1 > cap)
+                    cap *= 2;
+                out = (char *)realloc(out, cap);
+            }
+            len += (size_t)snprintf(out + len, cap - len, "%c\t%s\n", kind, path);
+        }
+    }
+    if (s->man.dirty)
+        man_save(&s->man, root);
+    status_set(s, LINK_ST_SESSION, NULL, 0, 0);
+    uint64_t ms = (lp_now_us() - t0) / 1000;
+    if (adopted || differ)
+        lp_log("adopt: %u had, %u adopted, %u missing, %u differ; %.1f MiB hashed in %.1f s", had, adopted, missing,
+               differ, hashed / 1048576.0, ms / 1000.0);
+    char head[200];
+    int hn = snprintf(head, sizeof head, "had=%u\nadopted=%u\nmissing=%u\ndiffer=%u\nhashed=%llu\nms=%llu\n", had,
+                      adopted, missing, differ, (unsigned long long)hashed, (unsigned long long)ms);
+    char *msg = (char *)malloc((size_t)hn + len);
+    if (!msg) {
+        free(out);
+        return -1;
+    }
+    memcpy(msg, head, (size_t)hn);
+    memcpy(msg + hn, out, len);
+    int r = send_msg(x, LINK_ADOPT_OK, 0, msg, (uint32_t)(hn + len));
+    free(msg);
+    free(out);
+    return r;
 }
 
 // Write `mb` MB of generated bytes to the card: the SD card alone.
@@ -1203,6 +1372,8 @@ static void session(link_server *s, int fd, const char *peer)
             r = do_file(x, body, h.flags);
         else if (h.type == LINK_BENCH_SD)
             r = do_bench_sd(x, body);
+        else if (h.type == LINK_ADOPT)
+            r = do_adopt(x, body);
         else if (h.type == LINK_CONFIG)
             r = do_config(x, body);
         else if (h.type == LINK_QUIT) {

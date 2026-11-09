@@ -7,10 +7,14 @@ rac1_link.py, on generated data only.
 DIR gets a fake SD card and a random file of --mb MiB; everything in it is deleted at the end (unless --keep).
 Covers: self-test, discovery, pairing (wrong and right code, unpaired commands), send + SHA-1 on disk, skip of an
 unchanged file, resume after a dropped connection, after the PC killed and after the receiver killed, CRC failure
-(recovered and fatal), the folder whitelist, a folder send, the bench modes, config, quit.
+(recovered and fatal), the folder whitelist, a folder send, small files in a row (F_PIPE: refused and bad files among
+them, an empty file, 500 files against one by one), adopt (files put on the card by hand), tools/wiiu_backend.py on a
+staged tree (send in order, nothing again, the card's own run.cfg kept, --json, launch), the bench modes, config, quit.
 """
 import argparse
 import hashlib
+import importlib.util
+import json
 import os
 import shutil
 import signal
@@ -22,6 +26,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CLI = os.path.join(HERE, "rac1_link.py")
+BACKEND = os.path.join(HERE, "../../../../tools/wiiu_backend.py")
 CODE = "246810"
 PORT, UDP = 47299, 47298
 MiB = 1 << 20
@@ -285,6 +290,138 @@ def main():
               and open(os.path.join(sd, "rac1-native/tree/sub1/f01.bin"), "rb").read() == b"changed", r.stderr[-300:])
         check("no .old left after a replace", not any(fn.endswith((".old", ".part")) for _, _, fns in os.walk(sd)
                                                         for fn in fns))
+
+        # small files in a row (F_PIPE), through the API: refused paths, a wrong SHA-1 and an empty file among them
+        spec = importlib.util.spec_from_file_location("rac1_link", CLI)
+        rl = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rl)
+        os.environ["RAC1_LINK_CONFIG"] = env["RAC1_LINK_CONFIG"]
+        sess = rl.Session("127.0.0.1", PORT, out=rl.Out(quiet=True))
+        sess.auth(CODE)
+        blobs = [os.urandom(n) for n in (0, 1, 63, 64, 65, 4095, 70000, 3 * MiB + 17)]
+        items = []
+        for i, b in enumerate(blobs):
+            items.append(("rac1-native/pipe/f%d.bin" % i, len(b), hashlib.sha1(b).hexdigest(), lambda b=b: b))
+            if i == 2:
+                items.append(("../escape-pipe.bin", 5, hashlib.sha1(b"hello").hexdigest(), lambda: b"hello"))
+            if i == 4:
+                items.append(("rac1-native/pipe/bad.bin", 5, "0" * 40, lambda: b"hello"))
+            if i == 5:
+                items.append(("rac1-native/pipe/x.part", 5, hashlib.sha1(b"hello").hexdigest(), lambda: b"hello"))
+        answers = []
+        sess.send_pipelined(items, lambda it, res: answers.append((it[0], res)))
+        ok_files = [p for p, res in answers if "bad" not in res]
+        bad_files = {p: res for p, res in answers if "bad" in res}
+        same = all(open(os.path.join(sd, "rac1-native/pipe/f%d.bin" % i), "rb").read() == b
+                   for i, b in enumerate(blobs))
+        check("in a row: 8 files written (one empty, one 3 MiB), answers in order",
+              [p for p, _ in answers] == [it[0] for it in items] and len(ok_files) == 8 and same, repr(answers)[:600])
+        check("in a row: refused paths and a wrong SHA-1 answered FILE_BAD, the files after them kept",
+              set(bad_files) == {"../escape-pipe.bin", "rac1-native/pipe/bad.bin", "rac1-native/pipe/x.part"} and
+              bad_files["../escape-pipe.bin"]["code"] == "path" and "sha1" in bad_files["rac1-native/pipe/bad.bin"]["bad"]
+              and not os.path.exists(os.path.join(work, "escape-pipe.bin")) and
+              not os.path.exists(os.path.join(sd, "rac1-native/pipe/bad.bin")) and
+              not os.path.exists(os.path.join(sd, "rac1-native/pipe/bad.bin.part")), repr(bad_files))
+        sess.send(rl.PING)
+        check("in a row: the session goes on after", sess.expect(rl.PONG)[0] == rl.PONG)
+        sess.bye()
+
+        # 500 small files: in a row against one by one (each with its round trip) - loopback has none to speak of,
+        # so this checks the files, not the gain (measured on the console)
+        many = os.path.join(work, "many")
+        for i in range(500):
+            d = os.path.join(many, "d%02d" % (i % 37))
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, "s%03d.bin" % i), "wb") as f:
+                f.write(os.urandom((i * 7919) % 20000))
+        t0 = time.time()
+        r = cli("send", many, "--dest", "rac1-native/many1", env=env)
+        t_pipe = time.time() - t0
+        t0 = time.time()
+        r2 = cli("send", many, "--no-pipe", "--dest", "rac1-native/many2", env=env)
+        t_one = time.time() - t0
+        same = all(sha1(os.path.join(root, fn)) == sha1(os.path.join(sd, "rac1-native", m, os.path.relpath(
+            os.path.join(root, fn), many))) for root, _, fns in os.walk(many) for fn in fns for m in ("many1", "many2"))
+        check("500 small files: in a row %.2f s, one by one %.2f s" % (t_pipe, t_one),
+              r.returncode == 0 and r2.returncode == 0 and "500 sent" in r.stderr and same, r.stderr[-400:])
+
+        # adopt: files put on the card by hand (not in the manifest) recorded after the console hashed them
+        hand = os.path.join(sd, "rac1-native/hand")
+        shutil.copytree(many, hand)
+        os.remove(os.path.join(hand, "d00", "s000.bin"))
+        with open(os.path.join(hand, "d01", "s001.bin"), "r+b") as f:
+            f.write(b"X")  # same size, other bytes
+        r = cli("adopt", many, "--dest", "rac1-native/hand", env=env)
+        check("adopt: 498 adopted, 1 missing, 1 different", r.returncode == 0 and "498 adopted, 1 missing, 1 different"
+              in r.stderr, r.stderr[-400:])
+        r = cli("send", many, "--dest", "rac1-native/hand", env=env)
+        check("send after adopt: only the 2 sent", r.returncode == 0 and "2 sent, 498 skipped" in r.stderr and
+              sha1(os.path.join(hand, "d01", "s001.bin")) == sha1(os.path.join(many, "d01", "s001.bin")),
+              r.stderr[-400:])
+        r = cli("adopt", many, "--dest", "rac1-native/hand", env=env)
+        check("adopt again: all already recorded, nothing hashed", r.returncode == 0 and
+              "500 already recorded, 0 adopted" in r.stderr and "hashed 0.0 MiB" in r.stderr, r.stderr[-300:])
+        shutil.rmtree(many, ignore_errors=True)
+
+        # the backend on a staged tree (as setup.py --wiiu makes it: build/sd/ and build/sd-manifest.txt)
+        bdir = os.path.join(work, "wiiu-build")
+        stree = os.path.join(bdir, "sd")
+        rows = [("wiiu/apps/rac1-native/rac1-native.rpx", 3 * MiB + 5, "game"),
+                ("rac1-native/run.cfg", 120, "config"),
+                ("rac1-native/shaders/a.gsh", 3000, "shaders"), ("rac1-native/shaders/b.gsh", 70000, "shaders"),
+                ("rac1-native/assets/disc/layout.txt", 9000, "core"),
+                ("rac1-native/assets/disc/toc/1a/row_1ac4.vag", 40000, "core"),
+                ("rac1-native/assets/disc/levels/level03/data.wad", 9 * MiB + 3, "level/3"),
+                ("rac1-native/assets/disc/levels/level03/header.bin", 10240, "level/3"),
+                ("rac1-native/assets/generated/mrp/moby/level3/files.pack", 2 * MiB, "level/3"),
+                ("rac1-native/assets/disc/toc/19/row_1960.pss", 5 * MiB, "movies")]
+        lines = ["# rac1-native Wii U SD manifest 1\n", "# test\n"]
+        for path, n, comp in rows:
+            data = os.urandom(n)
+            os.makedirs(os.path.dirname(os.path.join(stree, path)), exist_ok=True)
+            with open(os.path.join(stree, path), "wb") as f:
+                f.write(data)
+            lines.append("%s\t%d\t%s\t%s\n" % (hashlib.sha1(data).hexdigest(), n, comp, path))
+        with open(os.path.join(bdir, "sd-manifest.txt"), "w") as f:
+            f.writelines(lines)
+        os.makedirs(os.path.join(sd, "rac1-native"), exist_ok=True)
+        with open(os.path.join(sd, "rac1-native/run.cfg"), "w") as f:
+            f.write("RAC1_FRAMES=0\n# the console's own\n")  # (not recorded in the manifest: a hand-made file)
+
+        def backend(*args):
+            return subprocess.run([sys.executable, BACKEND, "--console", "127.0.0.1", "--port", str(PORT), "--udp-port",
+                                   str(UDP), "--code", CODE, "--build-dir", bdir] + list(args), env=env,
+                                  capture_output=True, text=True, timeout=300)
+        os.makedirs(os.path.join(sd, "rac1-native/shaders"), exist_ok=True)  # (a shader copied by hand)
+        shutil.copy(os.path.join(stree, "rac1-native/shaders/a.gsh"), os.path.join(sd, "rac1-native/shaders/a.gsh"))
+        r = backend("--json", "send", "--no-movies")
+        ev = [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+        sent = [e for e in ev if e.get("event") == "sent"]
+        adopted = [e for e in ev if e.get("event") == "adopted"]
+        on_card = lambda p: sha1(os.path.join(sd, p)) == sha1(os.path.join(stree, p))
+        check("backend send: 7 sent (a shader adopted, the card's run.cfg kept, the movie left out), --json events",
+              r.returncode == 0 and sent and sent[0]["files"] == 7 and adopted and adopted[0]["adopted"] == 1 and
+              all(on_card(p) for p, _, c in rows if c not in ("config", "movies")) and
+              "console's own" in open(os.path.join(sd, "rac1-native/run.cfg")).read() and
+              not os.path.exists(os.path.join(sd, rows[-1][0])) and
+              any(e.get("event") == "progress" for e in ev), r.stdout[-800:] + r.stderr[-400:])
+        r = backend("send", "--dry-run")
+        check("backend: then only the movie to send", r.returncode == 0 and "1 of 10 file(s) to send" in r.stderr and
+              "row_1960.pss" in r.stdout, r.stdout[-300:] + r.stderr[-300:])
+        r = backend("status")
+        check("backend status", r.returncode == 0 and "movies" in r.stderr and "game" in r.stderr, r.stderr[-500:])
+        with open(os.path.join(stree, rows[0][0]), "r+b") as f:
+            f.write(b"new game")
+        lines[2] = "%s\t%d\tgame\t%s\n" % (sha1(os.path.join(stree, rows[0][0])), rows[0][1], rows[0][0])
+        with open(os.path.join(bdir, "sd-manifest.txt"), "w") as f:
+            f.writelines(lines)
+        r = backend("send", "--component", "game", "--launch")
+        time.sleep(0.5)
+        check("backend: a new game sent alone, then launch", r.returncode == 0 and "sent 1 file(s)" in r.stderr and
+              on_card(rows[0][0]) and "start the game" in open(os.path.join(work, "receiver.log")).read(),
+              r.stderr[-500:])
+        rx.stop()  # (LAUNCH ends the session; the stand-in keeps running: restart it clean for the rest)
+        rx.start()
 
         # bench
         r = cli("bench", "--mode", "all", "--mb", "64", env=env)

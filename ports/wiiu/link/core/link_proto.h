@@ -45,9 +45,15 @@ enum link_msg {
     LINK_BYE = 23,
     LINK_QUIT = 24,         // PC->C  close rac1-link and go back to the Wii U Menu (remote tests)
     LINK_LAUNCH = 25,       // PC->C  start the game (sd:/wiiu/apps/rac1-native/rac1-native.rpx); the session ends
+    LINK_ADOPT = 26,        // PC->C  lines "size\tsha1\tpath": files already on the card, recorded as committed if they match
+    LINK_ADOPT_OK = 27,     // C->PC  had, adopted, missing, differ, hashed, ms; then "M\tpath" (not on the card) / "D\tpath" (other bytes) lines
 };
 
 // BEGIN_FILE flags
 #define LINK_F_DISCARD 1  // receive and drop: the network alone (no file, no manifest)
 #define LINK_F_NOHASH 2   // skip CRC and SHA-1 (with DISCARD: the network with no CPU work at all)
 #define LINK_F_BENCH 4    // write to rac1-native/.link/bench/xfer.bin.part, verify, delete (network + SD)
+#define LINK_F_PIPE 8     // small files in a row: no READY (the file starts at 0), the PC sends DATA and END_FILE at once
+                          // and the next file's BEGIN_FILE without waiting; FILE_OK / FILE_BAD answer each in order (a
+                          // refused file too: FILE_BAD with code=, its frames dropped), no RESEND (a bad CRC fails the
+                          // file), no fsync of its own (close flushes it)
