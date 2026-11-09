@@ -201,6 +201,20 @@ with the three on and off on the 19 levels widened, at LOD High and at LOD Origi
 on all of those runs (the memory after each shadow run: 0 differing); the check modes above; RAMHASH on the 4-level route
 widened at LOD High identical to the 4:3 one (7abc4c2e, 733,729 lines); the reference images unchanged.
 
+The draw loop 0x2559c0, both passes (`moby_draw_hand.cpp`, `RAC1_PERF_MOBY_DRAW`): the same code as the transliteration, op
+for op and access for access (generated from it), with the VU0 registers and flags as a local copy (`vu0_local.h`'s `VuF`, every
+op's flags kept as the transliteration's `LocalFlags` keeps them) and the memory accessors' fast paths inline (a read by pointer
+into the RAM or the scratchpad; a write the same, inside a journal only on a page it saved already; anything else through
+`ee_read` / `ee_write`). The transliteration stays as the reference (`moby_draw_loop_tr`) and the fallback. In the sampler
+(Kerwan widened, LOD High) the loop's samples fell 15 % (909 to 782, the second pass's 668 to 554): the accessor calls are gone,
+what is left is the loop's own VU0 arithmetic, every operand clamped and every op's flags made. On the bench (five interleaved
+runs): the second pass 1.08 to 1.01 ms, the real pass's `moby pass (draw loop)` 0.39 to 0.36; at LOD Original within the noise.
+Proved: `RAC1_PERF_MOBY_DRAW=2` (both forms at every call of the real pass, compared: the 32 MB of RAM, the scratchpad, the VU0
+registers and flags, the DMA registers, the ring position returned and every call of the MRP's observer with the record it is
+handed) over the 19 levels widened at LOD High and at 4:3: 17,076 calls each, 0 differing; `RAC1_MRP_SCENE_HASH` identical with
+it on and off on the 19 levels widened at LOD High and Original (the second pass, which runs it unchecked inside its journal),
+`RAC1_MRP_LOD_VERIFY=1` on those runs (0 differing); RAMHASH and the reference images unchanged.
+
 ## The frame's chain
 
 The MRP chain worker reads each frame's chain beside the main thread (`mrp_chain.cpp`: the 2D, the effects' VU1 programs, the
@@ -487,6 +501,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_EULER_CACHE=1` | the Euler conversion's rows kept per angles (off by default) |
 | `RAC1_PERF_VU0_NF=0` | the generated code's VU0 ops with their flags |
 | `RAC1_WORLD_CULL_FAST=0` | the world passes' three culls as transliterated (`=2`: both, compared at every call) |
+| `RAC1_PERF_MOBY_DRAW=0` | the moby draw loop as transliterated (`=2`: both, compared at every call of the real pass) |
 | `RAC1_DROP_SHADOWS_FAST=0`, `RAC1_SKY_FAST=0` | the drop shadows' and the sky's routines as transliterated (`=2`: both, compared; `RAC1_HAND_CHECK_EVERY` to check one call in n) |
 | `RAC1_PERF_UPLOAD_MEMO=0` | every texture upload's piece written into the GS memory model, as before (`=2`: both, checked) |
 | `RAC1_PERF_DIRECT_WORLD=0` | the world passes' chain ranges copied and walked when the host makes the world (`=2`: both, compared; `=3`: the direct world at 4:3 Original too) |

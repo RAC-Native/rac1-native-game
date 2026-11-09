@@ -71,6 +71,10 @@ What changed in each release. Releases are source only: you build the game with 
 - The world's opaque draws (RAC1_PERF_OPAQUE) keep the late depth test in their first pass on OpenGL and Vulkan: with the
   early one, a Radeon (radeonsi and RADV) drew a few pixels of foliage differently from one run to the next in a widened
   view (Veldin at 16:9 / 32:9). The picture is now the same every run; the 4:3 reference pictures are unchanged.
+- The moby pass's draw loop (both the game's own pass and the widened view's second one) runs a faster form of the same code:
+  the VU0 registers as a local copy and the memory reached without a call per access. About 15 % of the loop's time (Kerwan
+  widened at LOD High: the second pass 1.08 to 1.01 ms a frame). The same game state and picture (RAC1_PERF_MOBY_DRAW=0 to
+  compare, =2 to check one against the other).
 - docs/mods.md, a modder's guide: a texture mod and a .vag sound swap step by step, the limits, every `[mods]` log
   line and what it means, sharing a mod.
 - Graphics: Enhanced, Lighting: Original (#138): the original game's lighting and drop shadows with the modern lighting's sun

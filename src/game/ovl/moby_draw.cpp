@@ -10,6 +10,7 @@
 // sub-mesh records (to 0x1ac200), 0x3800 the visibility masks (0x173d00), 0x3a00 per-group
 // nearest depths, 0x3e80 / 0x3f00 / 0x3f40 the chain templates.
 #include <game/ovl/moby_draw.h>
+#include <game/ovl/moby_draw_hand.h>
 
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
@@ -62,8 +63,8 @@ void chain_gs_state(uint32_t& sp) {
 
 }  // namespace
 
-// orig: 0x002559c0
-uint32_t moby_draw_loop(uint32_t a0_in, uint32_t a1_in, int32_t a2_in, uint32_t a3_in) {
+// orig: 0x002559c0 -- the transliteration (the reference: moby_draw_fast.cpp picks it or moby_draw_hand.cpp's form)
+uint32_t moby_draw_loop_tr(uint32_t a0_in, uint32_t a1_in, int32_t a2_in, uint32_t a3_in) {
     LocalFlags fl(regs());  // (host: the ops' flags in locals, the VU0's written back at the return: the same values)
     Vf* const v = vf();
     uint32_t s8 = a0_in - 0x100;
