@@ -120,7 +120,11 @@ with nothing written outside, a 30-file folder and its update (1 sent, 29 skippe
 
 ## Known limits (prototype)
 
-- **Not run on a console yet.** Unknowns for the first test: FSA's behaviour on `ftruncate` and re-opening a `.part`
+- **First console run (2026-11-09, Daino's Wii U on Wi-Fi, Aroma):** pairing, the benches, a real send with SHA-1
+  and `quit` all work. Measured: `net` 0.88 MiB/s, `sd` 16.3 MiB/s write / 21.5 read (one 64 MiB file, aligned 1 MiB
+  writes), `both` 0.87 MiB/s with the card never waited for, hashing 38-45 MiB/s. The network is the whole limit on
+  this console (wiiload ~1 MB/s, BaristaMAN 0.45): the full SD tree (~4.7 GB) is ~1.5 h over this Wi-Fi.
+- Still open from the first test: FSA's behaviour on `ftruncate` and re-opening a `.part`
   on resume, `statvfs` on `fs:/vol/external01`, whether pthreads from wut land on a sensible core (`affinity=1` in
   `link.cfg` pins net to core 2, writer to core 0), and somemopt (3 MiB, `socket_lib_finish` at exit to end it).
 - The pairing code also goes to the UDP log (handy for remote tests; to remove for v1), and it is kept on the card,
