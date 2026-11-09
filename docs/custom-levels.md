@@ -106,7 +106,7 @@ A save's bytes of a mod that is off or missing are kept: saving again writes the
 | Objects (mobys) | `moby_by_uid`, `moby_spawn(class)`, `moby_remove`, `moby_moved` (after writing a position, rotation or scale), `moby_link` / `moby_set_link` (a pvar word naming another moby) |
 | Collision | `collide_line(from, to, hit)`: the level's collision and the mobys |
 | The hero | `hero()` (his moby), `hero_place(pos, yaw)`, `bolts()`, `bolts_add(n)`, `health()` |
-| Sound, music | `sound(index, moby)` (the level's sound table: the base level's), `music(track)` (the level's music table) |
+| Sound, music | `sound(index, moby)` (the level's sound table: the base level's, so the indices change with the base level; ABI 2's `sfx_*` are the mod's own), `music(track)` (the level's music table) |
 | Effects | `smoke(pos, vel, size)` (Veldin's smoke) |
 | HUD | `hud_text(x, y, abgr, text)`: the small font, x 0..512, y 0..448, colour 0xAABBGGRR with alpha 0x80 opaque, plain ASCII |
 | Camera | `camera_position(out)` |
@@ -118,6 +118,7 @@ A save's bytes of a mod that is off or missing are kept: saving again writes the
 | (ABI 2) Damage | `hero_damage(amount, from)`, `hit_send(moby, kinds, strength, from)`, `hit_take(moby, kinds, out)` |
 | (ABI 2) The level's sounds | `sfx_find(name)`, `sfx_play(sound, moby, pos)`, `sfx_stop(slot)`, `sfx_active(slot, sound)` |
 | (ABI 2) Triggers, time | `trigger_find(name)`, `trigger_inside(index)`, `frame_count()` |
+| (ABI 3) The base level's objects | `base_spawn(class, pos, yaw)` (an object of the base level's class, its own behaviour: level.txt's `spawn` lines give the room), `base_moby(handle)` (0 once it died), `base_free(class)`: [The mod SDK](sdk.md#base-level-objects) |
 
 A moby is 0x100 bytes of the game's memory: +0x10 its position (x y z), +0x20 its state (negative: gone), +0x24 its
 class data, +0x2c its scale, +0x40 its rotation (Euler angles), +0x74 its update function, +0x78 its pvars (its class's
@@ -125,7 +126,7 @@ own values), +0xa6 its class, +0xb2 its uid. Some of the game's other addresses 
 
 | Address | What |
 |---|---|
-| `0x0015ed84` | the current level (a level mod's level: its base level, 0) |
+| `0x0015ed84` | the current level (a level mod's level: its base level, `level.base`) |
 | `0x0015ed98` | bolts |
 | `0x001415f8` | Ratchet's health |
 | `0x0013c940` | pad 1 (+0x1b0 held, +0x1c4 pressed) |

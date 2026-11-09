@@ -23,6 +23,10 @@ void mod_code_start();
 // before ended, the next one's start at its first frame
 void mod_code_level_load();
 
+// orig: (none) — enhancement: a level's gameplay load has ended (its mobys spawned, their pvars in place): a level mod's spawn
+// pools taken out of play (base_spawn's)
+void mod_code_level_loaded();
+
 // orig: (none) — enhancement: a frame of play (gameplay_frame, past its menus): the level's start (its first frame), the
 // plugins' frame and test callbacks
 void mod_code_frame();

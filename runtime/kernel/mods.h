@@ -48,6 +48,14 @@ struct ModInfo {
     int level_music = -2;
     std::vector<std::string> level_music_files;
     int level_objects = 0;          // the placed objects (level.txt's moby lines): uids 1..level_objects (the hero's skipped)
+    // the spawn pools (level.txt's spawn lines): per class, the uids of the objects the composer placed for the plugins'
+    // base_spawn (taken out of play when the level loads, each one's moby and pvars kept to start again)
+    struct LevelPool {
+        int cls = 0;
+        std::vector<int> uids;
+        int pvar_size = 0;
+    };
+    std::vector<LevelPool> level_pools;
     // its code (docs/custom-levels.md, "Code"): a plugin/ folder (a native plugin the setup builds from its source into
     // assets/generated/mods/<folder>/plugin/). A mod with code is off until the player turns it on and confirms it (Options
     // > Mods); a headless run loads code only with RAC1_MOD_CODE=1 (RAC1_MODS=1 too)
@@ -69,9 +77,15 @@ constexpr const char* kPluginFile = "rac1_mod.so";  // (CMake's MODULE suffix on
 
 // The level composer's version (src/setup/level_compose.cpp): a build made by another version is made again by the
 // setup, and the game does not use it ("needs setup")
-constexpr int kLevelComposerVersion = 4;
-// The level folder formats this build reads (level.format)
-constexpr int kLevelFormat = 1;
+constexpr int kLevelComposerVersion = 5;
+// The level folder formats this build reads (level.format): 1 (on Veldin, level 0), 2 (on a base level of the allow-list)
+constexpr int kLevelFormat = 2;
+// The base levels a level mod may run on (level.base, format 2; format 1: 0 only), each tested: Veldin (0), Kerwan (3),
+// Eudora (4), Kalebo III (16). docs/mods.md, "Base levels"
+constexpr int kLevelBases[] = {0, 3, 4, 16};
+
+// orig: (none) — enhancement: `base` is one of kLevelBases
+bool mods_level_base_allowed(int base);
 // The first host level slot (the game's levels are 0..18)
 constexpr int kFirstLevelSlot = 19;
 // How many host level slots there are (19 .. 34: the disc layer's level windows, the ship's list's rows permitting)

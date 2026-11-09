@@ -5,6 +5,23 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Level mods: **a base level per mod**. `mod.json`'s `level.format` 2 with `level.base` 3 (Kerwan), 4 (Eudora) or
+  16 (Kalebo III), besides Veldin (0, format 1's): the level runs on that level's code, with its classes, its enemies,
+  its effects. The composer now keeps each block of the base level's asset data by its own extent, so every level of
+  the game composes (only the four tested ones are allowed; `RAC1_LEVEL_BASE_ANY=1` with the debug tools tries the
+  others). On any base the base planet's progress is untouched and its first-flight story cards and movies (Eudora,
+  Gemlik Base, Kalebo III) are left out for the level. level.txt's `base` line is checked against mod.json; with no
+  `death_height` the base level's is kept unless it is above the level's floor; a warning when the level reaches below
+  Kerwan's or Kalebo III's fixed kill height. See docs/mods.md, "Base levels".
+- Level mods: **the base level's enemies**. A `moby` line of a class the base level's missions place now keeps a spawn
+  rule, so the object drops its bolts when killed (and is back the next visit); Kalebo III's robots (class 1445) walk
+  to Ratchet, fight, die and drop their bolts. level.txt's `spawn <class> <count>` and the mod SDK's **ABI 3**
+  (`base_spawn`, `base_moby`, `base_free`) start the base level's objects at run time, for waves, and tell when they
+  died. docs/mods.md lists what was tried of Kalebo III's classes; docs/sdk.md, "Base level objects".
+- Level mods: the generated name banner is written in the **game's own font** (read from your disc at setup time),
+  the plain font only for letters it has not; the ship's map's planet page of a custom level drops the "Planet" before
+  its name and hides "Play Infobot"; on a level on Veldin's code (which has no gold bolt class) the "Found" panels
+  show a bolt instead of nothing.
 - Level mods: **Ogg Vorbis** music and sounds. level.txt's `music` and `sound` lines take an `.ogg` (mono or stereo)
   wherever they take a WAV: the composer decodes it (with [stb_vorbis](https://github.com/nothings/stb) v1.22, in
   `third_party/stb_vorbis`) and encodes it as a WAV, its exact length kept, so a seamless loop stays seamless. The game

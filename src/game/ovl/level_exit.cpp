@@ -731,31 +731,31 @@ LevelExit level_exit_start() {
         card(lang, 8, 8, frame_scale_i(0xf0), 1);
         return LevelExit::Movie;
     }
-    if (lw(OV(0x0015f5c0)) == 4 && lbu(0x0013dd5c) == 0) {
+    if (lw(OV(0x0015f5c0)) == 4 && lbu(0x0013dd5c) == 0 && !level_slots_story_to(4)) {  // (enhancement: not to a level mod's level)
         fade(frame_scale_i(0xc));
         card(lang, 9, 10, frame_scale_i(0xf0), 0);
         movie(6);
     }
     step([lang] {
-        if (lw(0x0015ed84) == 7 && lbu(0x0013dd5f) != 2 && lbu(0x0013dd48) != 0) {
+        if (lw(0x0015ed84) == 7 && lbu(0x0013dd5f) != 2 && lbu(0x0013dd48) != 0 && level_slot_current() < 0) {  // (enhancement: not from one)
             fade(frame_scale_i(0xc));
             card(lang, 0xb, 0xb, frame_scale_i(0xf0), 0);
             movie(7);
         }
         step([lang] {
-            if (lw(OV(0x0015f5c0)) == 0xd && lbu(0x0013dd65) == 0) {
+            if (lw(OV(0x0015f5c0)) == 0xd && lbu(0x0013dd65) == 0 && !level_slots_story_to(0xd)) {  // (enhancement: the same)
                 fade(frame_scale_i(0xc));
                 card(lang, 0xc, 0xd, frame_scale_i(0xf0), 0);
                 movie(8);
             }
             step([lang] {
-                if (lw(0x0015ed84) == 0xe && lbu(0x0013dd66) != 2 && lbu(0x0013dd4f) != 0) {
+                if (lw(0x0015ed84) == 0xe && lbu(0x0013dd66) != 2 && lbu(0x0013dd4f) != 0 && level_slot_current() < 0) {  // (enhancement: the same)
                     fade(frame_scale_i(0xc));
                     card(lang, 0xe, 0xe, frame_scale_i(0xf0), 0);
                     movie(9);
                 }
                 step([lang] {
-                    if (lw(OV(0x0015f5c0)) == 0x10 && lbu(0x0013dd68) == 0) {
+                    if (lw(OV(0x0015f5c0)) == 0x10 && lbu(0x0013dd68) == 0 && !level_slots_story_to(0x10)) {  // (enhancement: the same)
                         fade(frame_scale_i(0xc));
                         card(lang, 0xf, 0x10, frame_scale_i(0xf0), 0);
                         movie(0xa);

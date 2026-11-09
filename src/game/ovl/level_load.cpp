@@ -831,6 +831,7 @@ uint32_t gameplay_load(int32_t level) {
     const bool alt = (lv < 9) ? (!(lv < 5) || lv == 2) : lv == 10;
     sw(OV(0x0015f318), alt ? OV(0x0016c7b0u) : OV(0x0016c780u));
     sw(OV(0x0015f310), lwu(OV(0x0015f318)));
+    mod_code_level_loaded();  // enhancement: a level mod's spawn pools (src/host/mod_code.h; nothing on the game's levels)
     return s8;
 }
 

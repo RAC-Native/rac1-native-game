@@ -58,6 +58,8 @@ namespace {
     "moby <class> <x> <y> <z> [<yaw>]          an object of the base level's class <class>, as its first placement there\n"
     "music <level> | music <loop> [<intro>] | music none   the level's music (<loop>, <intro>: a VAG, or a WAV or .ogg encoded)\n"
     "sky <level>                               the sky of the game's level <level> (default: the base level's)\n"
+    "base <level|name>                         the base level (as mod.json's level.base: checked against it)\n"
+    "spawn <class> <count>                     room for <count> objects of the base level's class at once (the plugin's base_spawn)\n"
     "offset auto | offset <x> <y> <z>          moved by that much (auto: as far as the collision needs to be above 0)\n"
     "class <name> <model.obj> [size <s>] [solid|ghost] [scale <k>]   a class of the level's own objects (docs/sdk.md)\n"
     "object <class> <x> <y> <z> [<yaw>] [<key>=<value> ...]           an object of a level class\n"
@@ -85,12 +87,22 @@ struct LevelTxt {
         int cls = 0;
         float at[4] = {};  // x y z yaw
         int line = 0;
+        bool pool = false;  // (a spawn line's: for base_spawn, no spawn rules)
+        int uid = 0;        // (its uid, given by place_mobys)
+        int pvars = 0;      // (its pvars' size)
     };
     std::vector<Moby> mobys;
     int music_level = -1;               // music <level>: that level's tracks
     bool music_none = false;            // music none
     std::string music_loop, music_intro;  // music <loop.vag> [<intro.vag>]: the mod's own
     int sky_level = -1;                 // sky <level>
+    bool has_floor = false;
+    float floor = 0;                    // (the collision's lowest z, after the offset: the default death height's check)
+    int base = -1;                      // base <level|name>: the base level mod.json names (checked against it)
+    struct Pool {
+        int cls = 0, count = 0, line = 0;
+    };
+    std::vector<Pool> pools;            // spawn <class> <count>: room for the plugin's base_spawn of the base level's class
     bool offset_auto = false;           // offset auto
     float offset[3] = {};               // offset <x> <y> <z> (or auto's): added to every coordinate (not lights.txt's)
     // the level's own content (docs/sdk.md): its classes, their objects, its sounds, its triggers
@@ -294,6 +306,23 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
             }
         } else if (key == "sky") {
             if (!(in >> t.sky_level) || t.sky_level < 0 || t.sky_level > 18) return bad();
+        } else if (key == "base") {
+            std::string a;
+            in >> a;
+            for (char& c : a) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            static const std::map<std::string, int> kNames = {{"veldin", 0}, {"novalis", 1}, {"aridia", 2}, {"kerwan", 3}, {"eudora", 4}, {"rilgar", 5},
+                                                              {"blarg", 6}, {"umbris", 7}, {"batalia", 8}, {"gaspar", 9}, {"orxon", 10}, {"pokitaru", 11},
+                                                              {"hoven", 12}, {"gemlik", 13}, {"oltanis", 14}, {"quartu", 15}, {"kalebo", 16}, {"fleet", 17},
+                                                              {"veldin2", 18}};
+            if (const auto it = kNames.find(a); it != kNames.end()) t.base = it->second;
+            else if (!a.empty() && a.find_first_not_of("0123456789") == std::string::npos) t.base = std::atoi(a.c_str());
+            else return bad();
+            if (t.base > 18) return bad();
+        } else if (key == "spawn") {
+            LevelTxt::Pool pl;
+            pl.line = n;
+            if (!(in >> pl.cls >> pl.count) || pl.cls <= 0 || pl.count <= 0 || pl.count > 64) return bad();
+            t.pools.push_back(pl);
         } else if (key == "class") {
             LevelTxt::Class c;
             c.line = n;
@@ -1326,7 +1355,7 @@ std::vector<uint8_t> fixup_block(const std::vector<std::pair<int32_t, int32_t>>&
     return b;
 }
 
-bool place_mobys(const std::vector<uint8_t>& g, const uint32_t G[36], uint32_t mo, int n1, int32_t hero_uid, const LevelTxt& lt, std::vector<uint8_t>& mobys,
+bool place_mobys(const std::vector<uint8_t>& g, const uint32_t G[36], uint32_t mo, int n1, int32_t hero_uid, LevelTxt& lt, std::vector<uint8_t>& mobys,
                  std::map<uint32_t, std::vector<uint8_t>>& blocks, Log& log, std::string& err) {
     if (lt.mobys.empty()) return true;
     std::vector<uint32_t> offs;
@@ -1362,7 +1391,7 @@ bool place_mobys(const std::vector<uint8_t>& g, const uint32_t G[36], uint32_t m
     int32_t uid = 0;
     std::map<int, int> per_class;
     size_t pvar_bytes = 0;
-    for (const LevelTxt::Moby& pm : lt.mobys) {
+    for (LevelTxt::Moby& pm : lt.mobys) {
         const auto t = tmpl.find(pm.cls);
         if (t == tmpl.end()) {
             std::string have;
@@ -1379,8 +1408,15 @@ bool place_mobys(const std::vector<uint8_t>& g, const uint32_t G[36], uint32_t m
         wrf(r, 0x40, 0.0f);
         wrf(r, 0x44, pm.at[3]);
         wr32(r, 0x48, -1);  // (its moby group, the base level's (the composed level has none): none)
-        wr32(r, 0x8, rd32(r, 0x8) & 4);  // (its spawn rules: not the base level's missions' (flags 1, 2, 8, 0x10); 4, gone
-                                         // for good once destroyed, kept)
+        // its spawn rules (level_load.cpp): not the base level's missions' (flags 1, 2: spawned by a mission's state, 0x10);
+        // 4 (gone for good once destroyed) kept; one spawned by a mission gets 8 instead (gone for this visit once
+        // destroyed): a moby with no rule at all drops no bolts when killed (moby_drop_bolts: +0xb1 0xfe). A pool's: none
+        // (base_spawn gives it its bolts)
+        {
+            const int32_t f = rd32(r, 0x8);
+            wr32(r, 0x8, pm.pool ? 0 : (f & 4) != 0 ? 4 : (f & 0x1b) != 0 ? 8 : 0);
+        }
+        pm.uid = uid;
         const int32_t pi = rd32(r, 0x58);
         if (pi >= 0) {
             if (static_cast<size_t>(pi) * 8 + 8 > table.size()) {
@@ -1407,6 +1443,7 @@ bool place_mobys(const std::vector<uint8_t>& g, const uint32_t G[36], uint32_t m
                 if (static_cast<int32_t>(w & 0xffff) == pi) shared_rows.emplace_back((w & 0xffff0000u) | static_cast<uint32_t>(ni), o);
             wr32(r, 0x58, ni);
             pvar_bytes += static_cast<size_t>(size);
+            pm.pvars = size;
         }
         mobys.insert(mobys.end(), r.begin(), r.end());
         ++per_class[pm.cls];
@@ -1434,7 +1471,7 @@ bool place_mobys(const std::vector<uint8_t>& g, const uint32_t G[36], uint32_t m
     return true;
 }
 
-bool build_gameplay(const std::vector<uint8_t>& g, const LevelTxt& lt, std::vector<uint8_t>& out, Log& log, std::string& err) {
+bool build_gameplay(const std::vector<uint8_t>& g, LevelTxt& lt, std::vector<uint8_t>& out, Log& log, std::string& err) {
     if (g.size() < 0x90) {
         err = "the base level's gameplay file is too small";
         return false;
@@ -1467,7 +1504,16 @@ bool build_gameplay(const std::vector<uint8_t>& g, const LevelTxt& lt, std::vect
         for (int i = 0; i < 3; ++i) wr32(st, static_cast<size_t>(0xc + 4 * i), lt.fog[i]);
     float base_death = 0;
     std::memcpy(&base_death, st.data() + 0x28, 4);
-    if (lt.has_death) wrf(st, 0x28, lt.death);
+    if (lt.has_death) {
+        wrf(st, 0x28, lt.death);
+    } else if (lt.has_floor && base_death > lt.floor - 4.0f) {
+        // (the base level's kill height is its own world's: above the level's lowest floor it would kill Ratchet standing there)
+        lt.death = std::floor(lt.floor) - 8.0f;
+        lt.has_death = true;
+        wrf(st, 0x28, lt.death);
+        log.say(fmt("death height: the base level's %.1f is above the collision's lowest point (%.1f): %.1f instead (give death_height to choose)", base_death,
+                    lt.floor, lt.death));
+    }
     for (int i = 0; i < 4; ++i) wrf(st, static_cast<size_t>(0x2c + 4 * i), lt.ship ? lt.ship_at[i] : 0.0f);
     wr32(st, 0x3c, 0);
     wr32(st, 0x40, -1);
@@ -1671,16 +1717,52 @@ bool build_data(const std::vector<uint8_t>& wad, const std::vector<uint8_t>& col
         const std::vector<uint8_t> pad(0x400, 0);  // (the exporter reads two mip levels whatever the count)
         core.put(pad.data(), pad.size());
     }
-    // the base level's parts after its texel block: particle and effect banks, the +0x74 / +0xa0 blocks, the moby classes
-    // [particle block, first tie class); the hero's sequences and the gadgets [+0x7c, end). Ties and shrubs dropped.
-    int32_t tie_lo = H[31];
-    for (int32_t k = 0; k < H[8]; ++k) tie_lo = std::min(tie_lo, rd32(idx, static_cast<size_t>(H[9] + 32 * k)));
-    if (tie_lo < H[25]) {
-        err = "the base level's tie classes are not after its effects";
-        return false;
+    // the base level's parts kept, each block the index names by its own extent (up to the next offset the index names):
+    // its particle and effect banks, the +0xa0 / +0xa4 / +0xa8 blocks, the moby classes, the hero's sequences (from +0x7c)
+    // and the gadgets. Dropped: the tfrags, occlusion, sky and collision (replaced), the texel block (its moby textures'
+    // texels kept above), the tie and shrub classes. The levels order these differently (Veldin's tie classes after its
+    // moby classes, others' the same; +0x74 after the effects on Veldin, inside the texels elsewhere), so the order is
+    // not assumed.
+    {
+        struct Named {
+            size_t at;
+            bool keep;
+        };
+        std::vector<Named> named;
+        auto name = [&](int32_t v, bool keep) {
+            if (v > 0 && static_cast<size_t>(v) < old.size()) named.push_back({static_cast<size_t>(v), keep});
+        };
+        for (int f : {2, 3, 4, 5, 24}) name(H[f], false);
+        for (int f : {25, 26, 31, 40, 41, 42}) name(H[f], true);
+        for (int32_t k = 0; k < H[6]; ++k) name(rd32(idx, static_cast<size_t>(H[7] + 32 * k)), true);
+        for (int32_t k = 0; k < H[8]; ++k) name(rd32(idx, static_cast<size_t>(H[9] + 32 * k)), false);
+        for (int32_t k = 0; k < H[10]; ++k) name(rd32(idx, static_cast<size_t>(H[11] + 0x30 * k)), false);
+        for (int k = 0; k < 256; ++k) name(rd32(idx, static_cast<size_t>(H[30] + 4 * k)), true);
+        for (int32_t k = 0; k < H[32]; ++k) name(rd32(idx, static_cast<size_t>(H[33] + 16 * k)), true);
+        // (+0x74: a block of its own after the effects (Veldin), else a word inside the texels the game never reads
+        // (level_setup.cpp reads no +0x74 of the index): not a block start then, written 0 below)
+        const size_t tex_end = static_cast<size_t>(H[24]) + m_hi;
+        if (H[29] > 0 && !(static_cast<size_t>(H[29]) >= static_cast<size_t>(H[24]) && static_cast<size_t>(H[29]) < tex_end)) name(H[29], true);
+        named.push_back({old.size(), false});
+        std::sort(named.begin(), named.end(), [](const Named& a, const Named& b) { return a.at != b.at ? a.at < b.at : a.keep > b.keep; });
+        // each kept block up to the next named offset, runs of kept blocks one part (their layout as it was)
+        size_t lo = 0;
+        bool open = false;
+        for (size_t i = 0; i + 1 < named.size(); ++i) {
+            if (named[i].at == named[i + 1].at) {
+                named[i + 1].keep = named[i + 1].keep || named[i].keep;
+                continue;
+            }
+            if (named[i].keep && !open) {
+                lo = named[i].at;
+                open = true;
+            } else if (!named[i].keep && open) {
+                core.keep(old, lo, named[i].at);
+                open = false;
+            }
+        }
+        if (open) core.keep(old, lo, old.size());
     }
-    core.keep(old, static_cast<size_t>(H[25]), static_cast<size_t>(tie_lo));
-    core.keep(old, static_cast<size_t>(H[31]), old.size());
     // the index: the base level's, re-pointed
     auto remap = [&](size_t field_at, const char* what) {
         const int32_t v = rd32(idx, field_at);
@@ -1706,6 +1788,10 @@ bool build_data(const std::vector<uint8_t>& wad, const std::vector<uint8_t>& col
     wr32(idx, 0x48, 0);  // no shrub textures
     for (int32_t k = 0; k < nmt; ++k) wr32(idx, static_cast<size_t>(H[15] + 16 * k), rd32(idx, static_cast<size_t>(H[15] + 16 * k)) - static_cast<int32_t>(m_lo));
     wr32(idx, 0x60, static_cast<int32_t>(o_texel));
+    if (H[29] > 0 && size_t(H[29]) >= size_t(H[24]) && size_t(H[29]) < size_t(H[24]) + m_hi) {
+        wr32(idx, 0x74, 0);  // (inside the base level's texels: a word the game never reads)
+        log.say(fmt("the base level's index word +0x74 (0x%x, inside its texels, not read by the game): 0", H[29]));
+    }
     for (size_t f : {0x64u, 0x68u, 0x74u, 0x7cu, 0xa0u, 0xa4u, 0xa8u})
         if (!remap(f, fmt("block +0x%zx", f).c_str())) return false;
     for (int k = 0; k < 256; ++k)
@@ -1783,6 +1869,8 @@ bool compose_level_mod(const std::string& folder, bool force) {
         return false;
     };
     if (!read_level_txt(ldir / "level.txt", lt, err)) return fail(err);
+    if (lt.base >= 0 && lt.base != m.level_base)
+        return fail(fmt("level.txt's base is level %d, mod.json's level.base %d: make them the same (mod.json's decides which code the level runs)", lt.base, m.level_base));
     // the offset: `offset auto` as far as the collision's lowest corner needs to be 16 units above 0 (in whole cells of 4)
     if (lt.offset_auto) {
         Obj probe;
@@ -1819,6 +1907,18 @@ bool compose_level_mod(const std::string& folder, bool force) {
         lt.hero[3] = std::remainder(yaw + std::atan2(kStepY, kStepX), 6.2831853f);
         log.say(fmt("hero auto: Ratchet steps off the ship at (%g %g %g), turned %g", lt.hero[0], lt.hero[1], lt.hero[2], lt.hero[3]));
     }
+    // the spawn pools: their objects after the placed ones (where Ratchet starts: the game takes them out of play when the
+    // level loads, before their first update; base_spawn starts them again where the plugin says)
+    const size_t placed_objects = lt.mobys.size();
+    for (const LevelTxt::Pool& pl : lt.pools)
+        for (int k = 0; k < pl.count; ++k) {
+            LevelTxt::Moby mb;
+            mb.cls = pl.cls;
+            mb.line = pl.line;
+            mb.pool = true;
+            std::memcpy(mb.at, lt.hero, sizeof mb.at);
+            lt.mobys.push_back(mb);
+        }
     // the collision
     Obj co;
     if (!read_obj(ldir / lt.collision, lt, false, co, err)) return fail(err);
@@ -1835,6 +1935,17 @@ bool compose_level_mod(const std::string& folder, bool force) {
     }
     std::vector<uint8_t> coll;
     if (!build_collision(ctris, coll, log, err)) return fail(err);
+    for (const CTri& c : ctris)
+        for (const auto& v : c.p) {
+            lt.floor = lt.has_floor ? std::min(lt.floor, v[2]) : v[2];
+            lt.has_floor = true;
+        }
+    // the base level's own kill heights in its hero code (hero_transitions.cpp's kill_fall_input: the fall below the death
+    // height ends at once under them, else after two seconds; Kalebo III's also after its gliding): the level stays above
+    if (const float kh = m.level_base == 3 ? 5.0f : m.level_base == 16 ? 77.0f : 0.0f; kh > 0 && lt.has_floor && lt.floor < kh)
+        log.say(fmt("warning: the collision reaches z %.1f, below the base level's own kill height %.0f: a fall below the death height there ends at "
+                    "once (and on Kalebo III's code a glide's fall too); keep the level above %.0f (offset) for the game's usual fall",
+                    lt.floor, kh, kh));
     // the base level's files (the player's disc, as the setup extracted it)
     char base_dir[32];
     std::snprintf(base_dir, sizeof base_dir, "levels/level%02d", m.level_base);
@@ -2058,9 +2169,23 @@ bool compose_level_mod(const std::string& folder, bool force) {
         std::ofstream lf(out_dir / "compose.log");
         lf << log.text;
     }
+    // the pools: per class, its objects' uids (mod_code.cpp's base_spawn)
+    std::string pools_json;
+    for (const LevelTxt::Pool& pl : lt.pools) {
+        std::string uids;
+        int pv = 0;
+        for (const LevelTxt::Moby& mb : lt.mobys)
+            if (mb.pool && mb.cls == pl.cls) {
+                uids += (uids.empty() ? "" : ", ") + std::to_string(mb.uid);
+                pv = mb.pvars;
+            }
+        pools_json += (pools_json.empty() ? ",\n  \"pools\": [" : ", ") + fmt("{\"class\": %d, \"pvars\": %d, \"uids\": [%s]}", pl.cls, pv, uids.c_str());
+        log.say(fmt("spawn pool: class %d, %d objects (uids %s), %d pvar bytes each", pl.cls, pl.count, uids.c_str(), pv));
+    }
+    if (!pools_json.empty()) pools_json += "]";
     std::ofstream bj(out_dir / "build.json");
     bj << "{\n  \"composer\": " << kLevelComposerVersion << ",\n  \"format\": " << m.level_format << ",\n  \"id\": \"" << m.level_id << "\",\n  \"base\": " << m.level_base
-       << (music_json.empty() ? std::string() : ",\n  \"music\": " + music_json) << ",\n  \"objects\": " << lt.mobys.size() << ",\n  \"inputs\": \"" << stamp_hex(mods_level_inputs_stamp(m.dir)) << "\"\n}\n";
+       << (music_json.empty() ? std::string() : ",\n  \"music\": " + music_json) << ",\n  \"objects\": " << placed_objects << pools_json << ",\n  \"inputs\": \"" << stamp_hex(mods_level_inputs_stamp(m.dir)) << "\"\n}\n";
     if (!bj) return fail("cannot write build.json");
     std::cout << "[compose] " << folder << ": built into " << out_dir.generic_string() << "\n";
     return true;
