@@ -45,6 +45,31 @@ void session_heap_log();
 // which stays the PS2's 32 MB
 uint64_t session_heap_hash();
 
+// ---- Classes from the pool in the session heap (stage 1: the test of RAC1_SESSION_HIGH_CLASS) ----
+// RAC1_SESSION_HIGH_CLASS=<class> (testing): the session's memory on, and the level's own class `class` registered from a
+// copy of its pool block in the session heap instead of from the level's asset data (the same class at an address above
+// 64 MB: every picture must be the same). RAC1_SESSION_HIGH_CLASS=<class>:<id>: the copy registered besides the native
+// class, under the session class id <id> (2048..7871: the id -> index map 0x197bc0 has room for them), after the level's
+// own classes; the level's placed mobys of `class` are placed as <id> (its update function and +0x2c word are the pool
+// row's, the modern renderer draws it with the class's file).
+// (any session class: the hooks' one test on the original's levels)
+extern bool g_session_classes;
+// orig: (host) a level's full setup begins (its overlay loaded again: the class tables empty): the session classes of the
+// level before dropped, their heap blocks freed
+void session_level_begin();
+// orig: (host) the level setup about to register class `cls` of level `level` from `native` (0: no data): the address to
+// register it from (the pool block's copy in the session heap, for the test's class; `native` otherwise)
+uint32_t session_class_block(int level, uint32_t cls, uint32_t native);
+// orig: (host) the level's own classes registered (its moby textures at `tex`), before its gameplay: the session classes
+// registered
+void session_classes_register(int level, uint32_t tex);
+// orig: (host) a placed moby's class id: the session class id it is placed as, else `cls`
+uint32_t session_placed_class(uint32_t cls);
+// orig: (host) session class `cls`'s class table row (its update function, its +0x2c word); false when it is not one
+bool session_class_row(uint32_t cls, uint32_t* fn, uint32_t* word);
+// orig: (host) session class `cls`'s source: its level and class; false when it is not one
+bool session_class_source(uint32_t cls, int* level, uint32_t* src);
+
 }  // namespace rac1
 
 #endif

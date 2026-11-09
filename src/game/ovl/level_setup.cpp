@@ -1,6 +1,7 @@
 // Ported overlay code: the level setup (0x244110) and the loaders it calls.
 #include <game/ovl/ovl_common.h>
 #include <game/enhance/pool.h>
+#include <game/enhance/session.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/lib/libgraph.h>
 #include <game/math/vecmath.h>
@@ -125,6 +126,12 @@ void sub_0023f768(uint32_t p, int32_t n) {
 void class_update_fn_set(int32_t cls) {
     const uint32_t idx = lwu(OV(0x0015ffc0));
     const uint32_t hdr = lwu(OV(0x00197300) + idx * 4);
+    uint32_t sfn = 0, sword = 0;
+    if (g_session_classes && session_class_row(static_cast<uint32_t>(cls), &sfn, &sword)) {  // (a session class id: its pool row)
+        sw(OV(0x00197680) + idx * 4, sfn);
+        if (hdr != 0) sw(hdr + 0x2c, sword);
+        return;
+    }
     uint32_t k = 0;
     int32_t c = lw(OV(0x001ea300));
     if (c != -1 && c != cls) {
@@ -1080,11 +1087,14 @@ void level_setup_body(int32_t full, int32_t restore) {
         }
         level_collision_set(s4 + lwu(s3 + 0x14));
         uint32_t e = s3 + lwu(s3 + 0x1c);
+        if (session_memory_on()) session_level_begin();  // (a session: the classes from the pool of the level before dropped)
         const bool pool_check = pool_checking();  // (testing, RAC1_POOL_CHECK: the asset pool against this load)
         for (int32_t i = 0; i < lw(s3 + 0x18); ++i, e += 0x20) {
             const uint32_t off = lwu(e);
             if (pool_check) pool_check_class(lw(0x0015ed84), lwu(e + 4), off == 0 ? 0u : s4 + off, e + 0x10);
-            moby_class_register(off == 0 ? 0u : s4 + off, s3 + lwu(s3 + 0x3c), e + 0x10, lwu(e + 4));
+            uint32_t hdr = off == 0 ? 0u : s4 + off;
+            if (session_memory_on()) hdr = session_class_block(lw(0x0015ed84), lwu(e + 4), hdr);  // (a session: a class from the pool)
+            moby_class_register(hdr, s3 + lwu(s3 + 0x3c), e + 0x10, lwu(e + 4));
             if (pool_check) pool_check_registered(lw(0x0015ed84), lwu(e + 4), lwu(OV(0x0015ffc0)) - 1);
         }
         if (pool_check) pool_check_level_done(lw(0x0015ed84));
@@ -1212,6 +1222,7 @@ void level_setup_body(int32_t full, int32_t restore) {
             s2 = s5;
         }
         sw(OV(0x00173e18), armor_load(after & 0xffffffc0u, s3));
+        if (session_memory_on()) session_classes_register(lw(0x0015ed84), s3 + lwu(s3 + 0x3c));  // (a session's classes from the pool)
     }
     sw(OV(0x00173e1c), gameplay_load(full));
     // (full: memory statistics printed; no effect on memory)

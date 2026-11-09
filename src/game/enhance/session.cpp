@@ -1,6 +1,9 @@
 // See session.h.
 #include <game/enhance/session.h>
 
+#include <game/enhance/pool.h>
+#include <game/ovl/ovl_common.h>
+#include <game/ovl/ovl_reloc.h>
 #include <runtime/kernel/ee_memory.h>
 
 #include <cstdio>
@@ -119,11 +122,112 @@ void heap_test() {
 }
 }  // namespace
 
+namespace {
+// the test's class (RAC1_SESSION_HIGH_CLASS): the class, its session id (0: none, the native id from the session heap)
+uint32_t g_high_class = 0xffffffffu, g_high_id = 0;
+// the session classes: id -> source and row
+struct SessionClass {
+    int level;
+    uint32_t cls, fn, word, hdr;
+};
+std::map<uint32_t, SessionClass> g_session_ids;
+
+// a pool class's block copied into the session heap (its owner "pool L:C"): its address, 0 when it cannot be had
+uint32_t heap_copy(const PoolClass& c, const char* why) {
+    const uint8_t* b = pool_block(c);
+    const std::string owner = "pool " + std::to_string(c.level) + ":" + std::to_string(c.id);
+    const uint32_t a = b != nullptr ? session_heap_alloc(c.block_size, owner) : 0;
+    if (a == 0) {
+        std::fprintf(stderr, "[session] class %d:%u: no room for its block (%#x bytes)\n", c.level, c.id, c.block_size);
+        return 0;
+    }
+    std::memcpy(ee_get_ram_base() + a, b, c.block_size);
+    std::printf("[session] class %d:%u's pool block at %08x (%#x bytes): %s\n", c.level, c.id, a, c.block_size, why);
+    return a;
+}
+}  // namespace
+
+bool g_session_classes = false;
+
+// orig: (host) see session.h
+void session_level_begin() {
+    size_t n = 0;
+    std::map<std::string, int> owners;
+    for (const auto& [a, b] : g_blocks)
+        if (b.owner.rfind("pool ", 0) == 0) owners[b.owner] = 1;
+    for (const auto& [o, k] : owners) n += session_heap_free_owner(o);
+    g_session_ids.clear();
+    g_session_classes = false;
+    if (n != 0) std::printf("[session] a level setup: the pool classes' %zu blocks freed\n", n);
+}
+
+// orig: (host) see session.h
+uint32_t session_class_block(int level, uint32_t cls, uint32_t native) {
+    if (cls != g_high_class || g_high_id != 0 || native == 0 || !g_on || !pool_open(true)) return native;
+    const PoolClass* c = pool_find(level, cls);
+    if (c == nullptr || c->block_size == 0) return native;
+    const uint32_t a = heap_copy(*c, "registered in place of the level's own");
+    return a != 0 ? a : native;
+}
+
+// orig: (host) see session.h
+void session_classes_register(int level, uint32_t tex) {
+    if (g_high_id == 0 || g_high_class == 0xffffffffu || !g_on || !pool_open(true)) return;
+    const PoolClass* c = pool_find(level, g_high_class);
+    if (c == nullptr || c->block_size == 0) {
+        std::fprintf(stderr, "[session] level %d has no class %u with data: no session class %u\n", level, g_high_class, g_high_id);
+        return;
+    }
+    // (registered already: a death's setup keeps the level's classes. The id -> index map 0x197bc0 is filled with 0xff for
+    // the game's ids 0..2047 only; past them, to the moby textures 0x199a80, it is zero in the overlay's image and on every
+    // level measured: room for the session ids, written by the registration)
+    if (g_session_ids.count(g_high_id) != 0) return;
+    const uint32_t remap = session_heap_alloc(16, "pool " + std::to_string(level) + ":" + std::to_string(g_high_class));
+    const uint32_t a = remap != 0 ? heap_copy(*c, ("registered as session class " + std::to_string(g_high_id)).c_str()) : 0;
+    if (a == 0) return;
+    std::memcpy(ee_get_ram_base() + remap, c->remap, 16);
+    g_session_ids[g_high_id] = SessionClass{level, g_high_class, c->update_fn, c->word2c, a};
+    g_session_classes = true;
+    moby_class_register(a, tex, remap, g_high_id);
+}
+
+// orig: (host) see session.h
+uint32_t session_placed_class(uint32_t cls) { return cls == g_high_class && g_session_ids.count(g_high_id) != 0 ? g_high_id : cls; }
+
+// orig: (host) see session.h
+bool session_class_row(uint32_t cls, uint32_t* fn, uint32_t* word) {
+    const auto it = g_session_ids.find(cls);
+    if (it == g_session_ids.end()) return false;
+    *fn = it->second.fn;
+    *word = it->second.word;
+    return true;
+}
+
+// orig: (host) see session.h
+bool session_class_source(uint32_t cls, int* level, uint32_t* src) {
+    const auto it = g_session_ids.find(cls);
+    if (it == g_session_ids.end()) return false;
+    *level = it->second.level;
+    *src = it->second.cls;
+    return true;
+}
+
 // orig: (host) see session.h
 void session_start_tests() {
     if (const char* t = std::getenv("RAC1_SESSION_HEAP_TEST"); t != nullptr && std::atoi(t) != 0) heap_test();
     const char* e = std::getenv("RAC1_SESSION_MEM");
     if (e != nullptr && std::atoi(e) != 0) session_memory_begin();
+    if (const char* h = std::getenv("RAC1_SESSION_HIGH_CLASS"); h != nullptr && *h != 0) {
+        unsigned c = 0, id = 0;
+        const int n = std::sscanf(h, "%u:%u", &c, &id);
+        if (n < 1 || (n == 2 && (id < 2048 || id > 7871))) {
+            std::fprintf(stderr, "[session] RAC1_SESSION_HIGH_CLASS=%s: <class> or <class>:<session id 2048..7871>\n", h);
+        } else if (session_memory_begin()) {
+            g_high_class = c;
+            g_high_id = n == 2 ? id : 0;
+            std::printf("[session] test: class %u from the session heap%s\n", c, n == 2 ? (", as session class " + std::to_string(id)).c_str() : "");
+        }
+    }
 }
 
 // orig: (host) see session.h

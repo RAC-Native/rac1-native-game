@@ -1,5 +1,6 @@
 // orig: (host) The MRP moby renderer (see mrp_moby_renderer.h).
 #include <game/render/mrp_moby_renderer.h>
+#include <game/enhance/session.h>
 #include <game/render/gl_draws.h>
 #include <profiler/host_profiler.h>
 #include <jobs/job_pool.h>
@@ -840,6 +841,14 @@ ClassGpu* class_of(uint32_t class_ptr, int class_id) {
     std::unique_ptr<mrp::MobyClass> asset;
     if (oc >= 0) {
         auto f = L.files.find(oc);
+        int src_level = 0;
+        uint32_t src = 0;
+        if (f == L.files.end() && g_session_classes && session_class_source(static_cast<uint32_t>(oc), &src_level, &src)) {
+            // (a session class id: its source class's file; stage 1, the level's own classes only - another level's
+            // class and its textures come with the import list of stage 2)
+            if (src_level == L.id) f = L.files.find(static_cast<int>(src));
+            else std::fprintf(stderr, "[mrp] session class %d is level %d's class %u: not drawn (another level's classes: stage 2)\n", oc, src_level, src);
+        }
         if (f != L.files.end()) asset = std::make_unique<mrp::MobyClass>(*f->second);
     }
     int class_armor = -1;
