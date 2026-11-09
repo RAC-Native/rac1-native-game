@@ -82,7 +82,7 @@ Every callback gets your `mod->user` back. All are optional.
 |---|---|
 | `level_start(user, level)` | a level's first frame of play (its objects spawned; on a level with a ship, after its landing, Ratchet off the ship). `level->mine` is 1 on your own mod's level; `level->objects` its placed objects' count (uids 1..objects, the hero's skipped) |
 | `level_end(user)` | the level is left (another level loads, a save is loaded) |
-| `frame(user)` | once a frame of play (not while a menu is open), after the objects' updates |
+| `frame(user)` | once a frame of play (not while a menu is open, nor while the quick select holds the world still), after the objects' updates |
 | `camera(user)` | after the game's camera update: change the camera's memory here |
 | `hud(user)` | the HUD is drawn: `api->hud_text` works only here. It may run twice a frame (see below): draw only |
 | `object_update(user, moby, uid, cls)` | each frame, before one of your level's placed objects (level.txt's `moby` lines) is updated: return 1 to skip its class's own update (yours instead), 0 to let it run |
