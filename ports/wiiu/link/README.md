@@ -154,6 +154,13 @@ and the build: no second copy of the 4.7 GB) and writes `build-wiiu/sd-manifest.
   `sd:/wiiu/apps/rac1-native/rac1-native.rpx` through Aroma's RPX loader (wums' librpxloader); Y shows the banner again.
   Tested on the console: a sent `.rpx` started, rac1-link closed by itself. 199 small files (8.8 MiB): 24.4 s, ~0.12 s a
   file of round trips and card work (the full SD tree's ~6,850 files: ~14 min of that besides the bytes).
+- **The launcher's pieces on the console (2026-11-09):** 199 small files (8.8 MiB) in a row 18.2 s, one by one 23.2 s
+  (same session; the rest is the card's work a file: open, write, close, rename, ~40 ms). `wiiu_backend.py send` of the
+  staged tree (1,916 files, 4.57 GiB) to Daino's card, filled by hand earlier: the console adopted 1,915 files after
+  hashing 4,660 MiB in 335 s (~14 MiB/s, against ~1.5 h over the Wi-Fi), then sent the one new file, the `.rpx` (20.2
+  MiB in 23.6 s); run again, 0 to send. Launched from rac1-link, the game loaded Veldin from those files (the packs
+  included) and went back to the menu at the end of its run. `statvfs` gives no free space on the console (0: the
+  checks are skipped).
 - Still open from the first test: FSA's behaviour on `ftruncate` and re-opening a `.part`
   on resume, `statvfs` on `fs:/vol/external01`, whether pthreads from wut land on a sensible core (`affinity=1` in
   `link.cfg` pins net to core 2, writer to core 0), and somemopt (3 MiB, `socket_lib_finish` at exit to end it).
