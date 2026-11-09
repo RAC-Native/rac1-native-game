@@ -194,12 +194,13 @@ void on_draw(uint32_t moby, uint32_t chain_begin, uint32_t chain_end, uint32_t r
     m.ring = ring;
     m.record_qwords = qwords;
     m.record_first = static_cast<uint32_t>(f.records.size());
-    f.records.resize(f.records.size() + static_cast<size_t>(qwords) * 16);
     const uint32_t nbytes = qwords * 16;
     if ((spr_rec & 3u) == 0 && spr_rec - SPR_BASE < static_cast<uint32_t>(SPR_SIZE) && nbytes <= SPR_SIZE - (spr_rec - SPR_BASE)) {
-        // (the scratchpad's words in the host's order, as lwu reads them: one copy, the same bytes)
-        std::memcpy(&f.records[m.record_first], ee_ram_ptr_read(spr_rec), nbytes);
+        // (the scratchpad's words in the host's order, as lwu reads them: one copy, the same bytes; appended, not zeroed first)
+        const uint8_t* src = static_cast<const uint8_t*>(ee_ram_ptr_read(spr_rec));
+        f.records.insert(f.records.end(), src, src + nbytes);
     } else {
+        f.records.resize(f.records.size() + nbytes);
         for (uint32_t i = 0; i < nbytes; i += 4) {
             const uint32_t w = lwu(spr_rec + i);
             std::memcpy(&f.records[m.record_first + i], &w, 4);
@@ -241,7 +242,15 @@ void on_pose(uint32_t rec, uint32_t /*work*/) {
     const uint32_t count = n <= 0 ? 1u : static_cast<uint32_t>(n);
     m.joint_first = static_cast<uint32_t>(f.joints.size());
     m.joint_count = count;
-    for (uint32_t j = 0; j < count; ++j) f.joints.push_back(mat4_at(SPR + 0x40 * j));
+    // (the scratchpad's words in the host's order, as mat4_at reads them: one copy of the whole pose when it fits - ~10,000 matrices a
+    // frame on Kerwan, copied one by one twice before)
+    static_assert(sizeof(MrpMat4) == 64 && std::is_trivially_copyable_v<MrpMat4>, "the scratchpad's matrices as they are");
+    if (count * 64u <= static_cast<uint32_t>(SPR_SIZE)) {
+        const MrpMat4* src = static_cast<const MrpMat4*>(ee_ram_ptr_read(SPR));
+        f.joints.insert(f.joints.end(), src, src + count);
+    } else {
+        for (uint32_t j = 0; j < count; ++j) f.joints.push_back(mat4_at(SPR + 0x40 * j));
+    }
     if (g_prof) g_prof_obs_ms += now_ms() - t0;
 }
 

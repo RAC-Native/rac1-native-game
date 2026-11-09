@@ -6,6 +6,9 @@
 // the hero is given back and the music's pause lifted after 30 frames (0x265880).
 
 #include <game/ovl/cutscene.h>
+
+#include <cstdio>
+#include <cstdlib>
 #include <game/ovl/ovl_reloc.h>
 #include <game/lib/libvu0.h>
 #include <game/ovl/arrival.h>
@@ -218,6 +221,10 @@ void cutscene_update() {
         }
     }
     if (end != 0) {
+        if (std::getenv("RAC1_CUTSCENE_LOG") != nullptr)  // (testing: why a scene ended)
+            std::printf("[cutscene] scene %d ended: frame %d of %d, dialog frame %d, fade %.3f, pad %08x %016llx, flags %d %d %d %d\n",
+                        lw(SC + 0x30), lw(SC + 0x34), lh(SC + 0x40), lh(SC + 0x48), lwc1(OV(0x0015f3fc)), lwu(PAD + 0x1a4),
+                        static_cast<unsigned long long>(ld(PAD + 0x1a0)), lw(0x0015eea0), lw(0x0015ee20), lw(0x0015eed8), lw(0x0015ed84));
         cutscene_end();
     } else {
         if (!(lw(SC + 0x38) < (lw(0x0015ed80) != 0 ? 0x50 : 0x60))) {

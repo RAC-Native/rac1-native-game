@@ -121,6 +121,18 @@ RAC1_HOT_INLINE void lq_sq(uint32_t dst, uint32_t src) {  // 128-bit aligned cop
 // orig: (helper) scratchpad DMA, normal mode, done synchronously: toSPR (ch9, 0x1000d400) copies
 // qwc quadwords from RAM madr to the scratchpad at sadr (wrapping in 16 KB); fromSPR (ch8) back.
 inline void spr_dma_to(uint32_t sadr, uint32_t madr, uint32_t qwc) {
+    // (host) one copy when the quadwords neither wrap in the scratchpad nor leave one host block of the source: the same bytes as
+    // the quadword loop (the skinning's poses, ~1.3% of Kerwan's game thread on the Wii U quadword by quadword)
+    const uint32_t n = (qwc & 0xffffu) * 16, s0 = sadr & 0x3ff0u;
+    if (n != 0 && s0 + n <= 0x4000u && (madr & 15u) == 0) {
+        const uint8_t* src = static_cast<const uint8_t*>(ee_ram_ptr_read(madr));
+        if (src != nullptr && static_cast<const uint8_t*>(ee_ram_ptr_read(madr + n - 1)) == src + n - 1) {
+            if (void* dst = ee_ram_ptr_write(0x70000000u + s0, n); dst != nullptr) {
+                std::memmove(dst, src, n);
+                return;
+            }
+        }
+    }
     for (uint32_t q = 0; q < (qwc & 0xffffu); ++q) lq_sq(0x70000000u + ((sadr + q * 16) & 0x3ff0u), madr + q * 16);
 }
 inline void spr_dma_from(uint32_t madr, uint32_t sadr, uint32_t qwc) {

@@ -1681,3 +1681,37 @@ one, the same runs). The game code stays 22 ms a step on Kerwan.
   (skip an image the GS memory holds already), build_triangles split by batches between core 0 and the main thread's waits (the main
   thread idles ~10 ms a frame in its joins and the GPU / swap waits), plan_build per batch beside it, the first half split between
   core 2 (culling) and the main thread (scene_from_static_k).
+
+## Every planet on the console; Batalia's hang; the game step's first cuts (2026-11-09, evening)
+
+- **The sweep** (`rac1-scratch/wiiu/sweep/sweep.sh <levels>`: bench.sh launched through BaristaMAN, real time, `explore`, 900 frames, a shot
+  at game frame 600; it stops at the first run that does not exit). Mostly the ship's arrival and the first steps, so these are the levels'
+  openings, not their heavy areas. Every level 2-18 loads and draws right, no exception. Host frame ms (game code ms a frame):
+
+  | level | frame | game code | level | frame | game code |
+  | :--- | ---: | ---: | :--- | ---: | ---: |
+  | 2 Aridia | 60.9 | 40.0 (arrival, 2-4 steps a frame) | 11 Pokitaru | 28.8 | 13.5 |
+  | 4 Eudora | 37.8 | 22.1 | 12 Hoven | 34.0 | 17.7 |
+  | 5 Rilgar | 34.4 | 22.2 | 13 Gemlik | 32.3 | 21.0 |
+  | 6 Blarg | 49.2 | 34.4 (world lighting ~7) | 14 Oltanis | 36.8 | 20.1 |
+  | 7 Umbris | 27.2 | 13.8 | 15 Quartu | 50.9 | 33.9 |
+  | 8 Batalia | 39.8 | 27.8 | 16 Kalebo | 46.7 | 31.3 |
+  | 9 Gaspar | 45.4 | 25.0 | 17 Drek's fleet | 25.9 | 16.1 |
+  | 10 Orxon | 46.1 | 25.0 | 18 Veldin (2nd) | 41.6 | 28.1 |
+
+  (0 Veldin 25.9, 1 Novalis 33.5, 3 Kerwan 38.5: the deterministic runs above.)
+- **Batalia's hang (once in 7 runs):** the first run (Italian) ended the arrival's cutscene at once (dialogue stream 04000002 "0 played"),
+  then two moby callbacks at absurd addresses (`0x2d0000`, `0x2f0000`, ovl_call_moby_fn), the game's language word set to 0
+  (host_language noted it) and the game stopped with no more lines, not even the watchdog's. BaristaMAN answered but neither
+  `/api/launch/menu` nor `/api/power/soft-reboot` ran (a hung app never yields): a hand power cycle. Not reproduced in 6 console runs
+  (Italian, with and without the shot's 1.4 s stall) nor on the PC (every language, cutscene skip on, the Wii U's headless path, 2-3 steps a
+  frame). `RAC1_CUTSCENE_LOG=1` (cutscene.cpp: why a scene ended - its frame, length, dialogue frame, pad, the skip flags) stays for next
+  time. The stream's sector differs by language (0x1a8ee9 English, 0x1a953d Italian): the same dialogue, not a disc fault.
+- **Kerwan's game thread** (core 2 sampled, `RAC1_REALTIME=0`, 1500 steps): moby updates 27% (class 75 9%, collisions' segment tests
+  7.8%, class 574 4.6%, bolts 3.5%), the moby pass 17%, its end (the skinning's poses) 10%, effects 10%; the out-of-line `ee_read` /
+  `ee_write` ~9% together (inlining them was measured slower: I-cache). Cuts, exact (the PC's RAMHASH and images unchanged):
+  `on_pose` copies the pose from the scratchpad at once (~10,000 matrices a frame, before twice one by one), `on_draw` appends the
+  record without zeroing it first, `spr_dma_to` one copy when it neither wraps nor leaves a host block. **Game code 21.85 -> 21.65 ms a
+  step** (two A/B pairs); the frame stays 38.7: the three CPU chains are balanced (core 2: the world's first half, then the game step to
+  the frame's end). Tried and removed: prefetching in the moby LOD patch's loop and its undo (`patch_moby_logged`, ~3.8% of the game
+  thread with Daino's `lod 3`, waiting on each moby's cache lines): no gain.
