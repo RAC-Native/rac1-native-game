@@ -2554,6 +2554,7 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
     }
 #endif
     }
+#if !defined(__WIIU__)  // ((2026-11-09) the Wii U draws no reflections' views: 8 corners in doubles a packet, ~1 us each, not made)
     {  // (Water Reflections' views cull by it: the instance's world bounding sphere grown by this packet's template's box, through the
        // view's matrix to the world and the instance's rows - an instance is drawn by several packets, each a part of it)
         std::array<float, 6>& bx = F.inst_box[inst];
@@ -2581,6 +2582,7 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
             if (!ok) bx[0] = std::numeric_limits<float>::quiet_NaN();
         }
     }
+#endif
     // (RAC1_PERF_PKT_MEMO) the kept runs appended when this packet's inputs are the kept one's
     const bool memo_hit = memo_mode != 0 && M.valid && M.key == key && M.table == p.table && M.tex == p.tex && M.ntex == p.ntex && M.shadow == g_shadow_emit &&
                           M.views == (g_shadow_emit ? g_shadow_emit_views : 0) && M.view_only == g_view_only_emit && M.gif == g.gif_now && M.sky == g.sky_now &&
