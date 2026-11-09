@@ -2,6 +2,7 @@
 // pause_menu_pages.h).
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
+#include <host/level_slots.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/moby_pass.h>
 #include <game/ovl/pause_menu.h>
@@ -161,7 +162,10 @@ int32_t menu_quick_draw(uint32_t w) {
 // (0x27cd68).
 // orig: 0x0027c690
 int32_t menu_stats_focus_in(uint32_t w) {
-    const uint32_t m = menu_moby_spawn(0x46e);
+    // (enhancement: on a level mod's level whose base level has no gold bolt class (Veldin's data has none: the game never
+    // shows this panel there), the bolt class 0x10 stands in for it, src/host/level_slots.h)
+    const uint32_t cls = level_slot_current() >= 0 && lbu(OV(0x00197bc0) + 0x46e) == 0xff ? 0x10u : 0x46eu;
+    const uint32_t m = menu_moby_spawn(cls);
     if (m == 0) return 0;
     sw(w + 0x44, m);
     sh(m + 0x34, 0);

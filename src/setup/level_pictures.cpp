@@ -2,6 +2,10 @@
 // sizes are the disc's pictures' (the loading screen's planets 128 x 128 and names 256 x 32, the ship's map's 512 x 128).
 #include "level_pictures.h"
 
+#include <formats/level_file.h>
+#include <formats/level_textures.h>
+#include <formats/ratchet_executable.h>
+
 #include <imgui.h>
 #include <stb_image.h>  // (its implementation: static_skinned_render.cpp)
 
@@ -9,6 +13,10 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <exception>
+#include <fstream>
+#include <iterator>
+#include <span>
 
 namespace rac1::setup {
 
@@ -156,12 +164,124 @@ std::vector<uint8_t> picture_image(const Rgba& in) {
     return out;
 }
 
+namespace {
+
+// The game's own big font (the menus' titles: text_draw with the glyph table at Veldin's 0x1c3890 and the effect texture 3),
+// read from the player's disc: Veldin's data file (its overlay's table, its effect textures). Each character `c` has 4
+// bytes: its 16 x 16 cell's corner (u, v) in the texture, its drop (+2, signed) and its advance (+3; 0: no glyph).
+struct GameFont {
+    bool ok = false;
+    int tw = 0, th = 0;
+    std::vector<uint8_t> rgba;
+    uint8_t table[256 * 4] = {};
+};
+
+const GameFont& game_font() {
+    static GameFont f;
+    static bool tried = false;
+    if (tried) return f;
+    tried = true;
+    std::ifstream in("assets/disc/levels/level00/data.wad", std::ios::binary);
+    std::vector<uint8_t> wad((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    if (wad.size() < sizeof(LevelFileHeader)) return f;
+    LevelFileHeader h;
+    std::memcpy(&h, wad.data(), sizeof h);
+    if (h.overlay.offset < 0 || h.overlay.size <= 0 || static_cast<size_t>(h.overlay.offset) + static_cast<size_t>(h.overlay.size) > wad.size()) return f;
+    constexpr uint32_t kTable = 0x001c3890u;
+    bool table = false;
+    try {
+        const RatchetExecutable exe = parse_ratchet_executable(
+            std::span<const std::byte>(reinterpret_cast<const std::byte*>(wad.data() + h.overlay.offset), static_cast<size_t>(h.overlay.size)));
+        for (const RatchetSection& sec : exe.sections) {
+            const uint32_t lo = static_cast<uint32_t>(sec.header.load_address);
+            if (kTable >= lo && kTable + sizeof f.table <= lo + sec.data.size()) {
+                std::memcpy(f.table, sec.data.data() + (kTable - lo), sizeof f.table);
+                table = true;
+            }
+        }
+    } catch (const std::exception&) {
+        return f;
+    }
+    if (!table) return f;
+    for (const DecodedTexture& t : decode_level_textures(std::span<const std::byte>(reinterpret_cast<const std::byte*>(wad.data()), wad.size())))
+        if (t.category == "fx" && t.index == 3) {
+            f.tw = t.width;
+            f.th = t.height;
+            f.rgba = t.rgba_data;
+        }
+    f.ok = !f.rgba.empty() && f.tw >= 16 && f.th >= 16;
+    return f;
+}
+
+// the banner in the game's own font, in the game's blue: false when the font cannot be read, or a letter has no glyph
+bool banner_game_font(const std::string& text, Rgba& o) {
+    const GameFont& f = game_font();
+    if (!f.ok) return false;
+    std::vector<uint8_t> chars;
+    for (unsigned char c : text) {
+        if (c >= 0x80 || f.table[c * 4 + 3] == 0) return false;  // (Latin letters with accents: the other font)
+        chars.push_back(c);
+    }
+    float width = 0;
+    for (uint8_t c : chars) width += static_cast<int8_t>(f.table[c * 4 + 3]);
+    // the cells' 16 pixels drawn at 12 (the original banners' letters' height); narrowed when too long
+    float scale = 0.8f;
+    if (width * scale > kBannerW - 8) scale = (kBannerW - 8) / width;
+    std::vector<float> a(static_cast<size_t>(kBannerW) * kBannerH, 0.0f);
+    float x = std::floor((kBannerW - width * scale) / 2.0f);
+    const float top = 8.0f;
+    for (uint8_t c : chars) {
+        const int u = f.table[c * 4], v = f.table[c * 4 + 1];
+        const float dy = static_cast<int8_t>(f.table[c * 4 + 2]) * scale;
+        if (c != ' ') {
+            // each banner pixel the cell's texels under it averaged (a box filter)
+            const int x0 = static_cast<int>(std::floor(x)), y0 = static_cast<int>(std::floor(top + dy));
+            const int n = static_cast<int>(std::ceil(16.0f * scale)) + 1;
+            for (int py = 0; py < n; ++py)
+                for (int px = 0; px < n; ++px) {
+                    const int bx = x0 + px, by = y0 + py;
+                    if (bx < 0 || bx >= kBannerW || by < 0 || by >= kBannerH) continue;
+                    float sum = 0;
+                    int cnt = 0;
+                    for (int sy = 0; sy < 4; ++sy)
+                        for (int sx = 0; sx < 4; ++sx) {
+                            const float gx = (bx - x + (sx + 0.5f) / 4.0f) / scale, gy = (by - top - dy + (sy + 0.5f) / 4.0f) / scale;
+                            ++cnt;
+                            if (gx < 0 || gy < 0 || gx >= 16 || gy >= 16) continue;
+                            const int tx = u + static_cast<int>(gx), ty = v + static_cast<int>(gy);
+                            if (tx >= f.tw || ty >= f.th) continue;
+                            const uint8_t* t = &f.rgba[(static_cast<size_t>(ty) * static_cast<size_t>(f.tw) + static_cast<size_t>(tx)) * 4];
+                            sum += (t[3] / 255.0f) * (std::max({t[0], t[1], t[2]}) / 255.0f);
+                        }
+                    float& d = a[static_cast<size_t>(by) * kBannerW + static_cast<size_t>(bx)];
+                    d = std::min(1.0f, d + sum / static_cast<float>(cnt));
+                }
+        }
+        x += static_cast<int8_t>(f.table[c * 4 + 3]) * scale;
+    }
+    float peak = 0;
+    for (float v : a) peak = std::max(peak, v);
+    if (peak <= 0) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (a[i] <= 0) continue;
+        o.p[i * 4] = 29;
+        o.p[i * 4 + 1] = 123;
+        o.p[i * 4 + 2] = 211;
+        o.p[i * 4 + 3] = static_cast<uint8_t>(std::min(1.0f, a[i] / peak) * 255.0f + 0.5f);
+    }
+    return true;
+}
+
+}  // namespace
+
 // orig: (host) see level_pictures.h
 Rgba banner_from_text(const std::string& text, std::string& err) {
     Rgba o;
     o.w = kBannerW;
     o.h = kBannerH;
     o.p.assign(static_cast<size_t>(kBannerW) * kBannerH * 4, 0);
+    if (banner_game_font(text, o)) return o;
+    std::fill(o.p.begin(), o.p.end(), 0);
     // the letters: Dear ImGui's own font (ProggyClean, 13 pixels: the size of the game's banners' letters), drawn a pixel
     // wider (the game's letters are bolder) in the game's blue
     ImFontAtlas atlas;
