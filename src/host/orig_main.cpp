@@ -4499,6 +4499,7 @@ int main(int argc, char** argv) {
             X.presented(true, 0.0, fb);
             ++X.steps;
             ++X.pictures;
+            rac1::prof::frame_picture();
             g_draw_from_snapshot = true;
             rac1::ee_copy_use(true);
             const auto step_end = slot + step_ns;
@@ -4549,6 +4550,7 @@ int main(int argc, char** argv) {
                 extrap_gpu_note();
                 X.presented(false, static_cast<double>(j) / k, fb);
                 ++X.pictures;
+                rac1::prof::frame_picture();
                 ++X.carried;
             }
             X.sum_fence += step_fence;

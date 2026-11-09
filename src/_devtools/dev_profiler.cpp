@@ -133,6 +133,8 @@ void stacked_bar(const char* label, const double* v, double other, double scale,
 void summary_lines(const prof::Summary& m) {
     ImGui::Text("%.1f fps   frame %.2f ms  (min %.2f  max %.2f  p99 %.2f)   1%% low %.1f fps   %.2f game frames a host frame", m.fps, m.period_avg, m.period_min, m.period_max,
                 m.period_p99, m.low1_fps, m.steps);
+    if (m.pictures_fps > m.fps + 0.5)
+        ImGui::Text("Frame extrapolation: %.1f pictures a second shown (%.2f a host frame; the fps above count the game's steps)", m.pictures_fps, m.pictures_fps / std::max(m.fps, 1e-9));
     ImGui::Text("CPU (main thread): work %.2f ms = game code %.2f + host %.2f; waits %.2f (present %.2f, cap %.2f); its CPU time %.2f ms", m.main_work, m.game_code, m.host_work,
                 m.waits, m.cpu[prof::kPresent], m.cpu[prof::kPacing], m.main_cpu);
     if (m.gpu_frames > 0)
@@ -410,6 +412,7 @@ void profiler_overlay() {
             ImGui::TextDisabled("profiler: recording");
         } else {
             ImGui::Text("%.1f fps  %.2f ms  (max %.1f, 1%% low %.0f fps)", m.fps, m.period_avg, m.period_max, m.low1_fps);
+            if (m.pictures_fps > m.fps + 0.5) ImGui::Text("%.1f pictures a second (frame extrapolation)", m.pictures_fps);
             ImGui::Text("CPU %.2f ms (game %.2f)  GPU %.2f ms  waits %.2f", m.main_work, m.game_code, m.gpu_busy, m.waits);
             const char* b = "";
             switch (m.bound) {
