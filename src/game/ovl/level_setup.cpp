@@ -1,5 +1,6 @@
 // Ported overlay code: the level setup (0x244110) and the loaders it calls.
 #include <game/ovl/ovl_common.h>
+#include <game/enhance/pool.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/lib/libgraph.h>
 #include <game/math/vecmath.h>
@@ -1079,10 +1080,14 @@ void level_setup_body(int32_t full, int32_t restore) {
         }
         level_collision_set(s4 + lwu(s3 + 0x14));
         uint32_t e = s3 + lwu(s3 + 0x1c);
+        const bool pool_check = pool_checking();  // (testing, RAC1_POOL_CHECK: the asset pool against this load)
         for (int32_t i = 0; i < lw(s3 + 0x18); ++i, e += 0x20) {
             const uint32_t off = lwu(e);
+            if (pool_check) pool_check_class(lw(0x0015ed84), lwu(e + 4), off == 0 ? 0u : s4 + off, e + 0x10);
             moby_class_register(off == 0 ? 0u : s4 + off, s3 + lwu(s3 + 0x3c), e + 0x10, lwu(e + 4));
+            if (pool_check) pool_check_registered(lw(0x0015ed84), lwu(e + 4), lwu(OV(0x0015ffc0)) - 1);
         }
+        if (pool_check) pool_check_level_done(lw(0x0015ed84));
         sub_00241788(s3 + lwu(s3 + 0x1c), lw(s3 + 0x1c));
         uint32_t seq = s3 + lwu(s3 + 0x78);
         for (uint32_t i = 0; i < lbu(lwu(OV(0x00197300)) + 0xc); ++i, seq += 4) {

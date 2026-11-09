@@ -12,6 +12,7 @@
 #include <platform/platform.h>
 #include <runtime/ipu/movie_hw.h>
 #include <runtime/kernel/disc.h>
+#include <game/enhance/pool.h>
 
 #include <algorithm>
 #include <cmath>
@@ -61,6 +62,9 @@ void print_usage(const char* prog) {
               << "  --mod-plugin <folder>   build that mod's plugin\n"
               << "                     into assets/generated/mods/<folder>/ (docs/mods.md, \"Level mods\")\n"
               << "  --level-mod <folder>  compose that level mod, whatever its build\n"
+              << "  --pool             make the asset pool (assets/generated/pool/: every level's moby classes, for custom-level\n"
+              << "                     sessions; docs/open-engine.md) from the game's disc\n"
+              << "  --pool-report      the asset pool's contents, per level and in all (made first when missing)\n"
               << "  --help, -h         show this help\n";
 }
 
@@ -331,7 +335,7 @@ int run_setup(int argc, char** argv) {
     bool compare = false;
     std::string movie_tracks_of, movie_audio_of, wav;
     int track = -1;
-    bool level_mods = false, mod_plugins = false;
+    bool level_mods = false, mod_plugins = false, pool = false, pool_report_only = false;
     std::string mod_plugin;
     std::string level_mod;
 
@@ -367,6 +371,10 @@ int run_setup(int argc, char** argv) {
             level_mods = true;
         } else if (a == "--level-mod" && i + 1 < argc) {
             level_mod = argv[++i];
+        } else if (a == "--pool") {
+            pool = true;
+        } else if (a == "--pool-report") {
+            pool_report_only = true;
         } else if (a == "--mod-plugins") {
             mod_plugins = true;
         } else if (a == "--mod-plugin" && i + 1 < argc) {
@@ -387,6 +395,21 @@ int run_setup(int argc, char** argv) {
     }
 
     if (!level_mod.empty()) return compose_level_mod(level_mod, true) ? 0 : 1;  // (from the player's extracted disc files: no image)
+    if (pool || pool_report_only) {  // (the asset pool, from the game's disc: docs/open-engine.md)
+        if (!disc_open()) {
+            std::cerr << "[setup] Error: the game's disc cannot be read (./setup.sh first)\n";
+            return 1;
+        }
+        if (pool) {
+            std::string why;
+            if (!pool_build(&why)) {
+                std::cerr << "[setup] Error: the asset pool: " << why << "\n";
+                return 1;
+            }
+        }
+        if (pool_report_only) pool_report();
+        return 0;
+    }
     if (!mod_plugin.empty()) return build_mod_plugin(mod_plugin, true) ? 0 : 1;
     if (mod_plugins) return build_mod_plugins(force) ? 0 : 1;
     if (level_mods) {
