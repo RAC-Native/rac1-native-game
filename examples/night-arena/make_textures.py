@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The night arena's textures: PNGs of our own, made here (no game data).
+"""Daino's Arena's textures (and its planet's picture): PNGs of our own, made here (no game data).
 
     python3 make_textures.py [textures/]
 
@@ -272,6 +272,98 @@ def flame_rgba(w, h, core, seed):
     return out
 
 
+def _hash(ix, iy, seed):
+    h = (ix * 374761393 + iy * 668265263 + seed * 2147483647) & 0xffffffff
+    h = ((h ^ (h >> 13)) * 1274126177) & 0xffffffff
+    return ((h ^ (h >> 16)) & 0xffff) / 65535.0
+
+
+def value_noise(x, y, seed):
+    """Smooth noise 0..1 on a lattice of 1."""
+    ix, iy = math.floor(x), math.floor(y)
+    fx, fy = x - ix, y - iy
+    sx, sy = fx * fx * (3 - 2 * fx), fy * fy * (3 - 2 * fy)
+    a, b = _hash(ix, iy, seed), _hash(ix + 1, iy, seed)
+    c, d = _hash(ix, iy + 1, seed), _hash(ix + 1, iy + 1, seed)
+    return (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy
+
+
+def fbm(x, y, seed, octaves=4):
+    v, amp, tot = 0.0, 1.0, 0.0
+    for o in range(octaves):
+        v += amp * value_noise(x * (2 ** o), y * (2 ** o), seed + o * 17)
+        tot += amp
+        amp *= 0.5
+    return v / tot
+
+
+def planet_picture(path, size=128):
+    """The planet on the ship's map and the loading screen (level.txt's picture): dark rock cracked with lava, lit from
+    the upper left, the arena a small square with its cyan trim in a glowing crater, a warm haze round it; transparent
+    round it. Made at twice the size, then halved (smooth edges)."""
+    n = size * 2
+    c, R = n / 2.0, n / 2.0 - 10
+    lx, ly, lz = -0.5, -0.6, 0.62
+    ll = math.sqrt(lx * lx + ly * ly + lz * lz)
+    lx, ly, lz = lx / ll, ly / ll, lz / ll
+    # the arena's spot on the sphere (seen from the front): a little up and left of the middle
+    ax, ay = -0.28, -0.22
+    az = math.sqrt(1 - ax * ax - ay * ay)
+    # its tangent frame (u along the sphere's "east", v its "north" there)
+    ux, uy, uz = az, 0.0, -ax
+    ul = math.sqrt(ux * ux + uz * uz)
+    ux, uz = ux / ul, uz / ul
+    vx, vy, vz = ay * uz - az * uy, az * ux - ax * uz, ax * uy - ay * ux
+    img = Image.new("RGBA", (n, n))
+    px = []
+    for y in range(n):
+        for x in range(n):
+            dx, dy = (x + 0.5 - c) / R, (y + 0.5 - c) / R
+            r2 = dx * dx + dy * dy
+            if r2 > 1.0:  # the haze outside the disc
+                r = math.sqrt(r2)
+                a = max(0.0, 1.0 - (r - 1.0) / 0.075)
+                px.append((255, 120, 50, int(150 * a * a)))
+                continue
+            dz = math.sqrt(1.0 - r2)
+            diffuse = max(0.0, dx * lx + dy * ly + dz * lz)
+            lon, lat = math.atan2(dx, dz), math.asin(max(-1.0, min(1.0, -dy)))
+            u, v = lon * 2.2, lat * 2.2
+            rock = fbm(u * 1.6, v * 1.6, 3)
+            k = 0.55 + 0.75 * rock
+            col = [128 * k, 100 * k, 82 * k]
+            # lava in some regions only (a second noise): cracks, wider and softer where it is hot
+            hot_area = max(0.0, (fbm(u * 0.9 + 4.2, v * 0.9 + 1.3, 23) - 0.48) / 0.12)
+            crack = abs(fbm(u * 2.0 + 9.1, v * 2.0 + 3.7, 11) - 0.5)
+            glow = min(1.0, hot_area) * max(0.0, 1.0 - crack / 0.05) ** 1.5
+            # the arena: its square (in the tangent frame), the crater of lava round it
+            ex, ey, ez = dx - ax, dy - ay, dz - az
+            su, sv = ex * ux + ey * uy + ez * uz, ex * vx + ey * vy + ez * vz
+            m = max(abs(su), abs(sv))
+            shade = 0.08 + 1.1 * diffuse
+            out = [ch * shade for ch in col]
+            rc = math.sqrt(su * su + sv * sv)
+            if rc < 0.26:  # the crater of lava round the arena
+                glow = max(glow, 1.0 - abs(rc - 0.19) / 0.06)
+            if m < 0.13:
+                floor_k = 0.6 + 0.5 * diffuse
+                out = [46 * floor_k, 52 * floor_k, 64 * floor_k]
+                if 0.1 < m < 0.12:
+                    out = [90, 220, 255]  # the cyan trim, lit by itself
+                elif 0.035 < m < 0.048:
+                    out = [60, 150, 200]  # the hub's ring
+            else:
+                hot = (255, 110 + 110 * glow, 30 + 50 * glow)
+                out = [o * (1 - glow) + h * glow for o, h in zip(out, hot)]
+            rim = max(0.0, (math.sqrt(r2) - 0.86) / 0.14)  # the haze over the limb
+            out = [o * (1 - 0.45 * rim) + h * 0.45 * rim for o, h in zip(out, (255, 120, 60))]
+            px.append(tuple(clamp(ch) for ch in out) + (255,))
+    img.putdata(px)
+    img = img.resize((size, size), Image.LANCZOS)
+    img.save(path)
+    print("wrote", path)
+
+
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "textures")
     os.makedirs(out, exist_ok=True)
@@ -292,6 +384,7 @@ def main():
     for name, w, h, core, seed in (("flame.png", 64, 128, False, 16), ("flame_core.png", 32, 64, True, 17)):
         flame_rgba(w, h, core, seed).save(os.path.join(out, name))
         print("wrote", os.path.join(out, name))
+    planet_picture(os.path.join(out, "planet.png"))
 
 
 if __name__ == "__main__":

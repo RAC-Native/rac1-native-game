@@ -5,11 +5,11 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
-- **The night arena** (`examples/night-arena`): a larger example level mod made in Blender, an arena in a lava lake on
+- **Daino's Arena** (`examples/night-arena`): a larger example level mod made in Blender, an arena in a lava lake on
   Kalebo III's code, with a plugin running challenges against Kalebo III's enemies (waves, bombs from the sky, flame
   vents, weapon limits, two championships) and, for players who have the Grind Boots, grind rails of its own: a test
-  rail and a course of three lanes with mines, barriers and drones, ending in a last wave. Its scripts write the whole
-  mod (see its README).
+  rail and a course of three lanes with mines, barriers and drones, ending in a last wave; a planet picture of its own
+  and a view of the arena on the ship's map. Its scripts write the whole mod (see its README).
 - Mod SDK: while **pause in the quick select** holds the world still (Options > Advanced), the plugins' `frame`
   callbacks, their triggers and the SDK's logic for Kalebo III's enemies and `base_hunt` wait too: a plugin's timers
   stopped running and the enemies it steers stopped sliding while the ring was open.
