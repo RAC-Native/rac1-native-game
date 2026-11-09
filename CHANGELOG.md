@@ -19,6 +19,11 @@ What changed in each release. Releases are source only: you build the game with 
   `weapons_owned`, `weapon_equip` (as the quick select does, refused where it could not open), `weapon_allow` (only some
   weapons selectable: the others left out of the quick select's ring and the next / previous weapon; off at every level's
   start), `ammo_fill`. See docs/sdk.md.
+- Mod SDK ABI 5 fixes: `weapon_allow` leaves a switch to an allowed weapon under way to finish, so `weapon_allow` of a
+  new weapon and `weapon_equip` of it, in either order, end with it in hand (the wrench took its place). The **jetpack
+  troopers** (638) on a level mod no longer fly through walls (a move into the level's collision is slid along or flown
+  over) and hover half a unit over the floor under them, spawned or dropped; hunting, they fly to their point near Ratchet
+  instead of jumping there, a few units apart.
 - Mod SDK **ABI 4** (the tables grow at their end: older plugins keep loading): `vendor_open` (the vendor's screens from a
   plugin, on any base level; `call_port` never reached them), `input_hold` (the pad kept from the game while a plugin's
   menu is open: Start and Select still the game's, so pausing and quitting work; `pad_held` / `pad_pressed` read the real

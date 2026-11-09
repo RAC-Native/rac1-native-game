@@ -345,7 +345,8 @@ typedef struct rac1_api {
     int (*weapon_equip)(int32_t item);
     /* only the `n` weapons of `items` can be chosen: the others are not in the quick select's ring, the PC's next / previous
        weapon skip them, and one asked otherwise (the game's own return to a weapon) is not taken; one in hand goes for the
-       wrench. NULL or 0: all again. Off at every level's start */
+       last allowed one held (else the wrench), unless a switch to an allowed one is under way (weapon_equip's, before or
+       after this call): that one ends in his hand. NULL or 0: all again. Off at every level's start */
     void (*weapon_allow)(const int32_t* items, int32_t n);
     /* that item's ammo to its most (the HUD's, the pickups'): 1, 0 not (not owned, an item with no ammo) */
     int (*ammo_fill)(int32_t item);
