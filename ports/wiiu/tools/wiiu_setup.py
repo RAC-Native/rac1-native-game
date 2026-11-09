@@ -133,9 +133,11 @@ def cached(build_dir, key):
 
 
 def find_glslc(arg, build_dir):
-    """CafeGLSL's glslcompiler: --glslc, RAC1_WIIU_GLSLC, the build's cache, or on the PATH. None if there is none."""
-    for c in (arg, os.environ.get("RAC1_WIIU_GLSLC"), cached(build_dir, "RAC1_WIIU_GLSLC"),
-              shutil.which("glslcompiler")):
+    """CafeGLSL's glslcompiler: --glslc, RAC1_WIIU_GLSLC, the build's cache, another Wii U build's of this folder
+    (build-wiiu*), or on the PATH. None if there is none."""
+    others = [cached(d, "RAC1_WIIU_GLSLC") for d in sorted(ROOT.glob("build-wiiu*")) if d != build_dir]
+    for c in [arg, os.environ.get("RAC1_WIIU_GLSLC"), cached(build_dir, "RAC1_WIIU_GLSLC")] + others + \
+            [shutil.which("glslcompiler")]:
         if c and Path(c).is_file() and os.access(c, os.X_OK):
             return str(Path(c).resolve())
     return None
