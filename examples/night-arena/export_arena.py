@@ -95,6 +95,9 @@ CLASSES = [              # the level's own classes: (name, model, its line's opt
     ("flame", "flame.obj", "size 1.5 ghost", ["emissive 3", "emissive 3.5"]),
     ("bomb", "bomb.obj", "size 1 ghost", ["metal 0.35 0.8 glow 2 0.6"]),  # (the plugin's bombardment)
     ("mark", "mark.obj", "size 1 ghost", ["emissive 2.5"]),               # (where a bomb falls)
+    ("mine", "mine.obj", "size 1 ghost", ["metal 0.35 0.8 glow 2 0.6"]),  # (the course's: on a rail, jumped)
+    ("barrier", "barrier.obj", "size 1 ghost", ["metal 0.5 0.6"]),       # (across a lane: change lane)
+    ("drone", "drone.obj", "size 1 ghost", ["metal 0.3 0.9 glow 2 0.5"]),  # (over a lane: the wrench)
 ]
 
 errors, warnings = [], []
@@ -470,6 +473,68 @@ def ring_tris():
     return out
 
 
+def mine_tris():
+    """A rail mine: a ball on its origin, seven spikes."""
+    out = ball_tris(0.42)
+    c = Vector((0.0, 0.0, 0.42))
+    for d in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0.6, 0.6, 0.5), (-0.6, -0.6, 0.5)):
+        d = Vector(d).normalized()
+        side = d.cross(Vector((0, 0, 1)) if abs(d.z) < 0.9 else Vector((1, 0, 0))).normalized() * 0.08
+        up = d.cross(side).normalized() * 0.08
+        base = c + d * 0.36
+        tip = c + d * 0.8
+        q = [base + side, base + up, base - side, base - up]
+        for k in range(4):
+            out.append((tuple(q[k]), tuple(q[(k + 1) % 4]), tuple(tip)))
+    return out
+
+
+def mine_colour(p):
+    r = math.sqrt(p[0] ** 2 + p[1] ** 2 + (p[2] - 0.42) ** 2)
+    if r > 0.6:
+        return (1.0, 0.25, 0.1)  # (the spikes' tips)
+    return (1.0, 0.3, 0.12) if abs(p[2] - 0.42) < 0.08 else (0.22, 0.22, 0.25)
+
+
+def barrier_tris():
+    """A barrier across a lane (x along the rail, y across it): two posts and a striped panel from 0.2 to 2.2 high."""
+    def block(x0, y0, z0, x1, y1, z1):
+        q = [(x, y, z) for z in (z0, z1) for y in (y0, y1) for x in (x0, x1)]
+        faces = [(0, 2, 3, 1), (4, 5, 7, 6), (0, 1, 5, 4), (2, 6, 7, 3), (0, 4, 6, 2), (1, 3, 7, 5)]
+        return [t for f in faces for t in ((q[f[0]], q[f[1]], q[f[2]]), (q[f[0]], q[f[2]], q[f[3]]))]
+    out = block(-0.12, -0.95, 0.0, 0.12, -0.76, 2.4) + block(-0.12, 0.76, 0.0, 0.12, 0.95, 2.4)
+    z = 0.2
+    while z < 2.19:
+        out += block(-0.08, -0.72, z, 0.08, 0.72, z + 0.24)  # (a stripe; the next one 0.01 over it: each its colour)
+        z += 0.25
+    return out
+
+
+def barrier_colour(p):
+    if abs(p[1]) > 0.74:
+        return (0.3, 0.3, 0.33)  # (the posts)
+    return (1.0, 0.75, 0.1) if int((p[2] - 0.2) / 0.25 + 0.001) % 2 == 0 else (0.1, 0.1, 0.1)
+
+
+def drone_tris():
+    """A drone round its origin (it hovers): a flattened ball, a glowing ring round its middle."""
+    out = []
+    for t in ball_tris(0.45):
+        out.append(tuple((p[0], p[1], (p[2] - 0.45) * 0.55) for p in t))
+    for k in range(16):
+        a0, a1 = 2 * math.pi * k / 16, 2 * math.pi * (k + 1) / 16
+        p = [(0.62 * math.cos(a0), 0.62 * math.sin(a0), 0.0), (0.42 * math.cos(a0), 0.42 * math.sin(a0), 0.0),
+             (0.42 * math.cos(a1), 0.42 * math.sin(a1), 0.0), (0.62 * math.cos(a1), 0.62 * math.sin(a1), 0.0)]
+        out += [(p[0], p[1], p[2]), (p[0], p[2], p[3]), (p[0], p[2], p[1]), (p[0], p[3], p[2])]
+    return out
+
+
+def drone_colour(p):
+    if abs(p[2]) < 0.01 and math.hypot(p[0], p[1]) > 0.41:
+        return (0.3, 0.9, 1.0)  # (the ring)
+    return (0.55, 0.6, 0.7) if p[2] > 0.0 else (0.2, 0.22, 0.26)
+
+
 def flame_tris():
     """Three tongues of fire: tapered six-sided cones, leaning out a little, the middle one tallest (3.2)."""
     out = []
@@ -496,7 +561,7 @@ def flame_colour(p):
 # ---------------------------------------------------------------- the grind rails (arena_rails: build_rails.py)
 
 RAIL_STEP = 1.5      # a rail's points, units apart along it (rails.txt)
-RAIL_MAX = 120       # its points at most (the plugin's room for them)
+RAIL_MAX = 200       # its points at most (the plugin's room for them)
 RAIL_R = 0.12        # the tube's radius: its top is the rail's line (where Ratchet's feet go)
 RAIL_WIDE = 0.5      # the collision strip under a rail's line (export_collision)
 PYLON_EVERY = 14.0   # a pylon under a rail every so many units
@@ -543,9 +608,11 @@ def obox(c, ax, ay, az):
     return out
 
 
-def rail_model(level, name, pts, centre, depsgraph):
-    """A rail's look, round `centre`: an eight-sided tube under its line, pylons down to the ground with a cross bar."""
-    tube, pylons, bars = [], [], []
+def rail_model(level, name, pts, centre, depsgraph, pylons_on=True, beam=0.45, beam_until=1e9, end_stop=False):
+    """A rail's look, round `centre`: an eight-sided tube under its line, pylons down to the ground with a cross bar
+    (`beam` to each side: under the lanes beside it, as far as `beam_until` along it; none with pylons_on off); with
+    end_stop, a striped buffer at its end (a lane that ends)."""
+    tube, pylons, bars, stop = [], [], [], []
     up = Vector((0, 0, 1))
     rings = []
     for i, p in enumerate(pts):
@@ -567,7 +634,7 @@ def rail_model(level, name, pts, centre, depsgraph):
     scene = bpy.context.scene
     for i in range(len(pts) - 1):
         run += (pts[i + 1] - pts[i]).length
-        if run < next_at or run > total - 3.0:
+        if not pylons_on or run < next_at or run > total - 3.0:
             continue
         next_at += PYLON_EVERY
         p = pts[i + 1]
@@ -580,12 +647,17 @@ def rail_model(level, name, pts, centre, depsgraph):
         pylons += obox(mid, Vector((0.16, 0, 0)), Vector((0, 0.16, 0)), Vector((0, 0, (top - g + 0.5) / 2)))
         t = (pts[i + 2 if i + 2 < len(pts) else i + 1] - pts[i]).normalized()
         n = t.cross(up).normalized()
-        bars += obox(Vector((p.x, p.y, top + 0.08)), n * 0.45, Vector((t.x, t.y, 0)).normalized() * 0.1, Vector((0, 0, 0.08)))
+        half = beam if run <= beam_until else 0.45
+        bars += obox(Vector((p.x, p.y, top + 0.08)), n * half, Vector((t.x, t.y, 0)).normalized() * 0.1, Vector((0, 0, 0.08)))
+    if end_stop:
+        t = (pts[-1] - pts[-2]).normalized()
+        n = t.cross(up).normalized()
+        stop += obox(pts[-1] + t * 0.2 + Vector((0, 0, 0.1)), t * 0.2, n * 0.35, Vector((0, 0, 0.35)))
     with open(os.path.join(level, name + ".obj"), "w") as f:
         f.write("# the arena: the %s class's model (export_arena.py), round its origin\nmtllib %s.mtl\no %s\nusemtl %s\n" % (
             name, name, name, name))
         nv = 0
-        for tris, col in ((tube, (0.82, 0.87, 0.92)), (pylons, (0.28, 0.3, 0.33)), (bars, (1.0, 0.72, 0.18))):
+        for tris, col in ((tube, (0.82, 0.87, 0.92)), (pylons, (0.28, 0.3, 0.33)), (bars, (1.0, 0.72, 0.18)), (stop, (1.0, 0.2, 0.1))):
             for tri in tris:
                 for q in tri:
                     q = q - centre
@@ -594,7 +666,7 @@ def rail_model(level, name, pts, centre, depsgraph):
                 nv += 3
     with open(os.path.join(level, name + ".mtl"), "w") as f:
         f.write("# the arena: the %s class's material\nnewmtl %s\nKd 1 1 1\n" % (name, name))
-    return len(tube) + len(pylons) + len(bars)
+    return len(tube) + len(pylons) + len(bars) + len(stop)
 
 
 def export_rails(level, offset, depsgraph):
@@ -617,7 +689,8 @@ def export_rails(level, offset, depsgraph):
         lo = [min(p[i] for p in pts) for i in range(3)]
         hi = [max(p[i] for p in pts) for i in range(3)]
         centre = Vector([(a + b) / 2 for a, b in zip(lo, hi)])
-        ntris = rail_model(level, name, pts, centre, depsgraph)
+        ntris = rail_model(level, name, pts, centre, depsgraph, bool(ob.get("pylons", 1)), float(ob.get("beam", 0.45)),
+                           float(ob.get("beam_until", 1e9)), bool(ob.get("end_stop", 0)))
         L.append("rail %s %d" % (name[5:], len(pts)))
         L += ["%s %s %s" % tuple(num(p[i] + offset[i]) for i in range(3)) for p in pts]
         rails.append((name, centre))
@@ -730,6 +803,9 @@ def export(out=None, install=False):
     flame_sprites(level)
     model(level, "bomb", bomb_tris(), bomb_colour)
     model(level, "mark", ring_tris(), lambda p: (1.0, 0.18, 0.1))
+    model(level, "mine", mine_tris(), mine_colour)
+    model(level, "barrier", barrier_tris(), barrier_colour)
+    model(level, "drone", drone_tris(), drone_colour)
     rails = export_rails(level, offset, depsgraph)
     sounds(level)
     music, music_src = LEVEL["music"]
@@ -797,6 +873,13 @@ def export(out=None, install=False):
         name = o.name[6:]
         p = o.matrix_world.translation
         L.append("object spawn %s %s %s %s name=%s kind=%s" % (num(p.x), num(p.y), num(p.z), num(yaw(o)), name, name.split("_")[0]))
+    obstacles = [o for o in markers if base_name(o).startswith(("mine_", "barrier_", "drone_"))]
+    if obstacles:
+        L.append("# the grind course's obstacles (mine_<n>, barrier_<n>, drone_<n> markers): the plugin's, hidden but in it")
+    for o in obstacles:
+        p = o.matrix_world.translation
+        L.append("object %s %s %s %s %s name=%s" % (base_name(o).split("_")[0], num(p.x), num(p.y), num(p.z), num(yaw(o)),
+                                                  base_name(o)))
     flames = [o for o in markers if o.name.startswith("flame_")]
     for i, o in enumerate(flames):
         p = o.matrix_world.translation
@@ -816,7 +899,7 @@ def export(out=None, install=False):
         L.append("trigger %s %s" % (o.name[8:], " ".join(num(c) for c in a + b)))
     for o in markers:
         n = base_name(o)
-        if n not in ("hero", "ship") and not n.startswith(("obj_", "spawn_", "trigger_", "flame_")):
+        if n not in ("hero", "ship") and not n.startswith(("obj_", "spawn_", "trigger_", "flame_", "mine_", "barrier_", "drone_")):
             warn("marker %s: not hero, ship, spawn_*, trigger_*, obj_*, flame_*: left out" % o.name)
     with open(os.path.join(level, "level.txt"), "w") as f:
         f.write("\n".join(L) + "\n")

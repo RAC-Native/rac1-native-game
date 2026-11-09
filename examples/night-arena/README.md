@@ -16,11 +16,19 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   jetpack troopers and dropships; some with bombs from the sky, the vents burning faster, a time limit, no hit allowed,
   the wrench only, a random weapon each wave, a new one every 20 seconds; two championships (15 and 50 rounds) mixing
   those modes. The won ones, and their best times, are kept with the save.
-- **A grind rail ("Test Grind Scarponi"):** our own rail, from a station outside the north-west wall down into the
-  arena, for players who have the Grind Boots. It is a test: Kalebo III's hero code takes a rail only within 12 units of
-  two points of its own level, (115, 264, 133) and (257, 301, 128), so the station is by the first one; once on it
-  Ratchet rides it anywhere. The plugin puts the rail in the game's rail table only during the challenge, and a thin
-  collision strip runs under it (the game lets go of a rail with nothing under Ratchet's feet).
+- **Grind rails**, for players who have the Grind Boots (Grind Scarponi), from a station outside the north-west wall:
+  - "Test Grind Scarponi": one rail down into the arena (our first try);
+  - "Grind Scarponi: Discesa": a course of three lanes along the north wall (a side jump changes lane), mines to jump,
+    barriers that close two lanes at a time, drones to break with the wrench (Square on the rail) or they zap you, the
+    side lanes ending before the north-east corner; then one rail round the corner, down the east side and over the
+    wall into the arena, where a last wave of robots waits. A hit costs one health point and slows Ratchet (the game's
+    own hop on the rail); a fall puts him back on the station, the obstacles back too.
+
+  Kalebo III's hero code takes a rail only within 12 units of two points of its own level, (115, 264, 133) and
+  (257, 301, 128) in the game's coordinates, so the station is by the first one; once on a rail, its jumps and the side
+  jumps to another rail work anywhere. The plugin puts the challenge's rails in the game's rail table only while it
+  runs, and a thin collision strip runs under each rail (the game lets go of a rail with nothing under Ratchet's
+  feet).
 
 It needs a game with the mod SDK's ABI 5 or later.
 
@@ -61,18 +69,21 @@ You need Python 3 with Pillow and Blender (made with 5.2).
 |---|---|
 | `make_textures.py` | the arena's textures (PIL): floor, walls, grating, hazard stripes, lava, rock, the flames' sprites... |
 | `build_arena.py` | the arena in Blender: the collections `arena_visual`, `arena_collision`, `arena_markers`, `arena_lights` |
-| `build_rails.py` | the rails (`arena_rails`: a curve each) and their station |
-| `export_arena.py` | the mod folder: `level.txt`, `collision.obj`, `meshes.obj`, `lights.txt`, the classes' models, the rails (`rails.txt`), the sounds (synthesized), `mod.json`, the plugin's source |
+| `build_rails.py` | the rails (`arena_rails`: a curve each; the course's side lanes made from its centre rail), their station, the course's obstacles (markers) |
+| `export_arena.py` | the mod folder: `level.txt`, `collision.obj`, `meshes.obj`, `lights.txt`, the classes' models (the rails', the mines', barriers' and drones' too), the rails (`rails.txt`), the sounds (synthesized), `mod.json`, the plugin's source |
 | `plugin/arena_plugin.c` | the menu, the challenges, the enemies' paths (a navigation grid and a flow field), the flame vents, the bombs, the supplies, the rails |
 
 ## Testing
 
 Headless runs with the mod's own test hooks (`RAC1_MOD_TEST`, listed before `test()` in the plugin), for example the
-rail challenge with Ratchet dropped onto the rail:
+rail challenge with Ratchet dropped onto the rail (`arena_course`: the course, riding its centre lane through its
+obstacles to the last wave):
 
 ```
 RAC1_HEADLESS=1 RAC1_MODS=1 RAC1_MOD_CODE=1 RAC1_GOTO=night-arena@60 RAC1_MOD_TEST=arena_rail RAC1_FRAMES=2900 ./build/rac1-native
 ```
+
+A `RAC1_SIM_INPUT=seq:` script's frames are the run's, about 1472 more than the test's frames (the level's loading).
 
 ## Music
 

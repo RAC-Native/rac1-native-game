@@ -23,9 +23,10 @@
  * - flame (the level's class): a flame vent in the floor: rests, warns (smoke, a hiss), bursts (a roar), hurts
  *   Ratchet standing in it; the vents take turns ("delay=" in frames).
  * - spawn (the level's class): the spawn points, hidden at their spawn.
- * - The rails (rails.txt, the classes rail_<name>): a rail challenge ("Test Grind Scarponi", for those who have them)
- *   puts Ratchet on the station outside the walls and its rail into the game's rail table; he rides it down into the
- *   arena (the grind section below).
+ * - The rails (rails.txt, the classes rail_<name>): a rail challenge (for those who have the Grind Scarponi) puts
+ *   Ratchet on the station outside the walls and its rails into the game's rail table: "Test Grind Scarponi" one rail
+ *   down into the arena, "Grind Scarponi: Discesa" a course of three lanes with mines, barriers and drones (the classes
+ *   mine, barrier, drone), then a last wave in the arena (the grind section below).
  *
  * RAC1_MOD_TEST=arena (headless): Ratchet put on the hub at frame 100, the first challenge started at frame 160, a
  * line every second. The other tests: before test() below.
@@ -117,6 +118,9 @@ typedef struct challenge_def {
                           every CHAOS_FRAMES */
     int reward;        /* bolts */
     int hidden;        /* 1: in the menu once every other challenge is won */
+    const char* rails; /* RAIL: its rails (rails.txt's names, the first the one whose end finishes it) */
+    const char* start; /* RAIL: the spawn point Ratchet starts from */
+    int obstacles;     /* RAIL: the course's obstacles (mines, barriers, drones) on */
 } challenge_def;
 
 static const challenge_def CHALLENGES[] = {
@@ -150,7 +154,10 @@ static const challenge_def CHALLENGES[] = {
       {22, 16, 10, "RBFLCJ"}, {24, 16, 9, "RBFLCJS"}, {20, 16, 8, "GRBFJ"}},
      120, 25, 1, 0, W_ANY, 12000},
     {"Campionato", "15 round, le modalita' a caso", CUP, 0, 15, {{0}}, 0, 25, 0, 0, W_ANY, 20000},
-    {"Test Grind Scarponi", "prova: giu' per la rotaia fino all'arena", RAIL, 45, 1, {{0}}, 0, 0, 0, 0, W_ANY, 1000},
+    {"Test Grind Scarponi", "prova: giu' per la rotaia fino all'arena", RAIL, 45, 1, {{0}}, 0, 0, 0, 0, W_ANY, 1000, 0,
+     "test", "rail_start", 0},
+    {"Grind Scarponi: Discesa", "3 corsie, ostacoli e droni, poi l'ultima ondata", RAIL, 90, 1, {{8, 6, 25, "RRB"}}, 0, 20,
+     0, 0, W_ANY, 3000, 0, "lane_c lane_l lane_r", "rail_course", 1},
     {"Impossibile", "il campionato, 50 round", CUP, 0, 50, {{0}}, 0, 20, 0, 0, W_ANY, 100000, 1},
 };
 #define N_CHALLENGES ((int)(sizeof CHALLENGES / sizeof CHALLENGES[0]))
@@ -779,7 +786,7 @@ static void wave_start(void) {
         else if (s.rule.weapons == W_ROULETTE) weapon_pick();
     }
     play(s.snd_wave);
-    if (CHALLENGES[s.ch].kind == RAIL) rail_go();
+    if (CHALLENGES[s.ch].kind == RAIL) rail_go();  /* (the countdown's end: the rails on; not the last wave's start) */
 }
 
 static void challenge_start(int ch) {
@@ -1308,15 +1315,24 @@ static void supplies_update(void) {
    The game's rail table (at Veldin's overlay address 0x15f70c, its count at 0x15f710; 0x20 bytes a rail: its centre,
    its reach +0xc, its path +0x10, a loop +0x14; a path: its count, 12 bytes, then 16-byte points, w the length to the
    next one) is empty on a level mod: a rail challenge points it at the plugin's own (ee_alloc) and back when it ends,
-   so the rail is there only then (its model too). Kalebo III's hero code takes a rail only within 12 units of its own
-   level's two rail spots (hero_rail_land_check 0x20cf58): the rail starts by one, at the station. The challenges need
-   the Grind Scarponi (0x13d4dd, the grind boots): without them the menu does not start them. */
+   so its rails are there only then (their models too). Kalebo III's hero code takes a rail only within 12 units of
+   its own level's two rail spots (hero_rail_land_check 0x20cf58): the rails start by one, at the station. Once on one,
+   its jumps and the side jumps to a rail beside it (2..4.5 away: the lanes) work anywhere. The challenges need the Grind
+   Scarponi (0x13d4dd, the grind boots): without them the menu does not start them.
+   The course ("Grind Scarponi: Discesa") has obstacles on its lanes (the level's objects of the classes mine, barrier,
+   drone): a mine is jumped, a barrier is passed on another lane, a drone is broken with the wrench (Square on the rail)
+   or zaps him as he passes; each hurts him by one. Its end leads to a last wave in the arena. */
 #define RAIL_TABLE 0x0015f70cu
 #define RAIL_COUNT 0x0015f710u
 #define GRIND_BOOTS 0x0013d4ddu
-#define MAX_RAILS 4
-#define RAIL_PTS 120
+#define MAX_RAILS 6
+#define RAIL_PTS 200
 #define RAIL_END 2.5f  /* the rail ridden to its end: this near its last point */
+#define RAIL_ATTACK 0x2b  /* his wrench swing on a rail */
+#define MAX_OBST 48
+#define DRONE_BOLTS 50
+
+enum { O_MINE, O_BARRIER, O_DRONE };
 
 static struct {
     int n;
@@ -1324,15 +1340,26 @@ static struct {
         char name[24];
         int npts;
         float pt[RAIL_PTS][3];
+        uint32_t path;  /* its path in the game's memory (made at the first challenge), 0 not yet */
     } r[MAX_RAILS];
     int loaded;
-    uint32_t mem;                  /* (ee_alloc, once) the table's entry, then the path */
+    uint32_t table;                /* (ee_alloc, once) the table's entries, then the paths */
     uint32_t old_table, old_count; /* the level's own, put back */
-    int on;                        /* the rail in the game's table now: its index + 1, 0 none */
-    int cur;                       /* the challenge's rail, -1 none */
+    int on;                        /* rails in the game's table now */
+    int set[MAX_RAILS], nset;      /* the challenge's rails (set[0]: the one whose end finishes it), its start's name */
+    const char* start;
+    int phase;                     /* 0 the countdown on the station, 1 riding, 2 the last wave in the arena */
+    int ride;                      /* frames riding (the time limit) */
     int falls;
-    int reached;  /* the rail's end reached: won once he is off it */
-} rails = {.cur = -1};
+    int reached;  /* the finishing rail's end reached: done once he is off it */
+    struct {
+        uint32_t obj;
+        int kind, alive;
+        float p[3];
+    } obs[MAX_OBST];
+    int nobs, drones, drones_hit, use_obs;
+    int warned;  /* the lanes whose end was told (bits by their place in set) */
+} rails;
 
 /* his states on a rail: 0x28 grinding, 0x29 / 0x2a jumping, 0x2b attacking, 0x42 hopping off (hero_transitions) */
 static int on_rail(void) {
@@ -1362,8 +1389,10 @@ static void rails_load(void) {
         }
     }
     fclose(f);
-    char msg[96];
-    snprintf(msg, sizeof msg, "rails: %d (the first: %s, %d points)", rails.n, rails.n ? rails.r[0].name : "-", rails.n ? rails.r[0].npts : 0);
+    char msg[160];
+    int len = snprintf(msg, sizeof msg, "rails: %d", rails.n);
+    for (int i = 0; i < rails.n && len < (int)sizeof msg - 32; ++i)
+        len += snprintf(msg + len, sizeof msg - (size_t)len, "%s %s (%d points)", i ? "," : ":", rails.r[i].name, rails.r[i].npts);
     api->log(msg);
 }
 
@@ -1386,57 +1415,75 @@ static float dist3(const float a[3], const float b[3]) {
     return sqrtf(x * x + y * y + z * z);
 }
 
-/* the rail into the game's table (the only one) */
-static int rail_install(int i) {
-    const int n = rails.r[i].npts;
-    if (n < 2) return 0;
-    if (rails.mem == 0) rails.mem = api->ee_alloc(0x30 + 16 * RAIL_PTS);
-    if (rails.mem == 0) return 0;
-    const uint32_t path = rails.mem + 0x20;
-    float lo[3], hi[3];
-    for (int a = 0; a < 3; ++a) lo[a] = hi[a] = rails.r[i].pt[0][a];
-    api->sw(path, (uint32_t)n);
-    for (int k = 0; k < n; ++k) {
-        const float* p = rails.r[i].pt[k];
-        const uint32_t at = path + 0x10 + 16u * (uint32_t)k;
-        api->swf(at, p[0]);
-        api->swf(at + 4, p[1]);
-        api->swf(at + 8, p[2]);
-        api->swf(at + 12, k + 1 < n ? dist3(p, rails.r[i].pt[k + 1]) : 0.0f);
-        for (int a = 0; a < 3; ++a) {
-            if (p[a] < lo[a]) lo[a] = p[a];
-            if (p[a] > hi[a]) hi[a] = p[a];
+/* every rail's path into the game's memory, once (they stay: the table points at them while a challenge runs) */
+static int rails_make(void) {
+    if (rails.table != 0) return 1;
+    uint32_t size = MAX_RAILS * 0x20u;
+    for (int i = 0; i < rails.n; ++i) size += 0x10u + 16u * (uint32_t)rails.r[i].npts;
+    rails.table = api->ee_alloc(size);
+    if (rails.table == 0) return 0;
+    uint32_t at = rails.table + MAX_RAILS * 0x20u;
+    for (int i = 0; i < rails.n; ++i) {
+        const int n = rails.r[i].npts;
+        rails.r[i].path = at;
+        api->sw(at, (uint32_t)n);
+        for (int k = 0; k < n; ++k) {
+            const float* p = rails.r[i].pt[k];
+            const uint32_t q = at + 0x10 + 16u * (uint32_t)k;
+            api->swf(q, p[0]);
+            api->swf(q + 4, p[1]);
+            api->swf(q + 8, p[2]);
+            api->swf(q + 12, k + 1 < n ? dist3(p, rails.r[i].pt[k + 1]) : 0.0f);
         }
+        at += 0x10u + 16u * (uint32_t)n;
     }
-    float c[3], reach = 0.0f;
-    for (int a = 0; a < 3; ++a) c[a] = (lo[a] + hi[a]) * 0.5f;
-    for (int k = 0; k < n; ++k) {
-        const float d = dist3(c, rails.r[i].pt[k]);
-        if (d > reach) reach = d;
-    }
-    api->swf(rails.mem, c[0]);
-    api->swf(rails.mem + 4, c[1]);
-    api->swf(rails.mem + 8, c[2]);
-    api->swf(rails.mem + 12, reach + 2.0f);
-    api->sw(rails.mem + 0x10, path);
-    api->sw(rails.mem + 0x14, 0);
-    if (!rails.on) {
-        rails.old_table = rac1_lw(api, api->ov(RAIL_TABLE));
-        rails.old_count = rac1_lw(api, api->ov(RAIL_COUNT));
-    }
-    api->sw(api->ov(RAIL_TABLE), rails.mem);
-    api->sw(api->ov(RAIL_COUNT), 1);
-    rails.on = i + 1;
-    char msg[128];
-    snprintf(msg, sizeof msg, "rail %s on: %d points, its centre %.1f %.1f %.1f, reach %.1f (the table at 0x%x)", rails.r[i].name, n, c[0], c[1], c[2],
-             reach + 2.0f, (unsigned)rails.mem);
+    char msg[96];
+    snprintf(msg, sizeof msg, "rails: their paths in the game's memory at 0x%x (%u bytes)", (unsigned)rails.table, (unsigned)size);
     api->log(msg);
     return 1;
 }
 
-static void rail_uninstall(void) {
+/* the challenge's rails into the game's table */
+static int rails_install(void) {
+    if (rails.nset == 0 || !rails_make()) return 0;
+    for (int j = 0; j < rails.nset; ++j) {
+        const int i = rails.set[j], n = rails.r[i].npts;
+        float lo[3], hi[3], c[3], reach = 0.0f;
+        for (int a = 0; a < 3; ++a) lo[a] = hi[a] = rails.r[i].pt[0][a];
+        for (int k = 0; k < n; ++k)
+            for (int a = 0; a < 3; ++a) {
+                if (rails.r[i].pt[k][a] < lo[a]) lo[a] = rails.r[i].pt[k][a];
+                if (rails.r[i].pt[k][a] > hi[a]) hi[a] = rails.r[i].pt[k][a];
+            }
+        for (int a = 0; a < 3; ++a) c[a] = (lo[a] + hi[a]) * 0.5f;
+        for (int k = 0; k < n; ++k) {
+            const float d = dist3(c, rails.r[i].pt[k]);
+            if (d > reach) reach = d;
+        }
+        const uint32_t e = rails.table + 0x20u * (uint32_t)j;
+        api->swf(e, c[0]);
+        api->swf(e + 4, c[1]);
+        api->swf(e + 8, c[2]);
+        api->swf(e + 12, reach + 2.0f);
+        api->sw(e + 0x10, rails.r[i].path);
+        api->sw(e + 0x14, 0);
+    }
+    if (!rails.on) {
+        rails.old_table = rac1_lw(api, api->ov(RAIL_TABLE));
+        rails.old_count = rac1_lw(api, api->ov(RAIL_COUNT));
+    }
+    api->sw(api->ov(RAIL_TABLE), rails.table);
+    api->sw(api->ov(RAIL_COUNT), (uint32_t)rails.nset);
+    rails.on = rails.nset;
+    char msg[96];
+    snprintf(msg, sizeof msg, "rails on: %d (the first: %s)", rails.nset, rails.r[rails.set[0]].name);
+    api->log(msg);
+    return 1;
+}
+
+static void rails_uninstall(void) {
     if (!rails.on) return;
-    if (rac1_lw(api, api->ov(RAIL_TABLE)) == rails.mem) {  /* (still ours: not the level loaded again) */
+    if (rac1_lw(api, api->ov(RAIL_TABLE)) == rails.table) {  /* (still ours: not the level loaded again) */
         api->sw(api->ov(RAIL_COUNT), rails.old_count);
         api->sw(api->ov(RAIL_TABLE), rails.old_table);
     }
@@ -1454,46 +1501,136 @@ static void hero_move(const float p[3], float yaw) {
     s.placed = 3;
 }
 
-/* on the station, facing the rail's start */
-static void rail_to_start(void) {
-    const uint32_t o = api->object_named("rail_start");
-    if (o == 0 || rails.cur < 0) return;
-    float p[3];
-    pos_of(api->object_moby(o), p);
-    const float* a = rails.r[rails.cur].pt[0];
-    hero_move(p, atan2f(a[1] - p[1], a[0] - p[0]));
-    rails.reached = 0;
+/* the course's obstacles (the level's objects of the classes mine, barrier, drone), found at the level's start */
+static void obstacles_find(void) {
+    const int32_t cls[3] = {api->class_find("mine"), api->class_find("barrier"), api->class_find("drone")};
+    rails.nobs = rails.drones = 0;
+    for (int32_t i = 0; i < api->object_count() && rails.nobs < MAX_OBST; ++i) {
+        const uint32_t o = api->object_at(i);
+        const int32_t c = api->object_class(o);
+        for (int k = 0; k < 3; ++k) {
+            if (c < 0 || c != cls[k]) continue;
+            rails.obs[rails.nobs].obj = o;
+            rails.obs[rails.nobs].kind = k;
+            rails.obs[rails.nobs].alive = 0;
+            pos_of(api->object_moby(o), rails.obs[rails.nobs].p);
+            api->object_show(o, 0);
+            rails.drones += k == O_DRONE;
+            ++rails.nobs;
+        }
+    }
 }
 
-/* the challenge's start: its rail shown, Ratchet on the station, held still through the countdown (the rail is not
-   on yet: a jump onto it would only land on its strip) */
+/* all of them back (a new try) or all gone */
+static void obstacles_reset(int on) {
+    for (int i = 0; i < rails.nobs; ++i) {
+        rails.obs[i].alive = on;
+        api->object_show(rails.obs[i].obj, on);
+    }
+    rails.drones_hit = 0;
+}
+
+/* one blown up: smoke, a flash, the boom */
+static void obstacle_blast(int i) {
+    float* p = rails.obs[i].p;
+    const float up[3] = {0.0f, 0.0f, 0.04f}, fire[3] = {1.0f, 0.55f, 0.2f};
+    for (int k = 0; k < 4; ++k) api->smoke(p, up, 1.2f + 0.4f * (float)k);
+    api->light_add(p, fire, 3.0f, 8.0f);
+    if (snd_boom >= 0) api->sfx_play(snd_boom, 0, p);
+    rails.obs[i].alive = 0;
+    api->object_show(rails.obs[i].obj, 0);
+}
+
+/* riding past them: a mine under his feet, a barrier in his way, a drone at his height hurt him (one each); his wrench
+   swing on the rail (Square) breaks a drone within 2.4 of his middle */
+static void obstacles_update(const float h[3]) {
+    const int swing = rac1_lw(api, HERO_STATE) == RAIL_ATTACK;
+    const float mid[3] = {h[0], h[1], h[2] + 0.9f};
+    for (int i = 0; i < rails.nobs; ++i) {
+        if (!rails.obs[i].alive) continue;
+        const float* p = rails.obs[i].p;
+        const float dxy = sqrtf((h[0] - p[0]) * (h[0] - p[0]) + (h[1] - p[1]) * (h[1] - p[1])), dz = h[2] - p[2];
+        int hurt = 0;
+        if (rails.obs[i].kind == O_MINE) {
+            hurt = dxy < 0.8f && dz > -0.6f && dz < 1.1f;
+        } else if (rails.obs[i].kind == O_BARRIER) {
+            hurt = dxy < 0.9f && dz > -0.6f && dz < 2.3f;
+        } else if (swing && dist3(mid, p) < 2.4f) {
+            obstacle_blast(i);
+            ++rails.drones_hit;
+            api->bolts_add(DRONE_BOLTS);
+            continue;
+        } else {
+            hurt = dxy < 1.0f && fabsf(mid[2] - p[2]) < 1.3f;
+        }
+        if (hurt) {
+            obstacle_blast(i);
+            api->hero_damage(1, 0);
+        }
+    }
+}
+
+/* on the station, facing the first rail's start; the obstacles back */
+static void rail_to_start(void) {
+    const uint32_t o = rails.start ? api->object_named(rails.start) : 0;
+    if (o == 0 || rails.nset == 0) return;
+    float p[3];
+    pos_of(api->object_moby(o), p);
+    const float* a = rails.r[rails.set[0]].pt[0];
+    hero_move(p, atan2f(a[1] - p[1], a[0] - p[0]));
+    rails.reached = 0;
+    rails.warned = 0;
+    if (rails.use_obs) obstacles_reset(1);
+}
+
+/* the challenge's start: its rails shown, Ratchet on the station, held still through the countdown (the rails are not
+   on yet: a jump onto one would only land on its strip) */
 static void rail_begin(void) {
-    rails.cur = rail_find("test");
+    const challenge_def* c = &CHALLENGES[s.ch];
+    rails.nset = 0;
+    rails.phase = 0;
+    rails.ride = 0;
     rails.falls = 0;
-    if (rails.cur < 0) {
+    rails.start = c->start;
+    rails.use_obs = c->obstacles;
+    char names[64];
+    snprintf(names, sizeof names, "%s", c->rails ? c->rails : "");
+    for (char* t = strtok(names, " "); t != NULL && rails.nset < MAX_RAILS; t = strtok(NULL, " ")) {
+        const int i = rail_find(t);
+        if (i >= 0) rails.set[rails.nset++] = i;
+    }
+    if (rails.nset == 0) {
         toast("Nessuna rotaia (rails.txt)");
         return;
     }
-    rail_show(rails.cur, 1);
+    for (int j = 0; j < rails.nset; ++j) rail_show(rails.set[j], 1);
     rail_to_start();
     api->input_hold(1);
 }
 
-/* the countdown over: the rail in the game's table, Ratchet free */
+/* the countdown over: the rails in the game's table, Ratchet free */
 static void rail_go(void) {
+    if (rails.phase != 0) return;
     api->input_hold(0);
-    if (rails.cur < 0 || !rail_install(rails.cur)) {
+    if (!rails_install()) {
         challenge_end(0, "nessuna rotaia");
         return;
     }
+    rails.phase = 1;
     toast("Salta sulla rotaia!");
 }
 
-/* the end: the rail and its model gone, Ratchet back in the arena if he is not */
+/* the rails and their models gone (and the obstacles) */
+static void rails_away(void) {
+    rails_uninstall();
+    for (int j = 0; j < rails.nset; ++j) rail_show(rails.set[j], 0);
+    if (rails.use_obs) obstacles_reset(0);
+}
+
+/* the end: all gone, Ratchet back in the arena if he is not */
 static void rail_stop(void) {
     api->input_hold(0);
-    rail_uninstall();
-    if (rails.cur >= 0) rail_show(rails.cur, 0);
+    rails_away();
     const uint32_t hero = api->hero();
     if (hero == 0) return;
     float h[3];
@@ -1505,28 +1642,50 @@ static void rail_stop(void) {
     }
 }
 
-/* riding: its end reached wins (once he is off it: its model goes with the challenge); a fall (into the lava, or
-   outside the walls) puts him back on the station */
+/* riding: the finishing rail's end reached wins, or leads to the last wave (once he is off it); a fall (into the lava,
+   or outside the walls) puts him back on the station, the obstacles back too */
 static void rail_update(const float h[3]) {
     const challenge_def* c = &CHALLENGES[s.ch];
-    if (rails.cur < 0) return;
-    if (dist3(h, rails.r[rails.cur].pt[rails.r[rails.cur].npts - 1]) < RAIL_END) rails.reached = 1;
+    if (rails.nset == 0) return;
+    ++rails.ride;
+    if (rails.use_obs) obstacles_update(h);
+    const int fin = rails.set[0];
+    if (dist3(h, rails.r[fin].pt[rails.r[fin].npts - 1]) < RAIL_END) rails.reached = 1;
+    if (s.t % 10 == 0)  /* on a lane that ends (not the finishing rail) within 20 units of its end: told once */
+        for (int j = 1; j < rails.nset; ++j) {
+            const int i = rails.set[j], n = rails.r[i].npts;
+            if ((rails.warned >> j) & 1) continue;
+            for (int k = n > 14 ? n - 14 : 0; k < n; ++k)
+                if (dist3(h, rails.r[i].pt[k]) < 1.2f) {
+                    rails.warned |= 1 << j;
+                    toast("La corsia finisce! Cambia corsia");
+                    break;
+                }
+        }
     if (rails.reached && !on_rail()) {
-        challenge_end(1, NULL);
+        if (c->wave[0].count > 0) {  /* (down in the arena: the last wave) */
+            rails_away();
+            rails.phase = 2;
+            toast("Atterrato! Ora l'ultima ondata");
+            wave_start();
+        } else {
+            challenge_end(1, NULL);
+        }
         return;
     }
     const float lx = h[0] - s.centre[0], ly = h[1] - s.centre[1];
-    if (s.placed == 0 && (h[2] < nav.floor_z - 1.2f || ((lx < -64.0f || ly > 64.0f) && h[2] < nav.floor_z + 5.0f))) {
+    const int outside = lx < -64.0f || lx > 64.0f || ly > 64.0f;
+    if (s.placed == 0 && (h[2] < nav.floor_z - 1.2f || (outside && h[2] < nav.floor_z + 5.0f))) {
         ++rails.falls;
         rail_to_start();
         toast("Caduto! Di nuovo dalla stazione");
     }
-    if (s.clock >= c->time * 60) challenge_end(0, "tempo scaduto");
+    if (rails.ride >= c->time * 60) challenge_end(0, "tempo scaduto");
 }
 
 static void fight_update(const float h[3]) {
     const challenge_def* c = &CHALLENGES[s.ch];
-    if (c->kind == RAIL) {
+    if (c->kind == RAIL && rails.phase < 2) {
         rail_update(h);
         return;
     }
@@ -1731,7 +1890,10 @@ static void frame(void* user) {
             else if (s.rule.weapons == W_ROULETTE || (s.rule.weapons == W_WRENCH && !isc)) snprintf(wl, sizeof wl, "%s", weapon_name(s.wpn));
             if (isc) snprintf(third, sizeof third, "%s%s%s", MODES[cup[s.wave < c->waves ? s.wave : c->waves - 1].mode].name, wl[0] ? " - " : "", wl);
             else if (wl[0]) snprintf(third, sizeof third, "Arma: %s", wl);
-            else if (c->kind == RAIL && rails.falls > 0) snprintf(third, sizeof third, "Cadute: %d", rails.falls);
+            else if (c->kind == RAIL && rails.phase < 2 && (rails.falls > 0 || rails.drones > 0)) {
+                if (rails.use_obs && rails.drones > 0) snprintf(third, sizeof third, "Droni %d/%d   Cadute %d", rails.drones_hit, rails.drones, rails.falls);
+                else snprintf(third, sizeof third, "Cadute: %d", rails.falls);
+            }
             const int y = 84, bh = third[0] ? 72 : 50, box = s.nrects, first = s.nlines;
             hud_panel(12, y, 230, bh, PANEL, RAC1_HUD_LEFT);
             hud_panel(12, y, 3, bh, BAR, RAC1_HUD_LEFT);
@@ -1740,8 +1902,8 @@ static void frame(void* user) {
                 const int left = c->time * 60 - s.clock;
                 hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", c->name);
                 hud_text_at(22, y + 28, WHITE, 1.1f, RAC1_HUD_LEFT, 0, "Resisti %d:%02d   Abbattuti %d", left / 3600, left / 60 % 60, s.felled);
-            } else if (c->kind == RAIL) {
-                const int left = c->time * 60 - s.clock;
+            } else if (c->kind == RAIL && rails.phase < 2) {
+                const int left = c->time * 60 - rails.ride;
                 hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", c->name);
                 hud_text_at(22, y + 28, left < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0, "Restano %d:%02d", left / 3600, left / 60 % 60);
             } else {
@@ -1879,7 +2041,9 @@ static void level_start(void* user, const rac1_level_info* level) {
     supplies_drop(CRATE_NANO, 2);  /* (two nanotech crates there from the start) */
     if (!rails.loaded) rails_load();
     rails.on = 0;  /* (the level's table is its own again) */
+    rails.phase = 0;
     for (int i = 0; i < rails.n; ++i) rail_show(i, 0);
+    obstacles_find();
     if (s.lost_reload) {  /* (the challenge he died in: lost, its banner now) */
         s.lost_reload = 0;
         s.won = 0;
@@ -2006,39 +2170,46 @@ static void test(void* user, const char* text, uint64_t frame) {
     const int fall = strcmp(text, "arena_fall") == 0;    /* the tower, then down to the floor at frame 1500: they come down */
     const int tower = strcmp(text, "arena_tower") == 0 || fall;  /* on the north-east tower's top: up the ramps (the paths) */
     const int bombs_t = strcmp(text, "arena_bombs") == 0;  /* "Pioggia di fuoco", his health kept full */
-    if (s.mine && strncmp(text, "arena_rail", 10) == 0) {  /* the rail challenge from 420; arena_rail: Ratchet dropped onto
-                                                              the rail's third point at 640 (arena_railwalk: left on the
-                                                              station, for a RAC1_SIM_INPUT script walking and jumping) */
-        if (frame == 600) {
-            char b[64];
-            snprintf(b, sizeof b, "test 600: the run's frame %llu", (unsigned long long)api->frame_count());
-            api->log(b);
-        }
+    const int course_t = strncmp(text, "arena_course", 12) == 0;
+    if (s.mine && (strncmp(text, "arena_rail", 10) == 0 || course_t)) {
+        /* a rail challenge from 420 (arena_rail*: the test rail, arena_course*: the course), the Grind Scarponi given;
+           arena_rail / arena_course: Ratchet dropped onto the first rail's third point at 640 (arena_railwalk /
+           arena_coursewalk: left on the station, for a RAC1_SIM_INPUT script); his health kept up; the course's last
+           wave: an enemy taken away every 1.5 s */
+        const char* want = course_t ? "Grind Scarponi: Discesa" : "Test Grind Scarponi";
         int ch = -1;
         for (int i = 0; i < N_CHALLENGES; ++i)
-            if (CHALLENGES[i].kind == RAIL) ch = i;
+            if (strcmp(CHALLENGES[i].name, want) == 0) ch = i;
         if (frame == 100) api->sb(GRIND_BOOTS, 1);  /* (a test's game has no Grind Scarponi) */
         if (frame == 420 && ch >= 0) challenge_start(ch);
-        if (frame == 640 && strcmp(text, "arena_rail") == 0 && rails.cur >= 0) {
-            const float *a = rails.r[rails.cur].pt[2], *b = rails.r[rails.cur].pt[4];
+        if (frame == 640 && (strcmp(text, "arena_rail") == 0 || strcmp(text, "arena_course") == 0) && rails.nset > 0) {
+            const float *a = rails.r[rails.set[0]].pt[2], *b = rails.r[rails.set[0]].pt[4];
             const float at[3] = {a[0], a[1], a[2] + 1.5f};
             hero_move(at, atan2f(b[1] - a[1], b[0] - a[0]));
-            api->log("test: Ratchet dropped over the rail's third point");
+            api->log("test: Ratchet dropped over the first rail's third point");
         }
         if (frame % 30 == 0 && api->health() > 0 && api->health() < 4) api->sw(0x001415f8u, 4);
-        if (frame >= 420 && frame <= 3000 && frame % 6 == 0 && api->hero() != 0 && rails.cur >= 0 && (s.mode == FIGHT || frame % 60 == 0)) {
+        if (rails.phase == 2 && s.mode == FIGHT && frame % 90 == 5 && s.nen > 0) {
+            const uint32_t m = api->base_moby(s.en[0].h);
+            if (m != 0) api->moby_remove(m);
+        }
+        const int riding = s.mode == FIGHT && rails.phase == 1;
+        if (frame >= 420 && frame <= 4000 && api->hero() != 0 && rails.nset > 0 && (riding ? frame % 6 == 0 : frame % 60 == 0)) {
             float h[3];
             pos_of(api->hero(), h);
-            int best = 0;
+            int best = 0, lane = 0;
             float bd = 1e9f;
-            for (int k = 0; k < rails.r[rails.cur].npts; ++k) {
-                const float d = dist3(h, rails.r[rails.cur].pt[k]);
-                if (d < bd) bd = d, best = k;
-            }
-            char b[200];
-            snprintf(b, sizeof b, "test %llu: mode %d, hero %.2f %.2f %.2f, state 0x%x sub %d, rail point %d at %.2f, boots %d, table %d (+0x56c %d +0x5fc %d)",
-                     (unsigned long long)frame, s.mode, h[0], h[1], h[2], (unsigned)rac1_lw(api, HERO_STATE), (int)rac1_lw(api, 0x001413dcu), best, bd,
-                     (int)rac1_lb(api, GRIND_BOOTS), (int)rac1_lw(api, api->ov(RAIL_COUNT)), (int)rac1_lw(api, 0x0013f8bcu), (int)rac1_lw(api, 0x0013f94cu));
+            for (int j = 0; j < rails.nset; ++j)
+                for (int k = 0; k < rails.r[rails.set[j]].npts; ++k) {
+                    const float d = dist3(h, rails.r[rails.set[j]].pt[k]);
+                    if (d < bd) bd = d, best = k, lane = rails.set[j];
+                }
+            int alive = 0;
+            for (int i = 0; i < rails.nobs; ++i) alive += rails.obs[i].alive;
+            char b[240];
+            snprintf(b, sizeof b, "test %llu: mode %d phase %d, hero %.2f %.2f %.2f, state 0x%x, rail %s point %d at %.2f, health %d, obstacles %d, drones %d/%d, falls %d, table %d, alive %d",
+                     (unsigned long long)frame, s.mode, rails.phase, h[0], h[1], h[2], (unsigned)rac1_lw(api, HERO_STATE), rails.r[lane].name, best, bd,
+                     (int)api->health(), alive, rails.drones_hit, rails.drones, rails.falls, (int)rac1_lw(api, api->ov(RAIL_COUNT)), s.nen);
             api->log(b);
         }
         return;
