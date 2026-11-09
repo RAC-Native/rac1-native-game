@@ -59,6 +59,9 @@ void mrp_world_begin_frame(bool active, uint32_t chain_start, uint32_t chain_end
 void mrp_world_wiiu_prepare(bool active);
 // orig: (host) the Wii U: the preparation's second half (on its worker core) waited for - before the frame's world is read
 void mrp_world_wiiu_join();
+// orig: (host) ((2026-11-09) the Wii U, RAC1_WIIU_EE_ON_HEAD) the prepare's EE reads, made by the first half's thread, waited for -
+// before anything may write EE memory (the game's update); at once when there are none pending
+void mrp_world_wiiu_wait_ee();
 // (the Wii U: the preparation's second half on its worker - RAC1_WIIU_WORLD_ASYNC, the GamePad's debug menu flips it live)
 extern bool g_wiiu_world_async;
 // ((2026-10-28) the Wii U: the second half reads no EE memory - the sky's textures resolved by the first half -, as it may run beside

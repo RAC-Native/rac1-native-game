@@ -975,6 +975,9 @@ struct Worker {
     std::exception_ptr error;
 #if defined(__WIIU__)
     double fpscr = 0.0;  // (the game's thread's float rules, mffs at the start: the VU1 programs read on the worker run under them, as job_pool.cpp's FloatEnv)
+    // ((2026-11-09) RAC1_WIIU_CHAIN_CAPTURE_W) the capture left to the job: its input, and whether it is still to be made
+    MrpChainInput pending;
+    bool capture_pending = false;
 #endif
     void loop();
     ~Worker() {
@@ -1005,6 +1008,23 @@ void Worker::loop() {
         lk.unlock();
         try {
             const rac1::prof::Job prof_job(rac1::prof::kWorkerChain);  // (the debug menu's profiler: the job's time)
+#if defined(__WIIU__)
+            if (capture_pending) {  // (the game's update waits for this copy: mrp_chain_wait_captured)
+                try {
+                    capture(std::move(pending), g_capture);
+                } catch (...) {
+                    lk.lock();
+                    capture_pending = false;
+                    cv.notify_all();
+                    lk.unlock();
+                    throw;
+                }
+                lk.lock();
+                capture_pending = false;
+                cv.notify_all();
+                lk.unlock();
+            }
+#endif
             g_reader.read(g_capture);
         } catch (...) {
             error = std::current_exception();
@@ -1021,6 +1041,26 @@ void Worker::loop() {
 void mrp_chain_start(MrpChainInput&& in, bool async) {
     mrp_chain_join();
     gs::add_memory_join(&mrp_chain_join);
+#if defined(__WIIU__)
+    // ((2026-11-09) RAC1_WIIU_CHAIN_CAPTURE_W, default 1: the copy made by the worker on its core, the main thread on to the mobys'
+    // prepare meanwhile - ~1.2 ms of copying and 3 ms sooner a reading on Kerwan's critical path; the game's update waits for the copy)
+    static const bool capture_w = std::getenv("RAC1_WIIU_CHAIN_CAPTURE_W") == nullptr || std::atoi(std::getenv("RAC1_WIIU_CHAIN_CAPTURE_W")) != 0;
+    if (async && capture_w) {
+        g_used = true;
+        Worker& w = g_worker;
+        std::lock_guard<std::mutex> lk(w.m);
+        if (w.th.joinable()) {
+            w.pending = std::move(in);
+            w.capture_pending = true;
+            __asm__ volatile("mffs %0" : "=f"(w.fpscr));
+            w.error = nullptr;
+            w.busy = true;
+            w.job = true;
+            w.cv.notify_all();
+            return;
+        }
+    }
+#endif
     capture(std::move(in), g_capture);
     g_used = true;
     if (!async) {
@@ -1064,6 +1104,15 @@ void mrp_chain_join() {
         w.error = nullptr;
         std::rethrow_exception(e);
     }
+}
+
+// orig: (host) see mrp_chain.h
+void mrp_chain_wait_captured() {
+#if defined(__WIIU__)
+    Worker& w = g_worker;
+    std::unique_lock<std::mutex> lk(w.m);
+    w.cv.wait(lk, [&w] { return !w.capture_pending; });
+#endif
 }
 
 // orig: (host) see mrp_world_wiiu.inc

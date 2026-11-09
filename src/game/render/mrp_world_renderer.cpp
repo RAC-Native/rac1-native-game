@@ -329,6 +329,10 @@ struct Frame {
     // | vertex << 2 | 3) or a triangle's three corners (form 3 drawn with ADC), and `tvs_index` one u32 per triangle corner into them, the
     // frame's triangle slots' order; empty: the corners drawn in order, as before)
     std::vector<uint32_t> tvs_index;
+    // ((2026-11-09) the Wii U, RAC1_WIIU_TVS_DIRECT: the indexed form written straight into GPU-readable memory - the attribute words
+    // from tvs_geo, the indices from tvs_geo + tvs_geo_at_i (words) -, tvs_corners / tvs_index left empty; null: in the vectors)
+    const uint32_t* tvs_geo = nullptr;
+    uint32_t tvs_geo_corners = 0, tvs_geo_at_i = 0, tvs_geo_nidx = 0;
     bool tvs = false;
     double tf_ms = 0;  // (the CPU route's time)
     double sky_ms = 0;  // (the Wii U: the sky's packets' build time, build_triangles)
@@ -3588,6 +3592,7 @@ bool tfrag_vs_frame(Frame& F) {
     F.tvs_block.clear();
     F.tvs_corners.clear();
     F.tvs_index.clear();
+    F.tvs_geo = nullptr;
     const TfragGpuFrame& T = F.tf;
     if (!g_tvs.ok || g_tvs.generation != g_tlevel.generation || T.draws.size() != F.tf_cpu.size() || T.draws.size() >= 0x10000) return false;
     const uint32_t nd = static_cast<uint32_t>(T.draws.size());
@@ -3634,7 +3639,19 @@ bool tfrag_vs_frame(Frame& F) {
     }
     if (!T.runs.empty()) std::memcpy(&B[4 * static_cast<size_t>(run0)], T.runs.data(), 4 * T.runs.size());
     const bool indexed = tfrag_vs_indexed();
+    // ((2026-11-09) RAC1_WIIU_TVS_DIRECT, the Wii U: the indexed form's words written into a GPU-readable slot (mrp_world_gx2_tvs_geo):
+    // the main thread no longer copies them into its ring - on Kerwan ~2.3 ms of its draws, the lines in this core's cache -, nor are the
+    // indices zeroed first. The attribute words at 0 (room for every corner: a draw's at most its indices + 2), the indices after them)
+    uint32_t* geo = nullptr;
+    uint32_t geo_n = 0, geo_cap = 0;
+#if defined(__WIIU__)
     if (indexed) {
+        geo_cap = (T.nidx + 2u * nd + 63u) & ~63u;
+        geo = mrp_world_gx2_tvs_geo(geo_cap + T.nidx);
+    }
+#endif
+    if (geo != nullptr) {
+    } else if (indexed) {
         F.tvs_index.assign(T.nidx, 0u);
         F.tvs_corners.reserve(T.nidx);
     } else {
@@ -3673,6 +3690,43 @@ bool tfrag_vs_frame(Frame& F) {
         r[8] = g.col_addr;
         r[9] = g.col_count;
         const uint32_t nv = static_cast<uint32_t>(pl.verts.size());
+        if (geo != nullptr) {  // (as below, into the slot)
+            uint32_t* ix = geo + geo_cap + g.ibase;
+            uint32_t* const ix_end = ix + 3 * pl.ntris;
+            if (geo_n + std::max(nv, 3 * pl.ntris) > geo_cap) return false;
+            const uint32_t vb = geo_n;
+            uint32_t* cn = geo + geo_n;
+            if (pl.form == 3) {
+                for (uint32_t j = 0; j < nv; ++j) {
+                    if (pl.verts[j].pos < 2) continue;
+                    if (ix == ix_end) return false;
+                    const uint32_t w = d << 16 | j << 2;
+                    const uint32_t at = static_cast<uint32_t>(cn - geo);
+                    cn[0] = w;
+                    cn[1] = w | 1u;
+                    cn[2] = w | 2u;
+                    cn += 3;
+                    ix[0] = at;
+                    ix[1] = at + 1;
+                    ix[2] = at + 2;
+                    ix += 3;
+                }
+            } else {
+                for (uint32_t j = 0; j < nv; ++j) cn[j] = d << 16 | j << 2 | 3u;
+                cn += nv;
+                for (uint32_t j = 0; j < nv; ++j) {
+                    if (pl.verts[j].pos < 2) continue;
+                    if (ix == ix_end) return false;
+                    ix[0] = vb + j - 2;
+                    ix[1] = vb + j - 1;
+                    ix[2] = vb + j;
+                    ix += 3;
+                }
+            }
+            while (ix < ix_end) *ix++ = 0u;  // (as the vectors' zeros: never met)
+            geo_n = static_cast<uint32_t>(cn - geo);
+            continue;
+        }
         if (indexed) {
             // a sent vertex once (corner 3: the vertex itself, no triangle's ADC), its triangles' indices into them; form 3 drawn with ADC
             // (not a caster: always here) keeps its corners - the triangle's drop is decided per corner from its three vertices
@@ -3713,6 +3767,16 @@ bool tfrag_vs_frame(Frame& F) {
             c += 3;
         }
     }
+#if defined(__WIIU__)
+    if (geo != nullptr) {
+        if (geo_n == 0) return false;  // (the GX2 side draws the tfrags' corners only when there are some)
+        mrp_world_gx2_tvs_geo_done(geo, 4u * (geo_cap + T.nidx));
+        F.tvs_geo = geo;
+        F.tvs_geo_corners = geo_n;
+        F.tvs_geo_at_i = geo_cap;
+        F.tvs_geo_nidx = T.nidx;
+    }
+#endif
     F.tvs = true;
     return true;
 }
@@ -6487,32 +6551,16 @@ void mrp_world_wiiu_sky_capture(bool walk) {
     if (outside != 0 && told++ < 4) std::printf("[mrpw] the sky's capture: %u tags outside the sky's range taken as the sky's\n", outside);
 }
 
-void mrp_world_wiiu_prepare(bool active) {
-    mrp_world_wiiu_join();  // (the frame before's second half, if it was not drawn)
-    mrp_world_wiiu_tfrag_join();
-    vis_pending_apply();    // (the worker's last culling's marks: the game thread is joined)
-    if (g_pages.misses != 0) {  // (a run read outside the pages - zeros there -: noted again, eight times at most)
-        if (g_pages_renotes < 8) std::printf("[mrpw] the worker's culling read %u times outside its EE pages: noted again\n", g_pages.misses);
-        g_pages.misses = 0;
-        g_pages_renote = g_pages_renotes++ < 8;
-    }
-    g_sky_resolved_on = false;
-    const bool sky_fresh = g_sky_cap_fresh;  // (this host frame's capture only)
-    g_sky_cap_fresh = false;
-    g_sky_stream_fresh = false;
+namespace {
+bool ee_on_head_ready();
+void wiiu_ee_post(bool sky_fresh);
+}  // namespace
+
+// orig: (host) the Wii U prepare's EE reads (the frame's inputs, the colours, and with RAC1_WIIU_PREP_ALL the snapshots' pages, the
+// constants, the sky's textures): true when the whole first half is the worker's (its inputs taken), false for the main thread's
+// first half (only the inputs and the ties' / shrubs' colours taken). (2026-11-09) Made by the head's thread with RAC1_WIIU_EE_ON_HEAD
+bool wiiu_prepare_reads(bool sky_fresh) {
     Frame& F = g_frame;
-    F.active = false;
-    F.pending = false;
-    F.skips.clear();
-    F.skips_ready = false;
-    if (!active || !mrp_world_gx2_ready()) return;
-    const int id = world_level_id();
-    // (a level without its asset is not read again every frame: tried, and no world)
-    if (g_level.id != id || !g_level.tried) {
-        load_level(id);
-        g_rcols.all_dirty = true;
-    }
-    if (!g_level.loaded || !g_slevel.ok) return;
     const double t0 = now_ms();
     // (testing, RAC1_WIIU_PREP_TIME=1: the first half's parts, ms a call, every 120 calls)
     const bool part_time = part_time_on();
@@ -6650,10 +6698,59 @@ void mrp_world_wiiu_prepare(bool active) {
             for (int k = 0; k < 5; ++k) part_ms[k] = 0.0;
         }
         g_ms_head += now_ms() - t0;
+        return true;
+    }
+    return false;
+}
+
+void mrp_world_wiiu_prepare(bool active) {
+    mrp_world_wiiu_join();  // (the frame before's second half, if it was not drawn)
+    mrp_world_wiiu_tfrag_join();
+    vis_pending_apply();    // (the worker's last culling's marks: the game thread is joined)
+    if (g_pages.misses != 0) {  // (a run read outside the pages - zeros there -: noted again, eight times at most)
+        if (g_pages_renotes < 8) std::printf("[mrpw] the worker's culling read %u times outside its EE pages: noted again\n", g_pages.misses);
+        g_pages.misses = 0;
+        g_pages_renote = g_pages_renotes++ < 8;
+    }
+    g_sky_resolved_on = false;
+    const bool sky_fresh = g_sky_cap_fresh;  // (this host frame's capture only)
+    g_sky_cap_fresh = false;
+    g_sky_stream_fresh = false;
+    Frame& F = g_frame;
+    F.active = false;
+    F.pending = false;
+    F.skips.clear();
+    F.skips_ready = false;
+    if (!active || !mrp_world_gx2_ready()) return;
+    const int id = world_level_id();
+    // (a level without its asset is not read again every frame: tried, and no world)
+    if (g_level.id != id || !g_level.tried) {
+        load_level(id);
+        g_rcols.all_dirty = true;
+    }
+    if (!g_level.loaded || !g_slevel.ok) return;
+#if defined(__WIIU__)
+    if (ee_on_head_ready()) {  // ((2026-11-09) RAC1_WIIU_EE_ON_HEAD: the reads below made by the head's thread first, wiiu_ee_post)
+        wiiu_ee_post(sky_fresh);
+        return;
+    }
+#endif
+    if (wiiu_prepare_reads(sky_fresh)) {
         g_job_head = true;
         wiiu_prep_dispatch();
         return;
     }
+    const double t0 = now_ms();
+    const bool part_time = part_time_on();
+    double* const part_ms = g_part_ms;
+    int& part_n = g_part_n;
+    double tp = t0;
+    auto part = [&](int k) {
+        if (!part_time) return;
+        const double t = now_ms();
+        part_ms[k] += t - tp;
+        tp = t;
+    };
     g_job_head = false;
     static_frame_build(g_slevel, g_rcols, g_sframe, false);
     // ((2026-10-28) the instances drawn, for the skipped passes' relighting: overlay_entry.cpp world_relight relights those alone, as the
@@ -6929,9 +7026,18 @@ void tail_post() {
     w.job = true;
     w.cv.notify_all();
 }
+// (RAC1_WIIU_EE_ON_HEAD's state: wiiu_ee_post below)
+std::mutex g_ee_m;
+std::condition_variable g_ee_cv;
+bool g_ee_pending = false;   // (posted, not read yet)
+bool g_ee_on_head = false;   // (the next head job reads first: set by the main thread before head_post, under its lock)
+bool g_ee_sky_fresh = false;
+void wiiu_ee_run();
 void head_post() {
     const bool autom = head_core() == 3;
-    if (autom) {  // (the choice: hysteresis on the game thread's wait / idle, smoothed over ~4 frames)
+    // ((2026-11-09) with the prepare's EE reads on the head - RAC1_WIIU_EE_ON_HEAD - core 2 kept: on core 1, below the main thread, the reads
+    // waited for the mobys' prepare and the game's update started later - Kerwan 41.9 ms a frame, 39.1 on core 2)
+    if (autom && !g_ee_on_head) {  // (the choice: hysteresis on the game thread's wait / idle, smoothed over ~4 frames)
         const int was = g_head_at;
         if (g_head_at == 0 && g_gt_wait_ema > 2.0) g_head_at = 1;
         else if (g_head_at == 1 && g_gt_idle_ema > g_head_last_ms.load(std::memory_order_relaxed) + 2.0) g_head_at = 0;
@@ -6963,6 +7069,7 @@ void head_post() {
                 l.unlock();
                 const auto t0 = std::chrono::steady_clock::now();
                 __asm__ volatile("mtfsf 0xff, %0" : : "f"(g_prep_on_main_fpscr));
+                wiiu_ee_run();  // ((2026-11-09) RAC1_WIIU_EE_ON_HEAD: the prepare's EE reads first, when posted with them)
                 if (wiiu_prep_head()) tail_post();
                 g_head_last_ms.store(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count(), std::memory_order_relaxed);
                 l.lock();
@@ -6979,6 +7086,38 @@ void head_wait() {
     HeadHelper& h = g_head[g_head_at];
     std::unique_lock<std::mutex> lk(h.m);
     h.cv.wait(lk, [&h] { return h.done; });
+}
+
+// ((2026-11-09) RAC1_WIIU_EE_ON_HEAD, default 1) the prepare's EE reads (wiiu_prepare_reads: the inputs, the colours, the snapshots' pages,
+// the constants, the sky's textures - ~2.6 ms on Kerwan) made by the head's thread on core 2 before the first half, instead of by the main
+// thread before it posts the head: the main thread goes on to the chain's start and the mobys' prepare at once, the first half starts as
+// soon. Nothing may write EE memory meanwhile: the game's update waits for them (mrp_world_wiiu_wait_ee, orig_main.cpp), as for the chain's
+// copy. Only when the head's thread takes the first half on core 2 (RAC1_WIIU_HEAD_CORE 2, or auto while it picks core 2)
+bool ee_on_head_ready() {
+    static const bool on = std::getenv("RAC1_WIIU_EE_ON_HEAD") == nullptr || std::atoi(std::getenv("RAC1_WIIU_EE_ON_HEAD")) != 0;
+    return on && prep_all_on() && g_wiiu_world_async && prep_on_main_on() && prep_split_on() && head_core() >= 0 && head_core() != 1 &&
+           (head_core() != 3 || g_head_at == 0);
+}
+void wiiu_ee_post(bool sky_fresh) {
+    {
+        std::lock_guard<std::mutex> lk(g_ee_m);
+        g_ee_pending = true;
+    }
+    g_ee_sky_fresh = sky_fresh;
+    g_ee_on_head = true;
+    g_job_head = true;
+    wiiu_prep_dispatch();  // (head_post: ee_on_head_ready's conditions are its own)
+}
+void wiiu_ee_run() {
+    if (!g_ee_on_head) return;
+    g_ee_on_head = false;
+    const bool all = wiiu_prepare_reads(g_ee_sky_fresh);
+    (void)all;  // (true: prep_all_on is one of ee_on_head_ready's conditions)
+    {
+        std::lock_guard<std::mutex> lk(g_ee_m);
+        g_ee_pending = false;
+    }
+    g_ee_cv.notify_all();
 }
 
 void tfrag_kick_worker_if_needed() {
@@ -7272,6 +7411,12 @@ void mrp_world_wiiu_join() {
     PrepWorker& w = g_prep;
     std::unique_lock<std::mutex> lk(w.m);
     w.cv.wait(lk, [&w] { return !w.busy; });
+}
+
+// orig: (host) see mrp_world_renderer.h
+void mrp_world_wiiu_wait_ee() {
+    std::unique_lock<std::mutex> lk(g_ee_m);
+    g_ee_cv.wait(lk, [] { return !g_ee_pending; });
 }
 #endif
 
@@ -8155,6 +8300,10 @@ bool frame_view(FrameView& out) {
     out.tvs_block = &F.tvs_block;
     out.tvs_corners = &F.tvs_corners;
     out.tvs_index = &F.tvs_index;
+    out.tvs_geo = F.tvs_geo;
+    out.tvs_geo_corners = F.tvs_geo_corners;
+    out.tvs_geo_at_i = F.tvs_geo_at_i;
+    out.tvs_geo_nidx = F.tvs_geo_nidx;
     out.cpu_verts = &F.v;
     out.cpu_idx = &F.idx;
     out.sky_host = &F.sky_host;

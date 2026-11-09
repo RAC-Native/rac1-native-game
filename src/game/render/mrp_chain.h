@@ -114,6 +114,9 @@ struct MrpChainFrame {
 void mrp_chain_start(MrpChainInput&& in, bool async);
 // orig: (host) the reading waited for
 void mrp_chain_join();
+// orig: (host) ((2026-11-09) the Wii U: the chain's capture - its copy out of EE memory - made by the worker itself, RAC1_WIIU_CHAIN_CAPTURE_W)
+// the copy waited for: nothing may write EE memory (the game's update) before it; at once when there is none pending
+void mrp_chain_wait_captured();
 // orig: (host) the last chain read (after mrp_chain_join); cleared by mrp_chain_clear
 const MrpChainFrame& mrp_chain_frame();
 void mrp_chain_clear();

@@ -170,6 +170,10 @@ struct FrameView {
     // ((2026-10-31) RAC1_WIIU_TFRAG_IDX) not empty: `tvs_corners` the attribute words (a sent vertex once, or a form 3 triangle's corners)
     // and this one index per triangle corner into them - the ranges' first / count are the indices'
     const std::vector<uint32_t>* tvs_index = nullptr;
+    // ((2026-11-09) the Wii U, RAC1_WIIU_TVS_DIRECT) not null: the indexed form in GPU-readable memory (mrp_world_gx2_tvs_geo, flushed from
+    // the CPU's cache) - `tvs_geo_corners` attribute words, then `tvs_geo_nidx` indices from word `tvs_geo_at_i` -, tvs_corners / tvs_index empty
+    const uint32_t* tvs_geo = nullptr;
+    uint32_t tvs_geo_corners = 0, tvs_geo_at_i = 0, tvs_geo_nidx = 0;
 };
 // false: no frame built (the world not drawn this frame)
 bool frame_view(FrameView& out);
@@ -245,6 +249,11 @@ void mrp_world_wiiu_tfrag_join(double* out_ms = nullptr);
 // ((2026-10-30) mrp_world_gx2.cpp) the tfrags' vertex shader's pairs loaded (shaders/mrp_tfrag_vs_fast.gsh), RAC1_WIIU_TFRAG_VS on, and
 // nothing that needs the other shaders (the fast pixel shaders off, the shade debug, the tfrag debug): the frame's tfrags may take it
 bool mrp_world_gx2_tfrag_vs_ready();
+// ((2026-11-09) mrp_world_gx2.cpp, RAC1_WIIU_TVS_DIRECT) GPU-readable room for `words` u32 of the tfrags' vertex shader's indexed form,
+// one of four slots in turn (a slot's frame four prepares ago: the GPU done with it), null when off or not had; any thread (the prepare's
+// worker). _done: the words written, flushed from the CPU's cache
+uint32_t* mrp_world_gx2_tvs_geo(uint32_t words);
+void mrp_world_gx2_tvs_geo_done(const void* p, uint32_t bytes);
 }  // namespace rac1
 #endif
 

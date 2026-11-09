@@ -3380,6 +3380,10 @@ int main(int argc, char** argv) {
         // (the pads' devices read here, on the main thread, for each game frame the game thread runs: GLFW's input is the main thread's)
         if (overlap && !headless) pad_presample(window, steps);
         auto game_frames = [&]() {
+#if defined(__WIIU__)
+            mrp_chain_wait_captured();  // ((2026-11-09) the workers' EE reads done before the update writes EE memory: at once, normally)
+            rac1::mrp_world_wiiu_wait_ee();
+#endif
             rac1::snd989_rand_use_game();  // (the game's sound's random numbers: the game's sequence on whatever thread runs it)
             int prof_game = rac1::prof::begin(rac1::prof::kGameFrames);
             for (int k = 0; k < steps && running; ++k) {
@@ -3935,6 +3939,10 @@ int main(int argc, char** argv) {
                     const auto tm1 = std::chrono::steady_clock::now();
                     rac1_wiiu_time(2, std::chrono::duration<double, std::milli>(tm1 - tm0).count());
                     if (mrp_moby_active()) mrp_moby_prepare(&mgv);
+                    // ((2026-11-09) the EE reads the workers make on their cores meanwhile - the chain's copy, the world's prepare's
+                    // reads -: done before anything here or the game's update can write EE memory)
+                    mrp_chain_wait_captured();
+                    rac1::mrp_world_wiiu_wait_ee();
                     rac1::ctl::mark(rac1::ctl::kPrepEnd);
                     rac1_wiiu_time(1, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - tm1).count());
                 }

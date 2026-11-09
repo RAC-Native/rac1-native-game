@@ -1094,6 +1094,31 @@ bool tvx_on();
 // orig: (host) see src/game/render/mrp_world_backend.inc
 bool mrp_world_gx2_tfrag_vs_ready() { return g_ready && g_tready && tvx_on() && g_gx2_perf.fast && g_render_shade == 0 && g_tdebug == 0; }
 
+// orig: (host) see mrp_world_backend.inc. Four slots in turn: the prepare's worker fills one a frame while the GPU may still draw the two
+// frames before (RAC1_WIIU_FRAMES_IN_FLIGHT 2), so a slot is written again four prepares after it was drawn from
+namespace {
+struct TvsSlot {
+    uint32_t* p = nullptr;
+    uint32_t words = 0;
+};
+TvsSlot g_tvs_slots[4];
+uint32_t g_tvs_next = 0;
+}  // namespace
+uint32_t* mrp_world_gx2_tvs_geo(uint32_t words) {
+    static const bool on = std::getenv("RAC1_WIIU_TVS_DIRECT") == nullptr || std::atoi(std::getenv("RAC1_WIIU_TVS_DIRECT")) != 0;
+    if (!on || words == 0) return nullptr;
+    TvsSlot& t = g_tvs_slots[g_tvs_next++ & 3u];
+    if (t.words < words) {  // (made larger: its old room's frame four prepares ago)
+        void* old = t.p;
+        mem_free(old);
+        const uint32_t w = std::max<uint32_t>(words + words / 4u, 64u * 1024u);
+        t.p = static_cast<uint32_t*>(mem_alloc(4u * w, GX2_VERTEX_BUFFER_ALIGNMENT));
+        t.words = t.p != nullptr ? w : 0u;
+    }
+    return t.p;
+}
+void mrp_world_gx2_tvs_geo_done(const void* p, uint32_t bytes) { DCFlushRange(const_cast<void*>(p), bytes); }
+
 // orig: (host) see mrp_world_gx2.h
 bool g_wiiu_sky = false;
 
@@ -2255,7 +2280,7 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
     bool tfrag = g_tready && tstage >= 2 && !tverts.empty() && !tidx.empty();
     // ((2026-10-30) RAC1_WIIU_TFRAG_VS) the frame's tfrags made by the vertex shader: the level's tables and colours brought up to date
     // (tvx_sync), the corners into the geometry ring, the block into the blocks' ring - by the frame's first call
-    const bool tvs = g_tready && tstage >= 2 && F.tvs && F.tvs_corners != nullptr && F.tvs_block != nullptr && !F.tvs_corners->empty();
+    const bool tvs = g_tready && tstage >= 2 && F.tvs && F.tvs_corners != nullptr && F.tvs_block != nullptr && (F.tvs_geo != nullptr || !F.tvs_corners->empty());
     const uint32_t tvs_bytes = tvs ? static_cast<uint32_t>(F.tvs_block->size() * 4) : 0u;
     auto tvs_block = [&] {
         g_tcache.tvs_blk = block_of(F.tvs_block->data(), tvs_bytes, (tvs_bytes + 255u) & ~255u);
@@ -2267,6 +2292,23 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
             g_tcache = TfragCache{};
             g_tcache.serial = F.serial;
             g_tcache.tvs = true;
+            if (F.tvs_geo != nullptr) {  // ((2026-11-09) RAC1_WIIU_TVS_DIRECT: written where the GPU reads them, flushed by their worker)
+                if (tvx_sync()) {
+                    auto* p = const_cast<uint32_t*>(F.tvs_geo);
+                    GX2Invalidate(GX2_INVALIDATE_MODE_CPU_ATTRIBUTE_BUFFER, p, 4u * (F.tvs_geo_at_i + F.tvs_geo_nidx));
+                    g_tcache.vb = p;
+                    g_tcache.nverts = F.tvs_geo_corners;
+                    g_tcache.ib = p + F.tvs_geo_at_i;
+                    g_tcache.nidx = F.tvs_geo_nidx;
+                }
+                g_tcache.gwraps = g_gring_wraps;
+                ++g_tvx.frames;
+                g_tvx.one_frames += F.tvs_block->size() >= 2 && (*F.tvs_block)[1] == 1 && g_tvx.ok[2] ? 1 : 0;
+                g_tvx.corners += F.tvs_geo_nidx;
+                g_tvx.verts += F.tvs_geo_corners;
+                g_tvx.block_bytes += tvs_bytes;
+                g_tvx.ms += now_ms_gx2() - t0v;
+            } else {
             const auto& cn = *F.tvs_corners;
             // ((2026-10-31) RAC1_WIIU_TFRAG_IDX) the indexed form: the attribute words, then the indices (big-endian u32, as the CPU route's)
             const std::vector<uint32_t>* ix = F.tvs_index != nullptr && !F.tvs_index->empty() ? F.tvs_index : nullptr;
@@ -2291,6 +2333,7 @@ void mrp_world_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::
             g_tvx.verts += cn.size();
             g_tvx.block_bytes += tvs_bytes;
             g_tvx.ms += now_ms_gx2() - t0v;
+            }
         }
         if (g_tcache.tvs_blk == nullptr || g_tcache.wraps != g_ring_wraps) {
             tvs_block();
