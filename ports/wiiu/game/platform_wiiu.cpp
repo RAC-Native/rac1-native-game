@@ -219,6 +219,24 @@ std::FILE* open_file(const std::filesystem::path& path, const char* mode) {
     return f;
 }
 
+void close_file(std::FILE* f) {
+    Handle extra[3];
+    int n = 0;
+    {
+        std::scoped_lock lock(g_files_m);
+        if (auto it = g_files.find(f); it != g_files.end()) {
+            {
+                std::scoped_lock hl(it->second.m);
+                for (int i = 1; i < it->second.n; ++i) extra[n++] = it->second.h[i];
+            }
+            g_files.erase(it);
+        }
+    }
+    std::scoped_lock fs(g_fs_m);
+    for (int i = 0; i < n; ++i) std::fclose(extra[i].f);
+    std::fclose(f);
+}
+
 // (no pread here: a seek and a read under the file's lock)
 std::int64_t read_at(std::FILE* f, std::uint64_t offset, void* dst, std::size_t n) {
     static const double slow_ms = std::getenv("RAC1_WIIU_SLOW_READ") != nullptr ? std::atof(std::getenv("RAC1_WIIU_SLOW_READ")) : -1.0;

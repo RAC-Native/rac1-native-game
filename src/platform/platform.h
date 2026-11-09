@@ -78,6 +78,14 @@ bool read_kept(const std::filesystem::path& path, std::uint64_t offset, void* ds
 inline void keep_in_memory(int, const std::vector<std::filesystem::path>&) {}
 inline bool read_kept(const std::filesystem::path&, std::uint64_t, void*, std::size_t) { return false; }
 #endif
+// A file open_file opened for reading, closed: on the Wii U with the handles read_at opened beside it (left open, each closed file
+// kept up to three handles of the card's few: past their limit the opens failed - a level's MRP assets missing after a few
+// levels). Elsewhere fclose.
+#if defined(__WIIU__)
+void close_file(std::FILE* f);
+#else
+inline void close_file(std::FILE* f) { std::fclose(f); }
+#endif
 // A hint that these bytes are read soon (nothing where the system has no such hint).
 void will_need(std::FILE* f, std::uint64_t offset, std::uint64_t bytes);
 // The whole file mapped read-only into memory. False when it cannot be opened, is empty, or cannot be mapped.

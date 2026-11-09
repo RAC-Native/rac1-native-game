@@ -200,7 +200,7 @@ std::shared_ptr<std::FILE> files_handle(DiscFiles& d, uint32_t i) {
     }
     std::error_code ec;
     if (raw == nullptr || std::filesystem::file_size(d.paths[i], ec) != d.sizes[i]) {
-        if (raw != nullptr) std::fclose(raw);
+        if (raw != nullptr) platform::close_file(raw);
         static std::vector<bool> said;
         said.resize(d.paths.size());
         if (!said[i]) {
@@ -210,7 +210,7 @@ std::shared_ptr<std::FILE> files_handle(DiscFiles& d, uint32_t i) {
         }
         return nullptr;
     }
-    d.handles[i] = std::shared_ptr<std::FILE>(raw, [](std::FILE* h) { std::fclose(h); });
+    d.handles[i] = std::shared_ptr<std::FILE>(raw, [](std::FILE* h) { platform::close_file(h); });
     d.opened.push_back(i);
     if (d.opened.size() > kOpenFiles) {
         d.handles[d.opened.front()].reset();  // (closed once no read still holds it)
