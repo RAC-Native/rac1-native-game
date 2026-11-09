@@ -7,6 +7,7 @@
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/lib/snd989.h>
+#include <game/enhance/bug_fixes.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/cutscene.h>
@@ -356,6 +357,7 @@ void screen_update() {
                             }
                             sw(MODE, 0);
                             hero_place(0x00141050, 0x00141060, 0, 1);
+                            bug_fixes_race_quit();  // enhancement: Bug Fixes, fix 1 (the planet's music back on Rilgar)
                         } else {
                             sw(MODE, 0);
                             if (!(lh(P + 0x89a) < 3)) {

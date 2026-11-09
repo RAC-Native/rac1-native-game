@@ -33,6 +33,7 @@
 #include <game/enhance/graphics.h>
 
 #include <game/enhance/advanced.h>
+#include <game/enhance/bug_fixes.h>
 #include <game/enhance/controls.h>
 #include <game/enhance/language.h>
 #include <game/enhance/mods_menu.h>
@@ -86,7 +87,7 @@ constexpr uint32_t POP_TITLE = GFX + 0x690;
 constexpr uint32_t POP_LIST = GFX + 0x6e0;
 constexpr uint32_t POP_LABEL = GFX + 0x730;
 constexpr uint32_t POP_PICTURE = GFX + 0x780;
-constexpr uint32_t MAIN_ENTRIES = GFX + 0x800;  // the main menu's Options entries, ours added (..0x890)
+constexpr uint32_t MAIN_ENTRIES = GFX + 0x800;  // the main menu's Options entries, ours added (..0x89c: six of the game's, six of ours, the end)
 constexpr uint32_t DPAGE = GFX + 0x900;       // the Display page (a copy of Camera's), as the Graphics page's above
 constexpr uint32_t DTITLE = GFX + 0x990;
 constexpr uint32_t DROWS_WIDGET = GFX + 0x9e0;
@@ -1277,7 +1278,7 @@ void graphics_menu_back(uint32_t cur, uint32_t to, uint32_t mobys) {
         moby_set_anim(mx, exit_menu_set(), static_cast<int32_t>(lbu(seqx + 0x10)) - 1);
         swc1(mx + 0x58, -1.0f);
     }
-    if (cur != PAGE && cur != DPAGE && cur != POP_PAGE && cur != POP2_PAGE && cur != advanced_page() && cur != controls_page() && cur != language_page() && cur != mods_page() && cur != update_notice_page() && cur != updates_page() &&
+    if (cur != PAGE && cur != DPAGE && cur != POP_PAGE && cur != POP2_PAGE && cur != advanced_page() && cur != controls_page() && cur != language_page() && cur != mods_page() && cur != bug_fixes_page() && cur != update_notice_page() && cur != updates_page() &&
         cur != exit_menu_page()) return;
     boxes_hold(to, mobys);
 }
@@ -1483,7 +1484,7 @@ void graphics_main_options_entries(uint32_t w) {
     language_main_entries(MAIN_ENTRIES, n);  // (the game's Language entry: our Language page)
     uint32_t d = MAIN_ENTRIES + n * 0xc;
     const uint32_t gp = PAGE, ap = advanced_main_page();  // (Advanced: the global rows, when there are any)
-    const struct { int32_t text; uint32_t page; } ours[] = {{TEXT_FIRST + T_DISPLAY_PAGE, DPAGE}, {TEXT_FIRST + T_GRAPHICS, gp}, {controls_title_text(), controls_page()}, {advanced_title_text(), ap}, {mods_title_text(), mods_page()}};
+    const struct { int32_t text; uint32_t page; } ours[] = {{TEXT_FIRST + T_DISPLAY_PAGE, DPAGE}, {TEXT_FIRST + T_GRAPHICS, gp}, {controls_title_text(), controls_page()}, {advanced_title_text(), ap}, {bug_fixes_title_text(), bug_fixes_page()}, {mods_title_text(), mods_page()}};
     for (const auto& o : ours) {
         if (o.page == 0) continue;
         sh(d, static_cast<uint32_t>(o.text));
