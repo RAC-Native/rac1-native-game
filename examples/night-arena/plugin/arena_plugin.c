@@ -356,6 +356,169 @@ static void toast(const char* text) {
     s.toast_t = 180;
 }
 
+/* ---- the texts in the game's language (its text language 0x15ed88: 0 English, 1 Japanese, 2 French, 3 German,
+   4 Spanish, 5 Italian; Japanese gets the English ones). The plugin's texts are written in Italian (the challenges'
+   names are their keys in the save too); tr() gives one in the game's language, the Italian one when the table has
+   none. Plain ASCII, as the HUD's font takes it (no accents: e', ae / oe / ue). A row: Italian, English, French,
+   German, Spanish, the same % conversions in each (texts_check logs a row that has not). The weapons keep their
+   names (Gadgetron's). ---- */
+#define GAME_LANGUAGE 0x0015ed88u
+enum { L_IT, L_EN, L_FR, L_DE, L_ES, N_LANGS };
+
+static const char* const TEXTS[][N_LANGS] = {
+    /* the challenges, their lines */
+    {"Primo sangue", "First Blood", "Premier sang", "Erstes Blut", "Primera sangre"},
+    {"5 ondate di robot", "5 waves of robots", "5 vagues de robots", "5 Wellen Roboter", "5 oleadas de robots"},
+    {"Manichini", "Dummies", "Mannequins", "Dummys", "Maniquies"},
+    {"i robot Gadgetron armati", "Gadgetron's armed robots", "les robots Gadgetron armes", "Gadgetrons bewaffnete Roboter",
+     "los robots Gadgetron armados"},
+    {"Sbarco", "Landing", "Debarquement", "Landung", "Desembarco"},
+    {"navi e soldati col jetpack", "dropships and jetpack troopers", "vaisseaux et soldats a jetpack",
+     "Landungsschiffe und Jetpack-Soldaten", "naves y soldados con jetpack"},
+    {"Assedio", "Siege", "Siege", "Belagerung", "Asedio"},
+    {"5 ondate, grate impazzite", "5 waves, the vents gone wild", "5 vagues, grilles dechainees", "5 Wellen, wilde Gitter",
+     "5 oleadas, rejillas enloquecidas"},
+    {"Pioggia di fuoco", "Rain of Fire", "Pluie de feu", "Feuerregen", "Lluvia de fuego"},
+    {"5 ondate sotto le bombe", "5 waves under the bombs", "5 vagues sous les bombes", "5 Wellen unter Bomben",
+     "5 oleadas bajo las bombas"},
+    {"Solo chiave", "Wrench Only", "Cle seule", "Nur Schluessel", "Solo llave"},
+    {"5 ondate, solo la chiave inglese", "5 waves, the wrench only", "5 vagues, la cle seulement",
+     "5 Wellen, nur der Schraubenschluessel", "5 oleadas, solo la llave inglesa"},
+    {"Roulette", "Roulette", "Roulette", "Roulette", "Ruleta"},
+    {"un'arma a caso a ogni ondata", "a random weapon each wave", "une arme au hasard a chaque vague",
+     "jede Welle eine Zufallswaffe", "un arma al azar en cada oleada"},
+    {"Contro il tempo", "Against the Clock", "Contre la montre", "Gegen die Zeit", "Contrarreloj"},
+    {"5 ondate in 3 minuti", "5 waves in 3 minutes", "5 vagues en 3 minutes", "5 Wellen in 3 Minuten", "5 oleadas en 3 minutos"},
+    {"Intoccabile", "Untouchable", "Intouchable", "Unberuehrbar", "Intocable"},
+    {"3 ondate senza un graffio", "3 waves without a scratch", "3 vagues sans une egratignure", "3 Wellen ohne einen Kratzer",
+     "3 oleadas sin un rasguno"},
+    {"Caos", "Chaos", "Chaos", "Chaos", "Caos"},
+    {"4 minuti, l'arma cambia ogni 20 s", "4 minutes, a new weapon every 20 s", "4 minutes, l'arme change toutes les 20 s",
+     "4 Minuten, alle 20 s eine neue Waffe", "4 minutos, el arma cambia cada 20 s"},
+    {"Ultimo in piedi", "Last One Standing", "Le dernier debout", "Der Letzte steht", "El ultimo en pie"},
+    {"resisti 2 minuti e mezzo", "hold out for two and a half minutes", "tiens deux minutes et demie",
+     "halte zweieinhalb Minuten durch", "resiste dos minutos y medio"},
+    {"Inferno", "Inferno", "Enfer", "Inferno", "Infierno"},
+    {"8 ondate, bombe, grate, cannoniera", "8 waves, bombs, vents, a gunship", "8 vagues, bombes, grilles, canonniere",
+     "8 Wellen, Bomben, Gitter, Kanonenboot", "8 oleadas, bombas, rejillas, canonera"},
+    {"Campionato", "Championship", "Championnat", "Meisterschaft", "Campeonato"},
+    {"15 round, le modalita' a caso", "15 rounds, the modes at random", "15 manches, les modes au hasard",
+     "15 Runden, die Modi per Zufall", "15 rondas, los modos al azar"},
+    {"Test Grind Scarponi", "Grindboots Test", "Test des Bottes de glisse", "Grindstiefel-Test", "Prueba de Botas de grind"},
+    {"prova: giu' per la rotaia fino all'arena", "a test: down the rail into the arena", "un essai: le rail jusqu'a l'arene",
+     "ein Test: die Schiene hinab in die Arena", "una prueba: baja por el rail hasta la arena"},
+    {"Grind Scarponi: Discesa", "Grindboots: Descent", "Bottes de glisse: Descente", "Grindstiefel: Abfahrt",
+     "Botas de grind: Descenso"},
+    {"3 corsie, ostacoli e droni, poi l'ultima ondata", "3 lanes, obstacles and drones, then a last wave",
+     "3 voies, obstacles et drones, puis une derniere vague", "3 Spuren, Hindernisse und Drohnen, dann eine letzte Welle",
+     "3 carriles, obstaculos y drones, y una ultima oleada"},
+    {"Impossibile", "Impossible", "Impossible", "Unmoeglich", "Imposible"},
+    {"il campionato, 50 round", "the championship, 50 rounds", "le championnat, 50 manches", "die Meisterschaft, 50 Runden",
+     "el campeonato, 50 rondas"},
+    /* the championships' modes (the ones not above) */
+    {"Libero", "Free", "Libre", "Frei", "Libre"},
+    {"Grate impazzite", "Wild Vents", "Grilles dechainees", "Wilde Gitter", "Rejillas locas"},
+    /* the menu */
+    {"ARENA - SFIDE", "ARENA - CHALLENGES", "ARENE - DEFIS", "ARENA - HERAUSFORDERUNGEN", "ARENA - DESAFIOS"},
+    {"Servono i Grind Scarponi", "You need the Grindboots", "Il faut les Bottes de glisse", "Du brauchst die Grindstiefel",
+     "Necesitas las Botas de grind"},
+    {"Premio %d bulloni   Record %u:%02u", "Prize %d bolts   Record %u:%02u", "Prix %d boulons   Record %u:%02u",
+     "Preis %d Bolzen   Rekord %u:%02u", "Premio %d tornillos   Record %u:%02u"},
+    {"Premio %d bulloni", "Prize %d bolts", "Prix %d boulons", "Preis %d Bolzen", "Premio %d tornillos"},
+    {"Croce: inizia      Cerchio: esci", "Cross: start      Circle: leave", "Croix: commencer      Rond: quitter",
+     "Kreuz: starten      Kreis: verlassen", "Equis: empezar      Circulo: salir"},
+    {"Quadrato: rivenditore", "Square: vendor", "Carre: vendeur", "Quadrat: Haendler", "Cuadrado: vendedor"},
+    {"Triangolo: menu arena", "Triangle: arena menu", "Triangle: menu de l'arene", "Dreieck: Arena-Menue",
+     "Triangulo: menu de la arena"},
+    {"Il rivenditore non si apre ora", "The vendor won't open now", "Le vendeur ne s'ouvre pas maintenant",
+     "Der Haendler oeffnet jetzt nicht", "El vendedor no se abre ahora"},
+    {"Servono almeno 2 armi", "You need at least 2 weapons", "Il faut au moins 2 armes", "Du brauchst mindestens 2 Waffen",
+     "Necesitas al menos 2 armas"},
+    /* a challenge running */
+    {"Si comincia tra %d", "Starting in %d", "Debut dans %d", "Start in %d", "Empieza en %d"},
+    {"Prossimo: %s", "Next: %s", "Ensuite: %s", "Als Naechstes: %s", "Siguiente: %s"},
+    {"Round superato!", "Round cleared!", "Manche reussie!", "Runde geschafft!", "Ronda superada!"},
+    {"Ondata superata!", "Wave cleared!", "Vague repoussee!", "Welle geschafft!", "Oleada superada!"},
+    {"Arma: %s", "Weapon: %s", "Arme: %s", "Waffe: %s", "Arma: %s"},
+    {"chiave inglese", "Wrench", "Cle", "Schraubenschluessel", "Llave"},
+    {"Nessuna arma: solo la chiave", "No weapons: the wrench only", "Aucune arme: la cle seulement",
+     "Keine Waffen: nur der Schluessel", "Sin armas: solo la llave"},
+    {"Resisti %d:%02d   Abbattuti %d", "Hold out %d:%02d   Downed %d", "Tiens %d:%02d   Abattus %d",
+     "Durchhalten %d:%02d   Erledigt %d", "Resiste %d:%02d   Abatidos %d"},
+    {"Restano %d:%02d", "Time left %d:%02d", "Reste %d:%02d", "Noch %d:%02d", "Quedan %d:%02d"},
+    {"Nemici %d   %d:%02d", "Enemies %d   %d:%02d", "Ennemis %d   %d:%02d", "Gegner %d   %d:%02d", "Enemigos %d   %d:%02d"},
+    {"Nemici %d   restano %d:%02d", "Enemies %d   left %d:%02d", "Ennemis %d   reste %d:%02d", "Gegner %d   noch %d:%02d",
+     "Enemigos %d   quedan %d:%02d"},
+    {"Droni %d/%d   Cadute %d", "Drones %d/%d   Falls %d", "Drones %d/%d   Chutes %d", "Drohnen %d/%d   Stuerze %d",
+     "Drones %d/%d   Caidas %d"},
+    {"Cadute: %d", "Falls: %d", "Chutes: %d", "Stuerze: %d", "Caidas: %d"},
+    /* the rails */
+    {"Nessuna rotaia (rails.txt)", "No rails (rails.txt)", "Aucun rail (rails.txt)", "Keine Schienen (rails.txt)",
+     "Sin railes (rails.txt)"},
+    {"Salta sulla rotaia!", "Jump on the rail!", "Saute sur le rail!", "Spring auf die Schiene!", "Salta al rail!"},
+    {"La corsia finisce! Cambia corsia", "The lane ends! Switch lanes", "La voie se termine! Change de voie",
+     "Die Spur endet! Wechsle die Spur", "El carril se acaba! Cambia de carril"},
+    {"Atterrato! Ora l'ultima ondata", "Landed! Now the last wave", "Atterri! Place a la derniere vague",
+     "Gelandet! Jetzt die letzte Welle", "Aterrizado! Ahora la ultima oleada"},
+    {"Caduto! Di nuovo dalla stazione", "You fell! Back to the station", "Tombe! Retour a la station",
+     "Gestuerzt! Zurueck zur Station", "Caiste! De vuelta a la estacion"},
+    /* the result */
+    {"SFIDA COMPLETATA!", "CHALLENGE COMPLETE!", "DEFI REUSSI!", "HERAUSFORDERUNG GESCHAFFT!", "DESAFIO COMPLETADO!"},
+    {"SFIDA FALLITA", "CHALLENGE FAILED", "DEFI RATE", "HERAUSFORDERUNG VERLOREN", "DESAFIO FALLIDO"},
+    {"+%d bulloni   %d abbattuti", "+%d bolts   %d downed", "+%d boulons   %d abattus", "+%d Bolzen   %d erledigt",
+     "+%d tornillos   %d abatidos"},
+    {"+%d bulloni   %d:%02d", "+%d bolts   %d:%02d", "+%d boulons   %d:%02d", "+%d Bolzen   %d:%02d", "+%d tornillos   %d:%02d"},
+    {"Ti hanno colpito", "You were hit", "Tu as ete touche", "Du wurdest getroffen", "Te han dado"},
+    {"Tempo scaduto", "Time's up", "Temps ecoule", "Zeit abgelaufen", "Se acabo el tiempo"},
+    {"Ratchet e' caduto", "Ratchet fell", "Ratchet est tombe", "Ratchet ist gefallen", "Ratchet ha caido"},
+    {"Sbloccata: %s", "Unlocked: %s", "Debloque: %s", "Freigeschaltet: %s", "Desbloqueado: %s"},
+};
+#define N_TEXTS ((int)(sizeof TEXTS / sizeof TEXTS[0]))
+
+/* the game's text language as a column of TEXTS */
+static int lang_now(void) {
+    switch (rac1_lw(api, GAME_LANGUAGE)) {
+    case 2: return L_FR;
+    case 3: return L_DE;
+    case 4: return L_ES;
+    case 5: return L_IT;
+    default: return L_EN;
+    }
+}
+
+/* an Italian text in the game's language */
+static const char* tr(const char* it) {
+    const int l = lang_now();
+    if (l == L_IT) return it;
+    for (int i = 0; i < N_TEXTS; ++i)
+        if (strcmp(TEXTS[i][L_IT], it) == 0) return TEXTS[i][l];
+    return it;
+}
+
+/* (at the start) a row whose languages' % conversions differ is logged: printf would read the wrong arguments */
+static void texts_check(void) {
+    for (int i = 0; i < N_TEXTS; ++i) {
+        char want[16] = "", got[16];
+        for (int l = 0; l < N_LANGS; ++l) {
+            int n = 0;
+            for (const char* c = TEXTS[i][l]; *c && n < 15; ++c) {
+                if (*c != '%') continue;
+                ++c;
+                if (*c == '%') continue;
+                while (*c && strchr("0123456789.-+ #", *c)) ++c;
+                if (*c) got[n++] = *c;
+            }
+            got[n] = 0;
+            if (l == L_IT) snprintf(want, sizeof want, "%s", got);
+            else if (strcmp(want, got) != 0) {
+                char msg[160];
+                snprintf(msg, sizeof msg, "texts: \"%s\" has other conversions in language %d", TEXTS[i][L_IT], l);
+                api->log(msg);
+            }
+        }
+    }
+}
+
 static void pos_of(uint32_t moby, float out[3]) {
     for (int i = 0; i < 3; ++i) out[i] = rac1_lwf(api, moby + 0x10 + 4 * (uint32_t)i);
 }
@@ -818,8 +981,8 @@ static void challenge_end(int won, const char* why) {
     const rules none = {W_ANY, 0, 0, 0};
     rules_set(none);
     s.won = won;
-    snprintf(s.why, sizeof s.why, "%s", won ? "" : !strcmp(why, "colpito") ? "Ti hanno colpito" : !strcmp(why, "tempo scaduto") ? "Tempo scaduto"
-                                                 : !strcmp(why, "Ratchet e' caduto") ? "Ratchet e' caduto" : "");
+    snprintf(s.why, sizeof s.why, "%s", won ? "" : !strcmp(why, "colpito") ? tr("Ti hanno colpito") : !strcmp(why, "tempo scaduto") ? tr("Tempo scaduto")
+                                                 : !strcmp(why, "Ratchet e' caduto") ? tr("Ratchet e' caduto") : "");
     s.mode = RESULT;
     s.t = 0;
     if (won) {
@@ -833,7 +996,7 @@ static void challenge_end(int won, const char* why) {
         play(s.snd_win);
         if (locked >= 0 && unlocked(locked)) {
             char t[64];
-            snprintf(t, sizeof t, "Sbloccata: %s", CHALLENGES[locked].name);
+            snprintf(t, sizeof t, tr("Sbloccata: %s"), tr(CHALLENGES[locked].name));
             toast(t);
         }
     } else {
@@ -847,7 +1010,7 @@ static void challenge_end(int won, const char* why) {
 /* ---- the weapons (Roulette, Caos) ---- */
 
 static const char* weapon_name(int32_t item) {
-    if (item == WRENCH) return "chiave inglese";
+    if (item == WRENCH) return tr("chiave inglese");
     for (int i = 0; i < N_WEAPONS; ++i)
         if (WEAPONS[i].item == item && WEAPONS[i].name) return WEAPONS[i].name;
     return "?";
@@ -873,7 +1036,7 @@ static void weapon_pick(void) {
         static const int32_t wrench[1] = {WRENCH};
         api->weapon_allow(wrench, 1);
         s.wpn = WRENCH;
-        toast("Nessuna arma: solo la chiave");
+        toast(tr("Nessuna arma: solo la chiave"));
         return;
     }
     int i = (int)(rnd() * (float)n) % n;
@@ -883,7 +1046,7 @@ static void weapon_pick(void) {
     api->ammo_fill(s.wpn);
     s.wpn_ask = 1;
     char msg[64];
-    snprintf(msg, sizeof msg, "Arma: %s", weapon_name(s.wpn));
+    snprintf(msg, sizeof msg, tr("Arma: %s"), weapon_name(s.wpn));
     toast(msg);
     snprintf(msg, sizeof msg, "weapons: %s (item 0x%x) of %d", weapon_name(s.wpn), (unsigned)s.wpn, n);
     api->log(msg);
@@ -1600,7 +1763,7 @@ static void rail_begin(void) {
         if (i >= 0) rails.set[rails.nset++] = i;
     }
     if (rails.nset == 0) {
-        toast("Nessuna rotaia (rails.txt)");
+        toast(tr("Nessuna rotaia (rails.txt)"));
         return;
     }
     for (int j = 0; j < rails.nset; ++j) rail_show(rails.set[j], 1);
@@ -1617,7 +1780,7 @@ static void rail_go(void) {
         return;
     }
     rails.phase = 1;
-    toast("Salta sulla rotaia!");
+    toast(tr("Salta sulla rotaia!"));
 }
 
 /* the rails and their models gone (and the obstacles) */
@@ -1658,7 +1821,7 @@ static void rail_update(const float h[3]) {
             for (int k = n > 14 ? n - 14 : 0; k < n; ++k)
                 if (dist3(h, rails.r[i].pt[k]) < 1.2f) {
                     rails.warned |= 1 << j;
-                    toast("La corsia finisce! Cambia corsia");
+                    toast(tr("La corsia finisce! Cambia corsia"));
                     break;
                 }
         }
@@ -1666,7 +1829,7 @@ static void rail_update(const float h[3]) {
         if (c->wave[0].count > 0) {  /* (down in the arena: the last wave) */
             rails_away();
             rails.phase = 2;
-            toast("Atterrato! Ora l'ultima ondata");
+            toast(tr("Atterrato! Ora l'ultima ondata"));
             wave_start();
         } else {
             challenge_end(1, NULL);
@@ -1678,7 +1841,7 @@ static void rail_update(const float h[3]) {
     if (s.placed == 0 && (h[2] < nav.floor_z - 1.2f || (outside && h[2] < nav.floor_z + 5.0f))) {
         ++rails.falls;
         rail_to_start();
-        toast("Caduto! Di nuovo dalla stazione");
+        toast(tr("Caduto! Di nuovo dalla stazione"));
     }
     if (rails.ride >= c->time * 60) challenge_end(0, "tempo scaduto");
 }
@@ -1764,7 +1927,7 @@ static void menu_lines(void) {
     hud_panel(x, top, w, 3, BAR, C);
     hud_panel(x + 16, top + 38, w - 32, 1, RULE, C);
     hud_panel(x + 16, info_y - 7, w - 32, 1, RULE, C);
-    hud_text_at(256, top + 11, YELLOW, 1.5f, C, 1, "ARENA - SFIDE");
+    hud_text_at(256, top + 11, YELLOW, 1.5f, C, 1, "%s", tr("ARENA - SFIDE"));
     hud_maxw(w - 32);
     for (int r = 0; r < rows; ++r) {
         const int i = list[s.scroll + r], y = list_y + step * r, chosen = s.scroll + r == s.sel;
@@ -1773,7 +1936,7 @@ static void menu_lines(void) {
             hud_panel(x + 8, y - 3, 3, step - 2, BAR, C);
         }
         hud_panel(x + 20, y + 4, 7, 7, (s.done >> i) & 1 ? GREEN : BOX_EMPTY, C);
-        hud_text_at(x + 36, y, CHALLENGES[i].kind == RAIL && !has_boots() ? GREY : chosen ? WHITE : CYAN, 1.1f, C, 0, "%s", CHALLENGES[i].name);
+        hud_text_at(x + 36, y, CHALLENGES[i].kind == RAIL && !has_boots() ? GREY : chosen ? WHITE : CYAN, 1.1f, C, 0, "%s", tr(CHALLENGES[i].name));
         hud_maxw(w - 60);
     }
     if (n > MENU_ROWS) {  /* the scroll bar: its track, the part shown */
@@ -1784,18 +1947,18 @@ static void menu_lines(void) {
     const int ch = list[s.sel];
     const challenge_def* c = &CHALLENGES[ch];
     if (s.toast_t > 0) hud_text_at(256, info_y, YELLOW, 1.05f, C, 1, "%s", s.toast);
-    else if (c->kind == RAIL && !has_boots()) hud_text_at(256, info_y, GREY, 1.05f, C, 1, "Servono i Grind Scarponi");
-    else hud_text_at(256, info_y, WHITE, 1.05f, C, 1, "%s", c->text);
+    else if (c->kind == RAIL && !has_boots()) hud_text_at(256, info_y, GREY, 1.05f, C, 1, "%s", tr("Servono i Grind Scarponi"));
+    else hud_text_at(256, info_y, WHITE, 1.05f, C, 1, "%s", tr(c->text));
     hud_maxw(w - 32);
     if (s.best[ch])
-        hud_text_at(256, info_y + 19, YELLOW, 1.0f, C, 1, "Premio %d bulloni   Record %u:%02u", c->reward, (unsigned)(s.best[ch] / 3600),
+        hud_text_at(256, info_y + 19, YELLOW, 1.0f, C, 1, tr("Premio %d bulloni   Record %u:%02u"), c->reward, (unsigned)(s.best[ch] / 3600),
                     (unsigned)(s.best[ch] / 60 % 60));
     else
-        hud_text_at(256, info_y + 19, YELLOW, 1.0f, C, 1, "Premio %d bulloni", c->reward);
+        hud_text_at(256, info_y + 19, YELLOW, 1.0f, C, 1, tr("Premio %d bulloni"), c->reward);
     hud_maxw(w - 32);
-    hud_text_at(256, info_y + 46, GREY, 0.95f, C, 1, "Croce: inizia      Cerchio: esci");
+    hud_text_at(256, info_y + 46, GREY, 0.95f, C, 1, "%s", tr("Croce: inizia      Cerchio: esci"));
     hud_maxw(w - 32);
-    hud_text_at(256, info_y + 64, GREY, 0.95f, C, 1, "Quadrato: rivenditore");
+    hud_text_at(256, info_y + 64, GREY, 0.95f, C, 1, "%s", tr("Quadrato: rivenditore"));
     hud_maxw(w - 32);
 }
 
@@ -1823,7 +1986,7 @@ static void frame(void* user) {
     case FREE:
         if (s.t_center >= 0 && api->trigger_inside(s.t_center)) {
             hud_panel(150, 370, 212, 26, PANEL, RAC1_HUD_CENTRE);
-            hud_text_at(256, 375, WHITE, 1.2f, RAC1_HUD_CENTRE, 1, "Triangolo: menu arena");
+            hud_text_at(256, 375, WHITE, 1.2f, RAC1_HUD_CENTRE, 1, "%s", tr("Triangolo: menu arena"));
             hud_maxw(440);
             hud_fit(1, 1);
             if (pressed & PAD_TRIANGLE) {
@@ -1843,15 +2006,15 @@ static void frame(void* user) {
                 menu_close();
             } else if (pressed & PAD_SQUARE) {
                 menu_close();
-                if (!api->vendor_open()) toast("Il rivenditore non si apre ora");
+                if (!api->vendor_open()) toast(tr("Il rivenditore non si apre ora"));
             } else if (pressed & PAD_CROSS) {
                 int32_t w[16];
                 const challenge_def* c = &CHALLENGES[list[s.sel]];
                 const int need = c->weapons == W_ROULETTE || c->weapons == W_CHAOS || c->kind == CUP ? 2 : 0;
                 if (c->kind == RAIL && !has_boots()) {
-                    toast("Servono i Grind Scarponi");
+                    toast(tr("Servono i Grind Scarponi"));
                 } else if (need > 0 && weapons_usable(w) < need) {
-                    toast("Servono almeno 2 armi");
+                    toast(tr("Servono almeno 2 armi"));
                 } else {
                     api->input_hold(0);
                     challenge_start(list[s.sel]);
@@ -1863,8 +2026,8 @@ static void frame(void* user) {
     }
     case INTRO: {
         char cd[32];
-        snprintf(cd, sizeof cd, "Si comincia tra %d", 3 - s.t / 60);
-        banner(YELLOW, CHALLENGES[s.ch].name, cd);
+        snprintf(cd, sizeof cd, tr("Si comincia tra %d"), 3 - s.t / 60);
+        banner(YELLOW, tr(CHALLENGES[s.ch].name), cd);
         weapon_update();
         if (s.t >= INTRO_FRAMES) wave_start();
         break;
@@ -1878,8 +2041,8 @@ static void frame(void* user) {
         if (s.mode == BREAK) {
             const int isc = CHALLENGES[s.ch].kind == CUP;
             char next[48] = "";  /* (a championship: the next round's mode, when it changes) */
-            if (isc && cup[s.wave].mode != cup[s.wave - 1].mode) snprintf(next, sizeof next, "Prossimo: %s", MODES[cup[s.wave].mode].name);
-            banner(GREEN, isc ? "Round superato!" : "Ondata superata!", next[0] ? next : NULL);
+            if (isc && cup[s.wave].mode != cup[s.wave - 1].mode) snprintf(next, sizeof next, tr("Prossimo: %s"), tr(MODES[cup[s.wave].mode].name));
+            banner(GREEN, isc ? tr("Round superato!") : tr("Ondata superata!"), next[0] ? next : NULL);
         }
         if (s.mode != RESULT) {  /* the challenge's box, at the screen's left, under the game's weapon and ammo */
             const challenge_def* c = &CHALLENGES[s.ch];
@@ -1888,11 +2051,11 @@ static void frame(void* user) {
             char wl[40] = "";
             if (s.rule.weapons == W_CHAOS) snprintf(wl, sizeof wl, "%s  %d s", weapon_name(s.wpn), (s.wpn_t + 59) / 60);
             else if (s.rule.weapons == W_ROULETTE || (s.rule.weapons == W_WRENCH && !isc)) snprintf(wl, sizeof wl, "%s", weapon_name(s.wpn));
-            if (isc) snprintf(third, sizeof third, "%s%s%s", MODES[cup[s.wave < c->waves ? s.wave : c->waves - 1].mode].name, wl[0] ? " - " : "", wl);
-            else if (wl[0]) snprintf(third, sizeof third, "Arma: %s", wl);
+            if (isc) snprintf(third, sizeof third, "%s%s%s", tr(MODES[cup[s.wave < c->waves ? s.wave : c->waves - 1].mode].name), wl[0] ? " - " : "", wl);
+            else if (wl[0]) snprintf(third, sizeof third, tr("Arma: %s"), wl);
             else if (c->kind == RAIL && rails.phase < 2 && (rails.falls > 0 || rails.drones > 0)) {
-                if (rails.use_obs && rails.drones > 0) snprintf(third, sizeof third, "Droni %d/%d   Cadute %d", rails.drones_hit, rails.drones, rails.falls);
-                else snprintf(third, sizeof third, "Cadute: %d", rails.falls);
+                if (rails.use_obs && rails.drones > 0) snprintf(third, sizeof third, tr("Droni %d/%d   Cadute %d"), rails.drones_hit, rails.drones, rails.falls);
+                else snprintf(third, sizeof third, tr("Cadute: %d"), rails.falls);
             }
             const int y = 84, bh = third[0] ? 72 : 50, box = s.nrects, first = s.nlines;
             hud_panel(12, y, 230, bh, PANEL, RAC1_HUD_LEFT);
@@ -1900,18 +2063,19 @@ static void frame(void* user) {
             if (third[0]) hud_text_at(22, y + 50, CYAN, 1.1f, RAC1_HUD_LEFT, 0, "%s", third);
             if (c->kind == SURVIVE) {
                 const int left = c->time * 60 - s.clock;
-                hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", c->name);
-                hud_text_at(22, y + 28, WHITE, 1.1f, RAC1_HUD_LEFT, 0, "Resisti %d:%02d   Abbattuti %d", left / 3600, left / 60 % 60, s.felled);
+                hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", tr(c->name));
+                hud_text_at(22, y + 28, WHITE, 1.1f, RAC1_HUD_LEFT, 0, tr("Resisti %d:%02d   Abbattuti %d"), left / 3600, left / 60 % 60, s.felled);
             } else if (c->kind == RAIL && rails.phase < 2) {
                 const int left = c->time * 60 - rails.ride;
-                hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", c->name);
-                hud_text_at(22, y + 28, left < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0, "Restano %d:%02d", left / 3600, left / 60 % 60);
+                hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", tr(c->name));
+                hud_text_at(22, y + 28, left < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0, tr("Restano %d:%02d"), left / 3600, left / 60 % 60);
             } else {
-                hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s  %d/%d", c->name, s.wave + 1, c->waves);
+                hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s  %d/%d", tr(c->name), s.wave + 1, c->waves);
                 const int timed = c->kind == TIMED || s.rule.time > 0;
                 const int t = c->kind == TIMED ? c->time * 60 - s.clock : s.rule.time > 0 ? s.rule.time * 60 - s.round_clock : s.clock;
-                hud_text_at(22, y + 28, timed && t < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0, "Nemici %d   %s%d:%02d",
-                            s.mode == FIGHT ? cur_wave()->count - s.killed : 0, timed ? "restano " : "", t / 3600, t / 60 % 60);
+                hud_text_at(22, y + 28, timed && t < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0,
+                            timed ? tr("Nemici %d   restano %d:%02d") : tr("Nemici %d   %d:%02d"),
+                            s.mode == FIGHT ? cur_wave()->count - s.killed : 0, t / 3600, t / 60 % 60);
             }
             hud_grow(box, first, 300);  /* (wider round long texts; smaller texts past 300) */
         }
@@ -1924,12 +2088,12 @@ static void frame(void* user) {
         if (s.won) {
             char line[48];
             if (CHALLENGES[s.ch].kind == SURVIVE)
-                snprintf(line, sizeof line, "+%d bulloni   %d abbattuti", CHALLENGES[s.ch].reward, s.felled);
+                snprintf(line, sizeof line, tr("+%d bulloni   %d abbattuti"), CHALLENGES[s.ch].reward, s.felled);
             else
-                snprintf(line, sizeof line, "+%d bulloni   %d:%02d", CHALLENGES[s.ch].reward, s.clock / 3600, s.clock / 60 % 60);
-            banner(GREEN, "SFIDA COMPLETATA!", line);
+                snprintf(line, sizeof line, tr("+%d bulloni   %d:%02d"), CHALLENGES[s.ch].reward, s.clock / 3600, s.clock / 60 % 60);
+            banner(GREEN, tr("SFIDA COMPLETATA!"), line);
         } else {
-            banner(RED, "SFIDA FALLITA", s.why[0] ? s.why : NULL);
+            banner(RED, tr("SFIDA FALLITA"), s.why[0] ? s.why : NULL);
         }
         if (s.t >= RESULT_FRAMES) {
             s.mode = FREE;
@@ -2047,7 +2211,7 @@ static void level_start(void* user, const rac1_level_info* level) {
     if (s.lost_reload) {  /* (the challenge he died in: lost, its banner now) */
         s.lost_reload = 0;
         s.won = 0;
-        snprintf(s.why, sizeof s.why, "Ratchet e' caduto");
+        snprintf(s.why, sizeof s.why, "%s", tr("Ratchet e' caduto"));
         s.mode = RESULT;
         play(s.snd_fail);
         char lost[96];
@@ -2609,6 +2773,7 @@ RAC1_MOD_EXPORT int rac1_mod_main(const rac1_api* game, rac1_mod* mod) {
     d.name = "spawn";
     d.spawn = spawn_spawn;
     api->class_define(&d);
+    texts_check();
     api->log("the arena's plugin is on: the menu, the challenges, Kalebo III's enemies and their paths, the weapons, the flame vents");
     return 0;
 }

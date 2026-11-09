@@ -34,6 +34,9 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   it), and under the galaxy a view of the arena rendered from the scene when it is exported; its name in five languages
   (Arena di Daino, Dainos Arena, Arena de Daino, Arène de Daino).
 
+- **Its texts** (the menu, the challenges, the HUD, the banners) follow the game's text language: English, French,
+  German, Spanish or Italian (plain ASCII, as the HUD's font takes it). The table is in the plugin (`TEXTS`).
+
 It needs a game with the mod SDK's ABI 5 or later.
 
 ## Making it
