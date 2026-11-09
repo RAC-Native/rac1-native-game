@@ -33,6 +33,12 @@ These are stored in the repository, each with its licence next to it.
 | `gamecontrollerdb/`: [SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB) | zlib (`third_party/gamecontrollerdb/LICENSE`) | a data file the game reads at start |
 | `stb_vorbis/`: [stb_vorbis](https://github.com/nothings/stb) v1.22, Sean Barrett's Ogg Vorbis decoder | public domain or MIT, at your choice (`third_party/stb_vorbis/LICENSE`) | a single-file library, unmodified (`third_party/stb_vorbis/README.md`): the level composer decodes a level mod's `.ogg` music and sounds with it |
 
+## Media under other licences
+
+- `examples/custom-level/music/overworld.ogg`: "Overworld", music © Daino Selvatico, licensed under
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), **not** under the MIT licence of the code. The example
+  level (`examples/custom-level/make_example.py`) plays it; see `examples/custom-level/README.md`.
+
 ## Code derived from other projects
 
 - `runtime/gs/gs_emu.cpp`: the GS local-memory layout tables, as OpenGOAL's
