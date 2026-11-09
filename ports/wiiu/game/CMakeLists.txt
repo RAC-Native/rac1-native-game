@@ -84,6 +84,7 @@ set(HOST_SRC
     mrp_moby_gx2.cpp
     mrp_world_gx2.cpp
     debug_menu.cpp
+    wiiu_usb.cpp
 )
 
 add_executable(rac1_wiiu ${HOST_SRC} ${RUNTIME_SRC} ${FORMATS_SRC} ${SETUP_SRC} ${GAME_SRC} ${GEN_SRC} ${SND989_SRC})
@@ -107,7 +108,10 @@ target_compile_options(rac1_wiiu PRIVATE -O2 -frounding-math -ffp-contract=off -
 target_compile_definitions(rac1_wiiu PRIVATE thread_local=)
 set_source_files_properties(${ROOT}/src/host/orig_main.cpp PROPERTIES COMPILE_DEFINITIONS "main=rac1_orig_main")
 set_source_files_properties(${GEN_SRC} PROPERTIES COMPILE_OPTIONS "-g0")
-target_link_libraries(rac1_wiiu PRIVATE stdc++fs)
+# (wiiu_usb.cpp: the USB storage through Aroma's Mocha)
+target_include_directories(rac1_wiiu PRIVATE /opt/devkitpro/wums/include)
+target_link_directories(rac1_wiiu PRIVATE /opt/devkitpro/wums/lib)
+target_link_libraries(rac1_wiiu PRIVATE stdc++fs mocha)
 target_link_options(rac1_wiiu PRIVATE -Wl,--wrap=abort -Wl,--wrap=__cxa_throw)  # (wiiu_main.cpp: the stack on the log first)
 # The code must stay under 32 MB: a PowerPC bl reaches +-32 MB, and past it the linker puts a branch island right
 # after the call in the .init section, which __do_global_ctors_aux then returns into and runs again (the static

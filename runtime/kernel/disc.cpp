@@ -514,7 +514,14 @@ std::string disc_boot_elf_path() { return "assets/dumps/" + disc_boot_elf(); }
 
 bool disc_other_region() { return disc_boot_elf() != "SCUS_971.99"; }
 
-const char* disc_files_dir() { return "assets/disc"; }
+const char* disc_files_dir() {
+#if defined(__WIIU__)  // (the Wii U: a copy on the console's USB storage, ports/wiiu/game/wiiu_usb.cpp)
+    static const char* const dir = std::getenv("RAC1_WIIU_DISC_DIR") != nullptr ? std::getenv("RAC1_WIIU_DISC_DIR") : "assets/disc";
+    return dir;
+#else
+    return "assets/disc";
+#endif
+}
 
 DiscSource disc_source() {
     int s = g_source.load();

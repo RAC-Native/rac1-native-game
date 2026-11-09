@@ -28,6 +28,7 @@
 #include <typeinfo>
 
 int rac1_orig_main(int argc, char** argv);
+void wiiu_usb_setup();  // (wiiu_usb.cpp)
 void wiiu_sampler_start();  // wiiu_sampler.cpp
 void wiiu_sampler_stop();
 bool wiiu_gfx_wanted();  // wiiu_gfx.cpp: the picture (RAC1_WIIU_GFX=1)
@@ -374,6 +375,7 @@ int main(int argc, char** argv_in) {
     std::setvbuf(stderr, nullptr, _IONBF, 0);
     char arg0[] = "rac1-native";
     char* argv[] = {arg0, nullptr};
+    wiiu_usb_setup();  // (the disc's files from the USB storage when a complete copy is there)
     if (const char* c = std::getenv("RAC1_WIIU_ISO_CHECK"); c != nullptr && c[0] == '1') iso_check();
     if (const char* w = std::getenv("RAC1_WIIU_WATCHDOG"); w != nullptr && std::atoi(w) > 0) watchdog_start(std::atoi(w));
     rac1_wiiu_debug_tools_gate(1, argv);
