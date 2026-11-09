@@ -16,9 +16,9 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   jetpack troopers and dropships; some with bombs from the sky, the vents burning faster, a time limit, no hit allowed,
   the wrench only, a random weapon each wave, a new one every 20 seconds; two championships (15 and 50 rounds) mixing
   those modes. The won ones, and their best times, are kept with the save.
-- **Grind rails**, for players who have the Grind Boots (Grind Scarponi), from a station outside the north-west wall:
-  - "Test Grind Scarponi": one rail down into the arena (our first try);
-  - "Grind Scarponi: Discesa": a course of three lanes along the north wall (a side jump changes lane), mines to jump,
+- **Grind rails**, for players who have the Grind Boots (Grindscarponi), from a station outside the north-west wall:
+  - "Test Grindscarponi": one rail down into the arena (our first try);
+  - "Grindscarponi: Discesa": a course of three lanes along the north wall (a side jump changes lane), mines to jump,
     barriers that close two lanes at a time, drones to break with the wrench (Square on the rail) or they zap you, the
     side lanes ending before the north-east corner; then one rail round the corner, down the east side and over the
     wall into the arena, where a last wave of robots waits. A hit costs one health point and slows Ratchet (the game's
@@ -35,7 +35,8 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   (Arena di Daino, Dainos Arena, Arena de Daino, Arène de Daino).
 
 - **Its texts** (the menu, the challenges, the HUD, the banners) follow the game's text language: English, French,
-  German, Spanish or Italian (plain ASCII, as the HUD's font takes it). The table is in the plugin (`TEXTS`).
+  German, Spanish or Italian (plain ASCII, as the HUD's font takes it). The table is in the plugin (`TEXTS`); the
+  weapons', the wrench's and the Grind Boots' names are read from the game's own texts, as it shows them.
 
 It needs a game with the mod SDK's ABI 5 or later.
 
