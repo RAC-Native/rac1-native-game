@@ -5,6 +5,13 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Level mods: **stereo music, and WAV music**. level.txt's `music <loop> [<intro>]` takes a WAV (PCM 8 to 32 bits or
+  float, mono or stereo, any common rate: 8000 .. 48000 Hz kept, others resampled) that the composer encodes as the
+  game's music (PS-ADPCM, its length made whole ADPCM blocks and its first block independent, so the loop is seamless),
+  or a VAG as before, or a stereo VAG of ours (byte +0x1e of the header 2, the channels interleaved in 0x800-byte
+  chunks). A stereo track plays on two voices in step, left and right, as one stream of the game's music: its music
+  volume, pauses, fades and track changes as the original's. Mono VAGs play as before; the disc's music is unchanged.
+  See docs/mods.md, "Level mods", Music.
 - Mod SDK: angles a plugin gives (`object_place`, `object_spawn`, `hero_place`, a rotation written then `moby_moved`)
   are folded into -pi..pi. The example level's gems and sentries turn by adding to their angle every frame: after a
   few seconds the game's rotation matrix (whose sine folds an angle only once) made them huge, a flat plane across the

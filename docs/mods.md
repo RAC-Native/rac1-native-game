@@ -443,7 +443,7 @@ mods/example-plateau/
     meshes.obj         what is drawn (with meshes.mtl and its PNG textures)
     lights.txt         optional: the modern lighting's file for the level (lights, particles, materials, as
                        data/lights/levelNN.txt; the debug menu's Lights tab writes one)
-    *.vag              optional: the level's music (level.txt's music line)
+    *.wav, *.vag       optional: the level's music (level.txt's music line)
 ```
 
 `mod.json` says it is a level:
@@ -479,7 +479,7 @@ mods/example-plateau/
 | `offset <x> <y> <z>`, `offset auto` | added to every coordinate of the OBJ files (after `up` and `scale`) and of level.txt; `auto`: as much as the collision needs (below) |
 | `scale <s>` | the OBJ files' units to the game's (default 1; Ratchet is about 1.5 units tall) |
 | `moby <class> <x> <y> <z> [<yaw>]` | an object (below) |
-| `music <level>`, `music <loop.vag> [<intro.vag>]`, `music none` | the music: the game level's (0..18), your own (below), or none; default the base level's |
+| `music <level>`, `music <loop> [<intro>]`, `music none` | the music: the game level's (0..18), your own (a WAV or a VAG, mono or stereo: below), or none; default the base level's |
 | `sky <level>` | the sky of the game's level (0..18); default the base level's |
 | `class <name> <model.obj> [size <s>] [solid\|ghost] [scale <k>]` | a class of the level's own objects (its model, its hit box; its behaviour in the mod's plugin): [The mod SDK](sdk.md#the-levels-own-content-leveltxt) |
 | `object <class> <x> <y> <z> [<yaw>] [<key>=<value> ...]` | an object of one of the level's classes |
@@ -496,11 +496,30 @@ of our own, 1, 2, ... in the lines' order (the hero's skipped): what the game re
 broken stays broken) goes by it, so add new lines at the end to keep a save's.
 
 **Music**: `music <level>` plays that game level's tracks (the base level's code picks the track: on Veldin, the
-level's first one and its loop). Your own: a **VAG** as the disc's music files (`levels/levelNN/hdr_014c.vag`): a
-0x30-byte `VAGp` header (big endian: the data's size at +0xc, the rate at +0x10, 8000 to 48000 Hz), then mono PS-ADPCM;
-`<loop.vag>` loops, `<intro.vag>` (optional) plays once before it. The composer copies them into the build (they are
-read through the level's window). The example's `make_example.py` has a small encoder (`vag()`); the PS2 tools
-(MFAudio, ...) make them too.
+level's first one and its loop). Your own: `music <loop> [<intro>]`, `<loop>` looping (the whole file, end to start),
+`<intro>` (optional) played once before it, each a **WAV** or a **VAG**:
+
+- a **WAV** (PCM 8, 16, 24 or 32 bits or 32-bit float, mono or **stereo**, 8000 to 48000 Hz as it is, other rates
+  resampled to the nearest of those): the composer encodes it, as the game wants it. Its length is made a whole number
+  of ADPCM blocks (28 samples: resampled to that length, a stretch of at most 14 samples, no audible change) and its
+  first block does not depend on what played before it, so the loop's end meets its start without a click: make the
+  file loop well as it is (the end flowing into the start). A 44100 Hz stereo WAV stays 44100 Hz (the disc's music
+  is 44100 Hz mono); about 50 KB a second of stereo.
+- a **VAG** as the disc's music files (`levels/levelNN/hdr_014c.vag`): a 0x30-byte `VAGp` header (big endian: the
+  data's size at +0xc, the rate at +0x10, 8000 to 48000 Hz), then mono PS-ADPCM, copied as it is. A **stereo VAG**
+  (ours): byte +0x1e of the header 2, the size at +0xc one channel's, the left and the right channel's ADPCM
+  interleaved in chunks of 0x800 bytes (the last chunk of each padded with zeros). The example's `make_example.py` has
+  a small mono encoder (`vag()`); the PS2 tools (MFAudio, ...) make mono ones too.
+
+**Stereo** plays on two of the sound chip's voices started together, the left channel's voice on the left and the
+right one's on the right (as the game's own stereo, the movies' sound, is played), stepping through the file in sync;
+the stream is otherwise one, as the game's music: its music volume (Options), pauses, fades and changes of track act on
+both. A stereo intro with a mono loop (or the other way) is made stereo both (the mono one on both channels). An
+intro and its loop play at one rate: a WAV is encoded at the other's rate (the loop's when both are WAVs); two VAGs of
+different rates are refused. In 5.1 / 7.1 the music is on the front left and right speakers, as the game's.
+
+The composer copies (or encodes) them into the build (they are read through the level's window); its log says what it
+made of each (`music: ...`).
 
 Coordinates are the game's: z up, in game units. **Every coordinate of the collision must be above 0** (the game's
 collision grid starts at 0 and ignores what is below; the composer refuses a collision that reaches below). A level made
@@ -530,7 +549,7 @@ last step. The build goes to `assets/generated/mods/<folder>/` (made from your d
   hero animations, gadgets and effects; the collision made from your `collision.obj`.
 - `gameplay.bin`: the base level's settings, lights, generic cameras and help texts; Ratchet at your start; the ship (and
   its take-off path) or none; your objects (`moby` lines).
-- `music_loop.vag`, `music_intro.vag`: your music, when level.txt names it.
+- `music_loop.vag`, `music_intro.vag`: your music, when level.txt names it (as the game plays it: a WAV encoded).
 - `host_meshes.mrpc`: your meshes, drawn by the modern renderer (not by the game's code: the faithful renderer, a debug
   choice, does not draw them), and your classes' models.
 - `level.sdk`, `sounds.bnk`: your classes, placed objects, sounds and triggers ([The mod SDK](sdk.md)); your sounds as

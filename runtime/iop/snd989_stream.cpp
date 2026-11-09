@@ -16,6 +16,10 @@
 // The host model: the disc read at once (the ISO), the SPU buffer of each stream a host array
 // played by an SPU voice of OpenGOAL's synth (its ADPCM decoder, interpolation, envelope), the
 // halves refilled when the voice has left them (the IRX's SPU interrupt), on the EE's thread.
+// (host) A stereo VAG (a level mod's music, docs/mods.md: byte +0x1e of its header 2, the data of the left and the
+// right channel interleaved in 0x800-byte chunks, +0xc one channel's size; the disc's VAGs all have 0 there) plays on
+// two voices keyed on together, the left one's VOLL and the right one's VOLR set, as the IRX's stereo voices of the
+// movie's sound (0xa2c0); everything else (volume, pan, group, pause, the queue, the times) is the stream's.
 #include <runtime/iop/snd989_stream.h>
 
 #include <runtime/kernel/disc.h>
@@ -45,6 +49,9 @@ struct Part {
     bool loop = false;
 };
 
+// (host) a stereo VAG's interleave: each channel's data in chunks of a sector
+constexpr uint32_t kStereoChunk = 0x800;
+
 struct Stream {
     uint32_t handle = 0;  // 0: free
     uint16_t serial = 0;
@@ -55,6 +62,8 @@ struct Stream {
     std::deque<Part> queue;
     Part part;
     uint32_t rate = 0, pitch = 0, size = 0;  // the playing part's header
+    int part_channels = 1;                   // (host) its channels (2: a stereo VAG)
+    int channels = 1;                        // (host) the stream's voices: its first part's channels
     uint32_t cursor = 0;                     // its data bytes copied to the SPU buffer
     bool data_end = false;                   // the end block written
     std::vector<uint16_t> spu;               // the SPU buffer: two halves
@@ -62,6 +71,8 @@ struct Stream {
     uint64_t played = 0;                     // ADPCM bytes played (whole halves)
     uint64_t copied = 0, decoded_samples = 0;
     std::shared_ptr<snd::Voice> voice;
+    std::vector<uint16_t> spu2;           // (host) a stereo stream's right channel: its SPU buffer and voice
+    std::shared_ptr<snd::Voice> voice2;
 };
 
 }  // namespace
@@ -153,14 +164,27 @@ void voice_apply(Stream& s) {
     if (s.paused || s.group_paused) {
         s.voice->SetVolume(0, 0);
         s.voice->SetPitch(0);
+        if (s.voice2) {
+            s.voice2->SetVolume(0, 0);
+            s.voice2->SetPitch(0);
+        }
         return;
     }
     const snd::VolPair v = stream_volume(s);
-    s.voice->SetVolume(static_cast<uint16_t>(v.left), static_cast<uint16_t>(v.right));
+    if (s.voice2) {  // (host) stereo: the left voice on the left only, the right voice on the right only
+        s.voice->SetVolume(static_cast<uint16_t>(v.left), 0);
+        s.voice2->SetVolume(0, static_cast<uint16_t>(v.right));
+    } else {
+        s.voice->SetVolume(static_cast<uint16_t>(v.left), static_cast<uint16_t>(v.right));
+    }
     // (host) in 5.1 / 7.1 the dialogue (group 2) on the centre speaker, its pan towards the front left / right; the
     // others (the music) on the front left / right
     s.voice->SetPlace(s.group == 2 ? snd::Voice::Place::Centre : snd::Voice::Place::Front, s.pan);
     s.voice->SetPitch(static_cast<uint16_t>(s.pitch));
+    if (s.voice2) {
+        s.voice2->SetPlace(s.group == 2 ? snd::Voice::Place::Centre : snd::Voice::Place::Front, s.pan);
+        s.voice2->SetPitch(static_cast<uint16_t>(s.pitch));
+    }
 }
 
 // The part's 0x30-byte header: "VAGp", big endian size (+0xc) and rate (+0x10); the pitch as
@@ -175,13 +199,14 @@ bool part_open(Stream& s, const Part& p) {
     s.part = p;
     s.size = be32(h + 0xc);
     s.rate = be32(h + 0x10);
+    s.part_channels = h[0x1e] == 2 ? 2 : 1;
     s.pitch = static_cast<uint32_t>((uint64_t{s.rate << 12} * 0x057619f1u) >> 42);
     s.cursor = 0;
     if (!quiet()) {
         const uint64_t samples = uint64_t{s.size} / 16 * 28;
-        std::fprintf(stderr, "[989snd] stream %08x: VAGp at sector 0x%x, %u bytes, %u Hz (pitch 0x%x), %llu samples (%.2f s)%s\n", s.handle,
+        std::fprintf(stderr, "[989snd] stream %08x: VAGp at sector 0x%x, %u bytes, %u Hz (pitch 0x%x), %llu samples (%.2f s)%s%s\n", s.handle,
                      p.lsn, s.size, s.rate, s.pitch, static_cast<unsigned long long>(samples),
-                     s.rate != 0 ? static_cast<double>(samples) / s.rate : 0.0, p.loop ? ", looped" : "");
+                     s.rate != 0 ? static_cast<double>(samples) / s.rate : 0.0, p.loop ? ", looped" : "", s.part_channels == 2 ? ", stereo" : "");
     }
     return true;
 }
@@ -189,11 +214,20 @@ bool part_open(Stream& s, const Part& p) {
 // One half of the SPU buffer filled with the next 16-byte ADPCM blocks: a part's end goes on to
 // its loop or the queued part; with none an end block (flag 1) stops the voice. The data blocks'
 // own flags cleared; the buffer's first block loop start (4), its last loop end + repeat (3).
+// (host) A stereo stream's right buffer filled the same, from the right channel (a mono part: its one channel on
+// both; a stereo part on a mono stream: its left channel).
 // orig: (host) the reader's SPU transfers (0x116e8 / 0x1295c) and the buffer loop of 0xeacc
 void fill_half(Stream& s, int h) {
     const uint32_t words = static_cast<uint32_t>(s.spu.size()) / 2;
     uint16_t* dst = s.spu.data() + static_cast<size_t>(h) * words;
-    uint8_t blk[16];
+    uint16_t* dst2 = s.channels == 2 ? s.spu2.data() + static_cast<size_t>(h) * words : nullptr;
+    uint8_t blk[16], blk2[16];
+    // the byte of channel `c`'s data at its byte `x` (a stereo VAG: chunks of kStereoChunk, left then right)
+    auto at = [&](uint32_t x, int c) {
+        const uint64_t base = uint64_t{s.part.lsn} * kSector + s.part.offset + 0x30;
+        if (s.part_channels != 2) return base + x;
+        return base + uint64_t{x / kStereoChunk} * kStereoChunk * 2 + (c != 0 ? kStereoChunk : 0) + x % kStereoChunk;
+    };
     for (uint32_t w = 0; w < words; w += 8) {
         bool end_block = false;
         if (s.data_end) {
@@ -211,18 +245,15 @@ void fill_half(Stream& s, int h) {
                     break;
                 }
             }
-            if (s.cursor + 16 > s.size) {
-                std::memset(blk, 0, sizeof blk);
-                blk[1] = 1;
-                s.data_end = true;
-                end_block = true;
-            } else if (!disc_bytes(uint64_t{s.part.lsn} * kSector + s.part.offset + 0x30 + s.cursor, blk, 16)) {
+            if (s.cursor + 16 > s.size || !disc_bytes(at(s.cursor, 0), blk, 16) ||
+                (dst2 != nullptr && !disc_bytes(at(s.cursor, 1), blk2, 16))) {
                 std::memset(blk, 0, sizeof blk);
                 blk[1] = 1;
                 s.data_end = true;
                 end_block = true;
             } else {
                 blk[1] = 0;
+                blk2[1] = 0;
                 s.cursor += 16;
                 s.copied += 16;
             }
@@ -232,6 +263,11 @@ void fill_half(Stream& s, int h) {
             if (h == 1 && w + 8 >= words) blk[1] |= 3;
         }
         std::memcpy(dst + w, blk, 16);
+        if (dst2 != nullptr) {
+            if (end_block || s.data_end) std::memcpy(blk2, blk, 16);  // (the end, or silence after it: the same)
+            else blk2[1] = blk[1];
+            std::memcpy(dst2 + w, blk2, 16);
+        }
     }
 }
 
@@ -250,6 +286,8 @@ Stream* find(uint32_t h) {
 void stream_free(Stream& s, const char* why) {
     if (s.voice) s.voice->Stop();
     s.voice.reset();
+    if (s.voice2) s.voice2->Stop();
+    s.voice2.reset();
     if (s.handle != 0 && !quiet())
         std::fprintf(stderr, "[989snd] stream %08x freed (%s): %llu ADPCM bytes queued, %llu played\n", s.handle, why,
                      static_cast<unsigned long long>(s.copied), static_cast<unsigned long long>(s.played));
@@ -298,23 +336,30 @@ int32_t stream_play(snd::Player& p, const uint32_t* args) {
         s->handle = 0;
         return 0;
     }
+    s->channels = s->part_channels;
     s->spu.assign(st().size / 2 / 2, 0);  // half the stream's buffer, in 16-bit words
+    if (s->channels == 2) s->spu2.assign(s->spu.size(), 0);
+    else s->spu2.clear();
     fill_half(*s, 0);
     fill_half(*s, 1);
     s->half = 0;
-    s->voice = std::make_shared<snd::Voice>();
-    s->voice->SetAsdr1(0x000f);  // the IRX's stream voices (0xa3d8 / 0xa430)
-    s->voice->SetAsdr2(0x1fc0);
-    s->voice->SetSample(s->spu.data());
-    s->voice->SetReverb((flags & 2) != 0);  // (the record's 0x100: the voice's VMIXE, 0xef8c / 0x1372c)
-    p.AllocVoice(*s->voice, group, 0x7f);   // (its SPU2 voice, 0xe948: the group's range; its core)
-    s->voice->KeyOn();
-    voice_apply(*s);
-    std::shared_ptr<snd::Voice> v = s->voice;
-    p.SubmitVoice(v);
+    // its voice (a stereo stream's two: each allocated once the one before is submitted, its slot taken)
+    for (int c = 0; c < s->channels; ++c) {
+        std::shared_ptr<snd::Voice>& v = c == 0 ? s->voice : s->voice2;
+        v = std::make_shared<snd::Voice>();
+        v->SetAsdr1(0x000f);  // the IRX's stream voices (0xa3d8 / 0xa430)
+        v->SetAsdr2(0x1fc0);
+        v->SetSample(c == 0 ? s->spu.data() : s->spu2.data());
+        v->SetReverb((flags & 2) != 0);  // (the record's 0x100: the voice's VMIXE, 0xef8c / 0x1372c)
+        p.AllocVoice(*v, group, 0x7f);   // (its SPU2 voice, 0xe948: the group's range; its core)
+        v->KeyOn();
+        if (c + 1 == s->channels) voice_apply(*s);
+        std::shared_ptr<snd::Voice> submitted = v;
+        p.SubmitVoice(submitted);
+    }
     s->started = true;  // the first buffer is in (host: at once)
-    if (!quiet()) std::fprintf(stderr, "[989snd] stream %08x play: sector 0x%x vol %d pan %d group %d flags %x%s\n", s->handle, loc1, s->vol, s->pan, group,
-                 flags, s->paused ? " (paused)" : "");
+    if (!quiet()) std::fprintf(stderr, "[989snd] stream %08x play: sector 0x%x vol %d pan %d group %d flags %x%s%s\n", s->handle, loc1, s->vol, s->pan, group,
+                 flags, s->paused ? " (paused)" : "", s->channels == 2 ? " (stereo: two voices)" : "");
     return static_cast<int32_t>(s->handle);
 }
 
