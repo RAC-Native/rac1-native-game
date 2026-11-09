@@ -31,7 +31,8 @@ Contents:
 | 1 | the first with code | the callbacks level_start .. shutdown; the services log .. call_port |
 | 2 | the first with level objects | level objects of the level's own classes (`class_define` .. `object_at`, `rac1_class_def`, `rac1_spawn`), `collide_ray`, `objects_near`, `mobys_near`, `hero_damage`, `hit_send`, `hit_take`, the level's own sounds (`sfx_*`), triggers (`trigger_find`, `trigger_inside`, the `trigger` callback), `frame_count` |
 | 3 | the first with base levels | the base level's objects at run time: `base_spawn`, `base_moby`, `base_free` (level.txt's `spawn` lines) |
-| 4 | this one | `vendor_open`, `input_hold`, the HUD's panels, anchors and sizes (`hud_rect`, `hud_text_ex`, `hud_text_width`, `RAC1_HUD_*`), `base_hunt`, `light_add`; level.txt's `update_all` line |
+| 4 | the first with the vendor | `vendor_open`, `input_hold`, the HUD's panels, anchors and sizes (`hud_rect`, `hud_text_ex`, `hud_text_width`, `RAC1_HUD_*`), `base_hunt`, `light_add`; level.txt's `update_all` line |
+| 5 | this one | Kalebo III's enemies: `base_option` (`RAC1_BASE_WEAPON`, `RAC1_BASE_TROOPS`), `base_handle`, `base_hunt` and `base_spawn` for the bomb bots 52, the Gadgetron robots 541, the jetpack troopers 638 and the dropships 1356; the weapons: `weapons_owned`, `weapon_equip`, `weapon_allow`, `ammo_fill` |
 
 How compatibility works:
 
@@ -240,7 +241,7 @@ Test `RAC1_API_HAS(api, vendor_open)` before using them (a game older than ABI 4
 | `void hud_rect(x, y, w, h, abgr, anchor)` | in `hud` only: a flat rectangle `w` x `h` from (`x`, `y`) of the 512 x 448 HUD, colour 0xAABBGGRR (alpha 0x80 opaque, 0x40 half transparent): a panel behind your texts (draw it first) |
 | `void hud_text_ex(x, y, abgr, scale, anchor, text)` | in `hud` only: `hud_text` at `scale` times the font's size (1: `hud_text`'s, 2: twice; at most 8) |
 | `int32_t hud_text_width(text, scale)` | `text`'s width in HUD units at `scale` (to centre or right-align it: `x = 256 - w / 2`) |
-| `int base_hunt(uint32_t moby, int on)` | the base level's enemy `moby` (`base_moby`'s, or a `moby` line's) hunts Ratchet wherever he is instead of guarding where it started: [Base level objects](#base-level-objects). 1 done, 0 not (no such moby, a class not known: Kalebo III's robots 1445 only) |
+| `int base_hunt(uint32_t moby, int on)` | the base level's enemy `moby` (`base_moby`'s, or a `moby` line's) hunts Ratchet wherever he is instead of guarding where it started: [Base level objects](#base-level-objects). 1 done, 0 not (no such moby, a class not known: Kalebo III's robots 1445; from ABI 5 also `base_spawn`'s 52, 541, 638 and 1356, [Kalebo III's enemies](#kalebo-iiis-enemies-abi-5)) |
 | `int light_add(pos, rgb, intensity, radius)` | a light for this frame only (call it every frame it shines, from `frame`): at `pos`, colour `rgb` (0..1) times `intensity` (0..8, 1 as a lamp of the debug menu's Lights tab), reaching `radius` units (at most 60). 1 taken, 0 not (31 a frame for all the plugins taken, bad values, from `hud`) |
 
 **Anchors** (`hud_rect`, `hud_text_ex`): `RAC1_HUD_CENTRE` (0) is the 4:3 frame `hud_text` draws in, in the middle of the
@@ -259,6 +260,19 @@ from the camera is left out. They are kept in the game's memory with the frame (
 pipelined frame and the pause show the lights of their own frame. Cost: each one is a point light of the 96 the
 lighting's shaders take a pixel, before the automatic emitters (which then get fewer); a few dozen lights near the
 camera cost about as much as the same number of hand-placed lamps.
+
+### Kalebo III's enemies, the weapons (ABI 5)
+
+Test `RAC1_API_HAS(api, base_option)` before using them (a game older than ABI 5 has none of them).
+
+| Service | Does |
+|---|---|
+| `int base_option(uint32_t handle, int32_t option, int32_t value)` | a choice of the class's for an object `base_spawn` has just started, in the same callback (before its first update). `RAC1_BASE_WEAPON` (1): a Gadgetron robot's (541) weapon, 0 the bomb launcher, 1 the club, 2 the flamethrower (the default, the pool's first placement's): 1 done. `RAC1_BASE_TROOPS` (2): a dropship's (1356) jetpack troopers, `value` (at most 4) started from class 638's spawn room, carried and dropped at its landing point: how many it took. 0: not (no such object, updated already, a class or a value the option has not) |
+| `uint32_t base_handle(uint32_t moby)` | the handle of a moby `base_spawn` started, 0 none: the troopers a dropship brought (found with `mobys_near(pos, r, 638, ...)`) have handles too, for `base_moby` and `base_hunt` |
+| `int32_t weapons_owned(int32_t* out, int32_t max)` | the weapons Ratchet owns: at most `max` item ids into `out` (may be NULL), in id order; the count. The weapons are the pause menu's Weapons page's items: 0x09 Suck Cannon, 0x0a Bomb Glove, 0x0b Devastator, 0x0d Visibomb Gun, 0x0e Taunter, 0x0f Blaster, 0x10 Pyrocitor, 0x11 Mine Glove, 0x12 Walloper, 0x13 Tesla Claw, 0x14 Glove of Doom, 0x15 Morph-o-Ray, 0x17 R.Y.N.O., 0x18 Drone Device, 0x19 Decoy Glove (the owned bytes 0x13d4c0) |
+| `int weapon_equip(int32_t item)` | that weapon in his hand as the quick select puts it there (the request P+0x20b8 when Triangle is let go: the game's switch follows, its animation and sound, in the next frames; the ammo clamped to its most). 1 asked (or in hand already); 0 not: not owned, not allowed (`weapon_allow`), not in play (a menu, a cutscene, from `hud`), or where the quick select could not be opened now: swinging or throwing the wrench (state 0x13 and the like), an item being switched or used, in a vehicle, the ship or on a hoverboard. Standing, walking, running, crouching, strafing, jumping and falling it works. Call it again a frame later when it says 0 |
+| `void weapon_allow(const int32_t* items, int32_t n)` | only those `n` weapons can be chosen: the others are not shown in the quick select's ring (empty slots), the PC's next / previous weapon skips them, Triangle's double press does not swap to one, and one the game asks for itself (its return to the weapon used before a gadget, a level's own build of the double press) is not taken; one that reached his hand anyway is put back for the last allowed item he held (else the wrench). Only weapons are limited: the wrench and the gadgets never. NULL or 0: all again. Off at every level's start |
+| `int ammo_fill(int32_t item)` | that item's ammo (0x13d428) to its most (the item table's, as the HUD and the pickups): 1; 0 not (not owned, an item with no ammo) |
 
 ### Classes and objects (ABI 2)
 
@@ -391,9 +405,40 @@ paths): a wall between stops them. The game updates a moby only within its updat
 moby of a level mod's level wherever the camera is.
 
 What works per class is the base level's class's own business: an enemy that walks and fights on flat ground works; one
-that follows the base level's paths, waits for another object, a mission or a cutscene does not (docs/mods.md,
-[Base levels](mods.md#base-levels) lists what was tried on Kalebo III). Test with `RAC1_MODS=1 RAC1_MOD_CODE=1` and
+that follows the base level's paths, waits for another object, a mission or a cutscene does not, unless the game gives
+it what it waits for, as for Kalebo III's enemies below (docs/mods.md, [Base levels](mods.md#base-levels) lists what was
+tried on Kalebo III). Test with `RAC1_MODS=1 RAC1_MOD_CODE=1` and
 `RAC1_SIM_INPUT=attack` (Ratchet swinging the wrench) headless.
+
+### Kalebo III's enemies (ABI 5)
+
+On Kalebo III's own level its enemies wait for the level's data: its paths (the walks, the flights, the areas they watch),
+its moby groups (the Gadgetron robots' doors), its markers, a trigger object that wakes them. A level mod has none of it
+(the composer keeps the ship's flight path only), so a `base_spawn` of these classes on a Kalebo III base gives the object
+what it reads: paths of its own (the game's path table's free entries, from its end; their points in the mods' block of
+memory below the level mods' texts, 0xdf000..0xe0000, 4 KB, room for about 40 of these objects in all), its pvars' indices
+set to them or to none. Each `spawn` line's objects get theirs when the level loads (`[sdk] Kalebo III's enemies: N pool
+objects given paths of their own`; one with no room left is never started: `base_spawn` skips it). `moby` lines of these
+classes are not given any (they stay as before: do not use them).
+
+| Class | What | `base_spawn` (guarding) | `base_hunt(m, 1)` | Needs |
+|---|---|---|---|---|
+| 52 | the bomb bots: round, a red eye, they roll at Ratchet and blow up (they hurt him, die with it) | watches a square of 24 round where it was spawned: comes for him within it (12 units, 24 alerted) | its alert timer (+0x190) kept running: its target search takes Ratchet at any distance, no giving up | its area: a path of its own (+0x180) |
+| 541 | the Gadgetron robots, crash-test-dummy markings; three weapons (`base_option(h, RAC1_BASE_WEAPON, w)`): 0 a bomb launcher (lobs bombs, class 281), 1 a club (hits what it touches), 2 a flamethrower (the default) | patrols between where it was spawned and 5 units ahead (the club walks back and forth on it), attacks Ratchet from there, killed for good (no lives) | its patrol's two points put beside Ratchet on its side (the launcher 9 units away, the flamethrower 3.5, the club through him), again when he has moved 4 units; it walks on its own floor's height | on their level: hidden in an alcove until class 654 opens their group's door and walks them out (+0xcc, +0xc4), the lives +0xc8, the markers +0xd0/+0xd4, the area +0xd8. Here: no door, no lives, no markers (a marker's turn is Ratchet), the area the whole level; shown and put in its weapon's patrol after its first update |
+| 638 | the jetpack troopers: hover, shoot green bolts (class 49) | where it was spawned (not on a path, not carried), watches a square of 24 round it | its alert timer (+0x2e0: range 255) kept running, its home 10 units from Ratchet on its side, again when he has moved 4 units | on their level: a random point of a path (+0x120), carried by a dropship (+0x128) |
+| 1356 | the dropships: fly in, drop their troopers, shoot (class 50), can be shot down | spawned at its **landing point** (`pos`; it hovers 9 units above it), facing `yaw`: comes down from 60 units behind and 25 up, drops its troopers (`base_option(h, RAC1_BASE_TROOPS, n)`, n <= 4, from class 638's `spawn` room: a `spawn 638` line is needed) one every half second, flies off ahead and up and is gone | stays over the landing point after dropping them and fights (the area the whole level) until shot down; its troopers hunt too | on their level: an arrival and a leave path, an area to wait for and one to fight in (+0xd8, +0xdc, +0xd4, +0xd0), the troopers' indices (+0xc0..+0xcc) |
+
+```c
+/* a dropship with three troopers, all hunting; a robot with the bomb launcher */
+uint32_t ship = api->base_spawn(1356, landing, yaw);                 /* level.txt: spawn 1356 2, spawn 638 8 */
+if (ship) { api->base_option(ship, RAC1_BASE_TROOPS, 3); api->base_hunt(api->base_moby(ship), 1); }
+uint32_t bot = api->base_spawn(541, where, yaw);                     /* level.txt: spawn 541 6 */
+if (bot) { api->base_option(bot, RAC1_BASE_WEAPON, 0); api->base_hunt(api->base_moby(bot), 1); }
+```
+
+Known: a dropship that stays to fight can be hit by its own troopers' shots too (it falls after a while even untouched);
+the troopers fly but do not follow Ratchet up onto higher floors; the robots walk straight (a wall stops them), as 1445.
+A dropship's troopers are 638's room: `base_free(638)` counts them; `base_handle` gives their handles.
 
 ## Hits and damage
 
@@ -481,6 +526,7 @@ typedef struct rac1_ray_hit {       /* (ABI 2) collide_ray */
 | A sound | 8000 .. 48000 Hz, mono (stereo is mixed down); the bank goes into the sound driver's memory (no fixed limit, keep it to a few MB) |
 | Triggers | no fixed limit (tested once a frame each) |
 | `ee_alloc` | 53 KB for all the plugins, for the whole run (54 KB up to ABI 3: the last KB holds the frame's lights, `light_add`) |
+| Kalebo III's enemies' paths (ABI 5) | 4 KB of paths for the `spawn` lines' objects of classes 52, 541, 638, 1356 (about 40 objects), and the path table's free entries (176 less the level's) |
 | Lights (`light_add`) | 31 a frame for all the plugins, within the point lights' 96 a pixel (the game's 8, the hand-placed and the per-class lights before them, the automatic emitters after) |
 | HUD lines | 15 a frame (`hud_text`, `hud_text_ex` together), 255 characters each; `hud_text_ex`'s scale at most 8 |
 | A save's bytes | about 64 KB a plugin |

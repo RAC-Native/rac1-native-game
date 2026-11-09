@@ -45,8 +45,9 @@ extern "C" {
 
 /* The ABI this header describes. 1: the first; 2: the level's own object classes, ray and near queries, damage both
    ways, the mod's own sounds, triggers; 3: the base level's objects spawned at run time (base_spawn); 4: the vendor, the
-   pad held from the game, the HUD's panels, anchors and text sizes (docs/sdk.md lists what each version added). */
-#define RAC1_MOD_ABI 4
+   pad held from the game, the HUD's panels, anchors and text sizes; 5: Kalebo III's enemies (base_option, base_hunt for more
+   classes), the weapons (docs/sdk.md lists what each version added). */
+#define RAC1_MOD_ABI 5
 
 #if defined(_WIN32)
 #define RAC1_MOD_EXPORT __declspec(dllexport)
@@ -69,6 +70,10 @@ typedef struct rac1_level_info {
 #define RAC1_HUD_CENTRE 0   /* the 4:3 frame, in the middle of the screen (as hud_text) */
 #define RAC1_HUD_LEFT 1     /* toward the screen's left edge */
 #define RAC1_HUD_RIGHT 2    /* toward the screen's right edge */
+
+/* (ABI 5) base_option's options */
+#define RAC1_BASE_WEAPON 1  /* Kalebo III's Gadgetron robots (541): their weapon 0..2 */
+#define RAC1_BASE_TROOPS 2  /* Kalebo III's dropships (1356): the jetpack troopers they bring, 0..4 */
 
 /* (ABI 2) A level object's spawn: given to its class's spawn callback */
 typedef struct rac1_spawn {
@@ -304,7 +309,8 @@ typedef struct rac1_api {
     /* -- the base level's enemies -- */
     /* on: the moby `moby` (a base level's enemy: base_moby's, a moby line's) hunts Ratchet wherever he is, instead of
        guarding the place where it started (docs/sdk.md, "Base level objects"); off: as its class does. 1 done, 0 not (no
-       such moby, or a class the game does not know how to: Kalebo III's robots 1445 only). Kept until the moby is gone */
+       such moby, or a class the game does not know how to: Kalebo III's robots 1445; from ABI 5 also base_spawn's bomb bots
+       52, Gadgetron robots 541, jetpack troopers 638 and dropships 1356). Kept until the moby is gone */
     int (*base_hunt)(uint32_t moby, int on);
 
     /* -- lights -- */
@@ -314,6 +320,35 @@ typedef struct rac1_api {
        shadows; the faithful renderer and point lights off draw none. 31 at most a frame for all the plugins; 1 taken,
        0 not (full, or bad values) */
     int (*light_add)(const float pos[3], const float rgb[3], float intensity, float radius);
+
+    /* ======== ABI 5 (test RAC1_API_HAS(api, base_option)) ======== */
+
+    /* -- the base level's enemies -- */
+    /* a choice of the class's for an object base_spawn has just started (call it in the same callback, before its first
+       update): RAC1_BASE_WEAPON (Kalebo III's Gadgetron robots 541: 0 the launcher, 1 the club, 2 the flamethrower), 1 done;
+       RAC1_BASE_TROOPS (Kalebo III's dropships 1356: `value` jetpack troopers 638, at most 4, started from 638's spawn room
+       and carried until it drops them): how many it took. 0: not (no such object, already updated, a class or value the
+       option has not) */
+    int (*base_option)(uint32_t handle, int32_t option, int32_t value);
+    /* the handle of a moby base_spawn started (one a dropship brought: find them with mobys_near), 0 none */
+    uint32_t (*base_handle)(uint32_t moby);
+
+    /* -- the weapons (the item ids of the pause menu's Weapons page: 0x09 Suck Cannon, 0x0a Bomb Glove, 0x0b Devastator,
+          0x0d Visibomb Gun, 0x0e Taunter, 0x0f Blaster, 0x10 Pyrocitor, 0x11 Mine Glove, 0x12 Walloper, 0x13 Tesla Claw,
+          0x14 Glove of Doom, 0x15 Morph-o-Ray, 0x17 R.Y.N.O., 0x18 Drone Device, 0x19 Decoy Glove) -- */
+    /* the weapons Ratchet owns: at most `max` ids into `out` (may be NULL), in id order; how many he owns */
+    int32_t (*weapons_owned)(int32_t* out, int32_t max);
+    /* that weapon in his hand, as the quick select puts it there (the game's switch: its animation and sound, the next
+       frames): 1 asked (or in hand already), 0 not (not owned, not allowed by weapon_allow, not in play, or where the quick
+       select could not be opened now: swinging or throwing the wrench, switching or using an item, in a vehicle, a ship, on
+       a hoverboard; call it again later) */
+    int (*weapon_equip)(int32_t item);
+    /* only the `n` weapons of `items` can be chosen: the others are not in the quick select's ring, the PC's next / previous
+       weapon skip them, and one asked otherwise (the game's own return to a weapon) is not taken; one in hand goes for the
+       wrench. NULL or 0: all again. Off at every level's start */
+    void (*weapon_allow)(const int32_t* items, int32_t n);
+    /* that item's ammo to its most (the HUD's, the pickups'): 1, 0 not (not owned, an item with no ammo) */
+    int (*ammo_fill)(int32_t item);
 } rac1_api;
 
 #define RAC1_API_HAS(api, field) ((api)->size >= offsetof(rac1_api, field) + sizeof((api)->field))

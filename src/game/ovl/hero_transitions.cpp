@@ -1,4 +1,5 @@
 // Ported overlay code: the hero's per-frame input -> state transitions (0x229b70).
+#include <host/mod_code.h>
 #include <game/enhance/advanced.h>
 #include <game/enhance/fixes102.h>
 #include <initializer_list>
@@ -2552,7 +2553,7 @@ void hero_input_update() {
             } else {
                 const uint32_t prev = lwu(0x0015ed8c);  // (the item compared against, even for the wrench)
                 const uint32_t last = lw(P + 0x10b8) == 8 ? lwu(0x00141660) : prev;
-                if (last != 0 && lwu(P + 0x10b8) != prev) {
+                if (last != 0 && lwu(P + 0x10b8) != prev && mod_code_weapon_allowed(last)) {  // (enhancement: a plugin's weapon_allow)
                     hero_stat_use(0x00141848 + 0xf8);
                     sw(P + 0x20b8, last);
                     sh(P + 0x22d6, 0);

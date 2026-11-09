@@ -10,6 +10,15 @@ What changed in each release. Releases are source only: you build the game with 
   is short, but with another program using the GPU (another game, a second copy) each lasted as long as that program's
   work, up to 40 s in all. The uploads made between two frames now go together in one command buffer, submitted with the
   next frame without a wait. Veldin with a heavy GPU program beside it: 6.8 + 8.7 s before, 0.03 + 0.13 s now.
+- Mod SDK **ABI 5** (the tables grow at their end: older plugins keep loading): **Kalebo III's enemies** on a level mod with
+  a Kalebo III base: `base_spawn` now starts the bomb bots (52), the Gadgetron robots (541), the jetpack troopers (638) and
+  the dropships (1356), which on their own level wait for its paths, doors and triggers: the game gives each one paths of
+  its own and starts it at once; `base_option` chooses a Gadgetron robot's weapon (bomb launcher, club, flamethrower) and a
+  dropship's troopers (up to 4, dropped at its landing point); `base_hunt` makes all four hunt Ratchet anywhere (the
+  dropship then stays and fights); `base_handle` gives the handles of the troopers a dropship brought. **The weapons**:
+  `weapons_owned`, `weapon_equip` (as the quick select does, refused where it could not open), `weapon_allow` (only some
+  weapons selectable: the others left out of the quick select's ring and the next / previous weapon; off at every level's
+  start), `ammo_fill`. See docs/sdk.md.
 - Mod SDK **ABI 4** (the tables grow at their end: older plugins keep loading): `vendor_open` (the vendor's screens from a
   plugin, on any base level; `call_port` never reached them), `input_hold` (the pad kept from the game while a plugin's
   menu is open: Start and Select still the game's, so pausing and quitting work; `pad_held` / `pad_pressed` read the real

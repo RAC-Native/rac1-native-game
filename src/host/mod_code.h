@@ -18,6 +18,13 @@ extern bool g_mod_code_objects;
 // is, as a moby whose update distance +0x30 is 0xff)
 extern bool g_mod_update_all;
 
+// (ABI 5) weapon_allow: true while a plugin limits the weapons that can be chosen (the quick select's ring, the PC's next /
+// previous weapon); mod_code_weapon_allowed(item): false for a weapon not in its list (true for every other item, and always
+// when no list is set: the original's)
+extern bool g_mod_weapons_limited;
+bool mod_code_weapon_allowed_slow(uint32_t item);
+inline bool mod_code_weapon_allowed(uint32_t item) { return !g_mod_weapons_limited || mod_code_weapon_allowed_slow(item); }
+
 // (ABI 4) the plugins' lights of a frame (light_add) in EE memory: the count at MOD_LIGHTS, then MOD_LIGHT_MAX entries of 0x20
 // bytes from MOD_LIGHTS + 0x10 (x y z radius, r g b already times the intensity, 0). The modern lighting reads them from the
 // frame's copy (src/game/render/mrp_lighting.cpp); draw_memory_take copies the block while a plugin is loaded

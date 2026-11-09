@@ -1268,7 +1268,7 @@ void item_cycle(int32_t dir) {
     for (int32_t k = 1; k <= n; ++k) {
         const int32_t t = ((base + dir * k) % n + n) % n;
         const uint32_t item = lwu(LIST + static_cast<uint32_t>(t) * 4);
-        if (item == 0 || item == now) continue;
+        if (item == 0 || item == now || !mod_code_weapon_allowed(item)) continue;
         if (item == 0x18) sb(HERO + 0x1ff5, 1);
         else sw(HERO + 0x20b8, item);
         const uint32_t row = item * 0x18 + OV(0x001c40b0);
