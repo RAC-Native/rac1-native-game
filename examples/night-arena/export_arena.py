@@ -55,8 +55,10 @@ FOLDER = "night-arena"
 
 LEVEL = {
     "id": "night-arena",
-    "name": {"": "Night Arena", "it": "Arena Notturna", "de": "Nachtarena", "es": "Arena Nocturna"},
-    "region": {"": "Custom Levels", "it": "Livelli personalizzati", "de": "Eigene Level", "es": "Niveles propios"},
+    "name": {"": "Daino's Arena", "it": "Arena di Daino", "de": "Dainos Arena", "es": "Arena de Daino",
+             "fr": "Arène de Daino"},
+    "region": {"": "Custom Levels", "it": "Livelli personalizzati", "de": "Eigene Level", "es": "Niveles propios",
+               "fr": "Niveaux personnalisés"},
     "format": 2,
     "base": 16,             # Kalebo III: its enemies (classes 1445, 52, 541, 638, 1356) for the waves
     "base_name": "kalebo",
@@ -701,6 +703,63 @@ def export_rails(level, offset, depsgraph):
     return rails
 
 
+# ---------------------------------------------------------------- the ship's map's picture
+
+MAP_VIEW = {"eye": (-62.0, -118.0, 62.0), "at": (4.0, 6.0, 0.0), "lens": 34.0, "size": (612, 216)}
+
+
+def render_map_picture(path):
+    """level.txt's map_picture (306 x 108 in the game: rendered at twice that): the arena from the south-west, by the
+    scene's own engine (EEVEE), with a sun from high up for this render only (the level's sun is Veldin's, low) and the
+    collision and the markers hidden (the collision's meshes are wireframes in the viewport, faces in a render). The
+    camera, the sun and every setting it touches are put back however it ends. False when it could not render."""
+    sc = bpy.context.scene
+    r = sc.render
+    kept = (sc.camera, r.resolution_x, r.resolution_y, r.resolution_percentage, r.filepath, r.film_transparent,
+            r.image_settings.file_format)
+    cols = [c for c in (bpy.data.collections.get(n) for n in ("arena_collision", "arena_markers")) if c]
+    hidden = [c.hide_render for c in cols]
+    cd = bpy.data.cameras.new("_map_camera")
+    cam = bpy.data.objects.new("_map_camera", cd)
+    ld = bpy.data.lights.new("_map_sun", "SUN")
+    sun = bpy.data.objects.new("_map_sun", ld)
+    try:
+        sc.collection.objects.link(cam)
+        sc.collection.objects.link(sun)
+        cd.lens = MAP_VIEW["lens"]
+        cam.location = MAP_VIEW["eye"]
+        cam.rotation_euler = (Vector(MAP_VIEW["at"]) - Vector(MAP_VIEW["eye"])).to_track_quat("-Z", "Y").to_euler()
+        ld.energy, ld.color, ld.angle = 5.0, (1.0, 0.93, 0.85), math.radians(8)
+        sun.rotation_euler = (math.radians(25), math.radians(-15), 0.0)
+        for c in cols:
+            c.hide_render = True
+        sc.camera = cam
+        r.resolution_x, r.resolution_y = MAP_VIEW["size"]
+        r.resolution_percentage = 100
+        r.film_transparent = False
+        formats = [i.identifier for i in r.image_settings.bl_rna.properties["file_format"].enum_items]
+        if "PNG" in formats:
+            r.image_settings.file_format = "PNG"
+        r.filepath = path
+        bpy.ops.render.render(write_still=True)
+        ok = os.path.exists(path)
+        print("map picture: rendered" if ok else "map picture: not written")
+        return ok
+    except Exception as e:  # (no GPU for the engine in a headless run, ...)
+        warn("map picture: could not render (%s): the level has none" % e)
+        return False
+    finally:
+        sc.camera = kept[0]
+        r.resolution_x, r.resolution_y, r.resolution_percentage, r.filepath, r.film_transparent = kept[1:6]
+        r.image_settings.file_format = kept[6]
+        for c, h in zip(cols, hidden):
+            c.hide_render = h
+        bpy.data.objects.remove(cam, do_unlink=True)
+        bpy.data.objects.remove(sun, do_unlink=True)
+        bpy.data.cameras.remove(cd)
+        bpy.data.lights.remove(ld)
+
+
 def wav(path, rate, samples):
     with wave.open(path, "wb") as w:
         w.setnchannels(1)
@@ -808,6 +867,14 @@ def export(out=None, install=False):
     model(level, "drone", drone_tris(), drone_colour)
     rails = export_rails(level, offset, depsgraph)
     sounds(level)
+    pictures = {}  # (level.txt's picture lines: the planet made by make_textures.py, the map's view rendered here)
+    if os.path.exists(os.path.join(HERE, "textures", "planet.png")):
+        shutil.copy(os.path.join(HERE, "textures", "planet.png"), os.path.join(level, "planet.png"))
+        pictures["picture"] = "planet.png"
+    else:
+        warn("no textures/planet.png (make_textures.py): the level has no planet picture")
+    if render_map_picture(os.path.join(level, "map.png")):
+        pictures["map_picture"] = "map.png"
     music, music_src = LEVEL["music"]
     if not os.path.exists(music_src):
         err("no music file %s" % music_src)
@@ -837,6 +904,8 @@ def export(out=None, install=False):
     if LEVEL["sky"] is not None:
         L.append("sky %d" % LEVEL["sky"])
     L.append("music %s" % music)
+    for key, f in pictures.items():
+        L.append("%s %s" % (key, f))
     for key in ("background", "fog"):
         if LEVEL.get(key):
             L.append("%s %d %d %d" % ((key,) + tuple(LEVEL[key])))
@@ -948,9 +1017,10 @@ def export(out=None, install=False):
         f.write("\n".join(LL) + "\n")
 
     with open(os.path.join(out, "mod.json"), "w") as f:
-        json.dump({"name": LEVEL["name"][""], "author": "Daino Selvatico", "version": "0.2",
-                   "description": "An arena in a lava lake ringed by mountains: a hub, four towers, cover, flame vents, three "
-                                  "gates and drop zones for the waves, a plaza for the ship.",
+        json.dump({"name": LEVEL["name"][""], "author": "Daino Selvatico", "version": "0.3",
+                   "description": "An arena in a lava lake ringed by mountains, with challenges against Kalebo III's enemies "
+                                  "(waves, bombs, flame vents, weapon limits, championships) and grind rails (a test rail, a "
+                                  "course of three lanes with mines, barriers and drones).",
                    "kind": "level", "level": {"id": LEVEL["id"], "format": LEVEL["format"], "base": LEVEL["base"]}}, f, indent=2)
         f.write("\n")
 
