@@ -76,6 +76,7 @@ struct LevelTxt {
     bool ship = false;
     float ship_at[4] = {};
     bool has_death = false;
+    bool update_all = false;            // update_all: every moby updated wherever the camera is (level.sdk)
     float death = -100.0f;
     bool has_background = false, has_fog = false;
     int background[3] = {}, fog[3] = {};
@@ -249,6 +250,8 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
                 if (!(in2 >> t.ship_at[0] >> t.ship_at[1] >> t.ship_at[2] >> t.ship_at[3])) return bad();
                 t.ship = true;
             }
+        } else if (key == "update_all") {
+            t.update_all = true;
         } else if (key == "death_height") {
             if (!(in >> t.death)) return bad();
             t.has_death = true;
@@ -2083,9 +2086,10 @@ bool compose_level_mod(const std::string& folder, bool force) {
     if (!hm.classes.empty() && !mrpw::write_host_meshes((out_dir / "host_meshes.mrpc").string(), hm, err)) return fail(err);
     if (!bank_sounds.empty() && !write_file(out_dir / "sounds.bnk", sound_bank(bank_sounds))) return fail("cannot write into " + out_dir.generic_string());
     // level.sdk: the level's own content for the game (src/game/enhance/mod_code.cpp reads it)
-    if (!lt.classes.empty() || !lt.sounds.empty() || !lt.triggers.empty()) {
+    if (!lt.classes.empty() || !lt.sounds.empty() || !lt.triggers.empty() || lt.update_all) {
         std::ostringstream o;
         o << "sdk\t1\n";
+        if (lt.update_all) o << "update_all\t1\n";
         for (size_t i = 0; i < lt.classes.size(); ++i) {
             const LevelTxt::Class& c = lt.classes[i];
             const ClassModel& cm = models[i];

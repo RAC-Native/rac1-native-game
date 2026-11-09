@@ -3,6 +3,7 @@
 #include <runtime/ee/ps2_fpu.h>
 #include <game/input/pad_build.h>
 #include <game/ovl/ovl_common.h>
+#include <host/mod_code.h>
 
 namespace rac1 {
 
@@ -155,6 +156,7 @@ void pad_build(uint32_t pad, const uint8_t* data, int32_t len) {
 // packet the pad would return.
 // orig: 0x00266f50 (the overlay's copy of the base ELF's 0x002170c8)
 void pad_read_packet(uint32_t pad, const uint8_t* data, int32_t len) {
+    if (g_mod_code_any) mod_code_pad_before(pad);  // enhancement: a plugin's input_hold (src/host/mod_code.h)
     sw(pad + 0x1a0, 0);
     const uint32_t raw = lwu(pad + 0x1b0);
     const uint32_t last = lwu(pad + 0x348);
@@ -166,6 +168,7 @@ void pad_read_packet(uint32_t pad, const uint8_t* data, int32_t len) {
     pad_build(pad, data, len);
     sb(pad + 0x189, 0);
     sb(pad + 0x188, 0);
+    if (g_mod_code_any) mod_code_pad_after(pad);  // enhancement: the real pad kept for the plugins, input_hold's mask
 }
 
 }  // namespace rac1

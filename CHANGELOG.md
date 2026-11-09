@@ -5,6 +5,19 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Mod SDK **ABI 4** (the tables grow at their end: older plugins keep loading): `vendor_open` (the vendor's screens from a
+  plugin, on any base level; `call_port` never reached them), `input_hold` (the pad kept from the game while a plugin's
+  menu is open: Start and Select still the game's, so pausing and quitting work; `pad_held` / `pad_pressed` read the real
+  pad; the buttons held at the release stay out of the game until let go), `hud_rect` (panels), `hud_text_ex` (text up to
+  8 times larger) and `hud_text_width`, with left / centre / right anchors that follow a HUD wider than 4:3,
+  `base_hunt` (Kalebo III's robots hunt Ratchet anywhere instead of guarding where they started) and `light_add` (a
+  plugin's own lights, per frame, drawn by the modern lighting as the hand-placed ones). The plugins' `ee_alloc` block is
+  53 KB (was 54). The `hud` callback is no longer called under the vendor's screens. See docs/sdk.md.
+- Level mods: level.txt's **`update_all`** line updates every moby wherever the camera is (the game updates a moby only
+  near the camera). On **Kalebo III** as the base, the collision's lava (surface type 3) and deadly liquid (type 1) now act
+  on Ratchet (Kalebo's hero code has neither: a hop out, lost at the third), and the ambient particles' `source lava`
+  rises from a level mod's type 3 faces too. The `material` / `emissive` lines of a level mod's `lights.txt` apply to its
+  meshes (documented: `tie <n>` the mesh's class in meshes.obj's order). See docs/mods.md, "Level mods", "Base levels".
 - Level mods: **a base level per mod**. `mod.json`'s `level.format` 2 with `level.base` 3 (Kerwan), 4 (Eudora) or
   16 (Kalebo III), besides Veldin (0, format 1's): the level runs on that level's code, with its classes, its enemies,
   its effects. The composer now keeps each block of the base level's asset data by its own extent, so every level of

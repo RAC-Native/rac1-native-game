@@ -476,6 +476,7 @@ mods/example-plateau/
 | `death_height <z>` | below it Ratchet dies; default the base level's, or 8 under the collision's lowest point when the base level's is above it (the log says so) |
 | `base <level\|name>` | the base level, as mod.json's `level.base` (a number, or `veldin`, `kerwan`, `eudora`, `kalebo`, ...): the composer checks they are the same (mod.json decides) |
 | `spawn <class> <count>` | room for `<count>` objects of the base level's class `<class>` at once, for the plugin's `base_spawn` (ABI 3, [The mod SDK](sdk.md#base-level-objects)) |
+| `update_all` | every moby of the level is updated each frame wherever the camera is (the game updates a moby only within its update distance of the camera, moby +0x30: 64 units for Kalebo III's robots, a crate's less): enemies far away keep moving and fighting. Costs the updates of the mobys out of sight; the original's levels never |
 | `background <r> <g> <b>`, `fog <r> <g> <b>` | colours (0..255) |
 | `collision <file>`, `meshes <file>` | other file names (default `collision.obj`, `meshes.obj`) |
 | `collision_type <n>` | the surface type of the collision's faces (default 31, plain ground) |
@@ -560,6 +561,19 @@ on each axis (in whole steps of 4; the composer's log says by how much). `lights
 
 `collision.obj`: triangles or polygons (`v`, `f`), faces counter-clockwise seen from where they can be walked on (an
 OBJ's usual front). `usemtl type<N>` before faces gives them surface type N. No collision of its own means no ground.
+The surface types the base level's hero code knows act on Ratchet as on the game's levels: `type3` is **lava** (he sinks
+into it and is bounced out, three times in a row and he is lost), `type1` the deadly liquid (he jumps out of it while he has health, else he is lost), `type31`
+plain ground; Kalebo III's own hero code knows neither: on a level mod's level it gets them ([Base levels](#base-levels)).
+The ambient particles' `source lava` line rises from a level mod's `type1` and `type3` faces ([Particles](particles.md#from-the-lava)).
+
+**Materials on the meshes**: `lights.txt`'s `material` and `emissive` lines ([Materials](materials.md)) work on the level's own
+meshes as on the game's ties: `material tie <n> tex <t> <type> ...`, `<n>` the mesh's class - the objects (`o`) of
+`meshes.obj` in the file's order from 0, then the models of level.txt's `class` lines in their order -, `<t>` its
+texture - the materials (`usemtl`) of that object in the order they first appear, from 0. For example `material tie 0
+tex 0 lava 1.5 0.2` makes the first object's first material lava (its glow, its flow and its embers), `emissive tie 4
+tex 1 2` the fifth object's second material glow. The debug menu's Lights tab names them so under the crosshair; the
+composer's `compose.log` lists the meshes in that order with their textures' count (`mesh "lava": ... 1 textures`). Tested: the night arena's metals, lamps and its flame
+class's model change with their lines (and not without).
 
 `meshes.obj`: each object (`o`) is a mesh the host draws; each material (`usemtl`, in the `.mtl`) one texture: its
 `map_Kd` PNG (scaled to powers of two, at most 256 x 256, at most 256 colours), else its `Kd` colour. At most 16
@@ -661,7 +675,7 @@ bases tested (others are refused: "not a base level this game runs a level on"):
 | Veldin | 0 (format 1's) | the most hero animations; bolt, nanotech, ammo crates | no enemy that works alone tried; no gold bolt class (the pause menu's and the ship's map's "Found" panel shows a plain bolt instead on the level) |
 | Kerwan | 3 | its classes | its hero code ends a fall below z 5 at once (the composer warns; `offset auto` keeps a level higher) |
 | Eudora | 4 | its classes | none found |
-| Kalebo III | 16 | its classes, its robots (enemies) | its hero code ends a fall below z 77 at once (also a fall from one of its own moves, the hero's state 0xf, with no air left): keep the level above 77 (`offset`); the composer warns |
+| Kalebo III | 16 | its classes, its robots (enemies) | its hero code ends a fall below z 77 at once (also a fall from one of its own moves, the hero's state 0xf, with no air left): keep the level above 77 (`offset`); the composer warns. Its hero code has no lava and no deadly liquid: the level gets them (below) |
 
 On every base the level is a planet of its own: the base planet's progress is never touched (its visits, its time,
 its visited flag, its unlock on the ship's list, its gadget added to the quick select, its kill and pickup records:
@@ -669,6 +683,21 @@ the level has its own), and the base level's story cards and movies of a first f
 Kalebo III's) or of leaving it are left out on the way to and from the level. The base level's sound table is the
 SDK's `sound(index)` (its indices change with the base). The faithful renderer's look of another level's sky on a base
 is not checked.
+
+**Kalebo III's lava.** Kalebo III's own build of the hero code (its surface update L16:0x2097a0, its ground probe
+L16:0x20ffb0) has no surface type 3 (lava) nor 1 (deadly liquid): on its own level those faces are plain ground. On a
+level mod's level (never on the original's Kalebo III) the game adds the generic build's: the faces flagged as on the
+other levels (the hero's +0x12e6, +0x12e5), the lava not a floor (its top kept, the ground probed under it), and, as
+Ratchet comes down into either, a hop out of it while he has health; the third hop within 3 seconds (or no health) and
+he is lost (the fade, the respawn at the level's start, as a fall). Not the same as the other levels': their lava's
+states (0x68 sinking and bouncing on Cross, 0x7b / 0x7c / 0x7d sinking to death) are not in Kalebo's hero code, nor
+are their animations (Kalebo's hero has 33 of Veldin's animations fewer, 0x71 the lava's among them); its 0x69 / 0x3c
+(the generic lava's and deadly liquid's jumps out) hold him in place when entered without 0x68, so the hop is the
+standing jump. Bringing the real ones would mean, on a level mod's Kalebo, the states' entries (`hero_set_state`), their
+updates (`hero_state_update`), their exits (`hero_input_update`'s 0x68 / 0x7b tails: the Cross jump, `lost_timer`), each
+a hook into Kalebo's generated code as above, and the animations (Veldin's hero animations, a different set, added to the
+composed level's hero class). No damage from the lava itself (the other levels' does none either; a plugin can add it:
+`hero_damage`). `RAC1_LEVEL_TRACE=1` prints the hops (`[levels] Kalebo III's hero: ...`).
 
 **Kalebo III's classes**, each placed twice with `moby` lines on a flat arena and watched headless (Ratchet
 standing, then swinging the wrench, `RAC1_SIM_INPUT=attack`):
