@@ -585,7 +585,7 @@ int g_kind_hist[32];  // (testing, RAC1_PARTICLES_TRACE: the faces by surface ki
 // (a, c and its fourth point); `face` once per face before its triangles (its kind). False: no tree there
 template <class Face, class Tri>
 bool coll_faces(uint32_t tree, Face&& face, Tri&& fn) {
-    auto ok = [](uint32_t a, uint32_t n) { return a >= 0x100000u && a + n < 0x2000000u; };
+    auto ok = [](uint32_t a, uint32_t n) { return a >= 0x100000u && a + n < ee_game_ram_end(); };
     if (!ok(tree, 8)) return false;
     const uint32_t z0 = draw_lhu(tree), zn = draw_lhu(tree + 2);
     for (uint32_t zi = 0; zi < zn && zi < 256; ++zi) {
@@ -1538,7 +1538,7 @@ void mrp_particles_fx_capture() {
         const uint32_t tree = draw_lwu(OV(0x00173e40));
         // (read when the level, the tree's place or its index changed and then stayed so for 30 frames: not while a level loads)
         uint32_t fp = level * 2654435761u ^ tree;
-        if (tree >= 0x100000u && tree + 0x100u < 0x2000000u)
+        if (tree >= 0x100000u && tree + 0x100u < ee_game_ram_end())
             for (uint32_t i = 0; i < 0x100u; i += 4) fp = (fp ^ draw_lwu(tree + i)) * 16777619u;
         static uint32_t last_fp = 0;
         static int stable = 0;

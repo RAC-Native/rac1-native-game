@@ -48,7 +48,7 @@ struct Stats {
 bool add(uint32_t a, uint32_t n) {
     if (n == 0) return true;
     const bool spr = a >= SPR && a - SPR <= 0x4000u - n;
-    const bool ram = a != 0 && a < 0x04000000u && n <= 0x04000000u - a;
+    const bool ram = a != 0 && a < ee_ram_size() && n <= ee_ram_size() - a;
     if (!spr && !ram) return false;
     const uint8_t* p = static_cast<const uint8_t*>(ee_ram_ptr_read(a));
     if (p == nullptr) return false;

@@ -55,8 +55,9 @@ int32_t gs_exec_load_image(uint32_t lp, uint32_t src) {
     if ((ee_read<uint64_t>(lp + 0x40) & 3) == 0) g.transfer_start();
     else g.transfer_stop();
     const uint32_t qwc = static_cast<uint32_t>(ee_read<uint64_t>(lp + 0x50) & 0x7fff);
-    // (host: a source outside the 32 MB of EE RAM, as a level setup run without its files in a test reads from, is not sent)
-    if (src >= 0x02000000u || qwc * 16u > 0x02000000u - src) return 0;
+    // (host: a source outside the 32 MB of EE RAM (a session's: its RAM), as a level setup run without its files in a test reads
+    // from, is not sent)
+    if (src >= ee_game_ram_end() || qwc * 16u > ee_game_ram_end() - src) return 0;
     g.transfer_data(bb, pos, rg, static_cast<const uint8_t*>(ee_ram_ptr(src)), qwc * 16);
     return 0;
 }
@@ -110,7 +111,7 @@ int32_t gs_exec_store_image(uint32_t lp, uint32_t dst) {
     if (gs::StoreImageHook hook = gs::store_image_hook(); hook != nullptr) hook(sbp, sbw, spsm);
     // (host) the 32-bit frame copied whole, as the loop below would; not under a journal (its pages would not be saved: the
     // shadow runs, mrp_lod.h) nor for a null destination
-    if (spsm == 0 && dst != 0 && dst < 0x02000000u && w * h * 4u <= 0x02000000u - dst && ee_detail::g_jseen == nullptr) {
+    if (spsm == 0 && dst != 0 && dst < ee_game_ram_end() && w * h * 4u <= ee_game_ram_end() - dst && ee_detail::g_jseen == nullptr) {
         const uint8_t* vram = g.vram();
         uint8_t* out = static_cast<uint8_t*>(ee_ram_ptr(dst));
         for (uint32_t y = 0; y < h; ++y) {

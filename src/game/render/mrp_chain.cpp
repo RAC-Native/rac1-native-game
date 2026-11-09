@@ -85,7 +85,7 @@ struct Walk {
     template <class Mem, class OnTag>
     void run(Mem&& mem, OnTag&& on_tag) {
         std::vector<uint32_t> stack;
-        uint32_t addr = in.start & 0x01fffff0u;
+        uint32_t addr = in.start & ee_dma_addr_mask();
         bool in_sub = false, drop = false;
         int cur = -1;
         uint32_t sub_lo = 0, sub_hi = 0, done = 0;
@@ -117,12 +117,12 @@ struct Walk {
                 cur = -1;
                 event = event == 0 ? 3 : event;
             }
-            if (in.end != 0 && !in_sub && addr == (in.end & 0x01fffff0u)) return;  // (the substitute may reach past the real chain's end)
+            if (in.end != 0 && !in_sub && addr == (in.end & ee_dma_addr_mask())) return;  // (the substitute may reach past the real chain's end)
             const uint8_t* t = mem(sub_addr(addr), 16u);
             if (t == nullptr) return;
             const uint64_t lo = r64(t);
             const uint32_t qwc = bits(lo, 0, 16), id = bits(lo, 28, 3);
-            const uint32_t a = bits(lo, 32, 31) & 0x01fffff0u;
+            const uint32_t a = bits(lo, 32, 31) & ee_dma_addr_mask();
             uint32_t data = addr + 16, next = addr + 16 + qwc * 16;
             bool stop = false;
             switch (id) {
@@ -772,8 +772,8 @@ void capture(MrpChainInput&& in, Capture& c) {
     std::sort(c.in.hud.begin(), c.in.hud.end(), [](const MrpChainInput::Hud& a, const MrpChainInput::Hud& b) { return a.sub != b.sub ? a.sub < b.sub : a.first < b.first; });
     std::sort(c.in.proj.begin(), c.in.proj.end(), [](const MrpChainInput::Proj& a, const MrpChainInput::Proj& b) { return a.sub != b.sub ? a.sub < b.sub : a.first < b.first; });
     for (auto& u : c.in.subs) {
-        u.first &= 0x01fffff0u;
-        u.end &= 0x01fffff0u;
+        u.first &= ee_dma_addr_mask();
+        u.end &= ee_dma_addr_mask();
     }
     c.in.subs.erase(std::remove_if(c.in.subs.begin(), c.in.subs.end(), [](const MrpChainInput::Sub& u) { return u.bytes.empty() || u.first == 0; }), c.in.subs.end());
     if (c.in.subs.size() > static_cast<size_t>(kMaxSubs)) c.in.subs.resize(kMaxSubs);

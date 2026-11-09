@@ -268,7 +268,7 @@ bool tfrag_level_build(TfragLevel& L, const World& w) {
             }
             std::printf("\n");
         }
-        if (!same || data == 0 || data >= 0x02000000u) {
+        if (!same || data == 0 || data >= ee_game_ram_end()) {
             ++L.mismatched;
             continue;
         }
