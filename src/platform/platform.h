@@ -70,6 +70,19 @@ void will_need(std::FILE* f, std::uint64_t offset, std::uint64_t bytes);
 bool map_file(const std::filesystem::path& path, const std::byte** data, std::size_t* size);
 void unmap_file(const std::byte* data, std::size_t size);
 
+// ---- Reserved memory ----
+
+// `bytes` of address space reserved for a block that grows in place (the EE memory: 64 MB, more for a custom-level
+// session). Nothing is usable until committed. nullptr when it cannot be had.
+void* memory_reserve(std::size_t bytes);
+// [0, bytes) of a reserved block usable, read and written as zeros until written. The pages cost memory only once touched
+// (POSIX: an anonymous mapping, demand-zero; Windows: committed pages, demand-zero). False when it cannot be had.
+bool memory_commit(void* base, std::size_t bytes);
+// [from, to) of a committed block given back: zeros again when next used (still committed on POSIX; decommitted on
+// Windows, committed again by the next memory_commit).
+void memory_discard(void* base, std::size_t from, std::size_t to);
+void memory_release(void* base, std::size_t bytes);
+
 // ---- The player's folders ----
 
 // The settings' folder (rac1-native's own): $XDG_CONFIG_HOME/rac1-native, else ~/.config/rac1-native;

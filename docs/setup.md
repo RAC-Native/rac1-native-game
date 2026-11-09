@@ -391,6 +391,8 @@ gameplay files directly. Without a data disc, nothing changes.
 | `--status` | show what is present |
 | `--movie-tracks <pss>` | print a movie file's sound tracks (for `tools/movie_subtitles.py`) |
 | `--movie-audio <pss> --track <n> --wav <out>` | one sound track of a movie file as a 16 kHz mono WAV (for speech to text) |
+| `--pool` | make the asset pool from the game's disc (`assets/generated/pool/`: every level's moby classes, for custom-level sessions; made only when something needs it: [The open engine](open-engine.md)) |
+| `--pool-report` | the asset pool per level and in all (made first when missing) |
 
 On its own, `--setup` skips a file that exists without checking whether it is up to date; that is
 what `./setup.sh` adds. `./setup.sh` makes the boot executable and the overlay maps itself, before

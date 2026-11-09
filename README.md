@@ -237,6 +237,8 @@ For contributors, and for reverse-engineering and decompilation people:
 - [Port catalog](docs/catalog/README.md): every function and moby class of the game, one by one, with its
   port and its oracle batches, and the host code that stands in for the PS2's hardware and libraries.
 - [Game logic](docs/game-logic.md): the main loop, levels, mobys, the hero, the camera, cutscenes.
+- [The open engine](docs/open-engine.md): work in progress towards custom levels on the game's own engine (sessions): their
+  memory, the session heap, a level's engine and own data, the asset pool.
 - [Rendering](docs/rendering.md): how a frame is drawn by the native renderer (the MRP).
 - [Vulkan](docs/vulkan.md): the Vulkan backend of the same renderer, the default.
 - [Metal](docs/metal.md): macOS's renderer, the Vulkan backend's code on a Metal layer.

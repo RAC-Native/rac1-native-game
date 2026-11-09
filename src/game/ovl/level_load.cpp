@@ -7,6 +7,7 @@
 #include <game/ovl/moby_pass.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
+#include <game/enhance/session.h>
 #include <array>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
@@ -465,7 +466,7 @@ uint32_t gameplay_load(int32_t level) {
                 } else {
                     sh(map, spawned);
                     const uint32_t m = lwu(OV(0x0015ffd8)) + spawned * 0x100;
-                    moby_init(m, lwu(s1));
+                    moby_init(m, g_session_classes ? session_placed_class(lwu(s1)) : lwu(s1));  // (a session class id: testing)
                     s1 += 4;
                     sh(m + 0xb2, static_cast<uint32_t>(uid));
                     sb(m + 0xb1, a2);

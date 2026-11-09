@@ -5,6 +5,14 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Daino's Arena** (`examples/night-arena`): a larger example level mod made in Blender, an arena in a lava lake on
+  Kalebo III's code, with a plugin running challenges against Kalebo III's enemies (waves, bombs from the sky, flame
+  vents, weapon limits, two championships) and, for players who have the Grind Boots, grind rails of its own: a test
+  rail and a course of three lanes with mines to jump and Kalebo III's rail mines to break, ending in a last wave; a planet picture of its own
+  and a view of the arena on the ship's map; its texts in the game's five text languages. Its scripts write the whole mod (see its README).
+- Mod SDK: while **pause in the quick select** holds the world still (Options > Advanced), the plugins' `frame`
+  callbacks, their triggers and the SDK's logic for Kalebo III's enemies and `base_hunt` wait too: a plugin's timers
+  stopped running and the enemies it steers stopped sliding while the ring was open.
 - **Quick Select Rings** (Options > Advanced in the pause menu: 1 / 3, 1 by default; New Game's Modern turns it to 3):
   three quick select rings as in the later games. While the ring is open, L1 / L2 show the ring on the left and R1 / R2
   the one on the right (those presses never reach the game), with the L1 / R1 arrows and three dots above the ring; it
@@ -12,6 +20,9 @@ What changed in each release. Releases are source only: you build the game with 
   wheel); the same weapon may be in several rings. A new weapon that finds ring 1 full goes to ring 2, then 3. Ring 1 is
   still the game's (its save unchanged); rings 2 and 3 are kept in the save's `save<N>.pc`. A plugin's `weapon_allow`
   blanks its disallowed weapons in every ring. See docs/advanced.md.
+- **No more long freeze before the main menu** (after the intro movie, skipped or not) with Corrected Texts on (Options >
+  Advanced): finding the corrected strings compared each data disc's text table with the game's again for every one
+  of its strings, 20 to 30 s on the game's thread. Each table is now compared once: 0.4 s, the same strings corrected.
 - Vulkan: **no more long freezes when a level loads** (after the intro movie, before the main menu; any planet). Every
   texture level a load sent to the GPU was a submit of its own and a wait for it (about 1600 for Veldin): alone each wait
   is short, but with another program using the GPU (another game, a second copy) each lasted as long as that program's

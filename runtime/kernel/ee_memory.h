@@ -29,7 +29,32 @@ extern u8* g_spr;             // the scratchpad
 extern u32 g_fast_last;       // the last RAM address reached inline: 64 MB - 1, or 0 (no inline RAM: none yet, a journal on)
 extern u32 g_read_last;       // the same for reads (ee_read): a read is never journaled, so 64 MB - 1 once the RAM exists
 extern const u8* g_jseen;     // while a journal is on: per 4 KB page, saved (one more entry, always set, past the last page)
+extern u32 g_game_end;        // ee_game_ram_end's
+extern u32 g_mirror_mask;     // the mirrors' fold: 32 MB - 1, or a session's RAM size - 1
 }  // namespace ee_detail
+
+// ---- A custom-level session's memory (docs/open-engine.md) ----
+// The original's EE memory is 64 MB: the PS2's 32 MB, and the host's areas above them (runtime/level/host_layout.h). A
+// custom-level session grows it (256 MB by default: ee_session_ram_max) for the session heap at 0x04000000 and up; the
+// pages cost memory only once touched. Nothing changes while no session's memory is on: the inline accessors' limits,
+// the mirrors' 32 MB fold and ee_game_ram_end are the original's.
+// orig: (host) the RAM's usable size: 64 MB, or the session's
+u32 ee_ram_size();
+// orig: (host) the most a session's RAM may be: 256 MB (RAC1_SESSION_RAM_MB, testing: a power of two from 64 to 512)
+u32 ee_session_ram_max();
+// orig: (host) the RAM grown to `bytes` (a power of two, 64 MB to ee_session_ram_max: the part above 64 MB zero), or with
+// 0 back to the original's 64 MB (what was above dropped: zeros when grown again). Not while a journal is on; false when
+// refused
+bool ee_session_memory(u32 bytes);
+// orig: (host) the end of the game's memory for the host's sanity checks of the game's pointers (a class's packets, a
+// moby walk, a DMA source): the PS2's 32 MB, or the session's whole RAM while a session's memory is on
+RAC1_HOT_INLINE u32 ee_game_ram_end() { return ee_detail::g_game_end; }
+// orig: (host) the mask of a DMA tag's address as the chain walkers read it (the 32 MB the PS2's DMA reaches, quadword
+// aligned; a session's whole RAM while its memory is on: its classes' packets above 64 MB)
+RAC1_HOT_INLINE u32 ee_dma_addr_mask() { return ee_detail::g_mirror_mask & ~0xfu; }
+// orig: (host) the RAM offset a kseg0 / kseg1 / uncached-mirror address reads (the 32 MB fold, or the session's RAM),
+// 0xffffffff for none (hardware registers)
+u32 ee_mirror_phys(u32 vaddr);
 // (`journal` false: an access that only reads, not saved by a journal; `size` != 0: an access of that many bytes, else one
 // through a pointer that may run on into the next page)
 void* ee_ram_ptr_slow(u32 vaddr, bool journal = true, u32 size = 0);
@@ -133,7 +158,7 @@ void ee_write(u32 vaddr, const T& val) {
 }
 #endif
 
-// Get the base pointer of the RAM block (64 MB: the 32 MB of the PS2 and the host area above it) (useful for debug inspectors/tools).
+// Get the base pointer of the RAM block (64 MB: the 32 MB of the PS2 and the host area above it; a session's: ee_ram_size) (useful for debug inspectors/tools).
 u8* ee_get_ram_base();
 
 // Get the base pointer of the 16KB Scratchpad block.

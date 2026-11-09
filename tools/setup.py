@@ -89,7 +89,7 @@ DISC_STEP = ("disc", "the disc's files", ["tools/disc_extract.py"])
 # The steps before the build, done by this tool (Python only), with the sources that make each one's output.
 CODE_STEPS = [
     ("elf", "the boot executable", []),
-    ("overlay", "the overlay address maps", ["tools/overlay_match/*.py", "data/regions/*.txt"]),
+    ("overlay", "the overlay address maps", ["tools/overlay_match/*.py", "data/regions/*.txt", "src/game/ovl/variants_l*.cpp"]),
     ("code", "the generated code", CODE_SOURCES),
 ]
 # The data steps of `rac1-native --setup --step <name>`, in order, with the sources that make each
@@ -1168,6 +1168,10 @@ def overlay_maps(iso):
         print(f" {lv}", end="", flush=True)
         run_quiet([sys.executable, tools / "overlay_match.py", "--iso", iso, "--out", OVERLAY_MAPS, "--levels", str(lv)],
                   f"Matching level {lv}'s code")
+    # the extents of the engine's data objects in each level (levelN.ext: the open engine's classification of engine and
+    # own data, docs/open-engine.md)
+    print(" extents", end="", flush=True)
+    run_quiet([sys.executable, tools / "extents.py", "--iso", iso, "--maps", OVERLAY_MAPS], "Measuring the engine's data objects")
     print()
 
 

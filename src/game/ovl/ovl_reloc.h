@@ -27,8 +27,15 @@ int ovl_reloc_level();
 // orig: (host) the translation is the identity (NTSC-U Veldin's image, or OVL_NONE)
 bool ovl_reloc_identity();
 // orig: (host) Veldin's data / code address on the current level's overlay
+// (data: an address inside an engine object - the extents of tools/overlay_match/extents.py, levelN.ext - moves with
+// it; an address in no engine object of the level is kept, and logged once)
 uint32_t ovl_xlate_data(uint32_t veldin);
 uint32_t ovl_xlate_code(uint32_t veldin);
+// orig: (host) an address of the current level's overlay data as Veldin's: inside an engine object (its extent), the
+// same place in Veldin's; 0 for the level's own data (what a cross-level context copies: docs/open-engine.md)
+uint32_t ovl_data_to_veldin(uint32_t level_addr);
+// orig: (host) the current level's engine objects have their extents (levelN.ext; Veldin's own image: always)
+bool ovl_has_extents();
 // orig: (host) Veldin's function `veldin` (or an address inside it) on the current level's overlay,
 // 0 when the level has no equivalent (the per-level oracle skips those functions; nothing logged)
 uint32_t ovl_code_lookup(uint32_t veldin);

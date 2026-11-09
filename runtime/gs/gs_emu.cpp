@@ -295,8 +295,8 @@ void Gs::vif_stream(const uint8_t* p, uint32_t n, bool) {
 
 void Gs::add_chain_substitute(uint32_t first, uint32_t end, std::vector<uint8_t> chain) {
     Sub u;
-    u.first = first & 0x01fffff0u;
-    u.end = end & 0x01fffff0u;
+    u.first = first & ee_dma_addr_mask();
+    u.end = end & ee_dma_addr_mask();
     u.chain = std::move(chain);
     if (u.chain.empty() || u.first == 0 || static_cast<int>(subs_.size()) >= kMaxSubs) return;
     subs_.push_back(std::move(u));
@@ -516,7 +516,7 @@ void Gs::chain_walk(uint32_t tag, uint32_t end, Mem&& mem) {
     } side_widen{side_widen_};
     std::vector<uint32_t> stack;
     std::vector<uint8_t> buf;
-    uint32_t addr = tag & 0x01fffff0u;
+    uint32_t addr = tag & ee_dma_addr_mask();
     // inside substitute `cur`: an address in [first, first + size) is the substitute's (kSubFlag)
     bool in_sub = false;
     int cur = -1;
@@ -580,12 +580,12 @@ void Gs::chain_walk(uint32_t tag, uint32_t end, Mem&& mem) {
             if (trace) std::fprintf(stderr, "[sub] %d %08x..%08x: substitute + real %zu prims, real %llu\n", cur, sub_lo, subs_[static_cast<size_t>(cur)].end, prims_.size() - sub_prims0_, static_cast<unsigned long long>(sub_dropped_));
             cur = -1;
         }
-        if (end != 0 && !in_sub && addr == (end & 0x01fffff0u)) return;  // (the substitute may reach past the real chain's end)
+        if (end != 0 && !in_sub && addr == (end & ee_dma_addr_mask())) return;  // (the substitute may reach past the real chain's end)
         const uint8_t* t = mem(sub_addr(addr), 16u);
         if (t == nullptr) return;
         const uint64_t lo = r64(t);
         const uint32_t qwc = bits(lo, 0, 16), id = bits(lo, 28, 3);
-        const uint32_t a = bits(lo, 32, 31) & 0x01fffff0u;
+        const uint32_t a = bits(lo, 32, 31) & ee_dma_addr_mask();
         uint32_t data = addr + 16, next = addr + 16 + qwc * 16;
         bool stop = false;
         switch (id) {
@@ -732,7 +732,7 @@ void Gs::capture_chain(uint32_t tag, uint32_t end, ChainCapture& c) const {
         return c.bytes.get() + at;
     };
     std::vector<uint32_t> stack;
-    uint32_t addr = tag & 0x01fffff0u;
+    uint32_t addr = tag & ee_dma_addr_mask();
     // the substitute walked as chain_walk walks it (the same addresses asked for, in the same order)
     bool in_sub = false, drop = false;
     int cur = -1;
@@ -760,12 +760,12 @@ void Gs::capture_chain(uint32_t tag, uint32_t end, ChainCapture& c) const {
             done |= 1u << cur;
             cur = -1;
         }
-        if (end != 0 && !in_sub && addr == (end & 0x01fffff0u)) return;  // (the substitute may reach past the real chain's end)
+        if (end != 0 && !in_sub && addr == (end & ee_dma_addr_mask())) return;  // (the substitute may reach past the real chain's end)
         const uint8_t* t = take(sub_addr(addr), 16u);
         if (t == nullptr) return;
         const uint64_t lo = r64(t);
         const uint32_t qwc = bits(lo, 0, 16), id = bits(lo, 28, 3);
-        const uint32_t a = bits(lo, 32, 31) & 0x01fffff0u;
+        const uint32_t a = bits(lo, 32, 31) & ee_dma_addr_mask();
         uint32_t data = addr + 16, next = addr + 16 + qwc * 16;
         bool stop = false;
         switch (id) {

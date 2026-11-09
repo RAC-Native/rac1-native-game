@@ -4,6 +4,7 @@
 
 #include <host/level_slots.h>
 #include <runtime/iop/snd989_iop.h>
+#include <game/enhance/advanced.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/music_streams.h>
 #include <game/ovl/ovl.h>
@@ -64,7 +65,6 @@ constexpr uint32_t HEAP = 0x000e2000u, HEAP_END = 0x000ef400u;
 constexpr uint32_t SFX_DEFS = 0x000ef800u, SFX_MAX = 64;
 constexpr uint32_t PC_ITEM = 0x300;  // our item in save<N>.pc: a plugin's bytes (level mods' items are 0x200)
 constexpr uint32_t PC_VERSION = 1;
-constexpr uint32_t RAM_SIZE = 0x02000000u;
 constexpr uint32_t LEVEL = 0x0015ed84u;
 
 // An angle (radians) folded into -pi..pi. The game's rotation matrix (euler_to_mat3_vu, the VU0 program 0x1a3) folds its
@@ -174,7 +174,7 @@ void with(Plugin& p, F&& f) {
     g_cur = prev;
 }
 
-bool addr_ok(uint32_t a, uint32_t n) { return a != 0 && a < RAM_SIZE && n <= RAM_SIZE - a; }
+bool addr_ok(uint32_t a, uint32_t n) { return a != 0 && a < ee_game_ram_end() && n <= ee_game_ram_end() - a; }
 
 void say(const char* what, uint32_t a) {
     std::fprintf(stderr, "[mod %s] %s at %#x: not in the game's memory, ignored\n", g_cur != nullptr ? g_cur->mod->folder.c_str() : "?", what, a);
@@ -1967,13 +1967,17 @@ void mod_code_level_loaded() {
 void mod_code_frame() {
     if (!g_mod_code_any || ee_journal_active()) return;
     if (!g_started) level_started();
-    if (g_sdk.on) sdk_triggers();
-    if (!g_hunters.empty()) hunters_update();
-    if (g_kal_any) kal_frame();
+    // the world held (Advanced > pause in the quick select: no hero, mobys, particles nor camera this frame): the
+    // triggers, the hunters' and Kalebo III's enemies' logic and the plugins' frame callbacks wait too (their timers,
+    // their objects moved by hand); their lights stay as they were, the HUD callback still draws
+    const bool held = advanced_world_paused();
+    if (g_sdk.on && !held) sdk_triggers();
+    if (!g_hunters.empty() && !held) hunters_update();
+    if (g_kal_any && !held) kal_frame();
     if (g_mod_weapons_limited) weapons_frame();
-    if (lwu(MOD_LIGHTS) != 0) sw(MOD_LIGHTS, 0);  // (light_add: the frame's own, from its frame callbacks)
+    if (!held && lwu(MOD_LIGHTS) != 0) sw(MOD_LIGHTS, 0);  // (light_add: the frame's own, from its frame callbacks)
     for (Plugin& p : g_plugins)
-        if (p.cb.frame != nullptr) with(p, [&] { p.cb.frame(p.cb.user); });
+        if (p.cb.frame != nullptr && !held) with(p, [&] { p.cb.frame(p.cb.user); });
     static const char* test = std::getenv("RAC1_MOD_TEST");
     const uint64_t frame = ++g_frames;
     if (test != nullptr)

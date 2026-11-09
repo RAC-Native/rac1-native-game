@@ -210,6 +210,31 @@ void unmap_file(const std::byte* data, std::size_t size) {
     if (data != nullptr) ::munmap(const_cast<std::byte*>(data), size);
 }
 
+// ---- Reserved memory ----
+
+void* memory_reserve(std::size_t bytes) {
+    // (the whole range mapped at once, readable and writable: pages are given on first touch, zero-filled; MAP_NORESERVE:
+    // no swap is set aside for the untouched part. memory_commit has nothing more to do)
+    void* p = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+    return p == MAP_FAILED ? nullptr : p;
+}
+
+bool memory_commit(void* base, std::size_t) { return base != nullptr; }
+
+void memory_discard(void* base, std::size_t from, std::size_t to) {
+    if (base == nullptr || to <= from) return;
+#if defined(__APPLE__)
+    // (macOS: MADV_FREE keeps the old bytes until the system takes the pages; zeros are wanted: mapped anew over them)
+    mmap(static_cast<char*>(base) + from, to - from, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_NORESERVE, -1, 0);
+#else
+    madvise(static_cast<char*>(base) + from, to - from, MADV_DONTNEED);  // (a private anonymous mapping: zeros at the next touch)
+#endif
+}
+
+void memory_release(void* base, std::size_t bytes) {
+    if (base != nullptr) munmap(base, bytes);
+}
+
 // ---- The player's folders ----
 
 std::filesystem::path config_dir() {

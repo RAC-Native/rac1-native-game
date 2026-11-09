@@ -57,10 +57,11 @@ static_assert(sizeof(MrpVec4) == 16 && sizeof(MrpMat4) == 64, "the EE's layout")
 
 // orig: (host) a vector at an EE address
 MrpVec4 vec4_at_words(uint32_t a) { return MrpVec4{lwc1(a), lwc1(a + 4), lwc1(a + 8), lwc1(a + 12)}; }
-// orig: (host) `n` bytes at `a` (RAM below 64 MB or within the scratchpad) as a pointer for reading; null: not plain memory
+// orig: (host) `n` bytes at `a` (RAM below 64 MB, or a session's RAM, or within the scratchpad) as a pointer for reading;
+// null: not plain memory
 const uint8_t* range_at(uint32_t a, uint32_t n) {
     const bool spr = a >= 0x70000000u && a - 0x70000000u <= 0x4000u - n;
-    const bool ram = a != 0 && a < 0x04000000u && n <= 0x04000000u - a;
+    const bool ram = a != 0 && a < ee_ram_size() && n <= ee_ram_size() - a;
     return spr || ram ? static_cast<const uint8_t*>(ee_ram_ptr_read(a)) : nullptr;
 }
 // orig: (host) `n` bytes at `a` into `out` (the observers' copies): see g_reads
@@ -214,8 +215,8 @@ int64_t vif_bytes(uint32_t code, uint32_t cl, uint32_t wl) {
     return 0;
 }
 
-// the end of the EE memory a chain may be in: the game's 32 MB, or the host's 64 MB while the moby shadow run's chain is
-// decoded (its packets in the host region mrp_lod gives it)
+// the end of the EE memory a chain may be in: the game's 32 MB (a session's: its RAM, ee_game_ram_end), or the host's
+// 64 MB while the moby shadow run's chain is decoded (its packets in the host region mrp_lod gives it; a session's: its RAM)
 uint32_t g_ram_end = 0x02000000u;
 
 struct DecodeStats {
@@ -549,9 +550,9 @@ bool mrp_scene_pose_slot(uint32_t rec, uint32_t& moby, bool& far) {
 // orig: (host) see mrp_scene.h
 void mrp_scene_shadow_end() {
     MrpFrame& f = g_frame;
-    g_ram_end = 0x04000000u;
+    g_ram_end = ee_ram_size();
     decode_all(f);
-    g_ram_end = 0x02000000u;
+    g_ram_end = ee_game_ram_end();
     for (MrpPart& p : f.parts) {  // the GS state packet (A+D, PACKED: the frame's TEST_1 0x47 / ALPHA_1 0x42)
         p.gs_resolved = true;
         if (!p.has_gs_state) continue;
@@ -724,6 +725,7 @@ void mrp_scene_end_frame() {
     const double t0 = g_prof ? now_ms() : 0.0;
     MrpFrame& f = g_frame;
     ++g_frame_no;
+    g_ram_end = ee_game_ram_end();  // (a session's RAM while its memory is on: its classes' packets above 64 MB)
     decode_all(f);
     if (g_check) {
         ++g_cs.frames;

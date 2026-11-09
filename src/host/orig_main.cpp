@@ -78,6 +78,7 @@
 #include <atomic>
 #include <mutex>
 
+#include <game/enhance/session.h>
 #include <game/enhance/advanced.h>
 #include <host/level_slots.h>
 #include <host/mod_code.h>
@@ -1948,7 +1949,7 @@ void draw_memory_take() {
     rac1::EeCopyRange r[3];
     r[0] = {0x00130000u, 0x00220000u};
     const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffe0u));
-    if (first >= 0x00100000u && last >= first && last - first < (4u << 20) && last + 0x200u <= 0x02000000u) r[1] = {first, last + 0x200u};
+    if (first >= 0x00100000u && last >= first && last - first < (4u << 20) && last + 0x200u <= rac1::ee_game_ram_end()) r[1] = {first, last + 0x200u};
     if (rac1::g_mod_code_any) r[2] = {rac1::MOD_LIGHTS, rac1::MOD_LIGHTS_END};  // (the plugins' lights, light_add: src/host/mod_code.h)
     rac1::ee_copy_take(r, rac1::g_mod_code_any ? 3 : 2);
 }
@@ -2492,6 +2493,7 @@ int main(int argc, char** argv) {
     // EE memory with the base ELF image; the level overlay's image (what the base ELF's loader
     // reads from the disc).
     init_memory();
+    rac1::session_start_tests();  // (testing: RAC1_SESSION_MEM, RAC1_SESSION_HEAP_TEST: game/enhance/session.h)
     rac1::mod_code_start();    // (the mods' plugins loaded: their errors in Options > Mods; none without a mod with code on)
     rac1::region_core_load();  // (another build's core, the PAL disc 2.00's: at the NTSC-U addresses the ports read; game/ovl/region_core.h)
     g_ee_null_is_ram = true;
@@ -4211,7 +4213,7 @@ int main(int argc, char** argv) {
                     static std::set<uint32_t> seen;
                     std::set<uint32_t> now;
                     uint32_t m = lwu(OV(0x0015ffd8u));
-                    for (int guard = 0; guard < 4096 && m != 0 && m < 0x02000000u && lbu(m + 0x20) != 0xff; ++guard, m += 0x100) {
+                    for (int guard = 0; guard < 4096 && m != 0 && m < rac1::ee_game_ram_end() && lbu(m + 0x20) != 0xff; ++guard, m += 0x100) {
                         if (static_cast<int8_t>(lbu(m + 0x20)) < 0) continue;
                         const uint32_t key = m ^ (static_cast<uint32_t>(lhu(m + 0xa6)) << 25);
                         now.insert(key);
